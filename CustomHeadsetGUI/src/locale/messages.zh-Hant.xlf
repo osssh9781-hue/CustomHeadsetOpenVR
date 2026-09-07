@@ -50,10 +50,6 @@
         <source>Rewrite</source>
         <target state="translated">覆寫</target>
       </trans-unit>
-      <trans-unit id="7742544409064011729" datatype="html">
-        <source>IPD</source>
-        <target state="translated">瞳距</target>
-      </trans-unit>
       <trans-unit id="1624999947532228823" datatype="html">
         <source>Distortion Zoom</source>
         <target state="translated">失真設定檔縮放</target>
@@ -626,9 +622,9 @@
         <source>Re-Install Driver</source>
         <target state="translated">重新安裝驅動程式</target>
       </trans-unit>
-      <trans-unit id="6835956377369507232" datatype="html">
-        <source>Samples subpixels from the correct locations in the image to improve sharpness by lighting up individual subpixels. This can have a remarkable effect on the MeganeX where it can extract detail from more than 300% of the 1:1 resolution. The Vive is also supported but the improvement is less noticeable.</source>
-        <target state="translated">從影像中的正確位置對子像素進行採樣，透過點亮單獨的子像素來提升銳利度。這在 MeganeX 上的效果尤其顯著，能從 1:1 解析度中提取超過 300% 的細節。Vive 也支援此功能，但改善效果較不明顯。</target>
+      <trans-unit id="7834138622722093170" datatype="html">
+        <source>Samples subpixels from the correct locations in the image to improve sharpness by lighting up individual subpixels. This can have a remarkable effect on the MeganeX, and Dream Air where it can extract detail from more than 300% of the 1:1 resolution. The Vive is also supported but the improvement is less noticeable.</source>
+        <target state="translated">從影像中的正確位置對子像素進行採樣，透過點亮個別子像素來提升銳利度。這在 MeganeX 與 Dream Air 上的效果尤其顯著，能提取超過 1:1 解析度 300% 的細節。Vive 也支援此功能，但改善效果較不明顯。</target>
       </trans-unit>
       <trans-unit id="5683939155976813564" datatype="html">
         <source>The inter pupillary distance of the virtual cameras in SteamVR applications. You set the headset&apos;s physical IPD in the Shiftall Configurator. This IPD should be matched with what you set in the Shiftall Configurator to get the correct world scale.</source>
@@ -1002,14 +998,6 @@
         <source>Adjusts the color of the image for any headset that can use the custom shader. This can also be used to decrease or increase the brightness of the scene.</source>
         <target state="translated">調整所有可使用自訂著色器的 HMD 的畫面色彩。也可用於降低或提高場景的亮度。</target>
       </trans-unit>
-      <trans-unit id="6874124726590243001" datatype="html">
-        <source>Enable for Dream Air</source>
-        <target state="translated">為 Dream Air 啟用</target>
-      </trans-unit>
-      <trans-unit id="6572848840051801784" datatype="html">
-        <source>Enables the custom shader for the Dream Air.</source>
-        <target state="translated">為 Dream Air 啟用自訂著色器。</target>
-      </trans-unit>
       <trans-unit id="5076719159866344759" datatype="html">
         <source>General Headset Settings</source>
         <target state="translated">一般 HMD 設定</target>
@@ -1130,14 +1118,6 @@
         <source> tab.</source>
         <target state="translated"> 分頁中找到。</target>
       </trans-unit>
-      <trans-unit id="7092489041770374525" datatype="html">
-        <source>Pimax Play must be open and logged in for this to work. Pimax has not provided me any integration with their DRM so this flaky method needs to be used. It has been <x id="INTERPOLATION" equiv-text="{{ daysSinceDreamAirBlocked }}"/> days since the Dream Air could start without Pimax Play if Pimax allowed it for everyone.</source>
-        <target state="translated">必須保持 Pimax Play 開啟並已登入。Pimax 未提供任何 DRM 整合方案，因此只能使用這種不穩定的方法。自 Dream Air 能夠在 Pimax 向所有用戶開放時無需 Pimax Play 即可啟動以來，已經過了 <x id="INTERPOLATION" equiv-text="{{ daysSinceDreamAirBlocked }}"/> 天。</target>
-      </trans-unit>
-      <trans-unit id="963585036176740737" datatype="html">
-        <source>Automatically launch the Dream Air headset when the GUI is opened. This will only launch if a Pimax headset is enabled.</source>
-        <target state="translated">開啟 GUI 時自動啟動 Dream Air HMD。僅在啟用 Pimax HMD 時才會啟動。</target>
-      </trans-unit>
       <trans-unit id="7459620849547189151" datatype="html">
         <source>Launch on GUI Startup</source>
         <target state="translated">GUI 啟動時自動啟動</target>
@@ -1221,6 +1201,338 @@
       <trans-unit id="8561844269846608277" datatype="html">
         <source>Forces all tracked devices to always report as valid and tracking, even if no tracking data is received. This may reduce grey screens but also has the effect of making all tracked devices snap to the origin if they completely lose tracking.</source>
         <target state="translated">強制所有追蹤裝置始終報告為有效且正在追蹤，即使未收到追蹤資料。這可能會減少灰色畫面問題，但也會使所有追蹤裝置在完全失去追蹤時直接跳回原點。</target>
+      </trans-unit>
+      <trans-unit id="9046269317735820443" datatype="html">
+        <source>Custom Headset</source>
+        <target state="translated">自訂 HMD</target>
+      </trans-unit>
+      <trans-unit id="2172463870875172967" datatype="html">
+        <source>Pimax Native Headset</source>
+        <target state="translated">Pimax 原生 HMD</target>
+      </trans-unit>
+      <trans-unit id="2076690846872156228" datatype="html">
+        <source>EVO</source>
+        <target state="translated">EVO</target>
+      </trans-unit>
+      <trans-unit id="3497297873851122076" datatype="html">
+        <source>Dream Air SE</source>
+        <target state="translated">Dream Air SE</target>
+      </trans-unit>
+      <trans-unit id="2528634145743035780" datatype="html">
+        <source>Crystal Super Micro-OLED</source>
+        <target state="translated">Crystal Super Micro-OLED</target>
+      </trans-unit>
+      <trans-unit id="8239175306569984130" datatype="html">
+        <source>Crystal Super 50PPD</source>
+        <target state="translated">Crystal Super 50PPD</target>
+      </trans-unit>
+      <trans-unit id="6076868542797801304" datatype="html">
+        <source>Crystal Super Ultrawide</source>
+        <target state="translated">Crystal Super Ultrawide</target>
+      </trans-unit>
+      <trans-unit id="1444976500417579937" datatype="html">
+        <source>Crystal Light</source>
+        <target state="translated">Crystal Light</target>
+      </trans-unit>
+      <trans-unit id="8570801569116783676" datatype="html">
+        <source>Crystal OG</source>
+        <target state="translated">Crystal OG</target>
+      </trans-unit>
+      <trans-unit id="4267294688133259873" datatype="html">
+        <source>Pimax 8K Series</source>
+        <target state="translated">Pimax 8K 系列</target>
+      </trans-unit>
+      <trans-unit id="3603873143323024943" datatype="html">
+        <source>Pimax 5K Series</source>
+        <target state="translated">Pimax 5K 系列</target>
+      </trans-unit>
+      <trans-unit id="4406343754735407007" datatype="html">
+        <source>Pimax Artisan</source>
+        <target state="translated">Pimax Artisan</target>
+      </trans-unit>
+      <trans-unit id="3183576075501626210" datatype="html">
+        <source>Installation Method</source>
+        <target state="translated">安裝方式</target>
+      </trans-unit>
+      <trans-unit id="616064537937996961" datatype="html">
+        <source>Auto</source>
+        <target state="translated">自動</target>
+      </trans-unit>
+      <trans-unit id="3301086086650990787" datatype="html">
+        <source>Register</source>
+        <target state="translated">註冊</target>
+      </trans-unit>
+      <trans-unit id="4323470180912194028" datatype="html">
+        <source>Copy</source>
+        <target state="translated">複製</target>
+      </trans-unit>
+      <trans-unit id="4339149983346610289" datatype="html">
+        <source>The distortion profiles are not perfect for the Crystal Light.</source>
+        <target state="translated">Crystal Light 的失真設定檔並不完美。</target>
+      </trans-unit>
+      <trans-unit id="7349891644969529188" datatype="html">
+        <source>Enable Crystal Light Driver</source>
+        <target state="translated">啟用 Crystal Light 驅動程式</target>
+      </trans-unit>
+      <trans-unit id="1442423766206199966" datatype="html">
+        <source>When enabled, the Custom Headset driver will run the Pimax Crystal Light.</source>
+        <target state="translated">啟用後，自訂 HMD 驅動程式將驅動 Pimax Crystal Light。</target>
+      </trans-unit>
+      <trans-unit id="3784759316646499385" datatype="html">
+        <source>The distortion profiles are not perfect for the Crystal OG.</source>
+        <target state="translated">Crystal OG 的失真設定檔並不完美。</target>
+      </trans-unit>
+      <trans-unit id="842573220217673343" datatype="html">
+        <source>Enable Crystal OG Driver</source>
+        <target state="translated">啟用 Crystal OG 驅動程式</target>
+      </trans-unit>
+      <trans-unit id="3173198199484308629" datatype="html">
+        <source>When enabled, the Custom Headset driver will run the Pimax Crystal OG.</source>
+        <target state="translated">啟用後，自訂 HMD 驅動程式將驅動 Pimax Crystal OG。</target>
+      </trans-unit>
+      <trans-unit id="8550501794809469945" datatype="html">
+        <source>The distortion profiles are not perfect for the Crystal Super 50PPD.</source>
+        <target state="translated">Crystal Super 50PPD 的失真設定檔並不完美。</target>
+      </trans-unit>
+      <trans-unit id="5278694125626772233" datatype="html">
+        <source>Enable Crystal Super 50PPD Driver</source>
+        <target state="translated">啟用 Crystal Super 50PPD 驅動程式</target>
+      </trans-unit>
+      <trans-unit id="3745576460676610887" datatype="html">
+        <source>When enabled, the Custom Headset driver will run the Pimax Crystal Super 50PPD.</source>
+        <target state="translated">啟用後，自訂 HMD 驅動程式將驅動 Pimax Crystal Super 50PPD。</target>
+      </trans-unit>
+      <trans-unit id="5813078469100824440" datatype="html">
+        <source>The distortion profiles are not perfect for the Crystal Super 57PPD.</source>
+        <target state="translated">Crystal Super 57PPD 的失真設定檔並不完美。</target>
+      </trans-unit>
+      <trans-unit id="2241379331477941291" datatype="html">
+        <source>The distortion profiles are completely wrong for the Crystal Super 57PPD.</source>
+        <target state="translated">Crystal Super 57PPD 的失真設定檔完全不正確。</target>
+      </trans-unit>
+      <trans-unit id="4639929824036002809" datatype="html">
+        <source>Enable Crystal Super 57PPD Driver</source>
+        <target state="translated">啟用 Crystal Super 57PPD 驅動程式</target>
+      </trans-unit>
+      <trans-unit id="6726128090194891966" datatype="html">
+        <source>When enabled, the Custom Headset driver will run the Pimax Crystal Super 57PPD.</source>
+        <target state="translated">啟用後，自訂 HMD 驅動程式將驅動 Pimax Crystal Super 57PPD。</target>
+      </trans-unit>
+      <trans-unit id="4716836654433158871" datatype="html">
+        <source>Enable Crystal Super Micro-OLED Driver</source>
+        <target state="translated">啟用 Crystal Super Micro-OLED 驅動程式</target>
+      </trans-unit>
+      <trans-unit id="8275926961618859272" datatype="html">
+        <source>When enabled, the Custom Headset driver will run the Pimax Crystal Super Micro-OLED.</source>
+        <target state="translated">啟用後，自訂 HMD 驅動程式將驅動 Pimax Crystal Super Micro-OLED。</target>
+      </trans-unit>
+      <trans-unit id="7947730347996710606" datatype="html">
+        <source>The distortion profiles are not perfect for the Crystal Super Ultrawide.</source>
+        <target state="translated">Crystal Super Ultrawide 的失真設定檔並不完美。</target>
+      </trans-unit>
+      <trans-unit id="3481337201638513896" datatype="html">
+        <source>The distortion profiles are somewhat wrong for the Crystal Super Ultrawide.</source>
+        <target state="translated">Crystal Super Ultrawide 的失真設定檔有些問題。</target>
+      </trans-unit>
+      <trans-unit id="2360323217778444811" datatype="html">
+        <source>Enable Crystal Super Ultrawide Driver</source>
+        <target state="translated">啟用 Crystal Super Ultrawide 驅動程式</target>
+      </trans-unit>
+      <trans-unit id="2137118792958394325" datatype="html">
+        <source>When enabled, the Custom Headset driver will run the Pimax Crystal Super Ultrawide.</source>
+        <target state="translated">啟用後，自訂 HMD 驅動程式將驅動 Pimax Crystal Super Ultrawide。</target>
+      </trans-unit>
+      <trans-unit id="946680823892645707" datatype="html">
+        <source>Enable Dream Air SE Driver</source>
+        <target state="translated">啟用 Dream Air SE 驅動程式</target>
+      </trans-unit>
+      <trans-unit id="7773941244044015825" datatype="html">
+        <source>When enabled, the Custom Headset driver will run the Pimax Dream Air SE.</source>
+        <target state="translated">啟用後，自訂 HMD 驅動程式將驅動 Pimax Dream Air SE。</target>
+      </trans-unit>
+      <trans-unit id="5831053778872717460" datatype="html">
+        <source>Enable for Pimax Headsets</source>
+        <target state="translated">為 Pimax 頭戴式裝置啟用</target>
+      </trans-unit>
+      <trans-unit id="1984855300906105820" datatype="html">
+        <source>Enables the custom shader for all Pimax headsets.</source>
+        <target state="translated">為所有 Pimax 頭戴式裝置啟用自訂著色器。</target>
+      </trans-unit>
+      <trans-unit id="2687007138701064844" datatype="html">
+        <source>Force Tracking (Headset Only)</source>
+        <target state="translated">強制追蹤（僅頭戴式裝置）</target>
+      </trans-unit>
+      <trans-unit id="6437101287572442747" datatype="html">
+        <source>Forces only the headset to always report as valid and tracking, even if no tracking data is received. Controllers and trackers are unaffected. This can help prevent grey screens in certain circumstances.</source>
+        <target state="translated">僅強制頭戴式裝置始終報告為有效且正在追蹤，即使未收到追蹤資料。控制器與追蹤器不受影響。這有助於在某些情況下防止灰色畫面。</target>
+      </trans-unit>
+      <trans-unit id="5183708111290307462" datatype="html">
+        <source>Use Hardware IPD</source>
+        <target state="translated">使用硬體IPD</target>
+      </trans-unit>
+      <trans-unit id="1880392133028815604" datatype="html">
+        <source>Proximity Sensor Type</source>
+        <target state="translated">接近感測器類型</target>
+      </trans-unit>
+      <trans-unit id="4090407681987458354" datatype="html">
+        <source>Controls where the data for proximity is retrieved from. Hardware is only available on some devices and has the same effect as none on devices that don&apos;t have proximity available. Pimax hardware devices may be unreliable, resulting in the screen shutting off or staying on regardless of proximity. None results in the standard SteamVR movement based proximity. In the stationary dimming mode, proximity is reported as false whenever the display has dimmed to its lowest level.</source>
+        <target state="translated">控制接近感應資料的取得來源。硬體僅部分裝置可用，在不支援接近感應的裝置上與「無」的效果相同。Pimax 硬體裝置可能不穩定，可能導致螢幕熄滅或無論接近與否都保持常亮。「無」會使用 SteamVR 標準的動作式接近感應。靜止時變暗模式下，只要顯示減暗至最低亮度，接近感應即回報為未接近。</target>
+      </trans-unit>
+      <trans-unit id="1643329504910854864" datatype="html">
+        <source>Use Auto Eye Rotation</source>
+        <target state="translated">使用自動眼睛旋轉</target>
+      </trans-unit>
+      <trans-unit id="3949931233251722441" datatype="html">
+        <source>Display Rotation</source>
+        <target state="translated">顯示器旋轉</target>
+      </trans-unit>
+      <trans-unit id="3047060592352311263" datatype="html">
+        <source>Rotation of the image on the physical display.</source>
+        <target state="translated">旋轉實體顯示器上的影像。</target>
+      </trans-unit>
+      <trans-unit id="5333045347909572100" datatype="html">
+        <source>0°</source>
+        <target state="translated">0°</target>
+      </trans-unit>
+      <trans-unit id="339984245237635207" datatype="html">
+        <source>90°</source>
+        <target state="translated">90°</target>
+      </trans-unit>
+      <trans-unit id="2950824333991098415" datatype="html">
+        <source>180°</source>
+        <target state="translated">180°</target>
+      </trans-unit>
+      <trans-unit id="1207495129854392660" datatype="html">
+        <source>270°</source>
+        <target state="translated">270°</target>
+      </trans-unit>
+      <trans-unit id="8331204292092693335" datatype="html">
+        <source>Hardware</source>
+        <target state="translated">硬體</target>
+      </trans-unit>
+      <trans-unit id="3257819372528222612" datatype="html">
+        <source>Stationary Dimming</source>
+        <target state="translated">靜止時變暗</target>
+      </trans-unit>
+      <trans-unit id="3357990158664370328" datatype="html">
+        <source>Always On</source>
+        <target state="translated">常開</target>
+      </trans-unit>
+      <trans-unit id="4640176625701096216" datatype="html">
+        <source>Always Off</source>
+        <target state="translated">常關</target>
+      </trans-unit>
+      <trans-unit id="2857294794581706765" datatype="html">
+        <source>Enable Pimax 5K Driver</source>
+        <target state="translated">啟用 Pimax 5K 驅動程式</target>
+      </trans-unit>
+      <trans-unit id="5330712973984504832" datatype="html">
+        <source>When enabled, the Custom Headset driver will run the Pimax 5K.</source>
+        <target state="translated">啟用後，自訂 HMD 驅動程式將驅動 Pimax 5K。</target>
+      </trans-unit>
+      <trans-unit id="5136852259988842823" datatype="html">
+        <source>Enable Pimax 8K Driver</source>
+        <target state="translated">啟用 Pimax 8K 驅動程式</target>
+      </trans-unit>
+      <trans-unit id="7038660579569066847" datatype="html">
+        <source>When enabled, the Custom Headset driver will run the Pimax 8K.</source>
+        <target state="translated">啟用後，自訂 HMD 驅動程式將驅動 Pimax 8K。</target>
+      </trans-unit>
+      <trans-unit id="4544020458434224254" datatype="html">
+        <source>Enable Pimax Artisan Driver</source>
+        <target state="translated">啟用 Pimax Artisan 驅動程式</target>
+      </trans-unit>
+      <trans-unit id="4439647563936057402" datatype="html">
+        <source>When enabled, the Custom Headset driver will run the Pimax Artisan.</source>
+        <target state="translated">啟用後，自訂 HMD 驅動程式將驅動 Pimax Artisan。</target>
+      </trans-unit>
+      <trans-unit id="1624519313557914555" datatype="html">
+        <source>Pimax EVO OpenPort is the most reliable way to use this driver and is required for SLAM headsets. Start Pimax OpenPort and then launch SteamVR.</source>
+        <target state="translated">Pimax EVO OpenPort 是使用此驅動程式最可靠的方式，SLAM 頭戴式裝置必須使用它。請先啟動 Pimax OpenPort，再啟動 SteamVR。</target>
+      </trans-unit>
+      <trans-unit id="1646640475484759817" datatype="html">
+        <source>Legacy Lighthouse Launch is for running Lighthouse Pimax headsets on Pimax Play without OpenPort. When using OpenPort, just launch SteamVR.</source>
+        <target state="translated">傳統 Lighthouse 啟動是用於在沒有 OpenPort 的 Pimax Play 上執行 Lighthouse Pimax 頭戴式裝置。使用 OpenPort 時，直接啟動 SteamVR 即可。</target>
+      </trans-unit>
+      <trans-unit id="7122632382112825911" datatype="html">
+        <source>It has been <x id="INTERPOLATION" equiv-text="{{ daysSinceDreamAirBlocked }}"/> days since the Lighthouse headsets could start without Pimax Play if Pimax allowed it for everyone.</source>
+        <target state="translated">距離 Pimax 允許所有人不需 Pimax Play 就能啟動 Lighthouse 頭戴式裝置，已經過了 <x id="INTERPOLATION" equiv-text="{{ daysSinceDreamAirBlocked }}"/> 天。</target>
+      </trans-unit>
+      <trans-unit id="1330320476952271815" datatype="html">
+        <source>Automatically launch the Pimax headset when the GUI is opened. This will only launch if a Pimax headset is enabled. The last used launch method will be used.</source>
+        <target state="translated">開啟 GUI 時自動啟動 Pimax 頭戴式裝置。僅在已啟用 Pimax 頭戴式裝置時才會啟動，並會使用最後使用的啟動方式。</target>
+      </trans-unit>
+      <trans-unit id="8332754168344735611" datatype="html">
+        <source>Pimax SLAM</source>
+        <target state="translated">Pimax SLAM</target>
+      </trans-unit>
+      <trans-unit id="1362498673283527024" datatype="html">
+        <source>Settings for Pimax SLAM tracking integration.</source>
+        <target state="translated">Pimax SLAM 追蹤整合的設定。</target>
+      </trans-unit>
+      <trans-unit id="2807321419979826544" datatype="html">
+        <source>Recenter Pimax Playspace</source>
+        <target state="translated">重新置中 Pimax 活動空間</target>
+      </trans-unit>
+      <trans-unit id="9039177223992915585" datatype="html">
+        <source>Recenter the Pimax SLAM playspace every time SteamVR is started. This works around the bug that Pimax Play completely forgets the origin of the playspace when restarting. If your headset is in a similar place every time you start up SteamVR, this will work well.</source>
+        <target state="translated">每次啟動 SteamVR 時，重新置中 Pimax SLAM 活動空間。這可規避 Pimax Play 在重新啟動時完全忘記活動空間原點的錯誤。如果您的 HMD 每次啟動 SteamVR 時都位於相似的位置，此功能將運作良好。</target>
+      </trans-unit>
+      <trans-unit id="2545688419661675181" datatype="html">
+        <source>Enable Pimax Passthrough</source>
+        <target state="translated">啟用 Pimax 透視</target>
+      </trans-unit>
+      <trans-unit id="81570873458241099" datatype="html">
+        <source>Enable using the cameras on SLAM headsets for passthrough in SteamVR. Beware that there may be some bugs that cause it to hang SteamVR, and you need a new version of Pimax Evo for this to work.</source>
+        <target state="translated">啟用後，可在 SteamVR 中使用 SLAM 頭戴式裝置的相機進行透視。注意可能有錯誤會導致 SteamVR 卡住，且需要新版 Pimax Evo 才能運作。</target>
+      </trans-unit>
+      <trans-unit id="7082857922137453657" datatype="html">
+        <source>The WebView2 version is too old. Please download the Evergreen Bootstrapper and run it as administrator. </source>
+        <target state="translated">WebView2 版本過舊。請下載 Evergreen Bootstrapper 並以管理員身分執行。</target>
+      </trans-unit>
+      <trans-unit id="5519334799073790494" datatype="html">
+        <source>Current version: </source>
+        <target state="translated">目前版本：</target>
+      </trans-unit>
+      <trans-unit id="8598265389217772988" datatype="html">
+        <source>This driver is locked out by the main Custom Headset driver. Enable to disable the main driver and enable this vendor driver.</source>
+        <target state="translated">此驅動程式已被主要的 Custom Headset 驅動程式鎖定。按一下「啟用」即可停用主要驅動程式，並啟用此供應商驅動程式。</target>
+      </trans-unit>
+      <trans-unit id="3246166520315668747" datatype="html">
+        <source>Super Micro-OLED</source>
+        <target state="translated">Super Micro-OLED</target>
+      </trans-unit>
+      <trans-unit id="6032284291883038600" datatype="html">
+        <source>Crystal Series</source>
+        <target state="translated">Crystal 系列</target>
+      </trans-unit>
+      <trans-unit id="7650216452296204397" datatype="html">
+        <source>Super 50PPD</source>
+        <target state="translated">Super 50PPD</target>
+      </trans-unit>
+      <trans-unit id="8005471014405132800" datatype="html">
+        <source>Super 57PPD</source>
+        <target state="translated">Super 57PPD</target>
+      </trans-unit>
+      <trans-unit id="5441506954845671339" datatype="html">
+        <source>Super Ultrawide</source>
+        <target state="translated">Super Ultrawide</target>
+      </trans-unit>
+      <trans-unit id="1454387073783700294" datatype="html">
+        <source>P2 Series</source>
+        <target state="translated">P2 系列</target>
+      </trans-unit>
+      <trans-unit id="1422053103497449239" datatype="html">
+        <source>Install Failed</source>
+        <target state="translated">安裝失敗</target>
+      </trans-unit>
+      <trans-unit id="4335513861407598564" datatype="html">
+        <source>Failed to register driver using vrpathreg. Make sure SteamVR is installed and closed.</source>
+        <target state="translated">使用 vrpathreg 註冊驅動程式失敗。請確認 SteamVR 已安裝且已關閉。</target>
+      </trans-unit>
+      <trans-unit id="7560263274597423690" datatype="html">
+        <source>Rendered IPD</source>
+        <target state="translated">渲染IPD</target>
       </trans-unit>
     </body>
   </file>

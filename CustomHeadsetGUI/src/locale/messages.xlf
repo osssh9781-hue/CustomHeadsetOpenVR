@@ -68,9 +68,6 @@
       <trans-unit id="1963136290621768454" datatype="html">
         <source>Resolution</source>
       </trans-unit>
-      <trans-unit id="7742544409064011729" datatype="html">
-        <source>IPD</source>
-      </trans-unit>
       <trans-unit id="1624999947532228823" datatype="html">
         <source>Distortion Zoom</source>
       </trans-unit>
@@ -491,8 +488,8 @@
       <trans-unit id="6691168530218751172" datatype="html">
         <source>Adjusts the color of the headset. This can also be used to decrease or increase the brightness of the scene.</source>
       </trans-unit>
-      <trans-unit id="6835956377369507232" datatype="html">
-        <source>Samples subpixels from the correct locations in the image to improve sharpness by lighting up individual subpixels. This can have a remarkable effect on the MeganeX where it can extract detail from more than 300% of the 1:1 resolution. The Vive is also supported but the improvement is less noticeable.</source>
+      <trans-unit id="7834138622722093170" datatype="html">
+        <source>Samples subpixels from the correct locations in the image to improve sharpness by lighting up individual subpixels. This can have a remarkable effect on the MeganeX, and Dream Air where it can extract detail from more than 300% of the 1:1 resolution. The Vive is also supported but the improvement is less noticeable.</source>
       </trans-unit>
       <trans-unit id="7681727633925076580" datatype="html">
         <source>Super Sampling Filter Percent</source>
@@ -787,9 +784,6 @@
       <trans-unit id="6555353275322017096" datatype="html">
         <source>Enables the use of the original Vive&apos;s link box for any headset to control base stations directly with SteamVR.</source>
       </trans-unit>
-      <trans-unit id="6572848840051801784" datatype="html">
-        <source>Enables the custom shader for the Dream Air.</source>
-      </trans-unit>
       <trans-unit id="6694417376736419143" datatype="html">
         <source>Corrects the sRGB white point in addition to the colors. This may result in a warmer image but more accurate colors to the sRGB standard.</source>
       </trans-unit>
@@ -805,9 +799,6 @@
       <trans-unit id="6866446009305101185" datatype="html">
         <source>Default Settings Tab</source>
       </trans-unit>
-      <trans-unit id="6874124726590243001" datatype="html">
-        <source>Enable for Dream Air</source>
-      </trans-unit>
       <trans-unit id="6894334009784471350" datatype="html">
         <source>Enable Eye Tracking</source>
       </trans-unit>
@@ -819,9 +810,6 @@
       </trans-unit>
       <trans-unit id="7071470734400948493" datatype="html">
         <source>Author</source>
-      </trans-unit>
-      <trans-unit id="7092489041770374525" datatype="html">
-        <source>Pimax Play must be open and logged in for this to work. Pimax has not provided me any integration with their DRM so this flaky method needs to be used. It has been <x id="INTERPOLATION" equiv-text="{{ daysSinceDreamAirBlocked }}"/> days since the Dream Air could start without Pimax Play if Pimax allowed it for everyone.</source>
       </trans-unit>
       <trans-unit id="7105237620645987051" datatype="html">
         <source>This may cause vision problems outside of the headset.</source>
@@ -904,9 +892,6 @@
       <trans-unit id="945165561939660867" datatype="html">
         <source>Distortion Algorithm</source>
       </trans-unit>
-      <trans-unit id="963585036176740737" datatype="html">
-        <source>Automatically launch the Dream Air headset when the GUI is opened. This will only launch if a Pimax headset is enabled.</source>
-      </trans-unit>
       <trans-unit id="currentCombinedHfov" datatype="html">
         <source>Current Combined HFOV</source>
       </trans-unit>
@@ -915,6 +900,255 @@
       </trans-unit>
       <trans-unit id="8561844269846608277" datatype="html">
         <source>Forces all tracked devices to always report as valid and tracking, even if no tracking data is received. This may reduce grey screens but also has the effect of making all tracked devices snap to the origin if they completely lose tracking.</source>
+      </trans-unit>
+      <trans-unit id="1207495129854392660" datatype="html">
+        <source>270°</source>
+      </trans-unit>
+      <trans-unit id="1330320476952271815" datatype="html">
+        <source>Automatically launch the Pimax headset when the GUI is opened. This will only launch if a Pimax headset is enabled. The last used launch method will be used.</source>
+      </trans-unit>
+      <trans-unit id="1362498673283527024" datatype="html">
+        <source>Settings for Pimax SLAM tracking integration.</source>
+      </trans-unit>
+      <trans-unit id="1422053103497449239" datatype="html">
+        <source>Install Failed</source>
+      </trans-unit>
+      <trans-unit id="1442423766206199966" datatype="html">
+        <source>When enabled, the Custom Headset driver will run the Pimax Crystal Light.</source>
+      </trans-unit>
+      <trans-unit id="1444976500417579937" datatype="html">
+        <source>Crystal Light</source>
+      </trans-unit>
+      <trans-unit id="1454387073783700294" datatype="html">
+        <source>P2 Series</source>
+      </trans-unit>
+      <trans-unit id="1624519313557914555" datatype="html">
+        <source>Pimax EVO OpenPort is the most reliable way to use this driver and is required for SLAM headsets. Start Pimax OpenPort and then launch SteamVR.</source>
+      </trans-unit>
+      <trans-unit id="1643329504910854864" datatype="html">
+        <source>Use Auto Eye Rotation</source>
+      </trans-unit>
+      <trans-unit id="1646640475484759817" datatype="html">
+        <source>Legacy Lighthouse Launch is for running Lighthouse Pimax headsets on Pimax Play without OpenPort. When using OpenPort, just launch SteamVR.</source>
+      </trans-unit>
+      <trans-unit id="1880392133028815604" datatype="html">
+        <source>Proximity Sensor Type</source>
+      </trans-unit>
+      <trans-unit id="1984855300906105820" datatype="html">
+        <source>Enables the custom shader for all Pimax headsets.</source>
+      </trans-unit>
+      <trans-unit id="2076690846872156228" datatype="html">
+        <source>EVO</source>
+      </trans-unit>
+      <trans-unit id="2137118792958394325" datatype="html">
+        <source>When enabled, the Custom Headset driver will run the Pimax Crystal Super Ultrawide.</source>
+      </trans-unit>
+      <trans-unit id="2172463870875172967" datatype="html">
+        <source>Pimax Native Headset</source>
+      </trans-unit>
+      <trans-unit id="2241379331477941291" datatype="html">
+        <source>The distortion profiles are completely wrong for the Crystal Super 57PPD.</source>
+      </trans-unit>
+      <trans-unit id="2360323217778444811" datatype="html">
+        <source>Enable Crystal Super Ultrawide Driver</source>
+      </trans-unit>
+      <trans-unit id="2528634145743035780" datatype="html">
+        <source>Crystal Super Micro-OLED</source>
+      </trans-unit>
+      <trans-unit id="2545688419661675181" datatype="html">
+        <source>Enable Pimax Passthrough</source>
+      </trans-unit>
+      <trans-unit id="2687007138701064844" datatype="html">
+        <source>Force Tracking (Headset Only)</source>
+      </trans-unit>
+      <trans-unit id="2807321419979826544" datatype="html">
+        <source>Recenter Pimax Playspace</source>
+      </trans-unit>
+      <trans-unit id="2857294794581706765" datatype="html">
+        <source>Enable Pimax 5K Driver</source>
+      </trans-unit>
+      <trans-unit id="2950824333991098415" datatype="html">
+        <source>180°</source>
+      </trans-unit>
+      <trans-unit id="3047060592352311263" datatype="html">
+        <source>Rotation of the image on the physical display.</source>
+      </trans-unit>
+      <trans-unit id="3173198199484308629" datatype="html">
+        <source>When enabled, the Custom Headset driver will run the Pimax Crystal OG.</source>
+      </trans-unit>
+      <trans-unit id="3183576075501626210" datatype="html">
+        <source>Installation Method</source>
+      </trans-unit>
+      <trans-unit id="3246166520315668747" datatype="html">
+        <source>Super Micro-OLED</source>
+      </trans-unit>
+      <trans-unit id="3257819372528222612" datatype="html">
+        <source>Stationary Dimming</source>
+      </trans-unit>
+      <trans-unit id="3301086086650990787" datatype="html">
+        <source>Register</source>
+      </trans-unit>
+      <trans-unit id="3357990158664370328" datatype="html">
+        <source>Always On</source>
+      </trans-unit>
+      <trans-unit id="339984245237635207" datatype="html">
+        <source>90°</source>
+      </trans-unit>
+      <trans-unit id="3481337201638513896" datatype="html">
+        <source>The distortion profiles are somewhat wrong for the Crystal Super Ultrawide.</source>
+      </trans-unit>
+      <trans-unit id="3497297873851122076" datatype="html">
+        <source>Dream Air SE</source>
+      </trans-unit>
+      <trans-unit id="3603873143323024943" datatype="html">
+        <source>Pimax 5K Series</source>
+      </trans-unit>
+      <trans-unit id="3745576460676610887" datatype="html">
+        <source>When enabled, the Custom Headset driver will run the Pimax Crystal Super 50PPD.</source>
+      </trans-unit>
+      <trans-unit id="3784759316646499385" datatype="html">
+        <source>The distortion profiles are not perfect for the Crystal OG.</source>
+      </trans-unit>
+      <trans-unit id="3949931233251722441" datatype="html">
+        <source>Display Rotation</source>
+      </trans-unit>
+      <trans-unit id="4090407681987458354" datatype="html">
+        <source>Controls where the data for proximity is retrieved from. Hardware is only available on some devices and has the same effect as none on devices that don&apos;t have proximity available. Pimax hardware devices may be unreliable, resulting in the screen shutting off or staying on regardless of proximity. None results in the standard SteamVR movement based proximity. In the stationary dimming mode, proximity is reported as false whenever the display has dimmed to its lowest level.</source>
+      </trans-unit>
+      <trans-unit id="4267294688133259873" datatype="html">
+        <source>Pimax 8K Series</source>
+      </trans-unit>
+      <trans-unit id="4323470180912194028" datatype="html">
+        <source>Copy</source>
+      </trans-unit>
+      <trans-unit id="4335513861407598564" datatype="html">
+        <source>Failed to register driver using vrpathreg. Make sure SteamVR is installed and closed.</source>
+      </trans-unit>
+      <trans-unit id="4339149983346610289" datatype="html">
+        <source>The distortion profiles are not perfect for the Crystal Light.</source>
+      </trans-unit>
+      <trans-unit id="4406343754735407007" datatype="html">
+        <source>Pimax Artisan</source>
+      </trans-unit>
+      <trans-unit id="4439647563936057402" datatype="html">
+        <source>When enabled, the Custom Headset driver will run the Pimax Artisan.</source>
+      </trans-unit>
+      <trans-unit id="4544020458434224254" datatype="html">
+        <source>Enable Pimax Artisan Driver</source>
+      </trans-unit>
+      <trans-unit id="4639929824036002809" datatype="html">
+        <source>Enable Crystal Super 57PPD Driver</source>
+      </trans-unit>
+      <trans-unit id="4640176625701096216" datatype="html">
+        <source>Always Off</source>
+      </trans-unit>
+      <trans-unit id="4716836654433158871" datatype="html">
+        <source>Enable Crystal Super Micro-OLED Driver</source>
+      </trans-unit>
+      <trans-unit id="5136852259988842823" datatype="html">
+        <source>Enable Pimax 8K Driver</source>
+      </trans-unit>
+      <trans-unit id="5183708111290307462" datatype="html">
+        <source>Use Hardware IPD</source>
+      </trans-unit>
+      <trans-unit id="5278694125626772233" datatype="html">
+        <source>Enable Crystal Super 50PPD Driver</source>
+      </trans-unit>
+      <trans-unit id="5330712973984504832" datatype="html">
+        <source>When enabled, the Custom Headset driver will run the Pimax 5K.</source>
+      </trans-unit>
+      <trans-unit id="5333045347909572100" datatype="html">
+        <source>0°</source>
+      </trans-unit>
+      <trans-unit id="5441506954845671339" datatype="html">
+        <source>Super Ultrawide</source>
+      </trans-unit>
+      <trans-unit id="5519334799073790494" datatype="html">
+        <source>Current version: </source>
+      </trans-unit>
+      <trans-unit id="5813078469100824440" datatype="html">
+        <source>The distortion profiles are not perfect for the Crystal Super 57PPD.</source>
+      </trans-unit>
+      <trans-unit id="5831053778872717460" datatype="html">
+        <source>Enable for Pimax Headsets</source>
+      </trans-unit>
+      <trans-unit id="6032284291883038600" datatype="html">
+        <source>Crystal Series</source>
+      </trans-unit>
+      <trans-unit id="6076868542797801304" datatype="html">
+        <source>Crystal Super Ultrawide</source>
+      </trans-unit>
+      <trans-unit id="616064537937996961" datatype="html">
+        <source>Auto</source>
+      </trans-unit>
+      <trans-unit id="6437101287572442747" datatype="html">
+        <source>Forces only the headset to always report as valid and tracking, even if no tracking data is received. Controllers and trackers are unaffected. This can help prevent grey screens in certain circumstances.</source>
+      </trans-unit>
+      <trans-unit id="6726128090194891966" datatype="html">
+        <source>When enabled, the Custom Headset driver will run the Pimax Crystal Super 57PPD.</source>
+      </trans-unit>
+      <trans-unit id="7038660579569066847" datatype="html">
+        <source>When enabled, the Custom Headset driver will run the Pimax 8K.</source>
+      </trans-unit>
+      <trans-unit id="7082857922137453657" datatype="html">
+        <source>The WebView2 version is too old. Please download the Evergreen Bootstrapper and run it as administrator. </source>
+      </trans-unit>
+      <trans-unit id="7122632382112825911" datatype="html">
+        <source>It has been <x id="INTERPOLATION" equiv-text="{{ daysSinceDreamAirBlocked }}"/> days since the Lighthouse headsets could start without Pimax Play if Pimax allowed it for everyone.</source>
+      </trans-unit>
+      <trans-unit id="7349891644969529188" datatype="html">
+        <source>Enable Crystal Light Driver</source>
+      </trans-unit>
+      <trans-unit id="7650216452296204397" datatype="html">
+        <source>Super 50PPD</source>
+      </trans-unit>
+      <trans-unit id="7773941244044015825" datatype="html">
+        <source>When enabled, the Custom Headset driver will run the Pimax Dream Air SE.</source>
+      </trans-unit>
+      <trans-unit id="7947730347996710606" datatype="html">
+        <source>The distortion profiles are not perfect for the Crystal Super Ultrawide.</source>
+      </trans-unit>
+      <trans-unit id="8005471014405132800" datatype="html">
+        <source>Super 57PPD</source>
+      </trans-unit>
+      <trans-unit id="81570873458241099" datatype="html">
+        <source>Enable using the cameras on SLAM headsets for passthrough in SteamVR. Beware that there may be some bugs that cause it to hang SteamVR, and you need a new version of Pimax Evo for this to work.</source>
+      </trans-unit>
+      <trans-unit id="8239175306569984130" datatype="html">
+        <source>Crystal Super 50PPD</source>
+      </trans-unit>
+      <trans-unit id="8275926961618859272" datatype="html">
+        <source>When enabled, the Custom Headset driver will run the Pimax Crystal Super Micro-OLED.</source>
+      </trans-unit>
+      <trans-unit id="8331204292092693335" datatype="html">
+        <source>Hardware</source>
+      </trans-unit>
+      <trans-unit id="8332754168344735611" datatype="html">
+        <source>Pimax SLAM</source>
+      </trans-unit>
+      <trans-unit id="842573220217673343" datatype="html">
+        <source>Enable Crystal OG Driver</source>
+      </trans-unit>
+      <trans-unit id="8550501794809469945" datatype="html">
+        <source>The distortion profiles are not perfect for the Crystal Super 50PPD.</source>
+      </trans-unit>
+      <trans-unit id="8570801569116783676" datatype="html">
+        <source>Crystal OG</source>
+      </trans-unit>
+      <trans-unit id="8598265389217772988" datatype="html">
+        <source>This driver is locked out by the main Custom Headset driver. Enable to disable the main driver and enable this vendor driver.</source>
+      </trans-unit>
+      <trans-unit id="9039177223992915585" datatype="html">
+        <source>Recenter the Pimax SLAM playspace every time SteamVR is started. This works around the bug that Pimax Play completely forgets the origin of the playspace when restarting. If your headset is in a similar place every time you start up SteamVR, this will work well.</source>
+      </trans-unit>
+      <trans-unit id="9046269317735820443" datatype="html">
+        <source>Custom Headset</source>
+      </trans-unit>
+      <trans-unit id="946680823892645707" datatype="html">
+        <source>Enable Dream Air SE Driver</source>
+      </trans-unit>
+      <trans-unit id="7560263274597423690" datatype="html">
+        <source>Rendered IPD</source>
       </trans-unit>
     </body>
   </file>
