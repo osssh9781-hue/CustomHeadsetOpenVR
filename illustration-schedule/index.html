@@ -123,6 +123,17 @@
   }
   .mini-btn.star-btn{ top:1px; right:1px; }
   .mini-btn.star-btn.on{ background:var(--success); color:#fff; }
+  .mini-btn.diff-btn{
+    top:2px; right:2px; width:19px; height:19px; border:1px solid var(--border-strong);
+    font-size:9px; font-weight:800; background:rgba(255,255,255,0.94); color:var(--ink-soft);
+  }
+  .mini-btn.diff-btn.diff-1{ color:var(--ink-faint); }
+  .mini-btn.diff-btn.diff-2{ color:var(--warning); border-color:var(--warning); }
+  .mini-btn.diff-btn.diff-3{ color:var(--success); border-color:var(--success); }
+  .page-cell.diff-3{ box-shadow: inset 0 0 0 1.5px var(--success); }
+  .pick-cell.diff-3{ box-shadow: inset 0 0 0 1.5px var(--success); }
+  .chip.diff-1{ opacity:.78; }
+  .chip.diff-3{ box-shadow: inset 0 0 0 1px var(--success); }
 
   .accordion{
     border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:8px;
@@ -545,9 +556,15 @@ function bindDeadlineControls(root,proj){
     if(clear) clear.onclick=e=>{e.stopPropagation();if(!editable())return;if(isRecord(proj.deadlines)) delete proj.deadlines[key];scheduleSave();renderMain();showToast(`${stageLabel(key)} 마감일을 해제했어요`);};
   });
 }
+function pageDifficulty(p){
+  const n=Number(p?.difficulty);
+  return n===1||n===2||n===3?n:(p?.spread?3:2);
+}
+function difficultyScore(level){ return Number(level)===1?0.5:Number(level)===3?2:1; }
+function difficultyText(level){ const n=Number(level)||2; return `난이도 ${n} · ${difficultyScore(n)}점`; }
 function getActiveProject(){ return state?.projects.find(p=>p.id===activeProjectId) || null; }
 function isPageDone(proj,p){ const stages=pageStages(proj); return stages.length>0 && stages.every(k=>!!p.stage[k]); }
-function makePages(n,stages=LEGACY_STAGES){ return Array.from({length:n},(_,i)=>({num:i+1,spread:false,dates:Object.fromEntries(stages.map(k=>[k,null])),stage:Object.fromEntries(stages.map(k=>[k,false]))})); }
+function makePages(n,stages=LEGACY_STAGES){ return Array.from({length:n},(_,i)=>({num:i+1,difficulty:2,spread:false,dates:Object.fromEntries(stages.map(k=>[k,null])),stage:Object.fromEntries(stages.map(k=>[k,false]))})); }
 function defaultState(){ return {version:5,stageDefs:DEFAULT_STAGE_DEFS.map(d=>({...d})),archivedStageDefs:[],projects:[{id:uid(),name:'삽화 프로젝트',totalPages:38,stages:[...LEGACY_STAGES],pages:makePages(38),singleStatus:{},deadlines:{},completed:false}],holidayOverrides:{}}; }
 function normalizeDefs(defs){
   if(!Array.isArray(defs)) throw new Error('작업 단계 목록이 올바르지 않아요');
@@ -594,7 +611,8 @@ function upgradeToV5(input){
       if(p.dates==null) LEGACY_STAGES.forEach(k=>{dates[k]=validDate(p.date)?p.date:null;});
       if(p.stage==null) LEGACY_STAGES.forEach(k=>{stage[k]=!!p.done;});
       stages.filter(k=>[...stageDefs,...archivedStageDefs].some(d=>d.key===k&&d.perPage)).forEach(k=>{if(!own(dates,k)) dates[k]=null; if(!own(stage,k)) stage[k]=false;});
-      const out={...p,num,spread:!!p.spread,dates,stage}; delete out.date; delete out.done; return out;
+      const rawDifficulty=Number(p.difficulty),difficulty=rawDifficulty===1||rawDifficulty===2||rawDifficulty===3?rawDifficulty:(p.spread?3:2);
+      const out={...p,num,difficulty,spread:difficulty===3,dates,stage}; delete out.date; delete out.done; return out;
     });
     if(proj.singleStatus!=null && !isRecord(proj.singleStatus)) throw new Error('1회 작업 형식이 올바르지 않아요');
     const singleStatus=Object.fromEntries(Object.entries(proj.singleStatus || {}).filter(([k])=>safeKey(k)).map(([k,v])=>{
@@ -736,9 +754,9 @@ function renderMain(){
       ${singles.map(k=>{const v=getSingle(proj,k);return `<div class="onetime-row" data-stage="${k}"><span class="stage-dot" style="background:${stageColor(k)}"></span><div class="one-info"><div class="one-title">${esc(stageLabel(k))}</div><button class="one-date" title="날짜를 눌러 일정을 배정하거나 변경하세요">${esc(shortDate(v.date))}</button></div><span class="one-status">${v.done?'완료':'진행 전'}</span>${deadlineControlHtml(proj,k)}<button class="switch${v.done?' on':''}" role="switch" aria-checked="${v.done}" aria-label="${esc(stageLabel(k))} 완료" style="${v.done?'background:'+stageColor(k):''}"></button></div>`;}).join('')}</section>`:''}
     ${stages.length?`<section class="sheet" id="pageSheet"><div class="sheet-title"><h2>페이지 체크리스트</h2><div class="progress mono">배정 <b>${assignedCount}/${proj.pages.length}</b> &nbsp;·&nbsp; 완료 <span class="done-badge">${doneCount}/${proj.pages.length}</span></div></div>
     ${stages.map(k=>`<div class="accordion${expandedStages[k]?' open':''}" data-stage="${k}"><div class="accordion-header"><button class="accordion-toggle" aria-expanded="${!!expandedStages[k]}"><span class="htitle"><span class="stage-swatch" style="background:${stageColor(k)}"></span>${esc(stageLabel(k))}<span class="hcount">완료 ${proj.pages.filter(p=>p.stage[k]).length}/${proj.pages.length}</span></span><span class="accordion-chevron">▾</span></button>${deadlineControlHtml(proj,k)}</div><div class="accordion-body"><div class="page-grid" id="grid-${k}" style="--accent:${stageColor(k)}"></div></div></div>`).join('')}
-    <div class="legend"><span>페이지 번호를 누르면 해당 작업의 완료 표시가 바뀌어요</span><span>★ 전면 일러스트 · 왼쪽 위 점은 일정 배정됨</span></div></section>`:''}
+    <div class="legend"><span>페이지 번호를 누르면 해당 작업의 완료 표시가 바뀌어요</span><span>오른쪽 위 숫자: 난이도 1=0.5점 · 2=1점 · 3=2점(기존 전면)</span><span>왼쪽 위 점은 일정 배정됨</span></div></section>`:''}
     ${!stages.length&&!singles.length?'<div class="sheet muted">이 프로젝트의 작업 단계가 모두 삭제되어 숨겨졌어요. 설정에서 단계를 복구할 수 있어요.</div>':''}
-    <div class="workload-legend"><span><i class="wl-bar light"></i>여유 (1~2점)</span><span><i class="wl-bar mid"></i>적정 (3~4점)</span><span><i class="wl-bar heavy"></i>과다 (5점 이상)</span><span>전체 진행 프로젝트 합산 · 페이지 작업 1점, 전면 2점, 1회 작업 1점</span></div>
+    <div class="workload-legend"><span><i class="wl-bar light"></i>여유 (1~2점)</span><span><i class="wl-bar mid"></i>적정 (3~4점)</span><span><i class="wl-bar heavy"></i>과다 (5점 이상)</span><span>전체 진행 프로젝트 합산 · 페이지 난이도 1=0.5점, 2=1점, 3=2점 · 1회 작업 1점</span></div>
     <section class="sheet" id="calendarSheet"></section>`;
   singles.forEach(k=>{
     const row=area.querySelector(`.onetime-row[data-stage="${k}"]`);
@@ -759,18 +777,19 @@ function renderMain(){
 function renderStageGrid(proj,k){
   const grid=$('grid-'+k);
   proj.pages.forEach(p=>{
+    const difficulty=pageDifficulty(p);
     const cell=document.createElement('div');
-    cell.className='page-cell'+(p.spread?' spread':'')+(p.dates[k]?' has-date':'')+(p.stage[k]?' on':'');
-    cell.innerHTML=`<span class="num mono">${p.num}</span><button class="check-hit" aria-label="${p.num}페이지 ${esc(stageLabel(k))} 완료" aria-pressed="${!!p.stage[k]}" title="${p.dates[k]?shortDate(p.dates[k]):'일정 미배정'}"></button><button class="mini-btn star-btn${p.spread?' on':''}" aria-label="${p.num}페이지 전면 일러스트" aria-pressed="${!!p.spread}">★</button>`;
+    cell.className='page-cell diff-'+difficulty+(p.dates[k]?' has-date':'')+(p.stage[k]?' on':'');
+    cell.innerHTML=`<span class="num mono">${p.num}</span><button class="check-hit" aria-label="${p.num}페이지 ${esc(stageLabel(k))} 완료" aria-pressed="${!!p.stage[k]}" title="${p.dates[k]?shortDate(p.dates[k]):'일정 미배정'}"></button><button class="mini-btn diff-btn diff-${difficulty}" aria-label="${p.num}페이지 ${difficultyText(difficulty)}" title="${difficultyText(difficulty)} · 누르면 변경">${difficulty}</button>`;
     cell.querySelector('.check-hit').onclick=()=>{if(!editable()) return;p.stage[k]=!p.stage[k];scheduleSave();renderMain();};
-    cell.querySelector('.star-btn').onclick=()=>{if(!editable()) return;p.spread=!p.spread;scheduleSave();renderMain();};
+    cell.querySelector('.diff-btn').onclick=()=>{if(!editable()) return;const next=difficulty===3?1:difficulty+1;p.difficulty=next;p.spread=next===3;scheduleSave();renderMain();};
     grid.append(cell);
   });
 }
 function entriesOnDate(proj,key){
   const entries=[];
   projectStages(proj).forEach(k=>{
-    if(isPerPage(k)) proj.pages.forEach(p=>{if(p.dates[k]===key) entries.push({stage:k,num:p.num,spread:p.spread,done:!!p.stage[k],single:false});});
+    if(isPerPage(k)) proj.pages.forEach(p=>{if(p.dates[k]===key) entries.push({stage:k,num:p.num,difficulty:pageDifficulty(p),done:!!p.stage[k],single:false});});
     else {const v=getSingle(proj,k);if(v.date===key) entries.push({stage:k,num:null,spread:false,done:v.done,single:true});}
   });
   return entries;
@@ -786,15 +805,16 @@ function deadlineChipHtml(item,projName='',isOther=false){
 }
 function dayWorkload(key){
   let score=0,count=0,pageCount=0,singleCount=0;
-  state.projects.filter(p=>!p.completed).forEach(proj=>entriesOnDate(proj,key).forEach(item=>{count++;score+=item.spread?2:1;if(item.single) singleCount++;else pageCount++;}));
-  return {score,count,pageCount,singleCount,level:score>=5?'heavy':score>=3?'mid':score>=1?'light':'none'};
+  state.projects.filter(p=>!p.completed).forEach(proj=>entriesOnDate(proj,key).forEach(item=>{count++;score+=item.single?1:difficultyScore(item.difficulty);if(item.single) singleCount++;else pageCount++;}));
+  return {score,count,pageCount,singleCount,level:score>=5?'heavy':score>=3?'mid':score>0?'light':'none'};
 }
 function otherProjectsOnDate(key,excludeId){return state.projects.filter(p=>!p.completed&&p.id!==excludeId).map(p=>({name:p.name,entries:entriesOnDate(p,key)})).filter(p=>p.entries.length);}
 function chipHtml(item,projName='',isOther=false){
   const k=item.stage,prefix=projName?Array.from(projName).slice(0,2).join('')+' ':'';
-  const label=prefix+(item.single?stageAbbr(k):`${item.num}${stageAbbr(k)}`)+(item.spread?'★':'')+(item.done?'✓':'');
-  const title=`${projName?projName+' · ':''}${stageLabel(k)} · ${item.single?'프로젝트 1회':item.num+'페이지'}${item.spread?' · 전면 일러스트':''}${item.done?' · 완료':''}`;
-  return `<span class="chip${item.spread?' spread':''}${isOther?' chip-other-proj':''}" style="${stageStyle(k)}" title="${esc(title)}">${esc(label)}</span>`;
+  const difficulty=item.single?null:(Number(item.difficulty)||2);
+  const label=prefix+(item.single?stageAbbr(k):`${item.num}${stageAbbr(k)}·${difficulty}`)+(item.done?'✓':'');
+  const title=`${projName?projName+' · ':''}${stageLabel(k)} · ${item.single?'프로젝트 1회':item.num+'페이지 · '+difficultyText(difficulty)}${item.done?' · 완료':''}`;
+  return `<span class="chip${difficulty?' diff-'+difficulty:''}${isOther?' chip-other-proj':''}" style="${stageStyle(k)}" title="${esc(title)}">${esc(label)}</span>`;
 }
 function shiftMonth(delta){const dt=new Date(viewYear,viewMonth+delta,1);viewYear=dt.getFullYear();viewMonth=dt.getMonth();}
 function renderCalendarNav(proj){
@@ -859,13 +879,13 @@ function renderPickArea(proj){
     area.innerHTML=`<button class="assign-once${selected?' selected':''}" id="assignOnceBtn" aria-pressed="${selected}" style="--accent:${stageColor(k)};--accent-soft:${stageSoft(k)}"><span>${selected?'이 날짜에 배정됨 · 누르면 해제':'이 날짜에 배정하기'}</span><span class="assign-mark">${selected?'✓':'+'}</span></button><p class="muted">${elsewhere?`이미 ${shortDate(v.date)}에 배정되어 있어요. 선택하고 저장하면 이 날짜로 옮겨져요.`:'페이지 번호 없이 한 번만 배정돼요.'}<br>완료 여부는 메인 화면의 스위치로 바꿔주세요.</p>`;
     $('assignOnceBtn').onclick=()=>{modalDrafts.set(k,!modalDrafts.get(k));renderPickArea(proj);};return;
   }
-  $('pickGridLabel').textContent=`${stageLabel(k)} · 작업할 페이지 선택 (여러 개 가능 · ★ 전면)`;
+  $('pickGridLabel').textContent=`${stageLabel(k)} · 작업할 페이지 선택 (여러 개 가능 · 숫자는 난이도)`;
   const grid=document.createElement('div');grid.className='pick-grid';grid.id='pickGrid';area.append(grid);
   const picked=modalDrafts.get(k);
   proj.pages.forEach(p=>{
-    const elsewhere=p.dates[k] && p.dates[k]!==currentModalDate;
-    const cell=document.createElement('button');cell.className='pick-cell'+(p.spread?' spread':'')+(picked.has(p.num)?' mine':'')+(elsewhere?' elsewhere':'');
-    cell.textContent=p.num+(p.spread?'★':'');cell.disabled=!!elsewhere;cell.dataset.page=String(p.num);
+    const elsewhere=p.dates[k] && p.dates[k]!==currentModalDate,difficulty=pageDifficulty(p);
+    const cell=document.createElement('button');cell.className='pick-cell diff-'+difficulty+(picked.has(p.num)?' mine':'')+(elsewhere?' elsewhere':'');
+    cell.textContent=p.num+'·'+difficulty;cell.disabled=!!elsewhere;cell.dataset.page=String(p.num);
     cell.setAttribute('aria-pressed',String(picked.has(p.num)));cell.setAttribute('aria-label',`${p.num}페이지${elsewhere?' · '+shortDate(p.dates[k])+' 배정됨':''}`);
     if(elsewhere) cell.title=shortDate(p.dates[k])+'에 배정됨. 기존 날짜에서 해제 후 옮길 수 있어요.';
     cell.onclick=()=>{if(picked.has(p.num)) picked.delete(p.num);else picked.add(p.num);cell.classList.toggle('mine',picked.has(p.num));cell.setAttribute('aria-pressed',String(picked.has(p.num)));};grid.append(cell);
