@@ -405,6 +405,23 @@
     .deadline-clear{width:24px;}
     .accordion-header .hcount{display:none;}
   }
+
+  /* Stage reorder */
+  .accordion-toggle{user-select:none;-webkit-user-select:none;touch-action:pan-y;}
+  .drag-grip{
+    display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;
+    margin-right:-2px;border-radius:5px;color:var(--ink-faint);font-size:12px;font-weight:800;
+    flex:0 0 auto;transition:background .12s,color .12s;
+  }
+  .accordion-toggle:hover .drag-grip{background:var(--surface-soft);color:var(--ink-soft);}
+  .accordion.stage-dragging{
+    opacity:.72;border-color:var(--brand);box-shadow:0 5px 16px rgba(50,35,20,.12);
+  }
+  body.stage-reordering{user-select:none;-webkit-user-select:none;}
+  body.stage-reordering #pageSheet .accordion-body{display:none!important;}
+  body.stage-reordering #pageSheet .accordion-toggle{cursor:grabbing;}
+  body.stage-reordering #pageSheet .accordion:not(.stage-dragging){transition:transform .12s,margin .12s;}
+  .stage-order-hint{font-weight:600;color:var(--ink-soft);}
 </style>
 </head>
 <body>
@@ -529,7 +546,7 @@ function stageSoft(key){ return stageColor(key)+'18'; }
 function stageStyle(key){ return `color:${stageColor(key)};background:${stageSoft(key)};border-color:${stageColor(key)}`; }
 function stageAbbr(key){ return ({sketch:'S',line:'L',color:'C'})[key] || Array.from(stageLabel(key)).slice(0,2).join(''); }
 function isPerPage(key){ return !!stageDef(key)?.perPage; }
-function projectStages(proj){ return state.stageDefs.filter(d=>proj.stages.includes(d.key)).map(d=>d.key); }
+function projectStages(proj){ return (proj.stages || []).filter(k=>state.stageDefs.some(d=>d.key===k)); }
 function pageStages(proj){ return projectStages(proj).filter(isPerPage); }
 function singleStages(proj){ return projectStages(proj).filter(k=>!isPerPage(k)); }
 function getSingle(proj,key){ return proj.singleStatus[key] || {done:false,date:null}; }
@@ -554,6 +571,75 @@ function bindDeadlineControls(root,proj){
     };
     input.onblur=()=>setTimeout(()=>{if(document.activeElement!==input){input.hidden=true;btn.setAttribute('aria-expanded','false');}},120);
     if(clear) clear.onclick=e=>{e.stopPropagation();if(!editable())return;if(isRecord(proj.deadlines)) delete proj.deadlines[key];scheduleSave();renderMain();showToast(`${stageLabel(key)} 마감일을 해제했어요`);};
+  });
+}
+function bindStageReorder(root,proj){
+  const sheet=root.querySelector('#pageSheet');if(!sheet) return;
+  sheet.querySelectorAll('.accordion-toggle').forEach(toggle=>{
+    toggle.onpointerdown=e=>{
+      if(e.pointerType==='mouse'&&e.button!==0) return;
+      const item=toggle.closest('.accordion');if(!item) return;
+      const pointerId=e.pointerId,startY=e.clientY,original=pageStages(proj).join('|');
+      let timer=null,dragging=false,moved=false,cancelled=false;
+
+      const cleanup=()=>{
+        clearTimeout(timer);
+        window.removeEventListener('pointermove',move,{capture:true});
+        window.removeEventListener('pointerup',finish,{capture:true});
+        window.removeEventListener('pointercancel',finish,{capture:true});
+      };
+      const startDrag=()=>{
+        if(cancelled||!editable()) return;
+        dragging=true;
+        item.classList.add('stage-dragging');
+        document.body.classList.add('stage-reordering');
+        try{toggle.setPointerCapture(pointerId);}catch(_){}
+        try{navigator.vibrate?.(12);}catch(_){}
+      };
+      const move=ev=>{
+        if(ev.pointerId!==pointerId) return;
+        if(!dragging){
+          if(Math.abs(ev.clientY-startY)>8){cancelled=true;clearTimeout(timer);}
+          return;
+        }
+        ev.preventDefault();moved=true;
+        const others=[...sheet.querySelectorAll('.accordion:not(.stage-dragging)')];
+        let before=null;
+        for(const el of others){
+          const r=el.getBoundingClientRect();
+          if(ev.clientY<r.top+r.height/2){before=el;break;}
+        }
+        const legend=sheet.querySelector('.legend');
+        if(before) sheet.insertBefore(item,before);
+        else sheet.insertBefore(item,legend||null);
+      };
+      const finish=ev=>{
+        if(ev.pointerId!==pointerId) return;
+        cleanup();
+        if(!dragging) return;
+        ev.preventDefault();
+        try{toggle.releasePointerCapture(pointerId);}catch(_){}
+        item.classList.remove('stage-dragging');
+        document.body.classList.remove('stage-reordering');
+        toggle.dataset.suppressClick='1';
+
+        const order=[...sheet.querySelectorAll('.accordion')].map(el=>el.dataset.stage);
+        if(moved&&order.join('|')!==original){
+          const slots=proj.stages.map((k,i)=>isPerPage(k)?i:-1).filter(i=>i>=0);
+          if(slots.length===order.length){
+            slots.forEach((pos,i)=>{proj.stages[pos]=order[i];});
+            scheduleSave();
+            renderCalendarNav(proj);
+            showToast('단계 순서를 저장했어요');
+          }
+        }
+      };
+
+      timer=setTimeout(startDrag,230);
+      window.addEventListener('pointermove',move,{capture:true});
+      window.addEventListener('pointerup',finish,{capture:true});
+      window.addEventListener('pointercancel',finish,{capture:true});
+    };
   });
 }
 function pageDifficulty(p){
@@ -753,8 +839,8 @@ function renderMain(){
     ${singles.length?`<section class="sheet" id="singleSheet"><div class="sheet-title"><h2>1회 작업</h2><div class="progress">완료 <b>${singleDone}/${singles.length}</b></div></div>
       ${singles.map(k=>{const v=getSingle(proj,k);return `<div class="onetime-row" data-stage="${k}"><span class="stage-dot" style="background:${stageColor(k)}"></span><div class="one-info"><div class="one-title">${esc(stageLabel(k))}</div><button class="one-date" title="날짜를 눌러 일정을 배정하거나 변경하세요">${esc(shortDate(v.date))}</button></div><span class="one-status">${v.done?'완료':'진행 전'}</span>${deadlineControlHtml(proj,k)}<button class="switch${v.done?' on':''}" role="switch" aria-checked="${v.done}" aria-label="${esc(stageLabel(k))} 완료" style="${v.done?'background:'+stageColor(k):''}"></button></div>`;}).join('')}</section>`:''}
     ${stages.length?`<section class="sheet" id="pageSheet"><div class="sheet-title"><h2>페이지 체크리스트</h2><div class="progress mono">배정 <b>${assignedCount}/${proj.pages.length}</b> &nbsp;·&nbsp; 완료 <span class="done-badge">${doneCount}/${proj.pages.length}</span></div></div>
-    ${stages.map(k=>`<div class="accordion${expandedStages[k]?' open':''}" data-stage="${k}"><div class="accordion-header"><button class="accordion-toggle" aria-expanded="${!!expandedStages[k]}"><span class="htitle"><span class="stage-swatch" style="background:${stageColor(k)}"></span>${esc(stageLabel(k))}<span class="hcount">완료 ${proj.pages.filter(p=>p.stage[k]).length}/${proj.pages.length}</span></span><span class="accordion-chevron">▾</span></button>${deadlineControlHtml(proj,k)}</div><div class="accordion-body"><div class="page-grid" id="grid-${k}" style="--accent:${stageColor(k)}"></div></div></div>`).join('')}
-    <div class="legend"><span>페이지 번호를 누르면 해당 작업의 완료 표시가 바뀌어요</span><span>오른쪽 위 숫자: 난이도 1=0.5점 · 2=1점 · 3=2점(기존 전면)</span><span>왼쪽 위 점은 일정 배정됨</span></div></section>`:''}
+    ${stages.map(k=>`<div class="accordion${expandedStages[k]?' open':''}" data-stage="${k}"><div class="accordion-header"><button class="accordion-toggle" aria-expanded="${!!expandedStages[k]}" title="클릭: 펼치기 · 길게 누르고 끌기: 순서 변경"><span class="htitle"><span class="drag-grip" aria-hidden="true">↕</span><span class="stage-swatch" style="background:${stageColor(k)}"></span>${esc(stageLabel(k))}<span class="hcount">완료 ${proj.pages.filter(p=>p.stage[k]).length}/${proj.pages.length}</span></span><span class="accordion-chevron">▾</span></button>${deadlineControlHtml(proj,k)}</div><div class="accordion-body"><div class="page-grid" id="grid-${k}" style="--accent:${stageColor(k)}"></div></div></div>`).join('')}
+    <div class="legend"><span class="stage-order-hint">↕ 단계 제목을 길게 누르고 위아래로 끌면 순서를 바꿀 수 있어요</span><span>페이지 번호를 누르면 해당 작업의 완료 표시가 바뀌어요</span><span>오른쪽 위 숫자: 난이도 1=0.5점 · 2=1점 · 3=2점(기존 전면)</span><span>왼쪽 위 점은 일정 배정됨</span></div></section>`:''}
     ${!stages.length&&!singles.length?'<div class="sheet muted">이 프로젝트의 작업 단계가 모두 삭제되어 숨겨졌어요. 설정에서 단계를 복구할 수 있어요.</div>':''}
     <div class="workload-legend"><span><i class="wl-bar light"></i>여유 (1~2점)</span><span><i class="wl-bar mid"></i>적정 (3~4점)</span><span><i class="wl-bar heavy"></i>과다 (5점 이상)</span><span>전체 진행 프로젝트 합산 · 페이지 난이도 1=0.5점, 2=1점, 3=2점 · 1회 작업 1점</span></div>
     <section class="sheet" id="calendarSheet"></section>`;
@@ -769,9 +855,11 @@ function renderMain(){
   });
   stages.forEach(k=>{
     renderStageGrid(proj,k);
-    area.querySelector(`.accordion[data-stage="${k}"] .accordion-toggle`).onclick=()=>{expandedStages[k]=!expandedStages[k];renderMain();};
+    const toggle=area.querySelector(`.accordion[data-stage="${k}"] .accordion-toggle`);
+    toggle.onclick=()=>{if(toggle.dataset.suppressClick==='1'){delete toggle.dataset.suppressClick;return;}expandedStages[k]=!expandedStages[k];renderMain();};
   });
   bindDeadlineControls(area,proj);
+  bindStageReorder(area,proj);
   renderCalendarNav(proj);
 }
 function renderStageGrid(proj,k){
