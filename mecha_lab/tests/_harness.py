@@ -8,6 +8,8 @@ import os
 import sys
 import tempfile
 
+sys.dont_write_bytecode = True   # keep reference/ and addon/ free of __pycache__
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ADDON_PARENT = os.path.join(os.path.dirname(HERE), 'addon')
 _TMP = tempfile.mkdtemp(prefix='mecha_lab_test_')

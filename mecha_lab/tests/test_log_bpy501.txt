@@ -1,0 +1,417 @@
+# Mecha Lab 0.7.0 headless test log
+# bpy 5.0.1 a3db93c5b259 | Python 3.11.17 | Linux 6.18.44-fc-v114 | 2026-10-12T18:55Z
+# command: <bpy python> tests/run_all.py
+====================================================================== 
+ test_cut_geometry.py
+PASS cut lasso: manifold
+PASS cut lasso: volume reduced  -- (7.999999999999999, 4.4199999022483825)
+PASS cut lasso: no temp objects left
+PASS cut lasso: cutter attribute removed
+PASS cut rect: manifold
+PASS cut rect: volume reduced  -- (7.999999999999999, 5.359999837875363)
+PASS cut rect: no temp objects left
+PASS cut rect: cutter attribute removed
+PASS cut circle: manifold
+PASS cut circle: volume reduced  -- (7.999999999999999, 5.741685090573274)
+PASS cut circle: no temp objects left
+PASS cut circle: cutter attribute removed
+PASS cut ellipse: manifold
+PASS cut ellipse: volume reduced  -- (7.999999999999999, 6.243532844418806)
+PASS cut ellipse: no temp objects left
+PASS cut ellipse: cutter attribute removed
+PASS cut curve_lasso: manifold
+PASS cut curve_lasso: volume reduced  -- (7.999999999999999, 4.248799213261016)
+PASS cut curve_lasso: no temp objects left
+PASS cut curve_lasso: cutter attribute removed
+PASS cut stroke: manifold
+PASS cut stroke: volume reduced  -- (7.999999999999999, 5.80180023493447)
+PASS cut stroke: no temp objects left
+PASS cut stroke: cutter attribute removed
+PASS cut custom_star: manifold
+PASS cut custom_star: volume reduced  -- (7.999999999999999, 6.703933490168626)
+PASS cut custom_star: no temp objects left
+PASS cut custom_star: cutter attribute removed
+PASS square through-hole volume = 8 - 1*2  -- 6.000000000000001
+PASS Alt (keep inside) volume = 1*2  -- 1.9999999999999998
+PASS split: piece created
+PASS split: volumes sum to original  -- (6.000000000000001, 1.9999999999999998)
+PASS split: both manifold (capped)
+PASS split no-cap: open shells
+PASS edge finish BEVEL: manifold
+PASS edge finish BEVEL: original cube corners untouched
+PASS edge finish BEVEL: rim beveled (more faces)  -- 36
+PASS edge finish CHAMFER: manifold
+PASS edge finish CHAMFER: original cube corners untouched
+PASS edge finish CHAMFER: rim beveled (more faces)  -- 20
+PASS shared (SINGLE): starts multi-user
+PASS shared SINGLE: target cut, twin untouched
+PASS shared (ALL): starts multi-user
+PASS shared ALL: both instances cut, still linked
+PASS mch.boolean on Alt+D mesh succeeds  -- {'FINISHED'}
+PASS mch.boolean: twin untouched
+PASS modifier stack kept
+PASS modifiers still enabled
+PASS base mesh cut
+PASS miss raises CutError, mesh unchanged  -- The shape does not intersect the mesh; nothing was changed.
+PASS self-intersecting outline refused  -- The outline crosses itself. Draw a simpler outline (or use Brush Stroke, which trims the closing overlap).
+PASS cut removing everything refused  -- The result would delete the whole object; nothing was changed.
+PASS mesh unchanged after failures
+PASS no leaked cutter objects
+PASS shape keys refused with message  -- "Target" has shape keys. Apply or remove them before cutting.
+PASS 2-point plane cut removes clicked half  -- 3.9999999999999996
+PASS plane cut removed +X side
+PASS Alt plane cut keeps clicked half
+PASS 2-point split: two capped halves
+PASS polyline open cut: manifold, removed left part  -- 3.900000005960464
+PASS line that misses refused  -- The line does not cross the mesh; nothing was changed.
+PASS oblique view + non-uniform scale: manifold
+PASS second cut with bevel on scaled object: manifold
+PASS perspective: manifold
+PASS perspective: hole follows view rays (wider at far side)  -- (0.3333333730697632, 0.46666668115832605)
+PASS surface pocket depth 0.3 -> volume 1*0.3  -- 0.2999877929687518
+PASS surface pocket manifold
+PASS low-poly cylinder: manifold result
+PASS uv sphere: manifold result
+PASS open shell (non-manifold source) is cut
+PASS multi-target: hit target cut, missed target untouched
+PASS live: cutter object kept
+PASS live: boolean modifier on target
+PASS live: base mesh not changed yet
+PASS live finalize applied  -- {'FINISHED'}
+PASS live finalize removed cutter + modifier
+PASS mask: faces added inside square  -- (16, 16)
+PASS mask: Alt erase clears them
+PASS smart fuse: overlapping meshes accepted  -- {'FINISHED'}
+PASS smart fuse confirm applied  -- {'FINISHED'}
+PASS smart fuse result manifold
+PASS smart fuse result: no leftover modifiers
+PASS smart fuse: separate meshes refused safely  -- {'CANCELLED'}
+PASS smart fuse: touching-only result reported (no crash)  -- {'CANCELLED'}
+PASS smart fuse: objects restored after touching case
+TIMINGS (ms, headless, includes depsgraph eval):
+  cut lasso                   3.5
+  cut rect                    2.2
+  cut circle                  7.0
+  cut ellipse                 5.9
+  cut curve_lasso             5.0
+  cut stroke                 10.6
+  cut custom_star             2.8
+85/85 passed
+====================================================================== 
+ test_legacy_features.py
+PASS mirror create
+PASS mirror apply on shared mesh works  -- {'FINISHED'}
+PASS mirror apply doubled geometry, twin untouched  -- (16, 8)
+PASS world pivot helper removed after apply
+PASS radial create
+PASS radial bake  -- ({'FINISHED'}, 64)
+PASS radial boolean link + apply  -- ({'FINISHED'}, {'FINISHED'}, 1.4966687583683673)
+PASS radial boolean result manifold
+PASS boolean UNION  -- {'FINISHED'}
+PASS boolean INTERSECT  -- {'FINISHED'}
+PASS slice keeps both pieces  -- {'FINISHED'}
+PASS one-click remesh applied  -- {'FINISHED'}
+PASS mask extract creates raised object  -- {'FINISHED'}
+PASS surface conform runs  -- {'FINISHED'}
+PASS operator mch.draw_delete_cut registered
+PASS operator mch.cut_finalize registered
+PASS operator mch.draw_mask registered
+PASS operator mch.stamp_png_cut registered
+PASS operator mch.select_tool registered
+PASS operator mch.boolean registered
+PASS operator mch.slice registered
+PASS operator mch.smart_fuse registered
+PASS operator mch.surface_cut registered
+PASS operator mch.draw_path registered
+PASS operator mch.bake_live registered
+PASS operator mch.mesh_mirror registered
+26/26 passed
+====================================================================== 
+ test_performance.py
+PASS 320 faces [AUTO] manifold cut  -- 13 ms
+PASS 320 faces [MANIFOLD] manifold cut  -- 13 ms
+PASS 5120 faces [AUTO] manifold cut  -- 48 ms
+PASS 5120 faces [MANIFOLD] manifold cut  -- 45 ms
+PASS 20480 faces [AUTO] manifold cut  -- 136 ms
+PASS 20480 faces [MANIFOLD] manifold cut  -- 134 ms
+PASS 81920 faces [AUTO] manifold cut  -- 455 ms
+PASS 81920 faces [MANIFOLD] manifold cut  -- 496 ms
+faces      solver     ms
+320        AUTO            13
+320        MANIFOLD        13
+5120       AUTO            48
+5120       MANIFOLD        45
+20480      AUTO           136
+20480      MANIFOLD       134
+81920      AUTO           455
+81920      MANIFOLD       496
+8/8 passed
+====================================================================== 
+ test_png_shapes.py
+PASS cross: vectorized  -- 1 loops
+PASS cross: no self/mutual intersections
+PASS cross: no vertex shared between loops
+PASS cross [THROUGH]: cut applied  -- ok
+PASS cross [THROUGH]: result manifold
+PASS cross [THROUGH]: volume reduced
+PASS cross [SURFACE]: cut applied  -- ok
+PASS cross [SURFACE]: result manifold
+PASS cross [SURFACE]: volume reduced
+PASS ring: vectorized  -- 2 loops
+PASS ring: no self/mutual intersections
+PASS ring: no vertex shared between loops
+PASS ring [THROUGH]: cut applied  -- ok
+PASS ring [THROUGH]: result manifold
+PASS ring [THROUGH]: volume reduced
+PASS ring [SURFACE]: cut applied  -- ok
+PASS ring [SURFACE]: result manifold
+PASS ring [SURFACE]: volume reduced
+PASS vent_grid_25: vectorized  -- 26 loops
+PASS vent_grid_25: no self/mutual intersections
+PASS vent_grid_25: no vertex shared between loops
+PASS vent_grid_25 [THROUGH]: cut applied  -- ok
+PASS vent_grid_25 [THROUGH]: result manifold
+PASS vent_grid_25 [THROUGH]: volume reduced
+PASS vent_grid_25 [SURFACE]: cut applied  -- ok
+PASS vent_grid_25 [SURFACE]: result manifold
+PASS vent_grid_25 [SURFACE]: volume reduced
+PASS thin_slots: vectorized  -- 7 loops
+PASS thin_slots: no self/mutual intersections
+PASS thin_slots: no vertex shared between loops
+PASS thin_slots [THROUGH]: cut applied  -- ok
+PASS thin_slots [THROUGH]: result manifold
+PASS thin_slots [THROUGH]: volume reduced
+PASS thin_slots [SURFACE]: cut applied  -- ok
+PASS thin_slots [SURFACE]: result manifold
+PASS thin_slots [SURFACE]: volume reduced
+PASS diagonal_touch: vectorized  -- 2 loops
+PASS diagonal_touch: no self/mutual intersections
+PASS diagonal_touch: no vertex shared between loops
+PASS diagonal_touch [THROUGH]: cut applied  -- ok
+PASS diagonal_touch [THROUGH]: result manifold
+PASS diagonal_touch [THROUGH]: volume reduced
+PASS diagonal_touch [SURFACE]: cut applied  -- ok
+PASS diagonal_touch [SURFACE]: result manifold
+PASS diagonal_touch [SURFACE]: volume reduced
+PASS checker_saddles: vectorized  -- 1 loops
+PASS checker_saddles: no self/mutual intersections
+PASS checker_saddles: no vertex shared between loops
+PASS checker_saddles [THROUGH]: cut applied  -- ok
+PASS checker_saddles [THROUGH]: result manifold
+PASS checker_saddles [THROUGH]: volume reduced
+PASS checker_saddles [SURFACE]: cut applied  -- ok
+PASS checker_saddles [SURFACE]: result manifold
+PASS checker_saddles [SURFACE]: volume reduced
+PASS island_in_hole: vectorized  -- 3 loops
+PASS island_in_hole: no self/mutual intersections
+PASS island_in_hole: no vertex shared between loops
+PASS island_in_hole [THROUGH]: cut applied  -- ok
+PASS island_in_hole [THROUGH]: result manifold
+PASS island_in_hole [THROUGH]: volume reduced
+PASS island_in_hole [SURFACE]: cut applied  -- ok
+PASS island_in_hole [SURFACE]: result manifold
+PASS island_in_hole [SURFACE]: volume reduced
+PASS noisy_disc: vectorized  -- 1 loops
+PASS noisy_disc: no self/mutual intersections
+PASS noisy_disc: no vertex shared between loops
+PASS noisy_disc [THROUGH]: cut applied  -- ok
+PASS noisy_disc [THROUGH]: result manifold
+PASS noisy_disc [THROUGH]: volume reduced
+PASS noisy_disc [SURFACE]: cut applied  -- ok
+PASS noisy_disc [SURFACE]: result manifold
+PASS noisy_disc [SURFACE]: volume reduced
+PASS staircase: vectorized  -- 1 loops
+PASS staircase: no self/mutual intersections
+PASS staircase: no vertex shared between loops
+PASS staircase [THROUGH]: cut applied  -- ok
+PASS staircase [THROUGH]: result manifold
+PASS staircase [THROUGH]: volume reduced
+PASS staircase [SURFACE]: cut applied  -- ok
+PASS staircase [SURFACE]: result manifold
+PASS staircase [SURFACE]: volume reduced
+PASS import_png wrote schema 2 preset
+PASS preset listed
+PASS load_loops returns valid loops
+PASS schema-1 invalid preset upgraded from stored PNG
+v0.5.9 pipeline on the same masks (reference, not a pass/fail):
+  cross              ok (shared vertices 0, non-manifold 0)
+  ring               ok (shared vertices 0, non-manifold 0)
+  vent_grid_25       ok (shared vertices 0, non-manifold 0)
+  thin_slots         ok (shared vertices 0, non-manifold 0)
+  diagonal_touch     FAILED: Raster silhouette created non-manifold cutter; simplify the image
+  checker_saddles    FAILED: Raster silhouette created non-manifold cutter; simplify the image
+  island_in_hole     ok (shared vertices 0, non-manifold 0)
+  noisy_disc         ok (shared vertices 0, non-manifold 0)
+  staircase          ok (shared vertices 0, non-manifold 0)
+85/85 passed
+====================================================================== 
+ test_register.py
+PASS register cycle 0
+PASS ops present 0
+PASS scene props 0
+PASS unregister cycle 0
+PASS no leftover op 0
+PASS register cycle 1
+PASS ops present 1
+PASS scene props 1
+PASS unregister cycle 1
+PASS no leftover op 1
+PASS all icon names valid in this Blender
+INFO v0.5.9 invalid icon names in Blender 5.0.1 : [('__init__.py', 'MOD_NODES')]
+11/11 passed
+====================================================================== 
+ test_stroke_events.py
+PASS lasso invoke starts modal
+PASS lasso has 4 points before confirm  -- [(450.0, 450.0), (550.0, 450.0), (550.0, 550.0), (450.0, 550.0)]
+PASS double-click confirms (FINISHED => one undo step)  -- ({'FINISHED'}, [(('INFO',), 'Cut: Target')])
+PASS double-click did not add a point
+PASS lasso cut applied  -- 6.000000000000001
+PASS status text cleared after stroke
+PASS Ctrl+Z removes last point
+PASS Ctrl+Shift+Z restores it
+PASS Backspace removes last point
+PASS Ctrl+Z on last point cancels the stroke (no undo step)
+PASS mesh untouched after cancelled stroke
+PASS Esc -> CANCELLED
+PASS Esc leaves mesh untouched
+PASS click outside viewport passes through
+PASS stroke kept after outside click
+PASS wheel/MMB navigation passes through
+PASS shape change discards stroke
+PASS tool change discards stroke
+PASS RMB press is consumed
+PASS no popup before double-click time
+PASS popup opens after interval
+PASS stroke still alive after popup
+PASS RMB double-click exits tool
+PASS timer cleaned after exit
+PASS two RMB presses inside interval also exit
+PASS Space opens tool popup and does not cut
+PASS rect drag release cuts  -- ({'FINISHED'}, [(('INFO',), 'Cut: Target')])
+PASS rect click without drag cancels
+PASS Alt circle keeps inside  -- 1.5682742207419555
+PASS 2 points + Enter => side stage
+PASS side click removes +X half
+PASS split stroke creates piece
+PASS re-click rounds point (level 1)  -- [0.0, 0.12, 0.0, 0.0]
+PASS 4 re-clicks cycle back to sharp  -- [0.0, 0.0, 0.0, 0.0]
+PASS curve lasso confirm cuts  -- [(('INFO',), 'Cut: Target')]
+PASS miss => CANCELLED + warning, mesh unchanged  -- [(('WARNING',), 'The shape does not intersect the mesh; nothing was changed.')]
+PASS no target => PASS_THROUGH
+PASS gate passes other events
+PASS gate single => popup
+PASS gate double => exit
+PASS gate timers cleaned
+41/41 passed
+====================================================================== 
+ test_ui_draw.py
+PASS draw main[MECHA LAB] CUT LASSO
+PASS draw main[MECHA LAB] CUT CURVE_LASSO
+PASS draw main[MECHA LAB] CUT CIRCLE
+PASS draw main[MECHA LAB] CUT STROKE
+PASS draw main[MECHA LAB] CUT CUSTOM
+PASS draw main[MECHA LAB] SPLIT LASSO
+PASS draw main[MECHA LAB] SPLIT CURVE_LASSO
+PASS draw main[MECHA LAB] SPLIT CIRCLE
+PASS draw main[MECHA LAB] SPLIT STROKE
+PASS draw main[MECHA LAB] SPLIT CUSTOM
+PASS draw main[MECHA LAB] BOOLEAN LASSO
+PASS draw main[MECHA LAB] FUSE LASSO
+PASS draw main[MECHA LAB] MIRROR LASSO
+PASS draw main[MECHA LAB] MASK LASSO
+PASS draw main[MECHA LAB] MASK CURVE_LASSO
+PASS draw main[MECHA LAB] MASK CIRCLE
+PASS draw main[MECHA LAB] MASK STROKE
+PASS draw main[MECHA LAB] MASK CUSTOM
+PASS draw main[MECHA LAB] ARRAY LASSO
+PASS draw main[MECHA LAB] RADIAL LASSO
+PASS draw main[MECHA LAB] DRAW LASSO
+PASS draw main[MECHA LAB] POSE LASSO
+PASS draw main[MECHA LAB] SURFACE LASSO
+PASS draw main[MECHA LAB] LIBRARY LASSO
+PASS draw main[MECHA LAB] REMESH LASSO
+PASS draw main[MECHA LAB] EDIT LASSO
+PASS draw MCH_PT_mirror[MECHA LAB]
+PASS draw MCH_PT_radial[MECHA LAB]
+PASS draw MCH_PT_surface_conform[MECHA LAB]
+PASS draw MCH_PT_workspace[MECHA LAB]
+PASS draw MCH_PT_tools[MECHA LAB]
+PASS draw MCH_PT_tool_popup[MECHA LAB]
+PASS draw MCH_PT_shape_popup[MECHA LAB]
+PASS draw main[Layout] CUT LASSO
+PASS draw main[Layout] CUT CURVE_LASSO
+PASS draw main[Layout] CUT CIRCLE
+PASS draw main[Layout] CUT STROKE
+PASS draw main[Layout] CUT CUSTOM
+PASS draw main[Layout] SPLIT LASSO
+PASS draw main[Layout] SPLIT CURVE_LASSO
+PASS draw main[Layout] SPLIT CIRCLE
+PASS draw main[Layout] SPLIT STROKE
+PASS draw main[Layout] SPLIT CUSTOM
+PASS draw main[Layout] BOOLEAN LASSO
+PASS draw main[Layout] FUSE LASSO
+PASS draw main[Layout] MIRROR LASSO
+PASS draw main[Layout] MASK LASSO
+PASS draw main[Layout] MASK CURVE_LASSO
+PASS draw main[Layout] MASK CIRCLE
+PASS draw main[Layout] MASK STROKE
+PASS draw main[Layout] MASK CUSTOM
+PASS draw main[Layout] ARRAY LASSO
+PASS draw main[Layout] RADIAL LASSO
+PASS draw main[Layout] DRAW LASSO
+PASS draw main[Layout] POSE LASSO
+PASS draw main[Layout] SURFACE LASSO
+PASS draw main[Layout] LIBRARY LASSO
+PASS draw main[Layout] REMESH LASSO
+PASS draw main[Layout] EDIT LASSO
+PASS draw MCH_PT_mirror[Layout]
+PASS draw MCH_PT_radial[Layout]
+PASS draw MCH_PT_surface_conform[Layout]
+PASS draw MCH_PT_workspace[Layout]
+PASS draw MCH_PT_tools[Layout]
+PASS draw MCH_PT_tool_popup[Layout]
+PASS draw MCH_PT_shape_popup[Layout]
+PASS tool list poll in Properties/MECHA LAB
+PASS tool list hidden in 3D sidebar
+PASS tool list hidden outside workspace
+PASS draw MCH_PT_tool_list
+PASS draw shape palette (tool CUT)
+PASS draw shape palette (tool BOOLEAN)
+PASS effective tool = native Cut
+PASS effective tool = selected when native is select
+PASS space menu poll false outside workspace
+PASS B/C hotkey poll false outside workspace
+PASS B/C hotkey poll true inside workspace
+PASS smart fuse create for panel test  -- {'FINISHED'}
+PASS draw main FUSE live preview
+79/79 passed
+====================================================================== 
+ test_workspace_data.py
+PASS configure_screen picks the 3D view
+PASS toolbar / tool header / sidebar shown
+PASS configure_screen keeps areas (only region flags; <=4px rect recompute)  -- ([('PROPERTIES', 1579, 23, 339, 839), ('OUTLINER', 1579, 865, 339, 189), ('DOPESHEET_EDITOR', 2, 23, 1574, 74), ('VIEW_3D', 2, 100, 1574, 954)], [('PROPERTIES', 1579, 23, 339, 839), ('OUTLINER', 1579, 865, 339, 189), ('DOPESHEET_EDITOR', 2, 23, 1574, 74), ('VIEW_3D', 0, 98, 1578, 956)])
+PASS no left tool area on stock Layout
+PASS register created no workspace
+PASS find_mecha_workspace none by default
+PASS stock workspace not detected as MECHA
+PASS tagged workspace detected (even if renamed)
+PASS addon keymap: Space -> mch.space_tools (gated)  -- [('3D View Tool: Object, Mecha Cut', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Cut', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Cut', 'mch.space_tools', 'SPACE'), ('3D View Tool: Object, Mecha Split', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Split', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Split', 'mch.space_tools', 'SPACE'), ('3D View Tool: Object, Mecha Mask', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Mask', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Mask', 'mch.space_tools', 'SPACE'), ('3D View', 'mch.space_tools', 'SPACE'), ('Object Mode', 'mch.hotkey', 'B'), ('Object Mode', 'mch.hotkey', 'C')]
+PASS addon keymap: B/C via gated mch.hotkey only
+PASS no ungated mch.boolean / draw_delete_cut keys
+PASS unregister removes all addon keymap items
+PASS unregister removes tool header palette
+PASS re-register/unregister leaves no duplicate keys
+14/14 passed
+====================================================================== 
+ test_zip_install.py
+PASS dist zip exists  -- ['/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.7.0.zip']
+PASS user_default repo available
+PASS package_install_files FINISHED
+PASS extension enabled  -- ['io_anim_bvh', 'io_curve_svg', 'io_mesh_uv_layout', 'io_scene_fbx', 'io_scene_gltf2', 'cycles', 'pose_library', 'bl_pkg', 'bl_ext.user_default.mecha_lab']
+PASS operators available after install
+PASS addon preferences registered (hotkey switches)
+PASS disable works
+PASS no hotkeys left after disable
+PASS re-enable works
+9/9 passed
+FAILED FILES: none

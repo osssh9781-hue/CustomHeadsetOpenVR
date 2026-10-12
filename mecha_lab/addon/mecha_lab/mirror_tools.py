@@ -142,10 +142,9 @@ class MCH_OT_mesh_mirror_apply(bpy.types.Operator):
         active = context.view_layer.objects.active
         try:
             _activate(context, ob)
-            result = bpy.ops.object.modifier_apply(modifier=mod.name)
-            if 'FINISHED' not in result:
-                return {'CANCELLED'}
-        except (RuntimeError, TypeError) as exc:
+            from . import core_geometry
+            core_geometry.apply_single_modifier(context, ob, mod, getattr(getattr(context.scene, 'mch_cut', None), 'shared_mesh', 'SINGLE'))
+        except (RuntimeError, TypeError, ValueError) as exc:
             self.report({'ERROR'}, f'Mirror not applied: {exc}')
             return {'CANCELLED'}
         finally:

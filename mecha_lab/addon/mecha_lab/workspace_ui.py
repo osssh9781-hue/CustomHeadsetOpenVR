@@ -606,14 +606,6 @@ class MCH_PT_main(bpy.types.Panel):
             row = layout.row()
             row.scale_y = 1.5
             row.operator('mch.workspace_open', text='Open MECHA LAB Workspace', icon='WORKSPACE')
-        has_left = in_ws and context.screen and left_tool_area(context.screen) is not None
-        if not has_left:
-            box = layout.box()
-            box.label(text='Tools', icon='TOOL_SETTINGS')
-            draw_tool_grid(box, context, columns=3, scale=1.8)
-            if in_ws:
-                box.operator('mch.workspace_repair', icon='FILE_REFRESH')
-
         tool_id = ts.effective_tool(context)
         tid, label, desc, stem, fallback, native, status = ts.TOOL_BY_ID[tool_id]
         head = layout.row(align=True)
@@ -633,6 +625,31 @@ class MCH_PT_main(bpy.types.Panel):
 def _drawers():
     from . import ui_tool_settings
     return ui_tool_settings.DRAWERS
+
+
+class MCH_PT_tools(bpy.types.Panel):
+    """Fallback tool list in the sidebar (always available, collapsed by default).
+
+    The primary list is the left area; this guarantees access even if that
+    area is missing or the Space popup is blocked by another add-on.
+    """
+    bl_idname = 'MCH_PT_tools'
+    bl_label = 'Tools (fallback list)'
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'Mecha Lab'
+    bl_options = {'DEFAULT_CLOSED'}
+
+    @classmethod
+    def poll(cls, context):
+        return hasattr(context.scene, 'mch_settings')
+
+    def draw(self, context):
+        layout = self.layout
+        draw_tool_grid(layout, context, columns=3, scale=1.8)
+        if ts.is_mecha_workspace(context.workspace) and context.screen and \
+                left_tool_area(context.screen) is None:
+            layout.operator('mch.workspace_repair', icon='FILE_REFRESH')
 
 
 class MCH_PT_workspace(bpy.types.Panel):
@@ -744,7 +761,7 @@ CLASSES = (
     MCH_AddonPreferences,
     MCH_OT_workspace_open, MCH_OT_workspace_repair, MCH_OT_workspace_save_startup,
     MCH_OT_set_tool, MCH_OT_set_shape, MCH_OT_space_tools, MCH_OT_hotkey,
-    MCH_PT_main, MCH_PT_workspace, MCH_PT_tool_list, MCH_PT_tool_popup, MCH_PT_shape_popup,
+    MCH_PT_tools, MCH_PT_main, MCH_PT_workspace, MCH_PT_tool_list, MCH_PT_tool_popup, MCH_PT_shape_popup,
 )
 
 

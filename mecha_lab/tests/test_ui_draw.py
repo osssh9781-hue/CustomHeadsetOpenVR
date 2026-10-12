@@ -164,7 +164,7 @@ for ws_name in ('MECHA LAB', 'Layout'):
             run_draw(f'main[{ws_name}] {t[0]} {shape}', lambda c: (main.draw(self_, c), main.draw_header(self_, c)), ctx)
     ctx = fake_context(ws_name)
     for panel in (mecha_lab.mirror_tools.MCH_PT_mirror, mecha_lab.radial_array.MCH_PT_radial,
-                  mecha_lab.surface_conform.MCH_PT_surface_conform, wui.MCH_PT_workspace,
+                  mecha_lab.surface_conform.MCH_PT_surface_conform, wui.MCH_PT_workspace, wui.MCH_PT_tools,
                   wui.MCH_PT_tool_popup, wui.MCH_PT_shape_popup):
         self_ = types.SimpleNamespace(layout=FakeLayout())
         run_draw(f'{panel.__name__}[{ws_name}]', lambda c, p=panel: p.draw(self_, c), ctx)

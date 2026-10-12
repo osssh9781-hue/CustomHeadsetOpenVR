@@ -35,7 +35,7 @@ CUTTER_ATTR = 'mch_cutter_face'
 TEMP_MODIFIER = 'MCH_TMP_Boolean'
 
 
-class CutError(Exception):
+class CutError(RuntimeError):
     """User facing failure; the scene has not been modified."""
 
 
@@ -511,7 +511,9 @@ def evaluate_boolean(context, target, cutter, operation, solver='EXACT',
 
 
 SOLVER_ORDER = {
-    'AUTO': ('EXACT', 'MANIFOLD'),
+    # AUTO on a closed target: Manifold first (fast, closed result), Exact fallback.
+    # AUTO on an open/non-manifold target: Exact only (Manifold refuses such input).
+    'AUTO': ('MANIFOLD', 'EXACT'),
     'EXACT': ('EXACT',),
     'MANIFOLD': ('MANIFOLD',),
     'FAST': ('FLOAT',),
@@ -526,7 +528,8 @@ def boolean_result(context, target, cutter, operation, solver='AUTO',
     problems = []
     for name in SOLVER_ORDER.get(solver, ('EXACT',)):
         if name == 'MANIFOLD' and source_nm:
-            problems.append('Manifold solver skipped: target mesh is not manifold')
+            if solver != 'AUTO':
+                problems.append('Manifold solver skipped: target mesh is not manifold')
             continue
         try:
             me = evaluate_boolean(context, target, cutter, operation, name, hole_tolerant)

@@ -127,7 +127,7 @@ class MCH_PG_Cut(bpy.types.PropertyGroup):
         ('ACTIVE', 'Active', 'Only the active mesh (or the mesh under the cursor)'),
         ('SELECTED', 'Selected', 'All selected meshes')], default='ACTIVE')
     solver: EnumProperty(name='Solver', items=[
-        ('AUTO', 'Auto', 'Exact; if the result is non-manifold retry with Manifold solver'),
+        ('AUTO', 'Auto', 'Closed mesh: fast Manifold solver, Exact as fallback. Open mesh: Exact'),
         ('EXACT', 'Exact', 'Blender Exact solver only'),
         ('MANIFOLD', 'Manifold', 'Fast manifold solver (needs closed input)'),
         ('FAST', 'Float', 'Legacy fast solver (least robust)')], default='AUTO')

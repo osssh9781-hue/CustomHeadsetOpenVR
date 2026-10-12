@@ -578,21 +578,25 @@ def _status(context, text):
         pass
 
 
-class MCH_OT_cut_stroke(bpy.types.Operator):
-    bl_idname = 'mch.cut_stroke'
-    bl_label = 'Mecha Shape Stroke'
-    bl_description = 'Draw one shape with the shared shape palette and Cut / Split / Mask with it'
-    bl_options = {'REGISTER', 'UNDO'}
+def make_projector(region, rv3d):
+    return cg.Projector(region, rv3d)
 
-    mode: EnumProperty(name='Mode', items=[
-        ('CUT', 'Cut', 'Remove the inside (Alt: keep inside)'),
-        ('SPLIT', 'Split', 'Split into two parts'),
-        ('MASK', 'Mask', 'Add face mask (Alt: erase)')], default='CUT')
 
-    @classmethod
-    def poll(cls, context):
-        return (context.area is not None and context.area.type == 'VIEW_3D'
-                and context.mode == 'OBJECT')
+def add_draw_handler(op):
+    return bpy.types.SpaceView3D.draw_handler_add(draw_overlay, (op,), 'WINDOW', 'POST_PIXEL')
+
+
+def remove_draw_handler(handle):
+    bpy.types.SpaceView3D.draw_handler_remove(handle, 'WINDOW')
+
+
+def _now():
+    return time.monotonic()
+
+
+class StrokeLogic:
+    """State machine of one shape stroke (plain Python so tests can drive it
+    with simulated events; the Blender operator below only adds RNA)."""
 
     # ---- state helpers ---------------------------------------------------
 
@@ -663,7 +667,7 @@ class MCH_OT_cut_stroke(bpy.types.Operator):
             return {'PASS_THROUGH'}
         self.region = region
         self.rv3d = rv3d
-        self.projector = cg.Projector(region, rv3d)
+        self.projector = make_projector(region, rv3d)
         scene = context.scene
         self.brush = scene.mch_brush
         self.shape = self.brush.shape
@@ -709,7 +713,7 @@ class MCH_OT_cut_stroke(bpy.types.Operator):
             self.anchor = xy
             if self.shape == 'STROKE':
                 self.pts = [xy]
-        self.handle = bpy.types.SpaceView3D.draw_handler_add(draw_overlay, (self,), 'WINDOW', 'POST_PIXEL')
+        self.handle = add_draw_handler(self)
         context.window_manager.modal_handler_add(self)
         self._hint(context)
         self.region.tag_redraw()
@@ -729,10 +733,13 @@ class MCH_OT_cut_stroke(bpy.types.Operator):
 
     def _cleanup(self, context):
         if getattr(self, 'handle', None) is not None:
-            bpy.types.SpaceView3D.draw_handler_remove(self.handle, 'WINDOW')
+            remove_draw_handler(self.handle)
             self.handle = None
         if getattr(self, 'timer', None) is not None:
-            context.window_manager.event_timer_remove(self.timer)
+            try:
+                context.window_manager.event_timer_remove(self.timer)
+            except (ReferenceError, ValueError):
+                pass
             self.timer = None
         _status(context, None)
         try:
@@ -864,6 +871,14 @@ class MCH_OT_cut_stroke(bpy.types.Operator):
     def modal(self, context, event):
         try:
             return self._modal(context, event)
+        except ReferenceError:
+            # Undo from a menu / area closed while a stroke was pending: the
+            # stored scene, brush or region no longer exists. Drop the stroke.
+            try:
+                self._cleanup(context)
+            except ReferenceError:
+                pass
+            return {'CANCELLED'}
         except Exception as ex:
             traceback.print_exc()
             self.report({'ERROR'}, f'Mecha stroke aborted: {ex}')
@@ -888,7 +903,7 @@ class MCH_OT_cut_stroke(bpy.types.Operator):
 
         if et == 'TIMER':
             if self.rmb_time is not None and event_timer_matches(self, event):
-                if time.monotonic() - self.rmb_time >= _double_click_seconds(context):
+                if _now() - self.rmb_time >= _double_click_seconds(context):
                     self.rmb_time = None
                     self._remove_timer(context)
                     open_popup(SHAPE_POPUP)
@@ -919,7 +934,7 @@ class MCH_OT_cut_stroke(bpy.types.Operator):
             open_popup(TOOL_POPUP)
             return {'CANCELLED'}
         if et == 'RIGHTMOUSE' and ev in {'PRESS', 'DOUBLE_CLICK'}:
-            now = time.monotonic()
+            now = _now()
             if ev == 'DOUBLE_CLICK' or (self.rmb_time is not None and
                                          now - self.rmb_time < _double_click_seconds(context)):
                 self._cleanup(context)
@@ -1061,6 +1076,23 @@ class MCH_OT_cut_stroke(bpy.types.Operator):
             self.timer = None
 
 
+class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
+    bl_idname = 'mch.cut_stroke'
+    bl_label = 'Mecha Shape Stroke'
+    bl_description = 'Draw one shape with the shared shape palette and Cut / Split / Mask with it'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    mode: EnumProperty(name='Mode', items=[
+        ('CUT', 'Cut', 'Remove the inside (Alt: keep inside)'),
+        ('SPLIT', 'Split', 'Split into two parts'),
+        ('MASK', 'Mask', 'Add face mask (Alt: erase)')], default='CUT')
+
+    @classmethod
+    def poll(cls, context):
+        return (context.area is not None and context.area.type == 'VIEW_3D'
+                and context.mode == 'OBJECT')
+
+
 def _double_click_seconds(context):
     try:
         return max(0.15, context.preferences.inputs.mouse_double_click_time / 1000.0)
@@ -1074,18 +1106,11 @@ def event_timer_matches(op, event):
     return op.timer is not None
 
 
-class MCH_OT_rmb_gate(bpy.types.Operator):
+class GateLogic:
     """RMB in an idle Mecha tool: single = shape popup, double = leave the tool."""
-    bl_idname = 'mch.rmb_gate'
-    bl_label = 'Mecha RMB (Shapes / Exit)'
-    bl_options = {'INTERNAL'}
-
-    @classmethod
-    def poll(cls, context):
-        return context.area is not None and context.area.type == 'VIEW_3D'
 
     def invoke(self, context, event):
-        self.t0 = time.monotonic()
+        self.t0 = _now()
         self.timer = context.window_manager.event_timer_add(0.04, window=context.window)
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
@@ -1100,7 +1125,7 @@ class MCH_OT_rmb_gate(bpy.types.Operator):
             self._stop(context)
             exit_tool(context)
             return {'FINISHED'}
-        if event.type == 'TIMER' and time.monotonic() - self.t0 >= _double_click_seconds(context):
+        if event.type == 'TIMER' and _now() - self.t0 >= _double_click_seconds(context):
             self._stop(context)
             open_popup(SHAPE_POPUP)
             return {'FINISHED'}
@@ -1111,6 +1136,17 @@ class MCH_OT_rmb_gate(bpy.types.Operator):
 
     def cancel(self, context):
         self._stop(context)
+
+
+class MCH_OT_rmb_gate(GateLogic, bpy.types.Operator):
+    """RMB in an idle Mecha tool: single = shape popup, double = leave the tool."""
+    bl_idname = 'mch.rmb_gate'
+    bl_label = 'Mecha RMB (Shapes / Exit)'
+    bl_options = {'INTERNAL'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.area is not None and context.area.type == 'VIEW_3D'
 
 
 CLASSES = (MCH_OT_cut_stroke, MCH_OT_rmb_gate)

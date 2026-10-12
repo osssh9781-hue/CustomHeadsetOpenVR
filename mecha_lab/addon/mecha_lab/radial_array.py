@@ -294,7 +294,8 @@ class MCH_OT_radial_boolean_apply(bpy.types.Operator):
                 ob.select_set(False)
             target.select_set(True)
             context.view_layer.objects.active = target
-            bpy.ops.object.modifier_apply(modifier=bm.name)
+            from . import core_geometry
+            core_geometry.apply_single_modifier(context, target, bm, getattr(getattr(context.scene, 'mch_cut', None), 'shared_mesh', 'SINGLE'))
         except Exception as exc:
             if original_hidden:
                 target.hide_set(True)
@@ -455,7 +456,8 @@ class MCH_OT_radial_bake(bpy.types.Operator):
         old_mesh = ob.data
         try:
             # Realize Instances is ON for bake only; preview remains light.
-            bpy.ops.object.modifier_apply(modifier=mod.name)
+            from . import core_geometry
+            core_geometry.apply_single_modifier(context, ob, mod, getattr(getattr(context.scene, 'mch_cut', None), 'shared_mesh', 'SINGLE'))
         except Exception as exc:
             switch.inputs['Switch'].default_value = False
             self.report({'ERROR'}, 'Radial bake failed: ' + str(exc))
