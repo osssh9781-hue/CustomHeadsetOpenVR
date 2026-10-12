@@ -31,6 +31,9 @@ _icons = None
 _keymaps = []
 _tools_registered = False
 
+_ORTHO_LOCK_KEY = "mch_ortho_lock"
+_ORTHO_REFRESH = 0.17
+
 
 # -----------------------------------------------------------------------------
 # Preferences / icons
@@ -81,6 +84,87 @@ def _free_icons():
 def _icon_kw(stem, fallback):
     iid = icon_id(stem)
     return {'icon_value': iid} if iid else {'icon': fallback}
+
+
+# -----------------------------------------------------------------------------
+# Workspace-scoped orthographic viewport lock (never modifies global Blender
+# navigation preferences). Blender Auto Perspective can revert NumPad 5 / an
+# orthographic view as soon as the user orbits; this lock restores ORTHO only
+# in workspaces explicitly opted in by the user.
+# -----------------------------------------------------------------------------
+
+
+def _force_ortho(area):
+    if area.type != 'VIEW_3D':
+        return
+    space = area.spaces.active
+    if space is None or space.type != 'VIEW_3D':
+        return
+    rv3d = space.region_3d
+    if rv3d is not None and rv3d.view_perspective != 'ORTHO':
+        rv3d.view_perspective = 'ORTHO'
+        area.tag_redraw()
+
+
+def _ortho_watchdog():
+    """Lightweight UI-only guard; stop when no open window uses this lock."""
+    try:
+        wm = bpy.context.window_manager
+        if wm is None:
+            return None
+        active = False
+        for window in wm.windows:
+            ws = window.workspace
+            if ws is None or not ws.get(_ORTHO_LOCK_KEY, False):
+                continue
+            active = True
+            for area in window.screen.areas:
+                _force_ortho(area)
+        return _ORTHO_REFRESH if active else None
+    except (ReferenceError, RuntimeError, AttributeError):
+        return None
+
+
+def _ensure_ortho_timer():
+    if not bpy.app.timers.is_registered(_ortho_watchdog):
+        bpy.app.timers.register(_ortho_watchdog, first_interval=_ORTHO_REFRESH)
+
+
+class MCH_OT_ortho_lock(bpy.types.Operator):
+    bl_idname = 'mch.ortho_lock'
+    bl_label = 'Orthographic Lock (No Perspective)'
+    bl_description = ('Toggle persistent orthographic viewport in the current workspace. '
+                      'Unlike Numpad 5, orbiting will not switch it back to perspective.')
+    bl_options = {'REGISTER', 'INTERNAL'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.workspace is not None and context.screen is not None
+
+    def execute(self, context):
+        ws = context.workspace
+        enabled = not bool(ws.get(_ORTHO_LOCK_KEY, False))
+        ws[_ORTHO_LOCK_KEY] = enabled
+        if enabled:
+            for area in context.screen.areas:
+                _force_ortho(area)
+            _ensure_ortho_timer()
+        else:
+            # Pressing the same button again returns to ordinary perspective.
+            # This is intuitive for a two-state "Ortho / Perspective" toggle.
+            for area in context.screen.areas:
+                if area.type == 'VIEW_3D':
+                    space = area.spaces.active
+                    if space and space.type == 'VIEW_3D' and space.region_3d:
+                        space.region_3d.view_perspective = 'PERSP'
+                    area.tag_redraw()
+        self.report({'INFO'}, 'Orthographic lock ON' if enabled else 'Orthographic lock OFF')
+        return {'FINISHED'}
+
+
+def draw_ortho_button(layout, context, text='Ortho Lock'):
+    locked = bool(context.workspace and context.workspace.get(_ORTHO_LOCK_KEY, False))
+    layout.operator('mch.ortho_lock', text=text, icon='LOCKED' if locked else 'UNLOCKED', depress=locked)
 
 
 # -----------------------------------------------------------------------------
@@ -307,6 +391,8 @@ def draw_shape_palette(self, context):
     sub.operator('mch.import_cut_png', text='', icon='IMPORT')
     if tool not in ts.SHAPE_TOOLS:
         layout.label(text='Shapes: Cut / Split / Mask only')
+    # Always visible next to the shared shapes in the Mecha workspace.
+    draw_ortho_button(layout.row(align=True), context, text='Ortho')
     layout.separator_spacer()
 
 
@@ -606,6 +692,7 @@ class MCH_PT_main(bpy.types.Panel):
             row = layout.row()
             row.scale_y = 1.5
             row.operator('mch.workspace_open', text='Open MECHA LAB Workspace', icon='WORKSPACE')
+        draw_ortho_button(layout.row(align=True), context, text='Orthographic Lock (No Perspective)')
         tool_id = ts.effective_tool(context)
         tid, label, desc, stem, fallback, native, status = ts.TOOL_BY_ID[tool_id]
         head = layout.row(align=True)
@@ -676,6 +763,8 @@ class MCH_PT_workspace(bpy.types.Panel):
             col.prop(p, 'workspace_hotkeys')
         layout.label(text='Hotkeys only work in MECHA LAB', icon='INFO')
         layout.separator()
+        draw_ortho_button(layout, context, text='Orthographic View Lock')
+        layout.label(text='Keeps ortho when orbiting; does not alter global preferences', icon='INFO')
         layout.operator('mch.workspace_save_startup', icon='ERROR')
 
 
@@ -760,7 +849,7 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
 CLASSES = (
     MCH_AddonPreferences,
     MCH_OT_workspace_open, MCH_OT_workspace_repair, MCH_OT_workspace_save_startup,
-    MCH_OT_set_tool, MCH_OT_set_shape, MCH_OT_space_tools, MCH_OT_hotkey,
+    MCH_OT_set_tool, MCH_OT_set_shape, MCH_OT_space_tools, MCH_OT_hotkey, MCH_OT_ortho_lock,
     MCH_PT_tools, MCH_PT_main, MCH_PT_workspace, MCH_PT_tool_list, MCH_PT_tool_popup, MCH_PT_shape_popup,
 )
 
@@ -802,6 +891,8 @@ def register():
 
 
 def unregister():
+    if bpy.app.timers.is_registered(_ortho_watchdog):
+        bpy.app.timers.unregister(_ortho_watchdog)
     unregister_keymaps()
     if hasattr(bpy.types, 'TOPBAR_MT_workspace_menu'):
         bpy.types.TOPBAR_MT_workspace_menu.remove(draw_workspace_menu)

@@ -196,7 +196,13 @@ def pick_mesh_under(context, projector, xy):
     dg = context.evaluated_depsgraph_get()
     hit, _loc, _n, _i, ob, _m = context.scene.ray_cast(dg, origin, direction)
     if hit and ob is not None and ob.type == 'MESH':
-        return ob.original
+        original = ob.original
+        # The mask preview is a selectable-disabled overlay, not a target mesh.
+        # It may still be returned by a scene ray-cast after a mask stroke.
+        source_name = original.get('mch_preview_source')
+        if source_name:
+            return bpy.data.objects.get(source_name)
+        return original
     return None
 
 
@@ -287,6 +293,7 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
     if not auto_apply:
         return _make_live(context, mode, targets, cutter, invert)
     results, pieces, temp = [], [], []
+    edge_counts = []
     try:
         for t in targets:
             scale = _object_scale(t)
@@ -295,8 +302,9 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
                     op = 'INTERSECT' if invert else 'DIFFERENCE'
                     me, _solver = cg.boolean_result(context, t, cutter, op, cut.solver, cut.hole_tolerant)
                     temp.append(me)
-                    cg.finish_new_edges(me, cut.edge_finish, cut.finish_width / scale,
-                                        cut.finish_segments, cut.finish_profile)
+                    edge_counts.append(cg.finish_new_edges(
+                        me, cut.edge_finish, cut.finish_width / scale,
+                        cut.finish_segments, cut.finish_profile))
                     results.append((t, me))
                 else:  # SPLIT
                     inner, _s1 = cg.boolean_result(context, t, cutter, 'INTERSECT', cut.solver, cut.hole_tolerant)
@@ -305,8 +313,9 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
                     temp.append(outer)
                     for me in (inner, outer):
                         if cut.split_cap:
-                            cg.finish_new_edges(me, cut.edge_finish, cut.finish_width / scale,
-                                                cut.finish_segments, cut.finish_profile)
+                            edge_counts.append(cg.finish_new_edges(
+                                me, cut.edge_finish, cut.finish_width / scale,
+                                cut.finish_segments, cut.finish_profile))
                         else:
                             cg.strip_cutter_faces(me)
                     results.append((t, outer))
@@ -327,7 +336,15 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
         for p in new_pieces:
             p.select_set(True)
         verb = {'CUT': 'Kept inside' if invert else 'Cut', 'SPLIT': 'Split'}[mode]
-        return f'{verb}: {", ".join(t.name for t, _ in results)}{"".join(sorted(set(infos)))}'
+        suffix = ''
+        if cut.edge_finish != 'NONE' and cut.finish_width > 0:
+            if not edge_counts:
+                suffix = ' | Edge Finish skipped (uncapped or Live cut)'
+            elif sum(edge_counts) == 0:
+                suffix = ' | WARNING: Edge Finish found 0 new edges; no bevel/chamfer'
+            else:
+                suffix = f' | {cut.edge_finish}: {sum(edge_counts)} newly cut edges'
+        return f'{verb}: {", ".join(t.name for t, _ in results)}{"".join(sorted(set(infos)))}{suffix}'
     finally:
         for me in temp:
             if me.users == 0:
@@ -370,7 +387,8 @@ def _make_live(context, mode, targets, cutter, invert):
         cutter['mch_cut_piece_mod'] = pm.name
         if hasattr(cutter, 'mch_live'):
             cutter.mch_live.source = piece
-    return 'Live cut created (edit the wire cutter, then "Apply Live Cut")'
+    return ('Live cut created (edit cutter, then Apply Live Cut). ' +
+            ('Edge Finish requires Auto Apply ON; no bevel generated.' if cut.edge_finish != 'NONE' else ''))
 
 
 def perform_line(context, mode, targets, points, projector, side_xy, invert=False):
@@ -394,6 +412,7 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
         normal.normalize()
         side = (at(side_xy, near) - a_near).dot(normal) > 0
         results, pieces, temp = [], [], []
+        line_bevel_counts = []
         try:
             for t in targets:
                 scale = _object_scale(t)
@@ -402,8 +421,9 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
                         me = cg.plane_split_mesh(t, a_near, normal, side != invert, cut.line_cap)
                         temp.append(me)
                         if cut.line_cap:
-                            cg.finish_new_edges(me, cut.edge_finish, cut.finish_width / scale,
-                                                cut.finish_segments, cut.finish_profile)
+                            line_bevel_counts.append(cg.finish_new_edges(
+                                me, cut.edge_finish, cut.finish_width / scale,
+                                cut.finish_segments, cut.finish_profile))
                         results.append((t, me))
                     else:
                         cap = cut.split_cap and cut.line_cap
@@ -413,8 +433,9 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
                         temp.append(other)
                         if cap:
                             for me in (keep, other):
-                                cg.finish_new_edges(me, cut.edge_finish, cut.finish_width / scale,
-                                                    cut.finish_segments, cut.finish_profile)
+                                line_bevel_counts.append(cg.finish_new_edges(
+                                    me, cut.edge_finish, cut.finish_width / scale,
+                                    cut.finish_segments, cut.finish_profile))
                         results.append((t, keep))
                         pieces.append((t, other))
                 except cg.CutError as ex:
@@ -427,8 +448,16 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
             for t, me in pieces:
                 temp.remove(me)
                 _make_piece(t, me).select_set(True)
+            suffix = ''
+            if cut.edge_finish != 'NONE' and cut.finish_width > 0:
+                if not line_bevel_counts:
+                    suffix = ' | Edge Finish skipped (cap disabled)'
+                elif sum(line_bevel_counts) == 0:
+                    suffix = ' | WARNING: Edge Finish found 0 cap boundary edges'
+                else:
+                    suffix = f' | {cut.edge_finish}: {sum(line_bevel_counts)} new boundary edges'
             return ('Plane split: ' if mode == 'SPLIT' else 'Plane cut: ') + \
-                ', '.join(t.name for t, _ in results) + ''.join(sorted(set(infos)))
+                ', '.join(t.name for t, _ in results) + ''.join(sorted(set(infos))) + suffix
         finally:
             for me in temp:
                 if me.users == 0:
@@ -594,6 +623,55 @@ def _now():
     return time.monotonic()
 
 
+# Blender exposes double-click, but not a portable TRIPLE_CLICK event.
+# Count distinct mouse-down events across individual (one-stroke) operators.
+# A triple click must stay near the same screen position; clicking successive
+# lasso vertices must never accidentally leave the Cut/Split/Mask tool.
+_TRIPLE_STATE = {}
+_TRIPLE_RADIUS_PX = 12.0
+_TRIPLE_MAX_SECONDS = 0.72
+
+
+def triple_click_to_select(context, event, clock=None):
+    """Return True for a third quick LMB at the same viewport position.
+
+    Event's DOUBLE_CLICK replaces PRESS on many Blender builds. Some OS/keymap
+    configurations can deliver both events on one mouse down: the 25 ms
+    duplicate filter prevents a phantom third click in that case.
+    """
+    if event.type != 'LEFTMOUSE' or event.value not in {'PRESS', 'DOUBLE_CLICK'}:
+        return False
+    if getattr(event, 'mouse_x', None) is None:
+        return False
+    if context.window is None or context.area is None:
+        return False
+    now = _now() if clock is None else clock
+    try:
+        key = (context.window.as_pointer(), context.area.as_pointer())
+    except ReferenceError:
+        return False
+    pt = (float(event.mouse_x), float(event.mouse_y))
+    state = _TRIPLE_STATE.get(key)
+    double_time = max(0.32, min(_TRIPLE_MAX_SECONDS,
+                                2.0 * _double_click_seconds(context)))
+    if state:
+        last_time, last_pt, count, last_type = state
+        if (event.value == 'DOUBLE_CLICK' and last_type == 'PRESS' and
+                now - last_time <= 0.025 and math.dist(pt, last_pt) <= 2.0):
+            return False
+        if now - last_time <= double_time and math.dist(pt, last_pt) <= _TRIPLE_RADIUS_PX:
+            count += 1
+        else:
+            count = 1
+    else:
+        count = 1
+    if count >= 3:
+        _TRIPLE_STATE.pop(key, None)
+        return True
+    _TRIPLE_STATE[key] = (now, pt, count, event.value)
+    return False
+
+
 class StrokeLogic:
     """State machine of one shape stroke (plain Python so tests can drive it
     with simulated events; the Blender operator below only adds RNA)."""
@@ -659,6 +737,11 @@ class StrokeLogic:
     # ---- lifecycle -----------------------------------------------------------
 
     def invoke(self, context, event):
+        # The third LMB may be delivered to a fresh stroke operator after the
+        # double-click finished the previous cut.  Check before adding points.
+        if triple_click_to_select(context, event):
+            exit_tool(context)
+            return {'CANCELLED'}
         region = context.region
         if region is None or region.type != 'WINDOW':
             region = next((r for r in context.area.regions if r.type == 'WINDOW'), None)
@@ -805,7 +888,15 @@ class StrokeLogic:
         loops = self._current_loops(self.ctrl_held, self.shift_held)
         targets = self._targets()
         if self.mode == 'MASK':
-            msg = perform_mask(context, targets[0], loops, self.projector, self.inverted())
+            if self.shape == 'STROKE':
+                from . import mask_tools
+                points = cg.simplify_open(self.pts, self.brush.stroke_simplify)
+                changed, total = mask_tools.apply_mask_stroke(
+                    context, targets[0], points, self.projector,
+                    self.brush.mask_brush_radius, self.inverted())
+                msg = f'Mask stroke: {changed} faces changed ({total} masked total; entire faces, not exact outline)'
+            else:
+                msg = perform_mask(context, targets[0], loops, self.projector, self.inverted())
         else:
             msg = perform_closed(context, self.mode, targets, loops, self.projector, self.inverted())
         if self.shape == 'CUSTOM' and self.anchor is not None and self.mouse is not None:
@@ -894,6 +985,11 @@ class StrokeLogic:
             return self._cancel(context)
 
         et, ev = event.type, event.value
+        if et == 'LEFTMOUSE' and ev in {'PRESS', 'DOUBLE_CLICK'} and \
+                triple_click_to_select(context, event):
+            self._cleanup(context)  # unfinished path must never be applied
+            exit_tool(context)
+            return {'CANCELLED'}
         if et in {'LEFT_ALT', 'RIGHT_ALT'}:
             self.alt_held = ev == 'PRESS'
         if et in {'LEFT_SHIFT', 'RIGHT_SHIFT'}:
@@ -1034,7 +1130,7 @@ class StrokeLogic:
                     return self._cancel(context)    # a click, not a drag
                 self.mouse = xy
                 if self.shape == 'STROKE':
-                    if len(self.pts) < 3:
+                    if len(self.pts) < (1 if self.mode == 'MASK' else 3):
                         return self._cancel(context)
                 return self._run(context, self._execute_closed)
             return {'RUNNING_MODAL'}

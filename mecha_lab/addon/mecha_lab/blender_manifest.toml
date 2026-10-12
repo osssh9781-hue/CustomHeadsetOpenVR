@@ -1,6 +1,6 @@
 schema_version = "1.0.0"
 id = "mecha_lab"
-version = "0.7.0"
+version = "0.7.2"
 name = "Mecha Lab"
 tagline = "MECHA LAB workspace: Cut, Split, Boolean, Fuse, Mirror"
 maintainer = "Mecha Lab project"

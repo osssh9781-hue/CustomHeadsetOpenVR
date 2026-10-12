@@ -57,11 +57,11 @@ class WM:
 class Ctx:
     def __init__(self, native='mecha.cut'):
         self.region = Region()
-        self.area = types.SimpleNamespace(type='VIEW_3D', regions=[self.region])
+        self.area = types.SimpleNamespace(type='VIEW_3D', regions=[self.region], as_pointer=lambda: 2)
         self.region_data = object()
         self.space_data = types.SimpleNamespace(region_3d=self.region_data)
         self.window_manager = WM()
-        self.window = object()
+        self.window = types.SimpleNamespace(as_pointer=lambda: 1)
         self.mode = 'OBJECT'
         self.preferences = bpy.context.preferences
         self.native = native
@@ -108,6 +108,8 @@ def setup(shape='LASSO'):
     t = cube('Target')
     select_only(t)
     CALLS.clear()
+    CLOCK[0] += 10.0                       # separate scenarios in time (triple-click window)
+    ce._TRIPLE_STATE.clear()
     return t
 
 

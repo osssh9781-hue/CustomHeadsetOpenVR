@@ -105,6 +105,8 @@ class MCH_PG_Brush(bpy.types.PropertyGroup):
     curve_resolution: IntProperty(name='Corner Resolution', default=10, min=2, max=48,
                                   description='Segments per rounded Curve Lasso corner')
     stroke_spacing: FloatProperty(name='Stroke Spacing (px)', default=4.0, min=1.0, max=50.0)
+    mask_brush_radius: FloatProperty(name='Mask Brush Radius (px)', default=18.0, min=1.0, max=200.0,
+                                     description='Pixel radius for Brush Stroke in Mask mode')
     stroke_simplify: FloatProperty(name='Stroke Smoothing (px)', default=1.0, min=0.0, max=10.0,
                                    description='Removes mouse jitter from Brush Stroke outlines')
     custom_size: FloatProperty(name='Stamp Radius (px)', default=120.0, min=4.0, max=4000.0,

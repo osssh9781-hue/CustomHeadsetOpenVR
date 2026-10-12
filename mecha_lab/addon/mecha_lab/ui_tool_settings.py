@@ -37,6 +37,8 @@ def draw_shape_options(layout, context, mode):
     elif shape == 'STROKE':
         col.prop(brush, 'stroke_spacing')
         col.prop(brush, 'stroke_simplify')
+        if mode == 'MASK':
+            col.prop(brush, 'mask_brush_radius')
     elif shape == 'LASSO':
         if mode != 'MASK':
             col.prop(brush, 'line_open')
@@ -187,7 +189,9 @@ def draw_mask(layout, context):
     row.operator('mch.mask_clear', text='CLEAR', icon='X')
     box = layout.box()
     box.label(text='Status: PARTIAL', icon='INFO')
-    _hint(box, 'Whole faces are masked (no exact outline)', 'Mask does NOT protect from Cut/Boolean yet',
+    _hint(box, 'Painted faces are selected in their ENTIRETY',
+          'Subdivide large polygons for smaller mask patches',
+          'Mask does NOT protect from Cut/Boolean yet',
           'Alt+draw erases')
 
 
