@@ -1,0 +1,12 @@
+schema_version = "1.0.0"
+id = "mecha_lab"
+version = "0.5.9"
+name = "Mecha Lab"
+tagline = "Cut, Boolean, Fuse, Mirror and arrays"
+maintainer = "OpenAI"
+type = "add-on"
+tags = ["Modeling"]
+blender_version_min = "4.3.0"
+license = ["SPDX:GPL-3.0-or-later"]
+[permissions]
+files = "Read and write user-saved mesh and curve presets"
