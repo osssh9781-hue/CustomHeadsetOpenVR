@@ -1,5 +1,5 @@
-# Mecha Lab 0.8.0 headless test log
-# bpy 5.0.1 a3db93c5b259 | Python 3.11.17 | Linux 6.18.44-fc-v114 | 2026-10-12T21:29Z
+# Mecha Lab 0.9.0 headless test log
+# bpy 5.0.1 a3db93c5b259 | Python 3.11.17 | Linux 6.18.44-fc-v114 | 2026-10-12T21:53Z
 # command: <bpy python> tests/run_all.py   (Windows Blender 5.0.2 GUI NOT tested)
 ====================================================================== 
  test_base_mesh.py
@@ -183,14 +183,14 @@ PASS smart fuse: separate meshes refused safely  -- {'CANCELLED'}
 PASS smart fuse: touching-only result reported (no crash)  -- {'CANCELLED'}
 PASS smart fuse: objects restored after touching case
 TIMINGS (ms, headless, includes depsgraph eval):
-  cut lasso                   3.8
-  cut rect                    2.4
-  cut circle                  5.9
-  cut ellipse                 5.8
-  cut curve_lasso             4.4
-  cut lasso_round_corners      3.9
-  cut rect_chamfer_corners      2.6
-  cut stroke                 10.7
+  cut lasso                   4.4
+  cut rect                    3.3
+  cut circle                  6.1
+  cut ellipse                 6.2
+  cut curve_lasso             4.9
+  cut lasso_round_corners      4.6
+  cut rect_chamfer_corners      2.7
+  cut stroke                 10.9
   cut custom_star             2.7
 93/93 passed
 ====================================================================== 
@@ -201,7 +201,7 @@ PASS mirror apply doubled geometry, twin untouched  -- (16, 8)
 PASS world pivot helper removed after apply
 PASS radial create
 PASS radial bake  -- ({'FINISHED'}, 64)
-PASS radial boolean link + apply  -- ({'FINISHED'}, {'FINISHED'}, 1.4966687583683673)
+PASS radial boolean link + apply  -- ({'FINISHED'}, {'FINISHED'}, 1.5033753090431483)
 PASS radial boolean result manifold
 PASS boolean UNION  -- {'FINISHED'}
 PASS boolean INTERSECT  -- {'FINISHED'}
@@ -249,23 +249,23 @@ PASS sweep is live
 22/22 passed
 ====================================================================== 
  test_performance.py
-PASS 320 faces [AUTO] manifold cut  -- 9 ms
-PASS 320 faces [MANIFOLD] manifold cut  -- 10 ms
-PASS 5120 faces [AUTO] manifold cut  -- 41 ms
-PASS 5120 faces [MANIFOLD] manifold cut  -- 37 ms
-PASS 20480 faces [AUTO] manifold cut  -- 113 ms
-PASS 20480 faces [MANIFOLD] manifold cut  -- 147 ms
-PASS 81920 faces [AUTO] manifold cut  -- 610 ms
-PASS 81920 faces [MANIFOLD] manifold cut  -- 503 ms
+PASS 320 faces [AUTO] manifold cut  -- 10 ms
+PASS 320 faces [MANIFOLD] manifold cut  -- 11 ms
+PASS 5120 faces [AUTO] manifold cut  -- 47 ms
+PASS 5120 faces [MANIFOLD] manifold cut  -- 74 ms
+PASS 20480 faces [AUTO] manifold cut  -- 122 ms
+PASS 20480 faces [MANIFOLD] manifold cut  -- 130 ms
+PASS 81920 faces [AUTO] manifold cut  -- 464 ms
+PASS 81920 faces [MANIFOLD] manifold cut  -- 445 ms
 faces      solver     ms
-320        AUTO             9
-320        MANIFOLD        10
-5120       AUTO            41
-5120       MANIFOLD        37
-20480      AUTO           113
-20480      MANIFOLD       147
-81920      AUTO           610
-81920      MANIFOLD       503
+320        AUTO            10
+320        MANIFOLD        11
+5120       AUTO            47
+5120       MANIFOLD        74
+20480      AUTO           122
+20480      MANIFOLD       130
+81920      AUTO           464
+81920      MANIFOLD       445
 8/8 passed
 ====================================================================== 
  test_png_shapes.py
@@ -468,6 +468,7 @@ PASS draw main[MECHA LAB] BASE CURVE_LASSO
 PASS draw main[MECHA LAB] BASE CIRCLE
 PASS draw main[MECHA LAB] BASE STROKE
 PASS draw main[MECHA LAB] BASE CUSTOM
+PASS draw main[MECHA LAB] SUBD LASSO
 PASS draw main[MECHA LAB] BOOLEAN LASSO
 PASS draw main[MECHA LAB] FUSE LASSO
 PASS draw main[MECHA LAB] MIRROR LASSO
@@ -509,6 +510,7 @@ PASS draw main[Layout] BASE CURVE_LASSO
 PASS draw main[Layout] BASE CIRCLE
 PASS draw main[Layout] BASE STROKE
 PASS draw main[Layout] BASE CUSTOM
+PASS draw main[Layout] SUBD LASSO
 PASS draw main[Layout] BOOLEAN LASSO
 PASS draw main[Layout] FUSE LASSO
 PASS draw main[Layout] MIRROR LASSO
@@ -552,13 +554,91 @@ PASS draw main BASE with live object
 PASS draw profile popup with live object
 PASS draw main LOFT with live loft
 PASS draw main ZBRUSH
+PASS draw main SUBD with live plane
+PASS draw main SPLIT gap + sides
+PASS draw main DRAW with live Mesh Curve
+PASS draw main EDIT with live Mesh Curve
+PASS draw radial panel with live array (rotation controls)
 PASS mecha.cut: Esc in tool keymap -> exit tool
 PASS mecha.split: Esc in tool keymap -> exit tool
 PASS mecha.mask: Esc in tool keymap -> exit tool
 PASS mecha.base_mesh: Esc in tool keymap -> exit tool
 PASS Base Mesh tool RMB opens PROFILE popup
 PASS Cut tool RMB opens SHAPE popup
-105/105 passed
+112/112 passed
+====================================================================== 
+ test_v090_features.py
+PASS mesh curve draw starts
+PASS polyline points are Straight (VECTOR) by default  -- ['VECTOR', 'VECTOR', 'VECTOR', 'VECTOR']
+PASS clicking an existing point makes it Smooth (no new point)
+PASS double-clicking a point toggles it Smooth
+PASS clicking again toggles back to Straight
+PASS S switches new points to Smooth
+PASS Backspace keeps the remaining point types
+PASS Enter creates the live Mesh Curve  -- ['Live curve created. Sidebar: Resolution, Rotation, Twist, Smooth/Straight.']
+PASS new live nodes present (twist, profile rotation)
+PASS free draw samples many points  -- 40
+PASS free draw points are Smooth (AUTO), not straight  -- {'AUTO'}
+PASS All Smooth works in Object Mode
+PASS straight (VECTOR) segments have no in-between rows
+PASS smooth points really curve the sweep (bulges above the straight segment y=0.5)  -- 0.7424572706222534
+PASS Curve Resolution controls the sweep density  -- (288, 2080)
+PASS Profile Segments controls the round section
+PASS Rotation Z rotates the cross-section
+PASS Rotation X rotates the cross-section
+PASS Twist turns the section along the path (start fixed, rest rotated)
+PASS old live curve is rebuilt with the new nodes
+PASS bake still works
+PASS array Rotation Z turns every copy
+PASS array Twist changes copy orientation along the path
+PASS Curve Edit Mode double-click keymap is ACTIVE (was inactive since v0.5.9)
+PASS SubD Plane created with Simple -> Catmull-Clark -> Solidify  -- [('MCH_SubD_Simple', 'SUBSURF', 'SIMPLE'), ('MCH_SubD_CatmullClark', 'SUBSURF', 'CATMULL_CLARK'), ('MCH_SubD_Solidify', 'SOLIDIFY', None)]
+PASS Simple and Catmull-Clark act together (independent sliders)  -- (6, 48, 2176)
+PASS both levels written to their own modifier
+PASS levels limited to 0..5
+PASS Solidify thickness/offset live
+PASS modifiers visible in Edit Mode
+PASS edges can be extruded in Edit Mode, crease written to selected edges
+PASS Apply All bakes the stack in order  -- (4288, 4288)
+PASS SubD stack can be added to an existing mesh
+PASS Rotate Each Copy defaults OFF (scene and object)
+PASS copies keep the source orientation when Rotate Each Copy is OFF
+PASS OFF: all copies share the source axes (no tilt)  -- {(1.0, -0.0, -0.0), (0.0, 0.0, 1.0), (-0.0, 1.0, -0.0)}
+PASS ON: copies turn along the ring (more edge directions)  -- 7
+PASS Ring Rotation X tilts the whole ring into the XZ plane  -- (0.1000000536441803, 1.8320508003234863)
+PASS Copy Rotation Z turns each copy in place (long axis now Y)  -- <Vector (0.0000, 0.4000, 0.0000)>
+PASS Start Angle moves the first copy  -- 30.00000044529205
+PASS old radial arrays are upgraded with rotation nodes
+PASS radial bake still works
+PASS Normal Split unchanged (volumes 6 + 2)
+PASS Gap Split removes a strip of Gap Width (piece 0.8², hole 1.2²)  -- (5.11999977111816, 1.2800000381469727, 'Gap split: Target')
+PASS Gap Split parts are separate closed objects
+PASS gap stays centred on the drawn outline
+PASS straight Gap Split: two halves 0.2 apart, centred  -- (-0.10000002384185791, 0.10000002384185791)
+PASS straight Gap Split capped
+PASS polyline Gap Split works
+PASS curved (circle) Gap Split closed
+PASS Gap Split with Cap OFF leaves open shells
+PASS too wide gap refused, mesh unchanged  -- The result would delete the whole object; nothing was changed.
+PASS Gap Split with Auto Apply OFF refused with message
+PASS NORMAL: Side A bevel only (A rounded, B sharp)  -- (36, 12, 6, 6, 'Split: Target | A bevel: 8 edges')
+PASS NORMAL: original cube corners untouched by the side bevel
+PASS GAP: Side A bevel only (A rounded, B sharp)  -- (36, 12, 6, 6, 'Gap split: Target | A bevel: 8 edges')
+PASS GAP: original cube corners untouched by the side bevel
+PASS Swap Sides exchanges A/B settings
+PASS plane split: Side B chamfered, Side A plain
+PASS Cut Edge Finish unchanged by the Split side settings
+PASS Sharp keeps the outline
+PASS Chamfer: two points per corner, cut back by Corner Width
+PASS Round: Corner Segments controls the arc
+PASS Corner Width controls the size
+PASS width is clamped on short edges (no overlap)
+PASS live preview while drawing Lasso: NONE corners (3 pts)  -- 3
+PASS live preview while drawing Lasso: CHAMFER corners (6 pts)  -- 6
+PASS live preview while drawing Lasso: ROUND corners (21 pts)  -- 21
+PASS live preview while dragging a Rectangle shows rounded corners
+PASS rounded-corner rectangle cut applied, closed
+70/70 passed
 ====================================================================== 
  test_workspace_data.py
 PASS configure_screen picks the 3D view
@@ -572,7 +652,7 @@ PASS tagged workspace detected (even if renamed)
 PASS Ortho Lock forces ORTHO on a 3D view
 PASS Ortho Lock operator registered
 PASS Ortho Lock timer re-armed when a locked file is loaded
-PASS addon keymap: Space -> mch.space_tools (gated)  -- [('3D View Tool: Object, Mecha Cut', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Cut', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Cut', 'mch.space_tools', 'SPACE'), ('3D View Tool: Object, Mecha Cut', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Split', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Split', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Split', 'mch.space_tools', 'SPACE'), ('3D View Tool: Object, Mecha Split', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Mask', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Mask', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Mask', 'mch.space_tools', 'SPACE'), ('3D View Tool: Object, Mecha Mask', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.space_tools', 'SPACE'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.exit_tool', 'ESC'), ('3D View', 'mch.space_tools', 'SPACE'), ('Object Mode', 'mch.hotkey', 'B'), ('Object Mode', 'mch.hotkey', 'C')]
+PASS addon keymap: Space -> mch.space_tools (gated)  -- [('3D View Tool: Object, Mecha Cut', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Cut', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Cut', 'mch.space_tools', 'SPACE'), ('3D View Tool: Object, Mecha Cut', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Split', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Split', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Split', 'mch.space_tools', 'SPACE'), ('3D View Tool: Object, Mecha Split', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Mask', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Mask', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Mask', 'mch.space_tools', 'SPACE'), ('3D View Tool: Object, Mecha Mask', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.space_tools', 'SPACE'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.exit_tool', 'ESC'), ('3D View', 'mch.space_tools', 'SPACE'), ('Object Mode', 'mch.hotkey', 'B'), ('Object Mode', 'mch.hotkey', 'C'), ('Curve', 'mch.double_click_point', 'LEFTMOUSE')]
 PASS addon keymap: B/C via gated mch.hotkey only
 PASS no ungated mch.boolean / draw_delete_cut keys
 PASS unregister removes all addon keymap items
@@ -581,7 +661,7 @@ PASS re-register/unregister leaves no duplicate keys
 17/17 passed
 ====================================================================== 
  test_zbrush_bridge.py
-PASS send: one OBJ per selected object (no join)  -- ['PartA__544d59f70277.obj', 'PartB__0c4dcd5637a1.obj']
+PASS send: one OBJ per selected object (no join)  -- ['PartA__fec3e847d443.obj', 'PartB__d04c3bf12c7d.obj']
 PASS objects stay separate in Blender
 PASS selection restored after send
 PASS manifest written with ids
@@ -595,13 +675,13 @@ PASS unchanged round trip restores local coordinates (<1e-5)  -- 9.3105431507905
 PASS renamed object found by id and updated
 PASS deleted object re-created from its file
 PASS missing file reported, no crash
-PASS status lists the missing file  -- [('Exact', 'Exact__c332ff84e6dc.obj', 'sent'), ('RenamedLater', 'Renamed__2132354caf2b.obj', 'missing')]
+PASS status lists the missing file  -- [('Exact', 'Exact__334e637e7def.obj', 'sent'), ('RenamedLater', 'Renamed__bfc0719c7a5f.obj', 'missing')]
 PASS shared mesh: twin keeps the original data
 PASS GoZ is detected only as information (None here)
 17/17 passed
 ====================================================================== 
  test_zip_install.py
-PASS dist zip exists  -- ['/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.8.0.zip']
+PASS dist zip exists  -- ['/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.9.0.zip']
 PASS user_default repo available
 PASS package_install_files FINISHED
 PASS extension enabled  -- ['io_anim_bvh', 'io_curve_svg', 'io_mesh_uv_layout', 'io_scene_fbx', 'io_scene_gltf2', 'cycles', 'pose_library', 'bl_pkg', 'bl_ext.user_default.mecha_lab']

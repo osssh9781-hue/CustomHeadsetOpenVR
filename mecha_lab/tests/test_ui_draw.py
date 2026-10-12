@@ -226,6 +226,33 @@ run_draw('main LOFT with live loft', lambda c: main.draw(self_, c), fake_context
 bpy.context.scene.mch_settings.mch_active_tool = 'ZBRUSH'
 self_ = types.SimpleNamespace(layout=FakeLayout())
 run_draw('main ZBRUSH', lambda c: main.draw(self_, c), fake_context('MECHA LAB'))
+# v0.9 panels with live objects
+bpy.ops.mch.subd_plane_create()
+bpy.context.scene.mch_settings.mch_active_tool = 'SUBD'
+self_ = types.SimpleNamespace(layout=FakeLayout())
+run_draw('main SUBD with live plane', lambda c: main.draw(self_, c), fake_context('MECHA LAB'))
+bpy.context.scene.mch_cut.split_mode = 'GAP'
+bpy.context.scene.mch_cut.side_a_finish = 'BEVEL'
+bpy.context.scene.mch_cut.side_b_finish = 'CHAMFER'
+self_ = types.SimpleNamespace(layout=FakeLayout())
+run_draw('main SPLIT gap + sides', lambda c: main.draw(self_, c), fake_context('MECHA LAB', 'mecha.split'))
+cu2 = bpy.data.curves.new('mc', 'CURVE'); s2 = cu2.splines.new('BEZIER'); s2.bezier_points.add(1)
+s2.bezier_points[1].co = (1, 0, 0)
+mp = bpy.data.objects.new('mc', cu2); bpy.context.scene.collection.objects.link(mp)
+carrier = mecha_lab.make_live(bpy.context, mp, 'CURVE')
+select_only(carrier)
+for tool in ('DRAW', 'EDIT'):
+    bpy.context.scene.mch_settings.mch_active_tool = tool
+    self_ = types.SimpleNamespace(layout=FakeLayout())
+    run_draw(f'main {tool} with live Mesh Curve', lambda c: main.draw(self_, c), fake_context('MECHA LAB'))
+
+spoke = cube('Spoke', size=0.2, loc=(1, 0, 0))
+select_only(spoke)
+bpy.ops.mch.radial_create()
+self_ = types.SimpleNamespace(layout=FakeLayout())
+run_draw('radial panel with live array (rotation controls)',
+         lambda c: mecha_lab.radial_array.MCH_PT_radial.draw(self_, c), fake_context('MECHA LAB'))
+
 for tool_cls in wui.NATIVE_TOOLS:
     km = {item[0]: item for item in tool_cls.bl_keymap}
     check(f'{tool_cls.bl_idname}: Esc in tool keymap -> exit tool', 'mch.exit_tool' in km and km['mch.exit_tool'][1]['type'] == 'ESC')

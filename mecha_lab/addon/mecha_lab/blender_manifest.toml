@@ -1,8 +1,8 @@
 schema_version = "1.0.0"
 id = "mecha_lab"
-version = "0.8.0"
+version = "0.9.0"
 name = "Mecha Lab"
-tagline = "MECHA LAB workspace: Cut, Split, Base Mesh, Loft, ZBrush bridge"
+tagline = "Cut, Split, Base Mesh, SubD Plane, Loft, ZBrush bridge"
 maintainer = "Mecha Lab project"
 type = "add-on"
 tags = ["Modeling"]

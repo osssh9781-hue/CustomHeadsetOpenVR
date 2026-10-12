@@ -115,14 +115,27 @@ def make_radial_group(carrier):
     links.new(euler.outputs['Rotation'], inst.inputs['Rotation'])
     inst.inputs['Scale'].default_value = (p.scale, p.scale, p.scale)
 
+    # Per-copy rotation in each copy's own space (independent of the ring).
+    copy_rot = nodes.new('GeometryNodeRotateInstances')
+    copy_rot.name = 'MCH_Radial_CopyRot'
+    copy_rot.inputs['Rotation'].default_value = (p.copy_rot_x, p.copy_rot_y, p.copy_rot_z)
+    copy_rot.inputs['Local Space'].default_value = True
+    links.new(inst.outputs['Instances'], copy_rot.inputs['Instances'])
+    # Whole-ring rotation about the ring centre (tilts the ring plane).
+    ring_rot = nodes.new('GeometryNodeTransform')
+    ring_rot.name = 'MCH_Radial_RingRot'
+    ring_rot.inputs['Rotation'].default_value = (p.ring_rot_x, p.ring_rot_y, p.ring_rot_z)
+    links.new(copy_rot.outputs['Instances'], ring_rot.inputs['Geometry'])
+    ring_out = ring_rot.outputs['Geometry']
+
     realize = nodes.new('GeometryNodeRealizeInstances')
     realize.name = 'MCH_Radial_Realize'
-    links.new(inst.outputs['Instances'], realize.inputs['Geometry'])
+    links.new(ring_out, realize.inputs['Geometry'])
     switch = nodes.new('GeometryNodeSwitch')
     switch.name = 'MCH_Radial_BakeSwitch'
     switch.input_type = 'GEOMETRY'
     switch.inputs['Switch'].default_value = False
-    links.new(inst.outputs['Instances'], switch.inputs['False'])
+    links.new(ring_out, switch.inputs['False'])
     links.new(realize.outputs['Geometry'], switch.inputs['True'])
     links.new(switch.outputs['Output'], go.inputs['Geometry'])
     return ng
@@ -329,6 +342,13 @@ def update_radial(self, context):
     if mod is None or mod.node_group is None:
         return
     nodes = mod.node_group.nodes
+    if nodes.get('MCH_Radial_CopyRot') is None or nodes.get('MCH_Radial_RingRot') is None:
+        # Radial arrays made before v0.9 lack the rotation nodes: rebuild once.
+        old = mod.node_group
+        mod.node_group = make_radial_group(obj)
+        if old.users == 0:
+            bpy.data.node_groups.remove(old)
+        nodes = mod.node_group.nodes
     # Only cheap node socket values are updated. No topology rebuild or bpy.ops.
     nodes['MCH_Radial_Points'].inputs['Count'].default_value = self.count
     nodes['MCH_Radial_Step'].inputs[1].default_value = radial_step(self.count, self.arc)
@@ -339,16 +359,26 @@ def update_radial(self, context):
     nodes['MCH_Radial_Position'].inputs['Z'].default_value = self.height
     nodes['MCH_Radial_Orient'].inputs[1].default_value = float(self.follow_circle)
     nodes['MCH_Radial_Instances'].inputs['Scale'].default_value = (self.scale,) * 3
+    nodes['MCH_Radial_CopyRot'].inputs['Rotation'].default_value = (self.copy_rot_x, self.copy_rot_y, self.copy_rot_z)
+    nodes['MCH_Radial_RingRot'].inputs['Rotation'].default_value = (self.ring_rot_x, self.ring_rot_y, self.ring_rot_z)
 
 
 class MCH_PG_Radial(bpy.types.PropertyGroup):
     count: IntProperty(name='Count', description='Number of tread blocks or details', default=24, min=1, max=2048, update=update_radial)
     radius: FloatProperty(name='Radius', description='Distance from ring center to each mesh origin', default=1.0, min=0.0, soft_max=10.0, precision=4, update=update_radial)
-    phase: FloatProperty(name='Start Rotation', description='Rotate ring about Z, in degrees in UI', subtype='ANGLE', default=0.0, update=update_radial)
+    phase: FloatProperty(name='Start Angle', description='Angle of the first copy around the ring (rotates the whole array about the ring axis)', subtype='ANGLE', default=0.0, update=update_radial)
     arc: FloatProperty(name='Arc Span', description='360 degrees is full ring; smaller spans distribute across an open arc', subtype='ANGLE', default=math.tau, min=0.001, max=math.tau, update=update_radial)
     scale: FloatProperty(name='Size', description='Uniform scale of all copies', default=1.0, min=0.001, soft_max=5.0, update=update_radial)
     height: FloatProperty(name='Z Offset', description='Height above the ring center', default=0.0, precision=4, update=update_radial)
-    follow_circle: BoolProperty(name='Rotate Each Copy', description='Rotate every tread or bolt around the center; turn off to keep the source direction', default=True, update=update_radial)
+    follow_circle: BoolProperty(name='Rotate Each Copy', description='Rotate every copy to face along the ring (like tyre treads). OFF (default) keeps every copy in the source orientation', default=False, update=update_radial)
+    ring_rot_x: FloatProperty(name='Ring Rotation X', subtype='ANGLE', default=0.0, update=update_radial,
+                              description='Rotate the whole ring around its centre (tilts the ring plane)')
+    ring_rot_y: FloatProperty(name='Ring Rotation Y', subtype='ANGLE', default=0.0, update=update_radial)
+    ring_rot_z: FloatProperty(name='Ring Rotation Z', subtype='ANGLE', default=0.0, update=update_radial)
+    copy_rot_x: FloatProperty(name='Copy Rotation X', subtype='ANGLE', default=0.0, update=update_radial,
+                              description='Extra rotation of every copy in its own space')
+    copy_rot_y: FloatProperty(name='Copy Rotation Y', subtype='ANGLE', default=0.0, update=update_radial)
+    copy_rot_z: FloatProperty(name='Copy Rotation Z', subtype='ANGLE', default=0.0, update=update_radial)
     source: PointerProperty(name='Source Object', type=bpy.types.Object)
     source_was_hidden: BoolProperty(default=False)
     base_angle: FloatProperty(default=0.0)
@@ -544,6 +574,17 @@ class MCH_PT_radial(bpy.types.Panel):
             col.prop(p, 'height')
             col.prop(p, 'scale')
             col.prop(p, 'follow_circle')
+            box = layout.box()
+            box.label(text='Ring rotation (whole array)', icon='ORIENTATION_GIMBAL')
+            r = box.column(align=True)
+            r.prop(p, 'ring_rot_x')
+            r.prop(p, 'ring_rot_y')
+            r.prop(p, 'ring_rot_z')
+            box.label(text='Copy rotation (each copy, own space)', icon='ORIENTATION_LOCAL')
+            r = box.column(align=True)
+            r.prop(p, 'copy_rot_x')
+            r.prop(p, 'copy_rot_y')
+            r.prop(p, 'copy_rot_z')
             layout.separator()
             box = layout.box()
             box.label(text='RADIAL BOOLEAN | Tire Tread Cut', icon='MOD_BOOLEAN')

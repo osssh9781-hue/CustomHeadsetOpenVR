@@ -1,6 +1,6 @@
-# Mecha Lab 0.8.0 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.9.0 — 설치 · MECHA LAB Workspace · 사용법
 
-> **검증 수준:** Linux headless Blender **5.0.1**(`bpy`)에서 자동 테스트 12개 파일 / 544개 항목이 통과했습니다.
+> **검증 수준:** Linux headless Blender **5.0.1**(`bpy`)에서 자동 테스트 13개 파일 / 621개 항목이 통과했습니다.
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** 실제 마우스/키 입력, 팝업, Workspace 생성은
 > `GUI_TEST_CHECKLIST_KO.md`로 확인이 필요합니다. 상태 구분은 `test_report.md`, 한계는 `KNOWN_LIMITATIONS.md`.
 
@@ -8,7 +8,7 @@
 
 ## 1. 설치
 1. 기존 Mecha Lab을 비활성화·제거 (Edit > Preferences > Add-ons).
-2. Get Extensions > ▾ > **Install from Disk…** → `dist/mecha_lab-0.8.0.zip` (압축 풀지 말 것).
+2. Get Extensions > ▾ > **Install from Disk…** → `dist/mecha_lab-0.9.0.zip` (압축 풀지 말 것).
 3. 설치만으로는 어떤 Workspace도 바뀌지 않습니다.
 
 ## 2. MECHA LAB Workspace
@@ -16,7 +16,7 @@ N 사이드바 > Mecha Lab > `Open MECHA LAB Workspace` (또는 탭 메뉴 / F3)
 왼쪽 도구 목록 · 뷰포트 왼쪽 위 공통 Shape 팔레트 · 오른쪽 현재 도구 설정 구성을 만듭니다. 다른 탭과 Startup File은
 건드리지 않습니다(Startup 저장은 확인 창이 있는 별도 버튼).
 
-도구 목록: **Cut, Split, Base Mesh**, Boolean, Smart Fuse, Mirror, Mask, Curve Array, Radial Array, Panel/Curve,
+도구 목록: **Cut, Split, Base Mesh, SubD Plane**, Boolean, Smart Fuse, Mirror, Mask, Curve Array, Radial Array, Mesh Curve,
 Pose(미구현 표시), **Loft / Surface, ZBrush Bridge**, Surface Conform, Assets, Remesh, Live Result.
 `Space` = 큰 아이콘 도구 메뉴(MECHA LAB 탭에서만). Sidebar의 접힌 `Tools (fallback list)`도 항상 있습니다.
 
@@ -62,9 +62,23 @@ Roundness / Height / Edge Height / Resolution. 선택한 Base Mesh는 Live라서
 Tool > Export **같은 파일 이름으로** → Blender에서 `Import Back`. 바뀐 파일만 원래 오브젝트의 메쉬를 교체합니다
 (변환·모디파이어·재질 슬롯 유지, 이전 메쉬는 `<이름>_preZBrush`로 보관). 축/스케일은 오른쪽 패널에서 조정.
 
-## 8. 그 밖의 기존 기능
+## 8. 0.9.0 추가 기능
+- **Mesh Curve** (예전 Panel / Curve): 직선(VECTOR) 그리기 유지. 그리는 중 기존 점 클릭 또는 더블클릭 = 직선 ↔ 부드러운 점,
+  `S` = 새 점 종류 전환, Free Draw는 부드러운 점으로 생성. Edit Mode에서도 점 더블클릭으로 전환(v0.5.9부터 꺼져 있던 키맵을 켬).
+  오른쪽 Live 패널: All Smooth / All Straight(Object Mode), Curve Resolution, Profile Segments, Rotation X/Y/Z, Twist.
+  Curve Array도 같은 Resolution / 복제본 Rotation X/Y/Z / Twist.
+- **SubD Plane**: `Create SubD Plane` → Simple SubD + Catmull-Clark SubD + Solidify가 동시에 걸린 Plane. Simple / Catmull-Clark
+  레벨(0~5) 슬라이더 각각, Thickness, Offset, Even Thickness, Edge Crease(Edit Mode에서 선택 엣지에 적용), Apply All.
+  Edit Mode에서 E로 엣지를 늘리며 계속 모델링. `Add SubD Stack to Selected`로 기존 메쉬에도 적용.
+- **Radial Array**: Ring Rotation X/Y/Z(배열 전체), Start Angle, Copy Rotation X/Y/Z(복제본 각각), Rotate Each Copy(기본 OFF).
+  원본 방향은 그대로 두고 배열 회전만 따로 조절.
+- **Split**: Normal(기존) / **Gap**(Gap Width만큼 띠를 제거하며 분리, 선 중심 유지, 직선·곡선·폴리라인, Cap). 양쪽 독립 마감:
+  Side A(남는 원본) / Side B(새 `_Split`) 각각 None/Chamfer/Bevel, Width, Segments, `Swap Sides`. 새 절단 엣지만 처리.
+- **2D 모서리**(Lasso/Rectangle): Sharp / Chamfer / Round, Corner Width(px), Corner Segments, 그리는 중 미리보기 (점검 완료).
+
+## 9. 그 밖의 기존 기능
 Cut/Split(Edge Finish = 새 절단 엣지만), Boolean, PNG Custom Shape, Alt+D 공유 메쉬 정책, Smart Fuse(제한),
 Mirror, Arrays, Surface Conform, Mask(면 단위, v0.7.2 레이캐스트), **Ortho Lock(v0.7.1, 파일을 다시 열어도 유지)**.
 
-## 9. 제거
+## 10. 제거
 Preferences > Add-ons > Mecha Lab > Remove. 만든 MECHA LAB 탭은 .blend 안에 남을 수 있습니다.

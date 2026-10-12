@@ -1,11 +1,11 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.8.0 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.9.0 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
 
 ## 0. 설치
-- [ ] 이전 버전 제거 후 `mecha_lab-0.8.0.zip` Install from Disk → 오류 없이 활성화
+- [ ] 이전 버전 제거 후 `mecha_lab-0.9.0.zip` Install from Disk → 오류 없이 활성화
 - [ ] 설치 직후 상단 탭 목록이 변하지 않음 (MECHA LAB 탭이 자동으로 생기지 않음)
 
 ## 1. Workspace
@@ -78,6 +78,31 @@ Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전�
 - [ ] 메쉬 2개 선택 → Send → 교환 폴더에 OBJ 2개 (Blender 오브젝트는 따로 유지)
 - [ ] ZBrush에서 하나 Import → 수정 → **같은 파일 이름으로 Export** → Blender `Import Back` → 그 오브젝트만 바뀌고 위치/회전 유지
 - [ ] ZBrush에서 위아래가 뒤집혀 보이면 Forward/Up 설정 메모 (기본 -Z / Y)
+
+## 5-4. Mesh Curve (0.9.0)
+- [ ] Mesh Curve 도구 → Polyline으로 점 4개 → 둘째 점을 다시 클릭 → 그 점이 부드럽게(곡선) 바뀜, 새 점은 안 생김
+- [ ] 그리는 중 점 더블클릭 → 직선 ↔ 부드러움 전환 / `S`로 새 점 종류 전환 / Enter로 확정
+- [ ] Free Draw로 그리면 매끄러운 곡선
+- [ ] 결과 선택 → 오른쪽 All Smooth / All Straight(Object Mode에서 동작), Curve Resolution, Profile Segments, Rotation X/Y/Z, Twist 즉시 반영
+- [ ] 경로 선택 → Tab → 점 더블클릭 → 직선 ↔ 부드러움
+- [ ] Curve Array: Rotation X/Y/Z와 Twist가 복제본에 반영
+
+## 5-5. SubD Plane (0.9.0)
+- [ ] Create SubD Plane → 3D 커서 위치에 Plane, 모디파이어 3개(Simple, Catmull-Clark, Solidify)
+- [ ] Simple / Catmull-Clark 슬라이더를 각각 움직이면 둘 다 동시에 반영
+- [ ] Thickness / Offset 즉시 반영, Tab → 엣지 선택 → E로 늘려도 모디파이어 결과가 계속 보임
+- [ ] 엣지 선택 → Set Crease → 그 엣지가 날카로워짐 / Apply All → 모디파이어 사라지고 형태 유지
+
+## 5-6. Radial Array (0.9.0)
+- [ ] 비대칭 부품으로 Radial 생성 → 기본(Rotate Each Copy OFF)에서 모든 복제본이 원본과 같은 방향, 기울어짐 없음
+- [ ] Ring Rotation X/Y/Z: 배열 전체가 돌아감 / Copy Rotation X/Y/Z: 각 복제본만 제자리 회전 / Start Angle
+- [ ] Rotate Each Copy ON: 타이어 트레드처럼 원을 따라 회전
+
+## 5-7. Split (0.9.0)
+- [ ] Split Mode = Gap, Gap Width 0.05 → 사각형/원/직선 Split → 두 조각 사이에 틈, 두 조각 모두 닫힘
+- [ ] Gap Width를 바꿔도 틈의 중심이 그린 선 위
+- [ ] Side A = Bevel, Side B = None → 원본 쪽 절단 경계만 둥글고 `_Split` 쪽은 날카로움 / Swap Sides 후 반대로
+- [ ] Lasso/Rectangle + Outline Corners Round/Chamfer: 그리는 동안 미리보기에 모서리 반영, Corner Width/Segments 반영
 
 ## 6. Smart Fuse
 - [ ] 겹친 두 메쉬 → Create Live Smart Fuse → 패널이 오류 없이 그려짐 → Confirm

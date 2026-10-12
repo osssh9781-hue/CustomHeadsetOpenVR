@@ -99,4 +99,19 @@ class MCH_OT_cut_finalize(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_OT_draw_delete_cut, MCH_OT_cut_finalize)
+class MCH_OT_split_swap_sides(bpy.types.Operator):
+    bl_idname = 'mch.split_swap_sides'
+    bl_label = 'Swap Sides'
+    bl_description = 'Exchange the Side A and Side B edge finish settings of Split'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        cut = context.scene.mch_cut
+        for key in ('finish', 'width', 'segments'):
+            a, b = getattr(cut, f'side_a_{key}'), getattr(cut, f'side_b_{key}')
+            setattr(cut, f'side_a_{key}', b)
+            setattr(cut, f'side_b_{key}', a)
+        return {'FINISHED'}
+
+
+CLASSES = (MCH_OT_draw_delete_cut, MCH_OT_cut_finalize, MCH_OT_split_swap_sides)

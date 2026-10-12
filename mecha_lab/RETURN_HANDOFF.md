@@ -1,4 +1,31 @@
-# RETURN HANDOFF — Mecha Lab 0.8.0 (Claude Code → ChatGPT)
+# RETURN HANDOFF — Mecha Lab 0.9.0 (Claude Code → ChatGPT)
+
+작성 2026-10-13. 기준: 0.8.0(아래 0.8.0 섹션 유지). **검증은 Linux headless bpy 5.0.1, Windows 5.0.2 GUI 실행 0회.**
+테스트: 13개 파일 621/621 (`tests/test_log_bpy501_v090.txt`). 0.8.0의 모든 테스트가 수정 없이 통과(회귀 없음).
+
+## 0.9.0 변경 요약과 위치
+| 요청 | 구현 위치 | 핵심 |
+|---|---|---|
+| P0 Mesh Curve 곡선 문제 | `__init__.py` `PathDrawLogic`, `MCH_OT_draw_path`, `MCH_OT_path_handles_all`, `workspace_ui.register_keymaps` | 원인 3개: 전부 VECTOR 생성 / Edit Mode 더블클릭 키맵이 v0.5.9부터 `active=False` / Straight·Smooth 버튼이 Edit Mode 전용. 수정: 그리는 중 점 클릭·더블클릭 토글(`_point_near`, `toggle_point`), `S`로 새 점 종류(`Scene.mch_settings.path_point_type`), Free Draw AUTO, Backspace 종류 보존, 키맵 활성, Object Mode All Smooth/Straight |
+| Mesh Curve 컨트롤 | `MCH_PG_Live.resolution/profile_segments/rot_x/rot_y/rot_z/twist`, `set_mesh_curve_parameters`, `_twisted_curve`, `sweep_group`, `array_group` | GN: 경로 → Set Curve Tilt(tilt + SplineParameter.Factor × twist, 노드 `MCH_TWIST`) → Curve to Mesh / Curve to Points. 단면 회전 `MCH_PROFILE_ROT`(Transform), 배열 복제본 회전 `MCH_INST_ROT`(Rotate Instances, Local). Resolution = 경로 `resolution_u`. 노드가 없는 이전 Live 객체는 첫 수정 때 그룹 재생성 |
+| P0 SubD Plane | `subd_plane.py` (신규), 도구 ID `SUBD`(enum 18), `ui_tool_settings.draw_subd` | `MCH_SubD_Simple`(SUBSURF SIMPLE) → `MCH_SubD_CatmullClark` → `MCH_SubD_Solidify`. `Object.mch_subd` update → `sync_modifiers`(값 쓰기 + 순서 보정). Crease = `crease_edge` float 엣지 속성. Apply All = `core_geometry.apply_single_modifier` 순차 |
+| P1 Radial 회전 | `radial_array.py` `make_radial_group`, `update_radial`, `MCH_PG_Radial` | Instance on Points → `MCH_Radial_CopyRot`(Rotate Instances, Local) → `MCH_Radial_RingRot`(Transform) → Realize/Switch. `follow_circle` 기본 False(씬 `radial_follow`도). 이전 배열은 update 시 그룹 재생성 |
+| P1 Gap Split | `cut_engine.py` `offset_loop`, `pixels_per_unit`, `_gap_groups`, `perform_closed`, `perform_line` | 닫힌 도형: 윤곽(구멍 포함, 방향 규약상 +d = 영역 확장)을 ±Gap/2(px 환산) 오프셋해 커터 2개(안쪽 INTERSECT = 조각 B, 바깥 DIFFERENCE = 원본 A). 직선: 평면 ±Gap/2. 오프셋 결과가 자기교차하면 CutError |
+| P2 양쪽 마감 | `cut_engine._finish_side`, `_side_report`, `MCH_PG_Cut.side_a_*/side_b_*`, `cut_tools.MCH_OT_split_swap_sides` | A = 남는 원본, B = `_Split`. `finish_new_edges`(cutter 면 경계만)를 측별 설정으로. Split은 Cut의 `edge_finish`를 더 이상 쓰지 않음 |
+| P2 2D Corner | 변경 없음(라벨만 Corner Width) | 기존 `round_corners` + `StrokeLogic._outline`이 미리보기와 실행 모두에 쓰임을 테스트로 확인 |
+
+## 테스트 훅 (새 것)
+- `mecha_lab._path_ray`, `mecha_lab._path_to_screen`: Mesh Curve 그리기 시뮬레이션용(테스트에서 직교 투영으로 교체).
+- 평가 확인 시 Radial/Curve Array의 bake switch 노드를 켜야 정점이 보임(인스턴스는 `to_mesh`에 안 나옴).
+
+## 다음 제안
+- GUI 결과 반영(특히 Curve Edit Mode 더블클릭 키맵 우선순위, SubD Edit Mode 반응, Gap Split 원근 폭).
+- Gap Split의 원근 정확도: 픽셀 환산 대신 3D 오프셋(각 벽을 시선 평면에서 법선 방향으로 이동)으로 개선 가능.
+- Mesh Curve Twist의 구간별 tilt 편집, SubD Crease 시각화.
+
+---
+
+## (이전) RETURN HANDOFF — Mecha Lab 0.8.0
 
 작성 2026-10-13. 기준 소스: ChatGPT **v0.7.2** (`reference/CHATGPT_v0_7_2/MECHA_LAB_v0_7_2_CURRENT_BASE.zip`).
 요청서: `handoff/2026-10-13/`. 0.7.0 시절 인수인계 내용(기하 코어, Workspace 설계)은 git 이력과 아래 요약으로 대체.

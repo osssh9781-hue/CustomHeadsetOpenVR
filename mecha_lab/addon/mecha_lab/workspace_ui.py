@@ -939,6 +939,11 @@ def register_keymaps():
     item = km.keymap_items.new('mch.hotkey', 'C', 'PRESS')
     item.properties.action = 'CUT'
     _keymaps.append((km, item))
+    # Mesh Curve: double-click a path point in Curve Edit Mode = Straight <-> Smooth.
+    # (Registered since v0.5.9 but always inactive; the operator passes through
+    # for curves that are not Mecha Lab paths.)
+    km = kc.keymaps.new(name='Curve', space_type='EMPTY')
+    _keymaps.append((km, km.keymap_items.new('mch.double_click_point', 'LEFTMOUSE', 'DOUBLE_CLICK')))
 
 
 def unregister_keymaps():

@@ -21,13 +21,16 @@ TOOLS = (
     ('SPLIT', 'Split', 'Draw a shape to split the mesh into two solid parts', 'split', 'MOD_EDGESPLIT', 'mecha.split', 'OK'),
     ('BASE', 'Base Mesh', 'Draw an outline to create a NEW solid (Flat / Chamfer / Bevel / Dome); RMB = profiles',
      'base', 'MESH_CUBE', 'mecha.base_mesh', 'OK'),
+    ('SUBD', 'SubD Plane', 'Plane with live Simple + Catmull-Clark subdivision and Solidify; extrude edges '
+     'in Edit Mode to build armour panels', 'subd', 'MOD_SUBSURF', None, 'OK'),
     ('BOOLEAN', 'Boolean', 'Difference / Union / Intersect with a selected cutter mesh', 'boolean', 'MOD_BOOLEAN', None, 'OK'),
     ('FUSE', 'Smart Fuse', 'Union two overlapping meshes with a fillet/chamfer seam', 'fuse', 'MOD_BEVEL', None, 'PARTIAL'),
     ('MIRROR', 'Mirror', 'World / local / collection mirror', 'mirror', 'MOD_MIRROR', None, 'OK'),
     ('MASK', 'Mask', 'Paint a face mask with the shared shapes (Alt: erase)', 'mask', 'MOD_MASK', 'mecha.mask', 'PARTIAL'),
     ('ARRAY', 'Curve Array', 'Repeat a part along a drawn curve', 'array', 'MOD_ARRAY', None, 'OK'),
     ('RADIAL', 'Radial Array', 'Radial copies around the 3D cursor + Boolean', 'radial', 'MOD_SCREW', None, 'OK'),
-    ('DRAW', 'Panel / Curve', 'Panel line cuts and swept profile curves', 'panel', 'CURVE_BEZCURVE', None, 'OK'),
+    ('DRAW', 'Mesh Curve', 'Draw a curve and sweep a profile along it (or a panel-line cut); '
+     'smooth/straight points, resolution, rotation, twist', 'panel', 'CURVE_BEZCURVE', None, 'OK'),
     ('POSE', 'Pose', 'Rigid / soft pose (not implemented yet)', 'pose', 'ARMATURE_DATA', None, 'TODO'),
     ('LOFT', 'Loft / Surface', 'Smooth surface through 2+ curves, or sweep a profile along a path (live)',
      'loft', 'SURFACE_DATA', None, 'PARTIAL'),
@@ -45,7 +48,7 @@ SHAPE_TOOLS = {'CUT', 'SPLIT', 'MASK', 'BASE'}
 # Enum numbers keep v0.5.9 values so saved .blend files map to the same tool.
 _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRAW': 6,
                  'ARRAY': 7, 'RADIAL': 8, 'SURFACE': 9, 'LIBRARY': 10, 'EDIT': 11,
-                 'REMESH': 12, 'SPLIT': 13, 'POSE': 14, 'BASE': 15, 'LOFT': 16, 'ZBRUSH': 17}
+                 'REMESH': 12, 'SPLIT': 13, 'POSE': 14, 'BASE': 15, 'LOFT': 16, 'ZBRUSH': 17, 'SUBD': 18}
 TOOL_ENUM_ITEMS = [(t[0], t[1], t[2], t[4], _ENUM_NUMBERS[t[0]]) for t in TOOLS]
 
 SHAPES = (
@@ -119,7 +122,7 @@ class MCH_PG_Brush(bpy.types.PropertyGroup):
         ('ROUND', 'Round', 'Round the corners of the 2D outline (Lasso / Rectangle)'),
         ('CHAMFER', 'Chamfer', 'Straight-cut the corners of the 2D outline (Lasso / Rectangle)')],
         default='NONE', description='2D shape option, separate from the 3D Edge Finish of the cut')
-    outline_radius: FloatProperty(name='Corner Size (px)', default=12.0, min=0.0, max=500.0)
+    outline_radius: FloatProperty(name='Corner Width (px)', default=12.0, min=0.0, max=500.0)
     outline_segments: IntProperty(name='Corner Segments', default=6, min=1, max=32)
     stroke_smooth: IntProperty(name='Free Draw Smoothing', default=2, min=0, max=10,
                                description='Smoothing passes applied to the drawn freehand path')
@@ -167,6 +170,23 @@ class MCH_PG_Cut(bpy.types.PropertyGroup):
         ('SINGLE', 'This Object Only', 'Linked duplicates (Alt+D) keep the old mesh; this object gets its own copy'),
         ('ALL', 'All Linked Copies', 'Change the shared mesh data, so every linked duplicate is cut')],
         default='SINGLE')
+    split_mode: EnumProperty(name='Split Mode', items=[
+        ('NORMAL', 'Normal', 'Thin cut line: two parts touching along the cut'),
+        ('GAP', 'Gap', 'Thick blade: removes a strip of Gap Width between the two parts')], default='NORMAL')
+    gap_width: FloatProperty(name='Gap Width', default=0.02, min=0.0, soft_max=1.0, precision=4, unit='LENGTH',
+                             description='Width of the removed strip in model units, centred on the drawn line')
+    side_a_finish: EnumProperty(name='Side A', items=[
+        ('NONE', 'None', 'Keep the cut edge sharp'), ('CHAMFER', 'Chamfer', 'Flat chamfer on the cut edge'),
+        ('BEVEL', 'Bevel', 'Rounded bevel on the cut edge')], default='NONE',
+        description='Side A = the remaining original object')
+    side_a_width: FloatProperty(name='Width', default=0.01, min=0.0, soft_max=0.5, precision=4, unit='LENGTH')
+    side_a_segments: IntProperty(name='Segments', default=3, min=1, max=32)
+    side_b_finish: EnumProperty(name='Side B', items=[
+        ('NONE', 'None', 'Keep the cut edge sharp'), ('CHAMFER', 'Chamfer', 'Flat chamfer on the cut edge'),
+        ('BEVEL', 'Bevel', 'Rounded bevel on the cut edge')], default='NONE',
+        description='Side B = the new "_Split" part')
+    side_b_width: FloatProperty(name='Width', default=0.01, min=0.0, soft_max=0.5, precision=4, unit='LENGTH')
+    side_b_segments: IntProperty(name='Segments', default=3, min=1, max=32)
     split_cap: BoolProperty(name='Cap Split', default=True,
                             description='Close the cut faces of both parts (OFF leaves open shells)')
     fast_line: BoolProperty(name='Plane Cut for 2 Points', default=True,

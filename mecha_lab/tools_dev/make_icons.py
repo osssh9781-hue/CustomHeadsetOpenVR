@@ -282,6 +282,18 @@ def icons():
         return fn
     for k in ('flat', 'chamfer', 'bevel', 'dome'):
         out['profile_' + k] = profile(k)
+
+    def subd():
+        img, d = canvas()
+        poly(d, [(110, 300), (200, 160), (400, 180), (420, 330), (230, 390)], FG, width=10)
+        smooth = []
+        for i in range(48):
+            a = 2 * math.pi * i / 48
+            smooth.append((265 + 125 * math.cos(a) + 20 * math.cos(2 * a), 275 + 85 * math.sin(a)))
+        poly(d, smooth, ACC, fill=(255, 158, 40, 90))
+        d.line([(150, 420), (390, 420)], fill=CY, width=18)
+        return img
+    out['subd'] = subd
     return out
 
 

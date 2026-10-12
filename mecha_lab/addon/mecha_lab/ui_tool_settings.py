@@ -90,16 +90,36 @@ def draw_cut(layout, context, mode='CUT'):
 
     draw_shape_options(layout, context, mode)
 
-    box = _section(layout, 'Edge Finish (new cut edges only)', 'MOD_BEVEL')
-    box.prop(cut, 'edge_finish', expand=True)
-    if cut.edge_finish != 'NONE':
-        c = box.column(align=True)
-        c.prop(cut, 'finish_width')
-        if cut.edge_finish == 'BEVEL':
-            c.prop(cut, 'finish_segments')
-            c.prop(cut, 'finish_profile', slider=True)
-        if not s.auto_apply:
-            box.label(text='Edge Finish is skipped in Live mode', icon='INFO')
+    if mode == 'SPLIT':
+        box = _section(layout, 'Split', 'MOD_EDGESPLIT')
+        box.row(align=True).prop(cut, 'split_mode', expand=True)
+        if cut.split_mode == 'GAP':
+            box.prop(cut, 'gap_width')
+            if not s.auto_apply:
+                box.label(text='Gap Split needs Auto Apply ON', icon='ERROR')
+        box = _section(layout, 'Cut edge finish per side (new edges only)', 'MOD_BEVEL')
+        if not cut.split_cap:
+            box.label(text='Needs Cap Split ON', icon='INFO')
+        for side, label in (('a', 'Side A (original object)'), ('b', 'Side B (new _Split part)')):
+            sub = box.column(align=True)
+            sub.label(text=label)
+            sub.row(align=True).prop(cut, f'side_{side}_finish', expand=True)
+            if getattr(cut, f'side_{side}_finish') != 'NONE':
+                sub.prop(cut, f'side_{side}_width')
+                if getattr(cut, f'side_{side}_finish') == 'BEVEL':
+                    sub.prop(cut, f'side_{side}_segments')
+        box.operator('mch.split_swap_sides', icon='ARROW_LEFTRIGHT')
+    else:
+        box = _section(layout, 'Edge Finish (new cut edges only)', 'MOD_BEVEL')
+        box.prop(cut, 'edge_finish', expand=True)
+        if cut.edge_finish != 'NONE':
+            c = box.column(align=True)
+            c.prop(cut, 'finish_width')
+            if cut.edge_finish == 'BEVEL':
+                c.prop(cut, 'finish_segments')
+                c.prop(cut, 'finish_profile', slider=True)
+            if not s.auto_apply:
+                box.label(text='Edge Finish is skipped in Live mode', icon='INFO')
 
     box = _section(layout, 'Advanced', 'PREFERENCES')
     c = box.column(align=True)
@@ -213,9 +233,53 @@ def draw_mask(layout, context):
           'Alt+draw erases')
 
 
+def _live_curve_carrier(context):
+    ob = context.active_object
+    if ob is None:
+        return None
+    if ob.get('mch_path'):
+        ob = bpy.data.objects.get(ob.get('mch_carrier', ''))
+    if ob is not None and ob.get('mch_role') in {'PANEL', 'CURVE', 'ARRAY'}:
+        return ob
+    return None
+
+
+def draw_live_curve_controls(layout, context):
+    """Live Mesh Curve settings of the selected result (sweep or curve array)."""
+    carrier = _live_curve_carrier(context)
+    if carrier is None:
+        return
+    p = carrier.mch_live
+    box = _section(layout, 'LIVE: ' + carrier.name, 'CURVE_BEZCURVE')
+    row = box.row(align=True)
+    row.operator('mch.path_handles_all', text='All Smooth', icon='HANDLE_AUTO').kind = 'AUTO'
+    row.operator('mch.path_handles_all', text='All Straight', icon='HANDLE_VECTOR').kind = 'VECTOR'
+    col = box.column(align=True)
+    col.prop(p, 'resolution')
+    if carrier.get('mch_role') in {'PANEL', 'CURVE'}:
+        col.prop(p, 'shape')
+        if p.shape == 'ROUND':
+            col.prop(p, 'profile_segments')
+        if p.shape == 'CUSTOM':
+            col.prop(p, 'custom_profile')
+        col.prop(p, 'width')
+        col.prop(p, 'depth')
+    else:
+        col.prop(p, 'spacing')
+        col.prop(p, 'array_scale')
+    col = box.column(align=True)
+    col.prop(p, 'rot_x')
+    col.prop(p, 'rot_y')
+    col.prop(p, 'rot_z')
+    col.prop(p, 'twist')
+    _hint(box, 'Tab on the path: click/double-click a point = Smooth <-> Straight')
+    box.operator('mch.bake_live', text='CONFIRM / APPLY', icon='CHECKMARK')
+
+
 def draw_draw(layout, context):
     s = context.scene.mch_settings
     layout.prop(s, 'path_draw_mode', expand=True)
+    layout.prop(s, 'path_point_type', expand=True)
     if s.path_draw_mode == 'FREE':
         layout.prop(s, 'path_sample_px')
     layout.prop(s, 'profile_shape')
@@ -235,8 +299,9 @@ def draw_draw(layout, context):
     op.shape = 'VECTOR'
     op = row.operator('mch.edit_handles', text='Smooth')
     op.shape = 'AUTOMATIC'
-    _hint(layout, 'Free: LMB drag | Polyline: LMB points', 'Shift+click: 45° | Enter/RMB: finish',
-          'Select path > Tab to move points')
+    _hint(layout, 'Free: LMB drag (smooth) | Polyline: LMB points', 'Click/double-click a point: Smooth <-> Straight',
+          'S: new point type | Shift+click: 45° | Enter/RMB: finish')
+    draw_live_curve_controls(layout, context)
 
 
 def draw_array(layout, context):
@@ -250,7 +315,9 @@ def draw_array(layout, context):
     op.kind = 'ARRAY'
     layout.prop(s, 'point_radius')
     layout.operator('mch.point_radius', text='Set Selected Point Size')
+    layout.prop(s, 'path_point_type', expand=True)
     _hint(layout, 'Path edit: G move / V handles')
+    draw_live_curve_controls(layout, context)
 
 
 def draw_edit(layout, context):
@@ -431,10 +498,46 @@ def draw_zbrush(layout, context):
           'then Tool > Export to the SAME file', 'Back here: Import Back')
 
 
+def draw_subd(layout, context):
+    from . import subd_plane
+    ob = subd_plane.active_subd(context)
+    row = layout.row()
+    row.scale_y = 1.4
+    row.operator('mch.subd_plane_create', icon='MESH_PLANE')
+    if ob is None:
+        p = context.scene.mch_subd
+        target = layout.box()
+        target.label(text='Settings for the next plane')
+        target.prop(p, 'size')
+        act = context.active_object
+        if act is not None and act.type == 'MESH':
+            layout.operator('mch.subd_adopt', icon='MODIFIER')
+    else:
+        p = ob.mch_subd
+        target = _section(layout, 'LIVE: ' + ob.name, 'MOD_SUBSURF')
+    col = target.column(align=True)
+    col.prop(p, 'simple_levels', slider=True)
+    col.prop(p, 'cc_levels', slider=True)
+    col = target.column(align=True)
+    col.prop(p, 'thickness')
+    col.prop(p, 'offset', slider=True)
+    col.prop(p, 'even_thickness')
+    col.prop(p, 'use_creases')
+    box = _section(layout, 'Edge Crease (Edit Mode)', 'EDGESEL')
+    box.prop(context.scene.mch_subd, 'crease_value', slider=True)
+    box.operator('mch.subd_set_crease', icon='EDGESEL')
+    if ob is not None:
+        row = layout.row()
+        row.scale_y = 1.3
+        row.operator('mch.subd_apply_all', icon='CHECKMARK')
+    _hint(layout, 'Simple and Catmull-Clark work together (two sliders)', 'Tab: Edit Mode, E: extrude edges',
+          'Order: Simple -> Catmull-Clark -> Solidify')
+
+
 DRAWERS = {
     'CUT': draw_cut, 'SPLIT': draw_split, 'BOOLEAN': draw_boolean, 'FUSE': draw_fuse,
     'MASK': draw_mask, 'DRAW': draw_draw, 'ARRAY': draw_array, 'EDIT': draw_edit,
     'LIBRARY': draw_library, 'REMESH': draw_remesh, 'POSE': draw_pose,
-    'BASE': draw_base, 'LOFT': draw_loft, 'ZBRUSH': draw_zbrush,
+    'BASE': draw_base, 'LOFT': draw_loft, 'ZBRUSH': draw_zbrush, 'SUBD': draw_subd,
     # MIRROR, RADIAL, SURFACE: own sub-panels.
 }

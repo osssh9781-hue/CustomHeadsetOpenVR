@@ -28,6 +28,7 @@ import bpy
 import gpu
 from bpy.props import EnumProperty
 from gpu_extras.batch import batch_for_shader
+from mathutils import Vector
 from mathutils.geometry import tessellate_polygon
 
 from . import core_geometry as cg
@@ -361,6 +362,73 @@ def _make_piece(target, mesh, suffix='_Split'):
 # -----------------------------------------------------------------------------
 
 
+def offset_loop(loop, d):
+    """Offset a closed 2D loop by ``d`` px to the right of its direction.
+
+    With the usual orientation (outlines CCW, holes CW) positive ``d`` grows
+    the filled region and negative ``d`` shrinks it.  Miter joins, with a
+    two-point bevel join at very sharp corners.
+    """
+    n = len(loop)
+    out = []
+    for i in range(n):
+        p0, p1, p2 = loop[i - 1], loop[i], loop[(i + 1) % n]
+        e1 = (p1[0] - p0[0], p1[1] - p0[1])
+        e2 = (p2[0] - p1[0], p2[1] - p1[1])
+        l1, l2 = math.hypot(*e1), math.hypot(*e2)
+        if l1 < 1e-9 or l2 < 1e-9:
+            continue
+        n1 = (e1[1] / l1, -e1[0] / l1)
+        n2 = (e2[1] / l2, -e2[0] / l2)
+        m = (n1[0] + n2[0], n1[1] + n2[1])
+        ml = math.hypot(*m)
+        cos_half = ml / 2.0
+        if ml < 1e-9 or cos_half < 0.35:      # very sharp corner: bevel join
+            out.append((p1[0] + n1[0] * d, p1[1] + n1[1] * d))
+            out.append((p1[0] + n2[0] * d, p1[1] + n2[1] * d))
+            continue
+        k = d / cos_half
+        out.append((p1[0] + m[0] / ml * k, p1[1] + m[1] / ml * k))
+    return out
+
+
+def pixels_per_unit(projector, targets):
+    """Screen pixels per model unit at the targets' centre depth (exact in ortho)."""
+    pts = cg.object_world_bounds(targets)
+    centre = sum(pts, Vector()) / len(pts)
+    v = projector.view_dir.orthogonal().normalized()
+    a, b = projector.to_screen(centre), projector.to_screen(centre + v)
+    if a is None or b is None:
+        raise cg.CutError('Targets are outside the view.')
+    return max(math.dist(a, b), 1e-9)
+
+
+def _gap_groups(groups, d):
+    loops = [offset_loop(lp, d) for outer, holes in groups for lp in [outer] + list(holes)]
+    try:
+        return cg.prepare_loops(loops)
+    except cg.CutError:
+        raise cg.CutError('Gap Width is too large for this outline (offset outline overlaps itself); '
+                          'use a smaller Gap Width or a simpler shape.')
+
+
+def _finish_side(cut, me, side, scale):
+    mode = getattr(cut, f'side_{side}_finish')
+    if mode == 'NONE':
+        return 0
+    return cg.finish_new_edges(me, mode, getattr(cut, f'side_{side}_width') / scale,
+                               getattr(cut, f'side_{side}_segments'), 0.5)
+
+
+def _side_report(cut, counts):
+    parts = []
+    for side, label in (('a', 'A'), ('b', 'B')):
+        mode = getattr(cut, f'side_{side}_finish')
+        if mode != 'NONE':
+            parts.append(f'{label} {mode.lower()}: {counts.get(side, 0)} edges')
+    return (' | ' + ', '.join(parts)) if parts else ''
+
+
 def perform_closed(context, mode, targets, loops, projector, invert=False):
     """Cut / Split all targets with closed screen loops. Returns a report string."""
     scene = context.scene
@@ -370,12 +438,29 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
     for t in targets:
         cg.check_target(t)
     near, far = _planes(context, targets, projector, [g[0] for g in groups])
-    cutter_mesh = cg.build_cutter_mesh(groups, projector, near, far, 'MCH_CutterMesh')
-    cutter = cg.link_temp_object(context, cutter_mesh)
+    gap = mode == 'SPLIT' and cut.split_mode == 'GAP' and cut.gap_width > 0
+    if gap and not auto_apply:
+        raise cg.CutError('Gap Split needs Auto Apply ON (live cutters support Normal Split only).')
+    cutter_out = None
+    if gap:
+        half_px = 0.5 * cut.gap_width * pixels_per_unit(projector, targets)
+        inner_groups = _gap_groups(groups, -half_px)
+        outer_groups = _gap_groups(groups, half_px)
+        cutter = cg.link_temp_object(context, cg.build_cutter_mesh(inner_groups, projector, near, far, 'MCH_GapIn'))
+        try:
+            cutter_out = cg.link_temp_object(
+                context, cg.build_cutter_mesh(outer_groups, projector, near, far, 'MCH_GapOut'))
+        except Exception:
+            cg.remove_object_and_mesh(cutter)
+            raise
+    else:
+        cutter_mesh = cg.build_cutter_mesh(groups, projector, near, far, 'MCH_CutterMesh')
+        cutter = cg.link_temp_object(context, cutter_mesh)
     if not auto_apply:
         return _make_live(context, mode, targets, cutter, invert)
     results, pieces, temp = [], [], []
     edge_counts = []
+    side_counts = {}
     try:
         for t in targets:
             scale = _object_scale(t)
@@ -391,13 +476,13 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
                 else:  # SPLIT
                     inner, _s1 = cg.boolean_result(context, t, cutter, 'INTERSECT', cut.solver, cut.hole_tolerant)
                     temp.append(inner)
-                    outer, _s2 = cg.boolean_result(context, t, cutter, 'DIFFERENCE', cut.solver, cut.hole_tolerant)
+                    outer, _s2 = cg.boolean_result(context, t, cutter_out or cutter, 'DIFFERENCE',
+                                                   cut.solver, cut.hole_tolerant)
                     temp.append(outer)
-                    for me in (inner, outer):
+                    # Side A = remaining original object, Side B = the new "_Split" piece.
+                    for me, side in ((outer, 'a'), (inner, 'b')):
                         if cut.split_cap:
-                            edge_counts.append(cg.finish_new_edges(
-                                me, cut.edge_finish, cut.finish_width / scale,
-                                cut.finish_segments, cut.finish_profile))
+                            side_counts[side] = side_counts.get(side, 0) + _finish_side(cut, me, side, scale)
                         else:
                             cg.strip_cutter_faces(me)
                     results.append((t, outer))
@@ -417,9 +502,12 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
             new_pieces.append(_make_piece(t, me))
         for p in new_pieces:
             p.select_set(True)
-        verb = {'CUT': 'Kept inside' if invert else 'Cut', 'SPLIT': 'Split'}[mode]
+        verb = {'CUT': 'Kept inside' if invert else 'Cut',
+                'SPLIT': ('Gap split' if gap else 'Split')}[mode]
         suffix = ''
-        if cut.edge_finish != 'NONE' and cut.finish_width > 0:
+        if mode == 'SPLIT':
+            suffix = _side_report(cut, side_counts) if cut.split_cap else ''
+        elif cut.edge_finish != 'NONE' and cut.finish_width > 0:
             if not edge_counts:
                 suffix = ' | Edge Finish skipped (uncapped or Live cut)'
             elif sum(edge_counts) == 0:
@@ -432,6 +520,7 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
             if me.users == 0:
                 bpy.data.meshes.remove(me)
         cg.remove_object_and_mesh(cutter)
+        cg.remove_object_and_mesh(cutter_out)
 
 
 def _make_live(context, mode, targets, cutter, invert):
@@ -495,6 +584,7 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
         side = (at(side_xy, near) - a_near).dot(normal) > 0
         results, pieces, temp = [], [], []
         line_bevel_counts = []
+        side_counts = {}
         try:
             for t in targets:
                 scale = _object_scale(t)
@@ -509,15 +599,16 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
                         results.append((t, me))
                     else:
                         cap = cut.split_cap and cut.line_cap
-                        keep = cg.plane_split_mesh(t, a_near, normal, True, cap)
+                        # Gap Split: two planes at +-gap/2 around the drawn line (centre kept).
+                        half = 0.5 * cut.gap_width if cut.split_mode == 'GAP' else 0.0
+                        keep = cg.plane_split_mesh(t, a_near - normal * half, normal, True, cap)
                         temp.append(keep)
-                        other = cg.plane_split_mesh(t, a_near, normal, False, cap)
+                        other = cg.plane_split_mesh(t, a_near + normal * half, normal, False, cap)
                         temp.append(other)
                         if cap:
-                            for me in (keep, other):
-                                line_bevel_counts.append(cg.finish_new_edges(
-                                    me, cut.edge_finish, cut.finish_width / scale,
-                                    cut.finish_segments, cut.finish_profile))
+                            for me, side in ((keep, 'a'), (other, 'b')):
+                                n = _finish_side(cut, me, side, scale)
+                                side_counts[side] = side_counts.get(side, 0) + n
                         results.append((t, keep))
                         pieces.append((t, other))
                 except cg.CutError as ex:
@@ -531,7 +622,9 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
                 temp.remove(me)
                 _make_piece(t, me).select_set(True)
             suffix = ''
-            if cut.edge_finish != 'NONE' and cut.finish_width > 0:
+            if mode == 'SPLIT':
+                suffix = _side_report(cut, side_counts) + (' | gap' if cut.split_mode == 'GAP' else '')
+            elif cut.edge_finish != 'NONE' and cut.finish_width > 0:
                 if not line_bevel_counts:
                     suffix = ' | Edge Finish skipped (cap disabled)'
                 elif sum(line_bevel_counts) == 0:

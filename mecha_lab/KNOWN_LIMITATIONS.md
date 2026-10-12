@@ -1,4 +1,4 @@
-# KNOWN LIMITATIONS — Mecha Lab 0.8.0
+# KNOWN LIMITATIONS — Mecha Lab 0.9.0
 
 ## A. 검증되지 않은 것 (가장 중요)
 **Windows 11 + Blender 5.0.2 GUI에서 실행된 적이 없습니다.** 모든 자동 테스트는 Linux headless `bpy 5.0.1`입니다.
@@ -31,8 +31,18 @@ headless에는 창·실제 이벤트가 없으므로 아래는 **GUI 미검증**
 - Mask: **면 단위**, Cut/Boolean 보호 없음, Weight/Pose 없음. Live Cut(Auto Apply OFF)에서는 Edge Finish 미적용.
   Smart Fuse는 실제로 겹친 닫힌 메쉬만.
 
+## B-2. 0.9.0 기능의 범위
+- Mesh Curve: Twist는 시작→끝 선형 누적(구간별 제어 없음). 경로에 기존 tilt가 있으면 더해짐. Rotation은 단면/복제본 기준.
+  Edit Mode 점 더블클릭 키맵은 Blender의 다른 Curve 더블클릭 동작보다 먼저 받음(Mecha 경로가 아니면 통과) — GUI 미검증.
+- SubD Plane: Crease는 선택 엣지에 값 쓰기만(전용 시각화 없음). Apply All은 Simple→CC→Solidify 순서만 적용하고 그 밖의
+  사용자 모디파이어는 남김.
+- Radial: Ring Rotation은 링 중심(3D 커서 위치에 놓인 캐리어 원점) 기준. 오브젝트 회전과 함께 쓰면 둘 다 적용됨.
+- Gap Split: Gap Width는 대상 중심 깊이에서 화면 픽셀로 환산 → **직교 뷰에서는 정확, 원근 뷰에서는 깊이에 따라 약간 다름**.
+  오목한 도형에서 Gap이 오목부보다 크면 거부. Live(Auto Apply OFF) 미지원.
+- Split 양쪽 마감은 Cap Split ON일 때만(캡 면이 없으면 '새 엣지'가 없음).
+
 ## C. 미구현
 - Base Mesh의 Surface Follow / Project.
 - GoZ 프로토콜, ZBrush 자동 작업(DynaMesh 등은 사용자가 ZBrush에서 직접).
 - Mask Protect / 정확 윤곽 / Weight Extract, Pose(Rigid/Soft), FBX/Asset Browser 커터, 사용자 키 설정 전용 UI,
-  Radial Array 개별 방향, Workspace 템플릿 .blend.
+  Workspace 템플릿 .blend. (Radial Array 개별 방향은 0.9.0에서 Copy Rotation / Rotate Each Copy로 구현.)

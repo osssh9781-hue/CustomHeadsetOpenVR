@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 8, 0),
+    "version": (0, 9, 0),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
     "description": "Cut, Split, Base Mesh, Boolean, Loft, ZBrush bridge, Smart Fuse, Mirror and arrays",
@@ -11,7 +11,7 @@ bl_info = {
 import bpy
 from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform, radial_array,
                mirror_tools, cut_presets, mask_tools, workspace_ui, ui_tool_settings,
-               base_mesh, loft_surface, zbrush_bridge)
+               base_mesh, loft_surface, zbrush_bridge, subd_plane)
 import os
 import re
 from pathlib import Path
@@ -209,6 +209,59 @@ def set_sweep_parameters(ob):
         custom.inputs['Scale'].default_value = (prop.width, prop.depth, 1.0)
 
 
+_MC_NODES = ('MCH_TWIST', 'MCH_PROFILE_ROT', 'MCH_INST_ROT')
+
+
+def _mesh_curve_nodes_ok(ob):
+    mod = find_gn(ob)
+    if not mod or not mod.node_group:
+        return None
+    nodes = mod.node_group.nodes
+    need = ('MCH_TWIST', 'MCH_PROFILE_ROT') if ob.get('mch_role') in {'PANEL', 'CURVE'} else ('MCH_TWIST', 'MCH_INST_ROT')
+    return nodes if all(nodes.get(n) for n in need) else None
+
+
+def set_mesh_curve_parameters(ob):
+    """Resolution / segments / rotation / twist of a live Mesh Curve (sweep or curve array).
+
+    Live objects made before v0.9 lack the twist/rotation nodes: their node
+    group is rebuilt once, then values are only written to node sockets.
+    """
+    p = ob.mch_live
+    role = ob.get('mch_role')
+    if p.path is not None and p.path.type == 'CURVE':
+        if p.path.data.resolution_u != p.resolution:
+            p.path.data.resolution_u = p.resolution
+    nodes = _mesh_curve_nodes_ok(ob)
+    if nodes is None:
+        mod = find_gn(ob)
+        if not mod or not p.path:
+            return
+        old = mod.node_group
+        if role in {'PANEL', 'CURVE'}:
+            mod.node_group = sweep_group(ob, p.path, p.custom_profile)
+        elif role == 'ARRAY' and p.source:
+            mod.node_group = array_group(ob, p.path, p.source)
+        else:
+            return
+        if old and old.users == 0:
+            bpy.data.node_groups.remove(old)
+        nodes = mod.node_group.nodes
+    nodes['MCH_TWIST'].inputs[1].default_value = p.twist
+    rot = nodes.get('MCH_PROFILE_ROT') or nodes.get('MCH_INST_ROT')
+    if rot is not None:
+        rot.inputs['Rotation'].default_value = (p.rot_x, p.rot_y, p.rot_z)
+    circle = nodes.get('MCH_CIRCLE')
+    if circle is not None and p.shape == 'ROUND':
+        circle.inputs['Resolution'].default_value = p.profile_segments
+
+
+def update_mesh_curve(self, context):
+    ob = self.id_data
+    if isinstance(ob, bpy.types.Object) and ob.type == 'MESH' and ob.get('mch_role') in {'PANEL', 'CURVE', 'ARRAY'}:
+        set_mesh_curve_parameters(ob)
+
+
 def update_live_dimensions(self, context):
     if self.id_data and self.id_data.type == 'MESH':
         if self.id_data.get('mch_role') in {'PANEL', 'CURVE'}:
@@ -227,6 +280,26 @@ def update_live_spacing(self, context):
             node.inputs['Length'].default_value = max(0.001, self.spacing)
         if scale:
             scale.inputs[1].default_value = max(0.001, self.array_scale)
+
+
+def _twisted_curve(group, curve_socket, twist):
+    """Curve -> Set Curve Tilt(existing tilt + factor * twist): total twist along the path."""
+    tilt = group.nodes.new('GeometryNodeSetCurveTilt')
+    tilt.name = 'MCH_TILT'
+    param = group.nodes.new('GeometryNodeSplineParameter')
+    base = group.nodes.new('GeometryNodeInputCurveTilt')
+    mul = group.nodes.new('ShaderNodeMath')
+    mul.operation = 'MULTIPLY'
+    mul.name = 'MCH_TWIST'
+    mul.inputs[1].default_value = twist
+    add = group.nodes.new('ShaderNodeMath')
+    add.operation = 'ADD'
+    group.links.new(param.outputs['Factor'], mul.inputs[0])
+    group.links.new(base.outputs['Tilt'], add.inputs[0])
+    group.links.new(mul.outputs['Value'], add.inputs[1])
+    group.links.new(add.outputs['Value'], tilt.inputs['Tilt'])
+    group.links.new(curve_socket, tilt.inputs['Curve'])
+    return tilt.outputs['Curve']
 
 
 def sweep_group(carrier, path, profile_ob=None):
@@ -251,7 +324,7 @@ def sweep_group(carrier, path, profile_ob=None):
     else:
         circle = group.nodes.new('GeometryNodeCurvePrimitiveCircle')
         circle.name = 'MCH_CIRCLE'
-        count = {'ROUND': 32, 'TRI': 3, 'HEX': 6, 'OCT': 8}.get(params.shape, 32)
+        count = {'ROUND': params.profile_segments, 'TRI': 3, 'HEX': 6, 'OCT': 8}.get(params.shape, 32)
         circle.inputs['Resolution'].default_value = count
         circle.inputs['Radius'].default_value = 1.0
         scale = group.nodes.new('GeometryNodeTransform')
@@ -260,10 +333,16 @@ def sweep_group(carrier, path, profile_ob=None):
         group.links.new(circle.outputs['Curve'], scale.inputs['Geometry'])
         profile_geometry = scale.outputs['Geometry']
 
+    rot = group.nodes.new('GeometryNodeTransform')
+    rot.name = 'MCH_PROFILE_ROT'
+    rot.inputs['Rotation'].default_value = (params.rot_x, params.rot_y, params.rot_z)
+    group.links.new(profile_geometry, rot.inputs['Geometry'])
+    profile_geometry = rot.outputs['Geometry']
+
     mesh = group.nodes.new('GeometryNodeCurveToMesh')
     mesh.name = 'MCH_SWEEP'
     mesh.inputs['Fill Caps'].default_value = True
-    group.links.new(path_node.outputs['Geometry'], mesh.inputs['Curve'])
+    group.links.new(_twisted_curve(group, path_node.outputs['Geometry'], params.twist), mesh.inputs['Curve'])
     group.links.new(profile_geometry, mesh.inputs['Profile Curve'])
     # Blender 4.5+ explicit scale replaces implicit use of curve point radius.
     if 'Scale' in mesh.inputs:
@@ -295,7 +374,7 @@ def array_group(carrier, path, source):
     points.name = 'MCH_POINTS'
     points.mode = 'LENGTH'
     points.inputs['Length'].default_value = p.spacing
-    group.links.new(curve.outputs['Geometry'], points.inputs['Curve'])
+    group.links.new(_twisted_curve(group, curve.outputs['Geometry'], p.twist), points.inputs['Curve'])
 
     source_info = object_info(group, source, 'MCH_SOURCE', relative=False)
     instances = group.nodes.new('GeometryNodeInstanceOnPoints')
@@ -311,6 +390,14 @@ def array_group(carrier, path, source):
     multiply.inputs[1].default_value = p.array_scale
     group.links.new(radius.outputs['Radius'], multiply.inputs[0])
     group.links.new(multiply.outputs['Value'], instances.inputs['Scale'])
+
+    # Rotation X/Y/Z of every placed copy in its own (curve-aligned) space.
+    inst_rot = group.nodes.new('GeometryNodeRotateInstances')
+    inst_rot.name = 'MCH_INST_ROT'
+    inst_rot.inputs['Rotation'].default_value = (p.rot_x, p.rot_y, p.rot_z)
+    inst_rot.inputs['Local Space'].default_value = True
+    group.links.new(instances.outputs['Instances'], inst_rot.inputs['Instances'])
+    instances = inst_rot
 
     # Keep array as lightweight instances while editing.  Only realize when
     # the user commits the result to a real mesh (or performs a mesh Boolean).
@@ -341,6 +428,8 @@ def make_live(context, path, kind, target=None, source=None):
     prop.depth = s.line_depth
     prop.spacing = s.array_spacing
     prop.array_scale = s.array_scale
+    if path.type == 'CURVE':
+        prop.resolution = path.data.resolution_u
 
     if kind in {'PANEL', 'CURVE'}:
         if s.profile_shape == 'CUSTOM':
@@ -383,6 +472,16 @@ class MCH_PG_Live(bpy.types.PropertyGroup):
     depth: FloatProperty(name='Depth', default=0.045, min=0.00001, precision=4, update=update_live_dimensions)
     spacing: FloatProperty(name='Spacing', default=0.28, min=0.001, precision=3, update=update_live_spacing)
     array_scale: FloatProperty(name='Global Size', default=1.0, min=0.001, update=update_live_spacing)
+    resolution: bpy.props.IntProperty(name='Curve Resolution', default=24, min=1, max=128, update=update_mesh_curve,
+        description='Samples per curve segment (smoothness of the path)')
+    profile_segments: bpy.props.IntProperty(name='Profile Segments', default=32, min=3, max=256,
+        update=update_mesh_curve, description='Segments of the round cross-section')
+    rot_x: FloatProperty(name='Rotation X', default=0.0, subtype='ANGLE', update=update_mesh_curve)
+    rot_y: FloatProperty(name='Rotation Y', default=0.0, subtype='ANGLE', update=update_mesh_curve)
+    rot_z: FloatProperty(name='Rotation Z', default=0.0, subtype='ANGLE', update=update_mesh_curve,
+        description='Sweep: rotates the cross-section. Array: rotates each copy in curve space')
+    twist: FloatProperty(name='Twist', default=0.0, subtype='ANGLE', update=update_mesh_curve,
+        description='Total twist from the start to the end of the curve')
 
 
 TOOL_ITEMS = tool_state.TOOL_ENUM_ITEMS
@@ -422,6 +521,9 @@ class MCH_PG_Settings(bpy.types.PropertyGroup):
     profile_preset: EnumProperty(name='Profile Preset', items=profile_items)
     profile_shape: EnumProperty(name='Section', items=_PROFILE_ITEMS, default='RECT')
     path_draw_mode: EnumProperty(name='Path Draw Mode',items=[('POLY','Polyline','Click control points; Shift snaps to 45 degrees'),('FREE','Free Draw','Hold LMB to draw sampled control points')],default='POLY')
+    path_point_type: EnumProperty(name='New Points', items=[
+        ('VECTOR', 'Straight', 'Sharp corners (VECTOR handles); click a point to make it smooth'),
+        ('AUTO', 'Smooth', 'Smooth curve through points (AUTO handles)')], default='VECTOR')
     path_sample_px: bpy.props.IntProperty(name='Free Draw Spacing (px)',default=10,min=3,max=100)
     line_width: FloatProperty(name='Width', default=0.035, min=0.00001, precision=4)
     line_depth: FloatProperty(name='Depth', default=0.045, min=0.00001, precision=4)
@@ -440,7 +542,8 @@ class MCH_PG_Settings(bpy.types.PropertyGroup):
         max=6.283185307179586, subtype='ANGLE')
     radial_phase: FloatProperty(name='Start Rotation', default=0.0, subtype='ANGLE')
     radial_scale: FloatProperty(name='Copy Size', default=1.0, min=0.001)
-    radial_follow: BoolProperty(name='Rotate Each Copy', default=True)
+    radial_follow: BoolProperty(name='Rotate Each Copy', default=False,
+        description='OFF (default): copies keep the source orientation. ON: copies turn along the ring')
     radial_hide_source: BoolProperty(name='Hide Original Source', default=True)
     delete_path_on_bake: BoolProperty(name='Remove path on confirm', default=True)
     fuse_mode: EnumProperty(name='Smart Fuse Method', items=[
@@ -975,23 +1078,33 @@ class MCH_OT_surface_cut(bpy.types.Operator):
 # -----------------------------------------------------------------------------
 
 
-class MCH_OT_draw_path(bpy.types.Operator):
-    bl_idname = 'mch.draw_path'
-    bl_label = 'Draw Editable Mecha Path'
-    bl_description = 'Click to place points; Enter/right click to finish; Esc to cancel. TAB edit later.'
-    bl_options = {'REGISTER', 'UNDO', 'BLOCKING'}
+def _path_ray(region, rv3d, xy):
+    return (view3d_utils.region_2d_to_origin_3d(region, rv3d, xy),
+            view3d_utils.region_2d_to_vector_3d(region, rv3d, xy))
 
-    kind: EnumProperty(items=[('PANEL', 'Panel line', ''), ('CURVE', 'Solid swept profile', ''), ('ARRAY', 'Curve array', '')])
-    _path = None
-    _target = None
-    _source = None
-    _points = 0
-    _window_region = None
-    _rv3d = None
 
-    @classmethod
-    def poll(cls, context):
-        return context.mode == 'OBJECT' and context.area and context.area.type == 'VIEW_3D'
+def _path_to_screen(region, rv3d, co):
+    p = view3d_utils.location_3d_to_region_2d(region, rv3d, co)
+    return None if p is None else (p.x, p.y)
+
+
+PATH_HIT_PX = 10.0
+
+
+def set_point_type(bp, kind):
+    """kind: 'VECTOR' (sharp corner) or 'AUTO' (smooth curve through the point)."""
+    bp.handle_left_type = kind
+    bp.handle_right_type = kind
+
+
+class PathDrawLogic:
+    """Mesh Curve drawing (Panel line / swept Curve / Curve Array path).
+
+    Polyline: each click adds a point with the current point type
+    (Straight = VECTOR, Smooth = AUTO; S toggles).  Clicking or double-clicking
+    an existing point toggles it Straight <-> Smooth while drawing.  Free Draw:
+    hold LMB, sampled points get AUTO handles so the result is a smooth curve.
+    """
 
     def invoke(self, context, event):
         # Sidebar invocations start in the UI region, not the 3D View WINDOW region.
@@ -1024,19 +1137,36 @@ class MCH_OT_draw_path(bpy.types.Operator):
         self._draw_down = False
         self._last_mouse_xy = None
         self._mode = context.scene.mch_settings.path_draw_mode
-        context.window.cursor_modal_set('CROSSHAIR')
-        context.area.header_text_set('MECHA DRAW — Free: drag / Poly: points (Shift 45deg) | Enter/RMB: finish | Esc: cancel')
+        self._ptype = context.scene.mch_settings.path_point_type
+        self._header(context)
+        try:
+            context.window.cursor_modal_set('CROSSHAIR')
+        except AttributeError:
+            pass
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
-    def _hit(self, context, event):
-        region, rv3d = self._window_region, self._rv3d
+    def _header(self, context):
+        try:
+            context.area.header_text_set(
+                'MESH CURVE | ' + ('Free: hold LMB' if self._mode == 'FREE' else 'Poly: click points (Shift 45°)') +
+                f' | New points: {"Smooth" if self._ptype == "AUTO" else "Straight"} (S) | '
+                'Click/double-click a point: Straight <-> Smooth | Enter/RMB: finish | Esc: cancel')
+        except (AttributeError, ReferenceError):
+            pass
+
+    def _region_xy(self, event):
+        region = self._window_region
         if not (region.x <= event.mouse_x < region.x + region.width and
                 region.y <= event.mouse_y < region.y + region.height):
             return None
-        point = (event.mouse_x - region.x, event.mouse_y - region.y)
-        ro = view3d_utils.region_2d_to_origin_3d(region, rv3d, point)
-        rd = view3d_utils.region_2d_to_vector_3d(region, rv3d, point)
+        return (event.mouse_x - region.x, event.mouse_y - region.y)
+
+    def _hit(self, context, event):
+        point = self._region_xy(event)
+        if point is None:
+            return None
+        ro, rd = _path_ray(self._window_region, self._rv3d, point)
         if self.kind == 'PANEL' and self._target:
             inverse = self._target.matrix_world.inverted_safe()
             origin_local = inverse @ ro
@@ -1045,19 +1175,40 @@ class MCH_OT_draw_path(bpy.types.Operator):
             if not hit:
                 return None
             return self._target.matrix_world @ pos
-        plane_normal = rv3d.view_rotation @ Vector((0, 0, 1))
+        plane_normal = self._rv3d.view_rotation @ Vector((0, 0, 1))
         return intersect_line_plane(ro, ro + rd * 100000, context.scene.cursor.location, plane_normal, False)
 
-    def _add(self, co):
+    def _bpoints(self):
+        return self._path.data.splines[0].bezier_points
+
+    def _add(self, co, kind=None):
         spline = self._path.data.splines[0]
         if self._points:
             spline.bezier_points.add(1)
         bp = spline.bezier_points[self._points]
         bp.co = co
-        bp.handle_left_type = 'VECTOR'
-        bp.handle_right_type = 'VECTOR'
+        set_point_type(bp, kind or self._ptype)
         bp.radius = 1.0
         self._points += 1
+        self._path.data.update_tag()
+
+    def _point_near(self, xy):
+        if xy is None:
+            return None
+        best, idx = PATH_HIT_PX, None
+        mw = self._path.matrix_world
+        for i, bp in enumerate(list(self._bpoints())[:self._points]):
+            p = _path_to_screen(self._window_region, self._rv3d, mw @ bp.co)
+            if p is None:
+                continue
+            d = ((p[0] - xy[0]) ** 2 + (p[1] - xy[1]) ** 2) ** 0.5
+            if d <= best:
+                best, idx = d, i
+        return idx
+
+    def toggle_point(self, index):
+        bp = self._bpoints()[index]
+        set_point_type(bp, 'VECTOR' if bp.handle_left_type == 'AUTO' else 'AUTO')
         self._path.data.update_tag()
 
     def _snapped_path_pos(self, co):
@@ -1065,37 +1216,54 @@ class MCH_OT_draw_path(bpy.types.Operator):
         if self._points == 0:
             return co
         from math import atan2, pi, cos, sin, hypot
-        last = self._path.data.splines[0].bezier_points[self._points-1].co
+        last = self._bpoints()[self._points - 1].co
         orient = self._rv3d.view_rotation
         right = orient @ Vector((1, 0, 0))
         up = orient @ Vector((0, 1, 0))
         delta = co - last
         a, b = delta.dot(right), delta.dot(up)
-        angle = round(atan2(b,a)/(pi/4)) * (pi/4)
-        radius = hypot(a,b)
-        guess = last + right*(cos(angle)*radius) + up*(sin(angle)*radius)
+        angle = round(atan2(b, a) / (pi / 4)) * (pi / 4)
+        radius = hypot(a, b)
+        guess = last + right * (cos(angle) * radius) + up * (sin(angle) * radius)
         if self.kind == 'PANEL' and self._target is not None:
-            # Reproject onto the mesh near the cursor to avoid leaving its surface.
             inv = self._target.matrix_world.inverted_safe()
             ok, loc, _normal, _face = self._target.closest_point_on_mesh(inv @ guess)
             if ok:
                 return self._target.matrix_world @ loc
         return guess
 
-    def _click_point(self, context, event):
+    def _click_point(self, context, event, kind=None):
         co = self._hit(context, event)
         if co is None:
             return False
         if event.shift and self._mode == 'POLY':
             co = self._snapped_path_pos(co)
-        self._add(co)
+        self._add(co, kind)
         self._last_mouse_xy = (event.mouse_x, event.mouse_y)
         return True
 
     def _cleanup(self, context):
-        context.window.cursor_modal_restore()
+        try:
+            context.window.cursor_modal_restore()
+        except AttributeError:
+            pass
         if context.area:
             context.area.header_text_set(None)
+
+    def _remove_last(self):
+        curve = self._path.data
+        old = curve.splines[0]
+        pts = [(bp.co.copy(), bp.radius, bp.handle_left_type) for bp in old.bezier_points][:self._points - 1]
+        curve.splines.remove(old)  # BezierSplinePoints has add() but no remove().
+        new = curve.splines.new('BEZIER')
+        if len(pts) > 1:
+            new.bezier_points.add(len(pts) - 1)
+        for bp, (co, radius, kind) in zip(new.bezier_points, pts):
+            bp.co = co
+            bp.radius = radius
+            set_point_type(bp, kind if kind in {'AUTO', 'VECTOR'} else 'VECTOR')
+        self._points = len(pts)
+        curve.update_tag()
 
     def modal(self, context, event):
         if event.type in {'ESC'} and event.value == 'PRESS':
@@ -1114,31 +1282,31 @@ class MCH_OT_draw_path(bpy.types.Operator):
                 remove_object(self._path)
                 self.report({'ERROR'}, 'Could not create live modifier: ' + str(ex))
                 return {'CANCELLED'}
-            self.report({'INFO'}, 'Live curve created. TAB = edit points, double click = round/sharp, confirm when ready.')
+            self.report({'INFO'}, 'Live curve created. Sidebar: Resolution, Rotation, Twist, Smooth/Straight.')
             return {'FINISHED'}
+        if event.type == 'S' and event.value == 'PRESS':
+            self._ptype = 'VECTOR' if self._ptype == 'AUTO' else 'AUTO'
+            self._header(context)
+            return {'RUNNING_MODAL'}
         if event.type == 'BACK_SPACE' and event.value == 'PRESS' and self._points > 1:
-            curve = self._path.data
-            old = curve.splines[0]
-            coords = [bp.co.copy() for bp in old.bezier_points][:self._points-1]
-            radii = [bp.radius for bp in old.bezier_points][:self._points-1]
-            curve.splines.remove(old)  # BezierSplinePoints has add() but no remove().
-            new = curve.splines.new('BEZIER')
-            if len(coords) > 1:
-                new.bezier_points.add(len(coords)-1)
-            for i, (co, radius) in enumerate(zip(coords, radii)):
-                pt = new.bezier_points[i]
-                pt.co = co; pt.radius = radius
-                pt.handle_left_type = 'VECTOR'
-                pt.handle_right_type = 'VECTOR'
-            self._points = len(coords)
-            curve.update_tag()
+            self._remove_last()
             return {'RUNNING_MODAL'}
         if event.type == 'LEFTMOUSE':
+            if event.value == 'DOUBLE_CLICK':
+                # Double-click a point (usually the one just placed): make it smooth/straight.
+                idx = self._point_near(self._region_xy(event))
+                if idx is not None:
+                    self.toggle_point(idx)
+                self._draw_down = False
+                return {'RUNNING_MODAL'}
             if event.value == 'PRESS':
                 if self._mode == 'FREE':
-                    self._draw_down = self._click_point(context, event)
+                    self._draw_down = self._click_point(context, event, 'AUTO')
                 else:
-                    if not self._click_point(context, event) and self.kind == 'PANEL':
+                    idx = self._point_near(self._region_xy(event))
+                    if idx is not None:
+                        self.toggle_point(idx)
+                    elif not self._click_point(context, event) and self.kind == 'PANEL':
                         self.report({'WARNING'}, 'Click directly on the active target mesh')
             elif event.value == 'RELEASE':
                 self._draw_down = False
@@ -1147,12 +1315,59 @@ class MCH_OT_draw_path(bpy.types.Operator):
             xy = (event.mouse_x, event.mouse_y)
             from math import dist
             if self._last_mouse_xy is None or dist(xy, self._last_mouse_xy) >= context.scene.mch_settings.path_sample_px:
-                self._click_point(context, event)
+                self._click_point(context, event, 'AUTO')
             return {'RUNNING_MODAL'}
         if event.type in {'MIDDLEMOUSE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
             return {'PASS_THROUGH'}
         return {'RUNNING_MODAL'}
 
+
+class MCH_OT_draw_path(PathDrawLogic, bpy.types.Operator):
+    bl_idname = 'mch.draw_path'
+    bl_label = 'Draw Editable Mecha Path'
+    bl_description = 'Click to place points (click a point = smooth/straight); Enter/right click to finish; Esc to cancel'
+    bl_options = {'REGISTER', 'UNDO', 'BLOCKING'}
+
+    kind: EnumProperty(items=[('PANEL', 'Panel line', ''), ('CURVE', 'Solid swept profile', ''), ('ARRAY', 'Curve array', '')])
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and context.area and context.area.type == 'VIEW_3D'
+
+
+class MCH_OT_path_handles_all(bpy.types.Operator):
+    bl_idname = 'mch.path_handles_all'
+    bl_label = 'All Points Smooth / Straight'
+    bl_description = 'Set every point of the active Mesh Curve path to Smooth (AUTO) or Straight (VECTOR), in Object Mode'
+    bl_options = {'REGISTER', 'UNDO'}
+    kind: EnumProperty(items=[('AUTO', 'Smooth', ''), ('VECTOR', 'Straight', '')], default='AUTO')
+
+    @staticmethod
+    def _path(context):
+        ob = context.active_object
+        if ob is None:
+            return None
+        if ob.type == 'CURVE' and ob.get('mch_path'):
+            return ob
+        live = getattr(ob, 'mch_live', None)
+        if live is not None and live.path is not None and live.path.type == 'CURVE':
+            return live.path
+        return None
+
+    @classmethod
+    def poll(cls, context):
+        return cls._path(context) is not None
+
+    def execute(self, context):
+        path = self._path(context)
+        count = 0
+        for sp in path.data.splines:
+            for bp in sp.bezier_points:
+                set_point_type(bp, self.kind)
+                count += 1
+        path.data.update_tag()
+        self.report({'INFO'}, f'{count} points set to {"Smooth" if self.kind == "AUTO" else "Straight"}')
+        return {'FINISHED'}
 
 
 class MCH_OT_edit_handles(bpy.types.Operator):
@@ -1478,7 +1693,7 @@ class MCH_MT_tool_menu(bpy.types.Menu):
 CLASSES = (
     MCH_PG_Live, MCH_PG_Settings, MCH_PG_Fuse,
     MCH_OT_fuse_create, MCH_OT_fuse_source, MCH_OT_fuse_confirm, MCH_OT_fuse_cancel,
-    MCH_OT_boolean, MCH_OT_slice, MCH_OT_surface_cut, MCH_OT_draw_path,
+    MCH_OT_boolean, MCH_OT_slice, MCH_OT_surface_cut, MCH_OT_draw_path, MCH_OT_path_handles_all,
     MCH_OT_edit_handles, MCH_OT_double_click, MCH_OT_point_radius,
     MCH_OT_bake_live, MCH_OT_save_asset, MCH_OT_insert_asset,
     MCH_OT_sculpt_move, MCH_OT_remesh,
@@ -1513,6 +1728,7 @@ def register():
     base_mesh.register()
     loft_surface.register()
     zbrush_bridge.register()
+    subd_plane.register()
     workspace_ui.register()
     for klass in SUB_PANELS:
         bpy.utils.register_class(klass)
@@ -1522,6 +1738,7 @@ def unregister():
     for klass in reversed(SUB_PANELS):
         bpy.utils.unregister_class(klass)
     workspace_ui.unregister()
+    subd_plane.unregister()
     zbrush_bridge.unregister()
     loft_surface.unregister()
     base_mesh.unregister()
