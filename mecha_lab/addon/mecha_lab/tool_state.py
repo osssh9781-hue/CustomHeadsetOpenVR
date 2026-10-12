@@ -19,6 +19,8 @@ WORKSPACE_TAG = 'mch_workspace'
 TOOLS = (
     ('CUT', 'Cut', 'Draw a shape to remove the inside (Alt: keep inside)', 'cut', 'MOD_BOOLEAN', 'mecha.cut', 'OK'),
     ('SPLIT', 'Split', 'Draw a shape to split the mesh into two solid parts', 'split', 'MOD_EDGESPLIT', 'mecha.split', 'OK'),
+    ('BASE', 'Base Mesh', 'Draw an outline to create a NEW solid (Flat / Chamfer / Bevel / Dome); RMB = profiles',
+     'base', 'MESH_CUBE', 'mecha.base_mesh', 'OK'),
     ('BOOLEAN', 'Boolean', 'Difference / Union / Intersect with a selected cutter mesh', 'boolean', 'MOD_BOOLEAN', None, 'OK'),
     ('FUSE', 'Smart Fuse', 'Union two overlapping meshes with a fillet/chamfer seam', 'fuse', 'MOD_BEVEL', None, 'PARTIAL'),
     ('MIRROR', 'Mirror', 'World / local / collection mirror', 'mirror', 'MOD_MIRROR', None, 'OK'),
@@ -27,6 +29,10 @@ TOOLS = (
     ('RADIAL', 'Radial Array', 'Radial copies around the 3D cursor + Boolean', 'radial', 'MOD_SCREW', None, 'OK'),
     ('DRAW', 'Panel / Curve', 'Panel line cuts and swept profile curves', 'panel', 'CURVE_BEZCURVE', None, 'OK'),
     ('POSE', 'Pose', 'Rigid / soft pose (not implemented yet)', 'pose', 'ARMATURE_DATA', None, 'TODO'),
+    ('LOFT', 'Loft / Surface', 'Smooth surface through 2+ curves, or sweep a profile along a path (live)',
+     'loft', 'SURFACE_DATA', None, 'PARTIAL'),
+    ('ZBRUSH', 'ZBrush Bridge', 'Send selected objects to ZBrush as OBJ files and import them back (not GoZ)',
+     'zbrush', 'EXPORT', None, 'PARTIAL'),
     ('SURFACE', 'Surface Conform', 'Snap / wrap a part onto a surface', 'surface', 'MOD_SHRINKWRAP', None, 'OK'),
     ('LIBRARY', 'Assets', 'Save / insert reusable mesh parts and profiles', 'assets', 'ASSET_MANAGER', None, 'OK'),
     ('REMESH', 'Remesh', 'Voxel remesh + smooth, sculpt Move', 'remesh', 'MOD_REMESH', None, 'OK'),
@@ -34,23 +40,25 @@ TOOLS = (
 )
 TOOL_BY_ID = {t[0]: t for t in TOOLS}
 NATIVE_TO_TOOL = {t[5]: t[0] for t in TOOLS if t[5]}
-SHAPE_TOOLS = {'CUT', 'SPLIT', 'MASK'}
+SHAPE_TOOLS = {'CUT', 'SPLIT', 'MASK', 'BASE'}
 
 # Enum numbers keep v0.5.9 values so saved .blend files map to the same tool.
 _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRAW': 6,
                  'ARRAY': 7, 'RADIAL': 8, 'SURFACE': 9, 'LIBRARY': 10, 'EDIT': 11,
-                 'REMESH': 12, 'SPLIT': 13, 'POSE': 14}
+                 'REMESH': 12, 'SPLIT': 13, 'POSE': 14, 'BASE': 15, 'LOFT': 16, 'ZBRUSH': 17}
 TOOL_ENUM_ITEMS = [(t[0], t[1], t[2], t[4], _ENUM_NUMBERS[t[0]]) for t in TOOLS]
 
 SHAPES = (
-    ('LASSO', 'Lasso', 'Click points to build any outline; Enter / double-click / first point closes. '
-     '2 points = straight line cut', 'lasso', 'GP_SELECT_POINTS'),
-    ('CURVE_LASSO', 'Curve Lasso', 'Lasso whose points can be rounded: click a point again to cycle '
-     'sharp > soft > medium > strong; drag points or handles', 'curve_lasso', 'CURVE_BEZCURVE'),
+    ('LASSO', 'Lasso', 'Straight-segment outline: click points (hold LMB to draw freely). '
+     'Double-click anywhere closes and applies. 2 points = straight line cut', 'lasso', 'GP_SELECT_POINTS'),
+    ('CURVE_LASSO', 'Curve Lasso', 'Smooth closed spline through control points from the start. '
+     'Click a point: sharp/smooth, drag points or Bezier handles. Double-click anywhere closes',
+     'curve_lasso', 'CURVE_BEZCURVE'),
     ('RECT', 'Rectangle', 'Drag a rectangle (Shift square, Ctrl from center)', 'rect', 'MESH_PLANE'),
     ('CIRCLE', 'Circle', 'Drag from center to radius', 'circle', 'MESH_CIRCLE'),
     ('ELLIPSE', 'Ellipse', 'Drag an ellipse box (Shift circle, Ctrl from center)', 'ellipse', 'MESH_UVSPHERE'),
-    ('STROKE', 'Brush Stroke', 'Drag a freehand outline; it closes automatically', 'stroke', 'GREASEPENCIL'),
+    ('STROKE', 'Free Draw', 'Hold LMB and draw continuously; release applies. Cut/Split/Base Mesh: closed '
+     'freehand outline. Mask: open brush stroke', 'stroke', 'GREASEPENCIL'),
     ('CUSTOM', 'Custom', 'Imported PNG vector shape: click = stamp, drag = size', 'custom', 'IMAGE_DATA'),
 )
 SHAPE_BY_ID = {s[0]: s for s in SHAPES}
@@ -102,12 +110,24 @@ class MCH_PG_Brush(bpy.types.PropertyGroup):
     shape: EnumProperty(name='Shape', items=SHAPE_ENUM_ITEMS, default='LASSO')
     circle_segments: IntProperty(name='Circle Segments', default=64, min=8, max=512,
                                  description='Real geometric resolution of circles/ellipses (not shading)')
-    curve_resolution: IntProperty(name='Corner Resolution', default=10, min=2, max=48,
-                                  description='Segments per rounded Curve Lasso corner')
-    stroke_spacing: FloatProperty(name='Stroke Spacing (px)', default=4.0, min=1.0, max=50.0)
+    curve_resolution: IntProperty(name='Curve Samples', default=12, min=2, max=64,
+                                  description='Samples per Curve Lasso span (between two control points)')
+    curve_smoothness: FloatProperty(name='Curve Smoothness', default=1.0, min=0.0, max=2.0,
+                                    description='Tangent length of automatic (Catmull-Rom) control points')
+    outline_corner: EnumProperty(name='Outline Corners', items=[
+        ('NONE', 'Sharp', 'Keep drawn corners'),
+        ('ROUND', 'Round', 'Round the corners of the 2D outline (Lasso / Rectangle)'),
+        ('CHAMFER', 'Chamfer', 'Straight-cut the corners of the 2D outline (Lasso / Rectangle)')],
+        default='NONE', description='2D shape option, separate from the 3D Edge Finish of the cut')
+    outline_radius: FloatProperty(name='Corner Size (px)', default=12.0, min=0.0, max=500.0)
+    outline_segments: IntProperty(name='Corner Segments', default=6, min=1, max=32)
+    stroke_smooth: IntProperty(name='Free Draw Smoothing', default=2, min=0, max=10,
+                               description='Smoothing passes applied to the drawn freehand path')
+    stroke_spacing: FloatProperty(name='Sample Spacing (px)', default=4.0, min=1.0, max=50.0,
+                                  description='Free Draw: a new sample every N pixels of mouse movement')
     mask_brush_radius: FloatProperty(name='Mask Brush Radius (px)', default=18.0, min=1.0, max=200.0,
                                      description='Pixel radius for Brush Stroke in Mask mode')
-    stroke_simplify: FloatProperty(name='Stroke Smoothing (px)', default=1.0, min=0.0, max=10.0,
+    stroke_simplify: FloatProperty(name='Simplify (px)', default=1.0, min=0.0, max=10.0,
                                    description='Removes mouse jitter from Brush Stroke outlines')
     custom_size: FloatProperty(name='Stamp Radius (px)', default=120.0, min=4.0, max=4000.0,
                                description='Screen radius used when the Custom shape is clicked without dragging')

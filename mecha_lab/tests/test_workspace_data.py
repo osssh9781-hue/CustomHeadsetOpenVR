@@ -38,6 +38,18 @@ ws[ts.WORKSPACE_TAG] = True
 check('tagged workspace detected (even if renamed)', ts.is_mecha_workspace(ws) and ts.find_mecha_workspace() == ws)
 del ws[ts.WORKSPACE_TAG]
 
+# v0.7.1 Ortho Lock preserved (data level)
+area3d = next(a for a in layout.areas if a.type == 'VIEW_3D')
+area3d.spaces.active.region_3d.view_perspective = 'PERSP'
+wui._force_ortho(area3d)
+check('Ortho Lock forces ORTHO on a 3D view', area3d.spaces.active.region_3d.view_perspective == 'ORTHO')
+check('Ortho Lock operator registered', hasattr(bpy.types, 'MCH_OT_ortho_lock'))
+bpy.data.workspaces['Layout'][wui._ORTHO_LOCK_KEY] = True
+wui._ortho_on_load()
+check('Ortho Lock timer re-armed when a locked file is loaded', bpy.app.timers.is_registered(wui._ortho_watchdog))
+del bpy.data.workspaces['Layout'][wui._ORTHO_LOCK_KEY]
+bpy.app.timers.unregister(wui._ortho_watchdog)
+
 kc = bpy.context.window_manager.keyconfigs.addon
 items = [(km.name, ki.idname, ki.type) for km in kc.keymaps for ki in km.keymap_items if ki.idname.startswith('mch.')]
 check('addon keymap: Space -> mch.space_tools (gated)', ('3D View', 'mch.space_tools', 'SPACE') in items, items)

@@ -1,100 +1,70 @@
-# Mecha Lab 0.7.0 (MVP) — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.8.0 — 설치 · MECHA LAB Workspace · 사용법
 
-> **검증 수준 먼저:** 이 버전은 Linux의 headless Blender **5.0.1** `bpy`에서 등록·기하·이벤트 상태머신·ZIP 설치까지
-> 자동 테스트(358개 항목)를 통과했습니다. **Windows 11 + Blender 5.0.2 GUI에서는 아직 한 번도 실행되지 않았습니다.**
-> Workspace 생성, 실제 마우스/키 입력, 팝업, 툴헤더 팔레트 표시는 `GUI_TEST_CHECKLIST_KO.md`로 확인이 필요합니다.
-> 자세한 구분은 `test_report.md`, 남은 문제는 `KNOWN_LIMITATIONS.md`를 보세요.
+> **검증 수준:** Linux headless Blender **5.0.1**(`bpy`)에서 자동 테스트 12개 파일 / 544개 항목이 통과했습니다.
+> **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** 실제 마우스/키 입력, 팝업, Workspace 생성은
+> `GUI_TEST_CHECKLIST_KO.md`로 확인이 필요합니다. 상태 구분은 `test_report.md`, 한계는 `KNOWN_LIMITATIONS.md`.
 
-버전 번호 0.7.0은 미검증 초안 v0.6.0과 혼동하지 않기 위해 건너뛴 번호입니다. 기준 소스는 배포본 v0.5.9입니다.
+기준 소스: ChatGPT v0.7.2 (Claude v0.7.0 → ChatGPT v0.7.1 / v0.7.2). 독립 Curve Tool(Panel / Curve)은 수정하지 않았습니다.
 
 ## 1. 설치
+1. 기존 Mecha Lab을 비활성화·제거 (Edit > Preferences > Add-ons).
+2. Get Extensions > ▾ > **Install from Disk…** → `dist/mecha_lab-0.8.0.zip` (압축 풀지 말 것).
+3. 설치만으로는 어떤 Workspace도 바뀌지 않습니다.
 
-1. Blender에서 기존 Mecha Lab(0.5.x)을 **비활성화 후 제거**합니다 (Edit > Preferences > Add-ons).
-2. Edit > Preferences > Get Extensions > 오른쪽 위 ▾ > **Install from Disk…** → `dist/mecha_lab-0.7.0.zip`.
-3. 설치하면 자동 활성화됩니다. 이 단계에서는 **어떤 Workspace도 생성/변경되지 않습니다.**
+## 2. MECHA LAB Workspace
+N 사이드바 > Mecha Lab > `Open MECHA LAB Workspace` (또는 탭 메뉴 / F3). 현재 탭을 복제해 새 탭을 만들고,
+왼쪽 도구 목록 · 뷰포트 왼쪽 위 공통 Shape 팔레트 · 오른쪽 현재 도구 설정 구성을 만듭니다. 다른 탭과 Startup File은
+건드리지 않습니다(Startup 저장은 확인 창이 있는 별도 버튼).
 
-요구 버전: Blender 4.5 이상(Manifold Boolean solver 사용). 실제 테스트는 5.0.1(headless)만 했습니다.
+도구 목록: **Cut, Split, Base Mesh**, Boolean, Smart Fuse, Mirror, Mask, Curve Array, Radial Array, Panel/Curve,
+Pose(미구현 표시), **Loft / Surface, ZBrush Bridge**, Surface Conform, Assets, Remesh, Live Result.
+`Space` = 큰 아이콘 도구 메뉴(MECHA LAB 탭에서만). Sidebar의 접힌 `Tools (fallback list)`도 항상 있습니다.
 
-## 2. MECHA LAB Workspace 만들기 / 열기
-
-다음 중 하나를 누르면 **현재 .blend 파일 안에** `MECHA LAB` 탭이 생기고 그 탭으로 이동합니다.
-
-- 3D 뷰포트 `N` 사이드바 > **Mecha Lab** 탭 > `Open MECHA LAB Workspace`
-- 상단 Workspace 탭 위에서 우클릭(또는 탭 메뉴) > `Open MECHA LAB Workspace`
-- `F3` 검색 > "Open MECHA LAB Workspace"
-
-동작 방식: 현재 Workspace를 **복제**해 새 탭을 만들고(기존 탭은 그대로), 새 탭의 3D 뷰에서 Toolbar·Tool Header·Sidebar를
-켜고, 왼쪽에 좁은 Properties 영역(Tool 탭)을 분할해 큰 아이콘 도구 목록을 넣습니다. 이미 있으면 그 탭으로 이동만 합니다.
-
-- 다른 .blend 파일에서도 쓰려면: 그 파일에서 다시 버튼을 누르거나, 원할 때만 Sidebar > Mecha Lab > `Workspace & Hotkeys` >
-  `Save Current Layout as Startup File`(확인 창이 뜸, **Startup File을 덮어씀**). 되돌리기: File > Defaults > Load Factory Settings.
-- 레이아웃이 깨졌을 때: `Workspace & Hotkeys` > `Repair MECHA LAB Layout`.
-- 탭을 지우려면 탭 우클릭 > Delete. 애드온은 탭이 없어도 정상 동작합니다.
-
-## 3. 화면 구성
-
-```
-[Layout] [Modeling] ... [MECHA LAB]
-┌ 왼쪽 도구 목록 ┬ 뷰포트 왼쪽 위: 공통 Shape 팔레트 ───────────────┬ 오른쪽 Sidebar ┐
-│ Cut            │ [Lasso][Curve Lasso][Rectangle][Circle][Ellipse] │ 현재 도구 1개의 │
-│ Split          │ [Brush Stroke] [PNG 썸네일▾][Custom][Import]     │ 설정만 표시     │
-│ Boolean        ├─────────────────────────────────────────────────┤ (Depth, Edge    │
-│ Smart Fuse     │                3D VIEWPORT                       │  Finish, ...)   │
-│ Mirror  ...    │  (T 툴바에도 Mecha Cut / Split / Mask 아이콘)     │                 │
-└────────────────┴─────────────────────────────────────────────────┴─────────────────┘
-```
-
-- **왼쪽 도구 목록**: 큰 아이콘 + 이름. 같은 목록이 `Space` 팝업, 그리고 Sidebar의 접힌 `Tools (fallback list)` 패널에도 있습니다.
-  (왼쪽 영역이 GUI에서 안 보이면 이 두 경로로 모든 도구를 쓸 수 있습니다.)
-- **Shape 팔레트**: Cut / Split / Mask가 공유. 그 외 도구(Boolean 등)에서는 회색으로 비활성 + 안내 문구.
-- **오른쪽**: 선택한 도구의 설정만. Cut과 Split은 별도 도구입니다.
-
-## 4. Cut / Split 조작
-
-Cut·Split·Mask는 Blender 네이티브 도구(WorkSpaceTool)입니다. 획과 획 사이에는 아무 모달도 돌지 않으므로 메뉴·사이드바·
-다른 에디터 클릭, `Ctrl+Z`가 평소 Blender처럼 동작합니다. **컷 1번 = Undo 1단계**입니다.
-
+## 3. 공통 입력 규칙 (Cut / Split / Mask / Base Mesh)
 | 입력 | 동작 |
 |---|---|
-| LMB (뷰포트) | 현재 Shape로 획 시작. 대상: 활성 메쉬(없으면 커서 아래 메쉬) |
-| Lasso / Curve Lasso | 클릭으로 점 추가, `Enter` 또는 더블클릭 또는 첫 점 클릭 = 적용 |
-| Lasso 2점 + Enter | 직선 컷: 지울 쪽을 클릭(Alt+클릭 = 그쪽 유지). Split은 바로 양분 |
-| Curve Lasso | 찍은 점을 다시 클릭 = 직각→약→중→강→직각 라운드, 점/핸들 드래그 |
-| Rectangle / Circle / Ellipse | 드래그 후 놓으면 적용 (Shift 정사각/원, Ctrl 중심에서) |
-| Brush Stroke | 드래그로 자유 외곽선, 놓으면 자동으로 닫혀 적용 |
-| Custom (PNG) | 클릭 = Stamp Radius 크기로 찍기, 드래그 = 크기 지정 |
-| `Alt` | Cut: 안쪽 유지(바깥 제거) / Mask: 지우기 |
-| `Shift` | 45° 스냅 |
-| `Backspace`, `Ctrl+Z` (획 중) | 마지막 점 취소 · `Ctrl+Shift+Z` 다시 |
-| `Ctrl+Z` (획 밖) | 마지막 컷 전체 Undo (Blender 기본) |
-| `Esc` | 그리던 획만 취소, 도구 유지 |
-| `F` | Lasso를 열린 선(가로지르는 컷)으로 전환 |
-| RMB 1번 | Shape / PNG 썸네일 팝업 (더블클릭 간격만큼 기다린 뒤 열림) |
-| RMB 더블클릭 | 도구 종료(Select Box로 전환) |
-| `Space` | 큰 아이콘 도구 메뉴 (MECHA LAB 탭에서만) |
+| LMB | 현재 Shape로 획 시작 |
+| **더블클릭 (어디서든)** | Lasso/Curve Lasso를 마지막 점 → 시작점으로 자동으로 닫고 적용. 점을 추가하지 않음 |
+| Enter / 첫 점 클릭 | 닫고 적용 |
+| **Esc** | 미완성 획을 버리고 **Blender 선택 도구(Select Box)로 복귀**. 이미 적용된 컷은 유지 |
+| **같은 자리 빠른 좌클릭 3회** | 2번째 = 확정, 3번째 = 선택 도구 복귀 (점 편집 클릭은 세지 않음) |
+| RMB 1번 | Cut/Split/Mask: Shape·PNG 팝업 / **Base Mesh: 단면 프로필 팝업** |
+| RMB 더블 | 도구 종료 |
+| Ctrl+Z | 획 중: 마지막 점 / 획 밖: 컷 하나 = Undo 한 단계 |
+| Backspace · Ctrl+Shift+Z | 점 삭제 · 점 복구 |
+| Shift / Alt / F | 45° 스냅 / 반전(안쪽 유지·마스크 지우기) / Lasso 열린 선 |
 
-설정(오른쪽): Depth `Through All` / `From Surface`(+깊이), Targets Active/Selected, Auto Apply(OFF = 편집 가능한 와이어 커터 +
-라이브 Boolean, `Apply Live Cut`으로 확정), Split의 Cap, **Edge Finish Off/Bevel/Chamfer — 새로 잘린 엣지에만 적용**,
-Advanced(Solver, Hole Tolerant, Shared Mesh 정책, 2점 평면 컷).
+## 4. 공통 Shape 팔레트
+- **Lasso**: 클릭으로 직선 다각형. LMB를 누른 채 끌면 그 구간은 자유곡선으로 그려집니다. 2점 + Enter = 직선 컷.
+- **Curve Lasso**: 처음부터 매끄러운 닫힌 스플라인(Catmull-Rom/Bezier). 점 클릭 = 각진 점 ↔ 부드러운 점,
+  점·Bezier 핸들 드래그, `Curve Samples`/`Curve Smoothness`.
+- **Free Draw**: LMB를 누른 채 연속으로 그리고 놓으면 적용(간격·스무딩·단순화 옵션). Cut/Split/Base Mesh =
+  닫힌 자유 외곽선, Mask = 열린 브러시 스트로크(v0.7.2 그대로).
+- Rectangle / Circle / Ellipse / PNG Custom.
+- **Outline Corners (Lasso/Rectangle)**: 2D 도형 모서리 라운드/챔퍼. 컷된 3D 엣지의 **Edge Finish와 별개 설정**입니다.
 
-공유 메쉬(Alt+D): 기본은 `This Object Only`(이 오브젝트만 단일 사용자로 만들어 자름, 다른 복제본은 그대로).
-`All Linked Copies`를 고르면 공유 데이터 자체를 바꿔 모든 복제본이 함께 잘립니다.
+## 5. Base Mesh (새 입체 생성)
+Base Mesh 도구 → Shape 선택 → 뷰포트에 윤곽을 그리면 **새 오브젝트**가 생깁니다(원본은 그대로).
+윤곽 아래 표면이 있으면 그 표면 위, 없으면 3D 커서 위치에 뷰와 마주보는 평면으로 놓입니다.
+RMB = 프로필 팝업: **Flat · Chamfer · Bevel · Rounded/Dome**. Dome은 경계에서 안쪽으로 부푸는 높이장(bevel 아님),
+Roundness / Height / Edge Height / Resolution. 선택한 Base Mesh는 Live라서 오른쪽에서 값을 바꾸면 다시 만들어지고,
+`Freeze Base Mesh`로 일반 메쉬가 됩니다.
 
-## 5. 단축키 범위
+## 6. Loft / Surface
+- **Loft**: 커브 2개 이상 선택 → `Create Loft Surface` (활성 커브부터 가까운 순서). 커브를 고치면 표면이 자동 갱신.
+  Curve Samples, Surface Segments, Smoothness(0=직선 / 1=부드러움), Thickness, Cap Ends, Flip Normals, Auto Align,
+  Twist, Close Loft, 섹션 순서/개별 Reverse. `Apply Surface`로 확정.
+- **Sweep**: 커브 2개 선택(활성 = 경로, 다른 것 = 단면).
+- CAD의 수학적 NURBS 패치가 아니라 **보간된 폴리곤 표면**입니다.
 
-- `Space`(도구 메뉴), `B`(Boolean Difference), `C`(Cut 도구)는 **MECHA LAB Workspace 안에서만** 동작합니다.
-  다른 탭에서는 Blender 원래 기능(재생/박스 선택/원 선택 등)이 그대로 실행됩니다.
-- Preferences > Add-ons > Mecha Lab에서 Space 메뉴, B/C 단축키를 각각 끌 수 있습니다. 키 변경은 Preferences > Keymap에서 "mch." 검색.
-- 애드온을 끄면 모든 Mecha 단축키가 제거됩니다(테스트로 확인).
+## 7. ZBrush Bridge (OBJ, GoZ 아님)
+선택한 메쉬마다 OBJ 하나씩 내보냅니다(**자동 Join 안 함**). ZBrush에서 Tool > Import → 작업(DynaMesh 등 직접) →
+Tool > Export **같은 파일 이름으로** → Blender에서 `Import Back`. 바뀐 파일만 원래 오브젝트의 메쉬를 교체합니다
+(변환·모디파이어·재질 슬롯 유지, 이전 메쉬는 `<이름>_preZBrush`로 보관). 축/스케일은 오른쪽 패널에서 조정.
 
-## 6. PNG Custom Cut Shape
+## 8. 그 밖의 기존 기능
+Cut/Split(Edge Finish = 새 절단 엣지만), Boolean, PNG Custom Shape, Alt+D 공유 메쉬 정책, Smart Fuse(제한),
+Mirror, Arrays, Surface Conform, Mask(면 단위, v0.7.2 레이캐스트), **Ortho Lock(v0.7.1, 파일을 다시 열어도 유지)**.
 
-`Import PNG`(팔레트 또는 Shape 팝업) → 흰 글자/검정 배경은 `White / Bright`, 투명 PNG는 `Alpha Channel`.
-Threshold, Invert, Simplify, Smooth Steps, Remove Specks 조절. 프리셋은 Blender 사용자 설정 폴더
-`mecha_lab/cut_shapes/`에 저장되어 모든 .blend에서 보입니다. v0.5.9에서 만든 프리셋은 그대로 읽히며,
-겹치는 윤곽이 있으면 저장된 원본 PNG에서 자동으로 다시 벡터화합니다.
-
-## 7. 제거
-
-Preferences > Add-ons > Mecha Lab > Remove. 생성된 MECHA LAB 탭은 .blend 안에 남아 있을 수 있으니 필요하면 탭을 지우세요.
-Startup File을 저장하지 않았다면 다른 파일에는 아무 흔적이 남지 않습니다.
+## 9. 제거
+Preferences > Add-ons > Mecha Lab > Remove. 만든 MECHA LAB 탭은 .blend 안에 남을 수 있습니다.

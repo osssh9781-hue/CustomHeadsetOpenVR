@@ -1,8 +1,8 @@
 schema_version = "1.0.0"
 id = "mecha_lab"
-version = "0.7.2"
+version = "0.8.0"
 name = "Mecha Lab"
-tagline = "MECHA LAB workspace: Cut, Split, Boolean, Fuse, Mirror"
+tagline = "MECHA LAB workspace: Cut, Split, Base Mesh, Loft, ZBrush bridge"
 maintainer = "Mecha Lab project"
 type = "add-on"
 tags = ["Modeling"]
@@ -10,6 +10,6 @@ tags = ["Modeling"]
 blender_version_min = "4.5.0"
 license = ["SPDX:GPL-3.0-or-later"]
 [permissions]
-files = "Read and write user-saved mesh, curve and PNG cut shape presets"
+files = "Read and write presets, PNG cut shapes and ZBrush exchange OBJ files"
 [build]
 paths_exclude_pattern = ["__pycache__/", "*.pyc"]

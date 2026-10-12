@@ -130,6 +130,14 @@ def _ensure_ortho_timer():
         bpy.app.timers.register(_ortho_watchdog, first_interval=_ORTHO_REFRESH)
 
 
+@bpy.app.handlers.persistent
+def _ortho_on_load(_dummy=None):
+    """Re-arm the Ortho Lock after opening a file saved with the lock ON
+    (v0.7.2 only started the timer when the button was pressed)."""
+    if any(ws.get(_ORTHO_LOCK_KEY, False) for ws in bpy.data.workspaces):
+        _ensure_ortho_timer()
+
+
 class MCH_OT_ortho_lock(bpy.types.Operator):
     bl_idname = 'mch.ortho_lock'
     bl_label = 'Orthographic Lock (No Perspective)'
@@ -203,8 +211,11 @@ def _tool_keymap(mode):
     return (
         ('mch.cut_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'any': True},
          {'properties': [('mode', mode)]}),
-        ('mch.rmb_gate', {'type': 'RIGHTMOUSE', 'value': 'PRESS'}, None),
+        ('mch.rmb_gate', {'type': 'RIGHTMOUSE', 'value': 'PRESS'},
+         {'properties': [('popup', 'PROFILE' if mode == 'BASE' else 'SHAPE')]}),
         ('mch.space_tools', {'type': 'SPACE', 'value': 'PRESS'}, None),
+        # Esc with no stroke pending: back to Blender's Select Box tool.
+        ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),
     )
 
 
@@ -257,7 +268,22 @@ class MCH_TOOL_mask(bpy.types.WorkSpaceTool):
         _draw_tool_settings(context, layout, tool)
 
 
-NATIVE_TOOLS = (MCH_TOOL_cut, MCH_TOOL_split, MCH_TOOL_mask)
+class MCH_TOOL_base_mesh(bpy.types.WorkSpaceTool):
+    bl_space_type = 'VIEW_3D'
+    bl_context_mode = 'OBJECT'
+    bl_idname = 'mecha.base_mesh'
+    bl_label = 'Mecha Base Mesh'
+    bl_description = ('Draw an outline to create a NEW solid (original meshes untouched).\n'
+                      'RMB: Flat / Chamfer / Bevel / Dome profiles, RMB double-click or Esc: exit')
+    bl_icon = 'ops.mesh.primitive_cube_add_gizmo'
+    bl_widget = None
+    bl_keymap = _tool_keymap('BASE')
+
+    def draw_settings(context, layout, tool):
+        _draw_tool_settings(context, layout, tool)
+
+
+NATIVE_TOOLS = (MCH_TOOL_cut, MCH_TOOL_split, MCH_TOOL_mask, MCH_TOOL_base_mesh)
 
 
 def register_native_tools():
@@ -267,6 +293,7 @@ def register_native_tools():
     bpy.utils.register_tool(MCH_TOOL_cut, separator=True, group=False)
     bpy.utils.register_tool(MCH_TOOL_split, after={MCH_TOOL_cut.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_mask, after={MCH_TOOL_split.bl_idname}, group=False)
+    bpy.utils.register_tool(MCH_TOOL_base_mesh, after={MCH_TOOL_mask.bl_idname}, group=False)
     _tools_registered = True
 
 
@@ -390,7 +417,7 @@ def draw_shape_palette(self, context):
     op.preset = ''
     sub.operator('mch.import_cut_png', text='', icon='IMPORT')
     if tool not in ts.SHAPE_TOOLS:
-        layout.label(text='Shapes: Cut / Split / Mask only')
+        layout.label(text='Shapes: Cut / Split / Mask / Base Mesh only')
     # Always visible next to the shared shapes in the Mecha workspace.
     draw_ortho_button(layout.row(align=True), context, text='Ortho')
     layout.separator_spacer()
@@ -827,7 +854,50 @@ class MCH_PT_shape_popup(bpy.types.Panel):
         layout.separator()
         layout.label(text='Custom PNG Shapes', icon='IMAGE_DATA')
         draw_custom_grid(layout, context, columns=4, scale=2.6)
-        layout.label(text='RMB double-click in the viewport exits the tool')
+        layout.label(text='RMB double-click or Esc in the viewport exits the tool')
+
+
+def draw_profile_grid(layout, context, columns=4, scale=3.0):
+    from . import base_mesh
+    current = context.scene.mch_base.profile
+    live = base_mesh.active_live_base(context)
+    if live is not None:
+        current = live.mch_base.profile
+    grid = layout.grid_flow(row_major=True, columns=columns, even_columns=True, even_rows=True, align=False)
+    for pid, label, desc, stem, fallback in base_mesh.PROFILES:
+        box = grid.box()
+        col = box.column(align=True)
+        iid = icon_id(stem)
+        if iid:
+            col.template_icon(icon_value=iid, scale=scale)
+        kw = {} if iid else {'icon': fallback}
+        op = col.operator('mch.set_profile', text=label, depress=(pid == current), **kw)
+        op.profile = pid
+
+
+class MCH_PT_profile_popup(bpy.types.Panel):
+    """RMB in the Base Mesh tool: section profile presets."""
+    bl_idname = 'MCH_PT_profile_popup'
+    bl_label = 'MECHA LAB | Base Mesh Profile'
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'HEADER'
+    bl_ui_units_x = 24
+
+    @classmethod
+    def poll(cls, context):
+        return hasattr(context.scene, 'mch_base')
+
+    def draw(self, context):
+        from . import base_mesh
+        layout = self.layout
+        live = base_mesh.active_live_base(context)
+        layout.label(text='BASE MESH PROFILE' + (f'  |  editing {live.name}' if live else '  |  next shape'),
+                     icon='MESH_CUBE')
+        draw_profile_grid(layout, context, columns=4, scale=3.0)
+        layout.separator()
+        layout.label(text='Shape (shared palette)', icon='SELECT_SET')
+        draw_shape_grid(layout, context, columns=6, scale=1.6)
+        layout.label(text='RMB double-click or Esc in the viewport exits the tool')
 
 
 class MCH_AddonPreferences(bpy.types.AddonPreferences):
@@ -851,6 +921,7 @@ CLASSES = (
     MCH_OT_workspace_open, MCH_OT_workspace_repair, MCH_OT_workspace_save_startup,
     MCH_OT_set_tool, MCH_OT_set_shape, MCH_OT_space_tools, MCH_OT_hotkey, MCH_OT_ortho_lock,
     MCH_PT_tools, MCH_PT_main, MCH_PT_workspace, MCH_PT_tool_list, MCH_PT_tool_popup, MCH_PT_shape_popup,
+    MCH_PT_profile_popup,
 )
 
 
@@ -888,9 +959,14 @@ def register():
     if hasattr(bpy.types, 'TOPBAR_MT_workspace_menu'):
         bpy.types.TOPBAR_MT_workspace_menu.append(draw_workspace_menu)
     register_keymaps()
+    if _ortho_on_load not in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(_ortho_on_load)
+    _ortho_on_load()
 
 
 def unregister():
+    if _ortho_on_load in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(_ortho_on_load)
     if bpy.app.timers.is_registered(_ortho_watchdog):
         bpy.app.timers.unregister(_ortho_watchdog)
     unregister_keymaps()

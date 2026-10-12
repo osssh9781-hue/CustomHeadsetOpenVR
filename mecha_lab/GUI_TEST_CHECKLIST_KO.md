@@ -1,11 +1,11 @@
-# GUI 수용 테스트 체크리스트 — Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.8.0 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
 
 ## 0. 설치
-- [ ] 0.5.x 제거 후 `mecha_lab-0.7.0.zip` Install from Disk → 오류 없이 활성화
+- [ ] 이전 버전 제거 후 `mecha_lab-0.8.0.zip` Install from Disk → 오류 없이 활성화
 - [ ] 설치 직후 상단 탭 목록이 변하지 않음 (MECHA LAB 탭이 자동으로 생기지 않음)
 
 ## 1. Workspace
@@ -27,14 +27,21 @@ Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전�
 ## 3. Cut (큐브 하나)
 - [ ] Rectangle 선택 → 큐브 위 드래그 → 놓자마자 구멍. 도구 유지
 - [ ] 연속 3번 컷 → `Ctrl+Z` 3번이 컷을 하나씩 되돌림, `Ctrl+Shift+Z`로 다시
-- [ ] Lasso: 점 4개 클릭 → 더블클릭 → 적용. 마지막 점이 두 번 찍히지 않음
+- [ ] Lasso: 점 4개 클릭 후 **시작점에서 먼 곳에서 더블클릭** → 자동으로 닫히고 적용. 점이 두 번 찍히지 않음
+- [ ] 같은 자리를 빠르게 3번 클릭: 2번째에 확정, 3번째에 Select Box 복귀
+- [ ] Lasso 점을 빠르게 이어 찍어도(서로 다른 위치) 도구가 꺼지지 않음
+- [ ] Lasso에서 LMB를 누른 채 끌면 그 구간이 자유곡선으로 그려짐
 - [ ] Lasso 그리는 중 `Ctrl+Z` / `Backspace` = 마지막 점만 삭제
-- [ ] Lasso 그리는 중 `Esc` = 획만 취소, 도구 유지
+- [ ] Lasso 그리는 중 `Esc` = 획 취소 + **Select Box 도구로 복귀**, 직전에 끝낸 컷은 그대로
+- [ ] 획이 없을 때 `Esc` = Select Box로 복귀
 - [ ] Lasso 그리는 중 오른쪽 Sidebar 값 변경 / 팔레트에서 다른 Shape 클릭 → Esc 없이 동작(그리던 획은 버려짐)
 - [ ] Lasso 그리는 중 다른 에디터(Outliner 등) 클릭 → 정상 동작
 - [ ] Alt 누르고 그리기 → 안쪽만 남음
 - [ ] Lasso 2점 + Enter → 반쪽 하이라이트 → 클릭한 쪽 삭제
-- [ ] Circle / Ellipse / Brush Stroke / Curve Lasso(점 재클릭 라운드) 각각 1회
+- [ ] Circle / Ellipse 각각 1회
+- [ ] **Curve Lasso**: 점 3~4개만 찍어도 처음부터 둥근 닫힌 곡선 미리보기, 점 클릭=각/부드러움, 점·핸들 드래그, 원거리 더블클릭 적용
+- [ ] **Free Draw**: LMB를 누른 채 원을 그리면 선이 마우스를 따라오고, 놓으면 닫혀서 컷
+- [ ] Lasso/Rectangle + Outline Corners = Round → 둥근 모서리 구멍 (Edge Finish와 별개)
 - [ ] RMB 한 번 → 잠시 후 Shape 팝업. RMB 더블클릭 → 도구 종료(Select Box). 더블클릭이 팝업 때문에 막히지 않음
 - [ ] (그리는 중에도) RMB 한 번 = 팝업, 더블 = 종료
 - [ ] Edge Finish = Bevel, Width 0.05 → 새 구멍 테두리만 둥글고 큐브 모서리는 그대로
@@ -53,12 +60,32 @@ Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전�
 - [ ] Select > Select All by Trait > Non Manifold (Edit Mode)로 결과 확인: 선택되는 엣지 없음
 - [ ] 기존 v0.5.9 프리셋도 목록에 보이고 동작
 
+## 5-1. Base Mesh
+- [ ] 왼쪽 목록에서 Base Mesh 선택 → Rectangle로 빈 곳에 드래그 → 3D 커서 위치에 새 상자, 원본 오브젝트 그대로
+- [ ] 큐브 윗면 위에 Lasso → 큐브 표면 위에 새 판(큐브는 무변경)
+- [ ] RMB 1번 → Flat / Chamfer / Bevel / Rounded·Dome 아이콘 팝업. 고르면 선택된 Base Mesh가 바로 바뀜
+- [ ] Dome: 오목한 별 모양에서 경계부터 부드럽게 부풀고 튀어나온 면이 없음. Roundness/Height/Resolution 변경 반영
+- [ ] 오른쪽 Height/Offset 변경이 즉시 반영, `Freeze Base Mesh` 후에는 변경 안 됨
+- [ ] Ctrl+Z 한 번 = Base Mesh 생성 하나 취소
+
+## 5-2. Loft / Surface
+- [ ] 커브 3개(점 개수 다름) 선택 → Create Loft Surface → 부드러운 면. 커브 하나를 Edit Mode에서 움직이면 면이 따라 바뀜
+- [ ] 한 커브 방향이 반대여도 꼬이지 않음 (꼬이면 섹션 행의 Reverse 버튼)
+- [ ] 닫힌 원형 커브 2개 + Cap Ends → 닫힌 솔리드. Thickness, Apply Surface
+- [ ] Sweep: 원 커브(단면) + 경로 커브(활성) → 튜브
+
+## 5-3. ZBrush Bridge
+- [ ] 메쉬 2개 선택 → Send → 교환 폴더에 OBJ 2개 (Blender 오브젝트는 따로 유지)
+- [ ] ZBrush에서 하나 Import → 수정 → **같은 파일 이름으로 Export** → Blender `Import Back` → 그 오브젝트만 바뀌고 위치/회전 유지
+- [ ] ZBrush에서 위아래가 뒤집혀 보이면 Forward/Up 설정 메모 (기본 -Z / Y)
+
 ## 6. Smart Fuse
 - [ ] 겹친 두 메쉬 → Create Live Smart Fuse → 패널이 오류 없이 그려짐 → Confirm
 - [ ] 떨어진 두 메쉬 → 설명 메시지 후 원래 상태 유지(소스가 숨겨지지 않음)
 
 ## 7. 저장 / 재시작 / 비활성화
 - [ ] 파일 저장 → Blender 재시작 → 파일 열기 → MECHA LAB 탭과 도구 동작
+- [ ] Ortho Lock ON 상태로 저장 → 다시 열고 궤도 회전 → 원근으로 돌아가지 않음
 - [ ] 애드온 비활성화 → Space/B/C가 Blender 기본으로, 오류 없음 → 재활성화
 - [ ] MECHA LAB 탭 삭제 후에도 Sidebar/Space 오류 없음
 

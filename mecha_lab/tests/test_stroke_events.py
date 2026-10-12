@@ -9,6 +9,7 @@ pass-through outside the viewport, tool/shape switching).
 It is NOT a substitute for the Blender 5.0.2 GUI checklist: real event
 ordering, double-click timing and popup behaviour must still be verified.
 """
+import math
 import sys
 import types
 
@@ -80,6 +81,7 @@ class Ctx:
     scene = property(lambda self: bpy.context.scene)
     view_layer = property(lambda self: bpy.context.view_layer)
     selected_objects = property(lambda self: bpy.context.selected_objects)
+    collection = property(lambda self: bpy.context.scene.collection)
 
     def evaluated_depsgraph_get(self):
         return bpy.context.evaluated_depsgraph_get()
@@ -156,13 +158,24 @@ r = op.modal(ctx, E('Z', ctrl=True))
 check('Ctrl+Z on last point cancels the stroke (no undo step)', r == {'CANCELLED'})
 check('mesh untouched after cancelled stroke', abs(volume(t) - 8.0) < 1e-4)
 
-# 3. Esc cancels only the stroke
+# 3. Esc: drop the unfinished stroke AND return to Blender's select tool (2026-10-13)
 t = setup('LASSO')
 ctx, op = Ctx(), Op()
 op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 450, 450))
 click(op, ctx, 550, 450)
-check('Esc -> CANCELLED', op.modal(ctx, E('ESC')) == {'CANCELLED'})
+check('Esc -> CANCELLED (no undo step)', op.modal(ctx, E('ESC')) == {'CANCELLED'})
+check('Esc returns to select tool', ('exit',) in CALLS)
 check('Esc leaves mesh untouched', abs(volume(t) - 8.0) < 1e-4)
+# a completed cut stays after Esc
+t = setup('RECT')
+ctx, op = Ctx(), Op()
+op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 450, 450))
+op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 550, 550))
+CLOCK[0] += 5
+ctx2, op2 = Ctx(), Op()
+op2.invoke(ctx2, E('LEFTMOUSE', 'PRESS', 300, 300))
+op2.modal(ctx2, E('ESC'))
+check('Esc after a finished cut keeps that cut', abs(volume(t) - 6.0) < 1e-4)
 
 # 4. Outside the viewport: pass-through, stroke kept (no Esc needed for UI)
 t = setup('LASSO')
@@ -265,7 +278,7 @@ op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 450, 450))
 r = op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 550, 550))
 check('split stroke creates piece', r == {'FINISHED'} and 'Target_Split' in bpy.data.objects)
 
-# 13. Curve lasso: clicking a placed point cycles its rounding
+# 13. Curve lasso: smooth from the start; click a point toggles sharp; handle drag
 t = setup('CURVE_LASSO')
 ctx, op = Ctx(), Op()
 op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 430, 430))
@@ -273,15 +286,41 @@ op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 430, 430))
 click(op, ctx, 570, 430)
 click(op, ctx, 570, 570)
 click(op, ctx, 430, 570)
-click(op, ctx, 570, 430)            # re-click point 1
-check('re-click rounds point (level 1)', abs(op.rounds[1] - ce.ROUND_LEVELS[1]) < 1e-6, op.rounds)
+loop = op._curve()
+check('curve lasso is smooth by default (many samples)', len(loop) == 4 * bpy.context.scene.mch_brush.curve_resolution,
+      len(loop))
+bpy.context.scene.mch_brush.curve_resolution = 24
+check('more samples with higher resolution', len(op._curve()) == 96)
+bpy.context.scene.mch_brush.curve_resolution = 12
+def turn_at(loop, target):
+    i = min(range(len(loop)), key=lambda k: math.dist(loop[k], target))
+    a, b, c = loop[i - 1], loop[i], loop[(i + 1) % len(loop)]
+    v1 = (b[0] - a[0], b[1] - a[1])
+    v2 = (c[0] - b[0], c[1] - b[1])
+    return abs(math.degrees(math.atan2(v1[0] * v2[1] - v1[1] * v2[0], v1[0] * v2[0] + v1[1] * v2[1])))
+smooth_turn = turn_at(op._curve(), (570, 430))
+check('smooth curve has no corner at a control point (turn < 30 deg)', smooth_turn < 30, smooth_turn)
+CLOCK[0] += 1
+click(op, ctx, 570, 430)            # click point 1 -> sharp
+check('click on point toggles sharp', op.sharp[1] is True, op.sharp)
+check('sharp point is a real corner (turn > 60 deg)', turn_at(op._curve(), (570, 430)) > 60,
+      turn_at(op._curve(), (570, 430)))
+CLOCK[0] += 1
 click(op, ctx, 570, 430)
-click(op, ctx, 570, 430)
-click(op, ctx, 570, 430)
-check('4 re-clicks cycle back to sharp', op.rounds[1] == 0.0, op.rounds)
-click(op, ctx, 570, 570)
-r = op.modal(ctx, E('RET'))
-check('curve lasso confirm cuts', r == {'FINISHED'} and non_manifold(t) == 0 and volume(t) < 8, op.reports)
+check('second click returns to smooth', op.sharp[1] is False)
+tan = op._tangents()
+h_out = ce.curve_handles(op.pts, tan, 2)[1]
+CLOCK[0] += 1
+op.modal(ctx, E('LEFTMOUSE', 'PRESS', h_out[0], h_out[1]))
+op.modal(ctx, E('MOUSEMOVE', 'NOTHING', h_out[0] + 30, h_out[1] + 30))
+op.modal(ctx, E('LEFTMOUSE', 'RELEASE', h_out[0] + 30, h_out[1] + 30))
+check('handle drag sets a Bezier tangent override', op.overrides[2] is not None, op.overrides)
+CLOCK[0] += 1
+check('three clicks on one curve point do NOT leave the tool', ('exit',) not in CALLS)
+op.modal(ctx, E('LEFTMOUSE', 'PRESS', 300, 520))
+r = op.modal(ctx, E('LEFTMOUSE', 'DOUBLE_CLICK', 300, 520))
+check('curve lasso: double-click far from start closes & applies', r == {'FINISHED'} and volume(t) < 8
+      and non_manifold(t) == 0, op.reports)
 
 # 14. Failure => CANCELLED with message, mesh unchanged
 t = setup('RECT')
@@ -296,6 +335,112 @@ fresh()
 bpy.context.scene.mch_brush.shape = 'LASSO'
 ctx, op = Ctx(), Op()
 check('no target => PASS_THROUGH', op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 500, 500)) == {'PASS_THROUGH'})
+
+# 17. Lasso: double-click far from the start closes it, no duplicate / zero-length edge
+t = setup('LASSO')
+ctx, op = Ctx(), Op()
+op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 450, 450))
+op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 450, 450))
+click(op, ctx, 560, 440)
+click(op, ctx, 580, 560)
+op.modal(ctx, E('LEFTMOUSE', 'PRESS', 480, 590))       # last point, far from the start
+op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 480, 590))
+op.modal(ctx, E('LEFTMOUSE', 'PRESS', 481, 590))       # some OSes send PRESS + DOUBLE_CLICK
+pts_before = list(op.pts)
+r = op.modal(ctx, E('LEFTMOUSE', 'DOUBLE_CLICK', 481, 590))
+check('duplicate PRESS of a double-click adds no point', len(pts_before) == 4, pts_before)
+check('double-click anywhere closes & applies (FINISHED)', r == {'FINISHED'} and non_manifold(t) == 0, op.reports)
+check('no zero-length edge in the applied outline',
+      all(math.dist(op.pts[i], op.pts[(i + 1) % len(op.pts)]) > ce.DUP_PX for i in range(len(op.pts))))
+
+# 18. Triple click: 2nd click confirms, 3rd click returns to select
+t = setup('LASSO')
+ctx, op = Ctx(), Op()
+op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 450, 450))
+op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 450, 450))
+click(op, ctx, 560, 450)
+CLOCK[0] += 0.5
+op.modal(ctx, E('LEFTMOUSE', 'PRESS', 520, 560))      # click 1 (last point)
+CLOCK[0] += 0.1
+op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 520, 560))
+r = op.modal(ctx, E('LEFTMOUSE', 'DOUBLE_CLICK', 520, 560))   # click 2: confirm
+check('2nd click confirms the lasso', r == {'FINISHED'} and volume(t) < 8)
+CLOCK[0] += 0.15
+v_after = volume(t)
+op3 = Op()
+r3 = op3.invoke(Ctx(), E('LEFTMOUSE', 'PRESS', 520, 560))   # click 3: new stroke start
+check('3rd quick click returns to select (no new stroke)', r3 == {'CANCELLED'} and ('exit',) in CALLS)
+check('triple click keeps the confirmed cut', abs(volume(t) - v_after) < 1e-9)
+# clicking separate lasso points quickly never exits
+t = setup('LASSO')
+ctx, op = Ctx(), Op()
+op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 450, 450))
+for k, (x, y) in enumerate(((560, 450), (570, 560), (470, 570))):
+    CLOCK[0] += 0.1
+    click(op, ctx, x, y)
+check('quick clicks at different places never exit', ('exit',) not in CALLS and len(op.pts) == 4)
+
+# 19. Free Draw: continuous sampling PRESS -> MOUSEMOVE* -> RELEASE
+t = setup('STROKE')
+ctx, op = Ctx(), Op()
+op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 500, 430))
+for k in range(1, 120):
+    a = 2 * math.pi * k / 120
+    op.modal(ctx, E('MOUSEMOVE', 'NOTHING', 500 + 70 * math.sin(a), 500 - 70 * math.cos(a)))
+check('free draw records a continuous path (spacing 4px)', len(op.pts) > 50, len(op.pts))
+r = op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 500, 431))
+check('free draw release applies a closed outline', r == {'FINISHED'} and volume(t) < 8 and non_manifold(t) == 0,
+      op.reports)
+# Lasso: holding LMB draws continuously too
+t = setup('LASSO')
+ctx, op = Ctx(), Op()
+op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 450, 450))
+for k in range(1, 40):
+    op.modal(ctx, E('MOUSEMOVE', 'NOTHING', 450 + 3 * k, 450))
+op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 567, 450))
+check('lasso drag adds continuous points', len(op.pts) > 10, len(op.pts))
+click(op, ctx, 520, 560)
+check('after the drag, clicks add single points', op.pts[-1] == (520.0, 560.0))
+# Mask: Free Draw stays an OPEN brush stroke
+fresh()
+import bmesh as _bm
+from _harness import mesh_obj
+plate = mesh_obj('Plate', lambda bm: _bm.ops.create_grid(bm, x_segments=10, y_segments=10, size=1.0))
+select_only(plate)
+bpy.context.scene.mch_brush.shape = 'STROKE'
+ctx, op = Ctx('mecha.mask'), Op('MASK')
+op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 420, 500))
+check('mask free draw preview is open', op.preview_closed() is False)
+for k in range(1, 30):
+    op.modal(ctx, E('MOUSEMOVE', 'NOTHING', 420 + 6 * k, 500))
+r = op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 594, 500))
+attr = plate.data.attributes.get('mch_mask')
+masked = sum(1 for d in attr.data if d.value) if attr else 0
+check('mask brush stroke paints a band of faces (open path)', r == {'FINISHED'} and 0 < masked < 60, masked)
+
+# 20. Base Mesh mode through the same stroke logic (no target needed)
+fresh()
+bpy.context.scene.mch_brush.shape = 'RECT'
+ctx, op = Ctx('mecha.base_mesh'), Op('BASE')
+CALLS.clear()
+check('base mesh starts without a selected target', op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 450, 450)) == {'RUNNING_MODAL'})
+r = op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 550, 520))
+new = [o for o in bpy.data.objects if o.name.startswith('MCH_Base')]
+check('base mesh rect creates one new solid', r == {'FINISHED'} and len(new) == 1 and non_manifold(new[0]) == 0)
+op = Op('BASE')
+op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 300, 300))
+op.modal(ctx, E('RIGHTMOUSE'))
+CLOCK[0] += 1.0
+op.modal(ctx, E('TIMER', 'NOTHING'))
+check('RMB in Base Mesh opens the PROFILE popup', ('popup', ce.PROFILE_POPUP) in CALLS)
+bpy.context.scene.mch_brush.shape = 'LASSO'
+op = Op('BASE')
+CLOCK[0] += 5
+op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 450, 450))
+op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 450, 450))
+click(op, ctx, 550, 450)
+r = op.modal(ctx, E('RET'))
+check('base mesh with 2 lasso points asks for a closed outline', r == {'RUNNING_MODAL'} and op.stage == 'POINTS')
 
 # 16. Idle RMB gate
 CALLS.clear()
@@ -317,6 +462,18 @@ g = Gate()
 g.invoke(ctx, E('RIGHTMOUSE'))
 check('gate double => exit', g.modal(ctx, E('RIGHTMOUSE', 'DOUBLE_CLICK')) == {'FINISHED'} and CALLS == [('exit',)])
 check('gate timers cleaned', ctx.window_manager.timers == 0)
+CALLS.clear()
+g = Gate()
+g.popup = 'PROFILE'
+g.invoke(ctx, E('RIGHTMOUSE'))
+CLOCK[0] += 1.0
+g.modal(ctx, E('TIMER', 'NOTHING'))
+check('gate PROFILE popup for Base Mesh', ('popup', ce.PROFILE_POPUP) in CALLS)
+CALLS.clear()
+g = Gate()
+g.invoke(ctx, E('RIGHTMOUSE'))
+g.modal(ctx, E('ESC'))
+check('Esc during gate exits tool', ('exit',) in CALLS)
 
 mecha_lab.unregister()
 sys.exit(1 if summary() else 0)

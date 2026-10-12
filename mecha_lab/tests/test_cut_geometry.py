@@ -84,7 +84,9 @@ shapes = {
     'rect': ce.rect_loop((440, 450), (560, 560)),
     'circle': ce.circle_loop((500, 500), (560, 500), 64),
     'ellipse': ce.ellipse_loop((430, 460), (570, 540), 64),
-    'curve_lasso': ce.curve_lasso_loop([(430, 430), (570, 430), (570, 570), (430, 570)], [0.0, 0.25, 0.42, 0.12], 10),
+    'curve_lasso': ce.curve_lasso_spline([(430, 430), (570, 430), (570, 570), (430, 570)], [False, False, True, False], [None] * 4, 10),
+    'lasso_round_corners': ce.round_corners([(430, 430), (580, 440), (560, 560), (470, 590)], 20, 'ROUND', 6),
+    'rect_chamfer_corners': ce.round_corners(ce.rect_loop((440, 450), (560, 560)), 15, 'CHAMFER'),
     'stroke': cg.trim_closing_overlap([(500 + 70 * math.cos(a / 20), 500 + 50 * math.sin(a / 20)) for a in range(0, 140)]),
     'custom_star': ce.custom_loops([[[0.5 * math.cos(-math.pi / 2 + i * math.pi / 5) * (1 if i % 2 == 0 else 0.45),
                                      0.5 * math.sin(-math.pi / 2 + i * math.pi / 5) * (1 if i % 2 == 0 else 0.45)]

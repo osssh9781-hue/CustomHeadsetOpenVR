@@ -221,6 +221,67 @@ def icons():
         d.ellipse((236, 250, 276, 290), fill=BG)
         return img
     out['custom'] = custom
+
+    def base():
+        img, d = canvas()
+        poly(d, [(130, 330), (180, 160), (330, 140), (390, 260), (300, 360)], FG, width=14)
+        poly(d, [(130, 400), (180, 230), (330, 210), (390, 330), (300, 430)], ACC, fill=(255, 158, 40, 90))
+        for (x0, y0), (x1, y1) in (((130, 330), (130, 400)), ((390, 260), (390, 330)), ((300, 360), (300, 430))):
+            d.line([(x0, y0), (x1, y1)], fill=FG, width=12)
+        return img
+    out['base'] = base
+
+    def loft():
+        img, d = canvas()
+        for k, col in enumerate((FG, CY, FG)):
+            y0 = 140 + k * 115
+            pts = [(100 + i * 31, y0 + 40 * math.sin(i / 3 + k)) for i in range(11)]
+            d.line(pts, fill=col, width=14, joint='curve')
+        for i in range(0, 11, 2):
+            d.line([(100 + i * 31, 140 + 40 * math.sin(i / 3)), (100 + i * 31, 370 + 40 * math.sin(i / 3 + 2))],
+                   fill=ACC, width=6)
+        return img
+    out['loft'] = loft
+
+    def zbrush():
+        img, d = canvas()
+        d.ellipse((90, 150, 250, 310), outline=FG, width=W)
+        d.rectangle((280, 200, 420, 340), outline=CY, width=W)
+        d.line([(180, 360), (360, 360)], fill=ACC, width=16)
+        poly(d, [(360, 335), (405, 360), (360, 385)], ACC, fill=ACC)
+        d.line([(330, 120), (150, 120)], fill=ACC, width=16)
+        poly(d, [(150, 95), (105, 120), (150, 145)], ACC, fill=ACC)
+        return img
+    out['zbrush'] = zbrush
+
+    def profile(kind):
+        def fn():
+            img, d = canvas()
+            base_y, x0, x1, h = 380, 90, 422, 190
+            if kind == 'flat':
+                pts = [(x0, base_y), (x0, base_y - h), (x1, base_y - h), (x1, base_y)]
+            elif kind == 'chamfer':
+                c = 60
+                pts = [(x0, base_y), (x0, base_y - h + c), (x0 + c, base_y - h), (x1 - c, base_y - h),
+                       (x1, base_y - h + c), (x1, base_y)]
+            elif kind == 'bevel':
+                r = 60
+                pts = [(x0, base_y)]
+                pts += [(x0 + r - r * math.cos(a), base_y - h + r - r * math.sin(a))
+                        for a in [i * math.pi / 2 / 8 for i in range(9)]]
+                pts += [(x1 - r + r * math.cos(a), base_y - h + r - r * math.sin(a))
+                        for a in [math.pi / 2 - i * math.pi / 2 / 8 for i in range(9)]]
+                pts += [(x1, base_y)]
+            else:
+                pts = [(x0, base_y), (x0, base_y - 30)]
+                pts += [(256 + 166 * math.cos(a), base_y - 30 - 210 * math.sin(a))
+                        for a in [math.pi - i * math.pi / 24 for i in range(25)]]
+                pts += [(x1, base_y)]
+            poly(d, pts, ACC, fill=(255, 158, 40, 90))
+            return img
+        return fn
+    for k in ('flat', 'chamfer', 'bevel', 'dome'):
+        out['profile_' + k] = profile(k)
     return out
 
 

@@ -26,23 +26,33 @@ def draw_shape_options(layout, context, mode):
     brush = context.scene.mch_brush
     shape = brush.shape
     name = ts.SHAPE_BY_ID[shape][1]
-    box = _section(layout, 'Shape: ' + name + '  (palette at top-left / RMB)', 'SELECT_SET')
+    if shape == 'STROKE' and mode == 'MASK':
+        name = 'Free Draw (open brush stroke)'
+    elif shape == 'STROKE':
+        name = 'Free Draw (closed outline)'
+    box = _section(layout, 'Shape: ' + name + '  (palette top-left / RMB)', 'SELECT_SET')
     col = box.column(align=True)
     if shape in {'CIRCLE', 'ELLIPSE'}:
         col.prop(brush, 'circle_segments')
     elif shape == 'CURVE_LASSO':
         col.prop(brush, 'curve_resolution')
-        _hint(box, 'Click a placed point again: sharp > soft > medium > strong',
-              'Drag a point to move it, drag a handle to change rounding')
+        col.prop(brush, 'curve_smoothness', slider=True)
+        _hint(box, 'Smooth spline through every click', 'Click a point: sharp <-> smooth',
+              'Drag a point or its Bezier handle', 'Double-click anywhere: close & apply')
     elif shape == 'STROKE':
         col.prop(brush, 'stroke_spacing')
+        col.prop(brush, 'stroke_smooth')
         col.prop(brush, 'stroke_simplify')
         if mode == 'MASK':
             col.prop(brush, 'mask_brush_radius')
+            _hint(box, 'Hold LMB and paint; faces under the brush path')
+        else:
+            _hint(box, 'Hold LMB and draw; release closes the outline')
     elif shape == 'LASSO':
-        if mode != 'MASK':
+        if mode not in {'MASK', 'BASE'}:
             col.prop(brush, 'line_open')
-        _hint(box, '2 points + Enter = straight line cut', 'Shift = 45° snap, Backspace = undo point')
+        _hint(box, 'Click points, hold LMB to draw freely', 'Double-click anywhere: close & apply',
+              '2 points + Enter = straight line cut (Cut/Split)')
     elif shape == 'CUSTOM':
         row = box.row(align=True)
         row.template_icon_view(context.scene, 'mch_png_preset', show_labels=True, scale=5.0,
@@ -55,8 +65,15 @@ def draw_shape_options(layout, context, mode):
         col.prop(brush, 'custom_size')
         col.prop(brush, 'custom_rotation')
         col.prop(brush, 'custom_drag_rotate')
-        _hint(box, 'Click = stamp at Stamp Radius, drag = size',
-              'Tip: Depth "From Surface" for engraved vents')
+        _hint(box, 'Click = stamp at Stamp Radius, drag = size')
+    if shape in {'LASSO', 'RECT'}:
+        sub = box.column(align=True)
+        sub.label(text='Outline corners (2D shape, not the 3D edge):')
+        sub.row(align=True).prop(brush, 'outline_corner', expand=True)
+        if brush.outline_corner != 'NONE':
+            sub.prop(brush, 'outline_radius')
+            if brush.outline_corner == 'ROUND':
+                sub.prop(brush, 'outline_segments')
 
 
 def draw_cut(layout, context, mode='CUT'):
@@ -98,7 +115,8 @@ def draw_cut(layout, context, mode='CUT'):
     if mode == 'CUT':
         row.operator('mch.surface_cut', text='Knife Edges', icon='EDITMODE_HLT')
     if mode == 'CUT':
-        _hint(layout, 'LMB draw: remove inside | Alt: keep inside', 'Enter / double-click: apply | Esc: cancel stroke',
+        _hint(layout, 'LMB draw: remove inside | Alt: keep inside', 'Double-click anywhere / Enter: apply',
+              'Esc: drop stroke and return to Select',
               'Ctrl+Z: undo last point, then last cut', 'RMB: shapes | RMB double-click: exit tool')
     else:
         _hint(layout, 'LMB draw: split into two parts', 'Inside becomes "<name>_Split"',
@@ -300,9 +318,123 @@ def draw_pose(layout, context):
     layout.operator('mch.sculpt_move', icon='BRUSH_DATA')
 
 
+def draw_base(layout, context):
+    from . import base_mesh
+    ob = base_mesh.active_live_base(context)
+    if ob is not None:
+        p = ob.mch_base
+        box = _section(layout, 'LIVE: ' + ob.name, 'MESH_CUBE')
+        if p.last_error:
+            box.label(text=p.last_error, icon='ERROR')
+        target = box
+    else:
+        p = context.scene.mch_base
+        target = layout
+        layout.label(text='Settings for the next shape', icon='MESH_CUBE')
+    target.row(align=True).prop(p, 'profile', expand=True)
+    col = target.column(align=True)
+    col.prop(p, 'height')
+    if p.profile == 'DOME':
+        col.prop(p, 'wall')
+        col.prop(p, 'roundness', slider=True)
+        col.prop(p, 'resolution')
+    elif p.profile in {'BEVEL', 'CHAMFER'}:
+        col.prop(p, 'bevel_width')
+        if p.profile == 'BEVEL':
+            col.prop(p, 'bevel_segments')
+        col.prop(p, 'bottom_too')
+    col.prop(p, 'offset')
+    if ob is not None:
+        target.operator('mch.base_freeze', icon='FREEZE')
+    draw_shape_options(layout, context, 'BASE')
+    _hint(layout, 'Creates a NEW object; nothing is cut', 'Placed on the surface under the shape,',
+          'else at the 3D cursor, facing the view', 'RMB: profiles | Esc / RMB x2: exit tool')
+
+
+def draw_loft(layout, context):
+    from . import loft_surface
+    ob = loft_surface._active_loft(context)
+    p = ob.mch_loft if ob is not None else context.scene.mch_loft
+    row = layout.row(align=True)
+    row.scale_y = 1.3
+    row.operator('mch.loft_create', icon='SURFACE_DATA')
+    row.operator('mch.sweep_create', icon='CURVE_PATH')
+    _hint(layout, 'Loft: select 2+ curves (active = first)', 'Sweep: profile + path (active = path)')
+    if ob is not None:
+        box = _section(layout, ('LIVE: ' if p.live else '') + ob.name, 'SURFACE_DATA')
+        err = ob.get('mch_loft_error')
+        if err:
+            box.label(text=err, icon='ERROR')
+        if p.mode == 'LOFT':
+            for i, e in enumerate(p.curves):
+                r = box.row(align=True)
+                r.prop(e, 'curve', text=str(i + 1))
+                r.prop(e, 'reverse', text='', icon='ARROW_LEFTRIGHT')
+                op = r.operator('mch.loft_move', text='', icon='TRIA_UP')
+                op.index, op.direction = i, -1
+                op = r.operator('mch.loft_move', text='', icon='TRIA_DOWN')
+                op.index, op.direction = i, 1
+        else:
+            box.prop(p, 'profile')
+            box.prop(p, 'path')
+        target = box
+    else:
+        target = layout.box()
+        target.label(text='Defaults for new surfaces')
+    col = target.column(align=True)
+    col.prop(p, 'samples')
+    col.prop(p, 'segments')
+    if p.mode == 'LOFT':
+        col.prop(p, 'smoothness', slider=True)
+        col.prop(p, 'auto_align')
+        col.prop(p, 'twist')
+        col.prop(p, 'close_loft')
+    else:
+        col.prop(p, 'sweep_scale')
+        col.prop(p, 'sweep_twist')
+    col.prop(p, 'thickness')
+    col.prop(p, 'cap_ends')
+    col.prop(p, 'flip_normals')
+    if ob is not None:
+        row = target.row(align=True)
+        row.operator('mch.loft_rebuild', icon='FILE_REFRESH')
+        row.operator('mch.loft_apply', icon='CHECKMARK')
+    _hint(layout, 'NURBS-like interpolated mesh, not CAD NURBS patches')
+
+
+def draw_zbrush(layout, context):
+    from . import zbrush_bridge
+    s = context.scene.mch_zbrush
+    row = layout.row(align=True)
+    row.scale_y = 1.4
+    row.operator('mch.zbrush_send', icon='EXPORT')
+    row.operator('mch.zbrush_import', icon='IMPORT')
+    layout.operator('mch.zbrush_open_folder', icon='FILE_FOLDER')
+    col = layout.column(align=True)
+    col.prop(s, 'exchange_dir')
+    col.prop(s, 'zbrush_exe')
+    col.prop(s, 'scale')
+    row = col.row(align=True)
+    row.prop(s, 'forward_axis')
+    row.prop(s, 'up_axis')
+    col.prop(s, 'apply_modifiers')
+    col.prop(s, 'keep_backup')
+    col.prop(s, 'import_all')
+    rows = zbrush_bridge.manifest_rows(s)
+    if rows:
+        box = _section(layout, 'Sent objects', 'OUTLINER')
+        for name, fname, state in rows[:20]:
+            box.label(text=f'{name}  [{state}]', icon='CHECKMARK' if state == 'CHANGED' else 'DOT')
+    goz = zbrush_bridge.detect_goz()
+    _hint(layout, 'OBJ bridge, NOT GoZ' + (f' (GoZ found: {goz}, unused)' if goz else ''),
+          'Each object = its own OBJ (no auto Join)', 'ZBrush: Tool > Import, work,',
+          'then Tool > Export to the SAME file', 'Back here: Import Back')
+
+
 DRAWERS = {
     'CUT': draw_cut, 'SPLIT': draw_split, 'BOOLEAN': draw_boolean, 'FUSE': draw_fuse,
     'MASK': draw_mask, 'DRAW': draw_draw, 'ARRAY': draw_array, 'EDIT': draw_edit,
     'LIBRARY': draw_library, 'REMESH': draw_remesh, 'POSE': draw_pose,
+    'BASE': draw_base, 'LOFT': draw_loft, 'ZBRUSH': draw_zbrush,
     # MIRROR, RADIAL, SURFACE: own sub-panels.
 }

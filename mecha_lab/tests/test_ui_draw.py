@@ -165,7 +165,7 @@ for ws_name in ('MECHA LAB', 'Layout'):
     ctx = fake_context(ws_name)
     for panel in (mecha_lab.mirror_tools.MCH_PT_mirror, mecha_lab.radial_array.MCH_PT_radial,
                   mecha_lab.surface_conform.MCH_PT_surface_conform, wui.MCH_PT_workspace, wui.MCH_PT_tools,
-                  wui.MCH_PT_tool_popup, wui.MCH_PT_shape_popup):
+                  wui.MCH_PT_tool_popup, wui.MCH_PT_shape_popup, wui.MCH_PT_profile_popup):
         self_ = types.SimpleNamespace(layout=FakeLayout())
         run_draw(f'{panel.__name__}[{ws_name}]', lambda c, p=panel: p.draw(self_, c), ctx)
 
@@ -201,6 +201,36 @@ check('smart fuse create for panel test', r == {'FINISHED'}, r)
 bpy.context.scene.mch_settings.mch_active_tool = 'FUSE'
 self_ = types.SimpleNamespace(layout=FakeLayout())
 run_draw('main FUSE live preview', lambda c: main.draw(self_, c), fake_context('MECHA LAB'))
+
+# Live Base Mesh / Loft objects in the sidebar and the profile popup
+from mathutils import Quaternion
+from mecha_lab import base_mesh, core_geometry as cg, cut_engine as ce
+base_mesh.perform_base(bpy.context, [ce.rect_loop((400, 400), (600, 560))], cg.OrthoProjector(Quaternion()))
+for tool in ('BASE',):
+    bpy.context.scene.mch_settings.mch_active_tool = tool
+    self_ = types.SimpleNamespace(layout=FakeLayout())
+    run_draw('main BASE with live object', lambda c: main.draw(self_, c), fake_context('MECHA LAB', 'mecha.base_mesh'))
+    self_ = types.SimpleNamespace(layout=FakeLayout())
+    run_draw('profile popup with live object', lambda c: wui.MCH_PT_profile_popup.draw(self_, c), fake_context('MECHA LAB'))
+cu = bpy.data.curves.new('c1', 'CURVE'); sp = cu.splines.new('POLY'); sp.points.add(2)
+for i, pt in enumerate(sp.points):
+    pt.co = (i, 0, 0, 1)
+c1 = bpy.data.objects.new('c1', cu); bpy.context.scene.collection.objects.link(c1)
+c2 = bpy.data.objects.new('c2', cu.copy()); c2.location.y = 1; bpy.context.scene.collection.objects.link(c2)
+bpy.context.view_layer.update()
+select_only(c1, c2)
+bpy.ops.mch.loft_create()
+bpy.context.scene.mch_settings.mch_active_tool = 'LOFT'
+self_ = types.SimpleNamespace(layout=FakeLayout())
+run_draw('main LOFT with live loft', lambda c: main.draw(self_, c), fake_context('MECHA LAB'))
+bpy.context.scene.mch_settings.mch_active_tool = 'ZBRUSH'
+self_ = types.SimpleNamespace(layout=FakeLayout())
+run_draw('main ZBRUSH', lambda c: main.draw(self_, c), fake_context('MECHA LAB'))
+for tool_cls in wui.NATIVE_TOOLS:
+    km = {item[0]: item for item in tool_cls.bl_keymap}
+    check(f'{tool_cls.bl_idname}: Esc in tool keymap -> exit tool', 'mch.exit_tool' in km and km['mch.exit_tool'][1]['type'] == 'ESC')
+check('Base Mesh tool RMB opens PROFILE popup', dict(wui.MCH_TOOL_base_mesh.bl_keymap[1][2]['properties'])['popup'] == 'PROFILE')
+check('Cut tool RMB opens SHAPE popup', dict(wui.MCH_TOOL_cut.bl_keymap[1][2]['properties'])['popup'] == 'SHAPE')
 
 mecha_lab.unregister()
 sys.exit(1 if summary() else 0)

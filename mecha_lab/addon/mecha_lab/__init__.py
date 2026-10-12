@@ -1,16 +1,17 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 7, 2),
+    "version": (0, 8, 0),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
-    "description": "Cut, Split, Boolean, Smart Fuse, Mirror and mechanical arrays",
+    "description": "Cut, Split, Base Mesh, Boolean, Loft, ZBrush bridge, Smart Fuse, Mirror and arrays",
     "category": "Object",
 }
 
 import bpy
 from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform, radial_array,
-               mirror_tools, cut_presets, mask_tools, workspace_ui, ui_tool_settings)
+               mirror_tools, cut_presets, mask_tools, workspace_ui, ui_tool_settings,
+               base_mesh, loft_surface, zbrush_bridge)
 import os
 import re
 from pathlib import Path
@@ -1509,6 +1510,9 @@ def register():
     bpy.types.Object.mch_radial = PointerProperty(type=radial_array.MCH_PG_Radial)
     bpy.types.Object.mch_fuse = PointerProperty(type=MCH_PG_Fuse)
     bpy.types.Scene.mch_fuse_preview_target = PointerProperty(type=bpy.types.Object)
+    base_mesh.register()
+    loft_surface.register()
+    zbrush_bridge.register()
     workspace_ui.register()
     for klass in SUB_PANELS:
         bpy.utils.register_class(klass)
@@ -1518,6 +1522,9 @@ def unregister():
     for klass in reversed(SUB_PANELS):
         bpy.utils.unregister_class(klass)
     workspace_ui.unregister()
+    zbrush_bridge.unregister()
+    loft_surface.unregister()
+    base_mesh.unregister()
     cut_presets.unregister()
     del bpy.types.Scene.mch_fuse_preview_target
     del bpy.types.Object.mch_fuse

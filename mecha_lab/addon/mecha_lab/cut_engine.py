@@ -35,7 +35,8 @@ from . import tool_state as ts
 
 SHAPE_POPUP = 'MCH_PT_shape_popup'
 TOOL_POPUP = 'MCH_PT_tool_popup'
-ROUND_LEVELS = (0.0, 0.12, 0.25, 0.42)   # sharp -> soft -> medium -> strong -> sharp
+PROFILE_POPUP = 'MCH_PT_profile_popup'
+DUP_PX = 4.0          # clicks closer than this are the same point
 HIT_PX = 9.0
 NAV_EVENTS = {'MIDDLEMOUSE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'WHEELINMOUSE', 'WHEELOUTMOUSE',
               'TRACKPADPAN', 'TRACKPADZOOM', 'MOUSEROTATE', 'MOUSESMARTZOOM'}
@@ -77,32 +78,113 @@ def circle_loop(c, edge, segments):
              c[1] + r * math.sin(2 * math.pi * i / segments)) for i in range(segments)]
 
 
-def corner_handles(points, i, r):
-    p = points[i]
-    a = points[i - 1]
-    b = points[(i + 1) % len(points)]
-    return ((p[0] + (a[0] - p[0]) * r, p[1] + (a[1] - p[1]) * r),
-            (p[0] + (b[0] - p[0]) * r, p[1] + (b[1] - p[1]) * r))
+def curve_tangents(points, sharp, overrides, smoothness=1.0, closed=True):
+    """Per-point tangents of the Curve Lasso spline (Catmull-Rom by default).
 
-
-def curve_lasso_loop(points, rounds, resolution):
-    """Closed outline with per-point quadratic Bezier rounding."""
+    ``sharp[i]`` makes a corner (zero tangent); ``overrides[i]`` is a tangent
+    set by dragging that point's Bezier handle (aligned, symmetric handles).
+    """
     n = len(points)
-    if n < 3:
-        return list(points)
     out = []
     for i in range(n):
-        r = rounds[i] if i < len(rounds) else 0.0
-        p = points[i]
-        if r <= 1e-6:
+        ov = overrides[i] if i < len(overrides) else None
+        if ov is not None:
+            out.append(ov)
+            continue
+        if i < len(sharp) and sharp[i]:
+            out.append((0.0, 0.0))
+            continue
+        if closed or 0 < i < n - 1:
+            a, b = points[i - 1], points[(i + 1) % n]
+        elif i == 0:
+            a, b = points[0], points[min(1, n - 1)]
+        else:
+            a, b = points[max(n - 2, 0)], points[n - 1]
+        out.append(((b[0] - a[0]) * 0.5 * smoothness, (b[1] - a[1]) * 0.5 * smoothness))
+    return out
+
+
+def curve_handles(points, tangents, i):
+    """(incoming, outgoing) Bezier handle positions of control point ``i``."""
+    p, t = points[i], tangents[i]
+    return ((p[0] - t[0] / 3.0, p[1] - t[1] / 3.0), (p[0] + t[0] / 3.0, p[1] + t[1] / 3.0))
+
+
+def curve_lasso_spline(points, sharp=(), overrides=(), resolution=12, smoothness=1.0, closed=True):
+    """Smooth closed outline through the control points (cubic Bezier spans)."""
+    n = len(points)
+    if n < 2 or (closed and n < 3):
+        return list(points)
+    tangents = curve_tangents(points, list(sharp), list(overrides), smoothness, closed)
+    res = max(1, int(resolution))
+    out = []
+    spans = n if closed else n - 1
+    for i in range(spans):
+        p0, p1 = points[i], points[(i + 1) % n]
+        c0 = curve_handles(points, tangents, i)[1]
+        c1 = curve_handles(points, tangents, (i + 1) % n)[0]
+        for k in range(res):
+            t = k / res
+            u = 1.0 - t
+            out.append((u * u * u * p0[0] + 3 * u * u * t * c0[0] + 3 * u * t * t * c1[0] + t * t * t * p1[0],
+                        u * u * u * p0[1] + 3 * u * u * t * c0[1] + 3 * u * t * t * c1[1] + t * t * t * p1[1]))
+    if not closed:
+        out.append(points[-1])
+    return out
+
+
+def round_corners(loop, radius, mode='ROUND', segments=6):
+    """2D outline corner rounding / chamfer (shape option, NOT the 3D edge finish)."""
+    n = len(loop)
+    if mode == 'NONE' or radius <= 0 or n < 3:
+        return list(loop)
+    out = []
+    for i in range(n):
+        p, a, b = loop[i], loop[i - 1], loop[(i + 1) % n]
+        la, lb = math.dist(p, a), math.dist(p, b)
+        if la < 1e-6 or lb < 1e-6:
             out.append(p)
             continue
-        h0, h1 = corner_handles(points, i, r)
-        for k in range(resolution + 1):
-            t = k / resolution
+        d = min(radius, 0.45 * la, 0.45 * lb)
+        cross = (a[0] - p[0]) * (b[1] - p[1]) - (a[1] - p[1]) * (b[0] - p[0])
+        if d < 0.5 or abs(cross) < 1e-6 * la * lb:   # tiny or straight-through point
+            out.append(p)
+            continue
+        h0 = (p[0] + (a[0] - p[0]) * d / la, p[1] + (a[1] - p[1]) * d / la)
+        h1 = (p[0] + (b[0] - p[0]) * d / lb, p[1] + (b[1] - p[1]) * d / lb)
+        if mode == 'CHAMFER':
+            out.extend((h0, h1))
+            continue
+        for k in range(segments + 1):
+            t = k / segments
             u = 1 - t
             out.append((u * u * h0[0] + 2 * u * t * p[0] + t * t * h1[0],
                         u * u * h0[1] + 2 * u * t * p[1] + t * t * h1[1]))
+    return out
+
+
+def smooth_open(points, iterations=2):
+    """Moving-average smoothing of a freehand path (ends fixed)."""
+    pts = list(points)
+    for _ in range(max(0, int(iterations))):
+        if len(pts) < 3:
+            break
+        pts = [pts[0]] + [((pts[i - 1][0] + 2 * pts[i][0] + pts[i + 1][0]) / 4.0,
+                           (pts[i - 1][1] + 2 * pts[i][1] + pts[i + 1][1]) / 4.0)
+                          for i in range(1, len(pts) - 1)] + [pts[-1]]
+    return pts
+
+
+def clean_clicks(points, dup_px=4.0, closed=True):
+    """Drop near-duplicate consecutive points (PRESS + DOUBLE_CLICK on one mouse
+    down) and a last point that sits on the first, so no zero-length edge."""
+    out = []
+    for p in points:
+        if not out or math.dist(p, out[-1]) > dup_px:
+            out.append(p)
+    if closed:
+        while len(out) > 3 and math.dist(out[0], out[-1]) <= dup_px:
+            out.pop()
     return out
 
 
@@ -571,11 +653,14 @@ def draw_overlay(op):
                 _draw_squares(sh, [op.pts[0]], color, 5.5 if op.near_first else 4.0)
             if op.shape == 'CURVE_LASSO' and len(op.pts) >= 3:
                 handle_color = (0.3, 0.8, 1.0, 0.9)
-                for i, r in enumerate(op.rounds):
-                    if r > 0:
-                        h0, h1 = corner_handles(op.pts, i, r)
-                        _draw_lines(sh, [h0, op.pts[i], h1], handle_color, width=1.0)
-                        _draw_squares(sh, [h0, h1], handle_color, 3.0)
+                tangents = op._tangents()
+                for i in range(len(op.pts)):
+                    if math.hypot(*tangents[i]) < 1e-6:
+                        _draw_squares(sh, [op.pts[i]], (1.0, 0.35, 0.35, 0.9), 3.0)   # sharp corner
+                        continue
+                    h_in, h_out = curve_handles(op.pts, tangents, i)
+                    _draw_lines(sh, [h_in, op.pts[i], h_out], handle_color, width=1.0)
+                    _draw_squares(sh, [h_in, h_out], handle_color, 2.5)
     finally:
         gpu.state.line_width_set(1.0)
         gpu.state.blend_set('NONE')
@@ -672,9 +757,24 @@ def triple_click_to_select(context, event, clock=None):
     return False
 
 
+def triple_reset(context):
+    """An edit click (moving / toggling a placed point) is not part of a triple."""
+    try:
+        _TRIPLE_STATE.pop((context.window.as_pointer(), context.area.as_pointer()), None)
+    except (AttributeError, ReferenceError):
+        pass
+
+
 class StrokeLogic:
     """State machine of one shape stroke (plain Python so tests can drive it
-    with simulated events; the Blender operator below only adds RNA)."""
+    with simulated events; the Blender operator below only adds RNA).
+
+    Stages: POINTS (Lasso / Curve Lasso), DRAG (Rect / Circle / Ellipse /
+    Free Draw / Custom), SIDE (open line: pick the half to remove).
+    Exits:  FINISHED = one applied operation (= one undo step);
+            CANCELLED = nothing changed.  Esc and RMB double also leave the
+            tool (Blender Select Box); completed cuts are never touched.
+    """
 
     # ---- state helpers ---------------------------------------------------
 
@@ -684,20 +784,49 @@ class StrokeLogic:
     def preview_closed(self):
         if self.shape in {'LASSO', 'CURVE_LASSO'}:
             return not self._is_open_line()
+        if self.shape == 'STROKE' and self.mode == 'MASK':
+            return False      # Mask Brush Stroke is an open brush path
         return True
 
     def _is_open_line(self):
         return self.shape == 'LASSO' and (self.line_open or len(self.pts) == 2 and self.stage == 'SIDE')
 
+    def _popup_name(self):
+        return PROFILE_POPUP if self.mode == 'BASE' else SHAPE_POPUP
+
+    def _needs_target(self):
+        return self.mode != 'BASE'
+
+    def _tangents(self, pts=None):
+        pts = self.pts if pts is None else pts
+        n = len(pts)
+        sharp = list(self.sharp) + [False] * (n - len(self.sharp))
+        over = list(self.overrides) + [None] * (n - len(self.overrides))
+        return curve_tangents(pts, sharp, over, self.brush.curve_smoothness, closed=True)
+
+    def _curve(self, pts=None):
+        pts = self.pts if pts is None else pts
+        n = len(pts)
+        sharp = list(self.sharp) + [False] * (n - len(self.sharp))
+        over = list(self.overrides) + [None] * (n - len(self.overrides))
+        return curve_lasso_spline(pts, sharp, over, self.brush.curve_resolution,
+                                  self.brush.curve_smoothness, closed=True)
+
+    def _outline(self, loop):
+        b = self.brush
+        return round_corners(loop, b.outline_radius, b.outline_corner, b.outline_segments)
+
     def preview_loops(self):
         m = self.mouse
         if self.shape in {'LASSO', 'CURVE_LASSO'}:
             pts = list(self.pts)
-            if self.stage == 'POINTS' and m is not None and self.drag_index is None and self.drag_handle is None:
+            if self.stage == 'POINTS' and m is not None and self.drag_index is None \
+                    and self.drag_handle is None and not self.free_drag:
                 pts = pts + [self._snapped(m, self.shift_held)]
             if self.shape == 'CURVE_LASSO' and len(pts) >= 3:
-                rounds = list(self.rounds) + [0.0] * (len(pts) - len(self.rounds))
-                return [curve_lasso_loop(pts, rounds, self.brush.curve_resolution)]
+                return [self._curve(pts)]
+            if self.shape == 'LASSO' and len(pts) >= 3 and not self._is_open_line():
+                return [self._outline(pts)]
             return [pts] if len(pts) >= 2 else []
         if self.shape == 'STROKE':
             return [self.pts] if len(self.pts) >= 2 else []
@@ -708,7 +837,7 @@ class StrokeLogic:
     def _drag_loops(self, m, ctrl, shift):
         b = self.brush
         if self.shape == 'RECT':
-            return [rect_loop(self.anchor, m, shift, ctrl)]
+            return [self._outline(rect_loop(self.anchor, m, shift, ctrl))]
         if self.shape == 'CIRCLE':
             return [circle_loop(self.anchor, m, b.circle_segments)]
         if self.shape == 'ELLIPSE':
@@ -737,8 +866,8 @@ class StrokeLogic:
     # ---- lifecycle -----------------------------------------------------------
 
     def invoke(self, context, event):
-        # The third LMB may be delivered to a fresh stroke operator after the
-        # double-click finished the previous cut.  Check before adding points.
+        # The third quick LMB at the same spot (after a double-click confirm)
+        # arrives as a fresh stroke: leave the tool instead of starting one.
         if triple_click_to_select(context, event):
             exit_tool(context)
             return {'CANCELLED'}
@@ -757,13 +886,16 @@ class StrokeLogic:
         xy, inside = self._region_xy(event)
         if not inside:
             return {'PASS_THROUGH'}
-        if self.mode == 'MASK' and self.shape == 'LASSO' and self.brush.line_open:
+        if self.mode in {'MASK', 'BASE'} and self.shape == 'LASSO' and self.brush.line_open:
             self.brush.line_open = False
-        targets = gather_targets(context, self.projector, xy, self.mode)
-        if not targets:
-            self.report({'WARNING'}, 'Click on a mesh or select one first')
-            return {'PASS_THROUGH'}
-        self.target_names = [t.name for t in targets]
+        if self._needs_target():
+            targets = gather_targets(context, self.projector, xy, self.mode)
+            if not targets:
+                self.report({'WARNING'}, 'Click on a mesh or select one first')
+                return {'PASS_THROUGH'}
+            self.target_names = [t.name for t in targets]
+        else:
+            self.target_names = []
         self.custom = None
         if self.shape == 'CUSTOM':
             from . import cut_presets
@@ -773,7 +905,8 @@ class StrokeLogic:
                 self.report({'WARNING'}, str(ex))
                 return {'CANCELLED'}
         self.native_tool = ts.native_tool_id(context)
-        self.pts, self.rounds, self.redo = [], [], []
+        self.pts, self.redo = [], []
+        self.sharp, self.overrides = [], []
         self.alt_latch = bool(event.alt)
         self.alt_held = bool(event.alt)
         self.shift_held = bool(event.shift)
@@ -784,6 +917,7 @@ class StrokeLogic:
         self.drag_index = None
         self.drag_handle = None
         self.press_xy = None
+        self.free_drag = False
         self.near_first = False
         self.side_preview = None
         self.rmb_time = None
@@ -791,6 +925,7 @@ class StrokeLogic:
         if self.shape in {'LASSO', 'CURVE_LASSO'}:
             self.stage = 'POINTS'
             self._add_point(xy)
+            self.free_drag = self.shape == 'LASSO'
         else:
             self.stage = 'DRAG'
             self.anchor = xy
@@ -803,15 +938,20 @@ class StrokeLogic:
         return {'RUNNING_MODAL'}
 
     def _hint(self, context):
+        tail = ' | RMB: ' + ('profiles' if self.mode == 'BASE' else 'shapes') + ', RMB×2 / Esc: exit tool'
         if self.stage == 'SIDE':
-            text = 'Click the side to REMOVE (Alt+click: keep it) | Esc cancel'
+            text = 'Click the side to REMOVE (Alt+click: keep it)' + tail
         elif self.stage == 'POINTS':
-            text = ('LMB point | Enter/double-click/first point: apply | Backspace/Ctrl+Z: undo point | '
-                    'Shift: 45° | Alt: invert | F: open line | RMB: shapes, RMB×2: exit | Esc: cancel')
+            text = ('LMB point (drag = draw) | double-click anywhere: close & apply | Enter | '
+                    'Backspace/Ctrl+Z: undo point | Shift 45° | Alt invert | F open line')
             if self.shape == 'CURVE_LASSO':
-                text = 'Click a point again: round it | drag point/handle | ' + text
+                text = ('LMB control point | click a point: sharp/smooth | drag point or handle | '
+                        'double-click anywhere: close & apply | Backspace/Ctrl+Z: undo point')
+            text += tail
+        elif self.shape == 'STROKE':
+            text = 'Hold LMB and draw, release to apply' + tail
         else:
-            text = 'Drag, release to apply | Shift: square/circle | Ctrl: from center | Alt: invert | Esc: cancel'
+            text = 'Drag, release to apply | Shift: square/circle | Ctrl: from center | Alt: invert' + tail
         _status(context, f'MECHA {self.mode}: ' + text)
 
     def _cleanup(self, context):
@@ -834,6 +974,12 @@ class StrokeLogic:
         self._cleanup(context)
         return {'CANCELLED'}
 
+    def _leave_tool(self, context):
+        """Esc / RMB double / triple click: drop the unfinished stroke, back to Select."""
+        self._cleanup(context)
+        exit_tool(context)
+        return {'CANCELLED'}
+
     def cancel(self, context):
         self._cleanup(context)
 
@@ -841,17 +987,26 @@ class StrokeLogic:
 
     def _add_point(self, xy):
         p = self._snapped(xy, self.shift_held)
-        if self.pts and math.dist(p, self.pts[-1]) < 2.0:
-            return
+        if self.pts and math.dist(p, self.pts[-1]) <= DUP_PX:
+            return False
         self.pts.append(p)
-        self.rounds.append(0.0)
+        self.sharp.append(False)
+        self.overrides.append(None)
         self.redo.clear()
+        return True
 
     def _pop_point(self):
         if not self.pts:
             return False
-        self.redo.append((self.pts.pop(), self.rounds.pop()))
+        self.redo.append((self.pts.pop(), self.sharp.pop(), self.overrides.pop()))
         return True
+
+    def _redo_point(self):
+        if self.redo and self.stage == 'POINTS':
+            p, sh, ov = self.redo.pop()
+            self.pts.append(p)
+            self.sharp.append(sh)
+            self.overrides.append(ov)
 
     def _hit_point(self, xy):
         for i, p in enumerate(self.pts):
@@ -860,22 +1015,40 @@ class StrokeLogic:
         return None
 
     def _hit_handle(self, xy):
+        """(point index, side) of a Curve Lasso handle under the cursor."""
         if self.shape != 'CURVE_LASSO' or len(self.pts) < 3:
             return None
-        for i, r in enumerate(self.rounds):
-            if r > 0:
-                for h in corner_handles(self.pts, i, r):
-                    if math.dist(h, xy) <= HIT_PX:
-                        return i
+        tangents = self._tangents()
+        for i in range(len(self.pts)):
+            if math.hypot(*tangents[i]) < 1e-6:
+                continue
+            h_in, h_out = curve_handles(self.pts, tangents, i)
+            if math.dist(h_out, xy) <= HIT_PX:
+                return (i, 1)
+            if math.dist(h_in, xy) <= HIT_PX:
+                return (i, -1)
         return None
+
+    def _clean_points(self):
+        keep = clean_clicks(self.pts, DUP_PX, closed=not self._is_open_line())
+        if len(keep) != len(self.pts):
+            idx, j = [], 0
+            for i, p in enumerate(self.pts):
+                if j < len(keep) and p == keep[j]:
+                    idx.append(i)
+                    j += 1
+            self.sharp = [self.sharp[i] for i in idx]
+            self.overrides = [self.overrides[i] for i in idx]
+            self.pts = keep
 
     def _current_loops(self, event_ctrl=False, event_shift=False):
         if self.shape in {'LASSO', 'CURVE_LASSO'}:
             if self.shape == 'CURVE_LASSO':
-                return [curve_lasso_loop(self.pts, self.rounds, self.brush.curve_resolution)]
-            return [list(self.pts)]
+                return [self._curve()]
+            return [self._outline(list(self.pts))]
         if self.shape == 'STROKE':
-            pts = cg.simplify_open(self.pts, self.brush.stroke_simplify)
+            pts = smooth_open(self.pts, self.brush.stroke_smooth)
+            pts = cg.simplify_open(pts, self.brush.stroke_simplify)
             return [cg.trim_closing_overlap(pts)]
         return self._drag_loops(self.mouse, event_ctrl, event_shift)
 
@@ -885,20 +1058,24 @@ class StrokeLogic:
         return [bpy.data.objects[n] for n in self.target_names if n in bpy.data.objects]
 
     def _execute_closed(self, context):
-        loops = self._current_loops(self.ctrl_held, self.shift_held)
         targets = self._targets()
-        if self.mode == 'MASK':
-            if self.shape == 'STROKE':
-                from . import mask_tools
-                points = cg.simplify_open(self.pts, self.brush.stroke_simplify)
-                changed, total = mask_tools.apply_mask_stroke(
-                    context, targets[0], points, self.projector,
-                    self.brush.mask_brush_radius, self.inverted())
-                msg = f'Mask stroke: {changed} faces changed ({total} masked total; entire faces, not exact outline)'
-            else:
-                msg = perform_mask(context, targets[0], loops, self.projector, self.inverted())
+        if self.mode == 'MASK' and self.shape == 'STROKE':
+            from . import mask_tools
+            points = smooth_open(self.pts, self.brush.stroke_smooth)
+            points = cg.simplify_open(points, self.brush.stroke_simplify)
+            changed, total = mask_tools.apply_mask_stroke(
+                context, targets[0], points, self.projector,
+                self.brush.mask_brush_radius, self.inverted())
+            msg = f'Mask stroke: {changed} faces changed ({total} masked total; entire faces, not exact outline)'
         else:
-            msg = perform_closed(context, self.mode, targets, loops, self.projector, self.inverted())
+            loops = self._current_loops(self.ctrl_held, self.shift_held)
+            if self.mode == 'MASK':
+                msg = perform_mask(context, targets[0], loops, self.projector, self.inverted())
+            elif self.mode == 'BASE':
+                from . import base_mesh
+                msg = base_mesh.perform_base(context, loops, self.projector)
+            else:
+                msg = perform_closed(context, self.mode, targets, loops, self.projector, self.inverted())
         if self.shape == 'CUSTOM' and self.anchor is not None and self.mouse is not None:
             r = math.dist(self.anchor, self.mouse)
             if r >= 4.0:
@@ -923,9 +1100,10 @@ class StrokeLogic:
 
     def _confirm(self, context):
         if self.shape in {'LASSO', 'CURVE_LASSO'}:
+            self._clean_points()
             if self.shape == 'LASSO' and len(self.pts) >= 2 and (self.line_open or len(self.pts) == 2):
-                if self.mode == 'MASK':
-                    self.report({'WARNING'}, 'Mask needs a closed outline (3+ points)')
+                if self.mode in {'MASK', 'BASE'}:
+                    self.report({'WARNING'}, 'This tool needs a closed outline (3+ points)')
                     return {'RUNNING_MODAL'}
                 if self.mode == 'SPLIT':
                     return self._run(context, lambda c: perform_line(
@@ -935,7 +1113,7 @@ class StrokeLogic:
                 self._hint(context)
                 return {'RUNNING_MODAL'}
             if len(self.pts) < 3:
-                self.report({'WARNING'}, 'Place at least 3 points (2 points = line cut)')
+                self.report({'WARNING'}, 'Place at least 3 points (Lasso: 2 points = line cut)')
                 return {'RUNNING_MODAL'}
         return self._run(context, self._execute_closed, keep_on_shape_error=True)
 
@@ -976,7 +1154,7 @@ class StrokeLogic:
             return self._cancel(context)
 
     def _modal(self, context, event):
-        if not self._targets():
+        if self._needs_target() and not self._targets():
             return self._cancel(context)
         if self.native_tool and ts.native_tool_id(context) != self.native_tool:
             return self._cancel(context)          # tool switched from toolbar/list
@@ -985,11 +1163,6 @@ class StrokeLogic:
             return self._cancel(context)
 
         et, ev = event.type, event.value
-        if et == 'LEFTMOUSE' and ev in {'PRESS', 'DOUBLE_CLICK'} and \
-                triple_click_to_select(context, event):
-            self._cleanup(context)  # unfinished path must never be applied
-            exit_tool(context)
-            return {'CANCELLED'}
         if et in {'LEFT_ALT', 'RIGHT_ALT'}:
             self.alt_held = ev == 'PRESS'
         if et in {'LEFT_SHIFT', 'RIGHT_SHIFT'}:
@@ -1002,7 +1175,7 @@ class StrokeLogic:
                 if _now() - self.rmb_time >= _double_click_seconds(context):
                     self.rmb_time = None
                     self._remove_timer(context)
-                    open_popup(SHAPE_POPUP)
+                    open_popup(self._popup_name())
                 return {'RUNNING_MODAL'}
             return {'PASS_THROUGH'}
 
@@ -1011,20 +1184,21 @@ class StrokeLogic:
             return {'PASS_THROUGH'}
 
         if et == 'MOUSEMOVE' or et == 'INBETWEEN_MOUSEMOVE':
-            if inside or self.stage == 'DRAG' or self.drag_index is not None:
+            if inside or self.stage == 'DRAG' or self.drag_index is not None or self.free_drag:
                 self.mouse = xy
                 self._on_move(xy)
                 self.region.tag_redraw()
             return {'RUNNING_MODAL'} if inside else {'PASS_THROUGH'}
 
         if not inside:
-            if et == 'LEFTMOUSE' and ev == 'RELEASE' and (self.stage == 'DRAG' or self.drag_index is not None):
+            if et == 'LEFTMOUSE' and ev == 'RELEASE' and (self.stage == 'DRAG' or self.drag_index is not None
+                                                           or self.free_drag):
                 pass   # finish a drag that ended over another region
             else:
                 return {'PASS_THROUGH'}   # palette, sidebar, menus keep working
 
         if et == 'ESC' and ev == 'PRESS':
-            return self._cancel(context)
+            return self._leave_tool(context)
         if et == 'SPACE' and ev == 'PRESS':
             self._cleanup(context)
             open_popup(TOOL_POPUP)
@@ -1033,9 +1207,7 @@ class StrokeLogic:
             now = _now()
             if ev == 'DOUBLE_CLICK' or (self.rmb_time is not None and
                                          now - self.rmb_time < _double_click_seconds(context)):
-                self._cleanup(context)
-                exit_tool(context)
-                return {'CANCELLED'}
+                return self._leave_tool(context)
             self.rmb_time = now
             if self.timer is None:
                 self.timer = context.window_manager.event_timer_add(0.04, window=context.window)
@@ -1045,10 +1217,7 @@ class StrokeLogic:
 
         if et == 'Z' and ev == 'PRESS' and (event.ctrl or event.oskey):
             if event.shift:
-                if self.redo and self.stage == 'POINTS':
-                    p, r = self.redo.pop()
-                    self.pts.append(p)
-                    self.rounds.append(r)
+                self._redo_point()
             elif self.stage == 'SIDE':
                 self.stage = 'POINTS'
                 self.side_preview = None
@@ -1057,10 +1226,8 @@ class StrokeLogic:
             self._hint(context)
             self.region.tag_redraw()
             return {'RUNNING_MODAL'}
-        if et == 'Y' and ev == 'PRESS' and event.ctrl and self.redo and self.stage == 'POINTS':
-            p, r = self.redo.pop()
-            self.pts.append(p)
-            self.rounds.append(r)
+        if et == 'Y' and ev == 'PRESS' and event.ctrl:
+            self._redo_point()
             self.region.tag_redraw()
             return {'RUNNING_MODAL'}
         if et == 'BACK_SPACE' and ev == 'PRESS':
@@ -1072,7 +1239,7 @@ class StrokeLogic:
             self._hint(context)
             self.region.tag_redraw()
             return {'RUNNING_MODAL'}
-        if et == 'F' and ev == 'PRESS' and self.shape == 'LASSO' and self.mode != 'MASK':
+        if et == 'F' and ev == 'PRESS' and self.shape == 'LASSO' and self.mode not in {'MASK', 'BASE'}:
             self.line_open = not self.line_open
             self.brush.line_open = self.line_open
             self.region.tag_redraw()
@@ -1104,11 +1271,17 @@ class StrokeLogic:
                 if math.dist(xy, self.press_xy) > 3.0:
                     self.pts[self.drag_index] = xy
             elif self.drag_handle is not None:
-                i = self.drag_handle
+                i, side = self.drag_handle
                 p = self.pts[i]
-                a = self.pts[i - 1]
-                ref = max(math.dist(p, a), 1e-6)
-                self.rounds[i] = max(0.0, min(0.5, math.dist(p, xy) / ref))
+                self.overrides[i] = (3.0 * (xy[0] - p[0]) * side, 3.0 * (xy[1] - p[1]) * side)
+                self.sharp[i] = False
+            elif self.free_drag and self.shape == 'LASSO':
+                # Holding LMB in Lasso draws continuously (freehand segment).
+                if math.dist(self.pts[-1], xy) >= max(self.brush.stroke_spacing * 2.0, DUP_PX + 1):
+                    self.pts.append(xy)
+                    self.sharp.append(False)
+                    self.overrides.append(None)
+                    self.redo.clear()
             self.near_first = len(self.pts) >= 3 and math.dist(self.pts[0], xy) <= HIT_PX
         elif self.stage == 'SIDE':
             self._update_side_preview()
@@ -1119,8 +1292,21 @@ class StrokeLogic:
             c, 'CUT', self._targets(), self.pts, self.projector, xy, invert))
 
     def _on_lmb(self, context, ev, xy, event):
+        is_down = ev in {'PRESS', 'DOUBLE_CLICK'}
+        if self.stage == 'POINTS' and is_down and ev == 'PRESS':
+            edit = self._hit_handle(xy) is not None
+            hit = self._hit_point(xy)
+            if hit is not None and hit != len(self.pts) - 1 and not (hit == 0 and len(self.pts) >= 3):
+                edit = True
+            if edit:
+                triple_reset(context)
+            elif triple_click_to_select(context, event):
+                return self._leave_tool(context)
+        elif is_down and triple_click_to_select(context, event):
+            return self._leave_tool(context)
+
         if self.stage == 'SIDE':
-            if ev == 'PRESS':
+            if is_down:
                 return self._apply_side(context, xy, event.alt)
             return {'RUNNING_MODAL'}
         if self.stage == 'DRAG':
@@ -1130,12 +1316,17 @@ class StrokeLogic:
                     return self._cancel(context)    # a click, not a drag
                 self.mouse = xy
                 if self.shape == 'STROKE':
+                    if xy != self.pts[-1] and math.dist(self.pts[-1], xy) > 0.5:
+                        self.pts.append(xy)
                     if len(self.pts) < (1 if self.mode == 'MASK' else 3):
                         return self._cancel(context)
                 return self._run(context, self._execute_closed)
             return {'RUNNING_MODAL'}
         # POINTS
         if ev == 'DOUBLE_CLICK':
+            # Double-click anywhere: close from the last point to the first and
+            # apply. Never adds a point (no duplicate / zero-length edge).
+            self.free_drag = False
             return self._confirm(context)
         if ev == 'PRESS':
             handle = self._hit_handle(xy)
@@ -1151,6 +1342,7 @@ class StrokeLogic:
                 return {'RUNNING_MODAL'}
             self.shift_held = bool(event.shift)
             self._add_point(xy)
+            self.free_drag = self.shape == 'LASSO'
             self.region.tag_redraw()
             return {'RUNNING_MODAL'}
         if ev == 'RELEASE':
@@ -1158,11 +1350,14 @@ class StrokeLogic:
                 moved = math.dist(xy, self.press_xy) > 3.0
                 if not moved and self.shape == 'CURVE_LASSO':
                     i = self.drag_index
-                    cur = self.rounds[i]
-                    idx = min(range(len(ROUND_LEVELS)), key=lambda k: abs(ROUND_LEVELS[k] - cur))
-                    self.rounds[i] = ROUND_LEVELS[(idx + 1) % len(ROUND_LEVELS)]
+                    # click on a control point: smooth <-> sharp corner
+                    if self.overrides[i] is not None:
+                        self.overrides[i] = None
+                    else:
+                        self.sharp[i] = not self.sharp[i]
                 self.drag_index = None
             self.drag_handle = None
+            self.free_drag = False
             self.region.tag_redraw()
         return {'RUNNING_MODAL'}
 
@@ -1175,13 +1370,14 @@ class StrokeLogic:
 class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
     bl_idname = 'mch.cut_stroke'
     bl_label = 'Mecha Shape Stroke'
-    bl_description = 'Draw one shape with the shared shape palette and Cut / Split / Mask with it'
+    bl_description = 'Draw one shape with the shared shape palette and Cut / Split / Mask / Base Mesh with it'
     bl_options = {'REGISTER', 'UNDO'}
 
     mode: EnumProperty(name='Mode', items=[
         ('CUT', 'Cut', 'Remove the inside (Alt: keep inside)'),
         ('SPLIT', 'Split', 'Split into two parts'),
-        ('MASK', 'Mask', 'Add face mask (Alt: erase)')], default='CUT')
+        ('MASK', 'Mask', 'Add face mask (Alt: erase)'),
+        ('BASE', 'Base Mesh', 'Create a new solid from the drawn outline')], default='CUT')
 
     @classmethod
     def poll(cls, context):
@@ -1203,7 +1399,8 @@ def event_timer_matches(op, event):
 
 
 class GateLogic:
-    """RMB in an idle Mecha tool: single = shape popup, double = leave the tool."""
+    """RMB in an idle Mecha tool: single = popup (shapes or Base Mesh profiles),
+    double = leave the tool."""
 
     def invoke(self, context, event):
         self.t0 = _now()
@@ -1223,10 +1420,11 @@ class GateLogic:
             return {'FINISHED'}
         if event.type == 'TIMER' and _now() - self.t0 >= _double_click_seconds(context):
             self._stop(context)
-            open_popup(SHAPE_POPUP)
+            open_popup(PROFILE_POPUP if getattr(self, 'popup', 'SHAPE') == 'PROFILE' else SHAPE_POPUP)
             return {'FINISHED'}
         if event.type == 'ESC':
             self._stop(context)
+            exit_tool(context)
             return {'CANCELLED'}
         return {'PASS_THROUGH'}
 
@@ -1235,14 +1433,31 @@ class GateLogic:
 
 
 class MCH_OT_rmb_gate(GateLogic, bpy.types.Operator):
-    """RMB in an idle Mecha tool: single = shape popup, double = leave the tool."""
+    """RMB in an idle Mecha tool: single = popup, double = leave the tool."""
     bl_idname = 'mch.rmb_gate'
-    bl_label = 'Mecha RMB (Shapes / Exit)'
+    bl_label = 'Mecha RMB (Popup / Exit)'
     bl_options = {'INTERNAL'}
+    popup: EnumProperty(items=[('SHAPE', 'Shapes', ''), ('PROFILE', 'Base Mesh Profiles', '')],
+                        default='SHAPE')
 
     @classmethod
     def poll(cls, context):
         return context.area is not None and context.area.type == 'VIEW_3D'
 
 
-CLASSES = (MCH_OT_cut_stroke, MCH_OT_rmb_gate)
+class MCH_OT_exit_tool(bpy.types.Operator):
+    """Esc in an idle Mecha tool: back to Blender's Select Box tool."""
+    bl_idname = 'mch.exit_tool'
+    bl_label = 'Leave Mecha Tool'
+    bl_options = {'INTERNAL'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.area is not None and context.area.type == 'VIEW_3D'
+
+    def execute(self, context):
+        exit_tool(context)
+        return {'FINISHED'}
+
+
+CLASSES = (MCH_OT_cut_stroke, MCH_OT_rmb_gate, MCH_OT_exit_tool)
