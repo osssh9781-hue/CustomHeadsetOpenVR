@@ -1,14 +1,25 @@
-"""Mecha Lab PNG-to-vector cut presets.
+"""Mecha Lab PNG -> vector Custom Cut Shapes.
 
-Raster brightness / alpha is converted into contour loops once on import.
-The JSON file holds vector loops; Blender's 2D curve fill/extrude creates a
-real cutting solid, not a voxel grid.  Multi-island masks and holes supported.
+A PNG is converted once into closed vector loops (outer outlines + holes) and
+stored as JSON next to a copy of the source image in the user config folder,
+so presets are reusable from every .blend file.  The loops become a regular
+shape of the shared shape palette: Cut / Split / Mask project them through the
+same watertight frustum cutter as Lasso or Rectangle (see core_geometry).
+
+v0.7.0 fixes the cause of "Boolean result is non-manifold" seen with v0.5.9:
+pixels touching only at a corner produced contours sharing a vertex (bow-tie),
+and the 2D curve fill of those contours was not watertight.  Now:
+
+* the binary mask is cleaned (tiny islands/holes removed) and every diagonal
+  "saddle" 2x2 block is resolved, so traced loops never touch each other;
+* simplification is validated (no self/mutual intersections) and falls back
+  to less simplification down to the raw pixel outline, which is always valid;
+* loops are grouped by containment depth (outline / hole / island in hole).
 """
 from __future__ import annotations
 
 import json
 import math
-import os
 import re
 import shutil
 import uuid
@@ -16,18 +27,18 @@ from collections import defaultdict
 from pathlib import Path
 
 import bpy
-import bmesh
-from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
 from bpy_extras.io_utils import ImportHelper
-from bpy_extras import view3d_utils
-from mathutils import Vector, Matrix
-from mathutils.geometry import intersect_line_plane
+
+from . import core_geometry as cg
 
 try:
     import bpy.utils.previews as previews
-except ImportError:
+except ImportError:  # pragma: no cover
     previews = None
 
+SCHEMA = 2
+MAX_POINTS = 20000
 _preview_collection = None
 _items_cache = []
 
@@ -36,148 +47,219 @@ def preset_folder():
     return Path(bpy.utils.user_resource('CONFIG', path='mecha_lab/cut_shapes', create=True))
 
 
-def _signed_area(loop):
-    return 0.5 * sum(p[0]*q[1]-q[0]*p[1] for p,q in zip(loop,loop[1:]+loop[:1]))
+# -----------------------------------------------------------------------------
+# Raster cleanup and tracing
+# -----------------------------------------------------------------------------
 
 
-def _perpendicular(p,a,b):
-    dx,dy=b[0]-a[0], b[1]-a[1]
-    d2=dx*dx+dy*dy
-    if d2 < 1e-12:
-        return math.dist(p,a)
-    t=max(0.0,min(1.0,((p[0]-a[0])*dx+(p[1]-a[1])*dy)/d2))
-    return math.dist(p,(a[0]+t*dx,a[1]+t*dy))
+def _components(mask, w, h, value):
+    """4-connected components of pixels equal to ``value``: list of index lists."""
+    seen = bytearray(w * h)
+    comps = []
+    for start in range(w * h):
+        if seen[start] or mask[start] != value:
+            continue
+        stack = [start]
+        seen[start] = 1
+        comp = []
+        while stack:
+            i = stack.pop()
+            comp.append(i)
+            x, y = i % w, i // w
+            for j, ok in ((i - 1, x > 0), (i + 1, x < w - 1), (i - w, y > 0), (i + w, y < h - 1)):
+                if ok and not seen[j] and mask[j] == value:
+                    seen[j] = 1
+                    stack.append(j)
+        comps.append(comp)
+    return comps
 
 
-def _rdp(points,epsilon):
-    if len(points) < 3: return points[:]
-    # Iterative implementation avoids recursion limit for dense masks.
-    keep={0,len(points)-1}
-    stack=[(0,len(points)-1)]
-    while stack:
-        a,b=stack.pop()
-        if b-a<2:continue
-        md, idx=-1.0,None
-        for i in range(a+1,b):
-            d=_perpendicular(points[i],points[a],points[b])
-            if d>md:md,idx=d,i
-        if md>epsilon:
-            keep.add(idx);stack.extend([(a,idx),(idx,b)])
-    return [points[i] for i in sorted(keep)]
-
-
-def simplify_closed(loop, tolerance):
-    """Preserve winding and avoid collapsing small islands/holes."""
-    if len(loop)<=4 or tolerance<=0:return loop[:]
-    n=len(loop)
-    anchor=min(range(n),key=lambda i:(loop[i][0],loop[i][1]))
-    far=max(range(n),key=lambda i:math.dist(loop[i],loop[anchor]))
-    if anchor>far:anchor,far=far,anchor
-    a=_rdp(loop[anchor:far+1],tolerance)
-    b=_rdp(loop[far:]+loop[:anchor+1],tolerance)
-    result=a[:-1]+b[:-1]
-    if len(result)<3 or _signed_area(result)*_signed_area(loop)<=0:
-        return loop[:]
-    return result
+def clean_mask(mask, w, h, min_area=4):
+    """Remove specks/pinholes and resolve diagonal saddles. Returns a new list."""
+    mask = [1 if v else 0 for v in mask]
+    if min_area > 0:
+        for comp in _components(mask, w, h, 1):
+            if len(comp) < min_area:
+                for i in comp:
+                    mask[i] = 0
+        for comp in _components(mask, w, h, 0):
+            touches_border = any((i % w) in (0, w - 1) or (i // w) in (0, h - 1) for i in comp)
+            if len(comp) < min_area and not touches_border:
+                for i in comp:
+                    mask[i] = 1
+    # Saddle: a 2x2 block with exactly two diagonal pixels set.  Filling the
+    # block joins both pixels, so contours never share a single vertex.
+    for _ in range(w * h):
+        changed = False
+        for y in range(h - 1):
+            row, nxt = y * w, (y + 1) * w
+            for x in range(w - 1):
+                a, b = mask[row + x], mask[row + x + 1]
+                c, d = mask[nxt + x], mask[nxt + x + 1]
+                if a == d and b == c and a != b:
+                    mask[row + x] = mask[row + x + 1] = mask[nxt + x] = mask[nxt + x + 1] = 1
+                    changed = True
+        if not changed:
+            break
+    return mask
 
 
 def trace_mask(mask, width, height):
-    """CCW foreground borders and CW holes (pixel-space, origin bottom-left)."""
-    edges=defaultdict(list)
+    """Pixel-edge contours: outer outlines CCW, holes CW (origin bottom-left)."""
+    edges = defaultdict(list)
     for y in range(height):
-        row=y*width
+        row = y * width
         for x in range(width):
-            if not mask[row+x]:continue
-            if y==0 or not mask[(y-1)*width+x]: edges[(x,y)].append((x+1,y))
-            if x==width-1 or not mask[row+x+1]: edges[(x+1,y)].append((x+1,y+1))
-            if y==height-1 or not mask[(y+1)*width+x]: edges[(x+1,y+1)].append((x,y+1))
-            if x==0 or not mask[row+x-1]: edges[(x,y+1)].append((x,y))
-    total=sum(map(len,edges.values()))
-    if total>250000:
+            if not mask[row + x]:
+                continue
+            if y == 0 or not mask[(y - 1) * width + x]:
+                edges[(x, y)].append((x + 1, y))
+            if x == width - 1 or not mask[row + x + 1]:
+                edges[(x + 1, y)].append((x + 1, y + 1))
+            if y == height - 1 or not mask[(y + 1) * width + x]:
+                edges[(x + 1, y + 1)].append((x, y + 1))
+            if x == 0 or not mask[row + x - 1]:
+                edges[(x, y + 1)].append((x, y))
+    total = sum(map(len, edges.values()))
+    if total > 400000:
         raise ValueError('Mask boundary is too complex; lower resolution or remove image noise')
-    loops=[]
+    loops = []
     while edges:
-        start=next(iter(edges))
-        cur=start; prev=None; points=[]
-        for _ in range(total+1):
+        start = next(iter(edges))
+        cur, points = start, []
+        for _ in range(total + 1):
             points.append(cur)
-            options=edges.get(cur)
-            if not options: raise ValueError('Open boundary in imported PNG')
-            if prev is not None and len(options)>1:
-                vx=cur[0]-prev[0];vy=cur[1]-prev[1]
-                def turn(p):
-                    wx=p[0]-cur[0];wy=p[1]-cur[1]
-                    return math.atan2(vx*wy-vy*wx,vx*wx+vy*wy)
-                nxt=max(options,key=turn)
-            else: nxt=options[0]
-            options.remove(nxt)
-            if not options:del edges[cur]
-            prev,cur=cur,nxt
-            if cur==start:break
-        else: raise ValueError('PNG boundary tracing exceeded expected length')
-        if len(points)>=4 and abs(_signed_area(points))>=1:
-            loops.append(points)
-        if len(loops)>2000:
+            options = edges.get(cur)
+            if not options:
+                raise ValueError('Open boundary in imported PNG')
+            nxt = options.pop()
+            if not options:
+                del edges[cur]
+            cur = nxt
+            if cur == start:
+                break
+        else:
+            raise ValueError('PNG boundary tracing exceeded expected length')
+        # Drop collinear pixel-edge vertices; keeps corners only.
+        corners = []
+        n = len(points)
+        for i in range(n):
+            a, b, c = points[i - 1], points[i], points[(i + 1) % n]
+            if (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]) != 0:
+                corners.append(b)
+        if len(corners) >= 4:
+            loops.append(corners)
+        if len(loops) > 4000:
             raise ValueError('Too many independent contours; remove mask noise')
     return loops
 
 
-def vectorize_mask(mask,w,h,tolerance=0.8):
-    loops=trace_mask(mask,w,h)
-    out=[]
-    if not loops:raise ValueError('No filled area was found in the PNG')
-    extent=max(w,h)
-    for loop in loops:
-        loop=simplify_closed(loop,tolerance)
-        if len(loop)<3:continue
-        # Center in a unit square while retaining original aspect ratio.
-        pts=[[(x-w/2)/extent,(y-h/2)/extent] for x,y in loop]
-        out.append(pts)
-    if not out:raise ValueError('PNG contours are too small or invalid')
-    if sum(len(x) for x in out)>12000:
-        raise ValueError('Contour has too many points; increase Simplify or reduce PNG detail')
+def _simplify_closed(loop, tolerance):
+    if tolerance <= 0 or len(loop) <= 4:
+        return list(loop)
+    n = len(loop)
+    a = min(range(n), key=lambda i: (loop[i][0], loop[i][1]))
+    b = max(range(n), key=lambda i: math.dist(loop[i], loop[a]))
+    if a > b:
+        a, b = b, a
+    first = cg.simplify_open(loop[a:b + 1], tolerance)
+    second = cg.simplify_open(loop[b:] + loop[:a + 1], tolerance)
+    out = first[:-1] + second[:-1]
+    if len(out) < 3 or cg.signed_area(out) * cg.signed_area(loop) <= 0:
+        return list(loop)
     return out
 
 
+def _smooth_closed(loop, iterations):
+    """Chaikin corner cutting to reduce pixel stair steps (area preserving-ish)."""
+    for _ in range(iterations):
+        n = len(loop)
+        out = []
+        for i in range(n):
+            p, q = loop[i], loop[(i + 1) % n]
+            out.append((0.75 * p[0] + 0.25 * q[0], 0.75 * p[1] + 0.25 * q[1]))
+            out.append((0.25 * p[0] + 0.75 * q[0], 0.25 * p[1] + 0.75 * q[1]))
+        loop = out
+    return loop
+
+
+def vectorize_mask(mask, w, h, tolerance=0.8, smooth=1, min_area=4):
+    """Return (normalized loops, used tolerance, used smooth)."""
+    mask = clean_mask(mask, w, h, min_area)
+    raw = trace_mask(mask, w, h)
+    if not raw:
+        raise ValueError('No filled area was found in the PNG')
+    attempts = []
+    tol = tolerance
+    for sm in (smooth, 0):
+        t = tol
+        while True:
+            attempts.append((t, sm))
+            if t <= 0.05:
+                break
+            t *= 0.5
+    attempts.append((0.0, 0))
+    chosen = None
+    for t, sm in attempts:
+        loops = [_simplify_closed(_smooth_closed(lp, sm), t) for lp in raw]
+        loops = [cg.dedupe_loop(lp, 1e-6) for lp in loops]
+        loops = [lp for lp in loops if len(lp) >= 3]
+        if sum(len(lp) for lp in loops) > MAX_POINTS:
+            continue
+        if not cg.find_intersections(loops):
+            chosen = (loops, t, sm)
+            break
+    if chosen is None:
+        raise ValueError('Contour has too many points; increase Simplify or reduce PNG detail')
+    loops, t, sm = chosen
+    extent = float(max(w, h))
+    out = [[[(x - w / 2) / extent, (y - h / 2) / extent] for x, y in lp] for lp in loops]
+    return out, t, sm
+
+
 def _load_pixels(filepath, mode, threshold, invert, max_pixels=512):
-    image=bpy.data.images.load(filepath, check_existing=False)
+    image = bpy.data.images.load(filepath, check_existing=False)
     try:
-        if not image.has_data: image.reload()
-        w,h=image.size
-        if w<2 or h<2:raise ValueError('PNG must be at least 2x2 pixels')
-        if max(w,h)>max_pixels:
-            ratio=max_pixels/max(w,h)
-            image.scale(max(2,round(w*ratio)),max(2,round(h*ratio)))
-            w,h=image.size
+        if not image.has_data:
+            image.reload()
+        w, h = image.size
+        if w < 2 or h < 2:
+            raise ValueError('PNG must be at least 2x2 pixels')
+        if max(w, h) > max_pixels:
+            ratio = max_pixels / max(w, h)
+            image.scale(max(2, round(w * ratio)), max(2, round(h * ratio)))
+            w, h = image.size
         import numpy as np
-        a=np.empty(w*h*4,dtype=np.float32)
+        a = np.empty(w * h * 4, dtype=np.float32)
         image.pixels.foreach_get(a)
-        px=a.reshape(h,w,4)
-        if mode=='ALPHA': values=px[:,:,3]
-        else:values=(0.2126*px[:,:,0]+0.7152*px[:,:,1]+0.0722*px[:,:,2])
-        if invert:binary=values<=threshold
-        else:binary=values>=threshold
-        # For brightness-based mode transparent background must always be blank.
-        if mode=='LUMINANCE':binary &= (px[:,:,3]>0.01)
-        return binary.ravel().tolist(),w,h
+        px = a.reshape(h, w, 4)
+        if mode == 'ALPHA':
+            values = px[:, :, 3]
+        else:
+            values = 0.2126 * px[:, :, 0] + 0.7152 * px[:, :, 1] + 0.0722 * px[:, :, 2]
+        binary = values <= threshold if invert else values >= threshold
+        if mode == 'LUMINANCE':
+            binary &= (px[:, :, 3] > 0.01)
+        return binary.ravel().tolist(), w, h
     finally:
-        bpy.data.images.remove(image,do_unlink=True)
+        bpy.data.images.remove(image, do_unlink=True)
 
 
-def import_png(filepath,name,mode='LUMINANCE',threshold=0.5,invert=False,simplify=0.8):
-    mask,w,h=_load_pixels(filepath,mode,threshold,invert)
-    paths=vectorize_mask(mask,w,h,simplify)
-    folder=preset_folder()
-    uid=uuid.uuid4().hex[:16]
-    basename=re.sub(r'[^A-Za-z0-9_-]+','_',name).strip('_')[:50] or 'Shape'
-    stem=basename+'_'+uid
-    src=folder/(stem+'.png')
-    shutil.copy2(filepath,src)
-    record={'schema':1,'name':name,'source':src.name,'mode':mode,
-            'size':[w,h],'loops':paths}
-    out=folder/(stem+'.json')
+def import_png(filepath, name, mode='LUMINANCE', threshold=0.5, invert=False,
+               simplify=0.8, smooth=1, min_area=4):
+    mask, w, h = _load_pixels(filepath, mode, threshold, invert)
+    loops, used_tol, used_smooth = vectorize_mask(mask, w, h, simplify, smooth, min_area)
+    folder = preset_folder()
+    basename = re.sub(r'[^A-Za-z0-9_-]+', '_', name).strip('_')[:50] or 'Shape'
+    stem = basename + '_' + uuid.uuid4().hex[:16]
+    src = folder / (stem + '.png')
+    shutil.copy2(filepath, src)
+    record = {'schema': SCHEMA, 'name': name, 'source': src.name, 'mode': mode,
+              'threshold': threshold, 'invert': invert, 'simplify': used_tol,
+              'smooth': used_smooth, 'min_area': min_area, 'size': [w, h], 'loops': loops}
+    out = folder / (stem + '.json')
     try:
-        out.write_text(json.dumps(record,separators=(',',':')),encoding='utf-8')
+        out.write_text(json.dumps(record, separators=(',', ':')), encoding='utf-8')
     except Exception:
         src.unlink(missing_ok=True)
         raise
@@ -185,302 +267,196 @@ def import_png(filepath,name,mode='LUMINANCE',threshold=0.5,invert=False,simplif
     return out
 
 
+def load_loops(stem):
+    """Validated normalized loops for a preset; upgrades v0.5.9 (schema 1) files."""
+    path = preset_folder() / (stem + '.json')
+    if not path.is_file():
+        raise cg.CutError('Select an imported PNG shape first (shape palette > thumbnails).')
+    d = json.loads(path.read_text(encoding='utf-8'))
+    loops = d.get('loops') or []
+    if d.get('schema') == SCHEMA and loops:
+        return loops
+    if d.get('schema') == 1:
+        if loops and not cg.find_intersections(loops):
+            return loops
+        src = preset_folder() / d.get('source', '')
+        if not src.is_file():
+            raise cg.CutError('This PNG shape was made by v0.5.9 and is invalid; re-import the PNG.')
+        mask, w, h = _load_pixels(str(src), d.get('mode', 'LUMINANCE'), 0.5, False)
+        loops, t, sm = vectorize_mask(mask, w, h, 0.8, 1, 4)
+        d.update({'schema': SCHEMA, 'loops': loops, 'simplify': t, 'smooth': sm,
+                  'threshold': 0.5, 'invert': False, 'size': [w, h]})
+        path.write_text(json.dumps(d, separators=(',', ':')), encoding='utf-8')
+        return loops
+    raise cg.CutError('Unknown PNG shape data version.')
+
+
+# -----------------------------------------------------------------------------
+# Previews / enum
+# -----------------------------------------------------------------------------
+
+
 def _refresh_previews():
     global _preview_collection
-    if previews is None:return
+    if previews is None:
+        return
     if _preview_collection is not None:
         previews.remove(_preview_collection)
-    _preview_collection=previews.new()
+    _preview_collection = previews.new()
 
 
-def preset_items(self,context):
-    global _preview_collection, _items_cache
-    if previews and _preview_collection is None:_preview_collection=previews.new()
-    records=sorted(preset_folder().glob('*.json'),key=lambda p:p.stat().st_mtime,reverse=True)
-    items=[]
-    for i,f in enumerate(records):
+def preset_icon(stem):
+    if previews is None:
+        return 0
+    global _preview_collection
+    if _preview_collection is None:
+        _preview_collection = previews.new()
+    try:
+        d = json.loads((preset_folder() / (stem + '.json')).read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return 0
+    thumb = preset_folder() / d.get('source', '')
+    if not thumb.is_file():
+        return 0
+    key = str(thumb)
+    if key not in _preview_collection:
+        _preview_collection.load(key, key, 'IMAGE')
+    return _preview_collection[key].icon_id
+
+
+def list_presets():
+    """[(stem, name)] newest first."""
+    out = []
+    for f in sorted(preset_folder().glob('*.json'), key=lambda p: p.stat().st_mtime, reverse=True):
         try:
-            d=json.loads(f.read_text(encoding='utf-8'))
-            name=d.get('name',f.stem)
-            thumb=preset_folder()/d.get('source','')
-            icon=0
-            if _preview_collection and thumb.is_file():
-                key=str(thumb)
-                if key not in _preview_collection:
-                    _preview_collection.load(key,key,'IMAGE')
-                icon=_preview_collection[key].icon_id
-            items.append((f.stem,name,str(f),icon,i))
-        except (OSError,ValueError,KeyError):continue
-    if not items:items=[('NONE','No Cut Presets','Use Import PNG to add one',0,0)]
-    _items_cache=items
+            d = json.loads(f.read_text(encoding='utf-8'))
+            out.append((f.stem, d.get('name', f.stem)))
+        except (OSError, ValueError):
+            continue
+    return out
+
+
+def preset_items(self, context):
+    global _items_cache
+    items = []
+    for i, (stem, name) in enumerate(list_presets()):
+        items.append((stem, name, name, preset_icon(stem), i))
+    if not items:
+        items = [('NONE', 'No Cut Presets', 'Use Import PNG to add one', 0, 0)]
+    _items_cache = items   # Blender requires enum strings to stay referenced.
     return _items_cache
 
 
-def read_current(context):
-    stem=context.scene.mch_png_preset
-    path=preset_folder()/(stem+'.json')
-    if not path.is_file():raise ValueError('Select an imported PNG preset')
-    d=json.loads(path.read_text(encoding='utf-8'))
-    if d.get('schema')!=1:raise ValueError('Unknown preset data version')
-    return d
+def _preset_update(self, context):
+    brush = getattr(context.scene, 'mch_brush', None)
+    if brush is not None and self.mch_png_preset != 'NONE':
+        brush.shape = 'CUSTOM'
 
 
-def build_prism(context, loops, name, width, depth, plane_matrix):
-    """Use Blender's 2D curve fill (preserves holes) then weld duplicated cap vertices."""
-    cu=bpy.data.curves.new(name+'_Contours','CURVE')
-    cu.dimensions='2D';cu.fill_mode='BOTH'
-    cu.resolution_u=16
-    cu.extrude=depth/2
-    for ring in loops:
-        if len(ring)<3:continue
-        sp=cu.splines.new('POLY')
-        sp.points.add(len(ring)-1)
-        for bp,(x,y) in zip(sp.points,ring):
-            bp.co=(float(x)*width,float(y)*width,0,1)
-        sp.use_cyclic_u=True
-    obj=bpy.data.objects.new(name,cu)
-    context.collection.objects.link(obj)
-    obj.matrix_world=plane_matrix.copy()
-    temp=None
-    try:
-        dg=context.evaluated_depsgraph_get()
-        evaluated=obj.evaluated_get(dg)
-        temp=bpy.data.meshes.new_from_object(evaluated,preserve_all_data_layers=False,depsgraph=dg)
-        bm=bmesh.new()
+# -----------------------------------------------------------------------------
+# Operators
+# -----------------------------------------------------------------------------
+
+
+class MCH_OT_import_cut_png(bpy.types.Operator, ImportHelper):
+    bl_idname = 'mch.import_cut_png'
+    bl_label = 'Import PNG Cut Shape'
+    bl_description = 'Convert a black/white or alpha PNG into a reusable vector Custom Cut Shape'
+    bl_options = {'REGISTER'}
+    filename_ext = '.png'
+    filter_glob: StringProperty(default='*.png', options={'HIDDEN'})
+    shape_name: StringProperty(name='Preset Name', default='')
+    mode: EnumProperty(name='Foreground', items=[
+        ('LUMINANCE', 'White / Bright', 'Bright pixels become the shape'),
+        ('ALPHA', 'Alpha Channel', 'Opaque pixels become the shape')], default='LUMINANCE')
+    threshold: FloatProperty(name='Threshold', default=0.5, min=0.0, max=1.0)
+    invert: BoolProperty(name='Invert', default=False)
+    simplify: FloatProperty(name='Simplify (px)', default=0.8, min=0, max=8,
+                            description='Maximum outline deviation; reduced automatically if it would create overlaps')
+    smooth: IntProperty(name='Smooth Steps', default=1, min=0, max=3,
+                        description='Corner-cutting passes that remove pixel stair steps')
+    min_area: IntProperty(name='Remove Specks (px)', default=4, min=0, max=500,
+                          description='Islands and pinholes smaller than this many pixels are removed')
+
+    def execute(self, context):
         try:
-            bm.from_mesh(temp)
-            bmesh.ops.remove_doubles(bm,verts=list(bm.verts),dist=max(1e-7,width*1e-6))
-            if not bm.faces or not all(e.is_manifold for e in bm.edges):
-                raise ValueError('Raster silhouette created non-manifold cutter; simplify the image')
-            bm.normal_update()
-            mesh=bpy.data.meshes.new(name+'_Mesh')
-            bm.to_mesh(mesh);mesh.update()
-        finally:
-            bm.free()
-        out=bpy.data.objects.new(name,mesh)
-        context.collection.objects.link(out)
-        out.matrix_world=plane_matrix.copy()
-        return out
-    finally:
-        if temp is not None:bpy.data.meshes.remove(temp)
-        bpy.data.objects.remove(obj,do_unlink=True)
-        if cu.users==0:bpy.data.curves.remove(cu)
-
-
-def apply_stamp(context, target, loops, position, rot, width, depth, auto_apply):
-    if target.type!='MESH':raise ValueError('Choose a target mesh')
-    if width<=0 or depth<=0:raise ValueError('Size and depth must be positive')
-    view_normal=rot @ Vector((0,0,1))
-    # Allow a small portion above the surface to avoid coplanar Boolean caps.
-    center=position-view_normal*(depth*0.5-max(0.0005,depth*0.02))
-    plane=Matrix.Translation(center)@rot.to_matrix().to_4x4()
-    cutter=build_prism(context,loops,'MCH_PNG_Stamp',width,depth,plane)
-    mod=None
-    try:
-        mod=target.modifiers.new('MCH_PNG_Cut','BOOLEAN')
-        mod.operation='DIFFERENCE';mod.solver='EXACT';mod.object=cutter
-        if hasattr(mod,'use_self'):mod.use_self=True
-        if auto_apply:
-            # Evaluate before applying so a failed Boolean leaves the original unchanged.
-            dg=context.evaluated_depsgraph_get()
-            candidate=bpy.data.meshes.new_from_object(target.evaluated_get(dg),depsgraph=dg)
-            try:
-                if len(candidate.polygons)==0: raise ValueError('Boolean would erase the entire target')
-                bm=bmesh.new()
-                try:
-                    bm.from_mesh(candidate)
-                    if not all(e.is_manifold for e in bm.edges):
-                        original=bmesh.new()
-                        try:
-                            original.from_mesh(target.data)
-                            if all(e.is_manifold for e in original.edges):
-                                raise ValueError('Boolean result is non-manifold; lower simplify or change stamp size')
-                        finally: original.free()
-                finally:bm.free()
-            finally:bpy.data.meshes.remove(candidate)
-            for selected in context.selected_objects:selected.select_set(False)
-            target.hide_set(False)
-            target.select_set(True);context.view_layer.objects.active=target
-            bpy.ops.object.modifier_apply(modifier=mod.name)
-            bpy.data.objects.remove(cutter,do_unlink=True)
-        else:
-            cutter.display_type='WIRE'
-            cutter.hide_render=True
-            cutter.hide_set(True)
-            cutter['mch_png_cutter']=True
-            target['mch_png_last_cutter']=cutter.name
-        return True
-    except Exception:
-        if mod and target.modifiers.get(mod.name):target.modifiers.remove(mod)
-        if cutter.name in bpy.data.objects:bpy.data.objects.remove(cutter,do_unlink=True)
-        raise
-
-
-class MCH_OT_import_cut_png(bpy.types.Operator,ImportHelper):
-    bl_idname='mch.import_cut_png'
-    bl_label='Import PNG Cut Shape'
-    bl_description='Convert a black-white PNG into reusable vector cutting contours'
-    bl_options={'REGISTER'}
-    filename_ext='.png'
-    filter_glob:StringProperty(default='*.png',options={'HIDDEN'})
-    shape_name:StringProperty(name='Preset Name',default='')
-    mode:EnumProperty(name='Foreground',items=[('LUMINANCE','White / Bright','Cut out the bright pixels'),('ALPHA','Alpha Channel','Cut out the opaque pixels')],default='LUMINANCE')
-    threshold:FloatProperty(name='Threshold',default=0.5,min=0.0,max=1.0)
-    invert:BoolProperty(name='Invert',default=False)
-    simplify:FloatProperty(name='Simplify (px)',default=0.8,min=0,max=8)
-    def execute(self,context):
-        try:
-            name=self.shape_name.strip() or Path(self.filepath).stem
-            path=import_png(self.filepath,name,self.mode,self.threshold,self.invert,self.simplify)
-            context.scene.mch_png_preset=path.stem
-            self.report({'INFO'},'Imported vector Cut preset: '+name)
+            name = self.shape_name.strip() or Path(self.filepath).stem
+            path = import_png(self.filepath, name, self.mode, self.threshold, self.invert,
+                              self.simplify, self.smooth, self.min_area)
+            context.scene.mch_png_preset = path.stem
+            if hasattr(context.scene, 'mch_brush'):
+                context.scene.mch_brush.shape = 'CUSTOM'
+            self.report({'INFO'}, 'Imported vector Cut shape: ' + name)
             return {'FINISHED'}
         except Exception as exc:
-            self.report({'ERROR'},f'PNG import failed: {exc}')
+            self.report({'ERROR'}, f'PNG import failed: {exc}')
             return {'CANCELLED'}
 
 
 class MCH_OT_delete_cut_preset(bpy.types.Operator):
-    bl_idname='mch.delete_cut_preset'
-    bl_label='Delete Selected Cut Preset'
-    bl_options={'REGISTER'}
-    def execute(self,context):
-        stem=context.scene.mch_png_preset
-        f=preset_folder()/(stem+'.json')
-        if not f.is_file():return {'CANCELLED'}
+    bl_idname = 'mch.delete_cut_preset'
+    bl_label = 'Delete Selected Cut Shape'
+    bl_description = 'Delete the selected PNG Custom Cut Shape from the user library (all .blend files)'
+    bl_options = {'REGISTER'}
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(self, event)
+
+    def execute(self, context):
+        stem = context.scene.mch_png_preset
+        f = preset_folder() / (stem + '.json')
+        if not f.is_file():
+            return {'CANCELLED'}
         try:
-            d=json.loads(f.read_text(encoding='utf-8'))
-            thumb=preset_folder()/Path(d['source']).name
-            f.unlink();thumb.unlink(missing_ok=True)
+            d = json.loads(f.read_text(encoding='utf-8'))
+            thumb = preset_folder() / Path(d.get('source', '')).name
+            f.unlink()
+            if thumb.is_file():
+                thumb.unlink()
             _refresh_previews()
-            self.report({'INFO'},'Cut preset removed')
+            self.report({'INFO'}, 'Cut shape removed')
             return {'FINISHED'}
         except Exception as exc:
-            self.report({'ERROR'},str(exc));return {'CANCELLED'}
+            self.report({'ERROR'}, str(exc))
+            return {'CANCELLED'}
 
 
 class MCH_OT_stamp_png_cut(bpy.types.Operator):
-    bl_idname='mch.stamp_png_cut'
-    bl_label='Stamp Cut Preset'
-    bl_description='LMB stamps the selected vector mask, mouse wheel changes size, Q/ESC exits'
-    bl_options={'REGISTER','UNDO','BLOCKING'}
-    @classmethod
-    def poll(cls,context):
-        return context.area and context.area.type=='VIEW_3D' and context.mode=='OBJECT' and context.active_object and context.active_object.type=='MESH'
-    def invoke(self,context,event):
-        try:self._loops=read_current(context)['loops']
-        except (ValueError,KeyError) as exc:self.report({'ERROR'},str(exc));return {'CANCELLED'}
-        self._target=context.active_object
-        self._region=next((r for r in context.area.regions if r.type=='WINDOW'),None)
-        if self._region is None:return {'CANCELLED'}
-        self._rv3d=context.space_data.region_3d
-        self._area=context.area
-        self._width=context.scene.mch_stamp_size
-        self._depth=context.scene.mch_stamp_depth
-        self._angle=context.scene.mch_stamp_angle
-        self._apply=context.scene.mch_settings.auto_apply
-        self._mouse=None
-        self._handler=bpy.types.SpaceView3D.draw_handler_add(_draw_stamp_preview,(self,),'WINDOW','POST_PIXEL')
-        self._area.header_text_set('PNG CUT | Left click stamp | Wheel size | R rotate 15deg | Q/Esc exit')
-        context.window_manager.modal_handler_add(self)
-        return {'RUNNING_MODAL'}
-    def _end(self):
-        if self._handler is not None:
-            bpy.types.SpaceView3D.draw_handler_remove(self._handler,'WINDOW');self._handler=None
-        self._area.header_text_set(None);self._area.tag_redraw()
-    def _hit(self):
-        if self._mouse is None:return None
-        origin=view3d_utils.region_2d_to_origin_3d(self._region,self._rv3d,self._mouse)
-        direction=view3d_utils.region_2d_to_vector_3d(self._region,self._rv3d,self._mouse)
-        inv=self._target.matrix_world.inverted_safe()
-        ok,at,normal,face=self._target.ray_cast(inv@origin,inv.to_3x3()@direction)
-        if not ok:return None
-        return self._target.matrix_world@at
-    def _rotation(self):
-        from mathutils import Quaternion
-        return self._rv3d.view_rotation@Quaternion((0,0,1),self._angle)
-    def modal(self,context,event):
-        if event.type in {'Q','ESC'} and event.value=='PRESS':
-            self._end();return {'FINISHED'}
-        if self._target.name not in bpy.data.objects:
-            self._end();return {'CANCELLED'}
-        if context.area and context.area!=self._area:
-            return {'PASS_THROUGH'}
-        # End on panel click, then let the UI consume the same click (no ESC needed).
-        if event.mouse_x<self._region.x or event.mouse_x>=self._region.x+self._region.width or event.mouse_y<self._region.y or event.mouse_y>=self._region.y+self._region.height:
-            if event.type=='LEFTMOUSE' and event.value=='PRESS':self._end()
-            return {'PASS_THROUGH'}
-        self._mouse=(event.mouse_x-self._region.x,event.mouse_y-self._region.y)
-        if event.type in {'WHEELUPMOUSE','WHEELDOWNMOUSE'} and event.value=='PRESS':
-            self._width*=1.1 if event.type=='WHEELUPMOUSE' else 1/1.1
-        if event.type=='R' and event.value=='PRESS':self._angle+=math.radians(15)
-        if event.type=='LEFTMOUSE' and event.value=='PRESS':
-            try:
-                pos=self._hit()
-                if pos is None:
-                    self.report({'WARNING'},'Aim the stamp at the selected mesh surface')
-                    return {'RUNNING_MODAL'}
-                apply_stamp(context,self._target,self._loops,pos,self._rotation(),self._width,self._depth,self._apply)
-                self.report({'INFO'},'PNG cut applied')
-            except Exception as exc:self.report({'ERROR'},str(exc))
-        self._area.tag_redraw()
-        return {'RUNNING_MODAL'}
+    """v0.5.9 compatibility: the stamp is now the Custom shape of the Cut tool."""
+    bl_idname = 'mch.stamp_png_cut'
+    bl_label = 'Stamp Cut Preset'
+    bl_description = 'Switch the Cut tool to the selected PNG shape (click = stamp, drag = size)'
+    bl_options = {'INTERNAL'}
+
+    def execute(self, context):
+        if hasattr(context.scene, 'mch_brush'):
+            context.scene.mch_brush.shape = 'CUSTOM'
+        from . import workspace_ui
+        workspace_ui.activate_mecha_tool(context, 'CUT')
+        return {'FINISHED'}
 
 
-def _draw_stamp_preview(op):
-    if op._mouse is None:return
-    try:
-        import gpu
-        from gpu_extras.batch import batch_for_shader
-        pos=op._hit()
-        if pos is None:return
-        rot=op._rotation()
-        sh=gpu.shader.from_builtin('UNIFORM_COLOR')
-        gpu.state.blend_set('ALPHA')
-        sh.bind();sh.uniform_float('color',(1,0.65,0.13,0.85))
-        for ring in op._loops:
-            pts=[]
-            for x,y in ring:
-                world=pos+rot@Vector((x*op._width,y*op._width,0))
-                uv=view3d_utils.location_3d_to_region_2d(op._region,op._rv3d,world)
-                if uv is not None:pts.append(tuple(uv))
-            if len(pts)>=3:
-                batch_for_shader(sh,'LINE_STRIP',{'pos':pts+[pts[0]]}).draw(sh)
-        gpu.state.blend_set('NONE')
-    except Exception:pass
-
-
-def draw_ui(layout,context):
-    col=layout.column(align=True)
-    col.separator()
-    col.label(text='PNG TO VECTOR CUT',icon='IMAGE_DATA')
-    col.operator('mch.import_cut_png',text='Import PNG Shape',icon='IMPORT')
-    col.template_icon_view(context.scene,'mch_png_preset',show_labels=True,scale=6.0,scale_popup=6.0)
-    if context.scene.mch_png_preset!='NONE':
-        row=col.row(align=True)
-        row.operator('mch.stamp_png_cut',text='Stamp Selected',icon='MOD_BOOLEAN')
-        row.operator('mch.delete_cut_preset',text='',icon='TRASH')
-    col.prop(context.scene,'mch_stamp_size')
-    col.prop(context.scene,'mch_stamp_depth')
-    col.prop(context.scene,'mch_stamp_angle')
-    col.label(text='White=Cut; transparent=Empty')
-
-
-CLASSES=(MCH_OT_import_cut_png,MCH_OT_delete_cut_preset,MCH_OT_stamp_png_cut)
+CLASSES = (MCH_OT_import_cut_png, MCH_OT_delete_cut_preset, MCH_OT_stamp_png_cut)
 
 
 def register():
-    for c in CLASSES:bpy.utils.register_class(c)
-    bpy.types.Scene.mch_png_preset=EnumProperty(name='PNG Cut Presets',items=preset_items)
-    bpy.types.Scene.mch_stamp_size=FloatProperty(name='Width',default=1.0,min=0.001,precision=3)
-    bpy.types.Scene.mch_stamp_depth=FloatProperty(name='Cut Depth',default=0.3,min=0.001,precision=3)
-    bpy.types.Scene.mch_stamp_angle=FloatProperty(name='Rotation',default=0,subtype='ANGLE')
+    for c in CLASSES:
+        bpy.utils.register_class(c)
+    bpy.types.Scene.mch_png_preset = EnumProperty(name='PNG Cut Shapes', items=preset_items,
+                                                  update=_preset_update)
+    # Kept so v0.5.9 files load without missing-property noise.
+    bpy.types.Scene.mch_stamp_size = FloatProperty(name='Width', default=1.0, min=0.001, precision=3)
+    bpy.types.Scene.mch_stamp_depth = FloatProperty(name='Cut Depth', default=0.3, min=0.001, precision=3)
+    bpy.types.Scene.mch_stamp_angle = FloatProperty(name='Rotation', default=0, subtype='ANGLE')
 
 
 def unregister():
-    for n in ('mch_stamp_angle','mch_stamp_depth','mch_stamp_size','mch_png_preset'):
-        if hasattr(bpy.types.Scene,n):delattr(bpy.types.Scene,n)
-    for c in reversed(CLASSES):bpy.utils.unregister_class(c)
     global _preview_collection
-    if _preview_collection is not None and previews:previews.remove(_preview_collection)
-    _preview_collection=None
+    for n in ('mch_stamp_angle', 'mch_stamp_depth', 'mch_stamp_size', 'mch_png_preset'):
+        if hasattr(bpy.types.Scene, n):
+            delattr(bpy.types.Scene, n)
+    for c in reversed(CLASSES):
+        bpy.utils.unregister_class(c)
+    if _preview_collection is not None and previews:
+        previews.remove(_preview_collection)
+    _preview_collection = None

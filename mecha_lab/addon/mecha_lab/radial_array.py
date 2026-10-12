@@ -509,7 +509,8 @@ class MCH_PT_radial(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return bool(context.scene and hasattr(context.scene, 'mch_settings') and context.scene.mch_settings.mch_active_tool == 'RADIAL')
+        from . import tool_state
+        return tool_state.tool_is(context, 'RADIAL')
 
     def draw(self, context):
         layout = self.layout

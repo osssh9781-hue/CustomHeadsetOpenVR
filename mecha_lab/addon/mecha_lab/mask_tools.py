@@ -1,4 +1,4 @@
-"""Mecha Lab v0.5.9 mask prototype: drawn *face* masks and raised extraction.
+"""Mecha Lab mask (v0.5.9 prototype, now driven by the shared shape tools): drawn *face* masks and raised extraction.
 
 A face-mask is topological (whole polygon faces), not an exact projected stencil.
 Masking only visible polygons is intentional; protection from booleans is NOT
@@ -7,9 +7,7 @@ geometry, apart from adding a face-domain integer attribute on its mesh data.
 """
 import bpy
 import bmesh
-from mathutils import Vector
-from bpy_extras import view3d_utils
-from . import cut_tools
+from . import core_geometry as cg
 
 MASK_ATTR = 'mch_mask'
 
@@ -86,56 +84,58 @@ def refresh_preview(context, source):
     preview.hide_select = True
 
 
-class MCH_OT_draw_mask(cut_tools.MCH_OT_draw_delete_cut):
-    """Reuse exactly the Cut modal gestures, writing face-mask data instead of cutting."""
+def apply_mask_loops(context, obj, loops, projector, erase=False):
+    """Set/clear the face mask for visible faces whose centre projects inside ``loops``.
+
+    ``loops`` are screen loops (outer outlines + holes, even-odd rule).  Faces
+    are masked as whole polygons; hidden back faces are skipped by ray test.
+    Returns (changed, total_masked).
+    """
+    if obj.data.users > 1:
+        obj.data = obj.data.copy()
+    attr = mask_attr(obj.data)
+    change_to = 0 if erase else 1
+    world = obj.matrix_world
+    inv = world.inverted_safe()
+    boxes = []
+    for lp in loops:
+        xs = [p[0] for p in lp]
+        ys = [p[1] for p in lp]
+        boxes.append((min(xs), min(ys), max(xs), max(ys)))
+    x0 = min(b[0] for b in boxes)
+    y0 = min(b[1] for b in boxes)
+    x1 = max(b[2] for b in boxes)
+    y1 = max(b[3] for b in boxes)
+    changed = 0
+    for face in obj.data.polygons:
+        screen = projector.to_screen(world @ face.center)
+        if screen is None or not (x0 <= screen[0] <= x1 and y0 <= screen[1] <= y1):
+            continue
+        if not cg.point_in_loops(screen, loops):
+            continue
+        origin, direction = projector.ray(screen)
+        hit, _loc, _n, face_idx = obj.ray_cast(inv @ origin, (inv.to_3x3() @ direction).normalized())
+        if not hit or face_idx != face.index:
+            continue
+        if attr.data[face.index].value != change_to:
+            attr.data[face.index].value = change_to
+            changed += 1
+    obj.data.update()
+    refresh_preview(context, obj)
+    return changed, len(mask_indices(obj))
+
+
+class MCH_OT_draw_mask(bpy.types.Operator):
+    """v0.5.9 compatibility: drawing a mask is now the native Mask tool."""
     bl_idname = 'mch.draw_mask'
-    bl_label = 'Draw Mask (Face Based)'
-    bl_description = 'Use the same shapes as Cut; Alt+draw erases mask; extracted faces may be raised later'
+    bl_label = 'Mask Tool'
+    bl_description = 'Activate the Mecha Mask tool (shared shapes; Alt erases)'
+    bl_options = {'INTERNAL'}
 
-    def invoke(self, context, event):
-        result = super().invoke(context, event)
-        if result == {'RUNNING_MODAL'}:
-            self._closed = True
-            self._header('MASK | draw=add mask / Alt+draw=erase mask | Enter finish stroke | Q exit')
-        return result
-
-    def _apply(self, context, mouse, keep_both, invert=False):
-        obj = self._target
-        try:
-            if obj.data.users > 1:
-                obj.data = obj.data.copy()
-            attr = mask_attr(obj.data)
-            change_to = 0 if (self._alt_invert or invert) else 1
-            world = obj.matrix_world
-            inv = world.inverted_safe()
-            changed = 0
-            for face in obj.data.polygons:
-                ctr = world @ face.center
-                screen = view3d_utils.location_3d_to_region_2d(self._region, self._rv3d, ctr)
-                if screen is None or not cut_tools.point_inside((screen.x, screen.y), self._poly):
-                    continue
-                # Ray hit test: prevent drawing on the hidden back side of a closed mesh.
-                ray_origin = view3d_utils.region_2d_to_origin_3d(self._region, self._rv3d, screen)
-                ray_dir = view3d_utils.region_2d_to_vector_3d(self._region, self._rv3d, screen)
-                local_origin = inv @ ray_origin
-                local_dir = (inv.to_3x3() @ ray_dir).normalized()
-                hit, loc, normal, face_idx = obj.ray_cast(local_origin, local_dir)
-                if not hit or face_idx != face.index:
-                    continue
-                if attr.data[face.index].value != change_to:
-                    attr.data[face.index].value = change_to
-                    changed += 1
-            obj.data.update()
-            refresh_preview(context, obj)
-            return self._end_or_repeat(context, f'Mask faces updated: {changed}; total {len(mask_indices(obj))}')
-        except Exception as ex:
-            self.report({'ERROR'}, 'Mask failed: ' + str(ex))
-            return self._abort(context)
-
-    def _reset_stroke(self, context):
-        super()._reset_stroke(context)
-        self._closed = True
-        self._header('MASK ACTIVE | draw=add / Alt+draw=erase | Enter stroke | Q exit')
+    def execute(self, context):
+        from . import workspace_ui
+        workspace_ui.activate_mecha_tool(context, 'MASK')
+        return {'FINISHED'}
 
 
 class MCH_OT_mask_from_selection(bpy.types.Operator):

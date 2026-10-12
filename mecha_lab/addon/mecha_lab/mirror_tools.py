@@ -287,15 +287,16 @@ class MCH_OT_collection_mirror_remove(bpy.types.Operator):
 class MCH_PT_mirror(bpy.types.Panel):
     bl_icon = 'MOD_MIRROR'
     bl_parent_id = 'MCH_PT_main'
-    bl_label = '04  MIRROR | World / Local / Collections'
+    bl_label = 'Mirror | World / Local / Collections'
     bl_idname = 'MCH_PT_mirror'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_options = {'DEFAULT_CLOSED'}
+
 
     @classmethod
     def poll(cls, context):
-        return bool(context.scene and hasattr(context.scene, 'mch_settings') and context.scene.mch_settings.mch_active_tool == 'MIRROR')
+        from . import tool_state
+        return tool_state.tool_is(context, 'MIRROR')
 
     def draw(self, context):
         layout = self.layout

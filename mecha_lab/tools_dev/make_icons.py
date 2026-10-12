@@ -1,0 +1,236 @@
+"""Generate the Mecha Lab tool / shape icons (128 px PNG) with Pillow.
+
+Run with any Python that has Pillow:  python make_icons.py <addon icons dir>
+The icons are original simple glyphs (no third-party artwork).
+"""
+import math
+import sys
+from pathlib import Path
+
+from PIL import Image, ImageDraw
+
+S = 512                    # drawn at 4x, downsampled for anti-aliasing
+OUT = 128
+BG = (38, 41, 48, 255)
+FG = (230, 232, 238, 255)
+ACC = (255, 158, 40, 255)  # orange = cut/active part
+CY = (70, 200, 255, 255)
+GR = (110, 230, 120, 255)
+PU = (205, 120, 255, 255)
+W = 26
+
+
+def canvas():
+    img = Image.new('RGBA', (S, S), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle((8, 8, S - 8, S - 8), radius=72, fill=BG)
+    return img, d
+
+
+def poly(d, pts, color, width=W, closed=True, fill=None):
+    pts = [(float(x), float(y)) for x, y in pts]
+    if fill:
+        d.polygon(pts, fill=fill)
+    seq = pts + ([pts[0]] if closed else [])
+    d.line(seq, fill=color, width=width, joint='curve')
+
+
+def dots(d, pts, color, r=22):
+    for x, y in pts:
+        d.ellipse((x - r, y - r, x + r, y + r), fill=color)
+
+
+def circle_pts(cx, cy, r, n=64, start=0.0, arc=2 * math.pi):
+    return [(cx + r * math.cos(start + arc * i / n), cy + r * math.sin(start + arc * i / n)) for i in range(n)]
+
+
+def save(img, path):
+    img.resize((OUT, OUT), Image.LANCZOS).save(path)
+
+
+def icons():
+    out = {}
+
+    def cut():
+        img, d = canvas()
+        d.rectangle((96, 120, 416, 400), outline=FG, width=W)
+        poly(d, [(170, 190), (330, 170), (350, 300), (230, 340), (160, 280)], ACC, fill=(255, 158, 40, 90))
+        return img
+    out['cut'] = cut
+
+    def split():
+        img, d = canvas()
+        poly(d, [(90, 130), (230, 130), (200, 390), (90, 390)], FG, fill=(230, 232, 238, 60))
+        poly(d, [(282, 130), (422, 130), (422, 390), (252, 390)], GR, fill=(110, 230, 120, 70))
+        d.line([(256, 80), (226, 440)], fill=ACC, width=14)
+        return img
+    out['split'] = split
+
+    def boolean():
+        img, d = canvas()
+        d.rectangle((90, 150, 320, 380), outline=FG, width=W)
+        d.ellipse((210, 110, 430, 330), outline=ACC, width=W)
+        return img
+    out['boolean'] = boolean
+
+    def fuse():
+        img, d = canvas()
+        d.ellipse((80, 160, 280, 360), outline=FG, width=W)
+        d.ellipse((230, 160, 430, 360), outline=FG, width=W)
+        d.arc((200, 150, 310, 370), 250, 290, fill=ACC, width=W + 8)
+        d.arc((200, 150, 310, 370), 70, 110, fill=ACC, width=W + 8)
+        return img
+    out['fuse'] = fuse
+
+    def mirror():
+        img, d = canvas()
+        poly(d, [(230, 120), (230, 390), (90, 390)], FG, fill=(230, 232, 238, 70))
+        poly(d, [(282, 120), (282, 390), (422, 390)], CY, fill=(70, 200, 255, 70))
+        for y in range(90, 430, 50):
+            d.line([(256, y), (256, y + 26)], fill=ACC, width=12)
+        return img
+    out['mirror'] = mirror
+
+    def mask():
+        img, d = canvas()
+        d.rectangle((96, 140, 416, 400), outline=FG, width=W)
+        poly(d, [(140, 330), (200, 190), (300, 170), (370, 260), (300, 350)], PU, fill=(205, 120, 255, 110))
+        return img
+    out['mask'] = mask
+
+    def array():
+        img, d = canvas()
+        pts = [(100 + i * 78, 340 - 160 * math.sin(i / 4 * math.pi)) for i in range(5)]
+        d.line(pts, fill=CY, width=12, joint='curve')
+        for x, y in pts:
+            d.rectangle((x - 30, y - 30, x + 30, y + 30), outline=FG, width=18)
+        return img
+    out['array'] = array
+
+    def radial():
+        img, d = canvas()
+        d.ellipse((150, 150, 362, 362), outline=CY, width=12)
+        for x, y in circle_pts(256, 256, 150, 8):
+            d.rectangle((x - 26, y - 26, x + 26, y + 26), outline=FG, width=16)
+        return img
+    out['radial'] = radial
+
+    def panel():
+        img, d = canvas()
+        d.rectangle((90, 110, 422, 400), outline=FG, width=W)
+        pts = [(130, 330), (200, 220), (300, 300), (380, 170)]
+        d.line(pts, fill=ACC, width=W, joint='curve')
+        dots(d, pts, CY, 16)
+        return img
+    out['panel'] = panel
+
+    def pose():
+        img, d = canvas()
+        d.line([(130, 400), (220, 250), (360, 170)], fill=FG, width=W + 10, joint='curve')
+        dots(d, [(130, 400), (220, 250), (360, 170)], ACC, 30)
+        d.arc((150, 170, 300, 330), 200, 320, fill=CY, width=12)
+        return img
+    out['pose'] = pose
+
+    def surface():
+        img, d = canvas()
+        d.arc((60, 250, 452, 560), 200, 340, fill=FG, width=W)
+        d.rectangle((200, 150, 312, 260), outline=ACC, width=W)
+        d.line([(256, 270), (256, 300)], fill=CY, width=14)
+        return img
+    out['surface'] = surface
+
+    def assets():
+        img, d = canvas()
+        poly(d, [(256, 100), (410, 180), (410, 350), (256, 430), (102, 350), (102, 180)], FG)
+        d.line([(102, 180), (256, 260), (410, 180)], fill=FG, width=W)
+        d.line([(256, 260), (256, 430)], fill=ACC, width=W)
+        return img
+    out['assets'] = assets
+
+    def remesh():
+        img, d = canvas()
+        for i in range(5):
+            x = 110 + i * 73
+            d.line([(x, 110), (x, 402)], fill=FG, width=12)
+            d.line([(110, x), (402, x)], fill=FG, width=12)
+        d.ellipse((180, 180, 332, 332), outline=ACC, width=W)
+        return img
+    out['remesh'] = remesh
+
+    def live():
+        img, d = canvas()
+        d.line([(120, 270), (220, 370), (400, 150)], fill=GR, width=W + 14, joint='curve')
+        return img
+    out['live'] = live
+
+    # ---- shapes --------------------------------------------------------
+
+    def lasso():
+        img, d = canvas()
+        pts = [(120, 330), (170, 140), (300, 120), (400, 230), (330, 390), (220, 340)]
+        poly(d, pts, ACC)
+        dots(d, pts, FG, 18)
+        return img
+    out['lasso'] = lasso
+
+    def curve_lasso():
+        img, d = canvas()
+        pts = circle_pts(256, 256, 150, 64)
+        pts = [(x + 30 * math.sin(3 * i / 64 * 2 * math.pi), y) for i, (x, y) in enumerate(pts)]
+        poly(d, pts, ACC)
+        d.line([(150, 120), (256, 106), (362, 120)], fill=CY, width=10)
+        dots(d, [(150, 120), (362, 120)], CY, 14)
+        dots(d, [(256, 106)], FG, 18)
+        return img
+    out['curve_lasso'] = curve_lasso
+
+    def rect():
+        img, d = canvas()
+        d.rectangle((110, 150, 402, 362), outline=ACC, width=W)
+        return img
+    out['rect'] = rect
+
+    def circle():
+        img, d = canvas()
+        d.ellipse((110, 110, 402, 402), outline=ACC, width=W)
+        return img
+    out['circle'] = circle
+
+    def ellipse():
+        img, d = canvas()
+        d.ellipse((80, 160, 432, 352), outline=ACC, width=W)
+        return img
+    out['ellipse'] = ellipse
+
+    def stroke():
+        img, d = canvas()
+        pts = [(110 + i * 4.8, 256 + 90 * math.sin(i / 10) - 40 * math.cos(i / 4)) for i in range(62)]
+        d.line(pts, fill=ACC, width=W + 6, joint='curve')
+        return img
+    out['stroke'] = stroke
+
+    def custom():
+        img, d = canvas()
+        star = []
+        for i in range(10):
+            r = 165 if i % 2 == 0 else 72
+            a = -math.pi / 2 + i * math.pi / 5
+            star.append((256 + r * math.cos(a), 270 + r * math.sin(a)))
+        poly(d, star, ACC, fill=(255, 158, 40, 80))
+        d.ellipse((236, 250, 276, 290), fill=BG)
+        return img
+    out['custom'] = custom
+    return out
+
+
+def main():
+    target = Path(sys.argv[1] if len(sys.argv) > 1 else 'icons')
+    target.mkdir(parents=True, exist_ok=True)
+    for name, fn in icons().items():
+        save(fn(), target / f'{name}.png')
+    print('wrote', len(icons()), 'icons to', target)
+
+
+if __name__ == '__main__':
+    main()

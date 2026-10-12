@@ -1,15 +1,16 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
-    "author": "OpenAI / ChatGPT",
-    "version": (0, 5, 9),
+    "author": "OpenAI / ChatGPT, Claude Code",
+    "version": (0, 7, 0),
     "blender": (4, 3, 0),
-    "location": "3D View > Sidebar (N) > Mecha Lab",
-    "description": "Cut, Boolean Difference, Smart Fuse, Mirror and mechanical arrays",
+    "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
+    "description": "Cut, Split, Boolean, Smart Fuse, Mirror and mechanical arrays",
     "category": "Object",
 }
 
 import bpy
-from . import cut_tools, surface_conform, radial_array, mirror_tools, cut_presets, mask_tools
+from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform, radial_array,
+               mirror_tools, cut_presets, mask_tools, workspace_ui, ui_tool_settings)
 import os
 import re
 from pathlib import Path
@@ -24,7 +25,6 @@ from bpy.props import (
 # Storage / shared helpers
 # -----------------------------------------------------------------------------
 
-_ADDON_KEYS = []
 _ENUM_KEEPALIVE = {}
 _PROFILE_ITEMS = [
     ('RECT', 'Rectangle', 'Rectangular section'),
@@ -105,10 +105,19 @@ def find_gn(ob):
 
 
 def safe_apply(context, ob, mod):
+    """Apply one modifier without bpy.ops (works on Alt+D shared meshes, no UI context).
+
+    v0.5.9 used bpy.ops.object.modifier_apply, which fails on multi-user data
+    ("Modifiers cannot be applied to multi-user data") and needs an active
+    object.  core_geometry evaluates, validates and only then writes back, so a
+    failure leaves the mesh untouched.  Errors are raised as RuntimeError.
+    """
     activate_only(context, ob)
-    if ob.data and ob.data.users > 1:
-        ob.data = ob.data.copy()  # Multi-user meshes cannot accept modifier_apply.
-    bpy.ops.object.modifier_apply(modifier=mod.name)
+    policy = context.scene.mch_cut.shared_mesh if hasattr(context.scene, 'mch_cut') else 'SINGLE'
+    try:
+        core_geometry.apply_single_modifier(context, ob, mod, policy)
+    except core_geometry.CutError as ex:
+        raise RuntimeError(str(ex)) from ex
 
 
 def boolean_modifier(target, cutter, operation):
@@ -375,32 +384,12 @@ class MCH_PG_Live(bpy.types.PropertyGroup):
     array_scale: FloatProperty(name='Global Size', default=1.0, min=0.001, update=update_live_spacing)
 
 
-TOOL_ITEMS = [
-    ('CUT', '01  CUT', 'Draw, cut and split', 'SCULPTMODE_HLT', 1),
-    ('BOOLEAN', '02  BOOLEAN', 'Mesh Difference and Union', 'MOD_BOOLEAN', 2),
-    ('FUSE', '03  SMART FUSE', 'Blend two meshes', 'MOD_BEVEL', 3),
-    ('MIRROR', '04  MIRROR', 'World and collection mirror', 'MOD_MIRROR', 4),
-    ('MASK', '05  MASK / EXTRACT', 'Draw protected face region and raise', 'MOD_SOLIDIFY', 5),
-    ('DRAW', 'CURVES / PANEL', 'Draw lines and profiles', 'CURVE_BEZCURVE', 6),
-    ('ARRAY', 'CURVE ARRAY', 'Repeat on curve', 'MOD_ARRAY', 7),
-    ('RADIAL', 'RADIAL ARRAY', 'Radial instances and Boolean', 'OUTLINER_OB_EMPTY', 8),
-    ('SURFACE', 'SURFACE CONFORM', 'Wrap to target', 'MOD_SHRINKWRAP', 9),
-    ('LIBRARY', 'ASSET LIBRARY', 'Saved mesh and profile', 'ASSET_MANAGER', 10),
-    ('EDIT', 'LIVE RESULT', 'Confirm and edit', 'CHECKMARK', 11),
-    ('REMESH', 'SCULPT / REMESH', 'Voxel remesh and sculpt move', 'MOD_REMESH', 12),
-]
-
-def update_session_hotkeys(self, context):
-    enabled = bool(self.mch_enabled)
-    for km, item in _ADDON_KEYS:
-        if item.idname in {'mch.boolean', 'mch.draw_delete_cut', 'wm.call_menu', 'mch.double_click_point'}:
-            item.active = enabled
+TOOL_ITEMS = tool_state.TOOL_ENUM_ITEMS
 
 
 class MCH_PG_Settings(bpy.types.PropertyGroup):
-    mch_enabled: BoolProperty(name='Enable Mecha Lab Hotkeys', default=False,
-        description='While enabled, Space shows Mecha Lab tools and B/C use Mecha Lab instead of Blender keys',
-        update=update_session_hotkeys)
+    # v0.5.9 session toggle; hotkeys are now scoped to the MECHA LAB workspace.
+    mch_enabled: BoolProperty(name='Enable Mecha Lab Hotkeys (legacy, unused)', default=False)
     mch_active_tool: EnumProperty(name='Selected Tool', items=TOOL_ITEMS, default='CUT')
     mch_mask_thickness: FloatProperty(name='Raise Thickness', default=0.05, min=0.0001,
         soft_max=1.0, precision=4, description='Outward thickness for masked face extraction')
@@ -626,6 +615,37 @@ def fuse_cleanup(target, restore_source=True):
     target.mch_fuse.source = None
 
 
+def fuse_validate(context, target):
+    """Evaluate only the union GN modifier and check that a seam was found.
+
+    Returns an explanation string when the input cannot be fused, else None.
+    """
+    gn = target.modifiers.get(_FUSE_MOD_GN)
+    if gn is None:
+        return 'Smart Fuse node modifier missing'
+    saved = [(m, m.show_viewport) for m in target.modifiers]
+    try:
+        for m, _ in saved:
+            m.show_viewport = (m == gn)
+        dg = context.evaluated_depsgraph_get()
+        ev = target.evaluated_get(dg)
+        me = ev.to_mesh()
+        try:
+            if me is None or not me.polygons:
+                return 'Union produced an empty mesh'
+            attr = me.attributes.get(_FUSE_EDGE_ATTRIBUTE)
+            seam = sum(1 for d in attr.data if d.value > 0.5) if attr else 0
+        finally:
+            ev.to_mesh_clear()
+    finally:
+        for m, show in saved:
+            m.show_viewport = show
+    if seam == 0:
+        return ('No intersection seam found: the two meshes must really overlap. '
+                'Touching, separate or open (non-closed) meshes cannot be fused.')
+    return None
+
+
 class MCH_OT_fuse_create(bpy.types.Operator):
     bl_idname = 'mch.smart_fuse'
     bl_label = 'Smart Fuse: Connect 2 Meshes'
@@ -643,6 +663,9 @@ class MCH_OT_fuse_create(bpy.types.Operator):
         meshes = [o for o in context.selected_objects if o.type == 'MESH']
         if len(context.selected_objects) != 2:
             self.report({'ERROR'}, 'Select exactly two mesh objects (no other object types).')
+            return {'CANCELLED'}
+        if any(o.data.shape_keys for o in meshes):
+            self.report({'ERROR'}, 'Smart Fuse: remove/apply shape keys first.')
             return {'CANCELLED'}
         source = next((o for o in meshes if o != target), None)
         if source is None or source == target or target.mch_fuse.active:
@@ -688,6 +711,9 @@ class MCH_OT_fuse_create(bpy.types.Operator):
             props.smooth_factor = context.scene.mch_settings.fuse_smooth_factor
             props.delete_source_on_confirm = True
             fuse_sync(props, context)
+            problem = fuse_validate(context, target)
+            if problem:
+                raise RuntimeError(problem)
             source.hide_set(True)
             source.hide_render = True
             context.scene.mch_fuse_preview_target = target
@@ -695,8 +721,13 @@ class MCH_OT_fuse_create(bpy.types.Operator):
         except Exception as exc:
             # No partial node stack or hidden source should be left after failure.
             fuse_cleanup(target)
-            if 'group' in locals() and group.users == 0:
-                bpy.data.node_groups.remove(group)
+            # v0.5.9 crashed here: fuse_cleanup may already have removed the
+            # group, and touching a removed ID raises ReferenceError.
+            try:
+                if 'group' in locals() and group.users == 0:
+                    bpy.data.node_groups.remove(group)
+            except ReferenceError:
+                pass
             self.report({'ERROR'}, 'Smart Fuse setup failed: ' + str(exc))
             return {'CANCELLED'}
         self.report({'INFO'}, 'Smart Fuse live preview created; edit settings, then Confirm / Apply.')
@@ -812,7 +843,9 @@ class MCH_OT_boolean(bpy.types.Operator):
             try:
                 safe_apply(context, target, mod)
             except RuntimeError as ex:
-                self.report({'ERROR'}, 'Boolean failed: ' + str(ex))
+                if target.modifiers.get(mod.name):
+                    target.modifiers.remove(mod)
+                self.report({'ERROR'}, 'Boolean failed (mesh unchanged): ' + str(ex))
                 return {'CANCELLED'}
             if not s.keep_cutter:
                 remove_object(cutter)
@@ -860,7 +893,11 @@ class MCH_OT_slice(bpy.types.Operator):
                 cutter.hide_set(True)
                 cutter.display_type = 'WIRE'
         except RuntimeError as ex:
-            self.report({'ERROR'}, str(ex))
+            for ob, m in ((piece, a), (original, b)):
+                if ob.modifiers.get(m.name):
+                    ob.modifiers.remove(m)
+            remove_object(piece)
+            self.report({'ERROR'}, 'Slice failed: ' + str(ex))
             return {'CANCELLED'}
         activate_only(context, original)
         piece.select_set(True)
@@ -1414,20 +1451,19 @@ class MCH_OT_remesh(bpy.types.Operator):
 
 
 class MCH_OT_select_tool(bpy.types.Operator):
+    """v0.5.9 compatibility alias of mch.set_tool."""
     bl_idname = 'mch.select_tool'
     bl_label = 'Select Mecha Lab Tool'
     bl_options = {'INTERNAL'}
     tool: EnumProperty(items=TOOL_ITEMS, default='CUT')
 
     def execute(self, context):
-        context.scene.mch_settings.mch_active_tool = self.tool
-        for area in context.screen.areas:
-            if area.type == 'VIEW_3D':
-                area.tag_redraw()
+        workspace_ui.activate_mecha_tool(context, self.tool)
         return {'FINISHED'}
 
 
 class MCH_MT_tool_menu(bpy.types.Menu):
+    """v0.5.9 compatibility: text menu (the large-icon popup is MCH_PT_tool_popup)."""
     bl_idname = 'MCH_MT_tool_menu'
     bl_label = 'MECHA LAB  |  Select Tool'
 
@@ -1435,327 +1471,7 @@ class MCH_MT_tool_menu(bpy.types.Menu):
         layout = self.layout
         layout.scale_y = 1.4
         for tool, name, desc, icon, idx in TOOL_ITEMS:
-            op = layout.operator('mch.select_tool', text=name, icon=icon)
-            op.tool = tool
-
-
-class MCH_PT_main(bpy.types.Panel):
-    bl_label = 'MECHA LAB | Mechanical Tools'
-    bl_idname = 'MCH_PT_main'
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = 'Mecha Lab'
-
-    def draw(self, context):
-        layout=self.layout
-        s = context.scene.mch_settings
-        layout.prop(s, 'mch_enabled', text='MECHA LAB MODE', toggle=True, icon='EVENT_SPACEKEY')
-        layout.operator('wm.call_menu', text='TOOLS  |  SPACE', icon='MENU_PANEL').name = 'MCH_MT_tool_menu'
-        layout.label(text='Selected: ' + dict((k,v) for k,v,*_ in TOOL_ITEMS)[s.mch_active_tool])
-        layout.label(text='Only the selected tool panel is shown.')
-
-
-class MCH_PT_cut(bpy.types.Panel):
-    bl_parent_id='MCH_PT_main'
-    bl_label='01  CUT | Draw & Remove'
-    bl_idname='MCH_PT_cut'
-    bl_space_type='VIEW_3D'
-    bl_region_type='UI'
-    bl_icon='MOD_BOOLEAN'
-
-    @classmethod
-    def poll(cls, context):
-        return bool(context.scene and hasattr(context.scene, 'mch_settings') and context.scene.mch_settings.mch_active_tool == 'CUT')
-
-    def draw(self,context):
-        col=self.layout.column(align=True)
-        s=context.scene.mch_settings
-        col.prop(s,'cut_draw_style')
-        if s.cut_draw_style=='NGON':col.prop(s,'cut_ngon_sides',slider=True)
-        if s.cut_draw_style not in {'POLYGON','NGON','BOX','CIRCLE'}: col.prop(s,'cut_closed')
-        col.prop(s,'cut_immediate')
-        col.prop(s,'cut_repeat')
-        col.prop(s,'auto_apply')
-        row=col.row(align=True)
-        op=row.operator('mch.draw_delete_cut',text='C | CUT',icon='REMOVE');op.keep_both=False
-        op=row.operator('mch.draw_delete_cut',text='SPLIT BOTH',icon='MOD_BOOLEAN');op.keep_both=True
-        col.label(text='Normal=remove inside; Alt=keep inside')
-        col.label(text='1-6: switch shape | Enter: apply | Q: exit')
-        col.label(text='Polygon: click corners then first point')
-        col.prop(s,'cut_fast_bisect')
-        if s.cut_fast_bisect:col.prop(s,'cut_fill_caps')
-        col.operator('mch.cut_finalize',text='Apply Editable Cut',icon='CHECKMARK')
-        col.operator('mch.surface_cut',text='Knife Edges Only',icon='EDITMODE_HLT')
-        cut_presets.draw_ui(col,context)
-
-
-class MCH_PT_boolean(bpy.types.Panel):
-    bl_parent_id='MCH_PT_main'
-    bl_label='02  BOOLEAN | Mesh Operations'
-    bl_idname='MCH_PT_boolean'
-    bl_space_type='VIEW_3D'
-    bl_region_type='UI'
-    bl_icon='MOD_BOOLEAN'
-    bl_options={'DEFAULT_CLOSED'}
-
-    @classmethod
-    def poll(cls, context):
-        return bool(context.scene and hasattr(context.scene, 'mch_settings') and context.scene.mch_settings.mch_active_tool == 'BOOLEAN')
-
-    def draw(self,context):
-        col=self.layout.column(align=True)
-        s=context.scene.mch_settings
-        row=col.row(align=True)
-        op=row.operator('mch.boolean',text='Subtract [B]',icon='REMOVE');op.operation='DIFFERENCE'
-        op=row.operator('mch.boolean',text='Union',icon='ADD');op.operation='UNION'
-        row=col.row(align=True)
-        op=row.operator('mch.boolean',text='Intersect');op.operation='INTERSECT'
-        row.operator('mch.slice',text='Split Both')
-        col.prop(s,'auto_apply')
-        col.prop(s,'keep_cutter')
-        col.label(text='Active (yellow) mesh = target')
-
-
-class MCH_PT_fuse(bpy.types.Panel):
-    bl_icon = 'MOD_BEVEL'
-    bl_options = {'DEFAULT_CLOSED'}
-    bl_parent_id = 'MCH_PT_main'
-    bl_label = '03  SMART FUSE | Fillet / Chamfer'
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-
-    @classmethod
-    def poll(cls, context):
-        return bool(context.scene and hasattr(context.scene, 'mch_settings') and context.scene.mch_settings.mch_active_tool == 'FUSE')
-
-    def draw(self, context):
-        layout = self.layout
-        target = fuse_target_from_context(context)
-        if target:
-            p = target.mch_fuse
-            layout.label(text='LIVE PREVIEW  |  ' + target.name, icon='MOD_NODES')
-            layout.label(text='Source: ' + (p.source.name if p.source else 'Missing'))
-            layout.prop(p, 'mode', expand=True)
-            if p.mode == 'SEAM':
-                layout.prop(p, 'edge_style', expand=True)
-                layout.prop(p, 'radius', text=('Chamfer Width' if p.edge_style == 'CHAMFER' else 'Fillet Width'), slider=True)
-                if p.edge_style == 'FILLET':
-                    layout.prop(p, 'segments')
-                layout.label(text='Adjust width live; seam edges only')
-            else:
-                layout.prop(p, 'voxel_size')
-                layout.prop(p, 'smooth_iterations')
-                layout.prop(p, 'smooth_factor')
-                layout.label(text='Voxel fuse: small details may vanish')
-            row = layout.row(align=True)
-            op = row.operator('mch.smart_fuse_source', text='Edit Source', icon='EDITMODE_HLT')
-            op.action = 'EDIT'
-            op = row.operator('mch.smart_fuse_source', text='Preview', icon='HIDE_OFF')
-            op.action = 'HIDE'
-            layout.prop(p, 'delete_source_on_confirm')
-            row = layout.row(align=True)
-            row.operator('mch.smart_fuse_confirm', text='CONFIRM / APPLY', icon='CHECKMARK')
-            row.operator('mch.smart_fuse_cancel', text='CANCEL', icon='CANCEL')
-        else:
-            s = context.scene.mch_settings
-            layout.label(text='Select exactly 2 overlapping meshes')
-            layout.label(text='Active/yellow object is the result')
-            layout.prop(s, 'fuse_mode', expand=True)
-            if s.fuse_mode == 'SEAM':
-                layout.prop(s, 'fuse_edge_style', expand=True)
-                layout.prop(s, 'fuse_radius', text='Seam Width', slider=True)
-                if s.fuse_edge_style == 'FILLET':
-                    layout.prop(s, 'fuse_segments')
-            else:
-                layout.prop(s, 'fuse_voxel_size')
-                layout.prop(s, 'fuse_smooth_iterations')
-                layout.prop(s, 'fuse_smooth_factor')
-            layout.operator('mch.smart_fuse', text='CREATE LIVE SMART FUSE', icon='MOD_BEVEL')
-            layout.label(text='No manual Boolean cutter is needed')
-
-
-class MCH_PT_draw(bpy.types.Panel):
-    bl_options = {'DEFAULT_CLOSED'}
-    bl_parent_id = 'MCH_PT_main'
-    bl_label = 'Editable Lines & Profiles'
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-
-    @classmethod
-    def poll(cls, context):
-        return bool(context.scene and hasattr(context.scene, 'mch_settings') and context.scene.mch_settings.mch_active_tool == 'DRAW')
-
-    def draw(self, context):
-        layout = self.layout
-        s = context.scene.mch_settings
-        layout.prop(s, 'path_draw_mode', expand=True)
-        if s.path_draw_mode == 'FREE': layout.prop(s, 'path_sample_px')
-        layout.prop(s, 'profile_shape')
-        if s.profile_shape == 'CUSTOM':
-            layout.prop(s, 'profile_preset')
-        row = layout.row(align=True)
-        row.prop(s, 'line_width')
-        row.prop(s, 'line_depth')
-        row = layout.row(align=True)
-        op = row.operator('mch.draw_path', text='Draw Panel Cut', icon='MOD_BOOLEAN')
-        op.kind = 'PANEL'
-        op = row.operator('mch.draw_path', text='Draw Curve', icon='CURVE_BEZCURVE')
-        op.kind = 'CURVE'
-        layout.label(text='Free: LMB drag | Polyline: LMB points')
-        layout.label(text='Shift+click: 45 deg | Enter: finish')
-        layout.label(text='Select path > TAB = move points')
-        row = layout.row(align=True)
-        op = row.operator('mch.edit_handles', text='Straight')
-        op.shape = 'VECTOR'
-        op = row.operator('mch.edit_handles', text='Smooth')
-        op.shape = 'AUTOMATIC'
-        layout.label(text='Double-click point = toggle handle')
-
-
-class MCH_PT_array(bpy.types.Panel):
-    bl_options = {'DEFAULT_CLOSED'}
-    bl_parent_id = 'MCH_PT_main'
-    bl_label = 'Live Curve Array'
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-
-    @classmethod
-    def poll(cls, context):
-        return bool(context.scene and hasattr(context.scene, 'mch_settings') and context.scene.mch_settings.mch_active_tool == 'ARRAY')
-
-    def draw(self, context):
-        layout = self.layout
-        s = context.scene.mch_settings
-        layout.prop(s, 'array_source')
-        layout.prop(s, 'array_spacing')
-        layout.prop(s, 'array_scale')
-        op = layout.operator('mch.draw_path', text='Draw Array Path', icon='MOD_ARRAY')
-        op.kind = 'ARRAY'
-        layout.label(text='Path edit: G = move / V = handles')
-        layout.label(text='Point size: Alt+S or setting below')
-        layout.prop(s, 'point_radius')
-        layout.operator('mch.point_radius', text='Set Selected Point Size')
-
-
-class MCH_PT_edit_live(bpy.types.Panel):
-    bl_options = {'DEFAULT_CLOSED'}
-    bl_parent_id = 'MCH_PT_main'
-    bl_label = 'Live Result / Confirm'
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-
-    @classmethod
-    def poll(cls, context):
-        return bool(context.scene and hasattr(context.scene, 'mch_settings') and context.scene.mch_settings.mch_active_tool == 'EDIT')
-
-    def draw(self, context):
-        layout = self.layout
-        ob = context.active_object
-        carrier = ob
-        if ob and ob.get('mch_path'):
-            carrier = bpy.data.objects.get(ob.get('mch_carrier', ''))
-        if carrier and carrier.get('mch_role') in {'PANEL', 'CURVE', 'ARRAY'}:
-            props = carrier.mch_live
-            layout.label(text='Mode: ' + carrier.get('mch_role'))
-            layout.prop(props, 'path')
-            if carrier.get('mch_role') in {'PANEL', 'CURVE'}:
-                layout.prop(props, 'shape')
-                if props.shape == 'CUSTOM':
-                    layout.prop(props, 'custom_profile')
-                layout.prop(props, 'width')
-                layout.prop(props, 'depth')
-            if carrier.get('mch_role') == 'ARRAY':
-                layout.prop(props, 'source')
-                layout.prop(props, 'spacing')
-                layout.prop(props, 'array_scale')
-            layout.operator('mch.bake_live', text='CONFIRM / APPLY', icon='CHECKMARK')
-        else:
-            layout.label(text='Select a generated path or result')
-        layout.prop(context.scene.mch_settings, 'delete_path_on_bake')
-
-
-class MCH_PT_library(bpy.types.Panel):
-    bl_options = {'DEFAULT_CLOSED'}
-    bl_parent_id = 'MCH_PT_main'
-    bl_label = 'Reusable Asset Library'
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-
-    @classmethod
-    def poll(cls, context):
-        return bool(context.scene and hasattr(context.scene, 'mch_settings') and context.scene.mch_settings.mch_active_tool == 'LIBRARY')
-
-    def draw(self, context):
-        layout = self.layout
-        s = context.scene.mch_settings
-        layout.prop(s, 'library_path')
-        layout.prop(s, 'asset_name')
-        row = layout.row(align=True)
-        op = row.operator('mch.save_asset', text='Save Selected Mesh', icon='MESH_CUBE')
-        op.kind = 'MESH'
-        op = row.operator('mch.save_asset', text='Save Curve Section', icon='CURVE_BEZCIRCLE')
-        op.kind = 'PROFILE'
-        layout.prop(s, 'mesh_preset')
-        layout.operator('mch.insert_asset', text='Insert Mesh from Library', icon='IMPORT')
-        layout.prop(s, 'profile_preset')
-        layout.label(text='Custom cross-section: save closed curve')
-        layout.label(text='Saved as individual .blend files')
-
-
-class MCH_PT_sculpt_remesh(bpy.types.Panel):
-    bl_options = {'DEFAULT_CLOSED'}
-    bl_parent_id = 'MCH_PT_main'
-    bl_label = 'Sculpt Move & One-click Remesh'
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-
-    @classmethod
-    def poll(cls, context):
-        return bool(context.scene and hasattr(context.scene, 'mch_settings') and context.scene.mch_settings.mch_active_tool == 'REMESH')
-
-    def draw(self, context):
-        layout = self.layout
-        s = context.scene.mch_settings
-        layout.operator('mch.sculpt_move', icon='BRUSH_DATA')
-        layout.separator()
-        layout.prop(s, 'join_remesh')
-        layout.prop(s, 'voxel_size')
-        row = layout.row(align=True)
-        row.prop(s, 'smooth_iterations')
-        row.prop(s, 'smooth_factor')
-        layout.prop(s, 'apply_remesh')
-        if s.apply_remesh:
-            layout.prop(s, 'apply_existing')
-        layout.operator('mch.one_click_remesh', text='REMESH + SMOOTH', icon='MOD_REMESH')
-        layout.label(text='Warning: voxel remesh loses UV/mesh attributes')
-
-
-class MCH_PT_mask(bpy.types.Panel):
-    bl_parent_id = 'MCH_PT_main'
-    bl_label = '05  MASK | Draw / Extract / Raise'
-    bl_idname = 'MCH_PT_mask'
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_icon = 'MOD_SOLIDIFY'
-
-    @classmethod
-    def poll(cls, context):
-        return bool(context.scene and hasattr(context.scene, 'mch_settings') and context.scene.mch_settings.mch_active_tool == 'MASK')
-
-    def draw(self, context):
-        layout = self.layout
-        s = context.scene.mch_settings
-        layout.label(text='Draw mask with the same shapes as Cut')
-        layout.prop(s, 'cut_draw_style', text='Mask Shape')
-        if s.cut_draw_style == 'NGON': layout.prop(s, 'cut_ngon_sides')
-        layout.operator('mch.draw_mask', text='DRAW / ALT ERASE MASK', icon='BRUSH_DATA')
-        if context.mode == 'EDIT_MESH':
-            layout.operator('mch.mask_selected_faces', text='ADD SELECTED FACES', icon='FACESEL')
-        layout.prop(s, 'mch_mask_thickness')
-        layout.operator('mch.mask_extract', text='EXTRACT & RAISE', icon='MOD_SOLIDIFY')
-        layout.operator('mch.mask_clear', text='CLEAR MASK', icon='X')
-        layout.label(text='Faces are selected as whole polygons')
-        layout.label(text='Boolean protection not yet implemented')
+            layout.operator('mch.set_tool', text=name, icon=icon).tool = tool
 
 
 CLASSES = (
@@ -1768,17 +1484,21 @@ CLASSES = (
     MCH_OT_select_tool, MCH_MT_tool_menu, *mask_tools.CLASSES,
     *radial_array.CLASSES[:-1],
     *cut_tools.CLASSES,
+    *cut_engine.CLASSES,
     *surface_conform.CLASSES[:-1],
-    MCH_PT_main, MCH_PT_mask, MCH_PT_cut, MCH_PT_boolean, MCH_PT_fuse, *mirror_tools.CLASSES[-1:],
-    MCH_PT_draw, MCH_PT_array, MCH_PT_edit_live,
-    MCH_PT_library, MCH_PT_sculpt_remesh,
-    surface_conform.MCH_PT_surface_conform,
-    radial_array.MCH_PT_radial,
     *mirror_tools.CLASSES[:-1],
+)
+
+# Sub-panels of workspace_ui.MCH_PT_main; registered after it.
+SUB_PANELS = (
+    mirror_tools.MCH_PT_mirror,
+    radial_array.MCH_PT_radial,
+    surface_conform.MCH_PT_surface_conform,
 )
 
 
 def register():
+    tool_state.register()
     for klass in CLASSES:
         bpy.utils.register_class(klass)
     bpy.types.Scene.mch_settings = PointerProperty(type=MCH_PG_Settings)
@@ -1789,39 +1509,16 @@ def register():
     bpy.types.Object.mch_radial = PointerProperty(type=radial_array.MCH_PG_Radial)
     bpy.types.Object.mch_fuse = PointerProperty(type=MCH_PG_Fuse)
     bpy.types.Scene.mch_fuse_preview_target = PointerProperty(type=bpy.types.Object)
-    wm = bpy.context.window_manager
-    if wm and wm.keyconfigs.addon:
-        km = wm.keyconfigs.addon.keymaps.new(name='Object Mode', space_type='EMPTY')
-        item = km.keymap_items.new('mch.boolean', 'B', 'PRESS')
-        item.properties.operation = 'DIFFERENCE'
-        item.active = False
-        _ADDON_KEYS.append((km, item))
-        # C opens the draw-cut/remove modal (Knife Edges is still a separate button).
-        for mode_keymap in ('Object Mode', 'Mesh'):
-            cut_map = wm.keyconfigs.addon.keymaps.new(name=mode_keymap, space_type='EMPTY')
-            item = cut_map.keymap_items.new('mch.draw_delete_cut', 'C', 'PRESS')
-            item.active = False
-            _ADDON_KEYS.append((cut_map, item))
-        main_map = wm.keyconfigs.addon.keymaps.new(name='3D View', space_type='VIEW_3D')
-        item = main_map.keymap_items.new('wm.call_menu', 'SPACE', 'PRESS')
-        item.properties.name = 'MCH_MT_tool_menu'
-        item.active = False
-        _ADDON_KEYS.append((main_map, item))
-        update_session_hotkeys(bpy.context.scene.mch_settings, bpy.context)
-        km = wm.keyconfigs.addon.keymaps.new(name='Curve', space_type='EMPTY')
-        item = km.keymap_items.new('mch.double_click_point', 'LEFTMOUSE', 'DOUBLE_CLICK')
-        item.active = False
-        _ADDON_KEYS.append((km, item))
+    workspace_ui.register()
+    for klass in SUB_PANELS:
+        bpy.utils.register_class(klass)
 
 
 def unregister():
+    for klass in reversed(SUB_PANELS):
+        bpy.utils.unregister_class(klass)
+    workspace_ui.unregister()
     cut_presets.unregister()
-    for km, item in _ADDON_KEYS:
-        try:
-            km.keymap_items.remove(item)
-        except Exception:
-            pass
-    _ADDON_KEYS.clear()
     del bpy.types.Scene.mch_fuse_preview_target
     del bpy.types.Object.mch_fuse
     del bpy.types.Object.mch_live
@@ -1831,6 +1528,7 @@ def unregister():
     del bpy.types.Scene.mch_settings
     for klass in reversed(CLASSES):
         bpy.utils.unregister_class(klass)
+    tool_state.unregister()
 
 
 if __name__ == '__main__':
