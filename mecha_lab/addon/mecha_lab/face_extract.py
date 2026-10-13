@@ -253,6 +253,7 @@ def _sync_modifiers(ob):
         side.harden_normals = False
     elif side is not None:
         ob.modifiers.remove(side)
+        side = None
     shell = ob.modifiers.get(MOD_SHELL)
     if p.thickness > 0:
         if shell is None:
@@ -263,6 +264,7 @@ def _sync_modifiers(ob):
         shell.use_rim = True
     elif shell is not None:
         ob.modifiers.remove(shell)
+        shell = None
     # keep order: side bevel first, then shell
     if side is not None and shell is not None and ob.modifiers.find(MOD_SIDE) > ob.modifiers.find(MOD_SHELL):
         ob.modifiers.move(ob.modifiers.find(MOD_SIDE), ob.modifiers.find(MOD_SHELL))
