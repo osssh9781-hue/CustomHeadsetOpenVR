@@ -40,6 +40,14 @@ def draw_shape_options(layout, context, mode):
         _hint(box, 'Smooth spline through every click', 'Click a point: sharp <-> smooth',
               'Drag a point or its Bezier handle', 'Double-click anywhere: close & apply')
     elif shape == 'STROKE':
+        if mode != 'MASK':
+            sb = box.box()
+            sb.prop(brush, 'stab_enable')
+            sc = sb.column(align=True)
+            sc.active = brush.stab_enable
+            sc.prop(brush, 'stab_strength', slider=True)
+            sc.prop(brush, 'stab_radius', slider=True)
+            sc.prop(brush, 'stab_guide')
         col.prop(brush, 'stroke_spacing')
         col.prop(brush, 'stroke_smooth')
         col.prop(brush, 'stroke_simplify')

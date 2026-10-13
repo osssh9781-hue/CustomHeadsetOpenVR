@@ -66,7 +66,7 @@ for op in ('UNION', 'INTERSECT'):
     fresh()
     a = cube('A')
     b = cube('B', loc=(1, 1, 1))
-    select_only(b, a)             # v1.0 rule: active (yellow) B = cutter, A = target
+    select_only(b, a)             # v0.10 rule: active (yellow) B = cutter, A = target
     r = call(bpy.ops.mch.boolean, operation=op)
     check(f'boolean {op}', r == {'FINISHED'} and non_manifold(a) == 0 and 'B' not in bpy.data.objects, r)
 fresh()

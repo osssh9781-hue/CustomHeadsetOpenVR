@@ -167,7 +167,7 @@ twin = t.copy()
 twin.location = (5, 0, 0)
 C.scene.collection.objects.link(twin)
 cutter = cube('Cutter', size=1.0, loc=(1, 1, 1))
-select_only(cutter, t)            # v1.0 rule: active (yellow) = cutter
+select_only(cutter, t)            # v0.10 rule: active (yellow) = cutter
 r = bpy.ops.mch.boolean(operation='DIFFERENCE')
 check('mch.boolean on Alt+D mesh succeeds', r == {'FINISHED'} and non_manifold(t) == 0, r)
 check('mch.boolean: twin untouched', abs(volume(twin) - 8.0) < 1e-4)

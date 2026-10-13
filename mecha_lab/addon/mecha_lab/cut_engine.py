@@ -781,6 +781,19 @@ def draw_overlay(op):
             _draw_lines(sh, lp, color, closed=op.preview_closed())
         if loops and op.preview_closed() and op.stage != 'SIDE':
             _draw_fill(sh, loops, fill)
+        stab = getattr(op, 'stab', None)
+        if stab is not None and stab.active and op.stage == 'DRAG' and stab.pos is not None:
+            # live tail to the stabilized point, plus the lazy guide (circle + string)
+            if op.pts:
+                _draw_lines(sh, [op.pts[-1], stab.pos], color, width=2.0)
+            if op.brush.stab_guide and op.mouse is not None:
+                r = stab.radius
+                if r > 0.5:
+                    ring = [(op.mouse[0] + r * math.cos(a), op.mouse[1] + r * math.sin(a))
+                            for a in (2 * math.pi * i / 40 for i in range(40))]
+                    _draw_lines(sh, ring, (1, 1, 1, 0.35), closed=True, width=1.0)
+                _draw_lines(sh, [stab.pos, op.mouse], (1, 1, 1, 0.6), width=1.0)
+                _draw_squares(sh, [stab.pos], color, 3.0)
         if op.stage in {'POINTS', 'SIDE'}:
             _draw_squares(sh, op.pts, (1, 1, 1, 0.9), 3.5)
             if op.pts:
@@ -1090,6 +1103,8 @@ class StrokeLogic:
         self.last_press = None       # (time, xy, 'ADD' / 'EDIT') for own double-click detection
         self.alt_pending = None      # (xy, time, shift, ctrl) Alt press waiting for click / drag
         self.alt_wait = None
+        self.stab = None             # Free Draw stabilizer (stabilizer.py)
+        self.stab_timer = None
         if alt_wait:
             # Alt: decided at RELEASE - short click leaves the tool, drag is the
             # tool's Alt action (Cut: keep inside, Base Mesh: Boolean cutter).
@@ -1099,6 +1114,12 @@ class StrokeLogic:
             self._begin(xy)
         self.handle = add_draw_handler(self)
         context.window_manager.modal_handler_add(self)
+        self._wm, self._window = context.window_manager, context.window
+        if self.stab is not None and self.stab_timer is None and self.stab.active:
+            try:
+                self.stab_timer = self._wm.event_timer_add(1.0 / 60.0, window=self._window)
+            except (TypeError, ValueError, RuntimeError):
+                self.stab_timer = None
         self._hint(context)
         self.region.tag_redraw()
         return {'RUNNING_MODAL'}
@@ -1117,10 +1138,26 @@ class StrokeLogic:
                 self._stroke_start(xy)
 
     def _stroke_start(self, xy):
-        """Hook for the Free Draw stabilizer (see stabilizer.py)."""
-        stab = getattr(self, 'stab', None)
-        if stab is not None:
-            stab.reset(xy, self._clock())
+        """Free Draw: start the Lazy Mouse stabilizer when it is ON."""
+        if self.mode == 'MASK' or not getattr(self.brush, 'stab_enable', False):
+            return
+        from .stabilizer import LazyStabilizer
+        self.stab = LazyStabilizer(self.brush)
+        self.stab.reset(xy, self._clock())
+        ctx_wm = getattr(self, '_wm', None)
+        if ctx_wm is not None and self.stab_timer is None:
+            try:
+                self.stab_timer = ctx_wm.event_timer_add(1.0 / 60.0, window=getattr(self, '_window', None))
+            except (TypeError, ValueError, RuntimeError):
+                self.stab_timer = None
+
+    def _stroke_sample(self, xy):
+        """Free Draw mouse sample (stabilized when active)."""
+        stab = self.stab
+        if stab is not None and stab.active:
+            xy = stab.update(xy, self._clock())
+        if not self.pts or math.dist(self.pts[-1], xy) >= self.brush.stroke_spacing:
+            self.pts.append(xy)
 
     def _alt_begin_drag(self, context, press_xy, xy):
         """Alt held and the mouse moved: start the stroke at the press point
@@ -1167,6 +1204,12 @@ class StrokeLogic:
             except (ReferenceError, ValueError):
                 pass
             self.timer = None
+        if getattr(self, 'stab_timer', None) is not None:
+            try:
+                context.window_manager.event_timer_remove(self.stab_timer)
+            except (ReferenceError, ValueError):
+                pass
+            self.stab_timer = None
         _status(context, None)
         try:
             self.region.tag_redraw()
@@ -1374,6 +1417,13 @@ class StrokeLogic:
         if et in {'LEFT_CTRL', 'RIGHT_CTRL', 'OSKEY'}:
             self.ctrl_held = ev == 'PRESS'
 
+        if et == 'TIMER' and self.stab is not None and self.stab.active and self.stage == 'DRAG' \
+                and self.rmb_time is None:
+            p = self.stab.tick(self._clock())       # keep gliding when the mouse stops
+            if p is not None and math.dist(self.pts[-1], p) >= self.brush.stroke_spacing:
+                self.pts.append(p)
+            self.region.tag_redraw()
+            return {'RUNNING_MODAL'}
         if et == 'TIMER':
             if self.rmb_time is not None and event_timer_matches(self, event):
                 if _now() - self.rmb_time >= _double_click_seconds(context):
@@ -1523,8 +1573,7 @@ class StrokeLogic:
 
     def _on_move(self, xy):
         if self.stage == 'DRAG' and self.shape == 'STROKE':
-            if not self.pts or math.dist(self.pts[-1], xy) >= self.brush.stroke_spacing:
-                self.pts.append(xy)
+            self._stroke_sample(xy)
         elif self.stage == 'POINTS':
             if self.drag_index is not None:
                 if math.dist(xy, self.press_xy) > 3.0:
@@ -1637,7 +1686,7 @@ class StrokeLogic:
         """Free Draw release: add the final mouse position once (no double point)."""
         stab = getattr(self, 'stab', None)
         if stab is not None and stab.active:
-            for p in stab.finish(xy):
+            for p in stab.finish(xy, self.brush.stroke_spacing):
                 self._stroke_append(p)
             return
         if xy != self.pts[-1] and math.dist(self.pts[-1], xy) > 0.5:

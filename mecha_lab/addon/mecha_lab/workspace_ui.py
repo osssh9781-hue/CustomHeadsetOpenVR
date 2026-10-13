@@ -1011,6 +1011,15 @@ class MCH_PT_shape_popup(bpy.types.Panel):
         tool = ts.TOOL_BY_ID.get(ts.effective_tool(context))
         layout.label(text='SHAPES  |  ' + (tool[1] if tool else ''), icon='SELECT_SET')
         draw_shape_grid(layout, context, columns=3, scale=2.6)
+        brush = context.scene.mch_brush
+        if brush.shape == 'STROKE':
+            box = layout.box()
+            box.prop(brush, 'stab_enable')
+            col = box.column(align=True)
+            col.active = brush.stab_enable
+            col.prop(brush, 'stab_strength', slider=True)
+            col.prop(brush, 'stab_radius', slider=True)
+            col.prop(brush, 'stroke_spacing')
         layout.separator()
         layout.label(text='Custom PNG Shapes', icon='IMAGE_DATA')
         draw_custom_grid(layout, context, columns=4, scale=2.6)

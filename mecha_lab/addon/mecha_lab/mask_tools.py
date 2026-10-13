@@ -189,8 +189,8 @@ class MCH_OT_draw_mask(bpy.types.Operator):
     bl_options = {'INTERNAL'}
 
     def execute(self, context):
-        # v1.0: Mask is hidden (did not work reliably); data and code are kept.
-        self.report({'WARNING'}, 'Mask is hidden in Mecha Lab 1.0 (saved mask data is kept)')
+        # v0.10: Mask is hidden (did not work reliably); data and code are kept.
+        self.report({'WARNING'}, 'Mask is hidden in Mecha Lab 0.10 (saved mask data is kept)')
         return {'CANCELLED'}
 
 

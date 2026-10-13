@@ -46,7 +46,7 @@ TOOLS = (
     ('EDIT', 'Live Result', 'Confirm live curves / arrays / cuts', 'live', 'CHECKMARK', None, 'OK'),
 )
 TOOL_BY_ID = {t[0]: t for t in TOOLS}
-# v1.0 (B08/F07): Mask does not work reliably for the user -> hidden from the
+# v0.10 (B08/F07): Mask does not work reliably for the user -> hidden from the
 # tool list, Space / V menus, toolbar and hotkeys.  Its code, operators and
 # all saved mask data (face attributes, vertex groups) are kept untouched.
 HIDDEN_TOOLS = {'MASK'}
@@ -149,8 +149,19 @@ class MCH_PG_Brush(bpy.types.PropertyGroup):
     outline_segments: IntProperty(name='Corner Segments', default=6, min=1, max=32)
     stroke_smooth: IntProperty(name='Free Draw Smoothing', default=2, min=0, max=10,
                                description='Smoothing passes applied to the drawn freehand path')
-    stroke_spacing: FloatProperty(name='Sample Spacing (px)', default=4.0, min=1.0, max=50.0,
-                                  description='Free Draw: a new sample every N pixels of mouse movement')
+    stroke_spacing: FloatProperty(name='Stroke Spacing (px)', default=4.0, min=1.0, max=50.0,
+                                  description='Free Draw: a new outline point every N pixels of (stabilized) movement')
+    stab_enable: BoolProperty(name='Stabilizer (Lazy Mouse)', default=False,
+                              description='Free Draw: the drawn line follows the mouse slowly and smoothly while '
+                                          'drawing (Cut / Split / Base Mesh). OFF = exact previous behaviour')
+    stab_strength: FloatProperty(name='Smoothing Strength', default=50.0, min=0.0, max=100.0, subtype='PERCENTAGE',
+                                 description='Higher = smoother but slower follow (time based, same feel at any '
+                                             'mouse rate). Applies immediately, also while drawing')
+    stab_radius: FloatProperty(name='Lazy Radius (px)', default=20.0, min=0.0, soft_max=80.0, max=200.0,
+                               description='The line does not move while the cursor stays inside this circle; '
+                                           'outside, it is pulled along on the circle edge')
+    stab_guide: BoolProperty(name='Show Lazy Guide', default=True,
+                             description='Draw the lazy circle and the cursor-to-line string while drawing')
     mask_brush_radius: FloatProperty(name='Mask Brush Radius (px)', default=18.0, min=1.0, max=200.0,
                                      description='Pixel radius for Brush Stroke in Mask mode')
     stroke_simplify: FloatProperty(name='Simplify (px)', default=1.0, min=0.0, max=10.0,

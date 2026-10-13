@@ -1,6 +1,6 @@
 schema_version = "1.0.0"
 id = "mecha_lab"
-version = "0.9.3"
+version = "0.10.0"
 name = "Mecha Lab"
 tagline = "Parametric primitives, Cut, Split, SubD and Deform"
 maintainer = "Mecha Lab project"

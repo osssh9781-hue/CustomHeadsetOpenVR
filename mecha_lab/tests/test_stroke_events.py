@@ -369,8 +369,8 @@ check('2nd click confirms the lasso', r == {'FINISHED'} and volume(t) < 8)
 CLOCK[0] += 0.15
 v_after = volume(t)
 op3 = Op()
-r3 = op3.invoke(Ctx(), E('LEFTMOUSE', 'PRESS', 520, 560))   # click 3: v1.0 = an ordinary new stroke
-check('v1.0: triple-click-to-select removed (3rd click starts a stroke, no exit)',
+r3 = op3.invoke(Ctx(), E('LEFTMOUSE', 'PRESS', 520, 560))   # click 3: v0.10 = an ordinary new stroke
+check('v0.10: triple-click-to-select removed (3rd click starts a stroke, no exit)',
       r3 == {'RUNNING_MODAL'} and ('exit',) not in CALLS)
 op3.modal(Ctx(), E('ESC', 'PRESS', 520, 560))
 check('confirmed cut kept', abs(volume(t) - v_after) < 1e-9)
