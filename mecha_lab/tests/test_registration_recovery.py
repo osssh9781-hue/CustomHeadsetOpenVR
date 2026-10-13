@@ -30,7 +30,8 @@ def keymap_items():
     kc = bpy.context.window_manager.keyconfigs.addon
     if kc is None:
         return []
-    return [(km.name, ki.idname, ki.type) for km in kc.keymaps for ki in km.keymap_items if ki.idname.startswith('mch.')]
+    return [(km.name, ki.idname, ki.type, ki.value, ki.shift, ki.alt, ki.ctrl) for km in kc.keymaps
+            for ki in km.keymap_items if ki.idname.startswith('mch.')]
 
 
 def header_funcs():

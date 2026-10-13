@@ -10,7 +10,8 @@ import sys
 from _harness import bpy, check, summary
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-zips = sorted(glob.glob(os.path.join(ROOT, 'dist', 'mecha_lab-*.zip')))
+zips = sorted(glob.glob(os.path.join(ROOT, 'dist', 'mecha_lab-*.zip')),
+              key=lambda p: tuple(int(x) for x in os.path.basename(p)[10:-4].split('.')))   # 0.10 > 0.9
 check('dist zip exists', bool(zips), zips)
 if zips:
     # The addon must come from the zip, not from ../addon on sys.path.
@@ -29,16 +30,26 @@ if zips:
     check('operators available after install', hasattr(bpy.ops.mch, 'cut_stroke') and 'MCH_OT_cut_stroke' in dir(bpy.types))
     prefs = bpy.context.preferences.addons[mod].preferences if mod in bpy.context.preferences.addons else None
     check('addon preferences registered (hotkey switches)', prefs is not None and hasattr(prefs, 'space_menu'))
-    try:
-        bpy.ops.preferences.addon_disable(module=mod)
-        ok = True
-    except Exception as ex:
-        ok = False
-        print(ex)
-    check('disable works', ok and 'MCH_OT_cut_stroke' not in dir(bpy.types))
     kc = bpy.context.window_manager.keyconfigs.addon
-    left = [ki.idname for km in kc.keymaps for ki in km.keymap_items if ki.idname.startswith('mch.')]
-    check('no hotkeys left after disable', not left, left)
-    bpy.ops.preferences.addon_enable(module=mod)
-    check('re-enable works', 'MCH_OT_cut_stroke' in dir(bpy.types))
+    for cycle in range(3):          # docs/04 A1: disable / enable three times
+        try:
+            bpy.ops.preferences.addon_disable(module=mod)
+            ok = True
+        except Exception as ex:
+            ok = False
+            print(ex)
+        check(f'cycle {cycle}: disable works', ok and 'MCH_OT_cut_stroke' not in dir(bpy.types))
+        left = [ki.idname for km in kc.keymaps for ki in km.keymap_items if ki.idname.startswith('mch.')] if kc else []
+        check(f'cycle {cycle}: no hotkeys left after disable', not left, left)
+        try:
+            bpy.ops.preferences.addon_enable(module=mod)
+            ok = True
+        except Exception as ex:
+            ok = False
+            print(ex)
+        check(f'cycle {cycle}: re-enable works (no "already registered")', ok and 'MCH_OT_cut_stroke' in dir(bpy.types))
+        items = [(km.name, ki.idname, ki.type, ki.value, ki.shift, ki.alt, ki.ctrl) for km in kc.keymaps
+                 for ki in km.keymap_items if ki.idname.startswith('mch.')] if kc else []
+        check(f'cycle {cycle}: keymap items not duplicated', len(items) == len(set(items)), len(items))
+    check('Mirror panel available after cycles', hasattr(bpy.types, 'MCH_PT_mirror'))
 sys.exit(1 if summary() else 0)
