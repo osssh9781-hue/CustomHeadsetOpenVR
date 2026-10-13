@@ -12,7 +12,7 @@ import bpy
 from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform, radial_array,
                mirror_tools, cut_presets, mask_tools, workspace_ui, ui_tool_settings,
                base_mesh, loft_surface, zbrush_bridge, subd_plane, deform_tools, primitive_tools,
-               addon_safety, self_test)
+               addon_safety, self_test, face_extract)
 import os
 import re
 from pathlib import Path
@@ -1812,6 +1812,7 @@ def _register():
     deform_tools.register()
     primitive_tools.register()
     self_test.register()
+    face_extract.register()
     workspace_ui.register()
     for klass in SUB_PANELS:
         bpy.utils.register_class(klass)
@@ -1864,6 +1865,7 @@ def _unregister_steps():
     return [
         ('sub panels', lambda: _unregister_classes(reversed(SUB_PANELS))),
         ('workspace_ui', workspace_ui.unregister),
+        ('face_extract', face_extract.unregister),
         ('self_test', self_test.unregister),
         ('primitive_tools', primitive_tools.unregister),
         ('deform_tools', deform_tools.unregister),
