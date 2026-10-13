@@ -1,4 +1,13 @@
-# KNOWN LIMITATIONS — Mecha Lab 0.11.3
+# KNOWN LIMITATIONS — Mecha Lab 0.12.0
+
+## 0.12.0 (먼저 읽기)
+- **하단 툴바·Q 파이·툴팁은 실제 창에서 한 번도 그려 보지 못했습니다** (headless에는 화면이 없음). 등록, 키맵, 아이콘 이름,
+  배치 계산만 테스트. 툴팁이 Blender 기본 방식으로 뜨는지, 버튼 위치가 Windows UI 배율에서 맞는지 확인 필요.
+- 툴바에는 지금 애드온에 있는 도구만 있음(Box Hide, Smart Cleanup은 프로토타입에만 있음, 미구현).
+- 옵션 카드(뷰포트 위 떠 있는 패널)는 아직 없음: 대신 도구 헤더에 도형 + 대상 토글. 사이드바(N)는 그대로.
+- 그룹 진입(Scope), Mecha Layers, 미러 평면 기즈모, Quick Place는 프로토타입에만 있음.
+- 자동 대상은 관통(Through) 깊이와 같이 화면에서 덮인 메시를 자름: 앞에 가려진 뒤쪽 메시도 도형이 덮으면 잘림.
+- 기본값이 Selected → Auto Target으로 바뀜. 예전처럼 쓰려면 헤더에서 "Selected Only" 또는 T.
 
 ## 00000. 0.11.3
 - Radial Array 충돌: headless에서 재현 안 됨(속성 40회 변경, Boolean 연결·미리보기·적용). 원인 후보(단축키 편집 행의 오래된

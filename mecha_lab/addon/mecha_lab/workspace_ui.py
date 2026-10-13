@@ -178,7 +178,7 @@ def _deferred_ortho_check():
     return None
 
 
-_HOTKEY_IDS = ('mch.select_move_key', 'mch.quick_menu', 'mch.space_tools', 'mch.hotkey')
+_HOTKEY_IDS = ('mch.tool_pie', 'mch.toggle_last_tool', 'mch.select_move_key', 'mch.space_tools', 'mch.hotkey')
 
 
 def hotkey_items(context=None):
@@ -218,8 +218,9 @@ def draw_hotkey_editor(layout, context=None):
     for km, item in hotkey_items(context):
         idname = item.idname
         row = box.row(align=True)
-        label = {'mch.select_move_key': 'Select / Move', 'mch.quick_menu': 'Quick Menu',
-                 'mch.space_tools': 'Tool Menu'}.get(idname, 'Hotkey ' + getattr(item.properties, 'action', ''))
+        label = {'mch.select_move_key': 'Select / Move', 'mch.tool_pie': 'Tool Pie',
+                 'mch.toggle_last_tool': 'Select <-> Last Tool',
+                 'mch.space_tools': 'Big Tool Menu'}.get(idname, 'Hotkey ' + getattr(item.properties, 'action', ''))
         row.label(text=label)
         row.prop(item, 'type', text='', full_event=True)
 
@@ -272,6 +273,11 @@ def activate_mecha_tool(context, tool_id):
         from . import base_mesh
         base_mesh.auto_apply_session(context)     # F02: only this tool's own live results
     settings.mch_active_tool = tool_id
+    try:
+        from . import bottom_bar
+        bottom_bar.note_tool(context, tool_id)
+    except (AttributeError, ImportError):
+        pass
     native = ts.TOOL_BY_ID[tool_id][5]
     current = ts.native_tool_id(context)
     try:
@@ -316,7 +322,7 @@ def _tool_keymap(mode):
         ('mch.rmb_gate', {'type': 'RIGHTMOUSE', 'value': 'PRESS'},
          {'properties': [('popup', 'PROFILE' if mode == 'BASE' else 'SHAPE')]}),
         ('mch.space_tools', {'type': 'SPACE', 'value': 'PRESS'}, None),
-        ('mch.space_tools', {'type': 'V', 'value': 'PRESS'}, None),
+        ('mch.toggle_targets', {'type': 'T', 'value': 'PRESS'}, None),
         # Esc with no stroke pending: back to Blender's Select Box tool.
         ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),
         # B06: R / Shift+R rotate a PNG stamp (poll fails for other shapes -> Blender's R).
@@ -536,6 +542,9 @@ def draw_shape_palette(self, context):
     op.shape = 'CUSTOM'
     op.preset = ''
     sub.operator('mch.import_cut_png', text='', icon='IMPORT')
+    if tool in {'CUT', 'SPLIT'} and hasattr(scene, 'mch_cut'):
+        tr = layout.row(align=True)
+        tr.prop(scene.mch_cut, 'targets', expand=True)
     if tool not in ts.SHAPE_TOOLS:
         layout.label(text='Shapes: Cut / Split / Mask / Base Mesh only')
     # Always visible next to the shared shapes in the Mecha workspace.
@@ -849,6 +858,8 @@ class MCH_OT_select_move(bpy.types.Operator):
         except (RuntimeError, TypeError) as ex:
             self.report({'WARNING'}, f'Move tool unavailable here: {ex}')
             return {'CANCELLED'}
+        from . import bottom_bar
+        bottom_bar.note_select(context)
         space = context.space_data if getattr(context.space_data, 'type', '') == 'VIEW_3D' else None
         if space is not None and not space.show_gizmo:
             space.show_gizmo = True
@@ -1169,11 +1180,18 @@ class MCH_PT_profile_popup(bpy.types.Panel):
 class MCH_AddonPreferences(bpy.types.AddonPreferences):
     bl_idname = ADDON_ID
 
-    space_menu: BoolProperty(name='Space / V = Mecha Tool Menu', default=True,
+    space_menu: BoolProperty(name='Space = Big Mecha Tool Menu', default=True,
                              description='Only inside the MECHA LAB workspace; elsewhere Space keeps Blender behaviour')
     workspace_hotkeys: BoolProperty(name='B / C Hotkeys', default=True,
                                     description='B = Boolean Difference, C = Cut tool, only inside MECHA LAB')
-    quick_menu: BoolProperty(name='N = Quick Tool Menu', default=True,
+    tool_pie: BoolProperty(name='Q = Tool Pie', default=True,
+                           description='All Mecha tools as a pie at the mouse, MECHA LAB only (elsewhere Q = Quick Favorites)')
+    last_tool_key: BoolProperty(name='Shift+Q = Select <-> Last Tool', default=True)
+    bottom_toolbar: BoolProperty(name='Bottom Toolbar', default=True,
+                                 description='Tool buttons at the bottom centre of the viewport (MECHA LAB, Object Mode)')
+    toolbar_labels: BoolProperty(name='Names Under Icons', default=False)
+    toolbar_size: EnumProperty(name='Toolbar Size', items=[('S', 'S', ''), ('M', 'M', ''), ('L', 'L', '')], default='M')
+    quick_menu: BoolProperty(name='Quick Tool Menu (no key since 0.12)', default=True,
                              description='Six core tools at the mouse, only inside MECHA LAB (Object Mode)')
     select_move_key: BoolProperty(name='Select / Move Hotkey', default=True,
                                   description='Hotkey for Select / Move inside MECHA LAB (change the key below or in '
@@ -1181,6 +1199,15 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
 
     def draw(self, context):
         layout = self.layout
+        box = layout.box()
+        box.label(text='Bottom toolbar / keys (0.12)')
+        row = box.row()
+        row.prop(self, 'bottom_toolbar')
+        row.prop(self, 'toolbar_labels')
+        box.row().prop(self, 'toolbar_size', expand=True)
+        row = box.row()
+        row.prop(self, 'tool_pie')
+        row.prop(self, 'last_tool_key')
         layout.prop(self, 'space_menu')
         layout.prop(self, 'workspace_hotkeys')
         layout.prop(self, 'quick_menu')
@@ -1206,12 +1233,12 @@ def register_keymaps():
     if kc is None:
         return
     km = kc.keymaps.new(name='3D View', space_type='VIEW_3D')
-    # 0.11.3 (user request): Tool Menu = V (Space kept, switchable), Quick Menu = N.
-    # Both only act inside the MECHA LAB workspace; elsewhere the keys keep their
-    # Blender meaning (N = sidebar) because the operators' poll fails there.
+    # 0.12 (prototype v2.1): Q = tool pie, Shift+Q = Select <-> last tool. V is free
+    # (it duplicated the pie) and N is Blender's sidebar again. Space stays as the
+    # big tool menu (switchable). All gated to MECHA LAB by the operators' poll.
     _keymaps.append((km, km.keymap_items.new('mch.space_tools', 'SPACE', 'PRESS')))
-    _keymaps.append((km, km.keymap_items.new('mch.space_tools', 'V', 'PRESS')))
-    _keymaps.append((km, km.keymap_items.new('mch.quick_menu', 'N', 'PRESS')))
+    _keymaps.append((km, km.keymap_items.new('mch.tool_pie', 'Q', 'PRESS')))
+    _keymaps.append((km, km.keymap_items.new('mch.toggle_last_tool', 'Q', 'PRESS', shift=True)))
     km = kc.keymaps.new(name='Object Mode', space_type='EMPTY')
     item = km.keymap_items.new('mch.hotkey', 'B', 'PRESS')
     item.properties.action = 'BOOLEAN'

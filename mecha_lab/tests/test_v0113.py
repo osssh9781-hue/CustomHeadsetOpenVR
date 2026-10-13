@@ -47,15 +47,14 @@ check('picking a shape selects the stamp tool shape', r == {'FINISHED'} and C.sc
 # --- hotkeys -----------------------------------------------------------------
 kc = C.window_manager.keyconfigs.addon
 keys = [(ki.idname, ki.type) for km in kc.keymaps for ki in km.keymap_items]
-check('V = Tool Menu, N = Quick Menu, F = Select / Move', ('mch.space_tools', 'V') in keys and
-      ('mch.quick_menu', 'N') in keys and ('mch.select_move_key', 'F') in keys and
-      ('mch.quick_menu', 'V') not in keys and ('mch.select_move_key', 'W') not in keys, keys)
+check('0.12 keys: Q pie, F = Select / Move, V / N free', ('mch.tool_pie', 'Q') in keys and
+      ('mch.select_move_key', 'F') in keys and not any(k[1] in {'V', 'N', 'W'} for k in keys), keys)
 tool_km = wui._tool_keymap('CUT')
-check('V opens the Tool Menu while a Mecha drawing tool is active', any(
-    k[0] == 'mch.space_tools' and k[1]['type'] == 'V' for k in tool_km))
+check('0.12: T toggles targets while a Mecha drawing tool is active', any(
+    k[0] == 'mch.toggle_targets' and k[1]['type'] == 'T' for k in tool_km))
 found = wui.hotkey_items(C)
 check('hotkey editor looks items up fresh (no cached KeyMapItem list)',
-      {i.idname for _km, i in found} >= {'mch.select_move_key', 'mch.quick_menu', 'mch.space_tools'} and
+      {i.idname for _km, i in found} >= {'mch.select_move_key', 'mch.tool_pie', 'mch.space_tools'} and
       'for km, item in _keymaps' not in open(wui.__file__).read().split('def draw_hotkey_editor')[1].split('def ')[0])
 
 # --- Ctrl+Z keeps the tool UI ------------------------------------------------

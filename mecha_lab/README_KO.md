@@ -1,12 +1,17 @@
-# Mecha Lab 0.11.3 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.12.0 — 설치 · MECHA LAB Workspace · 사용법
 
-> **검증 수준:** Linux headless Blender **5.0.1**(`bpy`)에서 자동 테스트 19개 파일 / 1046개 항목이 통과했습니다.
+> **검증 수준:** Linux headless Blender **5.0.1**(`bpy`)에서 자동 테스트 20개 파일 / 1074개 항목이 통과했습니다.
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` A절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
 
 기준 소스: ChatGPT v0.9.3 (Claude 0.9.0 + ChatGPT Deform 0.9.1 + Primitive 0.9.2/0.9.3). 변경 내용은 `CHANGELOG.md` 0.10.0.
 
-## 0.11.1 입력 변경 (먼저 읽기)
+## 0.12.0 빠른 안내
+- **하단 툴바**(뷰포트 아래 가운데) 또는 **Q 파이**로 도구 선택, **Shift+Q** = Select ↔ 마지막 도구, **F** = Select / Move.
+- Cut/Split은 기본이 **자동 대상**: 그린 도형이 덮는 메시를 바로 자름. 선택한 것만 자르려면 헤더 "Selected Only" 또는 **T**.
+- V는 비었고, N은 Blender 사이드바입니다.
+
+## 0.11.1 입력 변경
 - **Alt+클릭 모드 전환은 삭제됐습니다.** Alt는 v0.9.3처럼 **Cut 반전(안쪽 남기기)** 만 합니다(누르고 시작하거나 그리는 중 눌러도 됨).
 - **Ctrl+드래그** = 중심에서 그리기(그대로).
 - 선택/이동이 필요하면 **Select / Move**(Mecha Lab 메뉴 맨 위, 기본 단축키 **W**, Preferences에서 변경 가능). Blender 선택 +

@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 11, 3),
+    "version": (0, 12, 0),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
     "description": "Cut, Split, Base Mesh, Boolean, Face Extract, Armor Sculpt, Molding, Cable, Hollow, curve arrays, Mirror",
@@ -12,7 +12,7 @@ import bpy
 from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform, radial_array,
                mirror_tools, cut_presets, mask_tools, workspace_ui, ui_tool_settings,
                base_mesh, loft_surface, zbrush_bridge, subd_plane, deform_tools, primitive_tools,
-               addon_safety, self_test, face_extract, edge_molding, hollow_shell, along_curve, cable)
+               addon_safety, self_test, face_extract, edge_molding, hollow_shell, along_curve, cable, bottom_bar)
 import os
 import re
 from pathlib import Path
@@ -1820,6 +1820,7 @@ def _register():
     along_curve.register()
     cable.register()
     workspace_ui.register()
+    bottom_bar.register()
     for klass in SUB_PANELS:
         bpy.utils.register_class(klass)
 
@@ -1833,6 +1834,7 @@ def _reset_module_state():
     except (KeyError, RuntimeError, AttributeError):
         workspace_ui._icons = None
     primitive_tools._KM.clear()
+    bottom_bar._label_handle = None
 
 
 def register():
@@ -1870,6 +1872,7 @@ def _unregister_classes(classes):
 def _unregister_steps():
     return [
         ('sub panels', lambda: _unregister_classes(reversed(SUB_PANELS))),
+        ('bottom_bar', bottom_bar.unregister),
         ('workspace_ui', workspace_ui.unregister),
         ('cable', cable.unregister),
         ('along_curve', along_curve.unregister),

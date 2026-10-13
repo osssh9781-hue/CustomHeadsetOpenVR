@@ -1,4 +1,11 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.11.3 (Claude Code, 2026-10-13)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.12.0 (Claude Code, 2026-10-13)
+
+## 00000. 0.12.0 (UX 프로토타입의 최소 Blender 버전)
+- ZIP `dist/mecha_lab-0.12.0.zip` (sha256 `270841f19e16687320f5e91e0567a7e5b6b414dd5407e8228a1140304417c7fe`), 1074/1074. 프로토타입: https://claude.ai/artifact/DXBX1cyVtgs3w1k2LqToVH (v2.1)
+- `cut_engine.auto_targets / _auto_candidate / _loop_samples`, `StrokeLogic.auto_target` (`mch_cut.targets` = AUTO 기본).
+- `bottom_bar.py`: `MCH_GGT_bottom_toolbar`(GIZMO_GT_button_2d), `MCH_MT_tool_pie`, `mch.tool_pie`(Q), `mch.toggle_last_tool`
+  (Shift+Q), `mch.toggle_targets`(T), `toolbar_layout()`, WM 속성 `mch_last_model / mch_ui_mode`.
+- 다음: 옵션 카드(직접 그린 위젯 vs 헤더), Scope/Layers, 미러 평면 기즈모, Quick Place, Box Hide — 프로토타입 기준.
 
 ## 0000. 0.11.3
 - ZIP `dist/mecha_lab-0.11.3.zip` (sha256 `deed2943d3d8276a383cdf338455d393e508cf337c6d42e01a1f98c9604e2c37`), 1046/1046. CHANGELOG 0.11.3 참고.

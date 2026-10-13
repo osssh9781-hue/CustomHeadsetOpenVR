@@ -1,4 +1,4 @@
-# Test Report — Mecha Lab 0.11.3
+# Test Report — Mecha Lab 0.12.0
 
 ## 환경
 | 항목 | 값 |
@@ -14,6 +14,17 @@ ZIP: `dist/mecha_lab-0.11.1.zip` (sha256 `fb8960ae4fc08a273b09cb6d1cfca01a7efda2
 
 **변경 전(v0.9.3 무수정)에도 같은 headless 테스트는 모두 통과**했습니다(경로 누락 2건 제외). 즉 사용자 보고 고장 대부분은
 headless로 재현되지 않았고, 아래 "GUI 검증" 열은 전부 미검증입니다.
+
+## 0.12.0 결과: 20개 파일, 1074 / 1074 통과
+로그 `tests/test_log_bpy501_v0120.txt`, ZIP `dist/mecha_lab-0.12.0.zip` (sha256 `270841f19e16687320f5e91e0567a7e5b6b414dd5407e8228a1140304417c7fe`).
+| 항목 | 코드에 존재 | headless 통과 | Windows GUI 검증 |
+|---|---|---|---|
+| 자동 대상 / 선택만 (Cut·Split·Lasso, 잠금·와이어 제외, 원근 뷰) | O | O | 미검증 |
+| T 토글, 헤더 토글 | O | 키맵 등록 | 미검증 |
+| Q 파이 / Shift+Q | O | 키맵·상태 로직 (팝업 표시는 불가) | **미검증** |
+| 하단 툴바 (기즈모 버튼, 크기, 이름 표시) | O | 등록·아이콘·배치 계산 (그리기 불가) | **미검증** |
+| V/N 해제 | O | O | 미검증 |
+| 기존 0.11.x 테스트 | — | 키 변경에 맞춰 3항목 수정 후 통과 | — |
 
 ## 0.11.3 결과: 19개 파일, 1046 / 1046 통과
 로그 `tests/test_log_bpy501_v0113.txt`, ZIP `dist/mecha_lab-0.11.3.zip` (sha256 `deed2943d3d8276a383cdf338455d393e508cf337c6d42e01a1f98c9604e2c37`).

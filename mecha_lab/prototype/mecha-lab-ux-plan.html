@@ -1,0 +1,432 @@
+<title>Mecha Lab UX 설계안</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column (~72ch) with full-width wireframe figures; bottom-bar motif repeats as section markers */
+:root {
+  --bg: #f3f4f7;
+  --surface: #ffffff;
+  --fg: #1d2129;
+  --muted: #5d6573;
+  --line: #d7dbe3;
+  --accent: #d9730d;          /* Mecha Lab icon orange, darkened for light ground */
+  --accent-soft: #fbe6cf;
+  --vp: #2b2f36;              /* viewport ground in wireframes */
+  --vp-line: #3d434d;
+  --vp-ui: #1c1f24;
+  --vp-text: #c9ced8;
+  --ok: #2f8f57;
+  --warn: #b7791f;
+  --risk: #c2413b;
+  --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Consolas", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15171b; --surface: #1d2026; --fg: #e6e8ec; --muted: #9aa2b0; --line: #2f343c;
+    --accent: #ff9e28; --accent-soft: #3a2a17;
+    --vp: #262a31; --vp-line: #353b45; --vp-ui: #121418; --vp-text: #c9ced8;
+    --ok: #4cc27f; --warn: #e0a640; --risk: #ef6b64;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15171b; --surface: #1d2026; --fg: #e6e8ec; --muted: #9aa2b0; --line: #2f343c;
+  --accent: #ff9e28; --accent-soft: #3a2a17;
+  --vp: #262a31; --vp-line: #353b45; --vp-ui: #121418; --vp-text: #c9ced8;
+  --ok: #4cc27f; --warn: #e0a640; --risk: #ef6b64;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body);
+  font-size: 15.5px; line-height: 1.7; padding-inline: 18px; padding-block: 28px 64px;
+}
+main { max-width: 980px; margin: 0 auto; display: grid; gap: 44px; }
+.col { max-width: 72ch; }
+h1, h2, h3 { text-wrap: balance; line-height: 1.3; margin: 0; }
+h1 { font-size: clamp(26px, 4vw, 36px); font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 22px; font-weight: 700; display: flex; align-items: baseline; gap: 12px; }
+h3 { font-size: 16.5px; font-weight: 700; margin-top: 6px; }
+p { margin: 0; }
+section { display: grid; gap: 16px; }
+.kicker { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.tag { font-family: var(--font-mono); font-size: 12px; color: var(--muted); font-weight: 400; }
+.lead { font-size: 17px; color: var(--muted); max-width: 70ch; }
+kbd {
+  font-family: var(--font-mono); font-size: 0.86em; padding: 1px 6px; border-radius: 4px;
+  border: 1px solid var(--line); background: var(--surface); white-space: nowrap;
+}
+ul { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; }
+.decide {
+  background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent);
+  border-radius: 6px; padding: 18px 20px; display: grid; gap: 10px;
+}
+.decide ol { margin: 0; padding-left: 1.3em; display: grid; gap: 8px; }
+figure { margin: 0; display: grid; gap: 8px; }
+figcaption { font-size: 13.5px; color: var(--muted); }
+.fig { overflow-x: auto; border-radius: 8px; border: 1px solid var(--line); background: var(--vp); }
+.fig svg { display: block; width: 100%; min-width: 720px; height: auto; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; display: grid; gap: 8px; min-width: 0; }
+.card h3 { margin: 0; }
+.tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 500; color: var(--muted); font-size: 12.5px; letter-spacing: 0.03em; background: color-mix(in srgb, var(--surface) 80%, var(--bg)); }
+tr:last-child td { border-bottom: 0; }
+td.num { font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+.pill { display: inline-block; font-family: var(--font-mono); font-size: 11.5px; padding: 1px 8px; border-radius: 99px; border: 1px solid currentColor; white-space: nowrap; }
+.ok { color: var(--ok); } .warn { color: var(--warn); } .risk { color: var(--risk); }
+.src { font-size: 13px; color: var(--muted); }
+.src a { color: var(--muted); }
+a { color: var(--accent); }
+pre.mermaid { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px; overflow-x: auto; margin: 0; }
+/* svg tokens */
+.vp { fill: var(--vp); } .vpl { stroke: var(--vp-line); } .ui { fill: var(--vp-ui); }
+.tx { fill: var(--vp-text); font-family: var(--font-body); font-size: 13px; }
+.txm { fill: var(--vp-text); font-family: var(--font-mono); font-size: 11px; opacity: .8; }
+.acc { fill: var(--accent); } .accs { stroke: var(--accent); }
+.obj { fill: #5a6270; stroke: #7d8696; }
+.dim { opacity: .35; }
+@media (prefers-reduced-motion: no-preference) { a { transition: color .15s; } }
+</style>
+
+<main>
+  <header class="col" style="display:grid;gap:12px">
+    <div class="kicker">Mecha Lab · UI/UX 전면 개편 · 설계 검토용 v1</div>
+    <h1>Mecha Lab UX 설계안</h1>
+    <p class="lead">기능 추가보다 조작 흐름을 먼저 바꿉니다. 화면 하단 한 줄에서 도구·범위·빠른 명령을 다루고, 옵션은 지금 쓰는 도구 것만 보이게 합니다. 아래 내용은 구현 전 검토용 설계이며, 실제로 만들거나 실행해 본 것은 아직 없습니다.</p>
+  </header>
+
+  <section class="col">
+    <div class="decide">
+      <strong>먼저 정해 주셔야 하는 것 (설계에 영향이 큼)</strong>
+      <ol>
+        <li><b>단축키 정리.</b> 지난번 요청(V = 도구 메뉴, N = 빠른 메뉴, F = Select/Move)과 이번 요청(Q 파이, Shift+Q)이 겹칩니다. 제안: <kbd>Q</kbd> 파이가 빠른 메뉴를 대신하고 <kbd>N</kbd>은 Blender 사이드바로 되돌림. <kbd>V</kbd> 전체 도구 메뉴, <kbd>F</kbd> Select/Move는 유지.</li>
+        <li><b>그룹의 실체.</b> 제안: 그룹 = 빈 오브젝트(Empty) 부모 + 자식 오브젝트. Outliner와 항상 일치하고 그룹을 통째로 움직일 수 있습니다. 컬렉션은 레이어(표시/숨김/잠금 묶음)로만 씁니다.</li>
+        <li><b>우클릭.</b> Substance처럼 우클릭 = 상황별 Actions 메뉴로 통일할지. 지금 Cut 도구의 우클릭(도형 팝업)은 그 메뉴의 첫 줄로 들어갑니다.</li>
+        <li><b>커스텀 Blender 빌드.</b> 제안: 이번 개편은 애드온으로 진행하고, Phase 2 프로토타입에서 막히는 지점이 확인될 때만 검토 (아래 8절 비교).</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="col">
+    <h2>1. Substance 3D Modeler에서 가져올 것 <span class="tag">공식 문서 기준</span></h2>
+    <ul>
+      <li><b>Palette</b>: 도구와 옵션이 모인 상시 패널. 고르는 도구에 따라 내용이 바뀝니다. → Mecha Lab의 <b>상황별 옵션 카드</b>.</li>
+      <li><b>Bottom bar</b>: 왼쪽은 지금 작업 범위(Scope)를 보여 주고 상위 그룹/World를 눌러 빠져나옵니다. 배치 모드(Placement)와 자주 쓰는 명령(Quick Actions)도 여기 있습니다. → <b>하단 바</b>의 왼쪽·오른쪽 구역.</li>
+      <li><b>Actions menu</b>: 장면에서 우클릭하면 나오는 상황별 명령. 많은 항목이 하단 바의 Quick Actions와 같습니다. → <b>우클릭 메뉴 = 하단 바 오른쪽과 같은 명령</b>.</li>
+      <li><b>Symmetry ≠ Repetition</b>: Symmetry는 한 레이어 안에서 양쪽을 같이 만드는 파괴적 작업, Mirror Repetition은 그룹/오브젝트를 비파괴로 반대편에 복제하고 언제든 끄고 켤 수 있습니다. 축은 한 번에 하나. → Mecha Lab도 <b>Mirror(복제)</b>와 <b>Symmetry(한 메시)</b>를 별도 도구 모드로 분리.</li>
+    </ul>
+    <p>그대로 베끼지 않는 부분: Substance는 SDF 볼륨 기반이라 Boolean·정리가 필요 없지만, Blender는 폴리곤 메시라서 <b>Merge 후 중앙 접합 정리</b>와 <b>Smart Cleanup</b>이 반드시 따라붙어야 합니다.</p>
+    <p class="src">출처: <a href="https://helpx.adobe.com/substance-3d-modeler/interface.html">Interface</a> · <a href="https://helpx.adobe.com/substance-3d-modeler/interface/the-palette.html">The Palette</a> · <a href="https://helpx.adobe.com/substance-3d-modeler/interface/the-bottom-bar.html">The Bottom bar</a> · <a href="https://helpx.adobe.com/substance-3d-modeler/interface/actions-menu.html">Actions menu</a> · <a href="https://helpx.adobe.com/substance-3d-modeler/desktop/organize-your-scene/advanced-scene-assembly/symmetry-and-repetition.html">Symmetry and repetition</a></p>
+  </section>
+
+  <section>
+    <div class="col"><h2>2. 화면 구성 <span class="tag">MECHA LAB Workspace</span></h2></div>
+    <figure>
+      <div class="fig">
+        <svg viewBox="0 0 960 560" role="img" aria-label="Mecha Lab 화면 와이어프레임">
+          <rect class="vp" x="0" y="0" width="960" height="560"/>
+          <!-- grid -->
+          <g class="vpl" stroke-width="1" opacity=".55">
+            <line x1="0" y1="330" x2="960" y2="330"/><line x1="480" y1="40" x2="480" y2="470"/>
+          </g>
+          <!-- top strip -->
+          <rect class="ui" x="0" y="0" width="960" height="34"/>
+          <text class="tx" x="14" y="22">File  Edit  View</text>
+          <text class="txm" x="380" y="22">MECHA LAB  ·  Model</text>
+          <text class="txm" x="830" y="22">Layers ▸</text>
+          <!-- objects -->
+          <g>
+            <rect class="obj" x="360" y="190" width="150" height="110" rx="6"/>
+            <rect class="obj" x="520" y="215" width="80" height="70" rx="4" opacity=".75"/>
+            <rect x="356" y="186" width="158" height="118" rx="8" fill="none" class="accs" stroke-width="2"/>
+            <!-- gizmo -->
+            <line x1="435" y1="245" x2="495" y2="245" stroke="#e05a55" stroke-width="3"/>
+            <line x1="435" y1="245" x2="435" y2="185" stroke="#5cc26f" stroke-width="3"/>
+            <circle cx="435" cy="245" r="5" fill="#fff"/>
+          </g>
+          <!-- context card -->
+          <g>
+            <rect class="ui" x="300" y="380" width="360" height="70" rx="8" opacity=".96"/>
+            <text class="txm" x="314" y="398">CUT</text>
+            <g>
+              <rect x="314" y="406" width="34" height="30" rx="5" class="acc"/>
+              <rect x="352" y="406" width="34" height="30" rx="5" fill="#3a4049"/>
+              <rect x="390" y="406" width="34" height="30" rx="5" fill="#3a4049"/>
+              <rect x="428" y="406" width="34" height="30" rx="5" fill="#3a4049"/>
+              <text class="tx" x="324" y="426" fill="#1c1f24" style="fill:#1c1f24">▭</text>
+              <text class="tx" x="362" y="426">◯</text><text class="tx" x="399" y="426">⌒</text><text class="tx" x="438" y="426">✎</text>
+            </g>
+            <text class="tx" x="476" y="420">Invert</text>
+            <text class="tx" x="534" y="420">Depth: Through</text>
+            <text class="txm" x="630" y="420">⋯</text>
+          </g>
+          <!-- bottom bar -->
+          <rect class="ui" x="0" y="470" width="960" height="90"/>
+          <!-- scope -->
+          <text class="txm" x="16" y="496">SCOPE</text>
+          <text class="tx" x="16" y="518">World ›</text>
+          <text class="tx" x="70" y="518">Arm_L ›</text>
+          <text class="tx" x="128" y="518" style="fill:var(--accent)">Armor_02</text>
+          <text class="txm" x="16" y="540">Esc / ⌫ : 한 단계 위로</text>
+          <!-- toolbar -->
+          <g>
+            <rect x="268" y="484" width="424" height="58" rx="10" fill="#262a31"/>
+            <g class="tx" text-anchor="middle">
+              <rect x="276" y="490" width="46" height="46" rx="8" fill="#323843"/><text x="299" y="519">➤</text>
+              <rect x="328" y="490" width="46" height="46" rx="8" class="acc"/><text x="351" y="519" style="fill:#1c1f24">✂</text>
+              <rect x="380" y="490" width="46" height="46" rx="8" fill="#323843"/><text x="403" y="519">⫽</text>
+              <rect x="432" y="490" width="46" height="46" rx="8" fill="#323843"/><text x="455" y="519">▣</text>
+              <rect x="484" y="490" width="46" height="46" rx="8" fill="#323843"/><text x="507" y="519">⊖</text>
+              <rect x="536" y="490" width="46" height="46" rx="8" fill="#323843"/><text x="559" y="519">⇋</text>
+              <rect x="588" y="490" width="46" height="46" rx="8" fill="#323843"/><text x="611" y="519">⬡</text>
+              <rect x="640" y="490" width="46" height="46" rx="8" fill="#323843"/><text x="663" y="519">✧</text>
+            </g>
+            <text class="txm" x="300" y="556" text-anchor="middle">Select</text>
+            <text class="txm" x="351" y="556" text-anchor="middle">Cut</text>
+            <text class="txm" x="403" y="556" text-anchor="middle">Split</text>
+            <text class="txm" x="455" y="556" text-anchor="middle">BoxHide</text>
+            <text class="txm" x="507" y="556" text-anchor="middle">Boolean</text>
+            <text class="txm" x="559" y="556" text-anchor="middle">Mirror</text>
+            <text class="txm" x="611" y="556" text-anchor="middle">Prim</text>
+            <text class="txm" x="663" y="556" text-anchor="middle">Clean</text>
+          </g>
+          <!-- quick actions -->
+          <text class="txm" x="740" y="496">PLACE · QUICK</text>
+          <text class="tx" x="740" y="518">Free ▾   Apply   Undo</text>
+          <text class="tx" x="740" y="540">Group   Mirror ▾   ⋯</text>
+          <!-- hover tooltip -->
+          <g>
+            <rect x="318" y="452" width="98" height="24" rx="4" fill="#0d0f12"/>
+            <text class="tx" x="326" y="469" style="font-size:12px">Cut  ·  C</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>하단 바 세 구역: 왼쪽 = 작업 범위(브레드크럼), 가운데 = 도구 8개, 오른쪽 = 배치 모드와 빠른 명령. 옵션 카드는 도구 바로 위에 떠서 현재 도구 옵션만 보여 주고, <b>⋯</b>을 누르면 Advanced가 펼쳐집니다. 사이드바와 왼쪽 도구 목록은 기본으로 닫습니다.</figcaption>
+    </figure>
+
+    <div class="col grid2" style="max-width:none">
+      <div class="card">
+        <h3>하단 툴바</h3>
+        <ul>
+          <li>아이콘만, 마우스를 올리면 이름 + 단축키.</li>
+          <li>선택된 도구는 주황 채움. 실행 중(그리는 중)일 때는 테두리가 깜빡이지 않고 굵어짐.</li>
+          <li>크기 S/M/L, 위치 하단/상단, 자동 숨김(마우스가 바닥 40px 안에 오면 표시).</li>
+          <li>도구 순서는 설정에서 드래그 대신 ↑↓로 변경 (애드온 한계, 8절).</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>옵션 카드 (Palette)</h3>
+        <ul>
+          <li>도구별 3~5개 핵심 옵션만. 나머지는 <b>⋯ Advanced</b>.</li>
+          <li>값은 뷰포트에서 바로 반영(라이브 프리뷰). Apply 버튼은 확정이 필요한 도구에만.</li>
+          <li>선택 대상이 바뀌면 내용 자동 교체 (예: Live Mirror가 있는 오브젝트 선택 → Mirror 옵션이 Select 카드 안에 표시).</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="col">
+    <h2>3. 도구별 옵션 카드 <span class="tag">메인 / Advanced</span></h2>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>도구</th><th>카드에 항상 보이는 것</th><th>Advanced (⋯)</th></tr></thead>
+        <tbody>
+          <tr><td>Select / Move</td><td>선택 범위 표시, Move / Quick Place 전환, Surface Snap</td><td>피벗, 좌표계</td></tr>
+          <tr><td>Cut</td><td>도형 (사각·타원·커브 라쏘·자유·스탬프), Invert, 깊이(관통/표면)</td><td>Solver, Hole Tolerant, 공유 메시 정책, 모서리 마감</td></tr>
+          <tr><td>Split</td><td>도형, Gap, Bevel/Chamfer 폭</td><td>세그먼트, 프로필, 면별 마감</td></tr>
+          <tr><td>Box Hide</td><td>Cap ON/OFF, Show All, Apply</td><td>Solver</td></tr>
+          <tr><td>Boolean</td><td>Difference / Union / Intersect, Live / Apply</td><td>Solver, Self, Hole Tolerant</td></tr>
+          <tr><td>Mirror / Symmetry</td><td>Mirror ↔ Symmetry, X/Y/Z, Merge</td><td>Bisect, Clipping, Weld 거리, 평면 기준(월드/로컬/커서)</td></tr>
+          <tr><td>Primitive</td><td>형태 6종, 드래그로 크기</td><td>세그먼트, 베벨</td></tr>
+          <tr><td>Smart Cleanup</td><td>실행, 강도, 전/후 비교</td><td>각도 임계값, 보호 규칙</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="col">
+    <h2>4. 도구 전환과 입력 <span class="tag">모달 충돌 재발 방지</span></h2>
+    <p>원칙은 하나입니다. <b>도구는 계속 켜져 있고, 그리기 한 번만 짧은 모달</b>로 처리합니다. Cut을 한 번 하고 나도 Cut이 남아 있으니 다시 누를 필요가 없습니다. 도구를 바꾸면 진행 중인 획은 자동 취소되고 다음 도구는 깨끗한 상태로 시작합니다. 이 구조는 0.11.1에서 이미 Cut/Split에 적용·테스트한 방식(도구가 바뀌면 획이 스스로 끝남)을 모든 도구로 넓히는 것입니다.</p>
+<pre class="mermaid">
+stateDiagram-v2
+    [*] --> 도구대기: 툴바 / Q / 단축키
+    도구대기 --> 그리는중: 뷰포트 클릭·드래그
+    그리는중 --> 도구대기: 확정 (결과 적용, 도구 유지)
+    그리는중 --> 도구대기: Esc (획만 취소)
+    그리는중 --> 다른도구대기: 도구 전환 (획 자동 취소)
+    도구대기 --> 다른도구대기: 도구 전환
+    다른도구대기 --> 도구대기: Shift+Q (직전 도구, 설정 그대로)
+</pre>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>키</th><th>제안 동작</th><th>범위</th></tr></thead>
+        <tbody>
+          <tr><td><kbd>Q</kbd></td><td>커서 위치 파이 메뉴 (도구 8개)</td><td>MECHA LAB에서만, 변경 가능</td></tr>
+          <tr><td><kbd>Shift</kbd>+<kbd>Q</kbd></td><td>직전 도구로 전환, 도형·프리셋 기억</td><td>MECHA LAB</td></tr>
+          <tr><td><kbd>F</kbd></td><td>Select / Move</td><td>MECHA LAB (지금과 같음)</td></tr>
+          <tr><td><kbd>V</kbd></td><td>전체 도구 메뉴</td><td>MECHA LAB (지금과 같음)</td></tr>
+          <tr><td><kbd>N</kbd></td><td>Blender 사이드바로 되돌림 (빠른 메뉴는 Q가 대신)</td><td>제안, 결정 필요</td></tr>
+          <tr><td>우클릭</td><td>상황별 Actions 메뉴 (그리기 도구면 첫 줄 = 도형)</td><td>제안, 결정 필요</td></tr>
+          <tr><td><kbd>Alt</kbd> / <kbd>Ctrl</kbd></td><td>Cut 반전 / 중심에서 그리기 (지금 그대로). Alt 뷰포트 클릭 모드 전환은 다시 넣지 않음</td><td>Cut · Split · Box Hide 공통</td></tr>
+          <tr><td><kbd>Enter</kbd> / <kbd>Esc</kbd></td><td>확정 / 취소, 모든 도구 동일</td><td>공통</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="col">
+      <h2>5. 선택 · 그룹 · Scope <span class="tag">시나리오 B의 핵심</span></h2>
+      <p>평소 클릭은 그룹 단위로 선택하고, 더블클릭하면 그 그룹 안으로 들어갑니다. 안에 들어가면 바깥 오브젝트는 흐리게 보이고 클릭되지 않으며, 하단 바 왼쪽 브레드크럼에 위치가 표시됩니다. 그룹을 풀지 않고도 안팎을 오갈 수 있습니다.</p>
+    </div>
+    <figure>
+      <div class="fig">
+        <svg viewBox="0 0 960 300" role="img" aria-label="Scope 진입 전후 비교">
+          <rect class="vp" x="0" y="0" width="960" height="300"/>
+          <text class="txm" x="24" y="30">평소 (World 범위): 클릭 = 그룹 전체</text>
+          <g>
+            <rect class="obj" x="60" y="70" width="70" height="140" rx="6"/>
+            <rect class="obj" x="135" y="80" width="40" height="60" rx="4"/>
+            <rect class="obj" x="135" y="150" width="40" height="60" rx="4"/>
+            <circle class="obj" cx="100" cy="230" r="14"/>
+            <rect x="52" y="62" width="132" height="190" rx="8" fill="none" class="accs" stroke-width="2"/>
+            <text class="tx" x="60" y="276">Arm_L 선택됨 · 기즈모 = 그룹</text>
+          </g>
+          <text class="tx" x="250" y="160" style="font-size:22px">→</text>
+          <text class="txm" x="300" y="30">더블클릭으로 진입 (Arm_L 범위): 클릭 = 파츠</text>
+          <g>
+            <rect class="obj" x="340" y="70" width="70" height="140" rx="6"/>
+            <rect class="obj" x="415" y="80" width="40" height="60" rx="4"/>
+            <rect x="411" y="76" width="48" height="68" rx="6" fill="none" class="accs" stroke-width="2"/>
+            <rect class="obj" x="415" y="150" width="40" height="60" rx="4"/>
+            <circle class="obj" cx="380" cy="230" r="14"/>
+            <rect class="obj dim" x="520" y="90" width="90" height="120" rx="6"/>
+            <text class="txm" x="520" y="230">바깥 = 흐리게, 클릭 안 됨</text>
+            <text class="tx" x="340" y="276">Armor_02 선택 · Mirror 가능</text>
+          </g>
+          <g>
+            <rect class="ui" x="660" y="70" width="270" height="160" rx="8"/>
+            <text class="txm" x="676" y="94">하단 바 · SCOPE</text>
+            <text class="tx" x="676" y="122">World ›  Arm_L ›</text>
+            <text class="tx" x="676" y="144" style="fill:var(--accent)">Armor_02</text>
+            <text class="txm" x="676" y="176">브레드크럼 클릭 = 그 단계로 나가기</text>
+            <text class="txm" x="676" y="196">Esc 또는 빈 곳 더블클릭 = 한 단계 위</text>
+            <text class="txm" x="676" y="216">잠금 오브젝트 = 선택 불가</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>그룹 = Empty 부모 + 자식 (Blender 표준 관계). 그룹을 옮기면 자식이 따라오고, Outliner에도 그대로 보입니다.</figcaption>
+    </figure>
+    <div class="col grid2" style="max-width:none">
+      <div class="card">
+        <h3>Mecha Layers 패널</h3>
+        <ul>
+          <li>평소 닫힘. 상단 오른쪽 <b>Layers ▸</b>로 여는 팝오버/사이드바.</li>
+          <li>트리 = 실제 Collection(레이어)과 Empty 그룹/오브젝트 계층. 따로 저장하는 목록이 없어서 Outliner와 어긋날 수 없음.</li>
+          <li>표시·잠금·복제·그룹·해제·병합·이름 변경, 다중 선택이 뷰포트 선택과 동기화.</li>
+          <li>오브젝트를 펼치면 Live Mirror / Boolean 등 Mecha 비파괴 작업이 하위 줄로 보이고 바로 수정/적용/삭제.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>솔직한 한계</h3>
+        <ul>
+          <li>Python UI 목록은 <b>드래그 앤 드롭이 안 됩니다</b>. 계층 변경은 "선택한 것을 이 그룹으로" 버튼과 ↑↓로 대신합니다. 드래그가 꼭 필요하면 Outliner를 쓰거나, 소스 수정 항목(8절)이 됩니다.</li>
+          <li>Blender에는 "선택이 바뀌었다" 이벤트가 따로 없어서, 그룹 단위 선택은 Mecha 선택 도구의 클릭 처리로 구현합니다. Blender 기본 선택 도구로 고르면 그룹 규칙이 적용되지 않습니다.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="col">
+    <h2>6. 모델링 도구 통합 <span class="tag">조작법 하나로</span></h2>
+    <h3>Cut · Split · Box Hide 공통 입력</h3>
+    <p>세 도구는 같은 그리기 엔진을 씁니다. 도형(사각·타원·커브 라쏘·자유·스탬프), <kbd>Alt</kbd> 반전, <kbd>Ctrl</kbd> 중심, 더블클릭/시작점/Enter 확정, Esc 취소, 연속 작업이 셋 다 똑같습니다. 다른 것은 "결과를 어떻게 쓰느냐"뿐입니다. 이미 검증된 Cut/Split 엔진(<code>cut_engine</code>)은 손대지 않고, Box Hide를 같은 엔진의 세 번째 출력으로 붙입니다.</p>
+    <ul>
+      <li><b>Box Hide</b>: 드래그 = 영역 숨김(누적), Alt+드래그 = 일부 복원, Show All, Cap ON/OFF, Apply. Apply 전까지는 원본 메시를 건드리지 않고 Geometry Nodes 모디파이어가 "숨김 영역 목록"으로 잘라 보여 줍니다.</li>
+    </ul>
+    <h3>Mirror / Symmetry</h3>
+    <ul>
+      <li><b>Mirror (복제, 비파괴)</b>: 누르는 순간 반대편에 연결된 복제가 생깁니다. 반대편 = 원본 메시를 공유하는 오브젝트를 미러 평면 Empty 아래에 둔 것. 평면을 옮기거나 돌리면 따라오고, 그룹에도 쓸 수 있습니다. 0.11.3의 "마우스 기울인 쪽으로" 조작을 그대로 씁니다.</li>
+      <li><b>Symmetry (한 메시)</b>: 지금의 Mirror 모디파이어 방식. 추가로 Cut/Boolean을 할 때 그린 도형을 평면 반대편에도 자동으로 적용합니다.</li>
+      <li><b>Mirror → 하나로 합치기</b>: Object Join이 아니라 실제 접합. 중앙 평면 위 내부 면 제거 → 중앙 버텍스 용접 → 노멀 재계산 → 비다양체(non-manifold) 검사. 검사를 통과하지 못하면 원본을 그대로 두고 이유를 알려 줍니다. 검은 셰이딩 줄무늬의 원인(겹친 면, 뒤집힌 노멀)을 이 단계에서 없앱니다.</li>
+    </ul>
+    <h3>Quick Place</h3>
+    <ul>
+      <li>파츠가 커서를 따라옴 → <kbd>←</kbd><kbd>→</kbd> 15° 회전, <kbd>Shift</kbd>+방향키 1° → 클릭 확정, Esc 취소.</li>
+      <li><kbd>S</kbd> = Surface Snap 토글: 가리킨 표면에 붙고 노멀 방향으로 섭니다. 붙은 뒤에는 방향키가 노멀 축 회전, 휠 = 표면에서 거리. 다시 <kbd>S</kbd> = 자유 이동.</li>
+      <li>Blender 이동 기즈모(Select/Move)는 그대로 남깁니다.</li>
+    </ul>
+    <h3>Smart Cleanup</h3>
+    <ul>
+      <li>선택한 메시/그룹에만. 단계: 중복 정점·면 → 퇴화 면 → 평평한 곳의 불필요한 엣지 정리(Sharp·Seam·베벨 루프 보호) → 가능한 곳만 삼각형을 사각형으로 → 노멀 → 유효성 검사.</li>
+      <li>전/후 비교: 결과를 임시 사본으로 보여 주고 면 수·비다양체 엣지 수를 나란히 표시. 확정 전까지 원본 유지.</li>
+      <li>Voxel Remesh와 전체 합치기는 하지 않습니다. Boolean Apply·Mirror 합치기·레이어 병합 뒤에 같은 정리를 선택적으로 부릅니다.</li>
+    </ul>
+  </section>
+
+  <section class="col">
+    <h2>7. 작업 흐름 비교 <span class="tag">설계 기준 추정치, 실측 아님</span></h2>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>시나리오</th><th>지금 (0.11.3)</th><th>개편 후</th></tr></thead>
+        <tbody>
+          <tr><td>A. Primitive → Cut → Split → Mirror → Move → Cut</td><td>도구마다 왼쪽 목록이나 메뉴로 이동, 사이드바에서 옵션 확인. 도구 전환 약 6회가 화면 왼쪽↔뷰포트 왕복</td><td>하단 바 한 번 클릭 또는 <kbd>Q</kbd>. Move↔Cut은 <kbd>Shift</kbd>+<kbd>Q</kbd>. 옵션은 바로 위 카드</td></tr>
+          <tr><td>B. 팔 그룹 이동 → 내부 장갑판 Mirror → 복귀</td><td>Outliner에서 자식 찾기, 부모/자식 선택을 수동으로 오감</td><td>클릭(그룹) → 드래그 이동 → 더블클릭(진입) → 클릭 → Mirror → Esc</td></tr>
+          <tr><td>C. Boolean → Apply → 정리 → 검증</td><td>Apply 후 수동 정리 (Merge by Distance, Limited Dissolve 등 Blender 메뉴)</td><td>Apply 직후 카드에 "Cleanup" 버튼, 전/후 수치 표시</td></tr>
+          <tr><td>D. 파츠를 표면에 붙여 배치</td><td>이동 + 스냅 설정 + 회전을 따로</td><td>Quick Place → <kbd>S</kbd> → 방향키 → 클릭</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="col">
+    <h2>8. 애드온으로 할지, Blender 소스를 고칠지</h2>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>항목</th><th>애드온 (공식 API)</th><th>소스 수정 빌드</th></tr></thead>
+        <tbody>
+          <tr><td>하단 툴바</td><td><span class="pill ok">가능</span> 뷰포트 2D 기즈모 버튼(내비게이션 버튼과 같은 방식). 모달이 아니라서 입력 충돌 없음. 툴팁 표시 방식은 프로토타입에서 확인 필요</td><td>진짜 위젯 영역 추가 가능</td></tr>
+          <tr><td>옵션 카드</td><td><span class="pill ok">가능</span> 도구 헤더를 하단에 두거나 팝오버. 슬라이더·Undo 모두 기본 위젯 그대로</td><td>자유 배치 플로팅 패널</td></tr>
+          <tr><td>Q 파이 / Shift+Q</td><td><span class="pill ok">가능</span></td><td>필요 없음</td></tr>
+          <tr><td>그룹 선택 / Scope</td><td><span class="pill ok">가능</span> Mecha 선택 도구 안에서. Blender 기본 선택 도구에는 적용 안 됨</td><td>모든 선택에 적용</td></tr>
+          <tr><td>레이어 드래그 앤 드롭</td><td><span class="pill risk">불가</span> 버튼으로 대체</td><td>가능</td></tr>
+          <tr><td>고밀도 메시 성능</td><td><span class="pill warn">부분</span> Geometry Nodes·bmesh로 대부분 해결, 순수 Python 반복은 피함</td><td>C++로 최적화 가능</td></tr>
+          <tr><td>배포 / 유지보수</td><td>ZIP 하나, Blender 업데이트 때 API 확인 정도</td><td>사용자가 전용 실행 파일 사용, Blender 새 버전마다 패치 다시 적용·빌드, GPL에 따라 수정 소스 공개 필요</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><b>제안:</b> 요청서의 대부분은 애드온으로 됩니다. 소스 수정이 확실히 필요한 것은 레이어 드래그 앤 드롭 정도입니다. 그래서 Phase 2 프로토타입을 먼저 써 보시고, 그래도 불편한 점이 남으면 그 항목만 소스 수정으로 검토하는 순서를 권합니다.</p>
+  </section>
+
+  <section class="col">
+    <h2>9. 진행 순서</h2>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Phase</th><th>내용</th><th>확인 방법</th></tr></thead>
+        <tbody>
+          <tr><td class="num">1</td><td>이 설계안 검토, 결정 사항 확정, 필요하면 화면 수정</td><td>형님 검토</td></tr>
+          <tr><td class="num">2</td><td>하단 툴바, 옵션 카드, Q 파이, Shift+Q, 도구 상태 관리. 기존 Cut/Split 엔진은 그대로 연결만</td><td>자동 테스트 + <b>형님 GUI 확인 (Cut/Split 실제 사용)</b> 후 다음 단계</td></tr>
+          <tr><td class="num">3</td><td>그룹 선택, Scope 진입/복귀, 브레드크럼, Mecha Layers</td><td>자동 테스트 + GUI 체크리스트</td></tr>
+          <tr><td class="num">4</td><td>Mirror/Symmetry 분리, Quick Place, Box Hide, Primitive·Boolean 카드</td><td>자동 테스트 + GUI 체크리스트</td></tr>
+          <tr><td class="num">5</td><td>Smart Cleanup, Mirror 접합 정리, Boolean 후 정리, 성능</td><td>고밀도 샘플 메시로 수치 측정</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>각 단계 끝에 설치 ZIP과 "자동 테스트 통과 / GUI에서 직접 확인 필요"를 나눈 보고서를 드립니다. Windows GUI에서 제가 직접 실행할 수 없는 부분은 계속 미검증으로 표시합니다.</p>
+  </section>
+
+  <section class="col">
+    <h2>10. 위험 요소</h2>
+    <ul>
+      <li><b>기존 Cut/Split 손상</b>: 엔진 코드는 바꾸지 않고 UI에서 호출만 합니다. 현재 1046개 자동 테스트를 매 단계 그대로 돌립니다.</li>
+      <li><b>일반 Cube "whole object" 오류</b>: 여전히 원인 미확정. 0.11.2 진단 메시지 결과를 받으면 Phase 2 전에 먼저 해결합니다.</li>
+      <li><b>Radial Array 충돌</b>: crash 로그 대기 중. 하단 바 버튼은 모달이 아닌 기즈모라서 새 충돌 경로를 만들지 않는 쪽으로 설계했습니다.</li>
+      <li><b>Blender 기본 기능과의 충돌</b>: 새 단축키·우클릭·하단 바는 MECHA LAB Workspace에서만 켜지고, 다른 Workspace는 Blender 그대로입니다.</li>
+    </ul>
+  </section>
+</main>

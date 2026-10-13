@@ -332,6 +332,77 @@ def pick_mesh_under(context, projector, xy):
     return None
 
 
+def _auto_candidate(ob):
+    if ob.type != 'MESH' or not ob.visible_get() or ob.hide_select:
+        return False
+    if ob.get('mch_cut_carrier') or ob.get('mch_preview_source') or ob.display_type in {'WIRE', 'BOUNDS'}:
+        return False
+    return not ob.name.startswith(('MCH_Cutter', 'MCH_GapIn', 'MCH_GapOut'))
+
+
+def _loop_samples(loops, step=18.0, grid=7):
+    """Screen points that represent the drawn area: outline samples + an inner grid."""
+    pts = []
+    for lp in loops:
+        n = len(lp)
+        for i in range(n):
+            a, b = lp[i], lp[(i + 1) % n]
+            k = max(1, int(math.dist(a, b) / step))
+            pts.extend((a[0] + (b[0] - a[0]) * t / k, a[1] + (b[1] - a[1]) * t / k) for t in range(k))
+    allp = [p for lp in loops for p in lp]
+    if allp:
+        x0, y0 = min(p[0] for p in allp), min(p[1] for p in allp)
+        x1, y1 = max(p[0] for p in allp), max(p[1] for p in allp)
+        for i in range(grid):
+            for j in range(grid):
+                p = (x0 + (x1 - x0) * (i + 0.5) / grid, y0 + (y1 - y0) * (j + 0.5) / grid)
+                if cg.point_in_loops(p, loops):
+                    pts.append(p)
+    return pts
+
+
+def auto_targets(view_layer, projector, loops):
+    """Auto Target: the meshes the drawn screen shape really covers (any selection
+    is ignored).  Projected bounds pre-filter, then rays through outline / inner
+    sample points, or the object's centre inside the shape."""
+    loops = [lp for lp in loops if len(lp) >= 2]
+    if not loops:
+        return []
+    allp = [p for lp in loops for p in lp]
+    lx0, ly0 = min(p[0] for p in allp), min(p[1] for p in allp)
+    lx1, ly1 = max(p[0] for p in allp), max(p[1] for p in allp)
+    samples = None
+    out = []
+    for ob in view_layer.objects:
+        if not _auto_candidate(ob):
+            continue
+        corners = [projector.to_screen(c) for c in cg.object_world_bounds([ob])]
+        corners = [c for c in corners if c is not None]
+        if not corners:
+            continue
+        bx0, by0 = min(c[0] for c in corners), min(c[1] for c in corners)
+        bx1, by1 = max(c[0] for c in corners), max(c[1] for c in corners)
+        if bx1 < lx0 or bx0 > lx1 or by1 < ly0 or by0 > ly1:
+            continue
+        centre = projector.to_screen(ob.matrix_world.translation)
+        if centre is not None and len(loops[0]) >= 3 and cg.point_in_loops(centre, loops):
+            out.append(ob)
+            continue
+        if samples is None:
+            samples = _loop_samples(loops)
+        inv = ob.matrix_world.inverted_safe()
+        rot = inv.to_3x3()
+        for p in samples:
+            if not (bx0 <= p[0] <= bx1 and by0 <= p[1] <= by1):
+                continue
+            o, d = projector.ray(p)
+            ok = ob.ray_cast(inv @ o, (rot @ d).normalized())[0]
+            if ok:
+                out.append(ob)
+                break
+    return out
+
+
 def gather_targets(context, projector, xy, mode):
     cut = context.scene.mch_cut
     active = context.view_layer.objects.active
@@ -1170,7 +1241,13 @@ class StrokeLogic:
             self.brush.line_open = False
         self.ui = ui_scale(context)
         self.target_names = []
-        if self._needs_target():
+        cut_props = getattr(context.scene, 'mch_cut', None)
+        # 0.12 Auto Target: the finished shape decides what is cut, so a stroke may
+        # start anywhere and the tool stays on for the next part.
+        self.auto_target = (self.mode in {'CUT', 'SPLIT'} and cut_props is not None and
+                            getattr(cut_props, 'targets', '') == 'AUTO')
+        self._auto_cache = None
+        if self._needs_target() and not self.auto_target:
             targets = gather_targets(context, self.projector, xy, self.mode)
             if not targets:
                 self.report({'WARNING'}, 'Click on a mesh or select one first')
@@ -1382,10 +1459,38 @@ class StrokeLogic:
     # ---- execution ---------------------------------------------------------
 
     def _targets(self):
+        if getattr(self, 'auto_target', False):
+            return self._auto_targets()
         return [bpy.data.objects[n] for n in self.target_names if n in bpy.data.objects]
+
+    def _auto_targets(self):
+        pts = list(self.pts)
+        if self.shape in {'LASSO', 'CURVE_LASSO', 'STROKE'}:
+            loops = [self._curve()] if self.shape == 'CURVE_LASSO' and len(pts) >= 3 else [pts]
+            if self.stage == 'SIDE' and len(pts) == 2:          # 2-point line: thin band along the line
+                loops = [[pts[0], pts[1], (pts[1][0] + 1, pts[1][1] + 1), (pts[0][0] + 1, pts[0][1] + 1)]]
+        else:
+            loops = self._current_loops(self.ctrl_held, self.shift_held)
+        key = (self.shape, tuple(map(tuple, (p for lp in loops for p in lp))))
+        if self._auto_cache is None or self._auto_cache[0] != key:
+            found = auto_targets(bpy.context.view_layer, self.projector, loops)
+            self._auto_cache = (key, [o.name for o in found])
+        return [bpy.data.objects[n] for n in self._auto_cache[1] if n in bpy.data.objects]
 
     def _execute_closed(self, context):
         targets = self._targets()
+        if getattr(self, 'auto_target', False):
+            if not targets:
+                raise cg.CutError('Auto Target: the shape does not cover any mesh; nothing was changed.')
+            # what gets cut becomes the selection (visible feedback, and ready for Selected Only)
+            try:
+                for o in context.selected_objects:
+                    o.select_set(False)
+                for o in targets:
+                    o.select_set(True)
+                context.view_layer.objects.active = targets[-1]
+            except (AttributeError, RuntimeError, ReferenceError):
+                pass
         if self.mode == 'MASK' and self.shape == 'STROKE':
             from . import mask_tools
             points = smooth_open(self.pts, self.brush.stroke_smooth)
@@ -1482,7 +1587,7 @@ class StrokeLogic:
             return self._cancel(context)
 
     def _modal(self, context, event):
-        if self._needs_target() and not self._targets():
+        if self._needs_target() and not getattr(self, 'auto_target', False) and not self._targets():
             return self._cancel(context)
         if self.native_tool and ts.native_tool_id(context) != self.native_tool:
             return self._cancel(context)          # tool switched from toolbar/list

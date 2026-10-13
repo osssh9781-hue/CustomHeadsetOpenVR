@@ -1,8 +1,17 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.11.3 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.12.0 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## P. 0.12.0 (먼저)
+- [ ] MECHA LAB 뷰포트 아래 가운데 툴바 8개, 현재 도구 주황, 버튼 클릭으로 도구 전환, 마우스 올리면 툴팁
+- [ ] Preferences > Mecha Lab: 툴바 크기 S/M/L, 아이콘 아래 이름
+- [ ] Q = 파이 메뉴, Shift+Q = Select ↔ 마지막 도구 (도형 유지), Layout 탭에서는 Q = Blender Quick Favorites
+- [ ] N = 사이드바, V = 아무 일 없음
+- [ ] Cut 자동 대상: A 선택 상태에서 B 위에 그리면 B만 잘림, 이어서 다른 파츠도 Select 없이 바로
+- [ ] T 또는 헤더 "Selected Only": 선택한 것만 잘림
+- [ ] 빈 곳에서 사각형을 시작해 파츠 위까지 드래그 → 잘림
 
 ## Q. 0.11.3
 - [ ] Lasso 패널의 도형 버튼 6개 → 클릭/드래그로 찍기

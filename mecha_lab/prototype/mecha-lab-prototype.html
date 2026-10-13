@@ -1,0 +1,1280 @@
+<title>Mecha Lab Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: page = tab strip + one wide working app (dark, like the modelling app it previews); reference tabs are reading columns */
+:root {
+  color-scheme: dark;
+  --bg: #121418;          /* page ground */
+  --panel: #1b1e24;       /* app chrome */
+  --panel-2: #23272f;     /* raised controls */
+  --panel-3: #2d323c;
+  --line: #333944;
+  --fg: #e4e7ec;
+  --muted: #9199a6;
+  --vp: #2a2e35;          /* viewport */
+  --vp-grid: #343943;
+  --accent: #ff9e28;      /* Mecha Lab orange = cut / active */
+  --invert: #4fb3ff;      /* Alt in Cut = keep inside */
+  --restore: #59d38c;     /* Alt in Box Hide = restore */
+  --danger: #ef6b64;
+  --steel-1: #8b94a3; --steel-2: #6c7483; --cap: #1a1d22;
+  --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 14.5px; line-height: 1.6;
+  padding-inline: 16px; padding-block: 20px 56px; }
+.page { max-width: 1240px; margin: 0 auto; display: grid; gap: 16px; }
+.page > * { min-width: 0; }
+header.top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 18px; }
+h1 { margin: 0; font-size: 24px; letter-spacing: -0.01em; text-wrap: balance; }
+.sub { color: var(--muted); font-size: 14px; max-width: 80ch; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--line); }
+.tab { background: none; border: 0; color: var(--muted); font: inherit; padding: 8px 14px; cursor: pointer; border-bottom: 2px solid transparent; }
+.tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+.tab:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.scroller { overflow-x: auto; border-radius: 10px; }
+.app { position: relative; min-width: 980px; height: 660px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  overflow: hidden; display: grid; grid-template-rows: 36px 1fr 78px 28px; user-select: none; outline: none; }
+.app.ph-top { grid-template-rows: 36px 78px 1fr 28px; }
+.app.ph-top .bottombar { grid-row: 2; } .app.ph-top .vpwrap { grid-row: 3; }
+.topbar { display: flex; align-items: center; gap: 14px; padding: 0 12px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.brand { font-family: var(--font-mono); letter-spacing: .1em; color: var(--accent); font-size: 12px; }
+.topbar .sp { flex: 1; }
+.chip { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.btn { background: var(--panel-2); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px; font: inherit; font-size: 12.5px; cursor: pointer; }
+.btn:hover { background: var(--panel-3); }
+.btn.on { border-color: var(--accent); color: var(--accent); }
+.btn[disabled] { opacity: .4; cursor: not-allowed; }
+.vpwrap { position: relative; background: var(--vp); }
+svg.vp { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.bottombar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; padding: 0 14px; border-top: 1px solid var(--line); background: var(--panel); }
+.scope { font-size: 13px; min-width: 0; }
+.scope .lbl, .quick .lbl { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em; color: var(--muted); display: block; }
+.crumb { background: none; border: 0; color: var(--fg); font: inherit; padding: 0 2px; cursor: pointer; }
+.crumb:hover { color: var(--accent); }
+.crumb.cur { color: var(--accent); cursor: default; }
+.toolbar { display: flex; gap: 6px; padding: 6px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; }
+.tool { width: 50px; height: 50px; border-radius: 9px; border: 1px solid transparent; background: var(--panel-3); color: var(--fg);
+  display: grid; place-items: center; cursor: pointer; position: relative; padding: 0; }
+.tool svg { width: 26px; height: 26px; }
+.tool:hover { border-color: #4a5160; }
+.tool.on { background: var(--accent); color: #1b1e24; }
+.app.tb-lb .tool { height: auto; padding: 5px 0 3px; gap: 2px; grid-template-rows: auto auto; }
+.tool .lb { font-size: 10px; line-height: 1.1; max-width: 58px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app:not(.tb-lb) .tool .lb { display: none; }
+.app.tb-lb .tool { width: 58px; }
+.app.tb-lb .bottombar, .app.tb-lb { grid-template-rows: 36px 1fr 92px 28px; }
+.card.collapsed { padding: 4px 8px; }
+.card.pos-tl { left: 10px; top: 10px; bottom: auto; transform: none; }
+.card.pos-tr { left: auto; right: 10px; top: 10px; bottom: auto; transform: none; }
+.card.autoc { opacity: .25; transition: opacity .15s; } .card.autoc:hover { opacity: 1; }
+.tool .k { position: absolute; right: 4px; bottom: 2px; font-family: var(--font-mono); font-size: 9.5px; opacity: .75; }
+.app.tb-s .tool { width: 40px; height: 40px; } .app.tb-s .tool svg { width: 21px; height: 21px; }
+.app.tb-l .tool { width: 60px; height: 60px; } .app.tb-l .tool svg { width: 31px; height: 31px; }
+.app.autohide .toolbar { opacity: 0; transform: translateY(14px); transition: opacity .15s, transform .15s; }
+.app.autohide .bottombar:hover .toolbar, .app.autohide.tb-peek .toolbar { opacity: 1; transform: none; }
+.quick { justify-self: end; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.quick .row { display: flex; gap: 6px; }
+.status { display: flex; gap: 18px; align-items: center; padding: 0 12px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line);
+  white-space: nowrap; overflow: hidden; }
+.status b { color: var(--fg); font-weight: 500; }
+.status .esc b { color: var(--accent); }
+kbd { font-family: var(--font-mono); font-size: 11px; padding: 0 5px; border-radius: 4px; border: 1px solid var(--line); background: var(--panel-2); color: var(--fg); }
+/* option card */
+.card { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); background: rgba(22,25,30,.96); border: 1px solid var(--line);
+  border-radius: 10px; padding: 8px 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; max-width: 760px; box-shadow: 0 6px 24px rgba(0,0,0,.35); }
+.card .title { font-family: var(--font-mono); font-size: 11px; letter-spacing: .1em; color: var(--accent); }
+.seg { display: inline-flex; background: var(--panel-2); border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.seg button { background: none; border: 0; color: var(--fg); font: inherit; font-size: 12.5px; padding: 4px 9px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.on { background: var(--accent); color: #1b1e24; }
+.seg button[disabled] { opacity: .35; cursor: not-allowed; }
+.seg svg { width: 18px; height: 18px; }
+.card label { font-size: 12.5px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+.card input[type=range] { width: 110px; accent-color: var(--accent); }
+.adv { color: var(--muted); }
+.advbox { flex-basis: 100%; border-top: 1px dashed var(--line); padding-top: 6px; font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.note { font-size: 12px; color: var(--muted); }
+/* layers */
+.layers { position: absolute; right: 8px; top: 8px; bottom: 8px; width: 290px; background: rgba(22,25,30,.97); border: 1px solid var(--line);
+  border-radius: 10px; display: flex; flex-direction: column; font-size: 13px; }
+.layers header { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.layers header b { flex: 1; font-weight: 500; }
+.ltree { flex: 1; overflow: auto; padding: 4px 0; }
+.lrow { display: flex; align-items: center; gap: 4px; padding: 2px 8px; cursor: pointer; border-left: 2px solid transparent; }
+.lrow:hover { background: var(--panel-2); }
+.lrow.sel { background: #3a2a17; border-left-color: var(--accent); }
+.lrow.dim { opacity: .45; }
+.lrow.drop { outline: 1px dashed var(--accent); }
+.lrow .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lrow .ic { width: 18px; text-align: center; color: var(--muted); background: none; border: 0; font: inherit; cursor: pointer; padding: 0; }
+.lrow .ic.off { opacity: .35; }
+.lrow.op { color: var(--muted); font-size: 12px; cursor: default; }
+.lrow.op .btn { padding: 0 6px; font-size: 11px; }
+.layers footer { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px; border-top: 1px solid var(--line); }
+.lnote { padding: 4px 10px 8px; font-size: 11.5px; color: var(--warn, #e0a640); }
+.ltree input { width: 100%; background: var(--panel-2); color: var(--fg); border: 1px solid var(--accent); border-radius: 4px; font: inherit; padding: 0 4px; }
+/* overlays */
+.pie { position: absolute; width: 0; height: 0; pointer-events: none; }
+.pie .w { position: absolute; transform: translate(-50%, -50%); background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+  padding: 5px 10px; font-size: 12.5px; white-space: nowrap; display: flex; gap: 6px; align-items: center; pointer-events: auto; cursor: pointer; }
+.pie .w.hi { background: var(--accent); color: #1b1e24; border-color: var(--accent); }
+.pie .ctr { position: absolute; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--accent); transform: translate(-50%, -50%); }
+.ctx { position: absolute; min-width: 210px; background: #171a1f; border: 1px solid var(--line); border-radius: 8px; padding: 4px; font-size: 13px; box-shadow: 0 8px 26px rgba(0,0,0,.45); }
+.ctx .hd { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em; color: var(--muted); padding: 4px 8px 2px; }
+.ctx button { display: flex; justify-content: space-between; gap: 16px; width: 100%; background: none; border: 0; color: var(--fg); font: inherit; text-align: left; padding: 4px 8px; border-radius: 5px; cursor: pointer; }
+.ctx button:hover { background: var(--panel-3); }
+.ctx button.on { color: var(--accent); }
+.ctx .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; }
+.ctx .grid button { justify-content: center; }
+.tip { position: absolute; background: #0c0e11; color: var(--fg); font-size: 12px; padding: 3px 8px; border-radius: 5px; pointer-events: none; white-space: nowrap; transform: translate(-50%, -100%); }
+.toast { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); background: #0c0e11; border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font-size: 13px; max-width: 80%; }
+.toast.warn { border-color: var(--danger); }
+.guide { pointer-events: none; position: absolute; left: 8px; top: 8px; width: 270px; background: rgba(22,25,30,.93); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: 12.5px; }
+.guide h4 { margin: 0 0 4px; font-size: 12px; font-family: var(--font-mono); letter-spacing: .08em; color: var(--accent); display: flex; justify-content: space-between; }
+.guide ol { margin: 0; padding-left: 1.2em; display: grid; gap: 3px; }
+.guide .x { pointer-events: auto; background: none; border: 0; color: var(--muted); cursor: pointer; font: inherit; }
+.badge { position: absolute; font-size: 11.5px; padding: 1px 7px; border-radius: 99px; pointer-events: none; color: #101215; font-weight: 500; }
+/* reference tabs */
+.ref { display: grid; gap: 22px; }
+.ref h2 { font-size: 19px; margin: 6px 0 0; text-wrap: balance; }
+.ref h3 { font-size: 15.5px; margin: 0; }
+.ref p { margin: 0; max-width: 78ch; }
+.tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 500; font-size: 12px; background: var(--panel-2); position: sticky; top: 0; }
+tr:last-child td { border-bottom: 0; }
+td.n { font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pill { display: inline-block; font-family: var(--font-mono); font-size: 11px; padding: 0 7px; border-radius: 99px; border: 1px solid currentColor; white-space: nowrap; }
+.ok { color: var(--restore); } .warn { color: #e0a640; } .no { color: var(--danger); } .na { color: var(--muted); }
+.feat { display: grid; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.inv { color: var(--invert); } .rst { color: var(--restore); } .acc { color: var(--accent); }
+a { color: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .app.autohide .toolbar { transition: none; } }
+</style>
+
+<div class="page">
+  <header class="top">
+    <h1>Mecha Lab Prototype</h1>
+    <span class="chip">UX 시안 v2.1 · 브라우저에서 직접 조작</span>
+  </header>
+  <p class="sub">하단 툴바, 상황별 옵션 카드, 레이어 패널, 미러 기즈모, Q 파이 메뉴를 실제로 눌러 보는 시안입니다. Blender가 아니며, 화면을 정면 2D로 단순화했습니다. 클릭·키 순서와 화면 반응은 애드온에 넣을 그대로 만들었습니다. 뷰포트를 한 번 클릭한 뒤 키보드를 쓰세요.</p>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-tab="proto" id="t-proto">프로토타입</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="flow" id="t-flow">작업 단계 비교</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="input" id="t-input">입력 규칙</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="status" id="t-status">구현·검증 상태</button>
+  </div>
+
+  <!-- ================= PROTOTYPE ================= -->
+  <section data-panel="proto">
+    <div class="scroller">
+      <div class="app" id="app" tabindex="0" aria-label="Mecha Lab 프로토타입">
+        <div class="topbar">
+          <span class="brand">MECHA LAB</span>
+          <span class="chip">Model</span>
+          <span class="sp"></span>
+          <span class="chip" id="counter">클릭 0 · 키 0</span>
+          <button class="btn" id="resetCount">카운터 초기화</button>
+          <button class="btn" id="undoBtn">Undo</button>
+          <button class="btn" id="redoBtn">Redo</button>
+          <button class="btn" id="resetScene">장면 초기화</button>
+          <button class="btn" id="layersBtn">Layers</button>
+        </div>
+        <div class="vpwrap" id="vpwrap">
+          <svg class="vp" id="vp" viewBox="0 0 1000 540" preserveAspectRatio="xMidYMid meet"></svg>
+          <div id="overlay"></div>
+        </div>
+        <div class="bottombar" id="bottombar">
+          <div class="scope"><span class="lbl">SCOPE</span><span id="crumbs"></span></div>
+          <div class="toolbar" id="toolbar"></div>
+          <div class="quick">
+            <span class="lbl">QUICK</span>
+            <div class="row">
+              <button class="btn" data-q="place">Place <kbd>G</kbd></button>
+              <button class="btn" data-q="group">Group <kbd>Ctrl G</kbd></button>
+              <button class="btn" data-q="tbset">툴바 ▾</button>
+            </div>
+          </div>
+        </div>
+        <div class="status" id="status"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= FLOW ================= -->
+  <section data-panel="flow" class="ref" hidden>
+    <p>각 기능을 지금 애드온(0.11.3)과 개편안으로 비교했습니다. 숫자는 이 순서대로 했을 때 필요한 <b>마우스 클릭/드래그 수</b>와 <b>키 입력 수</b>입니다. 개편안 숫자는 프로토타입에서 직접 세어 볼 수 있습니다(상단 카운터). 실제 Blender에서 잰 값이 아닙니다.</p>
+    <div class="tbl"><table>
+      <thead><tr><th>기능</th><th>단계</th><th>지금 (0.11.3)</th><th>개편안</th></tr></thead>
+      <tbody id="flowRows"></tbody>
+    </table></div>
+    <div class="tbl"><table>
+      <thead><tr><th>기능</th><th>지금 클릭 · 키</th><th>개편안 클릭 · 키</th><th>무엇이 좋아지나</th></tr></thead>
+      <tbody>
+        <tr><td>Cut</td><td class="n">4 · 0 (C 쓰면 3 · 1)</td><td class="n">3 · 1</td><td>숫자는 비슷. 도형·옵션이 마우스 바로 아래 카드에 있어서 화면 왼쪽·사이드바까지 왕복하지 않음. 다음 도구로는 Shift+Q.</td></tr>
+        <tr><td>Split</td><td class="n">5~6 · 0</td><td class="n">3 · 1</td><td>Gap/Bevel을 사이드바(N)에서 찾지 않고 카드에서 바로 조절.</td></tr>
+        <tr><td>Mirror</td><td class="n">2 · 1 (평면 위치 바꾸면 +3)</td><td class="n">2 · 1 (평면은 기즈모 드래그 1)</td><td>평면 이동·회전을 뷰포트에서 직접. 하나로 합치기는 자동 검사.</td></tr>
+        <tr><td>Boolean</td><td class="n">2 · 1 (B, 미리보기 없음)</td><td class="n">3 · 1 (미리보기) / 2 · 1 (B 그대로)</td><td>바로 적용하는 B는 유지. 도구로 하면 확정 전에 결과를 보고 Difference/Union/Intersect를 바꿀 수 있음.</td></tr>
+        <tr><td>Quick Place</td><td class="n">4~6 · 3~5</td><td class="n">2 · 3+</td><td>스냅 설정 팝오버를 열지 않음. S 한 번으로 표면 부착.</td></tr>
+        <tr><td>Layer Group</td><td class="n">5+ · 2</td><td class="n">n+2 · 2</td><td>그룹을 풀지 않고 더블클릭으로 들어가고 Esc로 나옴. Outliner를 열 필요 없음.</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <!-- ================= INPUT ================= -->
+  <section data-panel="input" class="ref" hidden>
+    <h2>도구별 입력 표</h2>
+    <p>같은 키가 도구마다 다른 일을 하는 곳은 색과 커서 옆 배지로 구분합니다. <span class="inv">파랑 = Cut 반전(안쪽 남기기)</span>, <span class="rst">초록 = Box Hide 복원</span>. Alt를 누르는 순간 배지가 떠서 무엇이 될지 미리 보입니다.</p>
+    <div class="tbl"><table>
+      <thead><tr><th>입력</th><th>Select</th><th>Cut</th><th>Split</th><th>Box Hide</th><th>Boolean</th><th>Mirror</th><th>Quick Place 중</th></tr></thead>
+      <tbody>
+        <tr><td>클릭</td><td>그룹 선택 (범위 안에서는 파츠)</td><td>라쏘 점 / 스탬프 찍기</td><td>라쏘 점</td><td>라쏘 점</td><td>1번째 = 대상, 2번째 = 커터</td><td>오브젝트 선택 → 즉시 미러</td><td>배치 확정</td></tr>
+        <tr><td>드래그</td><td>이동 (기즈모 화살표 = 축 고정)</td><td>사각·타원·자유 그리기</td><td>같음</td><td>숨길 영역 그리기</td><td>—</td><td>평면 가운데 = 이동, 바깥 점 = 회전</td><td>—</td></tr>
+        <tr><td>더블클릭</td><td><b>그룹 안으로 들어가기</b></td><td><b>라쏘 닫고 적용</b></td><td>라쏘 닫고 적용</td><td>라쏘 닫고 적용</td><td>—</td><td>—</td><td>—</td></tr>
+        <tr><td>Alt</td><td>—</td><td class="inv">반전: 안쪽만 남김</td><td>—</td><td class="rst">복원: 숨긴 곳 일부 되살림</td><td>—</td><td>—</td><td>—</td></tr>
+        <tr><td>Ctrl (드래그)</td><td>—</td><td>가운데서 그리기</td><td>가운데서 그리기</td><td>가운데서 그리기</td><td>—</td><td>—</td><td>—</td></tr>
+        <tr><td>Shift</td><td>추가 선택</td><td>정사각·원 / 45°</td><td>같음</td><td>같음</td><td>—</td><td>회전 15° 단위</td><td>1° 회전</td></tr>
+        <tr><td>우클릭</td><td>상황 메뉴</td><td>그리는 중 = 마지막 점 지우기 · 아니면 <b>도형/프리셋 메뉴</b></td><td>같음</td><td>같음</td><td>상황 메뉴</td><td>상황 메뉴</td><td>—</td></tr>
+        <tr><td>Enter</td><td>—</td><td>라쏘 확정</td><td>라쏘 확정</td><td>Apply</td><td>Apply</td><td>Apply (실제 복제본)</td><td>확정</td></tr>
+        <tr><td>T</td><td>—</td><td>대상: 자동 ↔ 선택만</td><td>같음</td><td>같음</td><td>—</td><td>—</td><td>—</td></tr>
+        <tr><td>X / Y</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>축 바꾸기</td><td>—</td></tr>
+        <tr><td>방향키 · S · 휠</td><td>—</td><td>—</td><td>—</td><td>—</td><td>D / U / I = 연산</td><td>—</td><td>회전 · 표면 부착 · 표면 거리</td></tr>
+      </tbody>
+    </table></div>
+    <div class="grid2">
+      <div class="feat">
+        <h3>Esc 우선순위 (위에서부터 하나만 실행)</h3>
+        <ol>
+          <li>열린 메뉴(Q 파이·우클릭) 닫기</li>
+          <li>그리는 중이면 <b>획 취소</b> (도구는 그대로)</li>
+          <li>Quick Place 중이면 <b>배치 취소</b> (원래 자리로)</li>
+          <li>Select에서 그룹 안이면 <b>한 단계 밖으로</b></li>
+          <li>모델링 도구면 <b>Select로</b> (라이브 결과는 유지)</li>
+          <li>Select면 선택 해제</li>
+        </ol>
+        <p class="note">화면 맨 아래 상태줄에 지금 Esc가 무엇을 할지 항상 표시합니다.</p>
+      </div>
+      <div class="feat">
+        <h3>전역 키</h3>
+        <ul>
+          <li><kbd>Q</kbd> 전체 도구 파이 (누르고 방향으로 밀어 떼기, 또는 눌렀다 클릭)</li>
+          <li><kbd>Shift</kbd>+<kbd>Q</kbd> Select ↔ 마지막 모델링 도구</li>
+          <li><kbd>F</kbd> Select 바로 가기 · <kbd>C</kbd> Cut · <kbd>B</kbd> 즉시 Boolean Difference (기존 유지)</li>
+          <li><kbd>V</kbd> <b>비움</b>: Q 파이와 같은 메뉴라 중복. 필요하면 나중에 다시 지정</li>
+          <li><kbd>N</kbd> Blender 사이드바 (Mecha가 쓰지 않음)</li>
+          <li><kbd>G</kbd> Quick Place (Mecha Select 도구 안에서만, Blender의 G 대신) — 결정 필요</li>
+          <li><kbd>Ctrl</kbd>+<kbd>G</kbd> 그룹 · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> 해제 · <kbd>Shift</kbd>+<kbd>D</kbd> 복제 · <kbd>Del</kbd> 삭제</li>
+          <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> 되돌리기 / 다시 (도구·도형은 되돌아가지 않음)</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= STATUS ================= -->
+  <section data-panel="status" class="ref" hidden>
+    <h2>무엇이 만들어졌고 무엇이 검증됐나</h2>
+    <p>"1046개 자동 테스트"는 Linux에서 화면 없이 돌린 Blender(bpy 5.0.1) 테스트입니다. 대부분 기하 계산과 가짜 마우스 이벤트로 도는 로직을 확인합니다. 실제 창에서 마우스로 누르는 동작, 그려지는 화면, Windows Blender 5.0.2에서의 동작은 하나도 확인하지 못했습니다.</p>
+    <div class="tbl"><table>
+      <thead><tr><th>항목</th><th>이 시안</th><th>애드온 코드</th><th>자동 테스트</th><th>Windows GUI</th></tr></thead>
+      <tbody id="statusRows"></tbody>
+    </table></div>
+    <h2>Blender에서 어떻게 만들 수 있나</h2>
+    <div class="tbl"><table>
+      <thead><tr><th>시안 요소</th><th>애드온(공식 API)</th><th>시안과의 차이</th><th>소스 수정이 필요한 경우</th></tr></thead>
+      <tbody>
+        <tr><td>하단 툴바</td><td><span class="pill ok">가능</span> 뷰포트 2D 버튼 기즈모</td><td>거의 같음. 툴팁 모양만 Blender 기본</td><td>—</td></tr>
+        <tr><td>옵션 카드 (뷰포트 위 떠 있는 패널)</td><td><span class="pill warn">제약</span> ① 직접 그린 위젯(GPU) ② 하단 도구 헤더</td><td>① 시안과 같은 모양이지만 슬라이더·입력칸을 새로 만들어야 함 ② 가로 한 줄 띠로 바뀜</td><td>뷰포트 위 자유 배치 패널을 Blender 위젯 그대로 쓰고 싶을 때</td></tr>
+        <tr><td>Q 파이 / Shift+Q / F</td><td><span class="pill ok">가능</span></td><td>같음</td><td>—</td></tr>
+        <tr><td>상태줄 Esc·Alt 안내</td><td><span class="pill ok">가능</span> 상태 표시줄 문구</td><td>같음</td><td>—</td></tr>
+        <tr><td>그룹 선택 · 범위 진입</td><td><span class="pill warn">제약</span> Mecha Select 도구 안에서만</td><td>Blender 기본 선택 도구로 고르면 그룹 규칙이 적용되지 않음</td><td>모든 선택 방식에 적용하려면</td></tr>
+        <tr><td>레이어 패널</td><td><span class="pill warn">제약</span> 목록·버튼·표시/잠금은 가능</td><td><b>드래그 앤 드롭 불가</b> (시안에는 있음)</td><td>드래그로 계층을 바꾸고 싶으면 필요</td></tr>
+        <tr><td>미러 평면 기즈모</td><td><span class="pill ok">가능</span> Gizmo API (화살표·회전 링)</td><td>3D에서는 평면 사각형 + 축 화살표</td><td>—</td></tr>
+        <tr><td>Quick Place</td><td><span class="pill ok">가능</span> 모달 + 표면 레이캐스트</td><td>같음</td><td>—</td></tr>
+        <tr><td>Box Hide</td><td><span class="pill ok">가능</span> Geometry Nodes 비파괴</td><td>같음</td><td>—</td></tr>
+      </tbody>
+    </table></div>
+    <p><b>판단:</b> 옵션 카드와 레이어 드래그가 시안의 손맛을 가장 크게 좌우합니다. 이 두 개만 애드온으로 먼저 만들어 보고(직접 그린 위젯 카드), 느낌이 시안보다 확실히 나쁘면 그 부분만 소스 수정을 검토하는 것을 권합니다.</p>
+  </section>
+</div>
+
+<script>
+(() => {
+'use strict';
+// ---------------------------------------------------------------- data
+const TOOLS = [
+  { id: 'select', name: 'Select / Move', short: 'Select', key: 'F', ic: '<path d="M6 3l12 9-5 1 3 7-3 1-3-7-4 4z" fill="currentColor"/>' },
+  { id: 'cut', name: 'Cut', key: 'C', ic: '<rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 9h8v6H8z" fill="currentColor"/>' },
+  { id: 'split', name: 'Split', key: '', ic: '<path d="M3 5h8v14H3zM13 5h8v14h-8z" fill="none" stroke="currentColor" stroke-width="2"/>' },
+  { id: 'hide', name: 'Box Hide', short: 'Hide', key: '', ic: '<rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 2"/><path d="M7 9h10v6H7z" fill="currentColor" opacity=".45"/>' },
+  { id: 'boolean', name: 'Boolean', key: 'B', ic: '<circle cx="9" cy="12" r="6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="15" cy="12" r="6" fill="currentColor" opacity=".55"/>' },
+  { id: 'mirror', name: 'Mirror / Symmetry', short: 'Mirror', key: '', ic: '<path d="M12 2v20" stroke="currentColor" stroke-width="2" stroke-dasharray="3 2"/><path d="M10 6L3 18h7zM14 6l7 12h-7z" fill="currentColor"/>' },
+  { id: 'prim', name: 'Primitive', key: '', ic: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9" stroke="currentColor" stroke-width="1.5" fill="none"/>' },
+  { id: 'clean', name: 'Smart Cleanup', short: 'Clean', key: '', ic: '<path d="M4 20l8-8M14 4l6 6-6 6-6-6z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17" cy="17" r="1.5" fill="currentColor"/><circle cx="20" cy="13" r="1" fill="currentColor"/>' },
+];
+const TOOL = Object.fromEntries(TOOLS.map(t => [t.id, t]));
+const MODELING = new Set(['cut', 'split', 'hide', 'boolean', 'mirror', 'prim', 'clean']);
+const DRAW_TOOLS = new Set(['cut', 'split', 'hide']);
+const SHAPES = [
+  { id: 'rect', name: '사각', ic: '<rect x="3" y="6" width="18" height="12" fill="none" stroke="currentColor" stroke-width="2"/>' },
+  { id: 'ellipse', name: '타원', ic: '<ellipse cx="12" cy="12" rx="9" ry="6" fill="none" stroke="currentColor" stroke-width="2"/>' },
+  { id: 'lasso', name: '라쏘(직선)', ic: '<path d="M4 18L7 5l7 4 6-3-2 12z" fill="none" stroke="currentColor" stroke-width="2"/>' },
+  { id: 'curve', name: '커브 라쏘', ic: '<path d="M4 15c0-8 6-10 9-8s7-1 7 4-5 8-9 7-7 0-7-3z" fill="none" stroke="currentColor" stroke-width="2"/>' },
+  { id: 'free', name: '자유', ic: '<path d="M3 16c3-8 5 2 8-4s4 6 7-1 2 6 3 4" fill="none" stroke="currentColor" stroke-width="2"/>' },
+  { id: 'stamp', name: '스탬프', ic: '<path d="M12 4l7 5-3 9H8L5 9z" fill="none" stroke="currentColor" stroke-width="2"/>' },
+];
+const reg = (n, r, a0 = -Math.PI / 2) => Array.from({ length: n }, (_, i) => [r * Math.cos(a0 + 2 * Math.PI * i / n), r * Math.sin(a0 + 2 * Math.PI * i / n)]);
+const capsule = (cx, cy, tilt, half, rad) => {
+  const ax = [Math.sin(tilt), -Math.cos(tilt)], nx = [-ax[1], ax[0]], pts = [];
+  const top = [cx + ax[0] * half, cy + ax[1] * half], bot = [cx - ax[0] * half, cy - ax[1] * half];
+  const a0 = Math.atan2(nx[1], nx[0]);
+  for (let i = 0; i <= 10; i++) { const a = a0 - Math.PI * i / 10; pts.push([top[0] + rad * Math.cos(a), top[1] + rad * Math.sin(a)]); }
+  for (let i = 0; i <= 10; i++) { const a = a0 + Math.PI - Math.PI * i / 10; pts.push([bot[0] + rad * Math.cos(a), bot[1] + rad * Math.sin(a)]); }
+  return pts;
+};
+const notchRound = () => { const p = [[-.5, .35], [.5, .35], [.5, -.35], [.22, -.35]]; for (let i = 1; i < 16; i++) { const a = Math.PI * i / 16; p.push([.22 * Math.cos(a), -.35 + .22 * Math.sin(a)]); } p.push([-.22, -.35], [-.5, -.35]); return [p]; };
+const STAMPS = [
+  { id: 'pent', name: '오각형', loops: [reg(5, .5)] },
+  { id: 'trap', name: '사다리꼴', loops: [[[-.5, .32], [.5, .32], [.27, -.32], [-.27, -.32]]] },
+  { id: 'pills', name: '알약 3개', loops: [-1, 0, 1].map(i => capsule(i * .3, 0, Math.PI / 6, .26, .09)) },
+  { id: 'tri', name: '삼각형', loops: [reg(3, .5)] },
+  { id: 'notchR', name: '둥근 홈', loops: notchRound() },
+  { id: 'notchP', name: '각진 홈', loops: [[[-.5, .35], [.5, .35], [.5, -.35], [.26, -.35], [.13, -.06], [-.13, -.06], [-.26, -.35], [-.5, -.35]]] },
+];
+const PRIMS = [
+  { id: 'box', name: '박스' }, { id: 'cyl', name: '원기둥' }, { id: 'hex', name: '육각' },
+  { id: 'cap', name: '캡슐' }, { id: 'wedge', name: '쐐기' }, { id: 'tri', name: '삼각' },
+];
+
+function initialScene() {
+  return {
+    seq: 20,
+    objs: {
+      ground: { id: 'ground', name: 'Ground', type: 'mesh', parent: null, x: 500, y: 505, rot: 0, poly: [[-500, -16], [500, -16], [500, 16], [-500, 16]], tone: 0, visible: true, locked: true, cuts: [], hides: [], adds: [], live: [], cap: true, mirror: null },
+      hull: { id: 'hull', name: 'Hull', type: 'mesh', parent: null, x: 300, y: 330, rot: 0, poly: [[-120, -90], [120, -90], [150, -20], [118, 110], [-118, 110], [-150, -20]], tone: 1, visible: true, locked: false, cuts: [], hides: [], adds: [], live: [], cap: true, mirror: null },
+      arm: { id: 'arm', name: 'Arm_L', type: 'group', parent: null, visible: true, locked: false, mirror: null },
+      a1: { id: 'a1', name: 'Armor_01', type: 'mesh', parent: 'arm', x: 690, y: 220, rot: 0, poly: [[-62, -50], [62, -40], [56, 42], [-56, 50]], tone: 2, visible: true, locked: false, cuts: [], hides: [], adds: [], live: [], cap: true, mirror: null },
+      a2: { id: 'a2', name: 'Armor_02', type: 'mesh', parent: 'arm', x: 700, y: 330, rot: 0, poly: [[-46, -32], [46, -32], [54, 28], [-54, 28]], tone: 1, visible: true, locked: false, cuts: [], hides: [], adds: [], live: [], cap: true, mirror: null },
+      joint: { id: 'joint', name: 'Joint', type: 'mesh', parent: 'arm', x: 615, y: 280, rot: 0, poly: reg(18, 26), tone: 3, visible: true, locked: false, cuts: [], hides: [], adds: [], live: [], cap: true, mirror: null },
+      bolt: { id: 'bolt', name: 'Bolt', type: 'mesh', parent: 'arm', x: 742, y: 214, rot: 0, poly: reg(6, 11, 0), tone: 3, visible: true, locked: false, cuts: [], hides: [], adds: [], live: [], cap: true, mirror: null },
+      cutter: { id: 'cutter', name: 'Cutter_Cyl', type: 'mesh', parent: null, x: 880, y: 140, rot: 0, poly: reg(20, 32), tone: 4, visible: true, locked: false, cuts: [], hides: [], adds: [], live: [], cap: true, mirror: null },
+    },
+    order: ['ground', 'hull', 'arm', 'a1', 'a2', 'joint', 'bolt', 'cutter'],
+  };
+}
+const TONES = [['#4a505b', '#3b4049'], ['#9aa3b2', '#6f7887'], ['#8d97a8', '#636c7c'], ['#b0a58f', '#7f7562'], ['#7fa7c9', '#4f7392']];
+
+// ---------------------------------------------------------------- state
+let S = initialScene();
+const ui = {
+  tool: 'select', lastModel: 'cut', shape: { cut: 'rect', split: 'rect', hide: 'rect' }, stamp: 'pent',
+  sel: [], scope: null, stroke: null, drag: null, place: null, pie: null, ctx: null,
+  bool: { op: 'DIFFERENCE', target: null, cutter: null, keepCutter: false },
+  invertToggle: false, gap: 8, bevel: true, mirrorMode: 'mirror', prim: 'box', cleanStr: 50, cleanCompare: false,
+  adv: false, layers: false, guide: true, mouse: [500, 270], alt: false, shift: false, ctrl: false,
+  clicks: 0, keys: 0, toast: null, lastPress: null, lean: true, tbSize: 'm', autohide: false, tbTop: false, tbset: false,
+  rename: null, expanded: { a1: true }, targetMode: 'auto', lastHide: [], tbLabels: false, cardPos: 'bottom', cardCollapsed: false, cardAuto: false,
+};
+const hist = [], redo = [];
+const $ = s => document.querySelector(s);
+const app = $('#app'), svg = $('#vp'), overlay = $('#overlay');
+
+// ---------------------------------------------------------------- geometry
+const rotP = (p, a) => [p[0] * Math.cos(a) - p[1] * Math.sin(a), p[0] * Math.sin(a) + p[1] * Math.cos(a)];
+const toWorld = (o, p) => { const r = rotP(p, o.rot); return [r[0] + o.x, r[1] + o.y]; };
+const toLocal = (o, p) => rotP([p[0] - o.x, p[1] - o.y], -o.rot);
+const wpoly = o => o.poly.map(p => toWorld(o, p));
+const bbox = pts => { let a = [1e9, 1e9, -1e9, -1e9]; for (const p of pts) { a = [Math.min(a[0], p[0]), Math.min(a[1], p[1]), Math.max(a[2], p[0]), Math.max(a[3], p[1])]; } return a; };
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+const pathD = loops => loops.map(l => 'M' + l.map(p => p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('L') + 'Z').join('');
+const openD = pts => pts.length ? 'M' + pts.map(p => p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('L') : '';
+function reflM(m) { const a = 2 * m.ang, c = Math.cos(a), s = Math.sin(a); return [c, s, s, -c, m.cx - (c * m.cx + s * m.cy), m.cy - (s * m.cx - c * m.cy)]; }
+const reflP = (m, p) => { const M = reflM(m); return [M[0] * p[0] + M[2] * p[1] + M[4], M[1] * p[0] + M[3] * p[1] + M[5]]; };
+const sideOf = (m, p) => { const n = [-Math.sin(m.ang), Math.cos(m.ang)]; return (p[0] - m.cx) * n[0] + (p[1] - m.cy) * n[1]; };
+function halfPlane(m, s) {
+  const d = [Math.cos(m.ang), Math.sin(m.ang)], n = [-d[1], d[0]], c = [m.cx, m.cy], L = 4000;
+  return [[c[0] - d[0] * L, c[1] - d[1] * L], [c[0] + d[0] * L, c[1] + d[1] * L], [c[0] + d[0] * L + n[0] * s * L, c[1] + d[1] * L + n[1] * s * L], [c[0] - d[0] * L + n[0] * s * L, c[1] - d[1] * L + n[1] * s * L]];
+}
+function catmull(pts, closed = true, seg = 8) {
+  const n = pts.length, out = []; if (n < 3) return pts.slice();
+  for (let i = 0; i < n; i++) {
+    const p0 = pts[(i - 1 + n) % n], p1 = pts[i], p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n];
+    for (let k = 0; k < seg; k++) { const t = k / seg, t2 = t * t, t3 = t2 * t;
+      out.push([0, 1].map(j => 0.5 * (2 * p1[j] + (-p0[j] + p2[j]) * t + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2 + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t3))); }
+  }
+  return out;
+}
+const ellipse = (c, rx, ry, n = 40) => Array.from({ length: n }, (_, i) => [c[0] + rx * Math.cos(2 * Math.PI * i / n), c[1] + ry * Math.sin(2 * Math.PI * i / n)]);
+function rectLoop(a, b, sq, ctr) {
+  let dx = b[0] - a[0], dy = b[1] - a[1];
+  if (sq) { const s = Math.max(Math.abs(dx), Math.abs(dy)); dx = Math.sign(dx || 1) * s; dy = Math.sign(dy || 1) * s; }
+  const x0 = ctr ? a[0] - dx : a[0], y0 = ctr ? a[1] - dy : a[1], x1 = a[0] + dx, y1 = a[1] + dy;
+  return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+}
+function ellLoop(a, b, sq, ctr) {
+  let rx = Math.abs(b[0] - a[0]), ry = Math.abs(b[1] - a[1]);
+  let c = ctr ? a : [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; if (!ctr) { rx /= 2; ry /= 2; }
+  if (sq) rx = ry = Math.max(rx, ry);
+  return ellipse(c, rx, ry);
+}
+function primPoly(kind, w, h) {
+  w = Math.max(w, 12) / 2; h = Math.max(h, 12) / 2;
+  switch (kind) {
+    case 'cyl': return ellipse([0, 0], w, h, 28);
+    case 'hex': return reg(6, 1, 0).map(p => [p[0] * w, p[1] * h]);
+    case 'cap': { const r = Math.min(w, h), pts = []; const horiz = w >= h;
+      if (horiz) { for (let i = 0; i <= 10; i++) { const a = -Math.PI / 2 + Math.PI * i / 10; pts.push([w - r + r * Math.cos(a), r * Math.sin(a)]); } for (let i = 0; i <= 10; i++) { const a = Math.PI / 2 + Math.PI * i / 10; pts.push([-w + r + r * Math.cos(a), r * Math.sin(a)]); } }
+      else { for (let i = 0; i <= 10; i++) { const a = Math.PI + Math.PI * i / 10; pts.push([r * Math.cos(a), -h + r + r * Math.sin(a)]); } for (let i = 0; i <= 10; i++) { const a = Math.PI * i / 10; pts.push([r * Math.cos(a), h - r + r * Math.sin(a)]); } }
+      return pts; }
+    case 'wedge': return [[-w, h], [w, h], [w, -h]];
+    case 'tri': return [[-w, h], [w, h], [0, -h]];
+    default: return [[-w, -h], [w, -h], [w, h], [-w, h]];
+  }
+}
+
+// ---------------------------------------------------------------- scene helpers
+const O = id => S.objs[id];
+const kids = id => S.order.filter(k => O(k) && O(k).parent === id);
+function desc(id) { const out = []; const walk = i => { for (const k of kids(i)) { out.push(k); walk(k); } }; walk(id); return out; }
+const meshesOf = id => O(id).type === 'mesh' ? [id] : desc(id).filter(k => O(k).type === 'mesh');
+const ancestors = id => { const a = []; let p = O(id).parent; while (p) { a.push(p); p = O(p).parent; } return a; };
+const isVisible = id => O(id).visible && ancestors(id).every(a => O(a).visible);
+const isLocked = id => O(id).locked || ancestors(id).some(a => O(a).locked);
+const inScope = id => !ui.scope || id === ui.scope || ancestors(id).includes(ui.scope);
+function pickRoot(id) {
+  if (!O(id) || isLocked(id) || !inScope(id) || id === ui.scope) return null;
+  let cur = id;
+  while (O(cur).parent && O(cur).parent !== ui.scope) cur = O(cur).parent;
+  return cur;
+}
+const selMeshes = () => [...new Set(ui.sel.flatMap(meshesOf))];
+const mirrorOwner = id => { if (O(id).mirror) return id; for (const a of ancestors(id)) if (O(a).mirror) return a; return null; };
+function selBBox(ids) { const pts = ids.flatMap(meshesOf).filter(isVisible).flatMap(i => wpoly(O(i))); return pts.length ? bbox(pts) : null; }
+function newId(prefix) { S.seq++; return prefix + S.seq; }
+
+function commit(label) { hist.push(JSON.stringify({ S, sel: ui.sel, scope: ui.scope })); if (hist.length > 80) hist.shift(); redo.length = 0; }
+function undo() { if (!hist.length) return toast('되돌릴 것이 없습니다'); redo.push(JSON.stringify({ S, sel: ui.sel, scope: ui.scope })); const st = JSON.parse(hist.pop()); S = st.S; ui.sel = st.sel; ui.scope = st.scope; cancelTransient(); toast('Undo (도구와 도형은 그대로)'); renderAll(); }
+function doRedo() { if (!redo.length) return; hist.push(JSON.stringify({ S, sel: ui.sel, scope: ui.scope })); const st = JSON.parse(redo.pop()); S = st.S; ui.sel = st.sel; ui.scope = st.scope; renderAll(); }
+
+// ---------------------------------------------------------------- tool switching
+function cancelTransient(msg) {
+  let dropped = false;
+  if (ui.stroke) { ui.stroke = null; dropped = true; }
+  if (ui.place) { cancelPlace(); dropped = true; }
+  ui.drag = null; ui.pie = null; ui.ctx = null;
+  if (dropped && msg) toast(msg);
+}
+function setTool(id, why) {
+  if (!TOOL[id]) return;
+  if (ui.tool === id && !why) { renderAll(); return; }
+  cancelTransient('그리던 작업은 취소됐습니다');
+  if (MODELING.has(ui.tool)) ui.lastModel = ui.tool;
+  ui.tool = id;
+  if (id !== 'select') ui.scopeHint = null;
+  if (id === 'boolean') { ui.bool.target = null; ui.bool.cutter = null; const m = ui.sel.filter(s => O(s)); if (m.length >= 2) { ui.bool.target = m[0]; ui.bool.cutter = m[m.length - 1]; } else if (m.length === 1) ui.bool.target = m[0]; }
+  if (id === 'mirror') startMirror();
+  renderAll();
+}
+function toggleLast() { if (ui.tool === 'select') setTool(ui.lastModel || 'cut', 'shiftq'); else setTool('select', 'shiftq'); }
+
+// ---------------------------------------------------------------- mirror
+function startMirror() {
+  if (!ui.sel.length) { toast('미러할 오브젝트를 클릭하세요 (클릭하면 바로 미러)'); return; }
+  const owner = ui.sel[0];
+  const o = O(owner);
+  if (!o.mirror) {
+    commit('mirror');
+    const bb = selBBox([owner]);
+    o.mirror = { kind: ui.mirrorMode === 'sym' ? 'sym' : 'mirror', axis: 'X', ang: Math.PI / 2, cx: bb[2] + 1, cy: (bb[1] + bb[3]) / 2, keep: -1 };
+    if (o.mirror.kind === 'sym') { o.mirror.cx = (bb[0] + bb[2]) / 2; }
+    ui.lean = o.mirror.kind === 'mirror';
+    toast(o.mirror.kind === 'sym' ? 'Symmetry 켜짐: 이제 한쪽에 한 작업이 반대쪽에도 적용됩니다' : 'Mirror 생성: 마우스를 기울인 쪽으로 복사 · 평면 핸들을 끌면 고정');
+  } else { ui.lean = false; }
+}
+function leanUpdate(p) {
+  const owner = ui.sel[0]; if (!owner || !O(owner) || !O(owner).mirror || !ui.lean || O(owner).mirror.kind !== 'mirror') return;
+  const m = O(owner).mirror, bb = selBBox([owner]); if (!bb) return;
+  if (m.axis === 'X') { const right = p[0] > (bb[0] + bb[2]) / 2; m.cx = right ? bb[2] + 1 : bb[0] - 1; m.cy = (bb[1] + bb[3]) / 2; m.keep = right ? -1 : 1; }
+  else { const down = p[1] > (bb[1] + bb[3]) / 2; m.cy = down ? bb[3] + 1 : bb[1] - 1; m.cx = (bb[0] + bb[2]) / 2; m.keep = down ? 1 : -1; }
+}
+function setAxis(ax) {
+  const owner = ui.sel[0]; if (!owner || !O(owner).mirror) return;
+  commit('axis'); const m = O(owner).mirror; m.axis = ax; m.ang = ax === 'X' ? Math.PI / 2 : 0;
+  const bb = selBBox([owner]);
+  if (m.kind === 'sym') { m.cx = (bb[0] + bb[2]) / 2; m.cy = (bb[1] + bb[3]) / 2; } else { ui.lean = true; leanUpdate(ui.mouse); }
+  renderAll();
+}
+function crossInfo(id) {
+  const m = O(id).mirror; let crossing = 0, minAbs = 1e9, sides = new Set();
+  for (const mid of meshesOf(id)) { const wp = wpoly(O(mid)); for (let i = 0; i < wp.length; i++) { const a = sideOf(m, wp[i]), b = sideOf(m, wp[(i + 1) % wp.length]); minAbs = Math.min(minAbs, Math.abs(a)); if (a * b < 0) crossing++; sides.add(Math.sign(Math.round(a))); } }
+  return { crossing, minAbs };
+}
+function mergeMirror() {
+  const owner = ui.sel[0]; if (!owner || !O(owner).mirror) return;
+  const o = O(owner), m = o.mirror;
+  if (m.kind === 'sym') return toast('이미 하나의 메시입니다');
+  const ci = crossInfo(owner);
+  if (ci.crossing === 0 && ci.minAbs > 3) {
+    toast('원본과 복사본이 평면에서 떨어져 있어 하나로 이을 수 없습니다. 원본은 그대로 두었습니다. Apply로 별도 조각을 만들거나 평면을 붙여 주세요.', true);
+    return;
+  }
+  commit('merge');
+  const bb = selBBox([owner]); const center = [(bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2];
+  m.kind = 'sym'; m.keep = Math.sign(sideOf(m, center)) || -1; ui.lean = false;
+  toast(`하나로 합침 · 중앙 검사 (시안 값): 겹친 면 ${ci.crossing ? '제거' : '없음'} · 중앙 정점 ${Math.max(ci.crossing, 2)}개 용접 · 노멀 정리 · 열린 경계 0`);
+  renderAll();
+}
+function applyMirror() {
+  const owner = ui.sel[0]; if (!owner || !O(owner).mirror) return;
+  const o = O(owner), m = o.mirror; commit('apply mirror');
+  if (m.kind === 'sym') {
+    for (const mid of meshesOf(owner)) { const mo = O(mid); const half = halfPlane(m, m.keep);
+      const wp = clipPoly(wpoly(mo), half); const rp = wp.map(p => reflP(m, p)).reverse();
+      mo.poly = wp.map(p => toLocal(mo, p)); mo.adds.push(rp.map(p => toLocal(mo, p)));
+      mo.cuts = mo.cuts.concat(mo.cuts.map(c => ({ ...c, loops: c.loops.map(l => l.map(p => toLocal(mo, reflP(m, toWorld(mo, p))))) }))); }
+    o.mirror = null; toast('Symmetry를 실제 메시로 확정했습니다');
+  } else {
+    const copies = [];
+    for (const mid of meshesOf(owner)) { const mo = O(mid); const id = newId('m');
+      const wp = wpoly(mo).map(p => reflP(m, p)).reverse(); const bb = bbox(wp); const c = [(bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2];
+      S.objs[id] = { ...JSON.parse(JSON.stringify(mo)), id, name: mo.name + '_Mirror', x: c[0], y: c[1], rot: 0, mirror: null, live: [] };
+      const no = S.objs[id]; no.poly = wp.map(p => [p[0] - c[0], p[1] - c[1]]);
+      no.cuts = mo.cuts.map(cu => ({ ...cu, loops: cu.loops.map(l => l.map(p => { const w = reflP(m, toWorld(mo, p)); return [w[0] - c[0], w[1] - c[1]]; })) }));
+      no.hides = []; no.adds = []; S.order.splice(S.order.indexOf(mid) + 1, 0, id); copies.push(id); }
+    o.mirror = null; toast('Mirror를 별도 복제본으로 확정했습니다 (' + copies.length + '개)');
+  }
+  renderAll();
+}
+function clipPoly(poly, clip) { // Sutherland–Hodgman, clip convex
+  let out = poly;
+  for (let i = 0; i < clip.length; i++) {
+    const a = clip[i], b = clip[(i + 1) % clip.length], inp = out; out = [];
+    const inside = p => (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]) >= 0;
+    const inter = (p, q) => { const x1 = p[0], y1 = p[1], x2 = q[0], y2 = q[1], x3 = a[0], y3 = a[1], x4 = b[0], y4 = b[1]; const d = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4); const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / d; return [x1 + t * (x2 - x1), y1 + t * (y2 - y1)]; };
+    for (let j = 0; j < inp.length; j++) { const p = inp[j], q = inp[(j + 1) % inp.length];
+      if (inside(q)) { if (!inside(p)) out.push(inter(p, q)); out.push(q); } else if (inside(p)) out.push(inter(p, q)); }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- drawing ops
+function strokeLoops() {
+  const st = ui.stroke; if (!st) return [];
+  const m = ui.mouse;
+  switch (st.shape) {
+    case 'rect': return [rectLoop(st.a, st.b || st.a, ui.shift, ui.ctrl)];
+    case 'ellipse': return [ellLoop(st.a, st.b || st.a, ui.shift, ui.ctrl)];
+    case 'lasso': return [st.pts.concat(st.closing ? [] : [m])];
+    case 'curve': { const p = st.pts.concat(st.closing ? [] : [m]); return [p.length >= 3 ? catmull(p) : p]; }
+    case 'free': return [st.pts];
+    case 'stamp': { const s = STAMPS.find(x => x.id === ui.stamp); const r = st.b ? Math.max(dist(st.a, st.b), 12) : 40; const ang = st.b && dist(st.a, st.b) > 6 ? Math.atan2(st.b[1] - st.a[1], st.b[0] - st.a[0]) : 0;
+      return s.loops.map(l => l.map(p => { const q = rotP([p[0] * 2 * r, p[1] * 2 * r], ang); return [st.a[0] + q[0], st.a[1] + q[1]]; })); }
+  }
+  return [];
+}
+const strokeInverted = () => ui.stroke && (ui.stroke.altAtPress || ui.alt || ui.invertToggle);
+function hitMeshes(loops) {
+  const pts = loops.flat(); if (!pts.length) return [];
+  const bb = bbox(pts);
+  return S.order.filter(id => O(id).type === 'mesh' && isVisible(id) && !isLocked(id) && inScope(id)).filter(id => {
+    const b = bbox(wpoly(O(id))); return !(b[2] < bb[0] || b[0] > bb[2] || b[3] < bb[1] || b[1] > bb[3]);
+  });
+}
+function pip(p, poly) { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const a = poly[i], b = poly[j];
+  if ((a[1] > p[1]) !== (b[1] > p[1]) && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; }
+function segX(a, b, c, d) { const o = (p, q, r) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])); return o(a, b, c) !== o(a, b, d) && o(c, d, a) !== o(c, d, b); }
+function overlaps(loop, poly) {
+  if (loop.some(p => pip(p, poly)) || poly.some(p => pip(p, loop))) return true;
+  for (let i = 0; i < loop.length; i++) for (let j = 0; j < poly.length; j++) if (segX(loop[i], loop[(i + 1) % loop.length], poly[j], poly[(j + 1) % poly.length])) return true;
+  return false;
+}
+function targetsFor(loops) {
+  // Auto Target: every unlocked mesh the drawn shape really covers (selection ignored),
+  // so the tool stays on and the next plate is cut without going back to Select.
+  // Selected Targets: only the selected meshes the shape covers.
+  const covered = hitMeshes(loops).filter(id => loops.some(l => l.length >= 3 && overlaps(l, wpoly(O(id)))));
+  if (ui.targetMode === 'selected') { const sel = selMeshes(); return covered.filter(id => sel.includes(id)); }
+  return covered;
+}
+function mirroredLoops(id, loops) { const own = mirrorOwner(id); if (!own) return []; const m = O(own).mirror; return loops.map(l => l.map(p => reflP(m, p)).reverse()); }
+function finishStroke() {
+  const st = ui.stroke; if (!st) return;
+  let loops = strokeLoops().filter(l => l.length >= 3);
+  if (st.shape === 'lasso' || st.shape === 'curve') { loops = [st.shape === 'curve' ? catmull(st.pts) : st.pts]; }
+  ui.stroke = null;
+  if (!loops.length || loops.every(l => { const b = bbox(l); return (b[2] - b[0]) < 4 || (b[3] - b[1]) < 4; })) { toast('도형이 너무 작습니다'); return renderAll(); }
+  const tool = ui.tool, inv = st.altAtPress || st.altSeen || ui.invertToggle;
+  const targets = targetsFor(loops);
+  if (!targets.length) { toast(ui.targetMode === 'selected' && !selMeshes().length ? '선택 고정 모드인데 선택한 메시가 없습니다. 메시를 선택하거나 대상을 "자동"으로 바꾸세요' : ui.targetMode === 'selected' ? '선택한 메시와 겹치지 않습니다. 아무것도 바뀌지 않았습니다' : '도형이 메시와 겹치지 않습니다. 아무것도 바뀌지 않았습니다', true); return renderAll(); }
+  commit(tool);
+  const created = [];
+  for (const id of targets) {
+    const o = O(id);
+    const all = loops.concat(mirroredLoops(id, loops));
+    const local = all.map(l => l.map(p => toLocal(o, p)));
+    if (tool === 'cut') o.cuts.push({ loops: local, mode: inv ? 'keep' : 'diff', gap: 0 });
+    else if (tool === 'split') {
+      const pid = newId('p');
+      S.objs[pid] = { ...JSON.parse(JSON.stringify(o)), id: pid, name: o.name + '_Split', mirror: null, live: [] };
+      S.objs[pid].cuts = o.cuts.slice().concat([{ loops: local, mode: 'keep', gap: 0 }]);
+      o.cuts.push({ loops: local, mode: 'diff', gap: ui.gap, bevel: ui.bevel });
+      S.order.splice(S.order.indexOf(id) + 1, 0, pid); created.push(pid);
+    } else if (tool === 'hide') o.hides.push({ loops: local, restore: !!(st.altAtPress || st.altSeen) });
+  }
+  if (created.length) ui.sel = created.map(c => pickRoot(c) || c);
+  else if (ui.targetMode === 'auto') ui.sel = [...new Set(targets.map(t => pickRoot(t) || t))];
+  if (tool === 'hide') ui.lastHide = targets.slice();
+  const mirrored = targets.some(t => mirrorOwner(t));
+  const what = tool === 'cut' ? (inv ? '안쪽만 남김' : 'Cut') : tool === 'split' ? 'Split' : ((st.altAtPress || st.altSeen) ? '복원' : '숨김');
+  toast(`${what}: ${targets.map(t => O(t).name).join(', ')}${mirrored ? ' · 반대편에도 적용' : ''} · 도구는 그대로`);
+  renderAll();
+}
+function hideApply() { const ms = selMeshes().length ? selMeshes() : S.order.filter(i => O(i).type === 'mesh' && O(i).hides && O(i).hides.length);
+  const hits = ms.filter(i => O(i).hides.length); if (!hits.length) return toast('숨긴 영역이 없습니다');
+  // The final removed area = hide regions minus later restores, in drawing order (one baked record).
+  commit('hide apply'); for (const i of hits) { const o = O(i); o.cuts.push({ mode: 'hideSeq', seq: o.hides.map(h => ({ loops: h.loops, restore: h.restore })), cap: o.cap, gap: 0 }); o.hides = []; }
+  toast('Box Hide 확정: 숨긴 영역을 실제로 제거했습니다'); renderAll(); }
+function capTargets() { const sel = selMeshes().filter(i => O(i) && O(i).type === 'mesh'); return sel.length ? sel : ui.lastHide.filter(i => O(i)); }
+function setCap(on) { const t = capTargets(); if (!t.length) return toast('Cap을 바꿀 메시를 선택하세요 (또는 먼저 Box Hide를 그리세요)', true);
+  commit('cap'); t.forEach(i => O(i).cap = on); toast(`Cap ${on ? 'ON' : 'OFF'}: ${t.map(i => O(i).name).join(', ')}`); renderAll(); }
+function hideShowAll() { const hits = S.order.filter(i => O(i).type === 'mesh' && O(i).hides.length); if (!hits.length) return toast('숨긴 영역이 없습니다'); commit('show all'); hits.forEach(i => O(i).hides = []); toast('모두 다시 표시'); renderAll(); }
+
+// ---------------------------------------------------------------- boolean
+function boolApply(live) {
+  const b = ui.bool; if (!b.target || !b.cutter) return toast('대상과 커터를 차례로 클릭하세요');
+  commit('boolean');
+  for (const tid of meshesOf(b.target)) { const t = O(tid);
+    if (live) t.live.push({ cutter: b.cutter, op: b.op });
+    else for (const cid of meshesOf(b.cutter)) { const c = O(cid); const loop = wpoly(c).map(p => toLocal(t, p));
+      if (b.op === 'DIFFERENCE') t.cuts.push({ loops: [loop], mode: 'diff', gap: 0 });
+      else if (b.op === 'UNION') t.adds.push(loop);
+      else t.cuts.push({ loops: [loop], mode: 'keep', gap: 0 }); } }
+  if (!live && !b.keepCutter) O(b.cutter).visible = false;
+  if (live) O(b.cutter).wire = true;
+  toast(live ? `Live Boolean: 커터(${O(b.cutter).name})를 움직이면 결과가 따라옵니다` : `Boolean ${b.op} 적용${b.keepCutter ? '' : ' · 커터 숨김'}`);
+  b.target = null; b.cutter = null; renderAll();
+}
+function boolExpress() {
+  if (ui.sel.length < 2) return toast('B: 대상들을 먼저, 커터를 마지막으로 선택하세요');
+  const cutter = ui.sel[ui.sel.length - 1]; const targets = ui.sel.slice(0, -1);
+  commit('B'); for (const t of targets) for (const tid of meshesOf(t)) { const to = O(tid); for (const cid of meshesOf(cutter)) to.cuts.push({ loops: [wpoly(O(cid)).map(p => toLocal(to, p))], mode: 'diff', gap: 0 }); }
+  O(cutter).visible = false; toast('B: 즉시 Difference (미리보기 없음, 기존 방식 그대로)'); renderAll();
+}
+
+// ---------------------------------------------------------------- place
+function startPlace() {
+  if (ui.tool !== 'select') setTool('select', 'place');
+  if (!ui.sel.length) return toast('배치할 오브젝트를 먼저 선택하세요');
+  const ms = selMeshes(); const bb = selBBox(ui.sel); const c = [(bb[0] + bb[2]) / 2, bb[3]];
+  ui.place = { ids: ms, start: ms.map(id => ({ id, x: O(id).x, y: O(id).y, rot: O(id).rot })), anchor: c, snap: false, rot: 0, dist: 0, committed: false };
+  commit('place'); toast('Quick Place: 커서를 따라옵니다 · ←/→ 회전 · S 표면 부착 · 클릭 확정 · Esc 취소'); renderAll();
+}
+function placeUpdate() {
+  const P = ui.place; if (!P) return;
+  let target = ui.mouse.slice(), ang = P.rot;
+  P.surface = null;
+  if (P.snap) {
+    let best = null;
+    for (const id of S.order) { const o = O(id); if (o.type !== 'mesh' || P.ids.includes(id) || !isVisible(id)) continue;
+      const wp = wpoly(o);
+      for (let i = 0; i < wp.length; i++) { const a = wp[i], b = wp[(i + 1) % wp.length];
+        if ((a[0] - ui.mouse[0]) * (b[0] - ui.mouse[0]) > 0 || a[0] === b[0]) continue;
+        const t = (ui.mouse[0] - a[0]) / (b[0] - a[0]); const y = a[1] + t * (b[1] - a[1]);
+        if (y < ui.mouse[1] - 4) continue;
+        let dir = Math.atan2(b[1] - a[1], b[0] - a[0]); if (Math.cos(dir) < 0) dir += Math.PI;
+        if (!best || y < best.y) best = { y, dir, name: o.name }; } }
+    if (best) { const n = [Math.sin(best.dir), -Math.cos(best.dir)]; target = [ui.mouse[0] + n[0] * P.dist, best.y + n[1] * P.dist]; ang = best.dir + P.rot; P.surface = best; }
+  }
+  for (const s of P.start) { const o = O(s.id); const rel = rotP([s.x - P.anchor[0], s.y - P.anchor[1]], ang); o.x = target[0] + rel[0]; o.y = target[1] + rel[1]; o.rot = s.rot + ang; }
+}
+function confirmPlace() { if (!ui.place) return; const P = ui.place; ui.place = null; toast(P.surface ? `${P.surface.name} 표면에 배치` : '배치 확정'); renderAll(); }
+function cancelPlace() { const P = ui.place; if (!P) return; for (const s of P.start) Object.assign(O(s.id), { x: s.x, y: s.y, rot: s.rot }); ui.place = null; hist.pop(); }
+
+// ---------------------------------------------------------------- groups / layers ops
+function groupSel() {
+  const items = ui.sel.filter(id => O(id) && !isLocked(id)); if (!items.length) return toast('묶을 것을 선택하세요');
+  commit('group'); const gid = newId('g'); const parent = ui.scope;
+  S.objs[gid] = { id: gid, name: 'Group_' + S.seq, type: 'group', parent, visible: true, locked: false, mirror: null };
+  const first = Math.min(...items.map(i => S.order.indexOf(i))); S.order.splice(first, 0, gid);
+  items.forEach(i => O(i).parent = gid); ui.sel = [gid]; toast('그룹 만듦 · 더블클릭으로 안에 들어갑니다'); renderAll();
+}
+function ungroupSel() {
+  const gs = ui.sel.filter(id => O(id).type === 'group'); if (!gs.length) return toast('그룹을 선택하세요');
+  commit('ungroup'); const out = [];
+  for (const g of gs) { kids(g).forEach(k => { O(k).parent = O(g).parent; out.push(k); }); delete S.objs[g]; S.order = S.order.filter(x => x !== g); if (ui.scope === g) ui.scope = null; }
+  ui.sel = out; toast('그룹 해제'); renderAll();
+}
+function duplicateSel() {
+  if (!ui.sel.length) return; commit('dup'); const map = {};
+  const copyTree = (id, parent) => { const nid = newId('d'); const src = O(id); S.objs[nid] = { ...JSON.parse(JSON.stringify(src)), id: nid, name: src.name + '.001', parent };
+    if (src.type === 'mesh') { S.objs[nid].x += 24; S.objs[nid].y += 24; } S.order.push(nid); map[id] = nid; kids(id).forEach(k => copyTree(k, nid)); return nid; };
+  ui.sel = ui.sel.map(id => copyTree(id, O(id).parent)); toast('복제'); renderAll();
+}
+function deleteSel() { if (!ui.sel.length) return; commit('delete'); const all = new Set(ui.sel.flatMap(id => [id, ...desc(id)])); all.forEach(id => delete S.objs[id]); S.order = S.order.filter(id => !all.has(id)); ui.sel = []; toast('삭제'); renderAll(); }
+function mergeSel() {
+  const ms = selMeshes(); if (ms.length < 2) return toast('합칠 메시를 2개 이상 선택하세요');
+  commit('merge'); const base = O(ms[0]);
+  for (const id of ms.slice(1)) { const o = O(id); base.adds.push(wpoly(o).map(p => toLocal(base, p))); delete S.objs[id]; S.order = S.order.filter(x => x !== id); }
+  ui.sel = [ms[0]]; toast('Merge: 실제 형상 합치기 + 자동 정리 (시안: 정리는 표시만)'); renderAll();
+}
+function enterScope(id) { if (O(id).type !== 'group') return false; ui.scope = id; ui.sel = []; toast(`${O(id).name} 안으로 들어왔습니다 · Esc = 밖으로`); renderAll(); return true; }
+function exitScope() { if (!ui.scope) return false; const p = O(ui.scope).parent; const was = ui.scope; ui.scope = p; ui.sel = [pickRoot(was) || was]; renderAll(); return true; }
+
+// ---------------------------------------------------------------- Esc / hints
+function escAction() {
+  if (ui.pie || ui.ctx) return ['메뉴 닫기', () => { ui.pie = null; ui.ctx = null; }];
+  if (ui.stroke) return ['그리던 획 취소', () => { ui.stroke = null; }];
+  if (ui.place) return ['배치 취소 (원래 자리로)', () => cancelPlace()];
+  if (ui.tool === 'select' && ui.scope) return ['그룹 밖으로 한 단계', () => exitScope()];
+  if (ui.tool !== 'select') return ['Select로 (결과는 유지)', () => setTool('select', 'esc')];
+  if (ui.sel.length) return ['선택 해제', () => { ui.sel = []; }];
+  return ['할 일 없음', () => {}];
+}
+function hints() {
+  const t = ui.tool, h = [];
+  const esc = escAction()[0];
+  if (ui.place) return [['클릭', '배치 확정'], ['←/→', '회전 15° (Shift 1°)'], ['S', ui.place.snap ? '자유 이동으로' : '표면 부착'], ['휠', '표면에서 거리'], ['Esc', esc]];
+  if (ui.stroke && (ui.stroke.shape === 'lasso' || ui.stroke.shape === 'curve')) return [['클릭', '점 추가'], ['더블클릭 / 시작점 / Enter', '닫고 적용'], ['우클릭 / ⌫', '마지막 점 지우기'], ['Esc', esc], altHint()];
+  switch (t) {
+    case 'select': h.push(['클릭', ui.scope ? '파츠 선택' : '그룹 단위 선택'], ['더블클릭', '그룹 안으로'], ['드래그', '이동'], ['G', 'Quick Place'], ['우클릭', '상황 메뉴']); break;
+    case 'cut': case 'split': case 'hide': h.push(['드래그 / 클릭', SHAPES.find(s => s.id === ui.shape[t]).name + ' 그리기'], ['T', '대상: ' + (ui.targetMode === 'auto' ? '자동' : '선택만')], ['더블클릭', '라쏘 확정'], ['Ctrl', '가운데서'], altHint(), ['우클릭', '도형·프리셋']); break;
+    case 'boolean': h.push(['클릭', !ui.bool.target ? '대상 고르기' : !ui.bool.cutter ? '커터 고르기' : '다시 고르기'], ['D/U/I', '연산'], ['Enter', 'Apply']); break;
+    case 'mirror': h.push(['마우스', '기울인 쪽으로 복사'], ['평면 핸들 드래그', '이동 / 바깥 점 = 회전'], ['X / Y', '축'], ['Enter', 'Apply']); break;
+    case 'prim': h.push(['드래그', PRIMS.find(p => p.id === ui.prim).name + ' 만들기 (도구 유지)']); break;
+    case 'clean': h.push(['카드', '정리 실행 · 전후 비교']); break;
+  }
+  h.push(['Esc', esc]);
+  return h;
+}
+function altHint() {
+  const t = ui.tool;
+  if (t === 'cut') return ['Alt', '<span class="inv">반전: 안쪽만 남김</span>'];
+  if (t === 'hide') return ['Alt', '<span class="rst">복원: 숨긴 곳 되살림</span>'];
+  return ['Alt', '—'];
+}
+
+// ---------------------------------------------------------------- rendering
+const toneGrad = (o) => `url(#tone${o.tone || 0})`;
+function maskFor(o) {
+  const live = (o.live || []).filter(l => O(l.cutter) && isVisible(l.cutter) || O(l.cutter));
+  const keeps = o.cuts.filter(c => c.mode === 'keep').concat(live.filter(l => l.op === 'INTERSECT').map(l => ({ loops: meshesOf(l.cutter).map(c => wpoly(O(c)).map(p => toLocal(o, p))) })));
+  let s = keeps.length ? `<rect x="-3000" y="-3000" width="6000" height="6000" fill="black"/>` + keeps.map(k => `<path d="${pathD(k.loops)}" fill="white"/>`).join('')
+    : `<rect x="-3000" y="-3000" width="6000" height="6000" fill="white"/>`;
+  for (const c of o.cuts) if (c.mode === 'hideSeq') for (const h of c.seq) s += `<path d="${pathD(h.loops)}" fill="${h.restore ? 'white' : 'black'}"/>`;
+  for (const h of o.hides) s += `<path d="${pathD(h.loops)}" fill="${h.restore ? 'white' : 'black'}"/>`;
+  for (const c of o.cuts) if (c.mode === 'diff') s += `<path d="${pathD(c.loops)}" fill="black" stroke="black" stroke-width="${c.gap || 0}" stroke-linejoin="${c.bevel ? 'round' : 'miter'}"/>`;
+  for (const l of live) if (l.op === 'DIFFERENCE') s += meshesOf(l.cutter).map(c => `<path d="${pathD([wpoly(O(c)).map(p => toLocal(o, p))])}" fill="black"/>`).join('');
+  if (ui.tool === 'boolean' && ui.bool.cutter && ui.bool.target && meshesOf(ui.bool.target).includes(o.id)) {
+    const loops = meshesOf(ui.bool.cutter).map(c => wpoly(O(c)).map(p => toLocal(o, p)));
+    if (ui.bool.op === 'DIFFERENCE') s += `<path d="${pathD(loops)}" fill="black"/>`;
+  }
+  return s;
+}
+function capMaskFor(o) {
+  let s = `<rect x="-3000" y="-3000" width="6000" height="6000" fill="black"/>`;
+  for (const c of o.cuts) if (c.mode === 'hideSeq' && c.cap) for (const h of c.seq) s += `<path d="${pathD(h.loops)}" fill="${h.restore ? 'black' : 'white'}"/>`;
+  if (o.cap) for (const h of o.hides) s += `<path d="${pathD(h.loops)}" fill="${h.restore ? 'black' : 'white'}"/>`;
+  for (const c of o.cuts) if (c.mode === 'diff') s += `<path d="${pathD(c.loops)}" fill="black"/>`;
+  return s;
+}
+function meshNode(o, uid, extra = '') {
+  const tf = `translate(${o.x.toFixed(1)} ${o.y.toFixed(1)}) rotate(${(o.rot * 180 / Math.PI).toFixed(2)})`;
+  const polys = [o.poly].concat(o.adds || []);
+  const live = (o.live || []).filter(l => O(l.cutter) && l.op === 'UNION');
+  const unionPreview = ui.tool === 'boolean' && ui.bool.op === 'UNION' && ui.bool.cutter && ui.bool.target && meshesOf(ui.bool.target).includes(o.id);
+  const extraPolys = live.flatMap(l => meshesOf(l.cutter).map(c => wpoly(O(c)).map(p => toLocal(o, p))))
+    .concat(unionPreview ? meshesOf(ui.bool.cutter).map(c => wpoly(O(c)).map(p => toLocal(o, p))) : []);
+  const intersectPreview = ui.tool === 'boolean' && ui.bool.op === 'INTERSECT' && ui.bool.cutter && ui.bool.target && meshesOf(ui.bool.target).includes(o.id);
+  let maskInner = maskFor(o);
+  if (intersectPreview) maskInner = `<rect x="-3000" y="-3000" width="6000" height="6000" fill="black"/><path d="${pathD(meshesOf(ui.bool.cutter).map(c => wpoly(O(c)).map(p => toLocal(o, p))))}" fill="white"/>`;
+  const d = pathD(polys.concat(extraPolys));
+  let s = `<g transform="${tf}" ${extra}>`;
+  s += `<defs><mask id="mk${uid}" maskUnits="userSpaceOnUse" x="-3000" y="-3000" width="6000" height="6000">${maskInner}</mask>`;
+  const needCap = (o.cap && o.hides.some(h => !h.restore)) || o.cuts.some(c => c.mode === 'hideSeq' && c.cap);
+  if (needCap) s += `<mask id="cm${uid}" maskUnits="userSpaceOnUse" x="-3000" y="-3000" width="6000" height="6000">${capMaskFor(o)}</mask>`;
+  const keepsE = o.cuts.filter(c => c.mode === 'keep');
+  s += `<mask id="ek${uid}" maskUnits="userSpaceOnUse" x="-3000" y="-3000" width="6000" height="6000">${keepsE.length ? '<rect x="-3000" y="-3000" width="6000" height="6000" fill="black"/>' + keepsE.map(k => `<path d="${pathD(k.loops)}" fill="white"/>`).join('') : '<rect x="-3000" y="-3000" width="6000" height="6000" fill="white"/>'}</mask>`;
+  s += `<clipPath id="cp${uid}"><path d="${d}" fill-rule="nonzero"/></clipPath></defs>`;
+  if (needCap) s += `<path d="${d}" fill="var(--cap)" mask="url(#cm${uid})" fill-rule="nonzero"/>`;
+  s += `<path data-id="${o.id}" d="${d}" fill="${toneGrad(o)}" stroke="#c7cdd8" stroke-opacity=".55" stroke-width="1.5" mask="url(#mk${uid})" fill-rule="nonzero" style="cursor:${isLocked(o.id) ? 'not-allowed' : 'pointer'}"/>`;
+  const edgeCuts = o.cuts.filter(c => c.mode === 'diff');
+  if (edgeCuts.length) s += `<g clip-path="url(#cp${uid})" pointer-events="none"><g mask="url(#ek${uid})">${edgeCuts.map(c => `<path d="${pathD(c.loops)}" fill="none" stroke="#14171b" stroke-width="${1.5 + (c.gap || 0)}" stroke-opacity=".7"/>`).join('')}</g></g>`;
+  for (const h of o.hides) if (!h.restore) s += `<path d="${pathD(h.loops)}" fill="none" stroke="${o.cap ? '#c7cdd8' : '#ff9e28'}" stroke-dasharray="${o.cap ? '0' : '4 3'}" stroke-opacity=".5" clip-path="url(#cp${uid})" pointer-events="none"/>`;
+  s += `</g>`;
+  return s;
+}
+let uidN = 0;
+function renderSvg() {
+  uidN = 0;
+  let s = `<defs>${TONES.map((t, i) => `<linearGradient id="tone${i}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${t[0]}"/><stop offset="1" stop-color="${t[1]}"/></linearGradient>`).join('')}
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="var(--vp-grid)" stroke-width="1"/></pattern>
+    <pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><path d="M0 0V8" stroke="#ef6b64" stroke-width="3" stroke-opacity=".55"/></pattern></defs>
+    <rect x="-200" y="-200" width="1400" height="940" fill="url(#grid)" data-bg="1"/>`;
+  const order = S.order.filter(id => O(id) && O(id).type === 'mesh' && isVisible(id));
+  for (const id of order) {
+    const o = O(id); const dim = ui.scope && !inScope(id) ? 'opacity=".28" pointer-events="none"' : '';
+    const own = mirrorOwner(id); const m = own ? O(own).mirror : null;
+    const wire = o.wire || (ui.tool === 'boolean' && ui.bool.cutter && meshesOf(ui.bool.cutter).includes(id));
+    if (wire) { s += `<path data-id="${id}" d="${pathD([wpoly(o)])}" fill="rgba(79,179,255,.08)" stroke="var(--invert)" stroke-dasharray="5 4" stroke-width="1.5" ${dim} style="cursor:pointer"/>`; continue; }
+    if (m && m.kind === 'sym') {
+      const hp = halfPlane(m, m.keep), u = ++uidN;
+      s += `<g ${dim}><clipPath id="hp${u}"><path d="${pathD([hp])}"/></clipPath><g clip-path="url(#hp${u})">${meshNode(o, ++uidN)}</g>`;
+      s += `<g transform="matrix(${reflM(m).map(v => v.toFixed(4)).join(' ')})"><g clip-path="url(#hp${u})">${meshNode(o, ++uidN)}</g></g></g>`;
+    } else {
+      s += `<g ${dim}>${meshNode(o, ++uidN)}</g>`;
+      if (m) s += `<g ${dim} opacity=".92"><g transform="matrix(${reflM(m).map(v => v.toFixed(4)).join(' ')})">${meshNode(o, ++uidN)}</g></g>`;
+    }
+  }
+  // mirror overlap warning (Mirror kind crossing its plane)
+  for (const id of S.order) { const o = O(id); if (!o || !o.mirror || o.mirror.kind !== 'mirror' || !isVisible(id)) continue;
+    const m = o.mirror; const bb = selBBox([id]); if (!bb) continue; const c = [(bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2];
+    const far = halfPlane(m, -Math.sign(sideOf(m, c)) || 1); const u = ++uidN;
+    const polys = meshesOf(id).map(mid => wpoly(O(mid)));
+    s += `<clipPath id="ov${u}"><path d="${pathD([far])}"/></clipPath><path d="${pathD(polys)}" fill="url(#hatch)" clip-path="url(#ov${u})" pointer-events="none"/>`;
+    if (crossInfo(id).crossing) s += `<text x="${m.cx + 8}" y="${m.cy - 70}" fill="#ef6b64" font-size="12" font-family="IBM Plex Sans KR, sans-serif">겹친 면 — 하나로 합치면 자동 제거</text>`; }
+  // selection
+  for (const id of ui.sel) { if (!O(id)) continue; const bb = selBBox([id]); if (!bb) continue;
+    const g = O(id).type === 'group';
+    s += `<rect x="${bb[0] - 6}" y="${bb[1] - 6}" width="${bb[2] - bb[0] + 12}" height="${bb[3] - bb[1] + 12}" rx="6" fill="none" stroke="var(--accent)" stroke-width="2" ${g ? 'stroke-dasharray="7 4"' : ''} pointer-events="none"/>`;
+    s += `<text x="${bb[0] - 4}" y="${bb[1] - 12}" fill="var(--accent)" font-size="12" font-family="IBM Plex Sans KR, sans-serif" pointer-events="none">${O(id).name}${g ? '  (그룹 · ' + meshesOf(id).length + ')' : ''}</text>`; }
+  // boolean roles
+  if (ui.tool === 'boolean') for (const [id, lbl, col] of [[ui.bool.target, '대상', 'var(--accent)'], [ui.bool.cutter, '커터', 'var(--invert)']]) { if (!id || !O(id)) continue; const bb = selBBox([id]); if (!bb) continue;
+    s += `<rect x="${bb[0] - 5}" y="${bb[1] - 5}" width="${bb[2] - bb[0] + 10}" height="${bb[3] - bb[1] + 10}" rx="5" fill="none" stroke="${col}" stroke-width="2" pointer-events="none"/><text x="${bb[0]}" y="${bb[3] + 18}" fill="${col}" font-size="12" font-family="IBM Plex Sans KR, sans-serif">${lbl}: ${O(id).name}</text>`; }
+  // select gizmo
+  if (ui.tool === 'select' && ui.sel.length && !ui.place) { const bb = selBBox(ui.sel); if (bb) { const c = [(bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2];
+    s += `<g><line x1="${c[0]}" y1="${c[1]}" x2="${c[0] + 52}" y2="${c[1]}" stroke="#e05a55" stroke-width="3"/><path data-h="mx" d="M${c[0] + 52} ${c[1] - 7}L${c[0] + 66} ${c[1]}L${c[0] + 52} ${c[1] + 7}Z" fill="#e05a55" style="cursor:ew-resize"/>
+      <line x1="${c[0]}" y1="${c[1]}" x2="${c[0]}" y2="${c[1] - 52}" stroke="#5cc26f" stroke-width="3"/><path data-h="my" d="M${c[0] - 7} ${c[1] - 52}L${c[0]} ${c[1] - 66}L${c[0] + 7} ${c[1] - 52}Z" fill="#5cc26f" style="cursor:ns-resize"/>
+      <rect data-h="mc" x="${c[0] - 7}" y="${c[1] - 7}" width="14" height="14" fill="#fff" fill-opacity=".85" style="cursor:move"/></g>`; } }
+  // mirror gizmo
+  const mo = ui.sel[0] && O(ui.sel[0]) && O(ui.sel[0]).mirror ? ui.sel[0] : null;
+  if (mo && (ui.tool === 'mirror' || ui.tool === 'select')) { const m = O(mo).mirror; const d = [Math.cos(m.ang), Math.sin(m.ang)];
+    const L = 1200, r = [m.cx + d[0] * 90, m.cy + d[1] * 90];
+    s += `<line x1="${m.cx - d[0] * L}" y1="${m.cy - d[1] * L}" x2="${m.cx + d[0] * L}" y2="${m.cy + d[1] * L}" stroke="var(--accent)" stroke-dasharray="8 6" stroke-width="1.5" pointer-events="none"/>`;
+    if (ui.tool === 'mirror') {
+      s += `<line x1="${m.cx}" y1="${m.cy}" x2="${r[0]}" y2="${r[1]}" stroke="var(--accent)" stroke-width="2"/><circle data-h="pr" cx="${r[0]}" cy="${r[1]}" r="8" fill="#1b1e24" stroke="var(--accent)" stroke-width="2" style="cursor:grab"/>`;
+      s += `<circle data-h="pc" cx="${m.cx}" cy="${m.cy}" r="11" fill="var(--accent)" stroke="#1b1e24" stroke-width="2" style="cursor:move"/>`;
+      const n = [-d[1], d[0]], k = m.kind === 'sym' ? -m.keep : -(m.keep || -1);
+      s += `<path d="M${m.cx + n[0] * k * 22} ${m.cy + n[1] * k * 22}l${-n[0] * k * 10 + d[0] * 7} ${-n[1] * k * 10 + d[1] * 7}M${m.cx + n[0] * k * 22} ${m.cy + n[1] * k * 22}l${-n[0] * k * 10 - d[0] * 7} ${-n[1] * k * 10 - d[1] * 7}" stroke="var(--accent)" stroke-width="2.5" fill="none" pointer-events="none"/>`;
+      s += `<text x="${m.cx + 14}" y="${m.cy + 30}" fill="var(--accent)" font-size="12" font-family="IBM Plex Sans KR, sans-serif" pointer-events="none">${m.kind === 'sym' ? 'Symmetry' : 'Mirror'} · ${m.axis}${ui.lean && m.kind === 'mirror' ? ' · 마우스 따라감' : ''}</text>`;
+    } }
+  // stroke preview
+  if (ui.stroke) { const loops = strokeLoops(); const inv = ui.tool === 'cut' && strokeInverted(); const rst = ui.tool === 'hide' && (ui.stroke.altAtPress || ui.alt);
+    const col = inv ? 'var(--invert)' : rst ? 'var(--restore)' : 'var(--accent)';
+    const open = (ui.stroke.shape === 'free');
+    s += `<path d="${open ? openD(loops[0] || []) : pathD(loops.filter(l => l.length > 1))}" fill="${open ? 'none' : col}" fill-opacity=".18" stroke="${col}" stroke-width="2" pointer-events="none"/>`;
+    const tg = loops[0] && loops[0].length > 2 ? targetsFor(loops.filter(l => l.length > 2)) : [];
+    for (const id of tg) s += `<path d="${pathD([wpoly(O(id))])}" fill="none" stroke="${col}" stroke-width="1.5" stroke-dasharray="2 3" pointer-events="none"/>`;
+    const mir = tg.length ? mirroredLoops(tg[0], loops) : [];
+    if (mir.length && loops[0] && loops[0].length > 2) s += `<path d="${pathD(mir)}" fill="${col}" fill-opacity=".1" stroke="${col}" stroke-dasharray="4 3" pointer-events="none"/><text x="${mir[0][0][0]}" y="${mir[0][0][1] - 8}" fill="${col}" font-size="11">반대편에도 적용</text>`;
+    if (ui.stroke.pts && ui.stroke.pts.length && (ui.stroke.shape === 'lasso' || ui.stroke.shape === 'curve')) { const p0 = ui.stroke.pts[0]; const near = ui.stroke.pts.length >= 3 && dist(p0, ui.mouse) < 12;
+      s += ui.stroke.pts.map(p => `<rect x="${p[0] - 3}" y="${p[1] - 3}" width="6" height="6" fill="#fff" pointer-events="none"/>`).join('') + `<rect x="${p0[0] - (near ? 7 : 5)}" y="${p0[1] - (near ? 7 : 5)}" width="${near ? 14 : 10}" height="${near ? 14 : 10}" fill="none" stroke="${col}" stroke-width="2" pointer-events="none"/>`; } }
+  // primitive preview
+  if (ui.drag && ui.drag.kind === 'prim' && ui.drag.b) { const a = ui.drag.a, b = ui.drag.b; const c = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    s += `<path d="${pathD([primPoly(ui.prim, Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1])).map(p => [p[0] + c[0], p[1] + c[1]])])}" fill="var(--accent)" fill-opacity=".2" stroke="var(--accent)" stroke-width="2" pointer-events="none"/>`; }
+  // place surface marker
+  if (ui.place && ui.place.surface) s += `<circle cx="${ui.mouse[0]}" cy="${ui.place.surface.y}" r="5" fill="none" stroke="var(--restore)" stroke-width="2" pointer-events="none"/>`;
+  svg.innerHTML = s;
+}
+function renderToolbar() {
+  $('#toolbar').innerHTML = TOOLS.map(t => `<button class="tool ${ui.tool === t.id ? 'on' : ''}" data-tool="${t.id}" aria-label="${t.name}"><svg viewBox="0 0 24 24">${t.ic}</svg><span class="lb">${t.short || t.name}</span>${t.key ? `<span class="k">${t.key}</span>` : ''}</button>`).join('') +
+    `<button class="tool" data-q="tbset" aria-label="툴바 설정" style="width:28px;background:none">⋮</button>`;
+  app.classList.toggle('tb-lb', ui.tbLabels);
+  app.classList.toggle('tb-s', ui.tbSize === 's'); app.classList.toggle('tb-l', ui.tbSize === 'l'); app.classList.toggle('autohide', ui.autohide); app.classList.toggle('ph-top', ui.tbTop);
+}
+function renderCrumbs() {
+  const chain = []; let c = ui.scope; while (c) { chain.unshift(c); c = O(c).parent; }
+  let h = `<button class="crumb ${!ui.scope ? 'cur' : ''}" data-crumb="">World</button>`;
+  for (const id of chain) h += ` › <button class="crumb ${id === ui.scope ? 'cur' : ''}" data-crumb="${id}">${O(id).name}</button>`;
+  if (ui.sel.length && ui.sel.length === 1) h += ` <span class="chip">· ${O(ui.sel[0]).name}</span>`;
+  $('#crumbs').innerHTML = h;
+}
+const shapeSeg = t => `<div class="seg">${SHAPES.filter(s => t !== 'hide' || ['rect', 'ellipse', 'lasso', 'free'].includes(s.id)).map(s => `<button data-shape="${s.id}" class="${ui.shape[t] === s.id ? 'on' : ''}" title="${s.name}"><svg viewBox="0 0 24 24">${s.ic}</svg></button>`).join('')}</div>`;
+function renderCard() {
+  const t = ui.tool; let h = `<span class="title">${TOOL[t].name.toUpperCase()}</span>`;
+  const sel = ui.sel.map(i => O(i)).filter(Boolean);
+  if (t === 'select') {
+    h += sel.length ? `<span class="note">${sel.map(o => o.name + (o.type === 'group' ? ' (그룹)' : '')).join(', ')}</span>` : `<span class="note">클릭 = 선택 · 더블클릭 = 그룹 안으로</span>`;
+    h += `<button class="btn" data-a="place" ${sel.length ? '' : 'disabled'}>Quick Place <kbd>G</kbd></button><button class="btn" data-a="group" ${sel.length ? '' : 'disabled'}>Group</button>`;
+    if (sel.some(o => o.type === 'group')) h += `<button class="btn" data-a="enter">안으로</button><button class="btn" data-a="ungroup">해제</button>`;
+    if (sel.length && sel[0].mirror) h += `<button class="btn on" data-a="tomirror">${sel[0].mirror.kind === 'sym' ? 'Symmetry' : 'Mirror'} 편집</button>`;
+  } else if (DRAW_TOOLS.has(t)) {
+    h += shapeSeg(t);
+    h += `<div class="seg" title="대상: 자동 = 그린 도형이 덮는 메시 / 선택만 = 선택한 메시만 (T)"><button data-tm="auto" class="${ui.targetMode === 'auto' ? 'on' : ''}">자동 대상</button><button data-tm="selected" class="${ui.targetMode === 'selected' ? 'on' : ''}">선택만</button></div>`;
+    if (ui.shape[t] === 'stamp') h += `<select id="stampSel" class="btn">${STAMPS.map(s => `<option value="${s.id}" ${s.id === ui.stamp ? 'selected' : ''}>${s.name}</option>`).join('')}</select>`;
+    if (t === 'cut') h += `<button class="btn ${ui.invertToggle ? 'on' : ''}" data-a="inv">Invert <kbd>Alt</kbd></button>`;
+    if (t === 'split') h += `<label>Gap <input id="gap" type="range" min="0" max="24" value="${ui.gap}"> ${ui.gap}</label><button class="btn ${ui.bevel ? 'on' : ''}" data-a="bevel">Bevel</button>`;
+    if (t === 'hide') { const any = S.order.some(i => O(i).type === 'mesh' && O(i).hides.length); const ct = capTargets(); const capOn = ct.length ? O(ct[0]).cap : true;
+      h += `<div class="seg"><button data-a="capon" class="${ct.length && capOn ? 'on' : ''}">Cap ON</button><button data-a="capoff" class="${ct.length && !capOn ? 'on' : ''}">Cap OFF</button></div><span class="note">${ct.length ? ct.map(i => O(i).name).join(', ') : '대상 없음'}</span><button class="btn" data-a="showall" ${any ? '' : 'disabled'}>Show All</button><button class="btn" data-a="hideapply" ${any ? '' : 'disabled'}>Apply <kbd>Enter</kbd></button>`; }
+  } else if (t === 'boolean') {
+    h += `<div class="seg">${[['DIFFERENCE', 'Difference', 'D'], ['UNION', 'Union', 'U'], ['INTERSECT', 'Intersect', 'I']].map(([k, n, key]) => `<button data-op="${k}" class="${ui.bool.op === k ? 'on' : ''}">${n} <kbd>${key}</kbd></button>`).join('')}</div>`;
+    h += `<span class="note">대상: ${ui.bool.target ? O(ui.bool.target).name : '—'} · 커터: ${ui.bool.cutter ? O(ui.bool.cutter).name : '—'}</span>`;
+    h += `<button class="btn" data-a="boolapply" ${ui.bool.cutter ? '' : 'disabled'}>Apply <kbd>Enter</kbd></button><button class="btn" data-a="boollive" ${ui.bool.cutter ? '' : 'disabled'}>Live로 두기</button>`;
+  } else if (t === 'mirror') {
+    const m = sel[0] && sel[0].mirror;
+    h += `<div class="seg"><button data-mm="mirror" class="${(m ? m.kind : ui.mirrorMode) === 'mirror' ? 'on' : ''}">Mirror</button><button data-mm="sym" class="${(m ? m.kind : ui.mirrorMode) === 'sym' ? 'on' : ''}">Symmetry</button></div>`;
+    h += `<div class="seg"><button data-ax="X" class="${m && m.axis === 'X' ? 'on' : ''}">X</button><button data-ax="Y" class="${m && m.axis === 'Y' ? 'on' : ''}">Y</button><button disabled title="2D 시안에서는 생략">Z</button></div>`;
+    h += m ? `<button class="btn" data-a="merge" ${m.kind === 'sym' ? 'disabled' : ''}>하나로 합치기</button><button class="btn" data-a="mapply">Apply <kbd>Enter</kbd></button><button class="btn" data-a="moff">끄기</button>` : `<span class="note">오브젝트를 클릭하면 바로 미러</span>`;
+  } else if (t === 'prim') {
+    h += `<div class="seg">${PRIMS.map(p => `<button data-prim="${p.id}" class="${ui.prim === p.id ? 'on' : ''}">${p.name}</button>`).join('')}</div><span class="note">뷰포트에서 드래그 = 크기</span>`;
+  } else if (t === 'clean') {
+    h += `<label>강도 <input id="cstr" type="range" min="0" max="100" value="${ui.cleanStr}"></label><button class="btn ${ui.cleanCompare ? 'on' : ''}" data-a="ccmp">전/후 비교</button><button class="btn" data-a="crun">정리 실행</button><span class="note">시안: 화면 구성만 (실제 정리 없음, Phase 5)</span>`;
+  }
+  h += `<button class="btn adv" data-a="adv">⋯</button><button class="btn adv" data-a="cardfold" title="카드 접기">▾</button>`;
+  if (ui.adv) h += `<div class="advbox">${{ select: '피벗 · 좌표계 · 스냅 단위', cut: 'Solver: Auto · Hole Tolerant · 공유 메시 정책 · 모서리 마감(Bevel/Chamfer) · 깊이: 관통/표면', split: '세그먼트 · 프로필 · 면별 마감', hide: 'Solver · 미리보기 품질', boolean: 'Solver · Self Intersection · 커터 유지 <input type="checkbox" id="keepc" ' + (ui.bool.keepCutter ? 'checked' : '') + '>', mirror: 'Bisect · Clipping · Weld 거리 · 평면 기준(월드/로컬/커서)', prim: '세그먼트 · 베벨', clean: '각도 임계값 · Sharp/Seam 보호 · Quad 변환' }[t]}</div>`;
+  const cls = `card pos-${ui.cardPos === 'bottom' ? 'b' : ui.cardPos} ${ui.cardAuto ? 'autoc' : ''} ${ui.cardCollapsed ? 'collapsed' : ''}`;
+  if (ui.cardCollapsed) h = `<span class="title">${TOOL[t].name.toUpperCase()}</span><button class="btn adv" data-a="cardfold" title="카드 펼치기">▸ 옵션</button>`;
+  $('#cardHost').innerHTML = `<div class="${cls}" id="card">${h}</div>`;
+}
+function renderLayers() {
+  if (!ui.layers) { $('#layersHost').innerHTML = ''; return; }
+  const rows = [];
+  const walk = (id, depth) => { const o = O(id); const sel = ui.sel.includes(id); const dim = !inScope(id) && ui.scope;
+    const ex = ui.expanded[id]; const ops = o.type === 'mesh' ? opsOf(o) : (o.mirror ? [['mirror', (o.mirror.kind === 'sym' ? 'Symmetry' : 'Mirror (Live)') + ' · ' + o.mirror.axis]] : []);
+    const caret = (o.type === 'group' || ops.length) ? `<button class="ic" data-ex="${id}">${ex ? '▾' : '▸'}</button>` : `<span class="ic"></span>`;
+    const name = ui.rename === id ? `<input id="renameIn" value="${o.name}">` : `<span class="nm" data-rn="${id}">${o.type === 'group' ? '▣ ' : ''}${o.name}</span>`;
+    rows.push(`<div class="lrow ${sel ? 'sel' : ''} ${dim ? 'dim' : ''}" data-row="${id}" draggable="true" style="padding-left:${8 + depth * 14}px">${caret}${name}<button class="ic ${o.visible ? '' : 'off'}" data-vis="${id}" title="표시">👁</button><button class="ic ${o.locked ? '' : 'off'}" data-lock="${id}" title="잠금">🔒</button></div>`);
+    if (ex) { ops.forEach(([k, label]) => rows.push(`<div class="lrow op" style="padding-left:${30 + depth * 14}px"><span class="nm">↳ ${label}</span><button class="btn" data-opapply="${id}|${k}">적용</button><button class="btn" data-opdel="${id}|${k}">×</button></div>`));
+      if (o.type === 'group') kids(id).forEach(k => walk(k, depth + 1)); } };
+  S.order.filter(id => O(id) && !O(id).parent).forEach(id => walk(id, 0));
+  $('#layersHost').innerHTML = `<div class="layers" id="layers"><header><b>Mecha Layers</b><button class="btn" data-a="closeLayers">닫기</button></header>
+    <div class="ltree" id="ltree" data-root="1">${rows.join('')}</div>
+    <div class="lnote">드래그로 계층 변경은 시안에만 있습니다. Blender 애드온 목록은 드래그를 지원하지 않습니다.</div>
+    <footer><button class="btn" data-a="group">그룹</button><button class="btn" data-a="ungroup">해제</button><button class="btn" data-a="dup">복제</button><button class="btn" data-a="mergeL">Merge</button><button class="btn" data-a="del">삭제</button></footer></div>`;
+  const inp = $('#renameIn'); if (inp) { inp.focus(); inp.select(); }
+}
+function opsOf(o) { const r = []; if (o.mirror) r.push(['mirror', (o.mirror.kind === 'sym' ? 'Symmetry' : 'Mirror (Live)') + ' · ' + o.mirror.axis]);
+  (o.live || []).forEach((l, i) => r.push(['live' + i, 'Boolean ' + l.op[0] + l.op.slice(1).toLowerCase() + ' (Live) · ' + (O(l.cutter) ? O(l.cutter).name : '?')]));
+  if (o.hides.length) r.push(['hide', 'Box Hide · ' + o.hides.length + '개 영역']); return r; }
+function renderStatus() {
+  const h = hints();
+  $('#status').innerHTML = h.map(([k, v]) => `<span class="${k === 'Esc' ? 'esc' : ''}"><kbd>${k}</kbd> <b>${v}</b></span>`).join('');
+}
+function renderOverlay() {
+  let h = `<div id="cardHost"></div><div id="layersHost"></div>`;
+  if (ui.guide) h += `<div class="guide"><h4>해 보기 <button class="x" data-a="guide">닫기</button></h4><ol>
+    <li><kbd>Q</kbd> → Cut, Hull 위에 사각 드래그</li>
+    <li>한 번 더 그리기 (도구 유지) · <kbd>Alt</kbd> 누르고 그리면 반전</li>
+    <li><kbd>Shift</kbd>+<kbd>Q</kbd> → Select · 다시 누르면 Cut</li>
+    <li>Arm_L 클릭(그룹) → 더블클릭(안으로) → Armor_02 클릭</li>
+    <li>Mirror 도구 → 마우스를 좌우로 · 평면 핸들 끌기 · 하나로 합치기</li>
+    <li><kbd>Esc</kbd> 여러 번: 상태줄의 Esc 설명을 보세요</li>
+    <li>Cutter_Cyl 선택 → <kbd>G</kbd> → <kbd>S</kbd> → Hull 위에서 클릭</li></ol></div>`;
+  if (ui.pie) { const p = ui.pie; const sc = svgToScreen(p.c); const R = 105;
+    h += `<div class="pie" style="left:${sc[0]}px;top:${sc[1]}px"><div class="ctr"></div>${TOOLS.map((t, i) => { const a = -Math.PI / 2 + i * Math.PI / 4; return `<div class="w ${p.hi === i ? 'hi' : ''}" data-pie="${i}" style="left:${Math.cos(a) * R}px;top:${Math.sin(a) * R}px"><svg viewBox="0 0 24 24" width="16" height="16">${t.ic}</svg>${t.name}</div>`; }).join('')}</div>`; }
+  if (ui.ctx) h += `<div class="ctx" style="left:${ui.ctx.x}px;top:${ui.ctx.y}px">${ctxMenu()}</div>`;
+  if (ui.tbset) h += `<div class="ctx" style="right:14px;bottom:90px"><div class="hd">툴바</div>
+    <div class="grid">${['s', 'm', 'l'].map(z => `<button data-tbs="${z}" class="${ui.tbSize === z ? 'on' : ''}">${z.toUpperCase()}</button>`).join('')}</div>
+    <button data-a="autohide" class="${ui.autohide ? 'on' : ''}">자동 숨김 <span>${ui.autohide ? 'ON' : 'OFF'}</span></button>
+    <button data-a="tbtop" class="${ui.tbTop ? 'on' : ''}">위치 <span>${ui.tbTop ? '위' : '아래'}</span></button>
+    <button data-a="tblabels" class="${ui.tbLabels ? 'on' : ''}">아이콘 아래 이름 <span>${ui.tbLabels ? 'ON' : 'OFF'}</span></button>
+    <div class="hd">옵션 카드</div>
+    <div class="grid">${[['bottom', '툴바 위'], ['tl', '왼쪽 위'], ['tr', '오른쪽 위']].map(([k, n]) => `<button data-cpos="${k}" class="${ui.cardPos === k ? 'on' : ''}">${n}</button>`).join('')}</div>
+    <button data-a="cardauto" class="${ui.cardAuto ? 'on' : ''}">카드 자동 흐리게 <span>${ui.cardAuto ? 'ON' : 'OFF'}</span></button>
+    <div class="hd">순서 변경 (설정에서 ↑↓)</div></div>`;
+  if (ui.toast) h += `<div class="toast ${ui.toast.warn ? 'warn' : ''}">${ui.toast.msg}</div>`;
+  if (ui.stroke || ui.alt) { const sc = svgToScreen(ui.mouse); let b = '';
+    if (ui.tool === 'cut' && (ui.alt || (ui.stroke && strokeInverted()))) b = `<span class="badge" style="left:${sc[0] + 16}px;top:${sc[1] + 12}px;background:var(--invert)">반전: 안쪽 남김</span>`;
+    if (ui.tool === 'hide' && (ui.alt || (ui.stroke && ui.stroke.altAtPress))) b = `<span class="badge" style="left:${sc[0] + 16}px;top:${sc[1] + 12}px;background:var(--restore)">복원</span>`;
+    h += b; }
+  if (ui.place) { const sc = svgToScreen(ui.mouse); h += `<span class="badge" style="left:${sc[0] + 16}px;top:${sc[1] + 12}px;background:${ui.place.snap ? 'var(--restore)' : 'var(--accent)'}">${ui.place.snap ? '표면 부착' + (ui.place.surface ? ' · ' + ui.place.surface.name : '') : '자유 이동'}</span>`; }
+  overlay.innerHTML = h; renderCard(); renderLayers();
+}
+function ctxMenu() {
+  const t = ui.tool;
+  if (DRAW_TOOLS.has(t)) {
+    return `<div class="hd">도형 (기존 우클릭 프리셋 그대로)</div><div class="grid">${SHAPES.filter(s => t !== 'hide' || ['rect', 'ellipse', 'lasso', 'free'].includes(s.id)).map(s => `<button data-shape="${s.id}" class="${ui.shape[t] === s.id ? 'on' : ''}">${s.name}</button>`).join('')}</div>
+      ${t !== 'hide' ? `<div class="hd">스탬프 프리셋</div><div class="grid">${STAMPS.map(s => `<button data-stamp="${s.id}" class="${ui.shape[t] === 'stamp' && ui.stamp === s.id ? 'on' : ''}">${s.name}</button>`).join('')}</div>` : ''}
+      <div class="hd">도구</div><button data-a="tosel">Select로 <kbd>Shift Q</kbd></button>`;
+  }
+  return `<div class="hd">선택한 것</div>
+    <button data-a="place" ${ui.sel.length ? '' : 'disabled'}>Quick Place <kbd>G</kbd></button>
+    <button data-a="group">그룹 <kbd>Ctrl G</kbd></button><button data-a="ungroup">그룹 해제</button>
+    <button data-a="tomirror2">Mirror</button><button data-a="dup">복제 <kbd>Shift D</kbd></button><button data-a="del">삭제 <kbd>Del</kbd></button>
+    <div class="hd">도구</div><button data-a="pie">도구 메뉴 <kbd>Q</kbd></button>`;
+}
+function renderCounter() { $('#counter').textContent = `클릭 ${ui.clicks} · 키 ${ui.keys}`; }
+function renderAll() { if (ui.place) placeUpdate(); renderSvg(); renderToolbar(); renderCrumbs(); renderStatus(); renderOverlay(); renderCounter(); }
+let toastTimer = null;
+function toast(msg, warn) { ui.toast = { msg, warn }; clearTimeout(toastTimer); toastTimer = setTimeout(() => { ui.toast = null; renderOverlay(); }, warn ? 6000 : 3200); }
+
+// ---------------------------------------------------------------- coordinates
+function toSvg(e) { const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; const r = pt.matrixTransform(svg.getScreenCTM().inverse()); return [r.x, r.y]; }
+function svgToScreen(p) { const m = svg.getScreenCTM(); const wr = $('#vpwrap').getBoundingClientRect(); return [m.a * p[0] + m.e - wr.left, m.d * p[1] + m.f - wr.top]; }
+
+// ---------------------------------------------------------------- pointer
+svg.addEventListener('pointerdown', e => {
+  if (e.button !== 0) return;
+  app.focus({ preventScroll: true });
+  const p = toSvg(e); ui.mouse = p;
+  if (ui.pie) { selectPie(); return; }
+  if (ui.ctx || ui.tbset) { ui.ctx = null; ui.tbset = false; renderOverlay(); return; }
+  const h = e.target.dataset.h; const hitId = e.target.closest('[data-id]') ? e.target.closest('[data-id]').dataset.id : null;
+  if (ui.place) { confirmPlace(); return; }
+  if (h === 'pc' || h === 'pr') { commit('plane'); ui.drag = { kind: h }; ui.lean = false; svg.setPointerCapture(e.pointerId); return; }
+  if (h === 'mx' || h === 'my' || h === 'mc') { commit('move'); ui.drag = { kind: 'move', axis: h, a: p, start: selMeshes().map(id => [id, O(id).x, O(id).y]) }; svg.setPointerCapture(e.pointerId); return; }
+  const t = ui.tool;
+  if (t === 'select') {
+    const now = performance.now(); const lp = ui.lastPress; const dbl = lp && now - lp.t < 380 && dist(lp.p, p) < 8;
+    ui.lastPress = { t: now, p };
+    if (dbl && hitId) { const root = pickRoot(hitId); if (root && O(root).type === 'group') { enterScope(root); ui.lastPress = null; return; } }
+    if (dbl && !hitId && ui.scope) { exitScope(); ui.lastPress = null; return; }
+    const root = hitId ? pickRoot(hitId) : null;
+    if (!root) { if (!e.shiftKey) ui.sel = []; renderAll(); return; }
+    if (e.shiftKey) ui.sel = ui.sel.includes(root) ? ui.sel.filter(x => x !== root) : ui.sel.concat(root);
+    else if (!ui.sel.includes(root)) ui.sel = [root];
+    commit('move'); ui.drag = { kind: 'move', axis: 'mc', a: p, start: selMeshes().map(id => [id, O(id).x, O(id).y]), moved: false };
+    svg.setPointerCapture(e.pointerId); renderAll(); return;
+  }
+  if (DRAW_TOOLS.has(t)) {
+    const shape = ui.shape[t];
+    if (ui.stroke && (ui.stroke.shape === 'lasso' || ui.stroke.shape === 'curve')) {
+      const st = ui.stroke; const now = performance.now(); const lp = st.last;
+      if (lp && now - lp.t < 380 && dist(lp.p, p) < 8 && st.pts.length >= 3) { finishStroke(); return; }   // double-click = close
+      if (st.pts.length >= 3 && dist(st.pts[0], p) < 12) { finishStroke(); return; }                       // click start = close
+      st.pts.push(p); st.last = { t: now, p }; if (e.altKey) st.altSeen = true; renderAll(); return;
+    }
+    ui.stroke = { shape, a: p, b: null, pts: [p], altAtPress: e.altKey, altSeen: e.altKey, last: { t: performance.now(), p } };
+    svg.setPointerCapture(e.pointerId); renderAll(); return;
+  }
+  if (t === 'boolean') {
+    const root = hitId ? pickRoot(hitId) : null;
+    if (!root) { ui.bool.target = null; ui.bool.cutter = null; renderAll(); return; }
+    if (!ui.bool.target || (ui.bool.target && ui.bool.cutter)) { ui.bool.target = root; ui.bool.cutter = null; }
+    else if (root !== ui.bool.target) ui.bool.cutter = root;
+    renderAll(); return;
+  }
+  if (t === 'mirror') { const root = hitId ? pickRoot(hitId) : null; if (root) { ui.sel = [root]; startMirror(); renderAll(); } return; }
+  if (t === 'prim') { ui.drag = { kind: 'prim', a: p, b: null }; svg.setPointerCapture(e.pointerId); return; }
+  if (t === 'clean') { const root = hitId ? pickRoot(hitId) : null; ui.sel = root ? [root] : []; renderAll(); }
+});
+svg.addEventListener('pointermove', e => {
+  const p = toSvg(e); ui.mouse = p;
+  if (ui.pie) { const d = [p[0] - ui.pie.c[0], p[1] - ui.pie.c[1]]; const L = Math.hypot(d[0], d[1]); ui.pie.moved = ui.pie.moved || L > 30;
+    ui.pie.hi = L < 30 ? null : ((Math.round((Math.atan2(d[1], d[0]) + Math.PI / 2) / (Math.PI / 4)) % 8) + 8) % 8; renderOverlay(); return; }
+  if (ui.place) { renderAll(); return; }
+  const d = ui.drag;
+  if (d && (d.kind === 'pc' || d.kind === 'pr')) { const m = O(ui.sel[0]).mirror;
+    if (d.kind === 'pc') { m.cx = p[0]; m.cy = p[1]; } else { let a = Math.atan2(p[1] - m.cy, p[0] - m.cx); if (e.shiftKey) a = Math.round(a / (Math.PI / 12)) * Math.PI / 12; m.ang = a; m.axis = Math.abs(Math.cos(a)) < .01 ? 'X' : Math.abs(Math.sin(a)) < .01 ? 'Y' : '자유'; }
+    renderAll(); return; }
+  if (d && d.kind === 'move') { let dx = p[0] - d.a[0], dy = p[1] - d.a[1]; if (d.axis === 'mx') dy = 0; if (d.axis === 'my') dx = 0;
+    if (Math.hypot(dx, dy) > 2) d.moved = true; for (const [id, x, y] of d.start) { O(id).x = x + dx; O(id).y = y + dy; }
+    for (const id of new Set(d.start.map(s => mirrorOwner(s[0])).filter(Boolean))) { if (O(id).mirror.kind === 'sym') { /* plane follows */ } }
+    renderAll(); return; }
+  if (d && d.kind === 'prim') { d.b = p; renderSvg(); return; }
+  if (ui.stroke) { const st = ui.stroke; if (e.altKey) st.altSeen = true;
+    if (st.shape === 'free') { if (dist(st.pts[st.pts.length - 1], p) > 5) st.pts.push(p); }
+    else if (st.shape === 'rect' || st.shape === 'ellipse' || st.shape === 'stamp') st.b = p;
+    renderSvg(); renderOverlay(); return; }
+  if (ui.tool === 'mirror') { leanUpdate(p); renderSvg(); return; }
+  if (ui.alt) renderOverlay();
+});
+svg.addEventListener('pointerup', e => {
+  const p = toSvg(e); ui.mouse = p; const d = ui.drag;
+  if (d) { ui.drag = null;
+    if (d.kind === 'move' && !d.moved) hist.pop();
+    if (d.kind === 'prim') { const a = d.a, b = d.b || [a[0] + 80, a[1] + 60]; const w = Math.abs(b[0] - a[0]) || 80, hh = Math.abs(b[1] - a[1]) || 60;
+      commit('prim'); const id = newId('pr'); const c = d.b ? [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] : a;
+      S.objs[id] = { id, name: PRIMS.find(x => x.id === ui.prim).name + '_' + S.seq, type: 'mesh', parent: ui.scope, x: c[0], y: c[1], rot: 0, poly: primPoly(ui.prim, w, hh), tone: 2, visible: true, locked: false, cuts: [], hides: [], adds: [], live: [], cap: true, mirror: null };
+      S.order.push(id); ui.sel = [id]; toast('Primitive 생성 · 도구 유지 (계속 만들 수 있음)'); }
+    renderAll(); return; }
+  if (ui.stroke) { const st = ui.stroke;
+    if (st.shape === 'rect' || st.shape === 'ellipse' || st.shape === 'free' || st.shape === 'stamp') { if (st.shape === 'stamp' || (st.b && dist(st.a, st.b) > 4) || (st.shape === 'free' && st.pts.length > 4)) finishStroke(); else { ui.stroke = null; renderAll(); } }
+    else if ((st.shape === 'lasso') && st.pts.length >= 1) { /* lasso keeps going until close */ renderAll(); }
+  }
+});
+svg.addEventListener('wheel', e => { if (ui.place && ui.place.snap) { e.preventDefault(); ui.place.dist = Math.max(0, ui.place.dist + (e.deltaY < 0 ? 4 : -4)); renderAll(); } }, { passive: false });
+app.addEventListener('contextmenu', e => {
+  if (!e.target.closest('#vpwrap')) return; e.preventDefault();
+  if (ui.stroke && ui.stroke.pts && ui.stroke.pts.length > 1 && (ui.stroke.shape === 'lasso' || ui.stroke.shape === 'curve')) { ui.stroke.pts.pop(); renderAll(); return; }
+  if (ui.stroke) return;
+  const wr = $('#vpwrap').getBoundingClientRect(); ui.ctx = { x: Math.min(e.clientX - wr.left, wr.width - 230), y: Math.min(e.clientY - wr.top, wr.height - 250) }; renderOverlay();
+});
+app.addEventListener('pointerdown', e => {
+  if (e.button === 0 || e.button === 2) { ui.clicks++; renderCounter(); }
+  const w = e.target.closest('[data-pie]');            // pie: act on press (hover re-renders the menu)
+  if (w && ui.pie && e.button === 0) { e.preventDefault(); e.stopPropagation(); ui.pie.hi = +w.dataset.pie; selectPie(); }
+}, true);
+app.addEventListener('mouseover', e => { const w = e.target.closest('[data-pie]'); if (w && ui.pie && ui.pie.hi !== +w.dataset.pie) { ui.pie.hi = +w.dataset.pie; ui.pie.moved = true;
+  document.querySelectorAll('.pie .w').forEach(x => x.classList.toggle('hi', x === w)); } });
+
+// ---------------------------------------------------------------- UI clicks
+app.addEventListener('click', e => {
+  const b = e.target.closest('button, [data-row]'); if (!b) return;
+  if (!e.target.closest('#renameIn')) setTimeout(() => { if (!document.activeElement || !document.activeElement.matches('input, select')) app.focus({ preventScroll: true }); }, 0);
+  const ds = b.dataset;
+  if (ds.tool) { setTool(ds.tool); return; }
+  if (ds.crumb !== undefined) { ui.scope = ds.crumb || null; ui.sel = []; renderAll(); return; }
+  if (ds.shape) { ui.shape[DRAW_TOOLS.has(ui.tool) ? ui.tool : 'cut'] = ds.shape; ui.ctx = null; ui.stroke = null; renderAll(); return; }
+  if (ds.stamp) { ui.stamp = ds.stamp; ui.shape[ui.tool] = 'stamp'; ui.ctx = null; renderAll(); return; }
+  if (ds.op) { ui.bool.op = ds.op; renderAll(); return; }
+  if (ds.tm) { ui.targetMode = ds.tm; toast(ds.tm === 'auto' ? '자동 대상: 그린 도형이 덮는 메시를 바로 자릅니다 (선택 무시)' : '선택만: 선택한 메시만 자릅니다'); renderAll(); return; }
+  if (ds.cpos) { ui.cardPos = ds.cpos; ui.tbset = false; renderAll(); return; }
+  if (ds.ax) { setAxis(ds.ax); return; }
+  if (ds.mm) { ui.mirrorMode = ds.mm; const o = ui.sel[0] && O(ui.sel[0]); if (o && o.mirror) { commit('mode'); o.mirror.kind = ds.mm; const bb = selBBox([o.id]); if (ds.mm === 'sym') { if (o.mirror.axis === 'X') o.mirror.cx = (bb[0] + bb[2]) / 2; else o.mirror.cy = (bb[1] + bb[3]) / 2; o.mirror.keep = -1; ui.lean = false; toast('Symmetry: 한 메시 · 이후 Cut·Split·Box Hide가 반대편에도 적용'); } else { ui.lean = true; leanUpdate(ui.mouse); } } renderAll(); return; }
+  if (ds.prim) { ui.prim = ds.prim; renderAll(); return; }
+  if (ds.tbs) { ui.tbSize = ds.tbs; renderAll(); return; }
+  if (ds.ex) { ui.expanded[ds.ex] = !ui.expanded[ds.ex]; renderLayers(); return; }
+  if (ds.vis) { commit('vis'); O(ds.vis).visible = !O(ds.vis).visible; renderAll(); return; }
+  if (ds.lock) { commit('lock'); O(ds.lock).locked = !O(ds.lock).locked; ui.sel = ui.sel.filter(s => !isLocked(s)); renderAll(); return; }
+  if (ds.opapply || ds.opdel) { const [id, k] = (ds.opapply || ds.opdel).split('|'); const o = O(id); ui.sel = [pickRoot(id) || id];
+    if (k === 'mirror') { if (ds.opapply) applyMirror(); else { commit('moff'); o.mirror = null; renderAll(); } return; }
+    if (k === 'hide') { if (ds.opapply) hideApply(); else { commit('hoff'); o.hides = []; renderAll(); } return; }
+    if (k.startsWith('live')) { const i = +k.slice(4); const l = o.live[i]; commit('live'); o.live.splice(i, 1); if (ds.opapply && O(l.cutter)) { const loops = meshesOf(l.cutter).map(c => wpoly(O(c)).map(p => toLocal(o, p))); if (l.op === 'DIFFERENCE') o.cuts.push({ loops, mode: 'diff', gap: 0 }); else if (l.op === 'UNION') o.adds.push(...loops); else o.cuts.push({ loops, mode: 'keep', gap: 0 }); O(l.cutter).visible = false; } else if (O(l.cutter)) O(l.cutter).wire = false; renderAll(); return; }
+  }
+  if (ds.row && !e.target.closest('.ic')) { const id = ds.row; if (isLocked(id)) return toast('잠긴 오브젝트는 선택할 수 없습니다');
+    if (ui.scope && !inScope(id)) { ui.scope = null; }
+    ui.sel = e.shiftKey ? (ui.sel.includes(id) ? ui.sel.filter(x => x !== id) : ui.sel.concat(id)) : [id]; renderAll(); return; }
+  const a = ds.a || ds.q;
+  const act = {
+    place: startPlace, group: groupSel, ungroup: ungroupSel, dup: duplicateSel, del: deleteSel, mergeL: mergeSel,
+    enter: () => enterScope(ui.sel.find(s => O(s).type === 'group')), tomirror: () => setTool('mirror'), tomirror2: () => { ui.ctx = null; setTool('mirror'); },
+    inv: () => { ui.invertToggle = !ui.invertToggle; renderAll(); }, bevel: () => { ui.bevel = !ui.bevel; renderAll(); },
+    capon: () => setCap(true), capoff: () => setCap(false),
+    showall: hideShowAll, hideapply: hideApply, boolapply: () => boolApply(false), boollive: () => boolApply(true),
+    merge: mergeMirror, mapply: applyMirror, moff: () => { const o = O(ui.sel[0]); if (o && o.mirror) { commit('moff'); o.mirror = null; toast('미러 끔'); renderAll(); } },
+    ccmp: () => { ui.cleanCompare = !ui.cleanCompare; renderAll(); }, crun: () => toast('Smart Cleanup은 Phase 5에서 구현합니다. 이 시안에서는 버튼 위치와 흐름만 보여 줍니다.'),
+    adv: () => { ui.adv = !ui.adv; renderOverlay(); }, closeLayers: () => { ui.layers = false; renderOverlay(); }, guide: () => { ui.guide = false; renderOverlay(); },
+    tosel: () => { ui.ctx = null; setTool('select'); }, pie: () => { ui.ctx = null; openPie(); },
+    tbset: () => { ui.tbset = !ui.tbset; renderOverlay(); }, tblabels: () => { ui.tbLabels = !ui.tbLabels; renderAll(); },
+    cardauto: () => { ui.cardAuto = !ui.cardAuto; renderAll(); }, cardfold: () => { ui.cardCollapsed = !ui.cardCollapsed; renderOverlay(); }, autohide: () => { ui.autohide = !ui.autohide; renderAll(); }, tbtop: () => { ui.tbTop = !ui.tbTop; ui.tbset = false; renderAll(); },
+  }[a];
+  if (act) { if (ds.a !== 'pie' && ds.a !== 'tbset') ui.ctx = ui.ctx && a === 'adv' ? ui.ctx : null; act(); }
+});
+app.addEventListener('dblclick', e => { const n = e.target.closest('[data-rn]'); if (n) { ui.rename = n.dataset.rn; renderLayers(); } });
+app.addEventListener('input', e => {
+  if (e.target.id === 'gap') { ui.gap = +e.target.value; e.target.parentNode.lastChild.textContent = ' ' + ui.gap; }
+  if (e.target.id === 'cstr') ui.cleanStr = +e.target.value;
+});
+app.addEventListener('change', e => { if (e.target.id === 'stampSel') { ui.stamp = e.target.value; renderAll(); } if (e.target.id === 'keepc') ui.bool.keepCutter = e.target.checked; });
+app.addEventListener('focusout', e => { if (e.target.id === 'renameIn') finishRename(e.target.value); });
+function finishRename(v) { if (!ui.rename) return; const id = ui.rename; ui.rename = null; if (v && O(id) && v !== O(id).name) { commit('rename'); O(id).name = v; } renderAll(); }
+// layers drag & drop
+app.addEventListener('dragstart', e => { const r = e.target.closest('[data-row]'); if (!r) return; e.dataTransfer.setData('text/plain', r.dataset.row); e.dataTransfer.effectAllowed = 'move'; });
+app.addEventListener('dragover', e => { const r = e.target.closest('[data-row], #ltree'); if (!r) return; e.preventDefault(); document.querySelectorAll('.lrow.drop').forEach(x => x.classList.remove('drop')); const row = e.target.closest('[data-row]'); if (row && O(row.dataset.row).type === 'group') row.classList.add('drop'); });
+app.addEventListener('drop', e => { const tree = e.target.closest('#ltree'); if (!tree) return; e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); if (!O(id)) return;
+  const row = e.target.closest('[data-row]'); let parent = null;
+  if (row) { const tid = row.dataset.row; parent = O(tid).type === 'group' ? tid : O(tid).parent; }
+  if (parent === id || (parent && ancestors(parent).includes(id))) return toast('자기 안으로는 옮길 수 없습니다');
+  commit('reparent'); O(id).parent = parent; toast(`${O(id).name} → ${parent ? O(parent).name : 'World'}`); renderAll(); });
+
+// ---------------------------------------------------------------- pie
+function openPie() { ui.pie = { c: ui.mouse.slice(), hi: null, moved: false }; cancelStrokeOnly(); renderOverlay(); }
+function cancelStrokeOnly() { if (ui.stroke) { ui.stroke = null; renderSvg(); } }
+function selectPie() { const hi = ui.pie && ui.pie.hi; ui.pie = null; if (hi === null || hi === undefined) { renderOverlay(); return; } setTool(TOOLS[hi].id); }
+
+// ---------------------------------------------------------------- keys
+const MODS = new Set(['Shift', 'Control', 'Alt', 'Meta']);
+document.addEventListener('keydown', e => {
+  if ($('[data-panel="proto"]').hidden) return;
+  if (e.target.id === 'renameIn') { if (e.key === 'Enter') finishRename(e.target.value); if (e.key === 'Escape') { ui.rename = null; renderLayers(); } return; }
+  const ae = document.activeElement;
+  if (ae && ae !== document.body && !app.contains(ae)) return;      // typing somewhere else on the page
+  if (ae && ae.matches && ae.matches('input[type=range], select')) ae.blur();
+  ui.shift = e.shiftKey; ui.ctrl = e.ctrlKey || e.metaKey;
+  if (e.key === 'Alt') { e.preventDefault(); ui.alt = true; if (ui.stroke) ui.stroke.altSeen = true; renderOverlay(); renderStatus(); if (ui.stroke) renderSvg(); return; }
+  if (MODS.has(e.key)) { if (ui.stroke) renderSvg(); return; }
+  if (e.repeat && e.key.toLowerCase() === 'q') return;
+  ui.keys++; renderCounter();
+  const k = e.key.toLowerCase();
+  let handled = true;
+  if (ui.place) {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') ui.place.rot += (e.key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? Math.PI / 180 : Math.PI / 12);
+    else if (k === 's') { ui.place.snap = !ui.place.snap; }
+    else if (e.key === 'Enter') { confirmPlace(); return; }
+    else if (e.key === 'Escape') { cancelPlace(); toast('배치 취소'); }
+    else handled = false;
+    if (handled) { e.preventDefault(); renderAll(); }
+    return;
+  }
+  if (e.key === 'Escape') { const [label, fn] = escAction(); fn(); if (label !== '할 일 없음') toast('Esc: ' + label); renderAll(); }
+  else if (k === 'q' && e.shiftKey) toggleLast();
+  else if (k === 'q') openPie();
+  else if (k === 'z' && (e.ctrlKey || e.metaKey)) { e.shiftKey ? doRedo() : undo(); }
+  else if (k === 'g' && (e.ctrlKey || e.metaKey)) { e.shiftKey ? ungroupSel() : groupSel(); }
+  else if (k === 'd' && e.shiftKey) duplicateSel();
+  else if (e.key === 'Delete' && ui.tool === 'select') deleteSel();
+  else if (k === 'f') setTool('select');
+  else if (k === 'c' && !e.ctrlKey) setTool('cut');
+  else if (k === 'b' && !e.ctrlKey) { if (ui.tool === 'boolean') handled = false; else boolExpress(); }
+  else if (k === 'v') toast('V는 비워 두었습니다: Q 파이와 같은 메뉴라 중복');
+  else if (k === 'n') toast('N = Blender 사이드바 (Mecha는 쓰지 않음)');
+  else if (k === 'g' && ui.tool === 'select') startPlace();
+  else if (e.key === 'Enter') {
+    if (ui.stroke) finishStroke(); else if (ui.tool === 'boolean') boolApply(false); else if (ui.tool === 'mirror') applyMirror(); else if (ui.tool === 'hide') hideApply(); else handled = false;
+  }
+  else if (e.key === 'Backspace' && ui.stroke && ui.stroke.pts) { if (ui.stroke.pts.length > 1) ui.stroke.pts.pop(); else ui.stroke = null; renderAll(); }
+  else if (ui.tool === 'mirror' && (k === 'x' || k === 'y')) setAxis(k.toUpperCase());
+  else if (DRAW_TOOLS.has(ui.tool) && k === 't') { ui.targetMode = ui.targetMode === 'auto' ? 'selected' : 'auto'; toast('대상: ' + (ui.targetMode === 'auto' ? '자동' : '선택만')); renderAll(); }
+  else if (ui.tool === 'boolean' && 'dui'.includes(k)) { ui.bool.op = { d: 'DIFFERENCE', u: 'UNION', i: 'INTERSECT' }[k]; renderAll(); }
+  else handled = false;
+  if (handled) e.preventDefault();
+});
+document.addEventListener('keyup', e => {
+  ui.shift = e.shiftKey; ui.ctrl = e.ctrlKey || e.metaKey;
+  if (e.key === 'Alt') { e.preventDefault(); ui.alt = false; renderOverlay(); renderStatus(); if (ui.stroke) renderSvg(); }
+  if (e.key.toLowerCase() === 'q' && ui.pie && ui.pie.moved && ui.pie.hi !== null) selectPie();
+  if (ui.stroke && MODS.has(e.key)) renderSvg();
+});
+window.addEventListener('blur', () => { ui.alt = false; });
+app.addEventListener('mousemove', e => { if (!ui.autohide) return; const r = app.getBoundingClientRect(); const near = r.bottom - e.clientY < 120; app.classList.toggle('tb-peek', near); });
+// toolbar tooltips
+app.addEventListener('mouseover', e => { const b = e.target.closest('.tool[data-tool]'); const tip = $('#tbtip'); if (!b) { if (tip) tip.remove(); return; }
+  const t = TOOL[b.dataset.tool]; const r = b.getBoundingClientRect(), ar = app.getBoundingClientRect();
+  let el = tip || Object.assign(document.createElement('div'), { id: 'tbtip', className: 'tip' }); el.innerHTML = `${t.name} · ${t.key ? '<kbd>' + t.key + '</kbd> · ' : ''}<kbd>Q</kbd> 메뉴`;
+  el.style.left = (r.left + r.width / 2 - ar.left) + 'px'; el.style.top = (r.top - ar.top - 6) + 'px'; app.appendChild(el); });
+$('#resetCount').addEventListener('click', () => { setTimeout(() => { ui.clicks = 0; ui.keys = 0; renderCounter(); }, 0); });
+$('#undoBtn').addEventListener('click', undo); $('#redoBtn').addEventListener('click', doRedo);
+$('#resetScene').addEventListener('click', () => { S = initialScene(); hist.length = 0; redo.length = 0; Object.assign(ui, { sel: [], scope: null, stroke: null, place: null, tool: 'select' }); toast('장면 초기화'); renderAll(); });
+$('#layersBtn').addEventListener('click', () => { ui.layers = !ui.layers; renderOverlay(); });
+
+// ---------------------------------------------------------------- tabs + reference tables
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(x => x.setAttribute('aria-selected', x === t ? 'true' : 'false'));
+  document.querySelectorAll('[data-panel]').forEach(p => p.hidden = p.dataset.panel !== t.dataset.tab);
+  try { localStorage.setItem('mlproto-tab', t.dataset.tab); } catch (_) {}
+}));
+const FLOW = [
+  ['Cut', [['시작', '왼쪽 목록에서 Cut 클릭 (또는 C)', '하단 툴바 Cut 클릭 · Q 파이 · C'], ['마우스', '우클릭 팝업에서 도형 → 드래그', '카드에서 도형 1클릭 (또는 우클릭 메뉴) → 드래그'], ['프리뷰', '그리는 동안 외곽선', '외곽선 + 색(주황 = 자름, 파랑 = Alt 반전) + 미러 대상이면 반대편 점선'], ['확정', '마우스를 놓으면 적용, 도구 유지', '같음'], ['다음 작업', '왼쪽 목록으로 이동해 다른 도구 클릭', 'Shift+Q (Select ↔ Cut) 또는 하단 툴바']]],
+  ['Split', [['시작', '왼쪽 목록에서 Split 클릭', '툴바 Split · Q'], ['마우스', '사이드바(N) Split 패널에서 Gap/Bevel 찾아 조절 → 드래그', '카드의 Gap 슬라이더 → 드래그'], ['프리뷰', '외곽선만', '외곽선 + 조각 구분선'], ['확정', '놓으면 적용', '놓으면 적용, 새 조각 자동 선택'], ['다음 작업', '왼쪽 목록', 'Shift+Q']]],
+  ['Mirror', [['시작', '메쉬 선택 → 목록에서 Mirror (0.11.3: 즉시 미러)', '메쉬 선택 → 툴바 Mirror (즉시 미러 + 평면 기즈모)'], ['마우스', '복사할 쪽으로 마우스 기울이기, 평면 위치·각도는 패널 옵션', '기울이기 + 평면 핸들 드래그(이동) · 바깥 점(회전) · X/Y'], ['프리뷰', '복사본 실시간', '복사본 + 겹친 면 빨간 빗금 경고'], ['확정', 'Enter = Apply, 클릭 = Live 유지', 'Enter = Apply / 하나로 합치기(중앙 검사) / 그냥 두면 Live'], ['다음 작업', '왼쪽 목록', 'Shift+Q · Esc = Select (Live 유지)']]],
+  ['Boolean', [['시작', '대상 클릭 → Shift+클릭 커터 → B', '툴바 Boolean (또는 B 그대로)'], ['마우스', '—', '대상 클릭 → 커터 클릭'], ['프리뷰', '없음 (바로 적용)', '결과 실시간 · D/U/I로 연산 바꿔 보기'], ['확정', 'B 누른 순간', 'Enter = Apply · "Live로 두기" = 커터 움직이면 결과 갱신'], ['다음 작업', '—', 'Shift+Q']]],
+  ['Quick Place', [['시작', 'G + 스냅 켜기(헤더 자석) + 스냅 팝오버에서 Face Project·Align Rotation 체크', '선택 → G'], ['마우스', '이동 후 R로 회전, 숫자 입력', '커서를 따라옴 · ←/→ 회전 · S 표면 부착 · 휠 거리'], ['프리뷰', '이동 중 위치', '부착 지점 표시 + 배지(자유/표면)'], ['확정', '클릭', '클릭 · Esc = 원래 자리'], ['다음 작업', '스냅 설정 끄기(다음 이동에 영향)', '설정이 남지 않음']]],
+  ['Layer Group', [['시작', 'Empty 추가 → 파츠 선택 → Ctrl+P', '파츠 선택 → Ctrl+G'], ['마우스', 'Outliner에서 펼쳐 자식 클릭', '뷰포트에서 그룹 더블클릭 → 파츠 클릭'], ['프리뷰', '—', '바깥 오브젝트 흐려짐 · 하단 브레드크럼'], ['확정', '—', '—'], ['다음 작업', 'Outliner에서 부모 클릭', 'Esc 또는 브레드크럼 클릭']]],
+];
+$('#flowRows').innerHTML = FLOW.map(([f, rows]) => rows.map((r, i) => `<tr>${i === 0 ? `<td rowspan="${rows.length}"><b>${f}</b></td>` : ''}<td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('')).join('');
+const P = (c, t) => `<span class="pill ${c}">${t}</span>`;
+const ST = [
+  ['하단 툴바 · 툴팁 · 크기/자동 숨김/위치', P('ok', '동작'), P('no', '없음'), P('na', '—'), P('na', '—')],
+  ['상황별 옵션 카드 + Advanced', P('ok', '동작'), P('warn', '사이드바 패널로만 있음'), P('warn', '패널 그리기만'), P('no', '미확인')],
+  ['Q 파이 · Shift+Q 왕복', P('ok', '동작'), P('no', '없음'), P('na', '—'), P('na', '—')],
+  ['F = Select/Move', P('ok', '동작'), P('ok', '0.11.3'), P('warn', '키 등록만'), P('no', '미확인')],
+  ['V 제거 · N 사이드바 복귀', P('ok', '동작'), P('no', '0.11.3은 V/N 사용 중'), P('na', '—'), P('na', '—')],
+  ['상태줄 Esc/Alt 안내', P('ok', '동작'), P('no', '없음'), P('na', '—'), P('na', '—')],
+  ['그룹 선택 · 더블클릭 진입 · 브레드크럼', P('ok', '동작'), P('no', '없음'), P('na', '—'), P('na', '—')],
+  ['Mecha Layers (표시/잠금/그룹/복제/Merge/이름)', P('ok', '동작'), P('no', '없음'), P('na', '—'), P('na', '—')],
+  ['레이어 드래그 앤 드롭', P('ok', '동작'), P('no', '애드온으로 불가'), P('na', '—'), P('na', '—')],
+  ['Mirror 즉시 + 마우스 기울이기', P('ok', '동작'), P('ok', '0.11.3'), P('ok', '가짜 이벤트 통과'), P('no', '미확인')],
+  ['Mirror 평면 기즈모 (이동·회전)', P('ok', '동작'), P('no', '없음'), P('na', '—'), P('na', '—')],
+  ['Mirror → 하나로 합치기 + 중앙 검사', P('warn', '흐름만 (검사 수치는 시안 값)'), P('no', '없음'), P('na', '—'), P('na', '—')],
+  ['Symmetry: Cut·Split·Box Hide 반대편 적용', P('ok', '동작'), P('no', '없음 (모디파이어만)'), P('na', '—'), P('na', '—')],
+  ['Cut / Split 엔진 (사각·타원·라쏘·커브·자유·스탬프, Alt, Ctrl)', P('warn', '2D 흉내'), P('ok', '있음'), P('ok', 'headless 통과'), P('no', '미확인')],
+  ['Box Hide (Alt 복원, 메시별 Cap, Show All, Apply = 숨김−복원 순서대로 확정)', P('ok', '동작 (v2.1 수정)'), P('no', '없음'), P('na', '—'), P('na', '—')],
+  ['대상 모드: 자동 대상 / 선택만 (T)', P('ok', '동작 (v2.1)'), P('ok', '0.12.0'), P('ok', 'headless 통과'), P('no', '미확인')],
+  ['Boolean 도구 (미리보기, D/U/I, Live)', P('ok', '동작'), P('warn', 'B 즉시 적용 + 패널'), P('ok', 'B 적용은 통과'), P('no', '미확인')],
+  ['Quick Place (회전, 표면 부착, 거리)', P('ok', '동작'), P('no', '없음'), P('na', '—'), P('na', '—')],
+  ['Primitive 드래그 생성 (도구 유지)', P('ok', '동작'), P('warn', 'Primitive 도구는 있음, 드래그 생성 아님'), P('ok', '생성 테스트'), P('no', '미확인')],
+  ['Smart Cleanup', P('warn', '화면 구성만'), P('no', '없음'), P('na', '—'), P('na', '—')],
+  ['Undo/Redo 후 도구·도형 유지', P('ok', '동작'), P('ok', '0.11.3'), P('warn', '복원 함수만 (실제 Undo는 headless 불가)'), P('no', '미확인')],
+];
+$('#statusRows').innerHTML = ST.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td><td>${r[4]}</td></tr>`).join('');
+try { const t = localStorage.getItem('mlproto-tab'); if (t) { const b = document.querySelector(`.tab[data-tab="${t}"]`); if (b) b.click(); } } catch (_) {}
+renderAll();
+window.__ml = { S: () => S, ui };
+})();
+</script>

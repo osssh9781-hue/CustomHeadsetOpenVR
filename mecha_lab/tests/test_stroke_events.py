@@ -337,7 +337,13 @@ check('miss => CANCELLED + warning, mesh unchanged', r == {'CANCELLED'} and op.r
 fresh()
 bpy.context.scene.mch_brush.shape = 'LASSO'
 ctx, op = Ctx(), Op()
-check('no target => PASS_THROUGH', op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 500, 500)) == {'PASS_THROUGH'})
+bpy.context.scene.mch_cut.targets = 'SELECTED'
+check('no target (Selected Only) => PASS_THROUGH', op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 500, 500)) == {'PASS_THROUGH'})
+bpy.context.scene.mch_cut.targets = 'AUTO'
+ctx, op = Ctx(), Op()
+check('0.12 Auto Target: a stroke may start on empty space', op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 500, 500)) ==
+      {'RUNNING_MODAL'})
+op.modal(ctx, E('ESC', 'PRESS'))
 
 # 17. Lasso: double-click far from the start closes it, no duplicate / zero-length edge
 t = setup('LASSO')

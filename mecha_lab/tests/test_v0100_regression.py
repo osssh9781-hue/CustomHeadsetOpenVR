@@ -301,7 +301,7 @@ except cg.CutError as ex:
     msg = str(ex)
 check('0.11.2 shape over the whole object: refused, says so, with facts (coverage, px, view, Alt, version)',
       'covers the whole of "C"' in msg and '8/8 vertices' in msg and 'Alt/invert off' in msg and
-      'Mecha Lab 0.11.3' in msg and 'ORTHO' in msg and abs(volume(cb) - 8.0) < 1e-6, msg)
+      ('Mecha Lab ' + '.'.join(map(str, mecha_lab.bl_info['version']))) in msg and 'ORTHO' in msg and abs(volume(cb) - 8.0) < 1e-6, msg)
 try:
     ce.perform_closed(C, 'CUT', [cb], [ce.rect_loop((10, 10), (60, 60))], TOP, invert=True)
     msg = ''
@@ -759,8 +759,8 @@ check('F02 old "Bevel Bottom Too" migrates to Both', p.bevel_sides == 'BOTH')
 # =============================================================================
 kc = C.window_manager.keyconfigs.addon
 items = [(ki.idname, ki.type, ki.value, ki.alt) for km in kc.keymaps for ki in km.keymap_items] if kc else []
-check('0.11.3 N quick menu / V tool menu keys registered (gated)', ('mch.quick_menu', 'N', 'PRESS', False) in items and
-      ('mch.space_tools', 'V', 'PRESS', False) in items, items)
+check('0.12 Q tool pie / Shift+Q toggle registered (gated), V and N free', ('mch.tool_pie', 'Q', 'PRESS', False) in items
+      and not any(i[1] in {'V', 'N'} for i in items), items)
 check('0.11.3 Select / Move hotkey (F, MECHA LAB only) registered and editable',
       ('mch.select_move_key', 'F', 'PRESS', False) in items and hasattr(bpy.ops.mch, 'select_move'))
 check('0.11.1 no Alt+click keymap left', not any(i[0] == 'mch.alt_click_return' for i in items))

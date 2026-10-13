@@ -195,9 +195,11 @@ class MCH_PG_Cut(bpy.types.PropertyGroup):
     depth: FloatProperty(name='Cut Depth', default=0.1, min=0.00001, soft_max=10.0, precision=4,
                          unit='LENGTH')
     targets: EnumProperty(name='Targets', items=[
-        ('ACTIVE', 'Active', 'Only the active mesh (or the mesh under the cursor)'),
-        ('SELECTED', 'Selected', 'All selected meshes')], default='SELECTED',
-        description='Selected (default): every selected mesh is cut with the same shape')
+        ('AUTO', 'Auto Target', 'Every mesh the drawn shape covers, whatever is selected: keep the tool and cut the '
+                                'next part directly (T toggles)'),
+        ('SELECTED', 'Selected Only', 'Only the selected meshes the shape covers (cut several chosen parts at once)'),
+        ('ACTIVE', 'Active', 'Only the active mesh (or the mesh under the cursor)')], default='AUTO',
+        description='Auto Target (default since 0.12): the shape decides what is cut. Selected Only: the selection does')
     solver: EnumProperty(name='Solver', items=[
         ('AUTO', 'Auto', 'Closed mesh: fast Manifold solver, Exact as fallback. Open mesh: Exact'),
         ('EXACT', 'Exact', 'Blender Exact solver only'),
