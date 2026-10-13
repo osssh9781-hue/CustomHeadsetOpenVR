@@ -24,7 +24,7 @@ import math
 
 from mathutils import Matrix, Vector
 
-KINDS = ('ROUND', 'CAPSULE', 'BOX', 'ROUNDED', 'CHAMFER', 'RIBBON', 'POLYGON')
+KINDS = ('ROUND', 'CAPSULE', 'BOX', 'ROUNDED', 'CHAMFER', 'RIBBON', 'POLYGON', 'ARC')
 RIDGES = ('NONE', 'CREASE', 'RAISED', 'BOX', 'ROUND', 'GROOVE', 'DOUBLE')
 CAPS = ('FLAT', 'ROUND', 'POINT', 'OPEN')
 QUALITY_DEG = {'DRAFT': 15.0, 'NORMAL': 8.0, 'FINE': 4.0}
@@ -145,6 +145,56 @@ def _poly_breaks(sides, wl, wr):
     return top, bot
 
 
+def _arc_point(x, w, s):
+    """Outer surface of a curved plate at x: (y, unit normal).  Crown s at x = 0,
+    edges at +-w on y = 0.  Up to a half circle it is a true circular arc (no
+    tight spots, so the thickness never folds); taller crowns use an ellipse."""
+    s = max(s, 1e-6)
+    ax = min(abs(x), w)
+    sg = 1.0 if x >= 0 else -1.0
+    if s <= w:
+        R = (w * w + s * s) / (2 * s)
+        cy = s - R
+        y = cy + math.sqrt(max(0.0, R * R - ax * ax))
+        n = (sg * ax / R, (y - cy) / R)
+    else:
+        u = ax / w
+        y = s * math.sqrt(max(0.0, 1 - u * u))
+        nx, ny = (ax / (w * w), y / (s * s)) if y > 1e-12 else (1.0, 0.0)
+        ln = math.hypot(nx, ny)
+        n = (sg * nx / ln, ny / ln)
+    return y, n
+
+
+def _arc_loop(p, top_pts, bot_extra, res, ridge, rh, wl, wr):
+    """Curved plate (armor shell) cross-section: outer arc right -> left, then
+    the inner arc (offset by the thickness along the normal) left -> right.
+    Height Top = crown height, Height Bottom = plate thickness, Left / Right
+    Thickness = factors at the two edges."""
+    s = max(1e-4, p['height_top'])
+    t0 = max(1e-4, p['height_bot'])
+
+    def thick(x):
+        tt = (x + wl) / (wl + wr)
+        return t0 * (p['thick_l'] + (p['thick_r'] - p['thick_l']) * tt)
+
+    loop = []
+    for x, f in top_pts:
+        w = wr if x >= 0 else wl
+        y, _n = _arc_point(x, w, s)
+        if ridge != 'NONE':
+            ff = _ridge_f(ridge, p, x, wl, wr) if f is None else f
+            y += rh * ff
+        loop.append((x, y))
+    n_bot = max(5, res * 2 + 1)
+    for x in sorted(_cos_pattern(n_bot, wr, wl) + bot_extra):
+        w = wr if x >= 0 else wl
+        y, (nx, ny) = _arc_point(x, w, s)
+        t = thick(x)
+        loop.append((x - nx * t, y - ny * t))
+    return loop
+
+
 def ring_loop(kind, p, res=12, ridge='NONE', sides=6):
     """Profile of one ring: the station's own kind, or a morph between two kinds."""
     ka = p.get('_ka') or (p['profile'] if p.get('profile', 'INHERIT') != 'INHERIT' else kind)
@@ -182,6 +232,8 @@ def profile_loop(kind, p, res=12, ridge='NONE', sides=6):
             if right_wall and a[1] > b[1] or (not right_wall) and a[1] < b[1]:
                 pts[i], pts[i + 1] = b, a
     rh = p['ridge_h'] * (-1.0 if ridge == 'GROOVE' else 1.0)
+    if kind == 'ARC':
+        return _arc_loop(p, pts, bot_poly, res, ridge, rh, wl, wr)
 
     def scale(x):
         t = (x + wl) / (wl + wr)
@@ -457,7 +509,53 @@ def preset(name):
                     stations=[station(**base), station(length=0.6, **base),
                               station(length=0.5, bend_angle=90, bend_radius=0.4, bend_dir=90, **base),
                               station(length=0.6, bend_angle=60, bend_radius=0.35, **base)])
+    if name in ARMOR_PRESETS:
+        return armor_preset(name)
     raise KeyError(name)
 
 
-PRESETS = ('PANEL', 'MULTI_BEND', 'WRAP', 'TEARDROP', 'AUTOMOTIVE', 'DUCT')
+ARMOR_PRESETS = ('SHOULDER', 'UPPER_LIMB', 'LOWER_LIMB', 'TORSO', 'HELMET')
+PRESETS = ('PANEL', 'MULTI_BEND', 'WRAP', 'TEARDROP', 'AUTOMOTIVE', 'DUCT') + ARMOR_PRESETS
+
+
+def _armor(**kw):
+    # curved plate: width = half span, height_top = crown, height_bot = thickness (metres, human scale)
+    return station(**dict(dict(height_bot=0.012, corner_l=0.0, corner_r=0.0, ridge_w=0.03, interp='SMOOTH'), **kw))
+
+
+def armor_preset(name):
+    if name == 'SHOULDER':        # shoulder pauldron / knee guard: a cap that rolls over the joint
+        return dict(kind='ARC', res=10, ridge='RAISED', cap_start='FLAT', cap_end='FLAT', stations=[
+            _armor(width_l=0.11, width_r=0.11, height_top=0.06, ridge_h=0.008),
+            _armor(length=0.05, width_l=0.15, width_r=0.15, height_top=0.09, ridge_h=0.012),
+            _armor(length=0.06, bend_angle=40, bend_dir=180, bend_style='BAND', bend_radius=0.12,
+                   width_l=0.17, width_r=0.17, height_top=0.11, ridge_h=0.014),
+            _armor(length=0.05, bend_angle=35, bend_dir=180, bend_style='BAND', bend_radius=0.1,
+                   width_l=0.15, width_r=0.15, height_top=0.1, ridge_h=0.01)])
+    if name == 'UPPER_LIMB':      # upper arm / thigh: long shell, wider at the top, slight bend
+        return dict(kind='ARC', res=10, ridge='DOUBLE', cap_start='FLAT', cap_end='FLAT', stations=[
+            _armor(width_l=0.085, width_r=0.085, height_top=0.075, ridge_h=0.006, ridge_w=0.04),
+            _armor(length=0.12, width_l=0.08, width_r=0.08, height_top=0.072, ridge_h=0.006, ridge_w=0.04),
+            _armor(length=0.16, bend_angle=6, bend_dir=180, width_l=0.068, width_r=0.068, height_top=0.062,
+                   ridge_h=0.005, ridge_w=0.035)])
+    if name == 'LOWER_LIMB':      # forearm / shin: flared at the joint, tapered, small cuff at the end
+        return dict(kind='ARC', res=10, ridge='RAISED', cap_start='FLAT', cap_end='FLAT', stations=[
+            _armor(width_l=0.085, width_r=0.085, height_top=0.07, ridge_h=0.01),
+            _armor(length=0.06, width_l=0.075, width_r=0.075, height_top=0.065, ridge_h=0.009),
+            _armor(length=0.2, width_l=0.055, width_r=0.055, height_top=0.05, ridge_h=0.007),
+            _armor(length=0.035, width_l=0.065, width_r=0.065, height_top=0.058, ridge_h=0.006)])
+    if name == 'TORSO':           # chest plate: waist -> chest, top rolls back toward the collar
+        return dict(kind='ARC', res=12, ridge='CREASE', cap_start='FLAT', cap_end='FLAT', stations=[
+            _armor(width_l=0.15, width_r=0.15, height_top=0.06, height_bot=0.015, ridge_h=0.012),
+            _armor(length=0.12, width_l=0.17, width_r=0.17, height_top=0.08, height_bot=0.015, ridge_h=0.016),
+            _armor(length=0.14, width_l=0.2, width_r=0.2, height_top=0.1, height_bot=0.015, ridge_h=0.02),
+            _armor(length=0.08, bend_angle=28, bend_dir=180, bend_style='BAND', bend_radius=0.15,
+                   width_l=0.16, width_r=0.16, height_top=0.08, height_bot=0.015, ridge_h=0.012)])
+    if name == 'HELMET':          # helmet shell: brow -> crown -> back, crest ridge, rounded closed back
+        return dict(kind='ARC', res=12, ridge='RAISED', cap_start='FLAT', cap_end='ROUND', cap_len=0.07, stations=[
+            _armor(width_l=0.1, width_r=0.1, height_top=0.11, ridge_h=0.006, ridge_w=0.025),
+            _armor(length=0.06, width_l=0.115, width_r=0.115, height_top=0.15, ridge_h=0.012, ridge_w=0.025),
+            _armor(length=0.09, width_l=0.12, width_r=0.12, height_top=0.16, ridge_h=0.014, ridge_w=0.025),
+            _armor(length=0.05, bend_angle=22, bend_dir=180, bend_style='BAND', bend_radius=0.2,
+                   width_l=0.11, width_r=0.11, height_top=0.14, ridge_h=0.01, ridge_w=0.025)])
+    raise KeyError(name)

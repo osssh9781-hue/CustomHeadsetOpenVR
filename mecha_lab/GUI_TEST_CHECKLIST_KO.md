@@ -1,8 +1,12 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.13.1 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.13.2 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## M. 0.13.2 아머
+- [ ] Primitive 패널 ARMOR: 어깨/무릎, 윗팔/허벅지, 아랫팔/종아리, 몸통, 헬멧 생성 → 모양 확인
+- [ ] 지점 골라 Crown(볼록함)·Thickness·폭 조절, Mirror로 좌우 한 쌍 만들기
 
 ## N. 0.13.1
 - [ ] 지점 선택 후 ← → 버튼: 판이 옆으로 꺾임 (평평한 채로)

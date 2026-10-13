@@ -1,4 +1,4 @@
-# Test Report — Mecha Lab 0.13.1
+# Test Report — Mecha Lab 0.13.2
 
 ## 환경
 | 항목 | 값 |
@@ -14,6 +14,12 @@ ZIP: `dist/mecha_lab-0.11.1.zip` (sha256 `fb8960ae4fc08a273b09cb6d1cfca01a7efda2
 
 **변경 전(v0.9.3 무수정)에도 같은 headless 테스트는 모두 통과**했습니다(경로 누락 2건 제외). 즉 사용자 보고 고장 대부분은
 headless로 재현되지 않았고, 아래 "GUI 검증" 열은 전부 미검증입니다.
+
+## 0.13.2 결과: 23개 파일, 1172 / 1172 통과
+| 항목 | 코드 | headless | Windows GUI |
+|---|---|---|---|
+| Curved Plate (정점 수, 크라운 높이, 두께 일정, 높은 크라운) | O | O | 미검증 |
+| 아머 5종 (닫힌 쉘, 경고 없음, 사람 크기, Blender 생성·편집) | O | O | 미검증 |
 
 ## 0.13.1 결과: 22개 파일, 1152 / 1152 통과
 | 항목 | 코드 | headless | Windows GUI |

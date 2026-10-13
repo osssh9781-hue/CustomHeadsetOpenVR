@@ -70,7 +70,8 @@ class MCH_PG_Station(bpy.types.PropertyGroup):
         ('INHERIT', 'Same as primitive', 'Use the primitive profile'),
         ('ROUNDED', 'Rounded Box', ''), ('CHAMFER', 'Chamfered Box', ''), ('BOX', 'Flat Box', ''),
         ('RIBBON', 'Ribbon', ''), ('ROUND', 'Round / Oval', ''), ('CAPSULE', 'Capsule', ''),
-        ('POLYGON', 'Polygon', '')], default='INHERIT', update=_rebuild_update,
+        ('POLYGON', 'Polygon', ''), ('ARC', 'Curved Plate (armor)', '')], default='INHERIT',
+        update=_rebuild_update,
         description='Profile at this station; the segment before it morphs from the previous profile')
     interp: EnumProperty(name='Blend', items=[('LINEAR', 'Linear', 'Even change from the previous station'),
                                                ('SMOOTH', 'Smooth', 'Eased change (more segments)'),
@@ -83,7 +84,9 @@ class MCH_PG_StationPrimitive(bpy.types.PropertyGroup):
     kind: EnumProperty(name='Profile', items=[
         ('ROUNDED', 'Rounded Box', ''), ('CHAMFER', 'Chamfered Box', ''), ('BOX', 'Flat Box', ''),
         ('RIBBON', 'Ribbon', ''), ('ROUND', 'Round / Oval', ''), ('CAPSULE', 'Capsule', ''),
-        ('POLYGON', 'Polygon', '')], default='ROUNDED', update=_rebuild_update)
+        ('POLYGON', 'Polygon', ''),
+        ('ARC', 'Curved Plate (armor)', 'Curved shell: Top = crown height, Bottom = plate thickness')],
+        default='ROUNDED', update=_rebuild_update)
     sides: IntProperty(name='Sides', default=6, min=3, max=32, update=_rebuild_update)
     ridge: EnumProperty(name='Ridge', items=[
         ('NONE', 'None', ''), ('CREASE', 'Center Crease', 'Sharp centre edge (roof)'),
@@ -233,6 +236,11 @@ PRESET_ITEMS = [('PANEL', 'Flat Panel', 'Flat rounded plate: add stations to fol
                 ('TEARDROP', 'Helmet / Teardrop', 'Round front, tapered pointed back, raised ridge'),
                 ('AUTOMOTIVE', 'Automotive Panel', 'Asymmetric curved body panel with a crease'),
                 ('DUCT', 'Duct', 'Round hollow tube with two smooth bends')]
+ARMOR_ITEMS = [('SHOULDER', 'Shoulder / Knee', 'Cap that rolls over the joint (pauldron or knee guard)'),
+               ('UPPER_LIMB', 'Upper Arm / Thigh', 'Long shell, wider at the top'),
+               ('LOWER_LIMB', 'Forearm / Shin', 'Flared at the joint, tapered, small cuff'),
+               ('TORSO', 'Torso / Chest', 'Chest plate, top rolls back toward the collar'),
+               ('HELMET', 'Helmet', 'Shell with crest ridge and a rounded closed back')]
 
 
 class MCH_OT_station_create(bpy.types.Operator):
@@ -241,7 +249,7 @@ class MCH_OT_station_create(bpy.types.Operator):
     bl_label = 'New Station Primitive'
     bl_options = {'REGISTER', 'UNDO'}
 
-    preset: EnumProperty(name='Preset', items=PRESET_ITEMS, default='PANEL')
+    preset: EnumProperty(name='Preset', items=PRESET_ITEMS + ARMOR_ITEMS, default='PANEL')
 
     @classmethod
     def poll(cls, context):
@@ -458,6 +466,10 @@ def draw(layout, context):
         grid = box.grid_flow(columns=2, align=True)
         for key, label, _desc in PRESET_ITEMS:
             grid.operator('mch.station_create', text=label).preset = key
+        box.label(text='ARMOR (human scale, metres)', icon='MOD_CLOTH')
+        grid = box.grid_flow(columns=2, align=True)
+        for key, label, _desc in ARMOR_ITEMS:
+            grid.operator('mch.station_create', text=label).preset = key
         return
     p = ob.mch_station
     row = box.row(align=True)
@@ -497,8 +509,9 @@ def draw(layout, context):
             r.prop(st, 'width_r', text='W right')
         r.prop(p, 'sym_lr', text='', icon='MOD_MIRROR')
         r = col.row(align=True)
-        r.prop(st, 'height_top', text='Top')
-        r.prop(st, 'height_bot', text='Bottom')
+        arc = (st.profile if st.profile != 'INHERIT' else p.kind) == 'ARC'
+        r.prop(st, 'height_top', text='Crown' if arc else 'Top')
+        r.prop(st, 'height_bot', text='Thickness' if arc else 'Bottom')
         if p.ridge != 'NONE':
             r = col.row(align=True)
             r.prop(st, 'ridge_h', text='Ridge H')
