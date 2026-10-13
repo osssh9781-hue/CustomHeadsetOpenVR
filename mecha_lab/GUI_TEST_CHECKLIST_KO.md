@@ -1,8 +1,11 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.14.3 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.14.4 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## H. 0.14.4
+- [ ] Base Mesh에서 그냥 그리면 주황색 선, Alt를 누르고 그리면 빨간색 선
 
 ## I. 0.14.3
 - [ ] Primitive 도구에 들어가도 파란 도형이 안 뜸. 도형을 누르면 뜸

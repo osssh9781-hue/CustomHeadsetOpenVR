@@ -1,4 +1,4 @@
-# Test Report — Mecha Lab 0.14.3
+# Test Report — Mecha Lab 0.14.4
 
 ## 환경
 | 항목 | 값 |
@@ -14,6 +14,11 @@ ZIP: `dist/mecha_lab-0.11.1.zip` (sha256 `fb8960ae4fc08a273b09cb6d1cfca01a7efda2
 
 **변경 전(v0.9.3 무수정)에도 같은 headless 테스트는 모두 통과**했습니다(경로 누락 2건 제외). 즉 사용자 보고 고장 대부분은
 headless로 재현되지 않았고, 아래 "GUI 검증" 열은 전부 미검증입니다.
+
+## 0.14.4 결과: 27개 파일, 1315 / 1315 통과
+| 항목 | 코드 | headless | Windows GUI |
+|---|---|---|---|
+| Base Mesh 빼기 선 = 빨간색(더하기 주황과 다름), Cut 색 그대로 | O | O (색 값) | **미검증 (화면)** |
 
 ## 0.14.3 결과: 27개 파일, 1313 / 1313 통과
 | 항목 | 코드 | headless | Windows GUI |

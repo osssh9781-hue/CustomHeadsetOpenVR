@@ -1,4 +1,4 @@
-# KNOWN LIMITATIONS — Mecha Lab 0.14.3
+# KNOWN LIMITATIONS — Mecha Lab 0.14.4
 
 ## 0.14.3
 - 새 핸들(네모·화살표·다이얼·점)은 실제 창에서 드래그해 본 적 없음. 네모와 화살표가 같은 축에 있어 겹치면 네모가 우선 선택되게 함.

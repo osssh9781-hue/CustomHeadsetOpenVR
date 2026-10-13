@@ -201,5 +201,11 @@ check('Base Mesh tool keys: Enter / Esc / Backspace for the sketch',
 check('Cut tool keys unchanged (no sketch keys)', 'mch.base_sketch_key' not in [k[0] for k in wui._tool_keymap('CUT')])
 check('Esc clears the sketch before it leaves the tool',
       keys.index('mch.base_sketch_clear') < keys.index('mch.exit_tool'))
+add_c, sub_c = ce.stroke_color('BASE', False), ce.stroke_color('BASE', True)
+check('0.14.4: Alt (subtract) line has its own colour, clearly different from the add line',
+      sum(abs(x - y) for x, y in zip(add_c[:3], sub_c[:3])) > 0.4 and add_c[0] > 0.9 and sub_c[0] > 0.9 and
+      sub_c[1] < add_c[1] - 0.2, (add_c, sub_c))
+check('Cut colours unchanged', ce.stroke_color('CUT', False) == ce._COLORS['CUT'] and
+      ce.stroke_color('CUT', True) == ce._COLORS['CUT_INV'] and ce.stroke_color('SPLIT', True) == ce._COLORS['SPLIT'])
 mecha_lab.unregister()
 sys.exit(1 if summary() else 0)

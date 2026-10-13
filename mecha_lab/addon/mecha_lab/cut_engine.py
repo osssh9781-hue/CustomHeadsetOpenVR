@@ -907,7 +907,16 @@ _COLORS = {
     'SPLIT': (0.45, 1.0, 0.35, 1.0),
     'MASK': (0.85, 0.45, 1.0, 1.0),
     'MASK_INV': (0.55, 0.55, 0.60, 1.0),
+    # 0.14.4 Base Mesh: draw = orange (add), Alt = red (subtract from the sketch / cutter)
+    'BASE': (1.0, 0.55, 0.12, 1.0),
+    'BASE_INV': (1.0, 0.22, 0.30, 1.0),
 }
+
+
+def stroke_color(mode, inverted):
+    """Outline colour while drawing (Alt = inverted gets its own colour)."""
+    key = mode + ('_INV' if inverted and mode != 'SPLIT' else '')
+    return _COLORS.get(key, _COLORS['CUT'])
 
 
 def _shader():
@@ -958,8 +967,7 @@ def draw_overlay(op):
     sh = _shader()
     gpu.state.blend_set('ALPHA')
     try:
-        key = op.mode + ('_INV' if op.inverted() and op.mode != 'SPLIT' else '')
-        color = _COLORS.get(key, _COLORS['CUT'])
+        color = stroke_color(op.mode, op.inverted())
         fill = (color[0], color[1], color[2], 0.16)
         if op.stage == 'SIDE' and op.side_preview:
             _draw_fill(sh, [op.side_preview], (1.0, 0.25, 0.1, 0.22))
