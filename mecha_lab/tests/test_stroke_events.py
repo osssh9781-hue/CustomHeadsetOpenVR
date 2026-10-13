@@ -256,8 +256,9 @@ check('rect click without drag cancels', op.modal(ctx, E('LEFTMOUSE', 'RELEASE',
 t = setup('CIRCLE')
 ctx, op = Ctx(), Op()
 op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 500, 500, alt=True))
+op.modal(ctx, E('MOUSEMOVE', 'NOTHING', 530, 500, alt=True))     # Alt+DRAG (decided by movement)
 r = op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 550, 500))
-check('Alt circle keeps inside', r == {'FINISHED'} and volume(t) < 2.0, volume(t))
+check('Alt+drag circle keeps inside', r == {'FINISHED'} and volume(t) < 2.0, volume(t))
 
 # 11. 2-point lasso => side pick stage, click removes that side
 t = setup('LASSO')
@@ -368,9 +369,11 @@ check('2nd click confirms the lasso', r == {'FINISHED'} and volume(t) < 8)
 CLOCK[0] += 0.15
 v_after = volume(t)
 op3 = Op()
-r3 = op3.invoke(Ctx(), E('LEFTMOUSE', 'PRESS', 520, 560))   # click 3: new stroke start
-check('3rd quick click returns to select (no new stroke)', r3 == {'CANCELLED'} and ('exit',) in CALLS)
-check('triple click keeps the confirmed cut', abs(volume(t) - v_after) < 1e-9)
+r3 = op3.invoke(Ctx(), E('LEFTMOUSE', 'PRESS', 520, 560))   # click 3: v1.0 = an ordinary new stroke
+check('v1.0: triple-click-to-select removed (3rd click starts a stroke, no exit)',
+      r3 == {'RUNNING_MODAL'} and ('exit',) not in CALLS)
+op3.modal(Ctx(), E('ESC', 'PRESS', 520, 560))
+check('confirmed cut kept', abs(volume(t) - v_after) < 1e-9)
 # clicking separate lasso points quickly never exits
 t = setup('LASSO')
 ctx, op = Ctx(), Op()

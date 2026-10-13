@@ -46,6 +46,13 @@ TOOLS = (
     ('EDIT', 'Live Result', 'Confirm live curves / arrays / cuts', 'live', 'CHECKMARK', None, 'OK'),
 )
 TOOL_BY_ID = {t[0]: t for t in TOOLS}
+# v1.0 (B08/F07): Mask does not work reliably for the user -> hidden from the
+# tool list, Space / V menus, toolbar and hotkeys.  Its code, operators and
+# all saved mask data (face attributes, vertex groups) are kept untouched.
+HIDDEN_TOOLS = {'MASK'}
+VISIBLE_TOOLS = tuple(t for t in TOOLS if t[0] not in HIDDEN_TOOLS)
+# V quick menu (docs/02): the six core tools.
+QUICK_TOOLS = ('CUT', 'BOOLEAN', 'BASE', 'SUBD', 'SPLIT', 'RADIAL')
 NATIVE_TO_TOOL = {t[5]: t[0] for t in TOOLS if t[5]}
 SHAPE_TOOLS = {'CUT', 'SPLIT', 'MASK', 'BASE'}
 
@@ -101,11 +108,23 @@ def native_tool_id(context):
 
 def effective_tool(context):
     """Native drawing tool wins (it is what LMB does); else the selected tool."""
-    native = NATIVE_TO_TOOL.get(native_tool_id(context))
-    if native:
-        return native
+    native_id = native_tool_id(context)
+    native = NATIVE_TO_TOOL.get(native_id)
     settings = getattr(getattr(context, 'scene', None), 'mch_settings', None)
-    return settings.mch_active_tool if settings else 'CUT'
+    if native:
+        chosen = settings.mch_active_tool if settings else native
+        try:
+            stuck = settings is not None and settings.get('mch_native_at_choice') == native_id
+        except (AttributeError, TypeError):
+            stuck = False
+        if stuck and chosen != native and TOOL_BY_ID[chosen][5] is None:
+            # The user picked a non-drawing tool but the toolbar could not be
+            # switched: the explicit choice wins (the panel follows it and the
+            # drawing tool does not grab LMB, see cut_engine.StrokeLogic.invoke).
+            return chosen
+        return native
+    chosen = settings.mch_active_tool if settings else 'CUT'
+    return 'CUT' if chosen in HIDDEN_TOOLS else chosen
 
 
 def tool_is(context, tool_id):

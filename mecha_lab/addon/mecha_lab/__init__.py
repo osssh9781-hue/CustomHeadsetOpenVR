@@ -11,7 +11,8 @@ bl_info = {
 import bpy
 from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform, radial_array,
                mirror_tools, cut_presets, mask_tools, workspace_ui, ui_tool_settings,
-               base_mesh, loft_surface, zbrush_bridge, subd_plane, deform_tools, primitive_tools)
+               base_mesh, loft_surface, zbrush_bridge, subd_plane, deform_tools, primitive_tools,
+               addon_safety)
 import os
 import re
 from pathlib import Path
@@ -1713,7 +1714,7 @@ SUB_PANELS = (
 )
 
 
-def register():
+def _register():
     tool_state.register()
     for klass in CLASSES:
         bpy.utils.register_class(klass)
@@ -1736,27 +1737,76 @@ def register():
         bpy.utils.register_class(klass)
 
 
+def _reset_module_state():
+    """Module-level bookkeeping must match the (now clean) Blender state."""
+    workspace_ui._tools_registered = False
+    workspace_ui._keymaps.clear()
+    try:
+        workspace_ui._free_icons()   # a crashed unregister may have left it open
+    except (KeyError, RuntimeError, AttributeError):
+        workspace_ui._icons = None
+    primitive_tools._KM.clear()
+
+
+def register():
+    # B09: never fail with "already registered" because of leftovers from a
+    # crashed unregister / reload / a second enabled copy of the add-on.
+    addon_safety.purge_stale(__name__)
+    _reset_module_state()
+    try:
+        _register()
+    except Exception:
+        # Roll back completely so a retry (or a disable/enable) starts clean
+        # instead of leaving half the add-on registered.
+        import traceback
+        traceback.print_exc()
+        addon_safety.run_steps(_unregister_steps())
+        addon_safety.purge_stale(__name__)
+        _reset_module_state()
+        raise
+
+
+def _del_prop(owner, name):
+    if hasattr(owner, name):
+        delattr(owner, name)
+
+
+def _unregister_classes(classes):
+    for klass in classes:
+        if addon_safety.is_registered(klass):
+            try:
+                bpy.utils.unregister_class(klass)
+            except RuntimeError:
+                pass
+
+
+def _unregister_steps():
+    return [
+        ('sub panels', lambda: _unregister_classes(reversed(SUB_PANELS))),
+        ('workspace_ui', workspace_ui.unregister),
+        ('primitive_tools', primitive_tools.unregister),
+        ('deform_tools', deform_tools.unregister),
+        ('subd_plane', subd_plane.unregister),
+        ('zbrush_bridge', zbrush_bridge.unregister),
+        ('loft_surface', loft_surface.unregister),
+        ('base_mesh', base_mesh.unregister),
+        ('cut_presets', cut_presets.unregister),
+        ('properties', lambda: [_del_prop(o, n) for o, n in (
+            (bpy.types.Scene, 'mch_fuse_preview_target'), (bpy.types.Object, 'mch_fuse'),
+            (bpy.types.Object, 'mch_live'), (bpy.types.Object, 'mch_radial'),
+            (bpy.types.Scene, 'mch_conform'), (bpy.types.Scene, 'mch_mirror'),
+            (bpy.types.Scene, 'mch_settings'))]),
+        ('classes', lambda: _unregister_classes(reversed(CLASSES))),
+        ('tool_state', tool_state.unregister),
+    ]
+
+
 def unregister():
-    for klass in reversed(SUB_PANELS):
-        bpy.utils.unregister_class(klass)
-    workspace_ui.unregister()
-    primitive_tools.unregister()
-    deform_tools.unregister()
-    subd_plane.unregister()
-    zbrush_bridge.unregister()
-    loft_surface.unregister()
-    base_mesh.unregister()
-    cut_presets.unregister()
-    del bpy.types.Scene.mch_fuse_preview_target
-    del bpy.types.Object.mch_fuse
-    del bpy.types.Object.mch_live
-    del bpy.types.Object.mch_radial
-    del bpy.types.Scene.mch_conform
-    del bpy.types.Scene.mch_mirror
-    del bpy.types.Scene.mch_settings
-    for klass in reversed(CLASSES):
-        bpy.utils.unregister_class(klass)
-    tool_state.unregister()
+    addon_safety.run_steps(_unregister_steps())
+    # Anything a failing step left behind is removed here, so the next
+    # enable never sees "already registered".
+    addon_safety.purge_stale(__name__, only_own=True)
+    _reset_module_state()
 
 
 if __name__ == '__main__':

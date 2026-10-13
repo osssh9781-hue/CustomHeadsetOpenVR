@@ -189,9 +189,9 @@ class MCH_OT_draw_mask(bpy.types.Operator):
     bl_options = {'INTERNAL'}
 
     def execute(self, context):
-        from . import workspace_ui
-        workspace_ui.activate_mecha_tool(context, 'MASK')
-        return {'FINISHED'}
+        # v1.0: Mask is hidden (did not work reliably); data and code are kept.
+        self.report({'WARNING'}, 'Mask is hidden in Mecha Lab 1.0 (saved mask data is kept)')
+        return {'CANCELLED'}
 
 
 class MCH_OT_mask_from_selection(bpy.types.Operator):

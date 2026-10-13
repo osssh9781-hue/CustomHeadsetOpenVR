@@ -21,6 +21,7 @@ clicking a menu" problems):
 from __future__ import annotations
 
 import math
+import types
 import time
 import traceback
 
@@ -39,6 +40,10 @@ TOOL_POPUP = 'MCH_PT_tool_popup'
 PROFILE_POPUP = 'MCH_PT_profile_popup'
 DUP_PX = 4.0          # clicks closer than this are the same point
 HIT_PX = 9.0
+CLOSE_PX = 14.0       # start-point snap radius (x UI scale)
+DBL_PX = 8.0          # own double-click detection radius (x UI scale)
+ALT_DRAG_PX = 5.0     # Alt: moved more than this before release = Alt+drag (x UI scale)
+ALT_CLICK_SEC = 0.5   # Alt: released sooner than this without moving = Alt+click
 NAV_EVENTS = {'MIDDLEMOUSE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'WHEELINMOUSE', 'WHEELOUTMOUSE',
               'TRACKPADPAN', 'TRACKPADZOOM', 'MOUSEROTATE', 'MOUSESMARTZOOM'}
 
@@ -764,10 +769,33 @@ def draw_overlay(op):
 # -----------------------------------------------------------------------------
 
 
-def exit_tool(context):
+def ui_scale(context):
     try:
-        bpy.ops.wm.tool_set_by_id(name='builtin.select_box', space_type='VIEW_3D')
-    except RuntimeError as ex:
+        return max(0.5, float(context.preferences.system.ui_scale))
+    except AttributeError:
+        return 1.0
+
+
+def exit_tool(context):
+    """Back to Blender's Select Box; remembers the tool for Alt+click return.
+    Leaving Base Mesh auto-applies only the live results it created itself."""
+    settings = getattr(context.scene, 'mch_settings', None)
+    try:
+        current = ts.effective_tool(context)
+    except (AttributeError, KeyError, TypeError):
+        current = None
+    if settings is not None and current:
+        settings['mch_last_tool'] = current
+    if current == 'BASE':
+        try:
+            from . import base_mesh
+            base_mesh.auto_apply_session(context)
+        except (AttributeError, ImportError):
+            pass
+    try:
+        from . import workspace_ui
+        workspace_ui.set_native_tool(context, 'builtin.select_box')
+    except (RuntimeError, TypeError, ImportError) as ex:
         print('[Mecha Lab] could not leave tool:', ex)
 
 
@@ -958,12 +986,19 @@ class StrokeLogic:
 
     # ---- lifecycle -----------------------------------------------------------
 
+    def _clock(self):
+        return _now()
+
     def invoke(self, context, event):
-        # The third quick LMB at the same spot (after a double-click confirm)
-        # arrives as a fresh stroke: leave the tool instead of starting one.
-        if triple_click_to_select(context, event):
-            exit_tool(context)
-            return {'CANCELLED'}
+        # (v0.9.x triple-click-to-select removed: it fought with Curve Lasso
+        # point clicks and double-click confirm.  Alt+click leaves the tool.)
+        # Another Mecha tool was picked but the toolbar kept this drawing tool:
+        # do not cut; let the click do normal selection.
+        try:
+            if ts.effective_tool(context) != self.mode:
+                return {'PASS_THROUGH'}
+        except (AttributeError, KeyError, TypeError):
+            pass
         region = context.region
         if region is None or region.type != 'WINDOW':
             region = next((r for r in context.area.regions if r.type == 'WINDOW'), None)
@@ -981,14 +1016,15 @@ class StrokeLogic:
             return {'PASS_THROUGH'}
         if self.mode in {'MASK', 'BASE'} and self.shape == 'LASSO' and self.brush.line_open:
             self.brush.line_open = False
-        if self._needs_target():
+        self.ui = ui_scale(context)
+        self.target_names = []
+        alt_wait = bool(event.alt) and event.value in {'PRESS', 'DOUBLE_CLICK'}
+        if self._needs_target() and not alt_wait:
             targets = gather_targets(context, self.projector, xy, self.mode)
             if not targets:
                 self.report({'WARNING'}, 'Click on a mesh or select one first')
                 return {'PASS_THROUGH'}
             self.target_names = [t.name for t in targets]
-        else:
-            self.target_names = []
         self.custom = None
         if self.shape == 'CUSTOM':
             from . import cut_presets
@@ -1015,28 +1051,66 @@ class StrokeLogic:
         self.side_preview = None
         self.rmb_time = None
         self.timer = None
-        if self.shape in {'LASSO', 'CURVE_LASSO'}:
-            self.stage = 'POINTS'
-            self._add_point(xy)
-            self.free_drag = self.shape == 'LASSO'
+        self.last_press = None       # (time, xy, 'ADD' / 'EDIT') for own double-click detection
+        self.alt_pending = None      # (xy, time, shift, ctrl) Alt press waiting for click / drag
+        self.alt_wait = None
+        if alt_wait:
+            # Alt: decided at RELEASE - short click leaves the tool, drag is the
+            # tool's Alt action (Cut: keep inside, Base Mesh: Boolean cutter).
+            self.stage = 'ALTWAIT'
+            self.alt_wait = (xy, self._clock())
         else:
-            self.stage = 'DRAG'
-            self.anchor = xy
-            if self.shape == 'STROKE':
-                self.pts = [xy]
+            self._begin(xy)
         self.handle = add_draw_handler(self)
         context.window_manager.modal_handler_add(self)
         self._hint(context)
         self.region.tag_redraw()
         return {'RUNNING_MODAL'}
 
+    def _begin(self, xy):
+        if self.shape in {'LASSO', 'CURVE_LASSO'}:
+            self.stage = 'POINTS'
+            self._add_point(xy)
+            self.last_press = (self._clock(), xy, 'ADD')
+            self.free_drag = self.shape == 'LASSO'
+        else:
+            self.stage = 'DRAG'
+            self.anchor = xy
+            if self.shape == 'STROKE':
+                self.pts = [xy]
+                self._stroke_start(xy)
+
+    def _stroke_start(self, xy):
+        """Hook for the Free Draw stabilizer (see stabilizer.py)."""
+        stab = getattr(self, 'stab', None)
+        if stab is not None:
+            stab.reset(xy, self._clock())
+
+    def _alt_begin_drag(self, context, press_xy, xy):
+        """Alt held and the mouse moved: start the stroke at the press point
+        with the Alt action latched."""
+        self.alt_wait = None
+        if self._needs_target():
+            targets = gather_targets(context, self.projector, press_xy, self.mode)
+            if not targets:
+                self.report({'WARNING'}, 'Alt+drag must start on a mesh (or select one first)')
+                return self._cancel(context)
+            self.target_names = [t.name for t in targets]
+        self.alt_latch = True
+        self._begin(press_xy)
+        self.mouse = xy
+        self._on_move(xy)
+        self._hint(context)
+        self.region.tag_redraw()
+        return {'RUNNING_MODAL'}
+
     def _hint(self, context):
-        tail = ' | RMB: ' + ('profiles' if self.mode == 'BASE' else 'shapes') + ', RMB×2 / Esc: exit tool'
+        tail = ' | RMB: ' + ('profiles' if self.mode == 'BASE' else 'shapes') + ', Alt+click / RMB×2 / Esc: exit tool'
         if self.stage == 'SIDE':
-            text = 'Click the side to REMOVE (Alt+click: keep it)' + tail
+            text = 'Click the side to REMOVE (Ctrl+click: keep it)' + tail
         elif self.stage == 'POINTS':
-            text = ('LMB point (drag = draw) | double-click anywhere: close & apply | Enter | '
-                    'Backspace/Ctrl+Z: undo point | Shift 45° | Alt invert | F open line')
+            text = ('LMB point (drag = draw) | double-click anywhere or click start: close & apply | Enter | '
+                    'Backspace/Ctrl+Z: undo point | Shift 45° | Alt+drag invert | F open line')
             if self.shape == 'CURVE_LASSO':
                 text = ('LMB control point | click a point: sharp/smooth | drag point or handle | '
                         'double-click anywhere: close & apply | Backspace/Ctrl+Z: undo point')
@@ -1044,7 +1118,7 @@ class StrokeLogic:
         elif self.shape == 'STROKE':
             text = 'Hold LMB and draw, release to apply' + tail
         else:
-            text = 'Drag, release to apply | Shift: square/circle | Ctrl: from center | Alt: invert' + tail
+            text = 'Drag, release to apply | Shift: square/circle | Ctrl: from center | Alt+drag: invert' + tail
         _status(context, f'MECHA {self.mode}: ' + text)
 
     def _cleanup(self, context):
@@ -1247,7 +1321,7 @@ class StrokeLogic:
             return self._cancel(context)
 
     def _modal(self, context, event):
-        if self._needs_target() and not self._targets():
+        if self._needs_target() and self.stage != 'ALTWAIT' and not self._targets():
             return self._cancel(context)
         if self.native_tool and ts.native_tool_id(context) != self.native_tool:
             return self._cancel(context)          # tool switched from toolbar/list
@@ -1275,6 +1349,13 @@ class StrokeLogic:
         xy, inside = self._region_xy(event)
         if et in NAV_EVENTS or et.startswith('NDOF') or (et.startswith('NUMPAD_') and et != 'NUMPAD_ENTER'):
             return {'PASS_THROUGH'}
+
+        if self.stage == 'ALTWAIT':
+            return self._modal_altwait(context, event, xy)
+        if self.alt_pending is not None:
+            r = self._modal_alt_pending(context, event, xy)
+            if r is not None:
+                return r
 
         if et == 'MOUSEMOVE' or et == 'INBETWEEN_MOUSEMOVE':
             if inside or self.stage == 'DRAG' or self.drag_index is not None or self.free_drag:
@@ -1345,8 +1426,9 @@ class StrokeLogic:
             return {'RUNNING_MODAL'}
 
         if et == 'LEFTMOUSE':
-            if ev in {'PRESS', 'DOUBLE_CLICK'} and event.alt:
-                self.alt_latch = True
+            if ev in {'PRESS', 'DOUBLE_CLICK'} and event.alt and self.stage in {'POINTS', 'SIDE'}:
+                self.alt_pending = (xy, self._clock(), bool(event.shift), bool(event.ctrl))
+                return {'RUNNING_MODAL'}
             return self._on_lmb(context, ev, xy, event)
         if et in {'LEFT_ALT', 'RIGHT_ALT', 'LEFT_SHIFT', 'RIGHT_SHIFT', 'LEFT_CTRL', 'RIGHT_CTRL'}:
             self.region.tag_redraw()
@@ -1354,6 +1436,48 @@ class StrokeLogic:
         # Swallow other keys while a stroke is pending so a stray hotkey cannot
         # delete or transform the target halfway through.
         return {'RUNNING_MODAL'}
+
+    def _modal_altwait(self, context, event, xy):
+        et, ev = event.type, event.value
+        press, t0 = self.alt_wait
+        if et in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE'}:
+            if math.dist(press, xy) > ALT_DRAG_PX * self.ui:
+                return self._alt_begin_drag(context, press, xy)
+            return {'RUNNING_MODAL'}
+        if et == 'LEFTMOUSE' and ev == 'RELEASE':
+            if self._clock() - t0 <= ALT_CLICK_SEC:
+                return self._leave_tool(context)          # Alt + short click
+            if self.shape in {'LASSO', 'CURVE_LASSO'}:    # long Alt press: an inverted point
+                return self._alt_begin_drag(context, press, press)
+            return self._cancel(context)
+        if et == 'ESC' and ev == 'PRESS':
+            return self._leave_tool(context)
+        if et in {'LEFT_ALT', 'RIGHT_ALT', 'LEFT_SHIFT', 'RIGHT_SHIFT', 'LEFT_CTRL', 'RIGHT_CTRL', 'TIMER'}:
+            return {'RUNNING_MODAL'}
+        return {'RUNNING_MODAL'}
+
+    def _modal_alt_pending(self, context, event, xy):
+        """An Alt+LMB press during a pending stroke, decided at release."""
+        et, ev = event.type, event.value
+        press, t0, shift, ctrl = self.alt_pending
+        fake = types.SimpleNamespace(alt=True, shift=shift, ctrl=ctrl, oskey=False)
+        if et in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE'}:
+            if math.dist(press, xy) > ALT_DRAG_PX * self.ui:
+                self.alt_pending = None
+                self.alt_latch = True
+                self._on_lmb(context, 'PRESS', press, fake)   # Alt+drag = normal press, inverted
+                return None                                  # let the move be processed too
+            return {'RUNNING_MODAL'}
+        if et == 'LEFTMOUSE' and ev == 'RELEASE':
+            self.alt_pending = None
+            if self._clock() - t0 <= ALT_CLICK_SEC and math.dist(press, xy) <= ALT_DRAG_PX * self.ui:
+                return self._leave_tool(context)              # Alt + short click
+            self.alt_latch = True
+            r = self._on_lmb(context, 'PRESS', press, fake)
+            if r != {'RUNNING_MODAL'}:
+                return r
+            return self._on_lmb(context, 'RELEASE', xy, fake)
+        return None
 
     def _on_move(self, xy):
         if self.stage == 'DRAG' and self.shape == 'STROKE':
@@ -1375,7 +1499,7 @@ class StrokeLogic:
                     self.sharp.append(False)
                     self.overrides.append(None)
                     self.redo.clear()
-            self.near_first = len(self.pts) >= 3 and math.dist(self.pts[0], xy) <= HIT_PX
+            self.near_first = (len(self.pts) >= 3 or (self.line_open and len(self.pts) >= 2)) and self._hit_start(xy)
         elif self.stage == 'SIDE':
             self._update_side_preview()
 
@@ -1384,23 +1508,18 @@ class StrokeLogic:
         return self._run(context, lambda c: perform_line(
             c, 'CUT', self._targets(), self.pts, self.projector, xy, invert))
 
+    def _close_px(self):
+        return max(HIT_PX, CLOSE_PX) * getattr(self, 'ui', 1.0)
+
+    def _hit_start(self, xy):
+        return bool(self.pts) and math.dist(self.pts[0], xy) <= self._close_px()
+
     def _on_lmb(self, context, ev, xy, event):
         is_down = ev in {'PRESS', 'DOUBLE_CLICK'}
-        if self.stage == 'POINTS' and is_down and ev == 'PRESS':
-            edit = self._hit_handle(xy) is not None
-            hit = self._hit_point(xy)
-            if hit is not None and hit != len(self.pts) - 1 and not (hit == 0 and len(self.pts) >= 3):
-                edit = True
-            if edit:
-                triple_reset(context)
-            elif triple_click_to_select(context, event):
-                return self._leave_tool(context)
-        elif is_down and triple_click_to_select(context, event):
-            return self._leave_tool(context)
-
         if self.stage == 'SIDE':
             if is_down:
-                return self._apply_side(context, xy, event.alt)
+                # Ctrl+click keeps the clicked side (Alt+click now leaves the tool).
+                return self._apply_side(context, xy, bool(getattr(event, 'ctrl', False)))
             return {'RUNNING_MODAL'}
         if self.stage == 'DRAG':
             if ev == 'RELEASE':
@@ -1409,32 +1528,50 @@ class StrokeLogic:
                     return self._cancel(context)    # a click, not a drag
                 self.mouse = xy
                 if self.shape == 'STROKE':
-                    if xy != self.pts[-1] and math.dist(self.pts[-1], xy) > 0.5:
-                        self.pts.append(xy)
+                    self._stroke_finish(xy)
                     if len(self.pts) < (1 if self.mode == 'MASK' else 3):
                         return self._cancel(context)
                 return self._run(context, self._execute_closed)
             return {'RUNNING_MODAL'}
         # POINTS
+        now = self._clock()
+        last = self.last_press
+        quick_again = (last is not None and last[2] == 'ADD' and
+                       now - last[0] <= _double_click_seconds(context) and
+                       math.dist(xy, last[1]) <= DBL_PX * getattr(self, 'ui', 1.0))
         if ev == 'DOUBLE_CLICK':
-            # Double-click anywhere: close from the last point to the first and
-            # apply. Never adds a point (no duplicate / zero-length edge).
-            self.free_drag = False
-            return self._confirm(context)
+            if last is None or last[2] == 'ADD':
+                # Double-click anywhere: close from the last point to the first
+                # and apply. Never adds a point (no duplicate / zero-length edge).
+                self.free_drag = False
+                self.last_press = None
+                return self._confirm(context)
+            ev = 'PRESS'           # double click on a point being edited = two edit clicks
         if ev == 'PRESS':
+            if quick_again:
+                # Own double-click detection: some systems deliver the second
+                # click as a plain PRESS instead of DOUBLE_CLICK.
+                self.free_drag = False
+                self.last_press = None
+                return self._confirm(context)
+            open_line = self._is_open_line() or self.line_open
+            if self._hit_start(xy) and (len(self.pts) >= 3 or (open_line and len(self.pts) >= 2)):
+                self.last_press = None
+                return self._confirm(context)          # click the start point = close / finish
             handle = self._hit_handle(xy)
             if handle is not None:
                 self.drag_handle = handle
+                self.last_press = (now, xy, 'EDIT')
                 return {'RUNNING_MODAL'}
             hit = self._hit_point(xy)
-            if hit == 0 and len(self.pts) >= 3 and not self.line_open:
-                return self._confirm(context)
             if hit is not None and (hit != len(self.pts) - 1 or self.shape == 'CURVE_LASSO'):
                 self.drag_index = hit
                 self.press_xy = xy
+                self.last_press = (now, xy, 'EDIT')
                 return {'RUNNING_MODAL'}
-            self.shift_held = bool(event.shift)
+            self.shift_held = bool(getattr(event, 'shift', False))
             self._add_point(xy)
+            self.last_press = (now, xy, 'ADD')
             self.free_drag = self.shape == 'LASSO'
             self.region.tag_redraw()
             return {'RUNNING_MODAL'}
@@ -1453,6 +1590,20 @@ class StrokeLogic:
             self.free_drag = False
             self.region.tag_redraw()
         return {'RUNNING_MODAL'}
+
+    def _stroke_finish(self, xy):
+        """Free Draw release: add the final mouse position once (no double point)."""
+        stab = getattr(self, 'stab', None)
+        if stab is not None and stab.active:
+            for p in stab.finish(xy):
+                self._stroke_append(p)
+            return
+        if xy != self.pts[-1] and math.dist(self.pts[-1], xy) > 0.5:
+            self.pts.append(xy)
+
+    def _stroke_append(self, p):
+        if not self.pts or math.dist(self.pts[-1], p) > 0.5:
+            self.pts.append(p)
 
     def _remove_timer(self, context):
         if self.timer is not None:
