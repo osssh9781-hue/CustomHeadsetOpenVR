@@ -178,20 +178,45 @@ def _deferred_ortho_check():
     return None
 
 
-def draw_hotkey_editor(layout):
-    """Editable key of the Select / Move hotkey (and the other Mecha keys)."""
+_HOTKEY_IDS = ('mch.select_move_key', 'mch.quick_menu', 'mch.space_tools', 'mch.hotkey')
+
+
+def hotkey_items(context=None):
+    """Mecha keymap items looked up FRESH (never cached between redraws: a held
+    KeyMapItem reference can point to freed memory after Blender rebuilds its
+    keymaps, and drawing it crashes Blender).  The user keyconfig is what
+    Blender actually uses and what Preferences > Keymap saves."""
+    wm = (context or bpy.context).window_manager
+    if wm is None:
+        return []
+    out, seen = [], set()
+    for kc in (wm.keyconfigs.user, wm.keyconfigs.addon):
+        if kc is None:
+            continue
+        for km_name in ('3D View', 'Object Mode'):
+            km = kc.keymaps.get(km_name)
+            if km is None:
+                continue
+            for item in km.keymap_items:
+                if item.idname not in _HOTKEY_IDS:
+                    continue
+                key = (item.idname, getattr(item.properties, 'action', '') if item.idname == 'mch.hotkey' else '',
+                       len([o for o in out if o[1].idname == item.idname]))
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append((km, item))
+        if out:
+            break
+    return out
+
+
+def draw_hotkey_editor(layout, context=None):
+    """Editable keys of the Mecha hotkeys (Select / Move, menus, B / C)."""
     box = layout.box()
     box.label(text='Hotkeys (MECHA LAB only)', icon='KEYINGSET')
-    seen = set()
-    for km, item in _keymaps:
-        try:
-            idname = item.idname
-        except ReferenceError:
-            continue
-        if idname not in {'mch.select_move_key', 'mch.quick_menu', 'mch.space_tools', 'mch.hotkey'} or \
-                (idname, item.type, getattr(item.properties, 'action', '')) in seen:
-            continue
-        seen.add((idname, item.type, getattr(item.properties, 'action', '')))
+    for km, item in hotkey_items(context):
+        idname = item.idname
         row = box.row(align=True)
         label = {'mch.select_move_key': 'Select / Move', 'mch.quick_menu': 'Quick Menu',
                  'mch.space_tools': 'Tool Menu'}.get(idname, 'Hotkey ' + getattr(item.properties, 'action', ''))
@@ -284,6 +309,7 @@ def _tool_keymap(mode):
         ('mch.rmb_gate', {'type': 'RIGHTMOUSE', 'value': 'PRESS'},
          {'properties': [('popup', 'PROFILE' if mode == 'BASE' else 'SHAPE')]}),
         ('mch.space_tools', {'type': 'SPACE', 'value': 'PRESS'}, None),
+        ('mch.space_tools', {'type': 'V', 'value': 'PRESS'}, None),
         # Esc with no stroke pending: back to Blender's Select Box tool.
         ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),
         # B06: R / Shift+R rotate a PNG stamp (poll fails for other shapes -> Blender's R).
@@ -1136,11 +1162,11 @@ class MCH_PT_profile_popup(bpy.types.Panel):
 class MCH_AddonPreferences(bpy.types.AddonPreferences):
     bl_idname = ADDON_ID
 
-    space_menu: BoolProperty(name='Space = Mecha Tool Menu', default=True,
+    space_menu: BoolProperty(name='Space / V = Mecha Tool Menu', default=True,
                              description='Only inside the MECHA LAB workspace; elsewhere Space keeps Blender behaviour')
     workspace_hotkeys: BoolProperty(name='B / C Hotkeys', default=True,
                                     description='B = Boolean Difference, C = Cut tool, only inside MECHA LAB')
-    quick_menu: BoolProperty(name='V = Quick Tool Menu', default=True,
+    quick_menu: BoolProperty(name='N = Quick Tool Menu', default=True,
                              description='Six core tools at the mouse, only inside MECHA LAB (Object Mode)')
     select_move_key: BoolProperty(name='Select / Move Hotkey', default=True,
                                   description='Hotkey for Select / Move inside MECHA LAB (change the key below or in '
@@ -1173,8 +1199,12 @@ def register_keymaps():
     if kc is None:
         return
     km = kc.keymaps.new(name='3D View', space_type='VIEW_3D')
+    # 0.11.3 (user request): Tool Menu = V (Space kept, switchable), Quick Menu = N.
+    # Both only act inside the MECHA LAB workspace; elsewhere the keys keep their
+    # Blender meaning (N = sidebar) because the operators' poll fails there.
     _keymaps.append((km, km.keymap_items.new('mch.space_tools', 'SPACE', 'PRESS')))
-    _keymaps.append((km, km.keymap_items.new('mch.quick_menu', 'V', 'PRESS')))
+    _keymaps.append((km, km.keymap_items.new('mch.space_tools', 'V', 'PRESS')))
+    _keymaps.append((km, km.keymap_items.new('mch.quick_menu', 'N', 'PRESS')))
     km = kc.keymaps.new(name='Object Mode', space_type='EMPTY')
     item = km.keymap_items.new('mch.hotkey', 'B', 'PRESS')
     item.properties.action = 'BOOLEAN'
@@ -1182,9 +1212,9 @@ def register_keymaps():
     item = km.keymap_items.new('mch.hotkey', 'C', 'PRESS')
     item.properties.action = 'CUT'
     _keymaps.append((km, item))
-    # Select / Move (replaces the removed Alt+click mode switch). Default W, the
-    # key of Blender's select tools; rebind freely (panel or Preferences > Keymap).
-    _keymaps.append((km, km.keymap_items.new('mch.select_move_key', 'W', 'PRESS')))
+    # Select / Move (replaces the removed Alt+click mode switch). Default F (user
+    # request, 0.11.3); rebind freely (panel or Preferences > Keymap).
+    _keymaps.append((km, km.keymap_items.new('mch.select_move_key', 'F', 'PRESS')))
     # Mesh Curve: double-click a path point in Curve Edit Mode = Straight <-> Smooth.
     # (Registered since v0.5.9 but always inactive; the operator passes through
     # for curves that are not Mecha Lab paths.)

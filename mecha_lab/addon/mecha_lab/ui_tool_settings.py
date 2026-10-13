@@ -36,9 +36,8 @@ def draw_shape_options(layout, context, mode):
         col.prop(brush, 'circle_segments')
     elif shape == 'CURVE_LASSO':
         col.prop(brush, 'curve_resolution')
-        col.prop(brush, 'curve_smoothness', slider=True)
-        _hint(box, 'Smooth spline through every click', 'Click a point: sharp <-> smooth',
-              'Drag a point or its Bezier handle', 'Double-click anywhere: close & apply')
+        _hint(box, 'Points start as straight corners', 'Click a point: soft > medium > strong > straight',
+              'Drag a point, or a blue handle to set the rounding', 'Double-click anywhere: close & apply')
     elif shape == 'STROKE':
         if mode != 'MASK':
             sb = box.box()
@@ -59,15 +58,20 @@ def draw_shape_options(layout, context, mode):
     elif shape == 'LASSO':
         if mode not in {'MASK', 'BASE'}:
             col.prop(brush, 'line_open')
+            from . import cut_presets
+            box.label(text='Preset shapes (stamp: click = place, drag = size / rotate):')
+            cut_presets.draw_builtin_row(box)
         _hint(box, 'Click points, hold LMB to draw freely', 'Double-click anywhere: close & apply',
               '2 points + Enter = straight line cut (Cut/Split)')
     elif shape == 'CUSTOM':
+        from . import cut_presets
+        cut_presets.draw_builtin_row(box)
         row = box.row(align=True)
         row.template_icon_view(context.scene, 'mch_png_preset', show_labels=True, scale=5.0,
                                scale_popup=5.0)
         row = box.row(align=True)
         row.operator('mch.import_cut_png', text='Import PNG', icon='IMPORT')
-        if context.scene.mch_png_preset != 'NONE':
+        if context.scene.mch_png_preset != 'NONE' and not cut_presets.is_builtin(context.scene.mch_png_preset):
             row.operator('mch.delete_cut_preset', text='', icon='TRASH')
         col = box.column(align=True)
         col.prop(brush, 'custom_size')
@@ -148,13 +152,13 @@ def draw_cut(layout, context, mode='CUT'):
     if mode == 'CUT':
         _hint(layout, 'LMB draw: remove inside | Alt: keep inside',
               'Double-click anywhere / click start point / Enter: apply',
-              'Esc: back to Select | Select / Move: W (or Mecha menu)',
+              'Esc: back to Select | Select / Move: F (or Mecha menu)',
               'Ctrl+Z: undo last point, then last cut', 'RMB: shapes | RMB double-click: exit tool',
               'PNG shape: R / Shift+R rotates 15°', 'All selected meshes are cut (Targets: Selected)')
     else:
         _hint(layout, 'LMB draw: split into two parts', 'Inside becomes "<name>_Split"',
               'Double-click anywhere / click start point / Enter: apply',
-              'Esc: back to Select | Select / Move: W', 'RMB: shapes | RMB double-click: exit tool')
+              'Esc: back to Select | Select / Move: F', 'RMB: shapes | RMB double-click: exit tool')
 
 
 def draw_split(layout, context):

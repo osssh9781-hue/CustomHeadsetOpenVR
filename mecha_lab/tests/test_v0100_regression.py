@@ -173,7 +173,7 @@ t, = setup('CURVE_LASSO')
 ctx, op = Ctx(), Op()
 start_lasso(ctx, op, SQUARE)
 tick(0.6)
-sharp_before = list(op.sharp)
+rounds_before = list(op.rounds)
 r1 = op.modal(ctx, E('LEFTMOUSE', 'PRESS', 560, 450))     # edit click on an existing point
 op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 560, 450))
 tick(0.1)
@@ -181,7 +181,8 @@ r2 = op.modal(ctx, E('LEFTMOUSE', 'DOUBLE_CLICK', 560, 450))
 op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 560, 450))
 check('Curve Lasso: double-click on a point being edited does NOT close the shape',
       r1 == {'RUNNING_MODAL'} and r2 == {'RUNNING_MODAL'} and abs(volume(t) - 8.0) < 1e-6)
-check('Curve Lasso: the two edit clicks toggled the point twice (back to smooth)', op.sharp == sharp_before)
+check('Curve Lasso: the two edit clicks stepped the point twice (straight -> soft -> medium)', op.rounds[1] == 0.25 and
+      rounds_before[1] == 0.0, op.rounds)
 r = op.modal(ctx, E('RET', 'PRESS', 500, 500))
 check('Curve Lasso: Enter still confirms', r == {'FINISHED'} and volume(t) < 8.0)
 

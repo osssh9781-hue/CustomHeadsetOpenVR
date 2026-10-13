@@ -401,6 +401,72 @@ class MCH_OT_cable_points(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def cable_to_mesh(context, ob):
+    """Bake a live cable (curve + bevel) into an ordinary mesh object with the
+    same name, transform, collections and materials.  The curve object and
+    its generated hidden profile curve are removed."""
+    dg = context.evaluated_depsgraph_get()
+    me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), preserve_all_data_layers=True, depsgraph=dg)
+    if me is None or not me.polygons:
+        if me is not None:
+            bpy.data.meshes.remove(me)
+        raise RuntimeError('The cable has no thickness (Thickness 0?); nothing to convert')
+    for mat in ob.data.materials:
+        me.materials.append(mat)
+    name = ob.name
+    new = bpy.data.objects.new(name + '_Mesh', me)
+    new.matrix_world = ob.matrix_world.copy()
+    colls = list(ob.users_collection) or [context.scene.collection]
+    for coll in colls:
+        coll.objects.link(new)
+    prof = ob.mch_cable.profile_object
+    curve = ob.data
+    if getattr(context.scene, 'mch_cable_last', None) == ob:
+        context.scene.mch_cable_last = None
+    bpy.data.objects.remove(ob, do_unlink=True)
+    if curve.users == 0:
+        bpy.data.curves.remove(curve)
+    if prof is not None and prof.name in bpy.data.objects and prof.name.startswith('MCH_CableProfile_'):
+        pdata = prof.data
+        if not any(o.type == 'CURVE' and o.data.bevel_object == prof for o in bpy.data.objects):
+            bpy.data.objects.remove(prof, do_unlink=True)
+            if pdata.users == 0:
+                bpy.data.curves.remove(pdata)
+    new.name = name
+    me.name = name + '_Mesh'
+    for o in list(context.selected_objects):
+        o.select_set(False)
+    new.select_set(True)
+    context.view_layer.objects.active = new
+    return new
+
+
+class MCH_OT_cable_to_mesh(bpy.types.Operator):
+    bl_idname = 'mch.cable_to_mesh'
+    bl_label = 'Convert Cable to Object'
+    bl_description = 'Turn the live cable into an ordinary mesh object (the cable settings are no longer editable)'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and active_cable(context) is not None
+
+    def execute(self, context):
+        targets = [o for o in context.selected_objects if getattr(o, 'mch_cable', None) and o.mch_cable.active
+                   and o.type == 'CURVE']
+        if not targets:
+            targets = [active_cable(context)]
+        done = []
+        try:
+            for ob in targets:
+                done.append(cable_to_mesh(context, ob).name)
+        except RuntimeError as ex:
+            self.report({'ERROR'}, str(ex))
+            return {'CANCELLED'} if not done else {'FINISHED'}
+        self.report({'INFO'}, 'Converted to mesh: ' + ', '.join(done))
+        return {'FINISHED'}
+
+
 def draw(layout, context):
     ob = active_cable(context)
     p = ob.mch_cable if ob is not None else context.scene.mch_cable
@@ -440,10 +506,14 @@ def draw(layout, context):
         box.prop(p, 'profile_ratio')
     if p.profile == 'CUSTOM':
         box.prop(p, 'custom_profile')
+    if ob is not None:
+        row = layout.row()
+        row.scale_y = 1.3
+        row.operator('mch.cable_to_mesh', text='Convert to Object (Mesh)', icon='OUTLINER_OB_MESH')
     layout.label(text='Start / end stay fixed; edit points in Edit Mode too', icon='INFO')
 
 
-CLASSES = (MCH_PG_Cable, MCH_OT_cable_draw, MCH_OT_edge_to_cable, MCH_OT_cable_points)
+CLASSES = (MCH_PG_Cable, MCH_OT_cable_draw, MCH_OT_edge_to_cable, MCH_OT_cable_points, MCH_OT_cable_to_mesh)
 
 
 def register():

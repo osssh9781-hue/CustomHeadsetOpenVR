@@ -2,6 +2,9 @@
 
 Independently authored for Mecha Lab. Blender 4.3+ APIs.
 """
+import math
+import time
+
 import bpy
 from mathutils import Matrix, Vector
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, PointerProperty
@@ -28,7 +31,15 @@ class MCH_PG_Mirror(bpy.types.PropertyGroup):
     x: BoolProperty(name='X', default=True)
     y: BoolProperty(name='Y', default=False)
     z: BoolProperty(name='Z', default=False)
-    bisect: BoolProperty(name='Bisect', default=False, description='Cut source geometry on selected mirror planes before mirroring')
+    bisect: BoolProperty(name='Bisect', default=True,
+                         description='Cut the mesh on the mirror plane first, so the side you lean the mouse to is '
+                                     'replaced by a copy of the other side (off: the whole mesh is copied)')
+    flip_x: BoolProperty(name='Copy toward +X', default=False, description='Mirror copies toward +X (off: toward -X)')
+    flip_y: BoolProperty(name='Copy toward +Y', default=False)
+    flip_z: BoolProperty(name='Copy toward +Z', default=False)
+    auto_start: BoolProperty(name='Start when Mirror is picked', default=True,
+                             description='Picking the Mirror tool with a mesh selected starts the live mirror at once: '
+                                         'lean the mouse toward the side to copy to, Enter = apply')
     clipping: BoolProperty(name='Clipping', default=True, description='Prevent vertices crossing the mirror plane while editing')
     merge: BoolProperty(name='Merge', default=True)
     merge_distance: FloatProperty(name='Merge Distance', default=0.001, min=0.0, max=1.0, precision=5)
@@ -81,41 +92,387 @@ class MCH_OT_mesh_mirror(bpy.types.Operator):
         scene = context.scene
         targets = [o for o in context.selected_objects if o.type == 'MESH' and o.library is None]
         for obj in targets:
-            mod = obj.modifiers.get(MOD_NAME)
-            if mod and mod.type != 'MIRROR':
+            if setup_mirror(obj, p, scene) is None:
                 self.report({'WARNING'}, f'{obj.name}: existing name belongs to another modifier')
                 continue
-            old_pivot = mod.mirror_object if mod and mod.type == 'MIRROR' else None
-            if mod is None:
-                mod = obj.modifiers.new(MOD_NAME, 'MIRROR')
-            if p.space == 'WORLD':
-                pivot = old_pivot if old_pivot and old_pivot.get('_mch_world_pivot') else None
-                if pivot is None:
-                    pivot = bpy.data.objects.new(f'MCH World Pivot - {obj.name}', None)
-                    scene.collection.objects.link(pivot)
-                    pivot['_mch_world_pivot'] = True
-                    pivot.empty_display_type = 'ARROWS'
-                    pivot.empty_display_size = 0.16
-                    pivot.hide_render = True
-                pivot.matrix_world = Matrix.Translation(
-                    Vector(scene.cursor.location) if p.center == 'CURSOR' else Vector((0, 0, 0)))
-                mod.mirror_object = pivot
-            else:
-                mod.mirror_object = None
-                _remove_unused_pivot(old_pivot)
-            mod.use_axis[0] = p.x
-            mod.use_axis[1] = p.y
-            mod.use_axis[2] = p.z
-            for index in range(3):
-                mod.use_bisect_axis[index] = p.bisect and (p.x, p.y, p.z)[index]
-            mod.use_clip = p.clipping
-            mod.use_mirror_merge = p.merge
-            mod.merge_threshold = p.merge_distance
             count += 1
         if count:
             self.report({'INFO'}, f'Live mirror updated on {count} mesh(es)')
             return {'FINISHED'}
         return {'CANCELLED'}
+
+
+def setup_mirror(obj, p, scene, axes=None, flips=None):
+    """Create / update the Mecha Mirror modifier of ``obj`` from the panel
+    settings (``axes`` / ``flips`` override the X/Y/Z toggles).  Returns the
+    modifier, or None when the name belongs to another modifier type."""
+    mod = obj.modifiers.get(MOD_NAME)
+    if mod and mod.type != 'MIRROR':
+        return None
+    old_pivot = mod.mirror_object if mod else None
+    if mod is None:
+        mod = obj.modifiers.new(MOD_NAME, 'MIRROR')
+    if p.space == 'WORLD':
+        pivot = old_pivot if old_pivot and old_pivot.get('_mch_world_pivot') else None
+        if pivot is None:
+            pivot = bpy.data.objects.new(f'MCH World Pivot - {obj.name}', None)
+            scene.collection.objects.link(pivot)
+            pivot['_mch_world_pivot'] = True
+            pivot.empty_display_type = 'ARROWS'
+            pivot.empty_display_size = 0.16
+            pivot.hide_render = True
+        pivot.matrix_world = Matrix.Translation(
+            Vector(scene.cursor.location) if p.center == 'CURSOR' else Vector((0, 0, 0)))
+        mod.mirror_object = pivot
+    else:
+        mod.mirror_object = None
+        _remove_unused_pivot(old_pivot)
+    axes = (p.x, p.y, p.z) if axes is None else tuple(bool(a) for a in axes)
+    flips = (p.flip_x, p.flip_y, p.flip_z) if flips is None else tuple(bool(f) for f in flips)
+    for index in range(3):
+        mod.use_axis[index] = axes[index]
+        mod.use_bisect_axis[index] = p.bisect and axes[index]
+        mod.use_bisect_flip_axis[index] = flips[index]
+    mod.use_clip = p.clipping
+    mod.use_mirror_merge = p.merge
+    mod.merge_threshold = p.merge_distance
+    return mod
+
+
+# -----------------------------------------------------------------------------
+# HardOps-style lean mirror: lean the mouse toward the side to copy to.
+# Pure logic (MirrorLeanLogic) + operator; tests drive it with fake events.
+# -----------------------------------------------------------------------------
+
+DEAD_PX = 18.0          # mouse this close to the centre: keep the current axis
+_MIRROR_ATTRS = ('use_axis', 'use_bisect_axis', 'use_bisect_flip_axis')
+
+
+def mirror_frame(obj, p, scene):
+    """(plane origin, [x, y, z] unit axes) of the mirror for ``obj``."""
+    if p.space == 'LOCAL':
+        m = obj.matrix_world
+        rot = m.to_3x3().normalized()
+        return m.translation.copy(), [(rot @ Vector(e)).normalized() for e in ((1, 0, 0), (0, 1, 0), (0, 0, 1))]
+    origin = Vector(scene.cursor.location) if p.center == 'CURSOR' else Vector((0.0, 0.0, 0.0))
+    return origin, [Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))]
+
+
+def lean_pick(projector, origin, axes, mouse, length=1.0, dead=DEAD_PX):
+    """(axis index, sign) whose screen direction best matches the mouse offset
+    from the plane centre; sign +1 = the mouse leans toward +axis.  None when
+    the mouse is inside the dead zone or the centre is not on screen."""
+    c = projector.to_screen(origin)
+    if c is None:
+        return None
+    vx, vy = mouse[0] - c[0], mouse[1] - c[1]
+    vl = math.hypot(vx, vy)
+    if vl < dead:
+        return None
+    best = None
+    for i, a in enumerate(axes):
+        e = projector.to_screen(origin + a * length)
+        if e is None:
+            continue
+        dx, dy = e[0] - c[0], e[1] - c[1]
+        dl = math.hypot(dx, dy)
+        if dl < 1e-3:          # axis points straight at the viewer
+            continue
+        cos = (vx * dx + vy * dy) / (vl * dl)
+        if best is None or abs(cos) > abs(best[2]):
+            best = (i, 1 if cos > 0 else -1, cos)
+    return None if best is None else (best[0], best[1])
+
+
+def _snapshot(obj):
+    mod = obj.modifiers.get(MOD_NAME)
+    if mod is None or mod.type != 'MIRROR':
+        return None
+    d = {a: tuple(getattr(mod, a)) for a in _MIRROR_ATTRS}
+    d.update(mirror_object=mod.mirror_object, use_clip=mod.use_clip, use_mirror_merge=mod.use_mirror_merge,
+             merge_threshold=mod.merge_threshold)
+    return d
+
+
+def _restore(obj, snap):
+    mod = obj.modifiers.get(MOD_NAME)
+    if snap is None:
+        if mod is not None and mod.type == 'MIRROR':
+            pivot = mod.mirror_object
+            obj.modifiers.remove(mod)
+            _remove_unused_pivot(pivot)
+        return
+    if mod is None:
+        mod = obj.modifiers.new(MOD_NAME, 'MIRROR')
+    for a in _MIRROR_ATTRS:
+        for i, v in enumerate(snap[a]):
+            getattr(mod, a)[i] = v
+    current = mod.mirror_object
+    mod.mirror_object = snap['mirror_object']
+    if current is not None and current != snap['mirror_object']:
+        _remove_unused_pivot(current)
+    mod.use_clip, mod.use_mirror_merge = snap['use_clip'], snap['use_mirror_merge']
+    mod.merge_threshold = snap['merge_threshold']
+
+
+class MirrorLeanLogic:
+    """Modal: the live mirror appears at once; moving the mouse picks the axis
+    (and the side to copy to).  LMB = keep live, Shift+LMB = add this axis and
+    keep going, Enter / Space = apply (bake), X / Y / Z = toggle an axis,
+    B = bisect on/off, Esc / RMB = cancel (restore)."""
+
+    NAV = {'MIDDLEMOUSE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'WHEELINMOUSE', 'WHEELOUTMOUSE', 'TRACKPADPAN',
+           'TRACKPADZOOM', 'MOUSEROTATE', 'NDOF_MOTION', 'NUMPAD_1', 'NUMPAD_2', 'NUMPAD_3', 'NUMPAD_4',
+           'NUMPAD_5', 'NUMPAD_6', 'NUMPAD_7', 'NUMPAD_8', 'NUMPAD_9', 'NUMPAD_PERIOD'}
+
+    def start(self, context, region, projector, mouse_xy):
+        scene = context.scene
+        self.p = scene.mch_mirror
+        self.region = region
+        self.projector = projector
+        self.target_names = [o.name for o in context.selected_objects if o.type == 'MESH' and o.library is None]
+        if not self.target_names:
+            return False
+        self.snaps = {n: _snapshot(bpy.data.objects[n]) for n in self.target_names}
+        self.axes = [self.p.x, self.p.y, self.p.z]
+        self.flips = [self.p.flip_x, self.p.flip_y, self.p.flip_z]
+        self.locked = [False, False, False]
+        if not any(self.axes):
+            self.axes[0] = True
+        self.current = None
+        self.mouse = mouse_xy
+        self._apply_live(scene)               # the mirror is live immediately
+        return True
+
+    def _targets(self):
+        return [bpy.data.objects[n] for n in self.target_names if n in bpy.data.objects]
+
+    def frame(self, scene):
+        obs = self._targets()
+        origin, axes = mirror_frame(obs[0], self.p, scene)
+        size = max(max(obs[0].dimensions), 0.2)
+        return origin, axes, size
+
+    def _apply_live(self, scene):
+        for ob in self._targets():
+            setup_mirror(ob, self.p, scene, self.axes, self.flips)
+
+    def on_move(self, scene, xy):
+        self.mouse = xy
+        if not self._targets():
+            return
+        origin, axes, size = self.frame(scene)
+        pick = lean_pick(self.projector, origin, axes, xy, size * 0.6)
+        if pick is None or pick == self.current:
+            return
+        self.current = pick
+        i, sign = pick
+        self.axes = [self.locked[k] for k in range(3)]
+        self.axes[i] = True
+        self.flips[i] = sign > 0              # flip ON keeps the - side and copies toward +
+        self._apply_live(scene)
+
+    def toggle_axis(self, scene, i):
+        self.locked[i] = not self.locked[i]
+        self.axes[i] = self.locked[i] or (self.current is not None and self.current[0] == i)
+        if not any(self.axes):
+            self.axes[i] = True
+            self.locked[i] = True
+        self._apply_live(scene)
+
+    def lock_current(self):
+        if self.current is not None:
+            self.locked[self.current[0]] = True
+
+    def store_settings(self):
+        p = self.p
+        p.x, p.y, p.z = self.axes
+        p.flip_x, p.flip_y, p.flip_z = self.flips
+
+    def finish_live(self, scene):
+        self.store_settings()
+        return f'Live mirror on {", ".join(self.target_names)}: {self.describe()} (Apply in the panel or Enter next time)'
+
+    def finish_apply(self, context):
+        from . import core_geometry
+        self.store_settings()
+        policy = getattr(getattr(context.scene, 'mch_cut', None), 'shared_mesh', 'SINGLE')
+        done, failed = [], []
+        for ob in self._targets():
+            mod = ob.modifiers.get(MOD_NAME)
+            pivot = mod.mirror_object if mod else None
+            try:
+                core_geometry.apply_single_modifier(context, ob, mod, policy)
+                done.append(ob.name)
+            except (RuntimeError, TypeError, ValueError, core_geometry.CutError) as ex:
+                failed.append(f'{ob.name} ({ex})')
+            _remove_unused_pivot(pivot)
+        return f'Mirror applied ({self.describe()}): {", ".join(done)}' + \
+            (' | FAILED: ' + '; '.join(failed) if failed else '')
+
+    def cancel(self):
+        for n, snap in self.snaps.items():
+            ob = bpy.data.objects.get(n)
+            if ob is not None:
+                _restore(ob, snap)
+
+    def describe(self):
+        out = []
+        for i, axis in enumerate('XYZ'):
+            if self.axes[i]:
+                out.append(('+' if self.flips[i] else '-') + axis if self.p.bisect else axis)
+        return ' '.join(out) + ('' if self.p.bisect else ' (no bisect)')
+
+    def handle(self, context, event):
+        """Returns 'RUN', 'PASS', 'LIVE', 'APPLY' or 'CANCEL'."""
+        et, ev = event.type, event.value
+        scene = context.scene
+        if et in self.NAV or (et in {'LEFTMOUSE', 'MIDDLEMOUSE'} and getattr(event, 'alt', False)):
+            return 'PASS'
+        if et in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE'}:
+            self.on_move(scene, (event.mouse_x - self.region.x, event.mouse_y - self.region.y))
+            return 'RUN'
+        if ev != 'PRESS':
+            return 'RUN'
+        if et in {'ESC', 'RIGHTMOUSE'}:
+            return 'CANCEL'
+        if et in {'RET', 'NUMPAD_ENTER', 'SPACE'}:
+            return 'APPLY'
+        if et == 'LEFTMOUSE':
+            if getattr(event, 'shift', False):
+                self.lock_current()
+                return 'RUN'
+            return 'LIVE'
+        if et in {'X', 'Y', 'Z'}:
+            self.toggle_axis(scene, 'XYZ'.index(et))
+            return 'RUN'
+        if et == 'B':
+            self.p.bisect = not self.p.bisect
+            self._apply_live(scene)
+            return 'RUN'
+        return 'RUN'
+
+
+def draw_lean_overlay(op):
+    try:
+        import blf
+        import gpu
+        from .cut_engine import _draw_lines, _draw_squares, _shader
+        scene = bpy.context.scene
+        if not op._targets():
+            return
+        origin, axes, size = op.frame(scene)
+        c = op.projector.to_screen(origin)
+        if c is None:
+            return
+        sh = _shader()
+        gpu.state.blend_set('ALPHA')
+        colors = ((1.0, 0.35, 0.35), (0.45, 1.0, 0.45), (0.45, 0.65, 1.0))
+        for i, a in enumerate(axes):
+            for sign in (1, -1):
+                e = op.projector.to_screen(origin + a * size * 0.6 * sign)
+                if e is None:
+                    continue
+                on = op.axes[i] and ((op.flips[i] and sign > 0) or (not op.flips[i] and sign < 0) or not op.p.bisect)
+                col = (*colors[i], 1.0 if on else 0.35)
+                _draw_lines(sh, [c, e], col, width=4.0 if on else 1.5)
+                _draw_squares(sh, [e], col, 6.0 if on else 3.0)
+        _draw_squares(sh, [c], (1, 1, 1, 0.9), 4.0)
+        gpu.state.blend_set('NONE')
+        if op.mouse is not None:
+            blf.size(0, 14)
+            blf.color(0, 1, 1, 1, 0.95)
+            blf.position(0, op.mouse[0] + 18, op.mouse[1] + 14, 0)
+            blf.draw(0, 'Mirror ' + op.describe())
+    except Exception:          # never break viewport drawing
+        pass
+
+
+class MCH_OT_mirror_lean(MirrorLeanLogic, bpy.types.Operator):
+    bl_idname = 'mch.mirror_lean'
+    bl_label = 'Mirror (lean to copy)'
+    bl_description = ('Live mirror at once; lean the mouse toward the side to copy to. Enter = apply, '
+                      'click = keep live, Shift+click = add axis, X/Y/Z = axes, B = bisect, Esc = cancel')
+    bl_options = {'REGISTER', 'UNDO', 'BLOCKING'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and any(o.type == 'MESH' for o in context.selected_objects)
+
+    def invoke(self, context, event):
+        area = context.area
+        region = context.region
+        if area is None or area.type != 'VIEW_3D' or region is None or region.type != 'WINDOW':
+            self.report({'WARNING'}, 'Run Mirror from the 3D View')
+            return {'CANCELLED'}
+        from . import core_geometry as cg
+        projector = cg.Projector(region, context.region_data)
+        xy = (event.mouse_x - region.x, event.mouse_y - region.y)
+        if not self.start(context, region, projector, xy):
+            return {'CANCELLED'}
+        self._handle = bpy.types.SpaceView3D.draw_handler_add(draw_lean_overlay, (self,), 'WINDOW', 'POST_PIXEL')
+        context.window_manager.modal_handler_add(self)
+        self._area = area
+        self._status(context)
+        area.tag_redraw()
+        return {'RUNNING_MODAL'}
+
+    def _status(self, context, clear=False):
+        try:
+            context.workspace.status_text_set(None if clear else
+                                              'Mirror: lean the mouse toward the side to copy to | Enter / Space: '
+                                              'APPLY | Click: keep live | Shift+Click: add axis | X Y Z: axes | '
+                                              'B: bisect | Esc / RMB: cancel')
+        except (AttributeError, ReferenceError):
+            pass
+
+    def _end(self, context):
+        if getattr(self, '_handle', None) is not None:
+            bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
+            self._handle = None
+        self._status(context, clear=True)
+        try:
+            self._area.tag_redraw()
+        except (AttributeError, ReferenceError):
+            pass
+
+    def modal(self, context, event):
+        r = self.handle(context, event)
+        if r == 'PASS':
+            return {'PASS_THROUGH'}
+        if r == 'RUN':
+            self._area.tag_redraw()
+            return {'RUNNING_MODAL'}
+        self._end(context)
+        if r == 'CANCEL':
+            self.cancel()
+            self.report({'INFO'}, 'Mirror cancelled')
+            return {'CANCELLED'}
+        if r == 'APPLY':
+            self.report({'INFO'}, self.finish_apply(context))
+            return {'FINISHED'}
+        self.report({'INFO'}, self.finish_live(context.scene))
+        return {'FINISHED'}
+
+
+def start_lean_mirror(context):
+    """Picking the Mirror tool: start the lean mirror in the biggest 3D View
+    (the tool list may be another editor).  Returns True when started."""
+    if not getattr(context.scene.mch_mirror, 'auto_start', True) or context.mode != 'OBJECT' or \
+            not any(o.type == 'MESH' for o in context.selected_objects):
+        return False
+    win = context.window
+    screen = win.screen if win is not None else None
+    if screen is None:
+        return False
+    areas = sorted((a for a in screen.areas if a.type == 'VIEW_3D'), key=lambda a: -a.width * a.height)
+    for area in areas:
+        region = next((r for r in area.regions if r.type == 'WINDOW'), None)
+        if region is None:
+            continue
+        with context.temp_override(window=win, screen=screen, area=area, region=region):
+            return bpy.ops.mch.mirror_lean('INVOKE_DEFAULT') == {'RUNNING_MODAL'}
+    return False
 
 
 def _mirror_targets(context):
@@ -323,6 +680,16 @@ class MCH_PT_mirror(bpy.types.Panel):
         row.prop(p, 'x', toggle=True)
         row.prop(p, 'y', toggle=True)
         row.prop(p, 'z', toggle=True)
+        if p.bisect:
+            row = layout.row(align=True)
+            row.label(text='Copy toward +')
+            row.prop(p, 'flip_x', text='X', toggle=True)
+            row.prop(p, 'flip_y', text='Y', toggle=True)
+            row.prop(p, 'flip_z', text='Z', toggle=True)
+        r = layout.row()
+        r.scale_y = 1.5
+        r.operator('mch.mirror_lean', text='MIRROR: LEAN MOUSE TO SIDE', icon='MOUSE_MOVE')
+        layout.prop(p, 'auto_start')
         col = layout.column(align=True)
         col.prop(p, 'bisect')
         col.prop(p, 'clipping')
@@ -358,7 +725,7 @@ class MCH_PT_mirror(bpy.types.Panel):
 
 CLASSES = (
     MCH_PG_Mirror,
-    MCH_OT_mesh_mirror, MCH_OT_mesh_mirror_apply, MCH_OT_mesh_mirror_remove,
+    MCH_OT_mesh_mirror, MCH_OT_mesh_mirror_apply, MCH_OT_mesh_mirror_remove, MCH_OT_mirror_lean,
     MCH_OT_collection_mirror, MCH_OT_collection_mirror_remove,
     MCH_PT_mirror,
 )

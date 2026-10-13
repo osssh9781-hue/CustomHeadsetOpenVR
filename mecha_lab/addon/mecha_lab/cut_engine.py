@@ -114,6 +114,46 @@ def curve_handles(points, tangents, i):
     return ((p[0] - t[0] / 3.0, p[1] - t[1] / 3.0), (p[0] + t[0] / 3.0, p[1] + t[1] / 3.0))
 
 
+ROUND_LEVELS = (0.0, 0.12, 0.25, 0.42)   # straight -> soft -> medium -> strong -> straight (v0.7.2)
+
+
+def corner_handles(points, i, r):
+    """The two handle points of a rounded Curve Lasso corner (fraction r of each edge)."""
+    p = points[i]
+    a = points[i - 1]
+    b = points[(i + 1) % len(points)]
+    return ((p[0] + (a[0] - p[0]) * r, p[1] + (a[1] - p[1]) * r),
+            (p[0] + (b[0] - p[0]) * r, p[1] + (b[1] - p[1]) * r))
+
+
+def curve_lasso_loop(points, rounds, resolution):
+    """Closed outline with per-point quadratic Bezier rounding (v0.7.2 Curve
+    Lasso): a point with round 0 is a straight corner."""
+    n = len(points)
+    if n < 3:
+        return list(points)
+    out = []
+    res = max(2, int(resolution))
+    for i in range(n):
+        r = rounds[i] if i < len(rounds) else 0.0
+        p = points[i]
+        if r <= 1e-6:
+            out.append(p)
+            continue
+        h0, h1 = corner_handles(points, i, r)
+        for k in range(res + 1):
+            t = k / res
+            u = 1 - t
+            out.append((u * u * h0[0] + 2 * u * t * p[0] + t * t * h1[0],
+                        u * u * h0[1] + 2 * u * t * p[1] + t * t * h1[1]))
+    return out
+
+
+def next_round_level(cur):
+    idx = min(range(len(ROUND_LEVELS)), key=lambda k: abs(ROUND_LEVELS[k] - cur))
+    return ROUND_LEVELS[(idx + 1) % len(ROUND_LEVELS)]
+
+
 def curve_lasso_spline(points, sharp=(), overrides=(), resolution=12, smoothness=1.0, closed=True):
     """Smooth closed outline through the control points (cubic Bezier spans)."""
     n = len(points)
@@ -870,14 +910,11 @@ def draw_overlay(op):
                 _draw_squares(sh, [op.pts[0]], color, 5.5 if op.near_first else 4.0)
             if op.shape == 'CURVE_LASSO' and len(op.pts) >= 3:
                 handle_color = (0.3, 0.8, 1.0, 0.9)
-                tangents = op._tangents()
-                for i in range(len(op.pts)):
-                    if math.hypot(*tangents[i]) < 1e-6:
-                        _draw_squares(sh, [op.pts[i]], (1.0, 0.35, 0.35, 0.9), 3.0)   # sharp corner
-                        continue
-                    h_in, h_out = curve_handles(op.pts, tangents, i)
-                    _draw_lines(sh, [h_in, op.pts[i], h_out], handle_color, width=1.0)
-                    _draw_squares(sh, [h_in, h_out], handle_color, 2.5)
+                for i, r in enumerate(op.rounds[:len(op.pts)]):
+                    if r > 0:
+                        h0, h1 = corner_handles(op.pts, i, r)
+                        _draw_lines(sh, [h0, op.pts[i], h1], handle_color, width=1.0)
+                        _draw_squares(sh, [h0, h1], handle_color, 3.0)
     finally:
         gpu.state.line_width_set(1.0)
         gpu.state.blend_set('NONE')
@@ -1045,10 +1082,8 @@ class StrokeLogic:
     def _curve(self, pts=None):
         pts = self.pts if pts is None else pts
         n = len(pts)
-        sharp = list(self.sharp) + [False] * (n - len(self.sharp))
-        over = list(self.overrides) + [None] * (n - len(self.overrides))
-        return curve_lasso_spline(pts, sharp, over, self.brush.curve_resolution,
-                                  self.brush.curve_smoothness, closed=True)
+        rounds = list(self.rounds[:n]) + [0.0] * (n - len(self.rounds))
+        return curve_lasso_loop(pts, rounds, self.brush.curve_resolution)
 
     def _outline(self, loop):
         b = self.brush
@@ -1152,6 +1187,7 @@ class StrokeLogic:
         self.native_tool = ts.native_tool_id(context)
         self.pts, self.redo = [], []
         self.sharp, self.overrides = [], []
+        self.rounds = []            # Curve Lasso corner rounding per point (0 = straight)
         self.alt_latch = bool(event.alt)
         self.alt_held = bool(event.alt)
         self.shift_held = bool(event.shift)
@@ -1228,7 +1264,7 @@ class StrokeLogic:
             text = ('LMB point (drag = draw) | double-click anywhere or click start: close & apply | Enter | '
                     'Backspace/Ctrl+Z: undo point | Shift 45° | Alt invert | F open line')
             if self.shape == 'CURVE_LASSO':
-                text = ('LMB control point | click a point: sharp/smooth | drag point or handle | '
+                text = ('LMB control point (straight) | click a point: round soft / medium / strong / straight | drag point or handle | '
                         'double-click anywhere: close & apply | Backspace/Ctrl+Z: undo point')
             text += tail
         elif self.shape == 'STROKE':
@@ -1281,21 +1317,24 @@ class StrokeLogic:
         self.pts.append(p)
         self.sharp.append(False)
         self.overrides.append(None)
+        self.rounds.append(0.0)
         self.redo.clear()
         return True
 
     def _pop_point(self):
         if not self.pts:
             return False
-        self.redo.append((self.pts.pop(), self.sharp.pop(), self.overrides.pop()))
+        self.redo.append((self.pts.pop(), self.sharp.pop(), self.overrides.pop(),
+                          self.rounds.pop() if self.rounds else 0.0))
         return True
 
     def _redo_point(self):
         if self.redo and self.stage == 'POINTS':
-            p, sh, ov = self.redo.pop()
+            p, sh, ov, rd = self.redo.pop()
             self.pts.append(p)
             self.sharp.append(sh)
             self.overrides.append(ov)
+            self.rounds.append(rd)
 
     def _hit_point(self, xy):
         for i, p in enumerate(self.pts):
@@ -1304,18 +1343,16 @@ class StrokeLogic:
         return None
 
     def _hit_handle(self, xy):
-        """(point index, side) of a Curve Lasso handle under the cursor."""
+        """(point index, side) of a rounded Curve Lasso corner handle under the cursor."""
         if self.shape != 'CURVE_LASSO' or len(self.pts) < 3:
             return None
-        tangents = self._tangents()
-        for i in range(len(self.pts)):
-            if math.hypot(*tangents[i]) < 1e-6:
-                continue
-            h_in, h_out = curve_handles(self.pts, tangents, i)
-            if math.dist(h_out, xy) <= HIT_PX:
-                return (i, 1)
-            if math.dist(h_in, xy) <= HIT_PX:
-                return (i, -1)
+        for i, r in enumerate(self.rounds[:len(self.pts)]):
+            if r > 0:
+                h0, h1 = corner_handles(self.pts, i, r)
+                if math.dist(h1, xy) <= HIT_PX:
+                    return (i, 1)
+                if math.dist(h0, xy) <= HIT_PX:
+                    return (i, -1)
         return None
 
     def _clean_points(self):
@@ -1328,6 +1365,7 @@ class StrokeLogic:
                     j += 1
             self.sharp = [self.sharp[i] for i in idx]
             self.overrides = [self.overrides[i] for i in idx]
+            self.rounds = [self.rounds[i] for i in idx if i < len(self.rounds)]
             self.pts = keep
 
     def _current_loops(self, event_ctrl=False, event_shift=False):
@@ -1578,14 +1616,16 @@ class StrokeLogic:
             elif self.drag_handle is not None:
                 i, side = self.drag_handle
                 p = self.pts[i]
-                self.overrides[i] = (3.0 * (xy[0] - p[0]) * side, 3.0 * (xy[1] - p[1]) * side)
-                self.sharp[i] = False
+                nb = self.pts[i - 1] if side < 0 else self.pts[(i + 1) % len(self.pts)]
+                ref = max(math.dist(p, nb), 1e-6)
+                self.rounds[i] = max(0.0, min(0.5, math.dist(p, xy) / ref))
             elif self.free_drag and self.shape == 'LASSO':
                 # Holding LMB in Lasso draws continuously (freehand segment).
                 if math.dist(self.pts[-1], xy) >= max(self.brush.stroke_spacing * 2.0, DUP_PX + 1):
                     self.pts.append(xy)
                     self.sharp.append(False)
                     self.overrides.append(None)
+                    self.rounds.append(0.0)
                     self.redo.clear()
             self.near_first = (len(self.pts) >= 3 or (self.line_open and len(self.pts) >= 2)) and self._hit_start(xy)
         elif self.stage == 'SIDE':
@@ -1667,11 +1707,8 @@ class StrokeLogic:
                 moved = math.dist(xy, self.press_xy) > 3.0
                 if not moved and self.shape == 'CURVE_LASSO':
                     i = self.drag_index
-                    # click on a control point: smooth <-> sharp corner
-                    if self.overrides[i] is not None:
-                        self.overrides[i] = None
-                    else:
-                        self.sharp[i] = not self.sharp[i]
+                    # click on a control point: straight -> soft -> medium -> strong -> straight (v0.7.2)
+                    self.rounds[i] = next_round_level(self.rounds[i])
                 self.drag_index = None
             self.drag_handle = None
             self.free_drag = False

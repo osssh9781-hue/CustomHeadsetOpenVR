@@ -43,6 +43,28 @@ _preview_collection = None
 _items_cache = []
 
 
+BUILTIN_PREFIX = 'MCH_BUILTIN_'
+_BUILTIN = None
+_ADDON_DIR = Path(__file__).resolve().parent
+
+
+def builtin_shapes():
+    """[(stem, name, loops)] shipped with the add-on (shapes/builtin_shapes.json;
+    regenerate with tools_dev/make_shapes.py).  Never written to the user's folder."""
+    global _BUILTIN
+    if _BUILTIN is None:
+        try:
+            d = json.loads((_ADDON_DIR / 'shapes' / 'builtin_shapes.json').read_text(encoding='utf-8'))
+            _BUILTIN = [(BUILTIN_PREFIX + sh['stem'], sh['name'], sh['loops']) for sh in d.get('shapes', [])]
+        except (OSError, ValueError, KeyError):
+            _BUILTIN = []
+    return _BUILTIN
+
+
+def is_builtin(stem):
+    return bool(stem) and stem.startswith(BUILTIN_PREFIX)
+
+
 def preset_folder():
     return Path(bpy.utils.user_resource('CONFIG', path='mecha_lab/cut_shapes', create=True))
 
@@ -269,6 +291,11 @@ def import_png(filepath, name, mode='LUMINANCE', threshold=0.5, invert=False,
 
 def load_loops(stem):
     """Validated normalized loops for a preset; upgrades v0.5.9 (schema 1) files."""
+    if is_builtin(stem):
+        for b_stem, _name, loops in builtin_shapes():
+            if b_stem == stem:
+                return loops
+        raise cg.CutError('Built-in shape not found; reinstall Mecha Lab.')
     path = preset_folder() / (stem + '.json')
     if not path.is_file():
         raise cg.CutError('Select an imported PNG shape first (shape palette > thumbnails).')
@@ -311,6 +338,14 @@ def preset_icon(stem):
     global _preview_collection
     if _preview_collection is None:
         _preview_collection = previews.new()
+    if is_builtin(stem):
+        thumb = _ADDON_DIR / 'icons' / ('shape_' + stem[len(BUILTIN_PREFIX):].lower() + '.png')
+        if not thumb.is_file():
+            return 0
+        key = str(thumb)
+        if key not in _preview_collection:
+            _preview_collection.load(key, key, 'IMAGE')
+        return _preview_collection[key].icon_id
     try:
         d = json.loads((preset_folder() / (stem + '.json')).read_text(encoding='utf-8'))
     except (OSError, ValueError):
@@ -339,8 +374,11 @@ def list_presets():
 def preset_items(self, context):
     global _items_cache
     items = []
+    for i, (stem, name, _loops) in enumerate(builtin_shapes()):
+        items.append((stem, name, name + ' (built-in shape)', preset_icon(stem), i))
+    base = len(items)
     for i, (stem, name) in enumerate(list_presets()):
-        items.append((stem, name, name, preset_icon(stem), i))
+        items.append((stem, name, name, preset_icon(stem), base + i))
     if not items:
         items = [('NONE', 'No Cut Presets', 'Use Import PNG to add one', 0, 0)]
     _items_cache = items   # Blender requires enum strings to stay referenced.
@@ -404,6 +442,9 @@ class MCH_OT_delete_cut_preset(bpy.types.Operator):
 
     def execute(self, context):
         stem = context.scene.mch_png_preset
+        if is_builtin(stem):
+            self.report({'WARNING'}, 'Built-in shapes cannot be deleted')
+            return {'CANCELLED'}
         f = preset_folder() / (stem + '.json')
         if not f.is_file():
             return {'CANCELLED'}
@@ -436,7 +477,35 @@ class MCH_OT_stamp_png_cut(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_OT_import_cut_png, MCH_OT_delete_cut_preset, MCH_OT_stamp_png_cut)
+class MCH_OT_pick_stamp_shape(bpy.types.Operator):
+    """Use a built-in / imported shape as the stamp of Cut / Split (click = stamp, drag = size / rotate)"""
+    bl_idname = 'mch.pick_stamp_shape'
+    bl_label = 'Use Stamp Shape'
+    bl_options = {'REGISTER', 'INTERNAL'}
+
+    stem: StringProperty()
+
+    def execute(self, context):
+        try:
+            context.scene.mch_png_preset = self.stem
+        except TypeError:
+            self.report({'WARNING'}, 'Shape not available')
+            return {'CANCELLED'}
+        context.scene.mch_brush.shape = 'CUSTOM'
+        return {'FINISHED'}
+
+
+def draw_builtin_row(layout):
+    """One row of built-in shape buttons (icons) for the shape palette."""
+    row = layout.row(align=True)
+    for stem, name, _loops in builtin_shapes():
+        iid = preset_icon(stem)
+        kw = {'icon_value': iid} if iid else {'icon': 'MESH_PLANE'}
+        row.operator('mch.pick_stamp_shape', text='', **kw).stem = stem
+    return row
+
+
+CLASSES = (MCH_OT_import_cut_png, MCH_OT_delete_cut_preset, MCH_OT_stamp_png_cut, MCH_OT_pick_stamp_shape)
 
 
 def register():

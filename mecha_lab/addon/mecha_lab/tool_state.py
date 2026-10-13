@@ -248,14 +248,89 @@ class MCH_PG_Cut(bpy.types.PropertyGroup):
 CLASSES = (MCH_PG_Brush, MCH_PG_Cut)
 
 
+# -----------------------------------------------------------------------------
+# Ctrl+Z must not change the tool UI: the brush shape / stamp / selected Mecha
+# tool live in the Scene, so Blender's undo restored the shape picked before
+# (user report 0.11.2).  Snapshot them before undo/redo, put them back after.
+# -----------------------------------------------------------------------------
+
+UNDO_KEEP = (('mch_brush', 'shape'), ('mch_brush', 'line_open'), ('mch_settings', 'mch_active_tool'),
+             (None, 'mch_png_preset'))
+_undo_snapshot = {}
+
+
+def _owner(scene, group):
+    return scene if group is None else getattr(scene, group, None)
+
+
+def snapshot_ui_state(scene=None):
+    scene = scene or bpy.context.scene
+    _undo_snapshot.clear()
+    if scene is None:
+        return
+    _undo_snapshot['scene'] = scene.name
+    for group, attr in UNDO_KEEP:
+        owner = _owner(scene, group)
+        if owner is not None and hasattr(owner, attr):
+            _undo_snapshot[(group, attr)] = getattr(owner, attr)
+
+
+def restore_ui_state(scene=None):
+    scene = scene or bpy.context.scene
+    if scene is None or _undo_snapshot.get('scene') != scene.name:
+        return []
+    changed = []
+    for group, attr in UNDO_KEEP:
+        key = (group, attr)
+        owner = _owner(scene, group)
+        if key not in _undo_snapshot or owner is None or not hasattr(owner, attr):
+            continue
+        value = _undo_snapshot[key]
+        try:
+            if getattr(owner, attr) != value:
+                setattr(owner, attr, value)
+                changed.append(attr)
+        except (TypeError, AttributeError, ValueError):
+            pass          # e.g. a stamp preset that no longer exists
+    return changed
+
+
+@bpy.app.handlers.persistent
+def _on_undo_pre(scene, *_args):
+    try:
+        snapshot_ui_state(scene)
+    except (ReferenceError, AttributeError):
+        _undo_snapshot.clear()
+
+
+@bpy.app.handlers.persistent
+def _on_undo_post(scene, *_args):
+    try:
+        restore_ui_state(scene)
+    except (ReferenceError, AttributeError):
+        pass
+
+
+_UNDO_HANDLERS = (('undo_pre', _on_undo_pre), ('redo_pre', _on_undo_pre),
+                  ('undo_post', _on_undo_post), ('redo_post', _on_undo_post))
+
+
 def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Scene.mch_brush = bpy.props.PointerProperty(type=MCH_PG_Brush)
     bpy.types.Scene.mch_cut = bpy.props.PointerProperty(type=MCH_PG_Cut)
+    for name, fn in _UNDO_HANDLERS:
+        lst = getattr(bpy.app.handlers, name)
+        if fn not in lst:
+            lst.append(fn)
 
 
 def unregister():
+    for name, fn in _UNDO_HANDLERS:
+        lst = getattr(bpy.app.handlers, name)
+        while fn in lst:
+            lst.remove(fn)
     for n in ('mch_cut', 'mch_brush'):
         if hasattr(bpy.types.Scene, n):
             delattr(bpy.types.Scene, n)

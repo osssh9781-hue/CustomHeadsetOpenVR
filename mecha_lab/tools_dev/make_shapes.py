@@ -1,0 +1,113 @@
+"""Generate the built-in stamp shapes (addon/mecha_lab/shapes/builtin_shapes.json)
+and their palette icons (addon/mecha_lab/icons/shape_*.png).
+
+Step 1 (any Python):                              python3 make_shapes.py json
+Step 2 (Python with Pillow):                    python3 make_shapes.py icons
+"""
+import json
+import math
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+ADDON = ROOT / 'addon' / 'mecha_lab'
+OUT_JSON = ADDON / 'shapes' / 'builtin_shapes.json'
+
+# (stem, label) in palette order
+SHAPES = [
+    ('PENTAGON', 'Pentagon'),
+    ('TRAPEZOID', 'Trapezoid'),
+    ('PILLS3', 'Three Pills'),
+    ('TRIANGLE', 'Triangle'),
+    ('NOTCH_ROUND', 'Round Notch Box'),
+    ('NOTCH_POLY', 'Polygon Notch Box'),
+]
+
+
+def regular(n, r, start=math.pi / 2):
+    return [(r * math.cos(start + 2 * math.pi * i / n), r * math.sin(start + 2 * math.pi * i / n)) for i in range(n)]
+
+
+def normalize(loops):
+    """Centre on the bounding box, longest side = 1 (span -0.5 .. 0.5)."""
+    xs = [p[0] for lp in loops for p in lp]
+    ys = [p[1] for lp in loops for p in lp]
+    cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+    ext = max(max(xs) - min(xs), max(ys) - min(ys))
+    return [[[round((x - cx) / ext, 5), round((y - cy) / ext, 5)] for x, y in lp] for lp in loops]
+
+
+def notch_round():
+    w, h, r = 0.5, 0.35, 0.22
+    pts = [(-w, -h), (w, -h), (w, h), (r, h)]
+    n = 24
+    for i in range(1, n):
+        a = -math.pi * i / n          # 0 .. -180 deg: the bite goes down into the box
+        pts.append((r * math.cos(a), h + r * math.sin(a)))
+    pts += [(-r, h), (-w, h)]
+    return [pts]
+
+
+def notch_poly():
+    w, h = 0.5, 0.35
+    return [[(-w, -h), (w, -h), (w, h), (0.26, h), (0.13, 0.06), (-0.13, 0.06), (-0.26, h), (-w, h)]]
+
+
+def capsule(cx, cy, tilt, half, rad, n=12):
+    """Closed pill outline: axis tilted ``tilt`` from vertical (leans right)."""
+    ax = (math.sin(tilt), math.cos(tilt))
+    nx = (ax[1], -ax[0])                       # right-hand normal
+    top = (cx + ax[0] * half, cy + ax[1] * half)
+    bot = (cx - ax[0] * half, cy - ax[1] * half)
+    a0 = math.atan2(nx[1], nx[0])
+    pts = []
+    for i in range(n + 1):                    # top cap: from right side over to left side
+        a = a0 + math.pi * i / n
+        pts.append((top[0] + rad * math.cos(a), top[1] + rad * math.sin(a)))
+    for i in range(n + 1):                    # bottom cap: left side round to right side
+        a = a0 + math.pi + math.pi * i / n
+        pts.append((bot[0] + rad * math.cos(a), bot[1] + rad * math.sin(a)))
+    return pts
+
+
+def pills3():
+    """Three slanted pills side by side (vent slots): three separate outlines."""
+    tilt, half, rad = math.radians(30.0), 0.30, 0.10
+    gap = (2 * rad + 0.07) / math.cos(tilt)     # 0.07 clear space between neighbours
+    return [capsule((i - 1) * gap, 0.0, tilt, half, rad) for i in range(3)]
+
+
+def build_json():
+    data = {
+        'PENTAGON': [regular(5, 0.5)],
+        'TRAPEZOID': [[(-0.5, -0.32), (0.5, -0.32), (0.27, 0.32), (-0.27, 0.32)]],
+        'PILLS3': pills3(),
+        'TRIANGLE': [regular(3, 0.5)],
+        'NOTCH_ROUND': notch_round(),
+        'NOTCH_POLY': notch_poly(),
+    }
+    out = {'schema': 1, 'shapes': [{'stem': s, 'name': n, 'loops': normalize(data[s])} for s, n in SHAPES]}
+    OUT_JSON.parent.mkdir(parents=True, exist_ok=True)
+    OUT_JSON.write_text(json.dumps(out, separators=(',', ':')), encoding='utf-8')
+    print('wrote', OUT_JSON, [(s['stem'], sum(len(lp) for lp in s['loops'])) for s in out['shapes']])
+
+
+def build_icons():
+    from PIL import Image, ImageDraw
+    S, OUT = 512, 128
+    d = json.loads(OUT_JSON.read_text(encoding='utf-8'))
+    for sh in d['shapes']:
+        img = Image.new('RGBA', (S, S), (0, 0, 0, 0))
+        dr = ImageDraw.Draw(img)
+        dr.rounded_rectangle((8, 8, S - 8, S - 8), radius=72, fill=(38, 41, 48, 255))
+        for lp in sh['loops']:
+            pts = [(S / 2 + x * S * 0.78, S / 2 - y * S * 0.78) for x, y in lp]
+            dr.polygon(pts, fill=(255, 158, 40, 110))
+            dr.line(pts + [pts[0]], fill=(255, 158, 40, 255), width=18, joint='curve')
+        path = ADDON / 'icons' / f'shape_{sh["stem"].lower()}.png'
+        img.resize((OUT, OUT), Image.LANCZOS).save(path)
+        print('icon', path.name)
+
+
+if __name__ == '__main__':
+    {'json': build_json, 'icons': build_icons}[sys.argv[1] if len(sys.argv) > 1 else 'json']()

@@ -279,7 +279,8 @@ op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 450, 450))
 r = op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 550, 550))
 check('split stroke creates piece', r == {'FINISHED'} and 'Target_Split' in bpy.data.objects)
 
-# 13. Curve lasso: smooth from the start; click a point toggles sharp; handle drag
+# 13. Curve lasso (v0.7.2 rule restored in 0.11.3): straight corners first; clicking a
+# point cycles soft -> medium -> strong -> straight; dragging a handle sets the rounding
 t = setup('CURVE_LASSO')
 ctx, op = Ctx(), Op()
 op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 430, 430))
@@ -288,34 +289,35 @@ click(op, ctx, 570, 430)
 click(op, ctx, 570, 570)
 click(op, ctx, 430, 570)
 loop = op._curve()
-check('curve lasso is smooth by default (many samples)', len(loop) == 4 * bpy.context.scene.mch_brush.curve_resolution,
-      len(loop))
-bpy.context.scene.mch_brush.curve_resolution = 24
-check('more samples with higher resolution', len(op._curve()) == 96)
-bpy.context.scene.mch_brush.curve_resolution = 12
+check('curve lasso starts with straight corners (4 points, no rounding)', len(loop) == 4 and op.rounds == [0.0] * 4,
+      (len(loop), op.rounds))
 def turn_at(loop, target):
     i = min(range(len(loop)), key=lambda k: math.dist(loop[k], target))
     a, b, c = loop[i - 1], loop[i], loop[(i + 1) % len(loop)]
     v1 = (b[0] - a[0], b[1] - a[1])
     v2 = (c[0] - b[0], c[1] - b[1])
     return abs(math.degrees(math.atan2(v1[0] * v2[1] - v1[1] * v2[0], v1[0] * v2[0] + v1[1] * v2[1])))
-smooth_turn = turn_at(op._curve(), (570, 430))
-check('smooth curve has no corner at a control point (turn < 30 deg)', smooth_turn < 30, smooth_turn)
-CLOCK[0] += 1
-click(op, ctx, 570, 430)            # click point 1 -> sharp
-check('click on point toggles sharp', op.sharp[1] is True, op.sharp)
-check('sharp point is a real corner (turn > 60 deg)', turn_at(op._curve(), (570, 430)) > 60,
+check('straight point is a real corner (turn ~90 deg)', turn_at(op._curve(), (570, 430)) > 80,
       turn_at(op._curve(), (570, 430)))
+levels = []
+for k in range(4):
+    CLOCK[0] += 1
+    click(op, ctx, 570, 430)
+    levels.append(op.rounds[1])
+check('clicks on a point cycle soft / medium / strong / straight', levels == [0.12, 0.25, 0.42, 0.0], levels)
 CLOCK[0] += 1
-click(op, ctx, 570, 430)
-check('second click returns to smooth', op.sharp[1] is False)
-tan = op._tangents()
-h_out = ce.curve_handles(op.pts, tan, 2)[1]
+click(op, ctx, 570, 430)                       # soft again
+bpy.context.scene.mch_brush.curve_resolution = 12
+n_soft = len(op._curve())
+check('a rounded point adds curve samples (resolution + 1)', n_soft == 3 + 13, n_soft)
+check('rounded point has no sharp corner (turn < 30 deg)', turn_at(op._curve(), (570, 430)) < 30,
+      turn_at(op._curve(), (570, 430)))
+h1 = ce.corner_handles(op.pts, 1, op.rounds[1])[1]
 CLOCK[0] += 1
-op.modal(ctx, E('LEFTMOUSE', 'PRESS', h_out[0], h_out[1]))
-op.modal(ctx, E('MOUSEMOVE', 'NOTHING', h_out[0] + 30, h_out[1] + 30))
-op.modal(ctx, E('LEFTMOUSE', 'RELEASE', h_out[0] + 30, h_out[1] + 30))
-check('handle drag sets a Bezier tangent override', op.overrides[2] is not None, op.overrides)
+op.modal(ctx, E('LEFTMOUSE', 'PRESS', h1[0], h1[1]))
+op.modal(ctx, E('MOUSEMOVE', 'NOTHING', h1[0], h1[1] + 30))
+op.modal(ctx, E('LEFTMOUSE', 'RELEASE', h1[0], h1[1] + 30))
+check('handle drag changes the rounding amount', op.rounds[1] > 0.3, op.rounds)
 CLOCK[0] += 1
 check('three clicks on one curve point do NOT leave the tool', ('exit',) not in CALLS)
 op.modal(ctx, E('LEFTMOUSE', 'PRESS', 300, 520))
