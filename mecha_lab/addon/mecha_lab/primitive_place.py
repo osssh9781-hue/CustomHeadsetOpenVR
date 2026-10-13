@@ -3,11 +3,13 @@
 With the Primitive tool on, a SEMI-TRANSPARENT ghost of the chosen shape sits
 in the viewport with handles:
 
-* six arrows = size; each arrow moves only its own face (the opposite face
-  stays put, like Substance's asymmetric scaling)
-* a dial = spin around the shape's own Z axis
+* six squares on the faces = size; each moves only its own face (the
+  opposite face stays put, like Substance's asymmetric scaling)
+* three arrows = move along the shape's own axes, three dials = rotate,
+  two corner dots = uniform size (0.14.3)
 * a ring in the middle = move;  a click on a mesh = put the ghost there
   (aligned to the surface when "Align to Surface" is on)
+* Ctrl+Z / Ctrl+Shift+Z undo / redo ghost edits (own history)
 
 Enter       = ADD: the shape is merged into the mesh it overlaps (Boolean
               union).  Touching nothing -> it becomes a new object.
@@ -21,8 +23,8 @@ bevelled - the same seam-only finish as Cut's Edge Finish).
 Shapes: Box, Cylinder, Pill Cylinder (stadium cross-section: a cylinder whose
 round face is stretched), Sphere, Cone, Capsule.
 
-The ghost state lives on the WindowManager: Ctrl+Z does not move it and it is
-not saved into the user's .blend.
+The ghost state lives on the WindowManager (not saved into the user's .blend);
+its edits have their own undo history.
 
 Pure helpers (``ghost_geometry``, ``place_handles``, ``ghost_matrix``) are
 tested headless; drawing, handles and keys need a real viewport.
@@ -135,36 +137,41 @@ def _lathe(profile, n, sx, sy):
     return verts, faces, set(range(len(faces)))
 
 
-def ghost_geometry(kind, size, segments=32, top=0.0):
+def top_factors(kind, top=None):
+    """(top X, top Y) as fractions of the bottom.  ``None`` = the shape's own
+    default (Cone pointed, others straight); a number = both axes."""
+    if top is None:
+        return (0.0, 0.0) if kind == 'CONE' else (1.0, 1.0)
+    if isinstance(top, (int, float)):
+        return (float(top), float(top))
+    return (float(top[0]), float(top[1]))
+
+
+def ghost_geometry(kind, size, segments=32, top=None):
     """(verts, faces, smooth_face_indices) of the ghost shape in LOCAL space.
 
-    ``size`` = full (X, Y, Z) extents; ``top`` = Cone top size as a fraction of
-    the bottom (0 = pointed)."""
+    ``size`` = full (X, Y, Z) extents of the BOTTOM; ``top`` = top X / Y as a
+    fraction of the bottom (per axis: a box can become a wedge or a frustum,
+    0 / 0 = pointed).  Sphere and Capsule ignore ``top``."""
     sx, sy, sz = (max(1e-4, float(v)) for v in size)
     n = max(8, int(segments))
     hz = sz / 2.0
-    if kind == 'BOX':
-        x, y = sx / 2, sy / 2
-        verts = [(-x, -y, -hz), (x, -y, -hz), (x, y, -hz), (-x, y, -hz),
-                 (-x, -y, hz), (x, -y, hz), (x, y, hz), (-x, y, hz)]
-        faces = [(3, 2, 1, 0), (4, 5, 6, 7), (0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)]
-        return verts, faces, set()
-    if kind == 'CYLINDER':
-        loop = _ellipse(n, sx / 2, sy / 2)
-        return _prism(loop, loop, -hz, hz)
-    if kind == 'PILL':
-        loop = stadium(n, sx, sy)
-        return _prism(loop, loop, -hz, hz)
-    if kind == 'CONE':
-        t = max(0.0, min(1.0, float(top)))
-        bottom = _ellipse(n, sx / 2, sy / 2)
-        if t < 1e-3:
+    if kind in {'BOX', 'CYLINDER', 'PILL', 'CONE'}:
+        tx, ty = (max(0.0, min(5.0, v)) for v in top_factors(kind, top))
+        if kind == 'BOX':
+            bottom = [(-sx / 2, -sy / 2), (sx / 2, -sy / 2), (sx / 2, sy / 2), (-sx / 2, sy / 2)]
+        elif kind == 'PILL':
+            bottom = stadium(n, sx, sy)
+        else:
+            bottom = _ellipse(n, sx / 2, sy / 2)
+        m = len(bottom)
+        if tx < 1e-3 and ty < 1e-3:                  # pointed (cone / pyramid)
             verts = _ring(bottom, -hz) + [(0.0, 0.0, hz)]
-            apex = n
-            faces = [tuple(range(n - 1, -1, -1))]
-            faces += [(i, (i + 1) % n, apex) for i in range(n)]
-            return verts, faces, set(range(1, 1 + n))
-        return _prism(bottom, [(x * t, y * t) for x, y in bottom], -hz, hz)
+            faces = [tuple(range(m - 1, -1, -1))] + [(i, (i + 1) % m, m) for i in range(m)]
+            return verts, faces, (set() if kind == 'BOX' else set(range(1, 1 + m)))
+        tx, ty = max(tx, 1e-3), max(ty, 1e-3)
+        verts, faces, smooth = _prism(bottom, [(x * tx, y * ty) for x, y in bottom], -hz, hz)
+        return verts, faces, (set() if kind == 'BOX' else smooth)
     rings = max(4, n // 2)
     if kind == 'SPHERE':
         prof = [(math.sin(math.pi * i / rings), -math.cos(math.pi * i / rings) * hz) for i in range(rings + 1)]
@@ -188,6 +195,54 @@ def ghost_geometry(kind, size, segments=32, top=0.0):
     raise ValueError('Unknown shape: ' + str(kind))
 
 
+def ghost_shape(kind, size, segments=32, top=None, edge='NONE', width=0.05, edge_segments=3):
+    """``ghost_geometry`` + the edge finish (Bevel / Chamfer on every sharp edge,
+    angle > 30 deg; curved sides stay as they are).  Returns (verts, faces,
+    smooth face indices)."""
+    verts, faces, smooth = ghost_geometry(kind, size, segments, top)
+    if edge == 'NONE' or width <= 0:
+        return verts, faces, smooth
+    bm = bmesh.new()
+    try:
+        vs = [bm.verts.new(v) for v in verts]
+        for i, f in enumerate(faces):
+            face = bm.faces.new([vs[j] for j in f])
+            face.smooth = i in smooth
+        bm.normal_update()
+        sharp = [e for e in bm.edges if len(e.link_faces) == 2 and e.calc_face_angle(0.0) > math.radians(30)]
+        if sharp:
+            res = bmesh.ops.bevel(bm, geom=sharp + list({v for e in sharp for v in e.verts}),
+                                  offset=float(width), offset_type='OFFSET',
+                                  segments=1 if edge == 'CHAMFER' else max(1, int(edge_segments)),
+                                  profile=0.5, affect='EDGES', clamp_overlap=True, loop_slide=True)
+            if edge == 'BEVEL':
+                for f in res.get('faces', []):
+                    f.smooth = True
+        bm.verts.index_update()
+        out_v = [tuple(v.co) for v in bm.verts]
+        out_f = [tuple(v.index for v in f.verts) for f in bm.faces]
+        out_s = {i for i, f in enumerate(bm.faces) if f.smooth}
+        return out_v, out_f, out_s
+    finally:
+        bm.free()
+
+
+_SHAPE_CACHE = {}
+
+
+def st_shape(st):
+    """Cached ``ghost_shape`` for the ghost state."""
+    key = (st.kind, tuple(round(v, 6) for v in st.size), st.segments, round(st.top_x, 5), round(st.top_y, 5),
+           st.edge, round(st.edge_width, 6), st.edge_segments)
+    hit = _SHAPE_CACHE.get('v')
+    if hit is not None and hit[0] == key:
+        return hit[1]
+    out = ghost_shape(st.kind, st.size, st.segments, (st.top_x, st.top_y), st.edge, st.edge_width,
+                      st.edge_segments)
+    _SHAPE_CACHE['v'] = (key, out)
+    return out
+
+
 def signed_volume(verts, faces):
     """> 0 when the faces point outwards (used by the tests)."""
     vol = 0.0
@@ -205,12 +260,24 @@ def ghost_matrix(location, rotation):
     return Matrix.LocRotScale(Vector(location), q.normalized(), None)
 
 
-def place_handles(location, rotation, size, spin=0.0):
-    """World matrices of the handles.  Each size arrow starts on the OPPOSITE
-    face (which stays fixed while it is dragged) and points along its own axis;
-    its value (``offset``) is the full size on that axis."""
+UNIFORM_CORNERS = ((1, 1, 1), (-1, -1, 1))
+
+
+def place_handles(location, rotation, size, spin=0.0, dial_rotation=None):
+    """World matrices of the handles (0.14.3 layout).
+
+    * 'X+' .. 'Z-' size SQUARES: start on the OPPOSITE face (which stays fixed
+      while dragged), value = the full size, so the square sits on the face.
+    * 'MX' 'MY' 'MZ' MOVE arrows along the shape's own axes: their origin is
+      the point of the axis line nearest the world origin (it does not move
+      while dragging along the axis), value = location . axis + half size.
+    * 'RX' 'RY' 'RZ' rotation dials (``dial_rotation`` = the rotation at the
+      start of a drag, so a dial does not turn under the mouse).
+    * 'U0' 'U1' uniform-scale dots on two outer corners, value = half diagonal.
+    """
     m = ghost_matrix(location, rotation)
     rot = m.to_3x3()
+    loc = Vector(location)
     out = {}
     for i, axis in enumerate('XYZ'):
         for sign, tag in ((1, '+'), (-1, '-')):
@@ -219,9 +286,75 @@ def place_handles(location, rotation, size, spin=0.0):
             origin = m @ (-d * size[i] / 2.0)
             out[axis + tag] = _basis(origin, rot @ d, rot @ Vector((0.0, 0.0, 1.0)) if i != 2
                                      else rot @ Vector((1.0, 0.0, 0.0)))
+        a = (rot @ Vector([1.0 if j == i else 0.0 for j in range(3)])).normalized()
+        out['M' + axis] = _basis(loc - a * loc.dot(a), a, rot @ Vector((0.0, 0.0, 1.0)) if i != 2
+                                 else rot @ Vector((1.0, 0.0, 0.0)))
+    q = Quaternion(dial_rotation if dial_rotation is not None else rotation).normalized()
+    for i, axis in enumerate('XYZ'):
+        e = Vector([1.0 if j == i else 0.0 for j in range(3)])
+        hint = Vector((0.0, 1.0, 0.0)) if i != 1 else Vector((0.0, 0.0, 1.0))
+        out['R' + axis] = _basis(loc, q @ e, q @ hint)
+    for k, c in enumerate(UNIFORM_CORNERS):
+        d = Vector((c[0] * size[0], c[1] * size[1], c[2] * size[2])) / 2.0
+        if d.length < 1e-9:
+            d = Vector((0.0, 0.0, 1.0))
+        out['U%d' % k] = _basis(loc, rot @ d.normalized(), rot @ Vector((0.0, 0.0, 1.0)))
     unspin = Quaternion(rotation).normalized() @ Quaternion((0.0, 0.0, 1.0), -spin)
-    out['spin'] = _basis(Vector(location), unspin @ Vector((0.0, 0.0, 1.0)), unspin @ Vector((1.0, 0.0, 0.0)))
+    out['spin'] = _basis(loc, unspin @ Vector((0.0, 0.0, 1.0)), unspin @ Vector((1.0, 0.0, 0.0)))
     return out
+
+
+def move_along(location, rotation, size, axis, value):
+    """Move arrow: new location for arrow value ``value`` (see place_handles)."""
+    a = (Quaternion(rotation).normalized() @ Vector([1.0 if j == axis else 0.0 for j in range(3)])).normalized()
+    loc = Vector(location)
+    current = loc.dot(a) + size[axis] / 2.0
+    return loc + a * (float(value) - current)
+
+
+def uniform_size(size, value, minimum=1e-3):
+    """Uniform dot: every axis scaled by the same factor (value = half diagonal)."""
+    half = Vector(size).length / 2.0
+    if half < 1e-9:
+        return tuple(size)
+    f = max(float(value), 1e-6) / half
+    f = max(f, minimum / max(1e-9, min(size)))
+    return tuple(v * f for v in size)
+
+
+class DialSession:
+    """Rotation dial drags: Blender gives the dial's value from the start of
+    the drag; rotation = rotation at the start @ turn(value).  A drag that
+    pauses keeps going (same axis, value close to the last one)."""
+    WINDOW = 1.0
+
+    def __init__(self):
+        self.axis = None
+        self.q0 = None
+        self.last = 0.0
+        self.t = -1e9
+
+    def active(self, axis, now):
+        return self.axis == axis and now - self.t < self.WINDOW
+
+    def value(self, axis, now):
+        return self.last if self.active(axis, now) else 0.0
+
+    def turn(self, axis, value, current, now):
+        cont = self.axis == axis and (now - self.t < self.WINDOW or abs(value - self.last) < 0.3)
+        if not cont or self.q0 is None:
+            self.axis = axis
+            self.q0 = Quaternion(current).normalized()
+        self.last = float(value)
+        self.t = now
+        e = Vector([1.0 if j == axis else 0.0 for j in range(3)])
+        return self.q0 @ Quaternion(e, float(value))
+
+    def frame(self, now):
+        return self.q0 if (self.q0 is not None and now - self.t < self.WINDOW) else None
+
+
+DIAL = DialSession()
 
 
 def _basis(origin, z, x_hint):
@@ -273,21 +406,138 @@ def _redraw(self, context):
         pass
 
 
+EDGE_ITEMS = [
+    ('NONE', 'Sharp', 'Sharp edges'),
+    ('BEVEL', 'Bevel', 'Rounded edges (width / segments)'),
+    ('CHAMFER', 'Chamfer', 'One flat cut along every edge'),
+]
+
+# --- ghost history: Ctrl+Z / Ctrl+Shift+Z undo ghost edits (0.14.3) -----------
+# The ghost lives on the WindowManager (not in Blender's undo), so it keeps its
+# own small history: the state before every edit (a handle drag, a typed value,
+# a click) is pushed once the edit begins; an edit ends after a short pause.
+SNAP_KEYS = ('kind', 'size', 'location', 'rotation', 'top_x', 'top_y', 'segments', 'edge', 'edge_width',
+             'edge_segments')
+HISTORY = {'undo': [], 'redo': [], 'stable': None, 'last': 0.0, 'mute': False}
+SETTLE_SECONDS = 0.4
+HISTORY_LIMIT = 64
+
+
+def snapshot(st):
+    out = {}
+    for k in SNAP_KEYS:
+        v = getattr(st, k)
+        out[k] = tuple(v) if hasattr(v, '__len__') and not isinstance(v, str) else v
+    return out
+
+
+def restore(st, snap):
+    HISTORY['mute'] = True
+    try:
+        for k, v in snap.items():
+            setattr(st, k, v)
+    finally:
+        HISTORY['mute'] = False
+    HISTORY['stable'] = snapshot(st)
+
+
+def _now():
+    import time
+    return time.monotonic()
+
+
+def note_change(st, clock=None):
+    """Called on every ghost edit.  The first change after a pause pushes the
+    state from before it."""
+    if HISTORY['mute'] or st is None:
+        return
+    now = _now() if clock is None else clock
+    if HISTORY['stable'] is None:
+        HISTORY['stable'] = snapshot(st)
+        HISTORY['last'] = now
+        return
+    if now - HISTORY['last'] > SETTLE_SECONDS:
+        if not HISTORY['undo'] or HISTORY['undo'][-1] != HISTORY['stable']:
+            HISTORY['undo'].append(HISTORY['stable'])
+            del HISTORY['undo'][:-HISTORY_LIMIT]
+        HISTORY['redo'].clear()
+    HISTORY['last'] = now
+    if not bpy.app.background and not bpy.app.timers.is_registered(_settle_timer):
+        bpy.app.timers.register(_settle_timer, first_interval=SETTLE_SECONDS + 0.05)
+
+
+def settle(st):
+    """End the current edit: what is shown now is the new 'before' state."""
+    if st is not None:
+        HISTORY['stable'] = snapshot(st)
+    HISTORY['last'] = -1e9
+
+
+def _settle_timer():
+    if _now() - HISTORY['last'] < SETTLE_SECONDS:
+        return 0.1
+    try:
+        settle(state(bpy.context))
+    except (AttributeError, ReferenceError):
+        pass
+    return None
+
+
+def history_reset(st=None):
+    HISTORY['undo'].clear()
+    HISTORY['redo'].clear()
+    HISTORY['stable'] = snapshot(st) if st is not None else None
+    HISTORY['last'] = -1e9
+
+
+def ghost_undo(st):
+    settle_pending = _now() - HISTORY['last'] <= SETTLE_SECONDS
+    if settle_pending:                       # an edit is still "open": close it first
+        if HISTORY['stable'] is not None and HISTORY['stable'] != snapshot(st):
+            HISTORY['undo'].append(HISTORY['stable'])
+    if not HISTORY['undo']:
+        return False
+    HISTORY['redo'].append(snapshot(st))
+    restore(st, HISTORY['undo'].pop())
+    HISTORY['last'] = -1e9
+    return True
+
+
+def ghost_redo(st):
+    if not HISTORY['redo']:
+        return False
+    HISTORY['undo'].append(snapshot(st))
+    restore(st, HISTORY['redo'].pop())
+    HISTORY['last'] = -1e9
+    return True
+
+
+def _changed(self, context):
+    note_change(self)
+    _redraw(self, context)
+
+
 class MCH_PG_Place(bpy.types.PropertyGroup):
-    show: BoolProperty(name='Show Ghost', default=True, update=_redraw,
+    show: BoolProperty(name='Show Ghost', default=False, update=_redraw,
                        description='Semi-transparent shape to place with Enter (Alt+Enter: subtract)')
     placed: BoolProperty(default=False, options={'HIDDEN'})
-    kind: EnumProperty(name='Shape', items=KIND_ITEMS, default='BOX', update=_redraw)
+    kind: EnumProperty(name='Shape', items=KIND_ITEMS, default='BOX', update=_changed)
     size: FloatVectorProperty(name='Size', size=3, default=(1.0, 1.0, 1.0), min=0.001, soft_max=20.0,
-                              subtype='XYZ_LENGTH', unit='LENGTH', update=_redraw)
+                              subtype='XYZ_LENGTH', unit='LENGTH', update=_changed)
     location: FloatVectorProperty(name='Location', size=3, subtype='TRANSLATION', unit='LENGTH',
-                                  update=_redraw)
+                                  update=_changed)
     rotation: FloatVectorProperty(name='Rotation', size=4, subtype='QUATERNION',
-                                  default=(1.0, 0.0, 0.0, 0.0), update=_redraw)
+                                  default=(1.0, 0.0, 0.0, 0.0), update=_changed)
     spin: FloatProperty(default=0.0, options={'HIDDEN'})
-    top: FloatProperty(name='Top Size', default=0.0, min=0.0, max=1.0, subtype='FACTOR', update=_redraw,
-                       description='Cone top as a fraction of the bottom (0 = pointed)')
-    segments: IntProperty(name='Segments', default=32, min=8, max=256, update=_redraw)
+    top_x: FloatProperty(name='Top X', default=1.0, min=0.0, soft_max=2.0, max=5.0, update=_changed,
+                         description='Top face X size as a fraction of the bottom (1 = straight, 0 = pointed)')
+    top_y: FloatProperty(name='Top Y', default=1.0, min=0.0, soft_max=2.0, max=5.0, update=_changed,
+                         description='Top face Y size as a fraction of the bottom (1 = straight, 0 = pointed)')
+    edge: EnumProperty(name='Edges', items=EDGE_ITEMS, default='NONE', update=_changed)
+    edge_width: FloatProperty(name='Edge Width', default=0.05, min=0.0, soft_max=0.5, unit='LENGTH',
+                              update=_changed)
+    edge_segments: IntProperty(name='Edge Segments', default=3, min=1, max=16, update=_changed)
+    segments: IntProperty(name='Segments', default=32, min=8, max=256, update=_changed)
     merge: EnumProperty(name='Seam', items=MERGE_ITEMS, default='HARD')
     finish_width: FloatProperty(name='Seam Width', default=0.03, min=0.0, soft_max=0.5, unit='LENGTH')
     finish_segments: IntProperty(name='Seam Segments', default=3, min=1, max=16)
@@ -337,7 +587,7 @@ def ghost_visible(context):
 def ghost_mesh(st, name='MCH_Place_Mesh'):
     """Real mesh of the ghost (local space).  Its faces carry the cutter flag,
     so the seam-only finish knows which faces came from the shape."""
-    verts, faces, smooth = ghost_geometry(st.kind, st.size, st.segments, st.top)
+    verts, faces, smooth = st_shape(st)
     me = bpy.data.meshes.new(name)
     me.from_pydata(verts, [], faces)
     me.update()
@@ -424,6 +674,23 @@ def _object_scale(ob):
     return max(1e-6, (abs(s.x) + abs(s.y) + abs(s.z)) / 3.0)
 
 
+COMMITTED = {'sig': None}
+
+
+def ghost_signature(st):
+    return (tuple(round(v, 6) for v in st.location), tuple(round(v, 6) for v in st.rotation),
+            tuple(round(v, 6) for v in st.size), st.kind, round(st.top_x, 5), round(st.top_y, 5), st.edge,
+            round(st.edge_width, 6), st.edge_segments, st.segments)
+
+
+def mark_committed(st):
+    """Right after Enter the ghost sits exactly on the new surface: draw it
+    as an outline only (no fill fighting with the real faces) until it changes.
+    Ghost history starts fresh so Ctrl+Z goes to Blender's undo (the merge)."""
+    COMMITTED['sig'] = ghost_signature(st)
+    history_reset(st)
+
+
 def commit(context, st, subtract=False):
     """Merge (or carve) the ghost.  Returns a report string; raises
     cg.CutError when nothing could be done (the scene is unchanged)."""
@@ -432,7 +699,7 @@ def commit(context, st, subtract=False):
         raise cg.CutError('Primitive placement works in Object Mode.')
     ensure_placed(context)
     matrix = ghost_matrix(st.location, st.rotation)
-    verts, faces, _smooth = ghost_geometry(st.kind, st.size, st.segments, st.top)
+    verts, faces, _smooth = st_shape(st)
     targets = overlapping_meshes(context, matrix, verts, faces)
     label = dict((k, l) for k, l, _d in KIND_ITEMS)[st.kind]
     solver = getattr(getattr(context.scene, 'mch_cut', None), 'solver', 'AUTO')
@@ -452,6 +719,7 @@ def commit(context, st, subtract=False):
             ob.select_set(True)
             context.view_layer.objects.active = ob
             st.last = ob.name
+            mark_committed(st)
             return f'{label} added as new object "{ob.name}" (it touched no mesh)'
         targets = [target]
     cutter = cg.link_temp_object(context, ghost_mesh(st), 'MCH_Cutter_Place')
@@ -463,6 +731,9 @@ def commit(context, st, subtract=False):
                 cg.check_target(t)
                 station_primitive.freeze(t)
                 cg.ensure_real_mesh(context, t)
+                base = getattr(t, 'mch_base', None)
+                if base is not None and base.live:
+                    base.live = False        # a later live rebuild would wipe the merged shape
                 me, _solver = cg.boolean_result(context, t, cutter, 'DIFFERENCE' if subtract else 'UNION',
                                                 solver)
                 temp.append(me)
@@ -490,6 +761,7 @@ def commit(context, st, subtract=False):
         t.select_set(True)
     context.view_layer.objects.active = done[0]
     st.last = done[0].name
+    mark_committed(st)
     names = ', '.join(t.name for t in done)
     seam = '' if st.merge == 'HARD' else f' | {st.merge.title()} seam'
     tail = (' | skipped: ' + '; '.join(failed)) if failed else ''
@@ -624,10 +896,16 @@ class MCH_OT_place_shape(bpy.types.Operator):
 
     def execute(self, context):
         st = ensure_placed(context)
+        settle(st)                      # Ctrl+Z after this goes back to the previous shape
         if st.kind != self.kind:
+            previous = st.kind
             st.kind = self.kind
             if self.kind == 'PILL' and abs(st.size[0] - st.size[1]) < 1e-6:
                 st.size = (st.size[0] * 2.0, st.size[1], st.size[2])     # show the pill right away
+            if self.kind == 'CONE' and previous != 'CONE':
+                st.top_x = st.top_y = 0.0
+            elif previous == 'CONE' and st.top_x < 1e-3 and st.top_y < 1e-3:
+                st.top_x = st.top_y = 1.0
         st.show = True
         try:
             if ts.effective_tool(context) != 'PRIMITIVE':
@@ -635,6 +913,58 @@ class MCH_OT_place_shape(bpy.types.Operator):
                 activate_mecha_tool(context, 'PRIMITIVE')
         except (AttributeError, KeyError, TypeError, RuntimeError):
             pass
+        return {'FINISHED'}
+
+
+class MCH_OT_place_undo(bpy.types.Operator):
+    """Undo the last ghost edit (move / size / rotate / shape).  Ctrl+Z while the ghost is shown;
+    with no ghost edits left, Ctrl+Z is Blender's undo again"""
+    bl_idname = 'mch.place_undo'
+    bl_label = 'Undo Ghost Edit'
+    bl_options = {'INTERNAL'}
+
+    @classmethod
+    def poll(cls, context):
+        return state(context) is not None and bool(HISTORY['undo'] or
+                                                   (HISTORY['stable'] is not None and
+                                                    _now() - HISTORY['last'] <= SETTLE_SECONDS))
+
+    def execute(self, context):
+        if not ghost_undo(state(context)):
+            return {'CANCELLED'}
+        return {'FINISHED'}
+
+
+class MCH_OT_place_redo(bpy.types.Operator):
+    """Redo a ghost edit (Ctrl+Shift+Z while the ghost is shown)"""
+    bl_idname = 'mch.place_redo'
+    bl_label = 'Redo Ghost Edit'
+    bl_options = {'INTERNAL'}
+
+    @classmethod
+    def poll(cls, context):
+        return state(context) is not None and bool(HISTORY['redo'])
+
+    def execute(self, context):
+        return {'FINISHED'} if ghost_redo(state(context)) else {'CANCELLED'}
+
+
+class MCH_OT_place_undo_key(bpy.types.Operator):
+    """Ctrl+Z / Ctrl+Shift+Z in the Primitive tool: ghost edits first (gated, else Blender's undo)"""
+    bl_idname = 'mch.place_undo_key'
+    bl_label = 'Ghost Undo (key)'
+    bl_options = {'INTERNAL'}
+    redo: BoolProperty(default=False, options={'SKIP_SAVE'})
+
+    @classmethod
+    def poll(cls, context):
+        return ghost_visible(context) and (bool(HISTORY['redo']) or MCH_OT_place_undo.poll(context))
+
+    def execute(self, context):
+        st = state(context)
+        done = ghost_redo(st) if self.redo else ghost_undo(st)
+        if not done:
+            return {'PASS_THROUGH'}
         return {'FINISHED'}
 
 
@@ -711,18 +1041,41 @@ def make_size_accessors(axis, sign):
     return get, set_
 
 
-def _spin_get():
-    st = state(bpy.context)
-    return st.spin if st is not None else 0.0
+def make_move_accessors(axis):
+    def get():
+        st = state(bpy.context)
+        if st is None:
+            return 0.0
+        a = (Quaternion(st.rotation).normalized() @ Vector([1.0 if j == axis else 0.0 for j in range(3)]))
+        return Vector(st.location).dot(a.normalized()) + st.size[axis] / 2.0
+
+    def set_(value):
+        st = state(bpy.context)
+        if st is not None:
+            st.location = move_along(st.location, st.rotation, st.size, axis, value)
+    return get, set_
 
 
-def _spin_set(value):
+def make_dial_accessors(axis):
+    def get():
+        return DIAL.value(axis, _now())
+
+    def set_(value):
+        st = state(bpy.context)
+        if st is not None:
+            st.rotation = DIAL.turn(axis, value, st.rotation, _now())
+    return get, set_
+
+
+def _uniform_get():
     st = state(bpy.context)
-    if st is None:
-        return
-    delta = value - st.spin
-    st.rotation = Quaternion(st.rotation).normalized() @ Quaternion((0.0, 0.0, 1.0), delta)
-    st.spin = value
+    return Vector(st.size).length / 2.0 if st is not None else 1.0
+
+
+def _uniform_set(value):
+    st = state(bpy.context)
+    if st is not None:
+        st.size = uniform_size(st.size, value)
 
 
 def _move_get():
@@ -736,7 +1089,21 @@ def _move_set(value):
         st.location = value
 
 
+AXIS_COL = ((1.0, 0.35, 0.35), (0.45, 0.9, 0.35), (0.35, 0.6, 1.0))
+
+
+def _style(gz, col, alpha=0.9, scale=0.5):
+    gz.color = col
+    gz.alpha = alpha
+    gz.color_highlight = (1.0, 1.0, 1.0)
+    gz.alpha_highlight = 1.0
+    gz.scale_basis = scale
+
+
 class MCH_GGT_place(bpy.types.GizmoGroup):
+    """Squares on the faces = size (one side), arrows = move along the shape's
+    axes, three dials = rotate, two corner dots = uniform size, centre ring =
+    move freely."""
     bl_idname = 'MCH_GGT_place'
     bl_label = 'Primitive Ghost Handles'
     bl_space_type = 'VIEW_3D'
@@ -755,30 +1122,37 @@ class MCH_GGT_place(bpy.types.GizmoGroup):
                 get, set_ = make_size_accessors(i, sign)
                 gz.target_set_handler('offset', get=get, set=set_)
                 gz.draw_style = 'BOX'
-                gz.scale_basis = 0.5
-                gz.color = ((1.0, 0.35, 0.35), (0.45, 0.9, 0.35), (0.35, 0.6, 1.0))[i]
-                gz.alpha = 0.9
-                gz.color_highlight = (1.0, 1.0, 1.0)
-                gz.alpha_highlight = 1.0
+                _set_attr(gz, 'length', 0.0)          # the square sits on the face
+                _set_attr(gz, 'select_bias', 1.0)
+                _style(gz, AXIS_COL[i], 0.95, 0.45)
                 self.items[axis + tag] = gz
-        gz = self.gizmos.new('GIZMO_GT_dial_3d')
-        gz.target_set_handler('offset', get=_spin_get, set=_spin_set)
-        gz.draw_options = {'ANGLE_VALUE', 'ANGLE_START_Y'}
-        gz.scale_basis = 0.6
-        gz.color = (1.0, 0.62, 0.16)
-        gz.alpha = 0.8
-        gz.color_highlight = (1.0, 1.0, 1.0)
-        gz.alpha_highlight = 1.0
-        self.items['spin'] = gz
+            gz = self.gizmos.new('GIZMO_GT_arrow_3d')
+            get, set_ = make_move_accessors(i)
+            gz.target_set_handler('offset', get=get, set=set_)
+            gz.draw_style = 'NORMAL'
+            _set_attr(gz, 'length', 0.9)
+            _style(gz, AXIS_COL[i], 0.8, 0.7)
+            self.items['M' + axis] = gz
+            gz = self.gizmos.new('GIZMO_GT_dial_3d')
+            get, set_ = make_dial_accessors(i)
+            gz.target_set_handler('offset', get=get, set=set_)
+            gz.draw_options = {'ANGLE_VALUE', 'CLIP'}
+            _style(gz, AXIS_COL[i], 0.7, 0.9)
+            self.items['R' + axis] = gz
+        for k in range(len(UNIFORM_CORNERS)):
+            gz = self.gizmos.new('GIZMO_GT_arrow_3d')
+            gz.target_set_handler('offset', get=_uniform_get, set=_uniform_set)
+            gz.draw_style = 'BOX'
+            _set_attr(gz, 'draw_options', set())         # no stem: just a dot at the corner
+            _set_attr(gz, 'length', 0.0)
+            _style(gz, (0.95, 0.95, 0.95), 0.95, 0.35)
+            self.items['U%d' % k] = gz
         gz = self.gizmos.new('GIZMO_GT_move_3d')
         gz.target_set_handler('offset', get=_move_get, set=_move_set)
         gz.draw_style = 'RING_2D'
         gz.draw_options = {'ALIGN_VIEW', 'FILL'}
-        gz.scale_basis = 0.12
-        gz.color = (0.9, 0.9, 0.9)
-        gz.alpha = 0.6
+        _style(gz, (0.9, 0.9, 0.9), 0.6, 0.12)
         gz.color_highlight = (1.0, 0.62, 0.16)
-        gz.alpha_highlight = 1.0
         gz.matrix_basis = Matrix.Identity(4)
         self.items['move'] = gz
         self.base = {name: g.scale_basis for name, g in self.items.items()}
@@ -792,11 +1166,18 @@ class MCH_GGT_place(bpy.types.GizmoGroup):
         for name, g in self.items.items():
             g.scale_basis = self.base[name] * f
         loc = st.location if st.placed else context.scene.cursor.location
-        h = place_handles(loc, st.rotation, st.size, st.spin)
+        h = place_handles(loc, st.rotation, st.size, st.spin, DIAL.frame(_now()))
         for name, m in h.items():
             gz = self.items.get(name)
             if gz is not None:
                 gz.matrix_basis = m
+
+
+def _set_attr(gz, name, value):
+    try:
+        setattr(gz, name, value)
+    except (AttributeError, TypeError, ValueError):
+        pass
 
 
 # -----------------------------------------------------------------------------
@@ -807,11 +1188,11 @@ _GHOST_CACHE = {}
 
 
 def _ghost_tris(st):
-    key = (st.kind, tuple(round(v, 6) for v in st.size), st.segments, round(st.top, 4))
+    verts, faces, _s = st_shape(st)
+    key = id(faces)
     hit = _GHOST_CACHE.get('key')
     if hit is not None and hit[0] == key:
         return hit[1], hit[2]
-    verts, faces, _s = ghost_geometry(st.kind, st.size, st.segments, st.top)
     tris, lines = [], []
     for f in faces:
         for i in range(1, len(f) - 1):
@@ -834,6 +1215,12 @@ def _ghost_tris(st):
     return (verts, tris), lines
 
 
+def ghost_fill_alpha(st):
+    """0 right after Enter (outline only, no fill fighting with the new real
+    faces) until the ghost is moved or changed."""
+    return 0.0 if COMMITTED['sig'] == ghost_signature(st) else 0.25
+
+
 def _draw_ghost():
     try:
         context = bpy.context
@@ -850,16 +1237,22 @@ def _draw_ghost():
         sh = gpu.shader.from_builtin('UNIFORM_COLOR')
         gpu.state.blend_set('ALPHA')
         gpu.state.depth_mask_set(False)
+        fill = ghost_fill_alpha(st)
+        if fill > 0:
+            # front faces only: back faces showing through made the ghost look glitchy
+            gpu.state.face_culling_set('BACK')
+            gpu.state.depth_test_set('LESS_EQUAL')
+            sh.uniform_float('color', (*col, fill))
+            batch_for_shader(sh, 'TRIS', {'pos': world}, indices=tris).draw(sh)
+            gpu.state.face_culling_set('NONE')
         gpu.state.depth_test_set('LESS_EQUAL')
-        sh.uniform_float('color', (*col, 0.28))
-        batch_for_shader(sh, 'TRIS', {'pos': world}, indices=tris).draw(sh)
-        gpu.state.depth_test_set('NONE')
-        sh.uniform_float('color', (*col, 0.10))       # faint see-through part behind meshes
-        batch_for_shader(sh, 'TRIS', {'pos': world}, indices=tris).draw(sh)
         gpu.state.line_width_set(1.5)
-        sh.uniform_float('color', (*col, 0.9))
+        sh.uniform_float('color', (*col, 0.95))
         batch_for_shader(sh, 'LINES', {'pos': world}, indices=lines).draw(sh)
+        gpu.state.depth_test_set('NONE')            # faint outline of the hidden part
         gpu.state.line_width_set(1.0)
+        sh.uniform_float('color', (*col, 0.25))
+        batch_for_shader(sh, 'LINES', {'pos': world}, indices=lines).draw(sh)
         gpu.state.depth_mask_set(True)
         gpu.state.blend_set('NONE')
     except Exception:          # never break viewport drawing
@@ -872,17 +1265,13 @@ def _draw_ghost():
 
 
 def draw_shape_grid(layout, operator_id, current=None, columns=3):
-    """Even grid: big thumbnail on top, the name underneath (no staircase)."""
-    from .workspace_ui import icon_id, isz
+    """Even grid of tiles: a big clickable icon on top, the name underneath."""
+    from .workspace_ui import icon_tile
     grid = layout.grid_flow(row_major=True, columns=columns, even_columns=True, even_rows=True, align=False)
     for kind, label, _d in KIND_ITEMS:
-        cell = grid.column(align=True)
-        iid = icon_id(ICON_STEM[kind])
-        if iid:
-            cell.template_icon(icon_value=iid, scale=isz(2.4))
-        op = cell.operator(operator_id, text=label, icon='NONE' if iid else FALLBACK_ICON[kind],
-                           depress=(kind == current))
-        op.kind = kind
+        for op in icon_tile(grid, ICON_STEM[kind], FALLBACK_ICON[kind], operator_id, label, 2.4,
+                            depress=(kind == current)):
+            op.kind = kind
 
 
 def draw(layout, context):
@@ -893,13 +1282,25 @@ def draw(layout, context):
     head = box.row(align=True)
     head.label(text='PLACE SHAPES', icon='MESH_CUBE')
     head.prop(st, 'show', text='', icon='HIDE_OFF' if st.show else 'HIDE_ON')
-    draw_shape_grid(box, 'mch.place_shape', st.kind)
+    draw_shape_grid(box, 'mch.place_shape', st.kind if st.show else None)
+    if not st.show:
+        box.label(text='Pick a shape to place it', icon='INFO')
+        return
     col = box.column(align=True)
     col.prop(st, 'size')
-    if st.kind == 'CONE':
-        col.prop(st, 'top', slider=True)
+    if st.kind in {'BOX', 'CYLINDER', 'PILL', 'CONE'}:
+        col.label(text='Top / Bottom (top size as part of the bottom)')
+        r = col.row(align=True)
+        r.prop(st, 'top_x', slider=False)
+        r.prop(st, 'top_y', slider=False)
     if st.kind != 'BOX':
         col.prop(st, 'segments')
+    box.row(align=True).prop(st, 'edge', expand=True)
+    if st.edge != 'NONE':
+        r = box.row(align=True)
+        r.prop(st, 'edge_width', text='Width')
+        if st.edge == 'BEVEL':
+            r.prop(st, 'edge_segments', text='Seg')
     row = box.row(align=True)
     row.label(text='Turn 90')
     for a in ('X', 'Y', 'Z'):
@@ -908,6 +1309,9 @@ def draw(layout, context):
     row = box.row(align=True)
     row.prop(st, 'align_surface')
     row.operator('mch.place_to_cursor', text='', icon='PIVOT_CURSOR')
+    row = box.row(align=True)
+    row.operator('mch.place_undo', text='Undo Ghost', icon='LOOP_BACK')
+    row.operator('mch.place_redo', text='Redo', icon='LOOP_FORWARDS')
     box.label(text='Seam where it merges')
     box.row(align=True).prop(st, 'merge', expand=True)
     if st.merge != 'HARD':
@@ -921,9 +1325,9 @@ def draw(layout, context):
     row.operator('mch.place_commit', text='Subtract  (Alt+Enter)', icon='REMOVE').subtract = True
     sub = box.column(align=True)
     sub.scale_y = 0.8
-    sub.label(text='Click a mesh: move the ghost there', icon='INFO')
-    sub.label(text='Arrows: size (one side) | dial: turn | ring: move')
-    sub.label(text='Enter merges into the mesh it touches; Esc: hide')
+    sub.label(text='Squares: size (one side) | arrows: move', icon='INFO')
+    sub.label(text='Dials: rotate | corner dots: whole size')
+    sub.label(text='Click a mesh: move there | Ctrl+Z: undo ghost edits')
 
 
 class MCH_PT_place_shapes(bpy.types.Panel):
@@ -956,7 +1360,7 @@ class MCH_PT_place_shapes(bpy.types.Panel):
 # -----------------------------------------------------------------------------
 
 CLASSES = (MCH_PG_Place, MCH_OT_place_commit, MCH_OT_place_key, MCH_OT_place_alt, MCH_OT_place_click,
-           MCH_OT_place_shape, MCH_OT_place_rotate, MCH_OT_place_to_cursor, MCH_OT_place_hide, MCH_GGT_place,
+           MCH_OT_place_shape, MCH_OT_place_undo, MCH_OT_place_redo, MCH_OT_place_undo_key, MCH_OT_place_rotate, MCH_OT_place_to_cursor, MCH_OT_place_hide, MCH_GGT_place,
            MCH_PT_place_shapes)
 TOOL_KEYMAP = (
     # click = move the ghost there; drag = box select; Shift+click = select
@@ -977,6 +1381,9 @@ TOOL_KEYMAP = (
     ('mch.place_alt', {'type': 'RIGHT_ALT', 'value': 'PRESS', 'any': True}, {'properties': [('on', True)]}),
     ('mch.place_alt', {'type': 'LEFT_ALT', 'value': 'RELEASE', 'any': True}, {'properties': [('on', False)]}),
     ('mch.place_alt', {'type': 'RIGHT_ALT', 'value': 'RELEASE', 'any': True}, {'properties': [('on', False)]}),
+    ('mch.place_undo_key', {'type': 'Z', 'value': 'PRESS', 'ctrl': True}, None),
+    ('mch.place_undo_key', {'type': 'Z', 'value': 'PRESS', 'ctrl': True, 'shift': True},
+     {'properties': [('redo', True)]}),
     ('mch.primitive_rmb', {'type': 'RIGHTMOUSE', 'value': 'PRESS'}, None),
     ('mch.space_tools', {'type': 'SPACE', 'value': 'PRESS'}, None),
     ('mch.place_hide', {'type': 'ESC', 'value': 'PRESS'}, None),

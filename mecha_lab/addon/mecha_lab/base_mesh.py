@@ -95,6 +95,14 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
                          description='Draw = add to an orange sketch, Alt+draw = subtract from it; '
                                      'Enter makes the mesh (Alt+Enter cuts it into the mesh below). '
                                      'Off: every outline becomes a mesh at once (Alt+draw = cutter)')
+    surface_align: BoolProperty(name='Stick to Surface', default=True,
+                                description='Drawn over a mesh: the new solid sits ON that surface (turned to the '
+                                            'surface normal, its bottom sunk just enough to leave no gap). '
+                                            'Off: the solid faces the view (old behaviour)')
+    embed: FloatProperty(name='Sink Into Surface', default=0.0, min=0.0, soft_max=1.0, precision=4,
+                         unit='LENGTH', update=_rebuild_update,
+                         description='How far the bottom reaches into the surface it was drawn on '
+                                     '(set automatically so a curved surface leaves no gap)')
     live: BoolProperty(name='Live', default=False,
                        description='Settings rebuild this object (outline stored on the object)')
     outline: StringProperty(default='', options={'HIDDEN'})
@@ -405,6 +413,12 @@ def build_bmesh(groups, p, flip=False):
         LAST_NOTES.clear()
         if p.profile in {'BEVEL', 'CHAMFER'}:
             LAST_NOTES.extend(_bevel_rims(bm, p, rim_top, rim_bottom, flip))
+        embed = getattr(p, 'embed', 0.0)
+        if embed > 0:
+            # Stick to Surface: the bottom reaches into the surface (no gap on curves)
+            for v in bm.verts:
+                if v.co.z <= 1e-7:
+                    v.co.z -= embed
         if abs(p.offset) > 0:
             bmesh.ops.translate(bm, verts=bm.verts[:], vec=(0.0, 0.0, p.offset))
         if not bm.faces or any(not e.is_manifold for e in bm.edges):
@@ -476,15 +490,77 @@ def plane_frame(context, projector, groups):
     return origin, x, y, n
 
 
+def _outline_samples(outer, count=24):
+    step = max(1, len(outer) // count)
+    return [outer[i] for i in range(0, len(outer), step)]
+
+
+def surface_frame(context, projector, screen_groups, height=0.2):
+    """0.14.2+ Stick to Surface: (origin, X, Y, N, embed) for an outline drawn
+    over a mesh, or None (nothing under it / seen edge-on).
+
+    N = the average surface normal under the outline (turned toward the
+    viewer), origin = the surface point under the outline centre, embed = how
+    far the bottom must reach below that plane so a curved surface leaves no
+    gap (at least 2 % of the height, so the bottom never z-fights with a flat
+    surface)."""
+    outer = screen_groups[0][0]
+    c = (sum(q[0] for q in outer) / len(outer), sum(q[1] for q in outer) / len(outer))
+    try:
+        dg = context.evaluated_depsgraph_get()
+        o, d = projector.ray(c)
+        hit, loc, nrm, _i, ob, _m = context.scene.ray_cast(dg, o, d)
+    except (AttributeError, RuntimeError, TypeError):
+        return None
+    if not hit or ob is None or ob.type != 'MESH':
+        return None
+    name = ob.name
+    hits = [(Vector(loc), Vector(nrm))]
+    for q in _outline_samples(outer):
+        o2, d2 = projector.ray(q)
+        h2, l2, n2, _i2, ob2, _m2 = context.scene.ray_cast(dg, o2, d2)
+        if h2 and ob2 is not None and ob2.name == name:
+            hits.append((Vector(l2), Vector(n2)))
+    n = Vector((0.0, 0.0, 0.0))
+    for _p, nv in hits:
+        n += nv if nv.dot(-d) >= 0 else -nv
+    if n.length < 1e-9:
+        return None
+    n.normalize()
+    if abs(n.dot(projector.view_dir)) < 0.2:
+        return None                      # seen almost edge-on: drawing onto it would smear
+    origin = Vector(loc)
+    below = min((pt - origin).dot(n) for pt, _nv in hits)
+    embed = max(0.0, -below) + max(height * 0.02, 1e-5)
+    px = _plane_point(projector, (c[0] + 100.0, c[1]), origin, n)
+    x = px - origin
+    x = x - n * x.dot(n)
+    if x.length < 1e-12:
+        return None
+    x.normalize()
+    y = n.cross(x).normalized()
+    return origin, x, y, n, embed
+
+
 SESSION_KEY = 'mch_base_session'     # Scene ID prop: live Base Meshes made since the tool was entered
+
+
+def frame_for(context, projector, screen_groups):
+    """(origin, X, Y, N, embed): on the surface under the outline when Stick
+    to Surface is on and there is one, else facing the view (embed 0)."""
+    p = context.scene.mch_base
+    sf = surface_frame(context, projector, screen_groups, p.height) if getattr(p, 'surface_align', False) else None
+    if sf is not None:
+        return sf
+    return (*plane_frame(context, projector, screen_groups), 0.0)
 
 
 def _local_groups(context, loops, projector):
     screen_groups = cg.prepare_loops(loops)
-    origin, x, y, n = plane_frame(context, projector, screen_groups)
+    origin, x, y, n, embed = frame_for(context, projector, screen_groups)
 
     def to_local(q):
-        w = _plane_point(projector, q, origin, -n)
+        w = _plane_point(projector, q, origin, n)
         v = w - origin
         return (v.dot(x), v.dot(y))
     groups = [([to_local(q) for q in outer], [[to_local(q) for q in h] for h in holes])
@@ -493,22 +569,33 @@ def _local_groups(context, loops, projector):
     frame = Matrix.Identity(4)
     for r in range(3):
         frame[r][0], frame[r][1], frame[r][2], frame[r][3] = x[r], y[r], n[r], origin[r]
-    return groups, frame, screen_groups
+    return groups, frame, screen_groups, embed
 
 
 def perform_base(context, loops, projector, cutter=False, targets=None):
     """Create the new solid (or, ``cutter=True`` = Alt, cut it into the
     mesh below).  Returns a report string; raises CutError (scene untouched)."""
-    groups, frame, screen_groups = _local_groups(context, loops, projector)
+    groups, frame, screen_groups, embed = _local_groups(context, loops, projector)
     defaults = context.scene.mch_base
     if cutter:
         return _perform_cutter(context, groups, frame, defaults, projector, screen_groups, targets)
-    return _create_live_base(context, groups, frame, defaults)
+    return _create_live_base(context, groups, frame, defaults, embed)
 
 
-def _create_live_base(context, groups, frame, defaults):
+class _WithEmbed:
+    """Settings view: ``defaults`` with this shape's own embed."""
+
+    def __init__(self, base, embed):
+        self._base = base
+        self.embed = embed
+
+    def __getattr__(self, name):
+        return getattr(self._base, name)
+
+
+def _create_live_base(context, groups, frame, defaults, embed=0.0):
     """New live Base Mesh object from plane-local ``groups`` at ``frame``."""
-    bm = build_bmesh(groups, defaults)
+    bm = build_bmesh(groups, _WithEmbed(defaults, embed))
     me = bpy.data.meshes.new('MCH_BaseMesh')
     try:
         bm.to_mesh(me)
@@ -525,6 +612,7 @@ def _create_live_base(context, groups, frame, defaults):
     for key in SETTING_KEYS:
         setattr(live, key, getattr(defaults, key))
     live.profile = defaults.profile        # live is still False: no rebuild yet
+    live.embed = embed
     live.outline = json.dumps({'groups': [{'outer': g[0], 'holes': g[1]} for g in groups]})
     live.live = True
     session = list(context.scene.get(SESSION_KEY, []))
@@ -587,7 +675,7 @@ def _perform_cutter(context, groups, frame, p, projector, screen_groups, targets
         raise cg.CutError('Alt Base Mesh cuts into a mesh: start on a mesh or select the target first.')
     if p.profile == 'DOME':
         raise cg.CutError('Alt cutter supports Flat / Chamfer / Bevel profiles (Dome has no flat cap).')
-    bm = build_bmesh(groups, p, flip=True)
+    bm = build_bmesh(groups, _WithEmbed(p, 0.0), flip=True)
     try:
         # mirror along local Z (into the surface) and lift a hair above it so the
         # opening is not coplanar with the surface
@@ -772,11 +860,11 @@ def sketch_add(context, loops, projector, subtract=False):
     if data is None:
         if subtract:
             raise cg.CutError('Draw a shape first: Alt subtracts from the orange sketch.')
-        origin, x, y, n = plane_frame(context, projector, screen_groups)
+        origin, x, y, n, embed = frame_for(context, projector, screen_groups)
         frame = Matrix.Identity(4)
         for r in range(3):
             frame[r][0], frame[r][1], frame[r][2], frame[r][3] = x[r], y[r], n[r], origin[r]
-        data = {'frame': [frame[r][c] for r in range(4) for c in range(4)], 'items': []}
+        data = {'frame': [frame[r][c] for r in range(4) for c in range(4)], 'items': [], 'embed': embed}
     else:
         frame = sketch_frame(data)
     origin = frame.translation
@@ -819,7 +907,7 @@ def sketch_commit(context, cutter=False):
         targets = _sketch_cutter_targets(context, groups, frame)
         msg = _perform_cutter(context, groups, frame, scene.mch_base, None, None, targets)
     else:
-        msg = _create_live_base(context, groups, frame, scene.mch_base)
+        msg = _create_live_base(context, groups, frame, scene.mch_base, data.get('embed', 0.0))
     sketch_clear(scene)
     return msg
 

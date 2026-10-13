@@ -70,6 +70,71 @@ def handle_scale():
         return 1.0
 
 
+# 0.14.3: icon sizes survive a restart even when Blender's preferences are not
+# saved (Auto-Save Preferences off): they are kept in the add-on's own small
+# file in the user config folder.  Blender's own preference file is untouched.
+SIZE_KEYS = ('icon_scale', 'toolbar_scale', 'handle_scale')
+_SIZE_MUTE = [False]
+
+
+def sizes_path():
+    try:
+        folder = bpy.utils.user_resource('CONFIG', path='mecha_lab', create=True)
+    except (TypeError, ValueError, RuntimeError, OSError):
+        return ''
+    return os.path.join(folder, 'ui_sizes.json') if folder else ''
+
+
+def save_sizes(p=None):
+    import json
+    p = p or prefs()
+    path = sizes_path()
+    if p is None or not path or _SIZE_MUTE[0]:
+        return False
+    try:
+        with open(path, 'w', encoding='utf-8') as fh:
+            json.dump({k: float(getattr(p, k)) for k in SIZE_KEYS}, fh)
+        return True
+    except OSError:
+        return False
+
+
+def load_sizes(p=None):
+    import json
+    p = p or prefs()
+    path = sizes_path()
+    if p is None or not path or not os.path.isfile(path):
+        return False
+    try:
+        with open(path, encoding='utf-8') as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return False
+    _SIZE_MUTE[0] = True
+    try:
+        for k in SIZE_KEYS:
+            if isinstance(data.get(k), (int, float)):
+                setattr(p, k, float(data[k]))
+    finally:
+        _SIZE_MUTE[0] = False
+    return True
+
+
+def _sizes_changed(self, context):
+    save_sizes(self)
+    try:
+        for window in context.window_manager.windows:
+            for area in window.screen.areas:
+                area.tag_redraw()
+    except (AttributeError, ReferenceError):
+        pass
+
+
+def _deferred_load_sizes():
+    load_sizes()
+    return None
+
+
 def icon_id(stem):
     global _icons
     if _icons is None:
@@ -320,9 +385,7 @@ def activate_mecha_tool(context, tool_id):
             if area.type in {'VIEW_3D', 'PROPERTIES'}:
                 area.tag_redraw()
     if tool_id == 'PRIMITIVE' and previous != 'PRIMITIVE':
-        st = primitive_place.ensure_placed(context)      # 0.14: the ghost shows right away
-        if st is not None:
-            st.show = True
+        primitive_place.ensure_placed(context)   # 0.14.3: the ghost appears only once a shape is picked
     if tool_id == 'MIRROR' and previous != 'MIRROR':
         # 0.11.3: picking Mirror starts the live lean mirror right away
         try:
@@ -506,6 +569,24 @@ def draw_tool_rows(layout, context, scale=2.0):
             col.separator()
 
 
+def icon_tile(layout, icon, fallback, operator_id, text, scale, depress=False):
+    """One tile: a big CLICKABLE icon button with the name button under it.
+    Both run the same operator; the caller fills the properties of every
+    returned operator (0.14.3: the icon used to be a picture only).
+    ``icon`` = preview icon id or icon stem."""
+    iid = icon_id(icon) if isinstance(icon, str) else int(icon or 0)
+    cell = layout.column(align=True)
+    ops = []
+    if iid:
+        big = cell.row(align=True)
+        big.scale_y = isz(scale)                 # icon-only button, as tall as the old picture
+        ops.append(big.operator(operator_id, text='', icon_value=iid, depress=depress))
+        ops.append(cell.operator(operator_id, text=text, depress=depress))
+    else:
+        ops.append(cell.operator(operator_id, text=text, icon=fallback, depress=depress))
+    return ops
+
+
 def draw_tool_grid(layout, context, columns=4, scale=3.0, tools=None):
     """Grid of tiles: big icon above a name button (popup / sidebar fallback)."""
     active = ts.effective_tool(context)
@@ -514,15 +595,9 @@ def draw_tool_grid(layout, context, columns=4, scale=3.0, tools=None):
     sm.operator('mch.select_move', icon='RESTRICT_SELECT_OFF')
     grid = layout.grid_flow(row_major=True, columns=columns, even_columns=True, even_rows=True, align=False)
     for tid, label, desc, stem, fallback, native, status in tools or ts.VISIBLE_TOOLS:
-        box = grid.box()
-        col = box.column(align=True)
-        iid = icon_id(stem)
-        if iid:
-            col.template_icon(icon_value=iid, scale=isz(scale))
-        kw = {} if iid else {'icon': fallback}
         text = label + (' (todo)' if status == 'TODO' else '')
-        op = col.operator('mch.set_tool', text=text, depress=(tid == active), **kw)
-        op.tool = tid
+        for op in icon_tile(grid, stem, fallback, 'mch.set_tool', text, scale, depress=(tid == active)):
+            op.tool = tid
 
 
 def draw_shape_grid(layout, context, columns=4, scale=2.6):
@@ -531,15 +606,9 @@ def draw_shape_grid(layout, context, columns=4, scale=2.6):
     for sid, label, desc, stem, fallback in ts.SHAPES:
         if sid == 'CUSTOM':
             continue
-        box = grid.box()
-        col = box.column(align=True)
-        iid = icon_id(stem)
-        if iid:
-            col.template_icon(icon_value=iid, scale=isz(scale))
-        kw = {} if iid else {'icon': fallback}
-        op = col.operator('mch.set_shape', text=label, depress=(brush.shape == sid), **kw)
-        op.shape = sid
-        op.preset = ''
+        for op in icon_tile(grid, stem, fallback, 'mch.set_shape', label, scale, depress=(brush.shape == sid)):
+            op.shape = sid
+            op.preset = ''
 
 
 def draw_custom_grid(layout, context, columns=4, scale=3.0):
@@ -551,15 +620,10 @@ def draw_custom_grid(layout, context, columns=4, scale=3.0):
         layout.label(text='No PNG shapes yet', icon='INFO')
     grid = layout.grid_flow(row_major=True, columns=columns, even_columns=True, even_rows=True, align=False)
     for stem, name in presets[:48]:
-        box = grid.box()
-        col = box.column(align=True)
-        iid = cut_presets.preset_icon(stem)
-        if iid:
-            col.template_icon(icon_value=iid, scale=isz(scale))
-        op = col.operator('mch.set_shape', text=name[:18],
-                          depress=(brush.shape == 'CUSTOM' and current == stem))
-        op.shape = 'CUSTOM'
-        op.preset = stem
+        for op in icon_tile(grid, cut_presets.preset_icon(stem), 'IMAGE_DATA', 'mch.set_shape', name[:18], scale,
+                            depress=(brush.shape == 'CUSTOM' and current == stem)):
+            op.shape = 'CUSTOM'
+            op.preset = stem
     row = layout.row(align=True)
     row.operator('mch.import_cut_png', text='Import PNG Shape', icon='IMPORT')
     if presets:
@@ -1056,6 +1120,7 @@ class MCH_OT_icon_size_preset(bpy.types.Operator):
         if p is None:
             return {'CANCELLED'}
         p.icon_scale = p.toolbar_scale = p.handle_scale = self.factor
+        save_sizes(p)
         for window in context.window_manager.windows:
             for area in window.screen.areas:
                 area.tag_redraw()
@@ -1157,7 +1222,9 @@ class MCH_PT_tool_list(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         layout.label(text='MECHA LAB TOOLS')
-        draw_tool_rows(layout, context, scale=2.0)
+        # 0.14.3: tiles (icon above, name below) instead of rows with a wide name column;
+        # columns follow the width of the left area
+        draw_tool_grid(layout, context, columns=0, scale=2.2)
         layout.separator()
         layout.label(text='Space: tool menu', icon='EVENT_SPACEKEY')
 
@@ -1234,14 +1301,8 @@ def draw_profile_grid(layout, context, columns=4, scale=3.0):
         current = live.mch_base.profile
     grid = layout.grid_flow(row_major=True, columns=columns, even_columns=True, even_rows=True, align=False)
     for pid, label, desc, stem, fallback in base_mesh.PROFILES:
-        box = grid.box()
-        col = box.column(align=True)
-        iid = icon_id(stem)
-        if iid:
-            col.template_icon(icon_value=iid, scale=isz(scale))
-        kw = {} if iid else {'icon': fallback}
-        op = col.operator('mch.set_profile', text=label, depress=(pid == current), **kw)
-        op.profile = pid
+        for op in icon_tile(grid, stem, fallback, 'mch.set_profile', label, scale, depress=(pid == current)):
+            op.profile = pid
 
 
 class MCH_PT_profile_popup(bpy.types.Panel):
@@ -1288,10 +1349,13 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
     toolbar_labels: BoolProperty(name='Names Under Icons', default=True)
     toolbar_size: EnumProperty(name='Toolbar Size', items=[('S', 'S', ''), ('M', 'M', ''), ('L', 'L', '')], default='M')
     icon_scale: FloatProperty(name='Panel Icons', default=1.0, min=0.5, max=2.5, subtype='FACTOR',
+                              update=_sizes_changed,
                               description='Size of the Mecha Lab thumbnails in panels, menus and popups')
     toolbar_scale: FloatProperty(name='Bottom Toolbar', default=1.0, min=0.5, max=2.5, subtype='FACTOR',
+                                 update=_sizes_changed,
                                  description='Size of the bottom toolbar buttons and their names')
     handle_scale: FloatProperty(name='Viewport Handles', default=1.0, min=0.3, max=3.0, subtype='FACTOR',
+                                update=_sizes_changed,
                                 description='Size of the arrows, dials and dots of the Primitive / Station handles')
     quick_menu: BoolProperty(name='Quick Tool Menu (no key since 0.12)', default=True,
                              description='Six core tools at the mouse, only inside MECHA LAB (Object Mode)')
@@ -1384,6 +1448,8 @@ def register():
     # ("'_RestrictData' object has no attribute 'workspaces'"): check later.
     if not bpy.app.timers.is_registered(_deferred_ortho_check):
         bpy.app.timers.register(_deferred_ortho_check, first_interval=0.5)
+    if not load_sizes() and not bpy.app.timers.is_registered(_deferred_load_sizes):
+        bpy.app.timers.register(_deferred_load_sizes, first_interval=0.3)
 
 
 def unregister():

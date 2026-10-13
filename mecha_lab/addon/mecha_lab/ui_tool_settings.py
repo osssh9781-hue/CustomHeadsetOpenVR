@@ -422,6 +422,7 @@ def _draw_base_sketch(layout, context, base_mesh):
     box = layout.box()
     row = box.row(align=True)
     row.prop(sp, 'sketch', icon='GREASEPENCIL', toggle=True)
+    row.prop(sp, 'surface_align', icon='SNAP_FACE', toggle=True)
     data = base_mesh.sketch_data(context.scene)
     if not sp.sketch and data is None:
         box.label(text='Each outline becomes a mesh at once (Alt: cutter)')
@@ -485,6 +486,8 @@ def draw_base(layout, context):
     elif p.profile == 'FLAT':
         target.label(text='Flat: no bevel (choose Bevel / Chamfer for Bevel Sides)', icon='INFO')
     col.prop(p, 'offset')
+    if ob is not None and p.embed > 0:
+        col.prop(p, 'embed')
     if ob is not None:
         target.operator('mch.base_freeze', icon='FREEZE')
     draw_shape_options(layout, context, 'BASE')

@@ -1,8 +1,19 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.14.2 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.14.3 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## I. 0.14.3
+- [ ] Primitive 도구에 들어가도 파란 도형이 안 뜸. 도형을 누르면 뜸
+- [ ] 면의 네모 = 그 면만 크기, 화살표 = 그 축으로 이동, 다이얼 3개 = 회전(자연스러운지), 모서리 점 = 전체 크기
+- [ ] 도형 돌린 뒤 Ctrl+Z = 돌리기 전으로, Ctrl+Shift+Z = 다시
+- [ ] Top X / Top Y, Bevel / Chamfer: 미리보기와 Enter 결과 둘 다 반영
+- [ ] Enter 뒤 깜빡임·글리치 없음(외곽선만 남음), 도형 움직이면 다시 반투명
+- [ ] Station Primitive 핸들로 늘린 뒤 Ctrl+Z = 늘리기 전(파란 도형 안 나옴)
+- [ ] Base Mesh: 기울어진 면/둥근 면 위에 그리면 표면에 붙어서 생김. Stick to Surface 끄면 예전처럼
+- [ ] 왼쪽 툴 메뉴: 아이콘 위 / 이름 아래 타일, 아이콘을 눌러도 실행. 아이콘 크기가 적당한지
+- [ ] 아이콘 크기 바꾸고 Blender 껐다 켜도 유지
 
 ## J. 0.14.2 아이콘 크기
 - [ ] N 사이드바 > Mecha Lab > Icon Size: Panel Icons를 올리면 도구·도형 썸네일이 커짐, 내리면 작아짐

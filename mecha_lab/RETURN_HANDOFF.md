@@ -1,4 +1,13 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.14.2 (Claude Code, 2026-10-13)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.14.3 (Claude Code, 2026-10-13)
+
+## 0.14.3
+- ZIP sha256 `60c5632b16f86f805f8383c8d95db75b597111d1658c10362eee877c502a3858`, 1313/1313. `primitive_place`: `top_factors`, `ghost_geometry(top=(x,y))`, `ghost_shape`(bevel/chamfer),
+  `st_shape` 캐시, props `top_x/top_y/edge/edge_width/edge_segments`(show 기본 False), 도형 기록 `HISTORY/snapshot/restore/note_change/
+  settle/ghost_undo/ghost_redo` + `mch.place_undo/redo/undo_key`(Ctrl+Z), `place_handles`(X+..Z- 네모, MX/MY/MZ 이동, RX/RY/RZ 다이얼,
+  U0/U1 점), `move_along`, `uniform_size`, `DialSession`, `COMMITTED/mark_committed/ghost_fill_alpha`, 면 컬링. 합칠 때 live Base Mesh 동결.
+  `station_gizmos`: `note_handle_edit/flush_handle_undo`(ed.undo_push). `station_primitive.create`: 도형 숨김.
+  `base_mesh`: `surface_align`, `embed`, `surface_frame`, `frame_for`, `_WithEmbed`. `workspace_ui`: `icon_tile`, 툴 목록 격자,
+  `save_sizes/load_sizes`(config/mecha_lab/ui_sizes.json).
 
 ## 0.14.2
 - ZIP sha256 `d87a87ef336679dbe52ae6b93a0e4afbe9c3ec3e79656634f7966e4f72aeb610`, 1260/1260. `workspace_ui`: prefs `icon_scale / toolbar_scale / handle_scale`, `isz(base)`, `handle_scale()`,

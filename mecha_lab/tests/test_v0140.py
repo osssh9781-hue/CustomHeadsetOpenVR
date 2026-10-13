@@ -24,7 +24,7 @@ def closed(verts, faces):
 
 SIZE = (2.0, 1.0, 0.6)
 for kind in pp.KINDS:
-    v, f, smooth = pp.ghost_geometry(kind, SIZE, 24, 0.4 if kind == 'CONE' else 0.0)
+    v, f, smooth = pp.ghost_geometry(kind, SIZE, 24, 0.4 if kind == 'CONE' else None)
     nm, vol = closed(v, f)
     ext = [max(p[i] for p in v) - min(p[i] for p in v) for i in range(3)]
     check(f'{kind}: closed shell with outward faces (volume {vol:.3f})', nm == 0 and vol > 0, (nm, vol))
@@ -96,11 +96,13 @@ keys = {(k[1]['type'], k[1].get('alt', False)): k for k in pp.TOOL_KEYMAP if k[0
 check('Enter = add, Alt+Enter = subtract', ('RET', False) in keys and keys[('RET', True)][2]['properties'] ==
       [('subtract', True)])
 st = wm.mch_place
-check('ghost state on the WindowManager (not undone, not in the user file)', st is not None and st.kind == 'BOX')
+check('ghost state on the WindowManager (not in the user file); hidden until a shape is picked',
+      st is not None and st.kind == 'BOX' and st.show is False)
 
 # ---- Enter: no mesh touched -> new object
 st.location = (10, 0, 0)
 st.placed = True
+st.show = True
 st.size = (1, 1, 1)
 before = set(bpy.data.objects)
 res = bpy.ops.mch.place_commit(subtract=False)

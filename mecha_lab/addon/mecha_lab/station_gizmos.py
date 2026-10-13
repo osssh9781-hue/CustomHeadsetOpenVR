@@ -87,6 +87,56 @@ def _station(ob_name, index):
     return ob, p.stations[index]
 
 
+# 0.14.3: a handle drag changes properties directly, which makes no undo step
+# of its own: Ctrl+Z then jumped back past the creation of the primitive (it
+# vanished and the blue ghost box showed up).  One undo step is pushed when a
+# drag pauses / ends.
+UNDO = {'last': 0.0, 'pending': False}
+UNDO_SETTLE = 0.35
+
+
+def _clock():
+    import time
+    return time.monotonic()
+
+
+def note_handle_edit(now=None):
+    UNDO['last'] = _clock() if now is None else now
+    UNDO['pending'] = True
+    if not bpy.app.background and not bpy.app.timers.is_registered(_undo_timer):
+        bpy.app.timers.register(_undo_timer, first_interval=UNDO_SETTLE + 0.05)
+
+
+def flush_handle_undo(now=None):
+    """Push the undo step if the last handle edit is old enough.  Returns
+    True when a step was pushed (testable without a window)."""
+    now = _clock() if now is None else now
+    if not UNDO['pending'] or now - UNDO['last'] < UNDO_SETTLE:
+        return False
+    UNDO['pending'] = False
+    try:
+        bpy.ops.ed.undo_push(message='Station Primitive handle')
+    except RuntimeError:
+        win = next(iter(bpy.context.window_manager.windows), None) if bpy.context.window_manager else None
+        if win is None:
+            return False
+        try:
+            with bpy.context.temp_override(window=win):
+                bpy.ops.ed.undo_push(message='Station Primitive handle')
+        except RuntimeError:
+            return False
+    return True
+
+
+def _undo_timer():
+    if not UNDO['pending']:
+        return None
+    if _clock() - UNDO['last'] < UNDO_SETTLE:
+        return 0.1
+    flush_handle_undo()
+    return None
+
+
 def make_accessors(ob_name, index, key):
     """(get, set) for a gizmo target; angles in radians for the dials.  With
     Left = Right the right width handle edits the shared (left) value."""
@@ -116,6 +166,7 @@ def make_accessors(ob_name, index, key):
         elif key == 'length':
             value = max(0.0, value)
         setattr(st, k, value)
+        note_handle_edit()
     return get, set_
 
 

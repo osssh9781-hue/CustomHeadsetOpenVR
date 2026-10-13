@@ -324,18 +324,15 @@ class MCH_MT_primitive_picker(bpy.types.Menu):
 
 
 def draw_kind_grid(layout, operator_id, current=None, columns=3):
-    """Even grid of the five live-primitive shapes: thumbnail on top, name below."""
-    from .workspace_ui import icon_id, isz
+    """Even grid of the five live-primitive shapes: clickable icon on top, name below."""
+    from .workspace_ui import icon_tile
     fallback = {'BOX': 'MESH_CUBE', 'CYLINDER': 'MESH_CYLINDER', 'SPHERE': 'MESH_UVSPHERE',
                 'CONE': 'MESH_CONE', 'CAPSULE': 'MESH_CAPSULE'}
     grid = layout.grid_flow(row_major=True, columns=columns, even_columns=True, even_rows=True, align=False)
     for kind, label, _ in KIND_ITEMS:
-        cell = grid.column(align=True)
-        iid = icon_id('primitive_' + kind.lower())
-        if iid:
-            cell.template_icon(icon_value=iid, scale=isz(1.6))
-        cell.operator(operator_id, text=label, icon='NONE' if iid else fallback[kind],
-                      depress=(kind == current)).kind = kind
+        for op in icon_tile(grid, 'primitive_' + kind.lower(), fallback[kind], operator_id, label, 1.6,
+                            depress=(kind == current)):
+            op.kind = kind
 
 
 class MCH_OT_primitive_rmb(bpy.types.Operator):

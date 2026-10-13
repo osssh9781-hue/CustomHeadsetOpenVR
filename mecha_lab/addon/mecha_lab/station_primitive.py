@@ -223,6 +223,10 @@ def create(context, preset='PANEL'):
         o.select_set(False)
     ob.select_set(True)
     context.view_layer.objects.active = ob
+    try:                                   # 0.14.3: editing it now, not placing ghost shapes
+        context.window_manager.mch_place.show = False
+    except AttributeError:
+        pass
     return ob
 
 
