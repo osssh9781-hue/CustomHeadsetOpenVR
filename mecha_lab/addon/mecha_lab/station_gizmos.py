@@ -155,6 +155,7 @@ class MCH_GGT_station_handles(bpy.types.GizmoGroup):
         ob = context.active_object
         p = ob.mch_station
         self._clear()
+        self.base = {}
         self.sig = (ob.name, len(p.stations), p.active, p.sym_lr)
         for i in range(len(p.stations)):
             gz = self.gizmos.new('GIZMO_GT_move_3d')
@@ -216,6 +217,13 @@ class MCH_GGT_station_handles(bpy.types.GizmoGroup):
         p = ob.mch_station
         if self.sig != (ob.name, len(p.stations), p.active, p.sym_lr):
             self._build(context)
+        from .workspace_ui import handle_scale
+        f = handle_scale()
+        for key, gz in self.items.items():
+            base = self.base.get(key)
+            if base is None:
+                base = self.base[key] = gz.scale_basis
+            gz.scale_basis = base * f
         h = station_handles(ob)
         for i, m in h['dots']:
             gz = self.items.get(('dot', i))

@@ -40,13 +40,15 @@ def ui_active(context):
     return (ts.is_mecha_workspace(getattr(context, 'workspace', None)) and context.mode == 'OBJECT')
 
 
-def toolbar_layout(region_width, ui_scale=1.0, count=len(BAR_TOOLS), size='M', margin=26.0):
-    """Centres (x, y) of the toolbar buttons in region pixels, bottom centre."""
-    d = SIZES.get(size, SIZES['M']) * ui_scale
-    gap = 8.0 * ui_scale
+def toolbar_layout(region_width, ui_scale=1.0, count=len(BAR_TOOLS), size='M', margin=26.0, factor=1.0):
+    """Centres (x, y) of the toolbar buttons in region pixels, bottom centre.
+    ``factor`` = Preferences > Icon Size > Bottom Toolbar."""
+    f = max(0.3, float(factor))
+    d = SIZES.get(size, SIZES['M']) * ui_scale * f
+    gap = 8.0 * ui_scale * max(1.0, f)       # room for the names under bigger buttons
     total = count * d + (count - 1) * gap
     x0 = region_width / 2.0 - total / 2.0 + d / 2.0
-    y = margin * ui_scale + d / 2.0
+    y = margin * ui_scale * max(0.8, f) + d / 2.0
     return [(x0 + i * (d + gap), y) for i in range(count)], d
 
 
@@ -237,7 +239,8 @@ class MCH_GGT_bottom_toolbar(bpy.types.GizmoGroup):
     def draw_prepare(self, context):
         region = context.region
         ui = context.preferences.system.ui_scale
-        pos, d = toolbar_layout(region.width, 1.0, len(self.buttons), _pref('toolbar_size', 'M'))
+        pos, d = toolbar_layout(region.width, 1.0, len(self.buttons), _pref('toolbar_size', 'M'),
+                                factor=_pref('toolbar_scale', 1.0))
         active = current_bar_tool(context)
         for (tid, gz), (x, y) in zip(self.buttons, pos):
             # 'SCALE' multiplies the gizmo by the UI scale; positions are in region px
@@ -258,15 +261,16 @@ def _draw_labels():
         import blf
         region = context.region
         ui = context.preferences.system.ui_scale
-        pos, d = toolbar_layout(region.width, 1.0, len(BAR_TOOLS), _pref('toolbar_size', 'M'))
+        f = _pref('toolbar_scale', 1.0)
+        pos, d = toolbar_layout(region.width, 1.0, len(BAR_TOOLS), _pref('toolbar_size', 'M'), factor=f)
         active = current_bar_tool(context)
         font = 0
-        blf.size(font, 10 * ui)
+        blf.size(font, 10 * ui * max(0.6, f))
         for (tid, label, *_), (x, y) in zip(BAR_TOOLS, pos):
             w, _h = blf.dimensions(font, label)
             on = tid == active
             blf.color(font, *(ACCENT if on else (0.85, 0.87, 0.9)), 1.0)
-            blf.position(font, x * ui - w / 2, (y - d / 2 - 12) * ui, 0)
+            blf.position(font, x * ui - w / 2, (y - d / 2 - 12 * max(0.6, f)) * ui, 0)
             blf.draw(font, label)
     except Exception:            # never break viewport drawing
         pass

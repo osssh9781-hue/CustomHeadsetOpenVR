@@ -67,8 +67,9 @@ def draw_shape_options(layout, context, mode):
         from . import cut_presets
         cut_presets.draw_builtin_row(box)
         row = box.row(align=True)
-        row.template_icon_view(context.scene, 'mch_png_preset', show_labels=True, scale=5.0,
-                               scale_popup=5.0)
+        from .workspace_ui import isz
+        row.template_icon_view(context.scene, 'mch_png_preset', show_labels=True, scale=isz(5.0),
+                               scale_popup=isz(5.0))
         row = box.row(align=True)
         row.operator('mch.import_cut_png', text='Import PNG', icon='IMPORT')
         if context.scene.mch_png_preset != 'NONE' and not cut_presets.is_builtin(context.scene.mch_png_preset):

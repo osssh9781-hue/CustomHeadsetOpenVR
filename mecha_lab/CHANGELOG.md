@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 0.14.2 — 아이콘 크기 탭 (2026-10-13)
+
+- 오른쪽 사이드바(N) > Mecha Lab 탭에 **Icon Size** 패널 추가(Preferences > Add-ons > Mecha Lab에도 같은 항목).
+  - **Panel Icons** (0.5–2.5): 패널·메뉴·팝업의 도구/도형/프로필/PNG 썸네일 크기.
+  - **Bottom Toolbar** (0.5–2.5): 아래 툴바 버튼 크기 + 버튼 사이 간격 + 이름 글자 크기. 기존 S/M/L과 곱해짐.
+  - **Viewport Handles** (0.3–3.0): Primitive 반투명 도형과 Station Primitive 핸들(화살표·다이얼·점) 크기.
+  - 프리셋 버튼 Small / Normal / Large / Huge = 세 값을 한 번에.
+  - 기본값은 모두 1.0이라 움직이기 전에는 지금과 같음. 값은 애드온 설정에 저장(사용자 .blend 파일은 바뀌지 않음).
+- 테스트: 26개 파일 1260/1260 (`tests/test_log_bpy501_v0142.txt`), 신규 `test_v0142.py` 13항목. ZIP sha256 `d87a87ef336679dbe52ae6b93a0e4afbe9c3ec3e79656634f7966e4f72aeb610`.
+
 ## 0.14.1 — Base Mesh 스케치 먼저 (주황색 모양 그리기 → 확정하면 메시) (2026-10-13)
 
 - **Sketch First** (Base Mesh, 기본 켜짐): 그린 모양이 바로 메시가 되지 않고 주황색 스케치로 남음.

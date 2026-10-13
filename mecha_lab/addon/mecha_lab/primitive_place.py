@@ -781,11 +781,16 @@ class MCH_GGT_place(bpy.types.GizmoGroup):
         gz.alpha_highlight = 1.0
         gz.matrix_basis = Matrix.Identity(4)
         self.items['move'] = gz
+        self.base = {name: g.scale_basis for name, g in self.items.items()}
 
     def draw_prepare(self, context):
         st = state(context)
         if st is None:
             return
+        from .workspace_ui import handle_scale
+        f = handle_scale()
+        for name, g in self.items.items():
+            g.scale_basis = self.base[name] * f
         loc = st.location if st.placed else context.scene.cursor.location
         h = place_handles(loc, st.rotation, st.size, st.spin)
         for name, m in h.items():
@@ -868,13 +873,13 @@ def _draw_ghost():
 
 def draw_shape_grid(layout, operator_id, current=None, columns=3):
     """Even grid: big thumbnail on top, the name underneath (no staircase)."""
-    from .workspace_ui import icon_id
+    from .workspace_ui import icon_id, isz
     grid = layout.grid_flow(row_major=True, columns=columns, even_columns=True, even_rows=True, align=False)
     for kind, label, _d in KIND_ITEMS:
         cell = grid.column(align=True)
         iid = icon_id(ICON_STEM[kind])
         if iid:
-            cell.template_icon(icon_value=iid, scale=2.4)
+            cell.template_icon(icon_value=iid, scale=isz(2.4))
         op = cell.operator(operator_id, text=label, icon='NONE' if iid else FALLBACK_ICON[kind],
                            depress=(kind == current))
         op.kind = kind

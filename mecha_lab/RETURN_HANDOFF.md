@@ -1,4 +1,9 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.14.1 (Claude Code, 2026-10-13)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.14.2 (Claude Code, 2026-10-13)
+
+## 0.14.2
+- ZIP sha256 `d87a87ef336679dbe52ae6b93a0e4afbe9c3ec3e79656634f7966e4f72aeb610`, 1260/1260. `workspace_ui`: prefs `icon_scale / toolbar_scale / handle_scale`, `isz(base)`, `handle_scale()`,
+  `draw_icon_sizes`, `MCH_OT_icon_size_preset`, `MCH_PT_icon_size`. 모든 `template_icon(... scale=)`은 `isz()` 경유.
+  `bottom_bar.toolbar_layout(..., factor)`. `primitive_place.MCH_GGT_place` / `station_gizmos` draw_prepare에서 scale_basis × handle_scale.
 
 ## 0.14.1
 - ZIP sha256 `a7c73a85c561308b550d36667b2e6c51ffd4dbbcb6f294433af5daceb35f8b2c`, 1247/1247. `base_mesh`: `MCH_PG_BaseMesh.sketch`(기본 True), Scene ID prop `mch_base_sketch`(JSON: frame 4x4 +

@@ -21,7 +21,7 @@ from __future__ import annotations
 import os
 
 import bpy
-from bpy.props import BoolProperty, EnumProperty, StringProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
 
 from . import primitive_place
 from . import tool_state as ts
@@ -51,6 +51,23 @@ def prefs():
 def pref(name, default=True):
     p = prefs()
     return getattr(p, name, default) if p is not None else default
+
+
+def isz(base):
+    """Thumbnail size for ``template_icon`` scaled by Preferences > Icon Size (0.14.2)."""
+    try:
+        f = float(pref('icon_scale', 1.0))
+    except (TypeError, ValueError):
+        f = 1.0
+    return max(0.5, base * f)
+
+
+def handle_scale():
+    """Multiplier for the viewport handles (station / ghost gizmos)."""
+    try:
+        return max(0.2, float(pref('handle_scale', 1.0)))
+    except (TypeError, ValueError):
+        return 1.0
 
 
 def icon_id(stem):
@@ -478,7 +495,7 @@ def draw_tool_rows(layout, context, scale=2.0):
         row = col.row(align=True)
         iid = icon_id(stem)
         if iid:
-            row.template_icon(icon_value=iid, scale=scale)
+            row.template_icon(icon_value=iid, scale=isz(scale))
         sub = row.row(align=True)
         sub.scale_y = scale
         text = label + ('  (todo)' if status == 'TODO' else '')
@@ -501,7 +518,7 @@ def draw_tool_grid(layout, context, columns=4, scale=3.0, tools=None):
         col = box.column(align=True)
         iid = icon_id(stem)
         if iid:
-            col.template_icon(icon_value=iid, scale=scale)
+            col.template_icon(icon_value=iid, scale=isz(scale))
         kw = {} if iid else {'icon': fallback}
         text = label + (' (todo)' if status == 'TODO' else '')
         op = col.operator('mch.set_tool', text=text, depress=(tid == active), **kw)
@@ -518,7 +535,7 @@ def draw_shape_grid(layout, context, columns=4, scale=2.6):
         col = box.column(align=True)
         iid = icon_id(stem)
         if iid:
-            col.template_icon(icon_value=iid, scale=scale)
+            col.template_icon(icon_value=iid, scale=isz(scale))
         kw = {} if iid else {'icon': fallback}
         op = col.operator('mch.set_shape', text=label, depress=(brush.shape == sid), **kw)
         op.shape = sid
@@ -538,7 +555,7 @@ def draw_custom_grid(layout, context, columns=4, scale=3.0):
         col = box.column(align=True)
         iid = cut_presets.preset_icon(stem)
         if iid:
-            col.template_icon(icon_value=iid, scale=scale)
+            col.template_icon(icon_value=iid, scale=isz(scale))
         op = col.operator('mch.set_shape', text=name[:18],
                           depress=(brush.shape == 'CUSTOM' and current == stem))
         op.shape = 'CUSTOM'
@@ -569,7 +586,7 @@ def draw_shape_palette(self, context):
         op.preset = ''
     row.separator()
     sub = row.row(align=True)
-    sub.template_icon_view(scene, 'mch_png_preset', show_labels=True, scale=1.0, scale_popup=5.0)
+    sub.template_icon_view(scene, 'mch_png_preset', show_labels=True, scale=isz(1.0), scale_popup=isz(5.0))
     op = sub.operator('mch.set_shape', text='Custom', depress=(brush.shape == 'CUSTOM'),
                       **_icon_kw('custom', 'IMAGE_DATA'))
     op.shape = 'CUSTOM'
@@ -1000,7 +1017,7 @@ class MCH_PT_main(bpy.types.Panel):
         head = layout.row(align=True)
         iid = icon_id(stem)
         if iid:
-            head.template_icon(icon_value=iid, scale=2.2)
+            head.template_icon(icon_value=iid, scale=isz(2.2))
         col = head.column(align=True)
         col.label(text=label.upper())
         col.label(text={'OK': '', 'PARTIAL': 'Status: partial', 'TODO': 'Status: not implemented'}[status])
@@ -1014,6 +1031,52 @@ class MCH_PT_main(bpy.types.Panel):
 def _drawers():
     from . import ui_tool_settings
     return ui_tool_settings.DRAWERS
+
+
+def draw_icon_sizes(layout, p):
+    col = layout.column(align=True)
+    col.label(text='Icon Size', icon='FULLSCREEN_ENTER')
+    col.prop(p, 'icon_scale', slider=True)
+    col.prop(p, 'toolbar_scale', slider=True)
+    col.prop(p, 'handle_scale', slider=True)
+    row = layout.row(align=True)
+    for label, v in (('Small', 0.75), ('Normal', 1.0), ('Large', 1.4), ('Huge', 1.9)):
+        row.operator('mch.icon_size_preset', text=label).factor = v
+
+
+class MCH_OT_icon_size_preset(bpy.types.Operator):
+    """Set all Mecha Lab icon sizes at once (panel icons, bottom toolbar, handles)"""
+    bl_idname = 'mch.icon_size_preset'
+    bl_label = 'Icon Size Preset'
+    bl_options = {'INTERNAL'}
+    factor: FloatProperty(default=1.0)
+
+    def execute(self, context):
+        p = prefs()
+        if p is None:
+            return {'CANCELLED'}
+        p.icon_scale = p.toolbar_scale = p.handle_scale = self.factor
+        for window in context.window_manager.windows:
+            for area in window.screen.areas:
+                area.tag_redraw()
+        return {'FINISHED'}
+
+
+class MCH_PT_icon_size(bpy.types.Panel):
+    """Sidebar > Mecha Lab > Icon Size: bigger or smaller icons (0.14.2)."""
+    bl_idname = 'MCH_PT_icon_size'
+    bl_label = 'Icon Size'
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'Mecha Lab'
+    bl_order = 90
+
+    @classmethod
+    def poll(cls, context):
+        return prefs() is not None
+
+    def draw(self, context):
+        draw_icon_sizes(self.layout, prefs())
 
 
 class MCH_PT_tools(bpy.types.Panel):
@@ -1175,7 +1238,7 @@ def draw_profile_grid(layout, context, columns=4, scale=3.0):
         col = box.column(align=True)
         iid = icon_id(stem)
         if iid:
-            col.template_icon(icon_value=iid, scale=scale)
+            col.template_icon(icon_value=iid, scale=isz(scale))
         kw = {} if iid else {'icon': fallback}
         op = col.operator('mch.set_profile', text=label, depress=(pid == current), **kw)
         op.profile = pid
@@ -1224,6 +1287,12 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
                                  description='Tool buttons at the bottom centre of the viewport (MECHA LAB, Object Mode)')
     toolbar_labels: BoolProperty(name='Names Under Icons', default=True)
     toolbar_size: EnumProperty(name='Toolbar Size', items=[('S', 'S', ''), ('M', 'M', ''), ('L', 'L', '')], default='M')
+    icon_scale: FloatProperty(name='Panel Icons', default=1.0, min=0.5, max=2.5, subtype='FACTOR',
+                              description='Size of the Mecha Lab thumbnails in panels, menus and popups')
+    toolbar_scale: FloatProperty(name='Bottom Toolbar', default=1.0, min=0.5, max=2.5, subtype='FACTOR',
+                                 description='Size of the bottom toolbar buttons and their names')
+    handle_scale: FloatProperty(name='Viewport Handles', default=1.0, min=0.3, max=3.0, subtype='FACTOR',
+                                description='Size of the arrows, dials and dots of the Primitive / Station handles')
     quick_menu: BoolProperty(name='Quick Tool Menu (no key since 0.12)', default=True,
                              description='Six core tools at the mouse, only inside MECHA LAB (Object Mode)')
     select_move_key: BoolProperty(name='Select / Move Hotkey', default=True,
@@ -1238,6 +1307,7 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         row.prop(self, 'bottom_toolbar')
         row.prop(self, 'toolbar_labels')
         box.row().prop(self, 'toolbar_size', expand=True)
+        draw_icon_sizes(box, self)
         row = box.row()
         row.prop(self, 'tool_pie')
         row.prop(self, 'last_tool_key')
@@ -1255,7 +1325,7 @@ CLASSES = (
     MCH_OT_workspace_open, MCH_OT_workspace_repair, MCH_OT_workspace_save_startup,
     MCH_OT_set_tool, MCH_OT_set_shape, MCH_OT_space_tools, MCH_OT_hotkey, MCH_OT_ortho_lock,
     MCH_OT_quick_menu, MCH_OT_select_move, MCH_OT_select_move_key, MCH_MT_add_mecha,
-    MCH_PT_tools, MCH_PT_main, MCH_PT_workspace, MCH_PT_tool_list, MCH_PT_tool_popup, MCH_PT_shape_popup,
+    MCH_OT_icon_size_preset, MCH_PT_tools, MCH_PT_main, MCH_PT_icon_size, MCH_PT_workspace, MCH_PT_tool_list, MCH_PT_tool_popup, MCH_PT_shape_popup,
     MCH_PT_quick_popup, MCH_PT_profile_popup,
 )
 

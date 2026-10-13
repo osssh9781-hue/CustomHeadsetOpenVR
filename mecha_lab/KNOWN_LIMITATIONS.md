@@ -1,4 +1,9 @@
-# KNOWN LIMITATIONS — Mecha Lab 0.14.1
+# KNOWN LIMITATIONS — Mecha Lab 0.14.2
+
+## 0.14.2 아이콘 크기
+- 버튼 안의 작은 아이콘(텍스트 옆 16px 아이콘)은 Blender가 크기를 정해서 바꿀 수 없음. 바뀌는 것은 큰 썸네일, 아래 툴바, 뷰포트 핸들.
+  전체 Blender UI를 키우려면 Preferences > Interface > Resolution Scale.
+- 실제 창에서 크기를 바꿔 본 적 없음(값 계산과 패널 그리기 호출만 확인).
 
 ## 0.14.1 Base Mesh 스케치
 - 주황색 스케치 표시(선·면)는 실제 창에서 본 적 없음. 합치기/빼기 계산, 메시 만들기, 키 등록만 headless로 확인.
