@@ -415,8 +415,37 @@ def draw_pose(layout, context):
     deform_tools.draw(layout, context)
 
 
+def _draw_base_sketch(layout, context, base_mesh):
+    """0.14.1 Sketch First: toggle + the pending orange sketch."""
+    sp = context.scene.mch_base
+    box = layout.box()
+    row = box.row(align=True)
+    row.prop(sp, 'sketch', icon='GREASEPENCIL', toggle=True)
+    data = base_mesh.sketch_data(context.scene)
+    if not sp.sketch and data is None:
+        box.label(text='Each outline becomes a mesh at once (Alt: cutter)')
+        return
+    if data is None:
+        col = box.column(align=True)
+        col.scale_y = 0.8
+        col.label(text='Draw: add to the orange sketch', icon='ADD')
+        col.label(text='Alt + draw: subtract from it', icon='REMOVE')
+        col.label(text='Enter: make the mesh', icon='CHECKMARK')
+        return
+    adds = sum(1 for it in data['items'] if it['op'] == 'ADD')
+    box.label(text=f'Sketch: {adds} added, {len(data["items"]) - adds} subtracted', icon='GREASEPENCIL')
+    row = box.row(align=True)
+    row.scale_y = 1.3
+    row.operator('mch.base_sketch_commit', text='Make Mesh  (Enter)', icon='CHECKMARK').cutter = False
+    row.operator('mch.base_sketch_commit', text='Cut In  (Alt+Enter)', icon='MOD_BOOLEAN').cutter = True
+    row = box.row(align=True)
+    row.operator('mch.base_sketch_undo', text='Last Shape  (Backspace)', icon='LOOP_BACK')
+    row.operator('mch.base_sketch_clear', text='Clear  (Esc)', icon='X')
+
+
 def draw_base(layout, context):
     from . import base_mesh
+    _draw_base_sketch(layout, context, base_mesh)
     ob = base_mesh.active_live_base(context)
     if ob is not None:
         p = ob.mch_base

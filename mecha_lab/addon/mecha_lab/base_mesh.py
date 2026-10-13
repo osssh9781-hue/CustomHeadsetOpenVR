@@ -91,6 +91,10 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
     bevel_segments_bottom: IntProperty(name='Bottom Segments', default=4, min=1, max=32, update=_rebuild_update)
     bevel_link: BoolProperty(name='Same Top / Bottom', default=True, update=_rebuild_update,
                              description='Both Sides: bottom uses the top Width / Segments')
+    sketch: BoolProperty(name='Sketch First', default=True,
+                         description='Draw = add to an orange sketch, Alt+draw = subtract from it; '
+                                     'Enter makes the mesh (Alt+Enter cuts it into the mesh below). '
+                                     'Off: every outline becomes a mesh at once (Alt+draw = cutter)')
     live: BoolProperty(name='Live', default=False,
                        description='Settings rebuild this object (outline stored on the object)')
     outline: StringProperty(default='', options={'HIDDEN'})
@@ -499,6 +503,11 @@ def perform_base(context, loops, projector, cutter=False, targets=None):
     defaults = context.scene.mch_base
     if cutter:
         return _perform_cutter(context, groups, frame, defaults, projector, screen_groups, targets)
+    return _create_live_base(context, groups, frame, defaults)
+
+
+def _create_live_base(context, groups, frame, defaults):
+    """New live Base Mesh object from plane-local ``groups`` at ``frame``."""
     bm = build_bmesh(groups, defaults)
     me = bpy.data.meshes.new('MCH_BaseMesh')
     try:
@@ -545,12 +554,35 @@ def _cutter_targets(context, projector, screen_groups, targets):
     return [bpy.data.objects[ob.name]] if hit and ob is not None and ob.type == 'MESH' else []
 
 
+def _sketch_cutter_targets(context, groups, frame):
+    """Selected meshes, else the mesh under the sketch (ray from in front of
+    the plane, against its normal)."""
+    sel = [o for o in context.selected_objects if o.type == 'MESH' and not
+           (getattr(o, 'mch_base', None) and o.mch_base.live)]
+    if sel:
+        return sel
+    dg = context.evaluated_depsgraph_get()
+    n = frame.col[2].to_3d().normalized()
+    found = []
+    for outer, _holes in groups:
+        cx = sum(q[0] for q in outer) / len(outer)
+        cy = sum(q[1] for q in outer) / len(outer)
+        start = frame @ Vector((cx, cy, 0.0)) + n * 1000.0
+        hit, _loc, _n, _i, ob, _m = context.scene.ray_cast(dg, start, -n)
+        if hit and ob is not None and ob.type == 'MESH':
+            real = bpy.data.objects[ob.name]
+            if real not in found:
+                found.append(real)
+    return found
+
+
 def _perform_cutter(context, groups, frame, p, projector, screen_groups, targets):
     """Alt: the drawn solid becomes a Boolean Difference cutter.  Its bevel
     sides are flipped (Top <-> Bottom, Both swaps top/bottom settings) and it is
     mirrored INTO the surface, so the flipped bevel lands on the opening of the
     pocket.  Depth = Height."""
-    targets = _cutter_targets(context, projector, screen_groups, targets)
+    targets = _cutter_targets(context, projector, screen_groups, targets) if projector is not None \
+        else (targets or [])
     if not targets:
         raise cg.CutError('Alt Base Mesh cuts into a mesh: start on a mesh or select the target first.')
     if p.profile == 'DOME':
@@ -598,6 +630,341 @@ def _perform_cutter(context, groups, frame, p, projector, screen_groups, targets
     if failed:
         msg += ' | FAILED, unchanged: ' + '; '.join(failed)
     return msg
+
+
+# -----------------------------------------------------------------------------
+# 0.14.1 Sketch First: orange outline you add to / subtract from, Enter = mesh
+# -----------------------------------------------------------------------------
+
+SKETCH_KEY = 'mch_base_sketch'     # Scene ID prop (JSON): undo (Ctrl+Z) removes the last stroke
+SKETCH_EPS = 1e-7
+
+
+def sketch_data(scene):
+    text = scene.get(SKETCH_KEY) if scene is not None else None
+    if not text:
+        return None
+    try:
+        data = json.loads(text)
+    except (TypeError, ValueError):
+        return None
+    return data if data.get('items') else None
+
+
+def sketch_frame(data):
+    m = Matrix.Identity(4)
+    vals = data['frame']
+    for r in range(4):
+        for c in range(4):
+            m[r][c] = vals[r * 4 + c]
+    return m
+
+
+def sketch_clear(scene):
+    if scene is not None and SKETCH_KEY in scene:
+        del scene[SKETCH_KEY]
+
+
+def _region_loops(items):
+    """Flatten sketch items into CDT input: loops + (item index, is_hole)."""
+    loops, owner = [], []
+    for k, item in enumerate(items):
+        for outer, holes in item['groups']:
+            loops.append(outer)
+            owner.append((k, False))
+            for h in holes:
+                loops.append(h)
+                owner.append((k, True))
+    return loops, owner
+
+
+def sketch_triangles(items):
+    """(verts, kept triangles) of the combined sketch: every stroke region is
+    added or subtracted IN ORDER.  Blender's constrained Delaunay splits all
+    outlines at their crossings and reports which input outlines contain each
+    triangle, so overlaps, holes and islands come out exactly."""
+    loops, owner = _region_loops(items)
+    if not loops:
+        return [], []
+    verts, faces = [], []
+    for lp in loops:
+        if cg.signed_area(lp) < 0:
+            lp = list(reversed(lp))      # the CDT needs counter-clockwise faces (holes are known by owner)
+        start = len(verts)
+        verts += [Vector((q[0], q[1])) for q in lp]
+        faces.append(list(range(start, start + len(lp))))
+    out_v, _e, out_f, _vo, _eo, out_fo = delaunay_2d_cdt(verts, [], faces, 1, SKETCH_EPS, True)
+    kept = []
+    for f, orig in zip(out_f, out_fo):
+        if len(f) != 3:
+            continue
+        inside = False
+        for k, item in enumerate(items):
+            mine = [owner[i][1] for i in orig if owner[i][0] == k]
+            # inside this stroke = inside one of its outlines and not in its holes
+            in_region = bool(mine) and (mine.count(False) - mine.count(True)) > 0
+            if not in_region:
+                continue
+            inside = item['op'] == 'ADD'
+        if inside:
+            a, b, c = f
+            area = (out_v[b] - out_v[a]).cross(out_v[c] - out_v[a])
+            kept.append((a, b, c) if area > 0 else (a, c, b))
+    return [tuple(v) for v in out_v], kept
+
+
+def _boundary_loops(verts, tris):
+    """Outline loops of a set of counter-clockwise triangles."""
+    directed = set()
+    for a, b, c in tris:
+        directed.update(((a, b), (b, c), (c, a)))
+    nxt = {}
+    for a, b in directed:
+        if (b, a) not in directed:
+            nxt.setdefault(a, []).append(b)
+    loops = []
+    while nxt:
+        start = next(iter(nxt))
+        lp = [start]
+        cur = start
+        for _ in range(len(directed) + 1):
+            outs = nxt.get(cur)
+            if not outs:
+                break
+            n = outs.pop()
+            if not outs:
+                del nxt[cur]
+            if n == start:
+                break
+            lp.append(n)
+            cur = n
+        if len(lp) >= 3:
+            loops.append([verts[i] for i in lp])
+    return [_drop_collinear(lp) for lp in loops]
+
+
+def _drop_collinear(lp, eps=1e-10):
+    out = []
+    n = len(lp)
+    for i in range(n):
+        a, b, c = lp[i - 1], lp[i], lp[(i + 1) % n]
+        cross = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0])
+        if abs(cross) > eps * max(1e-12, math.dist(a, b) * math.dist(b, c)) or math.dist(a, c) < 1e-12:
+            out.append(b)
+    return out if len(out) >= 3 else lp
+
+
+def sketch_regions(items):
+    """Combined sketch as Base Mesh groups [(outer CCW, [holes CW])]."""
+    verts, tris = sketch_triangles(items)
+    if not tris:
+        return []
+    return cg.organize_loops(_boundary_loops(verts, tris))
+
+
+def sketch_add(context, loops, projector, subtract=False):
+    """Add (or, Alt, subtract) a drawn outline to the sketch.  The first stroke
+    fixes the drawing plane; later strokes are projected onto that plane, so
+    the view may be orbited between strokes."""
+    scene = context.scene
+    screen_groups = cg.prepare_loops(loops)
+    data = sketch_data(scene)
+    if data is None:
+        if subtract:
+            raise cg.CutError('Draw a shape first: Alt subtracts from the orange sketch.')
+        origin, x, y, n = plane_frame(context, projector, screen_groups)
+        frame = Matrix.Identity(4)
+        for r in range(3):
+            frame[r][0], frame[r][1], frame[r][2], frame[r][3] = x[r], y[r], n[r], origin[r]
+        data = {'frame': [frame[r][c] for r in range(4) for c in range(4)], 'items': []}
+    else:
+        frame = sketch_frame(data)
+    origin = frame.translation
+    n = frame.col[2].to_3d().normalized()
+    inv = frame.inverted()
+
+    def to_local(q):
+        o, d = projector.ray(q)
+        if abs(d.dot(n)) < 1e-6:
+            raise cg.CutError('The view is edge-on to the sketch plane: orbit a little and draw again.')
+        w = cg._plane_hit(o, d, origin, n)[0]
+        v = inv @ w
+        return (v.x, v.y)
+    local_loops = [[to_local(q) for q in lp] for outer, holes in screen_groups for lp in [outer] + holes]
+    groups = cg.organize_loops(local_loops)
+    data['items'].append({'op': 'SUB' if subtract else 'ADD',
+                          'groups': [[[list(q) for q in o], [[list(q) for q in h] for h in hs]] for o, hs in groups]})
+    regions = sketch_regions(data['items'])
+    scene[SKETCH_KEY] = json.dumps(data)
+    adds = sum(1 for it in data['items'] if it['op'] == 'ADD')
+    subs = len(data['items']) - adds
+    state = f'{len(regions)} piece(s)' if regions else 'empty'
+    return (f'Sketch: {"subtracted" if subtract else "added"} ({adds} added, {subs} subtracted, {state}) | '
+            f'Enter: make mesh, Alt+Enter: cut into mesh, Esc: clear')
+
+
+def sketch_commit(context, cutter=False):
+    """Enter: the sketch becomes a live Base Mesh (Alt+Enter: a cutter into
+    the mesh below).  The sketch is cleared only on success."""
+    scene = context.scene
+    data = sketch_data(scene)
+    if data is None:
+        raise cg.CutError('No sketch: draw a shape with the Base Mesh tool first.')
+    groups = sketch_regions(data['items'])
+    if not groups:
+        raise cg.CutError('The sketch is empty (everything was subtracted). Esc clears it.')
+    frame = sketch_frame(data)
+    groups = [([tuple(q) for q in o], [[tuple(q) for q in h] for h in hs]) for o, hs in groups]
+    if cutter:
+        targets = _sketch_cutter_targets(context, groups, frame)
+        msg = _perform_cutter(context, groups, frame, scene.mch_base, None, None, targets)
+    else:
+        msg = _create_live_base(context, groups, frame, scene.mch_base)
+    sketch_clear(scene)
+    return msg
+
+
+_SKETCH_CACHE = {}
+_sketch_handle = None
+
+
+def _sketch_draw_data(scene):
+    text = scene.get(SKETCH_KEY)
+    hit = _SKETCH_CACHE.get('v')
+    if hit is not None and hit[0] == text:
+        return hit[1]
+    data = sketch_data(scene)
+    out = None
+    if data is not None:
+        frame = sketch_frame(data)
+        verts, tris = sketch_triangles(data['items'])
+        world = [tuple(frame @ Vector((v[0], v[1], 0.0))) for v in verts]
+        lines = []
+        for lp in (_boundary_loops(verts, tris) if tris else []):
+            pts = [tuple(frame @ Vector((q[0], q[1], 0.0))) for q in lp]
+            for i in range(len(pts)):
+                lines += [pts[i], pts[(i + 1) % len(pts)]]
+        out = (world, tris, lines)
+    _SKETCH_CACHE['v'] = (text, out)
+    return out
+
+
+def _draw_sketch():
+    try:
+        context = bpy.context
+        scene = context.scene
+        if scene is None or not scene.get(SKETCH_KEY):
+            return
+        from . import tool_state as ts
+        if ts.effective_tool(context) != 'BASE':
+            return
+        d = _sketch_draw_data(scene)
+        if not d:
+            return
+        import gpu
+        from gpu_extras.batch import batch_for_shader
+        world, tris, lines = d
+        sh = gpu.shader.from_builtin('UNIFORM_COLOR')
+        gpu.state.blend_set('ALPHA')
+        gpu.state.depth_test_set('NONE')
+        orange = (1.0, 0.55, 0.12)
+        if tris:
+            sh.uniform_float('color', (*orange, 0.18))
+            batch_for_shader(sh, 'TRIS', {'pos': world}, indices=tris).draw(sh)
+        if lines:
+            gpu.state.line_width_set(2.0)
+            sh.uniform_float('color', (*orange, 0.95))
+            batch_for_shader(sh, 'LINES', {'pos': lines}).draw(sh)
+            gpu.state.line_width_set(1.0)
+        gpu.state.blend_set('NONE')
+    except Exception:      # never break viewport drawing
+        pass
+
+
+def _sketch_poll(context):
+    from . import tool_state as ts
+    try:
+        return (context.area is not None and context.area.type == 'VIEW_3D' and
+                ts.effective_tool(context) == 'BASE' and sketch_data(context.scene) is not None)
+    except (AttributeError, KeyError, TypeError):
+        return False
+
+
+class MCH_OT_base_sketch_commit(bpy.types.Operator):
+    """Enter: the orange sketch becomes a Base Mesh.  Alt+Enter: it cuts into the mesh below"""
+    bl_idname = 'mch.base_sketch_commit'
+    bl_label = 'Make Mesh from Sketch'
+    bl_options = {'REGISTER', 'UNDO'}
+    cutter: BoolProperty(name='Cut Into Mesh', default=False, options={'SKIP_SAVE'})
+
+    @classmethod
+    def description(cls, context, properties):
+        return ('Cut the sketch into the mesh below (selected meshes first)  (Alt+Enter)' if properties.cutter
+                else 'Make a new Base Mesh from the orange sketch  (Enter)')
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and sketch_data(context.scene) is not None
+
+    def execute(self, context):
+        try:
+            msg = sketch_commit(context, self.cutter)
+        except cg.CutError as ex:
+            self.report({'WARNING'}, str(ex))
+            return {'CANCELLED'}
+        self.report({'INFO'}, msg)
+        return {'FINISHED'}
+
+
+class MCH_OT_base_sketch_key(bpy.types.Operator):
+    """Enter / Alt+Enter in the Base Mesh tool while a sketch exists"""
+    bl_idname = 'mch.base_sketch_key'
+    bl_label = 'Sketch Key'
+    bl_options = {'INTERNAL'}
+    cutter: BoolProperty(default=False, options={'SKIP_SAVE'})
+
+    @classmethod
+    def poll(cls, context):
+        return _sketch_poll(context)
+
+    def execute(self, context):
+        return bpy.ops.mch.base_sketch_commit('EXEC_DEFAULT', cutter=self.cutter)
+
+
+class MCH_OT_base_sketch_clear(bpy.types.Operator):
+    """Throw the orange sketch away (Esc in the Base Mesh tool)"""
+    bl_idname = 'mch.base_sketch_clear'
+    bl_label = 'Clear Sketch'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return sketch_data(context.scene) is not None
+
+    def execute(self, context):
+        sketch_clear(context.scene)
+        self.report({'INFO'}, 'Sketch cleared')
+        return {'FINISHED'}
+
+
+class MCH_OT_base_sketch_undo(bpy.types.Operator):
+    """Remove the last shape from the sketch (Backspace)"""
+    bl_idname = 'mch.base_sketch_undo'
+    bl_label = 'Remove Last Sketch Shape'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return sketch_data(context.scene) is not None
+
+    def execute(self, context):
+        data = sketch_data(context.scene)
+        data['items'].pop()
+        if data['items']:
+            context.scene[SKETCH_KEY] = json.dumps(data)
+        else:
+            sketch_clear(context.scene)
+        return {'FINISHED'}
 
 
 def auto_apply_session(context):
@@ -739,7 +1106,8 @@ class MCH_OT_base_freeze(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_PG_BaseMesh, MCH_OT_set_profile, MCH_OT_base_freeze)
+CLASSES = (MCH_PG_BaseMesh, MCH_OT_set_profile, MCH_OT_base_freeze, MCH_OT_base_sketch_commit,
+           MCH_OT_base_sketch_key, MCH_OT_base_sketch_clear, MCH_OT_base_sketch_undo)
 
 
 def register():
@@ -749,9 +1117,19 @@ def register():
     bpy.types.Object.mch_base = bpy.props.PointerProperty(type=MCH_PG_BaseMesh)
     if _migrate_on_load not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(_migrate_on_load)
+    global _sketch_handle
+    if not bpy.app.background and _sketch_handle is None:
+        _sketch_handle = bpy.types.SpaceView3D.draw_handler_add(_draw_sketch, (), 'WINDOW', 'POST_VIEW')
 
 
 def unregister():
+    global _sketch_handle
+    if _sketch_handle is not None:
+        try:
+            bpy.types.SpaceView3D.draw_handler_remove(_sketch_handle, 'WINDOW')
+        except (ValueError, RuntimeError):
+            pass
+        _sketch_handle = None
     if bpy.app.timers.is_registered(_tab_watch):
         bpy.app.timers.unregister(_tab_watch)
     if _migrate_on_load in bpy.app.handlers.load_post:

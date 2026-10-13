@@ -432,6 +432,7 @@ check('mask brush stroke paints a band of faces (open path)', r == {'FINISHED'} 
 # 20. Base Mesh mode through the same stroke logic (no target needed)
 fresh()
 bpy.context.scene.mch_brush.shape = 'RECT'
+bpy.context.scene.mch_base.sketch = False      # 0.14.1: instant mode keeps the old behaviour
 ctx, op = Ctx('mecha.base_mesh'), Op('BASE')
 CALLS.clear()
 check('base mesh starts without a selected target', op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 450, 450)) == {'RUNNING_MODAL'})

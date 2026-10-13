@@ -1511,8 +1511,12 @@ class StrokeLogic:
                 msg = perform_mask(context, targets[0], loops, self.projector, self.inverted())
             elif self.mode == 'BASE':
                 from . import base_mesh
-                # Alt: the drawn solid cuts into the mesh (flipped bevel sides)
-                msg = base_mesh.perform_base(context, loops, self.projector, cutter=self.inverted())
+                if getattr(context.scene.mch_base, 'sketch', False):
+                    # 0.14.1 Sketch First: add to / (Alt) subtract from the orange sketch
+                    msg = base_mesh.sketch_add(context, loops, self.projector, subtract=self.inverted())
+                else:
+                    # Alt: the drawn solid cuts into the mesh (flipped bevel sides)
+                    msg = base_mesh.perform_base(context, loops, self.projector, cutter=self.inverted())
             else:
                 msg = perform_closed(context, self.mode, targets, loops, self.projector, self.inverted())
         if self.shape == 'CUSTOM' and self.anchor is not None and self.mouse is not None:

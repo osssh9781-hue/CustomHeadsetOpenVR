@@ -1,4 +1,4 @@
-# Test Report — Mecha Lab 0.14.0
+# Test Report — Mecha Lab 0.14.1
 
 ## 환경
 | 항목 | 값 |
@@ -14,6 +14,16 @@ ZIP: `dist/mecha_lab-0.11.1.zip` (sha256 `fb8960ae4fc08a273b09cb6d1cfca01a7efda2
 
 **변경 전(v0.9.3 무수정)에도 같은 headless 테스트는 모두 통과**했습니다(경로 누락 2건 제외). 즉 사용자 보고 고장 대부분은
 headless로 재현되지 않았고, 아래 "GUI 검증" 열은 전부 미검증입니다.
+
+## 0.14.1 결과: 25개 파일, 1247 / 1247 통과
+| 항목 | 코드 | headless | Windows GUI |
+|---|---|---|---|
+| 스케치 합치기/구멍/노치/두 조각/섬/전부 빼기/모서리 공유 | O | O | 미검증 |
+| 획 → 스케치(메시 안 생김), Alt 획 = 빼기, Backspace | O | O (가짜 이벤트) | 미검증 |
+| Enter = 라이브 Base Mesh(부피 정확, 구멍 저장, 프로필 변경 재생성) | O | O | 미검증 |
+| Alt+Enter = 아래 메시에 포켓, Esc = 지우기, 빈 스케치 Enter 거부 | O | O | 미검증 |
+| Sketch First 끔 = 예전 즉시 생성 / Alt 커터 | O | O | 미검증 |
+| 주황색 스케치 그리기 | O | X (그리기 불가) | **미검증** |
 
 ## 0.14.0 결과: 24개 파일, 1219 / 1219 통과
 | 항목 | 코드 | headless | Windows GUI |

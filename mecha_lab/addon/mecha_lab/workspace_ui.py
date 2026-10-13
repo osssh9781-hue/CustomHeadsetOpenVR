@@ -328,6 +328,16 @@ def _tool_keymap(mode):
          {'properties': [('popup', 'PROFILE' if mode == 'BASE' else 'SHAPE')]}),
         ('mch.space_tools', {'type': 'SPACE', 'value': 'PRESS'}, None),
         ('mch.toggle_targets', {'type': 'T', 'value': 'PRESS'}, None),
+    ) + ((
+        # 0.14.1 Base Mesh sketch: Enter = mesh, Alt+Enter = cut into mesh, Esc = clear, Backspace = last shape
+        ('mch.base_sketch_key', {'type': 'RET', 'value': 'PRESS'}, None),
+        ('mch.base_sketch_key', {'type': 'NUMPAD_ENTER', 'value': 'PRESS'}, None),
+        ('mch.base_sketch_key', {'type': 'RET', 'value': 'PRESS', 'alt': True}, {'properties': [('cutter', True)]}),
+        ('mch.base_sketch_key', {'type': 'NUMPAD_ENTER', 'value': 'PRESS', 'alt': True},
+         {'properties': [('cutter', True)]}),
+        ('mch.base_sketch_clear', {'type': 'ESC', 'value': 'PRESS'}, None),
+        ('mch.base_sketch_undo', {'type': 'BACK_SPACE', 'value': 'PRESS'}, None),
+    ) if mode == 'BASE' else ()) + (
         # Esc with no stroke pending: back to Blender's Select Box tool.
         ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),
         # B06: R / Shift+R rotate a PNG stamp (poll fails for other shapes -> Blender's R).

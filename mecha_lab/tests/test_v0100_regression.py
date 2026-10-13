@@ -706,6 +706,7 @@ pb = C.scene.mch_base
 pb.profile, pb.height, pb.bevel_sides, pb.bevel_width = 'CHAMFER', 0.5, 'TOP', 0.1
 C.scene.mch_brush.shape = 'RECT'
 C.scene.mch_settings.mch_active_tool = 'BASE'
+pb.sketch = False                  # 0.14.1: instant mode keeps Alt+drag = cutter
 ctx, op = Ctx('mecha.base_mesh'), Op('BASE')
 op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 450, 450, alt=True))
 op.modal(ctx, E('MOUSEMOVE', 'NOTHING', 500, 500, alt=True))

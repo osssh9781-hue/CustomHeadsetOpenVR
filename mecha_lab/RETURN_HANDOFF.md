@@ -1,4 +1,11 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.14.0 (Claude Code, 2026-10-13)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.14.1 (Claude Code, 2026-10-13)
+
+## 0.14.1
+- ZIP sha256 `a7c73a85c561308b550d36667b2e6c51ffd4dbbcb6f294433af5daceb35f8b2c`, 1247/1247. `base_mesh`: `MCH_PG_BaseMesh.sketch`(기본 True), Scene ID prop `mch_base_sketch`(JSON: frame 4x4 +
+  items [{op ADD/SUB, groups}]), `sketch_triangles`(delaunay_2d_cdt output 1 + faces_orig, 순서대로 더하기/빼기), `_boundary_loops`,
+  `sketch_regions`, `sketch_add`, `sketch_commit(cutter)`, `_create_live_base`(perform_base에서 분리), `_sketch_cutter_targets`,
+  POST_VIEW `_draw_sketch`, 연산자 `mch.base_sketch_commit / _key / _clear / _undo`. `cut_engine._execute_closed` BASE 분기,
+  `workspace_ui._tool_keymap('BASE')`에 Enter / Alt+Enter / Esc / Backspace.
 
 ## 0.14.0
 - ZIP sha256 `d02dc9f2137be4b32d94f667342739ff348449ac86c403d5199eb3cc89b5f3e9`, 1219/1219. 신규 `primitive_place.py`: `ghost_geometry(kind, size, segments, top)`(순수, 6종: BOX/CYLINDER/PILL/
