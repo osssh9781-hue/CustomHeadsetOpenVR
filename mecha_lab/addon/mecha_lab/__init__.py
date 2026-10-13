@@ -11,7 +11,7 @@ bl_info = {
 import bpy
 from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform, radial_array,
                mirror_tools, cut_presets, mask_tools, workspace_ui, ui_tool_settings,
-               base_mesh, loft_surface, zbrush_bridge, subd_plane)
+               base_mesh, loft_surface, zbrush_bridge, subd_plane, deform_tools)
 import os
 import re
 from pathlib import Path
@@ -1729,6 +1729,7 @@ def register():
     loft_surface.register()
     zbrush_bridge.register()
     subd_plane.register()
+    deform_tools.register()
     workspace_ui.register()
     for klass in SUB_PANELS:
         bpy.utils.register_class(klass)
@@ -1738,6 +1739,7 @@ def unregister():
     for klass in reversed(SUB_PANELS):
         bpy.utils.unregister_class(klass)
     workspace_ui.unregister()
+    deform_tools.unregister()
     subd_plane.unregister()
     zbrush_bridge.unregister()
     loft_surface.unregister()

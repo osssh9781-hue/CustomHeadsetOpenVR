@@ -294,6 +294,23 @@ def icons():
         d.line([(150, 420), (390, 420)], fill=CY, width=18)
         return img
     out['subd'] = subd
+
+    def deform():
+        img, d = canvas()
+        # warped lattice cage: grid lines bent by a falloff around one point
+        def warp(x, y):
+            dx, dy = x - 330, y - 190
+            w = max(0.0, 1.0 - math.hypot(dx, dy) / 260.0)
+            return x + 60 * w * w, y - 70 * w * w
+        for i in range(4):
+            t = 110 + i * 97
+            poly(d, [warp(t, 110 + j * 10) for j in range(30)], FG, width=9, closed=False)
+            poly(d, [warp(110 + j * 10, t) for j in range(30)], FG, width=9, closed=False)
+        cx, cy = warp(304, 207)
+        d.ellipse((cx - 62, cy - 62, cx + 62, cy + 62), outline=CY, width=12)
+        dots(d, [(cx, cy)], ACC, r=30)
+        return img
+    out['deform'] = deform
     return out
 
 
