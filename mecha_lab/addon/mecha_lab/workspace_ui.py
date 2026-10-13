@@ -101,7 +101,7 @@ def _force_ortho(area):
     if space is None or space.type != 'VIEW_3D':
         return
     rv3d = space.region_3d
-    if rv3d is not None and rv3d.view_perspective != 'ORTHO':
+    if rv3d is not None and rv3d.view_perspective == 'PERSP':      # leave camera views alone
         rv3d.view_perspective = 'ORTHO'
         area.tag_redraw()
 
@@ -295,6 +295,13 @@ def activate_mecha_tool(context, tool_id):
         for area in window.screen.areas:
             if area.type in {'VIEW_3D', 'PROPERTIES'}:
                 area.tag_redraw()
+    if tool_id == 'MIRROR' and previous != 'MIRROR':
+        # 0.11.3: picking Mirror starts the live lean mirror right away
+        try:
+            from . import mirror_tools
+            mirror_tools.start_lean_mirror(context)
+        except (RuntimeError, TypeError, AttributeError) as ex:
+            print('[Mecha Lab] mirror start:', ex)
 
 
 # -----------------------------------------------------------------------------

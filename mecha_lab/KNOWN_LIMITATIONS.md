@@ -1,4 +1,11 @@
-# KNOWN LIMITATIONS — Mecha Lab 0.11.2
+# KNOWN LIMITATIONS — Mecha Lab 0.11.3
+
+## 00000. 0.11.3
+- Radial Array 충돌: headless에서 재현 안 됨(속성 40회 변경, Boolean 연결·미리보기·적용). 원인 후보(단축키 편집 행의 오래된
+  KeyMapItem 참조)를 고쳤지만 확정 아님 → `C:\Users\<이름>\AppData\Local\Temp\blender.crash.txt` 내용 필요.
+- MECHA LAB Workspace의 Object Mode에서 N = Quick Menu → 사이드바는 View 메뉴 > Sidebar 또는 단축키 편집 행에서 N을 다른 키로.
+- Lean Mirror: 도구 목록(왼쪽 편집기)에서 고르면 마우스가 뷰포트 밖에 있어 첫 이동 때 축이 바로 바뀔 수 있음. 실제 GUI 미검증.
+- "기울어진 알약 3개"는 서로 떨어진 3개(환풍구 모양)로 만듦. 서로 붙은 모양이 필요하면 알려 주세요.
 
 ## 0000. 0.11.2
 - 일반 Cube "whole object" 오류는 여전히 headless에서 재현되지 않음(가짜 투영, 실제 RegionView3D 원근/직교, 모달 경로, Edit Mode 모두

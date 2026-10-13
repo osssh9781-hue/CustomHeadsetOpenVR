@@ -1,4 +1,13 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.11.2 (Claude Code, 2026-10-13)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.11.3 (Claude Code, 2026-10-13)
+
+## 0000. 0.11.3
+- ZIP `dist/mecha_lab-0.11.3.zip` (sha256 `deed2943d3d8276a383cdf338455d393e508cf337c6d42e01a1f98c9604e2c37`), 1046/1046. CHANGELOG 0.11.3 참고.
+- 스탬프: `cut_presets.builtin_shapes / is_builtin / MCH_OT_pick_stamp_shape / draw_builtin_row` (stem 접두사 `MCH_BUILTIN_`).
+- Curve Lasso: `StrokeLogic.rounds` + `curve_lasso_loop / corner_handles / ROUND_LEVELS / next_round_level`
+  (sharp/overrides 리스트는 구조 유지용으로 남아 있음; `curve_lasso_spline`은 다른 곳 호환용).
+- Mirror: `mirror_tools.setup_mirror / mirror_frame / lean_pick / MirrorLeanLogic / MCH_OT_mirror_lean / start_lean_mirror`,
+  `workspace_ui.activate_mecha_tool`에서 MIRROR 선택 시 시작. Bisect flip ON = - 쪽 유지 → + 쪽으로 복사.
+- Undo: `tool_state` undo_pre/redo_pre 스냅샷, undo_post/redo_post 복원. 단축키 편집: `workspace_ui.hotkey_items`(매번 조회).
 
 ## 000. 0.11.2
 - ZIP `dist/mecha_lab-0.11.2.zip` (sha256 `000db2d3d84a0215dcfd1b55fcd296e59267c1e091a2be5d04af7593676c0aa5`), 1012/1012. 사용자: 0.11.1에서도 일반 Cube 실패 → headless 재현 불가.

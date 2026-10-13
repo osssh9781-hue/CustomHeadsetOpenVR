@@ -1,4 +1,4 @@
-# Test Report — Mecha Lab 0.11.2
+# Test Report — Mecha Lab 0.11.3
 
 ## 환경
 | 항목 | 값 |
@@ -14,6 +14,18 @@ ZIP: `dist/mecha_lab-0.11.1.zip` (sha256 `fb8960ae4fc08a273b09cb6d1cfca01a7efda2
 
 **변경 전(v0.9.3 무수정)에도 같은 headless 테스트는 모두 통과**했습니다(경로 누락 2건 제외). 즉 사용자 보고 고장 대부분은
 headless로 재현되지 않았고, 아래 "GUI 검증" 열은 전부 미검증입니다.
+
+## 0.11.3 결과: 19개 파일, 1046 / 1046 통과
+로그 `tests/test_log_bpy501_v0113.txt`, ZIP `dist/mecha_lab-0.11.3.zip` (sha256 `deed2943d3d8276a383cdf338455d393e508cf337c6d42e01a1f98c9604e2c37`).
+| 항목 | 코드에 존재 | headless 통과 | Windows GUI 검증 |
+|---|---|---|---|
+| 스탬프 도형 6종 (로드·정규화·실제 Cut) | O | O | 미검증 (아이콘 표시) |
+| V / N / F 단축키 | O | 등록만 | **미검증** |
+| Ctrl+Z 후 도형·도구 유지 | O | 복원 함수 O (실제 Undo는 headless 불가) | **미검증** |
+| Cable → Mesh | O | O | 미검증 |
+| Curve Lasso 직선 시작 / 클릭 순환 / 핸들 | O | O | 미검증 |
+| Lean Mirror (축 선택, ±방향, Shift 추가, Enter 적용, Esc 복구) | O | O (가짜 이벤트) | **미검증** (오버레이·실제 마우스) |
+| Radial Array 충돌 | — | 재현 안 됨 | **미해결 (crash 로그 필요)** |
 
 ## 0.11.2 결과: 18개 파일, 1012 / 1012 통과
 로그 `tests/test_log_bpy501_v0112.txt`, ZIP `dist/mecha_lab-0.11.2.zip` (sha256 `000db2d3d84a0215dcfd1b55fcd296e59267c1e091a2be5d04af7593676c0aa5`).

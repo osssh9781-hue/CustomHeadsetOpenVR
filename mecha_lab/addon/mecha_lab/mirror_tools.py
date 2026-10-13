@@ -310,7 +310,7 @@ class MirrorLeanLogic:
         return f'Mirror applied ({self.describe()}): {", ".join(done)}' + \
             (' | FAILED: ' + '; '.join(failed) if failed else '')
 
-    def cancel(self):
+    def restore_all(self):
         for n, snap in self.snaps.items():
             ob = bpy.data.objects.get(n)
             if ob is not None:
@@ -445,7 +445,7 @@ class MCH_OT_mirror_lean(MirrorLeanLogic, bpy.types.Operator):
             return {'RUNNING_MODAL'}
         self._end(context)
         if r == 'CANCEL':
-            self.cancel()
+            self.restore_all()
             self.report({'INFO'}, 'Mirror cancelled')
             return {'CANCELLED'}
         if r == 'APPLY':

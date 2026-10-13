@@ -1,8 +1,17 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.11.2 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.11.3 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## Q. 0.11.3
+- [ ] Lasso 패널의 도형 버튼 6개 → 클릭/드래그로 찍기
+- [ ] V = Tool Menu, N = Quick Menu, F = Select / Move (MECHA LAB, Object Mode)
+- [ ] 도형을 바꾼 뒤 Ctrl+Z → 도형이 그대로
+- [ ] Cable 패널 "Convert to Object (Mesh)"
+- [ ] Curve Lasso: 직선으로 시작, 점 클릭 → 약/중/강/직선, 파란 핸들 드래그
+- [ ] 메쉬 선택 후 Mirror 도구 → 즉시 미러, 마우스 기울인 쪽으로 복사, Enter 적용, Esc 취소, Shift+클릭 축 추가
+- [ ] Radial Array 조작 중 충돌이 다시 나면 blender.crash.txt 전달
 
 ## R. 0.11.2 (먼저)
 - [ ] Preferences > Add-ons에서 Mecha Lab이 **하나만** 있고 버전 0.11.2인지 (예전 ChatGPT 0.10.x 사본이 있으면 제거 후 재시작)
