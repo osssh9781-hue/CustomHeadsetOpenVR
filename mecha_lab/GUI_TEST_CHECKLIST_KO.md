@@ -1,11 +1,80 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.9.0 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.10.0 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
 
+## A. 0.10.0 우선 확인 (사용자 보고 항목)
+### A0. 설치 / 등록 (B09)
+- [ ] 기존 Mecha Lab(확장 + 예전 Add-on 방식 모두) 비활성/제거 → Blender 재시작 → `mecha_lab-0.10.0.zip` Install from Disk → 오류 없음
+- [ ] Preferences에서 비활성 → 활성 3회 반복: `already registered` 오류 없음, N 패널 Mirror 하위 패널 보임
+- [ ] (가능하면) 예전 버전을 일부러 같이 켠 상태에서 0.10.0 활성 → 오류 대신 N 패널 상단에 "Another Mecha Lab copy" 경고
+- [ ] N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** → 결과 줄(RESULT x/y)이 하단에 표시, 클립보드 내용을 붙여넣어 전달
+### A1. 도구 전환
+- [ ] 왼쪽 도구 목록에서 Cut → Mirror → Loft → Smart Fuse → Boolean 순서로 클릭: 오른쪽 패널이 매번 바뀜
+- [ ] Mirror 선택 후 큐브 위 LMB: 컷이 생기지 않고 일반 선택 (Cut 도구가 남아 있지 않음)
+### A2. Mirror (B01)
+- [ ] 큐브 2개 선택 → World / X → CREATE: 둘 다 미러, 축 Y 추가 후 다시 CREATE: 갱신
+- [ ] 3D Cursor 중심, Local 모드 각각 X/Y/Z
+- [ ] Apply: 선택된 둘 다 적용, Remove: 형상 유지
+- [ ] Collection Mirror: Parts 컬렉션 선택 → CREATE PAIR → MASTER 이동 시 반대편 따라옴 → Remove
+### A3. Loft (B02)
+- [ ] 커브 2개(Shift+A > Curve) 선택 → Loft → 표면 생성, 커브 점 편집 시 갱신, Apply
+- [ ] 활성 커브 = 첫 단면, Sweep(경로 활성)
+### A4. Smart Fuse (B03)
+- [ ] 겹친 큐브 2쌍으로 생성→Confirm, 다른 쌍 생성→Cancel, 다시 생성→Confirm (연속 3회 이상) 모두 성공
+- [ ] 미리보기를 확정하지 않은 채 다른 두 메쉬 선택 → 패널에 CREATE 버튼과 "Unconfirmed preview on …" 안내
+### A5. Lasso / Split Gap / Curve (B04 B05 B07)
+- [ ] Lasso 4점 → 시작점에서 먼 곳 더블클릭: 닫히고 적용, 한 번만 잘림
+- [ ] Lasso 4점 → 시작점 근처(약 14px) 클릭: 닫히고 적용
+- [ ] Curve Lasso: 점을 한 번 클릭 = 각/부드러움 전환, 점 위 더블클릭은 닫지 않음, 빈 곳 더블클릭은 닫음
+- [ ] Split Gap: Enter / 시작점 클릭 / 아무 곳 더블클릭 각각 확정, 양쪽 Cap·Side A/B 베벨 유지
+- [ ] Mesh Curve(직선 그리기) → 찍은 점 더블클릭: 곡선으로 바뀜(한 번만 전환), 다시 한 번 클릭: 직선
+### A6. PNG R 회전 (B06)
+- [ ] PNG 모양 선택 → 대기 상태에서 커서에 윤곽 미리보기, R / Shift+R로 15° 회전
+- [ ] 드래그 중 R로 회전 → 놓았을 때 잘린 모양이 미리보기와 같음
+- [ ] PNG가 아닌 모양에서 R = Blender 기본(오브젝트 회전)
+### A7. Mask (B08)
+- [ ] 도구 목록 / Space / V / T 툴바에 Mask 없음
+- [ ] 예전 파일의 마스크 데이터(Attribute/Vertex Group)가 그대로 있음
+### A8. Bevel (B10)
+- [ ] Cut Edge Finish Bevel 폭 0.5 이상 입력 가능, 작은 컷에서 큰 폭 → 결과 메시지에 "limited to about …"
+- [ ] Clamp Overlap OFF 시 메시지 "exceeds the safe …"
+### A9. Alt / 메뉴 (docs/02)
+- [ ] Cut 도구 대기 중 Alt+짧은 클릭 → 선택 모드(아무것도 안 잘림)
+- [ ] 선택 모드에서 오브젝트 위 Alt+짧은 클릭 → 직전 Mecha 도구로 복귀, 빈 곳 Alt+클릭은 Blender 기본
+- [ ] Cut Alt+드래그 = 안쪽 남기기, 그리던 Lasso 도중 Alt+짧은 클릭 = 획 버리고 선택 모드
+- [ ] 직선 2점 Cut의 면 선택 단계: 클릭 = 그쪽 제거, Ctrl+클릭 = 그쪽 남기기
+- [ ] 3번 빠른 클릭이 더 이상 선택 모드로 보내지 않음
+- [ ] V = 마우스 위치에 6개 빠른 메뉴, Space = 전체 메뉴, Shift+A 맨 아래 `Mecha Lab` 하위 메뉴(기존 항목 그대로)
+- [ ] Alt+MMB는 기본(뷰 회전 관련) 그대로
+### A10. Boolean / 다중 대상 (F01)
+- [ ] A, B 선택 후 C를 마지막으로(노란색) 선택 → Difference: A−C, B−C, 패널에 CUTTER: C / TARGETS: 2
+- [ ] 큐브 3개 선택 + Cut 한 번 → 셋 다 잘림, Ctrl+Z 한 번으로 모두 복구
+### A11. Base Mesh (F02)
+- [ ] Bevel/Chamfer × Top Only / Bottom Only / Both / None 모양 확인, Both에서 Same Top/Bottom 끄고 위/아래 폭 다르게
+- [ ] Dome 선택 시 Bevel Sides 대신 안내 문구
+- [ ] 메쉬 위 Alt+드래그 → 그 모양으로 파인 포켓, 입구에 베벨(Top Only 설정이면 반전되어 입구 쪽)
+- [ ] 도형 2개 그린 뒤 Alt+클릭(또는 Esc/다른 도구) → 그 2개만 Live 해제, 그 전에 있던 Live Base Mesh와 다른 오브젝트 모디파이어는 그대로, Ctrl+Z 가능
+### A12. Free Draw Stabilizer (F08)
+- [ ] Free Draw + Stabilizer ON: 선이 마우스를 천천히 부드럽게 따라옴, 지연 원과 줄이 보임
+- [ ] Strength 0 → 100 차이, Lazy Radius 크게 하면 원 안 움직임에 선이 멈춤
+- [ ] 마우스 정지 시 선이 계속 따라와 멈춤, 놓으면 끝까지 부드럽게 이어지고 긴 직선 점프 없음
+- [ ] OFF일 때 기존과 같은 느낌, Lasso / Curve Lasso / 사각형 등은 변화 없음
+- [ ] Cut / Split / Base Mesh 모두에서 결과 정상, 드로잉 전 슬라이더 조작 가능
+### A13. Deform 포인트 조작
+- [ ] 메쉬 선택 → Deform → Create Lattice Cage: 바로 점 편집, 점 클릭 → Move(화살표)/Rotate(원)/Scale(박스·바깥 원) 기즈모
+- [ ] 점 하나 선택 후 Rotate/Scale 드래그 → 주변 점과 메쉬가 함께 변형, 드래그 중 휠 = Falloff 반경, Esc/RMB = 취소
+- [ ] Shift+클릭/B로 여러 점 → 함께 변형, Pivot: Selection Centre / Each Point / 3D Cursor
+- [ ] Resolution X/Y/Z 슬라이더(편집 중에도) → 분할 변경, 기존 변형 유지
+- [ ] Gizmo: Blender 선택 시 Blender 기즈모 + Proportional Editing(반경/부드러움 동기화), Done Editing 후 원래 설정 복귀
+- [ ] Bend Curve: 점 클릭 → X(커브 방향) 회전 = 그 부분만 비틀림, 다른 축 회전 = 휘어짐, Scale = 그 부분 두께
+- [ ] Done Editing → 다시 Edit Controller: 형태 유지, Apply 전에는 원본 메쉬 데이터 그대로, Apply 후 컨트롤러 삭제
+
+## B. 0.9.0 이전 항목 (아래 내용 중 바뀐 점: T 툴바에 Mask 없음, B = 활성(노란색) 커터로 Boolean, 3회 클릭 기능 제거, Alt+클릭 = 도구 종료)
+
 ## 0. 설치
-- [ ] 이전 버전 제거 후 `mecha_lab-0.9.0.zip` Install from Disk → 오류 없이 활성화
+- [ ] 이전 버전 제거 후 `mecha_lab-0.10.0.zip` Install from Disk → 오류 없이 활성화
 - [ ] 설치 직후 상단 탭 목록이 변하지 않음 (MECHA LAB 탭이 자동으로 생기지 않음)
 
 ## 1. Workspace

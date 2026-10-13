@@ -1,109 +1,61 @@
-# RETURN HANDOFF — Mecha Lab 0.9.0 (Claude Code → ChatGPT)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.10.0 (Claude Code, 2026-10-13)
 
-작성 2026-10-13. 기준: 0.8.0(아래 0.8.0 섹션 유지). **검증은 Linux headless bpy 5.0.1, Windows 5.0.2 GUI 실행 0회.**
-테스트: 13개 파일 621/621 (`tests/test_log_bpy501_v090.txt`). 0.8.0의 모든 테스트가 수정 없이 통과(회귀 없음).
+## 1. 기준과 결과물
+- 기준: **ChatGPT v0.9.3** 무수정 ZIP(`reference/CHATGPT_v0_9_3/mecha_lab-0.9.3_ORIGINAL_UNMODIFIED.zip`, sha256 `3b66e845…`).
+  v0.9.3 = Claude 0.9.0 + ChatGPT `deform_tools.py`(0.9.1) + `primitive_tools.py`(0.9.2/0.9.3) + 작은 UI/등록 수정.
+  v0.9.1 Deform 원본 사본: `reference/CHATGPT_v0_9_3/deform_tools_v091.py`.
+- 결과 ZIP: `dist/mecha_lab-0.10.0.zip` (sha256 `708f3c10d42c3569fc350ca27e1b565e54f712a38a9dbd4e2ff6e87540e46b9f`).
+- 소스: `addon/mecha_lab/`. 테스트: `tests/` (17개 파일 875/875, 로그 `tests/test_log_bpy501_v0100.txt`).
+  ChatGPT의 Primitive 테스트는 `tests/chatgpt_v093/`(하드코딩 경로만 바꾸면 실행됨, 통과).
+- 문서: `CHANGELOG.md`(0.10.0 절), `KNOWN_LIMITATIONS.md`(0절), `test_report.md`(코드/headless/GUI 별도 열),
+  `GUI_TEST_CHECKLIST_KO.md`(A절 = 0.10.0), 인수인계 원문 `handoff/2026-10-13-v093/`.
 
-## 0.9.0 변경 요약과 위치
-| 요청 | 구현 위치 | 핵심 |
-|---|---|---|
-| P0 Mesh Curve 곡선 문제 | `__init__.py` `PathDrawLogic`, `MCH_OT_draw_path`, `MCH_OT_path_handles_all`, `workspace_ui.register_keymaps` | 원인 3개: 전부 VECTOR 생성 / Edit Mode 더블클릭 키맵이 v0.5.9부터 `active=False` / Straight·Smooth 버튼이 Edit Mode 전용. 수정: 그리는 중 점 클릭·더블클릭 토글(`_point_near`, `toggle_point`), `S`로 새 점 종류(`Scene.mch_settings.path_point_type`), Free Draw AUTO, Backspace 종류 보존, 키맵 활성, Object Mode All Smooth/Straight |
-| Mesh Curve 컨트롤 | `MCH_PG_Live.resolution/profile_segments/rot_x/rot_y/rot_z/twist`, `set_mesh_curve_parameters`, `_twisted_curve`, `sweep_group`, `array_group` | GN: 경로 → Set Curve Tilt(tilt + SplineParameter.Factor × twist, 노드 `MCH_TWIST`) → Curve to Mesh / Curve to Points. 단면 회전 `MCH_PROFILE_ROT`(Transform), 배열 복제본 회전 `MCH_INST_ROT`(Rotate Instances, Local). Resolution = 경로 `resolution_u`. 노드가 없는 이전 Live 객체는 첫 수정 때 그룹 재생성 |
-| P0 SubD Plane | `subd_plane.py` (신규), 도구 ID `SUBD`(enum 18), `ui_tool_settings.draw_subd` | `MCH_SubD_Simple`(SUBSURF SIMPLE) → `MCH_SubD_CatmullClark` → `MCH_SubD_Solidify`. `Object.mch_subd` update → `sync_modifiers`(값 쓰기 + 순서 보정). Crease = `crease_edge` float 엣지 속성. Apply All = `core_geometry.apply_single_modifier` 순차 |
-| P1 Radial 회전 | `radial_array.py` `make_radial_group`, `update_radial`, `MCH_PG_Radial` | Instance on Points → `MCH_Radial_CopyRot`(Rotate Instances, Local) → `MCH_Radial_RingRot`(Transform) → Realize/Switch. `follow_circle` 기본 False(씬 `radial_follow`도). 이전 배열은 update 시 그룹 재생성 |
-| P1 Gap Split | `cut_engine.py` `offset_loop`, `pixels_per_unit`, `_gap_groups`, `perform_closed`, `perform_line` | 닫힌 도형: 윤곽(구멍 포함, 방향 규약상 +d = 영역 확장)을 ±Gap/2(px 환산) 오프셋해 커터 2개(안쪽 INTERSECT = 조각 B, 바깥 DIFFERENCE = 원본 A). 직선: 평면 ±Gap/2. 오프셋 결과가 자기교차하면 CutError |
-| P2 양쪽 마감 | `cut_engine._finish_side`, `_side_report`, `MCH_PG_Cut.side_a_*/side_b_*`, `cut_tools.MCH_OT_split_swap_sides` | A = 남는 원본, B = `_Split`. `finish_new_edges`(cutter 면 경계만)를 측별 설정으로. Split은 Cut의 `edge_finish`를 더 이상 쓰지 않음 |
-| P2 2D Corner | 변경 없음(라벨만 Corner Width) | 기존 `round_corners` + `StrokeLogic._outline`이 미리보기와 실행 모두에 쓰임을 테스트로 확인 |
+## 2. 가장 중요한 사실 (과장 금지)
+- **모든 검증은 Linux headless bpy 5.0.1.** Windows 11 / Blender 5.0.2 GUI에서는 한 번도 실행되지 않았습니다.
+- 사용자 보고 B01 Mirror / B02 Loft / B03 Smart Fuse는 **headless에서 v0.9.3 그대로도 재현되지 않았습니다.** 0.10.0은 GUI에서만
+  생길 수 있는 원인을 고쳤습니다(아래 3). 실제 원인 확인은 사용자의 **Run Mecha Lab Self Test** 결과(클립보드)와 콘솔 로그로.
+- "코드에 있음 ≠ headless 통과 ≠ GUI 동작". test_report.md 표를 그대로 유지해 주세요.
 
-## 테스트 훅 (새 것)
-- `mecha_lab._path_ray`, `mecha_lab._path_to_screen`: Mesh Curve 그리기 시뮬레이션용(테스트에서 직교 투영으로 교체).
-- 평가 확인 시 Radial/Curve Array의 bake switch 노드를 켜야 정점이 보임(인스턴스는 `to_mesh`에 안 나옴).
+## 3. 사용자 보고 고장별 조치 (원인 → 수정 → 테스트)
+| ID | 원인(확인/추정) | 수정 위치 | 테스트 |
+|---|---|---|---|
+| B09 | 해제가 중간에 예외로 멈추면 클래스가 남아 다음 활성화가 `already registered`로 실패하고, 그 뒤 등록(Mirror/Radial/Surface 하위 패널·키맵·툴)이 모두 빠짐. 두 사본(예전 Add-on + 확장) 동시 활성도 같은 증상 | `addon_safety.py`(purge_stale, run_steps), `__init__.register/unregister`(롤백, 단계별 해제), 모듈 상태 리셋, 패널 경고 | test_registration_recovery (38), zip 3사이클 |
+| B01/B02/B03 | (추정) B09, 그리고 **왼쪽 도구 목록이 Properties 편집기**라서 `wm.tool_set_by_id`가 3D View가 아닌 컨텍스트에서 실패 → 툴이 mecha.cut에 고정 → 패널이 계속 Cut, LMB가 Cut. Fuse: 다른 오브젝트의 미확정 미리보기가 패널을 점유, Undo 후 `active` 플래그만 남아 재생성 거부 | `workspace_ui.set_native_tool`(3D View temp_override), `tool_state.effective_tool`(`mch_native_at_choice` 고착 감지), `StrokeLogic.invoke`(다른 도구 선택 시 PASS_THROUGH), `fuse_is_live`/`fuse_target_from_context`/`_purge_fuse_groups`, Mirror Apply/Remove 다중 | test_v0100_regression, test_self_test |
+| B04 | 두 번째 클릭이 `DOUBLE_CLICK` 없이 `PRESS`로만 오는 환경 | `StrokeLogic._on_lmb`: `last_press`(시간+DBL_PX) 자체 판정, `CLOSE_PX`×UI Scale, 편집 클릭 뒤 DOUBLE_CLICK은 편집으로 처리. 3회 클릭 제거 | regression B04 |
+| B05 | 기존 점 더블클릭 = PRESS 토글 + DOUBLE_CLICK 토글 → 원상복귀 | `PathDrawLogic._toggle_once` | regression B05 |
+| B06 | 0.7 리팩터에서 PNG 스탬프 R 회전 누락 | `cut_engine.rotate_stamp`, `MCH_OT_stamp_rotate`(툴 키맵 R/Shift+R, poll=PNG일 때만), `draw_stamp_cursor`(WorkSpaceTool.draw_cursor) | regression B06 |
+| B07 | B04와 동일 경로 + 열린 선은 시작점 클릭 미지원 | `_hit_start` 열린 선 허용 | regression B07 ×3 + 열린 선 |
+| B08 | 사용자 요청 | `tool_state.HIDDEN_TOOLS/VISIBLE_TOOLS`, `NATIVE_TOOLS`에서 mask 툴 제외, `mch.draw_mask`는 경고만. 코드/데이터 유지 | regression B08 |
+| B10 | 슬라이더 상한 0.5, clamp 결과 미표시 | `core_geometry.finish_new_edges(clamp, label)`, `FINISH_NOTES`, `cut_engine._with_finish_notes`, `MCH_PG_Cut.finish_clamp` | regression B10 |
 
-## 다음 제안
-- GUI 결과 반영(특히 Curve Edit Mode 더블클릭 키맵 우선순위, SubD Edit Mode 반응, Gap Split 원근 폭).
-- Gap Split의 원근 정확도: 픽셀 환산 대신 3D 오프셋(각 벽을 시선 평면에서 법선 방향으로 이동)으로 개선 가능.
-- Mesh Curve Twist의 구간별 tilt 편집, SubD Crease 시각화.
+## 4. 새 기능 구조
+- **입력**: Alt는 놓을 때 판정(`ALT_CLICK_SEC`=0.5, `ALT_DRAG_PX`=5×UI). 대기 중 Alt 누름 = `stage 'ALTWAIT'`, 그리는 중 = `alt_pending`.
+  짧은 클릭 = `_leave_tool`(→`exit_tool`: `mch_last_tool` 저장, Base Mesh 세션 Auto Apply). Object Mode `Alt+LEFTMOUSE CLICK` →
+  `mch.alt_click_return`(오브젝트 레이캐스트, 없으면 PASS_THROUGH). `V` = `mch.quick_menu`(`MCH_PT_quick_popup`, `ts.QUICK_TOOLS`),
+  `Shift+A` = `MCH_MT_add_mecha`(VIEW3D_MT_add.append). 모두 MECHA LAB Workspace에서만, Preferences 토글.
+- **Boolean**: `boolean_roles()` — 활성 = 커터, 나머지 선택 = 대상. 대상별 safe_apply, 실패 대상은 원상태, 하나라도 실패하면 커터 유지.
+- **Cut/Split 다중**: perform_closed/perform_line 대상별 try, `_target_report(skipped, failed)`. 대상 1개일 때는 기존처럼 예외.
+- **Base Mesh**: `bevel_sides`(TOP/BOTTOM/BOTH/NONE), `bevel_width_bottom/segments_bottom/bevel_link`, `side_values(p, flip)`,
+  `_bevel_rims`, `perform_base(..., cutter=True)` → `_perform_cutter`(Z 반전 + 1% 띄움 → Boolean Difference), `SESSION_KEY`
+  씬 ID 속성 + `auto_apply_session`(freeze + `ed.undo_push`), `bottom_too` → BOTH 로드 마이그레이션.
+- **Stabilizer**: `stabilizer.LazyStabilizer`(순수 파이썬). StrokeLogic `_stroke_start/_stroke_sample/_stroke_finish`, 60Hz `stab_timer`,
+  overlay에 지연 원/줄. 브러시 속성 `stab_enable/stab_strength/stab_radius/stab_guide`, 간격은 기존 `stroke_spacing`.
+- **Deform**: v0.9.1 ID 유지(`mch.deform_lattice/bend/edit/finish_edit/gizmo/reset/apply/remove`) + 신규 `mch.deform_transform`
+  (기즈모 모달/실행/리두), `mch.deform_step`, `MCH_GGT_deform`(Mecha 기즈모), Falloff 오버레이. 순수 수학: `falloff_weight`,
+  `compute_weights`, `transform_point`, `apply_falloff`(Bend: 접선 성분 회전 → tilt, Scale → radius). 씬 설정 `Scene.mch_deform_tool`,
+  컨트롤러 값 `Object.mch_deform`(v0.9.1 필드명 유지 + `bend_count`, `applied_twist/taper`). 툴 ID는 계속 `POSE`(라벨 Deform).
+- **자가 진단**: `self_test.run()` — 임시 씬에서 핵심 연산자 실행, 끝나면 생성 데이터 전부 삭제, 결과 클립보드.
 
----
+## 5. 지켜야 할 규칙 (사용자 결정)
+- 활성(노란색) = Boolean 커터. Alt+MMB 추가 금지. 3회 클릭 토글 부활 금지. Mask는 숨김만(삭제는 승인 후).
+- Base Mesh 자동 Apply는 그 도구가 그 세션에 만든 Live 결과만. 다른 오브젝트/모디파이어 절대 Apply 금지.
+- Shape Corner(2D)와 Edge Finish(3D) 분리 유지. Curve Lasso ≠ Mesh Curve(Curve Tool). ZBrush는 OBJ(GoZ 아님), 자동 Join 금지.
+- 기존 연산자 ID 삭제 금지, 사용자 .blend/Preferences/Startup 무단 변경 금지.
+- Windows GUI에서 실행하지 않은 것은 "미검증"으로 표기.
 
-## (이전) RETURN HANDOFF — Mecha Lab 0.8.0
-
-작성 2026-10-13. 기준 소스: ChatGPT **v0.7.2** (`reference/CHATGPT_v0_7_2/MECHA_LAB_v0_7_2_CURRENT_BASE.zip`).
-요청서: `handoff/2026-10-13/`. 0.7.0 시절 인수인계 내용(기하 코어, Workspace 설계)은 git 이력과 아래 요약으로 대체.
-**모든 검증은 Linux headless bpy 5.0.1. Windows Blender 5.0.2 GUI 실행 0회.**
-
-## 1. 요약
-- P0 입력: Esc→선택 도구, 원거리 더블클릭 자동 폐합(중복점/0길이 엣지 방지), 트리플 클릭과 점 편집 클릭 분리,
-  처음부터 곡선인 Curve Lasso(Bezier 핸들), 진짜 연속 Free Draw(+Lasso 드래그), 2D 윤곽 모서리 옵션 분리.
-- P1: Base Mesh from Shape 새 도구(Flat/Chamfer/Bevel/Dome, RMB 프로필 팝업, Live, 실패 시 무생성).
-- P2: Loft/Sweep(Live, NURBS-like 폴리곤), ZBrush OBJ Bridge(GoZ 아님, 자동 Join 없음).
-- 보존: v0.7.1 트리플 클릭·Ortho Lock(로드 시 재시작 추가), v0.7.2 마스크 레이캐스트·열린 브러시·Edge Finish 진단.
-- 독립 Curve Tool(`mch.draw_path`, Panel/Curve 패널)은 **손대지 않음**.
-
-## 2. 파일 맵 (`addon/mecha_lab/`)
-| 파일 | 역할 / 이번 변경 |
-|---|---|
-| `cut_engine.py` | 공통 획 상태기계 `StrokeLogic`(모드 CUT/SPLIT/MASK/**BASE**), `GateLogic`(RMB, popup=SHAPE/PROFILE), `MCH_OT_exit_tool`(Esc). 순수 함수: `curve_lasso_spline`, `curve_tangents`, `curve_handles`, `round_corners`, `smooth_open`, `clean_clicks`. v0.7.2의 `triple_click_to_select` 유지 + `triple_reset`(편집 클릭) |
-| `base_mesh.py` | **신규.** `perform_base`(화면 윤곽→뷰 평면→솔리드), `build_bmesh`(프리즘/Dome), `_triangulate`(CDT + 교차 parity 영역 분류), `Object/Scene.mch_base`, `mch.set_profile`, `mch.base_freeze` |
-| `loft_surface.py` | **신규.** `Object/Scene.mch_loft`, `loft_rows`/`sweep_rows`, `build_mesh_from_rows`, depsgraph 핸들러 `_on_depsgraph`(Live), 연산자 create/sweep/rebuild/move/apply |
-| `zbrush_bridge.py` | **신규.** `send_objects`, `import_back`, 매니페스트 JSON, `Scene.mch_zbrush`, `detect_goz`(정보용) |
-| `tool_state.py` | 도구 BASE(15)/LOFT(16)/ZBRUSH(17) 추가, Shape 설명, 브러시 속성(curve_smoothness, outline_*, stroke_smooth) |
-| `workspace_ui.py` | `mecha.base_mesh` WorkSpaceTool, 도구 키맵에 ESC, RMB 게이트 popup 속성, `MCH_PT_profile_popup`, Ortho Lock load_post |
-| `ui_tool_settings.py` | Shape 옵션 개편, `draw_base`, `draw_loft`, `draw_zbrush` |
-| `core_geometry.py` | 변경 없음(0.7.0 코어: frustum 커터, 검증 Boolean, apply_single_modifier, Edge Finish) |
-
-## 3. 핵심 설계
-### 3.1 입력 상태기계 (cut_engine.StrokeLogic)
-- 단계 POINTS(Lasso/Curve Lasso) / DRAG(Rect, Circle, Ellipse, Free Draw, Custom) / SIDE(열린 선의 지울 쪽 선택).
-- 종료: FINISHED 1회 = 작업 1개 = Undo 1단계. CANCELLED = 변화 없음. `_leave_tool` = 정리 + `exit_tool`(select_box).
-- Esc(획 중) → `_leave_tool`. Esc(대기) → 도구 키맵 `mch.exit_tool`. 팝업 대기 게이트 중 Esc → exit.
-- DOUBLE_CLICK(POINTS) → `_confirm` → `_clean_points`(4px 중복·시작점 겹침 제거) → 닫힌 윤곽 실행. 점 추가 없음.
-- 트리플: PRESS/DOUBLE_CLICK마다 `triple_click_to_select`(v0.7.2, 0.72초/12px, 25ms 중복 필터). 단 POINTS 단계에서 기존 점
-  (마지막 점·닫기용 첫 점 제외) 또는 핸들을 누른 PRESS는 `triple_reset` 후 미집계. invoke 첫 PRESS도 집계 → "점 클릭 →
-  더블 확정 → 같은 자리 3번째 클릭"이 선택 복귀.
-- Curve Lasso: `pts`, `sharp[i]`, `overrides[i]`(핸들 드래그 탄젠트). 탄젠트 기본 = (P[i+1]-P[i-1])/2 × smoothness.
-  구간 = 3차 Bezier(P, P+T/3, Q-T'/3, Q), 구간당 `curve_resolution` 샘플.
-- Free Draw: DRAG 중 MOUSEMOVE/INBETWEEN_MOUSEMOVE마다 `stroke_spacing` 이상이면 샘플 추가. 실행 시 smooth→simplify→
-  (닫힌 경우) trim_closing_overlap. Mask는 `apply_mask_stroke`(열린 경로).
-- 테스트 훅: `make_projector`, `add_draw_handler`, `open_popup`, `exit_tool`, `_now` (tests/test_stroke_events.py).
-
-### 3.2 Base Mesh
-- 평면: 윤곽 중심의 시선이 씬 메쉬에 맞으면 그 점, 아니면 3D 커서를 지나는 시선 수직 평면. 오브젝트 로컬 XY = 평면,
-  +Z = 뷰어 쪽. 그 뷰에서 실루엣이 그린 윤곽과 일치(테스트 <0.01px).
-- 프리즘: 구멍 없으면 n-gon 캡, 있으면 CDT 삼각형 캡. Chamfer/Bevel = 윗면 림 엣지만 `bmesh.ops.bevel`(폭 ≤ 0.95·Height).
-- Dome: 경계를 `extent/resolution` 간격으로 조밀화, 엇갈린 내부 격자(경계에서 0.45·간격 이상), 거리장 d(numpy),
-  z = edge + H·(1-(1-t)^q)^(1/q), t=d/R, q=1+3·roundness. 윗면 = CDT(경계+내부), 아랫면 = CDT(경계), 벽 = edge height.
-  Edge Height 최소 1%·Height(0이면 경계 전용 삼각형이 바닥과 겹쳐 닫힌 솔리드 불가).
-- `_triangulate`: CDT 출력 삼각형을 **제약(윤곽) 엣지로 나뉜 영역**으로 묶고, 볼록 껍질 밖 가상 영역에서 제약 엣지를
-  건널 때마다 parity를 뒤집어 홀수 영역만 유지. (중심점 판정은 경사 뷰의 sliver에서 실패했음.)
-- 검증: manifold, 법선 재계산, 부피>0. 실패 시 CutError → 오브젝트 미생성.
-- Live: `mch_base.outline`(JSON, 로컬 2D 그룹) + 설정. update 콜백이 `rebuild` → 실패 시 `last_error` 표시, 메쉬 유지.
-
-### 3.3 Loft/Sweep
-- 커브 첫 스플라인을 world 폴리라인으로(BEZIER는 `interpolate_bezier`, POLY 그대로, NURBS는 evaluated to_mesh),
-  호 길이 재샘플. 열린 커브: 양끝 거리로 뒤집기. 닫힌 커브: 시작점 회전+방향 최소 오차 탐색, `twist`로 추가 회전.
-- 단면 사이: Catmull-Rom과 선형을 `smoothness`로 혼합. `close_loft`는 마지막→첫 섹션 연결.
-- 메쉬: 행×열 쿼드, Cap(닫힌 단면, 열린 loft), Flip, Thickness = Solidify 모디파이어(Live), Apply = 데이터 적용.
-- Live: `depsgraph_update_post`에서 바뀐 커브 오브젝트/데이터를 참조하는 Live 오브젝트만 재생성(`_building` 재귀 가드).
-- Sweep: 경로 평행 이동 프레임, 단면은 단면 오브젝트 로컬 XY.
-
-### 3.4 ZBrush Bridge
-- Send: 객체마다 선택을 그것 하나로 바꿔 `wm.obj_export`(world 좌표, axis/scale 설정) → 매니페스트에 export matrix.
-- Import Back: 파일 mtime > 기록값인 것만 `wm.obj_import`, 여러 그룹이면 bmesh로 하나로, export matrix 역변환,
-  원래 오브젝트(ID → 이름) 메쉬 교체(공유 메쉬면 이 오브젝트만), 이전 메쉬 `_preZBrush`(fake user). 없으면 새 오브젝트.
-
-## 4. 기능 상태
-`test_report.md`의 "기능별 상태" 표 참고 (완료/실행 검증 · 구현됐으나 GUI 미검증 · 부분 구현 · 미구현).
-
-## 5. 다음 작업 제안
-**P0 (사용자 GUI 결과부터)**: `GUI_TEST_CHECKLIST_KO.md` 결과/콘솔 로그로 이벤트 타이밍(더블·트리플 시간창), Esc 키맵 우선순위,
-팝업, 왼쪽 목록 표시, Workspace 생성 확인 후 조정.
-**P1**: Base Mesh Surface Follow/Project(곡면 위 장갑판: 윤곽을 표면에 레이캐스트해 높이장을 표면 법선 방향으로),
-Curve Lasso 좌우 독립 핸들/첫 점 편집, Live Cut Edge Finish.
-**P2**: Loft의 열린/닫힌 혼합(닫힌 쪽을 펼치기), 섹션별 샘플 매칭 옵션, GoZ(실제 ZBrush 설치에서 검증 가능할 때만),
-Mask Protect / Pose / FBX 커터.
-
-## 6. 규칙
-- `core_geometry`·`base_mesh`·`loft_surface`의 기하 코드에 `bpy.ops` 금지(헤드리스 테스트·안전성).
-- 상태기계 변경 시 `tests/test_stroke_events.py` 먼저 갱신. 새 패널은 `tests/test_ui_draw.py`에 추가(아이콘 enum 검사 포함).
-- 독립 Curve Tool 수정 금지(요청 범위 밖). ZBrush 전송 전 자동 Join 금지. Startup/설정 무단 변경 금지.
-- "구현됨"과 "GUI 검증됨"을 구분해 보고.
+## 6. 남은 일 / 다음 단계
+1. 사용자 GUI 체크리스트 A절 결과와 Self Test 결과 수집 → B01–B03이 남아 있으면 그 로그로 원인 확정.
+2. Stabilizer 체감(60Hz 타이머, Strength 곡선) 조정은 사용자 피드백 필요.
+3. Deform: Rigid Pose 미구현, 곡선 거리 기반 Falloff, Mecha 기즈모의 Each Point 표시.
+4. Mask: 사용자 승인 시 코드 정리 여부 결정.
+5. 키 설정 전용 UI, Base Mesh Surface Follow, GoZ 등 기존 미구현 목록은 KNOWN_LIMITATIONS C절 그대로.

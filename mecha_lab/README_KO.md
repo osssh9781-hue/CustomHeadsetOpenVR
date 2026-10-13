@@ -1,14 +1,25 @@
-# Mecha Lab 0.9.0 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.10.0 — 설치 · MECHA LAB Workspace · 사용법
 
-> **검증 수준:** Linux headless Blender **5.0.1**(`bpy`)에서 자동 테스트 13개 파일 / 621개 항목이 통과했습니다.
-> **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** 실제 마우스/키 입력, 팝업, Workspace 생성은
-> `GUI_TEST_CHECKLIST_KO.md`로 확인이 필요합니다. 상태 구분은 `test_report.md`, 한계는 `KNOWN_LIMITATIONS.md`.
+> **검증 수준:** Linux headless Blender **5.0.1**(`bpy`)에서 자동 테스트 17개 파일 / 875개 항목이 통과했습니다.
+> **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` A절을 먼저 확인해 주세요.
+> 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
 
-기준 소스: ChatGPT v0.7.2 (Claude v0.7.0 → ChatGPT v0.7.1 / v0.7.2). 독립 Curve Tool(Panel / Curve)은 수정하지 않았습니다.
+기준 소스: ChatGPT v0.9.3 (Claude 0.9.0 + ChatGPT Deform 0.9.1 + Primitive 0.9.2/0.9.3). 변경 내용은 `CHANGELOG.md` 0.10.0.
+
+## 0.10.0 빠른 안내
+- **Alt+짧은 클릭** = 선택 모드 ↔ 마지막 Mecha 도구, **Alt+드래그** = 도구별 보조(Cut: 안쪽 남기기, Base Mesh: 파내기).
+- 닫기: 아무 곳 **더블클릭** / **시작점 클릭** / Enter. Esc = 획 취소 후 선택 모드. 3회 클릭 기능은 없어졌습니다.
+- **V** = 빠른 메뉴(Cut, Boolean, Base Mesh, SubD Plane, Split, Radial), **Space** = 전체 메뉴, **Shift+A > Mecha Lab**.
+- **Boolean**: 대상들을 먼저, **커터를 마지막(노란색)**으로 선택. 대상이 여러 개여도 각각 처리.
+- Cut / Split / Mirror: 선택된 메쉬 모두에 적용.
+- Base Mesh: Bevel Sides(Top / Bottom / Both / None), 도구를 떠나면 이번에 만든 도형만 Apply.
+- Free Draw: Stabilizer(Lazy Mouse) ON/Strength/Radius/Spacing.
+- Deform: 라티스/벤드 커브 점 클릭 → Move/Rotate/Scale 기즈모, Falloff로 주변까지 변형.
+- PNG 모양: R / Shift+R 15° 회전. Mask는 숨김(데이터 유지).
 
 ## 1. 설치
 1. 기존 Mecha Lab을 비활성화·제거 (Edit > Preferences > Add-ons).
-2. Get Extensions > ▾ > **Install from Disk…** → `dist/mecha_lab-0.9.0.zip` (압축 풀지 말 것).
+2. Get Extensions > ▾ > **Install from Disk…** → `dist/mecha_lab-0.10.0.zip` (압축 풀지 말 것).
 3. 설치만으로는 어떤 Workspace도 바뀌지 않습니다.
 
 ## 2. MECHA LAB Workspace
@@ -16,8 +27,8 @@ N 사이드바 > Mecha Lab > `Open MECHA LAB Workspace` (또는 탭 메뉴 / F3)
 왼쪽 도구 목록 · 뷰포트 왼쪽 위 공통 Shape 팔레트 · 오른쪽 현재 도구 설정 구성을 만듭니다. 다른 탭과 Startup File은
 건드리지 않습니다(Startup 저장은 확인 창이 있는 별도 버튼).
 
-도구 목록: **Cut, Split, Base Mesh, SubD Plane**, Boolean, Smart Fuse, Mirror, Mask, Curve Array, Radial Array, Mesh Curve,
-Pose(미구현 표시), **Loft / Surface, ZBrush Bridge**, Surface Conform, Assets, Remesh, Live Result.
+도구 목록: **Cut, Split, Base Mesh, SubD Plane, Primitive**, Boolean, Smart Fuse, Mirror, Curve Array, Radial Array, Mesh Curve,
+**Deform**, **Loft / Surface, ZBrush Bridge**, Surface Conform, Assets, Remesh, Live Result. (Mask는 0.10.0에서 숨김)
 `Space` = 큰 아이콘 도구 메뉴(MECHA LAB 탭에서만). Sidebar의 접힌 `Tools (fallback list)`도 항상 있습니다.
 
 ## 3. 공통 입력 규칙 (Cut / Split / Mask / Base Mesh)

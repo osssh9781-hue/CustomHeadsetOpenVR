@@ -1,4 +1,4 @@
-# Test Report — Mecha Lab 0.9.0
+# Test Report — Mecha Lab 0.10.0
 
 ## 환경
 | 항목 | 값 |
@@ -7,49 +7,50 @@
 | Python / OS | 3.11 / Linux 6.18 (클라우드 컨테이너) |
 | 사용자 환경 | Windows 11 + Blender **5.0.2 GUI** — **실행 안 됨** |
 | 사용자 설정 | 임시 `BLENDER_USER_*` 폴더 사용, 실제 설정·Startup 미사용 |
+| 기준 | ChatGPT v0.9.3 무수정 ZIP (sha256 `3b66e845…a1e4cd`) |
 
-명령: `<bpy python> tests/run_all.py` · 로그: `tests/test_log_bpy501_v090.txt`
-ZIP: `dist/mecha_lab-0.9.0.zip` (sha256 `e0df276daa9dff157904a9c0d55131448da0380a4f99e704daa76a18d85b74b9`)
+명령: `<bpy python> tests/run_all.py` · 로그: `tests/test_log_bpy501_v0100.txt`
+ZIP: `dist/mecha_lab-0.10.0.zip` (sha256 `708f3c10d42c3569fc350ca27e1b565e54f712a38a9dbd4e2ff6e87540e46b9f`)
 
-## 결과: 13개 파일, 621 / 621 통과 (0.8.0의 12개 파일은 회귀 없이 전부 통과)
-| 파일 | 항목 | 0.9.0에서 |
+**변경 전(v0.9.3 무수정)에도 같은 headless 테스트는 모두 통과**했습니다(경로 누락 2건 제외). 즉 사용자 보고 고장 대부분은
+headless로 재현되지 않았고, 아래 "GUI 검증" 열은 전부 미검증입니다.
+
+## 결과: 17개 파일, 875 / 875 통과
+| 파일 | 항목 | 0.10.0 |
 |---|---|---|
-| **test_v090_features.py** | 70 | **신규** — 아래 표 |
-| test_ui_draw.py | 112 | +7: Live SubD, Split Gap + A/B, Live Mesh Curve(DRAW/EDIT), Live Radial 회전 패널 |
-| test_stroke_events.py | 68 | 0.8.0 그대로 통과 (Esc, 더블/트리플 클릭, Curve Lasso, Free Draw, Base Mesh 모드) |
-| test_base_mesh.py | 83 | 그대로 통과 |
-| test_cut_geometry.py | 93 | 그대로 통과 (Split 기본 동작 불변) |
-| test_png_shapes.py | 85 | 그대로 통과 |
-| test_loft_surface.py | 22 | 그대로 통과 |
-| test_zbrush_bridge.py | 17 | 그대로 통과 |
-| test_legacy_features.py | 26 | 그대로 통과 (Radial create/bake/Boolean 포함) |
-| test_workspace_data.py | 17 | 그대로 통과 (Ortho Lock 포함) |
-| test_register.py | 11 | 아이콘 enum 검사 포함 통과 |
-| test_zip_install.py | 9 | 0.9.0 ZIP 설치/활성/비활성/재활성 |
-| test_performance.py | 8 | 정보용 |
+| test_v0100_regression.py | 92 | **신규** — B01–B10, F01/F02/F08, Alt, V/Shift+A |
+| test_deform.py | 109 | **신규** — 단일 점 회전/스케일이 주변 메쉬 변형, Resolution, Bend twist/radius, 드래그 |
+| test_registration_recovery.py | 38 | **신규** — B09 잔여 등록·해제 중 예외·등록 중 예외·두 사본 |
+| test_self_test.py | 4 | **신규** — 인-블렌더 자가 진단이 데이터를 남기지 않음 |
+| test_zip_install.py | 19 | 비활성/재활성 **3회**, 키맵 중복 없음 |
+| test_ui_draw.py | 113 | 모든 패널 draw (Mask 툴바 도구 제외로 1 감소) |
+| test_stroke_events.py | 68 | 새 사양으로 2개 수정(Alt는 드래그, 3회 클릭 제거) |
+| test_cut_geometry.py / test_legacy_features.py | 93 / 26 | Boolean 선택 규칙 새 사양(활성=커터)으로 수정 |
+| test_base_mesh / png_shapes / loft / zbrush / workspace / register / performance / v090 | 83/85/22/17/17/11/8/70 | 그대로 통과 |
+| tests/chatgpt_v093/* (Primitive) | 26 + 11 + 출력형 | 경로만 바꿔 수동 실행, 통과 |
 
-### test_v090_features.py 세부 (70)
-| 영역 | 확인 내용 |
-|---|---|
-| Mesh Curve 그리기 (실제 `PathDrawLogic`에 가짜 이벤트) | 기본 VECTOR, 기존 점 클릭 → Smooth(새 점 없음), 점 더블클릭 토글, 다시 클릭 → Straight, `S`로 새 점 종류, Backspace가 종류 보존, Enter로 Live 생성 + 새 노드, Free Draw 점 AUTO |
-| Mesh Curve Live | Object Mode All Smooth, **Smooth 시 실제로 곡선(직선 구간 위로 부풂, 정점 수 증가)**, Resolution → 밀도, Profile Segments, Rotation X/Z, Twist(시작 고정·나머지 회전), 0.9 이전 Live 객체 자동 업그레이드, Bake |
-| Curve Array | 복제본 Rotation Z, Twist |
-| 키맵 | Curve Edit Mode 더블클릭 키맵이 **활성** |
-| SubD Plane | 스택 순서/종류, Simple·CC 동시 작동(면 수 증가 순서), 레벨 0~5, Solidify 값, Edit Mode 표시, Edit Mode 엣지 Extrude + Crease, Apply All 면 수 = 적용 전 평가 결과, 기존 메쉬에 스택 추가 |
-| Radial | Rotate Each Copy 기본 OFF(씬/오브젝트), OFF면 모든 복제본이 원본 축 유지(기울어짐 없음), ON이면 회전, Ring Rotation X(XZ 평면으로), Copy Rotation Z(제자리 회전), Start Angle 30°, 이전 배열 자동 업그레이드, Bake |
-| Gap Split | Normal 불변, Gap 부피(조각 0.8², 구멍 1.2²), 별도 닫힌 오브젝트, 중심 유지, 직선 Gap(0.2 간격·중심·캡), 폴리라인, 원(곡선), Cap OFF, 너무 넓은 Gap 거부(무변경), Live 모드 거부 |
-| 양쪽 마감 | Normal/Gap 각각 A만 Bevel(B 날카로움), 원래 모서리 불변, Swap Sides, 직선 Split B Chamfer, Cut Edge Finish 불변 |
-| 2D 모서리 | Sharp/Chamfer/Round 점 수, Corner Width, Segments, 짧은 변 클램프, **Lasso 그리는 중 미리보기**(3 모드), **Rectangle 드래그 중 미리보기**, 둥근 사각 컷 적용 |
+## 기능별 상태 (docs/04 C: 서로 다른 열)
+| 항목 | 코드에 존재 | headless 통과 | Windows GUI 검증 |
+|---|---|---|---|
+| B09 등록 자가 복구, 두 사본 경고 | O | O (38) | 미검증 |
+| B01 Mirror world/local/cursor × XYZ, 다중, 변경/Apply/Remove, Collection | O | O | 미검증 (원인 재현 못 함) |
+| B02 Loft | O (변경 없음) | O (기존 22 + 자가 진단) | 미검증 (원인 재현 못 함) |
+| B03 Smart Fuse 10회, 상태 복구, 고아 그룹 정리 | O | O | 미검증 |
+| 도구 목록 → 툴 전환(3D View 컨텍스트), 고착 시 선택 도구 우선 | O | 일부(판정 로직만, 실제 창 없음) | 미검증 |
+| B04 아무 곳 더블클릭(PRESS만 와도) / 시작점 클릭 | O | O | 미검증 (실제 이벤트 순서) |
+| B05 Mesh Curve 더블클릭 1회 전환 | O | O | 미검증 |
+| B06 PNG R 회전 + 커서 미리보기 | O | O (미리보기 그리기 자체는 GPU라 미검증) | 미검증 |
+| B07 Split Gap Enter/시작점/더블클릭 | O | O | 미검증 |
+| B08 Mask 숨김, 데이터 보존 | O | O | 미검증 |
+| B10 큰 베벨, 제한 메시지, Clamp | O | O | 미검증 |
+| Alt 짧은 클릭/드래그, Alt+클릭 복귀 | O | O (모달 로직; Object Mode CLICK 키맵은 등록만) | 미검증 |
+| V 빠른 메뉴 / Shift+A | O | 등록만 | 미검증 |
+| Boolean 활성=커터 다중 대상 | O | O | 미검증 |
+| Cut/Split 다중 대상, 실패 보존 | O | O | 미검증 |
+| Base Mesh Bevel Sides / Both 별도 폭 / Alt 커터 / 세션 Auto Apply / 마이그레이션 | O | O | 미검증 |
+| Deform 기즈모(Mecha) | O | 수학·드래그 로직 O, 기즈모 표시·클릭 미검증 | 미검증 |
+| Deform Blender 기즈모 + Proportional | O | O (`transform.rotate/resize` + proportional로 단일 점 → 주변 변형 확인) | 미검증 |
+| Free Draw Stabilizer | O | O (떨림 감소/지연 증가 수치, dt 독립, 지연 원, 종료) | 미검증 (프레임/타이머 체감) |
+| 자가 진단 버튼 | O | O | 사용자 실행 필요 |
 
-## 기능별 상태
-| 기능 | 상태 |
-|---|---|
-| Mesh Curve 곡선 생성/편집, Resolution/Segments, Rotation X/Y/Z, Twist | 구현, 기하·상태기계 headless 검증 / **GUI 미검증** (특히 Edit Mode 더블클릭 키맵) |
-| SubD Plane | 구현, headless 검증 / GUI 미검증 (슬라이더 즉시 반영은 모디파이어 직접 갱신이라 문제 예상 낮음) |
-| Radial 회전 컨트롤, Rotate Each Copy 기본 OFF | 구현, headless 검증 / GUI 미검증 |
-| Gap Split | 구현, headless 검증(직교 뷰 기준 정확) / 원근 뷰 폭은 근사, GUI 미검증 |
-| Split 양쪽 독립 Bevel + Swap | 구현, headless 검증 / GUI 미검증 |
-| 2D Corner Bevel | 0.8.0 구현 점검 완료(미리보기 포함, 상태기계 테스트) / GUI 미검증 |
-| 0.8.0 이전 기능 | 회귀 테스트 전부 통과 |
-
-`GUI_TEST_CHECKLIST_KO.md`(81항목)로 Windows Blender 5.0.2 확인이 필요합니다. headless 통과는 GUI 동작 인증이 아닙니다.
+`GUI_TEST_CHECKLIST_KO.md`의 0.10.0 항목을 Windows Blender 5.0.2에서 확인해 주세요. headless 통과는 GUI 동작 인증이 아닙니다.

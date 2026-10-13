@@ -1,4 +1,23 @@
-# KNOWN LIMITATIONS — Mecha Lab 0.9.0
+# KNOWN LIMITATIONS — Mecha Lab 0.10.0
+
+## 0. 0.10.0에서 먼저 알아야 할 것
+- **사용자 보고 B01 Mirror / B02 Loft / B03 Smart Fuse는 headless에서 재현되지 않았습니다.** 0.10.0의 수정은 GUI에서만 생길 수
+  있는 원인(등록 중단 B09, 도구 목록에서의 툴 전환 실패, 미확정 Fuse 미리보기의 패널 점유, Undo 후 남은 상태)을 고친 것이며
+  실제 원인과 같다고 단정할 수 없습니다. 아직 문제가 있으면 **Workspace & Hotkeys > Run Mecha Lab Self Test** 결과(클립보드에
+  복사됨)와 Blender 시스템 콘솔 로그를 보내 주세요.
+- Alt+짧은 클릭 판정: 0.5초 이내, 5px×UI Scale 이내 이동. Object Mode의 Alt+클릭 복귀는 Blender의 `CLICK` 이벤트 사용
+  (Blender 기본 Alt+클릭 = 오브젝트 목록 선택은, 오브젝트가 없는 곳에서는 그대로 동작).
+- 직선 Cut의 "남길 쪽 클릭"은 Alt+클릭에서 **Ctrl+클릭**으로 바뀜(Alt+클릭은 도구 종료).
+- Base Mesh Alt+드래그 커터: Flat/Chamfer/Bevel만(Dome은 거부). 깊이 = Height, 표면 바로 위 1% 높이에서 시작(동일 평면 회피).
+  대상은 선택된 메쉬(Live Base Mesh 제외), 없으면 도형 중심 아래 메쉬.
+- Base Mesh 세션 Auto Apply = Live 해제(Freeze)이며 형상은 그대로. "세션"은 마지막으로 도구를 떠난 뒤 만든 Base Mesh.
+- Stabilizer: 드로잉 중 60Hz 타이머. Strength 100%의 시간 상수 0.35초. 마우스를 놓으면 커서까지 따라와 끝남(ZBrush처럼 지연
+  위치에서 멈추는 옵션은 없음). Mask(숨김)에는 연결하지 않음.
+- Deform: Falloff 거리는 직선(유클리드) 거리 — 굽은 Bend Curve에서는 곡선을 따라 잰 거리가 아님. Mecha 기즈모는 선택 중심에
+  표시(Each Point 피벗일 때도 위치는 중심). Bend Curve Scale = 반지름(두께)만, 점 위치는 그대로. Lattice 해상도 변경은 Blender가
+  기존 변형을 재샘플(B-Spline에서는 근사). Rigid Pose는 여전히 미구현.
+- Mask는 숨김만 했습니다(코드·데이터 유지). 완전 삭제는 승인 후.
+
 
 ## A. 검증되지 않은 것 (가장 중요)
 **Windows 11 + Blender 5.0.2 GUI에서 실행된 적이 없습니다.** 모든 자동 테스트는 Linux headless `bpy 5.0.1`입니다.
