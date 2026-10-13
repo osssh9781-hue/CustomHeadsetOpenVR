@@ -1,4 +1,4 @@
-# Test Report — Mecha Lab 0.12.0
+# Test Report — Mecha Lab 0.13.0
 
 ## 환경
 | 항목 | 값 |
@@ -14,6 +14,17 @@ ZIP: `dist/mecha_lab-0.11.1.zip` (sha256 `fb8960ae4fc08a273b09cb6d1cfca01a7efda2
 
 **변경 전(v0.9.3 무수정)에도 같은 headless 테스트는 모두 통과**했습니다(경로 누락 2건 제외). 즉 사용자 보고 고장 대부분은
 headless로 재현되지 않았고, 아래 "GUI 검증" 열은 전부 미검증입니다.
+
+## 0.13.0 결과: 21개 파일, 1124 / 1124 통과
+로그 `tests/test_log_bpy501_v0130.txt`, ZIP `dist/mecha_lab-0.13.0.zip` (sha256 `a9dba3e703b9d92e5f0cbd761033fb0f663bfe871f1a857641868192b83133f9`).
+| 항목 | 코드 | headless | Windows GUI |
+|---|---|---|---|
+| 단면 7종 · 비대칭 · 릿지 (정점 수 고정, 값 검증) | O | O | 미검증 |
+| 지점 사슬 30°+45°, 시나리오 E(앞 지점 수정 후 뒤 상대각·값 유지) | O | O | 미검증 |
+| 접힘 마이터(부피 보존), 감싸기 200°, 자동 세그먼트, 반경 보정 경고, Step/Smooth, 뾰족 끝 | O | O | 미검증 |
+| 프리셋 6개 메시 유효성 | O | O | 미검증 |
+| Blender: 생성·실시간 재생성·지점 추가/삭제/이동·Shell·저장 후 재편집·Cut/Boolean 동결·Apply·패널 그리기 | O | O | **미검증** |
+| 뷰포트 핸들 | 없음 | — | — |
 
 ## 0.12.0 결과: 20개 파일, 1074 / 1074 통과
 로그 `tests/test_log_bpy501_v0120.txt`, ZIP `dist/mecha_lab-0.12.0.zip` (sha256 `270841f19e16687320f5e91e0567a7e5b6b414dd5407e8228a1140304417c7fe`).

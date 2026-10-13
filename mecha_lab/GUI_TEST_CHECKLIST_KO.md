@@ -1,8 +1,15 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.12.0 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.13.0 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## O. 0.13.0 Station Primitive
+- [ ] Primitive 도구 → 프리셋 6개 각각 생성, 모양 확인 (헬멧/장갑판/타이어 커버/자동차/덕트/평판)
+- [ ] Multi-Bend: S1 각도 바꾸면 뒤 구간이 따라 돌고 S2/S3 값은 그대로
+- [ ] Add Station → 30° 꺾임이 이어짐, 반경 0/0.3 바꿔 보기(접힘 ↔ 부드러움)
+- [ ] Asymmetry: 왼쪽 두께만 키우기, 릿지 높이
+- [ ] 저장 → 다시 열기 → 계속 편집, Cut 하면 "frozen" 메시지, Apply
 
 ## P. 0.12.0 (먼저)
 - [ ] MECHA LAB 뷰포트 아래 가운데 툴바 8개, 현재 도구 주황, 버튼 클릭으로 도구 전환, 마우스 올리면 툴팁

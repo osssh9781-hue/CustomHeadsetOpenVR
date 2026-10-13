@@ -1,4 +1,11 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.12.0 (Claude Code, 2026-10-13)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.13.0 (Claude Code, 2026-10-13)
+
+## 000000. 0.13.0 Station Primitive (Phase 1)
+- ZIP sha256 `a9dba3e703b9d92e5f0cbd761033fb0f663bfe871f1a857641868192b83133f9`, 1124/1124. 설계·결과 페이지: https://claude.ai/artifact/QuYhJsnfWbLET7fF97M7fn
+- `station_sweep.py`: `profile_loop(kind, p, res, ridge, sides)`(정점 수 고정), `build(spec)` → verts/faces/warnings/frames,
+  `preset(name)`. Frame(P,X,T,Z), 지점별 Local 회전 누적, 접힘 = 이등분 마이터, 아크 = pivot 회전.
+- `station_primitive.py`: `Object.mch_station`(stations 컬렉션), `rebuild(ob)`(bmesh 정리 + 각도 30° 이상 sharp),
+  `freeze(ob)`(cut_engine/Boolean에서 호출), 연산자 create/add/remove/move/apply, `draw(layout, context)`.
 
 ## 00000. 0.12.0 (UX 프로토타입의 최소 Blender 버전)
 - ZIP `dist/mecha_lab-0.12.0.zip` (sha256 `270841f19e16687320f5e91e0567a7e5b6b414dd5407e8228a1140304417c7fe`), 1074/1074. 프로토타입: https://claude.ai/artifact/DXBX1cyVtgs3w1k2LqToVH (v2.1)

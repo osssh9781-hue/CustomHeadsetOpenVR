@@ -630,6 +630,8 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
     auto_apply = scene.mch_settings.auto_apply if hasattr(scene, 'mch_settings') else True
     groups = cg.prepare_loops(loops)
     _leave_edit_mode(context, targets)
+    from . import station_primitive
+    frozen = [t.name for t in targets if station_primitive.freeze(t)]
     baked = [t.name for t in targets if cg.ensure_real_mesh(context, t)]
     for t in targets:
         cg.check_target(t)
@@ -718,7 +720,9 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
                 suffix = f' | {cut.edge_finish}: {sum(edge_counts)} newly cut edges'
         return (f'{verb}: {", ".join(t.name for t, _ in results)}{"".join(sorted(set(infos)))}{suffix}' +
                 _target_report(skipped, failed) +
-                (' | live primitive baked first: ' + ', '.join(baked) if baked else ''))
+                (' | live primitive baked first: ' + ', '.join(baked) if baked else '') +
+                (' | Station Primitive frozen (cut kept; its parameters no longer rebuild): ' + ', '.join(frozen)
+                 if frozen else ''))
     finally:
         for me in temp:
             if me.users == 0:
@@ -782,7 +786,9 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
     cut = scene.mch_cut
     auto_apply = scene.mch_settings.auto_apply if hasattr(scene, 'mch_settings') else True
     _leave_edit_mode(context, targets)
+    from . import station_primitive
     for t in targets:
+        station_primitive.freeze(t)
         cg.ensure_real_mesh(context, t)
         cg.check_target(t)
     if len(points) == 2 and cut.fast_line and auto_apply:

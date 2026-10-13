@@ -1,10 +1,14 @@
-# Mecha Lab 0.12.0 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.13.0 — 설치 · MECHA LAB Workspace · 사용법
 
-> **검증 수준:** Linux headless Blender **5.0.1**(`bpy`)에서 자동 테스트 20개 파일 / 1074개 항목이 통과했습니다.
+> **검증 수준:** Linux headless Blender **5.0.1**(`bpy`)에서 자동 테스트 21개 파일 / 1124개 항목이 통과했습니다.
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` A절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
 
 기준 소스: ChatGPT v0.9.3 (Claude 0.9.0 + ChatGPT Deform 0.9.1 + Primitive 0.9.2/0.9.3). 변경 내용은 `CHANGELOG.md` 0.10.0.
+
+## 0.13.0 Station Primitive
+- Primitive 도구 패널 맨 위 "STATION PRIMITIVE": 프리셋 선택 → 지점 목록에서 지점 고르고 꺾임·폭·두께 조절 → Add Station으로
+  이어서 꺾기 → Apply. 반경 0 = 날카로운 접힘, 반경 > 0 = 부드러운 꺾임/감싸기.
 
 ## 0.12.0 빠른 안내
 - **하단 툴바**(뷰포트 아래 가운데) 또는 **Q 파이**로 도구 선택, **Shift+Q** = Select ↔ 마지막 도구, **F** = Select / Move.

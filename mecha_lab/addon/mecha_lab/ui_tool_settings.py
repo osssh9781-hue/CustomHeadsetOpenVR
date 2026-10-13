@@ -581,7 +581,10 @@ def draw_subd(layout, context):
 
 
 def draw_primitive(layout, context):
-    from . import primitive_tools as prim
+    from . import primitive_tools as prim, station_primitive
+    station_primitive.draw(layout, context)
+    if station_primitive.active_station_primitive(context) is not None:
+        return
     ob = prim.active_primitive(context)
     p = ob.mch_primitive if ob is not None else context.scene.mch_primitive
     box = layout.box()
