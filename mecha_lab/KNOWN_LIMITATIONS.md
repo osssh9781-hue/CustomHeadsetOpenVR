@@ -1,4 +1,8 @@
-# KNOWN LIMITATIONS — Mecha Lab 0.11.1
+# KNOWN LIMITATIONS — Mecha Lab 0.11.2
+
+## 0000. 0.11.2
+- 일반 Cube "whole object" 오류는 여전히 headless에서 재현되지 않음(가짜 투영, 실제 RegionView3D 원근/직교, 모달 경로, Edit Mode 모두
+  시도). 0.11.2의 오류 메시지 대괄호 부분과 Self Test의 "real 3D View projection" 줄이 원인 판단에 필요.
 
 ## 000. 0.11.1 (먼저 읽기)
 - **일반 Cube에서 "would delete the whole object" 오류는 headless에서 재현되지 않았습니다.** MCH_Box(Live Primitive)는 재현·수정.

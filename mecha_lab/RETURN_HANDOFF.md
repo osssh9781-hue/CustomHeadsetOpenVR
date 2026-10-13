@@ -1,4 +1,10 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.11.1 (Claude Code, 2026-10-13)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.11.2 (Claude Code, 2026-10-13)
+
+## 000. 0.11.2
+- ZIP `dist/mecha_lab-0.11.2.zip` (sha256 `000db2d3d84a0215dcfd1b55fcd296e59267c1e091a2be5d04af7593676c0aa5`), 1012/1012. 사용자: 0.11.1에서도 일반 Cube 실패 → headless 재현 불가.
+- `cut_engine.cut_diagnosis / _boolean_checked`: 빈 결과 시 덮는 정점 비율·픽셀·뷰·Alt·버전을 메시지와 콘솔에. `_leave_edit_mode`.
+- `self_test.view_cut_check`: 실제 3D View 투영으로 Cut / Alt Cut / Split.
+- 다음 단계: 사용자 메시지의 `shape covers N/M`이 M/M이면 화면 좌표/투영 문제(이벤트 좌표·영역), 일부면 Boolean 평가 문제.
 
 ## 00. 0.11.1 (Cut/Split 수정, Alt 모드 전환 롤백, Select / Move)
 - ZIP `dist/mecha_lab-0.11.1.zip` (sha256 `fb8960ae4fc08a273b09cb6d1cfca01a7efda2da8d16ee193d1ec480423f0593`), 18개 파일 1007/1007 (`tests/test_log_bpy501_v0111.txt`). GUI 미검증.

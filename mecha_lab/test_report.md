@@ -1,4 +1,4 @@
-# Test Report — Mecha Lab 0.11.1
+# Test Report — Mecha Lab 0.11.2
 
 ## 환경
 | 항목 | 값 |
@@ -14,6 +14,15 @@ ZIP: `dist/mecha_lab-0.11.1.zip` (sha256 `fb8960ae4fc08a273b09cb6d1cfca01a7efda2
 
 **변경 전(v0.9.3 무수정)에도 같은 headless 테스트는 모두 통과**했습니다(경로 누락 2건 제외). 즉 사용자 보고 고장 대부분은
 headless로 재현되지 않았고, 아래 "GUI 검증" 열은 전부 미검증입니다.
+
+## 0.11.2 결과: 18개 파일, 1012 / 1012 통과
+로그 `tests/test_log_bpy501_v0112.txt`, ZIP `dist/mecha_lab-0.11.2.zip` (sha256 `000db2d3d84a0215dcfd1b55fcd296e59267c1e091a2be5d04af7593676c0aa5`).
+| 항목 | 코드에 존재 | headless 통과 | Windows GUI 검증 |
+|---|---|---|---|
+| 실패 메시지 진단(덮는 정점 수·픽셀·뷰·Alt·버전) | O | O (전체 덮음 / Alt 빗나감) | 미검증 |
+| Edit Mode에서 Cut / Split | O | O | 미검증 |
+| Self Test 실제 3D View 투영 Cut / Alt Cut / Split | O | O (bpy의 실제 RegionView3D 1574x954 원근 + 대역 원근/직교) | 사용자 실행 필요 |
+| 일반 Cube "whole object" | — | 재현 안 됨 | **미해결 (사용자 메시지 필요)** |
 
 ## 0.11.1 결과: 18개 파일, 1007 / 1007 통과
 `test_v0100_regression.py` 108항목(0.11.0 96 → Alt 클릭/드래그 블록을 0.11.1 블록으로 교체). 나머지 17개 파일 항목 수 그대로.

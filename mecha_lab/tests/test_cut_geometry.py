@@ -200,7 +200,7 @@ try:
     ce.perform_closed(C, 'CUT', [t], [ce.rect_loop((300, 300), (700, 700))], TOP, invert=False)
     check('delete-all refused', False)
 except cg.CutError as ex:
-    check('cut removing everything refused', 'whole object' in str(ex), ex)
+    check('cut removing everything refused', 'covers the whole' in str(ex) or 'whole object' in str(ex), ex)
 check('mesh unchanged after failures', (len(t.data.vertices), len(t.data.polygons)) == before)
 check('no leaked cutter objects', [o.name for o in bpy.data.objects] == ['Target'])
 t.data.shape_keys or t.shape_key_add(name='Basis')

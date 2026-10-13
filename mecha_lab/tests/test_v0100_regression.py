@@ -298,8 +298,39 @@ try:
     msg = ''
 except cg.CutError as ex:
     msg = str(ex)
-check('whole-object case still refused, now with diagnosis (operation + solvers)', 'whole object' in msg and
-      'Cut' in msg and 'solvers tried' in msg and abs(volume(cb) - 8.0) < 1e-6, msg)
+check('0.11.2 shape over the whole object: refused, says so, with facts (coverage, px, view, Alt, version)',
+      'covers the whole of "C"' in msg and '8/8 vertices' in msg and 'Alt/invert off' in msg and
+      'Mecha Lab 0.11.2' in msg and 'ORTHO' in msg and abs(volume(cb) - 8.0) < 1e-6, msg)
+try:
+    ce.perform_closed(C, 'CUT', [cb], [ce.rect_loop((10, 10), (60, 60))], TOP, invert=True)
+    msg = ''
+except cg.CutError as ex:
+    msg = str(ex)
+check('0.11.2 Alt cut beside the object: "does not intersect", Alt shown', 'does not intersect' in msg and
+      'Alt/invert ON' in msg and '0/8' in msg and abs(volume(cb) - 8.0) < 1e-6, msg)
+# Cut while the object is in Edit Mode (Tab passes through since 0.11.0): used to fail in to_mesh()
+fresh()
+cb = cube('C')
+select_only(cb)
+C.view_layer.objects.active = cb
+bpy.ops.object.mode_set(mode='EDIT')
+try:
+    r = ce.perform_closed(C, 'CUT', [cb], [ce.rect_loop((450, 450), (550, 550))], TOP)
+except Exception as ex:
+    r = f'ERROR {ex}'
+check('0.11.2 Cut from Edit Mode: back to Object Mode and cut', cb.mode == 'OBJECT' and r.startswith('Cut') and
+      volume(cb) < 8 - 1e-3, r)
+fresh()
+cb = cube('C')
+select_only(cb)
+C.view_layer.objects.active = cb
+bpy.ops.object.mode_set(mode='EDIT')
+try:
+    r = ce.perform_closed(C, 'SPLIT', [cb], [ce.rect_loop((450, 300), (550, 700))], TOP)
+except Exception as ex:
+    r = f'ERROR {ex}'
+check('0.11.2 Split from Edit Mode', cb.mode == 'OBJECT' and r.startswith('Split'), r)
+bpy.ops.object.select_all(action='DESELECT')
 
 # =============================================================================
 # B07 Split Gap: Enter / start click / double-click

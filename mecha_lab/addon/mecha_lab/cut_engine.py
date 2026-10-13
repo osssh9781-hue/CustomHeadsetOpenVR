@@ -21,6 +21,7 @@ clicking a menu" problems):
 from __future__ import annotations
 
 import math
+import sys
 import time
 import traceback
 
@@ -445,6 +446,71 @@ def _with_finish_notes(fn):
     return wrapper
 
 
+def _addon_version():
+    pkg = sys.modules.get(__package__)
+    v = getattr(pkg, 'bl_info', {}).get('version', ())
+    return '.'.join(str(x) for x in v) or '?'
+
+
+def _leave_edit_mode(context, targets):
+    """Booleans and mesh commits need Object Mode (to_mesh fails on an edit mesh)."""
+    if not any(t.mode == 'EDIT' for t in targets):
+        return
+    try:
+        bpy.ops.object.mode_set(mode='OBJECT')
+    except RuntimeError:
+        pass
+    for t in targets:
+        if t.mode == 'EDIT':
+            t.update_from_editmode()
+
+
+def cut_diagnosis(target, groups, projector, near, far, invert):
+    """One-line facts about a failed cut: how much of the object the drawn
+    shape really covers (screen loop + depth range), the loop in pixels, the
+    view type, Alt state and the running add-on version."""
+    loops = [lp for outer, holes in groups for lp in [outer] + list(holes)]
+    xs = [p[0] for lp in loops for p in lp]
+    ys = [p[1] for lp in loops for p in lp]
+    vd = projector.view_dir
+    lo, hi = sorted((near.dot(vd), far.dot(vd)))
+    mw = target.matrix_world
+    verts = target.data.vertices
+    step = max(1, len(verts) // 2000)
+    inside = total = 0
+    for i in range(0, len(verts), step):
+        co = mw @ verts[i].co
+        total += 1
+        sc = projector.to_screen(co)
+        if sc is not None and lo - 1e-6 <= co.dot(vd) <= hi + 1e-6 and cg.point_in_loops(sc, loops):
+            inside += 1
+    reg = getattr(projector, 'region', None)
+    size = f'{reg.width}x{reg.height}' if reg is not None else '?'
+    return inside, total, (f'shape covers {inside}/{total} vertices of {target.name} | shape px '
+                           f'({min(xs):.0f},{min(ys):.0f})-({max(xs):.0f},{max(ys):.0f}) in {size} | '
+                           f'{"PERSP" if projector.is_perspective else "ORTHO"} | '
+                           f'{"Alt/invert ON" if invert else "Alt/invert off"} | Mecha Lab {_addon_version()}')
+
+
+def _boolean_checked(context, cut, t, cutter, op, groups, projector, near, far, invert):
+    """boolean_result + a precise explanation when the result would be empty."""
+    try:
+        return cg.boolean_result(context, t, cutter, op, cut.solver, cut.hole_tolerant)
+    except cg.CutError as ex:
+        if 'whole object' not in str(ex):
+            raise
+        inside, total, facts = cut_diagnosis(t, groups, projector, near, far, invert)
+        if op == 'DIFFERENCE' and total and inside == total:
+            msg = (f'The drawn shape covers the whole of "{t.name}", so cutting would delete all of it; '
+                   f'nothing was changed. Draw over only part of the object. [{facts}]')
+        elif op == 'INTERSECT' and inside == 0:
+            msg = f'The shape does not intersect "{t.name}"; nothing was changed. [{facts}]'
+        else:
+            msg = f'{ex} [{facts}]'
+        print('[Mecha Lab] cut failed:', msg)
+        raise cg.CutError(msg) from None
+
+
 @_with_finish_notes
 def perform_closed(context, mode, targets, loops, projector, invert=False):
     """Cut / Split all targets with closed screen loops. Returns a report string."""
@@ -452,6 +518,7 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
     cut = scene.mch_cut
     auto_apply = scene.mch_settings.auto_apply if hasattr(scene, 'mch_settings') else True
     groups = cg.prepare_loops(loops)
+    _leave_edit_mode(context, targets)
     baked = [t.name for t in targets if cg.ensure_real_mesh(context, t)]
     for t in targets:
         cg.check_target(t)
@@ -486,17 +553,19 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
             try:
                 if mode == 'CUT':
                     op = 'INTERSECT' if invert else 'DIFFERENCE'
-                    me, _solver = cg.boolean_result(context, t, cutter, op, cut.solver, cut.hole_tolerant)
+                    me, _solver = _boolean_checked(context, cut, t, cutter, op, groups, projector, near, far,
+                                                   invert)
                     temp.append(me)
                     edge_counts.append(cg.finish_new_edges(
                         me, cut.edge_finish, cut.finish_width / scale,
                         cut.finish_segments, cut.finish_profile, clamp=cut.finish_clamp))
                     results.append((t, me))
                 else:  # SPLIT
-                    inner, _s1 = cg.boolean_result(context, t, cutter, 'INTERSECT', cut.solver, cut.hole_tolerant)
+                    inner, _s1 = _boolean_checked(context, cut, t, cutter, 'INTERSECT',
+                                                  inner_groups if gap else groups, projector, near, far, False)
                     temp.append(inner)
-                    outer, _s2 = cg.boolean_result(context, t, cutter_out or cutter, 'DIFFERENCE',
-                                                   cut.solver, cut.hole_tolerant)
+                    outer, _s2 = _boolean_checked(context, cut, t, cutter_out or cutter, 'DIFFERENCE',
+                                                  outer_groups if gap else groups, projector, near, far, False)
                     temp.append(outer)
                     # Side A = remaining original object, Side B = the new "_Split" piece.
                     for me, side in ((outer, 'a'), (inner, 'b')):
@@ -601,6 +670,7 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
     scene = context.scene
     cut = scene.mch_cut
     auto_apply = scene.mch_settings.auto_apply if hasattr(scene, 'mch_settings') else True
+    _leave_edit_mode(context, targets)
     for t in targets:
         cg.ensure_real_mesh(context, t)
         cg.check_target(t)

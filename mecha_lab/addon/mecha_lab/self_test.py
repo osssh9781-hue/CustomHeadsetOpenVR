@@ -58,6 +58,32 @@ def _volume(ob):
     return v
 
 
+def view_cut_check(C, coll, region, rv3d):
+    """Cut / Alt Cut / Split on temporary cubes at the view centre through
+    the projection of ``region`` / ``rv3d`` (a real 3D View in the GUI)."""
+    from . import core_geometry as cg, cut_engine as ce
+    proj = cg.Projector(region, rv3d)
+    size = max(rv3d.view_distance * 0.25, 1e-3)
+    out = []
+    for mode, invert, dx, dy in (('CUT', False, 0.35, 0.35), ('CUT', True, 0.35, 0.35),
+                                 ('SPLIT', False, 0.25, 2.0)):
+        t = _cube(f'ST_View{mode}', size, tuple(rv3d.view_location), coll)
+        C.view_layer.update()
+        _select(C, t)
+        c = proj.to_screen(t.matrix_world.translation)
+        e = proj.to_screen(t.matrix_world.translation + proj.view_dir.orthogonal().normalized() * size * 0.5)
+        assert c is not None and e is not None, 'view centre is not projectable'
+        r = max(abs(e[0] - c[0]), abs(e[1] - c[1]), 4.0)
+        loop = ce.rect_loop((c[0] - r * dx, c[1] - r * dy), (c[0] + r * dx, c[1] + r * dy))
+        v0 = _volume(t)
+        ce.perform_closed(C, mode, [t], [loop], proj, invert=invert)
+        if mode == 'CUT':
+            assert 1e-9 < _volume(t) < v0 * (1 - 1e-4), f'{mode} invert={invert}: volume {v0:.4g} -> {_volume(t):.4g}'
+        out.append(f'{mode}{" Alt" if invert else ""} ok')
+    return (', '.join(out) + f' | {"PERSP" if rv3d.is_perspective else "ORTHO"} {rv3d.view_perspective} '
+            f'{region.width}x{region.height}')
+
+
 def run(context):
     from . import addon_safety, core_geometry as cg, deform_tools, tool_state as ts
     lines = []
@@ -168,6 +194,19 @@ def run(context):
             assert _volume(t) < 8.0 - 1e-3
             return 'rectangle cut'
         step('Cut engine', cut)
+
+        def cut_real_view():
+            # GUI only: Cut / Alt Cut / Split through the projection of a real
+            # 3D View (the path interactive strokes use), on temporary cubes
+            # placed at the view centre.
+            screen = getattr(window, 'screen', None) if window is not None else None
+            area = next((a for a in screen.areas if a.type == 'VIEW_3D'), None) if screen else None
+            if area is None:
+                return 'skipped: no 3D View (background run)'
+            region = next(r for r in area.regions if r.type == 'WINDOW')
+            rv3d = area.spaces.active.region_3d
+            return view_cut_check(C, coll, region, rv3d)
+        step('Cut / Alt Cut / Split through the real 3D View projection', cut_real_view)
 
         def base():
             from . import base_mesh, cut_engine as ce

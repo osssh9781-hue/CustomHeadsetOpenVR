@@ -1,8 +1,13 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.11.1 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.11.2 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## R. 0.11.2 (먼저)
+- [ ] Preferences > Add-ons에서 Mecha Lab이 **하나만** 있고 버전 0.11.2인지 (예전 ChatGPT 0.10.x 사본이 있으면 제거 후 재시작)
+- [ ] N > Mecha Lab > Workspace & Hotkeys > Run Mecha Lab Self Test → 클립보드 내용 전체 전달 (특히 "real 3D View projection" 줄)
+- [ ] 일반 Cube Cut이 실패하면 상태 표시줄/Info 편집기의 **메시지 전체**(대괄호 포함) 전달
 
 ## S. 0.11.1 우선 확인 (Cut/Split 롤백 + Select / Move)
 - [ ] 1. 새 파일 기본 Cube → Cut Rectangle 드래그 → 잘림("whole object" 오류 없음)
