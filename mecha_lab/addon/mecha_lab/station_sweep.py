@@ -30,14 +30,15 @@ CAPS = ('FLAT', 'ROUND', 'POINT', 'OPEN')
 QUALITY_DEG = {'DRAFT': 15.0, 'NORMAL': 8.0, 'FINE': 4.0}
 STATION_KEYS = ('length', 'bend_angle', 'bend_dir', 'bend_radius', 'twist', 'world', 'yaw', 'pitch',
                 'width_l', 'width_r', 'height_top', 'height_bot', 'thick_l', 'thick_r',
-                'corner_l', 'corner_r', 'ridge_h', 'ridge_w', 'ridge_offset', 'interp')
+                'corner_l', 'corner_r', 'ridge_h', 'ridge_w', 'ridge_offset', 'interp', 'bend_style', 'profile')
+BEND_STYLES = ('AUTO', 'FOLD', 'TIGHT', 'BAND')     # AUTO: radius 0 = fold, > 0 = band
 BLEND_KEYS = ('width_l', 'width_r', 'height_top', 'height_bot', 'thick_l', 'thick_r', 'corner_l', 'corner_r',
               'ridge_h', 'ridge_w', 'ridge_offset')
 
 DEFAULT_STATION = dict(length=1.0, bend_angle=0.0, bend_dir=0.0, bend_radius=0.0, twist=0.0, world=False,
                        yaw=0.0, pitch=0.0, width_l=0.5, width_r=0.5, height_top=0.05, height_bot=0.05,
                        thick_l=1.0, thick_r=1.0, corner_l=0.02, corner_r=0.02, ridge_h=0.0, ridge_w=0.15,
-                       ridge_offset=0.0, interp='LINEAR')
+                       ridge_offset=0.0, interp='LINEAR', bend_style='AUTO', profile='INHERIT')
 
 
 def station(**kw):
@@ -129,6 +130,35 @@ def _corner_y(kind, x, w, h, r, sides):
     return h - ry + ry * math.sqrt(max(0.0, 1.0 - t * t))
 
 
+def _poly_breaks(sides, wl, wr):
+    """x of the polygon corners on the upper / lower chain (inner corners only)."""
+    n = max(3, sides)
+    off = math.pi / 2 if n % 2 else math.pi / 2 - math.pi / n
+    top, bot = [], []
+    for k in range(n):
+        a = off + 2 * math.pi * k / n
+        c, sn = math.cos(a), math.sin(a)
+        if abs(c) > 1 - 1e-9:
+            continue
+        x = (wr if c > 0 else wl) * c
+        (top if sn > 1e-9 else bot if sn < -1e-9 else []).append(x)
+    return top, bot
+
+
+def ring_loop(kind, p, res=12, ridge='NONE', sides=6):
+    """Profile of one ring: the station's own kind, or a morph between two kinds."""
+    ka = p.get('_ka') or (p['profile'] if p.get('profile', 'INHERIT') != 'INHERIT' else kind)
+    kb = p.get('_kb') or ka
+    t = p.get('_kt', 0.0)
+    la = profile_loop(ka, p, res, ridge, sides)
+    if kb == ka or t <= 0.0:
+        return la
+    lb = profile_loop(kb, p, res, ridge, sides)
+    if t >= 1.0:
+        return lb
+    return [(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t) for (x0, y0), (x1, y1) in zip(la, lb)]
+
+
 def profile_loop(kind, p, res=12, ridge='NONE', sides=6):
     """Closed CCW loop [(x, y)] in the profile plane (x = right, y = up).
 
@@ -141,13 +171,8 @@ def profile_loop(kind, p, res=12, ridge='NONE', sides=6):
     n_top = max(5, res * 2 + 1)
     tops = [(x, None) for x in _cos_pattern(n_top, wr, wl)]
     extra = _ridge_points(ridge, p, wl, wr) if ridge != 'NONE' else []
-    if kind == 'POLYGON':
-        n = max(3, sides)
-        for k in range(n):
-            a = math.pi / 2 - math.pi / n + 2 * math.pi * k / n
-            if math.sin(a) > 1e-6:
-                xx = math.cos(a)
-                extra.append(((wr if xx > 0 else wl) * xx, None))
+    top_poly, bot_poly = _poly_breaks(sides, wl, wr)
+    extra += [(x, None) for x in top_poly]           # always present: every kind has the same count
     pts = sorted(tops + extra, key=lambda q: -q[0])
     # keep box ridge walls in the right order (equal x: right side first goes up, left side down)
     for i in range(len(pts) - 1):
@@ -172,7 +197,7 @@ def profile_loop(kind, p, res=12, ridge='NONE', sides=6):
             y += rh * ff
         loop.append((x, y))
     n_bot = max(5, res * 2 + 1)
-    for x in reversed(_cos_pattern(n_bot, wr, wl)):        # -wl .. +wr along the bottom
+    for x in sorted(_cos_pattern(n_bot, wr, wl) + bot_poly):       # -wl .. +wr along the bottom
         w = wr if x >= 0 else wl
         r = p['corner_r'] if x >= 0 else p['corner_l']
         loop.append((x, -_corner_y(kind, x, w, hb, r, sides) * scale(x)))
@@ -184,7 +209,11 @@ def profile_loop(kind, p, res=12, ridge='NONE', sides=6):
 # =============================================================================
 
 
-def _blend(a, b, t, mode):
+def _kind_of(st, kind):
+    return st['profile'] if st.get('profile', 'INHERIT') != 'INHERIT' else kind
+
+
+def _blend(a, b, t, mode, kind='ROUNDED'):
     if mode == 'SMOOTH':
         t = t * t * (3 - 2 * t)
     elif mode == 'STEP':
@@ -192,6 +221,7 @@ def _blend(a, b, t, mode):
     out = dict(b)
     for k in BLEND_KEYS:
         out[k] = a[k] + (b[k] - a[k]) * t
+    out['_ka'], out['_kb'], out['_kt'] = _kind_of(a, kind), _kind_of(b, kind), t
     return out
 
 
@@ -253,7 +283,16 @@ def build(spec):
             inside = (frame.Z * math.cos(phi) + frame.X * math.sin(phi)).normalized()
         if angle < 0:
             angle, inside = -angle, -inside
+        style = b.get('bend_style', 'AUTO')
         R = max(0.0, b['bend_radius'])
+        if style == 'FOLD':
+            R = 0.0
+        elif style == 'TIGHT' and angle > 1e-6:
+            # sheet-metal look: the smallest radius that does not fold the inside onto itself
+            loop_t = ring_loop(kind, _blend(a, b, 0.0, mode, kind), res, ridge, sides)
+            R = max(_profile_extent(loop_t, (inside.dot(frame.X), inside.dot(frame.Z))) * 1.02, 1e-4)
+        elif style == 'BAND' and R <= 1e-6:
+            R = 0.25
         arc_len = R * angle
         total = arc_len + max(0.0, b['length'])
         travelled = 0.0
@@ -267,13 +306,13 @@ def build(spec):
                 if math.cos(angle / 2) < 0.1:
                     warnings.append(f'Station {i}: fold of {b["bend_angle"]:.0f} deg is almost flat-back; '
                                     'the mitre is limited (use a bend radius)')
-                rings.append((half, _blend(a, b, 0.0, mode), (dir_m, s)))
+                rings.append((half, _blend(a, b, 0.0, mode, kind), (dir_m, s)))
                 frame = frame.rotated(_rot(axis, angle))
             else:
-                loop0 = profile_loop(kind, _blend(a, b, 0.0, mode), res, ridge, sides)
+                loop0 = ring_loop(kind, _blend(a, b, 0.0, mode, kind), res, ridge, sides)
                 inside_xy = (inside.dot(frame.X), inside.dot(frame.Z))
                 ext = _profile_extent(loop0, inside_xy)
-                if R < ext:
+                if R < ext * 0.999:
                     warnings.append(f'Station {i}: bend radius {R:.3g} is smaller than the profile on the inside '
                                     f'({ext:.3g}); raised to {ext * 1.05:.3g} to avoid self-intersection')
                     R = ext * 1.05
@@ -286,7 +325,7 @@ def build(spec):
                     Rk = _rot(axis, angle * k / n)
                     fk = start.rotated(Rk, pivot=centre)
                     travelled = arc_len * k / n
-                    rings.append((fk, _blend(a, b, travelled / total if total > 0 else 1.0, mode), None))
+                    rings.append((fk, _blend(a, b, travelled / total if total > 0 else 1.0, mode, kind), None))
                 frame = start.rotated(_rot(axis, angle), pivot=centre)
         L = max(0.0, b['length'])
         twist = math.radians(b['twist'])
@@ -308,7 +347,7 @@ def build(spec):
                 Rt = _rot(start.T, twist * t)
                 fk.X, fk.Z = (Rt @ start.X).normalized(), (Rt @ start.Z).normalized()
                 frac = (travelled + L * t) / total if total > 0 else 1.0
-                rings.append((fk, a if step else _blend(a, b, frac, mode), None))
+                rings.append((fk, a if step else _blend(a, b, frac, mode, kind), None))
             frame = rings[-1][0].copy()
         if step:
             rings.append((frame.copy(), b, None))    # same place, new profile: a deliberate step face
@@ -319,7 +358,7 @@ def build(spec):
     verts, faces = [], []
     ring_idx = []
     for fr, p, miter in rings:
-        loop = profile_loop(kind, p, res, ridge, sides)
+        loop = ring_loop(kind, p, res, ridge, sides)
         idx = []
         for x, y in loop:
             v = fr.X * x + fr.Z * y
@@ -349,7 +388,7 @@ def _cap(verts, faces, ring, ring_data, mode, cap_len, sign, kind, res, ridge, s
     if mode == 'FLAT' or cap_len <= 1e-9:
         faces.append(tuple(reversed(ring)) if sign < 0 else tuple(ring))
         return
-    loop = profile_loop(kind, p, res, ridge, sides)
+    loop = ring_loop(kind, p, res, ridge, sides)
     k = max(2, res // 2) if mode == 'ROUND' else 1
     prev = ring
     for step in range(1, k):

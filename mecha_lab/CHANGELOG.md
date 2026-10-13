@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## 0.13.1 — Station Primitive: 옆으로 꺾기, Tight 직각, 지점별 단면, 뷰포트 핸들, Mirror 연동 (2026-10-13)
+
+- **꺾임 방향**: 위/아래/왼쪽/오른쪽 버튼 + 자유 각도(엔진은 원래 지원, 패널에 숨어 있던 것을 앞으로). 옆으로 꺾으면 판이 평평한 채로
+  평면 안에서 돌아감.
+- **꺾임 방식** (지점마다): Fold(날카로운 접힘, 두께 유지) / **Tight**(거의 직각: 안쪽이 겹치지 않는 가장 작은 반경을 자동 계산) /
+  Band(지정 반경) / Auto(반경 0 = Fold, > 0 = Band; 기존 파일 호환).
+- **지점마다 단면 종류**: 모든 단면 종류가 같은 정점 구성을 쓰도록 바꿔 구간 안에서 이전 단면 → 다음 단면으로 이어짐(Loft처럼).
+- **Left = Right** 토글(좌우 대칭 단면).
+- **뷰포트 핸들** (`station_gizmos.py`, Primitive 도구 또는 Select/Move에서 살아 있는 Station Primitive 선택 시): 지점 점(클릭 =
+  선택), 구간 가운데 +(클릭 = 그 자리에 지점 삽입, 모양 유지), 꺾임 각도 다이얼, 꺾임 방향 다이얼, 길이·좌/우 폭·두께 화살표.
+- **Mirror/Symmetry**: 라이브 Mirror(Symmetry) 모디파이어가 지점 편집·재생성 중에도 유지. Mirror Apply(패널·Enter) 시 Station
+  Primitive 동결(미러된 절반이 다음 재생성에 지워지지 않게).
+- Cut 후 동결은 그대로(사용자 결정).
+- 테스트: 22개 파일 1152/1152 (`tests/test_log_bpy501_v0131.txt`), 신규 `test_v0131.py` 28항목. ZIP sha256 `e5d7c53df793481454502b35a5fe2c28070cd7921ca136728ce8157da2281a6e`.
+
 ## 0.13.0 — Station Primitive (Advanced Parametric Primitive, Phase 1: 생성 엔진) (2026-10-13)
 
 - 새 엔진 `station_sweep.py`(순수 기하): 단면 7종(Round/Oval, Capsule, Box, Rounded, Chamfer, Ribbon, Polygon) ×

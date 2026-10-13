@@ -1,4 +1,10 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.13.0 (Claude Code, 2026-10-13)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.13.1 (Claude Code, 2026-10-13)
+
+## 0.13.1
+- ZIP sha256 `e5d7c53df793481454502b35a5fe2c28070cd7921ca136728ce8157da2281a6e`, 1152/1152. `station_sweep`: `bend_style`(AUTO/FOLD/TIGHT/BAND), 지점 `profile`(INHERIT/종류), `ring_loop`
+  (두 단면 보간), 모든 종류 공통 정점(다각형 꼭짓점 항상 포함). `station_primitive`: `sym_lr`, `FRAMES` 캐시, `station_select /
+  station_insert / station_bend_dir`. `station_gizmos.py`: `station_handles(ob)`(순수), `make_accessors`, `MCH_GGT_station_handles`.
+  `mirror_tools`: Apply 전 `station_primitive.freeze`.
 
 ## 000000. 0.13.0 Station Primitive (Phase 1)
 - ZIP sha256 `a9dba3e703b9d92e5f0cbd761033fb0f663bfe871f1a857641868192b83133f9`, 1124/1124. 설계·결과 페이지: https://claude.ai/artifact/QuYhJsnfWbLET7fF97M7fn

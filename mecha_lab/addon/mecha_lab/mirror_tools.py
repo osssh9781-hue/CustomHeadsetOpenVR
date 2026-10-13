@@ -301,6 +301,8 @@ class MirrorLeanLogic:
         for ob in self._targets():
             mod = ob.modifiers.get(MOD_NAME)
             pivot = mod.mirror_object if mod else None
+            from . import station_primitive
+            station_primitive.freeze(ob)            # keep the baked mirror (no rebuild over it)
             try:
                 core_geometry.apply_single_modifier(context, ob, mod, policy)
                 done.append(ob.name)
@@ -506,6 +508,8 @@ class MCH_OT_mesh_mirror_apply(bpy.types.Operator):
                 failed.append(f'{ob.name} (linked library mesh)')
                 continue
             helper = mod.mirror_object
+            from . import station_primitive
+            station_primitive.freeze(ob)              # the next rebuild would drop the mirrored half
             try:
                 core_geometry.apply_single_modifier(context, ob, mod, policy)
                 done.append(ob.name)

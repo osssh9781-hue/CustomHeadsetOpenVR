@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 13, 0),
+    "version": (0, 13, 1),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
     "description": "Cut, Split, Base Mesh, Boolean, Face Extract, Armor Sculpt, Molding, Cable, Hollow, curve arrays, Mirror",
@@ -12,7 +12,7 @@ import bpy
 from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform, radial_array,
                mirror_tools, cut_presets, mask_tools, workspace_ui, ui_tool_settings,
                base_mesh, loft_surface, zbrush_bridge, subd_plane, deform_tools, primitive_tools,
-               addon_safety, self_test, face_extract, edge_molding, hollow_shell, along_curve, cable, bottom_bar, station_primitive)
+               addon_safety, self_test, face_extract, edge_molding, hollow_shell, along_curve, cable, bottom_bar, station_primitive, station_gizmos)
 import os
 import re
 from pathlib import Path
@@ -1821,6 +1821,7 @@ def _register():
     along_curve.register()
     cable.register()
     station_primitive.register()
+    station_gizmos.register()
     workspace_ui.register()
     bottom_bar.register()
     for klass in SUB_PANELS:
@@ -1876,6 +1877,7 @@ def _unregister_steps():
         ('sub panels', lambda: _unregister_classes(reversed(SUB_PANELS))),
         ('bottom_bar', bottom_bar.unregister),
         ('workspace_ui', workspace_ui.unregister),
+        ('station_gizmos', station_gizmos.unregister),
         ('station_primitive', station_primitive.unregister),
         ('cable', cable.unregister),
         ('along_curve', along_curve.unregister),

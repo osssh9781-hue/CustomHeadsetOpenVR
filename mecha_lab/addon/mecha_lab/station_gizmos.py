@@ -1,0 +1,247 @@
+"""Viewport handles for the Station Primitive (gizmos, no modal operator).
+
+* a dot on every station: click = make it active
+* a + in the middle of every segment: click = insert a station there
+* active station: bend-angle dial (around the bend axis), bend-direction dial
+  (around the path: up / right / down / left), arrows for length, left / right
+  width and top thickness.  One drag changes one value; Ctrl snaps (Blender).
+
+Placement is computed by ``station_handles`` (pure, tested headless); drawing
+and dragging need a real viewport.
+"""
+import math
+
+import bpy
+from mathutils import Matrix, Vector
+
+from . import station_primitive as sp
+from . import tool_state as ts
+
+SELECT_NATIVE = {'builtin.move', 'builtin.select', 'builtin.select_box', 'builtin.select_circle',
+                 'builtin.select_lasso'}
+COL_DOT = (0.75, 0.78, 0.84)
+COL_ACTIVE = (1.0, 0.62, 0.16)
+COL_WIDTH = (0.35, 0.83, 0.55)
+COL_HEIGHT = (0.31, 0.70, 1.0)
+COL_LEN = (0.9, 0.9, 0.9)
+
+
+def _basis(origin, z, x_hint):
+    """4x4 matrix with +Z along ``z`` (the gizmo's axis) at ``origin``."""
+    z = Vector(z).normalized()
+    x = Vector(x_hint)
+    x = (x - z * x.dot(z))
+    if x.length < 1e-6:
+        x = z.orthogonal()
+    x.normalize()
+    y = z.cross(x)
+    m = Matrix((x, y, z)).transposed().to_4x4()
+    m.translation = Vector(origin)
+    return m
+
+
+def station_handles(ob):
+    """Handle placement in WORLD space: dict with 'dots' [(index, matrix)], 'plus'
+    [(index, matrix)] and, for the active station (> 0), 'bend', 'dir', 'length',
+    'width_r', 'width_l', 'height'."""
+    p = ob.mch_station
+    mw = ob.matrix_world
+    rot = mw.to_3x3().normalized()
+    frames = sp.station_frames(ob)
+    out = {'dots': [], 'plus': []}
+    for i, (P, X, T, Z) in enumerate(frames):
+        out['dots'].append((i, _basis(mw @ Vector(P), rot @ Vector(T), rot @ Vector(X))))
+        if i > 0:
+            mid = (Vector(P) + Vector(frames[i - 1][0])) / 2
+            out['plus'].append((i, _basis(mw @ mid, rot @ Vector(T), rot @ Vector(X))))
+    i = p.active
+    if 0 < i < len(frames) and i < len(p.stations):
+        st = p.stations[i]
+        P0, X0, T0, Z0 = (Vector(v) for v in frames[i - 1])
+        P1, X1, T1, Z1 = (Vector(v) for v in frames[i])
+        phi = math.radians(st.bend_dir)
+        inside = (Z0 * math.cos(phi) + X0 * math.sin(phi)).normalized()
+        axis = T0.cross(inside).normalized()
+        out['bend'] = _basis(mw @ P0, rot @ axis, rot @ T0)
+        out['dir'] = _basis(mw @ P0, rot @ T0, rot @ Z0)
+        start_run = P1 - T1 * st.length
+        out['length'] = _basis(mw @ start_run, rot @ T1, rot @ Z1)
+        out['width_r'] = _basis(mw @ P1, rot @ X1, rot @ Z1)
+        out['width_l'] = _basis(mw @ P1, rot @ -X1, rot @ Z1)
+        out['height'] = _basis(mw @ P1, rot @ Z1, rot @ X1)
+    elif i == 0 and len(p.stations):
+        P1, X1, T1, Z1 = (Vector(v) for v in frames[0])
+        out['width_r'] = _basis(mw @ P1, rot @ X1, rot @ Z1)
+        out['width_l'] = _basis(mw @ P1, rot @ -X1, rot @ Z1)
+        out['height'] = _basis(mw @ P1, rot @ Z1, rot @ X1)
+    return out
+
+
+def _station(ob_name, index):
+    ob = bpy.data.objects.get(ob_name)
+    if ob is None or not sp.is_live(ob):
+        return None, None
+    p = ob.mch_station
+    if index >= len(p.stations):
+        return ob, None
+    return ob, p.stations[index]
+
+
+def make_accessors(ob_name, index, key):
+    """(get, set) for a gizmo target; angles in radians for the dials.  With
+    Left = Right the right width handle edits the shared (left) value."""
+    def get():
+        ob, st = _station(ob_name, index)
+        if st is None:
+            return 0.0
+        k = key
+        if key == 'width_r' and ob.mch_station.sym_lr:
+            k = 'width_l'
+        v = getattr(st, k)
+        return math.radians(v) if key in {'bend_angle', 'bend_dir'} else v
+
+    def set_(value):
+        ob, st = _station(ob_name, index)
+        if st is None:
+            return
+        k = key
+        if key == 'width_r' and ob.mch_station.sym_lr:
+            k = 'width_l'
+        if key in {'bend_angle', 'bend_dir'}:
+            value = math.degrees(value)
+            if key == 'bend_angle':
+                st.world = False
+        elif key in {'width_l', 'width_r', 'height_top'}:
+            value = max(0.0005, value)
+        elif key == 'length':
+            value = max(0.0, value)
+        setattr(st, k, value)
+    return get, set_
+
+
+def _ui_ok(context):
+    ob = context.active_object
+    if not sp.is_live(ob) or context.mode != 'OBJECT':
+        return False
+    try:
+        tool = ts.effective_tool(context)
+    except (AttributeError, KeyError, TypeError):
+        tool = ''
+    return tool == 'PRIMITIVE' or ts.native_tool_id(context) in SELECT_NATIVE
+
+
+class MCH_GGT_station_handles(bpy.types.GizmoGroup):
+    bl_idname = 'MCH_GGT_station_handles'
+    bl_label = 'Station Primitive Handles'
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'WINDOW'
+    bl_options = {'3D', 'PERSISTENT', 'SHOW_MODAL_ALL'}
+
+    @classmethod
+    def poll(cls, context):
+        return _ui_ok(context)
+
+    def setup(self, context):
+        self.sig = None
+        self.items = {}
+        self._build(context)
+
+    def _clear(self):
+        for gz in list(self.gizmos):
+            self.gizmos.remove(gz)
+        self.items = {}
+
+    def _build(self, context):
+        ob = context.active_object
+        p = ob.mch_station
+        self._clear()
+        self.sig = (ob.name, len(p.stations), p.active, p.sym_lr)
+        for i in range(len(p.stations)):
+            gz = self.gizmos.new('GIZMO_GT_move_3d')
+            gz.draw_style = 'RING_2D'
+            gz.draw_options = {'ALIGN_VIEW'}
+            gz.target_set_operator('mch.station_select').index = i
+            gz.scale_basis = 0.09
+            gz.color = COL_ACTIVE if i == p.active else COL_DOT
+            gz.alpha = 0.9
+            gz.color_highlight = COL_ACTIVE
+            gz.alpha_highlight = 1.0
+            self.items[('dot', i)] = gz
+        for i in range(1, len(p.stations)):
+            gz = self.gizmos.new('GIZMO_GT_move_3d')
+            gz.draw_style = 'CROSS_2D'
+            gz.draw_options = {'ALIGN_VIEW'}
+            gz.target_set_operator('mch.station_insert').index = i
+            gz.scale_basis = 0.06
+            gz.color = COL_DOT
+            gz.alpha = 0.6
+            gz.color_highlight = COL_ACTIVE
+            gz.alpha_highlight = 1.0
+            self.items[('plus', i)] = gz
+        i = p.active
+        specs = []
+        if i > 0:
+            specs += [('bend', 'GIZMO_GT_dial_3d', 'bend_angle', COL_ACTIVE, 0.35),
+                      ('dir', 'GIZMO_GT_dial_3d', 'bend_dir', COL_HEIGHT, 0.22),
+                      ('length', 'GIZMO_GT_arrow_3d', 'length', COL_LEN, 0.9)]
+        specs += [('width_r', 'GIZMO_GT_arrow_3d', 'width_r', COL_WIDTH, 0.8),
+                  ('height', 'GIZMO_GT_arrow_3d', 'height_top', COL_HEIGHT, 0.8)]
+        if not p.sym_lr:
+            specs.append(('width_l', 'GIZMO_GT_arrow_3d', 'width_l', COL_WIDTH, 0.8))
+        for name, kind, key, col, scale in specs:
+            gz = self.gizmos.new(kind)
+            get, set_ = make_accessors(ob.name, i, key)
+            gz.target_set_handler('offset', get=get, set=set_)
+            if kind == 'GIZMO_GT_dial_3d':
+                gz.draw_options = {'ANGLE_VALUE', 'ANGLE_START_Y'}
+            else:
+                gz.draw_style = 'NORMAL'
+            gz.scale_basis = scale
+            gz.color = col
+            gz.alpha = 0.85
+            gz.color_highlight = (1.0, 1.0, 1.0)
+            gz.alpha_highlight = 1.0
+            self.items[(name, i)] = gz
+
+    def refresh(self, context):
+        ob = context.active_object
+        p = ob.mch_station
+        if self.sig != (ob.name, len(p.stations), p.active, p.sym_lr):
+            self._build(context)
+
+    def draw_prepare(self, context):
+        ob = context.active_object
+        if not sp.is_live(ob):
+            return
+        p = ob.mch_station
+        if self.sig != (ob.name, len(p.stations), p.active, p.sym_lr):
+            self._build(context)
+        h = station_handles(ob)
+        for i, m in h['dots']:
+            gz = self.items.get(('dot', i))
+            if gz is not None:
+                gz.matrix_basis = m
+        for i, m in h['plus']:
+            gz = self.items.get(('plus', i))
+            if gz is not None:
+                gz.matrix_basis = m
+        for name in ('bend', 'dir', 'length', 'width_r', 'width_l', 'height'):
+            gz = self.items.get((name, p.active))
+            if gz is not None and name in h:
+                gz.matrix_basis = h[name]
+
+
+CLASSES = (MCH_GGT_station_handles,)
+
+
+def register():
+    for c in CLASSES:
+        bpy.utils.register_class(c)
+
+
+def unregister():
+    for c in reversed(CLASSES):
+        try:
+            bpy.utils.unregister_class(c)
+        except RuntimeError:
+            pass

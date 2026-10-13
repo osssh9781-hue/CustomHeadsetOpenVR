@@ -1,4 +1,4 @@
-# Test Report — Mecha Lab 0.13.0
+# Test Report — Mecha Lab 0.13.1
 
 ## 환경
 | 항목 | 값 |
@@ -14,6 +14,16 @@ ZIP: `dist/mecha_lab-0.11.1.zip` (sha256 `fb8960ae4fc08a273b09cb6d1cfca01a7efda2
 
 **변경 전(v0.9.3 무수정)에도 같은 headless 테스트는 모두 통과**했습니다(경로 누락 2건 제외). 즉 사용자 보고 고장 대부분은
 headless로 재현되지 않았고, 아래 "GUI 검증" 열은 전부 미검증입니다.
+
+## 0.13.1 결과: 22개 파일, 1152 / 1152 통과
+| 항목 | 코드 | headless | Windows GUI |
+|---|---|---|---|
+| 옆으로 꺾기(±90°, 평평 유지, 닫힌 솔리드) | O | O | 미검증 |
+| Fold / Tight / Band (Tight 90° 경고 없음) | O | O | 미검증 |
+| 지점별 단면(정점 수 동일, 중간 링 = 평균, 박스→원 닫힌 솔리드) | O | O | 미검증 |
+| 방향 버튼, Left = Right, 구간 삽입(끝점 유지) | O | O | 미검증 |
+| 핸들 배치(점/+/다이얼/화살표), 다이얼 라디안↔도, 대칭 폭 핸들 | O | O | **미검증 (드래그)** |
+| Mirror 라이브 유지 · Apply 시 동결 | O | O | 미검증 |
 
 ## 0.13.0 결과: 21개 파일, 1124 / 1124 통과
 로그 `tests/test_log_bpy501_v0130.txt`, ZIP `dist/mecha_lab-0.13.0.zip` (sha256 `a9dba3e703b9d92e5f0cbd761033fb0f663bfe871f1a857641868192b83133f9`).

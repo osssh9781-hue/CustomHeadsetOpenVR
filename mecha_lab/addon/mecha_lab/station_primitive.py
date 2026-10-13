@@ -16,6 +16,14 @@ from . import station_sweep as ss
 ROLE = 'MCH_STATION_PRIMITIVE'
 SHELL_MOD = 'MCH_StationShell'
 _building = set()
+FRAMES = {}          # object name -> station frames (P, X, T, Z) in object space, for the handles
+
+
+def station_frames(ob):
+    if ob.name not in FRAMES:
+        r = ss.build(spec_of(ob))
+        FRAMES[ob.name] = [(tuple(f.P), tuple(f.X), tuple(f.T), tuple(f.Z)) for f in r['frames']]
+    return FRAMES[ob.name]
 
 
 def _rebuild_update(self, context):
@@ -53,6 +61,17 @@ class MCH_PG_Station(bpy.types.PropertyGroup):
     ridge_h: _fp('Ridge Height', 0.0, soft_min=-0.5, soft_max=0.5, unit='LENGTH')
     ridge_w: _fp('Ridge Width', 0.15, min=0.001, soft_max=2.0, unit='LENGTH')
     ridge_offset: _fp('Ridge Offset', 0.0, soft_min=-2.0, soft_max=2.0, unit='LENGTH')
+    bend_style: EnumProperty(name='Bend Style', items=[
+        ('AUTO', 'Auto', 'Radius 0 = sharp fold, radius > 0 = band'),
+        ('FOLD', 'Fold', 'Sharp crease (mitred, thickness kept)'),
+        ('TIGHT', 'Tight', 'Almost a right angle: the smallest radius that does not fold the inside onto itself'),
+        ('BAND', 'Band', 'Smooth band with the Radius below')], default='AUTO', update=_rebuild_update)
+    profile: EnumProperty(name='Profile Here', items=[
+        ('INHERIT', 'Same as primitive', 'Use the primitive profile'),
+        ('ROUNDED', 'Rounded Box', ''), ('CHAMFER', 'Chamfered Box', ''), ('BOX', 'Flat Box', ''),
+        ('RIBBON', 'Ribbon', ''), ('ROUND', 'Round / Oval', ''), ('CAPSULE', 'Capsule', ''),
+        ('POLYGON', 'Polygon', '')], default='INHERIT', update=_rebuild_update,
+        description='Profile at this station; the segment before it morphs from the previous profile')
     interp: EnumProperty(name='Blend', items=[('LINEAR', 'Linear', 'Even change from the previous station'),
                                                ('SMOOTH', 'Smooth', 'Eased change (more segments)'),
                                                ('STEP', 'Step', 'Sharp change at this station')],
@@ -89,6 +108,8 @@ class MCH_PG_StationPrimitive(bpy.types.PropertyGroup):
     stations: CollectionProperty(type=MCH_PG_Station)
     active: IntProperty(name='Active Station', default=1, min=0)
     show_asym: BoolProperty(name='Asymmetry', default=False)
+    sym_lr: BoolProperty(name='Left = Right', default=False, update=_rebuild_update,
+                         description='Profile symmetric: right width / thickness / corner follow the left values')
     show_adv: BoolProperty(name='Advanced', default=False)
     warnings: StringProperty(default='')
 
@@ -99,9 +120,13 @@ def _station_dict(st):
 
 def spec_of(ob):
     p = ob.mch_station
+    sts = [_station_dict(s) for s in p.stations]
+    if p.sym_lr:
+        for d in sts:
+            d['width_r'], d['thick_r'], d['corner_r'] = d['width_l'], d['thick_l'], d['corner_l']
     return dict(kind=p.kind, sides=p.sides, ridge=p.ridge, res=p.res, quality=p.quality, seg_mode=p.seg_mode,
                 seg_bend=p.seg_bend, seg_run=p.seg_run, cap_start=p.cap_start, cap_end=p.cap_end,
-                cap_len=p.cap_len, stations=[_station_dict(s) for s in p.stations])
+                cap_len=p.cap_len, stations=sts)
 
 
 def _write_mesh(me, result):
@@ -136,6 +161,7 @@ def rebuild(ob):
         p = ob.mch_station
         result = ss.build(spec_of(ob))
         _write_mesh(ob.data, result)
+        FRAMES[ob.name] = [(tuple(f.P), tuple(f.X), tuple(f.T), tuple(f.Z)) for f in result['frames']]
         warn = list(result['warnings'])
         p.warnings = ' | '.join(warn)
         mod = ob.modifiers.get(SHELL_MOD)
@@ -307,6 +333,83 @@ class MCH_OT_station_move(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_station_select(bpy.types.Operator):
+    """Make this station the active one (its handles appear)"""
+    bl_idname = 'mch.station_select'
+    bl_label = 'Select Station'
+    bl_options = {'INTERNAL'}
+
+    index: IntProperty(default=0)
+
+    @classmethod
+    def poll(cls, context):
+        return active_station_primitive(context) is not None
+
+    def execute(self, context):
+        p = active_station_primitive(context).mch_station
+        p.active = max(0, min(self.index, len(p.stations) - 1))
+        return {'FINISHED'}
+
+
+class MCH_OT_station_insert(bpy.types.Operator):
+    """Insert a station in the middle of the segment that leads to station 'index'"""
+    bl_idname = 'mch.station_insert'
+    bl_label = 'Insert Station Here'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    index: IntProperty(default=1)
+
+    @classmethod
+    def poll(cls, context):
+        return active_station_primitive(context) is not None
+
+    def execute(self, context):
+        ob = active_station_primitive(context)
+        p = ob.mch_station
+        i = max(1, min(self.index, len(p.stations) - 1))
+        a, b = p.stations[i - 1], p.stations[i]
+        p.live = False
+        st = p.stations.add()
+        for k in ss.STATION_KEYS:
+            setattr(st, k, getattr(b, k))
+        for k in ss.BLEND_KEYS:                    # halfway profile
+            setattr(st, k, (getattr(a, k) + getattr(b, k)) / 2)
+        st.length = b.length / 2
+        b.length = b.length / 2
+        b_bend = b.bend_angle
+        st.bend_angle = b_bend                      # the bend stays at the start of the segment
+        b.bend_angle = 0.0
+        st.profile = 'INHERIT'
+        p.stations.move(len(p.stations) - 1, i)
+        p.active = i
+        p.live = True
+        rebuild(ob)
+        return {'FINISHED'}
+
+
+class MCH_OT_station_bend_dir(bpy.types.Operator):
+    """Bend the active segment up / down / left / right"""
+    bl_idname = 'mch.station_bend_dir'
+    bl_label = 'Bend Direction'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    direction: FloatProperty(default=0.0)
+
+    @classmethod
+    def poll(cls, context):
+        ob = active_station_primitive(context)
+        return ob is not None and ob.mch_station.active > 0
+
+    def execute(self, context):
+        ob = active_station_primitive(context)
+        st = ob.mch_station.stations[ob.mch_station.active]
+        st.world = False
+        st.bend_dir = self.direction
+        if abs(st.bend_angle) < 1e-6:
+            st.bend_angle = 30.0
+        return {'FINISHED'}
+
+
 class MCH_OT_station_apply(bpy.types.Operator):
     """Freeze into an ordinary mesh (the shell becomes real geometry); the parameters are removed"""
     bl_idname = 'mch.station_apply'
@@ -373,13 +476,26 @@ def draw(layout, context):
         if p.active > 0:
             r = col.row(align=True)
             r.prop(st, 'bend_angle')
-            r.prop(st, 'bend_dir', text='Dir')
-            r = col.row(align=True)
-            r.prop(st, 'bend_radius', text='Radius (0 = fold)')
             r.prop(st, 'length')
+            r = col.row(align=True)
+            r.label(text='Bend to')
+            for label, d, ic in (('', 0.0, 'TRIA_UP'), ('', 180.0, 'TRIA_DOWN'), ('', -90.0, 'TRIA_LEFT'),
+                                 ('', 90.0, 'TRIA_RIGHT')):
+                op = r.operator('mch.station_bend_dir', text=label, icon=ic,
+                                depress=abs(((st.bend_dir - d + 180) % 360) - 180) < 1e-3 and not st.world)
+                op.direction = d
+            r.prop(st, 'bend_dir', text='')
+            col.row(align=True).prop(st, 'bend_style', expand=True)
+            if st.bend_style == 'BAND' or (st.bend_style == 'AUTO' and st.bend_radius > 0):
+                col.prop(st, 'bend_radius', text='Band Radius')
+            col.prop(st, 'profile')
         r = col.row(align=True)
-        r.prop(st, 'width_l', text='W left')
-        r.prop(st, 'width_r', text='W right')
+        if p.sym_lr:
+            r.prop(st, 'width_l', text='Width (half)')
+        else:
+            r.prop(st, 'width_l', text='W left')
+            r.prop(st, 'width_r', text='W right')
+        r.prop(p, 'sym_lr', text='', icon='MOD_MIRROR')
         r = col.row(align=True)
         r.prop(st, 'height_top', text='Top')
         r.prop(st, 'height_bot', text='Bottom')
@@ -428,11 +544,12 @@ def draw(layout, context):
     row = box.row()
     row.scale_y = 1.3
     row.operator('mch.station_apply', text='Apply', icon='CHECKMARK')
-    box.label(text='Viewport station handles: next phase', icon='INFO')
+    box.label(text='Viewport: click a station dot, drag its handles; + on a segment inserts', icon='INFO')
 
 
 CLASSES = (MCH_PG_Station, MCH_PG_StationPrimitive, MCH_OT_station_create, MCH_OT_station_add,
-           MCH_OT_station_remove, MCH_OT_station_move, MCH_OT_station_apply, MCH_UL_stations)
+           MCH_OT_station_remove, MCH_OT_station_move, MCH_OT_station_select, MCH_OT_station_insert,
+           MCH_OT_station_bend_dir, MCH_OT_station_apply, MCH_UL_stations)
 
 
 def register():
