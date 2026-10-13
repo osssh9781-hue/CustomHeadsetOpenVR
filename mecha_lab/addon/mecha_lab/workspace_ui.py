@@ -23,6 +23,7 @@ import os
 import bpy
 from bpy.props import BoolProperty, EnumProperty, StringProperty
 
+from . import primitive_place
 from . import tool_state as ts
 
 ADDON_ID = __package__
@@ -301,6 +302,10 @@ def activate_mecha_tool(context, tool_id):
         for area in window.screen.areas:
             if area.type in {'VIEW_3D', 'PROPERTIES'}:
                 area.tag_redraw()
+    if tool_id == 'PRIMITIVE' and previous != 'PRIMITIVE':
+        st = primitive_place.ensure_placed(context)      # 0.14: the ghost shows right away
+        if st is not None:
+            st.show = True
     if tool_id == 'MIRROR' and previous != 'MIRROR':
         # 0.11.3: picking Mirror starts the live lean mirror right away
         try:
@@ -403,7 +408,24 @@ class MCH_TOOL_base_mesh(bpy.types.WorkSpaceTool):
         _draw_tool_settings(context, layout, tool)
 
 
-NATIVE_TOOLS = (MCH_TOOL_cut, MCH_TOOL_split, MCH_TOOL_base_mesh)   # MCH_TOOL_mask kept, not registered (Mask hidden)
+class MCH_TOOL_primitive(bpy.types.WorkSpaceTool):
+    """0.14: a real tool so click / Enter / Alt+Enter reach the ghost shape
+    before Blender's Select Box tool takes the click."""
+    bl_space_type = 'VIEW_3D'
+    bl_context_mode = 'OBJECT'
+    bl_idname = 'mecha.primitive'
+    bl_label = 'Mecha Primitive'
+    bl_description = ('Semi-transparent shape with handles. Enter: merge into the mesh it touches, '
+                      'Alt+Enter: subtract.\nClick: move the shape there, drag: box select, RMB: shapes, Esc: exit')
+    bl_icon = 'ops.mesh.primitive_cylinder_add_gizmo'
+    bl_widget = None
+    bl_keymap = primitive_place.TOOL_KEYMAP
+
+    def draw_settings(context, layout, tool):
+        _draw_tool_settings(context, layout, tool)
+
+
+NATIVE_TOOLS = (MCH_TOOL_cut, MCH_TOOL_split, MCH_TOOL_base_mesh, MCH_TOOL_primitive)   # MCH_TOOL_mask kept, not registered (Mask hidden)
 
 
 def register_native_tools():
@@ -413,6 +435,7 @@ def register_native_tools():
     bpy.utils.register_tool(MCH_TOOL_cut, separator=True, group=False)
     bpy.utils.register_tool(MCH_TOOL_split, after={MCH_TOOL_cut.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_base_mesh, after={MCH_TOOL_split.bl_idname}, group=False)
+    bpy.utils.register_tool(MCH_TOOL_primitive, after={MCH_TOOL_base_mesh.bl_idname}, group=False)
     _tools_registered = True
 
 
@@ -1189,7 +1212,7 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
     last_tool_key: BoolProperty(name='Shift+Q = Select <-> Last Tool', default=True)
     bottom_toolbar: BoolProperty(name='Bottom Toolbar', default=True,
                                  description='Tool buttons at the bottom centre of the viewport (MECHA LAB, Object Mode)')
-    toolbar_labels: BoolProperty(name='Names Under Icons', default=False)
+    toolbar_labels: BoolProperty(name='Names Under Icons', default=True)
     toolbar_size: EnumProperty(name='Toolbar Size', items=[('S', 'S', ''), ('M', 'M', ''), ('L', 'L', '')], default='M')
     quick_menu: BoolProperty(name='Quick Tool Menu (no key since 0.12)', default=True,
                              description='Six core tools at the mouse, only inside MECHA LAB (Object Mode)')

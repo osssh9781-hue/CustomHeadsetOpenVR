@@ -155,6 +155,35 @@ class MCH_OT_toggle_last_tool(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def bar_tip(tool_id):
+    """Toolbar tooltip: just the button's name and its key (0.14, not a description)."""
+    t = next((t for t in BAR_TOOLS if t[0] == tool_id), None)
+    if t is None:
+        return 'Mecha Tool'
+    return t[1] + (f'  ({t[2]})' if t[2] else '')
+
+
+class MCH_OT_bar_tool(bpy.types.Operator):
+    """Bottom toolbar button"""
+    bl_idname = 'mch.bar_tool'
+    bl_label = 'Mecha Tool'
+    bl_options = {'INTERNAL'}
+    tool: StringProperty(default='CUT', options={'SKIP_SAVE'})
+
+    @classmethod
+    def description(cls, context, properties):
+        return bar_tip(properties.tool)
+
+    def execute(self, context):
+        if self.tool == 'SELECT':
+            return bpy.ops.mch.select_move()
+        if self.tool not in ts.TOOL_BY_ID:
+            return {'CANCELLED'}
+        from .workspace_ui import activate_mecha_tool
+        activate_mecha_tool(context, self.tool)
+        return {'FINISHED'}
+
+
 class MCH_OT_toggle_targets(bpy.types.Operator):
     """T (Cut / Split tool): Auto Target <-> Selected Only"""
     bl_idname = 'mch.toggle_targets'
@@ -197,9 +226,8 @@ class MCH_GGT_bottom_toolbar(bpy.types.GizmoGroup):
             gz = self.gizmos.new('GIZMO_GT_button_2d')
             gz.icon = icon
             gz.draw_options = {'BACKDROP', 'OUTLINE'}
-            props = gz.target_set_operator(op)
-            if arg:
-                props.tool = arg
+            # one operator for every button so the tooltip is the button's name
+            gz.target_set_operator('mch.bar_tool').tool = tid
             gz.color = BASE_COL
             gz.alpha = 0.9
             gz.color_highlight = (0.32, 0.35, 0.41)
@@ -225,7 +253,7 @@ def _draw_labels():
     """Optional names under the toolbar icons (Preferences: Toolbar Labels)."""
     try:
         context = bpy.context
-        if not (_pref('bottom_toolbar') and _pref('toolbar_labels', False) and ui_active(context)):
+        if not (_pref('bottom_toolbar') and _pref('toolbar_labels', True) and ui_active(context)):
             return
         import blf
         region = context.region
@@ -244,7 +272,7 @@ def _draw_labels():
         pass
 
 
-CLASSES = (MCH_MT_tool_pie, MCH_OT_tool_pie, MCH_OT_toggle_last_tool, MCH_OT_toggle_targets, MCH_GGT_bottom_toolbar)
+CLASSES = (MCH_OT_bar_tool, MCH_MT_tool_pie, MCH_OT_tool_pie, MCH_OT_toggle_last_tool, MCH_OT_toggle_targets, MCH_GGT_bottom_toolbar)
 
 
 def register():

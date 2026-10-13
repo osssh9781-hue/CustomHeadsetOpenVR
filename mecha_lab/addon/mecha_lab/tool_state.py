@@ -23,8 +23,9 @@ TOOLS = (
      'base', 'MESH_CUBE', 'mecha.base_mesh', 'OK'),
     ('SUBD', 'SubD Plane', 'Plane with live Simple + Catmull-Clark subdivision and Solidify; extrude edges '
      'in Edit Mode to build armour panels', 'subd', 'MOD_SUBSURF', None, 'OK'),
-    ('PRIMITIVE', 'Primitive', 'Live GN parametric Box / Cylinder / Sphere / Cone / Capsule; RMB = shape picker',
-     'primitive', 'MESH_CUBE', None, 'OK'),
+    ('PRIMITIVE', 'Primitive', 'Ghost shape with handles: Enter = merge into the mesh it touches, Alt+Enter = '
+     'subtract; Station Primitive presets; RMB = shape picker',
+     'primitive', 'MESH_CUBE', 'mecha.primitive', 'OK'),
     ('BOOLEAN', 'Boolean', 'Difference / Union / Intersect with a selected cutter mesh', 'boolean', 'MOD_BOOLEAN', None, 'OK'),
     ('FUSE', 'Smart Fuse', 'Union two overlapping meshes with a fillet/chamfer seam', 'fuse', 'MOD_BEVEL', None, 'PARTIAL'),
     ('MIRROR', 'Mirror', 'World / local / collection mirror', 'mirror', 'MOD_MIRROR', None, 'OK'),

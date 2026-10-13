@@ -306,39 +306,36 @@ class MCH_MT_primitive_picker(bpy.types.Menu):
         # The five custom preview glyphs are shared with the MECHA LAB tool
         # palette's PreviewCollection.  Keep UI drawing read-only and use
         # native operators for undo/redo when choosing a primitive.
-        from .workspace_ui import icon_id
-
         layout = self.layout
-        fallback = {
-            'BOX': 'MESH_CUBE', 'CYLINDER': 'MESH_CYLINDER',
-            'SPHERE': 'MESH_UVSPHERE', 'CONE': 'MESH_CONE',
-            'CAPSULE': 'MESH_CAPSULE',
-        }
-
-        def shape_rows(operator_id, prefix=''):
-            grid = layout.column(align=True)
-            for kind, label, _ in KIND_ITEMS:
-                stem = 'primitive_' + kind.lower()
-                image_id = icon_id(stem)
-                row = grid.row(align=True)
-                row.alignment = 'LEFT'
-                if image_id:
-                    # Bigger than Blender's 16px operator icons: visible,
-                    # individual thumbnails beside the editable shape names.
-                    row.template_icon(icon_value=image_id, scale=2.7)
-                    button = row.operator(operator_id, text=prefix + label, icon='NONE')
-                else:
-                    button = row.operator(operator_id, text=prefix + label,
-                                          icon=fallback[kind])
-                button.kind = kind
-
+        # 0.14: an even grid (thumbnail on top, name below) instead of rows
+        # whose big thumbnails pushed the names into a staircase.  Picking a
+        # shape here sets the GHOST shape (Enter places it).
+        from . import primitive_place
+        st = primitive_place.state(context)
+        layout.label(text='Ghost Shape (Enter: add, Alt+Enter: subtract)', icon='MESH_CUBE')
+        primitive_place.draw_shape_grid(layout, 'mch.place_shape', st.kind if st else None)
+        layout.separator()
         if active_primitive(context):
-            layout.label(text='Change Selected Primitive', icon='GEOMETRY_NODES')
-            shape_rows('mch.primitive_switch')
-            layout.separator()
-        layout.label(text='Create New Primitive', icon='ADD')
-        shape_rows('mch.primitive_create', prefix='New ')
+            layout.label(text='Change Selected Live Primitive', icon='GEOMETRY_NODES')
+            draw_kind_grid(layout, 'mch.primitive_switch', context.active_object.mch_primitive.kind)
+        else:
+            layout.label(text='New Live Parametric Primitive', icon='ADD')
+            draw_kind_grid(layout, 'mch.primitive_create')
 
+
+def draw_kind_grid(layout, operator_id, current=None, columns=3):
+    """Even grid of the five live-primitive shapes: thumbnail on top, name below."""
+    from .workspace_ui import icon_id
+    fallback = {'BOX': 'MESH_CUBE', 'CYLINDER': 'MESH_CYLINDER', 'SPHERE': 'MESH_UVSPHERE',
+                'CONE': 'MESH_CONE', 'CAPSULE': 'MESH_CAPSULE'}
+    grid = layout.grid_flow(row_major=True, columns=columns, even_columns=True, even_rows=True, align=False)
+    for kind, label, _ in KIND_ITEMS:
+        cell = grid.column(align=True)
+        iid = icon_id('primitive_' + kind.lower())
+        if iid:
+            cell.template_icon(icon_value=iid, scale=1.6)
+        cell.operator(operator_id, text=label, icon='NONE' if iid else fallback[kind],
+                      depress=(kind == current)).kind = kind
 
 
 class MCH_OT_primitive_rmb(bpy.types.Operator):

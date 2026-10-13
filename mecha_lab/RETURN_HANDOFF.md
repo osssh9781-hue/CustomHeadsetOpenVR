@@ -1,4 +1,12 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.13.1 (Claude Code, 2026-10-13)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.14.0 (Claude Code, 2026-10-13)
+
+## 0.14.0
+- ZIP sha256 `d02dc9f2137be4b32d94f667342739ff348449ac86c403d5199eb3cc89b5f3e9`, 1219/1219. 신규 `primitive_place.py`: `ghost_geometry(kind, size, segments, top)`(순수, 6종: BOX/CYLINDER/PILL/
+  SPHERE/CONE/CAPSULE), `stadium`, `resize_face`(비대칭), `place_handles`, `align_rotation`, `overlapping_meshes`(BVH overlap +
+  ray parity), `pick_union_target`, `commit(context, st, subtract)`(core_geometry.boolean_result + finish_new_edges + commit_mesh),
+  `MCH_PG_Place`(WindowManager.mch_place), `MCH_GGT_place`, POST_VIEW 반투명 그리기, `TOOL_KEYMAP`, `MCH_PT_place_shapes`.
+  `workspace_ui.MCH_TOOL_primitive`(`mecha.primitive`), `tool_state` PRIMITIVE native = `mecha.primitive`.
+  `cut_engine.stamp_cursor_point`(창 좌표 그대로). `bottom_bar.MCH_OT_bar_tool` + `bar_tip`(툴팁 = 이름). `primitive_tools.draw_kind_grid`.
 
 ## 0.13.1
 - ZIP sha256 `e5d7c53df793481454502b35a5fe2c28070cd7921ca136728ce8157da2281a6e`, 1152/1152. `station_sweep`: `bend_style`(AUTO/FOLD/TIGHT/BAND), 지점 `profile`(INHERIT/종류), `ring_loop`

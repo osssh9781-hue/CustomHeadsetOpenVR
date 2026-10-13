@@ -581,22 +581,33 @@ def draw_subd(layout, context):
 
 
 def draw_primitive(layout, context):
-    from . import primitive_tools as prim, station_primitive
-    station_primitive.draw(layout, context)
+    """0.14: the shapes are on the panel itself (no menu to open first):
+    ghost placement on top, then Station Primitive, then the old live
+    parametric primitives (folded)."""
+    from . import primitive_tools as prim, primitive_place, station_primitive
     if station_primitive.active_station_primitive(context) is not None:
+        station_primitive.draw(layout, context)
+        primitive_place.draw(layout, context)
         return
     ob = prim.active_primitive(context)
+    if ob is None:
+        primitive_place.draw(layout, context)
+    station_primitive.draw(layout, context)
+    st = primitive_place.state(context)
+    if ob is None and st is not None:
+        layout.prop(st, 'show_live', icon='TRIA_DOWN' if st.show_live else 'TRIA_RIGHT', emboss=False)
+        if not st.show_live:
+            return
     p = ob.mch_primitive if ob is not None else context.scene.mch_primitive
     box = layout.box()
-    box.label(text='PARAMETRIC PRIMITIVES', icon='GEOMETRY_NODES')
-    row = box.row(align=True)
-    row.scale_y = 1.3
-    row.operator('mch.primitive_create', text='New Box', icon='MESH_CUBE').kind = 'BOX'
-    row.menu('MCH_MT_primitive_picker', text='Shape Picker (RMB)', icon='DOWNARROW_HLT')
+    box.label(text='LIVE PARAMETRIC PRIMITIVE', icon='GEOMETRY_NODES')
     if ob is not None:
         box.label(text='LIVE: ' + ob.name, icon='GEOMETRY_NODES')
-        box.prop(p, 'kind', text='Shape')
+        box.label(text='Change shape:')
+        prim.draw_kind_grid(box, 'mch.primitive_switch', p.kind)
     else:
+        box.label(text='New live primitive (editable later):')
+        prim.draw_kind_grid(box, 'mch.primitive_create')
         box.label(text='Settings for new primitives')
     col = box.column(align=True)
     if p.kind == 'BOX':
@@ -617,24 +628,20 @@ def draw_primitive(layout, context):
         if p.length < 2*p.radius:
             col.label(text='Min total length = 2 x radius', icon='INFO')
     if p.kind in {'BOX','CYLINDER','CONE'}:
-        hole=layout.box()
+        hole=box.box()
         hole.prop(p,'hole_enabled',text='Central Through Hole (Z)')
         if p.hole_enabled:
             hole.prop(p,'hole_radius')
             row=hole.row(align=True)
             row.prop(p,'hole_offset_x');row.prop(p,'hole_offset_y')
             hole.label(text='Use radius smaller than the solid cross-section',icon='INFO')
-    edge=layout.box()
+    edge=box.box()
     edge.label(text='EDGE FINISH',icon='MOD_BEVEL')
     edge.prop(p,'bevel_width')
     edge.prop(p,'bevel_segments')
     if ob is not None:
         row=layout.row();row.scale_y=1.3
         row.operator('mch.primitive_apply',text='APPLY TO MESH',icon='CHECKMARK')
-    _hint(layout,'Geometry Nodes shape + Blender Bevel modifier',
-          'RMB inside MECHA LAB Primitive tool = shape picker',
-          'Change parameters live; Apply when finished')
-
 
 
 def draw_extract(layout, context):

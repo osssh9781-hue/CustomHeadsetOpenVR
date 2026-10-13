@@ -1945,6 +1945,11 @@ def stamp_loops_cached(stem):
     return _STAMP_CACHE[stem]
 
 
+def stamp_cursor_point(xy):
+    """Where the idle stamp preview is centred: exactly the cursor (window px)."""
+    return (float(xy[0]), float(xy[1]))
+
+
 def draw_stamp_cursor(context, xy):
     """Idle PNG stamp preview at the cursor (WorkSpaceTool.draw_cursor):
     the exact outline a click would cut, with the current size / rotation."""
@@ -1955,8 +1960,11 @@ def draw_stamp_cursor(context, xy):
         loops = stamp_loops_cached(context.scene.mch_png_preset)
         if not loops:
             return
-        region = context.region
-        p = (xy[0] - region.x, xy[1] - region.y) if region is not None else xy
+        # 0.14: Blender draws tool cursors in WINDOW pixels and passes the mouse
+        # in the same space (its own Select Circle cursor draws at ``xy`` as is).
+        # Subtracting the region origin put the stamp off the mouse by the
+        # viewport's offset inside the window.
+        p = stamp_cursor_point(xy)
         sh = _shader()
         gpu.state.blend_set('ALPHA')
         for lp in custom_loops(loops, p, b.custom_size, b.custom_rotation):
