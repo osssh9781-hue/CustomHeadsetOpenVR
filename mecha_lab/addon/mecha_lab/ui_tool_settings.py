@@ -379,10 +379,8 @@ def draw_remesh(layout, context):
 
 
 def draw_pose(layout, context):
-    box = layout.box()
-    box.label(text='NOT IMPLEMENTED in v0.7.0', icon='ERROR')
-    _hint(box, 'Rigid / Soft Pose is on the P2 backlog.', 'Available now: Sculpt Move brush')
-    layout.operator('mch.sculpt_move', icon='BRUSH_DATA')
+    from . import deform_tools
+    deform_tools.draw(layout, context)
 
 
 def draw_base(layout, context):
@@ -534,91 +532,57 @@ def draw_subd(layout, context):
           'Order: Simple -> Catmull-Clark -> Solidify')
 
 
-def draw_deform(layout, context):
-    from . import deform_tools as dt
-    d = context.scene.mch_deform
-    ctrl, target = dt.controller(context)
-    editing = dt._editing_controller(context) is not None
-    if ctrl is None:
-        layout.row(align=True).prop(d, 'kind', expand=True)
-        box = _section(layout, 'New ' + ('Lattice Cage' if d.kind == 'LATTICE' else 'Bend Curve'))
-        col = box.column(align=True)
-        if d.kind == 'LATTICE':
-            col.prop(d, 'res_x', slider=True)
-            col.prop(d, 'res_y', slider=True)
-            col.prop(d, 'res_z', slider=True)
-            box.prop(d, 'padding', slider=True)
-            box.prop(d, 'interpolation', text='')
-        else:
-            col.prop(d, 'bend_count')
-            box.row(align=True).prop(d, 'bend_axis', expand=True)
-        row = layout.row()
-        row.scale_y = 1.5
-        op = row.operator('mch.deform_add', text='Add ' + ('Lattice Cage' if d.kind == 'LATTICE' else 'Bend Curve'),
-                          icon='MOD_LATTICE' if d.kind == 'LATTICE' else 'CURVE_BEZCURVE')
-        op.kind = d.kind
-        _hint(layout, 'Select a mesh, then Add', 'The mesh only gets a modifier (non-destructive)')
-    else:
-        kind = dt.role(ctrl)
-        title = ('LATTICE CAGE: ' if kind == 'LATTICE' else 'BEND CURVE: ') + ctrl.name
-        box = _section(layout, title, 'MOD_LATTICE' if kind == 'LATTICE' else 'CURVE_BEZCURVE')
-        if target is not None:
-            box.label(text='Deforms: ' + target.name, icon='MESH_DATA')
-        col = box.column(align=True)
-        p = ctrl.mch_deform
-        if kind == 'LATTICE':
-            col.prop(p, 'res_x', slider=True)
-            col.prop(p, 'res_y', slider=True)
-            col.prop(p, 'res_z', slider=True)
-        else:
-            col.prop(p, 'bend_count')
-        row = layout.row()
-        row.scale_y = 1.5
-        if editing:
-            row.operator('mch.deform_done', icon='CHECKMARK')
-        else:
-            row.operator('mch.deform_edit', icon='EDITMODE_HLT')
-    box = _section(layout, 'Falloff', 'PROP_ON')
-    col = box.column(align=True)
-    col.prop(d, 'falloff_radius')
-    col.prop(d, 'falloff_smoothness', slider=True)
-    box.prop(d, 'pivot')
-    box.prop(d, 'orientation')
-    box.prop(d, 'show_falloff')
-    box = _section(layout, 'Gizmo', 'ORIENTATION_GIMBAL')
-    box.row(align=True).prop(d, 'gizmo_style', expand=True)
+def draw_primitive(layout, context):
+    from . import primitive_tools as prim
+    ob = prim.active_primitive(context)
+    p = ob.mch_primitive if ob is not None else context.scene.mch_primitive
+    box = layout.box()
+    box.label(text='PARAMETRIC PRIMITIVES', icon='GEOMETRY_NODES')
     row = box.row(align=True)
-    row.prop(d, 'show_move', toggle=True)
-    row.prop(d, 'show_rotate', toggle=True)
-    row.prop(d, 'show_scale', toggle=True)
-    if editing:
-        box = _section(layout, 'Step (selected points + falloff)', 'DRIVER_ROTATIONAL_DIFFERENCE')
-        for k, axis in enumerate('XYZ'):
-            row = box.row(align=True)
-            row.label(text='Rotate ' + axis)
-            for sign, icon in ((-1, 'TRIA_LEFT'), (1, 'TRIA_RIGHT')):
-                op = row.operator('mch.deform_step', text='', icon=icon)
-                op.mode, op.axis_index, op.sign = 'ROTATE', k, sign
-        row = box.row(align=True)
-        row.label(text='Scale')
-        for sign, icon in ((-1, 'REMOVE'), (1, 'ADD')):
-            op = row.operator('mch.deform_step', text='', icon=icon)
-            op.mode, op.axis_index, op.sign = 'SCALE', -1, sign
-        col = box.column(align=True)
-        col.prop(d, 'step_angle')
-        col.prop(d, 'step_scale')
-    if ctrl is not None:
-        row = layout.row(align=True)
-        row.operator('mch.deform_reset', icon='LOOP_BACK')
-        row.operator('mch.deform_remove', icon='X')
-        row = layout.row()
-        row.scale_y = 1.3
-        row.operator('mch.deform_apply', icon='CHECKMARK')
-        layout.prop(d, 'keep_controller')
-    if editing:
-        _hint(layout, 'Click a point (Shift = add, B = box)', 'Drag gizmo: arrows move, rings rotate,',
-              'boxes / outer ring scale', 'Wheel while dragging: falloff radius',
-              'Bend: rotate around X (curve) = twist')
+    row.scale_y = 1.3
+    row.operator('mch.primitive_create', text='New Box', icon='MESH_CUBE').kind = 'BOX'
+    row.menu('MCH_MT_primitive_picker', text='Shape Picker (RMB)', icon='DOWNARROW_HLT')
+    if ob is not None:
+        box.label(text='LIVE: ' + ob.name, icon='GEOMETRY_NODES')
+        box.prop(p, 'kind', text='Shape')
+    else:
+        box.label(text='Settings for new primitives')
+    col = box.column(align=True)
+    if p.kind == 'BOX':
+        col.label(text='BOTTOM FACE')
+        row=col.row(align=True);row.prop(p,'bottom_x');row.prop(p,'bottom_y')
+        col.label(text='TOP FACE')
+        row=col.row(align=True);row.prop(p,'top_x');row.prop(p,'top_y')
+        col.prop(p,'height')
+    elif p.kind in {'CYLINDER','CONE'}:
+        col.prop(p,'height')
+        col.prop(p,'radius_top')
+        col.prop(p,'radius_bottom')
+        col.prop(p,'segments')
+    elif p.kind == 'SPHERE':
+        col.prop(p,'radius');col.prop(p,'segments');col.prop(p,'rings')
+    elif p.kind == 'CAPSULE':
+        col.prop(p,'radius');col.prop(p,'length');col.prop(p,'segments');col.prop(p,'rings')
+        if p.length < 2*p.radius:
+            col.label(text='Min total length = 2 x radius', icon='INFO')
+    if p.kind in {'BOX','CYLINDER','CONE'}:
+        hole=layout.box()
+        hole.prop(p,'hole_enabled',text='Central Through Hole (Z)')
+        if p.hole_enabled:
+            hole.prop(p,'hole_radius')
+            row=hole.row(align=True)
+            row.prop(p,'hole_offset_x');row.prop(p,'hole_offset_y')
+            hole.label(text='Use radius smaller than the solid cross-section',icon='INFO')
+    edge=layout.box()
+    edge.label(text='EDGE FINISH',icon='MOD_BEVEL')
+    edge.prop(p,'bevel_width')
+    edge.prop(p,'bevel_segments')
+    if ob is not None:
+        row=layout.row();row.scale_y=1.3
+        row.operator('mch.primitive_apply',text='APPLY TO MESH',icon='CHECKMARK')
+    _hint(layout,'Geometry Nodes shape + Blender Bevel modifier',
+          'RMB inside MECHA LAB Primitive tool = shape picker',
+          'Change parameters live; Apply when finished')
 
 
 DRAWERS = {
@@ -626,6 +590,6 @@ DRAWERS = {
     'MASK': draw_mask, 'DRAW': draw_draw, 'ARRAY': draw_array, 'EDIT': draw_edit,
     'LIBRARY': draw_library, 'REMESH': draw_remesh, 'POSE': draw_pose,
     'BASE': draw_base, 'LOFT': draw_loft, 'ZBRUSH': draw_zbrush, 'SUBD': draw_subd,
-    'DEFORM': draw_deform,
+    'PRIMITIVE': draw_primitive,
     # MIRROR, RADIAL, SURFACE: own sub-panels.
 }

@@ -1,17 +1,17 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 9, 0),
+    "version": (0, 9, 3),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
-    "description": "Cut, Split, Base Mesh, Boolean, Loft, ZBrush bridge, Smart Fuse, Mirror and arrays",
+    "description": "Cut, Split, Base Mesh, Boolean, Loft, ZBrush bridge, Smart Fuse, Mirror, primitives and arrays",
     "category": "Object",
 }
 
 import bpy
 from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform, radial_array,
                mirror_tools, cut_presets, mask_tools, workspace_ui, ui_tool_settings,
-               base_mesh, loft_surface, zbrush_bridge, subd_plane, deform_tools)
+               base_mesh, loft_surface, zbrush_bridge, subd_plane, deform_tools, primitive_tools)
 import os
 import re
 from pathlib import Path
@@ -1730,6 +1730,7 @@ def register():
     zbrush_bridge.register()
     subd_plane.register()
     deform_tools.register()
+    primitive_tools.register()
     workspace_ui.register()
     for klass in SUB_PANELS:
         bpy.utils.register_class(klass)
@@ -1739,6 +1740,7 @@ def unregister():
     for klass in reversed(SUB_PANELS):
         bpy.utils.unregister_class(klass)
     workspace_ui.unregister()
+    primitive_tools.unregister()
     deform_tools.unregister()
     subd_plane.unregister()
     zbrush_bridge.unregister()

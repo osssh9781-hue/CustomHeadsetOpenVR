@@ -1,0 +1,7 @@
+이 ZIP을 풀고 START_HERE_KO.md, PROMPT_TO_CLAUDE_CODE_KO.md를 읽어줘.
+최신 기준 코드는 v0.9.3 무수정 ZIP 및 source/mecha_lab 폴더야.
+사용자가 새로 요청한 Free Draw 드로잉 보정(Lazy Mouse: 실시간 지연 추종, 강도/반경/간격 슬라이더)은 docs/06_FREE_DRAW_STABILIZER_KO.md에 있어.
+그리고 중요한 최종 Boolean 선택 규칙: 노란색 활성 오브젝트가 CUTTER이고 다른 선택 오브젝트들이 TARGETS야.
+Mirror·Loft·Smart Fuse 등 사용자 제보된 고장부터 안정화하고, 새 기능은 우선순위로 개발해줘.
+Alt+MMB 오브젝트 선택과 뷰포트 3회 클릭 토글은 사용자 취소. 마스크는 UI에서 숨기되 기존 데이터는 삭제하지 말아줘.
+요청은 구현 완료가 아니라 인수인계 사양이므로 실제 코드/GUI 테스트 범위를 구분해서 결과 ZIP과 테스트 로그를 돌려줘.
