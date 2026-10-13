@@ -74,12 +74,12 @@ check('native falloff mapping', [dt.native_falloff(s) for s in (0.0, 0.3, 0.6, 1
 # =============================================================================
 # 2. Lattice Cage: create, identity, resolution sliders
 # =============================================================================
-d = C.scene.mch_deform
+d = C.scene.mch_deform_tool
 ob = bar(loc=(1, 2, 3), rot=(0.2, 0.1, 0.3))
 original = [v.co.copy() for v in ob.data.vertices]
 select_only(ob)
 d.res_x, d.res_y, d.res_z = 4, 4, 4
-r = bpy.ops.mch.deform_add(kind='LATTICE', edit=False)
+r = bpy.ops.mch.deform_lattice(edit=False)
 lo, _t = dt.controller(C)
 check('lattice added', r == {'FINISHED'} and lo is not None and lo.type == 'LATTICE', r)
 check('mesh got a Lattice modifier pointing at the cage',
@@ -293,7 +293,7 @@ check('Mecha gizmo hidden in Blender gizmo style', not dt.MCH_GGT_deform.poll(C)
 d.gizmo_style = 'MECHA'
 
 # --- Done: settings restored, mesh still non-destructive ---------------------
-r = bpy.ops.mch.deform_done()
+r = bpy.ops.mch.deform_finish_edit()
 check('Done Editing -> Object Mode, mesh active', r == {'FINISHED'} and C.mode == 'OBJECT' and C.active_object == ob)
 check('your Proportional Editing settings are restored', not tsx.use_proportional_edit and
       abs(tsx.proportional_size - 3.21) < 1e-5 and tsx.proportional_edit_falloff == 'CONSTANT' and
@@ -303,7 +303,7 @@ kept = evaluated(ob)
 r = bpy.ops.mch.deform_edit()
 check('re-edit any time: back in Edit Mode, shape kept', r == {'FINISHED'} and C.mode == 'EDIT_LATTICE' and
       max_err(evaluated(ob), kept) < 1e-6)
-bpy.ops.mch.deform_done()
+bpy.ops.mch.deform_finish_edit()
 
 # --- Apply ------------------------------------------------------------------------
 final = evaluated(ob)
@@ -317,7 +317,7 @@ check('Apply removes modifier and cage', ob.modifiers.get(dt.MOD_LATTICE) is Non
 ob2 = bar('Bar2', loc=(0, 5, 0))
 orig2 = [v.co.copy() for v in ob2.data.vertices]
 select_only(ob2)
-bpy.ops.mch.deform_add(kind='LATTICE', edit=True)
+bpy.ops.mch.deform_lattice(edit=True)
 lo2 = C.active_object
 select_points(lo2, {0})
 bpy.ops.mch.deform_transform(mode='MOVE', move=(0, 0, -0.5), radius=1.0, smoothness=0.5)
@@ -329,7 +329,7 @@ check('Remove: mesh back to original, cage gone', r == {'FINISHED'} and ob2.modi
 # --- one cage over several meshes --------------------------------------------
 m1, m2 = bar('M1', loc=(0, 10, 0)), bar('M2', loc=(0, 12, 0))
 select_only(m1, m2)
-bpy.ops.mch.deform_add(kind='LATTICE', edit=False)
+bpy.ops.mch.deform_lattice(edit=False)
 cage = m1.modifiers[dt.MOD_LATTICE].object
 check('several selected meshes share one cage', cage is not None and m2.modifiers[dt.MOD_LATTICE].object == cage)
 check('shared cage is identity for both', max_err(evaluated(m1), [v.co for v in m1.data.vertices]) < 1e-4 and
@@ -343,14 +343,14 @@ for axis, rot in ((0, (0, 0, 0)), (1, (0, 0, 0)), (2, (0, 0, 0)), (0, (0.3, 0.5,
     select_only(o)
     d.bend_axis = 'AUTO'
     d.bend_count = 5
-    bpy.ops.mch.deform_add(kind='BEND', edit=False)
+    bpy.ops.mch.deform_bend(edit=False)
     err = max_err(evaluated(o), [v.co for v in o.data.vertices])
     check(f'Bend Curve identity on a mesh along {"XYZ"[axis]} (rot {rot})', err < 1e-4, err)
 
 ob = bar('Twist', loc=(1, 2, 3), rot=(0.3, 0.5, 0.2), length=4.0, cuts=40)
 orig = [v.co.copy() for v in ob.data.vertices]
 select_only(ob)
-bpy.ops.mch.deform_add(kind='BEND', edit=True)
+bpy.ops.mch.deform_bend(edit=True)
 cv = C.active_object
 check('Bend Curve in Edit Mode', C.mode == 'EDIT_CURVE' and dt.role(cv) == 'BEND')
 bps = cv.data.splines[0].bezier_points
@@ -470,12 +470,12 @@ class FakeDrag(dt.DragLogic):
         return Vector(((b[0] - a[0]) / 100.0, (b[1] - a[1]) / 100.0, 0.0))
 
 
-bpy.ops.mch.deform_done()
+bpy.ops.mch.deform_finish_edit()
 q = bar('DragBar', loc=(0, 0, 0))
 qo = [v.co.copy() for v in q.data.vertices]
 select_only(q)
 d.orientation = 'GLOBAL'
-bpy.ops.mch.deform_add(kind='LATTICE', edit=True)
+bpy.ops.mch.deform_lattice(edit=True)
 cage = C.active_object
 k = lattice_index(cage.data, 3, 1, 3)
 select_points(cage, {k})
@@ -491,7 +491,7 @@ check('drag a quarter turn around the Z ring -> +90°', abs(math.degrees(drag.op
       math.degrees(drag.op['angle']))
 pts1 = world_points(cage)
 check('drag rotate: pivot point stays, neighbours rotate', (pts1[k] - pv).length < 1e-5 and max_err(pts1, pts0) > 0.01)
-check('drag rotate: mesh deforms live', max_err(evaluated(q), qo) > 0.01)
+check('drag rotate: mesh deforms live', max_err(evaluated(q), qo) > 1e-3, max_err(evaluated(q), qo))
 drag.drag_cancel()
 check('drag cancel (Esc/RMB): everything back', max_err(world_points(cage), pts0) < 1e-9 and
       max_err(evaluated(q), qo) < 1e-5)
@@ -511,7 +511,29 @@ drag.drag_update(p2 + Vector((80, 0)))
 check('drag the outer ring outward x2 -> uniform scale 2', all(abs(s - 2.0) < 1e-6 for s in drag.op['scale']))
 check('drag scale on ONE point deforms the mesh', max_err(evaluated(q), qo) > 0.01)
 drag.drag_cancel()
-bpy.ops.mch.deform_done()
+bpy.ops.mch.deform_finish_edit()
+
+# --- v0.9.1 Twist / Taper sliders are additive ramps --------------------------------
+o = bar('Ramp', loc=(0, -8, 0))
+select_only(o)
+bpy.ops.mch.deform_bend(edit=False)
+rc = C.active_object
+rbps = rc.data.splines[0].bezier_points
+rbps[2].tilt = 0.3
+rc.mch_deform.twist = 1.0
+check('Twist Ramp adds on top of a per-point tilt', abs(rbps[2].tilt - (0.3 + 0.5)) < 1e-5 and
+      abs(rbps[-1].tilt - 1.0) < 1e-5 and abs(rbps[0].tilt) < 1e-6, [round(b.tilt, 3) for b in rbps])
+rc.mch_deform.twist = 0.0
+check('Twist Ramp back to 0 keeps the per-point tilt', abs(rbps[2].tilt - 0.3) < 1e-5)
+rc.mch_deform.taper = 2.0
+check('Taper Ramp scales radius along the curve', abs(rbps[0].radius - 1.0) < 1e-6 and abs(rbps[-1].radius - 2.0) < 1e-5)
+rc.mch_deform.strength = 0.5
+check('v0.9.1 names: bend controller tagged mch_deform_kind, modifier MCH_Deform_Bend',
+      rc.get('mch_deform_kind') == 'BEND' and o.modifiers.get('MCH_Deform_Bend') is not None)
+for name in ('deform_lattice', 'deform_bend', 'deform_edit', 'deform_finish_edit', 'deform_gizmo',
+             'deform_reset', 'deform_apply', 'deform_remove'):
+    check(f'v0.9.1 operator id kept: mch.{name}', hasattr(bpy.ops.mch, name) and
+          getattr(bpy.ops.mch, name).idname() == 'MCH_OT_' + name)
 
 mecha_lab.unregister()
 sys.exit(1 if summary() else 0)

@@ -33,7 +33,9 @@ TOOLS = (
     ('RADIAL', 'Radial Array', 'Radial copies around the 3D cursor + Boolean', 'radial', 'MOD_SCREW', None, 'OK'),
     ('DRAW', 'Mesh Curve', 'Draw a curve and sweep a profile along it (or a panel-line cut); '
      'smooth/straight points, resolution, rotation, twist', 'panel', 'CURVE_BEZCURVE', None, 'OK'),
-    ('POSE', 'Deform', 'Lattice Cage and editable Bend Curve (soft deformation; rigid not yet supported)', 'pose', 'MOD_LATTICE', None, 'PARTIAL'),
+    ('POSE', 'Deform', 'Lattice Cage / Bend Curve: click control points and Move / Rotate / Scale them with '
+     'falloff (rotate a Bend point = local twist); non-destructive until Apply. Rigid pose not yet supported',
+     'deform', 'MOD_LATTICE', None, 'PARTIAL'),
     ('LOFT', 'Loft / Surface', 'Smooth surface through 2+ curves, or sweep a profile along a path (live)',
      'loft', 'SURFACE_DATA', None, 'PARTIAL'),
     ('ZBRUSH', 'ZBrush Bridge', 'Send selected objects to ZBrush as OBJ files and import them back (not GoZ)',
