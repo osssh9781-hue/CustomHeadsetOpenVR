@@ -521,6 +521,7 @@ def perform_base(context, loops, projector, cutter=False, targets=None):
     session = list(context.scene.get(SESSION_KEY, []))
     session.append(ob.name)
     context.scene[SESSION_KEY] = session
+    _arm_tab_watch(context)
     for o in context.selected_objects:
         o.select_set(False)
     ob.select_set(True)
@@ -605,8 +606,9 @@ def auto_apply_session(context):
     objects and modifiers are never touched.  Freezing keeps the geometry
     (no data change) and is one undo step."""
     names = list(context.scene.get(SESSION_KEY, []))
-    if SESSION_KEY in context.scene:
-        del context.scene[SESSION_KEY]
+    for key in (SESSION_KEY, WS_KEY):
+        if key in context.scene:
+            del context.scene[key]
     frozen = []
     for name in names:
         ob = bpy.data.objects.get(name)
@@ -619,6 +621,57 @@ def auto_apply_session(context):
         except RuntimeError:
             pass
     return frozen
+
+
+WS_KEY = 'mch_base_session_ws'      # workspace the session was started in
+WATCH_INTERVAL = 0.5
+
+
+def _current_workspaces():
+    wm = bpy.context.window_manager
+    try:
+        return {w.workspace.name for w in wm.windows if w.workspace is not None}
+    except (AttributeError, ReferenceError):
+        return set()
+
+
+def _arm_tab_watch(context):
+    """Leaving the workspace (another top tab) also applies this session's
+    shapes.  A light timer runs only while unapplied shapes exist."""
+    try:
+        ws = context.workspace.name if context.workspace is not None else ''
+    except (AttributeError, ReferenceError):
+        ws = ''
+    if ws and not context.scene.get(WS_KEY):
+        context.scene[WS_KEY] = ws
+    if not bpy.app.timers.is_registered(_tab_watch):
+        bpy.app.timers.register(_tab_watch, first_interval=WATCH_INTERVAL)
+
+
+def check_tab_left(context=None, workspaces=None):
+    """Apply the session when its workspace is no longer shown in any window.
+    Returns the frozen object names (testable without a window)."""
+    context = context or bpy.context
+    scene = context.scene
+    if scene is None or not scene.get(SESSION_KEY):
+        return None
+    ws = scene.get(WS_KEY, '')
+    shown = _current_workspaces() if workspaces is None else set(workspaces)
+    if ws and shown and ws not in shown:
+        frozen = auto_apply_session(context)
+        return frozen
+    return []
+
+
+def _tab_watch():
+    try:
+        scene = bpy.context.scene
+        if scene is None or not scene.get(SESSION_KEY):
+            return None                      # nothing pending: stop the timer
+        check_tab_left()
+        return WATCH_INTERVAL if bpy.context.scene.get(SESSION_KEY) else None
+    except (AttributeError, ReferenceError, RuntimeError):
+        return None
 
 
 @bpy.app.handlers.persistent
@@ -699,6 +752,8 @@ def register():
 
 
 def unregister():
+    if bpy.app.timers.is_registered(_tab_watch):
+        bpy.app.timers.unregister(_tab_watch)
     if _migrate_on_load in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_migrate_on_load)
     for n, t in (('mch_base', bpy.types.Object), ('mch_base', bpy.types.Scene)):

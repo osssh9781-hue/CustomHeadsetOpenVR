@@ -632,6 +632,17 @@ check('F02 leaving the tool applies (freezes) only the session result', frozen =
       not new.mch_base.live and old.mch_base.live)
 check('F02 user modifiers on other objects untouched', other.modifiers.get('UserBevel') is not None)
 check('F02 auto apply keeps the geometry', non_manifold(new) == 0 and volume(new) > 0)
+# leaving the workspace tab applies the session too
+fresh()
+C.scene['mch_base_session'] = []
+base_mesh.perform_base(C, [ce.rect_loop((300, 300), (380, 380))], TOP)
+tabbed = C.active_object
+C.scene['mch_base_session_ws'] = 'MECHA LAB'
+check('tab watch: still in MECHA LAB -> nothing applied', base_mesh.check_tab_left(C, ['MECHA LAB']) == [] and
+      tabbed.mch_base.live)
+check('tab watch: switched to another tab -> session applied',
+      base_mesh.check_tab_left(C, ['Layout']) == [tabbed.name] and not tabbed.mch_base.live)
+check('tab watch: session cleared afterwards', not C.scene.get('mch_base_session'))
 # migration of the old option
 fresh()
 p = C.scene.mch_base
