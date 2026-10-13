@@ -231,6 +231,38 @@ bpy.ops.mch.subd_plane_create()
 bpy.context.scene.mch_settings.mch_active_tool = 'SUBD'
 self_ = types.SimpleNamespace(layout=FakeLayout())
 run_draw('main SUBD with live plane', lambda c: main.draw(self_, c), fake_context('MECHA LAB'))
+# v0.11 toolkit panels with live objects
+import bmesh as _bm
+from mecha_lab import face_extract as _fe
+_plate = bpy.data.objects.new('UIPlate', bpy.data.meshes.new('UIPlate'))
+_b = _bm.new(); _bm.ops.create_grid(_b, x_segments=4, y_segments=4, size=1.0); _b.to_mesh(_plate.data); _b.free()
+bpy.context.scene.collection.objects.link(_plate)
+select_only(_plate)
+bpy.ops.object.mode_set(mode='EDIT')
+_b = _bm.from_edit_mesh(_plate.data)
+for _f in _b.faces:
+    _f.select = True
+_bm.update_edit_mesh(_plate.data)
+for _mode in ('BASIC', 'ARMOR'):
+    bpy.ops.mch.face_extract(mode=_mode)
+    bpy.context.scene.mch_settings.mch_active_tool = 'EXTRACT'
+    self_ = types.SimpleNamespace(layout=FakeLayout())
+    run_draw(f'main EXTRACT {_mode} (edit mode, last part)', lambda c: main.draw(self_, c), fake_context('MECHA LAB'))
+_last = bpy.context.scene.mch_extract_last
+_last.mch_extract.cl_preset = 'Y'
+self_ = types.SimpleNamespace(layout=FakeLayout())
+run_draw('main EXTRACT armor with Y preset', lambda c: main.draw(self_, c), fake_context('MECHA LAB'))
+bpy.ops.mch.molding_create(source='FACES')
+bpy.ops.object.mode_set(mode='OBJECT')
+bpy.ops.mch.curve_array()
+_c1 = __import__('mecha_lab.cable', fromlist=['create_cable']).create_cable(
+    bpy.context, (0, 0, 0), (0, 0, 1), (1, 0, 0), (0, 0, 1))
+select_only(_plate)
+bpy.ops.mch.hollow()
+for _tool in ('MOLDING', 'HOLLOW', 'ALONG', 'CABLE'):
+    bpy.context.scene.mch_settings.mch_active_tool = _tool
+    self_ = types.SimpleNamespace(layout=FakeLayout())
+    run_draw(f'main {_tool} with live object', lambda c: main.draw(self_, c), fake_context('MECHA LAB'))
 bpy.context.scene.mch_cut.split_mode = 'GAP'
 bpy.context.scene.mch_cut.side_a_finish = 'BEVEL'
 bpy.context.scene.mch_cut.side_b_finish = 'CHAMFER'

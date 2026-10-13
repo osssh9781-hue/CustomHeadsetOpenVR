@@ -1,12 +1,47 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.10.0 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.11.0 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
 
+## T. 0.11.0 Mechanical Toolkit (설계서 13절)
+### T0. 공통
+- [ ] 왼쪽 도구 목록에 Face Extract / Edge Molding / Hollow / Shell / Mesh Along Curve / Cable 아이콘, 클릭 시 오른쪽 패널 전환
+- [ ] Base Mesh 도형을 만든 뒤 Layout 등 다른 탭으로 이동 → 돌아오면 도형이 Live 해제(Apply)되어 있음
+- [ ] Self Test 결과 RESULT 12/12
+### T1. Face Extract (Basic)
+- [ ] 곡면 메쉬에서 Tab → 면 여러 개 선택 → Basic Extract: 별도 파츠, 노멀 방향으로 돌출, 원본 그대로, Edit Mode 유지
+- [ ] 패널 슬라이더(Height / Thickness / Offset / Chamfer 3모드 / Direction / Bevel / Bevel Angle / Outer Edge)가 즉시 반영
+- [ ] 파츠 선택 해제 후 다시 선택 → 같은 값 표시, Tab 전환 후에도 유지
+- [ ] 두 오브젝트를 함께 Edit Mode로 → 각 오브젝트의 선택 섬마다 파츠
+### T2. Armor Sculpt
+- [ ] North Thickness만 올리면 북쪽만 두꺼워짐, East Chamfer / West Bevel 각각 독립
+- [ ] Straight / Cross / Y / X / S / Z 모두 형상이 변함, Rotation / Scale X·Y / Offset
+- [ ] Y: South Length, North Width 등 가지별 조절
+- [ ] Ridge Profile Sharp / Flat / Round / Box / Groove / Split 차이, Surface Transition
+- [ ] Direction Rotation으로 N/E/S/W 방향 회전, Mirror
+- [ ] 여러 Armor 파츠 선택 후 Copy Settings
+### T3. Edge Molding
+- [ ] 파츠 선택 → From Extracted Panel Boundary: 별도 오브젝트, 폭/높이/베벨 각각 조절, 프로필 5종
+- [ ] Edit Mode 면/엣지 선택에서 생성, Armor 중앙선에서 생성
+### T4. Curve Array / Curve Deform
+- [ ] 메쉬(+커브) 선택 → Curve Array: 커브 따라 반복, 커브 점 편집 시 갱신, Count / Fit / Offset / Rigid·Deform
+- [ ] Curve Placement World X/Y/Z: 기준선이 축 위로, 제어점은 자유, 생성 후 변경
+- [ ] Deform Along Curve: 커브 핸들로 메쉬가 휨, Start Offset / Rotation / Scale / Axis
+### T5. Cable
+- [ ] Two-Point Cable: 서로 다른 메쉬 표면 두 점 클릭 → 케이블, Esc 취소, 그리는 중 Tab 통과
+- [ ] Sag / Handle Angle / Length / Curvature / Midpoint / Twist / Control Points ±
+- [ ] Thickness / Start / End / Taper / Round·Square·Ribbon·Oval·Custom
+- [ ] Edit Mode 엣지 선택 → Edge to Cable, 생성 후 커브 Edit Mode 편집
+### T6. Hollow / Shell
+- [ ] 여러 메쉬 선택 → Hollow, 두께/방향/Even/Rim, Edit Mode 면 선택 → Openings, Check, Apply / Reset
+### T7. Undo / 기존 기능
+- [ ] 각 생성·슬라이더 변경 후 Ctrl+Z / Ctrl+Shift+Z
+- [ ] Split / Boolean(활성=커터) / Mirror / Lasso / Curve Lasso / Free Draw / Alt 클릭 / ZBrush Bridge 이상 없음
+
 ## A. 0.10.0 우선 확인 (사용자 보고 항목)
 ### A0. 설치 / 등록 (B09)
-- [ ] 기존 Mecha Lab(확장 + 예전 Add-on 방식 모두) 비활성/제거 → Blender 재시작 → `mecha_lab-0.10.0.zip` Install from Disk → 오류 없음
+- [ ] 기존 Mecha Lab(확장 + 예전 Add-on 방식 모두) 비활성/제거 → Blender 재시작 → `mecha_lab-0.11.0.zip` Install from Disk → 오류 없음
 - [ ] Preferences에서 비활성 → 활성 3회 반복: `already registered` 오류 없음, N 패널 Mirror 하위 패널 보임
 - [ ] (가능하면) 예전 버전을 일부러 같이 켠 상태에서 0.10.0 활성 → 오류 대신 N 패널 상단에 "Another Mecha Lab copy" 경고
 - [ ] N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** → 결과 줄(RESULT x/y)이 하단에 표시, 클립보드 내용을 붙여넣어 전달
@@ -74,7 +109,7 @@ Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전�
 ## B. 0.9.0 이전 항목 (아래 내용 중 바뀐 점: T 툴바에 Mask 없음, B = 활성(노란색) 커터로 Boolean, 3회 클릭 기능 제거, Alt+클릭 = 도구 종료)
 
 ## 0. 설치
-- [ ] 이전 버전 제거 후 `mecha_lab-0.10.0.zip` Install from Disk → 오류 없이 활성화
+- [ ] 이전 버전 제거 후 `mecha_lab-0.11.0.zip` Install from Disk → 오류 없이 활성화
 - [ ] 설치 직후 상단 탭 목록이 변하지 않음 (MECHA LAB 탭이 자동으로 생기지 않음)
 
 ## 1. Workspace

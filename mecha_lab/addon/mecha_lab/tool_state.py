@@ -36,6 +36,17 @@ TOOLS = (
     ('POSE', 'Deform', 'Lattice Cage / Bend Curve: click control points and Move / Rotate / Scale them with '
      'falloff (rotate a Bend point = local twist); non-destructive until Apply. Rigid pose not yet supported',
      'deform', 'MOD_LATTICE', None, 'PARTIAL'),
+    ('EXTRACT', 'Face Extract', 'Edit Mode: selected faces -> a separate part. Basic Extract (height, thickness, '
+     'chamfer width / angle / depth, bevel, outer edge) or Armor Sculpt (N/E/S/W thickness and edges, centre ridge)',
+     'extract', 'FACESEL', None, 'OK'),
+    ('MOLDING', 'Edge Molding', 'Molding profile along face boundaries, edges, part outlines or the Armor centre line',
+     'molding', 'MOD_CURVE', None, 'OK'),
+    ('HOLLOW', 'Hollow / Shell', 'Hollow shell with wall thickness, direction, rim and openings (live Solidify)',
+     'hollow', 'MOD_SOLIDIFY', None, 'OK'),
+    ('ALONG', 'Mesh Along Curve', 'Curve Deform and Curve Array (rigid / deform), Free or World X/Y/Z curve base line',
+     'along', 'MOD_ARRAY', None, 'OK'),
+    ('CABLE', 'Cable', 'Two-point cables between mesh surfaces, Edge to Cable, thickness / profile / sag / twist',
+     'cable', 'OUTLINER_OB_CURVE', None, 'OK'),
     ('LOFT', 'Loft / Surface', 'Smooth surface through 2+ curves, or sweep a profile along a path (live)',
      'loft', 'SURFACE_DATA', None, 'PARTIAL'),
     ('ZBRUSH', 'ZBrush Bridge', 'Send selected objects to ZBrush as OBJ files and import them back (not GoZ)',
@@ -59,7 +70,8 @@ SHAPE_TOOLS = {'CUT', 'SPLIT', 'MASK', 'BASE'}
 # Enum numbers keep v0.5.9 values so saved .blend files map to the same tool.
 _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRAW': 6,
                  'ARRAY': 7, 'RADIAL': 8, 'SURFACE': 9, 'LIBRARY': 10, 'EDIT': 11,
-                 'REMESH': 12, 'SPLIT': 13, 'POSE': 14, 'BASE': 15, 'LOFT': 16, 'ZBRUSH': 17, 'SUBD': 18, 'PRIMITIVE': 19}
+                 'REMESH': 12, 'SPLIT': 13, 'POSE': 14, 'BASE': 15, 'LOFT': 16, 'ZBRUSH': 17, 'SUBD': 18, 'PRIMITIVE': 19,
+                 'EXTRACT': 20, 'MOLDING': 21, 'HOLLOW': 22, 'ALONG': 23, 'CABLE': 24}
 TOOL_ENUM_ITEMS = [(t[0], t[1], t[2], t[4], _ENUM_NUMBERS[t[0]]) for t in TOOLS]
 
 SHAPES = (

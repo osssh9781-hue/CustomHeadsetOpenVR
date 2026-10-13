@@ -192,6 +192,13 @@ r = op.modal(ctx, E('ESC', 'PRESS'))
 check('Esc: stroke dropped, back to Select, mesh untouched', r == {'CANCELLED'} and ('exit',) in CALLS and
       abs(volume(t) - 8.0) < 1e-6)
 
+t, = setup()
+ctx, op = Ctx(), Op()
+start_lasso(ctx, op, SQUARE)
+r = op.modal(ctx, E('TAB', 'PRESS'))
+check('Tab while drawing: stroke dropped and Tab passed to Blender (Edit Mode)',
+      r == {'CANCELLED', 'PASS_THROUGH'} and abs(volume(t) - 8.0) < 1e-6)
+
 # =============================================================================
 # Alt: short click vs drag (decided at release)
 # =============================================================================

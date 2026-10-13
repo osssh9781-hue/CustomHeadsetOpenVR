@@ -629,11 +629,39 @@ def draw_primitive(layout, context):
           'Change parameters live; Apply when finished')
 
 
+
+def draw_extract(layout, context):
+    from . import face_extract
+    face_extract.draw(layout, context)
+
+
+def draw_molding(layout, context):
+    from . import edge_molding
+    edge_molding.draw(layout, context)
+
+
+def draw_hollow(layout, context):
+    from . import hollow_shell
+    hollow_shell.draw(layout, context)
+
+
+def draw_along(layout, context):
+    from . import along_curve
+    along_curve.draw(layout, context)
+
+
+def draw_cable(layout, context):
+    from . import cable
+    cable.draw(layout, context)
+
+
 DRAWERS = {
     'CUT': draw_cut, 'SPLIT': draw_split, 'BOOLEAN': draw_boolean, 'FUSE': draw_fuse,
     'MASK': draw_mask, 'DRAW': draw_draw, 'ARRAY': draw_array, 'EDIT': draw_edit,
     'LIBRARY': draw_library, 'REMESH': draw_remesh, 'POSE': draw_pose,
     'BASE': draw_base, 'LOFT': draw_loft, 'ZBRUSH': draw_zbrush, 'SUBD': draw_subd,
     'PRIMITIVE': draw_primitive,
+    'EXTRACT': draw_extract, 'MOLDING': draw_molding, 'HOLLOW': draw_hollow, 'ALONG': draw_along,
+    'CABLE': draw_cable,
     # MIRROR, RADIAL, SURFACE: own sub-panels.
 }

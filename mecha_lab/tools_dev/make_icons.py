@@ -311,6 +311,48 @@ def icons():
         dots(d, [(cx, cy)], ACC, r=30)
         return img
     out['deform'] = deform
+
+    def extract():
+        img, d = canvas()
+        poly(d, [(80, 400), (180, 300), (330, 300), (430, 400)], FG, width=10, closed=False)
+        poly(d, [(170, 250), (200, 150), (310, 150), (340, 250)], ACC, fill=(255, 158, 40, 90))
+        d.line([(255, 290), (255, 200)], fill=CY, width=14)
+        poly(d, [(225, 220), (255, 180), (285, 220)], CY, width=14, closed=False)
+        return img
+    out['extract'] = extract
+
+    def molding():
+        img, d = canvas()
+        poly(d, [(110, 380), (110, 150), (400, 150), (400, 380)], FG, width=10)
+        poly(d, [(140, 350), (140, 180), (370, 180), (370, 350)], ACC, width=26)
+        return img
+    out['molding'] = molding
+
+    def hollow():
+        img, d = canvas()
+        d.ellipse((110, 110, 400, 400), outline=FG, width=30)
+        d.ellipse((170, 170, 340, 340), outline=ACC, width=12)
+        return img
+    out['hollow'] = hollow
+
+    def along():
+        img, d = canvas()
+        pts = [(90 + i * 11, 300 - 120 * math.sin(i / 30 * math.pi)) for i in range(31)]
+        poly(d, pts, CY, width=10, closed=False)
+        for k in range(1, 30, 6):
+            x, y = pts[k]
+            d.rectangle((x - 22, y - 22, x + 22, y + 22), fill=ACC)
+        return img
+    out['along'] = along
+
+    def cable():
+        img, d = canvas()
+        d.rectangle((70, 150, 150, 250), fill=FG)
+        d.rectangle((362, 280, 442, 380), fill=FG)
+        pts = [(150 + t * 212, 200 + t * 130 + 120 * math.sin(t * math.pi)) for t in (i / 30 for i in range(31))]
+        poly(d, pts, ACC, width=24, closed=False)
+        return img
+    out['cable'] = cable
     return out
 
 

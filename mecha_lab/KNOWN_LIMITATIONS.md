@@ -1,4 +1,26 @@
-# KNOWN LIMITATIONS — Mecha Lab 0.10.0
+# KNOWN LIMITATIONS — Mecha Lab 0.11.0
+
+## 00. 0.11.0 Mechanical Toolkit 한계 (먼저 읽기)
+- **Windows / Blender 5.0.2·5.3 GUI 미검증.** 기하·로직은 headless 테스트(99항목)로 확인.
+- Face Extract / Armor: 파츠는 선택 영역 사본으로 만듦(원본이 나중에 바뀌어도 파츠는 그대로). Armor의 능선 선명도는
+  **Resolution**(선택 면 세분) 에 좌우됨 — 능선이 메시 엣지와 정렬되는 것은 아님. 선택 3,000면·Resolution 1에서 슬라이더 1회
+  약 0.35초(이 컨테이너 CPU), 큰 선택은 Resolution 0 권장.
+- Armor 방향별 값은 경계 정점의 방향 각도로 섞임(N/E/S/W cos² 분할). Bevel Segments는 방향마다 다르게 줄 수 있지만 한 파츠의
+  링 수는 최댓값으로 통일(적은 방향은 같은 선 위에 점이 놓여 보이는 모양은 동일). 날카로운 방향(폭 0)은 아주 작은 챔퍼(크기의
+  0.2%)를 가짐.
+- Armor는 챔퍼 방향 Inward만(Outward는 Basic). Split 능선은 실제 분리가 아니라 깊고 좁은 V홈.
+- 엣지 폭이 파츠 높이/크기보다 크면 자동 축소되고 패널에 메모가 뜸. 선택이 한 점에서만 맞닿는 경우 거부.
+- Bevel Angle은 Basic의 측면 세로 엣지(Bevel 모디파이어, 가중치)에만. Armor 측면 엣지는 방향별 Bevel로.
+- Edge Molding: 코너는 마이터(최대 1/0.3배). 매우 날카로운 코너는 겹칠 수 있음. Armor 중앙선 몰딩은 파츠 윗면에 레이캐스트.
+- Hollow: Rim Thickness / 개구부는 원본 오브젝트에 Vertex Group·면 속성(`mch_opening`)을 추가함(형상은 불변, Reset 시 제거).
+  자기교차 검사는 겹치는 삼각형 + 안쪽 공간보다 두꺼운 정점 수(대략적).
+- Mesh Along Curve: Curve Deform은 슬라이더가 메쉬 오브젝트 위치를 커브 기준으로 설정(메쉬를 직접 옮기면 다음 슬라이더 변경 시
+  되돌아감). Curve Array Rigid는 편집 중 인스턴스, Apply 때 실제 메쉬로 변환.
+- Cable: 경로 슬라이더를 바꾸면 Edit Mode에서 직접 옮긴 점은 다시 계산됨(두께·단면 슬라이더는 경로를 건드리지 않음).
+  처짐은 월드 -Z 방향.
+- Undo/Redo는 각 연산자(REGISTER/UNDO)와 슬라이더 변경 단위 — headless에서는 Undo 스택을 실행할 수 없어 GUI 확인 필요.
+- 미구현: Custom Guide Mode(표면에 직접 능선 그리기), 메쉬 프로파일(커브만) 케이블, 몰딩/케이블 공유 일괄 편집 UI.
+
 
 ## 0. 0.10.0에서 먼저 알아야 할 것
 - **사용자 보고 B01 Mirror / B02 Loft / B03 Smart Fuse는 headless에서 재현되지 않았습니다.** 0.10.0의 수정은 GUI에서만 생길 수

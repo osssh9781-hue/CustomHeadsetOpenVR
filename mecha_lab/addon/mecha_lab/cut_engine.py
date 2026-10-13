@@ -1520,6 +1520,10 @@ class StrokeLogic:
         if et in {'LEFT_ALT', 'RIGHT_ALT', 'LEFT_SHIFT', 'RIGHT_SHIFT', 'LEFT_CTRL', 'RIGHT_CTRL'}:
             self.region.tag_redraw()
             return {'RUNNING_MODAL'}
+        if et == 'TAB' and ev == 'PRESS':
+            # Tab = Edit Mode: drop the unfinished stroke and let Blender switch mode
+            self._cleanup(context)
+            return {'CANCELLED', 'PASS_THROUGH'}
         if et == 'R' and ev == 'PRESS' and self.shape == 'CUSTOM':
             # B06: rotate the PNG stamp while drawing (Shift+R = back), 15° steps.
             rotate_stamp(context, -1 if event.shift else 1)

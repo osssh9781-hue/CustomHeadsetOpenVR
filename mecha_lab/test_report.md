@@ -1,4 +1,4 @@
-# Test Report — Mecha Lab 0.10.0
+# Test Report — Mecha Lab 0.11.0
 
 ## 환경
 | 항목 | 값 |
@@ -9,13 +9,33 @@
 | 사용자 설정 | 임시 `BLENDER_USER_*` 폴더 사용, 실제 설정·Startup 미사용 |
 | 기준 | ChatGPT v0.9.3 무수정 ZIP (sha256 `3b66e845…a1e4cd`) |
 
-명령: `<bpy python> tests/run_all.py` · 로그: `tests/test_log_bpy501_v0100.txt`
-ZIP: `dist/mecha_lab-0.10.0.zip` (sha256 `708f3c10d42c3569fc350ca27e1b565e54f712a38a9dbd4e2ff6e87540e46b9f`)
+명령: `<bpy python> tests/run_all.py` · 로그: `tests/test_log_bpy501_v0110.txt`
+ZIP: `dist/mecha_lab-0.11.0.zip` (sha256 `8518a39a91c5cd9faf00258f1bd697e6f6a9aea9af9ce2f41ff825aef72c6a84`)
 
 **변경 전(v0.9.3 무수정)에도 같은 headless 테스트는 모두 통과**했습니다(경로 누락 2건 제외). 즉 사용자 보고 고장 대부분은
 headless로 재현되지 않았고, 아래 "GUI 검증" 열은 전부 미검증입니다.
 
-## 결과: 17개 파일, 875 / 875 통과
+## 0.11.0 결과: 18개 파일, 995 / 995 통과
+| 신규/변경 | 항목 | 내용 |
+|---|---|---|
+| test_mechanical_toolkit.py | 99 | **신규** — 사양서 13절: Face Extract(곡면·노멀 방향·원본 유지·챔퍼 3모드 수치·Outward·외곽/측면 엣지·쉘·오프셋·설정 유지·다중 오브젝트), Armor(한 방향만 두께/챔퍼/베벨, 6프리셋 형상 변화와 서로 다름, 회전·스케일, Y 가지별 길이·폭, 능선 6프로필, 방향 회전, 곡면, 설정 복사), Edge Molding(파츠 경계·별도 오브젝트·폭/높이/베벨 독립·프로필·중앙선·면 경계), Curve Array(개수·커브 편집 갱신·Fit·Offset·Deform·World X/Y 배치), Curve Deform, Cable(두 오브젝트 클릭·끝점 고정·노멀 출발·처짐·점 추가·두께·프로필·테이퍼·Edge to Cable), Hollow(다중·내부 쉘·방향·개구부·Rim·과두께 검출·Reset/Apply) |
+| test_v0100_regression.py | 96 | +탭 이동 시 Base Mesh 자동 Apply 3, +Tab 통과 1 |
+| test_ui_draw.py | 130 | +새 도구 5개 패널(라이브 파츠/Armor Y/몰딩/쉘/배열/케이블) |
+| test_self_test.py | 4 | 자가 진단 12단계로 확장, 데이터 잔여 없음 |
+
+| 0.11.0 기능 | 코드에 존재 | headless 통과 | Windows GUI 검증 |
+|---|---|---|---|
+| 탭 이동 시 Base Mesh 자동 Apply | O | O (판정 함수) | 미검증 (타이머) |
+| Face Extract Basic (모든 슬라이더) | O | O | 미검증 |
+| Armor Sculpt (방향·프리셋·능선·전환) | O | O | 미검증 |
+| Edge Molding | O | O | 미검증 |
+| Hollow / Shell | O | O | 미검증 |
+| Mesh Along Curve (Deform / Array / 배치) | O | O | 미검증 |
+| Cable Generator (클릭 모달은 로직만, Edge to Cable) | O | O | 미검증 |
+| Tab으로 Edit Mode, 설정 유지 | O | O (모달 Tab 통과·재선택 유지) | 미검증 |
+| Undo / Redo | O (UNDO 플래그) | 실행 불가(headless) | 미검증 |
+
+## (0.10.0) 결과: 17개 파일, 875 / 875 통과
 | 파일 | 항목 | 0.10.0 |
 |---|---|---|
 | test_v0100_regression.py | 92 | **신규** — B01–B10, F01/F02/F08, Alt, V/Shift+A |

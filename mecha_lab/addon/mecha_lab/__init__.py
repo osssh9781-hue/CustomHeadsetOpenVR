@@ -1,10 +1,10 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 10, 0),
+    "version": (0, 11, 0),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
-    "description": "Cut, Split, Base Mesh, Boolean, Loft, ZBrush bridge, Smart Fuse, Mirror, primitives and arrays",
+    "description": "Cut, Split, Base Mesh, Boolean, Face Extract, Armor Sculpt, Molding, Cable, Hollow, curve arrays, Mirror",
     "category": "Object",
 }
 

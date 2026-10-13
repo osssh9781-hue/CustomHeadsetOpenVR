@@ -91,7 +91,8 @@ def run(context):
 
     window = context.window
     old_scene = context.scene
-    pools = (bpy.data.meshes, bpy.data.curves, bpy.data.lattices, bpy.data.node_groups)
+    pools = (bpy.data.meshes, bpy.data.curves, bpy.data.lattices, bpy.data.node_groups, bpy.data.collections)
+    before_colls = set(bpy.data.collections)
     before = [set(pool) for pool in pools]
     scene = bpy.data.scenes.new(SCENE_NAME)
     override = None
@@ -185,12 +186,42 @@ def run(context):
             assert lo.data.points_u == 5
             return 'lattice + resolution'
         step('Deform', deform)
+
+        def extract_armor():
+            t = _cube('ST_Ex', 2.0, (0, -20, 0), coll)
+            vl.update()
+            _select(C, t)
+            bpy.ops.object.mode_set(mode='EDIT')
+            bm = bmesh.from_edit_mesh(t.data)
+            for f in bm.faces:
+                f.select = f.normal.z > 0.9
+            bmesh.update_edit_mesh(t.data)
+            assert bpy.ops.mch.face_extract(mode='ARMOR', stay_in_edit=False) == {'FINISHED'}, 'extract'
+            part = C.view_layer.objects.active
+            part.mch_extract.cl_preset = 'Y'
+            part.mch_extract.n_thickness = 0.3
+            assert len(part.data.polygons) > 0, 'part empty'
+            assert bpy.ops.mch.molding_create(source='PART') == {'FINISHED'}, 'molding'
+            return 'armor Y + molding'
+        step('Face Extract / Armor / Molding', extract_armor)
+
+        def hollow_cable():
+            t = _cube('ST_Ho', 2.0, (0, -25, 0), coll)
+            vl.update()
+            _select(C, t)
+            assert bpy.ops.mch.hollow() == {'FINISHED'}, 'hollow'
+            from . import cable
+            ob = cable.create_cable(C, (0, -25, 1), (0, 0, 1), (3, -25, 1), (0, 0, 1))
+            assert len(ob.data.splines) == 1, 'cable'
+            return 'shell + cable'
+        step('Hollow / Cable', hollow_cable)
     finally:
         if override is not None:
             override.__exit__(None, None, None)
         if window is not None:
             window.scene = old_scene
         # delete everything created in the temporary scene
+        # parts collections are linked under the temporary scene, so its objects cover them
         for ob in list(scene.objects):
             data = ob.data
             bpy.data.objects.remove(ob)

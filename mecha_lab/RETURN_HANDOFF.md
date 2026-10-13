@@ -1,4 +1,17 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.10.0 (Claude Code, 2026-10-13)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.11.0 (Claude Code, 2026-10-13)
+
+## 0. 0.11.0 추가분 (Mechanical Modeling Toolkit)
+- ZIP `dist/mecha_lab-0.11.0.zip` (sha256 `8518a39a91c5cd9faf00258f1bd697e6f6a9aea9af9ce2f41ff825aef72c6a84`), 18개 파일 995/995
+  (`tests/test_log_bpy501_v0110.txt`). GUI 미검증, Blender 5.3 미실행.
+- 새 모듈: `panel_gen.py`(순수 단면 생성기: 경계 루프·로컬 프레임·컬럼별 단면(챔퍼/필렛/외곽)·조화 보간 캡 축소·높이장·
+  능선장·인덱스 테이블 조립), `face_extract.py`(Object.mch_extract 설정 + 영역 사본 메쉬 2개, Basic/Armor UI),
+  `edge_molding.py`(체인 JSON + 표면 노멀 기준 프로필 스윕), `hollow_shell.py`(GN 개구부 + Solidify + Rim Bevel, 과두께 검출),
+  `along_curve.py`(Curve 모디파이어 / GN 배열 / Array+Curve, 배치 모드), `cable.py`(두 점 경로·Edge to Cable·프로필 커브).
+- 도구 ID: EXTRACT(20) MOLDING(21) HOLLOW(22) ALONG(23) CABLE(24). 기존 ARRAY(Mesh Curve 경로 배열)와 POSE(Deform)는 유지.
+- 단면 좌표 규약: s = 경계에서 안쪽 거리(음수 = 바깥), z = 표면 위 높이. 모든 링은 경계 정점마다 1개 → 항상 닫힌 솔리드.
+- 패널은 활성 파츠 또는 `Scene.mch_extract_last / mch_molding_last / mch_cable_last / mch_curve_last`를 표시(Edit Mode 유지 중에도).
+- Base Mesh 탭 이동 자동 Apply: `base_mesh._tab_watch` 타이머(미확정 세션이 있을 때만), `check_tab_left()`로 테스트.
+
 
 ## 1. 기준과 결과물
 - 기준: **ChatGPT v0.9.3** 무수정 ZIP(`reference/CHATGPT_v0_9_3/mecha_lab-0.9.3_ORIGINAL_UNMODIFIED.zip`, sha256 `3b66e845…`).

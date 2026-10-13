@@ -1,10 +1,20 @@
-# Mecha Lab 0.10.0 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.11.0 — 설치 · MECHA LAB Workspace · 사용법
 
-> **검증 수준:** Linux headless Blender **5.0.1**(`bpy`)에서 자동 테스트 17개 파일 / 875개 항목이 통과했습니다.
+> **검증 수준:** Linux headless Blender **5.0.1**(`bpy`)에서 자동 테스트 18개 파일 / 995개 항목이 통과했습니다.
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` A절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
 
 기준 소스: ChatGPT v0.9.3 (Claude 0.9.0 + ChatGPT Deform 0.9.1 + Primitive 0.9.2/0.9.3). 변경 내용은 `CHANGELOG.md` 0.10.0.
+
+## 0.11.0 Mechanical Toolkit 빠른 안내
+작업 흐름: ZBrush 베이스 → Blender → **Face Extract → Armor Sculpt → Edge Molding → Curve Array / Cable → Hollow**.
+- **Face Extract**: Tab → 면 선택 → Basic Extract / Armor Sculpt. 파츠마다 설정이 남고 다시 선택하면 그대로 편집.
+- **Armor Sculpt**: 방향별(N/E/S/W) 두께·경사·챔퍼·베벨, 중앙 능선 6종(일자·십자·Y·X·S·Z)과 회전·스케일·가지별 길이·폭, 능선 단면 6종.
+- **Edge Molding**: 면 외곽 / 엣지 / 파츠 경계 / Armor 중앙선 → 별도 몰딩 오브젝트.
+- **Mesh Along Curve**: Curve Deform, Curve Array(Rigid/Deform), 커브 기준선 Free / World X·Y·Z.
+- **Cable**: 두 표면 클릭(다른 오브젝트 가능) 또는 Edge to Cable, 두께·단면·처짐·꼬임.
+- **Hollow / Shell**: 여러 메쉬 동시, 개구부·Rim, 자기교차 검사.
+- Base Mesh: 다른 탭으로 나가면 이번에 만든 도형이 자동 Apply.
 
 ## 0.10.0 빠른 안내
 - **Alt+짧은 클릭** = 선택 모드 ↔ 마지막 Mecha 도구, **Alt+드래그** = 도구별 보조(Cut: 안쪽 남기기, Base Mesh: 파내기).
@@ -19,7 +29,7 @@
 
 ## 1. 설치
 1. 기존 Mecha Lab을 비활성화·제거 (Edit > Preferences > Add-ons).
-2. Get Extensions > ▾ > **Install from Disk…** → `dist/mecha_lab-0.10.0.zip` (압축 풀지 말 것).
+2. Get Extensions > ▾ > **Install from Disk…** → `dist/mecha_lab-0.11.0.zip` (압축 풀지 말 것).
 3. 설치만으로는 어떤 Workspace도 바뀌지 않습니다.
 
 ## 2. MECHA LAB Workspace
@@ -28,7 +38,7 @@ N 사이드바 > Mecha Lab > `Open MECHA LAB Workspace` (또는 탭 메뉴 / F3)
 건드리지 않습니다(Startup 저장은 확인 창이 있는 별도 버튼).
 
 도구 목록: **Cut, Split, Base Mesh, SubD Plane, Primitive**, Boolean, Smart Fuse, Mirror, Curve Array, Radial Array, Mesh Curve,
-**Deform**, **Loft / Surface, ZBrush Bridge**, Surface Conform, Assets, Remesh, Live Result. (Mask는 0.10.0에서 숨김)
+**Deform**, **Face Extract / Armor Sculpt, Edge Molding, Hollow / Shell, Mesh Along Curve, Cable**, **Loft / Surface, ZBrush Bridge**, Surface Conform, Assets, Remesh, Live Result. (Mask는 0.10.0에서 숨김)
 `Space` = 큰 아이콘 도구 메뉴(MECHA LAB 탭에서만). Sidebar의 접힌 `Tools (fallback list)`도 항상 있습니다.
 
 ## 3. 공통 입력 규칙 (Cut / Split / Mask / Base Mesh)
