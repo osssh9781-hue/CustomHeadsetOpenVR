@@ -66,13 +66,13 @@ for op in ('UNION', 'INTERSECT'):
     fresh()
     a = cube('A')
     b = cube('B', loc=(1, 1, 1))
-    select_only(a, b)
+    select_only(b, a)             # v1.0 rule: active (yellow) B = cutter, A = target
     r = call(bpy.ops.mch.boolean, operation=op)
     check(f'boolean {op}', r == {'FINISHED'} and non_manifold(a) == 0 and 'B' not in bpy.data.objects, r)
 fresh()
 a = cube('A')
 b = cube('B', loc=(1, 1, 1))
-select_only(a, b)
+select_only(b, a)                 # active B = cutter
 r = call(bpy.ops.mch.slice)
 check('slice keeps both pieces', r == {'FINISHED'} and 'A_SlicePiece' in bpy.data.objects and
       abs(volume(a) + volume(bpy.data.objects['A_SlicePiece']) - 8.0) < 1e-4, r)

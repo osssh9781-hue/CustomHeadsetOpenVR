@@ -586,8 +586,34 @@ def _face_flag_layer(bm):
     return None
 
 
-def finish_new_edges(mesh, mode='NONE', width=0.01, segments=3, profile=0.5):
-    """Bevel/chamfer only edges between cutter faces and original faces."""
+FINISH_NOTES = []   # B10: per-operation notes about widths Blender had to limit
+
+
+def _bevel_limit(edges):
+    """Approximate largest width Blender's clamp allows: the shortest edge that
+    meets a bevelled edge at one of its vertices (half of it where two bevelled
+    edges share that neighbour)."""
+    bevel = set(edges)
+    limit = float('inf')
+    for e in edges:
+        for v in e.verts:
+            for other in v.link_edges:
+                if other in bevel:
+                    continue
+                length = other.calc_length()
+                far = other.other_vert(v)
+                shared = any(x in bevel for x in far.link_edges)
+                limit = min(limit, length * (0.5 if shared else 1.0))
+    return limit
+
+
+def finish_new_edges(mesh, mode='NONE', width=0.01, segments=3, profile=0.5, clamp=True, label=''):
+    """Bevel/chamfer only edges between cutter faces and original faces.
+
+    ``clamp`` keeps Blender's overlap clamp (safe geometry); when the requested
+    width is larger than what the neighbouring edges allow, a note is added to
+    FINISH_NOTES so the user learns the effective width instead of silently
+    getting a smaller bevel."""
     if mode == 'NONE' or width <= 0 or mesh.attributes.get(CUTTER_ATTR) is None:
         return 0
     bm = bmesh.new()
@@ -600,10 +626,17 @@ def finish_new_edges(mesh, mode='NONE', width=0.01, segments=3, profile=0.5):
                  bool(e.link_faces[0][layer]) != bool(e.link_faces[1][layer])]
         if not edges:
             return 0
+        limit = _bevel_limit(edges)
+        if clamp and width > limit:
+            FINISH_NOTES.append(f'{label + " " if label else ""}{mode.lower()} width {width:.4g} limited to '
+                                f'about {limit:.4g} by short neighbouring edges (Clamp Overlap ON)')
+        elif not clamp and width > limit:
+            FINISH_NOTES.append(f'{label + " " if label else ""}{mode.lower()} width {width:.4g} exceeds the '
+                                f'safe {limit:.4g} (Clamp Overlap OFF: geometry may overlap)')
         verts = list({v for e in edges for v in e.verts})
         bmesh.ops.bevel(bm, geom=edges + verts, offset=width, offset_type='OFFSET',
                         segments=1 if mode == 'CHAMFER' else max(1, segments),
-                        profile=profile, affect='EDGES', clamp_overlap=True,
+                        profile=profile, affect='EDGES', clamp_overlap=bool(clamp),
                         loop_slide=True)
         bm.normal_update()
         bm.to_mesh(mesh)

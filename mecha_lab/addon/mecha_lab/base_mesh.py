@@ -41,6 +41,15 @@ PROFILES = (
      '(height field, not a bevel)', 'profile_dome', 'MESH_UVSPHERE'),
 )
 PROFILE_ITEMS = [(p[0], p[1], p[2], p[4], i) for i, p in enumerate(PROFILES)]
+SIDE_ITEMS = [
+    ('TOP', 'Top Only', 'Bevel / Chamfer on the top rim; bottom flat and sharp', 'TRIA_UP', 0),
+    ('BOTTOM', 'Bottom Only', 'Bevel / Chamfer on the bottom rim; top flat and sharp', 'TRIA_DOWN', 1),
+    ('BOTH', 'Both Sides', 'Top and bottom rims (separate width / segments possible)', 'ARROW_LEFTRIGHT', 2),
+    ('NONE', 'None', 'No bevel: flat and sharp', 'X', 3),
+]
+FLIP_SIDES = {'TOP': 'BOTTOM', 'BOTTOM': 'TOP', 'BOTH': 'BOTH', 'NONE': 'NONE'}
+SETTING_KEYS = ('height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 'resolution', 'offset',
+                'bottom_too', 'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link')
 MAX_DOME_POINTS = 12000
 
 
@@ -73,7 +82,15 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
     offset: FloatProperty(name='Offset', default=0.0, soft_min=-5.0, soft_max=5.0, precision=4,
                           unit='LENGTH', update=_rebuild_update,
                           description='Move the solid along its normal (toward the viewer is positive)')
-    bottom_too: BoolProperty(name='Bevel Bottom Too', default=False, update=_rebuild_update)
+    bottom_too: BoolProperty(name='Bevel Bottom Too (old)', default=False, update=_rebuild_update,
+                             description='v0.8-0.9 option, migrated to Bevel Sides = Both')
+    bevel_sides: EnumProperty(name='Bevel Sides', items=SIDE_ITEMS, default='TOP', update=_rebuild_update,
+                              description='Where the Bevel / Chamfer profile goes (Alt+drag cutter flips Top/Bottom)')
+    bevel_width_bottom: FloatProperty(name='Bottom Width', default=0.05, min=0.0, soft_max=2.0, precision=4,
+                                      unit='LENGTH', update=_rebuild_update)
+    bevel_segments_bottom: IntProperty(name='Bottom Segments', default=4, min=1, max=32, update=_rebuild_update)
+    bevel_link: BoolProperty(name='Same Top / Bottom', default=True, update=_rebuild_update,
+                             description='Both Sides: bottom uses the top Width / Segments')
     live: BoolProperty(name='Live', default=False,
                        description='Settings rebuild this object (outline stored on the object)')
     outline: StringProperty(default='', options={'HIDDEN'})
@@ -322,7 +339,53 @@ def _add_dome(bm, outer, holes, p):
         f.smooth = True
 
 
-def build_bmesh(groups, p):
+def side_values(p, flip=False):
+    """(sides, top (width, segments), bottom (width, segments)).  ``flip`` =
+    Alt+drag cutter: Top<->Bottom, Both swaps the two settings, None unchanged."""
+    sides = getattr(p, 'bevel_sides', 'TOP')
+    top = (p.bevel_width, p.bevel_segments)
+    bottom = top if getattr(p, 'bevel_link', True) else (p.bevel_width_bottom, p.bevel_segments_bottom)
+    if flip:
+        sides = FLIP_SIDES[sides]
+        if sides == 'BOTH':
+            top, bottom = bottom, top
+    return sides, top, bottom
+
+
+LAST_NOTES = []
+
+
+def _bevel_rims(bm, p, rim_top, rim_bottom, flip=False):
+    sides, top, bottom = side_values(p, flip)
+    jobs = []
+    if sides in {'TOP', 'BOTH'}:
+        jobs.append(('top', rim_top, top))
+    if sides in {'BOTTOM', 'BOTH'}:
+        jobs.append(('bottom', rim_bottom, bottom))
+    notes = []
+    both = len(jobs) == 2
+    for name, pairs, (width, segs) in jobs:
+        limit = p.height * (0.48 if both else 0.95)     # rims never meet / pass the other side
+        if width > limit:
+            notes.append(f'{name} width limited to {limit:.4g} by the height')
+            width = limit
+        if width <= 0:
+            continue
+        edges = []
+        for a, b in pairs:
+            if a.is_valid and b.is_valid:
+                e = bm.edges.get((a, b))
+                if e is not None:
+                    edges.append(e)
+        if edges:
+            verts = list({v for e in edges for v in e.verts})
+            bmesh.ops.bevel(bm, geom=edges + verts, offset=width, offset_type='OFFSET',
+                            segments=1 if p.profile == 'CHAMFER' else max(1, segs),
+                            profile=0.5, affect='EDGES', clamp_overlap=True)
+    return notes
+
+
+def build_bmesh(groups, p, flip=False):
     """groups: [(outer CCW, [holes CW])] in local plane units. Returns a validated BMesh."""
     bm = bmesh.new()
     try:
@@ -335,21 +398,9 @@ def build_bmesh(groups, p):
                 rim_top += rt
                 rim_bottom += rb
         bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-7)
-        if p.profile in {'BEVEL', 'CHAMFER'} and p.bevel_width > 0:
-            pairs = rim_top + (rim_bottom if p.bottom_too else [])
-            edges = []
-            for a, b in pairs:
-                if a.is_valid and b.is_valid:
-                    e = bm.edges.get((a, b))
-                    if e is not None:
-                        edges.append(e)
-            limit = p.height * (0.48 if p.bottom_too else 0.95)
-            width = min(p.bevel_width, limit)
-            if edges and width > 0:
-                verts = list({v for e in edges for v in e.verts})
-                bmesh.ops.bevel(bm, geom=edges + verts, offset=width, offset_type='OFFSET',
-                                segments=1 if p.profile == 'CHAMFER' else max(1, p.bevel_segments),
-                                profile=0.5, affect='EDGES', clamp_overlap=True)
+        LAST_NOTES.clear()
+        if p.profile in {'BEVEL', 'CHAMFER'}:
+            LAST_NOTES.extend(_bevel_rims(bm, p, rim_top, rim_bottom, flip))
         if abs(p.offset) > 0:
             bmesh.ops.translate(bm, verts=bm.verts[:], vec=(0.0, 0.0, p.offset))
         if not bm.faces or any(not e.is_manifold for e in bm.edges):
@@ -421,8 +472,10 @@ def plane_frame(context, projector, groups):
     return origin, x, y, n
 
 
-def perform_base(context, loops, projector):
-    """Create the new solid. Returns a report string; raises CutError (scene untouched)."""
+SESSION_KEY = 'mch_base_session'     # Scene ID prop: live Base Meshes made since the tool was entered
+
+
+def _local_groups(context, loops, projector):
     screen_groups = cg.prepare_loops(loops)
     origin, x, y, n = plane_frame(context, projector, screen_groups)
 
@@ -433,7 +486,19 @@ def perform_base(context, loops, projector):
     groups = [([to_local(q) for q in outer], [[to_local(q) for q in h] for h in holes])
               for outer, holes in screen_groups]
     groups = cg.organize_loops([lp for outer, holes in groups for lp in [outer] + holes])
+    frame = Matrix.Identity(4)
+    for r in range(3):
+        frame[r][0], frame[r][1], frame[r][2], frame[r][3] = x[r], y[r], n[r], origin[r]
+    return groups, frame, screen_groups
+
+
+def perform_base(context, loops, projector, cutter=False, targets=None):
+    """Create the new solid (or, ``cutter=True`` = Alt+drag, cut it into the
+    mesh below).  Returns a report string; raises CutError (scene untouched)."""
+    groups, frame, screen_groups = _local_groups(context, loops, projector)
     defaults = context.scene.mch_base
+    if cutter:
+        return _perform_cutter(context, groups, frame, defaults, projector, screen_groups, targets)
     bm = build_bmesh(groups, defaults)
     me = bpy.data.meshes.new('MCH_BaseMesh')
     try:
@@ -446,23 +511,127 @@ def perform_base(context, loops, projector):
         coll.objects.link(ob)
     except RuntimeError:
         context.scene.collection.objects.link(ob)
-    frame = Matrix.Identity(4)
-    for r in range(3):
-        frame[r][0], frame[r][1], frame[r][2], frame[r][3] = x[r], y[r], n[r], origin[r]
     ob.matrix_world = frame
     live = ob.mch_base
-    for key in ('height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 'resolution',
-                'offset', 'bottom_too'):
+    for key in SETTING_KEYS:
         setattr(live, key, getattr(defaults, key))
     live.profile = defaults.profile        # live is still False: no rebuild yet
     live.outline = json.dumps({'groups': [{'outer': g[0], 'holes': g[1]} for g in groups]})
     live.live = True
+    session = list(context.scene.get(SESSION_KEY, []))
+    session.append(ob.name)
+    context.scene[SESSION_KEY] = session
     for o in context.selected_objects:
         o.select_set(False)
     ob.select_set(True)
     context.view_layer.objects.active = ob
     name = dict((p[0], p[1]) for p in PROFILES)[defaults.profile]
-    return f'Base Mesh created: {ob.name} ({name}, {len(me.vertices)} verts, closed solid)'
+    notes = (' | ' + '; '.join(LAST_NOTES)) if LAST_NOTES else ''
+    return f'Base Mesh created: {ob.name} ({name}, {len(me.vertices)} verts, closed solid){notes}'
+
+
+def _cutter_targets(context, projector, screen_groups, targets):
+    if targets:
+        return [t for t in targets if t.type == 'MESH']
+    sel = [o for o in context.selected_objects if o.type == 'MESH' and not
+           (getattr(o, 'mch_base', None) and o.mch_base.live)]
+    if sel:
+        return sel
+    outer = screen_groups[0][0]
+    c = (sum(q[0] for q in outer) / len(outer), sum(q[1] for q in outer) / len(outer))
+    o, d = projector.ray(c)
+    hit, _loc, _n, _i, ob, _m = context.scene.ray_cast(context.evaluated_depsgraph_get(), o, d)
+    return [bpy.data.objects[ob.name]] if hit and ob is not None and ob.type == 'MESH' else []
+
+
+def _perform_cutter(context, groups, frame, p, projector, screen_groups, targets):
+    """Alt+drag: the drawn solid becomes a Boolean Difference cutter.  Its bevel
+    sides are flipped (Top <-> Bottom, Both swaps top/bottom settings) and it is
+    mirrored INTO the surface, so the flipped bevel lands on the opening of the
+    pocket.  Depth = Height."""
+    targets = _cutter_targets(context, projector, screen_groups, targets)
+    if not targets:
+        raise cg.CutError('Alt+drag Base Mesh cuts into a mesh: start on a mesh or select the target first.')
+    if p.profile == 'DOME':
+        raise cg.CutError('Alt+drag cutter supports Flat / Chamfer / Bevel profiles (Dome has no flat cap).')
+    bm = build_bmesh(groups, p, flip=True)
+    try:
+        # mirror along local Z (into the surface) and lift a hair above it so the
+        # opening is not coplanar with the surface
+        eps = max(p.height * 0.01, 1e-5)
+        for v in bm.verts:
+            v.co.z = -v.co.z + eps
+        bmesh.ops.reverse_faces(bm, faces=bm.faces[:])
+        me = bpy.data.meshes.new('MCH_BaseCutter')
+        bm.to_mesh(me)
+    finally:
+        bm.free()
+    cutter = cg.link_temp_object(context, me)
+    cutter.matrix_world = frame
+    cut = context.scene.mch_cut
+    done, failed, temp = [], [], []
+    try:
+        results = []
+        for t in targets:
+            try:
+                cg.check_target(t)
+                res, _solver = cg.boolean_result(context, t, cutter, 'DIFFERENCE', cut.solver, cut.hole_tolerant)
+                temp.append(res)
+                results.append((t, res))
+            except (cg.CutError, RuntimeError) as ex:
+                if len(targets) == 1:
+                    raise
+                failed.append(f'{t.name} ({str(ex).splitlines()[0][:60]})')
+        if not results:
+            raise cg.CutError('The Base Mesh cutter does not intersect any target; nothing was changed.')
+        for t, res in results:
+            cg.commit_mesh(t, res, cut.shared_mesh)
+            done.append(t.name)
+    finally:
+        for m in temp:
+            if m.users == 0:
+                bpy.data.meshes.remove(m)
+        cg.remove_object_and_mesh(cutter)
+    sides, _t, _b = side_values(p, flip=True)
+    msg = f'Base Mesh cutter (Alt): {", ".join(done)} | cutter bevel: {sides.title()}'
+    if failed:
+        msg += ' | FAILED, unchanged: ' + '; '.join(failed)
+    return msg
+
+
+def auto_apply_session(context):
+    """F02: leaving / switching away from the Base Mesh tool applies (freezes)
+    ONLY the live Base Meshes this tool created since it was entered.  Other
+    objects and modifiers are never touched.  Freezing keeps the geometry
+    (no data change) and is one undo step."""
+    names = list(context.scene.get(SESSION_KEY, []))
+    if SESSION_KEY in context.scene:
+        del context.scene[SESSION_KEY]
+    frozen = []
+    for name in names:
+        ob = bpy.data.objects.get(name)
+        if ob is not None and getattr(ob, 'mch_base', None) and ob.mch_base.live:
+            ob.mch_base.live = False
+            frozen.append(name)
+    if frozen:
+        try:
+            bpy.ops.ed.undo_push(message='Base Mesh: auto apply')
+        except RuntimeError:
+            pass
+    return frozen
+
+
+@bpy.app.handlers.persistent
+def _migrate_on_load(_dummy=None):
+    """v0.8-0.9 'Bevel Bottom Too' -> Bevel Sides = Both (only when unset)."""
+    pgs = [sc.mch_base for sc in bpy.data.scenes if hasattr(sc, 'mch_base')]
+    pgs += [ob.mch_base for ob in bpy.data.objects if hasattr(ob, 'mch_base')]
+    for p in pgs:
+        if p.bottom_too and 'bevel_sides' not in p:
+            live = p.live
+            p.live = False          # no rebuild while migrating
+            p.bevel_sides = 'BOTH'
+            p.live = live
 
 
 # -----------------------------------------------------------------------------
@@ -525,9 +694,13 @@ def register():
         bpy.utils.register_class(c)
     bpy.types.Scene.mch_base = bpy.props.PointerProperty(type=MCH_PG_BaseMesh)
     bpy.types.Object.mch_base = bpy.props.PointerProperty(type=MCH_PG_BaseMesh)
+    if _migrate_on_load not in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(_migrate_on_load)
 
 
 def unregister():
+    if _migrate_on_load in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(_migrate_on_load)
     for n, t in (('mch_base', bpy.types.Object), ('mch_base', bpy.types.Scene)):
         if hasattr(t, n):
             delattr(t, n)

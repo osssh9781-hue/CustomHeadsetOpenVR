@@ -210,6 +210,13 @@ def set_native_tool(context, idname):
 def activate_mecha_tool(context, tool_id):
     """Select a Mecha tool; drawing tools also become the native active tool."""
     settings = context.scene.mch_settings
+    try:
+        previous = ts.effective_tool(context)
+    except (AttributeError, KeyError, TypeError):
+        previous = None
+    if previous == 'BASE' and tool_id != 'BASE':
+        from . import base_mesh
+        base_mesh.auto_apply_session(context)     # F02: only this tool's own live results
     settings.mch_active_tool = tool_id
     native = ts.TOOL_BY_ID[tool_id][5]
     current = ts.native_tool_id(context)
@@ -250,6 +257,9 @@ def _tool_keymap(mode):
         ('mch.space_tools', {'type': 'SPACE', 'value': 'PRESS'}, None),
         # Esc with no stroke pending: back to Blender's Select Box tool.
         ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),
+        # B06: R / Shift+R rotate a PNG stamp (poll fails for other shapes -> Blender's R).
+        ('mch.stamp_rotate', {'type': 'R', 'value': 'PRESS'}, {'properties': [('sign', 1)]}),
+        ('mch.stamp_rotate', {'type': 'R', 'value': 'PRESS', 'shift': True}, {'properties': [('sign', -1)]}),
     )
 
 
@@ -273,6 +283,10 @@ class MCH_TOOL_cut(bpy.types.WorkSpaceTool):
     def draw_settings(context, layout, tool):
         _draw_tool_settings(context, layout, tool)
 
+    def draw_cursor(context, tool, xy):
+        from . import cut_engine
+        cut_engine.draw_stamp_cursor(context, xy)
+
 
 class MCH_TOOL_split(bpy.types.WorkSpaceTool):
     bl_space_type = 'VIEW_3D'
@@ -286,6 +300,10 @@ class MCH_TOOL_split(bpy.types.WorkSpaceTool):
 
     def draw_settings(context, layout, tool):
         _draw_tool_settings(context, layout, tool)
+
+    def draw_cursor(context, tool, xy):
+        from . import cut_engine
+        cut_engine.draw_stamp_cursor(context, xy)
 
 
 class MCH_TOOL_mask(bpy.types.WorkSpaceTool):
@@ -1036,6 +1054,10 @@ class MCH_PT_profile_popup(bpy.types.Panel):
         layout.label(text='BASE MESH PROFILE' + (f'  |  editing {live.name}' if live else '  |  next shape'),
                      icon='MESH_CUBE')
         draw_profile_grid(layout, context, columns=4, scale=3.0)
+        p = live.mch_base if live else context.scene.mch_base
+        row = layout.row(align=True)
+        row.enabled = p.profile in {'BEVEL', 'CHAMFER'}
+        row.prop(p, 'bevel_sides', expand=True)
         layout.separator()
         layout.label(text='Shape (shared palette)', icon='SELECT_SET')
         draw_shape_grid(layout, context, columns=6, scale=1.6)

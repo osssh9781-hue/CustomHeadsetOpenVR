@@ -27,7 +27,7 @@ import traceback
 
 import bpy
 import gpu
-from bpy.props import EnumProperty
+from bpy.props import EnumProperty, IntProperty
 from gpu_extras.batch import batch_for_shader
 from mathutils import Vector
 from mathutils.geometry import tessellate_polygon
@@ -422,7 +422,8 @@ def _finish_side(cut, me, side, scale):
     if mode == 'NONE':
         return 0
     return cg.finish_new_edges(me, mode, getattr(cut, f'side_{side}_width') / scale,
-                               getattr(cut, f'side_{side}_segments'), 0.5)
+                               getattr(cut, f'side_{side}_segments'), 0.5,
+                               clamp=getattr(cut, 'finish_clamp', True), label='Side ' + side.upper())
 
 
 def _side_report(cut, counts):
@@ -434,6 +435,20 @@ def _side_report(cut, counts):
     return (' | ' + ', '.join(parts)) if parts else ''
 
 
+def _with_finish_notes(fn):
+    """B10: append 'width limited' notes of the bevels to the report string."""
+    def wrapper(*args, **kwargs):
+        cg.FINISH_NOTES.clear()
+        msg = fn(*args, **kwargs)
+        notes = list(dict.fromkeys(cg.FINISH_NOTES))
+        cg.FINISH_NOTES.clear()
+        return msg + (' | ' + '; '.join(notes) if notes else '')
+    wrapper.__name__ = fn.__name__
+    wrapper.__doc__ = fn.__doc__
+    return wrapper
+
+
+@_with_finish_notes
 def perform_closed(context, mode, targets, loops, projector, invert=False):
     """Cut / Split all targets with closed screen loops. Returns a report string."""
     scene = context.scene
@@ -466,6 +481,7 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
     results, pieces, temp = [], [], []
     edge_counts = []
     side_counts = {}
+    skipped, failed = [], []
     try:
         for t in targets:
             scale = _object_scale(t)
@@ -476,7 +492,7 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
                     temp.append(me)
                     edge_counts.append(cg.finish_new_edges(
                         me, cut.edge_finish, cut.finish_width / scale,
-                        cut.finish_segments, cut.finish_profile))
+                        cut.finish_segments, cut.finish_profile, clamp=cut.finish_clamp))
                     results.append((t, me))
                 else:  # SPLIT
                     inner, _s1 = cg.boolean_result(context, t, cutter, 'INTERSECT', cut.solver, cut.hole_tolerant)
@@ -492,12 +508,15 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
                             cg.strip_cutter_faces(me)
                     results.append((t, outer))
                     pieces.append((t, inner))
-            except cg.CutError as ex:
-                if len(targets) > 1 and 'does not intersect' in str(ex):
-                    continue
-                raise
+            except (cg.CutError, RuntimeError) as ex:
+                if len(targets) == 1:
+                    raise
+                # F01: several targets - a failing one stays unchanged and is listed.
+                (skipped if 'does not intersect' in str(ex) else failed).append(
+                    t.name if 'does not intersect' in str(ex) else f'{t.name} ({str(ex).splitlines()[0][:70]})')
         if not results:
-            raise cg.CutError('The shape does not intersect any target; nothing was changed.')
+            raise cg.CutError('The shape does not intersect any target; nothing was changed.' +
+                              (' Failed: ' + '; '.join(failed) if failed else ''))
         infos = []
         for t, me in results:
             infos.append(cg.commit_mesh(t, me, cut.shared_mesh))
@@ -519,13 +538,23 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
                 suffix = ' | WARNING: Edge Finish found 0 new edges; no bevel/chamfer'
             else:
                 suffix = f' | {cut.edge_finish}: {sum(edge_counts)} newly cut edges'
-        return f'{verb}: {", ".join(t.name for t, _ in results)}{"".join(sorted(set(infos)))}{suffix}'
+        return (f'{verb}: {", ".join(t.name for t, _ in results)}{"".join(sorted(set(infos)))}{suffix}' +
+                _target_report(skipped, failed))
     finally:
         for me in temp:
             if me.users == 0:
                 bpy.data.meshes.remove(me)
         cg.remove_object_and_mesh(cutter)
         cg.remove_object_and_mesh(cutter_out)
+
+
+def _target_report(skipped, failed):
+    out = ''
+    if skipped:
+        out += ' | not touched (no overlap): ' + ', '.join(skipped)
+    if failed:
+        out += ' | FAILED, left unchanged: ' + '; '.join(failed)
+    return out
 
 
 def _make_live(context, mode, targets, cutter, invert):
@@ -567,6 +596,7 @@ def _make_live(context, mode, targets, cutter, invert):
             ('Edge Finish requires Auto Apply ON; no bevel generated.' if cut.edge_finish != 'NONE' else ''))
 
 
+@_with_finish_notes
 def perform_line(context, mode, targets, points, projector, side_xy, invert=False):
     """Open line cut / split. ``side_xy`` picks the half removed by Cut."""
     scene = context.scene
@@ -590,6 +620,7 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
         results, pieces, temp = [], [], []
         line_bevel_counts = []
         side_counts = {}
+        skipped, failed = [], []
         try:
             for t in targets:
                 scale = _object_scale(t)
@@ -600,7 +631,7 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
                         if cut.line_cap:
                             line_bevel_counts.append(cg.finish_new_edges(
                                 me, cut.edge_finish, cut.finish_width / scale,
-                                cut.finish_segments, cut.finish_profile))
+                                cut.finish_segments, cut.finish_profile, clamp=cut.finish_clamp))
                         results.append((t, me))
                     else:
                         cap = cut.split_cap and cut.line_cap
@@ -616,12 +647,16 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
                                 side_counts[side] = side_counts.get(side, 0) + n
                         results.append((t, keep))
                         pieces.append((t, other))
-                except cg.CutError as ex:
-                    if len(targets) > 1 and 'does not cross' in str(ex):
-                        continue
-                    raise
+                except (cg.CutError, RuntimeError) as ex:
+                    if len(targets) == 1:
+                        raise
+                    if 'does not cross' in str(ex):
+                        skipped.append(t.name)
+                    else:
+                        failed.append(f'{t.name} ({str(ex).splitlines()[0][:70]})')
             if not results:
-                raise cg.CutError('The line does not cross any target; nothing was changed.')
+                raise cg.CutError('The line does not cross any target; nothing was changed.' +
+                                  (' Failed: ' + '; '.join(failed) if failed else ''))
             infos = [cg.commit_mesh(t, me, cut.shared_mesh) for t, me in results]
             for t, me in pieces:
                 temp.remove(me)
@@ -637,7 +672,8 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
                 else:
                     suffix = f' | {cut.edge_finish}: {sum(line_bevel_counts)} new boundary edges'
             return ('Plane split: ' if mode == 'SPLIT' else 'Plane cut: ') + \
-                ', '.join(t.name for t, _ in results) + ''.join(sorted(set(infos))) + suffix
+                ', '.join(t.name for t, _ in results) + ''.join(sorted(set(infos))) + suffix + \
+                _target_report(skipped, failed)
         finally:
             for me in temp:
                 if me.users == 0:
@@ -1240,7 +1276,8 @@ class StrokeLogic:
                 msg = perform_mask(context, targets[0], loops, self.projector, self.inverted())
             elif self.mode == 'BASE':
                 from . import base_mesh
-                msg = base_mesh.perform_base(context, loops, self.projector)
+                # Alt+drag: the drawn solid cuts into the mesh (flipped bevel sides)
+                msg = base_mesh.perform_base(context, loops, self.projector, cutter=self.inverted())
             else:
                 msg = perform_closed(context, self.mode, targets, loops, self.projector, self.inverted())
         if self.shape == 'CUSTOM' and self.anchor is not None and self.mouse is not None:
@@ -1431,6 +1468,11 @@ class StrokeLogic:
                 return {'RUNNING_MODAL'}
             return self._on_lmb(context, ev, xy, event)
         if et in {'LEFT_ALT', 'RIGHT_ALT', 'LEFT_SHIFT', 'RIGHT_SHIFT', 'LEFT_CTRL', 'RIGHT_CTRL'}:
+            self.region.tag_redraw()
+            return {'RUNNING_MODAL'}
+        if et == 'R' and ev == 'PRESS' and self.shape == 'CUSTOM':
+            # B06: rotate the PNG stamp while drawing (Shift+R = back), 15° steps.
+            rotate_stamp(context, -1 if event.shift else 1)
             self.region.tag_redraw()
             return {'RUNNING_MODAL'}
         # Swallow other keys while a stroke is pending so a stray hotkey cannot
@@ -1689,6 +1731,70 @@ class MCH_OT_rmb_gate(GateLogic, bpy.types.Operator):
         return context.area is not None and context.area.type == 'VIEW_3D'
 
 
+STAMP_STEP = math.radians(15.0)
+_STAMP_CACHE = {}
+
+
+def rotate_stamp(context, sign=1):
+    b = context.scene.mch_brush
+    a = b.custom_rotation + STAMP_STEP * sign
+    b.custom_rotation = math.atan2(math.sin(a), math.cos(a))     # keep in (-180°, 180°]
+    return b.custom_rotation
+
+
+def stamp_loops_cached(stem):
+    from . import cut_presets
+    if stem not in _STAMP_CACHE:
+        try:
+            _STAMP_CACHE[stem] = cut_presets.load_loops(stem)
+        except (cg.CutError, ValueError, OSError):
+            _STAMP_CACHE[stem] = None
+    return _STAMP_CACHE[stem]
+
+
+def draw_stamp_cursor(context, xy):
+    """Idle PNG stamp preview at the cursor (WorkSpaceTool.draw_cursor):
+    the exact outline a click would cut, with the current size / rotation."""
+    try:
+        b = context.scene.mch_brush
+        if b.shape != 'CUSTOM':
+            return
+        loops = stamp_loops_cached(context.scene.mch_png_preset)
+        if not loops:
+            return
+        region = context.region
+        p = (xy[0] - region.x, xy[1] - region.y) if region is not None else xy
+        sh = _shader()
+        gpu.state.blend_set('ALPHA')
+        for lp in custom_loops(loops, p, b.custom_size, b.custom_rotation):
+            _draw_lines(sh, lp, _COLORS['CUT'], closed=True, width=1.5)
+        gpu.state.blend_set('NONE')
+    except Exception:      # never break viewport drawing
+        pass
+
+
+class MCH_OT_stamp_rotate(bpy.types.Operator):
+    """R in an idle Cut / Split tool with a PNG shape: rotate the stamp."""
+    bl_idname = 'mch.stamp_rotate'
+    bl_label = 'Rotate PNG Stamp'
+    bl_description = 'Rotate the PNG stamp by 15° (Shift: back)'
+    bl_options = {'INTERNAL'}
+
+    sign: IntProperty(default=1, min=-1, max=1)
+
+    @classmethod
+    def poll(cls, context):
+        brush = getattr(context.scene, 'mch_brush', None)
+        return brush is not None and brush.shape == 'CUSTOM'   # else Blender's own R runs
+
+    def execute(self, context):
+        a = rotate_stamp(context, self.sign)
+        self.report({'INFO'}, f'Stamp rotation {math.degrees(a):.0f}°')
+        if context.area:
+            context.area.tag_redraw()
+        return {'FINISHED'}
+
+
 class MCH_OT_exit_tool(bpy.types.Operator):
     """Esc in an idle Mecha tool: back to Blender's Select Box tool."""
     bl_idname = 'mch.exit_tool'
@@ -1704,4 +1810,4 @@ class MCH_OT_exit_tool(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_OT_cut_stroke, MCH_OT_rmb_gate, MCH_OT_exit_tool)
+CLASSES = (MCH_OT_cut_stroke, MCH_OT_rmb_gate, MCH_OT_exit_tool, MCH_OT_stamp_rotate)

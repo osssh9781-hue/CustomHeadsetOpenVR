@@ -109,6 +109,8 @@ def draw_cut(layout, context, mode='CUT'):
                 if getattr(cut, f'side_{side}_finish') == 'BEVEL':
                     sub.prop(cut, f'side_{side}_segments')
         box.operator('mch.split_swap_sides', icon='ARROW_LEFTRIGHT')
+        if cut.side_a_finish != 'NONE' or cut.side_b_finish != 'NONE':
+            box.prop(cut, 'finish_clamp')
     else:
         box = _section(layout, 'Edge Finish (new cut edges only)', 'MOD_BEVEL')
         box.prop(cut, 'edge_finish', expand=True)
@@ -118,6 +120,7 @@ def draw_cut(layout, context, mode='CUT'):
             if cut.edge_finish == 'BEVEL':
                 c.prop(cut, 'finish_segments')
                 c.prop(cut, 'finish_profile', slider=True)
+            box.prop(cut, 'finish_clamp')
             if not s.auto_apply:
                 box.label(text='Edge Finish is skipped in Live mode', icon='INFO')
 
@@ -135,12 +138,15 @@ def draw_cut(layout, context, mode='CUT'):
     if mode == 'CUT':
         row.operator('mch.surface_cut', text='Knife Edges', icon='EDITMODE_HLT')
     if mode == 'CUT':
-        _hint(layout, 'LMB draw: remove inside | Alt: keep inside', 'Double-click anywhere / Enter: apply',
-              'Esc: drop stroke and return to Select',
-              'Ctrl+Z: undo last point, then last cut', 'RMB: shapes | RMB double-click: exit tool')
+        _hint(layout, 'LMB draw: remove inside | Alt+drag: keep inside',
+              'Double-click anywhere / click start point / Enter: apply',
+              'Alt+click or Esc: back to Select (Alt+click object: back here)',
+              'Ctrl+Z: undo last point, then last cut', 'RMB: shapes | RMB double-click: exit tool',
+              'PNG shape: R / Shift+R rotates 15°', 'All selected meshes are cut (Targets: Selected)')
     else:
         _hint(layout, 'LMB draw: split into two parts', 'Inside becomes "<name>_Split"',
-              'RMB: shapes | RMB double-click: exit tool')
+              'Double-click anywhere / click start point / Enter: apply',
+              'Alt+click or Esc: back to Select', 'RMB: shapes | RMB double-click: exit tool')
 
 
 def draw_split(layout, context):
@@ -164,7 +170,15 @@ def draw_boolean(layout, context):
     col.prop(s, 'auto_apply')
     col.prop(s, 'keep_cutter')
     col.prop(context.scene.mch_cut, 'shared_mesh')
-    _hint(layout, 'Select 2 meshes; active (yellow) = target', 'B: Difference (MECHA LAB workspace only)')
+    from . import boolean_roles
+    cutter, targets = boolean_roles(context)
+    box = layout.box()
+    box.label(text='CUTTER: ' + (cutter.name + '  (active, yellow)' if cutter else '-'), icon='MOD_BOOLEAN')
+    box.label(text=f'TARGETS: {len(targets)} other selected mesh(es)', icon='MESH_DATA')
+    if cutter is None or not targets:
+        box.label(text='Select targets, then the cutter LAST', icon='ERROR')
+    _hint(layout, 'Active (yellow) = cutter, applied to every other selected mesh',
+          'B: Difference (MECHA LAB workspace only)')
 
 
 def draw_fuse(layout, context):
@@ -196,6 +210,12 @@ def draw_fuse(layout, context):
         row.operator('mch.smart_fuse_confirm', text='CONFIRM / APPLY', icon='CHECKMARK')
         row.operator('mch.smart_fuse_cancel', text='CANCEL', icon='CANCEL')
         return
+    from . import fuse_pending_elsewhere
+    pending = fuse_pending_elsewhere(context)
+    if pending is not None:
+        box = layout.box()
+        box.label(text='Unconfirmed preview on: ' + pending.name, icon='INFO')
+        box.label(text='Select it to Confirm / Cancel (a new fuse is possible)')
     s = context.scene.mch_settings
     layout.label(text='Select exactly 2 overlapping meshes')
     layout.prop(s, 'fuse_mode', expand=True)
@@ -404,16 +424,32 @@ def draw_base(layout, context):
         col.prop(p, 'roundness', slider=True)
         col.prop(p, 'resolution')
     elif p.profile in {'BEVEL', 'CHAMFER'}:
-        col.prop(p, 'bevel_width')
-        if p.profile == 'BEVEL':
-            col.prop(p, 'bevel_segments')
-        col.prop(p, 'bottom_too')
+        target.row(align=True).prop(p, 'bevel_sides', expand=True)
+        if p.bevel_sides != 'NONE':
+            col = target.column(align=True)
+            both = p.bevel_sides == 'BOTH'
+            col.prop(p, 'bevel_width', text='Top Width' if both and not p.bevel_link else 'Width')
+            if p.profile == 'BEVEL':
+                col.prop(p, 'bevel_segments', text='Top Segments' if both and not p.bevel_link else 'Segments')
+            if both:
+                col.prop(p, 'bevel_link')
+                if not p.bevel_link:
+                    col.prop(p, 'bevel_width_bottom')
+                    if p.profile == 'BEVEL':
+                        col.prop(p, 'bevel_segments_bottom')
+        col = target.column(align=True)
+    if p.profile == 'DOME':
+        target.label(text='Dome: Bevel Sides not used (the top is the bulge)', icon='INFO')
+    elif p.profile == 'FLAT':
+        target.label(text='Flat: no bevel (choose Bevel / Chamfer for Bevel Sides)', icon='INFO')
     col.prop(p, 'offset')
     if ob is not None:
         target.operator('mch.base_freeze', icon='FREEZE')
     draw_shape_options(layout, context, 'BASE')
-    _hint(layout, 'Creates a NEW object; nothing is cut', 'Placed on the surface under the shape,',
-          'else at the 3D cursor, facing the view', 'RMB: profiles | Esc / RMB x2: exit tool')
+    _hint(layout, 'Draw: creates a NEW object', 'Alt+drag: cut it INTO the mesh below (Boolean),',
+          '  bevel sides flipped (Top <-> Bottom)', 'Placed on the surface under the shape, else 3D cursor',
+          'Leaving the tool (Alt+click / Esc / other tool)', '  applies only the shapes made in this session',
+          'RMB: profiles | RMB x2: exit tool')
 
 
 def draw_loft(layout, context):

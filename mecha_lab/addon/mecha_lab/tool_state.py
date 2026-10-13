@@ -173,7 +173,8 @@ class MCH_PG_Cut(bpy.types.PropertyGroup):
                          unit='LENGTH')
     targets: EnumProperty(name='Targets', items=[
         ('ACTIVE', 'Active', 'Only the active mesh (or the mesh under the cursor)'),
-        ('SELECTED', 'Selected', 'All selected meshes')], default='ACTIVE')
+        ('SELECTED', 'Selected', 'All selected meshes')], default='SELECTED',
+        description='Selected (default): every selected mesh is cut with the same shape')
     solver: EnumProperty(name='Solver', items=[
         ('AUTO', 'Auto', 'Closed mesh: fast Manifold solver, Exact as fallback. Open mesh: Exact'),
         ('EXACT', 'Exact', 'Blender Exact solver only'),
@@ -185,8 +186,8 @@ class MCH_PG_Cut(bpy.types.PropertyGroup):
         ('NONE', 'Off', 'Keep the new cut edges sharp'),
         ('BEVEL', 'Bevel', 'Round only the NEW cut edges'),
         ('CHAMFER', 'Chamfer', 'Flat chamfer on the NEW cut edges only')], default='NONE')
-    finish_width: FloatProperty(name='Width', default=0.01, min=0.0, soft_max=0.5, precision=4,
-                                unit='LENGTH')
+    finish_width: FloatProperty(name='Width', default=0.01, min=0.0, soft_max=2.0, precision=4,
+                                unit='LENGTH', description='Edge Finish width in model units (type any value)')
     finish_segments: IntProperty(name='Segments', default=3, min=1, max=32)
     finish_profile: FloatProperty(name='Profile', default=0.5, min=0.0, max=1.0)
     shared_mesh: EnumProperty(name='Shared Mesh', items=[
@@ -202,14 +203,17 @@ class MCH_PG_Cut(bpy.types.PropertyGroup):
         ('NONE', 'None', 'Keep the cut edge sharp'), ('CHAMFER', 'Chamfer', 'Flat chamfer on the cut edge'),
         ('BEVEL', 'Bevel', 'Rounded bevel on the cut edge')], default='NONE',
         description='Side A = the remaining original object')
-    side_a_width: FloatProperty(name='Width', default=0.01, min=0.0, soft_max=0.5, precision=4, unit='LENGTH')
+    side_a_width: FloatProperty(name='Width', default=0.01, min=0.0, soft_max=2.0, precision=4, unit='LENGTH')
     side_a_segments: IntProperty(name='Segments', default=3, min=1, max=32)
     side_b_finish: EnumProperty(name='Side B', items=[
         ('NONE', 'None', 'Keep the cut edge sharp'), ('CHAMFER', 'Chamfer', 'Flat chamfer on the cut edge'),
         ('BEVEL', 'Bevel', 'Rounded bevel on the cut edge')], default='NONE',
         description='Side B = the new "_Split" part')
-    side_b_width: FloatProperty(name='Width', default=0.01, min=0.0, soft_max=0.5, precision=4, unit='LENGTH')
+    side_b_width: FloatProperty(name='Width', default=0.01, min=0.0, soft_max=2.0, precision=4, unit='LENGTH')
     side_b_segments: IntProperty(name='Segments', default=3, min=1, max=32)
+    finish_clamp: BoolProperty(name='Clamp Overlap', default=True,
+                               description='Limit bevel width where neighbouring edges are short (safe geometry). '
+                                           'The result message tells you when the width was limited')
     split_cap: BoolProperty(name='Cap Split', default=True,
                             description='Close the cut faces of both parts (OFF leaves open shells)')
     fast_line: BoolProperty(name='Plane Cut for 2 Points', default=True,

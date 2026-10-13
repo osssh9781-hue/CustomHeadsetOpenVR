@@ -118,63 +118,78 @@ class MCH_OT_mesh_mirror(bpy.types.Operator):
         return {'CANCELLED'}
 
 
+def _mirror_targets(context):
+    """F01: every selected mesh carrying the Mecha mirror (else the active one)."""
+    obs = [o for o in context.selected_objects if o.type == 'MESH' and o.modifiers.get(MOD_NAME)]
+    ob = context.active_object
+    if not obs and ob is not None and ob.type == 'MESH' and ob.modifiers.get(MOD_NAME):
+        obs = [ob]
+    return obs
+
+
 class MCH_OT_mesh_mirror_apply(bpy.types.Operator):
     bl_idname = 'mch.mesh_mirror_apply'
     bl_label = 'Apply Mesh Mirror'
+    bl_description = 'Bake the Mecha mirror into every selected mesh that has one (Alt+D twins keep their mesh)'
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context):
-        ob = context.active_object
-        return context.mode == 'OBJECT' and ob and ob.type == 'MESH' and ob.modifiers.get(MOD_NAME) is not None
+        return context.mode == 'OBJECT' and bool(_mirror_targets(context))
 
     def execute(self, context):
-        ob = context.active_object
-        mod = ob.modifiers.get(MOD_NAME)
-        if not mod or mod.type != 'MIRROR':
-            self.report({'WARNING'}, 'No Mecha Lab Mirror modifier on active mesh')
+        from . import core_geometry
+        policy = getattr(getattr(context.scene, 'mch_cut', None), 'shared_mesh', 'SINGLE')
+        done, failed, helpers = [], [], set()
+        for ob in _mirror_targets(context):
+            mod = ob.modifiers.get(MOD_NAME)
+            if not mod or mod.type != 'MIRROR':
+                continue
+            if ob.library or (ob.data and ob.data.library):
+                failed.append(f'{ob.name} (linked library mesh)')
+                continue
+            helper = mod.mirror_object
+            try:
+                core_geometry.apply_single_modifier(context, ob, mod, policy)
+                done.append(ob.name)
+                if helper is not None:
+                    helpers.add(helper.name)
+            except (RuntimeError, TypeError, ValueError, core_geometry.CutError) as exc:
+                failed.append(f'{ob.name} ({exc})')
+        for name in helpers:
+            _remove_unused_pivot(bpy.data.objects.get(name))
+        if not done:
+            self.report({'ERROR'}, 'Mirror not applied: ' + ('; '.join(failed) or 'no Mecha mirror found'))
             return {'CANCELLED'}
-        if ob.library or (ob.data and ob.data.library):
-            self.report({'ERROR'}, 'Linked library meshes cannot be applied directly')
-            return {'CANCELLED'}
-        helper = mod.mirror_object
-        original_selected = list(context.selected_objects)
-        active = context.view_layer.objects.active
-        try:
-            _activate(context, ob)
-            from . import core_geometry
-            core_geometry.apply_single_modifier(context, ob, mod, getattr(getattr(context.scene, 'mch_cut', None), 'shared_mesh', 'SINGLE'))
-        except (RuntimeError, TypeError, ValueError) as exc:
-            self.report({'ERROR'}, f'Mirror not applied: {exc}')
-            return {'CANCELLED'}
-        finally:
-            for s in list(context.selected_objects):
-                s.select_set(False)
-            for s in original_selected:
-                if s.name in bpy.data.objects:
-                    s.select_set(True)
-            if active and active.name in bpy.data.objects:
-                context.view_layer.objects.active = active
-        _remove_unused_pivot(helper)
+        msg = f'Mirror applied: {", ".join(done)}'
+        if failed:
+            msg += ' | FAILED: ' + '; '.join(failed)
+        self.report({'WARNING' if failed else 'INFO'}, msg)
         return {'FINISHED'}
 
 
 class MCH_OT_mesh_mirror_remove(bpy.types.Operator):
     bl_idname = 'mch.mesh_mirror_remove'
     bl_label = 'Remove Mesh Mirror'
+    bl_description = 'Remove the Mecha mirror from every selected mesh (geometry unchanged)'
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context):
-        ob = context.active_object
-        return bool(ob and ob.type == 'MESH' and ob.modifiers.get(MOD_NAME))
+        return bool(_mirror_targets(context))
 
     def execute(self, context):
-        obj = context.active_object
-        mod = obj.modifiers.get(MOD_NAME)
-        helper = mod.mirror_object if mod.type == 'MIRROR' else None
-        obj.modifiers.remove(mod)
-        _remove_unused_pivot(helper)
+        helpers = set()
+        names = []
+        for obj in _mirror_targets(context):
+            mod = obj.modifiers.get(MOD_NAME)
+            if mod.type == 'MIRROR' and mod.mirror_object is not None:
+                helpers.add(mod.mirror_object.name)
+            obj.modifiers.remove(mod)
+            names.append(obj.name)
+        for name in helpers:
+            _remove_unused_pivot(bpy.data.objects.get(name))
+        self.report({'INFO'}, 'Mirror removed: ' + ', '.join(names))
         return {'FINISHED'}
 
 

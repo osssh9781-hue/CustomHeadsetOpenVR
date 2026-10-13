@@ -679,13 +679,35 @@ def fuse_build_group(source):
     return group
 
 
+def fuse_is_live(ob):
+    """A preview is live only if its node modifier still exists.  Undo or a
+    manual modifier removal can leave ``mch_fuse.active`` stale, which used to
+    block every later Smart Fuse on that object (B03)."""
+    if ob is None or ob.type != 'MESH' or not getattr(ob.mch_fuse, 'active', False):
+        return False
+    return ob.modifiers.get(_FUSE_MOD_GN) is not None
+
+
 def fuse_target_from_context(context):
+    """The preview the panel / Confirm / Cancel work on: the ACTIVE object's
+    preview, or the preview whose source is being edited.  A preview on some
+    other object no longer hijacks the panel when new meshes are selected."""
     ob = context.active_object
-    if ob and ob.type == 'MESH' and getattr(ob.mch_fuse, 'active', False):
+    if fuse_is_live(ob):
         return ob
-    ob = getattr(context.scene, 'mch_fuse_preview_target', None)
-    if ob and ob.name in bpy.data.objects and getattr(ob.mch_fuse, 'active', False):
-        return ob
+    pending = getattr(context.scene, 'mch_fuse_preview_target', None)
+    if pending and pending.name in bpy.data.objects and fuse_is_live(pending):
+        src = pending.mch_fuse.source
+        if ob is None or ob == src or not context.selected_objects:
+            return pending
+    return None
+
+
+def fuse_pending_elsewhere(context):
+    pending = getattr(context.scene, 'mch_fuse_preview_target', None)
+    if pending and pending.name in bpy.data.objects and fuse_is_live(pending) and \
+            fuse_target_from_context(context) != pending:
+        return pending
     return None
 
 
@@ -706,6 +728,14 @@ def fuse_dispose_group(target):
     target.modifiers.remove(mod)
     if group is not None and group.users == 0:
         bpy.data.node_groups.remove(group)
+
+
+def _purge_fuse_groups():
+    """Remove Smart Fuse node groups nothing uses any more (they piled up as
+    orphans after every Confirm)."""
+    for g in list(bpy.data.node_groups):
+        if g.name.startswith('MCH Smart Fuse') and g.users == 0:
+            bpy.data.node_groups.remove(g)
 
 
 def fuse_cleanup(target, restore_source=True):
@@ -773,6 +803,9 @@ class MCH_OT_fuse_create(bpy.types.Operator):
             self.report({'ERROR'}, 'Smart Fuse: remove/apply shape keys first.')
             return {'CANCELLED'}
         source = next((o for o in meshes if o != target), None)
+        if target.mch_fuse.active and not fuse_is_live(target):
+            # stale flag (undo / removed modifiers): repair silently
+            fuse_cleanup(target)
         if source is None or source == target or target.mch_fuse.active:
             self.report({'ERROR'}, 'Select two different meshes, or finalize/cancel the existing Smart Fuse.')
             return {'CANCELLED'}
@@ -872,6 +905,7 @@ class MCH_OT_fuse_cancel(bpy.types.Operator):
         if not target:
             return {'CANCELLED'}
         fuse_cleanup(target, restore_source=True)
+        _purge_fuse_groups()
         context.scene.mch_fuse_preview_target = None
         activate_only(context, target)
         self.report({'INFO'}, 'Smart Fuse cancelled; original objects restored.')
@@ -912,6 +946,7 @@ class MCH_OT_fuse_confirm(bpy.types.Operator):
         else:
             fuse_restore_source(target)
         fuse_cleanup(target, restore_source=False)
+        _purge_fuse_groups()
         context.scene.mch_fuse_preview_target = None
         activate_only(context, target)
         self.report({'INFO'}, 'Smart Fuse applied; resulting mesh stays on the originally active object.')
@@ -923,10 +958,21 @@ class MCH_OT_fuse_confirm(bpy.types.Operator):
 # -----------------------------------------------------------------------------
 
 
+def boolean_roles(context):
+    """F01 (2026-10-13 final rule): the ACTIVE (yellow) mesh is the CUTTER,
+    every other selected mesh is a TARGET."""
+    cutter = context.view_layer.objects.active
+    if cutter is None or cutter.type != 'MESH' or not cutter.select_get():
+        return None, []
+    targets = [o for o in context.selected_objects if o.type == 'MESH' and o != cutter and o.library is None]
+    return cutter, targets
+
+
 class MCH_OT_boolean(bpy.types.Operator):
     bl_idname = 'mch.boolean'
     bl_label = 'Mecha Boolean'
-    bl_description = 'Apply boolean operation to active mesh using the other selected mesh'
+    bl_description = ('ACTIVE (yellow) mesh = cutter; it is applied to EVERY other selected mesh '
+                      '(each target separately). Failed targets stay unchanged')
     bl_options = {'REGISTER', 'UNDO'}
 
     operation: EnumProperty(items=[('UNION', 'Union', ''), ('DIFFERENCE', 'Cut', ''), ('INTERSECT', 'Intersect', '')], default='DIFFERENCE')
@@ -936,29 +982,49 @@ class MCH_OT_boolean(bpy.types.Operator):
         return context.mode == 'OBJECT' and context.active_object and context.active_object.type == 'MESH'
 
     def execute(self, context):
-        selection = [o for o in context.selected_objects if o.type == 'MESH']
-        target = context.view_layer.objects.active
-        if len(selection) != 2 or target not in selection:
-            self.report({'WARNING'}, 'Select exactly 2 meshes. Yellow (active) mesh is the target.')
+        cutter, targets = boolean_roles(context)
+        if cutter is None or not targets:
+            self.report({'WARNING'}, 'Select the target mesh(es), then the CUTTER last (active, yellow).')
             return {'CANCELLED'}
-        cutter = next(o for o in selection if o != target)
         s = context.scene.mch_settings
-        mod = boolean_modifier(target, cutter, self.operation)
+        cutter_name = cutter.name
+        done, failed = [], []
+        for target in targets:
+            mod = boolean_modifier(target, cutter, self.operation)
+            if s.auto_apply:
+                try:
+                    safe_apply(context, target, mod)
+                    done.append(target)
+                except RuntimeError as ex:
+                    if target.modifiers.get(mod.name):
+                        target.modifiers.remove(mod)
+                    failed.append(f'{target.name} ({str(ex).splitlines()[0][:80]})')
+            else:
+                done.append(target)
+        if not done:
+            self.report({'ERROR'}, 'Boolean failed on every target (meshes unchanged): ' + '; '.join(failed))
+            return {'CANCELLED'}
         if s.auto_apply:
-            try:
-                safe_apply(context, target, mod)
-            except RuntimeError as ex:
-                if target.modifiers.get(mod.name):
-                    target.modifiers.remove(mod)
-                self.report({'ERROR'}, 'Boolean failed (mesh unchanged): ' + str(ex))
-                return {'CANCELLED'}
-            if not s.keep_cutter:
+            if not s.keep_cutter and not failed:
                 remove_object(cutter)
+            else:
+                cutter.select_set(False)
         else:
             cutter.display_type = 'WIRE'
             cutter.hide_set(True)
-            activate_only(context, target)
-        self.report({'INFO'}, f'{self.operation}: {target.name} (active mesh)')
+        for o in context.selected_objects:
+            o.select_set(False)
+        for t in done:
+            t.select_set(True)
+        context.view_layer.objects.active = done[0]
+        msg = f'{self.operation}: {len(done)} target(s) with cutter "{cutter_name}"'
+        if failed:
+            msg += ' | FAILED (unchanged): ' + '; '.join(failed)
+            if not s.keep_cutter:
+                msg += ' | cutter kept because a target failed'
+            self.report({'WARNING'}, msg)
+        else:
+            self.report({'INFO'}, msg)
         return {'FINISHED'}
 
 
@@ -973,12 +1039,11 @@ class MCH_OT_slice(bpy.types.Operator):
         return context.mode == 'OBJECT' and context.active_object is not None and context.active_object.type == 'MESH'
 
     def execute(self, context):
-        selected = [o for o in context.selected_objects if o.type == 'MESH']
-        original = context.view_layer.objects.active
-        if len(selected) != 2:
-            self.report({'WARNING'}, 'Select exactly 2 meshes')
+        cutter, targets = boolean_roles(context)
+        if cutter is None or len(targets) != 1:
+            self.report({'WARNING'}, 'Select the mesh to slice, then the CUTTER last (active, yellow)')
             return {'CANCELLED'}
-        cutter = next(ob for ob in selected if ob != original)
+        original = targets[0]
         piece = original.copy()
         piece.data = original.data.copy()
         piece.name = original.name + '_SlicePiece'
@@ -1212,6 +1277,20 @@ class PathDrawLogic:
         set_point_type(bp, 'VECTOR' if bp.handle_left_type == 'AUTO' else 'AUTO')
         self._path.data.update_tag()
 
+    def _toggle_once(self, context, index):
+        """B05: one physical double-click on a point = ONE toggle.  Its first
+        press already toggled; the DOUBLE_CLICK (or a second PRESS on systems
+        that send no DOUBLE_CLICK) used to toggle it straight back."""
+        from . import cut_engine
+        now = cut_engine._now()
+        last = getattr(self, '_last_toggle', None)
+        if last is not None and last[0] == index and now - last[1] <= cut_engine._double_click_seconds(context):
+            self._last_toggle = None
+            return False
+        self.toggle_point(index)
+        self._last_toggle = (index, now)
+        return True
+
     def _snapped_path_pos(self, co):
         """Snap a clicked point to the nearest 45-degree viewport direction."""
         if self._points == 0:
@@ -1297,7 +1376,7 @@ class PathDrawLogic:
                 # Double-click a point (usually the one just placed): make it smooth/straight.
                 idx = self._point_near(self._region_xy(event))
                 if idx is not None:
-                    self.toggle_point(idx)
+                    self._toggle_once(context, idx)
                 self._draw_down = False
                 return {'RUNNING_MODAL'}
             if event.value == 'PRESS':
@@ -1306,7 +1385,7 @@ class PathDrawLogic:
                 else:
                     idx = self._point_near(self._region_xy(event))
                     if idx is not None:
-                        self.toggle_point(idx)
+                        self._toggle_once(context, idx)
                     elif not self._click_point(context, event) and self.kind == 'PANEL':
                         self.report({'WARNING'}, 'Click directly on the active target mesh')
             elif event.value == 'RELEASE':
