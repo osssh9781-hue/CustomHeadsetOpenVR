@@ -85,7 +85,7 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
     bottom_too: BoolProperty(name='Bevel Bottom Too (old)', default=False, update=_rebuild_update,
                              description='v0.8-0.9 option, migrated to Bevel Sides = Both')
     bevel_sides: EnumProperty(name='Bevel Sides', items=SIDE_ITEMS, default='TOP', update=_rebuild_update,
-                              description='Where the Bevel / Chamfer profile goes (Alt+drag cutter flips Top/Bottom)')
+                              description='Where the Bevel / Chamfer profile goes (Alt + draw cutter flips Top/Bottom)')
     bevel_width_bottom: FloatProperty(name='Bottom Width', default=0.05, min=0.0, soft_max=2.0, precision=4,
                                       unit='LENGTH', update=_rebuild_update)
     bevel_segments_bottom: IntProperty(name='Bottom Segments', default=4, min=1, max=32, update=_rebuild_update)
@@ -341,7 +341,7 @@ def _add_dome(bm, outer, holes, p):
 
 def side_values(p, flip=False):
     """(sides, top (width, segments), bottom (width, segments)).  ``flip`` =
-    Alt+drag cutter: Top<->Bottom, Both swaps the two settings, None unchanged."""
+    Alt cutter: Top<->Bottom, Both swaps the two settings, None unchanged."""
     sides = getattr(p, 'bevel_sides', 'TOP')
     top = (p.bevel_width, p.bevel_segments)
     bottom = top if getattr(p, 'bevel_link', True) else (p.bevel_width_bottom, p.bevel_segments_bottom)
@@ -493,7 +493,7 @@ def _local_groups(context, loops, projector):
 
 
 def perform_base(context, loops, projector, cutter=False, targets=None):
-    """Create the new solid (or, ``cutter=True`` = Alt+drag, cut it into the
+    """Create the new solid (or, ``cutter=True`` = Alt, cut it into the
     mesh below).  Returns a report string; raises CutError (scene untouched)."""
     groups, frame, screen_groups = _local_groups(context, loops, projector)
     defaults = context.scene.mch_base
@@ -546,15 +546,15 @@ def _cutter_targets(context, projector, screen_groups, targets):
 
 
 def _perform_cutter(context, groups, frame, p, projector, screen_groups, targets):
-    """Alt+drag: the drawn solid becomes a Boolean Difference cutter.  Its bevel
+    """Alt: the drawn solid becomes a Boolean Difference cutter.  Its bevel
     sides are flipped (Top <-> Bottom, Both swaps top/bottom settings) and it is
     mirrored INTO the surface, so the flipped bevel lands on the opening of the
     pocket.  Depth = Height."""
     targets = _cutter_targets(context, projector, screen_groups, targets)
     if not targets:
-        raise cg.CutError('Alt+drag Base Mesh cuts into a mesh: start on a mesh or select the target first.')
+        raise cg.CutError('Alt Base Mesh cuts into a mesh: start on a mesh or select the target first.')
     if p.profile == 'DOME':
-        raise cg.CutError('Alt+drag cutter supports Flat / Chamfer / Bevel profiles (Dome has no flat cap).')
+        raise cg.CutError('Alt cutter supports Flat / Chamfer / Bevel profiles (Dome has no flat cap).')
     bm = build_bmesh(groups, p, flip=True)
     try:
         # mirror along local Z (into the surface) and lift a hair above it so the

@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 11, 0),
+    "version": (0, 11, 1),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
     "description": "Cut, Split, Base Mesh, Boolean, Face Extract, Armor Sculpt, Molding, Cable, Hollow, curve arrays, Mirror",
@@ -989,7 +989,9 @@ class MCH_OT_boolean(bpy.types.Operator):
         s = context.scene.mch_settings
         cutter_name = cutter.name
         done, failed = [], []
+        from . import core_geometry as _cg
         for target in targets:
+            _cg.ensure_real_mesh(context, target)        # live primitives: bake before the Boolean
             mod = boolean_modifier(target, cutter, self.operation)
             if s.auto_apply:
                 try:

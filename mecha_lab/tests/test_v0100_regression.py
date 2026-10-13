@@ -4,7 +4,7 @@ B04 double-click anywhere / start click (also when the OS sends no
 DOUBLE_CLICK), B05 Mesh Curve single toggle, B06 PNG R rotate, B07 Split Gap
 confirm paths, B03 Smart Fuse x10, B01 Mirror matrix, B08 Mask hidden, B10
 bevel clamp notes, F01 multi-target + Boolean active = cutter, F02 Base Mesh
-Bevel Sides / Alt+drag cutter / session auto apply, Alt click vs drag, V /
+Bevel Sides / Alt cutter / session auto apply, Alt invert, Select / Move, V /
 Shift+A menus, F08 stabilizer.
 
 Not a GUI test: real Windows event timing still needs the manual checklist.
@@ -200,43 +200,106 @@ check('Tab while drawing: stroke dropped and Tab passed to Blender (Edit Mode)',
       r == {'CANCELLED', 'PASS_THROUGH'} and abs(volume(t) - 8.0) < 1e-6)
 
 # =============================================================================
-# Alt: short click vs drag (decided at release)
+# 0.11.1: Cut / Split basics + Alt invert / Ctrl centre restored (no Alt mode switch)
 # =============================================================================
-t, = setup('CIRCLE')
+t, = setup('RECT')
 ctx, op = Ctx(), Op()
-r0 = op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 500, 500, alt=True))
-tick(0.1)
-r = op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 501, 500, alt=True))
-check('Alt + short click in a drawing tool -> Select mode, nothing cut',
-      r0 == {'RUNNING_MODAL'} and r == {'CANCELLED'} and ('exit',) in CALLS and abs(volume(t) - 8.0) < 1e-6)
+op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 450, 450))
+op.modal(ctx, E('MOUSEMOVE', 'NOTHING', 500, 500))
+r = op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 550, 550))
+check('0.11.1 #1 Rectangle Cut on a plain cube', r == {'FINISHED'} and abs(volume(t) - (8 - 1 * 1 * 2)) < 1e-3 and
+      non_manifold(t) == 0, (volume(t), op.reports[-1:]))
+t, = setup('LASSO')
+ctx, op = Ctx(), Op()
+start_lasso(ctx, op, SQUARE)
+r = op.modal(ctx, E('RET', 'PRESS'))
+check('0.11.1 #2 Lasso Cut', r == {'FINISHED'} and volume(t) < 8 - 1e-3 and non_manifold(t) == 0)
+t, = setup('CURVE_LASSO')
+ctx, op = Ctx(), Op()
+start_lasso(ctx, op, SQUARE)
+r = op.modal(ctx, E('RET', 'PRESS'))
+check('0.11.1 #2 Curve Lasso Cut', r == {'FINISHED'} and volume(t) < 8 - 1e-3 and non_manifold(t) == 0)
+t, = setup('RECT', tool='SPLIT')
+ctx, op = Ctx('mecha.split'), Op('SPLIT')
+op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 450, 450))
+op.modal(ctx, E('MOUSEMOVE', 'NOTHING', 500, 500))
+r = op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 550, 550))
+piece = bpy.data.objects.get('T0_Split')
+check('0.11.1 #3 Split separates the mesh into two closed parts', r == {'FINISHED'} and piece is not None and
+      abs(volume(t) + volume(piece) - 8.0) < 1e-3 and non_manifold(piece) == 0)
 t, = setup('CIRCLE')
 ctx, op = Ctx(), Op()
 op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 500, 500, alt=True))
-tick(0.7)
-r = op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 500, 500, alt=True))
-check('Alt long press without moving = not a click (no exit, no cut)', ('exit',) not in CALLS and
-      abs(volume(t) - 8.0) < 1e-6)
+r = op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 550, 500, alt=True))
+check('0.11.1 #4 Alt at the press = keep inside (no drag threshold, no mode switch)', r == {'FINISHED'} and
+      volume(t) < 2.0 and ('exit',) not in CALLS, volume(t))
+t, = setup('CIRCLE')
+ctx, op = Ctx(), Op()
+op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 500, 500))
+op.modal(ctx, E('LEFT_ALT', 'PRESS'))
+r = op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 550, 500, alt=True))
+check('0.11.1 #4 Alt pressed during the drag also inverts', r == {'FINISHED'} and volume(t) < 2.0)
 t, = setup('LASSO')
 ctx, op = Ctx(), Op()
 start_lasso(ctx, op, SQUARE[:3])
 tick(0.6)
-op.modal(ctx, E('LEFTMOUSE', 'PRESS', 450, 560, alt=True))
-tick(0.1)
-r = op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 450, 560, alt=True))
-check('Alt + short click while drawing -> Select mode, unfinished stroke dropped',
-      r == {'CANCELLED'} and ('exit',) in CALLS and abs(volume(t) - 8.0) < 1e-6)
-t, = setup('LASSO')
-ctx, op = Ctx(), Op()
-start_lasso(ctx, op, SQUARE[:3])
-tick(0.6)
-op.modal(ctx, E('LEFTMOUSE', 'PRESS', 450, 560, alt=True))
-op.modal(ctx, E('MOUSEMOVE', 'NOTHING', 440, 570, alt=True))
-op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 440, 570, alt=True))
-check('Alt + drag while drawing = point placed, Alt latched (invert)', op.alt_latch and len(op.pts) >= 4 and
-      ('exit',) not in CALLS)
+r1 = click(op, ctx, 450, 560, alt=True)
+check('0.11.1 Alt+click on a lasso point: point added + inverted, stays in the tool', r1 == {'RUNNING_MODAL'} and
+      len(op.pts) == 4 and op.alt_latch and ('exit',) not in CALLS)
 r = op.modal(ctx, E('RET', 'PRESS'))
-check('...Alt+drag lasso keeps the inside (intersect, ~1.2 x 1.1 x 2)', r == {'FINISHED'} and 1.5 < volume(t) < 3.5,
+check('...Alt lasso keeps the inside', r == {'FINISHED'} and 1.5 < volume(t) < 3.5, volume(t))
+t, = setup('RECT')
+ctx, op = Ctx(), Op()
+op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 500, 500))
+op.modal(ctx, E('LEFT_CTRL', 'PRESS'))
+r = op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 550, 550, ctrl=True))
+check('0.11.1 #5 Ctrl+drag draws from the centre (100 px square around the press)', r == {'FINISHED'} and
+      abs(volume(t) - (8 - 1.0 * 1.0 * 2)) < 1e-3, volume(t))
+t, = setup('LASSO')
+ctx, op = Ctx(), Op()
+start_lasso(ctx, op, [(380, 500), (620, 500)])
+tick(0.6)
+r = op.modal(ctx, E('RET', 'PRESS'))
+r = click(op, ctx, 500, 580, alt=True)
+check('2-point line: Alt+click on a side keeps that side (v0.9.3)', r == {'FINISHED'} and 3.9 < volume(t) < 4.1,
       volume(t))
+# Select / Move while a stroke is pending: the stroke ends safely, re-entry starts fresh
+t, = setup('LASSO')
+ctx, op = Ctx(), Op()
+start_lasso(ctx, op, SQUARE[:3])
+ctx.native = 'builtin.move'                         # what mch.select_move switches to
+r = op.modal(ctx, E('MOUSEMOVE', 'NOTHING', 300, 300))
+check('0.11.1 #7 Select / Move during a stroke: stroke cancelled, nothing cut', r == {'CANCELLED'} and
+      abs(volume(t) - 8.0) < 1e-6)
+ctx2, op2 = Ctx(), Op()
+op2.invoke(ctx2, E('LEFTMOUSE', 'PRESS', 450, 450))
+check('0.11.1 #8 re-entering Cut starts a fresh stroke', op2.pts == [(450.0, 450.0)] and op2.stage == 'POINTS' and
+      not op2.alt_latch)
+start = op2.pts[:]
+for x, y in SQUARE[1:]:
+    tick(0.6)
+    click(op2, ctx2, x, y)
+r = op2.modal(ctx2, E('RET', 'PRESS'))
+check('0.11.1 #8 ...and cuts normally', r == {'FINISHED'} and volume(t) < 8 - 1e-3)
+check('0.11.1 Alt mode-switch code removed', not hasattr(ce.StrokeLogic, '_modal_altwait') and
+      not hasattr(ce.StrokeLogic, '_alt_begin_drag') and 'MCH_OT_alt_click_return' not in dir(bpy.types))
+# live primitive (empty base mesh, Geometry Nodes): used to say "would delete the whole object"
+fresh()
+bpy.ops.mch.primitive_create(kind='BOX')
+box = C.active_object
+C.view_layer.update()
+r = ce.perform_closed(C, 'CUT', [box], [ce.rect_loop((470, 470), (530, 530))], TOP)
+check('0.11.1 Cut on a live MCH_Box works (primitive baked first, reported)', 'baked' in r and len(box.data.polygons) > 6
+      and non_manifold(box) == 0 and not box.modifiers, r)
+fresh()
+cb = cube('C')
+try:
+    ce.perform_closed(C, 'CUT', [cb], [ce.rect_loop((300, 300), (700, 700))], TOP)
+    msg = ''
+except cg.CutError as ex:
+    msg = str(ex)
+check('whole-object case still refused, now with diagnosis (operation + solvers)', 'whole object' in msg and
+      'Cut' in msg and 'solvers tried' in msg and abs(volume(cb) - 8.0) < 1e-6, msg)
 
 # =============================================================================
 # B07 Split Gap: Enter / start click / double-click
@@ -603,7 +666,7 @@ sv = base_mesh.side_values(types.SimpleNamespace(bevel_sides='BOTH', bevel_width
                                                  bevel_link=False), True)
 check('F02 flip Both: top / bottom settings swapped', sv[1] == (0.05, 1) and sv[2] == (0.2, 5), sv)
 
-# Alt+drag cutter through the real stroke logic
+# Alt (latched at the press) cutter through the real stroke logic
 fresh()
 t = cube('Hull', size=2.0)
 select_only(t)
@@ -665,7 +728,9 @@ check('F02 old "Bevel Bottom Too" migrates to Both', p.bevel_sides == 'BOTH')
 kc = C.window_manager.keyconfigs.addon
 items = [(ki.idname, ki.type, ki.value, ki.alt) for km in kc.keymaps for ki in km.keymap_items] if kc else []
 check('V quick menu key registered (gated)', ('mch.quick_menu', 'V', 'PRESS', False) in items, items)
-check('Alt+CLICK (not PRESS) return key registered', ('mch.alt_click_return', 'LEFTMOUSE', 'CLICK', True) in items)
+check('0.11.1 Select / Move hotkey (W, MECHA LAB only) registered and editable',
+      ('mch.select_move_key', 'W', 'PRESS', False) in items and hasattr(bpy.ops.mch, 'select_move'))
+check('0.11.1 no Alt+click keymap left', not any(i[0] == 'mch.alt_click_return' for i in items))
 check('Shift+A: Mecha Lab submenu appended to the Add menu',
       wui.draw_add_menu in bpy.types.VIEW3D_MT_add._dyn_ui_initialize())
 check('Quick menu = the six core tools', ts.QUICK_TOOLS == ('CUT', 'BOOLEAN', 'BASE', 'SUBD', 'SPLIT', 'RADIAL'))

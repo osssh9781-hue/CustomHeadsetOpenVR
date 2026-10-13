@@ -170,6 +170,35 @@ class MCH_OT_ortho_lock(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def _deferred_ortho_check():
+    try:
+        _ortho_on_load()
+    except (AttributeError, ReferenceError, RuntimeError):
+        pass
+    return None
+
+
+def draw_hotkey_editor(layout):
+    """Editable key of the Select / Move hotkey (and the other Mecha keys)."""
+    box = layout.box()
+    box.label(text='Hotkeys (MECHA LAB only)', icon='KEYINGSET')
+    seen = set()
+    for km, item in _keymaps:
+        try:
+            idname = item.idname
+        except ReferenceError:
+            continue
+        if idname not in {'mch.select_move_key', 'mch.quick_menu', 'mch.space_tools', 'mch.hotkey'} or \
+                (idname, item.type, getattr(item.properties, 'action', '')) in seen:
+            continue
+        seen.add((idname, item.type, getattr(item.properties, 'action', '')))
+        row = box.row(align=True)
+        label = {'mch.select_move_key': 'Select / Move', 'mch.quick_menu': 'Quick Menu',
+                 'mch.space_tools': 'Tool Menu'}.get(idname, 'Hotkey ' + getattr(item.properties, 'action', ''))
+        row.label(text=label)
+        row.prop(item, 'type', text='', full_event=True)
+
+
 def draw_ortho_button(layout, context, text='Ortho Lock'):
     locked = bool(context.workspace and context.workspace.get(_ORTHO_LOCK_KEY, False))
     layout.operator('mch.ortho_lock', text=text, icon='LOCKED' if locked else 'UNLOCKED', depress=locked)
@@ -369,6 +398,10 @@ def draw_tool_rows(layout, context, scale=2.0):
     """Vertical list: big icon + readable name (left area)."""
     active = ts.effective_tool(context)
     col = layout.column(align=True)
+    sm = col.row(align=True)
+    sm.scale_y = scale * 0.6
+    sm.operator('mch.select_move', icon='RESTRICT_SELECT_OFF')
+    col.separator()
     for tid, label, desc, stem, fallback, native, status in ts.VISIBLE_TOOLS:
         row = col.row(align=True)
         iid = icon_id(stem)
@@ -387,6 +420,9 @@ def draw_tool_rows(layout, context, scale=2.0):
 def draw_tool_grid(layout, context, columns=4, scale=3.0, tools=None):
     """Grid of tiles: big icon above a name button (popup / sidebar fallback)."""
     active = ts.effective_tool(context)
+    sm = layout.row()
+    sm.scale_y = 1.4
+    sm.operator('mch.select_move', icon='RESTRICT_SELECT_OFF')
     grid = layout.grid_flow(row_major=True, columns=columns, even_columns=True, even_rows=True, align=False)
     for tid, label, desc, stem, fallback, native, status in tools or ts.VISIBLE_TOOLS:
         box = grid.box()
@@ -756,32 +792,50 @@ def object_under_mouse(context, event):
     return bpy.data.objects.get(ob.name)
 
 
-class MCH_OT_alt_click_return(bpy.types.Operator):
-    """Select mode: Alt + short LMB click on an object = back to the last Mecha tool."""
-    bl_idname = 'mch.alt_click_return'
-    bl_label = 'Back to Last Mecha Tool'
-    bl_options = {'INTERNAL', 'UNDO'}
+class MCH_OT_select_move(bpy.types.Operator):
+    """Replaces the removed Alt+click mode switch."""
+    bl_idname = 'mch.select_move'
+    bl_label = 'Select / Move'
+    bl_description = ('Blender selection + Move gizmo (click / Shift+click / box select, drag the gizmo). '
+                      'A running Cut / Split stroke is cancelled safely; pick Cut / Split again to start fresh')
+    bl_options = {'REGISTER'}
 
     @classmethod
     def poll(cls, context):
-        if not (pref('alt_click_return') and ts.is_mecha_workspace(context.workspace)
-                and context.mode == 'OBJECT' and context.area is not None and context.area.type == 'VIEW_3D'):
-            return False
-        if ts.native_tool_id(context) in ts.NATIVE_TO_TOOL:
-            return False                       # a drawing tool handles its own Alt+click
-        last = context.scene.mch_settings.get('mch_last_tool')
-        return last in ts.TOOL_BY_ID and last not in ts.HIDDEN_TOOLS
+        return context.area is not None and context.area.type == 'VIEW_3D' or _view3d_override(context) is not None
 
-    def invoke(self, context, event):
-        ob = object_under_mouse(context, event)
-        if ob is None:
-            return {'PASS_THROUGH'}            # empty space: keep selection mode
-        for o in context.selected_objects:
-            o.select_set(False)
-        ob.select_set(True)
-        context.view_layer.objects.active = ob
-        activate_mecha_tool(context, context.scene.mch_settings['mch_last_tool'])
+    def execute(self, context):
+        if context.mode != 'OBJECT' and context.active_object is not None:
+            try:
+                bpy.ops.object.mode_set(mode='OBJECT')
+            except RuntimeError:
+                pass
+        try:
+            # a running stroke modal sees the tool change and cancels itself (no cut)
+            set_native_tool(context, 'builtin.move')
+        except (RuntimeError, TypeError) as ex:
+            self.report({'WARNING'}, f'Move tool unavailable here: {ex}')
+            return {'CANCELLED'}
+        space = context.space_data if getattr(context.space_data, 'type', '') == 'VIEW_3D' else None
+        if space is not None and not space.show_gizmo:
+            space.show_gizmo = True
+        self.report({'INFO'}, 'Select / Move: click or box-select objects, drag the gizmo. Pick a Mecha tool to continue')
         return {'FINISHED'}
+
+
+class MCH_OT_select_move_key(bpy.types.Operator):
+    """Hotkey wrapper (gated to the MECHA LAB workspace)."""
+    bl_idname = 'mch.select_move_key'
+    bl_label = 'Select / Move (hotkey)'
+    bl_options = {'INTERNAL'}
+
+    @classmethod
+    def poll(cls, context):
+        return (pref('select_move_key') and ts.is_mecha_workspace(context.workspace) and context.area is not None
+                and context.area.type == 'VIEW_3D')
+
+    def execute(self, context):
+        return bpy.ops.mch.select_move()
 
 
 class MCH_MT_add_mecha(bpy.types.Menu):
@@ -933,7 +987,8 @@ class MCH_PT_workspace(bpy.types.Panel):
             col.prop(p, 'space_menu')
             col.prop(p, 'workspace_hotkeys')
             col.prop(p, 'quick_menu')
-            col.prop(p, 'alt_click_return')
+            col.prop(p, 'select_move_key')
+            draw_hotkey_editor(layout)
         layout.label(text='Hotkeys only work in MECHA LAB', icon='INFO')
         layout.separator()
         layout.operator('mch.self_test', icon='CHECKMARK')
@@ -1087,15 +1142,17 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
                                     description='B = Boolean Difference, C = Cut tool, only inside MECHA LAB')
     quick_menu: BoolProperty(name='V = Quick Tool Menu', default=True,
                              description='Six core tools at the mouse, only inside MECHA LAB (Object Mode)')
-    alt_click_return: BoolProperty(name='Alt+Click on an Object = Last Mecha Tool', default=True,
-                                   description='In select mode inside MECHA LAB; Alt+drag keeps Blender behaviour')
+    select_move_key: BoolProperty(name='Select / Move Hotkey', default=True,
+                                  description='Hotkey for Select / Move inside MECHA LAB (change the key below or in '
+                                              'Preferences > Keymap, "mch.select_move_key")')
 
     def draw(self, context):
         layout = self.layout
         layout.prop(self, 'space_menu')
         layout.prop(self, 'workspace_hotkeys')
         layout.prop(self, 'quick_menu')
-        layout.prop(self, 'alt_click_return')
+        layout.prop(self, 'select_move_key')
+        draw_hotkey_editor(layout)
         layout.label(text='Key bindings can be changed in Preferences > Keymap ("mch.").')
         layout.operator('mch.workspace_open', icon='WORKSPACE')
 
@@ -1104,7 +1161,7 @@ CLASSES = (
     MCH_AddonPreferences,
     MCH_OT_workspace_open, MCH_OT_workspace_repair, MCH_OT_workspace_save_startup,
     MCH_OT_set_tool, MCH_OT_set_shape, MCH_OT_space_tools, MCH_OT_hotkey, MCH_OT_ortho_lock,
-    MCH_OT_quick_menu, MCH_OT_alt_click_return, MCH_MT_add_mecha,
+    MCH_OT_quick_menu, MCH_OT_select_move, MCH_OT_select_move_key, MCH_MT_add_mecha,
     MCH_PT_tools, MCH_PT_main, MCH_PT_workspace, MCH_PT_tool_list, MCH_PT_tool_popup, MCH_PT_shape_popup,
     MCH_PT_quick_popup, MCH_PT_profile_popup,
 )
@@ -1125,9 +1182,9 @@ def register_keymaps():
     item = km.keymap_items.new('mch.hotkey', 'C', 'PRESS')
     item.properties.action = 'CUT'
     _keymaps.append((km, item))
-    # Alt + CLICK (press and release without dragging: Blender's own click/drag
-    # decision at release) - Alt+drag keeps the default behaviour.
-    _keymaps.append((km, km.keymap_items.new('mch.alt_click_return', 'LEFTMOUSE', 'CLICK', alt=True)))
+    # Select / Move (replaces the removed Alt+click mode switch). Default W, the
+    # key of Blender's select tools; rebind freely (panel or Preferences > Keymap).
+    _keymaps.append((km, km.keymap_items.new('mch.select_move_key', 'W', 'PRESS')))
     # Mesh Curve: double-click a path point in Curve Edit Mode = Straight <-> Smooth.
     # (Registered since v0.5.9 but always inactive; the operator passes through
     # for curves that are not Mecha Lab paths.)
@@ -1156,7 +1213,10 @@ def register():
     register_keymaps()
     if _ortho_on_load not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(_ortho_on_load)
-    _ortho_on_load()
+    # bpy.data is restricted while add-ons are enabled at startup
+    # ("'_RestrictData' object has no attribute 'workspaces'"): check later.
+    if not bpy.app.timers.is_registered(_deferred_ortho_check):
+        bpy.app.timers.register(_deferred_ortho_check, first_interval=0.5)
 
 
 def unregister():
@@ -1164,6 +1224,8 @@ def unregister():
         bpy.app.handlers.load_post.remove(_ortho_on_load)
     if bpy.app.timers.is_registered(_ortho_watchdog):
         bpy.app.timers.unregister(_ortho_watchdog)
+    if bpy.app.timers.is_registered(_deferred_ortho_check):
+        bpy.app.timers.unregister(_deferred_ortho_check)
     unregister_keymaps()
     if hasattr(bpy.types, 'TOPBAR_MT_workspace_menu'):
         bpy.types.TOPBAR_MT_workspace_menu.remove(draw_workspace_menu)

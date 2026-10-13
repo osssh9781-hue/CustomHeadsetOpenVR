@@ -1,8 +1,22 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.11.0 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.11.1 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## S. 0.11.1 우선 확인 (Cut/Split 롤백 + Select / Move)
+- [ ] 1. 새 파일 기본 Cube → Cut Rectangle 드래그 → 잘림("whole object" 오류 없음)
+- [ ] 2. Curve Lasso / Lasso Cut → 닫기(더블클릭/시작점/Enter) → 잘림
+- [ ] 3. Split → 두 조각
+- [ ] 4. Alt 누른 채 Cut 시작 또는 그리는 중 Alt → 안쪽만 남음
+- [ ] 5. Ctrl+드래그 Rectangle → 누른 점이 중심
+- [ ] 6. Split Gap / Bevel 값 적용
+- [ ] 7. 메뉴 맨 위 Select / Move → 이동 기즈모, 클릭/Shift+클릭 다중 선택, 이동 가능. W 단축키도 동일. Preferences에서 키 변경
+- [ ] 8. Cut 획 도중 W(Select / Move) → 획 취소(아무것도 안 잘림) → Cut 다시 선택 → 새 획으로 정상 Cut
+- [ ] 9. 메쉬 여러 개 선택 후 Cut / Split → 겹친 것 모두 처리
+- [ ] 10. Add-on 설치 → 활성 → Blender 재시작 후 정상 (콘솔 오류 없음)
+- [ ] MCH_Box(Primitive) Cut → 잘리고 보고에 "live primitive baked first"
+- [ ] Alt+빈 곳 클릭이 더 이상 모드를 바꾸지 않음
 
 ## T. 0.11.0 Mechanical Toolkit (설계서 13절)
 ### T0. 공통
@@ -76,10 +90,8 @@ Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전�
 - [ ] Cut Edge Finish Bevel 폭 0.5 이상 입력 가능, 작은 컷에서 큰 폭 → 결과 메시지에 "limited to about …"
 - [ ] Clamp Overlap OFF 시 메시지 "exceeds the safe …"
 ### A9. Alt / 메뉴 (docs/02)
-- [ ] Cut 도구 대기 중 Alt+짧은 클릭 → 선택 모드(아무것도 안 잘림)
-- [ ] 선택 모드에서 오브젝트 위 Alt+짧은 클릭 → 직전 Mecha 도구로 복귀, 빈 곳 Alt+클릭은 Blender 기본
-- [ ] Cut Alt+드래그 = 안쪽 남기기, 그리던 Lasso 도중 Alt+짧은 클릭 = 획 버리고 선택 모드
-- [ ] 직선 2점 Cut의 면 선택 단계: 클릭 = 그쪽 제거, Ctrl+클릭 = 그쪽 남기기
+- (0.11.1에서 Alt+클릭 모드 전환 삭제 — S절 참고)
+- [ ] 직선 2점 Cut의 면 선택 단계: 클릭 = 그쪽 제거, Alt+클릭 = 그쪽 남기기 (0.11.1: v0.9.3 방식 복구)
 - [ ] 3번 빠른 클릭이 더 이상 선택 모드로 보내지 않음
 - [ ] V = 마우스 위치에 6개 빠른 메뉴, Space = 전체 메뉴, Shift+A 맨 아래 `Mecha Lab` 하위 메뉴(기존 항목 그대로)
 - [ ] Alt+MMB는 기본(뷰 회전 관련) 그대로

@@ -537,8 +537,10 @@ def boolean_result(context, target, cutter, operation, solver='AUTO',
             problems.append(f'{name}: {ex}')
             continue
         if not me.polygons and not allow_empty:
+            # some solver / input combinations return nothing: try the next solver
             bpy.data.meshes.remove(me)
-            raise CutError('The result would delete the whole object; nothing was changed.')
+            problems.append(f'{name}: empty result')
+            continue
         attr = me.attributes.get(CUTTER_ATTR)
         cutter_faces = attr is not None and any(v.value for v in attr.data)
         unchanged = not cutter_faces and (len(me.vertices), len(me.polygons)) == src_counts
@@ -554,7 +556,41 @@ def boolean_result(context, target, cutter, operation, solver='AUTO',
         return me, name
     if problems and all('did not intersect' in p for p in problems):
         raise CutError('The shape does not intersect the mesh; nothing was changed.')
+    if problems and all('empty result' in p for p in problems):
+        what = {'DIFFERENCE': 'Cut', 'INTERSECT': 'Keep inside (Alt invert or Split inner part) - the shape may not overlap this object', 'UNION': 'Union'}.get(
+            operation, operation)
+        raise CutError(f'The result would delete the whole object; nothing was changed. [{target.name}: {what}, '
+                       f'solvers tried: {", ".join(p.split(":")[0] for p in problems)}]')
     raise CutError('Boolean failed safely, mesh unchanged. ' + '; '.join(problems))
+
+
+def ensure_real_mesh(context, ob):
+    """A live Primitive (Geometry Nodes) has an EMPTY base mesh; Booleans work
+    on the base mesh, so cutting it removed everything ("would delete the whole
+    object").  Bake its evaluated geometry into a mesh of its own first (Alt+D
+    twins keep theirs).  Returns True when the object was baked."""
+    if ob.type != 'MESH' or len(ob.data.polygons) or not ob.modifiers:
+        return False
+    dg = context.evaluated_depsgraph_get()
+    me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), preserve_all_data_layers=True, depsgraph=dg)
+    if not me.polygons:
+        bpy.data.meshes.remove(me)
+        return False
+    old = ob.data
+    me.name = old.name
+    for mat in old.materials:
+        me.materials.append(mat)
+    ob.data = me
+    ob.modifiers.clear()
+    prim = getattr(ob, 'mch_primitive', None)
+    if prim is not None and hasattr(prim, 'active'):
+        try:
+            prim.active = False
+        except (AttributeError, TypeError):
+            pass
+    if old.users == 0:
+        bpy.data.meshes.remove(old)
+    return True
 
 
 def strip_cutter_faces(mesh):

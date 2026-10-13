@@ -1,4 +1,13 @@
-# KNOWN LIMITATIONS — Mecha Lab 0.11.0
+# KNOWN LIMITATIONS — Mecha Lab 0.11.1
+
+## 000. 0.11.1 (먼저 읽기)
+- **일반 Cube에서 "would delete the whole object" 오류는 headless에서 재현되지 않았습니다.** MCH_Box(Live Primitive)는 재현·수정.
+  Cube에서 아직 나오면 오류 메시지 끝의 `[대상: 연산, solvers tried: ...]` 부분과 **Run Mecha Lab Self Test** 결과를 보내 주세요.
+  연산이 "Keep inside"로 나오면 Alt가 눌린 것으로 판정된 것입니다.
+- Live Primitive를 Cut/Split/Boolean하면 Live 상태가 해제되고 일반 메쉬가 됩니다(Primitive 슬라이더로 다시 편집 불가).
+- Select / Move 단축키 W는 MECHA LAB Workspace의 Object Mode에서만 동작(다른 Workspace의 W = Blender 기본 선택 순환 그대로).
+  실제 GUI에서 W 입력·기즈모 표시·모달 취소는 **미검증**(headless는 툴 변경 시 모달 취소 로직만 확인).
+- 0.10.0 항목 중 "Alt+짧은 클릭", "직선 Cut Ctrl+클릭"은 0.11.1에서 없어졌습니다(아래 0절은 기록용).
 
 ## 00. 0.11.0 Mechanical Toolkit 한계 (먼저 읽기)
 - **Windows / Blender 5.0.2·5.3 GUI 미검증.** 기하·로직은 headless 테스트(99항목)로 확인.

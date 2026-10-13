@@ -1,4 +1,16 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.11.0 (Claude Code, 2026-10-13)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.11.1 (Claude Code, 2026-10-13)
+
+## 00. 0.11.1 (Cut/Split 수정, Alt 모드 전환 롤백, Select / Move)
+- ZIP `dist/mecha_lab-0.11.1.zip` (sha256 `fb8960ae4fc08a273b09cb6d1cfca01a7efda2da8d16ee193d1ec480423f0593`), 18개 파일 1007/1007 (`tests/test_log_bpy501_v0111.txt`). GUI 미검증.
+- 기준은 Claude 0.11.0입니다. 사용자가 말한 ChatGPT 0.10.1/0.10.2는 받지 못했습니다.
+- 아래 4절의 "Alt는 놓을 때 판정 / ALTWAIT / alt_pending / mch.alt_click_return / mch_last_tool"은 **모두 삭제**됨.
+  현재 Alt = v0.9.3: `alt_latch`(누를 때) 또는 `alt_held`(LEFT_ALT 이벤트) → INTERSECT. 직선 2점 면 선택 Alt+클릭 = 남기기.
+- 모드 전환 대체: `workspace_ui.MCH_OT_select_move`(`builtin.move` + 기즈모) / `MCH_OT_select_move_key`(W, 설정 `select_move_key`).
+  StrokeLogic은 `native_tool`이 바뀌면 스스로 CANCELLED → 재진입 시 새 상태.
+- `core_geometry.ensure_real_mesh`: 기본 메쉬 폴리곤 0 + 모디파이어 있음(Live Primitive) → 평가 메쉬로 굽힘. Cut/Split/Boolean 전에 호출.
+  `boolean_result`: 빈 결과는 다음 솔버로, 모두 빈 결과면 대상·연산·솔버를 담은 "whole object" 오류.
+- `workspace_ui.draw_hotkey_editor`: Preferences / Workspace & Hotkeys에 `full_event` 키 편집 행.
+- 일반 Cube에서의 오류는 headless 재현 실패 → 사용자 메시지(괄호 부분)와 Self Test 결과로 확인 필요.
 
 ## 0. 0.11.0 추가분 (Mechanical Modeling Toolkit)
 - ZIP `dist/mecha_lab-0.11.0.zip` (sha256 `8518a39a91c5cd9faf00258f1bd697e6f6a9aea9af9ce2f41ff825aef72c6a84`), 18개 파일 995/995

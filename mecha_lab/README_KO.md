@@ -1,10 +1,17 @@
-# Mecha Lab 0.11.0 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.11.1 — 설치 · MECHA LAB Workspace · 사용법
 
-> **검증 수준:** Linux headless Blender **5.0.1**(`bpy`)에서 자동 테스트 18개 파일 / 995개 항목이 통과했습니다.
+> **검증 수준:** Linux headless Blender **5.0.1**(`bpy`)에서 자동 테스트 18개 파일 / 1007개 항목이 통과했습니다.
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` A절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
 
 기준 소스: ChatGPT v0.9.3 (Claude 0.9.0 + ChatGPT Deform 0.9.1 + Primitive 0.9.2/0.9.3). 변경 내용은 `CHANGELOG.md` 0.10.0.
+
+## 0.11.1 입력 변경 (먼저 읽기)
+- **Alt+클릭 모드 전환은 삭제됐습니다.** Alt는 v0.9.3처럼 **Cut 반전(안쪽 남기기)** 만 합니다(누르고 시작하거나 그리는 중 눌러도 됨).
+- **Ctrl+드래그** = 중심에서 그리기(그대로).
+- 선택/이동이 필요하면 **Select / Move**(Mecha Lab 메뉴 맨 위, 기본 단축키 **W**, Preferences에서 변경 가능). Blender 선택 +
+  이동 기즈모(다중 선택 가능)로 바뀌고, 진행 중이던 Cut/Split 획은 안전하게 취소됩니다. 다시 Cut/Split을 고르면 새로 시작.
+- Live Primitive(MCH_Box 등)를 자르면 먼저 일반 메쉬로 굽힌 뒤 자릅니다("whole object" 오류 수정).
 
 ## 0.11.0 Mechanical Toolkit 빠른 안내
 작업 흐름: ZBrush 베이스 → Blender → **Face Extract → Armor Sculpt → Edge Molding → Curve Array / Cable → Hollow**.
@@ -17,7 +24,7 @@
 - Base Mesh: 다른 탭으로 나가면 이번에 만든 도형이 자동 Apply.
 
 ## 0.10.0 빠른 안내
-- **Alt+짧은 클릭** = 선택 모드 ↔ 마지막 Mecha 도구, **Alt+드래그** = 도구별 보조(Cut: 안쪽 남기기, Base Mesh: 파내기).
+- (0.11.1에서 변경) **Alt** = 도구별 보조(Cut: 안쪽 남기기, Base Mesh: 파내기). 모드 전환은 **Select / Move (W)**.
 - 닫기: 아무 곳 **더블클릭** / **시작점 클릭** / Enter. Esc = 획 취소 후 선택 모드. 3회 클릭 기능은 없어졌습니다.
 - **V** = 빠른 메뉴(Cut, Boolean, Base Mesh, SubD Plane, Split, Radial), **Space** = 전체 메뉴, **Shift+A > Mecha Lab**.
 - **Boolean**: 대상들을 먼저, **커터를 마지막(노란색)**으로 선택. 대상이 여러 개여도 각각 처리.

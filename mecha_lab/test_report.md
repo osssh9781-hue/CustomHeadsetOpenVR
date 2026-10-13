@@ -1,4 +1,4 @@
-# Test Report — Mecha Lab 0.11.0
+# Test Report — Mecha Lab 0.11.1
 
 ## 환경
 | 항목 | 값 |
@@ -9,11 +9,30 @@
 | 사용자 설정 | 임시 `BLENDER_USER_*` 폴더 사용, 실제 설정·Startup 미사용 |
 | 기준 | ChatGPT v0.9.3 무수정 ZIP (sha256 `3b66e845…a1e4cd`) |
 
-명령: `<bpy python> tests/run_all.py` · 로그: `tests/test_log_bpy501_v0110.txt`
-ZIP: `dist/mecha_lab-0.11.0.zip` (sha256 `8518a39a91c5cd9faf00258f1bd697e6f6a9aea9af9ce2f41ff825aef72c6a84`)
+명령: `<bpy python> tests/run_all.py` · 로그: `tests/test_log_bpy501_v0111.txt`
+ZIP: `dist/mecha_lab-0.11.1.zip` (sha256 `fb8960ae4fc08a273b09cb6d1cfca01a7efda2da8d16ee193d1ec480423f0593`)
 
 **변경 전(v0.9.3 무수정)에도 같은 headless 테스트는 모두 통과**했습니다(경로 누락 2건 제외). 즉 사용자 보고 고장 대부분은
 headless로 재현되지 않았고, 아래 "GUI 검증" 열은 전부 미검증입니다.
+
+## 0.11.1 결과: 18개 파일, 1007 / 1007 통과
+`test_v0100_regression.py` 108항목(0.11.0 96 → Alt 클릭/드래그 블록을 0.11.1 블록으로 교체). 나머지 17개 파일 항목 수 그대로.
+
+| 요청 테스트 | 코드에 존재 | headless 통과 | Windows GUI 검증 |
+|---|---|---|---|
+| 1. Cube Rectangle Cut | O | O (부피 8 → 6) | 미검증 |
+| 2. Curve / Lasso Cut | O | O | 미검증 |
+| 3. Split | O | O | 미검증 |
+| 4. Alt 반전 (누를 때 / 그리는 중 / Alt+클릭 점) | O | O | 미검증 |
+| 5. Ctrl 중심 그리기 | O | O | 미검증 |
+| 6. Split Gap / Bevel | O | O (기존 Split Gap·Bevel 테스트) | 미검증 |
+| 7. Select / Move 메뉴 + W 단축키 | O | 등록·키맵·버튼 그리기만 (실제 기즈모/입력 없음) | **미검증** |
+| 8. Select / Move 후 Cut/Split 재진입 | O | O (툴 변경 → 모달 CANCELLED, 새 모달 새 획으로 Cut) | 미검증 |
+| 9. 다중 오브젝트 Cut / Split | O | O (F01) | 미검증 |
+| 10. 설치·활성·재시작 | O | 설치·비활성·재활성 3회 (재시작 = 새 프로세스는 headless 미실행) | **미검증** |
+| MCH_Box(Live Primitive) Cut "whole object" | O | O (재현 → 수정) | 미검증 |
+| 일반 Cube "whole object" | — | 재현 안 됨 | 미검증 |
+| Alt 모드 전환 코드 제거 | O | O (메서드·연산자·키맵 없음 확인) | — |
 
 ## 0.11.0 결과: 18개 파일, 995 / 995 통과
 | 신규/변경 | 항목 | 내용 |
@@ -63,7 +82,7 @@ headless로 재현되지 않았고, 아래 "GUI 검증" 열은 전부 미검증�
 | B07 Split Gap Enter/시작점/더블클릭 | O | O | 미검증 |
 | B08 Mask 숨김, 데이터 보존 | O | O | 미검증 |
 | B10 큰 베벨, 제한 메시지, Clamp | O | O | 미검증 |
-| Alt 짧은 클릭/드래그, Alt+클릭 복귀 | O | O (모달 로직; Object Mode CLICK 키맵은 등록만) | 미검증 |
+| ~~Alt 짧은 클릭/드래그, Alt+클릭 복귀~~ (0.11.1에서 삭제) | — | — | — |
 | V 빠른 메뉴 / Shift+A | O | 등록만 | 미검증 |
 | Boolean 활성=커터 다중 대상 | O | O | 미검증 |
 | Cut/Split 다중 대상, 실패 보존 | O | O | 미검증 |

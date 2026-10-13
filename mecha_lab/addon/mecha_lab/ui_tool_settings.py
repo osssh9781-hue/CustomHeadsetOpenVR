@@ -146,15 +146,15 @@ def draw_cut(layout, context, mode='CUT'):
     if mode == 'CUT':
         row.operator('mch.surface_cut', text='Knife Edges', icon='EDITMODE_HLT')
     if mode == 'CUT':
-        _hint(layout, 'LMB draw: remove inside | Alt+drag: keep inside',
+        _hint(layout, 'LMB draw: remove inside | Alt: keep inside',
               'Double-click anywhere / click start point / Enter: apply',
-              'Alt+click or Esc: back to Select (Alt+click object: back here)',
+              'Esc: back to Select | Select / Move: W (or Mecha menu)',
               'Ctrl+Z: undo last point, then last cut', 'RMB: shapes | RMB double-click: exit tool',
               'PNG shape: R / Shift+R rotates 15°', 'All selected meshes are cut (Targets: Selected)')
     else:
         _hint(layout, 'LMB draw: split into two parts', 'Inside becomes "<name>_Split"',
               'Double-click anywhere / click start point / Enter: apply',
-              'Alt+click or Esc: back to Select', 'RMB: shapes | RMB double-click: exit tool')
+              'Esc: back to Select | Select / Move: W', 'RMB: shapes | RMB double-click: exit tool')
 
 
 def draw_split(layout, context):
@@ -454,9 +454,9 @@ def draw_base(layout, context):
     if ob is not None:
         target.operator('mch.base_freeze', icon='FREEZE')
     draw_shape_options(layout, context, 'BASE')
-    _hint(layout, 'Draw: creates a NEW object', 'Alt+drag: cut it INTO the mesh below (Boolean),',
+    _hint(layout, 'Draw: creates a NEW object', 'Alt + draw: cut it INTO the mesh below (Boolean),',
           '  bevel sides flipped (Top <-> Bottom)', 'Placed on the surface under the shape, else 3D cursor',
-          'Leaving the tool (Alt+click / Esc / other tool)', '  applies only the shapes made in this session',
+          'Leaving the tool (Esc / other tool / other tab)', '  applies only the shapes made in this session',
           'RMB: profiles | RMB x2: exit tool')
 
 
