@@ -25,8 +25,8 @@ TOOLS = (
      'in Edit Mode to build armour panels', 'subd', 'MOD_SUBSURF', None, 'OK'),
     ('PLATE', 'Armor Plate', 'Draw a lasso on a mesh: a separate armour plate made of new clean faces '
      '(no retopology); mouse wheel while drawing = profile', 'extract', 'MOD_SOLIDIFY', 'mecha.armor_plate', 'OK'),
-    ('WRINKLE', 'Cloth Wrinkle', 'Draw a lasso on a mesh: a separate cloth layer with procedural wrinkles '
-     '(Padding / Denim / Leather), live until Apply', 'extract', 'MOD_CLOTH', 'mecha.cloth_wrinkle', 'OK'),
+    ('WRINKLE', 'Cloth Plate', 'Draw a lasso on a mesh: a separate padded cloth panel - puffs up inside the '
+     'border, edge roll, seam pinch folds, stitching (+ optional Padding / Denim / Leather pattern), live until Apply', 'extract', 'MOD_CLOTH', 'mecha.cloth_wrinkle', 'OK'),
     ('PRIMITIVE', 'Primitive', 'Ghost shape with handles: Enter = merge into the mesh it touches, Alt+Enter = '
      'subtract; Station Primitive presets; RMB = shape picker',
      'primitive', 'MESH_CUBE', 'mecha.primitive', 'OK'),

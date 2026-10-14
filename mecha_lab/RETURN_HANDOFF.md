@@ -1,4 +1,9 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.20.0 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.20.1 (Claude Code, 2026-10-14)
+
+## 0.20.1
+- ZIP sha256 `f5e340bd6da5c349c56537645822e8e98e09c5c26f64c40c9f82c2baaf1d4ffd`. `cloth_wrinkle` GN v13: 입력 Puff/Puff Width/Roll/Roll Width/Pinch/Pinch Spacing/Pinch Length/Stitch/Stitch Inset/Stitch Length/Bend/Sections/Fold Sharp/Fan/Trim/Trim Width/Trim Height,
+  속성 `mch_edge_dist`(직선 거리), `mch_edge_u`, `mch_edge_len`, `mch_sec_u`, `mch_sec_len`, `mch_fold_room`. `PRESETS`/`apply_preset`, `TRIM_PRESETS`/`apply_trim`, ops `mch.wrinkle_trim`, `mch.wrinkle_reset`.
+  `set_input`이 `interface_update` + update_tag + redraw. Solidify even offset 끔.
 
 ## 0.20.0
 - ZIP sha256 `6c5b1e920f36be1fc29ecbd7c8ccf88de3904dfb32c9e9cbb4a53bdb16766ce2`. 신규 `cloth_wrinkle.py`(GN 그룹 `MCH_ClothWrinkle` v4: Subdivide → 접평면 좌표(Direction/Scale/Seed) → Padding/Denim/Leather → Index Switch → 테두리 마스크(`mch_edge_dist`) → Normal*(h+Lift); 모디파이어 `MCH_Wrinkle` + Solidify `MCH_WrinkleShell`; `perform_wrinkle`, `dense_mesh`, HUD). 도구 `WRINKLE`(`mecha.cloth_wrinkle`).

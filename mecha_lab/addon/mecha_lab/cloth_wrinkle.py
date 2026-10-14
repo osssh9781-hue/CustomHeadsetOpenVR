@@ -29,9 +29,9 @@ MOD = 'MCH_Wrinkle'
 MOD_SHELL = 'MCH_WrinkleShell'
 COLL = 'Cloth Wrinkles'
 EDGE_ATTR = 'mch_edge_dist'
-TYPES = (('PADDING', 'Padding', 'Quilted pillows between stitched seams'),
-         ('DENIM', 'Denim', 'Thin sharp creases with small secondary folds'),
-         ('LEATHER', 'Leather', 'Few thick, round, heavy folds'))
+TYPES = (('PADDING', 'Padding', 'Puffy padded panel, soft folds from the seams (pattern: stitched channels)'),
+         ('DENIM', 'Denim', 'Little puff, many long thin creases running in from the border'),
+         ('LEATHER', 'Leather', 'Medium puff, few thick heavy folds from the border'))
 TYPE_IDS = tuple(t[0] for t in TYPES)
 # name, socket, default, min, max
 INPUTS = (('Type', 'NodeSocketInt', 0, 0, 2),
@@ -41,8 +41,36 @@ INPUTS = (('Type', 'NodeSocketInt', 0, 0, 2),
           ('Seed', 'NodeSocketInt', 1, 0, 100000),
           ('Detail', 'NodeSocketInt', 1, 0, 3),
           ('Edge Soft', 'NodeSocketFloat', 0.1, 0.0, 100.0),
-          ('Lift', 'NodeSocketFloat', 0.0, -100.0, 100.0))
-VERSION = 4
+          ('Lift', 'NodeSocketFloat', 0.0, -100.0, 100.0),
+          # 0.20.1 padded panel: the border stays on the surface, the panel puffs up, seams pinch it
+          ('Puff', 'NodeSocketFloat', 0.0, -100.0, 100.0),
+          ('Puff Width', 'NodeSocketFloat', 0.1, 0.0001, 100.0),
+          ('Roll', 'NodeSocketFloat', 0.0, -100.0, 100.0),
+          ('Roll Width', 'NodeSocketFloat', 0.05, 0.0001, 100.0),
+          ('Pinch', 'NodeSocketFloat', 0.0, -100.0, 100.0),
+          ('Pinch Spacing', 'NodeSocketFloat', 0.05, 0.0001, 100.0),
+          ('Pinch Length', 'NodeSocketFloat', 0.1, 0.0001, 100.0),
+          ('Stitch', 'NodeSocketFloat', 0.0, -100.0, 100.0),
+          ('Stitch Inset', 'NodeSocketFloat', 0.02, 0.0, 100.0),
+          ('Stitch Length', 'NodeSocketFloat', 0.01, 0.0001, 100.0),
+          ('Bend', 'NodeSocketFloat', 0.8, 0.0, 10.0),
+          ('Sections', 'NodeSocketInt', 1, 1, 24),
+          ('Fold Sharp', 'NodeSocketFloat', 1.6, 0.3, 12.0),
+          ('Fan', 'NodeSocketFloat', 9.0, 0.0, 60.0),
+          ('Trim', 'NodeSocketInt', 0, 0, 3),
+          ('Trim Width', 'NodeSocketFloat', 0.03, 0.0001, 100.0),
+          ('Trim Height', 'NodeSocketFloat', 0.01, -100.0, 100.0))
+TRIMS = (('NONE', 'No Trim', 'Plain border'),
+         ('PIPING', 'Piping', 'Round cord along the border'),
+         ('BINDING', 'Binding', 'Flat band folded over the border, stitched'),
+         ('WELT', 'Welt', 'Raised flat strip just inside the border'))
+TRIM_IDS = tuple(t[0] for t in TRIMS)
+FOLD_ROOM = 'mch_fold_room'    # distance to where the nearest border point jumps (corners): folds fade there
+SEC_U = 'mch_sec_u'            # 0..1 along the long side (local X): stitched sections across it
+SEC_LEN = 'mch_sec_len'        # length of the long side
+EDGE_U = 'mch_edge_u'          # arc length along the border of the nearest border point
+EDGE_LEN = 'mch_edge_len'      # length of that border loop (keeps seam patterns seamless)
+VERSION = 13
 
 
 # -----------------------------------------------------------------------------
@@ -91,7 +119,34 @@ def build_group():
     rot = N.new('ShaderNodeVectorRotate')
     rot.rotation_type = 'Z_AXIS'
     L.new(pos.outputs[0], rot.inputs['Vector'])
-    L.new(_math(N, L, 'MULTIPLY', I['Direction'], vb=-1.0), rot.inputs['Angle'])
+    # 0.20.1 the seed also picks the flow direction, and the folds bend across the panel (Bend)
+    rnd = N.new('FunctionNodeRandomValue')
+    rnd.data_type = 'FLOAT'
+    sock = {i.identifier: i for i in rnd.inputs}
+    sock['Min_001'].default_value = -math.pi / 2          # the FLOAT min / max (names repeat per type)
+    sock['Max_001'].default_value = math.pi / 2
+    zero = N.new('FunctionNodeInputInt')
+    zero.integer = 0
+    L.new(zero.outputs[0], rnd.inputs['ID'])
+    L.new(I['Seed'], rnd.inputs['Seed'])
+    flow = N.new('ShaderNodeVectorMath')
+    flow.operation = 'SCALE'
+    L.new(pos.outputs[0], flow.inputs[0])
+    L.new(_math(N, L, 'DIVIDE', va=0.18, b=_math(N, L, 'MAXIMUM', I['Scale'], vb=1e-6)), flow.inputs['Scale'])
+    fseed = N.new('ShaderNodeCombineXYZ')
+    L.new(_math(N, L, 'MULTIPLY', I['Seed'], vb=5.31), fseed.inputs[2])
+    fvec = N.new('ShaderNodeVectorMath')
+    fvec.operation = 'ADD'
+    L.new(flow.outputs[0], fvec.inputs[0])
+    L.new(fseed.outputs[0], fvec.inputs[1])
+    fno = N.new('ShaderNodeTexNoise')
+    fno.inputs['Scale'].default_value = 1.0
+    fno.inputs['Detail'].default_value = 1.0
+    L.new(fvec.outputs[0], fno.inputs['Vector'])
+    bend = _math(N, L, 'MULTIPLY', _math(N, L, 'SUBTRACT', fno.outputs['Fac'], vb=0.5),
+                 _math(N, L, 'MULTIPLY', I['Bend'], vb=3.0))
+    ang = _math(N, L, 'ADD', _math(N, L, 'ADD', I['Direction'], {o.identifier: o for o in rnd.outputs}['Value_001']), bend)
+    L.new(_math(N, L, 'MULTIPLY', ang, vb=-1.0), rot.inputs['Angle'])
     inv_s = _math(N, L, 'DIVIDE', vb=None, va=1.0, b=I['Scale'])
     scl = N.new('ShaderNodeVectorMath')
     scl.operation = 'SCALE'
@@ -118,14 +173,15 @@ def build_group():
         L.new(vec, n.inputs['Vector'])
         return n.outputs['Fac']
 
-    # ---- Padding: diamond quilting -> pillows |sin(u) sin(v)|^0.5, seams at 0
+    # ---- Padding: stitched channels that follow the outline (tubes between seam lines), soft folds
     k = 2.0 * math.pi
-    u = _math(N, L, 'ADD', X, Y)
-    v = _math(N, L, 'SUBTRACT', X, Y)
-    su = _math(N, L, 'SINE', _math(N, L, 'MULTIPLY', u, vb=k * 0.7071))
-    sv = _math(N, L, 'SINE', _math(N, L, 'MULTIPLY', v, vb=k * 0.7071))
-    pillow = _math(N, L, 'POWER', _math(N, L, 'ABSOLUTE', _math(N, L, 'MULTIPLY', su, sv)), vb=0.45)
-    pad = _math(N, L, 'ADD', pillow, _math(N, L, 'MULTIPLY', noise(uv.outputs[0], 3.0), vb=0.15))
+    dch = N.new('GeometryNodeInputNamedAttribute')
+    dch.data_type = 'FLOAT'
+    dch.inputs['Name'].default_value = EDGE_ATTR
+    chan = _math(N, L, 'DIVIDE', dch.outputs['Attribute'], _math(N, L, 'MAXIMUM', I['Scale'], vb=1e-6))
+    tube = _math(N, L, 'POWER', _math(N, L, 'ABSOLUTE', _math(N, L, 'SINE', _math(N, L, 'MULTIPLY', chan,
+                                                                                    vb=math.pi))), vb=0.4)
+    pad = _math(N, L, 'ADD', tube, _math(N, L, 'MULTIPLY', noise(uv.outputs[0], 1.5, 2.0), vb=0.12))
 
     # ---- Denim: thin sharp creases across X, wobbling, + small folds
     warp = _math(N, L, 'MULTIPLY', _math(N, L, 'SUBTRACT', noise(uv.outputs[0], 0.7, 3.0), vb=0.5), vb=4.0)
@@ -162,6 +218,123 @@ def build_group():
 
     h = _math(N, L, 'MULTIPLY', _math(N, L, 'MULTIPLY', sw.outputs[0], I['Strength']), mask)
     h = _math(N, L, 'ADD', h, I['Lift'])                                     # layer height above the surface
+
+    def named(name):
+        a = N.new('GeometryNodeInputNamedAttribute')
+        a.data_type = 'FLOAT'
+        a.inputs['Name'].default_value = name
+        return a.outputs['Attribute']
+    Db, Ub, LP = attr.outputs['Attribute'], named(EDGE_U), named(EDGE_LEN)
+    LPs = _math(N, L, 'MAXIMUM', LP, vb=1e-6)
+    # sections: stitched seams across the long side, each cell puffs up on its own
+    nsec = _math(N, L, 'MAXIMUM', I['Sections'], vb=1.0)
+    su_ = _math(N, L, 'MULTIPLY', named(SEC_U), nsec)
+    fr = _math(N, L, 'SUBTRACT', _math(N, L, 'FRACT', su_), vb=0.5)
+    ds = _math(N, L, 'MULTIPLY', _math(N, L, 'SUBTRACT', va=0.5, b=_math(N, L, 'ABSOLUTE', fr)),
+               _math(N, L, 'DIVIDE', named(SEC_LEN), nsec))
+    ds = _math(N, L, 'ADD', ds, _math(N, L, 'MULTIPLY', _math(N, L, 'LESS_THAN', nsec, vb=1.5), vb=1e6))
+    # an edge trim takes the outer band: puff and folds start inside it
+    has_trim = _math(N, L, 'GREATER_THAN', I['Trim'], vb=0.5)
+    tw = _math(N, L, 'MULTIPLY', I['Trim Width'], has_trim)
+    Db_in = _math(N, L, 'MAXIMUM', _math(N, L, 'SUBTRACT', Db, tw), vb=0.0)
+    D = _math(N, L, 'MINIMUM', Db_in, ds)                  # puff / stitching see the section seams too
+    U = Ub
+
+    def gauss(x, w):                                    # exp(-(x / w)^2)
+        q = _math(N, L, 'DIVIDE', x, _math(N, L, 'MAXIMUM', w, vb=1e-6))
+        return _math(N, L, 'EXPONENT', _math(N, L, 'MULTIPLY', _math(N, L, 'MULTIPLY', q, q), vb=-1.0))
+
+    def seam_freq(spacing):                             # 2 pi * round(L / spacing) / L  (seamless on the border)
+        sp = _math(N, L, 'MAXIMUM', spacing, vb=1e-6)
+        cnt = _math(N, L, 'MAXIMUM', _math(N, L, 'ROUND', _math(N, L, 'DIVIDE', LPs, sp)), vb=1.0)
+        return _math(N, L, 'DIVIDE', _math(N, L, 'MULTIPLY', cnt, vb=k), LPs)
+
+    # puff: rounded rise from the border to full height at Puff Width (quarter circle)
+    tp = _math(N, L, 'DIVIDE', D, _math(N, L, 'MAXIMUM', I['Puff Width'], vb=1e-6), clamp=True)
+    prof = _math(N, L, 'SQRT', _math(N, L, 'MULTIPLY', tp, _math(N, L, 'SUBTRACT', va=2.0, b=tp)))
+    h = _math(N, L, 'ADD', h, _math(N, L, 'MULTIPLY', prof, I['Puff']))
+    # edge roll: a padded bulge along the border
+    h = _math(N, L, 'ADD', h, _math(N, L, 'MULTIPLY', gauss(_math(N, L, 'SUBTRACT', D, I['Roll Width']),
+                                                         _math(N, L, 'MULTIPLY', I['Roll Width'], vb=0.6)), I['Roll']))
+    # seam pinch: folds running in from the border, fading inward (the seam line itself stays clean)
+    pw = N.new('ShaderNodeCombineXYZ')
+    L.new(_math(N, L, 'DIVIDE', U, _math(N, L, 'MAXIMUM', I['Pinch Spacing'], vb=1e-6)), pw.inputs[0])
+    L.new(_math(N, L, 'DIVIDE', D, _math(N, L, 'MAXIMUM', I['Pinch Length'], vb=1e-6)), pw.inputs[1])
+    L.new(_math(N, L, 'MULTIPLY', I['Seed'], vb=3.17), pw.inputs[2])
+    pwarp = _math(N, L, 'MULTIPLY', _math(N, L, 'SUBTRACT', noise(pw.outputs[0], 0.35, 1.0), vb=0.5), vb=2.5)
+    # 0.20.1 radial folds: every Fold Spacing along the border a pinch point; folds fan out from it -
+    # thin and tight at the border, wider as they spread inward (rays: angle = along / depth)
+    spc = _math(N, L, 'MAXIMUM', I['Pinch Spacing'], vb=1e-6)
+    cnt = _math(N, L, 'MAXIMUM', _math(N, L, 'ROUND', _math(N, L, 'DIVIDE', LPs, spc)), vb=1.0)
+    sx = _math(N, L, 'DIVIDE', LPs, cnt)                                   # seamless spacing on this loop
+    cell = _math(N, L, 'SUBTRACT', _math(N, L, 'FRACT', _math(N, L, 'ADD', _math(N, L, 'DIVIDE', U, sx), vb=0.5)),
+                 vb=0.5)
+    along = _math(N, L, 'MULTIPLY', cell, sx)
+    depth = _math(N, L, 'ADD', Db_in, _math(N, L, 'MULTIPLY', sx, vb=0.3))
+    theta = _math(N, L, 'DIVIDE', along, depth)
+    pph = _math(N, L, 'ADD', _math(N, L, 'MULTIPLY', theta, I['Fan']), pwarp)
+    wave = _math(N, L, 'MULTIPLY', _math(N, L, 'ADD', _math(N, L, 'COSINE', pph), vb=1.0), vb=0.5)
+    ridge = _math(N, L, 'SUBTRACT', _math(N, L, 'POWER', wave, I['Fold Sharp']),
+                  _math(N, L, 'DIVIDE', va=1.0, b=_math(N, L, 'ADD', I['Fold Sharp'], vb=1.0)))
+    # every fold its own length and strength: some reach far in, the next one stops short
+    cidx = _math(N, L, 'FLOOR', _math(N, L, 'ADD', _math(N, L, 'DIVIDE', U, sx), vb=0.5))
+    ridx = _math(N, L, 'FLOOR', _math(N, L, 'DIVIDE', _math(N, L, 'ADD', pph, vb=math.pi), vb=k))
+    key = _math(N, L, 'ADD', _math(N, L, 'MULTIPLY', cidx, vb=131.0), ridx)
+
+    def rand(lo, hi, salt):
+        rv = N.new('FunctionNodeRandomValue')
+        rv.data_type = 'FLOAT'
+        sk = {i.identifier: i for i in rv.inputs}
+        sk['Min_001'].default_value, sk['Max_001'].default_value = lo, hi
+        L.new(key, sk['ID'])
+        L.new(_math(N, L, 'ADD', I['Seed'], vb=salt), sk['Seed'])
+        return {o.identifier: o for o in rv.outputs}['Value_001']
+    lenf = rand(0.3, 1.5, 11.0)
+    ampf = rand(0.45, 1.3, 23.0)
+    plen = _math(N, L, 'DIVIDE', Db_in, _math(N, L, 'MAXIMUM', _math(N, L, 'MULTIPLY', I['Pinch Length'], lenf),
+                                              vb=1e-6), clamp=True)
+    pfade = _math(N, L, 'POWER', _math(N, L, 'SUBTRACT', va=1.0, b=plen), vb=1.4)
+    pseam = _math(N, L, 'DIVIDE', Db_in, _math(N, L, 'MAXIMUM', _math(N, L, 'MULTIPLY', I['Pinch Length'], vb=0.08),
+                                            vb=1e-6), clamp=True)
+    room = _math(N, L, 'DIVIDE', named(FOLD_ROOM), _math(N, L, 'MAXIMUM', _math(N, L, 'MULTIPLY', I['Pinch Length'],
+                                                                                 vb=0.3), vb=1e-6), clamp=True)
+    pseam = _math(N, L, 'MULTIPLY', pseam, _math(N, L, 'MULTIPLY', room, room))
+    pamp = _math(N, L, 'ADD', _math(N, L, 'MULTIPLY', noise(pw.outputs[0], 0.25, 1.0), vb=1.2), vb=0.4)
+    pinch = _math(N, L, 'MULTIPLY', _math(N, L, 'MULTIPLY', ridge, pfade),
+                  _math(N, L, 'MULTIPLY', pseam, _math(N, L, 'MULTIPLY', pamp, ampf)))
+    h = _math(N, L, 'ADD', h, _math(N, L, 'MULTIPLY', pinch, I['Pinch']))
+    # stitching: a sunken seam line at Stitch Inset with raised thread stitches along it
+    sl = _math(N, L, 'MAXIMUM', I['Stitch Length'], vb=1e-6)
+    off = _math(N, L, 'SUBTRACT', D, I['Stitch Inset'])
+    groove = gauss(off, _math(N, L, 'MULTIPLY', sl, vb=0.3))
+    # long thread dashes with short gaps (a running stitch), narrow across the seam
+    dash = _math(N, L, 'MULTIPLY', _math(N, L, 'ADD', _math(N, L, 'SINE', _math(N, L, 'MULTIPLY', U, seam_freq(sl))),
+                                         vb=0.55), vb=6.0, clamp=True)
+    thread = _math(N, L, 'MULTIPLY', dash, gauss(off, _math(N, L, 'MULTIPLY', sl, vb=0.1)))
+    stitch = _math(N, L, 'SUBTRACT', _math(N, L, 'MULTIPLY', thread, vb=0.9), groove)
+    h = _math(N, L, 'ADD', h, _math(N, L, 'MULTIPLY', stitch, I['Stitch']))
+    # edge trim (finishing): piping cord / binding band / welt strip
+    twp = _math(N, L, 'MAXIMUM', I['Trim Width'], vb=1e-6)
+    half = _math(N, L, 'MULTIPLY', twp, vb=0.5)
+    q = _math(N, L, 'DIVIDE', _math(N, L, 'SUBTRACT', Db, half), half)
+    piping = _math(N, L, 'SQRT', _math(N, L, 'MAXIMUM', _math(N, L, 'SUBTRACT', va=1.0, b=_math(N, L, 'MULTIPLY', q, q)),
+                                       vb=0.0))
+    bedge = _math(N, L, 'DIVIDE', _math(N, L, 'SUBTRACT', twp, Db), _math(N, L, 'MULTIPLY', twp, vb=0.18), clamp=True)
+    bstitch = gauss(_math(N, L, 'SUBTRACT', Db, _math(N, L, 'MULTIPLY', twp, vb=0.72)),
+                    _math(N, L, 'MULTIPLY', twp, vb=0.06))
+    binding = _math(N, L, 'SUBTRACT', bedge, _math(N, L, 'MULTIPLY', bstitch, vb=0.35))
+    wq = _math(N, L, 'ABSOLUTE', _math(N, L, 'DIVIDE', _math(N, L, 'SUBTRACT', Db, _math(N, L, 'MULTIPLY', twp,
+                                                                                       vb=0.9)), half))
+    welt = _math(N, L, 'DIVIDE', _math(N, L, 'SUBTRACT', va=1.0, b=wq), vb=0.25, clamp=True)
+    tsw = N.new('GeometryNodeIndexSwitch')
+    tsw.data_type = 'FLOAT'
+    while len(tsw.index_switch_items) < 4:
+        tsw.index_switch_items.new()
+    L.new(I['Trim'], tsw.inputs['Index'])
+    tsw.inputs[1].default_value = 0.0
+    for i, src in enumerate((piping, binding, welt)):
+        L.new(src, tsw.inputs[i + 2])
+    h = _math(N, L, 'ADD', h, _math(N, L, 'MULTIPLY', tsw.outputs[0], I['Trim Height']))
     nrm = N.new('GeometryNodeInputNormal')
     off = N.new('ShaderNodeVectorMath')
     off.operation = 'SCALE'
@@ -196,15 +369,60 @@ def get_input(ob, name):
 
 
 def set_input(ob, name, value):
+    """Set a node-group input on the layer and make the viewport re-evaluate NOW
+    (writing a modifier ID property alone does not tag the depsgraph)."""
     mod = ob.modifiers.get(MOD)
     if mod is None:
         return
     mod[_ident(name)] = value
-    ob.update_tag()
     try:
-        mod.show_viewport = mod.show_viewport          # nudges the depsgraph
+        mod.node_group.interface_update(bpy.context)
+    except (AttributeError, TypeError, RuntimeError):
+        pass
+    ob.update_tag(refresh={'OBJECT', 'DATA'})
+    try:
+        ob.data.update_tag()
     except AttributeError:
         pass
+    try:
+        for win in bpy.context.window_manager.windows:
+            for area in win.screen.areas:
+                if area.type in {'VIEW_3D', 'PROPERTIES'}:
+                    area.tag_redraw()
+    except (AttributeError, TypeError, ReferenceError):
+        pass
+
+
+# Type = character of the panel (fractions of the patch size): puff, puff width, folds from the border
+# (depth, spacing, length, sharpness), stitching
+PRESETS = {
+    'PADDING': dict(Puff=0.06, PuffW=0.2, Pinch=0.016, Spacing=0.16, Length=0.24, Sharp=1.6, Stitch=0.002, Fan=7.0),
+    'DENIM': dict(Puff=0.012, PuffW=0.12, Pinch=0.014, Spacing=0.12, Length=0.42, Sharp=3.0, Stitch=0.0015,
+                  Fan=14.0),
+    'LEATHER': dict(Puff=0.025, PuffW=0.16, Pinch=0.026, Spacing=0.2, Length=0.34, Sharp=1.2, Stitch=0.002, Fan=5.0),
+}
+
+
+TRIM_PRESETS = {'NONE': (0.03, 0.0), 'PIPING': (0.022, 0.011), 'BINDING': (0.045, 0.006), 'WELT': (0.04, 0.008)}
+
+
+def apply_trim(ob, trim, size=None):
+    size = size or float(ob.get('mch_wrinkle_size', 1.0)) or 1.0
+    w, h = TRIM_PRESETS[trim]
+    set_input(ob, 'Trim', TRIM_IDS.index(trim))
+    set_input(ob, 'Trim Width', w * size)
+    set_input(ob, 'Trim Height', h * size)
+
+
+def apply_preset(ob, wtype, size=None):
+    size = size or float(ob.get('mch_wrinkle_size', 1.0)) or 1.0
+    pr = PRESETS[wtype]
+    set_input(ob, 'Type', TYPE_IDS.index(wtype))
+    for name, key in (('Puff', 'Puff'), ('Puff Width', 'PuffW'), ('Pinch', 'Pinch'), ('Pinch Spacing', 'Spacing'),
+                      ('Pinch Length', 'Length'), ('Stitch', 'Stitch')):
+        set_input(ob, name, pr[key] * size)
+    set_input(ob, 'Fold Sharp', pr['Sharp'])
+    set_input(ob, 'Fan', pr['Fan'])
 
 
 def is_wrinkle(ob):
@@ -221,27 +439,96 @@ def active_wrinkle(context):
 # -----------------------------------------------------------------------------
 
 
+def _border_loops(bm):
+    """Border vertex loops of the patch (ordered)."""
+    nxt = {}
+    for e in bm.edges:
+        if e.is_boundary:
+            a, b = e.verts
+            nxt.setdefault(a, []).append(b)
+            nxt.setdefault(b, []).append(a)
+    seen, loops = set(), []
+    for start in list(nxt):
+        if start in seen:
+            continue
+        lp, prev, cur = [start], None, start
+        seen.add(start)
+        while True:
+            cands = [w for w in nxt[cur] if w is not prev and w not in seen]
+            if not cands:
+                break
+            prev, cur = cur, cands[0]
+            lp.append(cur)
+            seen.add(cur)
+        if len(lp) >= 3:
+            loops.append(lp)
+    return loops
+
+
 def _edge_distances(bm):
-    """Distance of every vertex from the patch border (along the edges)."""
+    """Straight distance of every vertex to the patch border (resampled border,
+    nearest point), the border arc length there, that loop's length, and the
+    'fold room': distance to where the nearest border point jumps (corners,
+    middle line) - folds fade out there instead of breaking into spikes."""
     import heapq
-    dist = {v: math.inf for v in bm.verts}
+    from mathutils.kdtree import KDTree
+    loops = _border_loops(bm)
+    lens = sorted(e.calc_length() for e in bm.edges) or [1.0]
+    step = max(lens[len(lens) // 2] / 3.0, 1e-6)
+    samples = []                                         # (co, arc, loop length, loop index)
+    for li, lp in enumerate(loops):
+        pts = [v.co.copy() for v in lp]
+        total = sum((pts[(i + 1) % len(pts)] - pts[i]).length for i in range(len(pts)))
+        acc = 0.0
+        for i in range(len(pts)):
+            a, b = pts[i], pts[(i + 1) % len(pts)]
+            seg = (b - a).length
+            n = max(1, int(seg / step))
+            for j in range(n):
+                t = j / n
+                samples.append((a.lerp(b, t), acc + seg * t, total, li))
+            acc += seg
+    dist = {v: 1e6 for v in bm.verts}
+    u = {v: 0.0 for v in bm.verts}
+    ln = {v: 1.0 for v in bm.verts}
+    owner = {v: -1 for v in bm.verts}
+    if samples:
+        kd = KDTree(len(samples))
+        for i, sm in enumerate(samples):
+            kd.insert(sm[0], i)
+        kd.balance()
+        for v in bm.verts:
+            _co, i, d = kd.find(v.co)
+            co, a, total, li = samples[i]
+            dist[v], u[v], ln[v], owner[v] = (0.0 if v.is_boundary else d), a, total, li
+    # jumps of the nearest border point between neighbours
+    seeds = set()
+    for e in bm.edges:
+        a, b = e.verts
+        if owner[a] != owner[b]:
+            seeds.update((a, b))
+            continue
+        du = abs(u[a] - u[b])
+        du = min(du, ln[a] - du)
+        if du > 3.0 * e.calc_length() + step:
+            seeds.update((a, b))
+    room = {v: 1e6 for v in bm.verts}
     heap = []
-    for v in bm.verts:
-        if v.is_boundary:
-            dist[v] = 0.0
-            heap.append((0.0, v.index, v))
+    for v in seeds:
+        room[v] = 0.0
+        heap.append((0.0, v.index, v))
     heapq.heapify(heap)
     while heap:
         d, _i, v = heapq.heappop(heap)
-        if d > dist[v]:
+        if d > room[v]:
             continue
         for e in v.link_edges:
             w = e.other_vert(v)
             nd = d + e.calc_length()
-            if nd < dist[w]:
-                dist[w] = nd
+            if nd < room[w]:
+                room[w] = nd
                 heapq.heappush(heap, (nd, w.index, w))
-    return dist
+    return dist, u, ln, room
 
 
 def perform_wrinkle(context, loops, projector, wtype=None):
@@ -284,13 +571,22 @@ def perform_wrinkle(context, loops, projector, wtype=None):
     try:
         bm.from_mesh(region)
         bm.verts.ensure_lookup_table()
-        dist = _edge_distances(bm)
+        dist, uu, ll, rm = _edge_distances(bm)
+        rvals = [min(rm[v], 1e6) for v in bm.verts]
         vals = [min(dist.get(v, 0.0), 1e6) for v in bm.verts]
+        x0 = min(v.co.x for v in bm.verts)
+        x1 = max(v.co.x for v in bm.verts)
+        sec = [(v.co.x - x0) / max(x1 - x0, 1e-9) for v in bm.verts]
+        slen = [x1 - x0] * len(bm.verts)
+        uvals = [uu[v] for v in bm.verts]
+        lvals = [ll[v] for v in bm.verts]
         bm.to_mesh(region)
     finally:
         bm.free()
-    attr = region.attributes.new(EDGE_ATTR, 'FLOAT', 'POINT')
-    attr.data.foreach_set('value', vals)
+    for name, data in ((EDGE_ATTR, vals), (EDGE_U, uvals), (EDGE_LEN, lvals), (SEC_U, sec), (SEC_LEN, slen),
+                       (FOLD_ROOM, rvals)):
+        attr = region.attributes.new(name, 'FLOAT', 'POINT')
+        attr.data.foreach_set('value', data)
     region.name = target.name + '_Wrinkle'
     for mat in target.data.materials:
         region.materials.append(mat)
@@ -303,23 +599,31 @@ def perform_wrinkle(context, loops, projector, wtype=None):
     mod.node_group = build_group()
     wtype = wtype or st.wtype
     set_input(ob, 'Type', TYPE_IDS.index(wtype))
-    set_input(ob, 'Strength', size * st.strength)
+    set_input(ob, 'Strength', size * st.strength if st.pattern else 0.0)
     set_input(ob, 'Scale', size * st.scale)
     set_input(ob, 'Edge Soft', size * 0.08)
     set_input(ob, 'Seed', 1)
-    set_input(ob, 'Detail', 1)
+    set_input(ob, 'Detail', 2)
+    set_input(ob, 'Sections', st.sections)
     set_input(ob, 'Lift', size * st.lift)
+    # padded panel defaults (0.20.1): puff from the border, edge roll, seam pinch folds, stitching
+    for name, frac in (('Roll', st.roll), ('Roll Width', 0.04), ('Stitch Inset', 0.045), ('Stitch Length', 0.05)):
+        set_input(ob, name, size * frac)
+    apply_preset(ob, wtype, size)
+    apply_trim(ob, st.trim, size)
     shell = ob.modifiers.new(MOD_SHELL, 'SOLIDIFY')
     shell.thickness = size * st.thickness
     shell.offset = 1.0
-    shell.use_even_offset = True
+    shell.use_even_offset = False          # even offset shot spikes out of steep folds (trim next to the puff)
+    shell.use_quality_normals = True
     ob['mch_wrinkle_size'] = size
     for o in context.selected_objects:
         o.select_set(False)
     ob.select_set(True)
     context.view_layer.objects.active = ob
     extra = f' | {len(missing)} point(s) past the surface edge' if missing else ''
-    return f'Cloth wrinkles "{ob.name}" on {target.name} ({dict((a, b) for a, b, _c in TYPES)[wtype]}){extra}'
+    pat = dict((a, b) for a, b, _c in TYPES)[wtype] if st.pattern else 'no pattern'
+    return f'Cloth plate "{ob.name}" on {target.name} (padded panel, {pat}){extra}'
 
 
 def dense_mesh(context, ob, extra=2, limit=1_500_000):
@@ -361,13 +665,28 @@ def apply_wrinkle(context, ob):
 
 
 class MCH_PG_Wrinkle(bpy.types.PropertyGroup):
-    wtype: EnumProperty(name='Wrinkle Type', items=TYPES, default='DENIM',
-                        description='Kind of cloth wrinkles for the next layer')
+    wtype: EnumProperty(name='Type', items=TYPES, default='PADDING',
+                        description='Character of the panel: puff and the folds from the border (also the optional '
+                                    'all-over pattern)')
+    pattern: bpy.props.BoolProperty(name='Surface Pattern', default=False,
+                                    description='Also cover the whole panel with the chosen pattern')
+    trim: EnumProperty(name='Edge Trim', items=TRIMS, default='NONE',
+                       description='Finishing along the border: piping cord, binding band or welt strip')
+    sections: IntProperty(name='Sections', default=1, min=1, max=24,
+                          description='Stitched seams across the long side: each section puffs up on its own')
+    puff: bpy.props.FloatProperty(name='Puff', default=0.05, soft_min=-0.1, soft_max=0.3,
+                                  description='How much the panel puffs up inside its border (part of the size)')
+    roll: bpy.props.FloatProperty(name='Edge Roll', default=0.0, soft_min=-0.05, soft_max=0.1,
+                                  description='Padded bulge along the border (part of the size)')
+    pinch: bpy.props.FloatProperty(name='Seam Folds', default=0.014, soft_min=0.0, soft_max=0.08,
+                                   description='Folds pulled in from the border seams (part of the size)')
+    stitch: bpy.props.FloatProperty(name='Stitching', default=0.002, soft_min=0.0, soft_max=0.02,
+                                    description='Stitched seam line along the border (part of the size)')
     spacing: IntProperty(name='Face Size (px)', default=8, min=3, max=40,
                          description='Mesh density of the cloth layer on screen (smaller = finer wrinkles)')
-    strength: bpy.props.FloatProperty(name='Depth', default=0.03, soft_min=-0.2, soft_max=0.2,
+    strength: bpy.props.FloatProperty(name='Pattern Depth', default=0.02, soft_min=-0.2, soft_max=0.2,
                                       description='Wrinkle depth (part of the patch size)')
-    scale: bpy.props.FloatProperty(name='Scale', default=0.18, min=0.005, soft_max=1.0,
+    scale: bpy.props.FloatProperty(name='Scale', default=0.07, min=0.005, soft_max=1.0,
                                    description='Wrinkle spacing (part of the patch size)')
     thickness: bpy.props.FloatProperty(name='Thickness', default=0.01, min=0.0, soft_max=0.1,
                                        description='Cloth layer thickness (part of the patch size)')
@@ -388,7 +707,55 @@ class MCH_OT_wrinkle_type(bpy.types.Operator):
         st.wtype = TYPE_IDS[i]
         ob = active_wrinkle(context)
         if ob is not None:
-            set_input(ob, 'Type', i)
+            apply_preset(ob, st.wtype)
+        return {'FINISHED'}
+
+
+class MCH_OT_wrinkle_trim(bpy.types.Operator):
+    """Next edge trim: none > piping > binding > welt (the selected panel changes at once)"""
+    bl_idname = 'mch.wrinkle_trim'
+    bl_label = 'Edge Trim'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        st = context.scene.mch_wrinkle
+        st.trim = TRIM_IDS[(TRIM_IDS.index(st.trim) + 1) % len(TRIM_IDS)]
+        ob = active_wrinkle(context)
+        if ob is not None:
+            apply_trim(ob, st.trim)
+        return {'FINISHED'}
+
+
+class MCH_OT_wrinkle_reset(bpy.types.Operator):
+    """Reset the Cloth Plate settings (and the selected panel) to the defaults"""
+    bl_idname = 'mch.wrinkle_reset'
+    bl_label = 'Reset Cloth Plate'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        st = context.scene.mch_wrinkle
+        for name in st.bl_rna.properties.keys():
+            if name not in {'rna_type', 'name'}:
+                st.property_unset(name)
+        ob = active_wrinkle(context)
+        if ob is not None:
+            size = float(ob.get('mch_wrinkle_size', 1.0)) or 1.0
+            for name, _sock, default, _lo, _hi in INPUTS:
+                set_input(ob, name, default)
+            set_input(ob, 'Edge Soft', size * 0.08)
+            set_input(ob, 'Scale', size * st.scale)
+            set_input(ob, 'Detail', 2)
+            set_input(ob, 'Lift', size * st.lift)
+            set_input(ob, 'Strength', 0.0)
+            set_input(ob, 'Stitch Inset', size * 0.045)
+            set_input(ob, 'Stitch Length', size * 0.05)
+            set_input(ob, 'Roll Width', size * 0.04)
+            apply_preset(ob, st.wtype, size)
+            apply_trim(ob, st.trim, size)
+            m = ob.modifiers.get(MOD_SHELL)
+            if m is not None:
+                m.thickness = size * st.thickness
+        self.report({'INFO'}, 'Cloth Plate settings reset')
         return {'FINISHED'}
 
 
@@ -454,13 +821,27 @@ HUD_BUTTONS = (('apply', 'CHECKMARK', 'mch.wrinkle_apply', {}, 'Apply'),
                ('cancel', 'X', 'mch.wrinkle_remove', {}, 'Remove'),
                ('prev', 'TRIA_LEFT', 'mch.wrinkle_type', {'step': -1}, 'Previous type'),
                ('next', 'TRIA_RIGHT', 'mch.wrinkle_type', {'step': 1}, 'Next type'),
-               ('reroll', 'FILE_REFRESH', 'mch.wrinkle_reroll', {}, 'New random wrinkles'))
+               ('reroll', 'FILE_REFRESH', 'mch.wrinkle_reroll', {}, 'New random wrinkles'),
+               ('trim', 'MOD_EDGESPLIT', 'mch.wrinkle_trim', {}, 'Edge trim: none / piping / binding / welt'),
+               ('reset', 'LOOP_BACK', 'mch.wrinkle_reset', {}, 'Reset to the defaults'))
 # key, label, input / modifier field, lo, hi, kind
 SLIDERS = (('lift', 'Height', 'Lift', -50, 200, 'SIZE'),
-           ('strength', 'Depth', 'Strength', -100, 100, 'SIZE'),
+           ('sections', 'Sections', 'Sections', 1, 12, 'INT'),
+           ('puff', 'Puff', 'Puff', -100, 300, 'SIZE'),
+           ('puff_w', 'Puff Width', 'Puff Width', 5, 500, 'SIZE'),
+           ('roll', 'Edge Roll', 'Roll', -50, 100, 'SIZE'),
+           ('pinch', 'Seam Folds', 'Pinch', 0, 80, 'SIZE'),
+           ('pinch_sp', 'Fold Spacing', 'Pinch Spacing', 5, 200, 'SIZE'),
+           ('pinch_len', 'Fold Length', 'Pinch Length', 10, 600, 'SIZE'),
+           ('sharp', 'Fold Sharp', 'Fold Sharp', 30, 1000, 'PCT'),
+           ('fan', 'Fan', 'Fan', 0, 4000, 'PCT'),
+           ('stitch', 'Stitching', 'Stitch', 0, 20, 'SIZE'),
+           ('trim_w', 'Trim Width', 'Trim Width', 2, 200, 'SIZE'),
+           ('trim_h', 'Trim Height', 'Trim Height', -50, 80, 'SIZE'),
+           ('strength', 'Pattern', 'Strength', -100, 100, 'SIZE'),
            ('scale', 'Scale', 'Scale', 1, 100, 'SIZE'),
            ('direction', 'Direction', 'Direction', -180, 180, 'DEG'),
-           ('edge', 'Edge Soft', 'Edge Soft', 0, 50, 'SIZE'),
+           ('bend', 'Bend', 'Bend', 0, 300, 'PCT'),
            ('detail', 'Detail', 'Detail', 0, 3, 'INT'),
            ('thickness', 'Thickness', 'THICK', 0, 50, 'SIZE'))
 
@@ -483,6 +864,9 @@ def slider_spec(context, key, ob=None):
     if kind == 'DEG':
         v = int(round(math.degrees(cur)))
         return label, v, lo, hi, (lambda val: set_input(ob, name, math.radians(val))), f'{label}  {v} deg'
+    if kind == 'PCT':
+        v = int(round(cur * 100.0))
+        return label, v, lo, hi, (lambda val: set_input(ob, name, val / 100.0)), f'{label}  {v} %'
     if kind == 'INT':
         v = int(cur)
         return label, v, lo, hi, (lambda val: set_input(ob, name, int(val))), f'{label}  {v}'
@@ -496,11 +880,12 @@ def hud_layout(screen_pts, region_w, region_h, btn=30.0, gap=6.0, slider_w=104.0
         return {}
     x = min(max(max(p[0] for p in pts) + btn * 1.2, btn), region_w - slider_w - btn)
     step = btn + gap
-    total = step * 3 + (slider_h + gap) * len(SLIDERS)
+    total = step * 4 + (slider_h + gap) * len(SLIDERS)
     top = min(max((max(p[1] for p in pts) + min(p[1] for p in pts)) / 2 + total / 2, total), region_h - btn)
     out = {'apply': (x, top), 'cancel': (x, top - step), 'prev': (x, top - 2 * step),
-           'next': (x + step, top - 2 * step), 'reroll': (x + 2 * step, top - 2 * step)}
-    y = top - 3 * step
+           'next': (x + step, top - 2 * step), 'reroll': (x + 2 * step, top - 2 * step),
+           'trim': (x, top - 3 * step), 'reset': (x + step, top - 3 * step)}
+    y = top - 4 * step
     for key, *_r in SLIDERS:
         out['slider_' + key] = (x - btn / 2 + slider_w / 2, y + btn / 2 - slider_h / 2)
         y -= slider_h + gap
@@ -554,7 +939,7 @@ class MCH_GT_wrinkle_slider(bpy.types.Gizmo):
     def modal(self, context, event, tweak):
         from .primitive_hud import slider_value
         spec = slider_spec(context, self.key)
-        step = 20.0 if self.key == 'detail' else 3.0
+        step = 20.0 if self.key in {'detail', 'sections'} else 3.0
         v = slider_value(self.init_value, event.mouse_region_x - self.init_x, step_px=step, lo=spec[2], hi=spec[3])
         if v != spec[1]:
             spec[4](v)
@@ -639,7 +1024,8 @@ def _draw_labels():
         ui = context.preferences.system.ui_scale
         blf.size(0, 11 * ui)
         tname = TYPES[max(0, min(2, int(get_input(ob, 'Type'))))][1]
-        for key, text in (('apply', 'Apply'), ('cancel', 'Remove'), ('reroll', tname)):
+        trim = TRIMS[max(0, min(3, int(get_input(ob, 'Trim'))))][1]
+        for key, text in (('apply', 'Apply'), ('cancel', 'Remove'), ('reroll', tname), ('reset', trim + '  |  Reset')):
             x, y = lay[key]
             blf.color(0, *((1.0, 0.62, 0.16) if key == 'apply' else (0.85, 0.87, 0.9)), 1.0)
             blf.position(0, (x + 21) * ui, (y - 4) * ui, 0)
@@ -658,14 +1044,23 @@ def _draw_labels():
 def draw(layout, context):
     st = context.scene.mch_wrinkle
     box = layout.box()
-    box.label(text='CLOTH WRINKLE: draw on a mesh', icon='MOD_CLOTH')
+    hdr = box.row(align=True)
+    hdr.label(text='CLOTH PLATE: draw on a mesh', icon='MOD_CLOTH')
+    hdr.operator('mch.wrinkle_reset', text='', icon='LOOP_BACK')
     box.row(align=True).prop(st, 'wtype', expand=True)
+    box.label(text='Edge Trim')
+    box.row(align=True).prop(st, 'trim', expand=True)
     col = box.column(align=True)
     col.prop(st, 'lift', slider=True)
+    col.prop(st, 'sections')
+    box.prop(st, 'pattern', toggle=True, text='All-over Pattern (optional)')
+    col = box.column(align=True)
+    col.active = st.pattern
     col.prop(st, 'strength', slider=True)
     col.prop(st, 'scale', slider=True)
-    col.prop(st, 'thickness', slider=True)
-    col.prop(st, 'spacing')
+    c2 = box.column(align=True)
+    c2.prop(st, 'thickness', slider=True)
+    c2.prop(st, 'spacing')
     ob = active_wrinkle(context)
     if ob is not None:
         sub = box.box()
@@ -685,7 +1080,7 @@ def draw(layout, context):
     c.label(text='Apply bakes; the mesh you draw on is not changed')
 
 
-CLASSES = (MCH_PG_Wrinkle, MCH_OT_wrinkle_type, MCH_OT_wrinkle_reroll, MCH_OT_wrinkle_apply, MCH_OT_wrinkle_remove,
+CLASSES = (MCH_PG_Wrinkle, MCH_OT_wrinkle_type, MCH_OT_wrinkle_trim, MCH_OT_wrinkle_reset, MCH_OT_wrinkle_reroll, MCH_OT_wrinkle_apply, MCH_OT_wrinkle_remove,
            MCH_GT_wrinkle_slider, MCH_GGT_wrinkle_hud)
 
 

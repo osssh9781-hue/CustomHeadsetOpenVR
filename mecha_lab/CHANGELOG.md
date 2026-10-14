@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 0.20.1 — Cloth Plate: 외곽에서 시작하는 패딩 패널 (2026-10-14)
+
+- 도구 이름 **Cloth Plate**. 이제 모든 변형이 **그린 영역의 외곽에서 시작**: 테두리는 표면에 붙고 안쪽이 **부풀어 오름(Puff)**, 테두리에서 안쪽으로 **주름**.
+- 주름: 테두리의 점에서 **부채꼴로 퍼짐**(시작은 가늘고 촘촘, 안쪽으로 넓게), 주름마다 **길이·세기 랜덤**(길게 가는 것 / 짧게 끝나는 것), 시드로 방향·분포가 바뀜(Bend).
+- 종류 = 프리셋 3개: **Padding**(많이 부풀고 부드러운 주름) / **Denim**(덜 부풀고 가늘고 긴 주름 많이) / **Leather**(중간, 굵은 주름 적게).
+- **Sections**: 긴 쪽을 가로지르는 박음질로 칸을 나눠 칸마다 부풀기.
+- **외곽 마감재(Edge Trim) 프리셋**: Piping(둥근 끈) / Binding(감싼 띠 + 박음질) / Welt(떠 있는 띠), 폭·높이 슬라이더.
+- **박음질(Stitching)**: 테두리 안쪽 박음질 선, 실 땀이 긴 대시로 보이게.
+- 팝업: 종류 ◀ ▶, 새로고침, Edge Trim, **Reset**, 슬라이더 Height / Sections / Puff / Puff Width / Edge Roll / Seam Folds / Fold Spacing / Fold Length / Fold Sharp / Fan / Stitching / Trim Width / Trim Height / Pattern / Scale / Direction / Bend / Detail / Thickness. N 패널 머리에 리셋 버튼.
+- 수정: 슬라이더를 움직여도 뷰포트가 안 바뀌던 문제(모디파이어 값 변경 후 다시 계산 신호), 가파른 곳에서 두께(Solidify)가 가시처럼 튀던 문제, 모서리에서 주름이 끊겨 튀던 문제(실제 직선 거리 + 모서리에서 주름 페이드).
+- 미리보기 `reference/cloth_plate_preview_v0201.png`. 테스트: 37개 파일 1565/1565 (`tests/test_log_bpy501_v0201.txt`). ZIP sha256 `f5e340bd6da5c349c56537645822e8e98e09c5c26f64c40c9f82c2baaf1d4ffd`.
+
 ## 0.20.0 — Cloth Wrinkle 도구 + 판 테두리(N/E/S/W·랜덤) + 라인 두께 (2026-10-14)
 
 - 새 도구 **Cloth Wrinkle**(옷 주름): 라쏘로 그린 영역이 **별도 천 레이어**가 되고 **지오메트리 노드**로 주름이 생김(Apply 전까지 실시간).

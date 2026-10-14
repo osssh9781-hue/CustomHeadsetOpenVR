@@ -114,8 +114,34 @@ nv = len(box.data.vertices)
 S.mch_wrinkle.wtype = 'DENIM'
 r, m = lasso([(300, 350), (700, 350), (700, 650), (300, 650)])
 ob = C.active_object
-check('lasso: a separate live cloth layer, the box unchanged', r == {'FINISHED'} and cw.is_wrinkle(ob) and
-      len(box.data.vertices) == nv and 'Denim' in m, m)
+check('lasso: a separate live cloth plate, the box unchanged', r == {'FINISHED'} and cw.is_wrinkle(ob) and
+      len(box.data.vertices) == nv and 'Cloth plate' in m, m)
+cw.set_input(ob, 'Detail', 1)
+
+
+def zat(o, pick):
+    dg = C.evaluated_depsgraph_get()
+    ev = o.evaluated_get(dg)
+    me = ev.to_mesh()
+    mw = ev.matrix_world
+    pts = [mw @ v.co for v in me.vertices]
+    ev.to_mesh_clear()
+    return max(p_.z for p_ in pts if pick(p_))
+
+
+cw.apply_preset(ob, 'PADDING')
+centre = zat(ob, lambda q: abs(q.x) < 0.5 and abs(q.y) < 0.5)
+rim = zat(ob, lambda q: abs(q.x) > 1.9 and abs(q.y) < 0.5)
+check('padded panel: the middle puffs up, the border stays near the surface', centre > rim + 0.05,
+      (centre, rim))
+for nm in ('Puff', 'Pinch', 'Stitch'):
+    assert cw.get_input(ob, nm) > 0, nm
+check('defaults: puff, border folds and stitching on, no all-over pattern',
+      cw.get_input(ob, 'Strength') == 0.0)
+cw.apply_preset(ob, 'DENIM')
+check('Denim puffs much less than Padding', cw.get_input(ob, 'Puff') < 0.5 * cw.PRESETS['PADDING']['Puff'] *
+      ob['mch_wrinkle_size'])
+cw.set_input(ob, 'Strength', 0.12)
 
 
 def heights(o):
@@ -141,21 +167,57 @@ base = sorted(round(z, 4) for z in heights(ob)[0])
 bpy.ops.mch.wrinkle_reroll()
 check('Reroll: new seed, new wrinkles', cw.get_input(ob, 'Seed') == 2 and
       sorted(round(z, 4) for z in heights(ob)[0]) != base)
+
+
+def flow_angle(o):
+    # dominant fold direction: correlation of height with x / y gradients over the top
+    dg = C.evaluated_depsgraph_get()
+    ev = o.evaluated_get(dg)
+    me = ev.to_mesh()
+    import collections
+    gx = gy = 0.0
+    for e in me.edges:
+        a, b = me.vertices[e.vertices[0]].co, me.vertices[e.vertices[1]].co
+        d = b - a
+        if d.length < 1e-9:
+            continue
+        dz = abs(b.z - a.z) / d.length
+        gx += dz * abs(d.x) / d.length
+        gy += dz * abs(d.y) / d.length
+    ev.to_mesh_clear()
+    return gx / max(gy, 1e-9)
+
+
+saved = {nm: cw.get_input(ob, nm) for nm in ('Puff', 'Roll', 'Pinch', 'Stitch')}
+for nm in saved:
+    cw.set_input(ob, nm, 0.0)
+cw.set_input(ob, 'Bend', 0.0)
+angs = set()
+for sd in range(1, 6):
+    cw.set_input(ob, 'Seed', sd)
+    angs.add(round(flow_angle(ob), 2))
+check('different seeds = different fold directions (not always the same line)', len(angs) >= 3, angs)
+for nm, v_ in saved.items():
+    cw.set_input(ob, nm, v_)
+cw.set_input(ob, 'Seed', 2)
 d0 = sorted(round(z, 4) for z in heights(ob)[0])
 cw.slider_spec(C, 'direction')[4](45)
 check('Direction slider turns the folds', abs(math.degrees(cw.get_input(ob, 'Direction')) - 45) < 1e-3 and
       sorted(round(z, 4) for z in heights(ob)[0]) != d0)
 z1 = heights(ob)[0]
 cw.slider_spec(C, 'strength')[4](0)
+for nm in ('Puff', 'Roll', 'Pinch', 'Stitch'):
+    cw.set_input(ob, nm, 0.0)
 z2 = heights(ob)[0]
 thick = ob.modifiers[cw.MOD_SHELL].thickness
 check('Strength 0: flat cloth layer (only its thickness)', max(z2) - min(z2) < max(z1) - min(z1) and
       max(z2) - min(z2) < thick * 1.1 + 1e-3, (max(z2) - min(z2), thick))
 cw.slider_spec(C, 'strength')[4](40)
+cw.slider_spec(C, 'puff')[4](50)
 cw.slider_spec(C, 'detail')[4](2)
 check('Detail: more faces', heights(ob)[1] > nf)
 cw.slider_spec(C, 'detail')[4](1)
-cw.slider_spec(C, 'edge')[4](0)
+cw.set_input(ob, 'Edge Soft', 0.0)
 bpy.ops.mch.wrinkle_type(step=1)
 check('type arrows change the live layer', int(cw.get_input(ob, 'Type')) == cw.TYPE_IDS.index(S.mch_wrinkle.wtype))
 zl0 = min(heights(ob)[0])
@@ -176,10 +238,22 @@ check('Make High Poly on a live wrinkle layer: denser plain copy, same wrinkles,
       cw.is_wrinkle(ob) and int(cw.get_input(ob, 'Detail')) == 1, (nlive, len(hpo.data.polygons)))
 ob.hide_set(False)
 select_only(ob)
+bpy.ops.mch.wrinkle_trim()
+check('Edge Trim button: none -> piping on the live panel', int(cw.get_input(ob, 'Trim')) == 1 and
+      S.mch_wrinkle.trim == 'PIPING' and cw.get_input(ob, 'Trim Height') > 0)
+zt = heights(ob)[0]
+cw.set_input(ob, 'Sections', 3)
+check('Sections: 3 stitched cells change the panel', sorted(round(z, 4) for z in heights(ob)[0]) !=
+      sorted(round(z, 4) for z in zt))
+cw.set_input(ob, 'Pinch Length', 0.0001)
+bpy.ops.mch.wrinkle_reset()
+check('Reset: settings and the live panel back to the defaults', S.mch_wrinkle.trim == 'NONE' and
+      int(cw.get_input(ob, 'Sections')) == 1 and int(cw.get_input(ob, 'Trim')) == 0 and
+      cw.get_input(ob, 'Pinch Length') > 0.01)
 lay = cw.hud_layout([(400, 300), (600, 500)], 1600, 900)
 check('HUD right of the layer: Apply, Remove, type arrows + reroll, sliders',
-      lay['apply'][0] > 600 and lay['apply'][1] > lay['cancel'][1] > lay['prev'][1] > lay['slider_lift'][1] >
-      lay['slider_strength'][1])
+      lay['apply'][0] > 600 and lay['apply'][1] > lay['cancel'][1] > lay['prev'][1] > lay['trim'][1] >
+      lay['slider_lift'][1] > lay['slider_strength'][1] and 'reset' in lay)
 res = bpy.ops.mch.wrinkle_apply()
 check('Apply: plain mesh with the wrinkles baked', res == {'FINISHED'} and not cw.is_wrinkle(ob) and
       len(ob.modifiers) == 0 and len(ob.data.polygons) >= nf)

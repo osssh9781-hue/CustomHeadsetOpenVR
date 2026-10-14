@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.20.0
+# Test Report — Mecha Lab 0.20.1
+
+## 0.20.1 결과: 37개 파일, 1565 / 1565 통과 (`tests/test_log_bpy501_v0201.txt`). Cloth Plate 모양은 Cycles CPU 렌더로 확인, 뷰포트 팝업 조작은 미검증.
 
 ## 0.20.0 결과: 37개 파일, 1558 / 1558 통과 (headless bpy 5.0.1, `tests/test_log_bpy501_v0200.txt`). 주름 미리보기는 Cycles CPU 렌더로 확인. 뷰포트 팝업 조작은 미검증.
 

@@ -1,8 +1,13 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.20.0 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.20.1 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A000000. 0.20.1 (미검증)
+- [ ] Cloth Plate: 외곽은 붙고 안쪽이 부풀고, 테두리에서 부채꼴 주름(길이 제각각)
+- [ ] 종류 ◀ ▶(Padding/Denim/Leather), Edge Trim(Piping/Binding/Welt), Sections, Reset
+- [ ] 슬라이더를 움직이면 뷰포트에서 바로 바뀌는지 (0.20.0에서 안 바뀌던 문제)
 
 ## A00000. 0.20.0 (미검증 — headless 테스트만 통과)
 - [ ] Cloth Wrinkle 도구: 라쏘 → 천 레이어, 팝업 종류 ◀ ▶(Padding/Denim/Leather), 새로고침, Height/Depth/Scale/Direction/Edge Soft/Detail/Thickness 슬라이더

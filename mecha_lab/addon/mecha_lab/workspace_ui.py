@@ -529,8 +529,8 @@ class MCH_TOOL_cloth_wrinkle(bpy.types.WorkSpaceTool):
     bl_space_type = 'VIEW_3D'
     bl_context_mode = 'OBJECT'
     bl_idname = 'mecha.cloth_wrinkle'
-    bl_label = 'Mecha Cloth Wrinkle'
-    bl_description = ('Draw on a mesh: a separate cloth layer with procedural wrinkles (Padding / Denim / Leather).\n'
+    bl_label = 'Mecha Cloth Plate'
+    bl_description = ('Draw on a mesh: a separate padded cloth panel (puff, edge roll, seam pinch, stitching).\n'
                       'RMB: shapes, Esc: exit')
     bl_icon = 'ops.mesh.extrude_region_move'
     bl_widget = None
