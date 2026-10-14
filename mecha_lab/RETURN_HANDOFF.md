@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.0 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.1 (Claude Code, 2026-10-14)
+
+## 0.23.1
+- ZIP sha256 `40c90b05879f4bc74a37b8b88009f55330569a53b93119382a80bade467ade36`. `TubeLogic.handle_world` / `_near_handle` / `radius_text`, `drag_kind` POINT / RADIUS, 그리기에 주황 핸들 + 연결선.
 
 ## 0.23.0
 - ZIP sha256 `acaefe96cb9e9c3319ce4d55cceb66f16d25dfc6aeda91277f9b727f2753307a`. 신규 `curve_tube.py`: 점 = 오브젝트 커스텀 속성 `mch_tube_pts`(x,y,z,r), `Object.mch_tube`(MCH_PG_Tube, 값 변경 시 `rebuild`), `Scene.mch_tube_defaults`.

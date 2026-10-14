@@ -549,17 +549,58 @@ class TubeLogic:
                 best, bd = min(segs - 1, int(k / last * segs)), math.dist(s, xy)
         return best
 
+    def handle_world(self, context, i):
+        """World position of point i's orange radius handle (beside the point, across the view)."""
+        ob = self._ob()
+        pts = get_points(ob)
+        p = ob.matrix_world @ pts[i][0]
+        proj = self._proj(context)
+        s = proj.to_screen(p)
+        if s is None:
+            return None
+        side = self._air(context, (s[0] + 1.0, s[1] + 0.6), p) - p
+        if side.length < 1e-12:
+            return None
+        return p + side.normalized() * (ob.mch_tube.radius * pts[i][1])
+
+    def _near_handle(self, context, xy):
+        ob = self._ob()
+        if ob is None:
+            return None
+        proj = self._proj(context)
+        best, bd = None, HIT_PX
+        for i in range(len(get_points(ob))):
+            h = self.handle_world(context, i)
+            hs = proj.to_screen(h) if h is not None else None
+            if hs is not None and math.dist(hs, xy) <= bd:
+                best, bd = i, math.dist(hs, xy)
+        return best
+
+    def radius_text(self):
+        ob = self._ob()
+        if ob is None or self.drag is None or self.drag_kind != 'RADIUS':
+            return ''
+        return f'Radius: {ob.mch_tube.radius * get_points(ob)[self.drag][1]:.4f}'
+
     def start(self, context, ob=None):
         self.ob_name = ob.name if ob is not None else ''
         self.drag = None
+        self.drag_kind = 'POINT'
         self.count_added = 0
 
     def click(self, context, xy):
         ob = self._ob()
         if ob is not None:
             i = self._near_point(context, xy)
+            h = self._near_handle(context, xy)
+            if h is not None:
+                hs = self._proj(context).to_screen(self.handle_world(context, h))
+                ps = self._proj(context).to_screen(ob.matrix_world @ get_points(ob)[i][0]) if i is not None else None
+                if i is None or ps is None or math.dist(hs, xy) < math.dist(ps, xy):
+                    self.drag, self.drag_kind = h, 'RADIUS'
+                    return 'RADIUS'
             if i is not None:
-                self.drag = i
+                self.drag, self.drag_kind = i, 'POINT'
                 return 'DRAG'
             seg = self._near_curve(context, xy)
             if seg is not None:
@@ -570,7 +611,7 @@ class TubeLogic:
                 pts.insert(seg + 1, (p, r))
                 set_points(ob, pts)
                 rebuild(ob)
-                self.drag = seg + 1
+                self.drag, self.drag_kind = seg + 1, 'POINT'
                 return 'INSERT'
         w = self._place(context, xy)
         if ob is None:
@@ -598,12 +639,19 @@ class TubeLogic:
         pts = get_points(ob)
         cur = ob.matrix_world @ pts[self.drag][0]
         w = self._air(context, xy, cur)
+        if self.drag_kind == 'RADIUS':           # orange handle: distance to the point = this point's radius
+            r = (w - cur).length / max(1e-9, ob.mch_tube.radius)
+            pts[self.drag] = (pts[self.drag][0], max(0.01, r))
+            set_points(ob, pts)
+            rebuild(ob)
+            return
         pts[self.drag] = (ob.matrix_world.inverted() @ w, pts[self.drag][1])
         set_points(ob, pts)
         rebuild(ob)
 
     def release(self):
         self.drag = None
+        self.drag_kind = 'POINT'
 
     def point_radius(self, context, xy, factor):
         ob = self._ob()
@@ -658,6 +706,21 @@ def _draw():
             if len(pts) >= 2:
                 sh.uniform_float('color', (1.0, 1.0, 1.0, 0.55))
                 batch_for_shader(sh, 'LINE_STRIP', {'pos': [tuple(p) for p in pts]}).draw(sh)
+            ctx = bpy.context
+            hs = []
+            for i, p in enumerate(pts):
+                try:
+                    h = op.handle_world(ctx, i)
+                except (AttributeError, ReferenceError, TypeError):
+                    h = None
+                if h is not None:
+                    hs.append((p, h))
+            if hs:
+                sh.uniform_float('color', (1.0, 0.65, 0.3, 0.7))
+                batch_for_shader(sh, 'LINES', {'pos': [tuple(c) for pr in hs for c in pr]}).draw(sh)
+                gpu.state.point_size_set(8.0)
+                sh.uniform_float('color', (1.0, 0.65, 0.3, 1.0))
+                batch_for_shader(sh, 'POINTS', {'pos': [tuple(h) for _p, h in hs]}).draw(sh)
             gpu.state.point_size_set(10.0)
             sh.uniform_float('color', (1.0, 1.0, 1.0, 1.0))
             batch_for_shader(sh, 'POINTS', {'pos': [tuple(p) for p in pts]}).draw(sh)
@@ -679,7 +742,7 @@ class MCH_OT_tube_draw(TubeLogic, bpy.types.Operator):
         if context.area:
             context.area.header_text_set(
                 'Tube: click = add point (on the mesh or in the air)  |  click the line = insert  |  drag = move  |  '
-                'Ctrl+Wheel on a point = its radius  |  X = delete point  |  Enter / Right click = done')
+                'orange dot / Ctrl+Wheel = that point\'s radius  |  X = delete point  |  Enter / Right click = done')
 
     def _end(self, context):
         if self in _draw_ops:
@@ -710,12 +773,15 @@ class MCH_OT_tube_draw(TubeLogic, bpy.types.Operator):
             return {'PASS_THROUGH'}
         if event.type == 'MOUSEMOVE':
             self.move(context, xy)
+            if self.radius_text() and context.area:
+                context.area.header_text_set(self.radius_text())
             return {'RUNNING_MODAL'}
         if event.type == 'LEFTMOUSE':
             if event.value == 'PRESS':
                 self.click(context, xy)
             elif event.value == 'RELEASE':
                 self.release()
+                self._hint(context)
             return {'RUNNING_MODAL'}
         if event.type in {'X', 'DEL'} and event.value == 'PRESS':
             self.delete_point(context, xy)

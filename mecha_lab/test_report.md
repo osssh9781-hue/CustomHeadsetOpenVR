@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.23.0
+# Test Report — Mecha Lab 0.23.1
+
+## 0.23.1 결과: 45개 파일, 1961 / 1961 통과 (`tests/test_log_bpy501_v0231.txt`). 주황 핸들 드래그는 가짜 이벤트로 확인, 실제 뷰포트 표시는 미검증.
 
 ## 0.23.0 결과: 45개 파일, 1958 / 1958 통과 (`tests/test_log_bpy501_v0230.txt`). Tube는 가짜 이벤트(정면 Ortho)로 점 추가/드래그/삽입/삭제/굵기, 설정, Repeat, Apply 확인 + Cycles 렌더. 실제 뷰포트 조작은 미검증.
 
