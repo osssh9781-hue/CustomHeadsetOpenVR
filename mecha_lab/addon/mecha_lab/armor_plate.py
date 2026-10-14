@@ -188,7 +188,12 @@ def screen_patch(groups, spacing=14.0, min_spacing=2.0):
 
 def is_plate_or_part(ob):
     ex = getattr(ob, 'mch_extract', None)
-    return bool(ex is not None and ex.is_part)
+    if ex is not None and ex.is_part:
+        return True
+    try:
+        return bool(ob.get('mch_wrinkle'))          # 0.20: live cloth wrinkle layers are skipped too
+    except (AttributeError, TypeError, ReferenceError):
+        return False
 
 
 def pick_surface(context, projector, groups):
@@ -715,6 +720,34 @@ class MCH_OT_plate_lines(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_plate_rim(bpy.types.Operator):
+    """Raise (or lower) the border band on this side of the plate: N / E / S / W"""
+    bl_idname = 'mch.plate_rim'
+    bl_label = 'Plate Rim'
+    bl_options = {'REGISTER', 'UNDO'}
+    side: EnumProperty(items=[(k, k, '') for k in 'NESW'] + [('RANDOM', 'Random', ''), ('PROFILE', 'Profile', '')],
+                       default='N')
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.active_object
+        return ob is not None and is_plate_or_part(ob)
+
+    def execute(self, context):
+        p = context.active_object.mch_extract
+        if self.side == 'RANDOM':
+            if p.rim_random:
+                p.rim_seed += 1                 # pressed again: new random pieces
+            else:
+                p.rim_random = True
+        elif self.side == 'PROFILE':
+            p.rim_profile = 'BEVEL' if p.rim_profile == 'CHAMFER' else 'CHAMFER'
+        else:
+            key = 'rim_' + self.side.lower()
+            setattr(p, key, not getattr(p, key))
+        return {'FINISHED'}
+
+
 class MCH_OT_plate_apply(bpy.types.Operator):
     """Apply the plate: it becomes a plain mesh with the current shape (no more live changes)"""
     bl_idname = 'mch.plate_apply'
@@ -766,11 +799,22 @@ HUD_BUTTONS = (('apply', 'CHECKMARK', 'mch.plate_apply', {}, 'Apply'),
                ('prev', 'TRIA_LEFT', 'mch.plate_cycle', {'step': -1}, 'Previous profile'),
                ('next', 'TRIA_RIGHT', 'mch.plate_cycle', {'step': 1}, 'Next profile'),
                ('lines', 'IPO_LINEAR', 'mch.plate_lines', {'reroll': False}, 'Surface lines'),
-               ('reroll', 'FILE_REFRESH', 'mch.plate_lines', {'reroll': True}, 'New random lines'))
+               ('reroll', 'FILE_REFRESH', 'mch.plate_lines', {'reroll': True}, 'New random lines'),
+               ('rim_n', 'EVENT_N', 'mch.plate_rim', {'side': 'N'}, 'Raise the north border'),
+               ('rim_e', 'EVENT_E', 'mch.plate_rim', {'side': 'E'}, 'Raise the east border'),
+               ('rim_s', 'EVENT_S', 'mch.plate_rim', {'side': 'S'}, 'Raise the south border'),
+               ('rim_w', 'EVENT_W', 'mch.plate_rim', {'side': 'W'}, 'Raise the west border'),
+               ('rim_rand', 'FILE_REFRESH', 'mch.plate_rim', {'side': 'RANDOM'}, 'Random border pieces (again: new)'),
+               ('rim_prof', 'MOD_BEVEL', 'mch.plate_rim', {'side': 'PROFILE'}, 'Rim edge: chamfer / bevel'))
 # key, label, part property (None = Face Size), lo, hi  (lengths: 1/1000 of the plate size)
 SLIDERS = (('height', 'Height', 'extract_height', 1, 300), ('chamfer', 'Chamfer', 'chamfer_width', 0, 200),
            ('bevel', 'Bevel', 'bevel_width', 0, 200), ('crease', 'Crease', 'facet_depth', -200, 200),
+           ('line_width', 'Line Width', 'facet_width', 0, 80), ('line_move', 'Line Move', 'facet_offset', -100, 100),
+           ('line_turn', 'Line Turn', 'facet_rotation', -180, 180),
+           ('rim_height', 'Rim Height', 'rim_height', -200, 200), ('rim_width', 'Rim Width', 'rim_width', 1, 60),
+           ('rim_slope', 'Rim Slope', 'rim_slope', 2, 200), ('rim_turn', 'Rim Turn', 'dir_rotation', -180, 180),
            ('spacing', 'Face Size', None, 20, 400))
+PCT_PROPS = {'facet_depth', 'facet_width', 'facet_offset', 'rim_height', 'rim_width', 'rim_slope'}
 LINE_STYLES = ('NONE', 'CENTER', 'CROSS', 'RANDOM')
 LINE_NAMES = {'NONE': 'Lines: off', 'CENTER': 'Lines: center', 'CROSS': 'Lines: cross', 'RANDOM': 'Lines: random'}
 
@@ -790,9 +834,13 @@ def slider_spec(context, key, ob=None):
                 rebuild_plate(context, ob, val)
         return label, v, lo, hi, setter, f'{label}  {v} px'
     p = ob.mch_extract
-    if prop == 'facet_depth':                       # crease: % of the plate height
-        v = int(round(p.facet_depth * 100.0))
-        return label, v, lo, hi, (lambda val: setattr(p, 'facet_depth', val / 100.0)), f'{label}  {v} %'
+    if prop in PCT_PROPS:                           # surface lines: percent
+        v = int(round(getattr(p, prop) * 100.0))
+        return label, v, lo, hi, (lambda val: setattr(p, prop, val / 100.0)), f'{label}  {v} %'
+    if prop in {'facet_rotation', 'dir_rotation'}:
+        import math as _m
+        v = int(round(_m.degrees(getattr(p, prop))))
+        return label, v, lo, hi, (lambda val: setattr(p, prop, _m.radians(val))), f'{label}  {v} deg'
     size = max(1e-6, float(plate_source(ob).get('size', 1.0)))
     v = int(round(getattr(p, prop) / size * 1000.0))
 
@@ -807,12 +855,14 @@ def hud_layout(screen_pts, region_w, region_h, btn=30.0, gap=6.0, slider_w=104.0
         return {}
     x = min(max(max(p[0] for p in pts) + btn * 1.2, btn), region_w - slider_w - btn)
     step = btn + gap
-    total = step * 4 + (slider_h + gap) * len(SLIDERS)
+    total = step * 5 + (slider_h + gap) * len(SLIDERS)
     top = min(max((max(p[1] for p in pts) + min(p[1] for p in pts)) / 2 + total / 2, total), region_h - btn)
     out = {'apply': (x, top), 'cancel': (x, top - step),
            'prev': (x, top - 2 * step), 'next': (x + step, top - 2 * step),
            'lines': (x, top - 3 * step), 'reroll': (x + step, top - 3 * step)}
-    y = top - 4 * step
+    for i, k in enumerate(('rim_n', 'rim_e', 'rim_s', 'rim_w', 'rim_rand', 'rim_prof')):
+        out[k] = (x + i * step, top - 4 * step)
+    y = top - 5 * step
     for key, *_ in SLIDERS:
         out['slider_' + key] = (x - btn / 2 + slider_w / 2, y + btn / 2 - slider_h / 2)
         y -= slider_h + gap
@@ -935,6 +985,10 @@ class MCH_GGT_plate_hud(bpy.types.GizmoGroup):
             gz.scale_basis = 15.0
             gz.matrix_basis[0][3] = pos[0] * ui
             gz.matrix_basis[1][3] = pos[1] * ui
+            if name in {'rim_n', 'rim_e', 'rim_s', 'rim_w'} and _ob is not None:
+                gz.color = (1.0, 0.62, 0.16) if getattr(_ob.mch_extract, name) else (0.17, 0.19, 0.23)
+            elif name == 'rim_rand' and _ob is not None:
+                gz.color = (1.0, 0.62, 0.16) if _ob.mch_extract.rim_random else (0.17, 0.19, 0.23)
 
 
 _label_handle = None
@@ -951,7 +1005,8 @@ def _draw_labels():
         blf.size(0, 11 * ui)
         name = dict((p[0], p[1]) for p in PRESETS).get(context.scene.mch_plate.preset, '')
         lines = LINE_NAMES.get(ob.mch_extract.facet_style, '')
-        for key, text in (('apply', 'Apply'), ('cancel', 'Remove'), ('next', name), ('reroll', lines)):
+        for key, text in (('apply', 'Apply'), ('cancel', 'Remove'), ('next', name), ('reroll', lines),
+                          ('rim_prof', 'Rims: ' + ob.mch_extract.rim_profile.title())):
             x, y = lay[key]
             blf.color(0, *((1.0, 0.62, 0.16) if key == 'apply' else (0.85, 0.87, 0.9)), 1.0)
             blf.position(0, (x + 21) * ui, (y - 4) * ui, 0)
@@ -986,10 +1041,28 @@ def draw(layout, context):
         col = sub.column(align=True)
         for prop in ('extract_height', 'chamfer_width', 'chamfer_angle', 'bevel_width'):
             col.prop(p, prop)
+        rr = sub.row(align=True)
+        rr.label(text='Rims')
+        for k in 'nesw':
+            rr.prop(p, f'rim_{k}', toggle=True)
+        rr.prop(p, 'rim_random', toggle=True, text='Random')
+        if p.rim_n or p.rim_e or p.rim_s or p.rim_w or p.rim_random:
+            rc = sub.column(align=True)
+            rc.prop(p, 'rim_height', slider=True)
+            rc.prop(p, 'rim_width', slider=True)
+            rc.row(align=True).prop(p, 'rim_profile', expand=True)
+            rc.prop(p, 'rim_slope', slider=True)
+            if p.rim_random:
+                r2 = rc.row(align=True)
+                r2.prop(p, 'rim_count')
+                r2.prop(p, 'rim_seed')
+            rc.prop(p, 'dir_rotation', text='Rim Turn')
         ln = sub.column(align=True)
         ln.prop(p, 'facet_style')
         if p.facet_style != 'NONE':
             ln.prop(p, 'facet_depth', slider=True)
+            ln.prop(p, 'facet_width', slider=True)
+            ln.prop(p, 'facet_offset', slider=True)
             ln.prop(p, 'facet_rotation')
             if p.facet_style == 'RANDOM':
                 r = ln.row(align=True)
@@ -1010,7 +1083,7 @@ def draw(layout, context):
     fx.draw(layout, context)
 
 
-CLASSES = (MCH_PG_Plate, MCH_OT_plate_preset, MCH_OT_plate_cycle, MCH_OT_plate_lines, MCH_OT_plate_apply, MCH_OT_plate_cancel,
+CLASSES = (MCH_PG_Plate, MCH_OT_plate_preset, MCH_OT_plate_cycle, MCH_OT_plate_lines, MCH_OT_plate_rim, MCH_OT_plate_apply, MCH_OT_plate_cancel,
            MCH_GT_plate_slider, MCH_GGT_plate_hud)
 
 

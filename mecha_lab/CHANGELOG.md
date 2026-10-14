@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## 0.20.0 — Cloth Wrinkle 도구 + 판 테두리(N/E/S/W·랜덤) + 라인 두께 (2026-10-14)
+
+- 새 도구 **Cloth Wrinkle**(옷 주름): 라쏘로 그린 영역이 **별도 천 레이어**가 되고 **지오메트리 노드**로 주름이 생김(Apply 전까지 실시간).
+  - 종류: **Padding**(퀼팅 패딩) / **Denim**(청바지 잔주름) / **Leather**(두꺼운 가죽 큰 주름) — 미리보기 `reference/cloth_wrinkle_preview_v0200.png`.
+  - 팝업: Apply / Remove / 종류 ◀ ▶ / 랜덤(새로고침), 슬라이더 **Height(표면에서 높이)**, **Depth(주름 깊이)**, Scale(간격), Direction(방향), Edge Soft(테두리로 갈수록 약해짐), Detail(촘촘함), Thickness(두께).
+  - Sketch 모드, 우클릭 Make High Poly(주름 디테일을 올린 촘촘한 복사본) 지원.
+- **아머 플레이트 테두리 솟음**: 팝업 **N / E / S / W** 토글(켠 방향 테두리만 솟음, 넷 다 = 전체), **랜덤 조각**(테두리 근처 랜덤 위치, 다시 누르면 새로), **테두리 경사 Chamfer / Bevel** 전환 + Rim Height / Width / Slope / Turn 슬라이더.
+- **표면 라인**: Line Width(평평한 띠 + 양쪽 날카로운 경사), Line Move(위치), Line Turn(회전). **Crease 높이는 이제 판 크기 기준**(판 높이를 키워도 라인이 같이 커지지 않음 — 높게 부풀릴 때 크게 접히던 원인).
+- 높은 판이 둥근 곳(어깨)에서 퍼지며 울퉁불퉁하던 문제: 높이가 클수록 평균 방향으로 올라가고, 점 방향(노멀)을 부드럽게 다듬음.
+- 테스트: 37개 파일 1558/1558 (`tests/test_log_bpy501_v0200.txt`), 신규 `test_v0194.py`, `test_v0200.py`. ZIP sha256 `6c5b1e920f36be1fc29ecbd7c8ccf88de3904dfb32c9e9cbb4a53bdb16766ce2`.
+
 ## 0.19.3 — 모든 라쏘 도구 Sketch 모드 (2026-10-14)
 
 - 뷰포트 위 도형 버튼 옆 **Sketch** 버튼: 켜면 Cut / Split / Armor Plate / Base Mesh 모두

@@ -183,7 +183,7 @@ def boundary_loops(bm, faces):
     return loops
 
 
-def facet_lines(style, count, seed, rotation, pts2d, radius):
+def facet_lines(style, count, seed, rotation, pts2d, radius, offset=0.0):
     """0.19.2 surface lines: crease lines across the plate top in the frame
     plane.  ``pts2d`` = region vertices in frame coordinates (x, y).  Returns
     [(px, py, angle, sign)]: a line through (px, py) at ``angle``; sign +1 =
@@ -197,6 +197,7 @@ def facet_lines(style, count, seed, rotation, pts2d, radius):
     syy = sum((p[1] - my) ** 2 for p in pts2d)
     sxy = sum((p[0] - mx) * (p[1] - my) for p in pts2d)
     a = 0.5 * math.atan2(2.0 * sxy, sxx - syy) + rotation       # long axis
+    mx, my = mx - math.sin(a) * offset, my + math.cos(a) * offset  # 0.19.4: move across the main line
     if style == 'CENTER':
         return [(mx, my, a, 1.0)]
     if style == 'CROSS':
@@ -215,9 +216,10 @@ def line_dist(line, x, y):
     return (x - px) * -math.sin(ang) + (y - py) * math.cos(ang)
 
 
-def facet_value(lines, x, y, fall):
-    """Tent field: +-1 on a line, falling linearly to 0 at ``fall``."""
-    return sum(l[3] * max(0.0, 1.0 - abs(line_dist(l, x, y)) / fall) for l in lines)
+def facet_value(lines, x, y, fall, half=0.0):
+    """Tent field: +-1 on a line (a flat band of half width ``half``), falling
+    linearly to 0 at ``fall`` beyond the band."""
+    return sum(l[3] * max(0.0, 1.0 - max(0.0, abs(line_dist(l, x, y)) - half) / fall) for l in lines)
 
 
 def region_frame(verts, faces):
@@ -520,20 +522,24 @@ def _build(bm, context_mesh, p, armor, notes):
     bm.normal_update()
     # 0.19.2 surface lines: cut the region along each crease line first, so the
     # crease is a real edge (sharp, even on a light plate)
-    lines, fcen, ft, fb, fall = [], None, None, None, 1.0
+    lines, fcen, ft, fb, fall, half, crease_h = [], None, None, None, 1.0, 0.0, 0.0
     style = getattr(p, 'facet_style', 'NONE')
     if style != 'NONE' and abs(getattr(p, 'facet_depth', 0.0)) > 1e-9:
         fcen, fn, ft, fb, frad = region_frame(list(bm.verts), list(bm.faces))
         pts = [((v.co - fcen).dot(ft), (v.co - fcen).dot(fb)) for v in bm.verts]
         lines = facet_lines(style, getattr(p, 'facet_count', 3), getattr(p, 'facet_seed', 1),
-                            getattr(p, 'facet_rotation', 0.0), pts, frad)
+                            getattr(p, 'facet_rotation', 0.0), pts, frad, getattr(p, 'facet_offset', 0.0) * frad)
         fall = frad * 1.1
+        half = max(0.0, getattr(p, 'facet_width', 0.0)) * frad * 0.5
+        crease_h = p.facet_depth * frad * 0.1       # 0.19.4: part of the plate SIZE, not of its height
         for ln in lines:
             px, py, ang, _sg = ln
             d3 = ft * math.cos(ang) + fb * math.sin(ang)
-            co = fcen + ft * px + fb * py
-            geom = bm.verts[:] + bm.edges[:] + bm.faces[:]
-            bmesh.ops.bisect_plane(bm, geom=geom, dist=frad * 1e-6, plane_co=co, plane_no=fn.cross(d3))
+            nrm = fn.cross(d3)
+            for side in ((-half, half) if half > 0 else (0.0,)):
+                co = fcen + ft * px + fb * py + nrm.normalized() * side * (1 if nrm.length > 0 else 0)
+                geom = bm.verts[:] + bm.edges[:] + bm.faces[:]
+                bmesh.ops.bisect_plane(bm, geom=geom, dist=frad * 1e-6, plane_co=co, plane_no=nrm)
         bm.verts.ensure_lookup_table()
         bm.normal_update()
 
@@ -564,6 +570,23 @@ def _build(bm, context_mesh, p, armor, notes):
     dist = distance_from_boundary(verts, bset)
     dmax = max((d for d in dist.values() if d < math.inf), default=0.0) or 1.0
     vnorm = {v: (v.normal.copy() if v.normal.length > 1e-9 else n_avg.copy()) for v in verts}
+    # 0.19.3: a light (low poly) region has noisy vertex normals -> smooth them a little, and a tall
+    # part rises more and more along the average normal (raised along each normal it fanned out and
+    # buckled on a curved surface such as a shoulder)
+    nbr_all = {v: [e.other_vert(v) for e in v.link_edges] for v in verts}
+    for _ in range(3):
+        nxt = {}
+        for v in verts:
+            acc = vnorm[v] * 2.0
+            for w in nbr_all[v]:
+                acc += vnorm[w]
+            nxt[v] = acc.normalized() if acc.length > 1e-9 else vnorm[v]
+        vnorm = nxt
+    tall = min(0.9, 1.2 * max(p.extract_height, 0.0) / max(radius, 1e-9))
+    updir = {}
+    for v in verts:
+        d = vnorm[v] * (1.0 - tall) + n_avg * tall
+        updir[v] = d.normalized() if d.length > 1e-9 else n_avg.copy()
     offset = p.surface_offset
     shell = p.thickness > 1e-9
     branches = guide_branches(p) if armor else []
@@ -744,6 +767,24 @@ def _build(bm, context_mesh, p, armor, notes):
     bot_pos = top_pos if all(abs(a - b) < 1e-12 for a, b in cap_s.values()) else shrink(1)
 
     # ---- heights ------------------------------------------------------------------------
+    # 0.19.4 edge rims: the border band of the chosen sides (N / E / S / W of the part frame) rises
+    rims = [k for k in DIRS if getattr(p, f'rim_{k.lower()}', False)]
+    rim_w = max(1e-6, getattr(p, 'rim_width', 0.15) * radius)
+    rim_h = getattr(p, 'rim_height', 0.5) * radius * 0.1
+    rim_slope = max(0.02, getattr(p, 'rim_slope', 0.3))
+    rim_kind = getattr(p, 'rim_profile', 'CHAMFER')
+    rim_segs = []
+    if getattr(p, 'rim_random', False):
+        rng = random.Random(int(getattr(p, 'rim_seed', 1)))
+        rim_segs = [(rng.uniform(0.0, 2.0 * math.pi), rng.uniform(0.15, 0.55))
+                    for _i in range(max(1, int(getattr(p, 'rim_count', 3))))]
+
+    def rim_profile(d):
+        """1 on the border band, then down to 0 over the slope: chamfer (straight) or bevel (round)."""
+        if d <= rim_w:
+            return 1.0
+        t = min(1.0, (d - rim_w) / (rim_slope * rim_w))
+        return 0.5 * (1.0 + math.cos(math.pi * t)) if rim_kind == 'BEVEL' else 1.0 - t
     def top_height(v, co_for_uv):
         r = 1.0 - min(dist[v], dmax) / dmax
         u, w_ = local_uv(co_for_uv)
@@ -755,9 +796,21 @@ def _build(bm, context_mesh, p, armor, notes):
                 h += ridge_value(u, w_, branches, p, radius) * fade
         else:
             h = p.extract_height
+        if rims or rim_segs:
+            d = dist[v]
+            if d < rim_w * (1.0 + rim_slope):
+                share = 0.0
+                if rims:
+                    wt = dir_weights(theta)
+                    w2 = {k: x_ ** 2 for k, x_ in wt.items()}       # sharper split between the 4 sides
+                    share = sum(w2[k] for k in rims) / (sum(w2.values()) or 1.0)
+                for c0, hw in rim_segs:                            # random pieces along the border
+                    da = abs((theta - c0 + math.pi) % (2.0 * math.pi) - math.pi)
+                    share = max(share, max(0.0, min(1.0, 1.0 - (da - hw) / 0.12)))
+                h += rim_h * share * rim_profile(d)
         if lines:
             x, y = fxy(co_for_uv)
-            h = max(p.extract_height * 0.15, h + p.extract_height * p.facet_depth * facet_value(lines, x, y, fall))
+            h = max(p.extract_height * 0.15, h + crease_h * facet_value(lines, x, y, fall, half))
         return h
 
     # ---- assemble -----------------------------------------------------------------------------
@@ -766,7 +819,7 @@ def _build(bm, context_mesh, p, armor, notes):
     vt, vb = {}, {}
     for v in verts:
         h = top_height(v, v.co)
-        vt[v] = out.verts.new(top_pos[v] + vnorm[v] * (offset + h))
+        vt[v] = out.verts.new(top_pos[v] + vnorm[v] * offset + updir[v] * h)
         if not shell:
             vb[v] = out.verts.new(bot_pos[v] + vnorm[v] * offset)
     for f in faces:
@@ -789,9 +842,10 @@ def _build(bm, context_mesh, p, armor, notes):
             top = prof_top[li][ci]
             def at(s):
                 return project(base + c['inward'] * c['miter'] * s, nv)
-            vt[v].co = at(top[-1][0]) + nv * (offset + ht + top[-1][1])
+            up = updir[v]
+            vt[v].co = at(top[-1][0]) + nv * offset + up * (ht + top[-1][1])
             for s, z in reversed(top[:-1]):
-                chain.append(out.verts.new(at(s) + nv * (offset + ht + z)))
+                chain.append(out.verts.new(at(s) + nv * offset + up * (ht + z)))
             bot = prof_bot[li][ci]
             for s, z in bot[:-1] if not shell else bot:
                 chain.append(out.verts.new(at(s) + nv * (offset + z)))
@@ -825,7 +879,7 @@ def _build(bm, context_mesh, p, armor, notes):
     crease_pairs = []
     if lines:
         tol = radius * 1e-4
-        on = {v: {i for i, ln in enumerate(lines) if abs(line_dist(ln, *fxy(v.co))) < tol} for v in verts}
+        on = {v: {i for i, ln in enumerate(lines) if abs(abs(line_dist(ln, *fxy(v.co))) - half) < tol} for v in verts}
         for e in {e for f in faces for e in f.edges}:
             a, b = e.verts
             if on[a] & on[b]:

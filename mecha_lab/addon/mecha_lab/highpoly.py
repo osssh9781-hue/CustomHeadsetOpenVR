@@ -75,9 +75,14 @@ def make_highpoly(context, ob, level, ratio, angle, segments, plate_detail=10):
         if me_old.users == 0:
             bpy.data.meshes.remove(me_old)
     from . import armor_plate as ap
-    dense = ap.dense_plate_mesh(context, ob, plate_detail)
+    from . import cloth_wrinkle as cw
+    dense = cw.dense_mesh(context, ob) if cw.is_wrinkle(ob) else ap.dense_plate_mesh(context, ob, plate_detail)
     if dense is not None:                       # plates: same plate, small faces (no subdivision)
         dense.name = ob.name + '_HP'
+        try:
+            dense.shade_smooth()
+        except AttributeError:
+            pass
         hp = bpy.data.objects.new(ob.name + '_HP', dense)
         st_coll.objects.link(hp)
         hp.matrix_world = ob.matrix_world.copy()

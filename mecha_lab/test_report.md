@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.19.3
+# Test Report — Mecha Lab 0.20.0
+
+## 0.20.0 결과: 37개 파일, 1558 / 1558 통과 (headless bpy 5.0.1, `tests/test_log_bpy501_v0200.txt`). 주름 미리보기는 Cycles CPU 렌더로 확인. 뷰포트 팝업 조작은 미검증.
 
 ## 0.19.3 결과: 35개 파일, 1518 / 1518 통과 (headless bpy 5.0.1, `tests/test_log_bpy501_v0193.txt`). Sketch 버튼·키 입력은 GUI에서 실행하지 못함 — 미검증.
 

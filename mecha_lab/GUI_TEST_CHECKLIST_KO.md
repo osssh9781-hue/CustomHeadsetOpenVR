@@ -1,8 +1,14 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.19.3 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.20.0 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A00000. 0.20.0 (미검증 — headless 테스트만 통과)
+- [ ] Cloth Wrinkle 도구: 라쏘 → 천 레이어, 팝업 종류 ◀ ▶(Padding/Denim/Leather), 새로고침, Height/Depth/Scale/Direction/Edge Soft/Detail/Thickness 슬라이더
+- [ ] 우클릭 Make High Poly로 주름 하이폴, Apply로 확정
+- [ ] 아머 플레이트 팝업 N/E/S/W, 랜덤 조각, Chamfer/Bevel 전환, Rim 슬라이더
+- [ ] 라인 Width/Move/Turn, 높이를 크게 해도 라인이 같이 커지지 않는지, 어깨에서 높은 판이 울퉁불퉁하지 않은지
 
 ## A0000. 0.19.3 (미검증 — headless 테스트만 통과)
 - [ ] 도형 버튼 옆 Sketch 버튼 켜기 → Cut: 라쏘 여러 개 그리기, Alt로 빼기, Enter로 한 번에 컷 (Alt+Enter = 안쪽 남기기)

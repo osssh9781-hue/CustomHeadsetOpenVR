@@ -25,7 +25,7 @@ from . import core_geometry as cg
 from . import tool_state as ts
 
 KEY = 'mch_lasso_sketch'          # Scene ID prop (JSON) - Ctrl+Z steps back through it
-MODES = {'CUT', 'SPLIT', 'PLATE'}
+MODES = {'CUT', 'SPLIT', 'PLATE', 'WRINKLE'}
 
 
 def is_on(context):
@@ -141,6 +141,9 @@ def commit(context, alt=False):
     if mode == 'PLATE':
         from . import armor_plate as ap
         msg = ap.perform_plate(context, loops, proj)
+    elif mode == 'WRINKLE':
+        from . import cloth_wrinkle as cw
+        msg = cw.perform_wrinkle(context, loops, proj)
     else:
         from . import cut_engine as ce
         how = getattr(getattr(scene, 'mch_cut', None), 'targets', 'AUTO')

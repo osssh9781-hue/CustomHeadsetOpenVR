@@ -429,7 +429,7 @@ def _tool_keymap(mode):
          {'properties': [('cutter', True)]}),
         ('mch.base_sketch_clear', {'type': 'ESC', 'value': 'PRESS'}, None),
         ('mch.base_sketch_undo', {'type': 'BACK_SPACE', 'value': 'PRESS'}, None),
-    ) if mode == 'BASE' else ()) + (_lasso_sketch_keys() if mode in {'CUT', 'SPLIT', 'PLATE'} else ()) + (
+    ) if mode == 'BASE' else ()) + (_lasso_sketch_keys() if mode in {'CUT', 'SPLIT', 'PLATE', 'WRINKLE'} else ()) + (
         # Esc with no stroke pending: back to Blender's Select Box tool.
         ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),
         # B06: R / Shift+R rotate a PNG stamp (poll fails for other shapes -> Blender's R).
@@ -525,6 +525,21 @@ class MCH_TOOL_armor_plate(bpy.types.WorkSpaceTool):
         _draw_tool_settings(context, layout, tool)
 
 
+class MCH_TOOL_cloth_wrinkle(bpy.types.WorkSpaceTool):
+    bl_space_type = 'VIEW_3D'
+    bl_context_mode = 'OBJECT'
+    bl_idname = 'mecha.cloth_wrinkle'
+    bl_label = 'Mecha Cloth Wrinkle'
+    bl_description = ('Draw on a mesh: a separate cloth layer with procedural wrinkles (Padding / Denim / Leather).\n'
+                      'RMB: shapes, Esc: exit')
+    bl_icon = 'ops.mesh.extrude_region_move'
+    bl_widget = None
+    bl_keymap = _tool_keymap('WRINKLE')
+
+    def draw_settings(context, layout, tool):
+        _draw_tool_settings(context, layout, tool)
+
+
 class MCH_TOOL_primitive(bpy.types.WorkSpaceTool):
     """0.14: a real tool so click / Enter / Alt+Enter reach the ghost shape
     before Blender's Select Box tool takes the click."""
@@ -542,7 +557,8 @@ class MCH_TOOL_primitive(bpy.types.WorkSpaceTool):
         _draw_tool_settings(context, layout, tool)
 
 
-NATIVE_TOOLS = (MCH_TOOL_cut, MCH_TOOL_split, MCH_TOOL_base_mesh, MCH_TOOL_primitive, MCH_TOOL_armor_plate)   # MCH_TOOL_mask kept, not registered (Mask hidden)
+NATIVE_TOOLS = (MCH_TOOL_cut, MCH_TOOL_split, MCH_TOOL_base_mesh, MCH_TOOL_primitive, MCH_TOOL_armor_plate,
+                MCH_TOOL_cloth_wrinkle)   # MCH_TOOL_mask kept, not registered (Mask hidden)
 
 
 def register_native_tools():
@@ -554,6 +570,7 @@ def register_native_tools():
     bpy.utils.register_tool(MCH_TOOL_base_mesh, after={MCH_TOOL_split.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_primitive, after={MCH_TOOL_base_mesh.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_armor_plate, after={MCH_TOOL_primitive.bl_idname}, group=False)
+    bpy.utils.register_tool(MCH_TOOL_cloth_wrinkle, after={MCH_TOOL_armor_plate.bl_idname}, group=False)
     _tools_registered = True
 
 

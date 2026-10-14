@@ -92,11 +92,34 @@ _ANN = {
         ('CROSS', 'Cross', 'Two creases crossing in the middle'),
         ('RANDOM', 'Random', 'Random crease lines (Seed / Count)')], default='NONE'),
     'facet_depth': _p(FloatProperty, name='Crease Height', default=0.6, soft_min=-2.0, soft_max=2.0,
-                      description='Height of the crease lines (part of the plate height): + = raised ridge, '
-                                  '- = sunken valley'),
+                      description='Height of the crease lines (1 = a tenth of the plate size; the plate height '
+                                  'does not change it): + = raised ridge, - = sunken valley'),
+    'facet_width': _p(FloatProperty, name='Line Width', default=0.0, min=0.0, soft_max=0.8, subtype='FACTOR',
+                      description='Flat band along the line (part of the plate size): 0 = sharp ridge, wider = a '
+                                  'raised strip with a chamfer on both sides'),
+    'facet_offset': _p(FloatProperty, name='Line Position', default=0.0, soft_min=-1.0, soft_max=1.0,
+                       description='Move the lines across the plate (part of the plate size)'),
     'facet_count': _p(IntProperty, name='Line Count', default=3, min=1, max=8),
     'facet_seed': _p(IntProperty, name='Line Seed', default=1, min=0),
     'facet_rotation': _p(FloatProperty, name='Line Rotation', default=0.0, subtype='ANGLE'),
+    # ---- 0.19.4 edge rims (raised border band per side) -----------------------------------------
+    'rim_n': _p(BoolProperty, name='N', default=False, description='Raise the north border band'),
+    'rim_e': _p(BoolProperty, name='E', default=False, description='Raise the east border band'),
+    'rim_s': _p(BoolProperty, name='S', default=False, description='Raise the south border band'),
+    'rim_w': _p(BoolProperty, name='W', default=False, description='Raise the west border band'),
+    'rim_height': _p(FloatProperty, name='Rim Height', default=0.5, soft_min=-2.0, soft_max=2.0,
+                     description='Height of the raised border (1 = a tenth of the plate size; - = sunken)'),
+    'rim_random': _p(BoolProperty, name='Random Pieces', default=False,
+                     description='Raised pieces at random places along the border (Seed / Count)'),
+    'rim_seed': _p(IntProperty, name='Rim Seed', default=1, min=0),
+    'rim_count': _p(IntProperty, name='Rim Pieces', default=3, min=1, max=10),
+    'rim_profile': _p(EnumProperty, name='Rim Edge', items=[
+        ('CHAMFER', 'Chamfer', 'Straight slope from the rim down to the plate'),
+        ('BEVEL', 'Bevel', 'Rounded slope from the rim down to the plate')], default='CHAMFER'),
+    'rim_slope': _p(FloatProperty, name='Rim Slope', default=0.3, min=0.02, soft_max=2.0,
+                    description='Width of the chamfer / bevel from the rim down to the plate (part of the rim width)'),
+    'rim_width': _p(FloatProperty, name='Rim Width', default=0.15, min=0.01, soft_max=0.6, subtype='FACTOR',
+                    description='Width of the border band (part of the plate size)'),
     'smooth_shading': _p(BoolProperty, name='Smooth Shading', default=True,
                          description='Smooth shading with sharp edges by angle (OFF = flat)'),
     # ---- Armor Sculpt: orientation -----------------------------------------------------------------
@@ -557,10 +580,28 @@ def draw(layout, context):
         col.prop(p, 'surface_offset')
         col.prop(p, 'resolution')
         body.prop(p, 'smooth_shading')
+        rr = body.row(align=True)
+        rr.label(text='Rims')
+        for k in 'nesw':
+            rr.prop(p, f'rim_{k}', toggle=True)
+        rr.prop(p, 'rim_random', toggle=True, text='Random')
+        if p.rim_n or p.rim_e or p.rim_s or p.rim_w or p.rim_random:
+            rc = body.column(align=True)
+            rc.prop(p, 'rim_height', slider=True)
+            rc.prop(p, 'rim_width', slider=True)
+            rc.row(align=True).prop(p, 'rim_profile', expand=True)
+            rc.prop(p, 'rim_slope', slider=True)
+            if p.rim_random:
+                r2 = rc.row(align=True)
+                r2.prop(p, 'rim_count')
+                r2.prop(p, 'rim_seed')
+            rc.prop(p, 'dir_rotation')
         ln = body.column(align=True)
         ln.prop(p, 'facet_style')
         if p.facet_style != 'NONE':
             ln.prop(p, 'facet_depth', slider=True)
+            ln.prop(p, 'facet_width', slider=True)
+            ln.prop(p, 'facet_offset', slider=True)
             ln.prop(p, 'facet_rotation')
             if p.facet_style == 'RANDOM':
                 r = ln.row(align=True)

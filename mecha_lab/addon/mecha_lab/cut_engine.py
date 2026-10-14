@@ -912,6 +912,8 @@ _COLORS = {
     'BASE_INV': (1.0, 0.22, 0.30, 1.0),
     'PLATE': (0.30, 0.78, 1.0, 1.0),
     'PLATE_INV': (0.30, 0.78, 1.0, 1.0),
+    'WRINKLE': (0.95, 0.45, 0.75, 1.0),
+    'WRINKLE_INV': (0.95, 0.45, 0.75, 1.0),
 }
 
 
@@ -1157,7 +1159,7 @@ class StrokeLogic:
         return PROFILE_POPUP if self.mode == 'BASE' else SHAPE_POPUP
 
     def _needs_target(self):
-        return self.mode not in {'BASE', 'PLATE'}
+        return self.mode not in {'BASE', 'PLATE', 'WRINKLE'}
 
     def _tangents(self, pts=None):
         pts = self.pts if pts is None else pts
@@ -1253,7 +1255,7 @@ class StrokeLogic:
         xy, inside = self._region_xy(event)
         if not inside:
             return {'PASS_THROUGH'}
-        if self.mode in {'MASK', 'BASE', 'PLATE'} and self.shape == 'LASSO' and self.brush.line_open:
+        if self.mode in {'MASK', 'BASE', 'PLATE', 'WRINKLE'} and self.shape == 'LASSO' and self.brush.line_open:
             self.brush.line_open = False
         self.ui = ui_scale(context)
         self.target_names = []
@@ -1531,6 +1533,9 @@ class StrokeLogic:
             elif self.mode == 'PLATE':
                 from . import armor_plate
                 msg = armor_plate.perform_plate(context, loops, self.projector)
+            elif self.mode == 'WRINKLE':
+                from . import cloth_wrinkle
+                msg = cloth_wrinkle.perform_wrinkle(context, loops, self.projector)
             elif self.mode == 'BASE':
                 from . import base_mesh
                 if getattr(context.scene.mch_base, 'sketch', False):
@@ -1567,7 +1572,7 @@ class StrokeLogic:
         if self.shape in {'LASSO', 'CURVE_LASSO'}:
             self._clean_points()
             if self.shape == 'LASSO' and len(self.pts) >= 2 and (self.line_open or len(self.pts) == 2):
-                if self.mode in {'MASK', 'BASE', 'PLATE'}:
+                if self.mode in {'MASK', 'BASE', 'PLATE', 'WRINKLE'}:
                     self.report({'WARNING'}, 'This tool needs a closed outline (3+ points)')
                     return {'RUNNING_MODAL'}
                 if self.mode == 'SPLIT':
@@ -1718,7 +1723,7 @@ class StrokeLogic:
             self._hint(context)
             self.region.tag_redraw()
             return {'RUNNING_MODAL'}
-        if et == 'F' and ev == 'PRESS' and self.shape == 'LASSO' and self.mode not in {'MASK', 'BASE', 'PLATE'}:
+        if et == 'F' and ev == 'PRESS' and self.shape == 'LASSO' and self.mode not in {'MASK', 'BASE', 'PLATE', 'WRINKLE'}:
             self.line_open = not self.line_open
             self.brush.line_open = self.line_open
             self.region.tag_redraw()
@@ -1890,7 +1895,8 @@ class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
         ('SPLIT', 'Split', 'Split into two parts'),
         ('MASK', 'Mask', 'Add face mask (Alt: erase)'),
         ('BASE', 'Base Mesh', 'Create a new solid from the drawn outline'),
-        ('PLATE', 'Armor Plate', 'New armour plate on the mesh under the outline')], default='CUT')
+        ('PLATE', 'Armor Plate', 'New armour plate on the mesh under the outline'),
+        ('WRINKLE', 'Cloth Wrinkle', 'New cloth layer with wrinkles on the mesh under the outline')], default='CUT')
 
     @classmethod
     def poll(cls, context):

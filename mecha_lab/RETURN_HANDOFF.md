@@ -1,4 +1,8 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.19.3 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.20.0 (Claude Code, 2026-10-14)
+
+## 0.20.0
+- ZIP sha256 `6c5b1e920f36be1fc29ecbd7c8ccf88de3904dfb32c9e9cbb4a53bdb16766ce2`. 신규 `cloth_wrinkle.py`(GN 그룹 `MCH_ClothWrinkle` v4: Subdivide → 접평면 좌표(Direction/Scale/Seed) → Padding/Denim/Leather → Index Switch → 테두리 마스크(`mch_edge_dist`) → Normal*(h+Lift); 모디파이어 `MCH_Wrinkle` + Solidify `MCH_WrinkleShell`; `perform_wrinkle`, `dense_mesh`, HUD). 도구 `WRINKLE`(`mecha.cloth_wrinkle`).
+- `panel_gen`: rims(`rim_n/e/s/w`, `rim_random/seed/count`, `rim_profile`, `rim_slope`, `rim_width`, `rim_height`), facet `facet_width/offset`, crease 높이 = depth × frad × 0.1, 노멀 스무딩 + `updir`(tall blend).
 
 ## 0.19.3
 - ZIP sha256 `2b6db8b31077fbcde548ec18bdb6106961fecc272f2112ac69c8966f5b9cc72e`. `bottom_bar.active_button_pos`: 왼쪽 중간(높이 60%), `_btn_factor`(toolbar_scale).
