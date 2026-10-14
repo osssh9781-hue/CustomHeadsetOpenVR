@@ -1,4 +1,9 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.20.1 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.20.2 (Claude Code, 2026-10-14)
+
+## 0.20.2
+- ZIP sha256 `00ea99cffb7adbe49395b853ec1393eecb15654bd68589cd764819cc23339325`. `cloth_wrinkle` GN v28: 긴 주름 = Python `fold_lines()`가 numpy로 계산한 점 속성 `mch_foldh`(FOLD_INPUTS 변경 시 재계산), 짧은 부채꼴은 GN(Fan Mix),
+  섹션 Attribute Statistic 기반(Section Turn/Shape/Bend/Start/End/Move), Center Fade/Patchiness, Randomness 슬라이더. 신규 `last_used.py`(remember/recall, scene PG → JSON, 새 파일만 복원, 백그라운드 제외).
+  `armor_plate.remember_plate/recall_plate`. `highpoly.creased_subdiv`(플레이트 HP).
 
 ## 0.20.1
 - ZIP sha256 `f5e340bd6da5c349c56537645822e8e98e09c5c26f64c40c9f82c2baaf1d4ffd`. `cloth_wrinkle` GN v13: 입력 Puff/Puff Width/Roll/Roll Width/Pinch/Pinch Spacing/Pinch Length/Stitch/Stitch Inset/Stitch Length/Bend/Sections/Fold Sharp/Fan/Trim/Trim Width/Trim Height,

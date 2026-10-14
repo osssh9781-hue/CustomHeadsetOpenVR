@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 0.20.2 — 긴 주름, 섹션 회전/모양/위치, 직전 옵션 기억, 하이폴 수정 (2026-10-14)
+
+- **Cloth Plate 주름**: 테두리에서 시작하는 **낱개 주름**(시작은 아주 가늘고 안쪽으로 넓어짐), 주름마다 각도·길이·세기 랜덤, **반대편 직전까지** 뻗고 끝에서 약해짐,
+  교차하는 곳은 부드럽게 합쳐짐. 부채꼴 다발을 군데군데 섞음(Fan Mix). **Randomness** 슬라이더 하나로 랜덤 강도 조절, Fold Tilt / Tilt Random / Length Random.
+- **섹션**: Section Turn(회전), 솔기 모양 **직선 / 물결 / 지그재그 / V자 / 아치**(팝업 버튼), Seam Bend, **Section Start / End / Move**(구간 위치·범위 — 모서리에만 디테일),
+  칸마다 **둥근 쿠션**처럼 부풀고 솔기는 눌린 선. 패딩은 더 둥글게.
+- **전체 패턴**: 테두리 쪽이 강하고 가운데로 갈수록 약해짐(Center Fade), 랜덤으로 약한 얼룩(Patchiness).
+- **직전 옵션 기억**: Cloth Plate·Armor Plate는 팝업에서 마지막에 쓴 값을 다음에 그대로(크기 비례). 도구 설정은 `config/mecha_lab/last_used.json`에 저장돼 **새 파일**에서 그대로(열어 둔 기존 파일은 안 건드림).
+- **Make High Poly(아머 플레이트)**: 다시 투영하던 방식(얼굴에서 울퉁불퉁·리메쉬처럼 보임) 대신 **지금 모양에 각진 곳 크리스 + 서브디비전** → 모양 그대로 면만 촘촘.
+- Cut / Split 두께(엣지 마감 폭, 갭, 사이드 폭) 슬라이더 범위 10 m까지.
+- 테스트: 37개 파일 1576/1576 (`tests/test_log_bpy501_v0202.txt`). 미리보기 `reference/cloth_plate_preview_v0202.png`, `cloth_plate_sections_v0202.png`, `cloth_plate_tilt_v0202.png`. ZIP sha256 `00ea99cffb7adbe49395b853ec1393eecb15654bd68589cd764819cc23339325`.
+
 ## 0.20.1 — Cloth Plate: 외곽에서 시작하는 패딩 패널 (2026-10-14)
 
 - 도구 이름 **Cloth Plate**. 이제 모든 변형이 **그린 영역의 외곽에서 시작**: 테두리는 표면에 붙고 안쪽이 **부풀어 오름(Puff)**, 테두리에서 안쪽으로 **주름**.

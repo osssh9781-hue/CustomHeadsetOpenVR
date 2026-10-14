@@ -372,9 +372,11 @@ def perform_plate(context, loops, projector, preset=None):
     region, surround, local_size, missing = plate_meshes(context, target, groups, projector, st.spacing)
     part = create_plate(context, target, region, surround, preset, local_size, st.auto_size)
     frozen = freeze_projector(projector)
+    recalled = False
     if frozen is not None:
         part[SRC_KEY] = json.dumps({'loops': [[[float(x), float(y)] for x, y in lp] for lp in loops],
                                     'proj': frozen, 'spacing': int(st.spacing), 'size': local_size})
+        recalled = recall_plate(part, local_size, preset)      # 0.20.2 last used profile / lines / rims
     scene.mch_extract_last = part
     for o in context.selected_objects:
         o.select_set(False)
@@ -717,6 +719,7 @@ class MCH_OT_plate_lines(bpy.types.Operator):
         else:
             i = LINE_STYLES.index(p.facet_style) if p.facet_style in LINE_STYLES else 0
             p.facet_style = LINE_STYLES[(i + 1) % len(LINE_STYLES)]
+        remember_plate(context.active_object)
         return {'FINISHED'}
 
 
@@ -745,6 +748,7 @@ class MCH_OT_plate_rim(bpy.types.Operator):
         else:
             key = 'rim_' + self.side.lower()
             setattr(p, key, not getattr(p, key))
+        remember_plate(context.active_object)
         return {'FINISHED'}
 
 
@@ -817,6 +821,56 @@ SLIDERS = (('height', 'Height', 'extract_height', 1, 300), ('chamfer', 'Chamfer'
 PCT_PROPS = {'facet_depth', 'facet_width', 'facet_offset', 'rim_height', 'rim_width', 'rim_slope'}
 LINE_STYLES = ('NONE', 'CENTER', 'CROSS', 'RANDOM')
 LINE_NAMES = {'NONE': 'Lines: off', 'CENTER': 'Lines: center', 'CROSS': 'Lines: cross', 'RANDOM': 'Lines: random'}
+
+
+REMEMBER_REL = ('extract_height', 'chamfer_width', 'bevel_width')
+REMEMBER_RAW = ('chamfer_angle', 'facet_style', 'facet_depth', 'facet_width', 'facet_offset', 'facet_rotation',
+                'facet_count', 'facet_seed', 'rim_n', 'rim_e', 'rim_s', 'rim_w', 'rim_random', 'rim_seed', 'rim_count',
+                'rim_profile', 'rim_slope', 'rim_width', 'rim_height', 'dir_rotation')
+
+
+def remember_plate(ob):
+    """0.20.2: keep this plate's profile / lines / rims for the next plate (lengths relative to its size)."""
+    from . import last_used
+    src = plate_source(ob)
+    if src is None:
+        return
+    size = max(1e-6, float(src.get('size', 1.0)))
+    p = ob.mch_extract
+    for k in REMEMBER_REL:
+        last_used.remember('plate', k, getattr(p, k) / size)
+    for k in REMEMBER_RAW:
+        v = getattr(p, k)
+        last_used.remember('plate', k, v if isinstance(v, (bool, int, float, str)) else float(v))
+    last_used.remember('plate', '_preset', context_preset(ob))
+
+
+def context_preset(ob):
+    try:
+        return bpy.context.scene.mch_plate.preset
+    except AttributeError:
+        return ''
+
+
+def recall_plate(part, local_size, preset):
+    """Apply the remembered settings to a new plate (only when the profile is the same as last time)."""
+    from . import last_used
+    from . import face_extract as fx
+    last = last_used.recall('plate')
+    if not last or last.get('_preset') != preset:
+        return False
+    p = part.mch_extract
+    p.is_part = False
+    for k, v in last.items():
+        if k.startswith('_'):
+            continue
+        try:
+            setattr(p, k, v * local_size if k in REMEMBER_REL else v)
+        except (TypeError, AttributeError, ValueError):
+            pass
+    p.is_part = True
+    fx.rebuild(part)
+    return True
 
 
 def slider_spec(context, key, ob=None):
@@ -929,6 +983,9 @@ class MCH_GT_plate_slider(bpy.types.Gizmo):
         if cancel:
             slider_spec(context, self.key)[4](self.init_value)
         else:
+            ob = pending_plate(context)
+            if ob is not None:
+                remember_plate(ob)
             try:
                 bpy.ops.ed.undo_push(message='Plate ' + self.key)
             except RuntimeError:

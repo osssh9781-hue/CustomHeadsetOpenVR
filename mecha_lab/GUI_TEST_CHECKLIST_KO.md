@@ -1,8 +1,15 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.20.1 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.20.2 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A0000000. 0.20.2 (미검증)
+- [ ] Cloth Plate: 낱개 긴 주름(가는 시작, 반대편 직전까지), Randomness 슬라이더, Fold Tilt, Fan Mix
+- [ ] 섹션 회전 / 솔기 모양 버튼 / Section Start·End·Move, 칸마다 둥근 쿠션
+- [ ] 같은 도구를 다시 쓰면 직전 값이 유지되는지, 새 파일에서도 도구 설정 유지
+- [ ] 아머 플레이트 Make High Poly: 원래 모양 그대로(울퉁불퉁하지 않게)
+- [ ] Cut/Split 엣지 마감 폭 10 m까지
 
 ## A000000. 0.20.1 (미검증)
 - [ ] Cloth Plate: 외곽은 붙고 안쪽이 부풀고, 테두리에서 부채꼴 주름(길이 제각각)

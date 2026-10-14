@@ -238,6 +238,35 @@ check('Make High Poly on a live wrinkle layer: denser plain copy, same wrinkles,
       cw.is_wrinkle(ob) and int(cw.get_input(ob, 'Detail')) == 1, (nlive, len(hpo.data.polygons)))
 ob.hide_set(False)
 select_only(ob)
+t0 = sorted(round(z, 4) for z in heights(ob)[0])
+cw.slider_spec(C, 'tilt')[4](35)
+check('Fold Tilt slider leans the folds', abs(math.degrees(cw.get_input(ob, 'Fold Tilt')) - 35) < 1e-3 and
+      sorted(round(z, 4) for z in heights(ob)[0]) != t0)
+cw.set_input(ob, 'Fold Tilt', 0.0)
+for nm in ('Puff', 'Stitch', 'Strength', 'Roll'):
+    cw.set_input(ob, nm, 0.0)
+cw.set_input(ob, 'Pinch', 0.05)
+cw.set_input(ob, 'Variety', 0.0)
+cw.set_input(ob, 'Length Random', 0.0)
+
+
+def mid_var(o):
+    dg = C.evaluated_depsgraph_get()
+    ev = o.evaluated_get(dg)
+    me = ev.to_mesh()
+    mw = ev.matrix_world
+    zz = [(mw @ v.co).z for v in me.vertices if abs((mw @ v.co).x) < 0.8 and abs((mw @ v.co).y) < 0.6 and
+          (mw @ v.co).z > 2.0 + ob.modifiers[cw.MOD_SHELL].thickness * 0.5]
+    ev.to_mesh_clear()
+    return max(zz) - min(zz) if zz else 0.0
+
+
+cw.set_input(ob, 'Pinch Length', ob['mch_wrinkle_size'] * 0.05)
+short = mid_var(ob)
+cw.set_input(ob, 'Pinch Length', ob['mch_wrinkle_size'] * 1.5)
+long_ = mid_var(ob)
+check('long Fold Length: the folds reach into the middle', long_ > short + 0.005, (short, long_))
+bpy.ops.mch.wrinkle_reset()
 bpy.ops.mch.wrinkle_trim()
 check('Edge Trim button: none -> piping on the live panel', int(cw.get_input(ob, 'Trim')) == 1 and
       S.mch_wrinkle.trim == 'PIPING' and cw.get_input(ob, 'Trim Height') > 0)
@@ -245,6 +274,33 @@ zt = heights(ob)[0]
 cw.set_input(ob, 'Sections', 3)
 check('Sections: 3 stitched cells change the panel', sorted(round(z, 4) for z in heights(ob)[0]) !=
       sorted(round(z, 4) for z in zt))
+z3 = sorted(round(z, 4) for z in heights(ob)[0])
+cw.slider_spec(C, 'sec_turn')[4](45)
+z4 = sorted(round(z, 4) for z in heights(ob)[0])
+check('Section Turn rotates the seams', z4 != z3)
+bpy.ops.mch.wrinkle_seam()
+check('seam shape button: straight -> wave', int(cw.get_input(ob, 'Section Shape')) == 1 and
+      sorted(round(z, 4) for z in heights(ob)[0]) != z4)
+for _i in range(3):
+    bpy.ops.mch.wrinkle_seam()
+check('... zigzag, chevron, arc', int(cw.get_input(ob, 'Section Shape')) == 4)
+zs0 = sorted(round(z, 4) for z in heights(ob)[0])
+cw.slider_spec(C, 'sec_end')[4](40)
+zs1 = sorted(round(z, 4) for z in heights(ob)[0])
+cw.slider_spec(C, 'sec_move')[4](55)
+zs2 = sorted(round(z, 4) for z in heights(ob)[0])
+check('Section End / Move: the sections sit only in part of the panel and can slide', zs0 != zs1 != zs2 and
+      abs(cw.get_input(ob, 'Section Move') - 0.55) < 1e-6)
+cw.slider_spec(C, 'random')[4](20)
+check('Randomness slider sets angle / length / strength randomness together',
+      abs(cw.get_input(ob, 'Variety') - 0.2) < 1e-6 and abs(cw.get_input(ob, 'Length Random') - 0.2) < 1e-6 and
+      abs(cw.get_input(ob, 'Tilt Random') - 0.18) < 1e-6)
+cw.slider_spec(C, 'random')[4](100)
+check('long folds are real lines: a height field on the panel', ob.data.attributes.get(cw.FOLD_H) is not None and
+      max(v.value for v in ob.data.attributes[cw.FOLD_H].data) > 0.2)
+lr0 = sorted(round(z, 4) for z in heights(ob)[0])
+cw.slider_spec(C, 'len_rand')[4](0)
+check('Length Random 0 vs 100 differ', sorted(round(z, 4) for z in heights(ob)[0]) != lr0)
 cw.set_input(ob, 'Pinch Length', 0.0001)
 bpy.ops.mch.wrinkle_reset()
 check('Reset: settings and the live panel back to the defaults', S.mch_wrinkle.trim == 'NONE' and
@@ -261,6 +317,22 @@ r, m = lasso([(350, 400), (500, 400), (500, 550), (350, 550)])
 name = C.active_object.name
 bpy.ops.mch.wrinkle_remove()
 check('Remove: the layer is deleted', name not in bpy.data.objects)
+# last used options: the next panel starts as the last one was left
+r, m = lasso([(320, 380), (640, 380), (640, 620), (320, 620)])
+o1 = C.active_object
+cw.set_input(o1, 'Fold Tilt', 0.5)
+cw.set_input(o1, 'Puff', o1['mch_wrinkle_size'] * 0.21)
+r, m = lasso([(330, 390), (630, 390), (630, 610), (330, 610)])
+o2 = C.active_object
+check('last used: the next Cloth Plate keeps tilt and puff (relative to its size)',
+      o2 is not o1 and abs(cw.get_input(o2, 'Fold Tilt') - 0.5) < 1e-6 and
+      abs(cw.get_input(o2, 'Puff') / o2['mch_wrinkle_size'] - 0.21) < 1e-4)
+from mecha_lab import last_used as lu
+S.mch_wrinkle.sections = 5
+lu.store_scene(S)
+S.mch_wrinkle.sections = 1
+lu.restore_scene(S)
+check('tool settings are remembered for a new file', S.mch_wrinkle.sections == 5)
 check('HUD registered', 'bl_rna' in cw.MCH_GGT_wrinkle_hud.__dict__)
 mecha_lab.unregister()
 sys.exit(1 if summary() else 0)

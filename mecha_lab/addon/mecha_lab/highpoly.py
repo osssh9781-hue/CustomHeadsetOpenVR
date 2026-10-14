@@ -65,6 +65,56 @@ def _targets(context):
     return [o for o in context.selected_objects if o.type == 'MESH' and not is_highpoly(o)]
 
 
+def creased_subdiv(context, ob, level, angle):
+    """0.20.2 High Poly of a plate without changing its look: the low poly plate as it is (modifiers
+    applied), every sharp edge (marked sharp, crease lines, or sharper than ``angle``) gets a full
+    crease, then Subdivision - flat facets and chamfers stay crisp, only the face count grows.
+    (0.19.2-0.20.1 re-projected small faces onto the surface: on a detailed face mesh that made the
+    plate lumpy and moved its crease lines.)"""
+    import bmesh
+    dg = context.evaluated_depsgraph_get()
+    base = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), depsgraph=dg)
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(base)
+        sharp = base.attributes.get('sharp_edge')
+        flags = [False] * len(base.edges)
+        if sharp is not None and sharp.domain == 'EDGE':
+            sharp.data.foreach_get('value', flags)
+        cl = bm.edges.layers.float.get('crease_edge') or bm.edges.layers.float.new('crease_edge')
+        bm.edges.ensure_lookup_table()
+        for e in bm.edges:
+            hard = flags[e.index] if e.index < len(flags) else False
+            if not hard and len(e.link_faces) == 2:
+                hard = e.calc_face_angle(0.0) > angle
+            if hard or len(e.link_faces) != 2:
+                e[cl] = 1.0
+        bm.to_mesh(base)
+    finally:
+        bm.free()
+    level = safe_level(len(base.polygons), max(1, level), 0)
+    tmp = bpy.data.objects.new('MCH_HP_tmp', base)
+    context.scene.collection.objects.link(tmp)
+    tmp.matrix_world = ob.matrix_world.copy()
+    sub = tmp.modifiers.new('MCH_HP_Subdiv', 'SUBSURF')
+    sub.levels = sub.render_levels = level
+    sub.quality = 3
+    sub.use_creases = True
+    sub.boundary_smooth = 'PRESERVE_CORNERS'
+    try:
+        dg = context.evaluated_depsgraph_get()
+        dense = bpy.data.meshes.new_from_object(tmp.evaluated_get(dg), depsgraph=dg)
+    finally:
+        bpy.data.objects.remove(tmp)
+        if base.users == 0:
+            bpy.data.meshes.remove(base)
+    try:
+        dense.set_sharp_from_angle(angle=angle)
+    except (AttributeError, TypeError):
+        pass
+    return dense
+
+
 def make_highpoly(context, ob, level, ratio, angle, segments, plate_detail=10):
     """Dense copy of ``ob`` in the HighPoly collection.  Returns (copy, level).
     Armor plates / live parts are rebuilt densely instead (shape kept exactly)."""
@@ -76,8 +126,10 @@ def make_highpoly(context, ob, level, ratio, angle, segments, plate_detail=10):
             bpy.data.meshes.remove(me_old)
     from . import armor_plate as ap
     from . import cloth_wrinkle as cw
-    dense = cw.dense_mesh(context, ob) if cw.is_wrinkle(ob) else ap.dense_plate_mesh(context, ob, plate_detail)
-    if dense is not None:                       # plates: same plate, small faces (no subdivision)
+    dense = cw.dense_mesh(context, ob) if cw.is_wrinkle(ob) else None
+    if dense is None and (ap.plate_hp_data(ob) is not None or getattr(ob.mch_extract, 'is_part', False)):
+        dense = creased_subdiv(context, ob, level, angle)      # plates: the SAME shape, just more faces
+    if dense is not None:
         dense.name = ob.name + '_HP'
         try:
             dense.shade_smooth()
