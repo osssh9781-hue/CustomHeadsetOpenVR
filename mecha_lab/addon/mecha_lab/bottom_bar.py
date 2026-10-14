@@ -290,7 +290,12 @@ def active_button_pos(context):
     tools = next((r for r in area.regions if r.type == 'TOOLS'), None) if area else None
     if tools is not None and tools.width > 1:
         left = max(0.0, float(tools.x + tools.width - region.x))
-    return left / ui + 34.0, region.height / ui - 150.0
+    f = max(0.6, float(_pref('toolbar_scale', 1.0) or 1.0))
+    return left / ui + 30.0 * f, region.height / ui * 0.6     # 0.19.3: middle left (user placement)
+
+
+def _btn_factor():
+    return max(0.6, float(_pref('toolbar_scale', 1.0) or 1.0))
 
 
 class MCH_OT_tool_active(bpy.types.Operator):
@@ -355,7 +360,7 @@ class MCH_GGT_tool_active(bpy.types.GizmoGroup):
                 pass
         ui = context.preferences.system.ui_scale
         x, y = active_button_pos(context)
-        gz.scale_basis = 17.0
+        gz.scale_basis = 24.0 * _btn_factor()
         gz.matrix_basis[0][3] = x * ui
         gz.matrix_basis[1][3] = y * ui
         gz.color = ACCENT if tool_live(context) else BASE_COL
@@ -423,7 +428,8 @@ class MCH_OT_object_tidy(bpy.types.Operator):
 
 def tidy_positions(context):
     x, y = active_button_pos(context)
-    return [(x, y - 44.0 - i * 34.0) for i in range(len(TIDY))]
+    f = _btn_factor()
+    return [(x, y - (62.0 + i * 48.0) * f) for i in range(len(TIDY))]
 
 
 class MCH_GGT_object_tidy(bpy.types.GizmoGroup):
@@ -453,7 +459,7 @@ class MCH_GGT_object_tidy(bpy.types.GizmoGroup):
     def draw_prepare(self, context):
         ui = context.preferences.system.ui_scale
         for gz, (x, y) in zip(self.items, tidy_positions(context)):
-            gz.scale_basis = 13.0
+            gz.scale_basis = 19.0 * _btn_factor()
             gz.matrix_basis[0][3] = x * ui
             gz.matrix_basis[1][3] = y * ui
 
@@ -461,10 +467,11 @@ class MCH_GGT_object_tidy(bpy.types.GizmoGroup):
 def _draw_tidy_labels(context):
     import blf
     ui = context.preferences.system.ui_scale
-    blf.size(0, 10 * ui)
-    blf.color(0, 0.85, 0.87, 0.9, 1.0)
+    f = _btn_factor()
+    blf.size(0, 12.5 * ui * f)
+    blf.color(0, 0.88, 0.9, 0.93, 1.0)
     for (_a, _i, label, _d), (x, y) in zip(TIDY, tidy_positions(context)):
-        blf.position(0, (x + 20) * ui, (y - 4) * ui, 0)
+        blf.position(0, (x + 27 * f) * ui, (y - 5 * f) * ui, 0)
         blf.draw(0, label)
 
 
@@ -476,9 +483,10 @@ def _draw_active_label(context):
     ui = context.preferences.system.ui_scale
     x, y = active_button_pos(context)
     on = tool_live(context)
-    blf.size(0, 12 * ui)
+    f = _btn_factor()
+    blf.size(0, 14 * ui * f)
     blf.color(0, *(ACCENT if on else (0.9, 0.92, 0.95)), 1.0)
-    blf.position(0, (x + 24) * ui, (y - 5) * ui, 0)
+    blf.position(0, (x + 32 * f) * ui, (y - 5 * f) * ui, 0)
     blf.draw(0, f'{t[1]}  ON' if on else f'{t[1]}  -  click to activate')
 
 

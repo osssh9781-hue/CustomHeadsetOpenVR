@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 0.19.3 — 모든 라쏘 도구 Sketch 모드 (2026-10-14)
+
+- 뷰포트 위 도형 버튼 옆 **Sketch** 버튼: 켜면 Cut / Split / Armor Plate / Base Mesh 모두
+  **그리기 = 스케치에 추가, Alt+그리기 = 빼기, Enter = 한 번에 적용, Alt+Enter = Alt 동작(Cut: 안쪽 남기기 / Base: 파고들기)**, Backspace = 마지막 하나 취소, Esc = 지우기.
+- 스케치는 첫 윤곽의 시점 평면에 놓여 중간에 뷰를 돌려도 됨; 적용은 첫 시점 기준. 겹침·구멍은 Base Mesh 스케치와 같은 방식(정확한 합치기/빼기).
+- 기본은 꺼짐(Cut/Split/Plate). Base Mesh는 원래처럼 켜짐 — 버튼을 누르면 전부 같은 상태로 맞춰짐.
+- 툴바 옆 Tool Active / Reset Axis / Origin 버튼을 뷰포트 왼쪽 중간으로 옮기고 아이콘·글씨를 키움 (Icon Size > Bottom Toolbar 배율을 따름).
+- 테스트: 35개 파일 1518/1518 (`tests/test_log_bpy501_v0193.txt`), 신규 `test_v0193.py` 13항목. ZIP sha256 `2b6db8b31077fbcde548ec18bdb6106961fecc272f2112ac69c8966f5b9cc72e`.
+
 ## 0.19.2 — 판 하이폴 개선, 표면 라인, 찌그러짐 수정, Tool Active 버튼 (2026-10-14)
 
 - **아머 플레이트 Make High Poly**: 서브디비전 대신 **같은 판을 작은 면으로 다시 만듦**(Plate Detail px, 기본 10) → 모양·챔퍼·모서리 그대로, 울퉁불퉁/주름 없음.

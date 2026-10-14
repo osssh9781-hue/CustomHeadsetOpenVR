@@ -119,7 +119,7 @@ fake = types.SimpleNamespace(region=types.SimpleNamespace(x=40, height=900),
                              area=types.SimpleNamespace(regions=[types.SimpleNamespace(type='TOOLS', x=0, width=40)]),
                              preferences=C.preferences)
 bx, by = bb.active_button_pos(fake)
-check('... placed right of Blender\'s toolbar, upper left', 0 < bx < 120 and by > 600, (bx, by))
+check('... placed right of Blender\'s toolbar, middle left', 0 < bx < 120 and 400 < by < 700, (bx, by))
 box = cube('Box', 4.0)
 r, msg = lasso([(250, 380), (750, 380), (750, 620), (250, 620)])
 plate = C.active_object

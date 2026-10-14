@@ -188,6 +188,9 @@ class MCH_PG_Brush(bpy.types.PropertyGroup):
                                      description='Dragging a Custom shape also rotates it')
     line_open: BoolProperty(name='Open Line (F)', default=False,
                             description='Lasso points form an open line across the mesh instead of a closed outline')
+    sketch_first: BoolProperty(name='Sketch', default=False,
+                               description='Lasso tools: draw outlines into a sketch, Alt+draw subtracts, '
+                                           'Enter applies (Alt+Enter: Alt action), Backspace: last, Esc: clear')
 
 
 class MCH_PG_Cut(bpy.types.PropertyGroup):

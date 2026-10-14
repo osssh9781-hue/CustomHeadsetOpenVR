@@ -1,8 +1,14 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.19.2 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.19.3 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A0000. 0.19.3 (미검증 — headless 테스트만 통과)
+- [ ] 도형 버튼 옆 Sketch 버튼 켜기 → Cut: 라쏘 여러 개 그리기, Alt로 빼기, Enter로 한 번에 컷 (Alt+Enter = 안쪽 남기기)
+- [ ] Armor Plate / Split도 같은 방식, Backspace 마지막 취소, Esc 지우기, 스케치가 도구 색으로 보이는지
+- [ ] 끄면 예전처럼 바로 적용
+- [ ] Tool Active / Reset Axis / Origin 버튼이 왼쪽 중간에 크게 보이는지
 
 ## A000. 0.19.2 (미검증 — headless 테스트만 통과)
 - [ ] 아머 플레이트 → 우클릭 Make High Poly: 원래 모양/챔퍼 그대로, 면만 촘촘 (주름·울퉁불퉁 없음)

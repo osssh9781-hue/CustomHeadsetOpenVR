@@ -407,6 +407,11 @@ def activate_mecha_tool(context, tool_id):
 # -----------------------------------------------------------------------------
 
 
+def _lasso_sketch_keys():
+    from . import lasso_sketch
+    return lasso_sketch.KEYMAP       # 0.19.3: Enter / Alt+Enter / Backspace / Esc while a sketch exists
+
+
 def _tool_keymap(mode):
     return (
         ('mch.cut_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'any': True},
@@ -424,7 +429,7 @@ def _tool_keymap(mode):
          {'properties': [('cutter', True)]}),
         ('mch.base_sketch_clear', {'type': 'ESC', 'value': 'PRESS'}, None),
         ('mch.base_sketch_undo', {'type': 'BACK_SPACE', 'value': 'PRESS'}, None),
-    ) if mode == 'BASE' else ()) + (
+    ) if mode == 'BASE' else ()) + (_lasso_sketch_keys() if mode in {'CUT', 'SPLIT', 'PLATE'} else ()) + (
         # Esc with no stroke pending: back to Blender's Select Box tool.
         ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),
         # B06: R / Shift+R rotate a PNG stamp (poll fails for other shapes -> Blender's R).
@@ -667,6 +672,10 @@ def draw_shape_palette(self, context):
         op = row.operator('mch.set_shape', text=label, depress=(brush.shape == sid), **_icon_kw(stem, fallback))
         op.shape = sid
         op.preset = ''
+    from . import lasso_sketch
+    sk = layout.row(align=True)
+    sk.enabled = tool in ts.SHAPE_TOOLS
+    sk.operator('mch.sketch_toggle', text='Sketch', icon='GREASEPENCIL', depress=lasso_sketch.is_on(context))
     row.separator()
     sub = row.row(align=True)
     sub.template_icon_view(scene, 'mch_png_preset', show_labels=True, scale=isz(1.0), scale_popup=isz(5.0))

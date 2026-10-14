@@ -1263,6 +1263,9 @@ class StrokeLogic:
         self.auto_target = (self.mode in {'CUT', 'SPLIT'} and cut_props is not None and
                             getattr(cut_props, 'targets', '') == 'AUTO')
         self._auto_cache = None
+        from . import lasso_sketch
+        if lasso_sketch.enabled(context, self.mode):
+            self.auto_target = True          # sketching needs no target yet (the sketch is applied with Enter)
         if self._needs_target() and not self.auto_target:
             targets = gather_targets(context, self.projector, xy, self.mode)
             if not targets:
@@ -1494,8 +1497,10 @@ class StrokeLogic:
         return [bpy.data.objects[n] for n in self._auto_cache[1] if n in bpy.data.objects]
 
     def _execute_closed(self, context):
-        targets = self._targets()
-        if getattr(self, 'auto_target', False):
+        from . import lasso_sketch
+        sketching = lasso_sketch.enabled(context, self.mode)
+        targets = [] if sketching else self._targets()
+        if getattr(self, 'auto_target', False) and not sketching:
             if not targets:
                 raise cg.CutError('Auto Target: the shape does not cover any mesh; nothing was changed.')
             # what gets cut becomes the selection (visible feedback, and ready for Selected Only)
@@ -1517,6 +1522,10 @@ class StrokeLogic:
             msg = f'Mask stroke: {changed} faces changed ({total} masked total; entire faces, not exact outline)'
         else:
             loops = self._current_loops(self.ctrl_held, self.shift_held)
+            from . import lasso_sketch
+            if lasso_sketch.enabled(context, self.mode):
+                # 0.19.3 Sketch First (all lasso tools): add / (Alt) subtract, Enter applies
+                return lasso_sketch.add(context, self.mode, loops, self.projector, subtract=self.inverted())
             if self.mode == 'MASK':
                 msg = perform_mask(context, targets[0], loops, self.projector, self.inverted())
             elif self.mode == 'PLATE':

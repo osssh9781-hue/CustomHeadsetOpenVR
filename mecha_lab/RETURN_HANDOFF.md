@@ -1,4 +1,9 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.19.2 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.19.3 (Claude Code, 2026-10-14)
+
+## 0.19.3
+- ZIP sha256 `2b6db8b31077fbcde548ec18bdb6106961fecc272f2112ac69c8966f5b9cc72e`. `bottom_bar.active_button_pos`: 왼쪽 중간(높이 60%), `_btn_factor`(toolbar_scale).
+- 신규 `lasso_sketch.py`: KEY `mch_lasso_sketch`(mode/frame/proj/items), `add`, `screen_loops`, `commit`(CUT/SPLIT → `perform_closed`, PLATE → `perform_plate`), 키맵 `KEYMAP`, `mch.sketch_toggle`
+  (`is_on`/`set_on`: `mch_brush.sketch_first` + `mch_base.sketch` 동기). `cut_engine._execute_closed`가 sketch 모드면 `lasso_sketch.add`.
 
 ## 0.19.2
 - ZIP sha256 `c3faa3445145ecec90b3f18bf56d405e36a8582e1802e0f1bdbc943ed723ecdd`. `panel_gen`: `facet_lines`/`line_dist`/`facet_value`(bisect + `mch_crease` 엣지 → `face_extract.rebuild`에서 sharp), 로컬 폭 `room()` + `ROOM_SHARE`(0.3) 밴드 축소,
