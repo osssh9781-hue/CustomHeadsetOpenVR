@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.5 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.6 (Claude Code, 2026-10-14)
+
+## 0.23.6
+- ZIP sha256 `33b9ca16680a13a214137287b000b6defd8868158563617a0027eafc631566e6`. `cloth_wrinkle` v40 `_skin_pattern`: `pillow(vec, f, groove, radius)` = sqrt(1-(F1/r)²) × smoothstep(edge, 0, groove) × 셀별 높이; croc = 큰/작은 pillow를 노이즈로 섞음 + 미세 결; dragon = pillow 자갈 + 성긴 Voronoi 셀 중 Color.g > 0.7에 원뿔 가시; 새 Skin 6 `CROC_BACK` = FRACT 격자(x 0.8f, y 0.9f) sqrt 판 + |fx-0.5| 용골, 격자 셀 WhiteNoise. Index Switch 7칸, Skin 입력 최대 6.
 
 ## 0.23.5
 - ZIP sha256 `bc7f813a15d7d35a6b6c834bfcd84699dfa5cca97bc8ff1b60b7aee15bc3626b`. `creature_shell` v12: 입력 뒤에 Organic / Edge Shrink / Shrink Width / Edge Irregular 추가(기존 소켓 identifier 유지). 노이즈 도메인 워프 `Qw`, `facet_field(scale, amp, groove)` 3단계(fs, 1.6fs, 2.6fs) 혼합. 경계 거리 = 옆면 점(|n·Up| < 0.4, 밑면 제외)까지 Geometry Proximity + 노이즈 2개 × Edge Irregular × Shrink Width. 셀별 랜덤 지터는 절벽이 생겨서 뺌. `cloth_wrinkle` v35: Skin Organic / Skin Irregular(`_skin_height`에서 P 워프, `Dj`는 shrink에만 쓰고 가장자리 마무리는 원래 `Db`).

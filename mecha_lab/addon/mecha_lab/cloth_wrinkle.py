@@ -78,7 +78,7 @@ INPUTS = (('Type', 'NodeSocketInt', 0, 0, 2),
           ('Fold Asymmetry', 'NodeSocketFloat', 0.75, 0.0, 1.0),
           ('Fold Thinness', 'NodeSocketFloat', 0.0, 0.0, 1.0),
           ('Fold Direction', 'NodeSocketInt', 0, 0, 2),
-          ('Skin', 'NodeSocketInt', 0, 0, 5),
+          ('Skin', 'NodeSocketInt', 0, 0, 6),
           ('Skin Scale', 'NodeSocketFloat', 0.06, 0.0001, 100.0),
           ('Skin Depth', 'NodeSocketFloat', 0.01, -100.0, 100.0),
           ('Skin Random', 'NodeSocketFloat', 1.0, 0.0, 1.0),
@@ -101,7 +101,7 @@ SEC_U = 'mch_sec_u'            # 0..1 along the long side (local X): stitched se
 SEC_LEN = 'mch_sec_len'        # length of the long side
 EDGE_U = 'mch_edge_u'          # arc length along the border of the nearest border point
 EDGE_LEN = 'mch_edge_len'      # length of that border loop (keeps seam patterns seamless)
-VERSION = 35
+VERSION = 40
 
 
 # -----------------------------------------------------------------------------
@@ -132,30 +132,58 @@ def _vor(N, L, vec, scale, rand, feature='F1'):
 
 
 def _skin_pattern(N, L, I, P, freq, rnd):
-    """The five skin patterns at one cell frequency (0..1-ish heights), picked by Skin."""
-    # 1 crocodile: rounded tiles with grooves
-    e1 = _vor(N, L, P, freq, rnd, 'DISTANCE_TO_EDGE').outputs['Distance']
-    croc = _math(N, L, 'POWER', _math(N, L, 'DIVIDE', e1, vb=0.28, clamp=True), vb=0.55)
-    # 2 dragon: pointed scales rising toward their tip (overlapping look)
-    stretch = N.new('ShaderNodeVectorMath')
-    stretch.operation = 'MULTIPLY'
-    L.new(P, stretch.inputs[0])
-    stretch.inputs[1].default_value = (1.0, 0.75, 1.0)
-    f1 = _vor(N, L, stretch.outputs[0], freq, rnd, 'F1')
-    e2 = _vor(N, L, stretch.outputs[0], freq, rnd, 'DISTANCE_TO_EDGE').outputs['Distance']
-    sc = N.new('ShaderNodeVectorMath')
-    sc.operation = 'SCALE'
-    L.new(stretch.outputs[0], sc.inputs[0])
-    L.new(freq, sc.inputs['Scale'])
-    rel = N.new('ShaderNodeVectorMath')
-    rel.operation = 'SUBTRACT'
-    L.new(sc.outputs[0], rel.inputs[0])
-    L.new(f1.outputs['Position'], rel.inputs[1])
-    rs = N.new('ShaderNodeSeparateXYZ')
-    L.new(rel.outputs[0], rs.inputs[0])
-    tip = _math(N, L, 'ADD', va=0.45, b=_math(N, L, 'MULTIPLY', rs.outputs['Y'], vb=-1.1))
-    dragon = _math(N, L, 'MULTIPLY', _math(N, L, 'POWER', _math(N, L, 'DIVIDE', e2, vb=0.12, clamp=True), vb=0.5),
-                   _math(N, L, 'MINIMUM', _math(N, L, 'MAXIMUM', tip, vb=0.0), vb=1.0))
+    """The skin patterns at one cell frequency (0..1-ish heights), picked by Skin (1..6)."""
+    def smooth(x, lo, hi):
+        mr = N.new('ShaderNodeMapRange')
+        mr.interpolation_type = 'SMOOTHSTEP'
+        L.new(x, mr.inputs['Value'])
+        mr.inputs['From Min'].default_value = lo
+        mr.inputs['From Max'].default_value = hi
+        return mr.outputs['Result']
+
+    def noise(scale, detail=2.0):
+        n = N.new('ShaderNodeTexNoise')
+        n.inputs['Detail'].default_value = detail
+        L.new(P, n.inputs['Vector'])
+        L.new(scale, n.inputs['Scale'])
+        return n.outputs['Fac']
+
+    def pillow(vec, f, groove=0.12, radius=0.62):
+        """0.23.6 a plump scale: a round dome from the distance to the scale's own centre (smooth
+        inside the cell - no ridges to the corners) cut by a narrow groove at the cell edge"""
+        f1 = _vor(N, L, vec, f, rnd, 'F1')
+        e = _vor(N, L, vec, f, rnd, 'DISTANCE_TO_EDGE').outputs['Distance']
+        r2 = _math(N, L, 'POWER', _math(N, L, 'DIVIDE', f1.outputs['Distance'], vb=radius), vb=2.0)
+        dome = _math(N, L, 'SQRT', _math(N, L, 'MAXIMUM', _math(N, L, 'SUBTRACT', va=1.0, b=r2), vb=0.0))
+        c = N.new('FunctionNodeSeparateColor')
+        L.new(f1.outputs['Color'], c.inputs[0])
+        own = _math(N, L, 'ADD', va=0.8, b=_math(N, L, 'MULTIPLY', c.outputs[0], vb=0.35))
+        return _math(N, L, 'MULTIPLY', _math(N, L, 'MULTIPLY', dome, smooth(e, 0.0, groove)), own)
+
+    def mix(a_, b_, w):
+        return _math(N, L, 'ADD', a_, _math(N, L, 'MULTIPLY', _math(N, L, 'SUBTRACT', b_, a_), w))
+    # 1 crocodile (flank): plump pillow scales, big ones in clusters with small ones filling in,
+    #   a fine pebbled grain on top
+    big = pillow(P, _math(N, L, 'MULTIPLY', freq, vb=0.8))
+    small = _math(N, L, 'MULTIPLY', pillow(P, _math(N, L, 'MULTIPLY', freq, vb=1.7), 0.14), vb=0.7)
+    clus = smooth(noise(_math(N, L, 'MULTIPLY', freq, vb=0.3)), 0.47, 0.56)
+    grain = _math(N, L, 'MULTIPLY', _math(N, L, 'SUBTRACT', noise(_math(N, L, 'MULTIPLY', freq, vb=7.0), 3.0),
+                                          vb=0.5), vb=0.12)
+    scales = mix(small, big, clus)
+    croc = _math(N, L, 'ADD', scales, _math(N, L, 'MULTIPLY', grain, smooth(scales, 0.1, 0.5)))
+    # 2 dragon (bearded dragon): small round pebbly scales + scattered sharp cone spikes
+    peb = pillow(P, _math(N, L, 'MULTIPLY', freq, vb=1.4), 0.16, 0.52)
+    sf = _math(N, L, 'MULTIPLY', freq, vb=0.42)
+    sp = _vor(N, L, P, sf, rnd, 'F1')
+    spc = N.new('FunctionNodeSeparateColor')
+    L.new(sp.outputs['Color'], spc.inputs[0])
+    pick = _math(N, L, 'GREATER_THAN', spc.outputs[1], vb=0.7)        # ~30 % of the coarse cells
+    rad = _math(N, L, 'ADD', va=0.22, b=_math(N, L, 'MULTIPLY', spc.outputs[0], vb=0.14))
+    cone = _math(N, L, 'POWER', _math(N, L, 'SUBTRACT', va=1.0, b=_math(N, L, 'DIVIDE', sp.outputs['Distance'], rad,
+                                                                         clamp=True)), vb=1.7)
+    spike = _math(N, L, 'MULTIPLY', _math(N, L, 'MULTIPLY', cone, pick),
+                  _math(N, L, 'ADD', va=1.6, b=_math(N, L, 'MULTIPLY', spc.outputs[2], vb=1.4)))
+    dragon = _math(N, L, 'ADD', _math(N, L, 'MULTIPLY', peb, vb=0.7), spike)
     # 3 godzilla: big flat plates, sharp grooves, each plate its own height
     gf = _math(N, L, 'MULTIPLY', freq, vb=0.55)
     e3 = _vor(N, L, P, gf, rnd, 'DISTANCE_TO_EDGE').outputs['Distance']
@@ -186,13 +214,40 @@ def _skin_pattern(N, L, I, P, freq, rnd):
     L.new(P, no5.inputs['Vector'])
     L.new(_math(N, L, 'MULTIPLY', freq, vb=0.6), no5.inputs['Scale'])
     eleph = _math(N, L, 'SUBTRACT', _math(N, L, 'MULTIPLY', no5.outputs['Fac'], vb=0.8), crack)
+    # 6 crocodile back: rows of rectangular scutes, each with a keel ridge along the middle
+    sep = N.new('ShaderNodeSeparateXYZ')
+    L.new(P, sep.inputs[0])
+    gx = _math(N, L, 'MULTIPLY', sep.outputs['X'], _math(N, L, 'MULTIPLY', freq, vb=0.8))
+    gy = _math(N, L, 'MULTIPLY', sep.outputs['Y'], _math(N, L, 'MULTIPLY', freq, vb=0.9))
+    fx, fy = _math(N, L, 'FRACT', gx), _math(N, L, 'FRACT', gy)
+    ex = _math(N, L, 'MINIMUM', fx, _math(N, L, 'SUBTRACT', va=1.0, b=fx))
+    ey = _math(N, L, 'MINIMUM', fy, _math(N, L, 'SUBTRACT', va=1.0, b=fy))
+    eg = _math(N, L, 'MINIMUM', ex, ey)
+    wn = N.new('ShaderNodeTexWhiteNoise')
+    wn.noise_dimensions = '2D'
+    cid = N.new('ShaderNodeCombineXYZ')
+    L.new(_math(N, L, 'FLOOR', gx), cid.inputs[0])
+    L.new(_math(N, L, 'FLOOR', gy), cid.inputs[1])
+    L.new(cid.outputs[0], wn.inputs['Vector'])
+    cell_r = wn.outputs['Value']
+    plate = _math(N, L, 'MULTIPLY', _math(N, L, 'SQRT', _math(N, L, 'DIVIDE', eg, vb=0.3, clamp=True)),
+                  _math(N, L, 'ADD', va=0.75, b=_math(
+        N, L, 'MULTIPLY', cell_r, vb=0.4)))
+    keel = _math(N, L, 'POWER', _math(N, L, 'SUBTRACT', va=1.0, b=_math(N, L, 'MULTIPLY', _math(
+        N, L, 'ABSOLUTE', _math(N, L, 'SUBTRACT', fx, vb=0.5)), vb=4.5), clamp=True), vb=1.3)
+    keel_on = smooth(cell_r, 0.15, 0.3)                                 # most scutes carry a keel
+    gr = _math(N, L, 'MULTIPLY', _math(N, L, 'SUBTRACT', noise(_math(N, L, 'MULTIPLY', freq, vb=6.0), 3.0),
+                                       vb=0.5), vb=0.1)
+    cback = _math(N, L, 'ADD', _math(N, L, 'ADD', plate, _math(N, L, 'MULTIPLY', _math(
+        N, L, 'MULTIPLY', keel, keel_on), _math(N, L, 'MULTIPLY', smooth(eg, 0.0, 0.25), vb=1.1))),
+        _math(N, L, 'MULTIPLY', gr, plate))
     sw = N.new('GeometryNodeIndexSwitch')
     sw.data_type = 'FLOAT'
-    while len(sw.index_switch_items) < 6:
+    while len(sw.index_switch_items) < 7:
         sw.index_switch_items.new()
     L.new(I['Skin'], sw.inputs['Index'])
     sw.inputs[1].default_value = 0.0
-    for k, src in enumerate((croc, dragon, godz, toad, eleph)):
+    for k, src in enumerate((croc, dragon, godz, toad, eleph, cback)):
         L.new(src, sw.inputs[k + 2])
     return sw.outputs[0]
 
@@ -929,20 +984,22 @@ PRESETS = {
 TRIM_PRESETS = {'NONE': (0.03, 0.0), 'PIPING': (0.022, 0.011), 'BINDING': (0.045, 0.006), 'WELT': (0.04, 0.008)}
 
 # 0.23.4 Creature Skin (sizes are parts of the panel size)
-SKINS = (('CROC', 'Crocodile', 'Round domed scales with grooves'),
-         ('DRAGON', 'Dragon', 'Pointed scales rising to their tips (overlapping)'),
+SKINS = (('CROC', 'Crocodile', 'Plump round scales, big and small, with grooves'),
+         ('DRAGON', 'Dragon', 'Small pebbly scales with scattered sharp spikes'),
          ('GODZILLA', 'Godzilla', 'Big flat plates with sharp grooves'),
          ('TOAD', 'Toad', 'Rough warty skin'),
-         ('ELEPHANT', 'Elephant', 'Cracked, lumpy hide'))
+         ('ELEPHANT', 'Elephant', 'Cracked, lumpy hide'),
+         ('CROC_BACK', 'Croc Back', 'Rows of rectangular scutes with a keel ridge'))
 SKIN_IDS = tuple(k[0] for k in SKINS)
 SKIN_EDGES = (('NONE', 'No Edge', ''), ('GRAIN', 'Skin Grain', 'Fine lines along the border'),
               ('FOLDS', 'Skin Folds', 'Soft folds along the border'), ('PEBBLE', 'Pebbles', 'Small bumps along the border'))
 CREATURE = {
-    'CROC': dict(Skin=1, Scale=0.07, Depth=0.012, Shrink=0.8, ShrinkW=0.2, Edge=2, EdgeW=0.08, EdgeH=0.004),
+    'CROC': dict(Skin=1, Scale=0.07, Depth=0.012, Shrink=0.7, ShrinkW=0.12, Edge=2, EdgeW=0.08, EdgeH=0.004),
     'DRAGON': dict(Skin=2, Scale=0.06, Depth=0.014, Shrink=0.9, ShrinkW=0.2, Edge=1, EdgeW=0.07, EdgeH=0.002),
     'GODZILLA': dict(Skin=3, Scale=0.12, Depth=0.01, Shrink=0.6, ShrinkW=0.25, Edge=3, EdgeW=0.08, EdgeH=0.004),
     'TOAD': dict(Skin=4, Scale=0.045, Depth=0.012, Shrink=0.5, ShrinkW=0.2, Edge=3, EdgeW=0.06, EdgeH=0.004),
     'ELEPHANT': dict(Skin=5, Scale=0.1, Depth=0.01, Shrink=0.4, ShrinkW=0.2, Edge=1, EdgeW=0.1, EdgeH=0.003),
+    'CROC_BACK': dict(Skin=6, Scale=0.1, Depth=0.014, Shrink=0.5, ShrinkW=0.2, Edge=2, EdgeW=0.08, EdgeH=0.004),
 }
 
 

@@ -1,8 +1,12 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.5 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.6 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A000000000000000000000. 0.23.6 (미검증)
+- [ ] Skin 버튼으로 6가지 순환(마지막 Croc Back), 악어 비늘이 둥글게 부푼 모양인지, 도마뱀 가시
+- [ ] Croc Back 줄 방향이 원하는 방향인지(지금은 판 로컬 X/Y 고정)
 
 ## A00000000000000000000. 0.23.5 (미검증)
 - [ ] Shell HUD: Organic / Edge Shrink / Shrink Width / Edge Irregular 슬라이더 - 경계가 휘고, 안쪽 넓고 바깥 좁게 쪼개지는지

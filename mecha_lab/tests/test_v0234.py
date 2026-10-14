@@ -63,7 +63,8 @@ check('Up: going upward a fold rises over a long gentle slope, drops on a short 
 check('Down: the steep wall is underneath', fall1 > rise1 * 1.15, (rise1, fall1))
 
 # ---- Creature Skin
-check('five skins + four border finishes', cw.SKIN_IDS == ('CROC', 'DRAGON', 'GODZILLA', 'TOAD', 'ELEPHANT') and
+check('five skins (+ Croc Back since 0.23.6) + four border finishes',
+      cw.SKIN_IDS[:5] == ('CROC', 'DRAGON', 'GODZILLA', 'TOAD', 'ELEPHANT') and
       len(cw.SKIN_EDGES) == 4 and all(cw.CREATURE[k]['Skin'] == i + 1 for i, k in enumerate(cw.SKIN_IDS)))
 check('skin inputs in the node group', all(any(x[0] == k for x in cw.INPUTS) for k in
       ('Skin', 'Skin Scale', 'Skin Depth', 'Skin Random', 'Edge Shrink', 'Shrink Width', 'Skin Edge',
@@ -71,7 +72,7 @@ check('skin inputs in the node group', all(any(x[0] == k for x in cw.INPUTS) for
 VIEW[0] = cg.OrthoProjector(Quaternion())
 S.mch_wrinkle.creature = True
 made = []
-for k, skin in enumerate(cw.SKIN_IDS):
+for k, skin in enumerate(cw.SKIN_IDS[:5]):
     b = cube('B%d' % k, 4.0, loc=(6.0 * (k + 1), 0, 0))
     VIEW[0] = cg.OrthoProjector(Quaternion(), center=Vector((6.0 * (k + 1), 0, 0)))
     S.mch_wrinkle.skin = skin

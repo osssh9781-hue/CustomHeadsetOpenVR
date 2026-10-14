@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.23.5
+# Test Report — Mecha Lab 0.23.6
+
+## 0.23.6 결과: 50개 파일, 2040 / 2040 통과 (`tests/test_log_bpy501_v0236.txt`, 한 번에 통과). `test_v0234`의 "다섯 스킨" 검사는 앞 5개만 보도록 수정(Croc Back 추가). 가시: 높은 점이 중간값 위로 튀어나온 정도가 악어보다 큰지(5.39 대 1.77). 모양은 Cycles 렌더로 비교. 뷰포트는 미검증.
 
 ## 0.23.5 결과: 49개 파일, 2035 / 2035 통과 (`tests/test_log_bpy501_v0235.txt`, 한 번에 통과). Edge Shrink 검사: 경계에서 Shrink Width × 2.2보다 먼 안쪽 점은 높이 변화 0, 경계 근처는 변함. 모양은 Cycles 렌더로 확인. 뷰포트 HUD 슬라이더 동작은 미검증.
 
