@@ -1,8 +1,13 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.22.2 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.0 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A000000000000000. 0.23.0 (미검증)
+- [ ] 하단 툴바 Tube → 바로 그리기, 클릭으로 점, 솔리드 튜브가 바로 보이는지, 흰 점·연결선 표시
+- [ ] 선 위 클릭 = 삽입, 드래그, Ctrl+휠 점 굵기, X 삭제, Enter 끝 / Edit Points로 다시 편집
+- [ ] N 패널: Radius, 테이퍼, Profile, Cap, Hole, Twist, B-Spline, Closed, Repeat(구 / 고른 오브젝트, Count), Apply
 
 ## A00000000000000. 0.22.2 (미검증)
 - [ ] Armor Plate + Surface: 앞에서 점 찍고 옆으로 돌려 계속 찍기 → Enter → 판이 표면에 맞게, 팝업 슬라이더로 수정

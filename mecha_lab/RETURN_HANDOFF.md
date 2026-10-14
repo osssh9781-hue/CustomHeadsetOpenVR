@@ -1,4 +1,9 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.22.2 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.0 (Claude Code, 2026-10-14)
+
+## 0.23.0
+- ZIP sha256 `acaefe96cb9e9c3319ce4d55cceb66f16d25dfc6aeda91277f9b727f2753307a`. 신규 `curve_tube.py`: 점 = 오브젝트 커스텀 속성 `mch_tube_pts`(x,y,z,r), `Object.mch_tube`(MCH_PG_Tube, 값 변경 시 `rebuild`), `Scene.mch_tube_defaults`.
+  순수 `path_samples`(Catmull-Rom / 클램프 B-Spline / Linear, 닫힘), `frames`(평행 이동), `profile`, `tube_mesh`(캡 Flat/Round/Open, Hole, 부피로 노멀), `arc_points`, `repeat_mesh`, `sphere_source`. `TubeLogic` + `mch.tube_draw`(POST_VIEW 점/선), `mch.tube_apply`, 패널 `MCH_PT_tube`.
+  도구 `TUBE`(enum 27, 네이티브 없음) — `activate_mecha_tool`에서 `start_draw`, `bottom_bar.BAR_TOOLS`/`PIE_SHARED['RADIAL']`, `ui_tool_settings.DRAWERS['TUBE']`. 테스트 `test_v0230.py`.
 
 ## 0.22.2
 - ZIP sha256 `7da9482b1e03ee42f2d2c6b6bd5ce1e6bd8bfd3a1e1406ce7a02b4f763b4525c`. `surface_lasso.MODES` += PLATE/WRINKLE (`PATCH_MODES`), `SurfaceLogic.surface_view`(평균 법선 방향 OrthoProjector, 외곽이 화면 40 % 안에), `_finish_patch` → `armor_plate.perform_plate` / `cloth_wrinkle.perform_wrinkle`(스크린 루프 + 그 Ortho 시점 = FrozenProjector 대신 ortho로 저장되어 라이브 재생성 가능), Line 모드면 `lasso_line.band`. 테스트 `test_v0223.py`.

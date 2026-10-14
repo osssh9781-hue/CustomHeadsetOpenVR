@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 0.23.0 — Tube / Curve 도구 (Nomad 방식) (2026-10-14)
+
+- 새 도구 **Tube**(하단 툴바, Shift+Q 파이의 Radial 칸 아래). 고르면 바로 그리기 시작.
+  클릭 = 점 추가(메쉬 위면 표면에, 아니면 마지막 점 깊이의 허공), **선 위 클릭 = 점 삽입**, 점 드래그 = 이동, **Ctrl+휠(점 위) = 그 점 굵기**, X / Delete(점 위) = 삭제, Enter / 우클릭 / Esc = 끝(살아 있음), 가운데 버튼·휠 = 화면.
+- 검은 커브 선이 아니라 **처음부터 솔리드 메쉬**. 점은 흰 점 + 연결선으로 표시.
+- **Tube 모드**: Radius, Start / End Size(테이퍼), Profile Round / Square / Flat(Ratio), Sides, Cap Flat / Round / Open, **Hole**(속 빈 파이프), Rotate, Twist.
+- **Repeat 모드**: 고른 오브젝트(비우면 구)를 커브를 따라 Count개, Size, Follow Radius(점 굵기 따라 크기), Align to Curve.
+- 커브: Smooth(점을 지남) / **B-Spline**(Nomad처럼 부드럽게) / Linear, **Closed**, Resolution. N 패널 Tube / Curve: Edit Points(다시 편집), Apply(일반 메쉬).
+- 미리보기 `reference/tube_tool_v0230.png`(둥근 테이퍼 튜브 / 네모 파이프+Twist / Repeat 구). 테스트: 45개 파일 1958/1958 (`tests/test_log_bpy501_v0230.txt`). ZIP sha256 `acaefe96cb9e9c3319ce4d55cceb66f16d25dfc6aeda91277f9b727f2753307a`.
+
 ## 0.22.2 — Surface Lasso로 Armor Plate / Cloth Plate (2026-10-14)
 
 - Armor Plate / Cloth Plate 헤더에도 **Surface** 버튼: 점을 메쉬 표면에 찍고(화면을 돌려가며 옆면까지 이어 그리기 가능) **Enter = 그 외곽선으로 플레이트 생성**. 만들어진 플레이트는 기존처럼 살아 있음(팝업 슬라이더·프리셋 그대로, Apply까지 수정 가능).

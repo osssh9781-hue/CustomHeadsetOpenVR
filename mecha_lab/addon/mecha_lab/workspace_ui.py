@@ -393,6 +393,13 @@ def activate_mecha_tool(context, tool_id):
                 area.tag_redraw()
     if tool_id == 'PRIMITIVE' and previous != 'PRIMITIVE':
         primitive_place.ensure_placed(context)   # 0.14.3: the ghost appears only once a shape is picked
+    if tool_id == 'TUBE' and previous != 'TUBE':
+        # 0.23: picking Tube starts drawing right away (Enter / right click ends; the tube stays live)
+        try:
+            from . import curve_tube
+            curve_tube.start_draw(context, new=not curve_tube.is_tube(context.active_object))
+        except (RuntimeError, AttributeError, TypeError) as ex:
+            print('[Mecha Lab] tube start:', ex)
     if tool_id == 'MIRROR' and previous != 'MIRROR':
         # 0.11.3: picking Mirror starts the live lean mirror right away
         try:

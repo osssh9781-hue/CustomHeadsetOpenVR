@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.22.2
+# Test Report — Mecha Lab 0.23.0
+
+## 0.23.0 결과: 45개 파일, 1958 / 1958 통과 (`tests/test_log_bpy501_v0230.txt`). Tube는 가짜 이벤트(정면 Ortho)로 점 추가/드래그/삽입/삭제/굵기, 설정, Repeat, Apply 확인 + Cycles 렌더. 실제 뷰포트 조작은 미검증.
 
 ## 0.22.2 결과: 44개 파일, 1912 / 1912 통과 (`tests/test_log_bpy501_v0222.txt`). 전체 실행에서 test_v0222.py의 예전 기대값 2개(Surface = Cut/Split만)가 실패 → 기대값을 고친 뒤 그 파일만 다시 실행(22/22)해 로그에 반영. 구에 앞/옆 시점으로 그린 판을 Cycles로 렌더해 확인, 실제 뷰포트 조작은 미검증.
 

@@ -1,8 +1,11 @@
-# Mecha Lab 0.22.2 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.23.0 — 설치 · MECHA LAB Workspace · 사용법
 
-> **검증 수준:** Linux headless Blender **5.0.1**(`bpy`)에서 자동 테스트 44개 파일 / 1912개 항목이 통과했습니다.
+> **검증 수준:** Linux headless Blender **5.0.1**(`bpy`)에서 자동 테스트 45개 파일 / 1958개 항목이 통과했습니다.
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` A절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
+
+## 0.23.0
+- 새 **Tube** 도구: 점을 찍으면 바로 솔리드 튜브(굵기·단면·캡·구멍·비틀기), 또는 Repeat(오브젝트/구를 커브 따라 반복). Apply 전까지 살아 있음.
 
 ## 0.22.2
 - Armor Plate / Cloth Plate에서도 **Surface**: 표면에 점 찍고(화면 돌려도 붙어 있음) Enter = 플레이트. Line을 같이 켜면 표면 따라 띠.

@@ -23,6 +23,7 @@ BAR_TOOLS = (
     ('PRIMITIVE', 'Primitive', '', 'MESH_CUBE', 'mch.set_tool', 'PRIMITIVE'),
     ('RADIAL', 'Radial', '', 'MOD_SCREW', 'mch.set_tool', 'RADIAL'),
     ('PLATE', 'Plate', '', 'MESH_GRID', 'mch.set_tool', 'PLATE'),
+    ('TUBE', 'Tube', '', 'CURVE_BEZCURVE', 'mch.set_tool', 'TUBE'),
 )
 SELECT_NATIVE = {'builtin.move', 'builtin.select', 'builtin.select_box', 'builtin.select_circle',
                  'builtin.select_lasso', 'builtin.rotate', 'builtin.scale', 'builtin.transform'}
@@ -93,7 +94,7 @@ def in_select(context):
 # -----------------------------------------------------------------------------
 
 
-PIE_SHARED = {'BASE': ('PLATE',)}      # pie slot -> extra tools stacked under it
+PIE_SHARED = {'BASE': ('PLATE',), 'RADIAL': ('TUBE',)}      # pie slot -> extra tools stacked under it
 
 
 class MCH_MT_tool_pie(bpy.types.Menu):

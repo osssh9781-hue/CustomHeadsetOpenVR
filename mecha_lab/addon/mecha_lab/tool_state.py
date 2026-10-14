@@ -52,6 +52,9 @@ TOOLS = (
      'along', 'MOD_ARRAY', None, 'OK'),
     ('CABLE', 'Cable', 'Two-point cables between mesh surfaces, Edge to Cable, thickness / profile / sag / twist',
      'cable', 'OUTLINER_OB_CURVE', None, 'OK'),
+    ('TUBE', 'Tube', 'Nomad-style curve: click points (on the mesh or in the air), a live solid tube right away - '
+     'radius per point, profile, cap, hole, twist - or Repeat an object along it', 'cable', 'CURVE_BEZCURVE', None,
+     'OK'),
     ('LOFT', 'Loft / Surface', 'Smooth surface through 2+ curves, or sweep a profile along a path (live)',
      'loft', 'SURFACE_DATA', None, 'PARTIAL'),
     ('ZBRUSH', 'ZBrush Bridge', 'Send selected objects to ZBrush as OBJ files and import them back (not GoZ)',
@@ -76,7 +79,7 @@ SHAPE_TOOLS = {'CUT', 'SPLIT', 'MASK', 'BASE', 'PLATE', 'WRINKLE'}
 _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRAW': 6,
                  'ARRAY': 7, 'RADIAL': 8, 'SURFACE': 9, 'LIBRARY': 10, 'EDIT': 11,
                  'REMESH': 12, 'SPLIT': 13, 'POSE': 14, 'BASE': 15, 'LOFT': 16, 'ZBRUSH': 17, 'SUBD': 18, 'PRIMITIVE': 19,
-                 'EXTRACT': 20, 'MOLDING': 21, 'HOLLOW': 22, 'ALONG': 23, 'CABLE': 24, 'PLATE': 25, 'WRINKLE': 26}
+                 'EXTRACT': 20, 'MOLDING': 21, 'HOLLOW': 22, 'ALONG': 23, 'CABLE': 24, 'PLATE': 25, 'WRINKLE': 26, 'TUBE': 27}
 TOOL_ENUM_ITEMS = [(t[0], t[1], t[2], t[4], _ENUM_NUMBERS[t[0]]) for t in TOOLS]
 
 SHAPES = (
