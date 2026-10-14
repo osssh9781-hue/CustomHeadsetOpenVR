@@ -694,9 +694,9 @@ def draw_shape_palette(self, context):
     sk.enabled = tool in ts.SHAPE_TOOLS
     sk.operator('mch.sketch_toggle', text='Sketch', icon='GREASEPENCIL', depress=lasso_sketch.is_on(context))
     sk.prop(brush, 'line_mode', text='Line', icon='IPO_LINEAR', toggle=True)
-    if tool in {'CUT', 'SPLIT'}:
+    if tool in {'CUT', 'SPLIT', 'PLATE', 'WRINKLE'}:
         sk.prop(brush, 'surface_mode', text='Surface', icon='SNAP_FACE', toggle=True)
-        if brush.surface_mode:
+        if brush.surface_mode and tool in {'CUT', 'SPLIT'}:
             sk.prop(brush, 'surface_gap', text='Gap')
     if brush.line_mode:
         sk.prop(brush, 'line_width', text='')

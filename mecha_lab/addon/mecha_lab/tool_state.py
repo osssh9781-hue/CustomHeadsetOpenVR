@@ -198,8 +198,9 @@ class MCH_PG_Brush(bpy.types.PropertyGroup):
     line_caps: EnumProperty(name='Line Ends', items=[('ROUND', 'Round', 'Round line ends'),
                                                      ('FLAT', 'Flat', 'Square line ends')], default='ROUND')
     surface_mode: BoolProperty(name='Surface', default=False,
-                               description='Cut / Split: click points ON the mesh (they stay on it when you orbit); '
-                                           'a loop around a part splits it off (Enter)')
+                               description='Cut / Split / Armor Plate / Cloth Plate: click points ON the mesh (they '
+                                           'stay on it when you orbit); Enter applies (Cut / Split: a loop around a '
+                                           'part splits it off; plates: the outline on the surface)')
     surface_gap: FloatProperty(name='Cut Gap', default=0.0005, min=0.0, soft_max=0.02, max=1.0, unit='LENGTH',
                                precision=4, description='Gap between the parts split by the Surface Lasso')
     sketch_first: BoolProperty(name='Sketch', default=False,

@@ -25,7 +25,8 @@ from bpy.props import StringProperty
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
-MODES = {'CUT', 'SPLIT'}
+MODES = {'CUT', 'SPLIT', 'PLATE', 'WRINKLE'}
+PATCH_MODES = {'PLATE', 'WRINKLE'}        # 0.22.2: Armor Plate / Cloth Plate from a surface outline
 HIT_PX = 12.0
 _draw_ops = []
 
@@ -390,7 +391,61 @@ class SurfaceLogic:
             self.points.pop()
         self._rebuild()
 
+    def surface_view(self, pts_world, normals_world, size=1000.0):
+        """Orthographic view looking straight at the drawn area (along its average normal)."""
+        from mathutils import Quaternion
+        from . import core_geometry as cg
+        n = sum((Vector(v) for v in normals_world), Vector())
+        n = n.normalized() if n.length > 1e-9 else Vector((0, 0, 1))
+        c = sum((Vector(p) for p in pts_world), Vector()) / max(1, len(pts_world))
+        rot = Vector((0, 0, 1)).rotation_difference(n) if n.dot(Vector((0, 0, -1))) < 0.9999 else \
+            Quaternion((1, 0, 0), math.pi)
+        probe = cg.OrthoProjector(rot, c, 1.0, (size, size))
+        r = max((Vector(probe.to_screen(p)) - Vector((size / 2, size / 2))).length for p in pts_world)
+        ppu = (size * 0.4) / max(r, 1e-6)
+        return cg.OrthoProjector(rot, c, ppu, (size, size))
+
+    def _finish_patch(self, context):
+        """Armor Plate / Cloth Plate from the surface outline (or a band in Line mode)."""
+        from . import lasso_line
+        brush = context.scene.mch_brush
+        line = bool(getattr(brush, 'line_mode', False))
+        if len(self.points) < (2 if line else 3):
+            return None, 'Surface Lasso: place at least %d points' % (2 if line else 3)
+        if line:
+            self.closed = False
+        elif not self.closed:
+            self.closed = True
+        self._rebuild()
+        pts = self.loop_local()
+        if line and self.segments:
+            pts.append(self.segments[-1][-1])
+        world = [self.target.to_world(p) for p in pts]
+        nrms = [self.target.normal_world(n) for _p, n in self.points]
+        view = self.surface_view(world, nrms)
+        screen = [view.to_screen(p) for p in world]
+        if line:
+            loop = lasso_line.band(screen, max(1.0, brush.line_width * view.ppu), brush.line_caps)
+        else:
+            step = max(1, len(screen) // 240)
+            loop = screen[::step]
+        if len(loop) < 3:
+            return None, 'Surface Lasso: the outline is too small'
+        from . import core_geometry as cg
+        try:
+            if self.mode == 'PLATE':
+                from . import armor_plate
+                msg = armor_plate.perform_plate(context, [loop], view)
+            else:
+                from . import cloth_wrinkle
+                msg = cloth_wrinkle.perform_wrinkle(context, [loop], view)
+        except cg.CutError as ex:
+            return None, str(ex)
+        return [context.view_layer.objects.active], msg
+
     def finish(self, context):
+        if self.mode in PATCH_MODES:
+            return self._finish_patch(context)
         if len(self.points) < 3:
             return None, 'Surface Lasso: place at least 3 points around the part'
         if not self.closed:
@@ -461,7 +516,8 @@ class MCH_OT_surface_lasso(SurfaceLogic, bpy.types.Operator):
         if context.area:
             context.area.header_text_set(
                 'Surface Lasso: click points on the mesh (orbit freely)  |  click the first point: close  |  '
-                'drag a point: move  |  Enter: split  |  Backspace: last  |  Esc: cancel')
+                'drag a point: move  |  Enter: ' + ('apply' if self.mode in PATCH_MODES else 'split')
+                + '  |  Backspace: last  |  Esc: cancel')
 
     def _end(self, context):
         if self in _draw_ops:

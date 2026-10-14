@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 0.22.2 — Surface Lasso로 Armor Plate / Cloth Plate (2026-10-14)
+
+- Armor Plate / Cloth Plate 헤더에도 **Surface** 버튼: 점을 메쉬 표면에 찍고(화면을 돌려가며 옆면까지 이어 그리기 가능) **Enter = 그 외곽선으로 플레이트 생성**. 만들어진 플레이트는 기존처럼 살아 있음(팝업 슬라이더·프리셋 그대로, Apply까지 수정 가능).
+- **Line + Surface**: 표면을 따라 그은 선을 Line Width 폭의 띠 플레이트로.
+- 원리: 그린 영역의 평균 표면 방향에서 똑바로 본 시점으로 외곽선을 넘겨 기존 플레이트 계산을 그대로 사용. 그래서 한 판은 **한쪽에서 보이는 범위(대략 반 바퀴 미만)** 까지 — 팔을 완전히 한 바퀴 감는 판은 두 장으로 나눠 주세요.
+- 핀·소켓 커넥터(3단계)는 하지 않음.
+- 미리보기 `reference/surface_lasso_plate_v0222.png`(앞면에서 옆면까지 그린 판). 테스트: 44개 파일 1912/1912 (`tests/test_log_bpy501_v0222.txt`). ZIP sha256 `7da9482b1e03ee42f2d2c6b6bd5ce1e6bd8bfd3a1e1406ce7a02b4f763b4525c`.
+
 ## 0.22.1 — Q 한 번으로 왕복, 인간형 몸통/머리 제외, Surface Lasso 1단계 (2026-10-14)
 
 - **Q = Select ↔ 마지막 도구**(Tab처럼 Q 하나로 왔다갔다). 도구 파이는 **Shift+Q**로 이동. (Preferences에서 예전에 키를 직접 바꿔 저장했다면 그 설정이 우선)

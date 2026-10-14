@@ -1,8 +1,11 @@
-# Mecha Lab 0.22.1 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.22.2 — 설치 · MECHA LAB Workspace · 사용법
 
-> **검증 수준:** Linux headless Blender **5.0.1**(`bpy`)에서 자동 테스트 43개 파일 / 1902개 항목이 통과했습니다.
+> **검증 수준:** Linux headless Blender **5.0.1**(`bpy`)에서 자동 테스트 44개 파일 / 1912개 항목이 통과했습니다.
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` A절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
+
+## 0.22.2
+- Armor Plate / Cloth Plate에서도 **Surface**: 표면에 점 찍고(화면 돌려도 붙어 있음) Enter = 플레이트. Line을 같이 켜면 표면 따라 띠.
 
 ## 0.22.1
 - **Q** 한 번 = Select ↔ 마지막 도구, **Shift+Q** = 도구 파이.

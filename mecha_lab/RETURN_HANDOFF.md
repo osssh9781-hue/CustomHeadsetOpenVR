@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.22.1 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.22.2 (Claude Code, 2026-10-14)
+
+## 0.22.2
+- ZIP sha256 `7da9482b1e03ee42f2d2c6b6bd5ce1e6bd8bfd3a1e1406ce7a02b4f763b4525c`. `surface_lasso.MODES` += PLATE/WRINKLE (`PATCH_MODES`), `SurfaceLogic.surface_view`(평균 법선 방향 OrthoProjector, 외곽이 화면 40 % 안에), `_finish_patch` → `armor_plate.perform_plate` / `cloth_wrinkle.perform_wrinkle`(스크린 루프 + 그 Ortho 시점 = FrozenProjector 대신 ortho로 저장되어 라이브 재생성 가능), Line 모드면 `lasso_line.band`. 테스트 `test_v0223.py`.
 
 ## 0.22.1
 - ZIP sha256 `4af3ae8763ee90122bfd0953153ec4c13548ab3d663feafa87546040160e296c`. 키맵: Q → `mch.toggle_last_tool`, Shift+Q → `mch.tool_pie`. `robot_base.UI_PARTS['HUMANOID']`/`BODY_HUMANOID`에서 TORSO/CHEST/PELVIS/HEAD 제외(코드는 남김).

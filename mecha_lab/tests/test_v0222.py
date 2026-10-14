@@ -17,10 +17,10 @@ S = C.scene
 br = S.mch_brush
 check('Surface toggle + gap props, off by default', hasattr(br, 'surface_mode') and br.surface_mode is False
       and br.surface_gap > 0)
-check('Surface only for Cut / Split', sl.MODES == {'CUT', 'SPLIT'})
+check('Surface for Cut / Split (+ plates since 0.22.2)', {'CUT', 'SPLIT'} <= sl.MODES and 'BASE' not in sl.MODES)
 br.surface_mode = True
-check('enabled for Cut and Split only', sl.enabled(C, 'CUT') and sl.enabled(C, 'SPLIT')
-      and not sl.enabled(C, 'PLATE'))
+check('enabled for Cut and Split, not Base Mesh', sl.enabled(C, 'CUT') and sl.enabled(C, 'SPLIT')
+      and not sl.enabled(C, 'BASE'))
 br.surface_mode = False
 
 arm = cylinder('Arm', segments=32, radius=0.5, depth=4.0)

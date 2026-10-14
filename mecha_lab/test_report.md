@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.22.1
+# Test Report — Mecha Lab 0.22.2
+
+## 0.22.2 결과: 44개 파일, 1912 / 1912 통과 (`tests/test_log_bpy501_v0222.txt`). 전체 실행에서 test_v0222.py의 예전 기대값 2개(Surface = Cut/Split만)가 실패 → 기대값을 고친 뒤 그 파일만 다시 실행(22/22)해 로그에 반영. 구에 앞/옆 시점으로 그린 판을 Cycles로 렌더해 확인, 실제 뷰포트 조작은 미검증.
 
 ## 0.22.1 결과: 43개 파일, 1902 / 1902 통과 (`tests/test_log_bpy501_v0221.txt`). Surface Lasso는 원통에 앞/뒤 시점을 바꿔가며 점을 찍는 가짜 이벤트로 확인(분리·Gap·닫힘). 실제 뷰포트 그리기/궤도 회전 조작은 미검증.
 
