@@ -1,8 +1,12 @@
-# Mecha Lab 0.23.1 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.23.2 — 설치 · MECHA LAB Workspace · 사용법
 
-> **검증 수준:** Linux headless Blender **5.0.1**(`bpy`)에서 자동 테스트 45개 파일 / 1961개 항목이 통과했습니다.
+> **검증 수준:** Linux headless Blender **5.0.1**(`bpy`)에서 자동 테스트 46개 파일 / 1983개 항목이 통과했습니다.
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` A절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
+
+## 0.23.2
+- **V** = 도구 파이. 왼쪽 **Mirror** 버튼도 기울이기 제스처(화면 아래 가운데 표시), 결과는 살아 있는 미러.
+- Cloth Plate **Gravity**. **Mesh Curve** = 새 커브 도구(점 드래그·주황 굵기 점·아래 버튼 줄, Repeat에 내 오브젝트 링크 + 간격).
 
 ## 0.23.0
 - 새 **Tube** 도구: 점을 찍으면 바로 솔리드 튜브(굵기·단면·캡·구멍·비틀기), 또는 Repeat(오브젝트/구를 커브 따라 반복). Apply 전까지 살아 있음.

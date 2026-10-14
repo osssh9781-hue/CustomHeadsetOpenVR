@@ -219,9 +219,9 @@ check('Origin to Geometry: back to the middle of the box', (cb.location - Vector
 pos = bb.tidy_positions(fake)
 check('five buttons stacked under the Tool Active button (+ Symmetry, Mirror)', len(pos) == 5 and all(abs(x - bx) < 1e-6 for x, _y in pos)
       and by > pos[0][1] > pos[1][1] > pos[2][1])
-res = bpy.ops.mch.object_tidy(action='MIRROR')
-check('Mirror button: a live mirror modifier that stays (not applied)', res == {'FINISHED'} and
-      any(m.type == 'MIRROR' for m in cb.modifiers))
+src = open(bb.__file__).read()
+check('0.23.2 Mirror button: the lean gesture, result kept live (not applied)',
+      "mirror_lean('INVOKE_DEFAULT', keep_live=True)" in src.split("if self.action == 'MIRROR':")[1][:400])
 from mecha_lab import tool_state as _ts
 check('the old Mirror tool is called Symmetry now', _ts.TOOL_BY_ID['MIRROR'][1] == 'Symmetry')
 bpy.data.objects.remove(cb)

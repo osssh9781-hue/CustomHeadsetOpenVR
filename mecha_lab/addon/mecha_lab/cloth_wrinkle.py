@@ -73,7 +73,8 @@ INPUTS = (('Type', 'NodeSocketInt', 0, 0, 2),
           ('Patchiness', 'NodeSocketFloat', 0.6, 0.0, 1.0),
           ('Trim', 'NodeSocketInt', 0, 0, 3),
           ('Trim Width', 'NodeSocketFloat', 0.03, 0.0001, 100.0),
-          ('Trim Height', 'NodeSocketFloat', 0.01, -100.0, 100.0))
+          ('Trim Height', 'NodeSocketFloat', 0.01, -100.0, 100.0),
+          ('Gravity', 'NodeSocketFloat', 0.0, 0.0, 5.0))
 TRIMS = (('NONE', 'No Trim', 'Plain border'),
          ('PIPING', 'Piping', 'Round cord along the border'),
          ('BINDING', 'Binding', 'Flat band folded over the border, stitched'),
@@ -85,7 +86,7 @@ SEC_U = 'mch_sec_u'            # 0..1 along the long side (local X): stitched se
 SEC_LEN = 'mch_sec_len'        # length of the long side
 EDGE_U = 'mch_edge_u'          # arc length along the border of the nearest border point
 EDGE_LEN = 'mch_edge_len'      # length of that border loop (keeps seam patterns seamless)
-VERSION = 29
+VERSION = 31
 
 
 # -----------------------------------------------------------------------------
@@ -448,9 +449,49 @@ def build_group():
     off.operation = 'SCALE'
     L.new(nrm.outputs[0], off.inputs[0])
     L.new(h, off.inputs['Scale'])
+    # 0.23.2 Gravity: the raised parts (puffs, folds) slide / sag toward world down, more where they are higher
+    selfo = N.new('GeometryNodeSelfObject')
+    oinfo = N.new('GeometryNodeObjectInfo')
+    L.new(selfo.outputs[0], oinfo.inputs['Object'])
+    inv = N.new('FunctionNodeInvertRotation')
+    L.new(oinfo.outputs['Rotation'], inv.inputs[0])
+    rv = N.new('FunctionNodeRotateVector')
+    L.new(inv.outputs[0], rv.inputs['Rotation'])
+    rv.inputs['Vector'].default_value = (0.0, 0.0, -1.0)
+    down = rv.outputs[0]
+    dn = N.new('ShaderNodeVectorMath')
+    dn.operation = 'DOT_PRODUCT'
+    L.new(down, dn.inputs[0])
+    L.new(nrm.outputs[0], dn.inputs[1])
+    nproj = N.new('ShaderNodeVectorMath')
+    nproj.operation = 'SCALE'
+    L.new(nrm.outputs[0], nproj.inputs[0])
+    L.new(dn.outputs['Value'], nproj.inputs['Scale'])
+    tang = N.new('ShaderNodeVectorMath')
+    tang.operation = 'SUBTRACT'
+    L.new(down, tang.inputs[0])
+    L.new(nproj.outputs[0], tang.inputs[1])
+    sagdir = N.new('ShaderNodeVectorMath')                     # mostly along the surface, a little straight down
+    sagdir.operation = 'ADD'
+    L.new(tang.outputs[0], sagdir.inputs[0])
+    down02 = N.new('ShaderNodeVectorMath')
+    down02.operation = 'SCALE'
+    L.new(down, down02.inputs[0])
+    down02.inputs['Scale'].default_value = 0.25
+    L.new(down02.outputs[0], sagdir.inputs[1])
+    sag = N.new('ShaderNodeVectorMath')
+    sag.operation = 'SCALE'
+    L.new(sagdir.outputs[0], sag.inputs[0])
+    edge_keep = _math(N, L, 'DIVIDE', Db, _math(N, L, 'MAXIMUM', I['Puff Width'], vb=1e-5), clamp=True)
+    L.new(_math(N, L, 'MULTIPLY', _math(N, L, 'MULTIPLY', _math(N, L, 'MAXIMUM', h, vb=0.0), I['Gravity']),
+                _math(N, L, 'MULTIPLY', edge_keep, vb=0.5)), sag.inputs['Scale'])
+    tot = N.new('ShaderNodeVectorMath')
+    tot.operation = 'ADD'
+    L.new(off.outputs[0], tot.inputs[0])
+    L.new(sag.outputs[0], tot.inputs[1])
     setp = N.new('GeometryNodeSetPosition')
     L.new(sub.outputs['Mesh'], setp.inputs['Geometry'])
-    L.new(off.outputs[0], setp.inputs['Offset'])
+    L.new(tot.outputs[0], setp.inputs['Offset'])
     smooth = N.new('GeometryNodeSetShadeSmooth')
     L.new(setp.outputs[0], smooth.inputs['Geometry'])
     L.new(smooth.outputs[0], gout.inputs['Geometry'])
@@ -1271,6 +1312,7 @@ HUD_BUTTONS = (('apply', 'CHECKMARK', 'mch.wrinkle_apply', {}, 'Apply'),
 # key, label, input / modifier field, lo, hi, kind
 SLIDERS = (('random', 'Randomness', 'Variety', 0, 100, 'RAND'),
            ('lift', 'Height', 'Lift', -50, 200, 'SIZE'),
+           ('gravity', 'Gravity', 'Gravity', 0, 500, 'PCT'),
            ('sections', 'Sections', 'Sections', 1, 12, 'INT'),
            ('sec_turn', 'Section Turn', 'Section Turn', -180, 180, 'DEG'),
            ('sec_height', 'Section Height', 'Section Height', 0, 500, 'PCT'),

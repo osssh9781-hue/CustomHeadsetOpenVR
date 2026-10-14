@@ -761,9 +761,9 @@ check('F02 old "Bevel Bottom Too" migrates to Both', p.bevel_sides == 'BOTH')
 kc = C.window_manager.keyconfigs.addon
 items = [(ki.idname, ki.type, ki.value, ki.alt) for km in kc.keymaps for ki in km.keymap_items] if kc else []
 shift_q = {(ki.idname, ki.shift) for km in kc.keymaps for ki in km.keymap_items if ki.type == 'Q'} if kc else set()
-check('0.22.1 Q toggle / Shift+Q tool pie registered (gated), V and N free', ('mch.tool_pie', True) in shift_q
+check('Q toggle / V tool pie registered (gated), N free', ('mch.tool_pie', 'V', 'PRESS', False) in items
       and ('mch.toggle_last_tool', False) in shift_q
-      and not any(i[1] in {'V', 'N'} for i in items), items)
+      and not any(i[1] == 'N' for i in items), items)
 check('0.11.3 Select / Move hotkey (F, MECHA LAB only) registered and editable',
       ('mch.select_move_key', 'F', 'PRESS', False) in items and hasattr(bpy.ops.mch, 'select_move'))
 check('0.11.1 no Alt+click keymap left', not any(i[0] == 'mch.alt_click_return' for i in items))

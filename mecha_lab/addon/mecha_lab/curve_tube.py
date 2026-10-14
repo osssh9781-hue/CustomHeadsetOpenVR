@@ -307,10 +307,30 @@ def sphere_source(rings=10, segs=16):
     return verts, faces
 
 
+def source_mesh(src, depsgraph=None):
+    """Verts / faces of the linked object as it looks now (with its modifiers)."""
+    try:
+        dg = depsgraph or bpy.context.evaluated_depsgraph_get()
+        ev = src.evaluated_get(dg)
+        me = ev.to_mesh()
+        out = [tuple(v.co) for v in me.vertices], [tuple(f.vertices) for f in me.polygons]
+        ev.to_mesh_clear()
+        return out
+    except (AttributeError, RuntimeError, ReferenceError):
+        return [tuple(v.co) for v in src.data.vertices], [tuple(f.vertices) for f in src.data.polygons]
+
+
 def repeat_mesh(samples, s, src_verts, src_faces):
     """Copies of a source mesh along the curve."""
     closed = s.get('closed', False) and len(samples) >= 3
-    pts = arc_points(samples, max(1, int(s.get('count', 8))), closed)
+    count = max(1, int(s.get('count', 8)))
+    if s.get('spacing_mode', 'COUNT') == 'DISTANCE':
+        total = sum((samples[i][0] - samples[i - 1][0]).length for i in range(1, len(samples)))
+        if closed:
+            total += (samples[0][0] - samples[-1][0]).length
+        step = max(1e-6, s.get('spacing', 0.1))
+        count = max(1, min(2000, int(total / step + 1e-6) + (0 if closed else 1)))
+    pts = arc_points(samples, count, closed)
     fr = frames(samples, closed)
     size = max(1e-6, max((Vector(v).length for v in src_verts), default=1.0))
     verts, faces = [], []
@@ -353,10 +373,11 @@ def settings(tb):
     return dict(mode=tb.mode, radius=tb.radius, taper_start=tb.taper_start, taper_end=tb.taper_end,
                 profile=tb.profile, sides=tb.sides, ratio=tb.ratio, cap=tb.cap, hole=tb.hole, rotate=tb.rotate,
                 twist=tb.twist, closed=tb.closed, spline=tb.spline, res=tb.resolution, count=tb.count,
-                size=tb.size, follow_radius=tb.follow_radius, align=tb.align)
+                size=tb.size, follow_radius=tb.follow_radius, align=tb.align, spacing_mode=tb.spacing_mode,
+                spacing=tb.spacing)
 
 
-def build(ob):
+def build(ob, depsgraph=None):
     """(verts, faces) of the live tube object from its points and settings."""
     tb = ob.mch_tube
     pts = get_points(ob)
@@ -371,16 +392,15 @@ def build(ob):
     if s['mode'] == 'REPEAT':
         src = tb.source
         if src is not None and src.type == 'MESH' and src != ob:
-            sv = [tuple(v.co) for v in src.data.vertices]
-            sf = [tuple(f.vertices) for f in src.data.polygons]
+            sv, sf = source_mesh(src, depsgraph)
         else:
             sv, sf = sphere_source()
         return repeat_mesh(samples, s, sv, sf)
     return tube_mesh(samples, s)
 
 
-def rebuild(ob):
-    verts, faces = build(ob)
+def rebuild(ob, depsgraph=None):
+    verts, faces = build(ob, depsgraph)
     me = ob.data
     me.clear_geometry()
     if verts:
@@ -426,6 +446,11 @@ class MCH_PG_Tube(bpy.types.PropertyGroup):
                default='SMOOTH')
     resolution: _p(IntProperty, name='Resolution', default=12, min=1, max=64)
     count: _p(IntProperty, name='Count', default=8, min=1, max=500)
+    spacing_mode: _p(EnumProperty, name='Spacing', items=[('COUNT', 'Count', 'A fixed number of copies'),
+                                                          ('DISTANCE', 'Distance', 'A copy every Spacing along the curve')],
+                     default='COUNT')
+    spacing: _p(FloatProperty, name='Spacing', default=0.1, min=0.0005, soft_max=2.0, unit='LENGTH', precision=4,
+                description='Distance between copies (Spacing: Distance)')
     size: _p(FloatProperty, name='Size', default=1.0, min=0.01, soft_max=5.0)
     follow_radius: _p(BoolProperty, name='Follow Radius', default=True,
                       description='Copies get the radius of the curve at their place')
@@ -891,8 +916,12 @@ def draw(layout, context):
         c.prop(tb, 'hole', slider=True)
     else:
         c = sub.column(align=True)
-        c.prop(tb, 'source')
-        c.prop(tb, 'count')
+        c.prop(tb, 'source', text='Linked Object')
+        c.row(align=True).prop(tb, 'spacing_mode', expand=True)
+        if tb.spacing_mode == 'DISTANCE':
+            c.prop(tb, 'spacing')
+        else:
+            c.prop(tb, 'count')
         c.prop(tb, 'size')
         c.prop(tb, 'follow_radius')
         c.prop(tb, 'align')
@@ -918,8 +947,385 @@ class MCH_PT_tube(bpy.types.Panel):
         draw(self.layout, context)
 
 
+
+# -----------------------------------------------------------------------------
+# Linked repeat: the curve follows edits of its source object
+# -----------------------------------------------------------------------------
+
+
+from bpy.app.handlers import persistent  # noqa: E402
+
+_busy = [False]
+
+
+@persistent
+def _on_depsgraph(scene, depsgraph):
+    if _busy[0]:
+        return
+    changed = set()
+    for up in depsgraph.updates:
+        idb = getattr(up.id, 'original', up.id)
+        if isinstance(idb, bpy.types.Object) and (up.is_updated_geometry or up.is_updated_transform):
+            changed.add(idb.name)
+        elif isinstance(idb, bpy.types.Mesh):
+            changed.update(o.name for o in bpy.data.objects if o.data == idb)
+    if not changed:
+        return
+    _busy[0] = True
+    try:
+        for ob in scene.objects:
+            if is_tube(ob) and ob.mch_tube.mode == 'REPEAT' and ob.mch_tube.source is not None \
+                    and ob.mch_tube.source.name in changed:
+                rebuild(ob, depsgraph)
+    except (ReferenceError, RuntimeError, AttributeError):
+        pass
+    finally:
+        _busy[0] = False
+
+
+# -----------------------------------------------------------------------------
+# Nomad-style gizmos: drag points / orange radius dots any time; button bar
+# -----------------------------------------------------------------------------
+
+
+def _view_side(context, ob):
+    """Local-space unit vector pointing to the screen right (for the radius dots)."""
+    rv3d = context.region_data
+    if rv3d is None:
+        return Vector((1, 0, 0))
+    right = rv3d.view_rotation @ Vector((1.0, 0.6, 0.0))
+    loc = ob.matrix_world.inverted().to_3x3() @ right
+    return loc.normalized() if loc.length > 1e-9 else Vector((1, 0, 0))
+
+
+def _drawing(context):
+    return bool(_draw_ops)
+
+
+class MCH_GGT_tube_points(bpy.types.GizmoGroup):
+    bl_idname = 'MCH_GGT_tube_points'
+    bl_label = 'Mesh Curve Points'
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'WINDOW'
+    bl_options = {'3D', 'PERSISTENT', 'SCALE'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and is_tube(context.active_object) and not _drawing(context)
+
+    def _make(self, context):
+        self.gizmos.clear()
+        self.pts_gz, self.rad_gz = [], []
+        ob = context.active_object
+        self.ob_name = ob.name
+        n = len(get_points(ob))
+        for i in range(n):
+            gz = self.gizmos.new('GIZMO_GT_move_3d')
+            gz.draw_style = 'RING_2D'
+            gz.draw_options = {'FILL', 'ALIGN_VIEW'}
+            gz.color = (1.0, 1.0, 1.0)
+            gz.alpha = 0.95
+            gz.color_highlight = (0.4, 0.8, 1.0)
+            gz.alpha_highlight = 1.0
+            gz.scale_basis = 0.09
+            gz.target_set_handler('offset', get=self._getter(i), set=self._setter(i))
+            self.pts_gz.append(gz)
+            hz = self.gizmos.new('GIZMO_GT_move_3d')
+            hz.draw_style = 'RING_2D'
+            hz.draw_options = {'FILL', 'ALIGN_VIEW'}
+            hz.color = (1.0, 0.62, 0.25)
+            hz.alpha = 0.95
+            hz.color_highlight = (1.0, 0.85, 0.4)
+            hz.alpha_highlight = 1.0
+            hz.scale_basis = 0.07
+            hz.target_set_handler('offset', get=self._rgetter(i), set=self._rsetter(i))
+            self.rad_gz.append(hz)
+        self.count = n
+
+    def _ob(self):
+        return bpy.data.objects.get(getattr(self, 'ob_name', ''))
+
+    def _getter(self, i):
+        def get():
+            ob = self._ob()
+            pts = get_points(ob) if ob else []
+            return tuple(pts[i][0]) if i < len(pts) else (0.0, 0.0, 0.0)
+        return get
+
+    def _setter(self, i):
+        def set_(value):
+            ob = self._ob()
+            pts = get_points(ob) if ob else []
+            if i < len(pts):
+                pts[i] = (Vector(value), pts[i][1])
+                set_points(ob, pts)
+                rebuild(ob)
+        return set_
+
+    def _rgetter(self, i):
+        def get():
+            ob = self._ob()
+            pts = get_points(ob) if ob else []
+            if i >= len(pts):
+                return (0.0, 0.0, 0.0)
+            return tuple(pts[i][0] + self.side * (ob.mch_tube.radius * pts[i][1]))
+        return get
+
+    def _rsetter(self, i):
+        def set_(value):
+            ob = self._ob()
+            pts = get_points(ob) if ob else []
+            if i < len(pts):
+                r = (Vector(value) - pts[i][0]).length / max(1e-9, ob.mch_tube.radius)
+                pts[i] = (pts[i][0], max(0.01, r))
+                set_points(ob, pts)
+                rebuild(ob)
+                if bpy.context.area:
+                    bpy.context.area.header_text_set(f'Radius: {ob.mch_tube.radius * pts[i][1]:.4f}')
+        return set_
+
+    def setup(self, context):
+        self.side = _view_side(context, context.active_object)
+        self._make(context)
+
+    def refresh(self, context):
+        ob = context.active_object
+        if ob.name != getattr(self, 'ob_name', '') or len(get_points(ob)) != getattr(self, 'count', -1):
+            self._make(context)
+
+    def draw_prepare(self, context):
+        ob = context.active_object
+        stale = ob.name != getattr(self, 'ob_name', '') or len(get_points(ob)) != getattr(self, 'count', -1)
+        self.side = _view_side(context, ob)
+        for gz in self.pts_gz + self.rad_gz:
+            gz.hide = stale                # rebuilt in refresh (never add / remove gizmos while drawing)
+            gz.matrix_basis = ob.matrix_world.copy()
+
+
+# button bar (bottom centre, above the toolbar) - Nomad's curve menu
+TUBE_BUTTONS = (('apply', 'CHECKMARK', 'mch.tube_apply', {}, 'Apply'),
+                ('edit', 'ADD', 'mch.tube_draw', {'new': False}, 'Add / insert points'),
+                ('mode', 'MOD_ARRAY', 'mch.tube_toggle', {'option': 'MODE'}, 'Tube / Repeat'),
+                ('closed', 'MESH_CIRCLE', 'mch.tube_toggle', {'option': 'CLOSED'}, 'Closed'),
+                ('spline', 'IPO_BEZIER', 'mch.tube_toggle', {'option': 'SPLINE'}, 'Smooth / B-Spline / Linear'),
+                ('profile', 'MESH_PLANE', 'mch.tube_toggle', {'option': 'PROFILE'}, 'Profile'),
+                ('cap', 'SPHERECURVE', 'mch.tube_toggle', {'option': 'CAP'}, 'Cap'),
+                ('spacing', 'ARROW_LEFTRIGHT', 'mch.tube_toggle', {'option': 'SPACING'}, 'Count / Distance'))
+TUBE_SLIDERS = (('radius', 'Radius', 'radius', 1, 2000, 'LEN'), ('twist', 'Twist', 'twist', -720, 720, 'DEG'),
+                ('rotate', 'Rotate', 'rotate', -180, 180, 'DEG'), ('sides', 'Sides', 'sides', 3, 64, 'INT'),
+                ('hole', 'Hole', 'hole', 0, 95, 'PCT'), ('count', 'Count', 'count', 1, 200, 'INT'),
+                ('spacing', 'Spacing', 'spacing', 1, 2000, 'LEN'), ('res', 'Resolution', 'resolution', 1, 64, 'INT'))
+
+
+def tube_slider_spec(ob, key):
+    tb = ob.mch_tube
+    label, prop, lo, hi, kind = next((l, pr, a, b, k) for kk, l, pr, a, b, k in TUBE_SLIDERS if kk == key)
+    cur = getattr(tb, prop)
+    if kind == 'LEN':
+        return label, int(round(cur * 1000)), lo, hi, (lambda v: setattr(tb, prop, v / 1000.0)), f'{label} {cur:.3f}'
+    if kind == 'DEG':
+        v = int(round(math.degrees(cur)))
+        return label, v, lo, hi, (lambda v: setattr(tb, prop, math.radians(v))), f'{label} {v} deg'
+    if kind == 'INT':
+        return label, int(cur), lo, hi, (lambda v: setattr(tb, prop, int(v))), f'{label} {int(cur)}'
+    v = int(round(cur * 100))
+    return label, v, lo, hi, (lambda v: setattr(tb, prop, v / 100.0)), f'{label} {v} %'
+
+
+def tube_bar_layout(region_w, region_h, btn=30.0, gap=6.0, slider_w=96.0, slider_h=20.0):
+    """Two rows at the bottom centre: buttons, then sliders (above the bottom toolbar)."""
+    nb, ns = len(TUBE_BUTTONS), len(TUBE_SLIDERS)
+    y_btn = 150.0
+    y_sl = y_btn + btn + gap
+    x0 = region_w / 2.0 - (nb * (btn + gap)) / 2.0 + btn / 2.0
+    out = {name: (x0 + i * (btn + gap), y_btn) for i, (name, *_r) in enumerate(TUBE_BUTTONS)}
+    xs = region_w / 2.0 - (ns * (slider_w + gap)) / 2.0 + slider_w / 2.0
+    for i, (key, *_r) in enumerate(TUBE_SLIDERS):
+        out['slider_' + key] = (xs + i * (slider_w + gap), y_sl)
+    return out
+
+
+class MCH_OT_tube_toggle(bpy.types.Operator):
+    """Mesh Curve option (bar button)"""
+    bl_idname = 'mch.tube_toggle'
+    bl_label = 'Mesh Curve Option'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    option: EnumProperty(items=[(k, k.title(), '') for k in ('MODE', 'CLOSED', 'SPLINE', 'PROFILE', 'CAP',
+                                                             'SPACING')])
+
+    @classmethod
+    def poll(cls, context):
+        return is_tube(context.active_object)
+
+    def execute(self, context):
+        tb = context.active_object.mch_tube
+        cyc = {'MODE': ('mode', ('TUBE', 'REPEAT')), 'SPLINE': ('spline', ('SMOOTH', 'BSPLINE', 'LINEAR')),
+               'PROFILE': ('profile', ('ROUND', 'SQUARE', 'FLAT')), 'CAP': ('cap', ('ROUND', 'FLAT', 'OPEN')),
+               'SPACING': ('spacing_mode', ('COUNT', 'DISTANCE'))}
+        if self.option == 'CLOSED':
+            tb.closed = not tb.closed
+        else:
+            prop, items = cyc[self.option]
+            cur = getattr(tb, prop)
+            setattr(tb, prop, items[(items.index(cur) + 1) % len(items)] if cur in items else items[0])
+        return {'FINISHED'}
+
+
+class MCH_GT_tube_slider(bpy.types.Gizmo):
+    bl_idname = 'MCH_GT_tube_slider'
+    __slots__ = ('shape', 'init_x', 'init_value', 'key')
+
+    def setup(self):
+        if not hasattr(self, 'shape'):
+            from .primitive_hud import _RECT
+            self.shape = self.new_custom_shape('TRIS', _RECT)
+
+    def draw(self, context):
+        self.draw_custom_shape(self.shape)
+
+    def draw_select(self, context, select_id):
+        self.draw_custom_shape(self.shape, select_id=select_id)
+
+    def invoke(self, context, event):
+        self.init_x = event.mouse_region_x
+        self.init_value = tube_slider_spec(context.active_object, self.key)[1]
+        return {'RUNNING_MODAL'}
+
+    def modal(self, context, event, tweak):
+        from .primitive_hud import slider_value
+        ob = context.active_object
+        spec = tube_slider_spec(ob, self.key)
+        step = 12.0 if spec[4] and self.key in {'sides', 'count', 'res'} else 2.0
+        v = slider_value(self.init_value, event.mouse_region_x - self.init_x, step_px=step, lo=spec[2], hi=spec[3])
+        if v != spec[1]:
+            spec[4](v)
+        if context.area:
+            context.area.header_text_set(tube_slider_spec(ob, self.key)[5])
+        return {'RUNNING_MODAL'}
+
+    def exit(self, context, cancel):
+        if context.area:
+            context.area.header_text_set(None)
+        if cancel:
+            tube_slider_spec(context.active_object, self.key)[4](self.init_value)
+        else:
+            try:
+                bpy.ops.ed.undo_push(message='Mesh Curve ' + self.key)
+            except RuntimeError:
+                pass
+
+
+class MCH_GGT_tube_bar(bpy.types.GizmoGroup):
+    bl_idname = 'MCH_GGT_tube_bar'
+    bl_label = 'Mesh Curve Bar'
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'WINDOW'
+    bl_options = {'PERSISTENT', 'SCALE'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and is_tube(context.active_object)
+
+    def setup(self, context):
+        self.items = {}
+        for name, icon, op, props, _label in TUBE_BUTTONS:
+            gz = self.gizmos.new('GIZMO_GT_button_2d')
+            gz.icon = icon
+            gz.draw_options = {'BACKDROP', 'OUTLINE'}
+            t = gz.target_set_operator(op)
+            for k, v in props.items():
+                setattr(t, k, v)
+            gz.color = (1.0, 0.62, 0.16) if name == 'apply' else (0.17, 0.19, 0.23)
+            gz.alpha = 0.92
+            gz.color_highlight = (0.32, 0.35, 0.41)
+            gz.alpha_highlight = 1.0
+            self.items[name] = gz
+        for key, *_r in TUBE_SLIDERS:
+            gz = self.gizmos.new(MCH_GT_tube_slider.bl_idname)
+            gz.key = key
+            gz.color = (0.24, 0.27, 0.32)
+            gz.alpha = 0.95
+            gz.color_highlight = (0.36, 0.40, 0.47)
+            gz.alpha_highlight = 1.0
+            gz.use_draw_scale = False
+            self.items['slider_' + key] = gz
+
+    def draw_prepare(self, context):
+        ui = context.preferences.system.ui_scale
+        region = context.region
+        lay = tube_bar_layout(region.width / ui, region.height / ui)
+        tb = context.active_object.mch_tube
+        for name, gz in self.items.items():
+            pos = lay.get(name)
+            hide = pos is None or (name == 'slider_count' and (tb.mode != 'REPEAT' or tb.spacing_mode != 'COUNT')) \
+                or (name == 'slider_spacing' and (tb.mode != 'REPEAT' or tb.spacing_mode != 'DISTANCE')) \
+                or (name in {'slider_hole', 'slider_sides', 'profile', 'cap'} and tb.mode != 'TUBE') \
+                or (name == 'spacing' and tb.mode != 'REPEAT')
+            gz.hide = hide
+            if hide:
+                continue
+            if name.startswith('slider_'):
+                gz.matrix_basis = Matrix.Translation((pos[0] * ui, pos[1] * ui, 0.0)) @ Matrix.Diagonal(
+                    (48.0 * ui, 10.0 * ui, 1.0, 1.0))
+                continue
+            gz.scale_basis = 15.0
+            gz.matrix_basis[0][3] = pos[0] * ui
+            gz.matrix_basis[1][3] = pos[1] * ui
+            if name == 'closed':
+                gz.color = (1.0, 0.62, 0.16) if tb.closed else (0.17, 0.19, 0.23)
+            if name == 'mode':
+                gz.color = (1.0, 0.62, 0.16) if tb.mode == 'REPEAT' else (0.17, 0.19, 0.23)
+
+
+_bar_label_handle = None
+
+
+def _draw_bar_labels():
+    try:
+        context = bpy.context
+        ob = context.active_object
+        if context.mode != 'OBJECT' or not is_tube(ob):
+            return
+        import blf
+        ui = context.preferences.system.ui_scale
+        region = context.region
+        lay = tube_bar_layout(region.width / ui, region.height / ui)
+        tb = ob.mch_tube
+        blf.size(0, 10 * ui)
+        names = {'mode': tb.mode.title(), 'spline': {'SMOOTH': 'Smooth', 'BSPLINE': 'B-Spline',
+                                                     'LINEAR': 'Linear'}[tb.spline],
+                 'profile': tb.profile.title(), 'cap': tb.cap.title(), 'closed': 'Closed',
+                 'spacing': tb.spacing_mode.title(), 'apply': 'Apply', 'edit': 'Points'}
+        for name, text in names.items():
+            if name not in lay:
+                continue
+            if name in {'profile', 'cap'} and tb.mode != 'TUBE' or name == 'spacing' and tb.mode != 'REPEAT':
+                continue
+            x, y = lay[name]
+            w, _h = blf.dimensions(0, text)
+            blf.color(0, 0.9, 0.9, 0.92, 1.0)
+            blf.position(0, x * ui - w / 2, (y - 26) * ui, 0)
+            blf.draw(0, text)
+        for key, *_r in TUBE_SLIDERS:
+            if key == 'count' and (tb.mode != 'REPEAT' or tb.spacing_mode != 'COUNT'):
+                continue
+            if key == 'spacing' and (tb.mode != 'REPEAT' or tb.spacing_mode != 'DISTANCE'):
+                continue
+            if key in {'hole', 'sides'} and tb.mode != 'TUBE':
+                continue
+            x, y = lay['slider_' + key]
+            text = tube_slider_spec(ob, key)[5]
+            w, _h = blf.dimensions(0, text)
+            blf.color(0, 1, 1, 1, 1)
+            blf.position(0, x * ui - w / 2, (y - 4) * ui, 0)
+            blf.draw(0, text)
+    except Exception:           # never break viewport drawing
+        pass
+
+
 _handle = None
-CLASSES = (MCH_PG_Tube, MCH_PG_TubeDefaults, MCH_OT_tube_draw, MCH_OT_tube_apply, MCH_PT_tube)
+CLASSES = (MCH_PG_Tube, MCH_PG_TubeDefaults, MCH_OT_tube_draw, MCH_OT_tube_apply, MCH_OT_tube_toggle,
+           MCH_GT_tube_slider, MCH_GGT_tube_points, MCH_GGT_tube_bar, MCH_PT_tube)
 
 
 def register():
@@ -928,12 +1334,25 @@ def register():
         bpy.utils.register_class(c)
     bpy.types.Object.mch_tube = bpy.props.PointerProperty(type=MCH_PG_Tube)
     bpy.types.Scene.mch_tube_defaults = bpy.props.PointerProperty(type=MCH_PG_TubeDefaults)
+    global _bar_label_handle
     if not bpy.app.background and _handle is None:
         _handle = bpy.types.SpaceView3D.draw_handler_add(_draw, (), 'WINDOW', 'POST_VIEW')
+    if not bpy.app.background and _bar_label_handle is None:
+        _bar_label_handle = bpy.types.SpaceView3D.draw_handler_add(_draw_bar_labels, (), 'WINDOW', 'POST_PIXEL')
+    if _on_depsgraph not in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph)
 
 
 def unregister():
-    global _handle
+    global _handle, _bar_label_handle
+    if _on_depsgraph in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph)
+    if _bar_label_handle is not None:
+        try:
+            bpy.types.SpaceView3D.draw_handler_remove(_bar_label_handle, 'WINDOW')
+        except (ValueError, RuntimeError):
+            pass
+        _bar_label_handle = None
     if _handle is not None:
         try:
             bpy.types.SpaceView3D.draw_handler_remove(_handle, 'WINDOW')

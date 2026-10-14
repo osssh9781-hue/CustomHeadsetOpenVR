@@ -158,13 +158,29 @@ def mirror_frame(obj, p, scene):
     return origin, [Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))]
 
 
-def lean_pick(projector, origin, axes, mouse, length=1.0, dead=DEAD_PX):
+def gesture_base(projector, origin, center):
+    """World point seen at the screen ``center`` at the depth of ``origin`` (axis directions are
+    measured there, so the gesture works wherever the origin is - even off screen)."""
+    o, d = projector.ray(center)
+    o, d = Vector(o), Vector(d).normalized()
+    dist = (Vector(origin) - o).dot(d)
+    if dist <= 1e-6:
+        dist = max(1.0, (Vector(origin) - o).length)
+    return o + d * dist
+
+
+def lean_pick(projector, origin, axes, mouse, length=1.0, dead=DEAD_PX, center=None):
     """(axis index, sign) whose screen direction best matches the mouse offset
-    from the plane centre; sign +1 = the mouse leans toward +axis.  None when
-    the mouse is inside the dead zone or the centre is not on screen."""
+    from the plane centre (or from the gesture ``center`` on screen, 0.23.2); sign
+    +1 = the mouse leans toward +axis.  None when the mouse is inside the dead zone
+    or the centre is not on screen."""
+    if center is not None:
+        origin = gesture_base(projector, origin, center)
     c = projector.to_screen(origin)
     if c is None:
         return None
+    if center is not None:
+        c = tuple(center)
     vx, vy = mouse[0] - c[0], mouse[1] - c[1]
     vl = math.hypot(vx, vy)
     if vl < dead:
@@ -229,6 +245,8 @@ class MirrorLeanLogic:
         scene = context.scene
         self.p = scene.mch_mirror
         self.region = region
+        # 0.23.2: the lean gesture lives at the bottom centre of the view (visible wherever the origin is)
+        self.center = (region.width / 2.0, region.height * 0.18)
         self.projector = projector
         self.target_names = [o.name for o in context.selected_objects if o.type == 'MESH' and o.library is None]
         if not self.target_names:
@@ -262,7 +280,7 @@ class MirrorLeanLogic:
         if not self._targets():
             return
         origin, axes, size = self.frame(scene)
-        pick = lean_pick(self.projector, origin, axes, xy, size * 0.6)
+        pick = lean_pick(self.projector, origin, axes, xy, size * 0.6, center=self.center)
         if pick is None or pick == self.current:
             return
         self.current = pick
@@ -364,17 +382,24 @@ def draw_lean_overlay(op):
         if not op._targets():
             return
         origin, axes, size = op.frame(scene)
-        c = op.projector.to_screen(origin)
-        if c is None:
+        c = tuple(op.center)
+        base = gesture_base(op.projector, origin, c)
+        cb = op.projector.to_screen(base)
+        if cb is None:
             return
         sh = _shader()
         gpu.state.blend_set('ALPHA')
         colors = ((1.0, 0.35, 0.35), (0.45, 1.0, 0.45), (0.45, 0.65, 1.0))
         for i, a in enumerate(axes):
+            tip = op.projector.to_screen(base + a * size * 0.6)
+            if tip is None:
+                continue
+            dx, dy = tip[0] - cb[0], tip[1] - cb[1]
+            dl = math.hypot(dx, dy)
+            if dl < 1e-3:
+                continue
             for sign in (1, -1):
-                e = op.projector.to_screen(origin + a * size * 0.6 * sign)
-                if e is None:
-                    continue
+                e = (c[0] + dx / dl * 80.0 * sign, c[1] + dy / dl * 80.0 * sign)
                 on = op.axes[i] and ((op.flips[i] and sign > 0) or (not op.flips[i] and sign < 0) or not op.p.bisect)
                 col = (*colors[i], 1.0 if on else 0.35)
                 _draw_lines(sh, [c, e], col, width=4.0 if on else 1.5)
@@ -384,7 +409,7 @@ def draw_lean_overlay(op):
         if op.mouse is not None:
             blf.size(0, 14)
             blf.color(0, 1, 1, 1, 0.95)
-            blf.position(0, op.mouse[0] + 18, op.mouse[1] + 14, 0)
+            blf.position(0, c[0] - 60, c[1] - 110, 0)
             blf.draw(0, 'Mirror ' + op.describe())
     except Exception:          # never break viewport drawing
         pass
@@ -396,6 +421,9 @@ class MCH_OT_mirror_lean(MirrorLeanLogic, bpy.types.Operator):
     bl_description = ('Live mirror at once; lean the mouse toward the side to copy to. Enter = apply, '
                       'click = keep live, Shift+click = add axis, X/Y/Z = axes, B = bisect, Esc = cancel')
     bl_options = {'REGISTER', 'UNDO', 'BLOCKING'}
+
+    keep_live: bpy.props.BoolProperty(default=False, options={'SKIP_SAVE'},
+                                      description='Mirror button: Enter / click keep the live mirror (no apply)')
 
     @classmethod
     def poll(cls, context):
@@ -422,8 +450,9 @@ class MCH_OT_mirror_lean(MirrorLeanLogic, bpy.types.Operator):
     def _status(self, context, clear=False):
         try:
             context.workspace.status_text_set(None if clear else
-                                              'Mirror: lean the mouse toward the side to copy to | Enter / Space: '
-                                              'APPLY | Click: keep live | Shift+Click: add axis | X Y Z: axes | '
+                                              'Mirror: lean the mouse (from the bottom centre) toward the side to copy '
+                                              'to | Enter / Space: ' + ('keep live' if self.keep_live else 'APPLY') +
+                                              ' | Click: keep live | Shift+Click: add axis | X Y Z: axes | '
                                               'B: bisect | Esc / RMB: cancel')
         except (AttributeError, ReferenceError):
             pass
@@ -450,7 +479,7 @@ class MCH_OT_mirror_lean(MirrorLeanLogic, bpy.types.Operator):
             self.restore_all()
             self.report({'INFO'}, 'Mirror cancelled')
             return {'CANCELLED'}
-        if r == 'APPLY':
+        if r == 'APPLY' and not self.keep_live:
             self.report({'INFO'}, self.finish_apply(context))
             return {'FINISHED'}
         self.report({'INFO'}, self.finish_live(context.scene))

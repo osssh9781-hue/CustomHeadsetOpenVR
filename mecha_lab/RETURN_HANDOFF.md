@@ -1,4 +1,9 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.1 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.2 (Claude Code, 2026-10-14)
+
+## 0.23.2
+- ZIP sha256 `abdbb6bf35336f396f825390793aea17e11df35405cf0878626e6ec74376b937`. `mirror_tools`: `gesture_base`, `lean_pick(center=)`, `MirrorLeanLogic.center` = (w/2, h*0.18), 오버레이도 그 자리, `MCH_OT_mirror_lean.keep_live`; `bottom_bar` MIRROR = `mirror_lean(keep_live=True)`.
+  키맵 V → `mch.tool_pie`. `cloth_wrinkle` GN v31 입력 `Gravity`(Self Object 회전으로 월드 아래 방향, 접선 + 0.25 아래, 높이·테두리 거리 비례). `tool_state` TUBE 라벨 'Mesh Curve', HIDDEN_TOOLS += DRAW.
+  `curve_tube`: `spacing_mode`/`spacing`, `source_mesh(src, depsgraph)`(평가 메쉬), depsgraph 핸들러 `_on_depsgraph`(링크 갱신), `MCH_GGT_tube_points`(move_3d 점/굵기 기즈모), `MCH_GGT_tube_bar` + `MCH_GT_tube_slider` + `mch.tube_toggle`, `tube_bar_layout`. 테스트 `test_v0232.py`.
 
 ## 0.23.1
 - ZIP sha256 `40c90b05879f4bc74a37b8b88009f55330569a53b93119382a80bade467ade36`. `TubeLogic.handle_world` / `_near_handle` / `radius_text`, `drag_kind` POINT / RADIUS, 그리기에 주황 핸들 + 연결선.

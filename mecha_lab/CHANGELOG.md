@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 0.23.2 — 미러 제스처, V 파이, 클로스 중력, Mesh Curve 교체 + 링크 어레이, 노마드식 기즈모 (2026-10-14)
+
+- **미러 버튼**(왼쪽): Symmetry처럼 **마우스 기울이기 제스처**로 방향을 고르고, 결과는 **살아 있는 Mirror**(Enter/클릭 = 유지, 적용 안 함).
+  Symmetry / Mirror 모두 **방향 표시가 화면 아래쪽 가운데**에 나오고 그 위치 기준으로 기울이기 → 오리진이 화면 밖(아래)이어도 보임.
+- **도구 파이 = V**(Q = Select ↔ 마지막 도구는 그대로).
+- **Cloth Plate Gravity** 슬라이더(팝업, N 패널): 주름·부푼 부분이 **아래(월드 -Z)로 처짐**, 테두리는 붙어 있음.
+- **Mesh Curve = 새 커브 도구**(예전 Mesh Curve는 목록에서 숨김, 코드는 남김). 하단 툴바 이름 Curve.
+  Repeat: **Linked Object**(내 오브젝트를 고르면 그 오브젝트를 고칠 때 커브도 같이 바뀜, 모디파이어 포함), **Spacing: Count / Distance**(간격 거리).
+- **노마드식 기즈모**: 커브를 선택하면 언제든 **흰 점 드래그 = 이동**, **주황 점 드래그 = 그 점 굵기**(헤더에 Radius 표시).
+  화면 아래 가운데 **버튼 줄**: Apply, 점 추가(Points), Tube/Repeat, Closed, Smooth/B-Spline/Linear, Profile, Cap, Count/Distance + 슬라이더 Radius, Twist, Rotate, Sides, Hole, Count / Spacing, Resolution.
+- 미리보기 `reference/cloth_gravity_v0232.png`(왼쪽 Gravity 0, 오른쪽 Gravity 2.5). 테스트: 46개 파일 1983/1983 (`tests/test_log_bpy501_v0232.txt`). ZIP sha256 `abdbb6bf35336f396f825390793aea17e11df35405cf0878626e6ec74376b937`.
+
 ## 0.23.1 — Tube: 점마다 주황 굵기 핸들 (2026-10-14)
 
 - 각 점 옆에 **주황 점(굵기 핸들)**: 드래그하면 **그 점의 굵기만** 바뀜(점에서 핸들까지 거리 = 그 점의 반지름), 드래그 중 헤더에 `Radius: 0.xxxx` 표시. Ctrl+휠도 그대로.

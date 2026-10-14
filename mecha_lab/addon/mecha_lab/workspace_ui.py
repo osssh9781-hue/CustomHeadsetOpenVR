@@ -1408,7 +1408,7 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
                              description='Only inside the MECHA LAB workspace; elsewhere Space keeps Blender behaviour')
     workspace_hotkeys: BoolProperty(name='B / C Hotkeys', default=True,
                                     description='B = Boolean Difference, C = Cut tool, only inside MECHA LAB')
-    tool_pie: BoolProperty(name='Shift+Q = Tool Pie', default=True,
+    tool_pie: BoolProperty(name='V = Tool Pie', default=True,
                            description='All Mecha tools as a pie at the mouse, MECHA LAB only')
     last_tool_key: BoolProperty(name='Q = Select <-> Last Tool', default=True,
                                 description='One key flips between Select / Move and the last modelling tool (like Tab), '
@@ -1472,12 +1472,12 @@ def register_keymaps():
     if kc is None:
         return
     km = kc.keymaps.new(name='3D View', space_type='VIEW_3D')
-    # 0.22.1: Q = Select <-> last tool (one key, like Tab), Shift+Q = tool pie. V is free
+    # 0.22.1: Q = Select <-> last tool (one key, like Tab); 0.23.2: V = tool pie
     # (it duplicated the pie) and N is Blender's sidebar again. Space stays as the
     # big tool menu (switchable). All gated to MECHA LAB by the operators' poll.
     _keymaps.append((km, km.keymap_items.new('mch.space_tools', 'SPACE', 'PRESS')))
     _keymaps.append((km, km.keymap_items.new('mch.toggle_last_tool', 'Q', 'PRESS')))
-    _keymaps.append((km, km.keymap_items.new('mch.tool_pie', 'Q', 'PRESS', shift=True)))
+    _keymaps.append((km, km.keymap_items.new('mch.tool_pie', 'V', 'PRESS')))
     km = kc.keymaps.new(name='Object Mode', space_type='EMPTY')
     item = km.keymap_items.new('mch.hotkey', 'B', 'PRESS')
     item.properties.action = 'BOOLEAN'

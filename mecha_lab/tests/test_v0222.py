@@ -115,8 +115,8 @@ check('click in empty space starts nothing', Op().start(ctx, (5, 5), 'SPLIT') is
 wm = C.window_manager
 items = [(i.idname, i.type, i.shift) for kc in (wm.keyconfigs.addon,) if kc for km in kc.keymaps
          for i in km.keymap_items if i.idname in {'mch.tool_pie', 'mch.toggle_last_tool'}]
-check('Q = Select <-> last tool, Shift+Q = pie', ('mch.toggle_last_tool', 'Q', False) in items
-      and ('mch.tool_pie', 'Q', True) in items, items)
+check('Q = Select <-> last tool, V = pie (0.23.2)', ('mch.toggle_last_tool', 'Q', False) in items
+      and ('mch.tool_pie', 'V', False) in items, items)
 # humanoid torso / head gone from the generator UI
 check('humanoid parts: no torso / head', not {'TORSO', 'CHEST', 'PELVIS', 'HEAD'} & set(rb.UI_PARTS['HUMANOID']))
 check('operator registered', hasattr(bpy.ops.mch, 'surface_lasso'))

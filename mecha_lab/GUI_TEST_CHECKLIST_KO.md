@@ -1,8 +1,14 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.1 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.2 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A00000000000000000. 0.23.2 (미검증)
+- [ ] 왼쪽 Mirror 버튼: 기울이기 제스처, Enter/클릭 후에도 미러 모디파이어가 살아 있는지; Symmetry/Mirror 방향 표시가 화면 아래 가운데
+- [ ] V = 도구 파이
+- [ ] Cloth Plate Gravity 슬라이더로 주름이 아래로 처지는지
+- [ ] Mesh Curve(툴바 Curve): 선택 상태에서 흰 점/주황 점 드래그, 아래 버튼 줄 버튼·슬라이더, Repeat에 내 오브젝트 링크 후 그 오브젝트 수정 시 따라 바뀌는지, Distance 간격
 
 ## A0000000000000000. 0.23.1 (미검증)
 - [ ] Tube 점 옆 주황 핸들 드래그 → 그 점만 굵기 변경, 헤더 Radius 표시

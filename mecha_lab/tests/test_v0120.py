@@ -182,9 +182,10 @@ check('auto_targets in a perspective view finds the covered part only', [o.name 
 # --- keys / pie / toolbar -----------------------------------------------------
 kc = bpy.context.window_manager.keyconfigs.addon
 keys = [(ki.idname, ki.type, ki.shift) for km in kc.keymaps for ki in km.keymap_items]
-check('0.22.1: Q = Select <-> last tool, Shift+Q = tool pie', ('mch.tool_pie', 'Q', True) in keys and
+check('0.23.2: Q = Select <-> last tool, V = tool pie', ('mch.tool_pie', 'V', False) in keys and
       ('mch.toggle_last_tool', 'Q', False) in keys, keys)
-check('V and N are free again (no Mecha items)', not any(k[1] in {'V', 'N'} for k in keys))
+check('N free, V only the tool pie', not any(k[1] == 'N' for k in keys)
+      and all(k[0] == 'mch.tool_pie' for k in keys if k[1] == 'V'))
 check('F = Select / Move kept', ('mch.select_move_key', 'F', False) in keys)
 tk = wui._tool_keymap('CUT')
 check('Cut tool: T toggles targets, no V item', any(k[0] == 'mch.toggle_targets' and k[1]['type'] == 'T' for k in tk)

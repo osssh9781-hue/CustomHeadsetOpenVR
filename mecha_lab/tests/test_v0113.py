@@ -47,9 +47,9 @@ check('picking a shape selects the stamp tool shape', r == {'FINISHED'} and C.sc
 # --- hotkeys -----------------------------------------------------------------
 kc = C.window_manager.keyconfigs.addon
 keys = [(ki.idname, ki.type) for km in kc.keymaps for ki in km.keymap_items]
-check('keys: Q toggle + Shift+Q pie, F = Select / Move, V / N free', ('mch.tool_pie', 'Q') in keys and
+check('keys: Q toggle + V pie, F = Select / Move, N free', ('mch.tool_pie', 'V') in keys and
       ('mch.toggle_last_tool', 'Q') in keys and
-      ('mch.select_move_key', 'F') in keys and not any(k[1] in {'V', 'N', 'W'} for k in keys), keys)
+      ('mch.select_move_key', 'F') in keys and not any(k[1] in {'N', 'W'} for k in keys), keys)
 tool_km = wui._tool_keymap('CUT')
 check('0.12: T toggles targets while a Mecha drawing tool is active', any(
     k[0] == 'mch.toggle_targets' and k[1]['type'] == 'T' for k in tool_km))
@@ -87,6 +87,7 @@ check('Convert Cable to Object: a mesh object with the same name replaces the cu
       not any(o.type == 'CURVE' and o.name.startswith('MCH_Cable') for o in bpy.data.objects), r)
 check('...and it is selected / active', C.view_layer.objects.active == new)
 
+from mecha_lab import bottom_bar as bb_mod
 # --- lean mirror -------------------------------------------------------------
 class Region:
     type = 'WINDOW'
@@ -129,14 +130,14 @@ check('mouse to the right on a top view = +X', pick == (0, 1), pick)
 pick = mt.lean_pick(TOP, Vector((0, 0, 0)), [Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))], (505, 300))
 check('mouse below = -Y', pick == (1, -1), pick)
 check('dead zone near the centre', mt.lean_pick(TOP, Vector(), [Vector((1, 0, 0))], (505, 505)) is None)
-op.handle(C, E('MOUSEMOVE', 'NOTHING', 300, 500))     # lean to -X: copy the + side to -X
+op.handle(C, E('MOUSEMOVE', 'NOTHING', 300, 180))     # lean to -X (from the bottom-centre gesture)
 lo, hi, _a, _b = xs(t)
 check('lean -X: the +X half is copied to -X (bisect)', abs(lo + 0.8) < 1e-4 and abs(hi - 0.8) < 1e-4, (lo, hi))
-op.handle(C, E('MOUSEMOVE', 'NOTHING', 800, 500))     # lean to +X: copy the - side to +X
+op.handle(C, E('MOUSEMOVE', 'NOTHING', 800, 180))     # lean to +X: copy the - side to +X
 lo, hi, _a, _b = xs(t)
 check('lean +X: the -X half is copied to +X', abs(lo + 0.2) < 1e-4 and abs(hi - 0.2) < 1e-4, (lo, hi))
-op.handle(C, E('LEFTMOUSE', 'PRESS', 800, 500, shift=True))   # add X, keep going
-op.handle(C, E('MOUSEMOVE', 'NOTHING', 500, 800))     # lean to +Y as well
+op.handle(C, E('LEFTMOUSE', 'PRESS', 800, 180, shift=True))   # add X, keep going
+op.handle(C, E('MOUSEMOVE', 'NOTHING', 500, 480))     # lean to +Y as well
 mod = t.modifiers[mt.MOD_NAME]
 check('Shift+click keeps X and adds the next axis (Y)', tuple(mod.use_axis) == (True, True, False), tuple(mod.use_axis))
 r = op.handle(C, E('RET', 'PRESS', 500, 800))
@@ -149,7 +150,7 @@ check('pivot helper removed after apply', not any(o.get('_mch_world_pivot') for 
 t = setup_mirror_scene()
 op = Op()
 op.start(C, Region(), TOP, (500, 500))
-op.handle(C, E('MOUSEMOVE', 'NOTHING', 300, 500))
+op.handle(C, E('MOUSEMOVE', 'NOTHING', 300, 180))
 r = op.handle(C, E('ESC', 'PRESS'))
 op.restore_all()
 check('Esc cancels: no mirror left, mesh untouched', r == 'CANCEL' and mt.MOD_NAME not in t.modifiers and
@@ -159,7 +160,7 @@ t = setup_mirror_scene()
 mt.setup_mirror(t, C.scene.mch_mirror, C.scene, (False, True, False), (False, False, False))
 op = Op()
 op.start(C, Region(), TOP, (500, 500))
-op.handle(C, E('MOUSEMOVE', 'NOTHING', 300, 500))
+op.handle(C, E('MOUSEMOVE', 'NOTHING', 300, 180))
 op.restore_all()
 mod = t.modifiers.get(mt.MOD_NAME)
 check('Esc restores a mirror that existed before', mod is not None and tuple(mod.use_axis) == (False, True, False))
@@ -167,13 +168,18 @@ check('Esc restores a mirror that existed before', mod is not None and tuple(mod
 t = setup_mirror_scene()
 op = Op()
 op.start(C, Region(), TOP, (500, 500))
-op.handle(C, E('MOUSEMOVE', 'NOTHING', 300, 500))
-r = op.handle(C, E('LEFTMOUSE', 'PRESS', 300, 500))
+op.handle(C, E('MOUSEMOVE', 'NOTHING', 300, 180))
+r = op.handle(C, E('LEFTMOUSE', 'PRESS', 300, 180))
 op.finish_live(C.scene)
 check('click = keep the live mirror; settings remembered', r == 'LIVE' and mt.MOD_NAME in t.modifiers and
       C.scene.mch_mirror.x and not C.scene.mch_mirror.flip_x)
 check('navigation passes through', op.handle(C, E('MIDDLEMOUSE', 'PRESS')) == 'PASS' and
       op.handle(C, E('WHEELUPMOUSE', 'PRESS')) == 'PASS')
+check('0.23.2: lean gesture at the bottom centre of the view', tuple(op.center) == (500.0, 180.0))
+far = mt.lean_pick(TOP, Vector((0, 0, -50)), [Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))], (700, 180),
+                   center=(500, 180))
+check('gesture works when the origin is off screen (picks +X from the bottom centre)', far == (0, 1), far)
+check('Mirror button uses the lean gesture, kept live', 'keep_live=True' in open(bb_mod.__file__).read())
 check('mirror tool start hook present', 'start_lean_mirror' in open(wui.__file__).read())
 check('Mirror lean operator registered', hasattr(bpy.types, 'MCH_OT_mirror_lean'))
 

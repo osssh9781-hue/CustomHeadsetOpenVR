@@ -52,9 +52,9 @@ TOOLS = (
      'along', 'MOD_ARRAY', None, 'OK'),
     ('CABLE', 'Cable', 'Two-point cables between mesh surfaces, Edge to Cable, thickness / profile / sag / twist',
      'cable', 'OUTLINER_OB_CURVE', None, 'OK'),
-    ('TUBE', 'Tube', 'Nomad-style curve: click points (on the mesh or in the air), a live solid tube right away - '
-     'radius per point, profile, cap, hole, twist - or Repeat an object along it', 'cable', 'CURVE_BEZCURVE', None,
-     'OK'),
+    ('TUBE', 'Mesh Curve', 'Nomad-style curve: click points (on the mesh or in the air), a live solid tube right '
+     'away - radius per point, profile, cap, hole, twist - or Repeat your own (linked) object along it with spacing',
+     'cable', 'CURVE_BEZCURVE', None, 'OK'),
     ('LOFT', 'Loft / Surface', 'Smooth surface through 2+ curves, or sweep a profile along a path (live)',
      'loft', 'SURFACE_DATA', None, 'PARTIAL'),
     ('ZBRUSH', 'ZBrush Bridge', 'Send selected objects to ZBrush as OBJ files and import them back (not GoZ)',
@@ -68,7 +68,7 @@ TOOL_BY_ID = {t[0]: t for t in TOOLS}
 # v0.10 (B08/F07): Mask does not work reliably for the user -> hidden from the
 # tool list, Space / V menus, toolbar and hotkeys.  Its code, operators and
 # all saved mask data (face attributes, vertex groups) are kept untouched.
-HIDDEN_TOOLS = {'MASK'}
+HIDDEN_TOOLS = {'MASK', 'DRAW'}     # 0.23.2: the old Mesh Curve (DRAW) is replaced by the Tube tool
 VISIBLE_TOOLS = tuple(t for t in TOOLS if t[0] not in HIDDEN_TOOLS)
 # V quick menu (docs/02): the six core tools (+ Armor Plate since 0.19).
 QUICK_TOOLS = ('CUT', 'BOOLEAN', 'BASE', 'SUBD', 'SPLIT', 'RADIAL', 'PLATE')   # 0.19: + Armor Plate

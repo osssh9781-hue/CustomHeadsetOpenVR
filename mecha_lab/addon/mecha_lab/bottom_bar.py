@@ -23,7 +23,7 @@ BAR_TOOLS = (
     ('PRIMITIVE', 'Primitive', '', 'MESH_CUBE', 'mch.set_tool', 'PRIMITIVE'),
     ('RADIAL', 'Radial', '', 'MOD_SCREW', 'mch.set_tool', 'RADIAL'),
     ('PLATE', 'Plate', '', 'MESH_GRID', 'mch.set_tool', 'PLATE'),
-    ('TUBE', 'Tube', '', 'CURVE_BEZCURVE', 'mch.set_tool', 'TUBE'),
+    ('TUBE', 'Curve', '', 'CURVE_BEZCURVE', 'mch.set_tool', 'TUBE'),
 )
 SELECT_NATIVE = {'builtin.move', 'builtin.select', 'builtin.select_box', 'builtin.select_circle',
                  'builtin.select_lasso', 'builtin.rotate', 'builtin.scale', 'builtin.transform'}
@@ -122,7 +122,7 @@ class MCH_MT_tool_pie(bpy.types.Menu):
 
 
 class MCH_OT_tool_pie(bpy.types.Operator):
-    """Shift+Q: all Mecha tools as a pie at the mouse (MECHA LAB only)"""
+    """V: all Mecha tools as a pie at the mouse (MECHA LAB only)"""
     bl_idname = 'mch.tool_pie'
     bl_label = 'Mecha Tool Pie'
     bl_options = {'INTERNAL'}
@@ -424,12 +424,12 @@ class MCH_OT_object_tidy(bpy.types.Operator):
                 self.report({'WARNING'}, str(ex))
                 return {'CANCELLED'}
         if self.action == 'MIRROR':
-            from . import mirror_tools as mt
-            meshes = [o for o in obs if o.type == 'MESH']
-            done = [o.name for o in meshes if mt.setup_mirror(o, context.scene.mch_mirror, context.scene) is not None]
-            self.report({'INFO'}, f'Live mirror on {", ".join(done)} (Apply / Remove in the popup)' if done
-                        else 'No mesh selected')
-            return {'FINISHED'} if done else {'CANCELLED'}
+            # 0.23.2: the same lean gesture as Symmetry, but the result stays a live Mirror (popup Apply / Remove)
+            try:
+                return bpy.ops.mch.mirror_lean('INVOKE_DEFAULT', keep_live=True)
+            except RuntimeError as ex:
+                self.report({'WARNING'}, str(ex))
+                return {'CANCELLED'}
         frozen = [o.name for o in obs if _unlive(o)]
         with context.temp_override(selected_editable_objects=obs, selected_objects=obs,
                                    active_object=context.active_object or obs[0]):
