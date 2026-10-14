@@ -32,6 +32,9 @@ from . import tool_state as ts
 ACCENT = (1.0, 0.62, 0.16)
 BASE_COL = (0.17, 0.19, 0.23)
 SUB_COL = (0.85, 0.25, 0.25)
+SEG_COL = (0.22, 0.55, 0.32)
+SEG_LABELS = {'end_add': 'Add segment', 'end_remove': 'Remove segment', 'start_add': 'Add segment',
+              'start_remove': 'Remove segment'}
 BTN = 30.0              # button diameter, px at UI scale 1
 SLIDER_W, SLIDER_H = 92.0, 20.0
 STEP_PX = 9.0           # slider: pixels per step
@@ -449,6 +452,9 @@ class MCH_GGT_prim_hud(bpy.types.GizmoGroup):
             gz.scale_basis = BTN / 2.0 * (0.8 if name.startswith(('end', 'start')) else 1.0) * min(1.6, f)
             gz.matrix_basis[0][3] = pos[0] * ui
             gz.matrix_basis[1][3] = pos[1] * ui
+            if name.startswith(('end', 'start')):
+                gz.color = SEG_COL                   # segment +/- : green, not the add/subtract mode
+                continue
             on = (name == 'add' and not sub) or (name == 'sub' and sub)
             gz.color = (SUB_COL if name == 'sub' else ACCENT) if on else BASE_COL
 
@@ -473,6 +479,12 @@ def _draw_labels():
             blf.color(font, *(ACCENT if on else (0.85, 0.87, 0.9)), 1.0)
             blf.position(font, (x + BTN * 0.7) * ui, (y - 4) * ui, 0)
             blf.draw(font, text)
+        blf.color(font, 0.55, 0.95, 0.65, 1.0)
+        for key, text in SEG_LABELS.items():
+            if key in lay:
+                x, y = lay[key]
+                blf.position(font, (x + BTN * 0.55) * ui, (y - 4) * ui, 0)
+                blf.draw(font, text)
         spec = slider_spec(context, kind, ob)
         if spec is not None:
             x, y = lay['slider']

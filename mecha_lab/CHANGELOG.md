@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 0.18.1 — 구간 +/− 버튼 알아보기 쉽게 (2026-10-14)
+
+- Station Primitive(Polygon Prism 등) 위/아래 끝의 **+ / −**(같은 단면 구간 추가/삭제)를 초록색으로 바꾸고 옆에 "Add segment" /
+  "Remove segment" 글씨를 붙임. 오른쪽의 더하기/빼기 모드 버튼(주황/빨강)과 헷갈리지 않게.
+- 테스트: 31개 파일 1438/1438 (`tests/test_log_bpy501_v0181.txt`). ZIP sha256 `e417cde7d73a648552f71bfce2e03a1a1735abc94c23c3b900edcca0401e65ce`.
+
 ## 0.18.0 — Mirror 떠 있는 버튼(HUD) (2026-10-14)
 
 - Mecha Mirror가 걸린 메시를 선택하면(MECHA LAB, 오브젝트 모드) 메시 오른쪽에 프리미티브 HUD처럼 버튼이 뜸(`mirror_hud.py`):
