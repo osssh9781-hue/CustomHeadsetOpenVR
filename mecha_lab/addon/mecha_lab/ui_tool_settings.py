@@ -677,6 +677,11 @@ def draw_primitive(layout, context):
         row.operator('mch.primitive_apply',text='APPLY TO MESH',icon='CHECKMARK')
 
 
+def draw_plate(layout, context):
+    from . import armor_plate
+    armor_plate.draw(layout, context)
+
+
 def draw_extract(layout, context):
     from . import face_extract
     face_extract.draw(layout, context)
@@ -707,7 +712,7 @@ DRAWERS = {
     'MASK': draw_mask, 'DRAW': draw_draw, 'ARRAY': draw_array, 'EDIT': draw_edit,
     'LIBRARY': draw_library, 'REMESH': draw_remesh, 'POSE': draw_pose,
     'BASE': draw_base, 'LOFT': draw_loft, 'ZBRUSH': draw_zbrush, 'SUBD': draw_subd,
-    'PRIMITIVE': draw_primitive,
+    'PRIMITIVE': draw_primitive, 'PLATE': draw_plate,
     'EXTRACT': draw_extract, 'MOLDING': draw_molding, 'HOLLOW': draw_hollow, 'ALONG': draw_along,
     'CABLE': draw_cable,
     # MIRROR, RADIAL, SURFACE: own sub-panels.

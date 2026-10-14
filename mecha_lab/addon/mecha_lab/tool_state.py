@@ -23,6 +23,8 @@ TOOLS = (
      'base', 'MESH_CUBE', 'mecha.base_mesh', 'OK'),
     ('SUBD', 'SubD Plane', 'Plane with live Simple + Catmull-Clark subdivision and Solidify; extrude edges '
      'in Edit Mode to build armour panels', 'subd', 'MOD_SUBSURF', None, 'OK'),
+    ('PLATE', 'Armor Plate', 'Draw a lasso on a mesh: a separate armour plate made of new clean faces '
+     '(no retopology); mouse wheel while drawing = profile', 'extract', 'MOD_SOLIDIFY', 'mecha.armor_plate', 'OK'),
     ('PRIMITIVE', 'Primitive', 'Ghost shape with handles: Enter = merge into the mesh it touches, Alt+Enter = '
      'subtract; Station Primitive presets; RMB = shape picker',
      'primitive', 'MESH_CUBE', 'mecha.primitive', 'OK'),
@@ -66,13 +68,13 @@ VISIBLE_TOOLS = tuple(t for t in TOOLS if t[0] not in HIDDEN_TOOLS)
 # V quick menu (docs/02): the six core tools.
 QUICK_TOOLS = ('CUT', 'BOOLEAN', 'BASE', 'SUBD', 'SPLIT', 'RADIAL')
 NATIVE_TO_TOOL = {t[5]: t[0] for t in TOOLS if t[5]}
-SHAPE_TOOLS = {'CUT', 'SPLIT', 'MASK', 'BASE'}
+SHAPE_TOOLS = {'CUT', 'SPLIT', 'MASK', 'BASE', 'PLATE'}
 
 # Enum numbers keep v0.5.9 values so saved .blend files map to the same tool.
 _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRAW': 6,
                  'ARRAY': 7, 'RADIAL': 8, 'SURFACE': 9, 'LIBRARY': 10, 'EDIT': 11,
                  'REMESH': 12, 'SPLIT': 13, 'POSE': 14, 'BASE': 15, 'LOFT': 16, 'ZBRUSH': 17, 'SUBD': 18, 'PRIMITIVE': 19,
-                 'EXTRACT': 20, 'MOLDING': 21, 'HOLLOW': 22, 'ALONG': 23, 'CABLE': 24}
+                 'EXTRACT': 20, 'MOLDING': 21, 'HOLLOW': 22, 'ALONG': 23, 'CABLE': 24, 'PLATE': 25}
 TOOL_ENUM_ITEMS = [(t[0], t[1], t[2], t[4], _ENUM_NUMBERS[t[0]]) for t in TOOLS]
 
 SHAPES = (

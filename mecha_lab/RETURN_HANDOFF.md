@@ -1,4 +1,11 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.15.0 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.16.0 (Claude Code, 2026-10-14)
+
+## 0.16.0
+- ZIP sha256 `6abd7c3046e7322f11f965f46f24eb0973abee5848a8c6c954e7d6797547475c`, 1401/1401. 신규 `armor_plate.py`: `PRESETS`(크기 비율), `preset_values`, `resample_loop`, `screen_patch`
+  (delaunay_2d_cdt, 엇갈린 격자), `pick_surface`(판/파트 건너뜀), `project_patch`(시선 투영 + 짧은 재투영, 빗나간 점 = 평면),
+  `build_region`(join_triangles), `surround_mesh`, `perform_plate`(face_extract 파트 생성), `cycle_preset`, `MCH_PG_Plate`(Scene.mch_plate),
+  `mch.plate_preset`, `draw`. `cut_engine`: 모드 `PLATE`(대상 불필요, 닫힌 외곽, 휠 = 프로필, 색). `tool_state` PLATE(25, native
+  `mecha.armor_plate`), `workspace_ui.MCH_TOOL_armor_plate`, `ui_tool_settings.draw_plate`.
 
 ## 0.15.0
 - ZIP sha256 `76313363f6015ed9231289d0e15ba829ff0037cf08d2dd9c45837529fbc6b5c5`, 1365/1365. `workspace_ui.icon_tile` = template_icon + 이름 버튼. `bottom_bar`: `side_tools/side_layout/side_left`,

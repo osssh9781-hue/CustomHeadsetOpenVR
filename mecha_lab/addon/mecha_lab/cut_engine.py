@@ -910,6 +910,8 @@ _COLORS = {
     # 0.14.4 Base Mesh: draw = orange (add), Alt = red (subtract from the sketch / cutter)
     'BASE': (1.0, 0.55, 0.12, 1.0),
     'BASE_INV': (1.0, 0.22, 0.30, 1.0),
+    'PLATE': (0.30, 0.78, 1.0, 1.0),
+    'PLATE_INV': (0.30, 0.78, 1.0, 1.0),
 }
 
 
@@ -1155,7 +1157,7 @@ class StrokeLogic:
         return PROFILE_POPUP if self.mode == 'BASE' else SHAPE_POPUP
 
     def _needs_target(self):
-        return self.mode != 'BASE'
+        return self.mode not in {'BASE', 'PLATE'}
 
     def _tangents(self, pts=None):
         pts = self.pts if pts is None else pts
@@ -1251,7 +1253,7 @@ class StrokeLogic:
         xy, inside = self._region_xy(event)
         if not inside:
             return {'PASS_THROUGH'}
-        if self.mode in {'MASK', 'BASE'} and self.shape == 'LASSO' and self.brush.line_open:
+        if self.mode in {'MASK', 'BASE', 'PLATE'} and self.shape == 'LASSO' and self.brush.line_open:
             self.brush.line_open = False
         self.ui = ui_scale(context)
         self.target_names = []
@@ -1517,6 +1519,9 @@ class StrokeLogic:
             loops = self._current_loops(self.ctrl_held, self.shift_held)
             if self.mode == 'MASK':
                 msg = perform_mask(context, targets[0], loops, self.projector, self.inverted())
+            elif self.mode == 'PLATE':
+                from . import armor_plate
+                msg = armor_plate.perform_plate(context, loops, self.projector)
             elif self.mode == 'BASE':
                 from . import base_mesh
                 if getattr(context.scene.mch_base, 'sketch', False):
@@ -1553,7 +1558,7 @@ class StrokeLogic:
         if self.shape in {'LASSO', 'CURVE_LASSO'}:
             self._clean_points()
             if self.shape == 'LASSO' and len(self.pts) >= 2 and (self.line_open or len(self.pts) == 2):
-                if self.mode in {'MASK', 'BASE'}:
+                if self.mode in {'MASK', 'BASE', 'PLATE'}:
                     self.report({'WARNING'}, 'This tool needs a closed outline (3+ points)')
                     return {'RUNNING_MODAL'}
                 if self.mode == 'SPLIT':
@@ -1638,6 +1643,13 @@ class StrokeLogic:
             return {'PASS_THROUGH'}
 
         xy, inside = self._region_xy(event)
+        if self.mode == 'PLATE' and et in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'} and not (event.ctrl or event.shift):
+            # 0.16 Armor Plate: the wheel steps through the plate profiles while drawing
+            from . import armor_plate
+            name = armor_plate.cycle_preset(context.scene, 1 if et == 'WHEELDOWNMOUSE' else -1)
+            _status(context, f'Armor Plate profile: {name}   (wheel: next / previous)')
+            self.region.tag_redraw()
+            return {'RUNNING_MODAL'}
         if et in NAV_EVENTS or et.startswith('NDOF') or (et.startswith('NUMPAD_') and et != 'NUMPAD_ENTER'):
             return {'PASS_THROUGH'}
 
@@ -1697,7 +1709,7 @@ class StrokeLogic:
             self._hint(context)
             self.region.tag_redraw()
             return {'RUNNING_MODAL'}
-        if et == 'F' and ev == 'PRESS' and self.shape == 'LASSO' and self.mode not in {'MASK', 'BASE'}:
+        if et == 'F' and ev == 'PRESS' and self.shape == 'LASSO' and self.mode not in {'MASK', 'BASE', 'PLATE'}:
             self.line_open = not self.line_open
             self.brush.line_open = self.line_open
             self.region.tag_redraw()
@@ -1868,7 +1880,8 @@ class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
         ('CUT', 'Cut', 'Remove the inside (Alt: keep inside)'),
         ('SPLIT', 'Split', 'Split into two parts'),
         ('MASK', 'Mask', 'Add face mask (Alt: erase)'),
-        ('BASE', 'Base Mesh', 'Create a new solid from the drawn outline')], default='CUT')
+        ('BASE', 'Base Mesh', 'Create a new solid from the drawn outline'),
+        ('PLATE', 'Armor Plate', 'New armour plate on the mesh under the outline')], default='CUT')
 
     @classmethod
     def poll(cls, context):
