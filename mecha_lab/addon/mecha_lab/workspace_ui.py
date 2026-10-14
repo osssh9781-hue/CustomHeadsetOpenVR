@@ -1310,6 +1310,9 @@ class MCH_PT_shape_popup(bpy.types.Panel):
             col.prop(brush, 'stab_strength', slider=True)
             col.prop(brush, 'stab_radius', slider=True)
             col.prop(brush, 'stroke_spacing')
+        if tool is not None and tool[0] in {'CUT', 'BASE'}:
+            from .ui_tool_settings import draw_edge_finish
+            draw_edge_finish(layout, context, tool[0])       # 0.19.2 edge bevel / chamfer sliders
         layout.separator()
         layout.label(text='Custom PNG Shapes', icon='IMAGE_DATA')
         draw_custom_grid(layout, context, columns=4, scale=2.6)

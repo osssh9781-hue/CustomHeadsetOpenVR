@@ -86,6 +86,17 @@ _ANN = {
                               precision=4, unit='LENGTH'),
     'outer_chamfer_angle': _p(FloatProperty, name='Outer Edge Chamfer Angle', default=math.radians(45.0), min=0.0,
                               max=math.radians(89.0), subtype='ANGLE'),
+    # ---- 0.19.2 surface lines (crease lines across the top) ---------------------------------
+    'facet_style': _p(EnumProperty, name='Surface Lines', items=[
+        ('NONE', 'None', 'Smooth top'), ('CENTER', 'Center Line', 'One crease along the length'),
+        ('CROSS', 'Cross', 'Two creases crossing in the middle'),
+        ('RANDOM', 'Random', 'Random crease lines (Seed / Count)')], default='NONE'),
+    'facet_depth': _p(FloatProperty, name='Crease Height', default=0.6, soft_min=-2.0, soft_max=2.0,
+                      description='Height of the crease lines (part of the plate height): + = raised ridge, '
+                                  '- = sunken valley'),
+    'facet_count': _p(IntProperty, name='Line Count', default=3, min=1, max=8),
+    'facet_seed': _p(IntProperty, name='Line Seed', default=1, min=0),
+    'facet_rotation': _p(FloatProperty, name='Line Rotation', default=0.0, subtype='ANGLE'),
     'smooth_shading': _p(BoolProperty, name='Smooth Shading', default=True,
                          description='Smooth shading with sharp edges by angle (OFF = flat)'),
     # ---- Armor Sculpt: orientation -----------------------------------------------------------------
@@ -232,6 +243,14 @@ def rebuild(ob):
             me.set_sharp_from_angle(angle=math.radians(35.0))
         except (AttributeError, TypeError):
             pass
+    crease = me.attributes.get('mch_crease')
+    if crease is not None and crease.domain == 'EDGE':
+        sharp = me.attributes.get('sharp_edge') or me.attributes.new('sharp_edge', 'BOOLEAN', 'EDGE')
+        vals = [0.0] * len(me.edges)
+        crease.data.foreach_get('value', vals)
+        flags = [False] * len(me.edges)
+        sharp.data.foreach_get('value', flags)
+        sharp.data.foreach_set('value', [bool(f or c > 0.5) for f, c in zip(flags, vals)])
     me.update()
     _sync_modifiers(ob)
     p.notes = '; '.join(notes)
@@ -538,6 +557,15 @@ def draw(layout, context):
         col.prop(p, 'surface_offset')
         col.prop(p, 'resolution')
         body.prop(p, 'smooth_shading')
+        ln = body.column(align=True)
+        ln.prop(p, 'facet_style')
+        if p.facet_style != 'NONE':
+            ln.prop(p, 'facet_depth', slider=True)
+            ln.prop(p, 'facet_rotation')
+            if p.facet_style == 'RANDOM':
+                r = ln.row(align=True)
+                r.prop(p, 'facet_count')
+                r.prop(p, 'facet_seed')
     if not armor:
         body = _fold(layout, context, 'ex_bevel', 'Bevel (top edge + side edges)')
         if body:

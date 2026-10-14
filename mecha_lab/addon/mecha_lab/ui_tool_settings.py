@@ -22,6 +22,41 @@ def _section(layout, title, icon='NONE'):
     return box
 
 
+def draw_edge_finish(layout, context, mode):
+    """0.19.2: cut edge Bevel / Chamfer as sliders right under the lasso settings
+    (Cut tool; Base Mesh: its bevel sides)."""
+    if mode == 'CUT':
+        cut = context.scene.mch_cut
+        box = layout.box()
+        box.label(text='Edge Finish (new cut edges)', icon='MOD_BEVEL')
+        box.row(align=True).prop(cut, 'edge_finish', expand=True)
+        if cut.edge_finish != 'NONE':
+            c = box.column(align=True)
+            c.prop(cut, 'finish_width', slider=True)
+            if cut.edge_finish == 'BEVEL':
+                c.prop(cut, 'finish_segments', slider=True)
+                c.prop(cut, 'finish_profile', slider=True)
+            box.prop(cut, 'finish_clamp')
+            if not context.scene.mch_settings.auto_apply:
+                box.label(text='Edge Finish is skipped in Live mode', icon='INFO')
+    elif mode == 'BASE':
+        from . import base_mesh
+        ob = base_mesh.active_live_base(context)
+        p = ob.mch_base if ob is not None else context.scene.mch_base
+        box = layout.box()
+        box.label(text='Edge Bevel / Chamfer', icon='MOD_BEVEL')
+        row = box.row(align=True)
+        for pid, label in (('FLAT', 'None'), ('BEVEL', 'Bevel'), ('CHAMFER', 'Chamfer')):
+            row.operator('mch.set_profile', text=label, depress=(p.profile == pid)).profile = pid
+        if p.profile in {'BEVEL', 'CHAMFER'}:
+            box.row(align=True).prop(p, 'bevel_sides', expand=True)
+            if p.bevel_sides != 'NONE':
+                c = box.column(align=True)
+                c.prop(p, 'bevel_width', slider=True)
+                if p.profile == 'BEVEL':
+                    c.prop(p, 'bevel_segments', slider=True)
+
+
 def draw_shape_options(layout, context, mode):
     brush = context.scene.mch_brush
     shape = brush.shape
@@ -63,6 +98,7 @@ def draw_shape_options(layout, context, mode):
             cut_presets.draw_builtin_row(box)
         _hint(box, 'Click points, hold LMB to draw freely', 'Double-click anywhere: close & apply',
               '2 points + Enter = straight line cut (Cut/Split)')
+        draw_edge_finish(box, context, mode)
     elif shape == 'CUSTOM':
         from . import cut_presets
         cut_presets.draw_builtin_row(box)
@@ -124,18 +160,8 @@ def draw_cut(layout, context, mode='CUT'):
         box.operator('mch.split_swap_sides', icon='ARROW_LEFTRIGHT')
         if cut.side_a_finish != 'NONE' or cut.side_b_finish != 'NONE':
             box.prop(cut, 'finish_clamp')
-    else:
-        box = _section(layout, 'Edge Finish (new cut edges only)', 'MOD_BEVEL')
-        box.prop(cut, 'edge_finish', expand=True)
-        if cut.edge_finish != 'NONE':
-            c = box.column(align=True)
-            c.prop(cut, 'finish_width')
-            if cut.edge_finish == 'BEVEL':
-                c.prop(cut, 'finish_segments')
-                c.prop(cut, 'finish_profile', slider=True)
-            box.prop(cut, 'finish_clamp')
-            if not s.auto_apply:
-                box.label(text='Edge Finish is skipped in Live mode', icon='INFO')
+    elif context.scene.mch_brush.shape != 'LASSO':
+        draw_edge_finish(layout, context, 'CUT')     # with the lasso it sits under the lasso settings
 
     box = _section(layout, 'Advanced', 'PREFERENCES')
     c = box.column(align=True)

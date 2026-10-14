@@ -562,8 +562,10 @@ def hud_layout(screen_pts, region_w, region_h, btn=30.0, gap=6.0, slider_w=104.0
 
 
 def _current(context):
+    from .primitive_hud import anchored, release_anchor
     data = session(context)
     if data is None or context.mode != 'OBJECT':
+        release_anchor('random')
         return None, {}
     from bpy_extras import view3d_utils
     target = bpy.data.objects[data['target']]
@@ -575,7 +577,7 @@ def _current(context):
     for c in target.bound_box:
         p = view3d_utils.location_3d_to_region_2d(region, rv3d, target.matrix_world @ Vector(c))
         pts.append(None if p is None else (p[0] / ui, p[1] / ui))
-    return data, hud_layout(pts, region.width / ui, region.height / ui)
+    return data, anchored('random', data['target'], region, hud_layout(pts, region.width / ui, region.height / ui))
 
 
 class MCH_GT_random_slider(bpy.types.Gizmo):

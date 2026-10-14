@@ -384,10 +384,36 @@ def _project(context, pts):
     return [view3d_utils.location_3d_to_region_2d(region, rv3d, p) for p in pts]
 
 
+# 0.19.2 popups stay where they first appeared (they no longer jump while the shape / mirror changes)
+_ANCHORS = {}
+
+
+def anchored(hud, key, region, lay, follow=()):
+    """``lay`` pinned to its first position for the same ``key`` (object / session) and region size.
+    Keys in ``follow`` (buttons glued to a part of the shape) keep moving with it."""
+    try:
+        rk = (region.as_pointer(), int(region.width), int(region.height))
+    except (AttributeError, ReferenceError):
+        return lay
+    old = _ANCHORS.get(hud)
+    if old is not None and old[0] == key and old[1] == rk:
+        out = dict(old[2])
+        out.update({k: v for k, v in lay.items() if k in follow})
+        return out
+    if lay:
+        _ANCHORS[hud] = (key, rk, {k: v for k, v in lay.items() if k not in follow})
+    return lay
+
+
+def release_anchor(hud):
+    _ANCHORS.pop(hud, None)
+
+
 def current_layout(context):
     """(kind, ob, layout in region px) for the HUD now."""
     kind, ob = hud_target(context)
     if kind is None:
+        release_anchor('prim')
         return None, None, {}
     ui = context.preferences.system.ui_scale
     pts = [None if p is None else (p[0] / ui, p[1] / ui) for p in _project(context, target_points(context, kind, ob))]
@@ -396,7 +422,9 @@ def current_layout(context):
         e = _project(context, list(station_ends(ob)))
         ends = tuple(None if p is None else (p[0] / ui, p[1] / ui) for p in e)
     region = context.region
-    return kind, ob, hud_layout(pts, region.width / ui, region.height / ui, ends)
+    lay = hud_layout(pts, region.width / ui, region.height / ui, ends)
+    key = (kind, getattr(ob, 'name', 'GHOST'))
+    return kind, ob, anchored('prim', key, region, lay, follow=('end_add', 'end_remove', 'start_add', 'start_remove'))
 
 
 class MCH_GGT_prim_hud(bpy.types.GizmoGroup):

@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.19.1
+# Test Report — Mecha Lab 0.19.2
+
+## 0.19.2 결과: 34개 파일, 1505 / 1505 통과 (headless bpy 5.0.1, `tests/test_log_bpy501_v0192.txt`). 뷰포트 버튼·팝업 고정은 GUI에서 실행하지 못함 — 미검증.
 
 ## 0.19.1 결과: 33개 파일, 1475 / 1475 통과 (headless bpy 5.0.1, `tests/test_log_bpy501_v0191.txt`). 우클릭 메뉴·F9 조정 창은 GUI에서 실행하지 못함 — 미검증.
 

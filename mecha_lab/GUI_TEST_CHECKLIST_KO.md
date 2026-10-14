@@ -1,8 +1,17 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.19.1 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.19.2 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A000. 0.19.2 (미검증 — headless 테스트만 통과)
+- [ ] 아머 플레이트 → 우클릭 Make High Poly: 원래 모양/챔퍼 그대로, 면만 촘촘 (주름·울퉁불퉁 없음)
+- [ ] 판 팝업 Lines 버튼 / 새로고침 / Crease 슬라이더: 윗면에 날카로운 꺾임 라인
+- [ ] 얼굴처럼 좁은 판에 Soft Cloth + 큰 베벨/챔퍼: 구겨지지 않는지
+- [ ] 원기둥 가장자리 밖까지 그린 판: 뾰족하게 튀는 조각 없는지
+- [ ] 툴바 옆 Tool Active 버튼(켜기/끄기), 그 밑 Reset Axis / Origin to Geometry / Origin to 3D Cursor
+- [ ] 미러·판·랜덤 패널·프리미티브 팝업이 값 바꿔도 처음 자리에 그대로 있는지
+- [ ] Q 파이 Base 칸 밑 Plate, 라쏘 설정 밑 Bevel/Chamfer 슬라이더
 
 ## A00. 0.19.1 (미검증 — headless 테스트만 통과)
 - [ ] 왼쪽 떠 있는 도구 버튼 줄이 사라졌는지

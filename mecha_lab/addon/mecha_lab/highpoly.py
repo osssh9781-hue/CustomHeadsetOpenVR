@@ -65,14 +65,24 @@ def _targets(context):
     return [o for o in context.selected_objects if o.type == 'MESH' and not is_highpoly(o)]
 
 
-def make_highpoly(context, ob, level, ratio, angle, segments):
-    """Dense copy of ``ob`` in the HighPoly collection.  Returns (copy, level)."""
+def make_highpoly(context, ob, level, ratio, angle, segments, plate_detail=10):
+    """Dense copy of ``ob`` in the HighPoly collection.  Returns (copy, level).
+    Armor plates / live parts are rebuilt densely instead (shape kept exactly)."""
     st_coll = _collection(context)
     for old in [o for o in st_coll.objects if o.get(SRC_KEY) == ob.name]:   # rebuild = replace
         me_old = old.data
         bpy.data.objects.remove(old)
         if me_old.users == 0:
             bpy.data.meshes.remove(me_old)
+    from . import armor_plate as ap
+    dense = ap.dense_plate_mesh(context, ob, plate_detail)
+    if dense is not None:                       # plates: same plate, small faces (no subdivision)
+        dense.name = ob.name + '_HP'
+        hp = bpy.data.objects.new(ob.name + '_HP', dense)
+        st_coll.objects.link(hp)
+        hp.matrix_world = ob.matrix_world.copy()
+        hp[SRC_KEY] = ob.name
+        return hp, 0
     dg = context.evaluated_depsgraph_get()
     base = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), depsgraph=dg)
     level = safe_level(len(base.polygons), level, segments)
@@ -124,6 +134,9 @@ class MCH_OT_make_highpoly(bpy.types.Operator):
                          description='Edges sharper than this stay crisp; softer edges are rounded into curves')
     segments: IntProperty(name='Support Loops', default=2, min=1, max=4,
                           description='Bevel segments on the sharp edges before subdividing')
+    plate_detail: IntProperty(name='Plate Detail (px)', default=10, min=4, max=60,
+                              description='Armor plates: face size of the dense rebuild (smaller = denser). '
+                                          'Plates keep their exact shape and edges, no subdivision')
     hide_originals: BoolProperty(name='Hide Originals', default=True,
                                  description='Hide the low poly meshes after making the high poly copies')
     join: BoolProperty(name='Join Into One', default=False,
@@ -138,8 +151,8 @@ class MCH_OT_make_highpoly(bpy.types.Operator):
         obs = _targets(context)
         made, lowered, faces = [], False, 0
         for ob in obs:
-            hp, lv = make_highpoly(context, ob, st.level, st.edge, st.angle, st.segments)
-            lowered |= lv < st.level
+            hp, lv = make_highpoly(context, ob, st.level, st.edge, st.angle, st.segments, st.plate_detail)
+            lowered |= 0 < lv < st.level
             faces += len(hp.data.polygons)
             made.append(hp)
         if st.join and len(made) > 1:

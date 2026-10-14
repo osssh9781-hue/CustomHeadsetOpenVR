@@ -93,6 +93,9 @@ def in_select(context):
 # -----------------------------------------------------------------------------
 
 
+PIE_SHARED = {'BASE': ('PLATE',)}      # pie slot -> extra tools stacked under it
+
+
 class MCH_MT_tool_pie(bpy.types.Menu):
     bl_idname = 'MCH_MT_tool_pie'
     bl_label = 'Mecha Tools'
@@ -106,6 +109,12 @@ class MCH_MT_tool_pie(bpy.types.Menu):
             t = by_id[tid]
             if t[4] == 'mch.select_move':
                 pie.operator('mch.select_move', text='Select / Move  (F)', icon=t[3])
+            elif tid in PIE_SHARED:
+                # 0.19.2: a pie has 8 slots - this slot holds a small column of tools
+                col = pie.column(align=True)
+                for sid in (tid,) + PIE_SHARED[tid]:
+                    st = by_id[sid]
+                    col.operator('mch.set_tool', text=st[1], icon=st[3]).tool = st[5]
             else:
                 op = pie.operator('mch.set_tool', text=t[1] + (f'  ({t[2]})' if t[2] else ''), icon=t[3])
                 op.tool = t[5]
@@ -254,11 +263,235 @@ class MCH_GGT_bottom_toolbar(bpy.types.GizmoGroup):
             gz.alpha = 1.0 if on else 0.9
 
 
+# -----------------------------------------------------------------------------
+# 0.19.2 Tool Active button: top-left of the viewport, next to Blender's toolbar.
+# Shows the chosen Mecha tool; click = switch it on in the viewport (click
+# again = back to Select / Move).
+# -----------------------------------------------------------------------------
+
+
+def chosen_tool(context):
+    st = getattr(context.scene, 'mch_settings', None)
+    tid = getattr(st, 'mch_active_tool', '') if st else ''
+    t = ts.TOOL_BY_ID.get(tid)
+    return (tid, t) if t is not None and t[5] else (None, None)
+
+
+def tool_live(context):
+    tid, t = chosen_tool(context)
+    return bool(t) and ts.native_tool_id(context) == t[5]
+
+
+def active_button_pos(context):
+    """Region px (UI scale 1) of the Tool Active button: right of Blender's toolbar, upper left."""
+    region, area = context.region, context.area
+    ui = context.preferences.system.ui_scale or 1.0
+    left = 0.0
+    tools = next((r for r in area.regions if r.type == 'TOOLS'), None) if area else None
+    if tools is not None and tools.width > 1:
+        left = max(0.0, float(tools.x + tools.width - region.x))
+    return left / ui + 34.0, region.height / ui - 150.0
+
+
+class MCH_OT_tool_active(bpy.types.Operator):
+    """Switch the chosen Mecha tool on in the viewport (click again: back to Select / Move)"""
+    bl_idname = 'mch.tool_active'
+    bl_label = 'Tool Active'
+    bl_options = {'INTERNAL'}
+
+    @classmethod
+    def description(cls, context, properties):
+        tid, t = chosen_tool(context)
+        if not t:
+            return cls.__doc__
+        return (f'{t[1]} is ON: click to go back to Select / Move' if tool_live(context)
+                else f'Switch {t[1]} on in the viewport')
+
+    def execute(self, context):
+        tid, t = chosen_tool(context)
+        if not t:
+            return {'CANCELLED'}
+        if tool_live(context):
+            bpy.ops.mch.select_move()
+        else:
+            from .workspace_ui import activate_mecha_tool
+            activate_mecha_tool(context, tid)
+        return {'FINISHED'}
+
+
+class MCH_GGT_tool_active(bpy.types.GizmoGroup):
+    bl_idname = 'MCH_GGT_tool_active'
+    bl_label = 'Mecha Tool Active'
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'WINDOW'
+    bl_options = {'PERSISTENT', 'SCALE'}
+
+    @classmethod
+    def poll(cls, context):
+        return ui_active(context) and chosen_tool(context)[1] is not None
+
+    def setup(self, context):
+        gz = self.gizmos.new('GIZMO_GT_button_2d')
+        gz.draw_options = {'BACKDROP', 'OUTLINE'}
+        gz.target_set_operator('mch.tool_active')
+        gz.color = BASE_COL
+        gz.alpha = 0.95
+        gz.color_highlight = (0.32, 0.35, 0.41)
+        gz.alpha_highlight = 1.0
+        self.button = gz
+        self.icon = ''
+
+    def draw_prepare(self, context):
+        tid, t = chosen_tool(context)
+        gz = self.button
+        gz.hide = t is None
+        if t is None:
+            return
+        if self.icon != t[4]:
+            try:
+                gz.icon = t[4]
+                self.icon = t[4]
+            except (TypeError, ValueError):
+                pass
+        ui = context.preferences.system.ui_scale
+        x, y = active_button_pos(context)
+        gz.scale_basis = 17.0
+        gz.matrix_basis[0][3] = x * ui
+        gz.matrix_basis[1][3] = y * ui
+        gz.color = ACCENT if tool_live(context) else BASE_COL
+
+
+TIDY = (('RESET_AXIS', 'ORIENTATION_GLOBAL', 'Reset Axis',
+         'Local axes back to the world axes, the shape stays where it is (applies the rotation)'),
+        ('ORIGIN_GEOMETRY', 'PIVOT_MEDIAN', 'Origin to Geometry', 'Origin to the middle of the mesh'),
+        ('ORIGIN_CURSOR', 'PIVOT_CURSOR', 'Origin to 3D Cursor', 'Origin to the 3D cursor'))
+
+
+def _unlive(ob):
+    """Live generated shapes rebuild their mesh: freeze them first so the change sticks."""
+    done = False
+    try:
+        from . import station_primitive as sp
+        done |= bool(sp.freeze(ob))
+    except (ImportError, AttributeError):
+        pass
+    for attr in ('mch_base', 'mch_extract'):
+        pg = getattr(ob, attr, None)
+        for flag in ('live', 'is_part'):
+            if pg is not None and getattr(pg, flag, False):
+                try:
+                    setattr(pg, flag, False)
+                    done = True
+                except (AttributeError, TypeError):
+                    pass
+    return done
+
+
+class MCH_OT_object_tidy(bpy.types.Operator):
+    """Reset Axis / Origin to Geometry / Origin to 3D Cursor for the selected objects"""
+    bl_idname = 'mch.object_tidy'
+    bl_label = 'Object Tidy'
+    bl_options = {'REGISTER', 'UNDO'}
+    action: bpy.props.EnumProperty(items=[(a, l, d) for a, _i, l, d in TIDY], default='RESET_AXIS')
+
+    @classmethod
+    def description(cls, context, properties):
+        return next(d for a, _i, _l, d in TIDY if a == properties.action)
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and bool(context.selected_editable_objects)
+
+    def execute(self, context):
+        obs = [o for o in context.selected_editable_objects if o.type in {'MESH', 'CURVE'}]
+        if not obs:
+            return {'CANCELLED'}
+        frozen = [o.name for o in obs if _unlive(o)]
+        with context.temp_override(selected_editable_objects=obs, selected_objects=obs,
+                                   active_object=context.active_object or obs[0]):
+            if self.action == 'RESET_AXIS':
+                bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+            elif self.action == 'ORIGIN_GEOMETRY':
+                bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='MEDIAN')
+            else:
+                bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+        label = next(l for a, _i, l, _d in TIDY if a == self.action)
+        extra = f' (live shape frozen: {", ".join(frozen)})' if frozen else ''
+        self.report({'INFO'}, f'{label}: {len(obs)} object(s){extra}')
+        return {'FINISHED'}
+
+
+def tidy_positions(context):
+    x, y = active_button_pos(context)
+    return [(x, y - 44.0 - i * 34.0) for i in range(len(TIDY))]
+
+
+class MCH_GGT_object_tidy(bpy.types.GizmoGroup):
+    bl_idname = 'MCH_GGT_object_tidy'
+    bl_label = 'Mecha Object Tidy'
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'WINDOW'
+    bl_options = {'PERSISTENT', 'SCALE'}
+
+    @classmethod
+    def poll(cls, context):
+        return ui_active(context)
+
+    def setup(self, context):
+        self.items = []
+        for action, icon, _l, _d in TIDY:
+            gz = self.gizmos.new('GIZMO_GT_button_2d')
+            gz.icon = icon
+            gz.draw_options = {'BACKDROP', 'OUTLINE'}
+            gz.target_set_operator('mch.object_tidy').action = action
+            gz.color = BASE_COL
+            gz.alpha = 0.92
+            gz.color_highlight = (0.32, 0.35, 0.41)
+            gz.alpha_highlight = 1.0
+            self.items.append(gz)
+
+    def draw_prepare(self, context):
+        ui = context.preferences.system.ui_scale
+        for gz, (x, y) in zip(self.items, tidy_positions(context)):
+            gz.scale_basis = 13.0
+            gz.matrix_basis[0][3] = x * ui
+            gz.matrix_basis[1][3] = y * ui
+
+
+def _draw_tidy_labels(context):
+    import blf
+    ui = context.preferences.system.ui_scale
+    blf.size(0, 10 * ui)
+    blf.color(0, 0.85, 0.87, 0.9, 1.0)
+    for (_a, _i, label, _d), (x, y) in zip(TIDY, tidy_positions(context)):
+        blf.position(0, (x + 20) * ui, (y - 4) * ui, 0)
+        blf.draw(0, label)
+
+
+def _draw_active_label(context):
+    import blf
+    tid, t = chosen_tool(context)
+    if t is None:
+        return
+    ui = context.preferences.system.ui_scale
+    x, y = active_button_pos(context)
+    on = tool_live(context)
+    blf.size(0, 12 * ui)
+    blf.color(0, *(ACCENT if on else (0.9, 0.92, 0.95)), 1.0)
+    blf.position(0, (x + 24) * ui, (y - 5) * ui, 0)
+    blf.draw(0, f'{t[1]}  ON' if on else f'{t[1]}  -  click to activate')
+
+
 def _draw_labels():
     """Optional names under the toolbar icons (Preferences: Toolbar Labels)."""
     try:
         context = bpy.context
-        if not (_pref('toolbar_labels', True) and ui_active(context)):
+        if not ui_active(context):
+            return
+        if chosen_tool(context)[1] is not None:
+            _draw_active_label(context)
+        _draw_tidy_labels(context)
+        if not _pref('toolbar_labels', True):
             return
         import blf
         if not _pref('bottom_toolbar'):
@@ -280,7 +513,8 @@ def _draw_labels():
         pass
 
 
-CLASSES = (MCH_OT_bar_tool, MCH_MT_tool_pie, MCH_OT_tool_pie, MCH_OT_toggle_last_tool, MCH_OT_toggle_targets, MCH_GGT_bottom_toolbar)
+CLASSES = (MCH_OT_bar_tool, MCH_MT_tool_pie, MCH_OT_tool_pie, MCH_OT_toggle_last_tool, MCH_OT_toggle_targets, MCH_GGT_bottom_toolbar,
+           MCH_OT_tool_active, MCH_GGT_tool_active, MCH_OT_object_tidy, MCH_GGT_object_tidy)
 # 0.19.1: the 0.15 floating side tool list was removed (user request)
 
 

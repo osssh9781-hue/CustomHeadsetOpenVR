@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import heapq
 import math
+import random
 
 import bmesh
 from mathutils import Matrix, Vector
@@ -180,6 +181,43 @@ def boundary_loops(bm, faces):
     if not loops:
         raise PanelError('The selection has no boundary (a closed surface cannot be extracted as a panel).')
     return loops
+
+
+def facet_lines(style, count, seed, rotation, pts2d, radius):
+    """0.19.2 surface lines: crease lines across the plate top in the frame
+    plane.  ``pts2d`` = region vertices in frame coordinates (x, y).  Returns
+    [(px, py, angle, sign)]: a line through (px, py) at ``angle``; sign +1 =
+    raised ridge, -1 = sunken valley."""
+    if style == 'NONE' or not pts2d:
+        return []
+    n = len(pts2d)
+    mx = sum(p[0] for p in pts2d) / n
+    my = sum(p[1] for p in pts2d) / n
+    sxx = sum((p[0] - mx) ** 2 for p in pts2d)
+    syy = sum((p[1] - my) ** 2 for p in pts2d)
+    sxy = sum((p[0] - mx) * (p[1] - my) for p in pts2d)
+    a = 0.5 * math.atan2(2.0 * sxy, sxx - syy) + rotation       # long axis
+    if style == 'CENTER':
+        return [(mx, my, a, 1.0)]
+    if style == 'CROSS':
+        return [(mx, my, a, 1.0), (mx, my, a + math.pi / 2, 1.0)]
+    rng = random.Random(int(seed))
+    out = []
+    for _i in range(max(1, int(count))):
+        ang = a + rng.uniform(-math.pi / 2, math.pi / 2)
+        off = rng.uniform(-0.55, 0.55) * radius
+        out.append((mx - math.sin(ang) * off, my + math.cos(ang) * off, ang, rng.choice((1.0, -1.0))))
+    return out
+
+
+def line_dist(line, x, y):
+    px, py, ang, _s = line
+    return (x - px) * -math.sin(ang) + (y - py) * math.cos(ang)
+
+
+def facet_value(lines, x, y, fall):
+    """Tent field: +-1 on a line, falling linearly to 0 at ``fall``."""
+    return sum(l[3] * max(0.0, 1.0 - abs(line_dist(l, x, y)) / fall) for l in lines)
 
 
 def region_frame(verts, faces):
@@ -459,8 +497,16 @@ def _project_factory(context_mesh, bm_region):
             loc, _n, _i, dist = tree.ray_cast(co - d * 1e-6, d)
             if loc is not None and (best is None or dist < best[0]):
                 best = (dist, loc)
+        # 0.19.2: on a sharp outside edge (cylinder rim) the normal ray can miss the near face and hit the
+        # far side of the mesh -> spike.  Much farther than the nearest surface point = use that point.
+        near = tree.find_nearest(co)
+        if near and near[0] is not None and (best is None or best[0] > near[3] * 3.0 + 1e-6):
+            return near[0] if best is not None or near[3] < 1e-4 else co
         return best[1] if best is not None else co
     return project
+
+
+ROOM_SHARE = 0.3        # an edge band may use this part of the width across a narrow neck
 
 
 def _build(bm, context_mesh, p, armor, notes):
@@ -472,6 +518,28 @@ def _build(bm, context_mesh, p, armor, notes):
         for _ in range(levels):
             bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=1, use_grid_fill=True)
     bm.normal_update()
+    # 0.19.2 surface lines: cut the region along each crease line first, so the
+    # crease is a real edge (sharp, even on a light plate)
+    lines, fcen, ft, fb, fall = [], None, None, None, 1.0
+    style = getattr(p, 'facet_style', 'NONE')
+    if style != 'NONE' and abs(getattr(p, 'facet_depth', 0.0)) > 1e-9:
+        fcen, fn, ft, fb, frad = region_frame(list(bm.verts), list(bm.faces))
+        pts = [((v.co - fcen).dot(ft), (v.co - fcen).dot(fb)) for v in bm.verts]
+        lines = facet_lines(style, getattr(p, 'facet_count', 3), getattr(p, 'facet_seed', 1),
+                            getattr(p, 'facet_rotation', 0.0), pts, frad)
+        fall = frad * 1.1
+        for ln in lines:
+            px, py, ang, _sg = ln
+            d3 = ft * math.cos(ang) + fb * math.sin(ang)
+            co = fcen + ft * px + fb * py
+            geom = bm.verts[:] + bm.edges[:] + bm.faces[:]
+            bmesh.ops.bisect_plane(bm, geom=geom, dist=frad * 1e-6, plane_co=co, plane_no=fn.cross(d3))
+        bm.verts.ensure_lookup_table()
+        bm.normal_update()
+
+    def fxy(co):
+        d = co - fcen
+        return d.dot(ft), d.dot(fb)
     project = _project_factory(context_mesh, bm)
     faces = list(bm.faces)
     loops = boundary_loops(bm, faces)
@@ -522,6 +590,8 @@ def _build(bm, context_mesh, p, armor, notes):
                 inward = l1 if l1.length else nv.orthogonal()
             inward.normalize()
             miter = 1.0 / max(0.35, inward.dot(l1) if l1.length else 1.0)
+            if l1.length and e2.length > 1e-12 and e2.dot(l1) < 0:
+                miter = min(miter, 1.0)      # 0.19.2 reflex (inward) corner: no long miter spike
             # turning angle (for side edge bevel)
             turn = 0.0
             if e1.length > 1e-12 and e2.length > 1e-12:
@@ -558,22 +628,75 @@ def _build(bm, context_mesh, p, armor, notes):
         pts = edge_profile(ow, od, 'IN', obw, cp['oseg'] if obw > 0 else 0, cp['prof'], wall_room=1e9)
         return [(s + wall_s, -z) for s, z in pts]       # mirrored: z goes up the wall
 
+    # 0.19.2 local room: where the outline gets narrow (a neck) or turns sharply inward, a wide
+    # chamfer / bevel from both sides crossed over and crumpled the part.  Each column's edge band is
+    # scaled to fit 40 % of the distance to the boundary across the neck.
+    from mathutils.kdtree import KDTree
+    allb = [(li, ci, c['v'].co.copy()) for li, cols in enumerate(columns) for ci, c in enumerate(cols)]
+    arc = {}
+    for li, cols in enumerate(columns):
+        acc = 0.0
+        for ci, c in enumerate(cols):
+            if ci:
+                acc += (c['v'].co - cols[ci - 1]['v'].co).length
+            arc[(li, ci)] = acc
+        arc[(li, 'len')] = acc + ((cols[0]['v'].co - cols[-1]['v'].co).length if cols else 0.0)
+    kd = KDTree(len(allb))
+    for k, (_li, _ci, co) in enumerate(allb):
+        kd.insert(co, k)
+    kd.balance()
+
+    def room(li, ci, reach):
+        co = columns[li][ci]['v'].co
+        best = math.inf
+        total = arc[(li, 'len')]
+        for _p, k, dist in kd.find_range(co, reach):
+            lj, cj, _co = allb[k]
+            if lj == li:
+                da = abs(arc[(li, ci)] - arc[(lj, cj)])
+                da = min(da, total - da)
+                if da < dist * 2.0 + 1e-9:          # a neighbour along the same edge, not across a neck
+                    continue
+            best = min(best, dist)
+        return best
+
+    def fit(prof, f):
+        return [(sv * f, zv) for sv, zv in prof]
+
+    squeezed = 0
     prof_top, prof_bot = [], []
     n_top = n_bot = 1
-    for cols in columns:
-        pt, pb = [], []
-        for c in cols:
+    for li, cols in enumerate(columns):
+        pt, pb, need, fac = [], [], [], []
+        for ci, c in enumerate(cols):
             top, (od, obw) = top_profile(c['cp'])
             wall_s = top[0][0]
             bot = bottom_profile(c['cp'], wall_s, od, obw)
             pt.append(top)
             pb.append(bot)
-            n_top = max(n_top, len(top))
-            n_bot = max(n_bot, len(bot))
+            nd = max(abs(sv) for sv, _z in top + bot) * c['miter']
+            need.append(nd)
+            f = 1.0
+            if nd > 1e-9:
+                rm = room(li, ci, nd / ROOM_SHARE)
+                if rm < nd / ROOM_SHARE:
+                    f = max(0.05, ROOM_SHARE * rm / nd)
+            fac.append(f)
+        n = len(cols)
+        # spread each narrowing to the neighbours: no twisted band where one column shrinks alone
+        smooth = [min(fac[(ci + k) % n] for k in range(-3, 4)) for ci in range(n)]
+        for ci in range(n):
+            if smooth[ci] < 1.0:
+                pt[ci], pb[ci] = fit(pt[ci], smooth[ci]), fit(pb[ci], smooth[ci])
+                squeezed += 1
+            n_top = max(n_top, len(pt[ci]))
+            n_bot = max(n_bot, len(pb[ci]))
         prof_top.append(pt)
         prof_bot.append(pb)
     if clamp_hit:
         notes.append('edge sizes reduced to fit the part height')
+    if squeezed:
+        notes.append(f'edge band narrowed at {squeezed} point(s) where the outline is narrow')
     # equal row counts everywhere: give sharp columns a tiny chamfer, then resample
     eps = max(radius * 2e-3, 1e-5)
     for li, cols in enumerate(columns):
@@ -632,6 +755,9 @@ def _build(bm, context_mesh, p, armor, notes):
                 h += ridge_value(u, w_, branches, p, radius) * fade
         else:
             h = p.extract_height
+        if lines:
+            x, y = fxy(co_for_uv)
+            h = max(p.extract_height * 0.15, h + p.extract_height * p.facet_depth * facet_value(lines, x, y, fall))
         return h
 
     # ---- assemble -----------------------------------------------------------------------------
@@ -696,6 +822,14 @@ def _build(bm, context_mesh, p, armor, notes):
                 k1 = k0 + 1          # wall bottom (first bottom point)
                 if k1 < len(chain):
                     weight_edges.append((chain[k0], chain[k1]))
+    crease_pairs = []
+    if lines:
+        tol = radius * 1e-4
+        on = {v: {i for i, ln in enumerate(lines) if abs(line_dist(ln, *fxy(v.co))) < tol} for v in verts}
+        for e in {e for f in faces for e in f.edges}:
+            a, b = e.verts
+            if on[a] & on[b]:
+                crease_pairs.append((vt[a], vt[b]))
     out.verts.index_update()
     bmesh.ops.remove_doubles(out, verts=out.verts[:], dist=radius * 1e-7)
     layer = out.edges.layers.float.get('bevel_weight_edge') or out.edges.layers.float.new('bevel_weight_edge')
@@ -704,6 +838,13 @@ def _build(bm, context_mesh, p, armor, notes):
             e = out.edges.get((a, b))
             if e is not None:
                 e[layer] = 1.0
+    if crease_pairs:
+        cl = out.edges.layers.float.get('mch_crease') or out.edges.layers.float.new('mch_crease')
+        for a, b in crease_pairs:
+            if a.is_valid and b.is_valid:
+                e = out.edges.get((a, b))
+                if e is not None:
+                    e[cl] = 1.0
     out.normal_update()
     bad = [e for e in out.edges if not e.is_manifold]
     if not shell and bad:

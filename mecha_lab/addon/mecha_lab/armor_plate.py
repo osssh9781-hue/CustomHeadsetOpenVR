@@ -228,7 +228,7 @@ def _target_bvh(context, ob):
 
 def project_patch(points, projector, bvh):
     """World positions + normals of 2D points on the surface (view rays).
-    Misses go onto the plane through the hits.  Returns (cos, normals, misses)."""
+    Misses go to the depth of the nearest hits.  Returns (cos, normals, misses)."""
     cos, nrms, missing = [None] * len(points), [None] * len(points), []
     for i, xy in enumerate(points):
         o, d = projector.ray(xy)
@@ -248,14 +248,25 @@ def project_patch(points, projector, bvh):
     if not hits:
         raise cg.CutError('The outline is not on a mesh: draw over the surface you want the plate on.')
     if missing:
-        c = sum((cos[i] for i in hits), Vector()) / len(hits)
-        n = sum((nrms[i] for i in hits), Vector())
-        n = n.normalized() if n.length > 1e-9 else -projector.view_dir
+        # 0.19.2: a point past the surface edge goes to the depth of the nearest hits on screen (a plane
+        # facing the view), not onto one plane through all hits - that made spikes past a silhouette
+        from mathutils.kdtree import KDTree
+        kd = KDTree(len(hits))
+        for i in hits:
+            kd.insert((points[i][0], points[i][1], 0.0), i)
+        kd.balance()
         for i in missing:
             o, d = projector.ray(points[i])
-            den = d.dot(n)
-            t = (c - o).dot(n) / den if abs(den) > 1e-9 else 0.0
-            cos[i], nrms[i] = o + d * t, n.copy()
+            near = kd.find_n((points[i][0], points[i][1], 0.0), min(3, len(hits)))
+            wsum = t = 0.0
+            n = Vector()
+            for _co, j, dist in near:
+                w = 1.0 / max(dist, 1e-6)
+                t += (cos[j] - o).dot(d) * w
+                n += nrms[j] * w
+                wsum += w
+            cos[i] = o + d * (t / wsum)
+            nrms[i] = n.normalized() if n.length > 1e-9 else -projector.view_dir
     return cos, nrms, missing
 
 
@@ -464,9 +475,89 @@ def rebuild_plate(context, ob, spacing=None):
     return True
 
 
-def apply_plate(ob):
-    """Apply: the plate becomes a plain mesh (modifiers applied, no live part)."""
+BAKED_KEY = 'mch_plate_baked'
+
+
+def _settings(p):
+    from . import face_extract as fx
+    out = {}
+    for k in fx.SETTING_KEYS:
+        v = getattr(p, k)
+        if isinstance(v, (bool, int, float, str)):
+            out[k] = v
+    return out
+
+
+def plate_hp_data(ob):
+    """Everything needed to rebuild a plate densely: outline, view, target and
+    profile settings (live plate, or a plate applied since 0.19.2)."""
+    src = plate_source(ob)
+    if src is not None and ob.mch_extract.source is not None:
+        return dict(src, target=ob.mch_extract.source.name, settings=_settings(ob.mch_extract))
+    try:
+        raw = ob.get(BAKED_KEY)
+        return json.loads(raw) if raw else None
+    except (TypeError, ValueError, ReferenceError):
+        return None
+
+
+def dense_plate_mesh(context, ob, spacing=10):
+    """0.19.2 High Poly of a plate: the SAME plate rebuilt with small faces from
+    its outline (or, for other live parts, with a finer resolution), so the
+    shape and the crisp edges are kept.  Returns a new mesh or None."""
+    from . import face_extract as fx
+    data = plate_hp_data(ob)
     p = ob.mch_extract
+    live_part = p.is_part and p.region is not None
+    if data is None and not live_part:
+        return None
+    me_tmp = bpy.data.meshes.new('MCH_HPtmp')
+    tmp = bpy.data.objects.new('MCH_HPtmp', me_tmp)
+    context.scene.collection.objects.link(tmp)
+    tmp.matrix_world = ob.matrix_world.copy()
+    tp = tmp.mch_extract
+    made = []
+    try:
+        for k, v in (data['settings'] if data else _settings(p)).items():
+            try:
+                setattr(tp, k, v)
+            except (TypeError, AttributeError, ValueError):
+                pass
+        if tp.bevel_width > 0:
+            tp.bevel_segments = max(tp.bevel_segments, 6)
+        target = bpy.data.objects.get(data['target']) if data else None
+        if data and target is not None:
+            groups = cg.prepare_loops([[tuple(q) for q in lp] for lp in data['loops']])
+            region, surround, _s, _m = plate_meshes(context, target, groups, thaw_projector(data['proj']), spacing)
+            tp.resolution = 0
+            tp.source = target
+        elif live_part:
+            region = p.region.copy()
+            surround = p.surround.copy() if p.surround is not None else None
+            tp.resolution = min(4, p.resolution + 2)
+            tp.source = p.source
+        else:
+            return None
+        made = [region, surround]
+        tp.region, tp.surround = region, surround
+        if not fx.rebuild(tmp):
+            return None
+        dg = context.evaluated_depsgraph_get()
+        return bpy.data.meshes.new_from_object(tmp.evaluated_get(dg), depsgraph=dg)
+    except cg.CutError:
+        return None
+    finally:
+        bpy.data.objects.remove(tmp)
+        for m in [me_tmp] + made:
+            if m is not None and m.users == 0:
+                bpy.data.meshes.remove(m)
+
+
+def apply_plate(ob):
+    """Apply: the plate becomes a plain mesh (modifiers applied, no live part).
+    The outline + settings are kept (``BAKED_KEY``) for Make High Poly."""
+    p = ob.mch_extract
+    data = plate_hp_data(ob)
     dg = bpy.context.evaluated_depsgraph_get()
     me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), depsgraph=dg)
     old, region, surround = ob.data, p.region, p.surround
@@ -477,6 +568,8 @@ def apply_plate(ob):
     p.region = p.surround = None
     if SRC_KEY in ob:
         del ob[SRC_KEY]
+    if data is not None:
+        ob[BAKED_KEY] = json.dumps(data)
     for m in (old, region, surround):
         if m is not None and m.users == 0:
             bpy.data.meshes.remove(m)
@@ -597,6 +690,31 @@ class MCH_OT_plate_cycle(bpy.types.Operator):
         return bpy.ops.mch.plate_preset(preset=PRESET_IDS[(i + self.step) % len(PRESET_IDS)])
 
 
+class MCH_OT_plate_lines(bpy.types.Operator):
+    """Surface lines on the plate top: off > center line > cross > random (Reroll: new random lines)"""
+    bl_idname = 'mch.plate_lines'
+    bl_label = 'Plate Surface Lines'
+    bl_options = {'REGISTER', 'UNDO'}
+    reroll: BoolProperty(default=False, options={'SKIP_SAVE'})
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.active_object
+        return ob is not None and is_plate_or_part(ob)
+
+    def execute(self, context):
+        p = context.active_object.mch_extract
+        if self.reroll:
+            if p.facet_style != 'RANDOM':
+                p.facet_style = 'RANDOM'
+            else:
+                p.facet_seed += 1
+        else:
+            i = LINE_STYLES.index(p.facet_style) if p.facet_style in LINE_STYLES else 0
+            p.facet_style = LINE_STYLES[(i + 1) % len(LINE_STYLES)]
+        return {'FINISHED'}
+
+
 class MCH_OT_plate_apply(bpy.types.Operator):
     """Apply the plate: it becomes a plain mesh with the current shape (no more live changes)"""
     bl_idname = 'mch.plate_apply'
@@ -646,10 +764,15 @@ class MCH_OT_plate_cancel(bpy.types.Operator):
 HUD_BUTTONS = (('apply', 'CHECKMARK', 'mch.plate_apply', {}, 'Apply'),
                ('cancel', 'X', 'mch.plate_cancel', {}, 'Remove'),
                ('prev', 'TRIA_LEFT', 'mch.plate_cycle', {'step': -1}, 'Previous profile'),
-               ('next', 'TRIA_RIGHT', 'mch.plate_cycle', {'step': 1}, 'Next profile'))
+               ('next', 'TRIA_RIGHT', 'mch.plate_cycle', {'step': 1}, 'Next profile'),
+               ('lines', 'IPO_LINEAR', 'mch.plate_lines', {'reroll': False}, 'Surface lines'),
+               ('reroll', 'FILE_REFRESH', 'mch.plate_lines', {'reroll': True}, 'New random lines'))
 # key, label, part property (None = Face Size), lo, hi  (lengths: 1/1000 of the plate size)
 SLIDERS = (('height', 'Height', 'extract_height', 1, 300), ('chamfer', 'Chamfer', 'chamfer_width', 0, 200),
-           ('bevel', 'Bevel', 'bevel_width', 0, 200), ('spacing', 'Face Size', None, 20, 400))
+           ('bevel', 'Bevel', 'bevel_width', 0, 200), ('crease', 'Crease', 'facet_depth', -200, 200),
+           ('spacing', 'Face Size', None, 20, 400))
+LINE_STYLES = ('NONE', 'CENTER', 'CROSS', 'RANDOM')
+LINE_NAMES = {'NONE': 'Lines: off', 'CENTER': 'Lines: center', 'CROSS': 'Lines: cross', 'RANDOM': 'Lines: random'}
 
 
 def slider_spec(context, key, ob=None):
@@ -666,8 +789,11 @@ def slider_spec(context, key, ob=None):
             elif plate_source(ob).get('spacing') != val:
                 rebuild_plate(context, ob, val)
         return label, v, lo, hi, setter, f'{label}  {v} px'
-    size = max(1e-6, float(plate_source(ob).get('size', 1.0)))
     p = ob.mch_extract
+    if prop == 'facet_depth':                       # crease: % of the plate height
+        v = int(round(p.facet_depth * 100.0))
+        return label, v, lo, hi, (lambda val: setattr(p, 'facet_depth', val / 100.0)), f'{label}  {v} %'
+    size = max(1e-6, float(plate_source(ob).get('size', 1.0)))
     v = int(round(getattr(p, prop) / size * 1000.0))
 
     def setter(val):
@@ -681,11 +807,12 @@ def hud_layout(screen_pts, region_w, region_h, btn=30.0, gap=6.0, slider_w=104.0
         return {}
     x = min(max(max(p[0] for p in pts) + btn * 1.2, btn), region_w - slider_w - btn)
     step = btn + gap
-    total = step * 3 + (slider_h + gap) * len(SLIDERS)
+    total = step * 4 + (slider_h + gap) * len(SLIDERS)
     top = min(max((max(p[1] for p in pts) + min(p[1] for p in pts)) / 2 + total / 2, total), region_h - btn)
     out = {'apply': (x, top), 'cancel': (x, top - step),
-           'prev': (x, top - 2 * step), 'next': (x + step, top - 2 * step)}
-    y = top - 3 * step
+           'prev': (x, top - 2 * step), 'next': (x + step, top - 2 * step),
+           'lines': (x, top - 3 * step), 'reroll': (x + step, top - 3 * step)}
+    y = top - 4 * step
     for key, *_ in SLIDERS:
         out['slider_' + key] = (x - btn / 2 + slider_w / 2, y + btn / 2 - slider_h / 2)
         y -= slider_h + gap
@@ -699,9 +826,12 @@ def _hud_current(context):
             return None, {}
     except (AttributeError, TypeError):
         return None, {}
+    from .primitive_hud import anchored, release_anchor
     ob = pending_plate(context)
     region, rv3d = context.region, context.region_data
     if ob is None or region is None or rv3d is None:
+        if ob is None:
+            release_anchor('plate')
         return None, {}
     from bpy_extras import view3d_utils
     ui = context.preferences.system.ui_scale
@@ -709,7 +839,7 @@ def _hud_current(context):
     for c in ob.bound_box:
         q = view3d_utils.location_3d_to_region_2d(region, rv3d, ob.matrix_world @ Vector(c))
         pts.append(None if q is None else (q[0] / ui, q[1] / ui))
-    return ob, hud_layout(pts, region.width / ui, region.height / ui)
+    return ob, anchored('plate', ob.name, region, hud_layout(pts, region.width / ui, region.height / ui))
 
 
 class MCH_GT_plate_slider(bpy.types.Gizmo):
@@ -820,7 +950,8 @@ def _draw_labels():
         ui = context.preferences.system.ui_scale
         blf.size(0, 11 * ui)
         name = dict((p[0], p[1]) for p in PRESETS).get(context.scene.mch_plate.preset, '')
-        for key, text in (('apply', 'Apply'), ('cancel', 'Remove'), ('next', name)):
+        lines = LINE_NAMES.get(ob.mch_extract.facet_style, '')
+        for key, text in (('apply', 'Apply'), ('cancel', 'Remove'), ('next', name), ('reroll', lines)):
             x, y = lay[key]
             blf.color(0, *((1.0, 0.62, 0.16) if key == 'apply' else (0.85, 0.87, 0.9)), 1.0)
             blf.position(0, (x + 21) * ui, (y - 4) * ui, 0)
@@ -855,6 +986,15 @@ def draw(layout, context):
         col = sub.column(align=True)
         for prop in ('extract_height', 'chamfer_width', 'chamfer_angle', 'bevel_width'):
             col.prop(p, prop)
+        ln = sub.column(align=True)
+        ln.prop(p, 'facet_style')
+        if p.facet_style != 'NONE':
+            ln.prop(p, 'facet_depth', slider=True)
+            ln.prop(p, 'facet_rotation')
+            if p.facet_style == 'RANDOM':
+                r = ln.row(align=True)
+                r.prop(p, 'facet_count')
+                r.prop(p, 'facet_seed')
         r = sub.row(align=True)
         r.scale_y = 1.3
         r.operator('mch.plate_apply', text='Apply', icon='CHECKMARK')
@@ -870,7 +1010,7 @@ def draw(layout, context):
     fx.draw(layout, context)
 
 
-CLASSES = (MCH_PG_Plate, MCH_OT_plate_preset, MCH_OT_plate_cycle, MCH_OT_plate_apply, MCH_OT_plate_cancel,
+CLASSES = (MCH_PG_Plate, MCH_OT_plate_preset, MCH_OT_plate_cycle, MCH_OT_plate_lines, MCH_OT_plate_apply, MCH_OT_plate_cancel,
            MCH_GT_plate_slider, MCH_GGT_plate_hud)
 
 

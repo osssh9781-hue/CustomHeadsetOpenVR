@@ -98,8 +98,10 @@ class MCH_OT_mirror_hud_option(bpy.types.Operator):
 
 
 def _current(context):
+    from .primitive_hud import anchored, release_anchor
     obs = targets(context)
     if not obs:
+        release_anchor('mirror')
         return [], {}
     from bpy_extras import view3d_utils
     region, rv3d = context.region, context.region_data
@@ -113,7 +115,8 @@ def _current(context):
         for c in ev.bound_box:
             q = view3d_utils.location_3d_to_region_2d(region, rv3d, ev.matrix_world @ Vector(c))
             pts.append(None if q is None else (q[0] / ui, q[1] / ui))
-    return obs, hud_layout(pts, region.width / ui, region.height / ui)
+    lay = hud_layout(pts, region.width / ui, region.height / ui)
+    return obs, anchored('mirror', tuple(sorted(o.name for o in obs)), region, lay)
 
 
 class MCH_GGT_mirror_hud(bpy.types.GizmoGroup):

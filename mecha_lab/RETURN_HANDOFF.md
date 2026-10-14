@@ -1,4 +1,10 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.19.1 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.19.2 (Claude Code, 2026-10-14)
+
+## 0.19.2
+- ZIP sha256 `c3faa3445145ecec90b3f18bf56d405e36a8582e1802e0f1bdbc943ed723ecdd`. `panel_gen`: `facet_lines`/`line_dist`/`facet_value`(bisect + `mch_crease` 엣지 → `face_extract.rebuild`에서 sharp), 로컬 폭 `room()` + `ROOM_SHARE`(0.3) 밴드 축소,
+  reflex 코너 miter 1, `_project_factory`가 먼 반대면 히트 대신 nearest. `face_extract` 속성 `facet_*`. `armor_plate`: `BAKED_KEY`, `plate_hp_data`, `dense_plate_mesh`, `mch.plate_lines`,
+  miss 점은 가까운 히트 깊이. `highpoly.make_highpoly(..., plate_detail)`. `bottom_bar`: `PIE_SHARED`, `MCH_GGT_tool_active`/`mch.tool_active`, `MCH_GGT_object_tidy`/`mch.object_tidy`.
+  `primitive_hud.anchored`/`release_anchor`(팝업 고정, mirror/plate/random/prim). `ui_tool_settings.draw_edge_finish`.
 
 ## 0.19.1
 - ZIP sha256 `bdcda494dc8c844fd7bc690530af543475b9c57af841207903e4e221b8c7587c`. 신규 `highpoly.py`: `support_width`, `estimate_faces`, `safe_level`, `make_highpoly`(복사본 키 `mch_highpoly_src`), ops `mch.make_highpoly`(REGISTER/UNDO, 속성 = F9 패널) / `mch.highpoly_view`,
