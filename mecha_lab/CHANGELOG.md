@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 0.17.0 — Random Panels: 무작위 장갑판 배치 (2026-10-14)
+
+- **Random Panels**(Armor Plate 패널 안, `random_panels.py`): 메시를 선택(편집 모드면 고른 면만) → Generate.
+  - 표면을 무작위 중심점 기준으로 나누고(Lloyd 2단계로 크기 고르게), **Density**만큼 판으로 만듦.
+  - 각 판은 **깨끗한 새 면**: 경계를 다각형으로 단순화 → **Gap**만큼 안쪽으로 → Armor Plate와 같은 방식으로 새 면을 채워 표면에 붙임.
+    로우폴리(6면 박스)도 작업용 복사본을 자동으로 잘게 나눠서 됨. 원래 메시는 그대로.
+  - **Seed**(같은 값 = 같은 배치), **Panel Size**, **Height Variation**, **Mix Profiles**(판마다 다른 프로필).
+  - 옵션 **Edge Pieces**(테두리 조각): 판 경계 일부에 짧은 테두리 조각(Edge Molding 엔진, Edge Density / Edge Length).
+  - **Mirror**: 기존 Mirror 도구 설정(축·로컬/월드)을 그대로 써서 한쪽에만 판을 만들고 Mecha Mirror 모디파이어로 반대쪽 복사.
+- **떠 있는 HUD**(메시 오른쪽, 프리미티브 HUD와 같은 방식): **Reroll**(다음 Seed) / **Apply**(유지하고 닫기) / **Cancel**(이번 배치 지우기) /
+  **Edge Pieces** / **Mirror** 토글, **Density**·**Panel Size** 슬라이더. 값을 바꿀 때마다 배치가 다시 만들어짐.
+- Armor Plate: 판 만드는 부분을 `create_plate`로 분리(공용).
+- 테스트: 30개 파일 1425/1425 (`tests/test_log_bpy501_v0170.txt`), 신규 `test_v0170.py` 24항목. ZIP sha256 `619ec073ecd210bfebb787b059d81a8eaa51fc6abd10f471b5e117c0b9b9316a`.
+
 ## 0.16.0 — Armor Plate: 메시 위에 라쏘 → 새 면으로 된 별도 장갑판 (2026-10-14)
 
 - 새 도구 **Armor Plate**(왼쪽 툴 목록·아래/옆 툴바·Space 메뉴에 나옴, `armor_plate.py`).

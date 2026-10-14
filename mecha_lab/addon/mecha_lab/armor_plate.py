@@ -126,12 +126,12 @@ def _seg_dist(p, a, b):
     return math.dist(p, (a[0] + ax * t, a[1] + ay * t))
 
 
-def screen_patch(groups, spacing=14.0):
+def screen_patch(groups, spacing=14.0, min_spacing=2.0):
     """Clean triangulation of the outline groups [(outer, [holes])] in pixels.
 
     Returns (points, triangles, boundary_count): the first ``boundary_count``
     points lie on the outline (in loop order, outer then holes)."""
-    spacing = max(2.0, float(spacing))
+    spacing = max(min_spacing, float(spacing))
     loops = [lp for outer, holes in groups for lp in [outer] + list(holes)]
     area = sum(abs(cg.signed_area(o)) - sum(abs(cg.signed_area(h)) for h in hs) for o, hs in groups)
     while area / (spacing * spacing) > MAX_POINTS:      # keep big plates light
@@ -319,7 +319,6 @@ def surround_mesh(verts_world, polys, inv, lo, hi):
 def perform_plate(context, loops, projector, preset=None):
     """Lasso -> new armour plate object (a live Face Extract part).  Returns
     a report; raises cg.CutError with the scene unchanged."""
-    from . import face_extract as fx
     scene = context.scene
     st = scene.mch_plate
     preset = preset or st.preset
@@ -342,9 +341,28 @@ def perform_plate(context, loops, projector, preset=None):
     size = max((hi - lo).length, 1e-6)
     pad = Vector((size * 0.25,) * 3)
     surround = surround_mesh(wverts, polys, inv, lo - pad, hi + pad)
+    scale = target.matrix_world.to_scale()
+    local_size = size / max(1e-9, (abs(scale.x) + abs(scale.y) + abs(scale.z)) / 3.0)
+    part = create_plate(context, target, region, surround, preset, local_size, st.auto_size)
+    scene.mch_extract_last = part
+    for o in context.selected_objects:
+        o.select_set(False)
+    part.select_set(True)
+    context.view_layer.objects.active = part
+    name = dict((p_[0], p_[1]) for p_ in PRESETS)[preset]
+    extra = f' | {len(missing)} point(s) past the surface edge' if missing else ''
+    return f'Armor plate "{part.name}" on {target.name} ({name}, {len(region.polygons)} clean faces){extra}'
+
+
+def create_plate(context, target, region, surround, preset, local_size, auto=True, collection='Armor Plates',
+                 height_scale=1.0):
+    """A live Face Extract part on ``target`` from a region / surround mesh
+    (object space of the target).  Raises cg.CutError when it cannot be built."""
+    from . import face_extract as fx
+    scene = context.scene
     me = bpy.data.meshes.new(target.name + '_Plate')
     part = bpy.data.objects.new(me.name, me)
-    fx._parts_collection(context, 'Armor Plates').objects.link(part)
+    fx._parts_collection(context, collection).objects.link(part)
     part.matrix_world = target.matrix_world.copy()
     for mat in target.data.materials:
         me.materials.append(mat)
@@ -352,9 +370,9 @@ def perform_plate(context, loops, projector, preset=None):
     defaults = scene.mch_extract
     for key in fx.SETTING_KEYS:
         setattr(p, key, getattr(defaults, key))
-    scale = target.matrix_world.to_scale()
-    local_size = size / max(1e-9, (abs(scale.x) + abs(scale.y) + abs(scale.z)) / 3.0)
-    for k, v in preset_values(preset, local_size, st.auto_size).items():
+    for k, v in preset_values(preset, local_size, auto).items():
+        if k == 'extract_height':
+            v *= height_scale
         try:
             setattr(p, k, v)
         except (TypeError, AttributeError):
@@ -368,14 +386,7 @@ def perform_plate(context, loops, projector, preset=None):
         note = p.notes
         fx._remove_part(part)
         raise cg.CutError('Plate could not be built: ' + note)
-    scene.mch_extract_last = part
-    for o in context.selected_objects:
-        o.select_set(False)
-    part.select_set(True)
-    context.view_layer.objects.active = part
-    name = dict((p_[0], p_[1]) for p_ in PRESETS)[preset]
-    extra = f' | {len(missing)} point(s) past the surface edge' if missing else ''
-    return f'Armor plate "{part.name}" on {target.name} ({name}, {len(region.polygons)} clean faces){extra}'
+    return part
 
 
 def cycle_preset(scene, step):
@@ -449,6 +460,8 @@ def draw(layout, context):
     col.label(text='Mouse wheel while drawing: change the profile')
     col.label(text='New clean faces follow the surface (no retopology)')
     col.label(text='The mesh you draw on is not changed')
+    from . import random_panels
+    random_panels.draw(layout, context)
     fx.draw(layout, context)
 
 

@@ -1,4 +1,4 @@
-# Test Report — Mecha Lab 0.16.0
+# Test Report — Mecha Lab 0.17.0
 
 ## 환경
 | 항목 | 값 |
@@ -14,6 +14,15 @@ ZIP: `dist/mecha_lab-0.11.1.zip` (sha256 `fb8960ae4fc08a273b09cb6d1cfca01a7efda2
 
 **변경 전(v0.9.3 무수정)에도 같은 headless 테스트는 모두 통과**했습니다(경로 누락 2건 제외). 즉 사용자 보고 고장 대부분은
 headless로 재현되지 않았고, 아래 "GUI 검증" 열은 전부 미검증입니다.
+
+## 0.17.0 결과: 30개 파일, 1425 / 1425 통과
+| 항목 | 코드 | headless | Windows GUI |
+|---|---|---|---|
+| 중심점 샘플·Lloyd·칸 나누기, 윤곽 단순화·Gap·뒤집힘 거부, 테두리 조각 | O | O | 미검증 |
+| 6면 박스 위 판 여러 개(박스 그대로, 닫힘, 새 면), 프로필 섞임 | O | O | 미검증 |
+| Density·Panel Size·Seed(같은 Seed = 같은 배치)·Reroll | O | O | 미검증 |
+| Edge Pieces 객체, Mirror(모디파이어 + 한쪽만), Apply / Cancel, 편집 모드 선택 면만, 구면 | O | O | 미검증 |
+| HUD 배치·슬라이더 | O | O (계산) | **미검증 (화면)** |
 
 ## 0.16.0 결과: 29개 파일, 1401 / 1401 통과
 | 항목 | 코드 | headless | Windows GUI |

@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 16, 0),
+    "version": (0, 17, 0),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
     "description": "Cut, Split, Base Mesh, Boolean, Face Extract, Armor Sculpt, Molding, Cable, Hollow, curve arrays, Mirror",
@@ -13,7 +13,7 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                mirror_tools, cut_presets, mask_tools, workspace_ui, ui_tool_settings,
                base_mesh, loft_surface, zbrush_bridge, subd_plane, deform_tools, primitive_tools,
                addon_safety, self_test, face_extract, edge_molding, hollow_shell, along_curve, cable, bottom_bar, station_primitive, station_gizmos,
-               primitive_place, primitive_hud, armor_plate)
+               primitive_place, primitive_hud, armor_plate, random_panels)
 import os
 import re
 from pathlib import Path
@@ -1826,6 +1826,7 @@ def _register():
     primitive_place.register()
     primitive_hud.register()
     armor_plate.register()
+    random_panels.register()
     workspace_ui.register()
     bottom_bar.register()
     for klass in SUB_PANELS:
@@ -1881,6 +1882,7 @@ def _unregister_steps():
         ('sub panels', lambda: _unregister_classes(reversed(SUB_PANELS))),
         ('bottom_bar', bottom_bar.unregister),
         ('workspace_ui', workspace_ui.unregister),
+        ('random_panels', random_panels.unregister),
         ('armor_plate', armor_plate.unregister),
         ('primitive_hud', primitive_hud.unregister),
         ('primitive_place', primitive_place.unregister),

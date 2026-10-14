@@ -1,4 +1,10 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.16.0 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.17.0 (Claude Code, 2026-10-14)
+
+## 0.17.0
+- ZIP sha256 `619ec073ecd210bfebb787b059d81a8eaa51fc6abd10f471b5e117c0b9b9316a`, 1425/1425. 신규 `random_panels.py`: `sample_seeds/assign(KDTree)/lloyd/panel_outline/edge_pieces`,
+  `MCH_PG_Random`(Scene.mch_random, 값 바꾸면 regenerate), 세션 Scene ID prop `mch_random_session`(target, faces, objects),
+  `regenerate/start/finish`, 연산자 `random_panels/random_reroll/random_finish/random_toggle`, `MCH_GT_random_slider`,
+  `MCH_GGT_random_hud`, `hud_layout/slider_spec`. `armor_plate.create_plate`(공용), `screen_patch(min_spacing=)`.
 
 ## 0.16.0
 - ZIP sha256 `6abd7c3046e7322f11f965f46f24eb0973abee5848a8c6c954e7d6797547475c`, 1401/1401. 신규 `armor_plate.py`: `PRESETS`(크기 비율), `preset_values`, `resample_loop`, `screen_patch`

@@ -1,8 +1,16 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.16.0 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.17.0 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## E. 0.17.0 Random Panels
+- [ ] Armor Plate 패널 > RANDOM PANELS > Generate: 메시 오른쪽에 HUD(Reroll / Apply / Cancel / Edge Pieces / Mirror + 슬라이더 2개)
+- [ ] Reroll = 다른 배치, Density / Panel Size 슬라이더로 바로 바뀜
+- [ ] Edge Pieces 켜면 판 테두리 일부에 조각
+- [ ] Mirror 켜면 한쪽 판이 반대쪽에 복사(Mirror 도구 설정 따름)
+- [ ] Apply = 유지, Cancel = 이번 배치 지움
+- [ ] 편집 모드에서 면 일부 선택 후 Generate: 그 면에만
 
 ## F. 0.16.0 Armor Plate
 - [ ] 툴 목록에서 Armor Plate → 메시 위에 라쏘 → Enter: 별도 장갑판 생김, 원래 메시 그대로
