@@ -1,4 +1,8 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.17.0 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.18.0 (Claude Code, 2026-10-14)
+
+## 0.18.0
+- ZIP sha256 `9fd397beacf579662cd3e784e451d42c5786bdce1fcbf3c6891bb4673364a5cf`, 1438/1438. 신규 `mirror_hud.py`: `BUTTONS`, `targets`(MECHA LAB + Mecha Mirror 선택), `hud_layout`, `is_on`,
+  `mch.mirror_hud_option`(X/Y/Z/BISECT/FLIP → setup_mirror), `MCH_GGT_mirror_hud`, 라벨 핸들러.
 
 ## 0.17.0
 - ZIP sha256 `619ec073ecd210bfebb787b059d81a8eaa51fc6abd10f471b5e117c0b9b9316a`, 1425/1425. 신규 `random_panels.py`: `sample_seeds/assign(KDTree)/lloyd/panel_outline/edge_pieces`,

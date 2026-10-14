@@ -1,4 +1,7 @@
-# KNOWN LIMITATIONS — Mecha Lab 0.17.0
+# KNOWN LIMITATIONS — Mecha Lab 0.18.0
+
+## 0.18.0 Mirror HUD
+- Mirror 도구의 "기울여서 고르기"(모달) 중에는 HUD를 누를 수 없음: 클릭으로 라이브 유지한 뒤에 HUD가 동작. 실제 창 미확인.
 
 ## 0.17.0 Random Panels
 - 판 하나하나가 라이브 파트라 판이 많으면(수십 개) 값을 바꿀 때마다 다시 만드는 데 시간이 걸림(테스트: 판 30개 약 1–2초).

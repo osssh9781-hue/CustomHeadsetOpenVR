@@ -1,4 +1,4 @@
-# Test Report — Mecha Lab 0.17.0
+# Test Report — Mecha Lab 0.18.0
 
 ## 환경
 | 항목 | 값 |
@@ -14,6 +14,11 @@ ZIP: `dist/mecha_lab-0.11.1.zip` (sha256 `fb8960ae4fc08a273b09cb6d1cfca01a7efda2
 
 **변경 전(v0.9.3 무수정)에도 같은 headless 테스트는 모두 통과**했습니다(경로 누락 2건 제외). 즉 사용자 보고 고장 대부분은
 headless로 재현되지 않았고, 아래 "GUI 검증" 열은 전부 미검증입니다.
+
+## 0.18.0 결과: 31개 파일, 1438 / 1438 통과
+| 항목 | 코드 | headless | Windows GUI |
+|---|---|---|---|
+| Mirror HUD 배치·아이콘, X/Y/Z·Bisect·Flip 즉시 반영, 마지막 축 보호, Apply·Remove | O | O | **미검증 (화면)** |
 
 ## 0.17.0 결과: 30개 파일, 1425 / 1425 통과
 | 항목 | 코드 | headless | Windows GUI |

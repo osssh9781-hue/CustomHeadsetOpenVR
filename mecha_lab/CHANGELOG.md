@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.18.0 — Mirror 떠 있는 버튼(HUD) (2026-10-14)
+
+- Mecha Mirror가 걸린 메시를 선택하면(MECHA LAB, 오브젝트 모드) 메시 오른쪽에 프리미티브 HUD처럼 버튼이 뜸(`mirror_hud.py`):
+  **Apply**(굽기) / **Remove**(지우기, 메시 그대로) / **X·Y·Z**(축 켜기·끄기) / **Bisect** / **Flip side**(반대쪽으로 복사).
+  누르면 라이브 Mirror가 바로 바뀜(Mirror 도구 설정). 켜진 항목은 주황색. 마지막 축은 끌 수 없음(Remove로 지움).
+- 테스트: 31개 파일 1438/1438 (`tests/test_log_bpy501_v0180.txt`), 신규 `test_v0180.py` 13항목. ZIP sha256 `9fd397beacf579662cd3e784e451d42c5786bdce1fcbf3c6891bb4673364a5cf`.
+
 ## 0.17.0 — Random Panels: 무작위 장갑판 배치 (2026-10-14)
 
 - **Random Panels**(Armor Plate 패널 안, `random_panels.py`): 메시를 선택(편집 모드면 고른 면만) → Generate.
