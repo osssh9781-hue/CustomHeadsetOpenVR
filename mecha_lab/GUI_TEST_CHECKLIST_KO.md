@@ -1,8 +1,14 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.20.4 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.21.0 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A0000000000. 0.21.0 (미검증)
+- [ ] N > Mecha Lab > Robot Base Mesh 패널: 4가지(Humanoid/Industrial × Sleek/Rugged) Whole Body, 부위 버튼 8개
+- [ ] 파츠 선택 시 팝업: 슬라이더 드래그로 실시간 변경, Sleek/Rugged·Humanoid/Industrial·디테일 버튼, 새 랜덤
+- [ ] 아랫면/윗면 모양 버튼(Style → Round → Square → Polygon), 변 수 슬라이더, Shape Change
+- [ ] 베벨 폭/세그먼트/각도, Apply 후 일반 메쉬, Ctrl+Z
 
 ## A000000000. 0.20.4 (미검증)
 - [ ] Section Height 슬라이더, 다음 Cloth Plate가 같은 숫자로 시작하는지

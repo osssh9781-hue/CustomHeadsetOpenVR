@@ -1,4 +1,8 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.20.4 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.21.0 (Claude Code, 2026-10-14)
+
+## 0.21.0
+- ZIP sha256 `2a5e512f90a5c25c90d186bb953a677b9631b769b8411b10d6918b10eb40f6d8`. 신규 `robot_base.py`: 순수 `build_part(p)`(loft/superellipse/box/cylinder, 끝면 모양 `part_ends`/`end_point`/`ends_ring` — 원/네모/N각 사이 모프, 코너가 링 정점에 오도록 링 수 조정),
+  `Object.mch_robot`(MCH_PG_RobotPart, 값 변경 시 `rebuild` + 모디파이어 `MCH_RobotBevel`), `Scene.mch_robot_settings`, `create_part`/`create_body`(BODY 관절 배치, 좌우 별도), ops `mch.robot_add/reroll/toggle/apply`, HUD `MCH_GGT_robot_hud`, 패널 `MCH_PT_robot_base`. 테스트 `tests/test_v0210.py`.
 
 ## 0.20.4
 - ZIP sha256 `cbbb020992bbcca716dca0103a18ed4c31f90c958aeb7a3d26543c071380271e`. GN 입력 `Section Height`(v29). last_used: 절대값 저장. `capture`/`apply_values`/`user_presets`, ops `mch.wrinkle_preset_save/load/delete`, 메뉴 `MCH_MT_wrinkle_presets`.

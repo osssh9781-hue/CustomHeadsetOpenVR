@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 0.21.0 — Robot Base Mesh 생성기 (2026-10-14)
+
+- N 패널 Mecha Lab > **Robot Base Mesh**: 큰 분류 **Humanoid(인간형) / Industrial(산업형)** × **Sleek(세련된) / Rugged(투박한)** = 4가지.
+- 부위: **머리, 몸통, 어깨, 윗팔, 아랫팔, 허벅지, 종아리, 발**. **Whole Body** = 14개 파츠를 각각 **별도 오브젝트**로(좌/우 따로, 'Robot Base' 컬렉션). 부위 버튼으로 하나씩도 추가.
+- 파츠마다 Apply 전까지 실시간: **길이, 폭, 두께, 테이퍼, 볼륨(Bulge), 둥글기, 해상도, 랜덤 정도, 시드**, 디테일 켜기/끄기, **베벨 폭 / 세그먼트(1 = 챔퍼) / 각도**(베벨 모디파이어, 각도 제한).
+- **끝면 모양**: 아랫면 / 윗면을 각각 **Style(둥글기 따라) / Round(원) / Square(네모) / Polygon(N각, 3~16)** 으로 — 예: 아래는 원기둥, 위는 네모나 육각형으로 자연스럽게 변형. **Shape Change** = 어디쯤에서 바뀌는지. (발은 뒤꿈치 → 발끝)
+- 뷰포트 팝업: Apply, 새 랜덤, Sleek/Rugged, Humanoid/Industrial, 디테일, 아랫면/윗면 모양 버튼 + 슬라이더(길이·폭·두께·테이퍼·볼륨·둥글기·해상도·랜덤·베벨·세그먼트·각도·아랫면/윗면 변 수·Shape Change).
+- 미리보기 `reference/robot_base_preview_v0210.png`, `reference/robot_end_shapes_v0210.png`. 테스트: 38개 파일 1633/1633 (`tests/test_log_bpy501_v0210.txt`). ZIP sha256 `2a5e512f90a5c25c90d186bb953a677b9631b769b8411b10d6918b10eb40f6d8`.
+
 ## 0.20.4 — 섹션 높이, 같은 값 그대로, 내 프리셋 (2026-10-14)
 
 - Cloth Plate **Section Height** 슬라이더: 퀼팅 칸이 부푸는 높이(패널 Puff 대비 0~500 %).

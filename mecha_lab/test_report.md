@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.20.4
+# Test Report — Mecha Lab 0.21.0
+
+## 0.21.0 결과: 38개 파일, 1633 / 1633 통과 (`tests/test_log_bpy501_v0210.txt`). 로봇 모양은 Cycles CPU 렌더로 확인, 뷰포트 팝업·N 패널 조작은 미검증.
 
 ## 0.20.4 결과: 37개 파일, 1581 / 1581 통과 (`tests/test_log_bpy501_v0204.txt`).
 
