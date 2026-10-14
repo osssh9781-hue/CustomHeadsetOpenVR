@@ -1,8 +1,15 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.21.1 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.22.0 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A000000000000. 0.22.0 (미검증)
+- [ ] Robot Base Mesh 인간형 패널에 Chest (Ribs) / Pelvis / Head, 팝업 슬라이더 이름(어깨 폭, 가슴 …)이 부위에 맞게
+- [ ] Bulge Shape 0 → 1 → 2(둥근 → 원기둥 → 네모), 범위 크게 움직이는지
+- [ ] Top/Bottom Notch, Top/Bottom Hole + Depth, 깊이 합 100 %에서 관통
+- [ ] 헤더 Line 버튼: Lasso 2점 + Enter / Stroke로 띠, Cut = 홈, Armor/Cloth/Base = 띠, 폭·끝 모양
+- [ ] Detail Stamp: 원점이 바닥인 메쉬 → Add Selected → Start Stamping → 표면에 붙어 따라오는지, 클릭 배치, Ctrl/Shift/Alt+휠, 우클릭 종료, Blender 재시작 후 프리셋 유지
 
 ## A00000000000. 0.21.1 (미검증)
 - [ ] Humanoid Forearm / Upper Arm / Thigh / Calf 추가 → 관절 없이 한 덩어리, 보내준 조각과 비슷한 비율

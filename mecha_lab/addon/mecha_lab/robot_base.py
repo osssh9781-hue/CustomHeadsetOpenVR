@@ -32,15 +32,21 @@ CATEGORIES = (('HUMANOID', 'Humanoid', 'Human-like robot'), ('INDUSTRIAL', 'Indu
 STYLES = (('SLEEK', 'Sleek', 'Refined: smooth, tapered volumes'), ('RUGGED', 'Rugged', 'Chunky: faceted, extra plates'))
 PARTS = (('HEAD', 'Head', ''), ('TORSO', 'Torso', ''), ('SHOULDER', 'Shoulder', ''),
          ('UPPER_ARM', 'Upper Arm', ''), ('FOREARM', 'Forearm', ''), ('THIGH', 'Thigh', ''),
-         ('CALF', 'Calf', ''), ('FOOT', 'Foot', ''))
+         ('CALF', 'Calf', ''), ('FOOT', 'Foot', ''), ('CHEST', 'Chest (Ribs)', ''), ('PELVIS', 'Pelvis', ''))
 PART_IDS = tuple(p[0] for p in PARTS)
+# panel order per category (humanoid: torso split into chest + pelvis)
+UI_PARTS = {'HUMANOID': ('HEAD', 'CHEST', 'PELVIS', 'SHOULDER', 'UPPER_ARM', 'FOREARM', 'THIGH', 'CALF', 'FOOT'),
+            'INDUSTRIAL': ('HEAD', 'TORSO', 'CHEST', 'PELVIS', 'SHOULDER', 'UPPER_ARM', 'FOREARM', 'THIGH', 'CALF',
+                           'FOOT')}
 
 # default size per part (length = main axis, width = X, depth = Y), metres for a ~1.8 m robot
 DEFAULTS = {
     'HEAD': (0.28, 0.20, 0.24), 'TORSO': (0.62, 0.42, 0.26), 'SHOULDER': (0.16, 0.20, 0.20),
     'UPPER_ARM': (0.244, 0.100, 0.115), 'FOREARM': (0.257, 0.096, 0.080), 'THIGH': (0.405, 0.178, 0.181),
     'CALF': (0.42, 0.13, 0.14), 'FOOT': (0.26, 0.11, 0.08),
+    'CHEST': (0.394, 0.599, 0.250), 'PELVIS': (0.336, 0.353, 0.239),
 }
+DEFAULTS['HEAD'] = (0.323, 0.205, 0.220)          # 0.21.2: measured head (with neck)
 
 
 # -----------------------------------------------------------------------------
@@ -227,7 +233,37 @@ LIMB_SHAPES = {
                  ridge_angle=math.radians(90), twist=0.0, bow=0.0, bow_angle=math.radians(90), notch=0.0,
                  notch_width=0.5, slant=0.0, top_slant=0.0),
 }
+# 0.21.2 shared extras: bulge shape / width, notch at both ends, holes in the ends
+COMMON_SHAPE = dict(bulge_shape=0.0, bulge_width=0.22, notch_b=0.0, notch_b_width=0.5,
+                    hole_top=0.0, hole_top_d=0.0, hole_bot=0.0, hole_bot_d=0.0)
+for _v in LIMB_SHAPES.values():
+    for _k, _d in COMMON_SHAPE.items():
+        _v.setdefault(_k, _d)
 LIMB_KEYS = tuple(LIMB_SHAPES['FOREARM'])
+
+# chest / pelvis / head (humanoid): measured cross-section templates + 8 region sliders each.
+# region: (label, t centre (0 = bottom, 1 = top), t spread, angle (90 deg = front) or None, angle spread,
+#          mode ('x' width, 'y' thickness, 'r' all round, 'lean' forward with height), gain)
+TEMPLATE_PARTS = ('CHEST', 'PELVIS', 'HEAD')
+REGIONS = {
+    'CHEST': (('Shoulder Width', 0.62, 0.14, None, 0, 'x', 0.5), ('Chest (Pecs)', 0.55, 0.18, 90, 0.6, 'r', 0.35),
+              ('Back / Lats', 0.45, 0.25, 270, 0.8, 'r', 0.35), ('Rib Flare', 0.2, 0.18, None, 0, 'x', 0.4),
+              ('Waist', 0.0, 0.15, None, 0, 'r', 0.5), ('Neck Base', 1.0, 0.1, None, 0, 'r', 0.6),
+              ('Trapezius', 0.85, 0.1, None, 0, 'x', 0.5), ('Lean / Hunch', 0.0, 1.0, None, 0, 'lean', 0.3)),
+    'PELVIS': (('Hip Width', 0.5, 0.25, None, 0, 'x', 0.5), ('Waist', 1.0, 0.2, None, 0, 'r', 0.5),
+               ('Butt', 0.35, 0.2, 270, 0.7, 'r', 0.4), ('Belly', 0.75, 0.2, 90, 0.7, 'r', 0.4),
+               ('Crotch', 0.0, 0.2, None, 0, 'r', 0.8), ('Hip Depth', 0.45, 0.3, None, 0, 'y', 0.5),
+               ('Lower Width', 0.1, 0.15, None, 0, 'x', 0.5), ('Tilt', 0.0, 1.0, None, 0, 'lean', 0.3)),
+    'HEAD': (('Skull Width', 0.78, 0.18, None, 0, 'x', 0.5), ('Skull Length', 0.72, 0.2, None, 0, 'y', 0.5),
+             ('Back of Head', 0.62, 0.2, 270, 0.7, 'r', 0.4), ('Jaw Width', 0.3, 0.12, None, 0, 'x', 0.6),
+             ('Chin', 0.2, 0.1, 90, 0.5, 'r', 0.5), ('Face Flat', 0.45, 0.25, 90, 0.55, 'r', -0.35),
+             ('Crown', 1.0, 0.15, None, 0, 'r', 0.6), ('Neck Width', 0.0, 0.15, None, 0, 'r', 0.6)),
+}
+REGION_KEYS = tuple(f'rg{i}' for i in range(1, 9))
+TEMPLATE_SHAPE = dict(COMMON_SHAPE, bulge=0.0, bulge_pos=0.5, bulge_offset=0.0, notch=0.0, notch_width=0.5,
+                      slant=0.0, top_slant=0.0, twist=0.0, anatomy=1.0, **{k: 0.0 for k in REGION_KEYS})
+TEMPLATE_KEYS = tuple(TEMPLATE_SHAPE)
+CAP_DOME = {'HEAD': (0.0, 0.015)}            # (bottom, top) dome as a share of the length
 
 
 def _dent(a, a0, width):
@@ -235,9 +271,154 @@ def _dent(a, a0, width):
     return math.exp(-(d / width) ** 2)
 
 
+def _bulge_curve(t, pos, width, shape):
+    """Bulge along the length: shape 0 = round swell, 1 = flat band (cylinder), 2 = flat band, box section."""
+    pw = 2.0 + 10.0 * min(1.0, max(0.0, shape))
+    return math.exp(-(abs(t - pos) / max(0.02, width)) ** pw)
+
+
+def _square(a, q):
+    """Radius factor that pushes a round outline toward a square (q = 0..1)."""
+    if q <= 0:
+        return 1.0
+    return (1.0 / max(abs(math.cos(a)), abs(math.sin(a)), 1e-3)) ** min(1.0, q)
+
+
+def tube_mesh(outline, zbase, nl, ring, cfg):
+    """Closed quad tube from rings (t = 0 .. 1) with end caps, optional V notch / slant / hole per end.
+    ``outline(t)`` -> [(x, y)] * ring, ``zbase(t)`` -> z.  cfg keys (end 'a' = t 0, 'b' = t 1):
+    notch_a / notch_b (depth), notch_wa / notch_wb (half width), slant_a / slant_b (tan),
+    hole_a / hole_b (size 0..1), hole_da / hole_db (depth 0..1 of the length), dome_a / dome_b (z)."""
+    sgn = 1.0 if zbase(1.0) >= zbase(0.0) else -1.0
+    na, nb = cfg.get('notch_a', 0.0), cfg.get('notch_b', 0.0)
+    span = abs(zbase(1.0) - zbase(0.0)) or 1.0
+    reg_a = min(0.9, max(0.3, 1.6 * na / span))
+    reg_b = min(0.9, max(0.3, 1.6 * nb / span))
+    cache = {}
+
+    def ol(t):
+        if t not in cache:
+            pts = outline(t)
+            cx = sum(q[0] for q in pts) / len(pts)
+            cy = sum(q[1] for q in pts) / len(pts)
+            cache[t] = (pts, cx, cy)
+        return cache[t]
+
+    def zof(t, x):
+        z = zbase(t)
+        fa = max(0.0, 1.0 - t / reg_a)
+        fb = max(0.0, 1.0 - (1.0 - t) / reg_b)
+        if na > 0 and fa > 0:
+            z += sgn * na * max(0.0, 1.0 - abs(x) / max(1e-4, cfg.get('notch_wa', 1.0))) * fa
+        if nb > 0 and fb > 0:
+            z -= sgn * nb * max(0.0, 1.0 - abs(x) / max(1e-4, cfg.get('notch_wb', 1.0))) * fb
+        z += cfg.get('slant_a', 0.0) * x * fa + cfg.get('slant_b', 0.0) * x * fb
+        return z
+
+    def ring_at(t, s, dome=0.0):
+        pts, cx, cy = ol(t)
+        out = []
+        for x, y in pts:
+            xx, yy = cx + (x - cx) * s, cy + (y - cy) * s
+            out.append((xx, yy, zof(t, xx) + dome * (1.0 - s * s)))
+        return out
+
+    def center_at(t, dome=0.0):
+        pts, cx, cy = ol(t)
+        return (cx, cy, zof(t, cx) + dome)
+
+    ha, hb = cfg.get('hole_a', 0.0), cfg.get('hole_b', 0.0)
+    da, db = cfg.get('hole_da', 0.0), cfg.get('hole_db', 0.0)
+    ha = min(0.95, ha) if da > 1e-3 else 0.0
+    hb = min(0.95, hb) if db > 1e-3 else 0.0
+    through = ha > 0.02 and hb > 0.02 and da + db >= 0.98
+    seq = []                                                     # rings (lists) or centre points (tuples)
+    outer = [ring_at(k / nl, 1.0) for k in range(nl + 1)]
+    if through:
+        seq += outer
+        seq.append(ring_at(1.0, (hb + 1.0) / 2))
+        for k in range(nl + 1):
+            t = 1.0 - k / nl
+            seq.append(ring_at(t, ha + (hb - ha) * t))
+        seq.append(ring_at(0.0, (ha + 1.0) / 2))
+    else:
+        dome_a = -sgn * cfg.get('dome_a', 0.0)
+        dome_b = sgn * cfg.get('dome_b', 0.0)
+        if ha > 0.02:
+            td = min(0.97, da)
+            nw = max(2, int(round(td * nl)))
+            seq.append(center_at(td))
+            seq += [ring_at(td, ha * 0.35), ring_at(td, ha * 0.7)]
+            seq += [ring_at(td * (1.0 - k / nw), ha) for k in range(1, nw + 1)]
+            seq.append(ring_at(0.0, (ha + 1.0) / 2))
+        else:
+            seq += [center_at(0.0, dome_a), ring_at(0.0, 0.28, dome_a), ring_at(0.0, 0.62, dome_a)]
+        seq += outer
+        if hb > 0.02:
+            td = min(0.97, db)
+            nw = max(2, int(round(td * nl)))
+            seq.append(ring_at(1.0, (hb + 1.0) / 2))
+            seq += [ring_at(1.0 - td * k / nw, hb) for k in range(1, nw + 1)]
+            seq += [ring_at(1.0 - td, hb * 0.7), ring_at(1.0 - td, hb * 0.35)]
+            seq.append(center_at(1.0 - td))
+        else:
+            seq += [ring_at(1.0, 0.62, dome_b), ring_at(1.0, 0.28, dome_b), center_at(1.0, dome_b)]
+    verts, faces, idx = [], [], []
+    for item in seq:
+        idx.append(len(verts))
+        if isinstance(item, tuple):
+            verts.append(item)
+        else:
+            verts.extend(item)
+    pairs = list(zip(range(len(seq) - 1), range(1, len(seq))))
+    if through:
+        pairs.append((len(seq) - 1, 0))
+    for u, v in pairs:
+        cu, cv = isinstance(seq[u], tuple), isinstance(seq[v], tuple)
+        p, q = idx[u], idx[v]
+        for i in range(ring):
+            j = (i + 1) % ring
+            if cu:
+                faces.append((p, q + j, q + i))
+            elif cv:
+                faces.append((p + i, p + j, q))
+            else:
+                faces.append((p + i, p + j, q + j, q + i))
+    vol = 0.0
+    for f in faces:
+        x0 = verts[f[0]]
+        for k in range(1, len(f) - 1):
+            x1, x2 = verts[f[k]], verts[f[k + 1]]
+            vol += (x0[0] * (x1[1] * x2[2] - x1[2] * x2[1]) - x0[1] * (x1[0] * x2[2] - x1[2] * x2[0])
+                    + x0[2] * (x1[0] * x2[1] - x1[1] * x2[0]))
+    if vol < 0:
+        faces = [tuple(reversed(f)) for f in faces]
+    return verts, faces
+
+
+def _end_cfg(g, W_top, W_bot, L, top_is_a):
+    """Tube end settings from the shape values (top / bottom names -> tube ends a / b)."""
+    tops = dict(notch=g.get('notch', 0.0) * L, nw=max(0.05, g.get('notch_width', 0.5)) * W_top / 2,
+                slant=math.tan(max(-1.35, min(1.35, g.get('top_slant', 0.0)))),
+                hole=g.get('hole_top', 0.0), hd=g.get('hole_top_d', 0.0))
+    bots = dict(notch=g.get('notch_b', 0.0) * L, nw=max(0.05, g.get('notch_b_width', 0.5)) * W_bot / 2,
+                slant=math.tan(max(-1.35, min(1.35, g.get('slant', 0.0)))),
+                hole=g.get('hole_bot', 0.0), hd=g.get('hole_bot_d', 0.0))
+    a, b = (tops, bots) if top_is_a else (bots, tops)
+    return dict(notch_a=a['notch'], notch_wa=a['nw'], slant_a=a['slant'], hole_a=a['hole'], hole_da=a['hd'],
+                notch_b=b['notch'], notch_wb=b['nw'], slant_b=b['slant'], hole_b=b['hole'], hole_db=b['hd'])
+
+
+def _end_blend(ends, t_top):
+    """End-shape mix weight: 0 at the top end, 1 at the bottom end (t_top = 0 at the top)."""
+    mid = min(0.95, max(0.05, ends.get('mid', 0.5)))
+    e = (1.0 - t_top) ** (math.log(0.5) / math.log(mid))
+    return e * e * (3.0 - 2.0 * e)
+
+
 def limb_mesh(p, ring, power, rugged, ends=None, jit=None):
     """Humanoid limb base mesh hanging from z = 0 (top) to z = -L (bottom): quad rings around,
-    flat end caps (concentric quads + small fan).  Every shape term is a slider."""
+    end caps (or holes).  Every shape term is a slider."""
     g = dict(LIMB_SHAPES.get(p['part'], LIMB_SHAPES['FOREARM']))
     g.update({k: p[k] for k in LIMB_KEYS if k in p})
     L, W, D = p['length'], p['width'], p['depth']
@@ -253,26 +434,22 @@ def limb_mesh(p, ring, power, rugged, ends=None, jit=None):
     bw, bd = jit(g['bottom_w'], 0.08), jit(g['bottom_d'], 0.08)
     W, D = jit(W, 0.05), jit(D, 0.05)
     bpos = min(0.95, max(0.05, jit(g['bulge_pos'], 0.15)))
-    notch_d, notch_w = g['notch'] * L, max(0.05, g['notch_width']) * W / 2
-    tan_s = math.tan(max(-1.3, min(1.3, g['slant'])))
-    tan_t = math.tan(max(-1.3, min(1.3, g['top_slant'])))
     bow = g['bow'] * L * 0.1
     bx, by = math.cos(g['bow_angle']), math.sin(g['bow_angle'])
+    bshape = g['bulge_shape']
 
     def outline(t):
         u = 0.0 if t <= ts else (t - ts) / max(1e-6, 1.0 - ts)
         u = u * u * (3.0 - 2.0 * u)
-        gb = math.exp(-((t - bpos) / 0.22) ** 2)
-        grow = 1.0 + g['bulge'] * 0.25 * gb
+        gb = _bulge_curve(t, bpos, g['bulge_width'], bshape)
+        grow = max(0.05, 1.0 + g['bulge'] * 0.25 * gb)
         w = W * (1.0 + (bw - 1.0) * u) * grow
         d = D * (1.0 + (bd - 1.0) * u) * grow
         ox = bow * math.sin(math.pi * t) * bx
         oy = bow * math.sin(math.pi * t) * by + g['bulge_offset'] * g['bulge'] * 0.12 * D * gb
         tw = g['twist'] * t
-        if ends is not None:
-            mid = min(0.95, max(0.05, ends.get('mid', 0.5)))
-            e = (1.0 - t) ** (math.log(0.5) / math.log(mid))          # 0 at top end, 1 at bottom end
-            e = e * e * (3.0 - 2.0 * e)
+        sq = max(0.0, bshape - 1.0) * gb * (1.0 if g['bulge'] else 0.0)
+        e = _end_blend(ends, t) if ends is not None else 0.0
         pts = []
         for i in range(ring):
             a = 2.0 * math.pi * i / ring + phase
@@ -286,60 +463,134 @@ def limb_mesh(p, ring, power, rugged, ends=None, jit=None):
             m = 1.0 - g['split'] * 0.22 * (_dent(a, sa, 0.6) + _dent(a, sa + math.pi, 0.6))
             m -= g['groove'] * 0.3 * _dent(a, g['groove_angle'], 0.5) * (1.0 - 0.6 * t)
             m += g['ridge'] * 0.15 * _dent(a, g['ridge_angle'], 0.18)
+            m = max(0.12, m) * _square(a, sq)
             x, y = ux * w / 2 * m, uy * d / 2 * m
             c, s_ = math.cos(tw), math.sin(tw)
             pts.append((x * c - y * s_ + ox, x * s_ + y * c + oy))
         return pts
 
-    def zof(t, x):
-        z = -L * t
-        if notch_d > 0 and t < 0.3:                                  # V notch across the top end
-            v = max(0.0, 1.0 - abs(x) / notch_w)
-            z -= notch_d * v * (1.0 - t / 0.3)
-        if tan_s and t > 0.7:                                        # slanted bottom cut
-            z += tan_s * x * (t - 0.7) / 0.3
-        if tan_t and t < 0.35:                                       # slanted top cut (hip)
-            z += tan_t * x * (1.0 - t / 0.35)
-        return z
+    cfg = _end_cfg(g, W, W * bw, L, top_is_a=True)
+    return tube_mesh(outline, lambda t: -L * t, nl, ring, cfg)
 
-    verts, faces = [], []
-    rings = []
-    for k in range(nl + 1):
-        t = k / nl
-        start = len(verts)
-        for x, y in outline(t):
-            verts.append((x, y, zof(t, x)))
-        rings.append(start)
-    for k in range(nl):
-        a0, a1 = rings[k], rings[k + 1]
-        for i in range(ring):
-            j = (i + 1) % ring
-            faces.append((a0 + i, a1 + i, a1 + j, a0 + j))
 
-    def cap(t, top):
-        outer = outline(t)
-        cx = sum(q[0] for q in outer) / ring
-        cy = sum(q[1] for q in outer) / ring
-        prev = rings[0] if top else rings[-1]
-        for sc in (0.62, 0.28):
-            start = len(verts)
-            for x, y in outer:
-                xx, yy = cx + (x - cx) * sc, cy + (y - cy) * sc
-                verts.append((xx, yy, zof(t, xx)))
-            for i in range(ring):
-                j = (i + 1) % ring
-                f = (prev + i, prev + j, start + j, start + i)
-                faces.append(f if top else tuple(reversed(f)))
-            prev = start
-        verts.append((cx, cy, zof(t, cx)))
-        c = len(verts) - 1
+_TPL_CACHE = {}
+
+
+def _template(part):
+    """Template rings for a part: [(t, oy, radii, base radii)] (base = smooth ellipse-like part)."""
+    if part not in _TPL_CACHE:
+        from .robot_templates import NA, RINGS
+        rows = [list(r) for r in RINGS[part]]
+        for _pass in range(3):                       # smooth along the height (no steps at cut stubs)
+            sm = [rows[0][:]] + [[a if j == 0 else 0.25 * a + 0.5 * b + 0.25 * c
+                                  for j, (a, b, c) in enumerate(zip(rows[k - 1], rows[k], rows[k + 1]))]
+                                 for k in range(1, len(rows) - 1)] + [rows[-1][:]]
+            for k in range(1, len(rows) - 1):
+                sm[k][0] = rows[k][0]
+            rows = sm
+        out = []
+        for r in rows:
+            rad = list(r[2:])
+            a0 = sum(rad) / NA
+            c2 = sum(v * math.cos(2 * (i + 0.5) * 2 * math.pi / NA) for i, v in enumerate(rad)) * 2 / NA
+            base = [a0 + c2 * math.cos(2 * (i + 0.5) * 2 * math.pi / NA) for i in range(NA)]
+            out.append((r[0], r[1], rad, base))
+        _TPL_CACHE[part] = out
+    return _TPL_CACHE[part]
+
+
+def _tpl_at(tpl, t):
+    for k in range(len(tpl) - 1):
+        if tpl[k + 1][0] >= t:
+            t0, t1 = tpl[k][0], tpl[k + 1][0]
+            u = 0.0 if t1 <= t0 else (t - t0) / (t1 - t0)
+            A, B = tpl[k], tpl[k + 1]
+            return (A[1] + (B[1] - A[1]) * u, [x + (y - x) * u for x, y in zip(A[2], B[2])],
+                    [x + (y - x) * u for x, y in zip(A[3], B[3])])
+    return tpl[-1][1], tpl[-1][2], tpl[-1][3]
+
+
+def _periodic(vals, a):
+    n = len(vals)
+    f = (a / (2.0 * math.pi) * n - 0.5) % n
+    i = int(f)
+    u = f - i
+    return vals[i] * (1.0 - u) + vals[(i + 1) % n] * u
+
+
+def template_mesh(p, ring, power, rugged, ends=None, jit=None):
+    """Humanoid chest / pelvis / head from the measured template (bottom z = 0 .. top z = L)."""
+    part = p['part']
+    tpl = _template(part)
+    g = dict(TEMPLATE_SHAPE)
+    g.update({k: p[k] for k in TEMPLATE_KEYS if k in p})
+    L, W, D = p['length'], p['width'], p['depth']
+    jit = jit or (lambda x, amount=0.0: x)
+    W, D = jit(W, 0.05), jit(D, 0.05)
+    if ends is not None and ends['bottom'][0] == 'STYLE' and ends['top'][0] == 'STYLE':
+        ends = None
+    ring = max(ring, 20 if rugged else 32)
+    if rugged:
+        ring = ring - ring % 4
+    phase = math.pi / ring
+    if ends is not None:
+        ring, ph = ends_ring(ring, ends)
+        phase = ph if ph is not None else phase
+    nl = (8 + int(round(8 * p['resolution']))) if rugged else (16 + int(round(20 * p['resolution'])))
+    regs = [(spec, g.get(k, 0.0)) for spec, k in zip(REGIONS[part], REGION_KEYS)]
+    regs = [(spec, v) for spec, v in regs if abs(v) > 1e-6]
+    anat = g['anatomy']
+    sq_round = max(0.0, 1.0 - p.get('roundness', 1.0)) * 0.8
+    bpos = min(0.95, max(0.05, jit(g['bulge_pos'], 0.15)))
+
+    def outline(t):
+        oy, rad, base = _tpl_at(tpl, t)
+        gb = _bulge_curve(t, bpos, g['bulge_width'], g['bulge_shape'])
+        grow = max(0.05, 1.0 + g['bulge'] * 0.25 * gb)
+        sq = sq_round + max(0.0, g['bulge_shape'] - 1.0) * gb * (1.0 if g['bulge'] else 0.0)
+        oy = oy + g['bulge_offset'] * g['bulge'] * 0.24 * gb
+        e = _end_blend(ends, 1.0 - t) if ends is not None else 0.0
+        mean = sum(rad) / len(rad)
+        tw = g['twist'] * t
+        pts = []
         for i in range(ring):
-            j = (i + 1) % ring
-            f = (prev + i, prev + j, c)
-            faces.append(f if top else tuple(reversed(f)))
-    cap(0.0, True)
-    cap(1.0, False)
-    return verts, faces
+            a = 2.0 * math.pi * i / ring + phase
+            r0, b0 = _periodic(rad, a), _periodic(base, a)
+            r = max(0.02, b0 + anat * (r0 - b0)) * grow * _square(a, sq)
+            if ends is not None:
+                tx, ty = end_point(ends['top'][0], ends['top'][1], a, power)
+                qx, qy = end_point(ends['bottom'][0], ends['bottom'][1], a, power)
+                k_top, k_bot = math.hypot(tx, ty), math.hypot(qx, qy)
+                w_top = max(0.0, (t - 0.5) * 2.0) ** 1.5
+                w_bot = max(0.0, (0.5 - t) * 2.0) ** 1.5
+                r = r * (1.0 - w_top - w_bot) + mean * (k_top * w_top + k_bot * w_bot) * grow
+            sx = sy = 1.0
+            off = 0.0
+            for (label, t0, st, ang, sa, mode, gain), v in regs:
+                if mode == 'lean':
+                    off += gain * v * t * t
+                    continue
+                w = math.exp(-((t - t0) / st) ** 2)
+                if ang is not None:
+                    w *= _dent(a, math.radians(ang), sa)
+                f = max(0.1, 1.0 + gain * v * w)
+                if mode == 'x':
+                    sx *= f
+                elif mode == 'y':
+                    sy *= f
+                else:
+                    sx *= f
+                    sy *= f
+            x = r * math.cos(a) * sx * W / 2
+            y = r * math.sin(a) * sy * D / 2 + (oy + off) * D / 2
+            c, s_ = math.cos(tw), math.sin(tw)
+            pts.append((x * c - y * s_, x * s_ + y * c))
+        return pts
+
+    cfg = _end_cfg(g, W * 0.6, W * 0.6, L, top_is_a=False)
+    db, dt = CAP_DOME.get(part, (0.0, 0.0))
+    cfg['dome_a'], cfg['dome_b'] = db * L, dt * L
+    return tube_mesh(outline, lambda t: L * t, nl, ring, cfg)
 
 
 def build_part(p):
@@ -351,13 +602,31 @@ def build_part(p):
     def jit(x, amount=0.18):
         return x * (1.0 + rng.uniform(-amount, amount) * var)
     L, W, D = p['length'], p['width'], p['depth']
-    taper, bulge = p['taper'], p['bulge']
+    taper, bulge = p.get('taper', 0.0), p.get('bulge', 0.0)
     power, ring, rugged = _style(p)
     industrial = p['category'] == 'INDUSTRIAL'
     E = part_ends(p)
     b = Builder()
     part = p['part']
-    if part in {'UPPER_ARM', 'THIGH', 'FOREARM', 'CALF'}:
+    if not industrial and part in TEMPLATE_PARTS:
+        b.add(*template_mesh(p, ring, power, rugged, E, jit))
+    elif industrial and part in {'CHEST', 'PELVIS'}:
+        if part == 'CHEST':
+            b.add(*loft(_more([(0, jit(W * 0.8) / 2, jit(D * 0.92) / 2, 0, 0), (L * 0.75, jit(W) / 2, jit(D) / 2, 0, 0),
+                               (L, W * (0.42 if not rugged else 0.48), D * 0.5, 0, 0)], E), ring, power, ends=E))
+            if p['details']:
+                b.add(*cylinder(0, D * 0.5, L * 0.55, W * 0.16, D * 0.2, ring + 4, 'Y'))
+                if rugged:
+                    for k in (-1, 1):
+                        b.add(*box(k * W * 0.32, -D * 0.52, L * 0.55, W * 0.2, D * 0.16, L * 0.6))
+        else:
+            b.add(*loft(_more([(0, jit(W * 0.7) / 2, jit(D * 0.8) / 2, 0, 0), (L * 0.6, W / 2, D / 2, 0, 0)], E),
+                        ring, power, ends=E))
+            b.add(*cylinder(0, 0, L * 0.8, W * 0.18, L * 0.4, ring))
+            if p['details'] and rugged:
+                for k in (-1, 1):
+                    b.add(*cylinder(k * W * 0.5, 0, L * 0.3, D * 0.3, W * 0.12, ring + 4, 'X'))
+    elif part in {'UPPER_ARM', 'THIGH', 'FOREARM', 'CALF'}:
         lower = part in {'FOREARM', 'CALF'}
         top_w, bot_w = W, W * (1.0 - 0.45 * taper)
         top_d, bot_d = D, D * (1.0 - 0.4 * taper)
@@ -497,7 +766,7 @@ def _settings(rp):
     return {k: getattr(rp, k) for k in ('category', 'style', 'part', 'side', 'seed', 'variation', 'length', 'width',
                                         'depth', 'taper', 'bulge', 'roundness', 'resolution', 'details',
                                         'bottom_shape', 'top_shape', 'bottom_sides', 'top_sides', 'shape_mid')
-            + LIMB_KEYS}
+            + tuple(dict.fromkeys(LIMB_KEYS + TEMPLATE_KEYS))}
 
 
 def rebuild(ob):
@@ -564,7 +833,11 @@ class MCH_PG_RobotPart(bpy.types.PropertyGroup):
               description='Front-to-back thickness')
     taper: _p(FloatProperty, name='Taper', default=0.4, min=-1.0, max=1.0,
               description='Thinner toward the far end (- = thicker)')
-    bulge: _p(FloatProperty, name='Bulge', default=0.5, min=0.0, max=2.0, description='Muscle-like volume')
+    bulge: _p(FloatProperty, name='Bulge', default=0.5, min=-1.0, max=6.0, description='Muscle-like volume (- = pinch)')
+    bulge_shape: _p(FloatProperty, name='Bulge Shape', default=0.0, min=0.0, max=2.0,
+                    description='0 = round swell, 1 = cylinder band, 2 = square band')
+    bulge_width: _p(FloatProperty, name='Bulge Width', default=0.22, min=0.03, max=1.0, subtype='FACTOR',
+                    description='How long the bulge is along the part')
     roundness: _p(FloatProperty, name='Roundness', default=0.6, min=0.0, max=1.0, subtype='FACTOR',
                   description='0 = boxy, 1 = round sections')
     resolution: _p(FloatProperty, name='Resolution', default=0.5, min=0.0, max=2.0,
@@ -577,33 +850,52 @@ class MCH_PG_RobotPart(bpy.types.PropertyGroup):
     bottom_sides: _p(IntProperty, name='Bottom Sides', default=6, min=3, max=16)
     top_sides: _p(IntProperty, name='Top Sides', default=6, min=3, max=16)
     # humanoid limb shape (0.21.1)
-    bottom_w: _p(FloatProperty, name='Bottom Width', default=0.58, min=0.1, max=2.5, subtype='FACTOR',
+    bottom_w: _p(FloatProperty, name='Bottom Width', default=0.58, min=0.05, max=5.0, subtype='FACTOR',
                  description='Width at the bottom end (wrist / ankle side) relative to the top')
-    bottom_d: _p(FloatProperty, name='Bottom Thickness', default=0.69, min=0.1, max=2.5, subtype='FACTOR',
+    bottom_d: _p(FloatProperty, name='Bottom Thickness', default=0.69, min=0.05, max=5.0, subtype='FACTOR',
                  description='Thickness at the bottom end relative to the top')
     taper_start: _p(FloatProperty, name='Taper Start', default=0.3, min=0.0, max=0.95, subtype='FACTOR',
                     description='Where along the length it starts getting thinner')
     bulge_pos: _p(FloatProperty, name='Bulge Position', default=0.2, min=0.05, max=0.95, subtype='FACTOR')
-    bulge_offset: _p(FloatProperty, name='Bulge Front/Back', default=0.0, min=-1.0, max=1.0,
+    bulge_offset: _p(FloatProperty, name='Bulge Front/Back', default=0.0, min=-3.0, max=3.0,
                      description='+ = muscle swells to the front, - = to the back')
-    split: _p(FloatProperty, name='Muscle Split', default=0.0, min=0.0, max=1.5,
+    split: _p(FloatProperty, name='Muscle Split', default=0.0, min=0.0, max=4.0,
               description='Pinch on two opposite sides: two muscle masses')
     split_angle: _p(FloatProperty, name='Split Angle', default=math.radians(90), subtype='ANGLE',
                     description='0 = pinch at the sides, 90 = pinch front and back')
-    groove: _p(FloatProperty, name='Groove', default=0.35, min=0.0, max=1.5, description='Long dent between muscles')
+    groove: _p(FloatProperty, name='Groove', default=0.35, min=0.0, max=4.0, description='Long dent between muscles')
     groove_angle: _p(FloatProperty, name='Groove Angle', default=math.radians(70), subtype='ANGLE')
-    ridge: _p(FloatProperty, name='Ridge', default=0.0, min=0.0, max=2.0, description='Raised line along the length')
+    ridge: _p(FloatProperty, name='Ridge', default=0.0, min=0.0, max=6.0, description='Raised line along the length')
     ridge_angle: _p(FloatProperty, name='Ridge Angle', default=math.radians(200), subtype='ANGLE')
-    twist: _p(FloatProperty, name='Twist', default=0.0, min=math.radians(-180), max=math.radians(180),
+    twist: _p(FloatProperty, name='Twist', default=0.0, min=math.radians(-720), max=math.radians(720),
               subtype='ANGLE', description='Cross section turns along the length')
-    bow: _p(FloatProperty, name='Bend', default=0.0, min=-1.0, max=1.0, description='Curve the limb')
+    bow: _p(FloatProperty, name='Bend', default=0.0, min=-4.0, max=4.0, description='Curve the limb')
     bow_angle: _p(FloatProperty, name='Bend Direction', default=math.radians(90), subtype='ANGLE')
-    notch: _p(FloatProperty, name='Top Notch', default=0.015, min=0.0, max=0.3, subtype='FACTOR',
+    notch: _p(FloatProperty, name='Top Notch', default=0.015, min=0.0, max=0.6, subtype='FACTOR',
               description='V cut across the top end (depth, share of the length)')
-    notch_width: _p(FloatProperty, name='Notch Width', default=0.5, min=0.05, max=1.0, subtype='FACTOR')
-    slant: _p(FloatProperty, name='Bottom Slant', default=math.radians(10), min=math.radians(-60),
-              max=math.radians(60), subtype='ANGLE', description='Tilt of the bottom cut')
-    top_slant: _p(FloatProperty, name='Top Slant', default=0.0, min=math.radians(-60), max=math.radians(60),
+    notch_width: _p(FloatProperty, name='Top Notch Width', default=0.5, min=0.05, max=2.0, subtype='FACTOR')
+    notch_b: _p(FloatProperty, name='Bottom Notch', default=0.0, min=0.0, max=0.6, subtype='FACTOR',
+                description='V cut across the bottom end (depth, share of the length)')
+    notch_b_width: _p(FloatProperty, name='Bottom Notch Width', default=0.5, min=0.05, max=2.0, subtype='FACTOR')
+    hole_top: _p(FloatProperty, name='Top Hole', default=0.0, min=0.0, max=0.95, subtype='FACTOR',
+                 description='Hole in the top end (size); needs a depth')
+    hole_top_d: _p(FloatProperty, name='Top Hole Depth', default=0.0, min=0.0, max=1.0, subtype='FACTOR',
+                   description='How deep the top hole goes; top + bottom depth = 100 % -> through (tube)')
+    hole_bot: _p(FloatProperty, name='Bottom Hole', default=0.0, min=0.0, max=0.95, subtype='FACTOR')
+    hole_bot_d: _p(FloatProperty, name='Bottom Hole Depth', default=0.0, min=0.0, max=1.0, subtype='FACTOR')
+    anatomy: _p(FloatProperty, name='Anatomy Detail', default=1.0, min=0.0, max=4.0,
+                description='0 = simple oval, 1 = measured shape, more = exaggerated')
+    rg1: _p(FloatProperty, name='Region 1', default=0.0, min=-3.0, max=6.0)
+    rg2: _p(FloatProperty, name='Region 2', default=0.0, min=-3.0, max=6.0)
+    rg3: _p(FloatProperty, name='Region 3', default=0.0, min=-3.0, max=6.0)
+    rg4: _p(FloatProperty, name='Region 4', default=0.0, min=-3.0, max=6.0)
+    rg5: _p(FloatProperty, name='Region 5', default=0.0, min=-3.0, max=6.0)
+    rg6: _p(FloatProperty, name='Region 6', default=0.0, min=-3.0, max=6.0)
+    rg7: _p(FloatProperty, name='Region 7', default=0.0, min=-3.0, max=6.0)
+    rg8: _p(FloatProperty, name='Region 8', default=0.0, min=-3.0, max=6.0)
+    slant: _p(FloatProperty, name='Bottom Slant', default=math.radians(10), min=math.radians(-75),
+              max=math.radians(75), subtype='ANGLE', description='Tilt of the bottom cut')
+    top_slant: _p(FloatProperty, name='Top Slant', default=0.0, min=math.radians(-75), max=math.radians(75),
                   subtype='ANGLE', description='Tilt of the top cut (e.g. thigh at the hip)')
     shape_mid: _p(FloatProperty, name='Shape Change', default=0.5, min=0.05, max=0.95, subtype='FACTOR',
                   description='Where the outline is half way between bottom and top shape')
@@ -633,6 +925,11 @@ def style_defaults(category, style, part):
              bevel_angle=math.radians(30.0 if sleek else 40.0))
     if hum and part in LIMB_SHAPES:
         d['roundness'] = 0.97 if sleek else 0.45
+    if hum and part in TEMPLATE_PARTS:
+        d['roundness'] = 1.0 if sleek else 0.7
+    if hum and (part in LIMB_SHAPES or part in TEMPLATE_PARTS):
+        d.pop('bulge')            # shape values live in LIMB_SHAPES / TEMPLATE_SHAPE (style toggle keeps them)
+        d.pop('taper')
     L, W, D = DEFAULTS[part]
     d['bevel_width'] = min(W, D) * (0.02 if sleek else 0.05)
     return d
@@ -658,7 +955,8 @@ def create_part(context, part, category, style, seed=1, variation=0.5, details=T
     rp.length, rp.width, rp.depth = L * scale, W * scale, D * scale
     for k, v in style_defaults(category, style, part).items():
         setattr(rp, k, v * scale if k == 'bevel_width' else v)
-    for k, v in LIMB_SHAPES.get(part, {}).items():
+    shape = LIMB_SHAPES.get(part) or (TEMPLATE_SHAPE if part in TEMPLATE_PARTS else COMMON_SHAPE)
+    for k, v in shape.items():
         setattr(rp, k, v)
     rp.live = True
     rebuild(ob)
@@ -675,10 +973,14 @@ BODY = (('TORSO', 'CENTER', (0, 0, 0.95)), ('HEAD', 'CENTER', (0, 0.01, 1.6)),
         ('FOOT', 'LEFT', (0.11, -0.05, 0.02)), ('FOOT', 'RIGHT', (-0.11, -0.05, 0.02)))
 
 
+BODY_HUMANOID = (('PELVIS', 'CENTER', (0, 0, 0.82)), ('CHEST', 'CENTER', (0, 0, 1.13)),
+                 ('HEAD', 'CENTER', (0, 0.0, 1.48))) + tuple(b for b in BODY if b[0] not in {'TORSO', 'HEAD'})
+
+
 def create_body(context, category, style, seed=1, variation=0.5, details=True, scale=1.0):
     origin = context.scene.cursor.location.copy()
     made = []
-    for part, side, loc in BODY:
+    for part, side, loc in (BODY_HUMANOID if category == 'HUMANOID' else BODY):
         ob = create_part(context, part, category, style, seed, variation, details, side,
                          origin + Vector(loc) * scale, scale,
                          name=f'Robot_{part.title()}' + ('' if side == 'CENTER' else '_' + side[0]))
@@ -824,9 +1126,9 @@ HUD_BUTTONS = (('apply', 'CHECKMARK', 'mch.robot_apply', {}, 'Apply'),
                ('bottom', 'TRIA_DOWN_BAR', 'mch.robot_toggle', {'option': 'BOTTOM'}, 'Bottom shape'),
                ('top', 'TRIA_UP_BAR', 'mch.robot_toggle', {'option': 'TOP'}, 'Top shape'))
 # key, label, prop, lo, hi, kind (LEN: mm, PCT: x100, DEG)
-SLIDERS = (('length', 'Length', 'length', 10, 3000, 'LEN'), ('width', 'Width', 'width', 5, 2000, 'LEN'),
-           ('depth', 'Thickness', 'depth', 5, 2000, 'LEN'), ('taper', 'Taper', 'taper', -100, 100, 'PCT'),
-           ('bulge', 'Bulge', 'bulge', 0, 200, 'PCT'), ('roundness', 'Roundness', 'roundness', 0, 100, 'PCT'),
+SLIDERS = (('length', 'Length', 'length', 10, 5000, 'LEN'), ('width', 'Width', 'width', 5, 3000, 'LEN'),
+           ('depth', 'Thickness', 'depth', 5, 3000, 'LEN'), ('taper', 'Taper', 'taper', -100, 100, 'PCT'),
+           ('bulge', 'Bulge', 'bulge', -100, 600, 'PCT'), ('roundness', 'Roundness', 'roundness', 0, 100, 'PCT'),
            ('resolution', 'Resolution', 'resolution', 0, 200, 'PCT'),
            ('variation', 'Randomness', 'variation', 0, 100, 'PCT'),
            ('bevel', 'Bevel', 'bevel_width', 0, 100, 'LEN'), ('bevel_seg', 'Bevel Segments', 'bevel_segments', 1, 12, 'INT'),
@@ -834,45 +1136,72 @@ SLIDERS = (('length', 'Length', 'length', 10, 3000, 'LEN'), ('width', 'Width', '
            ('bottom_sides', 'Bottom Sides', 'bottom_sides', 3, 16, 'INT'),
            ('top_sides', 'Top Sides', 'top_sides', 3, 16, 'INT'),
            ('shape_mid', 'Shape Change', 'shape_mid', 5, 95, 'PCT'),
-           ('bottom_w', 'Bottom Width', 'bottom_w', 10, 250, 'PCT'),
-           ('bottom_d', 'Bottom Thickness', 'bottom_d', 10, 250, 'PCT'),
+           ('bottom_w', 'Bottom Width', 'bottom_w', 5, 500, 'PCT'),
+           ('bottom_d', 'Bottom Thickness', 'bottom_d', 5, 500, 'PCT'),
            ('taper_start', 'Taper Start', 'taper_start', 0, 95, 'PCT'),
+           ('bulge_shape', 'Bulge Shape', 'bulge_shape', 0, 200, 'PCT'),
+           ('bulge_width', 'Bulge Width', 'bulge_width', 3, 100, 'PCT'),
            ('bulge_pos', 'Bulge Position', 'bulge_pos', 5, 95, 'PCT'),
-           ('bulge_offset', 'Bulge Front/Back', 'bulge_offset', -100, 100, 'PCT'),
-           ('split', 'Muscle Split', 'split', 0, 150, 'PCT'),
-           ('groove', 'Groove', 'groove', 0, 150, 'PCT'),
-           ('groove_angle', 'Groove Angle', 'groove_angle', -180, 360, 'DEG'),
-           ('ridge', 'Ridge', 'ridge', 0, 200, 'PCT'),
-           ('ridge_angle', 'Ridge Angle', 'ridge_angle', -180, 360, 'DEG'),
-           ('twist', 'Twist', 'twist', -180, 180, 'DEG'),
-           ('bow', 'Bend', 'bow', -100, 100, 'PCT'),
-           ('bow_angle', 'Bend Direction', 'bow_angle', -180, 360, 'DEG'),
-           ('notch', 'Top Notch', 'notch', 0, 30, 'PCT'),
-           ('notch_width', 'Notch Width', 'notch_width', 5, 100, 'PCT'),
-           ('slant', 'Bottom Slant', 'slant', -60, 60, 'DEG'),
+           ('bulge_offset', 'Bulge Front/Back', 'bulge_offset', -300, 300, 'PCT'),
+           ('split', 'Muscle Split', 'split', 0, 400, 'PCT'),
            ('split_angle', 'Split Angle', 'split_angle', -180, 360, 'DEG'),
-           ('top_slant', 'Top Slant', 'top_slant', -60, 60, 'DEG'))
-LIMB_SLIDERS = ('length', 'width', 'depth', 'bottom_w', 'bottom_d', 'taper_start', 'bulge', 'bulge_pos', 'bulge_offset',
-                'split', 'split_angle', 'groove', 'groove_angle', 'ridge', 'ridge_angle', 'twist', 'bow', 'bow_angle', 'notch',
-                'notch_width', 'slant', 'top_slant', 'roundness', 'resolution', 'variation', 'bevel', 'bevel_seg', 'bevel_angle',
-                'bottom_sides', 'top_sides', 'shape_mid')
-OTHER_SLIDERS = tuple(k[0] for k in SLIDERS if k[0] not in LIMB_SLIDERS or k[0] in
-                      {'length', 'width', 'depth', 'bulge', 'roundness', 'resolution', 'variation', 'bevel',
-                       'bevel_seg', 'bevel_angle', 'bottom_sides', 'top_sides', 'shape_mid'})
+           ('groove', 'Groove', 'groove', 0, 400, 'PCT'),
+           ('groove_angle', 'Groove Angle', 'groove_angle', -180, 360, 'DEG'),
+           ('ridge', 'Ridge', 'ridge', 0, 600, 'PCT'),
+           ('ridge_angle', 'Ridge Angle', 'ridge_angle', -180, 360, 'DEG'),
+           ('twist', 'Twist', 'twist', -720, 720, 'DEG'),
+           ('bow', 'Bend', 'bow', -400, 400, 'PCT'),
+           ('bow_angle', 'Bend Direction', 'bow_angle', -180, 360, 'DEG'),
+           ('notch', 'Top Notch', 'notch', 0, 60, 'PCT'),
+           ('notch_width', 'Top Notch Width', 'notch_width', 5, 200, 'PCT'),
+           ('notch_b', 'Bottom Notch', 'notch_b', 0, 60, 'PCT'),
+           ('notch_b_width', 'Bottom Notch Width', 'notch_b_width', 5, 200, 'PCT'),
+           ('top_slant', 'Top Slant', 'top_slant', -75, 75, 'DEG'),
+           ('slant', 'Bottom Slant', 'slant', -75, 75, 'DEG'),
+           ('hole_top', 'Top Hole', 'hole_top', 0, 95, 'PCT'),
+           ('hole_top_d', 'Top Hole Depth', 'hole_top_d', 0, 100, 'PCT'),
+           ('hole_bot', 'Bottom Hole', 'hole_bot', 0, 95, 'PCT'),
+           ('hole_bot_d', 'Bottom Hole Depth', 'hole_bot_d', 0, 100, 'PCT'),
+           ('anatomy', 'Anatomy Detail', 'anatomy', 0, 400, 'PCT'))
+SLIDERS = SLIDERS + tuple((k, f'Region {i + 1}', k, -300, 600, 'PCT') for i, k in enumerate(REGION_KEYS))
+END_SLIDERS = ('notch', 'notch_width', 'notch_b', 'notch_b_width', 'top_slant', 'slant', 'hole_top', 'hole_top_d',
+               'hole_bot', 'hole_bot_d')
+COMMON_TAIL = ('roundness', 'resolution', 'variation', 'bevel', 'bevel_seg', 'bevel_angle', 'bottom_sides', 'top_sides',
+               'shape_mid')
+LIMB_SLIDERS = (('length', 'width', 'depth', 'bottom_w', 'bottom_d', 'taper_start', 'bulge', 'bulge_shape',
+                 'bulge_width', 'bulge_pos', 'bulge_offset', 'split', 'split_angle', 'groove', 'groove_angle', 'ridge',
+                 'ridge_angle', 'twist', 'bow', 'bow_angle') + END_SLIDERS + COMMON_TAIL)
+TEMPLATE_SLIDERS = (('length', 'width', 'depth', 'anatomy') + REGION_KEYS
+                    + ('bulge', 'bulge_shape', 'bulge_width', 'bulge_pos', 'bulge_offset', 'twist') + END_SLIDERS
+                    + COMMON_TAIL)
+OTHER_SLIDERS = ('length', 'width', 'depth', 'taper', 'bulge') + COMMON_TAIL
 
 
 def is_limb(rp):
     return rp.category == 'HUMANOID' and rp.part in LIMB_SHAPES
 
 
+def is_template(rp):
+    return rp.category == 'HUMANOID' and rp.part in TEMPLATE_PARTS
+
+
 def slider_keys(rp):
-    return LIMB_SLIDERS if is_limb(rp) else OTHER_SLIDERS
+    if is_limb(rp):
+        return LIMB_SLIDERS
+    return TEMPLATE_SLIDERS if is_template(rp) else OTHER_SLIDERS
+
+
+def region_label(rp, key):
+    if key in REGION_KEYS and rp.part in REGIONS:
+        return REGIONS[rp.part][REGION_KEYS.index(key)][0]
+    return None
 
 
 def slider_spec(context, key, ob=None):
     ob = ob or active_part(context)
     rp = ob.mch_robot
     label, prop, lo, hi, kind = next((l, pr, a, b, k) for kk, l, pr, a, b, k in SLIDERS if kk == key)
+    label = region_label(rp, key) or label
     cur = getattr(rp, prop)
     if kind == 'LEN':
         v = int(round(cur * 1000.0))
@@ -932,7 +1261,7 @@ def _hud_current(context):
     for c in ob.bound_box:
         q = view3d_utils.location_3d_to_region_2d(region, rv3d, ob.matrix_world @ Vector(c))
         pts.append(None if q is None else (q[0] / ui, q[1] / ui))
-    return ob, anchored('robot', ob.name + ('/limb' if is_limb(ob.mch_robot) else ''), region,
+    return ob, anchored('robot', ob.name + '/' + str(len(slider_keys(ob.mch_robot))), region,
                         hud_layout(pts, region.width / ui, region.height / ui, keys=slider_keys(ob.mch_robot)))
 
 
@@ -1093,8 +1422,9 @@ def draw(layout, context):
     r.prop(st, 'details', toggle=True)
     grid = box.grid_flow(row_major=True, columns=2, even_columns=True, align=True)
     grid.scale_y = 1.2
-    for pid, label, _d in PARTS:
-        grid.operator('mch.robot_add', text=label).part = pid
+    names = dict((a, b) for a, b, _c in PARTS)
+    for pid in UI_PARTS.get(st.category, PART_IDS):
+        grid.operator('mch.robot_add', text=names[pid]).part = pid
     box.operator('mch.robot_add', text='Whole Body (all parts)', icon='OUTLINER_OB_ARMATURE').part = 'BODY'
     ob = active_part(context)
     if ob is not None:
@@ -1104,16 +1434,32 @@ def draw(layout, context):
         sub.row(align=True).prop(rp, 'category', expand=True)
         sub.row(align=True).prop(rp, 'style', expand=True)
         c = sub.column(align=True)
-        limb = is_limb(rp)
-        for prop in ('length', 'width', 'depth') + (() if limb else ('taper',)) + ('bulge', 'roundness', 'resolution',
-                                                                                  'variation'):
+        limb, tpl = is_limb(rp), is_template(rp)
+        for prop in ('length', 'width', 'depth') + (() if limb or tpl else ('taper',)) + (
+                'bulge', 'roundness', 'resolution', 'variation'):
             c.prop(rp, prop, slider=prop in {'roundness', 'variation'})
+        if limb or tpl:
+            c = sub.column(align=True)
+            c.label(text='Bulge')
+            for prop in ('bulge_shape', 'bulge_width', 'bulge_pos', 'bulge_offset'):
+                c.prop(rp, prop, slider=True)
         if limb:
             c = sub.column(align=True)
             c.label(text='Limb Shape (top = elbow / knee side)')
-            for prop in ('bottom_w', 'bottom_d', 'taper_start', 'bulge_pos', 'bulge_offset', 'split', 'split_angle',
-                         'groove', 'groove_angle', 'ridge', 'ridge_angle', 'twist', 'bow', 'bow_angle', 'notch',
-                         'notch_width', 'slant', 'top_slant'):
+            for prop in ('bottom_w', 'bottom_d', 'taper_start', 'split', 'split_angle',
+                         'groove', 'groove_angle', 'ridge', 'ridge_angle', 'twist', 'bow', 'bow_angle'):
+                c.prop(rp, prop, slider=True)
+        if tpl:
+            c = sub.column(align=True)
+            c.label(text='Shape (measured, push with the sliders)')
+            c.prop(rp, 'anatomy', slider=True)
+            for k in REGION_KEYS:
+                c.prop(rp, k, text=region_label(rp, k), slider=True)
+            c.prop(rp, 'twist', slider=True)
+        if limb or tpl:
+            c = sub.column(align=True)
+            c.label(text='Ends: notch / slant / hole')
+            for prop in END_SLIDERS:
                 c.prop(rp, prop, slider=True)
         rr = sub.row(align=True)
         rr.prop(rp, 'seed')

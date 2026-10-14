@@ -190,6 +190,13 @@ class MCH_PG_Brush(bpy.types.PropertyGroup):
                                      description='Dragging a Custom shape also rotates it')
     line_open: BoolProperty(name='Open Line (F)', default=False,
                             description='Lasso points form an open line across the mesh instead of a closed outline')
+    line_mode: BoolProperty(name='Line', default=False,
+                            description='Lasso / Curve Lasso / Stroke draw a LINE: the tool uses a band of Line Width '
+                                        'around the path instead of the enclosed area')
+    line_width: FloatProperty(name='Line Width', default=0.02, min=0.0005, soft_max=0.5, max=20.0, unit='LENGTH',
+                              precision=4, description='Width of the band drawn in Line mode')
+    line_caps: EnumProperty(name='Line Ends', items=[('ROUND', 'Round', 'Round line ends'),
+                                                     ('FLAT', 'Flat', 'Square line ends')], default='ROUND')
     sketch_first: BoolProperty(name='Sketch', default=False,
                                description='Lasso tools: draw outlines into a sketch, Alt+draw subtracts, '
                                            'Enter applies (Alt+Enter: Alt action), Backspace: last, Esc: clear')

@@ -1,4 +1,10 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.21.1 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.22.0 (Claude Code, 2026-10-14)
+
+## 0.22.0
+- ZIP sha256 `900785f05dcdbc090e31e0945cbd636f41960ce9851cd8a8003cbe77dea30784`. `robot_base`: `tube_mesh`(공용 링 튜브 + 끝 캡/노치/기울기/구멍/관통, 부피 부호로 노멀 정렬), `template_mesh` + `robot_templates.py`(CHEST/PELVIS/HEAD 단면 22/18/26링 × 32각, 높이 방향 스무딩),
+  `REGIONS`/`REGION_KEYS` rg1..rg8, `anatomy`, `bulge_shape`/`bulge_width`, `notch_b`(+width), `hole_top`/`hole_top_d`/`hole_bot`/`hole_bot_d`, `UI_PARTS`, `BODY_HUMANOID`, `slider_keys`(LIMB/TEMPLATE/OTHER), `region_label`.
+  신규 `lasso_line.py`(`band`, `remove_loops`, `pixels_per_unit`, `line_loop`; brush `line_mode`/`line_width`/`line_caps`; `cut_engine.StrokeLogic._line_mode/_line_path/_line_loops` 훅).
+  신규 `detail_stamp.py`(프리셋 = config/mecha_lab/details/*.blend, `add_preset`/`load_mesh`/`delete_preset`, `place_matrix`, `stamp`, `surface_hit`, `StampLogic` + `mch.detail_stamp`, 패널 `MCH_PT_detail_stamp`). 테스트 `test_v0212.py`, `test_v0220.py`, `test_v0221.py`.
 
 ## 0.21.1
 - ZIP sha256 `28f227289134c4da7e6791060171b5335ec1538150867f21caa73b543d485d4b`. `robot_base.limb_mesh`(인간형 팔다리, 링 + 동심 끝면, 관절 없음), `LIMB_SHAPES`/`LIMB_KEYS`(사용자 Genesis 9 조각 측정값), PG 속성 bottom_w/bottom_d/taper_start/bulge_pos/bulge_offset/split/split_angle/groove(+angle)/ridge(+angle)/twist/bow(+angle)/notch(+width)/slant/top_slant,

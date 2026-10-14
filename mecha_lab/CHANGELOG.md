@@ -1,5 +1,24 @@
 # CHANGELOG
 
+## 0.22.0 — 갈비/골반/머리, 과한 슬라이더, 불지 모양, 위아래 노치·구멍, 라인 라쏘, 디테일 스탬프 (2026-10-14)
+
+**Robot Base Mesh**
+- 인간형 몸통을 **Chest (Ribs, 갈비)** 와 **Pelvis (골반)** 로 나눔 + **Head**. 보내주신 BODY / HEAD 조각에서 높이별 단면을 재서 부드럽게 만든 형태가 기본(`robot_templates.py`).
+  부위마다 슬라이더 8개 — 갈비: 어깨 폭, 가슴(대흉근), 등/광배, 갈비 벌어짐, 허리, 목 밑, 승모근, 숙임 / 골반: 엉덩이 폭, 허리, 엉덩이(뒤), 배, 사타구니, 골반 두께, 아래 폭, 기울기 / 머리: 두개 폭, 두개 길이, 뒤통수, 턱 폭, 턱끝, 얼굴 납작, 정수리, 목 굵기.
+  **Anatomy Detail**: 0 = 단순 타원, 1 = 잰 형태, 4까지 = 과장.
+- **슬라이더 범위를 크게**: Bulge -100~600 %, Muscle Split / Groove 400 %, Ridge 600 %, 아래 굵기 500 %, Twist ±720°, Bend ±400 %, 노치 60 %, 기울기 ±75°, 부위 슬라이더 -300~600 %.
+- **Bulge Shape**: 0 = 둥근 볼록, 1 = **원기둥 띠**, 2 = **네모 띠**. **Bulge Width** = 띠 길이. (팔다리 + 갈비/골반/머리)
+- **위아래 노치**: Top Notch / Bottom Notch + 각각 폭.
+- **구멍**: Top Hole / Bottom Hole(크기) + 깊이. 두 깊이 합이 100 %가 되면 **관통(튜브)**.
+- 모든 팔다리·갈비·골반·머리가 같은 튜브 빌더 사용(닫힌 메쉬, 노멀 바깥). Whole Body(인간형)는 Chest + Pelvis로 15조각.
+
+**라인 라쏘** — 헤더 Sketch 옆 **Line** 버튼: Lasso / Curve Lasso / Brush Stroke로 그은 **선**을 따라 **Line Width** 폭의 띠(끝 Round / Flat)로 도구 실행. Cut / Split = 홈, Base Mesh / Armor Plate / Cloth Plate = 띠. 점 찍기는 2점부터, 더블클릭 / Enter로 끝.
+
+**Detail Stamp** — N 패널 **Detail Stamp**: 내 메쉬를 프리셋으로(**원점 = 디테일 바닥**, 선택 후 Add Selected). 프리셋은 config/mecha_lab/details/에 파일로 저장돼 모든 파일에서 사용.
+Start Stamping → 마우스 아래 표면에 **붙어서 노멀 방향으로 따라다니고**, **Sink**만큼 살짝 안으로 들어감. **클릭하면 그 자리에 바로 배치**(Apply 없음)되고 계속 찍기. Ctrl+휠 회전, Shift+휠 크기, Alt+휠 Sink, 우클릭/Esc 끝. Join to Surface 옵션(켜면 찍은 표면 메쉬에 합침).
+
+- 미리보기 `reference/robot_torso_head_v0220.png`, `reference/robot_vs_reference_side_v0220.png`. 테스트: 42개 파일 1880/1880 (`tests/test_log_bpy501_v0220.txt`). ZIP sha256 `900785f05dcdbc090e31e0945cbd636f41960ce9851cd8a8003cbe77dea30784`.
+
 ## 0.21.1 — 인간형 팔다리: 보내주신 Genesis 9 조각 기준, 슬라이더로 형태 잡기 (2026-10-14)
 
 - 인간형 **윗팔 / 아랫팔 / 허벅지 / 종아리**를 새로 만듦: **관절 없이** 한 덩어리, 깔끔한 사각 링 + 평평한 끝면.

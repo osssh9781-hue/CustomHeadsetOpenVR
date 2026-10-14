@@ -1145,7 +1145,32 @@ class StrokeLogic:
     def inverted(self):
         return self.alt_latch or self.alt_held
 
+    def _line_mode(self):
+        from . import lasso_line
+        return lasso_line.enabled(bpy.context, self.mode, self.shape)
+
+    def _line_path(self, pts=None):
+        """Open path of the current drawing (Line mode)."""
+        pts = list(self.pts if pts is None else pts)
+        if self.shape == 'CURVE_LASSO' and len(pts) >= 3:
+            n = len(pts)
+            sharp = list(self.sharp[:n]) + [False] * (n - len(self.sharp))
+            over = list(self.overrides[:n]) + [None] * (n - len(self.overrides))
+            return curve_lasso_spline(pts, sharp, over, self.brush.curve_resolution, self.brush.curve_smoothness,
+                                      closed=False)
+        if self.shape == 'STROKE':
+            pts = smooth_open(pts, self.brush.stroke_smooth)
+            return cg.simplify_open(pts, self.brush.stroke_simplify)
+        return pts
+
+    def _line_loops(self, pts=None):
+        from . import lasso_line
+        loop = lasso_line.line_loop(bpy.context, self.projector, self._line_path(pts), self.brush)
+        return [loop] if len(loop) >= 3 else []
+
     def preview_closed(self):
+        if self._line_mode():
+            return True
         if self.shape in {'LASSO', 'CURVE_LASSO'}:
             return not self._is_open_line()
         if self.shape == 'STROKE' and self.mode == 'MASK':
@@ -1180,6 +1205,12 @@ class StrokeLogic:
 
     def preview_loops(self):
         m = self.mouse
+        if self._line_mode():
+            pts = list(self.pts)
+            if self.stage == 'POINTS' and m is not None and self.drag_index is None \
+                    and self.drag_handle is None and not self.free_drag:
+                pts = pts + [self._snapped(m, self.shift_held)]
+            return self._line_loops(pts) if len(pts) >= 2 else []
         if self.shape in {'LASSO', 'CURVE_LASSO'}:
             pts = list(self.pts)
             if self.stage == 'POINTS' and m is not None and self.drag_index is None \
@@ -1454,7 +1485,7 @@ class StrokeLogic:
         return None
 
     def _clean_points(self):
-        keep = clean_clicks(self.pts, DUP_PX, closed=not self._is_open_line())
+        keep = clean_clicks(self.pts, DUP_PX, closed=not (self._is_open_line() or self._line_mode()))
         if len(keep) != len(self.pts):
             idx, j = [], 0
             for i, p in enumerate(self.pts):
@@ -1467,6 +1498,8 @@ class StrokeLogic:
             self.pts = keep
 
     def _current_loops(self, event_ctrl=False, event_shift=False):
+        if self._line_mode():
+            return self._line_loops()
         if self.shape in {'LASSO', 'CURVE_LASSO'}:
             if self.shape == 'CURVE_LASSO':
                 return [self._curve()]
@@ -1486,7 +1519,9 @@ class StrokeLogic:
 
     def _auto_targets(self):
         pts = list(self.pts)
-        if self.shape in {'LASSO', 'CURVE_LASSO', 'STROKE'}:
+        if self._line_mode():
+            loops = self._line_loops() or [pts]
+        elif self.shape in {'LASSO', 'CURVE_LASSO', 'STROKE'}:
             loops = [self._curve()] if self.shape == 'CURVE_LASSO' and len(pts) >= 3 else [pts]
             if self.stage == 'SIDE' and len(pts) == 2:          # 2-point line: thin band along the line
                 loops = [[pts[0], pts[1], (pts[1][0] + 1, pts[1][1] + 1), (pts[0][0] + 1, pts[0][1] + 1)]]
@@ -1569,6 +1604,12 @@ class StrokeLogic:
         return {'FINISHED'}
 
     def _confirm(self, context):
+        if self._line_mode() and self.shape in {'LASSO', 'CURVE_LASSO'}:
+            self._clean_points()
+            if len(self.pts) < 2:
+                self.report({'WARNING'}, 'Line: place at least 2 points')
+                return {'RUNNING_MODAL'}
+            return self._run(context, self._execute_closed, keep_on_shape_error=True)
         if self.shape in {'LASSO', 'CURVE_LASSO'}:
             self._clean_points()
             if self.shape == 'LASSO' and len(self.pts) >= 2 and (self.line_open or len(self.pts) == 2):
@@ -1831,7 +1872,8 @@ class StrokeLogic:
                 self.last_press = None
                 return self._confirm(context)
             open_line = self._is_open_line() or self.line_open
-            if self._hit_start(xy) and (len(self.pts) >= 3 or (open_line and len(self.pts) >= 2)):
+            if self._hit_start(xy) and (len(self.pts) >= 3 or ((open_line or self._line_mode())
+                                                               and len(self.pts) >= 2)):
                 self.last_press = None
                 return self._confirm(context)          # click the start point = close / finish
             handle = self._hit_handle(xy)

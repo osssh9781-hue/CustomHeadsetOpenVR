@@ -111,8 +111,8 @@ xs = {round(lay['slider_' + k][0]) for k in keys}
 check('limb HUD wraps into several columns on a short view', len(xs) >= 2, xs)
 check('every slider placed', all('slider_' + k in lay for k in keys))
 check('HUD inside the view', all(0 <= p[1] <= 600 for k, p in lay.items()), [p for p in lay.values()][:3])
-ind = rb.create_part(C, 'HEAD', 'HUMANOID', 'SLEEK')
-check('head keeps the general sliders', 'taper' in rb.slider_keys(ind.mch_robot)
+ind = rb.create_part(C, 'SHOULDER', 'HUMANOID', 'SLEEK')
+check('shoulder keeps the general sliders', 'taper' in rb.slider_keys(ind.mch_robot)
       and 'bottom_w' not in rb.slider_keys(ind.mch_robot))
 for k in keys:
     spec = rb.slider_spec(C, k, b)

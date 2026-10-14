@@ -693,6 +693,10 @@ def draw_shape_palette(self, context):
     sk = layout.row(align=True)
     sk.enabled = tool in ts.SHAPE_TOOLS
     sk.operator('mch.sketch_toggle', text='Sketch', icon='GREASEPENCIL', depress=lasso_sketch.is_on(context))
+    sk.prop(brush, 'line_mode', text='Line', icon='IPO_LINEAR', toggle=True)
+    if brush.line_mode:
+        sk.prop(brush, 'line_width', text='')
+        sk.prop(brush, 'line_caps', text='')
     row.separator()
     sub = row.row(align=True)
     sub.template_icon_view(scene, 'mch_png_preset', show_labels=True, scale=isz(1.0), scale_popup=isz(5.0))

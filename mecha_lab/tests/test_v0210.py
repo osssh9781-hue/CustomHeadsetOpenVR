@@ -41,7 +41,7 @@ for cat, _, _ in rb.CATEGORIES:
             okf = all(len(f) >= 3 and max(f) < len(verts) and len(set(f)) == len(f) for f in faces)
             if not verts or not faces or not okf:
                 bad.append((cat, sty, part))
-check('build_part: 8 parts x 2 categories x 2 styles give valid meshes', not bad and len(rb.PART_IDS) == 8, bad)
+check('build_part: 10 parts x 2 categories x 2 styles give valid meshes', not bad and len(rb.PART_IDS) == 10, bad)
 
 # ---- whole body: separate objects
 for o in list(S.objects):
@@ -50,7 +50,7 @@ st = S.mch_robot_settings
 st.category, st.style = 'HUMANOID', 'SLEEK'
 r = bpy.ops.mch.robot_add(part='BODY')
 parts = [o for o in S.objects if rb.is_part(o)]
-check('whole body = 14 separate objects', r == {'FINISHED'} and len(parts) == 14, len(parts))
+check('humanoid whole body = 15 separate objects (chest + pelvis)', r == {'FINISHED'} and len(parts) == 15, len(parts))
 check('parts live in the Robot Base collection', all(rb.COLL in [c.name for c in o.users_collection] for o in parts))
 check('every part has faces', all(len(o.data.polygons) > 0 for o in parts))
 names = {o.name for o in parts}
@@ -62,7 +62,8 @@ rv = sorted(round(-v.co.x, 4) for v in ra.data.vertices)
 check('right arm mirrors the left arm', lv == rv)
 check('bevel modifier on parts', all(o.modifiers.get(rb.MOD_BEVEL) for o in parts))
 head = S.objects['Robot_Head']
-check('head above torso', head.location.z > S.objects['Robot_Torso'].location.z)
+check('head above chest above pelvis', head.location.z > S.objects['Robot_Chest'].location.z
+      > S.objects['Robot_Pelvis'].location.z)
 foot = S.objects['Robot_Foot_L']
 fb = bounds(foot)
 check('foot is longer front-to-back than wide', fb[1] > fb[0], fb)

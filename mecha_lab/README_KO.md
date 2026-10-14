@@ -1,8 +1,13 @@
-# Mecha Lab 0.21.1 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.22.0 — 설치 · MECHA LAB Workspace · 사용법
 
-> **검증 수준:** Linux headless Blender **5.0.1**(`bpy`)에서 자동 테스트 39개 파일 / 1749개 항목이 통과했습니다.
+> **검증 수준:** Linux headless Blender **5.0.1**(`bpy`)에서 자동 테스트 42개 파일 / 1880개 항목이 통과했습니다.
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` A절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
+
+## 0.22.0
+- Robot Base Mesh(인간형): Chest / Pelvis / Head 추가(부위별 슬라이더 8개 + Anatomy Detail), Bulge Shape(원기둥/네모), 위아래 노치, 구멍(관통 가능).
+- 헤더 **Line** 버튼: 라쏘로 그은 선을 띠로(폭 = Line Width).
+- N 패널 **Detail Stamp**: 내 디테일 메쉬(원점 = 바닥)를 프리셋으로 저장 → Start Stamping, 표면 따라 이동, 클릭 = 배치.
 
 ## 0.21.1 인간형 팔다리
 - Humanoid로 Upper Arm / Forearm / Thigh / Calf를 추가하면 관절 없는 팔다리 베이스. 선택 후 팝업/N 패널의 Limb Shape 슬라이더(아래 굵기, 가늘어지는 위치, 근육 볼륨·홈·능선, 비틀기, 휘기, V 홈, 끝 단면 기울기)로 형태를 잡습니다.
