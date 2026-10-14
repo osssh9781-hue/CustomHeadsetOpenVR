@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.23.4
+# Test Report — Mecha Lab 0.23.5
+
+## 0.23.5 결과: 49개 파일, 2035 / 2035 통과 (`tests/test_log_bpy501_v0235.txt`, 한 번에 통과). Edge Shrink 검사: 경계에서 Shrink Width × 2.2보다 먼 안쪽 점은 높이 변화 0, 경계 근처는 변함. 모양은 Cycles 렌더로 확인. 뷰포트 HUD 슬라이더 동작은 미검증.
 
 ## 0.23.4 결과: 48개 파일, 2024 / 2024 통과 (`tests/test_log_bpy501_v0234.txt`). 전체 실행에서 `test_v0120.py`가 1회 실패: 새 Skin/Shell 툴바 항목이 tool id가 아니라 `mch.creature_brush`로 가는데 예전 검사가 tool id만 허용 → 검사 수정 후 그 파일만 다시 실행해 로그의 해당 구간을 교체(로그 끝에 기록). 주름 방향은 서 있는 패널에서 세로 엣지의 오르막/내리막 개수로 검사(Up 1380/995, Down 998/1377). 스킨 / 갑각 모양은 Cycles 렌더로 확인. 실제 뷰포트 HUD·툴바 버튼 동작은 미검증.
 

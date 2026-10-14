@@ -19,8 +19,8 @@ from mathutils import Matrix, Vector
 
 GROUP = 'MCH_CreatureShell'
 MOD = 'MCH_Shell'
-VERSION = 5
-INPUTS = (('Detail', 'NodeSocketInt', 4, 0, 6),
+VERSION = 12
+INPUTS = (('Detail', 'NodeSocketInt', 5, 0, 6),
           ('Facets', 'NodeSocketFloat', 0.02, -100.0, 100.0),
           ('Facet Size', 'NodeSocketFloat', 0.2, 0.0001, 100.0),
           ('Bulge', 'NodeSocketFloat', 0.03, -100.0, 100.0),
@@ -35,9 +35,15 @@ INPUTS = (('Detail', 'NodeSocketInt', 4, 0, 6),
           ('Seed', 'NodeSocketInt', 1, 0, 100000),
           ('Up', 'NodeSocketVector', (0.0, 0.0, 1.0), -1.0, 1.0),
           ('U', 'NodeSocketVector', (1.0, 0.0, 0.0), -1.0, 1.0),
-          ('V', 'NodeSocketVector', (0.0, 1.0, 0.0), -1.0, 1.0))
-SIZE_INPUTS = {'Facets', 'Facet Size', 'Bulge', 'Bulge Size', 'Lift Height'}
-DEFAULTS = {'Facets': 0.007, 'Facet Size': 0.2, 'Bulge': 0.006, 'Bulge Size': 0.35, 'Lift Height': 0.05}
+          ('V', 'NodeSocketVector', (0.0, 1.0, 0.0), -1.0, 1.0),
+          # 0.23.5 (appended: the earlier sockets keep their identifiers)
+          ('Organic', 'NodeSocketFloat', 1.0, 0.0, 3.0),
+          ('Edge Shrink', 'NodeSocketFloat', 0.8, 0.0, 1.0),
+          ('Shrink Width', 'NodeSocketFloat', 0.3, 0.0001, 100.0),
+          ('Edge Irregular', 'NodeSocketFloat', 0.7, 0.0, 2.0))
+SIZE_INPUTS = {'Facets', 'Facet Size', 'Bulge', 'Bulge Size', 'Lift Height', 'Shrink Width'}
+DEFAULTS = {'Facets': 0.007, 'Facet Size': 0.2, 'Bulge': 0.006, 'Bulge Size': 0.35, 'Lift Height': 0.05,
+            'Shrink Width': 0.14}
 
 
 def _m(N, L, op, a=None, b=None, va=None, vb=None, clamp=False):
@@ -97,37 +103,88 @@ def build_group():
     L.new(_m(N, L, 'ADD', u, seedx), q.inputs[0])
     L.new(_m(N, L, 'ADD', v, _m(N, L, 'MULTIPLY', I['Seed'], vb=-3.17)), q.inputs[1])
     Q = q.outputs[0]
-    # facets: every Voronoi cell is a plane with its own random tilt
-    fs = _m(N, L, 'DIVIDE', va=1.0, b=_m(N, L, 'MAXIMUM', I['Facet Size'], vb=1e-6))
-    vor = N.new('ShaderNodeTexVoronoi')
-    vor.voronoi_dimensions = '2D'
-    vor.feature = 'F1'
-    L.new(Q, vor.inputs['Vector'])
-    L.new(fs, vor.inputs['Scale'])
-    qs = _v(N, L, 'SCALE', Q, scale=fs)
-    rel = N.new('ShaderNodeSeparateXYZ')
-    L.new(_v(N, L, 'SUBTRACT', qs, vor.outputs['Position']), rel.inputs[0])
-    col = N.new('FunctionNodeSeparateColor')
-    L.new(vor.outputs['Color'], col.inputs[0])
-    tilt = _m(N, L, 'ADD', _m(N, L, 'MULTIPLY', _m(N, L, 'SUBTRACT', col.outputs[0], vb=0.5), rel.outputs['X']),
-              _m(N, L, 'MULTIPLY', _m(N, L, 'SUBTRACT', col.outputs[1], vb=0.5), rel.outputs['Y']))
-    # each cell is a hard plate: flat top that drops into a groove at the cell edge, so the
-    # height stays continuous (no cliffs to tear thin triangles); the tilt fades out at the groove
-    ved = N.new('ShaderNodeTexVoronoi')
-    ved.voronoi_dimensions = '2D'
-    ved.feature = 'DISTANCE_TO_EDGE'
-    L.new(Q, ved.inputs['Vector'])
-    L.new(fs, ved.inputs['Scale'])
-    mr = N.new('ShaderNodeMapRange')
-    mr.interpolation_type = 'SMOOTHSTEP'
-    L.new(ved.outputs['Distance'], mr.inputs['Value'])
-    mr.inputs['From Min'].default_value = 0.0
-    mr.inputs['From Max'].default_value = 0.22
-    plateau = mr.outputs['Result']
-    raw = _m(N, L, 'MAXIMUM', _m(N, L, 'ADD', _m(N, L, 'ADD', _m(N, L, 'MULTIPLY', tilt, vb=1.4), vb=1.0),
-                                 _m(N, L, 'MULTIPLY', _m(N, L, 'SUBTRACT', col.outputs[2], vb=0.5), vb=0.5)),
-             vb=0.3)
-    facet = _m(N, L, 'MULTIPLY', _m(N, L, 'MULTIPLY', plateau, raw), I['Facets'])
+    fsz = _m(N, L, 'MAXIMUM', I['Facet Size'], vb=1e-6)
+    fs = _m(N, L, 'DIVIDE', va=1.0, b=fsz)
+    # organic: bend the cell edges with a low noise (domain warp ~ one cell wavelength)
+    wn = N.new('ShaderNodeTexNoise')
+    wn.inputs['Detail'].default_value = 1.5
+    L.new(Q, wn.inputs['Vector'])
+    L.new(_m(N, L, 'MULTIPLY', fs, vb=0.9), wn.inputs['Scale'])
+    wc = _v(N, L, 'SUBTRACT', wn.outputs['Color'])
+    wc.node.inputs[1].default_value = (0.5, 0.5, 0.5)
+    wofs = _v(N, L, 'SCALE', wc, scale=_m(N, L, 'MULTIPLY', _m(N, L, 'MULTIPLY', I['Organic'], fsz), vb=0.5))
+    Qw = _v(N, L, 'ADD', Q, wofs)
+
+    def facet_field(scale, amp, groove=0.22):
+        """every Voronoi cell a hard plate: a flat tilted top that drops into a groove at the cell
+        edge (height stays continuous - no cliffs to tear thin triangles)"""
+        vor = N.new('ShaderNodeTexVoronoi')
+        vor.voronoi_dimensions = '2D'
+        vor.feature = 'F1'
+        L.new(Qw, vor.inputs['Vector'])
+        L.new(scale, vor.inputs['Scale'])
+        rel = N.new('ShaderNodeSeparateXYZ')
+        L.new(_v(N, L, 'SUBTRACT', _v(N, L, 'SCALE', Qw, scale=scale), vor.outputs['Position']), rel.inputs[0])
+        col = N.new('FunctionNodeSeparateColor')
+        L.new(vor.outputs['Color'], col.inputs[0])
+        tilt = _m(N, L, 'ADD', _m(N, L, 'MULTIPLY', _m(N, L, 'SUBTRACT', col.outputs[0], vb=0.5), rel.outputs['X']),
+                  _m(N, L, 'MULTIPLY', _m(N, L, 'SUBTRACT', col.outputs[1], vb=0.5), rel.outputs['Y']))
+        ved = N.new('ShaderNodeTexVoronoi')
+        ved.voronoi_dimensions = '2D'
+        ved.feature = 'DISTANCE_TO_EDGE'
+        L.new(Qw, ved.inputs['Vector'])
+        L.new(scale, ved.inputs['Scale'])
+        mr = N.new('ShaderNodeMapRange')
+        mr.interpolation_type = 'SMOOTHSTEP'
+        L.new(ved.outputs['Distance'], mr.inputs['Value'])
+        mr.inputs['From Min'].default_value = 0.0
+        mr.inputs['From Max'].default_value = groove
+        raw = _m(N, L, 'MAXIMUM', _m(N, L, 'ADD', _m(N, L, 'ADD', _m(N, L, 'MULTIPLY', tilt, vb=1.4), vb=1.0),
+                                     _m(N, L, 'MULTIPLY', _m(N, L, 'SUBTRACT', col.outputs[2], vb=0.5), vb=0.5)),
+                 vb=0.3)
+        return _m(N, L, 'MULTIPLY', _m(N, L, 'MULTIPLY', mr.outputs['Result'], raw), vb=amp), col.outputs[2]
+
+    f0, _r0 = facet_field(fs, 1.0)                               # wide plates inside
+    f1, _r1 = facet_field(_m(N, L, 'MULTIPLY', fs, vb=1.6), 0.62, 0.28)
+    f2, _r2 = facet_field(_m(N, L, 'MULTIPLY', fs, vb=2.6), 0.4, 0.34)  # narrow at the border
+    # distance to the plate's side walls (where the top surface ends), roughened
+    border = N.new('GeometryNodeSeparateGeometry')
+    border.domain = 'POINT'
+    L.new(sub.outputs['Mesh'], border.inputs['Geometry'])
+    side_wall = _m(N, L, 'LESS_THAN', _m(N, L, 'ABSOLUTE', _v(N, L, 'DOT_PRODUCT', nrm, I['Up'])), vb=0.4)
+    L.new(side_wall, border.inputs['Selection'])              # not the underside: it lies right below
+    prox = N.new('GeometryNodeProximity')
+    prox.target_element = 'POINTS'
+    L.new(border.outputs['Selection'], prox.inputs[0])
+    en = N.new('ShaderNodeTexNoise')
+    en.inputs['Detail'].default_value = 2.0
+    L.new(Q, en.inputs['Vector'])
+    L.new(_m(N, L, 'MULTIPLY', fs, vb=1.7), en.inputs['Scale'])
+    sw = _m(N, L, 'MAXIMUM', I['Shrink Width'], vb=1e-6)
+    # irregular border line: two smooth noises (a cell-wise random jump would leave cliffs)
+    en2 = N.new('ShaderNodeTexNoise')
+    en2.inputs['Detail'].default_value = 1.0
+    L.new(Q, en2.inputs['Vector'])
+    L.new(_m(N, L, 'MULTIPLY', fs, vb=0.6), en2.inputs['Scale'])
+    jit = _m(N, L, 'ADD', _m(N, L, 'MULTIPLY', _m(N, L, 'SUBTRACT', en.outputs['Fac'], vb=0.5), vb=1.0),
+             _m(N, L, 'MULTIPLY', _m(N, L, 'SUBTRACT', en2.outputs['Fac'], vb=0.5), vb=1.4))
+    # the noise moves the border line in and out (by up to ~Shrink Width), the inside stays wide
+    dist = _m(N, L, 'ADD', prox.outputs['Distance'], _m(N, L, 'MULTIPLY', _m(N, L, 'MULTIPLY', jit, I['Edge Irregular']), sw))
+    near = _m(N, L, 'SUBTRACT', va=1.0, b=_m(N, L, 'DIVIDE', dist, sw, clamp=True))
+    t = _m(N, L, 'MULTIPLY', near, I['Edge Shrink'])
+
+    def ramp(x, lo, hi):
+        mr = N.new('ShaderNodeMapRange')
+        mr.interpolation_type = 'SMOOTHSTEP'
+        L.new(x, mr.inputs['Value'])
+        mr.inputs['From Min'].default_value = lo
+        mr.inputs['From Max'].default_value = hi
+        return mr.outputs['Result']
+    w1, w2 = ramp(t, 0.18, 0.4), ramp(t, 0.58, 0.8)
+
+    def mix(a_, b_, w):
+        return _m(N, L, 'ADD', a_, _m(N, L, 'MULTIPLY', _m(N, L, 'SUBTRACT', b_, a_), w))
+    facet = _m(N, L, 'MULTIPLY', mix(mix(f0, f1, w1), f2, w2), I['Facets'])
     # bulge: soft lumps
     no = N.new('ShaderNodeTexNoise')
     no.inputs['Detail'].default_value = 2.0
@@ -247,6 +304,10 @@ HUD_BUTTONS = (('lift_n', 'TRIA_UP', 'Lift N'), ('lift_e', 'TRIA_RIGHT', 'Lift E
                ('lift_s', 'TRIA_DOWN', 'Lift S'), ('lift_w', 'TRIA_LEFT', 'Lift W'),
                ('reroll', 'FILE_REFRESH', 'New random facets'))
 SLIDERS = (('facets', 'Facets', 'Facets', -100, 300, 'SIZE'), ('facet_size', 'Facet Size', 'Facet Size', 2, 1000, 'SIZE'),
+           ('organic', 'Organic', 'Organic', 0, 300, 'PCT'),
+           ('shrink', 'Edge Shrink', 'Edge Shrink', 0, 100, 'PCT'),
+           ('shrink_w', 'Shrink Width', 'Shrink Width', 5, 1000, 'SIZE'),
+           ('irregular', 'Edge Irregular', 'Edge Irregular', 0, 200, 'PCT'),
            ('bulge', 'Bulge', 'Bulge', -100, 400, 'SIZE'), ('bulge_size', 'Bulge Size', 'Bulge Size', 5, 2000, 'SIZE'),
            ('lift_h', 'Lift Height', 'Lift Height', -300, 600, 'SIZE'),
            ('lift_w', 'Lift Width', 'Lift Width', 1, 100, 'PCT'),

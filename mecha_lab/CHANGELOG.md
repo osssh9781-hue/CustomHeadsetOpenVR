@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 0.23.5 — 오가닉한 갑각 / 비늘 경계, 불규칙하게 작아지는 외곽 (2026-10-14)
+
+- **Organic**(Creature Shell) / **Skin Organic**(Creature Skin): 셀 경계가 직선 대신 휘어진 선. 노이즈로 좌표를 셀 하나 크기만큼 휘게 해서 만듦. 0이면 예전 직선.
+- **외곽 쪼개짐(Shell)**: 안쪽은 넓은 판, 바깥으로 갈수록 판이 3단계로 좁아짐. 기준은 판 옆면까지의 거리. **Edge Shrink**(강도), **Shrink Width**(폭), **Edge Irregular**(경계선이 들쭉날쭉). 안쪽 판은 Edge Shrink를 바꿔도 그대로인 것을 테스트로 확인.
+- **Skin Irregular**(Skin): 비늘이 작아지는 경계선도 불규칙하게. 가장자리 마무리(피부 결)는 원래 경계를 그대로 따름.
+- Shell 기본 Detail 5(작은 판을 표현하려면 해상도가 필요). 한계: 판 하나의 메쉬 해상도보다 작은 조각은 뭉개져 보임 → Detail을 올리거나 Shrink Width / Facet Size를 키우세요.
+- 미리보기 `reference/creature_shell_organic_v0235.png`(왼쪽 예전, 가운데 새 기본, 오른쪽 Facets ↑), `reference/creature_skin_organic_v0235.png`(위 예전, 아래 새 기본: 고질라 / 코끼리 / 악어). 테스트: 49개 파일 2035/2035 (`tests/test_log_bpy501_v0235.txt`). ZIP sha256 `bc7f813a15d7d35a6b6c834bfcd84699dfa5cca97bc8ff1b60b7aee15bc3626b`.
+
 ## 0.23.4 — 주름 방향(위쪽이 가파름), Creature Skin, Creature Shell (2026-10-14)
 
 - **주름 방향**(그려주신 방향대로): 서 있는 면에서는 각 주름의 **가파른 접힘 벽이 위쪽**, **완만한 긴 경사가 아래쪽**(월드 위 기준). **Fold Direction** 입력 Up(기본) / Down / Random. 면이 위를 향해 누워 있으면(월드 위가 패널 안에 거의 안 보이면) 예전처럼 랜덤.

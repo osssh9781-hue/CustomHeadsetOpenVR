@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.4 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.5 (Claude Code, 2026-10-14)
+
+## 0.23.5
+- ZIP sha256 `bc7f813a15d7d35a6b6c834bfcd84699dfa5cca97bc8ff1b60b7aee15bc3626b`. `creature_shell` v12: 입력 뒤에 Organic / Edge Shrink / Shrink Width / Edge Irregular 추가(기존 소켓 identifier 유지). 노이즈 도메인 워프 `Qw`, `facet_field(scale, amp, groove)` 3단계(fs, 1.6fs, 2.6fs) 혼합. 경계 거리 = 옆면 점(|n·Up| < 0.4, 밑면 제외)까지 Geometry Proximity + 노이즈 2개 × Edge Irregular × Shrink Width. 셀별 랜덤 지터는 절벽이 생겨서 뺌. `cloth_wrinkle` v35: Skin Organic / Skin Irregular(`_skin_height`에서 P 워프, `Dj`는 shrink에만 쓰고 가장자리 마무리는 원래 `Db`).
 
 ## 0.23.4
 - ZIP sha256 `0bc194542d646eb45460b6dcb1b27fe835240bfc886af3fd6e82689e178ef46a`. `cloth_wrinkle` v34: `Fold Direction`(0 Up / 1 Down / 2 Random; `fold_lines`에서 월드 위를 패널 평면에 투영한 `up2`로 주름별 side 결정), 크리처 입력 Skin(0..5) / Skin Scale / Depth / Random / Edge Shrink / Shrink Width / Skin Edge(0..3) / Width / Height, `_skin_pattern`, `_skin_height`(안쪽 / 가장자리 두 주파수를 `near`로 섞음), `SKINS` / `CREATURE` / `apply_creature`, `mch.wrinkle_skin`, `mch.wrinkle_skin_edge`, `mch.creature_brush`(activate 후 flag 켬). 새 `creature_shell.py` v5: GN `MCH_CreatureShell`(Voronoi 셀 기울기 × DISTANCE_TO_EDGE smoothstep 홈 - 높이 연속, 노이즈 Bulge, Attribute Statistic 범위로 Lift N/E/S/W, 월드 아래 Gravity), `attach`, `mch.shell_option`, HUD. `armor_plate.perform_plate`가 `mch_plate.creature`면 attach. 툴바 SKIN / SHELL.

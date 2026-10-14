@@ -86,7 +86,10 @@ INPUTS = (('Type', 'NodeSocketInt', 0, 0, 2),
           ('Shrink Width', 'NodeSocketFloat', 0.15, 0.0001, 100.0),
           ('Skin Edge', 'NodeSocketInt', 0, 0, 3),
           ('Skin Edge Width', 'NodeSocketFloat', 0.06, 0.0001, 100.0),
-          ('Skin Edge Height', 'NodeSocketFloat', 0.004, -100.0, 100.0))
+          ('Skin Edge Height', 'NodeSocketFloat', 0.004, -100.0, 100.0),
+          # 0.23.5 organic scale edges + an irregular shrink border
+          ('Skin Organic', 'NodeSocketFloat', 0.8, 0.0, 3.0),
+          ('Skin Irregular', 'NodeSocketFloat', 0.7, 0.0, 2.0))
 TRIMS = (('NONE', 'No Trim', 'Plain border'),
          ('PIPING', 'Piping', 'Round cord along the border'),
          ('BINDING', 'Binding', 'Flat band folded over the border, stitched'),
@@ -98,7 +101,7 @@ SEC_U = 'mch_sec_u'            # 0..1 along the long side (local X): stitched se
 SEC_LEN = 'mch_sec_len'        # length of the long side
 EDGE_U = 'mch_edge_u'          # arc length along the border of the nearest border point
 EDGE_LEN = 'mch_edge_len'      # length of that border loop (keeps seam patterns seamless)
-VERSION = 34
+VERSION = 35
 
 
 # -----------------------------------------------------------------------------
@@ -204,9 +207,38 @@ def _skin_height(N, L, I, Db):
     pv.operation = 'ADD'
     L.new(pos, pv.inputs[0])
     L.new(seed.outputs[0], pv.inputs[1])
-    P = pv.outputs[0]
+    # organic: bend the scale edges with a low noise (~ one scale wavelength)
+    sz = _math(N, L, 'MAXIMUM', I['Skin Scale'], vb=1e-6)
+    wn = N.new('ShaderNodeTexNoise')
+    wn.inputs['Detail'].default_value = 1.5
+    L.new(pv.outputs[0], wn.inputs['Vector'])
+    L.new(_math(N, L, 'DIVIDE', va=0.9, b=sz), wn.inputs['Scale'])
+    wc = N.new('ShaderNodeVectorMath')
+    wc.operation = 'SUBTRACT'
+    L.new(wn.outputs['Color'], wc.inputs[0])
+    wc.inputs[1].default_value = (0.5, 0.5, 0.5)
+    ws = N.new('ShaderNodeVectorMath')
+    ws.operation = 'SCALE'
+    L.new(wc.outputs[0], ws.inputs[0])
+    L.new(_math(N, L, 'MULTIPLY', _math(N, L, 'MULTIPLY', I['Skin Organic'], sz), vb=0.5), ws.inputs['Scale'])
+    pw = N.new('ShaderNodeVectorMath')
+    pw.operation = 'ADD'
+    L.new(pv.outputs[0], pw.inputs[0])
+    L.new(ws.outputs[0], pw.inputs[1])
+    P = pw.outputs[0]
+    # irregular shrink border: two smooth noises move the border line in and out (~ Shrink Width)
+    jit = None
+    for sc_, amp in ((1.7, 1.0), (0.6, 1.4)):
+        en = N.new('ShaderNodeTexNoise')
+        en.inputs['Detail'].default_value = 2.0
+        L.new(pv.outputs[0], en.inputs['Vector'])
+        L.new(_math(N, L, 'DIVIDE', va=sc_, b=sz), en.inputs['Scale'])
+        j = _math(N, L, 'MULTIPLY', _math(N, L, 'SUBTRACT', en.outputs['Fac'], vb=0.5), vb=amp)
+        jit = j if jit is None else _math(N, L, 'ADD', jit, j)
+    Dj = _math(N, L, 'ADD', Db, _math(N, L, 'MULTIPLY', _math(N, L, 'MULTIPLY', jit, I['Skin Irregular']),
+                                      _math(N, L, 'MAXIMUM', I['Shrink Width'], vb=1e-6)))
     # scales get smaller near the border: a clean pattern at the normal size blends into a clean finer one
-    near = _math(N, L, 'SUBTRACT', va=1.0, b=_math(N, L, 'DIVIDE', Db, _math(N, L, 'MAXIMUM', I['Shrink Width'],
+    near = _math(N, L, 'SUBTRACT', va=1.0, b=_math(N, L, 'DIVIDE', Dj, _math(N, L, 'MAXIMUM', I['Shrink Width'],
                                                                              vb=1e-6), clamp=True))
     near = _math(N, L, 'MULTIPLY', near, _math(N, L, 'MULTIPLY', near, _math(N, L, 'SUBTRACT', va=3.0, b=_math(
         N, L, 'MULTIPLY', near, vb=2.0))))
@@ -1608,6 +1640,8 @@ SLIDERS = (('random', 'Randomness', 'Variety', 0, 100, 'RAND'),
            ('skin_random', 'Skin Random', 'Skin Random', 0, 100, 'PCT'),
            ('shrink', 'Edge Shrink', 'Edge Shrink', 0, 300, 'PCT'),
            ('shrink_w', 'Shrink Width', 'Shrink Width', 2, 200, 'SIZE'),
+           ('skin_organic', 'Organic', 'Skin Organic', 0, 300, 'PCT'),
+           ('skin_irregular', 'Edge Irregular', 'Skin Irregular', 0, 200, 'PCT'),
            ('skin_edge_w', 'Skin Edge Width', 'Skin Edge Width', 2, 200, 'SIZE'),
            ('skin_edge_h', 'Skin Edge Height', 'Skin Edge Height', -40, 40, 'SIZE'),
            ('sections', 'Sections', 'Sections', 1, 12, 'INT'),
@@ -1684,7 +1718,8 @@ def slider_spec(context, key, ob=None):
     return label, v, lo, hi, (lambda val: set_input(ob, name, val / 1000.0 * size)), f'{label}  {cur:.3f}'
 
 
-SKIN_KEYS = ('skin_scale', 'skin_depth', 'skin_random', 'shrink', 'shrink_w', 'skin_edge_w', 'skin_edge_h')
+SKIN_KEYS = ('skin_scale', 'skin_depth', 'skin_random', 'shrink', 'shrink_w', 'skin_organic', 'skin_irregular',
+             'skin_edge_w', 'skin_edge_h')
 CREATURE_KEYS = ('lift', 'gravity', 'puff', 'puff_w') + SKIN_KEYS + ('scale', 'strength')
 
 
