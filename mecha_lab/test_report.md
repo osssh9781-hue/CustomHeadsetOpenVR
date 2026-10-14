@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.20.3
+# Test Report — Mecha Lab 0.20.4
+
+## 0.20.4 결과: 37개 파일, 1581 / 1581 통과 (`tests/test_log_bpy501_v0204.txt`).
 
 ## 0.20.3 결과: 37개 파일, 1578 / 1578 통과 (`tests/test_log_bpy501_v0203.txt`).
 

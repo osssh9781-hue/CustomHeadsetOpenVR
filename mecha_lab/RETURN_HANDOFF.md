@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.20.3 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.20.4 (Claude Code, 2026-10-14)
+
+## 0.20.4
+- ZIP sha256 `cbbb020992bbcca716dca0103a18ed4c31f90c958aeb7a3d26543c071380271e`. GN 입력 `Section Height`(v29). last_used: 절대값 저장. `capture`/`apply_values`/`user_presets`, ops `mch.wrinkle_preset_save/load/delete`, 메뉴 `MCH_MT_wrinkle_presets`.
 
 ## 0.20.3
 - ZIP sha256 `f157cdd26be6e04deb19c6b879623c190ab8434b437fe77a7aec1e3a08e0afe1`. `bottom_bar.TIDY` + SYMMETRY(`mch.mirror_lean` INVOKE) / MIRROR(`mirror_tools.setup_mirror`), 도구 라벨 MIRROR → 'Symmetry'.

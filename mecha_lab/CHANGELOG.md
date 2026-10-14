@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.20.4 — 섹션 높이, 같은 값 그대로, 내 프리셋 (2026-10-14)
+
+- Cloth Plate **Section Height** 슬라이더: 퀼팅 칸이 부푸는 높이(패널 Puff 대비 0~500 %).
+- **직전 값 = 같은 숫자 그대로**: Cloth Plate / Armor Plate가 기억한 값을 크기에 비례해 바꾸지 않음(Puff 0.980이면 다음도 0.980). 슬라이더를 놓으면 바로 저장.
+- **내 프리셋**: 팝업의 저장(✓) 버튼 / 프리셋 버튼, N 패널 **My Presets** — 이름 붙여 저장, 불러오기(선택한 판 + 다음 판), 삭제. Blender를 다시 켜도 남음(config/mecha_lab/last_used.json).
+- 테스트: 37개 파일 1581/1581 (`tests/test_log_bpy501_v0204.txt`). ZIP sha256 `cbbb020992bbcca716dca0103a18ed4c31f90c958aeb7a3d26543c071380271e`.
+
 ## 0.20.3 — Symmetry / Mirror 버튼 (2026-10-14)
 
 - 기존 Mirror 도구 이름을 **Symmetry**로 변경(마우스를 복사할 쪽으로 기울이기, Enter = 적용). 하단 툴바·Q 파이·목록 이름도 Symmetry.

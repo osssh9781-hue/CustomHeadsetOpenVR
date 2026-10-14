@@ -324,9 +324,22 @@ cw.set_input(o1, 'Fold Tilt', 0.5)
 cw.set_input(o1, 'Puff', o1['mch_wrinkle_size'] * 0.21)
 r, m = lasso([(330, 390), (630, 390), (630, 610), (330, 610)])
 o2 = C.active_object
-check('last used: the next Cloth Plate keeps tilt and puff (relative to its size)',
+check('last used: the next Cloth Plate keeps tilt and puff (the same numbers)',
       o2 is not o1 and abs(cw.get_input(o2, 'Fold Tilt') - 0.5) < 1e-6 and
-      abs(cw.get_input(o2, 'Puff') / o2['mch_wrinkle_size'] - 0.21) < 1e-4)
+      abs(cw.get_input(o2, 'Puff') - o1['mch_wrinkle_size'] * 0.21) < 1e-4)
+cw.set_input(o2, 'Section Height', 2.5)
+cw.set_input(o2, 'Puff', 0.777)
+bpy.ops.mch.wrinkle_preset_save(name='Vest')
+cw.set_input(o2, 'Puff', 0.1)
+cw.set_input(o2, 'Section Height', 1.0)
+bpy.ops.mch.wrinkle_preset_load(name='Vest')
+check('user preset: save / load gives back the exact values', abs(cw.get_input(o2, 'Puff') - 0.777) < 1e-5 and
+      abs(cw.get_input(o2, 'Section Height') - 2.5) < 1e-6 and 'Vest' in cw.user_presets())
+r, m = lasso([(340, 400), (620, 400), (620, 600), (340, 600)])
+o3 = C.active_object
+check('... and the next Cloth Plate starts with the preset', abs(cw.get_input(o3, 'Puff') - 0.777) < 1e-5)
+bpy.ops.mch.wrinkle_preset_delete(name='Vest')
+check('preset delete', 'Vest' not in cw.user_presets())
 from mecha_lab import last_used as lu
 S.mch_wrinkle.sections = 5
 lu.store_scene(S)

@@ -61,6 +61,7 @@ INPUTS = (('Type', 'NodeSocketInt', 0, 0, 2),
           ('Section Start', 'NodeSocketFloat', 0.0, -1.0, 2.0),
           ('Section End', 'NodeSocketFloat', 1.0, -1.0, 2.0),
           ('Section Move', 'NodeSocketFloat', 0.0, -2.0, 2.0),
+          ('Section Height', 'NodeSocketFloat', 1.0, 0.0, 10.0),
           ('Fold Sharp', 'NodeSocketFloat', 1.6, 0.3, 12.0),
           ('Fan', 'NodeSocketFloat', 9.0, 0.0, 60.0),
           ('Fold Tilt', 'NodeSocketFloat', 0.0, -1.45, 1.45),
@@ -84,7 +85,7 @@ SEC_U = 'mch_sec_u'            # 0..1 along the long side (local X): stitched se
 SEC_LEN = 'mch_sec_len'        # length of the long side
 EDGE_U = 'mch_edge_u'          # arc length along the border of the nearest border point
 EDGE_LEN = 'mch_edge_len'      # length of that border loop (keeps seam patterns seamless)
-VERSION = 28
+VERSION = 29
 
 
 # -----------------------------------------------------------------------------
@@ -337,7 +338,10 @@ def build_group():
     tp = _math(N, L, 'DIVIDE', D, _math(N, L, 'MAXIMUM', pden, vb=1e-6), clamp=True)
     # round dome with a finite slope at the seam (a quarter circle stood up vertically there and aliased)
     prof = _math(N, L, 'SUBTRACT', va=1.0, b=_math(N, L, 'POWER', _math(N, L, 'SUBTRACT', va=1.0, b=tp), vb=2.4))
-    h = _math(N, L, 'ADD', h, _math(N, L, 'MULTIPLY', prof, I['Puff']))
+    # Section Height: how much the quilted cells puff (x the panel puff)
+    pamp = _math(N, L, 'MULTIPLY', I['Puff'], _math(N, L, 'ADD', va=1.0, b=_math(
+        N, L, 'MULTIPLY', near_seam, _math(N, L, 'SUBTRACT', I['Section Height'], vb=1.0))))
+    h = _math(N, L, 'ADD', h, _math(N, L, 'MULTIPLY', prof, pamp))
     # edge roll: a padded bulge along the border
     h = _math(N, L, 'ADD', h, _math(N, L, 'MULTIPLY', gauss(_math(N, L, 'SUBTRACT', D, I['Roll Width']),
                                                          _math(N, L, 'MULTIPLY', I['Roll Width'], vb=0.6)), I['Roll']))
@@ -641,7 +645,7 @@ def set_input(ob, name, value):
     from . import last_used
     size = float(ob.get('mch_wrinkle_size', 0.0) or 0.0)
     if size > 0 and name in INPUT_NAMES:
-        last_used.remember('wrinkle', name, float(value) / size if name in SIZE_INPUTS else value)
+        last_used.remember('wrinkle', name, value)       # the same numbers next time (not scaled by size)
     if name in FOLD_INPUTS and size > 0:
         fold_lines(ob)                          # the long fold lines follow spacing / tilt / length / seed
     try:
@@ -899,10 +903,10 @@ def perform_wrinkle(context, loops, projector, wtype=None):
             last.pop(k, None)
     for name, v in last.items():
         if name == '_thickness':
-            shell.thickness = float(v) * size
+            shell.thickness = float(v)
         else:
             try:
-                set_input(ob, name, float(v) * size if name in SIZE_INPUTS else v)
+                set_input(ob, name, v)
             except KeyError:
                 pass
     fold_lines(ob)
@@ -1037,6 +1041,128 @@ class MCH_OT_wrinkle_seam(bpy.types.Operator):
         return {'FINISHED'}
 
 
+# -----------------------------------------------------------------------------
+# User presets (saved in config/mecha_lab/last_used.json, kept across Blender sessions)
+# -----------------------------------------------------------------------------
+
+
+def capture(ob):
+    vals = {n: get_input(ob, n) for n in INPUT_NAMES}
+    m = ob.modifiers.get(MOD_SHELL)
+    if m is not None:
+        vals['_thickness'] = m.thickness
+    return {k: (float(v) if isinstance(v, float) else v) for k, v in vals.items()}
+
+
+def user_presets():
+    from . import last_used
+    return last_used.data().setdefault('cloth_presets', {})
+
+
+def apply_values(ob, vals):
+    for k, v in vals.items():
+        if k == '_thickness':
+            m = ob.modifiers.get(MOD_SHELL)
+            if m is not None:
+                m.thickness = float(v)
+        elif k in INPUT_NAMES:
+            set_input(ob, k, v)
+
+
+class MCH_OT_wrinkle_preset_save(bpy.types.Operator):
+    """Save the selected Cloth Plate's values as a preset of your own (exact numbers)"""
+    bl_idname = 'mch.wrinkle_preset_save'
+    bl_label = 'Save Cloth Preset'
+    bl_options = {'REGISTER'}
+    name: bpy.props.StringProperty(name='Preset Name', default='My Cloth')
+
+    @classmethod
+    def poll(cls, context):
+        return active_wrinkle(context) is not None
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        from . import last_used
+        name = self.name.strip() or 'My Cloth'
+        user_presets()[name] = capture(active_wrinkle(context))
+        last_used.save()
+        self.report({'INFO'}, f'Cloth preset "{name}" saved')
+        return {'FINISHED'}
+
+
+class MCH_OT_wrinkle_preset_load(bpy.types.Operator):
+    """Use a saved preset: on the selected Cloth Plate and for the next ones"""
+    bl_idname = 'mch.wrinkle_preset_load'
+    bl_label = 'Load Cloth Preset'
+    bl_options = {'REGISTER', 'UNDO'}
+    name: bpy.props.StringProperty(default='')
+
+    def execute(self, context):
+        from . import last_used
+        vals = user_presets().get(self.name)
+        if vals is None:
+            self.report({'WARNING'}, f'No preset "{self.name}"')
+            return {'CANCELLED'}
+        ob = active_wrinkle(context)
+        if ob is not None:
+            apply_values(ob, vals)
+        st = context.scene.mch_wrinkle               # type / trim of the preset become the panel choice too
+        st.wtype = TYPE_IDS[max(0, min(2, int(vals.get('Type', TYPE_IDS.index(st.wtype)))))]
+        st.trim = TRIM_IDS[max(0, min(3, int(vals.get('Trim', TRIM_IDS.index(st.trim)))))]
+        sec = last_used.data().setdefault('wrinkle', {})
+        sec.clear()
+        sec.update(vals)                       # the next Cloth Plate starts with it too
+        last_used.save()
+        self.report({'INFO'}, f'Cloth preset "{self.name}"')
+        return {'FINISHED'}
+
+
+class MCH_OT_wrinkle_preset_delete(bpy.types.Operator):
+    """Delete a saved Cloth preset"""
+    bl_idname = 'mch.wrinkle_preset_delete'
+    bl_label = 'Delete Cloth Preset'
+    bl_options = {'REGISTER'}
+    name: bpy.props.StringProperty(default='')
+
+    def execute(self, context):
+        from . import last_used
+        user_presets().pop(self.name, None)
+        last_used.save()
+        return {'FINISHED'}
+
+
+class MCH_MT_wrinkle_presets(bpy.types.Menu):
+    bl_idname = 'MCH_MT_wrinkle_presets'
+    bl_label = 'Cloth Presets'
+
+    def draw(self, context):
+        layout = self.layout
+        names = sorted(user_presets())
+        if not names:
+            layout.label(text='No presets yet: Save Preset first')
+        for n in names:
+            layout.operator('mch.wrinkle_preset_load', text=n, icon='PRESET').name = n
+        layout.separator()
+        layout.operator('mch.wrinkle_preset_save', text='Save Preset...', icon='ADD')
+        if names:
+            sub = layout.column()
+            for n in names:
+                sub.operator('mch.wrinkle_preset_delete', text='Delete ' + n, icon='TRASH').name = n
+
+
+class MCH_OT_wrinkle_presets_menu(bpy.types.Operator):
+    """Your saved Cloth presets (load / save / delete)"""
+    bl_idname = 'mch.wrinkle_presets_menu'
+    bl_label = 'Cloth Presets'
+    bl_options = {'INTERNAL'}
+
+    def execute(self, context):
+        bpy.ops.wm.call_menu(name=MCH_MT_wrinkle_presets.bl_idname)
+        return {'FINISHED'}
+
+
 class MCH_OT_wrinkle_reset(bpy.types.Operator):
     """Reset the Cloth Plate settings (and the selected panel) to the defaults"""
     bl_idname = 'mch.wrinkle_reset'
@@ -1139,12 +1265,15 @@ HUD_BUTTONS = (('apply', 'CHECKMARK', 'mch.wrinkle_apply', {}, 'Apply'),
                ('reroll', 'FILE_REFRESH', 'mch.wrinkle_reroll', {}, 'New random wrinkles'),
                ('trim', 'MOD_EDGESPLIT', 'mch.wrinkle_trim', {}, 'Edge trim: none / piping / binding / welt'),
                ('reset', 'LOOP_BACK', 'mch.wrinkle_reset', {}, 'Reset to the defaults'),
-               ('seam', 'IPO_SINE', 'mch.wrinkle_seam', {}, 'Section seam shape'))
+               ('seam', 'IPO_SINE', 'mch.wrinkle_seam', {}, 'Section seam shape'),
+               ('presets', 'PRESET', 'mch.wrinkle_presets_menu', {}, 'Your presets (load / save / delete)'),
+               ('save', 'FILE_TICK', 'mch.wrinkle_preset_save', {}, 'Save these values as a preset'))
 # key, label, input / modifier field, lo, hi, kind
 SLIDERS = (('random', 'Randomness', 'Variety', 0, 100, 'RAND'),
            ('lift', 'Height', 'Lift', -50, 200, 'SIZE'),
            ('sections', 'Sections', 'Sections', 1, 12, 'INT'),
            ('sec_turn', 'Section Turn', 'Section Turn', -180, 180, 'DEG'),
+           ('sec_height', 'Section Height', 'Section Height', 0, 500, 'PCT'),
            ('sec_bend', 'Seam Bend', 'Section Bend', 0, 150, 'PCT'),
            ('sec_start', 'Section Start', 'Section Start', -50, 150, 'PCT'),
            ('sec_end', 'Section End', 'Section End', -50, 150, 'PCT'),
@@ -1189,7 +1318,7 @@ def slider_spec(context, key, ob=None):
             if m is not None:
                 m.thickness = val / 1000.0 * size
                 from . import last_used
-                last_used.remember('wrinkle', '_thickness', val / 1000.0)
+                last_used.remember('wrinkle', '_thickness', m.thickness)
         return label, v, lo, hi, setter, f'{label}  {cur:.3f}'
     cur = get_input(ob, name)
     if kind == 'DEG':
@@ -1224,7 +1353,8 @@ def hud_layout(screen_pts, region_w, region_h, btn=30.0, gap=6.0, slider_w=104.0
     top = min(max((max(p[1] for p in pts) + min(p[1] for p in pts)) / 2 + total / 2, total), region_h - btn)
     out = {'apply': (x, top), 'cancel': (x, top - step), 'prev': (x, top - 2 * step),
            'next': (x + step, top - 2 * step), 'reroll': (x + 2 * step, top - 2 * step),
-           'trim': (x, top - 3 * step), 'reset': (x + step, top - 3 * step), 'seam': (x + 2 * step, top - 3 * step)}
+           'trim': (x, top - 3 * step), 'reset': (x + step, top - 3 * step), 'seam': (x + 2 * step, top - 3 * step),
+           'presets': (x + 3 * step, top - 3 * step), 'save': (x + 4 * step, top - 3 * step)}
     y = top - 4 * step
     for key, *_r in SLIDERS:
         out['slider_' + key] = (x - btn / 2 + slider_w / 2, y + btn / 2 - slider_h / 2)
@@ -1293,6 +1423,8 @@ class MCH_GT_wrinkle_slider(bpy.types.Gizmo):
         if cancel:
             slider_spec(context, self.key)[4](self.init_value)
         else:
+            from . import last_used
+            last_used.save()                       # kept right away (not only every 20 s)
             try:
                 bpy.ops.ed.undo_push(message='Wrinkle ' + self.key)
             except RuntimeError:
@@ -1389,6 +1521,9 @@ def draw(layout, context):
     hdr = box.row(align=True)
     hdr.label(text='CLOTH PLATE: draw on a mesh', icon='MOD_CLOTH')
     hdr.operator('mch.wrinkle_reset', text='', icon='LOOP_BACK')
+    pr = box.row(align=True)
+    pr.menu('MCH_MT_wrinkle_presets', text='My Presets', icon='PRESET')
+    pr.operator('mch.wrinkle_preset_save', text='', icon='ADD')
     box.row(align=True).prop(st, 'wtype', expand=True)
     box.label(text='Edge Trim')
     box.row(align=True).prop(st, 'trim', expand=True)
@@ -1422,7 +1557,8 @@ def draw(layout, context):
     c.label(text='Apply bakes; the mesh you draw on is not changed')
 
 
-CLASSES = (MCH_PG_Wrinkle, MCH_OT_wrinkle_type, MCH_OT_wrinkle_trim, MCH_OT_wrinkle_seam, MCH_OT_wrinkle_reset, MCH_OT_wrinkle_reroll, MCH_OT_wrinkle_apply, MCH_OT_wrinkle_remove,
+CLASSES = (MCH_PG_Wrinkle, MCH_OT_wrinkle_preset_save, MCH_OT_wrinkle_preset_load, MCH_OT_wrinkle_preset_delete,
+           MCH_MT_wrinkle_presets, MCH_OT_wrinkle_presets_menu, MCH_OT_wrinkle_type, MCH_OT_wrinkle_trim, MCH_OT_wrinkle_seam, MCH_OT_wrinkle_reset, MCH_OT_wrinkle_reroll, MCH_OT_wrinkle_apply, MCH_OT_wrinkle_remove,
            MCH_GT_wrinkle_slider, MCH_GGT_wrinkle_hud)
 
 

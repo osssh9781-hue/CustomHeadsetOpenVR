@@ -838,7 +838,7 @@ def remember_plate(ob):
     size = max(1e-6, float(src.get('size', 1.0)))
     p = ob.mch_extract
     for k in REMEMBER_REL:
-        last_used.remember('plate', k, getattr(p, k) / size)
+        last_used.remember('plate', k, getattr(p, k))      # the same numbers next time
     for k in REMEMBER_RAW:
         v = getattr(p, k)
         last_used.remember('plate', k, v if isinstance(v, (bool, int, float, str)) else float(v))
@@ -865,7 +865,7 @@ def recall_plate(part, local_size, preset):
         if k.startswith('_'):
             continue
         try:
-            setattr(p, k, v * local_size if k in REMEMBER_REL else v)
+            setattr(p, k, v)
         except (TypeError, AttributeError, ValueError):
             pass
     p.is_part = True

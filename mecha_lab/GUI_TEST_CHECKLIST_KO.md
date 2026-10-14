@@ -1,8 +1,12 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.20.3 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.20.4 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A000000000. 0.20.4 (미검증)
+- [ ] Section Height 슬라이더, 다음 Cloth Plate가 같은 숫자로 시작하는지
+- [ ] 팝업 ✓(Save Preset) → 이름 입력, 프리셋 버튼 메뉴에서 불러오기/삭제, Blender 재시작 후에도 남는지
 
 ## A00000000. 0.20.3 (미검증)
 - [ ] 왼쪽 버튼: Symmetry(기울여서 대칭, Enter 적용), Mirror(살아 있는 미러 + 팝업 Apply/Remove)
