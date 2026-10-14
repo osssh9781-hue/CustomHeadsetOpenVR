@@ -1,4 +1,4 @@
-# Test Report — Mecha Lab 0.18.1
+# Test Report — Mecha Lab 0.18.2
 
 ## 환경
 | 항목 | 값 |

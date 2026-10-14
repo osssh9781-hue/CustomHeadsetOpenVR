@@ -62,6 +62,13 @@ def isz(base):
     return max(0.5, base * f)
 
 
+def dial_factor():
+    """0.18.2: Blender's dial counts the other way round to the shape turn we
+    apply, so dials turned the shape opposite to the mouse.  -1 fixes it;
+    Preferences / Icon Size panel 'Flip Dial Turning' switches it back."""
+    return -1.0 if pref('dial_flip', True) else 1.0
+
+
 def handle_scale():
     """Multiplier for the viewport handles (station / ghost gizmos)."""
     try:
@@ -1115,6 +1122,8 @@ def draw_icon_sizes(layout, p):
     col.prop(p, 'icon_scale', slider=True)
     col.prop(p, 'toolbar_scale', slider=True)
     col.prop(p, 'handle_scale', slider=True)
+    if hasattr(p, 'dial_flip'):
+        layout.prop(p, 'dial_flip')
     if hasattr(p, 'side_toolbar'):
         row = layout.row(align=True)
         row.prop(p, 'side_toolbar', toggle=True)
@@ -1373,6 +1382,9 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
     toolbar_scale: FloatProperty(name='Bottom Toolbar', default=1.0, min=0.5, max=2.5, subtype='FACTOR',
                                  update=_sizes_changed,
                                  description='Size of the bottom toolbar buttons and their names')
+    dial_flip: BoolProperty(name='Flip Dial Turning', default=True,
+                            description='Rotation dials turn the shape the same way as the mouse. If a dial still '
+                                        'turns the wrong way on your system, switch this off')
     handle_scale: FloatProperty(name='Viewport Handles', default=1.0, min=0.3, max=3.0, subtype='FACTOR',
                                 update=_sizes_changed,
                                 description='Size of the arrows, dials and dots of the Primitive / Station handles')

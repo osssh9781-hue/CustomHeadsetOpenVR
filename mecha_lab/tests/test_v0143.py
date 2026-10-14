@@ -77,18 +77,19 @@ check('three rotation dials on the shape axes', all(k in h1 for k in ('RX', 'RY'
       (h1['RZ'].col[2].to_3d() - rot @ Vector((0, 0, 1))).length < 1e-5)
 
 d = pp.DialSession()
+F = wui.dial_factor()                 # 0.18.2: dial turning follows the mouse
 q = Quaternion()
 q1 = d.turn(2, 0.2, q, 10.0)
 q2 = d.turn(2, 0.5, q1, 10.1)
 check('dial drag: rotation = start @ turn(value) (no drift)',
-      abs(q2.rotation_difference(Quaternion((0, 0, 1), 0.5)).angle) < 1e-6)
+      abs(q2.rotation_difference(Quaternion((0, 0, 1), 0.5 * F)).angle) < 1e-6)
 check('dial keeps its start frame while dragging', d.frame(10.2) is not None and d.frame(20.0) is None)
 check('a new drag starts from 0', d.value(2, 20.0) == 0.0)
 q3 = d.turn(2, 0.1, q2, 20.0)
-check('second drag adds to the first', abs(q3.rotation_difference(Quaternion((0, 0, 1), 0.6)).angle) < 1e-6)
+check('second drag adds to the first', abs(q3.rotation_difference(Quaternion((0, 0, 1), 0.6 * F)).angle) < 1e-6)
 q4 = d.turn(2, 0.15, q3, 25.0)
 check('a pause mid-drag does not jump (value close to the last)',
-      abs(q4.rotation_difference(Quaternion((0, 0, 1), 0.65)).angle) < 1e-6)
+      abs(q4.rotation_difference(Quaternion((0, 0, 1), 0.65 * F)).angle) < 1e-6)
 
 # ---- in Blender
 fresh()

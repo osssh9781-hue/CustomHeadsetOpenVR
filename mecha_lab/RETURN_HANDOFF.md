@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.18.1 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.18.2 (Claude Code, 2026-10-14)
+
+## 0.18.2
+- ZIP sha256 `d42bf7acb06f73f9a1ecfc407cbe069f6b7d73c29cc50d1701d429138a0b315a`. `workspace_ui.dial_factor()`(pref `dial_flip`, 기본 True = -1), `DialSession.turn`과 `station_gizmos` 각도 접근자에 곱함.
 
 ## 0.18.1
 - ZIP sha256 `e417cde7d73a648552f71bfce2e03a1a1735abc94c23c3b900edcca0401e65ce`. `primitive_hud`: `SEG_COL`, `SEG_LABELS`(구간 +/− 초록 + 라벨).

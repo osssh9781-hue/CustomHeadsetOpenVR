@@ -1,8 +1,12 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.18.1 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.18.2 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## B. 0.18.2
+- [ ] 반투명 도형 다이얼 X/Y/Z, Station 다이얼(위아래·좌우·비틀기)을 시계 방향으로 돌리면 도형도 화면에서 시계 방향
+- [ ] 반대면 Icon Size 패널의 Flip Dial Turning 끄기 → 맞게 도는지
 
 ## C. 0.18.1
 - [ ] Polygon Prism 선택: 위/아래 끝에 초록 + / − 와 "Add segment" / "Remove segment" 글씨, 누르면 위(아래)에 구간이 붙음/지워짐

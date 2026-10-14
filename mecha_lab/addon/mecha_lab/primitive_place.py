@@ -354,7 +354,8 @@ class DialSession:
         e = Vector([1.0 if j == axis else 0.0 for j in range(3)])
         # the dial's own axis faces the viewer (sign): turning it clockwise on screen turns the shape
         # clockwise on screen
-        return self.q0 @ Quaternion(e, float(value) * self.sign)
+        from .workspace_ui import dial_factor
+        return self.q0 @ Quaternion(e, float(value) * self.sign * dial_factor())
 
     def update_signs(self, rotation, view_dir, now):
         """Re-aim the dials toward the viewer (not while one is being dragged)."""

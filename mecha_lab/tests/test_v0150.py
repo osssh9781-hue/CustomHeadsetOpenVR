@@ -33,7 +33,12 @@ d = pp.DialSession()
 d.signs[2] = -1.0
 q = d.turn(2, 0.3, Quaternion(), 5.0)
 check('flipped ghost dial: the same mouse turn rotates the shape the other way round its axis',
-      abs(q.rotation_difference(Quaternion((0, 0, 1), -0.3)).angle) < 1e-6)
+      abs(q.rotation_difference(Quaternion((0, 0, 1), -0.3 * wui.dial_factor())).angle) < 1e-6)
+F = wui.dial_factor()
+d2 = pp.DialSession()
+q_plain = d2.turn(2, 0.3, Quaternion(), 5.0)
+check('0.18.2: a dial facing the viewer turns the shape the opposite way to the dial value (follows the mouse)',
+      F == -1.0 and abs(q_plain.rotation_difference(Quaternion((0, 0, 1), -0.3)).angle) < 1e-6)
 d.update_signs(Quaternion(), Vector((0, 0, -1)), 100.0)
 check('ghost dial signs follow the view (Z faces a top view)', d.signs[2] == 1.0)
 h = pp.place_handles(Vector(), Quaternion(), (1, 1, 1), signs={2: -1.0})

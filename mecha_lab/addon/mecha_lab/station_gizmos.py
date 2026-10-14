@@ -165,6 +165,11 @@ def _undo_timer():
     return None
 
 
+def _dial_factor():
+    from .workspace_ui import dial_factor
+    return dial_factor()
+
+
 def make_accessors(ob_name, index, key):
     """(get, set) for a gizmo target; angles in radians for the dials.  With
     Left = Right the right width handle edits the shared (left) value."""
@@ -177,7 +182,7 @@ def make_accessors(ob_name, index, key):
             k = 'width_l'
         v = getattr(st, k)
         if key in ANGLE_KEYS:
-            return math.radians(v) * SIGNS.get((ob_name, index, key), 1.0)
+            return math.radians(v) * SIGNS.get((ob_name, index, key), 1.0) * _dial_factor()
         return v
 
     def set_(value):
@@ -188,7 +193,7 @@ def make_accessors(ob_name, index, key):
         if key == 'width_r' and ob.mch_station.sym_lr:
             k = 'width_l'
         if key in ANGLE_KEYS:
-            value = math.degrees(value) * SIGNS.get((ob_name, index, key), 1.0)
+            value = math.degrees(value) * SIGNS.get((ob_name, index, key), 1.0) * _dial_factor()
             if key in {'bend_angle', 'bend_up', 'bend_side'}:
                 st.world = False
         elif key in {'width_l', 'width_r', 'height_top', 'height_bot'}:

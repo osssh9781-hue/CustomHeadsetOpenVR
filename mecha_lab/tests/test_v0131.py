@@ -121,12 +121,14 @@ check('length arrow: starts at the straight run, its value reaches the station',
 up_axis = h['up'].col[2].xyz.normalized()
 check('Up / Down dial turns around the side axis of the previous segment',
       abs(abs(up_axis.dot(Vector(fr[2][1]))) - 1.0) < 1e-5)
+from mecha_lab import workspace_ui as _wui
+F = _wui.dial_factor()          # 0.18.2: dial turning flipped to follow the mouse
 get, set_ = sg.make_accessors(ob.name, 3, 'bend_up')
-set_(math.radians(60))
+set_(math.radians(60) * F)
 check('Up / Down dial value is in radians, stored in degrees', abs(st.bend_up - 60) < 1e-4 and
-      abs(get() - math.radians(60)) < 1e-6)
+      abs(get() - math.radians(60) * F) < 1e-6)
 get, set_ = sg.make_accessors(ob.name, 3, 'bend_side')
-set_(math.radians(25))
+set_(math.radians(25) * F)
 check('Left / Right dial works together with Up / Down', abs(st.bend_side - 25) < 1e-4 and abs(st.bend_up - 60) < 1e-4)
 st.bend_up = st.bend_side = 0.0
 ob.mch_station.sym_lr = True

@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.18.2 — 회전 다이얼 방향 다시 수정 (2026-10-14)
+
+- 기본 도형 / Station Primitive 다이얼을 돌리면 도형이 반대로 돌던 문제: 0.15에서는 화면 안쪽을 향한 다이얼만 뒤집었는데, Blender 다이얼 값 자체가
+  우리가 적용하는 회전과 반대 방향으로 세어지고 있었음 → 회전값을 뒤집어서 마우스 방향 그대로 돌게 함.
+- 혹시 사용 환경에서 여전히 반대면: N 사이드바 > Mecha Lab > Icon Size 패널(또는 Preferences)의 **Flip Dial Turning**을 끄면 원래대로.
+- 테스트: 31개 파일 1439/1439 (`tests/test_log_bpy501_v0182.txt`). ZIP sha256 `d42bf7acb06f73f9a1ecfc407cbe069f6b7d73c29cc50d1701d429138a0b315a`.
+
 ## 0.18.1 — 구간 +/− 버튼 알아보기 쉽게 (2026-10-14)
 
 - Station Primitive(Polygon Prism 등) 위/아래 끝의 **+ / −**(같은 단면 구간 추가/삭제)를 초록색으로 바꾸고 옆에 "Add segment" /
