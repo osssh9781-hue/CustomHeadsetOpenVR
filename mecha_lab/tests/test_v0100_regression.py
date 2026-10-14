@@ -767,7 +767,7 @@ check('0.11.3 Select / Move hotkey (F, MECHA LAB only) registered and editable',
 check('0.11.1 no Alt+click keymap left', not any(i[0] == 'mch.alt_click_return' for i in items))
 check('Shift+A: Mecha Lab submenu appended to the Add menu',
       wui.draw_add_menu in bpy.types.VIEW3D_MT_add._dyn_ui_initialize())
-check('Quick menu = the six core tools', ts.QUICK_TOOLS == ('CUT', 'BOOLEAN', 'BASE', 'SUBD', 'SPLIT', 'RADIAL'))
+check('Quick menu = the six core tools + Armor Plate (0.19)', ts.QUICK_TOOLS == ('CUT', 'BOOLEAN', 'BASE', 'SUBD', 'SPLIT', 'RADIAL', 'PLATE'))
 check('no Alt+MMB binding (cancelled by the user)', not any(i[1] == 'MIDDLEMOUSE' and i[3] for i in items))
 fake = types.SimpleNamespace(scene=C.scene, workspace=types.SimpleNamespace(
     tools=types.SimpleNamespace(from_space_view3d_mode=lambda m, create=False: types.SimpleNamespace(

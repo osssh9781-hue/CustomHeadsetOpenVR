@@ -1,4 +1,9 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.18.2 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.19.0 (Claude Code, 2026-10-14)
+
+## 0.19.0
+- ZIP sha256 `1aba16c1a96374eb16b879fd66af7f2e888193ae7744649640178fcc29a75fb9`. `armor_plate`: `plate_meshes`, `SRC_KEY`(`mch_plate_src` JSON: loops/proj/spacing/size), `FrozenProjector`, `freeze_projector`/`thaw_projector`,
+  `plate_source`, `pending_plate`, `rebuild_plate`, `apply_plate`; ops `mch.plate_cycle`/`plate_apply`/`plate_cancel`; `MCH_GT_plate_slider`, `MCH_GGT_plate_hud`.
+  `spacing` 기본 120(update → 라이브 재생성). `bottom_bar.BAR_TOOLS` + PLATE, `tool_state.QUICK_TOOLS` + PLATE.
 
 ## 0.18.2
 - ZIP sha256 `d42bf7acb06f73f9a1ecfc407cbe069f6b7d73c29cc50d1701d429138a0b315a`. `workspace_ui.dial_factor()`(pref `dial_flip`, 기본 True = -1), `DialSession.turn`과 `station_gizmos` 각도 접근자에 곱함.

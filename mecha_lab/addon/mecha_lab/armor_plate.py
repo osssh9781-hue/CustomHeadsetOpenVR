@@ -25,12 +25,13 @@ tested headless; the stroke itself shares the Cut / Base Mesh lasso.
 """
 from __future__ import annotations
 
+import json
 import math
 
 import bmesh
 import bpy
 from bpy.props import BoolProperty, EnumProperty, IntProperty
-from mathutils import Vector
+from mathutils import Matrix, Quaternion, Vector
 from mathutils.bvhtree import BVHTree
 from mathutils.geometry import delaunay_2d_cdt
 
@@ -316,17 +317,10 @@ def surround_mesh(verts_world, polys, inv, lo, hi):
 # -----------------------------------------------------------------------------
 
 
-def perform_plate(context, loops, projector, preset=None):
-    """Lasso -> new armour plate object (a live Face Extract part).  Returns
-    a report; raises cg.CutError with the scene unchanged."""
-    scene = context.scene
-    st = scene.mch_plate
-    preset = preset or st.preset
-    groups = cg.prepare_loops(loops)
-    target = pick_surface(context, projector, groups)
-    if target is None:
-        raise cg.CutError('Draw the plate over a mesh (armour parts and plates are skipped).')
-    pts, tris, _nb = screen_patch(groups, st.spacing)
+def plate_meshes(context, target, groups, projector, spacing):
+    """Region + surround meshes (object space of ``target``) for the outline
+    groups.  Returns (region, surround, local_size, missing)."""
+    pts, tris, _nb = screen_patch(groups, spacing)
     if not tris:
         raise cg.CutError('The outline is too small for a plate.')
     bvh, wverts, polys = _target_bvh(context, target)
@@ -343,7 +337,28 @@ def perform_plate(context, loops, projector, preset=None):
     surround = surround_mesh(wverts, polys, inv, lo - pad, hi + pad)
     scale = target.matrix_world.to_scale()
     local_size = size / max(1e-9, (abs(scale.x) + abs(scale.y) + abs(scale.z)) / 3.0)
+    return region, surround, local_size, missing
+
+
+def perform_plate(context, loops, projector, preset=None):
+    """Lasso -> new armour plate object (a live Face Extract part).  Returns
+    a report; raises cg.CutError with the scene unchanged.
+
+    0.19: the outline and the view are kept on the plate (``SRC_KEY``) until
+    Apply, so Face Size / height / chamfer / profile change it live (HUD)."""
+    scene = context.scene
+    st = scene.mch_plate
+    preset = preset or st.preset
+    groups = cg.prepare_loops(loops)
+    target = pick_surface(context, projector, groups)
+    if target is None:
+        raise cg.CutError('Draw the plate over a mesh (armour parts and plates are skipped).')
+    region, surround, local_size, missing = plate_meshes(context, target, groups, projector, st.spacing)
     part = create_plate(context, target, region, surround, preset, local_size, st.auto_size)
+    frozen = freeze_projector(projector)
+    if frozen is not None:
+        part[SRC_KEY] = json.dumps({'loops': [[[float(x), float(y)] for x, y in lp] for lp in loops],
+                                    'proj': frozen, 'spacing': int(st.spacing), 'size': local_size})
     scene.mch_extract_last = part
     for o in context.selected_objects:
         o.select_set(False)
@@ -352,6 +367,119 @@ def perform_plate(context, loops, projector, preset=None):
     name = dict((p_[0], p_[1]) for p_ in PRESETS)[preset]
     extra = f' | {len(missing)} point(s) past the surface edge' if missing else ''
     return f'Armor plate "{part.name}" on {target.name} ({name}, {len(region.polygons)} clean faces){extra}'
+
+
+# -----------------------------------------------------------------------------
+# 0.19 live plate: the drawn outline + a frozen view, rebuilt on demand
+# -----------------------------------------------------------------------------
+
+SRC_KEY = 'mch_plate_src'
+
+
+class FrozenProjector:
+    """A viewport projection saved as plain numbers (perspective matrix +
+    region size), so the plate can be re-projected after the view moved."""
+
+    def __init__(self, data):
+        self.pers = Matrix(data['pers'])
+        self.inv = self.pers.inverted_safe()
+        self.w, self.h = float(data['w']), float(data['h'])
+        self.is_perspective = bool(data['persp'])
+        self.eye = Vector(data['eye'])
+        self.view_dir = Vector(data['dir']).normalized()
+
+    def _un(self, nx, ny, z):
+        v = self.inv @ Vector((nx, ny, z, 1.0))
+        return v.xyz / (v.w if abs(v.w) > 1e-12 else 1e-12)
+
+    def ray(self, xy):
+        nx, ny = 2.0 * xy[0] / self.w - 1.0, 2.0 * xy[1] / self.h - 1.0
+        a, b = self._un(nx, ny, -1.0), self._un(nx, ny, 1.0)
+        d = (b - a).normalized()
+        return (self.eye.copy() if self.is_perspective else a), d
+
+    def to_screen(self, co):
+        p = self.pers @ Vector((co[0], co[1], co[2], 1.0))
+        if p.w <= 1e-9:
+            return None
+        return ((p.x / p.w + 1.0) * self.w / 2.0, (p.y / p.w + 1.0) * self.h / 2.0)
+
+
+def freeze_projector(pr):
+    if isinstance(pr, cg.OrthoProjector):
+        return {'kind': 'ortho', 'rot': list(pr.rot.to_quaternion()), 'center': list(pr.center), 'ppu': pr.ppu,
+                'size': list(pr.size)}
+    rv3d, region = getattr(pr, 'rv3d', None), getattr(pr, 'region', None)
+    if rv3d is None or region is None:
+        return None
+    return {'kind': 'view', 'pers': [list(r) for r in rv3d.perspective_matrix], 'w': region.width,
+            'h': region.height, 'persp': bool(pr.is_perspective), 'eye': list(pr.eye), 'dir': list(pr.view_dir)}
+
+
+def thaw_projector(data):
+    if data.get('kind') == 'ortho':
+        return cg.OrthoProjector(Quaternion(data['rot']), Vector(data['center']), data['ppu'], tuple(data['size']))
+    return FrozenProjector(data)
+
+
+def plate_source(ob):
+    """The saved outline of a plate still waiting for Apply (or None)."""
+    if ob is None or not is_plate_or_part(ob):
+        return None
+    try:
+        raw = ob.get(SRC_KEY)
+    except (TypeError, ReferenceError):
+        return None
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def rebuild_plate(context, ob, spacing=None):
+    """New faces for a live plate from its saved outline (Face Size changed).
+    The profile settings stay as they are.  Returns True when rebuilt."""
+    from . import face_extract as fx
+    src = plate_source(ob)
+    p = ob.mch_extract
+    target = p.source
+    if src is None or target is None or target.name not in bpy.data.objects:
+        return False
+    spacing = int(src.get('spacing', 120) if spacing is None else spacing)
+    groups = cg.prepare_loops([[tuple(q) for q in lp] for lp in src['loops']])
+    try:
+        region, surround, _size, _miss = plate_meshes(context, target, groups, thaw_projector(src['proj']), spacing)
+    except cg.CutError:
+        return False
+    old = (p.region, p.surround)
+    p.region, p.surround = region, surround
+    for m in old:
+        if m is not None and m.users == 0:
+            bpy.data.meshes.remove(m)
+    src['spacing'] = spacing
+    ob[SRC_KEY] = json.dumps(src)
+    fx.rebuild(ob)
+    return True
+
+
+def apply_plate(ob):
+    """Apply: the plate becomes a plain mesh (modifiers applied, no live part)."""
+    p = ob.mch_extract
+    dg = bpy.context.evaluated_depsgraph_get()
+    me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), depsgraph=dg)
+    old, region, surround = ob.data, p.region, p.surround
+    ob.modifiers.clear()
+    ob.data = me
+    me.name = old.name
+    p.is_part = False
+    p.region = p.surround = None
+    if SRC_KEY in ob:
+        del ob[SRC_KEY]
+    for m in (old, region, surround):
+        if m is not None and m.users == 0:
+            bpy.data.meshes.remove(m)
 
 
 def create_plate(context, target, region, surround, preset, local_size, auto=True, collection='Armor Plates',
@@ -401,11 +529,24 @@ def cycle_preset(scene, step):
 # -----------------------------------------------------------------------------
 
 
+def pending_plate(context):
+    """The active plate that is still live (drawn, not applied yet)."""
+    ob = getattr(context, 'active_object', None)
+    return ob if plate_source(ob) is not None else None
+
+
+def _spacing_update(self, context):
+    ob = pending_plate(context)
+    if ob is not None and plate_source(ob).get('spacing') != self.spacing:
+        rebuild_plate(context, ob, self.spacing)
+
+
 class MCH_PG_Plate(bpy.types.PropertyGroup):
     preset: EnumProperty(name='Profile', items=[(p[0], p[1], p[2]) for p in PRESETS], default='CHAMFER',
                          description='Plate profile (mouse wheel while drawing steps through them)')
-    spacing: IntProperty(name='Face Size (px)', default=14, min=4, max=80,
-                         description='Size of the new faces on screen: smaller = denser plate')
+    spacing: IntProperty(name='Face Size (px)', default=120, min=4, max=400, update=_spacing_update,
+                         description='Size of the new faces on screen: bigger = fewer, cleaner faces '
+                                     '(changes the selected plate live until Apply)')
     auto_size: BoolProperty(name='Auto Size', default=True,
                             description='Profile height / bevel / chamfer scale with the plate size')
 
@@ -443,6 +584,258 @@ class MCH_OT_plate_preset(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_plate_cycle(bpy.types.Operator):
+    """Next / previous plate profile (the selected live plate changes at once)"""
+    bl_idname = 'mch.plate_cycle'
+    bl_label = 'Plate Profile Step'
+    bl_options = {'REGISTER', 'UNDO'}
+    step: IntProperty(default=1)
+
+    def execute(self, context):
+        st = context.scene.mch_plate
+        i = PRESET_IDS.index(st.preset) if st.preset in PRESET_IDS else 0
+        return bpy.ops.mch.plate_preset(preset=PRESET_IDS[(i + self.step) % len(PRESET_IDS)])
+
+
+class MCH_OT_plate_apply(bpy.types.Operator):
+    """Apply the plate: it becomes a plain mesh with the current shape (no more live changes)"""
+    bl_idname = 'mch.plate_apply'
+    bl_label = 'Apply Plate'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return pending_plate(context) is not None
+
+    def execute(self, context):
+        obs = [o for o in context.selected_objects if plate_source(o) is not None]
+        ob = pending_plate(context)
+        if ob is not None and ob not in obs:
+            obs.append(ob)
+        for o in obs:
+            apply_plate(o)
+        self.report({'INFO'}, f'Applied {len(obs)} plate(s)')
+        return {'FINISHED'}
+
+
+class MCH_OT_plate_cancel(bpy.types.Operator):
+    """Remove the plate you just drew"""
+    bl_idname = 'mch.plate_cancel'
+    bl_label = 'Remove Plate'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return pending_plate(context) is not None
+
+    def execute(self, context):
+        from . import face_extract as fx
+        ob = pending_plate(context)
+        target = ob.mch_extract.source
+        fx._remove_part(ob)
+        if target is not None and target.name in context.view_layer.objects:
+            target.select_set(True)
+            context.view_layer.objects.active = target
+        return {'FINISHED'}
+
+
+# -----------------------------------------------------------------------------
+# HUD next to a live plate: Apply / Remove / profile and live sliders
+# -----------------------------------------------------------------------------
+
+HUD_BUTTONS = (('apply', 'CHECKMARK', 'mch.plate_apply', {}, 'Apply'),
+               ('cancel', 'X', 'mch.plate_cancel', {}, 'Remove'),
+               ('prev', 'TRIA_LEFT', 'mch.plate_cycle', {'step': -1}, 'Previous profile'),
+               ('next', 'TRIA_RIGHT', 'mch.plate_cycle', {'step': 1}, 'Next profile'))
+# key, label, part property (None = Face Size), lo, hi  (lengths: 1/1000 of the plate size)
+SLIDERS = (('height', 'Height', 'extract_height', 1, 300), ('chamfer', 'Chamfer', 'chamfer_width', 0, 200),
+           ('bevel', 'Bevel', 'bevel_width', 0, 200), ('spacing', 'Face Size', None, 20, 400))
+
+
+def slider_spec(context, key, ob=None):
+    """(label, value, lo, hi, setter, text) of a HUD slider for the live plate."""
+    ob = ob or pending_plate(context)
+    label, prop, lo, hi = next((l, pr, a, b) for k, l, pr, a, b in SLIDERS if k == key)
+    if prop is None:
+        st = context.scene.mch_plate
+        v = int(plate_source(ob).get('spacing', st.spacing))
+
+        def setter(val):
+            if st.spacing != val:
+                st.spacing = val                        # rebuilds through the update
+            elif plate_source(ob).get('spacing') != val:
+                rebuild_plate(context, ob, val)
+        return label, v, lo, hi, setter, f'{label}  {v} px'
+    size = max(1e-6, float(plate_source(ob).get('size', 1.0)))
+    p = ob.mch_extract
+    v = int(round(getattr(p, prop) / size * 1000.0))
+
+    def setter(val):
+        setattr(p, prop, max(0.0001 if prop == 'extract_height' else 0.0, val / 1000.0 * size))
+    return label, v, lo, hi, setter, f'{label}  {getattr(p, prop):.3f}'
+
+
+def hud_layout(screen_pts, region_w, region_h, btn=30.0, gap=6.0, slider_w=104.0, slider_h=20.0):
+    pts = [p for p in screen_pts if p is not None]
+    if not pts:
+        return {}
+    x = min(max(max(p[0] for p in pts) + btn * 1.2, btn), region_w - slider_w - btn)
+    step = btn + gap
+    total = step * 3 + (slider_h + gap) * len(SLIDERS)
+    top = min(max((max(p[1] for p in pts) + min(p[1] for p in pts)) / 2 + total / 2, total), region_h - btn)
+    out = {'apply': (x, top), 'cancel': (x, top - step),
+           'prev': (x, top - 2 * step), 'next': (x + step, top - 2 * step)}
+    y = top - 3 * step
+    for key, *_ in SLIDERS:
+        out['slider_' + key] = (x - btn / 2 + slider_w / 2, y + btn / 2 - slider_h / 2)
+        y -= slider_h + gap
+    return out
+
+
+def _hud_current(context):
+    try:
+        from . import tool_state as ts
+        if context.mode != 'OBJECT' or not ts.is_mecha_workspace(getattr(context, 'workspace', None)):
+            return None, {}
+    except (AttributeError, TypeError):
+        return None, {}
+    ob = pending_plate(context)
+    region, rv3d = context.region, context.region_data
+    if ob is None or region is None or rv3d is None:
+        return None, {}
+    from bpy_extras import view3d_utils
+    ui = context.preferences.system.ui_scale
+    pts = []
+    for c in ob.bound_box:
+        q = view3d_utils.location_3d_to_region_2d(region, rv3d, ob.matrix_world @ Vector(c))
+        pts.append(None if q is None else (q[0] / ui, q[1] / ui))
+    return ob, hud_layout(pts, region.width / ui, region.height / ui)
+
+
+class MCH_GT_plate_slider(bpy.types.Gizmo):
+    bl_idname = 'MCH_GT_plate_slider'
+    __slots__ = ('shape', 'init_x', 'init_value', 'key')
+
+    def setup(self):
+        if not hasattr(self, 'shape'):
+            from .primitive_hud import _RECT
+            self.shape = self.new_custom_shape('TRIS', _RECT)
+
+    def draw(self, context):
+        self.draw_custom_shape(self.shape)
+
+    def draw_select(self, context, select_id):
+        self.draw_custom_shape(self.shape, select_id=select_id)
+
+    def invoke(self, context, event):
+        self.init_x = event.mouse_region_x
+        self.init_value = slider_spec(context, self.key)[1]
+        return {'RUNNING_MODAL'}
+
+    def modal(self, context, event, tweak):
+        from .primitive_hud import slider_value
+        spec = slider_spec(context, self.key)
+        step = 3.0 if self.key == 'spacing' else 4.0
+        v = slider_value(self.init_value, event.mouse_region_x - self.init_x, step_px=step, lo=spec[2], hi=spec[3])
+        if v != spec[1]:
+            spec[4](v)
+        if context.area:
+            context.area.header_text_set(slider_spec(context, self.key)[5])
+        return {'RUNNING_MODAL'}
+
+    def exit(self, context, cancel):
+        if context.area:
+            context.area.header_text_set(None)
+        if cancel:
+            slider_spec(context, self.key)[4](self.init_value)
+        else:
+            try:
+                bpy.ops.ed.undo_push(message='Plate ' + self.key)
+            except RuntimeError:
+                pass
+
+
+class MCH_GGT_plate_hud(bpy.types.GizmoGroup):
+    bl_idname = 'MCH_GGT_plate_hud'
+    bl_label = 'Armor Plate HUD'
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'WINDOW'
+    bl_options = {'PERSISTENT', 'SCALE'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and pending_plate(context) is not None
+
+    def setup(self, context):
+        self.items = {}
+        for name, icon, op, props, _label in HUD_BUTTONS:
+            gz = self.gizmos.new('GIZMO_GT_button_2d')
+            gz.icon = icon
+            gz.draw_options = {'BACKDROP', 'OUTLINE'}
+            t = gz.target_set_operator(op)
+            for k, v in props.items():
+                setattr(t, k, v)
+            gz.color = (1.0, 0.62, 0.16) if name == 'apply' else (0.17, 0.19, 0.23)
+            gz.alpha = 0.92
+            gz.color_highlight = (0.32, 0.35, 0.41)
+            gz.alpha_highlight = 1.0
+            self.items[name] = gz
+        for key, *_ in SLIDERS:
+            gz = self.gizmos.new(MCH_GT_plate_slider.bl_idname)
+            gz.key = key
+            gz.color = (0.24, 0.27, 0.32)
+            gz.alpha = 0.95
+            gz.color_highlight = (0.36, 0.40, 0.47)
+            gz.alpha_highlight = 1.0
+            gz.use_draw_scale = False
+            self.items['slider_' + key] = gz
+
+    def draw_prepare(self, context):
+        _ob, lay = _hud_current(context)
+        ui = context.preferences.system.ui_scale
+        for name, gz in self.items.items():
+            pos = lay.get(name)
+            gz.hide = pos is None
+            if pos is None:
+                continue
+            if name.startswith('slider_'):
+                gz.matrix_basis = Matrix.Translation((pos[0] * ui, pos[1] * ui, 0.0)) @ Matrix.Diagonal(
+                    (52.0 * ui, 10.0 * ui, 1.0, 1.0))
+                continue
+            gz.scale_basis = 15.0
+            gz.matrix_basis[0][3] = pos[0] * ui
+            gz.matrix_basis[1][3] = pos[1] * ui
+
+
+_label_handle = None
+
+
+def _draw_labels():
+    try:
+        context = bpy.context
+        ob, lay = _hud_current(context)
+        if ob is None or not lay:
+            return
+        import blf
+        ui = context.preferences.system.ui_scale
+        blf.size(0, 11 * ui)
+        name = dict((p[0], p[1]) for p in PRESETS).get(context.scene.mch_plate.preset, '')
+        for key, text in (('apply', 'Apply'), ('cancel', 'Remove'), ('next', name)):
+            x, y = lay[key]
+            blf.color(0, *((1.0, 0.62, 0.16) if key == 'apply' else (0.85, 0.87, 0.9)), 1.0)
+            blf.position(0, (x + 21) * ui, (y - 4) * ui, 0)
+            blf.draw(0, text)
+        for key, *_ in SLIDERS:
+            x, y = lay['slider_' + key]
+            text = slider_spec(context, key, ob)[5]
+            w, _h = blf.dimensions(0, text)
+            blf.color(0, 1.0, 1.0, 1.0, 1.0)
+            blf.position(0, x * ui - w / 2, (y - 4) * ui, 0)
+            blf.draw(0, text)
+    except Exception:          # never break viewport drawing
+        pass
+
+
 def draw(layout, context):
     from . import face_extract as fx
     st = context.scene.mch_plate
@@ -454,27 +847,50 @@ def draw(layout, context):
     row = box.row(align=True)
     row.prop(st, 'spacing')
     row.prop(st, 'auto_size', toggle=True)
+    ob = pending_plate(context)
+    if ob is not None:
+        p = ob.mch_extract
+        sub = box.box()
+        sub.label(text=f'LIVE: {ob.name} (until Apply)', icon='MOD_SOLIDIFY')
+        col = sub.column(align=True)
+        for prop in ('extract_height', 'chamfer_width', 'chamfer_angle', 'bevel_width'):
+            col.prop(p, prop)
+        r = sub.row(align=True)
+        r.scale_y = 1.3
+        r.operator('mch.plate_apply', text='Apply', icon='CHECKMARK')
+        r.operator('mch.plate_cancel', text='Remove', icon='X')
     col = box.column(align=True)
     col.scale_y = 0.8
     col.label(text='Click points / drag freehand, Enter or double-click: plate', icon='INFO')
     col.label(text='Mouse wheel while drawing: change the profile')
-    col.label(text='New clean faces follow the surface (no retopology)')
+    col.label(text='Until Apply: face size / height / chamfer change live')
     col.label(text='The mesh you draw on is not changed')
     from . import random_panels
     random_panels.draw(layout, context)
     fx.draw(layout, context)
 
 
-CLASSES = (MCH_PG_Plate, MCH_OT_plate_preset)
+CLASSES = (MCH_PG_Plate, MCH_OT_plate_preset, MCH_OT_plate_cycle, MCH_OT_plate_apply, MCH_OT_plate_cancel,
+           MCH_GT_plate_slider, MCH_GGT_plate_hud)
 
 
 def register():
+    global _label_handle
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Scene.mch_plate = bpy.props.PointerProperty(type=MCH_PG_Plate)
+    if not bpy.app.background and _label_handle is None:
+        _label_handle = bpy.types.SpaceView3D.draw_handler_add(_draw_labels, (), 'WINDOW', 'POST_PIXEL')
 
 
 def unregister():
+    global _label_handle
+    if _label_handle is not None:
+        try:
+            bpy.types.SpaceView3D.draw_handler_remove(_label_handle, 'WINDOW')
+        except (ValueError, RuntimeError):
+            pass
+        _label_handle = None
     if hasattr(bpy.types.Scene, 'mch_plate'):
         del bpy.types.Scene.mch_plate
     for c in reversed(CLASSES):

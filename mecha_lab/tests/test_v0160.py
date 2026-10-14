@@ -131,6 +131,7 @@ box = cube('Box', 4.0)
 nv = len(box.data.vertices)
 outline = [(380, 400), (600, 380), (640, 520), (520, 640), (400, 600)]
 S.mch_plate.preset = 'CHAMFER'
+S.mch_plate.spacing = 14                 # 0.19 default is 120 (light plates); dense here
 r, msg = lasso(outline)
 plate = C.active_object
 check('lasso on a 6-face box: a separate plate object', r == {'FINISHED'} and plate is not box and
@@ -172,6 +173,7 @@ S.mch_settings.mch_active_tool = 'PLATE'
 ball = sphere('Ball')
 ball.scale = (3, 3, 3)
 C.view_layer.update()
+S.mch_plate.spacing = 14
 r, msg = lasso([(420, 420), (580, 420), (580, 580), (420, 580)])
 plate = C.active_object
 dg = C.evaluated_depsgraph_get()

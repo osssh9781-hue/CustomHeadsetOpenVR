@@ -1,8 +1,15 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.18.2 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.19.0 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A0. 0.19.0 (미검증 — headless 테스트만 통과)
+- [ ] 하단 툴바 / Quick 팝업에 Plate 버튼, 누르면 Armor Plate 도구
+- [ ] 판을 그리면 기본으로 면이 적은 판(Face Size 120), 오른쪽에 Apply / Remove / ◀ ▶ / Height·Chamfer·Bevel·Face Size 슬라이더
+- [ ] 슬라이더 드래그 중 판이 바로 바뀌는지, Esc/우클릭 취소 시 원래 값으로
+- [ ] Face Size 바꾸면 같은 윤곽으로 면이 다시 만들어짐 (뷰를 돌린 뒤에도 같은 자리)
+- [ ] Apply → 팝업 사라지고 일반 메쉬, Ctrl+Z로 되돌아가는지 / Remove → 판 삭제
 
 ## B. 0.18.2
 - [ ] 반투명 도형 다이얼 X/Y/Z, Station 다이얼(위아래·좌우·비틀기)을 시계 방향으로 돌리면 도형도 화면에서 시계 방향

@@ -22,6 +22,7 @@ BAR_TOOLS = (
     ('MIRROR', 'Mirror', '', 'MOD_MIRROR', 'mch.set_tool', 'MIRROR'),
     ('PRIMITIVE', 'Primitive', '', 'MESH_CUBE', 'mch.set_tool', 'PRIMITIVE'),
     ('RADIAL', 'Radial', '', 'MOD_SCREW', 'mch.set_tool', 'RADIAL'),
+    ('PLATE', 'Plate', '', 'MESH_GRID', 'mch.set_tool', 'PLATE'),
 )
 SELECT_NATIVE = {'builtin.move', 'builtin.select', 'builtin.select_box', 'builtin.select_circle',
                  'builtin.select_lasso', 'builtin.rotate', 'builtin.scale', 'builtin.transform'}

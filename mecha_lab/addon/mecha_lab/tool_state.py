@@ -65,8 +65,8 @@ TOOL_BY_ID = {t[0]: t for t in TOOLS}
 # all saved mask data (face attributes, vertex groups) are kept untouched.
 HIDDEN_TOOLS = {'MASK'}
 VISIBLE_TOOLS = tuple(t for t in TOOLS if t[0] not in HIDDEN_TOOLS)
-# V quick menu (docs/02): the six core tools.
-QUICK_TOOLS = ('CUT', 'BOOLEAN', 'BASE', 'SUBD', 'SPLIT', 'RADIAL')
+# V quick menu (docs/02): the six core tools (+ Armor Plate since 0.19).
+QUICK_TOOLS = ('CUT', 'BOOLEAN', 'BASE', 'SUBD', 'SPLIT', 'RADIAL', 'PLATE')   # 0.19: + Armor Plate
 NATIVE_TO_TOOL = {t[5]: t[0] for t in TOOLS if t[5]}
 SHAPE_TOOLS = {'CUT', 'SPLIT', 'MASK', 'BASE', 'PLATE'}
 
