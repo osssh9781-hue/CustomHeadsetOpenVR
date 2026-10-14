@@ -50,7 +50,7 @@ st = S.mch_robot_settings
 st.category, st.style = 'HUMANOID', 'SLEEK'
 r = bpy.ops.mch.robot_add(part='BODY')
 parts = [o for o in S.objects if rb.is_part(o)]
-check('humanoid whole body = 15 separate objects (chest + pelvis)', r == {'FINISHED'} and len(parts) == 15, len(parts))
+check('humanoid whole body = 12 separate limb / shoulder / foot objects (torso, head: user)', r == {'FINISHED'} and len(parts) == 12, len(parts))
 check('parts live in the Robot Base collection', all(rb.COLL in [c.name for c in o.users_collection] for o in parts))
 check('every part has faces', all(len(o.data.polygons) > 0 for o in parts))
 names = {o.name for o in parts}
@@ -61,9 +61,7 @@ lv = sorted(round(v.co.x, 4) for v in la.data.vertices)
 rv = sorted(round(-v.co.x, 4) for v in ra.data.vertices)
 check('right arm mirrors the left arm', lv == rv)
 check('bevel modifier on parts', all(o.modifiers.get(rb.MOD_BEVEL) for o in parts))
-head = S.objects['Robot_Head']
-check('head above chest above pelvis', head.location.z > S.objects['Robot_Chest'].location.z
-      > S.objects['Robot_Pelvis'].location.z)
+check('shoulders above thighs', S.objects['Robot_Shoulder_L'].location.z > S.objects['Robot_Thigh_L'].location.z)
 foot = S.objects['Robot_Foot_L']
 fb = bounds(foot)
 check('foot is longer front-to-back than wide', fb[1] > fb[0], fb)

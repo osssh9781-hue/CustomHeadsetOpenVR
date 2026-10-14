@@ -1286,6 +1286,14 @@ class StrokeLogic:
         xy, inside = self._region_xy(event)
         if not inside:
             return {'PASS_THROUGH'}
+        from . import surface_lasso
+        if surface_lasso.enabled(context, self.mode):
+            # 0.22.1 Surface Lasso: points on the mesh, its own modal operator
+            try:
+                bpy.ops.mch.surface_lasso('INVOKE_DEFAULT', mode=self.mode)
+            except RuntimeError as ex:
+                self.report({'WARNING'}, str(ex))
+            return {'CANCELLED'}
         if self.mode in {'MASK', 'BASE', 'PLATE', 'WRINKLE'} and self.shape == 'LASSO' and self.brush.line_open:
             self.brush.line_open = False
         self.ui = ui_scale(context)

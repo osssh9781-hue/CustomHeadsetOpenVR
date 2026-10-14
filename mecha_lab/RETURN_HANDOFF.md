@@ -1,4 +1,8 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.22.0 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.22.1 (Claude Code, 2026-10-14)
+
+## 0.22.1
+- ZIP sha256 `4af3ae8763ee90122bfd0953153ec4c13548ab3d663feafa87546040160e296c`. 키맵: Q → `mch.toggle_last_tool`, Shift+Q → `mch.tool_pie`. `robot_base.UI_PARTS['HUMANOID']`/`BODY_HUMANOID`에서 TORSO/CHEST/PELVIS/HEAD 제외(코드는 남김).
+  신규 `surface_lasso.py`: brush `surface_mode`/`surface_gap`, `SurfaceTarget`(BVH, 로컬 좌표), `trace`(현을 법선 따라 표면에 투영), `membrane`(루프 비누막 디스크 + 바깥 링), `split_along_loop`(Solidify Gap 커터 + EXACT 불리언 → 조각 분리, 조각 1개면 원래대로), `SurfaceLogic` + `mch.surface_lasso`(POST_VIEW 그리기). `cut_engine.StrokeLogic.invoke`에서 Surface면 이 연산자로 넘김. 테스트 `test_v0222.py`.
 
 ## 0.22.0
 - ZIP sha256 `900785f05dcdbc090e31e0945cbd636f41960ce9851cd8a8003cbe77dea30784`. `robot_base`: `tube_mesh`(공용 링 튜브 + 끝 캡/노치/기울기/구멍/관통, 부피 부호로 노멀 정렬), `template_mesh` + `robot_templates.py`(CHEST/PELVIS/HEAD 단면 22/18/26링 × 32각, 높이 방향 스무딩),

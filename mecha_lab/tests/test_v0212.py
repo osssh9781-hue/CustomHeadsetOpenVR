@@ -38,8 +38,8 @@ check('templates: chest / pelvis / head rings', all(len(rt.RINGS[k]) >= 16 and l
                                                     for k in ('CHEST', 'PELVIS', 'HEAD')))
 check('template radii mirrored left / right', all(abs(r[2 + i] - r[2 + rt.NA // 2 - 1 - i]) < 0.05
                                                   for r in rt.RINGS['CHEST'] for i in range(rt.NA // 2)))
-check('humanoid panel lists chest + pelvis, not torso', 'CHEST' in rb.UI_PARTS['HUMANOID']
-      and 'PELVIS' in rb.UI_PARTS['HUMANOID'] and 'TORSO' not in rb.UI_PARTS['HUMANOID'])
+check('0.22.1 humanoid panel: no torso / chest / pelvis / head (user models them)',
+      not {'TORSO', 'CHEST', 'PELVIS', 'HEAD'} & set(rb.UI_PARTS['HUMANOID']))
 
 for part in ('CHEST', 'PELVIS', 'HEAD'):
     ob = rb.create_part(C, part, 'HUMANOID', 'SLEEK', seed=1, variation=0.0)
@@ -142,9 +142,9 @@ for o in list(S.objects):
 S.mch_robot_settings.category = 'HUMANOID'
 bpy.ops.mch.robot_add(part='BODY')
 names = {o.name for o in C.selected_objects}
-check('humanoid body: chest + pelvis instead of torso', all(any(n.startswith(p) for n in names)
-                                                            for p in ('Robot_Chest', 'Robot_Pelvis', 'Robot_Head'))
-      and not any(n.startswith('Robot_Torso') for n in names), sorted(names)[:6])
+check('0.22.1 humanoid body: no torso / chest / pelvis / head', not any(
+    n.startswith(p) for n in names for p in ('Robot_Chest', 'Robot_Pelvis', 'Robot_Head', 'Robot_Torso')),
+      sorted(names)[:6])
 S.mch_robot_settings.category = 'INDUSTRIAL'
 for o in list(S.objects):
     o.select_set(False)

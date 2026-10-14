@@ -197,6 +197,11 @@ class MCH_PG_Brush(bpy.types.PropertyGroup):
                               precision=4, description='Width of the band drawn in Line mode')
     line_caps: EnumProperty(name='Line Ends', items=[('ROUND', 'Round', 'Round line ends'),
                                                      ('FLAT', 'Flat', 'Square line ends')], default='ROUND')
+    surface_mode: BoolProperty(name='Surface', default=False,
+                               description='Cut / Split: click points ON the mesh (they stay on it when you orbit); '
+                                           'a loop around a part splits it off (Enter)')
+    surface_gap: FloatProperty(name='Cut Gap', default=0.0005, min=0.0, soft_max=0.02, max=1.0, unit='LENGTH',
+                               precision=4, description='Gap between the parts split by the Surface Lasso')
     sketch_first: BoolProperty(name='Sketch', default=False,
                                description='Lasso tools: draw outlines into a sketch, Alt+draw subtracts, '
                                            'Enter applies (Alt+Enter: Alt action), Backspace: last, Esc: clear')

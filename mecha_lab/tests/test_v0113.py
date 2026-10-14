@@ -47,7 +47,8 @@ check('picking a shape selects the stamp tool shape', r == {'FINISHED'} and C.sc
 # --- hotkeys -----------------------------------------------------------------
 kc = C.window_manager.keyconfigs.addon
 keys = [(ki.idname, ki.type) for km in kc.keymaps for ki in km.keymap_items]
-check('0.12 keys: Q pie, F = Select / Move, V / N free', ('mch.tool_pie', 'Q') in keys and
+check('keys: Q toggle + Shift+Q pie, F = Select / Move, V / N free', ('mch.tool_pie', 'Q') in keys and
+      ('mch.toggle_last_tool', 'Q') in keys and
       ('mch.select_move_key', 'F') in keys and not any(k[1] in {'V', 'N', 'W'} for k in keys), keys)
 tool_km = wui._tool_keymap('CUT')
 check('0.12: T toggles targets while a Mecha drawing tool is active', any(

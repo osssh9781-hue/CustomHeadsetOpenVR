@@ -1,8 +1,12 @@
-# Mecha Lab 0.22.0 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.22.1 — 설치 · MECHA LAB Workspace · 사용법
 
-> **검증 수준:** Linux headless Blender **5.0.1**(`bpy`)에서 자동 테스트 42개 파일 / 1880개 항목이 통과했습니다.
+> **검증 수준:** Linux headless Blender **5.0.1**(`bpy`)에서 자동 테스트 43개 파일 / 1902개 항목이 통과했습니다.
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` A절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
+
+## 0.22.1
+- **Q** 한 번 = Select ↔ 마지막 도구, **Shift+Q** = 도구 파이.
+- Cut / Split 헤더 **Surface**: 메쉬 표면에 점을 찍고(화면 돌려도 붙어 있음) 부위를 한 바퀴 감은 뒤 Enter = 그 자리에서 분리(Gap).
 
 ## 0.22.0
 - Robot Base Mesh(인간형): Chest / Pelvis / Head 추가(부위별 슬라이더 8개 + Anatomy Detail), Bulge Shape(원기둥/네모), 위아래 노치, 구멍(관통 가능).

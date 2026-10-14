@@ -1,5 +1,5 @@
-"""0.12 Mecha Lab UX (from the browser prototype v2.1): bottom toolbar, Q pie,
-Shift+Q toggle between Select / Move and the last modelling tool.
+"""0.12 Mecha Lab UX (from the browser prototype v2.1): bottom toolbar, tool pie
+(Shift+Q since 0.22.1), Q toggles between Select / Move and the last modelling tool.
 
 All of it is active only in the MECHA LAB workspace (Object Mode); outside it
 the keys keep their Blender meaning because the operators' poll fails there.
@@ -121,7 +121,7 @@ class MCH_MT_tool_pie(bpy.types.Menu):
 
 
 class MCH_OT_tool_pie(bpy.types.Operator):
-    """Q: all Mecha tools as a pie at the mouse (MECHA LAB only; elsewhere Q = Quick Favorites)"""
+    """Shift+Q: all Mecha tools as a pie at the mouse (MECHA LAB only)"""
     bl_idname = 'mch.tool_pie'
     bl_label = 'Mecha Tool Pie'
     bl_options = {'INTERNAL'}
@@ -140,7 +140,7 @@ class MCH_OT_tool_pie(bpy.types.Operator):
 
 
 class MCH_OT_toggle_last_tool(bpy.types.Operator):
-    """Shift+Q: Select / Move <-> the last Mecha modelling tool (its shape and settings are kept)"""
+    """Q: Select / Move <-> the last Mecha modelling tool, one key like Tab (shape and settings are kept)"""
     bl_idname = 'mch.toggle_last_tool'
     bl_label = 'Select <-> Last Tool'
     bl_options = {'INTERNAL'}

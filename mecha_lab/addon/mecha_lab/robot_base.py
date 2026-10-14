@@ -35,7 +35,8 @@ PARTS = (('HEAD', 'Head', ''), ('TORSO', 'Torso', ''), ('SHOULDER', 'Shoulder', 
          ('CALF', 'Calf', ''), ('FOOT', 'Foot', ''), ('CHEST', 'Chest (Ribs)', ''), ('PELVIS', 'Pelvis', ''))
 PART_IDS = tuple(p[0] for p in PARTS)
 # panel order per category (humanoid: torso split into chest + pelvis)
-UI_PARTS = {'HUMANOID': ('HEAD', 'CHEST', 'PELVIS', 'SHOULDER', 'UPPER_ARM', 'FOREARM', 'THIGH', 'CALF', 'FOOT'),
+# 0.22.1: the user models the humanoid torso / head themselves -> limbs, shoulder and foot only
+UI_PARTS = {'HUMANOID': ('SHOULDER', 'UPPER_ARM', 'FOREARM', 'THIGH', 'CALF', 'FOOT'),
             'INDUSTRIAL': ('HEAD', 'TORSO', 'CHEST', 'PELVIS', 'SHOULDER', 'UPPER_ARM', 'FOREARM', 'THIGH', 'CALF',
                            'FOOT')}
 
@@ -973,8 +974,7 @@ BODY = (('TORSO', 'CENTER', (0, 0, 0.95)), ('HEAD', 'CENTER', (0, 0.01, 1.6)),
         ('FOOT', 'LEFT', (0.11, -0.05, 0.02)), ('FOOT', 'RIGHT', (-0.11, -0.05, 0.02)))
 
 
-BODY_HUMANOID = (('PELVIS', 'CENTER', (0, 0, 0.82)), ('CHEST', 'CENTER', (0, 0, 1.13)),
-                 ('HEAD', 'CENTER', (0, 0.0, 1.48))) + tuple(b for b in BODY if b[0] not in {'TORSO', 'HEAD'})
+BODY_HUMANOID = tuple(b for b in BODY if b[0] not in {'TORSO', 'HEAD'})     # limbs, shoulders, feet
 
 
 def create_body(context, category, style, seed=1, variation=0.5, details=True, scale=1.0):

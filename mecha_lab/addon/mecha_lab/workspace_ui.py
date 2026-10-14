@@ -694,6 +694,10 @@ def draw_shape_palette(self, context):
     sk.enabled = tool in ts.SHAPE_TOOLS
     sk.operator('mch.sketch_toggle', text='Sketch', icon='GREASEPENCIL', depress=lasso_sketch.is_on(context))
     sk.prop(brush, 'line_mode', text='Line', icon='IPO_LINEAR', toggle=True)
+    if tool in {'CUT', 'SPLIT'}:
+        sk.prop(brush, 'surface_mode', text='Surface', icon='SNAP_FACE', toggle=True)
+        if brush.surface_mode:
+            sk.prop(brush, 'surface_gap', text='Gap')
     if brush.line_mode:
         sk.prop(brush, 'line_width', text='')
         sk.prop(brush, 'line_caps', text='')
@@ -1397,9 +1401,11 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
                              description='Only inside the MECHA LAB workspace; elsewhere Space keeps Blender behaviour')
     workspace_hotkeys: BoolProperty(name='B / C Hotkeys', default=True,
                                     description='B = Boolean Difference, C = Cut tool, only inside MECHA LAB')
-    tool_pie: BoolProperty(name='Q = Tool Pie', default=True,
-                           description='All Mecha tools as a pie at the mouse, MECHA LAB only (elsewhere Q = Quick Favorites)')
-    last_tool_key: BoolProperty(name='Shift+Q = Select <-> Last Tool', default=True)
+    tool_pie: BoolProperty(name='Shift+Q = Tool Pie', default=True,
+                           description='All Mecha tools as a pie at the mouse, MECHA LAB only')
+    last_tool_key: BoolProperty(name='Q = Select <-> Last Tool', default=True,
+                                description='One key flips between Select / Move and the last modelling tool (like Tab), '
+                                            'MECHA LAB only (elsewhere Q = Quick Favorites)')
     bottom_toolbar: BoolProperty(name='Bottom Toolbar', default=True,
                                  description='Tool buttons at the bottom centre of the viewport (MECHA LAB, Object Mode)')
     toolbar_labels: BoolProperty(name='Names Under Icons', default=True)
@@ -1459,12 +1465,12 @@ def register_keymaps():
     if kc is None:
         return
     km = kc.keymaps.new(name='3D View', space_type='VIEW_3D')
-    # 0.12 (prototype v2.1): Q = tool pie, Shift+Q = Select <-> last tool. V is free
+    # 0.22.1: Q = Select <-> last tool (one key, like Tab), Shift+Q = tool pie. V is free
     # (it duplicated the pie) and N is Blender's sidebar again. Space stays as the
     # big tool menu (switchable). All gated to MECHA LAB by the operators' poll.
     _keymaps.append((km, km.keymap_items.new('mch.space_tools', 'SPACE', 'PRESS')))
-    _keymaps.append((km, km.keymap_items.new('mch.tool_pie', 'Q', 'PRESS')))
-    _keymaps.append((km, km.keymap_items.new('mch.toggle_last_tool', 'Q', 'PRESS', shift=True)))
+    _keymaps.append((km, km.keymap_items.new('mch.toggle_last_tool', 'Q', 'PRESS')))
+    _keymaps.append((km, km.keymap_items.new('mch.tool_pie', 'Q', 'PRESS', shift=True)))
     km = kc.keymaps.new(name='Object Mode', space_type='EMPTY')
     item = km.keymap_items.new('mch.hotkey', 'B', 'PRESS')
     item.properties.action = 'BOOLEAN'
