@@ -62,7 +62,7 @@ INPUTS = (('Type', 'NodeSocketInt', 0, 0, 2),
           ('Section End', 'NodeSocketFloat', 1.0, -1.0, 2.0),
           ('Section Move', 'NodeSocketFloat', 0.0, -2.0, 2.0),
           ('Section Height', 'NodeSocketFloat', 1.0, 0.0, 10.0),
-          ('Fold Sharp', 'NodeSocketFloat', 1.6, 0.3, 12.0),
+          ('Fold Sharp', 'NodeSocketFloat', 1.6, 0.3, 30.0),
           ('Fan', 'NodeSocketFloat', 9.0, 0.0, 60.0),
           ('Fold Tilt', 'NodeSocketFloat', 0.0, -1.45, 1.45),
           ('Tilt Random', 'NodeSocketFloat', 0.6, 0.0, 1.45),
@@ -74,7 +74,9 @@ INPUTS = (('Type', 'NodeSocketInt', 0, 0, 2),
           ('Trim', 'NodeSocketInt', 0, 0, 3),
           ('Trim Width', 'NodeSocketFloat', 0.03, 0.0001, 100.0),
           ('Trim Height', 'NodeSocketFloat', 0.01, -100.0, 100.0),
-          ('Gravity', 'NodeSocketFloat', 0.0, 0.0, 5.0))
+          ('Gravity', 'NodeSocketFloat', 0.0, 0.0, 5.0),
+          ('Fold Asymmetry', 'NodeSocketFloat', 0.75, 0.0, 1.0),
+          ('Fold Thinness', 'NodeSocketFloat', 0.0, 0.0, 1.0))
 TRIMS = (('NONE', 'No Trim', 'Plain border'),
          ('PIPING', 'Piping', 'Round cord along the border'),
          ('BINDING', 'Binding', 'Flat band folded over the border, stitched'),
@@ -86,7 +88,7 @@ SEC_U = 'mch_sec_u'            # 0..1 along the long side (local X): stitched se
 SEC_LEN = 'mch_sec_len'        # length of the long side
 EDGE_U = 'mch_edge_u'          # arc length along the border of the nearest border point
 EDGE_LEN = 'mch_edge_len'      # length of that border loop (keeps seam patterns seamless)
-VERSION = 31
+VERSION = 32
 
 
 # -----------------------------------------------------------------------------
@@ -524,7 +526,7 @@ SIZE_INPUTS = {'Strength', 'Scale', 'Edge Soft', 'Lift', 'Puff', 'Puff Width', '
 
 INPUT_NAMES = {n for n, *_r in INPUTS}
 FOLD_INPUTS = {'Pinch Spacing', 'Pinch Length', 'Fold Tilt', 'Tilt Random', 'Length Random', 'Variety', 'Seed',
-               'Fan', 'Trim', 'Trim Width'}
+               'Fan', 'Trim', 'Trim Width', 'Fold Sharp', 'Fold Asymmetry', 'Fold Thinness'}
 
 
 def fold_lines(ob):
@@ -543,6 +545,11 @@ def fold_lines(ob):
     tilt, trand = float(gi('Fold Tilt')), float(gi('Tilt Random'))
     lrand, variety, growth = float(gi('Length Random')), float(gi('Variety')), float(gi('Fan'))
     inset = float(gi('Trim Width')) if int(gi('Trim')) > 0 else 0.0
+    try:
+        asym = min(1.0, max(0.0, float(gi('Fold Asymmetry'))))
+        thin = min(1.0, max(0.0, float(gi('Fold Thinness'))))
+    except (KeyError, TypeError, ValueError, AttributeError):
+        asym, thin = 0.0, 0.0
     rng = random.Random(int(gi('Seed')) * 7919 + 13)
     me = ob.data
     bm = bmesh.new()
@@ -592,6 +599,7 @@ def fold_lines(ob):
             if rng.random() < 0.22 * variety:
                 amp *= 0.15                                            # some places almost empty
             bend = rng.uniform(-0.35, 0.35)
+            side = 1.0 if rng.random() < 0.5 else -1.0                # which side folds over (steep side)
             start = p0 + d * inset
             # stop just short of the far side (march inside the outline)
             free = 0.0
@@ -613,8 +621,8 @@ def fold_lines(ob):
                 q = start + d * (ln * t) + perp * (bend * ln * t * t)
                 verts.append((q.x, q.y, 0.0))
                 ftv.append(t)
-                fwv.append(spacing * 0.06 + ln * t * growth * 0.03)
-                fav.append(amp)
+                fwv.append((spacing * 0.06 * (1.0 - 0.92 * thin) + ln * t * growth * 0.03) * (1.0 - 0.65 * thin))
+                fav.append(amp * side)
                 if j:
                     eds.append((base + j - 1, base + j))
     # heights on the panel points: every fold adds a tube (thin start, wider inward, fading end)
@@ -624,6 +632,16 @@ def fold_lines(ob):
     total = np.zeros(len(xy))
     fold = []
     cur = []
+    # the panel resolution limits how thin a fold can be (thinner than ~1.3 edges reads as beads)
+    if len(me.edges):
+        el = np.array([(me.vertices[e.vertices[0]].co - me.vertices[e.vertices[1]].co).length for e in me.edges
+                       if not e.is_loose][:4000] or [0.0])
+        min_w = float(np.median(el)) * 1.3
+    else:
+        min_w = 0.0
+    fwv = [max(w_, min_w) for w_ in fwv]
+    sw = 1.0 - 0.72 * asym          # steep (folded-over) side: narrow wall
+    gw = 1.0 + 0.9 * asym           # gentle side: long slope
     for i, (vx, vy, _z) in enumerate(verts):
         cur.append((vx, vy, ftv[i], fwv[i], fav[i]))
         if ftv[i] >= 1.0 - 1e-9:
@@ -633,13 +651,14 @@ def fold_lines(ob):
         P = np.array([(p[0], p[1]) for p in pts])
         T = np.array([p[2] for p in pts])
         W = np.array([p[3] for p in pts])
-        amp = pts[0][4]
+        amp = abs(pts[0][4])
+        side = 1.0 if pts[0][4] >= 0 else -1.0
         A, B = P[:-1], P[1:]
         AB = B - A
         L2 = np.maximum((AB * AB).sum(1), 1e-18)
         # cull: only points near this fold's box
-        lo = P.min(0) - W.max() * 1.2
-        hi = P.max(0) + W.max() * 1.2
+        lo = P.min(0) - W.max() * 2.2
+        hi = P.max(0) + W.max() * 2.2
         sel = np.where((xy[:, 0] >= lo[0]) & (xy[:, 0] <= hi[0]) & (xy[:, 1] >= lo[1]) & (xy[:, 1] <= hi[1]))[0]
         if not len(sel):
             continue
@@ -652,7 +671,20 @@ def fold_lines(ob):
         dist = np.sqrt(d2[r, j])
         ft = T[j] + (T[j + 1] - T[j]) * tt[r, j]
         w = W[j] + (W[j + 1] - W[j]) * tt[r, j]
-        prof = np.clip(1.0 - (dist / np.maximum(w, 1e-9)) ** 2, 0.0, 1.0) ** sharp
+        # 0.23.3 asymmetric section: signed side of the fold line -> steep folded wall / long soft slope
+        Xs = xy[sel]
+        cr = (AB[j, 0] * (Xs[:, 1] - C[r, j, 1]) - AB[j, 1] * (Xs[:, 0] - C[r, j, 0])) * side
+        steep = cr < 0
+        u = dist / np.maximum(w, 1e-9)
+        us = u / sw
+        ug = u / gw
+        prof_s = np.clip(1.0 - us ** 4, 0.0, 1.0) ** max(0.3, sharp * 0.6)
+        crease = -0.22 * asym * np.exp(-((us - 1.05) / 0.35) ** 2)
+        prof_g = np.clip(1.0 - ug, 0.0, 1.0) ** 2 * (3.0 - 2.0 * np.clip(1.0 - ug, 0.0, 1.0)) \
+            if asym > 0 else np.clip(1.0 - ug ** 2, 0.0, 1.0) ** sharp
+        sym = np.clip(1.0 - u ** 2, 0.0, 1.0) ** sharp
+        prof = np.where(steep, prof_s + crease, prof_g)
+        prof = sym * (1.0 - asym) + prof * asym
         st_ = np.clip(ft / 0.06, 0.0, 1.0)
         env = st_ * st_ * (1.0 - ft) ** 1.2
         total[sel] += amp * prof * env
@@ -1326,13 +1358,15 @@ SLIDERS = (('random', 'Randomness', 'Variety', 0, 100, 'RAND'),
            ('pinch', 'Seam Folds', 'Pinch', 0, 80, 'SIZE'),
            ('pinch_sp', 'Fold Spacing', 'Pinch Spacing', 5, 200, 'SIZE'),
            ('pinch_len', 'Fold Length', 'Pinch Length', 10, 2000, 'SIZE'),
-           ('sharp', 'Fold Sharp', 'Fold Sharp', 30, 1000, 'PCT'),
+           ('sharp', 'Fold Sharp', 'Fold Sharp', 30, 3000, 'PCT'),
            ('fan', 'Fan', 'Fan', 0, 4000, 'PCT'),
            ('tilt', 'Fold Tilt', 'Fold Tilt', -80, 80, 'DEG'),
            ('tilt_rand', 'Tilt Random', 'Tilt Random', 0, 80, 'DEG'),
            ('len_rand', 'Length Random', 'Length Random', 0, 100, 'PCT'),
            ('variety', 'Variety', 'Variety', 0, 100, 'PCT'),
            ('fan_mix', 'Fan Mix', 'Fan Mix', 0, 100, 'PCT'),
+           ('asym', 'Fold Asymmetry', 'Fold Asymmetry', 0, 100, 'PCT'),
+           ('thin', 'Fold Thinness', 'Fold Thinness', 0, 100, 'PCT'),
            ('stitch', 'Stitching', 'Stitch', 0, 20, 'SIZE'),
            ('trim_w', 'Trim Width', 'Trim Width', 2, 200, 'SIZE'),
            ('trim_h', 'Trim Height', 'Trim Height', -50, 80, 'SIZE'),

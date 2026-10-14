@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.2 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.3 (Claude Code, 2026-10-14)
+
+## 0.23.3
+- ZIP sha256 `a4f865c0cc84c7151dfae8e731397b7c2ee08dc916b4122482e16f6d7511b8f1`. `cloth_wrinkle` v32 입력 `Fold Asymmetry`, `Fold Thinness`(FOLD_INPUTS), `fold_lines`: 주름별 side(부호 amp), 부호 거리로 steep(`prof_s` + `crease`) / gentle(`prof_g`) 단면, 패널 엣지 중앙값 × 1.3 최소 폭. `curve_tube.ik_drag`(FABRIK + 로프), `ik`/`ik_pin`, 버튼 `ik`.
 
 ## 0.23.2
 - ZIP sha256 `abdbb6bf35336f396f825390793aea17e11df35405cf0878626e6ec74376b937`. `mirror_tools`: `gesture_base`, `lean_pick(center=)`, `MirrorLeanLogic.center` = (w/2, h*0.18), 오버레이도 그 자리, `MCH_OT_mirror_lean.keep_live`; `bottom_bar` MIRROR = `mirror_lean(keep_live=True)`.

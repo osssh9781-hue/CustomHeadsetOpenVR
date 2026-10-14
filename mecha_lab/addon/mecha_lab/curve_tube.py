@@ -112,6 +112,51 @@ def path_samples(points, radii, closed=False, spline='SMOOTH', res=12):
     return clean
 
 
+def ik_drag(points, i, target, pin_root=True, iterations=12):
+    """IK (Nomad-style): move point ``i`` toward ``target`` keeping every segment length.
+    With ``pin_root`` the first point stays put (FABRIK on 0..i); the points after ``i``
+    follow like a rope.  Without it the whole chain follows the dragged point."""
+    pts = [Vector(p) for p in points]
+    n = len(pts)
+    if n == 0:
+        return pts
+    tgt = Vector(target)
+    lens = [(pts[k + 1] - pts[k]).length for k in range(n - 1)]
+    if pin_root and i > 0:
+        root = pts[0].copy()
+        chain = pts[:i + 1]
+        cl = lens[:i]
+        reach = sum(cl)
+        if (tgt - root).length >= reach:                    # out of reach: stretch straight toward it
+            d = (tgt - root).normalized()
+            acc = 0.0
+            for k in range(1, i + 1):
+                acc += cl[k - 1]
+                chain[k] = root + d * acc
+        else:
+            for _ in range(iterations):
+                chain[i] = tgt.copy()
+                for k in range(i - 1, -1, -1):              # backward
+                    d = chain[k] - chain[k + 1]
+                    chain[k] = chain[k + 1] + (d.normalized() if d.length > 1e-12 else Vector((1, 0, 0))) * cl[k]
+                chain[0] = root.copy()
+                for k in range(1, i + 1):                   # forward
+                    d = chain[k] - chain[k - 1]
+                    chain[k] = chain[k - 1] + (d.normalized() if d.length > 1e-12 else Vector((1, 0, 0))) * cl[k - 1]
+                if (chain[i] - tgt).length < 1e-6:
+                    break
+        pts[:i + 1] = chain
+    else:
+        pts[i] = tgt.copy()
+        for k in range(i - 1, -1, -1):                      # rope toward the start
+            d = pts[k] - pts[k + 1]
+            pts[k] = pts[k + 1] + (d.normalized() if d.length > 1e-12 else Vector((1, 0, 0))) * lens[k]
+    for k in range(i + 1, n):                               # rope toward the end
+        d = pts[k] - pts[k - 1]
+        pts[k] = pts[k - 1] + (d.normalized() if d.length > 1e-12 else Vector((1, 0, 0))) * lens[k - 1]
+    return pts
+
+
 def frames(samples, closed=False):
     """(tangent, normal, binormal) per sample, rotation minimising (parallel transport)."""
     n = len(samples)
@@ -459,6 +504,9 @@ class MCH_PG_Tube(bpy.types.PropertyGroup):
                poll=lambda self, o: o.type == 'MESH' and not o.mch_tube.live,
                description='Mesh repeated along the curve (empty = sphere)')
     smooth_shade: _p(BoolProperty, name='Smooth Shading', default=True)
+    ik: BoolProperty(name='IK', default=False,
+                     description='Dragging a point pulls the chain along, keeping the segment lengths')
+    ik_pin: BoolProperty(name='Pin Start', default=True, description='IK: the first point stays in place')
 
 
 def is_tube(ob):
@@ -670,7 +718,12 @@ class TubeLogic:
             set_points(ob, pts)
             rebuild(ob)
             return
-        pts[self.drag] = (ob.matrix_world.inverted() @ w, pts[self.drag][1])
+        tb = ob.mch_tube
+        if tb.ik and len(pts) > 1:
+            moved = ik_drag([p for p, _r in pts], self.drag, ob.matrix_world.inverted() @ w, tb.ik_pin)
+            pts = [(q, r) for q, (_p, r) in zip(moved, pts)]
+        else:
+            pts[self.drag] = (ob.matrix_world.inverted() @ w, pts[self.drag][1])
         set_points(ob, pts)
         rebuild(ob)
 
@@ -929,6 +982,10 @@ def draw(layout, context):
     c.prop(tb, 'rotate')
     c.prop(tb, 'twist')
     c.prop(tb, 'smooth_shade')
+    r2 = sub.row(align=True)
+    r2.prop(tb, 'ik', toggle=True, icon='CON_KINEMATIC')
+    if tb.ik:
+        r2.prop(tb, 'ik_pin', toggle=True)
 
 
 class MCH_PT_tube(bpy.types.Panel):
@@ -1057,7 +1114,11 @@ class MCH_GGT_tube_points(bpy.types.GizmoGroup):
             ob = self._ob()
             pts = get_points(ob) if ob else []
             if i < len(pts):
-                pts[i] = (Vector(value), pts[i][1])
+                if ob.mch_tube.ik and len(pts) > 1:
+                    moved = ik_drag([p for p, _r in pts], i, Vector(value), ob.mch_tube.ik_pin)
+                    pts = [(q, r) for q, (_p, r) in zip(moved, pts)]
+                else:
+                    pts[i] = (Vector(value), pts[i][1])
                 set_points(ob, pts)
                 rebuild(ob)
         return set_
@@ -1110,7 +1171,8 @@ TUBE_BUTTONS = (('apply', 'CHECKMARK', 'mch.tube_apply', {}, 'Apply'),
                 ('spline', 'IPO_BEZIER', 'mch.tube_toggle', {'option': 'SPLINE'}, 'Smooth / B-Spline / Linear'),
                 ('profile', 'MESH_PLANE', 'mch.tube_toggle', {'option': 'PROFILE'}, 'Profile'),
                 ('cap', 'SPHERECURVE', 'mch.tube_toggle', {'option': 'CAP'}, 'Cap'),
-                ('spacing', 'ARROW_LEFTRIGHT', 'mch.tube_toggle', {'option': 'SPACING'}, 'Count / Distance'))
+                ('spacing', 'ARROW_LEFTRIGHT', 'mch.tube_toggle', {'option': 'SPACING'}, 'Count / Distance'),
+                ('ik', 'CON_KINEMATIC', 'mch.tube_toggle', {'option': 'IK'}, 'IK: drag pulls the chain'))
 TUBE_SLIDERS = (('radius', 'Radius', 'radius', 1, 2000, 'LEN'), ('twist', 'Twist', 'twist', -720, 720, 'DEG'),
                 ('rotate', 'Rotate', 'rotate', -180, 180, 'DEG'), ('sides', 'Sides', 'sides', 3, 64, 'INT'),
                 ('hole', 'Hole', 'hole', 0, 95, 'PCT'), ('count', 'Count', 'count', 1, 200, 'INT'),
@@ -1151,7 +1213,7 @@ class MCH_OT_tube_toggle(bpy.types.Operator):
     bl_label = 'Mesh Curve Option'
     bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
     option: EnumProperty(items=[(k, k.title(), '') for k in ('MODE', 'CLOSED', 'SPLINE', 'PROFILE', 'CAP',
-                                                             'SPACING')])
+                                                             'SPACING', 'IK')])
 
     @classmethod
     def poll(cls, context):
@@ -1164,6 +1226,8 @@ class MCH_OT_tube_toggle(bpy.types.Operator):
                'SPACING': ('spacing_mode', ('COUNT', 'DISTANCE'))}
         if self.option == 'CLOSED':
             tb.closed = not tb.closed
+        elif self.option == 'IK':
+            tb.ik = not tb.ik
         else:
             prop, items = cyc[self.option]
             cur = getattr(tb, prop)
@@ -1275,6 +1339,8 @@ class MCH_GGT_tube_bar(bpy.types.GizmoGroup):
                 gz.color = (1.0, 0.62, 0.16) if tb.closed else (0.17, 0.19, 0.23)
             if name == 'mode':
                 gz.color = (1.0, 0.62, 0.16) if tb.mode == 'REPEAT' else (0.17, 0.19, 0.23)
+            if name == 'ik':
+                gz.color = (1.0, 0.62, 0.16) if tb.ik else (0.17, 0.19, 0.23)
 
 
 _bar_label_handle = None
@@ -1295,7 +1361,7 @@ def _draw_bar_labels():
         names = {'mode': tb.mode.title(), 'spline': {'SMOOTH': 'Smooth', 'BSPLINE': 'B-Spline',
                                                      'LINEAR': 'Linear'}[tb.spline],
                  'profile': tb.profile.title(), 'cap': tb.cap.title(), 'closed': 'Closed',
-                 'spacing': tb.spacing_mode.title(), 'apply': 'Apply', 'edit': 'Points'}
+                 'spacing': tb.spacing_mode.title(), 'apply': 'Apply', 'edit': 'Points', 'ik': 'IK'}
         for name, text in names.items():
             if name not in lay:
                 continue
