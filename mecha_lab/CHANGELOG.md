@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## 0.21.1 — 인간형 팔다리: 보내주신 Genesis 9 조각 기준, 슬라이더로 형태 잡기 (2026-10-14)
+
+- 인간형 **윗팔 / 아랫팔 / 허벅지 / 종아리**를 새로 만듦: **관절 없이** 한 덩어리, 깔끔한 사각 링 + 평평한 끝면.
+  기본 비율은 보내주신 조각에서 잼(1.8 m 기준): 아랫팔 팔꿈치 9.2×7.7 → 손목 5.3×5.3 / 길이 24.6, 윗팔 9.6×11.0 → 8.2×8.4 / 23.4, 허벅지 17.1×17.4 → 무릎 11.4×12.4 / 38.8, 엉덩이 쪽 비스듬한 단면.
+- 팔다리 전용 슬라이더(팝업 + N 패널): **Bottom Width / Bottom Thickness**(아래쪽 굵기), **Taper Start**(어디서부터 가늘어지는지), **Bulge / Bulge Position / Bulge Front/Back**,
+  **Muscle Split + Split Angle**(근육 두 덩어리, 옆/앞뒤), **Groove + Angle**(근육 사이 홈), **Ridge + Angle**(능선), **Twist**, **Bend + Direction**, **Top Notch + Width**(팔꿈치 쪽 V 홈), **Bottom Slant / Top Slant**(끝 단면 기울기).
+  슬라이더가 많으면 팝업이 여러 줄(열)로 나뉨.
+- 패널: 부위 버튼이 위, Whole Body는 아래 작은 버튼. Details(장갑판·피스톤) 기본 꺼짐 = 순수 베이스.
+- 수정: 산업형 팔다리 노멀이 안쪽으로 뒤집혀 있던 문제.
+- 비교 렌더 `reference/robot_limbs_vs_reference_v0211.png`(왼쪽 = 보내주신 조각, 오른쪽 = 생성). 테스트: 39개 파일 1749/1749 (`tests/test_log_bpy501_v0211.txt`). ZIP sha256 `28f227289134c4da7e6791060171b5335ec1538150867f21caa73b543d485d4b`.
+
 ## 0.21.0 — Robot Base Mesh 생성기 (2026-10-14)
 
 - N 패널 Mecha Lab > **Robot Base Mesh**: 큰 분류 **Humanoid(인간형) / Industrial(산업형)** × **Sleek(세련된) / Rugged(투박한)** = 4가지.

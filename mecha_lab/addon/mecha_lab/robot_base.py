@@ -38,7 +38,7 @@ PART_IDS = tuple(p[0] for p in PARTS)
 # default size per part (length = main axis, width = X, depth = Y), metres for a ~1.8 m robot
 DEFAULTS = {
     'HEAD': (0.28, 0.20, 0.24), 'TORSO': (0.62, 0.42, 0.26), 'SHOULDER': (0.16, 0.20, 0.20),
-    'UPPER_ARM': (0.30, 0.11, 0.11), 'FOREARM': (0.28, 0.10, 0.10), 'THIGH': (0.44, 0.16, 0.17),
+    'UPPER_ARM': (0.244, 0.100, 0.115), 'FOREARM': (0.257, 0.096, 0.080), 'THIGH': (0.405, 0.178, 0.181),
     'CALF': (0.42, 0.13, 0.14), 'FOOT': (0.26, 0.11, 0.08),
 }
 
@@ -140,6 +140,8 @@ def loft(sections, ring, power, caps=True, phase=None, ends=None, span=None):
     if caps:
         faces.append(tuple(reversed(range(ring))))
         faces.append(tuple((ns - 1) * ring + i for i in range(ring)))
+    if ns > 1 and sections[0][0] > sections[-1][0]:      # sections run downward: keep normals outward
+        faces = [tuple(reversed(f)) for f in faces]
     return verts, faces
 
 
@@ -202,6 +204,144 @@ def _more(secs, ends, n=6):
     return out
 
 
+# humanoid limb shape defaults (0.21.1), measured from a Genesis 9 forearm segment:
+# elbow 9.2 x 7.7, wrist 5.3 x 5.3 (length 24.6) - flat to ~30 %, then tapering; a muscle groove
+LIMB_SHAPES = {
+    # forearm: elbow 9.2 x 7.7 -> wrist 5.3 x 5.3 over 24.6, flat to ~30 % then tapering, a muscle groove
+    'FOREARM': dict(bottom_w=0.58, bottom_d=0.69, taper_start=0.3, bulge=0.15, bulge_pos=0.2, bulge_offset=0.0,
+                    split=0.0, split_angle=math.radians(90), groove=0.35, groove_angle=math.radians(70), ridge=0.0,
+                    ridge_angle=math.radians(200), twist=0.0, bow=0.0, bow_angle=math.radians(90), notch=0.015,
+                    notch_width=0.5, slant=math.radians(10), top_slant=0.0),
+    # upper arm: 9.6 (side) x 11.0 (front-back) -> 8.2 x 8.4 over 23.4, flat to ~40 %, grooves on both sides
+    'UPPER_ARM': dict(bottom_w=0.85, bottom_d=0.76, taper_start=0.42, bulge=0.2, bulge_pos=0.3, bulge_offset=0.2,
+                      split=0.25, split_angle=0.0, groove=0.0, groove_angle=math.radians(0), ridge=0.0,
+                      ridge_angle=math.radians(270), twist=0.0, bow=0.0, bow_angle=math.radians(90), notch=0.0,
+                      notch_width=0.5, slant=0.0, top_slant=0.0),
+    # thigh: 17.1 x 17.4 below the hip cut -> knee 11.4 x 12.4 over 38.8, hip end cut on a slant
+    'THIGH': dict(bottom_w=0.67, bottom_d=0.71, taper_start=0.3, bulge=0.15, bulge_pos=0.3, bulge_offset=0.2,
+                  split=0.15, split_angle=0.0, groove=0.2, groove_angle=math.radians(180), ridge=0.0,
+                  ridge_angle=math.radians(270), twist=0.0, bow=0.0, bow_angle=math.radians(90), notch=0.0,
+                  notch_width=0.5, slant=0.0, top_slant=math.radians(25)),
+    'CALF': dict(bottom_w=0.55, bottom_d=0.5, taper_start=0.35, bulge=0.6, bulge_pos=0.3, bulge_offset=-0.6,
+                 split=0.2, split_angle=math.radians(90), groove=0.15, groove_angle=math.radians(270), ridge=0.0,
+                 ridge_angle=math.radians(90), twist=0.0, bow=0.0, bow_angle=math.radians(90), notch=0.0,
+                 notch_width=0.5, slant=0.0, top_slant=0.0),
+}
+LIMB_KEYS = tuple(LIMB_SHAPES['FOREARM'])
+
+
+def _dent(a, a0, width):
+    d = (a - a0 + math.pi) % (2.0 * math.pi) - math.pi
+    return math.exp(-(d / width) ** 2)
+
+
+def limb_mesh(p, ring, power, rugged, ends=None, jit=None):
+    """Humanoid limb base mesh hanging from z = 0 (top) to z = -L (bottom): quad rings around,
+    flat end caps (concentric quads + small fan).  Every shape term is a slider."""
+    g = dict(LIMB_SHAPES.get(p['part'], LIMB_SHAPES['FOREARM']))
+    g.update({k: p[k] for k in LIMB_KEYS if k in p})
+    L, W, D = p['length'], p['width'], p['depth']
+    jit = jit or (lambda x, amount=0.0: x)
+    if ends is not None and ends['bottom'][0] == 'STYLE' and ends['top'][0] == 'STYLE':
+        ends = None
+    phase = math.pi / ring
+    if ends is not None:
+        ring, ph = ends_ring(ring, ends)
+        phase = ph if ph is not None else phase
+    nl = (6 + int(round(8 * p['resolution']))) if rugged else (10 + int(round(18 * p['resolution'])))
+    ts = g['taper_start']
+    bw, bd = jit(g['bottom_w'], 0.08), jit(g['bottom_d'], 0.08)
+    W, D = jit(W, 0.05), jit(D, 0.05)
+    bpos = min(0.95, max(0.05, jit(g['bulge_pos'], 0.15)))
+    notch_d, notch_w = g['notch'] * L, max(0.05, g['notch_width']) * W / 2
+    tan_s = math.tan(max(-1.3, min(1.3, g['slant'])))
+    tan_t = math.tan(max(-1.3, min(1.3, g['top_slant'])))
+    bow = g['bow'] * L * 0.1
+    bx, by = math.cos(g['bow_angle']), math.sin(g['bow_angle'])
+
+    def outline(t):
+        u = 0.0 if t <= ts else (t - ts) / max(1e-6, 1.0 - ts)
+        u = u * u * (3.0 - 2.0 * u)
+        gb = math.exp(-((t - bpos) / 0.22) ** 2)
+        grow = 1.0 + g['bulge'] * 0.25 * gb
+        w = W * (1.0 + (bw - 1.0) * u) * grow
+        d = D * (1.0 + (bd - 1.0) * u) * grow
+        ox = bow * math.sin(math.pi * t) * bx
+        oy = bow * math.sin(math.pi * t) * by + g['bulge_offset'] * g['bulge'] * 0.12 * D * gb
+        tw = g['twist'] * t
+        if ends is not None:
+            mid = min(0.95, max(0.05, ends.get('mid', 0.5)))
+            e = (1.0 - t) ** (math.log(0.5) / math.log(mid))          # 0 at top end, 1 at bottom end
+            e = e * e * (3.0 - 2.0 * e)
+        pts = []
+        for i in range(ring):
+            a = 2.0 * math.pi * i / ring + phase
+            if ends is None:
+                ux, uy = end_point('STYLE', 0, a, power)
+            else:
+                tx, ty = end_point(ends['top'][0], ends['top'][1], a, power)
+                qx, qy = end_point(ends['bottom'][0], ends['bottom'][1], a, power)
+                ux, uy = qx + (tx - qx) * e, qy + (ty - qy) * e
+            sa = g['split_angle']
+            m = 1.0 - g['split'] * 0.22 * (_dent(a, sa, 0.6) + _dent(a, sa + math.pi, 0.6))
+            m -= g['groove'] * 0.3 * _dent(a, g['groove_angle'], 0.5) * (1.0 - 0.6 * t)
+            m += g['ridge'] * 0.15 * _dent(a, g['ridge_angle'], 0.18)
+            x, y = ux * w / 2 * m, uy * d / 2 * m
+            c, s_ = math.cos(tw), math.sin(tw)
+            pts.append((x * c - y * s_ + ox, x * s_ + y * c + oy))
+        return pts
+
+    def zof(t, x):
+        z = -L * t
+        if notch_d > 0 and t < 0.3:                                  # V notch across the top end
+            v = max(0.0, 1.0 - abs(x) / notch_w)
+            z -= notch_d * v * (1.0 - t / 0.3)
+        if tan_s and t > 0.7:                                        # slanted bottom cut
+            z += tan_s * x * (t - 0.7) / 0.3
+        if tan_t and t < 0.35:                                       # slanted top cut (hip)
+            z += tan_t * x * (1.0 - t / 0.35)
+        return z
+
+    verts, faces = [], []
+    rings = []
+    for k in range(nl + 1):
+        t = k / nl
+        start = len(verts)
+        for x, y in outline(t):
+            verts.append((x, y, zof(t, x)))
+        rings.append(start)
+    for k in range(nl):
+        a0, a1 = rings[k], rings[k + 1]
+        for i in range(ring):
+            j = (i + 1) % ring
+            faces.append((a0 + i, a1 + i, a1 + j, a0 + j))
+
+    def cap(t, top):
+        outer = outline(t)
+        cx = sum(q[0] for q in outer) / ring
+        cy = sum(q[1] for q in outer) / ring
+        prev = rings[0] if top else rings[-1]
+        for sc in (0.62, 0.28):
+            start = len(verts)
+            for x, y in outer:
+                xx, yy = cx + (x - cx) * sc, cy + (y - cy) * sc
+                verts.append((xx, yy, zof(t, xx)))
+            for i in range(ring):
+                j = (i + 1) % ring
+                f = (prev + i, prev + j, start + j, start + i)
+                faces.append(f if top else tuple(reversed(f)))
+            prev = start
+        verts.append((cx, cy, zof(t, cx)))
+        c = len(verts) - 1
+        for i in range(ring):
+            j = (i + 1) % ring
+            f = (prev + i, prev + j, c)
+            faces.append(f if top else tuple(reversed(f)))
+    cap(0.0, True)
+    cap(1.0, False)
+    return verts, faces
+
+
 def build_part(p):
     """verts, faces of one part from a settings dict (pure).  Main axis: Z for head / torso /
     limbs (limbs hang down from the joint at z = 0), Y for the foot (toe forward)."""
@@ -238,19 +378,9 @@ def build_part(p):
                 if rugged:
                     b.add(*box(0, -side * D * 0.52, -L * 0.5, W * 0.6, D * 0.12, L * 0.4))
         else:
-            # muscle-like loft: bulge high on the limb, joint end rounded
-            peak = 0.3 if lower else 0.38
-            n = 6 if rugged else 10
-            secs = []
-            for i in range(n + 1):
-                t = i / n
-                width = top_w + (bot_w - top_w) * t
-                depth = top_d + (bot_d - top_d) * t
-                g = 1.0 + bulge * 0.35 * math.exp(-((t - peak) / 0.28) ** 2)
-                end = math.sqrt(max(0.0, 1.0 - ((t - 0.5) / 0.5) ** 8)) * 0.35 + 0.65
-                secs.append((-L * t, jit(width * g * end, 0.06) / 2, jit(depth * g * end, 0.06) / 2,
-                             0, (bulge * 0.12 * D * math.sin(math.pi * t)) * (1 if not lower else -1)))
-            b.add(*loft(secs, ring, power, ends=E))
+            # anatomical limb (0.21.1): cross-section sliders, no joints
+            peak = p.get('bulge_pos', 0.3)
+            b.add(*limb_mesh(p, ring, power, rugged, E, jit))
             if p['details'] and rugged:
                 b.add(*box(0, D * 0.42, -L * peak, W * 0.7, D * 0.18, L * 0.32))
                 b.add(*box(W * 0.45, 0, -L * 0.6, W * 0.16, D * 0.6, L * 0.28))
@@ -366,7 +496,8 @@ def build_part(p):
 def _settings(rp):
     return {k: getattr(rp, k) for k in ('category', 'style', 'part', 'side', 'seed', 'variation', 'length', 'width',
                                         'depth', 'taper', 'bulge', 'roundness', 'resolution', 'details',
-                                        'bottom_shape', 'top_shape', 'bottom_sides', 'top_sides', 'shape_mid')}
+                                        'bottom_shape', 'top_shape', 'bottom_sides', 'top_sides', 'shape_mid')
+            + LIMB_KEYS}
 
 
 def rebuild(ob):
@@ -445,6 +576,35 @@ class MCH_PG_RobotPart(bpy.types.PropertyGroup):
                   description='Outline at the top end (foot: toe); the shape morphs between the two')
     bottom_sides: _p(IntProperty, name='Bottom Sides', default=6, min=3, max=16)
     top_sides: _p(IntProperty, name='Top Sides', default=6, min=3, max=16)
+    # humanoid limb shape (0.21.1)
+    bottom_w: _p(FloatProperty, name='Bottom Width', default=0.58, min=0.1, max=2.5, subtype='FACTOR',
+                 description='Width at the bottom end (wrist / ankle side) relative to the top')
+    bottom_d: _p(FloatProperty, name='Bottom Thickness', default=0.69, min=0.1, max=2.5, subtype='FACTOR',
+                 description='Thickness at the bottom end relative to the top')
+    taper_start: _p(FloatProperty, name='Taper Start', default=0.3, min=0.0, max=0.95, subtype='FACTOR',
+                    description='Where along the length it starts getting thinner')
+    bulge_pos: _p(FloatProperty, name='Bulge Position', default=0.2, min=0.05, max=0.95, subtype='FACTOR')
+    bulge_offset: _p(FloatProperty, name='Bulge Front/Back', default=0.0, min=-1.0, max=1.0,
+                     description='+ = muscle swells to the front, - = to the back')
+    split: _p(FloatProperty, name='Muscle Split', default=0.0, min=0.0, max=1.5,
+              description='Pinch on two opposite sides: two muscle masses')
+    split_angle: _p(FloatProperty, name='Split Angle', default=math.radians(90), subtype='ANGLE',
+                    description='0 = pinch at the sides, 90 = pinch front and back')
+    groove: _p(FloatProperty, name='Groove', default=0.35, min=0.0, max=1.5, description='Long dent between muscles')
+    groove_angle: _p(FloatProperty, name='Groove Angle', default=math.radians(70), subtype='ANGLE')
+    ridge: _p(FloatProperty, name='Ridge', default=0.0, min=0.0, max=2.0, description='Raised line along the length')
+    ridge_angle: _p(FloatProperty, name='Ridge Angle', default=math.radians(200), subtype='ANGLE')
+    twist: _p(FloatProperty, name='Twist', default=0.0, min=math.radians(-180), max=math.radians(180),
+              subtype='ANGLE', description='Cross section turns along the length')
+    bow: _p(FloatProperty, name='Bend', default=0.0, min=-1.0, max=1.0, description='Curve the limb')
+    bow_angle: _p(FloatProperty, name='Bend Direction', default=math.radians(90), subtype='ANGLE')
+    notch: _p(FloatProperty, name='Top Notch', default=0.015, min=0.0, max=0.3, subtype='FACTOR',
+              description='V cut across the top end (depth, share of the length)')
+    notch_width: _p(FloatProperty, name='Notch Width', default=0.5, min=0.05, max=1.0, subtype='FACTOR')
+    slant: _p(FloatProperty, name='Bottom Slant', default=math.radians(10), min=math.radians(-60),
+              max=math.radians(60), subtype='ANGLE', description='Tilt of the bottom cut')
+    top_slant: _p(FloatProperty, name='Top Slant', default=0.0, min=math.radians(-60), max=math.radians(60),
+                  subtype='ANGLE', description='Tilt of the top cut (e.g. thigh at the hip)')
     shape_mid: _p(FloatProperty, name='Shape Change', default=0.5, min=0.05, max=0.95, subtype='FACTOR',
                   description='Where the outline is half way between bottom and top shape')
     bevel_width: _p(FloatProperty, name='Bevel', default=0.006, min=0.0, soft_max=0.1, precision=4, unit='LENGTH')
@@ -459,7 +619,7 @@ class MCH_PG_RobotSettings(bpy.types.PropertyGroup):
     style: EnumProperty(name='Style', items=STYLES, default='SLEEK')
     seed: IntProperty(name='Seed', default=1, min=0)
     variation: FloatProperty(name='Randomness', default=0.5, min=0.0, max=1.0, subtype='FACTOR')
-    details: BoolProperty(name='Details', default=True)
+    details: BoolProperty(name='Details', default=False, description='Extra plates / pistons (off = plain base)')
     scale: FloatProperty(name='Scale', default=1.0, min=0.05, soft_max=5.0, description='Overall robot size')
 
 
@@ -471,6 +631,8 @@ def style_defaults(category, style, part):
              roundness=(0.85 if sleek else 0.3) if hum else (0.55 if sleek else 0.05),
              resolution=0.8 if sleek else 0.5, bevel_segments=3 if sleek else 1,
              bevel_angle=math.radians(30.0 if sleek else 40.0))
+    if hum and part in LIMB_SHAPES:
+        d['roundness'] = 0.97 if sleek else 0.45
     L, W, D = DEFAULTS[part]
     d['bevel_width'] = min(W, D) * (0.02 if sleek else 0.05)
     return d
@@ -496,6 +658,8 @@ def create_part(context, part, category, style, seed=1, variation=0.5, details=T
     rp.length, rp.width, rp.depth = L * scale, W * scale, D * scale
     for k, v in style_defaults(category, style, part).items():
         setattr(rp, k, v * scale if k == 'bevel_width' else v)
+    for k, v in LIMB_SHAPES.get(part, {}).items():
+        setattr(rp, k, v)
     rp.live = True
     rebuild(ob)
     return ob
@@ -505,9 +669,9 @@ def create_part(context, part, category, style, seed=1, variation=0.5, details=T
 BODY = (('TORSO', 'CENTER', (0, 0, 0.95)), ('HEAD', 'CENTER', (0, 0.01, 1.6)),
         ('SHOULDER', 'LEFT', (0.25, 0, 1.47)), ('SHOULDER', 'RIGHT', (-0.25, 0, 1.47)),
         ('UPPER_ARM', 'LEFT', (0.27, 0, 1.44)), ('UPPER_ARM', 'RIGHT', (-0.27, 0, 1.44)),
-        ('FOREARM', 'LEFT', (0.27, 0, 1.12)), ('FOREARM', 'RIGHT', (-0.27, 0, 1.12)),
+        ('FOREARM', 'LEFT', (0.27, 0, 1.19)), ('FOREARM', 'RIGHT', (-0.27, 0, 1.19)),
         ('THIGH', 'LEFT', (0.11, 0, 0.93)), ('THIGH', 'RIGHT', (-0.11, 0, 0.93)),
-        ('CALF', 'LEFT', (0.11, 0, 0.48)), ('CALF', 'RIGHT', (-0.11, 0, 0.48)),
+        ('CALF', 'LEFT', (0.11, 0, 0.52)), ('CALF', 'RIGHT', (-0.11, 0, 0.52)),
         ('FOOT', 'LEFT', (0.11, -0.05, 0.02)), ('FOOT', 'RIGHT', (-0.11, -0.05, 0.02)))
 
 
@@ -669,7 +833,40 @@ SLIDERS = (('length', 'Length', 'length', 10, 3000, 'LEN'), ('width', 'Width', '
            ('bevel_angle', 'Bevel Angle', 'bevel_angle', 1, 180, 'DEG'),
            ('bottom_sides', 'Bottom Sides', 'bottom_sides', 3, 16, 'INT'),
            ('top_sides', 'Top Sides', 'top_sides', 3, 16, 'INT'),
-           ('shape_mid', 'Shape Change', 'shape_mid', 5, 95, 'PCT'))
+           ('shape_mid', 'Shape Change', 'shape_mid', 5, 95, 'PCT'),
+           ('bottom_w', 'Bottom Width', 'bottom_w', 10, 250, 'PCT'),
+           ('bottom_d', 'Bottom Thickness', 'bottom_d', 10, 250, 'PCT'),
+           ('taper_start', 'Taper Start', 'taper_start', 0, 95, 'PCT'),
+           ('bulge_pos', 'Bulge Position', 'bulge_pos', 5, 95, 'PCT'),
+           ('bulge_offset', 'Bulge Front/Back', 'bulge_offset', -100, 100, 'PCT'),
+           ('split', 'Muscle Split', 'split', 0, 150, 'PCT'),
+           ('groove', 'Groove', 'groove', 0, 150, 'PCT'),
+           ('groove_angle', 'Groove Angle', 'groove_angle', -180, 360, 'DEG'),
+           ('ridge', 'Ridge', 'ridge', 0, 200, 'PCT'),
+           ('ridge_angle', 'Ridge Angle', 'ridge_angle', -180, 360, 'DEG'),
+           ('twist', 'Twist', 'twist', -180, 180, 'DEG'),
+           ('bow', 'Bend', 'bow', -100, 100, 'PCT'),
+           ('bow_angle', 'Bend Direction', 'bow_angle', -180, 360, 'DEG'),
+           ('notch', 'Top Notch', 'notch', 0, 30, 'PCT'),
+           ('notch_width', 'Notch Width', 'notch_width', 5, 100, 'PCT'),
+           ('slant', 'Bottom Slant', 'slant', -60, 60, 'DEG'),
+           ('split_angle', 'Split Angle', 'split_angle', -180, 360, 'DEG'),
+           ('top_slant', 'Top Slant', 'top_slant', -60, 60, 'DEG'))
+LIMB_SLIDERS = ('length', 'width', 'depth', 'bottom_w', 'bottom_d', 'taper_start', 'bulge', 'bulge_pos', 'bulge_offset',
+                'split', 'split_angle', 'groove', 'groove_angle', 'ridge', 'ridge_angle', 'twist', 'bow', 'bow_angle', 'notch',
+                'notch_width', 'slant', 'top_slant', 'roundness', 'resolution', 'variation', 'bevel', 'bevel_seg', 'bevel_angle',
+                'bottom_sides', 'top_sides', 'shape_mid')
+OTHER_SLIDERS = tuple(k[0] for k in SLIDERS if k[0] not in LIMB_SLIDERS or k[0] in
+                      {'length', 'width', 'depth', 'bulge', 'roundness', 'resolution', 'variation', 'bevel',
+                       'bevel_seg', 'bevel_angle', 'bottom_sides', 'top_sides', 'shape_mid'})
+
+
+def is_limb(rp):
+    return rp.category == 'HUMANOID' and rp.part in LIMB_SHAPES
+
+
+def slider_keys(rp):
+    return LIMB_SLIDERS if is_limb(rp) else OTHER_SLIDERS
 
 
 def slider_spec(context, key, ob=None):
@@ -689,22 +886,28 @@ def slider_spec(context, key, ob=None):
     return label, v, lo, hi, (lambda val: setattr(rp, prop, val / 100.0)), f'{label}  {v} %'
 
 
-def hud_layout(screen_pts, region_w, region_h, btn=30.0, gap=6.0, slider_w=104.0, slider_h=20.0):
+def hud_layout(screen_pts, region_w, region_h, btn=30.0, gap=6.0, slider_w=104.0, slider_h=20.0, keys=None):
     pts = [p for p in screen_pts if p is not None]
     if not pts:
         return {}
-    x = min(max(max(p[0] for p in pts) + btn * 1.2, btn), region_w - slider_w - btn)
+    keys = [k[0] for k in SLIDERS] if keys is None else list(keys)
     step = btn + gap
-    total = step * 3 + (slider_h + gap) * len(SLIDERS)
+    room = max(slider_h + gap, region_h - step * 3 - btn * 1.5)
+    per_col = max(1, int(room // (slider_h + gap)))
+    cols = max(1, -(-len(keys) // per_col))
+    per_col = -(-len(keys) // cols)
+    x = min(max(max(p[0] for p in pts) + btn * 1.2, btn), region_w - (slider_w + gap) * cols - btn)
+    total = step * 3 + (slider_h + gap) * per_col
     top = min(max((max(p[1] for p in pts) + min(p[1] for p in pts)) / 2 + total / 2, total), region_h - btn)
     out = {'apply': (x, top)}
     for i, k in enumerate(('reroll', 'style', 'category', 'details')):
         out[k] = (x + i * step, top - step)
     out['bottom'], out['top'] = (x, top - 2 * step), (x + step, top - 2 * step)
-    y = top - 3 * step
-    for key, *_r in SLIDERS:
-        out['slider_' + key] = (x - btn / 2 + slider_w / 2, y + btn / 2 - slider_h / 2)
-        y -= slider_h + gap
+    y0 = top - 3 * step
+    for i, key in enumerate(keys):
+        c, r = divmod(i, per_col)
+        out['slider_' + key] = (x - btn / 2 + slider_w / 2 + c * (slider_w + gap),
+                                y0 - r * (slider_h + gap) + btn / 2 - slider_h / 2)
     return out
 
 
@@ -729,7 +932,8 @@ def _hud_current(context):
     for c in ob.bound_box:
         q = view3d_utils.location_3d_to_region_2d(region, rv3d, ob.matrix_world @ Vector(c))
         pts.append(None if q is None else (q[0] / ui, q[1] / ui))
-    return ob, anchored('robot', ob.name, region, hud_layout(pts, region.width / ui, region.height / ui))
+    return ob, anchored('robot', ob.name + ('/limb' if is_limb(ob.mch_robot) else ''), region,
+                        hud_layout(pts, region.width / ui, region.height / ui, keys=slider_keys(ob.mch_robot)))
 
 
 class MCH_GT_robot_slider(bpy.types.Gizmo):
@@ -755,7 +959,8 @@ class MCH_GT_robot_slider(bpy.types.Gizmo):
     def modal(self, context, event, tweak):
         from .primitive_hud import slider_value
         spec = slider_spec(context, self.key)
-        step = 20.0 if self.key in {'bevel_seg', 'bottom_sides', 'top_sides'} else 2.0
+        step = 20.0 if self.key in {'bevel_seg', 'bottom_sides', 'top_sides'} else (
+            1.0 if self.key.endswith('angle') or self.key in {'twist', 'slant', 'notch'} else 2.0)
         v = slider_value(self.init_value, event.mouse_region_x - self.init_x, step_px=step, lo=spec[2], hi=spec[3])
         if v != spec[1]:
             spec[4](v)
@@ -857,6 +1062,8 @@ def _draw_labels():
         blf.position(0, (x + 21) * ui, (y - 4) * ui, 0)
         blf.draw(0, f'Bottom {names[rp.bottom_shape]}  ->  Top {names[rp.top_shape]}')
         for key, *_r in SLIDERS:
+            if 'slider_' + key not in lay:
+                continue
             x, y = lay['slider_' + key]
             text = slider_spec(context, key, ob)[5]
             w, _h = blf.dimensions(0, text)
@@ -884,12 +1091,11 @@ def draw(layout, context):
     r = box.row(align=True)
     r.prop(st, 'scale')
     r.prop(st, 'details', toggle=True)
-    big = box.row()
-    big.scale_y = 1.4
-    big.operator('mch.robot_add', text='Whole Body', icon='OUTLINER_OB_ARMATURE').part = 'BODY'
     grid = box.grid_flow(row_major=True, columns=2, even_columns=True, align=True)
+    grid.scale_y = 1.2
     for pid, label, _d in PARTS:
         grid.operator('mch.robot_add', text=label).part = pid
+    box.operator('mch.robot_add', text='Whole Body (all parts)', icon='OUTLINER_OB_ARMATURE').part = 'BODY'
     ob = active_part(context)
     if ob is not None:
         rp = ob.mch_robot
@@ -898,8 +1104,17 @@ def draw(layout, context):
         sub.row(align=True).prop(rp, 'category', expand=True)
         sub.row(align=True).prop(rp, 'style', expand=True)
         c = sub.column(align=True)
-        for prop in ('length', 'width', 'depth', 'taper', 'bulge', 'roundness', 'resolution', 'variation'):
+        limb = is_limb(rp)
+        for prop in ('length', 'width', 'depth') + (() if limb else ('taper',)) + ('bulge', 'roundness', 'resolution',
+                                                                                  'variation'):
             c.prop(rp, prop, slider=prop in {'roundness', 'variation'})
+        if limb:
+            c = sub.column(align=True)
+            c.label(text='Limb Shape (top = elbow / knee side)')
+            for prop in ('bottom_w', 'bottom_d', 'taper_start', 'bulge_pos', 'bulge_offset', 'split', 'split_angle',
+                         'groove', 'groove_angle', 'ridge', 'ridge_angle', 'twist', 'bow', 'bow_angle', 'notch',
+                         'notch_width', 'slant', 'top_slant'):
+                c.prop(rp, prop, slider=True)
         rr = sub.row(align=True)
         rr.prop(rp, 'seed')
         rr.operator('mch.robot_reroll', text='', icon='FILE_REFRESH')

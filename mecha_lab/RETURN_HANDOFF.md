@@ -1,4 +1,8 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.21.0 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.21.1 (Claude Code, 2026-10-14)
+
+## 0.21.1
+- ZIP sha256 `28f227289134c4da7e6791060171b5335ec1538150867f21caa73b543d485d4b`. `robot_base.limb_mesh`(인간형 팔다리, 링 + 동심 끝면, 관절 없음), `LIMB_SHAPES`/`LIMB_KEYS`(사용자 Genesis 9 조각 측정값), PG 속성 bottom_w/bottom_d/taper_start/bulge_pos/bulge_offset/split/split_angle/groove(+angle)/ridge(+angle)/twist/bow(+angle)/notch(+width)/slant/top_slant,
+  `is_limb`/`slider_keys`(부위별 HUD 슬라이더), `hud_layout(keys=)` 열 나눔. `loft`가 아래로 가는 단면이면 면 뒤집기(산업형 노멀 수정). Scene details 기본 False. 테스트 `tests/test_v0211.py`.
 
 ## 0.21.0
 - ZIP sha256 `2a5e512f90a5c25c90d186bb953a677b9631b769b8411b10d6918b10eb40f6d8`. 신규 `robot_base.py`: 순수 `build_part(p)`(loft/superellipse/box/cylinder, 끝면 모양 `part_ends`/`end_point`/`ends_ring` — 원/네모/N각 사이 모프, 코너가 링 정점에 오도록 링 수 조정),

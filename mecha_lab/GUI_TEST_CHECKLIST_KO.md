@@ -1,8 +1,13 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.21.0 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.21.1 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A00000000000. 0.21.1 (미검증)
+- [ ] Humanoid Forearm / Upper Arm / Thigh / Calf 추가 → 관절 없이 한 덩어리, 보내준 조각과 비슷한 비율
+- [ ] 팝업 슬라이더 여러 열로 표시, 드래그 시 실시간 변경(Bottom Width, Taper Start, Muscle Split, Groove, Twist, Bend, Top Notch, Slant 등)
+- [ ] N 패널 Limb Shape 목록
 
 ## A0000000000. 0.21.0 (미검증)
 - [ ] N > Mecha Lab > Robot Base Mesh 패널: 4가지(Humanoid/Industrial × Sleek/Rugged) Whole Body, 부위 버튼 8개

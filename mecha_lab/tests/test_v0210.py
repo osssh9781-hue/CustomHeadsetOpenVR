@@ -97,8 +97,12 @@ k0 = mesh_key(ob)
 rp.roundness = 0.0
 check('Roundness changes shape', mesh_key(ob) != k0)
 k0 = mesh_key(ob)
-rp.taper = -0.5
-check('Taper changes shape', mesh_key(ob) != k0)
+rp.bottom_w = 1.2
+check('Bottom Width changes shape (humanoid limb)', mesh_key(ob) != k0)
+ind = rb.create_part(C, 'THIGH', 'INDUSTRIAL', 'SLEEK', seed=2)
+k1 = mesh_key(ind)
+ind.mch_robot.taper = -0.5
+check('Taper changes shape (industrial limb)', mesh_key(ind) != k1)
 rp.bevel_width = 0.02
 rp.bevel_segments = 5
 rp.bevel_angle = math.radians(50)

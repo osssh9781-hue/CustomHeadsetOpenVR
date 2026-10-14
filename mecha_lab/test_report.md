@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.21.0
+# Test Report — Mecha Lab 0.21.1
+
+## 0.21.1 결과: 39개 파일, 1749 / 1749 통과 (`tests/test_log_bpy501_v0211.txt`). 보내주신 FBX 조각과 생성 메쉬를 Cycles로 나란히 렌더해 비교, 뷰포트 팝업·패널 조작은 미검증.
 
 ## 0.21.0 결과: 38개 파일, 1633 / 1633 통과 (`tests/test_log_bpy501_v0210.txt`). 로봇 모양은 Cycles CPU 렌더로 확인, 뷰포트 팝업·N 패널 조작은 미검증.
 
