@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.3 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.4 (Claude Code, 2026-10-14)
+
+## 0.23.4
+- ZIP sha256 `0bc194542d646eb45460b6dcb1b27fe835240bfc886af3fd6e82689e178ef46a`. `cloth_wrinkle` v34: `Fold Direction`(0 Up / 1 Down / 2 Random; `fold_lines`에서 월드 위를 패널 평면에 투영한 `up2`로 주름별 side 결정), 크리처 입력 Skin(0..5) / Skin Scale / Depth / Random / Edge Shrink / Shrink Width / Skin Edge(0..3) / Width / Height, `_skin_pattern`, `_skin_height`(안쪽 / 가장자리 두 주파수를 `near`로 섞음), `SKINS` / `CREATURE` / `apply_creature`, `mch.wrinkle_skin`, `mch.wrinkle_skin_edge`, `mch.creature_brush`(activate 후 flag 켬). 새 `creature_shell.py` v5: GN `MCH_CreatureShell`(Voronoi 셀 기울기 × DISTANCE_TO_EDGE smoothstep 홈 - 높이 연속, 노이즈 Bulge, Attribute Statistic 범위로 Lift N/E/S/W, 월드 아래 Gravity), `attach`, `mch.shell_option`, HUD. `armor_plate.perform_plate`가 `mch_plate.creature`면 attach. 툴바 SKIN / SHELL.
 
 ## 0.23.3
 - ZIP sha256 `a4f865c0cc84c7151dfae8e731397b7c2ee08dc916b4122482e16f6d7511b8f1`. `cloth_wrinkle` v32 입력 `Fold Asymmetry`, `Fold Thinness`(FOLD_INPUTS), `fold_lines`: 주름별 side(부호 amp), 부호 거리로 steep(`prof_s` + `crease`) / gentle(`prof_g`) 단면, 패널 엣지 중앙값 × 1.3 최소 폭. `curve_tube.ik_drag`(FABRIK + 로프), `ik`/`ik_pin`, 버튼 `ik`.

@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.23.3
+# Test Report — Mecha Lab 0.23.4
+
+## 0.23.4 결과: 48개 파일, 2024 / 2024 통과 (`tests/test_log_bpy501_v0234.txt`). 전체 실행에서 `test_v0120.py`가 1회 실패: 새 Skin/Shell 툴바 항목이 tool id가 아니라 `mch.creature_brush`로 가는데 예전 검사가 tool id만 허용 → 검사 수정 후 그 파일만 다시 실행해 로그의 해당 구간을 교체(로그 끝에 기록). 주름 방향은 서 있는 패널에서 세로 엣지의 오르막/내리막 개수로 검사(Up 1380/995, Down 998/1377). 스킨 / 갑각 모양은 Cycles 렌더로 확인. 실제 뷰포트 HUD·툴바 버튼 동작은 미검증.
 
 ## 0.23.3 결과: 47개 파일, 1995 / 1995 통과 (`tests/test_log_bpy501_v0233.txt`). 주름 단면은 Cycles 렌더로 비교, IK는 순수 함수 테스트. 실제 뷰포트에서 IK 드래그는 미검증.
 

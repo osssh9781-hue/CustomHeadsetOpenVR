@@ -24,6 +24,8 @@ BAR_TOOLS = (
     ('RADIAL', 'Radial', '', 'MOD_SCREW', 'mch.set_tool', 'RADIAL'),
     ('PLATE', 'Plate', '', 'MESH_GRID', 'mch.set_tool', 'PLATE'),
     ('TUBE', 'Curve', '', 'CURVE_BEZCURVE', 'mch.set_tool', 'TUBE'),
+    ('SKIN', 'Skin', '', 'OUTLINER_OB_FORCE_FIELD', 'mch.creature_brush', 'SKIN'),
+    ('SHELL', 'Shell', '', 'MESH_ICOSPHERE', 'mch.creature_brush', 'SHELL'),
 )
 SELECT_NATIVE = {'builtin.move', 'builtin.select', 'builtin.select_box', 'builtin.select_circle',
                  'builtin.select_lasso', 'builtin.rotate', 'builtin.scale', 'builtin.transform'}
@@ -61,9 +63,15 @@ def current_bar_tool(context):
     if native in SELECT_NATIVE and getattr(wm, 'mch_ui_mode', 'TOOL') == 'SELECT':
         return 'SELECT'
     try:
-        return ts.effective_tool(context)
+        tool = ts.effective_tool(context)
     except (AttributeError, KeyError, TypeError):
         return ''
+    scene = context.scene
+    if tool == 'WRINKLE' and getattr(getattr(scene, 'mch_wrinkle', None), 'creature', False):
+        return 'SKIN'
+    if tool == 'PLATE' and getattr(getattr(scene, 'mch_plate', None), 'creature', False):
+        return 'SHELL'
+    return tool
 
 
 def note_tool(context, tool_id):
@@ -191,6 +199,8 @@ class MCH_OT_bar_tool(bpy.types.Operator):
     def execute(self, context):
         if self.tool == 'SELECT':
             return bpy.ops.mch.select_move()
+        if self.tool in {'SKIN', 'SHELL'}:
+            return bpy.ops.mch.creature_brush(kind=self.tool)
         if self.tool not in ts.TOOL_BY_ID:
             return {'CANCELLED'}
         from .workspace_ui import activate_mecha_tool

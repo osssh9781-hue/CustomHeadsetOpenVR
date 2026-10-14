@@ -76,7 +76,17 @@ INPUTS = (('Type', 'NodeSocketInt', 0, 0, 2),
           ('Trim Height', 'NodeSocketFloat', 0.01, -100.0, 100.0),
           ('Gravity', 'NodeSocketFloat', 0.0, 0.0, 5.0),
           ('Fold Asymmetry', 'NodeSocketFloat', 0.75, 0.0, 1.0),
-          ('Fold Thinness', 'NodeSocketFloat', 0.0, 0.0, 1.0))
+          ('Fold Thinness', 'NodeSocketFloat', 0.0, 0.0, 1.0),
+          ('Fold Direction', 'NodeSocketInt', 0, 0, 2),
+          ('Skin', 'NodeSocketInt', 0, 0, 5),
+          ('Skin Scale', 'NodeSocketFloat', 0.06, 0.0001, 100.0),
+          ('Skin Depth', 'NodeSocketFloat', 0.01, -100.0, 100.0),
+          ('Skin Random', 'NodeSocketFloat', 1.0, 0.0, 1.0),
+          ('Edge Shrink', 'NodeSocketFloat', 0.6, 0.0, 3.0),
+          ('Shrink Width', 'NodeSocketFloat', 0.15, 0.0001, 100.0),
+          ('Skin Edge', 'NodeSocketInt', 0, 0, 3),
+          ('Skin Edge Width', 'NodeSocketFloat', 0.06, 0.0001, 100.0),
+          ('Skin Edge Height', 'NodeSocketFloat', 0.004, -100.0, 100.0))
 TRIMS = (('NONE', 'No Trim', 'Plain border'),
          ('PIPING', 'Piping', 'Round cord along the border'),
          ('BINDING', 'Binding', 'Flat band folded over the border, stitched'),
@@ -88,7 +98,7 @@ SEC_U = 'mch_sec_u'            # 0..1 along the long side (local X): stitched se
 SEC_LEN = 'mch_sec_len'        # length of the long side
 EDGE_U = 'mch_edge_u'          # arc length along the border of the nearest border point
 EDGE_LEN = 'mch_edge_len'      # length of that border loop (keeps seam patterns seamless)
-VERSION = 32
+VERSION = 34
 
 
 # -----------------------------------------------------------------------------
@@ -106,6 +116,128 @@ def _math(nodes, links, op, a=None, b=None, va=None, vb=None, clamp=False):
         elif val is not None:
             n.inputs[i].default_value = val
     return n.outputs[0]
+
+
+def _vor(N, L, vec, scale, rand, feature='F1'):
+    v = N.new('ShaderNodeTexVoronoi')
+    v.voronoi_dimensions = '2D'
+    v.feature = feature
+    L.new(vec, v.inputs['Vector'])
+    L.new(scale, v.inputs['Scale'])
+    L.new(rand, v.inputs['Randomness'])
+    return v
+
+
+def _skin_pattern(N, L, I, P, freq, rnd):
+    """The five skin patterns at one cell frequency (0..1-ish heights), picked by Skin."""
+    # 1 crocodile: rounded tiles with grooves
+    e1 = _vor(N, L, P, freq, rnd, 'DISTANCE_TO_EDGE').outputs['Distance']
+    croc = _math(N, L, 'POWER', _math(N, L, 'DIVIDE', e1, vb=0.28, clamp=True), vb=0.55)
+    # 2 dragon: pointed scales rising toward their tip (overlapping look)
+    stretch = N.new('ShaderNodeVectorMath')
+    stretch.operation = 'MULTIPLY'
+    L.new(P, stretch.inputs[0])
+    stretch.inputs[1].default_value = (1.0, 0.75, 1.0)
+    f1 = _vor(N, L, stretch.outputs[0], freq, rnd, 'F1')
+    e2 = _vor(N, L, stretch.outputs[0], freq, rnd, 'DISTANCE_TO_EDGE').outputs['Distance']
+    sc = N.new('ShaderNodeVectorMath')
+    sc.operation = 'SCALE'
+    L.new(stretch.outputs[0], sc.inputs[0])
+    L.new(freq, sc.inputs['Scale'])
+    rel = N.new('ShaderNodeVectorMath')
+    rel.operation = 'SUBTRACT'
+    L.new(sc.outputs[0], rel.inputs[0])
+    L.new(f1.outputs['Position'], rel.inputs[1])
+    rs = N.new('ShaderNodeSeparateXYZ')
+    L.new(rel.outputs[0], rs.inputs[0])
+    tip = _math(N, L, 'ADD', va=0.45, b=_math(N, L, 'MULTIPLY', rs.outputs['Y'], vb=-1.1))
+    dragon = _math(N, L, 'MULTIPLY', _math(N, L, 'POWER', _math(N, L, 'DIVIDE', e2, vb=0.12, clamp=True), vb=0.5),
+                   _math(N, L, 'MINIMUM', _math(N, L, 'MAXIMUM', tip, vb=0.0), vb=1.0))
+    # 3 godzilla: big flat plates, sharp grooves, each plate its own height
+    gf = _math(N, L, 'MULTIPLY', freq, vb=0.55)
+    e3 = _vor(N, L, P, gf, rnd, 'DISTANCE_TO_EDGE').outputs['Distance']
+    c3 = N.new('FunctionNodeSeparateColor')
+    L.new(_vor(N, L, P, gf, rnd, 'F1').outputs['Color'], c3.inputs[0])
+    godz = _math(N, L, 'MULTIPLY', _math(N, L, 'DIVIDE', e3, vb=0.035, clamp=True),
+                 _math(N, L, 'ADD', va=0.75, b=_math(N, L, 'MULTIPLY', c3.outputs[0], vb=0.5)))
+    # 4 toad: warts of random size + rough grain
+    f4 = _vor(N, L, P, freq, rnd, 'F1')
+    c4 = N.new('FunctionNodeSeparateColor')
+    L.new(f4.outputs['Color'], c4.inputs[0])
+    rad = _math(N, L, 'ADD', va=0.18, b=_math(N, L, 'MULTIPLY', c4.outputs[0], vb=0.38))
+    wart = _math(N, L, 'POWER', _math(N, L, 'SUBTRACT', va=1.0, b=_math(N, L, 'DIVIDE', f4.outputs['Distance'], rad,
+                                                                         clamp=True)), vb=1.6)
+    no = N.new('ShaderNodeTexNoise')
+    no.inputs['Detail'].default_value = 4.0
+    L.new(P, no.inputs['Vector'])
+    L.new(_math(N, L, 'MULTIPLY', freq, vb=5.0), no.inputs['Scale'])
+    toad = _math(N, L, 'ADD', wart, _math(N, L, 'MULTIPLY', _math(N, L, 'SUBTRACT', no.outputs['Fac'], vb=0.5), vb=0.5))
+    # 5 elephant: crack network (two sizes) in a soft lumpy skin
+    e5a = _vor(N, L, P, _math(N, L, 'MULTIPLY', freq, vb=0.7), rnd, 'DISTANCE_TO_EDGE').outputs['Distance']
+    e5b = _vor(N, L, P, _math(N, L, 'MULTIPLY', freq, vb=1.9), rnd, 'DISTANCE_TO_EDGE').outputs['Distance']
+    crack = _math(N, L, 'ADD', _math(N, L, 'MULTIPLY', _math(N, L, 'SUBTRACT', va=1.0, b=_math(
+        N, L, 'DIVIDE', e5a, vb=0.06, clamp=True)), vb=0.8), _math(N, L, 'MULTIPLY', _math(
+            N, L, 'SUBTRACT', va=1.0, b=_math(N, L, 'DIVIDE', e5b, vb=0.05, clamp=True)), vb=0.4))
+    no5 = N.new('ShaderNodeTexNoise')
+    no5.inputs['Detail'].default_value = 2.0
+    L.new(P, no5.inputs['Vector'])
+    L.new(_math(N, L, 'MULTIPLY', freq, vb=0.6), no5.inputs['Scale'])
+    eleph = _math(N, L, 'SUBTRACT', _math(N, L, 'MULTIPLY', no5.outputs['Fac'], vb=0.8), crack)
+    sw = N.new('GeometryNodeIndexSwitch')
+    sw.data_type = 'FLOAT'
+    while len(sw.index_switch_items) < 6:
+        sw.index_switch_items.new()
+    L.new(I['Skin'], sw.inputs['Index'])
+    sw.inputs[1].default_value = 0.0
+    for k, src in enumerate((croc, dragon, godz, toad, eleph)):
+        L.new(src, sw.inputs[k + 2])
+    return sw.outputs[0]
+
+
+def _skin_height(N, L, I, Db):
+    """0.23.4 Creature skin: scales / warts / cracks inside, skin grain along the border (height in metres)."""
+    pos = N.new('GeometryNodeInputPosition').outputs[0]
+    seed = N.new('ShaderNodeCombineXYZ')
+    L.new(_math(N, L, 'MULTIPLY', I['Seed'], vb=3.17), seed.inputs[0])
+    L.new(_math(N, L, 'MULTIPLY', I['Seed'], vb=-1.93), seed.inputs[1])
+    pv = N.new('ShaderNodeVectorMath')
+    pv.operation = 'ADD'
+    L.new(pos, pv.inputs[0])
+    L.new(seed.outputs[0], pv.inputs[1])
+    P = pv.outputs[0]
+    # scales get smaller near the border: a clean pattern at the normal size blends into a clean finer one
+    near = _math(N, L, 'SUBTRACT', va=1.0, b=_math(N, L, 'DIVIDE', Db, _math(N, L, 'MAXIMUM', I['Shrink Width'],
+                                                                             vb=1e-6), clamp=True))
+    near = _math(N, L, 'MULTIPLY', near, _math(N, L, 'MULTIPLY', near, _math(N, L, 'SUBTRACT', va=3.0, b=_math(
+        N, L, 'MULTIPLY', near, vb=2.0))))
+    f0 = _math(N, L, 'DIVIDE', va=1.0, b=_math(N, L, 'MAXIMUM', I['Skin Scale'], vb=1e-6))
+    f1 = _math(N, L, 'MULTIPLY', f0, _math(N, L, 'ADD', va=1.0, b=_math(N, L, 'MULTIPLY', I['Edge Shrink'], vb=1.5)))
+    rnd = _math(N, L, 'MULTIPLY', I['Skin Random'], vb=1.0)
+    p_in = _skin_pattern(N, L, I, P, f0, rnd)
+    p_edge = _skin_pattern(N, L, I, P, f1, rnd)
+    mixed = _math(N, L, 'ADD', p_in, _math(N, L, 'MULTIPLY', _math(N, L, 'SUBTRACT', p_edge, p_in), near))
+    freq = f0
+    skin = _math(N, L, 'MULTIPLY', mixed, I['Skin Depth'])
+    # border skin grain (instead of the cloth trim): fine lines / skin folds / pebbles along the edge
+    ew = _math(N, L, 'MAXIMUM', I['Skin Edge Width'], vb=1e-6)
+    band = _math(N, L, 'SUBTRACT', va=1.0, b=_math(N, L, 'DIVIDE', Db, ew, clamp=True))
+    band2 = _math(N, L, 'MULTIPLY', band, band)
+    ph = _math(N, L, 'DIVIDE', Db, ew)
+    grain = _math(N, L, 'MULTIPLY', _math(N, L, 'SINE', _math(N, L, 'MULTIPLY', ph, vb=2 * math.pi * 7.0)), band2)
+    folds = _math(N, L, 'MULTIPLY', _math(N, L, 'ABSOLUTE', _math(N, L, 'SINE', _math(
+        N, L, 'MULTIPLY', ph, vb=math.pi * 2.5))), _math(N, L, 'POWER', band, vb=0.6))
+    peb = _vor(N, L, P, _math(N, L, 'MULTIPLY', freq, vb=2.5), rnd, 'F1').outputs['Distance']
+    pebble = _math(N, L, 'MULTIPLY', _math(N, L, 'SUBTRACT', va=1.0, b=_math(N, L, 'DIVIDE', peb, vb=0.45, clamp=True)),
+                   band)
+    ew_sw = N.new('GeometryNodeIndexSwitch')
+    ew_sw.data_type = 'FLOAT'
+    while len(ew_sw.index_switch_items) < 4:
+        ew_sw.index_switch_items.new()
+    L.new(I['Skin Edge'], ew_sw.inputs['Index'])
+    ew_sw.inputs[1].default_value = 0.0
+    for k, src in enumerate((grain, folds, pebble)):
+        L.new(src, ew_sw.inputs[k + 2])
+    return _math(N, L, 'ADD', skin, _math(N, L, 'MULTIPLY', ew_sw.outputs[0], I['Skin Edge Height']))
 
 
 def build_group():
@@ -446,6 +578,7 @@ def build_group():
     for i, src in enumerate((piping, binding, welt)):
         L.new(src, tsw.inputs[i + 2])
     h = _math(N, L, 'ADD', h, _math(N, L, 'MULTIPLY', tsw.outputs[0], I['Trim Height']))
+    h = _math(N, L, 'ADD', h, _skin_height(N, L, I, Db))
     nrm = N.new('GeometryNodeInputNormal')
     off = N.new('ShaderNodeVectorMath')
     off.operation = 'SCALE'
@@ -521,12 +654,12 @@ def get_input(ob, name):
 
 SIZE_INPUTS = {'Strength', 'Scale', 'Edge Soft', 'Lift', 'Puff', 'Puff Width', 'Roll', 'Roll Width', 'Pinch',
                'Pinch Spacing', 'Pinch Length', 'Stitch', 'Stitch Inset', 'Stitch Length', 'Trim Width', 'Trim Height',
-               'Center Fade'}
+               'Center Fade', 'Skin Scale', 'Skin Depth', 'Shrink Width', 'Skin Edge Width', 'Skin Edge Height'}
 
 
 INPUT_NAMES = {n for n, *_r in INPUTS}
 FOLD_INPUTS = {'Pinch Spacing', 'Pinch Length', 'Fold Tilt', 'Tilt Random', 'Length Random', 'Variety', 'Seed',
-               'Fan', 'Trim', 'Trim Width', 'Fold Sharp', 'Fold Asymmetry', 'Fold Thinness'}
+               'Fan', 'Trim', 'Trim Width', 'Fold Sharp', 'Fold Asymmetry', 'Fold Thinness', 'Fold Direction'}
 
 
 def fold_lines(ob):
@@ -548,8 +681,13 @@ def fold_lines(ob):
     try:
         asym = min(1.0, max(0.0, float(gi('Fold Asymmetry'))))
         thin = min(1.0, max(0.0, float(gi('Fold Thinness'))))
+        fdir = int(gi('Fold Direction'))
     except (KeyError, TypeError, ValueError, AttributeError):
-        asym, thin = 0.0, 0.0
+        asym, thin, fdir = 0.0, 0.0, 2
+    # 0.23.4 which side folds over: the upper side (world up seen on the panel), lower, or random
+    up3 = ob.matrix_world.inverted().to_3x3() @ Vector((0.0, 0.0, 1.0))
+    up2 = Vector((up3.x, up3.y))
+    up2 = up2.normalized() if up2.length > 0.15 else None
     rng = random.Random(int(gi('Seed')) * 7919 + 13)
     me = ob.data
     bm = bmesh.new()
@@ -600,6 +738,12 @@ def fold_lines(ob):
                 amp *= 0.15                                            # some places almost empty
             bend = rng.uniform(-0.35, 0.35)
             side = 1.0 if rng.random() < 0.5 else -1.0                # which side folds over (steep side)
+            if up2 is not None and fdir in (0, 1):
+                pl = Vector((-d.y, d.x)).dot(up2)                       # steep side toward up (0) / down (1)
+                if abs(pl) > 0.2:
+                    side = -1.0 if pl > 0 else 1.0
+                    if fdir == 1:
+                        side = -side
             start = p0 + d * inset
             # stop just short of the far side (march inside the outline)
             free = 0.0
@@ -718,7 +862,8 @@ def set_input(ob, name, value):
     from . import last_used
     size = float(ob.get('mch_wrinkle_size', 0.0) or 0.0)
     if size > 0 and name in INPUT_NAMES:
-        last_used.remember('wrinkle', name, value)       # the same numbers next time (not scaled by size)
+        # the same numbers next time (not scaled by size); creature skin remembers its own set
+        last_used.remember('creature' if is_creature(ob) else 'wrinkle', name, value)
     if name in FOLD_INPUTS and size > 0:
         fold_lines(ob)                          # the long fold lines follow spacing / tilt / length / seed
     try:
@@ -750,6 +895,45 @@ PRESETS = {
 
 
 TRIM_PRESETS = {'NONE': (0.03, 0.0), 'PIPING': (0.022, 0.011), 'BINDING': (0.045, 0.006), 'WELT': (0.04, 0.008)}
+
+# 0.23.4 Creature Skin (sizes are parts of the panel size)
+SKINS = (('CROC', 'Crocodile', 'Round domed scales with grooves'),
+         ('DRAGON', 'Dragon', 'Pointed scales rising to their tips (overlapping)'),
+         ('GODZILLA', 'Godzilla', 'Big flat plates with sharp grooves'),
+         ('TOAD', 'Toad', 'Rough warty skin'),
+         ('ELEPHANT', 'Elephant', 'Cracked, lumpy hide'))
+SKIN_IDS = tuple(k[0] for k in SKINS)
+SKIN_EDGES = (('NONE', 'No Edge', ''), ('GRAIN', 'Skin Grain', 'Fine lines along the border'),
+              ('FOLDS', 'Skin Folds', 'Soft folds along the border'), ('PEBBLE', 'Pebbles', 'Small bumps along the border'))
+CREATURE = {
+    'CROC': dict(Skin=1, Scale=0.07, Depth=0.012, Shrink=0.8, ShrinkW=0.2, Edge=2, EdgeW=0.08, EdgeH=0.004),
+    'DRAGON': dict(Skin=2, Scale=0.06, Depth=0.014, Shrink=0.9, ShrinkW=0.2, Edge=1, EdgeW=0.07, EdgeH=0.002),
+    'GODZILLA': dict(Skin=3, Scale=0.12, Depth=0.01, Shrink=0.6, ShrinkW=0.25, Edge=3, EdgeW=0.08, EdgeH=0.004),
+    'TOAD': dict(Skin=4, Scale=0.045, Depth=0.012, Shrink=0.5, ShrinkW=0.2, Edge=3, EdgeW=0.06, EdgeH=0.004),
+    'ELEPHANT': dict(Skin=5, Scale=0.1, Depth=0.01, Shrink=0.4, ShrinkW=0.2, Edge=1, EdgeW=0.1, EdgeH=0.003),
+}
+
+
+def is_creature(ob):
+    return bool(ob is not None and ob.get('mch_creature'))
+
+
+def apply_creature(ob, skin, size=None):
+    """Creature Skin: the skin pattern + border grain; the cloth features (puff, seams, stitching, trim) off."""
+    size = size or float(ob.get('mch_wrinkle_size', 1.0)) or 1.0
+    pr = CREATURE[skin]
+    ob['mch_creature'] = skin
+    set_input(ob, 'Skin', pr['Skin'])
+    set_input(ob, 'Skin Scale', pr['Scale'] * size)
+    set_input(ob, 'Skin Depth', pr['Depth'] * size)
+    set_input(ob, 'Edge Shrink', pr['Shrink'])
+    set_input(ob, 'Shrink Width', pr['ShrinkW'] * size)
+    set_input(ob, 'Skin Edge', pr['Edge'])
+    set_input(ob, 'Skin Edge Width', pr['EdgeW'] * size)
+    set_input(ob, 'Skin Edge Height', pr['EdgeH'] * size)
+    for name, v in (('Puff', 0.012 * size), ('Puff Width', 0.12 * size), ('Pinch', 0.0), ('Stitch', 0.0),
+                    ('Trim', 0), ('Fan Mix', 0.0), ('Strength', 0.0), ('Roll', 0.0), ('Sections', 1)):
+        set_input(ob, name, v)
 
 
 def apply_trim(ob, trim, size=None):
@@ -982,12 +1166,23 @@ def perform_wrinkle(context, loops, projector, wtype=None):
                 set_input(ob, name, v)
             except KeyError:
                 pass
+    if getattr(st, 'creature', False):
+        apply_creature(ob, st.skin, size)
+        for name, v in last_used.recall('creature').items():
+            try:
+                set_input(ob, name, v)
+            except KeyError:
+                pass
+        if int(get_input(ob, 'Skin')) != CREATURE[st.skin]['Skin']:
+            apply_creature(ob, st.skin, size)
     fold_lines(ob)
     for o in context.selected_objects:
         o.select_set(False)
     ob.select_set(True)
     context.view_layer.objects.active = ob
     extra = f' | {len(missing)} point(s) past the surface edge' if missing else ''
+    if getattr(st, 'creature', False):
+        return f'Creature skin "{ob.name}" on {target.name} ({dict((a, b) for a, b, _c in SKINS)[st.skin]}){extra}'
     pat = dict((a, b) for a, b, _c in TYPES)[wtype] if st.pattern else 'no pattern'
     return f'Cloth plate "{ob.name}" on {target.name} (padded panel, {pat}){extra}'
 
@@ -1059,6 +1254,67 @@ class MCH_PG_Wrinkle(bpy.types.PropertyGroup):
                                        description='Cloth layer thickness (part of the patch size)')
     lift: bpy.props.FloatProperty(name='Height', default=0.002, soft_min=-0.05, soft_max=0.2,
                                   description='Height of the cloth layer above the surface (part of the patch size)')
+    creature: bpy.props.BoolProperty(name='Creature Skin', default=False,
+                                     description='Creature Skin brush: scales / warts / cracks instead of cloth')
+    skin: EnumProperty(name='Skin', items=SKINS, default='CROC', description='Creature skin preset')
+
+
+class MCH_OT_wrinkle_skin(bpy.types.Operator):
+    """Creature Skin: next skin (Crocodile / Dragon / Godzilla / Toad / Elephant)"""
+    bl_idname = 'mch.wrinkle_skin'
+    bl_label = 'Creature Skin Type'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    step: IntProperty(default=1)
+
+    @classmethod
+    def poll(cls, context):
+        return active_wrinkle(context) is not None
+
+    def execute(self, context):
+        ob = active_wrinkle(context)
+        cur = ob.get('mch_creature') if is_creature(ob) else None
+        i = SKIN_IDS.index(cur) if cur in SKIN_IDS else -self.step
+        nxt = SKIN_IDS[(i + self.step) % len(SKIN_IDS)]
+        apply_creature(ob, nxt)
+        context.scene.mch_wrinkle.skin = nxt
+        self.report({'INFO'}, 'Creature skin: ' + dict((a, b) for a, b, _c in SKINS)[nxt])
+        return {'FINISHED'}
+
+
+class MCH_OT_wrinkle_skin_edge(bpy.types.Operator):
+    """Creature Skin: border finishing (none / skin grain / skin folds / pebbles)"""
+    bl_idname = 'mch.wrinkle_skin_edge'
+    bl_label = 'Skin Edge'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+
+    @classmethod
+    def poll(cls, context):
+        return active_wrinkle(context) is not None
+
+    def execute(self, context):
+        ob = active_wrinkle(context)
+        set_input(ob, 'Skin Edge', (int(get_input(ob, 'Skin Edge')) + 1) % len(SKIN_EDGES))
+        return {'FINISHED'}
+
+
+class MCH_OT_creature_brush(bpy.types.Operator):
+    """Creature brush: Skin (Cloth Plate with scales / warts / cracks) or Shell (Armor Plate carapace)"""
+    bl_idname = 'mch.creature_brush'
+    bl_label = 'Creature Brush'
+    bl_options = {'INTERNAL'}
+    kind: EnumProperty(items=[('SKIN', 'Skin', ''), ('SHELL', 'Shell', '')], default='SKIN')
+
+    def execute(self, context):
+        from .workspace_ui import activate_mecha_tool
+        # activate first: picking the plain tool switches the creature layer off
+        if self.kind == 'SKIN':
+            activate_mecha_tool(context, 'WRINKLE')
+            context.scene.mch_wrinkle.creature = True
+        else:
+            activate_mecha_tool(context, 'PLATE')
+            context.scene.mch_plate.creature = True
+        self.report({'INFO'}, 'Creature ' + self.kind.title() + ': draw on the mesh')
+        return {'FINISHED'}
 
 
 class MCH_OT_wrinkle_type(bpy.types.Operator):
@@ -1340,11 +1596,20 @@ HUD_BUTTONS = (('apply', 'CHECKMARK', 'mch.wrinkle_apply', {}, 'Apply'),
                ('reset', 'LOOP_BACK', 'mch.wrinkle_reset', {}, 'Reset to the defaults'),
                ('seam', 'IPO_SINE', 'mch.wrinkle_seam', {}, 'Section seam shape'),
                ('presets', 'PRESET', 'mch.wrinkle_presets_menu', {}, 'Your presets (load / save / delete)'),
-               ('save', 'FILE_TICK', 'mch.wrinkle_preset_save', {}, 'Save these values as a preset'))
+               ('save', 'FILE_TICK', 'mch.wrinkle_preset_save', {}, 'Save these values as a preset'),
+               ('skin', 'OUTLINER_OB_FORCE_FIELD', 'mch.wrinkle_skin', {'step': 1}, 'Creature skin type'),
+               ('skin_edge', 'MOD_EDGESPLIT', 'mch.wrinkle_skin_edge', {}, 'Skin edge finishing'))
 # key, label, input / modifier field, lo, hi, kind
 SLIDERS = (('random', 'Randomness', 'Variety', 0, 100, 'RAND'),
            ('lift', 'Height', 'Lift', -50, 200, 'SIZE'),
            ('gravity', 'Gravity', 'Gravity', 0, 500, 'PCT'),
+           ('skin_scale', 'Scale Size', 'Skin Scale', 2, 500, 'SIZE'),
+           ('skin_depth', 'Skin Depth', 'Skin Depth', -50, 80, 'SIZE'),
+           ('skin_random', 'Skin Random', 'Skin Random', 0, 100, 'PCT'),
+           ('shrink', 'Edge Shrink', 'Edge Shrink', 0, 300, 'PCT'),
+           ('shrink_w', 'Shrink Width', 'Shrink Width', 2, 200, 'SIZE'),
+           ('skin_edge_w', 'Skin Edge Width', 'Skin Edge Width', 2, 200, 'SIZE'),
+           ('skin_edge_h', 'Skin Edge Height', 'Skin Edge Height', -40, 40, 'SIZE'),
            ('sections', 'Sections', 'Sections', 1, 12, 'INT'),
            ('sec_turn', 'Section Turn', 'Section Turn', -180, 180, 'DEG'),
            ('sec_height', 'Section Height', 'Section Height', 0, 500, 'PCT'),
@@ -1419,22 +1684,40 @@ def slider_spec(context, key, ob=None):
     return label, v, lo, hi, (lambda val: set_input(ob, name, val / 1000.0 * size)), f'{label}  {cur:.3f}'
 
 
-def hud_layout(screen_pts, region_w, region_h, btn=30.0, gap=6.0, slider_w=104.0, slider_h=20.0):
+SKIN_KEYS = ('skin_scale', 'skin_depth', 'skin_random', 'shrink', 'shrink_w', 'skin_edge_w', 'skin_edge_h')
+CREATURE_KEYS = ('lift', 'gravity', 'puff', 'puff_w') + SKIN_KEYS + ('scale', 'strength')
+
+
+def slider_keys(ob):
+    """Sliders shown in the popup: creature skin or cloth."""
+    if is_creature(ob):
+        return CREATURE_KEYS
+    return tuple(k[0] for k in SLIDERS if k[0] not in SKIN_KEYS)
+
+
+def hud_layout(screen_pts, region_w, region_h, btn=30.0, gap=6.0, slider_w=104.0, slider_h=20.0, keys=None):
     pts = [p for p in screen_pts if p is not None]
     if not pts:
         return {}
-    x = min(max(max(p[0] for p in pts) + btn * 1.2, btn), region_w - slider_w - btn)
+    keys = [k[0] for k in SLIDERS] if keys is None else list(keys)
     step = btn + gap
-    total = step * 4 + (slider_h + gap) * len(SLIDERS)
+    room = max(slider_h + gap, region_h - step * 5 - btn)
+    per_col = max(1, int(room // (slider_h + gap)))
+    cols = max(1, -(-len(keys) // per_col))
+    per_col = -(-len(keys) // cols)
+    x = min(max(max(p[0] for p in pts) + btn * 1.2, btn), region_w - (slider_w + gap) * cols - btn)
+    total = step * 5 + (slider_h + gap) * per_col
     top = min(max((max(p[1] for p in pts) + min(p[1] for p in pts)) / 2 + total / 2, total), region_h - btn)
     out = {'apply': (x, top), 'cancel': (x, top - step), 'prev': (x, top - 2 * step),
            'next': (x + step, top - 2 * step), 'reroll': (x + 2 * step, top - 2 * step),
            'trim': (x, top - 3 * step), 'reset': (x + step, top - 3 * step), 'seam': (x + 2 * step, top - 3 * step),
-           'presets': (x + 3 * step, top - 3 * step), 'save': (x + 4 * step, top - 3 * step)}
-    y = top - 4 * step
-    for key, *_r in SLIDERS:
-        out['slider_' + key] = (x - btn / 2 + slider_w / 2, y + btn / 2 - slider_h / 2)
-        y -= slider_h + gap
+           'presets': (x + 3 * step, top - 3 * step), 'save': (x + 4 * step, top - 3 * step),
+           'skin': (x, top - 4 * step), 'skin_edge': (x + step, top - 4 * step)}
+    y0 = top - 5 * step
+    for i, key in enumerate(keys):
+        c, r = divmod(i, per_col)
+        out['slider_' + key] = (x - btn / 2 + slider_w / 2 + c * (slider_w + gap),
+                                y0 - r * (slider_h + gap) + btn / 2 - slider_h / 2)
     return out
 
 
@@ -1459,7 +1742,9 @@ def _hud_current(context):
     for c in ob.bound_box:
         q = view3d_utils.location_3d_to_region_2d(region, rv3d, ob.matrix_world @ Vector(c))
         pts.append(None if q is None else (q[0] / ui, q[1] / ui))
-    return ob, anchored('wrinkle', ob.name, region, hud_layout(pts, region.width / ui, region.height / ui))
+    keys = slider_keys(ob)
+    return ob, anchored('wrinkle', ob.name + '/' + str(len(keys)), region,
+                        hud_layout(pts, region.width / ui, region.height / ui, keys=keys))
 
 
 class MCH_GT_wrinkle_slider(bpy.types.Gizmo):
@@ -1580,7 +1865,17 @@ def _draw_labels():
             blf.color(0, *((1.0, 0.62, 0.16) if key == 'apply' else (0.85, 0.87, 0.9)), 1.0)
             blf.position(0, (x + 21) * ui, (y - 4) * ui, 0)
             blf.draw(0, text)
+        if 'skin' in lay:
+            x, y = lay['skin_edge']
+            label = (dict((a, b) for a, b, _c in SKINS).get(ob.get('mch_creature'), 'Creature Skin')
+                     + '  |  ' + SKIN_EDGES[max(0, min(3, int(get_input(ob, 'Skin Edge'))))][1]) \
+                if is_creature(ob) else 'Creature Skin'
+            blf.color(0, 0.85, 0.87, 0.9, 1.0)
+            blf.position(0, (x + 21) * ui, (y - 4) * ui, 0)
+            blf.draw(0, label)
         for key, *_r in SLIDERS:
+            if 'slider_' + key not in lay:
+                continue
             x, y = lay['slider_' + key]
             text = slider_spec(context, key, ob)[5]
             w, _h = blf.dimensions(0, text)
@@ -1600,6 +1895,11 @@ def draw(layout, context):
     pr = box.row(align=True)
     pr.menu('MCH_MT_wrinkle_presets', text='My Presets', icon='PRESET')
     pr.operator('mch.wrinkle_preset_save', text='', icon='ADD')
+    cr = box.row(align=True)
+    cr.prop(st, 'creature', toggle=True, icon='OUTLINER_OB_FORCE_FIELD')
+    if st.creature:
+        box.row(align=True).prop(st, 'skin', expand=True)
+        box.label(text='Creature Skin: scales shrink toward the border, skin grain on the edge (popup sliders)')
     box.row(align=True).prop(st, 'wtype', expand=True)
     box.label(text='Edge Trim')
     box.row(align=True).prop(st, 'trim', expand=True)
@@ -1635,7 +1935,8 @@ def draw(layout, context):
 
 CLASSES = (MCH_PG_Wrinkle, MCH_OT_wrinkle_preset_save, MCH_OT_wrinkle_preset_load, MCH_OT_wrinkle_preset_delete,
            MCH_MT_wrinkle_presets, MCH_OT_wrinkle_presets_menu, MCH_OT_wrinkle_type, MCH_OT_wrinkle_trim, MCH_OT_wrinkle_seam, MCH_OT_wrinkle_reset, MCH_OT_wrinkle_reroll, MCH_OT_wrinkle_apply, MCH_OT_wrinkle_remove,
-           MCH_GT_wrinkle_slider, MCH_GGT_wrinkle_hud)
+           MCH_GT_wrinkle_slider, MCH_GGT_wrinkle_hud, MCH_OT_wrinkle_skin, MCH_OT_wrinkle_skin_edge,
+           MCH_OT_creature_brush)
 
 
 def register():

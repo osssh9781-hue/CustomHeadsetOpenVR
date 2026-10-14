@@ -378,6 +378,9 @@ def perform_plate(context, loops, projector, preset=None):
                                     'proj': frozen, 'spacing': int(st.spacing), 'size': local_size})
         recalled = recall_plate(part, local_size, preset)      # 0.20.2 last used profile / lines / rims
     scene.mch_extract_last = part
+    if getattr(st, 'creature', False):
+        from . import creature_shell
+        creature_shell.attach(part, -Vector(projector.view_dir), local_size)
     for o in context.selected_objects:
         o.select_set(False)
     part.select_set(True)
@@ -649,6 +652,9 @@ class MCH_PG_Plate(bpy.types.PropertyGroup):
                                      '(changes the selected plate live until Apply)')
     auto_size: BoolProperty(name='Auto Size', default=True,
                             description='Profile height / bevel / chamfer scale with the plate size')
+    creature: BoolProperty(name='Creature Shell', default=False,
+                           description='Creature Shell brush: new plates get hard random facets, bulges, '
+                                       'N/E/S/W edge lift and gravity')
 
 
 class MCH_OT_plate_preset(bpy.types.Operator):

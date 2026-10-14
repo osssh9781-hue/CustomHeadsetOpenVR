@@ -196,7 +196,8 @@ check('pie menu, toolbar gizmo group and toggle operators registered',
 icons = set(bpy.types.UILayout.bl_rna.functions['prop'].parameters['icon'].enum_items.keys())
 check('every toolbar icon is a real Blender icon', all(t[3] in icons for t in bb.BAR_TOOLS),
       [t[3] for t in bb.BAR_TOOLS if t[3] not in icons])
-check('every toolbar tool exists', all(t[5] is None or t[5] in ts.TOOL_BY_ID for t in bb.BAR_TOOLS))
+check('every toolbar tool exists', all(t[5] is None or t[5] in ts.TOOL_BY_ID or t[4] == 'mch.creature_brush'
+                                       for t in bb.BAR_TOOLS))
 pos, d = bb.toolbar_layout(1600, 1.0, 8, 'M')
 xs = [p[0] for p in pos]
 check('toolbar is centred at the bottom with even spacing', abs((xs[0] + xs[-1]) / 2 - 800) < 1e-6 and

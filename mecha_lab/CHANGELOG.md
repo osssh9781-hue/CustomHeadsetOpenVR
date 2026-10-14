@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 0.23.4 — 주름 방향(위쪽이 가파름), Creature Skin, Creature Shell (2026-10-14)
+
+- **주름 방향**(그려주신 방향대로): 서 있는 면에서는 각 주름의 **가파른 접힘 벽이 위쪽**, **완만한 긴 경사가 아래쪽**(월드 위 기준). **Fold Direction** 입력 Up(기본) / Down / Random. 면이 위를 향해 누워 있으면(월드 위가 패널 안에 거의 안 보이면) 예전처럼 랜덤.
+- **Creature Skin**(하단 툴바 **Skin** = Cloth Plate + 크리처 레이어): 프리셋 **Crocodile**(둥근 비늘) / **Dragon**(뾰족 비늘) / **Godzilla**(넓적한 판 비늘) / **Toad**(두꺼비 오돌토돌) / **Elephant**(갈라진 코끼리 피부). 옷 기능(퍼프·솔기·스티치·트림)은 꺼지고, 가장자리 마무리가 **Skin Edge**(없음 / 피부 결 / 피부 주름 / 자갈)로 바뀜. **Edge Shrink**: 가장자리로 갈수록 비늘이 작아짐(폭 Shrink Width). 슬라이더 Skin Scale / Depth / Random, Gravity. HUD 버튼: 스킨 종류, 가장자리 마무리.
+- **Creature Shell**(하단 툴바 **Shell** = Armor Plate + 갑각 레이어): 판마다 **딱딱한 갑각판**(셀마다 다른 기울기 + 사이 홈), **Bulge**(울룩불룩), **Lift N/E/S/W**(그 방향 가장자리가 몸에서 들림, 높이·폭), **Gravity**, 새 랜덤(Reroll), Add/Remove Shell. HUD는 판 왼쪽.
+- 수정: Skin/Shell 버튼이 툴 전환 순서 때문에 크리처 레이어를 다시 끄던 문제(헤드리스 테스트에서 발견).
+- IK는 0.23.3에서 이미 들어감(Mesh Curve 버튼 줄 **IK**).
+- 미리보기 `reference/creature_skin_shell_v0234.png`(위: 악어 / 용 / 고질라 / 두꺼비 / 코끼리, 아래: 갑각 Lift S+E). 테스트: 48개 파일 2024/2024 (`tests/test_log_bpy501_v0234.txt`). ZIP sha256 `0bc194542d646eb45460b6dcb1b27fe835240bfc886af3fd6e82689e178ef46a`.
+
 ## 0.23.3 — 비대칭 옷주름, 더 얇은 주름, Mesh Curve IK (2026-10-14)
 
 - **옷주름 단면 비대칭**(보내주신 그림 O): 주름마다 한쪽은 **가파르게 접힌 벽 + 아래 접힘 홈**, 반대쪽은 **길고 완만한 경사**. 어느 쪽이 접히는지는 주름마다 랜덤. **Fold Asymmetry** 슬라이더(0 = 예전 둥근 대칭, 기본 75 %).

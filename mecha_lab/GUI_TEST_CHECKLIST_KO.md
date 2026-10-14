@@ -1,8 +1,14 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.3 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.4 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A0000000000000000000. 0.23.4 (미검증)
+- [ ] 서 있는 면에 Cloth Plate: 주름의 가파른 쪽이 위, 완만한 쪽이 아래 / Fold Direction Down·Random
+- [ ] 하단 툴바 Skin: 5가지 스킨, HUD 스킨 버튼·가장자리 버튼, 가장자리로 갈수록 비늘 작아짐
+- [ ] 하단 툴바 Shell: 갑각판 모양, Lift N/E/S/W 버튼, Bulge / Gravity 슬라이더, HUD 위치(판 왼쪽)
+- [ ] Skin/Shell 누른 뒤 일반 Cloth / Armor Plate 버튼을 누르면 크리처 레이어가 꺼지는지
 
 ## A000000000000000000. 0.23.3 (미검증)
 - [ ] Cloth Plate 주름이 한쪽 가파름 / 반대쪽 완만, Fold Asymmetry / Fold Thinness 슬라이더

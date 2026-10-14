@@ -363,6 +363,10 @@ def activate_mecha_tool(context, tool_id):
         from . import base_mesh
         base_mesh.auto_apply_session(context)     # F02: only this tool's own live results
     settings.mch_active_tool = tool_id
+    # 0.23.4: the normal Armor / Cloth Plate (the Creature brushes switch their flag back on after this)
+    for pg, tid in (('mch_wrinkle', 'WRINKLE'), ('mch_plate', 'PLATE')):
+        if tool_id == tid and hasattr(context.scene, pg):
+            getattr(context.scene, pg).creature = False
     try:
         from . import bottom_bar
         bottom_bar.note_tool(context, tool_id)
