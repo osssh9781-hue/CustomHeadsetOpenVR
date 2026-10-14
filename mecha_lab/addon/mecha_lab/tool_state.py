@@ -32,7 +32,7 @@ TOOLS = (
      'primitive', 'MESH_CUBE', 'mecha.primitive', 'OK'),
     ('BOOLEAN', 'Boolean', 'Difference / Union / Intersect with a selected cutter mesh', 'boolean', 'MOD_BOOLEAN', None, 'OK'),
     ('FUSE', 'Smart Fuse', 'Union two overlapping meshes with a fillet/chamfer seam', 'fuse', 'MOD_BEVEL', None, 'PARTIAL'),
-    ('MIRROR', 'Mirror', 'World / local / collection mirror', 'mirror', 'MOD_MIRROR', None, 'OK'),
+    ('MIRROR', 'Symmetry', 'Symmetry: lean the mouse to the side to copy to, Enter applies (left buttons: live Mirror)', 'mirror', 'MOD_MIRROR', None, 'OK'),
     ('MASK', 'Mask', 'Paint a face mask with the shared shapes (Alt: erase)', 'mask', 'MOD_MASK', 'mecha.mask', 'PARTIAL'),
     ('ARRAY', 'Curve Array', 'Repeat a part along a drawn curve', 'array', 'MOD_ARRAY', None, 'OK'),
     ('RADIAL', 'Radial Array', 'Radial copies around the 3D cursor + Boolean', 'radial', 'MOD_SCREW', None, 'OK'),

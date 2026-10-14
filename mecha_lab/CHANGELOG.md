@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 0.20.3 — Symmetry / Mirror 버튼 (2026-10-14)
+
+- 기존 Mirror 도구 이름을 **Symmetry**로 변경(마우스를 복사할 쪽으로 기울이기, Enter = 적용). 하단 툴바·Q 파이·목록 이름도 Symmetry.
+- 뷰포트 왼쪽 버튼 묶음(Origin to 3D Cursor 아래)에 **Symmetry**, **Mirror** 버튼 추가. Mirror = 선택 메쉬에 **살아 있는 미러 모디파이어**(바로 적용 안 함, 옆 팝업에서 Apply / Remove / 축).
+- 테스트: 37개 파일 1578/1578 (`tests/test_log_bpy501_v0203.txt`). ZIP sha256 `f157cdd26be6e04deb19c6b879623c190ab8434b437fe77a7aec1e3a08e0afe1`.
+
 ## 0.20.2 — 긴 주름, 섹션 회전/모양/위치, 직전 옵션 기억, 하이폴 수정 (2026-10-14)
 
 - **Cloth Plate 주름**: 테두리에서 시작하는 **낱개 주름**(시작은 아주 가늘고 안쪽으로 넓어짐), 주름마다 각도·길이·세기 랜덤, **반대편 직전까지** 뻗고 끝에서 약해짐,

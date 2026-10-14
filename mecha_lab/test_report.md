@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.20.2
+# Test Report — Mecha Lab 0.20.3
+
+## 0.20.3 결과: 37개 파일, 1578 / 1578 통과 (`tests/test_log_bpy501_v0203.txt`).
 
 ## 0.20.2 결과: 37개 파일, 1576 / 1576 통과 (`tests/test_log_bpy501_v0202.txt`). 모양은 Cycles CPU 렌더로 확인, 뷰포트 조작은 미검증.
 

@@ -392,7 +392,7 @@ def draw_lean_overlay(op):
 
 class MCH_OT_mirror_lean(MirrorLeanLogic, bpy.types.Operator):
     bl_idname = 'mch.mirror_lean'
-    bl_label = 'Mirror (lean to copy)'
+    bl_label = 'Symmetry (lean to copy)'
     bl_description = ('Live mirror at once; lean the mouse toward the side to copy to. Enter = apply, '
                       'click = keep live, Shift+click = add axis, X/Y/Z = axes, B = bisect, Esc = cancel')
     bl_options = {'REGISTER', 'UNDO', 'BLOCKING'}

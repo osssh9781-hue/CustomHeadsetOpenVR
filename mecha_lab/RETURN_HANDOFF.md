@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.20.2 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.20.3 (Claude Code, 2026-10-14)
+
+## 0.20.3
+- ZIP sha256 `f157cdd26be6e04deb19c6b879623c190ab8434b437fe77a7aec1e3a08e0afe1`. `bottom_bar.TIDY` + SYMMETRY(`mch.mirror_lean` INVOKE) / MIRROR(`mirror_tools.setup_mirror`), 도구 라벨 MIRROR → 'Symmetry'.
 
 ## 0.20.2
 - ZIP sha256 `00ea99cffb7adbe49395b853ec1393eecb15654bd68589cd764819cc23339325`. `cloth_wrinkle` GN v28: 긴 주름 = Python `fold_lines()`가 numpy로 계산한 점 속성 `mch_foldh`(FOLD_INPUTS 변경 시 재계산), 짧은 부채꼴은 GN(Fan Mix),

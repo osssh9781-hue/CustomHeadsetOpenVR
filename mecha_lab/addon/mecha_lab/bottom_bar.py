@@ -19,7 +19,7 @@ BAR_TOOLS = (
     ('SPLIT', 'Split', '', 'MOD_EDGESPLIT', 'mch.set_tool', 'SPLIT'),
     ('BASE', 'Base', '', 'MOD_SOLIDIFY', 'mch.set_tool', 'BASE'),
     ('BOOLEAN', 'Boolean', 'B', 'MOD_BOOLEAN', 'mch.set_tool', 'BOOLEAN'),
-    ('MIRROR', 'Mirror', '', 'MOD_MIRROR', 'mch.set_tool', 'MIRROR'),
+    ('MIRROR', 'Symmetry', '', 'MOD_MIRROR', 'mch.set_tool', 'MIRROR'),
     ('PRIMITIVE', 'Primitive', '', 'MESH_CUBE', 'mch.set_tool', 'PRIMITIVE'),
     ('RADIAL', 'Radial', '', 'MOD_SCREW', 'mch.set_tool', 'RADIAL'),
     ('PLATE', 'Plate', '', 'MESH_GRID', 'mch.set_tool', 'PLATE'),
@@ -369,7 +369,11 @@ class MCH_GGT_tool_active(bpy.types.GizmoGroup):
 TIDY = (('RESET_AXIS', 'ORIENTATION_GLOBAL', 'Reset Axis',
          'Local axes back to the world axes, the shape stays where it is (applies the rotation)'),
         ('ORIGIN_GEOMETRY', 'PIVOT_MEDIAN', 'Origin to Geometry', 'Origin to the middle of the mesh'),
-        ('ORIGIN_CURSOR', 'PIVOT_CURSOR', 'Origin to 3D Cursor', 'Origin to the 3D cursor'))
+        ('ORIGIN_CURSOR', 'PIVOT_CURSOR', 'Origin to 3D Cursor', 'Origin to the 3D cursor'),
+        ('SYMMETRY', 'ARROW_LEFTRIGHT', 'Symmetry',
+         'Make the mesh symmetric: lean the mouse toward the side to copy to, Enter applies'),
+        ('MIRROR', 'MOD_MIRROR', 'Mirror',
+         'Live Mirror modifier on the selected meshes (stays live; Apply / Remove in the popup next to it)'))
 
 
 def _unlive(ob):
@@ -411,6 +415,20 @@ class MCH_OT_object_tidy(bpy.types.Operator):
         obs = [o for o in context.selected_editable_objects if o.type in {'MESH', 'CURVE'}]
         if not obs:
             return {'CANCELLED'}
+        if self.action == 'SYMMETRY':
+            # the lean symmetry (was the Mirror tool): live while you lean, Enter applies
+            try:
+                return bpy.ops.mch.mirror_lean('INVOKE_DEFAULT')
+            except RuntimeError as ex:
+                self.report({'WARNING'}, str(ex))
+                return {'CANCELLED'}
+        if self.action == 'MIRROR':
+            from . import mirror_tools as mt
+            meshes = [o for o in obs if o.type == 'MESH']
+            done = [o.name for o in meshes if mt.setup_mirror(o, context.scene.mch_mirror, context.scene) is not None]
+            self.report({'INFO'}, f'Live mirror on {", ".join(done)} (Apply / Remove in the popup)' if done
+                        else 'No mesh selected')
+            return {'FINISHED'} if done else {'CANCELLED'}
         frozen = [o.name for o in obs if _unlive(o)]
         with context.temp_override(selected_editable_objects=obs, selected_objects=obs,
                                    active_object=context.active_object or obs[0]):

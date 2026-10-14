@@ -217,8 +217,13 @@ check('Origin to 3D Cursor', (cb.location - Vector((5, 1, 2))).length < 1e-5)
 bpy.ops.mch.object_tidy(action='ORIGIN_GEOMETRY')
 check('Origin to Geometry: back to the middle of the box', (cb.location - Vector((3, 0, 0))).length < 1e-4, tuple(cb.location))
 pos = bb.tidy_positions(fake)
-check('three buttons stacked under the Tool Active button', len(pos) == 3 and all(abs(x - bx) < 1e-6 for x, _y in pos)
+check('five buttons stacked under the Tool Active button (+ Symmetry, Mirror)', len(pos) == 5 and all(abs(x - bx) < 1e-6 for x, _y in pos)
       and by > pos[0][1] > pos[1][1] > pos[2][1])
+res = bpy.ops.mch.object_tidy(action='MIRROR')
+check('Mirror button: a live mirror modifier that stays (not applied)', res == {'FINISHED'} and
+      any(m.type == 'MIRROR' for m in cb.modifiers))
+from mecha_lab import tool_state as _ts
+check('the old Mirror tool is called Symmetry now', _ts.TOOL_BY_ID['MIRROR'][1] == 'Symmetry')
 bpy.data.objects.remove(cb)
 
 # narrow neck / sharp notch with a huge chamfer + bevel (Soft Cloth on a face): no crumpled faces
