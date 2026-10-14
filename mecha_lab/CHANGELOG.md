@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## 0.19.1 — 우클릭 Make High Poly + 왼쪽 메뉴 제거 (2026-10-14)
+
+- 오브젝트 선택 → **우클릭 → Make High Poly**: 선택한 메쉬/아머 플레이트마다 하이폴 복사본을 `HighPoly` 컬렉션에 만듦 (원본 로폴은 숨기기만, 그대로 보존).
+  - 각진 모서리(기본 35° 이상)에 베벨 지지 루프 → 판 모서리·챔퍼는 날카롭게, **곡면은 Subdivision으로 실제로 둥글게** (Flat 모드에서도 매끈).
+  - 모디파이어 적용된 일반 메쉬 + Smooth: FBX는 Blender File > Export > FBX로 평소처럼.
+  - 누른 직후 왼쪽 아래 조정 창(F9): Smoothness 1~3, Edge Softness, Sharp Edge Angle, Support Loops, Hide Originals, Join Into One — 바꾸면 바로 다시 만들어짐.
+  - 같은 원본으로 다시 만들면 이전 복사본을 교체. 300만 면이 넘을 것 같으면 Smoothness를 자동으로 낮춤.
+  - N 패널 **High Poly**: Make High Poly, Show Low / Show High(로폴·하이폴 번갈아 보기).
+- 0.15의 **왼쪽 떠 있는 도구 메뉴 제거** (하단 툴바, Q 파이, Quick 팝업, N 패널 도구 목록은 그대로).
+- 테스트: 33개 파일 1475/1475 (`tests/test_log_bpy501_v0191.txt`), 신규 `test_v0191.py`. ZIP sha256 `bdcda494dc8c844fd7bc690530af543475b9c57af841207903e4e221b8c7587c`.
+
 ## 0.19.0 — 아머 플레이트 실시간 조정 + Apply 팝업 (2026-10-14)
 
 - **면 크기(Face Size) 기본 120 px** (최대 400): 기본으로 면 수가 적고 깔끔한 판이 나옴 (예전 14 px는 찰흙처럼 촘촘했음).

@@ -1124,10 +1124,8 @@ def draw_icon_sizes(layout, p):
     col.prop(p, 'handle_scale', slider=True)
     if hasattr(p, 'dial_flip'):
         layout.prop(p, 'dial_flip')
-    if hasattr(p, 'side_toolbar'):
-        row = layout.row(align=True)
-        row.prop(p, 'side_toolbar', toggle=True)
-        row.prop(p, 'bottom_toolbar', toggle=True)
+    if hasattr(p, 'bottom_toolbar'):
+        layout.prop(p, 'bottom_toolbar', toggle=True)
     row = layout.row(align=True)
     for label, v in (('Small', 0.75), ('Normal', 1.0), ('Large', 1.4), ('Huge', 1.9)):
         row.operator('mch.icon_size_preset', text=label).factor = v
@@ -1372,9 +1370,6 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
     bottom_toolbar: BoolProperty(name='Bottom Toolbar', default=True,
                                  description='Tool buttons at the bottom centre of the viewport (MECHA LAB, Object Mode)')
     toolbar_labels: BoolProperty(name='Names Under Icons', default=True)
-    side_toolbar: BoolProperty(name='Side Tool List', default=True,
-                               description='All Mecha tools as floating buttons at the left of the viewport '
-                                           '(next to Blender\'s toolbar; MECHA LAB, Object Mode)')
     toolbar_size: EnumProperty(name='Toolbar Size', items=[('S', 'S', ''), ('M', 'M', ''), ('L', 'L', '')], default='M')
     icon_scale: FloatProperty(name='Panel Icons', default=1.0, min=0.5, max=2.5, subtype='FACTOR',
                               update=_sizes_changed,
@@ -1400,7 +1395,6 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         box.label(text='Bottom toolbar / keys (0.12)')
         row = box.row()
         row.prop(self, 'bottom_toolbar')
-        row.prop(self, 'side_toolbar')
         row.prop(self, 'toolbar_labels')
         box.row().prop(self, 'toolbar_size', expand=True)
         draw_icon_sizes(box, self)

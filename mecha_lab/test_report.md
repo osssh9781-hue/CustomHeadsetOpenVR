@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.19.0
+# Test Report — Mecha Lab 0.19.1
+
+## 0.19.1 결과: 33개 파일, 1475 / 1475 통과 (headless bpy 5.0.1, `tests/test_log_bpy501_v0191.txt`). 우클릭 메뉴·F9 조정 창은 GUI에서 실행하지 못함 — 미검증.
 
 ## 0.19.0 결과: 32개 파일, 1459 / 1459 통과 (headless bpy 5.0.1, `tests/test_log_bpy501_v0190.txt`). GUI(HUD 버튼·슬라이더 드래그)는 실행하지 못함 — 미검증.
 

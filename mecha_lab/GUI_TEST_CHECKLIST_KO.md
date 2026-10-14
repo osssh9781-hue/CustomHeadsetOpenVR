@@ -1,8 +1,15 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.19.0 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.19.1 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A00. 0.19.1 (미검증 — headless 테스트만 통과)
+- [ ] 왼쪽 떠 있는 도구 버튼 줄이 사라졌는지
+- [ ] 오브젝트/아머 플레이트 선택 → 우클릭 → Make High Poly → HighPoly 컬렉션에 복사본, 원본 숨김
+- [ ] Flat 모드에서 곡면이 매끈하고 판 모서리는 날카로운지
+- [ ] 왼쪽 아래 조정 창(F9)에서 Smoothness / Edge Softness 바꾸면 바로 다시 만들어지는지
+- [ ] N > High Poly > Show Low / Show High, File > Export > FBX로 하이폴만 선택해서 내보내기
 
 ## A0. 0.19.0 (미검증 — headless 테스트만 통과)
 - [ ] 하단 툴바 / Quick 팝업에 Plate 버튼, 누르면 Armor Plate 도구

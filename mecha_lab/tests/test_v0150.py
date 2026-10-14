@@ -44,21 +44,15 @@ check('ghost dial signs follow the view (Z faces a top view)', d.signs[2] == 1.0
 h = pp.place_handles(Vector(), Quaternion(), (1, 1, 1), signs={2: -1.0})
 check('ghost Z dial drawn with its axis toward the viewer', h['RZ'].col[2].to_3d().z < -0.99)
 
-# ---- side tool list
-tools = bb.side_tools()
-check('side list: Select + every visible tool', tools[0][0] == 'SELECT' and len(tools) == len(ts.VISIBLE_TOOLS) + 1)
-pos, dd, cols = bb.side_layout(1200, 40, len(tools))
-check('side list starts right of Blender\'s toolbar, top-down', pos[0][0] > 40 and pos[0][1] > pos[1][1])
-pos2, d2, cols2 = bb.side_layout(500, 40, len(tools), factor=1.4)
-check('too tall for the viewport: more columns', cols2 > cols and len(pos2) == len(tools))
-check('every button inside the viewport height', all(40 < y < 500 for _x, y in pos2))
+# ---- side tool list: removed in 0.19.1 (user request)
+check('side tool list removed', not hasattr(bb, 'side_tools'))
 check('tooltips: any tool shows its name', bb.bar_tip('EXTRACT') == ts.TOOL_BY_ID['EXTRACT'][1])
 
 fresh()
 mecha_lab.register()
 C = bpy.context
-check('side tool list registered, on by default', 'bl_rna' in bb.MCH_GGT_side_toolbar.__dict__ and
-      wui.MCH_AddonPreferences.bl_rna.properties['side_toolbar'].default is True)
+check('side tool list gone (0.19.1): no gizmo group, no preference', not hasattr(bb, 'MCH_GGT_side_toolbar') and
+      'side_toolbar' not in wui.MCH_AddonPreferences.bl_rna.properties)
 check('old left MECHA LAB TOOLS list folded', 'DEFAULT_CLOSED' in wui.MCH_PT_tool_list.bl_options)
 
 

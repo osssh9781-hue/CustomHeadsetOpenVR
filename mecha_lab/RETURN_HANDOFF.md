@@ -1,4 +1,8 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.19.0 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.19.1 (Claude Code, 2026-10-14)
+
+## 0.19.1
+- ZIP sha256 `bdcda494dc8c844fd7bc690530af543475b9c57af841207903e4e221b8c7587c`. 신규 `highpoly.py`: `support_width`, `estimate_faces`, `safe_level`, `make_highpoly`(복사본 키 `mch_highpoly_src`), ops `mch.make_highpoly`(REGISTER/UNDO, 속성 = F9 패널) / `mch.highpoly_view`,
+  `VIEW3D_MT_object_context_menu` append, `MCH_PT_highpoly`. `bottom_bar`의 side tool list(`side_tools`/`side_layout`/`MCH_GGT_side_toolbar`)와 pref `side_toolbar` 삭제.
 
 ## 0.19.0
 - ZIP sha256 `1aba16c1a96374eb16b879fd66af7f2e888193ae7744649640178fcc29a75fb9`. `armor_plate`: `plate_meshes`, `SRC_KEY`(`mch_plate_src` JSON: loops/proj/spacing/size), `FrozenProjector`, `freeze_projector`/`thaw_projector`,

@@ -160,6 +160,16 @@ name2 = p2.name
 res = bpy.ops.mch.plate_cancel()
 check('Remove: the drawn plate is deleted, the mesh it was drawn on selected', res == {'FINISHED'} and
       name2 not in bpy.data.objects and C.active_object in (box, plate), (res, C.active_object, msg))
+# 0.19.1: a live plate -> High Poly copy (for the FBX hand-off)
+r, msg = lasso([(320, 320), (680, 320), (680, 620), (320, 620)])
+p3 = C.active_object
+n3 = len(p3.data.polygons)
+select_only(p3)
+bpy.ops.mch.make_highpoly()
+h3 = C.active_object
+check('High Poly of a plate: dense, closed, the plate itself kept', h3.get('mch_highpoly_src') == p3.name and
+      len(h3.data.polygons) > n3 * 8 and non_manifold(h3) == 0 and len(p3.data.polygons) == n3,
+      (n3, len(h3.data.polygons), non_manifold(h3)))
 check('HUD registered', 'bl_rna' in ap.MCH_GGT_plate_hud.__dict__ and 'bl_rna' in ap.MCH_GT_plate_slider.__dict__)
 
 # real viewport projection frozen (perspective): the same rays as the live view
