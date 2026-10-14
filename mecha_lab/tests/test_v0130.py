@@ -114,7 +114,7 @@ for name in ss.PRESETS:
     bm = mesh_of(res)
     nm = sum(1 for e in bm.edges if not e.is_manifold)
     ok = nm == 0 if name != 'DUCT' else nm > 0           # duct: open ends by design
-    check(f'preset {name}: valid mesh ({len(bm.faces)} faces, warnings: {len(res["warnings"])})', ok and len(bm.faces) > 10
+    check(f'preset {name}: valid mesh ({len(bm.faces)} faces, warnings: {len(res["warnings"])})', ok and len(bm.faces) > (5 if name == 'PRISM' else 10)
           and not res['warnings'], (nm, res['warnings']))
     bm.free()
 
@@ -126,7 +126,8 @@ check('Object.mch_station registered', hasattr(bpy.types.Object, 'mch_station'))
 for key, _l, _d in sp.PRESET_ITEMS:
     r = bpy.ops.mch.station_create(preset=key)
     ob = C.active_object
-    check(f'create {key}: live real mesh', r == {'FINISHED'} and sp.is_live(ob) and len(ob.data.polygons) > 10 and
+    check(f'create {key}: live real mesh', r == {'FINISHED'} and sp.is_live(ob) and
+          len(ob.data.polygons) > (5 if key == 'PRISM' else 10) and
           not ob.mch_station.warnings, ob.mch_station.warnings)
 fresh()
 mecha_lab.register()
@@ -138,9 +139,9 @@ st.bend_angle = 40
 check('editing a station rebuilds the mesh live', abs(max(v.co.z for v in ob.data.vertices)) > 0.3)
 bpy.ops.mch.station_add(bend=30)
 check('Add Station: inserted after the active one, active moves to it', len(ob.mch_station.stations) == 3 and
-      ob.mch_station.active == 2 and ob.mch_station.stations[2].bend_angle == 30)
+      ob.mch_station.active == 2 and ob.mch_station.stations[2].bend_up == 30)        # 0.15: Up / Down
 bpy.ops.mch.station_move(delta=-1)
-check('Move Station up', ob.mch_station.active == 1 and ob.mch_station.stations[1].bend_angle == 30)
+check('Move Station up', ob.mch_station.active == 1 and ob.mch_station.stations[1].bend_up == 30)
 bpy.ops.mch.station_remove()
 check('Remove Station', len(ob.mch_station.stations) == 2)
 ob.mch_station.shell = 0.01

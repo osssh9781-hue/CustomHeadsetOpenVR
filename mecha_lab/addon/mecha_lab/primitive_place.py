@@ -263,7 +263,7 @@ def ghost_matrix(location, rotation):
 UNIFORM_CORNERS = ((1, 1, 1), (-1, -1, 1))
 
 
-def place_handles(location, rotation, size, spin=0.0, dial_rotation=None):
+def place_handles(location, rotation, size, spin=0.0, dial_rotation=None, signs=None):
     """World matrices of the handles (0.14.3 layout).
 
     * 'X+' .. 'Z-' size SQUARES: start on the OPPOSITE face (which stays fixed
@@ -293,7 +293,8 @@ def place_handles(location, rotation, size, spin=0.0, dial_rotation=None):
     for i, axis in enumerate('XYZ'):
         e = Vector([1.0 if j == i else 0.0 for j in range(3)])
         hint = Vector((0.0, 1.0, 0.0)) if i != 1 else Vector((0.0, 0.0, 1.0))
-        out['R' + axis] = _basis(loc, q @ e, q @ hint)
+        sign = (signs or {}).get(i, 1.0)          # dial turned toward the viewer (0.15)
+        out['R' + axis] = _basis(loc, q @ (e * sign), q @ hint)
     for k, c in enumerate(UNIFORM_CORNERS):
         d = Vector((c[0] * size[0], c[1] * size[1], c[2] * size[2])) / 2.0
         if d.length < 1e-9:
@@ -333,6 +334,8 @@ class DialSession:
         self.q0 = None
         self.last = 0.0
         self.t = -1e9
+        self.sign = 1.0
+        self.signs = {0: 1.0, 1: 1.0, 2: 1.0}     # per axis: +1 = dial axis faces the viewer
 
     def active(self, axis, now):
         return self.axis == axis and now - self.t < self.WINDOW
@@ -345,10 +348,22 @@ class DialSession:
         if not cont or self.q0 is None:
             self.axis = axis
             self.q0 = Quaternion(current).normalized()
+            self.sign = self.signs.get(axis, 1.0)
         self.last = float(value)
         self.t = now
         e = Vector([1.0 if j == axis else 0.0 for j in range(3)])
-        return self.q0 @ Quaternion(e, float(value))
+        # the dial's own axis faces the viewer (sign): turning it clockwise on screen turns the shape
+        # clockwise on screen
+        return self.q0 @ Quaternion(e, float(value) * self.sign)
+
+    def update_signs(self, rotation, view_dir, now):
+        """Re-aim the dials toward the viewer (not while one is being dragged)."""
+        if self.q0 is not None and now - self.t < self.WINDOW:
+            return
+        q = Quaternion(rotation).normalized()
+        for i in range(3):
+            e = Vector([1.0 if j == i else 0.0 for j in range(3)])
+            self.signs[i] = 1.0 if (q @ e).dot(-Vector(view_dir)) >= 0.0 else -1.0
 
     def frame(self, now):
         return self.q0 if (self.q0 is not None and now - self.t < self.WINDOW) else None
@@ -544,6 +559,8 @@ class MCH_PG_Place(bpy.types.PropertyGroup):
     align_surface: BoolProperty(name='Align to Surface', default=True,
                                 description='A click on a mesh turns the shape\'s Z axis to the surface normal')
     subtract: BoolProperty(default=False, options={'HIDDEN'}, update=_redraw)
+    mode_sub: BoolProperty(name='Subtract Mode', default=False, update=_redraw,
+                           description='HUD - / + : Apply (and Enter) subtracts instead of adding')
     show_live: BoolProperty(name='Live Parametric Primitives', default=False)
     last: StringProperty(default='', options={'HIDDEN'})
 
@@ -634,7 +651,7 @@ def _inside(bvh, point):
     return hits % 2 == 1
 
 
-def overlapping_meshes(context, matrix, verts, faces):
+def overlapping_meshes(context, matrix, verts, faces, exclude=()):
     """Visible mesh objects the ghost (world ``matrix``) touches or contains."""
     from mathutils.bvhtree import BVHTree
     dg = context.evaluated_depsgraph_get()
@@ -645,7 +662,7 @@ def overlapping_meshes(context, matrix, verts, faces):
     centre = matrix.translation
     out = []
     for ob in context.view_layer.objects:
-        if ob.type != 'MESH' or not ob.visible_get() or ob.name.startswith('MCH_Cutter'):
+        if ob.type != 'MESH' or not ob.visible_get() or ob.name.startswith('MCH_Cutter') or ob in exclude:
             continue
         lo, hi = _world_bounds(ob, dg)
         if any(hi[i] < gmin[i] or lo[i] > gmax[i] for i in range(3)):
@@ -815,7 +832,8 @@ class MCH_OT_place_key(bpy.types.Operator):
         return context.area is not None and context.area.type == 'VIEW_3D' and ghost_visible(context)
 
     def execute(self, context):
-        return bpy.ops.mch.place_commit('EXEC_DEFAULT', subtract=self.subtract)
+        st = state(context)
+        return bpy.ops.mch.place_commit('EXEC_DEFAULT', subtract=self.subtract or bool(st and st.mode_sub))
 
 
 class MCH_OT_place_alt(bpy.types.Operator):
@@ -1166,7 +1184,13 @@ class MCH_GGT_place(bpy.types.GizmoGroup):
         for name, g in self.items.items():
             g.scale_basis = self.base[name] * f
         loc = st.location if st.placed else context.scene.cursor.location
-        h = place_handles(loc, st.rotation, st.size, st.spin, DIAL.frame(_now()))
+        rv3d = context.region_data
+        now = _now()
+        if rv3d is not None:
+            DIAL.update_signs(st.rotation, rv3d.view_rotation @ Vector((0.0, 0.0, -1.0)), now)
+        signs = DIAL.signs if DIAL.frame(now) is None else {DIAL.axis: DIAL.sign, **{k: v for k, v in DIAL.signs.items()
+                                                                                    if k != DIAL.axis}}
+        h = place_handles(loc, st.rotation, st.size, st.spin, DIAL.frame(now), signs)
         for name, m in h.items():
             gz = self.items.get(name)
             if gz is not None:
@@ -1233,7 +1257,7 @@ def _draw_ghost():
         m = ghost_matrix(loc, st.rotation)
         (verts, tris), lines = _ghost_tris(st)
         world = [tuple(m @ Vector(v)) for v in verts]
-        col = COL_SUB if st.subtract else COL_ADD
+        col = COL_SUB if (st.subtract or st.mode_sub) else COL_ADD
         sh = gpu.shader.from_builtin('UNIFORM_COLOR')
         gpu.state.blend_set('ALPHA')
         gpu.state.depth_mask_set(False)
@@ -1253,6 +1277,27 @@ def _draw_ghost():
         gpu.state.line_width_set(1.0)
         sh.uniform_float('color', (*col, 0.25))
         batch_for_shader(sh, 'LINES', {'pos': world}, indices=lines).draw(sh)
+        try:
+            from . import primitive_hud
+            bad = primitive_hud.coplanar_cached(context, st)
+        except Exception:
+            bad = []
+        if bad:
+            # faces lying on a mesh face: red dashed outline (the shape itself keeps its colour)
+            _v, faces, _s = st_shape(st)
+            dash = []
+            for fi in bad:
+                f = faces[fi]
+                for k in range(len(f)):
+                    a, b = Vector(world[f[k]]), Vector(world[f[(k + 1) % len(f)]])
+                    n = max(2, int((b - a).length / max(1e-6, Vector(st.size).length * 0.03)))
+                    for j in range(0, n, 2):
+                        dash += [tuple(a + (b - a) * (j / n)), tuple(a + (b - a) * (min(n, j + 1) / n))]
+            gpu.state.depth_test_set('NONE')
+            gpu.state.line_width_set(3.0)
+            sh.uniform_float('color', (1.0, 0.15, 0.15, 1.0))
+            batch_for_shader(sh, 'LINES', {'pos': dash}).draw(sh)
+            gpu.state.line_width_set(1.0)
         gpu.state.depth_mask_set(True)
         gpu.state.blend_set('NONE')
     except Exception:          # never break viewport drawing

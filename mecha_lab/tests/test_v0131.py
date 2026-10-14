@@ -79,11 +79,12 @@ p = ob.mch_station
 p.active = 1
 bpy.ops.mch.station_bend_dir(direction=-90.0)
 st = p.stations[1]
-check('Bend to Left button: direction -90 and a starting angle', st.bend_dir == -90.0 and st.bend_angle == 30.0)
+check('Bend to Left button: a 30 deg bend to the left (0.15: stored as Left / Right)',
+      st.bend_dir == -90.0 and abs(st.bend_side + 30.0) < 1e-4 and abs(st.bend_up) < 1e-4 and st.bend_angle == 0)
 check('...and the mesh bends left (stays flat)', min(v.co.x for v in ob.data.vertices) < -0.55 and
       max(abs(v.co.z) for v in ob.data.vertices) < 0.06)
 st.bend_style = 'TIGHT'
-st.bend_angle = 90
+st.bend_side = -90
 check('Tight 90 sideways: no warning', not p.warnings, p.warnings)
 p.sym_lr = True
 st.width_l = 0.3
@@ -94,7 +95,7 @@ st.profile = 'ROUND'
 check('profile per station rebuilds as one mesh', non_manifold(ob) == 0)
 st.profile = 'INHERIT'
 st.bend_style = 'AUTO'
-st.bend_angle = 0
+st.bend_side = 0
 # insert keeps the shape (linear blending)
 fresh()
 mecha_lab.register()
@@ -110,21 +111,24 @@ check('Insert station (+ on a segment): one more station, the shape end stays pu
 # handles
 ob.mch_station.active = 3
 h = sg.station_handles(ob)
-check('handles: a dot per station, a + per segment, dials and arrows for the active one',
+check('handles (0.15 layout): a dot per station, a + per segment; dials, arrow and squares for the active one',
       len(h['dots']) == len(ob.mch_station.stations) and len(h['plus']) == len(ob.mch_station.stations) - 1 and
-      all(k in h for k in ('bend', 'dir', 'length', 'width_r', 'width_l', 'height')))
+      all(k in h for k in ('up', 'side', 'twist', 'length', 'width_r', 'width_l', 'height', 'height_bot')))
 fr = sp.station_frames(ob)
 st = ob.mch_station.stations[3]
 tip = h['length'].translation + h['length'].col[2].xyz.normalized() * st.length
 check('length arrow: starts at the straight run, its value reaches the station', (tip - Vector(fr[3][0])).length < 1e-4)
-bend_axis = h['bend'].col[2].xyz
-check('bend dial turns around an axis across the path', abs(bend_axis.dot(Vector(fr[2][2]))) < 1e-6)
-get, set_ = sg.make_accessors(ob.name, 3, 'bend_angle')
+up_axis = h['up'].col[2].xyz.normalized()
+check('Up / Down dial turns around the side axis of the previous segment',
+      abs(abs(up_axis.dot(Vector(fr[2][1]))) - 1.0) < 1e-5)
+get, set_ = sg.make_accessors(ob.name, 3, 'bend_up')
 set_(math.radians(60))
-check('bend dial value is in radians, stored in degrees', abs(st.bend_angle - 60) < 1e-4 and abs(get() - math.radians(60)) < 1e-6)
-get, set_ = sg.make_accessors(ob.name, 3, 'bend_dir')
-set_(math.radians(90))
-check('direction dial sets the bend direction', abs(st.bend_dir - 90) < 1e-4)
+check('Up / Down dial value is in radians, stored in degrees', abs(st.bend_up - 60) < 1e-4 and
+      abs(get() - math.radians(60)) < 1e-6)
+get, set_ = sg.make_accessors(ob.name, 3, 'bend_side')
+set_(math.radians(25))
+check('Left / Right dial works together with Up / Down', abs(st.bend_side - 25) < 1e-4 and abs(st.bend_up - 60) < 1e-4)
+st.bend_up = st.bend_side = 0.0
 ob.mch_station.sym_lr = True
 get, set_ = sg.make_accessors(ob.name, 3, 'width_r')
 set_(0.7)

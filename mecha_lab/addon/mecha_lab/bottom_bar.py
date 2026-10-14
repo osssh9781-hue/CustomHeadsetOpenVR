@@ -161,7 +161,8 @@ def bar_tip(tool_id):
     """Toolbar tooltip: just the button's name and its key (0.14, not a description)."""
     t = next((t for t in BAR_TOOLS if t[0] == tool_id), None)
     if t is None:
-        return 'Mecha Tool'
+        full = ts.TOOL_BY_ID.get(tool_id)
+        return full[1] if full else 'Mecha Tool'
     return t[1] + (f'  ({t[2]})' if t[2] else '')
 
 
@@ -252,13 +253,117 @@ class MCH_GGT_bottom_toolbar(bpy.types.GizmoGroup):
             gz.alpha = 1.0 if on else 0.9
 
 
+# -----------------------------------------------------------------------------
+# 0.15 Side tool list: every Mecha tool as a floating button column at the left
+# of the viewport, next to Blender's own toolbar (same buttons as the bottom bar)
+# -----------------------------------------------------------------------------
+
+SIDE_LABEL_W = 92.0       # px at UI scale 1 reserved for the names right of the buttons
+
+
+def side_tools():
+    """(id, label, icon) for the side list: Select first, then every visible tool."""
+    out = [('SELECT', 'Select / Move', 'RESTRICT_SELECT_OFF')]
+    out += [(t[0], t[1], t[4]) for t in ts.VISIBLE_TOOLS]
+    return out
+
+
+def side_layout(region_height, left, count, size='M', factor=1.0, top=64.0, bottom=96.0):
+    """Centres (x, y) for the side buttons in region px (UI scale 1), top-down,
+    split into more columns when one column does not fit.  Returns
+    (positions, diameter, columns)."""
+    f = max(0.3, float(factor))
+    d = SIZES.get(size, SIZES['M']) * 0.8 * f
+    gap = 6.0 * max(1.0, f)
+    usable = max(d, region_height - top - bottom * max(1.0, f))
+    per_col = max(1, int((usable + gap) // (d + gap)))
+    cols = max(1, -(-count // per_col))
+    col_w = d + SIDE_LABEL_W * max(0.8, f) + 10.0
+    pos = []
+    for i in range(count):
+        c, r = divmod(i, per_col)
+        pos.append((left + 12.0 + d / 2.0 + c * col_w, region_height - top - d / 2.0 - r * (d + gap)))
+    return pos, d, cols
+
+
+def side_left(context):
+    """Pixels covered by Blender's own toolbar at the left of the viewport."""
+    region = context.region
+    area = context.area
+    if region is None or area is None:
+        return 0.0
+    tools = next((r for r in area.regions if r.type == 'TOOLS'), None)
+    if tools is None or tools.width <= 1:
+        return 0.0
+    return max(0.0, float(tools.x + tools.width - region.x))
+
+
+class MCH_GGT_side_toolbar(bpy.types.GizmoGroup):
+    bl_idname = 'MCH_GGT_side_toolbar'
+    bl_label = 'Mecha Side Tool List'
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'WINDOW'
+    bl_options = {'PERSISTENT', 'SCALE'}
+
+    @classmethod
+    def poll(cls, context):
+        return _pref('side_toolbar') and ui_active(context)
+
+    def setup(self, context):
+        self.buttons = []
+        for tid, label, icon in side_tools():
+            gz = self.gizmos.new('GIZMO_GT_button_2d')
+            gz.icon = icon
+            gz.draw_options = {'BACKDROP', 'OUTLINE'}
+            gz.target_set_operator('mch.bar_tool').tool = tid
+            gz.color = BASE_COL
+            gz.alpha = 0.9
+            gz.color_highlight = (0.32, 0.35, 0.41)
+            gz.alpha_highlight = 1.0
+            self.buttons.append((tid, gz))
+
+    def draw_prepare(self, context):
+        region = context.region
+        ui = context.preferences.system.ui_scale
+        left = side_left(context) / ui
+        pos, d, _cols = side_layout(region.height / ui, left, len(self.buttons), _pref('toolbar_size', 'M'),
+                                    _pref('toolbar_scale', 1.0))
+        active = current_bar_tool(context)
+        for (tid, gz), (x, y) in zip(self.buttons, pos):
+            gz.scale_basis = d / 2.0
+            gz.matrix_basis[0][3] = x * ui
+            gz.matrix_basis[1][3] = y * ui
+            on = tid == active
+            gz.color = ACCENT if on else BASE_COL
+            gz.alpha = 1.0 if on else 0.9
+
+
+def _draw_side_labels(context, font, ui, f):
+    import blf
+    region = context.region
+    left = side_left(context) / ui
+    tools = side_tools()
+    pos, d, _cols = side_layout(region.height / ui, left, len(tools), _pref('toolbar_size', 'M'), f)
+    active = current_bar_tool(context)
+    blf.size(font, 10 * ui * max(0.6, f))
+    for (tid, label, _icon), (x, y) in zip(tools, pos):
+        _w, h = blf.dimensions(font, label)
+        blf.color(font, *(ACCENT if tid == active else (0.85, 0.87, 0.9)), 1.0)
+        blf.position(font, (x + d / 2 + 6) * ui, y * ui - h / 2, 0)
+        blf.draw(font, label)
+
+
 def _draw_labels():
     """Optional names under the toolbar icons (Preferences: Toolbar Labels)."""
     try:
         context = bpy.context
-        if not (_pref('bottom_toolbar') and _pref('toolbar_labels', True) and ui_active(context)):
+        if not (_pref('toolbar_labels', True) and ui_active(context)):
             return
         import blf
+        if _pref('side_toolbar'):
+            _draw_side_labels(context, 0, context.preferences.system.ui_scale, _pref('toolbar_scale', 1.0))
+        if not _pref('bottom_toolbar'):
+            return
         region = context.region
         ui = context.preferences.system.ui_scale
         f = _pref('toolbar_scale', 1.0)
@@ -276,7 +381,8 @@ def _draw_labels():
         pass
 
 
-CLASSES = (MCH_OT_bar_tool, MCH_MT_tool_pie, MCH_OT_tool_pie, MCH_OT_toggle_last_tool, MCH_OT_toggle_targets, MCH_GGT_bottom_toolbar)
+CLASSES = (MCH_OT_bar_tool, MCH_MT_tool_pie, MCH_OT_tool_pie, MCH_OT_toggle_last_tool, MCH_OT_toggle_targets, MCH_GGT_bottom_toolbar,
+           MCH_GGT_side_toolbar)
 
 
 def register():

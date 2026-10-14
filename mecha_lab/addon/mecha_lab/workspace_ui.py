@@ -570,21 +570,17 @@ def draw_tool_rows(layout, context, scale=2.0):
 
 
 def icon_tile(layout, icon, fallback, operator_id, text, scale, depress=False):
-    """One tile: a big CLICKABLE icon button with the name button under it.
-    Both run the same operator; the caller fills the properties of every
-    returned operator (0.14.3: the icon used to be a picture only).
+    """One tile: the big picture on top, the name button under it.  Returns the
+    operator(s) to fill.  (0.15: Blender never enlarges an icon inside a button,
+    so the 0.14.3 "icon = button" made tall empty buttons with a tiny icon; the
+    picture is back and the name button is what you click.)
     ``icon`` = preview icon id or icon stem."""
     iid = icon_id(icon) if isinstance(icon, str) else int(icon or 0)
     cell = layout.column(align=True)
-    ops = []
     if iid:
-        big = cell.row(align=True)
-        big.scale_y = isz(scale)                 # icon-only button, as tall as the old picture
-        ops.append(big.operator(operator_id, text='', icon_value=iid, depress=depress))
-        ops.append(cell.operator(operator_id, text=text, depress=depress))
-    else:
-        ops.append(cell.operator(operator_id, text=text, icon=fallback, depress=depress))
-    return ops
+        cell.template_icon(icon_value=iid, scale=isz(scale))
+        return [cell.operator(operator_id, text=text, depress=depress)]
+    return [cell.operator(operator_id, text=text, icon=fallback, depress=depress)]
 
 
 def draw_tool_grid(layout, context, columns=4, scale=3.0, tools=None):
@@ -1103,6 +1099,10 @@ def draw_icon_sizes(layout, p):
     col.prop(p, 'icon_scale', slider=True)
     col.prop(p, 'toolbar_scale', slider=True)
     col.prop(p, 'handle_scale', slider=True)
+    if hasattr(p, 'side_toolbar'):
+        row = layout.row(align=True)
+        row.prop(p, 'side_toolbar', toggle=True)
+        row.prop(p, 'bottom_toolbar', toggle=True)
     row = layout.row(align=True)
     for label, v in (('Small', 0.75), ('Normal', 1.0), ('Large', 1.4), ('Huge', 1.9)):
         row.operator('mch.icon_size_preset', text=label).factor = v
@@ -1211,7 +1211,7 @@ class MCH_PT_tool_list(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = 'Tool'
-    bl_options = {'HIDE_HEADER'}
+    bl_options = {'DEFAULT_CLOSED'}    # 0.15: the floating side list in the viewport is the main one
 
     @classmethod
     def poll(cls, context):
@@ -1347,6 +1347,9 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
     bottom_toolbar: BoolProperty(name='Bottom Toolbar', default=True,
                                  description='Tool buttons at the bottom centre of the viewport (MECHA LAB, Object Mode)')
     toolbar_labels: BoolProperty(name='Names Under Icons', default=True)
+    side_toolbar: BoolProperty(name='Side Tool List', default=True,
+                               description='All Mecha tools as floating buttons at the left of the viewport '
+                                           '(next to Blender\'s toolbar; MECHA LAB, Object Mode)')
     toolbar_size: EnumProperty(name='Toolbar Size', items=[('S', 'S', ''), ('M', 'M', ''), ('L', 'L', '')], default='M')
     icon_scale: FloatProperty(name='Panel Icons', default=1.0, min=0.5, max=2.5, subtype='FACTOR',
                               update=_sizes_changed,
@@ -1369,6 +1372,7 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         box.label(text='Bottom toolbar / keys (0.12)')
         row = box.row()
         row.prop(self, 'bottom_toolbar')
+        row.prop(self, 'side_toolbar')
         row.prop(self, 'toolbar_labels')
         box.row().prop(self, 'toolbar_size', expand=True)
         draw_icon_sizes(box, self)

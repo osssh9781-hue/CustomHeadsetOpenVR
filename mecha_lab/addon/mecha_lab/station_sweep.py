@@ -24,18 +24,20 @@ import math
 
 from mathutils import Matrix, Vector
 
-KINDS = ('ROUND', 'CAPSULE', 'BOX', 'ROUNDED', 'CHAMFER', 'RIBBON', 'POLYGON', 'ARC')
+KINDS = ('ROUND', 'CAPSULE', 'BOX', 'ROUNDED', 'CHAMFER', 'RIBBON', 'POLYGON', 'ARC', 'NGON')
 RIDGES = ('NONE', 'CREASE', 'RAISED', 'BOX', 'ROUND', 'GROOVE', 'DOUBLE')
 CAPS = ('FLAT', 'ROUND', 'POINT', 'OPEN')
 QUALITY_DEG = {'DRAFT': 15.0, 'NORMAL': 8.0, 'FINE': 4.0}
-STATION_KEYS = ('length', 'bend_angle', 'bend_dir', 'bend_radius', 'twist', 'world', 'yaw', 'pitch',
+STATION_KEYS = ('length', 'bend_angle', 'bend_dir', 'bend_up', 'bend_side', 'bend_radius', 'twist', 'world', 'yaw',
+                'pitch',
                 'width_l', 'width_r', 'height_top', 'height_bot', 'thick_l', 'thick_r',
                 'corner_l', 'corner_r', 'ridge_h', 'ridge_w', 'ridge_offset', 'interp', 'bend_style', 'profile')
 BEND_STYLES = ('AUTO', 'FOLD', 'TIGHT', 'BAND')     # AUTO: radius 0 = fold, > 0 = band
 BLEND_KEYS = ('width_l', 'width_r', 'height_top', 'height_bot', 'thick_l', 'thick_r', 'corner_l', 'corner_r',
               'ridge_h', 'ridge_w', 'ridge_offset')
 
-DEFAULT_STATION = dict(length=1.0, bend_angle=0.0, bend_dir=0.0, bend_radius=0.0, twist=0.0, world=False,
+DEFAULT_STATION = dict(length=1.0, bend_angle=0.0, bend_dir=0.0, bend_up=0.0, bend_side=0.0, bend_radius=0.0,
+                       twist=0.0, world=False,
                        yaw=0.0, pitch=0.0, width_l=0.5, width_r=0.5, height_top=0.05, height_bot=0.05,
                        thick_l=1.0, thick_r=1.0, corner_l=0.02, corner_r=0.02, ridge_h=0.0, ridge_w=0.15,
                        ridge_offset=0.0, interp='LINEAR', bend_style='AUTO', profile='INHERIT')
@@ -195,8 +197,26 @@ def _arc_loop(p, top_pts, bot_extra, res, ridge, rh, wl, wr):
     return loop
 
 
+def ngon_loop(p, sides):
+    """0.15 Polygon Prism profile: exactly ``sides`` corners (flat top when even),
+    x scaled by the left / right width, y by top / bottom.  No extra points, so
+    folds and bands stay clean at any number of sides."""
+    n = max(3, int(sides))
+    off = math.pi / 2 if n % 2 else math.pi / 2 - math.pi / n
+    wl, wr = max(1e-4, p['width_l']), max(1e-4, p['width_r'])
+    ht, hb = max(1e-4, p['height_top']), max(1e-4, p['height_bot'])
+    loop = []
+    for k in range(n):
+        a = off + 2 * math.pi * k / n
+        c, sn = math.cos(a), math.sin(a)
+        loop.append((c * (wr if c >= 0 else wl), sn * (ht if sn >= 0 else hb)))
+    return loop
+
+
 def ring_loop(kind, p, res=12, ridge='NONE', sides=6):
     """Profile of one ring: the station's own kind, or a morph between two kinds."""
+    if kind == 'NGON':                    # its own vertex layout: no per-station profile change
+        return ngon_loop(p, sides)
     ka = p.get('_ka') or (p['profile'] if p.get('profile', 'INHERIT') != 'INHERIT' else kind)
     kb = p.get('_kb') or ka
     t = p.get('_kt', 0.0)
@@ -331,8 +351,16 @@ def build(spec):
             inside = (d - frame.T * dot)
             inside = inside.normalized() if inside.length > 1e-9 else frame.Z.copy()
         else:
+            # 0.15: Up / Down (bend_up, toward +Z) and Left / Right (bend_side, toward +X) at the same
+            # station, added to the older angle + direction pair: one bend about the combined axis
             phi = math.radians(b['bend_dir'])
-            inside = (frame.Z * math.cos(phi) + frame.X * math.sin(phi)).normalized()
+            up = b['bend_angle'] * math.cos(phi) + b.get('bend_up', 0.0)
+            side = b['bend_angle'] * math.sin(phi) + b.get('bend_side', 0.0)
+            angle = math.radians(math.hypot(up, side))
+            if angle > 1e-9:
+                inside = (frame.Z * up + frame.X * side).normalized()
+            else:
+                inside = (frame.Z * math.cos(phi) + frame.X * math.sin(phi)).normalized()
         if angle < 0:
             angle, inside = -angle, -inside
         style = b.get('bend_style', 'AUTO')
@@ -356,7 +384,7 @@ def build(spec):
                 dir_m = (_rot(axis, angle / 2) @ inside).normalized()
                 s = 1.0 / max(math.cos(angle / 2), 0.1)
                 if math.cos(angle / 2) < 0.1:
-                    warnings.append(f'Station {i}: fold of {b["bend_angle"]:.0f} deg is almost flat-back; '
+                    warnings.append(f'Station {i}: fold of {math.degrees(angle):.0f} deg is almost flat-back; '
                                     'the mitre is limited (use a bend radius)')
                 rings.append((half, _blend(a, b, 0.0, mode, kind), (dir_m, s)))
                 frame = frame.rotated(_rot(axis, angle))
@@ -430,7 +458,8 @@ def build(spec):
     _cap(verts, faces, ring_idx[-1], rings[-1], spec.get('cap_end', 'FLAT'), cap_len, 1, kind, res, ridge, sides)
     if len(rings) < 2:
         warnings.append('Only one station: add a station to give the primitive length')
-    return dict(verts=verts, faces=faces, warnings=warnings, frames=station_frames, ring_count=len(rings))
+    return dict(verts=verts, faces=faces, warnings=warnings, frames=station_frames, ring_count=len(rings),
+                ring_size=n)
 
 
 def _cap(verts, faces, ring, ring_data, mode, cap_len, sign, kind, res, ridge, sides):
@@ -475,6 +504,11 @@ def preset(name):
     if name == 'PANEL':
         return dict(kind='ROUNDED', res=8, ridge='NONE', cap_start='FLAT', cap_end='FLAT',
                     stations=[station(), station(length=1.0)])
+    if name == 'PRISM':               # 0.15: square prism; Sides slider -> towards a cylinder
+        r = math.sqrt(0.5)                # square of side 1
+        base = dict(width_l=r, width_r=r, height_top=r, height_bot=r, corner_l=0.0, corner_r=0.0)
+        return dict(kind='NGON', sides=4, res=2, ridge='NONE', cap_start='FLAT', cap_end='FLAT',
+                    stations=[station(**base), station(length=1.0, **base)])
     if name == 'MULTI_BEND':          # scenario B: 30 deg, then +45 deg, thicker one side, box ridge
         return dict(kind='CHAMFER', res=8, ridge='BOX', cap_start='FLAT', cap_end='FLAT',
                     stations=[station(ridge_h=0.03, ridge_w=0.18),
@@ -515,7 +549,7 @@ def preset(name):
 
 
 ARMOR_PRESETS = ('SHOULDER', 'UPPER_LIMB', 'LOWER_LIMB', 'TORSO', 'HELMET')
-PRESETS = ('PANEL', 'MULTI_BEND', 'WRAP', 'TEARDROP', 'AUTOMOTIVE', 'DUCT') + ARMOR_PRESETS
+PRESETS = ('PANEL', 'PRISM', 'MULTI_BEND', 'WRAP', 'TEARDROP', 'AUTOMOTIVE', 'DUCT') + ARMOR_PRESETS
 
 
 def _armor(**kw):

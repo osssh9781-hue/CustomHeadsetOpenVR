@@ -1,4 +1,15 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.14.4 (Claude Code, 2026-10-13)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.15.0 (Claude Code, 2026-10-14)
+
+## 0.15.0
+- ZIP sha256 `76313363f6015ed9231289d0e15ba829ff0037cf08d2dd9c45837529fbc6b5c5`, 1365/1365. `workspace_ui.icon_tile` = template_icon + 이름 버튼. `bottom_bar`: `side_tools/side_layout/side_left`,
+  `MCH_GGT_side_toolbar`, pref `side_toolbar`; `MCH_PT_tool_list` DEFAULT_CLOSED. 신규 `primitive_hud.py`: `hud_target/target_points/
+  hud_layout/slider_spec/slider_value/coplanar_faces/coplanar_cached/commit_station`, `MCH_OT_hud_mode/hud_apply`, `MCH_GT_hud_slider`
+  (Python Gizmo), `MCH_GGT_prim_hud`. `primitive_place`: `mode_sub`, `DialSession.signs/update_signs`, `place_handles(signs=)`, 겹침 빨간 점선,
+  `overlapping_meshes(exclude=)`. `station_sweep`: `bend_up/bend_side`(기존 각도+방향과 합산), `ngon_loop`, kind `NGON`, preset `PRISM`,
+  build 결과 `ring_size`. `station_primitive`: props `bend_up/bend_side/corner_finish…/cap_finish…`, `edge_tag/_finish`(bmesh bevel),
+  `migrate_bend/migrate_object`(load_post), `total_bend`, `add_segment/remove_segment`, `BEND_LEVELS/bend_level/cycle_bend`,
+  `apply_object`, 연산자 `station_segment/station_bend_cycle`. `station_gizmos`: `facing`, 새 `station_handles`(up/side/twist/height_bot/folds/
+  signs), `SIGNS`, 접힘 점 gizmo.
 
 ## 0.14.4
 - ZIP sha256 `9d1f28552f9af14e4ab6922f6820457903589b3681a0c4127df5d07e2128ce1a`, 1315/1315. `cut_engine._COLORS`에 BASE(주황) / BASE_INV(빨강), `stroke_color(mode, inverted)`.

@@ -9,7 +9,7 @@ import bmesh
 import bpy
 from bpy.props import (BoolProperty, CollectionProperty, EnumProperty, FloatProperty, IntProperty,
                        PointerProperty, StringProperty)
-from mathutils import Matrix
+from mathutils import Matrix, Vector
 
 from . import station_sweep as ss
 
@@ -42,6 +42,10 @@ class MCH_PG_Station(bpy.types.PropertyGroup):
                     description='Bend at the start of this segment, from the direction the previous one ended in')
     bend_dir: _fp('Bend Direction', 0.0, soft_min=-180, soft_max=180,
                   description='Which way the bend turns, around the path: 0 = up, 90 = right, 180 = down')
+    bend_up: _fp('Up / Down', 0.0, soft_min=-180, soft_max=180, min=-360, max=360,
+                 description='Bend up (+) or down (-) at the start of this segment; works together with Left / Right')
+    bend_side: _fp('Left / Right', 0.0, soft_min=-180, soft_max=180, min=-360, max=360,
+                   description='Bend right (+) or left (-) at the start of this segment; works together with Up / Down')
     bend_radius: _fp('Radius', 0.0, min=0.0, soft_max=5.0, unit='LENGTH',
                      description='0 = hard fold (sharp crease). > 0 = smooth bend; large angles wrap around')
     twist: _fp('Twist', 0.0, soft_min=-360, soft_max=360, description='Twist of the profile along this segment')
@@ -85,9 +89,22 @@ class MCH_PG_StationPrimitive(bpy.types.PropertyGroup):
         ('ROUNDED', 'Rounded Box', ''), ('CHAMFER', 'Chamfered Box', ''), ('BOX', 'Flat Box', ''),
         ('RIBBON', 'Ribbon', ''), ('ROUND', 'Round / Oval', ''), ('CAPSULE', 'Capsule', ''),
         ('POLYGON', 'Polygon', ''),
-        ('ARC', 'Curved Plate (armor)', 'Curved shell: Top = crown height, Bottom = plate thickness')],
+        ('ARC', 'Curved Plate (armor)', 'Curved shell: Top = crown height, Bottom = plate thickness'),
+        ('NGON', 'Polygon Prism', 'Exactly N corners (Sides): clean folds and bands at any number of sides')],
         default='ROUNDED', update=_rebuild_update)
-    sides: IntProperty(name='Sides', default=6, min=3, max=32, update=_rebuild_update)
+    sides: IntProperty(name='Sides', default=6, min=3, max=64, update=_rebuild_update,
+                       description='Polygon sides: 4 = square ... 64 = almost a cylinder')
+    corner_finish: EnumProperty(name='Side Edges', items=[('NONE', 'Sharp', ''), ('BEVEL', 'Bevel', ''),
+                                                          ('CHAMFER', 'Chamfer', '')], default='NONE',
+                                update=_rebuild_update,
+                                description='Finish of the edges running along the primitive (polygon corners)')
+    corner_width: _fp('Side Edge Width', 0.03, min=0.0, soft_max=0.5, unit='LENGTH')
+    corner_segments: IntProperty(name='Side Edge Segments', default=3, min=1, max=16, update=_rebuild_update)
+    cap_finish: EnumProperty(name='End Edges', items=[('NONE', 'Sharp', ''), ('BEVEL', 'Bevel', ''),
+                                                      ('CHAMFER', 'Chamfer', '')], default='NONE',
+                             update=_rebuild_update, description='Finish of the rim edges of the two flat ends')
+    cap_width: _fp('End Edge Width', 0.03, min=0.0, soft_max=0.5, unit='LENGTH')
+    cap_segments: IntProperty(name='End Edge Segments', default=3, min=1, max=16, update=_rebuild_update)
     ridge: EnumProperty(name='Ridge', items=[
         ('NONE', 'None', ''), ('CREASE', 'Center Crease', 'Sharp centre edge (roof)'),
         ('RAISED', 'Raised Ridge', 'Triangular ridge'), ('BOX', 'Box Ridge', 'Square ridge'),
@@ -132,7 +149,38 @@ def spec_of(ob):
                 cap_len=p.cap_len, stations=sts)
 
 
-def _write_mesh(me, result):
+TAG_SIDE, TAG_END = 1, 2
+
+
+def edge_tag(u, v, n, rings):
+    """Which finish an edge between generated vertices u, v gets: TAG_SIDE =
+    runs along the primitive (polygon corner lines), TAG_END = rim of the
+    first / last ring, 0 = other.  Ring vertices come first: ring r, slot j =
+    r * n + j."""
+    total = n * rings
+    if u >= total or v >= total or n < 3:
+        return 0
+    if abs(u - v) == n:
+        return TAG_SIDE
+    ru, rv = u // n, v // n
+    if ru == rv and ru in (0, rings - 1) and (abs(u - v) == 1 or abs(u - v) == n - 1):
+        return TAG_END
+    return 0
+
+
+def _finish(bm, layer, tag, mode, width, segments):
+    if mode == 'NONE' or width <= 0:
+        return 0
+    edges = [e for e in bm.edges if e[layer] == tag and e.is_manifold and e.calc_face_angle(0.0) > 0.02]
+    if not edges:
+        return 0
+    bmesh.ops.bevel(bm, geom=edges + list({v for e in edges for v in e.verts}), offset=width,
+                    offset_type='OFFSET', segments=1 if mode == 'CHAMFER' else max(1, segments), profile=0.5,
+                    affect='EDGES', clamp_overlap=True, loop_slide=True)
+    return len(edges)
+
+
+def _write_mesh(me, result, p=None):
     bm = bmesh.new()
     try:
         vs = [bm.verts.new(v) for v in result['verts']]
@@ -141,9 +189,20 @@ def _write_mesh(me, result):
                 bm.faces.new([vs[i] for i in f])
             except ValueError:          # duplicate face from a collapsed corner
                 pass
+        bm.verts.index_update()
+        layer = bm.edges.layers.int.new('mch_finish')
+        n, rings = result.get('ring_size', 0), result.get('ring_count', 0)
+        for e in bm.edges:
+            e[layer] = edge_tag(e.verts[0].index, e.verts[1].index, n, rings)
         bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-6)
         bmesh.ops.dissolve_degenerate(bm, edges=bm.edges[:], dist=1e-7)
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+        if p is not None:
+            # 0.15: Bevel / Chamfer of the side edges (polygon corners) and of the end rims
+            _finish(bm, layer, TAG_SIDE, p.corner_finish, p.corner_width, p.corner_segments)
+            _finish(bm, layer, TAG_END, p.cap_finish, p.cap_width, p.cap_segments)
+            bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+        bm.edges.layers.int.remove(layer)
         for f in bm.faces:
             f.smooth = True
         for e in bm.edges:              # hard folds / corners stay crisp, curves stay smooth
@@ -163,7 +222,7 @@ def rebuild(ob):
     try:
         p = ob.mch_station
         result = ss.build(spec_of(ob))
-        _write_mesh(ob.data, result)
+        _write_mesh(ob.data, result, p)
         FRAMES[ob.name] = [(tuple(f.P), tuple(f.X), tuple(f.T), tuple(f.Z)) for f in result['frames']]
         warn = list(result['warnings'])
         p.warnings = ' | '.join(warn)
@@ -198,6 +257,43 @@ def active_station_primitive(context):
     return ob if is_live(ob) else None
 
 
+def migrate_bend(st):
+    """Older 'Bend + Direction' -> Up / Down + Left / Right (same shape)."""
+    import math
+    if abs(st.bend_angle) > 1e-9:
+        phi = math.radians(st.bend_dir)
+        st.bend_up = st.bend_up + st.bend_angle * math.cos(phi)
+        st.bend_side = st.bend_side + st.bend_angle * math.sin(phi)
+        st.bend_angle = 0.0
+        return True
+    return False
+
+
+def migrate_object(ob):
+    p = ob.mch_station
+    live = p.live
+    p.live = False
+    changed = [migrate_bend(st) for st in p.stations]
+    p.live = live
+    if live and any(changed):
+        rebuild(ob)
+    return any(changed)
+
+
+@bpy.app.handlers.persistent
+def _migrate_on_load(_dummy=None):
+    for ob in bpy.data.objects:
+        if is_live(ob):
+            migrate_object(ob)
+
+
+def total_bend(st):
+    """(up, side) in degrees, the older angle + direction included."""
+    import math
+    phi = math.radians(st.bend_dir)
+    return (st.bend_up + st.bend_angle * math.cos(phi), st.bend_side + st.bend_angle * math.sin(phi))
+
+
 def create(context, preset='PANEL'):
     spec = ss.preset(preset)
     me = bpy.data.meshes.new('MCH_Station_' + preset.title())
@@ -214,9 +310,15 @@ def create(context, preset='PANEL'):
         st = p.stations.add()
         for k, v in sd.items():
             setattr(st, k, v)
+    for st in p.stations:
+        migrate_bend(st)
     p.active = min(1, len(p.stations) - 1)
     if preset == 'DUCT':
         p.shell = 0.02
+    if preset == 'PRISM':                 # stands up: the path runs along world Z
+        import math
+        ob.matrix_world = Matrix.Translation(context.scene.cursor.location) @ Matrix.Rotation(math.pi / 2, 4, 'X')
+        p.active = 1
     p.live = True
     rebuild(ob)
     for o in context.selected_objects:
@@ -235,6 +337,8 @@ def create(context, preset='PANEL'):
 # -----------------------------------------------------------------------------
 
 PRESET_ITEMS = [('PANEL', 'Flat Panel', 'Flat rounded plate: add stations to fold it'),
+                ('PRISM', 'Polygon Prism', 'Square prism standing up: Sides 3 ... 64 (a cylinder), bevel / chamfer '
+                                           'the edges, + / - adds segments above / below, fold them'),
                 ('MULTI_BEND', 'Multi-Bend Armor', '30 deg + 45 deg folds, one side thicker, box ridge'),
                 ('WRAP', 'Wrap / Tyre Cover', 'Ribbon wrapped 200 deg'),
                 ('TEARDROP', 'Helmet / Teardrop', 'Round front, tapered pointed back, raised ridge'),
@@ -287,7 +391,9 @@ class MCH_OT_station_add(bpy.types.Operator):
         st = p.stations.add()
         for k, v in src.items():
             setattr(st, k, v)
-        st.bend_angle = self.bend
+        st.bend_angle = 0.0
+        st.bend_up = self.bend
+        st.bend_side = 0.0
         st.length = max(0.3, src['length'] * 0.6) if i > 0 else 0.6
         st.world = False
         p.stations.move(len(p.stations) - 1, i + 1)
@@ -388,9 +494,9 @@ class MCH_OT_station_insert(bpy.types.Operator):
             setattr(st, k, (getattr(a, k) + getattr(b, k)) / 2)
         st.length = b.length / 2
         b.length = b.length / 2
-        b_bend = b.bend_angle
-        st.bend_angle = b_bend                      # the bend stays at the start of the segment
-        b.bend_angle = 0.0
+        for key in ('bend_angle', 'bend_up', 'bend_side'):   # the bend stays at the start of the segment
+            setattr(st, key, getattr(b, key))
+            setattr(b, key, 0.0)
         st.profile = 'INHERIT'
         p.stations.move(len(p.stations) - 1, i)
         p.active = i
@@ -414,11 +520,155 @@ class MCH_OT_station_bend_dir(bpy.types.Operator):
 
     def execute(self, context):
         ob = active_station_primitive(context)
+        import math
         st = ob.mch_station.stations[ob.mch_station.active]
         st.world = False
+        up, side = total_bend(st)
+        amount = math.hypot(up, side) or 30.0
+        d = math.radians(self.direction)
         st.bend_dir = self.direction
-        if abs(st.bend_angle) < 1e-6:
-            st.bend_angle = 30.0
+        st.bend_angle = 0.0
+        st.bend_up = amount * math.cos(d)
+        st.bend_side = amount * math.sin(d)
+        return {'FINISHED'}
+
+
+def _frame_matrix(fr):
+    P, X, T, Z = (Vector(v) for v in fr)
+    m = Matrix((X, T, Z)).transposed().to_4x4()
+    m.translation = P
+    return m
+
+
+def add_segment(ob, where='END', length=None):
+    """0.15 + button above / below: a new segment at the end (or before the
+    start) with the same profile; the existing shape stays where it is."""
+    p = ob.mch_station
+    p.live = False
+    try:
+        if where == 'END':
+            src = _station_dict(p.stations[-1])
+            st = p.stations.add()
+            for k, v in src.items():
+                setattr(st, k, v)
+            for k in ('bend_angle', 'bend_up', 'bend_side', 'twist'):
+                setattr(st, k, 0.0)
+            st.length = length if length is not None else (src['length'] if src['length'] > 1e-6 else 0.5)
+            p.active = len(p.stations) - 1
+        else:
+            first = p.stations[0]
+            L = length if length is not None else (p.stations[1].length if len(p.stations) > 1 and
+                                                   p.stations[1].length > 1e-6 else 0.5)
+            src = _station_dict(first)
+            st = p.stations.add()
+            for k, v in src.items():
+                setattr(st, k, v)
+            p.stations.move(len(p.stations) - 1, 0)
+            old_start = p.stations[1]
+            old_start.length = L
+            for k in ('bend_angle', 'bend_up', 'bend_side', 'twist'):
+                setattr(old_start, k, 0.0)
+            ob.matrix_world = ob.matrix_world @ Matrix.Translation((0.0, -L, 0.0))
+            p.active = 0
+    finally:
+        p.live = True
+    rebuild(ob)
+
+
+def remove_segment(ob, where='END'):
+    """0.15 - button above / below: drop the last (or the first) segment."""
+    p = ob.mch_station
+    if len(p.stations) <= 2:
+        return False
+    if where == 'END':
+        p.live = False
+        p.stations.remove(len(p.stations) - 1)
+    else:
+        fr = station_frames(ob)[1]
+        mw = ob.matrix_world @ _frame_matrix(fr)
+        p.live = False
+        p.stations.remove(0)
+        for k in ('bend_angle', 'bend_up', 'bend_side', 'twist'):
+            setattr(p.stations[0], k, 0.0)
+        ob.matrix_world = mw
+    p.active = min(p.active, len(p.stations) - 1)
+    p.live = True
+    rebuild(ob)
+    return True
+
+
+BEND_LEVELS = (0.0, 0.6, 1.5, 3.0)       # fold, then band radius x profile size
+
+
+def profile_size(st):
+    return max(st.width_l, st.width_r, st.height_top, st.height_bot, 1e-3)
+
+
+def bend_level(st):
+    if st.bend_style == 'FOLD' or (st.bend_style == 'AUTO' and st.bend_radius <= 1e-6):
+        return 0
+    r = st.bend_radius / profile_size(st)
+    return min(range(1, len(BEND_LEVELS)), key=lambda k: abs(BEND_LEVELS[k] - r))
+
+
+def cycle_bend(st):
+    """Click on the fold dot: right angle -> softer -> rounder -> roundest -> right angle."""
+    level = (bend_level(st) + 1) % len(BEND_LEVELS)
+    if level == 0:
+        st.bend_style = 'FOLD'
+        st.bend_radius = 0.0
+    else:
+        st.bend_style = 'BAND'
+        st.bend_radius = BEND_LEVELS[level] * profile_size(st)
+    return level
+
+
+class MCH_OT_station_segment(bpy.types.Operator):
+    """Add or remove a segment at the end (top) or the start (bottom)"""
+    bl_idname = 'mch.station_segment'
+    bl_label = 'Station Segment'
+    bl_options = {'REGISTER', 'UNDO'}
+    where: EnumProperty(items=[('END', 'End', ''), ('START', 'Start', '')], default='END')
+    action: EnumProperty(items=[('ADD', 'Add', ''), ('REMOVE', 'Remove', '')], default='ADD')
+
+    @classmethod
+    def description(cls, context, properties):
+        side = 'end' if properties.where == 'END' else 'start'
+        return (f'Add a segment at the {side} (same profile)' if properties.action == 'ADD'
+                else f'Remove the segment at the {side}')
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and active_station_primitive(context) is not None
+
+    def execute(self, context):
+        ob = active_station_primitive(context)
+        if self.action == 'ADD':
+            add_segment(ob, self.where)
+        elif not remove_segment(ob, self.where):
+            self.report({'WARNING'}, 'At least one segment stays')
+            return {'CANCELLED'}
+        return {'FINISHED'}
+
+
+class MCH_OT_station_bend_cycle(bpy.types.Operator):
+    """Fold dot: right angle -> softer band -> rounder -> roundest -> right angle"""
+    bl_idname = 'mch.station_bend_cycle'
+    bl_label = 'Fold Shape'
+    bl_options = {'REGISTER', 'UNDO'}
+    index: IntProperty(default=1)
+
+    @classmethod
+    def poll(cls, context):
+        return active_station_primitive(context) is not None
+
+    def execute(self, context):
+        ob = active_station_primitive(context)
+        p = ob.mch_station
+        if not 0 < self.index < len(p.stations):
+            return {'CANCELLED'}
+        level = cycle_bend(p.stations[self.index])
+        self.report({'INFO'}, ('Right angle', 'Soft band', 'Rounder band', 'Round band')[level])
         return {'FINISHED'}
 
 
@@ -434,20 +684,25 @@ class MCH_OT_station_apply(bpy.types.Operator):
 
     def execute(self, context):
         ob = active_station_primitive(context)
-        mod = ob.modifiers.get(SHELL_MOD)
-        if mod is not None:
-            from . import core_geometry as cg
-            try:
-                cg.apply_single_modifier(context, ob, mod, 'SINGLE')
-            except Exception as ex:                       # keep it live and report
-                self.report({'ERROR'}, f'Shell could not be applied: {ex}')
-                return {'CANCELLED'}
-        ob.mch_station.live = False
-        ob.mch_station.stations.clear()
-        if 'mch_role' in ob:
-            del ob['mch_role']
+        try:
+            apply_object(context, ob)
+        except Exception as ex:                       # keep it live and report
+            self.report({'ERROR'}, f'Shell could not be applied: {ex}')
+            return {'CANCELLED'}
         self.report({'INFO'}, f'{ob.name}: applied as an ordinary mesh')
         return {'FINISHED'}
+
+
+def apply_object(context, ob):
+    """Freeze: the shell becomes real geometry, the parameters are removed."""
+    mod = ob.modifiers.get(SHELL_MOD)
+    if mod is not None:
+        from . import core_geometry as cg
+        cg.apply_single_modifier(context, ob, mod, 'SINGLE')
+    ob.mch_station.live = False
+    ob.mch_station.stations.clear()
+    if 'mch_role' in ob:
+        del ob['mch_role']
 
 
 class MCH_UL_stations(bpy.types.UIList):
@@ -455,9 +710,11 @@ class MCH_UL_stations(bpy.types.UIList):
         if index == 0:
             layout.label(text='Start', icon='KEYFRAME')
             return
-        bend = f'{item.bend_angle:+.0f}°' if abs(item.bend_angle) > 1e-6 else '—'
-        kind = 'fold' if item.bend_radius <= 1e-6 else f'r {item.bend_radius:.2f}'
-        layout.label(text=f'S{index}   {bend} {kind if abs(item.bend_angle) > 1e-6 else ""}   L {item.length:.2f}',
+        up, side = total_bend(item)
+        parts = ([f'up {up:+.0f}°'] if abs(up) > 1e-6 else []) + ([f'side {side:+.0f}°'] if abs(side) > 1e-6 else [])
+        bend = ' '.join(parts) or '—'
+        kind = 'fold' if item.bend_radius <= 1e-6 or item.bend_style == 'FOLD' else f'r {item.bend_radius:.2f}'
+        layout.label(text=f'S{index}   {bend} {kind if parts else ""}   L {item.length:.2f}',
                      icon='KEYFRAME_HLT' if index == active_data.active else 'KEYFRAME')
 
 
@@ -490,21 +747,20 @@ def draw(layout, context):
         st = p.stations[p.active]
         col = box.column(align=True)
         if p.active > 0:
+            col.prop(st, 'length')
             r = col.row(align=True)
-            r.prop(st, 'bend_angle')
-            r.prop(st, 'length')
-            r = col.row(align=True)
-            r.label(text='Bend to')
-            for label, d, ic in (('', 0.0, 'TRIA_UP'), ('', 180.0, 'TRIA_DOWN'), ('', -90.0, 'TRIA_LEFT'),
-                                 ('', 90.0, 'TRIA_RIGHT')):
-                op = r.operator('mch.station_bend_dir', text=label, icon=ic,
-                                depress=abs(((st.bend_dir - d + 180) % 360) - 180) < 1e-3 and not st.world)
-                op.direction = d
-            r.prop(st, 'bend_dir', text='')
+            r.prop(st, 'bend_up', text='Up / Down')
+            r.prop(st, 'bend_side', text='Left / Right')
+            col.prop(st, 'twist', text='Twist (along the axis)')
+            if abs(st.bend_angle) > 1e-6:
+                r = col.row(align=True)
+                r.prop(st, 'bend_angle', text='Older Bend')
+                r.prop(st, 'bend_dir', text='Dir')
             col.row(align=True).prop(st, 'bend_style', expand=True)
             if st.bend_style == 'BAND' or (st.bend_style == 'AUTO' and st.bend_radius > 0):
                 col.prop(st, 'bend_radius', text='Band Radius')
-            col.prop(st, 'profile')
+            if p.kind != 'NGON':
+                col.prop(st, 'profile')
         r = col.row(align=True)
         if p.sym_lr:
             r.prop(st, 'width_l', text='Width (half)')
@@ -531,23 +787,42 @@ def draw(layout, context):
             r.prop(st, 'corner_r', text='Corner R')
             c.prop(st, 'ridge_offset')
             if p.active > 0:
-                c.prop(st, 'twist')
                 c.prop(st, 'interp', expand=True)
                 c.prop(st, 'world')
                 if st.world:
                     r = c.row(align=True)
                     r.prop(st, 'yaw')
                     r.prop(st, 'pitch')
+    if p.kind in {'POLYGON', 'NGON'}:
+        box.prop(p, 'sides', slider=True)
     row = box.row(align=True)
     row.prop(p, 'cap_start')
     row.prop(p, 'cap_end')
+    c = box.column(align=True)
+    r = c.row(align=True)
+    r.label(text='Side edges')
+    r.prop(p, 'corner_finish', expand=True)
+    if p.corner_finish != 'NONE':
+        r = c.row(align=True)
+        r.prop(p, 'corner_width', text='Width')
+        if p.corner_finish == 'BEVEL':
+            r.prop(p, 'corner_segments', text='Seg')
+    r = c.row(align=True)
+    r.label(text='End edges')
+    r.prop(p, 'cap_finish', expand=True)
+    if p.cap_finish != 'NONE':
+        r = c.row(align=True)
+        r.prop(p, 'cap_width', text='Width')
+        if p.cap_finish == 'BEVEL':
+            r.prop(p, 'cap_segments', text='Seg')
+    row = box.row(align=True)
+    row.operator('mch.station_segment', text='Segment at End', icon='ADD').where = 'END'
+    row.operator('mch.station_segment', text='at Start', icon='ADD').where = 'START'
     box.prop(p, 'shell')
     box.prop(p, 'show_adv', icon='TRIA_DOWN' if p.show_adv else 'TRIA_RIGHT', emboss=False)
     if p.show_adv:
         c = box.column(align=True)
         c.prop(p, 'res')
-        if p.kind == 'POLYGON':
-            c.prop(p, 'sides')
         c.prop(p, 'cap_len')
         c.prop(p, 'seg_mode', expand=True)
         if p.seg_mode == 'AUTO':
@@ -566,16 +841,21 @@ def draw(layout, context):
 
 CLASSES = (MCH_PG_Station, MCH_PG_StationPrimitive, MCH_OT_station_create, MCH_OT_station_add,
            MCH_OT_station_remove, MCH_OT_station_move, MCH_OT_station_select, MCH_OT_station_insert,
-           MCH_OT_station_bend_dir, MCH_OT_station_apply, MCH_UL_stations)
+           MCH_OT_station_bend_dir, MCH_OT_station_segment, MCH_OT_station_bend_cycle, MCH_OT_station_apply,
+           MCH_UL_stations)
 
 
 def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Object.mch_station = PointerProperty(type=MCH_PG_StationPrimitive)
+    if _migrate_on_load not in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(_migrate_on_load)
 
 
 def unregister():
+    if _migrate_on_load in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(_migrate_on_load)
     if hasattr(bpy.types.Object, 'mch_station'):
         del bpy.types.Object.mch_station
     for c in reversed(CLASSES):
