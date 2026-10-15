@@ -100,7 +100,9 @@ INPUTS = (('Type', 'NodeSocketInt', 0, 0, 5),
           ('Crumple Stretch', 'NodeSocketFloat', 0.7, 0.0, 0.95),
           ('Crumple Angle', 'NodeSocketFloat', 0.6, -6.3, 6.3),
           ('Billow', 'NodeSocketFloat', 0.0, -100.0, 100.0),
-          ('Billow Size', 'NodeSocketFloat', 0.3, 0.0001, 100.0))
+          ('Billow Size', 'NodeSocketFloat', 0.3, 0.0001, 100.0),
+          # 0.23.8 Pinch 2: the small fans on their own slider (Pinch = Pinch 1: the long big folds)
+          ('Pinch 2', 'NodeSocketFloat', 0.0, -100.0, 100.0))
 TRIMS = (('NONE', 'No Trim', 'Plain border'),
          ('PIPING', 'Piping', 'Round cord along the border'),
          ('BINDING', 'Binding', 'Flat band folded over the border, stitched'),
@@ -112,7 +114,7 @@ SEC_U = 'mch_sec_u'            # 0..1 along the long side (local X): stitched se
 SEC_LEN = 'mch_sec_len'        # length of the long side
 EDGE_U = 'mch_edge_u'          # arc length along the border of the nearest border point
 EDGE_LEN = 'mch_edge_len'      # length of that border loop (keeps seam patterns seamless)
-VERSION = 42
+VERSION = 43
 
 
 # -----------------------------------------------------------------------------
@@ -713,11 +715,15 @@ def build_group():
                                                           vb=1e-6), clamp=True)
     fan = _math(N, L, 'MULTIPLY', fan, _math(N, L, 'MULTIPLY', froom, _math(N, L, 'SUBTRACT', va=3.0,
                                                                              b=_math(N, L, 'MULTIPLY', froom, vb=2.0))))
-    pinch = _math(N, L, 'MAXIMUM', pinch, _math(N, L, 'MULTIPLY', fan, I['Fan Mix']))
+    # 0.23.8 Pinch 1 (long big folds) and Pinch 2 (small fans) scale separately, then blend as before
+    big_f = _math(N, L, 'MULTIPLY', pinch, I['Pinch'])
+    small_f = _math(N, L, 'MULTIPLY', _math(N, L, 'MULTIPLY', fan, I['Fan Mix']), I['Pinch 2'])
+    pinch = _math(N, L, 'MAXIMUM', big_f, small_f)
     pseam = _math(N, L, 'DIVIDE', Db_in, _math(N, L, 'MAXIMUM', _math(N, L, 'MULTIPLY', sx, vb=0.15), vb=1e-6),
                   clamp=True)
-    pinch = _math(N, L, 'MULTIPLY', _math(N, L, 'SUBTRACT', pinch, vb=0.06), pseam)
-    h = _math(N, L, 'ADD', h, _math(N, L, 'MULTIPLY', pinch, I['Pinch']))
+    pbase = _math(N, L, 'MULTIPLY', _math(N, L, 'MAXIMUM', I['Pinch'], I['Pinch 2']), vb=0.06)
+    pinch = _math(N, L, 'MULTIPLY', _math(N, L, 'SUBTRACT', pinch, pbase), pseam)
+    h = _math(N, L, 'ADD', h, pinch)
     # stitching: a sunken seam line at Stitch Inset with raised thread stitches along it
     sl = _math(N, L, 'MAXIMUM', I['Stitch Length'], vb=1e-6)
     off = _math(N, L, 'SUBTRACT', Db_in, I['Stitch Inset'])          # stitches follow the border only
@@ -828,7 +834,7 @@ def get_input(ob, name):
     return None if mod is None else mod[_ident(name)]
 
 
-SIZE_INPUTS = {'Strength', 'Scale', 'Edge Soft', 'Lift', 'Puff', 'Puff Width', 'Roll', 'Roll Width', 'Pinch',
+SIZE_INPUTS = {'Strength', 'Scale', 'Edge Soft', 'Lift', 'Puff', 'Puff Width', 'Roll', 'Roll Width', 'Pinch', 'Pinch 2',
                'Pinch Spacing', 'Pinch Length', 'Stitch', 'Stitch Inset', 'Stitch Length', 'Trim Width', 'Trim Height',
                'Center Fade', 'Skin Scale', 'Skin Depth', 'Shrink Width', 'Skin Edge Width', 'Skin Edge Height'}
 
@@ -1122,7 +1128,7 @@ def apply_creature(ob, skin, size=None):
     set_input(ob, 'Skin Edge', pr['Edge'])
     set_input(ob, 'Skin Edge Width', pr['EdgeW'] * size)
     set_input(ob, 'Skin Edge Height', pr['EdgeH'] * size)
-    for name, v in (('Puff', 0.012 * size), ('Puff Width', 0.12 * size), ('Pinch', 0.0), ('Stitch', 0.0),
+    for name, v in (('Puff', 0.012 * size), ('Puff Width', 0.12 * size), ('Pinch', 0.0), ('Pinch 2', 0.0), ('Stitch', 0.0),
                     ('Trim', 0), ('Fan Mix', 0.0), ('Strength', 0.0), ('Roll', 0.0), ('Sections', 1)):
         set_input(ob, name, v)
 
@@ -1144,6 +1150,7 @@ def apply_preset(ob, wtype, size=None):
         set_input(ob, name, pr[key] * size)
     set_input(ob, 'Fold Sharp', pr['Sharp'])
     set_input(ob, 'Fan', pr['Fan'])
+    set_input(ob, 'Pinch 2', pr.get('Pinch2', pr['Pinch']) * size)
     # 0.23.7 crumple / billow (off on the older types) and the puffer's channels
     for name, key, sized in CRUMPLE_KEYS:
         if key in pr:
@@ -1386,7 +1393,7 @@ def _wrinkle_layer(context, target, cos, nrms, tris, projector, st, last, wtype)
     # last used options (0.20.2): the new panel starts as the previous one was left - but a type / trim
     # picked in the panel since then wins over the remembered one
     if int(last.get('Type', TYPE_IDS.index(wtype))) != TYPE_IDS.index(wtype):
-        for k in ('Type', 'Puff', 'Puff Width', 'Pinch', 'Pinch Spacing', 'Pinch Length', 'Stitch', 'Fold Sharp', 'Fan',
+        for k in ('Type', 'Puff', 'Puff Width', 'Pinch', 'Pinch 2', 'Pinch Spacing', 'Pinch Length', 'Stitch', 'Fold Sharp', 'Fan',
                   'Sections', 'Section Height') + tuple(c[0] for c in CRUMPLE_KEYS):
             last.pop(k, None)
     if int(last.get('Trim', TRIM_IDS.index(st.trim))) != TRIM_IDS.index(st.trim):
@@ -1847,7 +1854,8 @@ SLIDERS = (('random', 'Randomness', 'Variety', 0, 100, 'RAND'),
            ('puff', 'Puff', 'Puff', -100, 300, 'SIZE'),
            ('puff_w', 'Puff Width', 'Puff Width', 5, 500, 'SIZE'),
            ('roll', 'Edge Roll', 'Roll', -50, 100, 'SIZE'),
-           ('pinch', 'Seam Folds', 'Pinch', 0, 80, 'SIZE'),
+           ('pinch', 'Pinch 1 (big folds)', 'Pinch', 0, 80, 'SIZE'),
+           ('pinch2', 'Pinch 2 (small folds)', 'Pinch 2', 0, 80, 'SIZE'),
            ('pinch_sp', 'Fold Spacing', 'Pinch Spacing', 5, 200, 'SIZE'),
            ('pinch_len', 'Fold Length', 'Pinch Length', 10, 2000, 'SIZE'),
            ('sharp', 'Fold Sharp', 'Fold Sharp', 30, 3000, 'PCT'),
@@ -2154,6 +2162,7 @@ def draw(layout, context):
         r.scale_y = 1.3
         r.operator('mch.wrinkle_apply', text='Apply', icon='CHECKMARK')
         r.operator('mch.wrinkle_remove', text='Remove', icon='X')
+        sub.operator('mch.cloth_sim', text='Cloth Sim (fall + fold, bake)', icon='MOD_CLOTH')
     c = box.column(align=True)
     c.scale_y = 0.8
     c.label(text='Draw a lasso on a mesh: a separate cloth layer', icon='INFO')

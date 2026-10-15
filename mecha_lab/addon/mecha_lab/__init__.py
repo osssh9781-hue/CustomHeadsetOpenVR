@@ -15,7 +15,7 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                addon_safety, self_test, face_extract, edge_molding, hollow_shell, along_curve, cable, bottom_bar, station_primitive, station_gizmos,
                primitive_place, primitive_hud, armor_plate, random_panels, mirror_hud, highpoly, lasso_sketch,
                cloth_wrinkle, last_used, robot_base, detail_stamp, surface_lasso,
-               curve_tube, creature_shell)
+               curve_tube, creature_shell, cloth_sim)
 import os
 import re
 from pathlib import Path
@@ -1839,6 +1839,7 @@ def _register():
     surface_lasso.register()
     curve_tube.register()
     creature_shell.register()
+    cloth_sim.register()
     workspace_ui.register()
     bottom_bar.register()
     for klass in SUB_PANELS:
@@ -1894,6 +1895,7 @@ def _unregister_steps():
         ('sub panels', lambda: _unregister_classes(reversed(SUB_PANELS))),
         ('bottom_bar', bottom_bar.unregister),
         ('workspace_ui', workspace_ui.unregister),
+        ('cloth_sim', cloth_sim.unregister),
         ('creature_shell', creature_shell.unregister),
         ('curve_tube', curve_tube.unregister),
         ('surface_lasso', surface_lasso.unregister),
