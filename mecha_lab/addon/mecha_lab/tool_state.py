@@ -150,6 +150,16 @@ def effective_tool(context):
     return 'CUT' if chosen in HIDDEN_TOOLS else chosen
 
 
+def sidebar_select(context):
+    """0.23.24 the general sidebar extras (Primitive Shapes, Detail Stamp, High Poly, icon size, hotkeys ...)
+    only in Select mode - with a tool chosen the sidebar shows just that tool."""
+    try:
+        from . import bottom_bar
+        return bool(bottom_bar.in_select(context))
+    except (AttributeError, KeyError, TypeError, ImportError):
+        return True
+
+
 def hud_for(context, tools):
     """0.23.21 a tool's HUD (buttons / sliders next to its result) only while that tool is chosen - like
     the Mirror buttons; switching to another tool hides it (the result itself stays)."""

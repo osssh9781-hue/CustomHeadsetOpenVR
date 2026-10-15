@@ -1233,7 +1233,7 @@ class MCH_PT_icon_size(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return prefs() is not None
+        return prefs() is not None and ts.sidebar_select(context)
 
     def draw(self, context):
         draw_icon_sizes(self.layout, prefs())
@@ -1254,7 +1254,7 @@ class MCH_PT_tools(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.scene, 'mch_settings')
+        return hasattr(context.scene, 'mch_settings') and ts.sidebar_select(context)
 
     def draw(self, context):
         layout = self.layout
@@ -1272,6 +1272,10 @@ class MCH_PT_workspace(bpy.types.Panel):
     bl_category = 'Mecha Lab'
     bl_options = {'DEFAULT_CLOSED'}
     bl_order = 100
+
+    @classmethod
+    def poll(cls, context):
+        return ts.sidebar_select(context)           # 0.23.24 Select only
 
     def draw(self, context):
         layout = self.layout

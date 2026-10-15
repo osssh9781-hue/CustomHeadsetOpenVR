@@ -19,7 +19,7 @@ S.mch_wrinkle.trim = 'BINDING'
 b = cube('B', 4.0)
 r, m = lasso([(330, 330), (670, 330), (680, 660), (320, 670)])
 o = C.active_object
-check('Overall Scale is the first Cloth Plate slider (100 %)', cw.slider_keys(o)[0] == 'all_scale' and
+check('Overall Scale is the first Cloth Plate slider (100 %)', cw.SLIDERS[0][0] == 'all_scale' and
       cw.slider_spec(C, 'all_scale', o)[1] == 100)
 names = sorted((cw.SIZE_INPUTS - cw.SCALE_ALL_SKIP) & cw.INPUT_NAMES)
 before = {n: float(cw.get_input(o, n)) for n in names}

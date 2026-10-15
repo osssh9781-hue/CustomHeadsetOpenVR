@@ -1496,7 +1496,7 @@ class MCH_PT_robot_base(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.scene, 'mch_robot_settings')
+        return hasattr(context.scene, 'mch_robot_settings') and _ts.hud_for(context, {'BASE'})
 
     def draw(self, context):
         draw(self.layout, context)

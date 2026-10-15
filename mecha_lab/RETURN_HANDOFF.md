@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.23 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.24 (Claude Code, 2026-10-14)
+
+## 0.23.24
+- ZIP sha256 `2478d031dfe78ad37a70bed8b54cd6198b3241635df0514e6ce98d3146b020b6`. `cloth_wrinkle.HUD_SLIDERS = False` → `slider_keys` = () (슬라이더 코드는 남아 있음, True로 되돌릴 수 있음). `tool_state.sidebar_select(context)` = bottom_bar.in_select: Primitive Shapes / Detail Stamp / High Poly / Icon Size / Tools / Workspace 패널 poll에 추가. Robot(BASE), Shell(PLATE), Tube(TUBE) 패널 poll에 hud_for.
 
 ## 0.23.23
 - ZIP sha256 `4f1008d348a16c1a8236fe3c0fe1f3dccd5e7aa76c6b9cc6dd261172fa4ec024`. `MCH_GGT_wrinkle_hud._ensure_sliders`(setup / refresh / draw_prepare에서 빠진 슬라이더 기즈모 생성). `Object.mch_cloth_scale`(IntProperty %, update → `set_overall_scale`), HUD 세터도 `set_overall_scale`, 필드 동기화는 `_SYNC` 가드(Blender 5는 애드온 속성과 커스텀 속성이 따로라 ob[...]로는 안 됨).

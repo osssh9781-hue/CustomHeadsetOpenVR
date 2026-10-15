@@ -19,7 +19,7 @@ last_used.forget('wrinkle')
 # ---- Pinch 1 / Pinch 2
 check('Pinch 2 input + two HUD sliders (big / small folds)', any(x[0] == 'Pinch 2' for x in cw.INPUTS) and
       {'pinch', 'pinch2'} <= {k[0] for k in cw.SLIDERS} and 'Pinch 2' in cw.SIZE_INPUTS and
-      {'pinch', 'pinch2'} <= set(cw.slider_keys(None)))
+      {'pinch', 'pinch2'} <= {k[0] for k in cw.SLIDERS})   # 0.23.24: the HUD list is off, the sliders still exist
 MODE[0], NATIVE[0] = 'WRINKLE', 'mecha.cloth_wrinkle'
 S.mch_settings.mch_active_tool = 'WRINKLE'
 S.mch_wrinkle.wtype = 'DENIM'

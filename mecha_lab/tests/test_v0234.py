@@ -100,9 +100,11 @@ check('Skin button cycles the preset', o.get('mch_creature') == 'DRAGON' and S.m
 e0 = int(cw.get_input(o, 'Skin Edge'))
 bpy.ops.mch.wrinkle_skin_edge()
 check('Edge button cycles the border finishing', int(cw.get_input(o, 'Skin Edge')) == (e0 + 1) % 4)
+cw.HUD_SLIDERS = True                                     # 0.23.24: the HUD list is off by default
 check('skin HUD: skin + edge buttons, skin sliders only on a creature', {'skin', 'skin_edge'} <=
       {b_[0] for b_ in cw.HUD_BUTTONS} and set(cw.slider_keys(o)) & set(cw.SKIN_KEYS) and
       not set(cw.slider_keys(pan)) & set(cw.SKIN_KEYS))
+cw.HUD_SLIDERS = False
 S.mch_wrinkle.creature = False
 
 # ---- toolbar + creature brush

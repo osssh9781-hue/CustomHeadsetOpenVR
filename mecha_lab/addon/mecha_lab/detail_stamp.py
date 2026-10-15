@@ -414,7 +414,8 @@ class MCH_PT_detail_stamp(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.scene, 'mch_detail')
+        from . import tool_state as ts
+        return hasattr(context.scene, 'mch_detail') and ts.sidebar_select(context)
 
     def draw(self, context):
         draw(self.layout, context)

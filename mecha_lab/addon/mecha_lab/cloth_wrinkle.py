@@ -2111,8 +2111,13 @@ SKIN_KEYS = ('skin_scale', 'skin_depth', 'skin_random', 'shrink', 'shrink_w', 's
 CREATURE_KEYS = ('lift', 'gravity', 'puff', 'puff_w') + SKIN_KEYS + ('scale', 'strength')
 
 
+HUD_SLIDERS = False         # 0.23.24 no slider list under the popup (buttons only); the values are in the sidebar
+
+
 def slider_keys(ob):
-    """Sliders shown in the popup: creature skin or cloth."""
+    """Sliders shown in the popup: none since 0.23.24 (set HUD_SLIDERS to bring the list back)."""
+    if not HUD_SLIDERS:
+        return ()
     if is_creature(ob):
         return CREATURE_KEYS
     return tuple(k[0] for k in SLIDERS if k[0] not in SKIN_KEYS)

@@ -35,6 +35,6 @@ for klass in (ap.MCH_GGT_plate_hud, rp.MCH_GGT_random_hud, cs.MCH_GGT_shell_hud,
 check('Armor Plate / Random Panels / Creature Shell / Tube / Robot HUD polls check their tool',
       "hud_for(context, {'PLATE'})" in src['mecha_lab.armor_plate'] and "hud_for(context, {'PLATE'})" in src['mecha_lab.random_panels']
       and "hud_for(context, {'PLATE'})" in src['mecha_lab.creature_shell'] and
-      src['mecha_lab.curve_tube'].count("hud_for(context, {'TUBE'})") == 2 and "_ts.hud_for(context, {'BASE'})" in src['mecha_lab.robot_base'])
+      src['mecha_lab.curve_tube'].count("hud_for(context, {'TUBE'})") >= 2 and "_ts.hud_for(context, {'BASE'})" in src['mecha_lab.robot_base'])
 mecha_lab.unregister()
 sys.exit(1 if summary() else 0)

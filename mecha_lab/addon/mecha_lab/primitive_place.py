@@ -1390,10 +1390,7 @@ class MCH_PT_place_shapes(bpy.types.Panel):
     def poll(cls, context):
         if state(context) is None or not hasattr(context.scene, 'mch_settings'):
             return False
-        try:
-            return ts.effective_tool(context) != 'PRIMITIVE'
-        except (AttributeError, KeyError, TypeError):
-            return True
+        return ts.sidebar_select(context)          # 0.23.24 only in Select (the Primitive tool has its own panel)
 
     def draw(self, context):
         st = state(context)

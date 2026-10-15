@@ -553,8 +553,8 @@ class MCH_PT_shell(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.scene, 'mch_plate') and (is_shell(context.active_object)
-                                                        or getattr(context.scene.mch_plate, 'creature', False))
+        return hasattr(context.scene, 'mch_plate') and ts.hud_for(context, {'PLATE'}) and (
+            is_shell(context.active_object) or getattr(context.scene.mch_plate, 'creature', False))
 
     def draw(self, context):
         draw(self.layout, context)

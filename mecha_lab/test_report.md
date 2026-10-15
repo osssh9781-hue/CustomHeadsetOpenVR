@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.23.23
+# Test Report — Mecha Lab 0.23.24
+
+## 0.23.24 결과: 62개 파일, 2218 / 2218 통과 (`tests/test_log_bpy501_v02324.txt`). 바뀐 동작에 맞게 고친 옛 검사: test_v0234 / v0238 / v02319 / v02321(HUD 슬라이더 목록, Tube poll 개수). test_v02324: 팝업 버튼만, Base Mesh에서 Robot만 보이고 Detail Stamp 등 숨김, Cut에서 Robot 숨김. Select에서 보이는지는 헤드리스로 확인 불가 - 미검증.
 
 ## 0.23.23 결과: 61개 파일, 2207 / 2207 통과 (`tests/test_log_bpy501_v02323.txt`). 헤드리스에서 HUD 슬라이더 기즈모의 invoke / modal을 직접 불러 드래그(100 → 120 %) 동작 확인 - 코드 경로는 정상, 그래서 기즈모 손잡이 누락을 원인으로 보고 수정(실제 Blender에서 원인 확인은 못 함). test_v02323: 사이드바 150 % ↔ HUD 100 % 동기화, 손잡이 없는 HUD에 손잡이 생성. 처음엔 ob['mch_cloth_scale']로 필드를 맞추려다 Blender 5에서 안 돼 가드 방식으로 고침. 뷰포트 미검증.
 

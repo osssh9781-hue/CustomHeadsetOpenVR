@@ -999,7 +999,7 @@ class MCH_PT_tube(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.scene, 'mch_tube_defaults') and is_tube(context.active_object)
+        return hasattr(context.scene, 'mch_tube_defaults') and is_tube(context.active_object) and ts.hud_for(context, {'TUBE'})
 
     def draw(self, context):
         draw(self.layout, context)

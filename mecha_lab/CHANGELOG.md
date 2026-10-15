@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 0.23.24 — Cloth Plate 팝업은 버튼만, N 사이드바는 고른 도구만 (2026-10-15)
+
+- **Cloth Plate 팝업 밑 슬라이더 글자 목록 제거**(Overall Scale 포함): 팝업에는 Apply / Remove / 종류 / Trim / Creature Skin 버튼만. 값은 N 사이드바(LIVE 상자 맨 위 Overall Scale + 모든 값)에서.
+- **N 사이드바는 고른 도구 것만**: 도구를 고르면 Mecha Lab 메인 패널(그 도구 설정)과 그 도구 전용 패널만(Base Mesh → Robot Base Mesh, Armor Plate → Creature Shell, Mesh Curve → Tube / Curve; Mirror / Radial / Surface는 원래 그랬음). Primitive Shapes, Detail Stamp, High Poly, Icon Size, Tools 목록, Workspace & Hotkeys는 **Select 상태에서만**.
+- 테스트: 62개 파일 2218/2218 (`tests/test_log_bpy501_v02324.txt`), 새 `test_v02324.py`. ZIP sha256 `2478d031dfe78ad37a70bed8b54cd6198b3241635df0514e6ce98d3146b020b6`.
+
 ## 0.23.23 — Overall Scale 조정 안 되던 문제 (2026-10-15)
 
 - 뷰포트 HUD의 Overall Scale 글자는 보이는데 드래그가 안 됨: HUD가 업데이트 전에 만들어져 있으면 새 슬라이더의 손잡이가 없었음 → HUD가 빠진 손잡이를 스스로 만듦.

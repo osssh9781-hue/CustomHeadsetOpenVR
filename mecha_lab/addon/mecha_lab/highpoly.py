@@ -287,7 +287,8 @@ class MCH_PT_highpoly(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return True
+        from . import tool_state as ts
+        return ts.sidebar_select(context)
 
     def draw(self, context):
         draw(self.layout, context)
