@@ -104,6 +104,26 @@ check('preset from a small panel on a big one: Puff follows the size', abs(cw.ge
 check('presets store the panel size of their lengths', cw.user_presets()['SmallPreset'].get('Puff' + cw.SIZE_TAG) == sb)
 for n_ in ('BigPreset', 'SmallPreset'):
     bpy.ops.mch.wrinkle_preset_delete(name=n_)
+# safety net: any length a new panel starts with stays inside its range for that size
+for o_ in list(bpy.data.objects):
+    bpy.data.objects.remove(o_)
+small = cube('Small2', 0.4)
+for k_, v_ in {'Puff': 5.0, 'Pinch Length': 40.0, 'Crumple': 2.0, '_thickness': 3.0}.items():
+    last_used.remember('wrinkle', k_, v_)
+    last_used.remember('wrinkle', k_ + cw.SIZE_TAG, 0.45)          # as if set on a panel this size
+r, m = lasso([(484, 484), (516, 484), (516, 516), (484, 516)])
+E2 = C.active_object
+se = E2['mch_wrinkle_size']
+check('absurd remembered lengths are clamped on a new panel (Puff, Fold Length, Crumple, thickness)',
+      cw.get_input(E2, 'Puff') <= 0.3 * se + 1e-9 and cw.get_input(E2, 'Pinch Length') <= 2.0 * se + 1e-9 and
+      cw.get_input(E2, 'Crumple') <= 0.05 * se + 1e-9 and E2.modifiers[cw.MOD_SHELL].thickness <= 0.05 * se + 1e-9,
+      (cw.get_input(E2, 'Puff'), cw.get_input(E2, 'Pinch Length'), E2.modifiers[cw.MOD_SHELL].thickness, se))
+co_e = [E2.matrix_world @ v.co for v in E2.evaluated_get(C.evaluated_depsgraph_get()).data.vertices]
+check('... and the panel stays small', max((c - co_e[0]).length for c in co_e) < 0.8)
+last_used.forget('wrinkle')
+check('0.23.15 Billow: lower preset defaults, HUD slider, legacy absolute Billow dropped',
+      cw.PRESETS['DRAPE']['Billow'] <= 0.02 and 'billow' in {k[0] for k in cw.SLIDERS} and
+      cw.recalled({'Billow': 0.5, 'Billow Size': 0.01}, 0.3) == {})
 vals = cw.recalled({'Puff': 9.0, 'Fan': 3.0}, 0.3)
 check('a length remembered without its size (old file) is dropped, others kept', vals == {'Fan': 3.0}, vals)
 

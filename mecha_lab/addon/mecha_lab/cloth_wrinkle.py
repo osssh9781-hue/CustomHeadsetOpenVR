@@ -884,11 +884,50 @@ def get_input(ob, name):
 SIZE_INPUTS = {'Strength', 'Scale', 'Edge Soft', 'Lift', 'Puff', 'Puff Width', 'Roll', 'Roll Width', 'Pinch', 'Pinch 2',
                'Surface Detail',
                'Pinch Spacing', 'Pinch Length', 'Stitch', 'Stitch Inset', 'Stitch Length', 'Trim Width', 'Trim Height',
-               'Center Fade', 'Skin Scale', 'Skin Depth', 'Shrink Width', 'Skin Edge Width', 'Skin Edge Height'}
+               'Center Fade', 'Skin Scale', 'Skin Depth', 'Shrink Width', 'Skin Edge Width', 'Skin Edge Height',
+               'Crumple', 'Crumple Size', 'Billow', 'Billow Size'}      # 0.23.15: crumple / billow are lengths too
 
 
 INPUT_NAMES = {n for n, *_r in INPUTS}
 SIZE_TAG = '@size'          # last_used key suffix: the panel size a remembered length was set on
+
+
+# 0.23.15 lengths a new panel may start with, as parts of its size (the HUD slider ranges, and room for the
+# presets' crumple / billow): whatever the source - last used, a preset, an old file - nothing past these
+LENGTH_LIMITS = {'Crumple': (0.0, 0.05), 'Crumple Size': (0.005, 1.0), 'Billow': (-0.06, 0.06), 'Billow Size': (0.05, 2.0),
+                 'Roll Width': (0.0, 0.5), 'Stitch Inset': (0.0, 0.5), 'Stitch Length': (0.0, 0.5), 'Edge Soft': (0.0, 0.5)}
+
+
+def _length_limits():
+    lim = dict(LENGTH_LIMITS)
+    for _k, _label, name, lo, hi, kind in SLIDERS:
+        if kind == 'SIZE':
+            lim[name] = (lo / 1000.0, hi / 1000.0)
+    return lim
+
+
+def clamp_lengths(ob, size):
+    """Keep every length input (and the shell thickness) inside its range for a panel of ``size``.
+    Returns the names that were changed."""
+    changed = []
+    if not size or size <= 0:
+        return changed
+    for name, (lo, hi) in _length_limits().items():
+        if name == 'THICK':
+            m = ob.modifiers.get(MOD_SHELL)
+            if m is not None and not (lo * size - 1e-9 <= m.thickness <= hi * size + 1e-9):
+                m.thickness = min(max(m.thickness, lo * size), hi * size)
+                changed.append('Thickness')
+            continue
+        if name not in INPUT_NAMES:
+            continue
+        v = float(get_input(ob, name))
+        c = min(max(v, lo * size), hi * size)
+        if abs(c - v) > 1e-9 * max(1.0, abs(v)):
+            mod = ob.modifiers.get(MOD)
+            mod[_ident(name)] = c                  # quietly: not remembered as the user's choice
+            changed.append(name)
+    return changed
 
 
 def recalled(values, size):
@@ -1169,13 +1208,13 @@ PRESETS = {
     # 0.23.7 after the references
     'PUFFER': dict(Puff=0.07, PuffW=0.075, Pinch=0.0, Spacing=0.1, Length=0.3, Sharp=1.4, Stitch=0.0015, Fan=4.0,
                    FanMix=0.0, Sections=5, SecHeight=1.0, Crumple=0.003, CSize=0.045, CSharp=2.5, CStretch=0.8, CAngle=0.0,
-                   Billow=0.004, BSize=0.25),
+                   Billow=0.002, BSize=0.25),
     'COTTON': dict(Puff=0.01, PuffW=0.12, Pinch=0.012, Spacing=0.1, Length=0.5, Sharp=3.0, Stitch=0.0, Fan=3.0,
                    Sections=1, Crumple=0.008, CSize=0.08, CSharp=3.0, CStretch=0.75, CAngle=0.6,
-                   Billow=0.012, BSize=0.35),
+                   Billow=0.005, BSize=0.35),
     'DRAPE': dict(Puff=0.02, PuffW=0.2, Pinch=0.03, Spacing=0.16, Length=0.6, Sharp=1.4, Stitch=0.0, Fan=6.0,
                   Sections=1, Crumple=0.003, CSize=0.05, CSharp=2.5, CStretch=0.6, CAngle=1.0,
-                  Billow=0.09, BSize=0.3),
+                  Billow=0.02, BSize=0.3),       # 0.23.15 billow 0.09 was far too strong
 }
 CRUMPLE_KEYS = (('Crumple', 'Crumple', True), ('Crumple Size', 'CSize', True), ('Crumple Sharp', 'CSharp', False),
                 ('Crumple Stretch', 'CStretch', False), ('Crumple Angle', 'CAngle', False),
@@ -1565,6 +1604,7 @@ def _wrinkle_layer(context, target, cos, nrms, tris, projector, st, last, wtype)
                 pass
         if int(get_input(ob, 'Skin')) != CREATURE[st.skin]['Skin']:
             apply_creature(ob, st.skin, size)
+    clamp_lengths(ob, size)
     fold_lines(ob)
     return ob
 
@@ -2082,7 +2122,8 @@ SLIDERS = (('random', 'Randomness', 'Variety', 0, 100, 'RAND'),
            ('direction', 'Direction', 'Direction', -180, 180, 'DEG'),
            ('bend', 'Bend', 'Bend', 0, 300, 'PCT'),
            ('detail', 'Detail', 'Detail', 0, 3, 'INT'),
-           ('thickness', 'Thickness', 'THICK', 0, 50, 'SIZE'))
+           ('thickness', 'Thickness', 'THICK', 0, 50, 'SIZE'),
+           ('billow', 'Billow', 'Billow', -60, 60, 'SIZE'))          # 0.23.15 it had no slider
 
 
 def slider_spec(context, key, ob=None):
