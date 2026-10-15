@@ -53,7 +53,7 @@ def _size(ob):
     return max(max(d) / s, 1e-9)
 
 
-def flatten_sides(me, angle, keep=0.02):
+def flatten_sides(me, angle, keep=0.001, min_side=0.003, one_face=True):
     """0.23.22 each side of the shape becomes flat: faces are grouped while their normals stay within
     ``angle`` of the group's main direction (area weighted), every point of a group is pushed onto that
     group's plane; points shared by several groups go where the planes meet (straight edges / corners).
@@ -114,7 +114,7 @@ def flatten_sides(me, angle, keep=0.02):
         planes = fit()
         size = float(np.linalg.norm(cen.max(0) - cen.min(0))) or 1.0
         # tiny groups join the neighbouring group that fits them best
-        small = total * 0.003
+        small = total * min_side                 # tiny sides join a neighbour
         for gi, pl in enumerate(planes):
             if pl is None or pl[2] >= small:
                 continue
@@ -161,6 +161,27 @@ def flatten_sides(me, angle, keep=0.02):
             v.co = np.linalg.solve(A, b).tolist()
             moved += 1
         bm.normal_update()
+        if one_face:
+            # each flat side becomes ONE face (an n-gon): the edges inside a side go, then the extra
+            # points along the borders (only two edges, in a straight line)
+            inner = [e for e in bm.edges if len(e.link_faces) == 2 and
+                     group[e.link_faces[0].index] == group[e.link_faces[1].index] and
+                     planes[group[e.link_faces[0].index]] is not None]
+            if inner:
+                bmesh.ops.dissolve_edges(bm, edges=inner, use_verts=True, use_face_split=False)
+            for _p in range(3):
+                lone = []
+                for v in bm.verts:
+                    if len(v.link_edges) != 2:
+                        continue
+                    a, b2 = (e.other_vert(v).co - v.co for e in v.link_edges)
+                    if a.length > 1e-12 and b2.length > 1e-12 and a.normalized().dot(b2.normalized()) < -0.999:
+                        lone.append(v)
+                if not lone:
+                    break
+                bmesh.ops.dissolve_verts(bm, verts=lone)
+            bmesh.ops.dissolve_degenerate(bm, edges=bm.edges[:], dist=1e-7)
+            bm.normal_update()
         bm.to_mesh(me)
     finally:
         bm.free()
