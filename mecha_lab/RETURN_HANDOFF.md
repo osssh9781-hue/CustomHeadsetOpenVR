@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.20 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.21 (Claude Code, 2026-10-14)
+
+## 0.23.21
+- ZIP sha256 `57f7e2575a0aaa62473d5ba48b8bed04d7110bcf2b321ae9ecd6377c89afa755`. `tool_state.hud_for(context, tools)` = effective_tool in tools. poll에 추가: armor_plate(PLATE), random_panels(PLATE), creature_shell(PLATE), curve_tube 두 그룹(TUBE), robot_base(BASE, 별칭 `_ts`), cloth_wrinkle(WRINKLE). armor_plate / cloth_wrinkle / robot_base에 모듈 수준 tool_state import 추가.
 
 ## 0.23.20
 - ZIP sha256 `adcb019e14fbdbd4d251393c29b89fec6f501fa0fcb33b29c2fc47e1f4c7778f`. `cloth_wrinkle._refresh(ob, mod)`(interface_update, update_tag, data.update_tag, 3D 뷰 tag_redraw)을 `set_input`과 `scale_all`이 같이 씀.

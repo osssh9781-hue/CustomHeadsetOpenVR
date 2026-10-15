@@ -33,6 +33,7 @@ from mathutils.bvhtree import BVHTree
 
 from . import armor_plate as ap
 from . import core_geometry as cg
+from . import tool_state as ts
 
 SESSION = 'mch_random_session'
 COLL = 'Random Panels'
@@ -626,7 +627,7 @@ class MCH_GGT_random_hud(bpy.types.GizmoGroup):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == 'OBJECT' and session(context) is not None
+        return context.mode == 'OBJECT' and ts.hud_for(context, {'PLATE'}) and session(context) is not None
 
     def setup(self, context):
         self.items = {}

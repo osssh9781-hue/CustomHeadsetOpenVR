@@ -150,6 +150,15 @@ def effective_tool(context):
     return 'CUT' if chosen in HIDDEN_TOOLS else chosen
 
 
+def hud_for(context, tools):
+    """0.23.21 a tool's HUD (buttons / sliders next to its result) only while that tool is chosen - like
+    the Mirror buttons; switching to another tool hides it (the result itself stays)."""
+    try:
+        return effective_tool(context) in tools
+    except (AttributeError, KeyError, TypeError):
+        return True
+
+
 def tool_is(context, tool_id):
     return bool(getattr(context, 'scene', None) and hasattr(context.scene, 'mch_settings')
                 and effective_tool(context) == tool_id)

@@ -26,6 +26,7 @@ import math
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty
 from mathutils import Matrix, Vector
+from . import tool_state as ts
 
 PTS_KEY = 'mch_tube_pts'          # object custom prop: flat [x, y, z, r, ...] in object space
 COLL = 'Mecha Tubes'
@@ -1068,7 +1069,8 @@ class MCH_GGT_tube_points(bpy.types.GizmoGroup):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == 'OBJECT' and is_tube(context.active_object) and not _drawing(context)
+        return (context.mode == 'OBJECT' and ts.hud_for(context, {'TUBE'}) and is_tube(context.active_object)
+                and not _drawing(context))
 
     def _make(self, context):
         self.gizmos.clear()
@@ -1288,7 +1290,7 @@ class MCH_GGT_tube_bar(bpy.types.GizmoGroup):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == 'OBJECT' and is_tube(context.active_object)
+        return context.mode == 'OBJECT' and ts.hud_for(context, {'TUBE'}) and is_tube(context.active_object)
 
     def setup(self, context):
         self.items = {}

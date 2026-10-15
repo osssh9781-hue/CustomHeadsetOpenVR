@@ -16,6 +16,7 @@ import math
 import bpy
 from bpy.props import BoolProperty, EnumProperty, IntProperty
 from mathutils import Matrix, Vector
+from . import tool_state as ts
 
 GROUP = 'MCH_CreatureShell'
 MOD = 'MCH_Shell'
@@ -446,7 +447,7 @@ class MCH_GGT_shell_hud(bpy.types.GizmoGroup):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == 'OBJECT' and is_shell(context.active_object)
+        return context.mode == 'OBJECT' and ts.hud_for(context, {'PLATE'}) and is_shell(context.active_object)
 
     def setup(self, context):
         self.items = {}

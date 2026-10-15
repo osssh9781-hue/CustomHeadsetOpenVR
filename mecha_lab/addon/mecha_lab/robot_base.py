@@ -25,6 +25,7 @@ import bmesh
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty
 from mathutils import Matrix, Vector
+from . import tool_state as _ts
 
 COLL = 'Robot Base'
 MOD_BEVEL = 'MCH_RobotBevel'
@@ -1318,7 +1319,7 @@ class MCH_GGT_robot_hud(bpy.types.GizmoGroup):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == 'OBJECT' and active_part(context) is not None
+        return context.mode == 'OBJECT' and _ts.hud_for(context, {'BASE'}) and active_part(context) is not None
 
     def setup(self, context):
         self.items = {}

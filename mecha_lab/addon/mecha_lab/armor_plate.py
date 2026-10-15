@@ -36,6 +36,7 @@ from mathutils.bvhtree import BVHTree
 from mathutils.geometry import delaunay_2d_cdt
 
 from . import core_geometry as cg
+from . import tool_state as ts
 
 # Profile presets: values are FRACTIONS of the plate size (bounding diagonal)
 # when Auto Size is on; angles in degrees.  Everything not listed is reset.
@@ -1075,7 +1076,7 @@ class MCH_GGT_plate_hud(bpy.types.GizmoGroup):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == 'OBJECT' and pending_plate(context) is not None
+        return context.mode == 'OBJECT' and ts.hud_for(context, {'PLATE'}) and pending_plate(context) is not None
 
     def setup(self, context):
         self.items = {}

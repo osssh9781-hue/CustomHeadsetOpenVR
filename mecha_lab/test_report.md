@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.23.20
+# Test Report — Mecha Lab 0.23.21
+
+## 0.23.21 결과: 59개 파일, 2194 / 2194 통과 (`tests/test_log_bpy501_v02321.txt`). test_v02321: Cloth Plate HUD가 Cut에서 숨고 Cloth Plate에서 보임, 7개 HUD poll이 실제로 실행됨(이걸로 import 누락 발견 - 전체 테스트는 poll을 부르지 않아 통과했었음). 뷰포트 미검증.
 
 ## 0.23.20 결과: 58개 파일 통과 (`tests/test_log_bpy501_v02320.txt`). test_v02319에 드래그 한 단계 시간(약 0.4초) 추가. 실제 뷰포트 다시 그리기는 헤드리스에서 확인 불가 - 미검증.
 

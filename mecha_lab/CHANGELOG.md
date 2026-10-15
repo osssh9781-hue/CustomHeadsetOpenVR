@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 0.23.21 — 도구 HUD는 그 도구에서만 (2026-10-15)
+
+- Mirror 버튼처럼, 결과물 옆에 뜨는 버튼 / 슬라이더(HUD)가 **자기 도구를 고른 동안에만** 보임 - 다른 도구로 가면 숨김(결과물은 그대로, 다시 그 도구를 고르면 다시 보임).
+  - Cloth Plate HUD → Cloth Plate, Armor Plate HUD / Random Panels / Creature Shell → Armor Plate, Mesh Curve 점 / 바 → Mesh Curve, Robot 파트 → Base Mesh. (Primitive / Station과 Mirror는 이미 그랬음.)
+- 테스트: 59개 파일 2194/2194 (`tests/test_log_bpy501_v02321.txt`), 새 `test_v02321.py`(HUD poll이 실제로 도는지도 확인 - 처음에 Cloth Plate / Armor Plate / Robot 모듈에 import가 빠져 Blender에서 HUD가 오류 날 뻔한 것을 이 테스트로 발견해 고침). ZIP sha256 `57f7e2575a0aaa62473d5ba48b8bed04d7110bcf2b321ae9ecd6377c89afa755`.
+
 ## 0.23.20 — Overall Scale 실시간 (2026-10-15)
 
 - Overall Scale을 드래그해도 화면이 바로 안 바뀌던 문제: 값은 바뀌었지만 다른 슬라이더처럼 뷰포트 다시 그리기 신호를 보내지 않았음 → 같은 새로고침 사용. 한 단계 약 0.4초(헤드리스, Fold Length 슬라이더와 같은 정도).

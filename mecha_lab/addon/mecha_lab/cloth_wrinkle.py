@@ -23,6 +23,7 @@ from bpy.props import EnumProperty, IntProperty
 from mathutils import Matrix, Vector
 
 from . import core_geometry as cg
+from . import tool_state as ts
 
 GROUP = 'MCH_ClothWrinkle'
 MOD = 'MCH_Wrinkle'
@@ -2194,7 +2195,7 @@ class MCH_GGT_wrinkle_hud(bpy.types.GizmoGroup):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == 'OBJECT' and active_wrinkle(context) is not None
+        return context.mode == 'OBJECT' and ts.hud_for(context, {'WRINKLE'}) and active_wrinkle(context) is not None
 
     def setup(self, context):
         self.items = {}
