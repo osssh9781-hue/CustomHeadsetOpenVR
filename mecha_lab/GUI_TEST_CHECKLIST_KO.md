@@ -1,8 +1,11 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.18 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.19 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A0000000000000000000000000000000000. 0.23.19 (미검증)
+- [ ] Cloth Plate HUD 맨 위 Overall Scale: 주름 전체가 같이 커지고 작아지는지, Trim은 그대로인지
 
 ## A000000000000000000000000000000000. 0.23.18 (미검증)
 - [ ] 얇은 Base Mesh에서 Chamfer / Bevel Width를 키우면 윗면 테두리가 넓게 깎이는지 (Top / Bottom / Both)

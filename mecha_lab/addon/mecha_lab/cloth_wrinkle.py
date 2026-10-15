@@ -1864,6 +1864,7 @@ class MCH_OT_wrinkle_reset(bpy.types.Operator):
             m = ob.modifiers.get(MOD_SHELL)
             if m is not None:
                 m.thickness = size * st.thickness
+            ob['mch_all_scale'] = 100.0                 # 0.23.19 Overall Scale back to 100 %
         self.report({'INFO'}, 'Cloth Plate settings reset')
         return {'FINISHED'}
 
@@ -1940,7 +1941,8 @@ HUD_BUTTONS = (('apply', 'CHECKMARK', 'mch.wrinkle_apply', {}, 'Apply'),
                ('skin', 'OUTLINER_OB_FORCE_FIELD', 'mch.wrinkle_skin', {'step': 1}, 'Creature skin type'),
                ('skin_edge', 'MOD_EDGESPLIT', 'mch.wrinkle_skin_edge', {}, 'Skin edge finishing'))
 # key, label, input / modifier field, lo, hi, kind
-SLIDERS = (('random', 'Randomness', 'Variety', 0, 100, 'RAND'),
+SLIDERS = (('all_scale', 'Overall Scale', 'ALLSCALE', 10, 400, 'PCT'),     # 0.23.19 every length but the trim
+           ('random', 'Randomness', 'Variety', 0, 100, 'RAND'),
            ('lift', 'Height', 'Lift', -50, 200, 'SIZE'),
            ('gravity', 'Gravity', 'Gravity', 0, 500, 'PCT'),
            ('skin_scale', 'Scale Size', 'Skin Scale', 2, 500, 'SIZE'),
@@ -1988,10 +1990,55 @@ SLIDERS = (('random', 'Randomness', 'Variety', 0, 100, 'RAND'),
            ('thickness', 'Thickness', 'THICK', 0, 50, 'SIZE'))
 
 
+SCALE_ALL_SKIP = {'Trim Width', 'Trim Height'}
+
+
+def scale_all(ob, factor):
+    """0.23.19 Overall Scale: every length of the panel (folds, puff, roll, stitch, pattern, skin, thickness)
+    times ``factor`` - the look stays, only bigger / smaller.  The trim keeps its size."""
+    from . import last_used
+    mod = ob.modifiers.get(MOD)
+    if mod is None or factor <= 0:
+        return
+    size = float(ob.get('mch_wrinkle_size', 0.0) or 0.0)
+    sec = 'creature' if is_creature(ob) else 'wrinkle'
+    for name in sorted(SIZE_INPUTS - SCALE_ALL_SKIP):
+        if name not in INPUT_NAMES:
+            continue
+        v = float(get_input(ob, name)) * factor
+        mod[_ident(name)] = v
+        if size > 0:
+            last_used.remember(sec, name, v)
+            last_used.remember(sec, name + SIZE_TAG, size)
+    shell = ob.modifiers.get(MOD_SHELL)
+    if shell is not None:
+        shell.thickness *= factor
+        if size > 0:
+            last_used.remember('wrinkle', '_thickness', shell.thickness)
+            last_used.remember('wrinkle', '_thickness' + SIZE_TAG, size)
+    if size > 0:
+        fold_lines(ob)                          # the fold lines follow the new spacing / length (once)
+    try:
+        mod.node_group.interface_update(bpy.context)
+    except (AttributeError, TypeError, RuntimeError):
+        pass
+    ob.update_tag(refresh={'OBJECT', 'DATA'})
+
+
 def slider_spec(context, key, ob=None):
     ob = ob or active_wrinkle(context)
     label, name, lo, hi, kind = next((l, nm, a, b, k) for kk, l, nm, a, b, k in SLIDERS if kk == key)
     size = float(ob.get('mch_wrinkle_size', 1.0)) or 1.0
+    if name == 'ALLSCALE':
+        v = int(round(float(ob.get('mch_all_scale', 100.0))))
+
+        def setter(val):
+            old = float(ob.get('mch_all_scale', 100.0)) or 100.0
+            val = max(float(lo), float(val))
+            if abs(val - old) > 1e-9:
+                scale_all(ob, val / old)
+                ob['mch_all_scale'] = val
+        return label, v, lo, hi, setter, f'{label}  {v} %'
     if name == 'THICK':
         mod = ob.modifiers.get(MOD_SHELL)
         cur = mod.thickness if mod else 0.0

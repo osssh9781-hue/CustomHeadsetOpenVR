@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.23.18
+# Test Report — Mecha Lab 0.23.19
+
+## 0.23.19 결과: 58개 파일, 2182 / 2182 통과 (`tests/test_log_bpy501_v02319.txt`, 한 번에 통과). test_v02319: Overall Scale 200 % → 길이 값 전부 ×2, 두께 ×2, Trim / 각도 / Fan 그대로, 100 %로 원래 값. 뷰포트 미검증.
 
 ## 0.23.18 결과: 57개 파일, 2176 / 2176 통과 (`tests/test_log_bpy501_v02318.txt`). 사용자 설정 재현(높이 0.06, Chamfer, Width 2): 예전엔 0.057로 잘림 → 이제 모양에 맞춰 0.98(4 × 2 판). test_v02318: Width 0.4 → 윗면 ±1.6, 닫힘; Bevel 높이 6단; 너무 넓음 → 노트; Bottom; Both; Mirror 버튼 Cut에선 숨김. 중간에 겹침 검사가 약해 뾰족한 홈 모양에서 판이 바깥으로 뒤집힌 것을 발견 → 검사 강화(이제 뾰족한 모서리가 있으면 그 모양 전체 Width가 줄어듦). 뷰포트 미검증.
 

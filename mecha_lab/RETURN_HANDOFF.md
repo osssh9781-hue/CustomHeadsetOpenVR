@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.18 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.19 (Claude Code, 2026-10-14)
+
+## 0.23.19
+- ZIP sha256 `bde23129b6fea46dba6fd79bdba9e9a438b263145dc5349c37be3e2824175660`. `cloth_wrinkle`: 슬라이더 `all_scale`(종류 ALLSCALE, 맨 앞) → `scale_all(ob, factor)` = SIZE_INPUTS − {Trim Width, Trim Height} × factor + 셸 두께, fold_lines 한 번, 지난번 값도 기억. 현재 값 `ob['mch_all_scale']`(Reset = 100).
 
 ## 0.23.18
 - ZIP sha256 `fd99be01744a2b71174a89970e024e15d9cc35105df475ba4664ff78400fb629`. `base_mesh._profile_rims` / `_profile_one`(bmesh.ops.bevel 대신): 윗 / 아랫면을 drop만큼 내리고 inset_region(thickness, depth)을 단계별로(Chamfer 1, Bevel = 1/4 원) - drop = min(Width, 높이 × 0.95 / 양쪽이면 0.48). 겹침(면 뒤집힘, 윤곽 밖 점, 면적 증가)이면 Width × 0.7로 재시도, 노트는 `ob['mch_base_notes']` → LIVE 패널. `mirror_hud.shown_for_tool`: Select 또는 MIRROR 도구에서만.

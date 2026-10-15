@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 0.23.19 — Cloth Plate Overall Scale (2026-10-15)
+
+- 주름 모양은 그대로 두고, HUD 맨 위에 **Overall Scale** 슬라이더(100 % 기준, 10 ~ 400 %): 길이 값 전부(주름 간격 / 길이 / 깊이, Puff, Roll, Stitch, 패턴, Center Fade, 두께 등)를 한꺼번에 같은 비율로. **Trim은 제외**. 각도 / 날카로움 / Fan 같은 비율 값은 그대로. Reset이면 100 %로.
+- 테스트: 58개 파일 2182/2182 (`tests/test_log_bpy501_v02319.txt`), 새 `test_v02319.py`. ZIP sha256 `bde23129b6fea46dba6fd79bdba9e9a438b263145dc5349c37be3e2824175660`.
+
 ## 0.23.18 — Base Mesh 베벨 / 챔퍼 폭, 미러 Apply 버튼은 Mirror에서만 (2026-10-15)
 
 - **Base Mesh Bevel / Chamfer**: Width가 두께의 95 %로 몰래 잘리던 문제(6 cm 판에 Width 2 m → 5.7 cm, 큰 판에선 거의 안 보임). 이제 Width는 윗면(또는 아랫면)을 가로질러 들어가고, 내려가는 높이만 두께에 맞춤(얇은 판 = 넓고 완만한 챔퍼 / 라운드). 모양보다 넓으면 모양에 맞게 줄이고 LIVE 패널에 "width limited to …"로 표시. 
