@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.25 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.26 (Claude Code, 2026-10-14)
+
+## 0.23.26
+- ZIP sha256 `e3ea3d9bb5298b6b806988eeeab6027f3bc9df0d1a9515dde75a6e8c37d4ed72`. 새 `fold_patch.py`: 패턴(획 리스트, Catmull-Rom) → `height_map`(획마다 최근접 거리 하나, 스무스 맥스) → float 이미지 `MCH_FoldPatch_<핸들>`(RES 512). GN 그룹 `MCH_FoldPatch`: Object Info(RELATIVE) 역행렬 → 핸들 공간 → Wrap(s = R·atan2(y, z+R)) / Taper / Image Texture(Cubic, Clip) × Fade × 근처 → Normal × Depth, Mirror X = 미러 위치로 한 번 더. 핸들 Object.mch_fold(PropertyGroup, 업데이트 → push). load_post에서 이미지 다시 만듦. 패널 MCH_PT_fold_patch(bl_order 4).
 
 ## 0.23.25
 - ZIP sha256 `baa0c9a383320fda16771485a1a32ff206f3541edccdcd3ce67705111990c6cb`. `MCH_GGT_wrinkle_hud` = 0.23.22(커밋 1d26196) 그대로(_ensure_sliders / refresh 제거 - draw_prepare에서 기즈모를 만들려던 것이 버튼 배치를 깨뜨린 것으로 봄, 실제 Blender에서 확인은 못 함). HUD_SLIDERS = False, 사이드바 mch_cloth_scale 유지.

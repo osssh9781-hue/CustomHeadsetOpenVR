@@ -1,8 +1,13 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.25 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.26 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A00000000000000000000000000000000000000000. 0.23.26 (미검증)
+- [ ] 팔 / 무릎에 + Add Fold Patch → 핸들 G / R / S로 옮기면 주름이 따라오는지, 감싸기(Wrap) 자동
+- [ ] Size / Depth / Thickness / Taper / Fade / Wrap / Mirror X, ◀ ▶ 패턴, 여러 개, 삭제, Apply
+- [ ] 저장 후 다시 열어도 주름이 그대로인지
 
 ## A0000000000000000000000000000000000000000. 0.23.25 (미검증)
 - [ ] Cloth Plate 팝업에 동그란 버튼(Apply / Remove / 종류 화살표 / Trim / Creature Skin)이 다시 보이고 눌리는지, 밑에 슬라이더 글자는 없는지

@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.23.26 — Fold Patch: 팔꿈치 / 무릎 X·Y 주름 패치 (2026-10-15)
+
+- N 사이드바에 따로 **Fold Patch** 패널(Cloth Plate 도구 / Select / 패치 핸들 선택 시). 메쉬 선택 + 3D 커서 → **+ Add Fold Patch**: 표면에 핸들(G / R / S로 이동·회전·크기) + 라이브 GN 모디파이어(Cloth Plate면 두께 Solidify 앞).
+- 패치마다: Size, Depth(- = 안으로), Thickness, **Taper "<"**(한쪽으로 좁아짐, - = 반대), Fade(가장자리), **Wrap**(팔 / 다리 둘레 반지름 - 추가할 때 자동 측정), **Mirror X**, ◀ ▶ 패턴(감싸는 주름 / X·Y 주름 / 별, 각각 좌우 반전). 여러 개 배치, 목록에서 선택 / 삭제, Apply로 메쉬에 확정.
+- 주름 선은 사용자가 그린 그림을 따라 만든 높이 이미지(패턴 / 두께가 바뀔 때만 다시 굽기, 파일 열 때 다시 만듦). Overall Scale과 무관.
+- 비교 `reference/fold_patch_v02326.png`. 테스트: 63개 파일 2232/2232 (`tests/test_log_bpy501_v02326.txt`), 새 `test_v02326.py`. ZIP sha256 `e3ea3d9bb5298b6b806988eeeab6027f3bc9df0d1a9515dde75a6e8c37d4ed72`.
+
 ## 0.23.25 — Cloth Plate 팝업 버튼 복구 (2026-10-15)
 
 - 0.23.23의 "빠진 슬라이더 손잡이 만들기" 수정이 팝업 **버튼(아이콘)이 안 보이게** 만들었음 → 팝업 코드를 0.23.22와 똑같이 되돌림. 0.23.24의 "슬라이더 글자 목록 없음"만 유지(버튼만 보임), Overall Scale은 N 사이드바 LIVE 상자에.
