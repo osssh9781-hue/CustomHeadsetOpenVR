@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 0.23.9 — Panel Cloth: 라쏘 영역 충돌체, 라쏘 직후 시뮬, 프리셋 9개, 조각별 랜덤 (2026-10-15)
+
+- **RandomFlow 방식 정리**(공식 문서 사이트는 이 환경에서 접속 불가 → 검색 결과 + 보내주신 화면 기준): 블렌더 내장 클로스 + Pressure / Shrink / Pin / 충돌을 짧게 굴리고 베이크, Mark Sharp / Seam으로 나뉜 조각마다 다른 값(Individual Seed, Random), Collide To Source, Remove Faces. 이 구조대로 맞춤.
+- **충돌체 = 우리가 만든 면(Region, 기본)**: 라쏘로 생성된 면(패널 원래 표면)을 임시 충돌체로 만들어 시뮬 → 몸 전체보다 가볍고, 천이 그 면 밑으로 꺼지지 않음. Body(몸 전체) / None도 선택. 천은 표면에서 살짝 띄워 시작(겹친 채 시작하면 충돌이 불안정해서 천이 뚫림), 접촉 두께는 판 크기에 맞춰 자동.
+- **라쏘 직후 시뮬**: Cloth Plate 헤더 **Sim** 토글 + 프리셋 → 라쏘를 끝내면 바로 시뮬 + 베이크(`_PCloth`), 원래 판은 숨김. Through(앞 + 뒤)도 하나로 합쳐서.
+- **프리셋 9개**: 패딩 계열 **Padding**(0.23.8보다 진하게: Pressure 4 → 9) / **Puffer** / **Pillow** / **Quilt**(조각마다 따로 부풀기), 천 계열 **Cloth** / **Silk**(가는 주름 많이) / **Canvas**(큰 주름 몇 개) / **Leather**(뻣뻣) / **Crumple**(구겨진 천). Bend(휨 강성) 추가.
+- **다른 프리셋으로 다시**: 만든 `_PCloth`를 선택 → 패널의 프리셋 버튼 → 숨겨 둔 원본에서 다시 시뮬(오브젝트는 하나로 교체).
+- **Split Seam**(표시된 Seam / Sharp에서 나눔), **Random per piece**(조각마다 Shrink ~ Shrink Max, Pressure Variation), **Remove Faces**(Edit Mode에서 원본 면 삭제).
+- 미리보기 `reference/panel_cloth_presets_v0239.png`(윗줄 Padding / Puffer / Pillow / Quilt / Cloth, 아랫줄 Silk / Canvas / Leather / Crumple). 테스트: 53개 파일 2089/2089 (`tests/test_log_bpy501_v0239.txt`). ZIP sha256 `d8bc94d28360811a49ee54ff09ac0f01cb78fcc6a639ec10766b288ca19d35b3`.
+
 ## 0.23.8 — Pinch 1 / Pinch 2, Panel Cloth(짧은 실제 클로스 시뮬 + 베이크) (2026-10-15)
 
 - **Pinch 1 / Pinch 2**: 큰 주름(테두리에서 길게 들어오는 주름)과 작은 주름(부채꼴 잔주름)을 따로 조절. HUD 슬라이더 2개. 새 판은 Pinch 2 = Pinch 1로 시작해서 예전과 같은 모양.

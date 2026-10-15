@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.23.8
+# Test Report — Mecha Lab 0.23.9
+
+## 0.23.9 결과: 53개 파일, 2089 / 2089 통과 (`tests/test_log_bpy501_v0239.txt`, 한 번에 통과). `test_v0238`의 오퍼레이터 인자 `collide=False` → `collider='NONE'`(옵션 이름 변경). 라쏘 → Sim(Puffer) → 베이크, 임시 충돌체 제거, 몸 미변경, 박스 위로 부풀고 안 꺼짐, Cloth로 다시 굽기(더 평평), Split Angle 큐브 6조각, Seam 분할, Remove Faces. 프리셋 9개 모양은 Cycles 렌더로 확인. 뷰포트 / 실제 PC 속도 미검증.
 
 ## 0.23.8 결과: 52개 파일, 2075 / 2075 통과 (`tests/test_log_bpy501_v0238.txt`). 전체 실행에서 `test_v0200.py` 1회 실패: "Strength 0 = 평평" 검사가 Pinch만 0으로 만들고 새 Pinch 2는 안 만듦 → Pinch 2 추가, 그 파일만 다시 실행해 구간 교체. Panel Cloth는 헤드리스에서 실제 클로스 캐시를 프레임 진행으로 계산해 검사(부풀기, 고정된 테두리, 몸 관통 없음, 임시 충돌체 제거, Through 두 판 → 끝 두 개만 열린 하나의 링, Edit Mode 선택 면). 뷰포트 대화창 / 실제 PC 속도는 미검증.
 

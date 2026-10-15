@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.8 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.9 (Claude Code, 2026-10-14)
+
+## 0.23.9
+- ZIP sha256 `d8bc94d28360811a49ee54ff09ac0f01cb78fcc6a639ec10766b288ca19d35b3`. `cloth_sim`: `PRESETS`(9) / `preset_values` / `run_preset`, `panel_cloth(..., bend, shrink_max, random_islands, variation, collider='REGION'|'BODY'|'NONE', preset, remove_faces)`, `_region_collider`(원본 면으로 임시 COLLISION 오브젝트, 끝나면 삭제), 시작 위치 노말 방향 2 × 두께(두께 = max(입력, 크기 × 0.003)), collision_quality 3, 조각별 `mch_shrink` / `mch_pressure` 버텍스 그룹(베이크 후 삭제), Split SEAM(소스 edge use_seam / sharp), `redo` + `mch.panel_cloth_redo`, `draw()` 패널 박스. `cloth_wrinkle`: PG `sim_after`, `sim_preset`(정적 items `_SIM_PRESETS` - 문자열 annotation이라 lambda 안 됨), `_sim_after`가 perform_wrinkle 끝(일반 / Through)에서 run_preset. 헤더 Sim 토글.
 
 ## 0.23.8
 - ZIP sha256 `2121b1849032f253eaa58ee4e8536b6b416735c2b4ccd3a645af64a024c900f6`. `cloth_wrinkle` v43: 입력 `Pinch 2`(뒤에 추가) - 긴 주름 × Pinch, 부채 × Fan Mix × Pinch 2, max로 합침. `apply_preset`이 Pinch 2 = Pinch(또는 프리셋 Pinch2). 새 `cloth_sim.py`(Panel Cloth): `build_cloth_mesh(parts, cuts, split, angle, noise, seed)` → `setup_cloth`(CLOTH 모디파이어: quality, mass, pressure, shrink_min, effector gravity, pin 버텍스 그룹 `mch_pin`, collision distance) → `bake`(frame_set으로 캐시 채우고 new_from_object) → `panel_cloth(...)`, 오퍼레이터 `mch.panel_cloth`. 몸에 COLLISION이 없으면 임시로 붙였다 제거. GN 시뮬 시도는 폐기(주름 품질 부족).

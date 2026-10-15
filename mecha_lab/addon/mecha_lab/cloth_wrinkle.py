@@ -103,6 +103,8 @@ INPUTS = (('Type', 'NodeSocketInt', 0, 0, 5),
           ('Billow Size', 'NodeSocketFloat', 0.3, 0.0001, 100.0),
           # 0.23.8 Pinch 2: the small fans on their own slider (Pinch = Pinch 1: the long big folds)
           ('Pinch 2', 'NodeSocketFloat', 0.0, -100.0, 100.0))
+from .cloth_sim import PRESET_ITEMS as _SIM_PRESETS
+
 TRIMS = (('NONE', 'No Trim', 'Plain border'),
          ('PIPING', 'Piping', 'Round cord along the border'),
          ('BINDING', 'Binding', 'Flat band folded over the border, stitched'),
@@ -1294,7 +1296,8 @@ def perform_wrinkle(context, loops, projector, wtype=None):
             o.select_set(True)
         context.view_layer.objects.active = obs[0]
         kind = 'Creature skin' if getattr(st, 'creature', False) else 'Cloth plate'
-        return f'{kind} through {target.name}: {len(obs)} panel(s) (front / back / creases)'
+        msg = f'{kind} through {target.name}: {len(obs)} panel(s) (front / back / creases)'
+        return _sim_after(context, st, obs, msg)
     pts, tris, _nb = ap.screen_patch(groups, st.spacing)
     if not tris:
         raise cg.CutError('The outline is too small.')
@@ -1308,8 +1311,24 @@ def perform_wrinkle(context, loops, projector, wtype=None):
     extra = f' | {len(missing)} point(s) past the surface edge' if missing else ''
     if getattr(st, 'creature', False):
         return f'Creature skin "{ob.name}" on {target.name} ({dict((a, b) for a, b, _c in SKINS)[st.skin]}){extra}'
-    pat = dict((a, b) for a, b, _c in TYPES)[wtype] if st.pattern else 'no pattern'
-    return f'Cloth plate "{ob.name}" on {target.name} (padded panel, {pat}){extra}'
+    pat = dict((a, b) for a, b, _c in TYPES)[wtype or st.wtype] if st.pattern else 'no pattern'
+    return _sim_after(context, st, [ob], f'Cloth plate "{ob.name}" on {target.name} (padded panel, {pat}){extra}')
+
+
+def _sim_after(context, st, obs, msg):
+    """0.23.9 Sim toggle: Panel Cloth on the new layer(s) right away (collider = the generated surface)."""
+    if not getattr(st, 'sim_after', False) or getattr(st, 'creature', False):
+        return msg
+    from . import cloth_sim
+    made = cloth_sim.run_preset(context, obs, st.sim_preset, collider='REGION')
+    for o in context.selected_objects:
+        o.select_set(False)
+    for o in made:
+        o.select_set(True)
+    if made:
+        context.view_layer.objects.active = made[0]
+    label = dict((p[0], p[1]) for p in cloth_sim.PRESET_ITEMS)[st.sim_preset]
+    return msg + f' | Panel Cloth ({label}): {len(made)} baked'
 
 
 
@@ -1489,6 +1508,12 @@ class MCH_PG_Wrinkle(bpy.types.PropertyGroup):
     creature: bpy.props.BoolProperty(name='Creature Skin', default=False,
                                      description='Creature Skin brush: scales / warts / cracks instead of cloth')
     skin: EnumProperty(name='Skin', items=SKINS, default='CROC', description='Creature skin preset')
+    # 0.23.9 Panel Cloth right after the lasso (the generated surface is the collider)
+    sim_after: bpy.props.BoolProperty(name='Sim', default=False,
+                                      description='Cloth Plate: run a short cloth simulation on the new panel '
+                                                  'right away and bake it (Panel Cloth)')
+    sim_preset: EnumProperty(name='Cloth Preset', items=_SIM_PRESETS, default='PADDING',
+                             description='Panel Cloth preset used after the lasso')
 
 
 class MCH_OT_wrinkle_skin(bpy.types.Operator):
@@ -2162,7 +2187,9 @@ def draw(layout, context):
         r.scale_y = 1.3
         r.operator('mch.wrinkle_apply', text='Apply', icon='CHECKMARK')
         r.operator('mch.wrinkle_remove', text='Remove', icon='X')
-        sub.operator('mch.panel_cloth', text='Panel Cloth (simulate + bake)', icon='MOD_CLOTH')
+
+    from . import cloth_sim
+    cloth_sim.draw(layout, context)
     c = box.column(align=True)
     c.scale_y = 0.8
     c.label(text='Draw a lasso on a mesh: a separate cloth layer', icon='INFO')

@@ -1,8 +1,14 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.8 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.9 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A000000000000000000000000. 0.23.9 (미검증)
+- [ ] Cloth Plate 헤더 Sim 토글 + 프리셋 → 라쏘 → 바로 천 시뮬 결과(시간이 얼마나 걸리는지)
+- [ ] 패널 PANEL CLOTH 박스: _PCloth 선택 시 프리셋 버튼으로 다시 굽기
+- [ ] Panel Cloth 대화창: Preset을 바꾸면 값이 채워지는지, Collide Region / Body / None
+- [ ] 세로 면(팔, 몸통 옆)에서 Cloth / Canvas 프리셋이 아래로 처지는지
 
 ## A00000000000000000000000. 0.23.8 (미검증)
 - [ ] HUD Pinch 1(큰 주름) / Pinch 2(작은 주름) 슬라이더가 따로 움직이는지

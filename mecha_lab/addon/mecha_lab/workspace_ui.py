@@ -713,6 +713,11 @@ def draw_shape_palette(self, context):
             sk.prop(brush, 'through_mode', text='Through', icon='XRAY', toggle=True)
             if brush.through_mode:
                 sk.prop(brush, 'through_crease', text='Crease')
+        if tool == 'WRINKLE' and hasattr(context.scene, 'mch_wrinkle'):
+            ws = context.scene.mch_wrinkle
+            sk.prop(ws, 'sim_after', text='Sim', icon='MOD_CLOTH', toggle=True)
+            if ws.sim_after:
+                sk.prop(ws, 'sim_preset', text='')
     if brush.line_mode:
         sk.prop(brush, 'line_width', text='')
         sk.prop(brush, 'line_caps', text='')

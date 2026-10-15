@@ -103,7 +103,7 @@ bpy.ops.mesh.primitive_grid_add(x_subdivisions=6, y_subdivisions=6, size=1.0, lo
 g = C.active_object
 bpy.ops.object.mode_set(mode='EDIT')
 bpy.ops.mesh.select_all(action='SELECT')
-res = bpy.ops.mch.panel_cloth(frames=5, cuts=1, collide=False)
+res = bpy.ops.mch.panel_cloth(frames=5, cuts=1, collider='NONE')
 check('Panel Cloth from selected faces (Edit Mode)', res == {'FINISHED'} and C.mode == 'OBJECT' and
       C.active_object.name == g.name + sim.SUFFIX)
 mecha_lab.unregister()
