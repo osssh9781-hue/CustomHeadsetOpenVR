@@ -710,7 +710,6 @@ def draw_shape_palette(self, context):
     layout = self.layout
     tool = ts.effective_tool(context)
     row = layout.row(align=True)
-    row.enabled = tool in ts.SHAPE_TOOLS
     brush = scene.mch_brush
     for sid, label, desc, stem, fallback in ts.SHAPES:
         if sid == 'CUSTOM':
@@ -720,7 +719,6 @@ def draw_shape_palette(self, context):
         op.preset = ''
     from . import lasso_sketch
     sk = layout.row(align=True)
-    sk.enabled = tool in ts.SHAPE_TOOLS
     sk.operator('mch.sketch_toggle', text='Sketch', icon='GREASEPENCIL', depress=lasso_sketch.is_on(context))
     sk.prop(brush, 'line_mode', text='Line', icon='IPO_LINEAR', toggle=True)
     if tool in {'CUT', 'SPLIT', 'PLATE', 'WRINKLE'}:
@@ -750,8 +748,6 @@ def draw_shape_palette(self, context):
     if tool in {'CUT', 'SPLIT'} and hasattr(scene, 'mch_cut'):
         tr = layout.row(align=True)
         tr.prop(scene.mch_cut, 'targets', expand=True)
-    if tool not in ts.SHAPE_TOOLS:
-        layout.label(text='Shapes: Cut / Split / Mask / Base Mesh only')
     # Always visible next to the shared shapes in the Mecha workspace.
     draw_ortho_button(layout.row(align=True), context, text='Ortho')
     layout.separator_spacer()
@@ -1183,6 +1179,24 @@ class MCH_PT_main(bpy.types.Panel):
             drawer(layout, context)
 
 
+class MCH_PT_lasso(bpy.types.Panel):
+    """0.23.27 lasso / shape settings: one shared panel shown in every tool."""
+    bl_idname = 'MCH_PT_lasso'
+    bl_label = 'Lasso Settings'
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'Mecha Lab'
+    bl_order = 1
+
+    @classmethod
+    def poll(cls, context):
+        return hasattr(context.scene, 'mch_brush')         # every tool, Select included
+
+    def draw(self, context):
+        from . import ui_tool_settings
+        ui_tool_settings.draw_shape_options(self.layout, context, ts.effective_tool(context))
+
+
 def _drawers():
     from . import ui_tool_settings
     return ui_tool_settings.DRAWERS
@@ -1494,7 +1508,7 @@ CLASSES = (
     MCH_OT_workspace_open, MCH_OT_workspace_repair, MCH_OT_workspace_save_startup,
     MCH_OT_set_tool, MCH_OT_set_shape, MCH_OT_space_tools, MCH_OT_hotkey, MCH_OT_ortho_lock,
     MCH_OT_quick_menu, MCH_OT_select_move, MCH_OT_select_move_key, MCH_MT_add_mecha,
-    MCH_OT_icon_size_preset, MCH_PT_tools, MCH_PT_main, MCH_PT_icon_size, MCH_PT_workspace, MCH_PT_tool_list, MCH_PT_tool_popup, MCH_PT_shape_popup,
+    MCH_OT_icon_size_preset, MCH_PT_tools, MCH_PT_main, MCH_PT_lasso, MCH_PT_icon_size, MCH_PT_workspace, MCH_PT_tool_list, MCH_PT_tool_popup, MCH_PT_shape_popup,
     MCH_PT_quick_popup, MCH_PT_profile_popup,
 )
 

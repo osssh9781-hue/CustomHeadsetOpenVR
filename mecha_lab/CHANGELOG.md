@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.23.27 — 공통 Lasso Settings 패널, Alt는 모든 도구에서 빨간 선 (2026-10-15)
+
+- N 사이드바에 **Lasso Settings** 패널 하나를 따로 두고 **모든 도구**(Select 포함)에서 보이게 함: 모양별 설정(Free Draw 손떨림 보정 / 간격 / 스무스 / 단순화, 원 세그먼트, Curve Lasso 해상도, Line, 프리셋 모양, 바깥 모서리 둥글게 / 각지게, Cut 라쏘의 Edge Finish). 전에는 Cut / Split / Mask / Base Mesh / Box Hide 패널 안에만 있고 Armor Plate / Cloth Plate 등에는 없었음 → 각 도구 패널 안의 사본은 지움.
+- 뷰포트 위 모양 버튼 줄(Lasso / Curve Lasso / Sketch / Line ...)도 모든 도구에서 눌림(전에는 라쏘 도구가 아니면 회색).
+- Alt를 누르고 그릴 때(반대 동작) 선 색이 **모든 도구에서 빨간색**(전에는 Base Mesh만 빨강, Cut 하늘색, Armor / Cloth / Box Hide는 색이 안 바뀜).
+- 테스트: 64개 파일 2270/2270 (`tests/test_log_bpy501_v02327.txt`), 새 `test_v02327.py`. ZIP sha256 `4a414b288d585b594f853e0b7e35f7f5484df0276ddf4bfa0d4d6b84cf8512ad`.
+
 ## 0.23.26 — Fold Patch: 팔꿈치 / 무릎 X·Y 주름 패치 (2026-10-15)
 
 - N 사이드바에 따로 **Fold Patch** 패널(Cloth Plate 도구 / Select / 패치 핸들 선택 시). 메쉬 선택 + 3D 커서 → **+ Add Fold Patch**: 표면에 핸들(G / R / S로 이동·회전·크기) + 라이브 GN 모디파이어(Cloth Plate면 두께 Solidify 앞).

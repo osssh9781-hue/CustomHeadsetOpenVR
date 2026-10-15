@@ -15,8 +15,8 @@ S.mch_brush.shape = 'LASSO'
 S.mch_brush.line_open = False
 MODE[0], NATIVE[0] = 'HIDE', 'mecha.box_hide'
 S.mch_settings.mch_active_tool = 'HIDE'
-check('outline is orange like Cut (also with Alt)', ce.stroke_color('HIDE', False) == ce.stroke_color('CUT', False) ==
-      ce.stroke_color('HIDE', True))
+check('outline is orange like Cut (Alt red like every tool)', ce.stroke_color('HIDE', False) == ce.stroke_color('CUT', False) and
+      ce.stroke_color('HIDE', True) == ce.ALT_RED)
 g = bh.build_group()
 check('no Exact boolean in the hide group', not any(n.bl_idname == 'GeometryNodeMeshBoolean' and n.solver == 'EXACT'
                                                       for n in g.nodes))

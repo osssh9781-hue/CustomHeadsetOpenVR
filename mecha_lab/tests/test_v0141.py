@@ -205,7 +205,7 @@ add_c, sub_c = ce.stroke_color('BASE', False), ce.stroke_color('BASE', True)
 check('0.14.4: Alt (subtract) line has its own colour, clearly different from the add line',
       sum(abs(x - y) for x, y in zip(add_c[:3], sub_c[:3])) > 0.4 and add_c[0] > 0.9 and sub_c[0] > 0.9 and
       sub_c[1] < add_c[1] - 0.2, (add_c, sub_c))
-check('Cut colours unchanged', ce.stroke_color('CUT', False) == ce._COLORS['CUT'] and
-      ce.stroke_color('CUT', True) == ce._COLORS['CUT_INV'] and ce.stroke_color('SPLIT', True) == ce._COLORS['SPLIT'])
+check('Cut colour unchanged; 0.23.27 Alt is red in every tool', ce.stroke_color('CUT', False) == ce._COLORS['CUT'] and
+      all(ce.stroke_color(m, True) == ce.ALT_RED for m in ('CUT', 'SPLIT', 'MASK', 'BASE', 'PLATE', 'WRINKLE', 'HIDE')))
 mecha_lab.unregister()
 sys.exit(1 if summary() else 0)

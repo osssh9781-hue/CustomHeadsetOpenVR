@@ -901,28 +901,24 @@ def perform_mask(context, target, loops, projector, erase):
 # Drawing overlay
 # -----------------------------------------------------------------------------
 
+ALT_RED = (1.0, 0.22, 0.30, 1.0)      # 0.23.27 Alt (inverse) is red in every tool
+
 _COLORS = {
     'CUT': (1.0, 0.62, 0.10, 1.0),
-    'CUT_INV': (0.25, 0.90, 1.0, 1.0),
     'SPLIT': (0.45, 1.0, 0.35, 1.0),
     'MASK': (0.85, 0.45, 1.0, 1.0),
-    'MASK_INV': (0.55, 0.55, 0.60, 1.0),
-    # 0.14.4 Base Mesh: draw = orange (add), Alt = red (subtract from the sketch / cutter)
     'BASE': (1.0, 0.55, 0.12, 1.0),
-    'BASE_INV': (1.0, 0.22, 0.30, 1.0),
     'PLATE': (0.30, 0.78, 1.0, 1.0),
-    'PLATE_INV': (0.30, 0.78, 1.0, 1.0),
     'WRINKLE': (0.95, 0.45, 0.75, 1.0),
-    'WRINKLE_INV': (0.95, 0.45, 0.75, 1.0),
     'HIDE': (1.0, 0.62, 0.10, 1.0),               # 0.23.17 Box Hide: orange like Cut (hide and Alt = show)
-    'HIDE_INV': (1.0, 0.62, 0.10, 1.0),
 }
 
 
 def stroke_color(mode, inverted):
-    """Outline colour while drawing (Alt = inverted gets its own colour)."""
-    key = mode + ('_INV' if inverted and mode != 'SPLIT' else '')
-    return _COLORS.get(key, _COLORS['CUT'])
+    """Outline colour while drawing; Alt held (inverted) is red for every tool."""
+    if inverted:
+        return ALT_RED
+    return _COLORS.get(mode, _COLORS['CUT'])
 
 
 def _shader():

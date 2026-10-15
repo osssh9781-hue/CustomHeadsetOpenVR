@@ -137,7 +137,6 @@ def draw_cut(layout, context, mode='CUT'):
     if mode == 'SPLIT':
         col.prop(cut, 'split_cap')
 
-    draw_shape_options(layout, context, mode)
 
     if mode == 'SPLIT':
         box = _section(layout, 'Split', 'MOD_EDGESPLIT')
@@ -277,7 +276,6 @@ def draw_fuse(layout, context):
 
 def draw_mask(layout, context):
     s = context.scene.mch_settings
-    draw_shape_options(layout, context, 'MASK')
     if context.mode == 'EDIT_MESH':
         layout.operator('mch.mask_selected_faces', text='ADD SELECTED FACES', icon='FACESEL')
     layout.prop(s, 'mch_mask_thickness')
@@ -520,7 +518,6 @@ def draw_base(layout, context):
         col.prop(p, 'embed')
     if ob is not None:
         target.operator('mch.base_freeze', icon='FREEZE')
-    draw_shape_options(layout, context, 'BASE')
     _hint(layout, 'Draw: creates a NEW object', 'Alt + draw: cut it INTO the mesh below (Boolean),',
           '  bevel sides flipped (Top <-> Bottom)', 'Placed on the surface under the shape, else 3D cursor',
           'Leaving the tool (Esc / other tool / other tab)', '  applies only the shapes made in this session',
@@ -746,7 +743,6 @@ def draw_cable(layout, context):
 def draw_hide(layout, context):
     from . import box_hide
     box_hide.draw(layout, context)
-    draw_shape_options(layout, context, 'HIDE')
 
 
 def draw_tube(layout, context):

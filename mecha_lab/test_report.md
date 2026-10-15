@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.23.26
+# Test Report — Mecha Lab 0.23.27
+
+## 0.23.27 결과: 64개 파일, 2270 / 2270 통과 (`tests/test_log_bpy501_v02327.txt`). test_v02327(38): 모든 도구에서 Lasso Settings poll + draw(가짜 layout에 stroke_smooth), 도구 패널에 사본 없음, Cut 라쏘 Edge Finish 유지, Alt 빨강 / Alt 없으면 도구 색. 바뀐 동작에 맞게 고친 옛 검사: test_v0141(Cut Alt 하늘색), test_v02317(Box Hide Alt 주황). 사이드바 / 선 색 화면 확인은 뷰포트 필요 - 미검증.
 
 ## 0.23.26 결과: 63개 파일, 2232 / 2232 통과 (`tests/test_log_bpy501_v02326.txt`, 한 번에 통과). test_v02326(14): 추가 / 표면 위치 / 반지름 0.5 자동, 근처만 움직임, 윗면까지 감쌈, 핸들 이동 반영, Mirror, Taper, 음수 Depth, 패턴 화살표 다시 굽기, 여러 개, 별도 패널, Overall Scale 무관, 삭제, Apply. 렌더 검토에서 주름 줄무늬(조각 겹침) 발견 → 획마다 거리 하나로 고침. 뷰포트 / 파일 다시 열기 미검증.
 

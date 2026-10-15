@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.26 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.27 (Claude Code, 2026-10-14)
+
+## 0.23.27
+- ZIP sha256 `4a414b288d585b594f853e0b7e35f7f5484df0276ddf4bfa0d4d6b84cf8512ad`. `workspace_ui.MCH_PT_lasso`(bl_order 1, poll = mch_brush 있으면 항상) → `ui_tool_settings.draw_shape_options(layout, context, effective_tool)`. draw_cut / draw_mask / draw_base / draw_hide 안의 호출 제거. 헤더 모양 줄 `enabled = tool in SHAPE_TOOLS` 제거. `cut_engine.ALT_RED`, `stroke_color(mode, inverted)` = inverted면 ALT_RED(SPLIT 포함), `_COLORS`에서 *_INV 제거. 옛 검사 test_v0141 / v02317 색 기대치 수정.
 
 ## 0.23.26
 - ZIP sha256 `e3ea3d9bb5298b6b806988eeeab6027f3bc9df0d1a9515dde75a6e8c37d4ed72`. 새 `fold_patch.py`: 패턴(획 리스트, Catmull-Rom) → `height_map`(획마다 최근접 거리 하나, 스무스 맥스) → float 이미지 `MCH_FoldPatch_<핸들>`(RES 512). GN 그룹 `MCH_FoldPatch`: Object Info(RELATIVE) 역행렬 → 핸들 공간 → Wrap(s = R·atan2(y, z+R)) / Taper / Image Texture(Cubic, Clip) × Fade × 근처 → Normal × Depth, Mirror X = 미러 위치로 한 번 더. 핸들 Object.mch_fold(PropertyGroup, 업데이트 → push). load_post에서 이미지 다시 만듦. 패널 MCH_PT_fold_patch(bl_order 4).

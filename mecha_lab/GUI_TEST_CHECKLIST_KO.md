@@ -4,6 +4,10 @@
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
 
+## A000000000000000000000000000000000000000000. 0.23.27 (미검증)
+- [ ] 아무 도구(Select / Armor Plate / Cloth Plate / Primitive ...)를 골라도 N 사이드바에 Lasso Settings 패널이 보이고, 값이 그림에 반영되는지
+- [ ] Alt를 누른 채 그리면 Cut / Split / Mask / Base Mesh / Armor / Cloth / Box Hide 모두 선이 빨간색인지
+
 ## A00000000000000000000000000000000000000000. 0.23.26 (미검증)
 - [ ] 팔 / 무릎에 + Add Fold Patch → 핸들 G / R / S로 옮기면 주름이 따라오는지, 감싸기(Wrap) 자동
 - [ ] Size / Depth / Thickness / Taper / Fade / Wrap / Mirror X, ◀ ▶ 패턴, 여러 개, 삭제, Apply
