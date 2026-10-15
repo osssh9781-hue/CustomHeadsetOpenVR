@@ -123,7 +123,7 @@ SEC_U = 'mch_sec_u'            # 0..1 along the long side (local X): stitched se
 SEC_LEN = 'mch_sec_len'        # length of the long side
 EDGE_U = 'mch_edge_u'          # arc length along the border of the nearest border point
 EDGE_LEN = 'mch_edge_len'      # length of that border loop (keeps seam patterns seamless)
-VERSION = 48
+VERSION = 49
 
 
 # -----------------------------------------------------------------------------
@@ -717,8 +717,10 @@ def build_group():
                 _math(N, L, 'ADD', Db_in, _math(N, L, 'MULTIPLY', sxf, vb=0.25)))
     phf = _math(N, L, 'ADD', _math(N, L, 'MULTIPLY', thf, _math(N, L, 'MULTIPLY', I['Fan'],
                                                                  srand(fid, 1.2, 2.6, 131.0))), pwarp)
+    # (0.23.13 Fold In: the small fans narrow to V creases too - a much higher exponent)
     wavf = _math(N, L, 'POWER', _math(N, L, 'MULTIPLY', _math(N, L, 'ADD', _math(N, L, 'COSINE', phf), vb=1.0), vb=0.5),
-                 _math(N, L, 'MAXIMUM', I['Fold Sharp'], vb=0.3))
+                 _math(N, L, 'MULTIPLY', _math(N, L, 'MAXIMUM', I['Fold Sharp'], vb=0.3),
+                       _math(N, L, 'ADD', va=1.0, b=_math(N, L, 'MULTIPLY', I['Fold In'], vb=3.0))))
     lenff = _math(N, L, 'MULTIPLY', I['Pinch Length'], srand(fid, 0.3, 1.2, 137.0))
     envf = _math(N, L, 'POWER', _math(N, L, 'SUBTRACT', va=1.0, b=_math(N, L, 'DIVIDE', Db_in,
                                                                          _math(N, L, 'MAXIMUM', lenff, vb=1e-6),
@@ -879,7 +881,8 @@ SIZE_INPUTS = {'Strength', 'Scale', 'Edge Soft', 'Lift', 'Puff', 'Puff Width', '
 
 INPUT_NAMES = {n for n, *_r in INPUTS}
 FOLD_INPUTS = {'Pinch Spacing', 'Pinch Length', 'Fold Tilt', 'Tilt Random', 'Length Random', 'Variety', 'Seed',
-               'Fan', 'Trim', 'Trim Width', 'Fold Sharp', 'Fold Asymmetry', 'Fold Thinness', 'Fold Direction'}
+               'Fan', 'Trim', 'Trim Width', 'Fold Sharp', 'Fold Asymmetry', 'Fold Thinness', 'Fold Direction',
+               'Fold In'}
 
 
 def fold_lines(ob):
@@ -902,8 +905,9 @@ def fold_lines(ob):
         asym = min(1.0, max(0.0, float(gi('Fold Asymmetry'))))
         thin = min(1.0, max(0.0, float(gi('Fold Thinness'))))
         fdir = int(gi('Fold Direction'))
+        fold_in = int(gi('Fold In')) > 0
     except (KeyError, TypeError, ValueError, AttributeError):
-        asym, thin, fdir = 0.0, 0.0, 2
+        asym, thin, fdir, fold_in = 0.0, 0.0, 2, False
     # 0.23.4 which side folds over: the upper side (world up seen on the panel), lower, or random
     up3 = ob.matrix_world.inverted().to_3x3() @ Vector((0.0, 0.0, 1.0))
     up2 = Vector((up3.x, up3.y))
@@ -1043,7 +1047,12 @@ def fold_lines(ob):
         env = st_ * st_ * (1.0 - ft) ** 1.2
         # main: the 0.23.2 round section (clean lines, they stay near the border)
         w0 = W0[j] + (W0[j + 1] - W0[j]) * tt[r, j]
-        total[sel] += amp * np.clip(1.0 - (dist / np.maximum(w0, 1e-9)) ** 2, 0.0, 1.0) ** sharp * env
+        if fold_in:
+            # 0.23.13 a pinch is a V: half as wide, sharp at the bottom of the crease, straight sides
+            u0 = dist / np.maximum(np.maximum(w0 * 0.5, min_w), 1e-9)
+            total[sel] += amp * np.clip(1.0 - u0, 0.0, 1.0) ** 1.6 * env
+        else:
+            total[sel] += amp * np.clip(1.0 - (dist / np.maximum(w0, 1e-9)) ** 2, 0.0, 1.0) ** sharp * env
         # surface detail: the 0.23.3 asymmetric section - steep folded wall + long soft side
         w = W[j] + (W[j + 1] - W[j]) * tt[r, j]
         Xs = xy[sel]
