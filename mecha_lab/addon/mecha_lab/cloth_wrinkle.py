@@ -106,7 +106,9 @@ INPUTS = (('Type', 'NodeSocketInt', 0, 0, 5),
           # 0.23.11 the asymmetric thin folds as a surface detail on their own slider (0 = off); padding
           # pinches the folds IN (like an inflated cushion), cloth folds stick OUT
           ('Surface Detail', 'NodeSocketFloat', 0.0, -100.0, 100.0),
-          ('Fold In', 'NodeSocketInt', 0, 0, 1))
+          ('Fold In', 'NodeSocketInt', 0, 0, 1),
+          # 0.23.12 the folds stay near the border, the middle of the panel stays calm / flat
+          ('Center Calm', 'NodeSocketFloat', 0.8, 0.0, 1.0))
 from .cloth_sim import PRESET_ITEMS as _SIM_PRESETS
 
 TRIMS = (('NONE', 'No Trim', 'Plain border'),
@@ -121,7 +123,7 @@ SEC_U = 'mch_sec_u'            # 0..1 along the long side (local X): stitched se
 SEC_LEN = 'mch_sec_len'        # length of the long side
 EDGE_U = 'mch_edge_u'          # arc length along the border of the nearest border point
 EDGE_LEN = 'mch_edge_len'      # length of that border loop (keeps seam patterns seamless)
-VERSION = 45
+VERSION = 47
 
 
 # -----------------------------------------------------------------------------
@@ -741,6 +743,20 @@ def build_group():
     # 0.23.11 surface detail (asymmetric thin folds) on its own slider
     pinch = _math(N, L, 'ADD', pinch, _math(N, L, 'MULTIPLY', _math(N, L, 'MULTIPLY', smooth_named(FOLD_D, 2),
                                                                     I['Surface Detail']), pseam))
+    # 0.23.12 Center Calm: the folds fade out toward the middle of the panel (border distance / the deepest)
+    cst = N.new('GeometryNodeAttributeStatistic')
+    cst.data_type = 'FLOAT'
+    cst.domain = 'POINT'
+    L.new(sub.outputs['Mesh'], cst.inputs['Geometry'])
+    L.new(Db, cst.inputs['Attribute'])
+    rel = _math(N, L, 'DIVIDE', Db, _math(N, L, 'MAXIMUM', cst.outputs['Max'], vb=1e-6))
+    cmr = N.new('ShaderNodeMapRange')
+    cmr.interpolation_type = 'SMOOTHSTEP'
+    L.new(rel, cmr.inputs['Value'])
+    cmr.inputs['From Min'].default_value = 0.2
+    cmr.inputs['From Max'].default_value = 0.6
+    calm = _math(N, L, 'SUBTRACT', va=1.0, b=_math(N, L, 'MULTIPLY', cmr.outputs['Result'], I['Center Calm']))
+    pinch = _math(N, L, 'MULTIPLY', pinch, calm)
     # padding: the folds dig in (pinched cushion); cloth: they stick out
     pinch = _math(N, L, 'MULTIPLY', pinch, _math(N, L, 'SUBTRACT', va=1.0, b=_math(
         N, L, 'MULTIPLY', I['Fold In'], vb=2.0)))
@@ -1949,6 +1965,7 @@ SLIDERS = (('random', 'Randomness', 'Variety', 0, 100, 'RAND'),
            ('pinch2', 'Pinch 2 (small folds)', 'Pinch 2', 0, 80, 'SIZE'),
            ('surf_detail', 'Surface Detail', 'Surface Detail', 0, 60, 'SIZE'),
            ('fold_in', 'Folds In (pinch)', 'Fold In', 0, 1, 'INT'),
+           ('calm', 'Center Calm', 'Center Calm', 0, 100, 'PCT'),
            ('pinch_sp', 'Fold Spacing', 'Pinch Spacing', 5, 200, 'SIZE'),
            ('pinch_len', 'Fold Length', 'Pinch Length', 10, 2000, 'SIZE'),
            ('sharp', 'Fold Sharp', 'Fold Sharp', 30, 3000, 'PCT'),

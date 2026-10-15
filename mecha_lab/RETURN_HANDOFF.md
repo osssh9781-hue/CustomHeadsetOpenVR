@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.11 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.12 (Claude Code, 2026-10-14)
+
+## 0.23.12
+- ZIP sha256 `19abf17cf9b7671f6d020caed29f3ad42ff5283990ec5ebf5b8d3c476dd64bf4`. `cloth_wrinkle` GN: 입력 `Center Calm`(뒤에 추가) - pinch × (1 - Calm × smoothstep(0.2, 0.6, Db / max(Db))), Attribute Statistic으로 max(Db). HUD 키 `calm`.
 
 ## 0.23.11
 - ZIP sha256 `5c19278bbc55bb633a6edc6bbe51ed5f9a1a93efbd1655e776d8568a3dbd33ef`. `cloth_wrinkle.fold_lines`: 메인 `FOLD_H` = 0.23.2 단면(clip(1-(d/w0)^2)^sharp, w0 = 원래 폭, 최소 폭 2.2 엣지), 새 `FOLD_D` = 0.23.3 비대칭 단면(입력 Fold Asymmetry / Thinness / Direction). GN: `smooth_named`(Blur Attribute 3회 / 2회) 후 pinch, `Surface Detail` × FOLD_D 더함, `Fold In`(0/1)으로 부호(1 - 2·FoldIn). 입력 2개 뒤에 추가. `apply_preset`: Fold In = Padding/Puffer 1, Pinch 2 = 0.5 × Pinch, Fan Mix 기본 0.3. HUD 키 `surf_detail`, `fold_in`.
