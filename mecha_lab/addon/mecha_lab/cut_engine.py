@@ -914,6 +914,8 @@ _COLORS = {
     'PLATE_INV': (0.30, 0.78, 1.0, 1.0),
     'WRINKLE': (0.95, 0.45, 0.75, 1.0),
     'WRINKLE_INV': (0.95, 0.45, 0.75, 1.0),
+    'HIDE': (0.70, 0.70, 0.78, 1.0),              # 0.23.16 Box Hide: grey = hide, green = show again
+    'HIDE_INV': (0.40, 0.95, 0.55, 1.0),
 }
 
 
@@ -1294,7 +1296,7 @@ class StrokeLogic:
             except RuntimeError as ex:
                 self.report({'WARNING'}, str(ex))
             return {'CANCELLED'}
-        if self.mode in {'MASK', 'BASE', 'PLATE', 'WRINKLE'} and self.shape == 'LASSO' and self.brush.line_open:
+        if self.mode in {'MASK', 'BASE', 'PLATE', 'WRINKLE', 'HIDE'} and self.shape == 'LASSO' and self.brush.line_open:
             self.brush.line_open = False
         self.ui = ui_scale(context)
         self.target_names = []
@@ -1302,7 +1304,7 @@ class StrokeLogic:
         # 0.12 Auto Target: the finished shape decides what is cut, so a stroke may
         # start anywhere and the tool stays on for the next part.
         self.auto_target = (self.mode in {'CUT', 'SPLIT'} and cut_props is not None and
-                            getattr(cut_props, 'targets', '') == 'AUTO')
+                            getattr(cut_props, 'targets', '') == 'AUTO') or self.mode == 'HIDE'
         self._auto_cache = None
         from . import lasso_sketch
         if lasso_sketch.enabled(context, self.mode):
@@ -1580,6 +1582,9 @@ class StrokeLogic:
             elif self.mode == 'WRINKLE':
                 from . import cloth_wrinkle
                 msg = cloth_wrinkle.perform_wrinkle(context, loops, self.projector)
+            elif self.mode == 'HIDE':
+                from . import box_hide
+                msg = box_hide.perform(context, targets, loops, self.projector, restore=self.inverted())
             elif self.mode == 'BASE':
                 from . import base_mesh
                 if getattr(context.scene.mch_base, 'sketch', False):
@@ -1622,7 +1627,7 @@ class StrokeLogic:
         if self.shape in {'LASSO', 'CURVE_LASSO'}:
             self._clean_points()
             if self.shape == 'LASSO' and len(self.pts) >= 2 and (self.line_open or len(self.pts) == 2):
-                if self.mode in {'MASK', 'BASE', 'PLATE', 'WRINKLE'}:
+                if self.mode in {'MASK', 'BASE', 'PLATE', 'WRINKLE', 'HIDE'}:
                     self.report({'WARNING'}, 'This tool needs a closed outline (3+ points)')
                     return {'RUNNING_MODAL'}
                 if self.mode == 'SPLIT':
@@ -1780,7 +1785,7 @@ class StrokeLogic:
             self._hint(context)
             self.region.tag_redraw()
             return {'RUNNING_MODAL'}
-        if et == 'F' and ev == 'PRESS' and self.shape == 'LASSO' and self.mode not in {'MASK', 'BASE', 'PLATE', 'WRINKLE'}:
+        if et == 'F' and ev == 'PRESS' and self.shape == 'LASSO' and self.mode not in {'MASK', 'BASE', 'PLATE', 'WRINKLE', 'HIDE'}:
             self.line_open = not self.line_open
             self.brush.line_open = self.line_open
             self.region.tag_redraw()
@@ -1972,7 +1977,8 @@ class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
         ('MASK', 'Mask', 'Add face mask (Alt: erase)'),
         ('BASE', 'Base Mesh', 'Create a new solid from the drawn outline'),
         ('PLATE', 'Armor Plate', 'New armour plate on the mesh under the outline'),
-        ('WRINKLE', 'Cloth Wrinkle', 'New cloth layer with wrinkles on the mesh under the outline')], default='CUT')
+        ('WRINKLE', 'Cloth Wrinkle', 'New cloth layer with wrinkles on the mesh under the outline'),
+        ('HIDE', 'Box Hide', 'Hide the meshes inside the shape (Alt: show again)')], default='CUT')
 
     @classmethod
     def poll(cls, context):

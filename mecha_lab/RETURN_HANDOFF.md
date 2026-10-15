@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.15 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.16 (Claude Code, 2026-10-14)
+
+## 0.23.16
+- ZIP sha256 `a0e1deb11dddf65768c9996238e07ca8decb8b28847e074bae635f0e8e33fa02`. 새 `box_hide.py`: GN 그룹 `MCH_BoxHide`(Object Info Relative → Mesh Boolean Difference Exact, Self Intersection → Cap 끄면 볼륨 표면에서 Epsilon 안의 면 삭제). 볼륨 오브젝트 = `cg.build_cutter_mesh` 프리즘들을 이어 붙임(hide_set, hide_select, 키 `mch_hide_volume`), Alt 복원 = `cg.boolean_result(볼륨 − 모양)`, 비면 Show All. `cut_engine` 모드 'HIDE'(항상 Auto Target, 닫힌 모양만), `tool_state` 'HIDE'(enum 28), `workspace_ui.MCH_TOOL_box_hide`, Scene `mch_hide`(cap, mirror).
 
 ## 0.23.15
 - ZIP sha256 `a7a7cac6be32384cafdc42573e6012adf22c5a8606bf25bd790c740b052b6e11`. `cloth_wrinkle.py` / `cloth_sim.py` = 커밋 b77013d(0.23.9). cloth_wrinkle 위에 다시 넣은 것: SIZE_TAG / `recalled` / `with_sizes` / `clamp_lengths`(0.23.14 + Crumple·Billow), Billow 프리셋 값 낮춤. test_v02310~v02312 삭제, test_v02313 → test_v02315(Space + 지난번 값), 0.23.10 이후 클로스 때문에 고쳤던 옛 테스트(v0200, v0234, v0238, v0239)는 0.23.9 버전으로.

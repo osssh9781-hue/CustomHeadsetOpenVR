@@ -738,6 +738,12 @@ def draw_cable(layout, context):
     cable.draw(layout, context)
 
 
+def draw_hide(layout, context):
+    from . import box_hide
+    box_hide.draw(layout, context)
+    draw_shape_options(layout, context, 'HIDE')
+
+
 def draw_tube(layout, context):
     from . import curve_tube
     curve_tube.draw(layout, context)
@@ -750,6 +756,6 @@ DRAWERS = {
     'BASE': draw_base, 'LOFT': draw_loft, 'ZBRUSH': draw_zbrush, 'SUBD': draw_subd,
     'PRIMITIVE': draw_primitive, 'PLATE': draw_plate, 'WRINKLE': draw_wrinkle,
     'EXTRACT': draw_extract, 'MOLDING': draw_molding, 'HOLLOW': draw_hollow, 'ALONG': draw_along,
-    'CABLE': draw_cable, 'TUBE': draw_tube,
+    'CABLE': draw_cable, 'TUBE': draw_tube, 'HIDE': draw_hide,
     # MIRROR, RADIAL, SURFACE: own sub-panels.
 }

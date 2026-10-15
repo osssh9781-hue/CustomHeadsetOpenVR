@@ -491,6 +491,24 @@ class MCH_TOOL_split(bpy.types.WorkSpaceTool):
         cut_engine.draw_stamp_cursor(context, xy)
 
 
+class MCH_TOOL_box_hide(bpy.types.WorkSpaceTool):
+    bl_space_type = 'VIEW_3D'
+    bl_context_mode = 'OBJECT'
+    bl_idname = 'mecha.box_hide'
+    bl_label = 'Mecha Box Hide'
+    bl_description = 'Draw a shape over meshes to hide what is inside it (Alt: show it again)'
+    bl_icon = 'ops.generic.select_box'
+    bl_widget = None
+    bl_keymap = _tool_keymap('HIDE')
+
+    def draw_settings(context, layout, tool):
+        _draw_tool_settings(context, layout, tool)
+
+    def draw_cursor(context, tool, xy):
+        from . import cut_engine
+        cut_engine.draw_stamp_cursor(context, xy)
+
+
 class MCH_TOOL_mask(bpy.types.WorkSpaceTool):
     bl_space_type = 'VIEW_3D'
     bl_context_mode = 'OBJECT'
@@ -568,7 +586,7 @@ class MCH_TOOL_primitive(bpy.types.WorkSpaceTool):
 
 
 NATIVE_TOOLS = (MCH_TOOL_cut, MCH_TOOL_split, MCH_TOOL_base_mesh, MCH_TOOL_primitive, MCH_TOOL_armor_plate,
-                MCH_TOOL_cloth_wrinkle)   # MCH_TOOL_mask kept, not registered (Mask hidden)
+                MCH_TOOL_cloth_wrinkle, MCH_TOOL_box_hide)   # MCH_TOOL_mask kept, not registered (Mask hidden)
 
 
 def register_native_tools():
@@ -581,6 +599,7 @@ def register_native_tools():
     bpy.utils.register_tool(MCH_TOOL_primitive, after={MCH_TOOL_base_mesh.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_armor_plate, after={MCH_TOOL_primitive.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_cloth_wrinkle, after={MCH_TOOL_armor_plate.bl_idname}, group=False)
+    bpy.utils.register_tool(MCH_TOOL_box_hide, after={MCH_TOOL_split.bl_idname}, group=False)
     _tools_registered = True
 
 

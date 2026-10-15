@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 0.23.16 — Box Hide (프로토타입에서 애드온으로) (2026-10-15)
+
+- 새 도구 **Box Hide**(Split 옆): 공용 모양(사각형 / 라쏘 / 원 …)을 메쉬 위에 그리면 그 안이 숨겨짐. 그린 곳이 덮는 메쉬가 자동으로 대상.
+  - **Alt + 그리기** = 그 부분 다시 보이기. 겹쳐 그리면 숨김이 합쳐짐.
+  - **Cap / Open**: Cap = 잘린 곳을 면으로 막음(속이 찬 덩어리), Open = 뚫린 구멍. 메쉬마다, 나중에 바꿀 수 있음.
+  - **Mirror X**: 메쉬의 로컬 X 반대편도 같이 숨김.
+  - **Show All**(모두 다시 보이기) / **Apply**(숨긴 부분을 실제로 삭제해 확정).
+  - 비파괴: 메쉬마다 Geometry Nodes 모디파이어 `MCH_BoxHide` + 숨겨진 볼륨 오브젝트(`MCH_BoxHide` 컬렉션). Apply 전까지 원래 메쉬 데이터는 그대로.
+- 테스트: 55개 파일 2151/2151 (`tests/test_log_bpy501_v02316.txt`), 새 `test_v02316.py` 12항목. ZIP sha256 `a0e1deb11dddf65768c9996238e07ca8decb8b28847e074bae635f0e8e33fa02`.
+
 ## 0.23.15 — Cloth Plate / Panel Cloth를 0.23.9로 되돌림 (2026-10-15)
 
 - 요청대로 **Cloth Plate**(`cloth_wrinkle.py`)와 **Panel Cloth 시뮬**(`cloth_sim.py`)을 0.23.9 코드로 되돌림. 0.23.10~0.23.13의 클로스 변경(Panel Cloth 슬라이더 / Draft·Detail / 뒤집힘 수정, Pinch 1·2 분리, Surface Detail, Fold In, Center Calm, V핀치, 막 Puff)은 빠짐. `cloth_sim.py`는 0.23.9와 똑같음.
