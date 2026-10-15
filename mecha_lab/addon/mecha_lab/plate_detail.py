@@ -187,9 +187,13 @@ def screw_centres(loop, w1, count, min_turn=25.0):
 
 
 def build_detail(region_me, layers, base, screws=0, screw_r=None, screw_depth=None, embed=0.0,
-                 name='MCH_PlateDetail'):
+                 name='MCH_PlateDetail', direction='OUT', center=0.0):
     """New mesh: flat panel + stepped trim layers + screw recesses on the
-    region (triangle patch, faces pointing out of the surface)."""
+    region (triangle patch, faces pointing out of the surface).
+
+    direction 'OUT': the edge is highest, layers step DOWN inward to the panel
+    at Base.  'IN': layers step UP inward (each layer adds its height) and the
+    inside panel is the highest, ``center`` above the last layer."""
     layers = [(float(w), float(h)) for w, h in layers if w > 0]
     bm = bmesh.new()
     try:
@@ -220,12 +224,19 @@ def build_detail(region_me, layers, base, screws=0, screw_r=None, screw_depth=No
         depth = screw_depth if screw_depth is not None else (layers[0][1] * SCREW_DEPTH_FRAC if layers else 0.0)
         bm.normal_update()
 
-        heights = [base + h for _w, h in layers]
+        if direction == 'IN':
+            heights = list(base + np.cumsum([h for _w, h in layers]))
+            inside = (heights[-1] if heights else base) + center
+        else:
+            heights = [base + h for _w, h in layers]
+            inside = base
+        if layers and screw_depth is None:
+            depth = (heights[0] - base) * SCREW_DEPTH_FRAC
 
         def face_height(f):
             cen = f.calc_center_median()
             d = outline(np.array([tuple(cen)]))[0]
-            h = base
+            h = inside
             for L, hh in zip(levels, heights):
                 if d < L:
                     h = hh
@@ -282,6 +293,53 @@ def build_detail(region_me, layers, base, screws=0, screw_r=None, screw_depth=No
         pass
     me.update()
     me['mch_detail_screws'] = len(centres)
+    return me
+
+
+def build_rise(region_me, height, ramp, embed=0.0, name='MCH_PlateRise'):
+    """0.24 Detail 2: the surface itself rises smoothly inside the outline -
+    0 at the outline, a smooth slope ``ramp`` wide, then a flat top
+    ``height`` above the surface (no walls, no trims)."""
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(region_me)
+        bmesh.ops.triangulate(bm, faces=bm.faces[:])
+        loops = _boundary_loop(bm)
+        if not loops or not bm.faces:
+            raise ValueError('empty region')
+        A, B = _seg_arrays(loops)
+        size = float(np.linalg.norm(A.max(0) - A.min(0)))
+        bm.normal_update()
+        bm.verts.index_update()
+        co = np.array([tuple(v.co) for v in bm.verts])
+        t = np.clip(dist_to_segments(co, A, B) / max(ramp, 1e-9), 0.0, 1.0)
+        hs = height * t * t * (3.0 - 2.0 * t)                  # smoothstep: soft foot, soft shoulder
+        out_co = [v.co + v.normal * float(h) for v, h in zip(bm.verts, hs)]
+        n = len(out_co)
+        out_co += [v.co - v.normal * embed for v in bm.verts]
+        faces = []
+        for f in bm.faces:
+            idx = [v.index for v in f.verts]
+            faces.append(idx)
+            faces.append([n + i for i in reversed(idx)])
+        for e in bm.edges:
+            if len(e.link_faces) == 1:
+                a, b = (v.index for v in e.verts)
+                faces.append([a, b, n + b, n + a])
+    finally:
+        bm.free()
+    me = bpy.data.meshes.new(name)
+    me.from_pydata([tuple(c) for c in out_co], [], faces)
+    me.validate()
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+        bm.to_mesh(me)
+    finally:
+        bm.free()
+    me.shade_smooth()
+    me.update()
     return me
 
 
