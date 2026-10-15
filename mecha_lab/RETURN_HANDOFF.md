@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.7 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.8 (Claude Code, 2026-10-14)
+
+## 0.23.8
+- ZIP sha256 `2121b1849032f253eaa58ee4e8536b6b416735c2b4ccd3a645af64a024c900f6`. `cloth_wrinkle` v43: 입력 `Pinch 2`(뒤에 추가) - 긴 주름 × Pinch, 부채 × Fan Mix × Pinch 2, max로 합침. `apply_preset`이 Pinch 2 = Pinch(또는 프리셋 Pinch2). 새 `cloth_sim.py`(Panel Cloth): `build_cloth_mesh(parts, cuts, split, angle, noise, seed)` → `setup_cloth`(CLOTH 모디파이어: quality, mass, pressure, shrink_min, effector gravity, pin 버텍스 그룹 `mch_pin`, collision distance) → `bake`(frame_set으로 캐시 채우고 new_from_object) → `panel_cloth(...)`, 오퍼레이터 `mch.panel_cloth`. 몸에 COLLISION이 없으면 임시로 붙였다 제거. GN 시뮬 시도는 폐기(주름 품질 부족).
 
 ## 0.23.7
 - ZIP sha256 `f9a37f70be4f3ff7e19b44e7e39de3bdb9f80fcf030927c398053be246019886`. 새 `through_region.py`: `through_panels(bm_world, groups, projector, spacing_px, crease_deg)` - 화면 상자 겹치는 면만 남김 → 정면 엣지에서 px/m 추정 후 Face Size까지 엣지 분할 → 라쏘 안 판정, 바깥 점은 엣지 따라 이분 탐색으로 라쏘 경계에 붙임 → 앞/뒤(면 노말·시선) + 이면각 > Crease에서 컴포넌트 분리. `armor_plate.through_plate_meshes` / `_perform_through`(SRC_KEY에 through 번호 + crease, `rebuild_plate`가 같은 번호 패널 사용). `cloth_wrinkle.perform_wrinkle` → `_wrinkle_layer(...)`로 분리, Through면 패널마다 호출. 브러시 `through_mode`, `through_crease`, 헤더 토글. `cloth_wrinkle` v42: `_crumple_height`(입력 Crumple / Size / Sharp / Stretch / Angle / Billow / Billow Size, 뒤에 추가), 타입 PUFFER / COTTON / DRAPE(Type 3..5, 패턴 스위치는 기존 3개 재사용), `apply_preset`이 Crumple / Fan Mix / Sections 설정.

@@ -206,7 +206,7 @@ check('Direction slider turns the folds', abs(math.degrees(cw.get_input(ob, 'Dir
       sorted(round(z, 4) for z in heights(ob)[0]) != d0)
 z1 = heights(ob)[0]
 cw.slider_spec(C, 'strength')[4](0)
-for nm in ('Puff', 'Roll', 'Pinch', 'Stitch'):
+for nm in ('Puff', 'Roll', 'Pinch', 'Pinch 2', 'Stitch'):
     cw.set_input(ob, nm, 0.0)
 z2 = heights(ob)[0]
 thick = ob.modifiers[cw.MOD_SHELL].thickness

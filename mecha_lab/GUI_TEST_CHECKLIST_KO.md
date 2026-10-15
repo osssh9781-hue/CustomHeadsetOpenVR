@@ -1,8 +1,15 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.7 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.8 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A00000000000000000000000. 0.23.8 (미검증)
+- [ ] HUD Pinch 1(큰 주름) / Pinch 2(작은 주름) 슬라이더가 따로 움직이는지
+- [ ] Cloth Plate 패널의 Panel Cloth 버튼: 대화창 값(Pressure / Shrink / Pin / Split ...) → 확인 후 `_PCloth` 오브젝트, 원본 숨김
+- [ ] Edit Mode에서 면 선택 → F3 Panel Cloth
+- [ ] Through 소매 두 판 선택 → Panel Cloth → 하나의 링
+- [ ] 실제 PC(Windows)에서 걸리는 시간
 
 ## A0000000000000000000000. 0.23.7 (미검증)
 - [ ] 헤더 Through 토글(Armor / Cloth Plate): 팔에 띠를 그으면 앞판 + 뒷판이 생기는지, Crease 값으로 꺾인 곳에서 나뉘는지

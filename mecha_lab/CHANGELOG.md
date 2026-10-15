@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 0.23.8 — Pinch 1 / Pinch 2, Panel Cloth(짧은 실제 클로스 시뮬 + 베이크) (2026-10-15)
+
+- **Pinch 1 / Pinch 2**: 큰 주름(테두리에서 길게 들어오는 주름)과 작은 주름(부채꼴 잔주름)을 따로 조절. HUD 슬라이더 2개. 새 판은 Pinch 2 = Pinch 1로 시작해서 예전과 같은 모양.
+- **Panel Cloth**(Cloth Plate 패널 버튼 / F3 "Panel Cloth"): 선택한 판(또는 Edit Mode에서 선택한 면)을 별도 `_PCloth` 오브젝트로 복사 → 세분(Subdivision) → 테두리 고정(Pin) → **블렌더 내장 클로스**로 몇 프레임 시뮬(Pressure = 부풀림, Shrink 음수 = 천이 커져서 주름, Gravity, Mass, Quality, Seed, Noise) → 마지막 프레임을 메쉬로 굳힘(베이크) + Subsurf. 그린 몸이 충돌체(Collide To Source, 임시 Collision 모디파이어는 끝나면 제거). Split: None / Angle(꺾인 곳에서 나눠서 칸마다 따로 부풀기). Pin: Border / Corners / None. Through 앞판 + 뒷판은 하나로 합쳐 솔기를 붙임(Join Panels) → 소매. 원본은 숨기기만 함.
+  - 처음엔 지오메트리 노드로 직접 시뮬을 짜 봤는데(simulation zone, 위치 기반) 천이 고무처럼 늘어나기만 하고 주름이 잘 안 생겨서, 보내주신 RandomFlow 방식대로 블렌더 내장 클로스로 바꿈 - 판 하나 약 6초.
+  - 너무 무거워지지 않게 시뮬 면 수 약 1만 5천 개 이하로 자동 조절.
+- 미리보기 `reference/panel_cloth_v0238.png`(왼쪽 판 위 Panel Cloth, 오른쪽 Through 소매 → 하나의 링). 테스트: 52개 파일 2075/2075 (`tests/test_log_bpy501_v0238.txt`). ZIP sha256 `2121b1849032f253eaa58ee4e8536b6b416735c2b4ccd3a645af64a024c900f6`.
+
 ## 0.23.7 — Through(관통) 플레이트, 레퍼런스 옷주름: Puffer / Cotton / Drape (2026-10-15)
 
 - **Through**(헤더 토글, Armor Plate / Cloth Plate): 앞에서 그린 라쏘가 메쉬를 관통해서 **뒷면까지** 같이 만들어짐. 화면 기준으로 라쏘 안에 들어오는 대상 메쉬의 면을 직접 잘라냄(앞뒤, 안쪽 레이어 모두). 영역은 **실루엣(앞/뒤가 바뀌는 곳)** 과 **급하게 꺾이는 곳(Crease, 기본 50°)** 에서 패널로 나뉘고, 패널마다 기존 플레이트/옷 파이프라인을 그대로 탐 → 팔에 띠를 그으면 앞판 + 뒷판이 옆선에서 만나는 소매/브레이서. Crease 180 = 실루엣에서만 나눔.

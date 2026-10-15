@@ -2162,7 +2162,7 @@ def draw(layout, context):
         r.scale_y = 1.3
         r.operator('mch.wrinkle_apply', text='Apply', icon='CHECKMARK')
         r.operator('mch.wrinkle_remove', text='Remove', icon='X')
-        sub.operator('mch.cloth_sim', text='Cloth Sim (fall + fold, bake)', icon='MOD_CLOTH')
+        sub.operator('mch.panel_cloth', text='Panel Cloth (simulate + bake)', icon='MOD_CLOTH')
     c = box.column(align=True)
     c.scale_y = 0.8
     c.label(text='Draw a lasso on a mesh: a separate cloth layer', icon='INFO')

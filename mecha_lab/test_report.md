@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.23.7
+# Test Report — Mecha Lab 0.23.8
+
+## 0.23.8 결과: 52개 파일, 2075 / 2075 통과 (`tests/test_log_bpy501_v0238.txt`). 전체 실행에서 `test_v0200.py` 1회 실패: "Strength 0 = 평평" 검사가 Pinch만 0으로 만들고 새 Pinch 2는 안 만듦 → Pinch 2 추가, 그 파일만 다시 실행해 구간 교체. Panel Cloth는 헤드리스에서 실제 클로스 캐시를 프레임 진행으로 계산해 검사(부풀기, 고정된 테두리, 몸 관통 없음, 임시 충돌체 제거, Through 두 판 → 끝 두 개만 열린 하나의 링, Edit Mode 선택 면). 뷰포트 대화창 / 실제 PC 속도는 미검증.
 
 ## 0.23.7 결과: 51개 파일, 2059 / 2059 통과 (`tests/test_log_bpy501_v0237.txt`). 전체 실행에서 `test_v0235.py`가 1회 실패: Skin Organic / Irregular가 맨 끝 입력이라고 가정한 예전 검사(0.23.7에서 Crumple 입력이 뒤에 붙음) → 순서 검사로 고치고 그 파일만 다시 실행해 로그 구간 교체. Through: 원통 위 띠 = 위 반 / 아래 반 2패널, 큐브 Crease 50° = 6, 180° = 2, 실제 도구로 Cloth / Armor 각각 2개, Through 판 Face Size 재생성. 옷 모양은 Cycles 렌더로 비교. 원근 뷰 / 뷰포트 동작은 미검증(테스트는 정사영 프로젝터).
 
