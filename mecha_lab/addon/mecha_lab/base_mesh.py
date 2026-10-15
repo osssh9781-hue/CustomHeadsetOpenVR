@@ -397,6 +397,101 @@ def _bevel_rims(bm, p, rim_top, rim_bottom, flip=False):
     return notes
 
 
+def _region_ok(faces, up):
+    for f in faces:
+        if not f.is_valid or f.calc_area() <= 1e-12:
+            return False
+        f.normal_update()
+        if (f.normal.z <= 0.0) if up else (f.normal.z >= 0.0):
+            return False
+    return True
+
+
+def _profile_one(bm, faces, width, drop, segs, round_, up):
+    """0.23.17 Bevel / Chamfer by insets: the rim drops by ``drop`` and the profile runs ``width`` across the
+    flat side (the old bevel could not be wider than the thickness).  Returns False if the insets overlap."""
+    if not faces:
+        return True
+    sign = 1.0 if up else -1.0
+    verts = list({v for f in faces for v in f.verts})
+    bmesh.ops.translate(bm, verts=verts, vec=(0.0, 0.0, -sign * drop))     # the outer rim goes down first
+    n = 1 if not round_ else max(1, segs)
+    xs, zs = [0.0], [0.0]
+    for j in range(1, n + 1):
+        if round_:
+            phi = 0.5 * math.pi * j / n
+            xs.append(width * (1.0 - math.cos(phi)))
+            zs.append(drop * math.sin(phi))
+        else:
+            xs.append(width)
+            zs.append(drop)
+    region = list(faces)
+    x0 = min(v.co.x for v in verts)
+    x1 = max(v.co.x for v in verts)
+    y0 = min(v.co.y for v in verts)
+    y1 = max(v.co.y for v in verts)
+    tol = 1e-6 * max(x1 - x0, y1 - y0, 1e-9)
+    area = sum(f.calc_area() for f in region)
+    for j in range(1, n + 1):
+        dx, dz = xs[j] - xs[j - 1], zs[j] - zs[j - 1]
+        if dx <= 1e-9 and dz <= 1e-9:
+            continue
+        res = bmesh.ops.inset_region(bm, faces=region, thickness=dx, depth=dz, use_even_offset=True,
+                                     use_boundary=True, use_relative_offset=False)
+        if not _region_ok(region, up):
+            return False
+        # an inset wider than the shape folds over itself: the slope faces flip or points leave the outline
+        for f in res.get('faces', []):
+            f.normal_update()
+            if f.calc_area() > 1e-12 and ((f.normal.z <= 0.0) if up else (f.normal.z >= 0.0)):
+                return False
+        for f in region:
+            for v in f.verts:
+                if not (x0 - tol <= v.co.x <= x1 + tol and y0 - tol <= v.co.y <= y1 + tol):
+                    return False
+        new_area = sum(f.calc_area() for f in region)
+        if dx > 1e-9 and new_area >= area:
+            return False
+        area = new_area
+    return True
+
+
+def _profile_rims(bm, p, flip=False):
+    """Bevel / Chamfer on the top and / or bottom of a prism.  Returns (bmesh, notes) - the bmesh may be a
+    new one (the given one is freed then)."""
+    sides, top, bottom = side_values(p, flip)
+    jobs = []
+    if sides in {'TOP', 'BOTH'}:
+        jobs.append(('top', True, top))
+    if sides in {'BOTTOM', 'BOTH'}:
+        jobs.append(('bottom', False, bottom))
+    notes = []
+    h = p.height
+    eps = max(h * 1e-4, 1e-7)
+    for name, up, (width, segs) in jobs:
+        if width <= 0:
+            continue
+        limit = h * (0.48 if len(jobs) == 2 else 0.95)       # the drop never reaches the other side
+        w = width
+        for _try in range(8):
+            trial = bm.copy()
+            zf = h if up else 0.0
+            faces = [f for f in trial.faces if all(abs(v.co.z - zf) <= eps for v in f.verts)]
+            ok = _profile_one(trial, faces, w, min(w, limit), segs, p.profile == 'BEVEL', up)
+            if ok:
+                bm.free()
+                bm = trial
+                break
+            trial.free()
+            w *= 0.7
+        else:
+            notes.append(f'{name}: no room for a bevel on this shape')
+            continue
+        if w < width - 1e-9:
+            notes.append(f'{name} width limited to {w:.4g} by the shape')
+    return bm, notes
+
+
 def build_bmesh(groups, p, flip=False):
     """groups: [(outer CCW, [holes CW])] in local plane units. Returns a validated BMesh."""
     bm = bmesh.new()
@@ -412,7 +507,8 @@ def build_bmesh(groups, p, flip=False):
         bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-7)
         LAST_NOTES.clear()
         if p.profile in {'BEVEL', 'CHAMFER'}:
-            LAST_NOTES.extend(_bevel_rims(bm, p, rim_top, rim_bottom, flip))
+            bm, notes = _profile_rims(bm, p, flip)
+            LAST_NOTES.extend(notes)
         embed = getattr(p, 'embed', 0.0)
         if embed > 0:
             # Stick to Surface: the bottom reaches into the surface (no gap on curves)
@@ -449,6 +545,7 @@ def rebuild(ob):
     finally:
         bm.free()
     ob.data.update()
+    ob['mch_base_notes'] = '; '.join(LAST_NOTES)      # 0.23.17 shown in the LIVE panel (e.g. width limited)
 
 
 # -----------------------------------------------------------------------------

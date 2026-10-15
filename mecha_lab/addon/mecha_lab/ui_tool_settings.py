@@ -480,6 +480,8 @@ def draw_base(layout, context):
         box = _section(layout, 'LIVE: ' + ob.name, 'MESH_CUBE')
         if p.last_error:
             box.label(text=p.last_error, icon='ERROR')
+        if ob.get('mch_base_notes'):
+            box.label(text=ob['mch_base_notes'], icon='INFO')
         target = box
     else:
         p = context.scene.mch_base

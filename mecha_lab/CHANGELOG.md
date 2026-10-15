@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.23.18 — Base Mesh 베벨 / 챔퍼 폭, 미러 Apply 버튼은 Mirror에서만 (2026-10-15)
+
+- **Base Mesh Bevel / Chamfer**: Width가 두께의 95 %로 몰래 잘리던 문제(6 cm 판에 Width 2 m → 5.7 cm, 큰 판에선 거의 안 보임). 이제 Width는 윗면(또는 아랫면)을 가로질러 들어가고, 내려가는 높이만 두께에 맞춤(얇은 판 = 넓고 완만한 챔퍼 / 라운드). 모양보다 넓으면 모양에 맞게 줄이고 LIVE 패널에 "width limited to …"로 표시. 
+- **Mirror Apply / Remove 버튼**: Mirror(Symmetry) 도구와 Select에서만 보임 - Cut, Base Mesh 등에서는 숨김.
+- (0.23.17 포함: Box Hide 빠르게 / Cut과 같은 대상 메뉴 / 주황 선)
+- 테스트: 57개 파일 2176/2176 (`tests/test_log_bpy501_v02318.txt`), 새 `test_v02318.py`. ZIP sha256 `fd99be01744a2b71174a89970e024e15d9cc35105df475ba4664ff78400fb629`.
+
 ## 0.23.17 — Box Hide 빠르게, Cut과 같은 대상 메뉴, 주황 선 (2026-10-15)
 
 - **속도**: 0.23.16은 Exact 불리언이라 10만 면 메쉬에서 한 번 계산에 46초 → **Manifold 솔버**(닫힌 메쉬, 0.26초) / **Float 솔버**(열린 메쉬, 약 0.9초)로 바꿈. Open도 같은 컷 후 막은 면만 지움(0.25초). 숨김 볼륨은 그릴 때마다 하나의 닫힌 덩어리로 합침(작아서 빠름).

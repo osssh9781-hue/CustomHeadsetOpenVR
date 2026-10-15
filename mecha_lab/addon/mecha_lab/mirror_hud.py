@@ -35,7 +35,21 @@ def targets(context):
             return []
     except (AttributeError, TypeError):
         return []
+    if not shown_for_tool(context):
+        return []
     return mt._mirror_targets(context)
+
+
+def shown_for_tool(context):
+    """0.23.18 the Apply / Remove buttons only in the Mirror (Symmetry) tool and in Select - not over Cut,
+    Base Mesh and the other tools."""
+    try:
+        from . import bottom_bar
+        if bottom_bar.in_select(context):
+            return True
+        return ts.effective_tool(context) == 'MIRROR'
+    except (AttributeError, TypeError, KeyError, ImportError):
+        return True
 
 
 def is_on(p, name):

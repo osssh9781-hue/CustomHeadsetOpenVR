@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.17 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.18 (Claude Code, 2026-10-14)
+
+## 0.23.18
+- ZIP sha256 `fd99be01744a2b71174a89970e024e15d9cc35105df475ba4664ff78400fb629`. `base_mesh._profile_rims` / `_profile_one`(bmesh.ops.bevel 대신): 윗 / 아랫면을 drop만큼 내리고 inset_region(thickness, depth)을 단계별로(Chamfer 1, Bevel = 1/4 원) - drop = min(Width, 높이 × 0.95 / 양쪽이면 0.48). 겹침(면 뒤집힘, 윤곽 밖 점, 면적 증가)이면 Width × 0.7로 재시도, 노트는 `ob['mch_base_notes']` → LIVE 패널. `mirror_hud.shown_for_tool`: Select 또는 MIRROR 도구에서만.
 
 ## 0.23.17
 - ZIP sha256 `7e0ab8c89ab2c1a7d876e2a390614457577eb27c13d2b5be38a43c8b0e05ca09`. `box_hide` GN v3: Mesh Boolean MANIFOLD / FLOAT 두 개 + Switch(입력 Manifold = 대상 비매니폴드 엣지 0), Cap 끄면 그 결과에서 볼륨 표면 Epsilon(크기 × 1e-4) 안의 면 삭제. 볼륨은 `_combine`(EXACT UNION / DIFFERENCE, 작은 메쉬)으로 하나의 닫힌 덩어리. `cut_engine`: HIDE도 `mch_cut.targets`를 따름, 색 = Cut 주황. 패널에 depth_mode / depth / targets.
