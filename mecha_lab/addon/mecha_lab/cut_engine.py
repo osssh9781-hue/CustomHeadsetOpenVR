@@ -914,8 +914,8 @@ _COLORS = {
     'PLATE_INV': (0.30, 0.78, 1.0, 1.0),
     'WRINKLE': (0.95, 0.45, 0.75, 1.0),
     'WRINKLE_INV': (0.95, 0.45, 0.75, 1.0),
-    'HIDE': (0.70, 0.70, 0.78, 1.0),              # 0.23.16 Box Hide: grey = hide, green = show again
-    'HIDE_INV': (0.40, 0.95, 0.55, 1.0),
+    'HIDE': (1.0, 0.62, 0.10, 1.0),               # 0.23.17 Box Hide: orange like Cut (hide and Alt = show)
+    'HIDE_INV': (1.0, 0.62, 0.10, 1.0),
 }
 
 
@@ -1303,8 +1303,8 @@ class StrokeLogic:
         cut_props = getattr(context.scene, 'mch_cut', None)
         # 0.12 Auto Target: the finished shape decides what is cut, so a stroke may
         # start anywhere and the tool stays on for the next part.
-        self.auto_target = (self.mode in {'CUT', 'SPLIT'} and cut_props is not None and
-                            getattr(cut_props, 'targets', '') == 'AUTO') or self.mode == 'HIDE'
+        self.auto_target = (self.mode in {'CUT', 'SPLIT', 'HIDE'} and cut_props is not None and
+                            getattr(cut_props, 'targets', '') == 'AUTO')
         self._auto_cache = None
         from . import lasso_sketch
         if lasso_sketch.enabled(context, self.mode):

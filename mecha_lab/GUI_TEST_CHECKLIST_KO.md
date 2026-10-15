@@ -1,8 +1,13 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.16 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.17 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A00000000000000000000000000000000. 0.23.17 (미검증)
+- [ ] 무거운 메쉬에서 Box Hide가 바로바로 되는지
+- [ ] Through All / From Surface, Auto Target / Selected Only / Active
+- [ ] 선이 주황색인지
 
 ## A0000000000000000000000000000000. 0.23.16 (미검증)
 - [ ] 왼쪽 도구 목록 / T 툴바에 Box Hide가 보이는지, 사각형 / 라쏘로 그리면 숨겨지는지

@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.23.17 — Box Hide 빠르게, Cut과 같은 대상 메뉴, 주황 선 (2026-10-15)
+
+- **속도**: 0.23.16은 Exact 불리언이라 10만 면 메쉬에서 한 번 계산에 46초 → **Manifold 솔버**(닫힌 메쉬, 0.26초) / **Float 솔버**(열린 메쉬, 약 0.9초)로 바꿈. Open도 같은 컷 후 막은 면만 지움(0.25초). 숨김 볼륨은 그릴 때마다 하나의 닫힌 덩어리로 합침(작아서 빠름).
+- **대상 / 깊이 메뉴**: Cut과 같은 Through All / From Surface(+ 깊이), Auto Target / Selected Only / Active (Cut과 같은 설정을 공유).
+- **선 색**: 그리는 선이 Cut처럼 주황(Alt도 주황).
+- 테스트: 56개 파일 2158/2158 (`tests/test_log_bpy501_v02317.txt`), 새 `test_v02317.py`(10만 면 속도, Selected Only / Auto, 주황). ZIP sha256 `7e0ab8c89ab2c1a7d876e2a390614457577eb27c13d2b5be38a43c8b0e05ca09`.
+
 ## 0.23.16 — Box Hide (프로토타입에서 애드온으로) (2026-10-15)
 
 - 새 도구 **Box Hide**(Split 옆): 공용 모양(사각형 / 라쏘 / 원 …)을 메쉬 위에 그리면 그 안이 숨겨짐. 그린 곳이 덮는 메쉬가 자동으로 대상.

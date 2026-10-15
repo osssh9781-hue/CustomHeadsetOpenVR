@@ -19,7 +19,7 @@ MOD = 'MCH_BoxHide'
 GROUP = 'MCH_BoxHide'
 COLL = 'MCH_BoxHide'
 VOL_KEY = 'mch_hide_volume'          # on the volume object: the name of the mesh it hides
-VERSION = 1
+VERSION = 3          # 0.23.17: no Exact solver (46 s on 100k faces) - Manifold / Float, Open = the same cut, its cap faces deleted
 
 
 def _link(g, a, b):
@@ -39,6 +39,8 @@ def build_group():
     g.interface.new_socket('Volume', in_out='INPUT', socket_type='NodeSocketObject')
     cap = g.interface.new_socket('Cap', in_out='INPUT', socket_type='NodeSocketBool')
     cap.default_value = True
+    man = g.interface.new_socket('Manifold', in_out='INPUT', socket_type='NodeSocketBool')
+    man.default_value = False
     eps = g.interface.new_socket('Epsilon', in_out='INPUT', socket_type='NodeSocketFloat')
     eps.default_value = 1e-5
     g.interface.new_socket('Geometry', in_out='OUTPUT', socket_type='NodeSocketGeometry')
@@ -48,33 +50,40 @@ def build_group():
     info = N.new('GeometryNodeObjectInfo')
     info.transform_space = 'RELATIVE'
     _link(g, gi.outputs['Volume'], info.inputs['Object'])
-    boo = N.new('GeometryNodeMeshBoolean')
-    boo.operation = 'DIFFERENCE'
-    boo.solver = 'EXACT'
-    boo.inputs['Self Intersection'].default_value = True
-    _link(g, gi.outputs['Geometry'], boo.inputs['Mesh 1'])
-    _link(g, info.outputs['Geometry'], boo.inputs['Mesh 2'])
-    # Cap OFF: the faces the cut made lie on the volume's surface - delete them (an open hole)
+    vol = info.outputs['Geometry']
+    # Cap: a real cut closed with new faces - Manifold solver (fast) on closed meshes, Float otherwise
+    booleans = {}
+    for solver in ('MANIFOLD', 'FLOAT'):
+        boo = N.new('GeometryNodeMeshBoolean')
+        boo.operation = 'DIFFERENCE'
+        boo.solver = solver
+        _link(g, gi.outputs['Geometry'], boo.inputs['Mesh 1'])
+        _link(g, vol, boo.inputs['Mesh 2'])
+        booleans[solver] = boo
+    pick = N.new('GeometryNodeSwitch')
+    pick.input_type = 'GEOMETRY'
+    _link(g, gi.outputs['Manifold'], pick.inputs['Switch'])
+    _link(g, booleans['FLOAT'].outputs['Mesh'], pick.inputs['False'])
+    _link(g, booleans['MANIFOLD'].outputs['Mesh'], pick.inputs['True'])
+    # Open: the same cut, then the faces it made (they lie on the volume's surface) are deleted - an open hole
     prox = N.new('GeometryNodeProximity')
     prox.target_element = 'FACES'
-    _link(g, info.outputs['Geometry'], prox.inputs['Geometry'])
-    near = N.new('FunctionNodeCompare')
-    near.data_type = 'FLOAT'
-    near.operation = 'LESS_THAN'
-    _link(g, prox.outputs['Distance'], near.inputs['A'])
-    _link(g, gi.outputs['Epsilon'], near.inputs['B'])
-    nocap = N.new('FunctionNodeBooleanMath')
-    nocap.operation = 'NOT'
-    _link(g, gi.outputs['Cap'], nocap.inputs[0])
-    sel = N.new('FunctionNodeBooleanMath')
-    sel.operation = 'AND'
-    _link(g, near.outputs['Result'], sel.inputs[0])
-    _link(g, nocap.outputs['Boolean'], sel.inputs[1])
+    _link(g, vol, prox.inputs['Geometry'])
+    on_vol = N.new('FunctionNodeCompare')
+    on_vol.data_type = 'FLOAT'
+    on_vol.operation = 'LESS_THAN'
+    _link(g, prox.outputs['Distance'], on_vol.inputs['A'])
+    _link(g, gi.outputs['Epsilon'], on_vol.inputs['B'])
     dele = N.new('GeometryNodeDeleteGeometry')
     dele.domain = 'FACE'
-    _link(g, boo.outputs['Mesh'], dele.inputs['Geometry'])
-    _link(g, sel.outputs['Boolean'], dele.inputs['Selection'])
-    _link(g, dele.outputs['Geometry'], go.inputs['Geometry'])
+    _link(g, pick.outputs['Output'], dele.inputs['Geometry'])
+    _link(g, on_vol.outputs['Result'], dele.inputs['Selection'])
+    out = N.new('GeometryNodeSwitch')
+    out.input_type = 'GEOMETRY'
+    _link(g, gi.outputs['Cap'], out.inputs['Switch'])
+    _link(g, dele.outputs['Geometry'], out.inputs['False'])
+    _link(g, pick.outputs['Output'], out.inputs['True'])
+    _link(g, out.outputs['Output'], go.inputs['Geometry'])
     g['mch_version'] = VERSION
     return g
 
@@ -150,6 +159,7 @@ def _ensure_modifier(target, vol, cap):
     elif mod.node_group is not g:
         mod.node_group = g
     mod[_ident(g, 'Volume')] = vol
+    mod[_ident(g, 'Manifold')] = cg.non_manifold_edge_count(target.data) == 0
     size = max(target.dimensions) if max(target.dimensions) > 0 else 1.0
     mod[_ident(g, 'Epsilon')] = size * 1e-4
     target.update_tag()
@@ -166,20 +176,40 @@ def _mirrored(bm_src, target):
     return bm
 
 
-def _append(vol, bm_add):
-    bm = bmesh.new()
+def _flat(me):
+    for p in me.polygons:
+        p.use_smooth = False
+
+
+def _combine(context, vol, bm_add, op):
+    """vol = vol (op) shape: UNION to hide more, DIFFERENCE to show again.  The volume stays one clean
+    closed solid (the Manifold cut needs that); it is small, so the exact boolean here is quick."""
+    me_add = bpy.data.meshes.new('MCH_Hide_shape')
+    bm_add.to_mesh(me_add)
+    if not vol.data.polygons:
+        if op == 'UNION':
+            old = vol.data
+            vol.data = me_add
+            if old.users == 0:
+                bpy.data.meshes.remove(old)
+            _flat(vol.data)
+        else:
+            bpy.data.meshes.remove(me_add)
+        return
+    other = cg.link_temp_object(context, me_add, 'MCH_Hide_shape')
     try:
-        bm.from_mesh(vol.data)
-        tmp = bpy.data.meshes.new('MCH_Hide_tmp')
+        vol.hide_set(False)
         try:
-            bm_add.to_mesh(tmp)
-            bm.from_mesh(tmp)
+            me, _solver = cg.boolean_result(context, vol, other, op, 'EXACT', False, allow_empty=True)
         finally:
-            bpy.data.meshes.remove(tmp)
-        bm.to_mesh(vol.data)
+            vol.hide_set(True)
     finally:
-        bm.free()
-    vol.data.update()
+        cg.remove_object_and_mesh(other)
+    old = vol.data
+    vol.data = me
+    if old.users == 0:
+        bpy.data.meshes.remove(old)
+    _flat(vol.data)
 
 
 def perform(context, targets, loops, projector, restore=False):
@@ -205,7 +235,7 @@ def perform(context, targets, loops, projector, restore=False):
                     if vol is None:
                         vol = _new_volume(context, t)
                     for bm_part in parts:
-                        _append(vol, bm_part)
+                        _combine(context, vol, bm_part, 'UNION')
                     _ensure_modifier(t, vol, st.cap)
                     done.append(t.name)
                     continue
@@ -213,30 +243,9 @@ def perform(context, targets, loops, projector, restore=False):
                     untouched.append(t.name)
                     continue
                 # restore: cut the drawn shape out of the hide volume
-                rest_me = bpy.data.meshes.new('MCH_Hide_Restore')
-                joined = bmesh.new()
                 for bm_part in parts:
-                    tmp = bpy.data.meshes.new('MCH_Hide_tmp')
-                    bm_part.to_mesh(tmp)
-                    joined.from_mesh(tmp)
-                    bpy.data.meshes.remove(tmp)
-                joined.to_mesh(rest_me)
-                joined.free()
-                rest = cg.link_temp_object(context, rest_me, 'MCH_Hide_Restore')
-                try:
-                    vol.hide_set(False)
-                    try:
-                        me, _solver = cg.boolean_result(context, vol, rest, 'DIFFERENCE', 'EXACT', False,
-                                                        allow_empty=True)
-                    finally:
-                        vol.hide_set(True)
-                finally:
-                    cg.remove_object_and_mesh(rest)
-                old = vol.data
-                vol.data = me
-                if old.users == 0:
-                    bpy.data.meshes.remove(old)
-                if not me.polygons:
+                    _combine(context, vol, bm_part, 'DIFFERENCE')
+                if not vol.data.polygons:
                     show_all(t)             # nothing hidden any more
                 else:
                     t.update_tag()
@@ -344,6 +353,12 @@ def draw(layout, context):
     col.scale_y = 0.85
     col.label(text='Draw over meshes: hide inside', icon='MOUSE_LMB_DRAG')
     col.label(text='Alt + draw: show that part again', icon='EVENT_ALT')
+    cut = context.scene.mch_cut                       # 0.23.17 same Depth / Targets menu as Cut (shared)
+    col = box.column(align=True)
+    col.prop(cut, 'depth_mode', expand=True)
+    if cut.depth_mode == 'SURFACE':
+        col.prop(cut, 'depth')
+    col.prop(cut, 'targets', expand=True)
     row = box.row(align=True)
     row.operator('mch.box_hide_cap', text='Cap', depress=st.cap).value = True
     row.operator('mch.box_hide_cap', text='Open', depress=not st.cap).value = False

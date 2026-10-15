@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.16 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.17 (Claude Code, 2026-10-14)
+
+## 0.23.17
+- ZIP sha256 `7e0ab8c89ab2c1a7d876e2a390614457577eb27c13d2b5be38a43c8b0e05ca09`. `box_hide` GN v3: Mesh Boolean MANIFOLD / FLOAT 두 개 + Switch(입력 Manifold = 대상 비매니폴드 엣지 0), Cap 끄면 그 결과에서 볼륨 표면 Epsilon(크기 × 1e-4) 안의 면 삭제. 볼륨은 `_combine`(EXACT UNION / DIFFERENCE, 작은 메쉬)으로 하나의 닫힌 덩어리. `cut_engine`: HIDE도 `mch_cut.targets`를 따름, 색 = Cut 주황. 패널에 depth_mode / depth / targets.
 
 ## 0.23.16
 - ZIP sha256 `a0e1deb11dddf65768c9996238e07ca8decb8b28847e074bae635f0e8e33fa02`. 새 `box_hide.py`: GN 그룹 `MCH_BoxHide`(Object Info Relative → Mesh Boolean Difference Exact, Self Intersection → Cap 끄면 볼륨 표면에서 Epsilon 안의 면 삭제). 볼륨 오브젝트 = `cg.build_cutter_mesh` 프리즘들을 이어 붙임(hide_set, hide_select, 키 `mch_hide_volume`), Alt 복원 = `cg.boolean_result(볼륨 − 모양)`, 비면 Show All. `cut_engine` 모드 'HIDE'(항상 Auto Target, 닫힌 모양만), `tool_state` 'HIDE'(enum 28), `workspace_ui.MCH_TOOL_box_hide`, Scene `mch_hide`(cap, mirror).
