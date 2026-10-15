@@ -1287,7 +1287,7 @@ def perform_wrinkle(context, loops, projector, wtype=None):
     if getattr(brush, 'through_mode', False):
         # 0.23.7 Through: the outline goes through the mesh - front, back, split at the silhouette / creases
         from . import through_region as tr
-        panels = tr.panels_for(context, target, groups, projector, st.spacing, getattr(brush, 'through_crease', 50.0))
+        panels = tr.panels_for(context, target, groups, projector, _spacing(st), getattr(brush, 'through_crease', 50.0))
         obs = [_wrinkle_layer(context, target, p_['cos'], p_['nrms'], p_['tris'], projector, st, dict(last), wtype)
                for p_ in panels]
         for o in context.selected_objects:
@@ -1298,7 +1298,7 @@ def perform_wrinkle(context, loops, projector, wtype=None):
         kind = 'Creature skin' if getattr(st, 'creature', False) else 'Cloth plate'
         msg = f'{kind} through {target.name}: {len(obs)} panel(s) (front / back / creases)'
         return _sim_after(context, st, obs, msg)
-    pts, tris, _nb = ap.screen_patch(groups, st.spacing)
+    pts, tris, _nb = ap.screen_patch(groups, _spacing(st))
     if not tris:
         raise cg.CutError('The outline is too small.')
     bvh, _wv, _polys = ap._target_bvh(context, target)
@@ -1315,12 +1315,19 @@ def perform_wrinkle(context, loops, projector, wtype=None):
     return _sim_after(context, st, [ob], f'Cloth plate "{ob.name}" on {target.name} (padded panel, {pat}){extra}')
 
 
+def _spacing(st):
+    """0.23.10 with Sim on, bigger faces (the cloth and its collider stay light)"""
+    if getattr(st, 'sim_after', False) and not getattr(st, 'creature', False):
+        return max(int(st.spacing), int(getattr(st, 'sim_face_px', 24)))
+    return st.spacing
+
+
 def _sim_after(context, st, obs, msg):
     """0.23.9 Sim toggle: Panel Cloth on the new layer(s) right away (collider = the generated surface)."""
     if not getattr(st, 'sim_after', False) or getattr(st, 'creature', False):
         return msg
     from . import cloth_sim
-    made = cloth_sim.run_preset(context, obs, st.sim_preset, collider='REGION')
+    made = cloth_sim.run_preset(context, obs, st.sim_preset, collider='REGION', **cloth_sim.scene_overrides(st))
     for o in context.selected_objects:
         o.select_set(False)
     for o in made:
@@ -1477,6 +1484,14 @@ def apply_wrinkle(context, ob):
 # -----------------------------------------------------------------------------
 
 
+def _fill_sim(self, _context):
+    """0.23.10 picking a Panel Cloth preset fills its sliders"""
+    from . import cloth_sim
+    v = cloth_sim.preset_values(self.sim_preset)
+    self.sim_gravity, self.sim_shrink, self.sim_pressure = v['gravity'], v['shrink'], v['pressure']
+    self.sim_bend, self.sim_frames = v['bend'], v['frames']
+
+
 class MCH_PG_Wrinkle(bpy.types.PropertyGroup):
     wtype: EnumProperty(name='Type', items=TYPES, default='PADDING',
                         description='Character of the panel: puff and the folds from the border (also the optional '
@@ -1512,8 +1527,28 @@ class MCH_PG_Wrinkle(bpy.types.PropertyGroup):
     sim_after: bpy.props.BoolProperty(name='Sim', default=False,
                                       description='Cloth Plate: run a short cloth simulation on the new panel '
                                                   'right away and bake it (Panel Cloth)')
-    sim_preset: EnumProperty(name='Cloth Preset', items=_SIM_PRESETS, default='PADDING',
+    sim_preset: EnumProperty(name='Cloth Preset', items=_SIM_PRESETS, default='PADDING', update=_fill_sim,
                              description='Panel Cloth preset used after the lasso')
+    # 0.23.10 Panel Cloth sliders (filled from the preset; used after the lasso and by Re-bake)
+    sim_gravity: bpy.props.FloatProperty(name='Gravity (sag)', default=0.3, min=0.0, soft_max=3.0, max=20.0,
+                                         description='How much the cloth hangs down - lower it when it sags too much')
+    sim_shrink: bpy.props.FloatProperty(name='Shrink (slack)', default=-0.05, min=-1.0, max=0.5,
+                                        description='Below 0: extra cloth that folds / hangs; nearer 0 = tighter')
+    sim_pressure: bpy.props.FloatProperty(name='Pressure (puff)', default=6.0, min=-20.0, max=80.0,
+                                          description='Puffs the panel up; it also holds the cloth up')
+    sim_bend: bpy.props.FloatProperty(name='Bend (stiffness)', default=0.5, min=0.0, max=100.0,
+                                      description='Bending stiffness: higher = fewer, bigger folds, less sag')
+    sim_frames: IntProperty(name='Frames', default=30, min=2, max=300,
+                            description='How long it falls / settles before the bake')
+    sim_puff: bpy.props.FloatProperty(name='Puff', default=1.0, min=0.0, max=2.0,
+                                      description='How puffed up: scales Pressure and the slack together '
+                                                  '(0 = lies flat, 1 = the preset, 2 = double)')
+    sim_detail: IntProperty(name='Detail', default=1, min=1, max=4,
+                            description='Cloth resolution: 1 Draft (fast) .. 4 Fine - start low, raise it '
+                                        'and Re-bake once the shape is right')
+    sim_face_px: IntProperty(name='Sim Face Size (px)', default=24, min=6, max=80,
+                             description='With Sim on, the panel is made with faces this big (lighter than '
+                                         'the normal Face Size)')
 
 
 class MCH_OT_wrinkle_skin(bpy.types.Operator):

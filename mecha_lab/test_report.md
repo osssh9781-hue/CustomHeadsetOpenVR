@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.23.9
+# Test Report — Mecha Lab 0.23.10
+
+## 0.23.10 결과: 54개 파일, 2101 / 2101 통과 (`tests/test_log_bpy501_v02310.txt`, 한 번에 통과). 압력 / Shrink 조합별 높이 측정(P6 S-0.05: 0.59, P0 S-0.05: 0.24, P0 S0: 0.04)으로 Puff 설계. 테스트: 슬라이더 채움, Puff 0.3 / 0 높이, Detail 1 → 3 면 수, Decimate 예산, 박스 위 / 열린 반원통에서 바깥 방향 유지. 프로파일: Draft 시뮬 자체 0.75초, 새 파일에서 처음 한 번 노드 그룹 생성이 약 8초(헤드리스). 실제 PC 속도 / 멈춤 여부는 미검증.
 
 ## 0.23.9 결과: 53개 파일, 2089 / 2089 통과 (`tests/test_log_bpy501_v0239.txt`, 한 번에 통과). `test_v0238`의 오퍼레이터 인자 `collide=False` → `collider='NONE'`(옵션 이름 변경). 라쏘 → Sim(Puffer) → 베이크, 임시 충돌체 제거, 몸 미변경, 박스 위로 부풀고 안 꺼짐, Cloth로 다시 굽기(더 평평), Split Angle 큐브 6조각, Seam 분할, Remove Faces. 프리셋 9개 모양은 Cycles 렌더로 확인. 뷰포트 / 실제 PC 속도 미검증.
 

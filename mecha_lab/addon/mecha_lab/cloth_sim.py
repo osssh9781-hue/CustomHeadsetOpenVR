@@ -27,12 +27,15 @@ import random
 import bmesh
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
+from mathutils import Vector
 
 SUFFIX = '_PCloth'
 PIN_GROUP = 'mch_pin'
 SHRINK_GROUP = 'mch_shrink'
 PRESSURE_GROUP = 'mch_pressure'
 MAX_FACES = 15000            # the cuts are lowered so the cloth stays light (a few seconds per bake)
+# 0.23.10 Detail: start light (Draft), raise it once the shape is right
+DETAIL_FACES = {1: 1500, 2: 4000, 3: 9000, 4: 16000}
 PIN_MODES = (('BORDER', 'Border', 'The whole border stays where it is'),
              ('CORNERS', 'Corners', 'Only the corners of the border stay'),
              ('NONE', 'None', 'Nothing pinned: the cloth falls onto the body'))
@@ -45,13 +48,13 @@ COLLIDERS = (('REGION', 'Region', 'The surface the panel was made from (the gene
 # name, label, description, settings
 PRESETS = (
     ('PADDING', 'Padding', 'Firm padded panel, folds along the border',
-     dict(pressure=9.0, shrink=-0.05, gravity=0.3, mass=0.15, bend=0.5, cuts=3, frames=30, quality=5)),
+     dict(pressure=6.0, shrink=-0.05, gravity=0.3, mass=0.15, bend=0.5, cuts=3, frames=30, quality=5)),
     ('PUFFER', 'Puffer', 'Down jacket: strongly puffed, soft border folds',
-     dict(pressure=16.0, shrink=-0.08, gravity=0.2, mass=0.1, bend=0.3, cuts=3, frames=35, quality=6)),
+     dict(pressure=11.0, shrink=-0.08, gravity=0.2, mass=0.1, bend=0.3, cuts=3, frames=35, quality=6)),
     ('PILLOW', 'Pillow', 'Soft cushion: puffed with many loose folds',
-     dict(pressure=7.0, shrink=-0.16, gravity=0.5, mass=0.15, bend=0.2, cuts=3, frames=35, quality=6)),
+     dict(pressure=5.0, shrink=-0.16, gravity=0.5, mass=0.15, bend=0.2, cuts=3, frames=35, quality=6)),
     ('QUILT', 'Quilt', 'Every split piece puffs on its own (use Split Angle / Seam)',
-     dict(pressure=10.0, shrink=-0.06, gravity=0.3, mass=0.15, bend=0.4, cuts=3, frames=30, quality=5,
+     dict(pressure=7.0, shrink=-0.06, gravity=0.3, mass=0.15, bend=0.4, cuts=3, frames=30, quality=5,
           random=True, variation=0.4)),
     ('CLOTH', 'Cloth', 'Loose fabric: no puff, hangs and folds',
      dict(pressure=0.0, shrink=-0.15, gravity=1.0, mass=0.3, bend=0.5, cuts=3, frames=40, quality=6)),
@@ -93,7 +96,9 @@ def _world_faces_from_object(ob):
     cos = [mw @ v.co for v in me.vertices]
     faces = [tuple(p.vertices) for p in me.polygons]
     seams = {frozenset(e.vertices) for e in me.edges if e.use_seam or getattr(e, 'use_edge_sharp', False)}
-    return cos, faces, seams
+    nm = mw.to_3x3().inverted_safe().transposed()
+    nrms = [(nm @ v.normal).normalized() for v in me.vertices]
+    return cos, faces, seams, nrms
 
 
 def _world_faces_from_selection(ob):
@@ -116,20 +121,51 @@ def _world_faces_from_selection(ob):
                 a, b = e.verts
                 if a in vmap and b in vmap:
                     seams.add(frozenset((vmap[a], vmap[b])))
-    return cos, faces, seams
+    nm = mw.to_3x3().inverted_safe().transposed()
+    nrms = [None] * len(cos)
+    for v, i in vmap.items():
+        nrms[i] = (nm @ v.normal).normalized()
+    return cos, faces, seams, nrms
+
+
+def _decimate(bm, target):
+    """Fewer faces (a too fine source panel): collapse through a temporary Decimate modifier."""
+    me = bpy.data.meshes.new('_mch_dec')
+    bm.to_mesh(me)
+    ob = bpy.data.objects.new('_mch_dec', me)
+    bpy.context.scene.collection.objects.link(ob)
+    try:
+        md = ob.modifiers.new('Dec', 'DECIMATE')
+        tris = sum(len(p.vertices) - 2 for p in me.polygons)         # Decimate counts triangles
+        md.ratio = max(0.01, min(1.0, target / max(tris, 1)))
+        md.use_collapse_triangulate = False
+        dg = bpy.context.evaluated_depsgraph_get()
+        tmp = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), depsgraph=dg)
+        bm.clear()
+        bm.from_mesh(tmp)
+        bpy.data.meshes.remove(tmp)
+    finally:
+        bpy.data.objects.remove(ob)
+        bpy.data.meshes.remove(me)
 
 
 def build_cloth_mesh(parts, cuts=2, split='NONE', angle=30.0, noise=0.0, seed=1, weld=True,
-                     random_islands=False, variation=0.0):
+                     random_islands=False, variation=0.0, max_faces=MAX_FACES):
     """One cloth mesh (world space) from [(cos, faces, seams)]: joined, welded, split, subdivided, jittered.
     Returns (mesh, border indices, corner indices, {vertex index: (shrink weight, pressure weight)})."""
     bm = bmesh.new()
     try:
         seam_keys = []
+        nlay = bm.verts.layers.float_vector.new('mch_src_n')
         for part in parts:
             cos, faces = part[0], part[1]
             seams = part[2] if len(part) > 2 else set()
+            nrms = part[3] if len(part) > 3 else None
             vs = [bm.verts.new(c) for c in cos]
+            if nrms:
+                for v, n in zip(vs, nrms):
+                    if n is not None:
+                        v[nlay] = n
             for f in faces:
                 try:
                     bm.faces.new([vs[i] for i in f])
@@ -149,6 +185,30 @@ def build_cloth_mesh(parts, cuts=2, split='NONE', angle=30.0, noise=0.0, seed=1,
             bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=avg * 0.35)
             seam_edges = {e for e in seam_edges if e.is_valid}
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+        # 0.23.10 the cloth faces the same way as the source (outward); recalc alone may pick the inside
+        # of an open panel and Pressure then pushes the cloth into the body.  Per connected piece.
+        bm.normal_update()
+        seen = set()
+        for f0 in bm.faces:
+            if f0 in seen:
+                continue
+            stack, piece = [f0], []
+            seen.add(f0)
+            while stack:
+                f = stack.pop()
+                piece.append(f)
+                for e in f.edges:
+                    for g in e.link_faces:
+                        if g not in seen:
+                            seen.add(g)
+                            stack.append(g)
+            agree = 0.0
+            for f in piece:
+                ref = sum((v[nlay] for v in f.verts), Vector())
+                agree += f.normal.dot(ref) * f.calc_area()
+            if agree < 0.0:
+                bmesh.ops.reverse_faces(bm, faces=piece)
+        bm.normal_update()
         cut = []
         if split == 'ANGLE':
             lim = math.radians(angle)
@@ -157,7 +217,10 @@ def build_cloth_mesh(parts, cuts=2, split='NONE', angle=30.0, noise=0.0, seed=1,
             cut = [e for e in seam_edges if len(e.link_faces) == 2]
         if cut:
             bmesh.ops.split_edges(bm, edges=cut)
-        while cuts > 0 and len(bm.faces) * (cuts + 1) ** 2 > MAX_FACES:
+        if len(bm.faces) > max_faces:
+            _decimate(bm, max_faces)
+            bm.normal_update()
+        while cuts > 0 and len(bm.faces) * (cuts + 1) ** 2 > max_faces:
             cuts -= 1
         if cuts > 0:
             bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=cuts, use_grid_fill=True)
@@ -209,7 +272,7 @@ def build_cloth_mesh(parts, cuts=2, split='NONE', angle=30.0, noise=0.0, seed=1,
 
 def setup_cloth(scene, ob, frames=30, quality=5, mass=0.15, pressure=4.0, shrink=-0.05, gravity=1.0,
                 thickness=0.005, self_collision=False, pin_group=None, bend=0.5, shrink_max=None,
-                weights=None):
+                weights=None, collision_quality=3):
     cm = ob.modifiers.new('MCH_PanelCloth', 'CLOTH')
     s = cm.settings
     s.quality = quality
@@ -236,7 +299,7 @@ def setup_cloth(scene, ob, frames=30, quality=5, mass=0.15, pressure=4.0, shrink
     c = cm.collision_settings
     c.use_collision = True
     c.distance_min = thickness
-    c.collision_quality = 3
+    c.collision_quality = collision_quality
     c.use_self_collision = self_collision
     cm.point_cache.frame_start = scene.frame_start
     cm.point_cache.frame_end = scene.frame_start + frames
@@ -248,8 +311,19 @@ def bake(context, objs, frames):
     scene = context.scene
     keep = scene.frame_current
     start = scene.frame_start
-    for f in range(start, start + frames + 1):
-        scene.frame_set(f)
+    wm = getattr(context, 'window_manager', None)
+    if wm is not None and not hasattr(wm, 'progress_begin'):
+        wm = None
+    if wm is not None:
+        wm.progress_begin(0, frames)
+    try:
+        for f in range(start, start + frames + 1):
+            scene.frame_set(f)
+            if wm is not None:
+                wm.progress_update(f - start)
+    finally:
+        if wm is not None:
+            wm.progress_end()
     dg = context.evaluated_depsgraph_get()
     for ob in objs:
         me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), depsgraph=dg)
@@ -284,7 +358,7 @@ def panel_cloth(context, sources, edit_object=None, frames=30, quality=5, seed=1
                 shrink=-0.05, gravity=1.0, cuts=2, noise=0.0, subsurf=1, pin='BORDER', collide=True,
                 self_collision=False, thickness=0.005, split='NONE', angle=30.0, join=True, hide_source=True,
                 bend=0.5, shrink_max=None, random_islands=False, variation=0.0, collider='REGION',
-                preset='', remove_faces=False):
+                preset='', remove_faces=False, max_faces=MAX_FACES):
     """Make + simulate + bake the cloth objects.  Returns the new objects."""
     if not collide:
         collider = 'NONE'
@@ -309,7 +383,7 @@ def panel_cloth(context, sources, edit_object=None, frames=30, quality=5, seed=1
             continue
         first, body = items[0][0], items[0][2]
         me, border, corners, weights = build_cloth_mesh(parts, cuts, split, angle, noise, seed, True,
-                                                        random_islands, variation)
+                                                        random_islands, variation, max_faces)
         # the cloth starts just above the surface it collides with (coincident = unstable contact);
         # the contact distance follows the panel size
         size = max((max(v.co[k] for v in me.vertices) - min(v.co[k] for v in me.vertices)) for k in range(3))
@@ -325,8 +399,11 @@ def panel_cloth(context, sources, edit_object=None, frames=30, quality=5, seed=1
         pins = border if pin == 'BORDER' else corners if pin == 'CORNERS' else []
         if pins:
             ob.vertex_groups.new(name=PIN_GROUP).add(pins, 1.0, 'REPLACE')
-        setup_cloth(context.scene, ob, frames, quality, mass, pressure, shrink, gravity, thick,
-                    self_collision, PIN_GROUP if pins else None, bend, rmax, weights if random_islands else None)
+        draft = max_faces <= DETAIL_FACES[1]
+        setup_cloth(context.scene, ob, frames, min(quality, 4) if draft else quality, mass, pressure, shrink,
+                    gravity, thick, self_collision, PIN_GROUP if pins else None, bend, rmax,
+                    weights if random_islands else None, 2 if draft else 3)
+        ob['mch_pcloth_faces'] = max_faces
         if collider == 'REGION':
             temp_objs.append(_region_collider(context, parts, ob.name + '_Collider'))
         elif collider == 'BODY' and body is not None and body.type == 'MESH' and body is not ob and \
@@ -375,14 +452,24 @@ def run_preset(context, sources, preset, **over):
                        noise=v['noise'], bend=v['bend'], random_islands=v['random'], variation=v['variation'],
                        shrink_max=v['shrink'] * 2.2 if v['random'] else None, preset=preset,
                        **{k: over[k] for k in over if k in ('collider', 'split', 'angle', 'seed', 'pin', 'join',
-                                                              'subsurf', 'thickness')})
+                                                              'subsurf', 'thickness', 'max_faces')})
+
+
+def scene_overrides(st):
+    """The Panel Cloth sliders of the Cloth Plate settings (0.23.10)."""
+    if st is None or not hasattr(st, 'sim_gravity'):
+        return {}
+    puff = getattr(st, 'sim_puff', 1.0)
+    shrink = st.sim_shrink * puff if st.sim_shrink < 0 else st.sim_shrink
+    return dict(gravity=st.sim_gravity, shrink=shrink, pressure=st.sim_pressure * puff, bend=st.sim_bend,
+                frames=st.sim_frames, max_faces=DETAIL_FACES.get(int(getattr(st, 'sim_detail', 1)), 1500))
 
 
 def is_pcloth(ob):
     return ob is not None and bool(ob.get('mch_pcloth'))
 
 
-def redo(context, ob, preset):
+def redo(context, ob, preset, **over):
     """Bake a cloth again from its (hidden) source with another preset."""
     names = [n for n in str(ob.get('mch_pcloth', '')).split(',') if n in bpy.data.objects]
     if not names:
@@ -395,7 +482,7 @@ def redo(context, ob, preset):
     for s in srcs:
         s.hide_set(False)
         s.hide_render = False
-    return run_preset(context, srcs, preset)
+    return run_preset(context, srcs, preset, **over)
 
 
 def _apply_preset(self, _context):
@@ -419,7 +506,7 @@ class MCH_OT_panel_cloth(bpy.types.Operator):
     quality: IntProperty(name='Quality', default=5, min=1, max=40)
     seed: IntProperty(name='Cloth Seed', default=1, min=0)
     mass: FloatProperty(name='Mass', default=0.15, min=0.001, max=10.0)
-    pressure: FloatProperty(name='Pressure', default=9.0, min=-50.0, max=80.0,
+    pressure: FloatProperty(name='Pressure', default=6.0, min=-50.0, max=80.0,
                             description='Puffs the panel up (padding); 0 = plain cloth')
     shrink: FloatProperty(name='Shrink', default=-0.05, min=-1.0, max=1.0,
                           description='Negative: the cloth is bigger than its frame - it folds')
@@ -513,13 +600,19 @@ class MCH_OT_panel_cloth_redo(bpy.types.Operator):
     bl_label = 'Panel Cloth Preset'
     bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
     preset: EnumProperty(name='Preset', items=PRESET_ITEMS, default='PADDING')
+    sliders: BoolProperty(name='Use Sliders', default=False, options={'SKIP_SAVE'},
+                          description='Re-bake with the panel sliders (otherwise the preset fills the sliders first)')
 
     @classmethod
     def poll(cls, context):
         return is_pcloth(context.active_object)
 
     def execute(self, context):
-        made = redo(context, context.active_object, self.preset)
+        st = getattr(context.scene, 'mch_wrinkle', None)
+        if st is not None and hasattr(st, 'sim_preset'):
+            if not self.sliders:
+                st.sim_preset = self.preset              # fills the sliders from the preset
+        made = redo(context, context.active_object, self.preset, **scene_overrides(st))
         if not made:
             self.report({'WARNING'}, 'The source of this cloth is gone')
             return {'CANCELLED'}
@@ -538,9 +631,19 @@ def draw(layout, context):
     r = box.row(align=True)
     r.prop(st, 'sim_after', text='Sim after lasso', toggle=True)
     r.prop(st, 'sim_preset', text='')
+    col = box.column(align=True)
+    col.prop(st, 'sim_puff', slider=True)
+    for k in ('sim_gravity', 'sim_shrink', 'sim_pressure', 'sim_bend', 'sim_frames'):
+        col.prop(st, k, slider=True)
+    col = box.column(align=True)
+    col.prop(st, 'sim_detail', slider=True)
+    col.prop(st, 'sim_face_px')
     box.operator('mch.panel_cloth', text='Panel Cloth on selection', icon='MOD_CLOTH')
     ob = context.active_object
     if is_pcloth(ob):
+        op = box.operator('mch.panel_cloth_redo', text='Re-bake (sliders / Detail)', icon='FILE_REFRESH')
+        op.preset = ob.get('mch_pcloth_preset') or st.sim_preset
+        op.sliders = True
         box.label(text=f'{ob.name}: redo with', icon='FILE_REFRESH')
         grid = box.grid_flow(columns=3, align=True)
         cur = ob.get('mch_pcloth_preset', '')

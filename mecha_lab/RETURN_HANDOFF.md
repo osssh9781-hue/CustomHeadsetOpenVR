@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.9 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.10 (Claude Code, 2026-10-14)
+
+## 0.23.10
+- ZIP sha256 `99a8b15ffd1a3e5b204abbd9e945b1d6d43f3bf7f1ca4481f806a4756f6c6b84`. `cloth_wrinkle` PG: `sim_gravity / sim_shrink / sim_pressure / sim_bend / sim_frames / sim_puff / sim_detail / sim_face_px`, `_fill_sim`(sim_preset update), `_spacing(st)`(Sim이면 max(spacing, sim_face_px)). `cloth_sim`: `DETAIL_FACES`, `_decimate`(임시 DECIMATE, 비율은 삼각형 수 기준), `build_cloth_mesh(max_faces)`, 버텍스 레이어 `mch_src_n`으로 조각별 방향 맞춤, `scene_overrides(st)`(Puff가 압력과 음수 shrink에 곱해짐), Draft(≤1500면)는 quality ≤ 4 / collision_quality 2, `bake` 진행 표시(progress_begin 없으면 생략), `redo(..., **over)`, 오퍼레이터 `sliders` 옵션.
 
 ## 0.23.9
 - ZIP sha256 `d8bc94d28360811a49ee54ff09ac0f01cb78fcc6a639ec10766b288ca19d35b3`. `cloth_sim`: `PRESETS`(9) / `preset_values` / `run_preset`, `panel_cloth(..., bend, shrink_max, random_islands, variation, collider='REGION'|'BODY'|'NONE', preset, remove_faces)`, `_region_collider`(원본 면으로 임시 COLLISION 오브젝트, 끝나면 삭제), 시작 위치 노말 방향 2 × 두께(두께 = max(입력, 크기 × 0.003)), collision_quality 3, 조각별 `mch_shrink` / `mch_pressure` 버텍스 그룹(베이크 후 삭제), Split SEAM(소스 edge use_seam / sharp), `redo` + `mch.panel_cloth_redo`, `draw()` 패널 박스. `cloth_wrinkle`: PG `sim_after`, `sim_preset`(정적 items `_SIM_PRESETS` - 문자열 annotation이라 lambda 안 됨), `_sim_after`가 perform_wrinkle 끝(일반 / Through)에서 run_preset. 헤더 Sim 토글.

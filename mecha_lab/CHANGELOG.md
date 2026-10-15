@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 0.23.10 — Panel Cloth: 슬라이더(Puff / Gravity / …), 가볍게(Draft → Detail), 뒤집힘 수정 (2026-10-15)
+
+- **슬라이더**(N 패널 › Cloth Plate › PANEL CLOTH): **Puff**(0 = 납작, 1 = 프리셋, 2 = 두 배 - 압력과 여유 천을 같이), **Gravity (sag)**(처짐 - 너무 처지면 낮추기), **Shrink (slack)**, **Pressure (puff)**, **Bend (stiffness)**, **Frames**. 프리셋을 고르면 값이 채워지고, 라쏘 직후 시뮬과 **Re-bake (sliders / Detail)** 버튼이 이 값을 씀.
+  - 테스트로 확인: 부풀기는 Pressure만이 아니라 Shrink(여유 천)도 같이 만듦(Pressure 0이어도 Shrink -0.05면 볼록) → Puff 하나로 둘 다 줄이게 함.
+- **덜 빵빵하게**: 패딩 계열 기본 압력 낮춤(Padding 9 → 6, Puffer 16 → 11, Pillow 7 → 5, Quilt 10 → 7).
+- **가볍게(멈춤 방지)**: Sim을 켜면 판을 **큰 면**으로 만듦(**Sim Face Size** 기본 24px - 일반 Face Size 8px 대신) → 천과 충돌체 모두 가벼움. **Detail 1~4**(1 Draft ≈ 1500면, 품질 낮춤 / 4 ≈ 16000면): 처음엔 1로 뽑고 모양이 정해지면 Detail 올려서 Re-bake. 너무 촘촘한 원본은 Decimate로 줄임. 굽는 동안 진행 표시.
+- **뒤집힘 수정**: 열린 판(큰 판 / 휜 판)에서 면 방향 재계산이 안쪽을 고르면 압력이 천을 몸 안쪽으로 밀어서 뒤집혀 보였음 → 원본 면의 바깥 방향(버텍스 노말)과 비교해 조각마다 맞춤.
+- 테스트: 54개 파일 2101/2101 (`tests/test_log_bpy501_v02310.txt`). ZIP sha256 `99a8b15ffd1a3e5b204abbd9e945b1d6d43f3bf7f1ca4481f806a4756f6c6b84`.
+
 ## 0.23.9 — Panel Cloth: 라쏘 영역 충돌체, 라쏘 직후 시뮬, 프리셋 9개, 조각별 랜덤 (2026-10-15)
 
 - **RandomFlow 방식 정리**(공식 문서 사이트는 이 환경에서 접속 불가 → 검색 결과 + 보내주신 화면 기준): 블렌더 내장 클로스 + Pressure / Shrink / Pin / 충돌을 짧게 굴리고 베이크, Mark Sharp / Seam으로 나뉜 조각마다 다른 값(Individual Seed, Random), Collide To Source, Remove Faces. 이 구조대로 맞춤.
