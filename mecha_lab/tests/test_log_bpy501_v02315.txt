@@ -192,15 +192,15 @@ PASS smart fuse: touching-only result reported (no crash)  -- {'CANCELLED'}
 PASS smart fuse: objects restored after touching case
 
 TIMINGS (ms, headless, includes depsgraph eval):
-  cut lasso                   3.3
-  cut rect                    2.5
-  cut circle                  6.5
-  cut ellipse                 5.9
-  cut curve_lasso             5.0
-  cut lasso_round_corners      4.0
+  cut lasso                   4.2
+  cut rect                    2.4
+  cut circle                  9.5
+  cut ellipse                 6.4
+  cut curve_lasso             5.4
+  cut lasso_round_corners      3.7
   cut rect_chamfer_corners      2.8
-  cut stroke                 11.9
-  cut custom_star             3.0
+  cut stroke                 12.7
+  cut custom_star             2.8
 
 93/93 passed
 ====================================================================== 
@@ -411,7 +411,7 @@ Info: 1 part(s) extracted (Basic); source unchanged
 PASS Basic Extract on a curved base, many faces: one part
 PASS stays in Edit Mode on the source; panel follows the new part
 PASS original mesh unchanged
-PASS extracted part is a closed solid  -- (0, 0.18849194165433808)
+PASS extracted part is a closed solid  -- (0, 0.1884919412651192)
 PASS extruded along the surface normal (outward from the sphere)  -- (0.992, 1.1)
 PASS part in "Mechanical Parts / Extracted Armor"
 Info: 1 part(s) extracted (Basic); source unchanged
@@ -450,7 +450,7 @@ PASS preset rotation (around the surface normal) changes the ridge direction
 PASS preset scale X / Y works (N-S line shortened)
 PASS Y: south stem length editable on its own
 PASS Y: north arm width editable on its own
-PASS ridge profiles sharp / flat / round / box differ  -- {'SHARP': 0.990265762079831, 'FLAT': 1.0303798579891719, 'ROUND': 1.0267085123221082, 'BOX': 1.037237607710532, 'GROOVE': 0.8925362666036931, 'SPLIT': 0.8921018307715827}
+PASS ridge profiles sharp / flat / round / box differ  -- {'SHARP': 0.9902657617193249, 'FLAT': 1.0303798575757843, 'ROUND': 1.02670851189881, 'BOX': 1.037237607266168, 'GROOVE': 0.8925362665045382, 'SPLIT': 0.8921018307191775}
 PASS groove / split cut into the part
 PASS direction rotation moves N/E/S/W (north thickness now on another side)  -- 0.191
 PASS only the extracted part was modified
@@ -527,24 +527,24 @@ PASS existing operator mch.zbrush_send still registered
 99/99 passed
 ====================================================================== 
  test_performance.py
-PASS 320 faces [AUTO] manifold cut  -- 10 ms
+PASS 320 faces [AUTO] manifold cut  -- 9 ms
 PASS 320 faces [MANIFOLD] manifold cut  -- 10 ms
-PASS 5120 faces [AUTO] manifold cut  -- 39 ms
-PASS 5120 faces [MANIFOLD] manifold cut  -- 36 ms
-PASS 20480 faces [AUTO] manifold cut  -- 102 ms
-PASS 20480 faces [MANIFOLD] manifold cut  -- 116 ms
-PASS 81920 faces [AUTO] manifold cut  -- 500 ms
-PASS 81920 faces [MANIFOLD] manifold cut  -- 475 ms
+PASS 5120 faces [AUTO] manifold cut  -- 45 ms
+PASS 5120 faces [MANIFOLD] manifold cut  -- 44 ms
+PASS 20480 faces [AUTO] manifold cut  -- 140 ms
+PASS 20480 faces [MANIFOLD] manifold cut  -- 138 ms
+PASS 81920 faces [AUTO] manifold cut  -- 1068 ms
+PASS 81920 faces [MANIFOLD] manifold cut  -- 507 ms
 
 faces      solver     ms
-320        AUTO            10
+320        AUTO             9
 320        MANIFOLD        10
-5120       AUTO            39
-5120       MANIFOLD        36
-20480      AUTO           102
-20480      MANIFOLD       116
-81920      AUTO           500
-81920      MANIFOLD       475
+5120       AUTO            45
+5120       MANIFOLD        44
+20480      AUTO           140
+20480      MANIFOLD       138
+81920      AUTO          1068
+81920      MANIFOLD       507
 
 8/8 passed
 ====================================================================== 
@@ -1481,7 +1481,7 @@ PASS Remove Station
 PASS Shell = live Solidify
 PASS Shell 0 removes it
 Info: Saved as "station.blend"
-00:01.004  blend            | Read blend: "/tmp/tmpx4043pju/station.blend"
+00:01.029  blend            | Read blend: "/tmp/tmp20qvxqvz/station.blend"
 PASS save / reload: parameters still there and live
 PASS after reload editing still rebuilds
 PASS Cut on a live Station Primitive: works, freezes it, says so  -- Cut: MCH_Panel | Station Primitive frozen (cut kept; its parameters no longer rebuild): MCH_Panel
@@ -1898,8 +1898,8 @@ PASS Cancel: this layout removed, the applied plates stay
 [Mecha Lab] cleaned stale registrations: {'classes': 267, 'props': 54, 'handlers': 13, 'draw_funcs': 4, 'keymap_items': 81, 'tools': 6}
 Info: 8 random panel(s) on Hull  | Reroll / Apply in the HUD
 PASS Edit Mode: panels only on the selected faces (the top)
-Info: 11 random panel(s) on Ball  | Reroll / Apply in the HUD
-PASS sphere: plates follow the round surface, all closed  -- 11
+Info: 10 random panel(s) on Ball | 1 cell(s) skipped  | Reroll / Apply in the HUD
+PASS sphere: plates follow the round surface, all closed  -- 10
 PASS HUD right of the mesh: Reroll, Apply, Cancel, Edge Pieces, Mirror, then two sliders
 PASS slider sets the density (and rebuilds)
 PASS HUD registered
@@ -2062,20 +2062,833 @@ PASS HUD: N E S W row and rim sliders
 PASS Cloth Wrinkle is a lasso tool of its own
 PASS wrinkle node group built with its inputs
 PASS lasso: a separate live cloth plate, the box unchanged  -- Cloth plate "Box_Wrinkle" on Box (padded panel, no pattern) | 77 point(s) past the surface edge
-PASS padded panel: the middle puffs up, the border stays near the surface  -- (2.4219002723693848, 2.1142969131469727)
+PASS padded panel: the middle puffs up, the border stays near the surface  -- (2.547266960144043, 2.1993560791015625)
 PASS defaults: puff, border folds and stitching on, no all-over pattern
 PASS Denim puffs much less than Padding
-PASS wrinkles really move the surface (not flat)  -- (2.0083224773406982, 2.3073301315307617)
+PASS wrinkles really move the surface (not flat)  -- (2.010009527206421, 2.3150291442871094)
 PASS Padding / Denim / Leather are different patterns
 PASS Reroll: new seed, new wrinkles
-PASS different seeds = different fold directions (not always the same line)  -- {0.62, 0.59, 0.67}
+PASS different seeds = different fold directions (not always the same line)  -- {0.62, 0.6, 0.67}
 PASS Direction slider turns the folds
 PASS Strength 0: flat cloth layer (only its thickness)  -- (0.05005288124084473, 0.05005272477865219)
 PASS Detail: more faces
 PASS type arrows change the live layer
 PASS Height slider lifts the whole cloth layer  -- (2.010009288787842, 2.500525951385498)
-PASS Depth slider: deeper wrinkles  -- (0.658635139465332, 1.080301284790039)
+PASS Depth slider: deeper wrinkles  -- (0.6851100921630859, 1.0819997787475586)
 Info: High poly: 1 object(s), 309,200 faces in "HighPoly"
 PASS Make High Poly on a live wrinkle layer: denser plain copy, same wrinkles, the layer stays live  -- (19856, 309200)
 PASS Fold Tilt slider leans the folds
-PASS long Fold Length: the folds reach into the middle  -- (0.0, 0.08434438705444336)
+PASS long Fold Length: the folds reach into the middle  -- (0.0, 0.12944269180297852)
+Info: Cloth Plate settings reset
+PASS Edge Trim button: none -> piping on the live panel
+PASS Sections: 3 stitched cells change the panel
+PASS Section Turn rotates the seams
+PASS seam shape button: straight -> wave
+PASS ... zigzag, chevron, arc
+PASS Section End / Move: the sections sit only in part of the panel and can slide
+PASS Randomness slider sets angle / length / strength randomness together
+PASS long folds are real lines: a height field on the panel
+PASS Length Random 0 vs 100 differ
+Info: Cloth Plate settings reset
+PASS Reset: settings and the live panel back to the defaults
+PASS HUD right of the layer: Apply, Remove, type arrows + reroll, sliders
+PASS Apply: plain mesh with the wrinkles baked
+PASS Remove: the layer is deleted
+PASS last used: the next Cloth Plate keeps tilt and puff (the same numbers)
+Info: Cloth preset "Vest" saved
+Info: Cloth preset "Vest"
+PASS user preset: save / load gives back the exact values
+PASS ... and the next Cloth Plate starts with the preset
+PASS preset delete
+PASS tool settings are remembered for a new file
+PASS HUD registered
+
+38/38 passed
+====================================================================== 
+ test_v0210.py
+PASS build_part: 10 parts x 2 categories x 2 styles give valid meshes
+Info: Robot base: 12 part(s)
+PASS humanoid whole body = 12 separate limb / shoulder / foot objects (torso, head: user)  -- 12
+PASS parts live in the Robot Base collection
+PASS every part has faces
+PASS left / right names  -- {'Robot_Calf_L', 'Robot_Foot_L', 'Robot_Shoulder_R', 'Robot_Foot_R', 'Robot_Upper_Arm_R', 'Robot_Thigh_R', 'Robot_Shoulder_L', 'Robot_Forearm_R', 'Robot_Forearm_L', 'Robot_Upper_Arm_L', 'Robot_Calf_R', 'Robot_Thigh_L'}
+PASS left and right arms sit on opposite sides
+PASS right arm mirrors the left arm
+PASS bevel modifier on parts
+PASS shoulders above thighs
+PASS foot is longer front-to-back than wide  -- [0.10864773020148277, 0.2599999922378784, 0.07997772842645645]
+PASS 4 options give 4 different torsos  -- {('HUMANOID', 'SLEEK'): (210, 87.0944), ('HUMANOID', 'RUGGED'): (88, 36.0536), ('INDUSTRIAL', 'SLEEK'): (176, 53.2351), ('INDUSTRIAL', 'RUGGED'): (120, 40.0489)}
+PASS Length slider rebuilds live  -- ([0.17131897807121277, 0.1953040212392807, 0.4446568004786968], [0.17131897807121277, 0.1953040212392807, 0.6471568159759045])
+PASS Width slider rebuilds live
+PASS Thickness slider rebuilds live
+PASS Bulge changes shape
+PASS Resolution adds sides  -- (653, 1815)
+PASS Roundness changes shape
+PASS Bottom Width changes shape (humanoid limb)
+PASS Taper changes shape (industrial limb)
+PASS bevel params reach the modifier
+PASS bevel 0 removes the modifier
+PASS Details toggle changes shape
+PASS reroll: next seed, new shape
+PASS style toggle
+PASS category toggle
+PASS details toggle op
+PASS HUD slider length  -- ('Length', 608, 10, 5000, <function slider_spec.<locals>.<lambda> at 0x7fec689b58a0>, 'Length  0.608 m')
+PASS HUD slider width  -- ('Width', 267, 5, 3000, <function slider_spec.<locals>.<lambda> at 0x7fec689b4720>, 'Width  0.267 m')
+PASS HUD slider bevel  -- ('Bevel', 13, 0, 100, <function slider_spec.<locals>.<lambda> at 0x7fec689b5120>, 'Bevel  0.013 m')
+PASS HUD slider bevel_angle  -- ('Bevel Angle', 40, 1, 180, <function slider_spec.<locals>.<lambda> at 0x7fec689b47c0>, 'Bevel Angle  40 deg')
+PASS HUD slider roundness  -- ('Roundness', 5, 0, 100, <function slider_spec.<locals>.<lambda> at 0x7fec689b5800>, 'Roundness  5 %')
+PASS HUD slider setter changes the part
+Info: Applied 1 robot part(s)
+PASS apply: plain mesh, no live, bevel baked
+PASS applied part no longer rebuilds
+Info: Robot base: 1 part(s)
+PASS add single part at scale 2
+Info: Robot base: 14 part(s)
+PASS industrial body 14 parts
+PASS industrial body: no open edges
+PASS humanoid body: no open edges
+PASS end shapes change the part
+PASS round -> square part stays closed
+PASS bottom ring is round  -- 1.0
+PASS top ring is square (corners ~1.41)  -- 1.4142135623730951
+PASS square top is axis aligned (max |x| = 1)
+PASS polygon top: 6 corners on the ring  -- (24, [0.9634330440022854, 0.9634330440022854, 1.0745699318235409, 1.0745699318235413, 1.0745699318235418, 1.0745699318235418, 1.0745699318235418, 1.0745699318235418])
+PASS middle ring is in between
+PASS Shape Change moves the morph
+PASS pentagon -> hexagon closed
+PASS end shapes work on every part
+PASS HUD shape buttons cycle shapes
+PASS Top Sides slider
+PASS HUD layout has shape buttons and all sliders
+PASS panel registered
+PASS HUD registered
+
+53/53 passed
+====================================================================== 
+ test_v0211.py
+PASS scene default: details off (plain base)
+PASS FOREARM: limb builder in use
+PASS FOREARM: closed and normals outward  -- (0, 0.0012327397482457263)
+PASS FOREARM: defaults from LIMB_SHAPES
+PASS FOREARM: one single piece (no joints)
+PASS FOREARM: thinner toward the bottom  -- (0.09385013207793236, 0.05638674274086952)
+PASS FOREARM: slider bottom_w changes the mesh
+PASS FOREARM: slider bottom_d changes the mesh
+PASS FOREARM: slider taper_start changes the mesh
+PASS FOREARM: slider bulge changes the mesh
+PASS FOREARM: slider bulge_pos changes the mesh
+PASS FOREARM: slider bulge_offset changes the mesh
+PASS FOREARM: slider split changes the mesh
+PASS FOREARM: slider split_angle changes the mesh
+PASS FOREARM: slider groove changes the mesh
+PASS FOREARM: slider groove_angle changes the mesh
+PASS FOREARM: slider ridge changes the mesh
+PASS FOREARM: slider ridge_angle changes the mesh
+PASS FOREARM: slider twist changes the mesh
+PASS FOREARM: slider bow changes the mesh
+PASS FOREARM: slider bow_angle changes the mesh
+PASS FOREARM: slider notch changes the mesh
+PASS FOREARM: slider notch_width changes the mesh
+PASS FOREARM: slider slant changes the mesh
+PASS FOREARM: slider top_slant changes the mesh
+PASS FOREARM: still closed after all sliders
+PASS UPPER_ARM: limb builder in use
+PASS UPPER_ARM: closed and normals outward  -- (0, 0.0020123395764820944)
+PASS UPPER_ARM: defaults from LIMB_SHAPES
+PASS UPPER_ARM: one single piece (no joints)
+PASS UPPER_ARM: thinner toward the bottom  -- (0.09773429483175278, 0.0802614800632)
+PASS UPPER_ARM: slider bottom_w changes the mesh
+PASS UPPER_ARM: slider bottom_d changes the mesh
+PASS UPPER_ARM: slider taper_start changes the mesh
+PASS UPPER_ARM: slider bulge changes the mesh
+PASS UPPER_ARM: slider bulge_pos changes the mesh
+PASS UPPER_ARM: slider bulge_offset changes the mesh
+PASS UPPER_ARM: slider split changes the mesh
+PASS UPPER_ARM: slider split_angle changes the mesh
+PASS UPPER_ARM: slider groove changes the mesh
+PASS UPPER_ARM: slider groove_angle changes the mesh
+PASS UPPER_ARM: slider ridge changes the mesh
+PASS UPPER_ARM: slider ridge_angle changes the mesh
+PASS UPPER_ARM: slider twist changes the mesh
+PASS UPPER_ARM: slider bow changes the mesh
+PASS UPPER_ARM: slider bow_angle changes the mesh
+PASS UPPER_ARM: slider notch changes the mesh
+PASS UPPER_ARM: slider notch_width changes the mesh
+PASS UPPER_ARM: slider slant changes the mesh
+PASS UPPER_ARM: slider top_slant changes the mesh
+PASS UPPER_ARM: still closed after all sliders
+PASS THIGH: limb builder in use
+PASS THIGH: closed and normals outward  -- (0, 0.008417540166370231)
+PASS THIGH: defaults from LIMB_SHAPES
+PASS THIGH: one single piece (no joints)
+PASS THIGH: thinner toward the bottom  -- (0.1679447740316391, 0.11390043795108795)
+PASS THIGH: slider bottom_w changes the mesh
+PASS THIGH: slider bottom_d changes the mesh
+PASS THIGH: slider taper_start changes the mesh
+PASS THIGH: slider bulge changes the mesh
+PASS THIGH: slider bulge_pos changes the mesh
+PASS THIGH: slider bulge_offset changes the mesh
+PASS THIGH: slider split changes the mesh
+PASS THIGH: slider split_angle changes the mesh
+PASS THIGH: slider groove changes the mesh
+PASS THIGH: slider groove_angle changes the mesh
+PASS THIGH: slider ridge changes the mesh
+PASS THIGH: slider ridge_angle changes the mesh
+PASS THIGH: slider twist changes the mesh
+PASS THIGH: slider bow changes the mesh
+PASS THIGH: slider bow_angle changes the mesh
+PASS THIGH: slider notch changes the mesh
+PASS THIGH: slider notch_width changes the mesh
+PASS THIGH: slider slant changes the mesh
+PASS THIGH: slider top_slant changes the mesh
+PASS THIGH: still closed after all sliders
+PASS CALF: limb builder in use
+PASS CALF: closed and normals outward  -- (0, 0.005048588434848237)
+PASS CALF: defaults from LIMB_SHAPES
+PASS CALF: one single piece (no joints)
+PASS CALF: thinner toward the bottom  -- (0.14205414056777954, 0.07181212306022644)
+PASS CALF: slider bottom_w changes the mesh
+PASS CALF: slider bottom_d changes the mesh
+PASS CALF: slider taper_start changes the mesh
+PASS CALF: slider bulge changes the mesh
+PASS CALF: slider bulge_pos changes the mesh
+PASS CALF: slider bulge_offset changes the mesh
+PASS CALF: slider split changes the mesh
+PASS CALF: slider split_angle changes the mesh
+PASS CALF: slider groove changes the mesh
+PASS CALF: slider groove_angle changes the mesh
+PASS CALF: slider ridge changes the mesh
+PASS CALF: slider ridge_angle changes the mesh
+PASS CALF: slider twist changes the mesh
+PASS CALF: slider bow changes the mesh
+PASS CALF: slider bow_angle changes the mesh
+PASS CALF: slider notch changes the mesh
+PASS CALF: slider notch_width changes the mesh
+PASS CALF: slider slant changes the mesh
+PASS CALF: slider top_slant changes the mesh
+PASS CALF: still closed after all sliders
+PASS forearm: elbow ~ 9.2 / 24.6 of the length  -- 0.38523603961227293
+PASS forearm: wrist ~ 0.58 of the elbow width  -- 0.5936481224293675
+PASS left thigh: hip cut lower on the inner side  -- (-0.023354189470410347, 0.04003458842635155)
+PASS upper arm: deeper front-back than wide
+PASS rugged limb has fewer verts
+PASS seed changes a limb
+PASS randomness 0 changes it again
+PASS limb with round -> square ends closed
+PASS limb HUD has the shape sliders
+PASS limb HUD wraps into several columns on a short view  -- {273, 493, 383}
+PASS every slider placed
+PASS HUD inside the view  -- [(236.0, 570.0), (236.0, 534.0), (272.0, 534.0)]
+PASS shoulder keeps the general sliders
+PASS all limb slider specs valid
+
+115/115 passed
+====================================================================== 
+ test_v0212.py
+PASS templates: chest / pelvis / head rings
+PASS template radii mirrored left / right
+PASS 0.22.1 humanoid panel: no torso / chest / pelvis / head (user models them)
+PASS CHEST: template builder
+PASS CHEST: closed, normals out  -- (0, 0.027113310070331256)
+PASS CHEST: measured size  -- ((0.568, 0.251, 0.394), (0.394, 0.599, 0.25))
+PASS CHEST: HUD has anatomy + 8 regions + ends
+PASS CHEST: region labels  -- ['Shoulder Width', 'Chest (Pecs)', 'Back / Lats', 'Rib Flare', 'Waist', 'Neck Base', 'Trapezius', 'Lean / Hunch']
+PASS CHEST: rg1 changes the shape
+PASS CHEST: rg2 changes the shape
+PASS CHEST: rg3 changes the shape
+PASS CHEST: rg4 changes the shape
+PASS CHEST: rg5 changes the shape
+PASS CHEST: rg6 changes the shape
+PASS CHEST: rg7 changes the shape
+PASS CHEST: rg8 changes the shape
+PASS CHEST: anatomy changes the shape
+PASS CHEST: still closed after extreme regions
+PASS CHEST: style switch rebuilds
+PASS PELVIS: template builder
+PASS PELVIS: closed, normals out  -- (0, 0.017386944176186265)
+PASS PELVIS: measured size  -- ((0.342, 0.244, 0.336), (0.336, 0.353, 0.239))
+PASS PELVIS: HUD has anatomy + 8 regions + ends
+PASS PELVIS: region labels  -- ['Hip Width', 'Waist', 'Butt', 'Belly', 'Crotch', 'Hip Depth', 'Lower Width', 'Tilt']
+PASS PELVIS: rg1 changes the shape
+PASS PELVIS: rg2 changes the shape
+PASS PELVIS: rg3 changes the shape
+PASS PELVIS: rg4 changes the shape
+PASS PELVIS: rg5 changes the shape
+PASS PELVIS: rg6 changes the shape
+PASS PELVIS: rg7 changes the shape
+PASS PELVIS: rg8 changes the shape
+PASS PELVIS: anatomy changes the shape
+PASS PELVIS: still closed after extreme regions
+PASS PELVIS: style switch rebuilds
+PASS HEAD: template builder
+PASS HEAD: closed, normals out  -- (0, 0.006480944529703284)
+PASS HEAD: measured size  -- ((0.176, 0.223, 0.328), (0.323, 0.205, 0.22))
+PASS HEAD: HUD has anatomy + 8 regions + ends
+PASS HEAD: region labels  -- ['Skull Width', 'Skull Length', 'Back of Head', 'Jaw Width', 'Chin', 'Face Flat', 'Crown', 'Neck Width']
+PASS HEAD: rg1 changes the shape
+PASS HEAD: rg2 changes the shape
+PASS HEAD: rg3 changes the shape
+PASS HEAD: rg4 changes the shape
+PASS HEAD: rg5 changes the shape
+PASS HEAD: rg6 changes the shape
+PASS HEAD: rg7 changes the shape
+PASS HEAD: rg8 changes the shape
+PASS HEAD: anatomy changes the shape
+PASS HEAD: still closed after extreme regions
+PASS HEAD: style switch rebuilds
+PASS chest: Shoulder Width x3 makes it much wider  -- (0.5676573514938354, 1.3664019107818604)
+PASS head faces +Y (nose side further out)
+PASS bulge up to 600 %  -- 0.2147163450717926
+PASS bulge shape: round / cylinder / square all differ
+PASS cylinder bulge: flat band, round bulge: soft swell
+PASS bulge width slider
+PASS extreme bulge stays closed
+PASS bottom notch lifts the middle of the bottom end  -- (-0.24400000274181366, -0.19948258996009827)
+PASS top notch lowers the middle of the top end  -- -0.04313923791050911
+PASS both notches: closed
+PASS FOREARM: top hole = closed pocket, less volume  -- (0.001009778031007058, 0.0012327397482457263, 2)
+PASS FOREARM: holes in both ends (not through)
+PASS FOREARM: depths meet -> through hole (tube, genus 1)  -- (0, 0.0008492779680589445)
+PASS FOREARM: size 0 -> no through hole
+PASS CHEST: top hole = closed pocket, less volume  -- (0.02353903696658354, 0.027113310070331256, 2)
+PASS CHEST: holes in both ends (not through)
+PASS CHEST: depths meet -> through hole (tube, genus 1)  -- (0, 0.018949859859748373)
+PASS CHEST: size 0 -> no through hole
+PASS HUMANOID CHEST rugged builds
+PASS HUMANOID PELVIS rugged builds
+PASS INDUSTRIAL CHEST rugged builds
+PASS INDUSTRIAL PELVIS rugged builds
+Info: Robot base: 12 part(s)
+PASS 0.22.1 humanoid body: no torso / chest / pelvis / head  -- ['Robot_Calf_L', 'Robot_Calf_R', 'Robot_Foot_L', 'Robot_Foot_R', 'Robot_Forearm_L', 'Robot_Forearm_R']
+Info: Robot base: 14 part(s)
+PASS industrial body keeps the torso
+PASS wide range: split = 4.00
+PASS wide range: groove = 4.00
+PASS wide range: ridge = 6.00
+PASS wide range: bottom_w = 5.00
+PASS wide range: notch = 0.60
+PASS wide range: twist = 12.57
+PASS wide range: bow = 4.00
+PASS wide range: rg1 = 6.00
+PASS wide range: anatomy = 4.00
+PASS template HUD lays out every slider
+
+85/85 passed
+====================================================================== 
+ test_v0220.py
+PASS band: straight line -> capsule area  -- 4306.14674589207
+PASS band: flat ends -> rectangle (+ the half-width ends)  -- 4400.0
+PASS band: tight zigzag has no self crossings
+PASS band: tiny path -> nothing
+PASS band: curve with wide line stays simple
+PASS Line button props
+PASS Line mode off by default
+PASS pixels per unit (ortho 100 px / m)  -- 99.99999646097442
+PASS line preview is a closed band
+PASS Armor Plate from a 2-point line  -- ({'FINISHED'}, 'Armor plate "Box_Plate" on Box (Chamfer 45, 42 clean faces) | 6 point(s) past the surface edge')
+PASS plate strip is about Line Width wide  -- (4.4, 0.4, 0.177)
+PASS Cloth Plate from a line  -- ({'FINISHED'}, 'Cloth plate "Box_Wrinkle" on Box (padded panel, no pattern) | 64 point(s) past the surface edge')
+PASS Base Mesh from a line  -- ({'FINISHED'}, 'Base Mesh created: MCH_Base (Flat, 236 verts, closed solid)')
+PASS Cut with a line = groove (removes about width x length x depth)  -- ({'FINISHED'}, 'Cut: Box', 64.0, 57.6)
+PASS cut box stays closed
+PASS Line off: lasso area as before
+PASS Line off: 2 points still refused for Armor Plate  -- ({'RUNNING_MODAL'}, 'This tool needs a closed outline (3+ points)')
+PASS Line only for lasso shapes
+
+18/18 passed
+====================================================================== 
+ test_v0221.py
+PASS no presets in a fresh config
+PASS preset enum shows a hint when empty
+Info: Detail preset "Hex Bolt" saved
+PASS add selected as preset  -- ['Hex Bolt']
+PASS preset file in the config folder
+PASS preset chosen after adding
+PASS preset mesh loads, scale baked, origin kept at the bottom  -- 0.20000000298023224
+PASS loading twice reuses the mesh
+PASS bad names are made safe
+PASS place: on top, Z up, sunk 10 % of the height
+PASS place: side wall, Z along the normal, scaled
+PASS place: turn around the normal
+PASS stamp starts: preview follows the mouse
+PASS preview sits on the top face, sunk a little  -- (0.5, 0.2, 0.98)
+PASS click places it right there (no Apply), still stamping  -- ['Box', 'Hex Bolt', 'MCH_DetailPreview']
+PASS placed detail is its own object in "Mecha Details"
+PASS Ctrl+Wheel turns
+PASS Shift+Wheel sizes
+PASS Alt+Wheel sinks less
+PASS plain wheel = view zoom (pass through)
+PASS second click places a second one
+PASS off the mesh: preview hidden, click does nothing
+PASS no placement in empty space
+PASS right click stops, preview removed
+PASS box untouched
+PASS Join to Surface adds the detail into the box mesh  -- 16
+PASS on a side face the detail turns to the face normal  -- (0.0, -1.0, 0.0)
+Info: Deleted preset "Hex Bolt"
+PASS delete preset removes the file
+PASS panel registered
+
+28/28 passed
+====================================================================== 
+ test_v0222.py
+PASS Surface toggle + gap props, off by default
+PASS Surface for Cut / Split (+ plates since 0.22.2)
+PASS enabled for Cut and Split, not Base Mesh
+PASS first click sticks to the mesh
+PASS points stay on the mesh when the view turns (stored in 3D)
+PASS front points are on the front surface  -- [(-0.3, -0.39752, 0.0), (0.3, -0.39752, 0.0)]
+PASS back points on the back surface  -- [Vector((-0.30000001192092896, -0.39752197265625, 1.3606040738523006e-08)), Vector((0.30000001192092896, -0.39752197265625, 1.3606040738523006e-08)), Vector((0.30000007152557373, 0.3975830078125, 1.3609678717330098e-08)), Vector((-0.30000001192092896, 0.39752197265625, 1.3606040738523006e-08))]
+PASS lines follow the surface (around the side, not through)
+PASS hover segment to the mouse
+PASS drag a point: it moves along the surface  -- (0.30000001192092896, -0.39752197265625, 0.40000003576278687)
+PASS Backspace removes the last point
+PASS Enter: closes and splits the arm into 2 parts  -- ('Surface Lasso: 2 parts', 4)
+PASS cut near the loop height, with a gap  -- (0.0002500136033631861, -0.0002499863912817091)
+PASS both parts closed (printable)  -- [0, 0]
+PASS original object kept as the bigger part
+PASS loop only on the top face: reported, mesh unchanged  -- Surface Lasso: the loop does not go all the way around the part (nothing came off)
+PASS less than 3 points: not finished
+PASS 2 points -> asks for more
+PASS click in empty space starts nothing
+PASS Q = Select <-> last tool, V = pie (0.23.2)  -- [('mch.toggle_last_tool', 'Q', 0), ('mch.tool_pie', 'V', 0)]
+PASS humanoid parts: no torso / head
+PASS operator registered
+
+22/22 passed
+====================================================================== 
+ test_v0223.py
+PASS Surface for Armor Plate and Cloth Plate too
+PASS outline points on the surface, seen from two sides  -- [1.48, 1.478, 1.477, 1.48, 1.48]
+PASS Enter: a live Armor Plate from the surface outline  -- Armor plate "Ball_Plate" on Ball (Chamfer 45, 222 clean faces)
+PASS plate sits on the ball, on the drawn side (front-right)  -- (1.0, 0.55, -1.15)
+PASS plate keeps its outline for live edits (HUD sliders)
+PASS Enter: a live Cloth Plate from the surface outline  -- Cloth plate "Ball_Wrinkle" on Ball (padded panel, no pattern) | 2 point(s) past the surface edge
+PASS Line + Surface: an Armor Plate strip along the surface  -- Armor plate "Ball_Plate.001" on Ball (Chamfer 45, 267 clean faces)
+PASS strip about Line Width wide  -- (1.828, 0.381, 0.402)
+PASS 2 points (no Line): asks for 3
+PASS view along the drawn area: centred, fits
+
+10/10 passed
+====================================================================== 
+ test_v0230.py
+PASS SMOOTH: open path starts and ends at the end points  -- 25
+PASS BSPLINE: open path starts and ends at the end points  -- 41
+PASS LINEAR: open path starts and ends at the end points  -- 25
+PASS Smooth passes through every point
+PASS B-Spline is softer (does not reach the middle points)
+PASS Closed: 4 segments, back near the start
+PASS radius is interpolated along the curve
+PASS frames: orthonormal
+PASS tube with FLAT caps: closed, normals out  -- (0, 0.09232336913998994)
+PASS tube with ROUND caps: closed, normals out  -- (0, 0.09617112854016178)
+PASS open caps: open tube ends
+PASS hole: hollow pipe, closed walls
+PASS closed ring tube: closed
+PASS SQUARE profile: closed
+PASS FLAT profile: closed
+PASS twist changes the tube
+PASS repeat: 5 spheres along the curve
+PASS repeat spacing: first / last at the ends
+PASS Tube tool in the tool list, toolbar and pie
+PASS first click makes a live tube object
+PASS 3 points -> a solid tube right away (not a curve line)
+PASS air points at the depth of the first point (3D cursor plane)  -- [(-2.0, 0.0, 0.0), (0.0, 0.0, 1.0), (2.0, 0.0, 0.0)]
+PASS drag a point
+PASS click on the line inserts a point
+PASS Ctrl+Wheel on a point: its radius
+PASS orange radius handle beside the point, at its radius
+PASS drag the orange handle: that point gets radius 0.3  -- ('RADIUS', 'Radius: 0.3000', 0.2999999904384214)
+PASS other points keep their radius
+PASS X on a point deletes it
+PASS point on a mesh sits on its surface  -- (0.0, -1.0, -2.999999761581421)
+PASS done keeps the live tube
+PASS Sides slider rebuilds
+PASS Radius slider  -- (3.3494019508361816, 3.6988043785095215)
+PASS profile changes the tube
+PASS cap changes the tube
+PASS hole changes the tube
+PASS spline changes the tube
+PASS closed changes the tube
+PASS twist changes the tube
+PASS taper_end changes the tube
+PASS resolution changes the tube
+PASS Repeat: spheres along the curve
+PASS Repeat an object
+PASS Repeat count
+Info: Applied 1 tube(s)
+PASS Apply: plain mesh, points gone
+PASS one point only: removed on done
+PASS operators registered
+
+47/47 passed
+====================================================================== 
+ test_v02315.py
+PASS big then small panel: sizes differ a lot  -- (4.972, 0.461)
+PASS remembered lengths scaled to the new panel (Pinch Length, Puff)  -- (0.14289464056491852, 0.14289463611404035)
+PASS non-length values copied exactly (Fan)
+PASS the small panel stays small (no shards)  -- 0.454
+Info: Cloth preset "BigPreset" saved
+Info: Cloth preset "SmallPreset" saved
+Info: Cloth preset "SmallPreset"
+PASS preset from a small panel on a big one: Puff follows the size  -- (0.19886130094528198, 0.1988613138434791)
+PASS presets store the panel size of their lengths
+PASS absurd remembered lengths are clamped on a new panel (Puff, Fold Length, Crumple, thickness)  -- (0.13828513026237488, 0.9219008684158325, 0.023047521710395813, 0.4609504390775495)
+PASS ... and the panel stays small
+PASS Billow: lower preset default, an old absolute Billow is dropped
+PASS Cloth Plate and Panel Cloth are the 0.23.9 ones (no Center Calm / membrane / Panel Cloth sliders)
+PASS a length remembered without its size (old file) is dropped, others kept  -- {'Fan': 3.0}
+PASS Space no longer opens the tool menu
+PASS Space + mouse move shifts every point by the mouse motion (stroke still running)  -- ([(330.0, 330.0), (670.0, 330.0), (680.0, 660.0)], [(370.0, 280.0), (710.0, 280.0), (720.0, 610.0)])
+PASS after Space is released the mouse no longer moves the outline
+
+14/14 passed
+====================================================================== 
+ test_v0232.py
+PASS V = tool pie, Q = toggle
+PASS Mesh Curve = the new curve tool, old one hidden
+PASS mirror button = lean gesture kept live
+PASS Cloth Plate Gravity input + HUD slider
+PASS Distance spacing: a copy every 0.25 on a 2 m curve = 9  -- 9
+PASS Repeat linked object every 0.5  -- 40
+PASS Spacing slider
+PASS linked: editing the source object updates the curve  -- 234
+PASS Count spacing still works
+PASS point / radius gizmo group and button bar registered
+PASS bar button MODE
+PASS bar button CLOSED
+PASS bar button SPLINE
+PASS bar button PROFILE
+PASS bar button CAP
+PASS bar button SPACING
+PASS bar: every button and slider placed at the bottom centre
+PASS all bar slider specs valid
+PASS Radius slider sets the radius
+
+19/19 passed
+====================================================================== 
+ test_v0233.py
+PASS IK: segment lengths kept  -- [0.9999999951105565, 0.9999999925494194, 0.9999999399296922]
+PASS IK: root pinned
+PASS IK: tip reaches a reachable target  -- (1.9999998807907104, 1.4999994039535522, 0.0)
+PASS IK: unreachable target -> chain stretches toward it
+PASS IK: dragging a middle point pulls the rest like a rope
+PASS IK unpinned: the whole chain follows
+PASS IK toggle (bar button)
+PASS IK pin option, default on
+PASS Fold Asymmetry + Fold Thinness inputs and HUD sliders
+PASS Fold Sharp range widened
+PASS asymmetric section: steep side + crease + soft side in the fold field
+PASS fold width floor from the panel resolution (no beads)
+
+12/12 passed
+====================================================================== 
+ test_v0234.py
+PASS standing cloth plate made  -- Cloth plate "Box_Wrinkle" on Box (padded panel, no pattern) | 203 point(s) past the surface edge
+PASS Fold Direction input (Up / Down / Random), Up by default
+PASS folds exist on the standing panel  -- (37, 37)
+PASS Up: going upward a fold rises over a long gentle slope, drops on a short steep wall  -- (1380, 995)
+PASS Down: the steep wall is underneath  -- (998, 1377)
+PASS five skins (+ Croc Back since 0.23.6) + four border finishes
+PASS skin inputs in the node group
+PASS every skin preset makes a creature skin plate  -- [True, True, True, True, True]
+PASS skins are displaced (scales / warts / cracks show up)  -- [(78010, 0.1784), (78010, 0.3366), (78010, 0.1672), (78010, 0.1743), (78010, 0.1775)]
+PASS cloth features off on a skin (puff low, no stitch / trim / pinch)
+PASS scales get smaller toward the border (Edge Shrink on)
+Info: Creature skin: Dragon
+PASS Skin button cycles the preset
+PASS Edge button cycles the border finishing
+PASS skin HUD: skin + edge buttons, skin sliders only on a creature
+PASS bottom toolbar: Skin + Shell buttons
+Info: Creature Skin: draw on the mesh
+PASS Skin brush = Cloth Plate with the creature layer
+Info: Creature Shell: draw on the mesh
+PASS Shell brush = Armor Plate with the creature layer
+PASS shell node group + inputs
+PASS Shell lasso: an armor plate with the shell layer, body unchanged  -- Armor plate "Body_Plate" on Body (Chamfer 45, 30 clean faces) | 7 point(s) past the surface edge
+PASS shell faces outward (toward the viewer)  -- (0.0, 0.0, 1.0)
+PASS hard plates + bulges displace the plate
+PASS Lift S raises the plate edge off the body  -- (2.2187, 2.4479)
+PASS Lift S toggles back off
+PASS N / E / W lift toggles
+PASS reroll = new random plates
+PASS Gravity moves the raised parts
+PASS shell values remembered for the next shell
+PASS Remove Shell
+PASS Add Shell to any plate
+Info: Creature Skin: draw on the mesh
+
+29/29 passed
+====================================================================== 
+ test_v0235.py
+PASS shell: Organic / Edge Shrink / Shrink Width / Edge Irregular inputs, appended after the old ones
+PASS shell HUD sliders for them
+PASS Shrink Width scales with the plate
+PASS shell plate made  -- Armor plate "Body_Plate" on Body (Chamfer 45, 30 clean faces) | 7 point(s) past the surface edge
+PASS Organic bends the plates (the surface changes)
+PASS Edge Shrink: the inside keeps its wide plates, the border gets smaller ones  -- (94, 44090, 0.0, 0.15627169609069824)
+PASS Edge Irregular moves the small-plate border
+PASS skin: Skin Organic / Skin Irregular inputs + sliders
+PASS skin plate made  -- Creature skin "B2_Wrinkle" on B2 (Godzilla) | 137 point(s) past the surface edge
+PASS Skin Organic bends the scale edges
+PASS Skin Irregular moves the shrink border
+
+11/11 passed
+====================================================================== 
+ test_v0236.py
+PASS six skins, Croc Back is Skin 6
+PASS scales built round (dome from the scale centre + narrow groove), spikes, keel
+PASS crocodile / dragon / croc back plates made
+PASS each is displaced  -- {'CROC': 0.1784, 'DRAGON': 0.3366, 'CROC_BACK': 0.2644}
+PASS dragon spikes stick out far above the pebbles (more than the croc scales)  -- (5.39, 1.77)
+
+5/5 passed
+====================================================================== 
+ test_v0237.py
+PASS Through + Crease brush options
+PASS through: a band over a cylinder takes the front AND the back (2 panels)  -- [(-1.0, 7.559235370990791e-08), (-7.57475717705347e-08, 1.0)]
+PASS through: the front panel is the top half, the back the bottom half  -- [(-1.0, 7.559235370990791e-08), (-7.57475717705347e-08, 1.0)]
+PASS through: the panels follow the outline (x within the band)  -- (-1.0, 1.0)
+PASS through: the region is refined to the Face Size (many small faces)  -- 6784
+PASS through: sharp creases split the panels (cube: 6 sides at 50 deg)  -- 6
+PASS through: Crease 180 = only the silhouette splits (front + back)  -- 2
+PASS Cloth Plate Through: a front and a back cloth layer around the cylinder  -- ('Cloth plate through Cylinder: 2 panel(s) (front / back / creases)', [(-0.9999999403953552, 1.258693345107531e-07), (-7.116921807437393e-08, 1.0)])
+PASS Cloth Plate Through: every layer has folds
+PASS Armor Plate Through: a front and a back plate  -- Armor plate through Cylinder: 2 plate(s) (Chamfer 45, front / back / creases)
+PASS Through plates keep their outline + panel for Face Size
+PASS Face Size rebuild of a Through plate  -- (True, 131, 1773)
+PASS Puffer / Cotton / Drape types
+PASS Crumple layer inputs
+PASS each type makes a cloth plate
+PASS older type unchanged: no crumple / billow
+PASS Puffer: 5 stitched channels, no border folds or fans
+PASS Cotton: crumple creases on, Drape: big billows on
+PASS the crumple layer shapes the cloth  -- 0.09122234582901001
+
+19/19 passed
+====================================================================== 
+ test_v0238.py
+PASS Pinch 2 input + two HUD sliders (big / small folds)
+PASS new layers start with Pinch 2 = Pinch 1 (same look as before)
+PASS Pinch 2 alone changes the small folds
+PASS Pinch 1 alone changes the big folds
+PASS the two act on different folds
+PASS Panel Cloth: a new _PCloth object, the source only hidden
+PASS baked: no cloth modifier left, a Subdivision modifier on top
+PASS subdivided before the sim (Cuts)  -- 1369
+PASS Pressure puffs the panel up, the pinned border stays  -- 1.24
+PASS not through the body (collider)  -- 1.011
+PASS the body got its temporary collider removed again
+PASS cloth helpers: collider of a cloth layer = its body
+PASS Through front + back -> one joined cloth around the cylinder  -- 1
+PASS the seams are welded: only the two sleeve ends are open  -- (-1.002, 1.002)
+Info: Panel Cloth: 1 cloth object(s), 5 frames baked
+PASS Panel Cloth operator
+Info: Panel Cloth: 1 cloth object(s), 5 frames baked
+PASS Panel Cloth from selected faces (Edit Mode)
+
+16/16 passed
+====================================================================== 
+ test_v0239.py
+PASS presets: padding family + cloth family
+PASS padding presets puff (pressure), cloth presets do not puff and fold (shrink < 0)
+PASS padding stronger than 0.23.8 (pressure 4)
+PASS Sim toggle + preset on the Cloth Plate settings
+PASS Sim after lasso: a baked _PCloth, the cloth layer hidden  -- Cloth plate "Box_Wrinkle" on Box (padded panel, no pattern) | Panel Cloth (Puffer): 1 baked
+PASS the source cloth plate is kept (hidden)
+PASS the temporary region collider is gone, the body untouched
+PASS puffed up above the box top, nothing sunk into it  -- (2.014, 2.776)
+Info: Panel Cloth: Cloth
+PASS redo: the same source baked again with another preset (one cloth object, not two)
+PASS Cloth preset: flatter than Puffer (folds, no puff)  -- (0.159, 0.776)
+PASS Split Angle: a cube becomes 6 separate pieces  -- 6
+PASS random per piece: the shrink / pressure groups are cleaned up after the bake
+PASS Split Seam: the marked seam opens (more border points)  -- (48, 32)
+Info: Panel Cloth: 1 cloth object(s), 4 frames baked
+PASS Remove Faces: the selected faces leave the source mesh
+
+14/14 passed
+====================================================================== 
+ test_v090_features.py
+PASS mesh curve draw starts
+PASS polyline points are Straight (VECTOR) by default  -- ['VECTOR', 'VECTOR', 'VECTOR', 'VECTOR']
+PASS clicking an existing point makes it Smooth (no new point)
+PASS double-clicking a point toggles it Smooth
+PASS clicking again toggles back to Straight
+PASS S switches new points to Smooth
+PASS Backspace keeps the remaining point types
+PASS Enter creates the live Mesh Curve  -- ['Live curve created. Sidebar: Resolution, Rotation, Twist, Smooth/Straight.']
+PASS new live nodes present (twist, profile rotation)
+PASS free draw samples many points  -- 40
+PASS free draw points are Smooth (AUTO), not straight  -- {'AUTO'}
+Info: 3 points set to Smooth
+PASS All Smooth works in Object Mode
+PASS straight (VECTOR) segments have no in-between rows
+PASS smooth points really curve the sweep (bulges above the straight segment y=0.5)  -- 0.7424572706222534
+PASS Curve Resolution controls the sweep density  -- (288, 2080)
+PASS Profile Segments controls the round section
+PASS Rotation Z rotates the cross-section
+PASS Rotation X rotates the cross-section
+PASS Twist turns the section along the path (start fixed, rest rotated)
+PASS old live curve is rebuilt with the new nodes
+PASS bake still works
+PASS array Rotation Z turns every copy
+PASS array Twist changes copy orientation along the path
+PASS Curve Edit Mode double-click keymap is ACTIVE (was inactive since v0.5.9)
+Info: SubD Plane created: Tab to edit, extrude edges with E
+PASS SubD Plane created with Simple -> Catmull-Clark -> Solidify  -- [('MCH_SubD_Simple', 'SUBSURF', 'SIMPLE'), ('MCH_SubD_CatmullClark', 'SUBSURF', 'CATMULL_CLARK'), ('MCH_SubD_Solidify', 'SOLIDIFY', None)]
+PASS Simple and Catmull-Clark act together (independent sliders)  -- (6, 48, 2176)
+PASS both levels written to their own modifier
+PASS levels limited to 0..5
+PASS Solidify thickness/offset live
+PASS modifiers visible in Edit Mode
+Info: Crease 0.80 on 1 edges
+PASS edges can be extruded in Edit Mode, crease written to selected edges
+Info: MCH_SubDPlane: SubD stack applied (4288 faces)
+PASS Apply All bakes the stack in order  -- (4288, 4288)
+PASS SubD stack can be added to an existing mesh
+PASS Rotate Each Copy defaults OFF (scene and object)
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+PASS copies keep the source orientation when Rotate Each Copy is OFF
+PASS OFF: all copies share the source axes (no tilt)  -- {(1.0, -0.0, -0.0), (0.0, 0.0, 1.0), (-0.0, 1.0, -0.0)}
+PASS ON: copies turn along the ring (more edge directions)  -- 7
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+PASS Ring Rotation X tilts the whole ring into the XZ plane  -- (0.1000000536441803, 1.8320508003234863)
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+PASS Copy Rotation Z turns each copy in place (long axis now Y)  -- <Vector (0.0000, 0.4000, 0.0000)>
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+PASS Start Angle moves the first copy  -- 30.00000044529205
+PASS old radial arrays are upgraded with rotation nodes
+Info: Radial Array confirmed. Original source remains available (possibly hidden).
+PASS radial bake still works
+PASS Normal Split unchanged (volumes 6 + 2)
+PASS Gap Split removes a strip of Gap Width (piece 0.8², hole 1.2²)  -- (5.11999977111816, 1.2800000381469727, 'Gap split: Target')
+PASS Gap Split parts are separate closed objects
+PASS gap stays centred on the drawn outline
+PASS straight Gap Split: two halves 0.2 apart, centred  -- (-0.10000002384185791, 0.10000002384185791)
+PASS straight Gap Split capped
+PASS polyline Gap Split works
+PASS curved (circle) Gap Split closed
+PASS Gap Split with Cap OFF leaves open shells
+[Mecha Lab] cut failed: The drawn shape covers the whole of "Target", so cutting would delete all of it; nothing was changed. Draw over only part of the object. [shape covers 8/8 vertices of Target | shape px (375,375)-(625,625) in ? | ORTHO | Alt/invert off | Mecha Lab 0.23.15]
+PASS too wide gap refused, mesh unchanged  -- The drawn shape covers the whole of "Target", so cutting would delete all of it; nothing was changed. Draw over only part of the object. [shape covers 8/8 vertices of Target | shape px (375,375)-(625,625) in ? | ORTHO | Alt/invert off | Mecha Lab 0.23.15]
+PASS Gap Split with Auto Apply OFF refused with message
+PASS NORMAL: Side A bevel only (A rounded, B sharp)  -- (36, 12, 6, 6, 'Split: Target | A bevel: 8 edges')
+PASS NORMAL: original cube corners untouched by the side bevel
+PASS GAP: Side A bevel only (A rounded, B sharp)  -- (36, 12, 6, 6, 'Gap split: Target | A bevel: 8 edges')
+PASS GAP: original cube corners untouched by the side bevel
+PASS Swap Sides exchanges A/B settings
+PASS plane split: Side B chamfered, Side A plain
+PASS Cut Edge Finish unchanged by the Split side settings
+PASS Sharp keeps the outline
+PASS Chamfer: two points per corner, cut back by Corner Width
+PASS Round: Corner Segments controls the arc
+PASS Corner Width controls the size
+PASS width is clamped on short edges (no overlap)
+PASS live preview while drawing Lasso: NONE corners (3 pts)  -- 3
+PASS live preview while drawing Lasso: CHAMFER corners (6 pts)  -- 6
+PASS live preview while drawing Lasso: ROUND corners (21 pts)  -- 21
+PASS live preview while dragging a Rectangle shows rounded corners
+PASS rounded-corner rectangle cut applied, closed
+
+70/70 passed
+====================================================================== 
+ test_workspace_data.py
+PASS configure_screen picks the 3D view
+PASS toolbar / tool header / sidebar shown
+PASS configure_screen keeps areas (only region flags; <=4px rect recompute)  -- ([('PROPERTIES', 1579, 23, 339, 839), ('OUTLINER', 1579, 865, 339, 189), ('DOPESHEET_EDITOR', 2, 23, 1574, 74), ('VIEW_3D', 2, 100, 1574, 954)], [('PROPERTIES', 1579, 23, 339, 839), ('OUTLINER', 1579, 865, 339, 189), ('DOPESHEET_EDITOR', 2, 23, 1574, 74), ('VIEW_3D', 0, 98, 1578, 956)])
+PASS no left tool area on stock Layout
+PASS register created no workspace
+PASS find_mecha_workspace none by default
+PASS stock workspace not detected as MECHA
+PASS tagged workspace detected (even if renamed)
+PASS Ortho Lock forces ORTHO on a 3D view
+PASS Ortho Lock operator registered
+PASS Ortho Lock timer re-armed when a locked file is loaded
+PASS addon keymap: 0.23.13 no Space tool menu (Space moves the outline while drawing)  -- [('3D View', 'mch.primitive_rmb', 'RIGHTMOUSE'), ('3D View', 'mch.toggle_last_tool', 'Q'), ('3D View', 'mch.tool_pie', 'V'), ('3D View Tool: Object, Mecha Cut', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Cut', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Cut', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Cut', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Cut', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Cut', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Cut', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Cut', 'mch.lasso_sketch_clear', 'ESC'), ('3D View Tool: Object, Mecha Cut', 'mch.lasso_sketch_undo', 'BACK_SPACE'), ('3D View Tool: Object, Mecha Cut', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Cut', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Cut', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Split', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Split', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Split', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Split', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Split', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Split', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Split', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Split', 'mch.lasso_sketch_clear', 'ESC'), ('3D View Tool: Object, Mecha Split', 'mch.lasso_sketch_undo', 'BACK_SPACE'), ('3D View Tool: Object, Mecha Split', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Split', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Split', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.base_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.base_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.base_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.base_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.base_sketch_clear', 'ESC'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.base_sketch_undo', 'BACK_SPACE'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_click', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_key', 'RET'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_key', 'RET'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_alt', 'LEFT_ALT'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_alt', 'RIGHT_ALT'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_alt', 'LEFT_ALT'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_alt', 'RIGHT_ALT'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_undo_key', 'Z'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_undo_key', 'Z'), ('3D View Tool: Object, Mecha Primitive', 'mch.primitive_rmb', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_hide', 'ESC'), ('3D View Tool: Object, Mecha Primitive', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.lasso_sketch_clear', 'ESC'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.lasso_sketch_undo', 'BACK_SPACE'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.lasso_sketch_clear', 'ESC'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.lasso_sketch_undo', 'BACK_SPACE'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.stamp_rotate', 'R'), ('Object Mode', 'mch.hotkey', 'B'), ('Object Mode', 'mch.hotkey', 'C'), ('Object Mode', 'mch.select_move_key', 'F'), ('Curve', 'mch.double_click_point', 'LEFTMOUSE')]
+PASS addon keymap: B/C via gated mch.hotkey only
+PASS no ungated mch.boolean / draw_delete_cut keys
+PASS unregister removes all addon keymap items
+PASS unregister removes tool header palette
+PASS re-register/unregister leaves no duplicate keys
+
+17/17 passed
+====================================================================== 
+ test_zbrush_bridge.py
+Writing to /tmp/mch_zb_y4l6a067/PartA__8e4444a129ef.obj
+OBJ export of 'PartA__8e4444a129ef.obj' took 2.16 ms
+Info: File exported successfully
+Writing to /tmp/mch_zb_y4l6a067/PartB__9f8f3245ff42.obj
+OBJ export of 'PartB__9f8f3245ff42.obj' took 98787 ns
+Info: File exported successfully
+Info: Sent 2 object(s) to /tmp/mch_zb_y4l6a067
+PASS send: one OBJ per selected object (no join)  -- ['PartA__8e4444a129ef.obj', 'PartB__9f8f3245ff42.obj']
+PASS objects stay separate in Blender
+PASS selection restored after send
+PASS manifest written with ids
+Info: Updated 0, unchanged 2, re-created 0
+PASS import with no ZBrush changes leaves meshes alone
+OBJ import of 'PartA__8e4444a129ef.obj' took 1.60 ms
+Info: Updated 1, unchanged 1, re-created 0
+PASS import back replaces only the changed object
+PASS object transform kept
+PASS modifiers kept
+PASS geometry really changed  -- (2.0, 3.571229100227356)
+PASS previous mesh kept as backup (fake user)
+Writing to /tmp/mch_zb2_aw7x4fve/Exact__a61ced171112.obj
+OBJ export of 'Exact__a61ced171112.obj' took 0.18 ms
+Info: File exported successfully
+Info: Sent 1 object(s) to /tmp/mch_zb2_aw7x4fve
+OBJ import of 'Exact__a61ced171112.obj' took 0.20 ms
+Info: Updated 1, unchanged 0, re-created 0
+PASS unchanged round trip restores local coordinates (<1e-5)  -- 9.310543150790517e-07
+Writing to /tmp/mch_zb2_aw7x4fve/Renamed__97def8deae7a.obj
+OBJ export of 'Renamed__97def8deae7a.obj' took 0.14 ms
+Info: File exported successfully
+Info: Sent 1 object(s) to /tmp/mch_zb2_aw7x4fve
+OBJ import of 'Renamed__97def8deae7a.obj' took 0.16 ms
+Info: Updated 1, unchanged 1, re-created 0
+PASS renamed object found by id and updated
+OBJ import of 'Renamed__97def8deae7a.obj' took 0.19 ms
+Info: Updated 0, unchanged 1, re-created 1
+PASS deleted object re-created from its file
+Warning: Updated 0, unchanged 1, re-created 0 | RenamedLater: file missing
+PASS missing file reported, no crash
+PASS status lists the missing file  -- [('Exact', 'Exact__a61ced171112.obj', 'sent'), ('RenamedLater', 'Renamed__97def8deae7a.obj', 'missing')]
+Writing to /tmp/mch_zb3_5f4568gn/Shared1__d2b64d76c634.obj
+OBJ export of 'Shared1__d2b64d76c634.obj' took 0.22 ms
+Info: File exported successfully
+Info: Sent 1 object(s) to /tmp/mch_zb3_5f4568gn
+OBJ import of 'Shared1__d2b64d76c634.obj' took 0.22 ms
+Info: Updated 1, unchanged 0, re-created 0
+PASS shared mesh: twin keeps the original data
+PASS GoZ is detected only as information (None here)
+
+17/17 passed
+====================================================================== 
+ test_zip_install.py
+PASS dist zip exists  -- ['/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.9.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.10.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.11.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.11.1.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.11.2.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.11.3.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.12.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.13.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.13.1.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.13.2.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.14.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.14.1.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.14.2.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.14.3.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.14.4.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.15.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.16.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.17.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.18.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.18.1.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.18.2.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.19.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.19.1.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.19.2.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.19.3.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.20.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.20.1.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.20.2.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.20.3.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.20.4.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.21.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.21.1.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.22.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.22.1.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.22.2.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.1.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.2.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.3.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.4.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.5.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.6.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.7.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.8.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.9.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.10.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.11.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.12.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.13.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.14.zip']
+PASS user_default repo available
+STATUS Installed "mecha_lab"
+PASS package_install_files FINISHED
+PASS extension enabled  -- ['io_anim_bvh', 'io_curve_svg', 'io_mesh_uv_layout', 'io_scene_fbx', 'io_scene_gltf2', 'cycles', 'pose_library', 'bl_pkg', 'bl_ext.user_default.mecha_lab']
+PASS operators available after install
+PASS addon preferences registered (hotkey switches)
+PASS cycle 0: disable works
+PASS cycle 0: no hotkeys left after disable
+PASS cycle 0: re-enable works (no "already registered")
+PASS cycle 0: keymap items not duplicated  -- 81
+PASS cycle 1: disable works
+PASS cycle 1: no hotkeys left after disable
+PASS cycle 1: re-enable works (no "already registered")
+PASS cycle 1: keymap items not duplicated  -- 81
+PASS cycle 2: disable works
+PASS cycle 2: no hotkeys left after disable
+PASS cycle 2: re-enable works (no "already registered")
+PASS cycle 2: keymap items not duplicated  -- 81
+PASS Mirror panel available after cycles
+
+19/19 passed
+
+FAILED FILES: none

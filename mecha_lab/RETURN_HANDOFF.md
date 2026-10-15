@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.14 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.15 (Claude Code, 2026-10-14)
+
+## 0.23.15
+- ZIP sha256 `a7a7cac6be32384cafdc42573e6012adf22c5a8606bf25bd790c740b052b6e11`. `cloth_wrinkle.py` / `cloth_sim.py` = 커밋 b77013d(0.23.9). cloth_wrinkle 위에 다시 넣은 것: SIZE_TAG / `recalled` / `with_sizes` / `clamp_lengths`(0.23.14 + Crumple·Billow), Billow 프리셋 값 낮춤. test_v02310~v02312 삭제, test_v02313 → test_v02315(Space + 지난번 값), 0.23.10 이후 클로스 때문에 고쳤던 옛 테스트(v0200, v0234, v0238, v0239)는 0.23.9 버전으로.
 
 ## 0.23.14
 - ZIP sha256 `61f3abe51220749d0c33ceab7e2d181a0188986dce8fbccd571e380333b5501f`. `cloth_wrinkle.set_input`: SIZE_INPUTS 값을 기억할 때 `<이름>@size` = 그 판의 `mch_wrinkle_size`도 기억(`_thickness@size`도). `recalled(values, size)`: 비율 0.5~2 = 그대로, 그 밖 = ×비율, @size 없는 길이 값은 버림. `capture`(프리셋 저장)에 @size 포함, `with_sizes`로 예전 프리셋은 선택된 판 크기로 간주. `_wrinkle_layer`와 creature 경로가 `recalled` 사용.

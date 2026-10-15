@@ -29,7 +29,6 @@ MOD = 'MCH_Wrinkle'
 MOD_SHELL = 'MCH_WrinkleShell'
 COLL = 'Cloth Wrinkles'
 EDGE_ATTR = 'mch_edge_dist'
-EDGE_SMOOTH = 'mch_edge_smooth'   # 0.23.13 membrane height (Poisson): a round puff, no X ridge to the corners
 TYPES = (('PADDING', 'Padding', 'Puffy padded panel, soft folds from the seams (pattern: stitched channels)'),
          ('DENIM', 'Denim', 'Little puff, many long thin creases running in from the border'),
          ('LEATHER', 'Leather', 'Medium puff, few thick heavy folds from the border'),
@@ -103,13 +102,7 @@ INPUTS = (('Type', 'NodeSocketInt', 0, 0, 5),
           ('Billow', 'NodeSocketFloat', 0.0, -100.0, 100.0),
           ('Billow Size', 'NodeSocketFloat', 0.3, 0.0001, 100.0),
           # 0.23.8 Pinch 2: the small fans on their own slider (Pinch = Pinch 1: the long big folds)
-          ('Pinch 2', 'NodeSocketFloat', 0.0, -100.0, 100.0),
-          # 0.23.11 the asymmetric thin folds as a surface detail on their own slider (0 = off); padding
-          # pinches the folds IN (like an inflated cushion), cloth folds stick OUT
-          ('Surface Detail', 'NodeSocketFloat', 0.0, -100.0, 100.0),
-          ('Fold In', 'NodeSocketInt', 0, 0, 1),
-          # 0.23.12 the folds stay near the border, the middle of the panel stays calm / flat
-          ('Center Calm', 'NodeSocketFloat', 0.9, 0.0, 1.0))
+          ('Pinch 2', 'NodeSocketFloat', 0.0, -100.0, 100.0))
 from .cloth_sim import PRESET_ITEMS as _SIM_PRESETS
 
 TRIMS = (('NONE', 'No Trim', 'Plain border'),
@@ -118,13 +111,12 @@ TRIMS = (('NONE', 'No Trim', 'Plain border'),
          ('WELT', 'Welt', 'Raised flat strip just inside the border'))
 TRIM_IDS = tuple(t[0] for t in TRIMS)
 FOLD_ROOM = 'mch_fold_room'
-FOLD_D = 'mch_foldd'           # 0.23.11 surface detail: the asymmetric thin folds (Surface Detail slider)
 FOLD_H = 'mch_foldh'           # long folds: height field written by fold_lines()    # distance to where the nearest border point jumps (corners): folds fade there
 SEC_U = 'mch_sec_u'            # 0..1 along the long side (local X): stitched sections across it
 SEC_LEN = 'mch_sec_len'        # length of the long side
 EDGE_U = 'mch_edge_u'          # arc length along the border of the nearest border point
 EDGE_LEN = 'mch_edge_len'      # length of that border loop (keeps seam patterns seamless)
-VERSION = 50
+VERSION = 43
 
 
 # -----------------------------------------------------------------------------
@@ -580,14 +572,6 @@ def build_group():
         a.data_type = 'FLOAT'
         a.inputs['Name'].default_value = name
         return a.outputs['Attribute']
-    def smooth_named(name, iters=1):
-        """0.23.11 the fold heights are per point of the coarse panel; after the subdivision a ridge
-        running across the triangles zigzags (beads) - a few blur passes round it off"""
-        b = N.new('GeometryNodeBlurAttribute')
-        b.data_type = 'FLOAT'
-        L.new(named(name), b.inputs['Value'])
-        b.inputs['Iterations'].default_value = iters
-        return b.outputs['Value']
     Db, Ub, LP = attr.outputs['Attribute'], named(EDGE_U), named(EDGE_LEN)
     LPs = _math(N, L, 'MAXIMUM', LP, vb=1e-6)
     # sections: stitched seams across the long side, each cell puffs up on its own
@@ -665,14 +649,7 @@ def build_group():
     pwid = _math(N, L, 'MAXIMUM', I['Puff Width'], vb=1e-6)
     cellp = _math(N, L, 'MINIMUM', pwid, _math(N, L, 'MULTIPLY', cellw, vb=0.5))
     pden = _math(N, L, 'ADD', pwid, _math(N, L, 'MULTIPLY', near_seam, _math(N, L, 'SUBTRACT', cellp, pwid)))
-    # 0.23.13 the puff follows the membrane height (round, no X ridge); older layers without it: border distance
-    sm = N.new('GeometryNodeInputNamedAttribute')
-    sm.data_type = 'FLOAT'
-    sm.inputs['Name'].default_value = EDGE_SMOOTH
-    sm_d = _math(N, L, 'ADD', _math(N, L, 'MULTIPLY', sm.outputs['Attribute'], sm.outputs['Exists']),
-                 _math(N, L, 'MULTIPLY', Db, _math(N, L, 'SUBTRACT', va=1.0, b=sm.outputs['Exists'])))
-    Dp = _math(N, L, 'MINIMUM', _math(N, L, 'MAXIMUM', _math(N, L, 'SUBTRACT', sm_d, tw), vb=0.0), ds)
-    tp = _math(N, L, 'DIVIDE', Dp, _math(N, L, 'MAXIMUM', pden, vb=1e-6), clamp=True)
+    tp = _math(N, L, 'DIVIDE', D, _math(N, L, 'MAXIMUM', pden, vb=1e-6), clamp=True)
     # round dome with a finite slope at the seam (a quarter circle stood up vertically there and aliased)
     prof = _math(N, L, 'SUBTRACT', va=1.0, b=_math(N, L, 'POWER', _math(N, L, 'SUBTRACT', va=1.0, b=tp), vb=2.4))
     # Section Height: how much the quilted cells puff (x the panel puff)
@@ -713,7 +690,7 @@ def build_group():
     # at their own angle up to just short of the far side; distance to the nearest line + its position
     # along the line give a thin start, a wider middle and a fading end
     # long folds: heights computed per point in Python (fold_lines, all folds summed - crossings blend)
-    pinch = smooth_named(FOLD_H)
+    pinch = named(FOLD_H)
     # fans mixed in at random places along the border: several thin folds spreading from one point
     sxf = _math(N, L, 'DIVIDE', LPs, _math(N, L, 'MAXIMUM', _math(N, L, 'ROUND', _math(N, L, 'DIVIDE', LPs,
                                                                                        _math(N, L, 'MULTIPLY', spc,
@@ -725,10 +702,8 @@ def build_group():
                 _math(N, L, 'ADD', Db_in, _math(N, L, 'MULTIPLY', sxf, vb=0.25)))
     phf = _math(N, L, 'ADD', _math(N, L, 'MULTIPLY', thf, _math(N, L, 'MULTIPLY', I['Fan'],
                                                                  srand(fid, 1.2, 2.6, 131.0))), pwarp)
-    # (0.23.13 Fold In: the small fans narrow to V creases too - a much higher exponent)
     wavf = _math(N, L, 'POWER', _math(N, L, 'MULTIPLY', _math(N, L, 'ADD', _math(N, L, 'COSINE', phf), vb=1.0), vb=0.5),
-                 _math(N, L, 'MULTIPLY', _math(N, L, 'MAXIMUM', I['Fold Sharp'], vb=0.3),
-                       _math(N, L, 'ADD', va=1.0, b=_math(N, L, 'MULTIPLY', I['Fold In'], vb=3.0))))
+                 _math(N, L, 'MAXIMUM', I['Fold Sharp'], vb=0.3))
     lenff = _math(N, L, 'MULTIPLY', I['Pinch Length'], srand(fid, 0.3, 1.2, 137.0))
     envf = _math(N, L, 'POWER', _math(N, L, 'SUBTRACT', va=1.0, b=_math(N, L, 'DIVIDE', Db_in,
                                                                          _math(N, L, 'MAXIMUM', lenff, vb=1e-6),
@@ -750,26 +725,6 @@ def build_group():
                   clamp=True)
     pbase = _math(N, L, 'MULTIPLY', _math(N, L, 'MAXIMUM', I['Pinch'], I['Pinch 2']), vb=0.06)
     pinch = _math(N, L, 'MULTIPLY', _math(N, L, 'SUBTRACT', pinch, pbase), pseam)
-    # 0.23.11 surface detail (asymmetric thin folds) on its own slider
-    pinch = _math(N, L, 'ADD', pinch, _math(N, L, 'MULTIPLY', _math(N, L, 'MULTIPLY', smooth_named(FOLD_D, 1),
-                                                                    I['Surface Detail']), pseam))
-    # 0.23.12 Center Calm: the folds fade out toward the middle of the panel (border distance / the deepest)
-    cst = N.new('GeometryNodeAttributeStatistic')
-    cst.data_type = 'FLOAT'
-    cst.domain = 'POINT'
-    L.new(sub.outputs['Mesh'], cst.inputs['Geometry'])
-    L.new(Db, cst.inputs['Attribute'])
-    rel = _math(N, L, 'DIVIDE', Db, _math(N, L, 'MAXIMUM', cst.outputs['Max'], vb=1e-6))
-    cmr = N.new('ShaderNodeMapRange')
-    cmr.interpolation_type = 'SMOOTHSTEP'
-    L.new(rel, cmr.inputs['Value'])
-    cmr.inputs['From Min'].default_value = 0.15
-    cmr.inputs['From Max'].default_value = 0.45
-    calm = _math(N, L, 'SUBTRACT', va=1.0, b=_math(N, L, 'MULTIPLY', cmr.outputs['Result'], I['Center Calm']))
-    pinch = _math(N, L, 'MULTIPLY', pinch, calm)
-    # padding: the folds dig in (pinched cushion); cloth: they stick out
-    pinch = _math(N, L, 'MULTIPLY', pinch, _math(N, L, 'SUBTRACT', va=1.0, b=_math(
-        N, L, 'MULTIPLY', I['Fold In'], vb=2.0)))
     h = _math(N, L, 'ADD', h, pinch)
     # stitching: a sunken seam line at Stitch Inset with raised thread stitches along it
     sl = _math(N, L, 'MAXIMUM', I['Stitch Length'], vb=1e-6)
@@ -882,20 +837,49 @@ def get_input(ob, name):
 
 
 SIZE_INPUTS = {'Strength', 'Scale', 'Edge Soft', 'Lift', 'Puff', 'Puff Width', 'Roll', 'Roll Width', 'Pinch', 'Pinch 2',
-               'Surface Detail',
                'Pinch Spacing', 'Pinch Length', 'Stitch', 'Stitch Inset', 'Stitch Length', 'Trim Width', 'Trim Height',
                'Center Fade', 'Skin Scale', 'Skin Depth', 'Shrink Width', 'Skin Edge Width', 'Skin Edge Height',
                'Crumple', 'Crumple Size', 'Billow', 'Billow Size'}      # 0.23.15: crumple / billow are lengths too
 
 
 INPUT_NAMES = {n for n, *_r in INPUTS}
-SIZE_TAG = '@size'          # last_used key suffix: the panel size a remembered length was set on
-
-
-# 0.23.15 lengths a new panel may start with, as parts of its size (the HUD slider ranges, and room for the
-# presets' crumple / billow): whatever the source - last used, a preset, an old file - nothing past these
+SIZE_TAG = '@size'          # 0.23.15 last_used key suffix: the panel size a remembered length was set on
+# lengths a new panel may start with, as parts of its size (the HUD slider ranges, and room for the presets'
+# crumple / billow): whatever the source - last used, a preset, an old file - nothing past these
 LENGTH_LIMITS = {'Crumple': (0.0, 0.05), 'Crumple Size': (0.005, 1.0), 'Billow': (-0.06, 0.06), 'Billow Size': (0.05, 2.0),
                  'Roll Width': (0.0, 0.5), 'Stitch Inset': (0.0, 0.5), 'Stitch Length': (0.0, 0.5), 'Edge Soft': (0.0, 0.5)}
+
+
+def recalled(values, size):
+    """0.23.15 remembered inputs for a new panel of ``size``: the same numbers on a panel of a similar size
+    (0.5x - 2x of the one they were set on), lengths scaled by the size ratio beyond that; a length
+    remembered without its size (older versions) is dropped - it may come from a panel 100x bigger and
+    burst a small one into shards."""
+    out = {}
+    for name, v in values.items():
+        if name.endswith(SIZE_TAG):
+            continue
+        if name in SIZE_INPUTS or name == '_thickness':
+            try:
+                old = float(values.get(name + SIZE_TAG))
+                ratio = size / old if old > 0 else None
+            except (TypeError, ValueError):
+                ratio = None
+            if ratio is None:
+                continue
+            v = float(v) if 0.5 <= ratio <= 2.0 else float(v) * ratio
+        out[name] = v
+    return out
+
+
+def with_sizes(vals, size):
+    """A preset saved by an older version has no panel sizes: take them as set on a panel of ``size``."""
+    out = dict(vals)
+    if size and size > 0:
+        for k in vals:
+            if (k in SIZE_INPUTS or k == '_thickness') and k + SIZE_TAG not in out:
+                out[k + SIZE_TAG] = size
+    return out
 
 
 def _length_limits():
@@ -907,7 +891,7 @@ def _length_limits():
 
 
 def clamp_lengths(ob, size):
-    """Keep every length input (and the shell thickness) inside its range for a panel of ``size``.
+    """0.23.15 keep every length input (and the shell thickness) inside its range for a panel of ``size``.
     Returns the names that were changed."""
     changed = []
     if not size or size <= 0:
@@ -924,35 +908,11 @@ def clamp_lengths(ob, size):
         v = float(get_input(ob, name))
         c = min(max(v, lo * size), hi * size)
         if abs(c - v) > 1e-9 * max(1.0, abs(v)):
-            mod = ob.modifiers.get(MOD)
-            mod[_ident(name)] = c                  # quietly: not remembered as the user's choice
+            ob.modifiers.get(MOD)[_ident(name)] = c       # quietly: not remembered as the user's choice
             changed.append(name)
     return changed
-
-
-def recalled(values, size):
-    """Remembered inputs for a new panel of ``size``: the same numbers on a panel of a similar size
-    (0.5x - 2x of the one they were set on), lengths scaled by the size ratio beyond that; a length
-    remembered without its size (before 0.23.14) is dropped - it may come from a panel 100x bigger."""
-    out = {}
-    for name, v in values.items():
-        if name.endswith(SIZE_TAG):
-            continue
-        if name in SIZE_INPUTS or name == '_thickness':
-            old = values.get(name + SIZE_TAG)
-            try:
-                old = float(old)
-                ratio = size / old if old > 0 else None
-                v = None if ratio is None else (float(v) if 0.5 <= ratio <= 2.0 else float(v) * ratio)
-            except (TypeError, ValueError):
-                v = None
-            if v is None:
-                continue
-        out[name] = v
-    return out
 FOLD_INPUTS = {'Pinch Spacing', 'Pinch Length', 'Fold Tilt', 'Tilt Random', 'Length Random', 'Variety', 'Seed',
-               'Fan', 'Trim', 'Trim Width', 'Fold Sharp', 'Fold Asymmetry', 'Fold Thinness', 'Fold Direction',
-               'Fold In'}
+               'Fan', 'Trim', 'Trim Width', 'Fold Sharp', 'Fold Asymmetry', 'Fold Thinness', 'Fold Direction'}
 
 
 def fold_lines(ob):
@@ -975,9 +935,8 @@ def fold_lines(ob):
         asym = min(1.0, max(0.0, float(gi('Fold Asymmetry'))))
         thin = min(1.0, max(0.0, float(gi('Fold Thinness'))))
         fdir = int(gi('Fold Direction'))
-        fold_in = int(gi('Fold In')) > 0
     except (KeyError, TypeError, ValueError, AttributeError):
-        asym, thin, fdir, fold_in = 0.0, 0.0, 2, False
+        asym, thin, fdir = 0.0, 0.0, 2
     # 0.23.4 which side folds over: the upper side (world up seen on the panel), lower, or random
     up3 = ob.matrix_world.inverted().to_3x3() @ Vector((0.0, 0.0, 1.0))
     up2 = Vector((up3.x, up3.y))
@@ -1011,7 +970,7 @@ def fold_lines(ob):
     finally:
         bm.free()
     total = sum((b - a).length for a, b, _n in edges)
-    verts, eds, ftv, fwv, fav, fw0 = [], [], [], [], [], []
+    verts, eds, ftv, fwv, fav = [], [], [], [], []
     if total > 0:
         n = max(1, int(round(total / spacing)))
         step = total / n
@@ -1060,7 +1019,6 @@ def fold_lines(ob):
                 verts.append((q.x, q.y, 0.0))
                 ftv.append(t)
                 fwv.append((spacing * 0.06 * (1.0 - 0.92 * thin) + ln * t * growth * 0.03) * (1.0 - 0.65 * thin))
-                fw0.append((spacing * 0.06 + ln * t * growth * 0.03) * 0.75)   # main fold width (0.23.13 thinner)
                 fav.append(amp * side)
                 if j:
                     eds.append((base + j - 1, base + j))
@@ -1068,23 +1026,21 @@ def fold_lines(ob):
     import numpy as np
     sharp = max(0.1, float(gi('Fold Sharp')) * 0.35)
     xy = np.array([(v.co.x, v.co.y) for v in me.vertices], dtype=np.float64)
-    total = np.zeros(len(xy))          # main folds: the clean 0.23.2 lines from the border (symmetric)
-    detail = np.zeros(len(xy))         # 0.23.11 surface detail: asymmetric / thin (Surface Detail slider)
+    total = np.zeros(len(xy))
     fold = []
     cur = []
     # the panel resolution limits how thin a fold can be (thinner than ~1.3 edges reads as beads)
     if len(me.edges):
         el = np.array([(me.vertices[e.vertices[0]].co - me.vertices[e.vertices[1]].co).length for e in me.edges
                        if not e.is_loose][:4000] or [0.0])
-        min_w = float(np.median(el)) * 1.5           # 0.23.13: 2.2 made the folds fat (blur rounds the rest)
+        min_w = float(np.median(el)) * 1.3
     else:
         min_w = 0.0
     fwv = [max(w_, min_w) for w_ in fwv]
-    fw0 = [max(w_, min_w) for w_ in fw0]          # main folds too: no beads where the panel is coarse
     sw = 1.0 - 0.72 * asym          # steep (folded-over) side: narrow wall
     gw = 1.0 + 0.9 * asym           # gentle side: long slope
     for i, (vx, vy, _z) in enumerate(verts):
-        cur.append((vx, vy, ftv[i], fwv[i], fav[i], fw0[i]))
+        cur.append((vx, vy, ftv[i], fwv[i], fav[i]))
         if ftv[i] >= 1.0 - 1e-9:
             fold.append(cur)
             cur = []
@@ -1092,16 +1048,14 @@ def fold_lines(ob):
         P = np.array([(p[0], p[1]) for p in pts])
         T = np.array([p[2] for p in pts])
         W = np.array([p[3] for p in pts])
-        W0 = np.array([p[5] for p in pts])
         amp = abs(pts[0][4])
         side = 1.0 if pts[0][4] >= 0 else -1.0
         A, B = P[:-1], P[1:]
         AB = B - A
         L2 = np.maximum((AB * AB).sum(1), 1e-18)
         # cull: only points near this fold's box
-        reach = max(W.max() * 2.2, W0.max() * 1.2)
-        lo = P.min(0) - reach
-        hi = P.max(0) + reach
+        lo = P.min(0) - W.max() * 2.2
+        hi = P.max(0) + W.max() * 2.2
         sel = np.where((xy[:, 0] >= lo[0]) & (xy[:, 0] <= hi[0]) & (xy[:, 1] >= lo[1]) & (xy[:, 1] <= hi[1]))[0]
         if not len(sel):
             continue
@@ -1113,18 +1067,8 @@ def fold_lines(ob):
         r = np.arange(len(sel))
         dist = np.sqrt(d2[r, j])
         ft = T[j] + (T[j + 1] - T[j]) * tt[r, j]
-        st_ = np.clip(ft / 0.06, 0.0, 1.0)
-        env = st_ * st_ * (1.0 - ft) ** 1.2
-        # main: the 0.23.2 round section (clean lines, they stay near the border)
-        w0 = W0[j] + (W0[j + 1] - W0[j]) * tt[r, j]
-        if fold_in:
-            # 0.23.13 a pinch is a V: half as wide, sharp at the bottom of the crease, straight sides
-            u0 = dist / np.maximum(np.maximum(w0 * 0.5, min_w), 1e-9)
-            total[sel] += amp * np.clip(1.0 - u0, 0.0, 1.0) ** 1.6 * env
-        else:
-            total[sel] += amp * np.clip(1.0 - (dist / np.maximum(w0, 1e-9)) ** 2, 0.0, 1.0) ** sharp * env
-        # surface detail: the 0.23.3 asymmetric section - steep folded wall + long soft side
         w = W[j] + (W[j + 1] - W[j]) * tt[r, j]
+        # 0.23.3 asymmetric section: signed side of the fold line -> steep folded wall / long soft slope
         Xs = xy[sel]
         cr = (AB[j, 0] * (Xs[:, 1] - C[r, j, 1]) - AB[j, 1] * (Xs[:, 0] - C[r, j, 0])) * side
         steep = cr < 0
@@ -1138,12 +1082,12 @@ def fold_lines(ob):
         sym = np.clip(1.0 - u ** 2, 0.0, 1.0) ** sharp
         prof = np.where(steep, prof_s + crease, prof_g)
         prof = sym * (1.0 - asym) + prof * asym
-        detail[sel] += amp * prof * env
+        st_ = np.clip(ft / 0.06, 0.0, 1.0)
+        env = st_ * st_ * (1.0 - ft) ** 1.2
+        total[sel] += amp * prof * env
     total = 1.25 * (1.0 - np.exp(-total / 1.25))         # crossings add up softly, never blow up
-    detail = 1.25 * (1.0 - np.exp(-np.maximum(detail, -1.0) / 1.25))
-    for name, vals in ((FOLD_H, total), (FOLD_D, detail)):
-        att = me.attributes.get(name) or me.attributes.new(name, 'FLOAT', 'POINT')
-        att.data.foreach_set('value', vals.astype(np.float32).tolist() if len(vals) else [])
+    att = me.attributes.get(FOLD_H) or me.attributes.new(FOLD_H, 'FLOAT', 'POINT')
+    att.data.foreach_set('value', total.astype(np.float32).tolist() if len(total) else [])
     me.update()
     ob.update_tag(refresh={'OBJECT', 'DATA'})
     return len(fold)
@@ -1171,9 +1115,8 @@ def set_input(ob, name, value):
     from . import last_used
     size = float(ob.get('mch_wrinkle_size', 0.0) or 0.0)
     if size > 0 and name in INPUT_NAMES:
-        # the same numbers next time; creature skin remembers its own set.  0.23.14: lengths also keep the
-        # size of the panel they were set on, so a much smaller / bigger next panel gets them scaled
-        # (exact on a panel of a similar size) - a small panel after a big one exploded into shards
+        # the same numbers next time; creature skin remembers its own set.  0.23.15: lengths also keep the
+        # size of the panel they were set on (see recalled)
         sec = 'creature' if is_creature(ob) else 'wrinkle'
         last_used.remember(sec, name, value)
         if name in SIZE_INPUTS:
@@ -1201,10 +1144,10 @@ def set_input(ob, name, value):
 # Type = character of the panel (fractions of the patch size): puff, puff width, folds from the border
 # (depth, spacing, length, sharpness), stitching
 PRESETS = {
-    'PADDING': dict(Puff=0.075, PuffW=0.4, Pinch=0.028, Spacing=0.07, Length=0.3, Sharp=1.6, Stitch=0.002, Fan=6.0),
-    'DENIM': dict(Puff=0.012, PuffW=0.12, Pinch=0.026, Spacing=0.06, Length=0.42, Sharp=2.5, Stitch=0.0015,
+    'PADDING': dict(Puff=0.075, PuffW=0.4, Pinch=0.028, Spacing=0.09, Length=0.45, Sharp=1.6, Stitch=0.002, Fan=6.0),
+    'DENIM': dict(Puff=0.012, PuffW=0.12, Pinch=0.026, Spacing=0.075, Length=0.7, Sharp=2.5, Stitch=0.0015,
                   Fan=4.0),
-    'LEATHER': dict(Puff=0.025, PuffW=0.16, Pinch=0.04, Spacing=0.1, Length=0.36, Sharp=1.2, Stitch=0.002, Fan=8.0),
+    'LEATHER': dict(Puff=0.025, PuffW=0.16, Pinch=0.04, Spacing=0.12, Length=0.55, Sharp=1.2, Stitch=0.002, Fan=8.0),
     # 0.23.7 after the references
     'PUFFER': dict(Puff=0.07, PuffW=0.075, Pinch=0.0, Spacing=0.1, Length=0.3, Sharp=1.4, Stitch=0.0015, Fan=4.0,
                    FanMix=0.0, Sections=5, SecHeight=1.0, Crumple=0.003, CSize=0.045, CSharp=2.5, CStretch=0.8, CAngle=0.0,
@@ -1282,15 +1225,14 @@ def apply_preset(ob, wtype, size=None):
         set_input(ob, name, pr[key] * size)
     set_input(ob, 'Fold Sharp', pr['Sharp'])
     set_input(ob, 'Fan', pr['Fan'])
-    set_input(ob, 'Pinch 2', pr.get('Pinch2', pr['Pinch'] * 0.5) * size)      # 0.23.11 small fans calmer
-    set_input(ob, 'Fold In', 1 if wtype in ('PADDING', 'PUFFER') else 0)   # 0.23.11 padding pinches in
+    set_input(ob, 'Pinch 2', pr.get('Pinch2', pr['Pinch']) * size)
     # 0.23.7 crumple / billow (off on the older types) and the puffer's channels
     for name, key, sized in CRUMPLE_KEYS:
         if key in pr:
             set_input(ob, name, pr[key] * size if sized else pr[key])
         elif name in ('Crumple', 'Billow'):
             set_input(ob, name, 0.0)
-    set_input(ob, 'Fan Mix', pr.get('FanMix', 0.3))       # 0.23.11 fewer lumpy fans along the border
+    set_input(ob, 'Fan Mix', pr.get('FanMix', 0.6))
     if 'Sections' in pr:
         set_input(ob, 'Sections', pr['Sections'])
         set_input(ob, 'Section Height', pr.get('SecHeight', 1.0))
@@ -1334,36 +1276,6 @@ def _border_loops(bm):
         if len(lp) >= 3:
             loops.append(lp)
     return loops
-
-
-def _membrane(bm, dist):
-    """0.23.13 how an inflated membrane bulges: -Laplace(u) = 1, u = 0 on the border (Jacobi, started from a
-    parabola of the border distance).  Unlike the straight border distance it has no ridge along the
-    diagonals to the corners.  Scaled so its maximum equals the deepest border distance."""
-    import numpy as np
-    bm.verts.ensure_lookup_table()
-    n = len(bm.verts)
-    if n == 0:
-        return []
-    d = np.array([min(dist.get(v, 0.0), 1e6) for v in bm.verts])
-    dmax = max(float(d.max()), 1e-9)
-    border = np.array([v.is_boundary or not v.link_faces for v in bm.verts])
-    nbrs = [[e.other_vert(v).index for e in v.link_edges] for v in bm.verts]
-    deg = max(1, max(len(x) for x in nbrs))
-    idx = np.full((n, deg), -1, dtype=np.int64)
-    for i, nb in enumerate(nbrs):
-        idx[i, :len(nb)] = nb
-    valid = idx >= 0
-    cnt = np.maximum(valid.sum(1), 1)
-    el = [e.calc_length() for e in bm.edges]
-    h2 = (float(np.median(el)) if el else 1.0) ** 2
-    u = d * (2.0 * dmax - d) / dmax
-    for _it in range(400):
-        nb = np.where(valid, u[np.where(valid, idx, 0)], 0.0)
-        un = (nb.sum(1) + h2) / cnt
-        u = np.where(border, 0.0, 0.5 * u + 0.5 * un)
-    u *= dmax / max(float(u.max()), 1e-12)
-    return u.tolist()
 
 
 def _edge_distances(bm):
@@ -1448,7 +1360,7 @@ def perform_wrinkle(context, loops, projector, wtype=None):
     if getattr(brush, 'through_mode', False):
         # 0.23.7 Through: the outline goes through the mesh - front, back, split at the silhouette / creases
         from . import through_region as tr
-        panels = tr.panels_for(context, target, groups, projector, _spacing(st), getattr(brush, 'through_crease', 50.0))
+        panels = tr.panels_for(context, target, groups, projector, st.spacing, getattr(brush, 'through_crease', 50.0))
         obs = [_wrinkle_layer(context, target, p_['cos'], p_['nrms'], p_['tris'], projector, st, dict(last), wtype)
                for p_ in panels]
         for o in context.selected_objects:
@@ -1459,7 +1371,7 @@ def perform_wrinkle(context, loops, projector, wtype=None):
         kind = 'Creature skin' if getattr(st, 'creature', False) else 'Cloth plate'
         msg = f'{kind} through {target.name}: {len(obs)} panel(s) (front / back / creases)'
         return _sim_after(context, st, obs, msg)
-    pts, tris, _nb = ap.screen_patch(groups, _spacing(st))
+    pts, tris, _nb = ap.screen_patch(groups, st.spacing)
     if not tris:
         raise cg.CutError('The outline is too small.')
     bvh, _wv, _polys = ap._target_bvh(context, target)
@@ -1476,19 +1388,12 @@ def perform_wrinkle(context, loops, projector, wtype=None):
     return _sim_after(context, st, [ob], f'Cloth plate "{ob.name}" on {target.name} (padded panel, {pat}){extra}')
 
 
-def _spacing(st):
-    """0.23.10 with Sim on, bigger faces (the cloth and its collider stay light)"""
-    if getattr(st, 'sim_after', False) and not getattr(st, 'creature', False):
-        return max(int(st.spacing), int(getattr(st, 'sim_face_px', 24)))
-    return st.spacing
-
-
 def _sim_after(context, st, obs, msg):
     """0.23.9 Sim toggle: Panel Cloth on the new layer(s) right away (collider = the generated surface)."""
     if not getattr(st, 'sim_after', False) or getattr(st, 'creature', False):
         return msg
     from . import cloth_sim
-    made = cloth_sim.run_preset(context, obs, st.sim_preset, collider='REGION', **cloth_sim.scene_overrides(st))
+    made = cloth_sim.run_preset(context, obs, st.sim_preset, collider='REGION')
     for o in context.selected_objects:
         o.select_set(False)
     for o in made:
@@ -1531,7 +1436,6 @@ def _wrinkle_layer(context, target, cos, nrms, tris, projector, st, last, wtype)
         bm.from_mesh(region)
         bm.verts.ensure_lookup_table()
         dist, uu, ll, rm = _edge_distances(bm)
-        smooth_d = _membrane(bm, dist)
         rvals = [min(rm[v], 1e6) for v in bm.verts]
         vals = [min(dist.get(v, 0.0), 1e6) for v in bm.verts]
         x0 = min(v.co.x for v in bm.verts)
@@ -1544,7 +1448,7 @@ def _wrinkle_layer(context, target, cos, nrms, tris, projector, st, last, wtype)
     finally:
         bm.free()
     for name, data in ((EDGE_ATTR, vals), (EDGE_U, uvals), (EDGE_LEN, lvals), (SEC_U, sec), (SEC_LEN, slen),
-                       (FOLD_ROOM, rvals), (EDGE_SMOOTH, smooth_d)):
+                       (FOLD_ROOM, rvals)):
         attr = region.attributes.new(name, 'FLOAT', 'POINT')
         attr.data.foreach_set('value', data)
     region.name = target.name + '_Wrinkle'
@@ -1647,14 +1551,6 @@ def apply_wrinkle(context, ob):
 # -----------------------------------------------------------------------------
 
 
-def _fill_sim(self, _context):
-    """0.23.10 picking a Panel Cloth preset fills its sliders"""
-    from . import cloth_sim
-    v = cloth_sim.preset_values(self.sim_preset)
-    self.sim_gravity, self.sim_shrink, self.sim_pressure = v['gravity'], v['shrink'], v['pressure']
-    self.sim_bend, self.sim_frames = v['bend'], v['frames']
-
-
 class MCH_PG_Wrinkle(bpy.types.PropertyGroup):
     wtype: EnumProperty(name='Type', items=TYPES, default='PADDING',
                         description='Character of the panel: puff and the folds from the border (also the optional '
@@ -1690,28 +1586,8 @@ class MCH_PG_Wrinkle(bpy.types.PropertyGroup):
     sim_after: bpy.props.BoolProperty(name='Sim', default=False,
                                       description='Cloth Plate: run a short cloth simulation on the new panel '
                                                   'right away and bake it (Panel Cloth)')
-    sim_preset: EnumProperty(name='Cloth Preset', items=_SIM_PRESETS, default='PADDING', update=_fill_sim,
+    sim_preset: EnumProperty(name='Cloth Preset', items=_SIM_PRESETS, default='PADDING',
                              description='Panel Cloth preset used after the lasso')
-    # 0.23.10 Panel Cloth sliders (filled from the preset; used after the lasso and by Re-bake)
-    sim_gravity: bpy.props.FloatProperty(name='Gravity (sag)', default=0.3, min=0.0, soft_max=3.0, max=20.0,
-                                         description='How much the cloth hangs down - lower it when it sags too much')
-    sim_shrink: bpy.props.FloatProperty(name='Shrink (slack)', default=-0.05, min=-1.0, max=0.5,
-                                        description='Below 0: extra cloth that folds / hangs; nearer 0 = tighter')
-    sim_pressure: bpy.props.FloatProperty(name='Pressure (puff)', default=6.0, min=-20.0, max=80.0,
-                                          description='Puffs the panel up; it also holds the cloth up')
-    sim_bend: bpy.props.FloatProperty(name='Bend (stiffness)', default=0.5, min=0.0, max=100.0,
-                                      description='Bending stiffness: higher = fewer, bigger folds, less sag')
-    sim_frames: IntProperty(name='Frames', default=30, min=2, max=300,
-                            description='How long it falls / settles before the bake')
-    sim_puff: bpy.props.FloatProperty(name='Puff', default=1.0, min=0.0, max=2.0,
-                                      description='How puffed up: scales Pressure and the slack together '
-                                                  '(0 = lies flat, 1 = the preset, 2 = double)')
-    sim_detail: IntProperty(name='Detail', default=1, min=1, max=4,
-                            description='Cloth resolution: 1 Draft (fast) .. 4 Fine - start low, raise it '
-                                        'and Re-bake once the shape is right')
-    sim_face_px: IntProperty(name='Sim Face Size (px)', default=24, min=6, max=80,
-                             description='With Sim on, the panel is made with faces this big (lighter than '
-                                         'the normal Face Size)')
 
 
 class MCH_OT_wrinkle_skin(bpy.types.Operator):
@@ -1836,7 +1712,7 @@ def capture(ob):
     if m is not None:
         vals['_thickness'] = m.thickness
     size = float(ob.get('mch_wrinkle_size', 0.0) or 0.0)
-    if size > 0:                                   # 0.23.14: lengths keep the panel size (see recalled)
+    if size > 0:                                   # 0.23.15: lengths keep the panel size (see recalled)
         for k in list(vals):
             if k in SIZE_INPUTS or k == '_thickness':
                 vals[k + SIZE_TAG] = size
@@ -1846,16 +1722,6 @@ def capture(ob):
 def user_presets():
     from . import last_used
     return last_used.data().setdefault('cloth_presets', {})
-
-
-def with_sizes(vals, size):
-    """A preset saved before 0.23.14 has no panel sizes: take them as set on a panel of ``size``."""
-    out = dict(vals)
-    if size and size > 0:
-        for k in vals:
-            if (k in SIZE_INPUTS or k == '_thickness') and k + SIZE_TAG not in out:
-                out[k + SIZE_TAG] = size
-    return out
 
 
 def apply_values(ob, vals):
@@ -2098,9 +1964,6 @@ SLIDERS = (('random', 'Randomness', 'Variety', 0, 100, 'RAND'),
            ('roll', 'Edge Roll', 'Roll', -50, 100, 'SIZE'),
            ('pinch', 'Pinch 1 (big folds)', 'Pinch', 0, 80, 'SIZE'),
            ('pinch2', 'Pinch 2 (small folds)', 'Pinch 2', 0, 80, 'SIZE'),
-           ('surf_detail', 'Surface Detail', 'Surface Detail', 0, 60, 'SIZE'),
-           ('fold_in', 'Folds In (pinch)', 'Fold In', 0, 1, 'INT'),
-           ('calm', 'Center Calm', 'Center Calm', 0, 100, 'PCT'),
            ('pinch_sp', 'Fold Spacing', 'Pinch Spacing', 5, 200, 'SIZE'),
            ('pinch_len', 'Fold Length', 'Pinch Length', 10, 2000, 'SIZE'),
            ('sharp', 'Fold Sharp', 'Fold Sharp', 30, 3000, 'PCT'),
@@ -2122,8 +1985,7 @@ SLIDERS = (('random', 'Randomness', 'Variety', 0, 100, 'RAND'),
            ('direction', 'Direction', 'Direction', -180, 180, 'DEG'),
            ('bend', 'Bend', 'Bend', 0, 300, 'PCT'),
            ('detail', 'Detail', 'Detail', 0, 3, 'INT'),
-           ('thickness', 'Thickness', 'THICK', 0, 50, 'SIZE'),
-           ('billow', 'Billow', 'Billow', -60, 60, 'SIZE'))          # 0.23.15 it had no slider
+           ('thickness', 'Thickness', 'THICK', 0, 50, 'SIZE'))
 
 
 def slider_spec(context, key, ob=None):

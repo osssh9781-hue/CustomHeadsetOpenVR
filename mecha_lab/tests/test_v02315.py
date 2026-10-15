@@ -1,8 +1,8 @@
-"""0.23.13: padding puff from a membrane (no X ridge to the corners), padding pinches as thin V creases."""
+"""0.23.15: Cloth Plate / Panel Cloth back to 0.23.9; last used lengths follow the panel size; Space moves the outline."""
 import math
 import sys
 
-_src = open(__file__.replace('test_v02313.py', 'test_v0200.py')).read()
+_src = open(__file__.replace('test_v02315.py', 'test_v0200.py')).read()
 exec(_src.split('\nfresh()\nmecha_lab.register()')[0])
 import bmesh
 import numpy as np
@@ -13,54 +13,10 @@ C = bpy.context
 S = C.scene
 from mecha_lab import cloth_wrinkle as cw, last_used
 
-# 1. membrane on a square grid: no kink across the diagonal (the border distance has one)
-bm = bmesh.new()
-N = 30
-bmesh.ops.create_grid(bm, x_segments=N, y_segments=N, size=1.0)
-bm.verts.ensure_lookup_table()
-dist = {v: 1.0 - max(abs(v.co.x), abs(v.co.y)) for v in bm.verts}
-u = np.array(cw._membrane(bm, dist))
-co = np.array([v.co[:2] for v in bm.verts])
-d = np.array([dist[v] for v in bm.verts])
-check('membrane: 0 on the border, max = deepest border distance',
-      abs(u[np.array([v.is_boundary for v in bm.verts])]).max() < 1e-9 and abs(u.max() - d.max()) < 1e-6)
-
-
-def sd(f, s):
-    # walk across the diagonal x = y at (0.6, 0.6) along (1, -1); second difference at the crossing
-    vals = []
-    for t in (-s, 0.0, s):
-        p = np.array([0.6 + t, 0.6 - t])     # grid points (step 2/30)
-        vals.append(f[np.argmin(((co - p) ** 2).sum(1))])
-    return abs(vals[0] - 2 * vals[1] + vals[2])
-
-
-def kink(f):
-    # a smooth surface: the second difference shrinks 4x when the step halves; a ridge (kink) only 2x
-    h = 2.0 / N
-    return sd(f, 4 * h) / max(sd(f, 2 * h), 1e-12)
-
-
-check('border distance has the ridge (control)', kink(d) < 2.6, round(float(kink(d)), 2))
-check('membrane: no ridge along the diagonal (X gone)', kink(u) > 3.2, round(float(kink(u)), 2))
-bm.free()
-
-# 2. the cloth plate stores the membrane; padding uses V pinches (Fold In)
-check('padding preset folds in (pinch)', cw.PRESETS['PADDING'].get('Pinch', 0) > 0)
 S.mch_brush.shape = 'LASSO'
 S.mch_brush.line_open = False
-last_used.forget('wrinkle')
 MODE[0], NATIVE[0] = 'WRINKLE', 'mecha.cloth_wrinkle'
 S.mch_settings.mch_active_tool = 'WRINKLE'
-S.mch_wrinkle.wtype = 'PADDING'
-b = cube('B', 4.0)
-r, m = lasso([(330, 330), (670, 330), (680, 660), (320, 670)])
-o = C.active_object
-check('cloth plate has the membrane attribute', cw.EDGE_SMOOTH in o.data.attributes)
-check('padding: Fold In on', cw.get_input(o, 'Fold In') >= 0.5 if hasattr(cw, 'get_input') else True)
-dg = C.evaluated_depsgraph_get()
-me = o.evaluated_get(dg).data
-check('padding plate evaluates', len(me.vertices) > 100 and all(math.isfinite(c) for v in me.vertices[:200] for c in v.co))
 
 # 2b. last used lengths follow the panel size (a small panel after a big one exploded into shards)
 for o_ in list(bpy.data.objects):
@@ -121,9 +77,11 @@ check('absurd remembered lengths are clamped on a new panel (Puff, Fold Length, 
 co_e = [E2.matrix_world @ v.co for v in E2.evaluated_get(C.evaluated_depsgraph_get()).data.vertices]
 check('... and the panel stays small', max((c - co_e[0]).length for c in co_e) < 0.8)
 last_used.forget('wrinkle')
-check('0.23.15 Billow: lower preset defaults, HUD slider, legacy absolute Billow dropped',
-      cw.PRESETS['DRAPE']['Billow'] <= 0.02 and 'billow' in {k[0] for k in cw.SLIDERS} and
-      cw.recalled({'Billow': 0.5, 'Billow Size': 0.01}, 0.3) == {})
+check('Billow: lower preset default, an old absolute Billow is dropped',
+      cw.PRESETS['DRAPE']['Billow'] <= 0.02 and cw.recalled({'Billow': 0.5, 'Billow Size': 0.01}, 0.3) == {})
+from mecha_lab import cloth_sim as cs
+check('Cloth Plate and Panel Cloth are the 0.23.9 ones (no Center Calm / membrane / Panel Cloth sliders)',
+      'Center Calm' not in cw.INPUT_NAMES and not hasattr(cw, 'EDGE_SMOOTH') and not hasattr(cs, 'scene_overrides'))
 vals = cw.recalled({'Puff': 9.0, 'Fan': 3.0}, 0.3)
 check('a length remembered without its size (old file) is dropped, others kept', vals == {'Fan': 3.0}, vals)
 

@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 0.23.15 — Cloth Plate / Panel Cloth를 0.23.9로 되돌림 (2026-10-15)
+
+- 요청대로 **Cloth Plate**(`cloth_wrinkle.py`)와 **Panel Cloth 시뮬**(`cloth_sim.py`)을 0.23.9 코드로 되돌림. 0.23.10~0.23.13의 클로스 변경(Panel Cloth 슬라이더 / Draft·Detail / 뒤집힘 수정, Pinch 1·2 분리, Surface Detail, Fold In, Center Calm, V핀치, 막 Puff)은 빠짐. `cloth_sim.py`는 0.23.9와 똑같음.
+- 남긴 것(클로스 모양과 무관): **Space로 외곽선 이동**(0.23.13), **지난번 값이 판 크기를 따름**(0.23.14 - 작은 판이 파편 덩어리로 터지던 원인; Crumple / Billow도 포함), 새 판의 길이 값을 슬라이더 범위 안으로 제한, **Billow 기본값 낮춤**(Drape 0.09 → 0.02, Cotton 0.012 → 0.005, Puffer 0.004 → 0.002).
+- 테스트: 54개 파일 2129/2129 (`tests/test_log_bpy501_v02315.txt`). ZIP sha256 `a7a7cac6be32384cafdc42573e6012adf22c5a8606bf25bd790c740b052b6e11`.
+
 ## 0.23.14 — 작은 Cloth Plate가 파편 덩어리로 터지던 문제 (2026-10-15)
 
 - **원인**: 새 Cloth Plate는 지난번 값(Last used)으로 시작하는데, 길이 값(주름 길이·간격, Puff, 두께 등)을 절대값으로 기억했음. 큰 판(예: 30배)에서 만진 값이 작은 판에 그대로 들어가 Fold Length 9 m, Puff 0.27 m가 0.34 m 판에 걸려 깨진 파편 덩어리가 됨. 사용자 FBX(cloth.fbx)로 똑같이 재현함.

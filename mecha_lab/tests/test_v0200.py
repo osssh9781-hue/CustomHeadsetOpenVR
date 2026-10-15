@@ -246,7 +246,6 @@ cw.set_input(ob, 'Fold Tilt', 0.0)
 for nm in ('Puff', 'Stitch', 'Strength', 'Roll'):
     cw.set_input(ob, nm, 0.0)
 cw.set_input(ob, 'Pinch', 0.05)
-cw.set_input(ob, 'Center Calm', 0.0)              # 0.23.12+: Center Calm would flatten the middle this measures
 cw.set_input(ob, 'Variety', 0.0)
 cw.set_input(ob, 'Length Random', 0.0)
 

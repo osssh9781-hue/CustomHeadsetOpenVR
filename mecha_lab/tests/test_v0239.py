@@ -20,9 +20,9 @@ check('presets: padding family + cloth family', {'PADDING', 'PUFFER', 'PILLOW', 
       {'CLOTH', 'SILK', 'CANVAS', 'LEATHER', 'CRUMPLE'} <= set(cs.PRESET_IDS))
 pv = cs.preset_values
 check('padding presets puff (pressure), cloth presets do not puff and fold (shrink < 0)',
-      all(pv(p)['pressure'] >= 5 for p in ('PADDING', 'PUFFER', 'PILLOW', 'QUILT')) and
+      all(pv(p)['pressure'] >= 7 for p in ('PADDING', 'PUFFER', 'PILLOW', 'QUILT')) and
       all(pv(p)['pressure'] <= 1.5 and pv(p)['shrink'] < 0 for p in ('CLOTH', 'SILK', 'CANVAS', 'LEATHER', 'CRUMPLE')))
-check('padding stronger than 0.23.8 (pressure 4)', pv('PADDING')['pressure'] > 4.0)
+check('padding stronger than 0.23.8 (pressure 4)', pv('PADDING')['pressure'] > 4.0 * 2)
 check('Sim toggle + preset on the Cloth Plate settings', hasattr(S.mch_wrinkle, 'sim_after') and
       S.mch_wrinkle.sim_after is False and S.mch_wrinkle.sim_preset == 'PADDING')
 

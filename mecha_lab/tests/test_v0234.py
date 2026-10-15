@@ -39,7 +39,7 @@ def slopes(fdir):
     cw.set_input(pan, 'Fold Direction', fdir)
     n = cw.fold_lines(pan)
     me = pan.data
-    h = np.array([d.value for d in me.attributes[cw.FOLD_D].data])     # 0.23.11: asymmetry lives in Surface Detail
+    h = np.array([d.value for d in me.attributes[cw.FOLD_H].data])
     mw = pan.matrix_world
     W = np.array([(mw @ v.co)[:] for v in me.vertices])
     g = []

@@ -27,8 +27,8 @@ box = cube('Box', 4.0)
 r, m = lasso([(340, 330), (660, 330), (665, 670), (335, 670)])
 ob = C.active_object
 gi = cw.get_input
-check('new layers start with Pinch 2 = half of Pinch 1 (0.23.11: calmer small fans)',
-      abs(gi(ob, 'Pinch 2') - gi(ob, 'Pinch') * 0.5) < 1e-9 and gi(ob, 'Pinch') > 0)
+check('new layers start with Pinch 2 = Pinch 1 (same look as before)', abs(gi(ob, 'Pinch 2') - gi(ob, 'Pinch')) < 1e-9
+      and gi(ob, 'Pinch') > 0)
 
 
 def evz(o):
