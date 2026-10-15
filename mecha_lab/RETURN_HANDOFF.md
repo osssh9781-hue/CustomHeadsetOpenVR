@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.22 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.23 (Claude Code, 2026-10-14)
+
+## 0.23.23
+- ZIP sha256 `4f1008d348a16c1a8236fe3c0fe1f3dccd5e7aa76c6b9cc6dd261172fa4ec024`. `MCH_GGT_wrinkle_hud._ensure_sliders`(setup / refresh / draw_prepare에서 빠진 슬라이더 기즈모 생성). `Object.mch_cloth_scale`(IntProperty %, update → `set_overall_scale`), HUD 세터도 `set_overall_scale`, 필드 동기화는 `_SYNC` 가드(Blender 5는 애드온 속성과 커스텀 속성이 따로라 ob[...]로는 안 됨).
 
 ## 0.23.22
 - ZIP sha256 `dd59e6b0a7823258f0e14f74544371b1c1806d9454f99fa16f7789ebbbe39b24`. 새 `lowpoly.py`: `build_mesh` = REMESH(VOXEL, 크기 / Detail) → DECIMATE COLLAPSE(Faces × 3) → `flatten_sides`(BFS로 면 묶기(각도), 작은 묶음 병합(면적 0.3 %), 경계 정리 8회, 점 = 최소제곱(평면들 + keep 0.001), 묶음 내부 엣지 dissolve → 엔곤, 일직선 2가 점 제거) → DECIMATE DISSOLVE(Flat Merge). 라이브 `MCH_LP_Bevel`(ANGLE) + `MCH_LP_Normals`. Scene `mch_lowpoly`, 오브젝트 키 `mch_lowpoly_source`.

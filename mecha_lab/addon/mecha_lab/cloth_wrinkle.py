@@ -1871,6 +1871,7 @@ class MCH_OT_wrinkle_reset(bpy.types.Operator):
             if m is not None:
                 m.thickness = size * st.thickness
             ob['mch_all_scale'] = 100.0                 # 0.23.19 Overall Scale back to 100 %
+            _sync_field(ob, 100)
         self.report({'INFO'}, 'Cloth Plate settings reset')
         return {'FINISHED'}
 
@@ -1999,6 +2000,38 @@ SLIDERS = (('all_scale', 'Overall Scale', 'ALLSCALE', 10, 400, 'PCT'),     # 0.2
 SCALE_ALL_SKIP = {'Trim Width', 'Trim Height'}
 
 
+def set_overall_scale(ob, val):
+    """Overall Scale to ``val`` % (HUD slider and the sidebar field share it)."""
+    old = float(ob.get('mch_all_scale', 100.0)) or 100.0
+    val = max(10.0, min(400.0, float(val)))
+    if abs(val - old) > 1e-9:
+        scale_all(ob, val / old)
+        ob['mch_all_scale'] = val
+    _sync_field(ob, val)
+
+
+_SYNC = [False]
+
+
+def _sync_field(ob, val):
+    """The sidebar field shows the value (without scaling again: Blender 5 keeps add-on properties apart from
+    custom properties, so the field is set through RNA with a guard)."""
+    try:
+        if ob.mch_cloth_scale != int(round(val)):
+            _SYNC[0] = True
+            try:
+                ob.mch_cloth_scale = int(round(val))
+            finally:
+                _SYNC[0] = False
+    except AttributeError:
+        pass
+
+
+def _overall_update(self, context):
+    if not _SYNC[0] and is_wrinkle(self):
+        set_overall_scale(self, self.mch_cloth_scale)
+
+
 def scale_all(ob, factor):
     """0.23.19 Overall Scale: every length of the panel (folds, puff, roll, stitch, pattern, skin, thickness)
     times ``factor`` - the look stays, only bigger / smaller.  The trim keeps its size."""
@@ -2035,11 +2068,7 @@ def slider_spec(context, key, ob=None):
         v = int(round(float(ob.get('mch_all_scale', 100.0))))
 
         def setter(val):
-            old = float(ob.get('mch_all_scale', 100.0)) or 100.0
-            val = max(float(lo), float(val))
-            if abs(val - old) > 1e-9:
-                scale_all(ob, val / old)
-                ob['mch_all_scale'] = val
+            set_overall_scale(ob, val)
         return label, v, lo, hi, setter, f'{label}  {v} %'
     if name == 'THICK':
         mod = ob.modifiers.get(MOD_SHELL)
@@ -2211,7 +2240,17 @@ class MCH_GGT_wrinkle_hud(bpy.types.GizmoGroup):
             gz.color_highlight = (0.32, 0.35, 0.41)
             gz.alpha_highlight = 1.0
             self.items[name] = gz
+        self._ensure_sliders()
+
+    def _ensure_sliders(self):
+        """0.23.23 a slider handle for every slider - also for sliders added by an update while this HUD was
+        already set up (the label showed but there was nothing to drag, e.g. Overall Scale)."""
+        items = getattr(self, 'items', None)
+        if items is None:
+            self.items = items = {}
         for key, *_r in SLIDERS:
+            if 'slider_' + key in items:
+                continue
             gz = self.gizmos.new(MCH_GT_wrinkle_slider.bl_idname)
             gz.key = key
             gz.color = (0.24, 0.27, 0.32)
@@ -2219,9 +2258,13 @@ class MCH_GGT_wrinkle_hud(bpy.types.GizmoGroup):
             gz.color_highlight = (0.36, 0.40, 0.47)
             gz.alpha_highlight = 1.0
             gz.use_draw_scale = False
-            self.items['slider_' + key] = gz
+            items['slider_' + key] = gz
+
+    def refresh(self, context):
+        self._ensure_sliders()
 
     def draw_prepare(self, context):
+        self._ensure_sliders()
         _ob, lay = _hud_current(context)
         ui = context.preferences.system.ui_scale
         for name, gz in self.items.items():
@@ -2312,6 +2355,9 @@ def draw(layout, context):
     if ob is not None:
         sub = box.box()
         sub.label(text=f'LIVE: {ob.name} (until Apply)', icon='MOD_CLOTH')
+        big = sub.row(align=True)
+        big.scale_y = 1.3
+        big.prop(ob, 'mch_cloth_scale', slider=True)        # 0.23.23 Overall Scale (same as the HUD slider)
         mod = ob.modifiers.get(MOD)
         c = sub.column(align=True)
         for name, *_r in INPUTS:
@@ -2341,6 +2387,9 @@ def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Scene.mch_wrinkle = bpy.props.PointerProperty(type=MCH_PG_Wrinkle)
+    bpy.types.Object.mch_cloth_scale = bpy.props.IntProperty(
+        name='Overall Scale', default=100, min=10, max=400, subtype='PERCENTAGE', update=_overall_update,
+        description='Every length of this Cloth Plate together (folds, puff, roll, stitch, thickness) - not the trim')
     if not bpy.app.background and _label_handle is None:
         _label_handle = bpy.types.SpaceView3D.draw_handler_add(_draw_labels, (), 'WINDOW', 'POST_PIXEL')
 
@@ -2355,6 +2404,8 @@ def unregister():
         _label_handle = None
     if hasattr(bpy.types.Scene, 'mch_wrinkle'):
         del bpy.types.Scene.mch_wrinkle
+    if hasattr(bpy.types.Object, 'mch_cloth_scale'):
+        del bpy.types.Object.mch_cloth_scale
     for c in reversed(CLASSES):
         try:
             bpy.utils.unregister_class(c)

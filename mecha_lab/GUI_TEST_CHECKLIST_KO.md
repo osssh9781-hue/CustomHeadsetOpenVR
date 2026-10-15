@@ -1,8 +1,11 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.22 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.23 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A00000000000000000000000000000000000000. 0.23.23 (미검증)
+- [ ] HUD의 Overall Scale을 드래그하면 바뀌는지, N 사이드바 LIVE 상자의 Overall Scale도 같이 바뀌는지
 
 ## A0000000000000000000000000000000000000. 0.23.22 (미검증)
 - [ ] ZBrush 스컬핑 선택 → Remesh 또는 ZBrush Bridge 패널 → Make Low Poly → 면이 크게 평평하게 나뉘는지

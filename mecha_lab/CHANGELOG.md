@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 0.23.23 — Overall Scale 조정 안 되던 문제 (2026-10-15)
+
+- 뷰포트 HUD의 Overall Scale 글자는 보이는데 드래그가 안 됨: HUD가 업데이트 전에 만들어져 있으면 새 슬라이더의 손잡이가 없었음 → HUD가 빠진 손잡이를 스스로 만듦.
+- **N 사이드바에도 Overall Scale**: Cloth Plate 패널의 LIVE 상자 맨 위(입력 / 드래그 가능한 일반 필드). HUD 슬라이더와 같은 값.
+- 테스트: 61개 파일 2207/2207 (`tests/test_log_bpy501_v02323.txt`), 새 `test_v02323.py`. ZIP sha256 `4f1008d348a16c1a8236fe3c0fe1f3dccd5e7aa76c6b9cc6dd261172fa4ec024`.
+
 ## 0.23.22 — Low Poly: 스컬핑(ZBrush) → 로봇 베이스 메쉬 (2026-10-15)
 
 - Remesh / ZBrush Bridge 패널의 **LOW POLY**: 스컬핑을 선택하고 **Make Low Poly** → 사본이 Voxel Remesh(구멍 닫기, 고른 밀도) → 면 줄이기 → **면 평평하게 밀기**(비슷한 방향의 면을 한 덩어리로 묶고, 면적으로 가중한 주 노말 평면 위로 점을 밀기. 두 면이 만나는 점은 두 평면의 교선, 세 면은 교점으로 → 곧은 모서리) → **면마다 엔곤 하나**. 원본은 숨겨서 그대로 둠(Show Original).
