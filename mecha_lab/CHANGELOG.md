@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 0.23.20 — Overall Scale 실시간 (2026-10-15)
+
+- Overall Scale을 드래그해도 화면이 바로 안 바뀌던 문제: 값은 바뀌었지만 다른 슬라이더처럼 뷰포트 다시 그리기 신호를 보내지 않았음 → 같은 새로고침 사용. 한 단계 약 0.4초(헤드리스, Fold Length 슬라이더와 같은 정도).
+- 테스트: 58개 파일 2183/2183 (`tests/test_log_bpy501_v02320.txt`). ZIP sha256 `adcb019e14fbdbd4d251393c29b89fec6f501fa0fcb33b29c2fc47e1f4c7778f`.
+
 ## 0.23.19 — Cloth Plate Overall Scale (2026-10-15)
 
 - 주름 모양은 그대로 두고, HUD 맨 위에 **Overall Scale** 슬라이더(100 % 기준, 10 ~ 400 %): 길이 값 전부(주름 간격 / 길이 / 깊이, Puff, Roll, Stitch, 패턴, Center Fade, 두께 등)를 한꺼번에 같은 비율로. **Trim은 제외**. 각도 / 날카로움 / Fan 같은 비율 값은 그대로. Reset이면 100 %로.

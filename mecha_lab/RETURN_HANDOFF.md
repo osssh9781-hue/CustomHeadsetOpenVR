@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.19 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.20 (Claude Code, 2026-10-14)
+
+## 0.23.20
+- ZIP sha256 `adcb019e14fbdbd4d251393c29b89fec6f501fa0fcb33b29c2fc47e1f4c7778f`. `cloth_wrinkle._refresh(ob, mod)`(interface_update, update_tag, data.update_tag, 3D 뷰 tag_redraw)을 `set_input`과 `scale_all`이 같이 씀.
 
 ## 0.23.19
 - ZIP sha256 `bde23129b6fea46dba6fd79bdba9e9a438b263145dc5349c37be3e2824175660`. `cloth_wrinkle`: 슬라이더 `all_scale`(종류 ALLSCALE, 맨 앞) → `scale_all(ob, factor)` = SIZE_INPUTS − {Trim Width, Trim Height} × factor + 셸 두께, fold_lines 한 번, 지난번 값도 기억. 현재 값 `ob['mch_all_scale']`(Reset = 100).

@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.23.19
+# Test Report — Mecha Lab 0.23.20
+
+## 0.23.20 결과: 58개 파일 통과 (`tests/test_log_bpy501_v02320.txt`). test_v02319에 드래그 한 단계 시간(약 0.4초) 추가. 실제 뷰포트 다시 그리기는 헤드리스에서 확인 불가 - 미검증.
 
 ## 0.23.19 결과: 58개 파일, 2182 / 2182 통과 (`tests/test_log_bpy501_v02319.txt`, 한 번에 통과). test_v02319: Overall Scale 200 % → 길이 값 전부 ×2, 두께 ×2, Trim / 각도 / Fan 그대로, 100 %로 원래 값. 뷰포트 미검증.
 

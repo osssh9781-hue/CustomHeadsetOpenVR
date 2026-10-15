@@ -38,6 +38,13 @@ check('the slider shows 200 %', cw.slider_spec(C, 'all_scale', o)[1] == 200)
 cw.slider_spec(C, 'all_scale', o)[4](100)
 check('back to 100 %: the original values', all(abs(float(cw.get_input(o, n)) - before[n]) <= 1e-6 * max(1.0, abs(before[n]))
                                                 for n in names) and abs(o.modifiers[cw.MOD_SHELL].thickness - thick) < 1e-9)
+import time
+t0 = time.time()
+for v_ in (110, 120, 130, 140, 150, 100):
+    cw.slider_spec(C, 'all_scale', o)[4](v_)
+    C.evaluated_depsgraph_get().update()
+step = (time.time() - t0) / 6
+check('one drag step (scale + re-evaluate) is quick', step < 0.5, round(step, 3))
 dg = C.evaluated_depsgraph_get()
 check('the panel still evaluates', len(o.evaluated_get(dg).data.vertices) > 100)
 mecha_lab.unregister()

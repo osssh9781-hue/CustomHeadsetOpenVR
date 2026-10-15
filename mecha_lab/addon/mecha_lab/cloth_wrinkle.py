@@ -1123,6 +1123,11 @@ def set_input(ob, name, value):
             last_used.remember(sec, name + SIZE_TAG, size)
     if name in FOLD_INPUTS and size > 0:
         fold_lines(ob)                          # the long fold lines follow spacing / tilt / length / seed
+    _refresh(ob, mod)
+
+
+def _refresh(ob, mod):
+    """Make the viewport re-evaluate and redraw the layer now."""
     try:
         mod.node_group.interface_update(bpy.context)
     except (AttributeError, TypeError, RuntimeError):
@@ -2018,11 +2023,7 @@ def scale_all(ob, factor):
             last_used.remember('wrinkle', '_thickness' + SIZE_TAG, size)
     if size > 0:
         fold_lines(ob)                          # the fold lines follow the new spacing / length (once)
-    try:
-        mod.node_group.interface_update(bpy.context)
-    except (AttributeError, TypeError, RuntimeError):
-        pass
-    ob.update_tag(refresh={'OBJECT', 'DATA'})
+    _refresh(ob, mod)                           # 0.23.20: the viewport did not redraw while dragging
 
 
 def slider_spec(context, key, ob=None):
