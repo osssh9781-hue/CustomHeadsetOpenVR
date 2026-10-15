@@ -108,7 +108,7 @@ INPUTS = (('Type', 'NodeSocketInt', 0, 0, 5),
           ('Surface Detail', 'NodeSocketFloat', 0.0, -100.0, 100.0),
           ('Fold In', 'NodeSocketInt', 0, 0, 1),
           # 0.23.12 the folds stay near the border, the middle of the panel stays calm / flat
-          ('Center Calm', 'NodeSocketFloat', 0.8, 0.0, 1.0))
+          ('Center Calm', 'NodeSocketFloat', 0.9, 0.0, 1.0))
 from .cloth_sim import PRESET_ITEMS as _SIM_PRESETS
 
 TRIMS = (('NONE', 'No Trim', 'Plain border'),
@@ -123,7 +123,7 @@ SEC_U = 'mch_sec_u'            # 0..1 along the long side (local X): stitched se
 SEC_LEN = 'mch_sec_len'        # length of the long side
 EDGE_U = 'mch_edge_u'          # arc length along the border of the nearest border point
 EDGE_LEN = 'mch_edge_len'      # length of that border loop (keeps seam patterns seamless)
-VERSION = 47
+VERSION = 48
 
 
 # -----------------------------------------------------------------------------
@@ -579,7 +579,7 @@ def build_group():
         a.data_type = 'FLOAT'
         a.inputs['Name'].default_value = name
         return a.outputs['Attribute']
-    def smooth_named(name, iters=3):
+    def smooth_named(name, iters=1):
         """0.23.11 the fold heights are per point of the coarse panel; after the subdivision a ridge
         running across the triangles zigzags (beads) - a few blur passes round it off"""
         b = N.new('GeometryNodeBlurAttribute')
@@ -741,7 +741,7 @@ def build_group():
     pbase = _math(N, L, 'MULTIPLY', _math(N, L, 'MAXIMUM', I['Pinch'], I['Pinch 2']), vb=0.06)
     pinch = _math(N, L, 'MULTIPLY', _math(N, L, 'SUBTRACT', pinch, pbase), pseam)
     # 0.23.11 surface detail (asymmetric thin folds) on its own slider
-    pinch = _math(N, L, 'ADD', pinch, _math(N, L, 'MULTIPLY', _math(N, L, 'MULTIPLY', smooth_named(FOLD_D, 2),
+    pinch = _math(N, L, 'ADD', pinch, _math(N, L, 'MULTIPLY', _math(N, L, 'MULTIPLY', smooth_named(FOLD_D, 1),
                                                                     I['Surface Detail']), pseam))
     # 0.23.12 Center Calm: the folds fade out toward the middle of the panel (border distance / the deepest)
     cst = N.new('GeometryNodeAttributeStatistic')
@@ -753,8 +753,8 @@ def build_group():
     cmr = N.new('ShaderNodeMapRange')
     cmr.interpolation_type = 'SMOOTHSTEP'
     L.new(rel, cmr.inputs['Value'])
-    cmr.inputs['From Min'].default_value = 0.2
-    cmr.inputs['From Max'].default_value = 0.6
+    cmr.inputs['From Min'].default_value = 0.15
+    cmr.inputs['From Max'].default_value = 0.45
     calm = _math(N, L, 'SUBTRACT', va=1.0, b=_math(N, L, 'MULTIPLY', cmr.outputs['Result'], I['Center Calm']))
     pinch = _math(N, L, 'MULTIPLY', pinch, calm)
     # padding: the folds dig in (pinched cushion); cloth: they stick out
@@ -986,7 +986,7 @@ def fold_lines(ob):
                 verts.append((q.x, q.y, 0.0))
                 ftv.append(t)
                 fwv.append((spacing * 0.06 * (1.0 - 0.92 * thin) + ln * t * growth * 0.03) * (1.0 - 0.65 * thin))
-                fw0.append(spacing * 0.06 + ln * t * growth * 0.03)        # 0.23.2 main fold width
+                fw0.append((spacing * 0.06 + ln * t * growth * 0.03) * 0.75)   # main fold width (0.23.13 thinner)
                 fav.append(amp * side)
                 if j:
                     eds.append((base + j - 1, base + j))
@@ -1002,7 +1002,7 @@ def fold_lines(ob):
     if len(me.edges):
         el = np.array([(me.vertices[e.vertices[0]].co - me.vertices[e.vertices[1]].co).length for e in me.edges
                        if not e.is_loose][:4000] or [0.0])
-        min_w = float(np.median(el)) * 2.2           # 0.23.11: 1.3 still beaded after the subdivision
+        min_w = float(np.median(el)) * 1.5           # 0.23.13: 2.2 made the folds fat (blur rounds the rest)
     else:
         min_w = 0.0
     fwv = [max(w_, min_w) for w_ in fwv]
@@ -1117,10 +1117,10 @@ def set_input(ob, name, value):
 # Type = character of the panel (fractions of the patch size): puff, puff width, folds from the border
 # (depth, spacing, length, sharpness), stitching
 PRESETS = {
-    'PADDING': dict(Puff=0.075, PuffW=0.4, Pinch=0.028, Spacing=0.09, Length=0.45, Sharp=1.6, Stitch=0.002, Fan=6.0),
-    'DENIM': dict(Puff=0.012, PuffW=0.12, Pinch=0.026, Spacing=0.075, Length=0.7, Sharp=2.5, Stitch=0.0015,
+    'PADDING': dict(Puff=0.075, PuffW=0.4, Pinch=0.028, Spacing=0.07, Length=0.3, Sharp=1.6, Stitch=0.002, Fan=6.0),
+    'DENIM': dict(Puff=0.012, PuffW=0.12, Pinch=0.026, Spacing=0.06, Length=0.42, Sharp=2.5, Stitch=0.0015,
                   Fan=4.0),
-    'LEATHER': dict(Puff=0.025, PuffW=0.16, Pinch=0.04, Spacing=0.12, Length=0.55, Sharp=1.2, Stitch=0.002, Fan=8.0),
+    'LEATHER': dict(Puff=0.025, PuffW=0.16, Pinch=0.04, Spacing=0.1, Length=0.36, Sharp=1.2, Stitch=0.002, Fan=8.0),
     # 0.23.7 after the references
     'PUFFER': dict(Puff=0.07, PuffW=0.075, Pinch=0.0, Spacing=0.1, Length=0.3, Sharp=1.4, Stitch=0.0015, Fan=4.0,
                    FanMix=0.0, Sections=5, SecHeight=1.0, Crumple=0.003, CSize=0.045, CSharp=2.5, CStretch=0.8, CAngle=0.0,
