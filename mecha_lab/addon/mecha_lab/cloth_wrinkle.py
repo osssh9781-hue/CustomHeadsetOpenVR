@@ -29,6 +29,7 @@ MOD = 'MCH_Wrinkle'
 MOD_SHELL = 'MCH_WrinkleShell'
 COLL = 'Cloth Wrinkles'
 EDGE_ATTR = 'mch_edge_dist'
+EDGE_SMOOTH = 'mch_edge_smooth'   # 0.23.13 membrane height (Poisson): a round puff, no X ridge to the corners
 TYPES = (('PADDING', 'Padding', 'Puffy padded panel, soft folds from the seams (pattern: stitched channels)'),
          ('DENIM', 'Denim', 'Little puff, many long thin creases running in from the border'),
          ('LEATHER', 'Leather', 'Medium puff, few thick heavy folds from the border'),
@@ -123,7 +124,7 @@ SEC_U = 'mch_sec_u'            # 0..1 along the long side (local X): stitched se
 SEC_LEN = 'mch_sec_len'        # length of the long side
 EDGE_U = 'mch_edge_u'          # arc length along the border of the nearest border point
 EDGE_LEN = 'mch_edge_len'      # length of that border loop (keeps seam patterns seamless)
-VERSION = 49
+VERSION = 50
 
 
 # -----------------------------------------------------------------------------
@@ -664,7 +665,14 @@ def build_group():
     pwid = _math(N, L, 'MAXIMUM', I['Puff Width'], vb=1e-6)
     cellp = _math(N, L, 'MINIMUM', pwid, _math(N, L, 'MULTIPLY', cellw, vb=0.5))
     pden = _math(N, L, 'ADD', pwid, _math(N, L, 'MULTIPLY', near_seam, _math(N, L, 'SUBTRACT', cellp, pwid)))
-    tp = _math(N, L, 'DIVIDE', D, _math(N, L, 'MAXIMUM', pden, vb=1e-6), clamp=True)
+    # 0.23.13 the puff follows the membrane height (round, no X ridge); older layers without it: border distance
+    sm = N.new('GeometryNodeInputNamedAttribute')
+    sm.data_type = 'FLOAT'
+    sm.inputs['Name'].default_value = EDGE_SMOOTH
+    sm_d = _math(N, L, 'ADD', _math(N, L, 'MULTIPLY', sm.outputs['Attribute'], sm.outputs['Exists']),
+                 _math(N, L, 'MULTIPLY', Db, _math(N, L, 'SUBTRACT', va=1.0, b=sm.outputs['Exists'])))
+    Dp = _math(N, L, 'MINIMUM', _math(N, L, 'MAXIMUM', _math(N, L, 'SUBTRACT', sm_d, tw), vb=0.0), ds)
+    tp = _math(N, L, 'DIVIDE', Dp, _math(N, L, 'MAXIMUM', pden, vb=1e-6), clamp=True)
     # round dome with a finite slope at the seam (a quarter circle stood up vertically there and aliased)
     prof = _math(N, L, 'SUBTRACT', va=1.0, b=_math(N, L, 'POWER', _math(N, L, 'SUBTRACT', va=1.0, b=tp), vb=2.4))
     # Section Height: how much the quilted cells puff (x the panel puff)
@@ -1261,6 +1269,36 @@ def _border_loops(bm):
     return loops
 
 
+def _membrane(bm, dist):
+    """0.23.13 how an inflated membrane bulges: -Laplace(u) = 1, u = 0 on the border (Jacobi, started from a
+    parabola of the border distance).  Unlike the straight border distance it has no ridge along the
+    diagonals to the corners.  Scaled so its maximum equals the deepest border distance."""
+    import numpy as np
+    bm.verts.ensure_lookup_table()
+    n = len(bm.verts)
+    if n == 0:
+        return []
+    d = np.array([min(dist.get(v, 0.0), 1e6) for v in bm.verts])
+    dmax = max(float(d.max()), 1e-9)
+    border = np.array([v.is_boundary or not v.link_faces for v in bm.verts])
+    nbrs = [[e.other_vert(v).index for e in v.link_edges] for v in bm.verts]
+    deg = max(1, max(len(x) for x in nbrs))
+    idx = np.full((n, deg), -1, dtype=np.int64)
+    for i, nb in enumerate(nbrs):
+        idx[i, :len(nb)] = nb
+    valid = idx >= 0
+    cnt = np.maximum(valid.sum(1), 1)
+    el = [e.calc_length() for e in bm.edges]
+    h2 = (float(np.median(el)) if el else 1.0) ** 2
+    u = d * (2.0 * dmax - d) / dmax
+    for _it in range(400):
+        nb = np.where(valid, u[np.where(valid, idx, 0)], 0.0)
+        un = (nb.sum(1) + h2) / cnt
+        u = np.where(border, 0.0, 0.5 * u + 0.5 * un)
+    u *= dmax / max(float(u.max()), 1e-12)
+    return u.tolist()
+
+
 def _edge_distances(bm):
     """Straight distance of every vertex to the patch border (resampled border,
     nearest point), the border arc length there, that loop's length, and the
@@ -1426,6 +1464,7 @@ def _wrinkle_layer(context, target, cos, nrms, tris, projector, st, last, wtype)
         bm.from_mesh(region)
         bm.verts.ensure_lookup_table()
         dist, uu, ll, rm = _edge_distances(bm)
+        smooth_d = _membrane(bm, dist)
         rvals = [min(rm[v], 1e6) for v in bm.verts]
         vals = [min(dist.get(v, 0.0), 1e6) for v in bm.verts]
         x0 = min(v.co.x for v in bm.verts)
@@ -1438,7 +1477,7 @@ def _wrinkle_layer(context, target, cos, nrms, tris, projector, st, last, wtype)
     finally:
         bm.free()
     for name, data in ((EDGE_ATTR, vals), (EDGE_U, uvals), (EDGE_LEN, lvals), (SEC_U, sec), (SEC_LEN, slen),
-                       (FOLD_ROOM, rvals)):
+                       (FOLD_ROOM, rvals), (EDGE_SMOOTH, smooth_d)):
         attr = region.attributes.new(name, 'FLOAT', 'POINT')
         attr.data.foreach_set('value', data)
     region.name = target.name + '_Wrinkle'
