@@ -888,6 +888,29 @@ SIZE_INPUTS = {'Strength', 'Scale', 'Edge Soft', 'Lift', 'Puff', 'Puff Width', '
 
 
 INPUT_NAMES = {n for n, *_r in INPUTS}
+SIZE_TAG = '@size'          # last_used key suffix: the panel size a remembered length was set on
+
+
+def recalled(values, size):
+    """Remembered inputs for a new panel of ``size``: the same numbers on a panel of a similar size
+    (0.5x - 2x of the one they were set on), lengths scaled by the size ratio beyond that; a length
+    remembered without its size (before 0.23.14) is dropped - it may come from a panel 100x bigger."""
+    out = {}
+    for name, v in values.items():
+        if name.endswith(SIZE_TAG):
+            continue
+        if name in SIZE_INPUTS or name == '_thickness':
+            old = values.get(name + SIZE_TAG)
+            try:
+                old = float(old)
+                ratio = size / old if old > 0 else None
+                v = None if ratio is None else (float(v) if 0.5 <= ratio <= 2.0 else float(v) * ratio)
+            except (TypeError, ValueError):
+                v = None
+            if v is None:
+                continue
+        out[name] = v
+    return out
 FOLD_INPUTS = {'Pinch Spacing', 'Pinch Length', 'Fold Tilt', 'Tilt Random', 'Length Random', 'Variety', 'Seed',
                'Fan', 'Trim', 'Trim Width', 'Fold Sharp', 'Fold Asymmetry', 'Fold Thinness', 'Fold Direction',
                'Fold In'}
@@ -1109,8 +1132,13 @@ def set_input(ob, name, value):
     from . import last_used
     size = float(ob.get('mch_wrinkle_size', 0.0) or 0.0)
     if size > 0 and name in INPUT_NAMES:
-        # the same numbers next time (not scaled by size); creature skin remembers its own set
-        last_used.remember('creature' if is_creature(ob) else 'wrinkle', name, value)
+        # the same numbers next time; creature skin remembers its own set.  0.23.14: lengths also keep the
+        # size of the panel they were set on, so a much smaller / bigger next panel gets them scaled
+        # (exact on a panel of a similar size) - a small panel after a big one exploded into shards
+        sec = 'creature' if is_creature(ob) else 'wrinkle'
+        last_used.remember(sec, name, value)
+        if name in SIZE_INPUTS:
+            last_used.remember(sec, name + SIZE_TAG, size)
     if name in FOLD_INPUTS and size > 0:
         fold_lines(ob)                          # the long fold lines follow spacing / tilt / length / seed
     try:
@@ -1520,7 +1548,7 @@ def _wrinkle_layer(context, target, cos, nrms, tris, projector, st, last, wtype)
     if int(last.get('Trim', TRIM_IDS.index(st.trim))) != TRIM_IDS.index(st.trim):
         for k in ('Trim', 'Trim Width', 'Trim Height'):
             last.pop(k, None)
-    for name, v in last.items():
+    for name, v in recalled(last, size).items():
         if name == '_thickness':
             shell.thickness = float(v)
         else:
@@ -1530,7 +1558,7 @@ def _wrinkle_layer(context, target, cos, nrms, tris, projector, st, last, wtype)
                 pass
     if getattr(st, 'creature', False):
         apply_creature(ob, st.skin, size)
-        for name, v in last_used.recall('creature').items():
+        for name, v in recalled(last_used.recall('creature'), size).items():
             try:
                 set_input(ob, name, v)
             except KeyError:
@@ -1767,6 +1795,11 @@ def capture(ob):
     m = ob.modifiers.get(MOD_SHELL)
     if m is not None:
         vals['_thickness'] = m.thickness
+    size = float(ob.get('mch_wrinkle_size', 0.0) or 0.0)
+    if size > 0:                                   # 0.23.14: lengths keep the panel size (see recalled)
+        for k in list(vals):
+            if k in SIZE_INPUTS or k == '_thickness':
+                vals[k + SIZE_TAG] = size
     return {k: (float(v) if isinstance(v, float) else v) for k, v in vals.items()}
 
 
@@ -1775,8 +1808,21 @@ def user_presets():
     return last_used.data().setdefault('cloth_presets', {})
 
 
+def with_sizes(vals, size):
+    """A preset saved before 0.23.14 has no panel sizes: take them as set on a panel of ``size``."""
+    out = dict(vals)
+    if size and size > 0:
+        for k in vals:
+            if (k in SIZE_INPUTS or k == '_thickness') and k + SIZE_TAG not in out:
+                out[k + SIZE_TAG] = size
+    return out
+
+
 def apply_values(ob, vals):
-    for k, v in vals.items():
+    size = float(ob.get('mch_wrinkle_size', 0.0) or 0.0)
+    use = recalled(with_sizes(vals, size), size) if size > 0 else {k: v for k, v in vals.items()
+                                                                  if not k.endswith(SIZE_TAG)}
+    for k, v in use.items():
         if k == '_thickness':
             m = ob.modifiers.get(MOD_SHELL)
             if m is not None:
@@ -1829,7 +1875,8 @@ class MCH_OT_wrinkle_preset_load(bpy.types.Operator):
         st.trim = TRIM_IDS[max(0, min(3, int(vals.get('Trim', TRIM_IDS.index(st.trim)))))]
         sec = last_used.data().setdefault('wrinkle', {})
         sec.clear()
-        sec.update(vals)                       # the next Cloth Plate starts with it too
+        # the next Cloth Plate starts with it too (lengths follow its size, see recalled)
+        sec.update(with_sizes(vals, float(ob.get('mch_wrinkle_size', 0.0) or 0.0) if ob is not None else 0.0))
         last_used.save()
         self.report({'INFO'}, f'Cloth preset "{self.name}"')
         return {'FINISHED'}
@@ -2053,6 +2100,7 @@ def slider_spec(context, key, ob=None):
                 m.thickness = val / 1000.0 * size
                 from . import last_used
                 last_used.remember('wrinkle', '_thickness', m.thickness)
+                last_used.remember('wrinkle', '_thickness' + SIZE_TAG, size)
         return label, v, lo, hi, setter, f'{label}  {cur:.3f}'
     cur = get_input(ob, name)
     if kind == 'DEG':

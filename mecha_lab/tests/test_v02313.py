@@ -62,6 +62,51 @@ dg = C.evaluated_depsgraph_get()
 me = o.evaluated_get(dg).data
 check('padding plate evaluates', len(me.vertices) > 100 and all(math.isfinite(c) for v in me.vertices[:200] for c in v.co))
 
+# 2b. last used lengths follow the panel size (a small panel after a big one exploded into shards)
+for o_ in list(bpy.data.objects):
+    bpy.data.objects.remove(o_)
+last_used.forget('wrinkle')
+S.mch_wrinkle.wtype = 'DENIM'
+big = cube('Big', 40.0)
+r, m = lasso([(330, 330), (670, 330), (680, 660), (320, 670)])
+A = C.active_object
+sa = A['mch_wrinkle_size']
+cw.set_input(A, 'Pinch Length', sa * 0.31)
+cw.set_input(A, 'Puff', sa * 0.05)
+cw.set_input(A, 'Fan', 7.5)                                  # not a length: copied as it is
+for o_ in list(bpy.data.objects):
+    bpy.data.objects.remove(o_)
+small = cube('Small', 0.4)
+r, m = lasso([(484, 484), (516, 484), (516, 516), (484, 516)])
+B = C.active_object
+sb = B['mch_wrinkle_size']
+check('big then small panel: sizes differ a lot', sa > 8 * sb, (round(sa, 3), round(sb, 4)))
+check('remembered lengths scaled to the new panel (Pinch Length, Puff)',
+      abs(cw.get_input(B, 'Pinch Length') - sb * 0.31) < sb * 1e-3 and abs(cw.get_input(B, 'Puff') - sb * 0.05) < sb * 1e-3,
+      (cw.get_input(B, 'Pinch Length'), sb * 0.31))
+check('non-length values copied exactly (Fan)', abs(cw.get_input(B, 'Fan') - 7.5) < 1e-6)
+co_b = [B.matrix_world @ v.co for v in B.evaluated_get(C.evaluated_depsgraph_get()).data.vertices]
+ext = max((c - co_b[0]).length for c in co_b)
+check('the small panel stays small (no shards)', ext < 0.4 * 2.0, round(ext, 3))
+bpy.ops.mch.wrinkle_preset_save(name='BigPreset')
+# a preset saved on the small panel B, loaded onto a big panel: lengths scaled up, not 1:1
+cw.set_input(B, 'Puff', sb * 0.04)
+bpy.ops.mch.wrinkle_preset_save(name='SmallPreset')
+for o_ in list(bpy.data.objects):
+    bpy.data.objects.remove(o_)
+big = cube('Big2', 40.0)
+r, m = lasso([(330, 330), (670, 330), (680, 660), (320, 670)])
+D = C.active_object
+sd = D['mch_wrinkle_size']
+bpy.ops.mch.wrinkle_preset_load(name='SmallPreset')
+check('preset from a small panel on a big one: Puff follows the size', abs(cw.get_input(D, 'Puff') - sd * 0.04) < sd * 1e-3,
+      (cw.get_input(D, 'Puff'), sd * 0.04))
+check('presets store the panel size of their lengths', cw.user_presets()['SmallPreset'].get('Puff' + cw.SIZE_TAG) == sb)
+for n_ in ('BigPreset', 'SmallPreset'):
+    bpy.ops.mch.wrinkle_preset_delete(name=n_)
+vals = cw.recalled({'Puff': 9.0, 'Fan': 3.0}, 0.3)
+check('a length remembered without its size (old file) is dropped, others kept', vals == {'Fan': 3.0}, vals)
+
 # 3. Space: no big tool menu any more; Space held while drawing moves the outline
 kc = C.window_manager.keyconfigs.addon
 check('Space no longer opens the tool menu', kc is None or not any(

@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.13 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.14 (Claude Code, 2026-10-14)
+
+## 0.23.14
+- ZIP sha256 `61f3abe51220749d0c33ceab7e2d181a0188986dce8fbccd571e380333b5501f`. `cloth_wrinkle.set_input`: SIZE_INPUTS 값을 기억할 때 `<이름>@size` = 그 판의 `mch_wrinkle_size`도 기억(`_thickness@size`도). `recalled(values, size)`: 비율 0.5~2 = 그대로, 그 밖 = ×비율, @size 없는 길이 값은 버림. `capture`(프리셋 저장)에 @size 포함, `with_sizes`로 예전 프리셋은 선택된 판 크기로 간주. `_wrinkle_layer`와 creature 경로가 `recalled` 사용.
 
 ## 0.23.13
 - ZIP sha256 `9d4796a89b028d766f5d8444d703730f70693fadc7f454b6515e7e5808560d63`. `cloth_wrinkle`: `fold_lines` Fold In 프로필 clip(1 - d / max(w/2, min_w))^1.6, 폭 ×0.75, min_w = 엣지 1.5배, Blur 1회; `_membrane(bm, dist)` (Jacobi 400회, -Δu = 1, 테두리 0, max = 최대 테두리 거리) → 점 속성 `mch_edge_smooth`, GN Puff가 이것을 사용(없으면 Db). Center Calm 기본 0.9.
