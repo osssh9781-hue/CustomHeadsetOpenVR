@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.21 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.22 (Claude Code, 2026-10-14)
+
+## 0.23.22
+- ZIP sha256 `dd59e6b0a7823258f0e14f74544371b1c1806d9454f99fa16f7789ebbbe39b24`. 새 `lowpoly.py`: `build_mesh` = REMESH(VOXEL, 크기 / Detail) → DECIMATE COLLAPSE(Faces × 3) → `flatten_sides`(BFS로 면 묶기(각도), 작은 묶음 병합(면적 0.3 %), 경계 정리 8회, 점 = 최소제곱(평면들 + keep 0.001), 묶음 내부 엣지 dissolve → 엔곤, 일직선 2가 점 제거) → DECIMATE DISSOLVE(Flat Merge). 라이브 `MCH_LP_Bevel`(ANGLE) + `MCH_LP_Normals`. Scene `mch_lowpoly`, 오브젝트 키 `mch_lowpoly_source`.
 
 ## 0.23.21
 - ZIP sha256 `57f7e2575a0aaa62473d5ba48b8bed04d7110bcf2b321ae9ecd6377c89afa755`. `tool_state.hud_for(context, tools)` = effective_tool in tools. poll에 추가: armor_plate(PLATE), random_panels(PLATE), creature_shell(PLATE), curve_tube 두 그룹(TUBE), robot_base(BASE, 별칭 `_ts`), cloth_wrinkle(WRINKLE). armor_plate / cloth_wrinkle / robot_base에 모듈 수준 tool_state import 추가.

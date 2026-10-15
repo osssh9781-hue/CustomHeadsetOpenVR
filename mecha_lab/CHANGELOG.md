@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.23.22 — Low Poly: 스컬핑(ZBrush) → 로봇 베이스 메쉬 (2026-10-15)
+
+- Remesh / ZBrush Bridge 패널의 **LOW POLY**: 스컬핑을 선택하고 **Make Low Poly** → 사본이 Voxel Remesh(구멍 닫기, 고른 밀도) → 면 줄이기 → **면 평평하게 밀기**(비슷한 방향의 면을 한 덩어리로 묶고, 면적으로 가중한 주 노말 평면 위로 점을 밀기. 두 면이 만나는 점은 두 평면의 교선, 세 면은 교점으로 → 곧은 모서리) → **면마다 엔곤 하나**. 원본은 숨겨서 그대로 둠(Show Original).
+- 실시간: **Bevel / Chamfer**(Width, Segments 1 = 챔퍼, Profile, 이 각도보다 날카로운 모서리만) + Weighted Normals. **Re-make**(Detail / Faces / Flatten Sides 각도 / Flat Merge), **Apply**.
+- ZBrush FBX에 흔한 적용 안 된 배율(0.01)도 처리(Remesh 크기를 오브젝트 공간으로).
+- 사용자 PM3D_Cube3D_1(6.8만 면) → 23면(엔곤 21), 닫힘, 약 1초. 비교 `reference/lowpoly_v02322.png`. 테스트: 60개 파일 2204/2204 (`tests/test_log_bpy501_v02322.txt`), 새 `test_v02322.py`. ZIP sha256 `dd59e6b0a7823258f0e14f74544371b1c1806d9454f99fa16f7789ebbbe39b24`.
+
 ## 0.23.21 — 도구 HUD는 그 도구에서만 (2026-10-15)
 
 - Mirror 버튼처럼, 결과물 옆에 뜨는 버튼 / 슬라이더(HUD)가 **자기 도구를 고른 동안에만** 보임 - 다른 도구로 가면 숨김(결과물은 그대로, 다시 그 도구를 고르면 다시 보임).
