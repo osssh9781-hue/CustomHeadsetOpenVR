@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.23.6
+# Test Report — Mecha Lab 0.23.7
+
+## 0.23.7 결과: 51개 파일, 2059 / 2059 통과 (`tests/test_log_bpy501_v0237.txt`). 전체 실행에서 `test_v0235.py`가 1회 실패: Skin Organic / Irregular가 맨 끝 입력이라고 가정한 예전 검사(0.23.7에서 Crumple 입력이 뒤에 붙음) → 순서 검사로 고치고 그 파일만 다시 실행해 로그 구간 교체. Through: 원통 위 띠 = 위 반 / 아래 반 2패널, 큐브 Crease 50° = 6, 180° = 2, 실제 도구로 Cloth / Armor 각각 2개, Through 판 Face Size 재생성. 옷 모양은 Cycles 렌더로 비교. 원근 뷰 / 뷰포트 동작은 미검증(테스트는 정사영 프로젝터).
 
 ## 0.23.6 결과: 50개 파일, 2040 / 2040 통과 (`tests/test_log_bpy501_v0236.txt`, 한 번에 통과). `test_v0234`의 "다섯 스킨" 검사는 앞 5개만 보도록 수정(Croc Back 추가). 가시: 높은 점이 중간값 위로 튀어나온 정도가 악어보다 큰지(5.39 대 1.77). 모양은 Cycles 렌더로 비교. 뷰포트는 미검증.
 

@@ -31,10 +31,13 @@ COLL = 'Cloth Wrinkles'
 EDGE_ATTR = 'mch_edge_dist'
 TYPES = (('PADDING', 'Padding', 'Puffy padded panel, soft folds from the seams (pattern: stitched channels)'),
          ('DENIM', 'Denim', 'Little puff, many long thin creases running in from the border'),
-         ('LEATHER', 'Leather', 'Medium puff, few thick heavy folds from the border'))
+         ('LEATHER', 'Leather', 'Medium puff, few thick heavy folds from the border'),
+         ('PUFFER', 'Puffer', 'Down jacket: puffed channels between stitched seams, small creases at the seams'),
+         ('COTTON', 'Cotton', 'Crumpled thin fabric: many long thin sharp creases crossing each other'),
+         ('DRAPE', 'Drape', 'Soft heavy fabric: big soft folds with fine creases on them'))
 TYPE_IDS = tuple(t[0] for t in TYPES)
 # name, socket, default, min, max
-INPUTS = (('Type', 'NodeSocketInt', 0, 0, 2),
+INPUTS = (('Type', 'NodeSocketInt', 0, 0, 5),
           ('Strength', 'NodeSocketFloat', 0.03, -1.0, 1.0),
           ('Scale', 'NodeSocketFloat', 0.25, 0.001, 100.0),
           ('Direction', 'NodeSocketFloat', 0.0, -10.0, 10.0),
@@ -89,7 +92,15 @@ INPUTS = (('Type', 'NodeSocketInt', 0, 0, 2),
           ('Skin Edge Height', 'NodeSocketFloat', 0.004, -100.0, 100.0),
           # 0.23.5 organic scale edges + an irregular shrink border
           ('Skin Organic', 'NodeSocketFloat', 0.8, 0.0, 3.0),
-          ('Skin Irregular', 'NodeSocketFloat', 0.7, 0.0, 2.0))
+          ('Skin Irregular', 'NodeSocketFloat', 0.7, 0.0, 2.0),
+          # 0.23.7 crumple: crossing thin sharp creases + big soft billows (cloth references)
+          ('Crumple', 'NodeSocketFloat', 0.0, -100.0, 100.0),
+          ('Crumple Size', 'NodeSocketFloat', 0.08, 0.0001, 100.0),
+          ('Crumple Sharp', 'NodeSocketFloat', 3.0, 0.5, 12.0),
+          ('Crumple Stretch', 'NodeSocketFloat', 0.7, 0.0, 0.95),
+          ('Crumple Angle', 'NodeSocketFloat', 0.6, -6.3, 6.3),
+          ('Billow', 'NodeSocketFloat', 0.0, -100.0, 100.0),
+          ('Billow Size', 'NodeSocketFloat', 0.3, 0.0001, 100.0))
 TRIMS = (('NONE', 'No Trim', 'Plain border'),
          ('PIPING', 'Piping', 'Round cord along the border'),
          ('BINDING', 'Binding', 'Flat band folded over the border, stitched'),
@@ -101,7 +112,7 @@ SEC_U = 'mch_sec_u'            # 0..1 along the long side (local X): stitched se
 SEC_LEN = 'mch_sec_len'        # length of the long side
 EDGE_U = 'mch_edge_u'          # arc length along the border of the nearest border point
 EDGE_LEN = 'mch_edge_len'      # length of that border loop (keeps seam patterns seamless)
-VERSION = 40
+VERSION = 42
 
 
 # -----------------------------------------------------------------------------
@@ -250,6 +261,83 @@ def _skin_pattern(N, L, I, P, freq, rnd):
     for k, src in enumerate((croc, dragon, godz, toad, eleph, cback)):
         L.new(src, sw.inputs[k + 2])
     return sw.outputs[0]
+
+
+def _crumple_height(N, L, I, Db):
+    """0.23.7 crumple (height in metres): long thin sharp creases in a few crossing directions (ridged
+    noise stretched along each direction, bent by a low noise) + big soft billows; the border stays put."""
+    pos = N.new('GeometryNodeInputPosition').outputs[0]
+    seed = N.new('ShaderNodeCombineXYZ')
+    L.new(_math(N, L, 'MULTIPLY', I['Seed'], vb=5.71), seed.inputs[0])
+    L.new(_math(N, L, 'MULTIPLY', I['Seed'], vb=-2.39), seed.inputs[1])
+    pv = N.new('ShaderNodeVectorMath')
+    pv.operation = 'ADD'
+    L.new(pos, pv.inputs[0])
+    L.new(seed.outputs[0], pv.inputs[1])
+    sz = _math(N, L, 'MAXIMUM', I['Crumple Size'], vb=1e-6)
+
+    def noise(vec, scale, detail=2.0):
+        n = N.new('ShaderNodeTexNoise')
+        n.inputs['Detail'].default_value = detail
+        L.new(vec, n.inputs['Vector'])
+        L.new(scale, n.inputs['Scale'])
+        return n
+    # bend the creases: warp by a low noise
+    wn = noise(pv.outputs[0], _math(N, L, 'DIVIDE', va=0.35, b=sz), 1.0)
+    wc = N.new('ShaderNodeVectorMath')
+    wc.operation = 'SUBTRACT'
+    L.new(wn.outputs['Color'], wc.inputs[0])
+    wc.inputs[1].default_value = (0.5, 0.5, 0.5)
+    ws = N.new('ShaderNodeVectorMath')
+    ws.operation = 'SCALE'
+    L.new(wc.outputs[0], ws.inputs[0])
+    L.new(_math(N, L, 'MULTIPLY', sz, vb=1.2), ws.inputs['Scale'])
+    pw = N.new('ShaderNodeVectorMath')
+    pw.operation = 'ADD'
+    L.new(pv.outputs[0], pw.inputs[0])
+    L.new(ws.outputs[0], pw.inputs[1])
+    sep = N.new('ShaderNodeSeparateXYZ')
+    L.new(pw.outputs[0], sep.inputs[0])
+    x, y = sep.outputs['X'], sep.outputs['Y']
+    along = _math(N, L, 'SUBTRACT', va=1.0, b=_math(N, L, 'MULTIPLY', I['Crumple Stretch'], vb=0.9))
+    total = None
+    for k, (dang, size_f, w) in enumerate(((0.0, 1.0, 1.0), (1.15, 0.72, 0.75), (-0.95, 0.5, 0.5),
+                                           (2.3, 0.33, 0.32))):
+        a = _math(N, L, 'ADD', I['Crumple Angle'], vb=dang)
+        ca, sa = _math(N, L, 'COSINE', a), _math(N, L, 'SINE', a)
+        u = _math(N, L, 'ADD', _math(N, L, 'MULTIPLY', x, ca), _math(N, L, 'MULTIPLY', y, sa))
+        v = _math(N, L, 'SUBTRACT', _math(N, L, 'MULTIPLY', y, ca), _math(N, L, 'MULTIPLY', x, sa))
+        q = N.new('ShaderNodeCombineXYZ')
+        L.new(_math(N, L, 'MULTIPLY', u, along), q.inputs[0])       # slow along the crease, fast across
+        L.new(v, q.inputs[1])
+        q.inputs[2].default_value = 3.7 * k
+        n = noise(q.outputs[0], _math(N, L, 'DIVIDE', va=1.0, b=_math(N, L, 'MULTIPLY', sz, vb=size_f)), 1.5)
+        ridge = _math(N, L, 'SUBTRACT', va=1.0, b=_math(N, L, 'ABSOLUTE', _math(
+            N, L, 'SUBTRACT', _math(N, L, 'MULTIPLY', n.outputs['Fac'], vb=2.0), vb=1.0)))
+        ridge = _math(N, L, 'POWER', _math(N, L, 'MAXIMUM', ridge, vb=0.0), I['Crumple Sharp'])
+        # some stretches of each crease stronger, some fade out
+        amp = noise(pv.outputs[0], _math(N, L, 'DIVIDE', va=0.6 / size_f, b=sz), 1.0)
+        layer = _math(N, L, 'MULTIPLY', _math(N, L, 'MULTIPLY', ridge, _math(
+            N, L, 'MAXIMUM', _math(N, L, 'SUBTRACT', _math(N, L, 'MULTIPLY', amp.outputs['Fac'], vb=2.2), vb=0.55),
+            vb=0.0)), vb=w)
+        total = layer if total is None else _math(N, L, 'ADD', total, layer)
+    crumple = _math(N, L, 'MULTIPLY', total, I['Crumple'])
+    # big soft billows: low noise, the crests a little sharper (soft heavy folds)
+    bsz = _math(N, L, 'MAXIMUM', I['Billow Size'], vb=1e-6)
+    bn = noise(pw.outputs[0], _math(N, L, 'DIVIDE', va=1.0, b=bsz), 2.0)
+    bridge = _math(N, L, 'SUBTRACT', va=1.0, b=_math(N, L, 'ABSOLUTE', _math(
+        N, L, 'SUBTRACT', _math(N, L, 'MULTIPLY', bn.outputs['Fac'], vb=2.0), vb=1.0)))
+    billow = _math(N, L, 'ADD', _math(N, L, 'MULTIPLY', _math(N, L, 'POWER', _math(N, L, 'MAXIMUM', bridge, vb=0.0),
+                                                              vb=2.5), vb=0.7),
+                   _math(N, L, 'MULTIPLY', _math(N, L, 'SUBTRACT', bn.outputs['Fac'], vb=0.5), vb=0.6))
+    billow = _math(N, L, 'MULTIPLY', billow, I['Billow'])
+    # the border stays on the surface
+    keep_w = _math(N, L, 'MAXIMUM', _math(N, L, 'MAXIMUM', _math(N, L, 'MULTIPLY', sz, vb=0.6),
+                                          _math(N, L, 'MULTIPLY', bsz, vb=0.35)), vb=1e-6)
+    t = _math(N, L, 'DIVIDE', Db, keep_w, clamp=True)
+    keep = _math(N, L, 'MULTIPLY', _math(N, L, 'MULTIPLY', t, t), _math(N, L, 'SUBTRACT', va=3.0, b=_math(
+        N, L, 'MULTIPLY', t, vb=2.0)))
+    return _math(N, L, 'MULTIPLY', _math(N, L, 'ADD', crumple, billow), keep)
 
 
 def _skin_height(N, L, I, Db):
@@ -438,10 +526,10 @@ def build_group():
 
     sw = N.new('GeometryNodeIndexSwitch')
     sw.data_type = 'FLOAT'
-    while len(sw.index_switch_items) < 3:                # the node starts with 2 items
+    while len(sw.index_switch_items) < 6:                # the node starts with 2 items
         sw.index_switch_items.new()
     L.new(I['Type'], sw.inputs['Index'])
-    for i, src in enumerate((pad, den, lea)):
+    for i, src in enumerate((pad, den, lea, pad, den, lea)):     # Puffer / Cotton / Drape reuse them
         L.new(src, sw.inputs[i + 1])
 
     # fade toward the border (distance attribute written at creation)
@@ -666,6 +754,7 @@ def build_group():
         L.new(src, tsw.inputs[i + 2])
     h = _math(N, L, 'ADD', h, _math(N, L, 'MULTIPLY', tsw.outputs[0], I['Trim Height']))
     h = _math(N, L, 'ADD', h, _skin_height(N, L, I, Db))
+    h = _math(N, L, 'ADD', h, _crumple_height(N, L, I, Db))
     nrm = N.new('GeometryNodeInputNormal')
     off = N.new('ShaderNodeVectorMath')
     off.operation = 'SCALE'
@@ -978,7 +1067,20 @@ PRESETS = {
     'DENIM': dict(Puff=0.012, PuffW=0.12, Pinch=0.026, Spacing=0.075, Length=0.7, Sharp=2.5, Stitch=0.0015,
                   Fan=4.0),
     'LEATHER': dict(Puff=0.025, PuffW=0.16, Pinch=0.04, Spacing=0.12, Length=0.55, Sharp=1.2, Stitch=0.002, Fan=8.0),
+    # 0.23.7 after the references
+    'PUFFER': dict(Puff=0.07, PuffW=0.075, Pinch=0.0, Spacing=0.1, Length=0.3, Sharp=1.4, Stitch=0.0015, Fan=4.0,
+                   FanMix=0.0, Sections=5, SecHeight=1.0, Crumple=0.003, CSize=0.045, CSharp=2.5, CStretch=0.8, CAngle=0.0,
+                   Billow=0.004, BSize=0.25),
+    'COTTON': dict(Puff=0.01, PuffW=0.12, Pinch=0.012, Spacing=0.1, Length=0.5, Sharp=3.0, Stitch=0.0, Fan=3.0,
+                   Sections=1, Crumple=0.008, CSize=0.08, CSharp=3.0, CStretch=0.75, CAngle=0.6,
+                   Billow=0.012, BSize=0.35),
+    'DRAPE': dict(Puff=0.02, PuffW=0.2, Pinch=0.03, Spacing=0.16, Length=0.6, Sharp=1.4, Stitch=0.0, Fan=6.0,
+                  Sections=1, Crumple=0.003, CSize=0.05, CSharp=2.5, CStretch=0.6, CAngle=1.0,
+                  Billow=0.09, BSize=0.3),
 }
+CRUMPLE_KEYS = (('Crumple', 'Crumple', True), ('Crumple Size', 'CSize', True), ('Crumple Sharp', 'CSharp', False),
+                ('Crumple Stretch', 'CStretch', False), ('Crumple Angle', 'CAngle', False),
+                ('Billow', 'Billow', True), ('Billow Size', 'BSize', True))
 
 
 TRIM_PRESETS = {'NONE': (0.03, 0.0), 'PIPING': (0.022, 0.011), 'BINDING': (0.045, 0.006), 'WELT': (0.04, 0.008)}
@@ -1042,6 +1144,16 @@ def apply_preset(ob, wtype, size=None):
         set_input(ob, name, pr[key] * size)
     set_input(ob, 'Fold Sharp', pr['Sharp'])
     set_input(ob, 'Fan', pr['Fan'])
+    # 0.23.7 crumple / billow (off on the older types) and the puffer's channels
+    for name, key, sized in CRUMPLE_KEYS:
+        if key in pr:
+            set_input(ob, name, pr[key] * size if sized else pr[key])
+        elif name in ('Crumple', 'Billow'):
+            set_input(ob, name, 0.0)
+    set_input(ob, 'Fan Mix', pr.get('FanMix', 0.6))
+    if 'Sections' in pr:
+        set_input(ob, 'Sections', pr['Sections'])
+        set_input(ob, 'Section Height', pr.get('SecHeight', 1.0))
 
 
 def is_wrinkle(ob):
@@ -1162,11 +1274,43 @@ def perform_wrinkle(context, loops, projector, wtype=None):
     target = ap.pick_surface(context, projector, groups)
     if target is None:
         raise cg.CutError('Draw the wrinkles over a mesh.')
+    brush = getattr(scene, 'mch_brush', None)
+    if getattr(brush, 'through_mode', False):
+        # 0.23.7 Through: the outline goes through the mesh - front, back, split at the silhouette / creases
+        from . import through_region as tr
+        panels = tr.panels_for(context, target, groups, projector, st.spacing, getattr(brush, 'through_crease', 50.0))
+        obs = [_wrinkle_layer(context, target, p_['cos'], p_['nrms'], p_['tris'], projector, st, dict(last), wtype)
+               for p_ in panels]
+        for o in context.selected_objects:
+            o.select_set(False)
+        for o in obs:
+            o.select_set(True)
+        context.view_layer.objects.active = obs[0]
+        kind = 'Creature skin' if getattr(st, 'creature', False) else 'Cloth plate'
+        return f'{kind} through {target.name}: {len(obs)} panel(s) (front / back / creases)'
     pts, tris, _nb = ap.screen_patch(groups, st.spacing)
     if not tris:
         raise cg.CutError('The outline is too small.')
     bvh, _wv, _polys = ap._target_bvh(context, target)
     cos, nrms, missing = ap.project_patch(pts, projector, bvh)
+    ob = _wrinkle_layer(context, target, cos, nrms, tris, projector, st, last, wtype)
+    for o in context.selected_objects:
+        o.select_set(False)
+    ob.select_set(True)
+    context.view_layer.objects.active = ob
+    extra = f' | {len(missing)} point(s) past the surface edge' if missing else ''
+    if getattr(st, 'creature', False):
+        return f'Creature skin "{ob.name}" on {target.name} ({dict((a, b) for a, b, _c in SKINS)[st.skin]}){extra}'
+    pat = dict((a, b) for a, b, _c in TYPES)[wtype] if st.pattern else 'no pattern'
+    return f'Cloth plate "{ob.name}" on {target.name} (padded panel, {pat}){extra}'
+
+
+
+def _wrinkle_layer(context, target, cos, nrms, tris, projector, st, last, wtype):
+    """One cloth layer object from projected points (world) + triangles; returns the object."""
+    from . import armor_plate as ap
+    from . import last_used
+    pts = cos
     cen = sum(cos, Vector()) / len(cos)
     n = sum(nrms, Vector())
     n = n.normalized() if n.length > 1e-9 else -projector.view_dir
@@ -1242,7 +1386,8 @@ def perform_wrinkle(context, loops, projector, wtype=None):
     # last used options (0.20.2): the new panel starts as the previous one was left - but a type / trim
     # picked in the panel since then wins over the remembered one
     if int(last.get('Type', TYPE_IDS.index(wtype))) != TYPE_IDS.index(wtype):
-        for k in ('Type', 'Puff', 'Puff Width', 'Pinch', 'Pinch Spacing', 'Pinch Length', 'Stitch', 'Fold Sharp', 'Fan'):
+        for k in ('Type', 'Puff', 'Puff Width', 'Pinch', 'Pinch Spacing', 'Pinch Length', 'Stitch', 'Fold Sharp', 'Fan',
+                  'Sections', 'Section Height') + tuple(c[0] for c in CRUMPLE_KEYS):
             last.pop(k, None)
     if int(last.get('Trim', TRIM_IDS.index(st.trim))) != TRIM_IDS.index(st.trim):
         for k in ('Trim', 'Trim Width', 'Trim Height'):
@@ -1265,16 +1410,7 @@ def perform_wrinkle(context, loops, projector, wtype=None):
         if int(get_input(ob, 'Skin')) != CREATURE[st.skin]['Skin']:
             apply_creature(ob, st.skin, size)
     fold_lines(ob)
-    for o in context.selected_objects:
-        o.select_set(False)
-    ob.select_set(True)
-    context.view_layer.objects.active = ob
-    extra = f' | {len(missing)} point(s) past the surface edge' if missing else ''
-    if getattr(st, 'creature', False):
-        return f'Creature skin "{ob.name}" on {target.name} ({dict((a, b) for a, b, _c in SKINS)[st.skin]}){extra}'
-    pat = dict((a, b) for a, b, _c in TYPES)[wtype] if st.pattern else 'no pattern'
-    return f'Cloth plate "{ob.name}" on {target.name} (padded panel, {pat}){extra}'
-
+    return ob
 
 def dense_mesh(context, ob, extra=2, limit=1_500_000):
     """High Poly of a live layer: the same wrinkles with a finer Detail (no subdivision blur)."""
@@ -1527,7 +1663,7 @@ class MCH_OT_wrinkle_preset_load(bpy.types.Operator):
         if ob is not None:
             apply_values(ob, vals)
         st = context.scene.mch_wrinkle               # type / trim of the preset become the panel choice too
-        st.wtype = TYPE_IDS[max(0, min(2, int(vals.get('Type', TYPE_IDS.index(st.wtype)))))]
+        st.wtype = TYPE_IDS[max(0, min(len(TYPE_IDS) - 1, int(vals.get('Type', TYPE_IDS.index(st.wtype)))))]
         st.trim = TRIM_IDS[max(0, min(3, int(vals.get('Trim', TRIM_IDS.index(st.trim)))))]
         sec = last_used.data().setdefault('wrinkle', {})
         sec.clear()
@@ -1948,7 +2084,7 @@ def _draw_labels():
         import blf
         ui = context.preferences.system.ui_scale
         blf.size(0, 11 * ui)
-        tname = TYPES[max(0, min(2, int(get_input(ob, 'Type'))))][1]
+        tname = TYPES[max(0, min(len(TYPES) - 1, int(get_input(ob, 'Type'))))][1]
         trim = TRIMS[max(0, min(3, int(get_input(ob, 'Trim'))))][1]
         seam = SECTION_SHAPES[max(0, min(4, int(get_input(ob, 'Section Shape'))))]
         for key, text in (('apply', 'Apply'), ('cancel', 'Remove'), ('reroll', tname),

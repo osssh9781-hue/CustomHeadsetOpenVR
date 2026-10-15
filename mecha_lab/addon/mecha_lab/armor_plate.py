@@ -356,6 +356,28 @@ def plate_meshes(context, target, groups, projector, spacing):
     return region, surround, local_size, missing
 
 
+
+def through_plate_meshes(context, target, groups, projector, spacing, crease):
+    """0.23.7 Through: [(region, surround, local_size)] - one per panel (front / back / creases)."""
+    from . import through_region as tr
+    panels = tr.panels_for(context, target, groups, projector, spacing, crease)
+    _bvh, wverts, polys = _target_bvh(context, target)
+    inv = target.matrix_world.inverted_safe()
+    rot = inv.to_3x3()
+    scale = target.matrix_world.to_scale()
+    out = []
+    for pn in panels:
+        cos, nrms = pn['cos'], pn['nrms']
+        region = build_region(cos, pn['tris'], [inv @ c for c in cos], [(rot @ n).normalized() for n in nrms])
+        lo = Vector([min(c[k] for c in cos) for k in range(3)])
+        hi = Vector([max(c[k] for c in cos) for k in range(3)])
+        size = max((hi - lo).length, 1e-6)
+        pad = Vector((size * 0.25,) * 3)
+        surround = surround_mesh(wverts, polys, inv, lo - pad, hi + pad)
+        local_size = size / max(1e-9, (abs(scale.x) + abs(scale.y) + abs(scale.z)) / 3.0)
+        out.append((region, surround, local_size))
+    return out
+
 def perform_plate(context, loops, projector, preset=None):
     """Lasso -> new armour plate object (a live Face Extract part).  Returns
     a report; raises cg.CutError with the scene unchanged.
@@ -369,6 +391,9 @@ def perform_plate(context, loops, projector, preset=None):
     target = pick_surface(context, projector, groups)
     if target is None:
         raise cg.CutError('Draw the plate over a mesh (armour parts and plates are skipped).')
+    brush = getattr(scene, 'mch_brush', None)
+    if getattr(brush, 'through_mode', False):
+        return _perform_through(context, loops, projector, preset, target, groups, st, brush)
     region, surround, local_size, missing = plate_meshes(context, target, groups, projector, st.spacing)
     part = create_plate(context, target, region, surround, preset, local_size, st.auto_size)
     frozen = freeze_projector(projector)
@@ -388,6 +413,36 @@ def perform_plate(context, loops, projector, preset=None):
     name = dict((p_[0], p_[1]) for p_ in PRESETS)[preset]
     extra = f' | {len(missing)} point(s) past the surface edge' if missing else ''
     return f'Armor plate "{part.name}" on {target.name} ({name}, {len(region.polygons)} clean faces){extra}'
+
+
+
+def _perform_through(context, loops, projector, preset, target, groups, st, brush):
+    """0.23.7 Through: one plate per panel (front / back / creases), each keeps its outline for Face Size."""
+    crease = float(getattr(brush, 'through_crease', 50.0))
+    made = through_plate_meshes(context, target, groups, projector, st.spacing, crease)
+    frozen = freeze_projector(projector)
+    parts = []
+    for k, (region, surround, local_size) in enumerate(made):
+        part = create_plate(context, target, region, surround, preset, local_size, st.auto_size)
+        if frozen is not None:
+            part[SRC_KEY] = json.dumps({'loops': [[[float(x), float(y)] for x, y in lp] for lp in loops],
+                                        'proj': frozen, 'spacing': int(st.spacing), 'size': local_size,
+                                        'through': k, 'crease': crease})
+            recall_plate(part, local_size, preset)
+        if getattr(st, 'creature', False):
+            from . import creature_shell
+            nr = sum((Vector(p_.normal) for p_ in region.polygons), Vector())
+            up = target.matrix_world.to_3x3() @ nr if nr.length > 1e-9 else -Vector(projector.view_dir)
+            creature_shell.attach(part, up, local_size)
+        parts.append(part)
+    context.scene.mch_extract_last = parts[0]
+    for o in context.selected_objects:
+        o.select_set(False)
+    for part in parts:
+        part.select_set(True)
+    context.view_layer.objects.active = parts[0]
+    name = dict((p_[0], p_[1]) for p_ in PRESETS)[preset]
+    return f'Armor plate through {target.name}: {len(parts)} plate(s) ({name}, front / back / creases)'
 
 
 # -----------------------------------------------------------------------------
@@ -471,7 +526,20 @@ def rebuild_plate(context, ob, spacing=None):
     spacing = int(src.get('spacing', 120) if spacing is None else spacing)
     groups = cg.prepare_loops([[tuple(q) for q in lp] for lp in src['loops']])
     try:
-        region, surround, _size, _miss = plate_meshes(context, target, groups, thaw_projector(src['proj']), spacing)
+        if src.get('through') is not None:
+            made = through_plate_meshes(context, target, groups, thaw_projector(src['proj']), spacing,
+                                        float(src.get('crease', 50.0)))
+            k = int(src['through'])
+            if k >= len(made):
+                return False
+            region, surround = made[k][0], made[k][1]
+            for j, (r_, s_, _z) in enumerate(made):
+                if j != k:
+                    bpy.data.meshes.remove(r_)
+                    bpy.data.meshes.remove(s_)
+        else:
+            region, surround, _size, _miss = plate_meshes(context, target, groups, thaw_projector(src['proj']),
+                                                          spacing)
     except cg.CutError:
         return False
     old = (p.region, p.surround)

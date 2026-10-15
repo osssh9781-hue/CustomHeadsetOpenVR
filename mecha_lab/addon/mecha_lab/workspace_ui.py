@@ -709,6 +709,10 @@ def draw_shape_palette(self, context):
         sk.prop(brush, 'surface_mode', text='Surface', icon='SNAP_FACE', toggle=True)
         if brush.surface_mode and tool in {'CUT', 'SPLIT'}:
             sk.prop(brush, 'surface_gap', text='Gap')
+        if tool in {'PLATE', 'WRINKLE'}:
+            sk.prop(brush, 'through_mode', text='Through', icon='XRAY', toggle=True)
+            if brush.through_mode:
+                sk.prop(brush, 'through_crease', text='Crease')
     if brush.line_mode:
         sk.prop(brush, 'line_width', text='')
         sk.prop(brush, 'line_caps', text='')

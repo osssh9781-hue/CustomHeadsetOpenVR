@@ -70,7 +70,7 @@ S.mch_plate.creature = False
 
 # ---- Creature Skin
 check('skin: Skin Organic / Skin Irregular inputs + sliders',
-      [n for n, *_r in cw.INPUTS][-2:] == ['Skin Organic', 'Skin Irregular'] and
+      (lambda ns: ns[ns.index('Skin Organic') + 1] == 'Skin Irregular')([n for n, *_r in cw.INPUTS]) and
       {'skin_organic', 'skin_irregular'} <= set(cw.SKIN_KEYS) and
       {'skin_organic', 'skin_irregular'} <= {k[0] for k in cw.SLIDERS})
 MODE[0], NATIVE[0] = 'WRINKLE', 'mecha.cloth_wrinkle'

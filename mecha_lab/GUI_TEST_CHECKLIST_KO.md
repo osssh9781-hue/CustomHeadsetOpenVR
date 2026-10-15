@@ -1,8 +1,14 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.6 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.7 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A0000000000000000000000. 0.23.7 (미검증)
+- [ ] 헤더 Through 토글(Armor / Cloth Plate): 팔에 띠를 그으면 앞판 + 뒷판이 생기는지, Crease 값으로 꺾인 곳에서 나뉘는지
+- [ ] 원근(Perspective) 뷰에서 Through 영역이 라쏘와 맞는지
+- [ ] Through 판의 Face Size 슬라이더(실시간 재생성)
+- [ ] Cloth 타입 Puffer / Cotton / Drape, Crumple 슬라이더는 N 패널 입력에 있음(HUD 슬라이더는 아직 없음)
 
 ## A000000000000000000000. 0.23.6 (미검증)
 - [ ] Skin 버튼으로 6가지 순환(마지막 Croc Back), 악어 비늘이 둥글게 부푼 모양인지, 도마뱀 가시

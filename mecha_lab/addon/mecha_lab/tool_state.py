@@ -204,6 +204,13 @@ class MCH_PG_Brush(bpy.types.PropertyGroup):
                                description='Cut / Split / Armor Plate / Cloth Plate: click points ON the mesh (they '
                                            'stay on it when you orbit); Enter applies (Cut / Split: a loop around a '
                                            'part splits it off; plates: the outline on the surface)')
+    through_mode: BoolProperty(name='Through', default=False,
+                               description='Armor / Cloth Plate: the outline goes through the mesh - the back is '
+                                           'taken too (every layer inside the outline); split into panels where '
+                                           'it turns away from the view and at sharp creases')
+    through_crease: FloatProperty(name='Crease', default=50.0, min=5.0, max=180.0, precision=0,
+                                  description='Through: a fold sharper than this splits the panels (a seam), '
+                                              '180 = never')
     surface_gap: FloatProperty(name='Cut Gap', default=0.0005, min=0.0, soft_max=0.02, max=1.0, unit='LENGTH',
                                precision=4, description='Gap between the parts split by the Surface Lasso')
     sketch_first: BoolProperty(name='Sketch', default=False,

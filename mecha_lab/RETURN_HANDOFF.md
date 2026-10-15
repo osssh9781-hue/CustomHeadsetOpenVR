@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.6 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.7 (Claude Code, 2026-10-14)
+
+## 0.23.7
+- ZIP sha256 `f9a37f70be4f3ff7e19b44e7e39de3bdb9f80fcf030927c398053be246019886`. 새 `through_region.py`: `through_panels(bm_world, groups, projector, spacing_px, crease_deg)` - 화면 상자 겹치는 면만 남김 → 정면 엣지에서 px/m 추정 후 Face Size까지 엣지 분할 → 라쏘 안 판정, 바깥 점은 엣지 따라 이분 탐색으로 라쏘 경계에 붙임 → 앞/뒤(면 노말·시선) + 이면각 > Crease에서 컴포넌트 분리. `armor_plate.through_plate_meshes` / `_perform_through`(SRC_KEY에 through 번호 + crease, `rebuild_plate`가 같은 번호 패널 사용). `cloth_wrinkle.perform_wrinkle` → `_wrinkle_layer(...)`로 분리, Through면 패널마다 호출. 브러시 `through_mode`, `through_crease`, 헤더 토글. `cloth_wrinkle` v42: `_crumple_height`(입력 Crumple / Size / Sharp / Stretch / Angle / Billow / Billow Size, 뒤에 추가), 타입 PUFFER / COTTON / DRAPE(Type 3..5, 패턴 스위치는 기존 3개 재사용), `apply_preset`이 Crumple / Fan Mix / Sections 설정.
 
 ## 0.23.6
 - ZIP sha256 `33b9ca16680a13a214137287b000b6defd8868158563617a0027eafc631566e6`. `cloth_wrinkle` v40 `_skin_pattern`: `pillow(vec, f, groove, radius)` = sqrt(1-(F1/r)²) × smoothstep(edge, 0, groove) × 셀별 높이; croc = 큰/작은 pillow를 노이즈로 섞음 + 미세 결; dragon = pillow 자갈 + 성긴 Voronoi 셀 중 Color.g > 0.7에 원뿔 가시; 새 Skin 6 `CROC_BACK` = FRACT 격자(x 0.8f, y 0.9f) sqrt 판 + |fx-0.5| 용골, 격자 셀 WhiteNoise. Index Switch 7칸, Skin 입력 최대 6.
