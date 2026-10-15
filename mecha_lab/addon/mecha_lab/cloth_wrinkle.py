@@ -102,7 +102,11 @@ INPUTS = (('Type', 'NodeSocketInt', 0, 0, 5),
           ('Billow', 'NodeSocketFloat', 0.0, -100.0, 100.0),
           ('Billow Size', 'NodeSocketFloat', 0.3, 0.0001, 100.0),
           # 0.23.8 Pinch 2: the small fans on their own slider (Pinch = Pinch 1: the long big folds)
-          ('Pinch 2', 'NodeSocketFloat', 0.0, -100.0, 100.0))
+          ('Pinch 2', 'NodeSocketFloat', 0.0, -100.0, 100.0),
+          # 0.23.11 the asymmetric thin folds as a surface detail on their own slider (0 = off); padding
+          # pinches the folds IN (like an inflated cushion), cloth folds stick OUT
+          ('Surface Detail', 'NodeSocketFloat', 0.0, -100.0, 100.0),
+          ('Fold In', 'NodeSocketInt', 0, 0, 1))
 from .cloth_sim import PRESET_ITEMS as _SIM_PRESETS
 
 TRIMS = (('NONE', 'No Trim', 'Plain border'),
@@ -111,12 +115,13 @@ TRIMS = (('NONE', 'No Trim', 'Plain border'),
          ('WELT', 'Welt', 'Raised flat strip just inside the border'))
 TRIM_IDS = tuple(t[0] for t in TRIMS)
 FOLD_ROOM = 'mch_fold_room'
+FOLD_D = 'mch_foldd'           # 0.23.11 surface detail: the asymmetric thin folds (Surface Detail slider)
 FOLD_H = 'mch_foldh'           # long folds: height field written by fold_lines()    # distance to where the nearest border point jumps (corners): folds fade there
 SEC_U = 'mch_sec_u'            # 0..1 along the long side (local X): stitched sections across it
 SEC_LEN = 'mch_sec_len'        # length of the long side
 EDGE_U = 'mch_edge_u'          # arc length along the border of the nearest border point
 EDGE_LEN = 'mch_edge_len'      # length of that border loop (keeps seam patterns seamless)
-VERSION = 43
+VERSION = 45
 
 
 # -----------------------------------------------------------------------------
@@ -572,6 +577,14 @@ def build_group():
         a.data_type = 'FLOAT'
         a.inputs['Name'].default_value = name
         return a.outputs['Attribute']
+    def smooth_named(name, iters=3):
+        """0.23.11 the fold heights are per point of the coarse panel; after the subdivision a ridge
+        running across the triangles zigzags (beads) - a few blur passes round it off"""
+        b = N.new('GeometryNodeBlurAttribute')
+        b.data_type = 'FLOAT'
+        L.new(named(name), b.inputs['Value'])
+        b.inputs['Iterations'].default_value = iters
+        return b.outputs['Value']
     Db, Ub, LP = attr.outputs['Attribute'], named(EDGE_U), named(EDGE_LEN)
     LPs = _math(N, L, 'MAXIMUM', LP, vb=1e-6)
     # sections: stitched seams across the long side, each cell puffs up on its own
@@ -690,7 +703,7 @@ def build_group():
     # at their own angle up to just short of the far side; distance to the nearest line + its position
     # along the line give a thin start, a wider middle and a fading end
     # long folds: heights computed per point in Python (fold_lines, all folds summed - crossings blend)
-    pinch = named(FOLD_H)
+    pinch = smooth_named(FOLD_H)
     # fans mixed in at random places along the border: several thin folds spreading from one point
     sxf = _math(N, L, 'DIVIDE', LPs, _math(N, L, 'MAXIMUM', _math(N, L, 'ROUND', _math(N, L, 'DIVIDE', LPs,
                                                                                        _math(N, L, 'MULTIPLY', spc,
@@ -725,6 +738,12 @@ def build_group():
                   clamp=True)
     pbase = _math(N, L, 'MULTIPLY', _math(N, L, 'MAXIMUM', I['Pinch'], I['Pinch 2']), vb=0.06)
     pinch = _math(N, L, 'MULTIPLY', _math(N, L, 'SUBTRACT', pinch, pbase), pseam)
+    # 0.23.11 surface detail (asymmetric thin folds) on its own slider
+    pinch = _math(N, L, 'ADD', pinch, _math(N, L, 'MULTIPLY', _math(N, L, 'MULTIPLY', smooth_named(FOLD_D, 2),
+                                                                    I['Surface Detail']), pseam))
+    # padding: the folds dig in (pinched cushion); cloth: they stick out
+    pinch = _math(N, L, 'MULTIPLY', pinch, _math(N, L, 'SUBTRACT', va=1.0, b=_math(
+        N, L, 'MULTIPLY', I['Fold In'], vb=2.0)))
     h = _math(N, L, 'ADD', h, pinch)
     # stitching: a sunken seam line at Stitch Inset with raised thread stitches along it
     sl = _math(N, L, 'MAXIMUM', I['Stitch Length'], vb=1e-6)
@@ -837,6 +856,7 @@ def get_input(ob, name):
 
 
 SIZE_INPUTS = {'Strength', 'Scale', 'Edge Soft', 'Lift', 'Puff', 'Puff Width', 'Roll', 'Roll Width', 'Pinch', 'Pinch 2',
+               'Surface Detail',
                'Pinch Spacing', 'Pinch Length', 'Stitch', 'Stitch Inset', 'Stitch Length', 'Trim Width', 'Trim Height',
                'Center Fade', 'Skin Scale', 'Skin Depth', 'Shrink Width', 'Skin Edge Width', 'Skin Edge Height'}
 
@@ -901,7 +921,7 @@ def fold_lines(ob):
     finally:
         bm.free()
     total = sum((b - a).length for a, b, _n in edges)
-    verts, eds, ftv, fwv, fav = [], [], [], [], []
+    verts, eds, ftv, fwv, fav, fw0 = [], [], [], [], [], []
     if total > 0:
         n = max(1, int(round(total / spacing)))
         step = total / n
@@ -950,6 +970,7 @@ def fold_lines(ob):
                 verts.append((q.x, q.y, 0.0))
                 ftv.append(t)
                 fwv.append((spacing * 0.06 * (1.0 - 0.92 * thin) + ln * t * growth * 0.03) * (1.0 - 0.65 * thin))
+                fw0.append(spacing * 0.06 + ln * t * growth * 0.03)        # 0.23.2 main fold width
                 fav.append(amp * side)
                 if j:
                     eds.append((base + j - 1, base + j))
@@ -957,21 +978,23 @@ def fold_lines(ob):
     import numpy as np
     sharp = max(0.1, float(gi('Fold Sharp')) * 0.35)
     xy = np.array([(v.co.x, v.co.y) for v in me.vertices], dtype=np.float64)
-    total = np.zeros(len(xy))
+    total = np.zeros(len(xy))          # main folds: the clean 0.23.2 lines from the border (symmetric)
+    detail = np.zeros(len(xy))         # 0.23.11 surface detail: asymmetric / thin (Surface Detail slider)
     fold = []
     cur = []
     # the panel resolution limits how thin a fold can be (thinner than ~1.3 edges reads as beads)
     if len(me.edges):
         el = np.array([(me.vertices[e.vertices[0]].co - me.vertices[e.vertices[1]].co).length for e in me.edges
                        if not e.is_loose][:4000] or [0.0])
-        min_w = float(np.median(el)) * 1.3
+        min_w = float(np.median(el)) * 2.2           # 0.23.11: 1.3 still beaded after the subdivision
     else:
         min_w = 0.0
     fwv = [max(w_, min_w) for w_ in fwv]
+    fw0 = [max(w_, min_w) for w_ in fw0]          # main folds too: no beads where the panel is coarse
     sw = 1.0 - 0.72 * asym          # steep (folded-over) side: narrow wall
     gw = 1.0 + 0.9 * asym           # gentle side: long slope
     for i, (vx, vy, _z) in enumerate(verts):
-        cur.append((vx, vy, ftv[i], fwv[i], fav[i]))
+        cur.append((vx, vy, ftv[i], fwv[i], fav[i], fw0[i]))
         if ftv[i] >= 1.0 - 1e-9:
             fold.append(cur)
             cur = []
@@ -979,14 +1002,16 @@ def fold_lines(ob):
         P = np.array([(p[0], p[1]) for p in pts])
         T = np.array([p[2] for p in pts])
         W = np.array([p[3] for p in pts])
+        W0 = np.array([p[5] for p in pts])
         amp = abs(pts[0][4])
         side = 1.0 if pts[0][4] >= 0 else -1.0
         A, B = P[:-1], P[1:]
         AB = B - A
         L2 = np.maximum((AB * AB).sum(1), 1e-18)
         # cull: only points near this fold's box
-        lo = P.min(0) - W.max() * 2.2
-        hi = P.max(0) + W.max() * 2.2
+        reach = max(W.max() * 2.2, W0.max() * 1.2)
+        lo = P.min(0) - reach
+        hi = P.max(0) + reach
         sel = np.where((xy[:, 0] >= lo[0]) & (xy[:, 0] <= hi[0]) & (xy[:, 1] >= lo[1]) & (xy[:, 1] <= hi[1]))[0]
         if not len(sel):
             continue
@@ -998,8 +1023,13 @@ def fold_lines(ob):
         r = np.arange(len(sel))
         dist = np.sqrt(d2[r, j])
         ft = T[j] + (T[j + 1] - T[j]) * tt[r, j]
+        st_ = np.clip(ft / 0.06, 0.0, 1.0)
+        env = st_ * st_ * (1.0 - ft) ** 1.2
+        # main: the 0.23.2 round section (clean lines, they stay near the border)
+        w0 = W0[j] + (W0[j + 1] - W0[j]) * tt[r, j]
+        total[sel] += amp * np.clip(1.0 - (dist / np.maximum(w0, 1e-9)) ** 2, 0.0, 1.0) ** sharp * env
+        # surface detail: the 0.23.3 asymmetric section - steep folded wall + long soft side
         w = W[j] + (W[j + 1] - W[j]) * tt[r, j]
-        # 0.23.3 asymmetric section: signed side of the fold line -> steep folded wall / long soft slope
         Xs = xy[sel]
         cr = (AB[j, 0] * (Xs[:, 1] - C[r, j, 1]) - AB[j, 1] * (Xs[:, 0] - C[r, j, 0])) * side
         steep = cr < 0
@@ -1013,12 +1043,12 @@ def fold_lines(ob):
         sym = np.clip(1.0 - u ** 2, 0.0, 1.0) ** sharp
         prof = np.where(steep, prof_s + crease, prof_g)
         prof = sym * (1.0 - asym) + prof * asym
-        st_ = np.clip(ft / 0.06, 0.0, 1.0)
-        env = st_ * st_ * (1.0 - ft) ** 1.2
-        total[sel] += amp * prof * env
+        detail[sel] += amp * prof * env
     total = 1.25 * (1.0 - np.exp(-total / 1.25))         # crossings add up softly, never blow up
-    att = me.attributes.get(FOLD_H) or me.attributes.new(FOLD_H, 'FLOAT', 'POINT')
-    att.data.foreach_set('value', total.astype(np.float32).tolist() if len(total) else [])
+    detail = 1.25 * (1.0 - np.exp(-np.maximum(detail, -1.0) / 1.25))
+    for name, vals in ((FOLD_H, total), (FOLD_D, detail)):
+        att = me.attributes.get(name) or me.attributes.new(name, 'FLOAT', 'POINT')
+        att.data.foreach_set('value', vals.astype(np.float32).tolist() if len(vals) else [])
     me.update()
     ob.update_tag(refresh={'OBJECT', 'DATA'})
     return len(fold)
@@ -1152,14 +1182,15 @@ def apply_preset(ob, wtype, size=None):
         set_input(ob, name, pr[key] * size)
     set_input(ob, 'Fold Sharp', pr['Sharp'])
     set_input(ob, 'Fan', pr['Fan'])
-    set_input(ob, 'Pinch 2', pr.get('Pinch2', pr['Pinch']) * size)
+    set_input(ob, 'Pinch 2', pr.get('Pinch2', pr['Pinch'] * 0.5) * size)      # 0.23.11 small fans calmer
+    set_input(ob, 'Fold In', 1 if wtype in ('PADDING', 'PUFFER') else 0)   # 0.23.11 padding pinches in
     # 0.23.7 crumple / billow (off on the older types) and the puffer's channels
     for name, key, sized in CRUMPLE_KEYS:
         if key in pr:
             set_input(ob, name, pr[key] * size if sized else pr[key])
         elif name in ('Crumple', 'Billow'):
             set_input(ob, name, 0.0)
-    set_input(ob, 'Fan Mix', pr.get('FanMix', 0.6))
+    set_input(ob, 'Fan Mix', pr.get('FanMix', 0.3))       # 0.23.11 fewer lumpy fans along the border
     if 'Sections' in pr:
         set_input(ob, 'Sections', pr['Sections'])
         set_input(ob, 'Section Height', pr.get('SecHeight', 1.0))
@@ -1916,6 +1947,8 @@ SLIDERS = (('random', 'Randomness', 'Variety', 0, 100, 'RAND'),
            ('roll', 'Edge Roll', 'Roll', -50, 100, 'SIZE'),
            ('pinch', 'Pinch 1 (big folds)', 'Pinch', 0, 80, 'SIZE'),
            ('pinch2', 'Pinch 2 (small folds)', 'Pinch 2', 0, 80, 'SIZE'),
+           ('surf_detail', 'Surface Detail', 'Surface Detail', 0, 60, 'SIZE'),
+           ('fold_in', 'Folds In (pinch)', 'Fold In', 0, 1, 'INT'),
            ('pinch_sp', 'Fold Spacing', 'Pinch Spacing', 5, 200, 'SIZE'),
            ('pinch_len', 'Fold Length', 'Pinch Length', 10, 2000, 'SIZE'),
            ('sharp', 'Fold Sharp', 'Fold Sharp', 30, 3000, 'PCT'),

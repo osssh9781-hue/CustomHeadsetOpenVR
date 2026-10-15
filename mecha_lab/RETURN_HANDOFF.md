@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.10 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.11 (Claude Code, 2026-10-14)
+
+## 0.23.11
+- ZIP sha256 `5c19278bbc55bb633a6edc6bbe51ed5f9a1a93efbd1655e776d8568a3dbd33ef`. `cloth_wrinkle.fold_lines`: 메인 `FOLD_H` = 0.23.2 단면(clip(1-(d/w0)^2)^sharp, w0 = 원래 폭, 최소 폭 2.2 엣지), 새 `FOLD_D` = 0.23.3 비대칭 단면(입력 Fold Asymmetry / Thinness / Direction). GN: `smooth_named`(Blur Attribute 3회 / 2회) 후 pinch, `Surface Detail` × FOLD_D 더함, `Fold In`(0/1)으로 부호(1 - 2·FoldIn). 입력 2개 뒤에 추가. `apply_preset`: Fold In = Padding/Puffer 1, Pinch 2 = 0.5 × Pinch, Fan Mix 기본 0.3. HUD 키 `surf_detail`, `fold_in`.
 
 ## 0.23.10
 - ZIP sha256 `99a8b15ffd1a3e5b204abbd9e945b1d6d43f3bf7f1ca4481f806a4756f6c6b84`. `cloth_wrinkle` PG: `sim_gravity / sim_shrink / sim_pressure / sim_bend / sim_frames / sim_puff / sim_detail / sim_face_px`, `_fill_sim`(sim_preset update), `_spacing(st)`(Sim이면 max(spacing, sim_face_px)). `cloth_sim`: `DETAIL_FACES`, `_decimate`(임시 DECIMATE, 비율은 삼각형 수 기준), `build_cloth_mesh(max_faces)`, 버텍스 레이어 `mch_src_n`으로 조각별 방향 맞춤, `scene_overrides(st)`(Puff가 압력과 음수 shrink에 곱해짐), Draft(≤1500면)는 quality ≤ 4 / collision_quality 2, `bake` 진행 표시(progress_begin 없으면 생략), `redo(..., **over)`, 오퍼레이터 `sliders` 옵션.

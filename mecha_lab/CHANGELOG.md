@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 0.23.11 — 옷주름 정리: 0.23.2식 메인 주름 + Surface Detail, 패딩은 핀치(안으로) (2026-10-15)
+
+- **원인**: 0.23.3 비대칭 단면이 완만한 쪽 폭을 1.9배, 계산 범위를 2.2배로 넓히고 접힘 홈을 넣어서 주름이 판 중앙까지 번짐.
+- **메인 주름 = 0.23.2**: 테두리에서 들어오는 뚜렷한 둥근 주름(예전 단면 / 폭)으로 되돌림. Fold Asymmetry / Thinness는 이제 메인에 영향 없음.
+- **Surface Detail**(새 슬라이더, 기본 0 = 꺼짐): 0.23.3 이후 비대칭 / 얇은 주름 레이어를 통째로 조절 → 표면 디테일로 위에 얹어서 사용.
+- **패딩 = 핀치 / 옷 = 튀어나옴**: 새 입력 **Fold In**(HUD "Folds In (pinch)") - Padding / Puffer는 1(주름이 안으로 파고듦, 부푼 쿠션), 나머지 옷은 0(주름이 튀어나옴).
+- **지저분한 것 정리**: 주름 높이를 세분 후 Blur로 다듬음(삼각형을 가로지르는 주름이 구슬처럼 끊기던 것), 최소 폭 1.3 → 2.2 엣지, 테두리 부채 주름 줄임(Fan Mix 0.6 → 0.3, Pinch 2 = Pinch 1의 절반).
+- 비교 `reference/cloth_cleanup_v02311.png`(위 0.23.2 / 가운데 0.23.11 / 아래 0.23.11 + Surface Detail, 각각 Padding / Denim / Leather). 테스트: 55개 파일 2109/2109 (`tests/test_log_bpy501_v02311.txt`). ZIP sha256 `5c19278bbc55bb633a6edc6bbe51ed5f9a1a93efbd1655e776d8568a3dbd33ef`.
+
 ## 0.23.10 — Panel Cloth: 슬라이더(Puff / Gravity / …), 가볍게(Draft → Detail), 뒤집힘 수정 (2026-10-15)
 
 - **슬라이더**(N 패널 › Cloth Plate › PANEL CLOTH): **Puff**(0 = 납작, 1 = 프리셋, 2 = 두 배 - 압력과 여유 천을 같이), **Gravity (sag)**(처짐 - 너무 처지면 낮추기), **Shrink (slack)**, **Pressure (puff)**, **Bend (stiffness)**, **Frames**. 프리셋을 고르면 값이 채워지고, 라쏘 직후 시뮬과 **Re-bake (sliders / Detail)** 버튼이 이 값을 씀.

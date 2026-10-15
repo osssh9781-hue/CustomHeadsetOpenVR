@@ -1,8 +1,13 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.10 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.11 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A00000000000000000000000000. 0.23.11 (미검증)
+- [ ] 새 Cloth Plate가 0.23.2처럼 테두리 주름이 깔끔한지 (중앙까지 번지지 않는지)
+- [ ] HUD Surface Detail 슬라이더로 비대칭 잔주름을 켜고 끄기
+- [ ] Padding / Puffer: 주름이 안으로 파고드는지, Folds In 슬라이더 0 / 1
 
 ## A0000000000000000000000000. 0.23.10 (미검증)
 - [ ] PANEL CLOTH 박스 슬라이더: Puff 낮추면 덜 부푸는지, Gravity 낮추면 덜 처지는지 → Re-bake
