@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.0
+# Test Report — Mecha Lab 0.24.1
+
+## 0.24.1 결과: 68개 파일, 2361 / 2361 통과 (`tests/test_log_bpy501_v0241.txt`). test_v0241(12): Detail / Detail 2 / Box Hide 스케치 키, Detail 스케치 두 사각형 → Enter 한 번(L자 합집합), Lift ±, Detail 2 스케치 + Alt 구멍, Round 곡선(바닥·위 평평), Chamfer 직선, 바닥 샤프 엣지, Box Hide 스케치. 면 줄이기는 휜 원통 위 렌더로 직접 확인: 처음 버전은 큰 판이 평평한 면으로 합쳐져 표면 아래로 꺼짐 → 곡률 격자로 고침, 또 Detail 2 곡률을 경사에서 재서 칸이 너무 잘았음 → 영역 패치에서 재도록 고침. 뷰포트 미검증.
 
 ## 0.24.0 결과: 67개 파일, 2349 / 2349 통과 (`tests/test_log_bpy501_v0240.txt`). test_v0240(23): 라쏘 → 디테일(부모, 닫힌 솔리드, 낮음, Edge High 최고점), 넓이 / 높이 변경 다시 만들기(타이머), 3겹 프리셋, Inside High 높이 합, 나사 2, 값 기억, Apply, 아머 플레이트 위에 그리기, Detail 2(높이, Slope Width 넓을수록 윗면 좁음, 4가지 모양), Remove. 처음엔 띠 경계가 한 정점에서 꼬이는 곳에 4면 엣지 1개 → 정점 섹터 분리로 고침. test_v0240b(17): 4종 머리 닫힌 솔리드 / 높이 / 구멍, 윗면·옆면 클릭 방향, 메쉬 따라감, 라이브 높이 / 머리, Alt 지우기, Join. test_v02328(9): Tension / Gravity 다시 굽기, 값 유지, 프리셋 다시 굽기. 프로토타입 렌더 `reference/plate_detail_proto*.png`. 뷰포트 클릭 / 드래그 / 나사 모양 렌더 확인은 미검증.
 

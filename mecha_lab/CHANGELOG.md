@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 0.24.1 — Plate Detail: 스케치, Lift, Round / Chamfer, 면 수 대폭 줄임 (2026-10-15)
+
+- **스케치**가 Plate Detail 1 / 2와 Box Hide에서도 다른 라쏘 툴처럼 됨(여러 번 그리기 / Alt 빼기 → Enter 한 번 적용, Backspace, Esc). 스케치가 안 되는 툴에서는 Sketch 버튼이 회색.
+- **Lift** 슬라이더(Detail 1 / 2): 표면 방향으로 올리기 / 내리기(- = 박힘) - 면에 딱 붙게.
+- **Detail 2 가장자리: Round / Chamfer**(+ Round Top, Soft Foot). Round = 표면에서 자라나듯 바닥은 완만한 필렛, 위는 둥근 어깨(8링). 바닥 아래 테두리와 매끈한 면이 섞여 생기던 어두운 끊김 선을 없앰(샤프 엣지).
+- **면 수 줄임**: 평평한 부분은 큰 면 하나로 합침(평평한 판 예: 15081 → 44면, Detail 2 16240 → 221면). 휜 면에서는 실제 표면에서 크기의 0.12 % 안으로만 합쳐서(휜 정도로 칸을 나눔) 큰 판이 표면 아래로 꺼지지 않음(반지름 3 원통 위 예: 600 ~ 1100면). 비교 `reference/plate_detail_v0241.png`.
+- 테스트: 68개 파일 2361/2361 (`tests/test_log_bpy501_v0241.txt`), 새 `test_v0241.py`(12). ZIP sha256 `9201b09a7ab74818472980db0561aa4c3fccdde51e3fe5d539243ce57b5f9521`.
+
 ## 0.24.0 — Plate Detail / Plate Detail 2 / Screw Stamp, Panel Cloth 텐션·중력 실시간 (2026-10-15)
 
 - **Plate Detail**(하단 툴바 **Detail**, 새 도구): 플레이트(아머 플레이트 포함) 위에 닫힌 외곽선을 그리면 낮은 서페이스 트림. 그린 테두리 그대로, 안쪽은 평평한 판, 테두리를 따라 **1 / 2 / 3겹** 계단(프리셋 버튼 = 크기에 맞춘 넓이·높이, 이후 겹마다 **넓이 / 높이** 직접 조절), **Edge High**(테두리가 높음) / **Inside High**(안쪽이 높음, Inside Height), Base Thickness, **나사 0 / 1 / 2**(볼록한 모서리 쪽 트림 가운데에 둥근 홈, Size / Depth). 그린 메쉬에 붙어(부모) 같이 움직임. Apply / Remove.

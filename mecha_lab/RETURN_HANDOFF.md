@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.0 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.1 (Claude Code, 2026-10-14)
+
+## 0.24.1
+- ZIP sha256 `9201b09a7ab74818472980db0561aa4c3fccdde51e3fe5d539243ce57b5f9521`. `lasso_sketch.MODES` + DETAIL / DETAIL2 / HIDE, commit 분기(plate_detail.perform, box_hide.perform + auto_targets), 키맵 `lasso_sketch_modes()`, 헤더 Sketch 버튼 enabled = MODES 또는 BASE. `plate_detail`: `lift`(LENGTHS에 포함, 위/아래 모두 이동), RISE_PROFILES ROUND(smootherstep) / CHAMFER(직선) / DOME / FOOT, `build_rise`는 등거리선 링(RISE_SEGMENTS 8, Chamfer 1)으로 자르고 링 안은 선형 높이, set_sharp_from_angle 60°. `simplify` = dissolve_limit 0.6°, 휜 면은 `surface_curvature`(영역 패치 엣지의 노말 각/길이 90 %)로 칸 크기 g = √(8·0.0012·size/κ) 격자 seam으로 막고 합친 뒤 seam 해제, 일직선 2가 정점 제거.
 
 ## 0.24.0
 - ZIP sha256 `d6fa728a865c38c3a7a8c1b8965faccb92fe5314c371d3aca70ba24024191f7c`. 새 `plate_detail.py`: 영역 = armor_plate.plate_meshes(SPACING_PX 7) 삼각형 패치 → 외곽선까지 거리(numpy 선분 거리) → `cut_iso`(마칭 트라이앵글로 등거리선을 따라 정확히 자름, 나사 원도 같은 방식) → 면마다 높이(띠) → 정점 키 (v, h, sector)로 위/아래/벽 생성(띠 경계가 정점에서 꼬이는 곳은 낮은 띠만 정점 분리 → 모든 엣지 2면). 나사 = 볼록 모서리 이등분선 위 w1/2 지점. `build_rise` = smoothstep 등 프로파일 × Height, 벽 없음. Object.mch_pdetail(라이브, 0.05초 타이머로 모아서 rebuild), Scene.mch_pdetail(분수 JSON). 도구 DETAIL / DETAIL2(SHAPE_TOOLS, cut_engine 모드). 새 `screw_stamp.py`: revolve 프로파일(Dome / Post / Socket), Cross = CDT 링 + 슬롯 벽/바닥; 도구 SCREW(키맵 클릭 / Alt+클릭 / Esc), Object.mch_screw 라이브, Join = bmesh로 부모 메쉬에 합침. `cloth_sim`: Object.mch_pcloth_tension / _gravity(업데이트 → 0.4초 타이머 → redo), `sim_values`(shrink / tension, tension_stiffness 15×t).
