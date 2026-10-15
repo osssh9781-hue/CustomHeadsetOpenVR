@@ -435,6 +435,8 @@ def draw_remesh(layout, context):
         layout.prop(s, 'apply_existing')
     layout.operator('mch.one_click_remesh', text='REMESH + SMOOTH', icon='MOD_REMESH')
     _hint(layout, 'Voxel remesh loses UVs / attributes')
+    from . import lowpoly
+    lowpoly.draw(layout, context)                    # 0.23.22 sculpt -> low poly base mesh
 
 
 def draw_pose(layout, context):
@@ -577,7 +579,8 @@ def draw_loft(layout, context):
 
 
 def draw_zbrush(layout, context):
-    from . import zbrush_bridge
+    from . import zbrush_bridge, lowpoly
+    lowpoly.draw(layout, context)                    # 0.23.22 sculpt -> low poly base mesh
     s = context.scene.mch_zbrush
     row = layout.row(align=True)
     row.scale_y = 1.4
