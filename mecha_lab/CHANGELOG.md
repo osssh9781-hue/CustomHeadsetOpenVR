@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 0.23.25 — Cloth Plate 팝업 버튼 복구 (2026-10-15)
+
+- 0.23.23의 "빠진 슬라이더 손잡이 만들기" 수정이 팝업 **버튼(아이콘)이 안 보이게** 만들었음 → 팝업 코드를 0.23.22와 똑같이 되돌림. 0.23.24의 "슬라이더 글자 목록 없음"만 유지(버튼만 보임), Overall Scale은 N 사이드바 LIVE 상자에.
+- 테스트: 62개 파일 2218/2218 (`tests/test_log_bpy501_v02325.txt`). ZIP sha256 `baa0c9a383320fda16771485a1a32ff206f3541edccdcd3ce67705111990c6cb`.
+
 ## 0.23.24 — Cloth Plate 팝업은 버튼만, N 사이드바는 고른 도구만 (2026-10-15)
 
 - **Cloth Plate 팝업 밑 슬라이더 글자 목록 제거**(Overall Scale 포함): 팝업에는 Apply / Remove / 종류 / Trim / Creature Skin 버튼만. 값은 N 사이드바(LIVE 상자 맨 위 Overall Scale + 모든 값)에서.

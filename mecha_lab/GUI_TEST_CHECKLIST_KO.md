@@ -1,8 +1,11 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.24 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.23.25 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A0000000000000000000000000000000000000000. 0.23.25 (미검증)
+- [ ] Cloth Plate 팝업에 동그란 버튼(Apply / Remove / 종류 화살표 / Trim / Creature Skin)이 다시 보이고 눌리는지, 밑에 슬라이더 글자는 없는지
 
 ## A000000000000000000000000000000000000000. 0.23.24 (미검증)
 - [ ] Cloth Plate 팝업에 버튼만 있고 슬라이더 글자가 없는지, N 사이드바 LIVE 상자의 Overall Scale이 되는지

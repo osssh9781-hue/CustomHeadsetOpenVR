@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.24 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.25 (Claude Code, 2026-10-14)
+
+## 0.23.25
+- ZIP sha256 `baa0c9a383320fda16771485a1a32ff206f3541edccdcd3ce67705111990c6cb`. `MCH_GGT_wrinkle_hud` = 0.23.22(커밋 1d26196) 그대로(_ensure_sliders / refresh 제거 - draw_prepare에서 기즈모를 만들려던 것이 버튼 배치를 깨뜨린 것으로 봄, 실제 Blender에서 확인은 못 함). HUD_SLIDERS = False, 사이드바 mch_cloth_scale 유지.
 
 ## 0.23.24
 - ZIP sha256 `2478d031dfe78ad37a70bed8b54cd6198b3241635df0514e6ce98d3146b020b6`. `cloth_wrinkle.HUD_SLIDERS = False` → `slider_keys` = () (슬라이더 코드는 남아 있음, True로 되돌릴 수 있음). `tool_state.sidebar_select(context)` = bottom_bar.in_select: Primitive Shapes / Detail Stamp / High Poly / Icon Size / Tools / Workspace 패널 poll에 추가. Robot(BASE), Shell(PLATE), Tube(TUBE) 패널 poll에 hud_for.

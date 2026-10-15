@@ -1,4 +1,4 @@
-"""0.23.23 Overall Scale also in the sidebar (same value as the HUD slider); the HUD makes any missing slider handle."""
+"""0.23.23 Overall Scale also in the sidebar (same value as the HUD slider)."""
 import sys
 import types
 
@@ -26,20 +26,7 @@ cw.slider_spec(C, 'all_scale', o)[4](100)
 check('HUD slider back to 100 %: the sidebar shows 100 %, lengths back', o.mch_cloth_scale == 100 and
       abs(float(cw.get_input(o, 'Pinch Length')) - p0) < 1e-6 * max(1, p0),
       (o.mch_cloth_scale, o.get('mch_cloth_scale'), o.get('mch_all_scale'), float(cw.get_input(o, 'Pinch Length')), p0))
-# a HUD that was set up before an update (no Overall Scale handle) gets the handle on its next draw
-made = []
-
-
-class FakeGizmos:
-    def new(self, idname):
-        g = types.SimpleNamespace()
-        made.append(g)
-        return g
-
-
-hud = types.SimpleNamespace(gizmos=FakeGizmos(), items={'slider_' + k: object() for k, *_r in cw.SLIDERS if k != 'all_scale'})
-cw.MCH_GGT_wrinkle_hud._ensure_sliders(hud)
-check('a stale HUD gets the missing Overall Scale handle', 'slider_all_scale' in hud.items and len(made) == 1 and
-      made[0].key == 'all_scale')
+check('popup code is the 0.23.22 one (no handle repair - it broke the popup buttons)',
+      not hasattr(cw.MCH_GGT_wrinkle_hud, '_ensure_sliders'))
 mecha_lab.unregister()
 sys.exit(1 if summary() else 0)

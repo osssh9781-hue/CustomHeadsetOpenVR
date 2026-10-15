@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.23.24
+# Test Report — Mecha Lab 0.23.25
+
+## 0.23.25 결과: 62개 파일, 2218 / 2218 통과 (`tests/test_log_bpy501_v02325.txt`). 팝업 기즈모 그룹 클래스를 0.23.22와 diff로 비교해 동일 확인. 버튼이 다시 보이는지는 뷰포트 필요 - 미검증.
 
 ## 0.23.24 결과: 62개 파일, 2218 / 2218 통과 (`tests/test_log_bpy501_v02324.txt`). 바뀐 동작에 맞게 고친 옛 검사: test_v0234 / v0238 / v02319 / v02321(HUD 슬라이더 목록, Tube poll 개수). test_v02324: 팝업 버튼만, Base Mesh에서 Robot만 보이고 Detail Stamp 등 숨김, Cut에서 Robot 숨김. Select에서 보이는지는 헤드리스로 확인 불가 - 미검증.
 

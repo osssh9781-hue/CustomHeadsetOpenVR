@@ -2245,17 +2245,7 @@ class MCH_GGT_wrinkle_hud(bpy.types.GizmoGroup):
             gz.color_highlight = (0.32, 0.35, 0.41)
             gz.alpha_highlight = 1.0
             self.items[name] = gz
-        self._ensure_sliders()
-
-    def _ensure_sliders(self):
-        """0.23.23 a slider handle for every slider - also for sliders added by an update while this HUD was
-        already set up (the label showed but there was nothing to drag, e.g. Overall Scale)."""
-        items = getattr(self, 'items', None)
-        if items is None:
-            self.items = items = {}
         for key, *_r in SLIDERS:
-            if 'slider_' + key in items:
-                continue
             gz = self.gizmos.new(MCH_GT_wrinkle_slider.bl_idname)
             gz.key = key
             gz.color = (0.24, 0.27, 0.32)
@@ -2263,13 +2253,9 @@ class MCH_GGT_wrinkle_hud(bpy.types.GizmoGroup):
             gz.color_highlight = (0.36, 0.40, 0.47)
             gz.alpha_highlight = 1.0
             gz.use_draw_scale = False
-            items['slider_' + key] = gz
-
-    def refresh(self, context):
-        self._ensure_sliders()
+            self.items['slider_' + key] = gz
 
     def draw_prepare(self, context):
-        self._ensure_sliders()
         _ob, lay = _hud_current(context)
         ui = context.preferences.system.ui_scale
         for name, gz in self.items.items():
