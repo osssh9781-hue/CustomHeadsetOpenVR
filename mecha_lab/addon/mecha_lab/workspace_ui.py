@@ -509,6 +509,34 @@ class MCH_TOOL_box_hide(bpy.types.WorkSpaceTool):
         cut_engine.draw_stamp_cursor(context, xy)
 
 
+class MCH_TOOL_plate_detail(bpy.types.WorkSpaceTool):
+    bl_space_type = 'VIEW_3D'
+    bl_context_mode = 'OBJECT'
+    bl_idname = 'mecha.plate_detail'
+    bl_label = 'Mecha Plate Detail'
+    bl_description = 'Draw an outline on a plate: low trim detail (flat inside, stepped layers, screws)'
+    bl_icon = 'ops.mesh.inset'
+    bl_widget = None
+    bl_keymap = _tool_keymap('DETAIL')
+
+    def draw_settings(context, layout, tool):
+        _draw_tool_settings(context, layout, tool)
+
+
+class MCH_TOOL_plate_detail2(bpy.types.WorkSpaceTool):
+    bl_space_type = 'VIEW_3D'
+    bl_context_mode = 'OBJECT'
+    bl_idname = 'mecha.plate_detail2'
+    bl_label = 'Mecha Plate Detail 2'
+    bl_description = 'Draw an outline on a surface: it rises smoothly inside to a flat top'
+    bl_icon = 'ops.mesh.extrude_region_shrink_fatten'
+    bl_widget = None
+    bl_keymap = _tool_keymap('DETAIL2')
+
+    def draw_settings(context, layout, tool):
+        _draw_tool_settings(context, layout, tool)
+
+
 class MCH_TOOL_mask(bpy.types.WorkSpaceTool):
     bl_space_type = 'VIEW_3D'
     bl_context_mode = 'OBJECT'
@@ -586,7 +614,7 @@ class MCH_TOOL_primitive(bpy.types.WorkSpaceTool):
 
 
 NATIVE_TOOLS = (MCH_TOOL_cut, MCH_TOOL_split, MCH_TOOL_base_mesh, MCH_TOOL_primitive, MCH_TOOL_armor_plate,
-                MCH_TOOL_cloth_wrinkle, MCH_TOOL_box_hide)   # MCH_TOOL_mask kept, not registered (Mask hidden)
+                MCH_TOOL_cloth_wrinkle, MCH_TOOL_box_hide, MCH_TOOL_plate_detail, MCH_TOOL_plate_detail2)   # MCH_TOOL_mask kept, not registered (Mask hidden)
 
 
 def register_native_tools():
@@ -600,6 +628,8 @@ def register_native_tools():
     bpy.utils.register_tool(MCH_TOOL_armor_plate, after={MCH_TOOL_primitive.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_cloth_wrinkle, after={MCH_TOOL_armor_plate.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_box_hide, after={MCH_TOOL_split.bl_idname}, group=False)
+    bpy.utils.register_tool(MCH_TOOL_plate_detail, after={MCH_TOOL_armor_plate.bl_idname}, group=False)
+    bpy.utils.register_tool(MCH_TOOL_plate_detail2, after={MCH_TOOL_plate_detail.bl_idname}, group=False)
     _tools_registered = True
 
 

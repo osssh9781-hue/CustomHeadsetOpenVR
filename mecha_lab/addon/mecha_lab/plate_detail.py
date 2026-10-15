@@ -248,31 +248,55 @@ def build_detail(region_me, layers, base, screws=0, screw_r=None, screw_depth=No
 
         fh = {f: face_height(f) for f in bm.faces}
         nrm = {v: v.normal.copy() for v in bm.verts}
+        bm.verts.index_update()
+        bm.faces.index_update()
+        # Sectors: the faces of one height around a vertex that touch through edges.  Where a band border
+        # pinches through a vertex (A B A B around it) the lower bands get their own copy of the vertex,
+        # the highest band is shared - every wall edge then has exactly two faces.
+        sector = {}
+        for v in bm.verts:
+            lf = list(v.link_faces)
+            if not lf:
+                continue
+            top = max(fh[f] for f in lf)
+            parent = {f: f for f in lf}
+
+            def find(f):
+                while parent[f] is not f:
+                    parent[f] = parent[parent[f]]
+                    f = parent[f]
+                return f
+            for e in v.link_edges:
+                ef = e.link_faces
+                if len(ef) == 2 and fh[ef[0]] == fh[ef[1]]:
+                    parent[find(ef[0])] = find(ef[1])
+            for f in lf:
+                sector[(v.index, f.index)] = 0 if fh[f] == top else find(f).index + 1
         out_co, key_idx = [], {}
 
-        def vid(v, h):
-            k = (v.index, h)
+        def vid(v, h, f=None):
+            k = (v.index, h, 0 if f is None else sector[(v.index, f.index)])
             i = key_idx.get(k)
             if i is None:
                 i = key_idx[k] = len(out_co)
                 out_co.append(v.co + nrm[v] * h)
             return i
 
-        bm.verts.index_update()
         faces = []
         for f in bm.faces:
             h = fh[f]
-            faces.append([vid(v, h) for v in f.verts])                  # top
-            faces.append([vid(v, -embed) for v in reversed(f.verts)])  # bottom
+            faces.append([vid(v, h, f) for v in f.verts])                  # top
+            faces.append([vid(v, -embed) for v in reversed(f.verts)])     # bottom
         for e in bm.edges:
             lf = e.link_faces
             a, b = e.verts
             if len(lf) == 1:
-                h = fh[lf[0]]
-                faces.append([vid(a, h), vid(b, h), vid(b, -embed), vid(a, -embed)])
+                f = lf[0]
+                h = fh[f]
+                faces.append([vid(a, h, f), vid(b, h, f), vid(b, -embed), vid(a, -embed)])
             elif len(lf) == 2 and fh[lf[0]] != fh[lf[1]]:
-                h1, h2 = fh[lf[0]], fh[lf[1]]
-                faces.append([vid(a, h1), vid(b, h1), vid(b, h2), vid(a, h2)])
+                f1, f2 = lf
+                faces.append([vid(a, fh[f1], f1), vid(b, fh[f1], f1), vid(b, fh[f2], f2), vid(a, fh[f2], f2)])
     finally:
         bm.free()
     me = bpy.data.meshes.new(name)
@@ -281,7 +305,6 @@ def build_detail(region_me, layers, base, screws=0, screw_r=None, screw_depth=No
     bm = bmesh.new()
     try:
         bm.from_mesh(me)
-        bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=size * 1e-6)
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
         bm.to_mesh(me)
     finally:
@@ -296,7 +319,26 @@ def build_detail(region_me, layers, base, screws=0, screw_r=None, screw_depth=No
     return me
 
 
-def build_rise(region_me, height, ramp, embed=0.0, name='MCH_PlateRise'):
+RISE_PROFILES = (
+    ('SMOOTH', 'Smooth', 'Soft foot and soft shoulder'),
+    ('LINEAR', 'Straight', 'Straight slope (chamfer-like)'),
+    ('DOME', 'Round Top', 'Steep at the foot, rounding into the top'),
+    ('FOOT', 'Soft Foot', 'Gentle at the foot, steeper near the top'),
+)
+
+
+def rise_curve(t, profile='SMOOTH'):
+    t = np.clip(t, 0.0, 1.0)
+    if profile == 'LINEAR':
+        return t
+    if profile == 'DOME':
+        return np.sin(t * math.pi * 0.5)
+    if profile == 'FOOT':
+        return t * t
+    return t * t * (3.0 - 2.0 * t)
+
+
+def build_rise(region_me, height, ramp, embed=0.0, name='MCH_PlateRise', profile='SMOOTH', lift=0.0):
     """0.24 Detail 2: the surface itself rises smoothly inside the outline -
     0 at the outline, a smooth slope ``ramp`` wide, then a flat top
     ``height`` above the surface (no walls, no trims)."""
@@ -312,8 +354,8 @@ def build_rise(region_me, height, ramp, embed=0.0, name='MCH_PlateRise'):
         bm.normal_update()
         bm.verts.index_update()
         co = np.array([tuple(v.co) for v in bm.verts])
-        t = np.clip(dist_to_segments(co, A, B) / max(ramp, 1e-9), 0.0, 1.0)
-        hs = height * t * t * (3.0 - 2.0 * t)                  # smoothstep: soft foot, soft shoulder
+        t = dist_to_segments(co, A, B) / max(ramp, 1e-9)
+        hs = lift + height * rise_curve(t, profile)
         out_co = [v.co + v.normal * float(h) for v, h in zip(bm.verts, hs)]
         n = len(out_co)
         out_co += [v.co - v.normal * embed for v in bm.verts]
@@ -345,3 +387,409 @@ def build_rise(region_me, height, ramp, embed=0.0, name='MCH_PlateRise'):
 
 def preset_layers(count, size):
     return [(w * size, h * size) for w, h in LAYER_PRESETS[max(1, min(3, int(count)))]]
+
+
+# -----------------------------------------------------------------------------
+# Live objects
+# -----------------------------------------------------------------------------
+
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty  # noqa: E402
+
+KINDS = {'DETAIL': 'TRIM', 'DETAIL2': 'RISE'}
+DIRECTIONS = (('OUT', 'Edge High', 'The edge is highest, layers step down inward to the flat inside'),
+              ('IN', 'Inside High', 'Layers step up inward, the inside panel is the highest'))
+SCREW_ITEMS = (('0', 'No Screw', ''), ('1', '1 Screw', ''), ('2', '2 Screws', ''))
+SPACING_PX = 7                 # face size on screen for the surface patch
+RISE_DEFAULT = dict(height=0.035, ramp=0.12)
+LENGTHS = ('w1', 'h1', 'w2', 'h2', 'w3', 'h3', 'base', 'center', 'screw_r', 'screw_depth', 'height', 'ramp')
+_SYNC = [False]
+
+
+def is_detail(ob):
+    pd_ = getattr(ob, 'mch_pdetail', None)
+    return bool(pd_ is not None and pd_.live and pd_.region is not None)
+
+
+def _ref(self):
+    return self.id_data
+
+
+def _queue(ob):
+    """Rebuild shortly after the last change (a slider drag sends many updates)."""
+    _PENDING.add(ob.name)
+    if not bpy.app.timers.is_registered(_rebuild_timer):
+        bpy.app.timers.register(_rebuild_timer, first_interval=0.05)
+
+
+_PENDING = set()
+
+
+def _rebuild_timer():
+    names = list(_PENDING)
+    _PENDING.clear()
+    for n in names:
+        ob = bpy.data.objects.get(n)
+        if ob is not None and is_detail(ob):
+            try:
+                rebuild(ob)
+            except (ValueError, RuntimeError):
+                pass
+    return None
+
+
+def _changed(self, _context):
+    if _SYNC[0]:
+        return
+    ob = self.id_data
+    if isinstance(ob, bpy.types.Object) and is_detail(ob):
+        remember(ob)
+        _queue(ob)
+
+
+class MCH_PG_PlateDetail(bpy.types.PropertyGroup):
+    """Settings of a live Plate Detail object (lengths in the object's units)."""
+    live: BoolProperty(default=False)
+    kind: EnumProperty(items=(('TRIM', 'Trim', ''), ('RISE', 'Rise', '')), default='TRIM')
+    region: PointerProperty(type=bpy.types.Mesh)
+    size: FloatProperty(default=1.0)
+    layers: IntProperty(name='Layers', default=2, min=1, max=3, update=_changed)
+    direction: EnumProperty(name='Direction', items=DIRECTIONS, default='OUT', update=_changed)
+    w1: FloatProperty(name='Width 1', default=0.05, min=0.0, soft_max=1.0, unit='LENGTH', precision=4, update=_changed,
+                      description='Outer trim layer width')
+    h1: FloatProperty(name='Height 1', default=0.014, min=0.0, soft_max=0.5, unit='LENGTH', precision=4, update=_changed)
+    w2: FloatProperty(name='Width 2', default=0.04, min=0.0, soft_max=1.0, unit='LENGTH', precision=4, update=_changed)
+    h2: FloatProperty(name='Height 2', default=0.007, min=0.0, soft_max=0.5, unit='LENGTH', precision=4, update=_changed)
+    w3: FloatProperty(name='Width 3', default=0.03, min=0.0, soft_max=1.0, unit='LENGTH', precision=4, update=_changed)
+    h3: FloatProperty(name='Height 3', default=0.006, min=0.0, soft_max=0.5, unit='LENGTH', precision=4, update=_changed)
+    base: FloatProperty(name='Base Thickness', default=0.006, min=0.0, soft_max=0.5, unit='LENGTH', precision=4,
+                        update=_changed, description='Flat inside panel above the surface')
+    center: FloatProperty(name='Inside Height', default=0.02, min=0.0, soft_max=0.5, unit='LENGTH', precision=4,
+                          update=_changed, description='Inside High: the inside panel above the last layer')
+    screws: EnumProperty(name='Screws', items=SCREW_ITEMS, default='0', update=_changed)
+    screw_r: FloatProperty(name='Screw Size', default=0.02, min=0.0, soft_max=0.5, unit='LENGTH', precision=4,
+                           update=_changed, description='Screw radius (kept inside the outer layer)')
+    screw_depth: FloatProperty(name='Screw Depth', default=0.006, min=0.0, soft_max=0.2, unit='LENGTH', precision=4,
+                               update=_changed)
+    height: FloatProperty(name='Height', default=0.035, min=0.0, soft_max=1.0, unit='LENGTH', precision=4,
+                          update=_changed, description='Detail 2: height of the flat top above the surface')
+    ramp: FloatProperty(name='Slope Width', default=0.12, min=0.0001, soft_max=1.0, unit='LENGTH', precision=4,
+                        update=_changed, description='Detail 2: how far in the top starts - wider = narrower top')
+    profile: EnumProperty(name='Slope', items=RISE_PROFILES, default='SMOOTH', update=_changed)
+
+
+class MCH_PG_PlateDetailScene(bpy.types.PropertyGroup):
+    """Settings for the next detail: lengths as FRACTIONS of the drawn size (the
+    last edited detail is remembered this way, so a bigger outline gets a
+    bigger trim)."""
+    layers: IntProperty(name='Layers', default=2, min=1, max=3)
+    direction: EnumProperty(name='Direction', items=DIRECTIONS, default='OUT')
+    screws: EnumProperty(name='Screws', items=SCREW_ITEMS, default='0')
+    profile: EnumProperty(name='Slope', items=RISE_PROFILES, default='SMOOTH')
+    fractions: bpy.props.StringProperty(default='')
+
+
+def _fractions(scene):
+    import json
+    try:
+        return json.loads(scene.mch_pdetail.fractions or '{}')
+    except ValueError:
+        return {}
+
+
+def default_fractions(layers):
+    f = {'base': BASE_FRAC, 'center': 0.02, 'height': RISE_DEFAULT['height'], 'ramp': RISE_DEFAULT['ramp']}
+    for i, (w, h) in enumerate(LAYER_PRESETS[layers], 1):
+        f[f'w{i}'], f[f'h{i}'] = w, h
+    for i in range(len(LAYER_PRESETS[layers]) + 1, 4):
+        f[f'w{i}'], f[f'h{i}'] = LAYER_PRESETS[3][i - 1]
+    f['screw_r'] = f['w1'] * SCREW_R_FRAC
+    f['screw_depth'] = f['h1'] * SCREW_DEPTH_FRAC
+    return f
+
+
+def remember(ob):
+    """Edited values -> the next detail (fractions of this one's size)."""
+    import json
+    p = ob.mch_pdetail
+    st = bpy.context.scene.mch_pdetail
+    size = max(p.size, 1e-9)
+    f = _fractions(bpy.context.scene)
+    for k in LENGTHS:
+        f[k] = getattr(p, k) / size
+    st.fractions = json.dumps(f)
+    st.layers, st.direction, st.screws, st.profile = p.layers, p.direction, p.screws, p.profile
+
+
+def set_preset(ob, layers):
+    """Layer count button: widths / heights from the preset for this size."""
+    p = ob.mch_pdetail
+    f = default_fractions(layers)
+    _SYNC[0] = True
+    try:
+        p.layers = layers
+        for k in ('w1', 'h1', 'w2', 'h2', 'w3', 'h3', 'screw_r', 'screw_depth'):
+            setattr(p, k, f[k] * p.size)
+    finally:
+        _SYNC[0] = False
+    remember(ob)
+    rebuild(ob)
+
+
+def rebuild(ob):
+    p = ob.mch_pdetail
+    embed = p.size * 0.002
+    if p.kind == 'RISE':
+        me = build_rise(p.region, p.height, p.ramp, embed=embed, profile=p.profile, lift=p.size * 0.0004,
+                        name=ob.name)
+    else:
+        layers = [(p.w1, p.h1), (p.w2, p.h2), (p.w3, p.h3)][:p.layers]
+        me = build_detail(p.region, layers, p.base, screws=int(p.screws), screw_r=p.screw_r,
+                          screw_depth=p.screw_depth, embed=embed, name=ob.name, direction=p.direction,
+                          center=p.center)
+    old = ob.data
+    for m in old.materials:
+        me.materials.append(m)
+    ob.data = me
+    if old.users == 0:
+        bpy.data.meshes.remove(old)
+    me.name = ob.name
+    return me
+
+
+def pick_target(context, projector, groups):
+    """The mesh under the outline: armour plates count, live details do not."""
+    outer = groups[0][0]
+    probes = [(sum(q[0] for q in outer) / len(outer), sum(q[1] for q in outer) / len(outer))] + list(outer[::4])
+    dg = context.evaluated_depsgraph_get()
+    counts = {}
+    for xy in probes:
+        o, d = projector.ray(xy)
+        for _ in range(16):
+            hit, loc, _n, _i, hob, _m = context.scene.ray_cast(dg, o, d)
+            if not hit or hob is None:
+                break
+            real = bpy.data.objects.get(hob.name)
+            if real is not None and real.type == 'MESH' and not is_detail(real):
+                counts[real.name] = counts.get(real.name, 0) + 1
+                break
+            o = loc + d * 1e-4
+    if not counts:
+        return None
+    return bpy.data.objects[max(counts, key=counts.get)]
+
+
+def perform(context, loops, projector, tool='DETAIL'):
+    """Lasso -> a live Plate Detail object on the mesh under it."""
+    from . import armor_plate as ap
+    from . import core_geometry as cg
+    groups = cg.prepare_loops(loops)
+    target = pick_target(context, projector, groups)
+    if target is None:
+        raise cg.CutError('Draw the detail over a mesh (an armour plate or any part).')
+    region, surround, local_size, _missing = ap.plate_meshes(context, target, groups, projector, SPACING_PX)
+    bpy.data.meshes.remove(surround)
+    kind = KINDS.get(tool, 'TRIM')
+    st = context.scene.mch_pdetail
+    f = default_fractions(st.layers)
+    f.update(_fractions(context.scene))
+    me = bpy.data.meshes.new(target.name + ('_Detail' if kind == 'TRIM' else '_Rise'))
+    ob = bpy.data.objects.new(me.name, me)
+    coll = target.users_collection[0] if target.users_collection else context.scene.collection
+    coll.objects.link(ob)
+    ob.parent = target
+    ob.matrix_parent_inverse.identity()
+    ob.matrix_basis.identity()
+    for m in target.data.materials:
+        me.materials.append(m)
+    p = ob.mch_pdetail
+    _SYNC[0] = True
+    try:
+        p.region = region
+        p.size = local_size
+        p.kind = kind
+        p.layers, p.direction, p.screws, p.profile = st.layers, st.direction, st.screws, st.profile
+        for k in LENGTHS:
+            setattr(p, k, f[k] * local_size)
+        p.live = True
+    finally:
+        _SYNC[0] = False
+    try:
+        rebuild(ob)
+    except ValueError as ex:
+        bpy.data.objects.remove(ob)
+        raise cg.CutError(f'Detail could not be built ({ex}).')
+    for o in context.selected_objects:
+        o.select_set(False)
+    ob.select_set(True)
+    context.view_layer.objects.active = ob
+    what = f'{p.layers}-layer trim' if kind == 'TRIM' else 'smooth rise'
+    return f'Plate Detail "{ob.name}" on {target.name} ({what}, {len(ob.data.polygons)} faces)'
+
+
+def apply_detail(ob):
+    """Keep the mesh as it is; drop the live data."""
+    p = ob.mch_pdetail
+    region = p.region
+    p.live = False
+    p.region = None
+    if region is not None and region.users == 0:
+        bpy.data.meshes.remove(region)
+
+
+def active_detail(context):
+    ob = getattr(context, 'active_object', None)
+    return ob if is_detail(ob) else None
+
+
+class MCH_OT_pdetail_layers(bpy.types.Operator):
+    """Trim layers 1 / 2 / 3: widths and heights from the preset for this size (adjust them after)"""
+    bl_idname = 'mch.pdetail_layers'
+    bl_label = 'Trim Layers'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    count: IntProperty(default=2, min=1, max=3)
+
+    def execute(self, context):
+        ob = active_detail(context)
+        if ob is not None and ob.mch_pdetail.kind == 'TRIM':
+            set_preset(ob, self.count)
+        else:
+            import json
+            st = context.scene.mch_pdetail
+            st.layers = self.count
+            f = _fractions(context.scene)
+            f.update({k: v for k, v in default_fractions(self.count).items() if k[0] in 'wh' or k.startswith('screw')})
+            st.fractions = json.dumps(f)
+        return {'FINISHED'}
+
+
+class MCH_OT_pdetail_apply(bpy.types.Operator):
+    """Make the detail a plain mesh (no more live changes)"""
+    bl_idname = 'mch.pdetail_apply'
+    bl_label = 'Apply Detail'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return active_detail(context) is not None
+
+    def execute(self, context):
+        apply_detail(context.active_object)
+        return {'FINISHED'}
+
+
+class MCH_OT_pdetail_remove(bpy.types.Operator):
+    """Delete this live detail"""
+    bl_idname = 'mch.pdetail_remove'
+    bl_label = 'Remove Detail'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return active_detail(context) is not None
+
+    def execute(self, context):
+        ob = context.active_object
+        region, me = ob.mch_pdetail.region, ob.data
+        bpy.data.objects.remove(ob)
+        for m in (me, region):
+            if m is not None and m.users == 0:
+                bpy.data.meshes.remove(m)
+        return {'FINISHED'}
+
+
+def _draw_trim(col, p, scene_mode=False):
+    row = col.row(align=True)
+    for n in (1, 2, 3):
+        row.operator('mch.pdetail_layers', text=f'{n} Layer' + ('s' if n > 1 else ''),
+                     depress=(p.layers == n)).count = n
+    col.row(align=True).prop(p, 'direction', expand=True)
+    if scene_mode:
+        col.row(align=True).prop(p, 'screws', expand=True)
+        return
+    for i in range(1, p.layers + 1):
+        r = col.row(align=True)
+        r.prop(p, f'w{i}', text=f'Width {i}')
+        r.prop(p, f'h{i}', text=f'Height {i}')
+    col.prop(p, 'base')
+    if p.direction == 'IN':
+        col.prop(p, 'center')
+    col.row(align=True).prop(p, 'screws', expand=True)
+    if p.screws != '0':
+        r = col.row(align=True)
+        r.prop(p, 'screw_r', text='Size')
+        r.prop(p, 'screw_depth', text='Depth')
+
+
+def draw(layout, context, tool='DETAIL'):
+    kind = KINDS.get(tool, 'TRIM')
+    ob = active_detail(context)
+    if ob is not None and ob.mch_pdetail.kind == kind:
+        p = ob.mch_pdetail
+        box = layout.box()
+        box.label(text='LIVE: ' + ob.name, icon='MOD_SOLIDIFY')
+        col = box.column(align=True)
+        if kind == 'TRIM':
+            _draw_trim(col, p)
+        else:
+            col.prop(p, 'height')
+            col.prop(p, 'ramp')
+            col.row(align=True).prop(p, 'profile', expand=True)
+        row = box.row(align=True)
+        row.operator('mch.pdetail_apply', icon='CHECKMARK')
+        row.operator('mch.pdetail_remove', icon='TRASH')
+    else:
+        st = context.scene.mch_pdetail
+        layout.label(text='Settings for the next detail', icon='MOD_SOLIDIFY')
+        col = layout.column(align=True)
+        if kind == 'TRIM':
+            _draw_trim(col, st, scene_mode=True)
+        else:
+            col.row(align=True).prop(st, 'profile', expand=True)
+        layout.label(text='Sizes follow the outline; adjust them after drawing', icon='INFO')
+    tip = ('Draw a closed outline on a plate: flat inside, trim along the edge' if kind == 'TRIM' else
+           'Draw a closed outline: the surface rises smoothly inside it')
+    layout.label(text=tip)
+
+
+class MCH_PT_plate_detail(bpy.types.Panel):
+    """Sidebar in Select mode with a live detail selected."""
+    bl_idname = 'MCH_PT_plate_detail'
+    bl_label = 'Plate Detail'
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'Mecha Lab'
+    bl_order = 3
+
+    @classmethod
+    def poll(cls, context):
+        from . import tool_state as ts
+        return active_detail(context) is not None and ts.sidebar_select(context)
+
+    def draw(self, context):
+        ob = active_detail(context)
+        draw(self.layout, context, 'DETAIL' if ob.mch_pdetail.kind == 'TRIM' else 'DETAIL2')
+
+
+CLASSES = (MCH_PG_PlateDetail, MCH_PG_PlateDetailScene, MCH_OT_pdetail_layers, MCH_OT_pdetail_apply,
+           MCH_OT_pdetail_remove, MCH_PT_plate_detail)
+
+
+def register():
+    for c in CLASSES:
+        bpy.utils.register_class(c)
+    bpy.types.Object.mch_pdetail = PointerProperty(type=MCH_PG_PlateDetail)
+    bpy.types.Scene.mch_pdetail = PointerProperty(type=MCH_PG_PlateDetailScene)
+
+
+def unregister():
+    if bpy.app.timers.is_registered(_rebuild_timer):
+        bpy.app.timers.unregister(_rebuild_timer)
+    _PENDING.clear()
+    for owner, attr in ((bpy.types.Object, 'mch_pdetail'), (bpy.types.Scene, 'mch_pdetail')):
+        if hasattr(owner, attr):
+            delattr(owner, attr)
+    for c in reversed(CLASSES):
+        try:
+            bpy.utils.unregister_class(c)
+        except RuntimeError:
+            pass

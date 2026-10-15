@@ -27,6 +27,11 @@ TOOLS = (
      'in Edit Mode to build armour panels', 'subd', 'MOD_SUBSURF', None, 'OK'),
     ('PLATE', 'Armor Plate', 'Draw a lasso on a mesh: a separate armour plate made of new clean faces '
      '(no retopology); mouse wheel while drawing = profile', 'extract', 'MOD_SOLIDIFY', 'mecha.armor_plate', 'OK'),
+    ('DETAIL', 'Plate Detail', 'Draw an outline on a plate: a low surface trim - flat inside, 1 / 2 / 3 stepped '
+     'layers along the edge (edge high or inside high), optional screw recesses; live until Apply',
+     'extract', 'MESH_PLANE', 'mecha.plate_detail', 'OK'),
+    ('DETAIL2', 'Plate Detail 2', 'Draw an outline on a surface: it rises smoothly inside the outline to a flat top '
+     '(height, slope width, slope shape); live until Apply', 'extract', 'SURFACE_NSURFACE', 'mecha.plate_detail2', 'OK'),
     ('WRINKLE', 'Cloth Plate', 'Draw a lasso on a mesh: a separate padded cloth panel - puffs up inside the '
      'border, edge roll, seam pinch folds, stitching (+ optional Padding / Denim / Leather pattern), live until Apply', 'extract', 'MOD_CLOTH', 'mecha.cloth_wrinkle', 'OK'),
     ('PRIMITIVE', 'Primitive', 'Ghost shape with handles: Enter = merge into the mesh it touches, Alt+Enter = '
@@ -75,14 +80,14 @@ VISIBLE_TOOLS = tuple(t for t in TOOLS if t[0] not in HIDDEN_TOOLS)
 # V quick menu (docs/02): the six core tools (+ Armor Plate since 0.19).
 QUICK_TOOLS = ('CUT', 'BOOLEAN', 'BASE', 'SUBD', 'SPLIT', 'RADIAL', 'PLATE')   # 0.19: + Armor Plate
 NATIVE_TO_TOOL = {t[5]: t[0] for t in TOOLS if t[5]}
-SHAPE_TOOLS = {'CUT', 'SPLIT', 'MASK', 'BASE', 'PLATE', 'WRINKLE', 'HIDE'}
+SHAPE_TOOLS = {'CUT', 'SPLIT', 'MASK', 'BASE', 'PLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2'}
 
 # Enum numbers keep v0.5.9 values so saved .blend files map to the same tool.
 _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRAW': 6,
                  'ARRAY': 7, 'RADIAL': 8, 'SURFACE': 9, 'LIBRARY': 10, 'EDIT': 11,
                  'REMESH': 12, 'SPLIT': 13, 'POSE': 14, 'BASE': 15, 'LOFT': 16, 'ZBRUSH': 17, 'SUBD': 18, 'PRIMITIVE': 19,
                  'EXTRACT': 20, 'MOLDING': 21, 'HOLLOW': 22, 'ALONG': 23, 'CABLE': 24, 'PLATE': 25, 'WRINKLE': 26, 'TUBE': 27,
-                 'HIDE': 28}
+                 'HIDE': 28, 'DETAIL': 29, 'DETAIL2': 30}
 TOOL_ENUM_ITEMS = [(t[0], t[1], t[2], t[4], _ENUM_NUMBERS[t[0]]) for t in TOOLS]
 
 SHAPES = (
