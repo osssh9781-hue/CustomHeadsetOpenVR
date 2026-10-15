@@ -1338,6 +1338,7 @@ class StrokeLogic:
         self.free_drag = False
         self.near_first = False
         self.side_preview = None
+        self.space_xy = None         # 0.23.13: Space held = move the whole outline with the mouse
         self.rmb_time = None
         self.timer = None
         self.last_press = None       # (time, xy, 'ADD' / 'EDIT') for own double-click detection
@@ -1716,6 +1717,17 @@ class StrokeLogic:
         if et in NAV_EVENTS or et.startswith('NDOF') or (et.startswith('NUMPAD_') and et != 'NUMPAD_ENTER'):
             return {'PASS_THROUGH'}
 
+        if et == 'SPACE':
+            # 0.23.13: hold Space and move the mouse = move the outline drawn so far (like a marquee)
+            if ev == 'PRESS' and getattr(self, 'space_xy', None) is None:
+                self.space_xy = self.mouse or xy
+            elif ev == 'RELEASE':
+                self.space_xy = None
+            return {'RUNNING_MODAL'}
+        if (et == 'MOUSEMOVE' or et == 'INBETWEEN_MOUSEMOVE') and getattr(self, 'space_xy', None) is not None:
+            self._space_move(xy)
+            self.region.tag_redraw()
+            return {'RUNNING_MODAL'}
         if et == 'MOUSEMOVE' or et == 'INBETWEEN_MOUSEMOVE':
             if inside or self.stage == 'DRAG' or self.drag_index is not None or self.free_drag:
                 self.mouse = xy
@@ -1732,10 +1744,6 @@ class StrokeLogic:
 
         if et == 'ESC' and ev == 'PRESS':
             return self._leave_tool(context)
-        if et == 'SPACE' and ev == 'PRESS':
-            self._cleanup(context)
-            open_popup(TOOL_POPUP)
-            return {'CANCELLED'}
         if et == 'RIGHTMOUSE' and ev in {'PRESS', 'DOUBLE_CLICK'}:
             now = _now()
             if ev == 'DOUBLE_CLICK' or (self.rmb_time is not None and
@@ -1803,6 +1811,24 @@ class StrokeLogic:
         # Swallow other keys while a stroke is pending so a stray hotkey cannot
         # delete or transform the target halfway through.
         return {'RUNNING_MODAL'}
+
+    def _space_move(self, xy):
+        dx, dy = xy[0] - self.space_xy[0], xy[1] - self.space_xy[1]
+        self.space_xy = xy
+        self.mouse = xy
+        if dx == 0 and dy == 0:
+            return
+        self.pts = [(p[0] + dx, p[1] + dy) for p in self.pts]
+        self.redo = [((r[0][0] + dx, r[0][1] + dy),) + tuple(r[1:]) for r in self.redo]
+        if self.anchor is not None:
+            self.anchor = (self.anchor[0] + dx, self.anchor[1] + dy)
+        if self.press_xy is not None:
+            self.press_xy = (self.press_xy[0] + dx, self.press_xy[1] + dy)
+        stab = getattr(self, 'stab', None)
+        if stab is not None and getattr(stab, 'active', False):
+            stab.reset(xy, self._clock())
+        if self.stage == 'SIDE':
+            self._update_side_preview()
 
     def _on_move(self, xy):
         if self.stage == 'DRAG' and self.shape == 'STROKE':

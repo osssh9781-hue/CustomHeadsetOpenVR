@@ -1,4 +1,8 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.12 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.13 (Claude Code, 2026-10-14)
+
+## 0.23.13
+- ZIP sha256 `9d4796a89b028d766f5d8444d703730f70693fadc7f454b6515e7e5808560d63`. `cloth_wrinkle`: `fold_lines` Fold In 프로필 clip(1 - d / max(w/2, min_w))^1.6, 폭 ×0.75, min_w = 엣지 1.5배, Blur 1회; `_membrane(bm, dist)` (Jacobi 400회, -Δu = 1, 테두리 0, max = 최대 테두리 거리) → 점 속성 `mch_edge_smooth`, GN Puff가 이것을 사용(없으면 Db). Center Calm 기본 0.9.
+- `cut_engine.StrokeLogic`: SPACE PRESS/RELEASE = `space_xy`, 그 사이 MOUSEMOVE는 `_space_move`(pts / redo / anchor / press_xy 이동). Space 툴 메뉴 키맵 제거(3D View, 그리기 툴, Primitive). `mch.space_tools` 연산자와 `space_menu` 설정은 호환용으로 남김(키 없음, UI 숨김).
 
 ## 0.23.12
 - ZIP sha256 `19abf17cf9b7671f6d020caed29f3ad42ff5283990ec5ebf5b8d3c476dd64bf4`. `cloth_wrinkle` GN: 입력 `Center Calm`(뒤에 추가) - pinch × (1 - Calm × smoothstep(0.2, 0.6, Db / max(Db))), Attribute Statistic으로 max(Db). HUD 키 `calm`.

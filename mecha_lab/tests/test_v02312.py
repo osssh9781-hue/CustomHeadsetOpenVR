@@ -14,7 +14,7 @@ S.mch_brush.shape = 'LASSO'
 S.mch_brush.line_open = False
 from mecha_lab import cloth_wrinkle as cw, last_used
 last_used.forget('wrinkle')
-check('Center Calm input (default 0.8) + HUD slider', next(x for x in cw.INPUTS if x[0] == 'Center Calm')[2] == 0.8
+check('Center Calm input (default 0.9 since 0.23.13) + HUD slider', next(x for x in cw.INPUTS if x[0] == 'Center Calm')[2] == 0.9
       and 'calm' in {k[0] for k in cw.SLIDERS})
 MODE[0], NATIVE[0] = 'WRINKLE', 'mecha.cloth_wrinkle'
 S.mch_settings.mch_active_tool = 'WRINKLE'

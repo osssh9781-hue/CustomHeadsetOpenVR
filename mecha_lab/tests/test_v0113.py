@@ -55,7 +55,7 @@ check('0.12: T toggles targets while a Mecha drawing tool is active', any(
     k[0] == 'mch.toggle_targets' and k[1]['type'] == 'T' for k in tool_km))
 found = wui.hotkey_items(C)
 check('hotkey editor looks items up fresh (no cached KeyMapItem list)',
-      {i.idname for _km, i in found} >= {'mch.select_move_key', 'mch.tool_pie', 'mch.space_tools'} and
+      {i.idname for _km, i in found} >= {'mch.select_move_key', 'mch.tool_pie'} and
       'for km, item in _keymaps' not in open(wui.__file__).read().split('def draw_hotkey_editor')[1].split('def ')[0])
 
 # --- Ctrl+Z keeps the tool UI ------------------------------------------------

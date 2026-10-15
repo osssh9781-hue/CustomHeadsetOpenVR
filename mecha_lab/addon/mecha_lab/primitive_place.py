@@ -1431,7 +1431,6 @@ TOOL_KEYMAP = (
     ('mch.place_undo_key', {'type': 'Z', 'value': 'PRESS', 'ctrl': True, 'shift': True},
      {'properties': [('redo', True)]}),
     ('mch.primitive_rmb', {'type': 'RIGHTMOUSE', 'value': 'PRESS'}, None),
-    ('mch.space_tools', {'type': 'SPACE', 'value': 'PRESS'}, None),
     ('mch.place_hide', {'type': 'ESC', 'value': 'PRESS'}, None),
     ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),
 )

@@ -429,7 +429,6 @@ def _tool_keymap(mode):
          {'properties': [('mode', mode)]}),
         ('mch.rmb_gate', {'type': 'RIGHTMOUSE', 'value': 'PRESS'},
          {'properties': [('popup', 'PROFILE' if mode == 'BASE' else 'SHAPE')]}),
-        ('mch.space_tools', {'type': 'SPACE', 'value': 'PRESS'}, None),
         ('mch.toggle_targets', {'type': 'T', 'value': 'PRESS'}, None),
     ) + ((
         # 0.14.1 Base Mesh sketch: Enter = mesh, Alt+Enter = cut into mesh, Esc = clear, Backspace = last shape
@@ -1266,7 +1265,6 @@ class MCH_PT_workspace(bpy.types.Panel):
         p = prefs()
         if p is not None:
             col = layout.column(align=True)
-            col.prop(p, 'space_menu')
             col.prop(p, 'workspace_hotkeys')
             col.prop(p, 'quick_menu')
             col.prop(p, 'select_move_key')
@@ -1303,7 +1301,7 @@ class MCH_PT_tool_list(bpy.types.Panel):
         # columns follow the width of the left area
         draw_tool_grid(layout, context, columns=0, scale=2.2)
         layout.separator()
-        layout.label(text='Space: tool menu', icon='EVENT_SPACEKEY')
+        layout.label(text='Space (while drawing): move the outline', icon='EVENT_SPACEKEY')
 
 
 class MCH_PT_tool_popup(bpy.types.Panel):
@@ -1460,7 +1458,6 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         row = box.row()
         row.prop(self, 'tool_pie')
         row.prop(self, 'last_tool_key')
-        layout.prop(self, 'space_menu')
         layout.prop(self, 'workspace_hotkeys')
         layout.prop(self, 'quick_menu')
         layout.prop(self, 'select_move_key')
@@ -1486,9 +1483,9 @@ def register_keymaps():
         return
     km = kc.keymaps.new(name='3D View', space_type='VIEW_3D')
     # 0.22.1: Q = Select <-> last tool (one key, like Tab); 0.23.2: V = tool pie
-    # (it duplicated the pie) and N is Blender's sidebar again. Space stays as the
-    # big tool menu (switchable). All gated to MECHA LAB by the operators' poll.
-    _keymaps.append((km, km.keymap_items.new('mch.space_tools', 'SPACE', 'PRESS')))
+    # (it duplicated the pie) and N is Blender's sidebar again. 0.23.13: Space no longer
+    # opens the big tool menu (it moves the outline while drawing). All gated to MECHA LAB
+    # by the operators' poll.
     _keymaps.append((km, km.keymap_items.new('mch.toggle_last_tool', 'Q', 'PRESS')))
     _keymaps.append((km, km.keymap_items.new('mch.tool_pie', 'V', 'PRESS')))
     km = kc.keymaps.new(name='Object Mode', space_type='EMPTY')

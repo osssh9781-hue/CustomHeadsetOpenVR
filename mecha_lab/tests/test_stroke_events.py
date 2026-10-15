@@ -232,13 +232,16 @@ CLOCK[0] += 0.1
 r = op.modal(ctx, E('RIGHTMOUSE', 'PRESS'))   # second PRESS without DOUBLE_CLICK flag
 check('two RMB presses inside interval also exit', r == {'CANCELLED'} and ('exit',) in CALLS)
 
-# 8. Space => tool popup, stroke cancelled (Space never confirms)
+# 8. 0.23.13: Space no longer opens the tool popup; held while drawing it moves the outline (never confirms)
 t = setup('LASSO')
 ctx, op = Ctx(), Op()
 op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 450, 450))
+CALLS.clear()
 r = op.modal(ctx, E('SPACE'))
-check('Space opens tool popup and does not cut', r == {'CANCELLED'} and ('popup', ce.TOOL_POPUP) in CALLS
-      and abs(volume(t) - 8) < 1e-4)
+check('Space keeps the stroke, opens no popup and does not cut', r == {'RUNNING_MODAL'} and
+      not any(c[0] == 'popup' for c in CALLS) and abs(volume(t) - 8) < 1e-4)
+op.modal(ctx, E('SPACE', 'RELEASE'))
+op.modal(ctx, E('ESC'))
 
 # 9. Rectangle drag; tiny drag = click = cancel
 t = setup('RECT')

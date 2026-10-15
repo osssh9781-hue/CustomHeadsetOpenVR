@@ -111,8 +111,8 @@ def run(context):
     step('sub-panels registered (Mirror / Radial / Surface)',
          lambda: all(hasattr(bpy.types, n) for n in ('MCH_PT_mirror', 'MCH_PT_radial', 'MCH_PT_surface_conform')))
     kc = context.window_manager.keyconfigs.addon
-    step('add-on keymap present (Space / V / B / C)', lambda: kc is None or any(
-        ki.idname == 'mch.space_tools' for km in kc.keymaps for ki in km.keymap_items))
+    step('add-on keymap present (Q / V / B / C)', lambda: kc is None or any(
+        ki.idname == 'mch.tool_pie' for km in kc.keymaps for ki in km.keymap_items))
     step('effective tool readable', lambda: ts.effective_tool(context))
 
     window = context.window
