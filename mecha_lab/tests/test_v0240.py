@@ -110,7 +110,7 @@ co2 = np.array([v.co[:] for v in rz.data.vertices])
 hz2 = heights(rz, b2)
 w_top2 = co2[hz2 > q.height * 0.99][:, 0].max() - co2[hz2 > q.height * 0.99][:, 0].min()
 check('wider slope = narrower top', w_top2 < w_top - 1e-3, (w_top, w_top2))
-for prof in ('LINEAR', 'DOME', 'FOOT'):
+for prof in ('CHAMFER', 'DOME', 'FOOT'):
     q.profile = prof
     pd.rebuild(rz)
     check(f'slope shape {prof} builds', manifold(rz.data))

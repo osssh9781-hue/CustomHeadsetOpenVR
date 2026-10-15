@@ -424,6 +424,11 @@ def _lasso_sketch_keys():
     return lasso_sketch.KEYMAP       # 0.19.3: Enter / Alt+Enter / Backspace / Esc while a sketch exists
 
 
+def lasso_sketch_modes():
+    from . import lasso_sketch
+    return lasso_sketch.MODES
+
+
 def _tool_keymap(mode):
     return (
         ('mch.cut_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'any': True},
@@ -440,7 +445,7 @@ def _tool_keymap(mode):
          {'properties': [('cutter', True)]}),
         ('mch.base_sketch_clear', {'type': 'ESC', 'value': 'PRESS'}, None),
         ('mch.base_sketch_undo', {'type': 'BACK_SPACE', 'value': 'PRESS'}, None),
-    ) if mode == 'BASE' else ()) + (_lasso_sketch_keys() if mode in {'CUT', 'SPLIT', 'PLATE', 'WRINKLE'} else ()) + (
+    ) if mode == 'BASE' else ()) + (_lasso_sketch_keys() if mode in lasso_sketch_modes() else ()) + (
         # Esc with no stroke pending: back to Blender's Select Box tool.
         ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),
         # B06: R / Shift+R rotate a PNG stamp (poll fails for other shapes -> Blender's R).
@@ -765,7 +770,9 @@ def draw_shape_palette(self, context):
         op.preset = ''
     from . import lasso_sketch
     sk = layout.row(align=True)
-    sk.operator('mch.sketch_toggle', text='Sketch', icon='GREASEPENCIL', depress=lasso_sketch.is_on(context))
+    skb = sk.row(align=True)
+    skb.enabled = tool in lasso_sketch.MODES or tool == 'BASE'     # 0.24.1 only where the sketch works
+    skb.operator('mch.sketch_toggle', text='Sketch', icon='GREASEPENCIL', depress=lasso_sketch.is_on(context))
     sk.prop(brush, 'line_mode', text='Line', icon='IPO_LINEAR', toggle=True)
     if tool in {'CUT', 'SPLIT', 'PLATE', 'WRINKLE'}:
         sk.prop(brush, 'surface_mode', text='Surface', icon='SNAP_FACE', toggle=True)

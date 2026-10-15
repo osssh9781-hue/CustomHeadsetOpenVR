@@ -187,7 +187,7 @@ def screw_centres(loop, w1, count, min_turn=25.0):
 
 
 def build_detail(region_me, layers, base, screws=0, screw_r=None, screw_depth=None, embed=0.0,
-                 name='MCH_PlateDetail', direction='OUT', center=0.0):
+                 name='MCH_PlateDetail', direction='OUT', center=0.0, lift=0.0):
     """New mesh: flat panel + stepped trim layers + screw recesses on the
     region (triangle patch, faces pointing out of the surface).
 
@@ -199,6 +199,7 @@ def build_detail(region_me, layers, base, screws=0, screw_r=None, screw_depth=No
     try:
         bm.from_mesh(region_me)
         bmesh.ops.triangulate(bm, faces=bm.faces[:])
+        kappa = surface_curvature(bm)
         loops = _boundary_loop(bm)
         if not loops or not bm.faces:
             raise ValueError('empty region')
@@ -279,7 +280,7 @@ def build_detail(region_me, layers, base, screws=0, screw_r=None, screw_depth=No
             i = key_idx.get(k)
             if i is None:
                 i = key_idx[k] = len(out_co)
-                out_co.append(v.co + nrm[v] * h)
+                out_co.append(v.co + nrm[v] * (h + lift))
             return i
 
         faces = []
@@ -306,6 +307,7 @@ def build_detail(region_me, layers, base, screws=0, screw_r=None, screw_depth=No
     try:
         bm.from_mesh(me)
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+        simplify(bm, kappa=kappa)
         bm.to_mesh(me)
     finally:
         bm.free()
@@ -320,25 +322,25 @@ def build_detail(region_me, layers, base, screws=0, screw_r=None, screw_depth=No
 
 
 RISE_PROFILES = (
-    ('SMOOTH', 'Smooth', 'Soft foot and soft shoulder'),
-    ('LINEAR', 'Straight', 'Straight slope (chamfer-like)'),
+    ('ROUND', 'Round', 'Grows out of the surface: soft fillet at the foot, rounded top edge'),
+    ('CHAMFER', 'Chamfer', 'Straight slope with crisp edges'),
     ('DOME', 'Round Top', 'Steep at the foot, rounding into the top'),
     ('FOOT', 'Soft Foot', 'Gentle at the foot, steeper near the top'),
 )
 
 
-def rise_curve(t, profile='SMOOTH'):
+def rise_curve(t, profile='ROUND'):
     t = np.clip(t, 0.0, 1.0)
-    if profile == 'LINEAR':
+    if profile == 'CHAMFER':
         return t
     if profile == 'DOME':
         return np.sin(t * math.pi * 0.5)
     if profile == 'FOOT':
         return t * t
-    return t * t * (3.0 - 2.0 * t)
+    return t * t * t * (t * (6.0 * t - 15.0) + 10.0)     # smootherstep: flat at the foot and the top
 
 
-def build_rise(region_me, height, ramp, embed=0.0, name='MCH_PlateRise', profile='SMOOTH', lift=0.0):
+def build_rise(region_me, height, ramp, embed=0.0, name='MCH_PlateRise', profile='ROUND', lift=0.0):
     """0.24 Detail 2: the surface itself rises smoothly inside the outline -
     0 at the outline, a smooth slope ``ramp`` wide, then a flat top
     ``height`` above the surface (no walls, no trims)."""
@@ -346,19 +348,30 @@ def build_rise(region_me, height, ramp, embed=0.0, name='MCH_PlateRise', profile
     try:
         bm.from_mesh(region_me)
         bmesh.ops.triangulate(bm, faces=bm.faces[:])
+        kappa = surface_curvature(bm)
         loops = _boundary_loop(bm)
         if not loops or not bm.faces:
             raise ValueError('empty region')
         A, B = _seg_arrays(loops)
         size = float(np.linalg.norm(A.max(0) - A.min(0)))
         bm.normal_update()
+        # 0.24.1 the slope as clean rings (like bevel segments): cut along the iso-lines of the distance,
+        # heights are linear inside each ring, so every ring and the top merge into few faces
+        segs = 1 if profile == 'CHAMFER' else RISE_SEGMENTS
+        outline = lambda P: dist_to_segments(P, A, B)
+        for k in range(1, segs + 1):
+            cut_iso(bm, outline, ramp * k / segs, size * 1e-5)
+        bm.normal_update()
         bm.verts.index_update()
         co = np.array([tuple(v.co) for v in bm.verts])
-        t = dist_to_segments(co, A, B) / max(ramp, 1e-9)
-        hs = lift + height * rise_curve(t, profile)
+        t = np.clip(outline(co) / max(ramp, 1e-9), 0.0, 1.0)
+        k = np.minimum(np.floor(t * segs + 1e-6), segs - 1)
+        lo, hi = rise_curve(k / segs, profile), rise_curve((k + 1) / segs, profile)
+        frac = np.clip(t * segs - k, 0.0, 1.0)
+        hs = lift + height * (lo + (hi - lo) * frac)
         out_co = [v.co + v.normal * float(h) for v, h in zip(bm.verts, hs)]
         n = len(out_co)
-        out_co += [v.co - v.normal * embed for v in bm.verts]
+        out_co += [v.co + v.normal * (lift - embed) for v in bm.verts]
         faces = []
         for f in bm.faces:
             idx = [v.index for v in f.verts]
@@ -377,12 +390,64 @@ def build_rise(region_me, height, ramp, embed=0.0, name='MCH_PlateRise', profile
     try:
         bm.from_mesh(me)
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+        simplify(bm, kappa=kappa)
         bm.to_mesh(me)
     finally:
         bm.free()
     me.shade_smooth()
+    try:
+        # 0.24.1 the skirt under the foot must not darken the smooth foot (it read as a cut-off edge)
+        me.set_sharp_from_angle(angle=math.radians(60 if profile != 'CHAMFER' else 20))
+    except (AttributeError, TypeError):
+        pass
     me.update()
     return me
+
+
+RISE_SEGMENTS = 8             # rings on a Round slope
+SIMPLIFY_ANGLE = 0.6          # degrees: faces flatter than this merge into one
+
+
+def surface_curvature(bm):
+    """Bending of the surface patch (1 / radius, 90th percentile over its edges)."""
+    bm.normal_update()
+    kap = []
+    for e in bm.edges:
+        a_, b_ = e.verts
+        L = e.calc_length()
+        if L > 1e-12:
+            kap.append(a_.normal.angle(b_.normal, 0.0) / L)
+    return float(np.percentile(kap, 90)) if kap else 0.0
+
+
+def simplify(bm, angle=SIMPLIFY_ANGLE, tol_frac=0.0012, kappa=0.0):
+    """0.24.1 the dense patch is only needed to follow the outline and the
+    surface: flat areas (bands, bottom, straight wall runs) merge into big faces.
+    On a curved surface the merging is fenced by a grid (seams) whose cell size
+    keeps every merged face within ``tol_frac`` x size of the real surface, so
+    a big panel cannot flatten into the surface."""
+    if not bm.faces:
+        return
+    co = np.array([tuple(v.co) for v in bm.verts])
+    size = float(np.linalg.norm(co.max(0) - co.min(0))) or 1.0
+    seams = []
+    if kappa > 1e-9:
+        g = max(math.sqrt(8.0 * tol_frac * size / kappa), size * 0.02)
+        cell = {v: tuple(np.floor(np.array(tuple(v.co)) / g).astype(int)) for v in bm.verts}
+        for e in bm.edges:
+            if cell[e.verts[0]] != cell[e.verts[1]] and not e.seam:
+                e.seam = True
+                seams.append(e)
+    bmesh.ops.dissolve_limit(bm, angle_limit=math.radians(angle), use_dissolve_boundaries=False,
+                             verts=bm.verts[:], edges=bm.edges[:], delimit={'SEAM'} if seams else set())
+    for e in bm.edges:
+        e.seam = False
+    # straight runs leave 2-edge verts behind
+    lone = [v for v in bm.verts if len(v.link_edges) == 2 and len(v.link_faces) == 2 and
+            (v.link_edges[0].other_vert(v).co - v.co).normalized().dot(
+                (v.co - v.link_edges[1].other_vert(v).co).normalized()) > math.cos(math.radians(angle))]
+    if lone:
+        bmesh.ops.dissolve_verts(bm, verts=lone)
 
 
 def preset_layers(count, size):
@@ -401,7 +466,7 @@ DIRECTIONS = (('OUT', 'Edge High', 'The edge is highest, layers step down inward
 SCREW_ITEMS = (('0', 'No Screw', ''), ('1', '1 Screw', ''), ('2', '2 Screws', ''))
 SPACING_PX = 7                 # face size on screen for the surface patch
 RISE_DEFAULT = dict(height=0.035, ramp=0.12)
-LENGTHS = ('w1', 'h1', 'w2', 'h2', 'w3', 'h3', 'base', 'center', 'screw_r', 'screw_depth', 'height', 'ramp')
+LENGTHS = ('w1', 'h1', 'w2', 'h2', 'w3', 'h3', 'base', 'center', 'screw_r', 'screw_depth', 'height', 'ramp', 'lift')
 _SYNC = [False]
 
 
@@ -474,7 +539,10 @@ class MCH_PG_PlateDetail(bpy.types.PropertyGroup):
                           update=_changed, description='Detail 2: height of the flat top above the surface')
     ramp: FloatProperty(name='Slope Width', default=0.12, min=0.0001, soft_max=1.0, unit='LENGTH', precision=4,
                         update=_changed, description='Detail 2: how far in the top starts - wider = narrower top')
-    profile: EnumProperty(name='Slope', items=RISE_PROFILES, default='SMOOTH', update=_changed)
+    profile: EnumProperty(name='Edge', items=RISE_PROFILES, default='ROUND', update=_changed)
+    lift: FloatProperty(name='Lift', default=0.0, soft_min=-0.2, soft_max=0.2, unit='LENGTH', precision=4,
+                        update=_changed, description='Move the detail along the surface normal (- = into the '
+                        'surface) so it sits right on it')
 
 
 class MCH_PG_PlateDetailScene(bpy.types.PropertyGroup):
@@ -484,7 +552,7 @@ class MCH_PG_PlateDetailScene(bpy.types.PropertyGroup):
     layers: IntProperty(name='Layers', default=2, min=1, max=3)
     direction: EnumProperty(name='Direction', items=DIRECTIONS, default='OUT')
     screws: EnumProperty(name='Screws', items=SCREW_ITEMS, default='0')
-    profile: EnumProperty(name='Slope', items=RISE_PROFILES, default='SMOOTH')
+    profile: EnumProperty(name='Edge', items=RISE_PROFILES, default='ROUND')
     fractions: bpy.props.StringProperty(default='')
 
 
@@ -497,7 +565,8 @@ def _fractions(scene):
 
 
 def default_fractions(layers):
-    f = {'base': BASE_FRAC, 'center': 0.02, 'height': RISE_DEFAULT['height'], 'ramp': RISE_DEFAULT['ramp']}
+    f = {'base': BASE_FRAC, 'center': 0.02, 'height': RISE_DEFAULT['height'], 'ramp': RISE_DEFAULT['ramp'],
+         'lift': 0.0}
     for i, (w, h) in enumerate(LAYER_PRESETS[layers], 1):
         f[f'w{i}'], f[f'h{i}'] = w, h
     for i in range(len(LAYER_PRESETS[layers]) + 1, 4):
@@ -539,13 +608,13 @@ def rebuild(ob):
     p = ob.mch_pdetail
     embed = p.size * 0.002
     if p.kind == 'RISE':
-        me = build_rise(p.region, p.height, p.ramp, embed=embed, profile=p.profile, lift=p.size * 0.0004,
+        me = build_rise(p.region, p.height, p.ramp, embed=embed, profile=p.profile, lift=p.size * 0.0004 + p.lift,
                         name=ob.name)
     else:
         layers = [(p.w1, p.h1), (p.w2, p.h2), (p.w3, p.h3)][:p.layers]
         me = build_detail(p.region, layers, p.base, screws=int(p.screws), screw_r=p.screw_r,
                           screw_depth=p.screw_depth, embed=embed, name=ob.name, direction=p.direction,
-                          center=p.center)
+                          center=p.center, lift=p.lift)
     old = ob.data
     for m in old.materials:
         me.materials.append(m)
@@ -711,6 +780,7 @@ def _draw_trim(col, p, scene_mode=False):
         r.prop(p, f'w{i}', text=f'Width {i}')
         r.prop(p, f'h{i}', text=f'Height {i}')
     col.prop(p, 'base')
+    col.prop(p, 'lift')
     if p.direction == 'IN':
         col.prop(p, 'center')
     col.row(align=True).prop(p, 'screws', expand=True)
@@ -733,6 +803,7 @@ def draw(layout, context, tool='DETAIL'):
         else:
             col.prop(p, 'height')
             col.prop(p, 'ramp')
+            col.prop(p, 'lift')
             col.row(align=True).prop(p, 'profile', expand=True)
         row = box.row(align=True)
         row.operator('mch.pdetail_apply', icon='CHECKMARK')
