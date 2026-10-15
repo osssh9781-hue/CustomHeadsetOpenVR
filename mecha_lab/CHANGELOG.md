@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 0.24.0 — Plate Detail / Plate Detail 2 / Screw Stamp, Panel Cloth 텐션·중력 실시간 (2026-10-15)
+
+- **Plate Detail**(하단 툴바 **Detail**, 새 도구): 플레이트(아머 플레이트 포함) 위에 닫힌 외곽선을 그리면 낮은 서페이스 트림. 그린 테두리 그대로, 안쪽은 평평한 판, 테두리를 따라 **1 / 2 / 3겹** 계단(프리셋 버튼 = 크기에 맞춘 넓이·높이, 이후 겹마다 **넓이 / 높이** 직접 조절), **Edge High**(테두리가 높음) / **Inside High**(안쪽이 높음, Inside Height), Base Thickness, **나사 0 / 1 / 2**(볼록한 모서리 쪽 트림 가운데에 둥근 홈, Size / Depth). 그린 메쉬에 붙어(부모) 같이 움직임. Apply / Remove.
+- **Plate Detail 2**(하단 툴바 **Detail 2**): 외곽선 안이 표면에서 **자연스럽게 올라와** 평평한 윗면. **Height**, **Slope Width**(넓을수록 위가 좁아짐), **Slope** 모양(Smooth / Straight / Round Top / Soft Foot).
+- 다음 디테일은 마지막에 고친 값을 크기 비율로 기억(큰 외곽선 = 큰 트림).
+- **Screw Stamp**(하단 툴바 **Screw**): 클릭할 때마다 표면에 나사 머리(표면 방향에 맞춤, 그 메쉬에 붙음, 살짝 박힘). **Dome / Post / Socket / Cross**(사용자 그림). 선택한 나사 Size / Height / Hole Depth 실시간, Alt + 클릭 = 지우기, **Join Screws to Surface**.
+- **Panel Cloth Tension / Gravity**(N 패널 › Cloth Plate › PANEL CLOTH, 구운 천을 선택하면): 값을 바꾸면 잠깐 뒤 자동으로 다시 구움(드래그 중에는 한 번만). Tension 1 = 프리셋, 높이면 팽팽(여유 천 줄고 뻣뻣), 낮추면 주름 많음. 다른 프리셋으로 다시 구우면 Gravity는 그 프리셋 값, Tension은 유지.
+- 테스트: 67개 파일 2349/2349 (`tests/test_log_bpy501_v0240.txt`), 새 `test_v0240.py`(Plate Detail 23), `test_v0240b.py`(Screw 17), `test_v02328.py`(Panel Cloth 슬라이더 9). ZIP sha256 `d6fa728a865c38c3a7a8c1b8965faccb92fe5314c371d3aca70ba24024191f7c`.
+
 ## 0.23.27 — 공통 Lasso Settings 패널, Alt는 모든 도구에서 빨간 선 (2026-10-15)
 
 - N 사이드바에 **Lasso Settings** 패널 하나를 따로 두고 **모든 도구**(Select 포함)에서 보이게 함: 모양별 설정(Free Draw 손떨림 보정 / 간격 / 스무스 / 단순화, 원 세그먼트, Curve Lasso 해상도, Line, 프리셋 모양, 바깥 모서리 둥글게 / 각지게, Cut 라쏘의 Edge Finish). 전에는 Cut / Split / Mask / Base Mesh / Box Hide 패널 안에만 있고 Armor Plate / Cloth Plate 등에는 없었음 → 각 도구 패널 안의 사본은 지움.

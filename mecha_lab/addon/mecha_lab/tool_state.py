@@ -32,6 +32,9 @@ TOOLS = (
      'extract', 'MESH_PLANE', 'mecha.plate_detail', 'OK'),
     ('DETAIL2', 'Plate Detail 2', 'Draw an outline on a surface: it rises smoothly inside the outline to a flat top '
      '(height, slope width, slope shape); live until Apply', 'extract', 'SURFACE_NSURFACE', 'mecha.plate_detail2', 'OK'),
+    ('SCREW', 'Screw Stamp', 'Click on a surface to place screw heads (Dome / Post / Socket / Cross), aligned '
+     'to the surface; size, height and hole depth stay live; Alt + click removes', 'extract', 'RADIOBUT_ON',
+     'mecha.screw_stamp', 'OK'),
     ('WRINKLE', 'Cloth Plate', 'Draw a lasso on a mesh: a separate padded cloth panel - puffs up inside the '
      'border, edge roll, seam pinch folds, stitching (+ optional Padding / Denim / Leather pattern), live until Apply', 'extract', 'MOD_CLOTH', 'mecha.cloth_wrinkle', 'OK'),
     ('PRIMITIVE', 'Primitive', 'Ghost shape with handles: Enter = merge into the mesh it touches, Alt+Enter = '
@@ -87,7 +90,7 @@ _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRA
                  'ARRAY': 7, 'RADIAL': 8, 'SURFACE': 9, 'LIBRARY': 10, 'EDIT': 11,
                  'REMESH': 12, 'SPLIT': 13, 'POSE': 14, 'BASE': 15, 'LOFT': 16, 'ZBRUSH': 17, 'SUBD': 18, 'PRIMITIVE': 19,
                  'EXTRACT': 20, 'MOLDING': 21, 'HOLLOW': 22, 'ALONG': 23, 'CABLE': 24, 'PLATE': 25, 'WRINKLE': 26, 'TUBE': 27,
-                 'HIDE': 28, 'DETAIL': 29, 'DETAIL2': 30}
+                 'HIDE': 28, 'DETAIL': 29, 'DETAIL2': 30, 'SCREW': 31}
 TOOL_ENUM_ITEMS = [(t[0], t[1], t[2], t[4], _ENUM_NUMBERS[t[0]]) for t in TOOLS]
 
 SHAPES = (

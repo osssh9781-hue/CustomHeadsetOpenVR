@@ -4,6 +4,13 @@
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
 
+## A0000000000000000000000000000000000000000000. 0.24.0 (미검증)
+- [ ] Detail: 플레이트 위에 네모 / 자유 외곽선 → 그린 모양 그대로 트림, 1 / 2 / 3겹 버튼, 겹마다 넓이·높이 슬라이더가 바로 반영되는지
+- [ ] Edge High / Inside High, 나사 0 / 1 / 2(모서리 위치·크기·깊이), Apply / Remove, 플레이트를 옮기면 따라오는지
+- [ ] Detail 2: Height / Slope Width / Slope 모양이 바로 바뀌는지, 가장자리가 표면에 자연스럽게 붙는지
+- [ ] Screw: 클릭마다 나사가 표면 방향으로 붙는지(휜 면 포함), 4종 머리, 선택 나사 크기·높이·구멍 깊이, Alt + 클릭 지우기, Join
+- [ ] Panel Cloth: 구운 천 선택 → Tension / Gravity를 드래그하면 놓은 뒤 다시 구워지는지(멈춤 없이)
+
 ## A000000000000000000000000000000000000000000. 0.23.27 (미검증)
 - [ ] 아무 도구(Select / Armor Plate / Cloth Plate / Primitive ...)를 골라도 N 사이드바에 Lasso Settings 패널이 보이고, 값이 그림에 반영되는지
 - [ ] Alt를 누른 채 그리면 Cut / Split / Mask / Base Mesh / Armor / Cloth / Box Hide 모두 선이 빨간색인지

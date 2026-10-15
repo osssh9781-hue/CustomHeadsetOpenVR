@@ -24,6 +24,7 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
 
 from . import primitive_place
+from . import screw_stamp
 from . import tool_state as ts
 
 ADDON_ID = __package__
@@ -537,6 +538,20 @@ class MCH_TOOL_plate_detail2(bpy.types.WorkSpaceTool):
         _draw_tool_settings(context, layout, tool)
 
 
+class MCH_TOOL_screw_stamp(bpy.types.WorkSpaceTool):
+    bl_space_type = 'VIEW_3D'
+    bl_context_mode = 'OBJECT'
+    bl_idname = 'mecha.screw_stamp'
+    bl_label = 'Mecha Screw Stamp'
+    bl_description = 'Click on a surface: a screw head aligned to it. Alt + click: remove, Esc: exit'
+    bl_icon = 'ops.generic.cursor'
+    bl_widget = None
+    bl_keymap = screw_stamp.TOOL_KEYMAP
+
+    def draw_settings(context, layout, tool):
+        _draw_tool_settings(context, layout, tool)
+
+
 class MCH_TOOL_mask(bpy.types.WorkSpaceTool):
     bl_space_type = 'VIEW_3D'
     bl_context_mode = 'OBJECT'
@@ -614,7 +629,7 @@ class MCH_TOOL_primitive(bpy.types.WorkSpaceTool):
 
 
 NATIVE_TOOLS = (MCH_TOOL_cut, MCH_TOOL_split, MCH_TOOL_base_mesh, MCH_TOOL_primitive, MCH_TOOL_armor_plate,
-                MCH_TOOL_cloth_wrinkle, MCH_TOOL_box_hide, MCH_TOOL_plate_detail, MCH_TOOL_plate_detail2)   # MCH_TOOL_mask kept, not registered (Mask hidden)
+                MCH_TOOL_cloth_wrinkle, MCH_TOOL_box_hide, MCH_TOOL_plate_detail, MCH_TOOL_plate_detail2, MCH_TOOL_screw_stamp)   # MCH_TOOL_mask kept, not registered (Mask hidden)
 
 
 def register_native_tools():
@@ -630,6 +645,7 @@ def register_native_tools():
     bpy.utils.register_tool(MCH_TOOL_box_hide, after={MCH_TOOL_split.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_plate_detail, after={MCH_TOOL_armor_plate.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_plate_detail2, after={MCH_TOOL_plate_detail.bl_idname}, group=False)
+    bpy.utils.register_tool(MCH_TOOL_screw_stamp, after={MCH_TOOL_plate_detail2.bl_idname}, group=False)
     _tools_registered = True
 
 

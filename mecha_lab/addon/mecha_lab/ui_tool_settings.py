@@ -755,6 +755,11 @@ def draw_detail2(layout, context):
     plate_detail.draw(layout, context, 'DETAIL2')
 
 
+def draw_screw(layout, context):
+    from . import screw_stamp
+    screw_stamp.draw(layout, context)
+
+
 def draw_tube(layout, context):
     from . import curve_tube
     curve_tube.draw(layout, context)
@@ -767,6 +772,6 @@ DRAWERS = {
     'BASE': draw_base, 'LOFT': draw_loft, 'ZBRUSH': draw_zbrush, 'SUBD': draw_subd,
     'PRIMITIVE': draw_primitive, 'PLATE': draw_plate, 'WRINKLE': draw_wrinkle,
     'EXTRACT': draw_extract, 'MOLDING': draw_molding, 'HOLLOW': draw_hollow, 'ALONG': draw_along,
-    'CABLE': draw_cable, 'TUBE': draw_tube, 'HIDE': draw_hide, 'DETAIL': draw_detail, 'DETAIL2': draw_detail2,
+    'CABLE': draw_cable, 'TUBE': draw_tube, 'HIDE': draw_hide, 'DETAIL': draw_detail, 'DETAIL2': draw_detail2, 'SCREW': draw_screw,
     # MIRROR, RADIAL, SURFACE: own sub-panels.
 }

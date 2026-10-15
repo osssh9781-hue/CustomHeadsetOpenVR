@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.23.27 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.0 (Claude Code, 2026-10-14)
+
+## 0.24.0
+- ZIP sha256 `d6fa728a865c38c3a7a8c1b8965faccb92fe5314c371d3aca70ba24024191f7c`. 새 `plate_detail.py`: 영역 = armor_plate.plate_meshes(SPACING_PX 7) 삼각형 패치 → 외곽선까지 거리(numpy 선분 거리) → `cut_iso`(마칭 트라이앵글로 등거리선을 따라 정확히 자름, 나사 원도 같은 방식) → 면마다 높이(띠) → 정점 키 (v, h, sector)로 위/아래/벽 생성(띠 경계가 정점에서 꼬이는 곳은 낮은 띠만 정점 분리 → 모든 엣지 2면). 나사 = 볼록 모서리 이등분선 위 w1/2 지점. `build_rise` = smoothstep 등 프로파일 × Height, 벽 없음. Object.mch_pdetail(라이브, 0.05초 타이머로 모아서 rebuild), Scene.mch_pdetail(분수 JSON). 도구 DETAIL / DETAIL2(SHAPE_TOOLS, cut_engine 모드). 새 `screw_stamp.py`: revolve 프로파일(Dome / Post / Socket), Cross = CDT 링 + 슬롯 벽/바닥; 도구 SCREW(키맵 클릭 / Alt+클릭 / Esc), Object.mch_screw 라이브, Join = bmesh로 부모 메쉬에 합침. `cloth_sim`: Object.mch_pcloth_tension / _gravity(업데이트 → 0.4초 타이머 → redo), `sim_values`(shrink / tension, tension_stiffness 15×t).
 
 ## 0.23.27
 - ZIP sha256 `4a414b288d585b594f853e0b7e35f7f5484df0276ddf4bfa0d4d6b84cf8512ad`. `workspace_ui.MCH_PT_lasso`(bl_order 1, poll = mch_brush 있으면 항상) → `ui_tool_settings.draw_shape_options(layout, context, effective_tool)`. draw_cut / draw_mask / draw_base / draw_hide 안의 호출 제거. 헤더 모양 줄 `enabled = tool in SHAPE_TOOLS` 제거. `cut_engine.ALT_RED`, `stroke_color(mode, inverted)` = inverted면 ALT_RED(SPLIT 포함), `_COLORS`에서 *_INV 제거. 옛 검사 test_v0141 / v02317 색 기대치 수정.
