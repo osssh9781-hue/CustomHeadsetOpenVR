@@ -2180,32 +2180,6 @@ class MCH_OT_stamp_rotate(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class MCH_OT_stamp_scale(bpy.types.Operator):
-    """0.24.5 mouse wheel in an idle tool with a stamp shape: stamp bigger / smaller"""
-    bl_idname = 'mch.stamp_scale'
-    bl_label = 'Stamp Size'
-    bl_description = 'Mouse wheel: stamp size (only with a stamp shape; otherwise the wheel zooms)'
-    bl_options = {'INTERNAL'}
-
-    step: IntProperty(default=1, min=-1, max=1)
-
-    @classmethod
-    def poll(cls, context):
-        brush = getattr(context.scene, 'mch_brush', None)
-        return brush is not None and brush.shape == 'CUSTOM'   # else the wheel zooms the view
-
-    def execute(self, context):
-        brush = context.scene.mch_brush
-        brush.custom_size = max(4.0, min(4000.0, brush.custom_size * (1.1 if self.step > 0 else 1 / 1.1)))
-        try:
-            context.workspace.status_text_set(f'Stamp size {brush.custom_size:.0f} px  (mouse wheel)')
-        except (AttributeError, TypeError):
-            pass
-        if context.area:
-            context.area.tag_redraw()
-        return {'FINISHED'}
-
-
 class MCH_OT_exit_tool(bpy.types.Operator):
     """Esc in an idle Mecha tool: back to Blender's Select Box tool."""
     bl_idname = 'mch.exit_tool'
@@ -2221,4 +2195,4 @@ class MCH_OT_exit_tool(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_OT_cut_stroke, MCH_OT_rmb_gate, MCH_OT_exit_tool, MCH_OT_stamp_rotate, MCH_OT_stamp_scale)
+CLASSES = (MCH_OT_cut_stroke, MCH_OT_rmb_gate, MCH_OT_exit_tool, MCH_OT_stamp_rotate)

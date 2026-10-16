@@ -1,4 +1,4 @@
-"""0.24.5 Enter applies the live result (Plate Detail, Armor Plate, Cloth Plate, Base Mesh, Mirror, Box Hide, Curve);
+"""0.24.5 / 0.24.6 Enter applies the live result (Plate Detail, Armor Plate, Cloth Plate, Base Mesh, Mirror, Box Hide, Curve);
 double-click with nothing drawn leaves the tool and selects the object under the mouse (a lasso being drawn still
 closes on double-click); Screw Stamp double-click takes back the screw of the first click."""
 import sys
@@ -91,21 +91,10 @@ check('library keeps a real PNG copy', png_copy.is_file() and open(png_copy, 'rb
 check('file browser shows JPG files', '*.jpg' in open(cp.__file__).read().split("filter_glob: StringProperty(default='")[1].split("'")[0])
 out.unlink()
 png_copy.unlink()
-# ---- mouse wheel stamp size
+# ---- 0.24.6 the wheel is the view zoom again (stamp size = drag)
 km = wui._tool_keymap('CUT')
-check('wheel keys in the tool keymap', any(k[0] == 'mch.stamp_scale' and k[1]['type'] == 'WHEELUPMOUSE' for k in km))
-S.mch_brush.shape = 'LASSO'
-check('wheel does not take over without a stamp shape (view zoom stays)', not ce.MCH_OT_stamp_scale.poll(C))
-S.mch_brush.shape = 'CUSTOM'
-S.mch_brush.custom_size = 100.0
-fs = types.SimpleNamespace(step=1)
-ce.MCH_OT_stamp_scale.execute(fs, C)
-up = S.mch_brush.custom_size
-fs.step = -1
-ce.MCH_OT_stamp_scale.execute(fs, C)
-ce.MCH_OT_stamp_scale.execute(fs, C)
-check('wheel up = bigger, down = smaller', abs(up - 110.0) < 1e-3 and S.mch_brush.custom_size < 100.0,
-      (up, S.mch_brush.custom_size))
+check('no wheel keys in the tool keymap (wheel zooms)', not any(k[1]['type'] in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}
+                                                             for k in km))
 S.mch_brush.shape = 'LASSO'
 
 # ---- Base Mesh: settings changed on the live shape carry to the next shape

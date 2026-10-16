@@ -451,9 +451,6 @@ def _tool_keymap(mode):
         # B06: R / Shift+R rotate a PNG stamp (poll fails for other shapes -> Blender's R).
         ('mch.stamp_rotate', {'type': 'R', 'value': 'PRESS'}, {'properties': [('sign', 1)]}),
         ('mch.stamp_rotate', {'type': 'R', 'value': 'PRESS', 'shift': True}, {'properties': [('sign', -1)]}),
-        # 0.24.5 mouse wheel = stamp size (only with a stamp shape; otherwise the wheel zooms)
-        ('mch.stamp_scale', {'type': 'WHEELUPMOUSE', 'value': 'PRESS'}, {'properties': [('step', 1)]}),
-        ('mch.stamp_scale', {'type': 'WHEELDOWNMOUSE', 'value': 'PRESS'}, {'properties': [('step', -1)]}),
     )
 
 
