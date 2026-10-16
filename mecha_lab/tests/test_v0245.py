@@ -91,5 +91,21 @@ check('library keeps a real PNG copy', png_copy.is_file() and open(png_copy, 'rb
 check('file browser shows JPG files', '*.jpg' in open(cp.__file__).read().split("filter_glob: StringProperty(default='")[1].split("'")[0])
 out.unlink()
 png_copy.unlink()
+# ---- mouse wheel stamp size
+km = wui._tool_keymap('CUT')
+check('wheel keys in the tool keymap', any(k[0] == 'mch.stamp_scale' and k[1]['type'] == 'WHEELUPMOUSE' for k in km))
+S.mch_brush.shape = 'LASSO'
+check('wheel does not take over without a stamp shape (view zoom stays)', not ce.MCH_OT_stamp_scale.poll(C))
+S.mch_brush.shape = 'CUSTOM'
+S.mch_brush.custom_size = 100.0
+fs = types.SimpleNamespace(step=1)
+ce.MCH_OT_stamp_scale.execute(fs, C)
+up = S.mch_brush.custom_size
+fs.step = -1
+ce.MCH_OT_stamp_scale.execute(fs, C)
+ce.MCH_OT_stamp_scale.execute(fs, C)
+check('wheel up = bigger, down = smaller', abs(up - 110.0) < 1e-3 and S.mch_brush.custom_size < 100.0,
+      (up, S.mch_brush.custom_size))
+S.mch_brush.shape = 'LASSO'
 mecha_lab.unregister()
 sys.exit(1 if summary() else 0)
