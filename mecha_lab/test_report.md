@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.2
+# Test Report — Mecha Lab 0.24.3
+
+## 0.24.3 결과: 69개 파일, 2371 / 2372 (`tests/test_log_bpy501_v0243.txt`). 실패 1개는 test_v02319 시간 검사(0.599초, 전체 실행 두 개가 겹쳐 돌던 중) → 단독 재실행 0.418초 통과. 이 전체 실행 뒤 Box Hide 스케치(Alt + Enter)를 한 번 더 바꿔서 관련 테스트 test_v0193 / v02317 / v0241 / v0243을 다시 돌려 모두 통과. test_v0243(9): 핸들러가 depsgraph.updates를 읽지 않음(읽으면 예외 나는 가짜 depsgraph), undo 뒤 쉼, Box Hide 스케치 추가 / Alt + Enter 다시 보이기 / Enter 숨기기. 크래시 자체는 헤드리스에서 실행취소가 안 돼 재현 불가 - Blender에서 미검증.
 
 ## 0.24.2 결과: 68개 파일, 2363 / 2363 통과 (`tests/test_log_bpy501_v0242.txt`). Plate Detail 다시 만들기 측정(큰 판): 7px 3.2 ~ 5초 → 20px 0.2 ~ 0.4초. Panel Cloth: 0.23.25 코드와 새 코드의 기본 결과 정점 좌표 numpy array_equal로 동일 확인(Padding, Cloth). Fast Start: 준비 9.3초 → 0.02초, 주름 위치 최대 1 ~ 4 %(판 크기 대비) 다름. test_v02328(11): 슬라이더 + Fast Start. test_v02319 시간 검사 1회 실패(다른 측정과 동시에 돌려서 0.525초) → 단독 재실행 0.479초 통과. Ctrl+Z 크래시는 헤드리스에서 실행취소가 안 돼 재현 불가 - 미검증.
 

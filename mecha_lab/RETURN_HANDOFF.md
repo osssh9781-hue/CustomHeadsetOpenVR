@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.2 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.3 (Claude Code, 2026-10-14)
+
+## 0.24.3
+- ZIP sha256 `4d6158f3bc875127692f8b87e805932ed3f928b089eb255bdacecdfa5f63111a`. `curve_tube._on_depsgraph`: Repeat 커브가 없으면 즉시 리턴, 있으면 `_source_sig`(src.data 이름, matrix_world, 평가된 bound_box, 평가 메쉬 점/면 수 + |co| 합)를 `_SIGS`와 비교, `rebuild` 끝에 시그니처 기록. `loft_surface._on_depsgraph`: 라이브 로프트 없으면 리턴, `_curve_sig`(행렬 + 스플라인 점/핸들/반지름/틸트) 비교, `safe_rebuild`에서 기록. 두 모듈 undo_post / redo_post → `_UNDO_QUIET` 0.3초. `cut_engine`: HIDE 스케치에서 스케치 없을 때 Alt는 추가, `auto_targets`에서 None 건너뜀. `lasso_sketch` 안내: HIDE는 Enter: hide, Alt+Enter: show again.
 
 ## 0.24.2
 - ZIP sha256 `ed26f08ab74b146d4acbc855b987ec8d04a719283e873fac47e30b4ea82eb78a`. `plate_detail`: SPACING_PX 20, 거리 = float 레이어 `d` 한 번(`_field_layer`), `cut_iso(bm, key_layer, level, eps, carry)`가 새 정점에 선형 보간(새 레이어가 BMVert를 재할당하므로 외곽선은 좌표/노말로 미리 복사), 나사 원도 레이어. 경계 옆면 = 아래 띠 높이 정점 포함(`mids`). `_queue` 디바운스 0.15초(타이머 재등록), undo_pre / redo_pre에서 대기 비움. `cloth_sim`: 0.23.25 파일 + 슬라이더(Tension 1이면 tension_stiffness 손대지 않음, slack ≤ 2.5배), Scene.mch_pcloth_fast(foreach_get/set 들어올림), undo_pre에서 타이머 해제.
