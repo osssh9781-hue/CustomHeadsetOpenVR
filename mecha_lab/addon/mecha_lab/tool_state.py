@@ -32,6 +32,8 @@ TOOLS = (
      'extract', 'MESH_PLANE', 'mecha.plate_detail', 'OK'),
     ('DETAIL2', 'Plate Detail 2', 'Draw an outline on a surface: it rises smoothly inside the outline to a flat top '
      '(height, slope width, slope shape); live until Apply', 'extract', 'SURFACE_NSURFACE', 'mecha.plate_detail2', 'OK'),
+    ('DETAIL3', 'Plate Detail 3', 'Draw an outline on a plate: a flat raised panel with straight walls, no trim '
+     'layers (height, lift); live until Apply', 'extract', 'MESH_PLANE', 'mecha.plate_detail3', 'OK'),
     ('SCREW', 'Screw Stamp', 'Click on a surface to place screw heads (Dome / Post / Socket / Cross), aligned '
      'to the surface; size, height and hole depth stay live; Alt + click removes', 'extract', 'RADIOBUT_ON',
      'mecha.screw_stamp', 'OK'),
@@ -65,6 +67,9 @@ TOOLS = (
     ('TUBE', 'Mesh Curve', 'Nomad-style curve: click points (on the mesh or in the air), a live solid tube right '
      'away - radius per point, profile, cap, hole, twist - or Repeat your own (linked) object along it with spacing',
      'cable', 'CURVE_BEZCURVE', None, 'OK'),
+    ('TUBE_SAME', 'Mesh Curve Same Size', 'Mesh Curve that repeats your object along the curve, every copy the '
+     'same size: point radius and start / end size are ignored, Radius / Size scale all copies together',
+     'cable', 'CURVE_BEZCURVE', None, 'OK'),
     ('LOFT', 'Loft / Surface', 'Smooth surface through 2+ curves, or sweep a profile along a path (live)',
      'loft', 'SURFACE_DATA', None, 'PARTIAL'),
     ('ZBRUSH', 'ZBrush Bridge', 'Send selected objects to ZBrush as OBJ files and import them back (not GoZ)',
@@ -83,14 +88,14 @@ VISIBLE_TOOLS = tuple(t for t in TOOLS if t[0] not in HIDDEN_TOOLS)
 # V quick menu (docs/02): the six core tools (+ Armor Plate since 0.19).
 QUICK_TOOLS = ('CUT', 'BOOLEAN', 'BASE', 'SUBD', 'SPLIT', 'RADIAL', 'PLATE')   # 0.19: + Armor Plate
 NATIVE_TO_TOOL = {t[5]: t[0] for t in TOOLS if t[5]}
-SHAPE_TOOLS = {'CUT', 'SPLIT', 'MASK', 'BASE', 'PLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2'}
+SHAPE_TOOLS = {'CUT', 'SPLIT', 'MASK', 'BASE', 'PLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3'}
 
 # Enum numbers keep v0.5.9 values so saved .blend files map to the same tool.
 _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRAW': 6,
                  'ARRAY': 7, 'RADIAL': 8, 'SURFACE': 9, 'LIBRARY': 10, 'EDIT': 11,
                  'REMESH': 12, 'SPLIT': 13, 'POSE': 14, 'BASE': 15, 'LOFT': 16, 'ZBRUSH': 17, 'SUBD': 18, 'PRIMITIVE': 19,
                  'EXTRACT': 20, 'MOLDING': 21, 'HOLLOW': 22, 'ALONG': 23, 'CABLE': 24, 'PLATE': 25, 'WRINKLE': 26, 'TUBE': 27,
-                 'HIDE': 28, 'DETAIL': 29, 'DETAIL2': 30, 'SCREW': 31}
+                 'HIDE': 28, 'DETAIL': 29, 'DETAIL2': 30, 'SCREW': 31, 'DETAIL3': 32, 'TUBE_SAME': 33}
 TOOL_ENUM_ITEMS = [(t[0], t[1], t[2], t[4], _ENUM_NUMBERS[t[0]]) for t in TOOLS]
 
 SHAPES = (

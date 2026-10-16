@@ -25,8 +25,10 @@ BAR_TOOLS = (
     ('PLATE', 'Plate', '', 'MESH_GRID', 'mch.set_tool', 'PLATE'),
     ('DETAIL', 'Detail', '', 'MESH_PLANE', 'mch.set_tool', 'DETAIL'),
     ('DETAIL2', 'Detail 2', '', 'SURFACE_NSURFACE', 'mch.set_tool', 'DETAIL2'),
+    ('DETAIL3', 'Detail 3', '', 'MESH_PLANE', 'mch.set_tool', 'DETAIL3'),
     ('SCREW', 'Screw', '', 'RADIOBUT_ON', 'mch.set_tool', 'SCREW'),
     ('TUBE', 'Curve', '', 'CURVE_BEZCURVE', 'mch.set_tool', 'TUBE'),
+    ('TUBE_SAME', 'Curve =', '', 'CURVE_BEZCURVE', 'mch.set_tool', 'TUBE_SAME'),
     ('SKIN', 'Skin', '', 'OUTLINER_OB_FORCE_FIELD', 'mch.creature_brush', 'SKIN'),
     ('SHELL', 'Shell', '', 'MESH_ICOSPHERE', 'mch.creature_brush', 'SHELL'),
 )

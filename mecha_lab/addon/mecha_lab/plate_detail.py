@@ -518,14 +518,16 @@ def preset_layers(count, size):
 
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty  # noqa: E402
 
-KINDS = {'DETAIL': 'TRIM', 'DETAIL2': 'RISE'}
+KINDS = {'DETAIL': 'TRIM', 'DETAIL2': 'RISE', 'DETAIL3': 'FLAT'}
+TOOL_OF_KIND = {k: t for t, k in KINDS.items()}
+FLAT_FRAC = 0.02             # 0.24.10 Plate Detail 3: panel height = this x the drawn size
 DIRECTIONS = (('OUT', 'Edge High', 'The edge is highest, layers step down inward to the flat inside'),
               ('IN', 'Inside High', 'Layers step up inward, the inside panel is the highest'))
 SCREW_ITEMS = (('0', 'No Screw', ''), ('1', '1 Screw', ''), ('2', '2 Screws', ''))
 SPACING_PX = 20                # face size on screen for the surface patch (0.24.2: light, like Armor Plate)
 RISE_DEFAULT = dict(height=0.035, ramp=0.12)
 LENGTHS = ('w1', 'h1', 'w2', 'h2', 'w3', 'h3', 'base', 'center', 'screw_r', 'screw_depth', 'height', 'ramp', 'lift',
-           'foot')
+           'foot', 'flat_h')
 _SYNC = [False]
 
 
@@ -586,7 +588,7 @@ def _changed(self, _context):
 class MCH_PG_PlateDetail(bpy.types.PropertyGroup):
     """Settings of a live Plate Detail object (lengths in the object's units)."""
     live: BoolProperty(default=False)
-    kind: EnumProperty(items=(('TRIM', 'Trim', ''), ('RISE', 'Rise', '')), default='TRIM')
+    kind: EnumProperty(items=(('TRIM', 'Trim', ''), ('RISE', 'Rise', ''), ('FLAT', 'Flat', '')), default='TRIM')
     region: PointerProperty(type=bpy.types.Mesh)
     size: FloatProperty(default=1.0)
     layers: IntProperty(name='Layers', default=2, min=1, max=3, update=_changed)
@@ -619,6 +621,8 @@ class MCH_PG_PlateDetail(bpy.types.PropertyGroup):
     lift: FloatProperty(name='Lift', default=0.0, soft_min=-0.2, soft_max=0.2, unit='LENGTH', precision=4,
                         update=_changed, description='Move the detail along the surface normal (- = into the '
                         'surface) so it sits right on it')
+    flat_h: FloatProperty(name='Height', default=0.02, min=0.0, soft_max=0.5, unit='LENGTH', precision=4,
+                          update=_changed, description='Plate Detail 3: height of the flat panel above the surface')
 
 
 class MCH_PG_PlateDetailScene(bpy.types.PropertyGroup):
@@ -642,7 +646,7 @@ def _fractions(scene):
 
 def default_fractions(layers):
     f = {'base': BASE_FRAC, 'center': 0.02, 'height': RISE_DEFAULT['height'], 'ramp': RISE_DEFAULT['ramp'],
-         'lift': 0.0, 'foot': RISE_DEFAULT['height'] * 0.6, 'wall_angle': 90.0}
+         'lift': 0.0, 'foot': RISE_DEFAULT['height'] * 0.6, 'wall_angle': 90.0, 'flat_h': FLAT_FRAC}
     for i, (w, h) in enumerate(LAYER_PRESETS[layers], 1):
         f[f'w{i}'], f[f'h{i}'] = w, h
     for i in range(len(LAYER_PRESETS[layers]) + 1, 4):
@@ -687,6 +691,9 @@ def rebuild(ob):
     if p.kind == 'RISE':
         me = build_rise(p.region, p.height, p.ramp, embed=embed, profile=p.profile, lift=p.size * 0.0004 + p.lift,
                         name=ob.name, wall_angle=p.wall_angle, foot=p.foot)
+    elif p.kind == 'FLAT':
+        # 0.24.10 Plate Detail 3: the Plate Detail 1 build without trim layers - one flat panel, straight walls
+        me = build_detail(p.region, [], p.flat_h, embed=embed, name=ob.name, lift=p.lift)
     else:
         layers = [(p.w1, p.h1), (p.w2, p.h2), (p.w3, p.h3)][:p.layers]
         me = build_detail(p.region, layers, p.base, screws=int(p.screws), screw_r=p.screw_r,
@@ -738,7 +745,7 @@ def perform(context, loops, projector, tool='DETAIL'):
     st = context.scene.mch_pdetail
     f = default_fractions(st.layers)
     f.update(_fractions(context.scene))
-    me = bpy.data.meshes.new(target.name + ('_Detail' if kind == 'TRIM' else '_Rise'))
+    me = bpy.data.meshes.new(target.name + {'TRIM': '_Detail', 'RISE': '_Rise', 'FLAT': '_Panel'}[kind])
     ob = bpy.data.objects.new(me.name, me)
     coll = target.users_collection[0] if target.users_collection else context.scene.collection
     coll.objects.link(ob)
@@ -769,7 +776,7 @@ def perform(context, loops, projector, tool='DETAIL'):
         o.select_set(False)
     ob.select_set(True)
     context.view_layer.objects.active = ob
-    what = f'{p.layers}-layer trim' if kind == 'TRIM' else 'smooth rise'
+    what = {'TRIM': f'{p.layers}-layer trim', 'RISE': 'smooth rise', 'FLAT': 'flat panel'}[kind]
     return f'Plate Detail "{ob.name}" on {target.name} ({what}, {len(ob.data.polygons)} faces)'
 
 
@@ -878,6 +885,9 @@ def draw(layout, context, tool='DETAIL'):
         col = box.column(align=True)
         if kind == 'TRIM':
             _draw_trim(col, p)
+        elif kind == 'FLAT':
+            col.prop(p, 'flat_h')
+            col.prop(p, 'lift')
         else:
             _draw_rise_presets(col)
             col.prop(p, 'height')
@@ -897,12 +907,15 @@ def draw(layout, context, tool='DETAIL'):
         col = layout.column(align=True)
         if kind == 'TRIM':
             _draw_trim(col, st, scene_mode=True)
+        elif kind == 'FLAT':
+            col.label(text='Flat panel, straight walls, no trim layers')
         else:
             _draw_rise_presets(col)
             col.row(align=True).prop(st, 'profile', expand=True)
         layout.label(text='Sizes follow the outline; adjust them after drawing', icon='INFO')
-    tip = ('Draw a closed outline on a plate: flat inside, trim along the edge' if kind == 'TRIM' else
-           'Draw a closed outline: the surface rises smoothly inside it')
+    tip = {'TRIM': 'Draw a closed outline on a plate: flat inside, trim along the edge',
+           'RISE': 'Draw a closed outline: the surface rises smoothly inside it',
+           'FLAT': 'Draw a closed outline on a plate: a flat raised panel'}[kind]
     layout.label(text=tip)
 
 
@@ -922,7 +935,7 @@ class MCH_PT_plate_detail(bpy.types.Panel):
 
     def draw(self, context):
         ob = active_detail(context)
-        draw(self.layout, context, 'DETAIL' if ob.mch_pdetail.kind == 'TRIM' else 'DETAIL2')
+        draw(self.layout, context, TOOL_OF_KIND.get(ob.mch_pdetail.kind, 'DETAIL'))
 
 
 FOOT_FRAC = 0.6               # Foot + Wall presets: foot radius = this x height (as soft as the Round foot)

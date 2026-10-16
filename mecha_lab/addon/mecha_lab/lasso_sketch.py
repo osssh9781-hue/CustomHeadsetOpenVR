@@ -25,7 +25,7 @@ from . import core_geometry as cg
 from . import tool_state as ts
 
 KEY = 'mch_lasso_sketch'          # Scene ID prop (JSON) - Ctrl+Z steps back through it
-MODES = {'CUT', 'SPLIT', 'PLATE', 'WRINKLE', 'DETAIL', 'DETAIL2', 'HIDE'}   # 0.24.1 + Plate Detail 1 / 2, Box Hide
+MODES = {'CUT', 'SPLIT', 'PLATE', 'WRINKLE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'HIDE'}   # 0.24.1 + Plate Detail 1 / 2, Box Hide
 
 
 def is_on(context):
@@ -146,7 +146,7 @@ def commit(context, alt=False):
     elif mode == 'WRINKLE':
         from . import cloth_wrinkle as cw
         msg = cw.perform_wrinkle(context, loops, proj)
-    elif mode in {'DETAIL', 'DETAIL2'}:
+    elif mode in {'DETAIL', 'DETAIL2', 'DETAIL3'}:
         from . import plate_detail as pd
         msg = pd.perform(context, loops, proj, mode)
     elif mode == 'HIDE':

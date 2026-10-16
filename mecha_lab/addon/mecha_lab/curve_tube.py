@@ -532,7 +532,7 @@ def is_tube(ob):
     return ob is not None and ob.type == 'MESH' and getattr(ob, 'mch_tube', None) is not None and ob.mch_tube.live
 
 
-def new_tube(context, first_world, radius=None):
+def new_tube(context, first_world, radius=None, mode=''):
     me = bpy.data.meshes.new('Tube')
     ob = bpy.data.objects.new('Tube', me)
     coll = bpy.data.collections.get(COLL)
@@ -549,6 +549,8 @@ def new_tube(context, first_world, radius=None):
             setattr(tb, k, getattr(st, k))
     if radius is not None:
         tb.radius = radius
+    if mode:
+        tb.mode = mode
     set_points(ob, [(Vector((0, 0, 0)), 1.0)])
     tb.live = True
     return ob
@@ -707,7 +709,7 @@ class TubeLogic:
                 return 'INSERT'
         w = self._place(context, xy)
         if ob is None:
-            ob = new_tube(context, w)
+            ob = new_tube(context, w, mode=getattr(self, 'mode', ''))
             self.ob_name = ob.name
             for o in context.view_layer.objects:
                 if o.select_get():
@@ -834,6 +836,7 @@ class MCH_OT_tube_draw(TubeLogic, bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     new: BoolProperty(default=False, options={'SKIP_SAVE'}, description='Start a new tube even if one is active')
+    mode: bpy.props.StringProperty(default='', options={'SKIP_SAVE'}, description='Mode of a new tube (empty = default)')
 
     def _hint(self, context):
         if context.area:
@@ -930,7 +933,7 @@ class MCH_PG_TubeDefaults(bpy.types.PropertyGroup):
     count: IntProperty(name='Count', default=8, min=1, max=500)
 
 
-def start_draw(context, new=True):
+def start_draw(context, new=True, mode=''):
     """Start drawing in the biggest 3D View (the tool may be picked from another editor)."""
     win = context.window
     screen = win.screen if win is not None else None
@@ -942,7 +945,7 @@ def start_draw(context, new=True):
         if region is None:
             continue
         with context.temp_override(window=win, screen=screen, area=area, region=region):
-            return bpy.ops.mch.tube_draw('INVOKE_DEFAULT', new=new) == {'RUNNING_MODAL'}
+            return bpy.ops.mch.tube_draw('INVOKE_DEFAULT', new=new, mode=mode) == {'RUNNING_MODAL'}
     return False
 
 
@@ -1019,7 +1022,7 @@ class MCH_PT_tube(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.scene, 'mch_tube_defaults') and is_tube(context.active_object) and ts.hud_for(context, {'TUBE'})
+        return hasattr(context.scene, 'mch_tube_defaults') and is_tube(context.active_object) and ts.hud_for(context, {'TUBE', 'TUBE_SAME'})
 
     def draw(self, context):
         draw(self.layout, context)
@@ -1134,7 +1137,7 @@ class MCH_GGT_tube_points(bpy.types.GizmoGroup):
 
     @classmethod
     def poll(cls, context):
-        return (context.mode == 'OBJECT' and ts.hud_for(context, {'TUBE'}) and is_tube(context.active_object)
+        return (context.mode == 'OBJECT' and ts.hud_for(context, {'TUBE', 'TUBE_SAME'}) and is_tube(context.active_object)
                 and not _drawing(context))
 
     def _make(self, context):
@@ -1355,7 +1358,7 @@ class MCH_GGT_tube_bar(bpy.types.GizmoGroup):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == 'OBJECT' and ts.hud_for(context, {'TUBE'}) and is_tube(context.active_object)
+        return context.mode == 'OBJECT' and ts.hud_for(context, {'TUBE', 'TUBE_SAME'}) and is_tube(context.active_object)
 
     def setup(self, context):
         self.items = {}
