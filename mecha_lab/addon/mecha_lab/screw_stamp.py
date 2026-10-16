@@ -281,14 +281,35 @@ class MCH_OT_screw_stamp(bpy.types.Operator):
     bl_label = 'Screw Stamp'
     bl_options = {'REGISTER', 'UNDO'}
     remove: BoolProperty(default=False, options={'SKIP_SAVE'})
+    leave: BoolProperty(default=False, options={'SKIP_SAVE'})
 
     @classmethod
     def poll(cls, context):
         return context.area is not None and context.area.type == 'VIEW_3D' and context.mode == 'OBJECT'
 
     def invoke(self, context, event):
-        o, d = _view_ray(context, (event.mouse_region_x, event.mouse_region_y))
+        xy = (event.mouse_region_x, event.mouse_region_y)
+        if self.leave:
+            return self.leave_tool(context, xy)
+        o, d = _view_ray(context, xy)
         return self.run(context, o, d)
+
+    def leave_tool(self, context, xy):
+        """0.24.5 double-click: the screw the first click just placed is taken back, then the tool is
+        left and the object under the mouse selected."""
+        import time
+        name, when = _LAST
+        if name and time.time() - when < 1.0:
+            ob = bpy.data.objects.get(name)
+            if ob is not None and is_screw(ob):
+                me = ob.data
+                bpy.data.objects.remove(ob)
+                if me.users == 0:
+                    bpy.data.meshes.remove(me)
+        _LAST[0] = None
+        from . import cut_engine
+        cut_engine.double_click_leave(context, xy, skip=is_screw)
+        return {'FINISHED'}
 
     def run(self, context, origin, direction):
         if self.remove:
@@ -308,6 +329,8 @@ class MCH_OT_screw_stamp(bpy.types.Operator):
         import random
         spin = random.uniform(0, math.pi) if (st.random_spin and st.kind == 'CROSS') else 0.0
         ob = place(context, target, loc, nrm, spin)
+        import time
+        _LAST[0], _LAST[1] = ob.name, time.time()
         for o_ in context.selected_objects:
             o_.select_set(False)
         ob.select_set(True)
@@ -410,7 +433,10 @@ def draw(layout, context):
     layout.label(text='Click: place on the surface | Alt + click: remove')
 
 
+_LAST = [None, 0.0]        # the screw placed by the last click (a double-click takes it back)
+
 TOOL_KEYMAP = (
+    ('mch.screw_stamp', {'type': 'LEFTMOUSE', 'value': 'DOUBLE_CLICK'}, {'properties': [('leave', True)]}),
     ('mch.screw_stamp', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, None),
     ('mch.screw_stamp', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'alt': True}, {'properties': [('remove', True)]}),
     ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),

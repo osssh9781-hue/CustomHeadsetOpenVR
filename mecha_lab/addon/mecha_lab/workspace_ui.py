@@ -1556,8 +1556,67 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         layout.operator('mch.workspace_open', icon='WORKSPACE')
 
 
+# 0.24.5 Enter = Apply for the live results (first match for the selection wins)
+ENTER_APPLY = (
+    ('pdetail_apply', 'Plate Detail'),
+    ('plate_apply', 'Armor Plate'),
+    ('wrinkle_apply', 'Cloth Plate'),
+    ('base_freeze', 'Base Mesh'),
+    ('mesh_mirror_apply', 'Mirror'),
+    ('box_hide_apply', 'Box Hide'),
+    ('tube_apply', 'Curve'),
+)
+
+
+def enter_apply_target(context):
+    """(operator id, label) of the live result Enter applies now, or None."""
+    for opid, label in ENTER_APPLY:
+        if opid == 'box_hide_apply':
+            try:
+                from . import box_hide
+                if not any(o.type == 'MESH' and box_hide.is_hidden(o) for o in context.selected_objects):
+                    continue
+            except (ImportError, AttributeError, ReferenceError):
+                continue
+            return opid, label
+        op = getattr(bpy.ops.mch, opid, None)
+        try:
+            if op is not None and op.poll():
+                return opid, label
+        except (RuntimeError, AttributeError, TypeError):
+            continue
+    return None
+
+
+class MCH_OT_enter_apply(bpy.types.Operator):
+    """Enter: apply the live result of the selection (Plate Detail, Armor Plate, Cloth Plate, Base Mesh,
+    Mirror, Box Hide, Curve)"""
+    bl_idname = 'mch.enter_apply'
+    bl_label = 'Apply (Enter)'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        try:
+            return (context.mode == 'OBJECT' and ts.is_mecha_workspace(context.workspace)
+                    and enter_apply_target(context) is not None)
+        except (AttributeError, ReferenceError):
+            return False
+
+    def execute(self, context):
+        target = enter_apply_target(context)
+        if target is None:
+            return {'CANCELLED'}
+        opid, label = target
+        res = getattr(bpy.ops.mch, opid)()
+        if 'FINISHED' in res:
+            self.report({'INFO'}, f'{label}: applied')
+        return res
+
+
 CLASSES = (
     MCH_AddonPreferences,
+    MCH_OT_enter_apply,
     MCH_OT_workspace_open, MCH_OT_workspace_repair, MCH_OT_workspace_save_startup,
     MCH_OT_set_tool, MCH_OT_set_shape, MCH_OT_space_tools, MCH_OT_hotkey, MCH_OT_ortho_lock,
     MCH_OT_quick_menu, MCH_OT_select_move, MCH_OT_select_move_key, MCH_MT_add_mecha,
@@ -1588,6 +1647,9 @@ def register_keymaps():
     # Select / Move (replaces the removed Alt+click mode switch). Default F (user
     # request, 0.11.3); rebind freely (panel or Preferences > Keymap).
     _keymaps.append((km, km.keymap_items.new('mch.select_move_key', 'F', 'PRESS')))
+    # 0.24.5 Enter = Apply the live result (tool keymaps, e.g. a pending sketch, come first)
+    for key in ('RET', 'NUMPAD_ENTER'):
+        _keymaps.append((km, km.keymap_items.new('mch.enter_apply', key, 'PRESS')))
     # Mesh Curve: double-click a path point in Curve Edit Mode = Straight <-> Smooth.
     # (Registered since v0.5.9 but always inactive; the operator passes through
     # for curves that are not Mecha Lab paths.)

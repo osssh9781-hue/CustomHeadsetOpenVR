@@ -1042,6 +1042,48 @@ def exit_tool(context):
         print('[Mecha Lab] could not leave tool:', ex)
 
 
+def object_under(context, xy, skip=None):
+    """The object under a region pixel (or None)."""
+    try:
+        from bpy_extras import view3d_utils
+        region, rv3d = context.region, context.region_data
+        o = view3d_utils.region_2d_to_origin_3d(region, rv3d, xy)
+        d = view3d_utils.region_2d_to_vector_3d(region, rv3d, xy)
+        dg = context.evaluated_depsgraph_get()
+        for _ in range(8):
+            hit, loc, _n, _i, hob, _m = context.scene.ray_cast(dg, o, d)
+            if not hit or hob is None:
+                return None
+            ob = bpy.data.objects.get(hob.name)
+            if ob is not None and (skip is None or not skip(ob)):
+                return ob
+            o = loc + d * 1e-4
+    except (AttributeError, RuntimeError, ReferenceError, TypeError):
+        pass
+    return None
+
+
+def double_click_leave(context, xy, skip=None):
+    """0.24.5 double-click with nothing being drawn: leave the tool (Select).
+    On another object it becomes the selected / active one; on empty space the
+    selection stays."""
+    ob = object_under(context, xy, skip)
+    if ob is not None:
+        try:
+            for o_ in context.selected_objects:
+                o_.select_set(False)
+            ob.select_set(True)
+            context.view_layer.objects.active = ob
+        except (RuntimeError, ReferenceError, AttributeError):
+            pass
+    exit_tool(context)
+    try:
+        bpy.ops.mch.select_move()
+    except (RuntimeError, AttributeError):
+        pass
+    return ob
+
+
 def open_popup(name):
     try:
         bpy.ops.wm.call_panel(name=name, keep_open=False)
@@ -1286,6 +1328,11 @@ class StrokeLogic:
         xy, inside = self._region_xy(event)
         if not inside:
             return {'PASS_THROUGH'}
+        if event.type == 'LEFTMOUSE' and event.value == 'DOUBLE_CLICK':
+            # 0.24.5 second click of a double-click that nothing is being drawn with (the first click of a
+            # rectangle / circle ended without a drag): leave the tool, select the object under the mouse
+            double_click_leave(context, xy)
+            return {'CANCELLED'}
         from . import surface_lasso
         if surface_lasso.enabled(context, self.mode):
             # 0.22.1 Surface Lasso: points on the mesh, its own modal operator
@@ -1901,6 +1948,13 @@ class StrokeLogic:
         quick_again = (last is not None and last[2] == 'ADD' and
                        now - last[0] <= _double_click_seconds(context) and
                        math.dist(xy, last[1]) <= DBL_PX * getattr(self, 'ui', 1.0))
+        if (ev == 'DOUBLE_CLICK' or (ev == 'PRESS' and quick_again)) and len(self.pts) <= 1 \
+                and (last is None or last[2] == 'ADD'):
+            # 0.24.5 nothing drawn yet (only the first click of the double-click): leave the tool,
+            # selecting the object under the mouse (double-click closes a lasso only while drawing one)
+            res = self._cancel(context)
+            double_click_leave(context, xy)
+            return res
         if ev == 'DOUBLE_CLICK':
             if last is None or last[2] == 'ADD':
                 # Double-click anywhere: close from the last point to the first
