@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import os
 import shutil
 import uuid
 from collections import defaultdict
@@ -273,26 +274,14 @@ def _load_pixels(filepath, mode, threshold, invert, max_pixels=512):
 
 
 def import_png(filepath, name, mode='LUMINANCE', threshold=0.5, invert=False,
-               simplify=0.8, smooth=1, min_area=4):
+               simplify=0.8, smooth=1, min_area=4, refresh=True):
     mask, w, h = _load_pixels(filepath, mode, threshold, invert)
     loops, used_tol, used_smooth = vectorize_mask(mask, w, h, simplify, smooth, min_area)
     folder = preset_folder()
     basename = re.sub(r'[^A-Za-z0-9_-]+', '_', name).strip('_')[:50] or 'Shape'
     stem = basename + '_' + uuid.uuid4().hex[:16]
     src = folder / (stem + '.png')
-    if Path(filepath).suffix.lower() == '.png':
-        shutil.copy2(filepath, src)
-    else:                               # 0.24.5 JPEG etc.: keep a PNG copy (thumbnail / library)
-        img = bpy.data.images.load(filepath, check_existing=False)
-        try:
-            if not img.has_data:
-                img.reload()
-            _ = img.pixels[0]           # make sure the pixels are loaded before saving
-            img.file_format = 'PNG'
-            img.filepath_raw = str(src)
-            img.save()
-        finally:
-            bpy.data.images.remove(img, do_unlink=True)
+    save_thumbnail(filepath, src)       # 0.24.6 a small PNG (the list thumbnail), never the full image
     record = {'schema': SCHEMA, 'name': name, 'source': src.name, 'mode': mode,
               'threshold': threshold, 'invert': invert, 'simplify': used_tol,
               'smooth': used_smooth, 'min_area': min_area, 'size': [w, h], 'loops': loops}
@@ -302,8 +291,30 @@ def import_png(filepath, name, mode='LUMINANCE', threshold=0.5, invert=False,
     except Exception:
         src.unlink(missing_ok=True)
         raise
-    _refresh_previews()
+    if refresh:
+        _refresh_previews()
     return out
+
+
+THUMB_PX = 192
+
+
+def save_thumbnail(filepath, dst, size=THUMB_PX):
+    """PNG copy of an image at most ``size`` px (PNG / JPEG in, PNG out)."""
+    img = bpy.data.images.load(str(filepath), check_existing=False)
+    try:
+        if not img.has_data:
+            img.reload()
+        _ = img.pixels[0]               # make sure the pixels are loaded before saving
+        w, h = img.size
+        if max(w, h) > size:
+            r = size / max(w, h)
+            img.scale(max(2, round(w * r)), max(2, round(h * r)))
+        img.file_format = 'PNG'
+        img.filepath_raw = str(dst)
+        img.save()
+    finally:
+        bpy.data.images.remove(img, do_unlink=True)
 
 
 def load_loops(stem):
@@ -363,42 +374,91 @@ def preset_icon(stem):
         if key not in _preview_collection:
             _preview_collection.load(key, key, 'IMAGE')
         return _preview_collection[key].icon_id
-    try:
-        d = json.loads((preset_folder() / (stem + '.json')).read_text(encoding='utf-8'))
-    except (OSError, ValueError):
+    info = _INDEX.get(stem)
+    if info is None:
         return 0
-    thumb = preset_folder() / d.get('source', '')
-    if not thumb.is_file():
-        return 0
-    key = str(thumb)
+    key = _THUMBS.get(stem)
+    if key is None:                     # resolved once per preset, not on every redraw
+        thumb = _small_thumb(preset_folder() / info[2])
+        if thumb is None:
+            return 0
+        key = _THUMBS[stem] = str(thumb)
     if key not in _preview_collection:
         _preview_collection.load(key, key, 'IMAGE')
     return _preview_collection[key].icon_id
 
 
+_INDEX = {}          # stem -> (mtime, name, source file): each preset file is parsed once, not on every redraw
+_ITEMS_KEY = [None]
+_THUMBS = {}         # stem -> list thumbnail path
+
+
+def _scan():
+    """[(stem, mtime)] newest first; refreshes _INDEX for new / changed files."""
+    entries = []
+    try:
+        with os.scandir(preset_folder()) as it:
+            for e in it:
+                if e.name.endswith('.json') and e.is_file():
+                    entries.append((e.name[:-5], e.stat().st_mtime, e.path))
+    except OSError:
+        return []
+    seen = set()
+    for stem, mtime, path in entries:
+        seen.add(stem)
+        old = _INDEX.get(stem)
+        if old is None or old[0] != mtime:
+            try:
+                with open(path, encoding='utf-8') as fh:
+                    d = json.load(fh)
+                _INDEX[stem] = (mtime, d.get('name', stem), d.get('source', ''))
+            except (OSError, ValueError):
+                _INDEX.pop(stem, None)
+    for stem in list(_INDEX):
+        if stem not in seen:
+            del _INDEX[stem]
+            _THUMBS.pop(stem, None)
+    entries.sort(key=lambda t: t[1], reverse=True)
+    return [(stem, mtime) for stem, mtime, _p in entries if stem in _INDEX]
+
+
+def _small_thumb(src):
+    """A small thumbnail for the list (0.24.6: big source images froze the list); made once."""
+    if not src.is_file():
+        return None
+    try:
+        if src.stat().st_size <= 120_000:
+            return src
+        small = src.with_name(src.stem + '_thumb.png')
+        if not small.is_file():
+            save_thumbnail(src, small)
+        return small
+    except (OSError, RuntimeError):
+        return src
+
+
 def list_presets():
     """[(stem, name)] newest first."""
-    out = []
-    for f in sorted(preset_folder().glob('*.json'), key=lambda p: p.stat().st_mtime, reverse=True):
-        try:
-            d = json.loads(f.read_text(encoding='utf-8'))
-            out.append((f.stem, d.get('name', f.stem)))
-        except (OSError, ValueError):
-            continue
-    return out
+    return [(stem, _INDEX[stem][1]) for stem, _m in _scan()]
 
 
 def preset_items(self, context):
     global _items_cache
+    scan = _scan()
+    key = (tuple(scan), _preview_collection is not None and id(_preview_collection))
+    if _ITEMS_KEY[0] == key and _items_cache:
+        return _items_cache                 # nothing changed: no file reading, no thumbnail work
     items = []
     for i, (stem, name, _loops) in enumerate(builtin_shapes()):
         items.append((stem, name, name + ' (built-in shape)', preset_icon(stem), i))
     base = len(items)
-    for i, (stem, name) in enumerate(list_presets()):
+    for i, (stem, _m) in enumerate(scan):
+        name = _INDEX[stem][1]
         items.append((stem, name, name, preset_icon(stem), base + i))
     if not items:
         items = [('NONE', 'No Cut Presets', 'Use Import PNG / JPG to add one', 0, 0)]
     _items_cache = items   # Blender requires enum strings to stay referenced.
+    _ITEMS_KEY[0] = (tuple(scan), _preview_collection is not None and id(_preview_collection))
     return _items_cache
 
 
@@ -447,11 +507,12 @@ class MCH_OT_import_cut_png(bpy.types.Operator, ImportHelper):
             try:
                 name = (self.shape_name.strip() if len(paths) == 1 else '') or Path(fp).stem
                 last = import_png(fp, name, self.mode, self.threshold, self.invert,
-                                  self.simplify, self.smooth, self.min_area)
+                                  self.simplify, self.smooth, self.min_area, refresh=False)
                 done.append(name)
             except Exception as exc:
                 failed.append(f'{Path(fp).name} ({str(exc).splitlines()[0][:60]})')
         if last is not None:
+            _refresh_previews()
             context.scene.mch_png_preset = last.stem
             if hasattr(context.scene, 'mch_brush'):
                 context.scene.mch_brush.shape = 'CUSTOM'
@@ -488,8 +549,9 @@ class MCH_OT_delete_cut_preset(bpy.types.Operator):
             d = json.loads(f.read_text(encoding='utf-8'))
             thumb = preset_folder() / Path(d.get('source', '')).name
             f.unlink()
-            if thumb.is_file():
-                thumb.unlink()
+            for t in (thumb, thumb.with_name(thumb.stem + '_thumb.png')):
+                if t.is_file():
+                    t.unlink()
             _refresh_previews()
             self.report({'INFO'}, 'Cut shape removed')
             return {'FINISHED'}

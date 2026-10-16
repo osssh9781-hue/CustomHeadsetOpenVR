@@ -637,6 +637,35 @@ NATIVE_TOOLS = (MCH_TOOL_cut, MCH_TOOL_split, MCH_TOOL_base_mesh, MCH_TOOL_primi
                 MCH_TOOL_cloth_wrinkle, MCH_TOOL_box_hide, MCH_TOOL_plate_detail, MCH_TOOL_plate_detail2, MCH_TOOL_screw_stamp)   # MCH_TOOL_mask kept, not registered (Mask hidden)
 
 
+STALE_KEYMAP_IDS = {'mch.stamp_scale'}     # 0.24.5 wheel = stamp size (removed in 0.24.6)
+
+
+def purge_stale_keymap_items():
+    """0.24.7 remove key items of removed Mecha operators left in the add-on keyconfig (e.g. the 0.24.5 wheel =
+    stamp size item kept the wheel from zooming after an update without a Blender restart)."""
+    wm = bpy.context.window_manager
+    kc = wm.keyconfigs.addon if wm else None
+    if kc is None:
+        return 0
+    removed = 0
+    for tool in NATIVE_TOOLS:          # register_tool keeps an existing tool keymap: rebuild it from bl_keymap
+        km = kc.keymaps.get('3D View Tool: Object, ' + tool.bl_label)
+        if km is not None:
+            try:
+                kc.keymaps.remove(km)
+            except (ReferenceError, RuntimeError):
+                pass
+    for km in kc.keymaps:
+        for item in list(km.keymap_items):
+            if item.idname in STALE_KEYMAP_IDS:
+                try:
+                    km.keymap_items.remove(item)
+                    removed += 1
+                except (ReferenceError, RuntimeError):
+                    pass
+    return removed
+
+
 def register_native_tools():
     global _tools_registered
     if _tools_registered:
@@ -1670,6 +1699,7 @@ def register():
     _load_icons()
     for c in CLASSES:
         bpy.utils.register_class(c)
+    purge_stale_keymap_items()
     register_native_tools()
     bpy.types.VIEW3D_HT_tool_header.prepend(draw_shape_palette)
     bpy.types.VIEW3D_MT_add.append(draw_add_menu)
