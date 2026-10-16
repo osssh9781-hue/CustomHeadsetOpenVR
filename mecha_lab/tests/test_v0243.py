@@ -43,6 +43,23 @@ check('no depsgraph.updates access left in either handler',
                                          if not l.strip().startswith('#')) and
       'depsgraph.updates' not in ''.join(l for l in inspect.getsource(lf._on_depsgraph).splitlines(True)
                                          if not l.strip().startswith('#')))
+# ---- Box Hide with Sketch on: Alt + draw (no Box Hide sketch) shows again right away
+from mecha_lab import lasso_sketch as ls, box_hide as bh
+S.mch_brush.shape = 'LASSO'
+S.mch_brush.line_open = False
+MODE[0], NATIVE[0] = 'HIDE', 'mecha.box_hide'
+S.mch_settings.mch_active_tool = 'HIDE'
+b = cube('B', 4.0)
+ls.set_on(C, False)
+r, m = lasso([(350, 350), (550, 350), (550, 550), (350, 550)])
+n_hidden = len(b.modifiers)
+r0, m0 = lasso([(300, 300), (700, 300), (700, 700), (300, 700)], alt=True)
+r, m = lasso([(350, 350), (550, 350), (550, 550), (350, 550)])
+ls.set_on(C, True)
+r, m = lasso([(300, 300), (700, 300), (700, 700), (300, 700)], alt=True)
+check('Sketch on: Alt + draw in Box Hide restores (no "draw a shape first" error)', r == {'FINISHED'} and
+      'Draw a shape first' not in str(m) and ls.data(S) is None, m)
+ls.set_on(C, False)
 mecha_lab.unregister()
 check('unregister removes the undo handlers', ct._on_undo_post not in bpy.app.handlers.undo_post)
 sys.exit(1 if summary() else 0)
