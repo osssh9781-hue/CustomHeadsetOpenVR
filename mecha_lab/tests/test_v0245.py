@@ -107,5 +107,25 @@ ce.MCH_OT_stamp_scale.execute(fs, C)
 check('wheel up = bigger, down = smaller', abs(up - 110.0) < 1e-3 and S.mch_brush.custom_size < 100.0,
       (up, S.mch_brush.custom_size))
 S.mch_brush.shape = 'LASSO'
+
+# ---- Base Mesh: settings changed on the live shape carry to the next shape
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+MODE[0], NATIVE[0] = 'BASE', 'mecha.base_mesh'
+S.mch_settings.mch_active_tool = 'BASE'
+S.mch_base.sketch = False
+S.mch_brush.sketch_first = False
+b = cube('B', 4.0)
+r, m = lasso([(400, 400), (600, 400), (600, 600), (400, 600)])
+first = C.active_object
+check('Base Mesh made a live shape', getattr(first, 'mch_base', None) is not None and first.mch_base.live, m)
+first.mch_base.height = 0.77
+first.mch_base.profile = 'CHAMFER'
+first.mch_base.bevel_width = 0.11
+r, m = lasso([(420, 420), (580, 420), (580, 580), (420, 580)])
+second = C.active_object
+check('the next shape keeps the last settings (height / profile / width)', second is not first and
+      abs(second.mch_base.height - 0.77) < 1e-6 and second.mch_base.profile == 'CHAMFER' and
+      abs(second.mch_base.bevel_width - 0.11) < 1e-6, (second.mch_base.height, second.mch_base.profile))
 mecha_lab.unregister()
 sys.exit(1 if summary() else 0)

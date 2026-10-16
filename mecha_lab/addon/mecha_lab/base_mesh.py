@@ -53,6 +53,10 @@ SETTING_KEYS = ('height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 
 MAX_DOME_POINTS = 12000
 
 
+CARRY_KEYS = ('profile', 'height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 'resolution', 'offset',
+              'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link')
+
+
 def _rebuild_update(self, context):
     ob = self.id_data
     if isinstance(ob, bpy.types.Object) and self.live and self.outline:
@@ -61,6 +65,15 @@ def _rebuild_update(self, context):
             self.last_error = ''
         except (cg.CutError, ValueError, RuntimeError) as ex:
             self.last_error = str(ex)
+        # 0.24.5 what you set on the live shape is used for the next one too (it reset to the old defaults)
+        st = getattr(getattr(context, 'scene', None), 'mch_base', None)
+        if st is not None:
+            for k in CARRY_KEYS:
+                try:
+                    if getattr(st, k) != getattr(self, k):
+                        setattr(st, k, getattr(self, k))
+                except (AttributeError, TypeError):
+                    pass
 
 
 class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
