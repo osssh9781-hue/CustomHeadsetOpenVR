@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.7
+# Test Report — Mecha Lab 0.24.8
+
+## 0.24.8 결과: 72개 파일 2424/2424 (`tests/test_log_bpy501_v0248.txt`) (`tests/test_log_bpy501_v0248.txt`). test_v0248(10): 키맵 3개(Object Mode), S는 선택 있으면 통과(PASS_THROUGH) / 없으면 Split, Alt+A → Armor Plate, Alt+X 선택 없으면 경고 / 메쉬 선택이면 mirror_lean(keep_live=True). 실제 키 입력은 미검증.
 
 ## 0.24.7 결과: 71개 파일 2414/2414 (`tests/test_log_bpy501_v0247.txt`) (`tests/test_log_bpy501_v0247.txt`). test_v0247(17): JPG 12개 한 번에 → 12개, 미리보기 새로 고침 1번, 목록 50번 다시 그려도 JSON 읽기 0번(같은 목록 객체), 바뀐 파일 이름 반영, 1600 px 원본 → 작은 `_thumb.png`를 아이콘으로, 라이브러리 사본 ≤ 192 px, 지우기 = JSON / 원본 / 썸네일, 오래된 `mch.stamp_scale` 키 항목 삭제, Cut 툴 키맵에 남은 옛 휠 항목이 다시 등록하면 사라짐. 실제 Blender 창에서 목록 속도 / 휠은 미검증.
 

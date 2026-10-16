@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 0.24.8 — 단축키 Alt+X = Mirror, S = Split, Alt+A = Armor Plate (2026-10-16)
+
+- **Alt+X = Mirror**: 왼쪽 Mirror 버튼과 같음(마우스를 복사할 쪽으로 기울이기, 결과는 살아있는 Mirror). 메쉬를 선택하지 않았으면 경고만.
+- **S = Split 툴**: 아무것도 선택하지 않았을 때만. 오브젝트를 선택한 상태면 S는 그대로 Blender 크기 조절(Scale).
+- **Alt+A = Armor Plate 툴**(MECHA LAB 안에서는 Blender의 Alt+A "선택 해제" 대신).
+- 모두 MECHA LAB 작업 공간 + Object Mode에서만, N > Workspace & Hotkeys에서 키 바꾸기 / 환경설정의 Hotkeys 체크로 끄기 가능.
+- 테스트: 72개 파일 2424/2424 (`tests/test_log_bpy501_v0248.txt`), 새 `test_v0248.py`(10). ZIP sha256 `83aadd89d98fa3014d37de1106a660b3c07ce3927e48508f31bbb36fddec3fc2`.
+
 ## 0.24.7 — 이미지 여러 개 불러온 뒤 목록 멈춤 수정, 업데이트 뒤에도 휠 = 확대 / 축소 (2026-10-16)
 
 - **스탬프 목록이 느리고 Blender가 멈추던 문제**(JPG 여러 개 불러온 뒤): 목록이 다시 그려질 때마다 모든 모양 파일(외곽선 좌표가 든 JSON)을 다시 읽고, 큰 원본 이미지를 그대로 아이콘으로 불러왔음. → 목록은 바뀐 파일만 읽고 나머지는 기억, 라이브러리에는 192 px 작은 PNG만 저장, 예전에 불러온 큰 이미지는 처음 한 번 `_thumb.png` 작은 아이콘을 만들어 씀. 여러 파일 불러오기는 끝에 미리보기를 한 번만 새로 고침. 지우기는 작은 아이콘도 같이 지움.

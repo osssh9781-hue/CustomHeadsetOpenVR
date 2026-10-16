@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.7 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.8 (Claude Code, 2026-10-14)
+
+## 0.24.8
+- ZIP sha256 `83aadd89d98fa3014d37de1106a660b3c07ce3927e48508f31bbb36fddec3fc2`. `workspace_ui.MCH_OT_hotkey`: action에 PLATE / MIRROR 추가, `only_empty`(선택이 있으면 PASS_THROUGH → Blender Scale), invoke에서 MIRROR = `mch.mirror_lean(keep_live=True)`. Object Mode 키맵: Alt+X MIRROR, S SPLIT(only_empty), Alt+A PLATE. `HOTKEY_LABELS`로 키 편집 목록 이름.
 
 ## 0.24.7
 - ZIP sha256 `5f8b31097d584013b268ace1eb3aa575efae3626dd5b3dbcb3e7e804a170564f`. `cut_presets`: `_scan()`(os.scandir, mtime이 바뀐 JSON만 파싱 → `_INDEX[stem] = (mtime, name, source)`), `preset_items`는 (scan, preview collection id) 키가 같으면 캐시 반환, `preset_icon`은 `_THUMBS`에 경로 기억, `_small_thumb`은 120 KB 넘는 원본에 `<stem>_thumb.png`(192 px) 한 번 생성, `import_png`는 `save_thumbnail`로 192 px PNG만 저장, 일괄 불러오기는 refresh=False 후 `_refresh_previews()` 한 번. `workspace_ui.purge_stale_keymap_items()`(register에서 툴 등록 전): addon 키컨피그의 `3D View Tool: Object, Mecha *` 키맵 삭제(register_tool은 기존 키맵을 다시 만들지 않음) + `STALE_KEYMAP_IDS`(`mch.stamp_scale`) 항목 삭제.
