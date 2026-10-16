@@ -94,19 +94,29 @@ def dist_to_segments(pts, A, B, chunk=2048):
 # -----------------------------------------------------------------------------
 
 
-def cut_iso(bm, field, level, eps):
-    """Cut the triangle patch exactly along field == level (marching triangles)."""
-    verts = list(bm.verts)
-    vals = dict(zip(verts, field(np.array([tuple(v.co) for v in verts])) - level))
-    on = {v for v in verts if abs(vals[v]) < eps}
+def cut_iso(bm, key, level, eps, carry=()):
+    """Cut the triangle patch exactly along key == level (marching triangles).
+
+    ``key`` is a float vertex layer holding the field (computed once, 0.24.2);
+    new verts on the cut get it by linear interpolation along the edge, like
+    every layer in ``carry``."""
+    layers = [key] + [c for c in carry if c is not key]
+    on = set()
+    for v in bm.verts:
+        if abs(v[key] - level) < eps:
+            on.add(v)
     for e in list(bm.edges):
         a, b = e.verts
         if a in on or b in on:
             continue
-        fa, fb = vals[a], vals[b]
+        fa, fb = a[key] - level, b[key] - level
         if fa * fb < 0:
-            _ne, nv = bmesh.utils.edge_split(e, a, fa / (fa - fb))
-            vals[nv] = 0.0
+            t = fa / (fa - fb)
+            vals = [a[l] + (b[l] - a[l]) * t for l in layers]
+            _ne, nv = bmesh.utils.edge_split(e, a, t)
+            for l, x in zip(layers, vals):
+                nv[l] = x
+            nv[key] = level
             on.add(nv)
     for f in list(bm.faces):
         vs = [v for v in f.verts if v in on]
@@ -122,6 +132,13 @@ def cut_iso(bm, field, level, eps):
     bmesh.ops.triangulate(bm, faces=bm.faces[:])
 
 
+def _field_layer(bm, name, values):
+    lay = bm.verts.layers.float.new(name)
+    for v, x in zip(bm.verts, values):
+        v[lay] = float(x)
+    return lay
+
+
 # -----------------------------------------------------------------------------
 # Screws
 # -----------------------------------------------------------------------------
@@ -133,8 +150,8 @@ def screw_centres(loop, w1, count, min_turn=25.0):
     corner bisector at distance w1 / 2 from both sides."""
     if count <= 0 or len(loop) < 3:
         return []
-    co = np.array([tuple(v.co) for v in loop])
-    nr = np.array([tuple(v.normal) for v in loop])
+    co = np.array([tuple(p_[0]) for p_ in loop])
+    nr = np.array([tuple(p_[1]) for p_ in loop])
     seg = np.linalg.norm(np.roll(co, -1, 0) - co, axis=1)
     arc = np.concatenate([[0.0], np.cumsum(seg)])[:-1]
     total = float(seg.sum())
@@ -204,22 +221,24 @@ def build_detail(region_me, layers, base, screws=0, screw_r=None, screw_depth=No
         if not loops or not bm.faces:
             raise ValueError('empty region')
         A, B = _seg_arrays(loops)
-        outline = lambda P: dist_to_segments(P, A, B)
         size = float(np.linalg.norm(A.max(0) - A.min(0)))
         eps = size * 1e-5
+        bm.normal_update()
+        # a new layer reallocates the verts: keep the outline as plain coordinates / normals
+        outer = [(v.co.copy(), v.normal.copy()) for v in max(loops, key=len)]
+        dl = _field_layer(bm, 'd', dist_to_segments(np.array([tuple(v.co) for v in bm.verts]), A, B))
         levels = list(np.cumsum([w for w, _h in layers]))
         for L in levels:
-            cut_iso(bm, outline, L, eps)
+            cut_iso(bm, dl, L, eps)
         # screws on the middle of the outer layer
         centres = []
         if layers and screws > 0:
             w1, h1 = layers[0]
             r = min(screw_r if screw_r else w1 * SCREW_R_FRAC, w1 * 0.45)
-            bm.normal_update()
-            centres = screw_centres(max(loops, key=len), w1, screws)
-            for c in centres:
-                cc = np.array(tuple(c))
-                cut_iso(bm, lambda P, cc=cc: np.linalg.norm(P - cc, axis=1), r, eps)
+            centres = screw_centres(outer, w1, screws)
+            for i, c in enumerate(centres):
+                sl = _field_layer(bm, f's{i}', [(v.co - c).length for v in bm.verts])
+                cut_iso(bm, sl, r, eps, carry=(dl,))
         else:
             r = 0.0
         depth = screw_depth if screw_depth is not None else (layers[0][1] * SCREW_DEPTH_FRAC if layers else 0.0)
@@ -236,7 +255,7 @@ def build_detail(region_me, layers, base, screws=0, screw_r=None, screw_depth=No
 
         def face_height(f):
             cen = f.calc_center_median()
-            d = outline(np.array([tuple(cen)]))[0]
+            d = sum(v[dl] for v in f.verts) / len(f.verts)     # every face lies inside one band
             h = inside
             for L, hh in zip(levels, heights):
                 if d < L:
@@ -288,13 +307,26 @@ def build_detail(region_me, layers, base, screws=0, screw_r=None, screw_depth=No
             h = fh[f]
             faces.append([vid(v, h, f) for v in f.verts])                  # top
             faces.append([vid(v, -embed) for v in reversed(f.verts)])     # bottom
+        # boundary faces per vertex: where two bands meet at the outline, the higher band's side wall
+        # carries the lower band's corner too (no open edge)
+        bface = {}
+        for e in bm.edges:
+            if len(e.link_faces) == 1:
+                for v in e.verts:
+                    bface.setdefault(v, []).append(e.link_faces[0])
+
+        def mids(v, h, top_down):
+            lower = sorted({(fh[g], vid(v, fh[g], g)) for g in bface.get(v, ()) if fh[g] < h - 1e-12},
+                           reverse=top_down)
+            return [i for _h, i in lower]
         for e in bm.edges:
             lf = e.link_faces
             a, b = e.verts
             if len(lf) == 1:
                 f = lf[0]
                 h = fh[f]
-                faces.append([vid(a, h, f), vid(b, h, f), vid(b, -embed), vid(a, -embed)])
+                faces.append([vid(a, h, f), vid(b, h, f)] + mids(b, h, True) + [vid(b, -embed), vid(a, -embed)] +
+                             mids(a, h, False))
             elif len(lf) == 2 and fh[lf[0]] != fh[lf[1]]:
                 f1, f2 = lf
                 faces.append([vid(a, fh[f1], f1), vid(b, fh[f1], f1), vid(b, fh[f2], f2), vid(a, fh[f2], f2)])
@@ -358,13 +390,12 @@ def build_rise(region_me, height, ramp, embed=0.0, name='MCH_PlateRise', profile
         # 0.24.1 the slope as clean rings (like bevel segments): cut along the iso-lines of the distance,
         # heights are linear inside each ring, so every ring and the top merge into few faces
         segs = 1 if profile == 'CHAMFER' else RISE_SEGMENTS
-        outline = lambda P: dist_to_segments(P, A, B)
+        dl = _field_layer(bm, 'd', dist_to_segments(np.array([tuple(v.co) for v in bm.verts]), A, B))
         for k in range(1, segs + 1):
-            cut_iso(bm, outline, ramp * k / segs, size * 1e-5)
+            cut_iso(bm, dl, ramp * k / segs, size * 1e-5)
         bm.normal_update()
         bm.verts.index_update()
-        co = np.array([tuple(v.co) for v in bm.verts])
-        t = np.clip(outline(co) / max(ramp, 1e-9), 0.0, 1.0)
+        t = np.clip(np.array([v[dl] for v in bm.verts]) / max(ramp, 1e-9), 0.0, 1.0)
         k = np.minimum(np.floor(t * segs + 1e-6), segs - 1)
         lo, hi = rise_curve(k / segs, profile), rise_curve((k + 1) / segs, profile)
         frac = np.clip(t * segs - k, 0.0, 1.0)
@@ -464,7 +495,7 @@ KINDS = {'DETAIL': 'TRIM', 'DETAIL2': 'RISE'}
 DIRECTIONS = (('OUT', 'Edge High', 'The edge is highest, layers step down inward to the flat inside'),
               ('IN', 'Inside High', 'Layers step up inward, the inside panel is the highest'))
 SCREW_ITEMS = (('0', 'No Screw', ''), ('1', '1 Screw', ''), ('2', '2 Screws', ''))
-SPACING_PX = 7                 # face size on screen for the surface patch
+SPACING_PX = 20                # face size on screen for the surface patch (0.24.2: light, like Armor Plate)
 RISE_DEFAULT = dict(height=0.035, ramp=0.12)
 LENGTHS = ('w1', 'h1', 'w2', 'h2', 'w3', 'h3', 'base', 'center', 'screw_r', 'screw_depth', 'height', 'ramp', 'lift')
 _SYNC = [False]
@@ -479,11 +510,24 @@ def _ref(self):
     return self.id_data
 
 
+DEBOUNCE = 0.15
+
+
 def _queue(ob):
-    """Rebuild shortly after the last change (a slider drag sends many updates)."""
+    """Rebuild once the slider stops moving (0.24.2: a drag sends many updates;
+    rebuilding on each of them froze Blender)."""
     _PENDING.add(ob.name)
-    if not bpy.app.timers.is_registered(_rebuild_timer):
-        bpy.app.timers.register(_rebuild_timer, first_interval=0.05)
+    if bpy.app.timers.is_registered(_rebuild_timer):
+        bpy.app.timers.unregister(_rebuild_timer)
+    bpy.app.timers.register(_rebuild_timer, first_interval=DEBOUNCE)
+
+
+@bpy.app.handlers.persistent
+def _on_undo_pre(*_args):
+    """Ctrl+Z: drop pending rebuilds (they belong to the state being undone)."""
+    _PENDING.clear()
+    if bpy.app.timers.is_registered(_rebuild_timer):
+        bpy.app.timers.unregister(_rebuild_timer)
 
 
 _PENDING = set()
@@ -850,12 +894,18 @@ def register():
         bpy.utils.register_class(c)
     bpy.types.Object.mch_pdetail = PointerProperty(type=MCH_PG_PlateDetail)
     bpy.types.Scene.mch_pdetail = PointerProperty(type=MCH_PG_PlateDetailScene)
+    for lst in (bpy.app.handlers.undo_pre, bpy.app.handlers.redo_pre):
+        if _on_undo_pre not in lst:
+            lst.append(_on_undo_pre)
 
 
 def unregister():
     if bpy.app.timers.is_registered(_rebuild_timer):
         bpy.app.timers.unregister(_rebuild_timer)
     _PENDING.clear()
+    for lst in (bpy.app.handlers.undo_pre, bpy.app.handlers.redo_pre):
+        while _on_undo_pre in lst:
+            lst.remove(_on_undo_pre)
     for owner, attr in ((bpy.types.Object, 'mch_pdetail'), (bpy.types.Scene, 'mch_pdetail')):
         if hasattr(owner, attr):
             delattr(owner, attr)

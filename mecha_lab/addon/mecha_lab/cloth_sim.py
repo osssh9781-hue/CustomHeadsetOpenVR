@@ -209,10 +209,9 @@ def build_cloth_mesh(parts, cuts=2, split='NONE', angle=30.0, noise=0.0, seed=1,
 
 def setup_cloth(scene, ob, frames=30, quality=5, mass=0.15, pressure=4.0, shrink=-0.05, gravity=1.0,
                 thickness=0.005, self_collision=False, pin_group=None, bend=0.5, shrink_max=None,
-                weights=None, tension=1.0):
+                weights=None):
     cm = ob.modifiers.new('MCH_PanelCloth', 'CLOTH')
     s = cm.settings
-    s.tension_stiffness = 15.0 * tension            # 0.23.28 Tension slider (Blender default 15)
     s.quality = quality
     s.mass = mass
     s.bending_stiffness = bend
@@ -285,7 +284,7 @@ def panel_cloth(context, sources, edit_object=None, frames=30, quality=5, seed=1
                 shrink=-0.05, gravity=1.0, cuts=2, noise=0.0, subsurf=1, pin='BORDER', collide=True,
                 self_collision=False, thickness=0.005, split='NONE', angle=30.0, join=True, hide_source=True,
                 bend=0.5, shrink_max=None, random_islands=False, variation=0.0, collider='REGION',
-                preset='', remove_faces=False, tension=1.0):
+                preset='', remove_faces=False):
     """Make + simulate + bake the cloth objects.  Returns the new objects."""
     if not collide:
         collider = 'NONE'
@@ -327,8 +326,7 @@ def panel_cloth(context, sources, edit_object=None, frames=30, quality=5, seed=1
         if pins:
             ob.vertex_groups.new(name=PIN_GROUP).add(pins, 1.0, 'REPLACE')
         setup_cloth(context.scene, ob, frames, quality, mass, pressure, shrink, gravity, thick,
-                    self_collision, PIN_GROUP if pins else None, bend, rmax, weights if random_islands else None,
-                    tension)
+                    self_collision, PIN_GROUP if pins else None, bend, rmax, weights if random_islands else None)
         if collider == 'REGION':
             temp_objs.append(_region_collider(context, parts, ob.name + '_Collider'))
         elif collider == 'BODY' and body is not None and body.type == 'MESH' and body is not ob and \
@@ -337,7 +335,6 @@ def panel_cloth(context, sources, edit_object=None, frames=30, quality=5, seed=1
             temp_cols.append(body)
         ob['mch_pcloth'] = ','.join(it[0].name for it in items)
         ob['mch_pcloth_preset'] = preset
-        set_sliders(ob, tension, gravity)
         made.append((ob, items))
     try:
         bake(context, [m[0] for m in made], frames)
@@ -378,38 +375,18 @@ def run_preset(context, sources, preset, **over):
                        noise=v['noise'], bend=v['bend'], random_islands=v['random'], variation=v['variation'],
                        shrink_max=v['shrink'] * 2.2 if v['random'] else None, preset=preset,
                        **{k: over[k] for k in over if k in ('collider', 'split', 'angle', 'seed', 'pin', 'join',
-                                                              'subsurf', 'thickness', 'tension')})
+                                                              'subsurf', 'thickness')})
 
 
 def is_pcloth(ob):
     return ob is not None and bool(ob.get('mch_pcloth'))
 
 
-TENSION_KEY = 'mch_pcloth_tension'
-GRAVITY_KEY = 'mch_pcloth_gravity'
-
-
-def sim_values(preset, tension=1.0, gravity=None):
-    """0.23.28 preset values with the live Tension / Gravity sliders:
-    Tension 1 = preset; higher = tighter (less slack, stiffer), lower = looser."""
-    v = preset_values(preset)
-    t = max(0.05, float(tension))
-    over = dict(shrink=v['shrink'] / t, tension=t)
-    if gravity is not None:
-        over['gravity'] = float(gravity)
-    return over
-
-
-def redo(context, ob, preset, tension=None, gravity=None):
-    """Bake a cloth again from its (hidden) source with another preset
-    (and the object's Tension / Gravity, kept on the new cloth)."""
+def redo(context, ob, preset):
+    """Bake a cloth again from its (hidden) source with another preset."""
     names = [n for n in str(ob.get('mch_pcloth', '')).split(',') if n in bpy.data.objects]
     if not names:
         return []
-    if tension is None:
-        tension = ob.mch_pcloth_tension
-    if gravity is None:
-        gravity = ob.mch_pcloth_gravity if ob.get(GRAVITY_KEY) is not None else None
     srcs = [bpy.data.objects[n] for n in names]
     me = ob.data
     bpy.data.objects.remove(ob)
@@ -418,57 +395,7 @@ def redo(context, ob, preset, tension=None, gravity=None):
     for s in srcs:
         s.hide_set(False)
         s.hide_render = False
-    made = run_preset(context, srcs, preset, **sim_values(preset, tension, gravity))
-    for o in made:
-        set_sliders(o, tension, gravity if gravity is not None else preset_values(preset)['gravity'])
-    return made
-
-
-_SYNC = [False]
-_PENDING = {}
-
-
-def set_sliders(ob, tension, gravity):
-    """Show the values on a (new) cloth without baking again."""
-    _SYNC[0] = True
-    try:
-        ob.mch_pcloth_tension = tension
-        ob.mch_pcloth_gravity = gravity
-        ob[GRAVITY_KEY] = float(gravity)
-    finally:
-        _SYNC[0] = False
-
-
-def _rebake_timer():
-    names = list(_PENDING)
-    _PENDING.clear()
-    for name in names:
-        ob = bpy.data.objects.get(name)
-        if ob is None or not is_pcloth(ob):
-            continue
-        try:
-            made = redo(bpy.context, ob, ob.get('mch_pcloth_preset', '') or 'PADDING')
-        except (RuntimeError, ReferenceError, ValueError):
-            continue
-        if made:
-            for o in bpy.context.view_layer.objects:
-                o.select_set(False)
-            for o in made:
-                o.select_set(True)
-            bpy.context.view_layer.objects.active = made[0]
-    return None
-
-
-def _slider_update(self, _context):
-    """0.23.28 live: changing Tension / Gravity bakes the cloth again shortly
-    after the last change (not on every drag step)."""
-    if _SYNC[0] or not is_pcloth(self):
-        return
-    self[GRAVITY_KEY] = float(self.mch_pcloth_gravity)
-    _PENDING[self.name] = True
-    if bpy.app.timers.is_registered(_rebake_timer):
-        bpy.app.timers.unregister(_rebake_timer)
-    bpy.app.timers.register(_rebake_timer, first_interval=0.4)
+    return run_preset(context, srcs, preset)
 
 
 def _apply_preset(self, _context):
@@ -592,7 +519,7 @@ class MCH_OT_panel_cloth_redo(bpy.types.Operator):
         return is_pcloth(context.active_object)
 
     def execute(self, context):
-        made = redo(context, context.active_object, self.preset, gravity=preset_values(self.preset)['gravity'])
+        made = redo(context, context.active_object, self.preset)
         if not made:
             self.report({'WARNING'}, 'The source of this cloth is gone')
             return {'CANCELLED'}
@@ -614,10 +541,6 @@ def draw(layout, context):
     box.operator('mch.panel_cloth', text='Panel Cloth on selection', icon='MOD_CLOTH')
     ob = context.active_object
     if is_pcloth(ob):
-        col = box.column(align=True)
-        col.label(text='Live (bakes again on change)', icon='MOD_CLOTH')
-        col.prop(ob, 'mch_pcloth_tension', slider=True)
-        col.prop(ob, 'mch_pcloth_gravity', slider=True)
         box.label(text=f'{ob.name}: redo with', icon='FILE_REFRESH')
         grid = box.grid_flow(columns=3, align=True)
         cur = ob.get('mch_pcloth_preset', '')
@@ -631,21 +554,9 @@ CLASSES = (MCH_OT_panel_cloth, MCH_OT_panel_cloth_redo)
 def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
-    bpy.types.Object.mch_pcloth_tension = FloatProperty(
-        name='Tension', default=1.0, min=0.1, max=4.0, soft_max=3.0, update=_slider_update,
-        description='Panel Cloth: 1 = preset; higher = tighter cloth (less slack, stiffer), lower = looser, more folds')
-    bpy.types.Object.mch_pcloth_gravity = FloatProperty(
-        name='Gravity', default=0.3, min=0.0, max=10.0, soft_max=5.0, update=_slider_update,
-        description='Panel Cloth: how much the cloth sags toward world down')
 
 
 def unregister():
-    if bpy.app.timers.is_registered(_rebake_timer):
-        bpy.app.timers.unregister(_rebake_timer)
-    _PENDING.clear()
-    for attr in ('mch_pcloth_tension', 'mch_pcloth_gravity'):
-        if hasattr(bpy.types.Object, attr):
-            delattr(bpy.types.Object, attr)
     for c in reversed(CLASSES):
         try:
             bpy.utils.unregister_class(c)

@@ -48,11 +48,12 @@ check('low: top below 5% of the size, bottom just under the surface', h.max() < 
 top_edge = p.base + p.h1
 check('edge high: the outer layer is the highest level', abs(h.max() - top_edge) < 1e-4, (h.max(), top_edge))
 f0 = len(d.data.polygons)
+v0 = sorted(round(v.co.x, 4) for v in d.data.vertices)
 p.w1 = p.w1 * 1.5
 check('a change queues a rebuild', d.name in pd._PENDING)
 bpy.app.timers.unregister(pd._rebuild_timer)
 pd._rebuild_timer()
-check('width change rebuilt the mesh', len(d.data.polygons) != f0 and manifold(d.data))
+check('width change rebuilt the mesh', sorted(round(v.co.x, 4) for v in d.data.vertices) != v0 and manifold(d.data))
 p.h1 = p.h1 * 2
 pd.rebuild(d)
 check('height change: higher edge', abs(heights(d, b).max() - (p.base + p.h1)) < 1e-4)
