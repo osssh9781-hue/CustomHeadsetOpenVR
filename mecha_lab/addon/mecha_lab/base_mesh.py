@@ -685,10 +685,10 @@ def _local_groups(context, loops, projector):
 def perform_base(context, loops, projector, cutter=False, targets=None):
     """Create the new solid (or, ``cutter=True`` = Alt, cut it into the
     mesh below).  Returns a report string; raises CutError (scene untouched)."""
+    if cutter:
+        return cut_like_cut_tool(context, loops, projector, targets)
     groups, frame, screen_groups, embed = _local_groups(context, loops, projector)
     defaults = context.scene.mch_base
-    if cutter:
-        return _perform_cutter(context, groups, frame, defaults, projector, screen_groups, targets)
     return _create_live_base(context, groups, frame, defaults, embed)
 
 
@@ -772,6 +772,28 @@ def _sketch_cutter_targets(context, groups, frame):
             if real not in found:
                 found.append(real)
     return found
+
+
+def cut_like_cut_tool(context, loops, projector, targets=None):
+    """0.24.5 Alt in Base Mesh works like the Cut tool (its depth mode, depth, edge finish and solver): the
+    old profile cutter was Height deep and went through thin plates."""
+    from . import cut_engine as ce
+    if not targets:
+        targets = ce.auto_targets(context.view_layer, projector, loops)
+    if not targets:
+        raise cg.CutError('Alt Base Mesh cuts like the Cut tool: draw over a mesh.')
+    return ce.perform_closed(context, 'CUT', targets, loops, projector, False)
+
+
+def _view_projector(context):
+    try:
+        region, rv3d = context.region, context.region_data
+        if region is None or region.type != 'WINDOW' or rv3d is None:
+            return None
+        from . import cut_engine as ce
+        return ce.make_projector(region, rv3d)
+    except (AttributeError, TypeError):
+        return None
 
 
 def _perform_cutter(context, groups, frame, p, projector, screen_groups, targets):
@@ -1013,7 +1035,18 @@ def sketch_commit(context, cutter=False):
         raise cg.CutError('The sketch is empty (everything was subtracted). Esc clears it.')
     frame = sketch_frame(data)
     groups = [([tuple(q) for q in o], [[tuple(q) for q in h] for h in hs]) for o, hs in groups]
-    if cutter:
+    proj = _view_projector(context) if cutter else None
+    if cutter and proj is not None:
+        # 0.24.5 Alt+Enter cuts like the Cut tool too: the sketch seen from the current view
+        loops = []
+        for o, hs in groups:
+            for lp in [o] + list(hs):
+                pts = [proj.to_screen(frame @ Vector((q[0], q[1], 0.0))) for q in lp]
+                if any(p_ is None for p_ in pts):
+                    raise cg.CutError('The sketch is behind the view: orbit so it is in front, then Alt+Enter.')
+                loops.append([tuple(p_) for p_ in pts])
+        msg = cut_like_cut_tool(context, loops, proj)
+    elif cutter:
         targets = _sketch_cutter_targets(context, groups, frame)
         msg = _perform_cutter(context, groups, frame, scene.mch_base, None, None, targets)
     else:

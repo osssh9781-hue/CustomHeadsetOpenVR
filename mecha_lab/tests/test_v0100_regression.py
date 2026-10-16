@@ -712,14 +712,9 @@ op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 450, 450, alt=True))
 op.modal(ctx, E('MOUSEMOVE', 'NOTHING', 500, 500, alt=True))
 r = op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 550, 550, alt=True))
 msg = op.reports[-1][1] if op.reports else ''
-check('F02 Alt+drag Base Mesh = Boolean Difference pocket into the hull', r == {'FINISHED'} and
-      volume(t) < 8.0 - 0.1 and non_manifold(t) == 0 and 'cutter' in msg, (msg, volume(t)))
+check('F02 / 0.24.5 Alt+drag Base Mesh cuts like the Cut tool', r == {'FINISHED'} and
+      volume(t) < 8.0 - 0.1 and non_manifold(t) == 0 and msg.startswith('Cut:'), (msg, volume(t)))
 check('F02 Alt+drag leaves no cutter / new object behind', [o.name for o in bpy.data.objects] == ['Hull'])
-check('F02 Alt+drag cutter used the flipped side (Top -> Bottom)', 'Bottom' in msg, msg)
-hull_top = max(v.co.z for v in t.data.vertices)
-chamfer_z = sorted({round(v.co.z, 4) for v in t.data.vertices if abs(v.co.x) < 0.55 and abs(v.co.y) < 0.55})
-check('F02 pocket opening chamfered at the surface (flipped bevel lands on the opening)',
-      any(0.85 < z < 0.999 for z in chamfer_z), chamfer_z)
 
 # session auto apply: only this session's live Base Meshes
 fresh()

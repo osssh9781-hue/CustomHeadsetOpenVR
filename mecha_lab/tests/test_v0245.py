@@ -127,5 +127,17 @@ second = C.active_object
 check('the next shape keeps the last settings (height / profile / width)', second is not first and
       abs(second.mch_base.height - 0.77) < 1e-6 and second.mch_base.profile == 'CHAMFER' and
       abs(second.mch_base.bevel_width - 0.11) < 1e-6, (second.mch_base.height, second.mch_base.profile))
+# ---- Base Mesh Alt = Cut tool (From Surface depth: a pocket, the back is not cut)
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+hull = cube('Hull', 2.0)
+S.mch_cut.depth_mode = 'SURFACE'
+S.mch_cut.depth = 0.3
+S.mch_settings.auto_apply = True
+r, m = lasso([(450, 450), (550, 450), (550, 550), (450, 550)], alt=True)
+zs = sorted({round(v.co.z, 3) for v in hull.data.vertices})
+check('Alt in Base Mesh cuts like Cut: From Surface depth makes a pocket, the back stays closed',
+      m.startswith('Cut:') and any(abs(z - 0.7) < 0.02 for z in zs) and min(zs) == -1.0 and
+      [o.name for o in bpy.data.objects] == ['Hull'], (m, zs))
 mecha_lab.unregister()
 sys.exit(1 if summary() else 0)
