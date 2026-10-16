@@ -109,7 +109,9 @@ def add(context, mode, loops, projector, subtract=False):
     pieces = bm_.sketch_regions(d['items'])
     name = ts.TOOL_BY_ID[mode][1]
     return (f'{name} sketch: {"subtracted" if subtract else "added"} ({len(pieces)} piece(s)) | '
-            f'Enter: apply, Alt+Enter: {"keep inside" if mode == "CUT" else "apply"}, Backspace: last, Esc: clear')
+            f'Enter: {"hide" if mode == "HIDE" else "apply"}, Alt+Enter: '
+            f'{"keep inside" if mode == "CUT" else "show again" if mode == "HIDE" else "apply"}, '
+            f'Backspace: last, Esc: clear')
 
 
 def screen_loops(d):

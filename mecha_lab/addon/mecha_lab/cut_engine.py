@@ -1545,9 +1545,6 @@ class StrokeLogic:
     def _execute_closed(self, context):
         from . import lasso_sketch
         sketching = lasso_sketch.enabled(context, self.mode)
-        if sketching and self.mode == 'HIDE' and self.inverted():
-            sk = lasso_sketch.data(context.scene)
-            sketching = sk is not None and sk.get('mode') == 'HIDE'     # 0.24.3 Alt = show again right away
         targets = [] if sketching else self._targets()
         if getattr(self, 'auto_target', False) and not sketching:
             if not targets:
@@ -1575,7 +1572,11 @@ class StrokeLogic:
             if sketching:
                 # 0.19.3 Sketch First (all lasso tools): add / (Alt) subtract, Enter applies
                 # (0.24.3 Box Hide: Alt + draw with no Box Hide sketch = show again right away)
-                return lasso_sketch.add(context, self.mode, loops, self.projector, subtract=self.inverted())
+                sub = self.inverted()
+                if self.mode == 'HIDE':      # 0.24.3 Box Hide: Alt + draw with nothing sketched yet just starts it
+                    sk = lasso_sketch.data(context.scene)
+                    sub = sub and sk is not None and sk.get('mode') == 'HIDE'
+                return lasso_sketch.add(context, self.mode, loops, self.projector, subtract=sub)
             if self.mode == 'MASK':
                 msg = perform_mask(context, targets[0], loops, self.projector, self.inverted())
             elif self.mode == 'PLATE':
