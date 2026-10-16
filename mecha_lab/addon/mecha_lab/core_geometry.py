@@ -28,7 +28,7 @@ import math
 
 import bmesh
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 from mathutils.geometry import tessellate_polygon
 
 CUTTER_ATTR = 'mch_cutter_face'
@@ -520,9 +520,70 @@ SOLVER_ORDER = {
 }
 
 
+def mirror_reflections(target):
+    """World-space reflection matrices of the target's live Mirror modifiers (every axis combination)."""
+    out = [Matrix.Identity(4)]
+    for m in target.modifiers:
+        if m.type != 'MIRROR' or not m.show_viewport:
+            continue
+        frame = m.mirror_object.matrix_world if m.mirror_object is not None else target.matrix_world
+        inv = frame.inverted_safe()
+        for axis in range(3):
+            if not m.use_axis[axis]:
+                continue
+            flip = Matrix.Identity(4)
+            flip[axis][axis] = -1.0
+            r = frame @ flip @ inv
+            out += [r @ q for q in out]
+    return out[1:]
+
+
+def _cutter_with_reflections(cutter, reflections):
+    """A new mesh: the cutter plus its mirrored copies (cutter space)."""
+    cw = cutter.matrix_world
+    cwi = cw.inverted_safe()
+    bm = bmesh.new()
+    bm.from_mesh(cutter.data)
+    for r in reflections:
+        tmp = bmesh.new()
+        tmp.from_mesh(cutter.data)
+        tmp.transform(cwi @ r @ cw)
+        bmesh.ops.reverse_faces(tmp, faces=tmp.faces[:])
+        me_tmp = bpy.data.meshes.new('MCH_mirror_tmp')
+        tmp.to_mesh(me_tmp)
+        tmp.free()
+        bm.from_mesh(me_tmp)
+        bpy.data.meshes.remove(me_tmp)
+    me = bpy.data.meshes.new(cutter.data.name + '_mirrored')
+    bm.to_mesh(me)
+    bm.free()
+    return me
+
+
 def boolean_result(context, target, cutter, operation, solver='AUTO',
                    hole_tolerant=False, allow_empty=False):
     """Run the Boolean with validation + solver fallback. Returns (mesh, solver)."""
+    try:
+        return _boolean_result(context, target, cutter, operation, solver, hole_tolerant, allow_empty)
+    except CutError as ex:
+        reflections = mirror_reflections(target) if 'does not intersect' in str(ex) else []
+        if not reflections or cutter.type != 'MESH':
+            raise
+    # 0.24.9 a live Mirror: the shape was drawn over the mirrored copy, which the Boolean (base mesh only)
+    # never sees - cut the base mesh with the shape mirrored back; the Mirror shows it on both sides again
+    old = cutter.data
+    cutter.data = _cutter_with_reflections(cutter, reflections)
+    try:
+        return _boolean_result(context, target, cutter, operation, solver, hole_tolerant, allow_empty)
+    finally:
+        tmp = cutter.data
+        cutter.data = old
+        if tmp.users == 0:
+            bpy.data.meshes.remove(tmp)
+
+
+def _boolean_result(context, target, cutter, operation, solver='AUTO',
+                    hole_tolerant=False, allow_empty=False):
     source_nm = non_manifold_edge_count(target.data)
     src_counts = (len(target.data.vertices), len(target.data.polygons))
     problems = []
