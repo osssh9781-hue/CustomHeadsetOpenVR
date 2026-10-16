@@ -356,6 +356,7 @@ def build_detail(region_me, layers, base, screws=0, screw_r=None, screw_depth=No
 RISE_PROFILES = (
     ('ROUND', 'Round', 'Grows out of the surface: soft fillet at the foot, rounded top edge'),
     ('CHAMFER', 'Chamfer', 'Straight slope with crisp edges'),
+    ('WALL', 'Foot + Wall', 'Soft rounded foot on the surface, then a straight wall (Wall Angle) to a crisp top'),
     ('DOME', 'Round Top', 'Steep at the foot, rounding into the top'),
     ('FOOT', 'Soft Foot', 'Gentle at the foot, steeper near the top'),
 )
@@ -372,7 +373,30 @@ def rise_curve(t, profile='ROUND'):
     return t * t * t * (t * (6.0 * t - 15.0) + 10.0)     # smootherstep: flat at the foot and the top
 
 
-def build_rise(region_me, height, ramp, embed=0.0, name='MCH_PlateRise', profile='ROUND', lift=0.0):
+def wall_profile(height, wall_angle, foot):
+    """0.24.4 Foot + Wall: (distances, heights) - a round foot of radius ``foot``
+    tangent to the surface, then a straight wall at ``wall_angle`` (degrees from
+    the surface) up to ``height``."""
+    th = math.radians(max(5.0, min(89.5, wall_angle)))
+    r = max(foot, 1e-6)
+    d1, y1 = r * math.sin(th), r * (1.0 - math.cos(th))
+    if y1 >= height:                         # the foot alone reaches the top: shorter arc
+        th = math.acos(max(-1.0, 1.0 - height / r))
+        d1, y1 = r * math.sin(th), height
+    ds, hs = [0.0], [0.0]
+    n = 6
+    for i in range(1, n + 1):
+        a = th * i / n
+        ds.append(r * math.sin(a))
+        hs.append(r * (1.0 - math.cos(a)))
+    if y1 < height:
+        ds.append(d1 + (height - y1) / math.tan(th))
+        hs.append(height)
+    return ds, hs
+
+
+def build_rise(region_me, height, ramp, embed=0.0, name='MCH_PlateRise', profile='ROUND', lift=0.0,
+               wall_angle=90.0, foot=0.0):
     """0.24 Detail 2: the surface itself rises smoothly inside the outline -
     0 at the outline, a smooth slope ``ramp`` wide, then a flat top
     ``height`` above the surface (no walls, no trims)."""
@@ -389,17 +413,20 @@ def build_rise(region_me, height, ramp, embed=0.0, name='MCH_PlateRise', profile
         bm.normal_update()
         # 0.24.1 the slope as clean rings (like bevel segments): cut along the iso-lines of the distance,
         # heights are linear inside each ring, so every ring and the top merge into few faces
-        segs = 1 if profile == 'CHAMFER' else RISE_SEGMENTS
+        if profile == 'WALL':
+            levels, heights = wall_profile(height, wall_angle, foot)
+        else:
+            segs = 1 if profile == 'CHAMFER' else RISE_SEGMENTS
+            levels = [ramp * k / segs for k in range(segs + 1)]
+            heights = [height * float(rise_curve(np.array(k / segs), profile)) for k in range(segs + 1)]
         dl = _field_layer(bm, 'd', dist_to_segments(np.array([tuple(v.co) for v in bm.verts]), A, B))
-        for k in range(1, segs + 1):
-            cut_iso(bm, dl, ramp * k / segs, size * 1e-5)
+        for L in levels[1:]:
+            if L > size * 1e-5:
+                cut_iso(bm, dl, L, size * 1e-5)
         bm.normal_update()
         bm.verts.index_update()
-        t = np.clip(np.array([v[dl] for v in bm.verts]) / max(ramp, 1e-9), 0.0, 1.0)
-        k = np.minimum(np.floor(t * segs + 1e-6), segs - 1)
-        lo, hi = rise_curve(k / segs, profile), rise_curve((k + 1) / segs, profile)
-        frac = np.clip(t * segs - k, 0.0, 1.0)
-        hs = lift + height * (lo + (hi - lo) * frac)
+        dist = np.array([v[dl] for v in bm.verts])
+        hs = lift + np.interp(dist, levels, heights)        # piecewise linear between the rings
         out_co = [v.co + v.normal * float(h) for v, h in zip(bm.verts, hs)]
         n = len(out_co)
         out_co += [v.co + v.normal * (lift - embed) for v in bm.verts]
@@ -428,7 +455,7 @@ def build_rise(region_me, height, ramp, embed=0.0, name='MCH_PlateRise', profile
     me.shade_smooth()
     try:
         # 0.24.1 the skirt under the foot must not darken the smooth foot (it read as a cut-off edge)
-        me.set_sharp_from_angle(angle=math.radians(60 if profile != 'CHAMFER' else 20))
+        me.set_sharp_from_angle(angle=math.radians(20 if profile == 'CHAMFER' else 30 if profile == 'WALL' else 60))
     except (AttributeError, TypeError):
         pass
     me.update()
@@ -497,7 +524,8 @@ DIRECTIONS = (('OUT', 'Edge High', 'The edge is highest, layers step down inward
 SCREW_ITEMS = (('0', 'No Screw', ''), ('1', '1 Screw', ''), ('2', '2 Screws', ''))
 SPACING_PX = 20                # face size on screen for the surface patch (0.24.2: light, like Armor Plate)
 RISE_DEFAULT = dict(height=0.035, ramp=0.12)
-LENGTHS = ('w1', 'h1', 'w2', 'h2', 'w3', 'h3', 'base', 'center', 'screw_r', 'screw_depth', 'height', 'ramp', 'lift')
+LENGTHS = ('w1', 'h1', 'w2', 'h2', 'w3', 'h3', 'base', 'center', 'screw_r', 'screw_depth', 'height', 'ramp', 'lift',
+           'foot')
 _SYNC = [False]
 
 
@@ -584,6 +612,10 @@ class MCH_PG_PlateDetail(bpy.types.PropertyGroup):
     ramp: FloatProperty(name='Slope Width', default=0.12, min=0.0001, soft_max=1.0, unit='LENGTH', precision=4,
                         update=_changed, description='Detail 2: how far in the top starts - wider = narrower top')
     profile: EnumProperty(name='Edge', items=RISE_PROFILES, default='ROUND', update=_changed)
+    wall_angle: FloatProperty(name='Wall Angle', default=90.0, min=20.0, max=90.0, update=_changed,
+                              description='Foot + Wall: wall angle from the surface (90 = straight up)')
+    foot: FloatProperty(name='Foot Radius', default=0.02, min=0.0, soft_max=0.5, unit='LENGTH', precision=4,
+                        update=_changed, description='Foot + Wall: radius of the soft foot on the surface')
     lift: FloatProperty(name='Lift', default=0.0, soft_min=-0.2, soft_max=0.2, unit='LENGTH', precision=4,
                         update=_changed, description='Move the detail along the surface normal (- = into the '
                         'surface) so it sits right on it')
@@ -610,7 +642,7 @@ def _fractions(scene):
 
 def default_fractions(layers):
     f = {'base': BASE_FRAC, 'center': 0.02, 'height': RISE_DEFAULT['height'], 'ramp': RISE_DEFAULT['ramp'],
-         'lift': 0.0}
+         'lift': 0.0, 'foot': RISE_DEFAULT['height'] * 0.6, 'wall_angle': 90.0}
     for i, (w, h) in enumerate(LAYER_PRESETS[layers], 1):
         f[f'w{i}'], f[f'h{i}'] = w, h
     for i in range(len(LAYER_PRESETS[layers]) + 1, 4):
@@ -629,6 +661,7 @@ def remember(ob):
     f = _fractions(bpy.context.scene)
     for k in LENGTHS:
         f[k] = getattr(p, k) / size
+    f['wall_angle'] = p.wall_angle
     st.fractions = json.dumps(f)
     st.layers, st.direction, st.screws, st.profile = p.layers, p.direction, p.screws, p.profile
 
@@ -653,7 +686,7 @@ def rebuild(ob):
     embed = p.size * 0.002
     if p.kind == 'RISE':
         me = build_rise(p.region, p.height, p.ramp, embed=embed, profile=p.profile, lift=p.size * 0.0004 + p.lift,
-                        name=ob.name)
+                        name=ob.name, wall_angle=p.wall_angle, foot=p.foot)
     else:
         layers = [(p.w1, p.h1), (p.w2, p.h2), (p.w3, p.h3)][:p.layers]
         me = build_detail(p.region, layers, p.base, screws=int(p.screws), screw_r=p.screw_r,
@@ -723,6 +756,7 @@ def perform(context, loops, projector, tool='DETAIL'):
         p.layers, p.direction, p.screws, p.profile = st.layers, st.direction, st.screws, st.profile
         for k in LENGTHS:
             setattr(p, k, f[k] * local_size)
+        p.wall_angle = f.get('wall_angle', 90.0)
         p.live = True
     finally:
         _SYNC[0] = False
@@ -847,7 +881,11 @@ def draw(layout, context, tool='DETAIL'):
         else:
             _draw_rise_presets(col)
             col.prop(p, 'height')
-            col.prop(p, 'ramp')
+            if p.profile == 'WALL':
+                col.prop(p, 'wall_angle')
+                col.prop(p, 'foot')
+            else:
+                col.prop(p, 'ramp')
             col.prop(p, 'lift')
             col.row(align=True).prop(p, 'profile', expand=True)
         row = box.row(align=True)
@@ -887,10 +925,11 @@ class MCH_PT_plate_detail(bpy.types.Panel):
         draw(self.layout, context, 'DETAIL' if ob.mch_pdetail.kind == 'TRIM' else 'DETAIL2')
 
 
-# 0.24.4 Detail 2 presets: (label, icon, edge profile, slope width as a factor of the height)
+FOOT_FRAC = 0.6               # Foot + Wall presets: foot radius = this x height (as soft as the Round foot)
+# 0.24.4 Detail 2 presets: (id, label, tooltip, edge profile, wall angle)
 RISE_PRESETS = (
-    ('VERTICAL', 'Vertical', 'Straight up from the surface (a wall)', 'CHAMFER', 0.03),
-    ('SLANT', 'Slanted', 'Rises with a slight tilt (about 20 degrees off vertical)', 'CHAMFER', 0.36),
+    ('VERTICAL', 'Vertical', 'Soft foot on the surface, then straight up (a wall)', 'WALL', 90.0),
+    ('SLANT', 'Slanted', 'Soft foot on the surface, then a wall tilted about 20 degrees', 'WALL', 70.0),
     ('ROUND', 'Round', 'Grows out of the surface with soft fillets (the default)', 'ROUND', None),
 )
 
@@ -921,7 +960,11 @@ class MCH_OT_pdetail_rise_preset(bpy.types.Operator):
             _SYNC[0] = True
             try:
                 p.profile = prof
-                p.ramp = max(1e-4, p.height * k) if k is not None else RISE_DEFAULT['ramp'] * p.size
+                if prof == 'WALL':
+                    p.wall_angle = k
+                    p.foot = p.height * FOOT_FRAC
+                else:
+                    p.ramp = RISE_DEFAULT['ramp'] * p.size
             finally:
                 _SYNC[0] = False
             remember(ob)
@@ -930,8 +973,11 @@ class MCH_OT_pdetail_rise_preset(bpy.types.Operator):
             st = context.scene.mch_pdetail
             st.profile = prof
             f = _fractions(context.scene)
-            h = f.get('height', RISE_DEFAULT['height'])
-            f['ramp'] = h * k if k is not None else RISE_DEFAULT['ramp']
+            if prof == 'WALL':
+                f['wall_angle'] = k
+                f['foot'] = f.get('height', RISE_DEFAULT['height']) * FOOT_FRAC
+            else:
+                f['ramp'] = RISE_DEFAULT['ramp']
             st.fractions = json.dumps(f)
         return {'FINISHED'}
 

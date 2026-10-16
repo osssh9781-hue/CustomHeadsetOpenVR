@@ -66,11 +66,15 @@ pd.rebuild(r)
 pd._PENDING.clear()
 check('Chamfer builds', len(r.data.polygons) > 0)
 bpy.ops.mch.pdetail_rise_preset(preset='VERTICAL')
-check('Vertical preset: chamfer, slope tiny next to the height', q.profile == 'CHAMFER' and q.ramp <= q.height * 0.05
-      and len(r.data.polygons) > 0)
+check('Vertical preset: soft foot + straight-up wall', q.profile == 'WALL' and q.wall_angle == 90.0 and
+      abs(q.foot - q.height * pd.FOOT_FRAC) < 1e-6 and len(r.data.polygons) > 0)
+ds, hs = pd.wall_profile(1.0, 90.0, 0.3)
+check('foot is tangent to the surface (starts flat), then the wall is vertical up to the top',
+      hs[1] < 0.02 and abs(ds[-1] - ds[-2]) < 0.01 and abs(hs[-1] - 1.0) < 1e-9, (ds, hs))
 bpy.ops.mch.pdetail_rise_preset(preset='SLANT')
-check('Slanted preset: chamfer, slope about a third of the height', q.profile == 'CHAMFER' and
-      abs(q.ramp - q.height * 0.36) < 1e-6)
+ds2, hs2 = pd.wall_profile(1.0, 70.0, 0.3)
+check('Slanted preset: wall 70 degrees, foot kept', q.profile == 'WALL' and q.wall_angle == 70.0 and
+      abs((hs2[-1] - hs2[-2]) / (ds2[-1] - ds2[-2]) - __import__('math').tan(__import__('math').radians(70))) < 1e-6)
 bpy.ops.mch.pdetail_rise_preset(preset='ROUND')
 check('Round preset back', q.profile == 'ROUND')
 pd._PENDING.clear()
