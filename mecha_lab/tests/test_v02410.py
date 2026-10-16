@@ -1,6 +1,6 @@
 """0.24.10 two new tools in the tool list: Plate Detail 3 (the Plate Detail 1 build without trim layers - a flat
-raised panel with straight walls, Height / Lift live) and Mesh Curve Same Size (Repeat with every copy the same
-size: point radius and start / end size ignored, Radius / Size scale all copies together)."""
+raised panel with straight walls, Height / Lift live) and Line Curve (its own tool: copies along the curve, every
+copy the same size - point radius and start / end size ignored, Radius / Size scale all copies together)."""
 import sys
 
 _src = open(__file__.replace('test_v02410.py', 'test_v0200.py')).read()
@@ -80,7 +80,7 @@ check('Plate Detail 1 still makes a layered trim', d1.mch_pdetail.kind == 'TRIM'
 for o in list(bpy.data.objects):
     bpy.data.objects.remove(o)
 
-# ---- Mesh Curve Same Size
+# ---- Line Curve
 src = cube('Src', 1.0)
 tube = ct.new_tube(C, Vector((0, 0, 0)), mode='REPEAT_SAME')
 check('new curve in Same Size mode', tube.mch_tube.mode == 'REPEAT_SAME')
@@ -116,6 +116,25 @@ szr = copy_sizes(tube, 4)
 check('normal Repeat still follows the point radius / start-end size', max(szr) - min(szr) > 1e-3, szr)
 check('Same Size curves are followed for source edits like Repeat', 'REPEAT_SAME' in ct.REPEAT_MODES)
 check('tool pick passes the mode to the draw operator', 'mode' in ct.MCH_OT_tube_draw.__annotations__)
+check('named Line Curve in the tool list / bottom bar', ts.TOOL_BY_ID['TUBE_SAME'][1] == 'Line Curve' and
+      any(t[0] == 'TUBE_SAME' and t[1] == 'Line Curve' for t in bb.BAR_TOOLS))
+check('Mesh Curve defaults have no Line Curve mode (separate tool)', 'REPEAT_SAME' not in
+      {i.identifier for i in S.mch_tube_defaults.bl_rna.properties['mode'].enum_items})
+tb.mode = 'REPEAT_SAME'
+C.view_layer.objects.active = tube
+ct.MCH_OT_tube_toggle.execute(types.SimpleNamespace(option='MODE'), C)
+check('the Mode toggle never turns a Line Curve into Tube / Repeat', tb.mode == 'REPEAT_SAME')
+tb.mode = 'TUBE'
+for _ in range(3):
+    ct.MCH_OT_tube_toggle.execute(types.SimpleNamespace(option='MODE'), C)
+    check('Mesh Curve Mode toggle stays Tube / Repeat', tb.mode in {'TUBE', 'REPEAT'})
+tb.mode = 'REPEAT_SAME'
+S.mch_settings.mch_active_tool = 'TUBE'
+check('Line Curve HUD only in the Line Curve tool', not ct.tool_owns(C, tube))
+S.mch_settings.mch_active_tool = 'TUBE_SAME'
+check('... and shown there', ct.tool_owns(C, tube))
+tb.mode = 'REPEAT'
+check('a Mesh Curve repeat is not the Line Curve tool\'s', not ct.tool_owns(C, tube))
 
 mecha_lab.unregister()
 sys.exit(1 if summary() else 0)

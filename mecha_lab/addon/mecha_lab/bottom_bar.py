@@ -28,7 +28,7 @@ BAR_TOOLS = (
     ('DETAIL3', 'Detail 3', '', 'MESH_PLANE', 'mch.set_tool', 'DETAIL3'),
     ('SCREW', 'Screw', '', 'RADIOBUT_ON', 'mch.set_tool', 'SCREW'),
     ('TUBE', 'Curve', '', 'CURVE_BEZCURVE', 'mch.set_tool', 'TUBE'),
-    ('TUBE_SAME', 'Curve =', '', 'CURVE_BEZCURVE', 'mch.set_tool', 'TUBE_SAME'),
+    ('TUBE_SAME', 'Line Curve', '', 'CURVE_BEZCURVE', 'mch.set_tool', 'TUBE_SAME'),
     ('SKIN', 'Skin', '', 'OUTLINER_OB_FORCE_FIELD', 'mch.creature_brush', 'SKIN'),
     ('SHELL', 'Shell', '', 'MESH_ICOSPHERE', 'mch.creature_brush', 'SHELL'),
 )

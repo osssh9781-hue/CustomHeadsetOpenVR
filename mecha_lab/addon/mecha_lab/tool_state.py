@@ -67,8 +67,8 @@ TOOLS = (
     ('TUBE', 'Mesh Curve', 'Nomad-style curve: click points (on the mesh or in the air), a live solid tube right '
      'away - radius per point, profile, cap, hole, twist - or Repeat your own (linked) object along it with spacing',
      'cable', 'CURVE_BEZCURVE', None, 'OK'),
-    ('TUBE_SAME', 'Mesh Curve Same Size', 'Mesh Curve that repeats your object along the curve, every copy the '
-     'same size: point radius and start / end size are ignored, Radius / Size scale all copies together',
+    ('TUBE_SAME', 'Line Curve', 'Click points: your object (or a sphere) repeated along the curve, every copy the '
+     'same size - Radius / Size scale all copies together; live until Apply',
      'cable', 'CURVE_BEZCURVE', None, 'OK'),
     ('LOFT', 'Loft / Surface', 'Smooth surface through 2+ curves, or sweep a profile along a path (live)',
      'loft', 'SURFACE_DATA', None, 'PARTIAL'),
