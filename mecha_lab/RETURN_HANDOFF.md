@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.9 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.10 (Claude Code, 2026-10-14)
+
+## 0.24.10
+- ZIP sha256 `f94b74c3adf34f1c10149fb24573923d3e20b991840b8d8c0288eee3afc5dea5`. 새 툴 id `DETAIL3`(enum 32, 네이티브 `mecha.plate_detail3`, SHAPE_TOOLS / lasso_sketch.MODES / cut_engine 모드 집합에 추가)와 `TUBE_SAME` = Line Curve(enum 33, 네이티브 없음). `plate_detail`: kind `FLAT`, `KINDS['DETAIL3']`, `TOOL_OF_KIND`, 속성 `flat_h`(LENGTHS, 기본 FLAT_FRAC 0.02), rebuild FLAT = `build_detail(region, [], flat_h, lift=...)`(층 없음 → 판 하나 + 벽). `curve_tube`: 모드 `REPEAT_SAME`(`REPEAT_MODES`), repeat_mesh에서 sc = size × radius / 원본 크기(점 반지름 / 테이퍼 무시), `new_tube(..., mode)`, `tube_draw.mode`, `start_draw(..., mode)`; `activate_mecha_tool('TUBE_SAME')` → 활성 오브젝트가 REPEAT_SAME 튜브면 편집, 아니면 새로. `tool_owns(context, ob)`: Line Curve 오브젝트(REPEAT_SAME)는 TUBE_SAME 툴에서만, 나머지 튜브는 TUBE 툴에서만 HUD / 패널. `draw_line` = Line Curve 패널. Mesh Curve의 Mode 토글은 TUBE / REPEAT만, Line Curve는 안 바뀜. 기본값(mch_tube_defaults.mode)에는 REPEAT_SAME 없음.
 
 ## 0.24.9
 - ZIP sha256 `f8262d1b2c7b421f474ddf8a3143dc59f714f73a6c354bd0016ce56fae07b96d`. `core_geometry.boolean_result`가 `_boolean_result`를 감쌈: "does not intersect"이고 대상에 켜진 MIRROR 모디파이어가 있으면 `mirror_reflections(target)`(축 조합별 월드 반사 행렬, mirror_object 있으면 그 기준) → `_cutter_with_reflections`로 커터 + 반사 복사본(면 뒤집음) 메쉬를 잠시 커터에 끼워 다시 실행, 끝나면 원래 메쉬 복원 / 임시 메쉬 삭제.

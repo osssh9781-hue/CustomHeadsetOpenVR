@@ -35,6 +35,18 @@ for klass in (ap.MCH_GGT_plate_hud, rp.MCH_GGT_random_hud, cs.MCH_GGT_shell_hud,
 check('Armor Plate / Random Panels / Creature Shell / Tube / Robot HUD polls check their tool',
       "hud_for(context, {'PLATE'})" in src['mecha_lab.armor_plate'] and "hud_for(context, {'PLATE'})" in src['mecha_lab.random_panels']
       and "hud_for(context, {'PLATE'})" in src['mecha_lab.creature_shell'] and
-      src['mecha_lab.curve_tube'].count("hud_for(context, {'TUBE'})") >= 2 and "_ts.hud_for(context, {'BASE'})" in src['mecha_lab.robot_base'])
+      src['mecha_lab.curve_tube'].count("tool_owns(context, context.active_object)") >= 2 and
+      "hud_for(context, {'TUBE_SAME'} if is_line_curve(ob) else {'TUBE'})" in src['mecha_lab.curve_tube'] and
+      "_ts.hud_for(context, {'BASE'})" in src['mecha_lab.robot_base'])
+# 0.24.10 the Tube HUD goes through curve_tube.tool_owns: really gated by the tool
+from mathutils import Vector as _V
+_t = ct.new_tube(C, _V((0, 0, 0)))
+_prev = S.mch_settings.mch_active_tool
+S.mch_settings.mch_active_tool = 'BASE'
+check('Tube HUD hidden in another tool', not ct.tool_owns(C, _t))
+S.mch_settings.mch_active_tool = 'TUBE'
+check('Tube HUD shown in Mesh Curve', ct.tool_owns(C, _t))
+S.mch_settings.mch_active_tool = _prev
+bpy.data.objects.remove(_t)
 mecha_lab.unregister()
 sys.exit(1 if summary() else 0)

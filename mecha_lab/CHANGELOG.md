@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 0.24.10 — 새 툴 Plate Detail 3, Line Curve (2026-10-16)
+
+- **Plate Detail 3**(툴 목록 / 아래 버튼 줄 "Detail 3"): Plate Detail 1에서 계단 테두리(트림 층)를 뺀 버전. 그린 모양 그대로 평평한 판이 수직 벽으로 올라옴. Height(기본 크기의 2 %) / Lift 실시간, Enter = Apply, 라쏘 스케치도 됨. Plate Detail 1 / 2는 그대로.
+- **Line Curve**(새 툴, 툴 목록 / 아래 버튼 줄 "Line Curve"): Mesh Curve와 별개 툴. 점을 찍으면 내 오브젝트(없으면 구)가 커브를 따라 반복되고, 복사본이 모두 같은 크기. 점마다의 반지름(주황 점 / Ctrl+휠)과 Start / End Size는 무시, Radius / Size를 바꾸면 전체가 같이 커지고 작아짐. Linked Object / Count·Distance / Align / Rotate / Twist / 점 편집 / IK / Apply는 Mesh Curve의 Repeat과 같음. Mesh Curve 툴은 그대로(Tube / Repeat), 서로의 결과는 각자 툴에서만 편집 패널 / 아래 버튼이 뜸.
+- 테스트: 74개 파일 2488/2488 (`tests/test_log_bpy501_v02410.txt`; 전체 실행에서 test_v02321의 소스 문자열 검사 1개가 HUD 판정을 tool_owns로 옮긴 탓에 실패 → 실제 동작 검사로 고쳐 그 파일만 다시 실행 13/13), 새 `test_v02410.py`(31). ZIP sha256 `f94b74c3adf34f1c10149fb24573923d3e20b991840b8d8c0288eee3afc5dea5`.
+
 ## 0.24.9 — 살아있는 Mirror의 반대쪽에 그려도 Cut이 됨 (2026-10-16)
 
 - **Mirror(살아있는 미러) 뒤 Cut이 안 먹던 문제**: 미러로 생긴 반대쪽(복사본) 위에 모양을 그리면 Auto Target은 그 메쉬를 찾지만, 실제 자르기는 미러 전 원본 반쪽만 보기 때문에 "The shape does not intersect the mesh"로 아무것도 안 바뀌었음. 월드 축으로 뒤집은 뒤(음수 스케일)에는 원본이 반대편으로 가서 늘 이렇게 됨. → 원본과 안 겹치면 그린 모양을 Mirror 축(피벗 오브젝트 포함)으로 뒤집어 원본 반쪽을 자름. 미러가 양쪽에 똑같이 보여줌. Split도 같은 경로.

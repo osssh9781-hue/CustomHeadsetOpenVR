@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.9
+# Test Report — Mecha Lab 0.24.10
+
+## 0.24.10 결과: 74개 파일 2488/2488 (`tests/test_log_bpy501_v02410.txt`; 전체 실행에서 test_v02321의 소스 문자열 검사 1개가 HUD 판정을 tool_owns로 옮긴 탓에 실패 → 실제 동작 검사로 고쳐 그 파일만 다시 실행 13/13) (`tests/test_log_bpy501_v02410.txt`). test_v02410(31): 두 툴이 툴 목록 / 아래 버튼 / 설정 패널 / enum에 있음, Detail 3 라쏘 → 평평한 판(높이 단계 2개: 윗면, 묻힌 바닥), 기본 높이 2 %, 닫힌 솔리드, 벽이 수직(윗면 폭 = 바닥 폭), Height / Lift 실시간, Enter 대상, Detail 1은 계단 그대로; Line Curve: 점 반지름 1 / 3 / 0.3 + Start 0.5 / End 2에도 복사본 4개 크기 같음, Radius ×2 / Size ×0.5가 전체에 똑같이, 일반 Repeat은 여전히 크기가 달라짐, 이름 Line Curve, Mesh Curve 기본값 / Mode 토글에 Line Curve 없음, Line Curve는 토글로 안 바뀜, HUD는 각자 툴에서만. 뷰포트 미검증.
 
 ## 0.24.9 결과: 73개 파일 2439/2439 (`tests/test_log_bpy501_v0249.txt`) (`tests/test_log_bpy501_v0249.txt`). test_v0249(15): 원본 쪽 / 미러 쪽 / 뒤집은 뒤(scale.x -1) 양쪽에서 Cut 성공, 홈 위치가 원본 반쪽 x 2.2 ~ 2.8, 닫힌 솔리드 유지, 피벗(Empty x=1) 미러 반대쪽 → 2.55 ~ 3.05, 미러 없는 메쉬 옆은 그대로 '변경 없음', 임시 메쉬 안 남음. Box Hide Ctrl+Z는 headless에서 Undo를 못 돌려 재현 못 함.
 
