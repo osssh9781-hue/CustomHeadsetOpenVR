@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.10 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.11 (Claude Code, 2026-10-14)
+
+## 0.24.11
+- ZIP sha256 `d6a19ae92a64f7093a2d7aecf1160481066c94762ce12ebdf60b8b5b1ddd4d33`. `box_hide._sharers(vol, skip)` / `_detach_sharers(context, vol, owner)`: perform에서 대상의 볼륨을 바꾸기 전에 같은 볼륨을 가리키는 다른 메쉬마다 볼륨 복사본(오브젝트 + 메쉬)을 만들어 모디파이어 Volume 입력을 바꿈, `vol[VOL_KEY] = owner.name`. show_all / apply는 `_sharers`가 비었을 때만 볼륨 삭제. `lasso_sketch.commit` HIDE: `mch_cut.targets`가 SELECTED면 auto_targets ∩ 선택, ACTIVE면 ∩ 활성.
 
 ## 0.24.10
 - ZIP sha256 `f94b74c3adf34f1c10149fb24573923d3e20b991840b8d8c0288eee3afc5dea5`. 새 툴 id `DETAIL3`(enum 32, 네이티브 `mecha.plate_detail3`, SHAPE_TOOLS / lasso_sketch.MODES / cut_engine 모드 집합에 추가)와 `TUBE_SAME` = Line Curve(enum 33, 네이티브 없음). `plate_detail`: kind `FLAT`, `KINDS['DETAIL3']`, `TOOL_OF_KIND`, 속성 `flat_h`(LENGTHS, 기본 FLAT_FRAC 0.02), rebuild FLAT = `build_detail(region, [], flat_h, lift=...)`(층 없음 → 판 하나 + 벽). `curve_tube`: 모드 `REPEAT_SAME`(`REPEAT_MODES`), repeat_mesh에서 sc = size × radius / 원본 크기(점 반지름 / 테이퍼 무시), `new_tube(..., mode)`, `tube_draw.mode`, `start_draw(..., mode)`; `activate_mecha_tool('TUBE_SAME')` → 활성 오브젝트가 REPEAT_SAME 튜브면 편집, 아니면 새로. `tool_owns(context, ob)`: Line Curve 오브젝트(REPEAT_SAME)는 TUBE_SAME 툴에서만, 나머지 튜브는 TUBE 툴에서만 HUD / 패널. `draw_line` = Line Curve 패널. Mesh Curve의 Mode 토글은 TUBE / REPEAT만, Line Curve는 안 바뀜. 기본값(mch_tube_defaults.mode)에는 REPEAT_SAME 없음.

@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 0.24.11 — Box Hide: Selected Only 지킴, Shift+D 복제본이 같이 잘리던 문제 (2026-10-16)
+
+- **스케치 + Enter가 Selected Only를 무시하던 문제**: 스케치로 그린 Box Hide는 Targets 설정과 상관없이 덮인 메쉬를 전부 대상으로 했음. → Selected Only면 선택한 메쉬만, Active면 활성 메쉬만(바로 그리는 Box Hide와 같음).
+- **Shift+D 복제본까지 잘리던 문제**: 숨긴 메쉬를 Shift+D로 복제하면 복제본의 Box Hide 모디파이어가 원본과 같은 "숨김 볼륨"을 가리킴 → 원본에 더 숨기면 복제본도 같이 잘림. → 볼륨을 바꾸기 전에 같은 볼륨을 쓰는 다른 메쉬에 지금 모양 그대로의 자기 볼륨을 따로 줌. Show All / Apply도 다른 메쉬가 쓰는 볼륨은 지우지 않음.
+- 테스트: 75개 파일 2499/2499 (`tests/test_log_bpy501_v02411.txt`), 새 `test_v02411.py`(11). ZIP sha256 `d6a19ae92a64f7093a2d7aecf1160481066c94762ce12ebdf60b8b5b1ddd4d33`.
+
 ## 0.24.10 — 새 툴 Plate Detail 3, Line Curve (2026-10-16)
 
 - **Plate Detail 3**(툴 목록 / 아래 버튼 줄 "Detail 3"): Plate Detail 1에서 계단 테두리(트림 층)를 뺀 버전. 그린 모양 그대로 평평한 판이 수직 벽으로 올라옴. Height(기본 크기의 2 %) / Lift 실시간, Enter = Apply, 라쏘 스케치도 됨. Plate Detail 1 / 2는 그대로.

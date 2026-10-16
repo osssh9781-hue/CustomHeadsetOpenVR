@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.10
+# Test Report — Mecha Lab 0.24.11
+
+## 0.24.11 결과: 75개 파일 2499/2499 (`tests/test_log_bpy501_v02411.txt`) (`tests/test_log_bpy501_v02411.txt`). test_v02411(11): 두 큐브를 덮는 스케치 + Selected Only(A만 선택) → A만 숨김, 아무것도 선택 안 함 → 안 숨김, Auto → 둘 다; Shift+D처럼 복사한 오브젝트는 처음엔 같은 볼륨 → A에 다시 숨기면 복제본은 자기 볼륨(첫 모양 그대로), A는 두 모양, 볼륨 이름표 각자, 공유 중 Show All은 볼륨을 안 지움. 뷰포트 미검증.
 
 ## 0.24.10 결과: 74개 파일 2488/2488 (`tests/test_log_bpy501_v02410.txt`; 전체 실행에서 test_v02321의 소스 문자열 검사 1개가 HUD 판정을 tool_owns로 옮긴 탓에 실패 → 실제 동작 검사로 고쳐 그 파일만 다시 실행 13/13) (`tests/test_log_bpy501_v02410.txt`). test_v02410(31): 두 툴이 툴 목록 / 아래 버튼 / 설정 패널 / enum에 있음, Detail 3 라쏘 → 평평한 판(높이 단계 2개: 윗면, 묻힌 바닥), 기본 높이 2 %, 닫힌 솔리드, 벽이 수직(윗면 폭 = 바닥 폭), Height / Lift 실시간, Enter 대상, Detail 1은 계단 그대로; Line Curve: 점 반지름 1 / 3 / 0.3 + Start 0.5 / End 2에도 복사본 4개 크기 같음, Radius ×2 / Size ×0.5가 전체에 똑같이, 일반 Repeat은 여전히 크기가 달라짐, 이름 Line Curve, Mesh Curve 기본값 / Mode 토글에 Line Curve 없음, Line Curve는 토글로 안 바뀜, HUD는 각자 툴에서만. 뷰포트 미검증.
 
