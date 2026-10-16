@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.4 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.5 (Claude Code, 2026-10-14)
+
+## 0.24.5
+- ZIP sha256 `b67a52f9c48ff0a725229f0335d2696de3e215c189e98c437d91ef8fc5a64ed1`. `workspace_ui.ENTER_APPLY` + `enter_apply_target` + `MCH_OT_enter_apply`(Object Mode 키맵 RET / NUMPAD_ENTER, 도구 키맵의 스케치 Enter가 먼저). `cut_engine.object_under` / `double_click_leave`(exit_tool + mch.select_move), 모달 POINTS에서 점 ≤ 1일 때 DOUBLE_CLICK / 빠른 재클릭, invoke에 DOUBLE_CLICK이 오면 나가기. `screw_stamp`: 키맵 DOUBLE_CLICK(leave) 먼저, `_LAST`로 첫 클릭 나사 되돌림. `cut_presets`: filter_glob png/jpg/jpeg, 알파 없으면 LUMINANCE, 비-PNG는 Blender로 PNG 저장. `MCH_OT_stamp_scale`(휠, CUSTOM일 때만). `base_mesh._rebuild_update`가 CARRY_KEYS를 Scene.mch_base로 복사. `base_mesh.cut_like_cut_tool` = auto_targets + perform_closed('CUT'), sketch_commit(cutter)는 현재 뷰 projector로 화면 루프 만들어 같은 경로(뷰 없으면 옛 경로).
 
 ## 0.24.4
 - ZIP sha256 `30cbb736ab1ec444ad5c2af777e22af560757a0de6f9110a6723c9c86503af15`. `cloth_sim._slider_update`는 `mch_pcloth_dirty`만 표시, `MCH_OT_panel_cloth_refresh` = redo(현재 값). `plate_detail`: `wall_profile(height, wall_angle, foot)` → (거리, 높이) 목록(원호 6단 + 벽), `build_rise`는 레벨 목록으로 자르고 np.interp로 높이(ROUND/CHAMFER도 같은 경로), 속성 wall_angle / foot(LENGTHS에 foot, fractions에 wall_angle), `RISE_PRESETS` + `MCH_OT_pdetail_rise_preset`(FOOT_FRAC 0.6).

@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 0.24.5 — Enter = Apply, 더블클릭으로 툴 나가기, JPEG 스탬프, 휠 = 스탬프 크기, Base Mesh 설정 유지, Alt Base Mesh = Cut (2026-10-16)
+
+- **Enter = Apply**: 선택한 오브젝트의 라이브 결과를 적용(먼저 맞는 하나): Plate Detail → Armor Plate → Cloth Plate → Base Mesh → Mirror → Box Hide → Curve. 스케치 중이면 Enter는 예전처럼 스케치 적용.
+- **더블클릭으로 툴 나가기**: 아무것도 안 그린 상태에서 더블클릭 = Select로. 빈 곳이면 선택 유지, 다른 메쉬면 그 메쉬 선택. 라쏘를 그리는 중(점 2개 이상)이면 예전처럼 닫고 적용. Screw Stamp는 첫 클릭의 나사를 되돌리고 나감.
+- **스탬프 불러오기에 JPEG**(.jpg / .jpeg): 투명 없으면 밝기 기준, 라이브러리에는 PNG로 보관. 버튼 "Import PNG / JPG".
+- **마우스 휠 = 스탬프 크기**(스탬프 모양일 때만, 한 칸 10 %, 아니면 화면 확대 / 축소).
+- **Base Mesh**: 살아있는 모양에서 바꾼 높이 / 프로파일 / 베벨 등이 다음 모양에도 유지(매번 예전 기본값으로 돌아가던 문제).
+- **Alt Base Mesh = Cut 툴처럼**(깊이 모드 / 깊이 / Edge Finish / Solver를 Cut 설정으로): 예전 커터는 Height 깊이라 얇은 판의 뒷면까지 뚫었음. 스케치 Alt + Enter도 같음.
+- 테스트: 70개 파일 2396/2396 (`tests/test_log_bpy501_v0245.txt`), 새 `test_v0245.py`(21), 옛 Alt 커터 검사(test_v0100_regression) 새 동작으로 수정. ZIP sha256 `b67a52f9c48ff0a725229f0335d2696de3e215c189e98c437d91ef8fc5a64ed1`.
+
 ## 0.24.4 — Panel Cloth Refresh 버튼, Plate Detail 2 프리셋(Vertical / Slanted / Round) (2026-10-16)
 
 - **Panel Cloth**: Tension / Gravity를 바꿔도 바로 다시 굽지 않음 - **Refresh** 버튼(바뀐 값이 있으면 빨갛게)을 눌러야 새 값으로 다시 굽기. 기본 결과는 그대로 0.23.25와 같음.

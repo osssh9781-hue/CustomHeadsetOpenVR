@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.4
+# Test Report — Mecha Lab 0.24.5
+
+## 0.24.5 결과: 70개 파일, 2396 / 2396 (`tests/test_log_bpy501_v0245.txt`, 최종 코드로 단독 실행). test_v0245(21): Enter 키맵 / 대상 / 적용, 더블클릭(그린 것 없음 → 취소 + 메쉬 선택, invoke 더블클릭, 그리는 중엔 닫기), 나사 되돌리기, JPEG 실제 파일 불러오기(원 1개, PNG 사본), 휠 크기(스탬프일 때만), Base Mesh 설정 유지(0.77 / Chamfer / 0.11), Alt Base Mesh = Cut(From Surface 0.3 → 뒷면 그대로). test_v0100_regression: 옛 "Alt 커터 = 뒤집힌 챔퍼 포켓" 검사 3개를 새 동작(Cut처럼) 검사로 바꿈. 뷰포트 미검증.
 
 ## 0.24.4 결과: 69개 파일, 2377 / 2377 (`tests/test_log_bpy501_v0244.txt`, 다른 실행과 겹치지 않게 단독). 이 실행 뒤 Plate Detail 2 Foot + Wall을 추가해 test_v0240(23) / test_v0241(16)을 다시 돌려 통과(프리셋, 바닥 접선 / 벽 각도 검사). test_v02328(12): Refresh 버튼(바꿔도 안 구움, 표시, Refresh로 굽기). 렌더로 모양 확인 `reference/plate_detail2_presets_v0244.png`. 뷰포트 미검증.
 
