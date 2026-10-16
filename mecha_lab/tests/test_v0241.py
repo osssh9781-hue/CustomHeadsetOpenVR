@@ -65,6 +65,15 @@ q.profile = 'CHAMFER'
 pd.rebuild(r)
 pd._PENDING.clear()
 check('Chamfer builds', len(r.data.polygons) > 0)
+bpy.ops.mch.pdetail_rise_preset(preset='VERTICAL')
+check('Vertical preset: chamfer, slope tiny next to the height', q.profile == 'CHAMFER' and q.ramp <= q.height * 0.05
+      and len(r.data.polygons) > 0)
+bpy.ops.mch.pdetail_rise_preset(preset='SLANT')
+check('Slanted preset: chamfer, slope about a third of the height', q.profile == 'CHAMFER' and
+      abs(q.ramp - q.height * 0.36) < 1e-6)
+bpy.ops.mch.pdetail_rise_preset(preset='ROUND')
+check('Round preset back', q.profile == 'ROUND')
+pd._PENDING.clear()
 
 # ---- Box Hide with a sketch
 for o in list(bpy.data.objects):

@@ -399,6 +399,7 @@ def is_pcloth(ob):
     return ob is not None and bool(ob.get('mch_pcloth'))
 
 
+DIRTY_KEY = 'mch_pcloth_dirty'
 TENSION_KEY = 'mch_pcloth_tension'
 GRAVITY_KEY = 'mch_pcloth_gravity'
 
@@ -481,15 +482,12 @@ def _on_undo_pre(*_args):
 
 
 def _slider_update(self, _context):
-    """0.23.28 live: changing Tension / Gravity bakes the cloth again shortly
-    after the last change (not on every drag step)."""
+    """0.24.4 changing Tension / Gravity only marks the cloth: Refresh bakes it
+    again with the new values (no automatic re-bake)."""
     if _SYNC[0] or not is_pcloth(self):
         return
     self[GRAVITY_KEY] = float(self.mch_pcloth_gravity)
-    _PENDING[self.name] = True
-    if bpy.app.timers.is_registered(_rebake_timer):
-        bpy.app.timers.unregister(_rebake_timer)
-    bpy.app.timers.register(_rebake_timer, first_interval=0.4)
+    self[DIRTY_KEY] = True
 
 
 def _apply_preset(self, _context):
@@ -638,9 +636,13 @@ def draw(layout, context):
     ob = context.active_object
     if is_pcloth(ob):
         col = box.column(align=True)
-        col.label(text='Live (bakes again on change)', icon='MOD_CLOTH')
         col.prop(ob, 'mch_pcloth_tension', slider=True)
         col.prop(ob, 'mch_pcloth_gravity', slider=True)
+        row = box.row()
+        row.scale_y = 1.3
+        row.alert = bool(ob.get(DIRTY_KEY))
+        row.operator('mch.panel_cloth_refresh', icon='FILE_REFRESH',
+                     text='Refresh (apply changes)' if ob.get(DIRTY_KEY) else 'Refresh')
         box.label(text=f'{ob.name}: redo with', icon='FILE_REFRESH')
         grid = box.grid_flow(columns=3, align=True)
         cur = ob.get('mch_pcloth_preset', '')
@@ -648,7 +650,33 @@ def draw(layout, context):
             grid.operator('mch.panel_cloth_redo', text=label, depress=(pid == cur)).preset = pid
 
 
-CLASSES = (MCH_OT_panel_cloth, MCH_OT_panel_cloth_redo)
+class MCH_OT_panel_cloth_refresh(bpy.types.Operator):
+    """Bake this cloth again with its current Tension / Gravity (and preset)"""
+    bl_idname = 'mch.panel_cloth_refresh'
+    bl_label = 'Refresh Cloth'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return is_pcloth(context.active_object)
+
+    def execute(self, context):
+        ob = context.active_object
+        made = redo(context, ob, ob.get('mch_pcloth_preset', '') or 'PADDING')
+        if not made:
+            self.report({'WARNING'}, 'The source of this cloth is gone')
+            return {'CANCELLED'}
+        for o in context.selected_objects:
+            o.select_set(False)
+        for o in made:
+            o.select_set(True)
+        context.view_layer.objects.active = made[0]
+        self.report({'INFO'}, f'Panel Cloth refreshed (Tension {made[0].mch_pcloth_tension:.2f}, '
+                              f'Gravity {made[0].mch_pcloth_gravity:.2f})')
+        return {'FINISHED'}
+
+
+CLASSES = (MCH_OT_panel_cloth, MCH_OT_panel_cloth_redo, MCH_OT_panel_cloth_refresh)
 
 
 def register():

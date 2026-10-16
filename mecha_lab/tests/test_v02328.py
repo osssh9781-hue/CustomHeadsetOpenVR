@@ -1,5 +1,5 @@
-"""0.23.28 Panel Cloth live Tension / Gravity sliders on the baked cloth: a change bakes the cloth again
-(debounced timer), the new cloth keeps the values; a preset redo resets Gravity to the preset."""
+"""Panel Cloth Tension / Gravity sliders on the baked cloth (0.24.4: a change only marks the cloth, Refresh bakes
+it again); the new cloth keeps the values; a preset redo resets Gravity to the preset."""
 import sys
 
 _src = open(__file__.replace('test_v02328.py', 'test_v0200.py')).read()
@@ -34,9 +34,9 @@ def zspan(ob):
 z0 = zspan(pc)
 name = pc.name
 pc.mch_pcloth_tension = 3.0
-check('Tension change queues a bake (timer)', name in cs._PENDING and bpy.app.timers.is_registered(cs._rebake_timer))
-bpy.app.timers.unregister(cs._rebake_timer)
-cs._rebake_timer()
+check('Tension change does not bake by itself, the cloth is marked', C.active_object == pc and
+      pc.get(cs.DIRTY_KEY) is True and not bpy.app.timers.is_registered(cs._rebake_timer))
+bpy.ops.mch.panel_cloth_refresh()
 new = C.active_object
 check('baked again: new cloth active, keeps Tension 3', cs.is_pcloth(new) and abs(new.mch_pcloth_tension - 3.0) < 1e-6
       and new.get('mch_pcloth_preset') == 'CLOTH')
@@ -45,9 +45,9 @@ check('Tension 3 = a third of the preset slack, stiffer', abs(mod_vals['shrink']
       < 1e-9 and mod_vals['tension'] == 3.0 and mod_vals['gravity'] == 2.0)
 z1 = zspan(new)
 check('tighter cloth folds less (height span not bigger)', z1 <= z0 + 1e-4, (z0, z1))
+check('refreshed cloth is not marked', not new.get(cs.DIRTY_KEY))
 new.mch_pcloth_gravity = 4.0
-bpy.app.timers.unregister(cs._rebake_timer)
-cs._rebake_timer()
+bpy.ops.mch.panel_cloth_refresh()
 g = C.active_object
 check('Gravity change bakes again and is kept', cs.is_pcloth(g) and abs(g.mch_pcloth_gravity - 4.0) < 1e-6 and
       abs(g.mch_pcloth_tension - 3.0) < 1e-6)

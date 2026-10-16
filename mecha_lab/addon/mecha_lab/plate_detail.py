@@ -845,6 +845,7 @@ def draw(layout, context, tool='DETAIL'):
         if kind == 'TRIM':
             _draw_trim(col, p)
         else:
+            _draw_rise_presets(col)
             col.prop(p, 'height')
             col.prop(p, 'ramp')
             col.prop(p, 'lift')
@@ -859,6 +860,7 @@ def draw(layout, context, tool='DETAIL'):
         if kind == 'TRIM':
             _draw_trim(col, st, scene_mode=True)
         else:
+            _draw_rise_presets(col)
             col.row(align=True).prop(st, 'profile', expand=True)
         layout.label(text='Sizes follow the outline; adjust them after drawing', icon='INFO')
     tip = ('Draw a closed outline on a plate: flat inside, trim along the edge' if kind == 'TRIM' else
@@ -885,7 +887,56 @@ class MCH_PT_plate_detail(bpy.types.Panel):
         draw(self.layout, context, 'DETAIL' if ob.mch_pdetail.kind == 'TRIM' else 'DETAIL2')
 
 
-CLASSES = (MCH_PG_PlateDetail, MCH_PG_PlateDetailScene, MCH_OT_pdetail_layers, MCH_OT_pdetail_apply,
+# 0.24.4 Detail 2 presets: (label, icon, edge profile, slope width as a factor of the height)
+RISE_PRESETS = (
+    ('VERTICAL', 'Vertical', 'Straight up from the surface (a wall)', 'CHAMFER', 0.03),
+    ('SLANT', 'Slanted', 'Rises with a slight tilt (about 20 degrees off vertical)', 'CHAMFER', 0.36),
+    ('ROUND', 'Round', 'Grows out of the surface with soft fillets (the default)', 'ROUND', None),
+)
+
+
+def _draw_rise_presets(col):
+    row = col.row(align=True)
+    for pid, label, _d, _prof, _k in RISE_PRESETS:
+        row.operator('mch.pdetail_rise_preset', text=label).preset = pid
+
+
+class MCH_OT_pdetail_rise_preset(bpy.types.Operator):
+    """Detail 2 preset: Vertical / Slanted / Round (for the selected detail and the next ones)"""
+    bl_idname = 'mch.pdetail_rise_preset'
+    bl_label = 'Detail 2 Preset'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    preset: EnumProperty(items=[(r[0], r[1], r[2]) for r in RISE_PRESETS])
+
+    @classmethod
+    def description(cls, context, properties):
+        return dict((r[0], r[2]) for r in RISE_PRESETS).get(properties.preset, '')
+
+    def execute(self, context):
+        import json
+        _pid, _l, _d, prof, k = next(r for r in RISE_PRESETS if r[0] == self.preset)
+        ob = active_detail(context)
+        if ob is not None and ob.mch_pdetail.kind == 'RISE':
+            p = ob.mch_pdetail
+            _SYNC[0] = True
+            try:
+                p.profile = prof
+                p.ramp = max(1e-4, p.height * k) if k is not None else RISE_DEFAULT['ramp'] * p.size
+            finally:
+                _SYNC[0] = False
+            remember(ob)
+            rebuild(ob)
+        else:
+            st = context.scene.mch_pdetail
+            st.profile = prof
+            f = _fractions(context.scene)
+            h = f.get('height', RISE_DEFAULT['height'])
+            f['ramp'] = h * k if k is not None else RISE_DEFAULT['ramp']
+            st.fractions = json.dumps(f)
+        return {'FINISHED'}
+
+
+CLASSES = (MCH_PG_PlateDetail, MCH_PG_PlateDetailScene, MCH_OT_pdetail_rise_preset, MCH_OT_pdetail_layers, MCH_OT_pdetail_apply,
            MCH_OT_pdetail_remove, MCH_PT_plate_detail)
 
 
