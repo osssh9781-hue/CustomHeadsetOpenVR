@@ -622,6 +622,16 @@ def _boolean_checked(context, cut, t, cutter, op, groups, projector, near, far, 
         raise cg.CutError(msg) from None
 
 
+def _confirm_fuse(context, targets):
+    """0.24.12 a live Smart Fuse preview is baked before it is cut: the cut works on the base mesh, and the
+    hidden fuse source was joined back in afterwards (the cut looked broken)."""
+    from . import fuse_confirm_live
+    try:
+        fuse_confirm_live(context, targets)
+    except RuntimeError as ex:
+        raise cg.CutError(str(ex)) from ex
+
+
 @_with_finish_notes
 def perform_closed(context, mode, targets, loops, projector, invert=False):
     """Cut / Split all targets with closed screen loops. Returns a report string."""
@@ -630,6 +640,7 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
     auto_apply = scene.mch_settings.auto_apply if hasattr(scene, 'mch_settings') else True
     groups = cg.prepare_loops(loops)
     _leave_edit_mode(context, targets)
+    _confirm_fuse(context, targets)
     from . import station_primitive
     frozen = [t.name for t in targets if station_primitive.freeze(t)]
     baked = [t.name for t in targets if cg.ensure_real_mesh(context, t)]
@@ -786,6 +797,7 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
     cut = scene.mch_cut
     auto_apply = scene.mch_settings.auto_apply if hasattr(scene, 'mch_settings') else True
     _leave_edit_mode(context, targets)
+    _confirm_fuse(context, targets)
     from . import station_primitive
     for t in targets:
         station_primitive.freeze(t)

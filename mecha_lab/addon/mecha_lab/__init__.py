@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 24, 11),
+    "version": (0, 24, 12),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
     "description": "Cut, Split, Base Mesh, Boolean, Face Extract, Armor Sculpt, Molding, Cable, Hollow, curve arrays, Mirror",
@@ -634,7 +634,7 @@ class MCH_PG_Fuse(bpy.types.PropertyGroup):
     source_original_display: StringProperty(default='TEXTURED')
 
 
-def fuse_build_group(source):
+def fuse_build_group(source, solver='EXACT'):
     group, output = output_group('MCH Smart Fuse | ' + source.name)
     group_input = group.nodes.new('NodeGroupInput')
     group_input.location = (-620, 160)
@@ -644,7 +644,7 @@ def fuse_build_group(source):
     join = group.nodes.new('GeometryNodeMeshBoolean')
     join.name = 'MCH_Union'
     join.operation = 'UNION'
-    join.solver = 'EXACT' # intersecting edge selection requires Exact/Manifold solver
+    join.solver = solver  # intersecting edge selection requires Exact/Manifold solver
     join.location = (-340, 140)
 
     # The Blender 4.x Mesh Boolean's UNION socket interface has changed between
@@ -784,94 +784,224 @@ def fuse_validate(context, target):
     return None
 
 
+def fuse_setup(context, target, source):
+    """Live Smart Fuse preview of ``source`` on ``target`` (raises RuntimeError, leaves nothing behind)."""
+    if source.data.shape_keys or target.data.shape_keys:
+        raise RuntimeError('remove/apply shape keys first')
+    if target.library or source.library:
+        raise RuntimeError('make local editable copies of linked-library objects first')
+    if target.mch_fuse.active and not fuse_is_live(target):
+        fuse_cleanup(target)            # stale flag (undo / removed modifiers): repair silently
+    occupied = [m.name for m in target.modifiers if m.name in
+                (_FUSE_MOD_GN, _FUSE_MOD_BEVEL, _FUSE_MOD_VOXEL, _FUSE_MOD_SMOOTH)]
+    if occupied:
+        raise RuntimeError('existing Smart Fuse modifiers found: finalize or remove them first')
+    for ob in (target, source):
+        _clear_fuse_seam(ob)
+    group = None
+    try:
+        # 0.24.12 Manifold solver when both meshes are closed: Exact broke the result on the 4th fuse of a chain
+        # (holes / overlapping faces), so the next Fuse and every Cut on it went wrong
+        closed = (core_geometry.non_manifold_edge_count(target.data) == 0 and
+                  core_geometry.non_manifold_edge_count(source.data) == 0)
+        group = fuse_build_group(source, 'MANIFOLD' if closed else 'EXACT')
+        node_mod = target.modifiers.new(_FUSE_MOD_GN, 'NODES')
+        node_mod.node_group = group
+        bevel = target.modifiers.new(_FUSE_MOD_BEVEL, 'BEVEL')
+        bevel.affect = 'EDGES'
+        bevel.limit_method = 'WEIGHT'
+        bevel.edge_weight = _FUSE_EDGE_ATTRIBUTE
+        bevel.loop_slide = True
+        bevel.use_clamp_overlap = True
+        bevel.segments = context.scene.mch_settings.fuse_segments
+        bevel.width = context.scene.mch_settings.fuse_radius
+        bevel.profile = 0.5
+        voxel = target.modifiers.new(_FUSE_MOD_VOXEL, 'REMESH')
+        voxel.mode = 'VOXEL'
+        voxel.use_smooth_shade = True
+        target.modifiers.new(_FUSE_MOD_SMOOTH, 'SMOOTH')
+        props = target.mch_fuse
+        props.source_original_hidden = source.hide_get()
+        props.source_original_hide_render = source.hide_render
+        props.source_original_display = source.display_type
+        props.source = source
+        props.active = True
+        props.mode = context.scene.mch_settings.fuse_mode
+        props.edge_style = context.scene.mch_settings.fuse_edge_style
+        props.radius = context.scene.mch_settings.fuse_radius
+        props.segments = context.scene.mch_settings.fuse_segments
+        props.voxel_size = context.scene.mch_settings.fuse_voxel_size
+        props.smooth_iterations = context.scene.mch_settings.fuse_smooth_iterations
+        props.smooth_factor = context.scene.mch_settings.fuse_smooth_factor
+        props.delete_source_on_confirm = True
+        fuse_sync(props, context)
+        problem = fuse_validate(context, target)
+        if problem and closed:
+            group.nodes['MCH_Union'].solver = 'EXACT'       # Manifold found no seam: try Exact
+            target.update_tag()
+            problem = fuse_validate(context, target)
+        if problem:
+            raise RuntimeError(problem)
+        source.hide_set(True)
+        source.hide_render = True
+        context.scene.mch_fuse_preview_target = target
+    except Exception:
+        # No partial node stack or hidden source should be left after failure.
+        fuse_cleanup(target)
+        # v0.5.9 crashed here: fuse_cleanup may already have removed the
+        # group, and touching a removed ID raises ReferenceError.
+        try:
+            if group is not None and group.users == 0:
+                bpy.data.node_groups.remove(group)
+        except ReferenceError:
+            pass
+        raise
+
+
+def _clear_fuse_seam(ob):
+    """0.24.12 the seam mark of an earlier (confirmed) fuse stayed on the mesh: the next fuse counted it as a
+    seam (a part far away 'fused'), and the bevel rounded the old seams again."""
+    me = ob.data if ob is not None and ob.type == 'MESH' else None
+    if me is None or me.users > 1:
+        return
+    attr = me.attributes.get(_FUSE_EDGE_ATTRIBUTE)
+    if attr is not None:
+        me.attributes.remove(attr)
+
+
+def fuse_confirm(context, target):
+    """Bake a live Smart Fuse preview into the target mesh. Returns an error text, or None when done."""
+    props = target.mch_fuse
+    source = props.source
+    if not source or source.name not in bpy.data.objects:
+        return 'Source object was removed: cannot confirm.'
+    # Apply only the active chain; undo remains Blender Ctrl+Z.
+    keep_mods = ((_FUSE_MOD_BEVEL,) if props.mode == 'SEAM'
+                 else (_FUSE_MOD_VOXEL, _FUSE_MOD_SMOOTH))
+    try:
+        safe_apply(context, target, target.modifiers[_FUSE_MOD_GN])
+        for name in keep_mods:
+            mod = target.modifiers.get(name)
+            if mod is not None and (name != _FUSE_MOD_SMOOTH or props.smooth_iterations > 0):
+                safe_apply(context, target, mod)
+    except Exception as exc:
+        return 'Could not apply fuse modifiers: ' + str(exc)
+    # GN has already been applied at this point, so the source is no longer needed.
+    if props.delete_source_on_confirm:
+        remove_object(source)
+    else:
+        fuse_restore_source(target)
+    fuse_cleanup(target, restore_source=False)
+    _clear_fuse_seam(target)
+    _purge_fuse_groups()
+    if getattr(context.scene, 'mch_fuse_preview_target', None) == target:
+        context.scene.mch_fuse_preview_target = None
+    return None
+
+
+def fuse_confirm_live(context, obs):
+    """0.24.12 confirm the live Smart Fuse previews among ``obs`` (a Cut / Split / next Fuse needs the real
+    mesh: on a preview it cut the base mesh only, and the hidden source was joined back in).  The selection
+    and active object are kept.  Returns the names confirmed; raises RuntimeError when one cannot be baked."""
+    live = [o for o in obs if fuse_is_live(o)]
+    if not live:
+        return []
+    sel = [o.name for o in context.selected_objects]
+    act = context.view_layer.objects.active
+    act_name = act.name if act is not None else None
+    done = []
+    for o in live:
+        err = fuse_confirm(context, o)
+        if err:
+            raise RuntimeError(f'Smart Fuse on {o.name}: {err}')
+        done.append(o.name)
+    for o in context.selected_objects:
+        o.select_set(False)
+    for n in sel:
+        ob = bpy.data.objects.get(n)
+        if ob is not None:
+            ob.select_set(True)
+    if act_name in bpy.data.objects:
+        context.view_layer.objects.active = bpy.data.objects[act_name]
+    return done
+
+
 class MCH_OT_fuse_create(bpy.types.Operator):
     bl_idname = 'mch.smart_fuse'
-    bl_label = 'Smart Fuse: Connect 2 Meshes'
-    bl_description = 'Active mesh is the target; automatically find overlap seam and bevel it, or use voxel soft fuse'
+    bl_label = 'Smart Fuse: Connect Meshes'
+    bl_description = ('Active mesh is the target; automatically find the overlap seam and bevel it, or use voxel '
+                      'soft fuse.  2 meshes: live preview.  3 or more: each one is fused into the active one')
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context):
         return (context.mode == 'OBJECT' and context.active_object and
                 context.active_object.type == 'MESH' and
-                len([o for o in context.selected_objects if o.type == 'MESH']) == 2)
+                len([o for o in context.selected_objects if o.type == 'MESH']) >= 2)
 
     def execute(self, context):
         target = context.active_object
-        meshes = [o for o in context.selected_objects if o.type == 'MESH']
-        if len(context.selected_objects) != 2:
-            self.report({'ERROR'}, 'Select exactly two mesh objects (no other object types).')
+        if any(o.type != 'MESH' for o in context.selected_objects):
+            self.report({'ERROR'}, 'Select mesh objects only (no other object types).')
             return {'CANCELLED'}
-        if any(o.data.shape_keys for o in meshes):
-            self.report({'ERROR'}, 'Smart Fuse: remove/apply shape keys first.')
+        sources = [o for o in context.selected_objects if o != target]
+        if not sources:
+            self.report({'ERROR'}, 'Select two or more different meshes.')
             return {'CANCELLED'}
-        source = next((o for o in meshes if o != target), None)
-        if target.mch_fuse.active and not fuse_is_live(target):
-            # stale flag (undo / removed modifiers): repair silently
-            fuse_cleanup(target)
-        if source is None or source == target or target.mch_fuse.active:
-            self.report({'ERROR'}, 'Select two different meshes, or finalize/cancel the existing Smart Fuse.')
-            return {'CANCELLED'}
-        if target.library or source.library:
-            self.report({'ERROR'}, 'Make local editable copies of linked-library objects first.')
-            return {'CANCELLED'}
-        occupied = [m.name for m in target.modifiers if m.name in
-                    (_FUSE_MOD_GN, _FUSE_MOD_BEVEL, _FUSE_MOD_VOXEL, _FUSE_MOD_SMOOTH)]
-        if occupied:
-            self.report({'ERROR'}, 'Existing Smart Fuse modifiers found: finalize or remove them first.')
-            return {'CANCELLED'}
+        # 0.24.12 a preview still live on the target (or a picked mesh) is confirmed first: fusing the next
+        # part onto it used to be refused ("finalize/cancel the existing Smart Fuse")
         try:
-            group = fuse_build_group(source)
-            node_mod = target.modifiers.new(_FUSE_MOD_GN, 'NODES')
-            node_mod.node_group = group
-            bevel = target.modifiers.new(_FUSE_MOD_BEVEL, 'BEVEL')
-            bevel.affect = 'EDGES'
-            bevel.limit_method = 'WEIGHT'
-            bevel.edge_weight = _FUSE_EDGE_ATTRIBUTE
-            bevel.loop_slide = True
-            bevel.use_clamp_overlap = True
-            bevel.segments = context.scene.mch_settings.fuse_segments
-            bevel.width = context.scene.mch_settings.fuse_radius
-            bevel.profile = 0.5
-            voxel = target.modifiers.new(_FUSE_MOD_VOXEL, 'REMESH')
-            voxel.mode = 'VOXEL'
-            voxel.use_smooth_shade = True
-            soft = target.modifiers.new(_FUSE_MOD_SMOOTH, 'SMOOTH')
-            props = target.mch_fuse
-            props.source_original_hidden = source.hide_get()
-            props.source_original_hide_render = source.hide_render
-            props.source_original_display = source.display_type
-            props.source = source
-            props.active = True
-            props.mode = context.scene.mch_settings.fuse_mode
-            props.edge_style = context.scene.mch_settings.fuse_edge_style
-            props.radius = context.scene.mch_settings.fuse_radius
-            props.segments = context.scene.mch_settings.fuse_segments
-            props.voxel_size = context.scene.mch_settings.fuse_voxel_size
-            props.smooth_iterations = context.scene.mch_settings.fuse_smooth_iterations
-            props.smooth_factor = context.scene.mch_settings.fuse_smooth_factor
-            props.delete_source_on_confirm = True
-            fuse_sync(props, context)
-            problem = fuse_validate(context, target)
-            if problem:
-                raise RuntimeError(problem)
-            source.hide_set(True)
-            source.hide_render = True
-            context.scene.mch_fuse_preview_target = target
-            activate_only(context, target)
-        except Exception as exc:
-            # No partial node stack or hidden source should be left after failure.
-            fuse_cleanup(target)
-            # v0.5.9 crashed here: fuse_cleanup may already have removed the
-            # group, and touching a removed ID raises ReferenceError.
-            try:
-                if 'group' in locals() and group.users == 0:
-                    bpy.data.node_groups.remove(group)
-            except ReferenceError:
-                pass
-            self.report({'ERROR'}, 'Smart Fuse setup failed: ' + str(exc))
+            fuse_confirm_live(context, [target] + sources)
+        except RuntimeError as exc:
+            self.report({'ERROR'}, str(exc))
             return {'CANCELLED'}
-        self.report({'INFO'}, 'Smart Fuse live preview created; edit settings, then Confirm / Apply.')
+        sources = [o for o in sources if o.name in bpy.data.objects]
+        if len(sources) == 1:
+            try:
+                fuse_setup(context, target, sources[0])
+            except Exception as exc:
+                self.report({'ERROR'}, 'Smart Fuse setup failed: ' + str(exc))
+                return {'CANCELLED'}
+            activate_only(context, target)
+            self.report({'INFO'}, 'Smart Fuse live preview created; edit settings, then Confirm / Apply.')
+            return {'FINISHED'}
+        # 0.24.12 several parts: nearest first, each fused into the active mesh and confirmed
+        tw = target.matrix_world.translation
+        sources.sort(key=lambda o: (o.matrix_world.translation - tw).length)
+        done, errors = [], {}
+        pending = [o.name for o in sources]       # names: a fused source object is deleted
+        progress = True
+        while pending and progress:     # a part may overlap the target only after its neighbour joined it
+            progress = False
+            for name in list(pending):
+                src = bpy.data.objects.get(name)
+                if src is None:
+                    pending.remove(name)
+                    continue
+                try:
+                    fuse_setup(context, target, src)
+                except Exception as exc:
+                    errors[name] = str(exc)
+                    continue
+                err = fuse_confirm(context, target)
+                if err:
+                    fuse_cleanup(target)
+                    errors[name] = err
+                    continue
+                done.append(name)
+                pending.remove(name)
+                progress = True
+        activate_only(context, target)
+        if not done:
+            self.report({'ERROR'}, 'Smart Fuse: nothing could be fused - ' +
+                        '; '.join(f'{n}: {errors.get(n, "?").splitlines()[0][:80]}' for n in pending))
+            return {'CANCELLED'}
+        msg = f'Smart Fuse: {len(done)} part(s) fused into {target.name}'
+        if pending:
+            msg += ' | not fused (no overlap): ' + ', '.join(pending)
+            self.report({'WARNING'}, msg)
+        else:
+            self.report({'INFO'}, msg)
         return {'FINISHED'}
 
 
@@ -926,31 +1056,10 @@ class MCH_OT_fuse_confirm(bpy.types.Operator):
         if not target:
             self.report({'ERROR'}, 'No active Smart Fuse preview')
             return {'CANCELLED'}
-        props = target.mch_fuse
-        source = props.source
-        if not source or source.name not in bpy.data.objects:
-            self.report({'ERROR'}, 'Source object was removed: cannot confirm.')
+        err = fuse_confirm(context, target)
+        if err:
+            self.report({'ERROR'}, err)
             return {'CANCELLED'}
-        # Apply only the active chain; undo remains Blender Ctrl+Z.
-        keep_mods = ((_FUSE_MOD_BEVEL,) if props.mode == 'SEAM'
-                     else (_FUSE_MOD_VOXEL, _FUSE_MOD_SMOOTH))
-        try:
-            safe_apply(context, target, target.modifiers[_FUSE_MOD_GN])
-            for name in keep_mods:
-                mod = target.modifiers.get(name)
-                if mod is not None and (name != _FUSE_MOD_SMOOTH or props.smooth_iterations > 0):
-                    safe_apply(context, target, mod)
-        except Exception as exc:
-            self.report({'ERROR'}, 'Could not apply fuse modifiers: ' + str(exc))
-            return {'CANCELLED'}
-        # GN has already been applied at this point, so the source is no longer needed.
-        if props.delete_source_on_confirm:
-            remove_object(source)
-        else:
-            fuse_restore_source(target)
-        fuse_cleanup(target, restore_source=False)
-        _purge_fuse_groups()
-        context.scene.mch_fuse_preview_target = None
         activate_only(context, target)
         self.report({'INFO'}, 'Smart Fuse applied; resulting mesh stays on the originally active object.')
         return {'FINISHED'}
