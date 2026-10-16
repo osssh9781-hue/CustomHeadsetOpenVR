@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.11 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.12 (Claude Code, 2026-10-14)
+
+## 0.24.12
+- ZIP sha256 `4cee1206061bc8027c9d0f197441ec14c4dc67a9fc8f4a8abdd70ab0034c9e9c`. `__init__`: `fuse_setup(context, target, source)`(예전 operator 본문, 실패 시 정리 후 raise), `fuse_confirm(context, target)`(에러 문자열 / None), `fuse_confirm_live(context, obs)`(라이브 미리보기 확정, 선택 / 활성 복원), `_clear_fuse_seam(ob)`(`_FUSE_EDGE_ATTRIBUTE` 삭제: setup 전 대상 / 소스, confirm 후 대상). `fuse_build_group(source, solver)`: 두 메쉬가 닫혀 있으면 MANIFOLD, 이음새 0이면 EXACT로 다시. `MCH_OT_fuse_create`: 2개 이상, 먼저 fuse_confirm_live, 3개 이상은 거리순으로 setup + confirm(진전 없을 때까지 반복, 이름으로 추적). `cut_engine._confirm_fuse`를 perform_closed / perform_line 앞에서 호출.
 
 ## 0.24.11
 - ZIP sha256 `d6a19ae92a64f7093a2d7aecf1160481066c94762ce12ebdf60b8b5b1ddd4d33`. `box_hide._sharers(vol, skip)` / `_detach_sharers(context, vol, owner)`: perform에서 대상의 볼륨을 바꾸기 전에 같은 볼륨을 가리키는 다른 메쉬마다 볼륨 복사본(오브젝트 + 메쉬)을 만들어 모디파이어 Volume 입력을 바꿈, `vol[VOL_KEY] = owner.name`. show_all / apply는 `_sharers`가 비었을 때만 볼륨 삭제. `lasso_sketch.commit` HIDE: `mch_cut.targets`가 SELECTED면 auto_targets ∩ 선택, ACTIVE면 ∩ 활성.
