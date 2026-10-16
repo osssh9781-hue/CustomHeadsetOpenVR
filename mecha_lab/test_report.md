@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.5
+# Test Report — Mecha Lab 0.24.6
+
+## 0.24.6 결과: 70개 파일, 2396 / 2397 (`tests/test_log_bpy501_v0246.txt`). 실패 1개 = test_v02319 "드래그 한 번 0.5초 이내"(0.514초) - 단독 재실행 0.497 / 0.567 / 0.539, 0.24.4 커밋을 worktree로 받아 같은 검사를 돌려도 0.519 / 0.609 / 0.542(예전 0.42 ~ 0.48)라 코드 변경이 아니라 지금 머신이 느린 것. 여러 파일 불러오기는 전체 실행 뒤 추가 → test_png_shapes(85) / test_v0245(22) / test_ui_draw(191) / test_register(11) 재실행 통과. test_v0245: 알파 PNG(투명 위 검은 네모) + JPG(흰 원)를 한 번에 → 2개, 각각 외곽선 1개. 뷰포트 미검증.
 
 ## 0.24.5 결과: 70개 파일, 2396 / 2396 (`tests/test_log_bpy501_v0245.txt`, 최종 코드로 단독 실행). test_v0245(21): Enter 키맵 / 대상 / 적용, 더블클릭(그린 것 없음 → 취소 + 메쉬 선택, invoke 더블클릭, 그리는 중엔 닫기), 나사 되돌리기, JPEG 실제 파일 불러오기(원 1개, PNG 사본), 휠 크기(스탬프일 때만), Base Mesh 설정 유지(0.77 / Chamfer / 0.11), Alt Base Mesh = Cut(From Surface 0.3 → 뒷면 그대로). test_v0100_regression: 옛 "Alt 커터 = 뒤집힌 챔퍼 포켓" 검사 3개를 새 동작(Cut처럼) 검사로 바꿈. 뷰포트 미검증.
 

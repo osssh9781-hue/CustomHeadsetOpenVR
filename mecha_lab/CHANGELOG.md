@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.24.6 — 스탬프 여러 파일 한 번에, Auto 전경, 휠은 다시 확대 / 축소 (2026-10-16)
+
+- **스탬프 불러오기에서 여러 파일 한 번에**(파일 창에서 Shift / Ctrl / 드래그로 선택): 이름은 각 파일 이름, 실패한 파일은 경고로 알려주고 나머지는 들어옴.
+- **Foreground: Auto**(새 기본값): 투명 배경이 있는 PNG는 불투명한 부분, 투명이 없는 JPG / PNG는 밝은 부분이 모양. White / Bright, Alpha도 그대로 고를 수 있음.
+- **마우스 휠 = 스탬프 크기 제거**(0.24.5): 크기는 드래그로, 휠은 다시 화면 확대 / 축소.
+- 테스트: 70개 파일 2396/2397 (`tests/test_log_bpy501_v0246.txt`) - 실패 1개는 test_v02319 시간 검사(0.514초). 같은 검사를 0.24.4 코드로 돌려도 지금은 0.52 ~ 0.61초라 이 머신이 느려진 것으로 판단(전에는 0.42 ~ 0.48초). 여러 파일 불러오기는 그 전체 실행 뒤에 넣어서 test_png_shapes / test_v0245 / test_ui_draw / test_register를 다시 돌려 통과. ZIP sha256 `f998927f74222572dd0ff0419d5806ecbf782dcca444ada21b6f9ad70b1f44ad`.
+
 ## 0.24.5 — Enter = Apply, 더블클릭으로 툴 나가기, JPEG 스탬프, 휠 = 스탬프 크기, Base Mesh 설정 유지, Alt Base Mesh = Cut (2026-10-16)
 
 - **Enter = Apply**: 선택한 오브젝트의 라이브 결과를 적용(먼저 맞는 하나): Plate Detail → Armor Plate → Cloth Plate → Base Mesh → Mirror → Box Hide → Curve. 스케치 중이면 Enter는 예전처럼 스케치 적용.

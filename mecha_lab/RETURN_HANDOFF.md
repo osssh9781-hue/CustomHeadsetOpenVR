@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.5 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.6 (Claude Code, 2026-10-14)
+
+## 0.24.6
+- ZIP sha256 `f998927f74222572dd0ff0419d5806ecbf782dcca444ada21b6f9ad70b1f44ad`. `cut_presets.MCH_OT_import_cut_png`: `files` (OperatorFileListElement) + `directory`, 파일마다 import_png, mode AUTO(알파 최소 < 0.999면 ALPHA). `MCH_OT_stamp_scale`와 휠 키맵 제거. test_v02319 시간 검사는 머신 속도에 민감(0.24.4 코드로도 0.52 ~ 0.61초).
 
 ## 0.24.5
 - ZIP sha256 `b67a52f9c48ff0a725229f0335d2696de3e215c189e98c437d91ef8fc5a64ed1`. `workspace_ui.ENTER_APPLY` + `enter_apply_target` + `MCH_OT_enter_apply`(Object Mode 키맵 RET / NUMPAD_ENTER, 도구 키맵의 스케치 Enter가 먼저). `cut_engine.object_under` / `double_click_leave`(exit_tool + mch.select_move), 모달 POINTS에서 점 ≤ 1일 때 DOUBLE_CLICK / 빠른 재클릭, invoke에 DOUBLE_CLICK이 오면 나가기. `screw_stamp`: 키맵 DOUBLE_CLICK(leave) 먼저, `_LAST`로 첫 클릭 나사 되돌림. `cut_presets`: filter_glob png/jpg/jpeg, 알파 없으면 LUMINANCE, 비-PNG는 Blender로 PNG 저장. `MCH_OT_stamp_scale`(휠, CUSTOM일 때만). `base_mesh._rebuild_update`가 CARRY_KEYS를 Scene.mch_base로 복사. `base_mesh.cut_like_cut_tool` = auto_targets + perform_closed('CUT'), sketch_commit(cutter)는 현재 뷰 projector로 화면 루프 만들어 같은 경로(뷰 없으면 옛 경로).
