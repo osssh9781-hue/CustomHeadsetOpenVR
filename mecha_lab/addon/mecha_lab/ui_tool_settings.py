@@ -107,7 +107,7 @@ def draw_shape_options(layout, context, mode):
         row.template_icon_view(context.scene, 'mch_png_preset', show_labels=True, scale=isz(5.0),
                                scale_popup=isz(5.0))
         row = box.row(align=True)
-        row.operator('mch.import_cut_png', text='Import PNG', icon='IMPORT')
+        row.operator('mch.import_cut_png', text='Import PNG / JPG', icon='IMPORT')
         if context.scene.mch_png_preset != 'NONE' and not cut_presets.is_builtin(context.scene.mch_png_preset):
             row.operator('mch.delete_cut_preset', text='', icon='TRASH')
         col = box.column(align=True)

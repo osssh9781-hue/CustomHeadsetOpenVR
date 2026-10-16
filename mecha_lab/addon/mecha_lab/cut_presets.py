@@ -255,6 +255,8 @@ def _load_pixels(filepath, mode, threshold, invert, max_pixels=512):
         a = np.empty(w * h * 4, dtype=np.float32)
         image.pixels.foreach_get(a)
         px = a.reshape(h, w, 4)
+        if mode == 'ALPHA' and float(px[:, :, 3].min()) > 0.999:
+            mode = 'LUMINANCE'          # 0.24.5 no transparency (JPEG): use the brightness instead
         if mode == 'ALPHA':
             values = px[:, :, 3]
         else:
@@ -275,7 +277,19 @@ def import_png(filepath, name, mode='LUMINANCE', threshold=0.5, invert=False,
     basename = re.sub(r'[^A-Za-z0-9_-]+', '_', name).strip('_')[:50] or 'Shape'
     stem = basename + '_' + uuid.uuid4().hex[:16]
     src = folder / (stem + '.png')
-    shutil.copy2(filepath, src)
+    if Path(filepath).suffix.lower() == '.png':
+        shutil.copy2(filepath, src)
+    else:                               # 0.24.5 JPEG etc.: keep a PNG copy (thumbnail / library)
+        img = bpy.data.images.load(filepath, check_existing=False)
+        try:
+            if not img.has_data:
+                img.reload()
+            _ = img.pixels[0]           # make sure the pixels are loaded before saving
+            img.file_format = 'PNG'
+            img.filepath_raw = str(src)
+            img.save()
+        finally:
+            bpy.data.images.remove(img, do_unlink=True)
     record = {'schema': SCHEMA, 'name': name, 'source': src.name, 'mode': mode,
               'threshold': threshold, 'invert': invert, 'simplify': used_tol,
               'smooth': used_smooth, 'min_area': min_area, 'size': [w, h], 'loops': loops}
@@ -380,7 +394,7 @@ def preset_items(self, context):
     for i, (stem, name) in enumerate(list_presets()):
         items.append((stem, name, name, preset_icon(stem), base + i))
     if not items:
-        items = [('NONE', 'No Cut Presets', 'Use Import PNG to add one', 0, 0)]
+        items = [('NONE', 'No Cut Presets', 'Use Import PNG / JPG to add one', 0, 0)]
     _items_cache = items   # Blender requires enum strings to stay referenced.
     return _items_cache
 
@@ -398,11 +412,12 @@ def _preset_update(self, context):
 
 class MCH_OT_import_cut_png(bpy.types.Operator, ImportHelper):
     bl_idname = 'mch.import_cut_png'
-    bl_label = 'Import PNG Cut Shape'
-    bl_description = 'Convert a black/white or alpha PNG into a reusable vector Custom Cut Shape'
+    bl_label = 'Import Image Cut Shape'
+    bl_description = ('Convert a black/white PNG or JPEG (or a PNG with alpha) into a reusable vector Custom Cut '
+                      'Shape')
     bl_options = {'REGISTER'}
     filename_ext = '.png'
-    filter_glob: StringProperty(default='*.png', options={'HIDDEN'})
+    filter_glob: StringProperty(default='*.png;*.jpg;*.jpeg', options={'HIDDEN'})
     shape_name: StringProperty(name='Preset Name', default='')
     mode: EnumProperty(name='Foreground', items=[
         ('LUMINANCE', 'White / Bright', 'Bright pixels become the shape'),
@@ -427,7 +442,7 @@ class MCH_OT_import_cut_png(bpy.types.Operator, ImportHelper):
             self.report({'INFO'}, 'Imported vector Cut shape: ' + name)
             return {'FINISHED'}
         except Exception as exc:
-            self.report({'ERROR'}, f'PNG import failed: {exc}')
+            self.report({'ERROR'}, f'Image import failed: {exc}')
             return {'CANCELLED'}
 
 

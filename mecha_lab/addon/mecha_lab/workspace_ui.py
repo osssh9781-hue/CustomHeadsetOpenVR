@@ -746,7 +746,7 @@ def draw_custom_grid(layout, context, columns=4, scale=3.0):
             op.shape = 'CUSTOM'
             op.preset = stem
     row = layout.row(align=True)
-    row.operator('mch.import_cut_png', text='Import PNG Shape', icon='IMPORT')
+    row.operator('mch.import_cut_png', text='Import PNG / JPG Shape', icon='IMPORT')
     if presets:
         row.operator('mch.delete_cut_preset', text='', icon='TRASH')
 

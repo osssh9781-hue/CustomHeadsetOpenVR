@@ -66,5 +66,30 @@ ss.MCH_OT_screw_stamp.leave_tool(f, C, (500, 500))
 ce.object_under = ce_orig
 check('double-click takes the screw back and leaves', sum(1 for o in bpy.data.objects if ss.is_screw(o)) == 0)
 check('Screw keymap: double-click first', ss.TOOL_KEYMAP[0][1]['value'] == 'DOUBLE_CLICK')
+# ---- JPEG stamp import
+import os, tempfile
+from mecha_lab import cut_presets as cp
+img = bpy.data.images.new('jpgtest', 64, 64, alpha=False)
+px = []
+for y in range(64):
+    for x in range(64):
+        on = (x - 32) ** 2 + (y - 32) ** 2 < 20 ** 2
+        px += [1.0, 1.0, 1.0, 1.0] if on else [0.0, 0.0, 0.0, 1.0]
+img.pixels = px
+jpg = os.path.join(tempfile.mkdtemp(), 'circle.jpg')
+img.file_format = 'JPEG'
+img.filepath_raw = jpg
+img.save()
+bpy.data.images.remove(img)
+check('a JPEG file was written', os.path.isfile(jpg) and open(jpg, 'rb').read(2) == b'\xff\xd8')
+out = cp.import_png(jpg, 'JpgCircle', mode='ALPHA')
+loops = cp.load_loops(out.stem)
+png_copy = out.with_suffix('.png')
+check('JPEG imports as a cut shape (alpha mode falls back to brightness)', len(loops) == 1 and len(loops[0]) > 8,
+      [len(l) for l in loops])
+check('library keeps a real PNG copy', png_copy.is_file() and open(png_copy, 'rb').read(4) == b'\x89PNG')
+check('file browser shows JPG files', '*.jpg' in open(cp.__file__).read().split("filter_glob: StringProperty(default='")[1].split("'")[0])
+out.unlink()
+png_copy.unlink()
 mecha_lab.unregister()
 sys.exit(1 if summary() else 0)
