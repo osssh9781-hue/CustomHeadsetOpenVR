@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.6 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.7 (Claude Code, 2026-10-14)
+
+## 0.24.7
+- ZIP sha256 `5f8b31097d584013b268ace1eb3aa575efae3626dd5b3dbcb3e7e804a170564f`. `cut_presets`: `_scan()`(os.scandir, mtime이 바뀐 JSON만 파싱 → `_INDEX[stem] = (mtime, name, source)`), `preset_items`는 (scan, preview collection id) 키가 같으면 캐시 반환, `preset_icon`은 `_THUMBS`에 경로 기억, `_small_thumb`은 120 KB 넘는 원본에 `<stem>_thumb.png`(192 px) 한 번 생성, `import_png`는 `save_thumbnail`로 192 px PNG만 저장, 일괄 불러오기는 refresh=False 후 `_refresh_previews()` 한 번. `workspace_ui.purge_stale_keymap_items()`(register에서 툴 등록 전): addon 키컨피그의 `3D View Tool: Object, Mecha *` 키맵 삭제(register_tool은 기존 키맵을 다시 만들지 않음) + `STALE_KEYMAP_IDS`(`mch.stamp_scale`) 항목 삭제.
 
 ## 0.24.6
 - ZIP sha256 `f998927f74222572dd0ff0419d5806ecbf782dcca444ada21b6f9ad70b1f44ad`. `cut_presets.MCH_OT_import_cut_png`: `files` (OperatorFileListElement) + `directory`, 파일마다 import_png, mode AUTO(알파 최소 < 0.999면 ALPHA). `MCH_OT_stamp_scale`와 휠 키맵 제거. test_v02319 시간 검사는 머신 속도에 민감(0.24.4 코드로도 0.52 ~ 0.61초).
