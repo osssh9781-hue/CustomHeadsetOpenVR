@@ -381,10 +381,16 @@ def repeat_mesh(samples, s, src_verts, src_faces):
     size = max(1e-6, max((Vector(v).length for v in src_verts), default=1.0))
     verts, faces = [], []
     t0, t1 = s.get('taper_start', 1.0), s.get('taper_end', 1.0)
+    uniform = s.get('mode') == 'REPEAT_SAME'
     for k, (p, r, i) in enumerate(pts):
         u = k / max(1, len(pts) - 1)
-        sc = s.get('size', 1.0) * (t0 + (t1 - t0) * u)
-        if s.get('follow_radius', True):
+        if uniform:     # 0.24.10 Repeat Same Size: no per-point radius / start / end size - Radius x Size for all
+            sc = s.get('size', 1.0) * s.get('radius', 0.05) / size
+        else:
+            sc = s.get('size', 1.0) * (t0 + (t1 - t0) * u)
+        if uniform:
+            pass
+        elif s.get('follow_radius', True):
             sc *= s.get('radius', 0.05) * r / size
         else:
             sc *= s.get('radius', 0.05) / size
@@ -404,6 +410,9 @@ def repeat_mesh(samples, s, src_verts, src_faces):
 # -----------------------------------------------------------------------------
 # Live object
 # -----------------------------------------------------------------------------
+
+
+REPEAT_MODES = ('REPEAT', 'REPEAT_SAME')
 
 
 def get_points(ob):
@@ -431,11 +440,11 @@ def build(ob, depsgraph=None):
     samples = path_samples([p for p, _r in pts], [r for _p, r in pts], s['closed'] and len(pts) >= 3,
                            s['spline'], s['res'])
     if len(samples) < 2:
-        if len(samples) == 1 and s['mode'] == 'REPEAT':
+        if len(samples) == 1 and s['mode'] in REPEAT_MODES:
             pass
         else:
             return [], []
-    if s['mode'] == 'REPEAT':
+    if s['mode'] in REPEAT_MODES:
         src = tb.source
         if src is not None and src.type == 'MESH' and src != ob:
             sv, sf = source_mesh(src, depsgraph)
@@ -454,7 +463,7 @@ def rebuild(ob, depsgraph=None):
     for poly in me.polygons:
         poly.use_smooth = ob.mch_tube.smooth_shade
     me.update()
-    src = ob.mch_tube.source if ob.mch_tube.mode == 'REPEAT' else None
+    src = ob.mch_tube.source if ob.mch_tube.mode in REPEAT_MODES else None
     if src is not None:              # 0.24.3 remember the source state: its next edit is noticed
         try:
             _SIGS[ob.name] = _source_sig(src, depsgraph or bpy.context.evaluated_depsgraph_get())
@@ -476,7 +485,10 @@ def _p(prop, **kw):
 class MCH_PG_Tube(bpy.types.PropertyGroup):
     live: BoolProperty(default=False, options={'HIDDEN'})
     mode: _p(EnumProperty, name='Mode', items=[('TUBE', 'Tube', 'Solid tube along the curve'),
-                                               ('REPEAT', 'Repeat', 'Copies of an object along the curve')],
+                                               ('REPEAT', 'Repeat', 'Copies of an object along the curve'),
+                                               ('REPEAT_SAME', 'Repeat Same Size',
+                                                'Copies all the same size: point radius and start / end size are '
+                                                'ignored, Radius / Size scale every copy together')],
              default='TUBE')
     radius: _p(FloatProperty, name='Radius', default=0.05, min=0.0001, soft_max=2.0, unit='LENGTH', precision=4)
     taper_start: _p(FloatProperty, name='Start Size', default=1.0, min=0.0, soft_max=3.0, subtype='FACTOR')
@@ -904,7 +916,9 @@ class MCH_OT_tube_apply(bpy.types.Operator):
 
 
 class MCH_PG_TubeDefaults(bpy.types.PropertyGroup):
-    mode: EnumProperty(name='Mode', items=[('TUBE', 'Tube', ''), ('REPEAT', 'Repeat', '')], default='TUBE')
+    mode: EnumProperty(name='Mode', items=[('TUBE', 'Tube', ''), ('REPEAT', 'Repeat', ''),
+                                           ('REPEAT_SAME', 'Same Size', 'Repeat, every copy the same size')],
+                       default='TUBE')
     radius: FloatProperty(name='Radius', default=0.05, min=0.0001, soft_max=2.0, unit='LENGTH', precision=4)
     profile: EnumProperty(name='Profile', items=[('ROUND', 'Round', ''), ('SQUARE', 'Square', ''),
                                                  ('FLAT', 'Flat', '')], default='ROUND')
@@ -1065,7 +1079,7 @@ def _on_depsgraph(scene, depsgraph):
     if _busy[0] or _UNDO_QUIET[0]:
         return
     try:            # nothing to follow -> never touch the update list
-        repeats = [ob for ob in scene.objects if is_tube(ob) and ob.mch_tube.mode == 'REPEAT'
+        repeats = [ob for ob in scene.objects if is_tube(ob) and ob.mch_tube.mode in REPEAT_MODES
                    and ob.mch_tube.source is not None]
     except (ReferenceError, AttributeError, RuntimeError):
         return
@@ -1274,7 +1288,7 @@ class MCH_OT_tube_toggle(bpy.types.Operator):
 
     def execute(self, context):
         tb = context.active_object.mch_tube
-        cyc = {'MODE': ('mode', ('TUBE', 'REPEAT')), 'SPLINE': ('spline', ('SMOOTH', 'BSPLINE', 'LINEAR')),
+        cyc = {'MODE': ('mode', ('TUBE', 'REPEAT', 'REPEAT_SAME')), 'SPLINE': ('spline', ('SMOOTH', 'BSPLINE', 'LINEAR')),
                'PROFILE': ('profile', ('ROUND', 'SQUARE', 'FLAT')), 'CAP': ('cap', ('ROUND', 'FLAT', 'OPEN')),
                'SPACING': ('spacing_mode', ('COUNT', 'DISTANCE'))}
         if self.option == 'CLOSED':
@@ -1374,10 +1388,10 @@ class MCH_GGT_tube_bar(bpy.types.GizmoGroup):
         tb = context.active_object.mch_tube
         for name, gz in self.items.items():
             pos = lay.get(name)
-            hide = pos is None or (name == 'slider_count' and (tb.mode != 'REPEAT' or tb.spacing_mode != 'COUNT')) \
-                or (name == 'slider_spacing' and (tb.mode != 'REPEAT' or tb.spacing_mode != 'DISTANCE')) \
+            hide = pos is None or (name == 'slider_count' and (tb.mode not in REPEAT_MODES or tb.spacing_mode != 'COUNT')) \
+                or (name == 'slider_spacing' and (tb.mode not in REPEAT_MODES or tb.spacing_mode != 'DISTANCE')) \
                 or (name in {'slider_hole', 'slider_sides', 'profile', 'cap'} and tb.mode != 'TUBE') \
-                or (name == 'spacing' and tb.mode != 'REPEAT')
+                or (name == 'spacing' and tb.mode not in REPEAT_MODES)
             gz.hide = hide
             if hide:
                 continue
@@ -1391,7 +1405,7 @@ class MCH_GGT_tube_bar(bpy.types.GizmoGroup):
             if name == 'closed':
                 gz.color = (1.0, 0.62, 0.16) if tb.closed else (0.17, 0.19, 0.23)
             if name == 'mode':
-                gz.color = (1.0, 0.62, 0.16) if tb.mode == 'REPEAT' else (0.17, 0.19, 0.23)
+                gz.color = (1.0, 0.62, 0.16) if tb.mode in REPEAT_MODES else (0.17, 0.19, 0.23)
             if name == 'ik':
                 gz.color = (1.0, 0.62, 0.16) if tb.ik else (0.17, 0.19, 0.23)
 
@@ -1418,7 +1432,7 @@ def _draw_bar_labels():
         for name, text in names.items():
             if name not in lay:
                 continue
-            if name in {'profile', 'cap'} and tb.mode != 'TUBE' or name == 'spacing' and tb.mode != 'REPEAT':
+            if name in {'profile', 'cap'} and tb.mode != 'TUBE' or name == 'spacing' and tb.mode not in REPEAT_MODES:
                 continue
             x, y = lay[name]
             w, _h = blf.dimensions(0, text)
@@ -1426,9 +1440,9 @@ def _draw_bar_labels():
             blf.position(0, x * ui - w / 2, (y - 26) * ui, 0)
             blf.draw(0, text)
         for key, *_r in TUBE_SLIDERS:
-            if key == 'count' and (tb.mode != 'REPEAT' or tb.spacing_mode != 'COUNT'):
+            if key == 'count' and (tb.mode not in REPEAT_MODES or tb.spacing_mode != 'COUNT'):
                 continue
-            if key == 'spacing' and (tb.mode != 'REPEAT' or tb.spacing_mode != 'DISTANCE'):
+            if key == 'spacing' and (tb.mode not in REPEAT_MODES or tb.spacing_mode != 'DISTANCE'):
                 continue
             if key in {'hole', 'sides'} and tb.mode != 'TUBE':
                 continue
