@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.1
+# Test Report — Mecha Lab 0.24.2
+
+## 0.24.2 결과: 68개 파일, 2363 / 2363 통과 (`tests/test_log_bpy501_v0242.txt`). Plate Detail 다시 만들기 측정(큰 판): 7px 3.2 ~ 5초 → 20px 0.2 ~ 0.4초. Panel Cloth: 0.23.25 코드와 새 코드의 기본 결과 정점 좌표 numpy array_equal로 동일 확인(Padding, Cloth). Fast Start: 준비 9.3초 → 0.02초, 주름 위치 최대 1 ~ 4 %(판 크기 대비) 다름. test_v02328(11): 슬라이더 + Fast Start. test_v02319 시간 검사 1회 실패(다른 측정과 동시에 돌려서 0.525초) → 단독 재실행 0.479초 통과. Ctrl+Z 크래시는 헤드리스에서 실행취소가 안 돼 재현 불가 - 미검증.
 
 ## 0.24.1 결과: 68개 파일, 2361 / 2361 통과 (`tests/test_log_bpy501_v0241.txt`). test_v0241(12): Detail / Detail 2 / Box Hide 스케치 키, Detail 스케치 두 사각형 → Enter 한 번(L자 합집합), Lift ±, Detail 2 스케치 + Alt 구멍, Round 곡선(바닥·위 평평), Chamfer 직선, 바닥 샤프 엣지, Box Hide 스케치. 면 줄이기는 휜 원통 위 렌더로 직접 확인: 처음 버전은 큰 판이 평평한 면으로 합쳐져 표면 아래로 꺼짐 → 곡률 격자로 고침, 또 Detail 2 곡률을 경사에서 재서 칸이 너무 잘았음 → 영역 패치에서 재도록 고침. 뷰포트 미검증.
 

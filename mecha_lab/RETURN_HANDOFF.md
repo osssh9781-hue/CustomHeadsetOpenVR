@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.1 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.2 (Claude Code, 2026-10-14)
+
+## 0.24.2
+- ZIP sha256 `ed26f08ab74b146d4acbc855b987ec8d04a719283e873fac47e30b4ea82eb78a`. `plate_detail`: SPACING_PX 20, 거리 = float 레이어 `d` 한 번(`_field_layer`), `cut_iso(bm, key_layer, level, eps, carry)`가 새 정점에 선형 보간(새 레이어가 BMVert를 재할당하므로 외곽선은 좌표/노말로 미리 복사), 나사 원도 레이어. 경계 옆면 = 아래 띠 높이 정점 포함(`mids`). `_queue` 디바운스 0.15초(타이머 재등록), undo_pre / redo_pre에서 대기 비움. `cloth_sim`: 0.23.25 파일 + 슬라이더(Tension 1이면 tension_stiffness 손대지 않음, slack ≤ 2.5배), Scene.mch_pcloth_fast(foreach_get/set 들어올림), undo_pre에서 타이머 해제.
 
 ## 0.24.1
 - ZIP sha256 `9201b09a7ab74818472980db0561aa4c3fccdde51e3fe5d539243ce57b5f9521`. `lasso_sketch.MODES` + DETAIL / DETAIL2 / HIDE, commit 분기(plate_detail.perform, box_hide.perform + auto_targets), 키맵 `lasso_sketch_modes()`, 헤더 Sketch 버튼 enabled = MODES 또는 BASE. `plate_detail`: `lift`(LENGTHS에 포함, 위/아래 모두 이동), RISE_PROFILES ROUND(smootherstep) / CHAMFER(직선) / DOME / FOOT, `build_rise`는 등거리선 링(RISE_SEGMENTS 8, Chamfer 1)으로 자르고 링 안은 선형 높이, set_sharp_from_angle 60°. `simplify` = dissolve_limit 0.6°, 휜 면은 `surface_curvature`(영역 패치 엣지의 노말 각/길이 90 %)로 칸 크기 g = √(8·0.0012·size/κ) 격자 seam으로 막고 합친 뒤 seam 해제, 일직선 2가 정점 제거.
