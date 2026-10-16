@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 0.24.9 — 살아있는 Mirror의 반대쪽에 그려도 Cut이 됨 (2026-10-16)
+
+- **Mirror(살아있는 미러) 뒤 Cut이 안 먹던 문제**: 미러로 생긴 반대쪽(복사본) 위에 모양을 그리면 Auto Target은 그 메쉬를 찾지만, 실제 자르기는 미러 전 원본 반쪽만 보기 때문에 "The shape does not intersect the mesh"로 아무것도 안 바뀌었음. 월드 축으로 뒤집은 뒤(음수 스케일)에는 원본이 반대편으로 가서 늘 이렇게 됨. → 원본과 안 겹치면 그린 모양을 Mirror 축(피벗 오브젝트 포함)으로 뒤집어 원본 반쪽을 자름. 미러가 양쪽에 똑같이 보여줌. Split도 같은 경로.
+- Box Hide 중 Ctrl+Z 크래시: 코드에서 원인을 찾지 못했음(Ctrl+Z 핸들러 / 스케치 / 타이머 확인). 크래시 로그가 필요.
+- 테스트: 73개 파일 2439/2439 (`tests/test_log_bpy501_v0249.txt`), 새 `test_v0249.py`(15). ZIP sha256 `f8262d1b2c7b421f474ddf8a3143dc59f714f73a6c354bd0016ce56fae07b96d`.
+
 ## 0.24.8 — 단축키 Alt+X = Mirror, S = Split, Alt+A = Armor Plate (2026-10-16)
 
 - **Alt+X = Mirror**: 왼쪽 Mirror 버튼과 같음(마우스를 복사할 쪽으로 기울이기, 결과는 살아있는 Mirror). 메쉬를 선택하지 않았으면 경고만.

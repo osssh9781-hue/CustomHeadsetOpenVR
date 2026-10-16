@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.8
+# Test Report — Mecha Lab 0.24.9
+
+## 0.24.9 결과: 73개 파일 2439/2439 (`tests/test_log_bpy501_v0249.txt`) (`tests/test_log_bpy501_v0249.txt`). test_v0249(15): 원본 쪽 / 미러 쪽 / 뒤집은 뒤(scale.x -1) 양쪽에서 Cut 성공, 홈 위치가 원본 반쪽 x 2.2 ~ 2.8, 닫힌 솔리드 유지, 피벗(Empty x=1) 미러 반대쪽 → 2.55 ~ 3.05, 미러 없는 메쉬 옆은 그대로 '변경 없음', 임시 메쉬 안 남음. Box Hide Ctrl+Z는 headless에서 Undo를 못 돌려 재현 못 함.
 
 ## 0.24.8 결과: 72개 파일 2424/2424 (`tests/test_log_bpy501_v0248.txt`) (`tests/test_log_bpy501_v0248.txt`). test_v0248(10): 키맵 3개(Object Mode), S는 선택 있으면 통과(PASS_THROUGH) / 없으면 Split, Alt+A → Armor Plate, Alt+X 선택 없으면 경고 / 메쉬 선택이면 mirror_lean(keep_live=True). 실제 키 입력은 미검증.
 

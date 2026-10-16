@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.8 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.9 (Claude Code, 2026-10-14)
+
+## 0.24.9
+- ZIP sha256 `f8262d1b2c7b421f474ddf8a3143dc59f714f73a6c354bd0016ce56fae07b96d`. `core_geometry.boolean_result`가 `_boolean_result`를 감쌈: "does not intersect"이고 대상에 켜진 MIRROR 모디파이어가 있으면 `mirror_reflections(target)`(축 조합별 월드 반사 행렬, mirror_object 있으면 그 기준) → `_cutter_with_reflections`로 커터 + 반사 복사본(면 뒤집음) 메쉬를 잠시 커터에 끼워 다시 실행, 끝나면 원래 메쉬 복원 / 임시 메쉬 삭제.
 
 ## 0.24.8
 - ZIP sha256 `83aadd89d98fa3014d37de1106a660b3c07ce3927e48508f31bbb36fddec3fc2`. `workspace_ui.MCH_OT_hotkey`: action에 PLATE / MIRROR 추가, `only_empty`(선택이 있으면 PASS_THROUGH → Blender Scale), invoke에서 MIRROR = `mch.mirror_lean(keep_live=True)`. Object Mode 키맵: Alt+X MIRROR, S SPLIT(only_empty), Alt+A PLATE. `HOTKEY_LABELS`로 키 편집 목록 이름.
