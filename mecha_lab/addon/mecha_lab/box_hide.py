@@ -212,6 +212,30 @@ def _combine(context, vol, bm_add, op):
     _flat(vol.data)
 
 
+def _sharers(vol, skip):
+    """Other meshes whose Box Hide reads the same volume (a Shift+D copy keeps the modifier and its volume)."""
+    return [o for o in bpy.data.objects if o is not skip and o.type == 'MESH' and volume_of(o) is vol]
+
+
+def _detach_sharers(context, vol, owner):
+    """0.24.11 before the owner's volume changes, every copy sharing it gets its own volume (same shape), so
+    hiding on one object never cuts its Shift+D duplicates too."""
+    for o in _sharers(vol, owner):
+        own = vol.copy()
+        own.data = vol.data.copy()
+        own.name = own.data.name = f'MCH_Hide_{o.name}'
+        own[VOL_KEY] = o.name
+        _collection(context).objects.link(own)
+        try:
+            own.hide_set(True)
+        except RuntimeError:
+            pass
+        mod = o.modifiers.get(MOD)
+        mod[_ident(mod.node_group, 'Volume')] = own
+        o.update_tag()
+    vol[VOL_KEY] = owner.name
+
+
 def perform(context, targets, loops, projector, restore=False):
     """Hide (or with ``restore``, show again) the part of every target inside the drawn screen loops."""
     from . import cut_engine as ce
@@ -231,6 +255,8 @@ def perform(context, targets, loops, projector, restore=False):
                 parts.append(_mirrored(bm_shape, t))
             try:
                 vol = volume_of(t)
+                if vol is not None:
+                    _detach_sharers(context, vol, t)
                 if not restore:
                     if vol is None:
                         vol = _new_volume(context, t)
@@ -270,7 +296,7 @@ def show_all(ob):
     mod = ob.modifiers.get(MOD)
     if mod is not None:
         ob.modifiers.remove(mod)
-    if vol is not None:
+    if vol is not None and not _sharers(vol, ob):      # a duplicate may still use it
         cg.remove_object_and_mesh(vol)
     ob.update_tag()
 
@@ -283,7 +309,7 @@ def apply(context, ob):
     vol = volume_of(ob)
     with context.temp_override(object=ob, active_object=ob, selected_objects=[ob], selected_editable_objects=[ob]):
         bpy.ops.object.modifier_apply(modifier=mod.name)
-    if vol is not None:
+    if vol is not None and not _sharers(vol, ob):
         cg.remove_object_and_mesh(vol)
     return True
 

@@ -152,9 +152,16 @@ def commit(context, alt=False):
     elif mode == 'HIDE':
         from . import box_hide as bh
         from . import cut_engine as ce
+        # 0.24.11 the Targets setting counts here too (Selected Only / Active), like a drawn Box Hide
+        how = getattr(getattr(scene, 'mch_cut', None), 'targets', 'AUTO')
         targets = ce.auto_targets(context.view_layer, proj, loops)
+        if how == 'SELECTED':
+            targets = [o for o in targets if o.select_get()]
+        elif how == 'ACTIVE':
+            targets = [o for o in targets if o == context.active_object]
         if not targets:
-            raise cg.CutError('The sketch does not cover a mesh: nothing was hidden.')
+            raise cg.CutError('The sketch does not cover a mesh' + ('' if how == 'AUTO' else ' (selected)') +
+                              ': nothing was hidden.')
         msg = bh.perform(context, targets, loops, proj, restore=alt)
     else:
         from . import cut_engine as ce
