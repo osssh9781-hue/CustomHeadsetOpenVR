@@ -27,7 +27,7 @@ from collections import defaultdict
 from pathlib import Path
 
 import bpy
-from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
+from bpy.props import BoolProperty, CollectionProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
 from bpy_extras.io_utils import ImportHelper
 
 from . import core_geometry as cg
@@ -255,7 +255,10 @@ def _load_pixels(filepath, mode, threshold, invert, max_pixels=512):
         a = np.empty(w * h * 4, dtype=np.float32)
         image.pixels.foreach_get(a)
         px = a.reshape(h, w, 4)
-        if mode == 'ALPHA' and float(px[:, :, 3].min()) > 0.999:
+        has_alpha = float(px[:, :, 3].min()) < 0.999
+        if mode == 'AUTO':               # 0.24.6 transparent image -> alpha, else brightness
+            mode = 'ALPHA' if has_alpha else 'LUMINANCE'
+        if mode == 'ALPHA' and not has_alpha:
             mode = 'LUMINANCE'          # 0.24.5 no transparency (JPEG): use the brightness instead
         if mode == 'ALPHA':
             values = px[:, :, 3]
@@ -418,10 +421,15 @@ class MCH_OT_import_cut_png(bpy.types.Operator, ImportHelper):
     bl_options = {'REGISTER'}
     filename_ext = '.png'
     filter_glob: StringProperty(default='*.png;*.jpg;*.jpeg', options={'HIDDEN'})
-    shape_name: StringProperty(name='Preset Name', default='')
+    # 0.24.6 several files at once (Shift / Ctrl / box select in the file browser)
+    files: CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
+    directory: StringProperty(subtype='DIR_PATH', options={'HIDDEN', 'SKIP_SAVE'})
+    shape_name: StringProperty(name='Preset Name', default='',
+                               description='Name for a single file (several files keep their file names)')
     mode: EnumProperty(name='Foreground', items=[
+        ('AUTO', 'Auto', 'Transparent images: opaque pixels; others: bright pixels'),
         ('LUMINANCE', 'White / Bright', 'Bright pixels become the shape'),
-        ('ALPHA', 'Alpha Channel', 'Opaque pixels become the shape')], default='LUMINANCE')
+        ('ALPHA', 'Alpha Channel', 'Opaque pixels become the shape')], default='AUTO')
     threshold: FloatProperty(name='Threshold', default=0.5, min=0.0, max=1.0)
     invert: BoolProperty(name='Invert', default=False)
     simplify: FloatProperty(name='Simplify (px)', default=0.8, min=0, max=8,
@@ -432,18 +440,31 @@ class MCH_OT_import_cut_png(bpy.types.Operator, ImportHelper):
                           description='Islands and pinholes smaller than this many pixels are removed')
 
     def execute(self, context):
-        try:
-            name = self.shape_name.strip() or Path(self.filepath).stem
-            path = import_png(self.filepath, name, self.mode, self.threshold, self.invert,
-                              self.simplify, self.smooth, self.min_area)
-            context.scene.mch_png_preset = path.stem
+        paths = [str(Path(self.directory) / f.name) for f in self.files if f.name] if self.directory else []
+        paths = [p for p in paths if Path(p).suffix.lower() in {'.png', '.jpg', '.jpeg'}] or [self.filepath]
+        done, failed, last = [], [], None
+        for fp in paths:
+            try:
+                name = (self.shape_name.strip() if len(paths) == 1 else '') or Path(fp).stem
+                last = import_png(fp, name, self.mode, self.threshold, self.invert,
+                                  self.simplify, self.smooth, self.min_area)
+                done.append(name)
+            except Exception as exc:
+                failed.append(f'{Path(fp).name} ({str(exc).splitlines()[0][:60]})')
+        if last is not None:
+            context.scene.mch_png_preset = last.stem
             if hasattr(context.scene, 'mch_brush'):
                 context.scene.mch_brush.shape = 'CUSTOM'
-            self.report({'INFO'}, 'Imported vector Cut shape: ' + name)
-            return {'FINISHED'}
-        except Exception as exc:
-            self.report({'ERROR'}, f'Image import failed: {exc}')
+        if not done:
+            self.report({'ERROR'}, 'Image import failed: ' + '; '.join(failed))
             return {'CANCELLED'}
+        msg = f'Imported {len(done)} Cut shape(s)' + (f': {done[0]}' if len(done) == 1 else '')
+        if failed:
+            msg += ' | failed: ' + '; '.join(failed)
+            self.report({'WARNING'}, msg)
+        else:
+            self.report({'INFO'}, msg)
+        return {'FINISHED'}
 
 
 class MCH_OT_delete_cut_preset(bpy.types.Operator):

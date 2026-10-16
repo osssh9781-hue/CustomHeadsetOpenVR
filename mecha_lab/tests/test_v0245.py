@@ -91,6 +91,36 @@ check('library keeps a real PNG copy', png_copy.is_file() and open(png_copy, 'rb
 check('file browser shows JPG files', '*.jpg' in open(cp.__file__).read().split("filter_glob: StringProperty(default='")[1].split("'")[0])
 out.unlink()
 png_copy.unlink()
+
+# ---- 0.24.6 several files at once, Auto foreground (alpha PNG with a dark shape on transparency + a JPEG)
+d = os.path.dirname(jpg)
+img = bpy.data.images.new('alphatest', 64, 64, alpha=True)
+px = []
+for y in range(64):
+    for x in range(64):
+        on = abs(x - 32) < 18 and abs(y - 32) < 12
+        px += [0.0, 0.0, 0.0, 1.0] if on else [0.0, 0.0, 0.0, 0.0]     # black box on transparency
+img.pixels = px
+apng = os.path.join(d, 'box_alpha.png')
+img.file_format = 'PNG'
+img.filepath_raw = apng
+img.save()
+bpy.data.images.remove(img)
+fake = types.SimpleNamespace(directory=d, files=[types.SimpleNamespace(name='box_alpha.png'),
+                                                 types.SimpleNamespace(name='circle.jpg')],
+                             filepath=apng, shape_name='', mode='AUTO', threshold=0.5, invert=False, simplify=0.8,
+                             smooth=1, min_area=4, reports=[])
+fake.report = lambda kind, msg: fake.reports.append(msg)
+before = set(p.name for p in cp.preset_folder().glob('*.json'))
+res = cp.MCH_OT_import_cut_png.execute(fake, C)
+new = sorted(set(p.name for p in cp.preset_folder().glob('*.json')) - before)
+check('two files imported in one go (Auto: alpha PNG by its alpha, JPEG by brightness)', res == {'FINISHED'} and
+      len(new) == 2 and 'Imported 2' in fake.reports[-1], (res, new, fake.reports))
+for n in new:
+    st = n[:-5]
+    check(f'{st.split("_")[0]}: one clean outline', len(cp.load_loops(st)) == 1)
+    (cp.preset_folder() / n).unlink()
+    (cp.preset_folder() / (st + '.png')).unlink(missing_ok=True)
 # ---- 0.24.6 the wheel is the view zoom again (stamp size = drag)
 km = wui._tool_keymap('CUT')
 check('no wheel keys in the tool keymap (wheel zooms)', not any(k[1]['type'] in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}
