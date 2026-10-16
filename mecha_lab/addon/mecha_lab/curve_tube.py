@@ -454,6 +454,12 @@ def rebuild(ob, depsgraph=None):
     for poly in me.polygons:
         poly.use_smooth = ob.mch_tube.smooth_shade
     me.update()
+    src = ob.mch_tube.source if ob.mch_tube.mode == 'REPEAT' else None
+    if src is not None:              # 0.24.3 remember the source state: its next edit is noticed
+        try:
+            _SIGS[ob.name] = _source_sig(src, depsgraph or bpy.context.evaluated_depsgraph_get())
+        except (ReferenceError, RuntimeError, AttributeError):
+            pass
 
 
 def _update(self, context):
@@ -1014,27 +1020,72 @@ class MCH_PT_tube(bpy.types.Panel):
 from bpy.app.handlers import persistent  # noqa: E402
 
 _busy = [False]
+_UNDO_QUIET = [False]
+
+
+def _quiet_off():
+    _UNDO_QUIET[0] = False
+    return None
+
+
+@bpy.app.handlers.persistent
+def _on_undo_post(*_args):
+    """0.24.3 right after Ctrl+Z / Ctrl+Shift+Z the depsgraph update list can still point at IDs the undo
+    freed - reading them crashed Blender (user crash log).  Stay out of the next updates for a moment."""
+    _UNDO_QUIET[0] = True
+    if bpy.app.timers.is_registered(_quiet_off):
+        bpy.app.timers.unregister(_quiet_off)
+    bpy.app.timers.register(_quiet_off, first_interval=0.3)
+
+
+
+
+_SIGS = {}
+
+
+def _source_sig(src, depsgraph):
+    """Placement + evaluated bounds (modifiers included) of a Repeat source."""
+    try:
+        ev = src.evaluated_get(depsgraph)
+        geo = ()
+        me = ev.data if ev.type == 'MESH' else None
+        if me is not None:
+            import numpy as np
+            co = np.empty(len(me.vertices) * 3, dtype=np.float32)
+            me.vertices.foreach_get('co', co)
+            geo = (len(me.vertices), len(me.polygons), round(float(np.abs(co).sum()), 5))
+        return (src.data.name if src.data else '', tuple(round(x, 6) for row in src.matrix_world for x in row),
+                tuple(round(c, 6) for corner in ev.bound_box for c in corner), geo)
+    except (ReferenceError, AttributeError, RuntimeError):
+        return None
 
 
 @persistent
 def _on_depsgraph(scene, depsgraph):
-    if _busy[0]:
+    if _busy[0] or _UNDO_QUIET[0]:
         return
-    changed = set()
-    for up in depsgraph.updates:
-        idb = getattr(up.id, 'original', up.id)
-        if isinstance(idb, bpy.types.Object) and (up.is_updated_geometry or up.is_updated_transform):
-            changed.add(idb.name)
-        elif isinstance(idb, bpy.types.Mesh):
-            changed.update(o.name for o in bpy.data.objects if o.data == idb)
-    if not changed:
+    try:            # nothing to follow -> never touch the update list
+        repeats = [ob for ob in scene.objects if is_tube(ob) and ob.mch_tube.mode == 'REPEAT'
+                   and ob.mch_tube.source is not None]
+    except (ReferenceError, AttributeError, RuntimeError):
+        return
+    if not repeats:
+        return
+    # 0.24.3 compare each source's state instead of reading depsgraph.updates (it can list IDs that were
+    # just removed - an add-on deleting a temporary mesh, or Ctrl+Z - and reading those crashed Blender)
+    todo = []
+    for ob in repeats:
+        sig = _source_sig(ob.mch_tube.source, depsgraph)
+        if _SIGS.get(ob.name) != sig:
+            if ob.name in _SIGS:
+                todo.append(ob)
+            _SIGS[ob.name] = sig
+    if not todo:
         return
     _busy[0] = True
     try:
-        for ob in scene.objects:
-            if is_tube(ob) and ob.mch_tube.mode == 'REPEAT' and ob.mch_tube.source is not None \
-                    and ob.mch_tube.source.name in changed:
-                rebuild(ob, depsgraph)
+        for ob in todo:
+            rebuild(ob, depsgraph)
     except (ReferenceError, RuntimeError, AttributeError):
         pass
     finally:
@@ -1409,12 +1460,20 @@ def register():
         _bar_label_handle = bpy.types.SpaceView3D.draw_handler_add(_draw_bar_labels, (), 'WINDOW', 'POST_PIXEL')
     if _on_depsgraph not in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph)
+    for lst in (bpy.app.handlers.undo_post, bpy.app.handlers.redo_post):
+        if _on_undo_post not in lst:
+            lst.append(_on_undo_post)
 
 
 def unregister():
     global _handle, _bar_label_handle
     if _on_depsgraph in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph)
+    for lst in (bpy.app.handlers.undo_post, bpy.app.handlers.redo_post):
+        while _on_undo_post in lst:
+            lst.remove(_on_undo_post)
+    if bpy.app.timers.is_registered(_quiet_off):
+        bpy.app.timers.unregister(_quiet_off)
     if _bar_label_handle is not None:
         try:
             bpy.types.SpaceView3D.draw_handler_remove(_bar_label_handle, 'WINDOW')

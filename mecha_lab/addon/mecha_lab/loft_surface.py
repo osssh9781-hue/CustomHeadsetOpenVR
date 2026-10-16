@@ -30,6 +30,24 @@ from . import core_geometry as cg
 
 THICK_MOD = 'MCH_LoftThickness'
 _building = False
+_UNDO_QUIET = [False]
+
+
+def _quiet_off():
+    _UNDO_QUIET[0] = False
+    return None
+
+
+@bpy.app.handlers.persistent
+def _on_undo_post(*_args):
+    """0.24.3 right after Ctrl+Z the depsgraph update list can still point at freed IDs (crash): stay out
+    of the next updates for a moment."""
+    _UNDO_QUIET[0] = True
+    if bpy.app.timers.is_registered(_quiet_off):
+        bpy.app.timers.unregister(_quiet_off)
+    bpy.app.timers.register(_quiet_off, first_interval=0.3)
+
+
 
 
 def _is_curve(self, ob):
@@ -318,6 +336,7 @@ def safe_rebuild(ob):
     _building = True
     try:
         rebuild(ob)
+        _SIGS[ob.name] = tuple(_curve_sig(c) for c in _sources(ob))     # 0.24.3 next curve edit is noticed
         ob['mch_loft_error'] = ''
         return True
     except (cg.CutError, ValueError, RuntimeError) as ex:
@@ -336,24 +355,41 @@ def _sources(ob):
 
 @persistent
 def _on_depsgraph(scene, depsgraph):
-    if _building:
+    if _building or _UNDO_QUIET[0]:
         return
-    changed = set()
-    for up in depsgraph.updates:
-        idb = up.id
-        if isinstance(idb, bpy.types.Object) and idb.type == 'CURVE':
-            changed.add(idb.original.name)
-        elif isinstance(idb, bpy.types.Curve):
-            for ob in bpy.data.objects:
-                if ob.data == idb.original:
-                    changed.add(ob.name)
-    if not changed:
+    try:            # nothing live -> never touch the update list
+        if not any(getattr(getattr(o, 'mch_loft', None), 'live', False) for o in scene.objects):
+            return
+    except (ReferenceError, AttributeError, RuntimeError):
         return
+    # 0.24.3 compare the source curves' state instead of reading depsgraph.updates (crash after Ctrl+Z /
+    # removed temporary IDs)
     for ob in list(scene.objects):
         p = getattr(ob, 'mch_loft', None)
-        if p is not None and p.live and ob.type == 'MESH':
-            if any(c.name in changed for c in _sources(ob)):
-                safe_rebuild(ob)
+        if p is None or not p.live or ob.type != 'MESH':
+            continue
+        sig = tuple(_curve_sig(c) for c in _sources(ob))
+        old = _SIGS.get(ob.name)
+        _SIGS[ob.name] = sig
+        if old is not None and old != sig:
+            safe_rebuild(ob)
+
+
+_SIGS = {}
+
+
+def _curve_sig(cu_ob):
+    try:
+        pts = [tuple(round(x, 6) for row in cu_ob.matrix_world for x in row)]
+        for sp in cu_ob.data.splines:
+            for bp in sp.bezier_points:
+                pts.append((tuple(bp.co), tuple(bp.handle_left), tuple(bp.handle_right), bp.radius, bp.tilt))
+            for pt in sp.points:
+                pts.append((tuple(pt.co), pt.radius, pt.tilt))
+            pts.append((sp.type, sp.use_cyclic_u, sp.resolution_u))
+        return hash(tuple(pts))
+    except (ReferenceError, AttributeError, RuntimeError):
+        return None
 
 
 # -----------------------------------------------------------------------------
@@ -549,11 +585,19 @@ def register():
     bpy.types.Scene.mch_loft = PointerProperty(type=MCH_PG_Loft)
     if _on_depsgraph not in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph)
+    for lst in (bpy.app.handlers.undo_post, bpy.app.handlers.redo_post):
+        if _on_undo_post not in lst:
+            lst.append(_on_undo_post)
 
 
 def unregister():
     if _on_depsgraph in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph)
+    for lst in (bpy.app.handlers.undo_post, bpy.app.handlers.redo_post):
+        while _on_undo_post in lst:
+            lst.remove(_on_undo_post)
+    if bpy.app.timers.is_registered(_quiet_off):
+        bpy.app.timers.unregister(_quiet_off)
     for n, t in (('mch_loft', bpy.types.Scene), ('mch_loft', bpy.types.Object)):
         if hasattr(t, n):
             delattr(t, n)
