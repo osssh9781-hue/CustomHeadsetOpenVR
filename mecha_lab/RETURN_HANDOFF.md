@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.3 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.4 (Claude Code, 2026-10-14)
+
+## 0.24.4
+- ZIP sha256 `30cbb736ab1ec444ad5c2af777e22af560757a0de6f9110a6723c9c86503af15`. `cloth_sim._slider_update`는 `mch_pcloth_dirty`만 표시, `MCH_OT_panel_cloth_refresh` = redo(현재 값). `plate_detail`: `wall_profile(height, wall_angle, foot)` → (거리, 높이) 목록(원호 6단 + 벽), `build_rise`는 레벨 목록으로 자르고 np.interp로 높이(ROUND/CHAMFER도 같은 경로), 속성 wall_angle / foot(LENGTHS에 foot, fractions에 wall_angle), `RISE_PRESETS` + `MCH_OT_pdetail_rise_preset`(FOOT_FRAC 0.6).
 
 ## 0.24.3
 - ZIP sha256 `4d6158f3bc875127692f8b87e805932ed3f928b089eb255bdacecdfa5f63111a`. `curve_tube._on_depsgraph`: Repeat 커브가 없으면 즉시 리턴, 있으면 `_source_sig`(src.data 이름, matrix_world, 평가된 bound_box, 평가 메쉬 점/면 수 + |co| 합)를 `_SIGS`와 비교, `rebuild` 끝에 시그니처 기록. `loft_surface._on_depsgraph`: 라이브 로프트 없으면 리턴, `_curve_sig`(행렬 + 스플라인 점/핸들/반지름/틸트) 비교, `safe_rebuild`에서 기록. 두 모듈 undo_post / redo_post → `_UNDO_QUIET` 0.3초. `cut_engine`: HIDE 스케치에서 스케치 없을 때 Alt는 추가, `auto_targets`에서 None 건너뜀. `lasso_sketch` 안내: HIDE는 Enter: hide, Alt+Enter: show again.

@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 0.24.4 — Panel Cloth Refresh 버튼, Plate Detail 2 프리셋(Vertical / Slanted / Round) (2026-10-16)
+
+- **Panel Cloth**: Tension / Gravity를 바꿔도 바로 다시 굽지 않음 - **Refresh** 버튼(바뀐 값이 있으면 빨갛게)을 눌러야 새 값으로 다시 굽기. 기본 결과는 그대로 0.23.25와 같음.
+- **Plate Detail 2 프리셋 버튼**: **Vertical**(바닥은 부드럽게 붙고 직각 벽, 윗면 모서리 각짐) / **Slanted**(같은 바닥 + 70° 벽) / **Round**(기존). 새 가장자리 모양 **Foot + Wall**: 표면에 접하는 둥근 바닥(Foot Radius, 기본 높이 × 0.6) 다음 곧은 벽(Wall Angle). 마지막 값은 다음 디테일에 이어짐. Plate Detail 1은 그대로.
+- 비교 `reference/plate_detail2_presets_v0244.png`. 테스트: 69개 파일 2377/2377 (`tests/test_log_bpy501_v0244.txt`). ZIP sha256 `30cbb736ab1ec444ad5c2af777e22af560757a0de6f9110a6723c9c86503af15`.
+
 ## 0.24.3 — Ctrl+Z 크래시 수정, Box Hide 스케치 (2026-10-16)
 
 - **Ctrl+Z / 플레이트 디테일 뒤 Blender 꺼짐**(사용자 크래시 로그: `curve_tube._on_depsgraph`): 커브(Tube) / 로프트의 depsgraph 핸들러가 `depsgraph.updates`를 읽었는데, Ctrl+Z 직후나 애드온이 임시 메쉬를 지운 직후 이 목록에 이미 지워진 데이터가 남아 읽는 순간 크래시. → 목록을 아예 안 읽고 연결된 원본의 상태(위치 / 평가된 경계 / 점 수 / 좌표 합, 커브 점)를 비교. 살아 있는 커브 / 로프트가 없으면 아무것도 안 함, Ctrl+Z / 다시 실행 직후 0.3초는 쉼.

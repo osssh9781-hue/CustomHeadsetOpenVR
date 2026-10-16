@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.3
+# Test Report — Mecha Lab 0.24.4
+
+## 0.24.4 결과: 69개 파일, 2377 / 2377 (`tests/test_log_bpy501_v0244.txt`, 다른 실행과 겹치지 않게 단독). 이 실행 뒤 Plate Detail 2 Foot + Wall을 추가해 test_v0240(23) / test_v0241(16)을 다시 돌려 통과(프리셋, 바닥 접선 / 벽 각도 검사). test_v02328(12): Refresh 버튼(바꿔도 안 구움, 표시, Refresh로 굽기). 렌더로 모양 확인 `reference/plate_detail2_presets_v0244.png`. 뷰포트 미검증.
 
 ## 0.24.3 결과: 69개 파일, 2371 / 2372 (`tests/test_log_bpy501_v0243.txt`). 실패 1개는 test_v02319 시간 검사(0.599초, 전체 실행 두 개가 겹쳐 돌던 중) → 단독 재실행 0.418초 통과. 이 전체 실행 뒤 Box Hide 스케치(Alt + Enter)를 한 번 더 바꿔서 관련 테스트 test_v0193 / v02317 / v0241 / v0243을 다시 돌려 모두 통과. test_v0243(9): 핸들러가 depsgraph.updates를 읽지 않음(읽으면 예외 나는 가짜 depsgraph), undo 뒤 쉼, Box Hide 스케치 추가 / Alt + Enter 다시 보이기 / Enter 숨기기. 크래시 자체는 헤드리스에서 실행취소가 안 돼 재현 불가 - Blender에서 미검증.
 
