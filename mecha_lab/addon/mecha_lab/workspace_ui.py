@@ -302,8 +302,12 @@ def hotkey_items(context=None):
     return out
 
 
+HOTKEY_LABELS = {'BOOLEAN': 'Boolean Difference', 'CUT': 'Cut', 'SPLIT': 'Split (nothing selected)',
+                 'PLATE': 'Armor Plate', 'MIRROR': 'Mirror'}
+
+
 def draw_hotkey_editor(layout, context=None):
-    """Editable keys of the Mecha hotkeys (Select / Move, menus, B / C)."""
+    """Editable keys of the Mecha hotkeys (Select / Move, menus, B / C, Alt+X / S / Alt+A)."""
     box = layout.box()
     box.label(text='Hotkeys (MECHA LAB only)', icon='KEYINGSET')
     for km, item in hotkey_items(context):
@@ -311,7 +315,8 @@ def draw_hotkey_editor(layout, context=None):
         row = box.row(align=True)
         label = {'mch.select_move_key': 'Select / Move', 'mch.tool_pie': 'Tool Pie',
                  'mch.toggle_last_tool': 'Select <-> Last Tool',
-                 'mch.space_tools': 'Big Tool Menu'}.get(idname, 'Hotkey ' + getattr(item.properties, 'action', ''))
+                 'mch.space_tools': 'Big Tool Menu'}.get(idname, HOTKEY_LABELS.get(getattr(item.properties, 'action', ''),
+                                                                  'Hotkey'))
         row.label(text=label)
         row.prop(item, 'type', text='', full_event=True)
 
@@ -1196,16 +1201,36 @@ class MCH_OT_hotkey(bpy.types.Operator):
     bl_label = 'Mecha Hotkey'
     bl_options = {'INTERNAL'}
     action: EnumProperty(items=[('BOOLEAN', 'Boolean Difference', ''), ('CUT', 'Cut Tool', ''),
-                                ('SPLIT', 'Split Tool', '')])
+                                ('SPLIT', 'Split Tool', ''), ('PLATE', 'Armor Plate Tool', ''),
+                                ('MIRROR', 'Mirror (lean)', '')])
+    # 0.24.8 S = Split only with nothing selected (with a selection S stays Blender's Scale)
+    only_empty: BoolProperty(default=False, options={'SKIP_SAVE'})
 
     @classmethod
     def poll(cls, context):
         return (pref('workspace_hotkeys') and ts.is_mecha_workspace(context.workspace)
                 and context.mode == 'OBJECT')
 
+    def invoke(self, context, event):
+        if self.only_empty and context.selected_objects:
+            return {'PASS_THROUGH'}
+        if self.action == 'MIRROR':
+            # 0.24.8 Alt+X = the left Mirror button: lean the mouse, the result stays a live Mirror
+            if not any(o.type in {'MESH', 'CURVE'} for o in context.selected_editable_objects):
+                self.report({'WARNING'}, 'Mirror: select a mesh first')
+                return {'CANCELLED'}
+            try:
+                return bpy.ops.mch.mirror_lean('INVOKE_DEFAULT', keep_live=True)
+            except RuntimeError as ex:
+                self.report({'WARNING'}, str(ex))
+                return {'CANCELLED'}
+        return self.execute(context)
+
     def execute(self, context):
         if self.action == 'BOOLEAN':
             return bpy.ops.mch.boolean('EXEC_DEFAULT', operation='DIFFERENCE')
+        if self.action == 'MIRROR':
+            return {'CANCELLED'}
         activate_mecha_tool(context, self.action)
         return {'FINISHED'}
 
@@ -1536,8 +1561,9 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
 
     space_menu: BoolProperty(name='Space = Big Mecha Tool Menu', default=True,
                              description='Only inside the MECHA LAB workspace; elsewhere Space keeps Blender behaviour')
-    workspace_hotkeys: BoolProperty(name='B / C Hotkeys', default=True,
-                                    description='B = Boolean Difference, C = Cut tool, only inside MECHA LAB')
+    workspace_hotkeys: BoolProperty(name='B / C / Alt+X / S / Alt+A Hotkeys', default=True,
+                                    description='B = Boolean Difference, C = Cut tool, Alt+X = Mirror, S = Split '
+                                                '(nothing selected; else Scale), Alt+A = Armor Plate; MECHA LAB only')
     tool_pie: BoolProperty(name='V = Tool Pie', default=True,
                            description='All Mecha tools as a pie at the mouse, MECHA LAB only')
     last_tool_key: BoolProperty(name='Q = Select <-> Last Tool', default=True,
@@ -1672,6 +1698,17 @@ def register_keymaps():
     _keymaps.append((km, item))
     item = km.keymap_items.new('mch.hotkey', 'C', 'PRESS')
     item.properties.action = 'CUT'
+    _keymaps.append((km, item))
+    # 0.24.8 Alt+X = Mirror, S = Split (nothing selected; else Scale), Alt+A = Armor Plate
+    item = km.keymap_items.new('mch.hotkey', 'X', 'PRESS', alt=True)
+    item.properties.action = 'MIRROR'
+    _keymaps.append((km, item))
+    item = km.keymap_items.new('mch.hotkey', 'S', 'PRESS')
+    item.properties.action = 'SPLIT'
+    item.properties.only_empty = True
+    _keymaps.append((km, item))
+    item = km.keymap_items.new('mch.hotkey', 'A', 'PRESS', alt=True)
+    item.properties.action = 'PLATE'
     _keymaps.append((km, item))
     # Select / Move (replaces the removed Alt+click mode switch). Default F (user
     # request, 0.11.3); rebind freely (panel or Preferences > Keymap).
