@@ -401,21 +401,33 @@ def is_pcloth(ob):
 
 DIRTY_KEY = 'mch_pcloth_dirty'
 TENSION_KEY = 'mch_pcloth_tension'
+PUFF_KEY = 'mch_pcloth_puff'
 GRAVITY_KEY = 'mch_pcloth_gravity'
 
 
-def sim_values(preset, tension=1.0, gravity=None):
+def puff_pressure(base, puff):
+    """0.24.16 Puff slider: 1 = the preset; 0 = flat, 2 = twice the puff.  Presets with (almost) no puff
+    (Cloth / Silk / Canvas) get some added instead of a multiple of nothing."""
+    puff = max(0.0, float(puff))
+    if base >= 1.0:
+        return base * puff
+    return max(0.0, base + (puff - 1.0) * 3.0) if puff >= 1.0 else base * puff
+
+
+def sim_values(preset, tension=1.0, gravity=None, puff=1.0):
     """0.23.28 preset values with the live Tension / Gravity sliders:
-    Tension 1 = preset; higher = tighter (less slack, stiffer), lower = looser."""
+    Tension 1 = preset; higher = tighter (less slack, stiffer), lower = looser.  0.24.16 Puff = the pressure."""
     v = preset_values(preset)
     t = max(0.05, float(tension))
     over = dict(shrink=v['shrink'] * min(1.0 / t, 2.5), tension=t)     # looser at most 2.5 x the preset slack
     if gravity is not None:
         over['gravity'] = float(gravity)
+    if abs(float(puff) - 1.0) > 1e-9:            # Puff 1 = untouched: the result stays the preset's
+        over['pressure'] = puff_pressure(v['pressure'], puff)
     return over
 
 
-def redo(context, ob, preset, tension=None, gravity=None):
+def redo(context, ob, preset, tension=None, gravity=None, puff=None):
     """Bake a cloth again from its (hidden) source with another preset
     (and the object's Tension / Gravity, kept on the new cloth)."""
     names = [n for n in str(ob.get('mch_pcloth', '')).split(',') if n in bpy.data.objects]
@@ -425,6 +437,8 @@ def redo(context, ob, preset, tension=None, gravity=None):
         tension = ob.mch_pcloth_tension
     if gravity is None:
         gravity = ob.mch_pcloth_gravity if ob.get(GRAVITY_KEY) is not None else None
+    if puff is None:
+        puff = ob.mch_pcloth_puff
     srcs = [bpy.data.objects[n] for n in names]
     me = ob.data
     bpy.data.objects.remove(ob)
@@ -433,9 +447,9 @@ def redo(context, ob, preset, tension=None, gravity=None):
     for s in srcs:
         s.hide_set(False)
         s.hide_render = False
-    made = run_preset(context, srcs, preset, **sim_values(preset, tension, gravity))
+    made = run_preset(context, srcs, preset, **sim_values(preset, tension, gravity, puff))
     for o in made:
-        set_sliders(o, tension, gravity if gravity is not None else preset_values(preset)['gravity'])
+        set_sliders(o, tension, gravity if gravity is not None else preset_values(preset)['gravity'], puff)
     return made
 
 
@@ -443,10 +457,11 @@ _SYNC = [False]
 _PENDING = {}
 
 
-def set_sliders(ob, tension, gravity):
+def set_sliders(ob, tension, gravity, puff=1.0):
     """Show the values on a (new) cloth without baking again."""
     _SYNC[0] = True
     try:
+        ob.mch_pcloth_puff = puff
         ob.mch_pcloth_tension = tension
         ob.mch_pcloth_gravity = gravity
         ob[GRAVITY_KEY] = float(gravity)
@@ -636,6 +651,7 @@ def draw(layout, context):
     ob = context.active_object
     if is_pcloth(ob):
         col = box.column(align=True)
+        col.prop(ob, 'mch_pcloth_puff', slider=True)
         col.prop(ob, 'mch_pcloth_tension', slider=True)
         col.prop(ob, 'mch_pcloth_gravity', slider=True)
         row = box.row()
@@ -671,7 +687,8 @@ class MCH_OT_panel_cloth_refresh(bpy.types.Operator):
         for o in made:
             o.select_set(True)
         context.view_layer.objects.active = made[0]
-        self.report({'INFO'}, f'Panel Cloth refreshed (Tension {made[0].mch_pcloth_tension:.2f}, '
+        self.report({'INFO'}, f'Panel Cloth refreshed (Puff {made[0].mch_pcloth_puff:.2f}, '
+                              f'Tension {made[0].mch_pcloth_tension:.2f}, '
                               f'Gravity {made[0].mch_pcloth_gravity:.2f})')
         return {'FINISHED'}
 
@@ -689,6 +706,9 @@ def register():
         name='Fast Start', default=False,
         description='Prepare the cloth much faster (big panels: seconds less). The folds come out a little '
                     'different from the usual result; off = the usual result')
+    bpy.types.Object.mch_pcloth_puff = FloatProperty(
+        name='Puff', default=1.0, min=0.0, max=5.0, soft_max=3.0, update=_slider_update,
+        description='Panel Cloth: how much it puffs up - 1 = preset, 0 = flat, 2 = twice as much (Refresh bakes it)')
     bpy.types.Object.mch_pcloth_tension = FloatProperty(
         name='Tension', default=1.0, min=0.2, max=4.0, soft_max=3.0, update=_slider_update,
         description='Panel Cloth: 1 = preset; higher = tighter cloth (less slack, stiffer), lower = looser, more folds')
@@ -704,7 +724,7 @@ def unregister():
     for lst in (bpy.app.handlers.undo_pre, bpy.app.handlers.redo_pre):
         while _on_undo_pre in lst:
             lst.remove(_on_undo_pre)
-    for attr in ('mch_pcloth_tension', 'mch_pcloth_gravity'):
+    for attr in ('mch_pcloth_puff', 'mch_pcloth_tension', 'mch_pcloth_gravity'):
         if hasattr(bpy.types.Object, attr):
             delattr(bpy.types.Object, attr)
     if hasattr(bpy.types.Scene, 'mch_pcloth_fast'):
