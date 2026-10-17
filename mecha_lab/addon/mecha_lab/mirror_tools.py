@@ -486,6 +486,160 @@ class MCH_OT_mirror_lean(MirrorLeanLogic, bpy.types.Operator):
         return {'FINISHED'}
 
 
+# -----------------------------------------------------------------------------
+# 0.24.13 Collection instances: Alt+X = the same lean gesture; a live mirrored instance follows the original
+# -----------------------------------------------------------------------------
+
+INST_TWIN = 'INSTANCE_TWIN'
+INST_AXIS = 'INSTANCE_AXIS'
+
+
+def is_collection_instance(ob):
+    return (ob is not None and ob.type == 'EMPTY' and ob.instance_type == 'COLLECTION' and
+            ob.instance_collection is not None and ob.get(RIG_TAG) not in (INST_TWIN, 'MIRRORED'))
+
+
+def instance_twins(master):
+    return [o for o in bpy.data.objects if o.get(RIG_TAG) == INST_TWIN and o.get('mch_twin_of') == master.name]
+
+
+def remove_instance_twins(master):
+    for t in instance_twins(master):
+        axis = t.parent
+        bpy.data.objects.remove(t, do_unlink=True)
+        if axis is not None and axis.get(RIG_TAG) == INST_AXIS and not axis.children:
+            bpy.data.objects.remove(axis, do_unlink=True)
+
+
+def add_instance_twin(scene, master, reflection):
+    """A twin instance of the same collection at ``reflection`` @ master (live: a Copy Transforms constraint
+    under a reflecting parent, so moving / rotating the original moves the twin)."""
+    coll = master.instance_collection
+    home = next((c for c in master.users_collection if c != coll), scene.collection)
+    axis = bpy.data.objects.new(f'MCH {master.name} - Mirror Axis', None)
+    home.objects.link(axis)
+    axis[RIG_TAG] = INST_AXIS
+    axis.empty_display_size = 0.15
+    axis.hide_render = True
+    axis.matrix_world = reflection
+    twin = bpy.data.objects.new(f'{master.name} (mirror)', None)
+    home.objects.link(twin)
+    twin[RIG_TAG] = INST_TWIN
+    twin['mch_twin_of'] = master.name
+    twin.instance_type = 'COLLECTION'
+    twin.instance_collection = coll
+    twin.empty_display_size = master.empty_display_size
+    twin.parent = axis
+    twin.matrix_parent_inverse.identity()
+    c = twin.constraints.new('COPY_TRANSFORMS')
+    c.name = 'MCH_Symmetry_LiveLink'
+    c.target = master
+    c.target_space = 'WORLD'
+    c.owner_space = 'LOCAL'
+    try:
+        axis.hide_set(True)
+    except RuntimeError:
+        pass
+    return twin
+
+
+def plane_reflections(origin, axes, enabled):
+    """World reflection matrices for every combination of the enabled mirror planes."""
+    out = [Matrix.Identity(4)]
+    for i, on in enumerate(enabled):
+        if not on:
+            continue
+        n = Vector(axes[i]).normalized()
+        r3 = Matrix.Identity(3) - 2.0 * Matrix((n * n.x, n * n.y, n * n.z)).transposed()
+        r = Matrix.Translation(origin) @ r3.to_4x4() @ Matrix.Translation(-Vector(origin))
+        out += [r @ q for q in out]
+    return out[1:]
+
+
+def _instance_size(ob):
+    pts = []
+    for o in ob.instance_collection.all_objects:
+        if o.type == 'MESH':
+            pts += [o.matrix_world @ Vector(c) for c in o.bound_box]
+    if not pts:
+        return 1.0
+    lo = Vector([min(p[i] for p in pts) for i in range(3)])
+    hi = Vector([max(p[i] for p in pts) for i in range(3)])
+    return max(max(hi - lo) * max(ob.scale), 0.2)
+
+
+class InstanceMirrorLogic(MirrorLeanLogic):
+    """The lean gesture for collection instances: no bisect, the twin is a live mirrored instance."""
+
+    def start(self, context, region, projector, mouse_xy):
+        scene = context.scene
+        self.p = scene.mch_mirror
+        self.region = region
+        self.center = (region.width / 2.0, region.height * 0.18)
+        self.projector = projector
+        self.target_names = [o.name for o in context.selected_objects if is_collection_instance(o)]
+        if not self.target_names:
+            return False
+        # re-mirroring replaces the old twins; Esc puts them back
+        self.snaps = {n: [t.parent.matrix_world.copy() for t in instance_twins(bpy.data.objects[n])
+                          if t.parent is not None] for n in self.target_names}
+        self.axes = [self.p.x, self.p.y, self.p.z]
+        self.flips = [self.p.flip_x, self.p.flip_y, self.p.flip_z]
+        self.locked = [False, False, False]
+        if not any(self.axes):
+            self.axes[0] = True
+        self.current = None
+        self.mouse = mouse_xy
+        self._apply_live(scene)
+        return True
+
+    def frame(self, scene):
+        obs = self._targets()
+        origin, axes = mirror_frame(obs[0], self.p, scene)
+        return origin, axes, _instance_size(obs[0])
+
+    def _apply_live(self, scene):
+        for ob in self._targets():
+            remove_instance_twins(ob)
+            origin, axes = mirror_frame(ob, self.p, scene)
+            for r in plane_reflections(origin, axes, self.axes):
+                add_instance_twin(scene, ob, r)
+
+    def restore_all(self):
+        scene = bpy.context.scene
+        for n, mats in self.snaps.items():
+            ob = bpy.data.objects.get(n)
+            if ob is None:
+                continue
+            remove_instance_twins(ob)
+            for m in mats:
+                add_instance_twin(scene, ob, m)
+
+    def describe(self):
+        return ' '.join(a for i, a in enumerate('XYZ') if self.axes[i])
+
+    def finish_live(self, scene):
+        self.store_settings()
+        return f'Instance mirror on {", ".join(self.target_names)}: {self.describe()} (the copy follows the original)'
+
+    def finish_apply(self, context):
+        return self.finish_live(context.scene)
+
+
+class MCH_OT_instance_mirror_lean(InstanceMirrorLogic, MCH_OT_mirror_lean):
+    bl_idname = 'mch.instance_mirror_lean'
+    bl_label = 'Mirror Collection Instance (lean)'
+    bl_description = ('Mirror the selected collection instances: lean the mouse toward the side; the mirrored '
+                      'instance follows the original (moving / rotating it). Esc = cancel')
+    bl_options = {'REGISTER', 'UNDO', 'BLOCKING'}
+
+    keep_live: bpy.props.BoolProperty(default=True, options={'SKIP_SAVE', 'HIDDEN'})
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and any(is_collection_instance(o) for o in context.selected_objects)
+
+
 def start_lean_mirror(context):
     """Picking the Mirror tool: start the lean mirror in the biggest 3D View
     (the tool list may be another editor).  Returns True when started."""
@@ -759,6 +913,7 @@ class MCH_PT_mirror(bpy.types.Panel):
 CLASSES = (
     MCH_PG_Mirror,
     MCH_OT_mesh_mirror, MCH_OT_mesh_mirror_apply, MCH_OT_mesh_mirror_remove, MCH_OT_mirror_lean,
+    MCH_OT_instance_mirror_lean,
     MCH_OT_collection_mirror, MCH_OT_collection_mirror_remove,
     MCH_PT_mirror,
 )
