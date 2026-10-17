@@ -52,7 +52,7 @@ res, op = run('MIRROR')
 check('Alt+X with nothing selected: warning, no tool change', res == {'CANCELLED'} and op.reports, (res, op.reports))
 select_only(b)
 lean = []
-import mecha_lab.workspace_ui as W
+import mecha_lab.mirror_tools as W      # 0.24.14 Alt+X goes through mirror_tools.start_mirror
 orig = W.bpy
 W.bpy = types.SimpleNamespace(ops=types.SimpleNamespace(mch=types.SimpleNamespace(
     mirror_lean=lambda *a, **k: (lean.append((a, k)), {'RUNNING_MODAL'})[1])), types=bpy.types)

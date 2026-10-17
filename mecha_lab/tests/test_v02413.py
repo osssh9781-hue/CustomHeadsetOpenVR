@@ -88,8 +88,9 @@ S.cursor.location = (0, 0, 0)
 
 # ---- Alt+X routes a selected instance to the instance mirror, a mesh to the mesh mirror
 calls = []
-orig = wui.bpy
-wui.bpy = types.SimpleNamespace(ops=types.SimpleNamespace(mch=types.SimpleNamespace(
+import mecha_lab.mirror_tools as _mtm
+orig = _mtm.bpy
+_mtm.bpy = types.SimpleNamespace(ops=types.SimpleNamespace(mch=types.SimpleNamespace(
     instance_mirror_lean=lambda *a, **k: (calls.append('inst'), {'RUNNING_MODAL'})[1],
     mirror_lean=lambda *a, **k: (calls.append('mesh'), {'RUNNING_MODAL'})[1])), types=bpy.types)
 real_poll = ts.is_mecha_workspace
@@ -103,10 +104,40 @@ try:
     select_only(other)
     r2 = wui.MCH_OT_hotkey.invoke(fake, C, None)
 finally:
-    wui.bpy = orig
+    _mtm.bpy = orig
     ts.is_mecha_workspace = real_poll
 check('Alt+X on a collection instance -> instance mirror; on a mesh -> mesh mirror', calls == ['inst', 'mesh'] and
       r1 == r2 == {'RUNNING_MODAL'}, calls)
+# ---- 0.24.14 nothing mirrorable selected (e.g. only a curve): a plain message, not Blender's poll error
+cu = bpy.data.curves.new('CurveData', 'CURVE')
+cob = bpy.data.objects.new('JustACurve', cu)
+S.collection.objects.link(cob)
+select_only(cob)
+msgs = []
+r = mt.start_mirror(C, True, lambda kind, m: msgs.append(m))
+check('only a curve selected: plain message (no poll error)', r == {'CANCELLED'} and msgs and
+      'collection instance' in msgs[0] and 'Curve' in msgs[0] and 'poll' not in msgs[0], msgs)
+select_only(cob, inst)
+check('curve + collection instance -> instance mirror', mt.mirror_targets_kind(C) == 'INSTANCE')
+select_only(cob, part if part.name in bpy.data.objects else inst)
+from mecha_lab import bottom_bar as bb
+calls2 = []
+orig = _mtm.bpy
+_mtm.bpy = types.SimpleNamespace(ops=types.SimpleNamespace(mch=types.SimpleNamespace(
+    instance_mirror_lean=lambda *a, **k: (calls2.append('inst'), {'RUNNING_MODAL'})[1],
+    mirror_lean=lambda *a, **k: (calls2.append(('mesh', k.get('keep_live'))), {'RUNNING_MODAL'})[1])),
+    types=bpy.types)
+try:
+    for action in ('MIRROR', 'SYMMETRY'):
+        body = cube('Body2', 1.0) if 'Body2' not in bpy.data.objects else bpy.data.objects['Body2']
+        select_only(body)
+        bb.MCH_OT_object_tidy.execute(types.SimpleNamespace(action=action, report=lambda *a: None), C)
+    select_only(inst)
+    bb.MCH_OT_object_tidy.execute(types.SimpleNamespace(action='MIRROR', report=lambda *a: None), C)
+finally:
+    _mtm.bpy = orig
+check('left Mirror / Symmetry buttons use the same entry (mesh keep-live / apply, instance)',
+      calls2 == [('mesh', True), ('mesh', False), 'inst'], calls2)
 check('instance mirror operator registered', hasattr(bpy.ops.mch, 'instance_mirror_lean') and
       'MCH_OT_instance_mirror_lean' in dir(bpy.types))
 mecha_lab.unregister()

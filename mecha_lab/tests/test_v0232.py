@@ -21,7 +21,7 @@ keys = [(ki.idname, ki.type, ki.shift) for km in kc.keymaps for ki in km.keymap_
 check('V = tool pie, Q = toggle', ('mch.tool_pie', 'V', False) in keys and ('mch.toggle_last_tool', 'Q', False) in keys)
 check('Mesh Curve = the new curve tool, old one hidden', ts.TOOL_BY_ID['TUBE'][1] == 'Mesh Curve'
       and 'DRAW' in ts.HIDDEN_TOOLS and all(t[0] != 'DRAW' for t in ts.VISIBLE_TOOLS))
-check('mirror button = lean gesture kept live', 'keep_live=True' in open(bb.__file__).read()
+check('mirror button = lean gesture kept live', "start_mirror(context, self.action == 'MIRROR'" in open(bb.__file__).read()
       and 'keep_live' in {p.identifier for p in bpy.ops.mch.mirror_lean.get_rna_type().properties})
 
 # cloth gravity

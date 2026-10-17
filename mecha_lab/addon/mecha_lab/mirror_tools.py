@@ -640,6 +640,35 @@ class MCH_OT_instance_mirror_lean(InstanceMirrorLogic, MCH_OT_mirror_lean):
         return context.mode == 'OBJECT' and any(is_collection_instance(o) for o in context.selected_objects)
 
 
+def mirror_targets_kind(context):
+    """'MESH' (selected meshes), 'INSTANCE' (selected collection instances, no mesh) or None."""
+    sel = context.selected_objects
+    if any(o.type == 'MESH' and o.library is None for o in sel):
+        return 'MESH'
+    if any(is_collection_instance(o) for o in sel):
+        return 'INSTANCE'
+    return None
+
+
+def start_mirror(context, keep_live, report):
+    """0.24.14 one entry for Alt+X and the left Mirror / Symmetry buttons: meshes -> mesh mirror, collection
+    instances -> instance mirror, anything else -> a plain message (it used to show Blender's
+    'mirror_lean.poll() failed, context is incorrect' when e.g. only a curve was selected)."""
+    kind = mirror_targets_kind(context)
+    if kind is None:
+        others = sorted({o.type.title() for o in context.selected_objects})
+        report({'WARNING'}, 'Mirror: select a mesh or a collection instance' +
+               (f' (selected: {", ".join(others)} - convert it to a mesh first)' if others else ''))
+        return {'CANCELLED'}
+    try:
+        if kind == 'INSTANCE':
+            return bpy.ops.mch.instance_mirror_lean('INVOKE_DEFAULT')
+        return bpy.ops.mch.mirror_lean('INVOKE_DEFAULT', keep_live=keep_live)
+    except RuntimeError as ex:
+        report({'WARNING'}, 'Mirror: ' + str(ex).splitlines()[0])
+        return {'CANCELLED'}
+
+
 def start_lean_mirror(context):
     """Picking the Mirror tool: start the lean mirror in the biggest 3D View
     (the tool list may be another editor).  Returns True when started."""

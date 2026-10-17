@@ -1237,22 +1237,9 @@ class MCH_OT_hotkey(bpy.types.Operator):
             return {'PASS_THROUGH'}
         if self.action == 'MIRROR':
             # 0.24.8 Alt+X = the left Mirror button: lean the mouse, the result stays a live Mirror
+            # 0.24.13 a selected collection instance: the same lean gesture, a live mirrored instance
             from . import mirror_tools
-            if not any(o.type in {'MESH', 'CURVE'} for o in context.selected_editable_objects):
-                # 0.24.13 a selected collection instance: the same lean gesture, a live mirrored instance
-                if any(mirror_tools.is_collection_instance(o) for o in context.selected_objects):
-                    try:
-                        return bpy.ops.mch.instance_mirror_lean('INVOKE_DEFAULT')
-                    except RuntimeError as ex:
-                        self.report({'WARNING'}, str(ex))
-                        return {'CANCELLED'}
-                self.report({'WARNING'}, 'Mirror: select a mesh or a collection instance first')
-                return {'CANCELLED'}
-            try:
-                return bpy.ops.mch.mirror_lean('INVOKE_DEFAULT', keep_live=True)
-            except RuntimeError as ex:
-                self.report({'WARNING'}, str(ex))
-                return {'CANCELLED'}
+            return mirror_tools.start_mirror(context, True, self.report)
         return self.execute(context)
 
     def execute(self, context):

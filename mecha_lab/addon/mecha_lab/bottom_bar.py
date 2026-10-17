@@ -428,23 +428,14 @@ class MCH_OT_object_tidy(bpy.types.Operator):
         return context.mode == 'OBJECT' and bool(context.selected_editable_objects)
 
     def execute(self, context):
+        if self.action in {'SYMMETRY', 'MIRROR'}:
+            # Symmetry: live while you lean, Enter applies; Mirror (0.23.2): the result stays a live Mirror.
+            # 0.24.14 one entry with Alt+X: collection instances too, a plain message for anything else
+            from . import mirror_tools
+            return mirror_tools.start_mirror(context, self.action == 'MIRROR', self.report)
         obs = [o for o in context.selected_editable_objects if o.type in {'MESH', 'CURVE'}]
         if not obs:
             return {'CANCELLED'}
-        if self.action == 'SYMMETRY':
-            # the lean symmetry (was the Mirror tool): live while you lean, Enter applies
-            try:
-                return bpy.ops.mch.mirror_lean('INVOKE_DEFAULT')
-            except RuntimeError as ex:
-                self.report({'WARNING'}, str(ex))
-                return {'CANCELLED'}
-        if self.action == 'MIRROR':
-            # 0.23.2: the same lean gesture as Symmetry, but the result stays a live Mirror (popup Apply / Remove)
-            try:
-                return bpy.ops.mch.mirror_lean('INVOKE_DEFAULT', keep_live=True)
-            except RuntimeError as ex:
-                self.report({'WARNING'}, str(ex))
-                return {'CANCELLED'}
         frozen = [o.name for o in obs if _unlive(o)]
         with context.temp_override(selected_editable_objects=obs, selected_objects=obs,
                                    active_object=context.active_object or obs[0]):
