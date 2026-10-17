@@ -179,7 +179,7 @@ check('0.23.2: lean gesture at the bottom centre of the view', tuple(op.center) 
 far = mt.lean_pick(TOP, Vector((0, 0, -50)), [Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))], (700, 180),
                    center=(500, 180))
 check('gesture works when the origin is off screen (picks +X from the bottom centre)', far == (0, 1), far)
-check('Mirror button uses the lean gesture, kept live', 'keep_live=True' in open(bb_mod.__file__).read())
+check('Mirror button uses the lean gesture, kept live', "start_mirror(context, self.action == 'MIRROR'" in open(bb_mod.__file__).read())
 check('mirror tool start hook present', 'start_lean_mirror' in open(wui.__file__).read())
 check('Mirror lean operator registered', hasattr(bpy.types, 'MCH_OT_mirror_lean'))
 

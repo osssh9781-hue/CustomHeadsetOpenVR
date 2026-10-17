@@ -102,7 +102,7 @@ class MCH_OT_mesh_mirror(bpy.types.Operator):
         return {'CANCELLED'}
 
 
-def setup_mirror(obj, p, scene, axes=None, flips=None):
+def setup_mirror(obj, p, scene, axes=None, flips=None, center=None):
     """Create / update the Mecha Mirror modifier of ``obj`` from the panel
     settings (``axes`` / ``flips`` override the X/Y/Z toggles).  Returns the
     modifier, or None when the name belongs to another modifier type."""
@@ -112,7 +112,7 @@ def setup_mirror(obj, p, scene, axes=None, flips=None):
     old_pivot = mod.mirror_object if mod else None
     if mod is None:
         mod = obj.modifiers.new(MOD_NAME, 'MIRROR')
-    if p.space == 'WORLD':
+    if p.space == 'WORLD' or center is not None:
         pivot = old_pivot if old_pivot and old_pivot.get('_mch_world_pivot') else None
         if pivot is None:
             pivot = bpy.data.objects.new(f'MCH World Pivot - {obj.name}', None)
@@ -121,8 +121,9 @@ def setup_mirror(obj, p, scene, axes=None, flips=None):
             pivot.empty_display_type = 'ARROWS'
             pivot.empty_display_size = 0.16
             pivot.hide_render = True
-        pivot.matrix_world = Matrix.Translation(
-            Vector(scene.cursor.location) if p.center == 'CURSOR' else Vector((0, 0, 0)))
+        if center is None:
+            center = Vector(scene.cursor.location) if p.center == 'CURSOR' else Vector((0, 0, 0))
+        pivot.matrix_world = Matrix.Translation(center)        # 0.24.15 or the object pointed at
         mod.mirror_object = pivot
     else:
         mod.mirror_object = None
@@ -231,6 +232,38 @@ def _restore(obj, snap):
     mod.merge_threshold = snap['merge_threshold']
 
 
+def world_center(ob, matrix=None):
+    """Middle of an object's bounds in world space (a collection instance: the middle of its collection)."""
+    if ob.type == 'EMPTY' and ob.instance_type == 'COLLECTION' and ob.instance_collection is not None:
+        coll = ob.instance_collection
+        pts = [o.matrix_world @ Vector(c) for o in coll.all_objects if o.type == 'MESH' for c in o.bound_box]
+        if not pts:
+            return ob.matrix_world.translation.copy()
+        return ob.matrix_world @ (sum(pts, Vector()) / len(pts) - Vector(coll.instance_offset))
+    m = matrix if matrix is not None else ob.matrix_world
+    return m @ (sum((Vector(c) for c in ob.bound_box), Vector()) / 8.0)
+
+
+def pointed_object(context, projector, xy, skip):
+    """(name, world centre) of the object under the mouse that is not being mirrored, or None."""
+    try:
+        o, d = projector.ray(xy)
+        dg = context.evaluated_depsgraph_get()
+        o, d = Vector(o), Vector(d).normalized()
+        for _ in range(8):
+            hit, loc, _n, _i, hob, mat = context.scene.ray_cast(dg, o, d)
+            if not hit or hob is None:
+                return None
+            real = bpy.data.objects.get(hob.name)
+            if real is not None and real.name not in skip and not real.get('_mch_world_pivot') \
+                    and not real.get(RIG_TAG):
+                return real.name, world_center(real, Matrix(mat))
+            o = loc + d * 1e-4
+    except (AttributeError, RuntimeError, TypeError, ValueError, ReferenceError):
+        pass
+    return None
+
+
 class MirrorLeanLogic:
     """Modal: the live mirror appears at once; moving the mouse picks the axis
     (and the side to copy to).  LMB = keep live, Shift+LMB = add this axis and
@@ -258,6 +291,7 @@ class MirrorLeanLogic:
         if not any(self.axes):
             self.axes[0] = True
         self.current = None
+        self.pivot_name, self.pivot_center = None, None
         self.mouse = mouse_xy
         self._apply_live(scene)               # the mirror is live immediately
         return True
@@ -268,16 +302,50 @@ class MirrorLeanLogic:
     def frame(self, scene):
         obs = self._targets()
         origin, axes = mirror_frame(obs[0], self.p, scene)
+        if getattr(self, 'pivot_center', None) is not None:
+            origin, axes = self.pivot_center.copy(), [Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))]
         size = max(max(obs[0].dimensions), 0.2)
         return origin, axes, size
 
     def _apply_live(self, scene):
         for ob in self._targets():
-            setup_mirror(ob, self.p, scene, self.axes, self.flips)
+            setup_mirror(ob, self.p, scene, self.axes, self.flips, getattr(self, 'pivot_center', None))
+
+    def point_at(self, scene, xy):
+        """0.24.15 the mouse on another object: that object is the mirror centre and the copy goes to its far
+        side (axis = the world axis from the selection toward it).  Returns True while pointing."""
+        obs = self._targets()
+        skip = set(self.target_names)
+        for o in obs:                          # an instance's own collection parts are part of the selection
+            if o.type == 'EMPTY' and o.instance_collection is not None:
+                skip |= {c.name for c in o.instance_collection.all_objects}
+        hit = pointed_object(bpy.context, self.projector, xy, skip)
+        if hit is None:
+            if getattr(self, 'pivot_name', None) is not None:
+                self.pivot_name, self.pivot_center = None, None
+                self.current = None
+                self._apply_live(scene)
+            return False
+        name, pc = hit
+        tc = sum((world_center(o) for o in obs), Vector()) / len(obs)
+        delta = pc - tc
+        i = max(range(3), key=lambda k: abs(delta[k]))
+        sign = 1 if delta[i] > 0 else -1
+        if name == getattr(self, 'pivot_name', None) and self.current == (i, sign):
+            return True
+        self.pivot_name, self.pivot_center = name, pc
+        self.current = (i, sign)
+        self.axes = [self.locked[k] for k in range(3)]
+        self.axes[i] = True
+        self.flips[i] = sign > 0              # keep the selection's side, copy across the pointed object
+        self._apply_live(scene)
+        return True
 
     def on_move(self, scene, xy):
         self.mouse = xy
         if not self._targets():
+            return
+        if self.point_at(scene, xy):
             return
         origin, axes, size = self.frame(scene)
         pick = lean_pick(self.projector, origin, axes, xy, size * 0.6, center=self.center)
@@ -341,7 +409,8 @@ class MirrorLeanLogic:
         for i, axis in enumerate('XYZ'):
             if self.axes[i]:
                 out.append(('+' if self.flips[i] else '-') + axis if self.p.bisect else axis)
-        return ' '.join(out) + ('' if self.p.bisect else ' (no bisect)')
+        across = f' across {self.pivot_name}' if getattr(self, 'pivot_name', None) else ''
+        return ' '.join(out) + across + ('' if self.p.bisect else ' (no bisect)')
 
     def handle(self, context, event):
         """Returns 'RUN', 'PASS', 'LIVE', 'APPLY' or 'CANCEL'."""
@@ -442,7 +511,7 @@ class LeanModal:
             context.workspace.status_text_set(None if clear else
                                               'Mirror: lean the mouse (from the bottom centre) toward the side to copy '
                                               'to | Enter / Space: ' + ('keep live' if self.keep_live else 'APPLY') +
-                                              ' | Click: keep live | Shift+Click: add axis | X Y Z: axes | '
+                                              ' | Mouse on another object: mirror across it | Click: keep live | Shift+Click: add axis | X Y Z: axes | '
                                               'B: bisect | Esc / RMB: cancel')
         except (AttributeError, ReferenceError):
             pass
@@ -594,6 +663,7 @@ class InstanceMirrorLogic(MirrorLeanLogic):
         if not any(self.axes):
             self.axes[0] = True
         self.current = None
+        self.pivot_name, self.pivot_center = None, None
         self.mouse = mouse_xy
         self._apply_live(scene)
         return True
@@ -601,12 +671,16 @@ class InstanceMirrorLogic(MirrorLeanLogic):
     def frame(self, scene):
         obs = self._targets()
         origin, axes = mirror_frame(obs[0], self.p, scene)
+        if self.pivot_center is not None:
+            origin, axes = self.pivot_center.copy(), [Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))]
         return origin, axes, _instance_size(obs[0])
 
     def _apply_live(self, scene):
         for ob in self._targets():
             remove_instance_twins(ob)
             origin, axes = mirror_frame(ob, self.p, scene)
+            if self.pivot_center is not None:
+                origin, axes = self.pivot_center, [Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))]
             for r in plane_reflections(origin, axes, self.axes):
                 add_instance_twin(scene, ob, r)
 
@@ -621,7 +695,8 @@ class InstanceMirrorLogic(MirrorLeanLogic):
                 add_instance_twin(scene, ob, m)
 
     def describe(self):
-        return ' '.join(a for i, a in enumerate('XYZ') if self.axes[i])
+        across = f' across {self.pivot_name}' if self.pivot_name else ''
+        return ' '.join(a for i, a in enumerate('XYZ') if self.axes[i]) + across
 
     def finish_live(self, scene):
         self.store_settings()

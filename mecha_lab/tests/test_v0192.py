@@ -220,8 +220,11 @@ pos = bb.tidy_positions(fake)
 check('five buttons stacked under the Tool Active button (+ Symmetry, Mirror)', len(pos) == 5 and all(abs(x - bx) < 1e-6 for x, _y in pos)
       and by > pos[0][1] > pos[1][1] > pos[2][1])
 src = open(bb.__file__).read()
+# 0.24.14 the buttons go through mirror_tools.start_mirror (keep_live = the Mirror button)
+from mecha_lab import mirror_tools as _mt
 check('0.23.2 Mirror button: the lean gesture, result kept live (not applied)',
-      "mirror_lean('INVOKE_DEFAULT', keep_live=True)" in src.split("if self.action == 'MIRROR':")[1][:400])
+      "start_mirror(context, self.action == 'MIRROR'" in src and
+      "mirror_lean('INVOKE_DEFAULT', keep_live=keep_live)" in open(_mt.__file__).read())
 from mecha_lab import tool_state as _ts
 check('the old Mirror tool is called Symmetry now', _ts.TOOL_BY_ID['MIRROR'][1] == 'Symmetry')
 bpy.data.objects.remove(cb)
