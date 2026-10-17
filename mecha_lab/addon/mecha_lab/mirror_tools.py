@@ -415,19 +415,9 @@ def draw_lean_overlay(op):
         pass
 
 
-class MCH_OT_mirror_lean(MirrorLeanLogic, bpy.types.Operator):
-    bl_idname = 'mch.mirror_lean'
-    bl_label = 'Symmetry (lean to copy)'
-    bl_description = ('Live mirror at once; lean the mouse toward the side to copy to. Enter = apply, '
-                      'click = keep live, Shift+click = add axis, X/Y/Z = axes, B = bisect, Esc = cancel')
-    bl_options = {'REGISTER', 'UNDO', 'BLOCKING'}
-
-    keep_live: bpy.props.BoolProperty(default=False, options={'SKIP_SAVE'},
-                                      description='Mirror button: Enter / click keep the live mirror (no apply)')
-
-    @classmethod
-    def poll(cls, context):
-        return context.mode == 'OBJECT' and any(o.type == 'MESH' for o in context.selected_objects)
+class LeanModal:
+    """invoke / modal of the lean mirror operators (0.24.14: a plain mixin - deriving one registered operator
+    class from another made Blender lose the Python class of mch.mirror_lean: 'poll() failed')."""
 
     def invoke(self, context, event):
         area = context.area
@@ -484,6 +474,21 @@ class MCH_OT_mirror_lean(MirrorLeanLogic, bpy.types.Operator):
             return {'FINISHED'}
         self.report({'INFO'}, self.finish_live(context.scene))
         return {'FINISHED'}
+
+
+class MCH_OT_mirror_lean(MirrorLeanLogic, LeanModal, bpy.types.Operator):
+    bl_idname = 'mch.mirror_lean'
+    bl_label = 'Symmetry (lean to copy)'
+    bl_description = ('Live mirror at once; lean the mouse toward the side to copy to. Enter = apply, '
+                      'click = keep live, Shift+click = add axis, X/Y/Z = axes, B = bisect, Esc = cancel')
+    bl_options = {'REGISTER', 'UNDO', 'BLOCKING'}
+
+    keep_live: bpy.props.BoolProperty(default=False, options={'SKIP_SAVE'},
+                                      description='Mirror button: Enter / click keep the live mirror (no apply)')
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and any(o.type == 'MESH' for o in context.selected_objects)
 
 
 # -----------------------------------------------------------------------------
@@ -626,7 +631,7 @@ class InstanceMirrorLogic(MirrorLeanLogic):
         return self.finish_live(context.scene)
 
 
-class MCH_OT_instance_mirror_lean(InstanceMirrorLogic, MCH_OT_mirror_lean):
+class MCH_OT_instance_mirror_lean(InstanceMirrorLogic, LeanModal, bpy.types.Operator):
     bl_idname = 'mch.instance_mirror_lean'
     bl_label = 'Mirror Collection Instance (lean)'
     bl_description = ('Mirror the selected collection instances: lean the mouse toward the side; the mirrored '

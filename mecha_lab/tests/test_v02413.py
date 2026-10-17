@@ -138,6 +138,18 @@ finally:
     _mtm.bpy = orig
 check('left Mirror / Symmetry buttons use the same entry (mesh keep-live / apply, instance)',
       calls2 == [('mesh', True), ('mesh', False), 'inst'], calls2)
+# ---- 0.24.14 the real operators (no mock): a Base-Mesh-like mesh selected -> mch.mirror_lean passes its poll
+body3 = cube('Body3', 1.0)
+select_only(body3)
+check('mesh selected: mch.mirror_lean poll passes (0.24.13 lost its Python class: poll() failed)',
+      bpy.ops.mch.mirror_lean.poll() and 'keep_live' in bpy.types.MCH_OT_mirror_lean.__annotations__)
+msgs = []
+r = mt.start_mirror(C, True, lambda kind, m: msgs.append(m))
+check('start_mirror with a mesh (no 3D View here): no poll error', not any('poll' in m for m in msgs), (r, msgs))
+check('the two mirror operators are separate classes',
+      not issubclass(mt.MCH_OT_instance_mirror_lean, mt.MCH_OT_mirror_lean))
+select_only(inst)
+check('collection instance selected: instance operator poll passes', bpy.ops.mch.instance_mirror_lean.poll())
 check('instance mirror operator registered', hasattr(bpy.ops.mch, 'instance_mirror_lean') and
       'MCH_OT_instance_mirror_lean' in dir(bpy.types))
 mecha_lab.unregister()
