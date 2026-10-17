@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.13 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.15 (Claude Code, 2026-10-14)
+
+## 0.24.15
+- ZIP sha256 `827eb58468eabb786725342811e274859dbe69d07b030cc8713853b89ffb348f`. `mirror_tools.LeanModal`(invoke / _status / _end / modal 믹스인): `MCH_OT_mirror_lean(MirrorLeanLogic, LeanModal, Operator)`, `MCH_OT_instance_mirror_lean(InstanceMirrorLogic, LeanModal, Operator)` - 등록된 연산자 클래스를 상속하면 Blender가 부모의 파이썬 클래스를 잃음(0.24.13 회귀). `pointed_object(context, projector, xy, skip)`(scene.ray_cast, 선택 / 피벗 / 리그 제외), `world_center(ob, matrix)`, `MirrorLeanLogic.point_at`(on_move 먼저: 맞으면 pivot_center = 그 오브젝트 중심, 축 = 선택 중심→그것의 최대 성분, flips[i] = 그쪽이 +, setup_mirror(..., center=pivot_center)), InstanceMirrorLogic도 pivot_center를 기준면 원점으로. `mirror_targets_kind(context)`('MESH' / 'INSTANCE' / None), `start_mirror(context, keep_live, report)`: MESH → mirror_lean(keep_live), INSTANCE → instance_mirror_lean, None → 경고(선택된 타입 표시). `workspace_ui.MCH_OT_hotkey` MIRROR와 `bottom_bar.MCH_OT_object_tidy` SYMMETRY / MIRROR가 이것만 호출.
 
 ## 0.24.13
 - ZIP sha256 `2e99a81d7cddf0273708fbc272f7b501d5e6231c936f223c26196c0e88fbed8d`. `mirror_tools`: `is_collection_instance`, `instance_twins` / `remove_instance_twins` / `add_instance_twin`(반사 행렬을 matrix_world로 가진 숨긴 Empty `INSTANCE_AXIS` 아래에 같은 콜렉션 인스턴스 `INSTANCE_TWIN`, COPY_TRANSFORMS target=원본 WORLD → owner LOCAL), `plane_reflections(origin, axes, enabled)`, `InstanceMirrorLogic(MirrorLeanLogic)`(start / frame / _apply_live / restore_all / describe), `MCH_OT_instance_mirror_lean`(MCH_OT_mirror_lean 상속). `workspace_ui.MCH_OT_hotkey` MIRROR: 메쉬 선택이 없고 콜렉션 인스턴스가 선택돼 있으면 instance_mirror_lean.
