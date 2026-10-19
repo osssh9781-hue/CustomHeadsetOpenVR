@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 0.24.16 — Panel Cloth Puff(부푸는 정도) 슬라이더 (2026-10-19)
+
+- **Puff**: 천을 선택하면 Tension / Gravity 위에 있음. 1 = 프리셋 그대로(결과 동일), 0 = 안 부풂, 2 = 두 배. 바꾸면 Refresh가 빨갛게, 누르면 새 값으로 다시 굽기(새 천에도 값 유지). 원래 거의 안 부푸는 프리셋(Cloth / Silk / Canvas)도 Puff를 올리면 조금 부풂. 비교 `reference/panel_cloth_puff_v02416.png`(Padding, Puff 0 / 1 / 2.5).
+- 테스트: 79개 파일 2554/2554 (`tests/test_log_bpy501_v02416.txt`), 새 `test_v02416.py`(8). ZIP sha256 `a1b3b0dd64d24375126a17ffad0ea4962c805f8e0d4f30757a6d999e7d7eba87`.
+
 ## 0.24.15 — 메쉬 Mirror 안 되던 문제(0.24.13) 수정, 다른 오브젝트를 가리켜 그 너머로 미러 (2026-10-17)
 
 - **원인(0.24.13 회귀)**: 콜렉션 인스턴스 미러 연산자를 기존 메쉬 Mirror 연산자(`mch.mirror_lean`)에서 상속받아 만들었더니, Blender가 메쉬 Mirror의 파이썬 클래스를 잃어버려("unable to get Python class for RNA struct 'MCH_OT_mirror_lean'") Alt+X / 왼쪽 Mirror·Symmetry 버튼 / Symmetry 툴이 모두 "mirror_lean.poll() failed, context is incorrect"로 막힘(사용자: Base Mesh로 만든 메쉬). 테스트는 연산자를 목업으로 바꿔 불러서 못 잡았음. → 상속을 없애고 공통 부분을 별도 믹스인(LeanModal)으로 분리. 실제 연산자 poll을 부르는 회귀 테스트 추가.

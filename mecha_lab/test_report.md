@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.15
+# Test Report — Mecha Lab 0.24.16
+
+## 0.24.16 결과: 79개 파일 2554/2554 (`tests/test_log_bpy501_v02416.txt`) (`tests/test_log_bpy501_v02416.txt`). test_v02416(8): Puff 1은 pressure 안 바꿈, 2 = 2배 / 0 = 0, Cloth 프리셋은 2에서 > 1, 새 천 Puff 1, 바꾸면 표시만(굽기 안 함), Refresh 2.5 → 값 유지 + 95% 높이 > 1.1배, 0 → 프리셋보다 낮음. 비교 렌더 `reference/panel_cloth_puff_v02416.png`(Cycles CPU, headless). 뷰포트 미검증.
 
 ## 0.24.15 결과: 78개 파일 2546/2546 (`tests/test_log_bpy501_v02415.txt`) (`tests/test_log_bpy501_v02415.txt`). test_v02415(10): 몸통 가리킴 → 피벗 위치 (1.5, 0, 0), X축 + 뒤집기, 'across Body', 평가 메쉬 x 최대 ≈ 5, 빈 곳 → 원점 복귀, 확정 후 유지, 자기 자신은 피벗 아님, 인스턴스는 자기 콜렉션 제외 + 몸통 너머 x = 5, Esc. test_v02413(21): + 실제 mch.mirror_lean poll 통과(메쉬 선택) / 두 연산자 클래스 분리 / start_mirror에 poll 오류 없음, 커브만 선택 → 안내 문구(poll 오류 아님, 'Curve' 표시), 커브 + 인스턴스 → 인스턴스, 왼쪽 Mirror / Symmetry 버튼 → 메쉬(keep_live True / False) / 인스턴스. test_v0248 / test_v0232: 새 진입점에 맞게 목업 / 소스 검사 갱신(test_v0232는 클래스 주석 검사 복원 - 0.24.13 회귀를 잡는 검사였음). 실제 키 입력은 미검증.
 

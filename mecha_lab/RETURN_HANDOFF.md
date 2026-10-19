@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.15 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.16 (Claude Code, 2026-10-14)
+
+## 0.24.16
+- ZIP sha256 `a1b3b0dd64d24375126a17ffad0ea4962c805f8e0d4f30757a6d999e7d7eba87`. `cloth_sim`: Object 속성 `mch_pcloth_puff`(0 ~ 5, 기본 1, _slider_update = 표시만), `puff_pressure(base, puff)`(base ≥ 1이면 base × puff, 아니면 puff ≥ 1에서 base + (puff - 1) × 3), `sim_values(..., puff)`는 puff ≠ 1일 때만 pressure 덮어씀(1이면 프리셋 그대로), `redo` / `set_sliders`가 puff를 넘기고 새 천에 유지.
 
 ## 0.24.15
 - ZIP sha256 `827eb58468eabb786725342811e274859dbe69d07b030cc8713853b89ffb348f`. `mirror_tools.LeanModal`(invoke / _status / _end / modal 믹스인): `MCH_OT_mirror_lean(MirrorLeanLogic, LeanModal, Operator)`, `MCH_OT_instance_mirror_lean(InstanceMirrorLogic, LeanModal, Operator)` - 등록된 연산자 클래스를 상속하면 Blender가 부모의 파이썬 클래스를 잃음(0.24.13 회귀). `pointed_object(context, projector, xy, skip)`(scene.ray_cast, 선택 / 피벗 / 리그 제외), `world_center(ob, matrix)`, `MirrorLeanLogic.point_at`(on_move 먼저: 맞으면 pivot_center = 그 오브젝트 중심, 축 = 선택 중심→그것의 최대 성분, flips[i] = 그쪽이 +, setup_mirror(..., center=pivot_center)), InstanceMirrorLogic도 pivot_center를 기준면 원점으로. `mirror_targets_kind(context)`('MESH' / 'INSTANCE' / None), `start_mirror(context, keep_live, report)`: MESH → mirror_lean(keep_live), INSTANCE → instance_mirror_lean, None → 경고(선택된 타입 표시). `workspace_ui.MCH_OT_hotkey` MIRROR와 `bottom_bar.MCH_OT_object_tidy` SYMMETRY / MIRROR가 이것만 호출.
