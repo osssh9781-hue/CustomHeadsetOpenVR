@@ -185,8 +185,86 @@ def frames(samples, closed=False):
     return out
 
 
+# 0.24.20 creature cross-sections traced from the user's sketch (y up, any scale: normalised in creature_profile)
+CREATURE_SECTIONS = {
+    'CREATURE_A': [(280, 540), (330, 490), (480, 480), (510, 500), (600, 495), (605, 600), (590, 640), (610, 740),
+                   (560, 800), (480, 850), (410, 860), (300, 820), (262, 795), (310, 790), (220, 780), (200, 710),
+                   (270, 690), (275, 650)],
+    'CREATURE_B': [(700, 950), (770, 900), (820, 920), (870, 1020), (880, 1100), (840, 1200), (770, 1260),
+                   (700, 1230), (680, 1180), (680, 1085), (640, 1062), (625, 1020), (682, 1000)],
+    'CREATURE_C': [(230, 1360), (260, 1280), (330, 1190), (400, 1130), (500, 1130), (505, 1220), (530, 1240),
+                   (580, 1255), (580, 1285), (530, 1290), (520, 1350), (480, 1400), (370, 1435), (210, 1415),
+                   (205, 1340)],
+}
+PROFILE_ITEMS = [('ROUND', 'Round', ''), ('SQUARE', 'Square', ''), ('FLAT', 'Flat', 'Flattened (Ratio)'),
+                 ('CREATURE_A', 'Creature A', 'Lumpy section with a step on one side'),
+                 ('CREATURE_B', 'Creature B', 'Oval section with a hook on one side'),
+                 ('CREATURE_C', 'Creature C', 'Leaf-like section with a notch and a point')]
+PROFILE_CYCLE = tuple(i[0] for i in PROFILE_ITEMS)
+
+
+def _resample_closed(pts, n):
+    """``n`` points evenly spaced along a closed polyline."""
+    seg = [math.dist(pts[i], pts[(i + 1) % len(pts)]) for i in range(len(pts))]
+    total = sum(seg) or 1.0
+    out, i, acc = [], 0, 0.0
+    for k in range(n):
+        target = total * k / n
+        while acc + seg[i] < target and i < len(pts) - 1:
+            acc += seg[i]
+            i += 1
+        t = (target - acc) / seg[i] if seg[i] > 1e-12 else 0.0
+        a, b = pts[i], pts[(i + 1) % len(pts)]
+        out.append((a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t))
+    return out
+
+
+def creature_profile(kind, sides):
+    """0.24.20 a creature section: the sketch outline softened (corner cutting), centred, radius 1, CCW."""
+    pts = [(x, -y) for x, y in CREATURE_SECTIONS[kind]]
+    for _ in range(2):
+        nxt = []
+        for i in range(len(pts)):
+            a, b = pts[i], pts[(i + 1) % len(pts)]
+            nxt += [(0.75 * a[0] + 0.25 * b[0], 0.75 * a[1] + 0.25 * b[1]),
+                    (0.25 * a[0] + 0.75 * b[0], 0.25 * a[1] + 0.75 * b[1])]
+        pts = nxt
+    area = sum(pts[i][0] * pts[(i + 1) % len(pts)][1] - pts[(i + 1) % len(pts)][0] * pts[i][1]
+               for i in range(len(pts)))
+    if area < 0:
+        pts.reverse()
+    cx = sum(p[0] for p in pts) / len(pts)
+    cy = sum(p[1] for p in pts) / len(pts)
+    r = max(math.hypot(p[0] - cx, p[1] - cy) for p in pts) or 1.0
+    pts = [((p[0] - cx) / r, (p[1] - cy) / r) for p in pts]
+    # start at the point straight right of the centre (same seam as the round profile)
+    start = min(range(len(pts)), key=lambda i: abs(math.atan2(pts[i][1], pts[i][0])))
+    pts = pts[start:] + pts[:start]
+    return _resample_closed(pts, max(8, int(sides)))
+
+
+def add_lines(prof, count, height, width=0.5, rotate=0.0):
+    """0.24.20 outer lines: ``count`` raised ridges running along the tube (built into its own section, so
+    no seams): every section point moves outward by up to ``height`` (x radius) near a line;
+    ``width`` = how much of the gap between two lines one ridge covers."""
+    if count <= 0 or height == 0.0:
+        return prof
+    step = 2 * math.pi / count
+    half = max(0.02, min(1.0, width)) * step * 0.5
+    out = []
+    for x, y in prof:
+        a = math.atan2(y, x) - rotate
+        d = abs((a + step * 0.5) % step - step * 0.5)            # angle to the nearest line
+        f = math.sqrt(1.0 - (d / half) ** 2) if d < half else 0.0      # a round strand lying on the tube
+        k = 1.0 + height * f
+        out.append((x * k, y * k))
+    return out
+
+
 def profile(kind, sides, ratio=0.5):
     """Unit outline (2D) of the tube cross section."""
+    if kind in CREATURE_SECTIONS:
+        return creature_profile(kind, sides)
     if kind == 'SQUARE':
         k = max(1, int(round(sides / 4.0)))
         pts = []
@@ -209,7 +287,12 @@ def tube_mesh(samples, s):
         return [], []
     closed = s.get('closed', False) and n >= 3
     fr = frames(samples, closed)
-    prof = profile(s.get('profile', 'ROUND'), s.get('sides', 16), s.get('ratio', 0.5))
+    lines = int(s.get('lines', 0))
+    sides = s.get('sides', 16)
+    if lines > 0:
+        sides = max(sides, lines * 16)          # enough points across every ridge
+    prof = profile(s.get('profile', 'ROUND'), sides, s.get('ratio', 0.5))
+    prof = add_lines(prof, lines, s.get('line_height', 0.0), s.get('line_width', 0.5), s.get('line_rotate', 0.0))
     m = len(prof)
     hole = min(0.95, max(0.0, s.get('hole', 0.0)))
     rot, twist = s.get('rotate', 0.0), s.get('twist', 0.0)
@@ -430,6 +513,7 @@ def settings(tb):
     return dict(mode=tb.mode, radius=tb.radius, taper_start=tb.taper_start, taper_end=tb.taper_end,
                 profile=tb.profile, sides=tb.sides, ratio=tb.ratio, cap=tb.cap, hole=tb.hole, rotate=tb.rotate,
                 twist=tb.twist, closed=tb.closed, spline=tb.spline, res=tb.resolution, count=tb.count,
+                lines=tb.lines, line_height=tb.line_height, line_width=tb.line_width, line_rotate=tb.line_rotate,
                 size=tb.size, follow_radius=tb.follow_radius, align=tb.align, spacing_mode=tb.spacing_mode,
                 spacing=tb.spacing)
 
@@ -503,8 +587,15 @@ class MCH_PG_Tube(bpy.types.PropertyGroup):
     radius: _p(FloatProperty, name='Radius', default=0.05, min=0.0001, soft_max=2.0, unit='LENGTH', precision=4)
     taper_start: _p(FloatProperty, name='Start Size', default=1.0, min=0.0, soft_max=3.0, subtype='FACTOR')
     taper_end: _p(FloatProperty, name='End Size', default=1.0, min=0.0, soft_max=3.0, subtype='FACTOR')
-    profile: _p(EnumProperty, name='Profile', items=[('ROUND', 'Round', ''), ('SQUARE', 'Square', ''),
-                                                     ('FLAT', 'Flat', 'Flattened (Ratio)')], default='ROUND')
+    profile: _p(EnumProperty, name='Profile', items=PROFILE_ITEMS, default='ROUND')
+    lines: _p(IntProperty, name='Lines', default=0, min=0, max=24,
+              description='Outer lines: raised ridges running along the tube (0 = none)')
+    line_height: _p(FloatProperty, name='Line Height', default=0.15, min=-0.9, soft_max=1.0,
+                    description='How far the lines stand out (x radius; below 0 = grooves)')
+    line_width: _p(FloatProperty, name='Line Width', default=0.5, min=0.02, max=1.0, subtype='FACTOR',
+                   description='Width of a line (1 = the lines touch)')
+    line_rotate: _p(FloatProperty, name='Line Rotate', default=0.0, subtype='ANGLE',
+                    description='Turn the lines around the tube')
     sides: _p(IntProperty, name='Sides', default=16, min=3, max=128)
     ratio: _p(FloatProperty, name='Ratio', default=0.4, min=0.05, max=1.0, subtype='FACTOR')
     cap: _p(EnumProperty, name='Cap', items=[('FLAT', 'Flat', ''), ('ROUND', 'Round', ''), ('OPEN', 'Open', '')],
@@ -555,7 +646,7 @@ def new_tube(context, first_world, radius=None, mode=''):
     tb = ob.mch_tube
     tb.live = False
     if st is not None:
-        for k in ('mode', 'radius', 'profile', 'sides', 'cap', 'spline', 'count'):
+        for k in ('mode', 'radius', 'profile', 'sides', 'cap', 'spline', 'count', 'lines'):
             setattr(tb, k, getattr(st, k))
     if radius is not None:
         tb.radius = radius
@@ -935,11 +1026,11 @@ class MCH_OT_tube_apply(bpy.types.Operator):
 class MCH_PG_TubeDefaults(bpy.types.PropertyGroup):
     mode: EnumProperty(name='Mode', items=[('TUBE', 'Tube', ''), ('REPEAT', 'Repeat', '')], default='TUBE')
     radius: FloatProperty(name='Radius', default=0.05, min=0.0001, soft_max=2.0, unit='LENGTH', precision=4)
-    profile: EnumProperty(name='Profile', items=[('ROUND', 'Round', ''), ('SQUARE', 'Square', ''),
-                                                 ('FLAT', 'Flat', '')], default='ROUND')
+    profile: EnumProperty(name='Profile', items=PROFILE_ITEMS, default='ROUND')
     sides: IntProperty(name='Sides', default=16, min=3, max=128)
     cap: EnumProperty(name='Cap', items=[('FLAT', 'Flat', ''), ('ROUND', 'Round', ''), ('OPEN', 'Open', '')],
                       default='ROUND')
+    lines: IntProperty(name='Lines', default=0, min=0, max=24, description='Outer lines for new tubes')
     spline: EnumProperty(name='Curve', items=[('SMOOTH', 'Smooth', ''), ('BSPLINE', 'B-Spline', ''),
                                               ('LINEAR', 'Linear', '')], default='SMOOTH')
     count: IntProperty(name='Count', default=8, min=1, max=500)
@@ -987,7 +1078,7 @@ def draw_line(layout, context):
         c = box.column(align=True)
         c.label(text='New line curves start with:')
         c.prop(st, 'radius', text='Thickness')
-        c.row(align=True).prop(st, 'profile', expand=True)
+        c.prop(st, 'profile', text='')
         c.prop(st, 'sides')
         c.row(align=True).prop(st, 'cap', expand=True)
         c.row(align=True).prop(st, 'spline', expand=True)
@@ -1005,12 +1096,18 @@ def draw_line(layout, context):
         sub.prop_enum(tb, 'mode', 'LINE')
     c = sub.column(align=True)
     c.prop(tb, 'radius', text='Thickness')
-    c.row(align=True).prop(tb, 'profile', expand=True)
+    c.prop(tb, 'profile', text='')
     c.prop(tb, 'sides')
     if tb.profile == 'FLAT':
         c.prop(tb, 'ratio', slider=True)
     c.row(align=True).prop(tb, 'cap', expand=True)
     c.prop(tb, 'hole', slider=True)
+    c = sub.column(align=True)                 # 0.24.20 outer lines
+    c.prop(tb, 'lines')
+    if tb.lines:
+        c.prop(tb, 'line_height', slider=True)
+        c.prop(tb, 'line_width', slider=True)
+        c.prop(tb, 'line_rotate')
     c = sub.column(align=True)
     c.row(align=True).prop(tb, 'spline', expand=True)
     c.prop(tb, 'closed', toggle=True)
@@ -1040,8 +1137,9 @@ def draw(layout, context):
         c.label(text='New tubes start with:')
         c.row(align=True).prop(st, 'mode', expand=True)
         c.prop(st, 'radius')
-        c.row(align=True).prop(st, 'profile', expand=True)
+        c.prop(st, 'profile', text='')
         c.prop(st, 'sides')
+        c.prop(st, 'lines')
         c.row(align=True).prop(st, 'cap', expand=True)
         c.row(align=True).prop(st, 'spline', expand=True)
         c.prop(st, 'count')
@@ -1065,12 +1163,18 @@ def draw(layout, context):
     c.prop(tb, 'resolution')
     if tb.mode == 'TUBE':
         c = sub.column(align=True)
-        c.row(align=True).prop(tb, 'profile', expand=True)
+        c.prop(tb, 'profile', text='')
         c.prop(tb, 'sides')
         if tb.profile == 'FLAT':
             c.prop(tb, 'ratio', slider=True)
         c.row(align=True).prop(tb, 'cap', expand=True)
         c.prop(tb, 'hole', slider=True)
+        c = sub.column(align=True)             # 0.24.20 outer lines along the tube
+        c.prop(tb, 'lines')
+        if tb.lines:
+            c.prop(tb, 'line_height', slider=True)
+            c.prop(tb, 'line_width', slider=True)
+            c.prop(tb, 'line_rotate')
     else:
         c = sub.column(align=True)
         c.prop(tb, 'source', text='Linked Object')
@@ -1373,7 +1477,7 @@ class MCH_OT_tube_toggle(bpy.types.Operator):
     def execute(self, context):
         tb = context.active_object.mch_tube
         cyc = {'MODE': ('mode', ('TUBE', 'REPEAT')), 'SPLINE': ('spline', ('SMOOTH', 'BSPLINE', 'LINEAR')),
-               'PROFILE': ('profile', ('ROUND', 'SQUARE', 'FLAT')), 'CAP': ('cap', ('ROUND', 'FLAT', 'OPEN')),
+               'PROFILE': ('profile', PROFILE_CYCLE), 'CAP': ('cap', ('ROUND', 'FLAT', 'OPEN')),
                'SPACING': ('spacing_mode', ('COUNT', 'DISTANCE'))}
         if self.option == 'MODE' and tb.mode in LINE_MODES:
             return {'CANCELLED'}           # a Line Curve stays a Line Curve (its own tool)
