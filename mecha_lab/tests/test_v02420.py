@@ -50,8 +50,8 @@ ob, msg = make([CIRCLE])
 check('circle: one closed lump', ob is not None and non_manifold(ob) == 0, msg)
 z = zs(ob)
 check('round on both sides (symmetric about the drawing plane)', abs(max(z) + min(z)) < 1e-4, (min(z), max(z)))
-check('circle radius 1 -> as thick as wide (about a sphere: half height ~1)', 0.9 < max(z) < 1.05, max(z))
-check('volume close to a sphere (4.19)', 3.7 < volume(ob) < 4.4, volume(ob))
+check('circle radius 1 -> a round lump (half height ~0.79 R, Poisson inflation)', 0.7 < max(z) < 0.88, max(z))
+check('volume of a rounded lens (~3.3)', 2.8 < volume(ob) < 3.8, volume(ob))
 check('smooth shaded', all(p.use_smooth for p in ob.data.polygons))
 
 reset()
@@ -60,7 +60,7 @@ check('body + arm: closed', ob is not None and non_manifold(ob) == 0, msg)
 # local origin = middle of the outline's bounds (x -2.125 .. 2.375): body centre x -1.125, arm x 0.9 .. 2.4
 arm = zs(ob, lambda co: 1.0 < co.x < 2.0)
 body = zs(ob, lambda co: -1.4 < co.x < -0.8 and -0.3 < co.y < 0.3)
-check('the arm is a thin tube (half height ~ half width 0.2)', 0.12 < max(arm) < 0.26, max(arm))
+check('the arm is a thin tube (half height ~1.1 x half width 0.2)', 0.14 < max(arm) < 0.28, max(arm))
 check('the body is a fat lump (half height ~ 1)', max(body) > 0.8, max(body))
 
 s = ob.mch_base
@@ -72,6 +72,18 @@ check('Puff 0.5 rebuilds live: half as thick', abs(h2 - h1 * 0.5) < 0.05 * h1 an
 s.puff = 2.0
 check('Puff 2: taller than wide, still closed', max(zs(ob)) > h1 * 1.8 and non_manifold(ob) == 0)
 check('Puff is remembered for the next shape', abs(C.scene.mch_base.puff - 2.0) < 1e-6)
+z_res = []
+for res in (20, 60):
+    reset()
+    ob, _ = make([CIRCLE], resolution=res)
+    z_res.append(max(zs(ob)))
+check('the same thickness at low and high Resolution (only smoother)', abs(z_res[0] - z_res[1]) < 0.04, z_res)
+reset()
+taper = [(300, 440), (700, 480), (700, 520), (300, 560)]       # wide end 1.2 -> narrow end 0.4
+ob, _ = make([taper], outline_smooth=0.0)
+prof = [max(zs(ob, lambda co, x=x: abs(co.x - x) < 0.08)) for x in (-1.5, -0.5, 0.5, 1.5)]
+check('a taper tapers smoothly (thickness falls steadily toward the narrow end)', all(a > b for a, b in zip(prof, prof[1:]))
+      and prof[0] > 1.6 * prof[-1], prof)
 
 for name, loop in (('star (concave)', [(500 + 150 * math.cos(-math.pi / 2 + i * math.pi / 5) * (1 if i % 2 == 0 else 0.4),
                                          500 + 150 * math.sin(-math.pi / 2 + i * math.pi / 5) * (1 if i % 2 == 0 else 0.4))
@@ -86,8 +98,8 @@ reset()
 ring = [ce.circle_loop((500, 500), (700, 500), 64), list(reversed(ce.circle_loop((500, 500), (600, 500), 48)))]
 ob, msg = make(ring)
 z = zs(ob)
-check('ring outline (with hole) -> a closed donut, tube half height ~0.5', ob is not None and non_manifold(ob) == 0
-      and 0.4 < max(z) < 0.56, (msg, max(z) if ob else None))
+check('ring outline (with hole) -> a closed donut, tube half height ~0.56', ob is not None and non_manifold(ob) == 0
+      and 0.42 < max(z) < 0.65, (msg, max(z) if ob else None))
 
 reset()
 for low in (4, 8):

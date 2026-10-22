@@ -16,10 +16,10 @@ modified except for the new object.  Outline -> plane -> profile:
            triangulation of the densified outline plus interior grid points,
            so concave outlines never produce the flipped faces of a
            centre-fan.  This is a real height field, not a bevel.
-* PUFF     0.24.20 an inflated lump: the same point set, a height field on BOTH sides meeting at the outline
-           (no wall), every cross-section round - a thin part (arm) gets a thin tube, a wide part a fat one:
-           height = Puff * sqrt(2 w d - d^2), d = distance to the outline, w = the local half width (the
-           distance at the nearest ridge point of the distance field).
+* PUFF     0.24.20 an inflated lump: the same kind of point set (denser, extra rows along the outline), a
+           height field on BOTH sides meeting at the outline (no wall) - a thin part (arm) gets a thin tube, a
+           wide part a fat one: height = Puff * sqrt(f), -laplace(f) = PUFF_C inside, f = 0 on the outline
+           ("Teddy" inflation, cotangent Laplacian + conjugate gradients), then a light relax.
 
 The outline and settings are stored on the object (``Object.mch_base``), so
 changing the profile / height / resolution later rebuilds the mesh (Live).
@@ -58,6 +58,8 @@ SETTING_KEYS = ('height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 
                 'bottom_too', 'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link', 'puff',
                 'outline_smooth')
 MAX_DOME_POINTS = 12000
+MAX_PUFF_POINTS = 60000
+PUFF_RINGS = (0.12, 0.3, 0.55, 0.85)      # rows just inside the outline (in point spacings): an even round rim
 
 
 CARRY_KEYS = ('profile', 'height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 'resolution', 'offset',
@@ -152,9 +154,50 @@ def _densify(loop, spacing):
     return out
 
 
+def _inside_many(points, loops):
+    """0.24.20 even-odd inside test for many points at once (numpy); same answer as cg.point_in_loops."""
+    try:
+        import numpy as np
+    except ImportError:   # pragma: no cover
+        return [cg.point_in_loops(q, loops) for q in points]
+    if not points:
+        return []
+    A = np.asarray([lp[i] for lp in loops for i in range(len(lp))], dtype=np.float64)
+    B = np.asarray([lp[(i + 1) % len(lp)] for lp in loops for i in range(len(lp))], dtype=np.float64)
+    P = np.asarray(points, dtype=np.float64)
+    out = np.zeros(len(P), dtype=bool)
+    ay, by, ax, bx = A[:, 1], B[:, 1], A[:, 0], B[:, 0]
+    dy = np.where(by == ay, 1e-300, by - ay)
+    for start in range(0, len(P), 1024):
+        x = P[start:start + 1024, 0:1]
+        y = P[start:start + 1024, 1:2]
+        crosses = (ay > y) != (by > y)
+        xi = ax + (bx - ax) * (y - ay) / dy
+        out[start:start + 1024] = ((crosses & (x < xi)).sum(1) % 2) == 1
+    return out.tolist()
+
+
 def _distances(points, loops):
     """Distance of each point to the nearest outline segment (numpy if present)."""
     segs = [(lp[i], lp[(i + 1) % len(lp)]) for lp in loops for i in range(len(lp))]
+    if len(points) * len(segs) > 2_000_000:
+        # 0.24.20 many points: only the segments near each point (k nearest segment middles)
+        from mathutils.kdtree import KDTree
+        kd = KDTree(len(segs))
+        for k, (a, b) in enumerate(segs):
+            kd.insert(((a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0, 0.0), k)
+        kd.balance()
+        res = []
+        for p in points:
+            best = 1e30
+            for _co, k, _d in kd.find_n((p[0], p[1], 0.0), 8):
+                a, b = segs[k]
+                dx, dy = b[0] - a[0], b[1] - a[1]
+                ll = dx * dx + dy * dy
+                t = 0.0 if ll < 1e-18 else max(0.0, min(1.0, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / ll))
+                best = min(best, math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy))
+            res.append(best)
+        return res
     try:
         import numpy as np
         P = np.asarray(points, dtype=np.float64)
@@ -317,7 +360,7 @@ def _add_prism(bm, outer, holes, height):
     return rim_top, rim_bottom
 
 
-def _dome_points(outer, holes, p, rings=(), density=1.0):
+def _dome_points(outer, holes, p, rings=(), density=1.0, rim=1.0, cap=MAX_DOME_POINTS):
     """(dense loops, boundary points, interior points, distance of every point, spacing) for Dome / Puff.
     ``rings`` (fractions of the spacing): rows of points that far inside the outline (Puff: an even round rim)."""
     loops = [outer] + list(holes)
@@ -327,19 +370,16 @@ def _dome_points(outer, holes, p, rings=(), density=1.0):
     if extent <= 1e-9:
         raise cg.CutError('Outline has no size.')
     spacing = extent / max(4, p.resolution * density)
-    dense = [cg.dedupe_loop(_densify(lp, spacing), spacing * 1e-3) for lp in loops]
+    dense = [cg.dedupe_loop(_densify(lp, spacing * rim), spacing * 1e-3) for lp in loops]
     boundary = [q for lp in dense for q in lp]
     interior = []
     nx = int(math.ceil((max(xs) - min(xs)) / spacing))
     ny = int(math.ceil((max(ys) - min(ys)) / spacing))
-    if nx * ny > MAX_DOME_POINTS * 2:
-        raise cg.CutError('Dome resolution too high for this outline; lower Resolution.')
-    cand = []
-    for i in range(nx + 1):
-        for j in range(ny + 1):
-            q = (min(xs) + i * spacing + (0.5 * spacing if j % 2 else 0.0), min(ys) + j * spacing)
-            if cg.point_in_loops(q, dense):
-                cand.append(q)
+    if nx * ny > cap * 2:
+        raise cg.CutError('Resolution too high for this outline; lower Resolution.')
+    grid = [(min(xs) + i * spacing + (0.5 * spacing if j % 2 else 0.0), min(ys) + j * spacing)
+            for i in range(nx + 1) for j in range(ny + 1)]
+    cand = [q for q, inside in zip(grid, _inside_many(grid, dense)) if inside]
     if cand:
         dist = _distances(cand, dense)
         keep = (max(rings) + 0.4) * spacing if rings else 0.45 * spacing
@@ -356,12 +396,12 @@ def _dome_points(outer, holes, p, rings=(), density=1.0):
                 if ln < 1e-12:
                     continue
                 ring.append((b[0] + nx_ / ln * r * spacing, b[1] + ny_ / ln * r * spacing))
-        ring = [q for q in ring if cg.point_in_loops(q, dense)]
+        ring = [q for q, inside in zip(ring, _inside_many(ring, dense)) if inside]
         if ring:
             dist = _distances(ring, dense)
             interior += [q for q, d in zip(ring, dist) if 0.6 * r * spacing < d < 1.4 * r * spacing]
-    if len(interior) > MAX_DOME_POINTS:
-        raise cg.CutError('Dome resolution too high for this outline; lower Resolution.')
+    if len(interior) > cap:
+        raise cg.CutError('Resolution too high for this outline; lower Resolution.')
     d_all = [0.0] * len(boundary) + (_distances(interior, dense) if interior else [])
     return dense, boundary, interior, d_all, spacing
 
@@ -406,55 +446,62 @@ def _add_dome(bm, outer, holes, p):
         f.smooth = True
 
 
-def puff_heights(pts, d_all, nb, spacing, puff=1.0):
-    """0.24.20 heights of an inflated lump: round cross-sections everywhere, height = Puff * sqrt(2 w d - d^2).
-    ``w`` (local half width) = the distance reached by climbing the distance field straight inward: while the
-    climb gains about as much distance as it walks it is still crossing toward the middle; on the middle line
-    (it now runs along the shape, e.g. up a tapering arm) the gain drops and the climb stops - so a tapering
-    part gets a smoothly tapering radius.  Boundary points (the first ``nb``) stay 0."""
-    from mathutils.kdtree import KDTree
+PUFF_C = 2.5      # Poisson source: a disc of radius R gets 0.79 R, a long strip of half width w gets 1.12 w
+
+
+def puff_heights(pts, tris, nb, puff=1.0):
+    """0.24.20 heights of an inflated lump (the "Teddy" inflation): f solves -laplace(f) = C inside, f = 0 on the
+    outline (cotangent Laplacian on the triangulation, conjugate gradients), height = Puff * sqrt(f).  Smooth
+    everywhere, no ridge search: a wide part gets thick, a thin part thin, a taper tapers.  Boundary points
+    (the first ``nb``) stay 0."""
+    import numpy as np
     n = len(pts)
-    if n <= nb:
+    m = n - nb
+    if m <= 0:
         return [0.0] * n
-    kd = KDTree(n)
-    for i, (x, y) in enumerate(pts):
-        kd.insert((x, y, 0.0), i)
-    kd.balance()
-    reach = 1.6 * spacing
-    nxt = [-1] * n
-    for i in range(nb, n):
-        best, gain = -1, 0.0
-        for co, j, dd in kd.find_range((*pts[i], 0.0), reach):
-            if j < nb or dd < 1e-12:
-                continue
-            g = (d_all[j] - d_all[i]) / dd           # slope toward j (1 = straight inward)
-            if g > gain:
-                best, gain = j, g
-        if best >= 0 and gain >= 0.6:
-            nxt[i] = best
-    top = [-1] * n
-    for i in range(nb, n):
-        path = []
-        j = i
-        while j >= 0 and top[j] < 0 and nxt[j] >= 0 and len(path) < n:
-            path.append(j)
-            j = nxt[j]
-        end = top[j] if j >= 0 and top[j] >= 0 else j
-        for k in path:
-            top[k] = end
-        if top[i] < 0:
-            top[i] = i
-    w = [max(d_all[top[i]], d_all[i]) if i >= nb else 0.0 for i in range(n)]
-    # soften w between neighbours (the climb ends on a grid)
-    nbrs = [[j for _c, j, _d in kd.find_range((*pts[i], 0.0), reach) if j >= nb] if i >= nb else [] for i in range(n)]
-    for _ in range(3):
-        w = [w[i] if i < nb or not nbrs[i] else 0.5 * w[i] + 0.5 * sum(w[j] for j in nbrs[i]) / len(nbrs[i])
-             for i in range(n)]
-    out = [0.0] * n
-    for i in range(nb, n):
-        d = d_all[i]
-        wi = max(w[i], d, 1e-9)
-        out[i] = puff * math.sqrt(max(0.0, 2.0 * wi * d - d * d))
+    P = np.asarray(pts, dtype=np.float64)
+    T = np.asarray(tris, dtype=np.int64)
+    I, J, W = [], [], []
+    area = np.zeros(n)
+    for k in range(3):
+        a, b, c = T[:, k], T[:, (k + 1) % 3], T[:, (k + 2) % 3]
+        u, v = P[a] - P[c], P[b] - P[c]                    # the angle at c faces the edge a-b
+        cross = np.abs(u[:, 0] * v[:, 1] - u[:, 1] * v[:, 0])
+        cot = (u * v).sum(1) / np.maximum(cross, 1e-300)
+        I.append(a); J.append(b); W.append(0.5 * cot)
+        np.add.at(area, a, cross / 6.0)
+    I, J, W = np.concatenate(I), np.concatenate(J), np.concatenate(W)
+    # K = -L restricted to inside points (index - nb)
+    inside_e = (I >= nb) & (J >= nb)
+    ii, jj, ww = I[inside_e] - nb, J[inside_e] - nb, W[inside_e]
+    diag = np.zeros(n)
+    np.add.at(diag, I, W)
+    np.add.at(diag, J, W)
+    D = diag[nb:]
+
+    def K(x):
+        y = D * x
+        np.subtract.at(y, ii, ww * x[jj])
+        np.subtract.at(y, jj, ww * x[ii])
+        return y
+
+    rhs = PUFF_C * area[nb:]
+    x = np.zeros(m)
+    r = rhs - K(x)
+    pdir = r.copy()
+    rr = r @ r
+    tol = 1e-16 * max(rhs @ rhs, 1e-300)
+    for _ in range(4 * int(math.sqrt(m)) + 200):
+        if rr <= tol:
+            break
+        Kp = K(pdir)
+        alpha = rr / max(pdir @ Kp, 1e-300)
+        x += alpha * pdir
+        r -= alpha * Kp
+        rr_new = r @ r
+        pdir = r + (rr_new / rr) * pdir
+        rr = rr_new
+    out = [0.0] * nb + (puff * np.sqrt(np.maximum(x, 0.0))).tolist()
     return out
 
 
@@ -475,7 +522,8 @@ def _add_puff(bm, outer, holes, p):
     k = int(round(4 * max(0.0, min(1.0, getattr(p, 'outline_smooth', 0.0)))))
     if k:
         outer, holes = chaikin(outer, k), [chaikin(h, k) for h in holes]
-    dense, boundary, interior, d_all, spacing = _dome_points(outer, holes, p, rings=(0.3, 0.8), density=1.5)
+    dense, boundary, interior, d_all, spacing = _dome_points(outer, holes, p, rings=PUFF_RINGS, density=1.5, rim=0.5,
+                                                             cap=MAX_PUFF_POINTS)
     pts = boundary + interior
     nb = len(boundary)
     edges = _loop_edges(dense)
@@ -512,17 +560,7 @@ def _add_puff(bm, outer, holes, p):
         d_all = list(d_all) + _distances(extra, dense)
     if len(pts) == nb:
         raise cg.CutError('Outline too small for Puff; draw it bigger or raise Resolution.')
-    h = puff_heights(pts, d_all, nb, spacing, getattr(p, 'puff', 1.0))
-    # two light smoothing passes (the ridge search works on a grid: no steps)
-    nbrs = [set() for _ in pts]
-    for a, b, c in tris:
-        nbrs[a] |= {b, c}
-        nbrs[b] |= {a, c}
-        nbrs[c] |= {a, b}
-    inner_nb = [[j for j in nbrs[i] if j >= nb] for i in range(len(pts))]   # outline zeros would flatten tubes
-    for _ in range(2):
-        h = [0.0 if i < nb or not inner_nb[i] else 0.5 * h[i] + 0.5 * sum(h[j] for j in inner_nb[i]) / len(inner_nb[i])
-             for i in range(len(pts))]
+    h = puff_heights(pts, tris, nb, getattr(p, 'puff', 1.0))
     floor = spacing * 0.02          # top and bottom never meet inside (they would be merged as doubles)
     h = [hh if i < nb else max(hh, floor) for i, hh in enumerate(h)]
     rim = [bm.verts.new((x, y, 0.0)) for x, y in boundary]
@@ -532,6 +570,10 @@ def _add_puff(bm, outer, holes, p):
     for tri in tris:
         bm.faces.new([top[i] for i in tri]).smooth = True
         bm.faces.new([bottom[i] for i in reversed(tri)]).smooth = True
+    # a light relax of the whole lump: no beads along the round edge, no small dents
+    mine = list(set(rim + top[nb:] + bottom[nb:]))
+    bmesh.ops.smooth_vert(bm, verts=mine, factor=0.5, use_axis_x=True, use_axis_y=True, use_axis_z=True)
+    bmesh.ops.smooth_vert(bm, verts=mine, factor=0.5, use_axis_x=True, use_axis_y=True, use_axis_z=True)
 
 
 def side_values(p, flip=False):
