@@ -314,6 +314,41 @@ def apply(context, ob):
     return True
 
 
+def split_off(context, ob):
+    """0.24.18 Split Off: the hidden part becomes a mesh of its own (like Split) and the rest keeps the hole;
+    both are closed solids.  Returns the new object, or None."""
+    vol = volume_of(ob)
+    if vol is None:
+        return None
+    piece = ob.copy()
+    piece.data = ob.data.copy()
+    for coll in ob.users_collection:
+        coll.objects.link(piece)
+    mod = piece.modifiers.get(MOD)
+    if mod is not None:
+        piece.modifiers.remove(mod)
+    piece.name = ob.name + '_Hidden'
+    vol.hide_set(False)
+    try:
+        me, _solver = cg.boolean_result(context, piece, vol, 'INTERSECT', 'AUTO', False)
+    except cg.CutError:
+        cg.remove_object_and_mesh(piece)
+        raise
+    finally:
+        vol.hide_set(True)
+    old = piece.data
+    if not me.materials:
+        for m in old.materials:
+            me.materials.append(m)
+    piece.data = me
+    me.name = piece.name
+    if old.users == 0:
+        bpy.data.meshes.remove(old)
+    set_cap(ob, True)                     # the rest is closed too, like Split
+    apply(context, ob)
+    return piece
+
+
 def _hidden_selected(context):
     obs = [o for o in context.selected_objects if o.type == 'MESH' and is_hidden(o)]
     if not obs:
@@ -357,6 +392,39 @@ class MCH_OT_box_hide_apply(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_box_hide_split(bpy.types.Operator):
+    """Split the hidden parts off into meshes of their own (like Split): the rest keeps the hole"""
+    bl_idname = 'mch.box_hide_split'
+    bl_label = 'Split Off Hidden'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        if context.mode != 'OBJECT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+        made, failed = [], []
+        for ob in _hidden_selected(context):
+            try:
+                piece = split_off(context, ob)
+            except cg.CutError as ex:
+                failed.append(f'{ob.name} ({ex})')
+                continue
+            if piece is not None:
+                made.append(piece)
+        if not made:
+            self.report({'WARNING'}, 'Split Off: nothing hidden' + (' | ' + '; '.join(failed) if failed else ''))
+            return {'CANCELLED'}
+        for o in context.selected_objects:
+            o.select_set(False)
+        for o in made:
+            o.select_set(True)
+        context.view_layer.objects.active = made[0]
+        msg = f'Box Hide: split off {len(made)} part(s): ' + ', '.join(o.name for o in made)
+        if failed:
+            msg += ' | failed: ' + '; '.join(failed)
+        self.report({'WARNING'} if failed else {'INFO'}, msg)
+        return {'FINISHED'}
+
+
 class MCH_OT_box_hide_cap(bpy.types.Operator):
     """Cap on / off for the selected hidden meshes"""
     bl_idname = 'mch.box_hide_cap'
@@ -393,12 +461,14 @@ def draw(layout, context):
     row.scale_y = 1.2
     row.operator('mch.box_hide_show_all', icon='HIDE_OFF')
     row.operator('mch.box_hide_apply', icon='CHECKMARK')
+    box.operator('mch.box_hide_split', icon='MOD_EDGESPLIT')
     n = sum(1 for o in context.view_layer.objects if o.type == 'MESH' and is_hidden(o))
     if n:
         box.label(text=f'{n} mesh(es) with hidden parts', icon='INFO')
 
 
-CLASSES = (MCH_PG_BoxHide, MCH_OT_box_hide_show_all, MCH_OT_box_hide_apply, MCH_OT_box_hide_cap)
+CLASSES = (MCH_PG_BoxHide, MCH_OT_box_hide_show_all, MCH_OT_box_hide_apply, MCH_OT_box_hide_split,
+           MCH_OT_box_hide_cap)
 
 
 def register():

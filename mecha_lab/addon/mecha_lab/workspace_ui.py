@@ -1780,7 +1780,12 @@ def enter_apply_target(context):
         if opid == 'box_hide_apply':
             try:
                 from . import box_hide
-                if not any(o.type == 'MESH' and box_hide.is_hidden(o) for o in context.selected_objects):
+                hidden = any(o.type == 'MESH' and box_hide.is_hidden(o) for o in context.selected_objects)
+                if not hidden and ts.effective_tool(context) == 'HIDE':
+                    # 0.24.18 in the Box Hide tool the hidden mesh is usually not selected (Auto Target):
+                    # Enter applies every mesh hidden in the view (as the Apply button does)
+                    hidden = any(o.type == 'MESH' and box_hide.is_hidden(o) for o in context.view_layer.objects)
+                if not hidden:
                     continue
             except (ImportError, AttributeError, ReferenceError):
                 continue

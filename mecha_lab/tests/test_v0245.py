@@ -158,5 +158,33 @@ zs = sorted({round(v.co.z, 3) for v in hull.data.vertices})
 check('Alt in Base Mesh cuts like Cut: From Surface depth makes a pocket, the back stays closed',
       m.startswith('Cut:') and any(abs(z - 0.7) < 0.02 for z in zs) and min(zs) == -1.0 and
       [o.name for o in bpy.data.objects] == ['Hull'], (m, zs))
+# ---- 0.24.18 Box Hide tool: Enter applies even when the hidden mesh is not selected (Auto Target)
+from mecha_lab import box_hide as _bh
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+S.mch_brush.shape = 'LASSO'
+S.mch_brush.line_open = False
+MODE[0], NATIVE[0] = 'HIDE', 'mecha.box_hide'
+S.mch_settings.mch_active_tool = 'HIDE'
+S.mch_cut.targets = 'AUTO'
+hb = cube('HideMe', 2.0)
+C.view_layer.update()
+r, m = lasso([(420, 420), (580, 420), (580, 580), (420, 580)])
+for o in C.selected_objects:
+    o.select_set(False)
+check('Box Hide made, nothing selected', _bh.is_hidden(hb) and not C.selected_objects, m)
+check('Box Hide tool: Enter target = Box Hide without a selection', wui.enter_apply_target(C) == ('box_hide_apply', 'Box Hide'))
+res = wui.MCH_OT_enter_apply.execute(types.SimpleNamespace(report=lambda *a: None), C)
+check('Enter applies it (the hole is real, modifier gone)', res == {'FINISHED'} and not _bh.is_hidden(hb) and
+      not hb.modifiers and len(hb.data.polygons) > 6, (res, len(hb.data.polygons)))
+hb2 = cube('HideMe2', 2.0)
+C.view_layer.update()
+r, m = lasso([(420, 420), (580, 420), (580, 580), (420, 580)])
+for o in C.selected_objects:
+    o.select_set(False)
+S.mch_settings.mch_active_tool = 'CUT'
+check('another tool + nothing selected: Enter does not apply a hidden mesh by itself',
+      _bh.is_hidden(hb2) and wui.enter_apply_target(C) is None, wui.enter_apply_target(C))
+S.mch_settings.mch_active_tool = 'HIDE'
 mecha_lab.unregister()
 sys.exit(1 if summary() else 0)
