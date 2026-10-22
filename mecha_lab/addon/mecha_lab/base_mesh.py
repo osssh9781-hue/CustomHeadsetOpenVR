@@ -55,12 +55,13 @@ SIDE_ITEMS = [
 ]
 FLIP_SIDES = {'TOP': 'BOTTOM', 'BOTTOM': 'TOP', 'BOTH': 'BOTH', 'NONE': 'NONE'}
 SETTING_KEYS = ('height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 'resolution', 'offset',
-                'bottom_too', 'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link', 'puff')
+                'bottom_too', 'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link', 'puff',
+                'outline_smooth')
 MAX_DOME_POINTS = 12000
 
 
 CARRY_KEYS = ('profile', 'height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 'resolution', 'offset',
-              'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link', 'puff')
+              'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link', 'puff', 'outline_smooth')
 
 
 def _rebuild_update(self, context):
@@ -101,6 +102,9 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
     puff: FloatProperty(name='Puff', default=1.0, min=0.05, soft_max=2.5, update=_rebuild_update,
                         description='Puff: thickness against width - 1 = round cross-sections, '
                                     '0.5 = flattened, 2 = taller than wide')
+    outline_smooth: FloatProperty(name='Soft Outline', default=0.5, min=0.0, max=1.0, update=_rebuild_update,
+                                  description='Puff: round off the corners of the drawn outline (0 = exactly as '
+                                              'drawn, 1 = very soft)')
     offset: FloatProperty(name='Offset', default=0.0, soft_min=-5.0, soft_max=5.0, precision=4,
                           unit='LENGTH', update=_rebuild_update,
                           description='Move the solid along its normal (toward the viewer is positive)')
@@ -313,7 +317,7 @@ def _add_prism(bm, outer, holes, height):
     return rim_top, rim_bottom
 
 
-def _dome_points(outer, holes, p, rings=()):
+def _dome_points(outer, holes, p, rings=(), density=1.0):
     """(dense loops, boundary points, interior points, distance of every point, spacing) for Dome / Puff.
     ``rings`` (fractions of the spacing): rows of points that far inside the outline (Puff: an even round rim)."""
     loops = [outer] + list(holes)
@@ -322,7 +326,7 @@ def _dome_points(outer, holes, p, rings=()):
     extent = max(max(xs) - min(xs), max(ys) - min(ys))
     if extent <= 1e-9:
         raise cg.CutError('Outline has no size.')
-    spacing = extent / max(4, p.resolution)
+    spacing = extent / max(4, p.resolution * density)
     dense = [cg.dedupe_loop(_densify(lp, spacing), spacing * 1e-3) for lp in loops]
     boundary = [q for lp in dense for q in lp]
     interior = []
@@ -403,9 +407,11 @@ def _add_dome(bm, outer, holes, p):
 
 
 def puff_heights(pts, d_all, nb, spacing, puff=1.0):
-    """0.24.20 heights of an inflated lump: round cross-sections everywhere.  ``w`` (local half width) =
-    the distance at the nearest ridge point (a point whose distance is not beaten by its neighbours), so an
-    arm-like part gets its own radius, not the body's.  Boundary points (the first ``nb``) stay 0."""
+    """0.24.20 heights of an inflated lump: round cross-sections everywhere, height = Puff * sqrt(2 w d - d^2).
+    ``w`` (local half width) = the distance reached by climbing the distance field straight inward: while the
+    climb gains about as much distance as it walks it is still crossing toward the middle; on the middle line
+    (it now runs along the shape, e.g. up a tapering arm) the gain drops and the climb stops - so a tapering
+    part gets a smoothly tapering radius.  Boundary points (the first ``nb``) stay 0."""
     from mathutils.kdtree import KDTree
     n = len(pts)
     if n <= nb:
@@ -414,24 +420,62 @@ def puff_heights(pts, d_all, nb, spacing, puff=1.0):
     for i, (x, y) in enumerate(pts):
         kd.insert((x, y, 0.0), i)
     kd.balance()
-    reach, tol = 1.6 * spacing, 0.05 * spacing
-    ridge = [i for i in range(nb, n)
-             if d_all[i] + tol >= max(d_all[j] for _co, j, _dd in kd.find_range((*pts[i], 0.0), reach))]
-    kr = KDTree(len(ridge))
-    for k, i in enumerate(ridge):
-        kr.insert((*pts[i], 0.0), k)
-    kr.balance()
+    reach = 1.6 * spacing
+    nxt = [-1] * n
+    for i in range(nb, n):
+        best, gain = -1, 0.0
+        for co, j, dd in kd.find_range((*pts[i], 0.0), reach):
+            if j < nb or dd < 1e-12:
+                continue
+            g = (d_all[j] - d_all[i]) / dd           # slope toward j (1 = straight inward)
+            if g > gain:
+                best, gain = j, g
+        if best >= 0 and gain >= 0.6:
+            nxt[i] = best
+    top = [-1] * n
+    for i in range(nb, n):
+        path = []
+        j = i
+        while j >= 0 and top[j] < 0 and nxt[j] >= 0 and len(path) < n:
+            path.append(j)
+            j = nxt[j]
+        end = top[j] if j >= 0 and top[j] >= 0 else j
+        for k in path:
+            top[k] = end
+        if top[i] < 0:
+            top[i] = i
+    w = [max(d_all[top[i]], d_all[i]) if i >= nb else 0.0 for i in range(n)]
+    # soften w between neighbours (the climb ends on a grid)
+    nbrs = [[j for _c, j, _d in kd.find_range((*pts[i], 0.0), reach) if j >= nb] if i >= nb else [] for i in range(n)]
+    for _ in range(3):
+        w = [w[i] if i < nb or not nbrs[i] else 0.5 * w[i] + 0.5 * sum(w[j] for j in nbrs[i]) / len(nbrs[i])
+             for i in range(n)]
     out = [0.0] * n
     for i in range(nb, n):
         d = d_all[i]
-        _co, k, _dd = kr.find((*pts[i], 0.0))
-        w = max(d_all[ridge[k]], d, 1e-9)
-        out[i] = puff * math.sqrt(max(0.0, 2.0 * w * d - d * d))
+        wi = max(w[i], d, 1e-9)
+        out[i] = puff * math.sqrt(max(0.0, 2.0 * wi * d - d * d))
     return out
 
 
+def chaikin(loop, iterations):
+    """0.24.20 corner cutting: every pass replaces each corner by two points at 1/4 and 3/4 of its edges."""
+    for _ in range(iterations):
+        n = len(loop)
+        out = []
+        for i in range(n):
+            a, b = loop[i], loop[(i + 1) % n]
+            out.append((0.75 * a[0] + 0.25 * b[0], 0.75 * a[1] + 0.25 * b[1]))
+            out.append((0.25 * a[0] + 0.75 * b[0], 0.25 * a[1] + 0.75 * b[1]))
+        loop = out
+    return loop
+
+
 def _add_puff(bm, outer, holes, p):
-    dense, boundary, interior, d_all, spacing = _dome_points(outer, holes, p, rings=(0.3, 0.8))
+    k = int(round(4 * max(0.0, min(1.0, getattr(p, 'outline_smooth', 0.0)))))
+    if k:
+        outer, holes = chaikin(outer, k), [chaikin(h, k) for h in holes]
+    dense, boundary, interior, d_all, spacing = _dome_points(outer, holes, p, rings=(0.3, 0.8), density=1.5)
     pts = boundary + interior
     nb = len(boundary)
     edges = _loop_edges(dense)

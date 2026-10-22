@@ -491,6 +491,7 @@ def draw_base(layout, context):
     col = target.column(align=True)
     if p.profile == 'PUFF':         # 0.24.20 thickness follows the width (Puff), no Height
         col.prop(p, 'puff', slider=True)
+        col.prop(p, 'outline_smooth', slider=True)
         col.prop(p, 'resolution')
     else:
         col.prop(p, 'height')
