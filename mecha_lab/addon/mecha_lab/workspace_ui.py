@@ -1661,8 +1661,14 @@ class MCH_PT_shape_popup(bpy.types.Panel):
             from .ui_tool_settings import draw_edge_finish
             draw_edge_finish(layout, context, tool[0])       # 0.19.2 edge bevel / chamfer sliders
         layout.separator()
-        layout.label(text='Custom PNG Shapes', icon='IMAGE_DATA')
-        draw_custom_grid(layout, context, columns=4, scale=2.6)
+        # 0.24.18 the custom (PNG) shapes start folded: open them with this row
+        wm = context.window_manager
+        is_open = bool(getattr(wm, 'mch_show_custom_shapes', False))
+        row = layout.row()
+        row.prop(wm, 'mch_show_custom_shapes', text='Custom PNG Shapes', emboss=False,
+                 icon='DISCLOSURE_TRI_DOWN' if is_open else 'DISCLOSURE_TRI_RIGHT')
+        if is_open:
+            draw_custom_grid(layout, context, columns=4, scale=2.6)
         layout.label(text='RMB double-click or Esc in the viewport exits the tool')
 
 
@@ -1902,6 +1908,8 @@ def unregister_keymaps():
 
 def register():
     _load_icons()
+    bpy.types.WindowManager.mch_show_custom_shapes = BoolProperty(
+        name='Custom PNG Shapes', default=False, description='Show the custom (PNG) stamp shapes in the shape menu')
     for c in CLASSES:
         bpy.utils.register_class(c)
     purge_stale_keymap_items()
@@ -1922,6 +1930,8 @@ def register():
 
 
 def unregister():
+    if hasattr(bpy.types.WindowManager, 'mch_show_custom_shapes'):
+        del bpy.types.WindowManager.mch_show_custom_shapes
     if _ortho_on_load in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_ortho_on_load)
     if bpy.app.timers.is_registered(_ortho_watchdog):

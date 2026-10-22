@@ -47,5 +47,22 @@ for o in list(bpy.data.objects):
 cube('Plain', 2.0)
 res = bh.MCH_OT_box_hide_split.execute(types.SimpleNamespace(report=lambda *a: None), C)
 check('nothing hidden: Split Off does nothing', res == {'CANCELLED'} and len(bpy.data.objects) == 1)
+# ---- 0.24.18 L shape menu: the custom PNG shapes start folded
+from mecha_lab import workspace_ui as wui
+calls = []
+real = wui.draw_custom_grid
+wui.draw_custom_grid = lambda *a, **k: calls.append('grid')
+class Lay:
+    def __getattr__(self, n):
+        return lambda *a, **k: self
+try:
+    check('custom shapes folded at start', C.window_manager.mch_show_custom_shapes is False)
+    wui.MCH_PT_shape_popup.draw(types.SimpleNamespace(layout=Lay()), C)
+    check('folded: the custom grid is not drawn', not calls)
+    C.window_manager.mch_show_custom_shapes = True
+    wui.MCH_PT_shape_popup.draw(types.SimpleNamespace(layout=Lay()), C)
+    check('opened: the custom grid is drawn', calls == ['grid'])
+finally:
+    wui.draw_custom_grid = real
 mecha_lab.unregister()
 sys.exit(1 if summary() else 0)
