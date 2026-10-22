@@ -923,6 +923,7 @@ _COLORS = {
     'PLATE': (0.30, 0.78, 1.0, 1.0),
     'CBASE': (1.0, 0.62, 0.45, 1.0),
     'CPLATE': (0.55, 0.9, 0.6, 1.0),
+    'BELT': (0.95, 0.75, 0.3, 1.0),
     'WRINKLE': (0.95, 0.45, 0.75, 1.0),
     'HIDE': (1.0, 0.62, 0.10, 1.0),               # 0.23.17 Box Hide: orange like Cut (hide and Alt = show)
     'DETAIL': (0.95, 0.85, 0.35, 1.0),            # 0.24 Plate Detail: yellow
@@ -1204,6 +1205,8 @@ class StrokeLogic:
 
     def _line_mode(self):
         from . import lasso_line
+        if self.mode == 'BELT':                # 0.24.20 Belt Maker always draws a line
+            return self.shape in {'LASSO', 'CURVE_LASSO', 'STROKE'}
         return lasso_line.enabled(bpy.context, self.mode, self.shape)
 
     def _line_path(self, pts=None):
@@ -1241,7 +1244,7 @@ class StrokeLogic:
         return PROFILE_POPUP if self.mode in {'BASE', 'CBASE'} else SHAPE_POPUP
 
     def _needs_target(self):
-        return self.mode not in {'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'DETAIL', 'DETAIL2', 'DETAIL3'}
+        return self.mode not in {'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'BELT'}
 
     def _tangents(self, pts=None):
         pts = self.pts if pts is None else pts
@@ -1620,6 +1623,9 @@ class StrokeLogic:
                 context.view_layer.objects.active = targets[-1]
             except (AttributeError, RuntimeError, ReferenceError):
                 pass
+        if self.mode == 'BELT':
+            from . import belt_maker
+            return belt_maker.perform(context, self._line_path(), self.projector)
         if self.mode == 'MASK' and self.shape == 'STROKE':
             from . import mask_tools
             points = smooth_open(self.pts, self.brush.stroke_smooth)
@@ -2057,6 +2063,7 @@ class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
         ('PLATE', 'Armor Plate', 'New armour plate on the mesh under the outline'),
         ('CBASE', 'Creature Base Mesh', 'New rounded solid (Puff / Ridge / Pillow) from the drawn outline'),
         ('CPLATE', 'Creature Plate', 'New rounded plate (Puff / Ridge / Pillow) on the mesh under the outline'),
+        ('BELT', 'Belt Maker', 'A strap around the mesh where the line crosses it, or along the line'),
         ('WRINKLE', 'Cloth Wrinkle', 'New cloth layer with wrinkles on the mesh under the outline'),
         ('HIDE', 'Box Hide', 'Hide the meshes inside the shape (Alt: show again)'),
         ('DETAIL', 'Plate Detail', 'Low trim detail on the plate under the outline'),
