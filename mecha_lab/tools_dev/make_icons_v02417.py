@@ -92,13 +92,13 @@ def icons():
     out['detail3'] = detail3
 
     def screw():
-        # plate set look: side view on the base line - a dome screw head with its slot
+        # plate set look: a screw seen from the side (a T) standing on the base line - head, shank, thread
         img, d = canvas()
         base_line(d)
-        head = [(120, 380)] + [(256 + 136 * math.cos(math.pi * (1 - i / 32.0)),
-                                 380 - 160 * math.sin(math.pi * (1 - i / 32.0))) for i in range(33)] + [(392, 380)]
-        poly(d, head, ACC, closed=False)
-        d.line((256, 222, 256, 290), fill=ACC, width=W)                    # the slot
+        poly(d, [(226, 380), (226, 214), (146, 214), (146, 150), (366, 150), (366, 214), (286, 214),
+                 (286, 380)], ACC, closed=False)
+        for y in range(244, 372, 32):                                      # thread
+            d.line((230, y + 10, 282, y - 6), fill=ACC, width=14)
         return img
     out['screw'] = screw
 
