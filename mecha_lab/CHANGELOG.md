@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 0.24.17 — L = 라쏘 모양 메뉴, 툴별 단축키 + 저장, Line Curve = 굵기 일정한 튜브, 왼쪽 메뉴 새 아이콘 (2026-10-22)
+
+- **L = 라쏘 모양 메뉴**: MECHA LAB에서 L → 마우스 위치에 모양 고르기 창(예전 Space 메뉴처럼 큰 아이콘).
+- **단축키 탭**: Workspace & Hotkeys의 Hotkeys에 "Tools (left list)" - 왼쪽 메뉴 툴 전부(처음엔 비어 있음, Cut = C / Split = S / Armor Plate = Alt+A는 그대로). 키 칸을 눌러 지정 → **Save Hotkeys**로 Mecha Lab 전용 파일(config/mecha_lab/hotkeys.json)에 저장, 다음 실행 때 그대로 적용(Blender 설정은 안 건드림). **Default Keys** = 저장 파일 삭제 + 기본 키.
+- **Line Curve 다시 만듦**: 0.24.10은 오브젝트(없으면 구)를 같은 크기로 줄지어 복사해서 점처럼 보였음 → 이제 처음부터 끝까지 같은 굵기의 튜브, **Thickness** 하나로 전체 굵기. 점별 굵기 손잡이(주황 점) / Ctrl+휠은 Line Curve에서 꺼짐. 단면 / 끝막음 / 닫기 / 비틀기 / 점 편집은 Mesh Curve와 같음. 0.24.10에서 만든 Line Curve는 패널 버튼 하나로 라인으로.
+- **왼쪽 메뉴 아이콘**: 같은 그림을 쓰던 툴에 각자 그림 - Box Hide(모서리가 숨겨진 큐브), Armor Plate / Plate Detail 1 / 2 / 3 / Screw(T자 나사) / Cloth Plate(옷)는 같은 룩(바닥선 위 옆모습), Mesh Curve(튜브), Line Curve(같은 굵기 선). `reference/left_list_icons_v02417.png`, 생성 스크립트 `tools_dev/make_icons_v02417.py`.
+- 테스트: 80개 파일 2572/2572 (`tests/test_log_bpy501_v02417.txt`; 전체 실행에서 test_registration_recovery의 '키맵 중복' 검사 4개가 키가 비어 있는 툴 키 항목들을 같은 항목으로 봐서 실패 - 항목의 동작(action / tool)까지 비교하도록 고쳐 그 파일만 다시 실행 38/38), 새 `test_v02417.py`(18). ZIP sha256 `07d4733bd536ff4e2ebc2565e5648e5725195a5398b94344db164620df5c6291`.
+
 ## 0.24.16 — Panel Cloth Puff(부푸는 정도) 슬라이더 (2026-10-19)
 
 - **Puff**: 천을 선택하면 Tension / Gravity 위에 있음. 1 = 프리셋 그대로(결과 동일), 0 = 안 부풂, 2 = 두 배. 바꾸면 Refresh가 빨갛게, 누르면 새 값으로 다시 굽기(새 천에도 값 유지). 원래 거의 안 부푸는 프리셋(Cloth / Silk / Canvas)도 Puff를 올리면 조금 부풂. 비교 `reference/panel_cloth_puff_v02416.png`(Padding, Puff 0 / 1 / 2.5).

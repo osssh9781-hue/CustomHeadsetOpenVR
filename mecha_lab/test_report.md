@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.16
+# Test Report — Mecha Lab 0.24.17
+
+## 0.24.17 결과: 80개 파일 2572/2572 (`tests/test_log_bpy501_v02417.txt`; 전체 실행에서 test_registration_recovery의 '키맵 중복' 검사 4개가 키가 비어 있는 툴 키 항목들을 같은 항목으로 봐서 실패 - 항목의 동작(action / tool)까지 비교하도록 고쳐 그 파일만 다시 실행 38/38) (`tests/test_log_bpy501_v02417.txt`). test_v02417(18): L = SHAPES, 왼쪽 메뉴 툴마다 키 항목(기본 비어 있음, C / S / Alt+A 유지), 편집 상자에 툴 전부 + Save / Default, Ctrl+K = Base Mesh / J = Cut 저장 → 키맵 다시 만들어도 유지, 다른 키 그대로, 툴 키 → 그 툴 / L → 모양 팝업, Default Keys → 파일 삭제 + 기본값; Line Curve: 점 반지름 1 / 3 / 0.3 + 시작 / 끝 0.5 / 2에도 굵기 0.1 일정(점 아님), Thickness 0.25 → 전체 0.25, Line Curve 툴 소유, 주황 손잡이 / Ctrl+휠 없음, Mesh Curve는 점 반지름 따름; 새 아이콘 9개 파일·stem, 왼쪽 메뉴에서 같은 그림 없음. 실제 키 입력 / 화면은 미검증.
 
 ## 0.24.16 결과: 79개 파일 2554/2554 (`tests/test_log_bpy501_v02416.txt`) (`tests/test_log_bpy501_v02416.txt`). test_v02416(8): Puff 1은 pressure 안 바꿈, 2 = 2배 / 0 = 0, Cloth 프리셋은 2에서 > 1, 새 천 Puff 1, 바꾸면 표시만(굽기 안 함), Refresh 2.5 → 값 유지 + 95% 높이 > 1.1배, 0 → 프리셋보다 낮음. 비교 렌더 `reference/panel_cloth_puff_v02416.png`(Cycles CPU, headless). 뷰포트 미검증.
 

@@ -30,7 +30,12 @@ def keymap_items():
     kc = bpy.context.window_manager.keyconfigs.addon
     if kc is None:
         return []
-    return [(km.name, ki.idname, ki.type, ki.value, ki.shift, ki.alt, ki.ctrl) for km in kc.keymaps
+    # 0.24.17 what the item does counts too: the per-tool keys share one (unassigned) key but pick different tools
+    def what(ki):
+        if ki.idname != 'mch.hotkey':
+            return ''
+        return (getattr(ki.properties, 'action', ''), getattr(ki.properties, 'tool', ''))
+    return [(km.name, ki.idname, ki.type, ki.value, ki.shift, ki.alt, ki.ctrl, what(ki)) for km in kc.keymaps
             for ki in km.keymap_items if ki.idname.startswith('mch.')]
 
 

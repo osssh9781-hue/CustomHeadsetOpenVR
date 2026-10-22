@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.16 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.17 (Claude Code, 2026-10-14)
+
+## 0.24.17
+- ZIP sha256 `07d4733bd536ff4e2ebc2565e5648e5725195a5398b94344db164620df5c6291`. `workspace_ui.MCH_OT_hotkey`: action SHAPES(L, `wm.call_panel('MCH_PT_shape_popup')`) / TOOL(+ `tool` enum, `activate_mecha_tool`). register_keymaps: L + `tool_key_ids()`마다 type 'NONE' 항목(TOOL_ACTIONS CUT / SPLIT / PLATE 제외), 끝에 `load_hotkeys(items)`. `hotkey_id(item)` = (idname, action, tool), `save_hotkeys` / `_hotkeys_path`(config/mecha_lab/hotkeys.json), `MCH_OT_hotkeys_save` / `MCH_OT_hotkeys_reset`(파일 삭제 + 키맵 재등록). draw_hotkey_editor에 "Tools (left list)". `curve_tube`: 모드 LINE(`TUBE_MODES`, `LINE_MODES` = LINE + 0.24.10 REPEAT_SAME), build에서 샘플 반지름 1 / 테이퍼 1로 tube_mesh, handle_world / point_radius / rad 기즈모가 LINE에서 꺼짐, `draw_line` = 튜브 설정, Line Curve 툴은 mode='LINE'. 아이콘 stem: HIDE hide, PLATE armor, DETAIL detail1, DETAIL2 detail2, DETAIL3 detail3, SCREW screw, WRINKLE cloth, TUBE tube, TUBE_SAME line_curve.
 
 ## 0.24.16
 - ZIP sha256 `a1b3b0dd64d24375126a17ffad0ea4962c805f8e0d4f30757a6d999e7d7eba87`. `cloth_sim`: Object 속성 `mch_pcloth_puff`(0 ~ 5, 기본 1, _slider_update = 표시만), `puff_pressure(base, puff)`(base ≥ 1이면 base × puff, 아니면 puff ≥ 1에서 base + (puff - 1) × 3), `sim_values(..., puff)`는 puff ≠ 1일 때만 pressure 덮어씀(1이면 프리셋 그대로), `redo` / `set_sliders`가 puff를 넘기고 새 천에 유지.
