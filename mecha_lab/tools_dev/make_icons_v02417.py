@@ -1,4 +1,4 @@
-"""0.24.17 own pictures for the left tool list entries that shared one (extract / cable / cut):
+"""0.24.17 own pictures (written into the add-on icons folder) for the left tool list entries that shared one (extract / cable / cut):
 Box Hide, Armor Plate, Plate Detail 1 / 2 / 3, Screw Stamp, Cloth Plate (a shirt), Mesh Curve, Line Curve.
 
 python make_icons_v02417.py <out dir>     (same style as make_icons.py)
@@ -103,24 +103,6 @@ def icons():
     out['screw'] = screw
 
     def cloth():
-        # plate set look: side view on the base line - a padded panel puffing up between pinched seams
-        img, d = canvas()
-        base_line(d)
-        pts = [(80, 380)]
-        for i in range(61):                                                 # soft pillow: rounded shoulders,
-            t = i / 60.0                                                    # a gentle wave on top
-            x = 100 + 312 * t
-            edge = math.sin(math.pi * t) ** 0.45
-            h = edge * (150 + 14 * math.cos(math.pi * 4 * t))
-            pts.append((x, 380 - h))
-        pts += [(432, 380)]
-        poly(d, pts, PU, closed=False)
-        for x in range(146, 380, 46):                                       # stitches
-            d.line((x, 345, x + 22, 345), fill=DIM, width=10)
-        return img
-    out['cloth'] = cloth
-
-    def cloth_shirt():
         # the same line look as the plate set: a shirt drawn with one stroke on the base line
         img, d = canvas()
         base_line(d)
@@ -128,7 +110,7 @@ def icons():
                  (168, 380), (168, 216), (134, 232), (110, 166)]
         poly(d, shirt, PU)
         return img
-    out['cloth_shirt'] = cloth_shirt
+    out['cloth'] = cloth
 
     def tube():
         img, d = canvas()

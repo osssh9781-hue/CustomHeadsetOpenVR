@@ -112,5 +112,16 @@ ct.rebuild(lc)
 co = np.array([v.co[:] for v in lc.data.vertices])
 rad = np.hypot(co[:, 1], co[:, 2])
 check('Mesh Curve (Tube) still follows the point radius', rad.max() > 0.25 * 2.5, rad.max())
+# ---- 0.24.17 the left list: own pictures for the tools that shared one
+import os as _os
+want = {'HIDE': 'hide', 'PLATE': 'armor', 'DETAIL': 'detail1', 'DETAIL2': 'detail2', 'DETAIL3': 'detail3',
+        'SCREW': 'screw', 'WRINKLE': 'cloth', 'TUBE': 'tube', 'TUBE_SAME': 'line_curve'}
+icons_dir = _os.path.join(_os.path.dirname(wui.__file__), 'icons')
+check('new left-list pictures used and present', all(ts.TOOL_BY_ID[t][3] == n and
+      _os.path.isfile(_os.path.join(icons_dir, n + '.png')) for t, n in want.items()),
+      {t: ts.TOOL_BY_ID[t][3] for t in want})
+stems = [t[3] for t in ts.VISIBLE_TOOLS]
+dup = sorted({s_ for s_ in stems if stems.count(s_) > 1})
+check('no two tools of the left list share a picture', not dup, dup)
 mecha_lab.unregister()
 sys.exit(1 if summary() else 0)

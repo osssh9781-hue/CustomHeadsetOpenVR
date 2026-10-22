@@ -20,25 +20,25 @@ TOOLS = (
     ('CUT', 'Cut', 'Draw a shape to remove the inside (Alt: keep inside)', 'cut', 'MOD_BOOLEAN', 'mecha.cut', 'OK'),
     ('SPLIT', 'Split', 'Draw a shape to split the mesh into two solid parts', 'split', 'MOD_EDGESPLIT', 'mecha.split', 'OK'),
     ('HIDE', 'Box Hide', 'Draw a shape over meshes to hide what is inside it (Alt: show it again); Cap / Open, '
-     'Mirror X, Show All, Apply - non-destructive until Apply', 'cut', 'HIDE_ON', 'mecha.box_hide', 'OK'),
+     'Mirror X, Show All, Apply - non-destructive until Apply', 'hide', 'HIDE_ON', 'mecha.box_hide', 'OK'),
     ('BASE', 'Base Mesh', 'Draw an outline to create a NEW solid (Flat / Chamfer / Bevel / Dome); RMB = profiles',
      'base', 'MESH_CUBE', 'mecha.base_mesh', 'OK'),
     ('SUBD', 'SubD Plane', 'Plane with live Simple + Catmull-Clark subdivision and Solidify; extrude edges '
      'in Edit Mode to build armour panels', 'subd', 'MOD_SUBSURF', None, 'OK'),
     ('PLATE', 'Armor Plate', 'Draw a lasso on a mesh: a separate armour plate made of new clean faces '
-     '(no retopology); mouse wheel while drawing = profile', 'extract', 'MOD_SOLIDIFY', 'mecha.armor_plate', 'OK'),
+     '(no retopology); mouse wheel while drawing = profile', 'armor', 'MOD_SOLIDIFY', 'mecha.armor_plate', 'OK'),
     ('DETAIL', 'Plate Detail', 'Draw an outline on a plate: a low surface trim - flat inside, 1 / 2 / 3 stepped '
      'layers along the edge (edge high or inside high), optional screw recesses; live until Apply',
-     'extract', 'MESH_PLANE', 'mecha.plate_detail', 'OK'),
+     'detail1', 'MESH_PLANE', 'mecha.plate_detail', 'OK'),
     ('DETAIL2', 'Plate Detail 2', 'Draw an outline on a surface: it rises smoothly inside the outline to a flat top '
-     '(height, slope width, slope shape); live until Apply', 'extract', 'SURFACE_NSURFACE', 'mecha.plate_detail2', 'OK'),
+     '(height, slope width, slope shape); live until Apply', 'detail2', 'SURFACE_NSURFACE', 'mecha.plate_detail2', 'OK'),
     ('DETAIL3', 'Plate Detail 3', 'Draw an outline on a plate: a flat raised panel with straight walls, no trim '
-     'layers (height, lift); live until Apply', 'extract', 'MESH_PLANE', 'mecha.plate_detail3', 'OK'),
+     'layers (height, lift); live until Apply', 'detail3', 'MESH_PLANE', 'mecha.plate_detail3', 'OK'),
     ('SCREW', 'Screw Stamp', 'Click on a surface to place screw heads (Dome / Post / Socket / Cross), aligned '
-     'to the surface; size, height and hole depth stay live; Alt + click removes', 'extract', 'RADIOBUT_ON',
+     'to the surface; size, height and hole depth stay live; Alt + click removes', 'screw', 'RADIOBUT_ON',
      'mecha.screw_stamp', 'OK'),
     ('WRINKLE', 'Cloth Plate', 'Draw a lasso on a mesh: a separate padded cloth panel - puffs up inside the '
-     'border, edge roll, seam pinch folds, stitching (+ optional Padding / Denim / Leather pattern), live until Apply', 'extract', 'MOD_CLOTH', 'mecha.cloth_wrinkle', 'OK'),
+     'border, edge roll, seam pinch folds, stitching (+ optional Padding / Denim / Leather pattern), live until Apply', 'cloth', 'MOD_CLOTH', 'mecha.cloth_wrinkle', 'OK'),
     ('PRIMITIVE', 'Primitive', 'Ghost shape with handles: Enter = merge into the mesh it touches, Alt+Enter = '
      'subtract; Station Primitive presets; RMB = shape picker',
      'primitive', 'MESH_CUBE', 'mecha.primitive', 'OK'),
@@ -66,10 +66,10 @@ TOOLS = (
      'cable', 'OUTLINER_OB_CURVE', None, 'OK'),
     ('TUBE', 'Mesh Curve', 'Nomad-style curve: click points (on the mesh or in the air), a live solid tube right '
      'away - radius per point, profile, cap, hole, twist - or Repeat your own (linked) object along it with spacing',
-     'cable', 'CURVE_BEZCURVE', None, 'OK'),
+     'tube', 'CURVE_BEZCURVE', None, 'OK'),
     ('TUBE_SAME', 'Line Curve', 'Click points: a tube of one thickness everywhere (no per-point size) - Thickness '
      'makes all of it thicker / thinner; profile, cap, closed, twist like Mesh Curve; live until Apply',
-     'cable', 'CURVE_BEZCURVE', None, 'OK'),
+     'line_curve', 'CURVE_BEZCURVE', None, 'OK'),
     ('LOFT', 'Loft / Surface', 'Smooth surface through 2+ curves, or sweep a profile along a path (live)',
      'loft', 'SURFACE_DATA', None, 'PARTIAL'),
     ('ZBRUSH', 'ZBrush Bridge', 'Send selected objects to ZBrush as OBJ files and import them back (not GoZ)',
