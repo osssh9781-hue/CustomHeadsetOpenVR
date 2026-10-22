@@ -143,6 +143,24 @@ def icons():
         dots(d, [(236, 400)], ACC, r=22)
         return img
     out['lasso_key'] = lasso_key
+
+    def activate_key():
+        # Tool Active (keycap): a power symbol
+        img, d = canvas()
+        d.arc((136, 136, 376, 376), start=-60, end=240, fill=GR, width=34)
+        d.line((256, 106, 256, 250), fill=GR, width=34)
+        dots(d, [(256, 106), (256, 250)], GR, r=17)
+        return img
+    out['activate_key'] = activate_key
+
+    def apply_key():
+        # Apply / Enter (keycap): the Enter arrow with a check
+        img, d = canvas()
+        poly(d, [(380, 130), (380, 300), (170, 300)], FG, width=30, closed=False)
+        poly(d, [(220, 250), (160, 300), (220, 350)], FG, width=30, closed=False)
+        poly(d, [(150, 170), (200, 220), (290, 120)], ACC, width=34, closed=False)
+        return img
+    out['apply_key'] = apply_key
     return out
 
 
