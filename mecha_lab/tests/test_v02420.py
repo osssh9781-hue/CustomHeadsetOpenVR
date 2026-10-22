@@ -18,8 +18,10 @@ CIRCLE = ce.circle_loop((500, 500), (600, 500), 64)   # radius 1
 
 
 def make(loops, projector=TOP, **kw):
-    s = C.scene.mch_base
-    s.profile = 'PUFF'
+    C.scene.mch_settings.mch_active_tool = 'CBASE'        # Puff is a Creature Base Mesh profile
+    s = C.scene.mch_cbase
+    if s.profile not in {'PUFF', 'RIDGE', 'PILLOW'}:
+        s.profile = 'PUFF'
     for k, v in kw.items():
         setattr(s, k, v)
     before = set(bpy.data.objects)
@@ -30,8 +32,8 @@ def make(loops, projector=TOP, **kw):
 
 def reset():
     fresh()
-    s = C.scene.mch_base
-    s.resolution, s.offset, s.puff = 40, 0.0, 1.0
+    s = C.scene.mch_cbase
+    s.resolution, s.offset, s.puff, s.peak, s.profile = 40, 0.0, 1.0, 0.0, 'PUFF'
     C.scene.cursor.location = (0, 0, 0)
 
 
@@ -66,12 +68,14 @@ check('the body is a fat lump (half height ~ 1)', max(body) > 0.8, max(body))
 s = ob.mch_base
 check('live: settings stored on the object', s.live and s.profile == 'PUFF')
 h1 = max(zs(ob))
-s.puff = 0.5
+check('Height slider starts at the real height (not Auto)', abs(s.peak - h1) < 0.02 * h1, (s.peak, h1))
+s.peak = h1 * 0.5
 h2 = max(zs(ob))
-check('Puff 0.5 rebuilds live: half as thick', abs(h2 - h1 * 0.5) < 0.05 * h1 and non_manifold(ob) == 0, (h1, h2))
-s.puff = 2.0
-check('Puff 2: taller than wide, still closed', max(zs(ob)) > h1 * 1.8 and non_manifold(ob) == 0)
-check('Puff is remembered for the next shape', abs(C.scene.mch_base.puff - 2.0) < 1e-6)
+check('Height = half rebuilds live: half as thick, same outline', abs(h2 - h1 * 0.5) < 0.03 * h1
+      and non_manifold(ob) == 0, (h1, h2))
+s.peak = h1 * 2.0
+check('Height x2: taller than wide, still closed', max(zs(ob)) > h1 * 1.9 and non_manifold(ob) == 0)
+check('the next shape starts at Auto height again (Height is not carried over)', C.scene.mch_cbase.peak == 0.0)
 z_res = []
 for res in (20, 60):
     reset()
@@ -103,19 +107,19 @@ check('ring outline (with hole) -> a closed donut, tube half height ~0.56', ob i
 
 reset()
 for low in (4, 8):
-    C.scene.mch_base.resolution = low
+    C.scene.mch_cbase.resolution = low
     ob, msg = make([BODY_ARM])
     check(f'low resolution {low}: still closed (narrow parts split, no doubled faces)', ob is not None
           and non_manifold(ob) == 0, msg)
 
 reset()
-C.scene.mch_base.profile = 'PUFF'
+C.scene.mch_cbase.profile = 'PUFF'
 try:
-    bm_mod._perform_cutter(C, [([(0, 0), (1, 0), (1, 1)], [])], None, C.scene.mch_base, None, None, [object()])
+    bm_mod._perform_cutter(C, [([(0, 0), (1, 0), (1, 1)], [])], None, C.scene.mch_cbase, None, None, [object()])
     refused = False
 except cg.CutError as ex:
     refused = 'Puff' in str(ex)
 check('Alt cutter refuses Puff with a message (no flat cap)', refused)
 src = open(os.path.join(os.path.dirname(bm_mod.__file__), 'ui_tool_settings.py')).read()
-check('panel: Puff slider instead of Height for Puff', "col.prop(p, 'puff', slider=True)" in src)
+check('panel: Height (peak) slider for the creature shapes', "col.prop(p, 'peak')" in src)
 sys.exit(1 if summary() else 0)

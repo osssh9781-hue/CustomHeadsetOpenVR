@@ -437,6 +437,11 @@ def draw_remesh(layout, context):
     lowpoly.draw(layout, context)                    # 0.23.22 sculpt -> low poly base mesh
 
 
+def draw_cplate(layout, context):
+    from . import creature_plate
+    creature_plate.draw(layout, context)
+
+
 def draw_pose(layout, context):
     from . import deform_tools
     deform_tools.draw(layout, context)
@@ -444,7 +449,7 @@ def draw_pose(layout, context):
 
 def _draw_base_sketch(layout, context, base_mesh):
     """0.14.1 Sketch First: toggle + the pending orange sketch."""
-    sp = context.scene.mch_base
+    sp = base_mesh.scene_defaults(context)
     box = layout.box()
     row = box.row(align=True)
     row.prop(sp, 'sketch', icon='GREASEPENCIL', toggle=True)
@@ -484,13 +489,18 @@ def draw_base(layout, context):
             box.label(text=ob['mch_base_notes'], icon='INFO')
         target = box
     else:
-        p = context.scene.mch_base
+        p = base_mesh.scene_defaults(context)
         target = layout
         layout.label(text='Settings for the next shape', icon='MESH_CUBE')
-    target.row(align=True).prop(p, 'profile', expand=True)
+    row = target.row(align=True)          # 0.24.20 Base Mesh / Creature Base Mesh each show their own profiles
+    for pid, label, _d, _stem, icon in base_mesh.profiles_for(context, ob):
+        row.operator('mch.set_profile', text=label, icon=icon, depress=(p.profile == pid)).profile = pid
     col = target.column(align=True)
-    if p.profile == 'PUFF':         # 0.24.20 thickness follows the width (Puff), no Height
-        col.prop(p, 'puff', slider=True)
+    creature = p.profile in base_mesh.CREATURE_PROFILES
+    if creature:                    # 0.24.20 Height = the top (0 = Auto); thin parts stay thin
+        col.prop(p, 'peak')
+        if p.profile in {'RIDGE', 'PILLOW'}:
+            col.prop(p, 'edge_round', slider=True)
         col.prop(p, 'outline_smooth', slider=True)
         col.prop(p, 'resolution')
     else:
@@ -518,6 +528,10 @@ def draw_base(layout, context):
         target.label(text='Dome: Bevel Sides not used (the top is the bulge)', icon='INFO')
     elif p.profile == 'PUFF':
         target.label(text='Puff: round on both sides, thin parts become tubes', icon='INFO')
+    elif p.profile == 'RIDGE':
+        target.label(text='Ridge: a sharp ridge along the middle (diamond section)', icon='INFO')
+    elif p.profile == 'PILLOW':
+        target.label(text='Pillow: flat top, only the edge is round', icon='INFO')
     elif p.profile == 'FLAT':
         target.label(text='Flat: no bevel (choose Bevel / Chamfer for Bevel Sides)', icon='INFO')
     col.prop(p, 'offset')
@@ -787,7 +801,8 @@ DRAWERS = {
     'MASK': draw_mask, 'DRAW': draw_draw, 'ARRAY': draw_array, 'EDIT': draw_edit,
     'LIBRARY': draw_library, 'REMESH': draw_remesh, 'POSE': draw_pose,
     'BASE': draw_base, 'LOFT': draw_loft, 'ZBRUSH': draw_zbrush, 'SUBD': draw_subd,
-    'PRIMITIVE': draw_primitive, 'PLATE': draw_plate, 'WRINKLE': draw_wrinkle,
+    'PRIMITIVE': draw_primitive, 'PLATE': draw_plate, 'WRINKLE': draw_wrinkle, 'CBASE': draw_base,
+    'CPLATE': draw_cplate,
     'EXTRACT': draw_extract, 'MOLDING': draw_molding, 'HOLLOW': draw_hollow, 'ALONG': draw_along,
     'CABLE': draw_cable, 'TUBE': draw_tube, 'TUBE_SAME': draw_line_curve, 'DETAIL3': draw_detail3, 'HIDE': draw_hide, 'DETAIL': draw_detail, 'DETAIL2': draw_detail2, 'SCREW': draw_screw,
     # MIRROR, RADIAL, SURFACE: own sub-panels.

@@ -25,22 +25,26 @@ from . import core_geometry as cg
 from . import tool_state as ts
 
 KEY = 'mch_lasso_sketch'          # Scene ID prop (JSON) - Ctrl+Z steps back through it
-MODES = {'CUT', 'SPLIT', 'PLATE', 'WRINKLE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'HIDE'}   # 0.24.1 + Plate Detail 1 / 2, Box Hide
+MODES = {'CUT', 'SPLIT', 'PLATE', 'CPLATE', 'WRINKLE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'HIDE'}   # 0.24.1 + Plate Detail 1 / 2, Box Hide
 
 
 def is_on(context):
     """Sketch state shown on the button for the current tool (Base Mesh has its own)."""
     scene = context.scene
-    if ts.effective_tool(context) == 'BASE' and hasattr(scene, 'mch_base'):
+    tool = ts.effective_tool(context)
+    if tool == 'BASE' and hasattr(scene, 'mch_base'):
         return bool(scene.mch_base.sketch)
+    if tool == 'CBASE' and hasattr(scene, 'mch_cbase'):
+        return bool(scene.mch_cbase.sketch)
     return bool(getattr(getattr(scene, 'mch_brush', None), 'sketch_first', False))
 
 
 def set_on(context, value):
     scene = context.scene
     scene.mch_brush.sketch_first = value
-    if hasattr(scene, 'mch_base'):
-        scene.mch_base.sketch = value
+    for pg in ('mch_base', 'mch_cbase'):
+        if hasattr(scene, pg):
+            getattr(scene, pg).sketch = value
 
 
 def enabled(context, mode):
@@ -143,6 +147,9 @@ def commit(context, alt=False):
     if mode == 'PLATE':
         from . import armor_plate as ap
         msg = ap.perform_plate(context, loops, proj)
+    elif mode == 'CPLATE':
+        from . import creature_plate as cp
+        msg = cp.perform(context, loops, proj)
     elif mode == 'WRINKLE':
         from . import cloth_wrinkle as cw
         msg = cw.perform_wrinkle(context, loops, proj)

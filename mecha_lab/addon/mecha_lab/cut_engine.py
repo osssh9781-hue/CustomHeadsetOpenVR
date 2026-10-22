@@ -921,6 +921,8 @@ _COLORS = {
     'MASK': (0.85, 0.45, 1.0, 1.0),
     'BASE': (1.0, 0.55, 0.12, 1.0),
     'PLATE': (0.30, 0.78, 1.0, 1.0),
+    'CBASE': (1.0, 0.62, 0.45, 1.0),
+    'CPLATE': (0.55, 0.9, 0.6, 1.0),
     'WRINKLE': (0.95, 0.45, 0.75, 1.0),
     'HIDE': (1.0, 0.62, 0.10, 1.0),               # 0.23.17 Box Hide: orange like Cut (hide and Alt = show)
     'DETAIL': (0.95, 0.85, 0.35, 1.0),            # 0.24 Plate Detail: yellow
@@ -1042,7 +1044,7 @@ def exit_tool(context):
         current = ts.effective_tool(context)
     except (AttributeError, KeyError, TypeError):
         current = None
-    if current == 'BASE':
+    if current in {'BASE', 'CBASE'}:
         try:
             from . import base_mesh
             base_mesh.auto_apply_session(context)
@@ -1236,10 +1238,10 @@ class StrokeLogic:
         return self.shape == 'LASSO' and (self.line_open or len(self.pts) == 2 and self.stage == 'SIDE')
 
     def _popup_name(self):
-        return PROFILE_POPUP if self.mode == 'BASE' else SHAPE_POPUP
+        return PROFILE_POPUP if self.mode in {'BASE', 'CBASE'} else SHAPE_POPUP
 
     def _needs_target(self):
-        return self.mode not in {'BASE', 'PLATE', 'WRINKLE', 'DETAIL', 'DETAIL2', 'DETAIL3'}
+        return self.mode not in {'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'DETAIL', 'DETAIL2', 'DETAIL3'}
 
     def _tangents(self, pts=None):
         pts = self.pts if pts is None else pts
@@ -1354,7 +1356,7 @@ class StrokeLogic:
             except RuntimeError as ex:
                 self.report({'WARNING'}, str(ex))
             return {'CANCELLED'}
-        if self.mode in {'MASK', 'BASE', 'PLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3'} and self.shape == 'LASSO' and self.brush.line_open:
+        if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3'} and self.shape == 'LASSO' and self.brush.line_open:
             self.brush.line_open = False
         self.ui = ui_scale(context)
         self.target_names = []
@@ -1455,7 +1457,7 @@ class StrokeLogic:
             self.pts.append(xy)
 
     def _hint(self, context):
-        tail = ' | RMB: ' + ('profiles' if self.mode == 'BASE' else 'shapes') + ', RMB×2 / Esc: exit tool'
+        tail = ' | RMB: ' + ('profiles' if self.mode in {'BASE', 'CBASE'} else 'shapes') + ', RMB×2 / Esc: exit tool'
         if self.stage == 'SIDE':
             text = 'Click the side to REMOVE (Alt+click: keep it)' + tail
         elif self.stage == 'POINTS':
@@ -1642,6 +1644,9 @@ class StrokeLogic:
             elif self.mode == 'PLATE':
                 from . import armor_plate
                 msg = armor_plate.perform_plate(context, loops, self.projector)
+            elif self.mode == 'CPLATE':
+                from . import creature_plate
+                msg = creature_plate.perform(context, loops, self.projector)
             elif self.mode == 'WRINKLE':
                 from . import cloth_wrinkle
                 msg = cloth_wrinkle.perform_wrinkle(context, loops, self.projector)
@@ -1651,9 +1656,9 @@ class StrokeLogic:
             elif self.mode == 'HIDE':
                 from . import box_hide
                 msg = box_hide.perform(context, targets, loops, self.projector, restore=self.inverted())
-            elif self.mode == 'BASE':
+            elif self.mode in {'BASE', 'CBASE'}:
                 from . import base_mesh
-                if getattr(context.scene.mch_base, 'sketch', False):
+                if getattr(base_mesh.scene_defaults(context), 'sketch', False):
                     # 0.14.1 Sketch First: add to / (Alt) subtract from the orange sketch
                     msg = base_mesh.sketch_add(context, loops, self.projector, subtract=self.inverted())
                 else:
@@ -1693,7 +1698,7 @@ class StrokeLogic:
         if self.shape in {'LASSO', 'CURVE_LASSO'}:
             self._clean_points()
             if self.shape == 'LASSO' and len(self.pts) >= 2 and (self.line_open or len(self.pts) == 2):
-                if self.mode in {'MASK', 'BASE', 'PLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3'}:
+                if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3'}:
                     self.report({'WARNING'}, 'This tool needs a closed outline (3+ points)')
                     return {'RUNNING_MODAL'}
                 if self.mode == 'SPLIT':
@@ -1851,7 +1856,7 @@ class StrokeLogic:
             self._hint(context)
             self.region.tag_redraw()
             return {'RUNNING_MODAL'}
-        if et == 'F' and ev == 'PRESS' and self.shape == 'LASSO' and self.mode not in {'MASK', 'BASE', 'PLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3'}:
+        if et == 'F' and ev == 'PRESS' and self.shape == 'LASSO' and self.mode not in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3'}:
             self.line_open = not self.line_open
             self.brush.line_open = self.line_open
             self.region.tag_redraw()
@@ -2050,6 +2055,8 @@ class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
         ('MASK', 'Mask', 'Add face mask (Alt: erase)'),
         ('BASE', 'Base Mesh', 'Create a new solid from the drawn outline'),
         ('PLATE', 'Armor Plate', 'New armour plate on the mesh under the outline'),
+        ('CBASE', 'Creature Base Mesh', 'New rounded solid (Puff / Ridge / Pillow) from the drawn outline'),
+        ('CPLATE', 'Creature Plate', 'New rounded plate (Puff / Ridge / Pillow) on the mesh under the outline'),
         ('WRINKLE', 'Cloth Wrinkle', 'New cloth layer with wrinkles on the mesh under the outline'),
         ('HIDE', 'Box Hide', 'Hide the meshes inside the shape (Alt: show again)'),
         ('DETAIL', 'Plate Detail', 'Low trim detail on the plate under the outline'),

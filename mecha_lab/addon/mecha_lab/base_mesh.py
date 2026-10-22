@@ -36,6 +36,7 @@ from mathutils import Matrix, Vector
 from mathutils.geometry import delaunay_2d_cdt
 
 from . import core_geometry as cg
+from . import tool_state as ts
 
 PROFILES = (
     ('FLAT', 'Flat', 'Flat top and straight side walls', 'profile_flat', 'MESH_PLANE'),
@@ -47,6 +48,8 @@ PROFILES = (
      '(arm-like outlines become tubes) - a sculpting base', 'profile_puff', 'META_BALL'),
     ('RIDGE', 'Ridge', 'Rounded edge rising to a sharp ridge along the middle of the shape '
      '(diamond cross-section)', 'profile_ridge', 'MESH_ICOSPHERE'),
+    ('PILLOW', 'Pillow', 'Flat in the middle, only the outer edge rounded (cushion / pill)', 'profile_pillow',
+     'MESH_CYLINDER'),
 )
 PROFILE_ITEMS = [(p[0], p[1], p[2], p[4], i) for i, p in enumerate(PROFILES)]
 SIDE_ITEMS = [
@@ -58,7 +61,7 @@ SIDE_ITEMS = [
 FLIP_SIDES = {'TOP': 'BOTTOM', 'BOTTOM': 'TOP', 'BOTH': 'BOTH', 'NONE': 'NONE'}
 SETTING_KEYS = ('height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 'resolution', 'offset',
                 'bottom_too', 'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link', 'puff',
-                'outline_smooth', 'edge_round')
+                'outline_smooth', 'edge_round', 'peak')
 MAX_DOME_POINTS = 12000
 MAX_PUFF_POINTS = 60000
 PUFF_RINGS = (0.12, 0.3, 0.55, 0.85)      # rows just inside the outline (in point spacings): an even round rim
@@ -78,7 +81,9 @@ def _rebuild_update(self, context):
         except (cg.CutError, ValueError, RuntimeError) as ex:
             self.last_error = str(ex)
         # 0.24.5 what you set on the live shape is used for the next one too (it reset to the old defaults)
-        st = getattr(getattr(context, 'scene', None), 'mch_base', None)
+        # 0.24.20 creature shapes carry into the Creature Base Mesh defaults, the others into Base Mesh
+        st = getattr(getattr(context, 'scene', None), 'mch_cbase' if self.profile in CREATURE_PROFILES else 'mch_base',
+                     None)
         if st is not None:
             for k in CARRY_KEYS:
                 try:
@@ -110,6 +115,10 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
     outline_smooth: FloatProperty(name='Soft Outline', default=0.5, min=0.0, max=1.0, update=_rebuild_update,
                                   description='Puff: round off the corners of the drawn outline (0 = exactly as '
                                               'drawn, 1 = very soft)')
+    peak: FloatProperty(name='Height', default=0.0, min=0.0, soft_max=10.0, precision=4, unit='LENGTH',
+                        update=_rebuild_update,
+                        description='Creature shapes: height of the top (0 = Auto, the shape\'s own height; '
+                                    'set to the real value when the shape is made)')
     edge_round: FloatProperty(name='Edge Round', default=0.15, min=0.0, max=1.0, update=_rebuild_update,
                               description='Ridge: how round the outer edge is before the straight faces '
                                           'climb to the ridge (0 = sharp edge)')
@@ -533,7 +542,22 @@ def chaikin(loop, iterations):
     return loop
 
 
-def _add_puff(bm, outer, holes, p):
+def pillow_heights(d_all, nb, edge_round=0.15):
+    """0.24.20 Pillow: flat in the middle, a quarter-round edge of radius r = 2 * Edge Round * the deepest
+    distance (round rim, flat top)."""
+    r = max(0.02, 2.0 * max(0.0, edge_round)) * max(max(d_all), 1e-9)
+    return [0.0 if i < nb else r * math.sqrt(max(0.0, 1.0 - (1.0 - min(d / r, 1.0)) ** 2))
+            for i, d in enumerate(d_all)]
+
+
+CREATURE_PROFILES = ('PUFF', 'RIDGE', 'PILLOW')
+
+
+def profile_field(outer, holes, p):
+    """0.24.20 the creature shape of an outline (any 2D units): (boundary, pts, tris, nb, shape, natural, spacing).
+    ``pts`` = boundary points (the first ``nb``, on the outline) + inside points, ``tris`` index them,
+    ``shape`` = height of every point scaled to 1 at the top, ``natural`` = the top height the profile has by
+    itself (Puff: about as thick as wide).  Shared by Creature Base Mesh and Creature Plate."""
     k = int(round(4 * max(0.0, min(1.0, getattr(p, 'outline_smooth', 0.0)))))
     if k:
         outer, holes = chaikin(outer, k), [chaikin(h, k) for h in holes]
@@ -574,13 +598,31 @@ def _add_puff(bm, outer, holes, p):
         pts = pts + extra
         d_all = list(d_all) + _distances(extra, dense)
     if len(pts) == nb:
-        raise cg.CutError('Outline too small for Puff; draw it bigger or raise Resolution.')
+        raise cg.CutError('Outline too small for this shape; draw it bigger or raise Resolution.')
+    edge_round = getattr(p, 'edge_round', 0.15)
     if p.profile == 'RIDGE':
-        h = ridge_heights(d_all, nb, getattr(p, 'puff', 1.0), getattr(p, 'edge_round', 0.15))
+        h = ridge_heights(d_all, nb, 1.0, edge_round)
+    elif p.profile == 'PILLOW':
+        h = pillow_heights(d_all, nb, edge_round)
     else:
-        h = puff_heights(pts, tris, nb, getattr(p, 'puff', 1.0))
-    floor = spacing * 0.02          # top and bottom never meet inside (they would be merged as doubles)
-    h = [hh if i < nb else max(hh, floor) for i, hh in enumerate(h)]
+        h = puff_heights(pts, tris, nb, 1.0)
+    top = max(max(h), 1e-12)
+    natural = top * getattr(p, 'puff', 1.0)
+    return boundary, pts, tris, nb, [x / top for x in h], natural, spacing
+
+
+def peak_height(p, natural):
+    """Height slider: 0 = Auto (the profile's own height)."""
+    peak = getattr(p, 'peak', 0.0)
+    return peak if peak > 0 else natural
+
+
+def _add_puff(bm, outer, holes, p):
+    boundary, pts, tris, nb, shape, natural, spacing = profile_field(outer, holes, p)
+    LAST_NATURAL[:] = [natural]
+    peak = peak_height(p, natural)
+    floor = min(spacing * 0.02, peak * 0.01)  # top and bottom never meet inside (they would be merged as doubles)
+    h = [0.0 if i < nb else max(peak * x, floor) for i, x in enumerate(shape)]
     rim = [bm.verts.new((x, y, 0.0)) for x, y in boundary]
     inner = pts[nb:]
     top = rim + [bm.verts.new((x, y, hh)) for (x, y), hh in zip(inner, h[nb:])]
@@ -592,6 +634,9 @@ def _add_puff(bm, outer, holes, p):
     mine = list(set(rim + top[nb:] + bottom[nb:]))
     for _ in range(1 if p.profile == 'RIDGE' else 2):          # Ridge: keep the middle crisp
         bmesh.ops.smooth_vert(bm, verts=mine, factor=0.5, use_axis_x=True, use_axis_y=True, use_axis_z=True)
+
+
+LAST_NATURAL = []
 
 
 def side_values(p, flip=False):
@@ -743,7 +788,7 @@ def build_bmesh(groups, p, flip=False):
         for outer, holes in groups:
             if p.profile == 'DOME':
                 _add_dome(bm, outer, holes, p)
-            elif p.profile in {'PUFF', 'RIDGE'}:
+            elif p.profile in CREATURE_PROFILES:
                 _add_puff(bm, outer, holes, p)
             else:
                 rt, rb = _add_prism(bm, outer, holes, p.height)
@@ -754,7 +799,7 @@ def build_bmesh(groups, p, flip=False):
         if p.profile in {'BEVEL', 'CHAMFER'}:
             bm, notes = _profile_rims(bm, p, flip)
             LAST_NOTES.extend(notes)
-        embed = getattr(p, 'embed', 0.0) if p.profile not in {'PUFF', 'RIDGE'} else 0.0   # centred on the plane
+        embed = getattr(p, 'embed', 0.0) if p.profile not in CREATURE_PROFILES else 0.0   # centred on the plane
         if embed > 0:
             # Stick to Surface: the bottom reaches into the surface (no gap on curves)
             for v in bm.verts:
@@ -890,7 +935,7 @@ SESSION_KEY = 'mch_base_session'     # Scene ID prop: live Base Meshes made sinc
 def frame_for(context, projector, screen_groups):
     """(origin, X, Y, N, embed): on the surface under the outline when Stick
     to Surface is on and there is one, else facing the view (embed 0)."""
-    p = context.scene.mch_base
+    p = scene_defaults(context)
     sf = surface_frame(context, projector, screen_groups, p.height) if getattr(p, 'surface_align', False) else None
     if sf is not None:
         return sf
@@ -920,8 +965,31 @@ def perform_base(context, loops, projector, cutter=False, targets=None):
     if cutter:
         return cut_like_cut_tool(context, loops, projector, targets)
     groups, frame, screen_groups, embed = _local_groups(context, loops, projector)
-    defaults = context.scene.mch_base
+    defaults = scene_defaults(context)
     return _create_live_base(context, groups, frame, defaults, embed)
+
+
+def profiles_for(context, live=None):
+    """0.24.20 the profiles a tool offers: Creature Base Mesh = Puff / Ridge / Pillow, Base Mesh = the rest."""
+    p = live.mch_base if live is not None else scene_defaults(context)
+    creature = p.profile in CREATURE_PROFILES if live is not None else p == getattr(context.scene, 'mch_cbase', None)
+    return [q for q in PROFILES if (q[0] in CREATURE_PROFILES) == creature]
+
+
+def scene_defaults(context):
+    """0.24.20 settings for the next shape: Creature Base Mesh has its own (Puff / Ridge / Pillow)."""
+    scene = context.scene
+    try:
+        creature = ts.effective_tool(context) == 'CBASE'
+    except (AttributeError, KeyError, TypeError):
+        creature = False
+    p = scene.mch_cbase if creature and hasattr(scene, 'mch_cbase') else scene.mch_base
+    if (p.profile in CREATURE_PROFILES) != creature:
+        try:                     # each tool keeps to its own profiles (not possible while drawing the UI)
+            p.profile = 'PUFF' if creature else 'FLAT'
+        except (AttributeError, RuntimeError, TypeError):
+            pass
+    return p
 
 
 class _WithEmbed:
@@ -955,6 +1023,8 @@ def _create_live_base(context, groups, frame, defaults, embed=0.0):
         setattr(live, key, getattr(defaults, key))
     live.profile = defaults.profile        # live is still False: no rebuild yet
     live.embed = embed
+    if defaults.profile in CREATURE_PROFILES and defaults.peak <= 0 and LAST_NATURAL:
+        live.peak = LAST_NATURAL[0]            # 0.24.20 the Height slider starts at the real height
     live.outline = json.dumps({'groups': [{'outer': g[0], 'holes': g[1]} for g in groups]})
     live.live = True
     session = list(context.scene.get(SESSION_KEY, []))
@@ -1037,7 +1107,7 @@ def _perform_cutter(context, groups, frame, p, projector, screen_groups, targets
         else (targets or [])
     if not targets:
         raise cg.CutError('Alt Base Mesh cuts into a mesh: start on a mesh or select the target first.')
-    if p.profile in {'DOME', 'PUFF', 'RIDGE'}:
+    if p.profile == 'DOME' or p.profile in CREATURE_PROFILES:
         raise cg.CutError('Alt cutter supports Flat / Chamfer / Bevel profiles (Dome / Puff have no flat cap).')
     bm = build_bmesh(groups, _WithEmbed(p, 0.0), flip=True)
     try:
@@ -1280,9 +1350,9 @@ def sketch_commit(context, cutter=False):
         msg = cut_like_cut_tool(context, loops, proj)
     elif cutter:
         targets = _sketch_cutter_targets(context, groups, frame)
-        msg = _perform_cutter(context, groups, frame, scene.mch_base, None, None, targets)
+        msg = _perform_cutter(context, groups, frame, scene_defaults(context), None, None, targets)
     else:
-        msg = _create_live_base(context, groups, frame, scene.mch_base, data.get('embed', 0.0))
+        msg = _create_live_base(context, groups, frame, scene_defaults(context), data.get('embed', 0.0))
     sketch_clear(scene)
     return msg
 
@@ -1543,7 +1613,7 @@ class MCH_OT_set_profile(bpy.types.Operator):
         return p[2] if p else cls.bl_description
 
     def execute(self, context):
-        context.scene.mch_base.profile = self.profile
+        scene_defaults(context).profile = self.profile
         ob = active_live_base(context)
         if ob is not None:
             ob.mch_base.profile = self.profile
@@ -1577,6 +1647,7 @@ def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Scene.mch_base = bpy.props.PointerProperty(type=MCH_PG_BaseMesh)
+    bpy.types.Scene.mch_cbase = bpy.props.PointerProperty(type=MCH_PG_BaseMesh)    # 0.24.20 Creature Base Mesh
     bpy.types.Object.mch_base = bpy.props.PointerProperty(type=MCH_PG_BaseMesh)
     if _migrate_on_load not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(_migrate_on_load)
@@ -1597,7 +1668,7 @@ def unregister():
         bpy.app.timers.unregister(_tab_watch)
     if _migrate_on_load in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_migrate_on_load)
-    for n, t in (('mch_base', bpy.types.Object), ('mch_base', bpy.types.Scene)):
+    for n, t in (('mch_base', bpy.types.Object), ('mch_base', bpy.types.Scene), ('mch_cbase', bpy.types.Scene)):
         if hasattr(t, n):
             delattr(t, n)
     for c in reversed(CLASSES):

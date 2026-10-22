@@ -461,7 +461,7 @@ def activate_mecha_tool(context, tool_id):
         previous = ts.effective_tool(context)
     except (AttributeError, KeyError, TypeError):
         previous = None
-    if previous == 'BASE' and tool_id != 'BASE':
+    if previous in {'BASE', 'CBASE'} and tool_id != previous:
         from . import base_mesh
         base_mesh.auto_apply_session(context)     # F02: only this tool's own live results
     settings.mch_active_tool = tool_id
@@ -540,7 +540,7 @@ def _tool_keymap(mode):
         ('mch.cut_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'any': True},
          {'properties': [('mode', mode)]}),
         ('mch.rmb_gate', {'type': 'RIGHTMOUSE', 'value': 'PRESS'},
-         {'properties': [('popup', 'PROFILE' if mode == 'BASE' else 'SHAPE')]}),
+         {'properties': [('popup', 'PROFILE' if mode in {'BASE', 'CBASE'} else 'SHAPE')]}),
         ('mch.toggle_targets', {'type': 'T', 'value': 'PRESS'}, None),
     ) + ((
         # 0.14.1 Base Mesh sketch: Enter = mesh, Alt+Enter = cut into mesh, Esc = clear, Backspace = last shape
@@ -551,7 +551,7 @@ def _tool_keymap(mode):
          {'properties': [('cutter', True)]}),
         ('mch.base_sketch_clear', {'type': 'ESC', 'value': 'PRESS'}, None),
         ('mch.base_sketch_undo', {'type': 'BACK_SPACE', 'value': 'PRESS'}, None),
-    ) if mode == 'BASE' else ()) + (_lasso_sketch_keys() if mode in lasso_sketch_modes() else ()) + (
+    ) if mode in {'BASE', 'CBASE'} else ()) + (_lasso_sketch_keys() if mode in lasso_sketch_modes() else ()) + (
         # Esc with no stroke pending: back to Blender's Select Box tool.
         ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),
         # B06: R / Shift+R rotate a PNG stamp (poll fails for other shapes -> Blender's R).
@@ -706,6 +706,36 @@ class MCH_TOOL_base_mesh(bpy.types.WorkSpaceTool):
         _draw_tool_settings(context, layout, tool)
 
 
+class MCH_TOOL_creature_base(bpy.types.WorkSpaceTool):
+    bl_space_type = 'VIEW_3D'
+    bl_context_mode = 'OBJECT'
+    bl_idname = 'mecha.creature_base'
+    bl_label = 'Mecha Creature Base Mesh'
+    bl_description = ('Draw an outline: a NEW rounded solid - Puff (round), Ridge (diamond), Pillow (flat, round '
+                      'edge).\nRMB: profiles, RMB double-click or Esc: exit')
+    bl_icon = 'ops.mesh.primitive_sphere_add_gizmo'
+    bl_widget = None
+    bl_keymap = _tool_keymap('CBASE')
+
+    def draw_settings(context, layout, tool):
+        _draw_tool_settings(context, layout, tool)
+
+
+class MCH_TOOL_creature_plate(bpy.types.WorkSpaceTool):
+    bl_space_type = 'VIEW_3D'
+    bl_context_mode = 'OBJECT'
+    bl_idname = 'mecha.creature_plate'
+    bl_label = 'Mecha Creature Plate'
+    bl_description = ('Draw on a mesh: a rounded plate on the surface - Puff / Ridge / Pillow, Height and End '
+                      'Height, Edge.\nRMB: shapes, Esc: exit')
+    bl_icon = 'ops.mesh.extrude_region_move'
+    bl_widget = None
+    bl_keymap = _tool_keymap('CPLATE')
+
+    def draw_settings(context, layout, tool):
+        _draw_tool_settings(context, layout, tool)
+
+
 class MCH_TOOL_armor_plate(bpy.types.WorkSpaceTool):
     bl_space_type = 'VIEW_3D'
     bl_context_mode = 'OBJECT'
@@ -755,7 +785,7 @@ class MCH_TOOL_primitive(bpy.types.WorkSpaceTool):
 
 NATIVE_TOOLS = (MCH_TOOL_cut, MCH_TOOL_split, MCH_TOOL_base_mesh, MCH_TOOL_primitive, MCH_TOOL_armor_plate,
                 MCH_TOOL_cloth_wrinkle, MCH_TOOL_box_hide, MCH_TOOL_plate_detail, MCH_TOOL_plate_detail2, MCH_TOOL_plate_detail3,
-                MCH_TOOL_screw_stamp)   # MCH_TOOL_mask kept, not registered (Mask hidden)
+                MCH_TOOL_screw_stamp, MCH_TOOL_creature_base, MCH_TOOL_creature_plate)   # MCH_TOOL_mask kept, not registered (Mask hidden)
 
 
 STALE_KEYMAP_IDS = {'mch.stamp_scale'}     # 0.24.5 wheel = stamp size (removed in 0.24.6)
@@ -802,6 +832,8 @@ def register_native_tools():
     bpy.utils.register_tool(MCH_TOOL_plate_detail2, after={MCH_TOOL_plate_detail.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_plate_detail3, after={MCH_TOOL_plate_detail2.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_screw_stamp, after={MCH_TOOL_plate_detail3.bl_idname}, group=False)
+    bpy.utils.register_tool(MCH_TOOL_creature_base, after={MCH_TOOL_base_mesh.bl_idname}, group=False)
+    bpy.utils.register_tool(MCH_TOOL_creature_plate, after={MCH_TOOL_screw_stamp.bl_idname}, group=False)
     _tools_registered = True
 
 
@@ -922,7 +954,7 @@ def draw_shape_palette(self, context):
     from . import lasso_sketch
     sk = layout.row(align=True)
     skb = sk.row(align=True)
-    skb.enabled = tool in lasso_sketch.MODES or tool == 'BASE'     # 0.24.1 only where the sketch works
+    skb.enabled = tool in lasso_sketch.MODES or tool in {'BASE', 'CBASE'}     # 0.24.1 only where the sketch works
     skb.operator('mch.sketch_toggle', text='Sketch', icon='GREASEPENCIL', depress=lasso_sketch.is_on(context))
     sk.prop(brush, 'line_mode', text='Line', icon='IPO_LINEAR', toggle=True)
     if tool in {'CUT', 'SPLIT', 'PLATE', 'WRINKLE'}:
@@ -1674,12 +1706,12 @@ class MCH_PT_shape_popup(bpy.types.Panel):
 
 def draw_profile_grid(layout, context, columns=4, scale=3.0):
     from . import base_mesh
-    current = context.scene.mch_base.profile
+    current = base_mesh.scene_defaults(context).profile
     live = base_mesh.active_live_base(context)
     if live is not None:
         current = live.mch_base.profile
     grid = layout.grid_flow(row_major=True, columns=columns, even_columns=True, even_rows=True, align=False)
-    for pid, label, desc, stem, fallback in base_mesh.PROFILES:
+    for pid, label, desc, stem, fallback in base_mesh.profiles_for(context, live):
         for op in icon_tile(grid, stem, fallback, 'mch.set_profile', label, scale, depress=(pid == current)):
             op.profile = pid
 
@@ -1700,13 +1732,18 @@ class MCH_PT_profile_popup(bpy.types.Panel):
         from . import base_mesh
         layout = self.layout
         live = base_mesh.active_live_base(context)
-        layout.label(text='BASE MESH PROFILE' + (f'  |  editing {live.name}' if live else '  |  next shape'),
-                     icon='MESH_CUBE')
-        draw_profile_grid(layout, context, columns=4, scale=3.0)
-        p = live.mch_base if live else context.scene.mch_base
+        p = live.mch_base if live else base_mesh.scene_defaults(context)
+        creature = p.profile in base_mesh.CREATURE_PROFILES
+        layout.label(text=('CREATURE BASE MESH PROFILE' if creature else 'BASE MESH PROFILE') +
+                     (f'  |  editing {live.name}' if live else '  |  next shape'), icon='MESH_CUBE')
+        draw_profile_grid(layout, context, columns=4 if not creature else 3, scale=3.0)
         row = layout.row(align=True)
-        row.enabled = p.profile in {'BEVEL', 'CHAMFER'}
-        row.prop(p, 'bevel_sides', expand=True)
+        if creature:
+            row.prop(p, 'peak')
+            row.prop(p, 'edge_round', slider=True)
+        else:
+            row.enabled = p.profile in {'BEVEL', 'CHAMFER'}
+            row.prop(p, 'bevel_sides', expand=True)
         layout.separator()
         layout.label(text='Shape (shared palette)', icon='SELECT_SET')
         draw_shape_grid(layout, context, columns=6, scale=1.6)
