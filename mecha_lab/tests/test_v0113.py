@@ -18,10 +18,12 @@ TOP = cg.OrthoProjector(Quaternion())
 
 # --- built-in stamp shapes ---------------------------------------------------
 names = [b[0] for b in cut_presets.builtin_shapes()]
-check('six built-in shapes shipped', names == ['MCH_BUILTIN_' + n for n in (
-    'PENTAGON', 'TRAPEZOID', 'PILLS3', 'TRIANGLE', 'NOTCH_ROUND', 'NOTCH_POLY')], names)
+# 0.24.20 + three scale outlines (Creature Plate Scale: the first point is the root)
+check('built-in shapes shipped (six + three scales)', names == ['MCH_BUILTIN_' + n for n in (
+    'PENTAGON', 'TRAPEZOID', 'PILLS3', 'TRIANGLE', 'NOTCH_ROUND', 'NOTCH_POLY', 'SCALE_A', 'SCALE_B', 'SCALE_C')],
+      names)
 items = [i[0] for i in cut_presets.preset_items(None, C)]
-check('built-in shapes first in the PNG / stamp list', items[:6] == names, items)
+check('built-in shapes first in the PNG / stamp list', items[:len(names)] == names, items)
 check('each built-in shape has a palette icon', all(cut_presets.preset_icon(n) or bpy.app.background for n in names))
 check('built-in shapes cannot be deleted', cut_presets.is_builtin(names[0]))
 for stem in names:

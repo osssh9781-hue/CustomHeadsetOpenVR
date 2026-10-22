@@ -21,7 +21,24 @@ SHAPES = [
     ('TRIANGLE', 'Triangle'),
     ('NOTCH_ROUND', 'Round Notch Box'),
     ('NOTCH_POLY', 'Polygon Notch Box'),
+    ('SCALE_A', 'Scale A (wide)'),
+    ('SCALE_B', 'Scale B (round)'),
+    ('SCALE_C', 'Scale C (pear)'),
 ]
+
+# 0.24.20 scale outlines traced from the user's sketch (px, y down).  The FIRST point is the root (the green mark):
+# Creature Plate Scale is thick there and lifts on the far side.
+SCALE_SKETCH = {
+    'SCALE_A': [(415, 440), (530, 425), (640, 395), (690, 415), (740, 480), (790, 590), (790, 635), (690, 635),
+                (665, 625), (660, 645), (630, 655), (610, 685), (550, 688), (480, 715), (440, 728), (380, 728),
+                (300, 735), (175, 710), (160, 680), (175, 675), (172, 560), (172, 475), (360, 463)],
+    'SCALE_B': [(180, 960), (230, 930), (290, 925), (330, 960), (370, 1030), (380, 1080), (365, 1150), (365, 1210),
+                (300, 1260), (260, 1280), (215, 1280), (160, 1250), (110, 1215), (130, 1210), (125, 1150), (95, 1080),
+                (90, 1040), (130, 1000)],
+    'SCALE_C': [(565, 1155), (640, 1110), (700, 1080), (750, 1080), (775, 1130), (775, 1185), (760, 1210), (750, 1300),
+                (745, 1340), (700, 1390), (650, 1430), (560, 1430), (490, 1415), (440, 1360), (420, 1300), (425, 1270),
+                (450, 1230), (470, 1185), (510, 1175)],
+}
 
 
 def regular(n, r, start=math.pi / 2):
@@ -86,6 +103,7 @@ def build_json():
         'NOTCH_ROUND': notch_round(),
         'NOTCH_POLY': notch_poly(),
     }
+    data.update({k: [[(x, -y) for x, y in v]] for k, v in SCALE_SKETCH.items()})
     out = {'schema': 1, 'shapes': [{'stem': s, 'name': n, 'loops': normalize(data[s])} for s, n in SHAPES]}
     OUT_JSON.parent.mkdir(parents=True, exist_ok=True)
     OUT_JSON.write_text(json.dumps(out, separators=(',', ':')), encoding='utf-8')

@@ -115,14 +115,17 @@ def long_axis(pts):
 
 
 def ramp_values(pts, direction=0.0, start=None):
-    """0..1 for every 2D point along the long axis turned by ``direction`` (radians); 0 at the end nearest
-    ``start`` (the first point drawn: the root of a scale)."""
+    """0..1 for every 2D point along the long axis turned by ``direction`` (radians); with ``start`` (the first
+    point drawn: the root of a scale) along the way from it to the middle of the shape instead."""
     ax, ay = long_axis(pts)
     if start is not None:
+        # 0.24.20 from the root (the first point drawn) straight across the shape, not along its long side
         cx = sum(p[0] for p in pts) / max(1, len(pts))
         cy = sum(p[1] for p in pts) / max(1, len(pts))
-        if (start[0] - cx) * ax + (start[1] - cy) * ay > 0:
-            ax, ay = -ax, -ay
+        vx, vy = cx - start[0], cy - start[1]
+        ln = math.hypot(vx, vy)
+        if ln > 1e-9:
+            ax, ay = vx / ln, vy / ln
     c, s = math.cos(direction), math.sin(direction)
     dx, dy = ax * c - ay * s, ax * s + ay * c
     proj = [p[0] * dx + p[1] * dy for p in pts]
