@@ -18,9 +18,10 @@ TOP = cg.OrthoProjector(Quaternion())
 
 # --- built-in stamp shapes ---------------------------------------------------
 names = [b[0] for b in cut_presets.builtin_shapes()]
-# 0.24.20 + three scale outlines (Creature Plate Scale: the first point is the root)
-check('built-in shapes shipped (six + three scales)', names == ['MCH_BUILTIN_' + n for n in (
-    'PENTAGON', 'TRAPEZOID', 'PILLS3', 'TRIANGLE', 'NOTCH_ROUND', 'NOTCH_POLY', 'SCALE_A', 'SCALE_B', 'SCALE_C')],
+# 0.24.20 + seven scale outlines (Creature Plate Scale: the first point is the root)
+check('built-in shapes shipped (six + seven scales)', names == ['MCH_BUILTIN_' + n for n in (
+    'PENTAGON', 'TRAPEZOID', 'PILLS3', 'TRIANGLE', 'NOTCH_ROUND', 'NOTCH_POLY', 'SCALE_A', 'SCALE_B', 'SCALE_C',
+    'SCALE_D', 'SCALE_E', 'SCALE_F', 'SCALE_G')],
       names)
 items = [i[0] for i in cut_presets.preset_items(None, C)]
 check('built-in shapes first in the PNG / stamp list', items[:len(names)] == names, items)

@@ -28,8 +28,8 @@ from . import core_geometry as cg
 
 SRC_KEY = 'mch_scales_src'
 COLLECTION = 'Creature Scales'
-SHAPES = (('A', 'MCH_BUILTIN_SCALE_A'), ('B', 'MCH_BUILTIN_SCALE_B'), ('C', 'MCH_BUILTIN_SCALE_C'))
-LIVE_KEYS = ('use_a', 'use_b', 'use_c', 'size', 'size_random', 'rotate_random', 'spacing', 'rows', 'row_gap',
+SHAPES = tuple((k, 'MCH_BUILTIN_SCALE_' + k) for k in 'ABCDEFG')
+LIVE_KEYS = ('use_a', 'use_b', 'use_c', 'use_d', 'use_e', 'use_f', 'use_g', 'size', 'size_random', 'rotate_random', 'spacing', 'rows', 'row_gap',
              'height', 'tip_lift', 'edge_round', 'seed', 'flip', 'resolution')
 _CACHE = {}
 
@@ -145,6 +145,10 @@ class MCH_PG_Scales(bpy.types.PropertyGroup):
     use_a: _p(BoolProperty, name='Scale A', default=True, description='Wide scale')
     use_b: _p(BoolProperty, name='Scale B', default=True, description='Round scale')
     use_c: _p(BoolProperty, name='Scale C', default=True, description='Pear scale')
+    use_d: _p(BoolProperty, name='Scale D', default=False, description='Box scale with a notch')
+    use_e: _p(BoolProperty, name='Scale E', default=False, description='Long cloud scale')
+    use_f: _p(BoolProperty, name='Scale F', default=False, description='Heart scale')
+    use_g: _p(BoolProperty, name='Scale G', default=False, description='Leaf scale with points')
     size: _p(FloatProperty, name='Size', default=0.3, min=0.001, soft_max=5.0, precision=3, unit='LENGTH',
              description='Length of a scale')
     size_random: _p(FloatProperty, name='Size Random', default=0.2, min=0.0, max=0.9, subtype='FACTOR')
@@ -356,9 +360,10 @@ def draw(layout, context):
         layout.label(text='Settings for the next row of scales', icon='SHARPCURVE')
         target = layout
     target.label(text='Presets (ticked ones are mixed at random):')
-    row = target.row(align=True)
-    for attr in ('use_a', 'use_b', 'use_c'):
-        row.prop(p, attr, toggle=True)
+    for attrs in (('use_a', 'use_b', 'use_c', 'use_d'), ('use_e', 'use_f', 'use_g')):
+        row = target.row(align=True)
+        for attr in attrs:
+            row.prop(p, attr, toggle=True)
     col = target.column(align=True)
     col.prop(p, 'size')
     col.prop(p, 'size_random', slider=True)
