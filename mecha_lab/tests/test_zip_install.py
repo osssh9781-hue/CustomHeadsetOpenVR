@@ -48,7 +48,9 @@ if zips:
             ok = False
             print(ex)
         check(f'cycle {cycle}: re-enable works (no "already registered")', ok and 'MCH_OT_cut_stroke' in dir(bpy.types))
-        items = [(km.name, ki.idname, ki.type, ki.value, ki.shift, ki.alt, ki.ctrl) for km in kc.keymaps
+        # 0.24.17 the per-tool keys share one (unassigned) key but pick different tools
+        items = [(km.name, ki.idname, ki.type, ki.value, ki.shift, ki.alt, ki.ctrl,
+                  getattr(ki.properties, 'action', ''), getattr(ki.properties, 'tool', '')) for km in kc.keymaps
                  for ki in km.keymap_items if ki.idname.startswith('mch.')] if kc else []
         check(f'cycle {cycle}: keymap items not duplicated', len(items) == len(set(items)), len(items))
     check('Mirror panel available after cycles', hasattr(bpy.types, 'MCH_PT_mirror'))

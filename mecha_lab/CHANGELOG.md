@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 0.24.18 — 라쏘는 점 찍기만, Box Hide Enter 적용 / Split Off, Line Curve 아이콘 (2026-10-22)
+
+- **라쏘 = 클릭으로 점 하나씩**: 마우스를 누른 채 움직이면 점이 줄줄이 찍히던 동작 제거(자유롭게 그리기는 Free Draw). Cut / Split / Base Mesh / Plate 등 라쏘를 쓰는 툴 모두.
+- **Box Hide + Enter**: Box Hide 툴에서는 숨긴 메쉬가 선택돼 있지 않아도(Auto Target이라 보통 선택 안 됨) Enter = Apply. 다른 툴에서는 예전처럼 선택한 것만.
+- **Box Hide Split Off**: 패널의 "Split Off Hidden" - 숨긴 부분이 따로 떨어진 메쉬(이름_Hidden)가 되고 원래 메쉬는 그 자리가 뚫림(Split처럼 둘 다 닫힌 솔리드, Open이어도). 새 조각이 선택됨.
+- **L 모양 메뉴**: 커스텀(PNG) 모양 칸은 처음엔 접혀 있음 - "Custom PNG Shapes" 줄을 눌러야 펼쳐짐(Blender를 새로 켜면 다시 접힘).
+- **Line Curve 아이콘**: 점 줄 → 굵기가 일정한 한 줄 선(0.24.17의 바뀐 기능에 맞춤).
+- 키캡용 아이콘(512 px PNG 32개, 라쏘 메뉴 L 포함)은 `tools_dev/make_icons.py` + `make_icons_v02417.py`(OUT = 512)로 다시 뽑을 수 있음.
+- 테스트: 81개 파일 2647/2647 (`tests/test_log_bpy501_v02418.txt`), 새 `test_v02418.py`(19), test_v0245 +4(Box Hide Enter), test_stroke_events의 "라쏘 드래그 = 연속 점" 검사를 새 동작("누른 채 움직여도 점 1개, 클릭마다 1개")으로 바꿈; 전체 실행에서 test_zip_install의 '키맵 중복' 검사 3개가 0.24.17 툴 키 항목들(키는 비어 있고 고르는 툴만 다름)을 같은 항목으로 봐서 실패 - test_registration_recovery처럼 action / tool까지 비교하도록 고쳐 그 파일만 다시 실행 19/19. ZIP sha256 `982e1941b3a622a6698265fd3c280c3687788acad0f6f61b57c0b4537514b921`.
+
 ## 0.24.17 — L = 라쏘 모양 메뉴, 툴별 단축키 + 저장, Line Curve = 굵기 일정한 튜브, 왼쪽 메뉴 새 아이콘 (2026-10-22)
 
 - **L = 라쏘 모양 메뉴**: MECHA LAB에서 L → 마우스 위치에 모양 고르기 창(예전 Space 메뉴처럼 큰 아이콘).

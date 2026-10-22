@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.17
+# Test Report — Mecha Lab 0.24.18
+
+## 0.24.18 결과: 81개 파일 2647/2647 (`tests/test_log_bpy501_v02418.txt`) (`tests/test_log_bpy501_v02418.txt`). test_v02418(16): Cap / Open 둘 다 Split Off → 별도 메쉬, 원본 모디파이어 없음, 둘 다 닫힘, 부피 합 = 원래(2 + 6 = 8), 새 조각 선택, 볼륨 안 남음, 숨긴 게 없으면 아무것도 안 함, L 메뉴 커스텀 칸 기본 접힘 / 펼치면 그려짐. test_v0245 +4: Box Hide 툴에서 선택 없이 Enter → 적용(면 늘어남, 모디파이어 없음), 다른 툴에서는 대상 없음. test_stroke_events(68): 라쏘 누른 채 39번 움직여도 점 1개, 클릭하면 2개(예전 "드래그 = 연속 점" 검사를 바꿈), Free Draw 연속 경로는 그대로. 실제 마우스 입력은 미검증.
 
 ## 0.24.17 결과: 80개 파일 2572/2572 (`tests/test_log_bpy501_v02417.txt`; 전체 실행에서 test_registration_recovery의 '키맵 중복' 검사 4개가 키가 비어 있는 툴 키 항목들을 같은 항목으로 봐서 실패 - 항목의 동작(action / tool)까지 비교하도록 고쳐 그 파일만 다시 실행 38/38) (`tests/test_log_bpy501_v02417.txt`). test_v02417(18): L = SHAPES, 왼쪽 메뉴 툴마다 키 항목(기본 비어 있음, C / S / Alt+A 유지), 편집 상자에 툴 전부 + Save / Default, Ctrl+K = Base Mesh / J = Cut 저장 → 키맵 다시 만들어도 유지, 다른 키 그대로, 툴 키 → 그 툴 / L → 모양 팝업, Default Keys → 파일 삭제 + 기본값; Line Curve: 점 반지름 1 / 3 / 0.3 + 시작 / 끝 0.5 / 2에도 굵기 0.1 일정(점 아님), Thickness 0.25 → 전체 0.25, Line Curve 툴 소유, 주황 손잡이 / Ctrl+휠 없음, Mesh Curve는 점 반지름 따름; 새 아이콘 9개 파일·stem, 왼쪽 메뉴에서 같은 그림 없음. 실제 키 입력 / 화면은 미검증.
 

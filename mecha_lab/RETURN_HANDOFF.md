@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.17 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.18 (Claude Code, 2026-10-14)
+
+## 0.24.18
+- ZIP sha256 `982e1941b3a622a6698265fd3c280c3687788acad0f6f61b57c0b4537514b921`. `cut_engine.StrokeLogic`: `_begin` / LEFTMOUSE PRESS에서 `free_drag`를 더 이상 켜지 않음(LASSO 드래그 연속 점 제거, 코드 경로는 남김). `tool_state.SHAPES` LASSO 설명 갱신. `workspace_ui.enter_apply_target`: box_hide_apply는 선택에 숨김 메쉬가 없어도 현재 툴이 HIDE면 뷰 레이어의 숨김 메쉬로 대상. `WindowManager.mch_show_custom_shapes`(기본 False, 모양 팝업의 접기 줄), `box_hide.split_off(context, ob)`(사본에서 Box Hide 모디파이어 제거 → 볼륨과 INTERSECT boolean_result → 이름_Hidden, 원본은 set_cap(True) 후 apply) + `MCH_OT_box_hide_split`(패널 버튼). 아이콘 `icons/line_curve.png` = 원을 촘촘히 찍은 굵은 S선(PIL 굵은 선 이음새 실금 방지). `make_icons_v02417.lasso_key`(키캡용, 애드온에는 안 넣음).
 
 ## 0.24.17
 - ZIP sha256 `07d4733bd536ff4e2ebc2565e5648e5725195a5398b94344db164620df5c6291`. `workspace_ui.MCH_OT_hotkey`: action SHAPES(L, `wm.call_panel('MCH_PT_shape_popup')`) / TOOL(+ `tool` enum, `activate_mecha_tool`). register_keymaps: L + `tool_key_ids()`마다 type 'NONE' 항목(TOOL_ACTIONS CUT / SPLIT / PLATE 제외), 끝에 `load_hotkeys(items)`. `hotkey_id(item)` = (idname, action, tool), `save_hotkeys` / `_hotkeys_path`(config/mecha_lab/hotkeys.json), `MCH_OT_hotkeys_save` / `MCH_OT_hotkeys_reset`(파일 삭제 + 키맵 재등록). draw_hotkey_editor에 "Tools (left list)". `curve_tube`: 모드 LINE(`TUBE_MODES`, `LINE_MODES` = LINE + 0.24.10 REPEAT_SAME), build에서 샘플 반지름 1 / 테이퍼 1로 tube_mesh, handle_world / point_radius / rad 기즈모가 LINE에서 꺼짐, `draw_line` = 튜브 설정, Line Curve 툴은 mode='LINE'. 아이콘 stem: HIDE hide, PLATE armor, DETAIL detail1, DETAIL2 detail2, DETAIL3 detail3, SCREW screw, WRINKLE cloth, TUBE tube, TUBE_SAME line_curve.
