@@ -123,14 +123,26 @@ def icons():
     out['tube'] = tube
 
     def line_curve():
+        # Line Curve (0.24.17): one curve of the same thickness everywhere, round ends
         img, d = canvas()
-        pts = [(100 + 312 * t, 256 + 110 * math.sin(math.pi * 2 * t)) for t in (i / 60.0 for i in range(61))]
-        d.line(pts, fill=DIM, width=10, joint='curve')
-        for k in range(0, 61, 10):
-            x, y = pts[k]
-            d.ellipse((x - 30, y - 30, x + 30, y + 30), outline=CY, width=16)
+        pts = [(118 + 276 * t, 256 + 100 * math.sin(math.pi * 2 * t)) for t in (i / 600.0 for i in range(601))]
+        dots(d, pts, CY, r=23)                      # stamped discs: an even, seamless thick stroke
         return img
     out['line_curve'] = line_curve
+    def lasso_key():
+        # the L key (lasso shape menu): a free lasso loop with its rope tail
+        img, d = canvas()
+        loop = []
+        for i in range(72):
+            t = 2 * math.pi * i / 72
+            r = 130 + 18 * math.sin(3 * t + 0.6) + 10 * math.cos(5 * t)
+            loop.append((262 + r * math.cos(t) * 1.15, 220 + r * math.sin(t) * 0.82))
+        poly(d, loop, ACC)
+        tail = [(176, 300), (150, 350), (164, 398), (210, 420), (236, 400)]
+        poly(d, tail, ACC, closed=False)
+        dots(d, [(236, 400)], ACC, r=22)
+        return img
+    out['lasso_key'] = lasso_key
     return out
 
 
