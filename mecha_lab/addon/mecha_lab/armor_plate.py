@@ -193,7 +193,7 @@ def is_plate_or_part(ob):
         return True
     try:
         # 0.20: live cloth wrinkle layers are skipped too (0.24.20 and live Creature Plates)
-        return bool(ob.get('mch_wrinkle')) or bool(ob.get('mch_cplate_src'))
+        return bool(ob.get('mch_wrinkle')) or bool(ob.get('mch_cplate_src')) or bool(ob.get('mch_flower_src'))
     except (AttributeError, TypeError, ReferenceError):
         return False
 
