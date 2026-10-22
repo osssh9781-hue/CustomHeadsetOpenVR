@@ -26,11 +26,13 @@ from . import core_geometry as cg
 SRC_KEY = 'mch_belt_src'
 COLLECTION = 'Belts'
 PRESET_ITEMS = [('PLAIN', 'Plain Strap', 'A plain rectangular strap', 'MESH_PLANE', 0),
-                ('RAIL', 'Rail Strap', 'Sci-fi strap: raised edge rails, a middle groove and bolts', 'MOD_ARRAY', 1)]
+                ('RAIL', 'Rail Strap', 'Sci-fi strap: raised edge rails, a middle groove and bolts', 'MOD_ARRAY', 1),
+                ('WEBBING', 'Webbing', 'Tactical nylon webbing: thin, fine ribs along it, stitched edges, '
+                 'side-release buckle and ladder lock', 'MOD_LINEART', 2)]
 MODE_ITEMS = [('WRAP', 'Wrap Around', 'All the way around the mesh where the line crosses it', 'MESH_TORUS', 0),
               ('FOLLOW', 'Follow Line', 'Exactly along the drawn line on the surface', 'IPO_LINEAR', 1)]
 LIVE_KEYS = ('preset', 'mode', 'width', 'thickness', 'lift', 'edge_round', 'rail_height', 'rail_width',
-             'groove', 'bolts', 'bolt_spacing', 'smooth', 'density')
+             'groove', 'bolts', 'bolt_spacing', 'smooth', 'density', 'ribs', 'buckle', 'buckle_shift')
 PATH_KEYS = ('mode', 'smooth', 'density')           # these change the path on the mesh
 _CACHE = {}
 
@@ -79,6 +81,12 @@ class MCH_PG_Belt(bpy.types.PropertyGroup):
     bolts: _p(BoolProperty, name='Bolts', default=True, description='Rail: bolts along the strap')
     bolt_spacing: _p(FloatProperty, name='Bolt Spacing', default=0.25, min=0.01, soft_max=2.0, precision=3,
                      unit='LENGTH')
+    ribs: _p(IntProperty, name='Ribs', default=9, min=0, max=40,
+             description='Webbing: fine ribs along the strap (the woven nylon look)')
+    buckle: _p(BoolProperty, name='Buckle', default=True,
+               description='Webbing: a side-release buckle and a ladder lock on the strap')
+    buckle_shift: _p(FloatProperty, name='Buckle Position', default=0.0, min=-0.5, max=0.5, subtype='FACTOR',
+                     description='Move the buckle along the strap (0 = where you drew, the front)')
     smooth: _p(IntProperty, name='Smooth Path', default=3, min=0, max=30,
                description='Soften the path on the mesh (bumps of the surface under the strap)')
     density: _p(FloatProperty, name='Density', default=1.0, min=0.2, max=4.0,
@@ -104,9 +112,32 @@ def _rounded_rect(w, t, r, seg=3):
     return pts
 
 
-def strap_profile(preset, width, thickness, edge_round=0.3, rail_height=0.4, rail_width=0.14, groove=0.35):
+def webbing_profile(width, thickness, ribs=9):
+    """0.24.20 nylon webbing: a thin strap, a stitched (slightly raised, rounded) edge on both sides and fine
+    ribs along the top."""
+    w, t = width, thickness * 0.55
+    edge = w * 0.07
+    top = []
+    n = max(0, int(ribs))
+    inner = w / 2 - edge
+    steps = max(2, n * 4)
+    for k in range(steps + 1):                      # ribs: a small wave across the inner top
+        x = inner - 2 * inner * k / steps
+        wave = 0.5 * (1 - math.cos(2 * math.pi * k * n / steps)) if n else 0.0
+        top.append((x, t * (1.0 + 0.12 * wave)))
+    pts = [(-w / 2 + t * 0.4, 0.0), (w / 2 - t * 0.4, 0.0)]
+    pts += [(w / 2, t * 0.45), (w / 2 - edge * 0.25, t * 1.25), (w / 2 - edge * 0.85, t * 1.2)]
+    pts += top
+    pts += [(-w / 2 + edge * 0.85, t * 1.2), (-w / 2 + edge * 0.25, t * 1.25), (-w / 2, t * 0.45)]
+    return pts
+
+
+def strap_profile(preset, width, thickness, edge_round=0.3, rail_height=0.4, rail_width=0.14, groove=0.35,
+                  ribs=9):
     """Closed 2D section, CCW: x across the strap (-w/2 .. w/2), y up from the surface (0 .. thickness)."""
     w, t = width, thickness
+    if preset == 'WEBBING':
+        return webbing_profile(w, t, ribs)
     if preset != 'RAIL':
         return _rounded_rect(w, t, edge_round * min(w, t) / 2.0)
     rh, rw = t * rail_height, w * rail_width
@@ -357,13 +388,86 @@ def build(context, ob):
         raise cg.CutError('This belt was applied.')
     p = ob.mch_belt
     pts, nrms, closed = surface_path(context, ob, src, p)
-    prof = strap_profile(p.preset, p.width, p.thickness, p.edge_round, p.rail_height, p.rail_width, p.groove)
+    prof = strap_profile(p.preset, p.width, p.thickness, p.edge_round, p.rail_height, p.rail_width, p.groove,
+                         p.ribs)
     verts, faces = sweep(pts, nrms, prof, closed, p.lift)
+    extra = []
     if p.preset == 'RAIL' and p.bolts:
-        bv, bf = bolts(pts, nrms, closed, p)
+        extra.append(bolts(pts, nrms, closed, p))
+    if p.preset == 'WEBBING' and p.buckle:
+        extra.append(buckle(pts, nrms, closed, p, front_index(src, pts, nrms)))
+    for bv, bf in extra:
         off = len(verts)
         verts += bv
         faces += [tuple(i + off for i in f) for f in bf]
+    return verts, faces
+
+
+def front_index(src, pts, nrms):
+    """The path point under the middle of the drawn line, facing the view (where the buckle goes)."""
+    from . import armor_plate as ap
+    try:
+        pr = ap.thaw_projector(src['proj'])
+        path = src['path']
+        mid = path[len(path) // 2] if len(path) > 2 else [(path[0][0] + path[-1][0]) / 2,
+                                                            (path[0][1] + path[-1][1]) / 2]
+        view = Vector(pr.view_dir)
+    except (KeyError, TypeError, ValueError):
+        return len(pts) // 2
+    best, best_d = len(pts) // 2, math.inf
+    for i, q in enumerate(pts):
+        if nrms[i].dot(view) > 0.2:
+            continue                        # the back side
+        s = pr.to_screen(q)
+        if s is None:
+            continue
+        d = math.dist(s, mid)
+        if d < best_d:
+            best, best_d = i, d
+    return best
+
+
+def _box(verts, faces, c, T, N, S, lt, ws, hn, taper=1.0):
+    """A box (optionally tapered toward +T) in the strap frame: length lt, width ws, height hn, bottom at c."""
+    start = len(verts)
+    for x in (-0.5, 0.5):
+        k = taper if x > 0 else 1.0
+        for y in (-0.5, 0.5):
+            for z in (0.0, 1.0):
+                verts.append(c + T * (x * lt) + S * (y * ws * k) + N * (z * hn))
+    q = lambda a, b, c_, d: (start + a, start + b, start + c_, start + d)
+    faces += [q(0, 2, 3, 1), q(4, 5, 7, 6), q(0, 1, 5, 4), q(2, 6, 7, 3), q(0, 4, 6, 2), q(1, 3, 7, 5)]
+
+
+def buckle(pts, nrms, closed, p, at):
+    """Side-release buckle (housing + tapered tongue + release tabs) and a ladder lock beside it."""
+    n = len(pts)
+    acc = [0.0]
+    seq = pts + ([pts[0]] if closed else [])
+    for a, b in zip(seq, seq[1:]):
+        acc.append(acc[-1] + (b - a).length)
+    total = acc[-1] or 1.0
+    s = (acc[at] + p.buckle_shift * total) % total if closed else min(max(acc[at] + p.buckle_shift * total, 0.0),
+                                                                       total)
+    j = max(0, min(len(acc) - 2, next((k for k in range(len(acc) - 1) if acc[k + 1] >= s), len(acc) - 2)))
+    t = (s - acc[j]) / max(acc[j + 1] - acc[j], 1e-12)
+    pos = seq[j].lerp(seq[j + 1], t)
+    N = nrms[j % n].lerp(nrms[(j + 1) % n], t).normalized()
+    T = (seq[j + 1] - seq[j])
+    T = (T - N * T.dot(N)).normalized() if T.length > 1e-12 else Vector((1, 0, 0))
+    S = T.cross(N).normalized()
+    w, th = p.width, p.thickness * 0.55
+    base = pos + N * p.lift
+    verts, faces = [], []
+    _box(verts, faces, base + T * (-0.45 * w), T, N, S, 1.0 * w, 1.3 * w, 3.2 * th)            # housing
+    _box(verts, faces, base + T * (0.45 * w), T, N, S, 0.8 * w, 1.15 * w, 2.4 * th, taper=0.55)  # tongue
+    for side in (-1, 1):                                                                           # release tabs
+        _box(verts, faces, base + T * (0.15 * w) + S * (side * 0.62 * w), T, N, S, 0.45 * w, 0.12 * w, 2.0 * th)
+    lx = 1.35 * w                                                                                  # ladder lock
+    for side in (-1, 1):
+        _box(verts, faces, base + T * lx + S * (side * 0.6 * w), T, N, S, 0.5 * w, 0.1 * w, 2.2 * th)
+    for dx in (-0.2, 0.2):
+        _box(verts, faces, base + T * (lx + dx * w), T, N, S, 0.08 * w, 1.3 * w, 2.2 * th)
     return verts, faces
 
 
@@ -533,6 +637,13 @@ def draw(layout, context):
     col = target.column(align=True)
     if p.preset == 'PLAIN':
         col.prop(p, 'edge_round', slider=True)
+    elif p.preset == 'WEBBING':
+        col.prop(p, 'ribs')
+        row = col.row(align=True)
+        row.prop(p, 'buckle', toggle=True)
+        sub = row.row(align=True)
+        sub.enabled = p.buckle
+        sub.prop(p, 'buckle_shift', text='Position', slider=True)
     else:
         col.prop(p, 'rail_height')
         col.prop(p, 'rail_width', slider=True)
