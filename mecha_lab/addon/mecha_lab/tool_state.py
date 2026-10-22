@@ -99,7 +99,7 @@ _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRA
 TOOL_ENUM_ITEMS = [(t[0], t[1], t[2], t[4], _ENUM_NUMBERS[t[0]]) for t in TOOLS]
 
 SHAPES = (
-    ('LASSO', 'Lasso', 'Straight-segment outline: click points (hold LMB to draw freely). '
+    ('LASSO', 'Lasso', 'Straight-segment outline: click point by point (draw freely with Free Draw). '
      'Double-click anywhere closes and applies. 2 points = straight line cut', 'lasso', 'GP_SELECT_POINTS'),
     ('CURVE_LASSO', 'Curve Lasso', 'Smooth closed spline through control points from the start. '
      'Click a point: sharp/smooth, drag points or Bezier handles. Double-click anywhere closes',

@@ -1424,7 +1424,7 @@ class StrokeLogic:
             self.stage = 'POINTS'
             self._add_point(xy)
             self.last_press = (self._clock(), xy, 'ADD')
-            self.free_drag = self.shape == 'LASSO'
+            self.free_drag = False    # 0.24.18 Lasso = click points only (Free Draw draws freely)
         else:
             self.stage = 'DRAG'
             self.anchor = xy
@@ -2002,7 +2002,7 @@ class StrokeLogic:
             self.shift_held = bool(getattr(event, 'shift', False))
             self._add_point(xy)
             self.last_press = (now, xy, 'ADD')
-            self.free_drag = self.shape == 'LASSO'
+            self.free_drag = False    # 0.24.18 holding LMB no longer draws: click point by point
             self.region.tag_redraw()
             return {'RUNNING_MODAL'}
         if ev == 'RELEASE':

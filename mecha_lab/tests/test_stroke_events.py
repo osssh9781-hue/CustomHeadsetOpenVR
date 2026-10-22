@@ -405,16 +405,17 @@ check('free draw records a continuous path (spacing 4px)', len(op.pts) > 50, len
 r = op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 500, 431))
 check('free draw release applies a closed outline', r == {'FINISHED'} and volume(t) < 8 and non_manifold(t) == 0,
       op.reports)
-# Lasso: holding LMB draws continuously too
+# Lasso (0.24.18, user request): click point by point - holding LMB and moving no longer adds points
+# (Free Draw is the freehand shape)
 t = setup('LASSO')
 ctx, op = Ctx(), Op()
 op.invoke(ctx, E('LEFTMOUSE', 'PRESS', 450, 450))
 for k in range(1, 40):
     op.modal(ctx, E('MOUSEMOVE', 'NOTHING', 450 + 3 * k, 450))
 op.modal(ctx, E('LEFTMOUSE', 'RELEASE', 567, 450))
-check('lasso drag adds continuous points', len(op.pts) > 10, len(op.pts))
+check('lasso: holding and moving adds no points (one point per click)', len(op.pts) == 1, len(op.pts))
 click(op, ctx, 520, 560)
-check('after the drag, clicks add single points', op.pts[-1] == (520.0, 560.0))
+check('clicks add single points', op.pts[-1] == (520.0, 560.0) and len(op.pts) == 2, op.pts)
 # Mask: Free Draw stays an OPEN brush stroke
 fresh()
 import bmesh as _bm
