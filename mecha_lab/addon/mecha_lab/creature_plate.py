@@ -37,9 +37,11 @@ PROFILE_ITEMS = [
     ('PUFF', 'Puff', 'Round, about as thick as it is wide (thin parts stay thin)', 'META_BALL', 0),
     ('RIDGE', 'Ridge', 'A sharp ridge along the middle (diamond cross-section)', 'MESH_ICOSPHERE', 1),
     ('PILLOW', 'Pillow', 'Flat top, only the edge is round', 'MESH_CYLINDER', 2),
+    ('SCALE', 'Scale', 'A real scale: thick at the root (where you started drawing), thin toward the tip, '
+     'knife-thin edges, the tip lifts off the body', 'SHARPCURVE', 3),
 ]
 LIVE_KEYS = ('profile', 'peak', 'end_peak', 'direction', 'edge_round', 'edge_thickness', 'sink', 'outline_smooth',
-             'resolution')
+             'resolution', 'tip_lift')
 POINT_KEYS = ('outline_smooth', 'resolution', 'profile', 'edge_round')    # change the point set / shape field
 _CACHE = {}          # object name -> (key, field data): rays are cast only when the point set changes
 
@@ -80,6 +82,9 @@ class MCH_PG_CreaturePlate(bpy.types.PropertyGroup):
     edge_thickness: FloatProperty(name='Edge Thickness', default=0.0, min=0.0, soft_max=1.0, precision=4,
                                   unit='LENGTH', update=_update,
                                   description='Straight side wall under the rounded top (0 = thin edge)')
+    tip_lift: FloatProperty(name='Tip Lift', default=-1.0, min=-1.0, soft_max=2.0, precision=4, unit='LENGTH',
+                            update=_update, description='The far end rises off the body (scales overlap); -1 = '
+                                                        'Auto: Scale lifts 1.5 x its thickness, others 0')
     sink: FloatProperty(name='Sink', default=0.0, min=0.0, soft_max=0.5, precision=4, unit='LENGTH',
                         update=_update, description='How far the bottom goes into the surface (0 = Auto, 2% of '
                                                     'the plate size: no gap on curved surfaces)')
@@ -109,9 +114,15 @@ def long_axis(pts):
     return math.cos(a), math.sin(a)
 
 
-def ramp_values(pts, direction=0.0):
-    """0..1 for every 2D point along the long axis turned by ``direction`` (radians)."""
+def ramp_values(pts, direction=0.0, start=None):
+    """0..1 for every 2D point along the long axis turned by ``direction`` (radians); 0 at the end nearest
+    ``start`` (the first point drawn: the root of a scale)."""
     ax, ay = long_axis(pts)
+    if start is not None:
+        cx = sum(p[0] for p in pts) / max(1, len(pts))
+        cy = sum(p[1] for p in pts) / max(1, len(pts))
+        if (start[0] - cx) * ax + (start[1] - cy) * ay > 0:
+            ax, ay = -ax, -ay
     c, s = math.cos(direction), math.sin(direction)
     dx, dy = ax * c - ay * s, ax * s + ay * c
     proj = [p[0] * dx + p[1] * dy for p in pts]
@@ -178,6 +189,8 @@ def surface_field(cos, tris, p):
     dist = [0.0 if math.isinf(x) else x for x in dist]
     if p.profile == 'RIDGE':
         h = bmm.ridge_heights(dist, nb, 1.0, p.edge_round)
+    elif p.profile == 'SCALE':
+        h = bmm.scale_heights(dist, nb, p.edge_round)
     elif p.profile == 'PILLOW':
         h = bmm.pillow_heights(dist, nb, p.edge_round)
     else:
@@ -203,7 +216,8 @@ def _through_parts(context, src, p, target, projector):
         for c in cos:
             q = projector.to_screen(c)
             scr.append(q if q is not None else (0.0, 0.0))
-        parts.append(dict(pts=scr, tris=tris, nb=nb, cos=cos, nrms=nrms, shape=shape, natural=natural))
+        parts.append(dict(pts=scr, tris=tris, nb=nb, cos=cos, nrms=nrms, shape=shape, natural=natural,
+                          start=tuple(src['loops'][0][0])))
     return parts
 
 
@@ -237,7 +251,8 @@ def _field(context, ob, src, p, target, projector):
                 ratios.append((cos[a] - cos[b]).length / dp)
         ratios.sort()
         scale = ratios[len(ratios) // 2] if ratios else 1.0
-        parts.append(dict(pts=pts, tris=tris, nb=nb, cos=cos, nrms=nrms, shape=shape, natural=natural_px * scale))
+        parts.append(dict(pts=pts, tris=tris, nb=nb, cos=cos, nrms=nrms, shape=shape, natural=natural_px * scale,
+                          start=tuple(src['loops'][0][0])))
     _CACHE[ob.name] = (key, parts)
     return parts
 
@@ -254,12 +269,16 @@ def build_mesh(parts, p, peak, end_peak):
     sink = p.sink if p.sink > 0 else size * 0.02
     for part in parts:
         pts, tris, nb, cos, nrms, shape = (part[k] for k in ('pts', 'tris', 'nb', 'cos', 'nrms', 'shape'))
-        ramp = ramp_values(pts, p.direction)
+        ramp = ramp_values(pts, p.direction, part.get('start'))
         h0, h1 = peak, (end_peak if end_peak >= 0 else peak)
         hgt = [h0 + (h1 - h0) * t for t in ramp]
         wall = [p.edge_thickness * (hh / max(h0, 1e-9) if h0 > 0 else 1.0) for hh in hgt]
-        top = [bm.verts.new(cos[i] + nrms[i] * (wall[i] + shape[i] * hgt[i])) for i in range(len(pts))]
-        bot = [bm.verts.new(cos[i] - nrms[i] * sink) for i in range(len(pts))]
+        lift_tip = p.tip_lift if p.tip_lift >= 0 else (1.5 * peak if p.profile == 'SCALE' else 0.0)
+        lift = [lift_tip * t ** 1.6 for t in ramp]               # the far end rises off the body
+        # the bottom stays in the surface at the root and comes out to it toward the tip (thin edge there)
+        down = [sink * max(0.05, 1.0 - t) if lift_tip > 0 else sink for t in ramp]
+        top = [bm.verts.new(cos[i] + nrms[i] * (lift[i] + wall[i] + shape[i] * hgt[i])) for i in range(len(pts))]
+        bot = [bm.verts.new(cos[i] + nrms[i] * (lift[i] - down[i])) for i in range(len(pts))]
         for a, b, c in tris:
             bm.faces.new((top[a], top[b], top[c])).smooth = True
             bm.faces.new((bot[c], bot[b], bot[a]))
@@ -306,7 +325,7 @@ def rebuild(context, ob):
         raise cg.CutError('The mesh the plate was drawn on is gone.')
     parts = _field(context, ob, src, p, target, ap.thaw_projector(src['proj']))
     # Pillow's own height is only its round edge: it is already flat (no third of it)
-    natural = max(part['natural'] for part in parts) * (1.0 if p.profile == 'PILLOW' else AUTO_RATIO)
+    natural = max(part['natural'] for part in parts) * {'PILLOW': 1.0, 'SCALE': 0.5}.get(p.profile, AUTO_RATIO)
     peak = p.peak if p.peak > 0 else natural
     bm = build_mesh(parts, p, peak, p.end_peak)
     try:
@@ -315,6 +334,10 @@ def rebuild(context, ob):
         bm.to_mesh(ob.data)
     finally:
         bm.free()
+    try:
+        ob.data.set_sharp_from_angle(angle=math.radians(60))   # crisp edges
+    except (AttributeError, TypeError, RuntimeError):
+        pass
     ob.data.update()
     return natural
 
@@ -358,7 +381,7 @@ def perform(context, loops, projector):
     if st.peak <= 0:
         p.peak = natural
     if st.end_peak < 0:
-        p.end_peak = p.peak
+        p.end_peak = p.peak * (0.15 if p.profile == 'SCALE' else 1.0)     # a scale thins out to its tip
     p.live = True
     for o in context.selected_objects:
         o.select_set(False)
@@ -418,9 +441,10 @@ def draw(layout, context):
     col.prop(p, 'end_peak')
     col.prop(p, 'direction')
     col = target.column(align=True)
-    if p.profile in {'RIDGE', 'PILLOW'}:
+    if p.profile in {'RIDGE', 'PILLOW', 'SCALE'}:
         col.prop(p, 'edge_round', slider=True)
     col.prop(p, 'edge_thickness')
+    col.prop(p, 'tip_lift')
     col.prop(p, 'sink')
     col = target.column(align=True)
     col.prop(p, 'outline_smooth', slider=True)

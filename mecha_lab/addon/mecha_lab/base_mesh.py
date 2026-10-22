@@ -556,6 +556,14 @@ def pillow_heights(d_all, nb, edge_round=0.15):
 CREATURE_PROFILES = ('PUFF', 'RIDGE', 'PILLOW')
 
 
+def scale_heights(d_all, nb, edge_round=0.15):
+    """0.24.20 Creature Plate Scale: a knife-thin edge (a gentle wedge, no round rim) growing into a low
+    dome; the wedge reaches the dome at 3 * Edge Round of the deepest distance."""
+    r = max(0.05, 3.0 * max(0.0, edge_round)) * max(max(d_all), 1e-9)
+    return [0.0 if i < nb else (1.0 - (1.0 - min(d / r, 1.0)) ** 2) * (1.0 + 0.25 * min(d / r, 3.0))
+            for i, d in enumerate(d_all)]
+
+
 def profile_field(outer, holes, p):
     """0.24.20 the creature shape of an outline (any 2D units): (boundary, pts, tris, nb, shape, natural, spacing).
     ``pts`` = boundary points (the first ``nb``, on the outline) + inside points, ``tris`` index them,
@@ -607,10 +615,14 @@ def profile_field(outer, holes, p):
         h = ridge_heights(d_all, nb, 1.0, edge_round)
     elif p.profile == 'PILLOW':
         h = pillow_heights(d_all, nb, edge_round)
+    elif p.profile == 'SCALE':
+        h = scale_heights(d_all, nb, edge_round)
     else:
         h = puff_heights(pts, tris, nb, 1.0)
     top = max(max(h), 1e-12)
     natural = top * getattr(p, 'puff', 1.0)
+    if p.profile == 'SCALE':            # its own height is a unit curve: size it like a Puff of that width
+        natural = max(d_all) * 0.8
     return boundary, pts, tris, nb, [x / top for x in h], natural, spacing
 
 
