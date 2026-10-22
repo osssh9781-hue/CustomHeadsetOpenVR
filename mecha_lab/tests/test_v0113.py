@@ -169,9 +169,9 @@ t = setup_mirror_scene()
 op = Op()
 op.start(C, Region(), TOP, (500, 500))
 op.handle(C, E('MOUSEMOVE', 'NOTHING', 300, 180))
-r = op.handle(C, E('RET', 'PRESS', 300, 180))      # 0.24.19 a click now applies (LMB right / RMB left)
+r = op.handle(C, E('LEFTMOUSE', 'PRESS', 300, 180))
 op.finish_live(C.scene)
-check('keep the live mirror; settings remembered', r == 'APPLY' and mt.MOD_NAME in t.modifiers and
+check('click = keep the live mirror; settings remembered', r == 'LIVE' and mt.MOD_NAME in t.modifiers and
       C.scene.mch_mirror.x and not C.scene.mch_mirror.flip_x)
 check('navigation passes through', op.handle(C, E('MIDDLEMOUSE', 'PRESS')) == 'PASS' and
       op.handle(C, E('WHEELUPMOUSE', 'PRESS')) == 'PASS')

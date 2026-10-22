@@ -266,9 +266,9 @@ def pointed_object(context, projector, xy, skip):
 
 class MirrorLeanLogic:
     """Modal: the live mirror appears at once; moving the mouse picks the axis
-    (and the side to copy to).  LMB / RMB = copy to the screen right / left and
-    apply (0.24.19), Shift+LMB = add this axis and keep going, Enter / Space =
-    apply (bake), X / Y / Z = toggle an axis, B = bisect on/off, Esc = cancel."""
+    (and the side to copy to).  LMB = keep live, Shift+LMB = add this axis and
+    keep going, Enter / Space = apply (bake), X / Y / Z = toggle an axis,
+    B = bisect on/off, Esc / RMB = cancel (restore)."""
 
     NAV = {'MIDDLEMOUSE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'WHEELINMOUSE', 'WHEELOUTMOUSE', 'TRACKPADPAN',
            'TRACKPADZOOM', 'MOUSEROTATE', 'NDOF_MOTION', 'NUMPAD_1', 'NUMPAD_2', 'NUMPAD_3', 'NUMPAD_4',
@@ -358,23 +358,6 @@ class MirrorLeanLogic:
         self.flips[i] = sign > 0              # flip ON keeps the - side and copies toward +
         self._apply_live(scene)
 
-    def pick_side(self, scene, side):
-        """0.24.19 the axis that runs left-right on screen, copying toward the screen right (side 1) or left
-        (-1).  While the mouse points at another object that object's side is kept."""
-        if getattr(self, 'pivot_name', None) is not None or not self._targets():
-            return
-        origin, axes, size = self.frame(scene)
-        xy = (self.center[0] + side * 200.0, self.center[1])
-        pick = lean_pick(self.projector, origin, axes, xy, size * 0.6, center=self.center)
-        if pick is None:
-            return
-        self.current = pick
-        i, sign = pick
-        self.axes = [self.locked[k] for k in range(3)]
-        self.axes[i] = True
-        self.flips[i] = sign > 0
-        self._apply_live(scene)
-
     def toggle_axis(self, scene, i):
         self.locked[i] = not self.locked[i]
         self.axes[i] = self.locked[i] or (self.current is not None and self.current[0] == i)
@@ -430,7 +413,7 @@ class MirrorLeanLogic:
         return ' '.join(out) + across + ('' if self.p.bisect else ' (no bisect)')
 
     def handle(self, context, event):
-        """Returns 'RUN', 'PASS', 'LIVE', 'APPLY', 'BAKE' (apply even from the Mirror button) or 'CANCEL'."""
+        """Returns 'RUN', 'PASS', 'LIVE', 'APPLY' or 'CANCEL'."""
         et, ev = event.type, event.value
         scene = context.scene
         if et in self.NAV or (et in {'LEFTMOUSE', 'MIDDLEMOUSE'} and getattr(event, 'alt', False)):
@@ -440,17 +423,15 @@ class MirrorLeanLogic:
             return 'RUN'
         if ev != 'PRESS':
             return 'RUN'
-        if et == 'ESC':
+        if et in {'ESC', 'RIGHTMOUSE'}:
             return 'CANCEL'
         if et in {'RET', 'NUMPAD_ENTER', 'SPACE'}:
             return 'APPLY'
-        if et == 'LEFTMOUSE' and getattr(event, 'shift', False):
-            self.lock_current()
-            return 'RUN'
-        if et in {'LEFTMOUSE', 'RIGHTMOUSE'}:
-            # 0.24.19 LMB = copy to the right side of the screen, RMB = to the left, and apply at once
-            self.pick_side(scene, 1 if et == 'LEFTMOUSE' else -1)
-            return 'BAKE'
+        if et == 'LEFTMOUSE':
+            if getattr(event, 'shift', False):
+                self.lock_current()
+                return 'RUN'
+            return 'LIVE'
         if et in {'X', 'Y', 'Z'}:
             self.toggle_axis(scene, 'XYZ'.index(et))
             return 'RUN'
@@ -530,9 +511,8 @@ class LeanModal:
             context.workspace.status_text_set(None if clear else
                                               'Mirror: lean the mouse (from the bottom centre) toward the side to copy '
                                               'to | Enter / Space: ' + ('keep live' if self.keep_live else 'APPLY') +
-                                              ' | LMB: copy to the right + apply | RMB: copy to the left + apply'
-                                              ' | Mouse on another object: mirror across it | Shift+Click: add axis | X Y Z: axes | '
-                                              'B: bisect | Esc: cancel')
+                                              ' | Mouse on another object: mirror across it | Click: keep live | Shift+Click: add axis | X Y Z: axes | '
+                                              'B: bisect | Esc / RMB: cancel')
         except (AttributeError, ReferenceError):
             pass
 
@@ -558,7 +538,7 @@ class LeanModal:
             self.restore_all()
             self.report({'INFO'}, 'Mirror cancelled')
             return {'CANCELLED'}
-        if r == 'BAKE' or (r == 'APPLY' and not self.keep_live):
+        if r == 'APPLY' and not self.keep_live:
             self.report({'INFO'}, self.finish_apply(context))
             return {'FINISHED'}
         self.report({'INFO'}, self.finish_live(context.scene))
@@ -569,12 +549,11 @@ class MCH_OT_mirror_lean(MirrorLeanLogic, LeanModal, bpy.types.Operator):
     bl_idname = 'mch.mirror_lean'
     bl_label = 'Symmetry (lean to copy)'
     bl_description = ('Live mirror at once; lean the mouse toward the side to copy to. Enter = apply, '
-                      'LMB / RMB = copy to the right / left and apply, Shift+click = add axis, X/Y/Z = axes, '
-                      'B = bisect, Esc = cancel')
+                      'click = keep live, Shift+click = add axis, X/Y/Z = axes, B = bisect, Esc = cancel')
     bl_options = {'REGISTER', 'UNDO', 'BLOCKING'}
 
     keep_live: bpy.props.BoolProperty(default=False, options={'SKIP_SAVE'},
-                                      description='Mirror button: Enter keeps the live mirror (no apply); LMB / RMB still apply')
+                                      description='Mirror button: Enter / click keep the live mirror (no apply)')
 
     @classmethod
     def poll(cls, context):
