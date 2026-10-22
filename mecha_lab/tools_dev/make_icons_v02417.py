@@ -21,19 +21,34 @@ def icons():
     out = {}
 
     def hide():
+        # a box with one corner block hidden: the hidden part is only a dashed orange outline
         img, d = canvas()
-        d.rectangle((110, 150, 300, 380), outline=FG, width=W)               # the mesh
-        for x in range(300, 420, 40):                                          # hidden half: dashed
-            d.line((x, 150, x + 20, 150), fill=DIM, width=W)
-            d.line((x, 380, x + 20, 380), fill=DIM, width=W)
-        for y in range(150, 380, 40):
-            d.line((410, y, 410, y + 20), fill=DIM, width=W)
-        for x in range(240, 440, 44):                                          # the drawn box
-            d.line((x, 110, x + 24, 110), fill=ACC, width=18)
-            d.line((x, 420, x + 24, 420), fill=ACC, width=18)
-        for y in range(110, 420, 44):
-            d.line((240, y, 240, y + 24), fill=ACC, width=18)
-            d.line((440, y, 440, y + 24), fill=ACC, width=18)
+        bg = (38, 41, 48, 255)
+        # box: front square + top + right side (oblique)
+        F = [(110, 200), (330, 200), (330, 420), (110, 420)]
+        T = [(110, 200), (190, 120), (410, 120), (330, 200)]
+        Rs = [(330, 200), (410, 120), (410, 340), (330, 420)]
+        for face, shade in ((F, (70, 74, 84, 255)), (T, (92, 96, 108, 255)), (Rs, (58, 62, 72, 255))):
+            d.polygon(face, fill=shade)
+            poly(d, face, FG, width=16)
+        # hidden corner block (top-right-front): erase it, outline dashed
+        blk = [(250, 200), (330, 200), (330, 280), (250, 280)]
+        d.polygon([(250, 200), (330, 200), (410, 120), (330, 120)], fill=bg)
+        d.polygon([(330, 200), (410, 120), (410, 200), (330, 280)], fill=bg)
+        d.polygon(blk, fill=bg)
+        inner = [(250, 200), (250, 280), (330, 280)]
+        poly(d, inner, FG, width=16, closed=False)
+        poly(d, [(250, 200), (330, 120)], FG, width=16, closed=False)
+        poly(d, [(330, 280), (410, 200)], FG, width=16, closed=False)
+
+        def dash(p0, p1, n=4):
+            for k in range(n):
+                t0, t1 = k / n, (k + 0.55) / n
+                d.line((p0[0] + (p1[0] - p0[0]) * t0, p0[1] + (p1[1] - p0[1]) * t0,
+                        p0[0] + (p1[0] - p0[0]) * t1, p0[1] + (p1[1] - p0[1]) * t1), fill=ACC, width=14)
+        for p0, p1 in (((250, 200), (330, 200)), ((330, 200), (330, 280)), ((330, 200), (410, 120)),
+                       ((330, 120), (410, 120)), ((410, 120), (410, 200)), ((250, 200), (330, 120))):
+            dash(p0, p1)
         return img
     out['hide'] = hide
 
@@ -77,20 +92,37 @@ def icons():
     out['detail3'] = detail3
 
     def screw():
+        # a round screw head sitting on a plate (seen from above at an angle) with a cross slot
         img, d = canvas()
-        d.ellipse((126, 126, 386, 386), outline=FG, width=W)
-        d.ellipse((176, 176, 336, 336), outline=DIM, width=14)
-        d.line((206, 256, 306, 256), fill=ACC, width=W + 6)
-        d.line((256, 206, 256, 306), fill=ACC, width=W + 6)
+        d.polygon([(60, 330), (190, 230), (452, 230), (322, 330)], fill=(70, 74, 84, 255))
+        poly(d, [(60, 330), (190, 230), (452, 230), (322, 330)], DIM, width=14)
+        d.polygon([(60, 330), (322, 330), (322, 360), (60, 360)], fill=(52, 56, 64, 255))
+        cx, cy = 256, 250
+        d.ellipse((cx - 120, cy - 30, cx + 120, cy + 70), fill=(52, 56, 64, 255))       # head side
+        d.rectangle((cx - 120, cy - 70, cx + 120, cy + 20), fill=(52, 56, 64, 255))
+        d.ellipse((cx - 120, cy - 120, cx + 120, cy - 20), fill=(205, 210, 220, 255))   # head top
+        d.arc((cx - 120, cy - 30, cx + 120, cy + 70), start=0, end=180, fill=FG, width=14)
+        d.line((cx - 120, cy - 70, cx - 120, cy + 20), fill=FG, width=14)
+        d.line((cx + 120, cy - 70, cx + 120, cy + 20), fill=FG, width=14)
+        d.ellipse((cx - 120, cy - 120, cx + 120, cy - 20), outline=FG, width=14)
+        d.line((cx - 76, cy - 70, cx + 76, cy - 70), fill=ACC, width=24)                 # cross slot (top
+        d.line((cx, cy - 104, cx, cy - 36), fill=ACC, width=24)                          # seen at an angle)
         return img
     out['screw'] = screw
 
     def cloth():
+        # a padded jacket: sleeves, zip down the middle, quilted (puffed) bands
         img, d = canvas()
-        shirt = [(196, 110), (226, 140), (286, 140), (316, 110), (420, 160), (390, 240), (350, 220), (350, 410),
-                 (162, 410), (162, 220), (122, 240), (92, 160)]
-        poly(d, shirt, PU, fill=(205, 120, 255, 60))
-        d.arc((222, 96, 290, 164), start=20, end=160, fill=PU, width=18)       # collar
+        body = [(178, 112), (218, 100), (256, 136), (294, 100), (334, 112), (418, 170), (440, 330), (392, 340),
+                (370, 238), (366, 420), (146, 420), (142, 238), (120, 340), (72, 330), (94, 170)]
+        d.polygon(body, fill=(120, 70, 170, 255))
+        for y in (190, 250, 310, 370):                                    # quilting: puffed bands
+            d.line((150, y, 362, y), fill=(205, 120, 255, 255), width=10)
+        for y, x0, x1 in ((230, 96, 140), (280, 104, 140), (230, 372, 416), (280, 372, 410)):
+            d.line((x0, y, x1, y), fill=(205, 120, 255, 255), width=10)
+        poly(d, body, PU, width=18)
+        d.line((256, 136, 256, 420), fill=FG, width=12)                   # zip
+        poly(d, [(218, 100), (256, 160), (294, 100)], FG, width=14, closed=False)   # collar
         return img
     out['cloth'] = cloth
 

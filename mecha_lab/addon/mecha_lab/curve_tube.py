@@ -413,6 +413,8 @@ def repeat_mesh(samples, s, src_verts, src_faces):
 
 
 REPEAT_MODES = ('REPEAT', 'REPEAT_SAME')
+TUBE_MODES = ('TUBE', 'LINE')            # a solid tube (LINE: one thickness everywhere)
+LINE_MODES = ('LINE', 'REPEAT_SAME')     # owned by the Line Curve tool (REPEAT_SAME: 0.24.10 files)
 
 
 def get_points(ob):
@@ -444,6 +446,12 @@ def build(ob, depsgraph=None):
             pass
         else:
             return [], []
+    if s['mode'] == 'LINE':
+        # 0.24.17 Line Curve: one thickness everywhere - point radius and start / end size are ignored,
+        # Radius sets the whole thickness
+        samples = [(p, 1.0) for p, _r in samples]
+        s = dict(s, taper_start=1.0, taper_end=1.0)
+        return tube_mesh(samples, s)
     if s['mode'] in REPEAT_MODES:
         src = tb.source
         if src is not None and src.type == 'MESH' and src != ob:
@@ -486,9 +494,11 @@ class MCH_PG_Tube(bpy.types.PropertyGroup):
     live: BoolProperty(default=False, options={'HIDDEN'})
     mode: _p(EnumProperty, name='Mode', items=[('TUBE', 'Tube', 'Solid tube along the curve'),
                                                ('REPEAT', 'Repeat', 'Copies of an object along the curve'),
-                                               ('REPEAT_SAME', 'Line Curve',
-                                                'Line Curve tool: copies all the same size (point radius and start / '
-                                                'end size are ignored), Radius / Size scale every copy together')],
+                                               ('REPEAT_SAME', 'Same Size Copies',
+                                                '0.24.10 Line Curve files: copies all the same size'),
+                                               ('LINE', 'Line Curve',
+                                                'Line Curve tool: a tube of one thickness everywhere (no per-point '
+                                                'size), Radius makes it thicker / thinner')],
              default='TUBE')
     radius: _p(FloatProperty, name='Radius', default=0.05, min=0.0001, soft_max=2.0, unit='LENGTH', precision=4)
     taper_start: _p(FloatProperty, name='Start Size', default=1.0, min=0.0, soft_max=3.0, subtype='FACTOR')
@@ -646,6 +656,8 @@ class TubeLogic:
     def handle_world(self, context, i):
         """World position of point i's orange radius handle (beside the point, across the view)."""
         ob = self._ob()
+        if ob is None or ob.mch_tube.mode == 'LINE':        # Line Curve: one thickness, no per-point handle
+            return None
         pts = get_points(ob)
         p = ob.matrix_world @ pts[i][0]
         proj = self._proj(context)
@@ -754,6 +766,8 @@ class TubeLogic:
 
     def point_radius(self, context, xy, factor):
         ob = self._ob()
+        if ob is not None and ob.mch_tube.mode == 'LINE':
+            return False                                   # Line Curve: Ctrl+Wheel zooms
         i = self._near_point(context, xy) if ob else None
         if i is None:
             return False
@@ -948,7 +962,7 @@ def start_draw(context, new=True, mode=''):
 
 
 def is_line_curve(ob):
-    return is_tube(ob) and ob.mch_tube.mode == 'REPEAT_SAME'
+    return is_tube(ob) and ob.mch_tube.mode in LINE_MODES
 
 
 def tool_owns(context, ob):
@@ -959,7 +973,7 @@ def tool_owns(context, ob):
 
 
 def draw_line(layout, context):
-    """0.24.10 Line Curve tool (its own tool): copies along the curve, all the same size."""
+    """0.24.17 Line Curve tool (its own tool): a tube of one thickness everywhere; Radius = the thickness."""
     st = context.scene.mch_tube_defaults
     ob = context.active_object
     box = layout.box()
@@ -968,14 +982,16 @@ def draw_line(layout, context):
     r.scale_y = 1.4
     op = r.operator('mch.tube_draw', text='Draw New Line Curve', icon='GREASEPENCIL')
     op.new = True
-    op.mode = 'REPEAT_SAME'
+    op.mode = 'LINE'
     if not is_line_curve(ob):
         c = box.column(align=True)
         c.label(text='New line curves start with:')
-        c.prop(st, 'radius')
+        c.prop(st, 'radius', text='Thickness')
+        c.row(align=True).prop(st, 'profile', expand=True)
+        c.prop(st, 'sides')
+        c.row(align=True).prop(st, 'cap', expand=True)
         c.row(align=True).prop(st, 'spline', expand=True)
-        c.prop(st, 'count')
-        box.label(text='Every copy the same size: Radius / Size scale them all', icon='INFO')
+        box.label(text='One thickness everywhere: Thickness makes it all thicker / thinner', icon='INFO')
         return
     tb = ob.mch_tube
     sub = box.box()
@@ -984,17 +1000,17 @@ def draw_line(layout, context):
     op = rr.operator('mch.tube_draw', text='Edit Points', icon='CURVE_PATH')
     op.new = False
     rr.operator('mch.tube_apply', text='Apply', icon='CHECKMARK')
+    if tb.mode == 'REPEAT_SAME':
+        sub.label(text='Made by 0.24.10 (copies): make it a line', icon='INFO')
+        sub.prop_enum(tb, 'mode', 'LINE')
     c = sub.column(align=True)
-    c.prop(tb, 'source', text='Linked Object')
-    c.prop(tb, 'radius')
-    c.prop(tb, 'size')
-    c = sub.column(align=True)
-    c.row(align=True).prop(tb, 'spacing_mode', expand=True)
-    if tb.spacing_mode == 'DISTANCE':
-        c.prop(tb, 'spacing')
-    else:
-        c.prop(tb, 'count')
-    c.prop(tb, 'align')
+    c.prop(tb, 'radius', text='Thickness')
+    c.row(align=True).prop(tb, 'profile', expand=True)
+    c.prop(tb, 'sides')
+    if tb.profile == 'FLAT':
+        c.prop(tb, 'ratio', slider=True)
+    c.row(align=True).prop(tb, 'cap', expand=True)
+    c.prop(tb, 'hole', slider=True)
     c = sub.column(align=True)
     c.row(align=True).prop(tb, 'spline', expand=True)
     c.prop(tb, 'closed', toggle=True)
@@ -1292,8 +1308,9 @@ class MCH_GGT_tube_points(bpy.types.GizmoGroup):
         ob = context.active_object
         stale = ob.name != getattr(self, 'ob_name', '') or len(get_points(ob)) != getattr(self, 'count', -1)
         self.side = _view_side(context, ob)
+        line = ob.mch_tube.mode == 'LINE'      # one thickness: no per-point radius handles
         for gz in self.pts_gz + self.rad_gz:
-            gz.hide = stale                # rebuilt in refresh (never add / remove gizmos while drawing)
+            gz.hide = stale or (line and gz in self.rad_gz)   # rebuilt in refresh (never add / remove while drawing)
             gz.matrix_basis = ob.matrix_world.copy()
 
 
@@ -1358,7 +1375,7 @@ class MCH_OT_tube_toggle(bpy.types.Operator):
         cyc = {'MODE': ('mode', ('TUBE', 'REPEAT')), 'SPLINE': ('spline', ('SMOOTH', 'BSPLINE', 'LINEAR')),
                'PROFILE': ('profile', ('ROUND', 'SQUARE', 'FLAT')), 'CAP': ('cap', ('ROUND', 'FLAT', 'OPEN')),
                'SPACING': ('spacing_mode', ('COUNT', 'DISTANCE'))}
-        if self.option == 'MODE' and tb.mode == 'REPEAT_SAME':
+        if self.option == 'MODE' and tb.mode in LINE_MODES:
             return {'CANCELLED'}           # a Line Curve stays a Line Curve (its own tool)
         if self.option == 'CLOSED':
             tb.closed = not tb.closed
@@ -1459,9 +1476,9 @@ class MCH_GGT_tube_bar(bpy.types.GizmoGroup):
             pos = lay.get(name)
             hide = pos is None or (name == 'slider_count' and (tb.mode not in REPEAT_MODES or tb.spacing_mode != 'COUNT')) \
                 or (name == 'slider_spacing' and (tb.mode not in REPEAT_MODES or tb.spacing_mode != 'DISTANCE')) \
-                or (name in {'slider_hole', 'slider_sides', 'profile', 'cap'} and tb.mode != 'TUBE') \
+                or (name in {'slider_hole', 'slider_sides', 'profile', 'cap'} and tb.mode not in TUBE_MODES) \
                 or (name == 'spacing' and tb.mode not in REPEAT_MODES) \
-                or (name == 'mode' and tb.mode == 'REPEAT_SAME')
+                or (name == 'mode' and tb.mode in LINE_MODES)
             gz.hide = hide
             if hide:
                 continue
@@ -1502,9 +1519,9 @@ def _draw_bar_labels():
         for name, text in names.items():
             if name not in lay:
                 continue
-            if name in {'profile', 'cap'} and tb.mode != 'TUBE' or name == 'spacing' and tb.mode not in REPEAT_MODES:
+            if name in {'profile', 'cap'} and tb.mode not in TUBE_MODES or name == 'spacing' and tb.mode not in REPEAT_MODES:
                 continue
-            if name == 'mode' and tb.mode == 'REPEAT_SAME':
+            if name == 'mode' and tb.mode in LINE_MODES:
                 continue
             x, y = lay[name]
             w, _h = blf.dimensions(0, text)
@@ -1516,7 +1533,7 @@ def _draw_bar_labels():
                 continue
             if key == 'spacing' and (tb.mode not in REPEAT_MODES or tb.spacing_mode != 'DISTANCE'):
                 continue
-            if key in {'hole', 'sides'} and tb.mode != 'TUBE':
+            if key in {'hole', 'sides'} and tb.mode not in TUBE_MODES:
                 continue
             x, y = lay['slider_' + key]
             text = tube_slider_spec(ob, key)[5]

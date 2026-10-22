@@ -76,5 +76,41 @@ wui.MCH_OT_hotkeys_reset.execute(types.SimpleNamespace(report=lambda *a: None), 
 ids = {wui.hotkey_id(it): it for _km, it in wui._keymaps}
 check('Default Keys: file removed, C = Cut again, Base Mesh unassigned', not os.path.isfile(path) and
       ids[('mch.hotkey', 'CUT', '')].type == 'C' and ids[('mch.hotkey', 'TOOL', 'BASE')].type == 'NONE')
+# ---- 0.24.17 Line Curve = a tube of one thickness everywhere (it showed dots: it repeated spheres)
+from mathutils import Vector
+from mecha_lab import curve_tube as ct
+import numpy as np
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+lc = ct.new_tube(C, Vector((0, 0, 0)), mode='LINE')
+tb = lc.mch_tube
+tb.cap = 'OPEN'
+tb.radius = 0.1
+tb.taper_start, tb.taper_end = 0.5, 2.0
+ct.set_points(lc, [(Vector((0, 0, 0)), 1.0), (Vector((2, 0, 0)), 3.0), (Vector((4, 0, 0)), 0.3)])
+ct.rebuild(lc)
+co = np.array([v.co[:] for v in lc.data.vertices])
+rad = np.hypot(co[:, 1], co[:, 2])
+check('Line Curve: a solid tube (not dots) of one thickness despite point radius 1 / 3 / 0.3 and start / end size',
+      len(co) > 50 and abs(rad.max() - 0.1) < 1e-4 and abs(rad.min() - 0.1) < 1e-4, (len(co), rad.min(), rad.max()))
+tb.radius = 0.25
+ct.rebuild(lc)
+co = np.array([v.co[:] for v in lc.data.vertices])
+rad = np.hypot(co[:, 1], co[:, 2])
+check('Thickness makes all of it thicker', abs(rad.max() - 0.25) < 1e-4 and abs(rad.min() - 0.25) < 1e-4)
+check('it belongs to the Line Curve tool', ct.is_line_curve(lc))
+S.mch_settings.mch_active_tool = 'TUBE_SAME'
+class _L(ct.TubeLogic):
+    pass
+lg = _L()
+lg.ob_name = lc.name
+check('no per-point thickness handle on a Line Curve', lg.handle_world(C, 0) is None and
+      not lg.point_radius(C, (0, 0), 1.1))
+check('the tool starts a LINE curve', "mode='LINE'" in open(wui.__file__).read())
+tb.mode = 'TUBE'
+ct.rebuild(lc)
+co = np.array([v.co[:] for v in lc.data.vertices])
+rad = np.hypot(co[:, 1], co[:, 2])
+check('Mesh Curve (Tube) still follows the point radius', rad.max() > 0.25 * 2.5, rad.max())
 mecha_lab.unregister()
 sys.exit(1 if summary() else 0)

@@ -501,12 +501,12 @@ def activate_mecha_tool(context, tool_id):
         primitive_place.ensure_placed(context)   # 0.14.3: the ghost appears only once a shape is picked
     if tool_id in {'TUBE', 'TUBE_SAME'} and previous != tool_id:
         # 0.23: picking Tube starts drawing right away (Enter / right click ends; the tube stays live)
-        # 0.24.10 Line Curve: its own tool (copies all the same size)
+        # 0.24.10 Line Curve: its own tool; 0.24.17 a tube of one thickness everywhere
         try:
             from . import curve_tube
             ob = context.active_object
             if tool_id == 'TUBE_SAME':      # Line Curve: edit the active Line Curve or start a new one
-                curve_tube.start_draw(context, new=not curve_tube.is_line_curve(ob), mode='REPEAT_SAME')
+                curve_tube.start_draw(context, new=not curve_tube.is_line_curve(ob), mode='LINE')
             else:
                 curve_tube.start_draw(context, new=not curve_tube.is_tube(ob) or curve_tube.is_line_curve(ob))
         except (RuntimeError, AttributeError, TypeError) as ex:
