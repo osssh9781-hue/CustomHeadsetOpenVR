@@ -291,8 +291,7 @@ def hotkey_items(context=None):
             for item in km.keymap_items:
                 if item.idname not in _HOTKEY_IDS:
                     continue
-                key = (item.idname, getattr(item.properties, 'action', '') if item.idname == 'mch.hotkey' else '',
-                       len([o for o in out if o[1].idname == item.idname]))
+                key = hotkey_id(item) + (len([o for o in out if hotkey_id(o[1]) == hotkey_id(item)]),)
                 if key in seen:
                     continue
                 seen.add(key)
@@ -303,22 +302,119 @@ def hotkey_items(context=None):
 
 
 HOTKEY_LABELS = {'BOOLEAN': 'Boolean Difference', 'CUT': 'Cut', 'SPLIT': 'Split (nothing selected)',
-                 'PLATE': 'Armor Plate', 'MIRROR': 'Mirror'}
+                 'PLATE': 'Armor Plate', 'MIRROR': 'Mirror', 'SHAPES': 'Lasso Shape Menu'}
+# tools whose key is one of the named hotkeys above (C = Cut, S = Split, Alt+A = Armor Plate)
+TOOL_ACTIONS = {'CUT': 'CUT', 'SPLIT': 'SPLIT', 'PLATE': 'PLATE'}
+HOTKEYS_FILE = 'hotkeys.json'
+
+
+def tool_key_ids():
+    return [t[0] for t in ts.VISIBLE_TOOLS if t[0] not in TOOL_ACTIONS]
+
+
+def hotkey_id(item):
+    """(operator, action, tool) - what a Mecha key item does (stable across sessions)."""
+    if item.idname != 'mch.hotkey':
+        return (item.idname, '', '')
+    action = getattr(item.properties, 'action', '')
+    return (item.idname, action, getattr(item.properties, 'tool', '') if action == 'TOOL' else '')
+
+
+def _hotkeys_path():
+    import os
+    try:
+        d = bpy.utils.user_resource('CONFIG', path='mecha_lab', create=True)
+    except (TypeError, ValueError, RuntimeError, OSError):
+        return None
+    return os.path.join(d, HOTKEYS_FILE) if d else None
+
+
+_KEY_FIELDS = ('type', 'value', 'ctrl', 'shift', 'alt', 'oskey')
+
+
+def save_hotkeys(context=None):
+    """0.24.17 the keys as set in the Hotkeys box -> config/mecha_lab/hotkeys.json (Mecha Lab's own file)."""
+    import json
+    path = _hotkeys_path()
+    if path is None:
+        return 0
+    rows = []
+    for _km, item in hotkey_items(context):
+        rec = {k: (bool(getattr(item, k)) if k in ('ctrl', 'shift', 'alt', 'oskey') else getattr(item, k))
+               for k in _KEY_FIELDS}
+        rec['id'] = list(hotkey_id(item))
+        rows.append(rec)
+    with open(path, 'w', encoding='utf-8') as fh:
+        json.dump({'version': 1, 'keys': rows}, fh, indent=1)
+    return len(rows)
+
+
+def load_hotkeys(items):
+    """Apply the saved keys to freshly made key items (first item of each kind)."""
+    import json
+    import os
+    path = _hotkeys_path()
+    if path is None or not os.path.isfile(path):
+        return 0
+    try:
+        with open(path, encoding='utf-8') as fh:
+            rows = json.load(fh).get('keys', [])
+    except (OSError, ValueError, AttributeError):
+        return 0
+    by_id = {}
+    for it in items:
+        try:
+            by_id.setdefault(hotkey_id(it), it)
+        except ReferenceError:
+            continue
+    done = 0
+    for rec in rows:
+        it = by_id.get(tuple(rec.get('id', ())))
+        if it is None:
+            continue
+        try:
+            for k in _KEY_FIELDS:
+                if k in rec:
+                    setattr(it, k, rec[k])
+            done += 1
+        except (TypeError, ValueError, AttributeError):
+            continue
+    return done
 
 
 def draw_hotkey_editor(layout, context=None):
-    """Editable keys of the Mecha hotkeys (Select / Move, menus, B / C, Alt+X / S / Alt+A)."""
+    """Editable keys of the Mecha hotkeys (menus, B / C, Alt+X / S / Alt+A, L) and one per tool of the left
+    list (0.24.17); Save keeps them for the next Blender start."""
     box = layout.box()
     box.label(text='Hotkeys (MECHA LAB only)', icon='KEYINGSET')
-    for km, item in hotkey_items(context):
-        idname = item.idname
+    items = hotkey_items(context)
+    by_id = {}
+    for km, item in items:
+        by_id.setdefault(hotkey_id(item), item)
+    for km, item in items:
+        hid = hotkey_id(item)
+        if hid[1] == 'TOOL' or hid[1] in TOOL_ACTIONS.values():
+            continue
         row = box.row(align=True)
         label = {'mch.select_move_key': 'Select / Move', 'mch.tool_pie': 'Tool Pie',
                  'mch.toggle_last_tool': 'Select <-> Last Tool',
-                 'mch.space_tools': 'Big Tool Menu'}.get(idname, HOTKEY_LABELS.get(getattr(item.properties, 'action', ''),
-                                                                  'Hotkey'))
+                 'mch.space_tools': 'Big Tool Menu'}.get(hid[0], HOTKEY_LABELS.get(hid[1], 'Hotkey'))
         row.label(text=label)
         row.prop(item, 'type', text='', full_event=True)
+    box.label(text='Tools (left list)', icon='TOOL_SETTINGS')
+    col = box.column(align=True)
+    for t in ts.VISIBLE_TOOLS:
+        tid = t[0]
+        item = by_id.get(('mch.hotkey', TOOL_ACTIONS[tid], '')) if tid in TOOL_ACTIONS else \
+            by_id.get(('mch.hotkey', 'TOOL', tid))
+        if item is None:
+            continue
+        row = col.row(align=True)
+        row.label(text=t[1])
+        row.prop(item, 'type', text='', full_event=True)
+    row = box.row(align=True)
+    row.operator('mch.hotkeys_save', icon='FILE_TICK')
+    row.operator('mch.hotkeys_reset', icon='LOOP_BACK')
 
 
 def draw_ortho_button(layout, context, text='Ortho Lock'):
@@ -1217,13 +1313,48 @@ def draw_add_menu(self, context):
     self.layout.menu(MCH_MT_add_mecha.bl_idname, **_icon_kw('base', 'MESH_CUBE'))
 
 
+class MCH_OT_hotkeys_save(bpy.types.Operator):
+    """Keep the keys set here for the next Blender start (Mecha Lab's own file, not Blender's preferences)"""
+    bl_idname = 'mch.hotkeys_save'
+    bl_label = 'Save Hotkeys'
+    bl_options = {'INTERNAL'}
+
+    def execute(self, context):
+        n = save_hotkeys(context)
+        self.report({'INFO'}, f'Mecha hotkeys saved ({n})')
+        return {'FINISHED'}
+
+
+class MCH_OT_hotkeys_reset(bpy.types.Operator):
+    """Back to the Mecha Lab default keys (the saved keys are deleted)"""
+    bl_idname = 'mch.hotkeys_reset'
+    bl_label = 'Default Keys'
+    bl_options = {'INTERNAL'}
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(self, event)
+
+    def execute(self, context):
+        import os
+        path = _hotkeys_path()
+        if path and os.path.isfile(path):
+            os.remove(path)
+        unregister_keymaps()
+        register_keymaps()
+        self.report({'INFO'}, 'Mecha hotkeys back to the defaults')
+        return {'FINISHED'}
+
+
 class MCH_OT_hotkey(bpy.types.Operator):
     bl_idname = 'mch.hotkey'
     bl_label = 'Mecha Hotkey'
     bl_options = {'INTERNAL'}
     action: EnumProperty(items=[('BOOLEAN', 'Boolean Difference', ''), ('CUT', 'Cut Tool', ''),
                                 ('SPLIT', 'Split Tool', ''), ('PLATE', 'Armor Plate Tool', ''),
-                                ('MIRROR', 'Mirror (lean)', '')])
+                                ('MIRROR', 'Mirror (lean)', ''), ('SHAPES', 'Lasso Shape Menu', ''),
+                                ('TOOL', 'Pick a Tool', '')])
+    # 0.24.17 TOOL: one key per tool of the left list (unassigned until you set one)
+    tool: EnumProperty(items=ts.TOOL_ENUM_ITEMS, default='CUT')
     # 0.24.8 S = Split only with nothing selected (with a selection S stays Blender's Scale)
     only_empty: BoolProperty(default=False, options={'SKIP_SAVE'})
 
@@ -1247,7 +1378,11 @@ class MCH_OT_hotkey(bpy.types.Operator):
             return bpy.ops.mch.boolean('EXEC_DEFAULT', operation='DIFFERENCE')
         if self.action == 'MIRROR':
             return {'CANCELLED'}
-        activate_mecha_tool(context, self.action)
+        if self.action == 'SHAPES':
+            # 0.24.17 L = the lasso shape menu at the mouse (like the old Space menu)
+            bpy.ops.wm.call_panel(name='MCH_PT_shape_popup', keep_open=False)
+            return {'FINISHED'}
+        activate_mecha_tool(context, self.tool if self.action == 'TOOL' else self.action)
         return {'FINISHED'}
 
 
@@ -1689,7 +1824,8 @@ CLASSES = (
     MCH_AddonPreferences,
     MCH_OT_enter_apply,
     MCH_OT_workspace_open, MCH_OT_workspace_repair, MCH_OT_workspace_save_startup,
-    MCH_OT_set_tool, MCH_OT_set_shape, MCH_OT_space_tools, MCH_OT_hotkey, MCH_OT_ortho_lock,
+    MCH_OT_set_tool, MCH_OT_set_shape, MCH_OT_space_tools, MCH_OT_hotkey, MCH_OT_hotkeys_save,
+    MCH_OT_hotkeys_reset, MCH_OT_ortho_lock,
     MCH_OT_quick_menu, MCH_OT_select_move, MCH_OT_select_move_key, MCH_MT_add_mecha,
     MCH_OT_icon_size_preset, MCH_PT_tools, MCH_PT_main, MCH_PT_lasso, MCH_PT_icon_size, MCH_PT_workspace, MCH_PT_tool_list, MCH_PT_tool_popup, MCH_PT_shape_popup,
     MCH_PT_quick_popup, MCH_PT_profile_popup,
@@ -1726,6 +1862,16 @@ def register_keymaps():
     item = km.keymap_items.new('mch.hotkey', 'A', 'PRESS', alt=True)
     item.properties.action = 'PLATE'
     _keymaps.append((km, item))
+    # 0.24.17 L = lasso shape menu; one (unassigned) key per tool of the left list - set them in the
+    # Hotkeys box, Save keeps them (config/mecha_lab/hotkeys.json)
+    item = km.keymap_items.new('mch.hotkey', 'L', 'PRESS')
+    item.properties.action = 'SHAPES'
+    _keymaps.append((km, item))
+    for tid in tool_key_ids():
+        item = km.keymap_items.new('mch.hotkey', 'NONE', 'PRESS')
+        item.properties.action = 'TOOL'
+        item.properties.tool = tid
+        _keymaps.append((km, item))
     # Select / Move (replaces the removed Alt+click mode switch). Default F (user
     # request, 0.11.3); rebind freely (panel or Preferences > Keymap).
     _keymaps.append((km, km.keymap_items.new('mch.select_move_key', 'F', 'PRESS')))
@@ -1737,6 +1883,7 @@ def register_keymaps():
     # for curves that are not Mecha Lab paths.)
     km = kc.keymaps.new(name='Curve', space_type='EMPTY')
     _keymaps.append((km, km.keymap_items.new('mch.double_click_point', 'LEFTMOUSE', 'DOUBLE_CLICK')))
+    load_hotkeys([item for _km, item in _keymaps])
 
 
 def unregister_keymaps():
