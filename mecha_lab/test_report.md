@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.18
+# Test Report — Mecha Lab 0.24.19
+
+## 0.24.19 결과: 82개 파일 2668/2668 (`tests/test_log_bpy501_v02419.txt`) (`tests/test_log_bpy501_v02419.txt`). test_v02419(21): 위 뷰 좌클릭 = +X로 복사(x -0.2..0.2) + BAKE → 적용 후 모디파이어 없음, 우클릭 = -X로(x -0.8..0.8) + 적용, 뒤 뷰 좌클릭 = -X, 앞 뷰 좌클릭 = X축(Z 아님), Shift+좌클릭 축 추가 유지 / 잠긴 Y + 좌클릭 = X+Y, Esc 취소, 다른 오브젝트 가리킨 채 우클릭 = 그 건너편, modal BAKE는 keep_live여도 적용 / APPLY+keep_live = live, 인스턴스 좌 / 우클릭 = BAKE + 살아있는 쌍둥이 1개, 상태줄 문구. 실제 마우스 입력은 미검증.
 
 ## 0.24.18 결과: 81개 파일 2647/2647 (`tests/test_log_bpy501_v02418.txt`) (`tests/test_log_bpy501_v02418.txt`). test_v02418(16): Cap / Open 둘 다 Split Off → 별도 메쉬, 원본 모디파이어 없음, 둘 다 닫힘, 부피 합 = 원래(2 + 6 = 8), 새 조각 선택, 볼륨 안 남음, 숨긴 게 없으면 아무것도 안 함, L 메뉴 커스텀 칸 기본 접힘 / 펼치면 그려짐. test_v0245 +4: Box Hide 툴에서 선택 없이 Enter → 적용(면 늘어남, 모디파이어 없음), 다른 툴에서는 대상 없음. test_stroke_events(68): 라쏘 누른 채 39번 움직여도 점 1개, 클릭하면 2개(예전 "드래그 = 연속 점" 검사를 바꿈), Free Draw 연속 경로는 그대로. 실제 마우스 입력은 미검증.
 

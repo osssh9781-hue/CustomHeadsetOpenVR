@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.18 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.19 (Claude Code, 2026-10-14)
+
+## 0.24.19
+- ZIP sha256 `6e441cca809dbce5fd9d8d4f16966a9d8aeff594fd0fca5f5a5b9cde273c0bbf`. `mirror_tools.MirrorLeanLogic.handle`: LEFTMOUSE(Shift 없이) / RIGHTMOUSE → `pick_side(scene, ±1)`(제스처 중심에서 화면 ±200 px 지점으로 `lean_pick`, 잠긴 축 유지, 가리킨 피벗이 있으면 그대로) 후 'BAKE'. `LeanModal.modal`: 'BAKE'는 keep_live와 상관없이 finish_apply(인스턴스는 finish_live와 같음). RMB 취소 제거(Esc만), 상태줄 / 설명 갱신.
 
 ## 0.24.18
 - ZIP sha256 `982e1941b3a622a6698265fd3c280c3687788acad0f6f61b57c0b4537514b921`. `cut_engine.StrokeLogic`: `_begin` / LEFTMOUSE PRESS에서 `free_drag`를 더 이상 켜지 않음(LASSO 드래그 연속 점 제거, 코드 경로는 남김). `tool_state.SHAPES` LASSO 설명 갱신. `workspace_ui.enter_apply_target`: box_hide_apply는 선택에 숨김 메쉬가 없어도 현재 툴이 HIDE면 뷰 레이어의 숨김 메쉬로 대상. `WindowManager.mch_show_custom_shapes`(기본 False, 모양 팝업의 접기 줄), `box_hide.split_off(context, ob)`(사본에서 Box Hide 모디파이어 제거 → 볼륨과 INTERSECT boolean_result → 이름_Hidden, 원본은 set_cap(True) 후 apply) + `MCH_OT_box_hide_split`(패널 버튼). 아이콘 `icons/line_curve.png` = 원을 촘촘히 찍은 굵은 S선(PIL 굵은 선 이음새 실금 방지). `make_icons_v02417.lasso_key`(키캡용, 애드온에는 안 넣음).
