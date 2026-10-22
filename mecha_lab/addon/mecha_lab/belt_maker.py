@@ -264,7 +264,7 @@ def pick_target(context, projector, path):
             if not hit or ob is None:
                 break
             real = bpy.data.objects.get(ob.name)
-            if real is not None and real.type == 'MESH' and not real.get(SRC_KEY):
+            if real is not None and real.type == 'MESH' and not real.get(SRC_KEY) and not real.get('mch_spike_src'):
                 counts[real.name] = counts.get(real.name, 0) + 1
                 break
             o = loc + d * 1e-4

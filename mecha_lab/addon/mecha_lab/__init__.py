@@ -16,7 +16,7 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                primitive_place, primitive_hud, armor_plate, random_panels, mirror_hud, highpoly, lasso_sketch,
                cloth_wrinkle, last_used, robot_base, detail_stamp, surface_lasso,
                curve_tube, creature_shell, cloth_sim, box_hide, plate_detail, screw_stamp, lowpoly, fold_patch,
-               creature_plate, belt_maker)
+               creature_plate, belt_maker, creature_spike)
 import os
 import re
 from pathlib import Path
@@ -1940,6 +1940,7 @@ def _register():
     armor_plate.register()
     creature_plate.register()
     belt_maker.register()
+    creature_spike.register()
     random_panels.register()
     mirror_hud.register()
     highpoly.register()
@@ -2029,6 +2030,7 @@ def _unregister_steps():
         ('highpoly', highpoly.unregister),
         ('mirror_hud', mirror_hud.unregister),
         ('random_panels', random_panels.unregister),
+        ('creature_spike', creature_spike.unregister),
         ('belt_maker', belt_maker.unregister),
         ('creature_plate', creature_plate.unregister),
         ('armor_plate', armor_plate.unregister),
