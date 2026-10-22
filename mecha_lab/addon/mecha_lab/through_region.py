@@ -39,7 +39,7 @@ def _view_dir(projector, co):
     return Vector(projector.view_dir).normalized()
 
 
-def through_panels(bm_world, groups, projector, spacing_px=14.0, crease_deg=50.0, min_faces=4):
+def through_panels(bm_world, groups, projector, spacing_px=14.0, crease_deg=50.0, min_faces=4, split=True):
     """Cut the outline out of ``bm_world`` (a bmesh in world space - it is changed) through every layer.
 
     Returns a list of panels ``{'cos': [Vector], 'nrms': [Vector], 'tris': [(a, b, c)], 'front': bool}``
@@ -139,6 +139,9 @@ def through_panels(bm_world, groups, projector, spacing_px=14.0, crease_deg=50.0
     # 4. panels: split where the surface turns away from the view and at sharp creases
     front = {f: f.normal.dot(_view_dir(projector, f.calc_center_median())) < 0.0 for f in faces}
     cos_lim = math.cos(math.radians(crease_deg))
+    if not split:                  # 0.24.20 Creature Plate: front and back stay one piece (no seams)
+        front = {f: True for f in faces}
+        cos_lim = -2.0
     fset = set(faces)
     seen, comps = set(), []
     for f0 in faces:
@@ -196,9 +199,9 @@ def target_bmesh(context, target):
     return bm
 
 
-def panels_for(context, target, groups, projector, spacing_px, crease_deg):
+def panels_for(context, target, groups, projector, spacing_px, crease_deg, split=True):
     bm = target_bmesh(context, target)
     try:
-        return through_panels(bm, groups, projector, spacing_px, crease_deg)
+        return through_panels(bm, groups, projector, spacing_px, crease_deg, split=split)
     finally:
         bm.free()

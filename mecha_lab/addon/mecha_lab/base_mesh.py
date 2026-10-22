@@ -481,7 +481,10 @@ def puff_heights(pts, tris, nb, puff=1.0):
     for k in range(3):
         a, b, c = T[:, k], T[:, (k + 1) % 3], T[:, (k + 2) % 3]
         u, v = P[a] - P[c], P[b] - P[c]                    # the angle at c faces the edge a-b
-        cross = np.abs(u[:, 0] * v[:, 1] - u[:, 1] * v[:, 0])
+        if P.shape[1] == 2:
+            cross = np.abs(u[:, 0] * v[:, 1] - u[:, 1] * v[:, 0])
+        else:                                              # 0.24.20 a surface in 3D (Creature Plate Through)
+            cross = np.linalg.norm(np.cross(u, v), axis=1)
         cot = (u * v).sum(1) / np.maximum(cross, 1e-300)
         I.append(a); J.append(b); W.append(0.5 * cot)
         np.add.at(area, a, cross / 6.0)

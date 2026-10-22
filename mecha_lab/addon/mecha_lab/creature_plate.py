@@ -138,6 +138,75 @@ def _smooth_normals(nrms, tris, passes=3):
     return out
 
 
+def surface_field(cos, tris, p):
+    """0.24.20 Through: the creature shape on a piece of surface (3D triangles).  Returns (order, nb, shape,
+    natural): ``order`` puts the outline points first (``nb`` of them), ``shape`` 0..1 per reordered point."""
+    import heapq
+    from . import base_mesh as bmm
+    count = {}
+    for a, b, c in tris:
+        for u, v in ((a, b), (b, c), (c, a)):
+            k = (min(u, v), max(u, v))
+            count[k] = count.get(k, 0) + 1
+    rim = {i for k, n in count.items() if n == 1 for i in k}
+    if not rim:
+        raise cg.CutError('Through: the outline covers the whole mesh (no edge left for the plate).')
+    order = sorted(range(len(cos)), key=lambda i: (i not in rim, i))
+    nb = len(rim)
+    new = {old: i for i, old in enumerate(order)}
+    pts = [cos[i] for i in order]
+    t2 = [tuple(new[i] for i in t) for t in tris]
+    # distance to the outline over the surface (edge graph)
+    adj = [[] for _ in pts]
+    for (u, v) in count:
+        a, b = new[u], new[v]
+        w = (pts[a] - pts[b]).length
+        adj[a].append((b, w))
+        adj[b].append((a, w))
+    dist = [math.inf] * len(pts)
+    heap = [(0.0, i) for i in range(nb)]
+    for i in range(nb):
+        dist[i] = 0.0
+    while heap:
+        d, i = heapq.heappop(heap)
+        if d > dist[i]:
+            continue
+        for j, w in adj[i]:
+            if d + w < dist[j]:
+                dist[j] = d + w
+                heapq.heappush(heap, (d + w, j))
+    dist = [0.0 if math.isinf(x) else x for x in dist]
+    if p.profile == 'RIDGE':
+        h = bmm.ridge_heights(dist, nb, 1.0, p.edge_round)
+    elif p.profile == 'PILLOW':
+        h = bmm.pillow_heights(dist, nb, p.edge_round)
+    else:
+        h = bmm.puff_heights([tuple(v) for v in pts], t2, nb, 1.0)
+    top = max(max(h), 1e-12)
+    return order, nb, t2, [x / top for x in h], top
+
+
+def _through_parts(context, src, p, target, projector):
+    from . import through_region as tr
+    groups = cg.prepare_loops([[tuple(q) for q in lp] for lp in src['loops']])
+    xs = [q[0] for lp in src['loops'] for q in lp]
+    ys = [q[1] for lp in src['loops'] for q in lp]
+    extent = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
+    spacing = max(2.0, extent / max(4.0, p.resolution * 1.5))
+    panels = tr.panels_for(context, target, groups, projector, spacing, 180.0, split=False)
+    parts = []
+    for pn in panels:
+        order, nb, tris, shape, natural = surface_field(pn['cos'], pn['tris'], p)
+        cos = [pn['cos'][i] for i in order]
+        nrms = _smooth_normals([pn['nrms'][i] for i in order], tris)
+        scr = []
+        for c in cos:
+            q = projector.to_screen(c)
+            scr.append(q if q is not None else (0.0, 0.0))
+        parts.append(dict(pts=scr, tris=tris, nb=nb, cos=cos, nrms=nrms, shape=shape, natural=natural))
+    return parts
+
+
 def _field(context, ob, src, p, target, projector):
     """Cached point set on the surface: (pts px, tris, nb per group, cos, nrms, shape, natural world height)."""
     from . import armor_plate as ap
@@ -147,6 +216,10 @@ def _field(context, ob, src, p, target, projector):
     hit = _CACHE.get(ob.name)
     if hit is not None and hit[0] == key:
         return hit[1]
+    if src.get('through'):                 # 0.24.20 front and back of the mesh under the outline
+        parts = _through_parts(context, src, p, target, projector)
+        _CACHE[ob.name] = (key, parts)
+        return parts
     groups = cg.prepare_loops([[tuple(q) for q in lp] for lp in src['loops']])
     if not groups:
         raise cg.CutError('The outline is empty.')
@@ -232,7 +305,8 @@ def rebuild(context, ob):
     if target is None or target.type != 'MESH':
         raise cg.CutError('The mesh the plate was drawn on is gone.')
     parts = _field(context, ob, src, p, target, ap.thaw_projector(src['proj']))
-    natural = max(part['natural'] for part in parts) * AUTO_RATIO
+    # Pillow's own height is only its round edge: it is already flat (no third of it)
+    natural = max(part['natural'] for part in parts) * (1.0 if p.profile == 'PILLOW' else AUTO_RATIO)
     peak = p.peak if p.peak > 0 else natural
     bm = build_mesh(parts, p, peak, p.end_peak)
     try:
@@ -263,8 +337,10 @@ def perform(context, loops, projector):
     fx._parts_collection(context, COLLECTION).objects.link(ob)
     for mat in target.data.materials:
         me.materials.append(mat)
+    brush = getattr(scene, 'mch_brush', None)
     ob[SRC_KEY] = json.dumps({'loops': [[[float(x), float(y)] for x, y in lp] for lp in loops], 'proj': frozen,
-                              'target': target.name, 'stamp': id(ob) % 100000})
+                              'target': target.name, 'stamp': id(ob) % 100000,
+                              'through': bool(getattr(brush, 'through_mode', False))})
     p = ob.mch_cplate
     for k in LIVE_KEYS:
         setattr(p, k, getattr(st, k))
@@ -289,7 +365,8 @@ def perform(context, loops, projector):
     ob.select_set(True)
     context.view_layer.objects.active = ob
     name = dict((i[0], i[1]) for i in PROFILE_ITEMS)[p.profile]
-    return f'Creature plate "{ob.name}" on {target.name} ({name}, {len(me.polygons)} faces)'
+    through = ' through front and back' if source(ob).get('through') else ''
+    return f'Creature plate "{ob.name}" on {target.name}{through} ({name}, {len(me.polygons)} faces)'
 
 
 def live_plate(context):
