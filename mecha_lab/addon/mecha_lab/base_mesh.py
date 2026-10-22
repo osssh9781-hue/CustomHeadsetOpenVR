@@ -45,6 +45,8 @@ PROFILES = (
      '(height field, not a bevel)', 'profile_dome', 'MESH_UVSPHERE'),
     ('PUFF', 'Puff', 'Inflated lump: round on both sides, every part as thick as it is wide '
      '(arm-like outlines become tubes) - a sculpting base', 'profile_puff', 'META_BALL'),
+    ('RIDGE', 'Ridge', 'Rounded edge rising to a sharp ridge along the middle of the shape '
+     '(diamond cross-section)', 'profile_ridge', 'MESH_ICOSPHERE'),
 )
 PROFILE_ITEMS = [(p[0], p[1], p[2], p[4], i) for i, p in enumerate(PROFILES)]
 SIDE_ITEMS = [
@@ -56,14 +58,15 @@ SIDE_ITEMS = [
 FLIP_SIDES = {'TOP': 'BOTTOM', 'BOTTOM': 'TOP', 'BOTH': 'BOTH', 'NONE': 'NONE'}
 SETTING_KEYS = ('height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 'resolution', 'offset',
                 'bottom_too', 'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link', 'puff',
-                'outline_smooth')
+                'outline_smooth', 'edge_round')
 MAX_DOME_POINTS = 12000
 MAX_PUFF_POINTS = 60000
 PUFF_RINGS = (0.12, 0.3, 0.55, 0.85)      # rows just inside the outline (in point spacings): an even round rim
 
 
 CARRY_KEYS = ('profile', 'height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 'resolution', 'offset',
-              'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link', 'puff', 'outline_smooth')
+              'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link', 'puff', 'outline_smooth',
+              'edge_round')
 
 
 def _rebuild_update(self, context):
@@ -107,6 +110,9 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
     outline_smooth: FloatProperty(name='Soft Outline', default=0.5, min=0.0, max=1.0, update=_rebuild_update,
                                   description='Puff: round off the corners of the drawn outline (0 = exactly as '
                                               'drawn, 1 = very soft)')
+    edge_round: FloatProperty(name='Edge Round', default=0.15, min=0.0, max=1.0, update=_rebuild_update,
+                              description='Ridge: how round the outer edge is before the straight faces '
+                                          'climb to the ridge (0 = sharp edge)')
     offset: FloatProperty(name='Offset', default=0.0, soft_min=-5.0, soft_max=5.0, precision=4,
                           unit='LENGTH', update=_rebuild_update,
                           description='Move the solid along its normal (toward the viewer is positive)')
@@ -505,6 +511,15 @@ def puff_heights(pts, tris, nb, puff=1.0):
     return out
 
 
+def ridge_heights(d_all, nb, slope=1.0, edge_round=0.3):
+    """0.24.20 Ridge: height grows with the distance to the outline, so the two sides meet in a sharp ridge
+    along the middle line of the shape (a diamond cross-section; corners get roof-like ridges toward them).
+    height = slope * sqrt(d^2 + 2 a d): round (vertical) at the outline, straight faces further in;
+    a = Edge Round * the deepest distance."""
+    a = max(0.0, edge_round) * max(max(d_all), 1e-9)
+    return [0.0 if i < nb else slope * math.sqrt(d * d + 2.0 * a * d) for i, d in enumerate(d_all)]
+
+
 def chaikin(loop, iterations):
     """0.24.20 corner cutting: every pass replaces each corner by two points at 1/4 and 3/4 of its edges."""
     for _ in range(iterations):
@@ -560,7 +575,10 @@ def _add_puff(bm, outer, holes, p):
         d_all = list(d_all) + _distances(extra, dense)
     if len(pts) == nb:
         raise cg.CutError('Outline too small for Puff; draw it bigger or raise Resolution.')
-    h = puff_heights(pts, tris, nb, getattr(p, 'puff', 1.0))
+    if p.profile == 'RIDGE':
+        h = ridge_heights(d_all, nb, getattr(p, 'puff', 1.0), getattr(p, 'edge_round', 0.15))
+    else:
+        h = puff_heights(pts, tris, nb, getattr(p, 'puff', 1.0))
     floor = spacing * 0.02          # top and bottom never meet inside (they would be merged as doubles)
     h = [hh if i < nb else max(hh, floor) for i, hh in enumerate(h)]
     rim = [bm.verts.new((x, y, 0.0)) for x, y in boundary]
@@ -572,8 +590,8 @@ def _add_puff(bm, outer, holes, p):
         bm.faces.new([bottom[i] for i in reversed(tri)]).smooth = True
     # a light relax of the whole lump: no beads along the round edge, no small dents
     mine = list(set(rim + top[nb:] + bottom[nb:]))
-    bmesh.ops.smooth_vert(bm, verts=mine, factor=0.5, use_axis_x=True, use_axis_y=True, use_axis_z=True)
-    bmesh.ops.smooth_vert(bm, verts=mine, factor=0.5, use_axis_x=True, use_axis_y=True, use_axis_z=True)
+    for _ in range(1 if p.profile == 'RIDGE' else 2):          # Ridge: keep the middle crisp
+        bmesh.ops.smooth_vert(bm, verts=mine, factor=0.5, use_axis_x=True, use_axis_y=True, use_axis_z=True)
 
 
 def side_values(p, flip=False):
@@ -725,7 +743,7 @@ def build_bmesh(groups, p, flip=False):
         for outer, holes in groups:
             if p.profile == 'DOME':
                 _add_dome(bm, outer, holes, p)
-            elif p.profile == 'PUFF':
+            elif p.profile in {'PUFF', 'RIDGE'}:
                 _add_puff(bm, outer, holes, p)
             else:
                 rt, rb = _add_prism(bm, outer, holes, p.height)
@@ -736,7 +754,7 @@ def build_bmesh(groups, p, flip=False):
         if p.profile in {'BEVEL', 'CHAMFER'}:
             bm, notes = _profile_rims(bm, p, flip)
             LAST_NOTES.extend(notes)
-        embed = getattr(p, 'embed', 0.0) if p.profile != 'PUFF' else 0.0   # Puff: centred on the plane
+        embed = getattr(p, 'embed', 0.0) if p.profile not in {'PUFF', 'RIDGE'} else 0.0   # centred on the plane
         if embed > 0:
             # Stick to Surface: the bottom reaches into the surface (no gap on curves)
             for v in bm.verts:
@@ -1019,7 +1037,7 @@ def _perform_cutter(context, groups, frame, p, projector, screen_groups, targets
         else (targets or [])
     if not targets:
         raise cg.CutError('Alt Base Mesh cuts into a mesh: start on a mesh or select the target first.')
-    if p.profile in {'DOME', 'PUFF'}:
+    if p.profile in {'DOME', 'PUFF', 'RIDGE'}:
         raise cg.CutError('Alt cutter supports Flat / Chamfer / Bevel profiles (Dome / Puff have no flat cap).')
     bm = build_bmesh(groups, _WithEmbed(p, 0.0), flip=True)
     try:
