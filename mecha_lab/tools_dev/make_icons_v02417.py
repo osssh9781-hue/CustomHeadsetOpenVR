@@ -130,17 +130,17 @@ def icons():
         return img
     out['line_curve'] = line_curve
     def lasso_key():
-        # the L key (lasso shape menu): a free lasso loop with its rope tail
+        # the L key: a polygon lasso - click point by point (the 0.24.18 lasso) - straight segments between points, closing
         img, d = canvas()
-        loop = []
-        for i in range(72):
-            t = 2 * math.pi * i / 72
-            r = 130 + 18 * math.sin(3 * t + 0.6) + 10 * math.cos(5 * t)
-            loop.append((262 + r * math.cos(t) * 1.15, 220 + r * math.sin(t) * 0.82))
-        poly(d, loop, ACC)
-        tail = [(176, 300), (150, 350), (164, 398), (210, 420), (236, 400)]
-        poly(d, tail, ACC, closed=False)
-        dots(d, [(236, 400)], ACC, r=22)
+        P = [(130, 300), (190, 140), (330, 120), (400, 230), (330, 380)]
+        poly(d, P, ACC, width=22, closed=False)
+        for k in range(5):                                    # the closing segment, dashed
+            t0, t1 = k / 5, (k + 0.5) / 5
+            a_, b_ = P[-1], P[0]
+            d.line((a_[0] + (b_[0] - a_[0]) * t0, a_[1] + (b_[1] - a_[1]) * t0,
+                    a_[0] + (b_[0] - a_[0]) * t1, a_[1] + (b_[1] - a_[1]) * t1), fill=ACC, width=22)
+        for x, y in P:
+            d.rectangle((x - 24, y - 24, x + 24, y + 24), fill=FG)
         return img
     out['lasso_key'] = lasso_key
 
