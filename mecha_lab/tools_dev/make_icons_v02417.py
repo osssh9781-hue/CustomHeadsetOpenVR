@@ -92,39 +92,43 @@ def icons():
     out['detail3'] = detail3
 
     def screw():
-        # a round screw head sitting on a plate (seen from above at an angle) with a cross slot
+        # plate set look: side view on the base line - a dome screw head with its slot
         img, d = canvas()
-        d.polygon([(60, 330), (190, 230), (452, 230), (322, 330)], fill=(70, 74, 84, 255))
-        poly(d, [(60, 330), (190, 230), (452, 230), (322, 330)], DIM, width=14)
-        d.polygon([(60, 330), (322, 330), (322, 360), (60, 360)], fill=(52, 56, 64, 255))
-        cx, cy = 256, 250
-        d.ellipse((cx - 120, cy - 30, cx + 120, cy + 70), fill=(52, 56, 64, 255))       # head side
-        d.rectangle((cx - 120, cy - 70, cx + 120, cy + 20), fill=(52, 56, 64, 255))
-        d.ellipse((cx - 120, cy - 120, cx + 120, cy - 20), fill=(205, 210, 220, 255))   # head top
-        d.arc((cx - 120, cy - 30, cx + 120, cy + 70), start=0, end=180, fill=FG, width=14)
-        d.line((cx - 120, cy - 70, cx - 120, cy + 20), fill=FG, width=14)
-        d.line((cx + 120, cy - 70, cx + 120, cy + 20), fill=FG, width=14)
-        d.ellipse((cx - 120, cy - 120, cx + 120, cy - 20), outline=FG, width=14)
-        d.line((cx - 76, cy - 70, cx + 76, cy - 70), fill=ACC, width=24)                 # cross slot (top
-        d.line((cx, cy - 104, cx, cy - 36), fill=ACC, width=24)                          # seen at an angle)
+        base_line(d)
+        head = [(120, 380)] + [(256 + 136 * math.cos(math.pi * (1 - i / 32.0)),
+                                 380 - 160 * math.sin(math.pi * (1 - i / 32.0))) for i in range(33)] + [(392, 380)]
+        poly(d, head, ACC, closed=False)
+        d.line((256, 222, 256, 290), fill=ACC, width=W)                    # the slot
         return img
     out['screw'] = screw
 
     def cloth():
-        # a padded jacket: sleeves, zip down the middle, quilted (puffed) bands
+        # plate set look: side view on the base line - a padded panel puffing up between pinched seams
         img, d = canvas()
-        body = [(178, 112), (218, 100), (256, 136), (294, 100), (334, 112), (418, 170), (440, 330), (392, 340),
-                (370, 238), (366, 420), (146, 420), (142, 238), (120, 340), (72, 330), (94, 170)]
-        d.polygon(body, fill=(120, 70, 170, 255))
-        for y in (190, 250, 310, 370):                                    # quilting: puffed bands
-            d.line((150, y, 362, y), fill=(205, 120, 255, 255), width=10)
-        for y, x0, x1 in ((230, 96, 140), (280, 104, 140), (230, 372, 416), (280, 372, 410)):
-            d.line((x0, y, x1, y), fill=(205, 120, 255, 255), width=10)
-        poly(d, body, PU, width=18)
-        d.line((256, 136, 256, 420), fill=FG, width=12)                   # zip
-        poly(d, [(218, 100), (256, 160), (294, 100)], FG, width=14, closed=False)   # collar
+        base_line(d)
+        pts = [(80, 380)]
+        for i in range(61):                                                 # soft pillow: rounded shoulders,
+            t = i / 60.0                                                    # a gentle wave on top
+            x = 100 + 312 * t
+            edge = math.sin(math.pi * t) ** 0.45
+            h = edge * (150 + 14 * math.cos(math.pi * 4 * t))
+            pts.append((x, 380 - h))
+        pts += [(432, 380)]
+        poly(d, pts, PU, closed=False)
+        for x in range(146, 380, 46):                                       # stitches
+            d.line((x, 345, x + 22, 345), fill=DIM, width=10)
         return img
     out['cloth'] = cloth
+
+    def cloth_shirt():
+        # the same line look as the plate set: a shirt drawn with one stroke on the base line
+        img, d = canvas()
+        base_line(d)
+        shirt = [(200, 120), (232, 146), (280, 146), (312, 120), (402, 166), (378, 232), (344, 216), (344, 380),
+                 (168, 380), (168, 216), (134, 232), (110, 166)]
+        poly(d, shirt, PU)
+        return img
+    out['cloth_shirt'] = cloth_shirt
 
     def tube():
         img, d = canvas()
