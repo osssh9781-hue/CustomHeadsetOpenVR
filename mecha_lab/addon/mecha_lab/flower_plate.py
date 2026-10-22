@@ -29,7 +29,7 @@ from . import core_geometry as cg
 SRC_KEY = 'mch_flower_src'
 COLLECTION = 'Flower Plates'
 LIVE_KEYS = ('curl', 'curl_power', 'attach', 'thickness', 'tip_thin', 'edge_round', 'outline_smooth',
-             'resolution', 'sink')
+             'resolution', 'sink', 'tip_sharp')
 _CACHE = {}
 
 
@@ -90,8 +90,10 @@ class MCH_PG_Flower(bpy.types.PropertyGroup):
                    description='Thinner rim, fuller middle')
     outline_smooth: _p(FloatProperty, name='Soft Outline', default=0.5, min=0.0, max=1.0)
     resolution: _p(IntProperty, name='Resolution', default=24, min=6, max=64)
-    sink: _p(FloatProperty, name='Sink', default=0.3, min=0.0, max=2.0,
-             description='How far the attached part goes into the surface (x Thickness)')
+    sink: _p(FloatProperty, name='Sink', default=1.2, min=0.0, max=4.0,
+             description='How far the root goes into the surface (x Thickness)')
+    tip_sharp: _p(FloatProperty, name='Tip Sharp', default=0.6, min=0.0, max=0.95, subtype='FACTOR',
+                  description='Narrow the far end of the petal to a point')
     live: BoolProperty(default=False, options={'HIDDEN'})
     last_error: StringProperty(default='', options={'HIDDEN', 'SKIP_SAVE'})
 
@@ -155,13 +157,14 @@ def build(context, ob):
         s = max(us[i] - a0, 0.0)
         frac = min(max(us[i], 0.0) / length, 1.0)
         th = thick0 * (1.0 - p.tip_thin * frac) * (0.35 + 0.65 * shape[i])
+        dive = thick0 * p.sink                         # the root sits this deep in the surface
         if s <= 0.0:
             n = nrms[i]
-            top = c + n * th
-            bot = c - n * th * p.sink
+            top = c + n * (th - dive * 0.5)
+            bot = c - n * dive
         else:
             du, dz, ang = bend_point(s, span, p.curl, p.curl_power)
-            w = (c - r0).dot(W)
+            w = (c - r0).dot(W) * (1.0 - p.tip_sharp * frac ** 2.5)      # pointed tip
             base = r0 + U * a0 + W * w
             pos = base + U * du + n0 * dz
             nb_ = (n0 * math.cos(ang) - U * math.sin(ang)).normalized()
@@ -169,8 +172,8 @@ def build(context, ob):
             blend = blend * blend * (3 - 2 * blend)
             pos = c.lerp(pos, blend)
             n = nrms[i].lerp(nb_, blend).normalized()
-            top = pos + n * th
-            bot = pos - n * th * (p.sink * (1.0 - blend))
+            top = pos + n * (th - dive * 0.5 * (1.0 - blend))
+            bot = pos - n * dive * (1.0 - blend)
         verts_top.append(top)
         verts_bot.append(bot)
     verts = verts_top + verts_bot
@@ -297,6 +300,7 @@ def draw(layout, context):
     col = target.column(align=True)
     col.prop(p, 'thickness')
     col.prop(p, 'tip_thin', slider=True)
+    col.prop(p, 'tip_sharp', slider=True)
     col.prop(p, 'edge_round', slider=True)
     col.prop(p, 'sink')
     col = target.column(align=True)

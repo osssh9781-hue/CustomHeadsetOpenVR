@@ -927,6 +927,7 @@ _COLORS = {
     'SPIKE': (0.6, 0.85, 0.4, 1.0),
     'SCALES': (0.45, 0.8, 0.55, 1.0),
     'FLOWER': (0.95, 0.6, 0.8, 1.0),
+    'SCURVE': (0.5, 0.75, 1.0, 1.0),
     'WRINKLE': (0.95, 0.45, 0.75, 1.0),
     'HIDE': (1.0, 0.62, 0.10, 1.0),               # 0.23.17 Box Hide: orange like Cut (hide and Alt = show)
     'DETAIL': (0.95, 0.85, 0.35, 1.0),            # 0.24 Plate Detail: yellow
@@ -1208,7 +1209,7 @@ class StrokeLogic:
 
     def _line_mode(self):
         from . import lasso_line
-        if self.mode in {'BELT', 'SPIKE', 'SCALES'}:     # 0.24.20 these tools always draw a line
+        if self.mode in {'BELT', 'SCURVE'}:    # 0.24.20 Belt Maker / Surface Curve always draw a line
             return self.shape in {'LASSO', 'CURVE_LASSO', 'STROKE'}
         return lasso_line.enabled(bpy.context, self.mode, self.shape)
 
@@ -1248,7 +1249,7 @@ class StrokeLogic:
 
     def _needs_target(self):
         return self.mode not in {'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'BELT', 'SPIKE', 'SCALES',
-                                 'FLOWER'}
+                                 'FLOWER', 'SCURVE'}
 
     def _tangents(self, pts=None):
         pts = self.pts if pts is None else pts
@@ -1346,7 +1347,9 @@ class StrokeLogic:
         self.projector = make_projector(region, rv3d)
         scene = context.scene
         self.brush = scene.mch_brush
-        self.shape = self.brush.shape
+        self.shape = self.brush_shape = self.brush.shape
+        if self.shape in {'LASSO', 'CURVE_LASSO'} and self._line_mode():
+            self.shape = 'STROKE'     # 0.24.20 a line: draw while holding LMB, releasing applies (every tool)
         xy, inside = self._region_xy(event)
         if not inside:
             return {'PASS_THROUGH'}
@@ -1363,7 +1366,8 @@ class StrokeLogic:
             except RuntimeError as ex:
                 self.report({'WARNING'}, str(ex))
             return {'CANCELLED'}
-        if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER'} and self.shape == 'LASSO' and self.brush.line_open:
+        if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER',
+                     'SPIKE', 'SCALES'} and self.shape == 'LASSO' and self.brush.line_open:
             self.brush.line_open = False
         self.ui = ui_scale(context)
         self.target_names = []
@@ -1630,12 +1634,15 @@ class StrokeLogic:
         if self.mode == 'BELT':
             from . import belt_maker
             return belt_maker.perform(context, self._line_path(), self.projector)
-        if self.mode == 'SPIKE':
-            from . import creature_spike
-            return creature_spike.perform(context, self._line_path(), self.projector)
-        if self.mode == 'SCALES':
-            from . import creature_scales
-            return creature_scales.perform(context, self._line_path(), self.projector)
+        if self.mode == 'SCURVE':
+            from . import surface_curve
+            return surface_curve.perform(context, self._line_path(), self.projector)
+        if self.mode in {'SPIKE', 'SCALES'}:   # 0.24.20 a lasso fills the area, the Line button = along a line
+            from . import creature_scales, creature_spike
+            mod = creature_spike if self.mode == 'SPIKE' else creature_scales
+            if self._line_mode():
+                return mod.perform(context, self._line_path(), self.projector)
+            return mod.perform_area(context, self._current_loops(self.ctrl_held, self.shift_held), self.projector)
         if self.mode == 'MASK' and self.shape == 'STROKE':
             from . import mask_tools
             points = smooth_open(self.pts, self.brush.stroke_smooth)
@@ -1717,7 +1724,8 @@ class StrokeLogic:
         if self.shape in {'LASSO', 'CURVE_LASSO'}:
             self._clean_points()
             if self.shape == 'LASSO' and len(self.pts) >= 2 and (self.line_open or len(self.pts) == 2):
-                if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER'}:
+                if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER',
+                     'SPIKE', 'SCALES'}:
                     self.report({'WARNING'}, 'This tool needs a closed outline (3+ points)')
                     return {'RUNNING_MODAL'}
                 if self.mode == 'SPLIT':
@@ -1773,7 +1781,7 @@ class StrokeLogic:
             return self._cancel(context)
         if self.native_tool and ts.native_tool_id(context) != self.native_tool:
             return self._cancel(context)          # tool switched from toolbar/list
-        if context.scene.mch_brush.shape != self.shape:
+        if context.scene.mch_brush.shape != getattr(self, 'brush_shape', self.shape):
             self.report({'INFO'}, 'Shape changed: unfinished stroke discarded')
             return self._cancel(context)
 
@@ -1875,7 +1883,8 @@ class StrokeLogic:
             self._hint(context)
             self.region.tag_redraw()
             return {'RUNNING_MODAL'}
-        if et == 'F' and ev == 'PRESS' and self.shape == 'LASSO' and self.mode not in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER'}:
+        if et == 'F' and ev == 'PRESS' and self.shape == 'LASSO' and self.mode not in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER',
+                     'SPIKE', 'SCALES'}:
             self.line_open = not self.line_open
             self.brush.line_open = self.line_open
             self.region.tag_redraw()
@@ -1975,7 +1984,7 @@ class StrokeLogic:
                 self.mouse = xy
                 if self.shape == 'STROKE':
                     self._stroke_finish(xy)
-                    if len(self.pts) < (1 if self.mode == 'MASK' else 3):
+                    if len(self.pts) < (1 if self.mode == 'MASK' else 2 if self._line_mode() else 3):
                         return self._cancel(context)
                 return self._run(context, self._execute_closed)
             return {'RUNNING_MODAL'}
@@ -2080,6 +2089,7 @@ class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
         ('SPIKE', 'Creature Spike', 'Spikes standing along the drawn line'),
         ('SCALES', 'Creature Scales', 'Overlapping scales along the drawn line'),
         ('FLOWER', 'Flower Plate', 'A petal from the outline: attached at the start, curling away'),
+        ('SCURVE', 'Surface Curve', 'A Mesh Curve lying on the surface along the drawn line'),
         ('WRINKLE', 'Cloth Wrinkle', 'New cloth layer with wrinkles on the mesh under the outline'),
         ('HIDE', 'Box Hide', 'Hide the meshes inside the shape (Alt: show again)'),
         ('DETAIL', 'Plate Detail', 'Low trim detail on the plate under the outline'),

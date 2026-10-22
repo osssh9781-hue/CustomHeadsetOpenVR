@@ -199,7 +199,10 @@ CREATURE_SECTIONS = {
 PROFILE_ITEMS = [('ROUND', 'Round', ''), ('SQUARE', 'Square', ''), ('FLAT', 'Flat', 'Flattened (Ratio)'),
                  ('CREATURE_A', 'Creature A', 'Lumpy section with a step on one side'),
                  ('CREATURE_B', 'Creature B', 'Oval section with a hook on one side'),
-                 ('CREATURE_C', 'Creature C', 'Leaf-like section with a notch and a point')]
+                 ('CREATURE_C', 'Creature C', 'Leaf-like section with a notch and a point'),
+                 ('GUTS', 'Guts', 'Intestine-like: soft lumpy section, pinched every so often along the length'),
+                 ('OBJECT', 'From Object', 'The outline of an object you pick (a flat mesh or a curve) is the section: '
+                  'your own presets')]
 PROFILE_CYCLE = tuple(i[0] for i in PROFILE_ITEMS)
 
 
@@ -261,8 +264,55 @@ def add_lines(prof, count, height, width=0.5, rotate=0.0):
     return out
 
 
-def profile(kind, sides, ratio=0.5):
+def object_profile(ob, depsgraph=None):
+    """0.24.20 the section from an object: its outline (boundary edges, or the edges of a curve / wire) in its
+    local XY, centred, radius 1, CCW.  None when it has no usable outline."""
+    from . import belt_maker as bmk
+    if ob is None or ob.type not in {'MESH', 'CURVE'}:
+        return None
+    dg = depsgraph or bpy.context.evaluated_depsgraph_get()
+    ev = ob.evaluated_get(dg)
+    try:
+        me = ev.to_mesh()
+    except RuntimeError:
+        return None
+    try:
+        count = {}
+        for poly in me.polygons:
+            for k in poly.edge_keys:
+                count[k] = count.get(k, 0) + 1
+        edges = [tuple(e.vertices) for e in me.edges if count.get(tuple(sorted(e.vertices)), 0) <= 1]
+        chains = [ch for ch, closed in bmk.loops_from_edges(edges) if len(ch) >= 3]
+        if not chains:
+            return None
+        chain = max(chains, key=len)
+        pts = [(me.vertices[i].co.x, me.vertices[i].co.y) for i in chain]
+    finally:
+        ev.to_mesh_clear()
+    cx = sum(q[0] for q in pts) / len(pts)
+    cy = sum(q[1] for q in pts) / len(pts)
+    r = max(math.hypot(q[0] - cx, q[1] - cy) for q in pts) or 1.0
+    pts = [((q[0] - cx) / r, (q[1] - cy) / r) for q in pts]
+    area = sum(pts[i][0] * pts[(i + 1) % len(pts)][1] - pts[(i + 1) % len(pts)][0] * pts[i][1]
+               for i in range(len(pts)))
+    return pts if area > 0 else pts[::-1]
+
+
+def profile(kind, sides, ratio=0.5, loop=None):
     """Unit outline (2D) of the tube cross section."""
+    if kind == 'OBJECT':
+        if loop and len(loop) >= 3:
+            start = min(range(len(loop)), key=lambda i: abs(math.atan2(loop[i][1], loop[i][0])))
+            return _resample_closed(loop[start:] + loop[:start], max(8, int(sides)))
+        kind = 'ROUND'                      # no object picked yet
+    if kind == 'GUTS':                       # 0.24.20 soft lobes
+        n = max(8, int(sides))
+        out = []
+        for i in range(n):
+            a = 2 * math.pi * i / n
+            r = 1.0 + 0.08 * math.sin(3 * a) + 0.04 * math.sin(5 * a + 1.0)
+            out.append((math.cos(a) * r, math.sin(a) * r))
+        return out
     if kind in CREATURE_SECTIONS:
         return creature_profile(kind, sides)
     if kind == 'SQUARE':
@@ -291,7 +341,7 @@ def tube_mesh(samples, s):
     sides = s.get('sides', 16)
     if lines > 0:
         sides = max(sides, lines * 16)          # enough points across every ridge
-    prof = profile(s.get('profile', 'ROUND'), sides, s.get('ratio', 0.5))
+    prof = profile(s.get('profile', 'ROUND'), sides, s.get('ratio', 0.5), s.get('profile_loop'))
     prof = add_lines(prof, lines, s.get('line_height', 0.0), s.get('line_width', 0.5), s.get('line_rotate', 0.0))
     m = len(prof)
     hole = min(0.95, max(0.0, s.get('hole', 0.0)))
@@ -306,10 +356,15 @@ def tube_mesh(samples, s):
         acc.append(acc[-1] + (samples[i][0] - samples[i - 1][0]).length)
     total = acc[-1] or 1.0
 
+    guts = s.get('profile') == 'GUTS'
+    seg_len = max(2.4 * base_r, 1e-6)
+
     def ring(i, scale=1.0, shift=0.0):
         p, r = samples[i]
         u = acc[i] / total
         rr = base_r * r * (t0 + (t1 - t0) * u) * scale
+        if guts:                             # 0.24.20 pinched every ~2.4 radii, like intestine links
+            rr *= 0.72 + 0.28 * abs(math.sin(math.pi * acc[i] / seg_len)) ** 0.6
         T, N, B = fr[i]
         a0 = rot + twist * u
         ca, sa = math.cos(a0), math.sin(a0)
@@ -514,6 +569,7 @@ def settings(tb):
                 profile=tb.profile, sides=tb.sides, ratio=tb.ratio, cap=tb.cap, hole=tb.hole, rotate=tb.rotate,
                 twist=tb.twist, closed=tb.closed, spline=tb.spline, res=tb.resolution, count=tb.count,
                 lines=tb.lines, line_height=tb.line_height, line_width=tb.line_width, line_rotate=tb.line_rotate,
+                profile_loop=object_profile(tb.profile_object) if tb.profile == 'OBJECT' else None,
                 size=tb.size, follow_radius=tb.follow_radius, align=tb.align, spacing_mode=tb.spacing_mode,
                 spacing=tb.spacing)
 
@@ -588,6 +644,9 @@ class MCH_PG_Tube(bpy.types.PropertyGroup):
     taper_start: _p(FloatProperty, name='Start Size', default=1.0, min=0.0, soft_max=3.0, subtype='FACTOR')
     taper_end: _p(FloatProperty, name='End Size', default=1.0, min=0.0, soft_max=3.0, subtype='FACTOR')
     profile: _p(EnumProperty, name='Profile', items=PROFILE_ITEMS, default='ROUND')
+    profile_object: _p(PointerProperty, name='Section Object', type=bpy.types.Object,
+                       poll=lambda self, o: o.type in {'MESH', 'CURVE'} and not o.mch_tube.live,
+                       description='From Object: this object\'s outline (local XY) is the section')
     lines: _p(IntProperty, name='Lines', default=0, min=0, max=24,
               description='Outer lines: raised ridges running along the tube (0 = none)')
     line_height: _p(FloatProperty, name='Line Height', default=0.15, min=-0.9, soft_max=1.0,
@@ -1164,6 +1223,8 @@ def draw(layout, context):
     if tb.mode == 'TUBE':
         c = sub.column(align=True)
         c.prop(tb, 'profile', text='')
+        if tb.profile == 'OBJECT':
+            c.prop(tb, 'profile_object', text='')
         c.prop(tb, 'sides')
         if tb.profile == 'FLAT':
             c.prop(tb, 'ratio', slider=True)

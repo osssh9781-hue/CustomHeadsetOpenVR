@@ -199,6 +199,102 @@ def surface_line(context, ob, src, p):
     return data
 
 
+def area_points(loops, spacing_px, seed, jitter=0.35):
+    """0.24.20 jittered grid points inside closed screen loops (even-odd) - pure."""
+    rnd = random.Random(seed)
+    xs = [q[0] for lp in loops for q in lp]
+    ys = [q[1] for lp in loops for q in lp]
+    if not xs:
+        return []
+    step = max(spacing_px, 2.0)
+    out = []
+    row = 0
+    y = min(ys) + step * 0.5
+    while y < max(ys):
+        x = min(xs) + step * (0.5 + 0.5 * (row % 2))
+        while x < max(xs):
+            q = (x + (rnd.random() * 2 - 1) * jitter * step, y + (rnd.random() * 2 - 1) * jitter * step)
+            if cg.point_in_loops(q, loops):
+                out.append(q)
+            x += step
+        y += step * 0.866
+        row += 1
+    return out
+
+
+def area_frame(context, target, projector, loops, start):
+    """(bvh, world units per pixel, screen direction from the start of the outline across it)."""
+    from . import armor_plate as ap
+    bvh = ap._target_bvh(context, target)[0]
+    xs = [q for lp in loops for q in lp]
+    cx = sum(q[0] for q in xs) / len(xs)
+    cy = sum(q[1] for q in xs) / len(xs)
+    hits = []
+    for q in ((cx, cy), (cx + 20.0, cy)):
+        o, d = projector.ray(q)
+        loc, _n, _i, _dd = bvh.ray_cast(Vector(o), Vector(d))
+        hits.append(loc)
+    wpp = (hits[1] - hits[0]).length / 20.0 if hits[0] is not None and hits[1] is not None else 0.01
+    dx, dy = cx - start[0], cy - start[1]
+    ln = math.hypot(dx, dy)
+    return bvh, max(wpp, 1e-6), ((dx / ln, dy / ln) if ln > 1e-6 else (1.0, 0.0))
+
+
+def surface_spot(bvh, projector, q, d):
+    """(position, normal, direction along the surface) of a screen point and a screen direction, or None."""
+    o, ray = projector.ray(q)
+    loc, n, _i, _dd = bvh.ray_cast(Vector(o), Vector(ray))
+    if loc is None:
+        return None
+    if n.dot(Vector(ray)) > 0:
+        n = -n
+    o2, ray2 = projector.ray((q[0] + d[0] * 6.0, q[1] + d[1] * 6.0))
+    loc2, _n2, _i2, _d2 = bvh.ray_cast(Vector(o2), Vector(ray2))
+    t = (loc2 - loc) if loc2 is not None else Vector(ray).cross(n)
+    t = t - n * t.dot(n)
+    if t.length < 1e-9:
+        t = n.orthogonal()
+    return loc, n.normalized(), t.normalized()
+
+
+def spots(context, ob, src, p):
+    """[(position, normal, direction)] where the spikes stand: along the line, or filling the lasso area."""
+    from . import armor_plate as ap
+    if src.get('loops'):
+        target = bpy.data.objects.get(src.get('target', ''))
+        if target is None or target.type != 'MESH':
+            raise cg.CutError('The mesh the spikes were drawn on is gone.')
+        projector = ap.thaw_projector(src['proj'])
+        loops = [[tuple(q) for q in lp] for lp in src['loops']]
+        bvh, wpp, d = area_frame(context, target, projector, loops, loops[0][0])
+        out = []
+        for q in area_points(loops, p.spacing * p.size / wpp, p.seed):
+            sp = surface_spot(bvh, projector, q, d)
+            if sp is not None:
+                out.append(sp)
+        return out
+    pts, nrms = surface_line(context, ob, src, p)
+    acc = [0.0]
+    for a, b in zip(pts, pts[1:]):
+        acc.append(acc[-1] + (b - a).length)
+    total = acc[-1]
+    if total <= 0:
+        raise cg.CutError('The line is too short.')
+    out, j = [], 0
+    step = max(p.spacing * p.size, 1e-4)
+    count = max(1, int(total / step))
+    start = (total - (count - 1) * step) / 2.0 if count > 1 else total / 2.0
+    for i in range(count):
+        s = start + i * step
+        while j < len(acc) - 2 and acc[j + 1] < s:
+            j += 1
+        t = (s - acc[j]) / max(acc[j + 1] - acc[j], 1e-12)
+        N = nrms[j].lerp(nrms[j + 1], t).normalized()
+        T = pts[j + 1] - pts[j]
+        out.append((pts[j].lerp(pts[j + 1], t), N, (T - N * T.dot(N)).normalized()))
+    return out
+
+
 def build(context, ob):
     src = source(ob)
     if src is None:
@@ -207,28 +303,16 @@ def build(context, ob):
     presets = enabled_presets(p)
     if not presets:
         raise cg.CutError('Tick at least one spike preset.')
-    pts, nrms = surface_line(context, ob, src, p)
-    acc = [0.0]
-    for a, b in zip(pts, pts[1:]):
-        acc.append(acc[-1] + (b - a).length)
-    total = acc[-1]
-    if total <= 0:
-        raise cg.CutError('The line is too short.')
+    rnd = random.Random(p.seed)
     verts, faces = [], []
-    j = 0
-    for s, kind, size, lean, turn in layout(total, p.spacing * p.size, presets, p.size, p.size_random, p.lean,
-                                             p.lean_random, p.turn_random, p.seed):
-        while j < len(acc) - 2 and acc[j + 1] < s:
-            j += 1
-        t = (s - acc[j]) / max(acc[j + 1] - acc[j], 1e-12)
-        pos = pts[j].lerp(pts[j + 1], t)
-        N = nrms[j].lerp(nrms[j + 1], t).normalized()
-        T = pts[j + 1] - pts[j]
-        T = (T - N * T.dot(N)).normalized()
+    for pos, N, T in spots(context, ob, src, p):
+        kind = presets[rnd.randrange(len(presets))]
+        size = max(p.size * (1.0 + p.size_random * (rnd.random() * 2.0 - 1.0)), p.size * 0.05)
+        lean = p.lean + p.lean_random * (rnd.random() * 2.0 - 1.0)
+        turn = p.turn_random * (rnd.random() * 2.0 - 1.0)
         if p.flip:
             T = -T
-        rot = Matrix.Rotation(turn, 3, N)
-        T = rot @ T
+        T = Matrix.Rotation(turn, 3, N) @ T
         Sd = T.cross(N).normalized()
         cl, sl = math.cos(-lean), math.sin(-lean)
         uv, uf = unit_spike(kind, p.thickness)
@@ -238,7 +322,7 @@ def build(context, ob):
             verts.append(pos + (T * xx + N * (yy - p.sink) + Sd * z) * size)
         faces += [tuple(i + off for i in f) for f in uf]
     if not verts:
-        raise cg.CutError('No spike fits on the line (lower Spacing or Size).')
+        raise cg.CutError('No spike fits (draw over the mesh, or lower Spacing / Size).')
     return verts, faces
 
 
@@ -253,8 +337,17 @@ def rebuild(context, ob):
     me.update()
 
 
-def perform(context, path, projector):
-    """Open drawn path (pixels) -> live spikes along it.  Returns a report; raises cg.CutError."""
+def perform_area(context, loops, projector):
+    """0.24.20 closed lasso (pixels) -> live spikes filling the area (leaning away from where you started)."""
+    loops = [[tuple(q) for q in lp] for lp in loops if len(lp) >= 3]
+    if not loops:
+        raise cg.CutError('Spikes: draw an area (3+ points) or turn Line on.')
+    return perform(context, [q for lp in loops for q in lp], projector, loops=loops)
+
+
+def perform(context, path, projector, loops=None):
+    """Open drawn path (pixels) -> live spikes along it (``loops``: filling that area instead).
+    Returns a report; raises cg.CutError."""
     from . import armor_plate as ap
     from . import belt_maker as bmk
     from . import face_extract as fx
@@ -274,7 +367,8 @@ def perform(context, path, projector):
     for mat in target.data.materials:
         me.materials.append(mat)
     ob[SRC_KEY] = json.dumps({'path': [[float(x), float(y)] for x, y in path], 'proj': frozen,
-                              'target': target.name, 'stamp': id(ob) % 100000})
+                              'target': target.name, 'stamp': id(ob) % 100000,
+                              'loops': [[[float(x), float(y)] for x, y in lp] for lp in loops] if loops else None})
     p = ob.mch_spike
     for k in LIVE_KEYS:
         setattr(p, k, getattr(st, k))
@@ -358,8 +452,8 @@ def draw(layout_, context):
         target.operator('mch.spike_apply', icon='CHECKMARK')
     col = layout_.column(align=True)
     col.scale_y = 0.8
-    for line in ('Draw a line over a mesh (click points / Free Draw), Enter',
-                 'Spikes stand along it, leaning along the line', 'Seed: another random mix, Apply: plain mesh'):
+    for line in ('Lasso an area on a mesh: spikes fill it, leaning away from', 'where you started; Line button on: along a line',
+                 'Seed: another random mix, Apply: plain mesh'):
         col.label(text=line)
 
 

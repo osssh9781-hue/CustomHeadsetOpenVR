@@ -86,6 +86,16 @@ def use_tool(tool):
 
 def lasso(points, finish='RET'):
     ctx, op = Ctx(), Op()
+    if br.line_mode:
+        # 0.24.20 Line mode: press, drag through the points, release applies (no Enter / double-click)
+        op.invoke(ctx, E('LEFTMOUSE', 'PRESS', *points[0]))
+        for (x0, y0), (x1, y1) in zip(points, points[1:]):
+            for k in range(1, 21):
+                t = k / 20
+                op.modal(ctx, E('MOUSEMOVE', 'NOTHING', x0 + (x1 - x0) * t, y0 + (y1 - y0) * t))
+        preview = (op.preview_closed(), op.preview_loops())
+        r = op.modal(ctx, E('LEFTMOUSE', 'RELEASE', *points[-1]))
+        return r, (op.reports[-1][1] if op.reports else ''), preview
     op.invoke(ctx, E('LEFTMOUSE', 'PRESS', *points[0]))
     op.modal(ctx, E('LEFTMOUSE', 'RELEASE', *points[0]))
     for x, y in points[1:]:

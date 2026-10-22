@@ -73,6 +73,37 @@ def placements(path_px, step_px, rows, row_gap_px, presets, size_px, size_random
     return out
 
 
+def area_placements(loops, direction, step_px, row_gap_px, presets, size_px, size_random, rotate_random, seed,
+                    flip=False):
+    """0.24.20 scales filling closed screen loops: rows across ``direction`` (from the start of the outline across
+    it), staggered; roots point back against it - pure."""
+    rnd = random.Random(seed)
+    pts = [q for lp in loops for q in lp]
+    if not pts or not presets:
+        return []
+    dx, dy = direction
+    nx, ny = -dy, dx
+    us = [q[0] * dx + q[1] * dy for q in pts]
+    vs = [q[0] * nx + q[1] * ny for q in pts]
+    step, gap = max(step_px, 1.0), max(row_gap_px, 1.0)
+    back = math.atan2(-dy, -dx) if not flip else math.atan2(dy, dx)
+    out = []
+    r = 0
+    v = min(vs) + gap * 0.5
+    while v < max(vs):
+        u = min(us) + step * (0.5 + 0.5 * (r % 2))
+        while u < max(us):
+            q = (u * dx + v * nx, u * dy + v * ny)
+            if cg.point_in_loops(q, loops):
+                kind = presets[rnd.randrange(len(presets))]
+                sz = size_px * (1.0 + size_random * (rnd.random() * 2.0 - 1.0))
+                out.append((q, back + rotate_random * (rnd.random() * 2.0 - 1.0), kind, max(sz, size_px * 0.1)))
+            u += step
+        v += gap
+        r += 1
+    return out
+
+
 def scale_outline(stem, centre, angle, size):
     """A scale stamp turned so its root points along ``angle``, ``size`` px long, root first."""
     from . import cut_presets
@@ -173,18 +204,29 @@ def build(context, ob):
         raise cg.CutError('The mesh the scales were drawn on is gone.')
     projector = ap.thaw_projector(src['proj'])
     path = [tuple(q) for q in src['path']]
+    loops = [[tuple(q) for q in lp] for lp in src['loops']] if src.get('loops') else None
     hit = _CACHE.get(ob.name)
     if hit is None or hit[0] != src.get('stamp'):
-        hit = (src.get('stamp'), _world_per_px(context, target, projector, path), ap._target_bvh(context, target)[0])
+        if loops:
+            from . import creature_spike as csp
+            bvh, wpp, d = csp.area_frame(context, target, projector, loops, loops[0][0])
+        else:
+            bvh, wpp, d = ap._target_bvh(context, target)[0], _world_per_px(context, target, projector, path), None
+        hit = (src.get('stamp'), wpp, bvh, d)
         _CACHE[ob.name] = hit
-    wpp, bvh = hit[1], hit[2]
+    wpp, bvh, direction = hit[1], hit[2], hit[3]
     size_px = p.size / max(wpp, 1e-9)
+    if loops:                              # 0.24.20 a lasso: fill the area
+        where = area_placements(loops, direction, p.spacing * size_px, p.row_gap * size_px, stems, size_px,
+                                p.size_random, p.rotate_random, p.seed, p.flip)
+    else:
+        where = placements(path, p.spacing * size_px, p.rows, p.row_gap * size_px, stems, size_px, p.size_random,
+                           p.rotate_random, p.seed, p.flip)
     field_p = types.SimpleNamespace(profile='SCALE', resolution=p.resolution, outline_smooth=0.3,
                                     edge_round=p.edge_round, puff=1.0)
     plate_p = types.SimpleNamespace(profile='SCALE', direction=0.0, edge_thickness=0.0, sink=0.0, tip_lift=-1.0)
     verts, faces = [], []
-    for centre, ang, stem, sz in placements(path, p.spacing * size_px, p.rows, p.row_gap * size_px, stems,
-                                            size_px, p.size_random, p.rotate_random, p.seed, p.flip):
+    for centre, ang, stem, sz in where:
         outline = scale_outline(stem, centre, ang, sz)
         try:
             _b, pts, tris, nb, shape, natural_px, _sp = bmm.profile_field(outline, [], field_p)
@@ -223,7 +265,15 @@ def rebuild(context, ob):
     me.update()
 
 
-def perform(context, path, projector):
+def perform_area(context, loops, projector):
+    """0.24.20 closed lasso -> scales filling it (roots toward where you started drawing)."""
+    loops = [[tuple(q) for q in lp] for lp in loops if len(lp) >= 3]
+    if not loops:
+        raise cg.CutError('Scales: draw an area (3+ points) or turn Line on.')
+    return perform(context, [q for lp in loops for q in lp], projector, loops=loops)
+
+
+def perform(context, path, projector, loops=None):
     from . import armor_plate as ap
     from . import belt_maker as bmk
     from . import face_extract as fx
@@ -243,7 +293,8 @@ def perform(context, path, projector):
     for mat in target.data.materials:
         me.materials.append(mat)
     ob[SRC_KEY] = json.dumps({'path': [[float(x), float(y)] for x, y in path], 'proj': frozen,
-                              'target': target.name, 'stamp': id(ob) % 100000})
+                              'target': target.name, 'stamp': id(ob) % 100000,
+                              'loops': [[[float(x), float(y)] for x, y in lp] for lp in loops] if loops else None})
     p = ob.mch_scales
     for k in LIVE_KEYS:
         setattr(p, k, getattr(st, k))
@@ -329,8 +380,8 @@ def draw(layout, context):
         target.operator('mch.scales_apply', icon='CHECKMARK')
     col = layout.column(align=True)
     col.scale_y = 0.8
-    for line in ('Draw a line over a mesh, Enter: scales along it',
-                 'Roots point back along the line, tips overlap the next', 'Seed: another mix, Apply: plain mesh'):
+    for line in ('Lasso an area on a mesh: scales fill it, roots toward', 'where you started; Line button on: along a line',
+                 'Seed: another mix, Apply: plain mesh'):
         col.label(text=line)
 
 

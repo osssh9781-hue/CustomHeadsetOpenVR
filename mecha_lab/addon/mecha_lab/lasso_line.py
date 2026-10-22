@@ -14,7 +14,7 @@ import math
 
 from mathutils import Vector
 
-MODES = {'CUT', 'SPLIT', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE'}
+MODES = {'CUT', 'SPLIT', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'SPIKE', 'SCALES'}
 CAPS = (('ROUND', 'Round', 'Round line ends'), ('FLAT', 'Flat', 'Square line ends'))
 
 
