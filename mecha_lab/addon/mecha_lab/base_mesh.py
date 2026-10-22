@@ -16,6 +16,10 @@ modified except for the new object.  Outline -> plane -> profile:
            triangulation of the densified outline plus interior grid points,
            so concave outlines never produce the flipped faces of a
            centre-fan.  This is a real height field, not a bevel.
+* PUFF     0.24.20 an inflated lump: the same point set, a height field on BOTH sides meeting at the outline
+           (no wall), every cross-section round - a thin part (arm) gets a thin tube, a wide part a fat one:
+           height = Puff * sqrt(2 w d - d^2), d = distance to the outline, w = the local half width (the
+           distance at the nearest ridge point of the distance field).
 
 The outline and settings are stored on the object (``Object.mch_base``), so
 changing the profile / height / resolution later rebuilds the mesh (Live).
@@ -39,6 +43,8 @@ PROFILES = (
     ('BEVEL', 'Bevel', 'Rounded top border only (width / segments)', 'profile_bevel', 'MOD_SUBSURF'),
     ('DOME', 'Rounded / Dome', 'The whole top bulges smoothly from the border inward '
      '(height field, not a bevel)', 'profile_dome', 'MESH_UVSPHERE'),
+    ('PUFF', 'Puff', 'Inflated lump: round on both sides, every part as thick as it is wide '
+     '(arm-like outlines become tubes) - a sculpting base', 'profile_puff', 'META_BALL'),
 )
 PROFILE_ITEMS = [(p[0], p[1], p[2], p[4], i) for i, p in enumerate(PROFILES)]
 SIDE_ITEMS = [
@@ -49,12 +55,12 @@ SIDE_ITEMS = [
 ]
 FLIP_SIDES = {'TOP': 'BOTTOM', 'BOTTOM': 'TOP', 'BOTH': 'BOTH', 'NONE': 'NONE'}
 SETTING_KEYS = ('height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 'resolution', 'offset',
-                'bottom_too', 'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link')
+                'bottom_too', 'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link', 'puff')
 MAX_DOME_POINTS = 12000
 
 
 CARRY_KEYS = ('profile', 'height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 'resolution', 'offset',
-              'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link')
+              'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link', 'puff')
 
 
 def _rebuild_update(self, context):
@@ -91,7 +97,10 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
     roundness: FloatProperty(name='Roundness', default=0.34, min=0.0, max=1.0, update=_rebuild_update,
                              description='Dome profile: 0 = straight roof, ~0.33 = circular, 1 = full / boxy')
     resolution: IntProperty(name='Resolution', default=28, min=4, max=128, update=_rebuild_update,
-                            description='Dome samples across the shape (higher = smoother, heavier)')
+                            description='Dome / Puff samples across the shape (higher = smoother, heavier)')
+    puff: FloatProperty(name='Puff', default=1.0, min=0.05, soft_max=2.5, update=_rebuild_update,
+                        description='Puff: thickness against width - 1 = round cross-sections, '
+                                    '0.5 = flattened, 2 = taller than wide')
     offset: FloatProperty(name='Offset', default=0.0, soft_min=-5.0, soft_max=5.0, precision=4,
                           unit='LENGTH', update=_rebuild_update,
                           description='Move the solid along its normal (toward the viewer is positive)')
@@ -304,7 +313,9 @@ def _add_prism(bm, outer, holes, height):
     return rim_top, rim_bottom
 
 
-def _add_dome(bm, outer, holes, p):
+def _dome_points(outer, holes, p, rings=()):
+    """(dense loops, boundary points, interior points, distance of every point, spacing) for Dome / Puff.
+    ``rings`` (fractions of the spacing): rows of points that far inside the outline (Puff: an even round rim)."""
     loops = [outer] + list(holes)
     xs = [q[0] for lp in loops for q in lp]
     ys = [q[1] for lp in loops for q in lp]
@@ -327,19 +338,46 @@ def _add_dome(bm, outer, holes, p):
                 cand.append(q)
     if cand:
         dist = _distances(cand, dense)
-        interior = [q for q, d in zip(cand, dist) if d > 0.45 * spacing]
+        keep = (max(rings) + 0.4) * spacing if rings else 0.45 * spacing
+        interior = [q for q, d in zip(cand, dist) if d > keep]
+    for r in rings:
+        ring = []
+        for lp in dense:
+            n = len(lp)
+            for i in range(n):
+                a, b, c = lp[i - 1], lp[i], lp[(i + 1) % n]
+                # left of the walking direction is inside (outer CCW, holes CW)
+                nx_, ny_ = -(c[1] - a[1]), c[0] - a[0]
+                ln = math.hypot(nx_, ny_)
+                if ln < 1e-12:
+                    continue
+                ring.append((b[0] + nx_ / ln * r * spacing, b[1] + ny_ / ln * r * spacing))
+        ring = [q for q in ring if cg.point_in_loops(q, dense)]
+        if ring:
+            dist = _distances(ring, dense)
+            interior += [q for q, d in zip(ring, dist) if 0.6 * r * spacing < d < 1.4 * r * spacing]
     if len(interior) > MAX_DOME_POINTS:
         raise cg.CutError('Dome resolution too high for this outline; lower Resolution.')
-    pts = boundary + interior
     d_all = [0.0] * len(boundary) + (_distances(interior, dense) if interior else [])
-    radius = max(max(d_all), spacing)
-    nb = len(boundary)
+    return dense, boundary, interior, d_all, spacing
+
+
+def _loop_edges(dense):
     edges = []
     off = 0
     for lp in dense:
         n = len(lp)
         edges += [(off + i, off + (i + 1) % n) for i in range(n)]
         off += n
+    return edges
+
+
+def _add_dome(bm, outer, holes, p):
+    dense, boundary, interior, d_all, spacing = _dome_points(outer, holes, p)
+    pts = boundary + interior
+    radius = max(max(d_all), spacing)
+    nb = len(boundary)
+    edges = _loop_edges(dense)
     # A zero edge height would make border-only top triangles coincide with the
     # bottom cap; keep a minimal wall (1% of the height) so the solid stays valid.
     wall = max(p.wall, p.height * 0.01, 1e-5)
@@ -362,6 +400,94 @@ def _add_dome(bm, outer, holes, p):
         off += n
     for f in top_faces:
         f.smooth = True
+
+
+def puff_heights(pts, d_all, nb, spacing, puff=1.0):
+    """0.24.20 heights of an inflated lump: round cross-sections everywhere.  ``w`` (local half width) =
+    the distance at the nearest ridge point (a point whose distance is not beaten by its neighbours), so an
+    arm-like part gets its own radius, not the body's.  Boundary points (the first ``nb``) stay 0."""
+    from mathutils.kdtree import KDTree
+    n = len(pts)
+    if n <= nb:
+        return [0.0] * n
+    kd = KDTree(n)
+    for i, (x, y) in enumerate(pts):
+        kd.insert((x, y, 0.0), i)
+    kd.balance()
+    reach, tol = 1.6 * spacing, 0.05 * spacing
+    ridge = [i for i in range(nb, n)
+             if d_all[i] + tol >= max(d_all[j] for _co, j, _dd in kd.find_range((*pts[i], 0.0), reach))]
+    kr = KDTree(len(ridge))
+    for k, i in enumerate(ridge):
+        kr.insert((*pts[i], 0.0), k)
+    kr.balance()
+    out = [0.0] * n
+    for i in range(nb, n):
+        d = d_all[i]
+        _co, k, _dd = kr.find((*pts[i], 0.0))
+        w = max(d_all[ridge[k]], d, 1e-9)
+        out[i] = puff * math.sqrt(max(0.0, 2.0 * w * d - d * d))
+    return out
+
+
+def _add_puff(bm, outer, holes, p):
+    dense, boundary, interior, d_all, spacing = _dome_points(outer, holes, p, rings=(0.3, 0.8))
+    pts = boundary + interior
+    nb = len(boundary)
+    edges = _loop_edges(dense)
+    tris = [list(_orient_ccw(t, pts)) for t in _triangulate(pts, nb, dense, edges)]
+    # an edge across the shape between two outline points (narrow spots) would be shared by the top AND the
+    # bottom: split it at its middle (a new inside point)
+    outline = {(min(e), max(e)) for e in edges}
+    chords = {}
+    for t in tris:
+        for k in range(3):
+            e = (min(t[k], t[(k + 1) % 3]), max(t[k], t[(k + 1) % 3]))
+            if e[1] < nb and e not in outline and e not in chords:
+                chords[e] = len(pts) + len(chords)
+    if chords:
+        extra = [None] * len(chords)
+        for (i, j), m in chords.items():
+            extra[m - len(pts)] = ((pts[i][0] + pts[j][0]) / 2.0, (pts[i][1] + pts[j][1]) / 2.0)
+        split = True
+        while split:                       # a triangle can carry up to three chords
+            split = False
+            out = []
+            for t in tris:
+                for k in range(3):
+                    a, b, c = t[k], t[(k + 1) % 3], t[(k + 2) % 3]
+                    m = chords.get((min(a, b), max(a, b)))
+                    if m is not None:
+                        out += [[a, m, c], [m, b, c]]
+                        split = True
+                        break
+                else:
+                    out.append(t)
+            tris = out
+        pts = pts + extra
+        d_all = list(d_all) + _distances(extra, dense)
+    if len(pts) == nb:
+        raise cg.CutError('Outline too small for Puff; draw it bigger or raise Resolution.')
+    h = puff_heights(pts, d_all, nb, spacing, getattr(p, 'puff', 1.0))
+    # two light smoothing passes (the ridge search works on a grid: no steps)
+    nbrs = [set() for _ in pts]
+    for a, b, c in tris:
+        nbrs[a] |= {b, c}
+        nbrs[b] |= {a, c}
+        nbrs[c] |= {a, b}
+    inner_nb = [[j for j in nbrs[i] if j >= nb] for i in range(len(pts))]   # outline zeros would flatten tubes
+    for _ in range(2):
+        h = [0.0 if i < nb or not inner_nb[i] else 0.5 * h[i] + 0.5 * sum(h[j] for j in inner_nb[i]) / len(inner_nb[i])
+             for i in range(len(pts))]
+    floor = spacing * 0.02          # top and bottom never meet inside (they would be merged as doubles)
+    h = [hh if i < nb else max(hh, floor) for i, hh in enumerate(h)]
+    rim = [bm.verts.new((x, y, 0.0)) for x, y in boundary]
+    inner = pts[nb:]
+    top = rim + [bm.verts.new((x, y, hh)) for (x, y), hh in zip(inner, h[nb:])]
+    bottom = rim + [bm.verts.new((x, y, -hh)) for (x, y), hh in zip(inner, h[nb:])]
+    for tri in tris:
+        bm.faces.new([top[i] for i in tri]).smooth = True
+        bm.faces.new([bottom[i] for i in reversed(tri)]).smooth = True
 
 
 def side_values(p, flip=False):
@@ -513,6 +639,8 @@ def build_bmesh(groups, p, flip=False):
         for outer, holes in groups:
             if p.profile == 'DOME':
                 _add_dome(bm, outer, holes, p)
+            elif p.profile == 'PUFF':
+                _add_puff(bm, outer, holes, p)
             else:
                 rt, rb = _add_prism(bm, outer, holes, p.height)
                 rim_top += rt
@@ -522,7 +650,7 @@ def build_bmesh(groups, p, flip=False):
         if p.profile in {'BEVEL', 'CHAMFER'}:
             bm, notes = _profile_rims(bm, p, flip)
             LAST_NOTES.extend(notes)
-        embed = getattr(p, 'embed', 0.0)
+        embed = getattr(p, 'embed', 0.0) if p.profile != 'PUFF' else 0.0   # Puff: centred on the plane
         if embed > 0:
             # Stick to Surface: the bottom reaches into the surface (no gap on curves)
             for v in bm.verts:
@@ -805,8 +933,8 @@ def _perform_cutter(context, groups, frame, p, projector, screen_groups, targets
         else (targets or [])
     if not targets:
         raise cg.CutError('Alt Base Mesh cuts into a mesh: start on a mesh or select the target first.')
-    if p.profile == 'DOME':
-        raise cg.CutError('Alt cutter supports Flat / Chamfer / Bevel profiles (Dome has no flat cap).')
+    if p.profile in {'DOME', 'PUFF'}:
+        raise cg.CutError('Alt cutter supports Flat / Chamfer / Bevel profiles (Dome / Puff have no flat cap).')
     bm = build_bmesh(groups, _WithEmbed(p, 0.0), flip=True)
     try:
         # mirror along local Z (into the surface) and lift a hair above it so the

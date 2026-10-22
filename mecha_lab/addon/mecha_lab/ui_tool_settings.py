@@ -489,7 +489,11 @@ def draw_base(layout, context):
         layout.label(text='Settings for the next shape', icon='MESH_CUBE')
     target.row(align=True).prop(p, 'profile', expand=True)
     col = target.column(align=True)
-    col.prop(p, 'height')
+    if p.profile == 'PUFF':         # 0.24.20 thickness follows the width (Puff), no Height
+        col.prop(p, 'puff', slider=True)
+        col.prop(p, 'resolution')
+    else:
+        col.prop(p, 'height')
     if p.profile == 'DOME':
         col.prop(p, 'wall')
         col.prop(p, 'roundness', slider=True)
@@ -511,6 +515,8 @@ def draw_base(layout, context):
         col = target.column(align=True)
     if p.profile == 'DOME':
         target.label(text='Dome: Bevel Sides not used (the top is the bulge)', icon='INFO')
+    elif p.profile == 'PUFF':
+        target.label(text='Puff: round on both sides, thin parts become tubes', icon='INFO')
     elif p.profile == 'FLAT':
         target.label(text='Flat: no bevel (choose Bevel / Chamfer for Bevel Sides)', icon='INFO')
     col.prop(p, 'offset')
