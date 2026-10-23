@@ -70,6 +70,9 @@ PRESETS = (
     ('RIDGE', 'Center Ridge', 'Armor Sculpt plate with a ridge down the middle',
      dict(mode='ARMOR', extract_height=0.05, n_thickness=0.03, e_thickness=0.03, s_thickness=0.03,
           w_thickness=0.03, cl_preset='STRAIGHT', cl_height=0.02)),
+    # 0.24.24 mechanical faceted ridge (its own live plate: mech_ridge.py)
+    ('MRIDGE', 'Mech Ridge', 'Every edge slopes up to sharp ridge lines (a box gives a hip roof); Chamfer / Bevel '
+     'for the ridge lines and the outer edge', dict()),
 )
 PRESET_IDS = tuple(p[0] for p in PRESETS)
 LENGTH_KEYS = {'extract_height', 'thickness', 'surface_offset', 'bevel_width', 'chamfer_width', 'chamfer_depth',
@@ -390,6 +393,9 @@ def perform_plate(context, loops, projector, preset=None):
     scene = context.scene
     st = scene.mch_plate
     preset = preset or st.preset
+    if preset == 'MRIDGE':
+        from . import mech_ridge
+        return mech_ridge.perform(context, loops, projector)
     groups = cg.prepare_loops(loops)
     target = pick_surface(context, projector, groups)
     if target is None:
@@ -743,6 +749,8 @@ class MCH_OT_plate_preset(bpy.types.Operator):
         from . import face_extract as fx
         context.scene.mch_plate.preset = self.preset
         ob = context.active_object
+        if self.preset == 'MRIDGE':
+            return {'FINISHED'}                 # its own live plate: the next drawn plate
         if ob is not None and is_plate_or_part(ob) and ob.mch_extract.region is not None:
             reg = ob.mch_extract.region
             pts = [v.co for v in reg.vertices]
@@ -1164,6 +1172,9 @@ def draw(layout, context):
     grid = box.grid_flow(row_major=True, columns=2, even_columns=True, align=True)
     for pid, label, _d, _v in PRESETS:
         grid.operator('mch.plate_preset', text=label, depress=(st.preset == pid)).preset = pid
+    from . import mech_ridge
+    if st.preset == 'MRIDGE' or mech_ridge.live_plate(context) is not None:
+        mech_ridge.draw(box, context)
     row = box.row(align=True)
     row.prop(st, 'spacing')
     row.prop(st, 'auto_size', toggle=True)

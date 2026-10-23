@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.23
+# Test Report — Mecha Lab 0.24.24
+
+## 0.24.24 결과: 90개 파일 2986/2986 (`tests/test_log_bpy501_v02424.txt`). test_v02424: ccw / Straighten / 쐐기 평면, 박스 = 정확히 4면 + 각 면 기울기 = Slope, 능선 높이 = 벽 + 반폭·tan, Sink, Max Height = 평평한 윗면(라이브), Gable = 경사 2면 + 능선이 양 끝까지 + 닫힌 메쉬, Swap Axis, end_edges, Ridge Chamfer / Bevel(둥근 면 smooth, 주름만 sharp), Outer Edge Chamfer, 다음 플레이트 설정 유지, Apply, L자(오목) 외곽 구 위 닫힌 메쉬 + 표면 위, 다른 프로파일은 기존 Armor Plate; Cut Crisp Shading(경계 sharp, 띠 / 벽 flat, 몸통 smooth, 닫힌 메쉬), 커스텀 노멀 제거 / 끄면 유지, 촘촘한 삼각형 메쉬 정리 후 테두리 점이 잘린 벽 위(1e-4 이내). 실제 화면 표시 · 마우스 입력은 미검증.
 
 ## 0.24.23 결과: 89개 파일 2954/2954 (`tests/test_log_bpy501_v02423.txt`). test_v02422(8): Array → Bevel → Subsurf 순서 적용 = 스택이 보여준 메쉬와 같은 정점 / 면 수, 꺼 둔 Wireframe은 남음, 닫힌 메쉬, Bevel → 겹치는 Array 순서 유지, 모디파이어 없음 = 오류 없음, 클릭 없이 실행 = 선택한 메쉬. test_v02423(19): 크리쳐 플레이트 Alt = 파냄(새 오브젝트 없음, 가운데가 낮아짐, 관통 안 함, 바깥 그대로, 닫힌 메쉬, Height로 깊이), 살아있는 플레이트 위 = 플레이트 구멍, 스케치 Alt+Enter = 파냄 / Enter = 플레이트, 크리쳐 베이스 Alt 그리기 / 스케치 Alt+Enter = 파냄. test_v02421 스케치 + 프리드로우 = 스케치에 바로 추가로 수정, test_v02420 Puff 거절 → Dome 거절, [ / ] Object Mode 키 + poll(Mecha 툴만), Sculpt G 키 + poll, 삼각분할 icosphere(5) Cut Bevel / Chamfer, Split Bevel = 폭 제한 없음 + 닫힌 메쉬(수정 전 0.0015로 제한되는 것 확인). 실제 키 입력 우선순위, 클릭 / 버튼 표시는 미검증.
 

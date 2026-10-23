@@ -2063,6 +2063,7 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
 ENTER_APPLY = (
     ('pdetail_apply', 'Plate Detail'),
     ('plate_apply', 'Armor Plate'),
+    ('mridge_apply', 'Mech Ridge'),
     ('wrinkle_apply', 'Cloth Plate'),
     ('base_freeze', 'Base Mesh'),
     ('mesh_mirror_apply', 'Mirror'),

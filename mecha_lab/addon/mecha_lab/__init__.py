@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 24, 23),
+    "version": (0, 24, 24),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
     "description": "Cut, Split, Base Mesh, Boolean, Face Extract, Armor Sculpt, Molding, Cable, Hollow, curve arrays, Mirror",
@@ -17,7 +17,7 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                cloth_wrinkle, last_used, robot_base, detail_stamp, surface_lasso,
                curve_tube, creature_shell, cloth_sim, box_hide, plate_detail, screw_stamp, lowpoly, fold_patch,
                creature_plate, belt_maker, creature_spike, creature_scales, flower_plate,
-               surface_curve, scale_brush, bridge_patch)
+               surface_curve, scale_brush, bridge_patch, mech_ridge)
 import os
 import re
 from pathlib import Path
@@ -1940,6 +1940,7 @@ def _register():
     primitive_hud.register()
     armor_plate.register()
     creature_plate.register()
+    mech_ridge.register()
     belt_maker.register()
     creature_spike.register()
     creature_scales.register()
@@ -2044,6 +2045,7 @@ def _unregister_steps():
         ('creature_spike', creature_spike.unregister),
         ('belt_maker', belt_maker.unregister),
         ('creature_plate', creature_plate.unregister),
+        ('mech_ridge', mech_ridge.unregister),
         ('armor_plate', armor_plate.unregister),
         ('primitive_hud', primitive_hud.unregister),
         ('primitive_place', primitive_place.unregister),

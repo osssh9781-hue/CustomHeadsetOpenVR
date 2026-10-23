@@ -344,6 +344,11 @@ class MCH_PG_Cut(bpy.types.PropertyGroup):
     finish_clamp: BoolProperty(name='Clamp Overlap', default=True,
                                description='Limit bevel width where neighbouring edges are short (safe geometry). '
                                            'The result message tells you when the width was limited')
+    finish_crisp: BoolProperty(name='Crisp Shading', default=True,
+                               description='0.24.24 hard-surface look: the bevel band gets sharp borders (a chamfer is '
+                                           'a flat strip, a bevel shades round inside), the cut walls stay flat, and '
+                                           'imported custom normals (FBX) are dropped so they do not smear over the '
+                                           'new faces')
     split_cap: BoolProperty(name='Cap Split', default=True,
                             description='Close the cut faces of both parts (OFF leaves open shells)')
     fast_line: BoolProperty(name='Plane Cut for 2 Points', default=True,

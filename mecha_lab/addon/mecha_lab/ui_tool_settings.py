@@ -36,7 +36,9 @@ def draw_edge_finish(layout, context, mode):
             if cut.edge_finish == 'BEVEL':
                 c.prop(cut, 'finish_segments', slider=True)
                 c.prop(cut, 'finish_profile', slider=True)
-            box.prop(cut, 'finish_clamp')
+            r = box.row(align=True)
+            r.prop(cut, 'finish_clamp')
+            r.prop(cut, 'finish_crisp')
             if not context.scene.mch_settings.auto_apply:
                 box.label(text='Edge Finish is skipped in Live mode', icon='INFO')
     elif mode == 'BASE':
@@ -158,7 +160,9 @@ def draw_cut(layout, context, mode='CUT'):
                     sub.prop(cut, f'side_{side}_segments')
         box.operator('mch.split_swap_sides', icon='ARROW_LEFTRIGHT')
         if cut.side_a_finish != 'NONE' or cut.side_b_finish != 'NONE':
-            box.prop(cut, 'finish_clamp')
+            r = box.row(align=True)
+            r.prop(cut, 'finish_clamp')
+            r.prop(cut, 'finish_crisp')
     elif context.scene.mch_brush.shape != 'LASSO':
         draw_edge_finish(layout, context, 'CUT')     # with the lasso it sits under the lasso settings
 

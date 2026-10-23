@@ -757,8 +757,10 @@ def tidy_rim(bm, width, passes=6):
     shortest of them, so the bevel / chamfer came out invisible (a plain box has no such edges, so it worked
     there).  The flat cutter walls are merged back to big faces and the short edges at the rim are collapsed
     with Degenerate Dissolve: tiny rim pieces, chords between two rim points (Blender's clamp halves those)
-    and short edges into the surface.  Points move by less than the bevel width, which the bevel rounds over
-    anyway.  Every step that would open the mesh is undone.  Returns the bmesh to keep (may be a new one)."""
+    and short edges into the surface.  0.24.24: a collapse moves a rim point to the middle of the edge, off the
+    cut, which made the rim zigzag and the bevel band uneven - every rim point is now put back onto the flat
+    cut wall(s) it touches, so the rim is straight again.  Every step that would open the mesh is undone.
+    Returns the bmesh to keep (may be a new one)."""
     def layer_of(b):
         return _face_flag_layer(b)
 
@@ -768,6 +770,9 @@ def tidy_rim(bm, width, passes=6):
         if inner:
             bmesh.ops.dissolve_limit(b, angle_limit=math.radians(0.5), verts=[], edges=inner)
     bm = _safe_step(bm, dissolve_walls)
+    lay0 = layer_of(bm)
+    bm.normal_update()
+    planes = [(f.calc_center_median(), f.normal.copy()) for f in bm.faces if f[lay0] and f.calc_area() > 0]
 
     def groups(b):
         lay = layer_of(b)
@@ -798,10 +803,80 @@ def tidy_rim(bm, width, passes=6):
                     bm = _safe_step(bm, lambda b, part=part, kind=kind, dist=dist: run(b, kind, dist, part))
         if len(bm.edges) == before:
             break
+    _snap_rim(bm, planes, width)
     return bm
 
 
-def finish_new_edges(mesh, mode='NONE', width=0.01, segments=3, profile=0.5, clamp=True, label=''):
+def _snap_rim(bm, planes, width):
+    """Put each rim point back onto the cut wall plane(s) of the cutter faces around it (the planes were taken
+    before the collapse).  Only small moves (under the bevel width) are made."""
+    lay = _face_flag_layer(bm)
+    if lay is None or not planes:
+        return
+    bm.normal_update()
+    rim_v = {v for e in _rim_edges(bm, lay) for v in e.verts}
+    for v in rim_v:
+        mine = []
+        for f in v.link_faces:
+            if not f[lay]:
+                continue
+            best = None
+            for co, n in planes:
+                if n.dot(f.normal) < 0.995:
+                    continue
+                d = abs((v.co - co).dot(n))
+                if best is None or d < best[0]:
+                    best = (d, co, n)
+            if best is not None and best[0] < width and all(best[2].dot(m[1]) < 0.999 for m in mine):
+                mine.append((best[1], best[2]))
+        if not mine:
+            continue
+        p = v.co.copy()
+        for _it in range(12):                        # alternate projections: the point on all its walls
+            for co, n in mine:
+                p = p - n * (p - co).dot(n)
+        if (p - v.co).length < width:
+            v.co = p
+
+
+def crisp_shading(bm, bevel_faces, round_):
+    """0.24.24 hard-surface shading of a finished cut: the bevel band shades on its own (smooth inside when it is
+    round, a flat strip when it is a chamfer), its borders are sharp, so the smooth body next to it no longer
+    smears into it; the flat cut walls stay flat."""
+    band = set(bevel_faces)
+    for f in band:
+        f.smooth = bool(round_)
+    layer = _face_flag_layer(bm)
+    if layer is not None:
+        for f in bm.faces:
+            if f not in band and f[layer]:
+                f.smooth = False
+    for f in band:
+        for e in f.edges:
+            if any(g not in band for g in e.link_faces):
+                e.smooth = False
+
+
+def drop_custom_normals(mesh):
+    """Imported custom normals (FBX) override sharp edges and get smeared over the new faces: drop them so
+    Blender's own normals (with the sharp edges) are used.  Returns True when there were some."""
+    attr = mesh.attributes.get('custom_normal')
+    if attr is not None:
+        try:
+            mesh.attributes.remove(attr)
+            return True
+        except (RuntimeError, TypeError):
+            pass
+    if getattr(mesh, 'has_custom_normals', False):
+        try:
+            mesh.free_normals_split() if hasattr(mesh, 'free_normals_split') else None
+        except RuntimeError:
+            pass
+    return False
+
+
+def finish_new_edges(mesh, mode='NONE', width=0.01, segments=3, profile=0.5, clamp=True, label='',
+                     crisp=True):
     """Bevel/chamfer only edges between cutter faces and original faces.
 
     ``clamp`` keeps Blender's overlap clamp (safe geometry); when the requested
@@ -839,12 +914,16 @@ def finish_new_edges(mesh, mode='NONE', width=0.01, segments=3, profile=0.5, cla
             FINISH_NOTES.append(f'{label + " " if label else ""}{mode.lower()} width {width:.4g} exceeds the '
                                 f'safe {limit:.4g} (Clamp Overlap OFF: geometry may overlap)')
         verts = list({v for e in edges for v in e.verts})
-        bmesh.ops.bevel(bm, geom=edges + verts, offset=width, offset_type='OFFSET',
-                        segments=1 if mode == 'CHAMFER' else max(1, segments),
-                        profile=profile, affect='EDGES', clamp_overlap=bool(clamp),
-                        loop_slide=True)
+        res = bmesh.ops.bevel(bm, geom=edges + verts, offset=width, offset_type='OFFSET',
+                              segments=1 if mode == 'CHAMFER' else max(1, segments),
+                              profile=profile, affect='EDGES', clamp_overlap=bool(clamp),
+                              loop_slide=True)
+        if crisp:
+            crisp_shading(bm, res.get('faces', []), mode == 'BEVEL' and segments > 1)
         bm.normal_update()
         bm.to_mesh(mesh)
+        if crisp:
+            drop_custom_normals(mesh)
         return len(edges)
     finally:
         bm.free()

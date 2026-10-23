@@ -1,0 +1,197 @@
+"""0.24.24 Mech Ridge (Armor Plate profile): every outline edge slopes up to crisp ridge lines (a box = a hip roof),
+Max Height = flat top, Gable ends (ridge straight to the ends), Chamfer / Bevel on the ridge lines and the outer edge, live sliders, Apply.  Cut / Split
+Crisp Shading: the bevel band has sharp borders, a chamfer is flat, imported custom normals are dropped; the rim
+cleanup keeps the rim on the cut (no zigzag)."""
+import math
+
+from _harness import bpy, bmesh, check, fresh, non_manifold, summary
+from mathutils import Quaternion, Vector
+
+import mecha_lab
+from mecha_lab import armor_plate as ap, core_geometry as cg, cut_engine as ce, mech_ridge as mr
+
+mecha_lab.register()
+fresh()
+C = bpy.context
+S = C.scene
+TOP = cg.OrthoProjector(Quaternion())
+
+# pure helpers
+sq = [(0, 0), (10, 0), (10, 10), (0, 10)]
+check('ccw keeps a counter-clockwise outline, flips a clockwise one', mr.ccw(sq) == [tuple(map(float, q)) for q in sq]
+      and mr.signed_area(mr.ccw(sq[::-1])) > 0)
+wobbly = [(x, 0.3 * math.sin(x)) for x in range(0, 41)] + [(40, 20), (0, 20)]
+simple = mr.simplify_closed(wobbly, 2.0)
+check('Straighten: a wobbly free-drawn side becomes one straight edge', len(simple) == 4, simple)
+pl = mr.wedge_planes(mr.ccw(sq), 0, math.tan(math.radians(45)), 1.0)
+inside_above = Vector((5, 1, 5))
+check('wedge of the bottom edge: a point above its slope near it is cut', all(a.dot(inside_above) + d >= 0 for a, d in pl))
+check('...a point below its slope is kept', not all(a.dot(Vector((5, 3, 2))) + d >= 0 for a, d in pl))
+
+
+def body(kind='cube'):
+    for o in list(bpy.data.objects):
+        bpy.data.objects.remove(o)
+    if kind == 'cube':
+        bpy.ops.mesh.primitive_cube_add(size=8, location=(0, 0, -4))
+    else:
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=6, segments=64, ring_count=32, location=(0, 0, -5.6))
+    return C.active_object
+
+
+def up_normals(ob):
+    mw = ob.matrix_world.to_3x3()
+    ob.data.update()
+    return {tuple(round(c, 2) for c in (mw @ p.normal).normalized()) for p in ob.data.polygons
+            if (mw @ p.normal).z > 0.3}
+
+
+BOX = [[(380, 420), (620, 420), (620, 580), (380, 580)]]
+st = S.mch_mridge
+S.mch_plate.preset = 'MRIDGE'
+st.ridge_finish = st.edge_finish = 'NONE'
+st.angle, st.height = math.radians(25), 0.0
+body()
+msg = ap.perform_plate(C, BOX, TOP)
+ob = C.active_object
+check('Armor Plate profile Mech Ridge makes a live Mech Ridge plate', mr.live_plate(C) == ob and 'Mech Ridge' in msg, msg)
+check('closed mesh', non_manifold(ob) == 0, non_manifold(ob))
+check('a box = a hip roof: exactly 4 flat sloped facets (crisp, no rounding)', len(up_normals(ob)) == 4, up_normals(ob))
+check('every facet rises at the Slope angle', all(abs(math.degrees(math.acos(n[2])) - 25) < 1.5 for n in up_normals(ob)),
+      up_normals(ob))
+zs = [(ob.matrix_world @ v.co).z for v in ob.data.vertices]
+wall, sink = 0.03 * math.hypot(2.4, 1.6), 0.02 * math.hypot(2.4, 1.6)
+want = wall + 0.8 * math.tan(math.radians(25)) - sink
+check('ridge height = edge wall + half width x tan(Slope)', abs(max(zs) - want) < 0.03, (max(zs), want))
+check('the bottom sits in the surface (Sink)', min(zs) < 0)
+ob.mch_mridge.height = 0.2
+zs = [(ob.matrix_world @ v.co).z for v in ob.data.vertices]
+check('Max Height: cut flat (a mesa top), live', abs(max(zs) - (0.2 - sink)) < 0.02 and
+      (0.0, 0.0, 1.0) in up_normals(ob), max(zs))
+ob.mch_mridge.height = 0.0
+n0 = len(ob.data.polygons)
+ob.mch_mridge.ridge_finish = 'CHAMFER'
+n1 = len(ob.data.polygons)
+check('Ridge Chamfer adds flat strips on the ridge lines', n1 > n0 and len(up_normals(ob)) > 4, (n0, n1))
+ob.mch_mridge.ridge_finish = 'BEVEL'
+ob.mch_mridge.ridge_segments = 4
+check('Ridge Bevel (4 segments): more faces, shaded round', len(ob.data.polygons) > n1
+      and any(p.use_smooth for p in ob.data.polygons))
+sharp = ob.data.attributes.get('sharp_edge')
+n_sharp = sum(1 for v in sharp.data if v.value) if sharp else 0
+check('...the creases (chamfer / bevel borders, walls) are marked sharp (crisp), the bevel steps are not',
+      n_sharp > 8 and n_sharp < len(ob.data.edges) // 2, (n_sharp, len(ob.data.edges)))
+ob.mch_mridge.edge_finish = 'CHAMFER'
+ob.mch_mridge.edge_width = 0.05
+check('Outer Edge Chamfer works too, still closed', non_manifold(ob) == 0 and ob.mch_mridge.last_error == '',
+      ob.mch_mridge.last_error)
+check('the next plate starts with these settings', S.mch_mridge.ridge_finish == 'BEVEL' and S.mch_mridge.edge_finish == 'CHAMFER')
+# Gable: the ridge runs straight to the ends, the ends stay upright walls (no end triangles)
+ob.mch_mridge.ridge_finish = ob.mch_mridge.edge_finish = 'NONE'
+ob.mch_mridge.ends = 'GABLE'
+ups = up_normals(ob)
+check('Gable: only the 2 long slopes (no sloped end triangles)', len(ups) == 2 and all(abs(n[0]) < 0.01 for n in ups), ups)
+mw = ob.matrix_world
+top = max((mw @ v.co).z for v in ob.data.vertices)
+ridge_x = [(mw @ v.co).x for v in ob.data.vertices if (mw @ v.co).z > top - 1e-3]
+check('...the ridge reaches both ends of the plate', min(ridge_x) < -1.15 and max(ridge_x) > 1.15, (min(ridge_x), max(ridge_x)))
+check('...closed mesh', non_manifold(ob) == 0)
+ob.mch_mridge.swap_axis = True
+ups = up_normals(ob)
+check('Swap Axis: the ridge runs across the short side instead', len(ups) == 2 and all(abs(n[1]) < 0.01 for n in ups), ups)
+ob.mch_mridge.ends, ob.mch_mridge.swap_axis = 'HIP', False
+check('Hip again: 4 facets', len(up_normals(ob)) == 4)
+check('end_edges: a long box has its 2 short sides as ends', mr.end_edges(mr.ccw([(0, 0), (40, 0), (40, 10), (0, 10)])) == {1, 3})
+r = bpy.ops.mch.mridge_apply()
+check('Apply: plain mesh', 'FINISHED' in r and mr.SRC_KEY not in ob and not ob.mch_mridge.live)
+
+# L-shaped (concave) outline and a curved body
+body('sphere')
+st.ridge_finish = st.edge_finish = 'CHAMFER'
+L = [[(400, 400), (600, 400), (600, 500), (500, 500), (500, 600), (400, 600)]]
+msg = ap.perform_plate(C, L, TOP)
+ob = C.active_object
+check('L-shaped outline on a sphere: closed plate', non_manifold(ob) == 0, (msg, non_manifold(ob)))
+o, d = TOP.ray((450, 450))
+hit, loc, _n, _i, hob, _m = S.ray_cast(C.evaluated_depsgraph_get(), Vector(o), Vector(d))
+check('it sits on the curved surface (the plate is hit first, above the sphere)', hit and hob.name == ob.name)
+S.mch_plate.preset = 'CHAMFER'
+body()
+ap.perform_plate(C, BOX, TOP)
+check('other profiles still make the usual Armor Plate', mr.live_plate(C) is None and ap.pending_plate(C) is not None)
+
+# Cut / Split crisp shading
+S.mch_settings.auto_apply = True
+cut = S.mch_cut
+cut.depth_mode, cut.targets = 'THROUGH', 'ACTIVE'
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+bpy.ops.mesh.primitive_uv_sphere_add(radius=1.5, segments=48, ring_count=24)
+t = C.active_object
+bpy.ops.object.shade_smooth()
+cut.edge_finish, cut.finish_width, cut.finish_crisp = 'CHAMFER', 0.05, True
+ce.perform_closed(C, 'CUT', [t], [[(470, 300), (530, 300), (530, 700), (470, 700)]], TOP)
+me = t.data
+sharp = me.attributes.get('sharp_edge')
+n_sharp = sum(1 for v in sharp.data if v.value) if sharp else 0
+check('Crisp Shading: the chamfer band has sharp borders', n_sharp > 20, n_sharp)
+check('...the chamfer strip and the cut walls are flat, the body stays smooth',
+      any(not p.use_smooth for p in me.polygons) and any(p.use_smooth for p in me.polygons))
+check('...closed mesh', non_manifold(t) == 0)
+# custom normals (an imported FBX) are dropped
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+bpy.ops.mesh.primitive_uv_sphere_add(radius=1.5, segments=48, ring_count=24)
+t = C.active_object
+t.data.normals_split_custom_set_from_vertices([v.normal for v in t.data.vertices])
+had = t.data.has_custom_normals
+ce.perform_closed(C, 'CUT', [t], [[(470, 300), (530, 300), (530, 700), (470, 700)]], TOP)
+check('custom normals (FBX) are dropped so they do not smear over the cut', had and not t.data.has_custom_normals,
+      (had, t.data.has_custom_normals))
+cut.finish_crisp = False
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+bpy.ops.mesh.primitive_uv_sphere_add(radius=1.5, segments=48, ring_count=24)
+t = C.active_object
+t.data.normals_split_custom_set_from_vertices([v.normal for v in t.data.vertices])
+ce.perform_closed(C, 'CUT', [t], [[(470, 300), (530, 300), (530, 700), (470, 700)]], TOP)
+check('Crisp Shading off: custom normals are kept (old behaviour)', t.data.has_custom_normals)
+cut.finish_crisp = True
+
+# the rim stays on the cut after the sliver cleanup (dense triangle mesh)
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=5, radius=1.5)
+t = C.active_object
+b = bmesh.new(); b.from_mesh(t.data); bmesh.ops.triangulate(b, faces=b.faces[:]); b.to_mesh(t.data); b.free()
+cut.edge_finish = 'NONE'
+ce.perform_closed(C, 'CUT', [t], [[(487, 300), (513, 300), (513, 700), (487, 700)]], TOP)
+b = bmesh.new(); b.from_mesh(t.data)
+lay = b.faces.layers.int.new(cg.CUTTER_ATTR) if False else None
+b.free()
+# re-run the finish on a fresh cut with a probe on the rim
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=5, radius=1.5)
+t = C.active_object
+b = bmesh.new(); b.from_mesh(t.data); bmesh.ops.triangulate(b, faces=b.faces[:]); b.to_mesh(t.data); b.free()
+orig = cg.tidy_rim
+seen = {}
+
+
+def probe(bm, width, passes=6):
+    out = orig(bm, width, passes)
+    layer = cg._face_flag_layer(out)
+    rim = {v for e in cg._rim_edges(out, layer) for v in e.verts}
+    # the cut walls are the planes x = +-0.13 (26 px wide strip, 1 px = 0.01)
+    seen['off'] = max(abs(abs(v.co.x) - 0.13) for v in rim)
+    return out
+
+
+cg.tidy_rim = probe
+cut.edge_finish = 'BEVEL'
+ce.perform_closed(C, 'CUT', [t], [[(487, 300), (513, 300), (513, 700), (487, 700)]], TOP)
+cg.tidy_rim = orig
+check('after the cleanup every rim point is still on the cut wall (straight rim, even bevel band)',
+      seen.get('off', 1) < 1e-4, seen)
+summary()

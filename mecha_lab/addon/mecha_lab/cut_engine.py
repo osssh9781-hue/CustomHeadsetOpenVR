@@ -532,7 +532,8 @@ def _finish_side(cut, me, side, scale):
         return 0
     return cg.finish_new_edges(me, mode, getattr(cut, f'side_{side}_width') / scale,
                                getattr(cut, f'side_{side}_segments'), 0.5,
-                               clamp=getattr(cut, 'finish_clamp', True), label='Side ' + side.upper())
+                               clamp=getattr(cut, 'finish_clamp', True), label='Side ' + side.upper(),
+                               crisp=getattr(cut, 'finish_crisp', True))
 
 
 def _side_report(cut, counts):
@@ -698,7 +699,8 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
                     temp.append(me)
                     edge_counts.append(cg.finish_new_edges(
                         me, cut.edge_finish, cut.finish_width / scale,
-                        cut.finish_segments, cut.finish_profile, clamp=cut.finish_clamp))
+                        cut.finish_segments, cut.finish_profile, clamp=cut.finish_clamp,
+                        crisp=cut.finish_crisp))
                     results.append((t, me))
                 else:  # SPLIT
                     inner, _s1 = _boolean_checked(context, cut, t, cutter, 'INTERSECT',
@@ -846,7 +848,8 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
                         if cut.line_cap:
                             line_bevel_counts.append(cg.finish_new_edges(
                                 me, cut.edge_finish, cut.finish_width / scale,
-                                cut.finish_segments, cut.finish_profile, clamp=cut.finish_clamp))
+                                cut.finish_segments, cut.finish_profile, clamp=cut.finish_clamp,
+                        crisp=cut.finish_crisp))
                         results.append((t, me))
                     else:
                         cap = cut.split_cap and cut.line_cap
