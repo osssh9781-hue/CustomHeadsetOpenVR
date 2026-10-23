@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.26
+# Test Report — Mecha Lab 0.24.27
+
+## 0.24.27 결과: 90개 파일 3026/3026 (`tests/test_log_bpy501_v02427.txt`). test_v0248: S + 선택 = 통과(Scale), D / Shift+S + 선택 = Split. 실제 키 입력(Blender 화면)은 미검증.
 
 ## 0.24.26 결과: 90개 파일 3024/3024 (`tests/test_log_bpy501_v02426.txt`). test_v02424(70): 24각형 꼭짓점 유지 / 프리드로우 직선화, 5 · 6 · 8 · 12 · 20 · 24각형 + 12 · 16점 별 × 6 패턴(챔퍼) 닫힘 + 모든 변 + 3초 이내, 5 · 6 · 8각형 Hip 면 수, Plate Detail 1 / 2 / 3 Alt 일반 메쉬 = 파임(새 오브젝트 없음, 얕음, 닫힘), 살아있는 디테일 Alt = 잘린 벽 flat + sharp 경계. 별도 스트레스(테스트 파일 밖): 3–24각형 · 불규칙 · 별 192 케이스 × Sharp / Chamfer / Bevel 전부 닫힘. 실제 화면 입력은 미검증.
 

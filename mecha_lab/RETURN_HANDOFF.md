@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.26 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.27 (Claude Code, 2026-10-14)
+
+## 0.24.27
+- ZIP sha256 `33754e94ef1ef6536afaf5d8b1a16260d00dae352cf353645cd2c32c36d37cee`. `workspace_ui.MCH_OT_hotkey.invoke`: `only_empty`의 PASS_THROUGH는 이벤트가 수식키 없는 S일 때만(바꾼 키는 항상 실행).
 
 ## 0.24.26
 - ZIP sha256 `7e8e6301056efde94949aa767ea78921282cd1ab570bf5f183d9b6bc5847287a`. `mech_ridge.simplify_closed`: 점 ≤ CLICKED_MAX(48) 이고 엣지 중앙값 ≥ CLICKED_EDGE(10 px)면 찍은 다각형 = DP 없이 중복 · 1° 미만만 제거. `roof_bmesh`: `is_convex`면 프리즘을 경사 변 평면들로 `_clip`(정확, 불린 없음) + remove_doubles / dissolve_degenerate, 열린 엣지 있으면 불린 경로; 오목 = `_boolean_difference_each`(커터마다 모디파이어, MANIFOLD → 결과가 안 닫히면 EXACT use_self). `_tidy_roof` · `grid_cut`의 정리 단계는 `cg._safe_step`. `_finish_safe`: 베벨이 찢으면 폭 ×0.5 / ×0.25, 그래도 안 되면 생략 + Object['mch_mridge_notes'].

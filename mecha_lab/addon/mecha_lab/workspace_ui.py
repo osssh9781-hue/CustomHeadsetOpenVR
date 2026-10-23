@@ -1634,7 +1634,7 @@ class MCH_OT_hotkey(bpy.types.Operator):
                                 ('TOOL', 'Pick a Tool', ''), ('REMESH', 'Remesh + Smooth (run)', '')])
     # 0.24.17 TOOL: one key per tool of the left list (unassigned until you set one)
     tool: EnumProperty(items=ts.TOOL_ENUM_ITEMS, default='CUT')
-    # 0.24.8 S = Split only with nothing selected (with a selection S stays Blender's Scale)
+    # 0.24.8 S = Split only with nothing selected (with a selection S stays Blender's Scale; 0.24.27 only plain S)
     only_empty: BoolProperty(default=False, options={'SKIP_SAVE'})
 
     @classmethod
@@ -1643,7 +1643,11 @@ class MCH_OT_hotkey(bpy.types.Operator):
                 and context.mode == 'OBJECT')
 
     def invoke(self, context, event):
-        if self.only_empty and context.selected_objects:
+        # 0.24.27 only a plain S gives way to Blender's Scale when something is selected; a key you set yourself
+        # in the Hotkeys box (D, Shift+S, ...) always works
+        plain_s = (getattr(event, 'type', '') == 'S' and not (getattr(event, 'shift', False) or
+                   getattr(event, 'ctrl', False) or getattr(event, 'alt', False) or getattr(event, 'oskey', False)))
+        if self.only_empty and context.selected_objects and plain_s:
             return {'PASS_THROUGH'}
         if self.action == 'MIRROR':
             # 0.24.8 Alt+X = the left Mirror button: lean the mouse, the result stays a live Mirror

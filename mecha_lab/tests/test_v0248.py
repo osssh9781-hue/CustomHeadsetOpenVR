@@ -30,17 +30,28 @@ ts.is_mecha_workspace = lambda ws: True
 check('poll ok in MECHA LAB, Object Mode', wui.MCH_OT_hotkey.poll(C))
 
 
-def run(action, only_empty=False):
+def key(t, shift=False):
+    return types.SimpleNamespace(type=t, shift=shift, ctrl=False, alt=False, oskey=False)
+
+
+def run(action, only_empty=False, event=None):
     op = types.SimpleNamespace(action=action, only_empty=only_empty, reports=[])
     op.report = lambda kind, msg: op.reports.append(msg)
     op.execute = lambda ctx: wui.MCH_OT_hotkey.execute(op, ctx)
-    return wui.MCH_OT_hotkey.invoke(op, C, None), op
+    return wui.MCH_OT_hotkey.invoke(op, C, event if event is not None else key('S')), op
 
 
 b = cube('Hull', 2.0)
 select_only(b)
 res, _ = run('SPLIT', True)
 check('S with a selection passes through (Blender Scale)', res == {'PASS_THROUGH'} and not calls, (res, calls))
+# 0.24.27 a key changed in the Hotkeys box always works (only plain S gives way to Scale)
+res, _ = run('SPLIT', True, key('D'))
+check('Split moved to D: works with a selection too', res == {'FINISHED'} and calls == ['SPLIT'], (res, calls))
+calls.clear()
+res, _ = run('SPLIT', True, key('S', shift=True))
+check('Split moved to Shift+S: works with a selection too', res == {'FINISHED'} and calls == ['SPLIT'], (res, calls))
+calls.clear()
 for o in bpy.data.objects:
     o.select_set(False)
 res, _ = run('SPLIT', True)
