@@ -1,4 +1,12 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.22 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.23 (Claude Code, 2026-10-14)
+
+## 0.24.23
+- ZIP sha256 `e11cb27d71cfb2387ab79ddb2679732d82346b7f342e77bba9399d1128a9bd20`. `bottom_bar.apply_all_modifiers(context, ob)`: `_unlive` 후 show_viewport인 모디파이어를 순서대로 `safe_apply`(실패 시 중단, (적용 이름, 오류) 반환). `MCH_OT_apply_modifiers_pick`: invoke = 모달(스포이트 커서, 상태줄), LMB = `workspace_ui.object_under_mouse` → 선택 + 적용, Esc / RMB 끝, 나머지 PASS_THROUGH; execute = 선택한 메쉬. `MCH_GGT_object_tidy`에 `TOP_TIDY` 버튼(툴 버튼 위 62 px) + 라벨.
+- `creature_plate.engrave(context, loops, projector)`: `_parts`(캐시 없는 점 세트) → `build_mesh(..., carve=True)`(top = 표면 − 법선·(벽 + 모양·높이), bottom = 표면 + 법선·sink) → `boolean_result` DIFFERENCE → `commit_mesh`. `live_subtract.perform`이 CPLATE에서 살아있는 플레이트를 못 찾으면 engrave, `lasso_sketch.commit(alt=True)` CPLATE도 `live_subtract.perform`.
+- `base_mesh.perform_base(cutter=True)` / `sketch_commit(cutter=True)`: Creature 프로파일이면 `_perform_cutter`(PUFF_BUILT 크리쳐 = 뒤집지 않은 원래 덩어리를 그대로 cutter로), 아니면 기존 `cut_like_cut_tool`. Dome / Cushion은 여전히 거절.
+- `core_geometry.finish_new_edges`: 폭이 clamp 한계보다 크면 `tidy_rim(bm.copy(), width)` → 열린 엣지가 늘지 않고 한계가 커졌을 때만 사용. `tidy_rim`: 커터 면끼리 dissolve_limit(0.5°), 테두리 엣지(0.5×폭) / 두 테두리 점 잇는 엣지(2×폭) / 테두리에서 나가는 엣지(1×폭) 별로 dissolve_degenerate, 단계마다 `_safe_step`(열린 엣지 늘면 복사본으로 되돌림, 안 되면 4조각으로 재시도).
+- `workspace_ui`: `MCH_OT_line_width_key`(Object Mode 애드온 키맵 [ / ], poll = 네이티브 툴이 `mecha.*`이고 Screw Stamp / Primitive 아님 → 아니면 Blender의 select_hierarchy로 넘어감), `MCH_OT_sculpt_back`(Sculpt 키맵 G → `mch.select_move`).
+- `cut_engine`: 0.24.21 `_sketch_wanted` / `_stroke_to_lasso` 삭제(Sketch 중 프리드로우는 놓으면 `lasso_sketch.add` / `sketch_add`).
 
 ## 0.24.22
 - ZIP sha256 `3c0998153d3e1e9a093264c78fd483b892f0ba6144901f79364c4e54eff5f46c`. 새 `live_subtract.py`: Alt 외곽(화면 루프 + 고정 뷰)을 오브젝트 `mch_subtract`(JSON)에 저장, `apply`가 `creature_plate.rebuild` / `plate_detail.rebuild` 끝에서 매번 절단 프리즘(`build_cutter_mesh`, THROUGH 깊이) + EXACT Boolean DIFFERENCE로 다시 빼냄(스무스 셰이딩 유지). `pick` = 외곽 아래 레이캐스트로 그 툴의 살아있는 플레이트. `cut_engine._execute_closed`: CPLATE / DETAIL* + `inverted()`이면 `live_subtract.perform`. Apply는 기록 삭제.

@@ -1157,10 +1157,13 @@ def _local_groups(context, loops, projector):
 def perform_base(context, loops, projector, cutter=False, targets=None):
     """Create the new solid (or, ``cutter=True`` = Alt, cut it into the
     mesh below).  Returns a report string; raises CutError (scene untouched)."""
-    if cutter:
+    defaults = scene_defaults(context)
+    creature = defaults.profile in CREATURE_PROFILES
+    if cutter and not creature:
         return cut_like_cut_tool(context, loops, projector, targets)
     groups, frame, screen_groups, embed = _local_groups(context, loops, projector)
-    defaults = scene_defaults(context)
+    if cutter:      # 0.24.23 Creature Base Mesh: Alt engraves the lump into the mesh (only as deep as it is thick)
+        return _perform_cutter(context, groups, frame, defaults, projector, screen_groups, targets)
     return _create_live_base(context, groups, frame, defaults, embed)
 
 
@@ -1302,17 +1305,23 @@ def _perform_cutter(context, groups, frame, p, projector, screen_groups, targets
         else (targets or [])
     if not targets:
         raise cg.CutError('Alt Base Mesh cuts into a mesh: start on a mesh or select the target first.')
-    if p.profile == 'DOME' or p.profile in PUFF_BUILT:
-        raise cg.CutError('Alt cutter supports Flat / Chamfer / Bevel profiles (Dome / Puff / Cushion have no flat '
-                          'cap).')
-    bm = build_bmesh(groups, _WithEmbed(p, 0.0), flip=True)
+    if p.profile == 'DOME' or p.profile == 'CUSHION':
+        raise cg.CutError('Alt cutter supports Flat / Chamfer / Bevel and the creature profiles (Dome / Cushion have '
+                          'no flat cap).')
+    if p.profile in PUFF_BUILT:
+        # 0.24.23 creature lump: it is centred on the surface, so the part inside the mesh is taken out (an
+        # engraving as deep as the drawn shape is thick, not a cut through)
+        bm = build_bmesh(groups, p)
+    else:
+        bm = build_bmesh(groups, _WithEmbed(p, 0.0), flip=True)
     try:
-        # mirror along local Z (into the surface) and lift a hair above it so the
-        # opening is not coplanar with the surface
-        eps = max(p.height * 0.01, 1e-5)
-        for v in bm.verts:
-            v.co.z = -v.co.z + eps
-        bmesh.ops.reverse_faces(bm, faces=bm.faces[:])
+        if p.profile not in PUFF_BUILT:
+            # mirror along local Z (into the surface) and lift a hair above it so the
+            # opening is not coplanar with the surface
+            eps = max(p.height * 0.01, 1e-5)
+            for v in bm.verts:
+                v.co.z = -v.co.z + eps
+            bmesh.ops.reverse_faces(bm, faces=bm.faces[:])
         me = bpy.data.meshes.new('MCH_BaseCutter')
         bm.to_mesh(me)
     finally:
@@ -1344,7 +1353,10 @@ def _perform_cutter(context, groups, frame, p, projector, screen_groups, targets
                 bpy.data.meshes.remove(m)
         cg.remove_object_and_mesh(cutter)
     sides, _t, _b = side_values(p, flip=True)
-    msg = f'Base Mesh cutter (Alt): {", ".join(done)} | cutter bevel: {sides.title()}'
+    if p.profile in PUFF_BUILT:
+        msg = f'Engraved (Alt) into {", ".join(done)}: as deep as the shape is thick'
+    else:
+        msg = f'Base Mesh cutter (Alt): {", ".join(done)} | cutter bevel: {sides.title()}'
     if failed:
         msg += ' | FAILED, unchanged: ' + '; '.join(failed)
     return msg
@@ -1533,7 +1545,8 @@ def sketch_commit(context, cutter=False):
         raise cg.CutError('The sketch is empty (everything was subtracted). Esc clears it.')
     frame = sketch_frame(data)
     groups = [([tuple(q) for q in o], [[tuple(q) for q in h] for h in hs]) for o, hs in groups]
-    proj = _view_projector(context) if cutter else None
+    creature = scene_defaults(context).profile in CREATURE_PROFILES
+    proj = _view_projector(context) if cutter and not creature else None
     if cutter and proj is not None:
         # 0.24.5 Alt+Enter cuts like the Cut tool too: the sketch seen from the current view
         loops = []

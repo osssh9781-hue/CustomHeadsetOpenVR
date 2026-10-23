@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.22
+# Test Report — Mecha Lab 0.24.23
+
+## 0.24.23 결과: 89개 파일 2954/2954 (`tests/test_log_bpy501_v02423.txt`). test_v02422(8): Array → Bevel → Subsurf 순서 적용 = 스택이 보여준 메쉬와 같은 정점 / 면 수, 꺼 둔 Wireframe은 남음, 닫힌 메쉬, Bevel → 겹치는 Array 순서 유지, 모디파이어 없음 = 오류 없음, 클릭 없이 실행 = 선택한 메쉬. test_v02423(19): 크리쳐 플레이트 Alt = 파냄(새 오브젝트 없음, 가운데가 낮아짐, 관통 안 함, 바깥 그대로, 닫힌 메쉬, Height로 깊이), 살아있는 플레이트 위 = 플레이트 구멍, 스케치 Alt+Enter = 파냄 / Enter = 플레이트, 크리쳐 베이스 Alt 그리기 / 스케치 Alt+Enter = 파냄. test_v02421 스케치 + 프리드로우 = 스케치에 바로 추가로 수정, test_v02420 Puff 거절 → Dome 거절, [ / ] Object Mode 키 + poll(Mecha 툴만), Sculpt G 키 + poll, 삼각분할 icosphere(5) Cut Bevel / Chamfer, Split Bevel = 폭 제한 없음 + 닫힌 메쉬(수정 전 0.0015로 제한되는 것 확인). 실제 키 입력 우선순위, 클릭 / 버튼 표시는 미검증.
 
 ## 0.24.22 결과: 91개 파일 2968/2968 (`tests/test_log_bpy501_v02422.txt`). test_v02421 추가분: Taper 버튼 끔 = 같은 폭 / 켬 = 면적 < 80 %, Pressure 기본 꺼짐, Creature Plate Alt 빼기 = 가운데 레이가 몸체에 닿음(구멍), 가장자리 = 홈, 높이 슬라이더 후 구멍 유지, 플레이트 없는 곳 = 안내, Apply 후 기록 삭제 / 구멍 유지, Plate Detail 3 Alt 빼기. 실제 Alt 입력은 미검증.
 

@@ -1,8 +1,17 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.22 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.23 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A00000000000000000000000000000000000000000000000000000000000000000. 0.24.23 (미검증)
+- [ ] 왼쪽 동그란 버튼 목록 맨 위 Apply Modifiers → 메쉬 클릭 시 모디파이어가 위에서부터 적용되는지, 여러 메쉬 연속 클릭, Esc / 우클릭으로 끝, 그 사이 회전 / 줌
+- [ ] Creature Plate: 일반 메쉬 위에서 Alt + 그리기 → 오류 없이 그 모양으로 파이는지(관통 안 함), 살아있는 플레이트 위에서는 플레이트에 구멍
+- [ ] Creature Plate Sketch 켜고 그리기 → 점 없이 선으로 표시, Alt 그리기 = 스케치에서 빠짐, Enter = 플레이트, Alt+Enter = 파내기
+- [ ] Creature Plate 등 Mecha 툴에서 Line 켜고 [ / ] → 굵기가 바뀌는지(상태줄 cm), Mecha 툴이 아닐 때 [ / ]는 Blender 기본
+- [ ] 촘촘한 FBX 메쉬에 Cut / Split + Bevel / Chamfer → 박스처럼 베벨이 보이는지, 여러 위치에서 매번 되는지
+- [ ] Sculpt Mode에서 G → Object Mode + Select / Move로 돌아가는지
+- [ ] Creature Base Mesh: Alt 그리기 / 스케치 Alt+Enter → 덩어리 두께만큼만 파이는지, 일반 Base Mesh Alt는 관통 그대로
 
 ## A0000000000000000000000000000000000000000000000000000000000000000. 0.24.22 (미검증)
 - [ ] Creature Plate / Plate Detail 위에 Alt 누른 채 그리면 그 영역이 빠지는지(구멍 / 가장자리 홈), 슬라이더를 움직여도 유지되는지, Apply 후에도 그대로인지

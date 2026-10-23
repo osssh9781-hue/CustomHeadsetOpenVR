@@ -451,6 +451,107 @@ class MCH_OT_object_tidy(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def apply_all_modifiers(context, ob):
+    """0.24.21 apply every enabled modifier of ``ob`` in stack order (top to bottom).  Returns (applied names,
+    error or '').  Stops at the first one that fails (the ones before it stay applied)."""
+    from . import safe_apply
+    if ob is None or ob.type != 'MESH':
+        return [], 'click a mesh'
+    if not ob.modifiers:
+        return [], ''
+    _unlive(ob)                                   # a live Mecha shape would rebuild over the result
+    done = []
+    for mod in list(ob.modifiers):
+        if not mod.show_viewport:
+            continue                              # switched off in the viewport: left as it is
+        name = mod.name
+        try:
+            safe_apply(context, ob, mod)
+        except RuntimeError as ex:
+            return done, f'{name}: {str(ex).splitlines()[0][:90]}'
+        done.append(name)
+    return done, ''
+
+
+class MCH_OT_apply_modifiers_pick(bpy.types.Operator):
+    """Click a mesh: all its modifiers are applied one after another, top to bottom (Esc / right-click: done)"""
+    bl_idname = 'mch.apply_modifiers_pick'
+    bl_label = 'Apply Modifiers (click a mesh)'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT'
+
+    def _apply(self, context, ob):
+        done, err = apply_all_modifiers(context, ob)
+        if err and not done:
+            self.report({'WARNING'}, f'{ob.name if ob else "Nothing"}: {err}')
+        elif err:
+            self.report({'WARNING'}, f'{ob.name}: applied {", ".join(done)} - stopped at {err}')
+        elif not done:
+            self.report({'INFO'}, f'{ob.name}: no modifiers to apply')
+        else:
+            self.report({'INFO'}, f'{ob.name}: applied {len(done)} modifier(s) in order - {", ".join(done)}')
+        return bool(done)
+
+    def execute(self, context):
+        # no click (e.g. from a script): the selected meshes
+        obs = [o for o in context.selected_editable_objects if o.type == 'MESH']
+        if not obs:
+            self.report({'WARNING'}, 'Select a mesh (or use the button and click one)')
+            return {'CANCELLED'}
+        any_done = False
+        for ob in obs:
+            any_done |= self._apply(context, ob)
+        return {'FINISHED'} if any_done else {'CANCELLED'}
+
+    def invoke(self, context, event):
+        if context.area is None or context.area.type != 'VIEW_3D':
+            return self.execute(context)
+        context.window_manager.modal_handler_add(self)
+        context.workspace.status_text_set('Apply Modifiers: click a mesh (its modifiers are applied top to bottom) '
+                                          '| Esc / Right-click: done')
+        context.window.cursor_modal_set('EYEDROPPER')
+        return {'RUNNING_MODAL'}
+
+    def _finish(self, context):
+        try:
+            context.workspace.status_text_set(None)
+            context.window.cursor_modal_restore()
+        except (AttributeError, RuntimeError):
+            pass
+
+    def modal(self, context, event):
+        if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
+            self._finish(context)
+            return {'FINISHED'}
+        if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+            from . import workspace_ui
+            ob = workspace_ui.object_under_mouse(context, event)
+            if ob is None:
+                self.report({'INFO'}, 'Apply Modifiers: click on a mesh (Esc: done)')
+                return {'RUNNING_MODAL'}
+            for o in context.selected_objects:
+                o.select_set(False)
+            ob.select_set(True)
+            context.view_layer.objects.active = ob
+            self._apply(context, ob)
+            if context.area:
+                context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+        return {'PASS_THROUGH'}             # orbit / zoom / pan still work
+
+
+TOP_TIDY = ('APPLY_MODS', 'MODIFIER', 'Apply Modifiers', 'Click a mesh: its modifiers are applied in order')
+
+
+def top_tidy_position(context):
+    """0.24.21 the Apply Modifiers button above the tool button."""
+    x, y = active_button_pos(context)
+    return x, y + 62.0 * _btn_factor()
+
+
 def tidy_positions(context):
     x, y = active_button_pos(context)
     f = _btn_factor()
@@ -470,6 +571,15 @@ class MCH_GGT_object_tidy(bpy.types.GizmoGroup):
 
     def setup(self, context):
         self.items = []
+        gz = self.gizmos.new('GIZMO_GT_button_2d')        # 0.24.21 Apply Modifiers (click a mesh), on top
+        gz.icon = TOP_TIDY[1]
+        gz.draw_options = {'BACKDROP', 'OUTLINE'}
+        gz.target_set_operator('mch.apply_modifiers_pick')
+        gz.color = BASE_COL
+        gz.alpha = 0.92
+        gz.color_highlight = (0.32, 0.35, 0.41)
+        gz.alpha_highlight = 1.0
+        self.top = gz
         for action, icon, _l, _d in TIDY:
             gz = self.gizmos.new('GIZMO_GT_button_2d')
             gz.icon = icon
@@ -483,6 +593,10 @@ class MCH_GGT_object_tidy(bpy.types.GizmoGroup):
 
     def draw_prepare(self, context):
         ui = context.preferences.system.ui_scale
+        x, y = top_tidy_position(context)
+        self.top.scale_basis = 19.0 * _btn_factor()
+        self.top.matrix_basis[0][3] = x * ui
+        self.top.matrix_basis[1][3] = y * ui
         for gz, (x, y) in zip(self.items, tidy_positions(context)):
             gz.scale_basis = 19.0 * _btn_factor()
             gz.matrix_basis[0][3] = x * ui
@@ -498,6 +612,9 @@ def _draw_tidy_labels(context):
     for (_a, _i, label, _d), (x, y) in zip(TIDY, tidy_positions(context)):
         blf.position(0, (x + 27 * f) * ui, (y - 5 * f) * ui, 0)
         blf.draw(0, label)
+    x, y = top_tidy_position(context)
+    blf.position(0, (x + 27 * f) * ui, (y - 5 * f) * ui, 0)
+    blf.draw(0, TOP_TIDY[2] + '  (click a mesh)')
 
 
 def _draw_active_label(context):
@@ -547,7 +664,7 @@ def _draw_labels():
 
 
 CLASSES = (MCH_OT_bar_tool, MCH_MT_tool_pie, MCH_OT_tool_pie, MCH_OT_toggle_last_tool, MCH_OT_toggle_targets, MCH_GGT_bottom_toolbar,
-           MCH_OT_tool_active, MCH_GGT_tool_active, MCH_OT_object_tidy, MCH_GGT_object_tidy)
+           MCH_OT_tool_active, MCH_GGT_tool_active, MCH_OT_object_tidy, MCH_OT_apply_modifiers_pick, MCH_GGT_object_tidy)
 # 0.19.1: the 0.15 floating side tool list was removed (user request)
 
 

@@ -147,6 +147,9 @@ def commit(context, alt=False):
     if mode == 'PLATE':
         from . import armor_plate as ap
         msg = ap.perform_plate(context, loops, proj)
+    elif mode == 'CPLATE' and alt:
+        from . import live_subtract        # 0.24.23 Alt+Enter: take the sketch out (live plate or engrave)
+        msg = live_subtract.perform(context, 'CPLATE', loops, proj)
     elif mode == 'CPLATE':
         from . import creature_plate as cp
         msg = cp.perform(context, loops, proj)

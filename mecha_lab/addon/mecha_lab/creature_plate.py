@@ -226,17 +226,22 @@ def _through_parts(context, src, p, target, projector):
 
 def _field(context, ob, src, p, target, projector):
     """Cached point set on the surface: (pts px, tris, nb per group, cos, nrms, shape, natural world height)."""
-    from . import armor_plate as ap
-    from . import base_mesh as bmm
     key = (src.get('stamp'), tuple(round(float(getattr(p, k)), 5) if not isinstance(getattr(p, k), str)
                                    else getattr(p, k) for k in POINT_KEYS))
     hit = _CACHE.get(ob.name)
     if hit is not None and hit[0] == key:
         return hit[1]
+    parts = _parts(context, src, p, target, projector)
+    _CACHE[ob.name] = (key, parts)
+    return parts
+
+
+def _parts(context, src, p, target, projector):
+    """The point sets on the surface (no cache)."""
+    from . import armor_plate as ap
+    from . import base_mesh as bmm
     if src.get('through'):                 # 0.24.20 front and back of the mesh under the outline
-        parts = _through_parts(context, src, p, target, projector)
-        _CACHE[ob.name] = (key, parts)
-        return parts
+        return _through_parts(context, src, p, target, projector)
     groups = cg.prepare_loops([[tuple(q) for q in lp] for lp in src['loops']])
     if not groups:
         raise cg.CutError('The outline is empty.')
@@ -256,12 +261,12 @@ def _field(context, ob, src, p, target, projector):
         scale = ratios[len(ratios) // 2] if ratios else 1.0
         parts.append(dict(pts=pts, tris=tris, nb=nb, cos=cos, nrms=nrms, shape=shape, natural=natural_px * scale,
                           start=tuple(src['loops'][0][0])))
-    _CACHE[ob.name] = (key, parts)
     return parts
 
 
-def build_mesh(parts, p, peak, end_peak):
-    """BMesh (world space) of the plate from the cached point sets."""
+def build_mesh(parts, p, peak, end_peak, carve=False):
+    """BMesh (world space) of the plate from the cached point sets.  ``carve`` (0.24.23 Alt engrave): the
+    same shape turned into the surface (top = surface - normal * height, bottom a hair above the surface)."""
     bm = bmesh.new()
     size = 0.0
     for part in parts:
@@ -280,8 +285,12 @@ def build_mesh(parts, p, peak, end_peak):
         lift = [lift_tip * t ** 1.6 for t in ramp]               # the far end rises off the body
         # the bottom stays in the surface at the root and comes out to it toward the tip (thin edge there)
         down = [sink * max(0.05, 1.0 - t) if lift_tip > 0 else sink for t in ramp]
-        top = [bm.verts.new(cos[i] + nrms[i] * (lift[i] + wall[i] + shape[i] * hgt[i])) for i in range(len(pts))]
-        bot = [bm.verts.new(cos[i] + nrms[i] * (lift[i] - down[i])) for i in range(len(pts))]
+        if carve:
+            top = [bm.verts.new(cos[i] - nrms[i] * (wall[i] + shape[i] * hgt[i])) for i in range(len(pts))]
+            bot = [bm.verts.new(cos[i] + nrms[i] * sink) for i in range(len(pts))]
+        else:
+            top = [bm.verts.new(cos[i] + nrms[i] * (lift[i] + wall[i] + shape[i] * hgt[i])) for i in range(len(pts))]
+            bot = [bm.verts.new(cos[i] + nrms[i] * (lift[i] - down[i])) for i in range(len(pts))]
         for a, b, c in tris:
             bm.faces.new((top[a], top[b], top[c])).smooth = True
             bm.faces.new((bot[c], bot[b], bot[a]))
@@ -395,6 +404,45 @@ def perform(context, loops, projector):
     name = dict((i[0], i[1]) for i in PROFILE_ITEMS)[p.profile]
     through = ' through front and back' if source(ob).get('through') else ''
     return f'Creature plate "{ob.name}" on {target.name}{through} ({name}, {len(me.polygons)} faces)'
+
+
+def engrave(context, loops, projector):
+    """0.24.23 Alt + draw (or Alt+Enter on a sketch) with no live Creature Plate under it: the plate shape is
+    taken out of the mesh under it, only as deep as the plate would be thick (an engraving, not a cut
+    through).  Returns a report; raises cg.CutError (the mesh is unchanged)."""
+    from . import armor_plate as ap
+    scene = context.scene
+    st = scene.mch_cplate
+    groups = cg.prepare_loops(loops)
+    if not groups:
+        raise cg.CutError('The outline is empty.')
+    target = ap.pick_surface(context, projector, groups)
+    if target is None:
+        raise cg.CutError('Alt + draw engraves into a mesh: draw over one (nothing was changed).')
+    cg.check_target(target)
+    src = {'loops': [[[float(x), float(y)] for x, y in lp] for lp in loops], 'through': False}
+    parts = _parts(context, src, st, target, projector)
+    natural = max(part['natural'] for part in parts) * {'PILLOW': 1.0, 'SCALE': 0.5}.get(st.profile, AUTO_RATIO)
+    peak = st.peak if st.peak > 0 else natural
+    end_peak = st.end_peak if st.end_peak >= 0 else peak * (0.15 if st.profile == 'SCALE' else 1.0)
+    bm = build_mesh(parts, st, peak, end_peak, carve=True)
+    try:
+        me = bpy.data.meshes.new('MCH_CPlateEngrave')
+        bm.to_mesh(me)
+    finally:
+        bm.free()
+    cutter = cg.link_temp_object(context, me)
+    cut = scene.mch_cut
+    try:
+        res, _solver = cg.boolean_result(context, target, cutter, 'DIFFERENCE', cut.solver, cut.hole_tolerant)
+        try:
+            cg.commit_mesh(target, res, cut.shared_mesh)
+        finally:
+            if res.users == 0:
+                bpy.data.meshes.remove(res)
+    finally:
+        cg.remove_object_and_mesh(cutter)
+    return f'Engraved into "{target.name}" (Alt): as deep as the plate is thick ({peak + st.edge_thickness:.3g})'
 
 
 def live_plate(context):

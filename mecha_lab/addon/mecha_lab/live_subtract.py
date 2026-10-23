@@ -122,6 +122,9 @@ def pick(context, mode, loops, projector):
 def perform(context, mode, loops, projector):
     """Alt + draw: cut the outline out of the live plate under it.  Returns a report; raises cg.CutError."""
     ob = pick(context, mode, loops, projector)
+    if ob is None and mode == 'CPLATE':
+        from . import creature_plate as cpl      # 0.24.23 no live plate under it: engrave into the mesh
+        return cpl.engrave(context, loops, projector)
     if ob is None:
         what = 'Creature Plate' if mode == 'CPLATE' else 'Plate Detail'
         raise cg.CutError(f'Alt + draw cuts a live {what}: draw over one (nothing was made).')

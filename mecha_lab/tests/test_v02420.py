@@ -112,14 +112,16 @@ for low in (4, 8):
     check(f'low resolution {low}: still closed (narrow parts split, no doubled faces)', ob is not None
           and non_manifold(ob) == 0, msg)
 
+# 0.24.23 Puff is an Alt engraving now (test_v02423); Dome still refuses
 reset()
-C.scene.mch_cbase.profile = 'PUFF'
+C.scene.mch_base.profile = 'DOME'
 try:
-    bm_mod._perform_cutter(C, [([(0, 0), (1, 0), (1, 1)], [])], None, C.scene.mch_cbase, None, None, [object()])
+    bm_mod._perform_cutter(C, [([(0, 0), (1, 0), (1, 1)], [])], None, C.scene.mch_base, None, None, [object()])
     refused = False
 except cg.CutError as ex:
-    refused = 'Puff' in str(ex)
-check('Alt cutter refuses Puff with a message (no flat cap)', refused)
+    refused = 'Dome' in str(ex)
+check('Alt cutter refuses Dome with a message (no flat cap)', refused)
+C.scene.mch_base.profile = 'FLAT'
 src = open(os.path.join(os.path.dirname(bm_mod.__file__), 'ui_tool_settings.py')).read()
 check('panel: Height (peak) slider for the creature shapes', "col.prop(p, 'peak')" in src)
 sys.exit(1 if summary() else 0)

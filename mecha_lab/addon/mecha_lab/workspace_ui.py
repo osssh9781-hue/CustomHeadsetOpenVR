@@ -1526,6 +1526,46 @@ class MCH_OT_select_move_key(bpy.types.Operator):
         return bpy.ops.mch.select_move()
 
 
+class MCH_OT_sculpt_back(bpy.types.Operator):
+    """0.24.23 G in Sculpt Mode: back to Object Mode with Select / Move (like the Select / Move tile)."""
+    bl_idname = 'mch.sculpt_back'
+    bl_label = 'Back to Select / Move'
+    bl_description = 'Leave Sculpt Mode: Object Mode with the Select / Move tool'
+    bl_options = {'INTERNAL'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'SCULPT'
+
+    def execute(self, context):
+        return bpy.ops.mch.select_move()
+
+
+LINE_KEY_SKIP = {'mecha.screw_stamp', 'mecha.primitive'}
+
+
+class MCH_OT_line_width_key(bpy.types.Operator):
+    """0.24.23 [ / ] in Object Mode while a Mecha drawing tool is active: Line Width (Blender's own [ / ]
+    = select parent / child stays everywhere else)."""
+    bl_idname = 'mch.line_width_key'
+    bl_label = 'Line Width Step (hotkey)'
+    bl_options = {'INTERNAL'}
+
+    factor: FloatProperty(default=1.15, min=0.1, max=10.0)
+
+    @classmethod
+    def poll(cls, context):
+        tid = ts.native_tool_id(context)
+        return (tid.startswith('mecha.') and tid not in LINE_KEY_SKIP and context.area is not None
+                and context.area.type == 'VIEW_3D' and getattr(context.scene, 'mch_brush', None) is not None)
+
+    def execute(self, context):
+        from . import cut_engine
+        cut_engine.step_line_width(context, self.factor, self.report)
+        context.area.tag_redraw()
+        return {'FINISHED'}
+
+
 class MCH_MT_add_mecha(bpy.types.Menu):
     """Shift+A > Mecha Lab (appended to Blender's Add menu, nothing removed)."""
     bl_idname = 'MCH_MT_add_mecha'
@@ -2088,7 +2128,8 @@ CLASSES = (
     MCH_OT_workspace_open, MCH_OT_workspace_repair, MCH_OT_workspace_save_startup,
     MCH_OT_set_tool, MCH_OT_set_shape, MCH_OT_space_tools, MCH_OT_hotkey, MCH_OT_hotkeys_save,
     MCH_OT_hotkeys_reset, MCH_OT_ortho_lock,
-    MCH_OT_quick_menu, MCH_OT_sculpt_brush, MCH_OT_select_move, MCH_OT_select_move_key, MCH_MT_add_mecha,
+    MCH_OT_quick_menu, MCH_OT_sculpt_brush, MCH_OT_select_move, MCH_OT_select_move_key, MCH_OT_sculpt_back,
+    MCH_OT_line_width_key, MCH_MT_add_mecha,
     MCH_OT_icon_size_preset, MCH_PT_tools, MCH_PT_main, MCH_PT_lasso, MCH_PT_icon_size, MCH_PT_workspace, MCH_PT_tool_list, MCH_PT_tool_popup, MCH_PT_shape_popup,
     MCH_PT_quick_popup, MCH_PT_profile_popup,
 )
@@ -2144,6 +2185,15 @@ def register_keymaps():
     # 0.24.5 Enter = Apply the live result (tool keymaps, e.g. a pending sketch, come first)
     for key in ('RET', 'NUMPAD_ENTER'):
         _keymaps.append((km, km.keymap_items.new('mch.enter_apply', key, 'PRESS')))
+    # 0.24.23 [ / ] = Line Width in every Mecha drawing tool, also before Blender's Object Mode [ / ]
+    # (select parent / child) - that one still works when no Mecha tool is active (poll)
+    for key, f in (('LEFT_BRACKET', 1.0 / 1.15), ('RIGHT_BRACKET', 1.15)):
+        item = km.keymap_items.new('mch.line_width_key', key, 'PRESS')
+        item.properties.factor = f
+        _keymaps.append((km, item))
+    # 0.24.23 G in Sculpt Mode = back to Object Mode + Select / Move
+    km = kc.keymaps.new(name='Sculpt', space_type='EMPTY')
+    _keymaps.append((km, km.keymap_items.new('mch.sculpt_back', 'G', 'PRESS')))
     # Mesh Curve: double-click a path point in Curve Edit Mode = Straight <-> Smooth.
     # (Registered since v0.5.9 but always inactive; the operator passes through
     # for curves that are not Mecha Lab paths.)

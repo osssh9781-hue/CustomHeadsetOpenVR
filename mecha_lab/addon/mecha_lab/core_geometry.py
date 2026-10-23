@@ -729,6 +729,78 @@ def _bevel_limit(edges):
     return limit
 
 
+def _open_edges(bm):
+    return sum(1 for e in bm.edges if not e.is_manifold)
+
+
+def _rim_edges(bm, layer):
+    return [e for e in bm.edges if len(e.link_faces) == 2 and
+            bool(e.link_faces[0][layer]) != bool(e.link_faces[1][layer])]
+
+
+def _safe_step(bm, step):
+    """Run ``step(bm)``; when it opens the mesh (it can at odd Boolean corners) go back.  Returns the bmesh
+    to keep (the same one, or the copy from before the step)."""
+    before = bm.copy()
+    open0 = _open_edges(bm)
+    step(bm)
+    if _open_edges(bm) > open0:
+        bm.free()
+        return before
+    before.free()
+    return bm
+
+
+def tidy_rim(bm, width, passes=6):
+    """0.24.23 the Boolean leaves slivers where the cut crosses a dense (triangulated) mesh close to its
+    vertices: edges of 0.00002 next to the new rim.  Blender's Clamp Overlap limits the WHOLE bevel to the
+    shortest of them, so the bevel / chamfer came out invisible (a plain box has no such edges, so it worked
+    there).  The flat cutter walls are merged back to big faces and the short edges at the rim are collapsed
+    with Degenerate Dissolve: tiny rim pieces, chords between two rim points (Blender's clamp halves those)
+    and short edges into the surface.  Points move by less than the bevel width, which the bevel rounds over
+    anyway.  Every step that would open the mesh is undone.  Returns the bmesh to keep (may be a new one)."""
+    def layer_of(b):
+        return _face_flag_layer(b)
+
+    def dissolve_walls(b):
+        lay = layer_of(b)
+        inner = [e for e in b.edges if len(e.link_faces) == 2 and e.link_faces[0][lay] and e.link_faces[1][lay]]
+        if inner:
+            bmesh.ops.dissolve_limit(b, angle_limit=math.radians(0.5), verts=[], edges=inner)
+    bm = _safe_step(bm, dissolve_walls)
+
+    def groups(b):
+        lay = layer_of(b)
+        edges = _rim_edges(b, lay)
+        bevel = set(edges)
+        rim_v = {v for e in edges for v in e.verts}
+        near = {o for v in rim_v for o in v.link_edges if o not in bevel}
+        both = [o for o in near if o.verts[0] in rim_v and o.verts[1] in rim_v]
+        one = [o for o in near if not (o.verts[0] in rim_v and o.verts[1] in rim_v)]
+        return ((0, edges, width * 0.5), (1, both, width * 2.0), (2, one, width))
+
+    for _pass in range(passes):
+        edges = _rim_edges(bm, layer_of(bm))
+        if not edges or _bevel_limit(edges) >= width:
+            break
+        before = len(bm.edges)
+        for kind, _g, dist in groups(bm):
+            def run(b, kind=kind, dist=dist, part=None):
+                g = [e for e in groups(b)[kind][1] if e.is_valid and e.calc_length() < dist]
+                if part is not None:
+                    g = g[part::4]
+                if g:
+                    bmesh.ops.dissolve_degenerate(b, dist=dist, edges=g)
+            n0 = len(bm.edges)
+            bm = _safe_step(bm, run)
+            if len(bm.edges) == n0:                 # undone (or nothing to do): try it in smaller parts
+                for part in range(4):
+                    bm = _safe_step(bm, lambda b, part=part, kind=kind, dist=dist: run(b, kind, dist, part))
+        if len(bm.edges) == before:
+            break
+    return bm
+
+
 def finish_new_edges(mesh, mode='NONE', width=0.01, segments=3, profile=0.5, clamp=True, label=''):
     """Bevel/chamfer only edges between cutter faces and original faces.
 
@@ -744,11 +816,22 @@ def finish_new_edges(mesh, mode='NONE', width=0.01, segments=3, profile=0.5, cla
         layer = _face_flag_layer(bm)
         if layer is None:
             return 0
-        edges = [e for e in bm.edges if len(e.link_faces) == 2 and
-                 bool(e.link_faces[0][layer]) != bool(e.link_faces[1][layer])]
+        edges = _rim_edges(bm, layer)
         if not edges:
             return 0
         limit = _bevel_limit(edges)
+        if clamp and width > limit:
+            # 0.24.23 slivers from the Boolean would clamp it to nothing: tidy a copy, keep it only when the
+            # mesh stays as closed as it was
+            work = tidy_rim(bm.copy(), width)
+            wlayer = _face_flag_layer(work)
+            wedges = _rim_edges(work, wlayer)
+            if wedges and _open_edges(work) <= _open_edges(bm) and _bevel_limit(wedges) > limit:
+                bm.free()
+                bm, layer, edges = work, wlayer, wedges
+                limit = _bevel_limit(edges)
+            else:
+                work.free()
         if clamp and width > limit:
             FINISH_NOTES.append(f'{label + " " if label else ""}{mode.lower()} width {width:.4g} limited to '
                                 f'about {limit:.4g} by short neighbouring edges (Clamp Overlap ON)')

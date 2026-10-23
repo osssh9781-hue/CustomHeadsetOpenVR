@@ -1,5 +1,5 @@
-"""0.24.21 Creature Base Mesh / Creature Plate start at Resolution 15; with Sketch on, a Free Draw outline becomes
-an editable lasso (drag points, Enter applies); Sculpt brush tiles (Sculpt Mode on the selected mesh, back to Object
+"""0.24.21 Creature Base Mesh / Creature Plate start at Resolution 15; with Sketch on, a Free Draw outline goes into
+the sketch (0.24.23: no editable points, Enter applies); Sculpt brush tiles (Sculpt Mode on the selected mesh, back to Object
 with Select / Move)."""
 import math
 import os
@@ -103,7 +103,7 @@ S.mch_cbase.resolution = 22
 bm_mod.init_creature_defaults(S)
 check('set only once (your own value stays)', S.mch_cbase.resolution == 22)
 
-# Free Draw + Sketch -> editable lasso
+# Free Draw + Sketch -> into the sketch
 br = S.mch_brush
 br.shape = 'STROKE'
 br.line_mode = False
@@ -116,20 +116,11 @@ op.invoke(ctx, E('LEFTMOUSE', 'PRESS', *circle[0]))
 for x, y in circle[1:]:
     op.modal(ctx, E('MOUSEMOVE', 'NOTHING', x, y))
 r = op.modal(ctx, E('LEFTMOUSE', 'RELEASE', *circle[-1]))
-check('Sketch on: releasing Free Draw does not apply yet (stays editable)', 'RUNNING_MODAL' in r and op.stage == 'POINTS'
-      and op.shape == 'LASSO', (r, op.stage, op.shape))
-n = len(op.pts)
-check('the outline is a handful of lasso points (easy to edit)', 6 <= n <= 60, n)
-check('nothing made yet', ls.data(S) is None and len(bpy.data.objects) == 1)
-p0 = op.pts[n // 2]                                # (the first point would close the lasso)
-op.modal(ctx, E('LEFTMOUSE', 'PRESS', *p0))
-op.modal(ctx, E('MOUSEMOVE', 'NOTHING', p0[0] + 40, p0[1]))
-op.modal(ctx, E('LEFTMOUSE', 'RELEASE', p0[0] + 40, p0[1]))
-moved = any(math.dist(q, (p0[0] + 40, p0[1])) < 2 for q in op.pts)
-check('drag a point to adjust the outline', moved and len(op.pts) == n, (len(op.pts), n))
-r = op.modal(ctx, E('RET'))
-check('Enter applies: the outline goes into the sketch', r == {'FINISHED'} and ls.data(S) is not None,
-      (r, op.reports[-1][1] if op.reports else ''))
+# 0.24.23 (asked): no editable points any more - the stroke goes straight into the sketch as a line,
+# Enter applies the sketch
+check('Sketch on: releasing Free Draw puts the stroke into the sketch (no points to edit)',
+      r == {'FINISHED'} and ls.data(S) is not None and op.shape == 'STROKE', (r, op.stage, op.shape))
+check('nothing made yet (only the sketch)', len(bpy.data.objects) == 1)
 ls.clear(S) if hasattr(ls, 'clear') else None
 br.sketch_first = False
 ctx, op = Ctx(), Op()

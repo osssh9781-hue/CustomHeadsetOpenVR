@@ -2031,8 +2031,6 @@ class StrokeLogic:
                     self._stroke_finish(xy)
                     if len(self.pts) < (1 if self.mode == 'MASK' else 2 if self._line_mode() else 3):
                         return self._cancel(context)
-                    if self._sketch_wanted(context):
-                        return self._stroke_to_lasso(context)
                 return self._run(context, self._execute_closed)
             return {'RUNNING_MODAL'}
         # POINTS
@@ -2096,43 +2094,6 @@ class StrokeLogic:
             self.drag_handle = None
             self.free_drag = False
             self.region.tag_redraw()
-        return {'RUNNING_MODAL'}
-
-    def _sketch_wanted(self, context):
-        """0.24.21 Sketch is on for this tool: a Free Draw outline becomes an editable lasso first."""
-        if self.mode == 'MASK' or self._line_mode():
-            return False
-        from . import lasso_sketch
-        if lasso_sketch.enabled(context, self.mode):
-            return True
-        if self.mode in {'BASE', 'CBASE'}:
-            from . import base_mesh
-            return bool(getattr(base_mesh.scene_defaults(context), 'sketch', False))
-        return False
-
-    def _stroke_to_lasso(self, context):
-        """The drawn Free Draw outline -> lasso points you can drag / add to; Enter applies (like a clicked
-        lasso)."""
-        pts = smooth_open(self.pts, self.brush.stroke_smooth)
-        pts = cg.simplify_open(pts, max(self.brush.stroke_simplify, 3.0 * getattr(self, 'ui', 1.0)))
-        pts = [tuple(q) for q in cg.trim_closing_overlap(pts)]
-        if len(pts) < 3:
-            return self._cancel(context)
-        n = len(pts)
-        self.shape = 'LASSO'
-        self.pts = pts
-        self.sharp, self.overrides, self.rounds = [False] * n, [None] * n, [0.0] * n
-        self.redo.clear()
-        self.stage = 'POINTS'
-        self.line_open = False
-        self.free_drag = False
-        self.drag_index = None
-        self.drag_handle = None
-        self.report({'INFO'}, 'Outline ready: drag points to adjust, Enter applies (Esc cancels)')
-        try:
-            self.region.tag_redraw()
-        except (AttributeError, ReferenceError):
-            pass
         return {'RUNNING_MODAL'}
 
     def _stroke_finish(self, xy):
