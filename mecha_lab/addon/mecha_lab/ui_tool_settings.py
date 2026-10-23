@@ -432,6 +432,15 @@ def draw_remesh(layout, context):
     if s.apply_remesh:
         layout.prop(s, 'apply_existing')
     layout.operator('mch.one_click_remesh', text='REMESH + SMOOTH', icon='MOD_REMESH')
+    # 0.24.20 a key that runs it right away (from any tool); Save in the Hotkeys box keeps it
+    from . import workspace_ui as wsui
+    for _km, item in wsui.hotkey_items(context):
+        if wsui.hotkey_id(item)[1] == 'REMESH':
+            row = layout.row(align=True)
+            row.label(text='Run Key', icon='EVENT_R')
+            row.prop(item, 'type', text='', full_event=True)
+            row.operator('mch.hotkeys_save', text='', icon='FILE_TICK')
+            break
     _hint(layout, 'Voxel remesh loses UVs / attributes')
     from . import lowpoly
     lowpoly.draw(layout, context)                    # 0.23.22 sculpt -> low poly base mesh

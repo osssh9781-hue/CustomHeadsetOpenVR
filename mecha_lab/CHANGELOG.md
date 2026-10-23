@@ -1,5 +1,28 @@
 # CHANGELOG
 
+## 0.24.20 — 크리쳐 툴 세트, 브릿지 패치, 베이스 메쉬 휨 / 쿠션, 라인 모드 손 떼면 적용 (2026-10-23)
+
+### 새 툴 (왼쪽 툴 목록, 각자 아이콘)
+- **Creature Base Mesh**: 라쏘 → 둥근 덩어리. Puff(부풀림, 얇은 곳은 얇게) / Ridge(다이아몬드 단면) / Pillow(납작, 외곽만 둥글게). Height(0 = Auto), Edge Round, Soft Outline, Resolution. Base Mesh와 따로 설정.
+- **Creature Plate**: 아머플레이트의 크리쳐 버전(빠름). Puff / Ridge / Pillow / Scale(뿌리 두껍고 끝 얇게 들림), Height · End Height, 엣지 두께, Through(앞뒤 관통).
+- **Belt Maker**: 메쉬를 감싸는 스트랩(Wrap) 또는 그린 선을 따라가는 스트랩(Follow). 프리셋 Plain / Rail / Webbing(택티컬), 버클.
+- **Creature Spike**: 프리셋 4(Fin / Horn / Hook / Notch), 고른 것끼리 랜덤 섞기, 크기 · 기울기 · 회전 + 랜덤. 라쏘 = 영역 채우기, Line 버튼 = 선 따라.
+- **Creature Scales**: 비늘 프리셋 7(A–G, 스케치에서 따옴), 랜덤 섞기 · 크기 · 회전, 뿌리 두껍고 끝 들림, Resolution Low / Mid / High(Low가 High보다 약 5배 가벼움). 라쏘 = 영역 채우기, Line = 선 따라.
+- **Scale Brush**: 조약돌 프리셋 12개가 바닥이 붙은 채 서로 겹치지 않고 촘촘하게 라쏘 영역을 채움(보로노이 칸마다 하나씩 맞춰 넣음). Size · Size Random · Rotate Random · Gap · Dome / Pillow · Height · Edge Round · Resolution · Seed.
+- **Bridge Patch**: 두 메쉬 사이 틈 메우기(별도 오브젝트, 지브러시 DynaMesh로 합치는 용도). 기본 = 라쏘 전체가 하나의 덩어리로 두 메쉬와 겹침: 라쏘 방향으로는 앞면이 메쉬 표면을 따라가다 틈에서 완만한 곡선으로 이어지고, 폭 방향으로는 양옆이 둥글게 말림(Round), 뒷면은 메쉬 가운데 깊이 기준 대칭으로 채움(Fill). Trim to Gap = 틈만(테두리를 메쉬 속으로 묻음). Smooth · Bulge · Wrap · Thickness · Sink · Overlap · Resolution.
+- **Flower Plate**: 그린 모양 그대로, 시작점 쪽은 붙고 나머지가 들려서 휨. Lift, Curl(+ 뒤로 말림 / − 바깥으로 처짐), Curl Power, Side Bend, Roll, Attach, Thickness, Tip Thin, Tip Sharp(0 = 그린 모양 그대로), Sink.
+- **Surface Curve**: 메쉬 위를 따라 그리면 그 위에 Mesh Curve가 생김(이후 Mesh Curve처럼 편집).
+
+### 기존 툴
+- **Base Mesh / Creature Base Mesh: Bend**(만든 뒤 LIVE 패널): Bend Up / Down, Bend Sideways, Band(고르게) / Angle(한 곳에서 꺾임, 이음매 틈 없음), Angle의 Outer Round / Inner Round, Bend Position, Bend Direction.
+- **Base Mesh 프로파일 Cushion**: 양면이 볼록하고 외곽이 솔기처럼 모이는 쿠션(Height = 전체 두께, Edge Round = 테두리 볼륨). 1차 버전.
+- **Mesh Curve**: 외곽 라인(Lines / Height / Width / Rotate), 크리쳐 단면 A / B / C, Guts(내장 느낌 마디), From Object(내 오브젝트 외곽을 단면으로).
+- **라인 모드(모든 툴)**: 선을 긋다가 손을 떼면 바로 적용(Enter / 더블클릭 필요 없음). Plate Detail 1 / 2 / 3에도 Line 버튼.
+- **Remesh 바로 실행 단축키**: 처음엔 비어 있음 → Remesh 패널의 Run Key 또는 Hotkeys 상자에서 키 지정, Save로 유지. 어느 툴에서나 선택한 메쉬에 Remesh + Smooth 실행.
+- **Mirror**: 0.24.19의 좌클릭 / 우클릭 적용을 되돌림(요청). Mirror 자체는 그대로.
+- 스탬프 모양에 비늘 외곽 7개(Scale A–G) 추가. 새 툴 · 프로파일 아이콘 13개.
+- 테스트: 90개 파일 2923/2923. 새 test_v02420*(bend / bridge / cushion / keys), test_v0220 라인 모드를 누르고-끌고-떼기로. ZIP sha256 `4cb9cff994f6947903c03ea04883ac55b81d1fa2ed44905b69c1676608e3badc`.
+
 ## 0.24.19 — Mirror: 좌클릭 = 오른쪽으로 복사 + 적용, 우클릭 = 왼쪽으로 복사 + 적용 (2026-10-22)
 
 - **Mirror(Alt+X / 왼쪽 Mirror·Symmetry 버튼)**: 켠 상태에서 **좌클릭** = 화면 오른쪽으로 복사(왼쪽 반이 오른쪽에 거울로)하고 바로 적용, **우클릭** = 화면 왼쪽으로 복사하고 바로 적용. 화면에서 좌우로 놓인 축을 고름(위 / 앞 뷰 = X, 뒤 뷰면 -X 쪽이 화면 오른쪽). Mirror 버튼(살아있는 미러 모드)에서도 클릭은 적용.

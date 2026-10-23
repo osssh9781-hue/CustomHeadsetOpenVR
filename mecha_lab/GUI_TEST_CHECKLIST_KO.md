@@ -1,8 +1,20 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.19 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.20 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A00000000000000000000000000000000000000000000000000000000000000. 0.24.20 (미검증)
+- [ ] 새 툴 9개가 왼쪽 목록에 각자 아이콘으로 보이는지(Creature Base Mesh, Creature Plate, Belt Maker, Creature Spike, Creature Scales, Scale Brush, Bridge Patch, Flower Plate, Surface Curve)
+- [ ] 라인 모드: 선을 긋다가 손을 떼면 바로 적용되는지(Cut / Base Mesh / Armor Plate / Plate Detail 등)
+- [ ] Creature Scales / Spike: 라쏘로 영역이 채워지는지, Line 버튼이면 선을 따라가는지, 슬라이더가 바로 반영되는지
+- [ ] Scale Brush: 조약돌이 겹치지 않고 촘촘한지, Seed / Size / Gap
+- [ ] Bridge Patch: 두 도형에 걸쳐 그리면 라쏘 전체가 덩어리로 나오고 앞선이 곡선으로 이어지는지, Round / Fill / Trim to Gap
+- [ ] Flower Plate: 시작점이 붙고 Lift / Curl(+/−) / Side Bend / Roll이 그린 모양 그대로 휘는지
+- [ ] Surface Curve: 메쉬 위를 따라 그린 뒤 Mesh Curve 설정(Guts / From Object)이 되는지
+- [ ] Base Mesh Bend(Band / Angle, Outer / Inner Round), Cushion 프로파일
+- [ ] Remesh 패널 Run Key에 키 지정 → 다른 툴에서 눌러도 Remesh + Smooth, Save 후 재시작해도 유지
+- [ ] Mirror: 좌 / 우클릭으로 적용되지 않는지(0.24.19 동작 되돌림)
 
 ## A0000000000000000000000000000000000000000000000000000000000000. 0.24.19 (미검증)
 - [ ] Alt+X → 좌클릭: 오른쪽으로 복사돼서 바로 적용(모디파이어 없음)되는지

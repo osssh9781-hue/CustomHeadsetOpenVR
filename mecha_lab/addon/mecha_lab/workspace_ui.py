@@ -302,7 +302,8 @@ def hotkey_items(context=None):
 
 
 HOTKEY_LABELS = {'BOOLEAN': 'Boolean Difference', 'CUT': 'Cut', 'SPLIT': 'Split (nothing selected)',
-                 'PLATE': 'Armor Plate', 'MIRROR': 'Mirror', 'SHAPES': 'Lasso Shape Menu'}
+                 'PLATE': 'Armor Plate', 'MIRROR': 'Mirror', 'SHAPES': 'Lasso Shape Menu',
+                 'REMESH': 'Remesh + Smooth (run now)'}
 # tools whose key is one of the named hotkeys above (C = Cut, S = Split, Alt+A = Armor Plate)
 TOOL_ACTIONS = {'CUT': 'CUT', 'SPLIT': 'SPLIT', 'PLATE': 'PLATE'}
 HOTKEYS_FILE = 'hotkeys.json'
@@ -1500,7 +1501,7 @@ class MCH_OT_hotkey(bpy.types.Operator):
     action: EnumProperty(items=[('BOOLEAN', 'Boolean Difference', ''), ('CUT', 'Cut Tool', ''),
                                 ('SPLIT', 'Split Tool', ''), ('PLATE', 'Armor Plate Tool', ''),
                                 ('MIRROR', 'Mirror (lean)', ''), ('SHAPES', 'Lasso Shape Menu', ''),
-                                ('TOOL', 'Pick a Tool', '')])
+                                ('TOOL', 'Pick a Tool', ''), ('REMESH', 'Remesh + Smooth (run)', '')])
     # 0.24.17 TOOL: one key per tool of the left list (unassigned until you set one)
     tool: EnumProperty(items=ts.TOOL_ENUM_ITEMS, default='CUT')
     # 0.24.8 S = Split only with nothing selected (with a selection S stays Blender's Scale)
@@ -1526,6 +1527,12 @@ class MCH_OT_hotkey(bpy.types.Operator):
             return bpy.ops.mch.boolean('EXEC_DEFAULT', operation='DIFFERENCE')
         if self.action == 'MIRROR':
             return {'CANCELLED'}
+        if self.action == 'REMESH':
+            # 0.24.20 run Remesh + Smooth on the selection right away (the Remesh tool's settings), any tool
+            if not bpy.ops.mch.one_click_remesh.poll():
+                self.report({'WARNING'}, 'Remesh: select a mesh first (Object Mode)')
+                return {'CANCELLED'}
+            return bpy.ops.mch.one_click_remesh('EXEC_DEFAULT')
         if self.action == 'SHAPES':
             # 0.24.17 L = the lasso shape menu at the mouse (like the old Space menu)
             bpy.ops.wm.call_panel(name='MCH_PT_shape_popup', keep_open=False)
@@ -2030,6 +2037,10 @@ def register_keymaps():
     # Hotkeys box, Save keeps them (config/mecha_lab/hotkeys.json)
     item = km.keymap_items.new('mch.hotkey', 'L', 'PRESS')
     item.properties.action = 'SHAPES'
+    _keymaps.append((km, item))
+    # 0.24.20 run Remesh + Smooth right away (no key until you set one in the Hotkeys box)
+    item = km.keymap_items.new('mch.hotkey', 'NONE', 'PRESS')
+    item.properties.action = 'REMESH'
     _keymaps.append((km, item))
     for tid in tool_key_ids():
         item = km.keymap_items.new('mch.hotkey', 'NONE', 'PRESS')

@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.19
+# Test Report — Mecha Lab 0.24.20
+
+## 0.24.20 결과: 90개 파일 2923/2923 (`tests/test_log_bpy501_v02420.txt`). 새 test_v02420(크리쳐 베이스 메쉬 Puff / Height), test_v02420_bend(Band / Angle, 마이터 연속, Outer / Inner Round, 닫힌 메쉬, Bend Position), test_v02420_bridge(soft_fill 하모닉 / 바이하모닉, bump, spread, Trim to Gap 덮기 / Round / Fill, 전체 라쏘 곡선 연결 · 대칭 Fill · 오류), test_v02420_cushion(두께 = Height, 대칭, 솔기, Edge Round), test_v02420_keys(Remesh 실행 키 미지정 등록, 새 아이콘 파일, Plate Detail Line), test_v0220(라인 모드 누르고-끌고-떼기, Plate Detail 1 / 2 / 3 라인), test_v0113(내장 모양 13개). 실제 마우스 입력 · 패널 · 아이콘 표시는 미검증.
 
 ## 0.24.19 결과: 82개 파일 2668/2668 (`tests/test_log_bpy501_v02419.txt`) (`tests/test_log_bpy501_v02419.txt`). test_v02419(21): 위 뷰 좌클릭 = +X로 복사(x -0.2..0.2) + BAKE → 적용 후 모디파이어 없음, 우클릭 = -X로(x -0.8..0.8) + 적용, 뒤 뷰 좌클릭 = -X, 앞 뷰 좌클릭 = X축(Z 아님), Shift+좌클릭 축 추가 유지 / 잠긴 Y + 좌클릭 = X+Y, Esc 취소, 다른 오브젝트 가리킨 채 우클릭 = 그 건너편, modal BAKE는 keep_live여도 적용 / APPLY+keep_live = live, 인스턴스 좌 / 우클릭 = BAKE + 살아있는 쌍둥이 1개, 상태줄 문구. 실제 마우스 입력은 미검증.
 

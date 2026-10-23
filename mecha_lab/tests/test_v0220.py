@@ -178,6 +178,19 @@ n0 = len(bpy.data.objects)
 r, m, prev = lasso([(300, 300), (700, 700)])
 check('Base Mesh from a line', r == {'FINISHED'} and len(bpy.data.objects) >= n0, (r, m))
 
+# ---- 0.24.20 Plate Detail 1 / 2 / 3 with a line: a strip of detail along it
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+box = cube('Box', 4.0)
+for tool in ('DETAIL', 'DETAIL2', 'DETAIL3'):
+    use_tool(tool)
+    n0 = len(bpy.data.objects)
+    r, m, prev = lasso([(300, 500), (700, 500)])
+    made = [o for o in bpy.data.objects if o != box]
+    check(f'{tool} from a line (strip along it)', r == {'FINISHED'} and len(bpy.data.objects) > n0, (r, m))
+    for o in made:
+        bpy.data.objects.remove(o)
+
 # ---- Cut: a groove through the box
 for o in list(bpy.data.objects):
     bpy.data.objects.remove(o)

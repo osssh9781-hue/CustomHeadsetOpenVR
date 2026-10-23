@@ -1,4 +1,12 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.19 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.20 (Claude Code, 2026-10-14)
+
+## 0.24.20
+- ZIP sha256 `4cb9cff994f6947903c03ea04883ac55b81d1fa2ed44905b69c1676608e3badc`. 새 모듈: `creature_plate`, `belt_maker`, `creature_spike`, `creature_scales`, `scale_brush`, `bridge_patch`, `flower_plate`, `surface_curve`(툴 id CBASE 34, CPLATE 35, BELT 36, SPIKE 37, SCALES 38, FLOWER 39, SCURVE 40, SBRUSH 41, BRIDGE 42). 공통 패턴: Object custom prop SRC_KEY(JSON: loops / path px + `armor_plate.freeze_projector`, target, stamp) + Scene / Object PropertyGroup(LIVE_KEYS, `_update` → rebuild + scene 기본값 갱신) + 모듈 `_CACHE` + Apply 연산자(SRC_KEY 삭제).
+- `base_mesh.profile_field`: Chaikin 외곽 + `_dome_points`(rings / rim 인자로 해상도 조절) + 삼각분할, 높이 Puff(코탄젠트 라플라시안 Poisson + CG) / Ridge / Pillow / Scale / Cushion. Bend: `bend_coords`(Band 원호, Angle = `fold_round`: 마이터 접기 + 바깥 / 안쪽 라운드 `_round_offset`), `_bend`가 평평한 캡은 bisect로 잘라서 휨.
+- `bridge_patch`: 라쏘 점 레이캐스트(깊이, 정면도, 메쉬 뒷면까지 = middle) → `soft_fill`(가중 하모닉 / 바이하모닉 CG) 표면, `puff_heights`로 폭 방향 둥글기, `local_max`; 기본 `_build_whole`(라쏘 전체 솔리드), Trim to Gap = 기존 틈 + 묻힌 테두리.
+- `scale_brush.pack`: 지터 육각 점 → Lloyd 2회 → 보로노이 셀(반평면 클리핑) 안에 프리셋을 최대 크기로(`_fit_scale` 정확, 3개 프리셋 × 6 회전 × 5 위치 중 최대).
+- `cut_engine`: 라인 모드면 LASSO / CURVE_LASSO를 STROKE로(누르고 끌고 떼면 적용), shape-changed 검사는 `brush_shape`와 비교. `lasso_line.MODES` + Plate Detail 1 / 2 / 3.
+- `workspace_ui`: `mch.hotkey` action REMESH(키 NONE으로 등록, Remesh 패널 Run Key / Hotkeys 상자). Mirror 클릭 적용(0.24.19)은 되돌림.
 
 ## 0.24.19
 - ZIP sha256 `6e441cca809dbce5fd9d8d4f16966a9d8aeff594fd0fca5f5a5b9cde273c0bbf`. `mirror_tools.MirrorLeanLogic.handle`: LEFTMOUSE(Shift 없이) / RIGHTMOUSE → `pick_side(scene, ±1)`(제스처 중심에서 화면 ±200 px 지점으로 `lean_pick`, 잠긴 축 유지, 가리킨 피벗이 있으면 그대로) 후 'BAKE'. `LeanModal.modal`: 'BAKE'는 keep_live와 상관없이 finish_apply(인스턴스는 finish_live와 같음). RMB 취소 제거(Esc만), 상태줄 / 설명 갱신.
