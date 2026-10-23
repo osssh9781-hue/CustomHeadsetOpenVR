@@ -1770,9 +1770,32 @@ def _tab_watch():
         return None
 
 
+CBASE_START = {'resolution': 15}       # 0.24.21 Creature Base Mesh starts lighter than Base Mesh (same settings type)
+
+
+def init_creature_defaults(scene):
+    """Give a scene's Creature Base Mesh settings their own starting values once (they share the Base Mesh type)."""
+    st = getattr(scene, 'mch_cbase', None)
+    if st is None or scene.get('mch_cbase_init'):
+        return
+    for k, v in CBASE_START.items():
+        setattr(st, k, v)
+    scene['mch_cbase_init'] = True
+
+
+def _init_all_scenes():
+    try:
+        for sc in bpy.data.scenes:
+            init_creature_defaults(sc)
+    except (AttributeError, TypeError, RuntimeError):
+        pass
+    return None
+
+
 @bpy.app.handlers.persistent
 def _migrate_on_load(_dummy=None):
     """v0.8-0.9 'Bevel Bottom Too' -> Bevel Sides = Both (only when unset)."""
+    _init_all_scenes()
     pgs = [sc.mch_base for sc in bpy.data.scenes if hasattr(sc, 'mch_base')]
     pgs += [ob.mch_base for ob in bpy.data.objects if hasattr(ob, 'mch_base')]
     for p in pgs:
@@ -1847,6 +1870,7 @@ def register():
     bpy.types.Object.mch_base = bpy.props.PointerProperty(type=MCH_PG_BaseMesh)
     if _migrate_on_load not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(_migrate_on_load)
+    bpy.app.timers.register(_init_all_scenes, first_interval=0.1)    # the scene open while enabling the add-on
     global _sketch_handle
     if not bpy.app.background and _sketch_handle is None:
         _sketch_handle = bpy.types.SpaceView3D.draw_handler_add(_draw_sketch, (), 'WINDOW', 'POST_VIEW')

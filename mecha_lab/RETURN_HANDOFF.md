@@ -1,4 +1,11 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.20 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.21 (Claude Code, 2026-10-14)
+
+## 0.24.21
+- ZIP sha256 `ae6f1687c9e7acb73ff4f96b42ddcc2ce9dce9ad57cd3f0ec55137c7ca0953d7`. `bridge_patch.drape(n, edges, front, depth, passes)`: 그래프 라플라시안 평활 + `min(front, depth)` 반복(앞에서 본 천 덮기), `_build_whole`에서 `crease * 30 * res`회. 표면 위 판정 `on`(깊이 차 / 두께)으로만 Sink.
+- `cut_engine`: STROKE 놓을 때 `_sketch_wanted`(lasso_sketch.enabled 또는 Base / Creature Base의 sketch)면 `_stroke_to_lasso` → shape LASSO, stage POINTS(단순화 점), Enter = `_confirm`.
+- `base_mesh.init_creature_defaults`(CBASE_START resolution 15, scene['mch_cbase_init']로 한 번): load_post, 등록 직후 타이머, CBASE 활성화 시. `creature_plate` resolution 기본 15.
+- `lasso_line.band(..., taper, pressure)`: 점마다 폭(`taper_factor`, `pressure_profile`), 끝 캡도 그 폭. `cut_engine`: event.pressure를 Free Draw 샘플마다 저장, [ / ] = `step_line_width`(modal + 툴 키맵 `mch.line_width_step`). `core_geometry.overlap_edges / overlap_hint` → `perform_closed`가 실패 메시지에 원인 추가 / 성공 시 경고.
+- `workspace_ui`: `SCULPT_BRUSHES`, `draw_sculpt_grid`(MCH_PT_tool_list 아래), `MCH_OT_sculpt_brush`(sculpt_target → mode_set SCULPT → brush.asset_activate ESSENTIALS). Object 복귀는 기존 mch.select_move / activate_mecha_tool.
 
 ## 0.24.20
 - ZIP sha256 `4cb9cff994f6947903c03ea04883ac55b81d1fa2ed44905b69c1676608e3badc`. 새 모듈: `creature_plate`, `belt_maker`, `creature_spike`, `creature_scales`, `scale_brush`, `bridge_patch`, `flower_plate`, `surface_curve`(툴 id CBASE 34, CPLATE 35, BELT 36, SPIKE 37, SCALES 38, FLOWER 39, SCURVE 40, SBRUSH 41, BRIDGE 42). 공통 패턴: Object custom prop SRC_KEY(JSON: loops / path px + `armor_plate.freeze_projector`, target, stamp) + Scene / Object PropertyGroup(LIVE_KEYS, `_update` → rebuild + scene 기본값 갱신) + 모듈 `_CACHE` + Apply 연산자(SRC_KEY 삭제).

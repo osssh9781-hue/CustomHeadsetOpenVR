@@ -466,6 +466,9 @@ def activate_mecha_tool(context, tool_id):
         from . import base_mesh
         base_mesh.auto_apply_session(context)     # F02: only this tool's own live results
     settings.mch_active_tool = tool_id
+    if tool_id == 'CBASE':
+        from . import base_mesh
+        base_mesh.init_creature_defaults(context.scene)
     # 0.23.4: the normal Armor / Cloth Plate (the Creature brushes switch their flag back on after this)
     for pg, tid in (('mch_wrinkle', 'WRINKLE'), ('mch_plate', 'PLATE')):
         if tool_id == tid and hasattr(context.scene, pg):
@@ -558,6 +561,9 @@ def _tool_keymap(mode):
         # B06: R / Shift+R rotate a PNG stamp (poll fails for other shapes -> Blender's R).
         ('mch.stamp_rotate', {'type': 'R', 'value': 'PRESS'}, {'properties': [('sign', 1)]}),
         ('mch.stamp_rotate', {'type': 'R', 'value': 'PRESS', 'shift': True}, {'properties': [('sign', -1)]}),
+        # 0.24.21 [ / ] = Line Width (the band in Line mode), like a brush size
+        ('mch.line_width_step', {'type': 'LEFT_BRACKET', 'value': 'PRESS'}, {'properties': [('factor', 1.0 / 1.15)]}),
+        ('mch.line_width_step', {'type': 'RIGHT_BRACKET', 'value': 'PRESS'}, {'properties': [('factor', 1.15)]}),
     )
 
 
@@ -1019,6 +1025,85 @@ def draw_tool_grid(layout, context, columns=4, scale=3.0, tools=None):
             op.tool = tid
 
 
+# 0.24.21 sculpt brush presets under the tool list: (label, essentials brush asset, icon stem, fallback icon)
+SCULPT_BRUSHES = (
+    ('Draw', 'Draw', 'sculpt_draw', 'BRUSH_DATA'),
+    ('Clay Strips', 'Clay Strips', 'sculpt_clay', 'BRUSH_DATA'),
+    ('Inflate', 'Inflate/Deflate', 'sculpt_inflate', 'BRUSH_DATA'),
+    ('Grab', 'Grab', 'sculpt_grab', 'BRUSH_DATA'),
+    ('Smooth', 'Smooth', 'sculpt_smooth', 'BRUSH_DATA'),
+    ('Crease', 'Crease Polish', 'sculpt_crease', 'BRUSH_DATA'),
+)
+SCULPT_LIB = 'brushes/essentials_brushes-mesh_sculpt.blend/Brush/'
+
+
+def sculpt_target(context):
+    """The mesh to sculpt: the active one, else the first selected mesh."""
+    ob = context.active_object
+    if ob is not None and ob.type == 'MESH':
+        return ob
+    return next((o for o in context.selected_objects if o.type == 'MESH'), None)
+
+
+def draw_sculpt_grid(layout, context, columns=3, scale=2.2):
+    """0.24.21 SCULPT tiles: a click goes to Sculpt Mode on the selected mesh with that brush; Select / Move (top
+    of the tool list) or any Mecha tool brings you back to Object Mode."""
+    box = layout.box()
+    head = box.row()
+    head.label(text='SCULPT', icon='SCULPTMODE_HLT')
+    if context.mode == 'SCULPT':
+        head.operator('mch.select_move', text='Back to Object', icon='OBJECT_DATAMODE')
+    current = ''
+    if context.mode == 'SCULPT':
+        try:
+            current = context.tool_settings.sculpt.brush.name
+        except AttributeError:
+            current = ''
+    grid = box.grid_flow(row_major=True, columns=columns, even_columns=True, even_rows=True, align=False)
+    for label, asset, stem, fallback in SCULPT_BRUSHES:
+        for op in icon_tile(grid, stem, fallback, 'mch.sculpt_brush', label, scale, depress=(current == asset)):
+            op.brush = asset
+    if sculpt_target(context) is None:
+        box.label(text='Select a mesh to sculpt', icon='INFO')
+
+
+class MCH_OT_sculpt_brush(bpy.types.Operator):
+    """0.24.21 Sculpt Mode on the selected mesh with this brush (no workspace / tab change)"""
+    bl_idname = 'mch.sculpt_brush'
+    bl_label = 'Sculpt Brush'
+    bl_options = {'REGISTER'}
+    brush: StringProperty(default='Draw')
+
+    @classmethod
+    def description(cls, context, properties):
+        return f'Sculpt with "{properties.brush}" on the selected mesh (Select / Move goes back to Object Mode)'
+
+    @classmethod
+    def poll(cls, context):
+        return sculpt_target(context) is not None
+
+    def execute(self, context):
+        ob = sculpt_target(context)
+        try:
+            if context.mode not in {'OBJECT', 'SCULPT'}:
+                bpy.ops.object.mode_set(mode='OBJECT')
+            if context.view_layer.objects.active != ob:
+                context.view_layer.objects.active = ob
+            if context.mode != 'SCULPT':
+                bpy.ops.object.mode_set(mode='SCULPT')
+        except RuntimeError as ex:
+            self.report({'ERROR'}, f'Sculpt Mode not available: {ex}')
+            return {'CANCELLED'}
+        try:
+            bpy.ops.brush.asset_activate(asset_library_type='ESSENTIALS',
+                                         relative_asset_identifier=SCULPT_LIB + self.brush)
+        except (RuntimeError, TypeError, AttributeError) as ex:
+            self.report({'WARNING'}, f'Sculpt Mode on; brush "{self.brush}" not found ({ex}) - pick it in the toolbar')
+            return {'FINISHED'}
+        self.report({'INFO'}, f'Sculpt: {self.brush} - Select / Move in the tool list goes back to Object Mode')
+        return {'FINISHED'}
+
+
 def draw_shape_grid(layout, context, columns=4, scale=2.6):
     brush = context.scene.mch_brush
     grid = layout.grid_flow(row_major=True, columns=columns, even_columns=True, even_rows=True, align=False)
@@ -1090,6 +1175,8 @@ def draw_shape_palette(self, context):
     if brush.line_mode:
         sk.prop(brush, 'line_width', text='')
         sk.prop(brush, 'line_caps', text='')
+        sk.prop(brush, 'line_taper', text='Taper', slider=True)          # 0.24.21 pointed ends
+        sk.prop(brush, 'line_pressure', text='', icon='STYLUS_PRESSURE', toggle=True)
     row.separator()
     sub = row.row(align=True)
     sub.template_icon_view(scene, 'mch_png_preset', show_labels=True, scale=isz(1.0), scale_popup=isz(5.0))
@@ -1750,6 +1837,7 @@ class MCH_PT_tool_list(bpy.types.Panel):
         # 0.14.3: tiles (icon above, name below) instead of rows with a wide name column;
         # columns follow the width of the left area
         draw_tool_grid(layout, context, columns=0, scale=2.2)
+        draw_sculpt_grid(layout, context, columns=3, scale=2.2)      # 0.24.21
         layout.separator()
         layout.label(text='Space (while drawing): move the outline', icon='EVENT_SPACEKEY')
 
@@ -1997,7 +2085,7 @@ CLASSES = (
     MCH_OT_workspace_open, MCH_OT_workspace_repair, MCH_OT_workspace_save_startup,
     MCH_OT_set_tool, MCH_OT_set_shape, MCH_OT_space_tools, MCH_OT_hotkey, MCH_OT_hotkeys_save,
     MCH_OT_hotkeys_reset, MCH_OT_ortho_lock,
-    MCH_OT_quick_menu, MCH_OT_select_move, MCH_OT_select_move_key, MCH_MT_add_mecha,
+    MCH_OT_quick_menu, MCH_OT_sculpt_brush, MCH_OT_select_move, MCH_OT_select_move_key, MCH_MT_add_mecha,
     MCH_OT_icon_size_preset, MCH_PT_tools, MCH_PT_main, MCH_PT_lasso, MCH_PT_icon_size, MCH_PT_workspace, MCH_PT_tool_list, MCH_PT_tool_popup, MCH_PT_shape_popup,
     MCH_PT_quick_popup, MCH_PT_profile_popup,
 )

@@ -6,6 +6,7 @@ meshes' surfaces and joins them with a smooth curve across the gap, across it th
 Trim to Gap: only the gap plus a band of the meshes' surface that is sunk into them; where the view ray hits a
 mesh surface that faces you the patch follows it, the gap and the steep sides (Wrap) are filled smoothly.
 
+    Fill Crease fills the valley where two meshes meet (touching parts): the patch rides over it
     Round       how round / thick across: 1 = a circle's section (radius = half the lasso's width there)
     Bulge       push the middle out (+) or in (-)
     Fill        the back: 1 = mirrors the front about the meshes' middle (a full solid), 0 = only to the middle
@@ -32,7 +33,7 @@ from . import core_geometry as cg
 
 SRC_KEY = 'mch_bridge_src'
 COLLECTION = 'Bridge Patches'
-LIVE_KEYS = ('trim', 'smooth', 'bulge', 'round', 'wrap', 'fill', 'thickness', 'sink', 'overlap', 'quality')
+LIVE_KEYS = ('trim', 'crease', 'smooth', 'bulge', 'round', 'wrap', 'fill', 'thickness', 'sink', 'overlap', 'quality')
 QUALITY = {'LOW': 24, 'MID': 40, 'HIGH': 64}
 _CACHE = {}
 
@@ -145,6 +146,29 @@ def local_max(n, edges, values, passes):
     return g.tolist()
 
 
+def drape(n, edges, front, depth, passes):
+    """``front`` smoothed ``passes`` times, never behind ``depth`` (where known) - pure.  Creases between the
+    surfaces fill in, convex parts stay on the surface (like a cloth laid over them, seen from the front)."""
+    import numpy as np
+    S = np.asarray(front, dtype=np.float64)
+    if passes <= 0:
+        return S.tolist()
+    known = np.asarray([d is not None for d in depth])
+    D = np.asarray([d if d is not None else 0.0 for d in depth], dtype=np.float64)
+    I = np.asarray([e[0] for e in edges], dtype=np.int64)
+    J = np.asarray([e[1] for e in edges], dtype=np.int64)
+    deg = np.zeros(n)
+    np.add.at(deg, I, 1.0)
+    np.add.at(deg, J, 1.0)
+    for _k in range(passes):
+        acc = np.zeros(n)
+        np.add.at(acc, I, S[J])
+        np.add.at(acc, J, S[I])
+        S = 0.5 * S + 0.5 * acc / np.maximum(deg, 1.0)
+        S = np.where(known, np.minimum(S, D), S)
+    return S.tolist()
+
+
 def _smoothstep(x):
     x = max(0.0, min(1.0, x))
     return x * x * (3.0 - 2.0 * x)
@@ -182,6 +206,9 @@ class MCH_PG_Bridge(bpy.types.PropertyGroup):
     trim: _p(BoolProperty, name='Trim to Gap', default=False,
              description='Off: the whole lasso becomes one round solid that overlaps both meshes (merge it later, '
                          'e.g. DynaMesh). On: only the gap plus a sunk rim, following the meshes\' surfaces')
+    crease: _p(FloatProperty, name='Fill Crease', default=0.5, min=0.0, max=1.0, subtype='FACTOR',
+               description='Fill the valley where two meshes meet (touching parts, e.g. torso and pelvis): the '
+                           'patch rides over it; 0 = follow the surfaces exactly')
     smooth: _p(FloatProperty, name='Smooth', default=1.0, min=0.0, max=1.0, subtype='FACTOR',
                description='0 = the straightest join, 1 = the surfaces\' slope carries on across the gap')
     bulge: _p(FloatProperty, name='Bulge', default=0.0, min=-1.0, max=1.0,
@@ -387,12 +414,17 @@ def _build_whole(n, tris, edges, origins, dirs, depth, facing, size, puff, middl
     if abs(p.bulge) > 1e-6:
         bp = bump(n, edges, {i: 0.0 for i in range(n) if weight[i] >= 0.5})
         surface = [surface[i] - p.bulge * 0.25 * size * bp[i] for i in range(n)]
+    # 0.24.21 ride over the creases between the meshes (two parts touching, e.g. torso and pelvis): smooth the
+    # front and keep it in front of the surfaces, again and again - a valley fills, a bulge stays the mesh's own
+    surface = drape(n, edges, surface, depth, int(round(p.crease * 30 * QUALITY[p.quality])))
     top = local_max(n, edges, puff, max(2, QUALITY[p.quality] // 3))
     thick = p.thickness if p.thickness > 0 else 0.03 * size
     verts_f, verts_b = [], []
     for i in range(n):
         dep = surface[i] + p.round * max(0.0, top[i] - puff[i])     # the sides curve back (a round section)
-        dep += thick * p.sink * weight[i]                          # just under the meshes where they show
+        if depth[i] is not None:                                   # on a mesh: just under it (it shows there)
+            on = max(0.0, min(1.0, 1.0 - (depth[i] - surface[i]) / max(thick, 1e-9)))
+            dep += thick * p.sink * on
         behind = max(thick, (core[i] - dep) * (1.0 + p.fill))
         verts_f.append(origins[i] + dirs[i] * dep)
         verts_b.append(origins[i] + dirs[i] * (dep + behind))
@@ -514,6 +546,8 @@ def draw(layout, context):
         target = layout
     target.prop(p, 'trim', toggle=True, icon='MOD_BOOLEAN')
     col = target.column(align=True)
+    if not p.trim:
+        col.prop(p, 'crease', slider=True)
     col.prop(p, 'round', slider=True)
     col.prop(p, 'bulge', slider=True)
     col.prop(p, 'fill', slider=True)

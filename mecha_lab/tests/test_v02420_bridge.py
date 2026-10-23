@@ -153,6 +153,35 @@ check('whole lasso: Fill 0 = the back only to the middle', b0 is not None and b0
 ob.mch_bridge.round = 0.5
 check('whole lasso: Round rebuilds, closed', ob.mch_bridge.last_error == '' and non_manifold(ob) == 0)
 
+# 0.24.21 two parts touching (torso / pelvis): no gap seen from the front, the patch fills the crease
+fresh()
+bpy.ops.mesh.primitive_uv_sphere_add(radius=1, segments=64, ring_count=32, location=(0, 1.0, 0))
+ta = C.active_object
+ta.scale = (0.9, 1.1, 0.7)
+bpy.ops.mesh.primitive_uv_sphere_add(radius=1, segments=64, ring_count=32, location=(0, -0.85, 0))
+tb = C.active_object
+tb.scale = (0.85, 0.9, 0.65)
+for o in (ta, tb):
+    for x in C.selected_objects:
+        x.select_set(False)
+    o.select_set(True)
+    C.view_layer.objects.active = o
+    bpy.ops.object.transform_apply(scale=True)
+waist = [(500 + 70 * math.cos(t), 495 + 65 * math.sin(t)) for t in [i * 2 * math.pi / 24 for i in range(24)]]
+C.scene.mch_bridge.trim = False
+C.scene.mch_bridge.crease = 0.0
+bp.perform(C, [waist], TOP)
+ob = C.active_object
+crease_xy = (500, 500)                          # where the two parts meet
+z0, who0 = front_z(crease_xy)
+check('touching parts, Fill Crease 0: the patch hides under the surfaces', who0 != ob.name, who0)
+ob.mch_bridge.crease = 0.5
+z1, who1 = front_z(crease_xy)
+check('Fill Crease: the patch rides over the crease (fills the valley)', who1 == ob.name and z1 > z0 + 0.1, (z0, z1))
+z_top, who_top = front_z((500, 600))
+check('Fill Crease: away from the crease the mesh still shows', who_top != ob.name, who_top)
+check('Fill Crease: closed solid', ob.mch_bridge.last_error == '' and non_manifold(ob) == 0)
+
 # errors (Trim to Gap)
 a, b_ = lumps()
 C.scene.mch_bridge.trim = True

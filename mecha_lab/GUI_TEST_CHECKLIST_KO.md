@@ -1,8 +1,17 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.20 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.21 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A000000000000000000000000000000000000000000000000000000000000000. 0.24.21 (미검증)
+- [ ] Bridge Patch: 맞닿은 두 덩어리(몸통 / 골반) 이음매에 그리면 초록 패치가 골짜기를 메우며 보이는지, Fill Crease 0 / 0.5 / 1 차이
+- [ ] Sketch 켜고 Free Draw로 그린 뒤 손 떼면 라쏘 점이 나오고, 점을 끌어 수정 → Enter로 적용되는지(Base Mesh / Creature Base / Armor Plate)
+- [ ] Sketch 끄면 Free Draw가 손 떼자마자 적용되는지
+- [ ] 새 씬에서 Creature Base Mesh / Creature Plate Resolution이 15로 시작하는지
+- [ ] 왼쪽 목록 아래 SCULPT 타일: 누르면 Sculpt Mode + 해당 브러시, Select / Move로 Object Mode 복귀
+- [ ] Line 켜고 Taper 올리면 크리쳐 플레이트 띠 끝이 뾰족한지, 펜 Pressure 켜면 필압대로 굵기가 바뀌는지(태블릿), [ / ]로 굵기 조절
+- [ ] 겹친 파츠를 합친 메쉬에 Split 하면 원인과 Remesh 안내가 뜨는지
 
 ## A00000000000000000000000000000000000000000000000000000000000000. 0.24.20 (미검증)
 - [ ] 새 툴 9개가 왼쪽 목록에 각자 아이콘으로 보이는지(Creature Base Mesh, Creature Plate, Belt Maker, Creature Spike, Creature Scales, Scale Brush, Bridge Patch, Flower Plate, Surface Curve)

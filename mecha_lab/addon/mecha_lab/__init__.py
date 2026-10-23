@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 24, 20),
+    "version": (0, 24, 21),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
     "description": "Cut, Split, Base Mesh, Boolean, Face Extract, Armor Sculpt, Molding, Cable, Hollow, curve arrays, Mirror",
@@ -1784,9 +1784,9 @@ class MCH_OT_sculpt_move(bpy.types.Operator):
         bpy.ops.object.mode_set(mode='SCULPT')
         try:
             bpy.ops.brush.asset_activate(asset_library_type='ESSENTIALS',
-                relative_asset_identifier='brushes/essentials_brushes-mesh_sculpt.blend/Brush/Move')
+                relative_asset_identifier='brushes/essentials_brushes-mesh_sculpt.blend/Brush/Grab')   # 0.24.21 (no 'Move' brush in 5.0)
         except Exception:
-            self.report({'WARNING'}, 'Entered Sculpt Mode; select Move brush manually for this Blender version')
+            self.report({'WARNING'}, 'Entered Sculpt Mode; select the Grab brush manually for this Blender version')
         return {'FINISHED'}
 
 

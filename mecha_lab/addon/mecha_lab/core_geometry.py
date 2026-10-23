@@ -475,6 +475,31 @@ def non_manifold_edge_count(mesh):
         bm.free()
 
 
+def overlap_edges(ob):
+    """0.24.21 (edges shared by 3+ faces, open edges with 1 face): overlapping parts joined together / holes - the
+    mesh is not one closed solid, and Booleans (Cut / Split) give broken results on it."""
+    try:
+        import numpy as np
+        me = ob.data
+        idx = np.zeros(len(me.loops), dtype=np.int64)
+        me.loops.foreach_get('edge_index', idx)
+        count = np.bincount(idx, minlength=len(me.edges))
+        return int((count > 2).sum()), int((count == 1).sum())
+    except (AttributeError, ImportError, ValueError):
+        return 0, 0
+
+
+def overlap_hint(ob, counts):
+    multi, open_ = counts
+    what = []
+    if multi:
+        what.append(f'{multi} edges are shared by 3+ faces (overlapping parts joined together)')
+    if open_:
+        what.append(f'{open_} edges are open (holes)')
+    return (f'"{ob.name}" is not one clean solid: {" and ".join(what)}. Cut / Split need one closed volume - '
+            'Remesh it first (Remesh tool or its Run Key), then split / cut again.')
+
+
 def check_target(ob):
     if ob is None or ob.type != 'MESH':
         raise CutError('Select a mesh object to cut.')

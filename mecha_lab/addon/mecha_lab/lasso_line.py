@@ -82,8 +82,30 @@ def _smooth(path, passes=2):
     return path
 
 
-def band(path, width_px, cap='ROUND', cap_segments=8):
-    """Closed outline (screen px) of a band ``width_px`` wide around an open polyline."""
+def taper_factor(t, taper):
+    """Width factor at ``t`` (0..1 along the line) for Taper: pointed ends, full width in the middle - pure."""
+    if taper <= 1e-6:
+        return 1.0
+    reach = 0.5 * taper                       # how far in from each end the thinning goes
+    e = min(t, 1.0 - t) / max(reach, 1e-9)
+    return max(0.0, min(1.0, e)) ** 0.6
+
+
+def _profile_at(profile, t):
+    """Linear lookup in [(t, value)] (sorted by t)."""
+    if not profile:
+        return 1.0
+    if t <= profile[0][0]:
+        return profile[0][1]
+    for (t0, v0), (t1, v1) in zip(profile, profile[1:]):
+        if t <= t1:
+            return v0 + (v1 - v0) * ((t - t0) / max(t1 - t0, 1e-12))
+    return profile[-1][1]
+
+
+def band(path, width_px, cap='ROUND', cap_segments=8, taper=0.0, pressure=None):
+    """Closed outline (screen px) of a band ``width_px`` wide around an open polyline.  0.24.21 ``taper`` thins it
+    to points at both ends, ``pressure`` = [(t along the line 0..1, factor)] (pen pressure) scales the width."""
     path = [tuple(p) for p in path]
     path = [p for i, p in enumerate(path) if i == 0 or math.dist(p, path[i - 1]) > 1e-6]
     if len(path) < 2:
@@ -92,6 +114,12 @@ def band(path, width_px, cap='ROUND', cap_segments=8):
     path = _resample(path, max(1.0, hw / 2.0))
     path = _smooth(path, 2)
     n = len(path)
+    acc = [0.0]
+    for a, b in zip(path, path[1:]):
+        acc.append(acc[-1] + math.dist(a, b))
+    total = acc[-1] or 1.0
+    widths = [max(0.3, hw * taper_factor(d / total, taper) * _profile_at(pressure, d / total)) for d in acc]
+    varied = taper > 1e-6 or bool(pressure)
     normals = []
     for i in range(n):
         a = path[max(0, i - 1)]
@@ -99,11 +127,15 @@ def band(path, width_px, cap='ROUND', cap_segments=8):
         dx, dy = b[0] - a[0], b[1] - a[1]
         ln = math.hypot(dx, dy) or 1.0
         normals.append((-dy / ln, dx / ln))
-    left = [(p[0] + nx * hw, p[1] + ny * hw) for p, (nx, ny) in zip(path, normals)]
-    right = [(p[0] - nx * hw, p[1] - ny * hw) for p, (nx, ny) in zip(path, normals)]
+    left = [(p[0] + nx * w, p[1] + ny * w) for p, (nx, ny), w in zip(path, normals, widths)]
+    right = [(p[0] - nx * w, p[1] - ny * w) for p, (nx, ny), w in zip(path, normals, widths)]
     left, right = remove_loops(left), remove_loops(right)
+    if varied:
+        hw_end, hw_start = widths[-1], widths[0]
+    else:
+        hw_end = hw_start = hw
 
-    def cap_pts(center, nrm, forward):
+    def cap_pts(center, nrm, forward, hw):
         """Points from the left side around the end to the right side."""
         if cap == 'FLAT':
             fx, fy = forward
@@ -122,9 +154,9 @@ def band(path, width_px, cap='ROUND', cap_segments=8):
     fwd_s = (s[0] - path[1][0], s[1] - path[1][1])
     ln = math.hypot(*fwd_s) or 1.0
     fwd_s = (fwd_s[0] / ln, fwd_s[1] / ln)
-    loop = left + cap_pts(e, normals[-1], fwd_e) + right[::-1]
+    loop = left + cap_pts(e, normals[-1], fwd_e, hw_end) + right[::-1]
     n0 = (-normals[0][0], -normals[0][1])
-    loop += cap_pts(s, n0, fwd_s)
+    loop += cap_pts(s, n0, fwd_s, hw_start)
     return remove_loops(loop + [loop[0]])[:-1]
 
 
@@ -156,9 +188,22 @@ def pixels_per_unit(context, projector, xy):
     return 10.0 / world if world > 1e-9 else 100.0
 
 
-def line_loop(context, projector, path, brush):
-    """The band handed to the tool for an open path drawn in Line mode."""
+def line_loop(context, projector, path, brush, pressure=None):
+    """The band handed to the tool for an open path drawn in Line mode (Taper / pen Pressure, 0.24.21)."""
     if len(path) < 2:
         return []
     ppu = pixels_per_unit(context, projector, path[0])
-    return band(path, max(1.0, brush.line_width * ppu), brush.line_caps)
+    return band(path, max(1.0, brush.line_width * ppu), brush.line_caps,
+                taper=getattr(brush, 'line_taper', 0.0),
+                pressure=pressure if getattr(brush, 'line_pressure', False) else None)
+
+
+def pressure_profile(pts, pressures):
+    """[(t along the drawn path 0..1, pressure)] from Free Draw samples - pure."""
+    if not pts or len(pressures) != len(pts) or len(pts) < 2:
+        return None
+    acc = [0.0]
+    for a, b in zip(pts, pts[1:]):
+        acc.append(acc[-1] + math.dist(a, b))
+    total = acc[-1] or 1.0
+    return [(d / total, max(0.05, min(1.0, p))) for d, p in zip(acc, pressures)]

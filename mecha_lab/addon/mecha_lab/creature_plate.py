@@ -90,7 +90,7 @@ class MCH_PG_CreaturePlate(bpy.types.PropertyGroup):
                                                     'the plate size: no gap on curved surfaces)')
     outline_smooth: FloatProperty(name='Soft Outline', default=0.5, min=0.0, max=1.0, update=_update,
                                   description='Round off the corners of the drawn outline')
-    resolution: IntProperty(name='Resolution', default=28, min=4, max=96, update=_update,
+    resolution: IntProperty(name='Resolution', default=15, min=4, max=96, update=_update,
                             description='Points across the plate (higher = smoother, slower)')
     puff: FloatProperty(default=1.0, options={'HIDDEN'})
     live: BoolProperty(default=False, options={'HIDDEN'})

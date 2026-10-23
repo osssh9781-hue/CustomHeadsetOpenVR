@@ -846,6 +846,7 @@ check('F08 0 % and 0 px -> not active (exact old path)', not stabilizer.LazyStab
 
 def free_draw(stab_on, strength=70.0, radius=15.0, seed=5, mode='CUT', native='mecha.cut', tool='CUT'):
     t, = setup('STROKE', tool=tool)
+    C.scene.mch_base.sketch = False      # 0.24.21 with Sketch on, Free Draw first becomes an editable lasso
     br = C.scene.mch_brush
     br.stab_enable, br.stab_strength, br.stab_radius, br.stroke_spacing = stab_on, strength, radius, 4.0
     br.stroke_smooth = 0

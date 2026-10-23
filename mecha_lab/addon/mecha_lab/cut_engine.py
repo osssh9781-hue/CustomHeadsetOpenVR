@@ -27,7 +27,7 @@ import traceback
 
 import bpy
 import gpu
-from bpy.props import EnumProperty, IntProperty
+from bpy.props import EnumProperty, FloatProperty, IntProperty
 from gpu_extras.batch import batch_for_shader
 from mathutils import Vector
 from mathutils.geometry import tessellate_polygon
@@ -646,6 +646,22 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
     baked = [t.name for t in targets if cg.ensure_real_mesh(context, t)]
     for t in targets:
         cg.check_target(t)
+    broken = {t.name: n for t in targets for n in (cg.overlap_edges(t),) if any(n)}     # 0.24.21
+    try:
+        report = _perform_closed(context, mode, targets, groups, projector, invert, cut, auto_apply, baked, frozen)
+    except cg.CutError as ex:
+        if broken:
+            hints = ' '.join(cg.overlap_hint(bpy.data.objects[n], c) for n, c in broken.items() if n in bpy.data.objects)
+            raise cg.CutError(f'{hints} ({str(ex).splitlines()[0][:120]})') from ex
+        raise
+    if broken:
+        report += ' | WARNING: ' + '; '.join(f'{n} is not one clean solid ({c[0]} edges shared by 3+ faces, {c[1]} open '
+                                            'edges) - the result may be broken; Remesh it first'
+                                            for n, c in broken.items())
+    return report
+
+
+def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto_apply, baked, frozen):
     near, far = _planes(context, targets, projector, [g[0] for g in groups])
     gap = mode == 'SPLIT' and cut.split_mode == 'GAP' and cut.gap_width > 0
     if gap and not auto_apply:
@@ -1231,7 +1247,12 @@ class StrokeLogic:
 
     def _line_loops(self, pts=None):
         from . import lasso_line
-        loop = lasso_line.line_loop(bpy.context, self.projector, self._line_path(pts), self.brush)
+        prof = None
+        if self.shape == 'STROKE' and getattr(self.brush, 'line_pressure', False):
+            raw = list(self.pts if pts is None else pts)
+            prs = list(getattr(self, 'pressures', []))
+            prof = lasso_line.pressure_profile(raw[:len(prs)], prs[:len(raw)])
+        loop = lasso_line.line_loop(bpy.context, self.projector, self._line_path(pts), self.brush, prof)
         return [loop] if len(loop) >= 3 else []
 
     def preview_closed(self):
@@ -1398,6 +1419,7 @@ class StrokeLogic:
                 return {'CANCELLED'}
         self.native_tool = ts.native_tool_id(context)
         self.pts, self.redo = [], []
+        self.pressures = []          # 0.24.21 pen pressure per Free Draw sample
         self.sharp, self.overrides = [], []
         self.rounds = []            # Curve Lasso corner rounding per point (0 = straight)
         self.alt_latch = bool(event.alt)
@@ -1468,6 +1490,11 @@ class StrokeLogic:
             xy = stab.update(xy, self._clock())
         if not self.pts or math.dist(self.pts[-1], xy) >= self.brush.stroke_spacing:
             self.pts.append(xy)
+            if not hasattr(self, 'pressures'):
+                self.pressures = []
+            while len(self.pressures) < len(self.pts) - 1:
+                self.pressures.append(1.0)
+            self.pressures.append(getattr(self, 'pressure', 1.0))
 
     def _hint(self, context):
         tail = ' | RMB: ' + ('profiles' if self.mode in {'BASE', 'CBASE'} else 'shapes') + ', RMB×2 / Esc: exit tool'
@@ -1794,6 +1821,12 @@ class StrokeLogic:
             return self._cancel(context)
 
         et, ev = event.type, event.value
+        pr = getattr(event, 'pressure', 0.0)
+        self.pressure = pr if isinstance(pr, float) and pr > 0.0 else 1.0     # 0.24.21 pen pressure (mouse = 1)
+        if et in {'LEFT_BRACKET', 'RIGHT_BRACKET'} and ev == 'PRESS':
+            step_line_width(context, 1.0 / 1.15 if et == 'LEFT_BRACKET' else 1.15, self.report)
+            self.region.tag_redraw()
+            return {'RUNNING_MODAL'}
         if et in {'LEFT_ALT', 'RIGHT_ALT'}:
             self.alt_held = ev == 'PRESS'
         if et in {'LEFT_SHIFT', 'RIGHT_SHIFT'}:
@@ -1994,6 +2027,8 @@ class StrokeLogic:
                     self._stroke_finish(xy)
                     if len(self.pts) < (1 if self.mode == 'MASK' else 2 if self._line_mode() else 3):
                         return self._cancel(context)
+                    if self._sketch_wanted(context):
+                        return self._stroke_to_lasso(context)
                 return self._run(context, self._execute_closed)
             return {'RUNNING_MODAL'}
         # POINTS
@@ -2057,6 +2092,43 @@ class StrokeLogic:
             self.drag_handle = None
             self.free_drag = False
             self.region.tag_redraw()
+        return {'RUNNING_MODAL'}
+
+    def _sketch_wanted(self, context):
+        """0.24.21 Sketch is on for this tool: a Free Draw outline becomes an editable lasso first."""
+        if self.mode == 'MASK' or self._line_mode():
+            return False
+        from . import lasso_sketch
+        if lasso_sketch.enabled(context, self.mode):
+            return True
+        if self.mode in {'BASE', 'CBASE'}:
+            from . import base_mesh
+            return bool(getattr(base_mesh.scene_defaults(context), 'sketch', False))
+        return False
+
+    def _stroke_to_lasso(self, context):
+        """The drawn Free Draw outline -> lasso points you can drag / add to; Enter applies (like a clicked
+        lasso)."""
+        pts = smooth_open(self.pts, self.brush.stroke_smooth)
+        pts = cg.simplify_open(pts, max(self.brush.stroke_simplify, 3.0 * getattr(self, 'ui', 1.0)))
+        pts = [tuple(q) for q in cg.trim_closing_overlap(pts)]
+        if len(pts) < 3:
+            return self._cancel(context)
+        n = len(pts)
+        self.shape = 'LASSO'
+        self.pts = pts
+        self.sharp, self.overrides, self.rounds = [False] * n, [None] * n, [0.0] * n
+        self.redo.clear()
+        self.stage = 'POINTS'
+        self.line_open = False
+        self.free_drag = False
+        self.drag_index = None
+        self.drag_handle = None
+        self.report({'INFO'}, 'Outline ready: drag points to adjust, Enter applies (Esc cancels)')
+        try:
+            self.region.tag_redraw()
+        except (AttributeError, ReferenceError):
+            pass
         return {'RUNNING_MODAL'}
 
     def _stroke_finish(self, xy):
@@ -2223,6 +2295,35 @@ def draw_stamp_cursor(context, xy):
         pass
 
 
+def step_line_width(context, factor, report=None):
+    """0.24.21 [ / ] = Line Width smaller / bigger (Line mode band, like a brush size)."""
+    brush = context.scene.mch_brush
+    brush.line_width = max(0.0005, min(20.0, brush.line_width * factor))
+    if report is not None:
+        report({'INFO'}, f'Line Width {brush.line_width * 100:.2f} cm')
+    return brush.line_width
+
+
+class MCH_OT_line_width_step(bpy.types.Operator):
+    """[ / ] in a Mecha drawing tool: Line Width smaller / bigger"""
+    bl_idname = 'mch.line_width_step'
+    bl_label = 'Line Width Step'
+    bl_description = 'Line Width smaller ([) / bigger (])'
+    bl_options = {'INTERNAL'}
+
+    factor: FloatProperty(default=1.15, min=0.1, max=10.0)
+
+    @classmethod
+    def poll(cls, context):
+        return getattr(context.scene, 'mch_brush', None) is not None
+
+    def execute(self, context):
+        step_line_width(context, self.factor, self.report)
+        if context.area:
+            context.area.tag_redraw()
+        return {'FINISHED'}
+
+
 class MCH_OT_stamp_rotate(bpy.types.Operator):
     """R in an idle Cut / Split tool with a PNG shape: rotate the stamp."""
     bl_idname = 'mch.stamp_rotate'
@@ -2260,4 +2361,4 @@ class MCH_OT_exit_tool(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_OT_cut_stroke, MCH_OT_rmb_gate, MCH_OT_exit_tool, MCH_OT_stamp_rotate)
+CLASSES = (MCH_OT_cut_stroke, MCH_OT_rmb_gate, MCH_OT_exit_tool, MCH_OT_stamp_rotate, MCH_OT_line_width_step)

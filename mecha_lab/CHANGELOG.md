@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 0.24.21 — 브릿지 패치 주름 메우기, 스케치 모드 프리드로우 = 수정 가능한 라쏘, 스컬프트 브러시, 라인 Taper / 필압 / [ ] 굵기, 깨진 메쉬 Split 안내 (2026-10-23)
+
+- **Bridge Patch: Fill Crease**(기본 0.5): 두 덩어리가 맞닿아 정면에서 틈이 안 보일 때(몸통-골반 같은 곳) 패치가 메쉬 표면 바로 아래에 숨어서 안 보이던 문제. 이제 앞면을 여러 번 부드럽게 펴면서 메쉬보다 뒤로는 안 들어가게 해서, 맞닿은 골짜기는 패치가 덮어 메우고 볼록한 곳은 메쉬가 그대로 보임. 0 = 예전처럼 표면을 그대로 따라감.
+- **스케치 모드 + Free Draw**: Sketch가 켜져 있으면 프리드로우로 그리고 손을 떼도 바로 적용되지 않고, 그린 외곽이 라쏘 점으로 바뀌어 점을 끌어서 수정할 수 있음 → **Enter**로 적용(스케치에 추가). Sketch가 꺼져 있으면 예전처럼 손을 떼면 바로 적용.
+- **Creature Base Mesh / Creature Plate 시작 Resolution = 15**(Base Mesh는 28 그대로). 한 번만 적용, 바꾼 값은 유지.
+- **SCULPT 브러시 타일**(왼쪽 MECHA LAB TOOLS 목록 아래): Draw / Clay Strips / Inflate / Grab / Smooth / Crease. 누르면 선택한 메쉬로 바로 Sculpt Mode + 그 브러시(탭 이동 없음). 위의 **Select / Move** 또는 Back to Object = 다시 Object Mode, Mecha 툴을 고르면 자동으로 Object Mode. 기존 Sculpt Move 버튼은 5.0에 없는 'Move' 대신 Grab 브러시.
+- **라인 모드 Taper / Pressure**(헤더 Line 옆): Taper = 띠가 양 끝으로 갈수록 뾰족하게 가늘어짐(크리쳐 플레이트 등 라인을 쓰는 모든 툴), Pressure(펜 아이콘) = Free Draw에서 펜 필압만큼 굵기가 변함(마우스는 항상 1). **[ / ]** = Line Width 작게 / 크게(그리는 중에도).
+- **Split / Cut이 깨지는 메쉬 안내**: 메쉬가 하나의 닫힌 덩어리가 아닐 때(겹친 파츠를 그냥 합쳐서 3면 이상이 붙은 엣지가 있거나 구멍이 있을 때) 결과가 깨지거나 "would delete the whole object" 같은 오류가 났음 → 이제 원인(몇 개 엣지가 어떤지)과 해결법(먼저 Remesh)을 메시지로 알려줌. 결과가 나와도 경고를 붙임.
+- 테스트: 91개 파일 2958/2958, 새 `test_v02421.py`, test_v02420_bridge에 맞닿은 덩어리 주름 검사 추가. ZIP sha256 `ae6f1687c9e7acb73ff4f96b42ddcc2ce9dce9ad57cd3f0ec55137c7ca0953d7`.
+
 ## 0.24.20 — 크리쳐 툴 세트, 브릿지 패치, 베이스 메쉬 휨 / 쿠션, 라인 모드 손 떼면 적용 (2026-10-23)
 
 ### 새 툴 (왼쪽 툴 목록, 각자 아이콘)

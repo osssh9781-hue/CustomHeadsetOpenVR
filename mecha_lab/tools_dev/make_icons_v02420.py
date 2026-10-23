@@ -1,6 +1,7 @@
 """0.24.20 pictures for the new tools and Base Mesh profiles - same style as make_icons.py / make_icons_v02417.py:
 Creature Base Mesh, Creature Plate, Belt Maker, Creature Spike, Creature Scales, Scale Brush, Bridge Patch,
-Flower Plate, Surface Curve; profiles Puff, Ridge, Pillow, Cushion.
+Flower Plate, Surface Curve; profiles Puff, Ridge, Pillow, Cushion; 0.24.21 sculpt brush tiles (Draw, Clay Strips,
+Inflate, Grab, Smooth, Crease).
 
 python make_icons_v02420.py <out dir>
 """
@@ -178,6 +179,61 @@ def icons():
             d.ellipse((x - 18, y - 18, x + 18, y + 18), fill=FG)
         return img
     out['surface_curve'] = surface_curve
+
+    # 0.24.21 sculpt brush tiles: a surface line (side view) and what the brush does to it
+    def sculpt_base(d):
+        d.line((70, 330, 442, 330), fill=DIM, width=W)
+
+    def sculpt_draw():
+        img, d = canvas()
+        pts = [(80 + 352 * t, 330 - 120 * math.exp(-((t - 0.5) / 0.16) ** 2)) for t in (i / 40.0 for i in range(41))]
+        d.line(pts, fill=ACC, width=W, joint='curve')
+        return img
+    out['sculpt_draw'] = sculpt_draw
+
+    def sculpt_clay():
+        img, d = canvas()
+        sculpt_base(d)
+        for k, y in enumerate((300, 268, 236)):
+            d.rounded_rectangle((120 + k * 30, y - 22, 392 - k * 30, y + 6), radius=14, fill=(255, 158, 40, 160 + 30 * k))
+        return img
+    out['sculpt_clay'] = sculpt_clay
+
+    def sculpt_inflate():
+        img, d = canvas()
+        poly(d, circle_pts(256, 270, 120), ACC, fill=(255, 158, 40, 70))
+        for a in range(0, 360, 45):
+            r = math.radians(a)
+            d.line((256 + 150 * math.cos(r), 270 + 150 * math.sin(r), 256 + 200 * math.cos(r),
+                    270 + 200 * math.sin(r)), fill=FG, width=16)
+        return img
+    out['sculpt_inflate'] = sculpt_inflate
+
+    def sculpt_grab():
+        img, d = canvas()
+        pts = [(80 + 352 * t, 360 - 170 * math.exp(-((t - 0.6) / 0.2) ** 2)) for t in (i / 40.0 for i in range(41))]
+        d.line(pts, fill=CY, width=W, joint='curve')
+        poly(d, [(330, 130), (330, 60), (300, 90)], FG, width=16, closed=False)
+        poly(d, [(330, 60), (360, 90)], FG, width=16, closed=False)
+        return img
+    out['sculpt_grab'] = sculpt_grab
+
+    def sculpt_smooth():
+        img, d = canvas()
+        rough = [(80 + 352 * t, 230 + 26 * math.sin(t * 40)) for t in (i / 60.0 for i in range(61))]
+        d.line(rough, fill=DIM, width=12)
+        d.line([(80, 330), (432, 330)], fill=GR, width=W)
+        poly(d, [(256, 262), (256, 312)], FG, width=14, closed=False)
+        poly(d, [(236, 292), (256, 312), (276, 292)], FG, width=14, closed=False)
+        return img
+    out['sculpt_smooth'] = sculpt_smooth
+
+    def sculpt_crease():
+        img, d = canvas()
+        pts = [(80, 250), (200, 260), (256, 360), (312, 260), (432, 250)]
+        d.line(pts, fill=PU, width=W, joint='curve')
+        return img
+    out['sculpt_crease'] = sculpt_crease
     return out
 
 

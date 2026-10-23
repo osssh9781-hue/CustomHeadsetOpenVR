@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.20
+# Test Report — Mecha Lab 0.24.21
+
+## 0.24.21 결과: 91개 파일 2958/2958 (`tests/test_log_bpy501_v02421.txt`). test_v02421: Resolution 15(Creature Base / Plate, Base Mesh 28 유지, 한 번만), Sketch + Free Draw 놓으면 POINTS(6–60점), 점 끌기, Enter = 스케치 추가, Sketch 끄면 바로 적용, 스컬프트 브러시 6개가 Blender 라이브러리에 있음 / 아이콘 / 대상 메쉬 / Sculpt Mode 전환, Taper(끝 폭 < 절반, 가운데 같음), 필압(약하게 = 가늘게), [ / ] 키맵과 그리는 중 변경, 안쪽 벽이 있는 합친 메쉬 감지 + 안내 문구. test_v0100_regression F08(Base Mesh)은 Sketch 끈 상태로. test_v02420_bridge: 맞닿은 덩어리 Fill Crease 0 = 숨음, 0.5 = 골짜기 위로 보임, 위쪽은 메쉬, 닫힌 메쉬. 실제 마우스 입력 · 브러시 활성화(배경 모드) · 패널은 미검증.
 
 ## 0.24.20 결과: 90개 파일 2923/2923 (`tests/test_log_bpy501_v02420.txt`). 새 test_v02420(크리쳐 베이스 메쉬 Puff / Height), test_v02420_bend(Band / Angle, 마이터 연속, Outer / Inner Round, 닫힌 메쉬, Bend Position), test_v02420_bridge(soft_fill 하모닉 / 바이하모닉, bump, spread, Trim to Gap 덮기 / Round / Fill, 전체 라쏘 곡선 연결 · 대칭 Fill · 오류), test_v02420_cushion(두께 = Height, 대칭, 솔기, Edge Round), test_v02420_keys(Remesh 실행 키 미지정 등록, 새 아이콘 파일, Plate Detail Line), test_v0220(라인 모드 누르고-끌고-떼기, Plate Detail 1 / 2 / 3 라인), test_v0113(내장 모양 13개). 실제 마우스 입력 · 패널 · 아이콘 표시는 미검증.
 
