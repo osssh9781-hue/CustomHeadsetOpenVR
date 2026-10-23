@@ -244,6 +244,20 @@ def icons():
             d.line((x0, 180, x1, 420), fill=FG, width=12)                     # folds
         return img
     out['cape'] = cape
+
+    # 0.24.29 Creature Hair: dreadlocks falling from a head, metal bands
+    def hair():
+        img, d = canvas()
+        d.ellipse((176, 70, 336, 230), outline=DIM, width=14)                 # head
+        for k, x0 in enumerate((190, 225, 262, 300, 330)):
+            pts = [(x0 + 14 * math.sin(t * 2.2 + k), 120 + 330 * t) for t in (i / 20.0 for i in range(21))]
+            d.line(pts, fill=ACC if k % 2 == 0 else GR, width=24, joint='curve')
+            by = 250 + (k % 3) * 45
+            t = (by + 10 - 120) / 330.0
+            bx = x0 + 14 * math.sin(t * 2.2 + k)
+            d.rounded_rectangle((bx - 17, by, bx + 17, by + 20), radius=6, fill=FG)   # band round the strand
+        return img
+    out['hair'] = hair
     return out
 
 

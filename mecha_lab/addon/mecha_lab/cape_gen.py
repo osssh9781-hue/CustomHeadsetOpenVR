@@ -464,7 +464,8 @@ class MCH_PG_Cape(bpy.types.PropertyGroup):
 
 
 def pick_body(context, projector, groups):
-    """The mesh under the drawing; capes (and armour parts / plates) are looked through."""
+    """The mesh under the drawing; capes, hair and other live generated parts (and armour parts / plates) are
+    looked through."""
     from . import armor_plate as ap
     outer = groups[0][0]
     probes = [(sum(q[0] for q in outer) / len(outer), sum(q[1] for q in outer) / len(outer))] + list(outer[::3])
@@ -473,12 +474,13 @@ def pick_body(context, projector, groups):
     for xy in probes:
         o, d = projector.ray(xy)
         o, d = Vector(o), Vector(d).normalized()
-        for _k in range(16):
+        for _k in range(256):                # through hair / capes in front (many surfaces)
             hit, loc, _n, _i, hob, _m = context.scene.ray_cast(dg, o, d)
             if not hit or hob is None:
                 break
             real = bpy.data.objects.get(hob.name)
-            if real is not None and real.type == 'MESH' and SRC_KEY not in real and not ap.is_plate_or_part(real) \
+            generated = any(k.startswith('mch_') and k.endswith('_src') for k in real.keys()) if real else True
+            if real is not None and real.type == 'MESH' and not generated and not ap.is_plate_or_part(real) \
                     and not any(c.name.startswith(COLLECTION) for c in real.users_collection):
                 counts[real.name] = counts.get(real.name, 0) + 1
                 break

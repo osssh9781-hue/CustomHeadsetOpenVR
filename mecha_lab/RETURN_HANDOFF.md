@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.28 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.29 (Claude Code, 2026-10-14)
+
+## 0.24.29
+- ZIP sha256 `edb0231d418004676b71c2380d468ca73b9f4ca28ecdd70c81a27738d0b58479`. 새 `creature_hair.py`, 툴 id HAIR 44(`mecha.creature_hair`, 아이콘 hair.png). `root_points`(지터 육각 격자, 면적/Count 간격, 다각형 안) → `ap.project_patch` → 가닥마다 `strand_path`(노멀 × Lift로 시작, 중력 = 아래쪽으로 회전(각도/스텝 = gravity·0.18·28/segments), 위를 향하면 `outward`(영역 중심에서 바깥)로, Wave, Straight = 넘어간 뒤 꺾임 ×(1+3s) · 수평 성분 ×(1−0.6s) · wave ×(1−0.8s), `cape_gen._push_out`으로 몸 밖) → `add_tube`(평행 이동 프레임, `tube_radius` = taper + 3갈래 로프 꼬임, 뿌리 캡 + 뾰족한 끝) + `add_ring`(짧은 닫힌 튜브, material 1). 몸 BVH = `cape_gen._body`. `cape_gen.pick_body`: mch_*_src 키가 있는 생성물 통과, 레이 256번까지.
 
 ## 0.24.28
 - ZIP sha256 `f3b32b0092c35e73cd274eb76761bab9e66f4480c74bfbe9a570e665a9d7240d`. 새 `cape_gen.py`, 툴 id CAPE 43(`mecha.cape`, 아이콘 cape.png, `tools_dev/make_icons_v02420.py`에 추가). `cut_engine._execute_closed` → `cape_gen.perform(context, loops, projector)`, `lasso_line.MODES`에 CAPE.
