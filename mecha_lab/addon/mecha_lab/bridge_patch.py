@@ -1,20 +1,16 @@
-"""0.24.20 Bridge Patch: lasso across two meshes (or two parts of one), a smooth patch joins them on the side you
-are looking at.
+"""0.24.20 Bridge Patch: lasso across two meshes (or two parts of one) to fill the gap between them - for a rough
+creature silhouette that is merged later (e.g. DynaMesh in ZBrush).
 
-Inside the lasso, where the view ray hits a mesh surface that faces you, the patch follows that surface; where
-it hits nothing (the gap) or only a steep side (Wrap), the depth is filled smoothly from the surfaces around it
-(Smooth 1 = the slope carries on across the gap, biharmonic; 0 = the straightest join, harmonic).  The patch
-covers the gap plus a band of the surfaces around it (Overlap) that is sunk a little into them (Sink), so no
-seam shows.  Only the front: the back is not wrapped.
+Default: the whole lasso becomes one round solid (like a Creature Puff) around the meshes' middle depth - it
+simply overlaps both meshes.
+Trim to Gap: only the gap plus a band of the meshes' surface that is sunk into them; where the view ray hits a
+mesh surface that faces you the patch follows it, the gap and the steep sides (Wrap) are filled smoothly.
 
-    Smooth      0 = straight join, 1 = the surfaces' slope carries on across the gap
-    Bulge       push the middle of the gap out (+) or in (-)
-    Round       across the gap: a round neck around the meshes' middle, its sides curving back (0 = flat sheet)
-    Wrap        the meshes' sides steeper than this (toward their outline) are covered by the patch like a skin
-    Fill        solid: the back mirrors the front about the meshes' middle (good overlap for merging, DynaMesh)
-    Thickness   of the patch behind its front face (0 = Auto; with Fill the least it is)
-    Sink        how far the overlap band goes into the meshes (x Thickness)
-    Overlap     how many rows of the surrounding surface the patch also covers
+    Round       how round / thick across: 1 = a circle's section (radius = half the lasso's width there)
+    Bulge       push the middle out (+) or in (-)
+    Fill        the back: 1 = mirrors the front about the meshes' middle (a full solid), 0 = only to the middle
+    Thickness   the least thickness anywhere (0 = Auto)
+    Trim to Gap only: Smooth (0 straight join, 1 slope carries on), Wrap, Sink, Overlap
     Resolution  Low / Mid / High
 
 Live until Apply.  ``soft_fill`` / ``bump`` / ``spread`` are pure and tested headless.
@@ -34,7 +30,7 @@ from . import core_geometry as cg
 
 SRC_KEY = 'mch_bridge_src'
 COLLECTION = 'Bridge Patches'
-LIVE_KEYS = ('smooth', 'bulge', 'round', 'wrap', 'fill', 'thickness', 'sink', 'overlap', 'quality')
+LIVE_KEYS = ('trim', 'smooth', 'bulge', 'round', 'wrap', 'fill', 'thickness', 'sink', 'overlap', 'quality')
 QUALITY = {'LOW': 24, 'MID': 40, 'HIGH': 64}
 _CACHE = {}
 
@@ -181,6 +177,9 @@ def _p(prop, **kw):
 
 
 class MCH_PG_Bridge(bpy.types.PropertyGroup):
+    trim: _p(BoolProperty, name='Trim to Gap', default=False,
+             description='Off: the whole lasso becomes one round solid that overlaps both meshes (merge it later, '
+                         'e.g. DynaMesh). On: only the gap plus a sunk rim, following the meshes\' surfaces')
     smooth: _p(FloatProperty, name='Smooth', default=1.0, min=0.0, max=1.0, subtype='FACTOR',
                description='0 = the straightest join, 1 = the surfaces\' slope carries on across the gap')
     bulge: _p(FloatProperty, name='Bulge', default=0.0, min=-1.0, max=1.0,
@@ -304,6 +303,8 @@ def build(context, ob):
     p = ob.mch_bridge
     pts, tris, edges, origins, dirs, depth, facing, size, puff, middle = _samples(context, ob, src, p)
     n = len(pts)
+    if not p.trim:
+        return _build_whole(n, tris, edges, origins, dirs, depth, size, puff, middle, p)
     # the surfaces hold the patch where they face you; their steep sides (toward the outline) are covered by the
     # patch like a skin, so it does not dive into the gap along them.  Soft weights: no stair-step seam.
     grip = math.cos(p.wrap)
@@ -365,6 +366,42 @@ def build(context, ob):
         if (v, u) not in edge_count:                     # an edge on the rim of the patch: side wall
             out.append((index[v], index[u], m + index[u], m + index[v]))
     return verts, out
+
+
+def _build_whole(n, tris, edges, origins, dirs, depth, size, puff, middle, p):
+    """0.24.20 the whole lasso as one round solid around the meshes' middle (not trimmed to the gap): it simply
+    overlaps both meshes, to be merged later (e.g. DynaMesh in ZBrush)."""
+    if any(m is not None for m in middle):
+        core = soft_fill(n, edges, middle, [1.0 if m is not None else 0.0 for m in middle], 0.5)
+    else:                                            # open meshes (no far side): somewhat behind the surfaces
+        core = soft_fill(n, edges, depth, [1.0 if t is not None else 0.0 for t in depth], 0.0)
+        core = [x + 0.15 * size for x in core]
+    top = max(max(puff), 1e-12)
+    thick = p.thickness if p.thickness > 0 else 0.03 * size
+    verts_f, verts_b = [], []
+    for i in range(n):
+        r = p.round * puff[i] + p.bulge * 0.25 * size * (puff[i] / top)
+        front = core[i] - max(r, thick / 2.0)
+        behind = max(thick, (core[i] - front) * (1.0 + p.fill))
+        verts_f.append(origins[i] + dirs[i] * front)
+        verts_b.append(origins[i] + dirs[i] * (front + behind))
+    return _solid(verts_f, verts_b, tris)
+
+
+def _solid(verts_f, verts_b, tris):
+    """Closed solid from a front and a back point set on the same triangles (side wall along the rim)."""
+    m = len(verts_f)
+    out = []
+    edge_count = {}
+    for a, b, c in tris:
+        out.append((a, b, c))
+        out.append((m + c, m + b, m + a))
+        for u, v in ((a, b), (b, c), (c, a)):
+            edge_count[(u, v)] = edge_count.get((u, v), 0) + 1
+    for (u, v) in edge_count:
+        if (v, u) not in edge_count:
+            out.append((v, u, m + u, m + v))
+    return list(verts_f) + list(verts_b), out
 
 
 def rebuild(context, ob):
@@ -464,22 +501,25 @@ def draw(layout, context):
     else:
         layout.label(text='Settings for the next patch', icon='MOD_LATTICE')
         target = layout
+    target.prop(p, 'trim', toggle=True, icon='MOD_BOOLEAN')
     col = target.column(align=True)
-    col.prop(p, 'smooth', slider=True)
-    col.prop(p, 'bulge', slider=True)
     col.prop(p, 'round', slider=True)
-    col.prop(p, 'wrap')
-    col = target.column(align=True)
+    col.prop(p, 'bulge', slider=True)
     col.prop(p, 'fill', slider=True)
-    col.prop(p, 'thickness', text='Min Thickness' if p.fill > 0 else 'Thickness')
-    col.prop(p, 'sink')
-    col.prop(p, 'overlap')
+    col.prop(p, 'thickness', text='Min Thickness')
+    if p.trim:
+        col = target.column(align=True)
+        col.prop(p, 'smooth', slider=True)
+        col.prop(p, 'wrap')
+        col.prop(p, 'sink')
+        col.prop(p, 'overlap')
     target.row().prop(p, 'quality', expand=True)
     if ob is not None:
         target.operator('mch.bridge_apply', icon='CHECKMARK')
     col = layout.column(align=True)
     col.scale_y = 0.8
-    for line in ('Lasso across two meshes: the gap fills with a smooth', 'patch (front side only), its edges sunk into them',
+    for line in ('Lasso across two meshes: a round solid along the lasso', 'around their middle, overlapping them (merge later);',
+                 'Trim to Gap: only the gap, edges sunk into them',
                  'Apply: plain mesh'):
         col.label(text=line)
 

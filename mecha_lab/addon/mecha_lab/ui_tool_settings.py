@@ -540,6 +540,10 @@ def draw_base(layout, context):
         col.prop(p, 'resolution')
     else:
         col.prop(p, 'height')
+    if p.profile == 'CUSHION':             # 0.24.20 Cushion: Height = total thickness, Edge Round = puffy rim
+        col.prop(p, 'edge_round', slider=True)
+        col.prop(p, 'outline_smooth', slider=True)
+        col.prop(p, 'resolution')
     if p.profile == 'DOME':
         col.prop(p, 'wall')
         col.prop(p, 'roundness', slider=True)
@@ -567,6 +571,8 @@ def draw_base(layout, context):
         target.label(text='Ridge: a sharp ridge along the middle (diamond section)', icon='INFO')
     elif p.profile == 'PILLOW':
         target.label(text='Pillow: flat top, only the edge is round', icon='INFO')
+    elif p.profile == 'CUSHION':
+        target.label(text='Cushion: puffy both sides, a seam around the edge', icon='INFO')
     elif p.profile == 'FLAT':
         target.label(text='Flat: no bevel (choose Bevel / Chamfer for Bevel Sides)', icon='INFO')
     col.prop(p, 'offset')

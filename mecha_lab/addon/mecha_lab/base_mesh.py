@@ -50,6 +50,9 @@ PROFILES = (
      '(diamond cross-section)', 'profile_ridge', 'MESH_ICOSPHERE'),
     ('PILLOW', 'Pillow', 'Flat in the middle, only the outer edge rounded (cushion / pill)', 'profile_pillow',
      'MESH_CYLINDER'),
+    # 0.24.20 a Base Mesh profile (listed after the creature ones so saved enum numbers stay)
+    ('CUSHION', 'Cushion', 'Soft cushion along the drawn outline: puffy on both sides, pinched to a seam around '
+     'the edge (Height = total thickness, Edge Round = how puffy the rim is)', 'profile_cushion', 'MOD_CLOTH'),
 )
 PROFILE_ITEMS = [(p[0], p[1], p[2], p[4], i) for i, p in enumerate(PROFILES)]
 SIDE_ITEMS = [
@@ -576,6 +579,16 @@ def pillow_heights(d_all, nb, edge_round=0.15):
 
 
 CREATURE_PROFILES = ('PUFF', 'RIDGE', 'PILLOW')
+PUFF_BUILT = CREATURE_PROFILES + ('CUSHION',)      # built as a two-sided lump around the plane (_add_puff)
+
+
+def cushion_heights(d_all, nb, edge_round=0.15):
+    """0.24.20 Cushion: a puffy round rim of radius 3 * Edge Round of the deepest distance, pinched to a seam
+    on the outline, the middle a little fuller (a stuffed cushion)."""
+    dmax = max(max(d_all), 1e-9)
+    r = max(0.05, 3.0 * max(0.0, edge_round)) * dmax
+    return [0.0 if i < nb else math.sqrt(max(0.0, 1.0 - (1.0 - min(d / r, 1.0)) ** 2)) * (0.85 + 0.15 * math.sqrt(d / dmax))
+            for i, d in enumerate(d_all)]
 
 
 def scale_heights(d_all, nb, edge_round=0.15):
@@ -592,6 +605,8 @@ def profile_field(outer, holes, p):
     ``shape`` = height of every point scaled to 1 at the top, ``natural`` = the top height the profile has by
     itself (Puff: about as thick as wide).  Shared by Creature Base Mesh and Creature Plate."""
     k = int(round(4 * max(0.0, min(1.0, getattr(p, 'outline_smooth', 0.0)))))
+    if k and p.profile == 'CUSHION':
+        k += 2                              # a cushion's rim is soft: no corner facets along the seam
     if k:
         outer, holes = chaikin(outer, k), [chaikin(h, k) for h in holes]
     dense, boundary, interior, d_all, spacing = _dome_points(outer, holes, p, rings=getattr(p, 'rings', PUFF_RINGS),
@@ -640,6 +655,8 @@ def profile_field(outer, holes, p):
         h = pillow_heights(d_all, nb, edge_round)
     elif p.profile == 'SCALE':
         h = scale_heights(d_all, nb, edge_round)
+    elif p.profile == 'CUSHION':
+        h = cushion_heights(d_all, nb, edge_round)
     else:
         h = puff_heights(pts, tris, nb, 1.0)
     top = max(max(h), 1e-12)
@@ -658,7 +675,7 @@ def peak_height(p, natural):
 def _add_puff(bm, outer, holes, p):
     boundary, pts, tris, nb, shape, natural, spacing = profile_field(outer, holes, p)
     LAST_NATURAL[:] = [natural]
-    peak = peak_height(p, natural)
+    peak = p.height / 2.0 if p.profile == 'CUSHION' else peak_height(p, natural)   # Cushion: Height = total
     floor = min(spacing * 0.02, peak * 0.01)  # top and bottom never meet inside (they would be merged as doubles)
     h = [0.0 if i < nb else max(peak * x, floor) for i, x in enumerate(shape)]
     rim = [bm.verts.new((x, y, 0.0)) for x, y in boundary]
@@ -826,7 +843,7 @@ def build_bmesh(groups, p, flip=False):
         for outer, holes in groups:
             if p.profile == 'DOME':
                 _add_dome(bm, outer, holes, p)
-            elif p.profile in CREATURE_PROFILES:
+            elif p.profile in PUFF_BUILT:
                 _add_puff(bm, outer, holes, p)
             else:
                 rt, rb = _add_prism(bm, outer, holes, p.height)
@@ -837,7 +854,7 @@ def build_bmesh(groups, p, flip=False):
         if p.profile in {'BEVEL', 'CHAMFER'}:
             bm, notes = _profile_rims(bm, p, flip)
             LAST_NOTES.extend(notes)
-        embed = getattr(p, 'embed', 0.0) if p.profile not in CREATURE_PROFILES else 0.0   # centred on the plane
+        embed = getattr(p, 'embed', 0.0) if p.profile not in PUFF_BUILT else 0.0   # centred on the plane
         if embed > 0:
             # Stick to Surface: the bottom reaches into the surface (no gap on curves)
             for v in bm.verts:
@@ -979,7 +996,7 @@ def _bend(bm, groups, p):
             if abs(ang) > 1e-6 and max(round_, round_in) > 0:
                 reach = max(reach, fold_tangent(max(round_, round_in) * (rng[1] - rng[0]), ang / 2.0))
         cuts += [mid + sgn * reach * k / 6 for k in range(1, 7) for sgn in (-1, 1) if reach > 1e-9]
-    elif p.profile not in CREATURE_PROFILES and p.profile != 'DOME':
+    elif p.profile not in PUFF_BUILT and p.profile != 'DOME':
         cuts = [lo + (hi - lo) * k / 24 for k in range(1, 24)]   # flat caps are single faces: slice them to curve
     else:
         cuts = []
@@ -1285,8 +1302,9 @@ def _perform_cutter(context, groups, frame, p, projector, screen_groups, targets
         else (targets or [])
     if not targets:
         raise cg.CutError('Alt Base Mesh cuts into a mesh: start on a mesh or select the target first.')
-    if p.profile == 'DOME' or p.profile in CREATURE_PROFILES:
-        raise cg.CutError('Alt cutter supports Flat / Chamfer / Bevel profiles (Dome / Puff have no flat cap).')
+    if p.profile == 'DOME' or p.profile in PUFF_BUILT:
+        raise cg.CutError('Alt cutter supports Flat / Chamfer / Bevel profiles (Dome / Puff / Cushion have no flat '
+                          'cap).')
     bm = build_bmesh(groups, _WithEmbed(p, 0.0), flip=True)
     try:
         # mirror along local Z (into the surface) and lift a hair above it so the

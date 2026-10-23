@@ -1,5 +1,5 @@
 """0.24.20 Bridge Patch: lasso across two meshes, the gap between them fills with a smooth patch on the side you see
-(front only), its rim sunk into both meshes; Smooth / Bulge / Round / Wrap / Thickness / Sink / Overlap / Resolution live."""
+(default: the whole lasso as a round solid overlapping both; Trim to Gap: only the gap, rim sunk into them); Smooth / Bulge / Round / Wrap / Thickness / Sink / Overlap / Resolution live."""
 import math
 
 from _harness import bpy, check, fresh, non_manifold, summary, volume
@@ -62,6 +62,7 @@ def front_z(xy):
 a, b_ = lumps()
 gap_xy = (500, 500)                                 # world (0, 0): between the two lumps
 check('the gap is empty before', front_z(gap_xy)[0] is None)
+C.scene.mch_bridge.trim = True                   # Trim to Gap mode first (the whole-lasso solid below)
 C.scene.mch_bridge.round = 0.0                   # a flat sheet first (Round tested below)
 C.scene.mch_bridge.fill = 0.0
 msg = bp.perform(C, [LASSO], TOP)
@@ -118,8 +119,32 @@ for k, v in (('smooth', 0.0), ('quality', 'HIGH'), ('quality', 'LOW'), ('thickne
 bpy.ops.mch.bridge_apply()
 check('Apply: plain mesh', ob.get(bp.SRC_KEY) is None and not ob.mch_bridge.live)
 
-# errors
+# default: the whole lasso as one round solid overlapping both meshes
 a, b_ = lumps()
+C.scene.mch_bridge.trim = False
+C.scene.mch_bridge.round, C.scene.mch_bridge.fill = 1.0, 1.0
+msg = bp.perform(C, [LASSO], TOP)
+ob = C.active_object
+check('whole lasso: made, closed', ob is not None and non_manifold(ob) == 0, msg)
+xs = [(ob.matrix_world @ v.co) for v in ob.data.vertices]
+lo_y, hi_y = min(q.y for q in xs), max(q.y for q in xs)
+check('whole lasso: covers the lasso over both meshes (not trimmed to the gap)', lo_y < -1.4 and hi_y > 1.0,
+      (round(lo_y, 3), round(hi_y, 3)))
+zc = front_z(gap_xy)
+check('whole lasso: in the gap it is in front', zc[1] == ob.name and zc[0] > 0.2, zc)
+zmax, zmin = max(q.z for q in xs), min(q.z for q in xs)
+check('whole lasso: round around the meshes\' middle (front and back about equal)', abs(zmax + zmin) < 0.2,
+      (round(zmax, 3), round(zmin, 3)))
+ob.mch_bridge.fill = 0.0
+zmin0 = min((ob.matrix_world @ v.co).z for v in ob.data.vertices)
+check('whole lasso: Fill 0 = the back only to the middle', zmin0 > zmin + 0.2 and ob.mch_bridge.last_error == '',
+      (zmin, zmin0))
+ob.mch_bridge.round = 0.5
+check('whole lasso: Round rebuilds, closed', ob.mch_bridge.last_error == '' and non_manifold(ob) == 0)
+
+# errors (Trim to Gap)
+a, b_ = lumps()
+C.scene.mch_bridge.trim = True
 try:
     bp.perform(C, [[(480, 640), (520, 640), (520, 680), (480, 680)]], TOP)   # all on the upper lump
     check('a lasso fully on one surface is refused', False)
