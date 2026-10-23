@@ -17,7 +17,7 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                cloth_wrinkle, last_used, robot_base, detail_stamp, surface_lasso,
                curve_tube, creature_shell, cloth_sim, box_hide, plate_detail, screw_stamp, lowpoly, fold_patch,
                creature_plate, belt_maker, creature_spike, creature_scales, flower_plate,
-               surface_curve)
+               surface_curve, scale_brush)
 import os
 import re
 from pathlib import Path
@@ -1943,6 +1943,7 @@ def _register():
     belt_maker.register()
     creature_spike.register()
     creature_scales.register()
+    scale_brush.register()
     flower_plate.register()
     surface_curve.register()
     random_panels.register()
@@ -2036,6 +2037,7 @@ def _unregister_steps():
         ('random_panels', random_panels.unregister),
         ('surface_curve', surface_curve.unregister),
         ('flower_plate', flower_plate.unregister),
+        ('scale_brush', scale_brush.unregister),
         ('creature_scales', creature_scales.unregister),
         ('creature_spike', creature_spike.unregister),
         ('belt_maker', belt_maker.unregister),

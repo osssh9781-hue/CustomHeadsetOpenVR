@@ -1,17 +1,22 @@
-"""0.24.20 Flower Plate: draw an outline on a mesh, a thin petal grows from it.
+"""0.24.20 Flower Plate: draw an outline on a mesh, that shape grows from it and bends away (creature parts,
+fins, petals, leaves).
 
-Only the part near the START of the outline (the first point drawn) stays on the surface; the rest lifts off and
-curls away like a petal / leaf:
+The outline keeps the shape you drew.  Only the part near the START of the outline (the first point drawn) stays
+on the surface; the rest lifts off and bends:
 
-    Curl        total bend from the attached part to the tip (0 = flat, 180 = folded back over)
+    Lift        how steeply it rises off the surface right after the attached part
+    Curl        extra bend from there to the tip: + = curls up and back over the root, - = bends outward / droops
     Curl Power  1 = even bend, above 1 = straight first and curling at the tip, below 1 = bending at once
+    Side Bend   sweeps the far end to the left / right
+    Roll        rolls the sides up (+) or down (-) across the width, like a half pipe
     Attach      how much of the length stays on the surface
     Thickness   sheet thickness at the root (0 = Auto), Tip Thin = how much thinner the tip is
     Edge Round  the rim is thinner than the middle
 
 The sheet is the outline filled with the Creature point set (``base_mesh.profile_field``) projected onto the
-mesh (like Creature Plate), then bent in the frame at the root: U = from the root across the shape, N = the
-surface normal there.  Live until Apply.  ``bend_point`` is pure and tested headless.
+mesh (like Creature Plate), then laid along a bent centre line in the frame at the root: U = from the root
+across the shape, W = sideways, N = the surface normal there.  Live until Apply.  ``spine`` is pure and tested
+headless.
 """
 from __future__ import annotations
 
@@ -28,25 +33,32 @@ from . import core_geometry as cg
 
 SRC_KEY = 'mch_flower_src'
 COLLECTION = 'Flower Plates'
-LIVE_KEYS = ('curl', 'curl_power', 'attach', 'thickness', 'tip_thin', 'edge_round', 'outline_smooth',
+LIVE_KEYS = ('lift', 'curl', 'curl_power', 'side_bend', 'roll', 'attach', 'thickness', 'tip_thin', 'edge_round', 'outline_smooth',
              'resolution', 'sink', 'tip_sharp')
 _CACHE = {}
 
 
-def bend_point(s, total, curl, power=1.0):
-    """(along, up) of a point ``s`` along the bent part (0 .. total) for a sheet curling by ``curl`` radians at
-    the tip; also returns the bend angle there.  Pure: an arc with the angle growing as (s / total) ** power."""
-    if total <= 1e-12 or abs(curl) < 1e-6:
-        return s, 0.0, 0.0
-    steps = max(4, int(abs(curl) * 24))
-    a = u = z = 0.0
-    ds = s / steps
+def spine(span, lift, curl, power=1.0, side=0.0, steps=160):
+    """The bent centre line in the root frame (u, w, n): [(position, tangent, side, normal)] at ``steps`` + 1
+    even stations over ``span``.  Pitch = Lift (eased in over the first third) + Curl * t ** power, yaw = Side
+    Bend * t ** power.  Pure."""
+    def frame(t):
+        a = lift * _ease(min(1.0, t / 0.35)) + curl * (t ** power)
+        b = side * (t ** power)
+        tan = Vector((math.cos(a) * math.cos(b), math.cos(a) * math.sin(b), math.sin(a)))
+        sd = Vector((-math.sin(b), math.cos(b), 0.0))
+        return tan, sd, tan.cross(sd).normalized()
+    ds = span / steps
+    pos = Vector()
+    out = [(pos.copy(),) + frame(0.0)]
     for k in range(steps):
-        t = (k + 0.5) * ds / total
-        a = curl * (t ** power)
-        u += math.cos(a) * ds
-        z += math.sin(a) * ds
-    return u, z, curl * ((s / total) ** power)
+        pos += frame((k + 0.5) / steps)[0] * ds
+        out.append((pos.copy(),) + frame((k + 1) / steps))
+    return out
+
+
+def _ease(x):
+    return x * x * (3.0 - 2.0 * x)
 
 
 def _update(self, context):
@@ -76,15 +88,21 @@ def _p(prop, **kw):
 
 
 class MCH_PG_Flower(bpy.types.PropertyGroup):
-    curl: _p(FloatProperty, name='Curl', default=math.radians(150), min=math.radians(-270), max=math.radians(330),
-             subtype='ANGLE', description='How far the petal curls from the attached part to its tip')
+    lift: _p(FloatProperty, name='Lift', default=math.radians(55), min=math.radians(-30), max=math.radians(120),
+             subtype='ANGLE', description='How steeply it rises off the surface after the attached part')
+    curl: _p(FloatProperty, name='Curl', default=math.radians(-120), min=math.radians(-300), max=math.radians(300),
+             subtype='ANGLE', description='Bend from there to the tip: + curls up and back over, - bends outward')
+    side_bend: _p(FloatProperty, name='Side Bend', default=0.0, min=math.radians(-180), max=math.radians(180),
+                  subtype='ANGLE', description='Sweep the far end to the left / right')
+    roll: _p(FloatProperty, name='Roll', default=0.0, min=math.radians(-180), max=math.radians(180),
+             subtype='ANGLE', description='Roll the sides up (+) or down (-) across the width')
     curl_power: _p(FloatProperty, name='Curl Power', default=1.3, min=0.3, max=4.0,
                    description='1 = even bend; higher = straight first, curling at the tip; lower = bends at once')
     attach: _p(FloatProperty, name='Attach', default=0.15, min=0.0, max=0.9, subtype='FACTOR',
                description='How much of the length stays on the surface (from the start of the outline)')
     thickness: _p(FloatProperty, name='Thickness', default=0.0, min=0.0, soft_max=0.5, precision=4, unit='LENGTH',
                   description='Sheet thickness at the root (0 = Auto: 4% of the length)')
-    tip_thin: _p(FloatProperty, name='Tip Thin', default=0.6, min=0.0, max=0.95, subtype='FACTOR',
+    tip_thin: _p(FloatProperty, name='Tip Thin', default=0.4, min=0.0, max=0.95, subtype='FACTOR',
                  description='How much thinner the tip is than the root')
     edge_round: _p(FloatProperty, name='Edge Round', default=0.25, min=0.0, max=1.0,
                    description='Thinner rim, fuller middle')
@@ -92,8 +110,8 @@ class MCH_PG_Flower(bpy.types.PropertyGroup):
     resolution: _p(IntProperty, name='Resolution', default=24, min=6, max=64)
     sink: _p(FloatProperty, name='Sink', default=1.2, min=0.0, max=4.0,
              description='How far the root goes into the surface (x Thickness)')
-    tip_sharp: _p(FloatProperty, name='Tip Sharp', default=0.6, min=0.0, max=0.95, subtype='FACTOR',
-                  description='Narrow the far end of the petal to a point')
+    tip_sharp: _p(FloatProperty, name='Tip Sharp', default=0.0, min=0.0, max=0.95, subtype='FACTOR',
+                  description='Narrow the far end to a point (0 = exactly the shape you drew)')
     live: BoolProperty(default=False, options={'HIDDEN'})
     last_error: StringProperty(default='', options={'HIDDEN', 'SKIP_SAVE'})
 
@@ -119,7 +137,7 @@ def _field(context, ob, src, p):
     from . import creature_plate as cpl
     target = bpy.data.objects.get(src.get('target', ''))
     if target is None or target.type != 'MESH':
-        raise cg.CutError('The mesh the petal was drawn on is gone.')
+        raise cg.CutError('The mesh the part was drawn on is gone.')
     projector = ap.thaw_projector(src['proj'])
     groups = cg.prepare_loops([[tuple(q) for q in lp] for lp in src['loops']])
     outer, holes = groups[0]
@@ -139,7 +157,7 @@ def _field(context, ob, src, p):
 def build(context, ob):
     src = source(ob)
     if src is None:
-        raise cg.CutError('This petal was applied.')
+        raise cg.CutError('This part was applied.')
     p = ob.mch_flower
     cos, nrms, tris, nb, shape, root = _field(context, ob, src, p)
     r0, n0 = cos[root], nrms[root].normalized()
@@ -148,28 +166,46 @@ def build(context, ob):
     U = U.normalized() if U.length > 1e-9 else Vector((1, 0, 0))
     W = n0.cross(U).normalized()
     us = [(c - r0).dot(U) for c in cos]
+    ws = [(c - r0).dot(W) for c in cos]
     length = max(max(us), 1e-9)
     a0 = p.attach * length
     span = max(length - a0, 1e-9)
     thick0 = p.thickness if p.thickness > 0 else 0.04 * length
+    dive = thick0 * p.sink                             # the root sits this deep in the surface
+    steps = 160
+    line = spine(span, p.lift, p.curl, p.curl_power, p.side_bend, steps)
+    basis = Matrix((U, W, n0)).transposed()            # root frame (u, w, n) -> world
+    base0 = r0 + U * a0
+    half = max(max(abs(w) for w in ws), 1e-9)
     verts_top, verts_bot = [], []
     for i, c in enumerate(cos):
         s = max(us[i] - a0, 0.0)
         frac = min(max(us[i], 0.0) / length, 1.0)
         th = thick0 * (1.0 - p.tip_thin * frac) * (0.35 + 0.65 * shape[i])
-        dive = thick0 * p.sink                         # the root sits this deep in the surface
         if s <= 0.0:
             n = nrms[i]
             top = c + n * (th - dive * 0.5)
             bot = c - n * dive
         else:
-            du, dz, ang = bend_point(s, span, p.curl, p.curl_power)
-            w = (c - r0).dot(W) * (1.0 - p.tip_sharp * frac ** 2.5)      # pointed tip
-            base = r0 + U * a0 + W * w
-            pos = base + U * du + n0 * dz
-            nb_ = (n0 * math.cos(ang) - U * math.sin(ang)).normalized()
-            blend = min(1.0, s / (0.12 * span))          # leave the surface smoothly
-            blend = blend * blend * (3 - 2 * blend)
+            x = min(s / span, 1.0) * steps
+            k = min(int(x), steps - 1)
+            f = x - k
+            (p0, t0, s0, n0_), (p1, t1, s1, n1_) = line[k], line[k + 1]
+            pos_l = p0.lerp(p1, f)
+            sd = s0.lerp(s1, f).normalized()
+            nl = n0_.lerp(n1_, f).normalized()
+            w = ws[i] * (1.0 - p.tip_sharp * frac ** 2.5)          # 0 = the drawn shape
+            rl = p.roll * _ease(min(1.0, s / (0.3 * span)))
+            if abs(rl) > 1e-4:
+                r = half / rl
+                th_ = w / r
+                pos_l = pos_l + sd * (r * math.sin(th_)) + nl * (r * (1.0 - math.cos(th_)))
+                nl = (nl * math.cos(th_) - sd * math.sin(th_)).normalized()
+            else:
+                pos_l = pos_l + sd * w
+            pos = base0 + basis @ pos_l
+            nb_ = (basis @ nl).normalized()
+            blend = _ease(min(1.0, s / (0.12 * span)))   # leave the surface smoothly
             pos = c.lerp(pos, blend)
             n = nrms[i].lerp(nb_, blend).normalized()
             top = pos + n * (th - dive * 0.5 * (1.0 - blend))
@@ -222,10 +258,10 @@ def perform(context, loops, projector):
     groups = cg.prepare_loops(loops)
     target = ap.pick_surface(context, projector, groups)
     if target is None:
-        raise cg.CutError('Draw the petal over a mesh.')
+        raise cg.CutError('Draw the part over a mesh.')
     frozen = ap.freeze_projector(projector)
     if frozen is None:
-        raise cg.CutError('This view cannot be saved for the petal.')
+        raise cg.CutError('This view cannot be saved for the part.')
     st = context.scene.mch_flower
     me = bpy.data.meshes.new(target.name + '_Petal')
     ob = bpy.data.objects.new(me.name, me)
@@ -265,7 +301,7 @@ def live_flower(context):
 class MCH_OT_flower_apply(bpy.types.Operator):
     bl_idname = 'mch.flower_apply'
     bl_label = 'Apply Flower Plate'
-    bl_description = 'The petal becomes a plain mesh (the sliders stop rebuilding it)'
+    bl_description = 'The part becomes a plain mesh (the sliders stop rebuilding it)'
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -291,11 +327,14 @@ def draw(layout, context):
             box.label(text=p.last_error, icon='ERROR')
         target = box
     else:
-        layout.label(text='Settings for the next petal', icon='OUTLINER_OB_FORCE_FIELD')
+        layout.label(text='Settings for the next part', icon='OUTLINER_OB_FORCE_FIELD')
         target = layout
     col = target.column(align=True)
+    col.prop(p, 'lift')
     col.prop(p, 'curl')
     col.prop(p, 'curl_power')
+    col.prop(p, 'side_bend')
+    col.prop(p, 'roll')
     col.prop(p, 'attach', slider=True)
     col = target.column(align=True)
     col.prop(p, 'thickness')
@@ -310,7 +349,8 @@ def draw(layout, context):
         target.operator('mch.flower_apply', icon='CHECKMARK')
     col = layout.column(align=True)
     col.scale_y = 0.8
-    for line in ('Draw an outline on a mesh: where you START stays on it,', 'the rest lifts off and curls (Curl)',
+    for line in ('Draw an outline on a mesh: where you START stays on it,',
+                 'the rest lifts off (Lift) and bends: Curl + back over, - outward',
                  'Apply: plain mesh'):
         col.label(text=line)
 

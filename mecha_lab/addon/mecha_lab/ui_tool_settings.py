@@ -452,6 +452,11 @@ def draw_scales(layout, context):
     creature_scales.draw(layout, context)
 
 
+def draw_scale_brush(layout, context):
+    from . import scale_brush
+    scale_brush.draw(layout, context)
+
+
 def draw_spike(layout, context):
     from . import creature_spike
     creature_spike.draw(layout, context)
@@ -828,7 +833,7 @@ DRAWERS = {
     'BASE': draw_base, 'LOFT': draw_loft, 'ZBRUSH': draw_zbrush, 'SUBD': draw_subd,
     'PRIMITIVE': draw_primitive, 'PLATE': draw_plate, 'WRINKLE': draw_wrinkle, 'CBASE': draw_base,
     'CPLATE': draw_cplate, 'BELT': draw_belt, 'SPIKE': draw_spike,
-    'SCALES': draw_scales, 'FLOWER': draw_flower, 'SCURVE': draw_surface_curve,
+    'SCALES': draw_scales, 'SBRUSH': draw_scale_brush, 'FLOWER': draw_flower, 'SCURVE': draw_surface_curve,
     'EXTRACT': draw_extract, 'MOLDING': draw_molding, 'HOLLOW': draw_hollow, 'ALONG': draw_along,
     'CABLE': draw_cable, 'TUBE': draw_tube, 'TUBE_SAME': draw_line_curve, 'DETAIL3': draw_detail3, 'HIDE': draw_hide, 'DETAIL': draw_detail, 'DETAIL2': draw_detail2, 'SCREW': draw_screw,
     # MIRROR, RADIAL, SURFACE: own sub-panels.

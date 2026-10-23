@@ -21,7 +21,7 @@ import types
 
 import bmesh
 import bpy
-from bpy.props import BoolProperty, FloatProperty, IntProperty, StringProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
 from mathutils import Matrix, Vector
 
 from . import core_geometry as cg
@@ -30,8 +30,11 @@ SRC_KEY = 'mch_scales_src'
 COLLECTION = 'Creature Scales'
 SHAPES = tuple((k, 'MCH_BUILTIN_SCALE_' + k) for k in 'ABCDEFG')
 LIVE_KEYS = ('use_a', 'use_b', 'use_c', 'use_d', 'use_e', 'use_f', 'use_g', 'size', 'size_random', 'rotate_random', 'spacing', 'rows', 'row_gap',
-             'height', 'tip_lift', 'edge_round', 'seed', 'flip', 'resolution')
+             'height', 'tip_lift', 'edge_round', 'seed', 'flip', 'quality')
 _CACHE = {}
+# Resolution: (point spacing, rows of points inside the rim, outline density) - Low is about 5x lighter than High
+QUALITY = {'LOW': (6, (0.3, 0.85), 1.0), 'MID': (8, (0.2, 0.55, 0.9), 0.75),
+           'HIGH': (12, (0.12, 0.3, 0.55, 0.85), 0.5)}
 
 
 def placements(path_px, step_px, rows, row_gap_px, presets, size_px, size_random, rotate_random, seed, flip=False):
@@ -163,7 +166,10 @@ class MCH_PG_Scales(bpy.types.PropertyGroup):
     tip_lift: _p(FloatProperty, name='Tip Lift', default=1.0, min=0.0, soft_max=4.0,
                  description='How far the tips rise off the body (x thickness)')
     edge_round: _p(FloatProperty, name='Edge Round', default=0.2, min=0.0, max=1.0)
-    resolution: _p(IntProperty, name='Resolution', default=16, min=6, max=40)
+    quality: _p(EnumProperty, name='Resolution', default='LOW',
+                items=(('LOW', 'Low', 'Light: about 120 points a scale'),
+                       ('MID', 'Mid', 'About 220 points a scale'),
+                       ('HIGH', 'High', 'Smooth: about 520 points a scale')))
     seed: _p(IntProperty, name='Seed', default=1, min=0)
     flip: _p(BoolProperty, name='Flip', default=False, description='Roots point forward instead of back')
     live: BoolProperty(default=False, options={'HIDDEN'})
@@ -226,8 +232,9 @@ def build(context, ob):
     else:
         where = placements(path, p.spacing * size_px, p.rows, p.row_gap * size_px, stems, size_px, p.size_random,
                            p.rotate_random, p.seed, p.flip)
-    field_p = types.SimpleNamespace(profile='SCALE', resolution=p.resolution, outline_smooth=0.3,
-                                    edge_round=p.edge_round, puff=1.0)
+    res, rings, rim = QUALITY[p.quality]
+    field_p = types.SimpleNamespace(profile='SCALE', resolution=res, outline_smooth=0.3,
+                                    edge_round=p.edge_round, puff=1.0, rings=rings, rim=rim)
     plate_p = types.SimpleNamespace(profile='SCALE', direction=0.0, edge_thickness=0.0, sink=0.0, tip_lift=-1.0)
     verts, faces = [], []
     for centre, ang, stem, sz in where:
@@ -377,7 +384,7 @@ def draw(layout, context):
     col.prop(p, 'height')
     col.prop(p, 'tip_lift')
     col.prop(p, 'edge_round', slider=True)
-    col.prop(p, 'resolution')
+    target.row().prop(p, 'quality', expand=True)
     row = target.row(align=True)
     row.prop(p, 'seed')
     row.prop(p, 'flip', toggle=True)

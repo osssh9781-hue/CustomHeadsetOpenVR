@@ -572,7 +572,8 @@ def profile_field(outer, holes, p):
     k = int(round(4 * max(0.0, min(1.0, getattr(p, 'outline_smooth', 0.0)))))
     if k:
         outer, holes = chaikin(outer, k), [chaikin(h, k) for h in holes]
-    dense, boundary, interior, d_all, spacing = _dome_points(outer, holes, p, rings=PUFF_RINGS, density=1.5, rim=0.5,
+    dense, boundary, interior, d_all, spacing = _dome_points(outer, holes, p, rings=getattr(p, 'rings', PUFF_RINGS),
+                                                             density=1.5, rim=getattr(p, 'rim', 0.5),
                                                              cap=MAX_PUFF_POINTS)
     pts = boundary + interior
     nb = len(boundary)
