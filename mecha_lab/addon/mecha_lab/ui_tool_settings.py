@@ -567,7 +567,13 @@ def draw_base(layout, context):
     col.prop(p, 'offset')
     if ob is not None and p.embed > 0:
         col.prop(p, 'embed')
-    if ob is not None:
+    if ob is not None:                      # 0.24.20 bend the made shape (up / down, sideways)
+        col = target.column(align=True)
+        col.label(text='Bend', icon='MOD_SIMPLEDEFORM')
+        col.prop(p, 'bend_up')
+        col.prop(p, 'bend_side')
+        if abs(p.bend_up) > 1e-6 or abs(p.bend_side) > 1e-6:
+            col.prop(p, 'bend_axis')
         target.operator('mch.base_freeze', icon='FREEZE')
     _hint(layout, 'Draw: creates a NEW object', 'Alt + draw: cut it INTO the mesh below (Boolean),',
           '  bevel sides flipped (Top <-> Bottom)', 'Placed on the surface under the shape, else 3D cursor',

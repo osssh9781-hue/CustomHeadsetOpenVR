@@ -146,6 +146,16 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
                          unit='LENGTH', update=_rebuild_update,
                          description='How far the bottom reaches into the surface it was drawn on '
                                      '(set automatically so a curved surface leaves no gap)')
+    # 0.24.20 bend the made shape (live object only; new shapes start straight)
+    bend_up: FloatProperty(name='Bend Up / Down', default=0.0, min=math.radians(-300), max=math.radians(300),
+                           subtype='ANGLE', update=_rebuild_update,
+                           description='Bend along its length: + both ends rise, - both ends drop')
+    bend_side: FloatProperty(name='Bend Sideways', default=0.0, min=math.radians(-300), max=math.radians(300),
+                             subtype='ANGLE', update=_rebuild_update,
+                             description='Bend along its length to the left / right (like a banana seen from above)')
+    bend_axis: FloatProperty(name='Bend Direction', default=0.0, min=math.radians(-90), max=math.radians(90),
+                             subtype='ANGLE', update=_rebuild_update,
+                             description='Turn the bend direction (0 = along the longest side of the shape)')
     live: BoolProperty(name='Live', default=False,
                        description='Settings rebuild this object (outline stored on the object)')
     outline: StringProperty(default='', options={'HIDDEN'})
@@ -823,6 +833,7 @@ def build_bmesh(groups, p, flip=False):
                     v.co.z -= embed
         if abs(p.offset) > 0:
             bmesh.ops.translate(bm, verts=bm.verts[:], vec=(0.0, 0.0, p.offset))
+        _bend(bm, groups, p)
         if not bm.faces or any(not e.is_manifold for e in bm.edges):
             raise cg.CutError('Generated solid is not closed (outline too thin or touching itself).')
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
@@ -834,6 +845,62 @@ def build_bmesh(groups, p, flip=False):
     except Exception:
         bm.free()
         raise
+
+
+def bend_axis_dir(groups, turn=0.0):
+    """(direction, centre) of the bend: the main axis of the outline points (PCA), turned by ``turn`` - pure."""
+    pts = [q for outer, holes in groups for q in outer]
+    n = max(1, len(pts))
+    cx = sum(q[0] for q in pts) / n
+    cy = sum(q[1] for q in pts) / n
+    sxx = sum((q[0] - cx) ** 2 for q in pts)
+    syy = sum((q[1] - cy) ** 2 for q in pts)
+    sxy = sum((q[0] - cx) * (q[1] - cy) for q in pts)
+    a = 0.5 * math.atan2(2.0 * sxy, sxx - syy) + turn
+    return (math.cos(a), math.sin(a)), (cx, cy)
+
+
+def bend_coords(u, w, z, half, up, side):
+    """A point (along, across, up) of a shape ``half`` long each way from its middle, bent by ``up`` (both
+    ends rise for +) and ``side`` (both ends go to +across for +) radians in total - pure."""
+    if abs(side) > 1e-6 and half > 1e-12:
+        r = 2.0 * half / side
+        t = u / r
+        u, w = (r - w) * math.sin(t), r - (r - w) * math.cos(t)
+    if abs(up) > 1e-6 and half > 1e-12:
+        r = 2.0 * half / up
+        t = u / r
+        u, z = (r - z) * math.sin(t), r - (r - z) * math.cos(t)
+    return u, w, z
+
+
+def _bend(bm, groups, p):
+    """0.24.20 Bend Up / Down and Bend Sideways along the main axis of the outline (live Base Mesh)."""
+    up, side = getattr(p, 'bend_up', 0.0), getattr(p, 'bend_side', 0.0)
+    if abs(up) < 1e-6 and abs(side) < 1e-6:
+        return
+    (dx, dy), (cx, cy) = bend_axis_dir(groups, getattr(p, 'bend_axis', 0.0))
+    us = [(v.co.x - cx) * dx + (v.co.y - cy) * dy for v in bm.verts]
+    lo, hi = min(us), max(us)
+    half = (hi - lo) / 2.0
+    mid = (lo + hi) / 2.0
+    if half <= 1e-9:
+        return
+    if p.profile not in CREATURE_PROFILES and p.profile != 'DOME':
+        # flat caps are single big faces: slice them across the bend so they can curve
+        steps = 24
+        for k in range(1, steps):
+            u = lo + (hi - lo) * k / steps
+            co = (cx + dx * u, cy + dy * u, 0.0)
+            bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:], dist=1e-7,
+                                   plane_co=co, plane_no=(dx, dy, 0.0))
+    for v in bm.verts:
+        x, y, z = v.co
+        u = (x - cx) * dx + (y - cy) * dy - mid
+        w = -(x - cx) * dy + (y - cy) * dx
+        u, w, z = bend_coords(u, w, z, half, up, side)
+        u += mid
+        v.co = (cx + u * dx - w * dy, cy + u * dy + w * dx, z)
 
 
 def _groups_from_json(text):
