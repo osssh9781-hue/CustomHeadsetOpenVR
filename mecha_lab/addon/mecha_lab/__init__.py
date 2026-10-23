@@ -17,7 +17,7 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                cloth_wrinkle, last_used, robot_base, detail_stamp, surface_lasso,
                curve_tube, creature_shell, cloth_sim, box_hide, plate_detail, screw_stamp, lowpoly, fold_patch,
                creature_plate, belt_maker, creature_spike, creature_scales, flower_plate,
-               surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair)
+               surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, clothing_gen)
 import os
 import re
 from pathlib import Path
@@ -1943,6 +1943,7 @@ def _register():
     mech_ridge.register()
     cape_gen.register()
     creature_hair.register()
+    clothing_gen.register()
     belt_maker.register()
     creature_spike.register()
     creature_scales.register()
@@ -2050,6 +2051,7 @@ def _unregister_steps():
         ('mech_ridge', mech_ridge.unregister),
         ('cape_gen', cape_gen.unregister),
         ('creature_hair', creature_hair.unregister),
+        ('clothing_gen', clothing_gen.unregister),
         ('armor_plate', armor_plate.unregister),
         ('primitive_hud', primitive_hud.unregister),
         ('primitive_place', primitive_place.unregister),

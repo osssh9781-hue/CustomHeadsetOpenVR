@@ -474,8 +474,10 @@ def pick_body(context, projector, groups):
     """The mesh under the drawing; capes, hair and other live generated parts (and armour parts / plates) are
     looked through."""
     from . import armor_plate as ap
+    from . import creature_hair
     outer = groups[0][0]
     probes = [(sum(q[0] for q in outer) / len(outer), sum(q[1] for q in outer) / len(outer))] + list(outer[::3])
+    probes += creature_hair.root_points(outer, 40, 0)     # inside too (an outline round two legs misses at the edge)
     dg = context.evaluated_depsgraph_get()
     counts = {}
     for xy in probes:

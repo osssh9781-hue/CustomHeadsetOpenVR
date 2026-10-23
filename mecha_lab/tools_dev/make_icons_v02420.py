@@ -258,6 +258,18 @@ def icons():
             d.rounded_rectangle((bx - 17, by, bx + 17, by + 20), radius=6, fill=FG)   # band round the strand
         return img
     out['hair'] = hair
+
+    # 0.24.31 Clothing: a T-shirt over pants
+    def garment():
+        img, d = canvas()
+        shirt = [(196, 70), (316, 70), (420, 130), (390, 200), (340, 175), (340, 290), (172, 290), (172, 175),
+                 (122, 200), (92, 130)]
+        poly(d, shirt, ACC, fill=(255, 158, 40, 90))
+        d.arc((222, 50, 290, 100), 0, 180, fill=FG, width=12)                  # neckline
+        pants = [(180, 305), (332, 305), (340, 460), (276, 460), (256, 360), (236, 460), (172, 460)]
+        poly(d, pants, CY, fill=(80, 200, 255, 70))
+        return img
+    out['garment'] = garment
     return out
 
 
