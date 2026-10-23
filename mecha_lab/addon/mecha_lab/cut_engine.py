@@ -952,6 +952,8 @@ _COLORS = {
     'CAPE': (0.8, 0.55, 0.35, 1.0),
     'HAIR': (0.75, 0.7, 0.45, 1.0),
     'GARMENT': (0.55, 0.7, 0.85, 1.0),
+    'HOOD': (0.6, 0.5, 0.85, 1.0),
+    'SCARF': (0.85, 0.5, 0.55, 1.0),
     'WRINKLE': (0.95, 0.45, 0.75, 1.0),
     'HIDE': (1.0, 0.62, 0.10, 1.0),               # 0.23.17 Box Hide: orange like Cut (hide and Alt = show)
     'DETAIL': (0.95, 0.85, 0.35, 1.0),            # 0.24 Plate Detail: yellow
@@ -1278,7 +1280,7 @@ class StrokeLogic:
 
     def _needs_target(self):
         return self.mode not in {'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE',
-                                 'FLOWER', 'SCURVE', 'CAPE', 'HAIR', 'GARMENT'}
+                                 'FLOWER', 'SCURVE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF'}
 
     def _tangents(self, pts=None):
         pts = self.pts if pts is None else pts
@@ -1396,7 +1398,7 @@ class StrokeLogic:
                 self.report({'WARNING'}, str(ex))
             return {'CANCELLED'}
         if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER',
-                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT'} and self.shape == 'LASSO' and self.brush.line_open:
+                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF'} and self.shape == 'LASSO' and self.brush.line_open:
             self.brush.line_open = False
         self.ui = ui_scale(context)
         self.target_names = []
@@ -1727,6 +1729,12 @@ class StrokeLogic:
             elif self.mode == 'GARMENT':
                 from . import clothing_gen
                 msg = clothing_gen.perform(context, loops, self.projector)
+            elif self.mode == 'HOOD':
+                from . import hood_gen
+                msg = hood_gen.perform(context, loops, self.projector)
+            elif self.mode == 'SCARF':
+                from . import scarf_gen
+                msg = scarf_gen.perform(context, loops, self.projector)
             elif self.mode == 'WRINKLE':
                 from . import cloth_wrinkle
                 msg = cloth_wrinkle.perform_wrinkle(context, loops, self.projector)
@@ -1779,7 +1787,7 @@ class StrokeLogic:
             self._clean_points()
             if self.shape == 'LASSO' and len(self.pts) >= 2 and (self.line_open or len(self.pts) == 2):
                 if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER',
-                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT'}:
+                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF'}:
                     self.report({'WARNING'}, 'This tool needs a closed outline (3+ points)')
                     return {'RUNNING_MODAL'}
                 if self.mode == 'SPLIT':
@@ -1944,7 +1952,7 @@ class StrokeLogic:
             self.region.tag_redraw()
             return {'RUNNING_MODAL'}
         if et == 'F' and ev == 'PRESS' and self.shape == 'LASSO' and self.mode not in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER',
-                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT'}:
+                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF'}:
             self.line_open = not self.line_open
             self.brush.line_open = self.line_open
             self.region.tag_redraw()
@@ -2155,6 +2163,8 @@ class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
         ('CAPE', 'Cape', 'A live cape hanging from the top edge of the drawing'),
         ('HAIR', 'Creature Hair', 'Live dreadlocks / tentacles / quills growing from the drawn area'),
         ('GARMENT', 'Clothing', 'A live top / pants made from the body inside the drawn outline'),
+        ('HOOD', 'Hood', 'A live hood over the head drawn round'),
+        ('SCARF', 'Scarf', 'A live scarf round the neck drawn round'),
         ('WRINKLE', 'Cloth Wrinkle', 'New cloth layer with wrinkles on the mesh under the outline'),
         ('HIDE', 'Box Hide', 'Hide the meshes inside the shape (Alt: show again)'),
         ('DETAIL', 'Plate Detail', 'Low trim detail on the plate under the outline'),

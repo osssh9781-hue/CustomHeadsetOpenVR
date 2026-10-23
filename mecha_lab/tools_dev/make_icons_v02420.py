@@ -270,6 +270,27 @@ def icons():
         poly(d, pants, CY, fill=(80, 200, 255, 70))
         return img
     out['garment'] = garment
+
+    # 0.24.31 Hood: a pointed hood round a head, cowl over the shoulders
+    def hood():
+        img, d = canvas()
+        pts = [(256, 50), (360, 150), (380, 290), (440, 340), (450, 420), (62, 420), (72, 340), (132, 290),
+               (152, 150)]
+        poly(d, pts, ACC, fill=(255, 158, 40, 90))
+        d.ellipse((190, 150, 322, 300), fill=(20, 22, 28, 255), outline=FG, width=12)   # face opening
+        return img
+    out['hood'] = hood
+
+    # 0.24.31 Scarf: wraps round a neck and two tails
+    def scarf():
+        img, d = canvas()
+        d.ellipse((196, 40, 316, 160), outline=DIM, width=14)                 # head
+        for y in (180, 230):
+            d.rounded_rectangle((136, y, 376, y + 58), radius=28, outline=ACC, width=14, fill=(255, 158, 40, 90))
+        poly(d, [(200, 280), (262, 280), (250, 460), (190, 450)], CY, fill=(80, 200, 255, 70))
+        poly(d, [(280, 280), (330, 280), (350, 410), (300, 420)], CY, fill=(80, 200, 255, 70))
+        return img
+    out['scarf'] = scarf
     return out
 
 
