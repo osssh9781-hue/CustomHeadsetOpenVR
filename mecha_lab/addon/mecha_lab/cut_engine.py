@@ -927,6 +927,7 @@ _COLORS = {
     'SPIKE': (0.6, 0.85, 0.4, 1.0),
     'SCALES': (0.45, 0.8, 0.55, 1.0),
     'SBRUSH': (0.55, 0.8, 0.7, 1.0),
+    'BRIDGE': (0.6, 0.7, 1.0, 1.0),
     'FLOWER': (0.95, 0.6, 0.8, 1.0),
     'SCURVE': (0.5, 0.75, 1.0, 1.0),
     'WRINKLE': (0.95, 0.45, 0.75, 1.0),
@@ -1249,7 +1250,7 @@ class StrokeLogic:
         return PROFILE_POPUP if self.mode in {'BASE', 'CBASE'} else SHAPE_POPUP
 
     def _needs_target(self):
-        return self.mode not in {'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH',
+        return self.mode not in {'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE',
                                  'FLOWER', 'SCURVE'}
 
     def _tangents(self, pts=None):
@@ -1368,7 +1369,7 @@ class StrokeLogic:
                 self.report({'WARNING'}, str(ex))
             return {'CANCELLED'}
         if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER',
-                     'SPIKE', 'SCALES', 'SBRUSH'} and self.shape == 'LASSO' and self.brush.line_open:
+                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE'} and self.shape == 'LASSO' and self.brush.line_open:
             self.brush.line_open = False
         self.ui = ui_scale(context)
         self.target_names = []
@@ -1638,6 +1639,9 @@ class StrokeLogic:
         if self.mode == 'SCURVE':
             from . import surface_curve
             return surface_curve.perform(context, self._line_path(), self.projector)
+        if self.mode == 'BRIDGE':
+            from . import bridge_patch
+            return bridge_patch.perform(context, self._current_loops(self.ctrl_held, self.shift_held), self.projector)
         if self.mode == 'SBRUSH':
             from . import scale_brush
             return scale_brush.perform(context, self._current_loops(self.ctrl_held, self.shift_held), self.projector)
@@ -1729,7 +1733,7 @@ class StrokeLogic:
             self._clean_points()
             if self.shape == 'LASSO' and len(self.pts) >= 2 and (self.line_open or len(self.pts) == 2):
                 if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER',
-                     'SPIKE', 'SCALES', 'SBRUSH'}:
+                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE'}:
                     self.report({'WARNING'}, 'This tool needs a closed outline (3+ points)')
                     return {'RUNNING_MODAL'}
                 if self.mode == 'SPLIT':
@@ -1888,7 +1892,7 @@ class StrokeLogic:
             self.region.tag_redraw()
             return {'RUNNING_MODAL'}
         if et == 'F' and ev == 'PRESS' and self.shape == 'LASSO' and self.mode not in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER',
-                     'SPIKE', 'SCALES', 'SBRUSH'}:
+                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE'}:
             self.line_open = not self.line_open
             self.brush.line_open = self.line_open
             self.region.tag_redraw()
@@ -2093,6 +2097,7 @@ class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
         ('SPIKE', 'Creature Spike', 'Spikes standing along the drawn line'),
         ('SCALES', 'Creature Scales', 'Overlapping scales along the drawn line'),
         ('SBRUSH', 'Scale Brush', 'Flat-bottomed scales packed close in the drawn area'),
+        ('BRIDGE', 'Bridge Patch', 'A smooth patch joining two meshes across the drawn area'),
         ('FLOWER', 'Flower Plate', 'The outline grows from the surface: attached at the start, bending away'),
         ('SCURVE', 'Surface Curve', 'A Mesh Curve lying on the surface along the drawn line'),
         ('WRINKLE', 'Cloth Wrinkle', 'New cloth layer with wrinkles on the mesh under the outline'),

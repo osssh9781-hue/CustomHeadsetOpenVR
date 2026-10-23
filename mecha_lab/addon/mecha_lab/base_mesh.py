@@ -156,10 +156,12 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
     bend_style: EnumProperty(name='Bend Style', default='SMOOTH', update=_rebuild_update,
                              items=(('SMOOTH', 'Band', 'Bends evenly along the whole length, like a band'),
                                     ('ANGLE', 'Angle', 'A sharp fold at one spot, the two sides stay straight')))
-    bend_round: FloatProperty(name='Corner Round', default=0.3, min=0.0, max=1.0, subtype='FACTOR',
+    bend_round: FloatProperty(name='Outer Round', default=0.3, min=0.0, max=1.0, subtype='FACTOR',
                               update=_rebuild_update,
-                              description='Angle: round off the outer tip of the fold (x thickness; 0 = sharp, '
-                                          'the inside of the fold stays sharp)')
+                              description='Angle: round off the outer tip of the fold (x thickness; 0 = sharp)')
+    bend_round_in: FloatProperty(name='Inner Round', default=0.3, min=0.0, max=1.0, subtype='FACTOR',
+                                 update=_rebuild_update,
+                                 description='Angle: round the inside of the fold (x thickness; 0 = sharp crease)')
     bend_pos: FloatProperty(name='Bend Position', default=0.0, min=-0.9, max=0.9, subtype='FACTOR',
                             update=_rebuild_update,
                             description='Where along the length it bends (0 = the middle; Angle: where the fold is)')
@@ -871,17 +873,19 @@ def bend_axis_dir(groups, turn=0.0):
 
 
 def bend_coords(u, w, z, half, up, side, style='SMOOTH', hinge_z=0.0, z_range=(0.0, 0.0), w_range=(0.0, 0.0),
-                round_=0.0):
+                round_=0.0, round_in=0.0):
     """A point (along, across, up) of a shape ``half`` long each way from the bend spot, bent by ``up`` (both
     ends rise for +) and ``side`` (both ends go to +across for +) radians in total - pure.
     SMOOTH: an even arc over the length.  ANGLE: a sharp fold at u = 0 (height ``hinge_z``), both sides stay
-    straight and meet on a mitred joint (no gap, no overlap); ``round_`` (x thickness) rounds the outer tip of
-    the fold (``z_range`` / ``w_range`` = the shape's extent across the fold)."""
+    straight and meet on a mitred joint (no gap, no overlap); ``round_`` / ``round_in`` (x thickness) round the
+    outer tip / the inside of the fold (``z_range`` / ``w_range`` = the shape's extent across the fold)."""
     if style == 'ANGLE':
         if abs(side) > 1e-6:
-            u, w = fold_round(u, w, 0.0, side / 2.0, w_range, round_ * (w_range[1] - w_range[0]))
+            th = w_range[1] - w_range[0]
+            u, w = fold_round(u, w, 0.0, side / 2.0, w_range, round_ * th, round_in * th)
         if abs(up) > 1e-6:
-            u, z = fold_round(u, z, hinge_z, up / 2.0, z_range, round_ * (z_range[1] - z_range[0]))
+            th = z_range[1] - z_range[0]
+            u, z = fold_round(u, z, hinge_z, up / 2.0, z_range, round_ * th, round_in * th)
         return u, w, z
     if abs(side) > 1e-6 and half > 1e-12:
         r = 2.0 * half / side
@@ -909,32 +913,44 @@ def fold_tangent(rho, a):
     return rho * math.tan(min(abs(a), math.radians(80)))
 
 
-def fold_round(s, h, h0, a, h_range, rho):
-    """``_fold`` with the outer corner of the fold rounded by radius ``rho`` (the face away from the bend: the
-    low side ``h_range[0]`` when ``a`` > 0); points fade from round on that face to sharp ``rho`` inside - pure."""
+def fold_round(s, h, h0, a, h_range, rho, rho_in=0.0):
+    """``_fold`` with the corners of the fold rounded: radius ``rho`` on the outer face (away from the bend: the
+    low side ``h_range[0]`` when ``a`` > 0) and ``rho_in`` on the inner face; points fade from round on a face to
+    sharp that radius inside it - pure."""
     if a < 0:
-        x, y = fold_round(s, -h, -h0, -a, (-h_range[1], -h_range[0]), rho)
+        x, y = fold_round(s, -h, -h0, -a, (-h_range[1], -h_range[0]), rho, rho_in)
         return x, -y
     if s < 0:
-        x, y = fold_round(-s, h, h0, a, h_range, rho)
+        x, y = fold_round(-s, h, h0, a, h_range, rho, rho_in)
         return -x, y
     x, y = _fold(s, h, h0, a)
-    t = fold_tangent(rho, a)
-    if rho <= 1e-9 or s >= t:
-        return x, y
-    lo = h_range[0]
-    weight = max(0.0, min(1.0, 1.0 - (h - lo) / rho))
-    if weight <= 0.0:
-        return x, y
-    kx, ky = _fold(0.0, lo, h0, a)                       # the sharp outer corner
+    ox = oy = 0.0
+    for face, r, depth in ((h_range[0], rho, h - h_range[0]), (h_range[1], rho_in, h_range[1] - h)):
+        t = fold_tangent(r, a)
+        if r <= 1e-9 or s >= t:
+            continue
+        weight = max(0.0, min(1.0, 1.0 - depth / r))
+        if weight <= 0.0:
+            continue
+        dx, dy = _round_offset(s, face, h0, a, r, t)
+        ox += dx * weight
+        oy += dy * weight
+    return x + ox, y + oy
+
+
+def _round_offset(s, face, h0, a, rho, t):
+    """How far a point ``s`` from the fold on a face moves to sit on that face's corner round (radius ``rho``,
+    tangent ``t`` each side).  Same circle for the outer (convex) and the inner (hollow) corner: its centre lies
+    toward the inside of the bend."""
+    kx, ky = _fold(0.0, face, h0, a)                     # the sharp corner on that face
     ca, sa = math.cos(a), math.sin(a)
-    lx, ly = kx + ca * s, ky + sa * s                    # where the point sits on the sharp outer face
+    lx, ly = kx + ca * s, ky + sa * s                    # where the point sits on the sharp face
     cx, cy = kx + ca * t - sa * rho, ky + sa * t + ca * rho      # centre of the round
     th = a * (t - s) / t
     vx, vy = sa * rho, -ca * rho                         # centre -> tangent point, turned toward the corner
     ax = cx + vx * math.cos(th) + vy * math.sin(th)
     ay = cy - vx * math.sin(th) + vy * math.cos(th)
-    return x + (ax - lx) * weight, y + (ay - ly) * weight
+    return ax - lx, ay - ly
 
 
 def _bend(bm, groups, p):
@@ -955,12 +971,13 @@ def _bend(bm, groups, p):
     ws = [-(v.co.x - cx) * dy + (v.co.y - cy) * dx for v in bm.verts]
     z_range, w_range = (min(zs), max(zs)), (min(ws), max(ws))
     round_ = getattr(p, 'bend_round', 0.0)
+    round_in = getattr(p, 'bend_round_in', 0.0)
     if style == 'ANGLE':
         cuts = [mid]                                     # an edge loop right on the fold
-        reach = 0.0                                      # + rows across the rounded corner
+        reach = 0.0                                      # + rows across the rounded corners
         for ang, rng in ((up, z_range), (side, w_range)):
-            if abs(ang) > 1e-6 and round_ > 0:
-                reach = max(reach, fold_tangent(round_ * (rng[1] - rng[0]), ang / 2.0))
+            if abs(ang) > 1e-6 and max(round_, round_in) > 0:
+                reach = max(reach, fold_tangent(max(round_, round_in) * (rng[1] - rng[0]), ang / 2.0))
         cuts += [mid + sgn * reach * k / 6 for k in range(1, 7) for sgn in (-1, 1) if reach > 1e-9]
     elif p.profile not in CREATURE_PROFILES and p.profile != 'DOME':
         cuts = [lo + (hi - lo) * k / 24 for k in range(1, 24)]   # flat caps are single faces: slice them to curve
@@ -976,7 +993,7 @@ def _bend(bm, groups, p):
         w = -(x - cx) * dy + (y - cy) * dx
         if style == 'ANGLE' and abs(u) < 1e-6:
             u = 0.0
-        u, w, z = bend_coords(u, w, z, half, up, side, style, hinge_z, z_range, w_range, round_)
+        u, w, z = bend_coords(u, w, z, half, up, side, style, hinge_z, z_range, w_range, round_, round_in)
         u += mid
         v.co = (cx + u * dx - w * dy, cy + u * dy + w * dx, z)
 

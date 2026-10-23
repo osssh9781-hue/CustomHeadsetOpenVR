@@ -452,6 +452,11 @@ def draw_scales(layout, context):
     creature_scales.draw(layout, context)
 
 
+def draw_bridge(layout, context):
+    from . import bridge_patch
+    bridge_patch.draw(layout, context)
+
+
 def draw_scale_brush(layout, context):
     from . import scale_brush
     scale_brush.draw(layout, context)
@@ -576,6 +581,7 @@ def draw_base(layout, context):
         if abs(p.bend_up) > 1e-6 or abs(p.bend_side) > 1e-6:
             if p.bend_style == 'ANGLE':
                 col.prop(p, 'bend_round', slider=True)
+                col.prop(p, 'bend_round_in', slider=True)
             col.prop(p, 'bend_pos', slider=True)
             col.prop(p, 'bend_axis')
         target.operator('mch.base_freeze', icon='FREEZE')
@@ -843,7 +849,7 @@ DRAWERS = {
     'BASE': draw_base, 'LOFT': draw_loft, 'ZBRUSH': draw_zbrush, 'SUBD': draw_subd,
     'PRIMITIVE': draw_primitive, 'PLATE': draw_plate, 'WRINKLE': draw_wrinkle, 'CBASE': draw_base,
     'CPLATE': draw_cplate, 'BELT': draw_belt, 'SPIKE': draw_spike,
-    'SCALES': draw_scales, 'SBRUSH': draw_scale_brush, 'FLOWER': draw_flower, 'SCURVE': draw_surface_curve,
+    'SCALES': draw_scales, 'SBRUSH': draw_scale_brush, 'BRIDGE': draw_bridge, 'FLOWER': draw_flower, 'SCURVE': draw_surface_curve,
     'EXTRACT': draw_extract, 'MOLDING': draw_molding, 'HOLLOW': draw_hollow, 'ALONG': draw_along,
     'CABLE': draw_cable, 'TUBE': draw_tube, 'TUBE_SAME': draw_line_curve, 'DETAIL3': draw_detail3, 'HIDE': draw_hide, 'DETAIL': draw_detail, 'DETAIL2': draw_detail2, 'SCREW': draw_screw,
     # MIRROR, RADIAL, SURFACE: own sub-panels.

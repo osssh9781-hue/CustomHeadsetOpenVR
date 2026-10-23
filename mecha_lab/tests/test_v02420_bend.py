@@ -1,7 +1,7 @@
 """0.24.20 Base Mesh / Creature Base Mesh Bend: a made (live) shape bends along its main axis - Bend Up / Down
 (both ends rise or drop) and Bend Sideways (a banana seen from above), Bend Direction turns the axis.
-Bend Style Band = an even arc, Angle = a sharp mitred fold (both sides straight, Corner Round rounds its outer
-tip); Bend Position moves the bend."""
+Bend Style Band = an even arc, Angle = a sharp mitred fold (both sides straight, Outer / Inner Round round its
+corners); Bend Position moves the bend."""
 import math
 
 from _harness import bpy, check, fresh, non_manifold, summary
@@ -99,8 +99,16 @@ check('Corner Round: starts smoothly where the round begins', math.dist(e0, e1) 
 sharp, rounded = bm_mod._fold(0.0, 0.0, 0.1, a), bm_mod.fold_round(0.0, 0.0, 0.1, a, rng, rho)
 check('Corner Round: the outer tip moves in (rounded off)', abs(rounded[0]) < 1e-9 and rounded[1] > sharp[1] + 0.005,
       (sharp, rounded))
-check('Corner Round: the inner face stays sharp', bm_mod.fold_round(0.0, 0.2, 0.1, a, rng, rho)
+check('Outer Round only: the inner face stays sharp', bm_mod.fold_round(0.0, 0.2, 0.1, a, rng, rho)
       == bm_mod._fold(0.0, 0.2, 0.1, a))
+isharp, iround = bm_mod._fold(0.0, 0.2, 0.1, a), bm_mod.fold_round(0.0, 0.2, 0.1, a, rng, 0.0, rho)
+check('Inner Round: the inside of the fold fills in (rounded hollow)', abs(iround[0]) < 1e-9
+      and iround[1] > isharp[1] + 0.005, (isharp, iround))
+ti = bm_mod.fold_tangent(rho, a)
+i0, i1 = bm_mod.fold_round(ti - 1e-9, 0.2, 0.1, a, rng, 0.0, rho), bm_mod._fold(ti, 0.2, 0.1, a)
+check('Inner Round: starts smoothly where the round begins', math.dist(i0, i1) < 1e-6)
+both = bm_mod.fold_round(0.0, 0.2, 0.1, a, rng, rho, rho)
+check('Outer + Inner Round: the outer round leaves the inner face alone (thick enough)', both == iround)
 l_, r_ = bm_mod.fold_round(-0.01, 0.0, 0.1, a, rng, rho), bm_mod.fold_round(0.01, 0.0, 0.1, a, rng, rho)
 check('Corner Round: both sides of the round match', abs(l_[0] + r_[0]) < 1e-9 and abs(l_[1] - r_[1]) < 1e-9)
 for tool, profile in (('BASE', 'FLAT'), ('BASE', 'BEVEL'), ('CBASE', 'PUFF')):
@@ -130,11 +138,11 @@ for tool, profile in (('BASE', 'FLAT'), ('BASE', 'BEVEL'), ('CBASE', 'PUFF')):
     p.bend_up = 0.0
     p.bend_side = math.radians(60)
     check(f'{profile} Angle sideways: closed', p.last_error == '' and non_manifold(ob) == 0)
-    p.bend_round = 1.0
+    p.bend_round = p.bend_round_in = 1.0
     check(f'{profile} Angle sideways, full Corner Round: closed', p.last_error == '' and non_manifold(ob) == 0)
     p.bend_side, p.bend_up = 0.0, math.radians(-120)
     check(f'{profile} Angle down, full Corner Round: closed', p.last_error == '' and non_manifold(ob) == 0)
-    p.bend_up, p.bend_round = 0.0, 0.3
+    p.bend_up, p.bend_round, p.bend_round_in = 0.0, 0.3, 0.3
     p.bend_side = 0.0
 fresh()
 ob = make('BASE', 'FLAT')
