@@ -2,7 +2,7 @@
 (front only), its rim sunk into both meshes; Smooth / Bulge / Round / Wrap / Thickness / Sink / Overlap / Resolution live."""
 import math
 
-from _harness import bpy, check, fresh, non_manifold, summary
+from _harness import bpy, check, fresh, non_manifold, summary, volume
 from mathutils import Quaternion, Vector
 
 import mecha_lab
@@ -63,6 +63,7 @@ a, b_ = lumps()
 gap_xy = (500, 500)                                 # world (0, 0): between the two lumps
 check('the gap is empty before', front_z(gap_xy)[0] is None)
 C.scene.mch_bridge.round = 0.0                   # a flat sheet first (Round tested below)
+C.scene.mch_bridge.fill = 0.0
 msg = bp.perform(C, [LASSO], TOP)
 ob = C.active_object
 check('patch made', ob is not None and ob.get(bp.SRC_KEY) is not None, msg)
@@ -86,9 +87,30 @@ side_xy = (462, 500)                                # near the lasso's side, in 
 zc0, zs0 = front_z(gap_xy)[0], front_z(side_xy)[0]
 p.round = 1.0
 zc1, zs1 = front_z(gap_xy)[0], front_z(side_xy)[0]
-check('Round: the sides curve back (tube-like), the middle stays', zs1 is not None and zc1 is not None
-      and zs1 < zs0 - 0.05 and abs(zc1 - zc0) < (zs0 - zs1), (zc0, zc1, zs0, zs1))
+check('Round: a round neck - the middle comes forward, the sides curve back', zs1 is not None and zc1 is not None
+      and zc1 > zc0 + 0.2 and zs1 < zc1 - 0.1, (zc0, zc1, zs0, zs1))
 check('Round: still a closed solid', non_manifold(ob) == 0)
+def back_under(xy):
+    o, d = TOP.ray(xy)
+    o = Vector(o) + Vector(d) * 999.5          # start just above the scene, look down through everything
+    zs = []
+    for _k in range(10):
+        hit, loc, _n, _i, hob, _m = C.scene.ray_cast(C.evaluated_depsgraph_get(), o, Vector(d))
+        if not hit:
+            break
+        if hob == ob:
+            zs.append(loc.z)
+        o = loc + Vector(d) * 1e-4
+    return min(zs) if zs else None
+v0 = volume(ob)
+p.fill = 1.0
+v1 = volume(ob)
+check('Fill: a solid reaching into the meshes (much more volume than the sheet)', v1 > 2.0 * v0, (v0, v1))
+check('Fill: closed solid', p.last_error == '' and non_manifold(ob) == 0)
+bz = back_under(gap_xy)
+zc = front_z(gap_xy)[0]
+check('Fill: the back mirrors the front about the meshes\' middle (a full round neck)', bz is not None and zc is not None
+      and abs(bz + zc) < 0.15, (zc, bz))
 for k, v in (('smooth', 0.0), ('quality', 'HIGH'), ('quality', 'LOW'), ('thickness', 0.08), ('overlap', 6),
              ('wrap', math.radians(70)), ('sink', 2.0)):
     setattr(p, k, v)

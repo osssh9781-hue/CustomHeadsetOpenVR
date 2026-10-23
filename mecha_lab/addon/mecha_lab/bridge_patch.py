@@ -9,9 +9,10 @@ seam shows.  Only the front: the back is not wrapped.
 
     Smooth      0 = straight join, 1 = the surfaces' slope carries on across the gap
     Bulge       push the middle of the gap out (+) or in (-)
-    Round       round the patch across like a tube: its sides curve back into the meshes (0 = flat sheet)
+    Round       across the gap: a round neck around the meshes' middle, its sides curving back (0 = flat sheet)
     Wrap        the meshes' sides steeper than this (toward their outline) are covered by the patch like a skin
-    Thickness   of the patch behind its front face (0 = Auto)
+    Fill        solid: the back mirrors the front about the meshes' middle (good overlap for merging, DynaMesh)
+    Thickness   of the patch behind its front face (0 = Auto; with Fill the least it is)
     Sink        how far the overlap band goes into the meshes (x Thickness)
     Overlap     how many rows of the surrounding surface the patch also covers
     Resolution  Low / Mid / High
@@ -33,7 +34,7 @@ from . import core_geometry as cg
 
 SRC_KEY = 'mch_bridge_src'
 COLLECTION = 'Bridge Patches'
-LIVE_KEYS = ('smooth', 'bulge', 'round', 'wrap', 'thickness', 'sink', 'overlap', 'quality')
+LIVE_KEYS = ('smooth', 'bulge', 'round', 'wrap', 'fill', 'thickness', 'sink', 'overlap', 'quality')
 QUALITY = {'LOW': 24, 'MID': 40, 'HIGH': 64}
 _CACHE = {}
 
@@ -189,9 +190,12 @@ class MCH_PG_Bridge(bpy.types.PropertyGroup):
                                           '(toward their outline), like a skin; lower = covers more')
     thickness: _p(FloatProperty, name='Thickness', default=0.0, min=0.0, soft_max=0.5, precision=4, unit='LENGTH',
                   description='Of the patch behind its front face (0 = Auto: 3% of its size)')
-    round: _p(FloatProperty, name='Round', default=0.8, min=0.0, max=1.5,
-              description='Round the patch across like a tube: its sides curve back into the meshes '
-                          '(0 = a flat sheet)')
+    round: _p(FloatProperty, name='Round', default=1.0, min=0.0, max=1.5,
+              description='Across the gap the patch follows a round neck around the meshes\' middle (radius = '
+                          'half the lasso\'s width there): its sides curve back into the meshes (0 = a flat sheet)')
+    fill: _p(FloatProperty, name='Fill', default=1.0, min=0.0, max=1.0, subtype='FACTOR',
+             description='Solid: the back mirrors the front about the meshes\' middle (1 = a full round neck) - '
+                         'overlaps them well for merging (DynaMesh); 0 = a sheet of Thickness')
     sink: _p(FloatProperty, name='Sink', default=1.5, min=0.0, max=6.0,
              description='How far the overlap band goes into the meshes (x Thickness)')
     overlap: _p(IntProperty, name='Overlap', default=4, min=1, max=10,
@@ -232,6 +236,17 @@ def _cast(context, origin, direction, skip):
     return None, 0.0
 
 
+def _exit_depth(context, origin, direction, entry):
+    """Depth where the ray leaves the mesh it entered at ``entry`` (its far side), or None."""
+    depsgraph = context.evaluated_depsgraph_get()
+    d = Vector(direction).normalized()
+    o = Vector(origin) + d * (entry + 1e-4)
+    hit, loc, _n, _i, ob, _m = context.scene.ray_cast(depsgraph, o, d)
+    if not hit or (ob is not None and ob.get(SRC_KEY)):
+        return None
+    return entry + 1e-4 + (loc - o).length
+
+
 def _samples(context, ob, src, p):
     """Cached: points (px), triangles, edges, ray origins / directions and the depth where a mesh was hit."""
     key = (src.get('stamp'), p.quality)
@@ -246,7 +261,7 @@ def _samples(context, ob, src, p):
     fp = types.SimpleNamespace(profile='PILLOW', resolution=QUALITY[p.quality], outline_smooth=0.2, edge_round=0.1,
                                puff=1.0, rings=(0.35, 0.9), rim=1.0)
     _b, pts, tris, nb, _shape, _nat, _sp = bmm.profile_field(outer, holes, fp)
-    origins, dirs, depth, facing = [], [], [], []
+    origins, dirs, depth, facing, middle = [], [], [], [], []
     skip = {ob.name}
     for q in pts:
         o, d = projector.ray(q)
@@ -256,6 +271,8 @@ def _samples(context, ob, src, p):
         t, f = _cast(context, o, d, skip)
         depth.append(t)
         facing.append(f)
+        far = _exit_depth(context, o, d, t) if t is not None else None
+        middle.append((t + far) / 2.0 if far is not None else None)      # halfway through the mesh
     found = [t for t in depth if t is not None]
     if not found:
         raise cg.CutError('Bridge Patch: the lasso touches no mesh.')
@@ -275,7 +292,7 @@ def _samples(context, ob, src, p):
     # how round the lasso is across (Teddy inflation, 0 on the outline): for Round, in world units
     px = math.hypot(max(xs) - min(xs), max(ys) - min(ys))
     puff = [h * size / max(px, 1e-9) for h in bmm.puff_heights(pts, tris, nb, 1.0)]
-    data = (pts, tris, sorted(edges), origins, dirs, depth, facing, size, puff)
+    data = (pts, tris, sorted(edges), origins, dirs, depth, facing, size, puff, middle)
     _CACHE[ob.name] = (key, data)
     return data
 
@@ -285,7 +302,7 @@ def build(context, ob):
     if src is None:
         raise cg.CutError('This patch was applied.')
     p = ob.mch_bridge
-    pts, tris, edges, origins, dirs, depth, facing, size, puff = _samples(context, ob, src, p)
+    pts, tris, edges, origins, dirs, depth, facing, size, puff, middle = _samples(context, ob, src, p)
     n = len(pts)
     # the surfaces hold the patch where they face you; their steep sides (toward the outline) are covered by the
     # patch like a skin, so it does not dive into the gap along them.  Soft weights: no stair-step seam.
@@ -295,7 +312,23 @@ def build(context, ob):
         raise cg.CutError('Bridge Patch: no surface faces you inside the lasso (lower Wrap).')
     if min(weight) >= 0.99:
         raise cg.CutError('Bridge Patch: the whole lasso is on a mesh - draw it across the gap.')
-    d = soft_fill(n, edges, depth, weight, p.smooth)
+    # the middle of the meshes (halfway through them), carried smoothly across the gap
+    if any(m is not None for m in middle):
+        core = soft_fill(n, edges, middle, [1.0 if m is not None else 0.0 for m in middle], 0.5)
+    else:                                            # open meshes (no far side): somewhat behind the surfaces
+        base = soft_fill(n, edges, depth, weight, 0.0)
+        core = [x + 0.15 * size for x in base]
+    # Round: across the gap the patch follows a round neck around that middle (radius = half the lasso's width
+    # there); the meshes' surfaces hold it where they face you
+    hold = min(p.round, 1.0) * 0.3
+    target, strength = [], []
+    for i in range(n):
+        tube = core[i] - p.round * puff[i]
+        w = weight[i] if depth[i] is not None else 0.0
+        k = w + (1.0 - w) * hold                     # the surface (w) and the neck (hold) pull together
+        target.append((w * (depth[i] or 0.0) + (1.0 - w) * hold * tube) / k if k > 0 else tube)
+        strength.append(k)
+    d = soft_fill(n, edges, target, strength, p.smooth)
     if abs(p.bulge) > 1e-6:
         bp = bump(n, edges, {i: 0.0 for i in range(n) if weight[i] >= 0.5})
         d = [d[i] - p.bulge * 0.25 * size * bp[i] for i in range(n)]
@@ -303,18 +336,17 @@ def build(context, ob):
     g = spread(n, edges, [1.0 - x for x in weight], 2 * p.overlap)
     use = {i for i in range(n) if g[i] > 0.04}
     thick = p.thickness if p.thickness > 0 else 0.03 * size
-    # Round: toward the lasso outline the patch curves back (a tube-like section) - its sides go into the meshes
-    top = local_max(n, edges, puff, max(2, QUALITY[p.quality] // 3))
     front, back = {}, {}
     for i in use:
         dep = d[i]
         if depth[i] is not None and g[i] >= 0.5:
             dep = min(dep, depth[i])                 # over a steep side: stay in front of the surface
-        if p.round > 0:                              # the inflation is already round across: r - h = a circle
-            dep += p.round * max(0.0, top[i] - puff[i])
         dep += thick * p.sink * max(0.0, min(1.0, (0.5 - g[i]) / 0.46))     # the rim slips under the surface
         front[i] = origins[i] + dirs[i] * dep
-        back[i] = front[i] + dirs[i] * thick
+        # Fill: the back mirrors the front about the meshes' middle - a solid neck that overlaps them well,
+        # so it fuses cleanly (e.g. DynaMesh in ZBrush); 0 = a sheet of Thickness
+        behind = max(thick, p.fill * 2.0 * (core[i] - dep))
+        back[i] = front[i] + dirs[i] * behind
     faces = [t for t in tris if all(i in use for i in t)]
     if not faces:
         raise cg.CutError('Bridge Patch: the gap is too small for this Resolution.')
@@ -438,7 +470,8 @@ def draw(layout, context):
     col.prop(p, 'round', slider=True)
     col.prop(p, 'wrap')
     col = target.column(align=True)
-    col.prop(p, 'thickness')
+    col.prop(p, 'fill', slider=True)
+    col.prop(p, 'thickness', text='Min Thickness' if p.fill > 0 else 'Thickness')
     col.prop(p, 'sink')
     col.prop(p, 'overlap')
     target.row().prop(p, 'quality', expand=True)
