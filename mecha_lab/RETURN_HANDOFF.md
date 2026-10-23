@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.24 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.25 (Claude Code, 2026-10-14)
+
+## 0.24.25
+- ZIP sha256 `925cdaf045ed6813bdf434a1c057885123b848773abd7b4fc672ca6ca6448fc6`. `mech_ridge`: `ends` / `swap_axis` → `pattern`(PATTERN_ITEMS) + `turn` + `custom`('1' / '0' 문자열). `sloped_edges(poly, pattern, turn, custom)` → 나머지 변 = ends(커터 없음 + 이웃 이등분선 생략, 0.24.24와 같음). LONG = `end_edges(swap=turn 홀수)`. 첫 외곽의 마스크를 Object['mch_mridge_mask']에 저장 → 패널 엣지 버튼 `mch.mridge_edge_toggle`(Custom으로 전환, 마지막 경사 변은 못 끔), `mch.mridge_turn`. 프리즘 높이 = 능선 최고 × 1.5 + 5(Shed가 전체 폭으로 올라가도 안 잘림).
 
 ## 0.24.24
 - ZIP sha256 `46522f02ccf80b3bb8872c0c9f053fbdb358a6a32b4f2e0f64698824dbac31a5`. 새 `mech_ridge.py`(Armor Plate PRESETS 'MRIDGE' → `perform_plate`가 `mech_ridge.perform`로). 픽셀 공간(z도 픽셀): `simplify_closed`(DP) → `ccw` → 외곽 프리즘 − 변마다 볼록 커터(`wedge_planes`: 변 안쪽, 양 모서리 이등분선 사이(0.5 px 겹침), 경사면 위) 합집합을 Exact Boolean 한 번(use_self) = 정확한 straight-skeleton 지붕(볼록 / 오목 모두). remove_doubles · dissolve_limit → `mark_edges`(1 능선, 2 바깥 위 엣지) → `_finish` 베벨(둥근 베벨 면은 face layer) → `mark_creases`(평면이라 각이 있는 엣지 = 진짜 주름 → sharp, 둥근 베벨 내부 제외) → `grid_cut` + dissolve_degenerate → `_lay_on_surface`(뷰 레이로 표면, 평활 노멀 × 높이·k, k = 월드/픽셀 중앙값). Scene / Object `mch_mridge`, `mch.mridge_apply`(Enter 목록).

@@ -1,5 +1,5 @@
 """0.24.24 Mech Ridge (Armor Plate profile): every outline edge slopes up to crisp ridge lines (a box = a hip roof),
-Max Height = flat top, Gable ends (ridge straight to the ends), Chamfer / Bevel on the ridge lines and the outer edge, live sliders, Apply.  Cut / Split
+Max Height = flat top, Edge Patterns (Hip / Gable / Every Other / Half Hip / Corner / Shed / Custom per edge) + Turn, Chamfer / Bevel on the ridge lines and the outer edge, live sliders, Apply.  Cut / Split
 Crisp Shading: the bevel band has sharp borders, a chamfer is flat, imported custom normals are dropped; the rim
 cleanup keeps the rim on the cut (no zigzag)."""
 import math
@@ -86,22 +86,55 @@ ob.mch_mridge.edge_width = 0.05
 check('Outer Edge Chamfer works too, still closed', non_manifold(ob) == 0 and ob.mch_mridge.last_error == '',
       ob.mch_mridge.last_error)
 check('the next plate starts with these settings', S.mch_mridge.ridge_finish == 'BEVEL' and S.mch_mridge.edge_finish == 'CHAMFER')
-# Gable: the ridge runs straight to the ends, the ends stay upright walls (no end triangles)
+# 0.24.25 Edge Pattern + Turn + per-edge toggles
 ob.mch_mridge.ridge_finish = ob.mch_mridge.edge_finish = 'NONE'
-ob.mch_mridge.ends = 'GABLE'
-ups = up_normals(ob)
-check('Gable: only the 2 long slopes (no sloped end triangles)', len(ups) == 2 and all(abs(n[0]) < 0.01 for n in ups), ups)
 mw = ob.matrix_world
-top = max((mw @ v.co).z for v in ob.data.vertices)
-ridge_x = [(mw @ v.co).x for v in ob.data.vertices if (mw @ v.co).z > top - 1e-3]
-check('...the ridge reaches both ends of the plate', min(ridge_x) < -1.15 and max(ridge_x) > 1.15, (min(ridge_x), max(ridge_x)))
-check('...closed mesh', non_manifold(ob) == 0)
-ob.mch_mridge.swap_axis = True
+
+
+def ridge_span(o):
+    top = max((mw @ v.co).z for v in o.data.vertices)
+    xs = [(mw @ v.co).x for v in o.data.vertices if (mw @ v.co).z > top - 1e-3]
+    return min(xs), max(xs)
+
+
+ob.mch_mridge.pattern = 'LONG'
 ups = up_normals(ob)
-check('Swap Axis: the ridge runs across the short side instead', len(ups) == 2 and all(abs(n[1]) < 0.01 for n in ups), ups)
-ob.mch_mridge.ends, ob.mch_mridge.swap_axis = 'HIP', False
-check('Hip again: 4 facets', len(up_normals(ob)) == 4)
+check('Gable (long side): only the 2 long slopes (no sloped end triangles)', len(ups) == 2
+      and all(abs(n[0]) < 0.01 for n in ups), ups)
+lo_x, hi_x = ridge_span(ob)
+check('...the ridge reaches both ends of the plate', lo_x < -1.15 and hi_x > 1.15, (lo_x, hi_x))
+check('...closed mesh', non_manifold(ob) == 0)
+check('the panel knows which edges slope (mask per edge)', sorted(ob[mr.MASK_KEY]) == ['0', '0', '1', '1'], ob.get(mr.MASK_KEY))
+bpy.ops.mch.mridge_turn(step=1)
+ups = up_normals(ob)
+check('Turn: the gable runs across instead', ob.mch_mridge.turn == 1 and len(ups) == 2
+      and all(abs(n[1]) < 0.01 for n in ups), ups)
+ob.mch_mridge.turn = 0
+ob.mch_mridge.pattern = 'SHED'
+ups = up_normals(ob)
+check('Shed: one single slope', len(ups) == 1, ups)
+check('...closed, rising to the upright far side', non_manifold(ob) == 0)
+first = ups
+bpy.ops.mch.mridge_turn(step=1)
+check('Turn moves the Shed slope to the next edge', up_normals(ob) != first and len(up_normals(ob)) == 1)
+ob.mch_mridge.pattern = 'HALF'
+check('Half Hip: 3 slopes (one upright end)', len(up_normals(ob)) == 3, up_normals(ob))
+ob.mch_mridge.pattern = 'CORNER'
+check('Corner: 2 neighbouring slopes', len(up_normals(ob)) == 2 and non_manifold(ob) == 0, up_normals(ob))
+ob.mch_mridge.pattern = 'ALTERNATE'
+check('Every Other Edge: 2 opposite slopes on a box', len(up_normals(ob)) == 2, up_normals(ob))
+ob.mch_mridge.pattern, ob.mch_mridge.turn = 'HIP', 0
+r = bpy.ops.mch.mridge_edge_toggle(index=0)
+check('an edge button makes that edge upright and switches to Custom', 'FINISHED' in r and ob.mch_mridge.pattern == 'CUSTOM'
+      and ob.mch_mridge.custom == '0111' and len(up_normals(ob)) == 3, (ob.mch_mridge.custom, up_normals(ob)))
+for i in (1, 2, 3):
+    if ob.mch_mridge.custom[i] == '1' and ob.mch_mridge.custom.count('1') > 1:
+        bpy.ops.mch.mridge_edge_toggle(index=i)
+check('the last sloped edge cannot be turned off', ob.mch_mridge.custom.count('1') == 1)
+check('sloped_edges: a hexagon with Every Other Edge', mr.sloped_edges([(0, 0)] * 6, 'ALTERNATE', 1) == {1, 3, 5})
 check('end_edges: a long box has its 2 short sides as ends', mr.end_edges(mr.ccw([(0, 0), (40, 0), (40, 10), (0, 10)])) == {1, 3})
+ob.mch_mridge.pattern = 'HIP'
+check('Hip again: 4 facets', len(up_normals(ob)) == 4)
 r = bpy.ops.mch.mridge_apply()
 check('Apply: plain mesh', 'FINISHED' in r and mr.SRC_KEY not in ob and not ob.mch_mridge.live)
 

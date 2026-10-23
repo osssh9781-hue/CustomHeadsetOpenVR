@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.24
+# Test Report — Mecha Lab 0.24.25
+
+## 0.24.25 결과: 90개 파일 2996/2996 (`tests/test_log_bpy501_v02425.txt`). test_v02424(42): Gable(긴 쪽) 2면 + 능선 양 끝까지, 마스크, Turn = 가로 방향, Shed 1면 + 닫힘 + Turn으로 다음 변, Half Hip 3면, Corner 2면 + 닫힘, Every Other 2면, 엣지 버튼 → Custom '0111' 3면, 마지막 경사 변 유지, 육각형 Every Other(Turn 1) = {1, 3, 5}. 실제 패널 버튼 클릭은 미검증.
 
 ## 0.24.24 결과: 90개 파일 2986/2986 (`tests/test_log_bpy501_v02424.txt`). test_v02424: ccw / Straighten / 쐐기 평면, 박스 = 정확히 4면 + 각 면 기울기 = Slope, 능선 높이 = 벽 + 반폭·tan, Sink, Max Height = 평평한 윗면(라이브), Gable = 경사 2면 + 능선이 양 끝까지 + 닫힌 메쉬, Swap Axis, end_edges, Ridge Chamfer / Bevel(둥근 면 smooth, 주름만 sharp), Outer Edge Chamfer, 다음 플레이트 설정 유지, Apply, L자(오목) 외곽 구 위 닫힌 메쉬 + 표면 위, 다른 프로파일은 기존 Armor Plate; Cut Crisp Shading(경계 sharp, 띠 / 벽 flat, 몸통 smooth, 닫힌 메쉬), 커스텀 노멀 제거 / 끄면 유지, 촘촘한 삼각형 메쉬 정리 후 테두리 점이 잘린 벽 위(1e-4 이내). 실제 화면 표시 · 마우스 입력은 미검증.
 

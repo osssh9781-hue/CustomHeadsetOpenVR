@@ -2,7 +2,8 @@
 
 Every edge of the drawn outline slopes up at the same angle until it meets the slopes of the other edges: a faceted
 roof (straight skeleton) with crisp ridge lines - a box lasso gives a hip roof, a long box a ridge down the middle.
-Height caps it to a flat top (a mesa).  The ridge lines and the outer top edge each get their own Chamfer / Bevel.
+Height caps it to a flat top (a mesa).  0.24.25: an Edge Pattern picks which edges slope (Hip, Gable, Every Other,
+Half Hip, Corner, Shed, Custom per edge) and Turn steps it round the outline.  The ridge lines and the outer top edge each get their own Chamfer / Bevel.
 
 How it is built (screen pixels, z in pixels too, so everything is isotropic):
 
@@ -33,10 +34,11 @@ SRC_KEY = 'mch_mridge_src'
 COLLECTION = 'Armor Plates'
 FINISH_ITEMS = [('NONE', 'Sharp', 'Sharp edge'), ('CHAMFER', 'Chamfer', 'One flat cut'),
                 ('BEVEL', 'Bevel', 'Rounded (Segments)')]
-LIVE_KEYS = ('ends', 'swap_axis', 'angle', 'height', 'wall', 'sink', 'straighten', 'resolution', 'ridge_finish', 'ridge_width',
+LIVE_KEYS = ('pattern', 'turn', 'custom', 'angle', 'height', 'wall', 'sink', 'straighten', 'resolution', 'ridge_finish', 'ridge_width',
              'ridge_segments', 'edge_finish', 'edge_width', 'edge_segments', 'harden')
 EDGE_LAYER = 'mch_mridge_edge'       # 1 = ridge line, 2 = outer top edge
 ROUND_LAYER = 'mch_mridge_round'     # faces of a round bevel
+MASK_KEY = 'mch_mridge_mask'         # sloped edges of the (first) outline, '1' / '0' per edge (for the panel)
 
 
 # -----------------------------------------------------------------------------
@@ -132,6 +134,41 @@ def end_edges(poly, swap=False):
     if len(out) == len(poly):
         out.clear()
     return out
+
+
+PATTERN_ITEMS = [
+    ('HIP', 'All Edges (Hip)', 'Every edge slopes up to the ridge'),
+    ('LONG', 'Gable (long side)', 'The ridge runs along the long side straight to the ends; the ends stay upright '
+                                  '(Turn: across instead)'),
+    ('ALTERNATE', 'Every Other Edge', 'Every second edge slopes, the others stay upright (Turn: shift by one)'),
+    ('HALF', 'Half Hip', 'All edges but one slope: one upright end (Turn: which one)'),
+    ('CORNER', 'Corner', 'Two neighbouring edges slope (Turn: which corner)'),
+    ('SHED', 'Shed (one edge)', 'Only one edge slopes: a single slope rising to the upright far side (Turn: which '
+                                'edge)'),
+    ('CUSTOM', 'Custom', 'Pick every edge yourself (the numbered buttons)'),
+]
+
+
+def sloped_edges(poly, pattern, turn=0, custom=''):
+    """0.24.25 which edges of the outline slope (the others stay upright walls; the slopes run on to them).
+    ``turn`` steps the pattern round the outline one edge at a time (edges in drawing order)."""
+    n = len(poly)
+    r = turn % n if n else 0
+    if pattern == 'LONG':
+        out = set(range(n)) - end_edges(poly, swap=bool(turn % 2))
+    elif pattern == 'ALTERNATE':
+        out = {i for i in range(n) if (i - r) % 2 == 0}
+    elif pattern == 'HALF':
+        out = set(range(n)) - {r}
+    elif pattern == 'CORNER':
+        out = {r, (r + 1) % n}
+    elif pattern == 'SHED':
+        out = {r}
+    elif pattern == 'CUSTOM':
+        out = {i for i in range(n) if (custom[i] if i < len(custom) else '1') == '1'}
+    else:
+        out = set(range(n))
+    return out or set(range(n))
 
 
 def wedge_planes(poly, i, slope, wall, margin=2.0, overlap=0.5, ends=()):
@@ -233,7 +270,7 @@ def roof_bmesh(context, poly, slope, wall, cap, ends=()):
     xs, ys = [q[0] for q in poly], [q[1] for q in poly]
     span = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
     ridge_top = wall + slope * span            # higher than any roof point
-    prism = _prism(poly, ridge_top * 0.9 + 1.0)
+    prism = _prism(poly, ridge_top * 1.5 + 5.0)   # above the highest roof point (a Shed rises across all of it)
     lo = Vector((min(xs) - span, min(ys) - span, -1.0))
     hi = Vector((max(xs) + span, max(ys) + span, ridge_top * 2 + 10.0))
     cutters = bmesh.new()
@@ -399,7 +436,11 @@ def build(context, src, p, target):
             size = max(size, (hi - lo).length)
             wall = (p.wall if p.wall > 0 else 0.03 * (hi - lo).length) / k
             cap = p.height / k if p.height > 0 else 0.0
-            ends = end_edges(poly, p.swap_axis) if p.ends == 'GABLE' else set()
+            sloped = sloped_edges(poly, p.pattern, p.turn, p.custom)
+            ends = set(range(len(poly))) - sloped
+            owner = p.id_data
+            if isinstance(owner, bpy.types.Object) and not out.verts:
+                owner[MASK_KEY] = ''.join('1' if i in sloped else '0' for i in range(len(poly)))
             roof = roof_bmesh(context, poly, math.tan(p.angle), wall, cap, ends)
             try:
                 lay = mark_edges(roof)
@@ -503,12 +544,12 @@ def _update(self, context):
 
 class MCH_PG_MechRidge(bpy.types.PropertyGroup):
     """Scene.mch_mridge = settings for the next plate; Object.mch_mridge = live plate."""
-    ends: EnumProperty(name='Ends', items=[('HIP', 'Hip', 'Every edge slopes (the ends slope too)'),
-                                           ('GABLE', 'Gable', 'The ridge runs straight to the ends; the ends stay '
-                                                              'upright walls')],
-                       default='HIP', update=_update)
-    swap_axis: BoolProperty(name='Swap Axis', default=False, update=_update,
-                            description='Gable: run the ridge across the short side instead')
+    pattern: EnumProperty(name='Edge Pattern', items=PATTERN_ITEMS, default='HIP', update=_update,
+                          description='Which edges slope up to the ridge (the others stay upright walls)')
+    turn: IntProperty(name='Turn', default=0, update=_update,
+                      description='Step the pattern round the outline, one edge at a time')
+    custom: StringProperty(name='Custom Edges', default='', update=_update,
+                           description='Custom: 1 = the edge slopes, 0 = it stays upright (one per edge)')
     angle: FloatProperty(name='Slope', default=math.radians(25), min=math.radians(2), max=math.radians(75),
                          subtype='ANGLE', update=_update, description='How steep every side rises to the ridge')
     height: FloatProperty(name='Max Height', default=0.0, min=0.0, soft_max=2.0, precision=4, unit='LENGTH',
@@ -617,9 +658,17 @@ def draw(layout, context):
     else:
         box.label(text='Mech Ridge: settings for the next plate', icon='MOD_BEVEL')
     r = box.row(align=True)
-    r.prop(p, 'ends', expand=True)
-    if p.ends == 'GABLE':
-        r.prop(p, 'swap_axis', toggle=True)
+    r.prop(p, 'pattern', text='')
+    if p.pattern not in {'HIP', 'CUSTOM'}:
+        r.operator('mch.mridge_turn', text='', icon='TRIA_LEFT').step = -1
+        r.label(text=f'Turn {p.turn}')
+        r.operator('mch.mridge_turn', text='', icon='TRIA_RIGHT').step = 1
+    mask = ob.get(MASK_KEY, '') if ob is not None else ''
+    if mask:
+        er = box.row(align=True)
+        er.label(text='Edges')
+        for i, bit in enumerate(mask[:24]):
+            er.operator('mch.mridge_edge_toggle', text=str(i + 1), depress=(bit == '1')).index = i
     col = box.column(align=True)
     col.prop(p, 'angle')
     col.prop(p, 'height')
@@ -643,7 +692,54 @@ def draw(layout, context):
         box.operator('mch.mridge_apply', icon='CHECKMARK')
 
 
-CLASSES = (MCH_PG_MechRidge, MCH_OT_mridge_apply)
+def _settings(context):
+    ob = live_plate(context)
+    return (ob.mch_mridge if ob is not None else context.scene.mch_mridge), ob
+
+
+class MCH_OT_mridge_turn(bpy.types.Operator):
+    """Step the edge pattern round the outline (one edge)"""
+    bl_idname = 'mch.mridge_turn'
+    bl_label = 'Turn Edge Pattern'
+    bl_options = {'REGISTER', 'UNDO'}
+    step: IntProperty(default=1)
+
+    def execute(self, context):
+        p, _ob = _settings(context)
+        p.turn = p.turn + self.step
+        return {'FINISHED'}
+
+
+class MCH_OT_mridge_edge_toggle(bpy.types.Operator):
+    """This edge slopes / stays upright (switches the pattern to Custom)"""
+    bl_idname = 'mch.mridge_edge_toggle'
+    bl_label = 'Toggle Edge'
+    bl_options = {'REGISTER', 'UNDO'}
+    index: IntProperty(default=0)
+
+    @classmethod
+    def poll(cls, context):
+        return live_plate(context) is not None
+
+    def execute(self, context):
+        ob = live_plate(context)
+        p = ob.mch_mridge
+        mask = list(ob.get(MASK_KEY, '') or '')
+        if not 0 <= self.index < len(mask):
+            return {'CANCELLED'}
+        mask[self.index] = '0' if mask[self.index] == '1' else '1'
+        if '1' not in mask:
+            self.report({'WARNING'}, 'At least one edge must slope')
+            return {'CANCELLED'}
+        p.live = False                      # one rebuild at the end
+        p.custom = ''.join(mask)
+        p.pattern = 'CUSTOM'
+        p.live = True
+        rebuild(context, ob)
+        return {'FINISHED'}
+
+
+CLASSES = (MCH_PG_MechRidge, MCH_OT_mridge_apply, MCH_OT_mridge_turn, MCH_OT_mridge_edge_toggle)
 
 
 def register():

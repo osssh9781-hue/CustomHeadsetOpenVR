@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 0.24.25 — Mech Ridge: 엣지 패턴 프리셋 + Turn + 엣지별 버튼 (2026-10-23)
+
+- **Edge Pattern**(Ends 대신): 어떤 변이 경사로 올라가고 어떤 변이 세운 벽으로 남는지 고르는 프리셋. All Edges(Hip) / Gable(긴 쪽, 자동) / Every Other Edge(한 칸씩 건너) / Half Hip(한 변만 세움) / Corner(이웃한 두 변만) / Shed(한 변만 경사 = 한쪽으로 기운 판) / Custom.
+- **Turn ◀ ▶**: 패턴을 외곽을 따라 한 변씩 돌림(그린 순서 기준). Gable은 Turn으로 가로 / 세로 방향 전환.
+- **엣지 번호 버튼**(라이브 플레이트): 1, 2, 3 … 변마다 켜면 경사, 끄면 세운 벽. 누르면 자동으로 Custom. 최소 한 변은 경사로 남음.
+- Shed / Corner처럼 전체 폭을 따라 올라가는 패턴은 Max Height로 높이를 자를 수 있음.
+- 테스트: 90개 파일 2996/2996, `test_v02424.py`에 패턴 / Turn / 엣지 버튼 검사 추가. ZIP sha256 `925cdaf045ed6813bdf434a1c057885123b848773abd7b4fc672ca6ca6448fc6`.
+
 ## 0.24.24 — Armor Plate "Mech Ridge", Cut / Split 베벨: 고른 폭 + Crisp Shading (2026-10-23)
 
 - **Armor Plate 프로파일 Mech Ridge**(메카닉 전용, 크리쳐 플레이트 Ridge의 메카 버전): 그린 외곽의 모든 변이 같은 각도(Slope)로 올라가 날카로운 능선에서 만남. 박스 라쏘 = 지붕(hip roof) 모양 4면, 긴 박스 = 가운데 능선. 면은 완전히 평평하고 능선은 정확히 각짐(근사가 아니라 정확한 기하로 만듦). 프리드로우 외곽은 Straighten(px)만큼 직선 변으로 정리.
