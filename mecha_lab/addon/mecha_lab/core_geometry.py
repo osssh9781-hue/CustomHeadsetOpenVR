@@ -929,6 +929,30 @@ def finish_new_edges(mesh, mode='NONE', width=0.01, segments=3, profile=0.5, cla
         bm.free()
 
 
+def flat_cut_faces(mesh):
+    """0.24.26 the faces a cutter made shade flat with sharp borders (a smooth plate next to them no longer smears
+    dark streaks into the cut walls); the other faces keep their own shading."""
+    attr = mesh.attributes.get(CUTTER_ATTR)
+    if attr is None or attr.domain != 'FACE':
+        return 0
+    cut = [i for i, d in enumerate(attr.data) if d.value]
+    if not cut:
+        return 0
+    cut_set = set(cut)
+    for i in cut:
+        mesh.polygons[i].use_smooth = False
+    sharp = mesh.attributes.get('sharp_edge') or mesh.attributes.new('sharp_edge', 'BOOLEAN', 'EDGE')
+    edge_faces = {}
+    for poly in mesh.polygons:
+        for ek in poly.edge_keys:
+            edge_faces.setdefault(ek, []).append(poly.index)
+    for e in mesh.edges:
+        fs = edge_faces.get(e.key, ())
+        if any(f in cut_set for f in fs) and any(f not in cut_set for f in fs):
+            sharp.data[e.index].value = True
+    return len(cut)
+
+
 def remove_cutter_attribute(mesh):
     attr = mesh.attributes.get(CUTTER_ATTR)
     if attr is not None:

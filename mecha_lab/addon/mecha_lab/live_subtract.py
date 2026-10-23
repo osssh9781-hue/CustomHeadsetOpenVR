@@ -57,7 +57,6 @@ def apply(context, ob):
         try:
             old = ob.data
             mats = list(old.materials)
-            smooth = any(poly.use_smooth for poly in old.polygons)     # keep the plate's smooth shading
             old.clear_geometry()
             import bmesh
             bm = bmesh.new()
@@ -69,10 +68,10 @@ def apply(context, ob):
             if not old.materials and mats:
                 for m in mats:
                     old.materials.append(m)
+            # 0.24.26 the plate keeps its own shading; only the cut walls are flat with sharp borders (forcing every
+            # face smooth smeared dark streaks into the cut)
+            cg.flat_cut_faces(old)
             cg.remove_cutter_attribute(old)
-            if smooth:
-                for poly in old.polygons:
-                    poly.use_smooth = True
             old.update()
             done += 1
         finally:
@@ -119,12 +118,15 @@ def pick(context, mode, loops, projector):
     return None
 
 
-def perform(context, mode, loops, projector):
+def perform(context, mode, loops, projector, tool=None):
     """Alt + draw: cut the outline out of the live plate under it.  Returns a report; raises cg.CutError."""
     ob = pick(context, mode, loops, projector)
     if ob is None and mode == 'CPLATE':
         from . import creature_plate as cpl      # 0.24.23 no live plate under it: engrave into the mesh
         return cpl.engrave(context, loops, projector)
+    if ob is None and mode == 'DETAIL':
+        from . import plate_detail as pd         # 0.24.26 the same for Plate Detail 1 / 2 / 3
+        return pd.engrave(context, loops, projector, tool or 'DETAIL')
     if ob is None:
         what = 'Creature Plate' if mode == 'CPLATE' else 'Plate Detail'
         raise cg.CutError(f'Alt + draw cuts a live {what}: draw over one (nothing was made).')

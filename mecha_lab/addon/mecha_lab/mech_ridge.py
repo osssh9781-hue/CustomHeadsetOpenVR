@@ -38,6 +38,8 @@ LIVE_KEYS = ('pattern', 'turn', 'custom', 'angle', 'height', 'wall', 'sink', 'st
              'ridge_segments', 'edge_finish', 'edge_width', 'edge_segments', 'harden')
 EDGE_LAYER = 'mch_mridge_edge'       # 1 = ridge line, 2 = outer top edge
 ROUND_LAYER = 'mch_mridge_round'     # faces of a round bevel
+CLICKED_MAX = 48                     # up to this many points with real edges (median >= CLICKED_EDGE px) the
+CLICKED_EDGE = 10.0                  # outline is a clicked polygon and kept as drawn
 MASK_KEY = 'mch_mridge_mask'         # sloped edges of the (first) outline, '1' / '0' per edge (for the panel)
 
 
@@ -75,25 +77,37 @@ def _dp(pts, tol):
 
 
 def simplify_closed(pts, tol):
-    """Straighten a closed outline: Douglas-Peucker from the two farthest points, then drop near-straight
-    corners (< 2 degrees).  Keeps at least a triangle."""
+    """Straighten a closed outline: a free-drawn one (many points or tiny steps) gets Douglas-Peucker from
+    the two farthest points and loses near-straight corners (< 2 degrees); a clicked polygon (pentagon, hexagon,
+    ... a 24-gon) keeps every corner, only repeated clicks and dead straight ones (< 1 degree) go.  Keeps at
+    least a triangle."""
     pts = [tuple(map(float, q)) for q in pts]
     if len(pts) > 1 and math.dist(pts[0], pts[-1]) < 1e-6:
         pts = pts[:-1]
-    if len(pts) <= 3 or tol <= 0:
-        return pts
-    i0 = 0
-    i1 = max(range(len(pts)), key=lambda i: math.dist(pts[i], pts[0]))
-    a = pts[i0:i1 + 1]
-    b = pts[i1:] + pts[:1]
-    out = _dp(a, tol)[:-1] + _dp(b, tol)[:-1]
+    out = []
+    for q in pts:                                     # drop repeated clicks
+        if not out or math.dist(out[-1], q) > 0.5:
+            out.append(q)
+    if len(out) > 3 and math.dist(out[0], out[-1]) <= 0.5:
+        out.pop()
+    if len(out) <= 3:
+        return out
+    seg = sorted(math.dist(out[i - 1], out[i]) for i in range(len(out)))
+    # 0.24.26 a clicked polygon (few points, real edges) keeps every corner you set; free draw = many tiny steps
+    clicked = len(out) <= CLICKED_MAX and seg[len(seg) // 2] >= CLICKED_EDGE
+    limit = math.radians(1.0 if clicked else 2.0)
+    if not clicked and tol > 0:                     # a free-drawn outline: straight edges
+        i1 = max(range(len(out)), key=lambda i: math.dist(out[i], out[0]))
+        a = out[:i1 + 1]
+        b = out[i1:] + out[:1]
+        out = _dp(a, tol)[:-1] + _dp(b, tol)[:-1]
     changed = True
     while changed and len(out) > 3:
         changed = False
         for i in range(len(out)):
             p, q, r = Vector(out[i - 1]), Vector(out[i]), Vector(out[(i + 1) % len(out)])
             u, v = q - p, r - q
-            if u.length < 1e-9 or v.length < 1e-9 or abs(u.angle(v)) < math.radians(2.0):
+            if u.length < 1e-9 or v.length < 1e-9 or abs(u.angle(v)) < limit:
                 out.pop(i)
                 changed = True
                 break
@@ -265,45 +279,121 @@ def _boolean_difference(context, bm_a, bm_b):
     return out
 
 
+def _boolean_difference_each(context, bm_a, cutters):
+    """0.24.26 one Boolean per (convex) cutter, Manifold solver (fast) - Exact with self intersection when the
+    Manifold result is not a closed mesh."""
+    solvers = ('MANIFOLD', 'EXACT')
+    for solver in solvers:
+        made = []
+        try:
+            me_a = bpy.data.meshes.new('MCH_MRidge_A')
+            bm_a.to_mesh(me_a)
+            a = cg.link_temp_object(context, me_a, 'MCH_MRidge_A')
+            made.append(a)
+            for k, c in enumerate(cutters):
+                me = bpy.data.meshes.new('MCH_MRidge_C')
+                c.to_mesh(me)
+                ob = cg.link_temp_object(context, me, 'MCH_MRidge_C')
+                made.append(ob)
+                mod = a.modifiers.new(f'MCH_MRidge{k}', 'BOOLEAN')
+                mod.operation = 'DIFFERENCE'
+                try:
+                    mod.solver = solver
+                except TypeError:
+                    raise RuntimeError('solver missing')
+                mod.object = ob
+                if solver == 'EXACT' and hasattr(mod, 'use_self'):
+                    mod.use_self = True
+            dg = context.evaluated_depsgraph_get()
+            res = bpy.data.meshes.new_from_object(a.evaluated_get(dg), depsgraph=dg)
+        except RuntimeError:
+            res = None
+        finally:
+            for ob in made:
+                cg.remove_object_and_mesh(ob)
+        if res is None:
+            continue
+        out = bmesh.new()
+        out.from_mesh(res)
+        bpy.data.meshes.remove(res)
+        if out.faces and all(e.is_manifold for e in out.edges):
+            return out
+        out.free()
+    raise cg.CutError('Could not build the Mech Ridge roof for this outline (try fewer, larger edges).')
+
+
 def roof_bmesh(context, poly, slope, wall, cap, ends=()):
     """The faceted roof solid of one outline (pixels; z = height in pixels)."""
     xs, ys = [q[0] for q in poly], [q[1] for q in poly]
     span = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
     ridge_top = wall + slope * span            # higher than any roof point
     prism = _prism(poly, ridge_top * 1.5 + 5.0)   # above the highest roof point (a Shed rises across all of it)
+    if is_convex(poly):
+        # 0.24.26 a convex outline: the roof is the prism under every sloped edge's plane (exact, no Boolean -
+        # instant for any number of edges)
+        try:
+            for i in range(len(poly)):
+                if i in ends:
+                    continue
+                p0, p1 = poly[i], poly[(i + 1) % len(poly)]
+                ni = _inward(p0, p1)
+                _clip(prism, Vector((slope * ni.x, slope * ni.y, -1.0)), wall - slope * (ni.x * p0[0] + ni.y * p0[1]))
+            if cap > wall:
+                _clip(prism, Vector((0.0, 0.0, -1.0)), cap)
+            # many planes meeting in one apex (a 20+ sided hip) leave slivers there
+            bmesh.ops.remove_doubles(prism, verts=prism.verts[:], dist=0.02)
+            bmesh.ops.dissolve_degenerate(prism, dist=0.02, edges=prism.edges[:])
+        except Exception:
+            prism.free()
+            raise
+        if prism.faces and all(e.is_manifold for e in prism.edges):
+            return _tidy_roof(prism)
+        prism.free()                     # odd case: the Boolean way below
+        prism = _prism(poly, ridge_top * 1.5 + 5.0)
     lo = Vector((min(xs) - span, min(ys) - span, -1.0))
     hi = Vector((max(xs) + span, max(ys) + span, ridge_top * 2 + 10.0))
-    cutters = bmesh.new()
-    tmp = bpy.data.meshes.new('MCH_MRidge_tmp')
-    try:
-        for i in range(len(poly)):
-            if i in ends:
-                continue                 # a gable end does not slope
-            c = _box(lo, hi)
-            for a, d in wedge_planes(poly, i, slope, wall, ends=ends):
-                _clip(c, a, d)
-                if not c.faces:
-                    break
-            if c.faces:
-                c.to_mesh(tmp)
-                cutters.from_mesh(tmp)
+    cutters = []
+    for i in range(len(poly)):
+        if i in ends:
+            continue                     # a gable end does not slope
+        c = _box(lo, hi)
+        for a, d in wedge_planes(poly, i, slope, wall, ends=ends):
+            _clip(c, a, d)
+            if not c.faces:
+                break
+        if c.faces:
+            cutters.append(c)
+        else:
             c.free()
-        if cap > wall:
-            c = _box(Vector((lo.x, lo.y, cap)), hi)
-            c.to_mesh(tmp)
-            cutters.from_mesh(tmp)
-            c.free()
-    finally:
-        bpy.data.meshes.remove(tmp)
+    if cap > wall:
+        cutters.append(_box(Vector((lo.x, lo.y, cap)), hi))
     try:
-        roof = _boolean_difference(context, prism, cutters)
+        roof = _boolean_difference_each(context, prism, cutters)
     finally:
         prism.free()
-        cutters.free()
-    bmesh.ops.remove_doubles(roof, verts=roof.verts[:], dist=1e-3)      # the Boolean doubles the corners
-    bmesh.ops.dissolve_limit(roof, angle_limit=math.radians(0.2), verts=roof.verts[:], edges=roof.edges[:])
+        for c in cutters:
+            c.free()
+    return _tidy_roof(roof)
+
+
+def _tidy_roof(roof):
+    """Merge the doubled corners the Boolean leaves and dissolve the extra edges inside flat facets; each step is
+    undone when it would open the mesh (odd concave outlines)."""
+    roof = cg._safe_step(roof, lambda b: bmesh.ops.remove_doubles(b, verts=b.verts[:], dist=1e-3))
+    roof = cg._safe_step(roof, lambda b: bmesh.ops.dissolve_limit(b, angle_limit=math.radians(0.2),
+                                                                  verts=b.verts[:], edges=b.edges[:]))
     bmesh.ops.recalc_face_normals(roof, faces=roof.faces[:])
     return roof
+
+
+def is_convex(poly, eps=1e-6):
+    """Counter-clockwise outline with no inward (reflex) corner."""
+    n = len(poly)
+    for i in range(n):
+        a, b, c = poly[i - 1], poly[i], poly[(i + 1) % n]
+        if (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]) < -eps:
+            return False
+    return True
 
 
 def mark_edges(bm):
@@ -343,6 +433,30 @@ def _finish(bm, lay, kind, mode, width, segments):
     return len(edges)
 
 
+FINISH_NOTES = []
+
+
+def _finish_safe(bm, kind, mode, width, segments):
+    """0.24.26 Blender's bevel can tear where many ridge lines meet at an inward corner (a star outline): try the
+    width, then half, then a quarter; never keep a torn mesh (the finish is left off and a note says so)."""
+    if mode == 'NONE' or width <= 0:
+        return bm
+    for factor in (1.0, 0.5, 0.25):
+        work = bm.copy()
+        lay = work.edges.layers.int.get(EDGE_LAYER)
+        open0 = sum(1 for e in work.edges if not e.is_manifold)
+        _finish(work, lay, kind, mode, width * factor, segments)
+        if sum(1 for e in work.edges if not e.is_manifold) <= open0:
+            bm.free()
+            if factor < 1.0:
+                FINISH_NOTES.append(f'{"ridge" if kind == 1 else "edge"} {mode.lower()} narrowed to '
+                                    f'{int(factor * 100)}% (tight corners)')
+            return work
+        work.free()
+    FINISH_NOTES.append(f'{"ridge" if kind == 1 else "edge"} {mode.lower()} left off here (corners too tight)')
+    return bm
+
+
 def mark_creases(bm):
     """In pixels every facet is exactly flat, so every edge with an angle is a real crease: mark it sharp, except
     the steps inside a round bevel.  Everything shades smooth; later grid cuts keep the marks."""
@@ -375,8 +489,17 @@ def grid_cut(bm, step):
             bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:], dist=1e-5, plane_co=co,
                                    plane_no=no)
             k += 1
-    # a cut right through a ridge point leaves zero-size slivers
-    bmesh.ops.dissolve_degenerate(bm, dist=1e-3, edges=bm.edges[:])
+    # a cut right through a ridge point leaves zero-size slivers (undone if it would open the mesh)
+    work = cg._safe_step(bm.copy(), lambda b: bmesh.ops.dissolve_degenerate(b, dist=1e-3, edges=b.edges[:]))
+    if sum(1 for e in work.edges if not e.is_manifold) <= sum(1 for e in bm.edges if not e.is_manifold):
+        bm.clear()
+        tmp = bpy.data.meshes.new('MCH_MRidge_grid')
+        try:
+            work.to_mesh(tmp)
+            bm.from_mesh(tmp)
+        finally:
+            bpy.data.meshes.remove(tmp)
+    work.free()
 
 
 # -----------------------------------------------------------------------------
@@ -445,11 +568,10 @@ def build(context, src, p, target):
             try:
                 lay = mark_edges(roof)
                 auto = (hi - lo).length
-                _finish(roof, lay, 2, p.edge_finish, (p.edge_width if p.edge_width > 0 else 0.012 * auto) / k,
-                        p.edge_segments)
-                lay = roof.edges.layers.int.get(EDGE_LAYER)
-                _finish(roof, lay, 1, p.ridge_finish, (p.ridge_width if p.ridge_width > 0 else 0.012 * auto) / k,
-                        p.ridge_segments)
+                roof = _finish_safe(roof, 2, p.edge_finish,
+                                    (p.edge_width if p.edge_width > 0 else 0.012 * auto) / k, p.edge_segments)
+                roof = _finish_safe(roof, 1, p.ridge_finish,
+                                    (p.ridge_width if p.ridge_width > 0 else 0.012 * auto) / k, p.ridge_segments)
                 mark_creases(roof)
                 xs = [q[0] for q in poly]
                 ys = [q[1] for q in poly]
@@ -503,7 +625,9 @@ def rebuild(context, ob):
     if target is None or target.type != 'MESH':
         raise cg.CutError('The mesh the plate was drawn on is gone.')
     p = ob.mch_mridge
+    FINISH_NOTES.clear()
     bm, _size = build(context, src, p, target)
+    ob['mch_mridge_notes'] = '; '.join(FINISH_NOTES)
     try:
         bmesh.ops.transform(bm, matrix=ob.matrix_world.inverted_safe(), verts=bm.verts[:])
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
@@ -655,6 +779,8 @@ def draw(layout, context):
         box.label(text='LIVE Mech Ridge: ' + ob.name, icon='MOD_BEVEL')
         if p.last_error:
             box.label(text=p.last_error, icon='ERROR')
+        if ob.get('mch_mridge_notes'):
+            box.label(text=ob['mch_mridge_notes'], icon='INFO')
     else:
         box.label(text='Mech Ridge: settings for the next plate', icon='MOD_BEVEL')
     r = box.row(align=True)

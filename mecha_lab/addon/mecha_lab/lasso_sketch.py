@@ -156,6 +156,9 @@ def commit(context, alt=False):
     elif mode == 'WRINKLE':
         from . import cloth_wrinkle as cw
         msg = cw.perform_wrinkle(context, loops, proj)
+    elif mode in {'DETAIL', 'DETAIL2', 'DETAIL3'} and alt:
+        from . import live_subtract        # 0.24.26 Alt+Enter: take the sketch out (live detail or engrave)
+        msg = live_subtract.perform(context, 'DETAIL', loops, proj, tool=mode)
     elif mode in {'DETAIL', 'DETAIL2', 'DETAIL3'}:
         from . import plate_detail as pd
         msg = pd.perform(context, loops, proj, mode)

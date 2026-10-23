@@ -153,6 +153,86 @@ body()
 ap.perform_plate(C, BOX, TOP)
 check('other profiles still make the usual Armor Plate', mr.live_plate(C) is None and ap.pending_plate(C) is not None)
 
+# 0.24.26 every straight-lasso polygon: pentagon, hexagon ... 24-gon, irregular and concave (star), all patterns
+import time
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+bpy.ops.mesh.primitive_cube_add(size=20, location=(0, 0, -10))
+S.mch_plate.preset = 'MRIDGE'
+st.ridge_finish = st.edge_finish = 'CHAMFER'
+st.height = 0.0
+
+
+def ngon(n, r=150, star=False):
+    return [(500 + (r if not star or i % 2 == 0 else r * 0.5) * math.cos(0.1 + 2 * math.pi * i / n),
+             500 + (r if not star or i % 2 == 0 else r * 0.5) * math.sin(0.1 + 2 * math.pi * i / n)) for i in range(n)]
+
+
+check('a clicked polygon keeps every corner (24-gon: 24 edges; free draw is still straightened)',
+      len(mr.simplify_closed(ngon(24), 6.0)) == 24 and len(mr.simplify_closed(wobbly, 2.0)) == 4)
+for n, star in ((5, False), (6, False), (8, False), (12, False), (20, False), (24, False), (12, True), (16, True)):
+    bad, slow = [], 0.0
+    for pat in ('HIP', 'LONG', 'ALTERNATE', 'HALF', 'CORNER', 'SHED'):
+        st.pattern, st.turn = pat, 1
+        t0 = time.time()
+        try:
+            ap.perform_plate(C, [ngon(n, star=star)], TOP)
+            o = C.active_object
+            slow = max(slow, time.time() - t0)
+            if non_manifold(o) or len(o.get(mr.MASK_KEY, '')) != n:
+                bad.append(pat)
+            bpy.data.objects.remove(o)
+        except Exception as ex:
+            bad.append(f'{pat}: {ex}')
+    label = f'{n}-point star' if star else f'{n}-gon'
+    check(f'{label}: every Edge Pattern gives a closed plate with all {n} edges (chamfered)', not bad, bad)
+    check(f'{label}: quick (under 3 s each)', slow < 3.0, round(slow, 2))
+st.pattern, st.turn = 'HIP', 0
+o = None
+for k in (5, 6, 8):
+    ap.perform_plate(C, [ngon(k)], TOP)
+    o = C.active_object
+    check(f'{k}-gon Hip: {k} sloped facets (pyramid roof)', len([1 for nn in up_normals(o) if nn[2] < 0.999]) >= k, up_normals(o))
+    bpy.data.objects.remove(o)
+
+# 0.24.26 Plate Detail + Alt
+from mecha_lab import live_subtract as lsub, plate_detail as pdm
+
+
+def vol(o):
+    b = bmesh.new(); b.from_mesh(o.data); v = b.calc_volume(); b.free()
+    return v
+
+
+for tool in ('DETAIL', 'DETAIL2', 'DETAIL3'):
+    for o in list(bpy.data.objects):
+        bpy.data.objects.remove(o)
+    bpy.ops.mesh.primitive_cube_add(size=8, location=(0, 0, -4))
+    cube_ob = C.active_object
+    v0 = vol(cube_ob)
+    msg = lsub.perform(C, 'DETAIL', [[(400, 400), (600, 400), (600, 600), (400, 600)]], TOP, tool=tool)
+    check(f'{tool}: Alt over a plain mesh engraves the detail into it (no error, no new object)',
+          'Engraved' in msg and len(bpy.data.objects) == 1 and vol(cube_ob) < v0, msg)
+    check(f'{tool}: ...only a shallow recess (as deep as the detail is tall), closed mesh',
+          v0 - vol(cube_ob) < 0.1 * 4 and non_manifold(cube_ob) == 0, (v0 - vol(cube_ob), non_manifold(cube_ob)))
+# a live detail cut with Alt keeps its own shading, the cut walls are flat with sharp borders
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+bpy.ops.mesh.primitive_cube_add(size=8, location=(0, 0, -4))
+pdm.perform(C, [[(380, 300), (460, 300), (460, 700), (380, 700)]], TOP, 'DETAIL3')
+det = C.active_object
+for poly in det.data.polygons:
+    poly.use_smooth = True
+before_smooth = sum(1 for q in det.data.polygons if q.use_smooth)
+lsub.perform(C, 'DETAIL', [[(430, 450), (500, 450), (500, 520), (430, 520)]], TOP, tool='DETAIL3')
+me = det.data
+flat = [q for q in me.polygons if not q.use_smooth]
+sharp = me.attributes.get('sharp_edge')
+n_sharp = sum(1 for d in sharp.data if d.value) if sharp else 0
+check('Alt on a live detail: the cut walls are flat (no dark smear), the rest stays as it was',
+      flat and any(q.use_smooth for q in me.polygons), (len(flat), before_smooth))
+check('...with sharp borders around the cut', n_sharp >= 4, n_sharp)
+
 # Cut / Split crisp shading
 S.mch_settings.auto_apply = True
 cut = S.mch_cut

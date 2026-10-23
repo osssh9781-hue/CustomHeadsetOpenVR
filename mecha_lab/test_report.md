@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.25
+# Test Report — Mecha Lab 0.24.26
+
+## 0.24.26 결과: 90개 파일 3024/3024 (`tests/test_log_bpy501_v02426.txt`). test_v02424(70): 24각형 꼭짓점 유지 / 프리드로우 직선화, 5 · 6 · 8 · 12 · 20 · 24각형 + 12 · 16점 별 × 6 패턴(챔퍼) 닫힘 + 모든 변 + 3초 이내, 5 · 6 · 8각형 Hip 면 수, Plate Detail 1 / 2 / 3 Alt 일반 메쉬 = 파임(새 오브젝트 없음, 얕음, 닫힘), 살아있는 디테일 Alt = 잘린 벽 flat + sharp 경계. 별도 스트레스(테스트 파일 밖): 3–24각형 · 불규칙 · 별 192 케이스 × Sharp / Chamfer / Bevel 전부 닫힘. 실제 화면 입력은 미검증.
 
 ## 0.24.25 결과: 90개 파일 2996/2996 (`tests/test_log_bpy501_v02425.txt`). test_v02424(42): Gable(긴 쪽) 2면 + 능선 양 끝까지, 마스크, Turn = 가로 방향, Shed 1면 + 닫힘 + Turn으로 다음 변, Half Hip 3면, Corner 2면 + 닫힘, Every Other 2면, 엣지 버튼 → Custom '0111' 3면, 마지막 경사 변 유지, 육각형 Every Other(Turn 1) = {1, 3, 5}. 실제 패널 버튼 클릭은 미검증.
 

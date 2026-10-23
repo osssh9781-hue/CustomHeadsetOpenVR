@@ -1,4 +1,8 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.25 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.26 (Claude Code, 2026-10-14)
+
+## 0.24.26
+- ZIP sha256 `7e8e6301056efde94949aa767ea78921282cd1ab570bf5f183d9b6bc5847287a`. `mech_ridge.simplify_closed`: 점 ≤ CLICKED_MAX(48) 이고 엣지 중앙값 ≥ CLICKED_EDGE(10 px)면 찍은 다각형 = DP 없이 중복 · 1° 미만만 제거. `roof_bmesh`: `is_convex`면 프리즘을 경사 변 평면들로 `_clip`(정확, 불린 없음) + remove_doubles / dissolve_degenerate, 열린 엣지 있으면 불린 경로; 오목 = `_boolean_difference_each`(커터마다 모디파이어, MANIFOLD → 결과가 안 닫히면 EXACT use_self). `_tidy_roof` · `grid_cut`의 정리 단계는 `cg._safe_step`. `_finish_safe`: 베벨이 찢으면 폭 ×0.5 / ×0.25, 그래도 안 되면 생략 + Object['mch_mridge_notes'].
+- `plate_detail.build_mesh(p, name)`(rebuild에서 분리), `engrave(context, loops, projector, tool)`: 현재 설정으로 디테일 메쉬 → 타깃 BVH 최근접점 기준 표면 반사 → CUTTER_ATTR → `boolean_result` DIFFERENCE → `cg.flat_cut_faces` → `commit_mesh`. `live_subtract.perform(..., tool)` DETAIL에서 살아있는 디테일 없으면 engrave; `lasso_sketch.commit(alt)` DETAIL*도. `live_subtract.apply`: 전체 smooth 강제 삭제 → `cg.flat_cut_faces`(커터 면 flat + 경계 sharp_edge).
 
 ## 0.24.25
 - ZIP sha256 `925cdaf045ed6813bdf434a1c057885123b848773abd7b4fc672ca6ca6448fc6`. `mech_ridge`: `ends` / `swap_axis` → `pattern`(PATTERN_ITEMS) + `turn` + `custom`('1' / '0' 문자열). `sloped_edges(poly, pattern, turn, custom)` → 나머지 변 = ends(커터 없음 + 이웃 이등분선 생략, 0.24.24와 같음). LONG = `end_edges(swap=turn 홀수)`. 첫 외곽의 마스크를 Object['mch_mridge_mask']에 저장 → 패널 엣지 버튼 `mch.mridge_edge_toggle`(Custom으로 전환, 마지막 경사 변은 못 끔), `mch.mridge_turn`. 프리즘 높이 = 능선 최고 × 1.5 + 5(Shed가 전체 폭으로 올라가도 안 잘림).

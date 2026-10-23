@@ -685,20 +685,24 @@ def set_preset(ob, layers):
     rebuild(ob)
 
 
-def rebuild(ob):
-    p = ob.mch_pdetail
+def build_mesh(p, name):
+    """The detail mesh for settings ``p`` (a live detail's mch_pdetail, or a plain namespace)."""
     embed = p.size * 0.002
     if p.kind == 'RISE':
-        me = build_rise(p.region, p.height, p.ramp, embed=embed, profile=p.profile, lift=p.size * 0.0004 + p.lift,
-                        name=ob.name, wall_angle=p.wall_angle, foot=p.foot)
-    elif p.kind == 'FLAT':
+        return build_rise(p.region, p.height, p.ramp, embed=embed, profile=p.profile, lift=p.size * 0.0004 + p.lift,
+                          name=name, wall_angle=p.wall_angle, foot=p.foot)
+    if p.kind == 'FLAT':
         # 0.24.10 Plate Detail 3: the Plate Detail 1 build without trim layers - one flat panel, straight walls
-        me = build_detail(p.region, [], p.flat_h, embed=embed, name=ob.name, lift=p.lift)
-    else:
-        layers = [(p.w1, p.h1), (p.w2, p.h2), (p.w3, p.h3)][:p.layers]
-        me = build_detail(p.region, layers, p.base, screws=int(p.screws), screw_r=p.screw_r,
-                          screw_depth=p.screw_depth, embed=embed, name=ob.name, direction=p.direction,
-                          center=p.center, lift=p.lift)
+        return build_detail(p.region, [], p.flat_h, embed=embed, name=name, lift=p.lift)
+    layers = [(p.w1, p.h1), (p.w2, p.h2), (p.w3, p.h3)][:p.layers]
+    return build_detail(p.region, layers, p.base, screws=int(p.screws), screw_r=p.screw_r,
+                        screw_depth=p.screw_depth, embed=embed, name=name, direction=p.direction,
+                        center=p.center, lift=p.lift)
+
+
+def rebuild(ob):
+    p = ob.mch_pdetail
+    me = build_mesh(p, ob.name)
     old = ob.data
     for m in old.materials:
         me.materials.append(m)
@@ -780,6 +784,71 @@ def perform(context, loops, projector, tool='DETAIL'):
     context.view_layer.objects.active = ob
     what = {'TRIM': f'{p.layers}-layer trim', 'RISE': 'smooth rise', 'FLAT': 'flat panel'}[kind]
     return f'Plate Detail "{ob.name}" on {target.name} ({what}, {len(ob.data.polygons)} faces)'
+
+
+def engrave(context, loops, projector, tool='DETAIL'):
+    """0.24.26 Alt + draw with no live detail under it: the detail (as it would be made now) is turned into the
+    surface and taken out of the mesh - a recessed trim / rise / panel, as deep as the detail would be tall.
+    Returns a report; raises cg.CutError (the mesh is unchanged)."""
+    import types
+    from mathutils.bvhtree import BVHTree
+    from . import armor_plate as ap
+    from . import core_geometry as cg
+    groups = cg.prepare_loops(loops)
+    target = pick_target(context, projector, groups)
+    if target is None:
+        raise cg.CutError('Alt + draw engraves into a mesh: draw over one (nothing was changed).')
+    cg.check_target(target)
+    region, surround, local_size, _missing = ap.plate_meshes(context, target, groups, projector, SPACING_PX)
+    bpy.data.meshes.remove(surround)
+    st = context.scene.mch_pdetail
+    f = default_fractions(st.layers)
+    f.update(_fractions(context.scene))
+    p = types.SimpleNamespace(region=region, size=local_size, kind=KINDS.get(tool, 'TRIM'), layers=st.layers,
+                              direction=st.direction, screws=st.screws, profile=st.profile,
+                              wall_angle=f.get('wall_angle', 90.0), **{k: f[k] * local_size for k in LENGTHS})
+    p.lift = 0.0
+    try:
+        me = build_mesh(p, 'MCH_DetailEngrave')
+    except ValueError as ex:
+        raise cg.CutError(f'Detail could not be built ({ex}).')
+    finally:
+        bpy.data.meshes.remove(region)
+    # mirror it through the surface (target space): every point to the other side of its nearest surface point
+    tm = target.data
+    bvh = BVHTree.FromPolygons([v.co for v in tm.vertices], [tuple(q.vertices) for q in tm.polygons])
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        for v in bm.verts:
+            hit = bvh.find_nearest(v.co)
+            if hit[0] is None:
+                continue
+            loc, nrm = hit[0], hit[1]
+            v.co = v.co - nrm * (2.0 * (v.co - loc).dot(nrm))
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+        bm.to_mesh(me)
+    finally:
+        bm.free()
+    attr = me.attributes.get(cg.CUTTER_ATTR) or me.attributes.new(cg.CUTTER_ATTR, 'BOOLEAN', 'FACE')
+    for d in attr.data:
+        d.value = True
+    cutter = cg.link_temp_object(context, me)
+    cutter.matrix_world = target.matrix_world
+    cut = context.scene.mch_cut
+    try:
+        res, _solver = cg.boolean_result(context, target, cutter, 'DIFFERENCE', cut.solver, cut.hole_tolerant)
+        try:
+            cg.flat_cut_faces(res)
+            cg.remove_cutter_attribute(res)
+            cg.commit_mesh(target, res, cut.shared_mesh)
+        finally:
+            if res.users == 0:
+                bpy.data.meshes.remove(res)
+    finally:
+        cg.remove_object_and_mesh(cutter)
+    what = {'TRIM': 'trim', 'RISE': 'rise', 'FLAT': 'panel'}[p.kind]
+    return f'Engraved a {what} into "{target.name}" (Alt)'
 
 
 def apply_detail(ob):
