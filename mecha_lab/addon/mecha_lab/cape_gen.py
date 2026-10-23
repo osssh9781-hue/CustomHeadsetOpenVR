@@ -39,14 +39,17 @@ STYLE_ITEMS = [
     ('RAGGED', 'Ragged', 'Long cloak with a torn, ragged hem'),
 ]
 STYLES = {
-    'CAPELET': dict(length=0.32, hem='ROUND', flare=0.35, wrap=70.0, folds=7, fold_depth=0.025, tatter=0.0),
-    'CLOAK': dict(length=0.9, hem='ROUND', flare=0.22, wrap=60.0, folds=9, fold_depth=0.035, tatter=0.0),
-    'PONCHO': dict(length=0.55, hem='POINTED', flare=0.6, wrap=110.0, folds=8, fold_depth=0.03, tatter=0.0),
-    'RAGGED': dict(length=0.88, hem='STRAIGHT', flare=0.25, wrap=60.0, folds=11, fold_depth=0.04, tatter=0.55),
+    'CAPELET': dict(length=0.32, hem='ROUND', flare=0.35, straight=0.3, wrap=70.0, folds=7, fold_depth=0.025,
+                    tatter=0.0),
+    'CLOAK': dict(length=0.9, hem='ROUND', flare=0.22, straight=0.6, wrap=60.0, folds=9, fold_depth=0.035, tatter=0.0),
+    'PONCHO': dict(length=0.55, hem='POINTED', flare=0.6, straight=0.0, wrap=110.0, folds=8, fold_depth=0.03,
+                   tatter=0.0),
+    'RAGGED': dict(length=0.88, hem='STRAIGHT', flare=0.25, straight=0.6, wrap=60.0, folds=11, fold_depth=0.04,
+                   tatter=0.55),
 }
 HEM_ITEMS = [('STRAIGHT', 'Straight', 'Even hem'), ('ROUND', 'Round', 'Longest in the middle'),
              ('POINTED', 'Pointed', 'A point in the middle'), ('SPLIT', 'Split', 'Two tails, a notch in the middle')]
-LIVE_KEYS = ('shape', 'length', 'hem', 'flare', 'wrap', 'folds', 'fold_depth', 'fold_random', 'wind', 'wind_dir',
+LIVE_KEYS = ('shape', 'length', 'hem', 'flare', 'straight', 'wrap', 'folds', 'fold_depth', 'fold_random', 'wind', 'wind_dir',
              'tatter', 'seed', 'thickness', 'gap', 'columns', 'rows')
 _CACHE = {}          # object name -> (key, BVH data)
 
@@ -349,7 +352,8 @@ def build(context, src, p, target):
     collar, lengths, axis, size = _collar(context, src, p, bvh, lo, hi)
     gap = p.gap if p.gap > 0 else size * 0.012
     rows = max(4, p.rows)
-    grid = drape(bvh, axis, collar, lengths, rows, gap, p.flare)
+    # 0.24.29 Straight: the sides drop plumb instead of spreading out diagonally
+    grid = drape(bvh, axis, collar, lengths, rows, gap, p.flare * (1.0 - p.straight))
     grid = shape_sheet(grid, axis, p, size, bvh, gap)
     thick = p.thickness if p.thickness > 0 else size * 0.006
     return solid_mesh(grid, thick, axis)
@@ -439,6 +443,9 @@ class MCH_PG_Cape(bpy.types.PropertyGroup):
     length: FloatProperty(name='Length', default=0.9, min=0.05, max=1.5, update=_update,
                           description='Preset: how far down it hangs (1 = from the collar to the bottom of the body)')
     hem: EnumProperty(name='Hem', items=HEM_ITEMS, default='ROUND', update=_update)
+    straight: FloatProperty(name='Straight', default=0.6, min=0.0, max=1.0, update=_update,
+                            description='How straight it falls: 1 = the sides drop plumb (no spreading out), '
+                                        '0 = it spreads out as much as Flare says')
     flare: FloatProperty(name='Flare', default=0.22, min=0.0, max=1.5, update=_update,
                          description='How much it spreads out as it falls')
     wrap: FloatProperty(name='Wrap', default=60.0, min=0.0, max=170.0, update=_update,
@@ -579,6 +586,7 @@ def draw(layout, context):
     col.prop(p, 'length', slider=True)
     col.row(align=True).prop(p, 'hem', expand=True)
     col.prop(p, 'flare', slider=True)
+    col.prop(p, 'straight', slider=True)
     col.prop(p, 'wrap', slider=True)
     col = box.column(align=True)
     col.prop(p, 'folds')

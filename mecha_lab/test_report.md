@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.29
+# Test Report — Mecha Lab 0.24.30
+
+## 0.24.30 결과: 92개 파일 3099/3099 (`tests/test_log_bpy501_v02430.txt`). test_v02428(26): + Straight 1 = 밑단 폭이 Straight 0보다 좁음(옆선 수직), 닫힌 메쉬. 실제 화면 입력은 미검증.
 
 ## 0.24.29 결과: 92개 파일 3098/3098 (`tests/test_log_bpy501_v02429.txt`). test_v02429(20): 뿌리 개수 · 영역 안 · 시드, 튜브 반지름(테이퍼 / 로프), 가닥이 올라갔다가 중력으로 내려감, 마네킹 머리에 Dreads / Tentacles / Quills / Strands = 라이브 + 닫힌 튜브, Dreads가 머리 아래로, Quills는 서 있음, 링 = 슬롯 2 + 기본 머티리얼, 몸 안으로 안 들어감, Count / Rings 라이브, Straight 1 = 어깨 아래 퍼짐이 0보다 좁음, rope · wave 닫힘, Apply, 머리 밖 = 안내, 툴 목록 / 아이콘 / Enter / 디스패치. 실제 화면 입력은 미검증.
 

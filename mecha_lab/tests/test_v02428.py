@@ -102,6 +102,22 @@ w0 = res['CLOAK'][3]
 ob.mch_cape.wrap = 150.0
 vs = [ob.matrix_world @ v.co for v in ob.data.vertices]
 check('Wrap carries it further round the body (comes forward)', min(v.y for v in vs) < 0.0, min(v.y for v in vs))
+ob.mch_cape.wrap = 60.0
+
+
+def hem_width(o):
+    vs = [o.matrix_world @ v.co for v in o.data.vertices]
+    zmin = min(v.z for v in vs)
+    low = [v for v in vs if v.z < zmin + 0.4]
+    return max(v.x for v in low) - min(v.x for v in low)
+
+
+ob.mch_cape.straight = 0.0
+wide = hem_width(ob)
+ob.mch_cape.straight = 1.0
+plumb = hem_width(ob)
+check('Straight: the sides drop plumb (narrower hem than spreading out)', plumb < wide * 0.85
+      and non_manifold(ob) == 0, (wide, plumb))
 ob.mch_cape.folds = 0
 ob.mch_cape.fold_depth = 0.0
 ob.mch_cape.tatter = 0.4

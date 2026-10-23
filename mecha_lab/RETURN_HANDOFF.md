@@ -1,4 +1,7 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.29 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.30 (Claude Code, 2026-10-14)
+
+## 0.24.30
+- ZIP sha256 `a46a3dfd17d1daf1afc7e2a9fe0d6078457380b23271a0c223072902c26bed43`. `cape_gen`: `straight` prop(LIVE_KEYS, STYLES), `drape(..., flare × (1 − straight))`.
 
 ## 0.24.29
 - ZIP sha256 `edb0231d418004676b71c2380d468ca73b9f4ca28ecdd70c81a27738d0b58479`. 새 `creature_hair.py`, 툴 id HAIR 44(`mecha.creature_hair`, 아이콘 hair.png). `root_points`(지터 육각 격자, 면적/Count 간격, 다각형 안) → `ap.project_patch` → 가닥마다 `strand_path`(노멀 × Lift로 시작, 중력 = 아래쪽으로 회전(각도/스텝 = gravity·0.18·28/segments), 위를 향하면 `outward`(영역 중심에서 바깥)로, Wave, Straight = 넘어간 뒤 꺾임 ×(1+3s) · 수평 성분 ×(1−0.6s) · wave ×(1−0.8s), `cape_gen._push_out`으로 몸 밖) → `add_tube`(평행 이동 프레임, `tube_radius` = taper + 3갈래 로프 꼬임, 뿌리 캡 + 뾰족한 끝) + `add_ring`(짧은 닫힌 튜브, material 1). 몸 BVH = `cape_gen._body`. `cape_gen.pick_body`: mch_*_src 키가 있는 생성물 통과, 레이 256번까지.
