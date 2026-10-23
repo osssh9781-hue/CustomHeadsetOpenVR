@@ -266,9 +266,11 @@ class MCH_PG_Brush(bpy.types.PropertyGroup):
     line_caps: EnumProperty(name='Line Ends', items=[('ROUND', 'Round', 'Round line ends'),
                                                      ('FLAT', 'Flat', 'Square line ends')], default='ROUND')
     # 0.24.21 like a pen: the line thins to a point at both ends (Taper) and / or follows the tablet pressure
-    line_taper: FloatProperty(name='Taper', default=0.0, min=0.0, max=1.0, subtype='FACTOR',
-                              description='Line mode: the band thins to a point toward both ends (0 = even width, '
-                                          '1 = pointed over the whole length)')
+    line_taper_on: BoolProperty(name='Taper', default=False,
+                                description='Line mode: the band thins to a point toward both ends (amount next to it)')
+    line_taper: FloatProperty(name='Taper Amount', default=0.5, min=0.0, max=1.0, subtype='FACTOR',
+                              description='How much of the line thins toward the ends (1 = pointed over the whole '
+                                          'length)')
     line_pressure: BoolProperty(name='Pressure', default=False,
                                 description='Line mode, Free Draw: the band is as wide as you press the pen '
                                             '(tablet pressure); [ / ] change Line Width')

@@ -706,6 +706,8 @@ def rebuild(ob):
     if old.users == 0:
         bpy.data.meshes.remove(old)
     me.name = ob.name
+    from . import live_subtract
+    live_subtract.apply(bpy.context, ob)      # 0.24.21 the Alt outlines cut out again
     return me
 
 
@@ -782,10 +784,12 @@ def perform(context, loops, projector, tool='DETAIL'):
 
 def apply_detail(ob):
     """Keep the mesh as it is; drop the live data."""
+    from . import live_subtract
     p = ob.mch_pdetail
     region = p.region
     p.live = False
     p.region = None
+    live_subtract.clear(ob)
     if region is not None and region.users == 0:
         bpy.data.meshes.remove(region)
 

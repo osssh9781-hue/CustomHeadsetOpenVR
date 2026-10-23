@@ -1702,6 +1702,10 @@ class StrokeLogic:
             elif self.mode == 'PLATE':
                 from . import armor_plate
                 msg = armor_plate.perform_plate(context, loops, self.projector)
+            elif self.mode in {'CPLATE', 'DETAIL', 'DETAIL2', 'DETAIL3'} and self.inverted():
+                from . import live_subtract        # 0.24.21 Alt + draw: cut that area out of the live plate
+                msg = live_subtract.perform(context, 'CPLATE' if self.mode == 'CPLATE' else 'DETAIL', loops,
+                                            self.projector)
             elif self.mode == 'CPLATE':
                 from . import creature_plate
                 msg = creature_plate.perform(context, loops, self.projector)

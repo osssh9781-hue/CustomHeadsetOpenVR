@@ -337,6 +337,8 @@ def rebuild(context, ob):
         bm.to_mesh(ob.data)
     finally:
         bm.free()
+    from . import live_subtract
+    live_subtract.apply(context, ob)          # 0.24.21 the Alt outlines cut out again
     try:
         ob.data.set_sharp_from_angle(angle=math.radians(60))   # crisp edges
     except (AttributeError, TypeError, RuntimeError):
@@ -403,9 +405,11 @@ def live_plate(context):
 
 
 def apply(ob):
+    from . import live_subtract
     ob.mch_cplate.live = False
     if SRC_KEY in ob:
         del ob[SRC_KEY]
+    live_subtract.clear(ob)
     _CACHE.pop(ob.name, None)
 
 

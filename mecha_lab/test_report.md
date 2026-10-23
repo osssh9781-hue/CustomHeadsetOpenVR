@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.21
+# Test Report — Mecha Lab 0.24.22
+
+## 0.24.22 결과: 91개 파일 2968/2968 (`tests/test_log_bpy501_v02422.txt`). test_v02421 추가분: Taper 버튼 끔 = 같은 폭 / 켬 = 면적 < 80 %, Pressure 기본 꺼짐, Creature Plate Alt 빼기 = 가운데 레이가 몸체에 닿음(구멍), 가장자리 = 홈, 높이 슬라이더 후 구멍 유지, 플레이트 없는 곳 = 안내, Apply 후 기록 삭제 / 구멍 유지, Plate Detail 3 Alt 빼기. 실제 Alt 입력은 미검증.
 
 ## 0.24.21 결과: 91개 파일 2958/2958 (`tests/test_log_bpy501_v02421.txt`). test_v02421: Resolution 15(Creature Base / Plate, Base Mesh 28 유지, 한 번만), Sketch + Free Draw 놓으면 POINTS(6–60점), 점 끌기, Enter = 스케치 추가, Sketch 끄면 바로 적용, 스컬프트 브러시 6개가 Blender 라이브러리에 있음 / 아이콘 / 대상 메쉬 / Sculpt Mode 전환, Taper(끝 폭 < 절반, 가운데 같음), 필압(약하게 = 가늘게), [ / ] 키맵과 그리는 중 변경, 안쪽 벽이 있는 합친 메쉬 감지 + 안내 문구. test_v0100_regression F08(Base Mesh)은 Sketch 끈 상태로. test_v02420_bridge: 맞닿은 덩어리 Fill Crease 0 = 숨음, 0.5 = 골짜기 위로 보임, 위쪽은 메쉬, 닫힌 메쉬. 실제 마우스 입력 · 브러시 활성화(배경 모드) · 패널은 미검증.
 

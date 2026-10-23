@@ -7,7 +7,7 @@ import sys
 import types
 
 from _harness import bmesh, bpy, check, cube, fresh, non_manifold, summary
-from mathutils import Quaternion
+from mathutils import Quaternion, Vector
 
 import mecha_lab
 from mecha_lab import base_mesh as bm_mod, cut_engine as ce, core_geometry as cg, lasso_line as ll, lasso_sketch as ls
@@ -227,4 +227,54 @@ c = cube('Clean', 2.0)
 check('a clean cube is one solid', cg.overlap_edges(c) == (0, 0), cg.overlap_edges(c))
 hint = cg.overlap_hint(j, (12, 3))
 check('the message says why and what to do (Remesh first)', '12 edges' in hint and 'holes' in hint and 'Remesh' in hint)
+
+# Taper / Pressure are on-off buttons
+br.line_taper_on, br.line_taper, br.line_width = False, 1.0, 0.4
+TOPP = cg.OrthoProjector(Quaternion())
+off = ll.line_loop(C, TOPP, path, br)
+br.line_taper_on = True
+on = ll.line_loop(C, TOPP, path, br)
+check('Taper button off = even width (the amount is kept), on = pointed', area(on) < area(off) * 0.8,
+      (round(area(off)), round(area(on))))
+br.line_taper_on = False
+check('Pressure is a button too (off by default)', br.line_pressure is False)
+
+# Alt + draw cuts a live Creature Plate / Plate Detail (it stays live)
+from mecha_lab import creature_plate as cpl, live_subtract as lsub, plate_detail as pdm
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+bpy.ops.mesh.primitive_uv_sphere_add(radius=3, segments=64, ring_count=32, location=(0, 0, -2.6))
+body = C.active_object
+cpl.perform(C, [[(300, 300), (700, 300), (700, 700), (300, 700)]], TOPP)
+plate = C.active_object
+n0 = len(plate.data.polygons)
+def first_hit(xy):
+    o, d = TOPP.ray(xy)
+    hit, loc, _n, _i, hob, _m = C.scene.ray_cast(C.evaluated_depsgraph_get(), Vector(o), Vector(d))
+    return hob.name if hit else None
+check('the plate covers the middle before', first_hit((500, 500)) == plate.name)
+msg = lsub.perform(C, 'CPLATE', [[(450, 450), (550, 450), (550, 550), (450, 550)]], TOPP)
+check('Alt + draw: that area is cut out of the Creature Plate (a hole)', first_hit((500, 500)) == body.name
+      and first_hit((350, 500)) == plate.name, (msg, first_hit((500, 500))))
+plate.mch_cplate.peak = plate.mch_cplate.peak * 1.5
+check('it stays live: a slider rebuilds it and the hole stays', first_hit((500, 500)) == body.name
+      and plate.mch_cplate.last_error == '' if hasattr(plate.mch_cplate, 'last_error') else first_hit((500, 500)) == body.name)
+msg = lsub.perform(C, 'CPLATE', [[(650, 250), (760, 250), (760, 360), (650, 360)]], TOPP)
+check('a second Alt outline over the edge = a notch', first_hit((690, 320)) == body.name and len(lsub.records(plate)) == 2)
+try:
+    lsub.perform(C, 'CPLATE', [[(900, 900), (950, 900), (950, 950)]], TOPP)
+    check('Alt over no plate: nothing made, a clear message', False)
+except cg.CutError as ex:
+    check('Alt over no plate: nothing made, a clear message', 'Alt' in str(ex), str(ex))
+cpl.apply(plate)
+check('Apply keeps the cut mesh, drops the kept outlines', lsub.KEY not in plate and first_hit((500, 500)) == body.name)
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+box = cube('Box', 4.0)
+pdm.perform(C, [[(300, 300), (700, 300), (700, 700), (300, 700)]], TOPP, 'DETAIL3')
+det = C.active_object
+check('Plate Detail made', pdm.is_detail(det))
+lsub.perform(C, 'DETAIL', [[(450, 450), (550, 450), (550, 550), (450, 550)]], TOPP)
+check('Alt + draw cuts a Plate Detail too', first_hit((500, 500)) == box.name and first_hit((350, 500)) == det.name,
+      first_hit((500, 500)))
 summary()

@@ -1175,8 +1175,11 @@ def draw_shape_palette(self, context):
     if brush.line_mode:
         sk.prop(brush, 'line_width', text='')
         sk.prop(brush, 'line_caps', text='')
-        sk.prop(brush, 'line_taper', text='Taper', slider=True)          # 0.24.21 pointed ends
-        sk.prop(brush, 'line_pressure', text='', icon='STYLUS_PRESSURE', toggle=True)
+        # 0.24.21 pointed ends / pen pressure: on-off buttons (the amount only while Taper is on)
+        sk.prop(brush, 'line_taper_on', text='Taper', icon='SHARPCURVE', toggle=True)
+        if brush.line_taper_on:
+            sk.prop(brush, 'line_taper', text='', slider=True)
+        sk.prop(brush, 'line_pressure', text='Pressure', icon='STYLUS_PRESSURE', toggle=True)
     row.separator()
     sub = row.row(align=True)
     sub.template_icon_view(scene, 'mch_png_preset', show_labels=True, scale=isz(1.0), scale_popup=isz(5.0))

@@ -1,4 +1,8 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.21 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.22 (Claude Code, 2026-10-14)
+
+## 0.24.22
+- ZIP sha256 `3c0998153d3e1e9a093264c78fd483b892f0ba6144901f79364c4e54eff5f46c`. 새 `live_subtract.py`: Alt 외곽(화면 루프 + 고정 뷰)을 오브젝트 `mch_subtract`(JSON)에 저장, `apply`가 `creature_plate.rebuild` / `plate_detail.rebuild` 끝에서 매번 절단 프리즘(`build_cutter_mesh`, THROUGH 깊이) + EXACT Boolean DIFFERENCE로 다시 빼냄(스무스 셰이딩 유지). `pick` = 외곽 아래 레이캐스트로 그 툴의 살아있는 플레이트. `cut_engine._execute_closed`: CPLATE / DETAIL* + `inverted()`이면 `live_subtract.perform`. Apply는 기록 삭제.
+- `tool_state`: `line_taper_on`(버튼) + `line_taper`(양, 기본 0.5), `lasso_line.line_loop`는 켜졌을 때만 Taper.
 
 ## 0.24.21
 - ZIP sha256 `ae6f1687c9e7acb73ff4f96b42ddcc2ce9dce9ad57cd3f0ec55137c7ca0953d7`. `bridge_patch.drape(n, edges, front, depth, passes)`: 그래프 라플라시안 평활 + `min(front, depth)` 반복(앞에서 본 천 덮기), `_build_whole`에서 `crease * 30 * res`회. 표면 위 판정 `on`(깊이 차 / 두께)으로만 Sink.
