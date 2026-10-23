@@ -1,5 +1,5 @@
 """0.24.20 Bridge Patch: lasso across two meshes, the gap between them fills with a smooth patch on the side you see
-(front only), its rim sunk into both meshes; Smooth / Bulge / Wrap / Thickness / Sink / Overlap / Resolution live."""
+(front only), its rim sunk into both meshes; Smooth / Bulge / Round / Wrap / Thickness / Sink / Overlap / Resolution live."""
 import math
 
 from _harness import bpy, check, fresh, non_manifold, summary
@@ -62,6 +62,7 @@ def front_z(xy):
 a, b_ = lumps()
 gap_xy = (500, 500)                                 # world (0, 0): between the two lumps
 check('the gap is empty before', front_z(gap_xy)[0] is None)
+C.scene.mch_bridge.round = 0.0                   # a flat sheet first (Round tested below)
 msg = bp.perform(C, [LASSO], TOP)
 ob = C.active_object
 check('patch made', ob is not None and ob.get(bp.SRC_KEY) is not None, msg)
@@ -81,6 +82,13 @@ p.bulge = -0.8
 z2 = front_z(gap_xy)[0]
 check('Bulge - pulls it in', z2 is not None and z2 < z0 - 0.02, (z0, z2))
 p.bulge = 0.0
+side_xy = (462, 500)                                # near the lasso's side, in the gap
+zc0, zs0 = front_z(gap_xy)[0], front_z(side_xy)[0]
+p.round = 1.0
+zc1, zs1 = front_z(gap_xy)[0], front_z(side_xy)[0]
+check('Round: the sides curve back (tube-like), the middle stays', zs1 is not None and zc1 is not None
+      and zs1 < zs0 - 0.05 and abs(zc1 - zc0) < (zs0 - zs1), (zc0, zc1, zs0, zs1))
+check('Round: still a closed solid', non_manifold(ob) == 0)
 for k, v in (('smooth', 0.0), ('quality', 'HIGH'), ('quality', 'LOW'), ('thickness', 0.08), ('overlap', 6),
              ('wrap', math.radians(70)), ('sink', 2.0)):
     setattr(p, k, v)

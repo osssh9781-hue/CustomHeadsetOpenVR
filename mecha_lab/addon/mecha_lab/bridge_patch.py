@@ -9,6 +9,7 @@ seam shows.  Only the front: the back is not wrapped.
 
     Smooth      0 = straight join, 1 = the surfaces' slope carries on across the gap
     Bulge       push the middle of the gap out (+) or in (-)
+    Round       round the patch across like a tube: its sides curve back into the meshes (0 = flat sheet)
     Wrap        the meshes' sides steeper than this (toward their outline) are covered by the patch like a skin
     Thickness   of the patch behind its front face (0 = Auto)
     Sink        how far the overlap band goes into the meshes (x Thickness)
@@ -32,7 +33,7 @@ from . import core_geometry as cg
 
 SRC_KEY = 'mch_bridge_src'
 COLLECTION = 'Bridge Patches'
-LIVE_KEYS = ('smooth', 'bulge', 'wrap', 'thickness', 'sink', 'overlap', 'quality')
+LIVE_KEYS = ('smooth', 'bulge', 'round', 'wrap', 'thickness', 'sink', 'overlap', 'quality')
 QUALITY = {'LOW': 24, 'MID': 40, 'HIGH': 64}
 _CACHE = {}
 
@@ -131,6 +132,20 @@ def spread(n, edges, values, passes):
     return g.tolist()
 
 
+def local_max(n, edges, values, passes):
+    """Each point gets the largest value within ``passes`` edges of it - pure."""
+    import numpy as np
+    I = np.asarray([e[0] for e in edges], dtype=np.int64)
+    J = np.asarray([e[1] for e in edges], dtype=np.int64)
+    g = np.asarray(values, dtype=np.float64)
+    for _k in range(passes):
+        h = g.copy()
+        np.maximum.at(h, I, g[J])
+        np.maximum.at(h, J, g[I])
+        g = h
+    return g.tolist()
+
+
 def _smoothstep(x):
     x = max(0.0, min(1.0, x))
     return x * x * (3.0 - 2.0 * x)
@@ -174,9 +189,12 @@ class MCH_PG_Bridge(bpy.types.PropertyGroup):
                                           '(toward their outline), like a skin; lower = covers more')
     thickness: _p(FloatProperty, name='Thickness', default=0.0, min=0.0, soft_max=0.5, precision=4, unit='LENGTH',
                   description='Of the patch behind its front face (0 = Auto: 3% of its size)')
-    sink: _p(FloatProperty, name='Sink', default=0.5, min=0.0, max=4.0,
+    round: _p(FloatProperty, name='Round', default=0.8, min=0.0, max=1.5,
+              description='Round the patch across like a tube: its sides curve back into the meshes '
+                          '(0 = a flat sheet)')
+    sink: _p(FloatProperty, name='Sink', default=1.5, min=0.0, max=6.0,
              description='How far the overlap band goes into the meshes (x Thickness)')
-    overlap: _p(IntProperty, name='Overlap', default=3, min=1, max=8,
+    overlap: _p(IntProperty, name='Overlap', default=4, min=1, max=10,
                 description='Rows of the surrounding surface the patch also covers (hides the seam)')
     quality: _p(EnumProperty, name='Resolution', default='MID',
                 items=(('LOW', 'Low', 'Light'), ('MID', 'Mid', ''), ('HIGH', 'High', 'Smooth')))
@@ -227,7 +245,7 @@ def _samples(context, ob, src, p):
     outer, holes = groups[0]
     fp = types.SimpleNamespace(profile='PILLOW', resolution=QUALITY[p.quality], outline_smooth=0.2, edge_round=0.1,
                                puff=1.0, rings=(0.35, 0.9), rim=1.0)
-    _b, pts, tris, _nb, _shape, _nat, _sp = bmm.profile_field(outer, holes, fp)
+    _b, pts, tris, nb, _shape, _nat, _sp = bmm.profile_field(outer, holes, fp)
     origins, dirs, depth, facing = [], [], [], []
     skip = {ob.name}
     for q in pts:
@@ -254,7 +272,10 @@ def _samples(context, ob, src, p):
         for k in range(3):
             i, j = t[k], t[(k + 1) % 3]
             edges.add((min(i, j), max(i, j)))
-    data = (pts, tris, sorted(edges), origins, dirs, depth, facing, size)
+    # how round the lasso is across (Teddy inflation, 0 on the outline): for Round, in world units
+    px = math.hypot(max(xs) - min(xs), max(ys) - min(ys))
+    puff = [h * size / max(px, 1e-9) for h in bmm.puff_heights(pts, tris, nb, 1.0)]
+    data = (pts, tris, sorted(edges), origins, dirs, depth, facing, size, puff)
     _CACHE[ob.name] = (key, data)
     return data
 
@@ -264,7 +285,7 @@ def build(context, ob):
     if src is None:
         raise cg.CutError('This patch was applied.')
     p = ob.mch_bridge
-    pts, tris, edges, origins, dirs, depth, facing, size = _samples(context, ob, src, p)
+    pts, tris, edges, origins, dirs, depth, facing, size, puff = _samples(context, ob, src, p)
     n = len(pts)
     # the surfaces hold the patch where they face you; their steep sides (toward the outline) are covered by the
     # patch like a skin, so it does not dive into the gap along them.  Soft weights: no stair-step seam.
@@ -282,11 +303,15 @@ def build(context, ob):
     g = spread(n, edges, [1.0 - x for x in weight], 2 * p.overlap)
     use = {i for i in range(n) if g[i] > 0.04}
     thick = p.thickness if p.thickness > 0 else 0.03 * size
+    # Round: toward the lasso outline the patch curves back (a tube-like section) - its sides go into the meshes
+    top = local_max(n, edges, puff, max(2, QUALITY[p.quality] // 3))
     front, back = {}, {}
     for i in use:
         dep = d[i]
         if depth[i] is not None and g[i] >= 0.5:
             dep = min(dep, depth[i])                 # over a steep side: stay in front of the surface
+        if p.round > 0:                              # the inflation is already round across: r - h = a circle
+            dep += p.round * max(0.0, top[i] - puff[i])
         dep += thick * p.sink * max(0.0, min(1.0, (0.5 - g[i]) / 0.46))     # the rim slips under the surface
         front[i] = origins[i] + dirs[i] * dep
         back[i] = front[i] + dirs[i] * thick
@@ -410,6 +435,7 @@ def draw(layout, context):
     col = target.column(align=True)
     col.prop(p, 'smooth', slider=True)
     col.prop(p, 'bulge', slider=True)
+    col.prop(p, 'round', slider=True)
     col.prop(p, 'wrap')
     col = target.column(align=True)
     col.prop(p, 'thickness')
