@@ -1,5 +1,6 @@
 """0.24.20 Base Mesh / Creature Base Mesh Bend: a made (live) shape bends along its main axis - Bend Up / Down
-(both ends rise or drop) and Bend Sideways (a banana seen from above), Bend Direction turns the axis."""
+(both ends rise or drop) and Bend Sideways (a banana seen from above), Bend Direction turns the axis.
+Bend Style Band = an even arc, Angle = a sharp mitred fold (both sides straight); Bend Position moves the bend."""
 import math
 
 from _harness import bpy, check, fresh, non_manifold, summary
@@ -75,6 +76,55 @@ for tool, profile in (('BASE', 'FLAT'), ('BASE', 'BEVEL'), ('BASE', 'DOME'), ('C
     p.bend_side = 0.0
     check(f'{profile}: bend back to 0 = the straight shape again', len(ob.data.vertices) == n0,
           (n0, len(ob.data.vertices)))
+
+# Angle: a sharp fold
+a = math.radians(30)
+l0 = bm_mod._fold(1e-9, 0.3, 0.1, a)
+r0 = bm_mod._fold(-1e-9, 0.3, 0.1, a)
+check('Angle fold: both sides meet on the joint (no gap)', abs(l0[0] - r0[0]) < 1e-6 and abs(l0[1] - r0[1]) < 1e-6,
+      (l0, r0))
+q1, q2, q3 = (bm_mod._fold(s_, 0.3, 0.1, a) for s_ in (0.5, 1.0, 2.0))
+slope = lambda p1, p2: (p2[1] - p1[1]) / (p2[0] - p1[0])
+check('Angle fold: one side stays straight at the fold angle', abs(slope(q1, q2) - slope(q2, q3)) < 1e-9
+      and abs(slope(q1, q2) - math.tan(a)) < 1e-9)
+for tool, profile in (('BASE', 'FLAT'), ('BASE', 'BEVEL'), ('CBASE', 'PUFF')):
+    fresh()
+    C.scene.cursor.location = (0, 0, 0)
+    ob = make(tool, profile)
+    if ob is None:
+        check(f'{profile} Angle: made', False)
+        continue
+    p = ob.mch_base
+    p.bend_style = 'ANGLE'
+    p.bend_up = math.radians(90)
+    pts = world_z(ob)
+    top = sorted((q for q in pts if q.x > 0.4), key=lambda q: q.x)
+    top_z = {}
+    for q in top:                              # highest point per x column: the top edge of one straight side
+        k = round(q.x, 2)
+        top_z[k] = max(top_z.get(k, -9), q.z)
+    ks = sorted(top_z)
+    straight = profile != 'FLAT' or all(abs((top_z[ks[i + 1]] - top_z[ks[i]]) / max(ks[i + 1] - ks[i], 1e-9) - 1.0) < 0.05
+                                        for i in range(len(ks) - 1) if ks[i + 1] - ks[i] > 0.05)
+    ends = [q.z for q in pts if abs(q.x) > 1.4]
+    mid = [q.z for q in pts if abs(q.x) < 0.1]
+    check(f'{profile} Angle: ends lift, closed', p.last_error == '' and min(ends) > min(mid) + 0.5
+          and non_manifold(ob) == 0, (p.last_error, non_manifold(ob)))
+    check(f'{profile} Angle: the side past the fold is straight (45 deg each side)', straight)
+    p.bend_up = 0.0
+    p.bend_side = math.radians(60)
+    check(f'{profile} Angle sideways: closed', p.last_error == '' and non_manifold(ob) == 0)
+    p.bend_side = 0.0
+fresh()
+ob = make('BASE', 'FLAT')
+p = ob.mch_base
+p.bend_style, p.bend_up = 'ANGLE', math.radians(90)
+pts = world_z(ob)
+low0 = min(pts, key=lambda q: q.z).x
+p.bend_pos = 0.5
+pts = world_z(ob)
+low1 = min(pts, key=lambda q: q.z).x
+check('Bend Position moves the fold along the length', low1 > low0 + 0.6, (round(low0, 3), round(low1, 3)))
 
 fresh()
 ob = make('BASE', 'FLAT')

@@ -153,6 +153,12 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
     bend_side: FloatProperty(name='Bend Sideways', default=0.0, min=math.radians(-300), max=math.radians(300),
                              subtype='ANGLE', update=_rebuild_update,
                              description='Bend along its length to the left / right (like a banana seen from above)')
+    bend_style: EnumProperty(name='Bend Style', default='SMOOTH', update=_rebuild_update,
+                             items=(('SMOOTH', 'Band', 'Bends evenly along the whole length, like a band'),
+                                    ('ANGLE', 'Angle', 'A sharp fold at one spot, the two sides stay straight')))
+    bend_pos: FloatProperty(name='Bend Position', default=0.0, min=-0.9, max=0.9, subtype='FACTOR',
+                            update=_rebuild_update,
+                            description='Where along the length it bends (0 = the middle; Angle: where the fold is)')
     bend_axis: FloatProperty(name='Bend Direction', default=0.0, min=math.radians(-90), max=math.radians(90),
                              subtype='ANGLE', update=_rebuild_update,
                              description='Turn the bend direction (0 = along the longest side of the shape)')
@@ -860,9 +866,17 @@ def bend_axis_dir(groups, turn=0.0):
     return (math.cos(a), math.sin(a)), (cx, cy)
 
 
-def bend_coords(u, w, z, half, up, side):
-    """A point (along, across, up) of a shape ``half`` long each way from its middle, bent by ``up`` (both
-    ends rise for +) and ``side`` (both ends go to +across for +) radians in total - pure."""
+def bend_coords(u, w, z, half, up, side, style='SMOOTH', hinge_z=0.0):
+    """A point (along, across, up) of a shape ``half`` long each way from the bend spot, bent by ``up`` (both
+    ends rise for +) and ``side`` (both ends go to +across for +) radians in total - pure.
+    SMOOTH: an even arc over the length.  ANGLE: a sharp fold at u = 0 (height ``hinge_z``), both sides stay
+    straight and meet on a mitred joint (no gap, no overlap)."""
+    if style == 'ANGLE':
+        if abs(side) > 1e-6:
+            u, w = _fold(u, w, 0.0, side / 2.0)
+        if abs(up) > 1e-6:
+            u, z = _fold(u, z, hinge_z, up / 2.0)
+        return u, w, z
     if abs(side) > 1e-6 and half > 1e-12:
         r = 2.0 * half / side
         t = u / r
@@ -874,6 +888,16 @@ def bend_coords(u, w, z, half, up, side):
     return u, w, z
 
 
+def _fold(s, h, h0, a):
+    """Fold the (s, h) plane at s = 0 / h = h0: s > 0 turns up by ``a``, s < 0 by ``a`` the other way (mitred)."""
+    if s < 0:
+        s2, h2 = _fold(-s, h, h0, a)
+        return -s2, h2
+    d = h - h0
+    x = s + d * math.tan(a)
+    return x * math.cos(a) - d * math.sin(a), h0 + x * math.sin(a) + d * math.cos(a)
+
+
 def _bend(bm, groups, p):
     """0.24.20 Bend Up / Down and Bend Sideways along the main axis of the outline (live Base Mesh)."""
     up, side = getattr(p, 'bend_up', 0.0), getattr(p, 'bend_side', 0.0)
@@ -883,22 +907,28 @@ def _bend(bm, groups, p):
     us = [(v.co.x - cx) * dx + (v.co.y - cy) * dy for v in bm.verts]
     lo, hi = min(us), max(us)
     half = (hi - lo) / 2.0
-    mid = (lo + hi) / 2.0
     if half <= 1e-9:
         return
-    if p.profile not in CREATURE_PROFILES and p.profile != 'DOME':
-        # flat caps are single big faces: slice them across the bend so they can curve
-        steps = 24
-        for k in range(1, steps):
-            u = lo + (hi - lo) * k / steps
-            co = (cx + dx * u, cy + dy * u, 0.0)
-            bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:], dist=1e-7,
-                                   plane_co=co, plane_no=(dx, dy, 0.0))
+    mid = (lo + hi) / 2.0 + getattr(p, 'bend_pos', 0.0) * half      # the bend spot
+    style = getattr(p, 'bend_style', 'SMOOTH')
+    zs = [v.co.z for v in bm.verts]
+    hinge_z = (min(zs) + max(zs)) / 2.0
+    if style == 'ANGLE':
+        cuts = [mid]                                     # an edge loop right on the fold
+    elif p.profile not in CREATURE_PROFILES and p.profile != 'DOME':
+        cuts = [lo + (hi - lo) * k / 24 for k in range(1, 24)]   # flat caps are single faces: slice them to curve
+    else:
+        cuts = []
+    for u in cuts:
+        bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:], dist=1e-7,
+                               plane_co=(cx + dx * u, cy + dy * u, 0.0), plane_no=(dx, dy, 0.0))
     for v in bm.verts:
         x, y, z = v.co
         u = (x - cx) * dx + (y - cy) * dy - mid
         w = -(x - cx) * dy + (y - cy) * dx
-        u, w, z = bend_coords(u, w, z, half, up, side)
+        if style == 'ANGLE' and abs(u) < 1e-6:
+            u = 0.0
+        u, w, z = bend_coords(u, w, z, half, up, side, style, hinge_z)
         u += mid
         v.co = (cx + u * dx - w * dy, cy + u * dy + w * dx, z)
 
