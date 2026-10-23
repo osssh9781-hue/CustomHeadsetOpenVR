@@ -55,6 +55,10 @@ TOOLS = (
     ('SCURVE', 'Surface Curve', 'Draw along a mesh: a curve (tube) lies on it - then edit it like a Mesh Curve '
      '(points, radius, profiles incl. Creature / Guts / From Object, outer lines)',
      'surface_curve', 'CURVE_BEZCURVE', 'mecha.surface_curve', 'OK'),
+    ('CAPE', 'Cape', 'Draw on a body from the side the cape hangs on: the top of the drawing is the collar - a '
+     'live cloak / capelet / poncho drapes from it (Style, Length, Hem, Flare, Wrap, folds, Wind, Tatter); a short '
+     'drawing = Preset, a tall one = your outline',
+     'cape', 'MOD_CLOTH', 'mecha.cape', 'OK'),
     ('DETAIL', 'Plate Detail', 'Draw an outline on a plate: a low surface trim - flat inside, 1 / 2 / 3 stepped '
      'layers along the edge (edge high or inside high), optional screw recesses; live until Apply',
      'detail1', 'MESH_PLANE', 'mecha.plate_detail', 'OK'),
@@ -117,7 +121,7 @@ VISIBLE_TOOLS = tuple(t for t in TOOLS if t[0] not in HIDDEN_TOOLS)
 QUICK_TOOLS = ('CUT', 'BOOLEAN', 'BASE', 'SUBD', 'SPLIT', 'RADIAL', 'PLATE')   # 0.19: + Armor Plate
 NATIVE_TO_TOOL = {t[5]: t[0] for t in TOOLS if t[5]}
 SHAPE_TOOLS = {'CUT', 'SPLIT', 'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2',
-               'DETAIL3', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'SCURVE'}
+               'DETAIL3', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'SCURVE', 'CAPE'}
 
 # Enum numbers keep v0.5.9 values so saved .blend files map to the same tool.
 _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRAW': 6,
@@ -125,7 +129,7 @@ _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRA
                  'REMESH': 12, 'SPLIT': 13, 'POSE': 14, 'BASE': 15, 'LOFT': 16, 'ZBRUSH': 17, 'SUBD': 18, 'PRIMITIVE': 19,
                  'EXTRACT': 20, 'MOLDING': 21, 'HOLLOW': 22, 'ALONG': 23, 'CABLE': 24, 'PLATE': 25, 'WRINKLE': 26, 'TUBE': 27,
                  'HIDE': 28, 'DETAIL': 29, 'DETAIL2': 30, 'SCREW': 31, 'DETAIL3': 32, 'TUBE_SAME': 33,
-                 'CBASE': 34, 'CPLATE': 35, 'BELT': 36, 'SPIKE': 37, 'SCALES': 38, 'FLOWER': 39, 'SCURVE': 40, 'SBRUSH': 41, 'BRIDGE': 42}
+                 'CBASE': 34, 'CPLATE': 35, 'BELT': 36, 'SPIKE': 37, 'SCALES': 38, 'FLOWER': 39, 'SCURVE': 40, 'SBRUSH': 41, 'BRIDGE': 42, 'CAPE': 43}
 TOOL_ENUM_ITEMS = [(t[0], t[1], t[2], t[4], _ENUM_NUMBERS[t[0]]) for t in TOOLS]
 
 SHAPES = (

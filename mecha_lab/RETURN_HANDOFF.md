@@ -1,4 +1,8 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.27 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.28 (Claude Code, 2026-10-14)
+
+## 0.24.28
+- ZIP sha256 `f3b32b0092c35e73cd274eb76761bab9e66f4480c74bfbe9a570e665a9d7240d`. 새 `cape_gen.py`, 툴 id CAPE 43(`mecha.cape`, 아이콘 cape.png, `tools_dev/make_icons_v02420.py`에 추가). `cut_engine._execute_closed` → `cape_gen.perform(context, loops, projector)`, `lasso_line.MODES`에 CAPE.
+- 빌드: `columns(outline, n)`(화면 x 열마다 위 / 아래) → 윗점을 뷰 레이로 몸에 투영(`ap.project_patch`) = 칼라, k = 월드 / 픽셀 중앙값, 축 = 칼라 높이 단면 중심(`_axis_at`, 수평 레이 24개). Outline 길이 = (위 − 아래)·k, Preset = Length × (칼라 → 몸 바닥) × `hem_profile`. Wrap = 끝점 반지름 그대로 축 둘레로 연장. `tatter_profile`(뾰족한 띠). `drape`: 열마다 아래로 step, 바깥으로 flare, `_push_out`(BVH find_nearest, 노멀 쪽 Gap) → 행 샘플. `shape_sheet`: 3개 사인 합 주름 × v^0.8, 바람 v², 다시 push. `solid_mesh`: 위 / 아래(두께) 격자 + 테두리 벽 = 닫힌 메쉬. 몸 BVH 캐시(이름 · 정점 수 · 행렬). `pick_body`는 SRC_KEY / Capes 컬렉션 / 플레이트 통과.
 
 ## 0.24.27
 - ZIP sha256 `33754e94ef1ef6536afaf5d8b1a16260d00dae352cf353645cd2c32c36d37cee`. `workspace_ui.MCH_OT_hotkey.invoke`: `only_empty`의 PASS_THROUGH는 이벤트가 수식키 없는 S일 때만(바꾼 키는 항상 실행).

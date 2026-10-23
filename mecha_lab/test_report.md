@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.27
+# Test Report — Mecha Lab 0.24.28
+
+## 0.24.28 결과: 91개 파일 3064/3064 (`tests/test_log_bpy501_v02428.txt`). test_v02428(25): hem / tatter / columns, 마네킹에 Capelet / Cloak / Poncho / Ragged = 라이브 + 닫힌 메쉬 + 등 뒤, Capelet 짧고 Cloak 다리까지, Poncho가 더 넓음, Cloak이 몸 안으로 안 들어감, Length / Wrap 라이브, 주름 0 / 찢김 닫힘, Outline = 밑단이 그린 아랫변, 이전 망토 통과, Apply, 몸 밖 = 안내, 툴 목록 / 아이콘 / Enter / 디스패치. 실제 화면 입력은 미검증.
 
 ## 0.24.27 결과: 90개 파일 3026/3026 (`tests/test_log_bpy501_v02427.txt`). test_v0248: S + 선택 = 통과(Scale), D / Shift+S + 선택 = Split. 실제 키 입력(Blender 화면)은 미검증.
 

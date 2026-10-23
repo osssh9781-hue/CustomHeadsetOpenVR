@@ -234,6 +234,16 @@ def icons():
         d.line(pts, fill=PU, width=W, joint='curve')
         return img
     out['sculpt_crease'] = sculpt_crease
+    # 0.24.28 Cape: a cloak hanging from the shoulders, folds and a pointed hem
+    def cape():
+        img, d = canvas()
+        d.ellipse((216, 60, 296, 140), outline=DIM, width=14)                 # head
+        pts = [(170, 160), (342, 160), (430, 430), (380, 410), (330, 450), (256, 415), (182, 450), (132, 410), (82, 430)]
+        poly(d, pts, ACC, fill=(255, 158, 40, 90))
+        for x0, x1 in ((222, 196), (290, 316)):
+            d.line((x0, 180, x1, 420), fill=FG, width=12)                     # folds
+        return img
+    out['cape'] = cape
     return out
 
 
