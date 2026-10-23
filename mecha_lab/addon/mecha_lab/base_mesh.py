@@ -156,6 +156,10 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
     bend_style: EnumProperty(name='Bend Style', default='SMOOTH', update=_rebuild_update,
                              items=(('SMOOTH', 'Band', 'Bends evenly along the whole length, like a band'),
                                     ('ANGLE', 'Angle', 'A sharp fold at one spot, the two sides stay straight')))
+    bend_round: FloatProperty(name='Corner Round', default=0.3, min=0.0, max=1.0, subtype='FACTOR',
+                              update=_rebuild_update,
+                              description='Angle: round off the outer tip of the fold (x thickness; 0 = sharp, '
+                                          'the inside of the fold stays sharp)')
     bend_pos: FloatProperty(name='Bend Position', default=0.0, min=-0.9, max=0.9, subtype='FACTOR',
                             update=_rebuild_update,
                             description='Where along the length it bends (0 = the middle; Angle: where the fold is)')
@@ -866,16 +870,18 @@ def bend_axis_dir(groups, turn=0.0):
     return (math.cos(a), math.sin(a)), (cx, cy)
 
 
-def bend_coords(u, w, z, half, up, side, style='SMOOTH', hinge_z=0.0):
+def bend_coords(u, w, z, half, up, side, style='SMOOTH', hinge_z=0.0, z_range=(0.0, 0.0), w_range=(0.0, 0.0),
+                round_=0.0):
     """A point (along, across, up) of a shape ``half`` long each way from the bend spot, bent by ``up`` (both
     ends rise for +) and ``side`` (both ends go to +across for +) radians in total - pure.
     SMOOTH: an even arc over the length.  ANGLE: a sharp fold at u = 0 (height ``hinge_z``), both sides stay
-    straight and meet on a mitred joint (no gap, no overlap)."""
+    straight and meet on a mitred joint (no gap, no overlap); ``round_`` (x thickness) rounds the outer tip of
+    the fold (``z_range`` / ``w_range`` = the shape's extent across the fold)."""
     if style == 'ANGLE':
         if abs(side) > 1e-6:
-            u, w = _fold(u, w, 0.0, side / 2.0)
+            u, w = fold_round(u, w, 0.0, side / 2.0, w_range, round_ * (w_range[1] - w_range[0]))
         if abs(up) > 1e-6:
-            u, z = _fold(u, z, hinge_z, up / 2.0)
+            u, z = fold_round(u, z, hinge_z, up / 2.0, z_range, round_ * (z_range[1] - z_range[0]))
         return u, w, z
     if abs(side) > 1e-6 and half > 1e-12:
         r = 2.0 * half / side
@@ -898,6 +904,39 @@ def _fold(s, h, h0, a):
     return x * math.cos(a) - d * math.sin(a), h0 + x * math.sin(a) + d * math.cos(a)
 
 
+def fold_tangent(rho, a):
+    """How far along the outer face the corner round reaches (each side of the fold)."""
+    return rho * math.tan(min(abs(a), math.radians(80)))
+
+
+def fold_round(s, h, h0, a, h_range, rho):
+    """``_fold`` with the outer corner of the fold rounded by radius ``rho`` (the face away from the bend: the
+    low side ``h_range[0]`` when ``a`` > 0); points fade from round on that face to sharp ``rho`` inside - pure."""
+    if a < 0:
+        x, y = fold_round(s, -h, -h0, -a, (-h_range[1], -h_range[0]), rho)
+        return x, -y
+    if s < 0:
+        x, y = fold_round(-s, h, h0, a, h_range, rho)
+        return -x, y
+    x, y = _fold(s, h, h0, a)
+    t = fold_tangent(rho, a)
+    if rho <= 1e-9 or s >= t:
+        return x, y
+    lo = h_range[0]
+    weight = max(0.0, min(1.0, 1.0 - (h - lo) / rho))
+    if weight <= 0.0:
+        return x, y
+    kx, ky = _fold(0.0, lo, h0, a)                       # the sharp outer corner
+    ca, sa = math.cos(a), math.sin(a)
+    lx, ly = kx + ca * s, ky + sa * s                    # where the point sits on the sharp outer face
+    cx, cy = kx + ca * t - sa * rho, ky + sa * t + ca * rho      # centre of the round
+    th = a * (t - s) / t
+    vx, vy = sa * rho, -ca * rho                         # centre -> tangent point, turned toward the corner
+    ax = cx + vx * math.cos(th) + vy * math.sin(th)
+    ay = cy - vx * math.sin(th) + vy * math.cos(th)
+    return x + (ax - lx) * weight, y + (ay - ly) * weight
+
+
 def _bend(bm, groups, p):
     """0.24.20 Bend Up / Down and Bend Sideways along the main axis of the outline (live Base Mesh)."""
     up, side = getattr(p, 'bend_up', 0.0), getattr(p, 'bend_side', 0.0)
@@ -913,22 +952,31 @@ def _bend(bm, groups, p):
     style = getattr(p, 'bend_style', 'SMOOTH')
     zs = [v.co.z for v in bm.verts]
     hinge_z = (min(zs) + max(zs)) / 2.0
+    ws = [-(v.co.x - cx) * dy + (v.co.y - cy) * dx for v in bm.verts]
+    z_range, w_range = (min(zs), max(zs)), (min(ws), max(ws))
+    round_ = getattr(p, 'bend_round', 0.0)
     if style == 'ANGLE':
         cuts = [mid]                                     # an edge loop right on the fold
+        reach = 0.0                                      # + rows across the rounded corner
+        for ang, rng in ((up, z_range), (side, w_range)):
+            if abs(ang) > 1e-6 and round_ > 0:
+                reach = max(reach, fold_tangent(round_ * (rng[1] - rng[0]), ang / 2.0))
+        cuts += [mid + sgn * reach * k / 6 for k in range(1, 7) for sgn in (-1, 1) if reach > 1e-9]
     elif p.profile not in CREATURE_PROFILES and p.profile != 'DOME':
         cuts = [lo + (hi - lo) * k / 24 for k in range(1, 24)]   # flat caps are single faces: slice them to curve
     else:
         cuts = []
     for u in cuts:
-        bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:], dist=1e-7,
-                               plane_co=(cx + dx * u, cy + dy * u, 0.0), plane_no=(dx, dy, 0.0))
+        if lo < u < hi:
+            bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:], dist=1e-7,
+                                   plane_co=(cx + dx * u, cy + dy * u, 0.0), plane_no=(dx, dy, 0.0))
     for v in bm.verts:
         x, y, z = v.co
         u = (x - cx) * dx + (y - cy) * dy - mid
         w = -(x - cx) * dy + (y - cy) * dx
         if style == 'ANGLE' and abs(u) < 1e-6:
             u = 0.0
-        u, w, z = bend_coords(u, w, z, half, up, side, style, hinge_z)
+        u, w, z = bend_coords(u, w, z, half, up, side, style, hinge_z, z_range, w_range, round_)
         u += mid
         v.co = (cx + u * dx - w * dy, cy + u * dy + w * dx, z)
 

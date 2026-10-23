@@ -574,6 +574,8 @@ def draw_base(layout, context):
         col.prop(p, 'bend_up')
         col.prop(p, 'bend_side')
         if abs(p.bend_up) > 1e-6 or abs(p.bend_side) > 1e-6:
+            if p.bend_style == 'ANGLE':
+                col.prop(p, 'bend_round', slider=True)
             col.prop(p, 'bend_pos', slider=True)
             col.prop(p, 'bend_axis')
         target.operator('mch.base_freeze', icon='FREEZE')
