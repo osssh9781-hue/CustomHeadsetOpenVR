@@ -1,8 +1,8 @@
 """0.24.20 Bridge Patch: lasso across two meshes (or two parts of one) to fill the gap between them - for a rough
 creature silhouette that is merged later (e.g. DynaMesh in ZBrush).
 
-Default: the whole lasso becomes one round solid (like a Creature Puff) around the meshes' middle depth - it
-simply overlaps both meshes.
+Default: the whole lasso becomes one solid that simply overlaps both meshes: along the lasso its front follows the
+meshes' surfaces and joins them with a smooth curve across the gap, across it the sides curve back.
 Trim to Gap: only the gap plus a band of the meshes' surface that is sunk into them; where the view ray hits a
 mesh surface that faces you the patch follows it, the gap and the steep sides (Wrap) are filled smoothly.
 
@@ -10,7 +10,9 @@ mesh surface that faces you the patch follows it, the gap and the steep sides (W
     Bulge       push the middle out (+) or in (-)
     Fill        the back: 1 = mirrors the front about the meshes' middle (a full solid), 0 = only to the middle
     Thickness   the least thickness anywhere (0 = Auto)
-    Trim to Gap only: Smooth (0 straight join, 1 slope carries on), Wrap, Sink, Overlap
+    Smooth      0 = straight join across the gap, 1 = the surfaces' slope carries on
+    Wrap        the meshes' sides steeper than this are not followed (the join stays smooth over them)
+    Sink        how far the patch stays under the meshes where they show (x Thickness); Trim to Gap: Overlap
     Resolution  Low / Mid / High
 
 Live until Apply.  ``soft_fill`` / ``bump`` / ``spread`` are pure and tested headless.
@@ -304,7 +306,7 @@ def build(context, ob):
     pts, tris, edges, origins, dirs, depth, facing, size, puff, middle = _samples(context, ob, src, p)
     n = len(pts)
     if not p.trim:
-        return _build_whole(n, tris, edges, origins, dirs, depth, size, puff, middle, p)
+        return _build_whole(n, tris, edges, origins, dirs, depth, facing, size, puff, middle, p)
     # the surfaces hold the patch where they face you; their steep sides (toward the outline) are covered by the
     # patch like a skin, so it does not dive into the gap along them.  Soft weights: no stair-step seam.
     grip = math.cos(p.wrap)
@@ -368,23 +370,32 @@ def build(context, ob):
     return verts, out
 
 
-def _build_whole(n, tris, edges, origins, dirs, depth, size, puff, middle, p):
-    """0.24.20 the whole lasso as one round solid around the meshes' middle (not trimmed to the gap): it simply
-    overlaps both meshes, to be merged later (e.g. DynaMesh in ZBrush)."""
+def _build_whole(n, tris, edges, origins, dirs, depth, facing, size, puff, middle, p):
+    """0.24.20 the whole lasso as one solid (not trimmed to the gap), overlapping both meshes - to be merged
+    later (e.g. DynaMesh in ZBrush).  Along the lasso the front follows the meshes' surfaces where they face you
+    and joins them with a smooth curve across the gap (Smooth, Wrap); across it the sides curve back (Round);
+    the back mirrors the front about the meshes' middle (Fill)."""
+    grip = math.cos(p.wrap)
+    weight = [_smoothstep((facing[i] - grip) / 0.15 + 0.5) if depth[i] is not None else 0.0 for i in range(n)]
+    if max(weight) <= 0.0:
+        raise cg.CutError('Bridge Patch: no surface faces you inside the lasso (lower Wrap).')
+    surface = soft_fill(n, edges, depth, weight, p.smooth)
     if any(m is not None for m in middle):
         core = soft_fill(n, edges, middle, [1.0 if m is not None else 0.0 for m in middle], 0.5)
     else:                                            # open meshes (no far side): somewhat behind the surfaces
-        core = soft_fill(n, edges, depth, [1.0 if t is not None else 0.0 for t in depth], 0.0)
-        core = [x + 0.15 * size for x in core]
-    top = max(max(puff), 1e-12)
+        core = [x + 0.15 * size for x in surface]
+    if abs(p.bulge) > 1e-6:
+        bp = bump(n, edges, {i: 0.0 for i in range(n) if weight[i] >= 0.5})
+        surface = [surface[i] - p.bulge * 0.25 * size * bp[i] for i in range(n)]
+    top = local_max(n, edges, puff, max(2, QUALITY[p.quality] // 3))
     thick = p.thickness if p.thickness > 0 else 0.03 * size
     verts_f, verts_b = [], []
     for i in range(n):
-        r = p.round * puff[i] + p.bulge * 0.25 * size * (puff[i] / top)
-        front = core[i] - max(r, thick / 2.0)
-        behind = max(thick, (core[i] - front) * (1.0 + p.fill))
-        verts_f.append(origins[i] + dirs[i] * front)
-        verts_b.append(origins[i] + dirs[i] * (front + behind))
+        dep = surface[i] + p.round * max(0.0, top[i] - puff[i])     # the sides curve back (a round section)
+        dep += thick * p.sink * weight[i]                          # just under the meshes where they show
+        behind = max(thick, (core[i] - dep) * (1.0 + p.fill))
+        verts_f.append(origins[i] + dirs[i] * dep)
+        verts_b.append(origins[i] + dirs[i] * (dep + behind))
     return _solid(verts_f, verts_b, tris)
 
 
@@ -507,11 +518,11 @@ def draw(layout, context):
     col.prop(p, 'bulge', slider=True)
     col.prop(p, 'fill', slider=True)
     col.prop(p, 'thickness', text='Min Thickness')
+    col = target.column(align=True)
+    col.prop(p, 'smooth', slider=True)
+    col.prop(p, 'wrap')
+    col.prop(p, 'sink')
     if p.trim:
-        col = target.column(align=True)
-        col.prop(p, 'smooth', slider=True)
-        col.prop(p, 'wrap')
-        col.prop(p, 'sink')
         col.prop(p, 'overlap')
     target.row().prop(p, 'quality', expand=True)
     if ob is not None:

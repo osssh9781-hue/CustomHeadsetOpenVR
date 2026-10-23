@@ -131,14 +131,25 @@ lo_y, hi_y = min(q.y for q in xs), max(q.y for q in xs)
 check('whole lasso: covers the lasso over both meshes (not trimmed to the gap)', lo_y < -1.4 and hi_y > 1.0,
       (round(lo_y, 3), round(hi_y, 3)))
 zc = front_z(gap_xy)
-check('whole lasso: in the gap it is in front', zc[1] == ob.name and zc[0] > 0.2, zc)
-zmax, zmin = max(q.z for q in xs), min(q.z for q in xs)
-check('whole lasso: round around the meshes\' middle (front and back about equal)', abs(zmax + zmin) < 0.2,
-      (round(zmax, 3), round(zmin, 3)))
+check('whole lasso: covers the gap, in front', zc[1] == ob.name and zc[0] > -0.05, zc)
+line = []
+for y in range(380, 640, 20):                    # along the lasso through the gap
+    z, who = front_z((505, y))
+    line.append(z)
+check('whole lasso: a smooth curve joins the two meshes\' fronts (no step)', None not in line
+      and max(abs(line[k + 1] - line[k]) for k in range(len(line) - 1)) < 0.25, [round(z, 2) for z in line])
+zs_side = front_z((462, 500))[0]
+check('whole lasso: across, the sides curve back (round section)', zs_side is not None and zs_side < zc[0] - 0.05,
+      (zc[0], zs_side))
+over = (505, 590)                                # on the upper mesh, where the patch runs just under it
+b1 = back_under(over)
+fz = front_z(over)[0]
+check('whole lasso: Fill 1 = the back goes past the meshes\' middle into their far half', b1 is not None
+      and b1 < -0.1, (fz, b1))
 ob.mch_bridge.fill = 0.0
-zmin0 = min((ob.matrix_world @ v.co).z for v in ob.data.vertices)
-check('whole lasso: Fill 0 = the back only to the middle', zmin0 > zmin + 0.2 and ob.mch_bridge.last_error == '',
-      (zmin, zmin0))
+b0 = back_under(over)
+check('whole lasso: Fill 0 = the back only to the middle', b0 is not None and b0 > b1 + 0.1
+      and ob.mch_bridge.last_error == '', (b1, b0))
 ob.mch_bridge.round = 0.5
 check('whole lasso: Round rebuilds, closed', ob.mch_bridge.last_error == '' and non_manifold(ob) == 0)
 
