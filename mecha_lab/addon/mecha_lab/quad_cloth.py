@@ -22,7 +22,10 @@ from mathutils.bvhtree import BVHTree
 KIND_ITEMS = [
     ('CLOTH', 'Cloth', 'Simulated cloth: hangs and folds under gravity over the body'),
     ('RIB', 'Rib Knit', 'Snug knitted band (cuffs, hems, collars) with ridges across it'),
-    ('PADDING', 'Padding', 'Quilted puffer: each quad becomes a pillow, the edges stay stitched'),
+]
+SOLVER_ITEMS = [
+    ('CLOTH', 'Cloth Modifier', 'Blender Cloth (5.0+): self collision, slack keeps the pins in place'),
+    ('NODES', 'Geometry Nodes', 'Cloth Dynamics node asset (Blender 5.2+): faster, weaker self collision'),
 ]
 PIN_ITEMS = [
     ('SEAM', 'Joins', 'Pin where the selection meets the rest of your mesh (falls back to Top)'),
@@ -215,7 +218,7 @@ def _add_thickness(ob, thickness):
 # -----------------------------------------------------------------------------
 
 
-def simulate_cloth(context, ob, body, pins, frames, fabric, distance):
+def simulate_cloth(context, ob, body, pins, frames, fabric, distance, slack=0.0):
     """Blender Cloth on ob (gravity, body collider, pins), keep the last frame, clean up everything it added."""
     scene = context.scene
     added_col = None
@@ -229,8 +232,9 @@ def simulate_cloth(context, ob, body, pins, frames, fabric, distance):
     mass, tension, bending = FABRICS.get(fabric, FABRICS['COTTON'])
     mod = ob.modifiers.new('MCH Cloth', 'CLOTH')
     cs = mod.settings
-    cs.quality = 6
+    cs.quality = 8
     cs.mass = mass
+    cs.shrink_min = -slack              # negative shrink = the cloth is bigger than the retopo: folds
     cs.tension_stiffness = cs.compression_stiffness = tension
     cs.shear_stiffness = tension * 0.4
     cs.bending_stiffness = bending
@@ -264,6 +268,84 @@ def simulate_cloth(context, ob, body, pins, frames, fabric, distance):
         for v, c in zip(ob.data.vertices, coords):
             v.co = c
         ob.data.update()
+
+
+def nodes_solver_available():
+    return bpy.app.version >= (5, 2, 0) and _dynamics_blend() is not None
+
+
+def _dynamics_blend():
+    import os
+    p = os.path.join(bpy.utils.system_resource('DATAFILES') or '', 'assets', 'nodes',
+                     'geometry_nodes_dynamics_assets.blend')
+    return p if os.path.exists(p) else None
+
+
+def simulate_nodes(context, ob, body, pins, frames, distance):
+    """Blender 5.2 Cloth Dynamics (XPBD) node asset on ob: pins, the body as collider; keep the last frame."""
+    path = _dynamics_blend()
+    if path is None:
+        raise QuadClothError('Geometry Nodes cloth needs Blender 5.2 or newer.')
+    groups = {g.name: g for g in bpy.data.node_groups}
+    need = [n for n in ('Cloth Dynamics (Experimental)', 'Collider') if n not in groups]
+    if need:
+        with bpy.data.libraries.load(path, link=False) as (src, dst):
+            dst.node_groups = [n for n in need if n in src.node_groups]
+        for g in dst.node_groups:
+            groups[g.name] = g
+    cloth_ng, coll_ng = groups['Cloth Dynamics (Experimental)'], groups['Collider']
+    me = ob.data
+    attr = me.attributes.new('mch_pin', 'FLOAT', 'POINT')
+    for i in pins:
+        attr.data[i].value = 1.0
+    ng = bpy.data.node_groups.new('MCH Quad Cloth Sim', 'GeometryNodeTree')
+    ng.interface.new_socket('Geometry', in_out='INPUT', socket_type='NodeSocketGeometry')
+    ng.interface.new_socket('Geometry', in_out='OUTPUT', socket_type='NodeSocketGeometry')
+    N, L = ng.nodes, ng.links
+    gi, go = N.new('NodeGroupInput'), N.new('NodeGroupOutput')
+    g = N.new('GeometryNodeGroup')
+    g.node_tree = cloth_ng
+    na = N.new('GeometryNodeInputNamedAttribute')
+    na.data_type = 'FLOAT'
+    na.inputs['Name'].default_value = 'mch_pin'
+    L.new(na.outputs['Attribute'], g.inputs['Pin Group'])
+    L.new(gi.outputs[0], g.inputs['Geometry'])
+    L.new(g.outputs['Geometry'], go.inputs[0])
+    if body is not None and body is not ob:
+        oi = N.new('GeometryNodeObjectInfo')
+        oi.inputs[0].default_value = body
+        oi.transform_space = 'RELATIVE'
+        cn = N.new('GeometryNodeGroup')
+        cn.node_tree = coll_ng
+        cn.inputs['Margin'].default_value = distance
+        L.new(oi.outputs['Geometry'], cn.inputs['Geometry'])
+        L.new(cn.outputs['Collider'], g.inputs['Effectors'])
+    g.inputs['Collision Radius'].default_value = distance * 0.5
+    mod = ob.modifiers.new('MCH Cloth Nodes', 'NODES')
+    mod.node_group = ng
+    scene = context.scene
+    old_frame = scene.frame_current
+    start = scene.frame_start
+    try:
+        for f in range(start, start + frames + 1):
+            scene.frame_set(f)
+        dg = context.evaluated_depsgraph_get()
+        ev = ob.evaluated_get(dg)
+        em = ev.to_mesh()
+        try:
+            coords = [v.co.copy() for v in em.vertices]
+        finally:
+            ev.to_mesh_clear()
+    finally:
+        ob.modifiers.remove(mod)
+        bpy.data.node_groups.remove(ng)
+        if 'mch_pin' in me.attributes:
+            me.attributes.remove(me.attributes['mch_pin'])
+        scene.frame_set(old_frame)
+    if len(coords) == len(me.vertices):
+        for v, c in zip(me.vertices, coords):
+            v.co = c
+        me.update()
 
 
 def _boundary_loops(bm):
@@ -341,17 +423,23 @@ def make_cloth(context, source, bm, seam, body, bvh, size, st):
                 if abs((v.co - a).length + (v.co - b_).length - (a - b_).length) < tol * 10:
                     new_seam.add(v.index)
         seam = new_seam
+    pins = _pin_set(bm, st.pin, seam)
     nrm = _smooth_normals(bm)
     loose = st.loose * size
     for v in bm.verts:
-        v.co += nrm[v] * loose
-    if st.extra_length > 0:
-        ztop = max(v.co.z for v in bm.verts)
-        for v in bm.verts:
-            v.co.z = ztop - (ztop - v.co.z) * (1.0 + st.extra_length)
-    pins = _pin_set(bm, st.pin, seam)
+        if v.index not in pins:
+            v.co += nrm[v] * loose
     ob = _new_object(context, source, bm, 'CLOTH')
-    simulate_cloth(context, ob, body, pins, st.frames, st.fabric, max(1e-4, size * 0.002))
+    dist = max(1e-4, size * 0.002)
+    if st.solver == 'NODES':
+        # the node solver takes its rest shape from the start: give it the slack as extra width
+        if st.extra_length > 0:
+            for v in ob.data.vertices:
+                if v.index not in pins:
+                    v.co += v.normal * (st.extra_length * size * 0.05)
+        simulate_nodes(context, ob, body, pins, st.frames, dist)
+    else:
+        simulate_cloth(context, ob, body, pins, st.frames, st.fabric, dist, st.extra_length)
     # calm the sim noise a little (pins and open edges stay)
     sb = bmesh.new()
     sb.from_mesh(ob.data)
@@ -489,10 +577,11 @@ class MCH_PG_QuadCloth(bpy.types.PropertyGroup):
     # cloth
     fabric: EnumProperty(name='Fabric', items=FABRIC_ITEMS, default='COTTON')
     pin: EnumProperty(name='Pin', items=PIN_ITEMS, default='SEAM')
-    loose: FloatProperty(name='Loose', default=0.008, min=0.0, max=0.1, precision=4,
+    loose: FloatProperty(name='Loose', default=0.004, min=0.0, max=0.1, precision=4,
                          description='Moves the panel off the body before it falls (part of the body height)')
-    extra_length: FloatProperty(name='Extra Length', default=0.04, min=0.0, max=0.5,
-                                description='Longer than the retopo: the spare cloth turns into folds')
+    extra_length: FloatProperty(name='Slack', default=0.2, min=0.0, max=0.5,
+                                description='Spare cloth: bigger than the retopo (the pins stay put), it folds')
+    solver: EnumProperty(name='Solver', items=SOLVER_ITEMS, default='CLOTH')
     frames: IntProperty(name='Frames', default=60, min=5, max=400, description='Simulation length')
     sim_res: IntProperty(name='Detail', default=1, min=0, max=3,
                          description='Each quad is split this many times before the sim (finer folds, slower)')
@@ -543,6 +632,8 @@ def draw(layout, context):
     col = box.column(align=True)
     if st.kind == 'CLOTH':
         col.prop(st, 'fabric')
+        if nodes_solver_available():
+            col.prop(st, 'solver')
         col.prop(st, 'pin')
         col.prop(st, 'loose', slider=True)
         col.prop(st, 'extra_length', slider=True)
@@ -552,7 +643,7 @@ def draw(layout, context):
         col.prop(st, 'rib_fit', slider=True)
         col.prop(st, 'rib_pitch', slider=True)
         col.prop(st, 'rib_depth', slider=True)
-    else:
+    elif st.kind == 'PADDING':
         col.prop(st, 'puff', slider=True)
         col.prop(st, 'pad_cuts')
     col = box.column(align=True)
@@ -560,12 +651,12 @@ def draw(layout, context):
     col.prop(st, 'hide_source')
     row = box.row()
     row.scale_y = 1.4
-    label = {'CLOTH': 'MAKE CLOTH', 'RIB': 'MAKE RIB KNIT', 'PADDING': 'MAKE PADDING'}[st.kind]
+    label = {'CLOTH': 'MAKE CLOTH', 'RIB': 'MAKE RIB KNIT'}.get(st.kind, 'MAKE')
     row.operator('mch.quad_cloth', text=label, icon='MOD_CLOTH').kind = st.kind
     col = layout.column(align=True)
     col.scale_y = 0.8
     for line in ('Edit Mode: select the quads of your retopo', 'Cloth: simulated (a few seconds)',
-                 'Rib: cuffs / hems / collars', 'Padding: every quad puffs up'):
+                 'Slack = spare cloth for folds', 'Rib: cuffs / hems / collars'):
         col.label(text=line)
 
 

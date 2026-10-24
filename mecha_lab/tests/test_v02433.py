@@ -68,28 +68,37 @@ d = [bvh.find_nearest(body.matrix_world.inverted() @ (ob.matrix_world @ v.co))[3
 check('Rib: snug on the body (close) with ridges (distance varies)', max(d) < 0.05 and max(d) - min(d) > 0.002,
       (min(d), max(d)))
 check('Rib: thickness is a Solidify modifier', any(m.type == 'SOLIDIFY' for m in ob.modifiers))
-# padding: the middle
-n_pad = select(lambda c: 0.75 < c.z <= 1.38)
-ob, msg = qc.perform(C, 'PADDING')
-check('Padding: each quad split (more verts)', len(ob.data.vertices) > n_pad * 4, (len(ob.data.vertices), n_pad))
-d = [bvh.find_nearest(body.matrix_world.inverted() @ (ob.matrix_world @ v.co))[3] for v in ob.data.vertices]
-check('Padding: pillows stand out from the seams', max(d) - min(d) > 0.01, (min(d), max(d)))
-# cloth: the rest, pinned where it joins the padding (seam)
-n_cl = select(lambda c: c.z <= 0.75)
+# cloth: the rest, pinned where it joins the rib (seam), with slack
+n_cl = select(lambda c: c.z <= 1.38)
 st.frames = 25
-z0 = min((retopo.matrix_world @ v.co).z for v in retopo.data.vertices)
+st.extra_length = 0.2
+src = {tuple(round(x, 4) for x in (retopo.matrix_world @ v.co)) for v in retopo.data.vertices}
 ob, msg = qc.perform(C, 'CLOTH')
 check('Cloth: simulated and pinned at the join', 'pinned' in msg and ob.name.endswith('_Cloth'), msg)
-zs = [(ob.matrix_world @ v.co).z for v in ob.data.vertices]
-check('Cloth: it fell / got longer (gravity + extra length)', min(zs) < z0 - 0.005, (min(zs), z0))
+moved = sum(1 for v in ob.data.vertices if tuple(round(x, 4) for x in (ob.matrix_world @ v.co)) not in src)
+check('Cloth: the sim moved it (slack folds)', moved > len(ob.data.vertices) * 0.5, (moved, len(ob.data.vertices)))
 inside = sum(1 for v in ob.data.vertices
              if Vector(((ob.matrix_world @ v.co).x, (ob.matrix_world @ v.co).y)).length < 0.29
              and 0.0 < (ob.matrix_world @ v.co).z < 1.6)
 check('Cloth: stays out of the body', inside == 0, inside)
 check('Cloth: no cloth / pin left on it, the body unchanged', not any(m.type == 'CLOTH' for m in ob.modifiers)
       and not ob.vertex_groups and not body.modifiers)
+if qc.nodes_solver_available():
+    bpy.ops.object.mode_set(mode='OBJECT') if C.mode != 'OBJECT' else None
+    for p in retopo.data.polygons:
+        p.hide = False
+    for v in retopo.data.vertices:
+        v.hide = False
+    n_gn = select(lambda c: c.z <= 1.38)
+    st.solver = 'NODES'
+    ob2, msg2 = qc.perform(C, 'CLOTH')
+    check('Geometry Nodes solver (5.2): runs, leaves no node group / attribute behind',
+          not any(m.type == 'NODES' for m in ob2.modifiers) and 'mch_pin' not in ob2.data.attributes
+          and not any(g.name.startswith('MCH Quad Cloth Sim') for g in bpy.data.node_groups), msg2)
+    st.solver = 'CLOTH'
+    bpy.data.objects.remove(ob2)
 check('the source mesh keeps all its faces (only hidden)', len(retopo.data.polygons) == nq
-      and all(p.hide for p in retopo.data.polygons))
+      and any(p.hide for p in retopo.data.polygons))
 check('Quad Cloth in Edit Mode panel + face menus', hasattr(bpy.types, 'MCH_PT_quad_cloth')
       and bpy.ops.mch.quad_cloth is not None)
 summary()
