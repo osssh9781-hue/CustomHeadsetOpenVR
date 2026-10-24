@@ -466,6 +466,23 @@ def remove_object_and_mesh(ob):
 # -----------------------------------------------------------------------------
 
 
+def gn_get(mod, ident):
+    """A Geometry Nodes modifier input value (Blender 5.2+: mod.properties.inputs, older: mod[ident])."""
+    props = getattr(mod, 'properties', None)
+    if props is not None and hasattr(props, 'inputs'):
+        return getattr(props.inputs, ident).value
+    return mod[ident]
+
+
+def gn_set(mod, ident, value):
+    """Set a Geometry Nodes modifier input (Blender 5.2+ and older)."""
+    props = getattr(mod, 'properties', None)
+    if props is not None and hasattr(props, 'inputs'):
+        getattr(props.inputs, ident).value = value
+    else:
+        mod[ident] = value
+
+
 def non_manifold_edge_count(mesh):
     bm = bmesh.new()
     try:

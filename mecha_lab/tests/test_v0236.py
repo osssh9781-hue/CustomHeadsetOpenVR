@@ -34,7 +34,7 @@ for k, skin in enumerate(('CROC', 'DRAGON', 'CROC_BACK')):
     z = np.array([v.co.z for v in o.evaluated_get(dg).data.vertices])
     res[skin] = (r == {'FINISHED'} and cw.is_creature(o) and o.get('mch_creature') == skin, z)
 check('crocodile / dragon / croc back plates made', all(v[0] for v in res.values()))
-check('each is displaced', all(v[1].ptp() > 1e-3 for v in res.values()), {k: round(float(v[1].ptp()), 4) for k, v in res.items()})
+check('each is displaced', all(np.ptp(v[1]) > 1e-3 for v in res.values()), {k: round(float(np.ptp(v[1])), 4) for k, v in res.items()})
 
 
 def tail(z):

@@ -21,6 +21,8 @@ import bpy
 from bpy.app.handlers import persistent
 from mathutils import Matrix, Vector
 
+from . import core_geometry as cg
+
 GROUP = 'MCH_FoldPatch'
 MOD_PREFIX = 'MCH_FoldPatch'
 HANDLE_KEY = 'mch_fold_target'
@@ -266,7 +268,7 @@ def modifier_of(handle):
     for m in target.modifiers:
         if m.type == 'NODES' and m.name.startswith(MOD_PREFIX) and m.node_group is not None:
             try:
-                if m[_ident(m.node_group, 'Handle')] == handle:
+                if cg.gn_get(m, _ident(m.node_group, 'Handle')) == handle:
                     return target, m
             except KeyError:
                 continue
@@ -278,7 +280,7 @@ def patches_of(target):
     for m in target.modifiers:
         if m.type == 'NODES' and m.name.startswith(MOD_PREFIX) and m.node_group is not None:
             try:
-                h = m[_ident(m.node_group, 'Handle')]
+                h = cg.gn_get(m, _ident(m.node_group, 'Handle'))
             except KeyError:
                 h = None
             if h is not None:
@@ -297,10 +299,10 @@ def push(handle):
     if img is None or handle.get('mch_fold_baked') != key or not img.has_data:
         img = ensure_image(handle)
     g = mod.node_group
-    mod[_ident(g, 'Image')] = img
+    cg.gn_set(mod, _ident(g, 'Image'), img)
     for name, val in (('Size', p.size), ('Depth', p.depth), ('Wrap', p.wrap), ('Fade', p.fade), ('Taper', p.taper)):
-        mod[_ident(g, name)] = float(val)
-    mod[_ident(g, 'Mirror X')] = bool(p.mirror)
+        cg.gn_set(mod, _ident(g, name), float(val))
+    cg.gn_set(mod, _ident(g, 'Mirror X'), bool(p.mirror))
     handle.empty_display_size = p.size
     target.update_tag()
     try:
@@ -384,7 +386,7 @@ def add_patch(context, target, point=None):
         p['depth'] = radius * 0.16
     mod = target.modifiers.new(f'{MOD_PREFIX}', 'NODES')
     mod.node_group = build_group()
-    mod[_ident(mod.node_group, 'Handle')] = handle
+    cg.gn_set(mod, _ident(mod.node_group, 'Handle'), handle)
     # before a Cloth Plate's thickness (Solidify): both sides move together
     shell = next((i for i, mm in enumerate(target.modifiers) if mm.type == 'SOLIDIFY'), None)
     if shell is not None:

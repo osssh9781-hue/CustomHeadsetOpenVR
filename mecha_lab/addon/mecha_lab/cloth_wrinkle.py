@@ -420,6 +420,16 @@ def _skin_height(N, L, I, Db):
     return _math(N, L, 'ADD', skin, _math(N, L, 'MULTIPLY', ew_sw.outputs[0], I['Skin Edge Height']))
 
 
+def _float_sockets(socks):
+    """Random Value sockets by name: the FLOAT ones (before 5.2 each type had its own Min / Max / Value)."""
+    out = {}
+    for sk in socks:
+        if sk.name not in out or (sk.enabled and sk.type in {'VALUE', 'INT'} and sk.name in {'Min', 'Max', 'Value'}
+                                  and out[sk.name].type != 'VALUE'):
+            out[sk.name] = sk
+    return out
+
+
 def build_group():
     """The wrinkle node group (rebuilt when an older version is found)."""
     ng = bpy.data.node_groups.get(GROUP)
@@ -452,9 +462,9 @@ def build_group():
     # 0.20.1 the seed also picks the flow direction, and the folds bend across the panel (Bend)
     rnd = N.new('FunctionNodeRandomValue')
     rnd.data_type = 'FLOAT'
-    sock = {i.identifier: i for i in rnd.inputs}
-    sock['Min_001'].default_value = -math.pi / 2          # the FLOAT min / max (names repeat per type)
-    sock['Max_001'].default_value = math.pi / 2
+    sock = _float_sockets(rnd.inputs)
+    sock['Min'].default_value = -math.pi / 2          # the FLOAT min / max (names repeat per type before 5.2)
+    sock['Max'].default_value = math.pi / 2
     zero = N.new('FunctionNodeInputInt')
     zero.integer = 0
     L.new(zero.outputs[0], rnd.inputs['ID'])
@@ -475,7 +485,7 @@ def build_group():
     L.new(fvec.outputs[0], fno.inputs['Vector'])
     bend = _math(N, L, 'MULTIPLY', _math(N, L, 'SUBTRACT', fno.outputs['Fac'], vb=0.5),
                  _math(N, L, 'MULTIPLY', I['Bend'], vb=3.0))
-    ang = _math(N, L, 'ADD', _math(N, L, 'ADD', I['Direction'], {o.identifier: o for o in rnd.outputs}['Value_001']), bend)
+    ang = _math(N, L, 'ADD', _math(N, L, 'ADD', I['Direction'], _float_sockets(rnd.outputs)['Value']), bend)
     L.new(_math(N, L, 'MULTIPLY', ang, vb=-1.0), rot.inputs['Angle'])
     inv_s = _math(N, L, 'DIVIDE', vb=None, va=1.0, b=I['Scale'])
     scl = N.new('ShaderNodeVectorMath')
@@ -679,11 +689,11 @@ def build_group():
     def srand(kid, lo, hi, salt):
         rv = N.new('FunctionNodeRandomValue')
         rv.data_type = 'FLOAT'
-        sk = {i.identifier: i for i in rv.inputs}
-        sk['Min_001'].default_value, sk['Max_001'].default_value = lo, hi
+        sk = _float_sockets(rv.inputs)
+        sk['Min'].default_value, sk['Max'].default_value = lo, hi
         L.new(kid, sk['ID'])
         L.new(_math(N, L, 'ADD', I['Seed'], vb=salt), sk['Seed'])
-        return {o.identifier: o for o in rv.outputs}['Value_001']
+        return _float_sockets(rv.outputs)['Value']
 
     def mixv(v, amount):                                   # 1 + (v - 1) * amount
         return _math(N, L, 'ADD', va=1.0, b=_math(N, L, 'MULTIPLY', _math(N, L, 'SUBTRACT', v, vb=1.0), amount))
@@ -834,7 +844,7 @@ def _ident(name):
 
 def get_input(ob, name):
     mod = ob.modifiers.get(MOD)
-    return None if mod is None else mod[_ident(name)]
+    return None if mod is None else cg.gn_get(mod, _ident(name))
 
 
 SIZE_INPUTS = {'Strength', 'Scale', 'Edge Soft', 'Lift', 'Puff', 'Puff Width', 'Roll', 'Roll Width', 'Pinch', 'Pinch 2',
@@ -909,7 +919,7 @@ def clamp_lengths(ob, size):
         v = float(get_input(ob, name))
         c = min(max(v, lo * size), hi * size)
         if abs(c - v) > 1e-9 * max(1.0, abs(v)):
-            ob.modifiers.get(MOD)[_ident(name)] = c       # quietly: not remembered as the user's choice
+            cg.gn_set(ob.modifiers.get(MOD), _ident(name), c)  # quietly: not remembered as the user's choice
             changed.append(name)
     return changed
 FOLD_INPUTS = {'Pinch Spacing', 'Pinch Length', 'Fold Tilt', 'Tilt Random', 'Length Random', 'Variety', 'Seed',
@@ -1112,7 +1122,7 @@ def set_input(ob, name, value):
     mod = ob.modifiers.get(MOD)
     if mod is None:
         return
-    mod[_ident(name)] = value
+    cg.gn_set(mod, _ident(name), value)
     from . import last_used
     size = float(ob.get('mch_wrinkle_size', 0.0) or 0.0)
     if size > 0 and name in INPUT_NAMES:
@@ -2045,7 +2055,7 @@ def scale_all(ob, factor):
         if name not in INPUT_NAMES:
             continue
         v = float(get_input(ob, name)) * factor
-        mod[_ident(name)] = v
+        cg.gn_set(mod, _ident(name), v)
         if size > 0:
             last_used.remember(sec, name, v)
             last_used.remember(sec, name + SIZE_TAG, size)

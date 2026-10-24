@@ -16,6 +16,8 @@ import math
 import bpy
 from bpy.props import BoolProperty, EnumProperty, IntProperty
 from mathutils import Matrix, Vector
+
+from . import core_geometry as cg
 from . import tool_state as ts
 
 GROUP = 'MCH_CreatureShell'
@@ -250,14 +252,14 @@ def is_shell(ob):
 
 
 def get_input(ob, name):
-    return ob.modifiers[MOD][_ident(name)]
+    return cg.gn_get(ob.modifiers[MOD], _ident(name))
 
 
 def set_input(ob, name, value):
     mod = ob.modifiers.get(MOD)
     if mod is None:
         return
-    mod[_ident(name)] = value
+    cg.gn_set(mod, _ident(name), value)
     from . import last_used
     if name not in {'Up', 'U', 'V'}:
         last_used.remember('shell', name, value if not isinstance(value, (list, tuple)) else list(value))
@@ -282,15 +284,15 @@ def attach(ob, up_world, size=1.0):
     up = (ob.matrix_world.inverted().to_3x3() @ Vector(up_world)).normalized()
     uu = up.orthogonal().normalized()
     vv = up.cross(uu).normalized()
-    mod[_ident('Up')] = tuple(up)
-    mod[_ident('U')] = tuple(uu)
-    mod[_ident('V')] = tuple(vv)
+    cg.gn_set(mod, _ident('Up'), tuple(up))
+    cg.gn_set(mod, _ident('U'), tuple(uu))
+    cg.gn_set(mod, _ident('V'), tuple(vv))
     for name, frac in DEFAULTS.items():
-        mod[_ident(name)] = frac * size
+        cg.gn_set(mod, _ident(name), frac * size)
     from . import last_used
     for name, val in last_used.recall('shell').items():
         try:
-            mod[_ident(name)] = val
+            cg.gn_set(mod, _ident(name), val)
         except (KeyError, TypeError):
             pass
     ob['mch_shell_size'] = size

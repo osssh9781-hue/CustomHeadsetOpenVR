@@ -142,7 +142,7 @@ def ev_z():
 
 
 z0, me0 = ev_z()
-check('hard plates + bulges displace the plate', len(me0.vertices) > len(sh.data.vertices) and z0.ptp() > 1e-3)
+check('hard plates + bulges displace the plate', len(me0.vertices) > len(sh.data.vertices) and np.ptp(z0) > 1e-3)
 C.view_layer.objects.active = sh
 cs.set_input(sh, 'Facets', 0.0)
 cs.set_input(sh, 'Bulge', 0.0)

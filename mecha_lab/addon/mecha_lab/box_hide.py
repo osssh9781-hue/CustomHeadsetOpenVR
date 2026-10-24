@@ -100,7 +100,7 @@ def volume_of(ob):
     if mod is None or mod.node_group is None:
         return None
     try:
-        return mod[_ident(mod.node_group, 'Volume')]
+        return cg.gn_get(mod, _ident(mod.node_group, 'Volume'))
     except KeyError:
         return None
 
@@ -111,14 +111,14 @@ def is_hidden(ob):
 
 def get_cap(ob):
     mod = ob.modifiers.get(MOD)
-    return bool(mod[_ident(mod.node_group, 'Cap')]) if mod is not None else True
+    return bool(cg.gn_get(mod, _ident(mod.node_group, 'Cap'))) if mod is not None else True
 
 
 def set_cap(ob, value):
     mod = ob.modifiers.get(MOD)
     if mod is None:
         return
-    mod[_ident(mod.node_group, 'Cap')] = bool(value)
+    cg.gn_set(mod, _ident(mod.node_group, 'Cap'), bool(value))
     ob.update_tag()
 
 
@@ -155,13 +155,13 @@ def _ensure_modifier(target, vol, cap):
     if mod is None:
         mod = target.modifiers.new(MOD, 'NODES')
         mod.node_group = g
-        mod[_ident(g, 'Cap')] = bool(cap)
+        cg.gn_set(mod, _ident(g, 'Cap'), bool(cap))
     elif mod.node_group is not g:
         mod.node_group = g
-    mod[_ident(g, 'Volume')] = vol
-    mod[_ident(g, 'Manifold')] = cg.non_manifold_edge_count(target.data) == 0
+    cg.gn_set(mod, _ident(g, 'Volume'), vol)
+    cg.gn_set(mod, _ident(g, 'Manifold'), cg.non_manifold_edge_count(target.data) == 0)
     size = max(target.dimensions) if max(target.dimensions) > 0 else 1.0
-    mod[_ident(g, 'Epsilon')] = size * 1e-4
+    cg.gn_set(mod, _ident(g, 'Epsilon'), size * 1e-4)
     target.update_tag()
     return mod
 
@@ -231,7 +231,7 @@ def _detach_sharers(context, vol, owner):
         except RuntimeError:
             pass
         mod = o.modifiers.get(MOD)
-        mod[_ident(mod.node_group, 'Volume')] = own
+        cg.gn_set(mod, _ident(mod.node_group, 'Volume'), own)
         o.update_tag()
     vol[VOL_KEY] = owner.name
 
