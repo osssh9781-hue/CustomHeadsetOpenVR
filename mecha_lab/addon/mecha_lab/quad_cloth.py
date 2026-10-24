@@ -218,7 +218,7 @@ def _add_thickness(ob, thickness):
 # -----------------------------------------------------------------------------
 
 
-def simulate_cloth(context, ob, body, pins, frames, fabric, distance, slack=0.0):
+def simulate_cloth(context, ob, body, pins, frames, fabric, distance, slack=0.0, detail=1):
     """Blender Cloth on ob (gravity, body collider, pins), keep the last frame, clean up everything it added."""
     scene = context.scene
     added_col = None
@@ -232,7 +232,7 @@ def simulate_cloth(context, ob, body, pins, frames, fabric, distance, slack=0.0)
     mass, tension, bending = FABRICS.get(fabric, FABRICS['COTTON'])
     mod = ob.modifiers.new('MCH Cloth', 'CLOTH')
     cs = mod.settings
-    cs.quality = 8
+    cs.quality = 6 + 2 * detail                # finer cloth needs more steps
     cs.mass = mass
     cs.shrink_min = -slack              # negative shrink = the cloth is bigger than the retopo: folds
     cs.tension_stiffness = cs.compression_stiffness = tension
@@ -241,6 +241,7 @@ def simulate_cloth(context, ob, body, pins, frames, fabric, distance, slack=0.0)
     if vg is not None:
         cs.vertex_group_mass = vg.name
     mod.collision_settings.distance_min = distance
+    mod.collision_settings.collision_quality = 2 + detail
     mod.collision_settings.use_self_collision = True
     mod.collision_settings.self_distance_min = distance
     old_frame = scene.frame_current
@@ -439,7 +440,7 @@ def make_cloth(context, source, bm, seam, body, bvh, size, st):
                     v.co += v.normal * (st.extra_length * size * 0.05)
         simulate_nodes(context, ob, body, pins, st.frames, dist)
     else:
-        simulate_cloth(context, ob, body, pins, st.frames, st.fabric, dist, st.extra_length)
+        simulate_cloth(context, ob, body, pins, st.frames, st.fabric, dist, st.extra_length, st.sim_res)
     # calm the sim noise a little (pins and open edges stay)
     sb = bmesh.new()
     sb.from_mesh(ob.data)
