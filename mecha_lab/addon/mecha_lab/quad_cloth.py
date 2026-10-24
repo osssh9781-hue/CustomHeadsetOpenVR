@@ -266,8 +266,81 @@ def simulate_cloth(context, ob, body, pins, frames, fabric, distance):
         ob.data.update()
 
 
+def _boundary_loops(bm):
+    """Open edge loops as ordered vert lists."""
+    edges = {e for e in bm.edges if e.is_boundary}
+    loops = []
+    while edges:
+        e = edges.pop()
+        loop = [e.verts[0], e.verts[1]]
+        grow = True
+        while grow:
+            grow = False
+            tail = loop[-1]
+            for f in tail.link_edges:
+                if f in edges:
+                    w = f.other_vert(tail)
+                    edges.discard(f)
+                    if w is loop[0]:
+                        break
+                    loop.append(w)
+                    grow = True
+                    break
+        loops.append(loop)
+    return loops
+
+
+def _relax(bm, passes, factor, keep=()):
+    keep = set(keep)
+    for _ in range(passes):
+        new = {}
+        for v in bm.verts:
+            if v in keep or v.is_boundary or not v.link_edges:
+                continue
+            avg = sum((e.other_vert(v).co for e in v.link_edges), Vector()) / len(v.link_edges)
+            new[v] = v.co.lerp(avg, factor)
+        for v, c in new.items():
+            v.co = c
+
+
+def _subdivide(bm, cuts):
+    """Split every quad into (cuts+1)^2 quads (quads stay quads)."""
+    if cuts > 0:
+        bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=cuts, use_grid_fill=True)
+    bm.verts.ensure_lookup_table()
+    bm.verts.index_update()
+    bm.normal_update()
+
+
+def _add_smooth(ob, levels=1):
+    if levels > 0:
+        m = ob.modifiers.new('MCH Smooth', 'SUBSURF')
+        m.levels = m.render_levels = levels
+
+
 def make_cloth(context, source, bm, seam, body, bvh, size, st):
     orient_outward(bm, bvh)
+    seam_pts = [bm.verts[i].co.copy() for i in seam]
+    _subdivide(bm, st.sim_res)                           # finer cloth = real folds
+    if seam_pts:                                         # joins after the split: on / between the old seam verts
+        from mathutils.kdtree import KDTree
+        kd = KDTree(len(seam_pts))
+        for i, c in enumerate(seam_pts):
+            kd.insert(c, i)
+        kd.balance()
+        tol = size * 1e-5
+        new_seam = set()
+        for v in bm.verts:
+            if not v.is_boundary:
+                continue
+            near = kd.find_n(v.co, 2)
+            if near and near[0][2] < tol:
+                new_seam.add(v.index)
+            elif len(near) == 2:
+                a, b_ = near[0][0], near[1][0]
+                if abs((v.co - a).length + (v.co - b_).length - (a - b_).length) < tol * 10:
+                    new_seam.add(v.index)
+        seam = new_seam
     nrm = _smooth_normals(bm)
     loose = st.loose * size
     for v in bm.verts:
@@ -279,50 +352,57 @@ def make_cloth(context, source, bm, seam, body, bvh, size, st):
     pins = _pin_set(bm, st.pin, seam)
     ob = _new_object(context, source, bm, 'CLOTH')
     simulate_cloth(context, ob, body, pins, st.frames, st.fabric, max(1e-4, size * 0.002))
+    # calm the sim noise a little (pins and open edges stay)
+    sb = bmesh.new()
+    sb.from_mesh(ob.data)
+    sb.verts.ensure_lookup_table()
+    _relax(sb, 2, 0.3, keep=[sb.verts[i] for i in pins])
+    sb.to_mesh(ob.data)
+    sb.free()
     _add_thickness(ob, st.thickness * size)
+    _add_smooth(ob, 1)
     return ob, len(pins)
 
 
 def make_rib(context, source, bm, body, bvh, size, st):
     orient_outward(bm, bvh)
-    bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=1, use_grid_fill=True)
-    bm.normal_update()
-    fit = st.rib_fit * size
-    for v in bm.verts:                                   # snug onto the body
+    pitch = max(1e-5, st.rib_pitch * size)
+    edge = sum(e.calc_length() for e in bm.edges) / max(1, len(bm.edges))
+    _subdivide(bm, max(1, min(5, int(math.ceil(2.5 * edge / pitch)) - 1)))   # enough verts per ridge
+    nrm = _smooth_normals(bm, 2)
+    # snug: the whole band moves in by the same amount (keeps your retopo smooth, no body bumps)
+    gaps = []
+    for v in bm.verts:
         hit = bvh.find_nearest(v.co)
         if hit[0] is not None:
-            v.co = hit[0] + hit[1] * fit
-    for _ in range(3):                                   # even out the snapped band
-        new = {}
+            gaps.append((v.co - hit[0]).length)
+    if gaps:
+        shift = max(0.0, sorted(gaps)[len(gaps) // 2] - st.rib_fit * size)
         for v in bm.verts:
-            if v.is_boundary or not v.link_edges:
-                continue
-            avg = sum((e.other_vert(v).co for e in v.link_edges), Vector()) / len(v.link_edges)
-            new[v] = v.co.lerp(avg, 0.5)
-        for v, c in new.items():
-            hit = bvh.find_nearest(c)
-            v.co = (hit[0] + hit[1] * fit) if hit[0] is not None else c
-    bm.normal_update()
-    P = np.array([v.co[:] for v in bm.verts])
-    c = P.mean(0)
-    _w, V = np.linalg.eigh(np.cov((P - c).T))
-    axis, e1 = Vector(V[:, 0]), Vector(V[:, 2])
-    e2 = axis.cross(e1)
-    rel = P - c
-    radial = rel - np.outer(rel @ V[:, 0], V[:, 0])
-    radius = float(np.mean(np.linalg.norm(radial, axis=1)))
-    angles = np.arctan2(rel @ np.array(e2[:]), rel @ np.array(e1[:]))
-    coverage = np.ptp(np.unwrap(np.sort(angles)))
-    pitch = max(1e-5, st.rib_pitch * size)
-    depth = st.rib_depth * size
-    ring = coverage > math.radians(300) and radius > pitch
-    n = max(6, int(round(2 * math.pi * radius / pitch)))
-    nrm = _smooth_normals(bm, 2)
-    for v, a, r in zip(bm.verts, angles, rel):
-        t = (n * a / (2 * math.pi)) if ring else (float(np.dot(r, V[:, 2])) / pitch)
-        v.co += nrm[v] * (depth * rib_wave(t))
+            v.co -= nrm[v] * shift
+    # ridges across the band: phase = arc length along the longest open edge (follows your quad flow)
+    loops = _boundary_loops(bm)
+    if loops:
+        ref = max(loops, key=lambda lp: sum((lp[i].co - lp[i - 1].co).length for i in range(1, len(lp))))
+        arc = [0.0]
+        for i in range(1, len(ref)):
+            arc.append(arc[-1] + (ref[i].co - ref[i - 1].co).length)
+        closed = (ref[0].co - ref[-1].co).length < edge * 2
+        total = arc[-1] + ((ref[0].co - ref[-1].co).length if closed else 0.0)
+        n = max(4, int(round(total / pitch)))
+        step = total / n                                 # whole number of ridges round a closed band
+        from mathutils.kdtree import KDTree
+        kd = KDTree(len(ref))
+        for i, v in enumerate(ref):
+            kd.insert(v.co, i)
+        kd.balance()
+        depth = st.rib_depth * size
+        for v in bm.verts:
+            _co, i, _d = kd.find(v.co)
+            v.co += nrm[v] * (depth * rib_wave(arc[i] / step) ** 0.7)
     ob = _new_object(context, source, bm, 'RIB')
     _add_thickness(ob, st.thickness * size * 1.3)
+    _add_smooth(ob, 1)
     return ob
 
 
@@ -334,8 +414,7 @@ def make_padding(context, source, bm, body, bvh, size, st):
     seam = {g for g in res.get('geom_split', []) if isinstance(g, bmesh.types.BMVert)}   # on the old edges
     seam.update(v for v in bm.verts if tuple(round(c, 6) for c in v.co) in corners)   # old corners
     bm.normal_update()
-    # steps from the seams (breadth first over edges)
-    dist = {v: 0 for v in seam}
+    dist = {v: 0 for v in seam}                          # steps from the seams (breadth first)
     frontier = list(seam)
     while frontier:
         nxt = []
@@ -347,12 +426,15 @@ def make_padding(context, source, bm, body, bvh, size, st):
                     nxt.append(w)
         frontier = nxt
     half = (cuts + 1) / 2.0
-    nrm = _smooth_normals(bm, 1)
+    nrm = _smooth_normals(bm, 2)
     puff = st.puff * size
     for v in bm.verts:
-        v.co += nrm[v] * (puff * pillow_weight(dist.get(v, 0), half))
+        w = pillow_weight(dist.get(v, 0), half)
+        # full, flat-topped pillow; the stitch line pulled in a little
+        v.co += nrm[v] * (puff * (w ** 0.45) if v not in seam else -puff * 0.12)
     ob = _new_object(context, source, bm, 'PADDING')
     _add_thickness(ob, st.thickness * size)
+    _add_smooth(ob, 1)
     return ob
 
 
@@ -412,15 +494,17 @@ class MCH_PG_QuadCloth(bpy.types.PropertyGroup):
     extra_length: FloatProperty(name='Extra Length', default=0.04, min=0.0, max=0.5,
                                 description='Longer than the retopo: the spare cloth turns into folds')
     frames: IntProperty(name='Frames', default=60, min=5, max=400, description='Simulation length')
+    sim_res: IntProperty(name='Detail', default=1, min=0, max=3,
+                         description='Each quad is split this many times before the sim (finer folds, slower)')
     # rib
     rib_fit: FloatProperty(name='Snug', default=0.004, min=0.0, max=0.05, precision=4,
                            description='Distance from the body (part of the body height)')
-    rib_pitch: FloatProperty(name='Rib Width', default=0.008, min=0.001, max=0.05, precision=4)
-    rib_depth: FloatProperty(name='Rib Depth', default=0.0025, min=0.0, max=0.03, precision=4)
+    rib_pitch: FloatProperty(name='Rib Width', default=0.005, min=0.001, max=0.05, precision=4)
+    rib_depth: FloatProperty(name='Rib Depth', default=0.0018, min=0.0, max=0.03, precision=4)
     # padding
     puff: FloatProperty(name='Puff', default=0.012, min=0.0, max=0.08, precision=4,
                         description='How far each quad swells out (part of the body height)')
-    pad_cuts: IntProperty(name='Smoothness', default=3, min=1, max=8, description='Cuts per quad')
+    pad_cuts: IntProperty(name='Smoothness', default=4, min=1, max=8, description='Cuts per quad')
 
 
 class MCH_OT_quad_cloth(bpy.types.Operator):
@@ -463,6 +547,7 @@ def draw(layout, context):
         col.prop(st, 'loose', slider=True)
         col.prop(st, 'extra_length', slider=True)
         col.prop(st, 'frames')
+        col.prop(st, 'sim_res')
     elif st.kind == 'RIB':
         col.prop(st, 'rib_fit', slider=True)
         col.prop(st, 'rib_pitch', slider=True)
