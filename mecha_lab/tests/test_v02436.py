@@ -105,6 +105,36 @@ check('Make = Tube: a closed loop tube', res == {'FINISHED'} and new and new[0].
 res, new = run([(0, 0, 0)])
 check('a single node makes nothing (scene untouched)', res == {'CANCELLED'} and not new)
 
+# Follow Body: the lattice sticks to a body, the line wraps round it
+from mathutils.bvhtree import BVHTree
+bpy.ops.mesh.primitive_uv_sphere_add(segments=48, ring_count=24, radius=1.0, location=(0, 0, 0))
+body = C.active_object
+body.name = 'GymBody'
+bvh = jg.body_bvh(C, body, True)
+FB = (Vector((0, 0, 0)), Matrix.Identity(3), 0.1, jg.Body(bvh, 0.05, body.name))
+pn = jg.node_world(FB, (0, 0, 15))
+check('Follow Body: a node sits on the body, lifted by the offset', abs(pn.length - 1.05) < 0.01, pn.length)
+arc = [(0, j, 12) for j in range(-8, 9)]
+wp = jg.path_points(FB, arc)
+rr = [p.length for p in wp]
+check('the line is laid on the body in short pieces (wraps the curve, never through it)',
+      len(wp) > len(jg.corners_only([jg.node_world(FB, n) for n in arc])) and min(rr) > 1.03 and max(rr) < 1.07,
+      (len(wp), min(rr), max(rr)))
+res, new = run(arc, body=body.name, lift=0.5)
+tb = new[0] if new else None
+if tb is not None:
+    vr = [(tb.matrix_world @ v.co).length for v in tb.data.vertices]
+check('Follow Body tube: wraps the body without sinking into it', res == {'FINISHED'} and tb is not None
+      and min(vr) > 1.0 and max(vr) < 1.12, (res, min(vr) if tb else None, max(vr) if tb else None))
+res2, new2 = run(arc, body=body.name, lift=3.0)
+if new2:
+    vr2 = [(new2[0].matrix_world @ v.co).length for v in new2[0].data.vertices]
+check('Lift (F9 / wheel): further off the body', res2 == {'FINISHED'} and new2 and min(vr2) > 1.25, min(vr2) if new2 else None)
+ring = [(i, 0, k) for i, k in [(12, 0), (12, 12), (0, 12), (-12, 12), (-12, 0), (-12, -12), (0, -12), (12, -12), (12, 0)]]
+res, new = run(ring, body=body.name, lift=0.5)
+check('closed loop on a body = a closed tube round it (not a flat Base Mesh)', res == {'FINISHED'} and new
+      and getattr(new[0], 'mch_tube', None) is not None and new[0].mch_tube.closed)
+check('Follow Body is on by default', C.scene.mch_gym.follow_body is True)
 check('tool keymap: drag draws, mouse move shows the bars, R turns',
       {k[0] for k in jg.MCH_TOOL_jungle_gym.bl_keymap} == {'mch.gym_draw', 'mch.gym_hover', 'mch.gym_turn'})
 check('45 degrees is on by default', C.scene.mch_gym.diagonals is True)

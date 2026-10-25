@@ -11,6 +11,8 @@ on screen); going back over the last node erases it.
 * Back to the start node = a closed loop: flat loops become a live Base Mesh, the rest live tubes.
 * Grid direction: World / Object / View / Surface, R / Shift+R turns it by 15 degrees.  The bar spacing follows
   the zoom (1 / 2 / 5 steps) unless a fixed spacing is set.
+* Follow Body (on): start on a mesh and the bars stick to it like a net - the line wraps round the body
+  (split short and laid on it, never through it); the wheel lifts it off one cell a step.
 * After the stroke, F9 (Adjust Last Operation): Magnet, Corner, Thickness, Make.
 ``nice_step``, ``nearest_node``, ``crawl``, ``depth_offset``, ``path_points``, ``planar_axis`` and ``lattice_lines``
 are the working parts (no UI).
@@ -56,13 +58,48 @@ def nice_step(x):
     return min((m * k for m in (1.0, 2.0, 5.0, 10.0)), key=lambda c: abs(math.log(c / x)))
 
 
+class Body:
+    """Follow Body: the lattice sticks to this surface (``bvh`` in world space), ``offset`` out along it."""
+
+    def __init__(self, bvh, offset=0.0, name=''):
+        self.bvh, self.offset, self.name = bvh, offset, name
+
+    def place(self, p):
+        loc, normal, _i, _d = self.bvh.find_nearest(p)
+        if loc is None:
+            return p
+        return loc + normal.normalized() * self.offset
+
+    def moved(self, offset):
+        return Body(self.bvh, offset, self.name)
+
+
+def body_of(frame):
+    return frame[3] if len(frame) > 3 else None
+
+
 def node_world(frame, n):
-    origin, rot, step = frame
-    return origin + rot @ (Vector(n) * step)
+    """World point of a lattice node (Follow Body: on the body surface, out by the offset)."""
+    p = frame[0] + frame[1] @ (Vector(n) * frame[2])
+    body = body_of(frame)
+    return body.place(p) if body is not None else p
+
+
+def wrap(frame, pts, max_len=None):
+    """Follow Body: split the line into short pieces and lay each on the body (no cutting through it)."""
+    body = body_of(frame)
+    if body is None or len(pts) < 2:
+        return pts
+    max_len = max_len or frame[2] / 3.0
+    out = [body.place(pts[0])]
+    for a, b in zip(pts, pts[1:]):
+        n = max(1, int(math.ceil((b - a).length / max_len)))
+        out += [body.place(a.lerp(b, i / n)) for i in range(1, n + 1)]
+    return corners_only(out, 1e-7)
 
 
 def nearest_node(frame, p):
-    origin, rot, step = frame
+    origin, rot, step = frame[0], frame[1], frame[2]
     local = rot.transposed() @ (Vector(p) - origin) / step
     return tuple(int(round(c)) for c in local)
 
@@ -207,6 +244,10 @@ def path_points(frame, path, raw=(), magnet=1.0, corner=0.0, closed=False):
         pts = [c.lerp(q, 1.0 - magnet) for q in free for c in (_closest_on(poly, q),)]
         if closed and len(pts) > 2:
             pts = pts[:-1]
+    if body_of(frame) is not None:
+        pts = wrap(frame, pts + [pts[0]] if closed else pts)
+        if closed and len(pts) > 2 and (pts[-1] - pts[0]).length < 1e-6:
+            pts = pts[:-1]
     return pts
 
 
@@ -282,7 +323,7 @@ def world_per_px(region, rv3d, at):
     return max((a - b).length, 1e-6)
 
 
-def frame_at(context, region, rv3d, mouse):
+def frame_at(context, region, rv3d, mouse, fresh=False):
     """(frame, start point) under the mouse: the surface hit, else the depth of the 3D cursor."""
     st = context.scene.mch_gym
     origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, mouse)
@@ -294,13 +335,42 @@ def frame_at(context, region, rv3d, mouse):
         hit, loc, normal, _i, _ob, _m = context.scene.ray_cast(dg, origin, ray)
     except (RuntimeError, AttributeError):
         hit = False
+    body = None
     if hit and st.use_surface:
         p = loc
+        if st.follow_body and _ob is not None and _ob.type == 'MESH':
+            body = Body(body_bvh(context, _ob, fresh), st.body_offset, _ob.name)
     else:
         normal = None
         p = view3d_utils.region_2d_to_location_3d(region, rv3d, mouse, context.scene.cursor.location)
     step = st.spacing if not st.auto_spacing else nice_step(world_per_px(region, rv3d, p) * st.cell_px)
-    return (grid_origin(context, st.orient), grid_rotation(context, st.orient, normal), step), p
+    if body is not None:
+        body = body.moved(st.body_offset * step)          # Offset is in cells
+    rot = grid_rotation(context, st.orient, None if body is not None else normal)
+    return (grid_origin(context, st.orient), rot, step, body), p
+
+
+_BVH = {}
+
+
+def body_bvh(context, ob, fresh=False):
+    """World-space BVH of the evaluated body (cached for the hover; rebuilt when a stroke starts)."""
+    from mathutils.bvhtree import BVHTree
+    key = (ob.name, tuple(c for row in ob.matrix_world for c in row), len(ob.data.vertices))
+    if not fresh and _BVH.get('key') == key:
+        return _BVH['bvh']
+    dg = context.evaluated_depsgraph_get()
+    ev = ob.evaluated_get(dg)
+    me = ev.to_mesh()
+    try:
+        mw = ob.matrix_world
+        verts = [mw @ v.co for v in me.vertices]
+        polys = [tuple(pl.vertices) for pl in me.polygons]
+    finally:
+        ev.to_mesh_clear()
+    bvh = BVHTree.FromPolygons(verts, polys)
+    _BVH.update(key=key, bvh=bvh)
+    return bvh
 
 
 # -----------------------------------------------------------------------------
@@ -313,7 +383,7 @@ def make_result(context, frame, path, raw, magnet, corner, radius_cells, make, v
     from . import curve_tube as ct
     closed = len(path) >= 4 and tuple(path[-1]) == tuple(path[0])
     axis = planar_axis(path) if closed else None
-    kind = make if make != 'AUTO' else ('BASE' if closed and axis is not None else 'TUBE')
+    kind = make if make != 'AUTO' else ('BASE' if closed and axis is not None and body_of(frame) is None else 'TUBE')
     pts = path_points(frame, path, raw, magnet, corner, closed)
     if len(pts) < 2:
         raise ValueError('The line is too short (crawl at least one bar).')
@@ -382,6 +452,11 @@ class MCH_PG_Gym(bpy.types.PropertyGroup):
                            description='Fixed bar spacing (Auto Spacing off)')
     use_surface: BoolProperty(name='Start on Surface', default=True,
                               description='Start at the surface under the mouse (else at the 3D cursor depth)')
+    follow_body: BoolProperty(name='Follow Body', default=True, update=_redraw,
+                              description='Start on a mesh: the bars stick to it and the line wraps round it '
+                                          '(wheel: lift off / closer)')
+    body_offset: FloatProperty(name='Lift', default=0.5, min=-2.0, max=20.0,
+                               description='Follow Body: how far off the body the line starts (x the bar spacing)')
     diagonals: BoolProperty(name='45°', default=True, update=_redraw,
                             description='Also crawl at 45 degrees (across the cells)')
     magnet: FloatProperty(name='Magnet', default=1.0, min=0.0, max=1.0,
@@ -533,15 +608,22 @@ class MCH_OT_gym_draw(bpy.types.Operator):
     corner: FloatProperty(name='Corner', default=0.0, min=0.0, max=1.0)
     radius_cells: FloatProperty(name='Thickness', default=0.15, min=0.01, max=2.0)
     make: EnumProperty(name='Make', items=MAKE_ITEMS, default='AUTO')
+    body: StringProperty(options={'HIDDEN'})
+    lift: FloatProperty(name='Lift', default=0.5, min=-2.0, max=20.0,
+                        description='Follow Body: how far off the body (x the bar spacing)')
 
     @classmethod
     def poll(cls, context):
         return context.mode == 'OBJECT'
 
-    def stored_frame(self):
+    def stored_frame(self, context=None):
         r = self.frame_rot
         rot = Matrix(((r[0], r[1], r[2]), (r[3], r[4], r[5]), (r[6], r[7], r[8])))
-        return Vector(self.frame_origin), rot, self.frame_step
+        body = None
+        ob = bpy.data.objects.get(self.body) if self.body else None
+        if ob is not None and ob.type == 'MESH' and context is not None:
+            body = Body(body_bvh(context, ob, True), self.lift * self.frame_step, ob.name)
+        return Vector(self.frame_origin), rot, self.frame_step, body
 
     def execute(self, context):
         path = [tuple(n) for n in json.loads(self.nodes or '[]')]
@@ -550,7 +632,7 @@ class MCH_OT_gym_draw(bpy.types.Operator):
             self.report({'WARNING'}, 'Jungle Gym: crawl at least one bar')
             return {'CANCELLED'}
         try:
-            _ob, msg = make_result(context, self.stored_frame(), path, raw, self.magnet, self.corner,
+            _ob, msg = make_result(context, self.stored_frame(context), path, raw, self.magnet, self.corner,
                                    self.radius_cells, self.make, Vector(self.view_dir))
         except Exception as exc:          # noqa: BLE001  (CutError / ValueError: tell, change nothing)
             self.report({'WARNING'}, f'Jungle Gym: {exc}')
@@ -563,6 +645,8 @@ class MCH_OT_gym_draw(bpy.types.Operator):
         col.prop(self, 'magnet', slider=True)
         col.prop(self, 'corner', slider=True)
         col.prop(self, 'radius_cells', slider=True)
+        if self.body:
+            col.prop(self, 'lift', slider=True)
         self.layout.prop(self, 'make', expand=True)
 
     # --- the drag ------------------------------------------------------------
@@ -572,7 +656,8 @@ class MCH_OT_gym_draw(bpy.types.Operator):
             return {'PASS_THROUGH'}
         region, rv3d = context.region, context.region_data
         mouse = (event.mouse_region_x, event.mouse_region_y)
-        self.frame, p = frame_at(context, region, rv3d, mouse)
+        self.frame, p = frame_at(context, region, rv3d, mouse, fresh=True)
+        self.lift_cells = context.scene.mch_gym.body_offset
         self.path = [nearest_node(self.frame, p)]
         self.raw_pts = [node_world(self.frame, self.path[0])]
         self.preview = []
@@ -589,8 +674,10 @@ class MCH_OT_gym_draw(bpy.types.Operator):
         st = context.scene.mch_gym
         context.area.header_text_set(
             f'Jungle Gym  |  {len(self.path) - 1} bars  spacing {self.frame[2]:g}  |  Magnet {st.magnet:.2f}  '
-            f'Corner {st.corner:.2f}  |  Wheel: front / back   go back = erase   3D mouse / MMB: view   '
-            'RMB/Esc: cancel')
+            f'Corner {st.corner:.2f}  |  '
+            + (f'Body: {body_of(self.frame).name}  lift {self.lift_cells:g}  Wheel: lift   '
+               if body_of(self.frame) is not None else 'Wheel: front / back   ')
+            + 'go back = erase   3D mouse / MMB: view   RMB/Esc: cancel')
 
     def _to_screen(self, context):
         region, rv3d = context.region, context.region_data
@@ -629,6 +716,13 @@ class MCH_OT_gym_draw(bpy.types.Operator):
             self.raw_pts.append(self._raw_point(context, mouse))
             self._update_preview(context)
             self._header(context)
+        elif event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'} and body_of(self.frame) is not None:
+            # Follow Body: the wheel lifts the line off the body / lays it closer, one cell a step
+            self.lift_cells += 1.0 if event.type == 'WHEELUPMOUSE' else -1.0
+            self.lift_cells = max(-2.0, self.lift_cells)
+            self.frame = self.frame[:3] + (body_of(self.frame).moved(self.lift_cells * self.frame[2]),)
+            self._update_preview(context)
+            self._header(context)
         elif event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
             off = depth_offset(self.frame, self.vd, event.type == 'WHEELUPMOUSE')
             _step_to(self.path, _add(self.path[-1], off))
@@ -637,7 +731,9 @@ class MCH_OT_gym_draw(bpy.types.Operator):
             self._header(context)
         elif event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
             self._finish_ui(context)
-            o, rot, step = self.frame
+            o, rot, step = self.frame[:3]
+            body = body_of(self.frame)
+            self.body, self.lift = (body.name, self.lift_cells) if body is not None else ('', 0.0)
             self.frame_origin, self.frame_step = o, step
             self.frame_rot = [rot[i][j] for i in range(3) for j in range(3)]
             self.nodes = json.dumps([list(n) for n in self.path])
@@ -689,6 +785,9 @@ def draw(layout, context, compact=False):
     layout.prop(st, 'make', text='' if compact else 'Make')
     layout.prop(st, 'diagonals', toggle=True)
     layout.prop(st, 'use_surface', toggle=True)
+    layout.prop(st, 'follow_body', toggle=True)
+    if st.follow_body:
+        layout.prop(st, 'body_offset')
 
 
 CLASSES = (MCH_PG_Gym, MCH_OT_gym_hover, MCH_OT_gym_turn, MCH_OT_gym_draw)
