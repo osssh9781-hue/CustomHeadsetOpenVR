@@ -25,4 +25,23 @@ check('the hold key shows in the Hotkeys box (and is saved)', 'mch.concept_hold'
 check('hold operator registered', hasattr(bpy.ops.mch, 'concept_hold'))
 bpy.ops.mch.set_tool(tool='GYM')
 check('picking Jungle Gym from the menu selects it', bpy.context.scene.mch_settings.mch_active_tool == 'GYM')
+
+# Ctrl while dragging: turn the grabbed part (and F9 Turn)
+import math
+import numpy as np
+from mecha_lab import concept_move as cm
+o = cm.displace(np.array([[1.0, 0, 0]]), (0, 0, 0), (0, 0, 0), 10.0, 'CLAY', hardness=0.9, twist=(0, 0, 1, math.pi / 2))
+check('turn: the grabbed part turns round the grab point (90 degrees)', np.allclose(o[0], (0, 1, 0), atol=1e-9), o.tolist())
+o = cm.displace(np.array([[3.0, 0.5, 0], [-3.0, 0.5, 0]]), (2, 0, 0), (0.2, 0, 0), 3.0, 'CLAY', mirror_x=True, hardness=0.9,
+                twist=(0, 0, 1, 0.5))
+check('turn with Mirror X: the other side turns the mirrored way', np.allclose(o[1], o[0] * (-1, 1, 1), atol=1e-9), o.tolist())
+o2 = cm.displace(np.array([[3.0, 0.5, 0]]), (2, 0, 0), (0.2, 0, 0), 3.0, 'CLAY', hardness=0.9)
+check('no turn = the old move exactly', np.allclose(o2[0], (3.2, 0.5, 0)))
+bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0))
+cube = bpy.context.active_object
+res = bpy.ops.mch.concept_move('EXEC_DEFAULT', centre=(0, 0, 0), delta=(0, 0, 0), radius=5.0, hardness=0.95,
+                               generate_mesh=False, mirror=False, twist=math.radians(45), twist_axis=(0, 0, 1))
+xs = [v.co.x for v in cube.data.vertices]
+check('F9 Turn: the cube turned 45 degrees (corner now on the X axis)', res == {'FINISHED'}
+      and abs(max(xs) - math.sqrt(0.5)) < 1e-4, max(xs))
 summary()

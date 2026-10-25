@@ -7,7 +7,7 @@ stretched faces).  Then F9 / Adjust Last Operation: Size, Hardness, Pull, Shape,
 original.
 * Shape: Sphere or Box (a view-aligned cube - frames, plates, flat panels).  Hardness: how much of the brush moves
   whole (1 = a rigid lump, 0 = a soft dome).  Falloffs: Clay (hardness), Elastic (Kelvinlet grab), Sharp.
-* While dragging: Shift = straight out of the surface, wheel = depth, [ ] = size, right click / Esc = cancel.
+* While dragging: Shift = straight out of the surface, Ctrl + left / right = turn the grabbed part, wheel = depth, [ ] = size, right click / Esc = cancel.
   A 3D mouse (and middle mouse) still navigates the view; with Follow View the grab stays in front of you, so
   moving the view carries the clay even with the mouse held still (re-evaluated 60 times a second).
 * Live objects (cape, hood, plates ... still on their sliders) need no Apply: every move is recorded on the object
@@ -86,28 +86,48 @@ def box_distance(r, axes, round_=0.2):
     return (p ** k).sum(1) ** (1.0 / k)
 
 
+def rotation_matrix(axis, angle):
+    """3x3 rotation about ``axis`` by ``angle`` (Rodrigues) - numpy."""
+    a = np.asarray(axis, dtype=np.float64)
+    n = np.linalg.norm(a)
+    if n < 1e-12 or abs(angle) < 1e-12:
+        return np.eye(3)
+    x, y, z = a / n
+    k = np.array([[0.0, -z, y], [z, 0.0, -x], [-y, x, 0.0]])
+    return np.eye(3) + math.sin(angle) * k + (1.0 - math.cos(angle)) * (k @ k)
+
+
 def displace(co, centre, delta, radius, falloff='CLAY', mirror_x=False, shape='SPHERE', hardness=0.5,
-             axes=None):
-    """New coordinates (N,3) for a grab at centre moved by delta (all in the same space)."""
+             axes=None, twist=None):
+    """New coordinates (N,3) for a grab at centre moved by delta (all in the same space).
+    ``twist`` = (axis x, y, z, angle): the grabbed part also turns round the grab point (Ctrl while dragging)."""
     co = np.asarray(co, dtype=np.float64)
     out = co.copy()
     if axes is None:
         axes = np.eye(3)
     axes = np.asarray(axes, dtype=np.float64).reshape(3, 3)
-    brushes = [(np.asarray(centre, dtype=np.float64), np.asarray(delta, dtype=np.float64), axes)]
+    tw_axis = np.asarray(twist[:3], dtype=np.float64) if twist is not None else np.zeros(3)
+    tw_angle = float(twist[3]) if twist is not None else 0.0
+    brushes = [(np.asarray(centre, dtype=np.float64), np.asarray(delta, dtype=np.float64), axes,
+                rotation_matrix(tw_axis, tw_angle))]
     if mirror_x and abs(centre[0]) > radius * 0.5:          # a grab on the middle already moves both sides
         flip = np.array([-1.0, 1.0, 1.0])
-        brushes.append((brushes[0][0] * flip, brushes[0][1] * flip, axes * flip))
-    for c, d, ax in brushes:
+        # a mirrored turn: the axis keeps x and flips y / z (axial vector under the X mirror)
+        rot_m = rotation_matrix(tw_axis * np.array([1.0, -1.0, -1.0]), tw_angle)
+        brushes.append((brushes[0][0] * flip, brushes[0][1] * flip, axes * flip, rot_m))
+    for c, d, ax, rot in brushes:
         r = co - c
+        if tw_angle:                                          # the turn of the grabbed part, as a move
+            d = d[None, :] + r @ rot.T - r
         dist = box_distance(r, ax) if shape == 'BOX' else np.sqrt((r * r).sum(1))
+        dd = d if d.ndim == 2 else d[None, :]
         if falloff == 'ELASTIC':
             s, t = elastic_weights(dist, radius)
-            out += s[:, None] * d[None, :] + (t * (r @ d))[:, None] * r
+            out += s[:, None] * dd + (t * (r * dd).sum(1))[:, None] * r
         elif falloff == 'SHARP':
-            out += sharp_weights(dist, radius)[:, None] * d[None, :]
+            out += sharp_weights(dist, radius)[:, None] * dd
         else:
-            out += clay_weights(dist, radius, hardness)[:, None] * d[None, :]
+            out += clay_weights(dist, radius, hardness)[:, None] * dd
     return out
 
 
@@ -116,7 +136,7 @@ def move_field(move):
     def f(co):
         return displace(co, move['centre'], move['delta'], move['radius'], move.get('falloff', 'CLAY'),
                         move.get('mirror', False), move.get('shape', 'SPHERE'), move.get('hardness', 0.5),
-                        move.get('axes'))
+                        move.get('axes'), move.get('twist'))
     return f
 
 
@@ -449,11 +469,17 @@ class MCH_OT_concept_move(bpy.types.Operator):
     mirror: BoolProperty(name='Mirror X', default=True)
     generate_mesh: BoolProperty(name='Generate', default=True,
                                 description='Really generate the pulled part (even faces, no stretching)')
+    twist: FloatProperty(name='Turn', default=0.0, subtype='ANGLE',
+                         description='Turn of the grabbed part (Ctrl + mouse left / right while dragging)')
+    twist_axis: FloatVectorProperty(size=3, default=(0, 0, 1), options={'HIDDEN'})
 
     def move_dict(self):
-        return {'centre': list(self.centre), 'delta': [c * self.pull for c in self.delta],
-                'radius': self.radius * self.size, 'falloff': self.falloff, 'mirror': self.mirror,
-                'shape': self.shape, 'hardness': self.hardness, 'axes': list(self.axes)}
+        mv = {'centre': list(self.centre), 'delta': [c * self.pull for c in self.delta],
+              'radius': self.radius * self.size, 'falloff': self.falloff, 'mirror': self.mirror,
+              'shape': self.shape, 'hardness': self.hardness, 'axes': list(self.axes)}
+        if abs(self.twist) > 1e-9:
+            mv['twist'] = list(self.twist_axis) + [self.twist]
+        return mv
 
     @classmethod
     def poll(cls, context):
@@ -480,6 +506,7 @@ class MCH_OT_concept_move(bpy.types.Operator):
         col = self.layout.column(align=True)
         col.prop(self, 'size', slider=True)
         col.prop(self, 'pull', slider=True)
+        col.prop(self, 'twist')
         if self.falloff == 'CLAY':
             col.prop(self, 'hardness', slider=True)
         self.layout.prop(self, 'shape', expand=True)
@@ -521,6 +548,8 @@ class MCH_OT_concept_move(bpy.types.Operator):
         self.center_2d = mouse
         self.depth = 0.0
         self.shift = False
+        self.twist_angle = 0.0
+        self.last_x = mouse[0]
         self.dist0 = (loc - origin).length                   # Follow View: distance along the mouse ray
         self.mw = ob.matrix_world.copy()
         self.mwi = self.mw.inverted_safe()
@@ -542,7 +571,8 @@ class MCH_OT_concept_move(bpy.types.Operator):
         context.area.header_text_set(
             f'Concept Move  |  {st.shape.title()} {st.radius_px}px  hardness {st.hardness:.2f}  |  {st.falloff.title()}'
             f'  |  Mirror X {"on" if st.mirror_x else "off"}  |  Follow View {"on" if st.follow_view else "off"}'
-            '  |  Shift: out   Wheel: depth   [ ]: size   3D mouse / MMB: view   RMB/Esc: cancel')
+            f'  |  Turn {math.degrees(getattr(self, "twist_angle", 0.0)):.0f}°'
+            '  |  Shift: out   Ctrl: turn   Wheel: depth   [ ]: size   3D mouse / MMB: view   RMB/Esc: cancel')
 
     def _target(self, context):
         st = context.scene.mch_concept
@@ -570,9 +600,13 @@ class MCH_OT_concept_move(bpy.types.Operator):
         scale = (m3 @ Vector((1.0, 0.0, 0.0))).length if abs(m3.determinant()) > 1e-12 else 1.0
         vm = rv3d.view_matrix.to_3x3().transposed()        # box faces the view: screen right / up / depth
         axes = [c for i in range(3) for c in (m3 @ vm.col[i]).normalized()]
-        return {'centre': list(self.mwi @ self.hit), 'delta': list(m3 @ delta), 'radius': radius * scale,
-                'falloff': st.falloff, 'mirror': st.mirror_x, 'shape': st.shape, 'hardness': st.hardness,
-                'axes': axes}
+        mv = {'centre': list(self.mwi @ self.hit), 'delta': list(m3 @ delta), 'radius': radius * scale,
+              'falloff': st.falloff, 'mirror': st.mirror_x, 'shape': st.shape, 'hardness': st.hardness,
+              'axes': axes}
+        if abs(self.twist_angle) > 1e-9:                     # Ctrl: turn round the view axis
+            view_axis = (m3 @ (rv3d.view_rotation @ Vector((0.0, 0.0, -1.0)))).normalized()
+            mv['twist'] = list(view_axis) + [self.twist_angle]
+        return mv
 
     def _preview(self, context):
         self.cur = self._current_move(context)
@@ -596,7 +630,13 @@ class MCH_OT_concept_move(bpy.types.Operator):
         if event.type == 'TIMER':                            # the view may have moved under a still mouse
             self._preview(context)
         elif event.type == 'MOUSEMOVE':
-            self.mouse = (event.mouse_region_x, event.mouse_region_y)
+            x = event.mouse_region_x
+            if event.ctrl:                                   # Ctrl: left / right turns the grabbed part
+                self.twist_angle += (x - self.last_x) * 0.01
+                self._header(context)
+            else:
+                self.mouse = (event.mouse_region_x, event.mouse_region_y)
+            self.last_x = x
             self.shift = event.shift
             self._preview(context)
         elif event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
@@ -618,6 +658,8 @@ class MCH_OT_concept_move(bpy.types.Operator):
             self.radius, self.size, self.pull = mv['radius'], 1.0, 1.0
             self.hardness, self.shape, self.falloff, self.mirror = mv['hardness'], mv['shape'], mv['falloff'], \
                 mv['mirror']
+            tw = mv.get('twist')
+            self.twist_axis, self.twist = (tw[:3], tw[3]) if tw else ((0.0, 0.0, 1.0), 0.0)
             self.generate_mesh = st.keep_density
             return self.execute(context)
         elif event.type in {'RIGHTMOUSE', 'ESC'} and event.value == 'PRESS':
