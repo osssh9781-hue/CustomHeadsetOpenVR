@@ -13,6 +13,8 @@ original.
 * Live objects (cape, hood, plates ... still on their sliders) need no Apply: every move is recorded on the object
   and replayed (with the same generation) each time the sliders rebuild it.  Clear Moves forgets them.
 * Hold D and drag (in any tool of the MECHA LAB workspace): the same move without switching tools.
+* F + move the mouse: brush size (like sculpting).  Real Size keeps the brush the same size in the scene when
+  you zoom.
 * Shift+click: drop a clay blob.  Fuse: join the selected clay into one smooth piece (voxel remesh).
 ``clay_weights``, ``elastic_weights``, ``sharp_weights``, ``box_distance``, ``displace`` and ``generate`` are the
 working parts (numpy / bmesh, no UI).
@@ -401,11 +403,44 @@ class MCH_PG_Concept(bpy.types.PropertyGroup):
                               description='The grab stays in front of you while the view turns (3D mouse = hand)')
     strength: FloatProperty(name='Strength', default=1.0, min=0.05, max=2.0,
                             description='How far the surface follows the mouse')
+    lock_size: BoolProperty(name='Real Size', default=False,
+                            description='Keep the brush the same size in the scene (not on screen) when you zoom')
+    radius_world: FloatProperty(name='Size', default=0.1, min=1e-4, soft_max=5.0, unit='LENGTH', precision=4,
+                                description='Brush radius in the scene (Real Size)')
     fuse_detail: FloatProperty(name='Fuse Detail', default=0.01, min=0.001, max=0.2, precision=3,
                                description='Fuse voxel size (part of the clay size): smaller = more detail')
 
 
 _DRAW = [None]
+
+
+def scale_size(st, factor):
+    """[ ] / the F drag: the brush size, in pixels or (Real Size) in the scene."""
+    if st.lock_size:
+        st.radius_world = max(1e-4, st.radius_world * factor)
+    else:
+        st.radius_px = max(5, min(3000, int(round(st.radius_px * factor))))
+
+
+def _px_per_world(context, at):
+    region, rv3d = context.region, context.region_data
+    c = view3d_utils.location_3d_to_region_2d(region, rv3d, at)
+    if c is None:
+        return 100.0
+    a = view3d_utils.region_2d_to_location_3d(region, rv3d, c, at)
+    b = view3d_utils.region_2d_to_location_3d(region, rv3d, (c[0] + 100.0, c[1]), at)
+    return 100.0 / max((a - b).length, 1e-9)
+
+
+def brush_px(context, at):
+    """The brush radius on screen at ``at``."""
+    st = context.scene.mch_concept
+    return st.radius_world * _px_per_world(context, at) if st.lock_size else float(st.radius_px)
+
+
+def brush_world(context, at):
+    st = context.scene.mch_concept
+    return st.radius_world if st.lock_size else st.radius_px / _px_per_world(context, at)
 
 
 def _draw_brush(op, context):
@@ -416,7 +451,7 @@ def _draw_brush(op, context):
             return
         cx, cy = op.center_2d
         st = context.scene.mch_concept
-        r = st.radius_px
+        r = getattr(op, 'r_px', None) or st.radius_px
         if st.shape == 'BOX':
             pts = [(cx - r, cy - r), (cx + r, cy - r), (cx + r, cy + r), (cx - r, cy + r)]
         else:
@@ -569,7 +604,9 @@ class MCH_OT_concept_move(bpy.types.Operator):
     def _header(self, context):
         st = context.scene.mch_concept
         context.area.header_text_set(
-            f'Concept Move  |  {st.shape.title()} {st.radius_px}px  hardness {st.hardness:.2f}  |  {st.falloff.title()}'
+            f'Concept Move  |  {st.shape.title()} '
+            + (f'{st.radius_world:.4g}' if st.lock_size else f'{st.radius_px}px')
+            + f'  hardness {st.hardness:.2f}  |  {st.falloff.title()}'
             f'  |  Mirror X {"on" if st.mirror_x else "off"}  |  Follow View {"on" if st.follow_view else "off"}'
             f'  |  Turn {math.degrees(getattr(self, "twist_angle", 0.0)):.0f}°'
             '  |  Shift: out   Ctrl: turn   Wheel: depth   [ ]: size   3D mouse / MMB: view   RMB/Esc: cancel')
@@ -595,7 +632,8 @@ class MCH_OT_concept_move(bpy.types.Operator):
         delta *= st.strength
         self.target = self.hit + delta
         self.center_2d = view3d_utils.location_3d_to_region_2d(region, rv3d, self.target) or self.mouse
-        radius = self._world_radius(context, st.radius_px, self.hit)
+        radius = brush_world(context, self.hit)
+        self.r_px = brush_px(context, self.target)
         m3 = self.mwi.to_3x3()
         scale = (m3 @ Vector((1.0, 0.0, 0.0))).length if abs(m3.determinant()) > 1e-12 else 1.0
         vm = rv3d.view_matrix.to_3x3().transposed()        # box faces the view: screen right / up / depth
@@ -640,11 +678,11 @@ class MCH_OT_concept_move(bpy.types.Operator):
             self.shift = event.shift
             self._preview(context)
         elif event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
-            step = self._world_radius(context, st.radius_px) * 0.15
+            step = brush_world(context, self.hit) * 0.15
             self.depth += step if event.type == 'WHEELDOWNMOUSE' else -step
             self._preview(context)
         elif event.type in {'LEFT_BRACKET', 'RIGHT_BRACKET'} and event.value == 'PRESS':
-            st.radius_px = max(5, int(st.radius_px * (1.15 if event.type == 'RIGHT_BRACKET' else 1 / 1.15)))
+            scale_size(st, 1.15 if event.type == 'RIGHT_BRACKET' else 1 / 1.15)
             self._header(context)
             self._preview(context)
         elif event.type in {'LEFT_SHIFT', 'RIGHT_SHIFT'}:
@@ -697,9 +735,63 @@ class MCH_OT_concept_size(bpy.types.Operator):
     factor: FloatProperty(default=1.15)
 
     def execute(self, context):
-        st = context.scene.mch_concept
-        st.radius_px = max(5, int(round(st.radius_px * self.factor)))
+        scale_size(context.scene.mch_concept, self.factor)
         return {'FINISHED'}
+
+
+class MCH_OT_concept_resize(bpy.types.Operator):
+    """F + move the mouse left / right: brush size (click or F again = keep, right click / Esc = back)"""
+    bl_idname = 'mch.concept_resize'
+    bl_label = 'Concept Move Brush Size'
+    bl_options = {'INTERNAL'}
+
+    def invoke(self, context, event):
+        if context.area is None or context.area.type != 'VIEW_3D':
+            return {'PASS_THROUGH'}
+        st = context.scene.mch_concept
+        region, rv3d = context.region, context.region_data
+        mouse = (event.mouse_region_x, event.mouse_region_y)
+        origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, mouse)
+        ray = view3d_utils.region_2d_to_vector_3d(region, rv3d, mouse).normalized()
+        try:
+            hit, loc, _n, _i, _o, _m = context.scene.ray_cast(context.evaluated_depsgraph_get(), origin, ray)
+        except (RuntimeError, AttributeError):
+            hit = False
+        self.at = loc if hit else view3d_utils.region_2d_to_location_3d(region, rv3d, mouse,
+                                                                         context.scene.cursor.location)
+        self.x0 = event.mouse_region_x
+        self.start = (st.radius_px, st.radius_world)
+        self.center_2d = mouse
+        self.r_px = brush_px(context, self.at)
+        _DRAW[0] = bpy.types.SpaceView3D.draw_handler_add(_draw_brush, (self, context), 'WINDOW', 'POST_PIXEL')
+        context.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+
+    def _end(self, context):
+        if _DRAW[0] is not None:
+            bpy.types.SpaceView3D.draw_handler_remove(_DRAW[0], 'WINDOW')
+            _DRAW[0] = None
+        context.area.header_text_set(None)
+        context.area.tag_redraw()
+
+    def modal(self, context, event):
+        st = context.scene.mch_concept
+        if event.type == 'MOUSEMOVE':
+            st.radius_px, st.radius_world = self.start
+            scale_size(st, math.exp((event.mouse_region_x - self.x0) * 0.006))
+            self.r_px = brush_px(context, self.at)
+            context.area.header_text_set(
+                f'Brush size  {st.radius_world:.4g} (scene)' if st.lock_size else f'Brush size  {st.radius_px}px')
+            context.area.tag_redraw()
+        elif (event.type in {'LEFTMOUSE', 'RET', 'NUMPAD_ENTER'} and event.value == 'PRESS') or \
+                (event.type == 'F' and event.value == 'PRESS'):
+            self._end(context)
+            return {'FINISHED'}
+        elif event.type in {'RIGHTMOUSE', 'ESC'} and event.value == 'PRESS':
+            st.radius_px, st.radius_world = self.start
+            self._end(context)
+            return {'CANCELLED'}
+        return {'RUNNING_MODAL'}
 
 
 class MCH_OT_concept_add(bpy.types.Operator):
@@ -719,10 +811,7 @@ class MCH_OT_concept_add(bpy.types.Operator):
         hit, loc, _n, _i, _ob, _m = context.scene.ray_cast(dg, origin, ray)
         at = loc if hit else view3d_utils.region_2d_to_location_3d(region, rv3d, mouse,
                                                                     context.scene.cursor.location)
-        st = context.scene.mch_concept
-        a = view3d_utils.region_2d_to_location_3d(region, rv3d, mouse, at)
-        b = view3d_utils.region_2d_to_location_3d(region, rv3d, (mouse[0] + st.radius_px * 0.6, mouse[1]), at)
-        ob = add_blob(context, at, max((a - b).length, 1e-4))
+        ob = add_blob(context, at, max(brush_world(context, at) * 0.6, 1e-4))
         for o in context.selected_objects:
             o.select_set(False)
         ob.select_set(True)
@@ -777,7 +866,8 @@ class MCH_TOOL_concept_move(bpy.types.WorkSpaceTool):
     bl_idname = 'mecha.concept_move'
     bl_label = 'Mecha Concept Move'
     bl_description = ('Concept: grab the surface and pull it (like a VR move tool).\n'
-                      'Shift+click: add clay.  Dragging: Shift = out, wheel = depth, [ ] = size, 3D mouse = view')
+                      'Shift+click: add clay.  F + mouse: brush size.  Dragging: Shift = out, Ctrl = turn, wheel = depth, '
+                      '[ ] = size, 3D mouse = view')
     bl_icon = 'ops.transform.translate'
     bl_widget = None
     bl_keymap = (
@@ -785,6 +875,7 @@ class MCH_TOOL_concept_move(bpy.types.WorkSpaceTool):
         ('mch.concept_add', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'shift': True}, None),
         ('mch.concept_size', {'type': 'LEFT_BRACKET', 'value': 'PRESS'}, {'properties': [('factor', 1 / 1.15)]}),
         ('mch.concept_size', {'type': 'RIGHT_BRACKET', 'value': 'PRESS'}, {'properties': [('factor', 1.15)]}),
+        ('mch.concept_resize', {'type': 'F', 'value': 'PRESS'}, None),
     )
 
     def draw_settings(context, layout, tool):
@@ -794,7 +885,9 @@ class MCH_TOOL_concept_move(bpy.types.WorkSpaceTool):
 def draw(layout, context, compact=False):
     st = context.scene.mch_concept
     layout.prop(st, 'shape', text='' if compact else 'Shape')
-    layout.prop(st, 'radius_px')
+    row = layout.row(align=True)
+    row.prop(st, 'radius_world' if st.lock_size else 'radius_px')
+    row.prop(st, 'lock_size', toggle=True)
     if st.falloff == 'CLAY':
         layout.prop(st, 'hardness', slider=True)
     layout.prop(st, 'falloff', text='' if compact else 'Falloff')
@@ -808,7 +901,7 @@ def draw(layout, context, compact=False):
         layout.operator('mch.concept_clear', text=f'Clear Moves ({len(recorded_moves(ob))})', icon='X')
 
 
-CLASSES = (MCH_PG_Concept, MCH_OT_concept_move, MCH_OT_concept_hold, MCH_OT_concept_size, MCH_OT_concept_add, MCH_OT_concept_fuse,
+CLASSES = (MCH_PG_Concept, MCH_OT_concept_move, MCH_OT_concept_hold, MCH_OT_concept_size, MCH_OT_concept_resize, MCH_OT_concept_add, MCH_OT_concept_fuse,
            MCH_OT_concept_clear)
 
 

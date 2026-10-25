@@ -44,4 +44,18 @@ res = bpy.ops.mch.concept_move('EXEC_DEFAULT', centre=(0, 0, 0), delta=(0, 0, 0)
 xs = [v.co.x for v in cube.data.vertices]
 check('F9 Turn: the cube turned 45 degrees (corner now on the X axis)', res == {'FINISHED'}
       and abs(max(xs) - math.sqrt(0.5)) < 1e-4, max(xs))
+
+# brush size: F + drag (tool key), Real Size keeps the scene size
+st = bpy.context.scene.mch_concept
+st.radius_px = 100
+cm.scale_size(st, 2.0)
+check('size in pixels by default ([ ] / F drag)', st.radius_px == 200 and not st.lock_size)
+st.lock_size = True
+st.radius_world = 0.2
+cm.scale_size(st, 0.5)
+check('Real Size: the scene size changes instead', abs(st.radius_world - 0.1) < 1e-6 and st.radius_px == 200)
+st.lock_size = False
+check('F = brush size in the Concept Move tool', any(k[0] == 'mch.concept_resize' and k[1]['type'] == 'F'
+                                                     for k in cm.MCH_TOOL_concept_move.bl_keymap)
+      and hasattr(bpy.ops.mch, 'concept_resize'))
 summary()
