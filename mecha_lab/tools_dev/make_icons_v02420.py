@@ -301,16 +301,17 @@ def icons():
         return img
     out['concept_move'] = concept_move
 
-    def jungle_gym():                         # 0.24.31 a lattice with the orange crawl line
+    def path_move():                          # 0.24.31 a square lump swept along a bent path
         img, d = canvas()
-        for i in range(4):
-            x = 96 + i * 106
-            d.line((x, 96, x, 416), fill=DIM, width=8)
-            d.line((96, x, 416, x), fill=DIM, width=8)
-        poly(d, [(96, 416), (202, 416), (202, 202), (308, 202), (414, 96)], ACC, width=W + 6, closed=False)
-        d.ellipse((392, 74, 436, 118), fill=ACC)
+        d.arc((60, 300, 452, 600), 200, 340, fill=DIM, width=W)
+        poly(d, [(150, 330), (150, 250), (330, 250), (330, 330)], DIM, width=8, closed=False)
+        poly(d, [(150, 250), (150, 170), (250, 90), (330, 90), (330, 170), (330, 250)], ACC,
+             fill=(255, 158, 40, 90))
+        d.line((240, 300, 240, 210), fill=CY, width=W)
+        d.line((240, 210, 300, 140), fill=CY, width=W)
+        poly(d, [(330, 105), (280, 125), (318, 158)], CY, fill=CY)
         return img
-    out['jungle_gym'] = jungle_gym
+    out['path_move'] = path_move
     return out
 
 

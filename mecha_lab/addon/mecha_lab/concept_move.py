@@ -15,6 +15,8 @@ original.
 * Hold D and drag (in any tool of the MECHA LAB workspace): the same move without switching tools.
 * F + move the mouse: brush size (like sculpting).  Real Size keeps the brush the same size in the scene when
   you zoom.
+* Path Move (its own tool): grab like Concept Move and drag a path - the grabbed box / ball keeps its shape and
+  follows the way you go, sweeping a body behind it; it turns where the path bends (Follow Turns); F9 adjusts.
 * Shift+click: drop a clay blob.  Fuse: join the selected clay into one smooth piece (voxel remesh).
 While dragging only the points the brush can reach are computed, and a still frame costs nothing.
 ``clay_weights``, ``elastic_weights``, ``sharp_weights``, ``box_distance``, ``displace`` and ``generate`` are the
@@ -28,11 +30,12 @@ import math
 import bmesh
 import bpy
 import numpy as np
-from bpy.props import BoolProperty, EnumProperty, FloatProperty, FloatVectorProperty, IntProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, FloatVectorProperty, IntProperty, StringProperty
 from bpy_extras import view3d_utils
 from mathutils import Vector
 
 MOVES_KEY = 'mch_concept_moves'
+PATH_MAX_STEPS = 48
 FALLOFF_ITEMS = [
     ('CLAY', 'Clay', 'Hardness decides how much moves whole; keeps the thickness of what you grab'),
     ('ELASTIC', 'Elastic', 'Soft rubber: the whole area stretches, volume is kept (Kelvinlet grab)'),
@@ -234,7 +237,9 @@ def generate(me, field, ratio=1.3, max_rounds=6, max_verts=400000, relax=0):
             break
         edges = [bm.edges[i] for i in chosen]
         bad = chosen
-        bmesh.ops.subdivide_edges(bm, edges=edges, cuts=1, use_grid_fill=True)
+        # 0.24.31 grid fill done here: Blender's own (use_grid_fill) can crash on long Path Move chains
+        out = bmesh.ops.subdivide_edges(bm, edges=edges, cuts=1, use_grid_fill=False)
+        grid_fill(bm, {v for v in out['geom_split'] if isinstance(v, bmesh.types.BMVert)})
         bmesh.ops.triangulate(bm, faces=[f for f in bm.faces if len(f.verts) > 4])
         split += len(bad)
     bm.verts.ensure_lookup_table()
@@ -248,6 +253,28 @@ def generate(me, field, ratio=1.3, max_rounds=6, max_verts=400000, relax=0):
     bm.free()
     me.update()
     return split
+
+
+def grid_fill(bm, new_verts):
+    """A quad cut on all four sides (an 8-sided face: corner, cut, corner, cut ...) -> four quads round a middle
+    point, like a grid.  Other faces are left to the caller."""
+    for f in [f for f in bm.faces if len(f.verts) == 8]:
+        vs = list(f.verts)
+        if vs[0] in new_verts:
+            vs = vs[1:] + vs[:1]
+        if not all((v in new_verts) == (i % 2 == 1) for i, v in enumerate(vs)):
+            continue
+        c = bm.verts.new(sum((v.co for v in vs), Vector()) / 8.0)
+        smooth = f.smooth
+        mat = f.material_index
+        bm.faces.remove(f)
+        for i in range(0, 8, 2):
+            try:
+                nf = bm.faces.new((vs[i], vs[(i + 1) % 8], c, vs[i - 1]))
+                nf.smooth, nf.material_index = smooth, mat
+            except ValueError:
+                pass
+    bm.normal_update()
 
 
 def even_out(bm, region, passes=3, amount=0.5, sharp_deg=40.0):
@@ -462,6 +489,10 @@ class MCH_PG_Concept(bpy.types.PropertyGroup):
                               description='The grab stays in front of you while the view turns (3D mouse = hand)')
     strength: FloatProperty(name='Strength', default=1.0, min=0.05, max=2.0,
                             description='How far the surface follows the mouse')
+    path_taper: FloatProperty(name='Taper', default=0.0, min=0.0, max=0.95,
+                              description='Path Move: thinner toward the end (0 = the same all the way)')
+    path_turn: BoolProperty(name='Follow Turns', default=True,
+                            description='Path Move: the grabbed box / ball turns where the path bends')
     lock_size: BoolProperty(name='Real Size', default=False,
                             description='Keep the brush the same size in the scene (not on screen) when you zoom')
     radius_world: FloatProperty(name='Size', default=0.1, min=1e-4, soft_max=5.0, unit='LENGTH', precision=4,
@@ -831,6 +862,295 @@ class MCH_OT_concept_move(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
 
+def path_moves(path, radius, hardness=0.9, taper=0.0, mirror=False, shape='SPHERE', axes=None, turn=True):
+    """Path Move: the drag path (object space) -> short grabs, each from one path point to the next.  The part
+    grabbed at a point is carried to the next one, so the grabbed box / ball keeps its shape and follows the path,
+    sweeping a body behind it.  ``turn``: where the path bends the grabbed part turns with it (the cross-section
+    stays square to the way it goes, like bending a pipe).  ``taper`` > 0 thins it toward the end."""
+    pts = [Vector(p) for p in path]
+    n = len(pts) - 1
+    ax = np.asarray(list(axes) if axes is not None else [1, 0, 0, 0, 1, 0, 0, 0, 1], dtype=np.float64).reshape(3, 3)
+    total = np.eye(3)
+    moves = []
+    for k in range(n):
+        t = k / max(n - 1, 1)
+        a, b = pts[k], pts[k + 1]
+        mv = {'centre': list(a), 'delta': list(b - a), 'radius': radius * max(1.0 - taper * t, 0.05),
+              'falloff': 'CLAY', 'mirror': mirror, 'shape': shape, 'hardness': hardness}
+        if turn and k > 0:
+            u, v = (a - pts[k - 1]), (b - a)
+            if u.length > 1e-12 and v.length > 1e-12:
+                u.normalize()
+                v.normalize()
+                c = u.cross(v)
+                angle = math.atan2(c.length, u.dot(v))
+                if c.length > 1e-9 and angle > 1e-6:
+                    mv['twist'] = list(c.normalized()) + [angle]
+                    total = rotation_matrix(c.normalized(), angle) @ total
+        mv['axes'] = list((ax @ total.T).ravel())            # the box turns with the part it grabbed
+        moves.append(mv)
+    return moves
+
+
+def smooth_path(pts, passes=2):
+    """Take the shake out of a hand-drawn path (the ends stay)."""
+    pts = [Vector(p) for p in pts]
+    for _ in range(passes):
+        if len(pts) < 3:
+            break
+        pts = [pts[0]] + [(pts[i - 1] + pts[i] * 2.0 + pts[i + 1]) / 4.0 for i in range(1, len(pts) - 1)] + [pts[-1]]
+    return pts
+
+
+def even_path(pts, step, max_steps=PATH_MAX_STEPS):
+    """Evenly spaced path points (about ``step`` apart, at most ``max_steps`` steps)."""
+    pts = [Vector(p) for p in pts]
+    if len(pts) < 2:
+        return pts
+    lens = [0.0]
+    for a, b in zip(pts, pts[1:]):
+        lens.append(lens[-1] + (b - a).length)
+    total = lens[-1]
+    if total < 1e-9:
+        return pts[:1]
+    n = max(1, min(max_steps, int(math.ceil(total / max(step, 1e-9)))))
+    out, j = [], 0
+    for i in range(n + 1):
+        s = total * i / n
+        while j < len(pts) - 2 and lens[j + 1] < s:
+            j += 1
+        seg = lens[j + 1] - lens[j]
+        out.append(pts[j].lerp(pts[j + 1], 0.0 if seg < 1e-12 else (s - lens[j]) / seg))
+    return out
+
+
+def run_path(co, moves):
+    """The moves one after another on coordinates (no new faces) - the drag preview."""
+    co = np.array(co, dtype=np.float64)
+    for mv in moves:
+        mask = near_mask(co, mv)
+        if mask.any():
+            co[mask] = move_field(mv)(co[mask])
+    return co
+
+
+class MCH_OT_concept_path(bpy.types.Operator):
+    """Path Move: grab like Concept Move and drag a path - the box / ball keeps its shape and follows the way"""
+    bl_idname = 'mch.concept_path'
+    bl_label = 'Path Move'
+    bl_description = 'Grab the surface and drag a path: the grabbed box / ball keeps its shape and follows it (F9 adjusts)'
+    bl_options = {'REGISTER', 'UNDO', 'BLOCKING'}
+
+    path: StringProperty(options={'HIDDEN'})                 # object space points (JSON)
+    axes: FloatVectorProperty(size=9, default=(1, 0, 0, 0, 1, 0, 0, 0, 1), options={'HIDDEN'})
+    radius: FloatProperty(name='Radius', min=1e-6, default=1.0, options={'HIDDEN'})
+    size: FloatProperty(name='Size', default=1.0, min=0.05, max=10.0, description='Thickness (x the brush)')
+    hardness: FloatProperty(name='Hardness', default=0.9, min=0.0, max=0.98)
+    taper: FloatProperty(name='Taper', default=0.0, min=0.0, max=0.95, description='Thinner toward the end (0 = the same all the way)')
+    turn: BoolProperty(name='Follow Turns', default=True,
+                       description='The grabbed box / ball turns where the path bends (stays square to the path)')
+    shape: EnumProperty(name='Shape', items=SHAPE_ITEMS, default='SPHERE')
+    mirror: BoolProperty(name='Mirror X', default=True)
+    generate_mesh: BoolProperty(name='Generate', default=True,
+                                description='Really generate the body along the path (even faces, no stretching)')
+    even_out: BoolProperty(name='Even Out', default=False,
+                           description='Even out the faces along the body (sharp edges stay)')
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT'
+
+    def moves(self):
+        pts = [Vector(p) for p in json.loads(self.path or '[]')]
+        return path_moves(pts, self.radius * self.size, self.hardness, self.taper, self.mirror, self.shape,
+                          self.axes, self.turn)
+
+    def execute(self, context):
+        ob = context.active_object
+        if not _mesh_ok(ob):
+            self.report({'WARNING'}, 'Path Move: pick a mesh (single user)')
+            return {'CANCELLED'}
+        moves = self.moves()
+        if not moves:
+            self.report({'WARNING'}, 'Path Move: drag a path')
+            return {'CANCELLED'}
+        for mv in moves:
+            if self.generate_mesh:
+                generate(ob.data, move_field(mv))
+            else:
+                write_coords(ob.data, move_field(mv)(read_coords(ob.data)))
+        if self.generate_mesh and self.even_out:
+            pts = [Vector(p) for p in json.loads(self.path)]
+            bm = bmesh.new()
+            bm.from_mesh(ob.data)
+            bm.verts.ensure_lookup_table()
+            r = self.radius * self.size * 1.2
+            region = [min((v.co - _closest_seg(a, b, v.co)).length for a, b in zip(pts, pts[1:])) < r
+                      for v in bm.verts]
+            even_out(bm, region, 3)
+            bm.to_mesh(ob.data)
+            bm.free()
+            ob.data.update()
+        if is_live(ob):
+            for mv in moves:
+                record_move(ob, mv)
+        self.report({'INFO'}, f'Path Move: {len(moves)} steps')
+        return {'FINISHED'}
+
+    def draw(self, context):
+        col = self.layout.column(align=True)
+        col.prop(self, 'size', slider=True)
+        col.prop(self, 'hardness', slider=True)
+        col.prop(self, 'taper', slider=True)
+        self.layout.prop(self, 'turn', toggle=True)
+        self.layout.prop(self, 'shape', expand=True)
+        row = self.layout.row(align=True)
+        row.prop(self, 'mirror', toggle=True)
+        row.prop(self, 'generate_mesh', toggle=True)
+        if self.generate_mesh:
+            row.prop(self, 'even_out', toggle=True)
+
+    # --- the drag: the grab of Concept Move, but every step of the way is kept ---------
+
+    def invoke(self, context, event):
+        res = MCH_OT_concept_move.invoke(self, context, event)
+        if 'RUNNING_MODAL' in res:
+            self.trail = [self.hit.copy()]
+            self.local = []
+            self._sig = None
+        return res
+
+    def _header(self, context):
+        st = context.scene.mch_concept
+        context.area.header_text_set(
+            f'Path Move  |  {len(getattr(self, "trail", [])) - 1} steps  {st.shape.title()}  taper {st.path_taper:.2f}  '
+            f'hardness {st.hardness:.2f}  |  Mirror X {"on" if st.mirror_x else "off"}  |  '
+            'drag the way it should go   Wheel: depth   [ ]: size   3D mouse / MMB: view   RMB/Esc: cancel')
+
+    def _target(self, context):
+        return MCH_OT_concept_move._target(self, context)
+
+    def _world_radius(self, context, px, at=None):
+        return MCH_OT_concept_move._world_radius(self, context, px, at)
+
+    def _finish_ui(self, context):
+        MCH_OT_concept_move._finish_ui(self, context)
+
+    def _local_moves(self, context):
+        st = context.scene.mch_concept
+        region, rv3d = context.region, context.region_data
+        m3 = self.mwi.to_3x3()
+        scale = (m3 @ Vector((1.0, 0.0, 0.0))).length if abs(m3.determinant()) > 1e-12 else 1.0
+        radius = brush_world(context, self.hit) * scale
+        local = [self.mref @ (self.mwi @ p) for p in self.trail]
+        path = even_path(smooth_path(local), radius * 0.3)
+        vm = rv3d.view_matrix.to_3x3().transposed()
+        r3 = self.mref.to_3x3()
+        axes = [c for i in range(3) for c in (r3 @ (m3 @ vm.col[i])).normalized()]
+        return path, radius, axes, st.mirror_x and not self.obj_mirror
+
+    def _preview(self, context, timer=False):
+        st = context.scene.mch_concept
+        target = self._target(context)
+        step = brush_world(context, self.hit) * 0.15
+        if (target - self.trail[-1]).length > step:
+            self.trail.append(target.copy())
+        region, rv3d = context.region, context.region_data
+        self.target = self.trail[-1]
+        self.center_2d = view3d_utils.location_3d_to_region_2d(region, rv3d, self.target) or self.mouse
+        self.r_px = brush_px(context, self.target) * max(1.0 - st.path_taper, 0.05)
+        sig = (len(self.trail), st.radius_px, st.radius_world, st.hardness, st.path_taper, st.path_turn, st.shape)
+        if sig == self._sig:
+            return
+        self._sig = sig
+        path, radius, axes, mirror = self._local_moves(context)
+        moves = path_moves(path, radius, st.hardness, st.path_taper, mirror, st.shape, axes, st.path_turn)
+        write_coords(self.ob.data, run_path(self.orig, moves) if moves else self.orig)
+        self._header(context)
+
+    def modal(self, context, event):
+        st = context.scene.mch_concept
+        if event.type in NAV_EVENTS:
+            return {'PASS_THROUGH'}
+        if event.type in {'TIMER', 'MOUSEMOVE'}:
+            if event.type == 'MOUSEMOVE':
+                self.mouse = (event.mouse_region_x, event.mouse_region_y)
+            self._preview(context)
+        elif event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
+            step = brush_world(context, self.hit) * 0.15
+            self.depth += step if event.type == 'WHEELDOWNMOUSE' else -step
+            self._preview(context)
+        elif event.type in {'LEFT_BRACKET', 'RIGHT_BRACKET'} and event.value == 'PRESS':
+            scale_size(st, 1.15 if event.type == 'RIGHT_BRACKET' else 1 / 1.15)
+            self._preview(context)
+        elif event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+            self._finish_ui(context)
+            write_coords(self.ob.data, self.orig)            # back to the start: execute() does the real thing
+            path, radius, axes, mirror = self._local_moves(context)
+            if len(path) < 2:
+                return {'CANCELLED'}
+            self.path = json.dumps([list(p) for p in path])
+            self.radius, self.size, self.axes = radius, 1.0, axes
+            self.hardness, self.taper, self.shape, self.mirror = st.hardness, st.path_taper, st.shape, mirror
+            self.turn = st.path_turn
+            self.generate_mesh, self.even_out = st.keep_density, st.even_out
+            return self.execute(context)
+        elif event.type in {'RIGHTMOUSE', 'ESC'} and event.value == 'PRESS':
+            write_coords(self.ob.data, self.orig)
+            self._finish_ui(context)
+            return {'CANCELLED'}
+        if context.area:
+            context.area.tag_redraw()
+        return {'RUNNING_MODAL'}
+
+
+def _closest_seg(a, b, q):
+    ab = b - a
+    t = 0.0 if ab.length_squared < 1e-12 else max(0.0, min(1.0, (q - a).dot(ab) / ab.length_squared))
+    return a + ab * t
+
+
+class MCH_TOOL_concept_path(bpy.types.WorkSpaceTool):
+    bl_space_type = 'VIEW_3D'
+    bl_context_mode = 'OBJECT'
+    bl_idname = 'mecha.concept_path'
+    bl_label = 'Mecha Path Move'
+    bl_description = ('Concept: grab like Concept Move and drag a path - the box / ball keeps its shape and\n'
+                      'follows the way you go (frames, pipes, arms).  F + mouse: size.  Wheel while dragging: depth')
+    bl_icon = 'ops.sculpt.cloth_filter'
+    bl_widget = None
+    bl_keymap = (
+        ('mch.concept_path', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, None),
+        ('mch.concept_size', {'type': 'LEFT_BRACKET', 'value': 'PRESS'}, {'properties': [('factor', 1 / 1.15)]}),
+        ('mch.concept_size', {'type': 'RIGHT_BRACKET', 'value': 'PRESS'}, {'properties': [('factor', 1.15)]}),
+        ('mch.concept_resize', {'type': 'F', 'value': 'PRESS'}, None),
+    )
+
+    def draw_settings(context, layout, tool):
+        draw_path(layout, context, compact=True)
+
+
+def draw_path(layout, context, compact=False):
+    st = context.scene.mch_concept
+    row = layout.row(align=True)
+    row.prop(st, 'radius_world' if st.lock_size else 'radius_px')
+    row.prop(st, 'lock_size', toggle=True)
+    layout.prop(st, 'hardness', slider=True)
+    layout.prop(st, 'path_taper', slider=True)
+    layout.prop(st, 'path_turn', toggle=True)
+    layout.prop(st, 'shape', text='' if compact else 'Shape')
+    ob = context.active_object
+    if ob is not None and mirror_reflections(ob):
+        layout.label(text='Mirror: the object\'s own Mirror', icon='MOD_MIRROR')
+    else:
+        layout.prop(st, 'mirror_x', toggle=True)
+    row = layout.row(align=True)
+    row.prop(st, 'keep_density', toggle=True)
+    if st.keep_density:
+        row.prop(st, 'even_out', toggle=True)
+    layout.prop(st, 'follow_view', toggle=True)
+
+
 class MCH_OT_concept_hold(bpy.types.Operator):
     """Hold D and drag (any Mecha tool, MECHA LAB only): Concept Move right away, the tool stays as it was"""
     bl_idname = 'mch.concept_hold'
@@ -1030,7 +1350,7 @@ def draw(layout, context, compact=False):
         layout.operator('mch.concept_clear', text=f'Clear Moves ({len(recorded_moves(ob))})', icon='X')
 
 
-CLASSES = (MCH_PG_Concept, MCH_OT_concept_move, MCH_OT_concept_hold, MCH_OT_concept_size, MCH_OT_concept_resize, MCH_OT_concept_add, MCH_OT_concept_fuse,
+CLASSES = (MCH_PG_Concept, MCH_OT_concept_move, MCH_OT_concept_path, MCH_OT_concept_hold, MCH_OT_concept_size, MCH_OT_concept_resize, MCH_OT_concept_add, MCH_OT_concept_fuse,
            MCH_OT_concept_clear)
 
 
@@ -1041,15 +1361,17 @@ def register():
     _hook_live_modules()
     try:
         bpy.utils.register_tool(MCH_TOOL_concept_move, separator=True, group=False)
+        bpy.utils.register_tool(MCH_TOOL_concept_path, after={MCH_TOOL_concept_move.bl_idname}, group=False)
     except (ValueError, RuntimeError):
         pass
 
 
 def unregister():
-    try:
-        bpy.utils.unregister_tool(MCH_TOOL_concept_move)
-    except (ValueError, RuntimeError, KeyError):
-        pass
+    for tool in (MCH_TOOL_concept_path, MCH_TOOL_concept_move):
+        try:
+            bpy.utils.unregister_tool(tool)
+        except (ValueError, RuntimeError, KeyError, AttributeError):
+            pass
     _unhook_live_modules()
     if _DRAW[0] is not None:
         try:

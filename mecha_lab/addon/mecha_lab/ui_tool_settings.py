@@ -891,13 +891,13 @@ def draw_concept_move(layout, context):
     concept_move.draw(layout, context)
 
 
-def draw_jungle_gym(layout, context):
-    from . import jungle_gym
-    jungle_gym.draw(layout, context)
+def draw_path_move(layout, context):
+    from . import concept_move
+    concept_move.draw_path(layout, context)
 
 
 DRAWERS = {
-    'CMOVE': draw_concept_move, 'GYM': draw_jungle_gym,
+    'CMOVE': draw_concept_move, 'CPATH': draw_path_move,
     'CUT': draw_cut, 'SPLIT': draw_split, 'BOOLEAN': draw_boolean, 'FUSE': draw_fuse,
     'MASK': draw_mask, 'DRAW': draw_draw, 'ARRAY': draw_array, 'EDIT': draw_edit,
     'LIBRARY': draw_library, 'REMESH': draw_remesh, 'POSE': draw_pose,
