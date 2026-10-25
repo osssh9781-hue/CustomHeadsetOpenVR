@@ -949,6 +949,8 @@ _COLORS = {
     'BRIDGE': (0.6, 0.7, 1.0, 1.0),
     'FLOWER': (0.95, 0.6, 0.8, 1.0),
     'SCURVE': (0.5, 0.75, 1.0, 1.0),
+    'SDRAW': (0.95, 0.6, 0.2, 1.0),
+    'CLOTHB': (0.55, 0.75, 0.95, 1.0),
     'CAPE': (0.8, 0.55, 0.35, 1.0),
     'HAIR': (0.75, 0.7, 0.45, 1.0),
     'GARMENT': (0.55, 0.7, 0.85, 1.0),
@@ -1235,7 +1237,7 @@ class StrokeLogic:
 
     def _line_mode(self):
         from . import lasso_line
-        if self.mode in {'BELT', 'SCURVE'}:    # 0.24.20 Belt Maker / Surface Curve always draw a line
+        if self.mode in {'BELT', 'SCURVE', 'SDRAW', 'CLOTHB'}:    # 0.24.20 Belt Maker / Surface Curve always draw a line
             return self.shape in {'LASSO', 'CURVE_LASSO', 'STROKE'}
         return lasso_line.enabled(bpy.context, self.mode, self.shape)
 
@@ -1280,7 +1282,7 @@ class StrokeLogic:
 
     def _needs_target(self):
         return self.mode not in {'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE',
-                                 'FLOWER', 'SCURVE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF'}
+                                 'FLOWER', 'SCURVE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW', 'CLOTHB'}
 
     def _tangents(self, pts=None):
         pts = self.pts if pts is None else pts
@@ -1671,6 +1673,10 @@ class StrokeLogic:
         if self.mode == 'BELT':
             from . import belt_maker
             return belt_maker.perform(context, self._line_path(), self.projector)
+        if self.mode in {'SDRAW', 'CLOTHB'}:      # 0.24.33 Surface Draw / Cloth Brush
+            from . import surface_draw
+            return surface_draw.perform(context, self._line_path(), self.projector,
+                                        'CLOTH' if self.mode == 'CLOTHB' else 'BAND')
         if self.mode == 'SCURVE':
             from . import surface_curve
             return surface_curve.perform(context, self._line_path(), self.projector)
@@ -2160,6 +2166,8 @@ class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
         ('BRIDGE', 'Bridge Patch', 'A smooth patch joining two meshes across the drawn area'),
         ('FLOWER', 'Flower Plate', 'The outline grows from the surface: attached at the start, bending away'),
         ('SCURVE', 'Surface Curve', 'A Mesh Curve lying on the surface along the drawn line'),
+        ('SDRAW', 'Surface Draw', 'A raised band on the surface along the drawn line'),
+        ('CLOTHB', 'Cloth Brush', 'A strip of cloth on the surface along the drawn line'),
         ('CAPE', 'Cape', 'A live cape hanging from the top edge of the drawing'),
         ('HAIR', 'Creature Hair', 'Live dreadlocks / tentacles / quills growing from the drawn area'),
         ('GARMENT', 'Clothing', 'A live top / pants made from the body inside the drawn outline'),

@@ -326,6 +326,27 @@ def icons():
                 poly(d, pts, ACC if (i + j) % 3 else CY, width=8, fill=(20, 22, 28, 255))
         return img
     out['perforate'] = perforate
+
+    def surface_draw():                       # 0.24.33 a raised band drawn on a surface
+        img, d = canvas()
+        d.arc((50, 230, 462, 620), 200, 340, fill=DIM, width=W)
+        poly(d, [(110, 300), (180, 250), (260, 270), (330, 220), (400, 250)], ACC, width=W + 22, closed=False)
+        poly(d, [(110, 300), (180, 250), (260, 270), (330, 220), (400, 250)], (255, 210, 140, 255), width=8,
+             closed=False)
+        d.line((400, 250, 450, 120), fill=CY, width=W)
+        return img
+    out['surface_draw'] = surface_draw
+
+    def cloth_brush():                        # 0.24.33 a wavy cloth strip
+        img, d = canvas()
+        d.arc((50, 230, 462, 620), 200, 340, fill=DIM, width=W)
+        top = [(100 + 30 * i, 250 - 18 * math.sin(i * 1.3)) for i in range(11)]
+        bot = [(x + 10, y + 70) for x, y in top]
+        poly(d, top + bot[::-1], CY, width=10, fill=(80, 200, 255, 90))
+        for i in range(1, 10, 2):
+            d.line((top[i][0], top[i][1], bot[i][0], bot[i][1]), fill=CY, width=6)
+        return img
+    out['cloth_brush'] = cloth_brush
     return out
 
 

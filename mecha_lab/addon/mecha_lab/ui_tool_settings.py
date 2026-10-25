@@ -901,7 +901,18 @@ def draw_perforate(layout, context):
     perforate.draw(layout, context)
 
 
+def draw_surface_draw(layout, context):
+    from . import surface_draw
+    surface_draw.draw(layout, context, 'BAND')
+
+
+def draw_cloth_brush(layout, context):
+    from . import surface_draw
+    surface_draw.draw(layout, context, 'CLOTH')
+
+
 DRAWERS = {
+    'SDRAW': draw_surface_draw, 'CLOTHB': draw_cloth_brush,
     'PERF': draw_perforate,
     'CMOVE': draw_concept_move, 'CPATH': draw_path_move,
     'CUT': draw_cut, 'SPLIT': draw_split, 'BOOLEAN': draw_boolean, 'FUSE': draw_fuse,
