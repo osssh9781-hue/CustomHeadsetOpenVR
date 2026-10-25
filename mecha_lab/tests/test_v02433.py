@@ -11,6 +11,11 @@ import mecha_lab
 from mecha_lab import quad_cloth as qc
 
 mecha_lab.register()
+from mecha_lab import tool_state as ts
+check('0.24.31 Quad Cloth panel hidden while EXPERIMENTAL_CLOTH is off',
+      ts.EXPERIMENTAL_CLOTH or not hasattr(bpy.types.Scene, 'mch_quad_cloth'))
+if not hasattr(bpy.types.Scene, 'mch_quad_cloth'):
+    qc.register()                  # the code is kept: test it directly
 fresh()
 C = bpy.context
 S = C.scene
