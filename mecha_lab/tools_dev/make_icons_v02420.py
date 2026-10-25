@@ -312,6 +312,20 @@ def icons():
         poly(d, [(330, 105), (280, 125), (318, 158)], CY, fill=CY)
         return img
     out['path_move'] = path_move
+
+    def perforate():                          # 0.24.33 a plate with honeycomb holes
+        img, d = canvas()
+        d.rounded_rectangle((70, 90, 442, 422), radius=36, outline=DIM, width=W, fill=(120, 126, 140, 60))
+        r = 34
+        for j in range(4):
+            for i in range(4 if j % 2 == 0 else 3):
+                cx = 140 + i * 78 + (39 if j % 2 else 0)
+                cy = 150 + j * 68
+                pts = [(cx + r * math.cos(math.pi / 6 + k * math.pi / 3), cy + r * math.sin(math.pi / 6 + k * math.pi / 3))
+                       for k in range(6)]
+                poly(d, pts, ACC if (i + j) % 3 else CY, width=8, fill=(20, 22, 28, 255))
+        return img
+    out['perforate'] = perforate
     return out
 
 

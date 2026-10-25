@@ -896,7 +896,13 @@ def draw_path_move(layout, context):
     concept_move.draw_path(layout, context)
 
 
+def draw_perforate(layout, context):
+    from . import perforate
+    perforate.draw(layout, context)
+
+
 DRAWERS = {
+    'PERF': draw_perforate,
     'CMOVE': draw_concept_move, 'CPATH': draw_path_move,
     'CUT': draw_cut, 'SPLIT': draw_split, 'BOOLEAN': draw_boolean, 'FUSE': draw_fuse,
     'MASK': draw_mask, 'DRAW': draw_draw, 'ARRAY': draw_array, 'EDIT': draw_edit,
