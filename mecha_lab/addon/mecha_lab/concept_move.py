@@ -1,29 +1,34 @@
 """0.24.32 Concept Move: grab the surface and pull it - the stretch-and-look move of VR modelers, in Object Mode.
 
-Press on a mesh and drag: the area under the brush follows the mouse like clay.
+Press on a mesh and drag: the area under the brush follows the mouse like clay (a light preview while you drag).
+When you let go the pulled part is really generated: what got stretched is split in its rest shape and pulled
+again, so the new points sit on the curved surface and the faces stay as dense as the rest of the mesh (no long
+stretched faces).  Then F9 / Adjust Last Operation: Size, Hardness, Pull, Shape, Falloff - recomputed from the
+original.
 * Shape: Sphere or Box (a view-aligned cube - frames, plates, flat panels).  Hardness: how much of the brush moves
-  whole (1 = a rigid lump, 0 = a soft dome).  Falloffs: Clay (hardness), Elastic (Kelvinlet grab, Blender's Elastic
-  Deform), Sharp (spikes / horns / fingers).
+  whole (1 = a rigid lump, 0 = a soft dome).  Falloffs: Clay (hardness), Elastic (Kelvinlet grab), Sharp.
 * While dragging: Shift = straight out of the surface, wheel = depth, [ ] = size, right click / Esc = cancel.
-  A 3D mouse (and middle mouse) still navigates the view: with Follow View the grab stays where it is in front of
-  you, so turning / pushing the view carries the clay through space even with the mouse held still (the 3D mouse
-  is the hand, the mouse the fine aim) - re-evaluated 60 times a second.
-* Mirror X, Keep Density (splits what got stretched when you let go); one drag = one undo step.
-* Shift+click: drop a clay blob (brush size) on the surface or in front of you.  Fuse: join the selected clay into
-  one smooth piece (voxel remesh).
-``clay_weights``, ``elastic_weights``, ``sharp_weights``, ``box_distance`` and ``displace`` are pure (numpy).
+  A 3D mouse (and middle mouse) still navigates the view; with Follow View the grab stays in front of you, so
+  moving the view carries the clay even with the mouse held still (re-evaluated 60 times a second).
+* Live objects (cape, hood, plates ... still on their sliders) need no Apply: every move is recorded on the object
+  and replayed (with the same generation) each time the sliders rebuild it.  Clear Moves forgets them.
+* Shift+click: drop a clay blob.  Fuse: join the selected clay into one smooth piece (voxel remesh).
+``clay_weights``, ``elastic_weights``, ``sharp_weights``, ``box_distance``, ``displace`` and ``generate`` are the
+working parts (numpy / bmesh, no UI).
 """
 from __future__ import annotations
 
+import json
 import math
 
 import bmesh
 import bpy
 import numpy as np
-from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, FloatVectorProperty, IntProperty
 from bpy_extras import view3d_utils
-from mathutils import Matrix, Vector
+from mathutils import Vector
 
+MOVES_KEY = 'mch_concept_moves'
 FALLOFF_ITEMS = [
     ('CLAY', 'Clay', 'Hardness decides how much moves whole; keeps the thickness of what you grab'),
     ('ELASTIC', 'Elastic', 'Soft rubber: the whole area stretches, volume is kept (Kelvinlet grab)'),
@@ -87,7 +92,7 @@ def displace(co, centre, delta, radius, falloff='CLAY', mirror_x=False, shape='S
     out = co.copy()
     if axes is None:
         axes = np.eye(3)
-    axes = np.asarray(axes, dtype=np.float64)
+    axes = np.asarray(axes, dtype=np.float64).reshape(3, 3)
     brushes = [(np.asarray(centre, dtype=np.float64), np.asarray(delta, dtype=np.float64), axes)]
     if mirror_x and abs(centre[0]) > radius * 0.5:          # a grab on the middle already moves both sides
         flip = np.array([-1.0, 1.0, 1.0])
@@ -103,6 +108,15 @@ def displace(co, centre, delta, radius, falloff='CLAY', mirror_x=False, shape='S
         else:
             out += clay_weights(dist, radius, hardness)[:, None] * d[None, :]
     return out
+
+
+def move_field(move):
+    """A recorded move (dict) -> function rest coords (N,3) -> moved coords."""
+    def f(co):
+        return displace(co, move['centre'], move['delta'], move['radius'], move.get('falloff', 'CLAY'),
+                        move.get('mirror', False), move.get('shape', 'SPHERE'), move.get('hardness', 0.5),
+                        move.get('axes'))
+    return f
 
 
 # -----------------------------------------------------------------------------
@@ -121,29 +135,77 @@ def write_coords(me, co):
     me.update()
 
 
+def generate(me, field, ratio=1.3, max_rounds=6, max_verts=400000):
+    """Really generate the pulled part: split (in the rest shape) every edge the field stretches past ratio x the
+    mesh's usual edge, repeat, then move everything.  New points land on the smooth moved surface, the faces keep
+    the mesh's density.  Returns the number of edges split."""
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    split = 0
+    target = None
+    for _round in range(max_rounds):
+        bm.verts.ensure_lookup_table()
+        bm.verts.index_update()
+        rest = np.array([v.co[:] for v in bm.verts], dtype=np.float64)
+        moved = field(rest)
+        ev = np.array([(e.verts[0].index, e.verts[1].index) for e in bm.edges], dtype=np.int64)
+        if not len(ev):
+            break
+        l0 = np.linalg.norm(rest[ev[:, 0]] - rest[ev[:, 1]], axis=1)
+        l1 = np.linalg.norm(moved[ev[:, 0]] - moved[ev[:, 1]], axis=1)
+        if target is None:
+            target = float(np.median(l0)) * ratio
+        stretch = l1 / np.maximum(l0, 1e-12)
+        bad = np.nonzero((l1 > target) & (stretch > 1.05))[0]
+        if not len(bad) or len(bm.verts) + len(bad) > max_verts:
+            break
+        bm.edges.ensure_lookup_table()
+        bm.edges.index_update()
+        # split whole rings across quads (the opposite edge of each quad, while it is stretched too):
+        # new clean edge loops, quads stay quads
+        chosen = set(int(i) for i in bad)
+        stack = list(chosen)
+        while stack:
+            e = bm.edges[stack.pop()]
+            for f in e.link_faces:
+                if len(f.edges) != 4:
+                    continue
+                k = list(f.edges).index(e)
+                o = f.edges[(k + 2) % 4]
+                if o.index not in chosen and stretch[o.index] > 1.12 and l1[o.index] > target * 0.6:
+                    chosen.add(o.index)
+                    stack.append(o.index)
+        if len(bm.verts) + len(chosen) > max_verts:
+            break
+        edges = [bm.edges[i] for i in chosen]
+        bad = chosen
+        bmesh.ops.subdivide_edges(bm, edges=edges, cuts=1, use_grid_fill=True)
+        bmesh.ops.triangulate(bm, faces=[f for f in bm.faces if len(f.verts) > 4])
+        split += len(bad)
+    bm.verts.ensure_lookup_table()
+    rest = np.array([v.co[:] for v in bm.verts], dtype=np.float64)
+    moved = field(rest)
+    for v, c in zip(bm.verts, moved):
+        v.co = c
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    return split
+
+
 def keep_density(me, before, after, radius, ratio=1.6):
-    """Split edges the pull stretched (longer than ratio x before, and longer than the mesh's usual edge)."""
+    """Older quick fix (kept for scripts): split edges longer than ratio x before, at their midpoints."""
     bm = bmesh.new()
     bm.from_mesh(me)
     bm.edges.ensure_lookup_table()
     lens0 = np.array([np.linalg.norm(before[e.verts[0].index] - before[e.verts[1].index]) for e in bm.edges])
     usual = float(np.median(lens0)) if len(lens0) else 0.0
-    long_e = []
-    for e, l0 in zip(bm.edges, lens0):
-        l1 = (e.verts[0].co - e.verts[1].co).length
-        if l1 > max(l0 * ratio, usual * 1.5):
-            long_e.append(e)
-    n = 0
+    long_e = [e for e, l0 in zip(bm.edges, lens0)
+              if (e.verts[0].co - e.verts[1].co).length > max(l0 * ratio, usual * 1.5)]
+    n = len(long_e)
     if long_e:
-        res = bmesh.ops.subdivide_edges(bm, edges=long_e, cuts=1, use_grid_fill=True)
-        new_v = [g for g in res['geom_inner'] + res['geom_split'] if isinstance(g, bmesh.types.BMVert)]
+        bmesh.ops.subdivide_edges(bm, edges=long_e, cuts=1, use_grid_fill=True)
         bmesh.ops.triangulate(bm, faces=[f for f in bm.faces if len(f.verts) > 4])
-        for _ in range(2):                                   # settle the new points into the surface
-            for v in new_v:
-                if v.is_valid and not v.is_boundary and v.link_edges:
-                    avg = sum((e.other_vert(v).co for e in v.link_edges), Vector()) / len(v.link_edges)
-                    v.co = v.co.lerp(avg, 0.4)
-        n = len(long_e)
         bm.to_mesh(me)
         me.update()
     bm.free()
@@ -189,6 +251,116 @@ def fuse(context, objects, voxel):
 
 
 # -----------------------------------------------------------------------------
+# live objects: record the moves, replay them after every slider rebuild
+# -----------------------------------------------------------------------------
+
+# modules whose rebuild() recomputes a live object's mesh from its sliders
+LIVE_MODULES = (('armor_plate', 'rebuild_plate'), ('base_mesh', 'rebuild'), ('belt_maker', 'rebuild'),
+                ('bridge_patch', 'rebuild'), ('cape_gen', 'rebuild'), ('clothing_gen', 'rebuild'),
+                ('creature_hair', 'rebuild'), ('creature_plate', 'rebuild'), ('creature_scales', 'rebuild'),
+                ('creature_spike', 'rebuild'), ('flower_plate', 'rebuild'), ('hood_gen', 'rebuild'),
+                ('mech_ridge', 'rebuild'), ('scale_brush', 'rebuild'), ('scarf_gen', 'rebuild'),
+                ('face_extract', 'rebuild'), ('edge_molding', 'rebuild'), ('loft_surface', 'rebuild'),
+                ('robot_base', 'rebuild'))
+_ORIGINALS = {}
+
+
+def is_live(ob):
+    """A mesh our sliders rebuild (it keeps its source on the object)."""
+    if ob is None or ob.type != 'MESH':
+        return False
+    try:
+        keys = ob.keys()
+    except TypeError:
+        return False
+    return any(k.startswith('mch_') and (k.endswith('_src') or k.endswith('_source')) for k in keys)
+
+
+def recorded_moves(ob):
+    try:
+        return json.loads(ob.get(MOVES_KEY, '[]'))
+    except (TypeError, ValueError):
+        return []
+
+
+def record_move(ob, move):
+    moves = recorded_moves(ob)
+    moves.append(move)
+    ob[MOVES_KEY] = json.dumps(moves)
+
+
+def replay(ob):
+    """Re-apply the recorded moves (with generation) to ob's freshly rebuilt mesh."""
+    if ob is None or ob.type != 'MESH':
+        return 0
+    n = 0
+    for mv in recorded_moves(ob):
+        generate(ob.data, move_field(mv))
+        n += 1
+    return n
+
+
+def _wrap(fn):
+    def wrapped(*args, **kwargs):
+        result = fn(*args, **kwargs)
+        for a in args:
+            if isinstance(a, bpy.types.Object):
+                try:
+                    if MOVES_KEY in a:
+                        replay(a)
+                except ReferenceError:
+                    pass
+                break
+        return result
+    wrapped.__wrapped__ = fn
+    wrapped.__name__ = getattr(fn, '__name__', 'rebuild')
+    return wrapped
+
+
+def _hook_live_modules():
+    import importlib
+    for mod_name, fn_name in LIVE_MODULES:
+        try:
+            mod = importlib.import_module(f'{__package__}.{mod_name}')
+        except ImportError:
+            continue
+        fn = getattr(mod, fn_name, None)
+        if fn is None or hasattr(fn, '__wrapped__'):
+            continue
+        _ORIGINALS[(mod_name, fn_name)] = fn
+        setattr(mod, fn_name, _wrap(fn))
+
+
+def _unhook_live_modules():
+    import importlib
+    for (mod_name, fn_name), fn in list(_ORIGINALS.items()):
+        try:
+            setattr(importlib.import_module(f'{__package__}.{mod_name}'), fn_name, fn)
+        except ImportError:
+            pass
+    _ORIGINALS.clear()
+
+
+def rebuild_live(context, ob):
+    """Run the live rebuild of ob (its module's rebuild) - used by Clear Moves."""
+    import importlib
+    for mod_name, fn_name in LIVE_MODULES:
+        try:
+            mod = importlib.import_module(f'{__package__}.{mod_name}')
+        except ImportError:
+            continue
+        key = getattr(mod, 'SRC_KEY', None)
+        if key and key in ob:
+            fn = getattr(mod, fn_name)
+            try:
+                fn(context, ob)
+            except TypeError:
+                fn(ob)
+            return True
+    return False
+
+
+# -----------------------------------------------------------------------------
 # settings / operators / tool
 # -----------------------------------------------------------------------------
 
@@ -201,8 +373,9 @@ class MCH_PG_Concept(bpy.types.PropertyGroup):
                             description='How much of the brush moves whole (high = a rigid lump, low = soft)')
     falloff: EnumProperty(name='Falloff', items=FALLOFF_ITEMS, default='CLAY')
     mirror_x: BoolProperty(name='Mirror X', default=True, description='Move the other side (object X) too')
-    keep_density: BoolProperty(name='Keep Density', default=True,
-                               description='Split what got stretched when you let go (no long thin faces)')
+    keep_density: BoolProperty(name='Generate', default=True,
+                               description='Really generate the pulled part when you let go (even faces, no '
+                                           'stretching)')
     follow_view: BoolProperty(name='Follow View', default=True,
                               description='The grab stays in front of you while the view turns (3D mouse = hand)')
     strength: FloatProperty(name='Strength', default=1.0, min=0.05, max=2.0,
@@ -251,11 +424,70 @@ NAV_EVENTS = {'NDOF_MOTION', 'NDOF_BUTTON_PRESS', 'NDOF_BUTTON_RELEASE', 'MIDDLE
               'TRACKPADZOOM', 'NDOF_BUTTON_FIT', 'NDOF_BUTTON_TOP', 'NDOF_BUTTON_FRONT', 'NDOF_BUTTON_RIGHT'}
 
 
+def _mesh_ok(ob):
+    return ob is not None and ob.type == 'MESH' and not ob.library and not ob.data.library and ob.data.users == 1
+
+
 class MCH_OT_concept_move(bpy.types.Operator):
+    """Drag = light preview; let go = the real move (generated), adjustable afterwards (F9)."""
     bl_idname = 'mch.concept_move'
     bl_label = 'Concept Move'
     bl_description = 'Grab the surface and pull it (Shift: straight out, wheel: depth, [ ]: size)'
     bl_options = {'REGISTER', 'UNDO', 'BLOCKING'}
+
+    # the move, in the object's own space (filled when you let go; F9 changes them)
+    centre: FloatVectorProperty(name='Centre', size=3, options={'HIDDEN'})
+    delta: FloatVectorProperty(name='Pull', size=3, options={'HIDDEN'})
+    axes: FloatVectorProperty(name='Axes', size=9, default=(1, 0, 0, 0, 1, 0, 0, 0, 1), options={'HIDDEN'})
+    radius: FloatProperty(name='Radius', min=1e-6, default=1.0, options={'HIDDEN'})
+    size: FloatProperty(name='Size', default=1.0, min=0.05, max=10.0, description='Brush size (x the drag)')
+    pull: FloatProperty(name='Pull', default=1.0, min=-3.0, max=5.0, description='How far (x the drag)')
+    hardness: FloatProperty(name='Hardness', default=0.5, min=0.0, max=0.98)
+    shape: EnumProperty(name='Shape', items=SHAPE_ITEMS, default='SPHERE')
+    falloff: EnumProperty(name='Falloff', items=FALLOFF_ITEMS, default='CLAY')
+    mirror: BoolProperty(name='Mirror X', default=True)
+    generate_mesh: BoolProperty(name='Generate', default=True,
+                                description='Really generate the pulled part (even faces, no stretching)')
+
+    def move_dict(self):
+        return {'centre': list(self.centre), 'delta': [c * self.pull for c in self.delta],
+                'radius': self.radius * self.size, 'falloff': self.falloff, 'mirror': self.mirror,
+                'shape': self.shape, 'hardness': self.hardness, 'axes': list(self.axes)}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT'
+
+    def execute(self, context):
+        """The real move on the active object (also re-run by F9 after undo)."""
+        ob = context.active_object
+        if not _mesh_ok(ob):
+            self.report({'WARNING'}, 'Concept Move: pick a mesh (single user)')
+            return {'CANCELLED'}
+        mv = self.move_dict()
+        field = move_field(mv)
+        if self.generate_mesh:
+            n = generate(ob.data, field)
+        else:
+            write_coords(ob.data, field(read_coords(ob.data)))
+            n = 0
+        if is_live(ob):
+            record_move(ob, mv)                              # the sliders rebuild it: replay this move then
+        return {'FINISHED'}
+
+    def draw(self, context):
+        col = self.layout.column(align=True)
+        col.prop(self, 'size', slider=True)
+        col.prop(self, 'pull', slider=True)
+        if self.falloff == 'CLAY':
+            col.prop(self, 'hardness', slider=True)
+        self.layout.prop(self, 'shape', expand=True)
+        self.layout.prop(self, 'falloff')
+        row = self.layout.row(align=True)
+        row.prop(self, 'mirror', toggle=True)
+        row.prop(self, 'generate_mesh', toggle=True)
+
+    # --- the drag (preview) --------------------------------------------------
 
     def _world_radius(self, context, px, at=None):
         region, rv3d = context.region, context.region_data
@@ -288,12 +520,11 @@ class MCH_OT_concept_move(bpy.types.Operator):
         self.center_2d = mouse
         self.depth = 0.0
         self.shift = False
-        # Follow View: where the grab sits relative to the view (distance along the mouse ray)
-        self.dist0 = (loc - origin).length
+        self.dist0 = (loc - origin).length                   # Follow View: distance along the mouse ray
         self.mw = ob.matrix_world.copy()
         self.mwi = self.mw.inverted_safe()
         self.orig = read_coords(ob.data)
-        self.last = self.orig
+        self.cur = None
         for o in context.selected_objects:
             if o is not ob:
                 o.select_set(False)
@@ -313,21 +544,20 @@ class MCH_OT_concept_move(bpy.types.Operator):
             '  |  Shift: out   Wheel: depth   [ ]: size   3D mouse / MMB: view   RMB/Esc: cancel')
 
     def _target(self, context):
-        """Where the grabbed point should be now (mouse + current view)."""
         st = context.scene.mch_concept
         region, rv3d = context.region, context.region_data
         origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, self.mouse)
         ray = view3d_utils.region_2d_to_vector_3d(region, rv3d, self.mouse).normalized()
         if st.follow_view:
-            return origin + ray * (self.dist0 + self.depth), ray
+            return origin + ray * (self.dist0 + self.depth)
         p = view3d_utils.region_2d_to_location_3d(region, rv3d, self.mouse, self.target)
-        return p + ray * self.depth, ray
+        return p + ray * self.depth
 
-    def _apply(self, context):
+    def _current_move(self, context):
+        """The move as it stands (object space) - preview and the final operator properties."""
         st = context.scene.mch_concept
         region, rv3d = context.region, context.region_data
-        target, ray = self._target(context)
-        delta = target - self.hit
+        delta = self._target(context) - self.hit
         if self.shift:                                       # straight out of / into the surface
             dy = (Vector(self.mouse) - self.mouse0).y
             delta = self.normal * (dy * self._world_radius(context, 1.0, self.hit))
@@ -337,15 +567,17 @@ class MCH_OT_concept_move(bpy.types.Operator):
         radius = self._world_radius(context, st.radius_px, self.hit)
         m3 = self.mwi.to_3x3()
         scale = (m3 @ Vector((1.0, 0.0, 0.0))).length if abs(m3.determinant()) > 1e-12 else 1.0
-        # box brush faces the view: its axes are the screen right / up / view direction (object space)
-        vm = rv3d.view_matrix.to_3x3().transposed()
-        axes = [(m3 @ vm.col[i]).normalized()[:] for i in range(3)]
-        new = displace(self.orig, (self.mwi @ self.hit)[:], (m3 @ delta)[:], radius * scale, st.falloff,
-                       st.mirror_x, st.shape, st.hardness, axes)
-        write_coords(self.ob.data, new)
-        self.last = new
+        vm = rv3d.view_matrix.to_3x3().transposed()        # box faces the view: screen right / up / depth
+        axes = [c for i in range(3) for c in (m3 @ vm.col[i]).normalized()]
+        return {'centre': list(self.mwi @ self.hit), 'delta': list(m3 @ delta), 'radius': radius * scale,
+                'falloff': st.falloff, 'mirror': st.mirror_x, 'shape': st.shape, 'hardness': st.hardness,
+                'axes': axes}
 
-    def _finish(self, context):
+    def _preview(self, context):
+        self.cur = self._current_move(context)
+        write_coords(self.ob.data, move_field(self.cur)(self.orig))
+
+    def _finish_ui(self, context):
         if _DRAW[0] is not None:
             bpy.types.SpaceView3D.draw_handler_remove(_DRAW[0], 'WINDOW')
             _DRAW[0] = None
@@ -361,33 +593,35 @@ class MCH_OT_concept_move(bpy.types.Operator):
         if event.type in NAV_EVENTS:                         # the 3D mouse / MMB still moves the view
             return {'PASS_THROUGH'}
         if event.type == 'TIMER':                            # the view may have moved under a still mouse
-            self._apply(context)
+            self._preview(context)
         elif event.type == 'MOUSEMOVE':
             self.mouse = (event.mouse_region_x, event.mouse_region_y)
             self.shift = event.shift
-            self._apply(context)
+            self._preview(context)
         elif event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
             step = self._world_radius(context, st.radius_px) * 0.15
             self.depth += step if event.type == 'WHEELDOWNMOUSE' else -step
-            self._apply(context)
+            self._preview(context)
         elif event.type in {'LEFT_BRACKET', 'RIGHT_BRACKET'} and event.value == 'PRESS':
             st.radius_px = max(5, int(st.radius_px * (1.15 if event.type == 'RIGHT_BRACKET' else 1 / 1.15)))
             self._header(context)
-            self._apply(context)
+            self._preview(context)
         elif event.type in {'LEFT_SHIFT', 'RIGHT_SHIFT'}:
             self.shift = event.value == 'PRESS'
-            self._apply(context)
+            self._preview(context)
         elif event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
-            n = 0
-            if st.keep_density:
-                n = keep_density(self.ob.data, self.orig, self.last, self._world_radius(context, st.radius_px))
-            self._finish(context)
-            if n:
-                self.report({'INFO'}, f'Concept Move: {n} stretched edges split')
-            return {'FINISHED'}
+            self._finish_ui(context)
+            mv = self.cur or self._current_move(context)
+            write_coords(self.ob.data, self.orig)            # back to the start: execute() does the real move
+            self.centre, self.delta, self.axes = mv['centre'], mv['delta'], mv['axes']
+            self.radius, self.size, self.pull = mv['radius'], 1.0, 1.0
+            self.hardness, self.shape, self.falloff, self.mirror = mv['hardness'], mv['shape'], mv['falloff'], \
+                mv['mirror']
+            self.generate_mesh = st.keep_density
+            return self.execute(context)
         elif event.type in {'RIGHTMOUSE', 'ESC'} and event.value == 'PRESS':
             write_coords(self.ob.data, self.orig)
-            self._finish(context)
+            self._finish_ui(context)
             return {'CANCELLED'}
         if context.area:
             context.area.tag_redraw()
@@ -455,6 +689,26 @@ class MCH_OT_concept_fuse(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_concept_clear(bpy.types.Operator):
+    bl_idname = 'mch.concept_clear'
+    bl_label = 'Clear Moves'
+    bl_description = 'Forget the Concept Moves of this live object (back to what its sliders make)'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.active_object
+        return ob is not None and MOVES_KEY in ob
+
+    def execute(self, context):
+        ob = context.active_object
+        n = len(recorded_moves(ob))
+        del ob[MOVES_KEY]
+        rebuild_live(context, ob)
+        self.report({'INFO'}, f'{n} move(s) cleared')
+        return {'FINISHED'}
+
+
 class MCH_TOOL_concept_move(bpy.types.WorkSpaceTool):
     bl_space_type = 'VIEW_3D'
     bl_context_mode = 'OBJECT'
@@ -487,15 +741,20 @@ def draw(layout, context, compact=False):
     layout.prop(st, 'keep_density', toggle=True)
     layout.prop(st, 'follow_view', toggle=True)
     layout.operator('mch.concept_fuse', icon='META_BALL')
+    ob = context.active_object
+    if ob is not None and MOVES_KEY in ob:
+        layout.operator('mch.concept_clear', text=f'Clear Moves ({len(recorded_moves(ob))})', icon='X')
 
 
-CLASSES = (MCH_PG_Concept, MCH_OT_concept_move, MCH_OT_concept_size, MCH_OT_concept_add, MCH_OT_concept_fuse)
+CLASSES = (MCH_PG_Concept, MCH_OT_concept_move, MCH_OT_concept_size, MCH_OT_concept_add, MCH_OT_concept_fuse,
+           MCH_OT_concept_clear)
 
 
 def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Scene.mch_concept = bpy.props.PointerProperty(type=MCH_PG_Concept)
+    _hook_live_modules()
     try:
         bpy.utils.register_tool(MCH_TOOL_concept_move, separator=True, group=False)
     except (ValueError, RuntimeError):
@@ -507,6 +766,7 @@ def unregister():
         bpy.utils.unregister_tool(MCH_TOOL_concept_move)
     except (ValueError, RuntimeError, KeyError):
         pass
+    _unhook_live_modules()
     if _DRAW[0] is not None:
         try:
             bpy.types.SpaceView3D.draw_handler_remove(_DRAW[0], 'WINDOW')
