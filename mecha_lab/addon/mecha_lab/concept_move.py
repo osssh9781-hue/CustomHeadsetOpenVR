@@ -7,7 +7,8 @@ stretched faces).  Then F9 / Adjust Last Operation: Size, Hardness, Pull, Shape,
 original.
 * Shape: Sphere or Box (a view-aligned cube - frames, plates, flat panels).  Hardness: how much of the brush moves
   whole (1 = a rigid lump, 0 = a soft dome).  Falloffs: Clay (hardness), Elastic (Kelvinlet grab), Sharp.
-* While dragging: Shift = straight out of the surface, Ctrl + left / right = turn the grabbed part, wheel = depth, [ ] = size, right click / Esc = cancel.
+* While dragging: Shift = straight out of the surface, Ctrl + mouse = turn the grabbed part as seen on screen
+  (left / right, up / down), wheel = depth, [ ] = size, right click / Esc = cancel.
   A 3D mouse (and middle mouse) still navigates the view; with Follow View the grab stays in front of you, so
   moving the view carries the clay even with the mouse held still (re-evaluated 60 times a second).
 * Live objects (cape, hood, plates ... still on their sliders) need no Apply: every move is recorded on the object
@@ -101,6 +102,17 @@ def rotation_matrix(axis, angle):
     x, y, z = a / n
     k = np.array([[0.0, -z, y], [z, 0.0, -x], [-y, x, 0.0]])
     return np.eye(3) + math.sin(angle) * k + (1.0 - math.cos(angle)) * (k @ k)
+
+
+def screen_turn(view_rot, yaw, pitch):
+    """Ctrl-drag turn seen on screen -> (axis, angle) in the world: left / right = round the screen's up axis,
+    up / down = round its right axis (tips the front up / down).  ``view_rot``: the view's rotation (3x3)."""
+    from mathutils import Quaternion
+    up = view_rot @ Vector((0.0, 1.0, 0.0))
+    right = view_rot @ Vector((1.0, 0.0, 0.0))
+    q = Quaternion(right, -pitch) @ Quaternion(up, yaw)
+    axis, angle = q.to_axis_angle()
+    return Vector(axis).normalized(), angle
 
 
 def displace(co, centre, delta, radius, falloff='CLAY', mirror_x=False, shape='SPHERE', hardness=0.5,
@@ -633,7 +645,7 @@ class MCH_OT_concept_move(bpy.types.Operator):
     even_out: BoolProperty(name='Even Out', default=False,
                            description='Even out the faces of the pulled part along its surface (sharp edges stay)')
     twist: FloatProperty(name='Turn', default=0.0, subtype='ANGLE',
-                         description='Turn of the grabbed part (Ctrl + mouse left / right while dragging)')
+                         description='Turn of the grabbed part (Ctrl + mouse while dragging: left / right, up / down on screen)')
     twist_axis: FloatVectorProperty(size=3, default=(0, 0, 1), options={'HIDDEN'})
 
     def move_dict(self):
@@ -715,8 +727,9 @@ class MCH_OT_concept_move(bpy.types.Operator):
         self.center_2d = mouse
         self.depth = 0.0
         self.shift = False
-        self.twist_angle = 0.0
-        self.last_x = mouse[0]
+        self.twist_angle = 0.0                               # kept for the header / old callers
+        self.yaw = self.pitch = 0.0
+        self.last_x, self.last_y = mouse
         self.dist0 = (loc - origin).length                   # Follow View: distance along the mouse ray
         self.mw = ob.matrix_world.copy()
         self.mwi = self.mw.inverted_safe()
@@ -745,7 +758,7 @@ class MCH_OT_concept_move(bpy.types.Operator):
             + (f'{st.radius_world:.4g}' if st.lock_size else f'{st.radius_px}px')
             + f'  hardness {st.hardness:.2f}  |  {st.falloff.title()}'
             f'  |  Mirror X {"on" if st.mirror_x else "off"}  |  Follow View {"on" if st.follow_view else "off"}'
-            f'  |  Turn {math.degrees(getattr(self, "twist_angle", 0.0)):.0f}°'
+            f'  |  Turn {math.degrees(getattr(self, "yaw", 0.0)):.0f}° / {math.degrees(getattr(self, "pitch", 0.0)):.0f}°'
             '  |  Shift: out   Ctrl: turn   Wheel: depth   [ ]: size   3D mouse / MMB: view   RMB/Esc: cancel')
 
     def _target(self, context):
@@ -780,16 +793,17 @@ class MCH_OT_concept_move(bpy.types.Operator):
         mv = {'centre': list(self.mref @ (self.mwi @ self.hit)), 'delta': list(r3 @ (m3 @ delta)),
               'radius': radius * scale, 'falloff': st.falloff, 'mirror': st.mirror_x and not self.obj_mirror,
               'shape': st.shape, 'hardness': st.hardness, 'axes': axes}
-        if abs(self.twist_angle) > 1e-9:                     # Ctrl: turn round the view axis
-            view_axis = (m3 @ (rv3d.view_rotation @ Vector((0.0, 0.0, -1.0)))).normalized()
-            sign = 1.0 if r3.determinant() > 0 else -1.0     # a turn seen in a mirror turns the other way
-            mv['twist'] = list(r3 @ view_axis) + [self.twist_angle * sign]
+        if abs(self.yaw) > 1e-9 or abs(self.pitch) > 1e-9:   # Ctrl: turn as seen on screen
+            axis, angle = screen_turn(rv3d.view_rotation.to_matrix(), self.yaw, self.pitch)
+            if angle > 1e-9:
+                sign = 1.0 if r3.determinant() > 0 else -1.0     # a turn seen in a mirror turns the other way
+                mv['twist'] = list((r3 @ (m3 @ axis)).normalized()) + [angle * sign]
         return mv
 
     def _preview(self, context, timer=False):
         rv3d = context.region_data
         key = (tuple(round(c, 6) for row in rv3d.view_matrix for c in row), tuple(self.mouse), self.depth,
-               self.shift, self.twist_angle, context.scene.mch_concept.radius_px,
+               self.shift, self.yaw, self.pitch, context.scene.mch_concept.radius_px,
                context.scene.mch_concept.radius_world)
         if timer and key == getattr(self, '_last_key', None):
             return                                           # nothing moved: no work on a still frame
@@ -820,13 +834,14 @@ class MCH_OT_concept_move(bpy.types.Operator):
         if event.type == 'TIMER':                            # the view may have moved under a still mouse
             self._preview(context, timer=True)
         elif event.type == 'MOUSEMOVE':
-            x = event.mouse_region_x
-            if event.ctrl:                                   # Ctrl: left / right turns the grabbed part
-                self.twist_angle += (x - self.last_x) * 0.01
+            x, y = event.mouse_region_x, event.mouse_region_y
+            if event.ctrl:                                   # Ctrl: turn it as seen on screen
+                self.yaw += (x - self.last_x) * 0.01         # left / right
+                self.pitch += (y - self.last_y) * 0.01       # up / down
                 self._header(context)
             else:
-                self.mouse = (event.mouse_region_x, event.mouse_region_y)
-            self.last_x = x
+                self.mouse = (x, y)
+            self.last_x, self.last_y = x, y
             self.shift = event.shift
             self._preview(context)
         elif event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:

@@ -181,4 +181,18 @@ for turn in (True, False):
 check('Path Move round a bend: it goes up the new way', tops[True][0] == {'FINISHED'} and tops[True][1] > 1.7, tops[True][1])
 check('Follow Turns: the end turned with the path (its flat side faces up, wide across X)',
       tops[True][2] > 0.5 and tops[True][2] > tops[False][2] * 1.5, (tops[True][2], tops[False][2]))
+
+# Ctrl turn as seen on screen: left / right round the screen's up axis, up / down round its right axis
+from mathutils import Matrix
+ax, an = cm.screen_turn(Matrix.Identity(3), math.radians(90), 0.0)
+front = Matrix.Rotation(an, 3, ax) @ Vector((0, 0, 1))
+check('Ctrl + mouse right: the front turns to the right (round the screen up axis)', (front - Vector((1, 0, 0))).length < 1e-6,
+      (tuple(ax), math.degrees(an)))
+ax, an = cm.screen_turn(Matrix.Identity(3), 0.0, math.radians(90))
+front = Matrix.Rotation(an, 3, ax) @ Vector((0, 0, 1))
+check('Ctrl + mouse up: the front tips up (round the screen right axis)', (front - Vector((0, 1, 0))).length < 1e-6, tuple(front))
+vr = Matrix.Rotation(math.radians(90), 3, 'X')               # a view from the top: screen up = world -Y ... any view
+ax, an = cm.screen_turn(vr, math.radians(30), 0.0)
+check('follows the view: the axis is the screen up axis in the world', (ax - vr @ Vector((0, 1, 0))).length < 1e-6
+      and abs(math.degrees(an) - 30) < 1e-4)
 summary()
