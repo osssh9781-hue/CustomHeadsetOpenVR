@@ -189,10 +189,11 @@ def write_coords(me, co):
     me.update()
 
 
-def generate(me, field, ratio=1.3, max_rounds=6, max_verts=400000):
+def generate(me, field, ratio=1.3, max_rounds=6, max_verts=400000, relax=0):
     """Really generate the pulled part: split (in the rest shape) every edge the field stretches past ratio x the
     mesh's usual edge, repeat, then move everything.  New points land on the smooth moved surface, the faces keep
-    the mesh's density.  Returns the number of edges split."""
+    the mesh's density.  ``relax`` > 0 (Even Out): that many passes evening out the moved part along its surface
+    (sharp edges and corners stay).  Returns the number of edges split."""
     bm = bmesh.new()
     bm.from_mesh(me)
     split = 0
@@ -241,10 +242,35 @@ def generate(me, field, ratio=1.3, max_rounds=6, max_verts=400000):
     moved = field(rest)
     for v, c in zip(bm.verts, moved):
         v.co = c
+    if relax > 0:
+        even_out(bm, np.linalg.norm(moved - rest, axis=1) > 1e-9, relax)
     bm.to_mesh(me)
     bm.free()
     me.update()
     return split
+
+
+def even_out(bm, region, passes=3, amount=0.5, sharp_deg=40.0):
+    """Even out the faces of the moved ``region`` (bool per vert) by sliding points along the surface: each point
+    goes part way to the middle of its neighbours, minus the part across the surface.  Points on open borders and
+    sharp edges / corners stay, so the shape does not shrink or round off."""
+    bm.verts.ensure_lookup_table()
+    cos_sharp = math.cos(math.radians(sharp_deg))
+    for _ in range(passes):
+        bm.normal_update()
+        moves = []
+        for v in bm.verts:
+            if not region[v.index] or v.is_boundary or not v.link_edges:
+                continue
+            fn = [f.normal for f in v.link_faces]
+            if any(a.dot(b) < cos_sharp for i, a in enumerate(fn) for b in fn[i + 1:]):
+                continue                                      # a sharp edge or corner runs through it
+            mid = sum((e.other_vert(v).co for e in v.link_edges), Vector()) / len(v.link_edges)
+            lap = mid - v.co
+            n = v.normal
+            moves.append((v, (lap - n * lap.dot(n)) * amount))
+        for v, d in moves:
+            v.co += d
 
 
 def keep_density(me, before, after, radius, ratio=1.6):
@@ -349,7 +375,7 @@ def replay(ob):
         return 0
     n = 0
     for mv in recorded_moves(ob):
-        generate(ob.data, move_field(mv))
+        generate(ob.data, move_field(mv), relax=mv.get('relax', 0))
         n += 1
     return n
 
@@ -430,6 +456,8 @@ class MCH_PG_Concept(bpy.types.PropertyGroup):
     keep_density: BoolProperty(name='Generate', default=True,
                                description='Really generate the pulled part when you let go (even faces, no '
                                            'stretching)')
+    even_out: BoolProperty(name='Even Out', default=False,
+                           description='After a pull, even out its faces along the surface (sharp edges stay)')
     follow_view: BoolProperty(name='Follow View', default=True,
                               description='The grab stays in front of you while the view turns (3D mouse = hand)')
     strength: FloatProperty(name='Strength', default=1.0, min=0.05, max=2.0,
@@ -571,6 +599,8 @@ class MCH_OT_concept_move(bpy.types.Operator):
     mirror: BoolProperty(name='Mirror X', default=True)
     generate_mesh: BoolProperty(name='Generate', default=True,
                                 description='Really generate the pulled part (even faces, no stretching)')
+    even_out: BoolProperty(name='Even Out', default=False,
+                           description='Even out the faces of the pulled part along its surface (sharp edges stay)')
     twist: FloatProperty(name='Turn', default=0.0, subtype='ANGLE',
                          description='Turn of the grabbed part (Ctrl + mouse left / right while dragging)')
     twist_axis: FloatVectorProperty(size=3, default=(0, 0, 1), options={'HIDDEN'})
@@ -581,6 +611,8 @@ class MCH_OT_concept_move(bpy.types.Operator):
               'shape': self.shape, 'hardness': self.hardness, 'axes': list(self.axes)}
         if abs(self.twist) > 1e-9:
             mv['twist'] = list(self.twist_axis) + [self.twist]
+        if self.even_out and self.generate_mesh:
+            mv['relax'] = 3
         return mv
 
     @classmethod
@@ -596,7 +628,7 @@ class MCH_OT_concept_move(bpy.types.Operator):
         mv = self.move_dict()
         field = move_field(mv)
         if self.generate_mesh:
-            n = generate(ob.data, field)
+            n = generate(ob.data, field, relax=3 if self.even_out else 0)
         else:
             write_coords(ob.data, field(read_coords(ob.data)))
             n = 0
@@ -616,6 +648,8 @@ class MCH_OT_concept_move(bpy.types.Operator):
         row = self.layout.row(align=True)
         row.prop(self, 'mirror', toggle=True)
         row.prop(self, 'generate_mesh', toggle=True)
+        if self.generate_mesh:
+            row.prop(self, 'even_out', toggle=True)
 
     # --- the drag (preview) --------------------------------------------------
 
@@ -786,6 +820,7 @@ class MCH_OT_concept_move(bpy.types.Operator):
             tw = mv.get('twist')
             self.twist_axis, self.twist = (tw[:3], tw[3]) if tw else ((0.0, 0.0, 1.0), 0.0)
             self.generate_mesh = st.keep_density
+            self.even_out = st.even_out
             return self.execute(context)
         elif event.type in {'RIGHTMOUSE', 'ESC'} and event.value == 'PRESS':
             write_coords(self.ob.data, self.orig)
@@ -984,7 +1019,10 @@ def draw(layout, context, compact=False):
         layout.label(text='Mirror: the object\'s own Mirror', icon='MOD_MIRROR')
     else:
         layout.prop(st, 'mirror_x', toggle=True)
-    layout.prop(st, 'keep_density', toggle=True)
+    row = layout.row(align=True)
+    row.prop(st, 'keep_density', toggle=True)
+    if st.keep_density:
+        row.prop(st, 'even_out', toggle=True)
     layout.prop(st, 'follow_view', toggle=True)
     layout.operator('mch.concept_fuse', icon='META_BALL')
     ob = context.active_object

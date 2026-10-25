@@ -92,4 +92,34 @@ for mv in ({'centre': [1.0, 0, 0], 'delta': [0, 0, 0.5], 'radius': 0.8, 'falloff
     fast = cm.fast_field(mv, mask)(co)
     check(f'light preview ({mv["falloff"]}): same as the full move, far fewer points computed',
           np.allclose(full, fast, atol=1e-9) and mask.sum() < len(co) * 0.25, (int(mask.sum()), float(abs(full - fast).max())))
+
+# Even Out: the pulled part's faces get more even, the shape stays
+def edge_spread(me):
+    """spread of the edge lengths in the pulled part (x > 1.1 in the sphere's own space)"""
+    co = cm.read_coords(me)
+    ev = np.array([e.vertices[:] for e in me.edges])
+    m = (co[ev[:, 0], 0] > 1.1) & (co[ev[:, 1], 0] > 1.1)
+    l = np.linalg.norm(co[ev[m, 0]] - co[ev[m, 1]], axis=1)
+    return float(l.std() / l.mean()), co
+res = []
+for eo in (False, True):
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=32, ring_count=16, radius=1.0, location=(20, 0, 0))
+    sp = bpy.context.active_object
+    bpy.ops.mch.concept_move('EXEC_DEFAULT', centre=(1, 0, 0), delta=(1.0, 0, 0), radius=0.7, hardness=0.4,
+                             mirror=False, generate_mesh=True, even_out=eo)
+    res.append(edge_spread(sp.data))
+(s0, c0), (s1, c1) = res
+check('Even Out: the faces of the pulled part are more even than without', s1 < s0 * 0.8, (s0, s1))
+check('Even Out keeps the shape (the pull still reaches as far)', abs(c1[:, 0].max() - c0[:, 0].max()) < 0.05,
+      (c0[:, 0].max(), c1[:, 0].max()))
+bpy.ops.mesh.primitive_cube_add(size=2.0, location=(30, 0, 0))
+cb = bpy.context.active_object
+bpy.ops.object.mode_set(mode='EDIT')
+bpy.ops.mesh.subdivide(number_cuts=4)
+bpy.ops.object.mode_set(mode='OBJECT')
+bpy.ops.mch.concept_move('EXEC_DEFAULT', centre=(1, 0, 0), delta=(1.0, 0, 0), radius=0.9, hardness=0.9, shape='BOX',
+                         axes=(1, 0, 0, 0, 1, 0, 0, 0, 1), mirror=False, generate_mesh=True, even_out=True)
+cc = cm.read_coords(cb.data)
+corner = np.abs(np.abs(cc[:, 1:]) - 1.0).max(1) < 1e-6
+check('Even Out: the sharp corners of a box stay sharp', corner.sum() >= 8, int(corner.sum()))
 summary()
