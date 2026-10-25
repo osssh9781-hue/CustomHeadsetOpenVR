@@ -291,6 +291,26 @@ def icons():
         poly(d, [(280, 280), (330, 280), (350, 410), (300, 420)], CY, fill=(80, 200, 255, 70))
         return img
     out['scarf'] = scarf
+
+    def concept_move():                       # 0.24.31 a lump pulled out of a surface + the drag arrow
+        img, d = canvas()
+        d.arc((60, 250, 452, 560), 200, 340, fill=DIM, width=W)
+        poly(d, [(170, 300), (210, 170), (300, 130), (360, 190), (340, 300)], ACC, fill=(255, 158, 40, 90))
+        d.line((300, 250, 420, 80), fill=CY, width=W)
+        poly(d, [(420, 80), (370, 100), (410, 135)], CY, fill=CY)
+        return img
+    out['concept_move'] = concept_move
+
+    def jungle_gym():                         # 0.24.31 a lattice with the orange crawl line
+        img, d = canvas()
+        for i in range(4):
+            x = 96 + i * 106
+            d.line((x, 96, x, 416), fill=DIM, width=8)
+            d.line((96, x, 416, x), fill=DIM, width=8)
+        poly(d, [(96, 416), (202, 416), (202, 202), (308, 202), (414, 96)], ACC, width=W + 6, closed=False)
+        d.ellipse((392, 74, 436, 118), fill=ACC)
+        return img
+    out['jungle_gym'] = jungle_gym
     return out
 
 

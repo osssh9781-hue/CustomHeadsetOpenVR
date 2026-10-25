@@ -12,6 +12,7 @@ original.
   moving the view carries the clay even with the mouse held still (re-evaluated 60 times a second).
 * Live objects (cape, hood, plates ... still on their sliders) need no Apply: every move is recorded on the object
   and replayed (with the same generation) each time the sliders rebuild it.  Clear Moves forgets them.
+* Hold D and drag (in any tool of the MECHA LAB workspace): the same move without switching tools.
 * Shift+click: drop a clay blob.  Fuse: join the selected clay into one smooth piece (voxel remesh).
 ``clay_weights``, ``elastic_weights``, ``sharp_weights``, ``box_distance``, ``displace`` and ``generate`` are the
 working parts (numpy / bmesh, no UI).
@@ -628,6 +629,25 @@ class MCH_OT_concept_move(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
 
+class MCH_OT_concept_hold(bpy.types.Operator):
+    """Hold D and drag (any Mecha tool, MECHA LAB only): Concept Move right away, the tool stays as it was"""
+    bl_idname = 'mch.concept_hold'
+    bl_label = 'Concept Move (hold key)'
+    bl_options = {'INTERNAL'}
+
+    @classmethod
+    def poll(cls, context):
+        from . import tool_state as ts
+        try:
+            return context.mode == 'OBJECT' and ts.is_mecha_workspace(context.workspace)
+        except (AttributeError, ReferenceError):
+            return False
+
+    def invoke(self, context, event):
+        res = bpy.ops.mch.concept_move('INVOKE_DEFAULT')
+        return {'FINISHED'} if 'RUNNING_MODAL' in res or 'FINISHED' in res else {'PASS_THROUGH'}
+
+
 class MCH_OT_concept_size(bpy.types.Operator):
     bl_idname = 'mch.concept_size'
     bl_label = 'Concept Move Size'
@@ -746,7 +766,7 @@ def draw(layout, context, compact=False):
         layout.operator('mch.concept_clear', text=f'Clear Moves ({len(recorded_moves(ob))})', icon='X')
 
 
-CLASSES = (MCH_PG_Concept, MCH_OT_concept_move, MCH_OT_concept_size, MCH_OT_concept_add, MCH_OT_concept_fuse,
+CLASSES = (MCH_PG_Concept, MCH_OT_concept_move, MCH_OT_concept_hold, MCH_OT_concept_size, MCH_OT_concept_add, MCH_OT_concept_fuse,
            MCH_OT_concept_clear)
 
 

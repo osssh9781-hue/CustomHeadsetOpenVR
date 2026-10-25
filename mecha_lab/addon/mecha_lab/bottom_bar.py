@@ -15,6 +15,8 @@ from . import tool_state as ts
 # (id, label, key, Blender icon, operator, tool argument)
 BAR_TOOLS = (
     ('SELECT', 'Select', 'F', 'RESTRICT_SELECT_OFF', 'mch.select_move', None),
+    ('CMOVE', 'Move', 'D', 'VIEW_PAN', 'mch.set_tool', 'CMOVE'),
+    ('GYM', 'Gym', '', 'MESH_GRID', 'mch.set_tool', 'GYM'),
     ('CUT', 'Cut', 'C', 'SELECT_SUBTRACT', 'mch.set_tool', 'CUT'),
     ('SPLIT', 'Split', '', 'MOD_EDGESPLIT', 'mch.set_tool', 'SPLIT'),
     ('BASE', 'Base', '', 'MOD_SOLIDIFY', 'mch.set_tool', 'BASE'),
@@ -107,7 +109,7 @@ def in_select(context):
 # -----------------------------------------------------------------------------
 
 
-PIE_SHARED = {'BASE': ('PLATE',), 'RADIAL': ('TUBE',)}      # pie slot -> extra tools stacked under it
+PIE_SHARED = {'BASE': ('PLATE',), 'RADIAL': ('TUBE',), 'PRIMITIVE': ('CMOVE', 'GYM')}      # pie slot -> extra tools stacked under it
 
 
 class MCH_MT_tool_pie(bpy.types.Menu):

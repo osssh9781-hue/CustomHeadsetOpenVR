@@ -269,7 +269,8 @@ def _deferred_ortho_check():
     return None
 
 
-_HOTKEY_IDS = ('mch.tool_pie', 'mch.toggle_last_tool', 'mch.select_move_key', 'mch.space_tools', 'mch.hotkey')
+_HOTKEY_IDS = ('mch.tool_pie', 'mch.toggle_last_tool', 'mch.select_move_key', 'mch.space_tools', 'mch.hotkey',
+               'mch.concept_hold')
 
 
 def hotkey_items(context=None):
@@ -330,7 +331,7 @@ def _hotkeys_path():
     return os.path.join(d, HOTKEYS_FILE) if d else None
 
 
-_KEY_FIELDS = ('type', 'value', 'ctrl', 'shift', 'alt', 'oskey')
+_KEY_FIELDS = ('type', 'value', 'ctrl', 'shift', 'alt', 'oskey', 'key_modifier')
 
 
 def save_hotkeys(context=None):
@@ -399,9 +400,13 @@ def draw_hotkey_editor(layout, context=None):
         row = box.row(align=True)
         label = {'mch.select_move_key': 'Select / Move', 'mch.tool_pie': 'Tool Pie',
                  'mch.toggle_last_tool': 'Select <-> Last Tool',
-                 'mch.space_tools': 'Big Tool Menu'}.get(hid[0], HOTKEY_LABELS.get(hid[1], 'Hotkey'))
+                 'mch.space_tools': 'Big Tool Menu',
+                 'mch.concept_hold': 'Concept Move (hold + drag)'}.get(hid[0], HOTKEY_LABELS.get(hid[1], 'Hotkey'))
         row.label(text=label)
-        row.prop(item, 'type', text='', full_event=True)
+        if hid[0] == 'mch.concept_hold':                 # the key you hold; the drag is the left mouse
+            row.prop(item, 'key_modifier', text='', event=True)
+        else:
+            row.prop(item, 'type', text='', full_event=True)
     box.label(text='Tools (left list)', icon='TOOL_SETTINGS')
     col = box.column(align=True)
     for t in ts.VISIBLE_TOOLS:
@@ -541,6 +546,8 @@ def lasso_sketch_modes():
 
 def _tool_keymap(mode):
     return (
+        # 0.24.31 hold D + drag = Concept Move (before the tool's own left mouse)
+        ('mch.concept_hold', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'key_modifier': 'D'}, None),
         ('mch.cut_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'any': True},
          {'properties': [('mode', mode)]}),
         ('mch.rmb_gate', {'type': 'RIGHTMOUSE', 'value': 'PRESS'},
@@ -2273,6 +2280,9 @@ def register_keymaps():
     # Select / Move (replaces the removed Alt+click mode switch). Default F (user
     # request, 0.11.3); rebind freely (panel or Preferences > Keymap).
     _keymaps.append((km, km.keymap_items.new('mch.select_move_key', 'F', 'PRESS')))
+    # 0.24.31 hold D + drag = Concept Move in any tool (D alone does nothing in Object Mode; D + drag outside
+    # MECHA LAB is still Blender's annotate - the operator's poll)
+    _keymaps.append((km, km.keymap_items.new('mch.concept_hold', 'LEFTMOUSE', 'PRESS', key_modifier='D')))
     # 0.24.5 Enter = Apply the live result (tool keymaps, e.g. a pending sketch, come first)
     for key in ('RET', 'NUMPAD_ENTER'):
         _keymaps.append((km, km.keymap_items.new('mch.enter_apply', key, 'PRESS')))
