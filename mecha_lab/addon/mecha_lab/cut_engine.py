@@ -682,6 +682,9 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
     else:
         cutter_mesh = cg.build_cutter_mesh(groups, projector, near, far, 'MCH_CutterMesh')
         cutter = cg.link_temp_object(context, cutter_mesh)
+    from . import radial_sym                 # 0.24.33 a radially symmetric target: every copy is cut
+    cutter = radial_sym.replicate_cutter(context, targets, cutter)
+    cutter_out = radial_sym.replicate_cutter(context, targets, cutter_out)
     if not auto_apply:
         return _make_live(context, mode, targets, cutter, invert)
     results, pieces, temp = [], [], []
@@ -1778,6 +1781,11 @@ class StrokeLogic:
             traceback.print_exc()
             self.report({'ERROR'}, f'Mecha {self.mode} failed: {ex}')
             return self._cancel(context)
+        try:                                 # 0.24.33 Point Radial Symmetry: a new part repeats too
+            from . import radial_sym
+            msg = (msg or '') + radial_sym.after_create(context, self.mode)
+        except (ImportError, AttributeError, RuntimeError, ReferenceError):
+            pass
         self.report({'INFO'}, msg)
         self._cleanup(context)
         return {'FINISHED'}

@@ -916,7 +916,13 @@ def draw_cloth_wrap(layout, context):
     cloth_wrap.draw(layout, context)
 
 
+def draw_radial_sym(layout, context):
+    from . import radial_sym
+    radial_sym.draw(layout, context)
+
+
 DRAWERS = {
+    'RSYM': draw_radial_sym,
     'CWRAP': draw_cloth_wrap,
     'SDRAW': draw_surface_draw, 'CLOTHB': draw_cloth_brush,
     'PERF': draw_perforate,

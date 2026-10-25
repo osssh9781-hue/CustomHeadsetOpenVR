@@ -361,6 +361,19 @@ def icons():
             d.line((pts[i][0], pts[i][1], right[i][0], right[i][1] + 10), fill=CY, width=6)
         return img
     out['cloth_wrap'] = cloth_wrap
+
+    def radial_sym():                         # 0.24.33 copies round a centre point
+        img, d = canvas()
+        cx, cy = 256, 256
+        for k in range(6):
+            a = math.pi / 2 + k * math.pi / 3
+            x, y = cx + 150 * math.cos(a), cy - 150 * math.sin(a)
+            poly(d, [(x + 38 * math.cos(a + t), y - 38 * math.sin(a + t)) for t in (0, 2.1, 4.2)],
+                 ACC if k == 0 else CY, width=10, fill=(255, 158, 40, 110) if k == 0 else (80, 200, 255, 60))
+        d.ellipse((cx - 18, cy - 18, cx + 18, cy + 18), fill=ACC)
+        d.arc((cx - 100, cy - 100, cx + 100, cy + 100), 200, 330, fill=DIM, width=8)
+        return img
+    out['radial_sym'] = radial_sym
     return out
 
 
