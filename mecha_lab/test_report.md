@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.31
+# Test Report — Mecha Lab 0.24.32
+
+## 0.24.32 결과: 99개 파일 3297/3297 (`tests/test_log_bpy501_v02432.txt`, Blender 5.0.1 bpy). test_v02437(43): + 화면 기준 Ctrl 회전(좌우 = 화면 세로축, 위아래 = 가로축, 시점 따라감), + Path Move(스텝 수 · 꺾임 합 90° · 박스 축 회전 · Taper 0 · Follow Turns 끔 · 떨림 정리 · 박스 / 구 끝까지 폭 유지 · 몸통 · 꺾인 길에서 위로 · 끝 단면이 돎). test_v02436(Jungle Gym) 삭제. 새 test_v02438(17: Auto / Selected / Active 잡기, From Surface / Through All 대상, 두 오브젝트 동시 무브, 회전 · 크기 오브젝트 장면 기준 무브, Auto Apply 끔 → Undo Last · Clear · Apply, Path Move Through All · 편집 가능). 5.2.3 bpy에서도 test_v02437 · test_v02438 통과. 실제 화면 입력은 미검증.
 
 ## 0.24.31 결과: 99개 파일 3301/3302 (속도 검사 1개가 이 기기에서 0.547초 > 0.5초로 실패, 단독 재실행 통과, 0.24.30 코드도 여기서 0.55초) (`tests/test_log_bpy501_v02431.txt`, Blender 5.0.1 bpy). 새 파일: test_v02432(후드 · 스카프 코드 36), test_v02433(Quad Cloth 코드), test_v02434(Concept Move 20), test_v02435(천 툴 숨김 9), test_v02436(Jungle Gym 36: 기어가기 · 45° · 지우기 · 휠 깊이 · Magnet / Corner · 튜브 / 베이스 메쉬 · Follow Body · 주황 X·Y·Z), test_v02437(메뉴 연결 · D 홀드 · Ctrl 돌리기 · 브러시 크기 · 미러 통일 · 가벼운 미리보기 · Even Out). 새 파일들은 Blender 5.2.3 bpy에서도 통과. 실제 화면 입력 · 3D 마우스 · 오버레이 표시는 미검증.
 

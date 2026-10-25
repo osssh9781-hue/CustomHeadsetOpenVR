@@ -1,4 +1,13 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.31 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.32 (Claude Code, 2026-10-14)
+
+## 0.24.32
+- ZIP sha256 `8c367a412f7b8bd95599c4a54a4532ba9cab544ed17f66e056141f2fd45c65f1`.
+- `concept_move.py`: `path_moves(path, radius, hardness, taper, mirror, shape, axes, turn)` = 경로의 연속한 두 점마다 짧은 grab 하나(앞 점 → 다음 점), 꺾이는 곳은 `twist`(방향 변화 회전)와 누적 회전으로 박스 axes도 돌림. `screen_turn(view_rot, yaw, pitch)` = Ctrl 회전(화면 세로축 yaw · 가로축 pitch → axis-angle). `smooth_path`, `even_path`(간격 = 반경 × 0.3, 최대 48 스텝), `run_path`(미리보기, 생성 없음). `MCH_OT_concept_path`(F9: size, hardness, taper, turn, shape, mirror, generate, even_out) — invoke는 `MCH_OT_concept_move.invoke`를 그대로 씀. 툴 `mecha.concept_path`, TOOLS `CPATH`(50). 49 = 지운 Jungle Gym(비워 둠).
+- `generate`: `subdivide_edges(use_grid_fill=False)` + 직접 만든 `grid_fill`(8각형 = 네 변 다 잘린 사각형 → 가운데 점 + 사각형 4개). Blender의 grid fill이 긴 경로에서 segfault.
+- 무브 계산을 장면(World) 기준으로 바꿈: `_current_move`는 장면 무브, 대상마다 `to_local(mv, ob, mref, mirror)`(위치 · 이동 · 반경 · 박스 축 · 회전축)으로 바꿔 적용. 오퍼레이터 `space`(LOCAL 기본 = 예전 방식, WORLD = `objects` JSON 이름 목록에 각각). F9도 같음.
+- `pick_grab`(Selected / Active는 Object.ray_cast로 대상만), `target_pool`, `grab_objects`(Through All = 박스 거리 ≤ 반경 × 1.8, Elastic × 4), `bbox_gap`.
+- Auto Apply 끔: `keep_base`(무브 전 메쉬 복사, fake user, `mch_concept_base`) + `record_move` → `mch.concept_undo_last`(기본 메쉬 + 앞 무브들 다시), `mch.concept_clear`(기본 메쉬로), `mch.concept_bake`(기본 메쉬 삭제).
+- `jungle_gym.py` 삭제.
 
 ## 0.24.31
 - ZIP sha256 `8f25ac3f67cc600ba521584ce039017efecbd568f6601ec7d39a85d3daeb1ca2`.

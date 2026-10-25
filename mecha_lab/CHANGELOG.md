@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## 0.24.32 — Path Move(길 따라 무브), 무브 패널 옵션(Cut처럼), Jungle Gym 제거 (2026-10-25)
+
+- **Path Move**(새 툴, 왼쪽 목록 · 하단 바 Path · V 파이 Primitive 칸 Move 아래): Concept Move처럼 잡고 길을 그리듯 드래그하면 잡은 **네모 / 동그라미가 모양 그대로 길을 따라가고**, 지나간 자리에 같은 굵기의 몸통이 생김(프레임 · 파이프 · 팔).
+  - **Follow Turns**(기본 켬): 길이 꺾이면 잡은 단면도 같이 돌아서 단면이 길에 수직으로 유지(파이프 구부리듯). 끄면 처음 방향 그대로 이동.
+  - **Taper**(기본 0 = 끝까지 같은 굵기), 손 떨림은 살짝 다듬음. 크기 · Hardness · 구 / 박스 · 미러 · Generate · Even Out은 Concept Move 설정을 같이 씀, F + 마우스 = 크기, 드래그 중 휠 = 깊이. 놓은 뒤 F9: Size · Hardness · Taper · Follow Turns.
+- **Concept Move · Path Move 패널 옵션(Cut 툴과 같은 모양)**:
+  - **Through All / From Surface**: From Surface = 잡은 메쉬만, Through All = 브러시 안에 들어온 대상 메쉬 모두 같이(몸통 위 판도 같이 늘어남).
+  - **Auto Target / Selected Only / Active**: 마우스 아래 메쉬 / 선택한 메쉬만(앞에 다른 게 있어도 뚫고 잡음) / 활성 오브젝트만.
+  - **Auto Apply**(기본 켬): 끄면 무브가 편집 가능한 상태로 남음 → 패널의 **Undo Last**(마지막 무브만 되돌림) · **Clear**(무브 전 메쉬로) · **Apply**(확정).
+  - 무브는 장면 기준으로 계산해서 회전 · 크기 바뀐 오브젝트도 화면에서 본 그대로 늘어남, 여러 오브젝트도 각자 공간에서 같은 무브.
+- **Concept Move Ctrl 회전 = 화면 기준**: 드래그 중 Ctrl + 마우스 좌우 = 화면에서 보이는 대로 왼쪽 / 오른쪽으로 돌림(화면 세로축), 위아래 = 앞쪽을 숙이고 젖힘(화면 가로축). 전에는 보는 방향(깊이) 축으로만 돌았음.
+- **Jungle Gym 제거**(의도와 달라서): 코드 · 아이콘 · 테스트 · 메뉴 모두.
+- **크래시 수정**: 길게 꺾이는 경로에서 Blender의 면 분할(grid fill)이 Blender를 꺼뜨림 → 직접 만든 grid fill로 교체. Concept Move를 크게 여러 번 늘릴 때도 같은 위험이 사라짐.
+- 테스트: 99개 파일 3297/3297, `test_v02437.py`에 Path Move 검사 추가(길 끝까지 단면 폭 유지, 꺾이면 단면이 돎, 몸통). ZIP sha256 `8c367a412f7b8bd95599c4a54a4532ba9cab544ed17f66e056141f2fd45c65f1`.
+
 ## 0.24.31 — VR식 러프 탐색: Concept Move · Jungle Gym, Blender 5.2 호환, 새 천 툴은 숨김 (2026-10-25)
 
 - **Concept Move**(새 툴, 왼쪽 목록 · 하단 바 Move · V 파이 Primitive 칸): 표면을 잡고 찰흙처럼 쭉 늘리기(Substance 3D Modeler의 Move처럼).

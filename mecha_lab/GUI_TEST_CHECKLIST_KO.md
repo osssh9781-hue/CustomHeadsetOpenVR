@@ -1,8 +1,21 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.31 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.32 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A00000000000000000000000000000000000000000000000000000000000000000000000000. 0.24.32 (미검증)
+- [ ] Path Move: 메쉬를 잡고 길을 그리듯 드래그하면 잡은 부분이 마우스 길을 따라오고, 놓으면 같은 굵기의 몸통이 생기는지
+- [ ] 박스로 하면 네모 단면, 구로 하면 둥근 단면이 끝까지 유지되는지
+- [ ] 길을 꺾으면 단면이 같이 돌아서 찌그러지지 않는지(Follow Turns), 끄면 처음 방향 그대로인지
+- [ ] Taper를 올리면 끝이 가늘어지는지, F9에서 굵기 · Taper 등을 바꾸면 다시 계산되는지
+- [ ] 길게 여러 번 꺾어도 Blender가 꺼지지 않는지
+- [ ] 패널(N > Mecha Lab)에 Through All / From Surface, Auto Target / Selected Only / Active, Auto Apply가 Cut처럼 보이는지(Move · Path 둘 다)
+- [ ] Through All: 몸통 위에 판이 붙은 곳을 잡으면 둘 다 같이 늘어나는지, From Surface면 잡은 것만
+- [ ] Selected Only: 선택 안 한 메쉬가 앞에 있어도 선택한 메쉬를 잡는지, Active도
+- [ ] Auto Apply 끄고 여러 번 늘린 뒤 Undo Last · Clear · Apply가 되는지
+- [ ] Concept Move 드래그 중 Ctrl + 마우스 좌우로 화면에서 보이는 대로 왼쪽 / 오른쪽으로 돌고, 위아래로 숙이고 젖혀지는지
+- [ ] 하단 바 Path, V 파이 Primitive 칸, 왼쪽 목록에 Path Move가 있고 Jungle Gym은 없는지
 
 ## A0000000000000000000000000000000000000000000000000000000000000000000000000. 0.24.31 (미검증)
 - [ ] Concept Move: 메쉬를 잡고 드래그하면 늘어나고, 놓으면 늘어난 부분에 면이 새로 생기는지(길쭉한 면 없이)
