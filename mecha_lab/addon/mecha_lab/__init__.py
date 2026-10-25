@@ -1946,7 +1946,8 @@ def _register():
     clothing_gen.register()
     hood_gen.register()
     scarf_gen.register()
-    quad_cloth.register()
+    if tool_state.EXPERIMENTAL_CLOTH:  # 0.24.31: the Edit Mode Quad Cloth panel is hidden with the other new cloth
+        quad_cloth.register()
     concept_move.register()
     belt_maker.register()
     creature_spike.register()

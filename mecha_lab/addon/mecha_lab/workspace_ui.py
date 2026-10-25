@@ -1032,9 +1032,10 @@ def register_native_tools():
     bpy.utils.register_tool(MCH_TOOL_surface_curve, after={MCH_TOOL_flower_plate.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_cape, after={MCH_TOOL_surface_curve.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_creature_hair, after={MCH_TOOL_cape.bl_idname}, group=False)
-    bpy.utils.register_tool(MCH_TOOL_clothing, after={MCH_TOOL_creature_hair.bl_idname}, group=False)
-    bpy.utils.register_tool(MCH_TOOL_hood, after={MCH_TOOL_clothing.bl_idname}, group=False)
-    bpy.utils.register_tool(MCH_TOOL_scarf, after={MCH_TOOL_hood.bl_idname}, group=False)
+    if ts.EXPERIMENTAL_CLOTH:          # 0.24.31: Clothing / Hood / Scarf hidden until they are ready
+        bpy.utils.register_tool(MCH_TOOL_clothing, after={MCH_TOOL_creature_hair.bl_idname}, group=False)
+        bpy.utils.register_tool(MCH_TOOL_hood, after={MCH_TOOL_clothing.bl_idname}, group=False)
+        bpy.utils.register_tool(MCH_TOOL_scarf, after={MCH_TOOL_hood.bl_idname}, group=False)
     _tools_registered = True
 
 
@@ -1045,7 +1046,7 @@ def unregister_native_tools():
     for tool in reversed(NATIVE_TOOLS):
         try:
             bpy.utils.unregister_tool(tool)
-        except (ValueError, RuntimeError):
+        except (ValueError, RuntimeError, AttributeError):    # AttributeError: a hidden tool never registered
             pass
     _tools_registered = False
 

@@ -129,6 +129,12 @@ TOOL_BY_ID = {t[0]: t for t in TOOLS}
 # tool list, Space / V menus, toolbar and hotkeys.  Its code, operators and
 # all saved mask data (face attributes, vertex groups) are kept untouched.
 HIDDEN_TOOLS = {'MASK', 'DRAW'}     # 0.23.2: the old Mesh Curve (DRAW) is replaced by the Tube tool
+# 0.24.31: the new cloth tools (Clothing / Hood / Scarf, and the Edit Mode Quad Cloth panel) are still being tuned:
+# hidden from every menu and the toolbar.  Their code and saved live objects are kept; True brings them back.
+EXPERIMENTAL_CLOTH = False
+EXPERIMENTAL_CLOTH_TOOLS = {'GARMENT', 'HOOD', 'SCARF'}
+if not EXPERIMENTAL_CLOTH:
+    HIDDEN_TOOLS |= EXPERIMENTAL_CLOTH_TOOLS
 VISIBLE_TOOLS = tuple(t for t in TOOLS if t[0] not in HIDDEN_TOOLS)
 # V quick menu (docs/02): the six core tools (+ Armor Plate since 0.19).
 QUICK_TOOLS = ('CUT', 'BOOLEAN', 'BASE', 'SUBD', 'SPLIT', 'RADIAL', 'PLATE')   # 0.19: + Armor Plate
