@@ -235,7 +235,10 @@ def _nearest(bvh, q):
 
 def stroke_mesh(bvh, stroke, p, width, height, size):
     """(verts, faces) of one stroke's band (world)."""
-    pts = _resample(_smooth(stroke, p.smooth), width / max(0.5, p.density) / (2.0 if p.kind == 'CLOTH' else 1.0))
+    step = width / max(0.5, p.density)
+    if p.kind == 'CLOTH':                                    # enough rings for round wrinkles (8 per wrinkle)
+        step = min(step / 2.0, width / max(p.folds * 8.0, 1e-6))
+    pts = _resample(_smooth(stroke, p.smooth), step)
     if len(pts) < 2:
         return [], []
     base = [_nearest(bvh, q) for q in pts]
@@ -284,8 +287,10 @@ def build(context, src, p, target):
     width = p.width if p.width > 0 else size * 0.03
     height = p.height if p.height > 0 else width / 3.0
     bm = bmesh.new()
-    for stroke in src['strokes']:
-        v, f = stroke_mesh(bvh, [Vector(q) for q in stroke], p, width, height, size)
+    # where strokes cross, their tops would lie exactly on each other and flicker: each one is a hair (0.4 %)
+    # higher than the one before
+    for k, stroke in enumerate(src['strokes']):
+        v, f = stroke_mesh(bvh, [Vector(q) for q in stroke], p, width, height * (1.0 + 0.004 * k), size)
         if not v:
             continue
         bv = [bm.verts.new(q) for q in v]
@@ -294,8 +299,8 @@ def build(context, src, p, target):
                 bm.faces.new([bv[k] for k in face]).smooth = True
             except ValueError:
                 pass
-    for fill in src.get('fills', []):
-        v, f = fill_mesh(fill, p, width, height, size)
+    for k, fill in enumerate(src.get('fills', []), len(src['strokes'])):
+        v, f = fill_mesh(fill, p, width, height * (1.0 + 0.004 * k), size)
         bv = [bm.verts.new(q) for q in v]
         for face in f:
             try:
@@ -320,14 +325,17 @@ def fill_mesh(fill, p, width, height, size):
     ew = p.edge * height * 2.0
     rng = random.Random(p.seed)
     ph = [rng.uniform(0, 2 * math.pi) for _ in range(4)]
-    axis_u = (cos[min(1, len(cos) - 1)] - cos[0]).normalized() if len(cos) > 1 else Vector((1, 0, 0))
+    nav = sum(nrms, Vector()).normalized() if nrms else Vector((0, 0, 1))
+    axis_u = (cos[min(1, len(cos) - 1)] - cos[0]) if len(cos) > 1 else nav.orthogonal()
+    axis_u = (axis_u - nav * axis_u.dot(nav)).normalized() if axis_u.length > 1e-12 else nav.orthogonal().normalized()
+    axis_v = nav.cross(axis_u)                               # one steady frame for the whole area (smooth folds)
     verts, top, bot = [], [], []
     for i, (c, n) in enumerate(zip(cos, nrms)):
         if p.kind == 'CLOTH':
             soft = math.sqrt(min(1.0, dist[i] / max(width * 0.5, 1e-9)))
             u = c.dot(axis_u)
             w = math.sin(2 * math.pi * u * p.folds / max(width, 1e-9) + ph[0]
-                         + p.fold_random * 2.0 * math.sin(c.dot(n.orthogonal()) * 7.0 / max(width, 1e-9) + ph[1]))
+                         + p.fold_random * 2.0 * math.sin(2 * math.pi * c.dot(axis_v) / max(width * 1.5, 1e-9) + ph[1]))
             lift = height * soft * (p.puff + p.fold_depth * 0.5 * (w + 1.0))
             mid = c + n * (thick * 0.5 + lift)
             top.append(len(verts))
@@ -509,7 +517,8 @@ def perform_fill(context, loops, projector, kind='BAND'):
     bvh, lo, hi = cape_gen._body(context, target)
     fills = []
     for outer, holes in groups:
-        q = SimpleNamespace(profile='PILLOW', outline_smooth=0.0, resolution=st.fill_res, edge_round=0.15, puff=1.0)
+        res = st.fill_res * (2 if kind == 'CLOTH' else 1)        # cloth: finer, for round wrinkles
+        q = SimpleNamespace(profile='PILLOW', outline_smooth=0.0, resolution=res, edge_round=0.15, puff=1.0)
         _b, pts, tris, nb, _shape, _nat, _sp = bmm.profile_field(outer, holes, q)
         cos, nrms, _miss = ap.project_patch(pts, projector, bvh)
         ratios = []

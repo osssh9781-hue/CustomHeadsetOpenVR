@@ -107,7 +107,8 @@ def wrap_mesh(p):
             u = i / n
             if kind == 'TOP':
                 pt = q * s + nrm * out * s
-                sag = p.top_sag * min(a, b) * (1.0 - s * s) * (0.6 + 0.4 * math.sin(4 * math.pi * u + ph[0]))
+                # a little sag, never down into what it covers (at most the Gap)
+                sag = min(p.top_sag * min(a, b), p.gap * 0.8) * (1.0 - s * s)
                 ring.append(Vector((pt.x, pt.y, z - sag)))
                 continue
             env = 0.25 + 0.75 * min(1.0, down * 1.4)
@@ -117,7 +118,9 @@ def wrap_mesh(p):
             flare = p.flare * min(a, b) * (down ** 2) if kind in {'SIDE', 'HANG'} else 0.0
             if kind == 'HANG':
                 flare += p.flare * min(a, b) * 0.5 * (z < -h / 2.0)
-            off = out + depth * env * fold * 0.5 + wr * crumple * 0.5 + flare
+            # folds and wrinkles only stand OUT from the core (never into it)
+            fold01 = (fold / (1.0 + 0.4 * p.fold_random) + 1.0) * 0.5
+            off = out + depth * env * fold01 + wr * (crumple + 1.0) * 0.5 + flare
             pt = q + nrm * off
             ring.append(Vector((pt.x, pt.y, z)))
         outer.append(ring)
@@ -159,8 +162,9 @@ def wrap_mesh(p):
     if p.cover_top:                                          # the middle of the top: a fan to a centre point
         ci, cj = len(verts), len(verts) + 1
         z_top = outer[0][0].z
-        verts.append(Vector((0.0, 0.0, z_top - p.top_sag * min(a, b))))
-        verts.append(Vector((0.0, 0.0, z_top - p.top_sag * min(a, b) - thick)))
+        sag_c = min(p.top_sag * min(a, b), p.gap * 0.8)
+        verts.append(Vector((0.0, 0.0, z_top - sag_c)))
+        verts.append(Vector((0.0, 0.0, z_top - sag_c - thick)))
         for i in range(n):
             j = (i + 1) % n
             faces.append((ci, o_idx[0][i], o_idx[0][j]))
