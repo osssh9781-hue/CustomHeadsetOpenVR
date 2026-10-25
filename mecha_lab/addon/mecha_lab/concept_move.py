@@ -480,6 +480,42 @@ NAV_EVENTS = {'NDOF_MOTION', 'NDOF_BUTTON_PRESS', 'NDOF_BUTTON_RELEASE', 'MIDDLE
               'TRACKPADZOOM', 'NDOF_BUTTON_FIT', 'NDOF_BUTTON_TOP', 'NDOF_BUTTON_FRONT', 'NDOF_BUTTON_RIGHT'}
 
 
+def mirror_reflections(ob):
+    """The reflections (4x4, object space) of the object's own Mirror modifier (the Mecha Mirror) - [] if none."""
+    from mathutils import Matrix
+    mods = [m for m in ob.modifiers if m.type == 'MIRROR' and m.show_viewport] if ob is not None else []
+    if not mods:
+        return []
+    m = mods[0]
+    axes = [i for i in range(3) if m.use_axis[i]]
+    a = (m.mirror_object.matrix_world.inverted_safe() @ ob.matrix_world) if m.mirror_object else Matrix.Identity(4)
+    ai = a.inverted_safe()
+    out = []
+    for mask in range(1, 2 ** len(axes)):
+        flip = Matrix.Identity(4)
+        for j, ax in enumerate(axes):
+            if mask >> j & 1:
+                flip[ax][ax] = -1.0
+        out.append(ai @ flip @ a)
+    return out
+
+
+def base_side(ob, local, reflections):
+    """The reflection that takes a point grabbed on the mirrored copy back onto the real mesh (identity when it is
+    already there): the candidate nearest to the mesh itself."""
+    from mathutils import Matrix
+    from mathutils.bvhtree import BVHTree
+    ident = Matrix.Identity(4)
+    if not reflections or not len(ob.data.polygons):
+        return ident
+    bvh = BVHTree.FromPolygons([v.co for v in ob.data.vertices], [tuple(p.vertices) for p in ob.data.polygons])
+
+    def gap(m):
+        hit = bvh.find_nearest(m @ local)
+        return hit[3] if hit[0] is not None else 1e30
+    return min([ident] + reflections, key=gap)
+
+
 def _mesh_ok(ob):
     return ob is not None and ob.type == 'MESH' and not ob.library and not ob.data.library and ob.data.users == 1
 
@@ -589,6 +625,11 @@ class MCH_OT_concept_move(bpy.types.Operator):
         self.mw = ob.matrix_world.copy()
         self.mwi = self.mw.inverted_safe()
         self.orig = read_coords(ob.data)
+        # 0.24.31 one mirror: an object with its own Mirror (Mecha Mirror) - grabbing the mirrored copy moves the
+        # real half (and the modifier copies it back); Concept's Mirror X then stays out of the way
+        refl = mirror_reflections(ob)
+        self.obj_mirror = bool(refl)
+        self.mref = base_side(ob, self.mwi @ loc, refl)
         self.cur = None
         for o in context.selected_objects:
             if o is not ob:
@@ -638,12 +679,15 @@ class MCH_OT_concept_move(bpy.types.Operator):
         scale = (m3 @ Vector((1.0, 0.0, 0.0))).length if abs(m3.determinant()) > 1e-12 else 1.0
         vm = rv3d.view_matrix.to_3x3().transposed()        # box faces the view: screen right / up / depth
         axes = [c for i in range(3) for c in (m3 @ vm.col[i]).normalized()]
-        mv = {'centre': list(self.mwi @ self.hit), 'delta': list(m3 @ delta), 'radius': radius * scale,
-              'falloff': st.falloff, 'mirror': st.mirror_x, 'shape': st.shape, 'hardness': st.hardness,
-              'axes': axes}
+        r3 = self.mref.to_3x3()                              # mirrored copy -> the real half
+        axes = [c for i in range(3) for c in (r3 @ Vector(axes[3 * i:3 * i + 3])).normalized()]
+        mv = {'centre': list(self.mref @ (self.mwi @ self.hit)), 'delta': list(r3 @ (m3 @ delta)),
+              'radius': radius * scale, 'falloff': st.falloff, 'mirror': st.mirror_x and not self.obj_mirror,
+              'shape': st.shape, 'hardness': st.hardness, 'axes': axes}
         if abs(self.twist_angle) > 1e-9:                     # Ctrl: turn round the view axis
             view_axis = (m3 @ (rv3d.view_rotation @ Vector((0.0, 0.0, -1.0)))).normalized()
-            mv['twist'] = list(view_axis) + [self.twist_angle]
+            sign = 1.0 if r3.determinant() > 0 else -1.0     # a turn seen in a mirror turns the other way
+            mv['twist'] = list(r3 @ view_axis) + [self.twist_angle * sign]
         return mv
 
     def _preview(self, context):
@@ -892,7 +936,11 @@ def draw(layout, context, compact=False):
         layout.prop(st, 'hardness', slider=True)
     layout.prop(st, 'falloff', text='' if compact else 'Falloff')
     layout.prop(st, 'strength')
-    layout.prop(st, 'mirror_x', toggle=True)
+    ob = context.active_object
+    if ob is not None and mirror_reflections(ob):
+        layout.label(text='Mirror: the object\'s own Mirror', icon='MOD_MIRROR')
+    else:
+        layout.prop(st, 'mirror_x', toggle=True)
     layout.prop(st, 'keep_density', toggle=True)
     layout.prop(st, 'follow_view', toggle=True)
     layout.operator('mch.concept_fuse', icon='META_BALL')

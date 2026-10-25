@@ -58,4 +58,26 @@ st.lock_size = False
 check('F = brush size in the Concept Move tool', any(k[0] == 'mch.concept_resize' and k[1]['type'] == 'F'
                                                      for k in cm.MCH_TOOL_concept_move.bl_keymap)
       and hasattr(bpy.ops.mch, 'concept_resize'))
+
+# one mirror: an object with its own Mirror - a grab on the mirrored copy moves the real half
+from mathutils import Vector
+bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0))
+half = bpy.context.active_object
+for v in half.data.vertices:
+    v.co.x += 1.0                                    # the real half sits at x 0.5 .. 1.5
+check('no Mirror modifier: no reflections (Concept Mirror X as before)', cm.mirror_reflections(half) == [])
+mod = half.modifiers.new('MCH_Mirror', 'MIRROR')
+refl = cm.mirror_reflections(half)
+m = cm.base_side(half, Vector((-1.0, 0.2, 0.0)), refl)
+check('a grab on the mirrored copy is mapped onto the real half', len(refl) == 1
+      and (m @ Vector((-1.0, 0.2, 0.0)) - Vector((1.0, 0.2, 0.0))).length < 1e-6)
+m = cm.base_side(half, Vector((1.0, 0.2, 0.0)), refl)
+check('a grab on the real half stays where it is', (m @ Vector((1.0, 0.2, 0.0)) - Vector((1.0, 0.2, 0.0))).length < 1e-6)
+bpy.ops.object.empty_add(location=(3.0, 0, 0))
+piv = bpy.context.active_object
+mod.mirror_object = piv
+refl = cm.mirror_reflections(half)
+check('mirror round a pivot object: reflected about its plane', (refl[0] @ Vector((1.0, 0, 0)) - Vector((5.0, 0, 0))).length < 1e-6)
+mod.use_axis[1] = True
+check('two axes: three mirrored copies', len(cm.mirror_reflections(half)) == 3)
 summary()
