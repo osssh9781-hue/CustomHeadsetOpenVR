@@ -7,6 +7,7 @@ angled view the line also climbs in depth.  The wheel steps toward / away from y
 on screen); going back over the last node erases it.
 * Magnet: 1 = the line sits on the bars (sharp frame), lower = a free curve that only leans toward the bars.
 * Corner: how round the turns are (0 = sharp, 1 = round curve).
+* 45° (on): also across the cells - drag at 45 degrees on screen and the line goes diagonally.
 * Back to the start node = a closed loop: flat loops become a live Base Mesh, the rest live tubes.
 * Grid direction: World / Object / View / Surface, R / Shift+R turns it by 15 degrees.  The bar spacing follows
   the zoom (1 / 2 / 5 steps) unless a fixed spacing is set.
@@ -25,7 +26,10 @@ from bpy_extras import view3d_utils
 from mathutils import Matrix, Vector
 
 NEIGHBOURS = ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1))
-DIAGONALS = tuple((i, j, k) for i in (-1, 0, 1) for j in (-1, 0, 1) for k in (-1, 0, 1) if (i, j, k) != (0, 0, 0))
+# 45 degree bars: across each face of a cell (two axes at once) - 12 of them
+DIAGONALS = tuple((i, j, k) for i in (-1, 0, 1) for j in (-1, 0, 1) for k in (-1, 0, 1)
+                  if abs(i) + abs(j) + abs(k) == 2)
+WITH_45 = NEIGHBOURS + DIAGONALS
 ORIENT_ITEMS = [
     ('WORLD', 'World', 'Bars along the world axes'),
     ('OBJECT', 'Object', 'Bars along the active object (its rotation, centred on it)'),
@@ -378,7 +382,8 @@ class MCH_PG_Gym(bpy.types.PropertyGroup):
                            description='Fixed bar spacing (Auto Spacing off)')
     use_surface: BoolProperty(name='Start on Surface', default=True,
                               description='Start at the surface under the mouse (else at the 3D cursor depth)')
-    diagonals: BoolProperty(name='Diagonals', default=False, description='Also crawl along diagonal bars')
+    diagonals: BoolProperty(name='45°', default=True, update=_redraw,
+                            description='Also crawl at 45 degrees (across the cells)')
     magnet: FloatProperty(name='Magnet', default=1.0, min=0.0, max=1.0,
                           description='1 = on the bars (sharp frame), lower = a free curve leaning to the bars')
     corner: FloatProperty(name='Corner', default=0.0, min=0.0, max=1.0, description='How round the turns are')
@@ -400,7 +405,7 @@ def _shader(names):
     return None
 
 
-def draw_data(frame, centre, path=(), preview=()):
+def draw_data(frame, centre, path=(), preview=(), with_45=False):
     """World-space draw lists: bars (pairs) and colours, nodes and colours, the path, the preview line."""
     lines, nodes = lattice_lines(centre, 2)
     bar_pos, bar_col = [], []
@@ -411,14 +416,16 @@ def draw_data(frame, centre, path=(), preview=()):
     node_pos = [node_world(frame, n) for n, _f in nodes]
     node_col = [(0.75, 0.9, 1.0, 0.8 * f) for _n, f in nodes]
     path_pos = [node_world(frame, n) for n in path]
-    return bar_pos, bar_col, node_pos, node_col, path_pos, list(preview), axis_bars(frame, centre)
+    return (bar_pos, bar_col, node_pos, node_col, path_pos, list(preview), axis_bars(frame, centre),
+            axis_bars(frame, centre, 0.5, DIAGONALS) if with_45 else [])
 
 
-def axis_bars(frame, centre, reach=1.0):
-    """The X / Y / Z bars through the node you are on (drawn orange): the ways you can crawl next."""
+def axis_bars(frame, centre, reach=1.0, offsets=NEIGHBOURS):
+    """The X / Y / Z bars through the node you are on (drawn orange): the ways you can crawl next
+    (``offsets=DIAGONALS``: the 45 degree ones, drawn shorter and fainter)."""
     c = node_world(frame, centre)
     out = []
-    for off in NEIGHBOURS:
+    for off in offsets:
         out += [c, c.lerp(node_world(frame, _add(centre, off)), reach)]
     return out
 
@@ -436,7 +443,8 @@ def _draw_view():
             if hv is None or not _tool_active(context) or hv[2] != context.region.as_pointer():
                 return
             frame, centre, path, preview = hv[0], hv[1], (), ()
-        bars, bcol, nodes, ncol, pts, prev, axes = draw_data(frame, centre, path, preview)
+        bars, bcol, nodes, ncol, pts, prev, axes, diag = draw_data(frame, centre, path, preview,
+                                                                 context.scene.mch_gym.diagonals)
         gpu.state.blend_set('ALPHA')
         gpu.state.depth_test_set('NONE')
         flat = _shader(('FLAT_COLOR',))
@@ -451,6 +459,11 @@ def _draw_view():
             batch_for_shader(pts_sh, 'POINTS', {'pos': here, 'color': [(1.0, 0.62, 0.15, 1.0)]}).draw(pts_sh)
         uni = _shader(('UNIFORM_COLOR',))
         gpu.state.line_width_set(3.0)
+        if uni is not None and diag:                   # fainter, shorter: the 45 degree ways
+            gpu.state.line_width_set(2.0)
+            uni.uniform_float('color', (1.0, 0.55, 0.1, 0.45))
+            batch_for_shader(uni, 'LINES', {'pos': diag}).draw(uni)
+            gpu.state.line_width_set(3.0)
         if uni is not None and axes:                   # orange X / Y / Z through where you are
             uni.uniform_float('color', (1.0, 0.55, 0.1, 0.95))
             batch_for_shader(uni, 'LINES', {'pos': axes}).draw(uni)
@@ -564,7 +577,7 @@ class MCH_OT_gym_draw(bpy.types.Operator):
         self.raw_pts = [node_world(self.frame, self.path[0])]
         self.preview = []
         self.vd = (rv3d.view_rotation @ Vector((0.0, 0.0, -1.0))).normalized()
-        self.neigh = DIAGONALS if context.scene.mch_gym.diagonals else NEIGHBOURS
+        self.neigh = WITH_45 if context.scene.mch_gym.diagonals else NEIGHBOURS
         STATE['op'] = self
         if STATE['handle'] is None:
             STATE['handle'] = bpy.types.SpaceView3D.draw_handler_add(_draw_view, (), 'WINDOW', 'POST_VIEW')

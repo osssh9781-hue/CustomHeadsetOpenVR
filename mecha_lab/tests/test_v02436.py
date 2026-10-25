@@ -30,6 +30,17 @@ jg.crawl(path, scr(0.1, 0.25), front, F)
 check('then up: climbs the vertical bars', path[-1] == (1, 0, 2) and len(path) == 4, path)
 check('front view: no step into depth (bars too short on screen)', all(n[1] == 0 for n in path))
 
+path = [(0, 0, 0)]
+jg.crawl(path, scr(0.3, 0.3), front, F, jg.WITH_45)
+check('45 degrees: a diagonal drag goes across the cells', path == [(0, 0, 0), (1, 0, 1), (2, 0, 2), (3, 0, 3)], path)
+path = [(0, 0, 0)]
+jg.crawl(path, scr(0.3, 0.02), front, F, jg.WITH_45)
+check('45 on: a straight drag still goes straight', path == [(0, 0, 0), (1, 0, 0), (2, 0, 0), (3, 0, 0)], path)
+path = [(0, 0, 0)]
+jg.crawl(path, scr(0.2, 0.0), front, F, jg.WITH_45)
+jg.crawl(path, scr(0.4, 0.2), front, F, jg.WITH_45)
+check('straight then 45: the turn shows in the points', len(jg.path_points(F, path)) == 3, path)
+check('45 degree bars: 12, two axes each', len(jg.DIAGONALS) == 12 and all(sum(map(abs, o)) == 2 for o in jg.DIAGONALS))
 ang = lambda co: Vector((500 + (co.x - 0.6 * co.y) * 1000, 500 + (co.z - 0.4 * co.y) * 1000))
 path = [(0, 0, 0)]
 jg.crawl(path, ang(Vector((0, 0.3, 0))), ang, F)
@@ -56,7 +67,8 @@ l1, n1 = jg.lattice_lines((0, 0, 0))
 l2, n2 = jg.lattice_lines((500, -40, 9000))
 check('the drawn lattice is a small block wherever you are (light)', len(n1) == len(n2) < 100 and len(l1) == len(l2) < 250,
       (len(n1), len(l1)))
-d = jg.draw_data(F, (0, 0, 0), sq[:3], p0)
+d = jg.draw_data(F, (0, 0, 0), sq[:3], p0, True)
+check('45 on: 12 faint orange half bars are drawn too', len(d[7]) == 24)
 check('draw data: bars in pairs with a colour each', len(d[0]) == len(d[1]) and len(d[0]) % 2 == 0 and len(d[2]) == len(n1))
 ax = jg.axis_bars(F, (2, 0, 1))
 ends = {tuple(round(c, 6) for c in ax[i + 1]) for i in range(0, len(ax), 2)}
@@ -95,6 +107,7 @@ check('a single node makes nothing (scene untouched)', res == {'CANCELLED'} and 
 
 check('tool keymap: drag draws, mouse move shows the bars, R turns',
       {k[0] for k in jg.MCH_TOOL_jungle_gym.bl_keymap} == {'mch.gym_draw', 'mch.gym_hover', 'mch.gym_turn'})
+check('45 degrees is on by default', C.scene.mch_gym.diagonals is True)
 st = C.scene.mch_gym
 bpy.ops.mch.gym_turn(angle=math.radians(15))
 check('R turns the bars 15 degrees', abs(math.degrees(st.turn) - 15) < 1e-4)
