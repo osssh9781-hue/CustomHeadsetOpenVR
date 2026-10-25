@@ -1,5 +1,5 @@
-"""0.24.33 Surface Draw / Cloth Brush: a band (or cloth strip) along a line drawn on a mesh; every stroke keeps the
-first width and height; crossing strokes do not pile up; strokes join into one live object."""
+"""0.24.33 Surface Draw: a band along a line drawn on a mesh; every stroke keeps the first width and height;
+crossing strokes do not pile up; strokes join into one live object; Alt + draw cuts that area out of it."""
 import math
 
 from _harness import bpy, check, fresh, summary
@@ -12,8 +12,10 @@ from mecha_lab import core_geometry as cg, surface_draw as sd, tool_state as ts,
 mecha_lab.register()
 fresh()
 C = bpy.context
-check('tools in the list with settings', {'SDRAW', 'CLOTHB'} <= {t[0] for t in ts.VISIBLE_TOOLS}
-      and {'SDRAW', 'CLOTHB'} <= set(uts.DRAWERS) and {'SDRAW', 'CLOTHB'} <= ts.SHAPE_TOOLS)
+check('tool in the list with settings', 'SDRAW' in {t[0] for t in ts.VISIBLE_TOOLS}
+      and 'SDRAW' in uts.DRAWERS and 'SDRAW' in ts.SHAPE_TOOLS)
+check('Cloth Brush and Cloth Wrap are gone', not {'CLOTHB', 'CWRAP'} & {t[0] for t in ts.TOOLS}
+      and not hasattr(bpy.types.Scene, 'mch_clothb') and 'cloth_wrap' not in dir(bpy.ops.mch))
 h = sd.cross_heights('BEVEL', 9, 0.3)
 check('Bevel (round edge) profile: 0 at the edges, 1 in the middle', h[0] == 0.0 and h[-1] == 0.0 and h[4] == 1.0 and h[3] == 1.0)
 check('Ridge / Round / Bevel profiles', sd.cross_heights('RIDGE', 5)[2] == 1.0 and sd.cross_heights('RIDGE', 5)[1] == 0.5
@@ -99,23 +101,46 @@ check('cut engine: with Fill Area a lasso is an area, without it a line', ce.MCH
 st.fill = False
 check('... and off again', ce.MCH_OT_cut_stroke._fill_area(Fake()) is False)
 
-cl = C.scene.mch_clothb
-cl.width, cl.height = 0.0, 0.0
-sd.perform(C, [scr(-0.4 + 0.04 * i, 0.4) for i in range(21)], proj, 'CLOTH')
+# Alt + draw / lasso: that area is cut out of the live drawing (and stays cut after every rebuild)
+from mecha_lab import live_subtract as ls
+for o in list(C.scene.objects):
+    o.select_set(False)
+C.view_layer.objects.active = body
+sd.perform(C, [scr(-0.4 + 0.04 * i, 0.4) for i in range(21)], proj, 'BAND')
 co = C.active_object
-check('Cloth Brush: its own live object (kind Cloth)', co != ob and co.mch_sdraw.kind == 'CLOTH' and closed(co.data))
-rc = radii(co)
-check('the cloth lies on the surface, puffed a little (thin)', min(rc) > 0.995 and max(rc) < 1 + cl.height * 3.0,
-      (min(rc), max(rc)))
 n1 = len(co.data.vertices)
-sd.perform(C, [scr(-0.4 + 0.04 * i, 0.55) for i in range(21)], proj, 'CLOTH')
-check('a second cloth stroke: same object, same size', C.active_object == co and len(co.data.vertices) > n1
-      and abs(cl.width - 0.1) < 1e-6)
-co.mch_sdraw.folds = 3.0
-check('live: folds', closed(co.data))
+hole = [scr(-0.06, 0.25), scr(0.06, 0.25), scr(0.06, 0.55), scr(-0.06, 0.55)]
+
+
+def inside(o):
+    """vertices whose screen position lies well inside the Alt outline"""
+    n = 0
+    for v in o.data.vertices:
+        w = o.matrix_world @ v.co
+        if abs(w.x) < 0.045 and 0.28 < w.z < 0.52 and w.y < 0:
+            n += 1
+    return n
+
+
+check('before: band vertices in the area', inside(co) > 0, inside(co))
+msg = ls.perform(C, 'SDRAW', [hole], proj)
+check('Alt cut: the area is gone, the drawing stays live (1 cut kept)', inside(co) == 0 and co.mch_sdraw.live
+      and sd.source(co) is not None and len(ls.records(co)) == 1, (msg, inside(co)))
+check('... still a closed solid', closed(co.data))
+co.mch_sdraw.height = 0.05
+check('a slider rebuild keeps the cut', inside(co) == 0 and len(ls.records(co)) == 1 and closed(co.data), inside(co))
+sd.perform(C, [scr(-0.4 + 0.04 * i, 0.45) for i in range(21)], proj, 'BAND')
+check('a new stroke over the area: cut too (the outline is kept)', C.active_object == co and inside(co) == 0, inside(co))
+try:
+    ls.perform(C, 'SDRAW', [[scr(2.2, 2.2), scr(2.4, 2.2), scr(2.4, 2.4)]], proj)
+    ok = False
+except cg.CutError:
+    ok = True
+check('Alt + draw where no drawing is: tells, cuts nothing', ok and len(ls.records(co)) == 1)
 C.view_layer.objects.active = co
 bpy.ops.mch.sdraw_apply()
-check('Apply: plain mesh', sd.source(co) is None and not co.mch_sdraw.live)
+check('Apply: plain mesh (the kept cuts go too)', sd.source(co) is None and not co.mch_sdraw.live
+      and len(ls.records(co)) == 0)
 try:
     sd.perform(C, [scr(3, 3), scr(3.2, 3)], proj, 'BAND')
     ok = False

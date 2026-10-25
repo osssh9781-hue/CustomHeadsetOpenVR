@@ -22,7 +22,7 @@ MOD_NAME = 'MCH_RadialSym'
 HELPER_KEY = 'mch_rsym_helper'
 AXES = [('X', 'X', 'Turn about the local X axis'), ('Y', 'Y', 'Turn about the local Y axis'),
         ('Z', 'Z', 'Turn about the local Z axis')]
-CREATORS = {'BASE', 'CBASE', 'PLATE', 'CPLATE', 'SDRAW', 'CLOTHB', 'FLOWER'}
+CREATORS = {'BASE', 'CBASE', 'PLATE', 'CPLATE', 'SDRAW', 'FLOWER'}
 
 
 # -----------------------------------------------------------------------------

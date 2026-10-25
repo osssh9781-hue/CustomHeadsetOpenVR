@@ -1,9 +1,9 @@
-"""0.24.33 Surface Draw and Cloth Brush: draw on a surface (like painting on a model in VR) - a band of mesh lies
+"""0.24.33 Surface Draw: draw on a surface (like painting on a model in VR) - a band of mesh lies
 along the stroke.
 
 * Surface Draw: a raised band - edges Square (90 degrees), Chamfer, Bevel (round), or Round / Ridge - Height
   above the surface.  Fill Area: a closed lasso is filled at the same height with the same edge.
-* Cloth Brush: a thin strip of cloth along the stroke - it puffs up in the middle, wrinkles across, Thickness.
+* Alt + draw / lasso: that area is cut out of the live drawing (kept, cut again after every rebuild).
 * Every stroke keeps the same Width and Height as the first one (Keep First Size): lift the pen, draw again and
   the new band matches.  Bands are laid on the mesh you draw on, never on bands drawn before, so crossing strokes
   stay at the same height (nothing piles up).
@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import json
 import math
-import random
 
 import bmesh
 import bpy
@@ -26,8 +25,7 @@ from . import core_geometry as cg
 
 SRC_KEY = 'mch_sdraw_src'
 COLLECTION = 'Surface Draw'
-KIND_ITEMS = [('BAND', 'Surface Draw', 'A raised band on the surface'),
-              ('CLOTH', 'Cloth Brush', 'A thin strip of cloth on the surface')]
+KIND_ITEMS = [('BAND', 'Surface Draw', 'A raised band on the surface')]
 PROFILE_ITEMS = [
     ('SQUARE', 'Square', 'Flat top, straight (90 degree) sides and ends'),
     ('CHAMFER', 'Chamfer', 'Flat top, a straight slope at the edges'),
@@ -35,8 +33,7 @@ PROFILE_ITEMS = [
     ('ROUND', 'Round', 'Half round'),
     ('RIDGE', 'Ridge', 'A sharp ridge along the middle'),
 ]
-LIVE_KEYS = ('profile', 'width', 'height', 'edge', 'fill_res', 'sink', 'smooth', 'density', 'across', 'end_round', 'thickness',
-             'puff', 'folds', 'fold_depth', 'fold_random', 'seed')
+LIVE_KEYS = ('profile', 'width', 'height', 'edge', 'fill_res', 'sink', 'smooth', 'density', 'across', 'end_round')
 
 
 # -----------------------------------------------------------------------------
@@ -149,7 +146,7 @@ def _p(prop, **kw):
 
 
 class MCH_PG_SurfaceDraw(bpy.types.PropertyGroup):
-    """Scene.mch_sdraw / Scene.mch_clothb = the next stroke; Object.mch_sdraw = a live band object."""
+    """Scene.mch_sdraw = the next stroke; Object.mch_sdraw = a live band object."""
     kind: EnumProperty(items=KIND_ITEMS, default='BAND', options={'HIDDEN'})
     profile: _p(EnumProperty, name='Edge', items=PROFILE_ITEMS, default='SQUARE')
     width: _p(FloatProperty, name='Width', default=0.0, min=0.0, soft_max=1.0, unit='LENGTH', precision=4,
@@ -168,16 +165,6 @@ class MCH_PG_SurfaceDraw(bpy.types.PropertyGroup):
     across: _p(IntProperty, name='Across', default=9, min=3, max=33, description='Points across the band')
     end_round: _p(FloatProperty, name='Round Ends', default=0.5, min=0.0, max=3.0,
                   description='How far (x the width) the ends slope down to the surface')
-    thickness: _p(FloatProperty, name='Thickness', default=0.0, min=0.0, soft_max=0.05, unit='LENGTH', precision=4,
-                  description='Cloth thickness (0 = Auto, very thin)')
-    puff: _p(FloatProperty, name='Puff', default=0.35, min=0.0, max=2.0,
-             description='Cloth: how much the middle puffs up off the surface (x the height)')
-    folds: _p(FloatProperty, name='Folds', default=1.2, min=0.0, max=6.0,
-              description='Cloth: wrinkles across the strip (per width)')
-    fold_depth: _p(FloatProperty, name='Fold Depth', default=0.6, min=0.0, max=3.0,
-                   description='Cloth: wrinkle depth (x the height)')
-    fold_random: _p(FloatProperty, name='Fold Random', default=0.5, min=0.0, max=1.0)
-    seed: _p(IntProperty, name='Seed', default=1, min=0)
     keep_size: BoolProperty(name='Keep First Size', default=True,
                             description='Every stroke gets the Width and Height of the first one')
     fill: BoolProperty(name='Fill Area', default=False,
@@ -236,8 +223,6 @@ def _nearest(bvh, q):
 def stroke_mesh(bvh, stroke, p, width, height, size):
     """(verts, faces) of one stroke's band (world)."""
     step = width / max(0.5, p.density)
-    if p.kind == 'CLOTH':                                    # enough rings for round wrinkles (8 per wrinkle)
-        step = min(step / 2.0, width / max(p.folds * 8.0, 1e-6))
     pts = _resample(_smooth(stroke, p.smooth), step)
     if len(pts) < 2:
         return [], []
@@ -246,35 +231,20 @@ def stroke_mesh(bvh, stroke, p, width, height, size):
     nrms = [b[1] for b in base]
     fr = frames(pts, nrms)
     lens = arc_lengths(pts)
-    ends = end_factors(lens, width * p.end_round) if p.profile != 'SQUARE' or p.kind == 'CLOTH' else [1.0] * len(lens)
+    ends = end_factors(lens, width * p.end_round) if p.profile != 'SQUARE' else [1.0] * len(lens)
     m = max(3, p.across | 1)
-    prof = cross_heights(p.profile if p.kind == 'BAND' else 'ROUND', m, p.edge)
+    prof = cross_heights(p.profile, m, p.edge)
     sink = p.sink if p.sink > 0 else width * 0.08
-    thick = p.thickness if p.thickness > 0 else max(size * 0.0008, width * 0.04)
-    rng = random.Random(p.seed)
-    phase = [rng.uniform(0, 2 * math.pi) for _ in range(4)]
     verts, top, bot = [], [], []
     for i, (c, (t, s)) in enumerate(zip(pts, fr)):
         rt, rb = [], []
         for j in range(m):
             x = -1.0 + 2.0 * j / (m - 1)
             b, nb = _nearest(bvh, c + s * (x * width / 2.0))
-            if p.kind == 'CLOTH':
-                wave = math.sin(2 * math.pi * lens[i] * p.folds / max(width, 1e-9) + phase[0]
-                                + p.fold_random * 1.7 * math.sin(3.1 * x + phase[1]))
-                wave += p.fold_random * 0.5 * math.sin(2 * math.pi * lens[i] * p.folds * 2.3 / max(width, 1e-9)
-                                                       + phase[2])
-                lift = height * (p.puff * prof[j] + p.fold_depth * 0.5 * (wave + 1.0) * prof[j]) * ends[i]
-                mid = b + nb * (thick * 0.5 + lift)
-                rt.append(len(verts))
-                verts.append(mid + nb * thick * 0.5)
-                rb.append(len(verts))
-                verts.append(mid - nb * thick * 0.5)
-            else:
-                rt.append(len(verts))
-                verts.append(b + nb * (prof[j] * height * ends[i]))
-                rb.append(len(verts))
-                verts.append(b - nb * sink)
+            rt.append(len(verts))
+            verts.append(b + nb * (prof[j] * height * ends[i]))
+            rb.append(len(verts))
+            verts.append(b - nb * sink)
         top.append(rt)
         bot.append(rb)
     return verts, band_grid(top, bot)
@@ -321,32 +291,13 @@ def fill_mesh(fill, p, width, height, size):
     tris = fill['tris']
     deepest = max(dist) if dist else 1.0
     sink = p.sink if p.sink > 0 else width * 0.08
-    thick = p.thickness if p.thickness > 0 else max(size * 0.0008, width * 0.04)
     ew = p.edge * height * 2.0
-    rng = random.Random(p.seed)
-    ph = [rng.uniform(0, 2 * math.pi) for _ in range(4)]
-    nav = sum(nrms, Vector()).normalized() if nrms else Vector((0, 0, 1))
-    axis_u = (cos[min(1, len(cos) - 1)] - cos[0]) if len(cos) > 1 else nav.orthogonal()
-    axis_u = (axis_u - nav * axis_u.dot(nav)).normalized() if axis_u.length > 1e-12 else nav.orthogonal().normalized()
-    axis_v = nav.cross(axis_u)                               # one steady frame for the whole area (smooth folds)
     verts, top, bot = [], [], []
     for i, (c, n) in enumerate(zip(cos, nrms)):
-        if p.kind == 'CLOTH':
-            soft = math.sqrt(min(1.0, dist[i] / max(width * 0.5, 1e-9)))
-            u = c.dot(axis_u)
-            w = math.sin(2 * math.pi * u * p.folds / max(width, 1e-9) + ph[0]
-                         + p.fold_random * 2.0 * math.sin(2 * math.pi * c.dot(axis_v) / max(width * 1.5, 1e-9) + ph[1]))
-            lift = height * soft * (p.puff + p.fold_depth * 0.5 * (w + 1.0))
-            mid = c + n * (thick * 0.5 + lift)
-            top.append(len(verts))
-            verts.append(mid + n * thick * 0.5)
-            bot.append(len(verts))
-            verts.append(mid - n * thick * 0.5)
-        else:
-            top.append(len(verts))
-            verts.append(c + n * (height * edge_height(p.profile, dist[i], ew, deepest)))
-            bot.append(len(verts))
-            verts.append(c - n * sink)
+        top.append(len(verts))
+        verts.append(c + n * (height * edge_height(p.profile, dist[i], ew, deepest)))
+        bot.append(len(verts))
+        verts.append(c - n * sink)
     faces = []
     for a, b, c in tris:
         faces.append((top[a], top[b], top[c]))
@@ -376,6 +327,8 @@ def rebuild(context, ob):
         bm.to_mesh(ob.data)
     finally:
         bm.free()
+    from . import live_subtract
+    live_subtract.apply(context, ob)          # the Alt outlines cut out again
     try:
         ob.data.set_sharp_from_angle(angle=math.radians(50))
     except (AttributeError, TypeError, RuntimeError):
@@ -413,7 +366,7 @@ def pick_base(context, projector, path):
 
 
 def scene_settings(scene, kind):
-    return scene.mch_clothb if kind == 'CLOTH' else scene.mch_sdraw
+    return scene.mch_sdraw
 
 
 def perform(context, path, projector, kind='BAND'):
@@ -452,7 +405,7 @@ def _add(context, target, kind, st, stroke=None, fills=()):
         if st.width <= 1e-5:
             st.width = (hi - lo).length * 0.03
     if st.height <= 0:
-        st.height = st.width / (3.0 if kind == 'BAND' else 4.0)
+        st.height = st.width / 3.0
     ob = None
     if st.join:
         for o in bpy.data.objects:
@@ -468,7 +421,7 @@ def _add(context, target, kind, st, stroke=None, fills=()):
         src.setdefault('order', []).append('fill' if stroke is None else 'stroke')
         ob[SRC_KEY] = json.dumps(src)
     else:
-        me = bpy.data.meshes.new(target.name + ('_Cloth' if kind == 'CLOTH' else '_Draw'))
+        me = bpy.data.meshes.new(target.name + '_Draw')
         ob = bpy.data.objects.new(me.name, me)
         fx._parts_collection(context, COLLECTION).objects.link(ob)
         for mat in target.data.materials:
@@ -496,7 +449,7 @@ def _add(context, target, kind, st, stroke=None, fills=()):
     context.view_layer.objects.active = ob
     s = source(ob)
     n = len(s['strokes'])
-    return (f'{"Cloth Brush" if kind == "CLOTH" else "Surface Draw"}: {n} stroke(s), '
+    return (f'Surface Draw: {n} stroke(s), '
             f'{len(s.get("fills", []))} filled area(s) on {target.name}')
 
 
@@ -517,7 +470,7 @@ def perform_fill(context, loops, projector, kind='BAND'):
     bvh, lo, hi = cape_gen._body(context, target)
     fills = []
     for outer, holes in groups:
-        res = st.fill_res * (2 if kind == 'CLOTH' else 1)        # cloth: finer, for round wrinkles
+        res = st.fill_res
         q = SimpleNamespace(profile='PILLOW', outline_smooth=0.0, resolution=res, edge_round=0.15, puff=1.0)
         _b, pts, tris, nb, _shape, _nat, _sp = bmm.profile_field(outer, holes, q)
         cos, nrms, _miss = ap.project_patch(pts, projector, bvh)
@@ -585,8 +538,10 @@ class MCH_OT_sdraw_apply(bpy.types.Operator):
 
     def execute(self, context):
         ob = live_object(context)
+        from . import live_subtract
         ob.mch_sdraw.live = False
         del ob[SRC_KEY]
+        live_subtract.clear(ob)
         return {'FINISHED'}
 
 
@@ -617,22 +572,13 @@ def draw(layout, context, kind='BAND'):
             box.label(text=p.last_error, icon='ERROR')
     else:
         box.label(text='Next stroke', icon='GREASEPENCIL')
-    if kind == 'BAND':
-        box.row(align=True).prop(p, 'profile', expand=True)
+    box.row(align=True).prop(p, 'profile', expand=True)
     col = box.column(align=True)
     col.prop(p, 'width')
     col.prop(p, 'height')
-    if kind == 'BAND':
-        if p.profile in {'CHAMFER', 'BEVEL'}:
-            col.prop(p, 'edge', slider=True)
-        col.prop(p, 'sink')
-    else:
-        col.prop(p, 'thickness')
-        col.prop(p, 'puff', slider=True)
-        col.prop(p, 'folds', slider=True)
-        col.prop(p, 'fold_depth', slider=True)
-        col.prop(p, 'fold_random', slider=True)
-        col.prop(p, 'seed')
+    if p.profile in {'CHAMFER', 'BEVEL'}:
+        col.prop(p, 'edge', slider=True)
+    col.prop(p, 'sink')
     col = box.column(align=True)
     col.prop(p, 'end_round', slider=True)
     col.prop(p, 'smooth')
@@ -654,6 +600,7 @@ def draw(layout, context, kind='BAND'):
     col.scale_y = 0.8
     for line in ('Draw a line on a mesh (hold and drag); Lasso = a path of points',
                  'Fill Area on: a closed lasso is filled at the same height',
+                 'Alt + draw / lasso: cut that area out of the drawing',
                  'Lift the pen and draw again: same width and height', 'Never piles up on what was drawn before'):
         col.label(text=line)
 
@@ -665,12 +612,11 @@ def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Scene.mch_sdraw = bpy.props.PointerProperty(type=MCH_PG_SurfaceDraw)
-    bpy.types.Scene.mch_clothb = bpy.props.PointerProperty(type=MCH_PG_SurfaceDraw)
     bpy.types.Object.mch_sdraw = bpy.props.PointerProperty(type=MCH_PG_SurfaceDraw)
 
 
 def unregister():
-    for n, t in (('mch_sdraw', bpy.types.Object), ('mch_clothb', bpy.types.Scene), ('mch_sdraw', bpy.types.Scene)):
+    for n, t in (('mch_sdraw', bpy.types.Object), ('mch_sdraw', bpy.types.Scene)):
         try:
             delattr(t, n)
         except AttributeError:

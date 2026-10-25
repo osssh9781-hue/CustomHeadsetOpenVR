@@ -82,6 +82,9 @@ def apply(context, ob):
 def _plate_kind(ob, mode):
     if ob is None:
         return False
+    if mode == 'SDRAW':                       # 0.24.33 a live Surface Draw object
+        from . import surface_draw as sd
+        return bool(getattr(ob, 'mch_sdraw', None) is not None and ob.mch_sdraw.live and sd.source(ob))
     if mode == 'CPLATE':
         from . import creature_plate as cpl
         return bool(getattr(ob, 'mch_cplate', None) is not None and ob.mch_cplate.live and cpl.source(ob))
@@ -128,7 +131,7 @@ def perform(context, mode, loops, projector, tool=None):
         from . import plate_detail as pd         # 0.24.26 the same for Plate Detail 1 / 2 / 3
         return pd.engrave(context, loops, projector, tool or 'DETAIL')
     if ob is None:
-        what = 'Creature Plate' if mode == 'CPLATE' else 'Plate Detail'
+        what = {'CPLATE': 'Creature Plate', 'SDRAW': 'Surface Draw'}.get(mode, 'Plate Detail')
         raise cg.CutError(f'Alt + draw cuts a live {what}: draw over one (nothing was made).')
     before = records(ob)
     add(ob, loops, projector)
@@ -136,6 +139,9 @@ def perform(context, mode, loops, projector, tool=None):
         if mode == 'CPLATE':
             from . import creature_plate as cpl
             cpl.rebuild(context, ob)
+        elif mode == 'SDRAW':
+            from . import surface_draw as sd
+            sd.rebuild(context, ob)
         else:
             from . import plate_detail as pd
             pd.rebuild(ob)

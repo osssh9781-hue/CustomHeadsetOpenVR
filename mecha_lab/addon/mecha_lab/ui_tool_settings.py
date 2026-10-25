@@ -906,16 +906,6 @@ def draw_surface_draw(layout, context):
     surface_draw.draw(layout, context, 'BAND')
 
 
-def draw_cloth_brush(layout, context):
-    from . import surface_draw
-    surface_draw.draw(layout, context, 'CLOTH')
-
-
-def draw_cloth_wrap(layout, context):
-    from . import cloth_wrap
-    cloth_wrap.draw(layout, context)
-
-
 def draw_radial_sym(layout, context):
     from . import radial_sym
     radial_sym.draw(layout, context)
@@ -923,8 +913,7 @@ def draw_radial_sym(layout, context):
 
 DRAWERS = {
     'RSYM': draw_radial_sym,
-    'CWRAP': draw_cloth_wrap,
-    'SDRAW': draw_surface_draw, 'CLOTHB': draw_cloth_brush,
+    'SDRAW': draw_surface_draw,
     'PERF': draw_perforate,
     'CMOVE': draw_concept_move, 'CPATH': draw_path_move,
     'CUT': draw_cut, 'SPLIT': draw_split, 'BOOLEAN': draw_boolean, 'FUSE': draw_fuse,

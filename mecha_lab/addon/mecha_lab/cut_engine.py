@@ -953,7 +953,6 @@ _COLORS = {
     'FLOWER': (0.95, 0.6, 0.8, 1.0),
     'SCURVE': (0.5, 0.75, 1.0, 1.0),
     'SDRAW': (0.95, 0.6, 0.2, 1.0),
-    'CLOTHB': (0.55, 0.75, 0.95, 1.0),
     'CAPE': (0.8, 0.55, 0.35, 1.0),
     'HAIR': (0.75, 0.7, 0.45, 1.0),
     'GARMENT': (0.55, 0.7, 0.85, 1.0),
@@ -1240,15 +1239,15 @@ class StrokeLogic:
 
     def _line_mode(self):
         from . import lasso_line
-        if self.mode in {'SDRAW', 'CLOTHB'} and self._fill_area():
-            return False                       # 0.24.33 Fill Area: a closed lasso fills the area
-        if self.mode in {'BELT', 'SCURVE', 'SDRAW', 'CLOTHB'}:    # 0.24.20 Belt Maker / Surface Curve always draw a line
+        if self.mode == 'SDRAW' and (self._fill_area() or self.inverted()):
+            return False                       # 0.24.33 Fill Area / Alt cut: the drawing is an area
+        if self.mode in {'BELT', 'SCURVE', 'SDRAW'}:    # 0.24.20 Belt Maker / Surface Curve always draw a line
             return self.shape in {'LASSO', 'CURVE_LASSO', 'STROKE'}
         return lasso_line.enabled(bpy.context, self.mode, self.shape)
 
     def _fill_area(self):
         scene = bpy.context.scene
-        st = getattr(scene, 'mch_clothb' if self.mode == 'CLOTHB' else 'mch_sdraw', None)
+        st = getattr(scene, 'mch_sdraw', None)
         return bool(st is not None and st.fill and self.shape in {'LASSO', 'CURVE_LASSO', 'STROKE', 'RECT',
                                                                   'CIRCLE', 'ELLIPSE', 'CUSTOM'})
 
@@ -1293,7 +1292,7 @@ class StrokeLogic:
 
     def _needs_target(self):
         return self.mode not in {'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE',
-                                 'FLOWER', 'SCURVE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW', 'CLOTHB'}
+                                 'FLOWER', 'SCURVE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW'}
 
     def _tangents(self, pts=None):
         pts = self.pts if pts is None else pts
@@ -1684,13 +1683,16 @@ class StrokeLogic:
         if self.mode == 'BELT':
             from . import belt_maker
             return belt_maker.perform(context, self._line_path(), self.projector)
-        if self.mode in {'SDRAW', 'CLOTHB'}:      # 0.24.33 Surface Draw / Cloth Brush
+        if self.mode == 'SDRAW':                 # 0.24.33 Surface Draw
             from . import surface_draw
-            kind = 'CLOTH' if self.mode == 'CLOTHB' else 'BAND'
+            if self.inverted():                  # Alt + draw / lasso: that area is cut out of the live drawing
+                from . import live_subtract
+                return live_subtract.perform(context, 'SDRAW', self._current_loops(self.ctrl_held, self.shift_held),
+                                             self.projector)
             if self._fill_area():
                 return surface_draw.perform_fill(context, self._current_loops(self.ctrl_held, self.shift_held),
-                                                 self.projector, kind)
-            return surface_draw.perform(context, self._line_path(), self.projector, kind)
+                                                 self.projector)
+            return surface_draw.perform(context, self._line_path(), self.projector)
         if self.mode == 'SCURVE':
             from . import surface_curve
             return surface_curve.perform(context, self._line_path(), self.projector)
@@ -2186,7 +2188,6 @@ class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
         ('FLOWER', 'Flower Plate', 'The outline grows from the surface: attached at the start, bending away'),
         ('SCURVE', 'Surface Curve', 'A Mesh Curve lying on the surface along the drawn line'),
         ('SDRAW', 'Surface Draw', 'A raised band on the surface along the drawn line'),
-        ('CLOTHB', 'Cloth Brush', 'A strip of cloth on the surface along the drawn line'),
         ('CAPE', 'Cape', 'A live cape hanging from the top edge of the drawing'),
         ('HAIR', 'Creature Hair', 'Live dreadlocks / tentacles / quills growing from the drawn area'),
         ('GARMENT', 'Clothing', 'A live top / pants made from the body inside the drawn outline'),
