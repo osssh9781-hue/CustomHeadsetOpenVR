@@ -1,4 +1,12 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.30 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.31 (Claude Code, 2026-10-14)
+
+## 0.24.31
+- ZIP sha256 `8f25ac3f67cc600ba521584ce039017efecbd568f6601ec7d39a85d3daeb1ca2`.
+- `concept_move.py`(새): 순수 함수 `clay_weights` / `elastic_weights` / `box_distance` / `displace(..., twist)` / `generate(..., relax)` / `even_out` / `near_mask` / `fast_field` / `mirror_reflections` / `base_side`. 라이브 모듈 rebuild를 감싸서 `mch_concept_moves`를 replay. 툴 `mecha.concept_move`, `mch.concept_hold`(D + LMB, key_modifier), `mch.concept_resize`(F).
+- `jungle_gym.py`(새): `crawl` / `depth_offset` / `path_points` / `wrap` / `Body`(BVH find_nearest + offset) / `lattice_lines` / `axis_bars`. 격자는 POST_VIEW 오버레이만, 저장 안 함. 툴 `mecha.jungle_gym`, `mch.gym_draw`(F9: Magnet, Corner, Thickness, Make, Lift), `mch.gym_hover`(MOUSEMOVE 툴 키맵 — 실제 화면에서 동작 미확인).
+- `tool_state`: TOOLS에 CMOVE(48), GYM(49). `EXPERIMENTAL_CLOTH = False` → GARMENT / HOOD / SCARF가 HIDDEN_TOOLS, 네이티브 툴 미등록, `quad_cloth.register()` 생략.
+- `core_geometry.gn_get / gn_set`: 5.2의 `mod.properties.inputs.<id>.value`와 5.0의 `mod[id]` 둘 다.
+- `workspace_ui._tool_keymap`: 맨 앞에 `mch.concept_hold`(D + LMB). 테스트에서 키맵 순서로 찾던 곳은 이름으로 찾게 바꿈.
 
 ## 0.24.30
 - ZIP sha256 `a46a3dfd17d1daf1afc7e2a9fe0d6078457380b23271a0c223072902c26bed43`. `cape_gen`: `straight` prop(LIVE_KEYS, STYLES), `drape(..., flare × (1 − straight))`.

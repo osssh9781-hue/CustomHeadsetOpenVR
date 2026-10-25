@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.30
+# Test Report — Mecha Lab 0.24.31
+
+## 0.24.31 결과: 99개 파일 3301/3302 (속도 검사 1개가 이 기기에서 0.547초 > 0.5초로 실패, 단독 재실행 통과, 0.24.30 코드도 여기서 0.55초) (`tests/test_log_bpy501_v02431.txt`, Blender 5.0.1 bpy). 새 파일: test_v02432(후드 · 스카프 코드 36), test_v02433(Quad Cloth 코드), test_v02434(Concept Move 20), test_v02435(천 툴 숨김 9), test_v02436(Jungle Gym 36: 기어가기 · 45° · 지우기 · 휠 깊이 · Magnet / Corner · 튜브 / 베이스 메쉬 · Follow Body · 주황 X·Y·Z), test_v02437(메뉴 연결 · D 홀드 · Ctrl 돌리기 · 브러시 크기 · 미러 통일 · 가벼운 미리보기 · Even Out). 새 파일들은 Blender 5.2.3 bpy에서도 통과. 실제 화면 입력 · 3D 마우스 · 오버레이 표시는 미검증.
 
 ## 0.24.30 결과: 92개 파일 3099/3099 (`tests/test_log_bpy501_v02430.txt`). test_v02428(26): + Straight 1 = 밑단 폭이 Straight 0보다 좁음(옆선 수직), 닫힌 메쉬. 실제 화면 입력은 미검증.
 

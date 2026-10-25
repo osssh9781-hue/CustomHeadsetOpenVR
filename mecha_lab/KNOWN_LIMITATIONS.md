@@ -1,5 +1,13 @@
 # KNOWN LIMITATIONS — Mecha Lab 0.18.0
 
+## 0.24.31 Concept Move / Jungle Gym
+- 실제 화면에서 한 번도 써 보지 않음: 드래그 손맛, 브러시 원, 격자 · 주황 막대 표시, D 홀드, F 크기, 3D 마우스(Follow View) 모두 미검증.
+- Jungle Gym 격자를 마우스만 올려도 보이게 하는 부분(툴 키맵 MOUSEMOVE)이 Blender에서 동작하는지 확신 없음. 안 되면 드래그 중에만 보임.
+- MECHA LAB 작업공간에서는 D + 드래그가 Concept Move라서 Blender 주석(Annotate, D + 드래그)이 안 됨. 다른 작업공간에서는 그대로. Hotkeys 박스에서 키를 바꿀 수 있음.
+- Concept Move는 일반 메쉬 방식이라 VR 찰흙(복셀)처럼 붙이기 · 빼기가 자유롭지 않음. Fuse(합치기)는 복셀 리메쉬라 느리고 잔 디테일이 뭉개짐.
+- Follow Body는 가장 가까운 표면점을 쓰기 때문에, 몸이 얇거나 오목한 곳(겨드랑이 등)에서는 선이 반대편 면으로 튈 수 있음.
+- Jungle Gym 결과의 베이스 메쉬는 평평하게 닫힌 선만. 몸을 감은 닫힌 선은 닫힌 튜브.
+
 ## 0.18.0 Mirror HUD
 - Mirror 도구의 "기울여서 고르기"(모달) 중에는 HUD를 누를 수 없음: 클릭으로 라이브 유지한 뒤에 HUD가 동작. 실제 창 미확인.
 

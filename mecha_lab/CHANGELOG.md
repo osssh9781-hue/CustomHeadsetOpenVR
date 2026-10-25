@@ -1,5 +1,26 @@
 # CHANGELOG
 
+## 0.24.31 — VR식 러프 탐색: Concept Move · Jungle Gym, Blender 5.2 호환, 새 천 툴은 숨김 (2026-10-25)
+
+- **Concept Move**(새 툴, 왼쪽 목록 · 하단 바 Move · V 파이 Primitive 칸): 표면을 잡고 찰흙처럼 쭉 늘리기(Substance 3D Modeler의 Move처럼).
+  - Shape 구 / 박스(화면을 향한 정육면체: 프레임 · 판), Hardness(통째로 움직이는 범위), Falloff Clay / Elastic / Sharp, Mirror X, Strength.
+  - **Generate**: 놓는 순간 늘어난 만큼 실제로 메쉬를 만들어 줌(늘어난 면을 쪼개서 다시 당김 → 길쭉한 면 없음). **Even Out**: 늘린 부분 면을 표면을 따라 고르게(각진 모서리는 그대로).
+  - 드래그 중: Shift = 표면 바깥 방향, **Ctrl + 좌우 = 잡은 덩어리 돌리기**, 휠 = 깊이, [ ] = 크기. 놓은 뒤 F9: Size · Pull · Turn · Hardness · Shape · Falloff.
+  - **F + 마우스 = 브러시 크기**, **Real Size** = 줌해도 장면에서 같은 크기.
+  - **어느 Mecha 툴에서든 D 누른 채 드래그 = Concept Move**(툴 안 바꿈, Hotkeys 박스에서 키 변경 가능).
+  - 라이브 오브젝트(망토 등)는 Apply 없이 늘려도 됨: 늘린 동작을 기억해서 슬라이더로 다시 만들어도 다시 적용, Clear Moves로 지움.
+  - 미러 통일: 오브젝트에 자기 미러(Mecha Mirror)가 있으면 반대쪽(복사본)을 잡아도 원본 절반이 움직임.
+  - Follow View(3D 마우스): 잡은 채 시점을 돌리면 덩어리가 따라옴. Shift+클릭 = 찰흙 공 추가, Fuse = 합치기(복셀).
+  - 무거운 메쉬: 드래그 중엔 브러시가 닿는 점만 계산, 화면이 그대로면 계산 안 함.
+- **Jungle Gym**(새 툴, 프로토타입): 화면에만 보이는 가벼운 격자(정글짐) 위를 기어가듯 그리기.
+  - 마우스 방향에 가장 맞는 막대로 한 칸씩(대각선 시점이면 깊이로도), 휠 = 앞 / 뒤 칸, 되돌아가면 지워짐. 지금 점의 X · Y · Z 막대 = 주황, **45°** 대각선 = 흐린 주황(기본 켬).
+  - Magnet(1 = 막대에 딱, 낮추면 자유 곡선), Corner(꺾이는 곳 둥글기), Thickness. 평평하게 닫힌 선 = 베이스 메쉬, 나머지 = 라이브 튜브. F9로 다시 조절.
+  - 방향 World / Object / View / Surface, R / Shift+R = 15° 회전, 간격 = 줌 따라 1 · 2 · 5 자동.
+  - **Follow Body**(기본 켬): 몸 위에서 시작하면 격자가 몸에 그물처럼 붙고 선이 몸을 감쌈(뚫지 않음), 휠 = 몸에서 띄우기(Lift).
+- **Blender 5.2 호환**: 지오메트리 노드 모디파이어 입력(`properties.inputs`), Random Value 노드 소켓, numpy 2. 5.0에서도 그대로.
+- **숨김**(코드 · 저장된 오브젝트는 그대로, `tool_state.EXPERIMENTAL_CLOTH = True`로 다시 켬): Clothing, Hood, Scarf, Quad Cloth. 망토(Cape)는 그대로.
+- 테스트: 99개 파일 3301/3302 (속도 검사 1개가 이 기기에서 0.547초 > 0.5초로 실패, 단독 재실행 통과, 0.24.30 코드도 여기서 0.55초), 새 `test_v02432`~`test_v02437`. ZIP sha256 `8f25ac3f67cc600ba521584ce039017efecbd568f6601ec7d39a85d3daeb1ca2`.
+
 ## 0.24.30 — Cape: Straight(망토 옆선이 일자로 떨어짐) (2026-10-23)
 
 - **Cape Straight**(0–1): 망토가 내려가면서 옆으로 퍼지는 정도를 줄여서 양옆 선이 사선이 아니라 수직으로 떨어짐(1 = 일자, 0 = Flare만큼 퍼짐). 기본: Cloak · Ragged 0.6, Capelet 0.3, Poncho 0(퍼지는 게 모양이라).
