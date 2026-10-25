@@ -48,6 +48,13 @@ DEPTH_ITEMS = [
     ('THROUGH', 'Through All', 'Every target mesh inside the brush moves too (a plate on a body moves with it)'),
     ('SURFACE', 'From Surface', 'Only the mesh you grab'),
 ]
+PATH_METHODS = [
+    ('EXTEND', 'Extend', 'Cut where you grab and run that section along the path; the end goes to the end of the '
+                         'path - one clean mesh that looks pulled (light while dragging)'),
+    ('SWEEP', 'Separate Tube', 'The section where you grab swept into a new object (the mesh stays); Merge joins it '
+                               'later'),
+    ('STRETCH', 'Stretch (slow)', 'The old way: the mesh itself is stretched step by step (slow on big meshes)'),
+]
 SPACE_ITEMS = [('LOCAL', 'Local', 'The move is in the active object\'s own space'),
                ('WORLD', 'World', 'The move is in the scene, applied to the listed objects')]
 PATH_MAX_STEPS = 48
@@ -428,7 +435,7 @@ def replay(ob):
         return 0
     n = 0
     for mv in recorded_moves(ob):
-        generate(ob.data, move_field(mv), relax=mv.get('relax', 0))
+        replay_one(ob.data, mv)
         n += 1
     return n
 
@@ -517,6 +524,7 @@ class MCH_PG_Concept(bpy.types.PropertyGroup):
                             description='How far the surface follows the mouse')
     path_taper: FloatProperty(name='Taper', default=0.0, min=0.0, max=0.95,
                               description='Path Move: thinner toward the end (0 = the same all the way)')
+    path_method: EnumProperty(name='Method', items=PATH_METHODS, default='EXTEND')
     path_turn: BoolProperty(name='Follow Turns', default=True,
                             description='Path Move: the grabbed box / ball turns where the path bends')
     lock_size: BoolProperty(name='Real Size', default=False,
@@ -749,8 +757,20 @@ def rebuild_from_base(ob, moves):
     bm.free()
     ob.data.update()
     for mv in moves:
-        generate(ob.data, move_field(mv), relax=mv.get('relax', 0))
+        replay_one(ob.data, mv)
     ob[MOVES_KEY] = json.dumps(moves)
+
+
+def replay_one(me, mv):
+    """One remembered move again: a grab (generated) or a Path Move Extend."""
+    if mv.get('kind') == 'extend':
+        from . import path_sweep
+        try:
+            path_sweep.extend(me, mv['hit'], mv['normal'], mv['offsets'], mv.get('turn', True), mv.get('taper', 0.0))
+        except ValueError:
+            pass
+        return
+    generate(me, move_field(mv), relax=mv.get('relax', 0))
 
 
 def drop_base(ob):
@@ -1149,6 +1169,10 @@ class MCH_OT_concept_path(bpy.types.Operator):
     objects: StringProperty(options={'HIDDEN'})
     auto_apply: BoolProperty(name='Auto Apply', default=True,
                              description='Off: the moves stay editable (Undo Last / Clear / Apply in the panel)')
+    method: EnumProperty(name='Method', items=PATH_METHODS, default='STRETCH')
+    grab_point: FloatVectorProperty(size=3, options={'HIDDEN'})   # Extend / Separate Tube: in the object's space
+    grab_normal: FloatVectorProperty(size=3, default=(1, 0, 0), options={'HIDDEN'})
+    offsets: StringProperty(options={'HIDDEN'})
 
     @classmethod
     def poll(cls, context):
@@ -1161,6 +1185,8 @@ class MCH_OT_concept_path(bpy.types.Operator):
                           axes if axes is not None else self.axes, self.turn)
 
     def execute(self, context):
+        if self.method != 'STRETCH':
+            return self._execute_section(context)
         if self.space == 'WORLD':                            # every listed object, each in its own space
             pts = [Vector(p) for p in json.loads(self.path or '[]')]
             objs = [o for o in (bpy.data.objects.get(n) for n in json.loads(self.objects or '[]')) if _mesh_ok(o)]
@@ -1184,6 +1210,43 @@ class MCH_OT_concept_path(bpy.types.Operator):
             return {'CANCELLED'}
         n = self._run(ob, moves, [Vector(p) for p in json.loads(self.path)], self.radius * self.size)
         self.report({'INFO'}, f'Path Move: {n} steps')
+        return {'FINISHED'}
+
+    def _execute_section(self, context):
+        """Extend / Separate Tube on the grabbed object (its own space): the section sweeps along the path."""
+        from . import path_sweep
+        names = json.loads(self.objects or '[]')
+        ob = bpy.data.objects.get(names[0]) if names else context.active_object
+        offsets = [Vector(o) for o in json.loads(self.offsets or '[]')]
+        if not _mesh_ok(ob) or len(offsets) < 2:
+            self.report({'WARNING'}, 'Path Move: drag a path over a mesh')
+            return {'CANCELLED'}
+        hit, normal = Vector(self.grab_point), Vector(self.grab_normal)
+        method = self.method
+        if method == 'EXTEND' and is_live(ob):
+            method = 'SWEEP'                                 # a live object is rebuilt by its sliders
+        if method == 'EXTEND':
+            try:
+                if not self.auto_apply:
+                    keep_base(ob)
+                msg = path_sweep.extend(ob.data, hit, normal, offsets, self.turn, self.taper)
+                if has_base(ob):
+                    record_move(ob, {'kind': 'extend', 'hit': list(hit), 'normal': list(normal),
+                                     'offsets': [list(o) for o in offsets], 'turn': self.turn, 'taper': self.taper})
+                self.report({'INFO'}, f'Path Move {msg}')
+                return {'FINISHED'}
+            except ValueError as exc:
+                self.report({'WARNING'}, f'Path Move: {exc} - made a Separate Tube instead')
+        try:
+            new = path_sweep.sweep_object(context, ob, hit, normal, offsets, self.turn, self.taper)
+        except ValueError as exc:
+            self.report({'WARNING'}, f'Path Move: {exc}')
+            return {'CANCELLED'}
+        for o in context.selected_objects:
+            o.select_set(False)
+        new.select_set(True)
+        context.view_layer.objects.active = new
+        self.report({'INFO'}, 'Path Move: Separate Tube (Merge in the panel joins it)')
         return {'FINISHED'}
 
     def _run(self, ob, moves, pts, radius):
@@ -1218,6 +1281,9 @@ class MCH_OT_concept_path(bpy.types.Operator):
         col.prop(self, 'hardness', slider=True)
         col.prop(self, 'taper', slider=True)
         self.layout.prop(self, 'turn', toggle=True)
+        if self.method != 'STRETCH':
+            self.layout.prop(self, 'method', expand=True)
+            return
         self.layout.prop(self, 'shape', expand=True)
         row = self.layout.row(align=True)
         row.prop(self, 'mirror', toggle=True)
@@ -1233,7 +1299,61 @@ class MCH_OT_concept_path(bpy.types.Operator):
             self.trail = [self.hit.copy()]
             self.local = []
             self._sig = None
+            self.info = None                                 # Extend / Separate Tube: the section (once known)
+            self.preview_ob = None
+            self.local_hit = self.mref @ (self.mwi @ self.hit)
         return res
+
+    def _to_local(self, p):
+        return self.mref @ (self.mwi @ p)
+
+    def _section_offsets(self, context):
+        """The path in the object's space, as offsets from the grab point (smoothed, evenly spaced)."""
+        m3 = self.mwi.to_3x3()
+        scale = (m3 @ Vector((1.0, 0.0, 0.0))).length if abs(m3.determinant()) > 1e-12 else 1.0
+        step = brush_world(context, self.hit) * scale * 0.3
+        local = even_path(smooth_path([self._to_local(p) for p in self.trail]), step, 96)
+        return [p - self.local_hit for p in local]
+
+    def _section_preview(self, context):
+        """Extend / Separate Tube while dragging: only the new rings (and the carried end) are rebuilt."""
+        from . import path_sweep
+        st = context.scene.mch_concept
+        offsets = self._section_offsets(context)
+        if len(offsets) < 2:
+            return
+        if self.info is None:
+            normal = offsets[-1] - offsets[0]
+            if normal.length < brush_world(context, self.hit) * 0.3:
+                return                                       # wait until the way it goes is clear
+            self.normal_l = normal.normalized()
+            self.info = path_sweep.analyse(self.ob.data, self.local_hit, self.normal_l) or False
+            if self.info:
+                me = bpy.data.meshes.new('MCH_PathPreview')
+                self.preview_ob = bpy.data.objects.new('MCH_PathPreview', me)
+                context.scene.collection.objects.link(self.preview_ob)
+                self.preview_ob.matrix_world = self.ob.matrix_world.copy()
+                path_sweep.copy_mirror(self.ob, self.preview_ob)
+                self.preview_ob.display_type = 'SOLID'
+                self.preview_ob.show_wire = True
+        if not self.info:
+            return
+        path = path_sweep.path_from(self.info['centre'], offsets)
+        verts, faces = path_sweep.preview_geometry(self.info, path, self.normal_l, st.path_turn, st.path_taper,
+                                                   st.path_method)
+        me = self.preview_ob.data
+        me.clear_geometry()
+        me.from_pydata([tuple(v) for v in verts], [], faces)
+        me.update()
+
+    def _drop_preview(self):
+        ob = getattr(self, 'preview_ob', None)
+        if ob is not None:
+            me = ob.data
+            bpy.data.objects.remove(ob, do_unlink=True)
+            if me.users == 0:
+                bpy.data.meshes.remove(me)
+        self.preview_ob = None
 
     def _header(self, context):
         st = context.scene.mch_concept
@@ -1269,10 +1389,15 @@ class MCH_OT_concept_path(bpy.types.Operator):
         self.target = self.trail[-1]
         self.center_2d = view3d_utils.location_3d_to_region_2d(region, rv3d, self.target) or self.mouse
         self.r_px = brush_px(context, self.target) * max(1.0 - st.path_taper, 0.05)
-        sig = (len(self.trail), st.radius_px, st.radius_world, st.hardness, st.path_taper, st.path_turn, st.shape)
+        sig = (len(self.trail), st.radius_px, st.radius_world, st.hardness, st.path_taper, st.path_turn, st.shape,
+               st.path_method)
         if sig == self._sig:
             return
         self._sig = sig
+        if st.path_method != 'STRETCH':
+            self._section_preview(context)
+            self._header(context)
+            return
         path, radius, axes = self._world_path(context)
         for part in self.parts:
             ob = part['ob']
@@ -1300,6 +1425,17 @@ class MCH_OT_concept_path(bpy.types.Operator):
         elif event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
             self._finish_ui(context)
             MCH_OT_concept_move._restore(self)               # back to the start: execute() does the real thing
+            self._drop_preview()
+            if st.path_method != 'STRETCH':
+                offsets = self._section_offsets(context)
+                if len(offsets) < 2 or not getattr(self, 'normal_l', None):
+                    return {'CANCELLED'}
+                self.method = st.path_method
+                self.objects = json.dumps([self.ob.name])
+                self.grab_point, self.grab_normal = self.local_hit, self.normal_l
+                self.offsets = json.dumps([list(o) for o in offsets])
+                self.taper, self.turn, self.auto_apply = st.path_taper, st.path_turn, st.auto_apply
+                return self.execute(context)
             path, radius, axes = self._world_path(context)
             if len(path) < 2:
                 return {'CANCELLED'}
@@ -1314,6 +1450,7 @@ class MCH_OT_concept_path(bpy.types.Operator):
             return self.execute(context)
         elif event.type in {'RIGHTMOUSE', 'ESC'} and event.value == 'PRESS':
             MCH_OT_concept_move._restore(self)
+            self._drop_preview()
             self._finish_ui(context)
             return {'CANCELLED'}
         if context.area:
@@ -1357,9 +1494,18 @@ class MCH_TOOL_concept_path(bpy.types.WorkSpaceTool):
 
 
 def draw_path(layout, context, compact=False):
+    from . import path_sweep
     st = context.scene.mch_concept
-    if not compact:
+    layout.prop(st, 'path_method', expand=not compact, text='' if compact else 'Method')
+    ob = context.active_object
+    if not compact and ob is not None and path_sweep.SOURCE_KEY in ob:
+        row = layout.row(align=True)
+        row.operator('mch.path_merge', text='Merge: Join', icon='LINKED').mode = 'JOIN'
+        row.operator('mch.path_merge', text='Merge: Union', icon='MOD_BOOLEAN').mode = 'UNION'
+    if not compact and st.path_method == 'STRETCH':
         draw_targets(layout, context)
+    elif not compact:
+        layout.prop(st, 'auto_apply', text='Auto Apply (OFF = live, editable moves)')
     row = layout.row(align=True)
     row.prop(st, 'radius_world' if st.lock_size else 'radius_px')
     row.prop(st, 'lock_size', toggle=True)
@@ -1537,6 +1683,35 @@ class MCH_OT_concept_clear(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_path_merge(bpy.types.Operator):
+    bl_idname = 'mch.path_merge'
+    bl_label = 'Merge Path Tube'
+    bl_description = 'Merge this Separate Tube into the mesh it came from (Join = one object, Union = boolean)'
+    bl_options = {'REGISTER', 'UNDO'}
+    mode: EnumProperty(items=[('JOIN', 'Join', 'One object (fast)'), ('UNION', 'Union', 'Boolean union (one surface)')],
+                       default='JOIN')
+
+    @classmethod
+    def poll(cls, context):
+        from . import path_sweep
+        ob = context.active_object
+        return context.mode == 'OBJECT' and ob is not None and path_sweep.SOURCE_KEY in ob
+
+    def execute(self, context):
+        from . import path_sweep
+        try:
+            src = path_sweep.merge(context, context.active_object, self.mode)
+        except (ValueError, RuntimeError) as exc:
+            self.report({'WARNING'}, f'Merge: {exc}')
+            return {'CANCELLED'}
+        for o in context.selected_objects:
+            o.select_set(False)
+        src.select_set(True)
+        context.view_layer.objects.active = src
+        self.report({'INFO'}, f'Merged into {src.name} ({self.mode.title()})')
+        return {'FINISHED'}
+
+
 class MCH_OT_concept_undo_last(bpy.types.Operator):
     bl_idname = 'mch.concept_undo_last'
     bl_label = 'Undo Last Move'
@@ -1655,7 +1830,7 @@ def draw(layout, context, compact=False):
 
 CLASSES = (MCH_PG_Concept, MCH_OT_concept_move, MCH_OT_concept_path, MCH_OT_concept_hold, MCH_OT_concept_size,
            MCH_OT_concept_resize, MCH_OT_concept_add, MCH_OT_concept_fuse, MCH_OT_concept_clear,
-           MCH_OT_concept_undo_last, MCH_OT_concept_bake)
+           MCH_OT_concept_undo_last, MCH_OT_concept_bake, MCH_OT_path_merge)
 
 
 def register():
