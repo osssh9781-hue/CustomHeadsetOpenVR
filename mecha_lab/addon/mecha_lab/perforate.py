@@ -258,8 +258,14 @@ def setup(context, ob, d):
         p.cutter = cutter
     mod = ob.modifiers.get(MOD_NAME) or ob.modifiers.new(MOD_NAME, 'BOOLEAN')
     mod.operation, mod.object = 'DIFFERENCE', p.cutter
-    if ob.modifiers[0] != mod:                               # before a Mirror: symmetrical holes
-        ob.modifiers.move(list(ob.modifiers).index(mod), 0)
+    mods = list(ob.modifiers)
+    mirrors = [i for i, m in enumerate(mods) if m.type == 'MIRROR' and m != mod]
+    want = mirrors[0] if mirrors else len(mods) - 1          # right before a Mirror (symmetrical holes), else last
+    cur = mods.index(mod)
+    if mirrors and cur > want:
+        ob.modifiers.move(cur, want)
+    elif not mirrors and cur != want:
+        ob.modifiers.move(cur, want)
     p.live = True
     return rebuild(ob)
 
