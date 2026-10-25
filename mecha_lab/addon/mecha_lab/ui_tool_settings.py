@@ -911,7 +911,13 @@ def draw_cloth_brush(layout, context):
     surface_draw.draw(layout, context, 'CLOTH')
 
 
+def draw_cloth_wrap(layout, context):
+    from . import cloth_wrap
+    cloth_wrap.draw(layout, context)
+
+
 DRAWERS = {
+    'CWRAP': draw_cloth_wrap,
     'SDRAW': draw_surface_draw, 'CLOTHB': draw_cloth_brush,
     'PERF': draw_perforate,
     'CMOVE': draw_concept_move, 'CPATH': draw_path_move,

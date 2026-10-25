@@ -347,6 +347,20 @@ def icons():
             d.line((top[i][0], top[i][1], bot[i][0], bot[i][1]), fill=CY, width=6)
         return img
     out['cloth_brush'] = cloth_brush
+
+    def cloth_wrap():                         # 0.24.33 cloth round a cylinder
+        img, d = canvas()
+        d.rectangle((196, 70, 316, 440), outline=DIM, width=10)
+        pts = []
+        for i in range(13):
+            y = 120 + i * 26
+            pts.append((150 + 14 * math.sin(i * 1.4), y))
+        right = [(362 - 14 * math.sin(i * 1.4 + 1), 120 + i * 26) for i in range(13)]
+        poly(d, pts + right[::-1], CY, width=10, fill=(80, 200, 255, 80))
+        for i in range(2, 12, 3):
+            d.line((pts[i][0], pts[i][1], right[i][0], right[i][1] + 10), fill=CY, width=6)
+        return img
+    out['cloth_wrap'] = cloth_wrap
     return out
 
 
