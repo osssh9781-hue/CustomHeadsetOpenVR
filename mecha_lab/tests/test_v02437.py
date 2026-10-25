@@ -80,4 +80,16 @@ refl = cm.mirror_reflections(half)
 check('mirror round a pivot object: reflected about its plane', (refl[0] @ Vector((1.0, 0, 0)) - Vector((5.0, 0, 0))).length < 1e-6)
 mod.use_axis[1] = True
 check('two axes: three mirrored copies', len(cm.mirror_reflections(half)) == 3)
+
+# light preview: only the points the brush can reach are computed, same result
+rng = np.random.default_rng(1)
+co = rng.uniform(-5, 5, (20000, 3))
+for mv in ({'centre': [1.0, 0, 0], 'delta': [0, 0, 0.5], 'radius': 0.8, 'falloff': 'CLAY', 'mirror': True,
+            'shape': 'BOX', 'hardness': 0.5, 'axes': list(np.eye(3).ravel()), 'twist': [0, 0, 1, 0.4]},
+           {'centre': [0.0, 1.0, 0], 'delta': [0.3, 0, 0], 'radius': 0.5, 'falloff': 'ELASTIC', 'mirror': False}):
+    mask = cm.near_mask(co, mv)
+    full = cm.move_field(mv)(co)
+    fast = cm.fast_field(mv, mask)(co)
+    check(f'light preview ({mv["falloff"]}): same as the full move, far fewer points computed',
+          np.allclose(full, fast, atol=1e-9) and mask.sum() < len(co) * 0.25, (int(mask.sum()), float(abs(full - fast).max())))
 summary()

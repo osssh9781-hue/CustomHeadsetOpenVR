@@ -16,6 +16,7 @@ original.
 * F + move the mouse: brush size (like sculpting).  Real Size keeps the brush the same size in the scene when
   you zoom.
 * Shift+click: drop a clay blob.  Fuse: join the selected clay into one smooth piece (voxel remesh).
+While dragging only the points the brush can reach are computed, and a still frame costs nothing.
 ``clay_weights``, ``elastic_weights``, ``sharp_weights``, ``box_distance``, ``displace`` and ``generate`` are the
 working parts (numpy / bmesh, no UI).
 """
@@ -140,6 +141,36 @@ def move_field(move):
                         move.get('mirror', False), move.get('shape', 'SPHERE'), move.get('hardness', 0.5),
                         move.get('axes'), move.get('twist'))
     return f
+
+
+def reach(move):
+    """How far from the grab point anything moves (elastic fades out by 4 radii, a box reaches its corners)."""
+    r = move['radius']
+    if move.get('falloff') == 'ELASTIC':
+        return 4.0 * r
+    return r * (math.sqrt(3.0) if move.get('shape') == 'BOX' else 1.0) * 1.01
+
+
+def near_mask(co, move):
+    """Points the move can touch (around the grab point and its X mirror) - the rest are skipped."""
+    c = np.asarray(move['centre'], dtype=np.float64)
+    lim = reach(move) ** 2
+    mask = ((co - c) ** 2).sum(1) <= lim
+    if move.get('mirror'):
+        mask |= ((co - c * np.array([-1.0, 1.0, 1.0])) ** 2).sum(1) <= lim
+    return mask
+
+
+def fast_field(move, mask):
+    """Like move_field, but only the masked points are computed (the drag preview on heavy meshes)."""
+    f = move_field(move)
+
+    def g(co):
+        out = co.copy()
+        if mask.any():
+            out[mask] = f(co[mask])
+        return out
+    return g
 
 
 # -----------------------------------------------------------------------------
@@ -690,9 +721,21 @@ class MCH_OT_concept_move(bpy.types.Operator):
             mv['twist'] = list(r3 @ view_axis) + [self.twist_angle * sign]
         return mv
 
-    def _preview(self, context):
+    def _preview(self, context, timer=False):
+        rv3d = context.region_data
+        key = (tuple(round(c, 6) for row in rv3d.view_matrix for c in row), tuple(self.mouse), self.depth,
+               self.shift, self.twist_angle, context.scene.mch_concept.radius_px,
+               context.scene.mch_concept.radius_world)
+        if timer and key == getattr(self, '_last_key', None):
+            return                                           # nothing moved: no work on a still frame
+        self._last_key = key
         self.cur = self._current_move(context)
-        write_coords(self.ob.data, move_field(self.cur)(self.orig))
+        mkey = (tuple(self.cur['centre']), self.cur['radius'], self.cur['mirror'], self.cur['falloff'],
+                self.cur['shape'])
+        if getattr(self, '_mask_key', None) != mkey:         # the grab point and size stay put during a drag
+            self._mask = near_mask(self.orig, self.cur)
+            self._mask_key = mkey
+        write_coords(self.ob.data, fast_field(self.cur, self._mask)(self.orig))
 
     def _finish_ui(self, context):
         if _DRAW[0] is not None:
@@ -710,7 +753,7 @@ class MCH_OT_concept_move(bpy.types.Operator):
         if event.type in NAV_EVENTS:                         # the 3D mouse / MMB still moves the view
             return {'PASS_THROUGH'}
         if event.type == 'TIMER':                            # the view may have moved under a still mouse
-            self._preview(context)
+            self._preview(context, timer=True)
         elif event.type == 'MOUSEMOVE':
             x = event.mouse_region_x
             if event.ctrl:                                   # Ctrl: left / right turns the grabbed part
