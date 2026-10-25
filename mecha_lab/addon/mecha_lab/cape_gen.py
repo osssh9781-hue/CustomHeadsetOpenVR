@@ -49,7 +49,7 @@ STYLES = {
 }
 HEM_ITEMS = [('STRAIGHT', 'Straight', 'Even hem'), ('ROUND', 'Round', 'Longest in the middle'),
              ('POINTED', 'Pointed', 'A point in the middle'), ('SPLIT', 'Split', 'Two tails, a notch in the middle')]
-LIVE_KEYS = ('shape', 'length', 'hem', 'flare', 'straight', 'wrap', 'folds', 'fold_depth', 'fold_random', 'wind', 'wind_dir',
+LIVE_KEYS = ('exact_width', 'shape', 'length', 'hem', 'flare', 'straight', 'wrap', 'folds', 'fold_depth', 'fold_random', 'wind', 'wind_dir',
              'tatter', 'seed', 'thickness', 'gap', 'columns', 'rows')
 _CACHE = {}          # object name -> (key, BVH data)
 
@@ -205,7 +205,7 @@ def _collar(context, src, p, bvh, lo, hi):
         lengths = [base * hem_profile(i / (len(cols) - 1), p.hem) for i in range(len(cols))]
     pts = list(cos)
     # Wrap: carry the collar on round the body on both sides
-    if p.wrap > 0.5 and len(pts) >= 2:
+    if p.wrap > 0.5 and len(pts) >= 2 and not p.exact_width:
         ang = [math.atan2(c.y - axis.y, c.x - axis.x) for c in pts]
 
         def unwrap(a, ref):
@@ -313,6 +313,26 @@ def shape_sheet(grid, axis, p, size, bvh, gap):
     return out
 
 
+def clamp_width(grid, collar):
+    """0.24.33 Only Drawn Width: nothing goes past the drawn left / right ends (folds and the push off the body
+    would make it wider) - measured across, between the two ends of the collar."""
+    across = collar[-1] - collar[0]
+    across.z = 0.0
+    if across.length < 1e-9:
+        return grid
+    across.normalize()
+    lo = min(c.dot(across) for c in collar)
+    hi = max(c.dot(across) for c in collar)
+    out = []
+    for col in grid:
+        new = []
+        for q in col:
+            d = q.dot(across)
+            new.append(q + across * ((min(max(d, lo), hi)) - d))
+        out.append(new)
+    return out
+
+
 def solid_mesh(grid, thickness, axis):
     """Closed sheet: the grid, a copy pushed toward the body by thickness, walls round the border."""
     bm = bmesh.new()
@@ -350,12 +370,16 @@ def solid_mesh(grid, thickness, axis):
 def build(context, src, p, target):
     bvh, lo, hi = _body(context, target)
     collar, lengths, axis, size = _collar(context, src, p, bvh, lo, hi)
-    gap = p.gap if p.gap > 0 else size * 0.012
+    gap = p.gap if p.gap > 0 else size * 0.006          # 0.24.33 closer to the body (was 1.2 %)
     rows = max(4, p.rows)
     # 0.24.29 Straight: the sides drop plumb instead of spreading out diagonally
-    grid = drape(bvh, axis, collar, lengths, rows, gap, p.flare * (1.0 - p.straight))
+    # 0.24.33 Only Drawn Width: no spreading at all - exactly as wide as drawn
+    flare = 0.0 if p.exact_width else p.flare * (1.0 - p.straight)
+    grid = drape(bvh, axis, collar, lengths, rows, gap, flare)
     grid = shape_sheet(grid, axis, p, size, bvh, gap)
-    thick = p.thickness if p.thickness > 0 else size * 0.006
+    if p.exact_width:
+        grid = clamp_width(grid, collar)
+    thick = p.thickness if p.thickness > 0 else size * 0.003         # 0.24.33 thinner (was 0.6 %)
     return solid_mesh(grid, thick, axis)
 
 
@@ -460,12 +484,15 @@ class MCH_PG_Cape(bpy.types.PropertyGroup):
     tatter: FloatProperty(name='Tatter', default=0.0, min=0.0, max=0.9, update=_update,
                           description='Ragged, torn hem')
     seed: IntProperty(name='Seed', default=1, min=0, update=_update)
-    thickness: FloatProperty(name='Thickness', default=0.0, min=0.0, soft_max=0.1, precision=4, unit='LENGTH',
+    thickness: FloatProperty(name='Thickness', default=0.0, min=0.0, soft_max=0.05, precision=5, unit='LENGTH',
                              update=_update, description='Cloth thickness (0 = Auto)')
     gap: FloatProperty(name='Gap', default=0.0, min=0.0, soft_max=0.2, precision=4, unit='LENGTH', update=_update,
                        description='Distance from the body (0 = Auto)')
-    columns: IntProperty(name='Columns', default=48, min=8, max=200, update=_update)
-    rows: IntProperty(name='Rows', default=36, min=6, max=200, update=_update)
+    columns: IntProperty(name='Columns', default=72, min=8, max=300, update=_update)
+    rows: IntProperty(name='Rows', default=48, min=6, max=300, update=_update)
+    exact_width: BoolProperty(name='Only Drawn Width', default=True, update=_update,
+                              description='The cape is only as wide as what you drew (no Wrap round the body, the '
+                                          'sides do not spread out)')
     live: BoolProperty(default=False, options={'HIDDEN'})
     last_error: StringProperty(default='', options={'HIDDEN', 'SKIP_SAVE'})
 
@@ -584,12 +611,15 @@ def draw(layout, context):
         box.label(text='Cape: settings for the next one', icon='MOD_CLOTH')
     box.row(align=True).prop(p, 'style', expand=True)
     box.row(align=True).prop(p, 'shape', expand=True)
+    box.prop(p, 'exact_width', toggle=True)
     col = box.column(align=True)
     col.prop(p, 'length', slider=True)
     col.row(align=True).prop(p, 'hem', expand=True)
     col.prop(p, 'flare', slider=True)
-    col.prop(p, 'straight', slider=True)
-    col.prop(p, 'wrap', slider=True)
+    sub = col.column(align=True)
+    sub.active = not p.exact_width
+    sub.prop(p, 'straight', slider=True)
+    sub.prop(p, 'wrap', slider=True)
     col = box.column(align=True)
     col.prop(p, 'folds')
     col.prop(p, 'fold_depth', slider=True)

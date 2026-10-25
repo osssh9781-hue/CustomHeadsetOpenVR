@@ -63,6 +63,7 @@ body = mannequin()
 BACK = cg.OrthoProjector(Euler((math.radians(90), 0, math.pi)).to_quaternion())   # camera behind (+Y), looking -Y
 SHORT = [[(405, 738), (595, 738), (595, 705), (405, 705)]]
 res = {}
+S.mch_cape.exact_width = False         # 0.24.33 the spreading / Wrap behaviour (Only Drawn Width off)
 for style in ('CAPELET', 'CLOAK', 'PONCHO', 'RAGGED'):
     S.mch_cape.style = style
     msg = cp.perform(C, SHORT, BACK)
@@ -148,4 +149,18 @@ check('Enter applies a live cape', ('cape_apply', 'Cape') in wsui.ENTER_APPLY)
 from mecha_lab import cut_engine as ce, lasso_line as ll
 check('the drawing tool sends Cape outlines to the generator', 'cape_gen.perform' in open(ce.__file__).read()
       and 'CAPE' in ll.MODES)
+# 0.24.33 Only Drawn Width (default): exactly as wide as drawn, closer to the body, thinner, finer
+st0 = cp.MCH_PG_Cape.bl_rna.properties
+check('Only Drawn Width is on by default, finer columns / rows', st0['exact_width'].default is True
+      and st0['columns'].default >= 72 and st0['rows'].default >= 48)
+S.mch_cape.exact_width = True
+S.mch_cape.style = 'PONCHO'                                       # the widest style: no spreading now
+cp.perform(C, SHORT, BACK)
+ex = C.active_object
+vs = [ex.matrix_world @ v.co for v in ex.data.vertices]
+w = max(v.x for v in vs) - min(v.x for v in vs)
+check('Only Drawn Width: the cape is as wide as the drawing (1.9), even a Poncho', 1.9 * 0.85 < w < 1.9 * 1.12, w)
+check('Only Drawn Width: it does not come round to the front', min(v.y for v in vs) > -0.05, min(v.y for v in vs))
+check('and it is still a closed mesh', non_manifold(ex) == 0)
+
 summary()
