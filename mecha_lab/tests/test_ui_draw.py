@@ -288,8 +288,13 @@ run_draw('radial panel with live array (rotation controls)',
 for tool_cls in wui.NATIVE_TOOLS:
     km = {item[0]: item for item in tool_cls.bl_keymap}
     check(f'{tool_cls.bl_idname}: Esc in tool keymap -> exit tool', 'mch.exit_tool' in km and km['mch.exit_tool'][1]['type'] == 'ESC')
-check('Base Mesh tool RMB opens PROFILE popup', dict(wui.MCH_TOOL_base_mesh.bl_keymap[1][2]['properties'])['popup'] == 'PROFILE')
-check('Cut tool RMB opens SHAPE popup', dict(wui.MCH_TOOL_cut.bl_keymap[1][2]['properties'])['popup'] == 'SHAPE')
+def _rmb_popup(tool_cls):      # 0.24.31: found by name (the hold-D item now comes first)
+    item = next(k for k in tool_cls.bl_keymap if k[0] == 'mch.rmb_gate')
+    return dict(item[2]['properties'])['popup']
+
+
+check('Base Mesh tool RMB opens PROFILE popup', _rmb_popup(wui.MCH_TOOL_base_mesh) == 'PROFILE')
+check('Cut tool RMB opens SHAPE popup', _rmb_popup(wui.MCH_TOOL_cut) == 'SHAPE')
 
 mecha_lab.unregister()
 sys.exit(1 if summary() else 0)
