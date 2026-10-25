@@ -14,10 +14,16 @@ fresh()
 C = bpy.context
 check('tools in the list with settings', {'SDRAW', 'CLOTHB'} <= {t[0] for t in ts.VISIBLE_TOOLS}
       and {'SDRAW', 'CLOTHB'} <= set(uts.DRAWERS) and {'SDRAW', 'CLOTHB'} <= ts.SHAPE_TOOLS)
-h = sd.cross_heights('FLAT', 9, 0.3)
-check('Flat profile: 0 at the edges, 1 in the middle', h[0] == 0.0 and h[-1] == 0.0 and h[4] == 1.0 and h[3] == 1.0)
+h = sd.cross_heights('BEVEL', 9, 0.3)
+check('Bevel (round edge) profile: 0 at the edges, 1 in the middle', h[0] == 0.0 and h[-1] == 0.0 and h[4] == 1.0 and h[3] == 1.0)
 check('Ridge / Round / Bevel profiles', sd.cross_heights('RIDGE', 5)[2] == 1.0 and sd.cross_heights('RIDGE', 5)[1] == 0.5
-      and abs(sd.cross_heights('ROUND', 3)[1] - 1.0) < 1e-9 and sd.cross_heights('BEVEL', 5, 0.5)[1] == 1.0)
+      and abs(sd.cross_heights('ROUND', 3)[1] - 1.0) < 1e-9 and sd.cross_heights('CHAMFER', 5, 0.5)[1] == 1.0
+      and sd.cross_heights('CHAMFER', 5, 0.5)[0] == 0.0)
+check('Square (default): straight sides - full height right to the edge', sd.cross_heights('SQUARE', 7) == [1.0] * 7
+      and sd.MCH_PG_SurfaceDraw.bl_rna.properties['profile'].default == 'SQUARE')
+check('fill edge: Square full at the outline, Chamfer / Bevel rise from 0', sd.edge_height('SQUARE', 0.0, 1, 5) == 1.0
+      and sd.edge_height('CHAMFER', 0.5, 1, 5) == 0.5 and sd.edge_height('BEVEL', 0.0, 1, 5) == 0.0
+      and 0.5 < sd.edge_height('BEVEL', 0.5, 1, 5) < 1.0 and sd.edge_height('BEVEL', 2.0, 1, 5) == 1.0)
 e = sd.end_factors([0, 1, 2, 3, 4, 5, 6], 2.0)
 check('round ends: 0 at both ends, full in the middle', e[0] == 0 and e[-1] == 0 and e[3] == 1.0 and 0 < e[1] < 1)
 
@@ -66,6 +72,32 @@ check('live: height', abs(max(radii(ob)) - 1.08) < 0.015, max(radii(ob)))
 C.view_layer.objects.active = ob
 bpy.ops.mch.sdraw_pop()
 check('Remove Last Stroke', len(sd.source(ob)['strokes']) == 1)
+
+# Fill Area: a closed lasso filled at the same height (Square / Chamfer / Bevel edges)
+st.fill = True
+sq = [scr(-0.25, -0.75), scr(0.25, -0.75), scr(0.25, -0.35), scr(-0.25, -0.35)]
+msg = sd.perform_fill(C, [sq], proj, 'BAND')
+fo = C.active_object
+src = sd.source(fo)
+check('Fill Area: the area joins the same live object', fo == ob and len(src.get('fills', [])) == 1, msg)
+check('the filled area is a closed solid with everything else', closed(fo.data))
+fo.mch_sdraw.profile = 'SQUARE'
+fill = src['fills'][0]
+top_square = max((Vector(c) + Vector(n) * fo.mch_sdraw.height).length for c, n in zip(fill['cos'], fill['nrms']))
+check('Square fill: as high as the strokes (Height), straight walls at the outline', closed(fo.data)
+      and abs(max(radii(fo)) - (1 + fo.mch_sdraw.height)) < fo.mch_sdraw.height * 0.2, max(radii(fo)))
+fo.mch_sdraw.profile = 'CHAMFER'
+check('Chamfer fill rebuilds (closed)', closed(fo.data))
+C.view_layer.objects.active = fo
+bpy.ops.mch.sdraw_pop()
+check('Remove Last Stroke takes the fill (the last thing) away', len(sd.source(fo).get('fills', [])) == 0
+      and len(sd.source(fo)['strokes']) == 1)
+from mecha_lab import cut_engine as ce
+class Fake:
+    mode, shape = 'SDRAW', 'LASSO'
+check('cut engine: with Fill Area a lasso is an area, without it a line', ce.MCH_OT_cut_stroke._fill_area(Fake()) is True)
+st.fill = False
+check('... and off again', ce.MCH_OT_cut_stroke._fill_area(Fake()) is False)
 
 cl = C.scene.mch_clothb
 cl.width, cl.height = 0.0, 0.0

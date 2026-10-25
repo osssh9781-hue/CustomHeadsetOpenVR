@@ -1240,9 +1240,17 @@ class StrokeLogic:
 
     def _line_mode(self):
         from . import lasso_line
+        if self.mode in {'SDRAW', 'CLOTHB'} and self._fill_area():
+            return False                       # 0.24.33 Fill Area: a closed lasso fills the area
         if self.mode in {'BELT', 'SCURVE', 'SDRAW', 'CLOTHB'}:    # 0.24.20 Belt Maker / Surface Curve always draw a line
             return self.shape in {'LASSO', 'CURVE_LASSO', 'STROKE'}
         return lasso_line.enabled(bpy.context, self.mode, self.shape)
+
+    def _fill_area(self):
+        scene = bpy.context.scene
+        st = getattr(scene, 'mch_clothb' if self.mode == 'CLOTHB' else 'mch_sdraw', None)
+        return bool(st is not None and st.fill and self.shape in {'LASSO', 'CURVE_LASSO', 'STROKE', 'RECT',
+                                                                  'CIRCLE', 'ELLIPSE', 'CUSTOM'})
 
     def _line_path(self, pts=None):
         """Open path of the current drawing (Line mode)."""
@@ -1678,8 +1686,11 @@ class StrokeLogic:
             return belt_maker.perform(context, self._line_path(), self.projector)
         if self.mode in {'SDRAW', 'CLOTHB'}:      # 0.24.33 Surface Draw / Cloth Brush
             from . import surface_draw
-            return surface_draw.perform(context, self._line_path(), self.projector,
-                                        'CLOTH' if self.mode == 'CLOTHB' else 'BAND')
+            kind = 'CLOTH' if self.mode == 'CLOTHB' else 'BAND'
+            if self._fill_area():
+                return surface_draw.perform_fill(context, self._current_loops(self.ctrl_held, self.shift_held),
+                                                 self.projector, kind)
+            return surface_draw.perform(context, self._line_path(), self.projector, kind)
         if self.mode == 'SCURVE':
             from . import surface_curve
             return surface_curve.perform(context, self._line_path(), self.projector)
