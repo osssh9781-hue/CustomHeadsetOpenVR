@@ -51,7 +51,9 @@ STYLES = {
 HEM_ITEMS = [('STRAIGHT', 'Straight', 'Even hem'), ('ROUND', 'Round', 'Longest in the middle'),
              ('POINTED', 'Pointed', 'A point in the middle'), ('SPLIT', 'Split', 'Two tails, a notch in the middle')]
 LIVE_KEYS = ('exact_width', 'shape', 'length', 'hem', 'flare', 'straight', 'wrap', 'folds', 'fold_depth', 'fold_random', 'wind', 'wind_dir',
-             'tatter', 'seed', 'thickness', 'gap', 'columns', 'rows')
+             'tatter', 'seed', 'thickness', 'gap', 'columns', 'rows', 'gravity')
+FOLD_ITEMS = [('DOWN', 'Down', 'Cape: folds run down from the collar'),
+              ('ACROSS', 'Across', 'Scarf Cape: folds run across, like a draped scarf')]
 _CACHE = {}          # object name -> (key, BVH data)
 
 
@@ -287,7 +289,8 @@ def drape(bvh, axis, collar, lengths, rows, gap, flare):
 
 
 def shape_sheet(grid, axis, p, size, bvh, gap):
-    """Folds, wind, then keep it out of the body."""
+    """Folds, wind, then keep it out of the body.  0.24.34 Scarf Cape (fold_dir ACROSS): the folds run across
+    (down the length they come and go), and Gravity sags the middle down so every fold droops like a scarf."""
     rng = random.Random(p.seed + 17)
     ncol, nrow = len(grid), len(grid[0])
     phases = [rng.uniform(0, 2 * math.pi) for _ in range(3)]
@@ -296,11 +299,14 @@ def shape_sheet(grid, axis, p, size, bvh, gap):
     depth = p.fold_depth * size
     wa = p.wind_dir
     wind = Vector((math.cos(wa), math.sin(wa), 0.0)) * (p.wind * size)
+    across = getattr(p, 'fold_dir', 'DOWN') == 'ACROSS'
+    sag = getattr(p, 'gravity', 0.0) * size * 0.12 if across else 0.0
     out = []
     for i, col in enumerate(grid):
         s = i / max(1, ncol - 1)
         f = sum(a * math.sin(2 * math.pi * fr * s + ph) for a, fr, ph in zip(amps, freqs, phases))
         f /= max(1e-6, sum(amps))
+        bow = math.sin(math.pi * s)                  # 0 at the drawn ends, 1 in the middle
         new = []
         for k, q in enumerate(col):
             v = k / max(1, nrow - 1)
@@ -308,7 +314,12 @@ def shape_sheet(grid, axis, p, size, bvh, gap):
             nrm = Vector((q.x - axis.x, q.y - axis.y, 0.0))
             nrm = nrm.normalized() if nrm.length > 1e-9 else Vector((0, 0, 1))
             amp = depth * (v ** 0.8)
-            r = q + nrm * (amp * f) + wind * (v * v)
+            if across:                               # rings down the length, a little wavy across
+                w = v + p.fold_random * 0.04 * math.sin(2 * math.pi * 1.3 * s + phases[1])
+                f = sum(a * math.sin(2 * math.pi * fr * w + ph) for a, fr, ph in zip(amps, freqs, phases))
+                f /= max(1e-6, sum(amps))
+                amp = depth * (v ** 0.5) * (0.55 + 0.45 * bow)
+            r = q + nrm * (amp * f) + wind * (v * v) + Vector((0.0, 0.0, -sag * bow * (v ** 0.7)))
             new.append(_push_out(bvh, r, gap * 0.6) if k > 0 else r)
         out.append(new)
     return out
@@ -429,7 +440,7 @@ def _update(self, context):
         self.last_error = ''
     except (cg.CutError, ValueError, RuntimeError) as ex:
         self.last_error = str(ex)
-    st = getattr(getattr(context, 'scene', None), 'mch_cape', None)
+    st = getattr(getattr(context, 'scene', None), 'mch_scape' if self.fold_dir == 'ACROSS' else 'mch_cape', None)
     if st is not None:                       # the next cape starts like this one
         _BUSY[0] = True
         try:
@@ -494,8 +505,16 @@ class MCH_PG_Cape(bpy.types.PropertyGroup):
     exact_width: BoolProperty(name='Only Drawn Width', default=True, update=_update,
                               description='The cape is only as wide as what you drew (no Wrap round the body, the '
                                           'sides do not spread out)')
+    fold_dir: EnumProperty(name='Folds Run', items=FOLD_ITEMS, default='DOWN', options={'HIDDEN'})
+    gravity: FloatProperty(name='Gravity', default=0.35, min=0.0, max=1.0, update=_update,
+                           description='Scarf Cape: how much the middle sags down (the folds droop with it)')
     live: BoolProperty(default=False, options={'HIDDEN'})
     last_error: StringProperty(default='', options={'HIDDEN', 'SKIP_SAVE'})
+
+
+def scene_settings(scene, kind='DOWN'):
+    """Settings for the next Cape (Scene.mch_cape) or Scarf Cape (Scene.mch_scape)."""
+    return scene.mch_scape if kind == 'ACROSS' else scene.mch_cape
 
 
 def pick_body(context, projector, groups):
@@ -527,12 +546,12 @@ def pick_body(context, projector, groups):
     return bpy.data.objects[max(counts, key=counts.get)]
 
 
-def perform(context, loops, projector):
-    """Outline drawn on a body -> a live cape.  Returns a report; raises cg.CutError."""
+def perform(context, loops, projector, kind='DOWN'):
+    """Outline drawn on a body -> a live cape (kind ACROSS = Scarf Cape).  Returns a report; raises cg.CutError."""
     from . import armor_plate as ap
     from . import face_extract as fx
     scene = context.scene
-    st = scene.mch_cape
+    st = scene_settings(scene, kind)
     groups = cg.prepare_loops(loops)
     target = pick_body(context, projector, groups)
     if target is None:
@@ -540,7 +559,7 @@ def perform(context, loops, projector):
     frozen = ap.freeze_projector(projector)
     if frozen is None:
         raise cg.CutError('This view cannot be saved for the cape.')
-    me = bpy.data.meshes.new(target.name + '_Cape')
+    me = bpy.data.meshes.new(target.name + ('_ScarfCape' if kind == 'ACROSS' else '_Cape'))
     ob = bpy.data.objects.new(me.name, me)
     fx._parts_collection(context, COLLECTION).objects.link(ob)
     for mat in target.data.materials:
@@ -552,6 +571,7 @@ def perform(context, loops, projector):
     try:
         for k in LIVE_KEYS + ('style',):
             setattr(p, k, getattr(st, k))
+        p.fold_dir = kind
     finally:
         _BUSY[0] = False
     try:
@@ -568,13 +588,15 @@ def perform(context, loops, projector):
         o.select_set(False)
     ob.select_set(True)
     context.view_layer.objects.active = ob
-    return f'Cape "{ob.name}" on {target.name} ({dict((s[0], s[1]) for s in STYLE_ITEMS)[p.style]}, ' \
+    return f'{"Scarf Cape" if kind == "ACROSS" else "Cape"} "{ob.name}" on {target.name} ' \
+           f'({dict((s[0], s[1]) for s in STYLE_ITEMS)[p.style]}, ' \
            f'{len(me.polygons)} faces)'
 
 
-def live_cape(context):
+def live_cape(context, kind=None):
     ob = getattr(context, 'active_object', None)
-    if ob is not None and getattr(ob, 'mch_cape', None) is not None and ob.mch_cape.live and source(ob):
+    if ob is not None and getattr(ob, 'mch_cape', None) is not None and ob.mch_cape.live and source(ob) \
+            and (kind is None or ob.mch_cape.fold_dir == kind):
         return ob
     return None
 
@@ -600,16 +622,19 @@ class MCH_OT_cape_apply(bpy.types.Operator):
         return {'FINISHED'}
 
 
-def draw(layout, context):
-    ob = live_cape(context)
-    p = ob.mch_cape if ob is not None else context.scene.mch_cape
+def draw(layout, context, kind='DOWN'):
+    ob = live_cape(context, kind)
+    p = ob.mch_cape if ob is not None else scene_settings(context.scene, kind)
+    name = 'Scarf Cape' if kind == 'ACROSS' else 'Cape'
     box = layout.box()
     if ob is not None:
-        box.label(text='LIVE Cape: ' + ob.name, icon='MOD_CLOTH')
+        box.label(text=f'LIVE {name}: ' + ob.name, icon='MOD_CLOTH')
         if p.last_error:
             box.label(text=p.last_error, icon='ERROR')
     else:
-        box.label(text='Cape: settings for the next one', icon='MOD_CLOTH')
+        box.label(text=f'{name}: settings for the next one', icon='MOD_CLOTH')
+    if kind == 'ACROSS':
+        box.prop(p, 'gravity', slider=True)
     box.row(align=True).prop(p, 'style', expand=True)
     box.row(align=True).prop(p, 'shape', expand=True)
     box.prop(p, 'exact_width', toggle=True)
@@ -653,11 +678,12 @@ def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Scene.mch_cape = bpy.props.PointerProperty(type=MCH_PG_Cape)
+    bpy.types.Scene.mch_scape = bpy.props.PointerProperty(type=MCH_PG_Cape)     # 0.24.34 Scarf Cape
     bpy.types.Object.mch_cape = bpy.props.PointerProperty(type=MCH_PG_Cape)
 
 
 def unregister():
-    for n, t in (('mch_cape', bpy.types.Object), ('mch_cape', bpy.types.Scene)):
+    for n, t in (('mch_cape', bpy.types.Object), ('mch_scape', bpy.types.Scene), ('mch_cape', bpy.types.Scene)):
         try:
             delattr(t, n)
         except AttributeError:

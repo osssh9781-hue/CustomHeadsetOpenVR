@@ -245,6 +245,17 @@ def icons():
         return img
     out['cape'] = cape
 
+    def scarf_cape():                         # 0.24.34 a cape with folds across, sagging in the middle
+        img, d = canvas()
+        d.ellipse((216, 60, 296, 140), outline=DIM, width=14)                 # head
+        pts = [(150, 160), (362, 160), (400, 330), (256, 380), (112, 330)]
+        poly(d, pts, ACC, fill=(255, 158, 40, 90))
+        for k in range(3):                                                    # folds across, drooping
+            y = 205 + k * 50
+            d.arc((150 - k * 12, y - 60, 362 + k * 12, y + 40 + k * 8), 20, 160, fill=FG, width=12)
+        return img
+    out['scarf_cape'] = scarf_cape
+
     # 0.24.29 Creature Hair: dreadlocks falling from a head, metal bands
     def hair():
         img, d = canvas()

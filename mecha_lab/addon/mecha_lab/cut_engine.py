@@ -955,6 +955,7 @@ _COLORS = {
     'SCURVE': (0.5, 0.75, 1.0, 1.0),
     'SDRAW': (0.95, 0.6, 0.2, 1.0),
     'CAPE': (0.8, 0.55, 0.35, 1.0),
+    'SCAPE': (0.8, 0.55, 0.35, 1.0),
     'HAIR': (0.75, 0.7, 0.45, 1.0),
     'GARMENT': (0.55, 0.7, 0.85, 1.0),
     'HOOD': (0.6, 0.5, 0.85, 1.0),
@@ -1293,7 +1294,7 @@ class StrokeLogic:
 
     def _needs_target(self):
         return self.mode not in {'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE',
-                                 'FLOWER', 'SCURVE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW'}
+                                 'FLOWER', 'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW'}
 
     def _tangents(self, pts=None):
         pts = self.pts if pts is None else pts
@@ -1411,7 +1412,7 @@ class StrokeLogic:
                 self.report({'WARNING'}, str(ex))
             return {'CANCELLED'}
         if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER',
-                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF'} and self.shape == 'LASSO' and self.brush.line_open:
+                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF'} and self.shape == 'LASSO' and self.brush.line_open:
             self.brush.line_open = False
         self.ui = ui_scale(context)
         self.target_names = []
@@ -1746,6 +1747,9 @@ class StrokeLogic:
             elif self.mode == 'CAPE':
                 from . import cape_gen
                 msg = cape_gen.perform(context, loops, self.projector)
+            elif self.mode == 'SCAPE':          # 0.24.34 Scarf Cape: the cape with folds across
+                from . import cape_gen
+                msg = cape_gen.perform(context, loops, self.projector, 'ACROSS')
             elif self.mode == 'HAIR':
                 from . import creature_hair
                 msg = creature_hair.perform(context, loops, self.projector)
@@ -1815,7 +1819,7 @@ class StrokeLogic:
             self._clean_points()
             if self.shape == 'LASSO' and len(self.pts) >= 2 and (self.line_open or len(self.pts) == 2):
                 if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER',
-                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF'}:
+                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF'}:
                     self.report({'WARNING'}, 'This tool needs a closed outline (3+ points)')
                     return {'RUNNING_MODAL'}
                 if self.mode == 'SPLIT':
@@ -1980,7 +1984,7 @@ class StrokeLogic:
             self.region.tag_redraw()
             return {'RUNNING_MODAL'}
         if et == 'F' and ev == 'PRESS' and self.shape == 'LASSO' and self.mode not in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER',
-                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF'}:
+                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF'}:
             self.line_open = not self.line_open
             self.brush.line_open = self.line_open
             self.region.tag_redraw()
@@ -2190,6 +2194,7 @@ class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
         ('SCURVE', 'Surface Curve', 'A Mesh Curve lying on the surface along the drawn line'),
         ('SDRAW', 'Surface Draw', 'A raised band on the surface along the drawn line'),
         ('CAPE', 'Cape', 'A live cape hanging from the top edge of the drawing'),
+        ('SCAPE', 'Scarf Cape', 'A live cape with folds across (like a draped scarf)'),
         ('HAIR', 'Creature Hair', 'Live dreadlocks / tentacles / quills growing from the drawn area'),
         ('GARMENT', 'Clothing', 'A live top / pants made from the body inside the drawn outline'),
         ('HOOD', 'Hood', 'A live hood over the head drawn round'),
