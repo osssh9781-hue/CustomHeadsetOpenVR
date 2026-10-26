@@ -252,6 +252,37 @@ def ray_hit(context, origin, direction, skip_screws=True):
     return None, None, None
 
 
+def area_normal(context, target, loc, normal, radius):
+    """0.24.41 the surface direction under the whole head, not just the one triangle clicked: rays at 8 points
+    round the hit (``radius`` out) and the plane through what they hit.  A flat-looking face made of slivers /
+    a slightly bent n-gon (booleans leave those) can have triangles tilted a lot - the screw stood crooked."""
+    n0 = Vector(normal).normalized()
+    if radius <= 0:
+        return n0
+    dg = context.evaluated_depsgraph_get()
+    t = n0.orthogonal().normalized()
+    b = n0.cross(t).normalized()
+    pts = []
+    for k in range(8):
+        a = 2.0 * math.pi * k / 8
+        p = Vector(loc) + (t * math.cos(a) + b * math.sin(a)) * radius
+        hit, hl, _hn, _i, hob, _m = target_rules.scene_ray(context, dg, p + n0 * radius * 2.0, -n0, radius * 4.0)
+        if hit and hob is not None and hob.name == target.name:
+            pts.append(Vector(hl))
+    if len(pts) < 5:
+        return n0
+    c = sum(pts, Vector()) / len(pts)
+    n = Vector()
+    for i in range(len(pts)):                       # Newell: the plane through the ring of hits
+        n += (pts[i] - c).cross(pts[(i + 1) % len(pts)] - c)
+    if n.length < 1e-12:
+        return n0
+    n.normalize()
+    if n.dot(n0) < 0:
+        n = -n
+    return n if n.angle(n0) < math.radians(75) else n0
+
+
 def place(context, target, loc, normal, spin=0.0):
     """One screw on ``target`` at ``loc`` (world), up along ``normal``."""
     st = context.scene.mch_screw
@@ -329,6 +360,7 @@ class MCH_OT_screw_stamp(bpy.types.Operator):
         st = context.scene.mch_screw
         import random
         spin = random.uniform(0, math.pi) if (st.random_spin and st.kind == 'CROSS') else 0.0
+        nrm = area_normal(context, target, loc, nrm, st.radius * 0.9)
         ob = place(context, target, loc, nrm, spin)
         import time
         _LAST[0], _LAST[1] = ob.name, time.time()
