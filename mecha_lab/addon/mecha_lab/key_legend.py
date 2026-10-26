@@ -68,28 +68,41 @@ def _stroke_tool(context):
 
 
 def _draw():
+    """0.24.50 readable: a dark rounded card bottom left, sized with the Mecha UI factor."""
     try:
         context = bpy.context
         tid = _stroke_tool(context)
         if tid is None:
             return
-        import blf
-        ui = context.preferences.system.ui_scale
-        font = 0
-        size = 11 * ui
-        blf.size(font, size)
-        x = 14 * ui
-        y = 80 * ui
+        from . import ui_gpu as G
+        k = G.ui_factor(context)
         rows = lines(tid)
-        for i, text in enumerate(reversed(rows)):
-            top = i == len(rows) - 1
-            alt = text.startswith('Alt')
-            blf.color(font, *((1.0, 0.62, 0.16) if top else (1.0, 0.4, 0.45) if alt else (0.86, 0.88, 0.92)),
-                      0.95 if top else 0.75)
-            blf.position(font, x, y + i * size * 1.45, 0)
-            blf.draw(font, text)
+        size, lh, pad = 12 * k, 20 * k, 12 * k
+        import blf
+        blf.size(0, size)
+        widths = []
+        for t in rows:
+            key, _sep, what = t.partition('   ')
+            widths.append(blf.dimensions(0, key)[0] + 16 * k + blf.dimensions(0, what)[0])
+        keyw = max(blf.dimensions(0, t.partition('   ')[0])[0] for t in rows[1:]) + 16 * k
+        w = max(widths + [keyw + 120 * k]) + 2 * pad
+        h = lh * len(rows) + 2 * pad
+        x, y = 14 * k, 90 * k
+        G.rounded_rect(x - 1, y - 1, w + 2, h + 2, 12 * k, G.CARD_EDGE)
+        G.rounded_rect(x, y, w, h, 12 * k, G.CARD)
+        for i, t in enumerate(rows):
+            ty = y + h - pad - lh * (i + 0.5)
+            if i == 0:
+                G.text(x + pad, ty, t, 13 * k, G.ORANGE)
+                continue
+            key, _sep, what = t.partition('   ')
+            alt = key.startswith('Alt')
+            G.text(x + pad, ty, key, size, (1.0, 0.45, 0.5, 1.0) if alt else G.TEXT)
+            G.text(x + pad + keyw, ty, what, size, G.TEXT_DIM if not alt else G.TEXT)
     except Exception:            # never break viewport drawing
         pass
+    from . import ui_gpu
+    ui_gpu.done()
 
 
 def register():

@@ -2347,7 +2347,9 @@ class GateLogic:
             return {'FINISHED'}
         if event.type == 'TIMER' and _now() - self.t0 >= _double_click_seconds(context):
             self._stop(context)
-            open_popup(PROFILE_POPUP if getattr(self, 'popup', 'SHAPE') == 'PROFILE' else SHAPE_POPUP)
+            from . import mecha_menu
+            if not (mecha_menu.use_menu() and mecha_menu.open_menu(context)):     # 0.24.50 Mecha Menu
+                open_popup(PROFILE_POPUP if getattr(self, 'popup', 'SHAPE') == 'PROFILE' else SHAPE_POPUP)
             return {'FINISHED'}
         if event.type == 'ESC':
             self._stop(context)

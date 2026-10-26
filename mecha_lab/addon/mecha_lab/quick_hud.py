@@ -16,9 +16,9 @@ from mathutils import Matrix
 
 from . import tool_state as ts
 
-ROW_H = 22.0          # px at UI scale 1
-ROW_W = 150.0
-GAP = 4.0
+ROW_H = 28.0          # px at scale 1 (x the Mecha UI factor: UI scale, big screens, Mecha UI Size)
+ROW_W = 230.0
+GAP = 6.0
 
 
 # --- what the HUD shows -------------------------------------------------------------------------------------
@@ -160,13 +160,14 @@ def reset(data, prop):
     setattr(data, prop, rna.default)
 
 
-def layout_rows(region_w, region_h, n, offset=(0.0, 0.0), left=0.0):
-    """Upper left, right of Blender's toolbar (``left``), above the Tool Active button: (grip, [row centres])
-    in px at UI scale 1; ``offset`` = where the grip moved it."""
-    x = min(max(left + 14.0 + ROW_W / 2.0 + offset[0], ROW_W / 2.0 + 4.0), region_w - ROW_W / 2.0 - 4.0)
-    top = min(max(region_h - 70.0 + offset[1], (ROW_H + GAP) * (n + 1)), region_h - ROW_H)
+def layout_rows(region_w, region_h, n, offset=(0.0, 0.0), left=0.0, k=1.0):
+    """Upper left, right of Blender's toolbar (``left``), under the view name / stats text: (grip, [row centres])
+    in region px; ``k`` = size factor, ``offset`` = where the grip moved it."""
+    rw, rh, gap = ROW_W * k, ROW_H * k, GAP * k
+    x = min(max(left + 16.0 * k + rw / 2.0 + offset[0], rw / 2.0 + 4.0), region_w - rw / 2.0 - 4.0)
+    top = min(max(region_h - 150.0 * k + offset[1], (rh + gap) * (n + 1)), region_h - rh)
     grip = (x, top)
-    rows = [(x, top - (ROW_H + GAP) * (i + 1)) for i in range(n)]
+    rows = [(x, top - (rh + gap) * (i + 1)) for i in range(n)]
     return grip, rows
 
 
@@ -179,15 +180,15 @@ def current(context):
     """(items, grip, rows) for drawing, or (None, None, None)."""
     if not visible(context) or context.region is None:
         return None, None, None
-    ui = context.preferences.system.ui_scale
+    from .ui_gpu import ui_factor
+    k = ui_factor(context)
     its = items(context)
     left = 0.0
     area = context.area
     tools = next((r for r in area.regions if r.type == 'TOOLS'), None) if area else None
     if tools is not None and tools.width > 1:
-        left = max(0.0, float(tools.x + tools.width - context.region.x)) / ui
-    grip, rows = layout_rows(context.region.width / ui, context.region.height / ui, len(its), _offset(context),
-                             left)
+        left = max(0.0, float(tools.x + tools.width - context.region.x))
+    grip, rows = layout_rows(context.region.width, context.region.height, len(its), _offset(context), left, k)
     return its, grip, rows
 
 
@@ -207,7 +208,7 @@ class MCH_GT_quick_slider(bpy.types.Gizmo):
             self.shape = self.new_custom_shape('TRIS', _rect())
 
     def draw(self, context):
-        self.draw_custom_shape(self.shape)
+        pass                      # painted by _draw_labels (rounded, readable); the gizmo is only the hit area
 
     def draw_select(self, context, select_id):
         self.draw_custom_shape(self.shape, select_id=select_id)
@@ -286,7 +287,7 @@ class MCH_GT_quick_grip(bpy.types.Gizmo):
             self.shape = self.new_custom_shape('TRIS', _rect())
 
     def draw(self, context):
-        self.draw_custom_shape(self.shape)
+        pass                      # painted by _draw_labels
 
     def draw_select(self, context, select_id):
         self.draw_custom_shape(self.shape, select_id=select_id)
@@ -297,9 +298,8 @@ class MCH_GT_quick_grip(bpy.types.Gizmo):
         return {'RUNNING_MODAL'}
 
     def modal(self, context, event, tweak):
-        ui = context.preferences.system.ui_scale
-        context.window_manager.mch_hud_offset = (self.init[0] + (event.mouse_region_x - self.start[0]) / ui,
-                                                 self.init[1] + (event.mouse_region_y - self.start[1]) / ui)
+        context.window_manager.mch_hud_offset = (self.init[0] + (event.mouse_region_x - self.start[0]),
+                                                 self.init[1] + (event.mouse_region_y - self.start[1]))
         if context.area:
             context.area.tag_redraw()
         return {'RUNNING_MODAL'}
@@ -340,21 +340,22 @@ class MCH_GGT_quick_hud(bpy.types.GizmoGroup):
         self.grip = g
 
     def draw_prepare(self, context):
+        from .ui_gpu import ui_factor
         its, grip, rows = current(context)
-        ui = context.preferences.system.ui_scale
+        k = ui_factor(context)
         for i, gz in enumerate(self.sliders):
             if its is None or i >= len(rows):
                 gz.hide = True
                 continue
             gz.hide = False
             x, y = rows[i]
-            gz.matrix_basis = Matrix.Translation((x * ui, y * ui, 0.0)) @ Matrix.Diagonal(
-                (ROW_W / 2.0 * ui, ROW_H / 2.0 * ui, 1.0, 1.0))
+            gz.matrix_basis = Matrix.Translation((x, y, 0.0)) @ Matrix.Diagonal(
+                (ROW_W / 2.0 * k, ROW_H / 2.0 * k, 1.0, 1.0))
         self.grip.hide = its is None
         if its is not None:
             x, y = grip
-            self.grip.matrix_basis = Matrix.Translation((x * ui, (y + ROW_H / 4.0) * ui, 0.0)) @ Matrix.Diagonal(
-                (ROW_W / 2.0 * ui, 4.0 * ui, 1.0, 1.0))
+            self.grip.matrix_basis = Matrix.Translation((x, y, 0.0)) @ Matrix.Diagonal(
+                (ROW_W / 2.0 * k, ROW_H / 2.0 * k, 1.0, 1.0))
 
 
 class MCH_PT_quick_value(bpy.types.Panel):
@@ -381,28 +382,41 @@ _label_handle = None
 
 
 def _draw_labels():
+    """The HUD itself (0.24.50 Modeler look): a dark rounded card, the tool name on the grip, rounded value bars."""
     try:
         context = bpy.context
         its, grip, rows = current(context)
         if its is None:
             return
-        import blf
-        ui = context.preferences.system.ui_scale
-        blf.size(0, 11 * ui)
-        tool = ts.TOOL_BY_ID.get(ts.effective_tool(context))
+        from . import ui_gpu as G
+        from .mecha_menu import _fraction
+        k = G.ui_factor(context)
+        rw, rh, pad = ROW_W * k, ROW_H * k, 10 * k
         gx, gy = grip
-        title = (tool[1] if tool else '') + '  ·  drag / click / Ctrl+click'
-        blf.color(0, 1.0, 0.62, 0.16, 0.9)
-        blf.position(0, (gx - ROW_W / 2.0) * ui, (gy + ROW_H / 4.0 + 7.0) * ui, 0)
-        blf.draw(0, title)
+        top = gy + rh / 2 + pad
+        bottom = rows[-1][1] - rh / 2 - pad
+        G.rounded_rect(gx - rw / 2 - pad - 1, bottom - 1, rw + 2 * pad + 2, top - bottom + 2, 12 * k, G.CARD_EDGE)
+        G.rounded_rect(gx - rw / 2 - pad, bottom, rw + 2 * pad, top - bottom, 12 * k, G.CARD)
+        tool = ts.TOOL_BY_ID.get(ts.effective_tool(context))
+        G.text(gx - rw / 2, gy, (tool[1] if tool else '') + ' tool', 13 * k, G.TEXT)
+        G.text(gx + rw / 2, gy, 'drag · click · Ctrl+click', 10 * k, G.TEXT_DIM, 'RIGHT')
         for (data, prop), (x, y) in zip(its, rows):
-            text = value_text(data, prop)
-            w, _h = blf.dimensions(0, text)
-            blf.color(0, 0.95, 0.96, 1.0, 1.0)
-            blf.position(0, x * ui - w / 2.0, y * ui - 4.0 * ui, 0)
-            blf.draw(0, text)
+            rna = data.bl_rna.properties[prop]
+            name, _sep, val = value_text(data, prop).partition('  ')
+            x0, y0 = x - rw / 2, y - rh / 2
+            G.rounded_rect(x0, y0, rw, rh, rh / 2, G.TRACK)
+            if rna.type in {'INT', 'FLOAT'}:
+                f = _fraction(data, prop)
+                if f > 0:
+                    G.rounded_rect(x0, y0, max(rh, rw * f), rh, rh / 2, (0.22, 0.38, 0.72, 1.0))
+            elif rna.type == 'BOOLEAN' and getattr(data, prop):
+                G.rounded_rect(x0, y0, rw, rh, rh / 2, (0.22, 0.38, 0.72, 1.0))
+            G.text(x0 + 12 * k, y, name, 12 * k, G.TEXT)
+            G.text(x0 + rw - 12 * k, y, val, 12 * k, G.TEXT, 'RIGHT')
     except Exception:          # never break viewport drawing
         pass
+    from . import ui_gpu
+    ui_gpu.done()
 
 
 CLASSES = (MCH_GT_quick_slider, MCH_GT_quick_grip, MCH_GGT_quick_hud, MCH_PT_quick_value)

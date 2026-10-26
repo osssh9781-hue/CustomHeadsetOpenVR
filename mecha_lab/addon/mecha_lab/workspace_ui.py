@@ -2203,6 +2203,14 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
                               description='Right-click in Select / Move opens the Mecha Actions popup (recent tools, '
                                           'favorites, actions on the selection) instead of Blender\'s object menu, '
                                           'MECHA LAB only. The popup has a button for Blender\'s menu')
+    mecha_ui_size: FloatProperty(name='Mecha UI Size', default=1.0, min=0.5, max=3.0, subtype='FACTOR',
+                                 description='Size of the Mecha Menu (RMB), Quick HUD and key legend (big screens '
+                                             'are already made larger automatically)')
+    hold_menu: BoolProperty(name='Hold Ctrl + Alt = Mecha Menu', default=True,
+                            description='Hold Ctrl + Alt a moment: the Mecha Menu stays open while they are held '
+                                        '(clicks do not close it), MECHA LAB only')
+    classic_rmb_popup: BoolProperty(name='Classic RMB Popup', default=False,
+                                    description='RMB opens the old Blender-style panel instead of the Mecha Menu')
     quick_hud: BoolProperty(name='Quick HUD', default=True,
                             description='Viewport sliders for the 3-5 settings you change most in the tool that is on '
                                         '(drag / click to type / Ctrl+click = default), MECHA LAB only')
@@ -2246,7 +2254,11 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         row = box.row()
         row.prop(self, 'rmb_actions')
         row.prop(self, 'key_legend')
-        box.row().prop(self, 'quick_hud')
+        row = box.row()
+        row.prop(self, 'quick_hud')
+        row.prop(self, 'classic_rmb_popup')
+        box.row().prop(self, 'hold_menu')
+        box.prop(self, 'mecha_ui_size', slider=True)
         layout.prop(self, 'workspace_hotkeys')
         layout.prop(self, 'quick_menu')
         layout.prop(self, 'select_move_key')
