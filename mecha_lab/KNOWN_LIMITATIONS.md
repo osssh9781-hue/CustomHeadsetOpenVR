@@ -1,5 +1,10 @@
 # KNOWN LIMITATIONS — Mecha Lab 0.18.0
 
+## 0.24.43
+- 실제 화면에서 써 보지 않음.
+- Edge Finish 밖으로 나간 점을 표면으로 되돌리는 처리는 그 자리 베벨 모양을 조금 납작하게 만들 수 있음(GN Edge 권장).
+- 0.24.41~0.24.42에서 GN Edge로 자른 오브젝트에는 남은 컷 표시 속성이 그대로 있을 수 있음: 다음 컷 전에 그 오브젝트의 `mch_cutter_face` 속성을 지우거나 이 버전에서 한 번 Edge Finish 없이 자르면 정리됨.
+
 ## 0.24.42 Armor Plate Alt 파기
 - 실제 화면에서 써 보지 않음.
 - Through 모드 · Mech Ridge 프로파일은 반전 파기 없음(Mech Ridge는 Chamfer로 팜).

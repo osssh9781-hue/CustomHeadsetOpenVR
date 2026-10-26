@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.42
+# Test Report — Mecha Lab 0.24.43
+
+## 0.24.43 결과: 124개 파일 3621/3621 (`tests/test_log_bpy501_v02443.txt`, Blender 5.0.1 bpy). test_v02464(12): 바깥 베벨 판에 가장자리를 넘는 홈 — Edge Finish Bevel / Chamfer × From Surface / Through 모두 판 밖 점 0 · 닫힘(수정 전 3~6개 튀어나옴), GN Edge도 같음; GN Bevel / Chamfer 컷 뒤 컷 표시 속성 없음 · UVMap은 CORNER 하나, 두 번째 컷 뒤 첫 홈의 모든 점이 원래 표면 위(1e-5 이내; 수정 전 코드에서는 0.0017~0.0024 변형되어 실패 확인). test_v02462(8): + Alt Carve Depth 0.02 = 깊이 0.02 · 닫힘, scale 0.5 대칭, 패널. 5.2.3 bpy에서도 test_v02464 · test_v02462 · test_v02461 통과. 실제 화면 입력은 미검증.
 
 ## 0.24.42 결과: 123개 파일 3606/3606 (`tests/test_log_bpy501_v02442.txt`, Blender 5.0.1 bpy). test_v02462(5): `mirrored_into`(0.3 위 → 0.3 아래, 표면 / 살짝 아래 → lift 위), 큐브에 타원 플레이트 Alt — 닫힘 · 플레이트 오브젝트 없음, 홈 깊이 = 플레이트 높이(±20 %), 바깥 윗면 그대로, cut_engine 분기. test_v02463(5): 90° 꺾인 경로 → 최소 회전 반지름 ≥ 0.4 · 끝점 · 점 수 그대로, 직선은 그대로, section_radius, 3 × 1 × 0.1 판 끝을 잡은 드래그 판단(브러시 0.1 = Stretch, 0.4 = Extend). 5.2.3 bpy에서도 test_v02462 · test_v02463 통과, 기존 플레이트 테스트(test_v0160 · v0190 · v0192 · v0193 · v0194 · v0200 · v0220 · v0223) 5.0 통과. 실제 화면 입력은 미검증.
 

@@ -1,4 +1,10 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.42 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.43 (Claude Code, 2026-10-14)
+
+## 0.24.43
+- ZIP sha256 `4b9c1ed3ab78eb0c5c87d56abcd8a9ee98f4dd5e9cd5e7fa2da80721f7dc3a78`.
+- `rim_sweep`: 그룹 `MCH_RimSweep4_<n>` — Set Position 뒤 Remove Named Attribute(Wildcard `*`)로 스윕의 속성 제거 후 Boolean. `finish`가 시작 전 (이름, 도메인) 목록을 기억해 `drop_copies`(같은 이름 다른 도메인 사본 제거, 이름이 겹치면 먼저 이름 바꿔서 지움).
+- `core_geometry.remove_cutter_attribute`: 같은 이름 사본까지 반복 제거. `finish_new_edges`: 베벨 전 BVH → `pulled_back(bm, before, res verts, width)` 원래 형태 밖(법선 방향 > width·1e-3) 점을 가장 가까운 표면으로.
+- `armor_plate`: `MCH_PG_Plate.carve_depth`, `heights_above`, `mirrored_into(..., scale)`(scale = carve_depth / 플레이트 최대 높이).
 
 ## 0.24.42
 - ZIP sha256 `0aa33b1b8c021702ad7bc0faff156aa1bb5688e69bb5850a56fac264f2eea196`.
