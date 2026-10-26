@@ -152,6 +152,27 @@ def draw_targets(layout, context):
         col.label(text='Draws on ' + target_rules.label(context) + ' (others are looked through)', icon='RESTRICT_SELECT_OFF')
 
 
+def draw_gn_edge(layout, context, mode='CUT'):
+    """0.24.41 GN Edge: its own menu (not mixed with Edge Finish) - the border of the drawn area chamfered /
+    rounded by a Geometry Nodes sweep."""
+    cut = context.scene.mch_cut
+    box = _section(layout, 'GN Edge (Geometry Nodes)', 'GEOMETRY_NODES')
+    box.row(align=True).prop(cut, 'gn_finish', expand=True)
+    if cut.gn_finish == 'NONE':
+        return
+    c = box.column(align=True)
+    c.prop(cut, 'gn_width')
+    if cut.gn_finish == 'BEVEL':
+        c.prop(cut, 'gn_segments', slider=True)
+    if mode == 'SPLIT':
+        box.row(align=True).prop(cut, 'gn_sides', expand=True)
+        if not cut.split_cap:
+            box.label(text='Needs Cap Split ON', icon='INFO')
+    box.label(text='Edge Finish is skipped while GN Edge is on', icon='INFO')
+    if not context.scene.mch_settings.auto_apply:
+        box.label(text='GN Edge needs Auto Apply ON', icon='ERROR')
+
+
 def draw_cut(layout, context, mode='CUT'):
     s = context.scene.mch_settings
     cut = context.scene.mch_cut
@@ -190,6 +211,8 @@ def draw_cut(layout, context, mode='CUT'):
             r.prop(cut, 'finish_crisp')
     elif context.scene.mch_brush.shape != 'LASSO':
         draw_edge_finish(layout, context, 'CUT')     # with the lasso it sits under the lasso settings
+
+    draw_gn_edge(layout, context, mode)
 
     box = _section(layout, 'Advanced', 'PREFERENCES')
     c = box.column(align=True)

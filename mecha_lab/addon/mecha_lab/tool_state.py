@@ -390,6 +390,19 @@ class MCH_PG_Cut(bpy.types.PropertyGroup):
                                            'a flat strip, a bevel shades round inside), the cut walls stay flat, and '
                                            'imported custom normals (FBX) are dropped so they do not smear over the '
                                            'new faces')
+    # 0.24.41 GN Edge: its own menu - the cut border chamfered / rounded by a Geometry Nodes sweep
+    gn_finish: EnumProperty(name='GN Edge', items=[
+        ('NONE', 'Off', 'No GN edge'),
+        ('CHAMFER', 'Chamfer', 'A straight chamfer swept along the border of the drawn area (Geometry Nodes)'),
+        ('BEVEL', 'Bevel', 'A round bevel swept along the border of the drawn area (Geometry Nodes)')],
+        default='NONE', description='Geometry Nodes edge: a profile is swept along the new border and carved off - '
+                                    'even all the way round (the Edge Finish above is skipped while this is on)')
+    gn_width: FloatProperty(name='Width', default=0.01, min=0.0, soft_max=10.0, precision=4, unit='LENGTH',
+                            description='How far the GN edge reaches along the surface and down the cut wall')
+    gn_segments: IntProperty(name='Segments', default=4, min=1, max=24, description='Steps round a GN bevel')
+    gn_sides: EnumProperty(name='Split Sides', items=[
+        ('BOTH', 'Both', 'Both parts of a Split'), ('A', 'Side A', 'Only the original object'),
+        ('B', 'Side B', 'Only the new _Split part')], default='BOTH')
     split_cap: BoolProperty(name='Cap Split', default=True,
                             description='Close the cut faces of both parts (OFF leaves open shells)')
     fast_line: BoolProperty(name='Plane Cut for 2 Points', default=True,

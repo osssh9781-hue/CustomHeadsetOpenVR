@@ -537,6 +537,18 @@ def _finish_side(cut, me, side, scale):
                                crisp=getattr(cut, 'finish_crisp', True))
 
 
+def _gn_on(cut, side=None):
+    """0.24.41 the GN Edge menu is on (for this Split side)."""
+    if getattr(cut, 'gn_finish', 'NONE') == 'NONE' or getattr(cut, 'gn_width', 0.0) <= 0:
+        return False
+    return side is None or cut.gn_sides in {'BOTH', side.upper()}
+
+
+def _gn_finish(cut, me, scale):
+    from . import rim_sweep
+    return rim_sweep.finish(me, cut.gn_finish, cut.gn_width / scale, cut.gn_segments)
+
+
 def _side_report(cut, counts):
     parts = []
     for side, label in (('a', 'A'), ('b', 'B')):
@@ -701,10 +713,13 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
                     me, _solver = _boolean_checked(context, cut, t, cutter, op, groups, projector, near, far,
                                                    invert)
                     temp.append(me)
-                    edge_counts.append(cg.finish_new_edges(
-                        me, cut.edge_finish, cut.finish_width / scale,
-                        cut.finish_segments, cut.finish_profile, clamp=cut.finish_clamp,
-                        crisp=cut.finish_crisp))
+                    if _gn_on(cut):
+                        edge_counts.append(_gn_finish(cut, me, scale))
+                    else:
+                        edge_counts.append(cg.finish_new_edges(
+                            me, cut.edge_finish, cut.finish_width / scale,
+                            cut.finish_segments, cut.finish_profile, clamp=cut.finish_clamp,
+                            crisp=cut.finish_crisp))
                     results.append((t, me))
                 else:  # SPLIT
                     inner, _s1 = _boolean_checked(context, cut, t, cutter, 'INTERSECT',
@@ -715,7 +730,9 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
                     temp.append(outer)
                     # Side A = remaining original object, Side B = the new "_Split" piece.
                     for me, side in ((outer, 'a'), (inner, 'b')):
-                        if cut.split_cap:
+                        if cut.split_cap and _gn_on(cut, side):
+                            side_counts[side] = side_counts.get(side, 0) + _gn_finish(cut, me, scale)
+                        elif cut.split_cap:
                             side_counts[side] = side_counts.get(side, 0) + _finish_side(cut, me, side, scale)
                         else:
                             cg.strip_cutter_faces(me)
@@ -744,6 +761,9 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
         suffix = ''
         if mode == 'SPLIT':
             suffix = _side_report(cut, side_counts) if cut.split_cap else ''
+        elif _gn_on(cut):
+            suffix = (f' | GN {cut.gn_finish.title()}: {sum(edge_counts)} border edges' if sum(edge_counts)
+                      else ' | WARNING: GN Edge found no new border edges')
         elif cut.edge_finish != 'NONE' and cut.finish_width > 0:
             if not edge_counts:
                 suffix = ' | Edge Finish skipped (uncapped or Live cut)'
@@ -851,7 +871,9 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
                     if mode == 'CUT':
                         me = cg.plane_split_mesh(t, a_near, normal, side != invert, cut.line_cap)
                         temp.append(me)
-                        if cut.line_cap:
+                        if cut.line_cap and _gn_on(cut):
+                            line_bevel_counts.append(_gn_finish(cut, me, scale))
+                        elif cut.line_cap:
                             line_bevel_counts.append(cg.finish_new_edges(
                                 me, cut.edge_finish, cut.finish_width / scale,
                                 cut.finish_segments, cut.finish_profile, clamp=cut.finish_clamp,
@@ -867,7 +889,8 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
                         temp.append(other)
                         if cap:
                             for me, side in ((keep, 'a'), (other, 'b')):
-                                n = _finish_side(cut, me, side, scale)
+                                n = _gn_finish(cut, me, scale) if _gn_on(cut, side) else _finish_side(cut, me, side,
+                                                                                                    scale)
                                 side_counts[side] = side_counts.get(side, 0) + n
                         results.append((t, keep))
                         pieces.append((t, other))
