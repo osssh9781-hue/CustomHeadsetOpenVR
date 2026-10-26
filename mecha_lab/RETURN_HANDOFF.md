@@ -1,4 +1,13 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.37 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.38 (Claude Code, 2026-10-14)
+
+## 0.24.38
+- ZIP sha256 `04ffc59c69b4418807fee075e5fed9e4a430aa6e4e15f893607e374c3a3a6750`.
+- `base_mesh.carve_surface(context, loops, projector, p, targets)`: FLAT / CHAMFER / BEVEL(`SURFACE_CARVE` → SQUARE / CHAMFER / BEVEL) Alt Carve Height = 대상마다 `surface_draw.carve_area`(외곽선 → `_project_fills` → `fill_mesh(sign=-1)` 높이 = Height, edge = Border Width / (2 × Height), fill_res = Resolution 15..60) → `carve_parts`(Boolean Difference). `surface_draw.engrave`도 `carve_parts` 사용.
+- `carve_depth`(0 = Height): `carve_surface` · `_perform_cutter`(z 배율). `_sketch_cutter_targets`는 외곽선 샘플도 쏨. `zbrush_bridge.export_objects(context, scope)` SELECTED / VISIBLE, `MCH_OT_export_mesh.scope`.
+- `alt_mode` THROUGH(`carve_area(through=True)`: 점마다 레이로 두께 → 최대 × 1.15) · INSIDE(`surface_draw.carve_inside`: 점마다 두께 t, 채널 = 표면에서 t × skin ~ t × (1 − skin), `inside_skin`). Sketch Alt+Enter도 화면 루프로 바꿔 `carve_surface`.
+- `radial_sym`: `helper_basis` / `sync`(헬퍼 = M⁻¹ · 고정 pivot 회전 · M), `depsgraph_update_post` 핸들러 `_on_depsgraph`(멤버 · pivot 변환 변경 시 sync, 재진입 방지). `distance`(+ `distance_prev`, 오브젝트별 `mch_rsym_r0`): 축에서 반지름 방향으로 이동, 손으로 옮기면 r0 갱신.
+- `curve_tube`: `HANDLE_PX` = 26, `handle_world`(그리는 중) · `beside_offset`(기즈모)로 점 옆 고정, 드래그 = 시작 반지름 × 거리 / 시작 거리(`drag_r0` · `drag_d0`, 기즈모는 `invoke_prepare` + `rdrag`, 드래그 중 `is_modal`이면 마우스 위치).
+- `cape_gen._body` 캐시 키에 좌표 지문(합 · 제곱합 · 7개마다 합) 추가 — 같은 이름 · 개수 다른 모양에 옛 BVH 쓰던 버그.
 
 ## 0.24.37
 - ZIP sha256 `91fd65c098f7913cbc2a7bf28aa3465b6d0f3eb3b83ac90f25fa7bd123b21dbc`.

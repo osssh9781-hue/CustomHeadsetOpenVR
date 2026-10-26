@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 0.24.38 — Base Mesh Alt 파기가 표면을 따라감, Alt: Through / Inside(내부 프레임), Carve Depth, Export Selected / Visible, 엉뚱한 곳이 깎이던 버그, Radial Symmetry 축 고정 · Distance, Mesh Curve 크기 점 위치 (2026-10-26)
+
+- **Base Mesh Alt(Carve Height)가 표면을 따라 파임**: 그린 모양을 표면에 붙이고, 어디서나 표면에서 Height만큼 안으로 팜 → 굽은 면에서도 고른 깊이의 홈 / 포켓(전에는 평평한 판 커터라 바닥이 평평, 깊이가 들쭉날쭉). Flat = 직각 벽, Chamfer / Bevel = 입구 가장자리가 그 모양(Border Width). Line · 메쉬 밖까지 그은 선도. Creature 프로파일은 예전 방식, Alt: Like Cut은 Cut 툴 방식 그대로.
+- **Carve Depth**(Alt: Carve Height일 때): Alt로 파는 깊이를 따로(0 = Height). 얇은 판을 같은 Height로 만든 뒤 Alt로 파면 판을 뚫고 반대쪽까지 잘렸음 → 판 두께보다 작게 두면 앞면만 파임.
+- **Alt: Through**: 그 자리 두께를 재서 항상 반대편까지 뚫음(창문) — 나머지는 프레임.
+- **Alt: Inside**(내부 프레임): 두께의 가운데만 파냄(앞 · 뒤 면은 **Skin** 비율만큼 남음) → 그린 선이 옆 벽을 지나가는 곳에 창문이 생김(파이프 내부 프레임 느낌).
+- **엉뚱한 곳(옆 벽)이 깎이던 버그 수정**: 표면 정보 캐시가 이름 · 점 개수가 같은 다른 메쉬(또는 Edit Mode로 점만 옮긴 메쉬)의 옛 모양을 썼음 → 모양 자체로 구분. Surface Draw · Cape · 망토류 · Base Mesh 파기 모두.
+- Sketch에서 Alt+Enter: 외곽선 가운데가 메쉬 밖이어도 대상을 찾음, Carve Height / Through / Inside도 표면을 따라감.
+- **Radial Symmetry 축 고정**: Apply 전까지 처음 찍은 중심점 · 축이 그대로 — 오브젝트를 돌리거나 옮기면 그 오브젝트만 돌고 복사본은 같은 축을 중심으로 다시 배치(전에는 축이 같이 날아감). Pivot을 옮기면 전체가 따라감, Update 버튼 안 눌러도 됨.
+- **Radial Symmetry Distance**: 축에서 거리 조절(+ 멀리, − 가까이) — 메쉬가 축에서 곧게 밀려나고 복사본도 같이.
+- **Mesh Curve 주황 크기 점**: 굵기와 상관없이 항상 흰 점 바로 옆(화면 26px)에 — 전에는 반지름 거리(튜브 표면)라 굵으면 멀고 가늘면 겹쳤음. 끌면 거리 비율만큼 굵기(바깥 = 굵게, 안쪽 = 가늘게), 끄는 동안 점이 마우스를 따라오고 놓으면 다시 옆으로.
+- **Export Selected / Export Visible**: 선택한 메쉬만 / 화면에 보이는 메쉬 전부(숨긴 건 제외). 선택이 없으면 Visible로.
+- 테스트: 116개 파일 3542/3542. test_v02454에 공 위 파기(바닥이 표면에서 Height만큼 고르게) · Carve Depth 추가, test_v02455에 Selected / Visible 추가. ZIP sha256 `04ffc59c69b4418807fee075e5fed9e4a430aa6e4e15f893607e374c3a3a6750`.
+
 ## 0.24.37 — Base Mesh Invert, Alt = Height 깊이만큼 파기, Export 버튼, ZBrush에서 메쉬 깨짐 수정 (2026-10-26)
 
 - **Base Mesh Invert**(Sketch · Stick to Surface 옆 버튼): 켜면 높이가 그린 위치에서 뒤로(메쉬 안쪽으로) 늘어남. Stick to Surface 켜고 끄고 둘 다, 외곽선 위치는 그대로. 만들 때의 방향(이미 만든 건 안 바뀜).
