@@ -725,6 +725,9 @@ def draw_zbrush(layout, context):
     s = context.scene.mch_zbrush
     row = layout.row(align=True)
     row.scale_y = 1.4
+    row.operator('mch.export_mesh', text='Export (OBJ / FBX)', icon='EXPORT')    # 0.24.37 no ZBrush link needed
+    row = layout.row(align=True)
+    row.scale_y = 1.4
     row.operator('mch.zbrush_send', icon='EXPORT')
     row.operator('mch.zbrush_import', icon='IMPORT')
     layout.operator('mch.zbrush_open_folder', icon='FILE_FOLDER')
@@ -736,6 +739,7 @@ def draw_zbrush(layout, context):
     row.prop(s, 'forward_axis')
     row.prop(s, 'up_axis')
     col.prop(s, 'apply_modifiers')
+    col.prop(s, 'split_ngons')
     col.prop(s, 'keep_backup')
     col.prop(s, 'import_all')
     rows = zbrush_bridge.manifest_rows(s)

@@ -52,6 +52,10 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
     forward_axis: EnumProperty(name='Forward', items=AXES, default='NEGATIVE_Z')
     up_axis: EnumProperty(name='Up', items=AXES, default='Y')
     apply_modifiers: BoolProperty(name='Apply Modifiers on Send', default=True)
+    split_ngons: BoolProperty(name='ZBrush-safe Faces', default=True,
+                              description='Faces with more than 4 corners (Boolean / cut n-gons) are split into clean '
+                                          'triangles for ZBrush only - ZBrush fans them and concave ones tear into '
+                                          'slivers. Quads stay quads; the Blender mesh is not changed')
     keep_backup: BoolProperty(name='Keep Previous Mesh', default=True,
                               description='Keep the replaced mesh as <name>_preZBrush (fake user)')
     import_all: BoolProperty(name='Re-import Unchanged Files', default=False,
@@ -108,6 +112,34 @@ def _restore_selection(context, selected, active):
             pass
 
 
+def export_copy(context, ob, apply_modifiers, split_ngons=True):
+    """0.24.37 A temporary object to export: the (evaluated) mesh with every n-gon split into triangles (beauty
+    fill, quads kept), so ZBrush gets no concave n-gon to fan into slivers.  The caller removes it."""
+    import bmesh
+    dg = context.evaluated_depsgraph_get()
+    src = ob.evaluated_get(dg) if apply_modifiers else ob
+    me = bpy.data.meshes.new_from_object(src, preserve_all_data_layers=True, depsgraph=dg) if apply_modifiers \
+        else ob.data.copy()
+    if split_ngons:
+        bm = bmesh.new()
+        try:
+            bm.from_mesh(me)
+            ngons = [f for f in bm.faces if len(f.verts) > 4]
+            if ngons:
+                bmesh.ops.triangulate(bm, faces=ngons, quad_method='BEAUTY', ngon_method='BEAUTY')
+                bm.to_mesh(me)
+        finally:
+            bm.free()
+    tmp = bpy.data.objects.new(ob.name + '_ZB', me)
+    tmp.matrix_world = ob.matrix_world.copy()
+    context.scene.collection.objects.link(tmp)
+    return tmp
+
+
+def ngon_count(me):
+    return sum(1 for p in me.polygons if p.loop_total > 4)
+
+
 def send_objects(context, objects, settings):
     folder = exchange_folder(settings)
     data = read_manifest(folder)
@@ -121,13 +153,20 @@ def send_objects(context, objects, settings):
             path = folder / f'{_safe(ob.name)}__{zid}.obj'
             for o in context.selected_objects:
                 o.select_set(False)
-            ob.select_set(True)
-            context.view_layer.objects.active = ob
-            bpy.ops.wm.obj_export(filepath=str(path), export_selected_objects=True,
-                                  apply_modifiers=settings.apply_modifiers, export_materials=False,
-                                  export_uv=True, export_normals=True, export_triangulated_mesh=False,
-                                  forward_axis=settings.forward_axis, up_axis=settings.up_axis,
-                                  global_scale=settings.scale)
+            tmp = export_copy(context, ob, settings.apply_modifiers, getattr(settings, 'split_ngons', True))
+            try:
+                tmp.select_set(True)
+                context.view_layer.objects.active = tmp
+                bpy.ops.wm.obj_export(filepath=str(path), export_selected_objects=True,
+                                      apply_modifiers=False, export_materials=False,
+                                      export_uv=True, export_normals=True, export_triangulated_mesh=False,
+                                      forward_axis=settings.forward_axis, up_axis=settings.up_axis,
+                                      global_scale=settings.scale)
+            finally:
+                me = tmp.data
+                bpy.data.objects.remove(tmp, do_unlink=True)
+                if me.users == 0:
+                    bpy.data.meshes.remove(me)
             if not path.is_file():
                 raise RuntimeError(f'OBJ export produced no file for {ob.name}')
             data['objects'][zid] = {
@@ -305,7 +344,85 @@ def manifest_rows(settings):
     return rows
 
 
-CLASSES = (MCH_PG_ZBrush, MCH_OT_zbrush_send, MCH_OT_zbrush_import, MCH_OT_zbrush_open_folder)
+class MCH_OT_export_mesh(bpy.types.Operator):
+    """Export the selected meshes to an OBJ or FBX file (no ZBrush link needed) - n-gons split into clean
+    triangles (ZBrush-safe Faces), modifiers applied, the Blender meshes unchanged"""
+    bl_idname = 'mch.export_mesh'
+    bl_label = 'Export'
+    bl_options = {'REGISTER'}
+
+    filepath: StringProperty(subtype='FILE_PATH')
+    filter_glob: StringProperty(default='*.obj;*.fbx', options={'HIDDEN'})
+    file_format: EnumProperty(name='Format', items=[('OBJ', 'OBJ', 'Wavefront OBJ (ZBrush, most programs)'),
+                                                    ('FBX', 'FBX', 'Autodesk FBX')], default='OBJ')
+    apply_modifiers: BoolProperty(name='Apply Modifiers', default=True)
+    split_ngons: BoolProperty(name='ZBrush-safe Faces', default=True,
+                              description='Split faces with more than 4 corners into clean triangles (quads stay)')
+    scale: FloatProperty(name='Scale', default=1.0, min=0.0001, soft_max=1000.0)
+
+    @classmethod
+    def poll(cls, context):
+        return any(o.type == 'MESH' for o in context.selected_objects)
+
+    def invoke(self, context, event):
+        name = context.active_object.name if context.active_object is not None else 'mecha_export'
+        if not self.filepath:
+            self.filepath = _safe(name) + '.' + self.file_format.lower()
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        path = Path(bpy.path.abspath(self.filepath))
+        ext = '.' + self.file_format.lower()
+        if path.suffix.lower() != ext:
+            path = path.with_suffix(ext)
+        obs = [o for o in context.selected_objects if o.type == 'MESH']
+        selected, active = list(context.selected_objects), context.view_layer.objects.active
+        temps, split, renamed = [], 0, []
+        try:
+            for ob in obs:
+                if self.split_ngons:
+                    src = ob.evaluated_get(context.evaluated_depsgraph_get()) if self.apply_modifiers else ob
+                    split += ngon_count(src.data)
+                tmp = export_copy(context, ob, self.apply_modifiers, self.split_ngons)
+                name = ob.name                             # the file gets the real names
+                ob.name = name + '__mch_export'
+                renamed.append((ob, name))
+                tmp.name = name
+                temps.append(tmp)
+            for o in context.selected_objects:
+                o.select_set(False)
+            for t in temps:
+                t.select_set(True)
+            context.view_layer.objects.active = temps[0] if temps else None
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if self.file_format == 'OBJ':
+                bpy.ops.wm.obj_export(filepath=str(path), export_selected_objects=True, apply_modifiers=False,
+                                      export_materials=True, export_uv=True, export_normals=True,
+                                      export_triangulated_mesh=False, global_scale=self.scale)
+            else:
+                bpy.ops.export_scene.fbx(filepath=str(path), use_selection=True, use_mesh_modifiers=False,
+                                         global_scale=self.scale, object_types={'MESH'})
+        except (RuntimeError, AttributeError, TypeError) as ex:
+            self.report({'ERROR'}, f'Export failed: {ex}')
+            return {'CANCELLED'}
+        finally:
+            for t in temps:
+                me = t.data
+                bpy.data.objects.remove(t, do_unlink=True)
+                if me.users == 0:
+                    bpy.data.meshes.remove(me)
+            for ob, name in renamed:
+                ob.name = name
+            _restore_selection(context, selected, active)
+        if not path.is_file():
+            self.report({'ERROR'}, 'Export produced no file')
+            return {'CANCELLED'}
+        self.report({'INFO'}, f'Exported {len(obs)} mesh(es) to {path}' + (f' ({split} n-gons split)' if split else ''))
+        return {'FINISHED'}
+
+
+CLASSES = (MCH_PG_ZBrush, MCH_OT_zbrush_send, MCH_OT_zbrush_import, MCH_OT_zbrush_open_folder, MCH_OT_export_mesh)
 
 
 def register():

@@ -1856,6 +1856,9 @@ class MCH_PT_main(bpy.types.Panel):
         drawer = _drawers().get(tool_id)
         if drawer is not None:
             drawer(layout, context)
+        if tool_id != 'ZBRUSH':                    # 0.24.37 Export the selected meshes, in every tool
+            layout.separator()
+            layout.operator('mch.export_mesh', text='Export Selected (OBJ / FBX)', icon='EXPORT')
 
 
 class MCH_PT_lasso(bpy.types.Panel):
