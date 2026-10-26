@@ -21,7 +21,7 @@ check('first edge = the first two points of the outline', bm_.first_edge([[(1, 1
       ((1, 1), (5, 1)))
 
 p = bm_.scene_defaults(C)
-p.sketch, p.profile, p.alt_mode, p.carve_depth, p.ramp_length = False, 'FLAT', 'RAMP', 0.2, 1.0
+p.sketch, p.profile, p.alt_mode, p.carve_depth, p.ramp_length, p.ramp_soft = False, 'FLAT', 'RAMP', 0.2, 1.0, 0.0
 SQUARE = [(440, 440), (440, 560), (560, 560), (560, 440)]           # x -0.6 .. 0.6, the first edge at x = -0.6
 
 
@@ -48,5 +48,20 @@ bm_.perform_base(C, [SQUARE], TOP, cutter=True)
 d = [depth_at(x) for x in (-0.55, -0.3, 0.2)]
 check('Ramp Length 0.5: the slope reaches the surface half way across, the far half untouched',
       abs(d[0] - 0.18) < 0.03 and abs(d[1] - 0.1) < 0.03 and d[2] == 0.0, d)
-p.alt_mode, p.ramp_length = 'HEIGHT', 1.0
+# Ramp Soft
+sc = sd.soften_ramp([1.0, 0.5, 0.1, 0.5], [5.0, 5.0, 5.0, 0.2], 1.0)
+check('Ramp Soft: eased (smoothstep) along the slope - near the surface it fades in gently, deep end unchanged',
+      abs(sc[0] - 1.0) < 1e-9 and abs(sc[1] - 0.5) < 1e-9 and sc[2] < 0.1 * 0.5, sc)
+check('... and the sides round off where it is shallow (a point near the outline gets less)', sc[3] < sc[1] * 0.6, sc)
+check('Ramp Soft 0 = the straight slope', sd.soften_ramp([0.3, 0.7], [1.0, 1.0], 0.0) == [0.3, 0.7])
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+bpy.ops.mesh.primitive_cube_add(size=2.0)
+cube = C.active_object
+p.ramp_length, p.ramp_soft = 1.0, 1.0
+bm_.perform_base(C, [SQUARE], TOP, cutter=True)
+d = [depth_at(x) for x in (-0.55, 0.0, 0.35, 0.5)]
+check('Soft 1 on the cube: still deep at the first edge, closed, and the far part eases out to the surface',
+      abs(d[0] - 0.19) < 0.03 and 0.05 < d[1] < 0.15 and d[2] < 0.03 and d[3] < 0.01 and non_manifold(cube) == 0, d)
+p.alt_mode, p.ramp_length, p.ramp_soft = 'HEIGHT', 1.0, 0.5
 summary()

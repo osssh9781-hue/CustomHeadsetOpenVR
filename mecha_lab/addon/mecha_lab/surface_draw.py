@@ -655,6 +655,27 @@ def carve_inside(context, target, groups, projector, settings, skin=0.25):
     return med * (1.0 - 2.0 * skin)
 
 
+def _smooth01(x):
+    x = max(0.0, min(1.0, x))
+    return x * x * (3.0 - 2.0 * x)
+
+
+def soften_ramp(scale, dist, soft):
+    """0.24.44 Ramp Soft: the slope runs into the surface without a crease (eased like a smoothstep), and the side
+    walls round off more the shallower it gets (the deep edge stays crisp).  ``dist`` = each point's distance to
+    the outline."""
+    if soft <= 1e-6:
+        return list(scale)
+    deepest = max(dist) if dist else 1.0
+    reach = max(deepest * 0.6 * soft, 1e-9)
+    out = []
+    for f, d in zip(scale, dist):
+        eased = (1.0 - soft) * f + soft * _smooth01(f)
+        side = _smooth01(d / reach)
+        out.append(eased * (1.0 + (side - 1.0) * soft * (1.0 - f)))
+    return out
+
+
 def ramp_scale(pts, outer, a, b, length=1.0):
     """0.24.44 Alt: Ramp - the part of the depth each point (screen) gets: 1 at the edge a-b (the first drawn
     edge), down to 0 at ``length`` of the way across the shape (a straight slope: the floor is a tilted plane)."""
@@ -700,9 +721,10 @@ def carve_area(context, target, groups, projector, settings, height, through=Fal
     if getattr(settings, 'edge_abs', None) is not None:
         settings.edge = min(1.0, max(0.02, settings.edge_abs / (2.0 * max(height, 1e-9))))
     if ramp is not None:
-        a, b, length = ramp
+        a, b, length = ramp[:3]
+        soft = ramp[3] if len(ramp) > 3 else 0.0
         for f in fills:
-            f['scale'] = ramp_scale(f['scr'], f['outer'], a, b, length)
+            f['scale'] = soften_ramp(ramp_scale(f['scr'], f['outer'], a, b, length), f['dist'], soft)
     parts = [fill_mesh(f, settings, height, height, size, sign=-1.0, lift=height * 0.04) for f in fills]
     carve_parts(context, target, parts)
     return height

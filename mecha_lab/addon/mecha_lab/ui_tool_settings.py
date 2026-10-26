@@ -587,6 +587,7 @@ def _draw_base_sketch(layout, context, base_mesh):
             box.prop(sp, 'carve_depth')                                     # 0.24.38 0 = Height
             if sp.alt_mode == 'RAMP':                                       # 0.24.44 deep at the first edge
                 box.prop(sp, 'ramp_length', slider=True)
+                box.prop(sp, 'ramp_soft', slider=True)
                 box.label(text='Deepest at the first edge you draw', icon='INFO')
         elif sp.alt_mode == 'INSIDE':
             box.prop(sp, 'inside_skin', slider=True)                        # 0.24.38 the skin left front / back

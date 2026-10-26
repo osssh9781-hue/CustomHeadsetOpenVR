@@ -164,6 +164,10 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
     ramp_length: FloatProperty(name='Ramp Length', default=1.0, min=0.05, max=1.0, subtype='FACTOR',
                                description='Alt: Ramp - how far across the shape the slope goes (1 = it meets the '
                                            'surface at the far side; less = deep and flat first, then the slope)')
+    ramp_soft: FloatProperty(name='Ramp Soft', default=0.5, min=0.0, max=1.0, subtype='FACTOR',
+                             description='Alt: Ramp - how softly the slope runs into the surface and the side walls '
+                                         'round off toward the shallow end (0 = straight slope, sharp sides; the deep '
+                                         'edge stays crisp)')
     inside_skin: FloatProperty(name='Skin', default=0.25, min=0.02, max=0.45, subtype='FACTOR',
                                description='Alt: Inside - how much of the thickness stays on each side (front and back)')
     invert_height: BoolProperty(name='Invert', default=False,
@@ -1361,7 +1365,7 @@ def carve_surface(context, loops, projector, p, targets=None):
         edge = first_edge(loops)
         if edge is None:
             raise cg.CutError('Alt: Ramp - draw a shape with at least one clear edge.')
-        ramp = (edge[0], edge[1], getattr(p, 'ramp_length', 1.0))
+        ramp = (edge[0], edge[1], getattr(p, 'ramp_length', 1.0), getattr(p, 'ramp_soft', 0.5))
     done, failed = [], []
     for t in targets:
         try:
