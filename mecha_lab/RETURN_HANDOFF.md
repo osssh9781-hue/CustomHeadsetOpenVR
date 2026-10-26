@@ -1,4 +1,11 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.40 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.41 (Claude Code, 2026-10-14)
+
+## 0.24.41
+- ZIP sha256 `68baf53c89f001a1a8345a42eff237bfec40e4d4549357034b7cd35dbb2eb6fd`.
+- 새 모듈 `rim_sweep.py`: `mark_rim(mesh, mode, width, segments)` — 림 엣지(커터 면 ↔ 원래 면, `cg._rim_edges`)를 `mch_rim`(EDGE bool), 점마다 단면 `mch_rp0..n`(POINT vector; `profile_points`: 표면 방향 d_face = 원래 면 루프 왼쪽, 벽 방향 d_wall, out = 두 면 법선 합; Chamfer [A, B, B+out·1.5w, A+out·1.5w], Bevel = A→B 사분 호 segments + 바깥 2점), 기준 방향 `mch_rdir` = (d_wall − d_face) × out. `ensure_group(n)` = `MCH_RimSweep3_<n>`: Mesh to Curve(selection mch_rim) → Capture Attribute(점: 접선·mch_rdir 내적) → Reverse Curve(평균 < 0) → Curve to Mesh(원 n점 프로파일, Fill Caps) → Set Position(Index Switch, index mod n, Named Attribute mch_rp_j) → Mesh Boolean DIFFERENCE(Exact, Self Intersection). `finish(mesh, mode, width, segments)` = 임시 오브젝트에 Nodes 모디파이어 → evaluated → mesh로, 보조 속성 삭제.
+- `tool_state` Cut: `gn_finish`(NONE/CHAMFER/BEVEL), `gn_width`, `gn_segments`, `gn_sides`(BOTH/A/B). `cut_engine._gn_on(cut, side)` / `_gn_finish`: 닫힌 컷 · 스플릿 · 2점 평면 컷 · 평면 스플릿에서 켜져 있으면 Edge Finish / Side 마감 대신. `ui_tool_settings.draw_gn_edge`(draw_cut에서).
+- `primitive_place.nearest_surface(context, point, reach)`(Targets 따름): Pick Face 직후 `stamp_at`. 클릭이 메쉬를 못 맞추면 경고 + CANCELLED.
+- `screw_stamp.area_normal(context, target, loc, normal, radius)`: 둘레 8 레이 → Newell 평면(5개 미만이면 원래 노멀, 75° 넘게 벌어지면 원래 노멀); run()이 radius × 0.9로 사용.
 
 ## 0.24.40
 - ZIP sha256 `16b2b9e46132c53ff22233ff22e00ebdd3f8275d9fa339df31ecba0cfbd1723f`.

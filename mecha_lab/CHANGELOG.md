@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.24.41 — GN Edge(지오메트리 노드 테두리 챔퍼 / 베벨), Stamp Face 바로 붙기, 나사가 기울어지던 문제 (2026-10-26)
+
+- **GN Edge (Geometry Nodes)** — Cut / Split 패널의 새 메뉴(기존 Edge Finish와 따로): Off / Chamfer / Bevel, Width, Segments(Bevel), Split은 Both / Side A / Side B. 그은 영역의 테두리(새 모서리)를 따라 챔퍼 / 베벨 단면을 지오메트리 노드로 쓸어(Mesh to Curve → Curve to Mesh → Set Position → Mesh Boolean) 깎아냄 → 테두리 전체에 같은 너비로 고르게. 기존 Edge Finish는 촘촘한(삼각형) 메쉬에서 짧은 모서리 때문에 너비가 줄거나 거의 안 생겼음. 켜면 그 컷에서는 Edge Finish를 건너뜀. Auto Apply ON에서만.
+- **Stamp Face**: 고스트 면을 찍으면 가장 가까운 메쉬 표면에 그 면이 바로 붙음. Stamp Face 상태에서 메쉬가 아닌 곳을 클릭하면 고스트를 옮기지 않고 이유를 알려줌(Targets가 Selected Only / Active면 그 메쉬를 선택하거나 Auto Target으로).
+- **Screw Stamp가 비스듬히 서던 문제**: 클릭한 삼각형 하나의 방향 대신 나사 머리 아래 둘레 8곳을 찍은 평면 방향으로 섬 — 불리언으로 생긴 가는 삼각형 / 살짝 휜 큰 면에서 크게 기울어졌었음.
+- 테스트: 121개 파일 3596/3596. test_v02460(나사), test_v02461(GN Edge) 추가, test_v02459에 가까운 표면 찾기 추가. ZIP sha256 `68baf53c89f001a1a8345a42eff237bfec40e4d4549357034b7cd35dbb2eb6fd`.
+
 ## 0.24.40 — Path Move Hardness, 프리미티브 Remember Turn · Stamp Face (2026-10-26)
 
 - **Path Move 전용 Hardness**: Concept Move의 Hardness와 따로(기본 1 = 지금과 같음). 전에는 Move와 같은 값을 썼고, 기본 방식 Extend에서는 아무 효과가 없었음.
