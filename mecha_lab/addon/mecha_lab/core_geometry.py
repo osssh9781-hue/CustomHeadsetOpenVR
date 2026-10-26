@@ -892,6 +892,19 @@ def drop_custom_normals(mesh):
     return False
 
 
+def pulled_back(bm, before, verts, width):
+    """Points of ``verts`` that lie outside the shape ``before`` (a BVH of it) go onto its nearest surface.
+    Returns how many moved."""
+    moved = 0
+    tol = max(width * 1e-3, 1e-7)
+    for v in {v for v in verts if v.is_valid}:
+        loc, nrm, _i, _d = before.find_nearest(v.co)
+        if loc is not None and (v.co - loc).dot(nrm) > tol:
+            v.co = loc
+            moved += 1
+    return moved
+
+
 def finish_new_edges(mesh, mode='NONE', width=0.01, segments=3, profile=0.5, clamp=True, label='',
                      crisp=True):
     """Bevel/chamfer only edges between cutter faces and original faces.
@@ -931,10 +944,16 @@ def finish_new_edges(mesh, mode='NONE', width=0.01, segments=3, profile=0.5, cla
             FINISH_NOTES.append(f'{label + " " if label else ""}{mode.lower()} width {width:.4g} exceeds the '
                                 f'safe {limit:.4g} (Clamp Overlap OFF: geometry may overlap)')
         verts = list({v for e in edges for v in e.verts})
+        from mathutils.bvhtree import BVHTree
+        before = BVHTree.FromBMesh(bm)              # 0.24.42 the shape before the bevel (see below)
         res = bmesh.ops.bevel(bm, geom=edges + verts, offset=width, offset_type='OFFSET',
                               segments=1 if mode == 'CHAMFER' else max(1, segments),
                               profile=profile, affect='EDGES', clamp_overlap=bool(clamp),
                               loop_slide=True)
+        # 0.24.42 where the cut meets another (bevelled) edge of the part, Blender's bevel can slide points OUT of
+        # the part - dark spikes sticking out at the ends of a notch.  A bevel only takes material away: any
+        # point that ended outside the old shape goes back onto its surface.
+        pulled_back(bm, before, res.get('verts', []), width)
         if crisp:
             crisp_shading(bm, res.get('faces', []), mode == 'BEVEL' and segments > 1)
         bm.normal_update()
