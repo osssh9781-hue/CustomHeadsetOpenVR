@@ -426,6 +426,96 @@ def perform_plate(context, loops, projector, preset=None):
 
 
 
+def mirrored_into(verts, bvh, lift):
+    """Every point mirrored through the surface under it (``bvh``, world): what stood out of the surface now goes
+    as deep into it.  Points on / just under the surface come out ``lift`` above it, so the opening is clean."""
+    out = []
+    for v in verts:
+        loc, nrm, _i, _d = bvh.find_nearest(v)
+        if loc is None:
+            out.append(Vector(v))
+            continue
+        n = nrm.normalized()
+        d = (Vector(v) - loc).dot(n)
+        out.append(Vector(v) - n * (2.0 * d) + n * lift if d < lift else Vector(v) - n * (2.0 * d))
+    return out
+
+
+def perform_plate_carve(context, loops, projector, preset=None):
+    """0.24.42 Alt + draw with the Armor Plate tool: the plate it would make, turned the other way (mirrored
+    through the surface into the mesh) and carved out with a Boolean - a recess with the plate's profile
+    (chamfer / bevel / steps) as its walls.  Returns a report; raises cg.CutError (the mesh unchanged)."""
+    scene = context.scene
+    st = scene.mch_plate
+    groups = cg.prepare_loops(loops)
+    target = pick_surface(context, projector, groups)
+    if target is None:
+        raise cg.CutError('Alt + draw carves a plate into a mesh: draw over one (armour parts and plates are '
+                          'skipped).')
+    cg.check_target(target)
+    preset = preset or st.preset
+    if preset == 'MRIDGE':
+        preset = 'CHAMFER'
+    from . import face_extract as fx
+    region, surround, local_size, _missing = plate_meshes(context, target, groups, projector, st.spacing)
+    part = create_plate(context, target, region, surround, preset, local_size, st.auto_size)
+    try:
+        dg = context.evaluated_depsgraph_get()
+        dg.update()
+        ev = part.evaluated_get(dg)
+        pm = ev.to_mesh()
+        try:
+            mw = ev.matrix_world
+            verts = [mw @ v.co for v in pm.vertices]
+            faces = [tuple(p.vertices) for p in pm.polygons]
+        finally:
+            ev.to_mesh_clear()
+    finally:
+        fx._remove_part(part)
+    if not faces:
+        raise cg.CutError('The plate came out empty; nothing was carved.')
+    tev = target.evaluated_get(context.evaluated_depsgraph_get())
+    tme = tev.to_mesh()
+    try:
+        tw = tev.matrix_world
+        bvh = BVHTree.FromPolygons([tw @ v.co for v in tme.vertices], [tuple(p.vertices) for p in tme.polygons])
+    finally:
+        tev.to_mesh_clear()
+    lo = Vector([min(v[i] for v in verts) for i in range(3)])
+    hi = Vector([max(v[i] for v in verts) for i in range(3)])
+    lift = max((hi - lo).length * 0.004, 1e-5)
+    world = mirrored_into(verts, bvh, lift)
+    inv = target.matrix_world.inverted()
+    me = bpy.data.meshes.new('MCH_PlateCarve')
+    me.from_pydata([tuple(inv @ v) for v in world], [], faces)
+    me.validate()
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+        bm.to_mesh(me)
+    finally:
+        bm.free()
+    cutter = cg.link_temp_object(context, me, 'MCH_Cutter_Plate')
+    cutter.matrix_world = target.matrix_world.copy()
+    cut = scene.mch_cut
+    try:
+        res, _solver = cg.boolean_result(context, target, cutter, 'DIFFERENCE', cut.solver, cut.hole_tolerant)
+        try:
+            cg.commit_mesh(target, res, cut.shared_mesh)
+        finally:
+            if res.users == 0:
+                bpy.data.meshes.remove(res)
+    finally:
+        cg.remove_object_and_mesh(cutter)
+    for o in context.selected_objects:
+        o.select_set(False)
+    target.select_set(True)
+    context.view_layer.objects.active = target
+    name = dict((p_[0], p_[1]) for p_ in PRESETS)[preset]
+    return f'Armor plate carved into "{target.name}" (Alt: {name} the other way round)'
+
+
 def _perform_through(context, loops, projector, preset, target, groups, st, brush):
     """0.23.7 Through: one plate per panel (front / back / creases), each keeps its outline for Face Size."""
     crease = float(getattr(brush, 'through_crease', 50.0))

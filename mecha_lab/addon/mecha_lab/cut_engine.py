@@ -1782,6 +1782,9 @@ class StrokeLogic:
                 return lasso_sketch.add(context, self.mode, loops, self.projector, subtract=sub)
             if self.mode == 'MASK':
                 msg = perform_mask(context, targets[0], loops, self.projector, self.inverted())
+            elif self.mode == 'PLATE' and self.inverted():
+                from . import armor_plate          # 0.24.42 Alt + draw: the plate the other way, carved in
+                msg = armor_plate.perform_plate_carve(context, loops, self.projector)
             elif self.mode == 'PLATE':
                 from . import armor_plate
                 msg = armor_plate.perform_plate(context, loops, self.projector)
