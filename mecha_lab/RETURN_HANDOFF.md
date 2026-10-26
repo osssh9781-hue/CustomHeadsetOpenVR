@@ -1,4 +1,11 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.39 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.40 (Claude Code, 2026-10-14)
+
+## 0.24.40
+- ZIP sha256 `16b2b9e46132c53ff22233ff22e00ebdd3f8275d9fa339df31ecba0cfbd1723f`.
+- `MCH_PG_Concept.path_hardness`(기본 1.0): Path Move 패널 · 헤더 · Stretch 미리보기 / 실행이 사용(`hardness`는 Concept Move 전용).
+- `path_sweep.soften_path(path, start_dir, length)`: 경로 앞 `length`를 3차 베지어로(시작 접선 = 잡은 방향, 끝 = 원래 경로 접선, 점 개수 같음). `soft_length(loop, centre, hardness)` = (1 − h) × 3 × 섹션 반지름. `extend(..., hardness)` · `preview_geometry(..., hardness)` · `sweep_object(..., hardness=)`가 사용.
+- `primitive_place`: `remember_turn` / `surface_rot` / `surface_set`, `surface_turn(st, normal)` = align_rotation(n) @ (이전 표면 회전⁻¹ @ 현재 회전), `remembered_turn`; Reset = surface_set False. Stamp Face: `contact_on` · `contact_point`(Size 비율) · `picking` · `stamp_depth` · `stamp_click`; 순수 함수 `pick_contact`(고스트 BVH 레이) · `contact_on_shape`(find_nearest) · `behind_extent` · `stamp_transform`(현재 회전에서 최소 회전으로 면 법선 → −표면 법선, 위치 = hit − q·p − n·depth); `stamp_at(st, hit, n)`(depth = max(stamp_depth, 0.01) × behind_extent); `MCH_OT_place_click`에 picking 분기 · Stamp 분기 · `subtract`(Alt+클릭 키맵), `MCH_OT_place_pick_face`(clear). 고스트 그리기에 노란 점 · 화살표.
+- `MCH_OT_concept_path.edge_hardness`(기본 1.0, 모달에서 `path_hardness`로 채움); live move 기록에 `'hardness'`, `apply_moves` extend가 읽음.
 
 ## 0.24.39
 - ZIP sha256 `f0ecf159ea8d5fcf95e237b9299a6c4476bbd34120d15961e4ee188e51f5bae8`.

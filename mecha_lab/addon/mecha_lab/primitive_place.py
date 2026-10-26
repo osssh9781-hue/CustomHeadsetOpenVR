@@ -408,6 +408,57 @@ def align_rotation(normal):
     return Vector((0.0, 0.0, 1.0)).rotation_difference(n.normalized())
 
 
+# 0.24.40 Stamp Face: a point picked on the ghost = the face that goes onto the mesh surface
+
+
+def contact_on_shape(verts, faces, point):
+    """(point, outward normal) on the shape (local) nearest ``point`` - or (None, None)."""
+    from mathutils.bvhtree import BVHTree
+    if not verts or not faces:
+        return None, None
+    bvh = BVHTree.FromPolygons([Vector(v) for v in verts], [tuple(f) for f in faces])
+    loc, nrm, _i, _d = bvh.find_nearest(Vector(point))
+    if loc is None:
+        return None, None
+    return loc, nrm.normalized()
+
+
+def pick_contact(verts, faces, matrix, origin, direction):
+    """A view ray on the ghost (``matrix`` = its world matrix): the local point it hits first and that face's
+    outward normal - or (None, None) when the ray misses the ghost."""
+    from mathutils.bvhtree import BVHTree
+    inv = matrix.inverted()
+    o = inv @ Vector(origin)
+    d = (inv.to_3x3() @ Vector(direction)).normalized()
+    bvh = BVHTree.FromPolygons([Vector(v) for v in verts], [tuple(f) for f in faces])
+    loc, nrm, _i, _dist = bvh.ray_cast(o, d)
+    if loc is None:
+        return None, None
+    return loc, nrm.normalized()
+
+
+def behind_extent(verts, point, normal):
+    """How far the shape reaches behind the face at ``point`` (against its outward ``normal``)."""
+    n = Vector(normal)
+    return max((Vector(point) - Vector(v)).dot(n) for v in verts) if verts else 0.0
+
+
+def stamp_transform(rotation, point, normal, hit, surface_normal, depth=0.0, align=True):
+    """(location, rotation) that puts the picked face (local ``point`` / outward ``normal``) on the surface at
+    ``hit``, facing into it (its outward normal against the surface normal), pressed ``depth`` in.  The shape
+    keeps its twist round the surface normal; ``align`` off = only moved, not turned."""
+    q0 = Quaternion(rotation).normalized() if Quaternion(rotation).magnitude > 1e-9 else Quaternion()
+    q = q0
+    sn = Vector(surface_normal).normalized() if surface_normal is not None else None
+    if align and sn is not None:
+        cur = q0 @ Vector(normal).normalized()
+        q = (cur.rotation_difference(-sn) @ q0).normalized()
+    loc = Vector(hit) - q @ Vector(point)
+    if sn is not None and depth:
+        loc -= sn * depth
+    return loc, q
+
+
 # -----------------------------------------------------------------------------
 # State
 # -----------------------------------------------------------------------------
@@ -565,6 +616,59 @@ class MCH_PG_Place(bpy.types.PropertyGroup):
                            description='HUD - / + : Apply (and Enter) subtracts instead of adding')
     show_live: BoolProperty(name='Live Parametric Primitives', default=False)
     last: StringProperty(default='', options={'HIDDEN'})
+    # 0.24.40 Remember Turn: the turn you gave the ghost on the surface is kept for the next click
+    remember_turn: BoolProperty(name='Remember Turn', default=True,
+                                description='A click on a mesh keeps the turn you gave the shape on the last surface '
+                                            '(same angle to the new surface); off = Z straight out of the surface')
+    surface_rot: FloatVectorProperty(size=4, subtype='QUATERNION', default=(1.0, 0.0, 0.0, 0.0), options={'HIDDEN'})
+    surface_set: BoolProperty(default=False, options={'HIDDEN'})
+    # 0.24.40 Stamp Face
+    contact_on: BoolProperty(default=False, options={'HIDDEN'}, update=_redraw)
+    contact_point: FloatVectorProperty(size=3, options={'HIDDEN'})      # as a part of Size (moves with resizing)
+    picking: BoolProperty(default=False, options={'HIDDEN'}, update=_redraw)
+    stamp_depth: FloatProperty(name='Stamp Depth', default=0.1, min=0.0, max=1.0, subtype='FACTOR',
+                               description='How far the picked face goes into the surface (part of how far the '
+                                           'shape reaches behind it): Alt / Subtract = how deep the stamp carves')
+    stamp_click: BoolProperty(name='Stamp on Click', default=False,
+                              description='With a picked face: a click on a mesh puts the shape there AND merges it '
+                                          'right away (Alt+click: carves it)')
+
+
+def contact_local(st):
+    """(point, outward normal) of the picked face on the CURRENT ghost (local), or (None, None)."""
+    if not st.contact_on:
+        return None, None
+    verts, faces, _s = st_shape(st)
+    return contact_on_shape(verts, faces, Vector([c * sz for c, sz in zip(st.contact_point, st.size)]))
+
+
+def stamp_at(st, hit, surface_normal):
+    """Put the ghost so its picked face sits on the surface at ``hit`` (pressed Stamp Depth in)."""
+    p, n = contact_local(st)
+    if p is None:
+        return False
+    verts, _f, _s = st_shape(st)
+    depth = max(st.stamp_depth, 0.01) * behind_extent(verts, p, n)       # a hair in: no face lying on the surface
+    loc, q = stamp_transform(st.rotation, p, n, hit, surface_normal, depth, st.align_surface)
+    st.location = loc
+    st.rotation = q
+    return True
+
+
+def remembered_turn(previous_surface, current, new_surface):
+    """The turn the shape had against the last surface frame, put on the new one."""
+    rel = Quaternion(previous_surface).normalized().inverted() @ Quaternion(current).normalized()
+    return (Quaternion(new_surface).normalized() @ rel).normalized()
+
+
+def surface_turn(st, normal):
+    """0.24.40 rotation for a click on a surface: Z out of it, plus (Remember Turn) the turn you gave the shape
+    on the last surface."""
+    base = align_rotation(normal)
+    q = remembered_turn(st.surface_rot, st.rotation, base) if st.remember_turn and st.surface_set else base
+    st.surface_rot = base
+    st.surface_set = True
+    return q
 
 
 def state(context):
@@ -888,17 +992,45 @@ class MCH_OT_place_click(bpy.types.Operator):
     def poll(cls, context):
         return context.area is not None and context.area.type == 'VIEW_3D' and ghost_visible(context)
 
+    subtract: BoolProperty(default=False, options={'SKIP_SAVE', 'HIDDEN'})
+
     def invoke(self, context, event):
         region, rv3d = context.region, context.region_data
         if region is None or rv3d is None or region.type != 'WINDOW':
             return {'PASS_THROUGH'}
         st = ensure_placed(context)
-        loc, normal = _ray_place(context, region, rv3d, (event.mouse_region_x, event.mouse_region_y))
+        xy = (event.mouse_region_x, event.mouse_region_y)
+        if st.picking:                                   # 0.24.40 Pick Face: this click is on the ghost
+            from bpy_extras import view3d_utils
+            verts, faces, _s = st_shape(st)
+            p, _n = pick_contact(verts, faces, ghost_matrix(st.location, st.rotation),
+                                 view3d_utils.region_2d_to_origin_3d(region, rv3d, xy),
+                                 view3d_utils.region_2d_to_vector_3d(region, rv3d, xy))
+            if p is None:
+                self.report({'WARNING'}, 'Pick Face: click on the ghost (the face that should go on the mesh)')
+                return {'CANCELLED'}
+            st.contact_point = [c / max(sz, 1e-9) for c, sz in zip(p, st.size)]
+            st.contact_on, st.picking = True, False
+            self.report({'INFO'}, 'Stamp Face set: click a mesh to put that face on it')
+            return {'FINISHED'}
+        loc, normal = _ray_place(context, region, rv3d, xy)
         if loc is None:
+            return {'PASS_THROUGH'}
+        if st.contact_on and normal is not None:
+            stamp_at(st, loc, normal)
+            if st.stamp_click:
+                try:
+                    msg = commit(context, st, subtract=self.subtract or st.mode_sub)
+                except cg.CutError as ex:
+                    self.report({'WARNING'}, str(ex))
+                    return {'CANCELLED'}
+                self.report({'INFO'}, msg)
+            return {'FINISHED'}
+        if self.subtract:
             return {'PASS_THROUGH'}
         st.location = loc
         if normal is not None and st.align_surface:
-            st.rotation = align_rotation(normal)
+            st.rotation = surface_turn(st, normal)
             st.spin = 0.0
         return {'FINISHED'}
 
@@ -1001,10 +1133,28 @@ class MCH_OT_place_rotate(bpy.types.Operator):
         if self.axis == 'RESET':
             st.rotation = Quaternion()
             st.spin = 0.0
+            st.surface_set = False                   # Remember Turn starts over (Z out of the next surface)
             return {'FINISHED'}
         v = Vector((0.0, 0.0, 0.0))
         v['XYZ'.index(self.axis)] = 1.0
         st.rotation = Quaternion(st.rotation).normalized() @ Quaternion(v, math.pi / 2)
+        return {'FINISHED'}
+
+
+class MCH_OT_place_pick_face(bpy.types.Operator):
+    """Stamp Face: click a point on the ghost - that face is the one that goes onto the mesh surface when you
+    click a mesh next (Clear: back to the usual placing)"""
+    bl_idname = 'mch.place_pick_face'
+    bl_label = 'Pick Stamp Face'
+    bl_options = {'INTERNAL'}
+    clear: BoolProperty(default=False, options={'SKIP_SAVE'})
+
+    def execute(self, context):
+        st = ensure_placed(context)
+        if self.clear:
+            st.contact_on = st.picking = False
+        else:
+            st.picking = not st.picking
         return {'FINISHED'}
 
 
@@ -1279,6 +1429,17 @@ def _draw_ghost():
         gpu.state.line_width_set(1.0)
         sh.uniform_float('color', (*col, 0.25))
         batch_for_shader(sh, 'LINES', {'pos': world}, indices=lines).draw(sh)
+        cp, cn = contact_local(st) if st.contact_on else (None, None)
+        if cp is not None:                          # 0.24.40 the picked Stamp Face: a dot and a short arrow
+            a, b = m @ cp, m @ (cp + cn * max(1e-3, min(st.size) * 0.3))
+            gpu.state.depth_test_set('NONE')
+            gpu.state.point_size_set(10.0)
+            sh.uniform_float('color', (1.0, 0.8, 0.1, 1.0))
+            batch_for_shader(sh, 'POINTS', {'pos': [tuple(a)]}).draw(sh)
+            gpu.state.line_width_set(2.5)
+            batch_for_shader(sh, 'LINES', {'pos': [tuple(a), tuple(b)]}).draw(sh)
+            gpu.state.line_width_set(1.0)
+            gpu.state.point_size_set(1.0)
         try:
             from . import primitive_hud
             bad = primitive_hud.coplanar_cached(context, st)
@@ -1355,7 +1516,24 @@ def draw(layout, context):
     row.operator('mch.place_rotate', text='', icon='LOOP_BACK').axis = 'RESET'
     row = box.row(align=True)
     row.prop(st, 'align_surface')
+    sub_ = row.row(align=True)
+    sub_.active = st.align_surface
+    sub_.prop(st, 'remember_turn', toggle=True)
     row.operator('mch.place_to_cursor', text='', icon='PIVOT_CURSOR')
+    col = box.column(align=True)                    # 0.24.40 Remember Turn: the turn you gave the ghost on the surface is kept for the next click
+    remember_turn: BoolProperty(name='Remember Turn', default=True,
+                                description='A click on a mesh keeps the turn you gave the shape on the last surface '
+                                            '(same angle to the new surface); off = Z straight out of the surface')
+    surface_rot: FloatVectorProperty(size=4, subtype='QUATERNION', default=(1.0, 0.0, 0.0, 0.0), options={'HIDDEN'})
+    surface_set: BoolProperty(default=False, options={'HIDDEN'})
+    # 0.24.40 Stamp Face
+    row = col.row(align=True)
+    row.operator('mch.place_pick_face', icon='EYEDROPPER', depress=st.picking,
+                 text='Click the ghost...' if st.picking else ('Stamp Face: set' if st.contact_on else 'Pick Stamp Face'))
+    if st.contact_on:
+        row.operator('mch.place_pick_face', text='', icon='X').clear = True
+        col.prop(st, 'stamp_depth', slider=True)
+        col.prop(st, 'stamp_click', toggle=True)
     row = box.row(align=True)
     row.operator('mch.place_undo', text='Undo Ghost', icon='LOOP_BACK')
     row.operator('mch.place_redo', text='Redo', icon='LOOP_FORWARDS')
@@ -1375,6 +1553,7 @@ def draw(layout, context):
     sub.label(text='Squares: size (one side) | arrows: move', icon='INFO')
     sub.label(text='Dials: rotate | corner dots: whole size')
     sub.label(text='Click a mesh: move there | Ctrl+Z: undo ghost edits')
+    sub.label(text='Pick Stamp Face: that face goes on the mesh you click')
 
 
 class MCH_PT_place_shapes(bpy.types.Panel):
@@ -1403,12 +1582,13 @@ class MCH_PT_place_shapes(bpy.types.Panel):
 # Registration
 # -----------------------------------------------------------------------------
 
-CLASSES = (MCH_PG_Place, MCH_OT_place_commit, MCH_OT_place_key, MCH_OT_place_alt, MCH_OT_place_click,
+CLASSES = (MCH_PG_Place, MCH_OT_place_commit, MCH_OT_place_key, MCH_OT_place_alt, MCH_OT_place_click, MCH_OT_place_pick_face,
            MCH_OT_place_shape, MCH_OT_place_undo, MCH_OT_place_redo, MCH_OT_place_undo_key, MCH_OT_place_rotate, MCH_OT_place_to_cursor, MCH_OT_place_hide, MCH_GGT_place,
            MCH_PT_place_shapes)
 TOOL_KEYMAP = (
     # click = move the ghost there; drag = box select; Shift+click = select
     ('mch.place_click', {'type': 'LEFTMOUSE', 'value': 'CLICK'}, None),
+    ('mch.place_click', {'type': 'LEFTMOUSE', 'value': 'CLICK', 'alt': True}, {'properties': [('subtract', True)]}),
     ('view3d.select', {'type': 'LEFTMOUSE', 'value': 'CLICK', 'shift': True},
      {'properties': [('toggle', True)]}),
     ('view3d.select_box', {'type': 'LEFTMOUSE', 'value': 'CLICK_DRAG'}, {'properties': [('mode', 'SET')]}),

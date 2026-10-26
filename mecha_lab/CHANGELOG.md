@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 0.24.40 — Path Move Hardness, 프리미티브 Remember Turn · Stamp Face (2026-10-26)
+
+- **Path Move 전용 Hardness**: Concept Move의 Hardness와 따로(기본 1 = 지금과 같음). 전에는 Move와 같은 값을 썼고, 기본 방식 Extend에서는 아무 효과가 없었음.
+- **Extend / Separate Tube**: Hardness를 낮추면 경로가 꺾일 때 컷에서 각지게 꺾이지 않고 둥글게 휘어 나옴(낮을수록 크게, 섹션 반지름 × 3 × (1 − Hardness)). 원래 메쉬(컷 뒤쪽)는 그대로. 드래그 미리보기에도 보임.
+- Stretch(slow)도 이 슬라이더를 씀(기본 1 = 단단하게; 전에는 Move의 0.5를 같이 씀).
+- **프리미티브 Remember Turn**(기본 켬, Align to Surface 옆): 메쉬 표면에서 고스트를 돌려 놓으면, 다음에 다른 곳을 클릭해도 그 표면에 대해 같은 각도로 놓임(전에는 클릭할 때마다 Z가 표면 밖으로 리셋). 끄면 예전처럼, Turn 90의 Reset을 누르면 다시 처음부터.
+- **프리미티브 Stamp Face**: Pick Stamp Face를 누르고 고스트의 한 점을 찍으면 그 면이 메쉬에 닿는 면이 됨(노란 점 + 화살표). 메쉬를 클릭하면 그 면이 표면을 향해 붙고 **Stamp Depth**(그 면 뒤로 모양이 뻗은 길이의 비율)만큼 들어감 → Add(Enter) = 붙이기, Subtract(Alt+Enter) = 그 면 모양으로 찍어 파기. **Stamp on Click**을 켜면 클릭하자마자 불리언(Alt+클릭 = 파기). X로 해제. 크기를 바꿔도 찍은 자리가 따라감.
+- 테스트: 119개 파일 3576/3576. test_v02458 · test_v02459 추가. ZIP sha256 `16b2b9e46132c53ff22233ff22e00ebdd3f8275d9fa339df31ecba0cfbd1723f`.
+
 ## 0.24.39 — Base Mesh Alt 표면 파기 결과가 깨끗해짐, Bevel Segments · Resolution 적용 (2026-10-26)
 
 - **Alt 파기(Carve Height / Through / Inside)가 깨끗하게**: 얇은 Line 띠 안에 점이 몇 개 안 들어가서 Chamfer 경사 · 바닥 · 벽이 들쭉날쭉하고 조각 면이 많았음 → 모양의 가장 좁은 폭에 맞춰 점을 고르게 깔고, Chamfer / Bevel 가장자리가 끝나는 자리에 점 한 줄을 정확히 넣어 벽이 곧게, 표면 방향(노멀)을 깊이만큼 부드럽게 이어 꺾인 판에서도 바닥이 고르게. Chamfer 시작점이 표면 살짝 위라 표면과 겹치는 조각 면이 안 생김. 굽은 판 테스트: 찌그러진 면 195 → 0, 사용자 FBX: 19 → 0(면 수 1984 → 983).

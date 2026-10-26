@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.39
+# Test Report — Mecha Lab 0.24.40
+
+## 0.24.40 결과: 119개 파일 3576/3576 (`tests/test_log_bpy501_v02440.txt`, Blender 5.0.1 bpy). test_v02458(8): 전용 Hardness(기본 1, Move 0.5 그대로), 패널에 표시, `soften_path` = 시작이 잡은 방향(x 성분 > 0.9), 점 개수 같음, 뒤쪽 경로 그대로, Hardness 1 = 부드러운 구간 없음; 막대(3 × 0.5 × 0.5)에 45° 경로 Extend — Hardness 1 / 0.3 둘 다 닫힌 메쉬 · 컷 뒤 메쉬 그대로, 0.3은 컷 바로 뒤 튜브 평균 높이 0.33 → 0.27(완만), 끝 위치 같음. test_v02459(17): `stamp_transform`(+X 면이 아래로 · hit 위, depth, Align 끔 = 이동만), 고스트 레이 픽(−Y 면 · 빗나가면 없음), behind_extent, Size 비율 유지, 큐브 위 0.4 × 0.4 × 1.2 상자 +X 면 스탬프 → Subtract 0.1 깊이 1.2 × 0.4 홈 · 닫힌 메쉬, 옆면 Add = 합쳐짐 · 닫힘, Remember Turn(같은 방향 표면 = 같은 회전, +X 면 = 같은 30° 기울기, 끄면 리셋, Reset 후 리셋), 버튼 · Alt+클릭 키. 5.2.3 bpy에서도 test_v02458 · test_v02459 · test_v02439 · test_v02437 · test_v02438 · test_v02447 · test_v0140 · test_v0143 · test_v0150 · test_v02324 통과. 실제 화면 클릭 · 드래그는 미검증.
 
 ## 0.24.39 결과: 117개 파일 3551/3551 (`tests/test_log_bpy501_v02439.txt`, Blender 5.0.1 bpy). test_v02457(9): 굽은 저폴리 판(두께 0.08)에 Line(폭 0.08)으로 Chamfer / Bevel / Flat Alt 파기 — 비매니폴드 0, 보이는 크기의 찌그러진 면(3° 미만) 0, 띠 가운데 깊이 0.035 ± 0.006(세 곳), Bevel Segments 2 → 8 = 면 증가 · 깨끗, Resolution 28 → 70 = 면 증가 · 깨끗(라인 끝 둥근 마개에 면적 1e-6 미만 미세 삼각형 몇 개는 제외), `smooth_normals` 단위 길이. 사용자 FBX(MCH_Base.032, Chamfer, Carve Depth 0.072, Border 0.049): 찌그러진 면 19 → 0, 면 1984 → 983. 5.2.3 bpy에서도 test_v02457 · test_v02454 · test_v0245 통과. 실제 화면 입력은 미검증.
 
