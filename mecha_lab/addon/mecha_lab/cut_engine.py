@@ -825,7 +825,9 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
         station_primitive.freeze(t)
         cg.ensure_real_mesh(context, t)
         cg.check_target(t)
-    if len(points) == 2 and cut.fast_line and auto_apply:
+    # 0.24.36 From Surface: a 2-point line also stops at Cut Depth (the Boolean half-plane below, not the
+    # plane bisect that goes all the way through)
+    if len(points) == 2 and cut.fast_line and auto_apply and cut.depth_mode != 'SURFACE':
         near, far = cg.depth_planes(projector, cg.object_world_bounds(targets))
         vd = projector.view_dir
 
