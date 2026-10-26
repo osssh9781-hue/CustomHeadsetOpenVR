@@ -21,6 +21,7 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
 from mathutils import Matrix, Vector
 
+from . import target_rules
 from . import core_geometry as cg
 
 SRC_KEY = 'mch_belt_src'
@@ -260,7 +261,7 @@ def pick_target(context, projector, path):
     for xy in probes[::max(1, len(probes) // 40)]:
         o, d = projector.ray(xy)
         for _ in range(16):
-            hit, loc, _n, _i, ob, _m = context.scene.ray_cast(dg, o, d)
+            hit, loc, _n, _i, ob, _m = target_rules.scene_ray(context, dg, o, d)
             if not hit or ob is None:
                 break
             real = bpy.data.objects.get(ob.name)

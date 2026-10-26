@@ -26,6 +26,7 @@ import math
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty
 from mathutils import Matrix, Vector
+from . import target_rules
 from . import tool_state as ts
 
 PTS_KEY = 'mch_tube_pts'          # object custom prop: flat [x, y, z, r, ...] in object space
@@ -744,7 +745,7 @@ class TubeLogic:
         dg = context.evaluated_depsgraph_get()
         o, d = Vector(origin), Vector(direction).normalized()
         for _ in range(8):
-            ok, loc, nrm, _i, hit, _m = context.scene.ray_cast(dg, o, d)
+            ok, loc, nrm, _i, hit, _m = target_rules.scene_ray(context, dg, o, d)
             if not ok:
                 return None
             if hit is not None and (hit.name == self.ob_name or is_tube(hit)):

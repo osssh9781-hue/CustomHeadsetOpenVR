@@ -24,6 +24,7 @@ import bpy
 from bpy.props import StringProperty
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
+from . import target_rules
 
 MODES = {'CUT', 'SPLIT', 'PLATE', 'WRINKLE'}
 PATCH_MODES = {'PLATE', 'WRINKLE'}        # 0.22.2: Armor Plate / Cloth Plate from a surface outline
@@ -284,7 +285,7 @@ class SurfaceLogic:
         origin, direction = self._proj(context).ray(xy)
         if self.target is None:
             dg = context.evaluated_depsgraph_get()
-            ok, loc, nrm, _i, ob, _m = context.scene.ray_cast(dg, Vector(origin), Vector(direction))
+            ok, loc, nrm, _i, ob, _m = target_rules.scene_ray(context, dg, Vector(origin), Vector(direction))
             if not ok or ob is None or ob.type != 'MESH':
                 return None
             self.target = SurfaceTarget(context, ob)

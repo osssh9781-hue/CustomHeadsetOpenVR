@@ -1825,6 +1825,10 @@ class MCH_PT_main(bpy.types.Panel):
         col.label(text={'OK': '', 'PARTIAL': 'Status: partial', 'TODO': 'Status: not implemented'}[status])
         if native and ts.native_tool_id(context) != native:
             layout.operator('mch.set_tool', text=f'Activate {label} tool in viewport', icon='RESTRICT_SELECT_OFF').tool = tid
+        from . import target_rules
+        if tool_id in target_rules.PICKING:      # 0.24.34 the Cut panel's Targets row, in every tool
+            from . import ui_tool_settings
+            ui_tool_settings.draw_targets(layout, context)
         drawer = _drawers().get(tool_id)
         if drawer is not None:
             drawer(layout, context)

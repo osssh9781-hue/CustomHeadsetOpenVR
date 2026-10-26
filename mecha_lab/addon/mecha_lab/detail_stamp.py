@@ -26,6 +26,7 @@ import re
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
 from mathutils import Matrix, Vector
+from . import target_rules
 
 FOLDER = 'details'
 PREVIEW_NAME = 'MCH_DetailPreview'
@@ -179,7 +180,7 @@ def surface_hit(context, origin, direction, skip=()):
     o = Vector(origin)
     d = Vector(direction).normalized()
     for _ in range(12):
-        ok, loc, nrm, _i, ob, _m = context.scene.ray_cast(dg, o, d)
+        ok, loc, nrm, _i, ob, _m = target_rules.scene_ray(context, dg, o, d)
         if not ok:
             return None
         if ob is not None and (ob.name in skip or ob.name.startswith(PREVIEW_NAME)):

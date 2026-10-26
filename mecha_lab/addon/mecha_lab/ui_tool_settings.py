@@ -127,6 +127,15 @@ def draw_shape_options(layout, context, mode):
                 sub.prop(brush, 'outline_segments')
 
 
+def draw_targets(layout, context):
+    """0.24.34 Auto Target / Selected Only / Active for every tool that draws on a mesh (same setting as Cut)."""
+    col = layout.column(align=True)
+    col.prop(context.scene.mch_cut, 'targets', expand=True)
+    if context.scene.mch_cut.targets != 'AUTO':
+        from . import target_rules
+        col.label(text='Draws on ' + target_rules.label(context) + ' (others are looked through)', icon='RESTRICT_SELECT_OFF')
+
+
 def draw_cut(layout, context, mode='CUT'):
     s = context.scene.mch_settings
     cut = context.scene.mch_cut

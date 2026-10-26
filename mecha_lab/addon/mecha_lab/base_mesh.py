@@ -35,6 +35,7 @@ from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, St
 from mathutils import Matrix, Vector
 from mathutils.geometry import delaunay_2d_cdt
 
+from . import target_rules
 from . import core_geometry as cg
 from . import tool_state as ts
 
@@ -1052,7 +1053,7 @@ def plane_frame(context, projector, groups):
     try:
         o, d = projector.ray(c)
         dg = context.evaluated_depsgraph_get()
-        hit, loc, _n, _i, ob, _m = context.scene.ray_cast(dg, o, d)
+        hit, loc, _n, _i, ob, _m = target_rules.scene_ray(context, dg, o, d)
         if hit and ob is not None and ob.type == 'MESH':
             origin = loc
     except (AttributeError, RuntimeError, TypeError):
@@ -1091,7 +1092,7 @@ def surface_frame(context, projector, screen_groups, height=0.2):
     try:
         dg = context.evaluated_depsgraph_get()
         o, d = projector.ray(c)
-        hit, loc, nrm, _i, ob, _m = context.scene.ray_cast(dg, o, d)
+        hit, loc, nrm, _i, ob, _m = target_rules.scene_ray(context, dg, o, d)
     except (AttributeError, RuntimeError, TypeError):
         return None
     if not hit or ob is None or ob.type != 'MESH':
@@ -1100,7 +1101,7 @@ def surface_frame(context, projector, screen_groups, height=0.2):
     hits = [(Vector(loc), Vector(nrm))]
     for q in _outline_samples(outer):
         o2, d2 = projector.ray(q)
-        h2, l2, n2, _i2, ob2, _m2 = context.scene.ray_cast(dg, o2, d2)
+        h2, l2, n2, _i2, ob2, _m2 = target_rules.scene_ray(context, dg, o2, d2)
         if h2 and ob2 is not None and ob2.name == name:
             hits.append((Vector(l2), Vector(n2)))
     n = Vector((0.0, 0.0, 0.0))
@@ -1248,7 +1249,7 @@ def _cutter_targets(context, projector, screen_groups, targets):
     outer = screen_groups[0][0]
     c = (sum(q[0] for q in outer) / len(outer), sum(q[1] for q in outer) / len(outer))
     o, d = projector.ray(c)
-    hit, _loc, _n, _i, ob, _m = context.scene.ray_cast(context.evaluated_depsgraph_get(), o, d)
+    hit, _loc, _n, _i, ob, _m = target_rules.scene_ray(context, context.evaluated_depsgraph_get(), o, d)
     return [bpy.data.objects[ob.name]] if hit and ob is not None and ob.type == 'MESH' else []
 
 
@@ -1266,7 +1267,7 @@ def _sketch_cutter_targets(context, groups, frame):
         cx = sum(q[0] for q in outer) / len(outer)
         cy = sum(q[1] for q in outer) / len(outer)
         start = frame @ Vector((cx, cy, 0.0)) + n * 1000.0
-        hit, _loc, _n, _i, ob, _m = context.scene.ray_cast(dg, start, -n)
+        hit, _loc, _n, _i, ob, _m = target_rules.scene_ray(context, dg, start, -n)
         if hit and ob is not None and ob.type == 'MESH':
             real = bpy.data.objects[ob.name]
             if real not in found:

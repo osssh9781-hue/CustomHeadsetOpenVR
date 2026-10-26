@@ -318,9 +318,10 @@ def side_polygon(points, box):
 
 
 def pick_mesh_under(context, projector, xy):
+    from . import target_rules
     origin, direction = projector.ray(xy)
     dg = context.evaluated_depsgraph_get()
-    hit, _loc, _n, _i, ob, _m = context.scene.ray_cast(dg, origin, direction)
+    hit, _loc, _n, _i, ob, _m = target_rules.scene_ray(context, dg, origin, direction)
     if hit and ob is not None and ob.type == 'MESH':
         original = ob.original
         # The mask preview is a selectable-disabled overlay, not a target mesh.

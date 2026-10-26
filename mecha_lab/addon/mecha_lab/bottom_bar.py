@@ -223,7 +223,9 @@ class MCH_OT_toggle_targets(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return hasattr(context.scene, 'mch_cut') and ts.effective_tool(context) in {'CUT', 'SPLIT'}
+        from . import target_rules
+        return hasattr(context.scene, 'mch_cut') and (ts.effective_tool(context) in {'CUT', 'SPLIT'}
+                                                       or ts.effective_tool(context) in target_rules.PICKING)
 
     def execute(self, context):
         cut = context.scene.mch_cut

@@ -28,6 +28,7 @@ from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, St
 from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
 
+from . import target_rules
 from . import core_geometry as cg
 
 SRC_KEY = 'mch_cape_src'
@@ -511,7 +512,7 @@ def pick_body(context, projector, groups):
         o, d = projector.ray(xy)
         o, d = Vector(o), Vector(d).normalized()
         for _k in range(256):                # through hair / capes in front (many surfaces)
-            hit, loc, _n, _i, hob, _m = context.scene.ray_cast(dg, o, d)
+            hit, loc, _n, _i, hob, _m = target_rules.scene_ray(context, dg, o, d)
             if not hit or hob is None:
                 break
             real = bpy.data.objects.get(hob.name)

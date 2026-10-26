@@ -29,6 +29,7 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
 from mathutils import Matrix, Vector
 
+from . import target_rules
 from . import core_geometry as cg
 
 SRC_KEY = 'mch_bridge_src'
@@ -252,7 +253,7 @@ def _cast(context, origin, direction, skip):
     d = Vector(direction).normalized()
     travelled = 0.0
     for _k in range(8):
-        hit, loc, nrm, _i, ob, _m = context.scene.ray_cast(depsgraph, o, d)
+        hit, loc, nrm, _i, ob, _m = target_rules.scene_ray(context, depsgraph, o, d)
         if not hit:
             return None, 0.0
         travelled += (loc - o).length
@@ -269,7 +270,7 @@ def _exit_depth(context, origin, direction, entry):
     depsgraph = context.evaluated_depsgraph_get()
     d = Vector(direction).normalized()
     o = Vector(origin) + d * (entry + 1e-4)
-    hit, loc, _n, _i, ob, _m = context.scene.ray_cast(depsgraph, o, d)
+    hit, loc, _n, _i, ob, _m = target_rules.scene_ray(context, depsgraph, o, d)
     if not hit or (ob is not None and ob.get(SRC_KEY)):
         return None
     return entry + 1e-4 + (loc - o).length

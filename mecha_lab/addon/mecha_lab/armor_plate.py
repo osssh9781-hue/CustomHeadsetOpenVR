@@ -35,6 +35,7 @@ from mathutils import Matrix, Quaternion, Vector
 from mathutils.bvhtree import BVHTree
 from mathutils.geometry import delaunay_2d_cdt
 
+from . import target_rules
 from . import core_geometry as cg
 from . import tool_state as ts
 
@@ -211,7 +212,7 @@ def pick_surface(context, projector, groups):
     for xy in probes:
         o, d = projector.ray(xy)
         for _ in range(16):
-            hit, loc, _n, _i, ob, _m = context.scene.ray_cast(dg, o, d)
+            hit, loc, _n, _i, ob, _m = target_rules.scene_ray(context, dg, o, d)
             if not hit or ob is None:
                 break
             real = bpy.data.objects.get(ob.name)

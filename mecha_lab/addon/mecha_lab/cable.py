@@ -24,6 +24,7 @@ import bpy
 from bpy.props import (BoolProperty, EnumProperty, FloatProperty, FloatVectorProperty, IntProperty, PointerProperty,
                        StringProperty)
 from mathutils import Matrix, Vector
+from . import target_rules
 
 COLL_CABLE = 'Cable Objects'
 
@@ -275,7 +276,7 @@ def surface_hit(context, region, rv3d, xy):
     from bpy_extras import view3d_utils
     origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, xy)
     direction = view3d_utils.region_2d_to_vector_3d(region, rv3d, xy)
-    hit, loc, nrm, _i, ob, _m = context.scene.ray_cast(context.evaluated_depsgraph_get(), origin, direction)
+    hit, loc, nrm, _i, ob, _m = target_rules.scene_ray(context, context.evaluated_depsgraph_get(), origin, direction)
     if not hit:
         return None
     return loc, nrm, ob

@@ -10,6 +10,7 @@ import json
 
 import bpy
 
+from . import target_rules
 from . import core_geometry as cg
 
 KEY = 'mch_subtract'
@@ -105,7 +106,7 @@ def pick(context, mode, loops, projector):
         o, d = projector.ray(xy)
         o, d = Vector(o), Vector(d).normalized()
         for _k in range(16):
-            hit, loc, _n, _i, hob, _m = context.scene.ray_cast(dg, o, d)
+            hit, loc, _n, _i, hob, _m = target_rules.scene_ray(context, dg, o, d)
             if not hit or hob is None:
                 break
             real = bpy.data.objects.get(hob.name)

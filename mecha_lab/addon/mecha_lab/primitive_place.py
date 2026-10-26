@@ -39,6 +39,7 @@ from bpy.props import (BoolProperty, EnumProperty, FloatProperty, FloatVectorPro
                        PointerProperty, StringProperty)
 from mathutils import Matrix, Quaternion, Vector
 
+from . import target_rules
 from . import core_geometry as cg
 from . import tool_state as ts
 
@@ -864,7 +865,7 @@ def _ray_place(context, region, rv3d, xy):
     origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, xy)
     direction = view3d_utils.region_2d_to_vector_3d(region, rv3d, xy)
     dg = context.evaluated_depsgraph_get()
-    hit, loc, normal, _i, _ob, _m = context.scene.ray_cast(dg, origin, direction)
+    hit, loc, normal, _i, _ob, _m = target_rules.scene_ray(context, dg, origin, direction)
     if hit:
         return loc, normal
     st = state(context)

@@ -15,6 +15,7 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty
 from mathutils import Matrix, Vector
 from mathutils.geometry import delaunay_2d_cdt
+from . import target_rules
 
 KINDS = (
     ('DOME', 'Dome', 'Round button head', 'MESH_UVSPHERE'),
@@ -237,7 +238,7 @@ def ray_hit(context, origin, direction, skip_screws=True):
     o = Vector(origin)
     d = Vector(direction).normalized()
     for _ in range(16):
-        hit, loc, nrm, _i, hob, _m = context.scene.ray_cast(dg, o, d)
+        hit, loc, nrm, _i, hob, _m = target_rules.scene_ray(context, dg, o, d)
         if not hit or hob is None:
             return None, None, None
         real = bpy.data.objects.get(hob.name)

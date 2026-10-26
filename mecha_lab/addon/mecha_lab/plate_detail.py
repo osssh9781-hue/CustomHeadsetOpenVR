@@ -24,6 +24,7 @@ import bmesh
 import bpy
 import numpy as np
 from mathutils import Vector
+from . import target_rules
 
 # Layer presets: (width, height) per layer, outer layer first, FRACTIONS of the plate size (bounding
 # diagonal).  Outer layer is the highest; the inside panel sits at Base.
@@ -724,7 +725,7 @@ def pick_target(context, projector, groups):
     for xy in probes:
         o, d = projector.ray(xy)
         for _ in range(16):
-            hit, loc, _n, _i, hob, _m = context.scene.ray_cast(dg, o, d)
+            hit, loc, _n, _i, hob, _m = target_rules.scene_ray(context, dg, o, d)
             if not hit or hob is None:
                 break
             real = bpy.data.objects.get(hob.name)

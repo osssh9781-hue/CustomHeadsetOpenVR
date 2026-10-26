@@ -14,6 +14,8 @@ import math
 
 from mathutils import Vector
 
+from . import target_rules
+
 MODES = {'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'CUT', 'SPLIT', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'SPIKE', 'SCALES',
          'DETAIL', 'DETAIL2', 'DETAIL3'}      # 0.24.20 + Plate Detail 1 / 2 / 3
 CAPS = (('ROUND', 'Round', 'Round line ends'), ('FLAT', 'Flat', 'Square line ends'))
@@ -170,7 +172,7 @@ def pixels_per_unit(context, projector, xy):
     hit = None
     try:
         dg = context.evaluated_depsgraph_get()
-        ok, loc, *_r = context.scene.ray_cast(dg, Vector(origin), direction)
+        ok, loc, *_r = target_rules.scene_ray(context, dg, Vector(origin), direction)
         if ok:
             hit = loc
     except (AttributeError, RuntimeError, TypeError):
