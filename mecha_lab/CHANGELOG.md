@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 0.24.45 — Alt: Ramp 깊은 변을 그린 뒤에 고르기 (2026-10-26)
+
+- **Alt: Ramp가 그린 뒤에도 고칠 수 있는 상태(live)로 남음**: 파기 전 메쉬를 보관해 두고, Base Mesh 패널의 RAMP (live) 칸에서 ◀ ▶(다음 / 이전 변) 또는 **Pick Edge**(뷰포트에서 변 클릭)로 깊은 변을 바꾸면 보관한 메쉬에서 다시 팜. Carve Depth / Ramp Length / Ramp Soft를 움직여도 바로 다시 팜. **Apply** = 확정, **Remove** = 파기 전으로. 뷰포트에 다각형 변(흰 선)과 깊은 변(주황 굵은 선) 표시. 한 번에 하나만 live — 새 Ramp를 그리면 이전 것은 그대로 확정. Free Draw 모양은 꼭짓점을 찾아 변 단위로.
+- 테스트: 126개 파일 3644/3644. test_v02466 추가. ZIP sha256 `edf257ab6a7e624e11ddf4da985b5316d1c0dd2e96c24f624af10a6603edf257`.
+
 ## 0.24.44 — Base Mesh Alt: Ramp(경사 파기) + Ramp Soft, Path Move 자동 Stretch 전환 제거 (2026-10-26)
 
 - **Base Mesh Alt: Ramp**: Alt + 다각형 → 처음 찍은 변이 가장 깊고(Carve Depth, 0 = Height) 반대쪽으로 갈수록 얕아져 표면과 만나는 경사 홈(바닥 = 기운 면). 표면 위의 면이 살짝 눌려 들어간 듯한 다각형 묘사용. **Ramp Length**(1 = 반대쪽 끝에서 표면과 만남, 작을수록 앞쪽에서 만남), 깊은 쪽 벽 = Flat / Chamfer / Bevel 프로파일.

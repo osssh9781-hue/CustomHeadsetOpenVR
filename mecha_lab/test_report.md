@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.44
+# Test Report — Mecha Lab 0.24.45
+
+## 0.24.45 결과: 126개 파일 3644/3644 (`tests/test_log_bpy501_v02445.txt`, Blender 5.0.1 bpy). test_v02466(12): corners(클릭 다각형 그대로, 촘촘한 사각형 → 4변), nearest_side, 큐브 Ramp 뒤 live 기록 · 보관 메쉬 · 모서리 4개, 처음 = 왼쪽 깊음(0.191 / 0.009), ▶ = 위쪽 깊음 · 왼쪽 0.096 · 닫힘, ◀◀ = 아래쪽, Carve Depth 0.1 → 바로 0.095, 패널, Remove = 꼭짓점 8개로 · 기록 / 보관본 없음, ▶▶ + Apply = 오른쪽 깊음 · 정리됨, 다른 큐브에 새 Ramp = 이전 확정 · 보관본 1개. 5.2.3 bpy에서도 test_v02466 통과. Pick Edge 뷰포트 클릭과 선 그리기는 화면이 필요해 미검증.
 
 ## 0.24.44 결과: 125개 파일 3632/3632 (`tests/test_log_bpy501_v02444.txt`, Blender 5.0.1 bpy). test_v02465(11): ramp_scale(1 / 0.5 / 0, 변 방향 무관, Length 0.5), first_edge, 큐브에 사각형 Ramp(Flat, 0.2, Soft 0) — 닫힘, 깊이 0.19 / 0.10 / 0.03 미만, 바깥 그대로; Length 0.5 → 절반 너머 0; soften_ramp(깊은 끝 그대로, 표면 근처 완만, 외곽 근처 감소, Soft 0 = 그대로); Soft 1 큐브 — 깊이 0.191 / 0.096 / 0.012 / 0 · 닫힘. test_v02463(5): 작은 브러시도 Extend 유지. 5.2.3 bpy에서도 test_v02465 · test_v02463 · test_v02439 · test_v02458 통과. 렌더로 Soft 0 / 0.8 비교 확인. 실제 화면 입력은 미검증.
 

@@ -1,4 +1,9 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.44 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.45 (Claude Code, 2026-10-14)
+
+## 0.24.45
+- ZIP sha256 `edf257ab6a7e624e11ddf4da985b5316d1c0dd2e96c24f624af10a6603edf257`.
+- 새 모듈 `ramp_edit.py`: 오브젝트 속성 `mch_ramp_live`(JSON: loops, 동결 projector, side, backup 메쉬 이름, corners 화면 / corners_w 대상 로컬), 씬 `mch_ramp_target`. `corners(loop)`(RDP, 둘레 2 %) · `sides` · `nearest_side`(순수). `begin`(이전 live 확정, 메쉬 copy를 fake user로 보관), `recarve`(보관본 → 메쉬, `carve_surface(..., ramp_edge=side, live=False)`), `set_side`, `refresh`(슬라이더), `finish`, `remove`. 연산자 `mch.ramp_side`(step) · `mch.ramp_pick`(모달, 화면에 투영한 corners_w에서 가장 가까운 변) · `mch.ramp_apply` · `mch.ramp_remove`, `draw_panel`, POST_VIEW 선 그리기.
+- `base_mesh.carve_surface(..., ramp_edge=None, live=True)`: RAMP면 깊은 변 = ramp_edge 또는 `ramp_edit.sides(loops[0])[0]`, 대상 1개일 때 `begin`. 실패 시 `finish`. carve_depth / ramp_length / ramp_soft에 `_ramp_live_update`.
 
 ## 0.24.44
 - ZIP sha256 `73c22730f70b5fd8f91c779ace079ed0e91a45968f46dce011eecd937cad8769`.

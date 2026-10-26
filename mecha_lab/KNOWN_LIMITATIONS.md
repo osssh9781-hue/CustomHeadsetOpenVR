@@ -1,5 +1,11 @@
 # KNOWN LIMITATIONS — Mecha Lab 0.18.0
 
+## 0.24.45 Ramp live
+- Pick Edge 클릭 · 변 표시는 실제 화면에서 확인 안 함.
+- live 상태에서 Ctrl+Z를 쓰면 메쉬만 돌아가고 live 기록은 어긋날 수 있음(◀ ▶ / Remove 권장).
+- 한 번에 하나만 live. 여러 대상에 걸친 Ramp(대상 2개 이상)는 live가 아님.
+- Profile(Flat / Chamfer / Bevel)을 바꾸는 것은 자동으로 다시 파지 않음(◀ ▶를 한 번 누르면 반영).
+
 ## 0.24.44 Alt: Ramp
 - 실제 화면에서 써 보지 않음. Free Draw로 그리면 "처음 변" = 처음 두 점(2px 이상)이라 짧은 시작 획이 방향을 정함 — 다각형 클릭이 정확함.
 - Soft를 많이 올리면 얕은 쪽 절반이 거의 표면 높이라 파인 부분이 작아 보임(Carve Depth를 올리면 됨).
