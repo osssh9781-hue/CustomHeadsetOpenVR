@@ -588,9 +588,11 @@ def _draw_base_sketch(layout, context, base_mesh):
             if sp.alt_mode == 'RAMP':                                       # 0.24.44 deep at the first edge
                 box.prop(sp, 'ramp_length', slider=True)
                 box.prop(sp, 'ramp_soft', slider=True)
-                box.label(text='Deepest at the first edge you draw', icon='INFO')
+                box.label(text='Deep side: the first edge (change it after: < > / Pick Edge)', icon='INFO')
         elif sp.alt_mode == 'INSIDE':
             box.prop(sp, 'inside_skin', slider=True)                        # 0.24.38 the skin left front / back
+        from . import ramp_edit                                             # 0.24.45 pick the deep side later
+        ramp_edit.draw_panel(box, context)
     data = base_mesh.sketch_data(context.scene)
     if not sp.sketch and data is None:
         box.label(text='Each outline becomes a mesh at once (Alt: cutter)')

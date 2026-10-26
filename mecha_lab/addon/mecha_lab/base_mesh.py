@@ -97,6 +97,15 @@ def _rebuild_update(self, context):
                     pass
 
 
+def _ramp_live_update(self, context):
+    """0.24.45 a Ramp slider moved: the live ramp (if any) is carved again."""
+    try:
+        from . import ramp_edit
+        ramp_edit.refresh(context)
+    except Exception:          # a slider must never fail
+        pass
+
+
 class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
     """Scene.mch_base = defaults for new shapes; Object.mch_base = live settings."""
     profile: EnumProperty(name='Profile', items=PROFILE_ITEMS, default='FLAT', update=_rebuild_update)
@@ -159,12 +168,15 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
         ('CUT', 'Alt: Like Cut', 'Alt + draw cuts like the Cut tool (its Through All / From Surface depth)')],
         description='What Alt + draw does')
     carve_depth: FloatProperty(name='Carve Depth', default=0.0, min=0.0, soft_max=1.0, precision=4, unit='LENGTH',
+                               update=_ramp_live_update,
                                description='Alt + draw carves this deep (0 = Height). Keep it less than the part is '
                                            'thick, or the carve goes right through to the other side')
     ramp_length: FloatProperty(name='Ramp Length', default=1.0, min=0.05, max=1.0, subtype='FACTOR',
+                               update=_ramp_live_update,
                                description='Alt: Ramp - how far across the shape the slope goes (1 = it meets the '
                                            'surface at the far side; less = deep and flat first, then the slope)')
     ramp_soft: FloatProperty(name='Ramp Soft', default=0.5, min=0.0, max=1.0, subtype='FACTOR',
+                             update=_ramp_live_update,
                              description='Alt: Ramp - how softly the slope runs into the surface and the side walls '
                                          'round off toward the shallow end (0 = straight slope, sharp sides; the deep '
                                          'edge stays crisp)')
@@ -1343,7 +1355,7 @@ def first_edge(loops, min_px=2.0):
     return None
 
 
-def carve_surface(context, loops, projector, p, targets=None):
+def carve_surface(context, loops, projector, p, targets=None, ramp_edge=None, live=True):
     """0.24.37 Alt (Carve Height): the drawn shape laid ON the surface and carved in, Height deep everywhere
     along it (a curved surface gets an even pocket / groove, not a flat-bottomed one); Flat = straight walls,
     Chamfer / Bevel = that edge at the opening (Border Width)."""
@@ -1355,35 +1367,45 @@ def carve_surface(context, loops, projector, p, targets=None):
     targets = _cutter_targets(context, projector, screen_groups, targets)
     if not targets:
         raise cg.CutError('Alt Base Mesh carves into a mesh: draw over one (nothing was changed).')
-    through = getattr(p, 'alt_mode', 'HEIGHT') == 'THROUGH'
+    through = getattr(p, 'alt_mode', 'HEIGHT') == 'THROUGH' and ramp_edge is None
     height = max(getattr(p, 'carve_depth', 0.0) or p.height, 1e-5)
-    st = SimpleNamespace(profile=SURFACE_CARVE[p.profile], edge=0.35, sink=0.0, edge_abs=getattr(p, 'bevel_width', 0.05),
+    st = SimpleNamespace(profile=SURFACE_CARVE.get(p.profile, 'SQUARE'), edge=0.35, sink=0.0, edge_abs=getattr(p, 'bevel_width', 0.05),
                          fill_res=max(15, min(60, getattr(p, 'resolution', 28))),
                          segments=getattr(p, 'bevel_segments', 4), fine=getattr(p, 'resolution', 28) / 28.0)
     ramp = None
-    if getattr(p, 'alt_mode', 'HEIGHT') == 'RAMP':     # 0.24.44 the first drawn edge is the deep side
-        edge = first_edge(loops)
+    is_ramp = ramp_edge is not None or getattr(p, 'alt_mode', 'HEIGHT') == 'RAMP'
+    if is_ramp:                     # 0.24.44 the first side drawn is the deep side (0.24.45: or the one picked later)
+        from . import ramp_edit
+        edge = ramp_edge
+        if edge is None:
+            segs = ramp_edit.sides(loops[0]) if loops and len(loops[0]) >= 3 else []
+            edge = segs[0] if segs else first_edge(loops)
         if edge is None:
             raise cg.CutError('Alt: Ramp - draw a shape with at least one clear edge.')
         ramp = (edge[0], edge[1], getattr(p, 'ramp_length', 1.0), getattr(p, 'ramp_soft', 0.5))
+        if live and len(targets) == 1:
+            ramp_edit.begin(context, targets[0], loops, projector)     # 0.24.45 the deep side can change later
     done, failed = [], []
     for t in targets:
         try:
             cg.check_target(t)
-            if getattr(p, 'alt_mode', 'HEIGHT') == 'INSIDE':
+            if not is_ramp and getattr(p, 'alt_mode', 'HEIGHT') == 'INSIDE':
                 height = sd.carve_inside(context, t, screen_groups, projector, st, getattr(p, 'inside_skin', 0.25))
             else:
                 height = sd.carve_area(context, t, screen_groups, projector, st, height, through, ramp=ramp)
             done.append(t.name)
         except (cg.CutError, RuntimeError) as ex:
             if len(targets) == 1:
+                if ramp is not None and live:
+                    from . import ramp_edit
+                    ramp_edit.finish(t)         # nothing carved: nothing to change later either
                 raise
             failed.append(f'{t.name} ({str(ex).splitlines()[0][:60]})')
     if not done:
         raise cg.CutError('Alt Base Mesh: nothing was carved. ' + '; '.join(failed))
     return f'Base Mesh carve (Alt): {", ".join(done)} | ' + \
         ('a window right through' if through else
-         f'a ramp {height:.3g} deep at the first edge, up to the surface' if ramp else
+         f'a ramp {height:.3g} deep, up to the surface (deep side: < > / Pick Edge in the panel)' if ramp else
          'a channel inside (windows where it crosses the side walls)' if p.alt_mode == 'INSIDE' else
          f'{height:.3g} deep along the surface') + \
         (' | failed: ' + '; '.join(failed) if failed else '')
