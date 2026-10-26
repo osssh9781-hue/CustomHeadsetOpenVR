@@ -1,6 +1,8 @@
 """0.24.48 Quad Remesh (keep edges): a part that was cut / booleaned becomes all quads; the hard edges
 the cut left (Edge Angle, marked Sharp / Crease) stay as quad lines; the original is kept hidden;
-Re-make / Show Original / Apply; open meshes are refused with a clear message."""
+Re-make / Show Original / Apply; open meshes are refused with a clear message.
+Two methods: Flow (QuadriFlow, warns when thin slivers lost their edges) and Patch (flat patches between the
+hard edges get an even grid; the hard edges stay exactly)."""
 import inspect
 import math
 
@@ -149,4 +151,81 @@ r = bpy.ops.mch.quad_remesh()
 check('Open mesh (a plane): refused with a message, nothing made', r == {'CANCELLED'}
       and len(bpy.data.objects) == n_obj and not g.hide_get() and not qr.is_quad(C.active_object))
 check('... the message says why', "open / non-manifold" in inspect.getsource(qr.build_mesh))
+
+# a cut that runs out through the side leaves thin slivers: Flow warns, Patch keeps every edge
+fresh()
+S = C.scene
+st = S.mch_quadremesh
+S.mch_settings.auto_apply = True
+check('Method: Flow (default) and Patch, in the panel', st.method == 'FLOW'
+      and {i.identifier for i in st.bl_rna.properties['method'].enum_items} == {'FLOW', 'PATCH'}
+      and "'method'" in inspect.getsource(qr.draw))
+bpy.ops.mesh.primitive_cube_add(size=2.0)
+part = C.active_object
+part.scale = (1.3, 1.0, 0.6)
+bpy.ops.object.transform_apply(scale=True)
+S.mch_cut.depth_mode, S.mch_cut.depth = 'SURFACE', 0.25
+ce.perform_closed(C, 'CUT', [part], [[(400, 440), (400, 560), (520, 560), (520, 440)]], TOP, False)
+ce.perform_closed(C, 'CUT', [part], [[(560, 520), (600, 560), (640, 520), (600, 480)]], TOP, False)
+bpy.ops.mesh.primitive_cylinder_add(radius=0.35, depth=3, location=(1.3, 0, -0.6), rotation=(math.pi / 2, 0, 0))
+cyl = C.active_object
+m = part.modifiers.new('notch', 'BOOLEAN')
+m.object, m.solver = cyl, 'EXACT'
+with C.temp_override(object=part, active_object=part):
+    bpy.ops.object.modifier_apply(modifier='notch')
+bpy.data.objects.remove(cyl)
+probe = part.data.copy()
+qr.prepare(probe, math.radians(30))
+src_edges = hard_edges(probe)
+pts = samples(src_edges)
+area = sum(p.area for p in part.data.polygons)
+
+
+def run(method):
+    st.method, st.faces = method, 3000
+    part.hide_set(False)
+    bpy.ops.object.select_all(action='DESELECT')
+    part.select_set(True)
+    C.view_layer.objects.active = part
+    bpy.ops.mch.quad_remesh()
+    return C.active_object
+
+
+flow = run('FLOW')
+h = math.sqrt(area / 3000)
+check('Flow on thin slivers: the lost edge length is measured and warned about (panel line too)',
+      flow.get(qr.MISS_KEY, 0) > qr.MISS_LIMIT and 'Some cut edges got lost' in inspect.getsource(qr.draw),
+      round(flow.get(qr.MISS_KEY, 0), 2))
+patch = run('PATCH')
+polys = patch.data.polygons
+check('Patch: all quads, near Faces, closed', all(len(p.vertices) == 4 for p in polys)
+      and 2000 < len(polys) < 4500 and non_manifold(patch) == 0 and patch != flow, len(polys))
+check('... every cut / boolean edge kept (nothing lost)', patch.get(qr.MISS_KEY, 1) == 0.0
+      and qr._edge_miss(src_edges, patch.data, h, math.radians(18)) == 0.0)
+med, p95 = edge_error(pts, hard_edges(patch.data))
+check('... exactly on the old edges', p95 < 1e-4, (med, p95))
+bvh = BVHTree.FromObject(part, C.evaluated_depsgraph_get())
+far = max((bvh.find_nearest(v.co)[0] - v.co).length for v in patch.data.vertices)
+check('... the shape is the same (flat patches stay flat)', far < 1e-3, far)
+lens = sorted(e.calc_length() if hasattr(e, 'calc_length') else
+              (patch.data.vertices[e.vertices[0]].co - patch.data.vertices[e.vertices[1]].co).length
+              for e in patch.data.edges)
+check('... even quads: most edges near the quad size', lens[len(lens) // 2] > 0.6 * h
+      and lens[int(len(lens) * 0.9)] < 1.6 * h, (round(h, 3), round(lens[len(lens) // 2], 3)))
+top = [p for p in polys if p.normal.z > 0.99 and p.center.z > 0.59]
+square = sum(1 for p in top if max(abs(patch.data.vertices[a].co.x - patch.data.vertices[b].co.x)
+                                   + abs(patch.data.vertices[a].co.y - patch.data.vertices[b].co.y)
+                                   for a, b in zip(p.vertices, list(p.vertices[1:]) + [p.vertices[0]])) < 1.3 * h)
+check('... the flat top is mostly a grid lined up with the part (quads near h, axis aligned)',
+      square > 0.6 * len(top), (square, len(top)))
+
+# curved part: Patch keeps going (the faces of curved areas are split into quads)
+bpy.ops.mesh.primitive_uv_sphere_add(segments=24, ring_count=12, radius=1, location=(5, 0, 0))
+sph = C.active_object
+st.method, st.faces = 'PATCH', 2000
+bpy.ops.mch.quad_remesh()
+q = C.active_object
+check('Patch on a curved part: still all quads and closed (no flat patches to grid)',
+      q != sph and all(len(p.vertices) == 4 for p in q.data.polygons) and non_manifold(q) == 0,
+      len(q.data.polygons))
 summary()
