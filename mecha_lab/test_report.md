@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.35
+# Test Report — Mecha Lab 0.24.36
+
+## 0.24.36 결과: 112개 파일 3497/3497 (`tests/test_log_bpy501_v02436.txt`, Blender 5.0.1 bpy). 새 test_v02448(3: Through All 2점 = 평면 컷 끝까지, From Surface 2점 = 깊이까지 계단 · 닫힘, 꺾인 선 깊이), test_v02449(6: 이름, 패널 · Path Move에 있음, 켜면 슬라이더 · Lasso 안내, 모든 그리기 모드에서 스태빌라이저 시작, 천천히 따라옴, 끄면 비활성), test_v02450(10: Shift 45° 직선 · 앞부분 유지 · 0° 스냅 · 떼면 이어짐 · 놓으면 90° 끝, Slow Line 켜고 끄고 각각), test_v02451(2: HIDE가 Line 툴, 2점 선 = Line Width 0.5 × 4 × 4 = 8 숨김), test_v02452(5: 가운데 빗나감 → 앞면, plane_frame · surface_frame 앞면, 메쉬 위 외곽선 = 가운데, 아무것도 없으면 커서 깊이). 5.2.3 bpy에서도 test_v02448 · test_v02449 · test_v02450 · test_v02451 · test_v02452 · test_v02316 · test_v02317 · test_v0241 · test_cut_geometry · test_v090_features · test_v0100_regression · test_ui_draw · test_v02437 · test_v02439 통과. 실제 화면 입력은 미검증.
 
 ## 0.24.35 결과: 107개 파일 3471/3471 (`tests/test_log_bpy501_v02435.txt`, Blender 5.0.1 bpy). 새 test_v02447(7: UNDO_KEEP에 크기들, 스냅샷 → 복원으로 크기 유지, 큐브 4 cuts = 9 슬라이스, 간격 이하 엣지, 모양 · 닫힘 유지, 버튼 = 패널 Cuts 값 · 변마다 고른 간격, 패널에 있음). 5.2.3 bpy에서도 test_v02447 · test_v02437 · test_v02438 · test_v02439 · test_ui_draw · test_v0113 통과. 실제 화면 입력은 미검증.
 

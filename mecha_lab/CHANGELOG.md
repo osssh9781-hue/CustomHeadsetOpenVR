@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 0.24.36 — 컷 라인 깊이(From Surface), Slow Line(레이지 마우스) 버튼, Shift = 0 / 45 / 90° 직선, Box Hide Line, Base Mesh 위치 수정 (2026-10-26)
+
+- **컷 라인도 Cut Depth만큼만**: From Surface일 때 점 2개 직선 컷도 Cut Depth 깊이까지만 잘림(전에는 빠른 평면 자르기라 끝까지 잘림). 꺾인 선 · Line 모드는 원래 깊이 적용. Through All은 예전처럼 빠른 평면 컷.
+- **Slow Line (Lazy Mouse) 버튼**: 모든 그리기 툴 패널 맨 위(대상 선택 아래)와 Path Move 패널에서 켜고 끔. 켜면 누르고 끌며 그리는 선(Free Draw, Line 모드 선, Path Move 길)이 마우스를 천천히 부드럽게 따라옴. Smoothing Strength · Lazy Radius · Guide 조절. 같은 설정 하나라 한 곳에서 켜면 모든 툴에 적용.
+- **Shift = 0 / 45 / 90° 직선**: 누르고 끌며 그리는 선(Free Draw · Line 모드 선)에서 Shift를 누르고 있으면 Shift를 누른 지점부터 0 / 45 / 90° 방향 직선. 떼면 그 끝에서 다시 자유롭게 이어 그림(Slow Line 켜도 동작). 점 찍는 Lasso는 원래 Shift 45°.
+- **Box Hide도 Line으로**: Line 버튼 켜고 그으면 선 따라 Line Width 폭의 띠만큼 숨김(Alt = 다시 보이기 그대로). Line이 동작하지 않는 툴에서는 Line 버튼이 흐리게 표시됨.
+- **Base Mesh가 뒤에 생기던 문제 수정**: 선 / 외곽선의 한가운데가 메쉬 밖(허공)이면 3D 커서 깊이(오브젝트 안쪽)에 생겼음 → 이제 선 / 외곽선 아래에서 가장 앞에 있는 표면에 생김(Stick to Surface 켜고 끄고 둘 다). 가운데가 메쉬 위면 예전과 같음, 아래에 아무것도 없으면 예전처럼 3D 커서 깊이.
+- 테스트: 112개 파일 3497/3497. 새 test_v02448(컷 깊이 3) · test_v02449(Slow Line 6) · test_v02450(Shift 직선 10) · test_v02451(Box Hide Line 2) · test_v02452(Base Mesh 위치 5). ZIP sha256 `b653fe720212e07815bd62eeb24842dcfa2e022174c27da5339a2af11724bbec`.
+
 ## 0.24.35 — Ctrl+Z에도 브러시 크기 유지, Knife Mesh 버튼 (2026-10-26)
 
 - **Ctrl+Z 해도 브러시 크기 그대로**: 그린 걸 되돌려도 Line Width, Stamp Radius, Mask Brush Radius, Concept / Path Move 크기(Real Size 포함), Screw Size, Surface Draw 다음 획 Width / Height가 초기화되지 않음(브러시 모양 · 툴은 원래 유지).

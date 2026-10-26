@@ -1,4 +1,12 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.35 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.36 (Claude Code, 2026-10-14)
+
+## 0.24.36
+- ZIP sha256 `b653fe720212e07815bd62eeb24842dcfa2e022174c27da5339a2af11724bbec`.
+- `cut_engine.perform_line`: 2점 빠른 평면 컷은 `cut.depth_mode != 'SURFACE'`일 때만, From Surface면 반평면 다각형 → `perform_closed`(depth_planes 적용).
+- Slow Line: 기존 `stabilizer.LazyStabilizer` + `mch_brush.stab_enable`(이름 'Slow Line (Lazy Mouse)'). `ui_tool_settings.draw_slow_line` = 메인 패널(PICKING + Cut / Split / Box Hide), `concept_move.draw_slow_line` = Path Move 패널. `MCH_OT_concept_path`: invoke에서 `self.stab`, modal MOUSEMOVE / TIMER에서 `stab.update` / `tick` → `self.mouse`.
+- Shift 직선: `StrokeLogic._stroke_sample`에서 `shift_held`면 `shift_anchor = (점 개수, 마지막 점)`, 그 뒤 점들 = anchor → `snap45(anchor, xy)` 직선(stroke_spacing 간격), 스태빌라이저는 끝점으로 reset, TIMER glide 건너뜀, `_stroke_finish`는 Shift 중이면 스냅 끝점.
+- `lasso_line.MODES`에 HIDE, `lasso_line.ALWAYS`(항상 선 모드 툴), 툴바 Line 버튼은 MODES ∪ ALWAYS에서만 활성.
+- `base_mesh.anchor_hit(context, projector, outer)`: 가운데 레이가 맞으면 그 점, 아니면 외곽선 샘플 중 시점 기준 가장 앞 히트. `plane_frame` · `surface_frame`이 사용.
 
 ## 0.24.35
 - ZIP sha256 `3475bb30649840d39f198f3c83c09eb7ad094a9aacd981027d8081da7bcdf6be`.

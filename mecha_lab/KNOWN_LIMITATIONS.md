@@ -1,5 +1,11 @@
 # KNOWN LIMITATIONS — Mecha Lab 0.18.0
 
+## 0.24.36 컷 깊이 / Slow Line
+- 실제 화면에서 써 보지 않음.
+- From Surface 2점 직선 컷은 Boolean이라 Through All의 평면 컷보다 느림.
+- Slow Line은 누르고 끌며 그릴 때만(Free Draw 모양, Line 선, Path Move 길): Lasso처럼 점을 클릭해 찍는 방식에는 적용 안 됨. Mask 브러시는 제외.
+- Shift 직선은 화면 기준 0 / 45 / 90°(3D 축 기준 아님). Path Move 길에는 Shift 스냅 없음.
+
 ## 0.24.35 Knife Mesh / Ctrl+Z 크기 유지
 - 실제 화면에서 써 보지 않음.
 - Knife Mesh는 오브젝트 자기 축(X / Y / Z) 방향으로만 자름: 비스듬히 돌아간 메쉬(메쉬 데이터 자체가 기울어진 경우)는 슬라이스도 그 축 기준. 면이 많이 늘어나니(Cuts 12 큐브 ≈ 864면) 큰 메쉬는 Cuts를 낮게.
