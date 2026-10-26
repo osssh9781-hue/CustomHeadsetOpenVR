@@ -990,8 +990,12 @@ def flat_cut_faces(mesh):
 
 
 def remove_cutter_attribute(mesh):
-    attr = mesh.attributes.get(CUTTER_ATTR)
-    if attr is not None:
+    """Every copy of the cutter flag goes (0.24.42: a Geometry Nodes result can carry it twice, on faces and on
+    points - a copy left behind made the NEXT cut finish this cut's border again)."""
+    for _ in range(8):
+        attr = mesh.attributes.get(CUTTER_ATTR)
+        if attr is None:
+            break
         mesh.attributes.remove(attr)
 
 

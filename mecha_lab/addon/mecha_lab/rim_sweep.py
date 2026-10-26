@@ -33,7 +33,7 @@ def _link(ng, a, b):
 
 def ensure_group(n):
     """The node group for an ``n``-point profile (made once per n)."""
-    name = f'MCH_RimSweep3_{n}'
+    name = f'MCH_RimSweep4_{n}'
     ng = bpy.data.node_groups.get(name)
     if ng is not None:
         return ng
@@ -101,8 +101,14 @@ def ensure_group(n):
     boo.operation = 'DIFFERENCE'
     boo.solver = 'EXACT'
     boo.inputs['Self Intersection'].default_value = True
+    # the band carries the part's attributes along its curves (as point attributes): dropped here, else the
+    # Boolean result has a second UVMap / cutter flag on the points (and the next cut finished this one again)
+    strip = nodes.new('GeometryNodeRemoveAttribute')
+    strip.inputs['Pattern Mode'].default_value = 'Wildcard'
+    strip.inputs['Name'].default_value = '*'
+    _link(ng, setp.outputs['Geometry'], strip.inputs['Geometry'])
     _link(ng, gin.outputs[0], boo.inputs['Mesh 1'])
-    _link(ng, setp.outputs['Geometry'], boo.inputs['Mesh 2'])
+    _link(ng, strip.outputs['Geometry'], boo.inputs['Mesh 2'])
     _link(ng, boo.outputs['Mesh'], gout.inputs[0])
     return ng
 
@@ -184,6 +190,21 @@ def mark_rim(mesh, mode, width, segments):
     return n, len(edges)
 
 
+def drop_copies(mesh, keep):
+    """The sweep carries the part's attributes along its curves (as point attributes) and the Boolean keeps both:
+    a second ``UVMap`` / cutter flag on the points.  Only the ones the mesh had before stay."""
+    names = {n for n, _d in keep}
+    for _ in range(64):
+        extra = next((a for a in mesh.attributes if a.name in names and (a.name, a.domain) not in keep), None)
+        if extra is None:
+            break
+        twins = [a for a in mesh.attributes if a.name == extra.name]
+        if len(twins) > 1:            # removing by a shared name could hit the wrong one: rename it first
+            extra.name = extra.name + '_mch_drop'
+            extra = mesh.attributes.get(extra.name)
+        mesh.attributes.remove(extra)
+
+
 def clear(mesh):
     for name in [a.name for a in mesh.attributes if a.name in (RIM, DIR) or a.name.startswith(POINT)]:
         mesh.attributes.remove(mesh.attributes[name])
@@ -194,6 +215,7 @@ def finish(mesh, mode='CHAMFER', width=0.01, segments=3):
     number of rim edges finished (0 = nothing done, the mesh unchanged)."""
     if mode not in {'CHAMFER', 'BEVEL'} or width <= 0 or mesh.attributes.get(cg.CUTTER_ATTR) is None:
         return 0
+    keep = {(a.name, a.domain) for a in mesh.attributes}
     n, count = mark_rim(mesh, mode, width, segments)
     if not count:
         clear(mesh)
@@ -223,6 +245,7 @@ def finish(mesh, mode='CHAMFER', width=0.01, segments=3):
         finally:
             bm.free()
         clear(mesh)
+        drop_copies(mesh, keep)
         if not smooth:
             for p in mesh.polygons:
                 p.use_smooth = False
