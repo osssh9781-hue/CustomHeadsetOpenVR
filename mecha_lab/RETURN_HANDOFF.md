@@ -1,4 +1,9 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.45 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.46 (Claude Code, 2026-10-14)
+
+## 0.24.46
+- ZIP sha256 `f9d943d57b574750075e334bf9cf167f2acb4ecfb61a38f4d3bbb1f207c4f146`.
+- `tool_state` Cut: `gn_ramp`, `gn_ramp_length`, `gn_ramp_soft`(update `_ramp_refresh_update` → `ramp_edit.refresh(context, 'cut')`), `depth`도 같은 update. `cut_engine.cut_ramp(context, targets, loops, projector, edge, live)`: `surface_draw.carve_area(... ramp=)`, profile = GN Edge(NONE → SQUARE), edge_abs = gn_width; `perform_closed`(@_with_finish_notes 유지) 맨 앞에서 CUT · 비반전 · auto_apply · gn_ramp면 분기. `ramp_edit` 기록에 'kind'('base' / 'cut'), `recarve`가 kind로 분기, `refresh(context, kind)`. UI: `draw_gn_edge`에 Ramp 토글 · 슬라이더 · `ramp_edit.draw_panel`.
+- `surface_draw.carve_area`: projector가 있으면 fill['caps'] = 점마다 −(시선 레이) × max(깊이 × 0.6, 크기 × 0.01); `fill_mesh`는 caps가 있으면 뚜껑 = c + caps, 외곽 점(i < nb)의 깊이 방향도 시선 레이.
 
 ## 0.24.45
 - ZIP sha256 `edf257ab6a7e624e11ddf4da985b5316d1c0dd2e96c24f624af10a6603edf257`.

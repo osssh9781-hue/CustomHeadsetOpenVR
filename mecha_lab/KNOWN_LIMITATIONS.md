@@ -1,5 +1,9 @@
 # KNOWN LIMITATIONS — Mecha Lab 0.18.0
 
+## 0.24.46 Cut Ramp
+- 실제 화면에서 써 보지 않음. Through All 모드여도 Cut Depth만큼 팜. Split · 반전(Alt) · Live 컷에는 Ramp 없음.
+- 둥근 면 위의 바닥 깊이는 그 자리 표면 방향 기준이라 베벨 위에서는 조금 들쭉날쭉할 수 있음(조각은 안 남음).
+
 ## 0.24.45 Ramp live
 - Pick Edge 클릭 · 변 표시는 실제 화면에서 확인 안 함.
 - live 상태에서 Ctrl+Z를 쓰면 메쉬만 돌아가고 live 기록은 어긋날 수 있음(◀ ▶ / Remove 권장).

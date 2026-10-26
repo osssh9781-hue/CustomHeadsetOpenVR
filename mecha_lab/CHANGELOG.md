@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 0.24.46 — Cut GN Edge > Ramp, Ramp / Alt 파기 모서리 조각 수정 (2026-10-26)
+
+- **Cut의 GN Edge 메뉴에 Ramp**: 켜고 자르면 평평한 홈 대신 경사 홈 — 처음 그은 변이 가장 깊고(Cut Depth) 반대쪽으로 표면과 만남. Ramp Length / Ramp Soft, GN Edge Chamfer / Bevel = 깊은 쪽 벽 모양(Off = 직각). Base Mesh Ramp처럼 live: ◀ ▶ / Pick Edge로 깊은 변, Cut Depth / 슬라이더로 바로 다시 팜, Apply / Remove. 일반 Cut만(Split · 반전 · Live 컷 제외).
+- **Ramp / Base Mesh Alt 파기 모서리에 얇은 조각이 남던 문제**: 둥근 모서리(베벨) 위에 걸치면 커터의 뚜껑과 테두리 벽이 기울어진 표면 노멀을 따라가 조각("귀")이 남았음 → 뚜껑과 테두리 벽은 시선 방향으로 곧게, 안쪽 바닥만 표면을 따라감.
+- 테스트: 127개 파일 3654/3654. test_v02467 추가, test_v02465에 모서리 검사 추가. ZIP sha256 `f9d943d57b574750075e334bf9cf167f2acb4ecfb61a38f4d3bbb1f207c4f146`.
+
 ## 0.24.45 — Alt: Ramp 깊은 변을 그린 뒤에 고르기 (2026-10-26)
 
 - **Alt: Ramp가 그린 뒤에도 고칠 수 있는 상태(live)로 남음**: 파기 전 메쉬를 보관해 두고, Base Mesh 패널의 RAMP (live) 칸에서 ◀ ▶(다음 / 이전 변) 또는 **Pick Edge**(뷰포트에서 변 클릭)로 깊은 변을 바꾸면 보관한 메쉬에서 다시 팜. Carve Depth / Ramp Length / Ramp Soft를 움직여도 바로 다시 팜. **Apply** = 확정, **Remove** = 파기 전으로. 뷰포트에 다각형 변(흰 선)과 깊은 변(주황 굵은 선) 표시. 한 번에 하나만 live — 새 Ramp를 그리면 이전 것은 그대로 확정. Free Draw 모양은 꼭짓점을 찾아 변 단위로.
