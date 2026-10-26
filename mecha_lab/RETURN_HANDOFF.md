@@ -1,4 +1,10 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.43 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.44 (Claude Code, 2026-10-14)
+
+## 0.24.44
+- ZIP sha256 `73c22730f70b5fd8f91c779ace079ed0e91a45968f46dce011eecd937cad8769`.
+- `base_mesh`: `alt_mode` RAMP, `ramp_length`, `ramp_soft`; `first_edge(loops)`(원본 화면 루프의 첫 두 점, 2px 이상) → `carve_surface`가 `ramp = (a, b, length, soft)`를 `surface_draw.carve_area(..., ramp=)`로.
+- `surface_draw`: `_carve_fills`가 fill에 'scr'(화면 점) · 'outer' 추가. `ramp_scale(pts, outer, a, b, length)` = 1 − (첫 변 법선 방향 거리 / (최대 거리 × length)), 0..1. `soften_ramp(scale, dist, soft)` = smoothstep 혼합 + 옆 벽 감쇠(외곽까지 거리 / (최대 × 0.6 × soft), 얕을수록 강하게). `fill_mesh`가 fill['scale']로 점마다 깊이 배율.
+- `concept_move`: `SECTION_LIMIT` · 자동 Stretch 전환 제거(`method_now`는 항상 None, `_method`는 path_method). `relax_path`는 유지.
 
 ## 0.24.43
 - ZIP sha256 `4b9c1ed3ab78eb0c5c87d56abcd8a9ee98f4dd5e9cd5e7fa2da80721f7dc3a78`.

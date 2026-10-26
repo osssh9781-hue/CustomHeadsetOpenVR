@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.43
+# Test Report — Mecha Lab 0.24.44
+
+## 0.24.44 결과: 125개 파일 3632/3632 (`tests/test_log_bpy501_v02444.txt`, Blender 5.0.1 bpy). test_v02465(11): ramp_scale(1 / 0.5 / 0, 변 방향 무관, Length 0.5), first_edge, 큐브에 사각형 Ramp(Flat, 0.2, Soft 0) — 닫힘, 깊이 0.19 / 0.10 / 0.03 미만, 바깥 그대로; Length 0.5 → 절반 너머 0; soften_ramp(깊은 끝 그대로, 표면 근처 완만, 외곽 근처 감소, Soft 0 = 그대로); Soft 1 큐브 — 깊이 0.191 / 0.096 / 0.012 / 0 · 닫힘. test_v02463(5): 작은 브러시도 Extend 유지. 5.2.3 bpy에서도 test_v02465 · test_v02463 · test_v02439 · test_v02458 통과. 렌더로 Soft 0 / 0.8 비교 확인. 실제 화면 입력은 미검증.
 
 ## 0.24.43 결과: 124개 파일 3621/3621 (`tests/test_log_bpy501_v02443.txt`, Blender 5.0.1 bpy). test_v02464(12): 바깥 베벨 판에 가장자리를 넘는 홈 — Edge Finish Bevel / Chamfer × From Surface / Through 모두 판 밖 점 0 · 닫힘(수정 전 3~6개 튀어나옴), GN Edge도 같음; GN Bevel / Chamfer 컷 뒤 컷 표시 속성 없음 · UVMap은 CORNER 하나, 두 번째 컷 뒤 첫 홈의 모든 점이 원래 표면 위(1e-5 이내; 수정 전 코드에서는 0.0017~0.0024 변형되어 실패 확인). test_v02462(8): + Alt Carve Depth 0.02 = 깊이 0.02 · 닫힘, scale 0.5 대칭, 패널. 5.2.3 bpy에서도 test_v02464 · test_v02462 · test_v02461 통과. 실제 화면 입력은 미검증.
 
