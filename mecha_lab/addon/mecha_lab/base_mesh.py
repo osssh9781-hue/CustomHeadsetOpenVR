@@ -1336,7 +1336,8 @@ def carve_surface(context, loops, projector, p, targets=None):
     through = getattr(p, 'alt_mode', 'HEIGHT') == 'THROUGH'
     height = max(getattr(p, 'carve_depth', 0.0) or p.height, 1e-5)
     st = SimpleNamespace(profile=SURFACE_CARVE[p.profile], edge=0.35, sink=0.0, edge_abs=getattr(p, 'bevel_width', 0.05),
-                         fill_res=max(15, min(60, getattr(p, 'resolution', 28))))
+                         fill_res=max(15, min(60, getattr(p, 'resolution', 28))),
+                         segments=getattr(p, 'bevel_segments', 4), fine=getattr(p, 'resolution', 28) / 28.0)
     done, failed = [], []
     for t in targets:
         try:

@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 0.24.39 — Base Mesh Alt 표면 파기 결과가 깨끗해짐, Bevel Segments · Resolution 적용 (2026-10-26)
+
+- **Alt 파기(Carve Height / Through / Inside)가 깨끗하게**: 얇은 Line 띠 안에 점이 몇 개 안 들어가서 Chamfer 경사 · 바닥 · 벽이 들쭉날쭉하고 조각 면이 많았음 → 모양의 가장 좁은 폭에 맞춰 점을 고르게 깔고, Chamfer / Bevel 가장자리가 끝나는 자리에 점 한 줄을 정확히 넣어 벽이 곧게, 표면 방향(노멀)을 깊이만큼 부드럽게 이어 꺾인 판에서도 바닥이 고르게. Chamfer 시작점이 표면 살짝 위라 표면과 겹치는 조각 면이 안 생김. 굽은 판 테스트: 찌그러진 면 195 → 0, 사용자 FBX: 19 → 0(면 수 1984 → 983).
+- **Bevel의 Segments 슬라이더가 Alt 파기에도 적용**(가장자리 둥근 단 수, 전에는 4단 고정), **Resolution**을 올리면 파는 모양의 점이 더 촘촘해짐(28 = 기본). Chamfer는 원래 한 면 경사라 단 수가 없음.
+- 테스트: 117개 파일 3551/3551. test_v02457 추가(굽은 판에 Line으로 Chamfer / Bevel / Flat 파기 — 닫힌 메쉬, 조각 면 없음, 띠 가운데 깊이 = Carve Depth, Segments · Resolution). ZIP sha256 `f0ecf159ea8d5fcf95e237b9299a6c4476bbd34120d15961e4ee188e51f5bae8`.
+
 ## 0.24.38 — Base Mesh Alt 파기가 표면을 따라감, Alt: Through / Inside(내부 프레임), Carve Depth, Export Selected / Visible, 엉뚱한 곳이 깎이던 버그, Radial Symmetry 축 고정 · Distance, Mesh Curve 크기 점 위치 (2026-10-26)
 
 - **Base Mesh Alt(Carve Height)가 표면을 따라 파임**: 그린 모양을 표면에 붙이고, 어디서나 표면에서 Height만큼 안으로 팜 → 굽은 면에서도 고른 깊이의 홈 / 포켓(전에는 평평한 판 커터라 바닥이 평평, 깊이가 들쭉날쭉). Flat = 직각 벽, Chamfer / Bevel = 입구 가장자리가 그 모양(Border Width). Line · 메쉬 밖까지 그은 선도. Creature 프로파일은 예전 방식, Alt: Like Cut은 Cut 툴 방식 그대로.

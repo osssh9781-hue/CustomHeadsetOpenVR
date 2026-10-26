@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.38
+# Test Report — Mecha Lab 0.24.39
+
+## 0.24.39 결과: 117개 파일 3551/3551 (`tests/test_log_bpy501_v02439.txt`, Blender 5.0.1 bpy). test_v02457(9): 굽은 저폴리 판(두께 0.08)에 Line(폭 0.08)으로 Chamfer / Bevel / Flat Alt 파기 — 비매니폴드 0, 보이는 크기의 찌그러진 면(3° 미만) 0, 띠 가운데 깊이 0.035 ± 0.006(세 곳), Bevel Segments 2 → 8 = 면 증가 · 깨끗, Resolution 28 → 70 = 면 증가 · 깨끗(라인 끝 둥근 마개에 면적 1e-6 미만 미세 삼각형 몇 개는 제외), `smooth_normals` 단위 길이. 사용자 FBX(MCH_Base.032, Chamfer, Carve Depth 0.072, Border 0.049): 찌그러진 면 19 → 0, 면 1984 → 983. 5.2.3 bpy에서도 test_v02457 · test_v02454 · test_v0245 통과. 실제 화면 입력은 미검증.
 
 ## 0.24.38 결과: 116개 파일 3542/3542 (`tests/test_log_bpy501_v02438.txt`, Blender 5.0.1 bpy). test_v02454(13): + 공 위 Alt 파기 — 바닥이 중심에서 0.898~0.900(표면에서 Height 0.1 고르게), Carve Depth 0.2. test_v02454(17): + Through(0.15 판에 0.6 × 0.6 창문, 뚫림), Inside(앞면 유지, 1 × 0.1 × 0.1 채널, 옆으로 관통 · 위 벽 유지) — Inside 테스트가 이름 같은 이전 큐브의 BVH 캐시 버그를 잡음. test_v0230(48): 주황 점 = 화면 26px, 두 배 거리로 끌면 반지름 두 배, 놓으면 다시 옆(기즈모 쪽은 화면 없이 테스트 불가 = 미검증). test_v02456(9: 핸들러 등록, 돌리고 옮겨도 복사본 = 같은 pivot · Z로 1/4 회전(점마다), pivot 그대로, 복사 0 = 메쉬, pivot 옮기면 따라감, Distance +0.5 / −0.3 · 높이 유지, Apply 후 정리). test_v02455(11): + Selected = 선택만, Visible = 보이는 것(숨긴 것 제외), 선택 유지. 사용자 FBX(얇은 판 MCH_Base.032)로 확인: 앞면이 파이고, Height 0.144 ≥ 두께 ≈ 0.1이면 뚫림(Carve Depth로 해결). 5.2.3 bpy에서도 test_v02454 · test_v02455 · test_v02456 · test_v02443 · test_v0230 · test_v0245 · test_v0100_regression 통과. 실제 화면 입력은 미검증.
 

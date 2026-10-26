@@ -1,4 +1,10 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.38 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.39 (Claude Code, 2026-10-14)
+
+## 0.24.39
+- ZIP sha256 `f0ecf159ea8d5fcf95e237b9299a6c4476bbd34120d15961e4ee188e51f5bae8`.
+- `surface_draw._carve_fills(context, target, groups, projector, edge_world, profile, height, segments, fine)`: 카브 전용 필드 — 간격 s = (면적 / 둘레)/3(반폭 기준), Chamfer / Bevel이면 edge_px/1.5 이하, Resolution/28로 나눔; `base_mesh.profile_field`에 `rings`(Chamfer = edge 위치 1줄, Bevel = 1 − cos 등각 `segments`줄, 0.35 s보다 가까운 줄은 뺌) · `rim` 0.8을 넘김; 노멀은 `smooth_normals`(이웃 평균, 깊이²/간격² 회, 최대 40). `carve_area` · `carve_inside`가 사용(`_project_fills`는 Surface Draw 채우기용 그대로).
+- `fill_mesh(..., lift)`: 가장자리 높이가 표면에서 lift만큼 위(카브는 Height × 0.04) — Chamfer가 표면을 깨끗하게 가로지름.
+- `base_mesh.carve_surface`가 `segments` = `bevel_segments`, `fine` = `resolution` / 28을 넘김.
 
 ## 0.24.38
 - ZIP sha256 `04ffc59c69b4418807fee075e5fed9e4a430aa6e4e15f893607e374c3a3a6750`.

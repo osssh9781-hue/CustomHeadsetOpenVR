@@ -283,8 +283,10 @@ def build(context, src, p, target):
     return bm
 
 
-def fill_mesh(fill, p, width, height, size, sign=1.0):
-    """(verts, faces) of a filled lasso area: the points on the surface, raised by the edge profile."""
+def fill_mesh(fill, p, width, height, size, sign=1.0, lift=0.0):
+    """(verts, faces) of a filled lasso area: the points on the surface, raised by the edge profile.
+    0.24.39 ``lift``: the outline edge of the profile stands that far out of the surface (a carve's chamfer
+    crosses the surface cleanly instead of running along it)."""
     cos = [Vector(q) for q in fill['cos']]
     nrms = [Vector(q) for q in fill['nrms']]
     dist = fill['dist']
@@ -296,7 +298,8 @@ def fill_mesh(fill, p, width, height, size, sign=1.0):
     verts, top, bot = [], [], []
     for i, (c, n) in enumerate(zip(cos, nrms)):
         top.append(len(verts))
-        verts.append(c + n * (sign * height * edge_height(p.profile, dist[i], ew, deepest)))
+        h = edge_height(p.profile, dist[i], ew, deepest)
+        verts.append(c + n * (sign * ((height + lift) * h - lift)))
         bot.append(len(verts))
         verts.append(c - n * (sink * sign))
     faces = []
@@ -501,6 +504,86 @@ def _project_fills(context, target, groups, projector, st):
     return fills
 
 
+def smooth_normals(nrms, tris, passes):
+    """Normals averaged with their neighbours (``passes`` times): a carve's floor follows the surface without
+    the kinks of its flat faces."""
+    nrms = [Vector(n) for n in nrms]
+    if passes <= 0:
+        return nrms
+    nb = [set() for _n in nrms]
+    for a, b, c in tris:
+        nb[a].update((b, c))
+        nb[b].update((a, c))
+        nb[c].update((a, b))
+    for _k in range(passes):
+        out = []
+        for i, n in enumerate(nrms):
+            m = n * 2.0
+            for j in nb[i]:
+                m += nrms[j]
+            out.append(m.normalized() if m.length > 1e-12 else n)
+        nrms = out
+    return nrms
+
+
+def _carve_fills(context, target, groups, projector, edge_world, profile, height, segments=4, fine=1.0):
+    """0.24.39 the drawn outline laid on the surface for a CARVE (Base Mesh Alt): points as fine as the shape's
+    narrowest part (a thin Line band gets many rows across, not a few random ones), a row of points exactly
+    where the Chamfer / Bevel edge ends (straight clean walls) and normals smoothed over the depth (an even
+    floor on a bent surface).  ``segments`` = rows on a Bevel edge, ``fine`` = more points (Resolution / 28).
+    Same dicts as ``_project_fills``."""
+    from types import SimpleNamespace
+    from . import armor_plate as ap
+    from . import base_mesh as bmm
+    from . import cape_gen
+    bvh, _lo, _hi = cape_gen._body(context, target)
+    fills = []
+    for outer, holes in groups:
+        loops = [outer] + list(holes)
+        area = abs(_loop_area(outer)) - sum(abs(_loop_area(h)) for h in holes)
+        perim = sum(math.dist(lp[i - 1], lp[i]) for lp in loops for i in range(len(lp)))
+        xs = [q[0] for q in outer]
+        ys = [q[1] for q in outer]
+        extent = max(max(xs) - min(xs), max(ys) - min(ys))
+        if area <= 1e-9 or perim <= 1e-9 or extent <= 1e-9:
+            continue
+        half = area / perim                      # about half the width of a band (a disc: half its radius)
+        ring = bmm._densify(outer, sum(math.dist(outer[i - 1], outer[i]) for i in range(len(outer))) / 64.0)
+        rc, _rn, _m = ap.project_patch(ring, projector, bvh)
+        ratios = sorted((rc[i] - rc[i - 1]).length / math.dist(ring[i], ring[i - 1])
+                        for i in range(len(ring)) if math.dist(ring[i], ring[i - 1]) > 1e-9)
+        k = ratios[len(ratios) // 2] if ratios else 1.0          # scene units per pixel
+        edge_px = 0.0 if profile == 'SQUARE' else min(edge_world / max(k, 1e-12), half * 1.9)
+        s = half / 3.0
+        if edge_px > 0:
+            s = min(s, max(edge_px / 1.5, half / 12.0))
+        s = max(s / max(0.25, fine), math.sqrt(area / 15000.0), extent / 400.0)
+        n = max(1, int(segments))
+        bevel = tuple(1.0 - math.cos(0.5 * math.pi * (i + 1) / n) for i in range(n))   # even steps round the corner
+        fr = {'CHAMFER': (1.0,), 'BEVEL': bevel}.get(profile, (0.5,))
+        rings = []
+        for r in (edge_px * f / s for f in fr) if edge_px > 0 else (0.5,):
+            if r - (rings[-1] if rings else 0.0) >= 0.35 or r == edge_px / s:   # rows too close = sliver faces
+                rings.append(r)
+        rings = tuple(rings)
+        q = SimpleNamespace(profile='PILLOW', outline_smooth=0.0, resolution=extent / (1.5 * s), edge_round=0.15,
+                            puff=1.0, rings=rings, rim=0.8)
+        _b, pts, tris, nb, _shape, _nat, _sp = bmm.profile_field(outer, holes, q)
+        cos, nrms, _miss = ap.project_patch(pts, projector, bvh)
+        dist = [d * k for d in bmm._distances(pts, loops)]
+        passes = int(min(40, max(2, (height / max(s * k, 1e-12)) ** 2)))
+        nrms = smooth_normals(nrms, tris, passes)
+        fills.append({'cos': [list(c) for c in cos], 'nrms': [list(n) for n in nrms], 'tris': [list(t) for t in tris],
+                      'nb': nb, 'dist': dist})
+    if not fills:
+        raise cg.CutError('The outline is too small.')
+    return fills
+
+
+def _loop_area(lp):
+    return 0.5 * sum(lp[i - 1][0] * lp[i][1] - lp[i][0] * lp[i - 1][1] for i in range(len(lp)))
+
+
 def engrave(context, path, projector, loops=None):
     """0.24.37 Alt + draw on a plain mesh (no live drawing under it): the band (or, with Fill Area, the filled
     area) is carved INTO the mesh, as deep as its Height, same width and edge.  Returns a report; raises
@@ -553,7 +636,7 @@ def carve_inside(context, target, groups, projector, settings, skin=0.25):
     from . import cape_gen
     bvh, lo, hi = cape_gen._body(context, target)
     size = (hi - lo).length
-    fills = _project_fills(context, target, groups, projector, settings)
+    fills = _carve_fills(context, target, groups, projector, 0.0, 'SQUARE', size * 0.01)
     thick, med = _thickness(bvh, fills, size)
     if med is None:
         raise cg.CutError('Inside: no back side found under the drawing (is the mesh closed?).')
@@ -580,7 +663,10 @@ def carve_area(context, target, groups, projector, settings, height, through=Fal
     from . import cape_gen
     bvh, lo, hi = cape_gen._body(context, target)
     size = (hi - lo).length
-    fills = _project_fills(context, target, groups, projector, settings)
+    edge = getattr(settings, 'edge_abs', None)
+    edge = settings.edge * 2.0 * height if edge is None else min(max(edge, height * 0.04), height * 2.0)
+    fills = _carve_fills(context, target, groups, projector, edge, settings.profile, height,
+                         getattr(settings, 'segments', 4), getattr(settings, 'fine', 1.0))
     if through:
         deepest = 0.0
         for f in fills:
@@ -594,7 +680,7 @@ def carve_area(context, target, groups, projector, settings, height, through=Fal
         height = deepest * 1.15 + size * 0.002
     if getattr(settings, 'edge_abs', None) is not None:
         settings.edge = min(1.0, max(0.02, settings.edge_abs / (2.0 * max(height, 1e-9))))
-    parts = [fill_mesh(f, settings, height, height, size, sign=-1.0) for f in fills]
+    parts = [fill_mesh(f, settings, height, height, size, sign=-1.0, lift=height * 0.04) for f in fills]
     carve_parts(context, target, parts)
     return height
 
