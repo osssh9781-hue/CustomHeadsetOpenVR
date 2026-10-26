@@ -2,7 +2,9 @@
 the active mesh's own X / Y / Z axis through that point.
 
 It works like the Mirror: an Array modifier per mesh (object offset = a hidden helper turned one step round the
-pivot), so it stays live - Count / Axis change at once, Update after moving the pivot.  While it is on:
+pivot), so it stays live - Count / Axis change at once.  0.24.38: the pivot and axis picked first stay put - turning or
+moving a mesh turns only that mesh (its copies are re-placed round the same pivot), moving the pivot moves all.
+While it is on:
 * new parts you draw (Base Mesh, Creature Base, Armor / Creature Plate, Surface Draw, Cloth Brush) get the same
   symmetry,
 * Cut / Split cut every copy: the cutter is repeated round the pivot (draw on any copy).
@@ -51,6 +53,32 @@ def _update(self, context):
         refresh(context)
 
 
+R0_KEY = 'mch_rsym_r0'          # a mesh's distance from the axis when Distance was 0
+
+
+def radial(st, ob):
+    """(radial vector from the axis to ob's origin, axis point, axis direction) in the scene."""
+    p = st.pivot.matrix_world.translation
+    a = axis_world(st).normalized()
+    v = ob.matrix_world.translation - p
+    return v - a * v.dot(a), p, a
+
+
+def _distance_update(self, context):
+    """0.24.38 Distance: every mesh slides straight away from (or toward) the axis - its copies with it."""
+    if not self.active or self.pivot is None:
+        return
+    for ob in members(context):
+        r, _p, _a = radial(self, ob)
+        if R0_KEY not in ob:
+            ob[R0_KEY] = r.length - self.distance_prev
+        want = max(0.0, ob[R0_KEY] + self.distance)
+        d = r.normalized() if r.length > 1e-9 else Vector((1.0, 0.0, 0.0))
+        ob.matrix_world = Matrix.Translation(d * (want - r.length)) @ ob.matrix_world
+        sync(self, ob)
+    self.distance_prev = self.distance
+
+
 class MCH_PG_RadialSym(bpy.types.PropertyGroup):
     active: BoolProperty(default=False, options={'HIDDEN'})
     pivot: PointerProperty(type=bpy.types.Object)
@@ -58,6 +86,11 @@ class MCH_PG_RadialSym(bpy.types.PropertyGroup):
                        description='How many copies round the point')
     axis: EnumProperty(name='Axis', items=AXES, default='Z', update=_update,
                        description="Turn about this axis of the mesh you picked (through the point)")
+    distance: bpy.props.FloatProperty(name='Distance', default=0.0, soft_min=-1.0, soft_max=1.0, unit='LENGTH',
+                                      precision=4, update=_distance_update,
+                                      description='Move the meshes (and so every copy) away from the axis (+) or '
+                                                  'closer to it (-)')
+    distance_prev: bpy.props.FloatProperty(default=0.0, options={'HIDDEN'})
 
 
 def axis_world(st):
@@ -87,14 +120,69 @@ def _helper(ob):
     return h
 
 
+def helper_basis(st, ob):
+    """The helper's matrix (in ob's space) that turns ob one step round the FIXED pivot / axis (scene space)."""
+    mw = ob.matrix_world
+    return mw.inverted_safe() @ step_matrix(st.pivot.matrix_world.translation, axis_world(st), st.count) @ mw
+
+
+def sync(st, ob):
+    """0.24.38 Keep ob's copies round the pivot picked first: after ob is moved / turned (or the pivot is moved),
+    only ob turns - the axis stays where it was clicked.  Returns True when the helper was changed."""
+    name = ob.get(HELPER_KEY)
+    h = bpy.data.objects.get(name) if name else None
+    if h is None or st.pivot is None:
+        return False
+    want = helper_basis(st, ob)
+    cur = h.matrix_basis
+    if all(abs(want[r][c] - cur[r][c]) < 1e-6 for r in range(4) for c in range(4)):
+        return False
+    h.matrix_basis = want
+    return True
+
+
+_SYNC_BUSY = [False]
+
+
+@bpy.app.handlers.persistent
+def _on_depsgraph(scene, depsgraph):
+    """A member or the pivot moved / turned: re-place the copies round the fixed pivot."""
+    if _SYNC_BUSY[0]:
+        return
+    st = getattr(scene, 'mch_rsym', None)
+    if st is None or not st.active or st.pivot is None:
+        return
+    try:
+        moved = {u.id.original.name for u in depsgraph.updates
+                 if isinstance(u.id, bpy.types.Object) and u.is_updated_transform}
+    except (AttributeError, ReferenceError):
+        return
+    if not moved:
+        return
+    _SYNC_BUSY[0] = True
+    try:
+        everything = st.pivot.name in moved
+        for ob in scene.objects:
+            if ob.type == 'MESH' and ob.modifiers.get(MOD_NAME) is not None and (everything or ob.name in moved):
+                sync(st, ob)
+                if R0_KEY in ob:                   # moved by hand: Distance counts from the new place
+                    r, _p, _a = radial(st, ob)
+                    r0 = r.length - st.distance
+                    if abs(ob[R0_KEY] - r0) > 1e-7:
+                        ob[R0_KEY] = r0
+    except (AttributeError, ReferenceError, RuntimeError):
+        pass
+    finally:
+        _SYNC_BUSY[0] = False
+
+
 def adopt(context, ob):
     """Give ob the symmetry of the scene (Array modifier + its helper)."""
     st = context.scene.mch_rsym
     if not st.active or st.pivot is None or ob is None or ob.type != 'MESH' or ob == st.pivot:
         return False
     h = _helper(ob)
-    mw = ob.matrix_world
-    h.matrix_basis = mw.inverted_safe() @ step_matrix(st.pivot.matrix_world.translation, axis_world(st), st.count) @ mw
+    h.matrix_basis = helper_basis(st, ob)
     mod = ob.modifiers.get(MOD_NAME) or ob.modifiers.new(MOD_NAME, 'ARRAY')
     mod.fit_type = 'FIXED_COUNT'
     mod.count = st.count
@@ -123,6 +211,12 @@ def setup(context, point, ref=None):
         st.pivot = piv
     rot = ref.matrix_world.to_quaternion() if ref is not None else Matrix.Identity(3).to_quaternion()
     piv.matrix_world = Matrix.Translation(point) @ rot.to_matrix().to_4x4()
+    for ob in members(context):            # a new centre: Distance starts from where the meshes are now
+        if R0_KEY in ob:
+            del ob[R0_KEY]
+    st.active = False
+    st.distance_prev = 0.0
+    st.distance = 0.0
     st.active = True
     done = 0
     for ob in [o for o in context.selected_objects if o.type == 'MESH' and o != piv]:
@@ -144,6 +238,8 @@ def remove(context, apply_mods=False):
             bpy.data.objects.remove(h, do_unlink=True)
         if HELPER_KEY in ob:
             del ob[HELPER_KEY]
+        if R0_KEY in ob:
+            del ob[R0_KEY]
     if st.pivot is not None:
         bpy.data.objects.remove(st.pivot, do_unlink=True)
     st.pivot = None
@@ -308,6 +404,7 @@ def draw(layout, context):
     box.label(text=f'Radial Symmetry x{st.count}: {len(members(context))} mesh(es)', icon='MOD_ARRAY')
     box.prop(st, 'count')
     box.row(align=True).prop(st, 'axis', expand=True)
+    box.prop(st, 'distance')                       # 0.24.38 how far from the axis
     row = box.row(align=True)
     row.operator('mch.radial_sym_add', icon='ADD')
     row.operator('mch.radial_sym_update', icon='FILE_REFRESH')
@@ -328,9 +425,13 @@ def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Scene.mch_rsym = PointerProperty(type=MCH_PG_RadialSym)
+    if _on_depsgraph not in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph)
 
 
 def unregister():
+    while _on_depsgraph in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph)
     try:
         del bpy.types.Scene.mch_rsym
     except AttributeError:
