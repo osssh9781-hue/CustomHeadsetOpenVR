@@ -528,6 +528,10 @@ class MCH_PG_Concept(bpy.types.PropertyGroup):
     path_taper: FloatProperty(name='Taper', default=0.0, min=0.0, max=0.95,
                               description='Path Move: thinner toward the end (0 = the same all the way)')
     path_method: EnumProperty(name='Method', items=PATH_METHODS, default='EXTEND')
+    path_hardness: FloatProperty(name='Hardness', default=1.0, min=0.0, max=1.0,
+                                 description='Path Move: 1 = a hard start (the grabbed part runs straight out); lower = '
+                                             'the mesh round the grab is pulled along too, fading out softly (like '
+                                             'Concept Move)')
     path_turn: BoolProperty(name='Follow Turns', default=True,
                             description='Path Move: the grabbed box / ball turns where the path bends')
     lock_size: BoolProperty(name='Real Size', default=False,
@@ -769,7 +773,8 @@ def replay_one(me, mv):
     if mv.get('kind') == 'extend':
         from . import path_sweep
         try:
-            path_sweep.extend(me, mv['hit'], mv['normal'], mv['offsets'], mv.get('turn', True), mv.get('taper', 0.0))
+            path_sweep.extend(me, mv['hit'], mv['normal'], mv['offsets'], mv.get('turn', True), mv.get('taper', 0.0),
+                              mv.get('hardness', 1.0))
         except ValueError:
             pass
         return
@@ -1160,6 +1165,9 @@ class MCH_OT_concept_path(bpy.types.Operator):
     size: FloatProperty(name='Size', default=1.0, min=0.05, max=10.0, description='Thickness (x the brush)')
     hardness: FloatProperty(name='Hardness', default=0.9, min=0.0, max=0.98)
     taper: FloatProperty(name='Taper', default=0.0, min=0.0, max=0.95, description='Thinner toward the end (0 = the same all the way)')
+    edge_hardness: FloatProperty(name='Hardness', default=1.0, min=0.0, max=1.0,
+                                 description='Extend: 1 = the section runs straight out of the cut; lower = the mesh '
+                                             'round it is pulled out too, fading out (soft, like Concept Move)')
     turn: BoolProperty(name='Follow Turns', default=True,
                        description='The grabbed box / ball turns where the path bends (stays square to the path)')
     shape: EnumProperty(name='Shape', items=SHAPE_ITEMS, default='SPHERE')
@@ -1232,16 +1240,18 @@ class MCH_OT_concept_path(bpy.types.Operator):
             try:
                 if not self.auto_apply:
                     keep_base(ob)
-                msg = path_sweep.extend(ob.data, hit, normal, offsets, self.turn, self.taper)
+                msg = path_sweep.extend(ob.data, hit, normal, offsets, self.turn, self.taper, self.edge_hardness)
                 if has_base(ob):
                     record_move(ob, {'kind': 'extend', 'hit': list(hit), 'normal': list(normal),
-                                     'offsets': [list(o) for o in offsets], 'turn': self.turn, 'taper': self.taper})
+                                     'offsets': [list(o) for o in offsets], 'turn': self.turn, 'taper': self.taper,
+                                     'hardness': self.edge_hardness})
                 self.report({'INFO'}, f'Path Move {msg}')
                 return {'FINISHED'}
             except ValueError as exc:
                 self.report({'WARNING'}, f'Path Move: {exc} - made a Separate Tube instead')
         try:
-            new = path_sweep.sweep_object(context, ob, hit, normal, offsets, self.turn, self.taper)
+            new = path_sweep.sweep_object(context, ob, hit, normal, offsets, self.turn, self.taper,
+                                          hardness=self.edge_hardness)
         except ValueError as exc:
             self.report({'WARNING'}, f'Path Move: {exc}')
             return {'CANCELLED'}
@@ -1346,7 +1356,7 @@ class MCH_OT_concept_path(bpy.types.Operator):
             return
         path = path_sweep.path_from(self.info['centre'], offsets)
         verts, faces = path_sweep.preview_geometry(self.info, path, self.normal_l, st.path_turn, st.path_taper,
-                                                   st.path_method)
+                                                   st.path_method, st.path_hardness)
         me = self.preview_ob.data
         me.clear_geometry()
         me.from_pydata([tuple(v) for v in verts], [], faces)
@@ -1365,7 +1375,7 @@ class MCH_OT_concept_path(bpy.types.Operator):
         st = context.scene.mch_concept
         context.area.header_text_set(
             f'Path Move  |  {len(getattr(self, "trail", [])) - 1} steps  {st.shape.title()}  taper {st.path_taper:.2f}  '
-            f'hardness {st.hardness:.2f}  |  Mirror X {"on" if st.mirror_x else "off"}  |  '
+            f'hardness {st.path_hardness:.2f}  |  Mirror X {"on" if st.mirror_x else "off"}  |  '
             'drag the way it should go   Wheel: depth   [ ]: size   3D mouse / MMB: view   RMB/Esc: cancel')
 
     def _target(self, context):
@@ -1395,7 +1405,7 @@ class MCH_OT_concept_path(bpy.types.Operator):
         self.target = self.trail[-1]
         self.center_2d = view3d_utils.location_3d_to_region_2d(region, rv3d, self.target) or self.mouse
         self.r_px = brush_px(context, self.target) * max(1.0 - st.path_taper, 0.05)
-        sig = (len(self.trail), st.radius_px, st.radius_world, st.hardness, st.path_taper, st.path_turn, st.shape,
+        sig = (len(self.trail), st.radius_px, st.radius_world, st.path_hardness, st.path_taper, st.path_turn, st.shape,
                st.path_method)
         if sig == self._sig:
             return
@@ -1408,7 +1418,7 @@ class MCH_OT_concept_path(bpy.types.Operator):
         for part in self.parts:
             ob = part['ob']
             lpts, lrad, laxes = local_path(ob, path, radius, axes, part['mref'])
-            moves = path_moves(lpts, lrad, st.hardness, st.path_taper, st.mirror_x and not part['own'], st.shape,
+            moves = path_moves(lpts, lrad, st.path_hardness, st.path_taper, st.mirror_x and not part['own'], st.shape,
                                laxes, st.path_turn)
             write_coords(ob.data, run_path(part['orig'], moves) if moves else part['orig'])
         self._header(context)
@@ -1447,6 +1457,7 @@ class MCH_OT_concept_path(bpy.types.Operator):
                 self.grab_point, self.grab_normal = self.local_hit, self.normal_l
                 self.offsets = json.dumps([list(o) for o in offsets])
                 self.taper, self.turn, self.auto_apply = st.path_taper, st.path_turn, st.auto_apply
+                self.edge_hardness = st.path_hardness
                 return self.execute(context)
             path, radius, axes = self._world_path(context)
             if len(path) < 2:
@@ -1456,7 +1467,7 @@ class MCH_OT_concept_path(bpy.types.Operator):
             self.auto_apply = st.auto_apply
             self.path = json.dumps([list(p) for p in path])
             self.radius, self.size, self.axes = radius, 1.0, axes
-            self.hardness, self.taper, self.shape, self.mirror = st.hardness, st.path_taper, st.shape, st.mirror_x
+            self.hardness, self.taper, self.shape, self.mirror = st.path_hardness, st.path_taper, st.shape, st.mirror_x
             self.turn = st.path_turn
             self.generate_mesh, self.even_out = st.keep_density, st.even_out
             return self.execute(context)
@@ -1597,7 +1608,7 @@ def draw_path(layout, context, compact=False):
     row = layout.row(align=True)
     row.prop(st, 'radius_world' if st.lock_size else 'radius_px')
     row.prop(st, 'lock_size', toggle=True)
-    layout.prop(st, 'hardness', slider=True)
+    layout.prop(st, 'path_hardness', slider=True)
     layout.prop(st, 'path_taper', slider=True)
     layout.prop(st, 'path_turn', toggle=True)
     layout.prop(st, 'shape', text='' if compact else 'Shape')

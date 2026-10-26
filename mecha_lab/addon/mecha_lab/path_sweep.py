@@ -245,9 +245,10 @@ def path_from(centre, offsets):
     return [Vector(centre) + Vector(o) for o in offsets]
 
 
-def preview_geometry(info, path, normal, turn=True, taper=0.0, method='EXTEND'):
+def preview_geometry(info, path, normal, turn=True, taper=0.0, method='EXTEND', hardness=1.0):
     """(verts, faces) for the drag preview: the rings, end caps (Separate Tube) or the carried tip (Extend)."""
     loop, centre = info['loop'], info['centre']
+    path = soften_path(path, normal, soft_length(loop, centre, hardness))
     frames = sweep_frames(path, normal, turn)
     rs = rings(loop, centre, path, frames, taper)
     n = len(loop)
@@ -268,8 +269,45 @@ def preview_geometry(info, path, normal, turn=True, taper=0.0, method='EXTEND'):
     return verts, faces
 
 
-def extend(me, hit, normal, offsets, turn=True, taper=0.0):
-    """Extend on the mesh itself.  Returns a short report, or raises ValueError (mesh untouched)."""
+def soften_path(path, start_dir, length):
+    """0.24.40 Hardness < 1: the first ``length`` of the path becomes a smooth curve that leaves the cut straight
+    along ``start_dir`` (the way the part already points) and runs into the drawn path - a soft bend instead of a
+    kink at the cut.  Same number of points; the rest of the path is unchanged."""
+    path = [Vector(p) for p in path]
+    if length <= 1e-9 or len(path) < 3:
+        return path
+    lens = [0.0]
+    for a, b in zip(path, path[1:]):
+        lens.append(lens[-1] + (b - a).length)
+    length = min(length, lens[-1] * 0.6)
+    k = max((i for i in range(len(path) - 1) if lens[i] <= length), default=0)
+    if k < 1:
+        return path
+    p0, p3 = path[0], path[k]
+    t3 = (path[min(k + 1, len(path) - 1)] - path[k - 1])
+    t3 = t3.normalized() if t3.length > 1e-12 else Vector(start_dir).normalized()
+    h = lens[k] / 3.0
+    p1, p2 = p0 + Vector(start_dir).normalized() * h, p3 - t3 * h
+    out = []
+    for i in range(k + 1):
+        t = lens[i] / lens[k]
+        u = 1.0 - t
+        out.append(p0 * (u * u * u) + p1 * (3 * u * u * t) + p2 * (3 * u * t * t) + p3 * (t * t * t))
+    return out + path[k + 1:]
+
+
+def soft_length(loop, centre, hardness):
+    """How long the soft bend at the start is: (1 - Hardness) x 3 section radii."""
+    soft = max(0.0, min(1.0, 1.0 - hardness))
+    if soft <= 1e-3:
+        return 0.0
+    return soft * 3.0 * max((Vector(q) - Vector(centre)).length for q in loop)
+
+
+def extend(me, hit, normal, offsets, turn=True, taper=0.0, hardness=1.0):
+    """Extend on the mesh itself.  Returns a short report, or raises ValueError (mesh untouched).
+    0.24.40 ``hardness`` < 1: a soft start - where the path turns, the part bends out of the cut in a smooth curve
+    instead of a kink (0 = softest); 1 = hard, the section follows the drawn path right from the cut."""
     hit, normal = Vector(hit), Vector(normal).normalized()
     bm = bmesh.new()
     bm.from_mesh(me)
@@ -300,7 +338,7 @@ def extend(me, hit, normal, offsets, turn=True, taper=0.0):
                 raise ValueError('the cut edge could not be followed')
             base_ring.append(b[0])
             tip_ring.append(t[0])
-        path = path_from(centre, offsets)
+        path = soften_path(path_from(centre, offsets), normal, soft_length(loop, centre, hardness))
         frames = sweep_frames(path, normal, turn)
         rs = rings(loop, centre, path, frames, taper)
         rot, s_end = frames[-1], 1.0 - taper
@@ -326,7 +364,7 @@ def extend(me, hit, normal, offsets, turn=True, taper=0.0):
         bm.free()
 
 
-def sweep_object(context, ob, hit, normal, offsets, turn=True, taper=0.0, max_points=64):
+def sweep_object(context, ob, hit, normal, offsets, turn=True, taper=0.0, max_points=64, hardness=1.0):
     """Separate Tube: a new object next to ob (same place, materials, Mirror)."""
     info = analyse(ob.data, hit, normal)
     if info is None:
@@ -336,7 +374,7 @@ def sweep_object(context, ob, hit, normal, offsets, turn=True, taper=0.0, max_po
         loop = even_resample(loop, max_points)
         info = dict(info, loop=loop, centre=sum(loop, Vector()) / len(loop))
     path = path_from(info['centre'], offsets)
-    verts, faces = preview_geometry(info, path, normal, turn, taper, 'SWEEP')
+    verts, faces = preview_geometry(info, path, normal, turn, taper, 'SWEEP', hardness)
     me = bpy.data.meshes.new(ob.name + '_Path')
     me.from_pydata([tuple(v) for v in verts], [], faces)
     smooth = any(p.use_smooth for p in ob.data.polygons[:64])
