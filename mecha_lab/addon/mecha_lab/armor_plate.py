@@ -30,7 +30,7 @@ import math
 
 import bmesh
 import bpy
-from bpy.props import BoolProperty, EnumProperty, IntProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty
 from mathutils import Matrix, Quaternion, Vector
 from mathutils.bvhtree import BVHTree
 from mathutils.geometry import delaunay_2d_cdt
@@ -426,18 +426,31 @@ def perform_plate(context, loops, projector, preset=None):
 
 
 
-def mirrored_into(verts, bvh, lift):
-    """Every point mirrored through the surface under it (``bvh``, world): what stood out of the surface now goes
-    as deep into it.  Points on / just under the surface come out ``lift`` above it, so the opening is clean."""
+def heights_above(verts, bvh):
+    """(surface point, normal, height above it) for every point (None for a point with no surface)."""
     out = []
     for v in verts:
         loc, nrm, _i, _d = bvh.find_nearest(v)
         if loc is None:
-            out.append(Vector(v))
+            out.append(None)
             continue
         n = nrm.normalized()
-        d = (Vector(v) - loc).dot(n)
-        out.append(Vector(v) - n * (2.0 * d) + n * lift if d < lift else Vector(v) - n * (2.0 * d))
+        out.append((loc, n, (Vector(v) - loc).dot(n)))
+    return out
+
+
+def mirrored_into(verts, bvh, lift, scale=1.0):
+    """Every point mirrored through the surface under it (``bvh``, world): what stood out of the surface now goes
+    as deep into it (x ``scale``: 0.24.42 Carve Depth).  Points on / just under the surface come out ``lift``
+    above it, so the opening is clean."""
+    out = []
+    for v, h in zip(verts, heights_above(verts, bvh)):
+        if h is None:
+            out.append(Vector(v))
+            continue
+        loc, n, d = h
+        p = loc - n * (d * scale)
+        out.append(p + n * lift if d < lift else p)
     return out
 
 
@@ -484,7 +497,10 @@ def perform_plate_carve(context, loops, projector, preset=None):
     lo = Vector([min(v[i] for v in verts) for i in range(3)])
     hi = Vector([max(v[i] for v in verts) for i in range(3)])
     lift = max((hi - lo).length * 0.004, 1e-5)
-    world = mirrored_into(verts, bvh, lift)
+    tall = max((h[2] for h in heights_above(verts, bvh) if h is not None), default=0.0)
+    depth = getattr(st, 'carve_depth', 0.0)
+    scale = depth / tall if depth > 0 and tall > 1e-9 else 1.0          # Carve Depth: 0 = as tall as the plate
+    world = mirrored_into(verts, bvh, lift, scale)
     inv = target.matrix_world.inverted()
     me = bpy.data.meshes.new('MCH_PlateCarve')
     me.from_pydata([tuple(inv @ v) for v in world], [], faces)
@@ -513,7 +529,8 @@ def perform_plate_carve(context, loops, projector, preset=None):
     target.select_set(True)
     context.view_layer.objects.active = target
     name = dict((p_[0], p_[1]) for p_ in PRESETS)[preset]
-    return f'Armor plate carved into "{target.name}" (Alt: {name} the other way round)'
+    return (f'Armor plate carved into "{target.name}" (Alt: {name} the other way round, '
+            f'{tall * scale:.3g} deep)')
 
 
 def _perform_through(context, loops, projector, preset, target, groups, st, brush):
@@ -820,6 +837,9 @@ class MCH_PG_Plate(bpy.types.PropertyGroup):
                                      '(changes the selected plate live until Apply)')
     auto_size: BoolProperty(name='Auto Size', default=True,
                             description='Profile height / bevel / chamfer scale with the plate size')
+    carve_depth: FloatProperty(name='Alt Carve Depth', default=0.0, min=0.0, soft_max=1.0, precision=4,
+                               unit='LENGTH', description='Alt + draw carves the plate the other way: how deep '
+                                                          '(0 = as deep as the plate is tall)')
     creature: BoolProperty(name='Creature Shell', default=False,
                            description='Creature Shell brush: new plates get hard random facets, bulges, '
                                        'N/E/S/W edge lift and gravity')
@@ -1269,6 +1289,7 @@ def draw(layout, context):
     row = box.row(align=True)
     row.prop(st, 'spacing')
     row.prop(st, 'auto_size', toggle=True)
+    box.prop(st, 'carve_depth')                       # 0.24.42 Alt + draw: the recess depth
     ob = pending_plate(context)
     if ob is not None:
         p = ob.mch_extract
@@ -1313,7 +1334,7 @@ def draw(layout, context):
     col.label(text='Click points / drag freehand, Enter or double-click: plate', icon='INFO')
     col.label(text='Mouse wheel while drawing: change the profile')
     col.label(text='Until Apply: face size / height / chamfer change live')
-    col.label(text='The mesh you draw on is not changed')
+    col.label(text='The mesh you draw on is not changed (Alt + draw: carved in)')
     from . import random_panels
     random_panels.draw(layout, context)
     fx.draw(layout, context)

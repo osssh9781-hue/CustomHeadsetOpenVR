@@ -43,6 +43,20 @@ check('... the recess is as deep as the plate would be tall', height > 0.01 and 
       (height, 1.0 - loc.z))
 far = S.ray_cast(C.evaluated_depsgraph_get(), Vector((0.85, 0.85, 5)), Vector((0, 0, -1)))[1]
 check('... outside the drawn shape the top is untouched', abs(far.z - 1.0) < 1e-5, far.z)
+S.mch_plate.carve_depth = 0.02
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+bpy.ops.mesh.primitive_cube_add(size=2.0)
+cube = C.active_object
+msg = ap.perform_plate_carve(C, [LOOP], TOP)
+C.view_layer.update()
+z = S.ray_cast(C.evaluated_depsgraph_get(), Vector((0, 0, 5)), Vector((0, 0, -1)))[1].z
+check('Alt Carve Depth 0.02: the recess is 0.02 deep (not the plate height), still closed',
+      abs((1.0 - z) - 0.02) < 0.004 and non_manifold(cube) == 0, (1.0 - z, msg))
+pts = ap.mirrored_into([Vector((0, 0, 0.3))], plane, 0.01, 0.5)
+check('mirror with a depth scale: 0.3 above -> 0.15 below', abs(pts[0].z + 0.15) < 1e-6, tuple(pts[0]))
+S.mch_plate.carve_depth = 0.0
+check('the setting is in the Armor Plate panel', "'carve_depth'" in open(ap.__file__).read().split('def draw(layout, context):')[1])
 src = open(ce.__file__).read()
 check('the Armor Plate tool sends Alt + draw here (and a plain draw still makes a plate)',
       "self.mode == 'PLATE' and self.inverted()" in src and 'perform_plate_carve' in src)
