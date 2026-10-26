@@ -860,7 +860,7 @@ class MCH_TOOL_scarf_cape(bpy.types.WorkSpaceTool):
     bl_context_mode = 'OBJECT'
     bl_idname = 'mecha.scarf_cape'
     bl_label = 'Mecha Scarf Cape'
-    bl_description = ('The same as Cape, but the folds run across like a draped scarf (Gravity sags the middle).\n'
+    bl_description = ('Draw a line across a body: a cape hangs from it with fold lines across (Gravity sags the middle).\n'
                       'RMB: shapes, Esc: exit')
     bl_icon = 'ops.mesh.extrude_region_move'
     bl_widget = None

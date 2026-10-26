@@ -300,7 +300,12 @@ def shape_sheet(grid, axis, p, size, bvh, gap):
     wa = p.wind_dir
     wind = Vector((math.cos(wa), math.sin(wa), 0.0)) * (p.wind * size)
     across = getattr(p, 'fold_dir', 'DOWN') == 'ACROSS'
-    sag = getattr(p, 'gravity', 0.0) * size * 0.12 if across else 0.0
+    grav = getattr(p, 'gravity', 0.0) if across else 0.0
+    sag = grav * size * 0.08
+    if across:                                   # fold lines as close together as the Cape's, down the length
+        long_ = sum(sum((c[k + 1] - c[k]).length for k in range(nrow - 1)) for c in grid) / max(1, ncol)
+        wide = max((grid[-1][0] - grid[0][0]).length, 1e-6)
+        lines = max(2.0, round(max(1, p.folds) * 0.5 * long_ / wide))
     out = []
     for i, col in enumerate(grid):
         s = i / max(1, ncol - 1)
@@ -314,11 +319,12 @@ def shape_sheet(grid, axis, p, size, bvh, gap):
             nrm = Vector((q.x - axis.x, q.y - axis.y, 0.0))
             nrm = nrm.normalized() if nrm.length > 1e-9 else Vector((0, 0, 1))
             amp = depth * (v ** 0.8)
-            if across:                               # rings down the length, a little wavy across
-                w = v + p.fold_random * 0.04 * math.sin(2 * math.pi * 1.3 * s + phases[1])
-                f = sum(a * math.sin(2 * math.pi * fr * w + ph) for a, fr, ph in zip(amps, freqs, phases))
-                f /= max(1e-6, sum(amps))
-                amp = depth * (v ** 0.5) * (0.55 + 0.45 * bow)
+            if across:
+                # crease lines straight across (a sharp V every 1 / lines of the length, round in between);
+                # Gravity bends every line down in the middle (a U, like a draped scarf)
+                w = v - grav * 0.06 * bow + p.fold_random * 0.015 * math.sin(2 * math.pi * 1.3 * s + phases[1])
+                f = 2.0 * abs(math.sin(math.pi * lines * w + phases[0])) ** 0.7 - 1.0
+                amp = depth * 0.6 * (0.35 + 0.65 * v ** 0.5) * (0.6 + 0.4 * bow)
             r = q + nrm * (amp * f) + wind * (v * v) + Vector((0.0, 0.0, -sag * bow * (v ** 0.7)))
             new.append(_push_out(bvh, r, gap * 0.6) if k > 0 else r)
         out.append(new)
@@ -593,6 +599,26 @@ def perform(context, loops, projector, kind='DOWN'):
            f'{len(me.polygons)} faces)'
 
 
+def line_loop(path, drop=20.0):
+    """0.24.34 Scarf Cape: the drawn line (screen) is the collar - a thin outline under it (Preset: Length and Hem
+    make the rest)."""
+    pts = [tuple(q) for q in path]
+    if len(pts) < 2:
+        return []
+    xs = [q[0] for q in pts]
+    drop = max(2.0, min(drop, 0.2 * (max(xs) - min(xs))))
+    return pts + [(x, y - drop) for x, y in reversed(pts)]
+
+
+def perform_line(context, path, projector):
+    """A line drawn across a body -> a live Scarf Cape hanging from it (as wide as the line)."""
+    loop = line_loop(path)
+    xs = [q[0] for q in loop]
+    if not loop or max(xs) - min(xs) < 10.0:
+        raise cg.CutError('Draw a line across the body (left to right) for the Scarf Cape.')
+    return perform(context, [loop], projector, 'ACROSS')
+
+
 def live_cape(context, kind=None):
     ob = getattr(context, 'active_object', None)
     if ob is not None and getattr(ob, 'mch_cape', None) is not None and ob.mch_cape.live and source(ob) \
@@ -636,7 +662,8 @@ def draw(layout, context, kind='DOWN'):
     if kind == 'ACROSS':
         box.prop(p, 'gravity', slider=True)
     box.row(align=True).prop(p, 'style', expand=True)
-    box.row(align=True).prop(p, 'shape', expand=True)
+    if kind != 'ACROSS':                     # the Scarf Cape always hangs from the drawn line (Preset)
+        box.row(align=True).prop(p, 'shape', expand=True)
     box.prop(p, 'exact_width', toggle=True)
     col = box.column(align=True)
     col.prop(p, 'length', slider=True)
@@ -666,8 +693,12 @@ def draw(layout, context, kind='DOWN'):
         box.operator('mch.cape_apply', icon='CHECKMARK')
     col = layout.column(align=True)
     col.scale_y = 0.8
-    for line in ('Draw on the body from the side the cape hangs on', 'The top of what you draw = the collar',
-                 'Short wide drawing = Preset, tall = your outline', 'Apply: plain mesh'):
+    lines = ('Draw on the body from the side the cape hangs on', 'The top of what you draw = the collar',
+             'Short wide drawing = Preset, tall = your outline', 'Apply: plain mesh')
+    if kind == 'ACROSS':
+        lines = ('Draw a line across the body (from the side it hangs on)', 'The line = the top edge, as wide as drawn',
+                 'Fold lines run across; Gravity sags the middle', 'Apply: plain mesh')
+    for line in lines:
         col.label(text=line)
 
 

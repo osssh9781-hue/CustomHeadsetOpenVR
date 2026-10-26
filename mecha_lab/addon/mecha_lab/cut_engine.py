@@ -1243,7 +1243,7 @@ class StrokeLogic:
         from . import lasso_line
         if self.mode == 'SDRAW' and (self._fill_area() or self.inverted()):
             return False                       # 0.24.33 Fill Area / Alt cut: the drawing is an area
-        if self.mode in {'BELT', 'SCURVE', 'SDRAW'}:    # 0.24.20 Belt Maker / Surface Curve always draw a line
+        if self.mode in {'BELT', 'SCURVE', 'SDRAW', 'SCAPE'}:    # 0.24.20 Belt Maker / Surface Curve always draw a line
             return self.shape in {'LASSO', 'CURVE_LASSO', 'STROKE'}
         return lasso_line.enabled(bpy.context, self.mode, self.shape)
 
@@ -1412,7 +1412,7 @@ class StrokeLogic:
                 self.report({'WARNING'}, str(ex))
             return {'CANCELLED'}
         if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER',
-                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF'} and self.shape == 'LASSO' and self.brush.line_open:
+                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF'} and self.shape == 'LASSO' and self.brush.line_open:
             self.brush.line_open = False
         self.ui = ui_scale(context)
         self.target_names = []
@@ -1695,6 +1695,9 @@ class StrokeLogic:
                 return surface_draw.perform_fill(context, self._current_loops(self.ctrl_held, self.shift_held),
                                                  self.projector)
             return surface_draw.perform(context, self._line_path(), self.projector)
+        if self.mode == 'SCAPE':                 # 0.24.34 Scarf Cape: the drawn line is the collar, folds across
+            from . import cape_gen
+            return cape_gen.perform_line(context, self._line_path(), self.projector)
         if self.mode == 'SCURVE':
             from . import surface_curve
             return surface_curve.perform(context, self._line_path(), self.projector)
@@ -1747,9 +1750,6 @@ class StrokeLogic:
             elif self.mode == 'CAPE':
                 from . import cape_gen
                 msg = cape_gen.perform(context, loops, self.projector)
-            elif self.mode == 'SCAPE':          # 0.24.34 Scarf Cape: the cape with folds across
-                from . import cape_gen
-                msg = cape_gen.perform(context, loops, self.projector, 'ACROSS')
             elif self.mode == 'HAIR':
                 from . import creature_hair
                 msg = creature_hair.perform(context, loops, self.projector)
@@ -1819,7 +1819,7 @@ class StrokeLogic:
             self._clean_points()
             if self.shape == 'LASSO' and len(self.pts) >= 2 and (self.line_open or len(self.pts) == 2):
                 if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER',
-                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF'}:
+                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF'}:
                     self.report({'WARNING'}, 'This tool needs a closed outline (3+ points)')
                     return {'RUNNING_MODAL'}
                 if self.mode == 'SPLIT':
@@ -1984,7 +1984,7 @@ class StrokeLogic:
             self.region.tag_redraw()
             return {'RUNNING_MODAL'}
         if et == 'F' and ev == 'PRESS' and self.shape == 'LASSO' and self.mode not in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER',
-                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF'}:
+                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF'}:
             self.line_open = not self.line_open
             self.brush.line_open = self.line_open
             self.region.tag_redraw()

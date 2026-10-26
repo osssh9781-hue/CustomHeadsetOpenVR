@@ -74,8 +74,8 @@ TOOLS = (
      'live cloak / capelet / poncho drapes from it (Style, Length, Hem, Flare, Wrap, folds, Wind, Tatter); a short '
      'drawing = Preset, a tall one = your outline',
      'cape', 'MOD_CLOTH', 'mecha.cape', 'OK'),
-    ('SCAPE', 'Scarf Cape', 'The same as Cape, but the folds run across like a draped scarf; Gravity sags the '
-     'middle down', 'scarf_cape', 'MOD_CLOTH', 'mecha.scarf_cape', 'OK'),
+    ('SCAPE', 'Scarf Cape', 'Draw a line across a body: a cape hangs from it, as wide as the line, with fold lines '
+     'running across like a draped scarf; Gravity sags the middle down', 'scarf_cape', 'MOD_CLOTH', 'mecha.scarf_cape', 'OK'),
     ('HAIR', 'Creature Hair', 'Draw the scalp area on a head: live dreadlocks / tentacles / quills / strands grow '
      'there and fall over the body (Style, Count, Length, Thickness, Taper, Lift, Gravity, Wave, Rope, Rings)',
      'hair', 'CURVES', 'mecha.creature_hair', 'OK'),

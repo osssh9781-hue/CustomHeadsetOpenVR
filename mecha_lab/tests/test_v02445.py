@@ -25,7 +25,7 @@ grid = [[Vector((-1 + 2 * i / 40, 1.0, -2 * k / 30)) for k in range(31)] for i i
 
 
 def sheet(fold_dir, gravity=0.0):
-    p = SimpleNamespace(seed=1, folds=6, fold_depth=0.04, fold_random=0.0, wind=0.0, wind_dir=0.0,
+    p = SimpleNamespace(seed=1, folds=9, fold_depth=0.04, fold_random=0.0, wind=0.0, wind_dir=0.0,
                         fold_dir=fold_dir, gravity=gravity)
     return cp.shape_sheet(grid, Vector((0, 0, 0)), p, 3.0, far, 0.0)
 
@@ -56,12 +56,31 @@ body.name = 'Body'
 BACK = cg.OrthoProjector(Euler((math.radians(90), 0, math.pi)).to_quaternion())   # behind (+Y), looking -Y
 SHORT = [[(405, 560), (595, 560), (595, 530), (405, 530)]]
 cape_before = {k: getattr(S.mch_cape, k) for k in cp.LIVE_KEYS}
-msg = cp.perform(C, SHORT, BACK, 'ACROSS')
+LINE = [(405 + 19 * i, 560) for i in range(11)]
+loop = cp.line_loop(LINE)
+check('a drawn line = the top edge of a thin outline under it', len(loop) == 22 and loop[:11] == LINE
+      and all(y < 560 for _x, y in loop[11:]))
+msg = cp.perform_line(C, LINE, BACK)
 ob = C.active_object
 check('Scarf Cape on the body: live, closed mesh, folds across', cp.live_cape(C, 'ACROSS') == ob
       and ob.mch_cape.fold_dir == 'ACROSS' and non_manifold(ob) == 0 and 'Scarf Cape' in msg and 'ScarfCape' in ob.name,
       (msg, non_manifold(ob)))
 check('it is not a plain Cape (the Cape panel does not take it)', cp.live_cape(C, 'DOWN') is None)
+xs = [(ob.matrix_world @ v.co).x for v in ob.data.vertices]
+check('as wide as the drawn line (left to right, 190 px of 1000 px view)', max(xs) - min(xs) < 2.0 and max(xs) - min(xs) > 0.4,
+      max(xs) - min(xs))
+try:
+    cp.perform_line(C, [(500, 560), (502, 520)], BACK)
+    ok = False
+except cg.CutError:
+    ok = True
+check('a line that is not across: tells, makes nothing', ok)
+from mecha_lab import cut_engine as ce
+
+
+class Fake:
+    mode, shape = 'SCAPE', 'STROKE'
+check('cut engine: the Scarf Cape tool always draws a line', ce.MCH_OT_cut_stroke._line_mode(Fake()) is True)
 z0 = min((ob.matrix_world @ v.co).z for v in ob.data.vertices)
 ob.mch_cape.gravity = 1.0
 z1 = min((ob.matrix_world @ v.co).z for v in ob.data.vertices)
