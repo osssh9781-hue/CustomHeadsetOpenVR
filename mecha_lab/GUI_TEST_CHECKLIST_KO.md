@@ -1,8 +1,13 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.34 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.35 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A00000000000000000000000000000000000000000000000000000000000000000000000000000. 0.24.35 (미검증)
+- [ ] F로 브러시 크기를 바꾸고 그린 뒤 Ctrl+Z → 그린 것만 사라지고 크기는 그대로인지(Line Width, Concept / Path Move, Screw, PNG 스탬프)
+- [ ] Path Move 패널의 Knife Mesh: 누르면 메쉬 모양은 그대로이고 면만 고르게 잘리는지(와이어프레임으로 확인), Cuts 값에 따라 촘촘해지는지
+- [ ] Knife Mesh 후 Path Move / Concept Move가 원하는 곳에서 휘는지, Ctrl+Z로 Knife 전으로 돌아가는지
 
 ## A0000000000000000000000000000000000000000000000000000000000000000000000000000. 0.24.34 (미검증)
 - [ ] Surface Draw · 판 · 망토 등 그리기 툴 패널 맨 위에 Auto Target / Selected Only / Active 줄이 보이는지

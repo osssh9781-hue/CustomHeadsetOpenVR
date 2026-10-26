@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 0.24.35 — Ctrl+Z에도 브러시 크기 유지, Knife Mesh 버튼 (2026-10-26)
+
+- **Ctrl+Z 해도 브러시 크기 그대로**: 그린 걸 되돌려도 Line Width, Stamp Radius, Mask Brush Radius, Concept / Path Move 크기(Real Size 포함), Screw Size, Surface Draw 다음 획 Width / Height가 초기화되지 않음(브러시 모양 · 툴은 원래 유지).
+- **Knife Mesh**(Concept Move · Path Move 패널): 선택한 메쉬를 X / Y / Z로 고르게 슬라이스 — 모양은 그대로, 면만 고르게 나눠서 무브가 원하는 곳에서 휨. **Cuts** = 가장 긴 변의 칸 수(기본 12), 다른 변도 같은 간격. Ctrl+Z로 되돌릴 수 있음.
+- 테스트: 107개 파일 3471/3471. 새 test_v02447(7). ZIP sha256 `3475bb30649840d39f198f3c83c09eb7ad094a9aacd981027d8081da7bcdf6be`.
+
 ## 0.24.34 — 모든 그리기 툴에 대상 선택(Auto / Selected Only / Active), F + 마우스 = 브러시 크기, 목도리 케이프(Scarf Cape) (2026-10-26)
 
 - **대상 선택을 모든 그리기 툴에**: Cut 패널의 **Auto Target / Selected Only / Active** 줄이 메쉬 위에 그리는 모든 툴(Surface Draw, Base Mesh, Armor / Creature Plate, Belt, Spike, Scales, Scale Brush, Bridge, Flower, Surface Curve, Cape, Scarf Cape, Hair, Plate Detail 1/2/3, Screw, Cloth Plate, Primitive, Mesh Curve, Cable 등)의 패널 맨 위에 생김.

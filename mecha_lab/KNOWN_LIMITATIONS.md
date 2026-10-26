@@ -1,5 +1,10 @@
 # KNOWN LIMITATIONS — Mecha Lab 0.18.0
 
+## 0.24.35 Knife Mesh / Ctrl+Z 크기 유지
+- 실제 화면에서 써 보지 않음.
+- Knife Mesh는 오브젝트 자기 축(X / Y / Z) 방향으로만 자름: 비스듬히 돌아간 메쉬(메쉬 데이터 자체가 기울어진 경우)는 슬라이스도 그 축 기준. 면이 많이 늘어나니(Cuts 12 큐브 ≈ 864면) 큰 메쉬는 Cuts를 낮게.
+- Ctrl+Z가 크기를 되돌리지 않으므로, 크기를 실수로 바꿨으면 F / 슬라이더로 다시 맞춰야 함.
+
 ## 0.24.34 대상 선택 / Scarf Cape
 - 실제 화면에서 써 보지 않음.
 - 대상 선택은 Cut과 같은 설정 하나: Cut에서 Selected Only로 두면 다른 그리기 툴도 Selected Only.

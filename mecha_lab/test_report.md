@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.34
+# Test Report — Mecha Lab 0.24.35
+
+## 0.24.35 결과: 107개 파일 3471/3471 (`tests/test_log_bpy501_v02435.txt`, Blender 5.0.1 bpy). 새 test_v02447(7: UNDO_KEEP에 크기들, 스냅샷 → 복원으로 크기 유지, 큐브 4 cuts = 9 슬라이스, 간격 이하 엣지, 모양 · 닫힘 유지, 버튼 = 패널 Cuts 값 · 변마다 고른 간격, 패널에 있음). 5.2.3 bpy에서도 test_v02447 · test_v02437 · test_v02438 · test_v02439 · test_ui_draw · test_v0113 통과. 실제 화면 입력은 미검증.
 
 ## 0.24.34 결과: 106개 파일 3464/3464 (`tests/test_log_bpy501_v02434.txt`, Blender 5.0.1 bpy). 새 test_v02444(15: 기본 Auto, Selected Only / Active 레이가 앞 메쉬를 뚫음, pick_surface · pick_body · belt pick · cut pick, Surface Draw가 선택 메쉬에, 다음 획도 같은 메쉬, 선택 없음 = 안내), test_v02445(17: Scarf Cape 툴 등록, 가로 / 세로 주름 방향, Gravity 처짐 · 양 끝 고정, 끝 페이드, 선 → 외곽선, 몸 위 생성 · 폭 = 선 길이, 라이브 Gravity, 설정 분리, Apply), test_v02446(12: 모든 그리기 툴 키맵에 F, 툴 밖 F = Select / Move, 툴별 크기 대상, 2배 · 한계, Surface Draw width / height 같이). 5.2.3 bpy에서도 test_v02444 · test_v02445 · test_v02446 · test_v02428 · test_v02437 · test_ui_draw · test_v0120 · test_v0113 · test_v0100_regression 통과. 실제 화면 입력은 미검증.
 

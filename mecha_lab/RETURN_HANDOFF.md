@@ -1,4 +1,9 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.34 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.35 (Claude Code, 2026-10-14)
+
+## 0.24.35
+- ZIP sha256 `3475bb30649840d39f198f3c83c09eb7ad094a9aacd981027d8081da7bcdf6be`.
+- `tool_state.UNDO_KEEP`에 크기 추가: mch_brush.line_width / custom_size / mask_brush_radius, mch_concept.radius_px / radius_world / lock_size, mch_screw.radius, mch_sdraw.width / height (undo_pre 스냅샷 → undo_post 복원).
+- `concept_move.knife_grid(bm, cuts)`: 메쉬 공간 bbox, step = 최대 변 / cuts, 각 축 parts = round(변 / step), 평면 k / parts마다 `bmesh.ops.bisect_plane`. `MCH_OT_knife_grid`(`mch.knife_grid`, UNDO, cuts 미지정 = 씬 `mch_concept.knife_cuts`), `draw_knife` = Concept Move · Path Move 패널.
 
 ## 0.24.34
 - ZIP sha256 `86cceef084d993161d94b25600cd15a6798150a17c3d844810edffc5a333566c`.
