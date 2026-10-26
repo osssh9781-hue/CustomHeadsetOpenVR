@@ -557,6 +557,7 @@ def _draw_base_sketch(layout, context, base_mesh):
     row = box.row(align=True)
     row.prop(sp, 'sketch', icon='GREASEPENCIL', toggle=True)
     row.prop(sp, 'surface_align', icon='SNAP_FACE', toggle=True)
+    row.prop(sp, 'invert_height', icon='ARROW_LEFTRIGHT', toggle=True)     # 0.24.37 height grows back
     data = base_mesh.sketch_data(context.scene)
     if not sp.sketch and data is None:
         box.label(text='Each outline becomes a mesh at once (Alt: cutter)')

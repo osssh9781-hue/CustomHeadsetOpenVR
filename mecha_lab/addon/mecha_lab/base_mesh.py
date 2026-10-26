@@ -146,6 +146,9 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
                                 description='Drawn over a mesh: the new solid sits ON that surface (turned to the '
                                             'surface normal, its bottom sunk just enough to leave no gap). '
                                             'Off: the solid faces the view (old behaviour)')
+    invert_height: BoolProperty(name='Invert', default=False,
+                                description='The height grows back, away from you (into the mesh) from where you draw, '
+                                            'instead of toward you')
     embed: FloatProperty(name='Sink Into Surface', default=0.0, min=0.0, soft_max=1.0, precision=4,
                          unit='LENGTH', update=_rebuild_update,
                          description='How far the bottom reaches into the surface it was drawn on '
@@ -1153,9 +1156,12 @@ def frame_for(context, projector, screen_groups):
     to Surface is on and there is one, else facing the view (embed 0)."""
     p = scene_defaults(context)
     sf = surface_frame(context, projector, screen_groups, p.height) if getattr(p, 'surface_align', False) else None
-    if sf is not None:
-        return sf
-    return (*plane_frame(context, projector, screen_groups), 0.0)
+    if sf is None:
+        sf = (*plane_frame(context, projector, screen_groups), 0.0)
+    if getattr(p, 'invert_height', False):        # 0.24.37 Invert: the height grows back from the drawn plane
+        origin, x, y, n, embed = sf
+        sf = (origin, x, -y, -n, max(p.height * 0.02, 1e-5) if embed > 0 else 0.0)
+    return sf
 
 
 def _local_groups(context, loops, projector):
