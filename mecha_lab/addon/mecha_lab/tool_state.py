@@ -276,9 +276,10 @@ class MCH_PG_Brush(bpy.types.PropertyGroup):
                                description='Smoothing passes applied to the drawn freehand path')
     stroke_spacing: FloatProperty(name='Stroke Spacing (px)', default=4.0, min=1.0, max=50.0,
                                   description='Free Draw: a new outline point every N pixels of (stabilized) movement')
-    stab_enable: BoolProperty(name='Stabilizer (Lazy Mouse)', default=False,
-                              description='Free Draw: the drawn line follows the mouse slowly and smoothly while '
-                                          'drawing (Cut / Split / Base Mesh). OFF = exact previous behaviour')
+    stab_enable: BoolProperty(name='Slow Line (Lazy Mouse)', default=False,
+                              description='Careful lines: while you hold and drag (Free Draw, Line strokes, the Path '
+                                          'Move path) the line follows the mouse slowly and smoothly - every '
+                                          'drawing tool. OFF = exact previous behaviour')
     stab_strength: FloatProperty(name='Smoothing Strength', default=50.0, min=0.0, max=100.0, subtype='PERCENTAGE',
                                  description='Higher = smoother but slower follow (time based, same feel at any '
                                              'mouse rate). Applies immediately, also while drawing')

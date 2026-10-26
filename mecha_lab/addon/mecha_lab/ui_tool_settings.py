@@ -127,6 +127,22 @@ def draw_shape_options(layout, context, mode):
                 sub.prop(brush, 'outline_segments')
 
 
+def draw_slow_line(layout, context):
+    """0.24.36 Slow Line (Lazy Mouse) on / off in every drawing tool: Free Draw / Line strokes follow the mouse
+    slowly and smoothly (careful lines)."""
+    brush = context.scene.mch_brush
+    box = layout.box()
+    row = box.row(align=True)
+    row.prop(brush, 'stab_enable', text='Slow Line (Lazy Mouse)', toggle=True, icon='MOD_SMOOTH')
+    if brush.stab_enable:
+        col = box.column(align=True)
+        col.prop(brush, 'stab_strength', slider=True)
+        col.prop(brush, 'stab_radius', slider=True)
+        col.prop(brush, 'stab_guide')
+        if brush.shape != 'STROKE':
+            box.label(text='Works while you hold and drag (Free Draw shape)', icon='INFO')
+
+
 def draw_targets(layout, context):
     """0.24.34 Auto Target / Selected Only / Active for every tool that draws on a mesh (same setting as Cut)."""
     col = layout.column(align=True)

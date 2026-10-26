@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import math
+import time
 
 import bmesh
 import bpy
@@ -1299,6 +1300,9 @@ class MCH_OT_concept_path(bpy.types.Operator):
         res = MCH_OT_concept_move.invoke(self, context, event)
         if 'RUNNING_MODAL' in res:
             self.trail = [self.hit.copy()]
+            from .stabilizer import LazyStabilizer       # 0.24.36 Lazy Mouse (Slow Line) for the path too
+            self.stab = LazyStabilizer(context.scene.mch_brush)
+            self.stab.reset(self.mouse, time.monotonic())
             self.local = []
             self._sig = None
             self.info = None                                 # Extend / Separate Tube: the section (once known)
@@ -1414,8 +1418,14 @@ class MCH_OT_concept_path(bpy.types.Operator):
         if event.type in NAV_EVENTS:
             return {'PASS_THROUGH'}
         if event.type in {'TIMER', 'MOUSEMOVE'}:
-            if event.type == 'MOUSEMOVE':
-                self.mouse = (event.mouse_region_x, event.mouse_region_y)
+            stab = getattr(self, 'stab', None)
+            raw = (event.mouse_region_x, event.mouse_region_y)
+            if stab is not None and stab.active:          # Slow Line: the path follows the mouse lazily
+                p = stab.update(raw, time.monotonic()) if event.type == 'MOUSEMOVE' else stab.tick(time.monotonic())
+                if p is not None:
+                    self.mouse = (p[0], p[1])
+            elif event.type == 'MOUSEMOVE':
+                self.mouse = raw
             self._preview(context)
         elif event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
             step = brush_world(context, self.hit) * 0.15
@@ -1553,6 +1563,15 @@ class MCH_OT_knife_grid(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def draw_slow_line(layout, context):
+    """0.24.36 Slow Line (Lazy Mouse) on / off - the same switch as in the drawing tools."""
+    brush = context.scene.mch_brush
+    row = layout.row(align=True)
+    row.prop(brush, 'stab_enable', text='Slow Line', toggle=True, icon='MOD_SMOOTH')
+    if brush.stab_enable:
+        row.prop(brush, 'stab_strength', text='', slider=True)
+
+
 def draw_knife(layout, context):
     row = layout.row(align=True)
     row.prop(context.scene.mch_concept, 'knife_cuts', text='Cuts')
@@ -1565,6 +1584,7 @@ def draw_path(layout, context, compact=False):
     layout.prop(st, 'path_method', expand=not compact, text='' if compact else 'Method')
     if not compact:
         draw_knife(layout, context)
+        draw_slow_line(layout, context)
     ob = context.active_object
     if not compact and ob is not None and path_sweep.SOURCE_KEY in ob:
         row = layout.row(align=True)
