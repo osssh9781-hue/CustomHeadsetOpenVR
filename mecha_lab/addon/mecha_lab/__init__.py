@@ -17,7 +17,7 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                cloth_wrinkle, last_used, robot_base, detail_stamp, surface_lasso,
                curve_tube, creature_shell, cloth_sim, box_hide, plate_detail, screw_stamp, lowpoly, fold_patch,
                creature_plate, belt_maker, creature_spike, creature_scales, flower_plate,
-               surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, quad_remesh, tool_recent, actions_menu, key_legend)
+               surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, quad_remesh, tool_recent, actions_menu, key_legend, quick_hud)
 import os
 import re
 from pathlib import Path
@@ -1981,6 +1981,7 @@ def _register():
     tool_recent.register()
     actions_menu.register()
     key_legend.register()
+    quick_hud.register()
     fold_patch.register()
     workspace_ui.register()
     bottom_bar.register()
@@ -2038,6 +2039,7 @@ def _unregister_steps():
         ('bottom_bar', bottom_bar.unregister),
         ('workspace_ui', workspace_ui.unregister),
         ('fold_patch', fold_patch.unregister),
+        ('quick_hud', quick_hud.unregister),
         ('key_legend', key_legend.unregister),
         ('actions_menu', actions_menu.unregister),
         ('tool_recent', tool_recent.unregister),

@@ -1,6 +1,7 @@
-"""0.24.49 UI / UX: RMB Actions popup (Substance 3D Modeler style: tools | actions on the selection), Recent
-tools and Favorites (kept across restarts), bottom toolbar that shrinks / wraps on a narrow viewport (and the
-UI-scale centring fix), key legend per drawing tool."""
+"""0.24.49 UI / UX: RMB popup laid out like Substance 3D Modeler (tool strip | tool card | Actions panel of
+icon buttons under small section titles), Recent tools and Favorites (kept across restarts), Quick HUD (key
+settings as viewport sliders), bottom toolbar that shrinks / wraps on a narrow viewport (and the UI-scale
+centring fix), key legend per drawing tool."""
 import inspect
 import os
 import tempfile
@@ -104,10 +105,25 @@ part = cube('Part')
 select_only(part)
 am.draw(Lay(), C)
 ids = {o for o, _t in OPS}
-check('Actions popup draws: tools (recent / favorites) | actions on the selection, valid operators and icons',
+check('Actions popup draws: tool strip | Actions panel, valid operators and icons',
       not ERR and {'mch.set_tool', 'mch.tool_fav_toggle', 'object.duplicate_move', 'object.join', 'object.delete',
                    'mch.actions_mirror', 'object.hide_view_set', 'object.hide_view_clear',
-                   'view3d.localview'} <= ids, (ERR, sorted(ids)))
+                   'view3d.localview', 'mch.one_click_remesh', 'mch.quad_remesh', 'mch.lowpoly_make'} <= ids,
+      (ERR, sorted(ids)))
+check('... Modeler style: icon-only buttons in the Actions panel, section titles Actions / Resolution / Symmetry / '
+      'Repetition / Visibility', all(t == '' for o, t in OPS if o != 'wm.call_menu')
+      and all(f"'{h}'" in inspect.getsource(am.draw_actions)
+              for h in ('Actions', 'Resolution', 'Symmetry', 'Repetition', 'Visibility')))
+OPS.clear()
+ERR.clear()
+wui.shape_card(Lay(), C)
+check('Tool card (middle): Shapes / Stamps tabs, the shape grid, the key settings - no bad names', not ERR
+      and "text='Stamps'" in inspect.getsource(wui.shape_card), ERR)
+ERR.clear()
+wui.profile_card(Lay(), C)
+check('Base Mesh card draws too', not ERR, ERR)
+check('Icon-only tool buttons still name the tool (tooltip "Cut: ...")',
+      wui.MCH_OT_set_tool.description(C, types.SimpleNamespace(tool='CUT')).startswith('Cut: '))
 check('... the tool RMB popups (shapes / profiles) show it on top; the big tool menu shows recent + favorites',
       'actions_menu.draw' in inspect.getsource(wui.MCH_PT_shape_popup.draw)
       and 'actions_menu.draw' in inspect.getsource(wui.MCH_PT_profile_popup.draw)
@@ -131,7 +147,7 @@ bpy.ops.mch.actions_mirror(axis=1)
 OPS.clear()
 am.draw(Lay(), C)
 check('... the Live section offers Apply Modifiers once the part has one',
-      ('mch.actions_apply_modifiers', 'Apply Modifiers') in OPS)
+      any(o == 'mch.actions_apply_modifiers' for o, _t in OPS))
 nv = len(part.data.vertices)
 r = bpy.ops.mch.actions_apply_modifiers()
 check('Apply Modifiers bakes the mirror', r == {'FINISHED'} and not part.modifiers
@@ -149,6 +165,39 @@ check('... but not outside MECHA LAB (Blender\'s RMB menu stays there)', not am.
 check('... the popup has a button for Blender\'s own object menu',
       'VIEW3D_MT_object_context_menu' in inspect.getsource(am.MCH_PT_actions_popup.draw))
 check('... it can be switched off (Preferences: RMB Actions Menu)', "pref('rmb_actions'" in inspect.getsource(am))
+
+# --- Quick HUD --------------------------------------------------------------------------------------------
+from mecha_lab import quick_hud as qh
+cut_items = qh.items(C, 'CUT')
+check('Quick HUD: Cut shows depth, GN finish, width, segments, ramp', [p for _d, p in cut_items]
+      == ['depth', 'gn_finish', 'gn_width', 'gn_segments', 'gn_ramp'], [p for _d, p in cut_items])
+check('... every core tool has 1-5 rows that exist', all(1 <= len(qh.items(C, t)) <= qh.MAX_ROWS
+      for t in ('CUT', 'SPLIT', 'BASE', 'CBASE', 'PLATE', 'SDRAW', 'SCREW', 'CMOVE', 'CPATH', 'TUBE')),
+      {t: len(qh.items(C, t)) for t in ('CUT', 'SPLIT', 'BASE', 'CBASE', 'PLATE', 'SDRAW', 'SCREW', 'CMOVE',
+                                         'CPATH', 'TUBE')})
+cut = C.scene.mch_cut
+check('Drag: +300 px ≈ the whole soft range, Shift = a tenth, clamped',
+      abs(qh.drag_value(cut, 'depth', 0.2, 30) - qh.drag_value(cut, 'depth', 0.2, 300, fine=True)) < 1e-9
+      and qh.drag_value(cut, 'depth', 0.2, -1e6) >= cut.bl_rna.properties['depth'].hard_min)
+check('... whole numbers: 1 step per 8 px', qh.drag_value(cut, 'gn_segments', 3, 16) == 5)
+old = cut.gn_finish
+qh.step_choice(cut, 'gn_finish')
+check('Click on a choice steps to the next one', cut.gn_finish != old)
+cut.depth = 0.37
+qh.reset(cut, 'depth')
+check('Ctrl+click: back to the default', abs(cut.depth - cut.bl_rna.properties['depth'].default) < 1e-6)
+check('Value text: name and value', qh.value_text(cut, 'gn_ramp').endswith(('On', 'Off')))
+grip, rows = qh.layout_rows(1200, 800, 4)
+grip2, rows2 = qh.layout_rows(1200, 800, 4, offset=(100, -50))
+check('HUD sits upper left, rows under the grip, the grip moves it',
+      grip[1] > rows[0][1] > rows[-1][1] and grip[0] < 400 and abs(grip2[0] - grip[0] - 100) < 1e-6
+      and abs(grip2[1] - grip[1] + 50) < 1e-6)
+gripc, rowsc = qh.layout_rows(300, 200, 5, offset=(5000, 5000))
+check('... kept inside the viewport', all(0 < x < 300 and 0 < y < 200 for x, y in [gripc] + rowsc))
+check('Gizmo group in the module (Blender registers gizmos only with a window); hidden outside MECHA LAB',
+      qh.MCH_GGT_quick_hud in qh.CLASSES and hasattr(bpy.types, 'MCH_PT_quick_value') and not qh.visible(outside))
+check('... Armor Plate: hidden while its own live HUD is up (no double HUD)',
+      'pending_plate(context) is not None' in inspect.getsource(qh._plate_scene))
 
 # --- Bottom toolbar -----------------------------------------------------------------------------------------
 n = len(bb.BAR_TOOLS)
@@ -177,7 +226,6 @@ check('... Armor Plate: Alt carves, wheel = profile', any('carve' in l for l in 
 check('... tools without an Alt meaning show none; unknown tool: nothing',
       not any(l.startswith('Alt') for l in kl.lines('SPLIT')) and kl.lines('NOPE') == [])
 check('... can be switched off (Preferences: Key Legend)', "pref('key_legend'" in inspect.getsource(kl))
-check('Preferences show both new switches', "'rmb_actions'" in inspect.getsource(wui.MCH_AddonPreferences.draw)
-      and "'key_legend'" in inspect.getsource(wui.MCH_AddonPreferences.draw)
-      if hasattr(wui, 'MCH_AddonPreferences') else True)
+check('Preferences show the new switches', all(f"'{k}'" in inspect.getsource(wui.MCH_AddonPreferences.draw)
+                                               for k in ('rmb_actions', 'key_legend', 'quick_hud')))
 summary()

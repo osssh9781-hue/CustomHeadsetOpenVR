@@ -2,11 +2,12 @@
 
 One popup at the mouse, in labelled sections of big one-click buttons, showing only what fits what is
 selected:
-- left: TOOLS - Recent (last 5) and Favorites (tool_recent);
-- right: ACTIONS on the selection (Duplicate, Join, Delete, Origin), SYMMETRY (live Mirror X / Y / Z on the
-  part - cuts and plates follow it), VISIBILITY (Hide, Show All, Isolate) and LIVE (Apply / Remove for a live
-  result, Apply Modifiers);
-- under it, in a drawing tool, its shapes / profiles as before (the caller draws those).
+- left: a strip of tool buttons - Recent (last 5), then Favorites, the star pins the current tool;
+- middle: the tool's own card (its shapes / profiles, as before);
+- right: the Actions panel - icon buttons in threes under small section titles: Actions (Duplicate, Join,
+  Delete, Origin, Reset Axis, Auto Smooth), Resolution (Remesh, Quad Remesh, Low Poly), Symmetry (live Mirror
+  X / Y / Z on the part - cuts and plates follow it), Repetition (Radial Array, Curve Array, Radial Symmetry),
+  Visibility (Hide, Show All, Isolate) and Live (Apply / Remove for a live result, Apply Modifiers).
 
 RMB in a drawing tool opens it (single click; double click still exits the tool).  In Select / Move it
 replaces Blender's object context menu inside the MECHA LAB workspace only (Preferences: RMB Actions Menu),
@@ -53,74 +54,92 @@ def toggle_mirror(ob, axis):
     return axes[axis]
 
 
-def _section(col, title, icon):
-    box = col.box()
-    box.label(text=title, icon=icon)
-    return box
+def _header(col, title):
+    """Section title like Modeler's: small, centred, between thin lines."""
+    col.separator(type='LINE')
+    r = col.row()
+    r.alignment = 'CENTER'
+    r.active = False                       # muted grey
+    r.label(text=title)
 
 
-def _grid(box, columns=3):
-    g = box.grid_flow(row_major=True, columns=columns, even_columns=True, align=True)
-    g.scale_y = 1.35
+def _grid(col, columns=3):
+    g = col.grid_flow(row_major=True, columns=columns, even_columns=True, even_rows=True, align=False)
+    g.scale_y = 1.6
     return g
 
 
+def _btn(grid, op, icon, enabled=True, depress=False, **props):
+    """One icon-only button (the operator's tooltip names it)."""
+    cell = grid.row(align=True)
+    cell.enabled = enabled
+    b = cell.operator(op, text='', icon=icon, depress=depress)
+    for k, v in props.items():
+        setattr(b, k, v)
+    return b
+
+
+def _tool_btn(grid, tool, active):
+    cell = grid.row(align=True)
+    b = cell.operator('mch.set_tool', text='', icon=TOOL_ICONS.get(tool, 'TOOL_SETTINGS'), depress=(tool == active))
+    b.tool = tool
+
+
+TOOL_ICONS = {'RADIAL': 'MOD_SCREW', 'ARRAY': 'MOD_ARRAY', 'MIRROR': 'MOD_MIRROR', 'RSYM': 'FORCE_FORCE'}
+
+
 def draw_actions(layout, context):
-    """Right column: what can be done to the selection."""
+    """Right panel: what can be done to the selection, icon buttons in threes under small section titles
+    (Substance 3D Modeler's Actions panel)."""
     ob = context.active_object
     meshes = _meshes(context)
-    col = layout.column(align=False)
+    sel = bool(context.selected_objects)
+    mesh_on = ob is not None and ob.type == 'MESH'
+    col = layout.column(align=True)
+    r = col.row()
+    r.alignment = 'CENTER'
+    r.label(text=ob.name if ob is not None else 'Nothing selected', icon='OBJECT_DATA' if ob else 'INFO')
 
-    box = _section(col, 'ACTIONS' + (f'  |  {ob.name}' if ob else ''), 'OBJECT_DATA')
-    g = _grid(box)
-    sub = g.row(align=True)
-    sub.enabled = bool(context.selected_objects)
-    sub.operator('object.duplicate_move', text='Duplicate', icon='DUPLICATE')
-    sub = g.row(align=True)
-    sub.enabled = len(meshes) > 1
-    sub.operator('object.join', text='Join', icon='AUTOMERGE_ON')
-    sub = g.row(align=True)
-    sub.enabled = bool(context.selected_objects)
-    sub.operator('object.delete', text='Delete', icon='TRASH').use_global = False
-    sub = g.row(align=True)
-    sub.enabled = bool(meshes)
-    sub.operator('mch.object_tidy', text='Origin to Geometry', icon='PIVOT_MEDIAN').action = 'ORIGIN_GEOMETRY'
-    sub = g.row(align=True)
-    sub.enabled = bool(meshes)
-    sub.operator('mch.object_tidy', text='Reset Axis', icon='ORIENTATION_GLOBAL').action = 'RESET_AXIS'
-    sub = g.row(align=True)
-    sub.enabled = bool(meshes)
-    sub.operator('object.shade_auto_smooth', text='Auto Smooth', icon='MOD_SMOOTH')
+    _header(col, 'Actions')
+    g = _grid(col)
+    _btn(g, 'object.duplicate_move', 'DUPLICATE', sel)
+    _btn(g, 'object.join', 'AUTOMERGE_ON', len(meshes) > 1)
+    _btn(g, 'object.delete', 'TRASH', sel, use_global=False)
+    _btn(g, 'mch.object_tidy', 'PIVOT_MEDIAN', bool(meshes), action='ORIGIN_GEOMETRY')
+    _btn(g, 'mch.object_tidy', 'ORIENTATION_GLOBAL', bool(meshes), action='RESET_AXIS')
+    _btn(g, 'object.shade_auto_smooth', 'MOD_SMOOTH', bool(meshes))
 
-    box = _section(col, 'SYMMETRY', 'MOD_MIRROR')
-    m = mirror_mod(ob) if ob is not None and ob.type == 'MESH' else None
-    row = box.row(align=True)
-    row.scale_y = 1.35
-    row.enabled = ob is not None and ob.type == 'MESH'
-    for i, name in enumerate('XYZ'):
-        on = bool(m and m.use_axis[i])
-        row.operator('mch.actions_mirror', text=name, depress=on).axis = i
-    if m is None:
-        box.label(text='Live mirror on the part: cuts and plates follow it', icon='INFO')
+    _header(col, 'Resolution')
+    g = _grid(col)
+    _btn(g, 'mch.one_click_remesh', 'MOD_REMESH', mesh_on)
+    _btn(g, 'mch.quad_remesh', 'MESH_GRID', mesh_on)
+    _btn(g, 'mch.lowpoly_make', 'MOD_DECIM', mesh_on)
 
-    box = _section(col, 'VISIBILITY', 'HIDE_OFF')
-    g = _grid(box)
-    sub = g.row(align=True)
-    sub.enabled = bool(context.selected_objects)
-    sub.operator('object.hide_view_set', text='Hide', icon='HIDE_ON').unselected = False
-    g.operator('object.hide_view_clear', text='Show All', icon='HIDE_OFF')
-    sub = g.row(align=True)
-    sub.enabled = bool(context.selected_objects) or bool(getattr(context.space_data, 'local_view', None))
-    sub.operator('view3d.localview', text='Isolate', icon='ZOOM_SELECTED')
+    _header(col, 'Symmetry')
+    m = mirror_mod(ob) if mesh_on else None
+    g = _grid(col)
+    for i, icon in enumerate(('AXIS_SIDE', 'AXIS_FRONT', 'AXIS_TOP')):
+        _btn(g, 'mch.actions_mirror', icon, mesh_on, depress=bool(m and m.use_axis[i]), axis=i)
+
+    _header(col, 'Repetition')
+    active = ts.effective_tool(context)
+    g = _grid(col)
+    for tool in ('RADIAL', 'ARRAY', 'RSYM'):
+        if tool in ts.TOOL_BY_ID:
+            _tool_btn(g, tool, active)
+
+    _header(col, 'Visibility')
+    g = _grid(col)
+    _btn(g, 'object.hide_view_set', 'HIDE_ON', sel, unselected=False)
+    _btn(g, 'object.hide_view_clear', 'HIDE_OFF')
+    _btn(g, 'view3d.localview', 'ZOOM_SELECTED', sel or bool(getattr(context.space_data, 'local_view', None)))
 
     live = _live_rows(context)
     if live:
-        box = _section(col, 'LIVE RESULT', 'MODIFIER')
-        g = _grid(box, 2)
-        for op, text, icon, props in live:
-            b = g.operator(op, text=text, icon=icon)
-            for k, v in props.items():
-                setattr(b, k, v)
+        _header(col, 'Live')
+        g = _grid(col)
+        for op, _text, icon, props in live:
+            _btn(g, op, icon, **props)
 
 
 def _live_rows(context):
@@ -146,12 +165,46 @@ def _live_rows(context):
     return rows
 
 
-def draw(layout, context, scale=1.4):
-    """The whole Actions block: tools (left) | actions on the selection (right)."""
+def draw_tool_strip(layout, context):
+    """Left strip: Recent then Favorites as a column of tool buttons, the star pins the current tool."""
     from . import tool_recent
-    split = layout.split(factor=0.5)
-    tool_recent.draw(split.column(), context, scale)
-    draw_actions(split.column(), context)
+    from .workspace_ui import icon_id
+    active = ts.effective_tool(context)
+    col = layout.column(align=True)
+    col.scale_y = 1.5
+
+    def tool(tid):
+        t = ts.TOOL_BY_ID[tid]
+        iid = icon_id(t[3])
+        kw = {'icon_value': iid} if iid else {'icon': t[4]}
+        col.operator('mch.set_tool', text='', depress=(tid == active), **kw).tool = tid
+
+    for tid in tool_recent.recent():
+        tool(tid)
+    col.separator(type='LINE')
+    for tid in tool_recent.favorites():
+        tool(tid)
+    if tool_recent._valid(active):
+        pinned = active in tool_recent.favorites()
+        col.separator()
+        col.operator('mch.tool_fav_toggle', text='', icon='SOLO_ON' if pinned else 'SOLO_OFF',
+                     depress=pinned).tool = active
+    col.separator()
+    col.scale_y = 1.0
+    col.prop(context.window_manager, 'mch_fav_set', text='', icon='SOLO_ON')
+
+
+def draw(layout, context, middle=None):
+    """Three panels side by side like Modeler: tool strip | the tool's settings (middle) | Actions."""
+    row = layout.row(align=False)
+    draw_tool_strip(row.column(), context)
+    if middle is not None:
+        mid = row.column()
+        mid.ui_units_x = 16
+        middle(mid)
+    right = row.column()
+    right.ui_units_x = 8
+    draw_actions(right, context)
 
 
 class MCH_OT_actions_mirror(bpy.types.Operator):
@@ -209,7 +262,7 @@ class MCH_PT_actions_popup(bpy.types.Panel):
     bl_label = 'MECHA LAB | Actions'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'HEADER'
-    bl_ui_units_x = 30
+    bl_ui_units_x = 34
 
     @classmethod
     def poll(cls, context):
@@ -217,7 +270,8 @@ class MCH_PT_actions_popup(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        draw(layout, context)
+        from . import tool_recent
+        draw(layout, context, middle=lambda col: tool_recent.draw(col, context))
         row = layout.row()
         row.operator('wm.call_menu', text='Blender Object Menu', icon='BLENDER').name = 'VIEW3D_MT_object_context_menu'
 

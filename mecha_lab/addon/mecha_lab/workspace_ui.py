@@ -1518,7 +1518,7 @@ class MCH_OT_set_tool(bpy.types.Operator):
             return cls.bl_description
         note = {'PARTIAL': '\nStatus: partial (see Known Limitations)',
                 'TODO': '\nStatus: NOT implemented yet'}.get(t[6], '')
-        return t[2] + note
+        return f'{t[1]}: {t[2]}' + note                    # 0.24.49 the name first (icon-only buttons)
 
     def execute(self, context):
         activate_mecha_tool(context, self.tool)
@@ -2061,12 +2061,64 @@ class MCH_PT_quick_popup(bpy.types.Panel):
         draw_tool_grid(self.layout, context, columns=3, scale=3.0, tools=tools)
 
 
+def _card_title(layout, text, icon='TOOL_SETTINGS'):
+    r = layout.row()
+    r.label(text=text, icon=icon)
+
+
+def _card_settings(layout, context):
+    """0.24.49 "Dynamics" part of a tool card: the same 3-5 key settings as the Quick HUD."""
+    from . import quick_hud
+    its = quick_hud.items(context)
+    if not its:
+        return
+    from .actions_menu import _header
+    _header(layout, 'Settings')
+    col = layout.column(align=True)
+    for data, prop in its:
+        rna = data.bl_rna.properties[prop]
+        if rna.type == 'ENUM':
+            col.row(align=True).prop(data, prop, expand=True)
+        else:
+            col.prop(data, prop, slider=rna.type in {'INT', 'FLOAT'})
+
+
+def shape_card(layout, context):
+    """0.24.49 the middle card of the RMB popup (Substance 3D Modeler style): '<Tool> tool', Shapes / Stamps
+    tabs over a 4-column grid, then the key settings and the tool's edge finish."""
+    tool = ts.TOOL_BY_ID.get(ts.effective_tool(context))
+    wm = context.window_manager
+    _card_title(layout, (tool[1] if tool else 'Mecha') + ' tool', 'SELECT_SET')
+    tabs = layout.row(align=True)
+    tabs.prop(wm, 'mch_show_custom_shapes', text='Shapes', toggle=True, invert_checkbox=True)
+    tabs.prop(wm, 'mch_show_custom_shapes', text='Stamps', toggle=True)
+    if getattr(wm, 'mch_show_custom_shapes', False):
+        draw_custom_grid(layout, context, columns=4, scale=2.2)          # the PNG shapes = stamps
+    else:
+        draw_shape_grid(layout, context, columns=4, scale=2.2)
+    brush = context.scene.mch_brush
+    if brush.shape == 'STROKE':
+        from .actions_menu import _header
+        _header(layout, 'Stroke')
+        col = layout.column(align=True)
+        col.prop(brush, 'stab_enable')
+        sub = col.column(align=True)
+        sub.active = brush.stab_enable
+        sub.prop(brush, 'stab_strength', slider=True)
+        sub.prop(brush, 'stab_radius', slider=True)
+        col.prop(brush, 'stroke_spacing')
+    _card_settings(layout, context)
+    if tool is not None and tool[0] in {'CUT', 'BASE'}:
+        from .ui_tool_settings import draw_edge_finish
+        draw_edge_finish(layout, context, tool[0])       # 0.19.2 edge bevel / chamfer sliders
+
+
 class MCH_PT_shape_popup(bpy.types.Panel):
     bl_idname = 'MCH_PT_shape_popup'
     bl_label = 'MECHA LAB | Shapes'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'HEADER'
-    bl_ui_units_x = 30
+    bl_ui_units_x = 36
 
     @classmethod
     def poll(cls, context):
@@ -2074,32 +2126,9 @@ class MCH_PT_shape_popup(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        tool = ts.TOOL_BY_ID.get(ts.effective_tool(context))
         from . import actions_menu
-        actions_menu.draw(layout, context)                # 0.24.49 RMB: tools | actions (Modeler style)
-        layout.label(text='SHAPES  |  ' + (tool[1] if tool else ''), icon='SELECT_SET')
-        draw_shape_grid(layout, context, columns=3, scale=2.6)
-        brush = context.scene.mch_brush
-        if brush.shape == 'STROKE':
-            box = layout.box()
-            box.prop(brush, 'stab_enable')
-            col = box.column(align=True)
-            col.active = brush.stab_enable
-            col.prop(brush, 'stab_strength', slider=True)
-            col.prop(brush, 'stab_radius', slider=True)
-            col.prop(brush, 'stroke_spacing')
-        if tool is not None and tool[0] in {'CUT', 'BASE'}:
-            from .ui_tool_settings import draw_edge_finish
-            draw_edge_finish(layout, context, tool[0])       # 0.19.2 edge bevel / chamfer sliders
-        layout.separator()
-        # 0.24.18 the custom (PNG) shapes start folded: open them with this row
-        wm = context.window_manager
-        is_open = bool(getattr(wm, 'mch_show_custom_shapes', False))
-        row = layout.row()
-        row.prop(wm, 'mch_show_custom_shapes', text='Custom PNG Shapes', emboss=False,
-                 icon='DISCLOSURE_TRI_DOWN' if is_open else 'DISCLOSURE_TRI_RIGHT')
-        if is_open:
-            draw_custom_grid(layout, context, columns=4, scale=2.6)
+        # 0.24.49 RMB: tool strip | tool card | Actions (Substance 3D Modeler style)
+        actions_menu.draw(layout, context, middle=lambda col: shape_card(col, context))
         layout.label(text='RMB double-click or Esc in the viewport exits the tool')
 
 
@@ -2115,39 +2144,45 @@ def draw_profile_grid(layout, context, columns=4, scale=3.0):
             op.profile = pid
 
 
+def profile_card(layout, context):
+    """0.24.49 the middle card of the Base Mesh RMB popup: profiles, their key value, the key settings, shapes."""
+    from . import base_mesh
+    live = base_mesh.active_live_base(context)
+    p = live.mch_base if live else base_mesh.scene_defaults(context)
+    creature = p.profile in base_mesh.CREATURE_PROFILES
+    tool = ts.TOOL_BY_ID.get(ts.effective_tool(context))
+    _card_title(layout, (tool[1] if tool else 'Base Mesh') + ' tool' +
+                (f'  |  editing {live.name}' if live else '  |  next shape'), 'MESH_CUBE')
+    draw_profile_grid(layout, context, columns=4 if not creature else 3, scale=2.4)
+    row = layout.row(align=True)
+    if creature:
+        row.prop(p, 'peak')
+        row.prop(p, 'edge_round', slider=True)
+    else:
+        row.enabled = p.profile in {'BEVEL', 'CHAMFER'}
+        row.prop(p, 'bevel_sides', expand=True)
+    _card_settings(layout, context)
+    from .actions_menu import _header
+    _header(layout, 'Shapes')
+    draw_shape_grid(layout, context, columns=6, scale=1.6)
+
+
 class MCH_PT_profile_popup(bpy.types.Panel):
     """RMB in the Base Mesh tool: section profile presets."""
     bl_idname = 'MCH_PT_profile_popup'
     bl_label = 'MECHA LAB | Base Mesh Profile'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'HEADER'
-    bl_ui_units_x = 30
+    bl_ui_units_x = 36
 
     @classmethod
     def poll(cls, context):
         return hasattr(context.scene, 'mch_base')
 
     def draw(self, context):
-        from . import base_mesh
         layout = self.layout
-        live = base_mesh.active_live_base(context)
-        p = live.mch_base if live else base_mesh.scene_defaults(context)
-        creature = p.profile in base_mesh.CREATURE_PROFILES
         from . import actions_menu
-        actions_menu.draw(layout, context)                # 0.24.49 RMB: tools | actions (Modeler style)
-        layout.label(text=('CREATURE BASE MESH PROFILE' if creature else 'BASE MESH PROFILE') +
-                     (f'  |  editing {live.name}' if live else '  |  next shape'), icon='MESH_CUBE')
-        draw_profile_grid(layout, context, columns=4 if not creature else 3, scale=3.0)
-        row = layout.row(align=True)
-        if creature:
-            row.prop(p, 'peak')
-            row.prop(p, 'edge_round', slider=True)
-        else:
-            row.enabled = p.profile in {'BEVEL', 'CHAMFER'}
-            row.prop(p, 'bevel_sides', expand=True)
-        layout.separator()
-        layout.label(text='Shape (shared palette)', icon='SELECT_SET')
-        draw_shape_grid(layout, context, columns=6, scale=1.6)
+        actions_menu.draw(layout, context, middle=lambda col: profile_card(col, context))   # 0.24.49 Modeler style
         layout.label(text='RMB double-click or Esc in the viewport exits the tool')
 
 
@@ -2168,6 +2203,9 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
                               description='Right-click in Select / Move opens the Mecha Actions popup (recent tools, '
                                           'favorites, actions on the selection) instead of Blender\'s object menu, '
                                           'MECHA LAB only. The popup has a button for Blender\'s menu')
+    quick_hud: BoolProperty(name='Quick HUD', default=True,
+                            description='Viewport sliders for the 3-5 settings you change most in the tool that is on '
+                                        '(drag / click to type / Ctrl+click = default), MECHA LAB only')
     key_legend: BoolProperty(name='Key Legend', default=True,
                              description='Bottom left of the viewport: what Alt / Shift / Ctrl / wheel / F / RMB do in '
                                          'the drawing tool that is on (MECHA LAB only)')
@@ -2208,6 +2246,7 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         row = box.row()
         row.prop(self, 'rmb_actions')
         row.prop(self, 'key_legend')
+        box.row().prop(self, 'quick_hud')
         layout.prop(self, 'workspace_hotkeys')
         layout.prop(self, 'quick_menu')
         layout.prop(self, 'select_move_key')
