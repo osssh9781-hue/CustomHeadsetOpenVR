@@ -553,6 +553,8 @@ def _tool_keymap(mode):
         ('mch.rmb_gate', {'type': 'RIGHTMOUSE', 'value': 'PRESS'},
          {'properties': [('popup', 'PROFILE' if mode in {'BASE', 'CBASE'} else 'SHAPE')]}),
         ('mch.toggle_targets', {'type': 'T', 'value': 'PRESS'}, None),
+        # 0.24.34 F + mouse left / right = brush size (like Concept Move)
+        ('mch.brush_resize', {'type': 'F', 'value': 'PRESS'}, None),
     ) + ((
         # 0.14.1 Base Mesh sketch: Enter = mesh, Alt+Enter = cut into mesh, Esc = clear, Backspace = last shape
         ('mch.base_sketch_key', {'type': 'RET', 'value': 'PRESS'}, None),

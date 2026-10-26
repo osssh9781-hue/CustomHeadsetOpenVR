@@ -191,13 +191,13 @@ def draw_cut(layout, context, mode='CUT'):
     if mode == 'CUT':
         _hint(layout, 'LMB draw: remove inside | Alt: keep inside',
               'Double-click anywhere / click start point / Enter: apply',
-              'Esc: back to Select | Select / Move: F (or Mecha menu)',
+              'Esc: back to Select | F + mouse: brush size',
               'Ctrl+Z: undo last point, then last cut', 'RMB: shapes | RMB double-click: exit tool',
               'PNG shape: R / Shift+R rotates 15°', 'All selected meshes are cut (Targets: Selected)')
     else:
         _hint(layout, 'LMB draw: split into two parts', 'Inside becomes "<name>_Split"',
               'Double-click anywhere / click start point / Enter: apply',
-              'Esc: back to Select | Select / Move: F', 'RMB: shapes | RMB double-click: exit tool')
+              'Esc: back to Select | F + mouse: brush size', 'RMB: shapes | RMB double-click: exit tool')
 
 
 def draw_split(layout, context):

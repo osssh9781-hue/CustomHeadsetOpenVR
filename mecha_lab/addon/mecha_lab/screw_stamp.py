@@ -441,6 +441,7 @@ TOOL_KEYMAP = (
     ('mch.screw_stamp', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, None),
     ('mch.screw_stamp', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'alt': True}, {'properties': [('remove', True)]}),
     ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),
+    ('mch.brush_resize', {'type': 'F', 'value': 'PRESS'}, None),        # 0.24.34 F + mouse = size
 )
 
 CLASSES = (MCH_PG_Screw, MCH_PG_ScrewScene, MCH_OT_screw_stamp, MCH_OT_screw_join, MCH_OT_screw_kind)
