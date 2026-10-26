@@ -91,6 +91,17 @@ st.rotation = tilt
 bpy.ops.mch.place_rotate(axis='RESET')
 st.rotation = pp.surface_turn(st, Vector((0, 1, 0)))
 check('Turn Reset: the next click starts straight again', (Quaternion(st.rotation) @ Vector((0, 0, 1)) - Vector((0, 1, 0))).length < 1e-6)
+bpy.ops.mesh.primitive_cube_add(size=2.0, location=(0, 0, -6))
+far_cube = C.active_object
+loc, nrm, ob = pp.nearest_surface(C, Vector((0, 0, -4.5)), 1.0)
+check('nearest surface for a picked face: the closest mesh within reach (top of the low cube)', ob == far_cube
+      and abs(loc.z + 5.0) < 1e-5 and (nrm - Vector((0, 0, 1))).length < 1e-5, (loc, nrm, ob))
+check('... nothing within reach: none', pp.nearest_surface(C, Vector((0, 0, -4.5)), 0.2)[2] is None)
+C.scene.mch_cut.targets = 'SELECTED'
+for o in C.selected_objects:
+    o.select_set(False)
+check('... Selected Only: an unselected mesh is left out', pp.nearest_surface(C, Vector((0, 0, -4.5)), 1.0)[2] is None)
+C.scene.mch_cut.targets = 'AUTO'
 check('the panel and the Alt+click stamp key are there', hasattr(bpy.ops.mch, 'place_pick_face') and any(
       k[0] == 'mch.place_click' and k[1].get('alt') for k in pp.TOOL_KEYMAP))
 summary()

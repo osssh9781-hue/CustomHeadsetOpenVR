@@ -671,6 +671,29 @@ def surface_turn(st, normal):
     return q
 
 
+def nearest_surface(context, point, reach):
+    """(location, normal, object) of the closest mesh surface to ``point`` within ``reach`` (only meshes the
+    Targets setting allows), or (None, None, None)."""
+    dg = context.evaluated_depsgraph_get()
+    names = target_rules.allowed(context)
+    best = (None, None, None, reach)
+    for ob in context.view_layer.objects:
+        if ob.type != 'MESH' or not ob.visible_get() or ob.name.startswith('MCH_Cutter'):
+            continue
+        if names is not None and ob.name not in names:
+            continue
+        lo, hi = _world_bounds(ob, dg)
+        if any(point[i] < lo[i] - reach or point[i] > hi[i] + reach for i in range(3)):
+            continue
+        bvh, _v = _bvh_world(ob, dg)
+        if bvh is None:
+            continue
+        loc, nrm, _i, d = bvh.find_nearest(Vector(point), best[3])
+        if loc is not None and d < best[3]:
+            best = (loc, nrm.normalized(), ob, d)
+    return best[:3]
+
+
 def state(context):
     wm = getattr(context, 'window_manager', None)
     return getattr(wm, 'mch_place', None) if wm is not None else None
@@ -1011,11 +1034,24 @@ class MCH_OT_place_click(bpy.types.Operator):
                 return {'CANCELLED'}
             st.contact_point = [c / max(sz, 1e-9) for c, sz in zip(p, st.size)]
             st.contact_on, st.picking = True, False
-            self.report({'INFO'}, 'Stamp Face set: click a mesh to put that face on it')
+            # the face goes onto the closest mesh right away (then click anywhere on a mesh to move it there)
+            world = ghost_matrix(st.location, st.rotation) @ p
+            loc, nrm, ob = nearest_surface(context, world, max(st.size) * 1.5)
+            if loc is not None:
+                stamp_at(st, loc, nrm)
+                self.report({'INFO'}, f'Stamp Face set and put on "{ob.name}" - click a mesh to stamp it elsewhere, '
+                                      'Enter: add, Alt+Enter: carve')
+            else:
+                self.report({'INFO'}, 'Stamp Face set: click a mesh to put that face on it')
             return {'FINISHED'}
         loc, normal = _ray_place(context, region, rv3d, xy)
         if loc is None:
             return {'PASS_THROUGH'}
+        if st.contact_on and normal is None:            # no mesh under the mouse: say why, keep the ghost
+            limited = target_rules.mode(context) != 'AUTO'
+            self.report({'WARNING'}, 'Stamp Face: click ON a mesh' + (
+                ' (Targets is Selected Only / Active: select that mesh or set Auto Target)' if limited else ''))
+            return {'CANCELLED'}
         if st.contact_on and normal is not None:
             stamp_at(st, loc, normal)
             if st.stamp_click:
