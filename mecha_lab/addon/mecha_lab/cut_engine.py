@@ -1491,6 +1491,7 @@ class StrokeLogic:
             self.anchor = xy
             if self.shape == 'STROKE':
                 self.pts = [xy]
+                self.shift_anchor = None
                 self._stroke_start(xy)
 
     def _stroke_start(self, xy):
@@ -1508,8 +1509,24 @@ class StrokeLogic:
                 self.stab_timer = None
 
     def _stroke_sample(self, xy):
-        """Free Draw mouse sample (stabilized when active)."""
+        """Free Draw mouse sample (stabilized when active).  0.24.36 Shift held: a straight piece from where Shift
+        went down, at 0 / 45 / 90 degrees (let go of Shift and the line goes on freely from its end)."""
         stab = self.stab
+        if getattr(self, 'shift_held', False) and self.pts:
+            if getattr(self, 'shift_anchor', None) is None:
+                self.shift_anchor = (len(self.pts), self.pts[-1])
+            n, a = self.shift_anchor
+            end = snap45(a, xy)
+            parts = max(1, int(math.dist(a, end) / max(1.0, self.brush.stroke_spacing)))
+            self.pts = self.pts[:n] + [(a[0] + (end[0] - a[0]) * k / parts, a[1] + (end[1] - a[1]) * k / parts)
+                                       for k in range(1, parts + 1)]
+            if hasattr(self, 'pressures'):
+                pr = self.pressures[:n] or [getattr(self, 'pressure', 1.0)]
+                self.pressures = pr + [pr[-1]] * (len(self.pts) - len(pr))
+            if stab is not None and stab.active:
+                stab.reset(end, self._clock())          # free drawing goes on from the end of the straight piece
+            return
+        self.shift_anchor = None
         if stab is not None and stab.active:
             xy = stab.update(xy, self._clock())
         if not self.pts or math.dist(self.pts[-1], xy) >= self.brush.stroke_spacing:
@@ -1532,7 +1549,7 @@ class StrokeLogic:
                         'double-click anywhere: close & apply | Backspace/Ctrl+Z: undo point')
             text += tail
         elif self.shape == 'STROKE':
-            text = 'Hold LMB and draw, release to apply' + tail
+            text = 'Hold LMB and draw, release to apply | Shift: straight 0 / 45 / 90°' + tail
         else:
             text = 'Drag, release to apply | Shift: square/circle | Ctrl: from center | Alt: invert' + tail
         _status(context, f'MECHA {self.mode}: ' + text)
@@ -1897,7 +1914,7 @@ class StrokeLogic:
 
         if et == 'TIMER' and self.stab is not None and self.stab.active and self.stage == 'DRAG' \
                 and self.rmb_time is None:
-            p = self.stab.tick(self._clock())       # keep gliding when the mouse stops
+            p = None if self.shift_held else self.stab.tick(self._clock())   # glide on (not on a Shift line)
             if p is not None and math.dist(self.pts[-1], p) >= self.brush.stroke_spacing:
                 self.pts.append(p)
             self.region.tag_redraw()
@@ -2155,6 +2172,9 @@ class StrokeLogic:
 
     def _stroke_finish(self, xy):
         """Free Draw release: add the final mouse position once (no double point)."""
+        if getattr(self, 'shift_held', False) and getattr(self, 'shift_anchor', None) is not None:
+            self._stroke_sample(xy)                     # a Shift line ends exactly on its snapped end
+            return
         stab = getattr(self, 'stab', None)
         if stab is not None and stab.active:
             for p in stab.finish(xy, self.brush.stroke_spacing):
