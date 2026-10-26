@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 0.24.37 — Base Mesh Invert, Alt = Height 깊이만큼 파기, Export 버튼, ZBrush에서 메쉬 깨짐 수정 (2026-10-26)
+
+- **Base Mesh Invert**(Sketch · Stick to Surface 옆 버튼): 켜면 높이가 그린 위치에서 뒤로(메쉬 안쪽으로) 늘어남. Stick to Surface 켜고 끄고 둘 다, 외곽선 위치는 그대로. 만들 때의 방향(이미 만든 건 안 바뀜).
+- **Base Mesh Alt = Height 깊이만큼 파기**(새 기본값): Alt + 그리기 = 그린 모양을 Height 깊이만큼 메쉬에 파냄. 패널 **Alt: Carve Height / Alt: Like Cut**에서 예전(0.24.5) Cut 툴 방식도 고를 수 있음. Line이 메쉬 밖으로 나가도 찾음, Invert 켜도 항상 안쪽으로, Sketch의 Alt+Enter도 같음.
+- **Surface Draw Alt = 홈 파기**: 일반 메쉬 위에 Alt + 선 = 그 띠(폭 · 가장자리 그대로)를 Height 깊이만큼 홈으로 파냄, Fill Area + 라쏘 = 그 면적을 Height 깊이로 파냄. 이미 그린 띠 위의 Alt는 예전처럼 띠를 잘라냄. Alt 미리보기도 띠 모양.
+- **Export 버튼(OBJ / FBX)**: 모든 툴 패널 아래 'Export Selected' + ZBrush 패널 맨 위. 선택한 메쉬를 파일로 저장(ZBrush 연결 필요 없음), 모디파이어 적용, 원래 이름 그대로.
+- **ZBrush에서 메쉬가 찢어지던 문제**: Boolean / 컷으로 생긴 n-gon(5각 이상 · 오목한 면)을 ZBrush가 부채꼴로 쪼개 찢어짐 → **ZBrush-safe Faces**(기본 켬): 내보낼 때만 n-gon을 깔끔한 삼각형으로 나눔(사각형은 그대로, Blender 메쉬는 안 바뀜). Export 버튼과 ZBrush Send 둘 다.
+- 테스트: 115개 파일 3523/3523. 새 test_v02453(Invert 7) · test_v02454(Alt 파기 11) · test_v02455(Export 8). test_v0100_regression · test_v0245의 0.24.5 Alt 검사는 Alt: Like Cut으로. ZIP sha256 `91fd65c098f7913cbc2a7bf28aa3465b6d0f3eb3b83ac90f25fa7bd123b21dbc`.
+
 ## 0.24.36 — 컷 라인 깊이(From Surface), Slow Line(레이지 마우스) 버튼, Shift = 0 / 45 / 90° 직선, Box Hide Line, Base Mesh 위치 수정 (2026-10-26)
 
 - **컷 라인도 Cut Depth만큼만**: From Surface일 때 점 2개 직선 컷도 Cut Depth 깊이까지만 잘림(전에는 빠른 평면 자르기라 끝까지 잘림). 꺾인 선 · Line 모드는 원래 깊이 적용. Through All은 예전처럼 빠른 평면 컷.

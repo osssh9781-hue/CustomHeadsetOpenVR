@@ -1,5 +1,12 @@
 # KNOWN LIMITATIONS — Mecha Lab 0.18.0
 
+## 0.24.37 Invert / Alt 파기
+- 실제 화면에서 써 보지 않음.
+- Base Mesh Alt Carve Height는 Dome / Cushion 프로파일에서는 안내만(평평한 면이 없어서). 파는 깊이는 Height − 1 %(입구가 표면과 겹치지 않게).
+- Surface Draw 홈은 Boolean(Exact)이라 큰 메쉬에서 느릴 수 있음. 홈은 그 자리에서 바로 적용(라이브 아님, Ctrl+Z로 되돌림).
+- Invert는 만들 때만: 이미 만든 Base Mesh를 Invert로 뒤집지는 않음.
+- ZBrush-safe Faces는 n-gon만 삼각형으로 나눔: ZBrush에서 다시 가져오면 그 삼각형들이 그대로 옴(원래 n-gon으로 합쳐지지 않음). 실제 ZBrush에서 열어 보는 확인은 미검증.
+
 ## 0.24.36 컷 깊이 / Slow Line
 - 실제 화면에서 써 보지 않음.
 - From Surface 2점 직선 컷은 Boolean이라 Through All의 평면 컷보다 느림.

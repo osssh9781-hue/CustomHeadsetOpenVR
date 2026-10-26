@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.36
+# Test Report — Mecha Lab 0.24.37
+
+## 0.24.37 결과: 115개 파일 3523/3523 (`tests/test_log_bpy501_v02437.txt`, Blender 5.0.1 bpy). 새 test_v02453(7: Invert 옵션, 표면 위 앞 / 뒤, 허공 앞 / 뒤, 외곽선 위치 유지, 닫힘), test_v02454(11: 기본 Carve Height, 0.6 × 0.6 × 0.5 포켓 부피 · 바닥 위치, Invert 켜도 안으로, Like Cut = 관통, 메쉬 밖까지 선, Surface Draw 홈 부피 · 바닥, Fill Area 포켓, 메쉬 없으면 안내, 엔진 연결), test_v02455(8: 버튼, L자 블록 n-gon 2개, OBJ에 4각 초과 없음 · 옆 사각형 6개 유지, 이름 그대로, 원본 그대로 · 남는 오브젝트 없음, 끄면 n-gon 그대로, FBX, 브리지 복사본도 깨끗). test_v0100_regression · test_v0245 Alt 검사 = Like Cut. 5.2.3 bpy에서도 test_v02453 · test_v02454 · test_v02455 · test_v0100_regression · test_v0245 · test_v02441 · test_v02452 통과. 실제 화면 입력은 미검증.
 
 ## 0.24.36 결과: 112개 파일 3497/3497 (`tests/test_log_bpy501_v02436.txt`, Blender 5.0.1 bpy). 새 test_v02448(3: Through All 2점 = 평면 컷 끝까지, From Surface 2점 = 깊이까지 계단 · 닫힘, 꺾인 선 깊이), test_v02449(6: 이름, 패널 · Path Move에 있음, 켜면 슬라이더 · Lasso 안내, 모든 그리기 모드에서 스태빌라이저 시작, 천천히 따라옴, 끄면 비활성), test_v02450(10: Shift 45° 직선 · 앞부분 유지 · 0° 스냅 · 떼면 이어짐 · 놓으면 90° 끝, Slow Line 켜고 끄고 각각), test_v02451(2: HIDE가 Line 툴, 2점 선 = Line Width 0.5 × 4 × 4 = 8 숨김), test_v02452(5: 가운데 빗나감 → 앞면, plane_frame · surface_frame 앞면, 메쉬 위 외곽선 = 가운데, 아무것도 없으면 커서 깊이). 5.2.3 bpy에서도 test_v02448 · test_v02449 · test_v02450 · test_v02451 · test_v02452 · test_v02316 · test_v02317 · test_v0241 · test_cut_geometry · test_v090_features · test_v0100_regression · test_ui_draw · test_v02437 · test_v02439 통과. 실제 화면 입력은 미검증.
 

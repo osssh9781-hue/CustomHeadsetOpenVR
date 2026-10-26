@@ -1,4 +1,10 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.36 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.37 (Claude Code, 2026-10-14)
+
+## 0.24.37
+- ZIP sha256 `91fd65c098f7913cbc2a7bf28aa3465b6d0f3eb3b83ac90f25fa7bd123b21dbc`.
+- `base_mesh`: `invert_height`(frame_for에서 y · n 뒤집음, 표면 위면 embed = 높이 2 %), `alt_mode` HEIGHT(기본, `_perform_cutter` = 높이만큼 반전 커터 Boolean) / CUT(`cut_like_cut_tool`). `_local_groups(..., allow_invert)`: 커터는 Invert 무시. `_cutter_targets`는 `anchor_hit`. Sketch Alt+Enter도 alt_mode, Invert면 sketch frame을 되돌려 커터.
+- `surface_draw`: `stroke_mesh` / `fill_mesh`에 `sign`(−1 = 높이 · sink 반대 = 안으로), `_project_stroke` · `_project_fills` 분리, `engrave(context, path, projector, loops=None)` = 반전 띠 / 면적 → Boolean Difference → commit. cut_engine SDRAW Alt: 라이브 드로잉 위면 `live_subtract`, 아니면 `engrave`. SDRAW Alt는 선 모드 유지(Fill Area만 면적).
+- `zbrush_bridge.export_copy(context, ob, apply_modifiers, split_ngons)`: 평가된 메쉬 복사 + 5각 이상만 `bmesh.ops.triangulate(BEAUTY)`, 임시 오브젝트. `send_objects`가 사용(`split_ngons` 설정). `MCH_OT_export_mesh`(`mch.export_mesh`, 파일 선택, OBJ / FBX, 원본 이름 잠깐 바꿔 파일에 원래 이름).
 
 ## 0.24.36
 - ZIP sha256 `b653fe720212e07815bd62eeb24842dcfa2e022174c27da5339a2af11724bbec`.

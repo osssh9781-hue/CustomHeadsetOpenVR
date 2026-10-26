@@ -1,8 +1,17 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.36 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.37 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A0000000000000000000000000000000000000000000000000000000000000000000000000000000. 0.24.37 (미검증)
+- [ ] Base Mesh Invert 켜고 그리면 높이가 뒤로(메쉬 안쪽으로) 늘어나는지, 끄면 앞으로인지
+- [ ] Base Mesh Alt + 그리기: 그린 모양이 Height 깊이만큼만 파이는지(관통 안 함), Alt: Like Cut으로 바꾸면 Cut 툴처럼 되는지
+- [ ] Base Mesh Line + Alt로 메쉬 밖까지 그어도 파이는지, Sketch에서 Alt+Enter도 같은지
+- [ ] Surface Draw: 일반 메쉬 위에서 Alt + 선 → 띠 모양 홈이 Height 깊이로 파이는지, Fill Area + Alt 라쏘 → 면적 홈
+- [ ] Surface Draw: 이미 그린 띠 위에서 Alt + 선 → 띠가 잘리는지(라이브 유지)
+- [ ] Export Selected(OBJ / FBX): 파일 저장 창이 뜨고, 저장된 파일을 ZBrush에서 열었을 때 찢어지지 않는지
+- [ ] ZBrush Send로 보낸 메쉬도 ZBrush에서 깨끗한지(ZBrush-safe Faces 켬)
 
 ## A000000000000000000000000000000000000000000000000000000000000000000000000000000. 0.24.36 (미검증)
 - [ ] Cut: From Surface + Cut Depth 설정 후 점 2개 직선 컷 → 그 깊이만큼만 잘리고 아래는 남는지(계단), Through All이면 끝까지 잘리는지
