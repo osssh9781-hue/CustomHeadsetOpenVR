@@ -505,7 +505,8 @@ def draw_remesh(layout, context):
             row.operator('mch.hotkeys_save', text='', icon='FILE_TICK')
             break
     _hint(layout, 'Voxel remesh loses UVs / attributes')
-    from . import lowpoly
+    from . import lowpoly, quad_remesh
+    quad_remesh.draw(layout, context)                # 0.24.48 quads that keep the cut / boolean edges
     lowpoly.draw(layout, context)                    # 0.23.22 sculpt -> low poly base mesh
 
 
