@@ -1,8 +1,18 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.51 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.52 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000. 0.24.52 (미검증)
+- [ ] 메뉴 Shading: Flat / Auto Smooth / Smooth가 선택한 파트에 바로 적용되는지
+- [ ] 메뉴 안에서 여러 번 클릭해도 안 닫히는지, 마우스를 메뉴 밖으로 빼면 닫히는지(카드 사이 틈에서는 안 닫힘)
+- [ ] Alt+X 린 미러 후 파트 오른쪽에 Symmetry 카드가 뜨는지, 예전 옆 버튼은 안 보이는지
+- [ ] 카드: Mirror / Radial / Kaleido 전환, X Y Z, Bisect, Flip, − / + Count, 중심 Part / World / Cursor, Apply / Remove, × 닫기
+- [ ] Kaleido가 만화경처럼(조각마다 거울) 보이는지, 래디얼 중심 이동 시 같이 움직이는지
+- [ ] 카드 클릭이 어느 도구(Cut, Base Mesh, Select)에서든 먹고, 카드 밖 클릭은 도구로 가는지
+- [ ] 그룹: Group / Ungroup / Merge / Enter / Exit / Select Group, 핸들 이동 시 파트가 따라옴
+- [ ] Repetition Mirror / Radial / Kaleido, 파트 수정 시 복사본도 바뀌는지, Apply로 실제 오브젝트
 
 ## A000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000. 0.24.51 (미검증)
 - [ ] Cut 도구에서 왼쪽 위 Quick HUD 슬라이더 드래그로 값이 바뀌는지, 클릭 입력, Ctrl+클릭, 제목 줄로 이동; HUD 밖 클릭은 평소처럼 그리기

@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 0.24.52 — 메뉴 셰이딩·계속 열림, Modeler식 대칭(Mirror / Radial / Kaleido), 그룹 (2026-10-27)
+
+- **Mecha Menu**: Shading 줄(Flat / Auto Smooth / Smooth) 추가. 메뉴 안 클릭은 메뉴를 닫지 않음(도구 버튼도 그 자리에서 바뀜) — 마우스가 메뉴(카드 사이 틈 포함) 밖으로 나가면 닫힘. 우클릭 / Esc도 닫힘. 메뉴가 열려 있을 때 휠 클릭은 두 번째 메뉴를 열지 않음.
+- **대칭(Substance 3D Modeler 방식)**: 파트마다 Off / Mirror / Radial / Kaleido.
+  - Mirror = Alt+X 린 미러와 같은 `MCH_Mirror` 하나(메뉴 Mirror X/Y/Z, 카드, Apply, Enter 모두 같은 것). 0.24.49~51 메뉴 미러(`MCH_Symmetry`)는 자동으로 넘겨받음.
+  - Radial = 축(X/Y/Z) 둘레로 Count개. 중심은 처음에 미러 중심(월드 원점 또는 3D 커서)과 같음 — Modeler의 "대칭 원점 하나". 카드에서 Part / World / Cursor로 옮김.
+  - Kaleido(래디얼 미러) = 미러 평면이 래디얼 중심과 축을 지나서(미러 오브젝트 = 래디얼 중심) 조각마다 거울 대칭 → 2×Count 조각의 만화경. 새로 켜면 래디얼 축을 품는 평면(Z축이면 X 평면)으로 시작. 중심을 옮기면 평면도 같이 움직임. Kaleido에서 Mirror로 돌아가면 미러는 원래 미러 중심으로.
+- **Symmetry 카드**: 미러 옆에 뜨던 버튼들 대신 파트 오른쪽에 카드 하나(Off / Mirror / Radial / Kaleido, X Y Z, Bisect, Flip, 축, − / + Count, 중심, Apply / Remove). 대칭이 있는 파트를 고르면 자동으로 뜨고, 메뉴 Symmetry > Card로도 염. Preferences: Symmetry Card(끄면 예전 옆 버튼).
+- **그룹**: Group(빈 핸들 + 컬렉션, 핸들을 움직이면 안의 파트가 따라감), Ungroup(원래 컬렉션으로), Merge(메시 하나로), Enter / Exit(그룹 안에서만 작업, 나머지는 와이어·선택 불가), Select Group, 그룹 안 그룹.
+- **Repetition**: 그룹 단위 Mirror / Radial / Kaleido 복사(Geometry Nodes 링크 복사 — 파트를 고치면 복사본도 바로 바뀜). 그룹 핸들을 고르면 같은 카드가 Repetition 카드가 됨. Apply = 복사본을 실제 오브젝트로.
+- 테스트: 132개 파일 3805/3805. test_v02472 추가. ZIP sha256 `b0638f3431dc43530b07a5c224ff4b846923476ddd0b686f7c7b581b43aaab25`.
+
 ## 0.24.51 — Quick HUD 슬라이더 수정, 휠 클릭 메뉴, 팝업 크기 조절 (2026-10-26)
 
 - **Quick HUD 슬라이더가 안 움직이던 문제**: 기즈모 대신 클릭 연산자(`mch.quick_hud_press`)가 모든 Mecha 그리기 도구(+ Screw, Primitive) 키맵 앞쪽(D 누르고 드래그 다음, 도구 클릭보다 먼저)과 3D View에서 먼저 받음 — HUD 위면 드래그(Shift 미세) / 클릭 입력 / Ctrl+클릭 기본값 / 제목 줄 드래그로 이동, 그 밖의 클릭은 그대로 도구로 넘어감.

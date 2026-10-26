@@ -142,7 +142,7 @@ class MCH_GGT_mirror_hud(bpy.types.GizmoGroup):
 
     @classmethod
     def poll(cls, context):
-        return bool(targets(context))
+        return classic() and bool(targets(context))
 
     def setup(self, context):
         self.items = {}
@@ -174,9 +174,18 @@ class MCH_GGT_mirror_hud(bpy.types.GizmoGroup):
             gz.color = ACCENT if (name == 'apply' or is_on(p, name)) else BASE_COL
 
 
+def classic():
+    """0.24.52 the Symmetry card (symmetry.py) replaces these side buttons unless Preferences > Symmetry Card
+    is off."""
+    from .workspace_ui import pref
+    return not pref('symmetry_card', True)
+
+
 def _draw_labels():
     try:
         context = bpy.context
+        if not classic():
+            return
         _obs, lay = _current(context)
         if not lay:
             return

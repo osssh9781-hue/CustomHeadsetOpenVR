@@ -45,7 +45,8 @@ check('Settings = the Quick HUD rows (sliders, segmented choices, toggles)', any
       and any(i.kind == 'seg' for i in sl) and any(i.kind == 'toggle' for i in sl), [i.kind for i in sl])
 secs = [i.label for i in items if i.kind == 'section']
 check('Actions panel sections like Modeler', secs[:1] == ['Settings']
-      and secs[1:] == ['Actions', 'Resolution', 'Symmetry', 'Repetition', 'Visibility'], secs)
+      and secs[1:] == ['Actions', 'Shading', 'Resolution', 'Symmetry', 'Groups', 'Repetition', 'Visibility'],
+      secs)                                                       # 0.24.52 + Shading, Groups
 ops = [i.action[1] for i in items if i.action and i.action[0] == 'op']
 bad = []
 for idname in ops:

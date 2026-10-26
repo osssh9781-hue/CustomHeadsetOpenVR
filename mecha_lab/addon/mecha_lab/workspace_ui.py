@@ -2212,6 +2212,10 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
                                  update=_sizes_changed,
                                  description='Size of the Mecha Menu (RMB), Quick HUD and key legend (big screens '
                                              'are already made larger automatically)')
+    symmetry_card: BoolProperty(name='Symmetry Card', default=True,
+                                description='The Symmetry card (Off / Mirror / Radial / Kaleido) beside a part with a '
+                                            'symmetry, and the Repetition card of a selected group; off = the old '
+                                            'mirror side buttons')
     mmb_menu: BoolProperty(name='Middle Click = Mecha Menu', default=True,
                            description='Middle mouse click (no movement) opens the Mecha Menu; a middle drag still '
                                        'orbits the view. MECHA LAB only. Switch off if orbiting feels different')
@@ -2269,6 +2273,7 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         row = box.row()
         row.prop(self, 'hold_menu')
         row.prop(self, 'mmb_menu')
+        box.row().prop(self, 'symmetry_card')
         box.prop(self, 'mecha_ui_size', slider=True)
         layout.prop(self, 'workspace_hotkeys')
         layout.prop(self, 'quick_menu')

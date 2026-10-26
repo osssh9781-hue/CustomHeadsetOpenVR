@@ -1,4 +1,12 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.51 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.52 (Claude Code, 2026-10-14)
+
+## 0.24.52
+- ZIP sha256 `b0638f3431dc43530b07a5c224ff4b846923476ddd0b686f7c7b581b43aaab25`.
+- `mecha_menu`: ACTIONS에 Shading(`object.shade_flat / shade_auto_smooth / shade_smooth`), Symmetry(Mirror X/Y/Z, Radial `@RADIAL`, Kaleido `@KALEIDO`, Card), Groups, Repetition. 모달: 클릭은 항상 `run(..., hold=True)`(안 닫힘), MOUSEMOVE에서 `near(items, x, y, 36·S)` 밖이면 닫힘. `_OPEN` 플래그로 휠 클릭 게이트 poll 차단.
+- `symmetry.py`(새): `mode_of / set_mode / toggle_axis / toggle_bisect / toggle_flip / set_count / set_radial_axis / set_center / apply`, 카드(`card_target / build_card / card_hit / run_card`, 그리기는 mecha_menu 페인터). Kaleido = 미러를 배열 앞에 + `_bind_mirror`(미러 오브젝트 = `mch_rsym.pivot`), `unbind_all`(래디얼 중심 삭제 전 미러를 미러 중심으로). `mirror_tools.setup_mirror`도 래디얼이 있는 파트면 래디얼 중심을 씀. 래디얼 중심 / Count / 축은 씬에 하나(radial_sym 그대로).
+- `quick_hud.MCH_OT_quick_hud_press.invoke`: 먼저 `symmetry.card_hit` → `run_card` + undo_push.
+- `mirror_hud.classic()`: pref `symmetry_card`가 켜져 있으면 예전 옆 버튼(기즈모·라벨) 숨김.
+- `groups.py`(새): 핸들 Empty(`mch_group`) + 컬렉션, `create / ungroup / merge / select_group / enter_scope / exit_scope`, Repetition = 핸들 자식 캐리어 메시 + GN `MCH_GroupRepeat`(CollectionInfo RELATIVE → 복사 행렬마다 Transform(미러 = 음수 스케일) → Join), `make_real`.
 
 ## 0.24.51
 - ZIP sha256 `db6a105da0ee8a00a334d5bdb38d1e399ac083de26be73d917e1a36b57253dc9`.

@@ -241,6 +241,8 @@ def remove(context, apply_mods=False):
         if R0_KEY in ob:
             del ob[R0_KEY]
     if st.pivot is not None:
+        from . import symmetry
+        symmetry.unbind_all(context)           # 0.24.52 Kaleido mirrors go back to the mirror centre
         bpy.data.objects.remove(st.pivot, do_unlink=True)
     st.pivot = None
     st.active = False

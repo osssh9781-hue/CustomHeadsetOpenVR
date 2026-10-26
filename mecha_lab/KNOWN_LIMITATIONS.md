@@ -1,5 +1,11 @@
 # KNOWN LIMITATIONS — Mecha Lab 0.18.0
 
+## 0.24.52
+- 파트 대칭의 Radial 중심 / Count / 축은 씬 전체에 하나(Point Radial Symmetry와 같은 것) — 파트마다 다른 Count는 그룹 Repetition으로.
+- Kaleido 파트에 Alt+X를 쓰면 미러 평면은 래디얼 중심을 지남(한 원점). 다른 중심이 필요하면 Mirror만 쓰거나 그룹 Repetition.
+- 그룹 Repetition 복사본은 Geometry Nodes 인스턴스라 Apply 전에는 Cut / Split 대상이 아님.
+- Symmetry 카드는 MECHA LAB 워크스페이스에서만, 선택된 활성 파트 옆에 뜸.
+
 ## 0.24.51
 - 휠 클릭 메뉴: 휠 드래그를 처음 몇 픽셀은 애드온이 받고 그다음 Blender 회전을 시작함 — 회전 느낌이 달라지면 Preferences > Middle Click = Mecha Menu 끄기. Blender 설정에서 휠을 회전이 아닌 다른 동작으로 바꿨다면 드래그는 항상 회전이 됨.
 

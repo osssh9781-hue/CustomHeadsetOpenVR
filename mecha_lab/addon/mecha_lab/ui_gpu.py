@@ -220,6 +220,58 @@ def glyph(name, x, y, size, color=TEXT, width=2.0):
     elif name == 'smooth':
         polyline([P(.12, .30), P(.30, .55), P(.50, .62), P(.70, .55), P(.88, .30)], color, width)
         lines([(P(.12, .74), P(.88, .74))], color, width)
+    elif name == 'shade_flat':
+        pts = [(cx + math.cos(math.radians(30 + 60 * i)) * s * .36, cy + math.sin(math.radians(30 + 60 * i)) * s * .36)
+               for i in range(6)]
+        polyline(pts, color, width, True)
+        lines([((cx, cy), p) for p in pts[::2]], color, width)
+    elif name == 'shade_smooth':
+        polyline(circle_pts(cx, cy, s * .36), color, width)
+        polyline(circle_pts(cx - s * .08, cy + s * .08, s * .16, 12, 100, 200), color, width)
+    elif name == 'shade_auto':
+        polyline(circle_pts(cx, cy, s * .36, 12, 90, 270), color, width)
+        polyline([(cx, cy + s * .36), (cx + s * .31, cy + s * .18), (cx + s * .31, cy - s * .18), (cx, cy - s * .36)],
+                 color, width)
+        lines([((cx, cy + s * .36), (cx, cy - s * .36))], color, width)
+    elif name == 'radial':
+        polyline(circle_pts(cx, cy, s * .30), color, width)
+        for k in range(6):
+            a = math.radians(90 + k * 60)
+            px, py = cx + math.cos(a) * s * .30, cy + math.sin(a) * s * .30
+            polyline(circle_pts(px, py, s * .06, 8), color, width)
+    elif name == 'kaleido':
+        for k in range(3):
+            a = math.radians(90 + k * 60)
+            lines([((cx - math.cos(a) * s * .38, cy - math.sin(a) * s * .38),
+                    (cx + math.cos(a) * s * .38, cy + math.sin(a) * s * .38))], color, width)
+        polyline(circle_pts(cx, cy, s * .38), color, width * 0.7)
+    elif name == 'card':
+        polyline([P(.15, .25), P(.85, .25), P(.85, .80), P(.15, .80)], color, width, True)
+        lines([(P(.25, .64), P(.75, .64)), (P(.25, .48), P(.60, .48)), (P(.25, .36), P(.68, .36))], color, width)
+    elif name in {'group', 'select_group'}:
+        for a0, b0 in ((P(.12, .12), P(.38, .12)), (P(.62, .12), P(.88, .12)), (P(.12, .88), P(.38, .88)),
+                       (P(.62, .88), P(.88, .88)), (P(.12, .12), P(.12, .38)), (P(.12, .62), P(.12, .88)),
+                       (P(.88, .12), P(.88, .38)), (P(.88, .62), P(.88, .88))):
+            lines([(a0, b0)], color, width)
+        polyline([P(.28, .30), P(.50, .30), P(.50, .52), P(.28, .52)], color, width, True)
+        polyline([P(.48, .50), P(.72, .50), P(.72, .72), P(.48, .72)], color, width, True)
+        if name == 'select_group':
+            polyline(circle_pts(cx, cy, s * .06, 8), color, width)
+    elif name == 'ungroup':
+        polyline([P(.14, .20), P(.42, .20), P(.42, .48), P(.14, .48)], color, width, True)
+        polyline([P(.58, .52), P(.86, .52), P(.86, .80), P(.58, .80)], color, width, True)
+        lines([(P(.46, .46), P(.56, .56))], color, width)
+    elif name == 'merge':
+        polyline([P(.10, .62), P(.34, .62), P(.34, .86), P(.10, .86)], color, width, True)
+        polyline([P(.66, .62), P(.90, .62), P(.90, .86), P(.66, .86)], color, width, True)
+        polyline([P(.30, .14), P(.70, .14), P(.70, .44), P(.30, .44)], color, width, True)
+        lines([(P(.22, .60), P(.40, .46)), (P(.78, .60), P(.60, .46))], color, width)
+    elif name in {'enter', 'exit'}:
+        polyline([P(.45, .15), P(.85, .15), P(.85, .85), P(.45, .85)], color, width)
+        if name == 'enter':
+            lines([(P(.10, .50), P(.62, .50)), (P(.50, .62), P(.62, .50)), (P(.50, .38), P(.62, .50))], color, width)
+        else:
+            lines([(P(.62, .50), P(.10, .50)), (P(.22, .62), P(.10, .50)), (P(.22, .38), P(.10, .50))], color, width)
     elif name == 'quad':
         for t in (.2, .5, .8):
             lines([(P(t, .2), P(t, .8)), (P(.2, t), P(.8, t))], color, width)

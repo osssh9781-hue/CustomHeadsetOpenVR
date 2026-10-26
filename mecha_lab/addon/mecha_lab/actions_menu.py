@@ -28,30 +28,16 @@ def _meshes(context):
 
 
 def mirror_mod(ob):
-    if ob is None:
-        return None
-    m = ob.modifiers.get(MIRROR_NAME)
-    if m is not None:
-        return m
-    return next((m for m in ob.modifiers if m.type == 'MIRROR'), None)
+    """0.24.52 the part's live mirror (one name now: mirror_tools' MCH_Mirror; the 0.24.49 name still read)."""
+    from . import symmetry
+    return symmetry.mirror_mod(ob)
 
 
 def toggle_mirror(ob, axis):
-    """Turn one axis of the part's live Mirror on / off (made on first use, removed when no axis is left).
-    Returns the axis state now."""
-    m = mirror_mod(ob)
-    if m is None:
-        m = ob.modifiers.new(MIRROR_NAME, 'MIRROR')
-        m.use_axis = (False, False, False)
-        m.use_clip = True
-        m.use_mirror_merge = True
-    axes = list(m.use_axis)
-    axes[axis] = not axes[axis]
-    m.use_axis = axes
-    if not any(axes):
-        ob.modifiers.remove(m)
-        return False
-    return axes[axis]
+    """Turn one mirror plane of the part on / off (0.24.52: the Symmetry system - same mirror as Alt+X, so its
+    card, Apply and Enter see it).  Returns the axis state now."""
+    from . import symmetry
+    return symmetry.toggle_axis(bpy.context, ob, axis)
 
 
 def _header(col, title):

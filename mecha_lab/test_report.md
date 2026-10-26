@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.51
+# Test Report — Mecha Lab 0.24.52
+
+## 0.24.52 결과: 132개 파일 3805/3805 (`tests/test_log_bpy501_v02452.txt`, Blender 5.0.1 bpy). test_v02472: 메뉴 Shading 3개가 실제로 셰이딩을 바꿈, 클릭으로 안 닫힘 / 벗어나면 닫힘(`near` 판정), 휠 클릭 중복 방지; 메뉴 Mirror X = Alt+X와 같은 `MCH_Mirror`, Kaleido(미러가 배열 앞, 정점 수), Count, Radial만 / Mirror만 전환, 평면 X+Z, Bisect / Flip 토글, 마지막 평면 끄면 끝, 0.24.49 미러 넘겨받기, Apply; 카드(열기, 4모드, Kaleido 시작 평면, 미러 오브젝트 = 래디얼 중심, + Count, Remove 후 중심 정리), 실제 만화경 대칭(X 평면 거울·90° 회전 모두 정점 일치), 중심 이동, Mirror로 돌아가면 미러 중심 복귀; 그룹(생성·핸들 따라감·Repetition Mirror 2 / Radial 6 / Kaleido 10 인스턴스, 링크, 카드에서 Radial·+, Apply 6개 실제화, Enter / Exit, Merge, Ungroup 원래 컬렉션, 그룹 안 그룹, 그룹 안 파트로 새 그룹 → 그 안에 중첩, Ungroup하면 바깥 그룹으로). 5.2.3 bpy에서도 test_v02472 · v02470 · v02471 · ui_draw · zip_install 통과. 실제 화면(카드 위치·클릭, 메뉴 닫힘 느낌, 만화경 모양)은 미검증.
 
 ## 0.24.51 결과: 131개 파일 3751/3751 (`tests/test_log_bpy501_v02451.txt`, Blender 5.0.1 bpy). test_v02471(19): HUD 클릭 항목이 모든 도구 키맵 앞쪽(D+드래그 다음, 도구 클릭 전)·3D View에 1개, 기즈모 없음, HUD 밖 PASS_THROUGH, 가짜 영역에서 행/제목 줄/빈 곳 판정·이동 후에도 맞음, 모달 동작(드래그/Shift/Esc/선택형/기본값/undo/입력), 휠 클릭 키맵(수정키 없음)·회전 넘김·MECHA LAB 한정·끄기, − / + 크기(0.1, 0.5~3 제한), Ctrl+휠, 사이드바·프리셋·저장, 크기 계수 공유. 5.2.3 bpy에서도 test_v02471 · v02470 · v02469 · v02437 · ui_draw · zip_install 통과. 실제 화면(HUD 드래그, 휠 클릭과 회전 느낌)은 미검증.
 

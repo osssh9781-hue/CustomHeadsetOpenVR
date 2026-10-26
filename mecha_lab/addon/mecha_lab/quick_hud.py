@@ -223,6 +223,24 @@ class MCH_OT_quick_hud_press(bpy.types.Operator):
     bl_options = {'INTERNAL'}
 
     def invoke(self, context, event):
+        # 0.24.52 the Symmetry / Repetition card first (single clicks)
+        try:
+            from . import symmetry
+            inside, item = symmetry.card_hit(context, event.mouse_region_x, event.mouse_region_y)
+        except (AttributeError, KeyError, TypeError, ReferenceError, ImportError):
+            inside, item = False, None
+        if inside:
+            if item is not None:
+                msg = symmetry.run_card(context, item)
+                if msg:
+                    self.report({'INFO'}, msg)
+                try:
+                    bpy.ops.ed.undo_push(message=msg or 'Symmetry')
+                except RuntimeError:
+                    pass
+            if context.area:
+                context.area.tag_redraw()
+            return {'FINISHED'}
         try:
             h = hit(context, event.mouse_region_x, event.mouse_region_y) if visible(context) else None
         except (AttributeError, KeyError, TypeError, ReferenceError):

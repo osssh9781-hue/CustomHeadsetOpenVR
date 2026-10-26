@@ -137,6 +137,12 @@ def setup_mirror(obj, p, scene, axes=None, flips=None, center=None):
     mod.use_clip = p.clipping
     mod.use_mirror_merge = p.merge
     mod.merge_threshold = p.merge_distance
+    rs = getattr(scene, 'mch_rsym', None)        # 0.24.52 Kaleido: the planes go through the radial centre
+    if rs is not None and rs.pivot is not None and obj.modifiers.get('MCH_RadialSym') is not None \
+            and mod.mirror_object != rs.pivot:
+        old = mod.mirror_object
+        mod.mirror_object = rs.pivot
+        _remove_unused_pivot(old)
     return mod
 
 

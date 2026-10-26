@@ -9,8 +9,8 @@ cards side by side at the mouse, big icons, white text, blue for what is on:
     star, set                                             Visibility, Live
 
 Mouse: hover lights a button, click runs it; drag a slider (Shift = fine), click a slider = type the value,
-Ctrl + click = default.  Choosing a tool or an action that needs the mouse closes the menu; shapes, tabs,
-settings and toggles keep it open.  RMB / Esc / click outside closes.
+Ctrl + click = default.  0.24.52: a click never closes it (a tool switches in place, Duplicate copies in place);
+moving the mouse off the menu closes it, so do RMB / Esc / a click outside.
 Middle click (press and let go without moving, in MECHA LAB) opens it too; a middle drag still orbits.
 Hold Ctrl + Alt (a quarter second, in MECHA LAB): the menu opens and stays while they are held - every click
 works without closing it (tools switch in place, Duplicate is in place); letting go closes it.  The layout (``build``) is plain data so
@@ -26,6 +26,7 @@ from bpy.props import BoolProperty
 
 from . import tool_state as ts
 
+_OPEN = [False]           # a Mecha Menu is open (the middle-click gate must not open a second one)
 HOLD_DELAY = 0.25          # Ctrl + Alt held this long opens the menu in hold mode (sooner = a normal Ctrl+Alt use)
 from . import ui_gpu as G
 
@@ -34,17 +35,30 @@ ACTIONS = (            # (section, [(label, glyph or png stem, operator, props, 
                  ('Join', 'join', 'object.join', {}, 'multi', False),
                  ('Delete', 'delete', 'object.delete', {'use_global': False}, 'sel', False),
                  ('Origin', 'origin', 'mch.object_tidy', {'action': 'ORIGIN_GEOMETRY'}, 'mesh', False),
-                 ('Reset Axis', 'axes', 'mch.object_tidy', {'action': 'RESET_AXIS'}, 'mesh', False),
-                 ('Smooth', 'smooth', 'object.shade_auto_smooth', {}, 'mesh', False)]),
+                 ('Reset Axis', 'axes', 'mch.object_tidy', {'action': 'RESET_AXIS'}, 'mesh', False)]),
+    ('Shading', [('Flat', 'shade_flat', 'object.shade_flat', {}, 'mesh', False),
+                 ('Auto Smooth', 'shade_auto', 'object.shade_auto_smooth', {}, 'mesh', False),
+                 ('Smooth', 'shade_smooth', 'object.shade_smooth', {}, 'mesh', False)]),
     ('Resolution', [('Remesh', 'png:remesh', 'mch.one_click_remesh', {}, 'active', True),
                     ('Quad', 'quad', 'mch.quad_remesh', {}, 'active', True),
                     ('Low Poly', 'lowpoly', 'mch.lowpoly_make', {}, 'active', True)]),
     ('Symmetry', [('Mirror X', 'X', 'mch.actions_mirror', {'axis': 0}, 'active', False),
                   ('Mirror Y', 'Y', 'mch.actions_mirror', {'axis': 1}, 'active', False),
-                  ('Mirror Z', 'Z', 'mch.actions_mirror', {'axis': 2}, 'active', False)]),
-    ('Repetition', [('Radial', 'png:radial', 'tool:RADIAL', {}, '', True),
+                  ('Mirror Z', 'Z', 'mch.actions_mirror', {'axis': 2}, 'active', False),
+                  ('Radial', 'radial', 'mch.symmetry_mode', {'mode': '@RADIAL'}, 'active', False),
+                  ('Kaleido', 'kaleido', 'mch.symmetry_mode', {'mode': '@KALEIDO'}, 'active', False),
+                  ('Symmetry Card', 'card', 'mch.symmetry_card', {}, 'active', False)]),
+    ('Groups', [('Group', 'group', 'mch.group', {}, 'sel', False),
+                ('Ungroup', 'ungroup', 'mch.group_action', {'action': 'UNGROUP'}, 'group', False),
+                ('Merge', 'merge', 'mch.group_action', {'action': 'MERGE'}, 'group', False),
+                ('Enter Group', 'enter', 'mch.group_action', {'action': '@SCOPE'}, 'group_or_scope', False),
+                ('Select Group', 'select_group', 'mch.group_action', {'action': 'SELECT'}, 'group', False)]),
+    ('Repetition', [('Repeat Mirror', 'X', 'mch.group_repeat', {'mode': 'MIRROR'}, 'group', False),
+                    ('Repeat Radial', 'radial', 'mch.group_repeat', {'mode': 'RADIAL'}, 'group', False),
+                    ('Repeat Kaleido', 'kaleido', 'mch.group_repeat', {'mode': 'KALEIDO'}, 'group', False),
+                    ('Radial Array', 'png:radial', 'tool:RADIAL', {}, '', True),
                     ('Curve Array', 'png:array', 'tool:ARRAY', {}, '', True),
-                    ('Radial Sym', 'png:radial_sym', 'tool:RSYM', {}, '', True)]),
+                    ('Radial Sym Tool', 'png:radial_sym', 'tool:RSYM', {}, '', True)]),
     ('Visibility', [('Hide', 'eye_off', 'object.hide_view_set', {'unselected': False}, 'sel', False),
                     ('Show All', 'eye', 'object.hide_view_clear', {}, '', False),
                     ('Isolate', 'isolate', 'view3d.localview', {}, 'sel', True)]),
@@ -78,6 +92,9 @@ def _needs_ok(context, needs):
         return any(o.type == 'MESH' for o in sel)
     if needs == 'active':
         return ob is not None and ob.type == 'MESH'
+    if needs in {'group', 'group_or_scope'}:
+        from . import groups
+        return groups.group_of(ob) is not None or (needs == 'group_or_scope' and groups.scope(context) is not None)
     return True
 
 
@@ -233,7 +250,8 @@ def build(context, mx, my, region_w, region_h, S=1.0):
             c = k % 3
             if c == 0:
                 y -= bh
-            on = sec == 'Symmetry' and bool(m and m.use_axis[props['axis']])
+            on = sec == 'Symmetry' and 'axis' in props and bool(m and m.use_axis[props['axis']])
+            props, label, on = _dynamic(context, ob, op, props, label, on)
             if op.startswith('tool:'):
                 on = active == op[5:]
                 action = ('tool', op[5:])
@@ -256,6 +274,24 @@ def build(context, mx, my, region_w, region_h, S=1.0):
             it.y += top
             out.append(it)
     return out
+
+
+def _dynamic(context, ob, op, props, label, on):
+    """Buttons whose effect depends on the state: Radial / Kaleido toggles, Enter / Exit, repetition on."""
+    from . import groups, symmetry
+    if op == 'mch.symmetry_mode' and props.get('mode', '').startswith('@'):
+        now = symmetry.mode_of(ob) if ob is not None and ob.type == 'MESH' else 'OFF'
+        if props['mode'] == '@RADIAL':
+            target = {'OFF': 'RADIAL', 'MIRROR': 'KALEIDO', 'RADIAL': 'OFF', 'KALEIDO': 'MIRROR'}[now]
+            return {'mode': target}, label, now in {'RADIAL', 'KALEIDO'}
+        return {'mode': 'OFF' if now == 'KALEIDO' else 'KALEIDO'}, label, now == 'KALEIDO'
+    if op == 'mch.group_action' and props.get('action') == '@SCOPE':
+        inside = groups.scope(context) is not None
+        return {'action': 'EXIT' if inside else 'ENTER'}, 'Exit Group' if inside else 'Enter Group', inside
+    if op == 'mch.group_repeat':
+        g = groups.group_of(ob)
+        return props, label, g is not None and groups.repeat_mode(g) == props['mode']
+    return props, label, on
 
 
 def _stamp_path(stem):
@@ -512,6 +548,7 @@ class MCH_OT_mecha_menu(bpy.types.Operator):
         self.hover = None
         self.drag = None
         self._handle = bpy.types.SpaceView3D.draw_handler_add(self._draw, (), 'WINDOW', 'POST_PIXEL')
+        _OPEN[0] = True
         context.window_manager.modal_handler_add(self)
         context.area.tag_redraw()
         return {'RUNNING_MODAL'}
@@ -529,6 +566,7 @@ class MCH_OT_mecha_menu(bpy.types.Operator):
         self.items = build(context, *self.mouse, self.region.width, self.region.height, self.S)
 
     def _finish(self, context):
+        _OPEN[0] = False
         if self._handle is not None:
             bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
             self._handle = None
@@ -540,6 +578,10 @@ class MCH_OT_mecha_menu(bpy.types.Operator):
 
     def _inside(self, x, y):
         return any(it.kind == 'card' and it.hit(x, y) for it in self.items)
+
+    def _near(self, x, y):
+        """Over the menu or the gaps between its cards (a little margin, so a quick move does not close it)."""
+        return near(self.items, x, y, 36 * self.S)
 
     def modal(self, context, event):
         from . import quick_hud
@@ -562,7 +604,7 @@ class MCH_OT_mecha_menu(bpy.types.Operator):
                 if moved:
                     _undo('Mecha ' + it.prop)
                     return {'RUNNING_MODAL'}
-                if run(context, it, event.ctrl and not self.hold, self.hold) == 'TYPE':
+                if run(context, it, event.ctrl and not self.hold, True) == 'TYPE':
                     self._finish(context)
                     bpy.ops.wm.call_panel(name='MCH_PT_quick_value', keep_open=False)
                     return {'FINISHED'}
@@ -574,6 +616,9 @@ class MCH_OT_mecha_menu(bpy.types.Operator):
             return {'RUNNING_MODAL'}
         if event.type == 'MOUSEMOVE':
             self.hover = self._at(x, y)
+            if not self.hold and not self._near(x, y):
+                self._finish(context)             # 0.24.52 the mouse left the menu: it closes
+                return {'FINISHED'}
             return {'RUNNING_MODAL'}
         if self.hold and event.type in {'LEFT_CTRL', 'RIGHT_CTRL', 'LEFT_ALT', 'RIGHT_ALT'} \
                 and event.value == 'RELEASE':
@@ -585,22 +630,22 @@ class MCH_OT_mecha_menu(bpy.types.Operator):
         if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
             it = self._at(x, y)
             if it is None or not it.clickable():
-                if not self._inside(x, y) and not self.hold:
+                if not self._near(x, y) and not self.hold:
                     self._finish(context)
                     return {'CANCELLED'}
                 return {'RUNNING_MODAL'}
             if it.kind == 'slider':
                 self.drag = (it, x, getattr(it.data, it.prop), False)
                 return {'RUNNING_MODAL'}
-            closes = it.action[0] == 'op' and it.action[3]
-            if (closes or it.action[0] == 'tool') and not self.hold:
-                self._finish(context)
-                run(context, it, event.ctrl)
-                return {'FINISHED'}
-            try:
-                run(context, it, event.ctrl and not self.hold, self.hold)
+            try:                                  # 0.24.52 a click never closes it (tools switch in place)
+                r = run(context, it, event.ctrl and not self.hold, True)
             except (RuntimeError, AttributeError, TypeError, ReferenceError) as ex:
                 print('Mecha Menu:', ex)
+                r = False
+            if r == 'TYPE':
+                self._finish(context)
+                bpy.ops.wm.call_panel(name='MCH_PT_quick_value', keep_open=False)
+                return {'FINISHED'}
             self.S = G.ui_factor(context, self.region)
             self._rebuild(context)
             self.hover = self._at(x, y)
@@ -679,7 +724,7 @@ class MCH_OT_mecha_mmb_gate(bpy.types.Operator):
         from . import bottom_bar
         from .workspace_ui import pref
         return (pref('mmb_menu', True) and context.area is not None and context.area.type == 'VIEW_3D'
-                and bottom_bar.ui_active(context))
+                and bottom_bar.ui_active(context) and not _OPEN[0])
 
     def invoke(self, context, event):
         self.x0, self.y0 = event.mouse_x, event.mouse_y
@@ -705,6 +750,25 @@ class MCH_OT_mecha_mmb_gate(bpy.types.Operator):
         if event.type == 'ESC':
             return {'CANCELLED'}
         return {'RUNNING_MODAL'}
+
+
+def near(items, x, y, margin):
+    cards = [i for i in items if i.kind == 'card']
+    if not cards:
+        return False
+    x0 = min(c.x for c in cards) - margin
+    x1 = max(c.x + c.w for c in cards) + margin
+    if not x0 <= x <= x1:
+        return False
+    # inside the band the cards span, but not far above / below the card under the mouse column
+    for c in cards:
+        if c.x - margin <= x <= c.x + c.w + margin and c.y - margin <= y <= c.y + c.h + margin:
+            return True
+    top = max(c.y + c.h for c in cards)
+    bottom = min(c.y for c in cards)
+    # between two cards (the gap): allowed within the shorter card's height
+    return any(a.x + a.w <= x <= b.x and max(a.y, b.y) - margin <= y <= min(a.y + a.h, b.y + b.h) + margin
+               for a in cards for b in cards if a is not b) and bottom <= y <= top
 
 
 def open_menu(context):
