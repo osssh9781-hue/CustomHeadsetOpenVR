@@ -1044,6 +1044,27 @@ def _plane_point(projector, xy, plane_co, normal):
     return cg._plane_hit(o, d, plane_co, normal)[0]
 
 
+def anchor_hit(context, projector, outer):
+    """0.24.36 Where the new solid sits: the surface under the outline centre, or - when the centre is over empty
+    space (a line drawn half off the mesh) - the front-most surface under the outline / line.  Returns
+    (screen point, (location, normal, object)) or (centre, None) when nothing is under it at all."""
+    c = (sum(q[0] for q in outer) / len(outer), sum(q[1] for q in outer) / len(outer))
+    dg = context.evaluated_depsgraph_get()
+    vd = Vector(projector.view_dir)
+    best = None
+    for k, q in enumerate([c] + list(_outline_samples(outer)) + list(outer[::max(1, len(outer) // 48)])):
+        o, d = projector.ray(q)
+        hit, loc, nrm, _i, ob, _m = target_rules.scene_ray(context, dg, o, d)
+        if not hit or ob is None or ob.type != 'MESH':
+            continue
+        if k == 0:
+            return c, (Vector(loc), Vector(nrm), ob)
+        depth = (Vector(loc) - Vector(o)).dot(vd)
+        if best is None or depth < best[0]:
+            best = (depth, q, (Vector(loc), Vector(nrm), ob))
+    return (best[1], best[2]) if best else (c, None)
+
+
 def plane_frame(context, projector, groups):
     """(origin, X, Y, N) for the outline plane; N points toward the viewer."""
     vd = projector.view_dir
@@ -1051,11 +1072,9 @@ def plane_frame(context, projector, groups):
     c = (sum(q[0] for q in outer) / len(outer), sum(q[1] for q in outer) / len(outer))
     origin = None
     try:
-        o, d = projector.ray(c)
-        dg = context.evaluated_depsgraph_get()
-        hit, loc, _n, _i, ob, _m = target_rules.scene_ray(context, dg, o, d)
-        if hit and ob is not None and ob.type == 'MESH':
-            origin = loc
+        _q, found = anchor_hit(context, projector, outer)
+        if found is not None:
+            origin = found[0]
     except (AttributeError, RuntimeError, TypeError):
         origin = None
     if origin is None:
@@ -1088,15 +1107,16 @@ def surface_frame(context, projector, screen_groups, height=0.2):
     gap (at least 2 % of the height, so the bottom never z-fights with a flat
     surface)."""
     outer = screen_groups[0][0]
-    c = (sum(q[0] for q in outer) / len(outer), sum(q[1] for q in outer) / len(outer))
     try:
         dg = context.evaluated_depsgraph_get()
-        o, d = projector.ray(c)
-        hit, loc, nrm, _i, ob, _m = target_rules.scene_ray(context, dg, o, d)
+        c, found = anchor_hit(context, projector, outer)      # 0.24.36 a line half off the mesh: its front part
     except (AttributeError, RuntimeError, TypeError):
         return None
-    if not hit or ob is None or ob.type != 'MESH':
+    if found is None:
         return None
+    loc, nrm, ob = found
+    o, d = projector.ray(c)
+    d = Vector(d)
     name = ob.name
     hits = [(Vector(loc), Vector(nrm))]
     for q in _outline_samples(outer):
