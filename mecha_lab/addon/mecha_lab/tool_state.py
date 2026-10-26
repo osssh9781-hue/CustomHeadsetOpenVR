@@ -407,7 +407,11 @@ CLASSES = (MCH_PG_Brush, MCH_PG_Cut)
 # -----------------------------------------------------------------------------
 
 UNDO_KEEP = (('mch_brush', 'shape'), ('mch_brush', 'line_open'), ('mch_settings', 'mch_active_tool'),
-             (None, 'mch_png_preset'))
+             (None, 'mch_png_preset'),
+             # 0.24.35 brush sizes (F / [ ] / sliders) stay as they are after Ctrl+Z
+             ('mch_brush', 'line_width'), ('mch_brush', 'custom_size'), ('mch_brush', 'mask_brush_radius'),
+             ('mch_concept', 'radius_px'), ('mch_concept', 'radius_world'), ('mch_concept', 'lock_size'),
+             ('mch_screw', 'radius'), ('mch_sdraw', 'width'), ('mch_sdraw', 'height'))
 _undo_snapshot = {}
 
 

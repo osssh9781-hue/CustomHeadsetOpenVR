@@ -508,6 +508,8 @@ def rebuild_live(context, ob):
 class MCH_PG_Concept(bpy.types.PropertyGroup):
     radius_px: IntProperty(name='Size', default=120, min=5, max=3000, subtype='PIXEL',
                            description='Brush size on screen ([ and ] while dragging)')
+    knife_cuts: IntProperty(name='Knife Cuts', default=12, min=2, max=64,
+                            description='Knife Mesh: cuts across the longest side (the other sides get the same spacing)')
     shape: EnumProperty(name='Shape', items=SHAPE_ITEMS, default='SPHERE')
     hardness: FloatProperty(name='Hardness', default=0.5, min=0.0, max=0.98,
                             description='How much of the brush moves whole (high = a rigid lump, low = soft)')
@@ -1493,10 +1495,76 @@ class MCH_TOOL_concept_path(bpy.types.WorkSpaceTool):
         draw_path(layout, context, compact=True)
 
 
+def knife_grid(bm, cuts):
+    """0.24.35 Knife Mesh: slice the whole mesh with evenly spaced planes along X, Y and Z (its own space) - the
+    shape stays exactly the same, the faces get evenly split so a move / path move bends where you grab.  Returns
+    the number of planes."""
+    if not bm.verts:
+        return 0
+    lo = Vector([min(v.co[i] for v in bm.verts) for i in range(3)])
+    hi = Vector([max(v.co[i] for v in bm.verts) for i in range(3)])
+    size = hi - lo
+    step = max(size) / max(2, cuts)
+    if step <= 1e-9:
+        return 0
+    n = 0
+    for axis in range(3):
+        parts = int(round(size[axis] / step))       # even spacing along this side, about ``step`` apart
+        for k in range(1, parts):
+            co = lo.copy()
+            co[axis] = lo[axis] + size[axis] * k / parts
+            no = Vector((0.0, 0.0, 0.0))
+            no[axis] = 1.0
+            bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:], plane_co=co, plane_no=no,
+                                   dist=step * 1e-4)
+            n += 1
+    return n
+
+
+class MCH_OT_knife_grid(bpy.types.Operator):
+    """Knife the whole selected mesh evenly (X / Y / Z slices): the shape stays, the faces get split evenly so the
+    move bends where you grab instead of at the old edges"""
+    bl_idname = 'mch.knife_grid'
+    bl_label = 'Knife Mesh'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    cuts: IntProperty(name='Knife Cuts', default=12, min=2, max=64)
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and any(_mesh_ok(o) for o in context.selected_objects + [context.active_object]
+                                                if o is not None)
+
+    def execute(self, context):
+        if not self.properties.is_property_set('cuts'):      # the button: the Cuts slider next to it
+            self.cuts = context.scene.mch_concept.knife_cuts
+        obs = [o for o in dict.fromkeys(context.selected_objects + [context.active_object]) if _mesh_ok(o)]
+        total = 0
+        for ob in obs:
+            bm = bmesh.new()
+            bm.from_mesh(ob.data)
+            planes = knife_grid(bm, self.cuts)
+            bm.to_mesh(ob.data)
+            bm.free()
+            ob.data.update()
+            total += planes
+        context.scene.mch_concept.knife_cuts = self.cuts
+        self.report({'INFO'}, f'Knife Mesh: {len(obs)} mesh(es), {total} slices')
+        return {'FINISHED'}
+
+
+def draw_knife(layout, context):
+    row = layout.row(align=True)
+    row.prop(context.scene.mch_concept, 'knife_cuts', text='Cuts')
+    row.operator('mch.knife_grid', icon='MOD_EDGESPLIT')
+
+
 def draw_path(layout, context, compact=False):
     from . import path_sweep
     st = context.scene.mch_concept
     layout.prop(st, 'path_method', expand=not compact, text='' if compact else 'Method')
+    if not compact:
+        draw_knife(layout, context)
     ob = context.active_object
     if not compact and ob is not None and path_sweep.SOURCE_KEY in ob:
         row = layout.row(align=True)
@@ -1805,6 +1873,7 @@ def draw(layout, context, compact=False):
     st = context.scene.mch_concept
     if not compact:
         draw_targets(layout, context)
+        draw_knife(layout, context)
     layout.prop(st, 'shape', text='' if compact else 'Shape')
     row = layout.row(align=True)
     row.prop(st, 'radius_world' if st.lock_size else 'radius_px')
@@ -1830,7 +1899,7 @@ def draw(layout, context, compact=False):
 
 CLASSES = (MCH_PG_Concept, MCH_OT_concept_move, MCH_OT_concept_path, MCH_OT_concept_hold, MCH_OT_concept_size,
            MCH_OT_concept_resize, MCH_OT_concept_add, MCH_OT_concept_fuse, MCH_OT_concept_clear,
-           MCH_OT_concept_undo_last, MCH_OT_concept_bake, MCH_OT_path_merge)
+           MCH_OT_concept_undo_last, MCH_OT_concept_bake, MCH_OT_path_merge, MCH_OT_knife_grid)
 
 
 def register():
