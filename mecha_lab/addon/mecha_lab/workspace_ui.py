@@ -2039,6 +2039,8 @@ class MCH_PT_tool_popup(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
+        from . import tool_recent
+        tool_recent.draw(layout, context)                 # 0.24.49 recent + favorites first
         layout.label(text='MECHA LAB TOOLS', icon='TOOL_SETTINGS')
         draw_tool_grid(layout, context, columns=5, scale=3.0)
 
@@ -2064,7 +2066,7 @@ class MCH_PT_shape_popup(bpy.types.Panel):
     bl_label = 'MECHA LAB | Shapes'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'HEADER'
-    bl_ui_units_x = 22
+    bl_ui_units_x = 30
 
     @classmethod
     def poll(cls, context):
@@ -2073,6 +2075,8 @@ class MCH_PT_shape_popup(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         tool = ts.TOOL_BY_ID.get(ts.effective_tool(context))
+        from . import actions_menu
+        actions_menu.draw(layout, context)                # 0.24.49 RMB: tools | actions (Modeler style)
         layout.label(text='SHAPES  |  ' + (tool[1] if tool else ''), icon='SELECT_SET')
         draw_shape_grid(layout, context, columns=3, scale=2.6)
         brush = context.scene.mch_brush
@@ -2117,7 +2121,7 @@ class MCH_PT_profile_popup(bpy.types.Panel):
     bl_label = 'MECHA LAB | Base Mesh Profile'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'HEADER'
-    bl_ui_units_x = 24
+    bl_ui_units_x = 30
 
     @classmethod
     def poll(cls, context):
@@ -2129,6 +2133,8 @@ class MCH_PT_profile_popup(bpy.types.Panel):
         live = base_mesh.active_live_base(context)
         p = live.mch_base if live else base_mesh.scene_defaults(context)
         creature = p.profile in base_mesh.CREATURE_PROFILES
+        from . import actions_menu
+        actions_menu.draw(layout, context)                # 0.24.49 RMB: tools | actions (Modeler style)
         layout.label(text=('CREATURE BASE MESH PROFILE' if creature else 'BASE MESH PROFILE') +
                      (f'  |  editing {live.name}' if live else '  |  next shape'), icon='MESH_CUBE')
         draw_profile_grid(layout, context, columns=4 if not creature else 3, scale=3.0)
@@ -2158,6 +2164,13 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
     last_tool_key: BoolProperty(name='Q = Select <-> Last Tool', default=True,
                                 description='One key flips between Select / Move and the last modelling tool (like Tab), '
                                             'MECHA LAB only (elsewhere Q = Quick Favorites)')
+    rmb_actions: BoolProperty(name='RMB Actions Menu', default=True,
+                              description='Right-click in Select / Move opens the Mecha Actions popup (recent tools, '
+                                          'favorites, actions on the selection) instead of Blender\'s object menu, '
+                                          'MECHA LAB only. The popup has a button for Blender\'s menu')
+    key_legend: BoolProperty(name='Key Legend', default=True,
+                             description='Bottom left of the viewport: what Alt / Shift / Ctrl / wheel / F / RMB do in '
+                                         'the drawing tool that is on (MECHA LAB only)')
     bottom_toolbar: BoolProperty(name='Bottom Toolbar', default=True,
                                  description='Tool buttons at the bottom centre of the viewport (MECHA LAB, Object Mode)')
     toolbar_labels: BoolProperty(name='Names Under Icons', default=True)
@@ -2192,6 +2205,9 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         row = box.row()
         row.prop(self, 'tool_pie')
         row.prop(self, 'last_tool_key')
+        row = box.row()
+        row.prop(self, 'rmb_actions')
+        row.prop(self, 'key_legend')
         layout.prop(self, 'workspace_hotkeys')
         layout.prop(self, 'quick_menu')
         layout.prop(self, 'select_move_key')

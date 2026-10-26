@@ -51,16 +51,41 @@ def ui_active(context):
     return (ts.is_mecha_workspace(getattr(context, 'workspace', None)) and context.mode == 'OBJECT')
 
 
+MIN_BUTTON = 22.0          # 0.24.49 smallest button (px at UI scale 1) before the bar goes to two rows
+
+
 def toolbar_layout(region_width, ui_scale=1.0, count=len(BAR_TOOLS), size='M', margin=26.0, factor=1.0):
     """Centres (x, y) of the toolbar buttons in region pixels, bottom centre.
-    ``factor`` = Preferences > Icon Size > Bottom Toolbar."""
+    ``factor`` = Preferences > Icon Size > Bottom Toolbar.
+    0.24.49 a narrow viewport: the buttons shrink to fit (down to MIN_BUTTON), then wrap to two rows,
+    so none goes off the screen."""
     f = max(0.3, float(factor))
     d = SIZES.get(size, SIZES['M']) * ui_scale * f
     gap = 8.0 * ui_scale * max(1.0, f)       # room for the names under bigger buttons
+    avail = max(1.0, region_width - 24.0 * ui_scale)
+    rows = 1
+    per = count
     total = count * d + (count - 1) * gap
-    x0 = region_width / 2.0 - total / 2.0 + d / 2.0
+    if total > avail and count > 1:
+        k = avail / total
+        if d * k >= MIN_BUTTON * ui_scale:
+            d, gap = d * k, gap * k
+        else:
+            rows = 2
+            per = (count + 1) // 2
+            total = per * d + (per - 1) * gap
+            if total > avail:
+                k = avail / total
+                d, gap = d * k, gap * k
     y = margin * ui_scale * max(0.8, f) + d / 2.0
-    return [(x0 + i * (d + gap), y) for i in range(count)], d
+    step_y = d + 16.0 * ui_scale * max(0.6, f)      # the second row sits above, labels fit between
+    out = []
+    for i in range(count):
+        r, c = divmod(i, per)
+        n = min(per, count - r * per)
+        x0 = region_width / 2.0 - (n * d + (n - 1) * gap) / 2.0 + d / 2.0
+        out.append((x0 + c * (d + gap), y + r * step_y))
+    return out, d
 
 
 def current_bar_tool(context):
@@ -89,6 +114,8 @@ def note_tool(context, tool_id):
     wm.mch_ui_mode = 'TOOL'
     if tool_id in ts.TOOL_BY_ID:
         wm.mch_last_model = tool_id
+        from . import tool_recent
+        tool_recent.note(tool_id)                         # 0.24.49 Recent list (RMB popup)
 
 
 def note_select(context):
@@ -270,7 +297,8 @@ class MCH_GGT_bottom_toolbar(bpy.types.GizmoGroup):
     def draw_prepare(self, context):
         region = context.region
         ui = context.preferences.system.ui_scale
-        pos, d = toolbar_layout(region.width, 1.0, len(self.buttons), _pref('toolbar_size', 'M'),
+        # 0.24.49 the positions are multiplied by the UI scale below, so the width must be unscaled too
+        pos, d = toolbar_layout(region.width / max(ui, 1e-3), 1.0, len(self.buttons), _pref('toolbar_size', 'M'),
                                 factor=_pref('toolbar_scale', 1.0))
         active = current_bar_tool(context)
         for (tid, gz), (x, y) in zip(self.buttons, pos):
@@ -653,7 +681,8 @@ def _draw_labels():
         region = context.region
         ui = context.preferences.system.ui_scale
         f = _pref('toolbar_scale', 1.0)
-        pos, d = toolbar_layout(region.width, 1.0, len(BAR_TOOLS), _pref('toolbar_size', 'M'), factor=f)
+        pos, d = toolbar_layout(region.width / max(ui, 1e-3), 1.0, len(BAR_TOOLS), _pref('toolbar_size', 'M'),
+                                factor=f)
         active = current_bar_tool(context)
         font = 0
         blf.size(font, 10 * ui * max(0.6, f))

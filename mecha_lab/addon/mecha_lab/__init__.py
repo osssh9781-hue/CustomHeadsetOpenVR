@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 24, 48),
+    "version": (0, 24, 49),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
     "description": "Cut, Split, Base Mesh, Boolean, Face Extract, Armor Sculpt, Molding, Cable, Hollow, curve arrays, Mirror",
@@ -17,7 +17,7 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                cloth_wrinkle, last_used, robot_base, detail_stamp, surface_lasso,
                curve_tube, creature_shell, cloth_sim, box_hide, plate_detail, screw_stamp, lowpoly, fold_patch,
                creature_plate, belt_maker, creature_spike, creature_scales, flower_plate,
-               surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, quad_remesh)
+               surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, quad_remesh, tool_recent, actions_menu, key_legend)
 import os
 import re
 from pathlib import Path
@@ -1978,6 +1978,9 @@ def _register():
     screw_stamp.register()
     lowpoly.register()
     quad_remesh.register()
+    tool_recent.register()
+    actions_menu.register()
+    key_legend.register()
     fold_patch.register()
     workspace_ui.register()
     bottom_bar.register()
@@ -2035,6 +2038,9 @@ def _unregister_steps():
         ('bottom_bar', bottom_bar.unregister),
         ('workspace_ui', workspace_ui.unregister),
         ('fold_patch', fold_patch.unregister),
+        ('key_legend', key_legend.unregister),
+        ('actions_menu', actions_menu.unregister),
+        ('tool_recent', tool_recent.unregister),
         ('quad_remesh', quad_remesh.unregister),
         ('lowpoly', lowpoly.unregister),
         ('screw_stamp', screw_stamp.unregister),
