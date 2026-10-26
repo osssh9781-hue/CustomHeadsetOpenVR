@@ -120,8 +120,14 @@ def _body(context, target):
     ev = target.evaluated_get(dg)
     me = ev.to_mesh()
     try:
-        key = (target.name, len(me.vertices), len(me.polygons), tuple(round(x, 5) for r in target.matrix_world
-                                                                        for x in r))
+        import numpy as np
+        co = np.empty(len(me.vertices) * 3)
+        me.vertices.foreach_get('co', co)
+        # 0.24.38 the shape itself too: two meshes with the same name and counts (or vertices moved in Edit Mode)
+        # must not share a stale BVH
+        shape = (round(float(co.sum()), 6), round(float((co * co).sum()), 6), round(float(co[::7].sum()), 6))
+        key = (target.name, len(me.vertices), len(me.polygons), shape, tuple(round(x, 5) for r in target.matrix_world
+                                                                               for x in r))
         hit = _CACHE.get(('body', target.name))
         if hit is not None and hit[0] == key:
             return hit[1]

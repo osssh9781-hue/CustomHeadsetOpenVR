@@ -148,11 +148,18 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
                                             'Off: the solid faces the view (old behaviour)')
     alt_mode: EnumProperty(name='Alt', default='HEIGHT', items=[
         ('HEIGHT', 'Alt: Carve Height', 'Alt + draw carves the drawn shape into the mesh, as deep as Height'),
+        ('THROUGH', 'Alt: Through', 'Alt + draw cuts a window right through the part, following its surface (it '
+                                    'measures how thick the part is) - the rest stays as a frame'),
+        ('INSIDE', 'Alt: Inside', 'Alt + draw carves a channel in the MIDDLE of the part (the drawn face and the '
+                                  'back stay): it shows as windows where the drawing crosses the side walls - an '
+                                  'inner frame'),
         ('CUT', 'Alt: Like Cut', 'Alt + draw cuts like the Cut tool (its Through All / From Surface depth)')],
         description='What Alt + draw does')
     carve_depth: FloatProperty(name='Carve Depth', default=0.0, min=0.0, soft_max=1.0, precision=4, unit='LENGTH',
                                description='Alt + draw carves this deep (0 = Height). Keep it less than the part is '
                                            'thick, or the carve goes right through to the other side')
+    inside_skin: FloatProperty(name='Skin', default=0.25, min=0.02, max=0.45, subtype='FACTOR',
+                               description='Alt: Inside - how much of the thickness stays on each side (front and back)')
     invert_height: BoolProperty(name='Invert', default=False,
                                 description='The height grows back, away from you (into the mesh) from where you draw, '
                                             'instead of toward you')
@@ -1326,15 +1333,18 @@ def carve_surface(context, loops, projector, p, targets=None):
     targets = _cutter_targets(context, projector, screen_groups, targets)
     if not targets:
         raise cg.CutError('Alt Base Mesh carves into a mesh: draw over one (nothing was changed).')
+    through = getattr(p, 'alt_mode', 'HEIGHT') == 'THROUGH'
     height = max(getattr(p, 'carve_depth', 0.0) or p.height, 1e-5)
-    edge = min(1.0, max(0.02, getattr(p, 'bevel_width', 0.05) / (2.0 * height)))
-    st = SimpleNamespace(profile=SURFACE_CARVE[p.profile], edge=edge, sink=0.0,
+    st = SimpleNamespace(profile=SURFACE_CARVE[p.profile], edge=0.35, sink=0.0, edge_abs=getattr(p, 'bevel_width', 0.05),
                          fill_res=max(15, min(60, getattr(p, 'resolution', 28))))
     done, failed = [], []
     for t in targets:
         try:
             cg.check_target(t)
-            sd.carve_area(context, t, screen_groups, projector, st, height)
+            if getattr(p, 'alt_mode', 'HEIGHT') == 'INSIDE':
+                height = sd.carve_inside(context, t, screen_groups, projector, st, getattr(p, 'inside_skin', 0.25))
+            else:
+                height = sd.carve_area(context, t, screen_groups, projector, st, height, through)
             done.append(t.name)
         except (cg.CutError, RuntimeError) as ex:
             if len(targets) == 1:
@@ -1342,7 +1352,10 @@ def carve_surface(context, loops, projector, p, targets=None):
             failed.append(f'{t.name} ({str(ex).splitlines()[0][:60]})')
     if not done:
         raise cg.CutError('Alt Base Mesh: nothing was carved. ' + '; '.join(failed))
-    return f'Base Mesh carve (Alt): {", ".join(done)} | {height:.3g} deep along the surface' + \
+    return f'Base Mesh carve (Alt): {", ".join(done)} | ' + \
+        ('a window right through' if through else
+         'a channel inside (windows where it crosses the side walls)' if p.alt_mode == 'INSIDE' else
+         f'{height:.3g} deep along the surface') + \
         (' | failed: ' + '; '.join(failed) if failed else '')
 
 
@@ -1621,7 +1634,8 @@ def sketch_commit(context, cutter=False):
     p = scene_defaults(context)
     creature = p.profile in CREATURE_PROFILES
     like_cut = getattr(p, 'alt_mode', 'HEIGHT') == 'CUT'
-    proj = _view_projector(context) if cutter and not creature and like_cut else None
+    on_surface = p.profile in SURFACE_CARVE        # 0.24.38 Carve Height / Through follow the surface here too
+    proj = _view_projector(context) if cutter and not creature and (like_cut or on_surface) else None
     if cutter and proj is not None:
         # 0.24.5 Alt+Enter cuts like the Cut tool too: the sketch seen from the current view
         loops = []
@@ -1631,7 +1645,7 @@ def sketch_commit(context, cutter=False):
                 if any(p_ is None for p_ in pts):
                     raise cg.CutError('The sketch is behind the view: orbit so it is in front, then Alt+Enter.')
                 loops.append([tuple(p_) for p_ in pts])
-        msg = cut_like_cut_tool(context, loops, proj)
+        msg = cut_like_cut_tool(context, loops, proj) if like_cut else carve_surface(context, loops, proj, p)
     elif cutter:
         if getattr(p, 'invert_height', False):    # the sketch plane was flipped for Invert: carve into the mesh
             frame = frame @ Matrix.Diagonal((1.0, -1.0, -1.0, 1.0))

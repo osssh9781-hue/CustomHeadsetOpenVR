@@ -529,15 +529,74 @@ def engrave(context, path, projector, loops=None):
     return f'Carved into "{target.name}" (Alt): {height:.3g} deep, {width:.3g} wide'
 
 
-def carve_area(context, target, groups, projector, settings, height):
-    """0.24.37 Base Mesh Alt: the drawn outline laid on the target's surface and carved in, Height deep
-    everywhere along the surface (``settings``: profile SQUARE / CHAMFER / BEVEL, edge, sink, fill_res)."""
+def _thickness(bvh, fills, size):
+    """How thick the part is under each projected point (a ray from the surface straight in); points off the
+    part (past its edge) get the median of the rest."""
+    out = []
+    for f in fills:
+        th = []
+        for c, n in zip(f['cos'], f['nrms']):
+            c, n = Vector(c), Vector(n)
+            loc, _nn, _i, dist = bvh.ray_cast(c - n * (size * 1e-4), -n, size * 2.0)
+            th.append(dist if loc is not None else None)
+        known = sorted(t for t in th if t is not None)
+        out.append(th)
+    allk = sorted(t for th in out for t in th if t is not None)
+    med = allk[len(allk) // 2] if allk else None
+    return [[t if t is not None else med for t in th] for th in out], med
+
+
+def carve_inside(context, target, groups, projector, settings, skin=0.25):
+    """0.24.38 Alt: Inside - a channel carved in the MIDDLE of the part's thickness (``skin`` of it stays on the
+    drawn face and on the back): hidden inside, it opens as windows where the drawing crosses the part's side
+    walls (an inner frame).  Returns the mean channel height."""
     from . import cape_gen
-    _bvh, lo, hi = cape_gen._body(context, target)
+    bvh, lo, hi = cape_gen._body(context, target)
     size = (hi - lo).length
-    parts = [fill_mesh(f, settings, height, height, size, sign=-1.0)
-             for f in _project_fills(context, target, groups, projector, settings)]
+    fills = _project_fills(context, target, groups, projector, settings)
+    thick, med = _thickness(bvh, fills, size)
+    if med is None:
+        raise cg.CutError('Inside: no back side found under the drawing (is the mesh closed?).')
+    skin = min(0.45, max(0.02, skin))
+    parts = []
+    for f, th in zip(fills, thick):
+        _v, faces = fill_mesh(f, settings, med, med, size, sign=-1.0)      # the topology (top / bottom pairs)
+        verts = []
+        for c, n, t in zip(f['cos'], f['nrms'], th):
+            c, n = Vector(c), Vector(n)
+            verts.append(c - n * (t * skin))                # the channel's top: under the drawn face's skin
+            verts.append(c - n * (t * (1.0 - skin)))        # its bottom: above the back skin
+        parts.append((verts, faces))
     carve_parts(context, target, parts)
+    return med * (1.0 - 2.0 * skin)
+
+
+def carve_area(context, target, groups, projector, settings, height, through=False):
+    """0.24.37 Base Mesh Alt: the drawn outline laid on the target's surface and carved in, Height deep
+    everywhere along the surface (``settings``: profile SQUARE / CHAMFER / BEVEL, edge, sink, fill_res).
+    0.24.38 ``through``: as deep as the part is thick under the outline (and a bit) - a window right through
+    it, the rest stays as a frame.  ``settings.edge_abs`` (if set) = the edge size in scene units.  Returns the
+    depth used."""
+    from . import cape_gen
+    bvh, lo, hi = cape_gen._body(context, target)
+    size = (hi - lo).length
+    fills = _project_fills(context, target, groups, projector, settings)
+    if through:
+        deepest = 0.0
+        for f in fills:
+            for c, n in zip(f['cos'], f['nrms']):
+                c, n = Vector(c), Vector(n)
+                loc, _nn, _i, dist = bvh.ray_cast(c - n * (size * 1e-4), -n, size * 2.0)
+                if loc is not None:
+                    deepest = max(deepest, dist)
+        if deepest <= 0.0:
+            raise cg.CutError('Through: no back side found under the outline (is the mesh closed?).')
+        height = deepest * 1.15 + size * 0.002
+    if getattr(settings, 'edge_abs', None) is not None:
+        settings.edge = min(1.0, max(0.02, settings.edge_abs / (2.0 * max(height, 1e-9))))
+    parts = [fill_mesh(f, settings, height, height, size, sign=-1.0) for f in fills]
+    carve_parts(context, target, parts)
+    return height
 
 
 def carve_parts(context, target, parts):

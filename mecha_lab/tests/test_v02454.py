@@ -83,6 +83,45 @@ p.carve_depth = 0.2
 bm_.perform_base(C, SQ, FRONT, cutter=True)
 check('Carve Depth 0.2 (Height 0.5): the pocket is 0.2 deep', abs(volume(t) - (8.0 - 0.36 * 0.2)) < 0.02, volume(t))
 p.carve_depth = 0.0
+# Through: a window right through the part, whatever Height says (the rest stays as a frame)
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+bpy.ops.mesh.primitive_cube_add(size=1.0, scale=(1.0, 0.15, 1.0))          # a plate 0.15 thick, faces at y = +-0.075
+plate = C.active_object
+bpy.ops.object.transform_apply(scale=True, location=False, rotation=False)
+p.alt_mode, p.height = 'THROUGH', 0.02
+msg = bm_.perform_base(C, SQ, FRONT, cutter=True)
+b = bmesh.new()
+b.from_mesh(plate.data)
+v = b.calc_volume()
+b.free()
+check('Alt: Through = a window right through the plate (0.6 x 0.6 hole in a 0.15 plate), Height ignored',
+      abs(v - (0.15 - 0.36 * 0.15)) < 0.005 and non_manifold(plate) == 0 and 'through' in msg, (msg, v))
+ok, *_r = plate.ray_cast(Vector((0, -5, 0)), Vector((0, 1, 0)))
+check('... you can see through it', not ok)
+# Inside: a channel in the middle of the thickness - front and back stay, windows open on the side walls
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+bpy.ops.mesh.primitive_cube_add(size=1.0, scale=(1.0, 0.2, 1.0))           # 0.2 thick, faces at y = +-0.1
+plate = C.active_object
+bpy.ops.object.transform_apply(scale=True, location=False, rotation=False)
+p.alt_mode, p.inside_skin = 'INSIDE', 0.25
+band = [[scr(-0.8, 0.05), scr(0.8, 0.05), scr(0.8, -0.05), scr(-0.8, -0.05)]]   # crosses both side walls (x = +-0.5)
+msg = bm_.perform_base(C, band, FRONT, cutter=True)
+b = bmesh.new()
+b.from_mesh(plate.data)
+v = b.calc_volume()
+b.free()
+C.view_layer.update()
+hit_front = plate.ray_cast(Vector((0, -5, 0)), Vector((0, 1, 0)))
+hit_side = plate.ray_cast(Vector((5, 0, 0)), Vector((-1, 0, 0)))      # the channel runs right across: see-through
+hit_side_off = plate.ray_cast(Vector((5, 0, 0.2)), Vector((-1, 0, 0)))  # above the channel: the wall
+check('Alt: Inside = a channel in the middle (1 x 0.1 x 0.1 out of 0.2), the front face stays closed',
+      abs((0.2 - v) - 1.0 * 0.1 * 0.1) < 0.003 and hit_front[0] and abs(hit_front[1].y + 0.1) < 1e-4
+      and non_manifold(plate) == 0 and 'inside' in msg, (msg, 0.2 - v, hit_front[1], tuple(plate.location)))
+check('... it opens as windows on the side walls (see right through it from the side; the wall above stays)',
+      not hit_side[0] and hit_side_off[0] and abs(hit_side_off[1].x - 0.5) < 1e-4, (hit_side, hit_side_off[1]))
+p.alt_mode, p.height = 'HEIGHT', 0.5
 st = S.mch_sdraw
 st.width, st.height, st.profile = 0.1, 0.05, 'SQUARE'
 t = cube()

@@ -559,9 +559,11 @@ def _draw_base_sketch(layout, context, base_mesh):
     row.prop(sp, 'surface_align', icon='SNAP_FACE', toggle=True)
     row.prop(sp, 'invert_height', icon='ARROW_LEFTRIGHT', toggle=True)     # 0.24.37 height grows back
     if hasattr(sp, 'alt_mode'):
-        box.row(align=True).prop(sp, 'alt_mode', expand=True)               # 0.24.37 Alt: carve Height / like Cut
+        box.column(align=True).prop(sp, 'alt_mode', expand=True)            # 0.24.37 Alt: Height / Through / like Cut
         if sp.alt_mode == 'HEIGHT':
             box.prop(sp, 'carve_depth')                                     # 0.24.38 0 = Height
+        elif sp.alt_mode == 'INSIDE':
+            box.prop(sp, 'inside_skin', slider=True)                        # 0.24.38 the skin left front / back
     data = base_mesh.sketch_data(context.scene)
     if not sp.sketch and data is None:
         box.label(text='Each outline becomes a mesh at once (Alt: cutter)')
