@@ -52,6 +52,29 @@ try:
 except (RuntimeError, AttributeError) as ex:
     ok = False
 check('FBX too', ok)
+# Selected / Visible
+me2 = bpy.data.meshes.new('B2')
+me2.from_pydata([(5, 0, 0), (6, 0, 0), (5, 1, 0)], [], [(0, 1, 2)])
+b2 = bpy.data.objects.new('Other', me2)
+C.scene.collection.objects.link(b2)
+me3 = bpy.data.meshes.new('B3')
+me3.from_pydata([(8, 0, 0), (9, 0, 0), (8, 1, 0)], [], [(0, 1, 2)])
+hid = bpy.data.objects.new('Hidden', me3)
+C.scene.collection.objects.link(hid)
+hid.hide_set(True)
+for o in C.selected_objects:
+    o.select_set(False)
+ob.select_set(True)
+C.view_layer.objects.active = ob
+bpy.ops.mch.export_mesh(filepath=os.path.join(d, 'sel.obj'), scope='SELECTED')
+bpy.ops.mch.export_mesh(filepath=os.path.join(d, 'vis.obj'), scope='VISIBLE')
+names = lambda fn: sorted(ln[2:] for ln in open(os.path.join(d, fn)).read().splitlines() if ln.startswith('o '))
+check('Export Selected: only the selected mesh', names('sel.obj') == ['Block'], names('sel.obj'))
+check('Export Visible: every visible mesh, the hidden one stays out', names('vis.obj') == ['Block', 'Other'],
+      names('vis.obj'))
+check('... and the selection is as it was', ob.select_get() and not b2.select_get())
+bpy.data.objects.remove(b2)
+bpy.data.objects.remove(hid)
 tmp = zb.export_copy(C, ob, True, True)
 check('the ZBrush bridge sends the same clean faces (export copy)', zb.ngon_count(tmp.data) == 0)
 bpy.data.objects.remove(tmp)

@@ -344,15 +344,32 @@ def manifest_rows(settings):
     return rows
 
 
+def export_objects(context, scope):
+    """The meshes an Export takes: the selected ones, or every mesh visible in the viewport."""
+    if scope == 'VISIBLE':
+        out = []
+        for o in context.view_layer.objects:
+            try:
+                if o.type == 'MESH' and o.visible_get():
+                    out.append(o)
+            except (RuntimeError, ReferenceError):
+                pass
+        return out
+    return [o for o in context.selected_objects if o.type == 'MESH']
+
+
 class MCH_OT_export_mesh(bpy.types.Operator):
-    """Export the selected meshes to an OBJ or FBX file (no ZBrush link needed) - n-gons split into clean
-    triangles (ZBrush-safe Faces), modifiers applied, the Blender meshes unchanged"""
+    """Export meshes to an OBJ or FBX file (no ZBrush link needed): the selected ones or every visible one -
+    n-gons split into clean triangles (ZBrush-safe Faces), modifiers applied, the Blender meshes unchanged"""
     bl_idname = 'mch.export_mesh'
     bl_label = 'Export'
     bl_options = {'REGISTER'}
 
     filepath: StringProperty(subtype='FILE_PATH')
     filter_glob: StringProperty(default='*.obj;*.fbx', options={'HIDDEN'})
+    scope: EnumProperty(name='Export', default='SELECTED', items=[
+        ('SELECTED', 'Selected Objects', 'Only the selected meshes'),
+        ('VISIBLE', 'Visible Objects', 'Every mesh you can see in the viewport (hidden ones stay out)')])
     file_format: EnumProperty(name='Format', items=[('OBJ', 'OBJ', 'Wavefront OBJ (ZBrush, most programs)'),
                                                     ('FBX', 'FBX', 'Autodesk FBX')], default='OBJ')
     apply_modifiers: BoolProperty(name='Apply Modifiers', default=True)
@@ -362,9 +379,11 @@ class MCH_OT_export_mesh(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return any(o.type == 'MESH' for o in context.selected_objects)
+        return bool(export_objects(context, 'VISIBLE'))
 
     def invoke(self, context, event):
+        if not export_objects(context, 'SELECTED'):
+            self.scope = 'VISIBLE'                     # nothing selected: offer the visible meshes
         name = context.active_object.name if context.active_object is not None else 'mecha_export'
         if not self.filepath:
             self.filepath = _safe(name) + '.' + self.file_format.lower()
@@ -376,7 +395,11 @@ class MCH_OT_export_mesh(bpy.types.Operator):
         ext = '.' + self.file_format.lower()
         if path.suffix.lower() != ext:
             path = path.with_suffix(ext)
-        obs = [o for o in context.selected_objects if o.type == 'MESH']
+        obs = export_objects(context, self.scope)
+        if not obs:
+            self.report({'WARNING'}, 'Export: no mesh to export (' + ('nothing selected' if self.scope == 'SELECTED'
+                                                                      else 'nothing visible') + ')')
+            return {'CANCELLED'}
         selected, active = list(context.selected_objects), context.view_layer.objects.active
         temps, split, renamed = [], 0, []
         try:

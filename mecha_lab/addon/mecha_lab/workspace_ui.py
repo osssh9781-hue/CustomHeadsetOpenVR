@@ -1858,7 +1858,9 @@ class MCH_PT_main(bpy.types.Panel):
             drawer(layout, context)
         if tool_id != 'ZBRUSH':                    # 0.24.37 Export the selected meshes, in every tool
             layout.separator()
-            layout.operator('mch.export_mesh', text='Export Selected (OBJ / FBX)', icon='EXPORT')
+            row = layout.row(align=True)
+            row.operator('mch.export_mesh', text='Export Selected', icon='EXPORT').scope = 'SELECTED'
+            row.operator('mch.export_mesh', text='Export Visible', icon='HIDE_OFF').scope = 'VISIBLE'
 
 
 class MCH_PT_lasso(bpy.types.Panel):

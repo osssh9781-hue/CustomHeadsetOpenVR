@@ -77,6 +77,12 @@ check('Alt on a ball: the pocket follows the surface (floor Height = 0.1 below i
       floor and max(floor) - min(floor) < 0.02 and abs(sum(floor) / len(floor) - 0.9) < 0.015 and non_manifold(ball) == 0,
       (msg, floor and (round(min(floor), 3), round(max(floor), 3))))
 p.height = 0.5
+# Carve Depth: carve less deep than Height (a thin part made with the same Height is not cut through)
+t = cube()
+p.carve_depth = 0.2
+bm_.perform_base(C, SQ, FRONT, cutter=True)
+check('Carve Depth 0.2 (Height 0.5): the pocket is 0.2 deep', abs(volume(t) - (8.0 - 0.36 * 0.2)) < 0.02, volume(t))
+p.carve_depth = 0.0
 st = S.mch_sdraw
 st.width, st.height, st.profile = 0.1, 0.05, 'SQUARE'
 t = cube()

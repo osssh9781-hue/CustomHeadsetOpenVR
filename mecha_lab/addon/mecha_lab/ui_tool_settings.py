@@ -560,6 +560,8 @@ def _draw_base_sketch(layout, context, base_mesh):
     row.prop(sp, 'invert_height', icon='ARROW_LEFTRIGHT', toggle=True)     # 0.24.37 height grows back
     if hasattr(sp, 'alt_mode'):
         box.row(align=True).prop(sp, 'alt_mode', expand=True)               # 0.24.37 Alt: carve Height / like Cut
+        if sp.alt_mode == 'HEIGHT':
+            box.prop(sp, 'carve_depth')                                     # 0.24.38 0 = Height
     data = base_mesh.sketch_data(context.scene)
     if not sp.sketch and data is None:
         box.label(text='Each outline becomes a mesh at once (Alt: cutter)')
@@ -725,7 +727,8 @@ def draw_zbrush(layout, context):
     s = context.scene.mch_zbrush
     row = layout.row(align=True)
     row.scale_y = 1.4
-    row.operator('mch.export_mesh', text='Export (OBJ / FBX)', icon='EXPORT')    # 0.24.37 no ZBrush link needed
+    row.operator('mch.export_mesh', text='Export Selected', icon='EXPORT').scope = 'SELECTED'   # no ZBrush link needed
+    row.operator('mch.export_mesh', text='Export Visible', icon='HIDE_OFF').scope = 'VISIBLE'
     row = layout.row(align=True)
     row.scale_y = 1.4
     row.operator('mch.zbrush_send', icon='EXPORT')

@@ -150,6 +150,9 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
         ('HEIGHT', 'Alt: Carve Height', 'Alt + draw carves the drawn shape into the mesh, as deep as Height'),
         ('CUT', 'Alt: Like Cut', 'Alt + draw cuts like the Cut tool (its Through All / From Surface depth)')],
         description='What Alt + draw does')
+    carve_depth: FloatProperty(name='Carve Depth', default=0.0, min=0.0, soft_max=1.0, precision=4, unit='LENGTH',
+                               description='Alt + draw carves this deep (0 = Height). Keep it less than the part is '
+                                           'thick, or the carve goes right through to the other side')
     invert_height: BoolProperty(name='Invert', default=False,
                                 description='The height grows back, away from you (into the mesh) from where you draw, '
                                             'instead of toward you')
@@ -1297,12 +1300,14 @@ def _sketch_cutter_targets(context, groups, frame):
     for outer, _holes in groups:
         cx = sum(q[0] for q in outer) / len(outer)
         cy = sum(q[1] for q in outer) / len(outer)
-        start = frame @ Vector((cx, cy, 0.0)) + n * 1000.0
-        hit, _loc, _n, _i, ob, _m = target_rules.scene_ray(context, dg, start, -n)
-        if hit and ob is not None and ob.type == 'MESH':
-            real = bpy.data.objects[ob.name]
-            if real not in found:
-                found.append(real)
+        for q in [(cx, cy)] + list(_outline_samples(outer)):   # 0.24.38 the centre may be off the mesh
+            start = frame @ Vector((q[0], q[1], 0.0)) + n * 1000.0
+            hit, _loc, _n, _i, ob, _m = target_rules.scene_ray(context, dg, start, -n)
+            if hit and ob is not None and ob.type == 'MESH':
+                real = bpy.data.objects[ob.name]
+                if real not in found:
+                    found.append(real)
+                break
     return found
 
 
@@ -1321,7 +1326,7 @@ def carve_surface(context, loops, projector, p, targets=None):
     targets = _cutter_targets(context, projector, screen_groups, targets)
     if not targets:
         raise cg.CutError('Alt Base Mesh carves into a mesh: draw over one (nothing was changed).')
-    height = max(p.height, 1e-5)
+    height = max(getattr(p, 'carve_depth', 0.0) or p.height, 1e-5)
     edge = min(1.0, max(0.02, getattr(p, 'bevel_width', 0.05) / (2.0 * height)))
     st = SimpleNamespace(profile=SURFACE_CARVE[p.profile], edge=edge, sink=0.0,
                          fill_res=max(15, min(60, getattr(p, 'resolution', 28))))
@@ -1386,8 +1391,9 @@ def _perform_cutter(context, groups, frame, p, projector, screen_groups, targets
             # mirror along local Z (into the surface) and lift a hair above it so the
             # opening is not coplanar with the surface
             eps = max(p.height * 0.01, 1e-5)
+            k = (getattr(p, 'carve_depth', 0.0) or p.height) / max(p.height, 1e-9)    # 0.24.38 Carve Depth
             for v in bm.verts:
-                v.co.z = -v.co.z + eps
+                v.co.z = -v.co.z * k + eps
             bmesh.ops.reverse_faces(bm, faces=bm.faces[:])
         me = bpy.data.meshes.new('MCH_BaseCutter')
         bm.to_mesh(me)
