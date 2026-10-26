@@ -146,6 +146,10 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
                                 description='Drawn over a mesh: the new solid sits ON that surface (turned to the '
                                             'surface normal, its bottom sunk just enough to leave no gap). '
                                             'Off: the solid faces the view (old behaviour)')
+    alt_mode: EnumProperty(name='Alt', default='HEIGHT', items=[
+        ('HEIGHT', 'Alt: Carve Height', 'Alt + draw carves the drawn shape into the mesh, as deep as Height'),
+        ('CUT', 'Alt: Like Cut', 'Alt + draw cuts like the Cut tool (its Through All / From Surface depth)')],
+        description='What Alt + draw does')
     invert_height: BoolProperty(name='Invert', default=False,
                                 description='The height grows back, away from you (into the mesh) from where you draw, '
                                             'instead of toward you')
@@ -1151,22 +1155,22 @@ def surface_frame(context, projector, screen_groups, height=0.2):
 SESSION_KEY = 'mch_base_session'     # Scene ID prop: live Base Meshes made since the tool was entered
 
 
-def frame_for(context, projector, screen_groups):
+def frame_for(context, projector, screen_groups, allow_invert=True):
     """(origin, X, Y, N, embed): on the surface under the outline when Stick
     to Surface is on and there is one, else facing the view (embed 0)."""
     p = scene_defaults(context)
     sf = surface_frame(context, projector, screen_groups, p.height) if getattr(p, 'surface_align', False) else None
     if sf is None:
         sf = (*plane_frame(context, projector, screen_groups), 0.0)
-    if getattr(p, 'invert_height', False):        # 0.24.37 Invert: the height grows back from the drawn plane
+    if allow_invert and getattr(p, 'invert_height', False):   # 0.24.37 Invert: the height grows back from the drawn plane
         origin, x, y, n, embed = sf
         sf = (origin, x, -y, -n, max(p.height * 0.02, 1e-5) if embed > 0 else 0.0)
     return sf
 
 
-def _local_groups(context, loops, projector):
+def _local_groups(context, loops, projector, allow_invert=True):
     screen_groups = cg.prepare_loops(loops)
-    origin, x, y, n, embed = frame_for(context, projector, screen_groups)
+    origin, x, y, n, embed = frame_for(context, projector, screen_groups, allow_invert)
 
     def to_local(q):
         w = _plane_point(projector, q, origin, n)
@@ -1186,10 +1190,11 @@ def perform_base(context, loops, projector, cutter=False, targets=None):
     mesh below).  Returns a report string; raises CutError (scene untouched)."""
     defaults = scene_defaults(context)
     creature = defaults.profile in CREATURE_PROFILES
-    if cutter and not creature:
+    if cutter and not creature and getattr(defaults, 'alt_mode', 'HEIGHT') == 'CUT':
         return cut_like_cut_tool(context, loops, projector, targets)
-    groups, frame, screen_groups, embed = _local_groups(context, loops, projector)
-    if cutter:      # 0.24.23 Creature Base Mesh: Alt engraves the lump into the mesh (only as deep as it is thick)
+    groups, frame, screen_groups, embed = _local_groups(context, loops, projector, allow_invert=not cutter)
+    if cutter:      # 0.24.23 Creature Base Mesh: Alt engraves the lump (as deep as it is thick); 0.24.37 Base Mesh:
+        # the drawn shape carved in, as deep as Height (Alt: Like Cut = the Cut tool's way)
         return _perform_cutter(context, groups, frame, defaults, projector, screen_groups, targets)
     return _create_live_base(context, groups, frame, defaults, embed)
 
@@ -1273,10 +1278,8 @@ def _cutter_targets(context, projector, screen_groups, targets):
     if sel:
         return sel
     outer = screen_groups[0][0]
-    c = (sum(q[0] for q in outer) / len(outer), sum(q[1] for q in outer) / len(outer))
-    o, d = projector.ray(c)
-    hit, _loc, _n, _i, ob, _m = target_rules.scene_ray(context, context.evaluated_depsgraph_get(), o, d)
-    return [bpy.data.objects[ob.name]] if hit and ob is not None and ob.type == 'MESH' else []
+    _q, found = anchor_hit(context, projector, outer)      # 0.24.37 a line half off the mesh still finds it
+    return [bpy.data.objects[found[2].name]] if found is not None else []
 
 
 def _sketch_cutter_targets(context, groups, frame):
@@ -1572,8 +1575,10 @@ def sketch_commit(context, cutter=False):
         raise cg.CutError('The sketch is empty (everything was subtracted). Esc clears it.')
     frame = sketch_frame(data)
     groups = [([tuple(q) for q in o], [[tuple(q) for q in h] for h in hs]) for o, hs in groups]
-    creature = scene_defaults(context).profile in CREATURE_PROFILES
-    proj = _view_projector(context) if cutter and not creature else None
+    p = scene_defaults(context)
+    creature = p.profile in CREATURE_PROFILES
+    like_cut = getattr(p, 'alt_mode', 'HEIGHT') == 'CUT'
+    proj = _view_projector(context) if cutter and not creature and like_cut else None
     if cutter and proj is not None:
         # 0.24.5 Alt+Enter cuts like the Cut tool too: the sketch seen from the current view
         loops = []
@@ -1585,8 +1590,11 @@ def sketch_commit(context, cutter=False):
                 loops.append([tuple(p_) for p_ in pts])
         msg = cut_like_cut_tool(context, loops, proj)
     elif cutter:
+        if getattr(p, 'invert_height', False):    # the sketch plane was flipped for Invert: carve into the mesh
+            frame = frame @ Matrix.Diagonal((1.0, -1.0, -1.0, 1.0))
+            groups = [([(q[0], -q[1]) for q in o], [[(q[0], -q[1]) for q in h] for h in hs]) for o, hs in groups]
         targets = _sketch_cutter_targets(context, groups, frame)
-        msg = _perform_cutter(context, groups, frame, scene_defaults(context), None, None, targets)
+        msg = _perform_cutter(context, groups, frame, p, None, None, targets)
     else:
         msg = _create_live_base(context, groups, frame, scene_defaults(context), data.get('embed', 0.0))
     sketch_clear(scene)

@@ -1243,8 +1243,8 @@ class StrokeLogic:
 
     def _line_mode(self):
         from . import lasso_line
-        if self.mode == 'SDRAW' and (self._fill_area() or self.inverted()):
-            return False                       # 0.24.33 Fill Area / Alt cut: the drawing is an area
+        if self.mode == 'SDRAW' and self._fill_area():
+            return False                       # 0.24.33 Fill Area: the drawing is an area
         if self.mode in {'BELT', 'SCURVE', 'SDRAW', 'SCAPE'}:    # 0.24.20 Belt Maker / Surface Curve always draw a line
             return self.shape in {'LASSO', 'CURVE_LASSO', 'STROKE'}
         return lasso_line.enabled(bpy.context, self.mode, self.shape)
@@ -1706,10 +1706,16 @@ class StrokeLogic:
             return belt_maker.perform(context, self._line_path(), self.projector)
         if self.mode == 'SDRAW':                 # 0.24.33 Surface Draw
             from . import surface_draw
-            if self.inverted():                  # Alt + draw / lasso: that area is cut out of the live drawing
+            if self.inverted():
+                # Alt + draw over a live drawing: that line / area is cut out of it (it stays live); over a plain
+                # mesh (0.24.37): the band / area is carved into the mesh, as deep as its Height
                 from . import live_subtract
-                return live_subtract.perform(context, 'SDRAW', self._current_loops(self.ctrl_held, self.shift_held),
-                                             self.projector)
+                loops = self._current_loops(self.ctrl_held, self.shift_held)
+                if live_subtract.pick(context, 'SDRAW', loops, self.projector) is not None:
+                    return live_subtract.perform(context, 'SDRAW', loops, self.projector)
+                if self._fill_area():
+                    return surface_draw.engrave(context, None, self.projector, loops=loops)
+                return surface_draw.engrave(context, self._line_path(), self.projector)
             if self._fill_area():
                 return surface_draw.perform_fill(context, self._current_loops(self.ctrl_held, self.shift_held),
                                                  self.projector)

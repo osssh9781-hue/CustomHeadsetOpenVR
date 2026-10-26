@@ -153,7 +153,9 @@ hull = cube('Hull', 2.0)
 S.mch_cut.depth_mode = 'SURFACE'
 S.mch_cut.depth = 0.3
 S.mch_settings.auto_apply = True
+S.mch_base.alt_mode = 'CUT'          # 0.24.37 the default is Carve Height; Like Cut keeps the 0.24.5 way
 r, m = lasso([(450, 450), (550, 450), (550, 550), (450, 550)], alt=True)
+S.mch_base.alt_mode = 'HEIGHT'
 zs = sorted({round(v.co.z, 3) for v in hull.data.vertices})
 check('Alt in Base Mesh cuts like Cut: From Surface depth makes a pocket, the back stays closed',
       m.startswith('Cut:') and any(abs(z - 0.7) < 0.02 for z in zs) and min(zs) == -1.0 and

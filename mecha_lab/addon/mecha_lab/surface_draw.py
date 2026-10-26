@@ -221,7 +221,7 @@ def _nearest(bvh, q):
     return loc, n.normalized()
 
 
-def stroke_mesh(bvh, stroke, p, width, height, size):
+def stroke_mesh(bvh, stroke, p, width, height, size, sign=1.0):
     """(verts, faces) of one stroke's band (world)."""
     step = width / max(0.5, p.density)
     pts = _resample(_smooth(stroke, p.smooth), step)
@@ -243,9 +243,9 @@ def stroke_mesh(bvh, stroke, p, width, height, size):
             x = -1.0 + 2.0 * j / (m - 1)
             b, nb = _nearest(bvh, c + s * (x * width / 2.0))
             rt.append(len(verts))
-            verts.append(b + nb * (prof[j] * height * ends[i]))
+            verts.append(b + nb * (prof[j] * height * ends[i] * sign))
             rb.append(len(verts))
-            verts.append(b - nb * sink)
+            verts.append(b - nb * (sink * sign))
         top.append(rt)
         bot.append(rb)
     return verts, band_grid(top, bot)
@@ -283,7 +283,7 @@ def build(context, src, p, target):
     return bm
 
 
-def fill_mesh(fill, p, width, height, size):
+def fill_mesh(fill, p, width, height, size, sign=1.0):
     """(verts, faces) of a filled lasso area: the points on the surface, raised by the edge profile."""
     cos = [Vector(q) for q in fill['cos']]
     nrms = [Vector(q) for q in fill['nrms']]
@@ -296,9 +296,9 @@ def fill_mesh(fill, p, width, height, size):
     verts, top, bot = [], [], []
     for i, (c, n) in enumerate(zip(cos, nrms)):
         top.append(len(verts))
-        verts.append(c + n * (height * edge_height(p.profile, dist[i], ew, deepest)))
+        verts.append(c + n * (sign * height * edge_height(p.profile, dist[i], ew, deepest)))
         bot.append(len(verts))
-        verts.append(c - n * sink)
+        verts.append(c - n * (sink * sign))
     faces = []
     for a, b, c in tris:
         faces.append((top[a], top[b], top[c]))
@@ -383,7 +383,14 @@ def perform(context, path, projector, kind='BAND'):
     if target is None:
         raise cg.CutError('Draw on a mesh.')
     st = scene_settings(context.scene, kind)
-    bvh, lo, hi = cape_gen._body(context, target)
+    return _add(context, target, kind, st, stroke=_project_stroke(context, target, path, projector))
+
+
+def _project_stroke(context, target, path, projector):
+    """The drawn screen line laid on the target's surface (world points, every ~4 px)."""
+    from . import armor_plate as ap
+    from . import cape_gen
+    bvh, _lo, _hi = cape_gen._body(context, target)
     dense = [path[0]]
     for a, b in zip(path, path[1:]):
         n = max(1, int(math.dist(a, b) / 4.0))
@@ -392,7 +399,7 @@ def perform(context, path, projector, kind='BAND'):
     stroke = [Vector(c) for c in cos]
     if arc_lengths(stroke)[-1] <= 1e-9:
         raise cg.CutError('The line is too short.')
-    return _add(context, target, kind, st, stroke=stroke)
+    return stroke
 
 
 def _add(context, target, kind, st, stroke=None, fills=()):
@@ -456,10 +463,6 @@ def _add(context, target, kind, st, stroke=None, fills=()):
 
 def perform_fill(context, loops, projector, kind='BAND'):
     """A closed lasso on a mesh -> the area filled at the same height (joined like the strokes)."""
-    from types import SimpleNamespace
-    from . import armor_plate as ap
-    from . import base_mesh as bmm
-    from . import cape_gen
     groups = cg.prepare_loops(loops)
     if not groups:
         raise cg.CutError('Draw a closed outline on a mesh.')
@@ -468,7 +471,16 @@ def perform_fill(context, loops, projector, kind='BAND'):
     if target is None:
         raise cg.CutError('Draw on a mesh.')
     st = scene_settings(context.scene, kind)
-    bvh, lo, hi = cape_gen._body(context, target)
+    return _add(context, target, kind, st, fills=_project_fills(context, target, groups, projector, st))
+
+
+def _project_fills(context, target, groups, projector, st):
+    """Filled lasso areas laid on the target's surface (points, normals, triangles, distance to the outline)."""
+    from types import SimpleNamespace
+    from . import armor_plate as ap
+    from . import base_mesh as bmm
+    from . import cape_gen
+    bvh, _lo, _hi = cape_gen._body(context, target)
     fills = []
     for outer, holes in groups:
         res = st.fill_res
@@ -486,7 +498,62 @@ def perform_fill(context, loops, projector, kind='BAND'):
         nrms = [Vector(n) for n in nrms]
         fills.append({'cos': [list(c) for c in cos], 'nrms': [list(n) for n in nrms], 'tris': [list(t) for t in tris],
                       'nb': nb, 'dist': dist})
-    return _add(context, target, kind, st, fills=fills)
+    return fills
+
+
+def engrave(context, path, projector, loops=None):
+    """0.24.37 Alt + draw on a plain mesh (no live drawing under it): the band (or, with Fill Area, the filled
+    area) is carved INTO the mesh, as deep as its Height, same width and edge.  Returns a report; raises
+    cg.CutError (the mesh is unchanged)."""
+    from . import cape_gen
+    pts = [tuple(q) for q in (path or [])] or [q for lp in (loops or []) for q in lp]
+    if len(pts) < 2:
+        raise cg.CutError('Alt + draw: draw a line on a mesh.')
+    target = pick_base(context, projector, pts)
+    if target is None:
+        raise cg.CutError('Alt + draw carves into a mesh: draw over one (nothing was changed).')
+    cg.check_target(target)
+    st = context.scene.mch_sdraw
+    _bvh, lo, hi = cape_gen._body(context, target)
+    size = (hi - lo).length
+    width = st.width if st.width > 0 else max(1e-5, getattr(context.scene.mch_brush, 'line_width', size * 0.03))
+    height = st.height if st.height > 0 else width / 3.0
+    bm = bmesh.new()
+    try:
+        if loops:
+            parts = [fill_mesh(f, st, width, height, size, sign=-1.0)
+                     for f in _project_fills(context, target, cg.prepare_loops(loops), projector, st)]
+        else:
+            bvh, _lo, _hi = cape_gen._body(context, target)
+            parts = [stroke_mesh(bvh, _project_stroke(context, target, path, projector), st, width, height, size,
+                                 sign=-1.0)]
+        for v, f in parts:
+            bv = [bm.verts.new(q) for q in v]
+            for face in f:
+                try:
+                    bm.faces.new([bv[k] for k in face])
+                except ValueError:
+                    pass
+        bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-9)
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+        if not bm.faces:
+            raise cg.CutError('Alt + draw: the line is too short.')
+        me = bpy.data.meshes.new('MCH_SDrawEngrave')
+        bm.to_mesh(me)
+    finally:
+        bm.free()
+    cutter = cg.link_temp_object(context, me)
+    cut = context.scene.mch_cut
+    try:
+        res, _solver = cg.boolean_result(context, target, cutter, 'DIFFERENCE', cut.solver, cut.hole_tolerant)
+        try:
+            cg.commit_mesh(target, res, cut.shared_mesh)
+        finally:
+            if res.users == 0:
+                bpy.data.meshes.remove(res)
+    finally:
+        cg.remove_object_and_mesh(cutter)
+    return f'Carved into "{target.name}" (Alt): {height:.3g} deep, {width:.3g} wide'
 
 
 def live_object(context, kind=None):
