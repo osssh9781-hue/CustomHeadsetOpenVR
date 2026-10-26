@@ -1,6 +1,5 @@
-"""0.24.42 Path Move: (1) Extend / Separate Tube only move a section about the brush size - a small brush on a big
-plate (its whole cross-section) makes that drag a Stretch with the brush size instead of sweeping the whole plate;
-(2) the path never turns tighter than the section (no folded, torn rings)."""
+"""0.24.42 Path Move: the path never turns tighter than the section (no folded, torn rings).  0.24.44: a drag is
+never switched to Stretch by itself any more (that crashed Blender) - Extend stays Extend."""
 import math
 import types
 
@@ -50,8 +49,7 @@ def drag(radius):
     return out
 
 
-check('small brush on the wide plate end: not the whole plate - this drag becomes a Stretch (brush size)',
-      drag(0.1) == ('STRETCH', False), drag(0.1))
+check('small brush on the wide plate end: stays Extend (no switch to Stretch)', drag(0.1) == ('EXTEND', True), drag(0.1))
 check('a brush about as big as the plate end: Extend as before (the section is swept)',
       drag(0.4) == ('EXTEND', True), drag(0.4))
 st.lock_size = False

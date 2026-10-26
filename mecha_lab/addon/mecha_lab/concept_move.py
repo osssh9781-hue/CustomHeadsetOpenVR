@@ -1142,9 +1142,6 @@ def even_path(pts, step, max_steps=PATH_MAX_STEPS):
     return out
 
 
-SECTION_LIMIT = 1.6        # Extend / Separate Tube only for a section up to this x the brush radius
-
-
 def section_radius(info):
     c = Vector(info['centre'])
     return max((Vector(q) - c).length for q in info['loop'])
@@ -1370,8 +1367,8 @@ class MCH_OT_concept_path(bpy.types.Operator):
         return brush_world(context, self.hit) * scale
 
     def _method(self, context):
-        """The method of this drag: Extend / Separate Tube need a section about the brush size - a bigger one
-        (the whole plate under a small brush) or none makes it a Stretch with the brush size (0.24.42)."""
+        """The method of this drag (0.24.44: always the one picked - switching a drag to Stretch by itself crashed
+        Blender)."""
         return getattr(self, 'method_now', None) or context.scene.mch_concept.path_method
 
     def _section_preview(self, context):
@@ -1387,10 +1384,6 @@ class MCH_OT_concept_path(bpy.types.Operator):
                 return                                       # wait until the way it goes is clear
             self.normal_l = normal.normalized()
             self.info = path_sweep.analyse(self.ob.data, self.local_hit, self.normal_l) or False
-            if not self.info or section_radius(self.info) > self._brush_local(context) * SECTION_LIMIT:
-                self.info = False
-                self.method_now = 'STRETCH'                  # the part is thicker than the brush
-                return
             if self.info:
                 me = bpy.data.meshes.new('MCH_PathPreview')
                 self.preview_ob = bpy.data.objects.new('MCH_PathPreview', me)
@@ -1422,8 +1415,6 @@ class MCH_OT_concept_path(bpy.types.Operator):
         st = context.scene.mch_concept
         context.area.header_text_set(
             f'Path Move  |  {len(getattr(self, "trail", [])) - 1} steps  {st.shape.title()}  taper {st.path_taper:.2f}  '
-            + ('Stretch (the part is thicker than the brush)  ' if getattr(self, 'method_now', None) == 'STRETCH'
-               else '') +
             f'hardness {st.path_hardness:.2f}  |  Mirror X {"on" if st.mirror_x else "off"}  |  '
             'drag the way it should go   Wheel: depth   [ ]: size   3D mouse / MMB: view   RMB/Esc: cancel')
 

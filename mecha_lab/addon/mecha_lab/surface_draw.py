@@ -293,12 +293,13 @@ def fill_mesh(fill, p, width, height, size, sign=1.0, lift=0.0):
     nb = fill['nb']
     tris = fill['tris']
     deepest = max(dist) if dist else 1.0
+    scale = fill.get('scale')                      # 0.24.44 Alt: Ramp - how much of the depth each point gets
     sink = p.sink if p.sink > 0 else width * 0.08
     ew = p.edge * height * 2.0
     verts, top, bot = [], [], []
     for i, (c, n) in enumerate(zip(cos, nrms)):
         top.append(len(verts))
-        h = edge_height(p.profile, dist[i], ew, deepest)
+        h = edge_height(p.profile, dist[i], ew, deepest) * (scale[i] if scale else 1.0)
         verts.append(c + n * (sign * ((height + lift) * h - lift)))
         bot.append(len(verts))
         verts.append(c - n * (sink * sign))
@@ -574,7 +575,7 @@ def _carve_fills(context, target, groups, projector, edge_world, profile, height
         passes = int(min(40, max(2, (height / max(s * k, 1e-12)) ** 2)))
         nrms = smooth_normals(nrms, tris, passes)
         fills.append({'cos': [list(c) for c in cos], 'nrms': [list(n) for n in nrms], 'tris': [list(t) for t in tris],
-                      'nb': nb, 'dist': dist})
+                      'nb': nb, 'dist': dist, 'scr': [list(q) for q in pts], 'outer': [list(q) for q in outer]})
     if not fills:
         raise cg.CutError('The outline is too small.')
     return fills
@@ -654,7 +655,25 @@ def carve_inside(context, target, groups, projector, settings, skin=0.25):
     return med * (1.0 - 2.0 * skin)
 
 
-def carve_area(context, target, groups, projector, settings, height, through=False):
+def ramp_scale(pts, outer, a, b, length=1.0):
+    """0.24.44 Alt: Ramp - the part of the depth each point (screen) gets: 1 at the edge a-b (the first drawn
+    edge), down to 0 at ``length`` of the way across the shape (a straight slope: the floor is a tilted plane)."""
+    ax, ay = a
+    dx, dy = b[0] - ax, b[1] - ay
+    ln = math.hypot(dx, dy)
+    if ln < 1e-9:
+        return [1.0] * len(pts)
+    nx, ny = -dy / ln, dx / ln
+    cx = sum(q[0] for q in outer) / len(outer)
+    cy = sum(q[1] for q in outer) / len(outer)
+    if (cx - ax) * nx + (cy - ay) * ny < 0:          # across = toward the inside of the shape
+        nx, ny = -nx, -ny
+    far = max((q[0] - ax) * nx + (q[1] - ay) * ny for q in outer)
+    reach = max(far * max(0.05, min(1.0, length)), 1e-9)
+    return [max(0.0, min(1.0, 1.0 - ((q[0] - ax) * nx + (q[1] - ay) * ny) / reach)) for q in pts]
+
+
+def carve_area(context, target, groups, projector, settings, height, through=False, ramp=None):
     """0.24.37 Base Mesh Alt: the drawn outline laid on the target's surface and carved in, Height deep
     everywhere along the surface (``settings``: profile SQUARE / CHAMFER / BEVEL, edge, sink, fill_res).
     0.24.38 ``through``: as deep as the part is thick under the outline (and a bit) - a window right through
@@ -680,6 +699,10 @@ def carve_area(context, target, groups, projector, settings, height, through=Fal
         height = deepest * 1.15 + size * 0.002
     if getattr(settings, 'edge_abs', None) is not None:
         settings.edge = min(1.0, max(0.02, settings.edge_abs / (2.0 * max(height, 1e-9))))
+    if ramp is not None:
+        a, b, length = ramp
+        for f in fills:
+            f['scale'] = ramp_scale(f['scr'], f['outer'], a, b, length)
     parts = [fill_mesh(f, settings, height, height, size, sign=-1.0, lift=height * 0.04) for f in fills]
     carve_parts(context, target, parts)
     return height

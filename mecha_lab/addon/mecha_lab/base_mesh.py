@@ -150,6 +150,9 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
         ('HEIGHT', 'Alt: Carve Height', 'Alt + draw carves the drawn shape into the mesh, as deep as Height'),
         ('THROUGH', 'Alt: Through', 'Alt + draw cuts a window right through the part, following its surface (it '
                                     'measures how thick the part is) - the rest stays as a frame'),
+        ('RAMP', 'Alt: Ramp', 'Alt + draw carves the shape on a slope: deepest at the FIRST edge you drew '
+                              '(Carve Depth), rising back to the surface across the shape (Ramp Length) - a facet '
+                              'pressed into the surface'),
         ('INSIDE', 'Alt: Inside', 'Alt + draw carves a channel in the MIDDLE of the part (the drawn face and the '
                                   'back stay): it shows as windows where the drawing crosses the side walls - an '
                                   'inner frame'),
@@ -158,6 +161,9 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
     carve_depth: FloatProperty(name='Carve Depth', default=0.0, min=0.0, soft_max=1.0, precision=4, unit='LENGTH',
                                description='Alt + draw carves this deep (0 = Height). Keep it less than the part is '
                                            'thick, or the carve goes right through to the other side')
+    ramp_length: FloatProperty(name='Ramp Length', default=1.0, min=0.05, max=1.0, subtype='FACTOR',
+                               description='Alt: Ramp - how far across the shape the slope goes (1 = it meets the '
+                                           'surface at the far side; less = deep and flat first, then the slope)')
     inside_skin: FloatProperty(name='Skin', default=0.25, min=0.02, max=0.45, subtype='FACTOR',
                                description='Alt: Inside - how much of the thickness stays on each side (front and back)')
     invert_height: BoolProperty(name='Invert', default=False,
@@ -1321,6 +1327,18 @@ def _sketch_cutter_targets(context, groups, frame):
 SURFACE_CARVE = {'FLAT': 'SQUARE', 'CHAMFER': 'CHAMFER', 'BEVEL': 'BEVEL'}
 
 
+def first_edge(loops, min_px=2.0):
+    """(a, b) the first edge of the drawn outline (screen) - the deep side of Alt: Ramp."""
+    if not loops or len(loops[0]) < 3:
+        return None
+    lp = [tuple(q) for q in loops[0]]
+    a = lp[0]
+    for b in lp[1:]:
+        if math.dist(a, b) >= min_px:
+            return a, b
+    return None
+
+
 def carve_surface(context, loops, projector, p, targets=None):
     """0.24.37 Alt (Carve Height): the drawn shape laid ON the surface and carved in, Height deep everywhere
     along it (a curved surface gets an even pocket / groove, not a flat-bottomed one); Flat = straight walls,
@@ -1338,6 +1356,12 @@ def carve_surface(context, loops, projector, p, targets=None):
     st = SimpleNamespace(profile=SURFACE_CARVE[p.profile], edge=0.35, sink=0.0, edge_abs=getattr(p, 'bevel_width', 0.05),
                          fill_res=max(15, min(60, getattr(p, 'resolution', 28))),
                          segments=getattr(p, 'bevel_segments', 4), fine=getattr(p, 'resolution', 28) / 28.0)
+    ramp = None
+    if getattr(p, 'alt_mode', 'HEIGHT') == 'RAMP':     # 0.24.44 the first drawn edge is the deep side
+        edge = first_edge(loops)
+        if edge is None:
+            raise cg.CutError('Alt: Ramp - draw a shape with at least one clear edge.')
+        ramp = (edge[0], edge[1], getattr(p, 'ramp_length', 1.0))
     done, failed = [], []
     for t in targets:
         try:
@@ -1345,7 +1369,7 @@ def carve_surface(context, loops, projector, p, targets=None):
             if getattr(p, 'alt_mode', 'HEIGHT') == 'INSIDE':
                 height = sd.carve_inside(context, t, screen_groups, projector, st, getattr(p, 'inside_skin', 0.25))
             else:
-                height = sd.carve_area(context, t, screen_groups, projector, st, height, through)
+                height = sd.carve_area(context, t, screen_groups, projector, st, height, through, ramp=ramp)
             done.append(t.name)
         except (cg.CutError, RuntimeError) as ex:
             if len(targets) == 1:
@@ -1355,6 +1379,7 @@ def carve_surface(context, loops, projector, p, targets=None):
         raise cg.CutError('Alt Base Mesh: nothing was carved. ' + '; '.join(failed))
     return f'Base Mesh carve (Alt): {", ".join(done)} | ' + \
         ('a window right through' if through else
+         f'a ramp {height:.3g} deep at the first edge, up to the surface' if ramp else
          'a channel inside (windows where it crosses the side walls)' if p.alt_mode == 'INSIDE' else
          f'{height:.3g} deep along the surface') + \
         (' | failed: ' + '; '.join(failed) if failed else '')

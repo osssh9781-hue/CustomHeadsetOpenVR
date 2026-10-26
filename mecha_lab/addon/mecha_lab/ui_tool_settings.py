@@ -583,8 +583,11 @@ def _draw_base_sketch(layout, context, base_mesh):
     row.prop(sp, 'invert_height', icon='ARROW_LEFTRIGHT', toggle=True)     # 0.24.37 height grows back
     if hasattr(sp, 'alt_mode'):
         box.column(align=True).prop(sp, 'alt_mode', expand=True)            # 0.24.37 Alt: Height / Through / like Cut
-        if sp.alt_mode == 'HEIGHT':
+        if sp.alt_mode in {'HEIGHT', 'RAMP'}:
             box.prop(sp, 'carve_depth')                                     # 0.24.38 0 = Height
+            if sp.alt_mode == 'RAMP':                                       # 0.24.44 deep at the first edge
+                box.prop(sp, 'ramp_length', slider=True)
+                box.label(text='Deepest at the first edge you draw', icon='INFO')
         elif sp.alt_mode == 'INSIDE':
             box.prop(sp, 'inside_skin', slider=True)                        # 0.24.38 the skin left front / back
     data = base_mesh.sketch_data(context.scene)
