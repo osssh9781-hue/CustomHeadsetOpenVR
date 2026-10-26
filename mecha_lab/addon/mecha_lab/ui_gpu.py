@@ -11,7 +11,7 @@ import bpy
 
 ICON_DIR = os.path.join(os.path.dirname(__file__), 'icons')
 
-CARD = (0.115, 0.118, 0.13, 0.97)
+CARD = (0.085, 0.087, 0.095, 0.98)       # Modeler: near black cards, no border
 CARD_EDGE = (0.25, 0.26, 0.29, 1.0)
 BTN = (0.18, 0.185, 0.205, 1.0)
 BTN_HOVER = (0.27, 0.28, 0.31, 1.0)
@@ -124,9 +124,12 @@ def fit(s, size, width):
     return s + '…'
 
 
-def _texture(path):
-    if path in _TEX:
-        return _TEX[path]
+def _texture(path, mono=False):
+    """GPU texture of a PNG; ``mono``: only its bright strokes, as white (Modeler's white line icons; the
+    dark tile the Mecha icons are drawn on disappears), tinted by the draw colour."""
+    key = (path, mono)
+    if key in _TEX:
+        return _TEX[key]
     tex = None
     if path and os.path.isfile(path):
         img = None
@@ -137,6 +140,12 @@ def _texture(path):
             w, h = img.size
             px = np.empty(w * h * 4, dtype=np.float32)
             img.pixels.foreach_get(px)
+            if mono:
+                px = px.reshape(-1, 4)
+                bright = px[:, :3].max(axis=1)
+                px[:, 3] = np.clip((bright - 0.30) / 0.45, 0.0, 1.0) * px[:, 3]
+                px[:, :3] = 1.0
+                px = px.reshape(-1)
             tex = gpu.types.GPUTexture((w, h), format='RGBA16F', data=gpu.types.Buffer('FLOAT', w * h * 4, px))
         except Exception:
             tex = None
@@ -146,7 +155,7 @@ def _texture(path):
                     bpy.data.images.remove(img)          # nothing stays in the user's file
                 except (ReferenceError, RuntimeError):
                     pass
-    _TEX[path] = tex
+    _TEX[key] = tex
     return tex
 
 
@@ -154,11 +163,12 @@ def icon_path(stem):
     return os.path.join(ICON_DIR, stem + '.png') if stem else ''
 
 
-def image(path, x, y, size, alpha=1.0):
-    """Draw a PNG (cached GPU texture) in a size x size square, bottom left (x, y). False if not drawn."""
+def image(path, x, y, size, alpha=1.0, mono=False, tint=TEXT):
+    """Draw a PNG (cached GPU texture) in a size x size square, bottom left (x, y). False if not drawn.
+    ``mono``: as a one-colour line icon in ``tint``."""
     import gpu
     from gpu_extras.batch import batch_for_shader
-    tex = _texture(path)
+    tex = _texture(path, mono)
     if tex is None:
         return False
     sh = _shader('IMAGE_COLOR')
@@ -167,7 +177,7 @@ def image(path, x, y, size, alpha=1.0):
     gpu.state.blend_set('ALPHA')
     sh.bind()
     sh.uniform_sampler('image', tex)
-    sh.uniform_float('color', (1.0, 1.0, 1.0, alpha))
+    sh.uniform_float('color', (tint[0], tint[1], tint[2], alpha) if mono else (1.0, 1.0, 1.0, alpha))
     batch.draw(sh)
     return True
 

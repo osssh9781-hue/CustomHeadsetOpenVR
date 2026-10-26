@@ -81,12 +81,12 @@ items = mm.build(C, 960, 540, W, H, 1.0)
 check('... the grid shows stamps (or a note when there are none)', not any(i.kind == 'tile' and i.label == 'Circle'
                                                                         for i in items))
 mm.run(C, find(items, 'tab', 'Shapes'))
-x_btn = find(items, 'button', 'Mirror X')
+x_btn = find(items, 'abtn', 'Mirror X')
 mm.run(C, x_btn)
 check('Symmetry X button: live mirror on the part', am.mirror_mod(part) is not None
       and am.mirror_mod(part).use_axis[0])
 items = mm.build(C, 960, 540, W, H, 1.0)
-check('... shown on (blue) next time', find(items, 'button', 'Mirror X').on)
+check('... shown on (blue) next time', find(items, 'abtn', 'Mirror X').on)
 seg = next(i for i in items if i.kind == 'seg' and not i.on)
 mm.run(C, seg)
 check('Segmented choice sets that value', getattr(seg.data, seg.prop) == seg.action[2])
@@ -106,7 +106,7 @@ check('Tool button closes the menu; held (Ctrl + Alt) it switches in place and s
       mm.run(C, find(items, 'button', 'Base Mesh'), hold=True) is False
       and S.mch_settings.mch_active_tool == 'BASE')
 select_only(part)
-dup = find(items, 'button', 'Duplicate')
+dup = find(items, 'abtn', 'Duplicate')
 r = mm.run(C, dup, hold=True)
 check('Held: Duplicate makes the copy in place (no grab), the menu stays', r is False
       and len(bpy.data.objects) == n + 1)

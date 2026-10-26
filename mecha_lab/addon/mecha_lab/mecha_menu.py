@@ -92,13 +92,13 @@ def _middle_kind(context):
 def build(context, mx, my, region_w, region_h, S=1.0):
     """The whole menu as a list of Items (region px), placed around the mouse and kept on screen."""
     from . import quick_hud, tool_recent
-    pad, gap, r_btn = 12 * S, 10 * S, 48 * S
-    strip_w, card_w, act_w = r_btn + 2 * pad, 330 * S, 3 * 64 * S + 2 * pad
+    pad, gap, r_btn = 10 * S, 10 * S, 44 * S
+    strip_w, card_w, act_w = r_btn + 2 * pad, 320 * S, 3 * 56 * S + 2 * 14 * S
     out = []
 
-    # ---- left strip ---------------------------------------------------------------------------------
+    # ---- left strip: white line icons, the one in use on blue ------------------------------------------
     strip = []
-    y = 0.0
+    y = -pad + 6 * S
     active = ts.effective_tool(context)
     from . import bottom_bar
     try:
@@ -110,12 +110,12 @@ def build(context, mx, my, region_w, region_h, S=1.0):
         nonlocal y
         y -= r_btn
         strip.append(Item('button', pad, y, r_btn, r_btn, label, icon, on, True, action))
-        y -= 6 * S
+        y -= 4 * S
 
     strip_btn('Select / Move', 'arrow', ('op', 'mch.select_move', {}, True), selecting)
     for tid in tool_recent.recent():
         strip_btn(ts.TOOL_BY_ID[tid][1], _tool_icon(tid), ('tool', tid), tid == active and not selecting)
-    y -= 4 * S
+    y -= 6 * S
     strip.append(Item('divider', pad, y, r_btn, 2 * S))
     y -= 10 * S
     for tid in tool_recent.favorites():
@@ -123,30 +123,30 @@ def build(context, mx, my, region_w, region_h, S=1.0):
     if tool_recent._valid(active):
         pinned = active in tool_recent.favorites()
         strip_btn('Pin / unpin ' + ts.TOOL_BY_ID[active][1], 'star_on' if pinned else 'star',
-                  ('fav_toggle', active), pinned)
+                  ('fav_toggle', active), False)
     y -= 26 * S
-    strip.append(Item('pill', pad - 4 * S, y, r_btn + 8 * S, 24 * S, tool_recent.current_set().title(), '',
+    strip.append(Item('pill', pad - 4 * S, y, r_btn + 8 * S, 22 * S, tool_recent.current_set().title(), '',
                       False, True, ('fav_set',)))
     strip_h = -y + pad
 
-    # ---- middle card ---------------------------------------------------------------------------------
+    # ---- middle card: '<Tool> tool', text tabs, icon grid, settings like Modeler's Dynamics ----------------
     mid = []
-    y = 0.0
+    inner = card_w - 2 * 16 * S
+    px0 = 16 * S
+    y = -10 * S
     tool = ts.TOOL_BY_ID.get(active)
-    title = (tool[1] if tool else 'Mecha') + ' tool'
     y -= 30 * S
-    mid.append(Item('title', pad, y, card_w - 2 * pad, 30 * S, title))
+    mid.append(Item('title', px0, y, inner, 30 * S, (tool[1] if tool else 'Mecha') + ' tool'))
     kind = _middle_kind(context)
-    tile_w = (card_w - 2 * pad - 3 * 8 * S) / 4.0
-    tile_h = tile_w + 16 * S
+    cols = 4
+    tile = (inner - (cols - 1) * 10 * S) / cols
     tiles = []
     if kind == 'SHAPES':
         wm = context.window_manager
         stamps = bool(getattr(wm, 'mch_show_custom_shapes', False))
-        y -= 34 * S
-        half = (card_w - 2 * pad - 4 * S) / 2.0
-        mid.append(Item('tab', pad, y, half, 28 * S, 'Shapes', '', not stamps, True, ('tab', False)))
-        mid.append(Item('tab', pad + half + 4 * S, y, half, 28 * S, 'Stamps', '', stamps, True, ('tab', True)))
+        y -= 26 * S
+        mid.append(Item('tab', px0, y, 70 * S, 24 * S, 'Shapes', '', not stamps, True, ('tab', False)))
+        mid.append(Item('tab', px0 + 74 * S, y, 70 * S, 24 * S, 'Stamps', '', stamps, True, ('tab', True)))
         y -= 8 * S
         brush = context.scene.mch_brush
         if stamps:
@@ -157,7 +157,7 @@ def build(context, mx, my, region_w, region_h, S=1.0):
                               brush.shape == 'CUSTOM' and current == stem))
             if not tiles:
                 y -= 24 * S
-                mid.append(Item('note', pad, y, card_w - 2 * pad, 24 * S, 'No stamps yet - import a PNG shape'))
+                mid.append(Item('note', px0, y, inner, 24 * S, 'No stamps yet - import a PNG shape'))
         else:
             for sid, label, _d, stem, _f in ts.SHAPES:
                 if sid != 'CUSTOM':
@@ -166,60 +166,64 @@ def build(context, mx, my, region_w, region_h, S=1.0):
         from . import base_mesh
         live = base_mesh.active_live_base(context)
         p = live.mch_base if live else base_mesh.scene_defaults(context)
-        y -= 8 * S
+        y -= 6 * S
         for pid, label, _d, stem, _icon in base_mesh.profiles_for(context, live):
             tiles.append((label, 'png:' + stem, ('op', 'mch.set_profile', {'profile': pid}, False), p.profile == pid))
-    for i, (label, icon, action, on) in enumerate(tiles):
-        c, r = i % 4, i // 4
-        mid.append(Item('tile', pad + c * (tile_w + 8 * S), y - (r + 1) * tile_h - r * 8 * S, tile_w, tile_h,
+    for n, (label, icon, action, on) in enumerate(tiles):
+        c, r = n % cols, n // cols
+        mid.append(Item('tile', px0 + c * (tile + 10 * S), y - (r + 1) * tile - r * 10 * S, tile, tile,
                         label, icon, on, True, action))
     if tiles:
-        rows = (len(tiles) + 3) // 4
-        y -= rows * tile_h + (rows - 1) * 8 * S
+        rows = (len(tiles) + cols - 1) // cols
+        y -= rows * tile + (rows - 1) * 10 * S
     its = quick_hud.items(context)
     if its:
-        y -= 14 * S
-        mid.append(Item('section', pad, y - 18 * S, card_w - 2 * pad, 18 * S, 'Settings'))
-        y -= 24 * S
+        y -= 16 * S
+        mid.append(Item('section', px0, y - 18 * S, inner, 18 * S, 'Settings'))
+        y -= 22 * S
         for idx, (data, prop) in enumerate(its):
             rna = data.bl_rna.properties[prop]
-            y -= 32 * S
             if rna.type == 'ENUM':
                 choices = [(e.identifier, e.name) for e in rna.enum_items]
                 if len(choices) <= 4:
-                    mid.append(Item('label', pad, y, 100 * S, 28 * S, rna.name or prop))
-                    w = (card_w - 2 * pad - 100 * S - 3 * 3 * S) / len(choices)
-                    for j, (ident, name) in enumerate(choices):
-                        mid.append(Item('seg', pad + 100 * S + j * (w + 3 * S), y, w, 28 * S, name, '',
+                    y -= 22 * S
+                    mid.append(Item('label', px0, y, inner, 22 * S, rna.name or prop))
+                    y -= 30 * S
+                    w = (inner - (len(choices) - 1) * 6 * S) / len(choices)
+                    for k, (ident, name) in enumerate(choices):
+                        mid.append(Item('seg', px0 + k * (w + 6 * S), y, w, 28 * S, name, '',
                                         getattr(data, prop) == ident, True, ('set', idx, ident), data, prop))
+                    y -= 6 * S
                     continue
-                mid.append(Item('cycle', pad, y, card_w - 2 * pad, 28 * S, '', '', False, True, ('cycle', idx),
-                                data, prop))
+                y -= 34 * S
+                mid.append(Item('cycle', px0, y, inner, 30 * S, '', '', False, True, ('cycle', idx), data, prop))
             elif rna.type == 'BOOLEAN':
-                mid.append(Item('toggle', pad, y, card_w - 2 * pad, 28 * S, rna.name or prop, '',
+                y -= 34 * S
+                mid.append(Item('toggle', px0, y, inner, 30 * S, rna.name or prop, '',
                                 bool(getattr(data, prop)), True, ('cycle', idx), data, prop))
             else:
-                mid.append(Item('slider', pad, y, card_w - 2 * pad, 28 * S, '', '', False, True, ('slider', idx),
-                                data, prop))
-    mid_h = -y + pad
+                y -= 46 * S
+                mid.append(Item('slider', px0, y, inner, 44 * S, '', '', False, True, ('slider', idx), data, prop))
+    mid_h = -y + 16 * S
 
-    # ---- actions card --------------------------------------------------------------------------------
+    # ---- actions panel: white icons in threes, thin rules and small grey titles between groups -------------
     act = []
-    y = 0.0
+    ax0, ainner = 14 * S, act_w - 28 * S
+    y = -10 * S
     ob = context.active_object
     y -= 26 * S
-    act.append(Item('title', pad, y, act_w - 2 * pad, 26 * S, G.fit(ob.name, 13 * S, act_w - 2 * pad)
+    act.append(Item('title', ax0, y, ainner, 26 * S, G.fit(ob.name, 14 * S, ainner)
                     if ob is not None else 'Nothing selected'))
     from . import actions_menu
     m = actions_menu.mirror_mod(ob) if ob is not None and ob.type == 'MESH' else None
-    bw, bh = 64 * S, 58 * S
+    bw, bh = ainner / 3.0, 48 * S
     sections = list(ACTIONS) + ([('Live', _live(context))] if _live(context) else [])
     for sec, buttons in sections:
-        y -= 10 * S
-        act.append(Item('section', pad, y - 16 * S, act_w - 2 * pad, 16 * S, sec))
-        y -= 20 * S
-        for i, (label, icon, op, props, needs, closes) in enumerate(buttons):
-            c = i % 3
+        y -= 8 * S
+        act.append(Item('section', ax0, y - 22 * S, ainner, 22 * S, sec))
+        y -= 26 * S
+        for k, (label, icon, op, props, needs, closes) in enumerate(buttons):
+            c = k % 3
             if c == 0:
                 y -= bh
             on = sec == 'Symmetry' and bool(m and m.use_axis[props['axis']])
@@ -228,9 +232,9 @@ def build(context, mx, my, region_w, region_h, S=1.0):
                 action = ('tool', op[5:])
             else:
                 action = ('op', op, props, closes)
-            act.append(Item('button', pad + c * bw, y, bw - 4 * S, bh - 4 * S, label, icon, on,
+            act.append(Item('abtn', ax0 + c * bw + 4 * S, y, bw - 8 * S, bh - 4 * S, label, icon, on,
                             _needs_ok(context, needs), action))
-    act_h = -y + pad
+    act_h = -y + 14 * S
 
     # ---- place the three cards around the mouse --------------------------------------------------------
     total_w = strip_w + gap + card_w + gap + act_w
@@ -334,69 +338,91 @@ def _undo(message):
 
 # --- drawing -------------------------------------------------------------------------------------------------
 
-def _icon(icon, x, y, size, color, alpha=1.0):
+def _icon(icon, x, y, size, color, alpha=1.0, mono=False):
+    """PNG icons in their own colours (as in the panels); glyph names drawn as lines in ``color``."""
     if icon.startswith('png:'):
-        if not G.image(G.icon_path(icon[4:]), x, y, size, alpha):
+        if not G.image(G.icon_path(icon[4:]), x, y, size, alpha, mono, color):
             G.glyph('', x, y, size, color)
     elif icon.startswith('file:'):
         if not G.image(icon[5:], x, y, size, alpha):
             G.glyph('', x, y, size, color)
     elif icon:
-        G.glyph(icon, x, y, size, color, max(1.5, size / 16.0))
+        G.glyph(icon, x, y, size, color, max(1.5, size / 14.0))
+
+
+HOVER = (1.0, 1.0, 1.0, 0.08)
+DARK_ICON = (0.08, 0.08, 0.09, 1.0)
+RULE = (1.0, 1.0, 1.0, 0.10)
+
+
+def _tip(x, y, label, S, side='RIGHT'):
+    """A small dark name bubble (icon-only buttons say what they are on hover)."""
+    w = G.text(-9999, -9999, label, 12 * S) + 20 * S
+    h = 26 * S
+    if side == 'ABOVE':
+        x, y = x - w / 2, y + 6 * S
+    else:
+        y -= h / 2
+    G.rounded_rect(x, y, w, h, 8 * S, (0.02, 0.02, 0.025, 0.96))
+    G.text(x + 10 * S, y + h / 2, label, 12 * S, G.TEXT)
 
 
 def draw(items, hover, S, context):
     from . import quick_hud
     r = 10 * S
+    tip = None
     for it in items:
-        dim = 1.0 if it.enabled else 0.45
-        col_t = (G.TEXT[0], G.TEXT[1], G.TEXT[2], dim)
+        dim = 1.0 if it.enabled else 0.35
+        white = (G.TEXT[0], G.TEXT[1], G.TEXT[2], dim)
         hot = it is hover and it.clickable()
         if it.kind == 'card':
-            G.rounded_rect(it.x - 1, it.y - 1, it.w + 2, it.h + 2, 14 * S, G.CARD_EDGE)
-            G.rounded_rect(it.x, it.y, it.w, it.h, 14 * S, G.CARD)
+            G.rounded_rect(it.x, it.y, it.w, it.h, 18 * S, G.CARD)
         elif it.kind == 'title':
-            G.text(it.x + 2 * S, it.y + it.h / 2, it.label, 15 * S, G.TEXT)
-        elif it.kind in {'section', 'note'}:
+            G.text(it.x, it.y + it.h / 2, it.label, 16 * S, G.TEXT)
+        elif it.kind == 'section':
+            G.lines([((it.x, it.y + it.h + 2 * S), (it.x + it.w, it.y + it.h + 2 * S))], RULE, 1.0 * S)
+            G.text(it.x + it.w / 2, it.y + it.h / 2 - 2 * S, it.label, 11 * S, G.TEXT_DIM, 'CENTER')
+        elif it.kind == 'note':
             G.text(it.x + it.w / 2, it.y + it.h / 2, it.label, 11 * S, G.TEXT_DIM, 'CENTER')
-            if it.kind == 'section':
-                lw = it.w / 2 - 50 * S
-                if lw > 6 * S:
-                    G.lines([((it.x, it.y + it.h / 2), (it.x + lw, it.y + it.h / 2)),
-                             ((it.x + it.w - lw, it.y + it.h / 2), (it.x + it.w, it.y + it.h / 2))],
-                            (0.3, 0.31, 0.34, 1.0), 1.0 * S)
         elif it.kind == 'divider':
-            G.rounded_rect(it.x + 6 * S, it.y, it.w - 12 * S, it.h, it.h / 2, (0.3, 0.31, 0.34, 1.0))
-        elif it.kind == 'button':
-            bg = G.ACCENT if it.on else (G.BTN_HOVER if hot else G.BTN)
-            G.rounded_rect(it.x, it.y, it.w, it.h, r, bg)
-            has_label = it.h > it.w * 0.8 and it.w > 52 * S          # action buttons: icon + name under it
-            size = (it.h - 26 * S) if has_label else it.h * 0.68
-            ix = it.x + (it.w - size) / 2
-            iy = it.y + (it.h - size) / 2 + (8 * S if has_label else 0)
-            _icon(it.icon, ix, iy, size, col_t, dim)
-            if has_label:
-                G.text(it.x + it.w / 2, it.y + 10 * S, G.fit(it.label, 10 * S, it.w - 4 * S), 10 * S, col_t, 'CENTER')
+            G.rounded_rect(it.x + 8 * S, it.y, it.w - 16 * S, it.h, it.h / 2, RULE)
+        elif it.kind in {'button', 'abtn'}:
+            if it.on:
+                G.rounded_rect(it.x, it.y, it.w, it.h, 12 * S, G.ACCENT)
+            elif hot:
+                G.rounded_rect(it.x, it.y, it.w, it.h, 12 * S, HOVER)
+            size = min(it.w, it.h) * (0.62 if it.kind == 'button' else 0.58)
+            _icon(it.icon, it.x + (it.w - size) / 2, it.y + (it.h - size) / 2, size, white, dim)
+            if hot:
+                tip = (it, 'RIGHT' if it.kind == 'button' else 'ABOVE')
         elif it.kind == 'tile':
-            bg = (0.9, 0.9, 0.92, 1.0) if it.on else (G.BTN_HOVER if hot else G.BTN)
-            G.rounded_rect(it.x, it.y, it.w, it.h, r, bg)
-            size = it.w * 0.62
-            _icon(it.icon, it.x + (it.w - size) / 2, it.y + it.h - size - 6 * S, size, col_t)
-            G.text(it.x + it.w / 2, it.y + 10 * S, G.fit(it.label, 10 * S, it.w - 4 * S), 10 * S,
-                   (0.1, 0.1, 0.12, 1.0) if it.on else G.TEXT, 'CENTER')
-        elif it.kind in {'tab', 'seg', 'pill'}:
-            bg = G.ACCENT if it.on else (G.BTN_HOVER if hot else G.BTN)
+            if it.on:
+                G.rounded_rect(it.x, it.y, it.w, it.h, 14 * S, (0.93, 0.93, 0.95, 1.0))
+            elif hot:
+                G.rounded_rect(it.x, it.y, it.w, it.h, 14 * S, HOVER)
+            size = it.w * 0.58
+            _icon(it.icon, it.x + (it.w - size) / 2, it.y + (it.h - size) / 2, size,
+                  DARK_ICON if it.on else G.TEXT)
+            if hot:
+                tip = (it, 'ABOVE')
+        elif it.kind == 'tab':
+            G.text(it.x, it.y + it.h / 2, it.label, 13 * S, G.TEXT if it.on else G.TEXT_DIM)
+            if it.on:
+                G.rounded_rect(it.x, it.y - 1 * S, G.text(-9999, -9999, it.label, 13 * S), 2 * S, 1 * S, G.TEXT)
+        elif it.kind in {'seg', 'pill'}:
+            bg = G.ACCENT if it.on else ((0.24, 0.245, 0.27, 1.0) if hot else (0.17, 0.175, 0.19, 1.0))
             G.rounded_rect(it.x, it.y, it.w, it.h, it.h / 2, bg)
-            G.text(it.x + it.w / 2, it.y + it.h / 2, G.fit(it.label, 11 * S, it.w - 8 * S), 11 * S, G.TEXT, 'CENTER')
+            G.text(it.x + it.w / 2, it.y + it.h / 2, G.fit(it.label, 12 * S, it.w - 10 * S), 12 * S, G.TEXT,
+                   'CENTER')
         elif it.kind == 'label':
-            G.text(it.x, it.y + it.h / 2, G.fit(it.label, 11 * S, it.w - 4 * S), 11 * S, G.TEXT_DIM)
+            G.text(it.x, it.y + it.h / 2, G.fit(it.label, 12 * S, it.w), 12 * S, G.TEXT_DIM)
         elif it.kind == 'toggle':
-            G.text(it.x, it.y + it.h / 2, it.label, 12 * S, G.TEXT)
-            sw, sh = 40 * S, 20 * S
+            G.text(it.x, it.y + it.h / 2, it.label, 13 * S, G.TEXT)
+            sw, sh = 40 * S, 22 * S
             sx, sy = it.x + it.w - sw, it.y + (it.h - sh) / 2
-            G.rounded_rect(sx, sy, sw, sh, sh / 2, G.ACCENT if it.on else G.TRACK)
-            kx = sx + (sw - sh + 2 * S if it.on else 2 * S)
-            G.rounded_rect(kx, sy + 2 * S, sh - 4 * S, sh - 4 * S, (sh - 4 * S) / 2, G.TEXT)
+            G.rounded_rect(sx, sy, sw, sh, sh / 2, G.ACCENT if it.on else (0.24, 0.245, 0.27, 1.0))
+            kx = sx + (sw - sh + 3 * S if it.on else 3 * S)
+            G.rounded_rect(kx, sy + 3 * S, sh - 6 * S, sh - 6 * S, (sh - 6 * S) / 2, G.TEXT)
         elif it.kind in {'slider', 'cycle'}:
             data, prop = it.data, it.prop
             try:
@@ -404,18 +430,28 @@ def draw(items, hover, S, context):
             except (AttributeError, KeyError, ReferenceError):
                 continue
             name, _sep, val = txt.partition('  ')
-            G.rounded_rect(it.x, it.y, it.w, it.h, it.h / 2, G.BTN_HOVER if hot else G.TRACK)
-            if it.kind == 'slider':
-                frac = _fraction(data, prop)
-                if frac > 0.0:
-                    G.rounded_rect(it.x, it.y, max(it.h, it.w * frac), it.h, it.h / 2, (0.22, 0.38, 0.72, 1.0))
-            G.text(it.x + 12 * S, it.y + it.h / 2, name, 12 * S, G.TEXT)
-            G.text(it.x + it.w - 12 * S, it.y + it.h / 2, val, 12 * S, G.TEXT, 'RIGHT')
-    if hover is not None and hover.clickable() and hover.kind == 'button' and hover.w <= 52 * S:
-        # strip buttons have no room for a name: show it beside them
-        G.rounded_rect(hover.x + hover.w + 8 * S, hover.y + hover.h / 2 - 13 * S,
-                       G.text(-9999, -9999, hover.label, 12 * S) + 20 * S, 26 * S, 8 * S, (0.05, 0.05, 0.06, 0.95))
-        G.text(hover.x + hover.w + 18 * S, hover.y + hover.h / 2, hover.label, 12 * S, G.TEXT)
+            if it.kind == 'cycle':
+                G.rounded_rect(it.x, it.y, it.w, it.h, it.h / 2, (0.24, 0.245, 0.27, 1.0) if hot
+                               else (0.17, 0.175, 0.19, 1.0))
+                G.text(it.x + 14 * S, it.y + it.h / 2, name, 13 * S, G.TEXT)
+                G.text(it.x + it.w - 14 * S, it.y + it.h / 2, val, 13 * S, G.TEXT, 'RIGHT')
+                continue
+            # Modeler's Dynamics row: name ... value on top, a thin track with a white knob under it
+            G.text(it.x, it.y + it.h - 11 * S, name, 13 * S, G.TEXT)
+            G.text(it.x + it.w, it.y + it.h - 11 * S, val, 13 * S, G.TEXT if hot else G.TEXT_DIM, 'RIGHT')
+            ty = it.y + 10 * S
+            f = _fraction(data, prop)
+            G.rounded_rect(it.x, ty - 2 * S, it.w, 4 * S, 2 * S, (0.28, 0.285, 0.31, 1.0))
+            if f > 0:
+                G.rounded_rect(it.x, ty - 2 * S, it.w * f, 4 * S, 2 * S, G.ACCENT)
+            kr = (9 if hot else 8) * S
+            G.rounded_rect(it.x + it.w * f - kr, ty - kr, 2 * kr, 2 * kr, kr, G.TEXT)
+    if tip is not None:
+        it, side = tip
+        if side == 'RIGHT':
+            _tip(it.x + it.w + 8 * S, it.y + it.h / 2, it.label, S)
+        else:
+            _tip(it.x + it.w / 2, it.y + it.h, it.label, S, 'ABOVE')
 
 
 def _fraction(data, prop):
