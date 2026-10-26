@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.24.42 — Armor Plate Alt = 반대로 파기, Path Move가 브러시보다 크게 늘어나던 / 지저분하던 문제 (2026-10-26)
+
+- **Armor Plate Alt + 그리기**: 그 자리에 생길 플레이트를 표면 기준으로 뒤집어(바깥으로 나온 만큼 안으로) 불리언으로 파냄 → 플레이트 높이만큼 깊은 홈, 벽은 플레이트 프로파일(챔퍼 / 베벨 / 계단 …). 플레이트 오브젝트는 남지 않음. Alt 없이 = 예전처럼 플레이트.
+- **Path Move가 작은 브러시인데 판 전체를 늘리던 문제**: Extend / Separate Tube는 잡은 곳의 단면 전체를 끌었음 → 단면이 브러시 반지름의 1.6배보다 크면(또는 단면을 못 찾으면) 그 드래그는 브러시 크기만큼만 끄는 Stretch로(헤더에 표시).
+- **Path Move 마감이 지저분하던 문제**: 경로가 단면 반지름보다 급하게 꺾이면 링이 서로 겹쳐 접히고 찢어졌음 → 그런 곳은 단면 반지름 이상으로 둥글게 펴서 쓸어 감(끝점 그대로).
+- 테스트: 123개 파일 3606/3606. test_v02462 · test_v02463 추가. ZIP sha256 `0aa33b1b8c021702ad7bc0faff156aa1bb5688e69bb5850a56fac264f2eea196`.
+
 ## 0.24.41 — GN Edge(지오메트리 노드 테두리 챔퍼 / 베벨), Stamp Face 바로 붙기, 나사가 기울어지던 문제 (2026-10-26)
 
 - **GN Edge (Geometry Nodes)** — Cut / Split 패널의 새 메뉴(기존 Edge Finish와 따로): Off / Chamfer / Bevel, Width, Segments(Bevel), Split은 Both / Side A / Side B. 그은 영역의 테두리(새 모서리)를 따라 챔퍼 / 베벨 단면을 지오메트리 노드로 쓸어(Mesh to Curve → Curve to Mesh → Set Position → Mesh Boolean) 깎아냄 → 테두리 전체에 같은 너비로 고르게. 기존 Edge Finish는 촘촘한(삼각형) 메쉬에서 짧은 모서리 때문에 너비가 줄거나 거의 안 생겼음. 켜면 그 컷에서는 Edge Finish를 건너뜀. Auto Apply ON에서만.

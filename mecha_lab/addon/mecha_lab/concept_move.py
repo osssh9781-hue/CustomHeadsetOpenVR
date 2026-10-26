@@ -1142,6 +1142,36 @@ def even_path(pts, step, max_steps=PATH_MAX_STEPS):
     return out
 
 
+SECTION_LIMIT = 1.6        # Extend / Separate Tube only for a section up to this x the brush radius
+
+
+def section_radius(info):
+    c = Vector(info['centre'])
+    return max((Vector(q) - c).length for q in info['loop'])
+
+
+def turn_radius(a, b, c):
+    """Radius of the circle through three points (inf when they are in a line)."""
+    ab, bc, ca = (b - a).length, (c - b).length, (a - c).length
+    area2 = (b - a).cross(c - a).length
+    return float('inf') if area2 < 1e-12 else ab * bc * ca / (2.0 * area2)
+
+
+def relax_path(pts, radius, max_passes=60):
+    """0.24.42 a swept section of ``radius`` folds over itself where the path turns tighter than that: those
+    places are smoothed out until every turn is at least ``radius`` wide (the ends stay)."""
+    pts = [Vector(p) for p in pts]
+    if len(pts) < 3 or radius <= 0:
+        return pts
+    for _ in range(max_passes):
+        tight = [i for i in range(1, len(pts) - 1) if turn_radius(pts[i - 1], pts[i], pts[i + 1]) < radius]
+        if not tight:
+            break
+        near = {j for i in tight for j in (i - 1, i, i + 1) if 0 < j < len(pts) - 1}
+        pts = [p if i not in near else (pts[i - 1] + p * 2.0 + pts[i + 1]) / 4.0 for i, p in enumerate(pts)]
+    return pts
+
+
 def run_path(co, moves):
     """The moves one after another on coordinates (no new faces) - the drag preview."""
     co = np.array(co, dtype=np.float64)
@@ -1316,6 +1346,7 @@ class MCH_OT_concept_path(bpy.types.Operator):
             self.local = []
             self._sig = None
             self.info = None                                 # Extend / Separate Tube: the section (once known)
+            self.method_now = None
             self.preview_ob = None
             self.local_hit = self.mref @ (self.mwi @ self.hit)
         return res
@@ -1329,7 +1360,19 @@ class MCH_OT_concept_path(bpy.types.Operator):
         scale = (m3 @ Vector((1.0, 0.0, 0.0))).length if abs(m3.determinant()) > 1e-12 else 1.0
         step = brush_world(context, self.hit) * scale * 0.3
         local = even_path(smooth_path([self._to_local(p) for p in self.trail]), step, 96)
+        if self.info:                                    # 0.24.42 no turn tighter than the section: no folds
+            local = relax_path(local, section_radius(self.info) * 1.05)
         return [p - self.local_hit for p in local]
+
+    def _brush_local(self, context):
+        m3 = self.mwi.to_3x3()
+        scale = (m3 @ Vector((1.0, 0.0, 0.0))).length if abs(m3.determinant()) > 1e-12 else 1.0
+        return brush_world(context, self.hit) * scale
+
+    def _method(self, context):
+        """The method of this drag: Extend / Separate Tube need a section about the brush size - a bigger one
+        (the whole plate under a small brush) or none makes it a Stretch with the brush size (0.24.42)."""
+        return getattr(self, 'method_now', None) or context.scene.mch_concept.path_method
 
     def _section_preview(self, context):
         """Extend / Separate Tube while dragging: only the new rings (and the carried end) are rebuilt."""
@@ -1344,6 +1387,10 @@ class MCH_OT_concept_path(bpy.types.Operator):
                 return                                       # wait until the way it goes is clear
             self.normal_l = normal.normalized()
             self.info = path_sweep.analyse(self.ob.data, self.local_hit, self.normal_l) or False
+            if not self.info or section_radius(self.info) > self._brush_local(context) * SECTION_LIMIT:
+                self.info = False
+                self.method_now = 'STRETCH'                  # the part is thicker than the brush
+                return
             if self.info:
                 me = bpy.data.meshes.new('MCH_PathPreview')
                 self.preview_ob = bpy.data.objects.new('MCH_PathPreview', me)
@@ -1375,6 +1422,8 @@ class MCH_OT_concept_path(bpy.types.Operator):
         st = context.scene.mch_concept
         context.area.header_text_set(
             f'Path Move  |  {len(getattr(self, "trail", [])) - 1} steps  {st.shape.title()}  taper {st.path_taper:.2f}  '
+            + ('Stretch (the part is thicker than the brush)  ' if getattr(self, 'method_now', None) == 'STRETCH'
+               else '') +
             f'hardness {st.path_hardness:.2f}  |  Mirror X {"on" if st.mirror_x else "off"}  |  '
             'drag the way it should go   Wheel: depth   [ ]: size   3D mouse / MMB: view   RMB/Esc: cancel')
 
@@ -1406,14 +1455,15 @@ class MCH_OT_concept_path(bpy.types.Operator):
         self.center_2d = view3d_utils.location_3d_to_region_2d(region, rv3d, self.target) or self.mouse
         self.r_px = brush_px(context, self.target) * max(1.0 - st.path_taper, 0.05)
         sig = (len(self.trail), st.radius_px, st.radius_world, st.path_hardness, st.path_taper, st.path_turn, st.shape,
-               st.path_method)
+               self._method(context))
         if sig == self._sig:
             return
         self._sig = sig
-        if st.path_method != 'STRETCH':
+        if self._method(context) != 'STRETCH':
             self._section_preview(context)
-            self._header(context)
-            return
+            if self._method(context) != 'STRETCH':
+                self._header(context)
+                return
         path, radius, axes = self._world_path(context)
         for part in self.parts:
             ob = part['ob']
@@ -1448,11 +1498,11 @@ class MCH_OT_concept_path(bpy.types.Operator):
             self._finish_ui(context)
             MCH_OT_concept_move._restore(self)               # back to the start: execute() does the real thing
             self._drop_preview()
-            if st.path_method != 'STRETCH':
+            if self._method(context) != 'STRETCH':
                 offsets = self._section_offsets(context)
                 if len(offsets) < 2 or not getattr(self, 'normal_l', None):
                     return {'CANCELLED'}
-                self.method = st.path_method
+                self.method = self._method(context)
                 self.objects = json.dumps([self.ob.name])
                 self.grab_point, self.grab_normal = self.local_hit, self.normal_l
                 self.offsets = json.dumps([list(o) for o in offsets])
@@ -1463,6 +1513,7 @@ class MCH_OT_concept_path(bpy.types.Operator):
             if len(path) < 2:
                 return {'CANCELLED'}
             self.space = 'WORLD'
+            self.method = 'STRETCH'                          # also when a too-thick section made it a Stretch
             self.objects = json.dumps([p['ob'].name for p in self.parts])
             self.auto_apply = st.auto_apply
             self.path = json.dumps([list(p) for p in path])

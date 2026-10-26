@@ -1,5 +1,11 @@
 # KNOWN LIMITATIONS — Mecha Lab 0.18.0
 
+## 0.24.42 Armor Plate Alt 파기
+- 실제 화면에서 써 보지 않음.
+- Through 모드 · Mech Ridge 프로파일은 반전 파기 없음(Mech Ridge는 Chamfer로 팜).
+- 많이 휜 표면에서는 뒤집은 모양이 조금 일그러질 수 있음(가장 가까운 표면 기준 대칭).
+- Path Move: 단면이 브러시보다 크면 Stretch로 바뀌어 Extend의 깨끗한 단면 쓸기는 안 됨(브러시를 키우면 Extend). 경로를 펴는 만큼 급한 꺾임은 둥글게 바뀜.
+
 ## 0.24.41 GN Edge
 - 실제 화면에서 써 보지 않음.
 - 베벨 둥근 모양은 컷 벽이 표면과 직각일 때 가장 정확(비스듬한 벽은 타원 호).

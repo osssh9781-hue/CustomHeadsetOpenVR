@@ -1,4 +1,9 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.41 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.42 (Claude Code, 2026-10-14)
+
+## 0.24.42
+- ZIP sha256 `0aa33b1b8c021702ad7bc0faff156aa1bb5688e69bb5850a56fac264f2eea196`.
+- `armor_plate.perform_plate_carve(context, loops, projector, preset)`: `plate_meshes` → `create_plate`(평소 플레이트) → evaluated 메쉬(월드) → `fx._remove_part` → 대상 evaluated BVH로 `mirrored_into(verts, bvh, lift)`(가장 가까운 표면 기준 대칭, d < lift인 점은 표면 위 lift로; lift = 크기 × 0.004) → 노멀 재계산 → `cg.boolean_result` DIFFERENCE(Cut 설정의 solver / hole_tolerant) → `cg.commit_mesh`. MRIDGE는 CHAMFER로. `cut_engine`: PLATE + inverted() → perform_plate_carve.
+- `concept_move`: `SECTION_LIMIT` = 1.6, `section_radius(info)`, `turn_radius`, `relax_path(pts, radius)`(외접원 반지름 < radius인 점과 이웃을 (a + 2b + c)/4로 반복, 끝점 고정). Path Move `_section_preview`: analyse 실패 또는 단면 > 브러시 × 1.6 → `method_now = 'STRETCH'`(이번 드래그만), `_method(context)`가 판단, 놓을 때 Stretch 분기에서 `self.method = 'STRETCH'`. `_section_offsets`는 info가 있으면 relax_path(단면 × 1.05).
 
 ## 0.24.41
 - ZIP sha256 `68baf53c89f001a1a8345a42eff237bfec40e4d4549357034b7cd35dbb2eb6fd`.
