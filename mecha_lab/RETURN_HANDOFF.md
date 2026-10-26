@@ -1,4 +1,11 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.47 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.48 (Claude Code, 2026-10-14)
+
+## 0.24.48
+- ZIP sha256 `ebb29728d8755767ef538eb56ebe5248003fd5c9c60f2bd78258ca41292ab27e`.
+- 새 모듈 `quad_remesh.py` (Scene.mch_quadremesh: method FLOW/PATCH, faces, edge_angle, keep_marked, smooth_shade). 연산자 `mch.quad_remesh`, `mch.quad_apply`, `mch.quad_show_source`. 결과 오브젝트에 `mch_quad_source`(원본 이름), `mch_quad_miss`(Flow에서 놓친 모서리 길이 / 쿼드 크기).
+- `prepare`: remove_doubles(크기×1e-5), 떨어진 점 삭제, dissolve_degenerate, 노멀 정리, 각도/표시로 sharp 지정, 비다양체 모서리 수 반환(>0이면 거부).
+- Flow: 임시 오브젝트에서 `quadriflow_remesh(use_preserve_sharp, use_preserve_boundary)`; `_edge_miss` = 원래 모서리를 h/4 간격으로 따라가며 새 날카로운 모서리(edge_angle×0.6)에서 0.5h보다 먼 길이 합 / h, MISS_LIMIT 1.0.
+- Patch(`build_patch`): g = 2h로 긴 모서리 분할 → `_regions`(부드러운 모서리로 이어진 같은 평면 면, 2°) → `_fill_region`(외곽 방향 `_direction`(90° 접기, 길이 가중) 격자, 외곽에서 0.45g 이상 안쪽, `delaunay_2d_cdt` 제약, 짝홀 판정, 넓이 0 삼각형 제외, `join_triangles`) → `_split_quads`(면마다 n개 사각형, 새 점은 원래 표면 BVH로).
 
 ## 0.24.47
 - ZIP sha256 `3d9d0e7d404ffce3d20445c04c57022de2694510c0ab338185dbd34bcb8698a5`.
