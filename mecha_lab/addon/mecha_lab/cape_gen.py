@@ -323,8 +323,11 @@ def shape_sheet(grid, axis, p, size, bvh, gap):
                 # crease lines straight across (a sharp V every 1 / lines of the length, round in between);
                 # Gravity bends every line down in the middle (a U, like a draped scarf)
                 w = v - grav * 0.06 * bow + p.fold_random * 0.015 * math.sin(2 * math.pi * 1.3 * s + phases[1])
-                f = 2.0 * abs(math.sin(math.pi * lines * w + phases[0])) ** 0.7 - 1.0
-                amp = depth * 0.6 * (0.35 + 0.65 * v ** 0.5) * (0.6 + 0.4 * bow)
+                # flat between the lines (no puffy rolls), a crisp crease at each line; it fades out at the drawn
+                # ends so the side edges stay clean
+                f = 2.0 * abs(math.sin(math.pi * lines * w + phases[0])) ** 0.3 - 1.0
+                edge = min(1.0, s / 0.08, (1.0 - s) / 0.08)
+                amp = depth * 0.3 * (0.35 + 0.65 * v ** 0.5) * (0.6 + 0.4 * bow) * edge * edge * (3.0 - 2.0 * edge)
             r = q + nrm * (amp * f) + wind * (v * v) + Vector((0.0, 0.0, -sag * bow * (v ** 0.7)))
             new.append(_push_out(bvh, r, gap * 0.6) if k > 0 else r)
         out.append(new)

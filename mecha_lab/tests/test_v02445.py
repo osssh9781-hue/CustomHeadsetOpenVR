@@ -43,6 +43,8 @@ a_down, a_across = wiggle(sheet('ACROSS'))
 check('Cape: folds run down (the sheet changes across it)', d_across > 3 * d_down, (d_down, d_across))
 check('Scarf Cape: folds run across (the sheet changes down it)', a_down > 3 * a_across, (a_down, a_across))
 g0, g1 = sheet('ACROSS', 0.0), sheet('ACROSS', 0.8)
+check('Scarf Cape: the folds fade out at the drawn ends (clean side edges)', all(abs((g0[0][k] - grid[0][k]).y) < 1e-9
+      and abs((g0[40][k] - grid[40][k]).y) < 1e-9 for k in range(31)))
 check('Gravity: the middle sags down, the drawn ends stay', g1[20][30].z < g0[20][30].z - 0.05
       and abs(g1[0][30].z - g0[0][30].z) < 1e-6 and abs(g1[20][0].z - g0[20][0].z) < 1e-6,
       (g0[20][30].z, g1[20][30].z))
