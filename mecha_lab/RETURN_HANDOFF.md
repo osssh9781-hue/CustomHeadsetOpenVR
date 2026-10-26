@@ -1,4 +1,10 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.48 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.49 (Claude Code, 2026-10-14)
+
+## 0.24.49
+- ZIP sha256 `101d2fb81f63578ef6e93abe84134c911806908ae374ed3990cbc2b23f3d6014`.
+- 새 모듈: `tool_recent.py`(최근 5 / 즐겨찾기 3세트×8, last_used.json 섹션 'tool_recent'; `bottom_bar.note_tool`에서 기록), `actions_menu.py`(RMB 팝업: `draw(layout, context, middle)` = 도구 줄 | 카드 | Actions; `MCH_PT_actions_popup`, Select/Move용 키맵 RMB → `mch.actions_menu`(poll: MECHA LAB + Select + pref `rmb_actions`); `mch.actions_mirror`(Mirror 수정자 'MCH_Symmetry' 축 토글, 다 끄면 삭제), `mch.actions_apply_modifiers`), `quick_hud.py`(SPEC: 도구 → [(데이터 함수, 속성)]; 기즈모 그룹 `MCH_GGT_quick_hud`, 슬라이더 `MCH_GT_quick_slider`, 손잡이 `MCH_GT_quick_grip`, 값 입력 팝업 `MCH_PT_quick_value`; WM `mch_hud_offset`, `mch_hud_edit`), `key_legend.py`(POST_PIXEL 텍스트, ALT/EXTRA/COMMON 표).
+- `workspace_ui`: `shape_card`, `profile_card`, `_card_settings`(= `quick_hud.items`); 모양/프로필 팝업 폭 36; `mch.set_tool` 툴팁 "이름: 설명"; prefs `rmb_actions`, `key_legend`, `quick_hud`.
+- `bottom_bar.toolbar_layout`: 폭이 모자라면 축소(최소 22px) → 두 줄; `draw_prepare`와 라벨에 `region.width / ui`(화면 배율 버그 수정).
 
 ## 0.24.48
 - ZIP sha256 `ebb29728d8755767ef538eb56ebe5248003fd5c9c60f2bd78258ca41292ab27e`.

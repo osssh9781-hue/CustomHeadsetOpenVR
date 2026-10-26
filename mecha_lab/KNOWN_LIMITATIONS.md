@@ -1,5 +1,11 @@
 # KNOWN LIMITATIONS — Mecha Lab 0.18.0
 
+## 0.24.49 UI
+- Blender 패널 버튼 안 아이콘은 크기를 키울 수 없어 Modeler보다 아이콘이 작음(툴팁으로 이름 확인).
+- Quick HUD는 실제 화면에서 위치·겹침을 확인하지 못함. 손잡이로 옮긴 위치는 Blender를 닫으면 초기화됨.
+- Select / Move에서 RMB가 Blender 오브젝트 메뉴 대신 팝업을 엶(MECHA LAB 안). 원래대로: Preferences > RMB Actions Menu 끄기.
+- 수정키 동작 자체는 통일하지 않음(손 기억 유지) — 화면 안내만 추가.
+
 ## 0.24.48 Quad Remesh
 - 닫힌 부품만 됨(열린 메쉬는 거부).
 - Flow: 컷이 남긴 가는 조각 주변에서 쿼드가 꼬이고 모서리를 놓칠 수 있음(경고는 뜸). 큰 메쉬는 수 초~수십 초 동안 멈춘 듯 보임.

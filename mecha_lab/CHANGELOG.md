@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 0.24.49 — UI/UX 1단계: Modeler식 우클릭 팝업, 최근·즐겨찾기, Quick HUD, 툴바 자동 축소, 키 안내 (2026-10-26)
+
+- **우클릭 팝업 (Substance 3D Modeler 배치 참고)**: 그리기 도구에서 RMB 한 번(두 번 = 도구 종료는 그대로) → 세 칸.
+  - 왼쪽 **도구 줄**: 최근 도구 5개 → 구분선 → 즐겨찾기(최대 8, Mecha / Creature / Cloth 세트), 별 = 지금 도구 고정/해제. 아이콘만, 툴팁에 이름.
+  - 가운데 **도구 카드**: "Cut tool" 제목, **Shapes / Stamps 탭**(Stamps = PNG 모양), 4열 모양 그리드, Settings(= Quick HUD와 같은 핵심 설정), Edge Finish. Base Mesh는 프로필 카드.
+  - 오른쪽 **Actions 패널**: 아이콘 3열 + 작은 제목 — Actions(복제, 합치기, 삭제, 원점, 축 리셋, Auto Smooth) / Resolution(Remesh, Quad Remesh, Low Poly) / Symmetry(라이브 Mirror X·Y·Z — 컷·판이 따라감) / Repetition(Radial Array, Curve Array, Radial Symmetry) / Visibility(숨기기, 모두 보기, 따로 보기) / Live(Ramp·Quad Apply 등, Apply Modifiers).
+  - **Select / Move에서 RMB**도 같은 팝업(MECHA LAB 안에서만, Blender 오브젝트 메뉴 버튼 포함). Preferences: RMB Actions Menu.
+- **Quick HUD**: 뷰포트 왼쪽 위에 지금 도구의 핵심 설정 3~5개 슬라이더(Cut, Split, Base, Creature Base, Plate, Detail, Surface Draw, Screw, Concept/Path Move, Curve). 드래그 = 값(Shift 미세), 클릭 = 직접 입력, Ctrl+클릭 = 기본값, 선택형은 클릭으로 다음 값, 위 손잡이로 위치 이동. 자체 HUD가 떠 있으면(Armor Plate 라이브) 숨김. Preferences: Quick HUD.
+- **하단 툴바**: 좁은 뷰포트에서 버튼이 줄어들다 두 줄로(화면 밖으로 안 나감). Windows 화면 배율(예: 150%)에서 가운데에서 밀리던 문제 수정.
+- **키 안내**: 그리기 도구가 켜져 있으면 왼쪽 아래에 그 도구에서 Alt / Shift / Ctrl / 휠 / F / D / RMB / Q·V가 하는 일. 키 동작은 바꾸지 않음. Preferences: Key Legend.
+- 테스트: 129개 파일 3699/3699. test_v02469(45) 추가. ZIP sha256 `101d2fb81f63578ef6e93abe84134c911806908ae374ed3990cbc2b23f3d6014`.
+
 ## 0.24.48 — Quad Remesh (컷 모서리 유지) (2026-10-26)
 
 - **Quad Remesh (keep cut edges)**: Remesh 패널 새 상자. 선택한 부품(모디파이어 포함)을 복사해 전부 사각형 면으로 다시 짬. Edge Angle보다 날카로운 모서리(+ 직접 Sharp / Crease 지정한 모서리)를 쿼드 선으로 살림. 원본은 숨겨서 그대로 둠. Re-make / Show Original / Apply. 열린(구멍 난) 메쉬는 안내 후 아무것도 안 바꿈.
