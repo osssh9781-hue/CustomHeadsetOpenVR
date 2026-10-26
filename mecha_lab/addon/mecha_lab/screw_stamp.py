@@ -469,8 +469,8 @@ def draw(layout, context):
 _LAST = [None, 0.0]        # the screw placed by the last click (a double-click takes it back)
 
 TOOL_KEYMAP = (
-    ('mch.quick_hud_press', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'any': True}, None),   # 0.24.51
     ('mch.screw_stamp', {'type': 'LEFTMOUSE', 'value': 'DOUBLE_CLICK'}, {'properties': [('leave', True)]}),
+    ('mch.quick_hud_press', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'any': True}, None),   # 0.24.51 before the press
     ('mch.screw_stamp', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, None),
     ('mch.screw_stamp', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'alt': True}, {'properties': [('remove', True)]}),
     ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),

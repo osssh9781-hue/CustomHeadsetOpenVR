@@ -18,7 +18,8 @@ S.mch_settings.mch_active_tool = 'CUT'
 
 check('Every Mecha drawing tool (and Screw, Primitive) asks the HUD first on a left click',
       wui._tool_keymap('CUT')[0][0] == 'mch.quick_hud_press' and wui._tool_keymap('BASE')[0][0] == 'mch.quick_hud_press'
-      and screw_stamp.TOOL_KEYMAP[0][0] == 'mch.quick_hud_press'
+      and [k[0] for k in screw_stamp.TOOL_KEYMAP].index('mch.quick_hud_press')
+      < [k[1].get('value') for k in screw_stamp.TOOL_KEYMAP].index('PRESS') + 1
       and primitive_place.TOOL_KEYMAP[0][0] == 'mch.quick_hud_press')
 km_items = [it for km in C.window_manager.keyconfigs.addon.keymaps if km.name == '3D View' for it in km.keymap_items
             if it.idname == 'mch.quick_hud_press']

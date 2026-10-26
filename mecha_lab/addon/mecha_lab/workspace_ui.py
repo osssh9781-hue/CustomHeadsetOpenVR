@@ -101,7 +101,7 @@ def save_sizes(p=None):
         return False
     try:
         with open(path, 'w', encoding='utf-8') as fh:
-            json.dump({k: float(getattr(p, k)) for k in SIZE_KEYS}, fh)
+            json.dump({k: float(getattr(p, k)) for k in SIZE_KEYS if hasattr(p, k)}, fh)
         return True
     except OSError:
         return False

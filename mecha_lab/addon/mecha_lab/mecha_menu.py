@@ -743,7 +743,7 @@ def unregister():
     for km, item in _keymaps:
         try:
             km.keymap_items.remove(item)
-        except (ReferenceError, RuntimeError):
+        except Exception:            # a stale item (key configuration rebuilt, e.g. factory settings)
             pass
     _keymaps.clear()
     for c in reversed(CLASSES):
