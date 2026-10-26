@@ -1,5 +1,11 @@
 # KNOWN LIMITATIONS — Mecha Lab 0.18.0
 
+## 0.24.50 Mecha Menu
+- GPU로 직접 그려서 이 개발 환경(GPU 없음)에서는 실제 모습을 확인하지 못함. 문제가 있으면 Preferences > Classic RMB Popup으로 예전 패널.
+- Blender 사이드바 / 헤더 / 메뉴는 애드온이 모양을 바꿀 수 없음(테마 색만 가능).
+- Ctrl + Alt를 0.25초 이상 누르면 메뉴가 떠서, 그 상태로 Ctrl+Alt가 필요한 Blender 단축키는 막힘(빨리 누르면 괜찮음). 끄기: Preferences > Hold Ctrl + Alt.
+- 슬라이더 클릭 값 입력은 메뉴를 닫고 작은 입력창을 엶(홀드 모드에서는 입력 없음).
+
 ## 0.24.49 UI
 - Blender 패널 버튼 안 아이콘은 크기를 키울 수 없어 Modeler보다 아이콘이 작음(툴팁으로 이름 확인).
 - Quick HUD는 실제 화면에서 위치·겹침을 확인하지 못함. 손잡이로 옮긴 위치는 Blender를 닫으면 초기화됨.

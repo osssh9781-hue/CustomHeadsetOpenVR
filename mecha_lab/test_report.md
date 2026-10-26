@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.49
+# Test Report — Mecha Lab 0.24.50
+
+## 0.24.50 결과: 130개 파일 3732/3732 (`tests/test_log_bpy501_v02450.txt`, Blender 5.0.1 bpy). test_v02470(33): 카드 3장 배치·화면 안(모서리에서 열어도), 도구 줄 순서/활성, 카드 제목·탭·4열 그리드, Settings 종류, Actions 섹션, 모든 버튼 = 실제 연산자, 큰 화면 확대(2배)·계수, 클릭(모양, 탭, Mirror X → 다음에 파란색, 선택 버튼, Ctrl+클릭 기본값, 클릭 = 입력, 별, 세트), 홀드 모드(도구 제자리 전환·메뉴 유지, Duplicate 제자리), Base Mesh 프로필 카드, RMB 연결, Ctrl+Alt 키맵 4개·지연·MECHA LAB 한정, HUD 위치·2배, 대역 그리기 함수로 그리기 코드 실행(모든 hover), 키 안내 카드, 이미지가 파일에 남지 않음. 5.2.3 bpy에서도 test_v02470 · v02469 · ui_draw · zip_install 통과. GPU 실제 그리기(이 환경은 GPU 없음)와 화면 모양은 미검증 — 같은 배치 데이터로 PIL 미리보기만 확인.
 
 ## 0.24.49 결과: 129개 파일 3699/3699 (`tests/test_log_bpy501_v02449.txt`, Blender 5.0.1 bpy). test_v02469(45): 최근(순서·중복·숨김 도구 제외·최대 5·재시작 후 유지, 사용자 설정 파일은 임시 경로), 즐겨찾기(기본 세트, 고정/해제, 8개 한도, 세트 전환, 연산자), 팝업(가짜 레이아웃으로 연산자 id·속성·아이콘 검증, Actions 아이콘만·섹션 제목, 카드 탭/설정, Base 카드, 툴팁 이름), Symmetry X/Z → mirror_reflections 1/3개, 모두 끄면 삭제, Apply Modifiers, RMB 키맵 1개·MECHA LAB 밖 비활성, Quick HUD(도구별 항목, 드래그 비율·Shift·정수·범위, 선택형 다음 값, 기본값, 위치·이동·화면 안), 툴바(1600/700/420px: 한 줄 그대로 / 축소 / 두 줄, 모두 화면 안), 키 안내. 5.2.3 bpy에서도 test_v02469 45/45, test_ui_draw 388/388, test_zip_install 19/19. 실제 화면(팝업 모양·HUD 조작·클릭)은 미검증.
 

@@ -1,4 +1,10 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.49 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.50 (Claude Code, 2026-10-14)
+
+## 0.24.50
+- ZIP sha256 `c32d992db1ef0778e09d17350e60439e26be4877c2e6c7e5aff7955ca8f36bcf`.
+- 새 모듈 `ui_gpu.py`(gpu/blf 그리기 도우미: `ui_factor`, `rounded_rect`, `lines`(POLYLINE_UNIFORM_COLOR), `text`, `fit`, `image`(PNG → bpy.data.images.load → 픽셀 복사 → GPUTexture RGBA16F, 임시 이미지 바로 삭제; mono 옵션), `glyph`(선 아이콘), `done`), `mecha_menu.py`(`build()` = Item 목록(순수 데이터, 테스트 가능), `run()` = 클릭 처리(hold 인자), `draw()`, 모달 `mch.mecha_menu`(hold), `mch.mecha_hold_gate`(Ctrl+Alt 0.25 s, 키맵 4개 '3D View')).
+- RMB 연결: `cut_engine.GateLogic.modal`과 `actions_menu.MCH_OT_actions_menu.invoke`가 `mecha_menu.use_menu()`면 메뉴, 아니면 예전 패널. prefs `mecha_ui_size`, `classic_rmb_popup`, `hold_menu`.
+- `quick_hud`: 실제 px + 크기 계수, 슬라이더/손잡이 기즈모는 보이지 않는 클릭 영역, 그림은 `_draw_labels`가 카드로. `key_legend._draw`: 카드.
 
 ## 0.24.49
 - ZIP sha256 `101d2fb81f63578ef6e93abe84134c911806908ae374ed3990cbc2b23f3d6014`.

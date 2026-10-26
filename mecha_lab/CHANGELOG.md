@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 0.24.50 — Mecha Menu (직접 그리는 우클릭 메뉴, Substance 3D Modeler 룩), Ctrl+Alt 홀드 (2026-10-26)
+
+- **Mecha Menu**: 우클릭 팝업을 Blender 패널 대신 Mecha Lab이 직접 그림 — 거의 검정 둥근 카드 3장(도구 줄 | "Cut tool" 카드 | Actions). 아이콘 색은 패널과 같음.
+  - 도구 줄: Select, 최근 도구, 즐겨찾기(파란 배경 = 지금 도구), 별, 세트 이름(클릭 = 다음 세트). 마우스를 올리면 이름 말풍선.
+  - 카드: 글자 탭 Shapes / Stamps, 아이콘 그리드(선택 = 흰 배경), Settings = Modeler Dynamics식(이름 … 값, 가는 선 + 흰 손잡이 슬라이더 / 선택 버튼 / 토글). Base Mesh는 프로필 그리드.
+  - Actions: 아이콘만(구분선 + 작은 회색 제목), 올리면 이름. Mirror X·Y·Z, Remesh / Quad / Low Poly, Radial / Curve Array / Radial Sym, Hide / Show All / Isolate, Live(Apply 등).
+  - 슬라이더 드래그(Shift 미세), 클릭 = 값 입력, Ctrl+클릭 = 기본값. 도구 선택 / 마우스가 필요한 동작은 메뉴를 닫고, 모양·탭·설정·토글은 열어 둠. RMB / Esc / 바깥 클릭 = 닫기, 휠·가운데 버튼은 뷰 회전으로 통과.
+  - 큰 화면 자동 확대(4K 100% → 약 2배) × Preferences **Mecha UI Size**. 예전 패널은 **Classic RMB Popup**으로.
+- **Ctrl + Alt 홀드**: 0.25초 이상 누르면 메뉴가 뜨고, 누르는 동안 클릭해도 안 닫힘(도구는 그 자리에서 바뀜, Duplicate는 제자리 복제). 떼면 닫힘. 그 전에 클릭하면 원래 Ctrl+Alt 그리기. Preferences: Hold Ctrl + Alt.
+- **Quick HUD / 키 안내**: 같은 어두운 카드, 큰 글씨, 크기 자동 확대. HUD는 뷰 이름 글자 아래로 이동, 둥근 값 막대.
+- 테스트: 130개 파일 3732/3732. test_v02470(33) 추가. ZIP sha256 `c32d992db1ef0778e09d17350e60439e26be4877c2e6c7e5aff7955ca8f36bcf`.
+
 ## 0.24.49 — UI/UX 1단계: Modeler식 우클릭 팝업, 최근·즐겨찾기, Quick HUD, 툴바 자동 축소, 키 안내 (2026-10-26)
 
 - **우클릭 팝업 (Substance 3D Modeler 배치 참고)**: 그리기 도구에서 RMB 한 번(두 번 = 도구 종료는 그대로) → 세 칸.
