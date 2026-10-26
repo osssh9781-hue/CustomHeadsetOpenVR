@@ -1,4 +1,10 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.33 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.34 (Claude Code, 2026-10-14)
+
+## 0.24.34
+- ZIP sha256 `86cceef084d993161d94b25600cd15a6798150a17c3d844810edffc5a333566c`.
+- `target_rules.py`(새): `allowed(context)`(None = Auto, 아니면 이름 집합: 선택 / 활성 메쉬 + 그 메쉬로 만든 파츠의 바탕 메쉬 — 소스 JSON `target`, `mch_extract.source`, `mch_live.target/source`, parent), `scene_ray(context, dg, o, d)`(허용 안 된 메쉬는 뚫고 다시 쏨, 64회). 설정은 `Scene.mch_cut.targets` 하나. 피킹하는 모듈의 `context.scene.ray_cast` → `target_rules.scene_ray`(armor_plate, base_mesh, belt_maker, bridge_patch, cable, cape_gen, curve_tube, detail_stamp, lasso_line, live_subtract, plate_detail, primitive_place, screw_stamp, surface_draw, surface_lasso, cut_engine.pick_mesh_under). `PICKING` 툴 = 패널에 `ui_tool_settings.draw_targets`.
+- `brush_resize.py`(새): `targets(context)`(툴 / 모양별 크기 속성: line_width, custom_size, mask_brush_radius, mch_screw.radius, Surface Draw는 저장된 width / height도), `scale(items, start, factor)`(속성 한계 안), `MCH_OT_brush_resize`(F 모달, exp(dx × 0.006), 원 그리기, Esc = 원복). `_tool_keymap` + `screw_stamp.TOOL_KEYMAP`에 F. 전역 F = `mch.select_move_key`는 그대로(툴 키맵이 먼저).
+- `cape_gen.py`: `fold_dir`(DOWN = Cape / ACROSS = Scarf Cape, 오브젝트에 고정), `gravity`, `Scene.mch_scape`, `scene_settings(scene, kind)`, `line_loop(path)`(선 아래에 얇은 외곽선), `perform_line`, `live_cape(context, kind)`, `draw(layout, context, kind)`. `shape_sheet` ACROSS: 주름선 수 = folds × 0.5 × 길이 / 폭, 단면 `2|sin|^0.3 − 1`(날카로운 접힘선 + 평평한 사이), 양 끝 8 %에서 페이드, Gravity = 가운데 z 처짐(size × 0.08) + 주름선 U자(w − g × 0.06 × sin(πs)). 툴 `SCAPE`(53), cut_engine에서 항상 선 모드.
 
 ## 0.24.33
 - ZIP sha256 `933ecbc2062186650d7e6b042df5f1313e0c13651ccf05e277967ce66b13b3bc`.

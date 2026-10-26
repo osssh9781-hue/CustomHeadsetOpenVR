@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## 0.24.34 — 모든 그리기 툴에 대상 선택(Auto / Selected Only / Active), F + 마우스 = 브러시 크기, 목도리 케이프(Scarf Cape) (2026-10-26)
+
+- **대상 선택을 모든 그리기 툴에**: Cut 패널의 **Auto Target / Selected Only / Active** 줄이 메쉬 위에 그리는 모든 툴(Surface Draw, Base Mesh, Armor / Creature Plate, Belt, Spike, Scales, Scale Brush, Bridge, Flower, Surface Curve, Cape, Scarf Cape, Hair, Plate Detail 1/2/3, Screw, Cloth Plate, Primitive, Mesh Curve, Cable 등)의 패널 맨 위에 생김.
+  - Selected Only = 선택한 메쉬에만 그려짐(앞에 다른 메쉬가 있어도 뚫고 지나감), Active = 활성 메쉬에만.
+  - 그린 뒤 새 판 / 띠가 선택돼도 그 판이 붙은 메쉬는 계속 대상(다음 획도 같은 메쉬에).
+  - Cut과 같은 설정 하나(바꾸면 모든 툴에 같이 적용), 기본 Auto Target = 예전과 동일. T 키 전환도 그리기 툴에서 동작.
+- **F + 마우스 좌우 = 브러시 크기(모든 그리기 툴)**: Concept Move처럼 F를 누르고 마우스를 좌우로 움직이면 크기가 바뀌고 화면에 원으로 보임. 클릭 / F = 확정, 우클릭 / Esc = 원래대로.
+  - 크기 = Line Width(Line 모드 · Surface Draw · Belt · Surface Curve 등), PNG 스탬프 모양이면 Stamp Radius, Mask 브러시면 Mask Brush Radius, Screw Stamp면 Size. Surface Draw는 저장된 다음 획 Width / Height도 같이.
+  - 툴 안에서 F는 이제 크기 조절(툴 밖 / Select 툴에서는 F = Select / Move 그대로, 툴 ↔ Select 전환은 Q).
+- **Scarf Cape(목도리 케이프, 새 툴)**: 몸 위에 **가로로 선을 그으면** 그 선이 윗단이 되어 그은 길이만큼의 폭으로 아래로 늘어짐. 주름선은 **가로로**(접힌 선은 또렷하게, 사이는 평평하게), 가장자리에서 주름이 서서히 사라져 옆선이 깔끔함.
+  - **Gravity**: 올리면 가운데가 처지고 주름선이 U자로 휨. 나머지 설정은 망토와 같음(설정은 망토와 따로 저장, 기존 망토는 그대로).
+- 테스트: 106개 파일 3464/3464. 새 test_v02444(대상 선택 15) · test_v02445(Scarf Cape 17) · test_v02446(F 브러시 크기 12). ZIP sha256 `86cceef084d993161d94b25600cd15a6798150a17c3d844810edffc5a333566c`.
+
 ## 0.24.33 — Path Move 방식(Extend / Separate Tube), Perforate, Surface Draw, Point Radial Symmetry, 망토 좁게 (2026-10-26)
 
 - **Path Move 방식 선택**(패널 Method):

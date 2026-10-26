@@ -1,5 +1,13 @@
 # KNOWN LIMITATIONS — Mecha Lab 0.18.0
 
+## 0.24.34 대상 선택 / Scarf Cape
+- 실제 화면에서 써 보지 않음.
+- 대상 선택은 Cut과 같은 설정 하나: Cut에서 Selected Only로 두면 다른 그리기 툴도 Selected Only.
+- 버튼으로 동작하는 툴(Perforate, Boolean, Mirror, Radial 등)은 원래 선택한 메쉬에만 작동해서 줄이 없음. Through All / From Surface · Auto Apply는 Cut · Split에만.
+- 툴 안에서는 F가 브러시 크기라 Select / Move로 가려면 Q(또는 Esc)를 씀. 원 미리보기는 마우스 아래 표면 기준 크기(표면이 없으면 3D 커서 깊이).
+- Scarf Cape는 선을 왼쪽↔오른쪽으로 그어야 함(거의 세로로 그으면 안내만 나옴). 크게 구불거리는 선은 윗단이 화면 가로 기준으로 정리됨.
+- 마지막 렌더 이후 주름 높이 · 가장자리 페이드를 바꿈: 새 모양은 렌더로 확인하지 않음(자동 테스트만).
+
 ## 0.24.33 Path Move 방식 / Perforate / Surface Draw / Radial Symmetry
 - 실제 화면에서 써 보지 않음: 모든 새 기능의 조작감 · 속도 미검증.
 - Path Move Separate Tube: 시작 부분이 원래 메쉬와 겹치는 곳에 어두운 띠가 보일 수 있음(Merge Union 하면 사라짐).
