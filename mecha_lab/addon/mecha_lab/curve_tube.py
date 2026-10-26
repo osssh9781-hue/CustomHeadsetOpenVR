@@ -815,10 +815,13 @@ class TubeLogic:
         s = proj.to_screen(p)
         if s is None:
             return None
+        if self.drag_kind == 'RADIUS' and self.drag == i and getattr(self, 'drag_w', None) is not None:
+            return self.drag_w                  # while dragging it follows the mouse
         side = self._air(context, (s[0] + 1.0, s[1] + 0.6), p) - p
         if side.length < 1e-12:
             return None
-        return p + side.normalized() * (ob.mch_tube.radius * pts[i][1])
+        # 0.24.38 always right beside the white point (HANDLE_PX on screen), whatever the radius
+        return p + side * (HANDLE_PX / math.hypot(1.0, 0.6))
 
     def _near_handle(self, context, xy):
         ob = self._ob()
@@ -854,7 +857,11 @@ class TubeLogic:
                 hs = self._proj(context).to_screen(self.handle_world(context, h))
                 ps = self._proj(context).to_screen(ob.matrix_world @ get_points(ob)[i][0]) if i is not None else None
                 if i is None or ps is None or math.dist(hs, xy) < math.dist(ps, xy):
+                    hw = self.handle_world(context, h)
                     self.drag, self.drag_kind = h, 'RADIUS'
+                    self.drag_r0 = get_points(ob)[h][1]                     # drag = radius x (distance / at start)
+                    self.drag_d0 = max(1e-9, (hw - ob.matrix_world @ get_points(ob)[h][0]).length)
+                    self.drag_w = None
                     return 'RADIUS'
             if i is not None:
                 self.drag, self.drag_kind = i, 'POINT'
@@ -896,8 +903,9 @@ class TubeLogic:
         pts = get_points(ob)
         cur = ob.matrix_world @ pts[self.drag][0]
         w = self._air(context, xy, cur)
-        if self.drag_kind == 'RADIUS':           # orange handle: distance to the point = this point's radius
-            r = (w - cur).length / max(1e-9, ob.mch_tube.radius)
+        if self.drag_kind == 'RADIUS':           # orange handle: farther from the point = thicker (x the start)
+            r = getattr(self, 'drag_r0', 1.0) * (w - cur).length / max(1e-9, getattr(self, 'drag_d0', 1.0))
+            self.drag_w = w
             pts[self.drag] = (pts[self.drag][0], max(0.01, r))
             set_points(ob, pts)
             rebuild(ob)
@@ -914,6 +922,7 @@ class TubeLogic:
     def release(self):
         self.drag = None
         self.drag_kind = 'POINT'
+        self.drag_w = None
 
     def point_radius(self, context, xy, factor):
         ob = self._ob()
@@ -1360,6 +1369,28 @@ def _on_depsgraph(scene, depsgraph):
 # -----------------------------------------------------------------------------
 
 
+HANDLE_PX = 26.0          # 0.24.38 the orange radius dot sits this far beside its white point (screen pixels)
+
+
+def beside_offset(context, ob, p_local, side_local):
+    """Local-space offset of HANDLE_PX pixels along ``side_local`` (screen right-up) at the point."""
+    try:
+        from bpy_extras import view3d_utils
+        region, rv3d = context.region, context.region_data
+        pw = ob.matrix_world @ Vector(p_local)
+        s = view3d_utils.location_3d_to_region_2d(region, rv3d, pw)
+        if s is None:
+            raise ValueError
+        d = Vector((1.0, 0.6)).normalized() * HANDLE_PX
+        q = view3d_utils.region_2d_to_location_3d(region, rv3d, (s.x + d.x, s.y + d.y), pw)
+        off = ob.matrix_world.inverted().to_3x3() @ (q - pw)
+        if off.length > 1e-12:
+            return off
+    except (AttributeError, TypeError, ValueError):
+        pass
+    return Vector(side_local) * (ob.mch_tube.radius * 0.5)
+
+
 def _view_side(context, ob):
     """Local-space unit vector pointing to the screen right (for the radius dots)."""
     rv3d = context.region_data
@@ -1439,21 +1470,42 @@ class MCH_GGT_tube_points(bpy.types.GizmoGroup):
                 rebuild(ob)
         return set_
 
+    def _beside(self, ob, p_local):
+        """0.24.38 Local offset putting the orange dot HANDLE_PX beside the white point on screen."""
+        return beside_offset(bpy.context, ob, p_local, self.side)
+
     def _rgetter(self, i):
         def get():
             ob = self._ob()
             pts = get_points(ob) if ob else []
             if i >= len(pts):
                 return (0.0, 0.0, 0.0)
-            return tuple(pts[i][0] + self.side * (ob.mch_tube.radius * pts[i][1]))
+            drag = getattr(self, 'rdrag', None)
+            if drag is not None and drag[0] == i and i < len(self.rad_gz) and self.rad_gz[i].is_modal \
+                    and drag[3] is not None:
+                return tuple(drag[3])                 # while dragging it follows the mouse
+            return tuple(pts[i][0] + self._beside(ob, pts[i][0]))
         return get
+
+    def invoke_prepare(self, context, gizmo):
+        """A radius dot is grabbed: remember the radius and the dot's distance (drag = radius x the ratio)."""
+        if gizmo in getattr(self, 'rad_gz', []):
+            i = self.rad_gz.index(gizmo)
+            ob = self._ob()
+            pts = get_points(ob) if ob else []
+            if i < len(pts):
+                self.rdrag = [i, pts[i][1], max(1e-9, self._beside(ob, pts[i][0]).length), None]
 
     def _rsetter(self, i):
         def set_(value):
             ob = self._ob()
             pts = get_points(ob) if ob else []
             if i < len(pts):
-                r = (Vector(value) - pts[i][0]).length / max(1e-9, ob.mch_tube.radius)
+                drag = getattr(self, 'rdrag', None)
+                if drag is None or drag[0] != i:
+                    drag = self.rdrag = [i, pts[i][1], max(1e-9, self._beside(ob, pts[i][0]).length), None]
+                drag[3] = Vector(value)
+                r = drag[1] * (Vector(value) - pts[i][0]).length / drag[2]
                 pts[i] = (pts[i][0], max(0.01, r))
                 set_points(ob, pts)
                 rebuild(ob)

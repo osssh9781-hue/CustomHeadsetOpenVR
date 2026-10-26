@@ -125,17 +125,23 @@ op.point_radius(ctx, (300, 500), 1.1)
 check('Ctrl+Wheel on a point: its radius', abs(ct.get_points(ob)[0][1] - r0 * 1.1) < 1e-6)
 h = op.handle_world(ctx, 1)
 p1 = op._world_pts()[1]
-check('orange radius handle beside the point, at its radius', h is not None
-      and abs((h - p1).length - ob.mch_tube.radius * ct.get_points(ob)[1][1]) < 1e-6)
+import math as _m
+check('0.24.38 orange radius handle right beside the point (26 px on screen), whatever the radius', h is not None
+      and abs(_m.dist(VIEW.to_screen(h), VIEW.to_screen(p1)) - ct.HANDLE_PX) < 0.5,
+      _m.dist(VIEW.to_screen(h), VIEW.to_screen(p1)))
+rad0 = ob.mch_tube.radius * ct.get_points(ob)[1][1]
 hs = VIEW.to_screen(h)
 r = op.click(ctx, hs)
-target = VIEW.to_screen(p1 + (h - p1).normalized() * 0.3)
+target = VIEW.to_screen(p1 + (h - p1) * 2.0)
 op.move(ctx, target)
 txt = op.radius_text()
 op.release()
-check('drag the orange handle: that point gets radius 0.3', r == 'RADIUS'
-      and abs(ob.mch_tube.radius * ct.get_points(ob)[1][1] - 0.3) < 1e-3 and txt.startswith('Radius: 0.3'),
-      (r, txt, ob.mch_tube.radius * ct.get_points(ob)[1][1]))
+check('drag the orange handle twice as far: that point gets twice the radius', r == 'RADIUS'
+      and abs(ob.mch_tube.radius * ct.get_points(ob)[1][1] - 2 * rad0) < 1e-3 and txt.startswith('Radius:'),
+      (r, txt, ob.mch_tube.radius * ct.get_points(ob)[1][1], rad0))
+h2 = op.handle_world(ctx, 1)
+check('... and the handle is back beside the point after the drag', abs(_m.dist(VIEW.to_screen(h2), VIEW.to_screen(p1))
+                                                                   - ct.HANDLE_PX) < 0.5)
 check('other points keep their radius', abs(ct.get_points(ob)[2][1] - 1.0) < 1e-6)
 op.delete_point(ctx, (300, 500))
 check('X on a point deletes it', len(ct.get_points(ob)) == 3)
