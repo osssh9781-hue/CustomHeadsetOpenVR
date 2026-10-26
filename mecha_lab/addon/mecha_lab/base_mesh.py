@@ -1192,6 +1192,8 @@ def perform_base(context, loops, projector, cutter=False, targets=None):
     creature = defaults.profile in CREATURE_PROFILES
     if cutter and not creature and getattr(defaults, 'alt_mode', 'HEIGHT') == 'CUT':
         return cut_like_cut_tool(context, loops, projector, targets)
+    if cutter and not creature and defaults.profile in SURFACE_CARVE:
+        return carve_surface(context, loops, projector, defaults, targets)
     groups, frame, screen_groups, embed = _local_groups(context, loops, projector, allow_invert=not cutter)
     if cutter:      # 0.24.23 Creature Base Mesh: Alt engraves the lump (as deep as it is thick); 0.24.37 Base Mesh:
         # the drawn shape carved in, as deep as Height (Alt: Like Cut = the Cut tool's way)
@@ -1302,6 +1304,41 @@ def _sketch_cutter_targets(context, groups, frame):
             if real not in found:
                 found.append(real)
     return found
+
+
+SURFACE_CARVE = {'FLAT': 'SQUARE', 'CHAMFER': 'CHAMFER', 'BEVEL': 'BEVEL'}
+
+
+def carve_surface(context, loops, projector, p, targets=None):
+    """0.24.37 Alt (Carve Height): the drawn shape laid ON the surface and carved in, Height deep everywhere
+    along it (a curved surface gets an even pocket / groove, not a flat-bottomed one); Flat = straight walls,
+    Chamfer / Bevel = that edge at the opening (Border Width)."""
+    from types import SimpleNamespace
+    from . import surface_draw as sd
+    screen_groups = cg.prepare_loops(loops)
+    if not screen_groups:
+        raise cg.CutError('The outline is empty.')
+    targets = _cutter_targets(context, projector, screen_groups, targets)
+    if not targets:
+        raise cg.CutError('Alt Base Mesh carves into a mesh: draw over one (nothing was changed).')
+    height = max(p.height, 1e-5)
+    edge = min(1.0, max(0.02, getattr(p, 'bevel_width', 0.05) / (2.0 * height)))
+    st = SimpleNamespace(profile=SURFACE_CARVE[p.profile], edge=edge, sink=0.0,
+                         fill_res=max(15, min(60, getattr(p, 'resolution', 28))))
+    done, failed = [], []
+    for t in targets:
+        try:
+            cg.check_target(t)
+            sd.carve_area(context, t, screen_groups, projector, st, height)
+            done.append(t.name)
+        except (cg.CutError, RuntimeError) as ex:
+            if len(targets) == 1:
+                raise
+            failed.append(f'{t.name} ({str(ex).splitlines()[0][:60]})')
+    if not done:
+        raise cg.CutError('Alt Base Mesh: nothing was carved. ' + '; '.join(failed))
+    return f'Base Mesh carve (Alt): {", ".join(done)} | {height:.3g} deep along the surface' + \
+        (' | failed: ' + '; '.join(failed) if failed else '')
 
 
 def cut_like_cut_tool(context, loops, projector, targets=None):

@@ -63,6 +63,20 @@ bm_.perform_base(C, band, FRONT, cutter=True)
 check('Alt with a line half off the mesh: still finds it and carves (0.5 x 0.1 x 0.5)',
       abs(volume(t) - (8.0 - 0.5 * 0.1 * 0.5)) < 0.01 and non_manifold(t) == 0, volume(t))
 
+# on a curved surface the carve follows it: the pocket floor stays Height below the surface everywhere
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, segments=64, ring_count=32)
+ball = C.active_object
+p.height = 0.1
+BIG = [[scr(-0.5, -0.5), scr(0.5, -0.5), scr(0.5, 0.5), scr(-0.5, 0.5)]]
+msg = bm_.perform_base(C, BIG, FRONT, cutter=True)
+floor = [(ball.matrix_world @ q.co).length for q in ball.data.vertices
+         if abs(q.co.x) < 0.4 and abs(q.co.z) < 0.4 and q.co.y < 0 and (ball.matrix_world @ q.co).length < 0.97]
+check('Alt on a ball: the pocket follows the surface (floor Height = 0.1 below it everywhere, not flat)',
+      floor and max(floor) - min(floor) < 0.02 and abs(sum(floor) / len(floor) - 0.9) < 0.015 and non_manifold(ball) == 0,
+      (msg, floor and (round(min(floor), 3), round(max(floor), 3))))
+p.height = 0.5
 st = S.mch_sdraw
 st.width, st.height, st.profile = 0.1, 0.05, 'SQUARE'
 t = cube()

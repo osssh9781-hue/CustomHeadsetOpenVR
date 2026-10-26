@@ -518,15 +518,33 @@ def engrave(context, path, projector, loops=None):
     size = (hi - lo).length
     width = st.width if st.width > 0 else max(1e-5, getattr(context.scene.mch_brush, 'line_width', size * 0.03))
     height = st.height if st.height > 0 else width / 3.0
+    if loops:
+        parts = [fill_mesh(f, st, width, height, size, sign=-1.0)
+                 for f in _project_fills(context, target, cg.prepare_loops(loops), projector, st)]
+    else:
+        bvh, _lo, _hi = cape_gen._body(context, target)
+        parts = [stroke_mesh(bvh, _project_stroke(context, target, path, projector), st, width, height, size,
+                             sign=-1.0)]
+    carve_parts(context, target, parts)
+    return f'Carved into "{target.name}" (Alt): {height:.3g} deep, {width:.3g} wide'
+
+
+def carve_area(context, target, groups, projector, settings, height):
+    """0.24.37 Base Mesh Alt: the drawn outline laid on the target's surface and carved in, Height deep
+    everywhere along the surface (``settings``: profile SQUARE / CHAMFER / BEVEL, edge, sink, fill_res)."""
+    from . import cape_gen
+    _bvh, lo, hi = cape_gen._body(context, target)
+    size = (hi - lo).length
+    parts = [fill_mesh(f, settings, height, height, size, sign=-1.0)
+             for f in _project_fills(context, target, groups, projector, settings)]
+    carve_parts(context, target, parts)
+
+
+def carve_parts(context, target, parts):
+    """(verts, faces) pieces (world) -> one cutter -> Boolean Difference on the target (the mesh is unchanged on
+    an error)."""
     bm = bmesh.new()
     try:
-        if loops:
-            parts = [fill_mesh(f, st, width, height, size, sign=-1.0)
-                     for f in _project_fills(context, target, cg.prepare_loops(loops), projector, st)]
-        else:
-            bvh, _lo, _hi = cape_gen._body(context, target)
-            parts = [stroke_mesh(bvh, _project_stroke(context, target, path, projector), st, width, height, size,
-                                 sign=-1.0)]
         for v, f in parts:
             bv = [bm.verts.new(q) for q in v]
             for face in f:
@@ -537,7 +555,7 @@ def engrave(context, path, projector, loops=None):
         bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-9)
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
         if not bm.faces:
-            raise cg.CutError('Alt + draw: the line is too short.')
+            raise cg.CutError('Alt + draw: the shape is too small.')
         me = bpy.data.meshes.new('MCH_SDrawEngrave')
         bm.to_mesh(me)
     finally:
@@ -553,7 +571,6 @@ def engrave(context, path, projector, loops=None):
                 bpy.data.meshes.remove(res)
     finally:
         cg.remove_object_and_mesh(cutter)
-    return f'Carved into "{target.name}" (Alt): {height:.3g} deep, {width:.3g} wide'
 
 
 def live_object(context, kind=None):
