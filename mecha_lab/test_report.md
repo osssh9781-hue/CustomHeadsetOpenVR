@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.32
+# Test Report — Mecha Lab 0.24.33
+
+## 0.24.33 결과: 103개 파일 3407/3407 (`tests/test_log_bpy501_v02433.txt`, Blender 5.0.1 bpy). 새 test_v02439(21: Path Move Extend / Separate Tube / Merge), test_v02440(24: Perforate 4패턴 · 여백 · Mirror 앞 · Apply / Remove), test_v02441(31: Surface Draw 가장자리 · 같은 크기 · 안 쌓임 · Fill Area · Alt 컷 7개 · Cloth 툴 없음), test_v02443(11: Radial Symmetry). 5.2.3 bpy에서도 test_v02441 · test_v02443 · test_ui_draw · test_v0120 · test_cut_geometry 통과. 실제 화면 입력은 미검증.
 
 ## 0.24.32 결과: 99개 파일 3297/3297 (`tests/test_log_bpy501_v02432.txt`, Blender 5.0.1 bpy). test_v02437(43): + 화면 기준 Ctrl 회전(좌우 = 화면 세로축, 위아래 = 가로축, 시점 따라감), + Path Move(스텝 수 · 꺾임 합 90° · 박스 축 회전 · Taper 0 · Follow Turns 끔 · 떨림 정리 · 박스 / 구 끝까지 폭 유지 · 몸통 · 꺾인 길에서 위로 · 끝 단면이 돎). test_v02436(Jungle Gym) 삭제. 새 test_v02438(17: Auto / Selected / Active 잡기, From Surface / Through All 대상, 두 오브젝트 동시 무브, 회전 · 크기 오브젝트 장면 기준 무브, Auto Apply 끔 → Undo Last · Clear · Apply, Path Move Through All · 편집 가능). 5.2.3 bpy에서도 test_v02437 · test_v02438 통과. 실제 화면 입력은 미검증.
 

@@ -1,5 +1,13 @@
 # KNOWN LIMITATIONS — Mecha Lab 0.18.0
 
+## 0.24.33 Path Move 방식 / Perforate / Surface Draw / Radial Symmetry
+- 실제 화면에서 써 보지 않음: 모든 새 기능의 조작감 · 속도 미검증.
+- Path Move Separate Tube: 시작 부분이 원래 메쉬와 겹치는 곳에 어두운 띠가 보일 수 있음(Merge Union 하면 사라짐).
+- Path Move Extend: 잡은 곳의 단면이 닫힌 루프로 잘리지 않는 메쉬(또는 라이브 오브젝트)에서는 Separate Tube로 대신 만듦(경고 표시).
+- Perforate: Exact Boolean이라 면이 많은 메쉬 + 작은 구멍이면 느릴 수 있음(Solver = Fast 선택 가능).
+- Surface Draw Alt 컷: 자른 영역은 그릴 때의 화면 시점으로 고정됨(나중에 시점을 돌려도 같은 자리).
+- Radial Symmetry: 복사본은 Array 모디파이어라 Apply 전까지 실제 메쉬가 아님.
+
 ## 0.24.32 Path Move / 무브 패널 옵션
 - 실제 화면에서 써 보지 않음: 드래그 느낌, 미리보기 속도 미검증. 0.24.31 항목 중 Jungle Gym 내용은 툴을 지웠으므로 해당 없음.
 - 잡은 부분이 단단하게 따라가는 방식이라(Hardness 높을수록 단면 유지) 아주 급하게 꺾으면 꺾인 안쪽 면이 겹칠 수 있음.

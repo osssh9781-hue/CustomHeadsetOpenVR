@@ -1,4 +1,13 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.32 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.33 (Claude Code, 2026-10-14)
+
+## 0.24.33
+- ZIP sha256 `933ecbc2062186650d7e6b042df5f1313e0c13651ccf05e277967ce66b13b3bc`.
+- `path_sweep.py`(새): `sweep_frames`(평행 이동 프레임), `rings`, `tube_faces`, `_cut`(BVH 최근접 → 연결 덩어리 → bisect_plane → 가장 가까운 닫힌 루프), `extend`(split_edges → 끝 면 이동 → 링 브리지), `sweep_object`(Separate Tube), `merge`(Join / Union). `concept_move.MCH_OT_concept_path.method` = EXTEND / SWEEP / STRETCH, 씬 설정 `path_method`(기본 EXTEND).
+- `perforate.py`(새): 툴 `PERF`(51). 숨은 커터 오브젝트 + Boolean `MCH_Perforate`(Mirror 바로 앞, 없으면 맨 뒤). `mch.perforate` / `perforate_apply` / `perforate_remove`.
+- `surface_draw.py`(새): 툴 `SDRAW`(52). 소스 JSON(`mch_sdraw_src`: target · strokes · fills · order), 획마다 높이 0.4 % 단계(교차 깜빡임 방지). `rebuild` 끝에 `live_subtract.apply`(Alt 컷 유지), Apply 시 `live_subtract.clear`. cut_engine: SDRAW + Alt → `live_subtract.perform(context, 'SDRAW', loops, projector)`.
+- `radial_sym.py`(새): 툴 `RSYM`(55). Array 모디파이어 `MCH_RadialSym`(FIXED_COUNT, 오브젝트 오프셋 = 숨은 헬퍼 empty, matrix_basis = M⁻¹ · step · M), 피벗 empty `MCH_RadialPivot`. 새 Base Mesh / 판 = `after_create`, Cut = `replicate_cutter`.
+- `cape_gen.py`: `exact_width`(기본 True) + `clamp_width`, 간격 · 두께 자동값 축소, 72 × 48 격자.
+- 삭제: `cloth_wrap.py`, Cloth Brush(Surface Draw의 CLOTH 종류, `Scene.mch_clothb`), 툴 번호 53 / 54는 비워 둠.
 
 ## 0.24.32
 - ZIP sha256 `8c367a412f7b8bd95599c4a54a4532ba9cab544ed17f66e056141f2fd45c65f1`.

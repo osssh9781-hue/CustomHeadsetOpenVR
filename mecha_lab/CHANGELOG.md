@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 0.24.33 — Path Move 방식(Extend / Separate Tube), Perforate, Surface Draw, Point Radial Symmetry, 망토 좁게 (2026-10-26)
+
+- **Path Move 방식 선택**(패널 Method):
+  - **Extend**(기본): 잡은 곳에서 메쉬를 자르고, 잘린 단면을 길 따라 쓸어서 끝을 옮김 → 원래 메쉬가 늘어난 것처럼 보이는 가벼운 한 덩어리 메쉬.
+  - **Separate Tube**: 같은 단면의 관을 새 오브젝트로 만듦(가볍고 빠름), 나중에 **Merge**(Join / Union)로 합침.
+  - **Stretch**: 예전 방식(무브를 여러 번 반복) 그대로 남김.
+- **Perforate**(새 툴): 선택한 메쉬에 사이파이 구멍판 패턴 — **Honeycomb / Circle / Square / Diamond**. 라이브(크기 · 간격 · 가장자리 여백 · 회전 · 위치), 구멍은 표면이 있는 곳에만, Mirror 앞에 들어감(베벨은 그 앞에 그대로). Apply / Remove.
+- **Surface Draw**(새 툴): VR처럼 메쉬 표면 위에 그리면 띠 모양 메쉬가 생김.
+  - 가장자리 **Square(직각, 기본) / Chamfer / Bevel**(+ Round / Ridge).
+  - 펜을 떼고 다시 그어도 **처음 폭 · 높이 그대로**(Keep First Size), 겹쳐 그려도 쌓이지 않고 같은 높이.
+  - 같은 메쉬에 그린 선은 한 라이브 오브젝트로 합쳐지고 슬라이더로 전부 다시 계산, Remove Last Stroke / Apply.
+  - **Fill Area**: 닫힌 라쏘 = 그 면적을 같은 높이로 채움.
+  - **Alt + 선 / 라쏘 = 그 영역을 잘라냄**(라이브 유지, 다시 계산해도 잘린 곳 유지).
+- **Point Radial Symmetry**(새 툴): 점을 하나 찍으면 그 점을 중심으로 선택한 메쉬가 돌아가며 복사(개수, 활성 메쉬의 로컬 X / Y / Z 축). 그 위에 새로 만드는 Base Mesh · 판도 같이 복사, Cut은 모든 복사본을 같이 자름. Apply / Remove.
+- **Cape**: Only Drawn Width(기본 켬) = 그은 길이만큼만 가로 폭, 몸에 더 가깝게, 더 얇게, 더 촘촘한 격자.
+- **Cloth Brush · Cloth Wrap 제거**(요청): 코드 · 아이콘 · 테스트 · 메뉴 모두.
+- 테스트: 103개 파일 3407/3407. 새 test_v02439(Path Move 방식) · test_v02440(Perforate) · test_v02441(Surface Draw, Alt 컷 포함) · test_v02443(Radial Symmetry). ZIP sha256 `933ecbc2062186650d7e6b042df5f1313e0c13651ccf05e277967ce66b13b3bc`.
+
 ## 0.24.32 — Path Move(길 따라 무브), 무브 패널 옵션(Cut처럼), Jungle Gym 제거 (2026-10-25)
 
 - **Path Move**(새 툴, 왼쪽 목록 · 하단 바 Path · V 파이 Primitive 칸 Move 아래): Concept Move처럼 잡고 길을 그리듯 드래그하면 잡은 **네모 / 동그라미가 모양 그대로 길을 따라가고**, 지나간 자리에 같은 굵기의 몸통이 생김(프레임 · 파이프 · 팔).

@@ -1,8 +1,22 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.32 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.33 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A000000000000000000000000000000000000000000000000000000000000000000000000000. 0.24.33 (미검증)
+- [ ] Path Move Method = Extend: 잡고 길을 그리면 원래 메쉬가 늘어난 것처럼 보이고, 놓은 뒤 한 덩어리 메쉬인지, 길게 그려도 느려지지 않는지
+- [ ] Method = Separate Tube: 새 오브젝트 관이 생기고 Merge(Join / Union)로 합쳐지는지, Stretch는 예전처럼 되는지
+- [ ] Perforate: 선택한 메쉬에 Honeycomb / Circle / Square / Diamond 구멍이 뚫리고, 크기 · 간격 · 여백 · 회전 슬라이더가 바로 반영되는지, Apply / Remove
+- [ ] Perforate + Mirror / Bevel이 있는 메쉬: 결과가 깨지지 않는지
+- [ ] Surface Draw: 메쉬 위에 선을 그으면 띠가 생기고, 펜을 떼고 다시 그어도 같은 폭 · 높이인지, 교차해도 쌓이지 않는지
+- [ ] Surface Draw 가장자리 Square / Chamfer / Bevel 버튼이 바로 바뀌는지
+- [ ] Surface Draw Fill Area 켜고 라쏘 → 면적이 같은 높이로 채워지는지
+- [ ] Surface Draw에서 Alt 누르고 선 / 라쏘 → 그 영역이 잘리고, 슬라이더를 바꿔도 잘린 곳이 유지되는지
+- [ ] Radial Symmetry: 점을 찍으면 선택한 메쉬가 그 점 중심으로 복사되고, 축 X / Y / Z · 개수가 바뀌는지
+- [ ] Radial Symmetry 상태에서 Base Mesh / 판을 만들면 같이 복사되고, Cut이 모든 복사본을 자르는지, Apply / Remove
+- [ ] Cape: 그은 길이만큼만 가로 폭이 생기고 몸에 붙어 얇게 나오는지
+- [ ] 메뉴 · 왼쪽 목록에 Cloth Brush · Cloth Wrap이 없는지
 
 ## A00000000000000000000000000000000000000000000000000000000000000000000000000. 0.24.32 (미검증)
 - [ ] Path Move: 메쉬를 잡고 길을 그리듯 드래그하면 잡은 부분이 마우스 길을 따라오고, 놓으면 같은 굵기의 몸통이 생기는지
