@@ -81,7 +81,7 @@ def handle_scale():
 # 0.14.3: icon sizes survive a restart even when Blender's preferences are not
 # saved (Auto-Save Preferences off): they are kept in the add-on's own small
 # file in the user config folder.  Blender's own preference file is untouched.
-SIZE_KEYS = ('icon_scale', 'toolbar_scale', 'handle_scale')
+SIZE_KEYS = ('icon_scale', 'toolbar_scale', 'handle_scale', 'mecha_ui_size')   # 0.24.51 + viewport popups
 _SIZE_MUTE = [False]
 
 
@@ -546,6 +546,7 @@ def lasso_sketch_modes():
 
 def _tool_keymap(mode):
     return (
+        ('mch.quick_hud_press', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'any': True}, None),   # 0.24.51 HUD first
         # 0.24.31 hold D + drag = Concept Move (before the tool's own left mouse)
         ('mch.concept_hold', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'key_modifier': 'D'}, None),
         ('mch.cut_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'any': True},
@@ -1892,6 +1893,8 @@ def draw_icon_sizes(layout, p):
     col.prop(p, 'icon_scale', slider=True)
     col.prop(p, 'toolbar_scale', slider=True)
     col.prop(p, 'handle_scale', slider=True)
+    if hasattr(p, 'mecha_ui_size'):
+        col.prop(p, 'mecha_ui_size', slider=True)        # 0.24.51 Mecha Menu, Quick HUD, key legend
     if hasattr(p, 'dial_flip'):
         layout.prop(p, 'dial_flip')
     if hasattr(p, 'bottom_toolbar'):
@@ -1913,6 +1916,8 @@ class MCH_OT_icon_size_preset(bpy.types.Operator):
         if p is None:
             return {'CANCELLED'}
         p.icon_scale = p.toolbar_scale = p.handle_scale = self.factor
+        if hasattr(p, 'mecha_ui_size'):
+            p.mecha_ui_size = self.factor
         save_sizes(p)
         for window in context.window_manager.windows:
             for area in window.screen.areas:
@@ -2203,9 +2208,13 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
                               description='Right-click in Select / Move opens the Mecha Actions popup (recent tools, '
                                           'favorites, actions on the selection) instead of Blender\'s object menu, '
                                           'MECHA LAB only. The popup has a button for Blender\'s menu')
-    mecha_ui_size: FloatProperty(name='Mecha UI Size', default=1.0, min=0.5, max=3.0, subtype='FACTOR',
+    mecha_ui_size: FloatProperty(name='Viewport Popups', default=1.0, min=0.5, max=3.0, subtype='FACTOR',
+                                 update=_sizes_changed,
                                  description='Size of the Mecha Menu (RMB), Quick HUD and key legend (big screens '
                                              'are already made larger automatically)')
+    mmb_menu: BoolProperty(name='Middle Click = Mecha Menu', default=True,
+                           description='Middle mouse click (no movement) opens the Mecha Menu; a middle drag still '
+                                       'orbits the view. MECHA LAB only. Switch off if orbiting feels different')
     hold_menu: BoolProperty(name='Hold Ctrl + Alt = Mecha Menu', default=True,
                             description='Hold Ctrl + Alt a moment: the Mecha Menu stays open while they are held '
                                         '(clicks do not close it), MECHA LAB only')
@@ -2257,7 +2266,9 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         row = box.row()
         row.prop(self, 'quick_hud')
         row.prop(self, 'classic_rmb_popup')
-        box.row().prop(self, 'hold_menu')
+        row = box.row()
+        row.prop(self, 'hold_menu')
+        row.prop(self, 'mmb_menu')
         box.prop(self, 'mecha_ui_size', slider=True)
         layout.prop(self, 'workspace_hotkeys')
         layout.prop(self, 'quick_menu')

@@ -194,8 +194,8 @@ check('HUD sits upper left, rows under the grip, the grip moves it',
       and abs(grip2[1] - grip[1] + 50) < 1e-6)
 gripc, rowsc = qh.layout_rows(300, 200, 5, offset=(5000, 5000))
 check('... kept inside the viewport', all(0 < x < 300 and 0 < y < 200 for x, y in [gripc] + rowsc))
-check('Gizmo group in the module (Blender registers gizmos only with a window); hidden outside MECHA LAB',
-      qh.MCH_GGT_quick_hud in qh.CLASSES and hasattr(bpy.types, 'MCH_PT_quick_value') and not qh.visible(outside))
+check('HUD click operator and value popup registered; hidden outside MECHA LAB (0.24.51: no gizmos)',
+      qh.MCH_OT_quick_hud_press in qh.CLASSES and hasattr(bpy.types, 'MCH_PT_quick_value') and not qh.visible(outside))
 check('... Armor Plate: hidden while its own live HUD is up (no double HUD)',
       'pending_plate(context) is not None' in inspect.getsource(qh._plate_scene))
 

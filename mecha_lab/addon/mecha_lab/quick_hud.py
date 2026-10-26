@@ -4,7 +4,9 @@ you don't go to the sidebar while drawing.
 - drag a slider left / right: change the value (Shift = fine); the live result follows like in the panel
 - click (no drag): type the exact value;  Ctrl + click: back to the default
 - on / off and choice settings: click flips / steps to the next choice
-- the grip on top moves the whole HUD (kept per Blender session)
+- the title row moves the whole HUD (kept per Blender session)
+0.24.51: the clicks are taken by ``mch.quick_hud_press`` (first in the tool keymaps) instead of gizmos, which the
+drawing tools' own left-click could beat.
 Shown in MECHA LAB, Object Mode, with a modelling tool on (not in Select / Move), when the tool has no HUD of
 its own on screen.  Preferences: Quick HUD.  Everything else stays in the sidebar.
 """
@@ -12,7 +14,6 @@ from __future__ import annotations
 
 import bpy
 from bpy.props import FloatVectorProperty, StringProperty
-from mathutils import Matrix
 
 from . import tool_state as ts
 
@@ -192,170 +193,128 @@ def current(context):
     return its, grip, rows
 
 
-# --- gizmos -----------------------------------------------------------------------------------------------
-
-def _rect():
-    from .primitive_hud import _RECT
-    return _RECT
+# --- mouse ------------------------------------------------------------------------------------------------
+# 0.24.51 no gizmos: a left click first asks the HUD (first item in the Mecha tool keymaps and in '3D View');
+# over a row it drags / clicks it, anywhere else the click passes on to the tool as before.
 
 
-class MCH_GT_quick_slider(bpy.types.Gizmo):
-    bl_idname = 'MCH_GT_quick_slider'
-    __slots__ = ('shape', 'index', 'init_x', 'init_value', 'moved', 'ctrl')
+def hit(context, mx, my):
+    """('row', index) / ('grip', None) under the mouse (region px), or None."""
+    its, grip, rows = current(context)
+    if its is None:
+        return None
+    from .ui_gpu import ui_factor
+    k = ui_factor(context)
+    rw, rh = ROW_W * k, ROW_H * k
+    for i, (x, y) in enumerate(rows):
+        if abs(mx - x) <= rw / 2 and abs(my - y) <= rh / 2:
+            return 'row', i
+    gx, gy = grip
+    if abs(mx - gx) <= rw / 2 and abs(my - gy) <= rh / 2:
+        return 'grip', None
+    return None
 
-    def setup(self):
-        if not hasattr(self, 'shape'):
-            self.shape = self.new_custom_shape('TRIS', _rect())
 
-    def draw(self, context):
-        pass                      # painted by _draw_labels (rounded, readable); the gizmo is only the hit area
+class MCH_OT_quick_hud_press(bpy.types.Operator):
+    """Quick HUD: drag a row = change it (Shift fine), click = type / next choice, Ctrl+click = default,
+    drag the title = move the HUD.  A click elsewhere goes on to the tool"""
+    bl_idname = 'mch.quick_hud_press'
+    bl_label = 'Quick HUD'
+    bl_options = {'INTERNAL'}
 
-    def draw_select(self, context, select_id):
-        self.draw_custom_shape(self.shape, select_id=select_id)
+    def invoke(self, context, event):
+        try:
+            h = hit(context, event.mouse_region_x, event.mouse_region_y) if visible(context) else None
+        except (AttributeError, KeyError, TypeError, ReferenceError):
+            h = None
+        if h is None:
+            return {'PASS_THROUGH'}
+        self.kind, self.index = h
+        self.x0, self.y0 = event.mouse_region_x, event.mouse_region_y
+        self.moved = False
+        self.ctrl = event.ctrl
+        if self.kind == 'grip':
+            self.init = _offset(context)
+        else:
+            data, prop = items(context)[self.index]
+            self.init = getattr(data, prop)
+        context.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
 
     def _item(self, context):
         its = items(context)
-        return its[self.index] if self.index < len(its) else (None, None)
+        return its[self.index] if self.index is not None and self.index < len(its) else (None, None)
 
-    def invoke(self, context, event):
-        data, prop = self._item(context)
-        if data is None:
-            return {'CANCELLED'}
-        self.init_x = event.mouse_region_x
-        self.init_value = getattr(data, prop)
-        self.moved = False
-        self.ctrl = event.ctrl
-        return {'RUNNING_MODAL'}
-
-    def modal(self, context, event, tweak):
-        data, prop = self._item(context)
-        if data is None:
-            return {'CANCELLED'}
-        dx = event.mouse_region_x - self.init_x
-        if abs(dx) > 3:
-            self.moved = True
-        rna = data.bl_rna.properties[prop]
-        if self.moved and rna.type in {'INT', 'FLOAT'} and not getattr(rna, 'is_array', False):
-            v = drag_value(data, prop, self.init_value, dx, fine=event.shift)
-            if v != getattr(data, prop):
-                setattr(data, prop, v)
-            if context.area:
-                context.area.header_text_set(value_text(data, prop) + '   (Shift: fine, Esc / RMB: back)')
-        elif self.moved and rna.type == 'ENUM':
-            ids = [i.identifier for i in rna.enum_items]
-            i0 = ids.index(self.init_value) if self.init_value in ids else 0
-            v = ids[int(i0 + dx // 30) % len(ids)]
-            if v != getattr(data, prop):
-                setattr(data, prop, v)
-        return {'RUNNING_MODAL'}
-
-    def exit(self, context, cancel):
-        if context.area:
-            context.area.header_text_set(None)
-        data, prop = self._item(context)
-        if data is None:
-            return
-        if cancel:
-            if self.moved:
-                setattr(data, prop, self.init_value)
-            return
-        rna = data.bl_rna.properties[prop]
-        if not self.moved:
-            if self.ctrl:
-                reset(data, prop)
-            elif rna.type in {'BOOLEAN', 'ENUM'}:
-                step_choice(data, prop)
-            else:
-                context.window_manager.mch_hud_edit = f'{self.index}'
-                try:
-                    bpy.ops.wm.call_panel(name=MCH_PT_quick_value.bl_idname, keep_open=False)
-                except RuntimeError:
-                    pass
-                return
-        try:
-            bpy.ops.ed.undo_push(message='HUD ' + (rna.name or prop))
-        except RuntimeError:
-            pass
-
-
-class MCH_GT_quick_grip(bpy.types.Gizmo):
-    bl_idname = 'MCH_GT_quick_grip'
-    __slots__ = ('shape', 'start', 'init')
-
-    def setup(self):
-        if not hasattr(self, 'shape'):
-            self.shape = self.new_custom_shape('TRIS', _rect())
-
-    def draw(self, context):
-        pass                      # painted by _draw_labels
-
-    def draw_select(self, context, select_id):
-        self.draw_custom_shape(self.shape, select_id=select_id)
-
-    def invoke(self, context, event):
-        self.start = (event.mouse_region_x, event.mouse_region_y)
-        self.init = _offset(context)
-        return {'RUNNING_MODAL'}
-
-    def modal(self, context, event, tweak):
-        context.window_manager.mch_hud_offset = (self.init[0] + (event.mouse_region_x - self.start[0]),
-                                                 self.init[1] + (event.mouse_region_y - self.start[1]))
+    def modal(self, context, event):
         if context.area:
             context.area.tag_redraw()
+        dx, dy = event.mouse_region_x - self.x0, event.mouse_region_y - self.y0
+        if event.type == 'MOUSEMOVE':
+            if abs(dx) > 3 or abs(dy) > 3:
+                self.moved = True
+            if self.kind == 'grip':
+                context.window_manager.mch_hud_offset = (self.init[0] + dx, self.init[1] + dy)
+                return {'RUNNING_MODAL'}
+            data, prop = self._item(context)
+            if data is None:
+                return {'CANCELLED'}
+            rna = data.bl_rna.properties[prop]
+            if self.moved and rna.type in {'INT', 'FLOAT'} and not getattr(rna, 'is_array', False):
+                v = drag_value(data, prop, self.init, dx, fine=event.shift)
+                if v != getattr(data, prop):
+                    setattr(data, prop, v)
+                if context.area:
+                    context.area.header_text_set(value_text(data, prop) + '   (Shift: fine, Esc / RMB: back)')
+            elif self.moved and rna.type == 'ENUM':
+                ids = [e.identifier for e in rna.enum_items]
+                i0 = ids.index(self.init) if self.init in ids else 0
+                v = ids[int(i0 + dx // 30) % len(ids)]
+                if v != getattr(data, prop):
+                    setattr(data, prop, v)
+            return {'RUNNING_MODAL'}
+        if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
+            if self.kind == 'grip':
+                context.window_manager.mch_hud_offset = self.init
+            else:
+                data, prop = self._item(context)
+                if data is not None and self.moved:
+                    setattr(data, prop, self.init)
+            return self._end(context, {'CANCELLED'})
+        if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+            if self.kind == 'grip':
+                return self._end(context, {'FINISHED'})
+            data, prop = self._item(context)
+            if data is None:
+                return self._end(context, {'CANCELLED'})
+            rna = data.bl_rna.properties[prop]
+            if not self.moved:
+                if self.ctrl:
+                    reset(data, prop)
+                elif rna.type in {'BOOLEAN', 'ENUM'}:
+                    step_choice(data, prop)
+                else:
+                    context.window_manager.mch_hud_edit = str(self.index)
+                    self._end(context, {'FINISHED'})
+                    try:
+                        bpy.ops.wm.call_panel(name=MCH_PT_quick_value.bl_idname, keep_open=False)
+                    except RuntimeError:
+                        pass
+                    return {'FINISHED'}
+            try:
+                bpy.ops.ed.undo_push(message='HUD ' + (rna.name or prop))
+            except RuntimeError:
+                pass
+            return self._end(context, {'FINISHED'})
         return {'RUNNING_MODAL'}
 
-    def exit(self, context, cancel):
-        if cancel:
-            context.window_manager.mch_hud_offset = self.init
+    def _end(self, context, result):
+        if context.area:
+            context.area.header_text_set(None)
+            context.area.tag_redraw()
+        return result
 
 
-class MCH_GGT_quick_hud(bpy.types.GizmoGroup):
-    bl_idname = 'MCH_GGT_quick_hud'
-    bl_label = 'Mecha Quick HUD'
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'WINDOW'
-    bl_options = {'PERSISTENT', 'SCALE'}
-
-    @classmethod
-    def poll(cls, context):
-        return visible(context)
-
-    def setup(self, context):
-        self.sliders = []
-        for i in range(MAX_ROWS):
-            gz = self.gizmos.new(MCH_GT_quick_slider.bl_idname)
-            gz.index = i
-            gz.color = (0.20, 0.22, 0.27)
-            gz.alpha = 0.9
-            gz.color_highlight = (0.34, 0.38, 0.45)
-            gz.alpha_highlight = 1.0
-            gz.use_draw_scale = False
-            self.sliders.append(gz)
-        g = self.gizmos.new(MCH_GT_quick_grip.bl_idname)
-        g.color = (1.0, 0.62, 0.16)
-        g.alpha = 0.55
-        g.color_highlight = (1.0, 0.72, 0.3)
-        g.alpha_highlight = 0.9
-        g.use_draw_scale = False
-        self.grip = g
-
-    def draw_prepare(self, context):
-        from .ui_gpu import ui_factor
-        its, grip, rows = current(context)
-        k = ui_factor(context)
-        for i, gz in enumerate(self.sliders):
-            if its is None or i >= len(rows):
-                gz.hide = True
-                continue
-            gz.hide = False
-            x, y = rows[i]
-            gz.matrix_basis = Matrix.Translation((x, y, 0.0)) @ Matrix.Diagonal(
-                (ROW_W / 2.0 * k, ROW_H / 2.0 * k, 1.0, 1.0))
-        self.grip.hide = its is None
-        if its is not None:
-            x, y = grip
-            self.grip.matrix_basis = Matrix.Translation((x, y, 0.0)) @ Matrix.Diagonal(
-                (ROW_W / 2.0 * k, ROW_H / 2.0 * k, 1.0, 1.0))
+KEYMAP_ITEM = ('mch.quick_hud_press', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'any': True}, None)
 
 
 class MCH_PT_quick_value(bpy.types.Panel):
@@ -419,7 +378,8 @@ def _draw_labels():
     ui_gpu.done()
 
 
-CLASSES = (MCH_GT_quick_slider, MCH_GT_quick_grip, MCH_GGT_quick_hud, MCH_PT_quick_value)
+CLASSES = (MCH_OT_quick_hud_press, MCH_PT_quick_value)
+_keymaps = []
 
 
 def register():
@@ -428,6 +388,11 @@ def register():
     bpy.types.WindowManager.mch_hud_edit = StringProperty(default='', options={'SKIP_SAVE'})
     for c in CLASSES:
         bpy.utils.register_class(c)
+    wm = bpy.context.window_manager
+    kc = wm.keyconfigs.addon if wm else None
+    if kc is not None:                       # tools that are not Mecha drawing tools (they have it in their keymap)
+        km = kc.keymaps.new(name='3D View', space_type='VIEW_3D')
+        _keymaps.append((km, km.keymap_items.new('mch.quick_hud_press', 'LEFTMOUSE', 'PRESS', any=True)))
     if not bpy.app.background and _label_handle is None:
         _label_handle = bpy.types.SpaceView3D.draw_handler_add(_draw_labels, (), 'WINDOW', 'POST_PIXEL')
 
@@ -440,6 +405,12 @@ def unregister():
         except (ValueError, RuntimeError):
             pass
         _label_handle = None
+    for km, item in _keymaps:
+        try:
+            km.keymap_items.remove(item)
+        except (ReferenceError, RuntimeError):
+            pass
+    _keymaps.clear()
     for c in reversed(CLASSES):
         try:
             bpy.utils.unregister_class(c)

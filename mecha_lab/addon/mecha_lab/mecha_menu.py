@@ -11,9 +11,11 @@ cards side by side at the mouse, big icons, white text, blue for what is on:
 Mouse: hover lights a button, click runs it; drag a slider (Shift = fine), click a slider = type the value,
 Ctrl + click = default.  Choosing a tool or an action that needs the mouse closes the menu; shapes, tabs,
 settings and toggles keep it open.  RMB / Esc / click outside closes.
+Middle click (press and let go without moving, in MECHA LAB) opens it too; a middle drag still orbits.
 Hold Ctrl + Alt (a quarter second, in MECHA LAB): the menu opens and stays while they are held - every click
 works without closing it (tools switch in place, Duplicate is in place); letting go closes it.  The layout (``build``) is plain data so
-it is tested without a window; ``draw`` only paints it.  Preferences: Mecha UI Size, Classic RMB Popup.
+it is tested without a window; ``draw`` only paints it.  Size: the − / + under the tool strip or Ctrl + wheel
+over the menu (= Preferences / sidebar Icon Size > Viewport Popups, also the Quick HUD and key legend).
 """
 from __future__ import annotations
 
@@ -127,6 +129,11 @@ def build(context, mx, my, region_w, region_h, S=1.0):
     y -= 26 * S
     strip.append(Item('pill', pad - 4 * S, y, r_btn + 8 * S, 22 * S, tool_recent.current_set().title(), '',
                       False, True, ('fav_set',)))
+    # 0.24.51 size of every viewport popup, right here (Ctrl + wheel over the menu does the same)
+    y -= 30 * S
+    half = (r_btn + 8 * S - 4 * S) / 2
+    strip.append(Item('pill', pad - 4 * S, y, half, 22 * S, '−', '', False, True, ('ui_size', -1)))
+    strip.append(Item('pill', pad - 4 * S + half + 4 * S, y, half, 22 * S, '+', '', False, True, ('ui_size', 1)))
     strip_h = -y + pad
 
     # ---- middle card: '<Tool> tool', text tabs, icon grid, settings like Modeler's Dynamics ----------------
@@ -292,6 +299,9 @@ def run(context, item, ctrl=False, hold=False):
     if kind == 'fav_toggle':
         tool_recent.toggle_favorite(a[1])
         return False
+    if kind == 'ui_size':
+        set_ui_size(ui_size() + 0.1 * a[1])
+        return False
     if kind == 'fav_set':
         ids = [s[0] for s in tool_recent.SETS]
         i = ids.index(tool_recent.current_set())
@@ -327,6 +337,22 @@ def run(context, item, ctrl=False, hold=False):
             print('Mecha Menu:', idname, ex)
         return bool(closes) and not hold
     return False
+
+
+def ui_size():
+    from .workspace_ui import pref
+    try:
+        return float(pref('mecha_ui_size', 1.0))
+    except (TypeError, ValueError):
+        return 1.0
+
+
+def set_ui_size(v):
+    """Preferences > Viewport Popups (Mecha Menu, Quick HUD, key legend), kept in ui_sizes.json."""
+    from .workspace_ui import prefs
+    p = prefs()
+    if p is not None and hasattr(p, 'mecha_ui_size'):
+        p.mecha_ui_size = round(max(0.5, min(3.0, v)), 2)
 
 
 def _undo(message):
@@ -575,6 +601,13 @@ class MCH_OT_mecha_menu(bpy.types.Operator):
                 run(context, it, event.ctrl and not self.hold, self.hold)
             except (RuntimeError, AttributeError, TypeError, ReferenceError) as ex:
                 print('Mecha Menu:', ex)
+            self.S = G.ui_factor(context, self.region)
+            self._rebuild(context)
+            self.hover = self._at(x, y)
+            return {'RUNNING_MODAL'}
+        if event.ctrl and event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
+            set_ui_size(ui_size() + (0.1 if event.type == 'WHEELUPMOUSE' else -0.1))   # Ctrl + wheel: size
+            self.S = G.ui_factor(context, self.region)
             self._rebuild(context)
             self.hover = self._at(x, y)
             return {'RUNNING_MODAL'}
@@ -635,6 +668,45 @@ class MCH_OT_mecha_hold_gate(bpy.types.Operator):
         self._stop(context)
 
 
+class MCH_OT_mecha_mmb_gate(bpy.types.Operator):
+    """Middle mouse in MECHA LAB: a click (no movement) opens the Mecha Menu, a drag orbits the view as always"""
+    bl_idname = 'mch.mecha_mmb_gate'
+    bl_label = 'Mecha Menu (middle click)'
+    bl_options = {'INTERNAL'}
+
+    @classmethod
+    def poll(cls, context):
+        from . import bottom_bar
+        from .workspace_ui import pref
+        return (pref('mmb_menu', True) and context.area is not None and context.area.type == 'VIEW_3D'
+                and bottom_bar.ui_active(context))
+
+    def invoke(self, context, event):
+        self.x0, self.y0 = event.mouse_x, event.mouse_y
+        try:
+            self.limit = max(5, context.preferences.inputs.drag_threshold_mouse)
+        except AttributeError:
+            self.limit = 5
+        context.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+
+    def modal(self, context, event):
+        if event.type == 'MOUSEMOVE':
+            if abs(event.mouse_x - self.x0) + abs(event.mouse_y - self.y0) > self.limit:
+                try:                                   # a drag: Blender's own orbit takes over from here
+                    bpy.ops.view3d.rotate('INVOKE_DEFAULT')
+                except RuntimeError:
+                    pass
+                return {'FINISHED'}
+            return {'RUNNING_MODAL'}
+        if event.type == 'MIDDLEMOUSE' and event.value == 'RELEASE':
+            open_menu(context)                        # a click: the menu
+            return {'FINISHED'}
+        if event.type == 'ESC':
+            return {'CANCELLED'}
+        return {'RUNNING_MODAL'}
+
+
 def open_menu(context):
     """Open the Mecha Menu (False if it could not be opened here)."""
     try:
@@ -648,7 +720,7 @@ def use_menu():
     return not bpy.app.background and not pref('classic_rmb_popup', False)
 
 
-CLASSES = (MCH_OT_mecha_menu, MCH_OT_mecha_hold_gate)
+CLASSES = (MCH_OT_mecha_menu, MCH_OT_mecha_hold_gate, MCH_OT_mecha_mmb_gate)
 _keymaps = []
 HOLD_KEYS = (('LEFT_ALT', {'ctrl': True}), ('RIGHT_ALT', {'ctrl': True}),
              ('LEFT_CTRL', {'alt': True}), ('RIGHT_CTRL', {'alt': True}))
@@ -663,6 +735,8 @@ def register():
         km = kc.keymaps.new(name='3D View', space_type='VIEW_3D')
         for key, mods in HOLD_KEYS:                 # whichever of the two goes down second
             _keymaps.append((km, km.keymap_items.new('mch.mecha_hold_gate', key, 'PRESS', **mods)))
+        # 0.24.51 middle click = menu (exact: Shift / Ctrl + middle mouse keep panning / zooming)
+        _keymaps.append((km, km.keymap_items.new('mch.mecha_mmb_gate', 'MIDDLEMOUSE', 'PRESS')))
 
 
 def unregister():
