@@ -16,9 +16,12 @@ from mathutils import Vector
 
 from . import target_rules
 
-MODES = {'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'CUT', 'SPLIT', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'SPIKE', 'SCALES',
+MODES = {'HIDE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'CUT', 'SPLIT', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'SPIKE', 'SCALES',
          'DETAIL', 'DETAIL2', 'DETAIL3'}      # 0.24.20 + Plate Detail 1 / 2 / 3
 CAPS = (('ROUND', 'Round', 'Round line ends'), ('FLAT', 'Flat', 'Square line ends'))
+
+
+ALWAYS = {'BELT', 'SCURVE', 'SDRAW', 'SCAPE'}      # these always draw a line (the cut engine's forced line mode)
 
 
 def enabled(context, mode, shape=None):

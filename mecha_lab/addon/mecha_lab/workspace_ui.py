@@ -1278,7 +1278,10 @@ def draw_shape_palette(self, context):
     skb = sk.row(align=True)
     skb.enabled = tool in lasso_sketch.MODES or tool in {'BASE', 'CBASE'}     # 0.24.1 only where the sketch works
     skb.operator('mch.sketch_toggle', text='Sketch', icon='GREASEPENCIL', depress=lasso_sketch.is_on(context))
-    sk.prop(brush, 'line_mode', text='Line', icon='IPO_LINEAR', toggle=True)
+    from . import lasso_line
+    lb = sk.row(align=True)
+    lb.enabled = tool in lasso_line.MODES or tool in lasso_line.ALWAYS     # 0.24.36 greyed where Line does nothing
+    lb.prop(brush, 'line_mode', text='Line', icon='IPO_LINEAR', toggle=True)
     if tool == 'CPLATE':                         # 0.24.20 Creature Plate: through front and back
         sk.prop(brush, 'through_mode', text='Through', icon='XRAY', toggle=True)
     if tool in {'CUT', 'SPLIT', 'PLATE', 'WRINKLE'}:
