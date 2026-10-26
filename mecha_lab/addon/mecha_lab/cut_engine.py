@@ -666,7 +666,7 @@ def cut_ramp(context, targets, loops, projector, edge=None, live=True):
     fin = getattr(cut, 'gn_finish', 'NONE')
     st = SimpleNamespace(profile={'CHAMFER': 'CHAMFER', 'BEVEL': 'BEVEL'}.get(fin, 'SQUARE'), edge=0.35, sink=0.0,
                          edge_abs=cut.gn_width if fin != 'NONE' else None, fill_res=28,
-                         segments=getattr(cut, 'gn_segments', 4), fine=1.0)
+                         segments=getattr(cut, 'gn_segments', 4), fine=getattr(cut, 'gn_ramp_res', 20) / 28.0)
     ramp = (edge[0], edge[1], getattr(cut, 'gn_ramp_length', 1.0), getattr(cut, 'gn_ramp_soft', 0.5))
     if live and len(targets) == 1:
         ramp_edit.begin(context, targets[0], loops, projector, kind='cut')

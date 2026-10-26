@@ -165,6 +165,7 @@ def draw_gn_edge(layout, context, mode='CUT'):
             c.prop(cut, 'depth', text='Ramp Depth (Cut Depth)')
             c.prop(cut, 'gn_ramp_length', slider=True)
             c.prop(cut, 'gn_ramp_soft', slider=True)
+            c.prop(cut, 'gn_ramp_res')
             box.label(text='Deep side: the first edge (change it after: < > / Pick Edge)', icon='INFO')
             from . import ramp_edit
             ramp_edit.draw_panel(box, context)
@@ -598,6 +599,7 @@ def _draw_base_sketch(layout, context, base_mesh):
             if sp.alt_mode == 'RAMP':                                       # 0.24.44 deep at the first edge
                 box.prop(sp, 'ramp_length', slider=True)
                 box.prop(sp, 'ramp_soft', slider=True)
+                box.prop(sp, 'resolution', text='Ramp Resolution')         # 0.24.47 more points = smoother
                 box.label(text='Deep side: the first edge (change it after: < > / Pick Edge)', icon='INFO')
         elif sp.alt_mode == 'INSIDE':
             box.prop(sp, 'inside_skin', slider=True)                        # 0.24.38 the skin left front / back

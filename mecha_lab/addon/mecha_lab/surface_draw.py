@@ -535,12 +535,13 @@ def smooth_normals(nrms, tris, passes):
     return nrms
 
 
-def _carve_fills(context, target, groups, projector, edge_world, profile, height, segments=4, fine=1.0):
+def _carve_fills(context, target, groups, projector, edge_world, profile, height, segments=4, fine=1.0, soft=0.0):
     """0.24.39 the drawn outline laid on the surface for a CARVE (Base Mesh Alt): points as fine as the shape's
     narrowest part (a thin Line band gets many rows across, not a few random ones), a row of points exactly
     where the Chamfer / Bevel edge ends (straight clean walls) and normals smoothed over the depth (an even
     floor on a bent surface).  ``segments`` = rows on a Bevel edge, ``fine`` = more points (Resolution / 28).
-    Same dicts as ``_project_fills``."""
+    0.24.47 ``soft`` (Ramp Soft): rows of points over the band where the sides round off - with too few the
+    softened sides came out as a sawtooth.  Same dicts as ``_project_fills``."""
     from types import SimpleNamespace
     from . import armor_plate as ap
     from . import base_mesh as bmm
@@ -566,13 +567,22 @@ def _carve_fills(context, target, groups, projector, edge_world, profile, height
         s = half / 3.0
         if edge_px > 0:
             s = min(s, max(edge_px / 1.5, half / 12.0))
-        s = max(s / max(0.25, fine), math.sqrt(area / 15000.0), extent / 400.0)
+        reach_px = 0.6 * max(0.0, soft) * half             # where Ramp Soft rounds the sides off
+        if reach_px > 0:
+            s = min(s, max(reach_px / 5.0, half / 16.0))
+        box_area = (max(xs) - min(xs) + 1e-9) * (max(ys) - min(ys) + 1e-9)
+        s = max(s / max(0.25, fine), math.sqrt(area / 40000.0), extent / 600.0,
+                math.sqrt(box_area / 100000.0))          # the point grid covers the outline's box: keep it in bounds
         n = max(1, int(segments))
         bevel = tuple(1.0 - math.cos(0.5 * math.pi * (i + 1) / n) for i in range(n))   # even steps round the corner
         fr = {'CHAMFER': (1.0,), 'BEVEL': bevel}.get(profile, (0.5,))
+        want = [edge_px * f / s for f in fr] if edge_px > 0 else [0.5]
+        if reach_px > 0:
+            want += [reach_px * (j + 1) / 6.0 / s for j in range(6)]
+        want = sorted(set(round(r, 4) for r in want))
         rings = []
-        for r in (edge_px * f / s for f in fr) if edge_px > 0 else (0.5,):
-            if r - (rings[-1] if rings else 0.0) >= 0.35 or r == edge_px / s:   # rows too close = sliver faces
+        for r in want:
+            if r - (rings[-1] if rings else 0.0) >= 0.35 or abs(r - edge_px / s) < 1e-3:   # too close = slivers
                 rings.append(r)
         rings = tuple(rings)
         q = SimpleNamespace(profile='PILLOW', outline_smooth=0.0, resolution=extent / (1.5 * s), edge_round=0.15,
@@ -714,7 +724,8 @@ def carve_area(context, target, groups, projector, settings, height, through=Fal
     edge = getattr(settings, 'edge_abs', None)
     edge = settings.edge * 2.0 * height if edge is None else min(max(edge, height * 0.04), height * 2.0)
     fills = _carve_fills(context, target, groups, projector, edge, settings.profile, height,
-                         getattr(settings, 'segments', 4), getattr(settings, 'fine', 1.0))
+                         getattr(settings, 'segments', 4), getattr(settings, 'fine', 1.0),
+                         soft=(ramp[3] if ramp is not None and len(ramp) > 3 else 0.0))
     if through:
         deepest = 0.0
         for f in fills:

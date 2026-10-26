@@ -60,4 +60,26 @@ cut.gn_finish = 'NONE'
 ce.perform_closed(C, 'CUT', [cube], [SQUARE], TOP, False)
 check('Ramp off: the usual flat pocket', abs(depth_at(-0.5, 0) - 0.2) < 0.01 and abs(depth_at(0.5, 0) - 0.2) < 0.01,
       (depth_at(-0.5, 0), depth_at(0.5, 0)))
+# 0.24.47 no sawtooth on the softened sides of a long thin ramp: enough rows of points where the sides round off
+import math as _m
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+bpy.ops.mesh.primitive_cube_add(size=1.0, scale=(3.0, 2.0, 0.4))
+plate = C.active_object
+bpy.ops.object.transform_apply(scale=True)
+cut.depth_mode, cut.depth, cut.gn_ramp, cut.gn_finish, cut.gn_ramp_length, cut.gn_ramp_soft = 'SURFACE', 0.12, True, 'NONE', 1.0, 0.5
+ce.perform_closed(C, 'CUT', [plate], [[(380, 420), (420, 420), (640, 600), (600, 600)]], TOP, False)
+# walk along the soft side band: the depth must change smoothly (no teeth)
+d = (Vector((2.2, 1.8, 0)) / Vector((2.2, 1.8, 0)).length)
+side = Vector((-d.y, d.x, 0))
+SIDE_OFF = 0.095                    # inside the band where the sides round off
+prof = []
+for k in range(60):
+    p_ = Vector((-1.0, -0.8, 0)) + d * (0.6 + 1.2 * k / 59) + side * SIDE_OFF
+    prof.append(depth_at(p_.x, p_.y) or 0.0)
+jumps = [abs(prof[i + 1] - 2 * prof[i] + prof[i - 1]) for i in range(1, len(prof) - 1)]
+check('a long thin ramp with Ramp Soft: the softened side is smooth along its length (no sawtooth), closed',
+      max(jumps) < 0.003 and non_manifold(plate) == 0 and 'gn_ramp_res' in inspect.getsource(uts.draw_gn_edge),
+      (round(max(jumps), 4), [round(x, 3) for x in prof[::8]]))
+cut.gn_ramp = False
 summary()

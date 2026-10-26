@@ -420,6 +420,9 @@ class MCH_PG_Cut(bpy.types.PropertyGroup):
     gn_ramp_soft: FloatProperty(name='Ramp Soft', default=0.5, min=0.0, max=1.0, subtype='FACTOR',
                                 update=_ramp_refresh_update,
                                 description='How softly the slope runs into the surface and the side walls round off')
+    gn_ramp_res: IntProperty(name='Ramp Resolution', default=20, min=8, max=160, update=_ramp_refresh_update,
+                             description='How many points the ramp is built from (more = smoother slope and sides, '
+                                         'slower)')
     gn_sides: EnumProperty(name='Split Sides', items=[
         ('BOTH', 'Both', 'Both parts of a Split'), ('A', 'Side A', 'Only the original object'),
         ('B', 'Side B', 'Only the new _Split part')], default='BOTH')
