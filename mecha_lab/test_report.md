@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.50
+# Test Report — Mecha Lab 0.24.51
+
+## 0.24.51 결과: 131개 파일 3751/3751 (`tests/test_log_bpy501_v02451.txt`, Blender 5.0.1 bpy). test_v02471(19): HUD 클릭 항목이 모든 도구 키맵 앞쪽(D+드래그 다음, 도구 클릭 전)·3D View에 1개, 기즈모 없음, HUD 밖 PASS_THROUGH, 가짜 영역에서 행/제목 줄/빈 곳 판정·이동 후에도 맞음, 모달 동작(드래그/Shift/Esc/선택형/기본값/undo/입력), 휠 클릭 키맵(수정키 없음)·회전 넘김·MECHA LAB 한정·끄기, − / + 크기(0.1, 0.5~3 제한), Ctrl+휠, 사이드바·프리셋·저장, 크기 계수 공유. 5.2.3 bpy에서도 test_v02471 · v02470 · v02469 · v02437 · ui_draw · zip_install 통과. 실제 화면(HUD 드래그, 휠 클릭과 회전 느낌)은 미검증.
 
 ## 0.24.50 결과: 130개 파일 3732/3732 (`tests/test_log_bpy501_v02450.txt`, Blender 5.0.1 bpy). test_v02470(33): 카드 3장 배치·화면 안(모서리에서 열어도), 도구 줄 순서/활성, 카드 제목·탭·4열 그리드, Settings 종류, Actions 섹션, 모든 버튼 = 실제 연산자, 큰 화면 확대(2배)·계수, 클릭(모양, 탭, Mirror X → 다음에 파란색, 선택 버튼, Ctrl+클릭 기본값, 클릭 = 입력, 별, 세트), 홀드 모드(도구 제자리 전환·메뉴 유지, Duplicate 제자리), Base Mesh 프로필 카드, RMB 연결, Ctrl+Alt 키맵 4개·지연·MECHA LAB 한정, HUD 위치·2배, 대역 그리기 함수로 그리기 코드 실행(모든 hover), 키 안내 카드, 이미지가 파일에 남지 않음. 5.2.3 bpy에서도 test_v02470 · v02469 · ui_draw · zip_install 통과. GPU 실제 그리기(이 환경은 GPU 없음)와 화면 모양은 미검증 — 같은 배치 데이터로 PIL 미리보기만 확인.
 

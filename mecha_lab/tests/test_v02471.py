@@ -17,7 +17,8 @@ S = C.scene
 S.mch_settings.mch_active_tool = 'CUT'
 
 check('Every Mecha drawing tool (and Screw, Primitive) asks the HUD first on a left click',
-      wui._tool_keymap('CUT')[0][0] == 'mch.quick_hud_press' and wui._tool_keymap('BASE')[0][0] == 'mch.quick_hud_press'
+      all([k[0] for k in wui._tool_keymap(m)][:3] == ['mch.concept_hold', 'mch.quick_hud_press', 'mch.cut_stroke']
+          for m in ('CUT', 'BASE'))                       # hold D + drag stays first (0.24.37), then the HUD
       and [k[0] for k in screw_stamp.TOOL_KEYMAP].index('mch.quick_hud_press')
       < [k[1].get('value') for k in screw_stamp.TOOL_KEYMAP].index('PRESS') + 1
       and primitive_place.TOOL_KEYMAP[0][0] == 'mch.quick_hud_press')

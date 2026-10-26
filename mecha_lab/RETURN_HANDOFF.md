@@ -1,4 +1,10 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.50 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.51 (Claude Code, 2026-10-14)
+
+## 0.24.51
+- ZIP sha256 `db6a105da0ee8a00a334d5bdb38d1e399ac083de26be73d917e1a36b57253dc9`.
+- `quick_hud`: 기즈모 그룹/기즈모 삭제 → `MCH_OT_quick_hud_press`(invoke: `hit()`로 HUD 위인지, 아니면 PASS_THROUGH) + `KEYMAP_ITEM`; `workspace_ui._tool_keymap`, `screw_stamp.TOOL_KEYMAP`, `primitive_place.TOOL_KEYMAP` 앞쪽(`_tool_keymap`은 `mch.concept_hold` 다음 — test_v02437), addon '3D View' LMB.
+- `mecha_menu.MCH_OT_mecha_mmb_gate`: MIDDLEMOUSE PRESS(수정키 없음); 드래그 임계값 넘으면 `view3d.rotate('INVOKE_DEFAULT')`, 떼면 `open_menu`. pref `mmb_menu`.
+- `mecha_menu.ui_size / set_ui_size`, 'ui_size' 액션(− / +), 모달 Ctrl+휠; pref `mecha_ui_size`(이름 Viewport Popups, `_sizes_changed`로 저장, SIZE_KEYS·프리셋 포함).
 
 ## 0.24.50
 - ZIP sha256 `c32d992db1ef0778e09d17350e60439e26be4877c2e6c7e5aff7955ca8f36bcf`.

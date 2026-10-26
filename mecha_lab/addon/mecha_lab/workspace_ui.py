@@ -546,9 +546,9 @@ def lasso_sketch_modes():
 
 def _tool_keymap(mode):
     return (
-        ('mch.quick_hud_press', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'any': True}, None),   # 0.24.51 HUD first
         # 0.24.31 hold D + drag = Concept Move (before the tool's own left mouse)
         ('mch.concept_hold', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'key_modifier': 'D'}, None),
+        ('mch.quick_hud_press', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'any': True}, None),   # 0.24.51 HUD next
         ('mch.cut_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'any': True},
          {'properties': [('mode', mode)]}),
         ('mch.rmb_gate', {'type': 'RIGHTMOUSE', 'value': 'PRESS'},

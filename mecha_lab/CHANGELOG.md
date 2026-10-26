@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.24.51 — Quick HUD 슬라이더 수정, 휠 클릭 메뉴, 팝업 크기 조절 (2026-10-26)
+
+- **Quick HUD 슬라이더가 안 움직이던 문제**: 기즈모 대신 클릭 연산자(`mch.quick_hud_press`)가 모든 Mecha 그리기 도구(+ Screw, Primitive) 키맵 앞쪽(D 누르고 드래그 다음, 도구 클릭보다 먼저)과 3D View에서 먼저 받음 — HUD 위면 드래그(Shift 미세) / 클릭 입력 / Ctrl+클릭 기본값 / 제목 줄 드래그로 이동, 그 밖의 클릭은 그대로 도구로 넘어감.
+- **가운데 버튼(휠) 클릭 = Mecha Menu**: 누르고 움직이지 않고 떼면 메뉴, 움직이면 Blender 회전으로 넘김. Shift / Ctrl + 휠 드래그(이동 / 확대)는 그대로. Preferences: Middle Click = Mecha Menu.
+- **팝업 크기**: 메뉴 도구 줄 아래 − / + 버튼, 메뉴 위에서 Ctrl + 휠, 사이드바 Icon Size > Viewport Popups(Small/Normal/Large/Huge 프리셋 포함). 0.5~3배, ui_sizes.json에 저장. Quick HUD·키 안내도 같은 크기.
+- 테스트: 131개 파일 3751/3751. test_v02471(19) 추가. ZIP sha256 `db6a105da0ee8a00a334d5bdb38d1e399ac083de26be73d917e1a36b57253dc9`.
+
 ## 0.24.50 — Mecha Menu (직접 그리는 우클릭 메뉴, Substance 3D Modeler 룩), Ctrl+Alt 홀드 (2026-10-26)
 
 - **Mecha Menu**: 우클릭 팝업을 Blender 패널 대신 Mecha Lab이 직접 그림 — 거의 검정 둥근 카드 3장(도구 줄 | "Cut tool" 카드 | Actions). 아이콘 색은 패널과 같음.

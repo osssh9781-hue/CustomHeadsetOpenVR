@@ -1,5 +1,8 @@
 # KNOWN LIMITATIONS — Mecha Lab 0.18.0
 
+## 0.24.51
+- 휠 클릭 메뉴: 휠 드래그를 처음 몇 픽셀은 애드온이 받고 그다음 Blender 회전을 시작함 — 회전 느낌이 달라지면 Preferences > Middle Click = Mecha Menu 끄기. Blender 설정에서 휠을 회전이 아닌 다른 동작으로 바꿨다면 드래그는 항상 회전이 됨.
+
 ## 0.24.50 Mecha Menu
 - GPU로 직접 그려서 이 개발 환경(GPU 없음)에서는 실제 모습을 확인하지 못함. 문제가 있으면 Preferences > Classic RMB Popup으로 예전 패널.
 - Blender 사이드바 / 헤더 / 메뉴는 애드온이 모양을 바꿀 수 없음(테마 색만 가능).
