@@ -1,4 +1,9 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.46 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.47 (Claude Code, 2026-10-14)
+
+## 0.24.47
+- ZIP sha256 `3d9d0e7d404ffce3d20445c04c57022de2694510c0ab338185dbd34bcb8698a5`.
+- `surface_draw._carve_fills(..., soft)`: reach_px = 0.6 × soft × (면적 / 둘레); s ≤ max(reach / 5, half / 16); 링에 reach × k/6(k = 1..6) 추가(0.35 s 간격 규칙); 하한 max(sqrt(면적 / 40000), extent / 600, sqrt(박스 면적 / 100000)). `carve_area`가 ramp[3]을 soft로 넘김.
+- Cut `gn_ramp_res`(기본 20, update = 다시 파기) → fine = res / 28. UI: GN Edge Ramp에 `gn_ramp_res`, Base Mesh Ramp에 `resolution`.
 
 ## 0.24.46
 - ZIP sha256 `f9d943d57b574750075e334bf9cf167f2acb4ecfb61a38f4d3bbb1f207c4f146`.

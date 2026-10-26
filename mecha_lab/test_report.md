@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.46
+# Test Report — Mecha Lab 0.24.47
+
+## 0.24.47 결과: 127개 파일 3655/3655 (`tests/test_log_bpy501_v02447.txt`, Blender 5.0.1 bpy). test_v02467(10): + 길쭉한 기울어진 Cut Ramp(Soft 0.5) 옆면 띠(외곽에서 약 0.03 안)를 따라 60곳 깊이의 2차 변화 최대 0.001(수정 전 코드 0.007 → 실패 확인), 닫힘, UI 슬라이더. 시간(그 모양): Res 15 = 1.2초 · 1.3만 면, 20 = 2.3초 · 2만, 28+ = 4.4초 · 3.4만(상한). 5.2.3 bpy에서도 test_v02467 · v02465 · v02466 · v02454 · v02457 · v0245 · test_base_mesh · test_ui_draw 통과. 실제 화면은 미검증.
 
 ## 0.24.46 결과: 127개 파일 3654/3654 (`tests/test_log_bpy501_v02446.txt`, Blender 5.0.1 bpy). test_v02467(9): 메뉴 · 기본 꺼짐, 큐브 Cut Ramp(왼쪽 깊음 · 가운데 0.1 · 끝 0.03 미만 · 닫힘), live 'cut', ▶▶ = 오른쪽, Cut Depth 0.1 → 0.095, Remove, Chamfer 깊은 벽, Apply, 꺼짐 = 평평한 홈 0.2. test_v02465(12): + 베벨 막대 끝에 걸친 Ramp — 모서리 안쪽 6곳 모두 0.15~0.17 파임(수정 전 코드 0.03만 → 실패 확인). 개발 중 회귀 테스트가 잡은 실수: cut_ramp를 끼워 넣다 perform_closed의 @_with_finish_notes가 빠짐 → 복구(B10 통과). 5.2.3 bpy에서도 test_v02467 · test_v02465 · test_v02466 · test_v02454 · test_v02457 · test_v0245 · test_base_mesh 통과. 실제 화면 입력은 미검증.
 

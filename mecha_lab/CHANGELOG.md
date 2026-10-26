@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 0.24.47 — Ramp 옆면 톱니 수정, Ramp Resolution (2026-10-26)
+
+- **Ramp Soft 옆면이 톱니처럼 나오던 문제**: 옆면이 둥글게 넘어가는 구간 폭에 비해 점이 성겨 큰 삼각형으로 이어졌음 → 그 구간에 점 줄 6개를 넣고 간격을 좁힘(점 수 상한 안에서).
+- **Ramp Resolution**: Cut GN Edge > Ramp에 슬라이더(기본 20, 움직이면 바로 다시 팜). Base Mesh Ramp는 Resolution을 Ramp Resolution으로 같이 표시.
+- 테스트: 127개 파일 3655/3655. test_v02467에 톱니 검사 추가. ZIP sha256 `3d9d0e7d404ffce3d20445c04c57022de2694510c0ab338185dbd34bcb8698a5`.
+
 ## 0.24.46 — Cut GN Edge > Ramp, Ramp / Alt 파기 모서리 조각 수정 (2026-10-26)
 
 - **Cut의 GN Edge 메뉴에 Ramp**: 켜고 자르면 평평한 홈 대신 경사 홈 — 처음 그은 변이 가장 깊고(Cut Depth) 반대쪽으로 표면과 만남. Ramp Length / Ramp Soft, GN Edge Chamfer / Bevel = 깊은 쪽 벽 모양(Off = 직각). Base Mesh Ramp처럼 live: ◀ ▶ / Pick Edge로 깊은 변, Cut Depth / 슬라이더로 바로 다시 팜, Apply / Remove. 일반 Cut만(Split · 반전 · Live 컷 제외).
