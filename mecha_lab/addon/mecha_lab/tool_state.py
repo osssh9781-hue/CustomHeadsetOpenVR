@@ -333,13 +333,22 @@ class MCH_PG_Brush(bpy.types.PropertyGroup):
                                            'Enter applies (Alt+Enter: Alt action), Backspace: last, Esc: clear')
 
 
+def _ramp_refresh_update(self, context):
+    """0.24.46 a Cut Ramp slider moved: the live ramp (if any) is carved again."""
+    try:
+        from . import ramp_edit
+        ramp_edit.refresh(context, 'cut')
+    except Exception:          # a slider must never fail
+        pass
+
+
 class MCH_PG_Cut(bpy.types.PropertyGroup):
     depth_mode: EnumProperty(name='Depth', items=[
         ('THROUGH', 'Through All', 'Cut through the whole object along the view'),
         ('SURFACE', 'From Surface', 'Pocket of fixed depth starting at the surface under the shape')],
         default='THROUGH')
     depth: FloatProperty(name='Cut Depth', default=0.1, min=0.00001, soft_max=10.0, precision=4,
-                         unit='LENGTH')
+                         unit='LENGTH', update=_ramp_refresh_update)
     targets: EnumProperty(name='Targets', items=[
         ('AUTO', 'Auto Target', 'Every mesh the drawn shape covers, whatever is selected: keep the tool and cut the '
                                 'next part directly (T toggles)'),
@@ -400,6 +409,17 @@ class MCH_PG_Cut(bpy.types.PropertyGroup):
     gn_width: FloatProperty(name='Width', default=0.01, min=0.0, soft_max=10.0, precision=4, unit='LENGTH',
                             description='How far the GN edge reaches along the surface and down the cut wall')
     gn_segments: IntProperty(name='Segments', default=4, min=1, max=24, description='Steps round a GN bevel')
+    gn_ramp: BoolProperty(name='Ramp', default=False,
+                          description='Cut: the drawn shape carved on a slope instead of a flat-bottomed pocket - deepest '
+                                      '(Cut Depth) at the first side drawn, rising back to the surface (the deep side '
+                                      'can be changed after: < > / Pick Edge). GN Edge Chamfer / Bevel = the deep wall')
+    gn_ramp_length: FloatProperty(name='Ramp Length', default=1.0, min=0.05, max=1.0, subtype='FACTOR',
+                                  update=_ramp_refresh_update,
+                                  description='How far across the shape the slope goes (1 = meets the surface at the '
+                                              'far side)')
+    gn_ramp_soft: FloatProperty(name='Ramp Soft', default=0.5, min=0.0, max=1.0, subtype='FACTOR',
+                                update=_ramp_refresh_update,
+                                description='How softly the slope runs into the surface and the side walls round off')
     gn_sides: EnumProperty(name='Split Sides', items=[
         ('BOTH', 'Both', 'Both parts of a Split'), ('A', 'Side A', 'Only the original object'),
         ('B', 'Side B', 'Only the new _Split part')], default='BOTH')

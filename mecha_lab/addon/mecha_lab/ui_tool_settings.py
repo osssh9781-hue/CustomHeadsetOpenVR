@@ -158,6 +158,16 @@ def draw_gn_edge(layout, context, mode='CUT'):
     cut = context.scene.mch_cut
     box = _section(layout, 'GN Edge (Geometry Nodes)', 'GEOMETRY_NODES')
     box.row(align=True).prop(cut, 'gn_finish', expand=True)
+    if mode == 'CUT':                                     # 0.24.46 Ramp: a sloped cut, deep at one side
+        box.prop(cut, 'gn_ramp', toggle=True, icon='MOD_SMOOTH')
+        if cut.gn_ramp:
+            c = box.column(align=True)
+            c.prop(cut, 'depth', text='Ramp Depth (Cut Depth)')
+            c.prop(cut, 'gn_ramp_length', slider=True)
+            c.prop(cut, 'gn_ramp_soft', slider=True)
+            box.label(text='Deep side: the first edge (change it after: < > / Pick Edge)', icon='INFO')
+            from . import ramp_edit
+            ramp_edit.draw_panel(box, context)
     if cut.gn_finish == 'NONE':
         return
     c = box.column(align=True)

@@ -646,12 +646,58 @@ def _confirm_fuse(context, targets):
         raise cg.CutError(str(ex)) from ex
 
 
+def cut_ramp(context, targets, loops, projector, edge=None, live=True):
+    """0.24.46 Cut with GN Edge > Ramp: the drawn shape carved on a slope (the Base Mesh Alt: Ramp carve) - deepest
+    (Cut Depth) at the first side drawn (or ``edge``), rising back to the surface; GN Edge Chamfer / Bevel shape
+    the deep wall.  Stays live on one target (the deep side can change after).  Returns a report."""
+    from types import SimpleNamespace
+    from . import ramp_edit
+    from . import surface_draw as sd
+    cut = context.scene.mch_cut
+    groups = cg.prepare_loops(loops)
+    if not groups:
+        raise cg.CutError('The outline is empty.')
+    if edge is None:
+        segs = ramp_edit.sides(loops[0]) if len(loops[0]) >= 3 else []
+        if not segs:
+            raise cg.CutError('Ramp: draw a shape with at least one clear edge.')
+        edge = segs[0]
+    depth = max(cut.depth, 1e-5)
+    fin = getattr(cut, 'gn_finish', 'NONE')
+    st = SimpleNamespace(profile={'CHAMFER': 'CHAMFER', 'BEVEL': 'BEVEL'}.get(fin, 'SQUARE'), edge=0.35, sink=0.0,
+                         edge_abs=cut.gn_width if fin != 'NONE' else None, fill_res=28,
+                         segments=getattr(cut, 'gn_segments', 4), fine=1.0)
+    ramp = (edge[0], edge[1], getattr(cut, 'gn_ramp_length', 1.0), getattr(cut, 'gn_ramp_soft', 0.5))
+    if live and len(targets) == 1:
+        ramp_edit.begin(context, targets[0], loops, projector, kind='cut')
+    done, failed = [], []
+    for t in targets:
+        try:
+            sd.carve_area(context, t, groups, projector, st, depth, False, ramp=ramp)
+            done.append(t.name)
+        except (cg.CutError, RuntimeError) as ex:
+            if len(targets) == 1:
+                if live:
+                    ramp_edit.finish(t)
+                raise
+            failed.append(f'{t.name} ({str(ex).splitlines()[0][:60]})')
+    if not done:
+        raise cg.CutError('Ramp: nothing was carved. ' + '; '.join(failed))
+    return (f'Cut Ramp: {", ".join(done)} | {depth:.3g} deep at one side, up to the surface '
+            '(deep side: < > / Pick Edge in GN Edge)' + (' | failed: ' + '; '.join(failed) if failed else ''))
+
+
 @_with_finish_notes
 def perform_closed(context, mode, targets, loops, projector, invert=False):
     """Cut / Split all targets with closed screen loops. Returns a report string."""
     scene = context.scene
     cut = scene.mch_cut
     auto_apply = scene.mch_settings.auto_apply if hasattr(scene, 'mch_settings') else True
+    if mode == 'CUT' and not invert and auto_apply and getattr(cut, 'gn_ramp', False):
+        _leave_edit_mode(context, targets)
+        for t in targets:
+            cg.check_target(t)
+        return cut_ramp(context, targets, loops, projector)          # 0.24.46 GN Edge > Ramp
     groups = cg.prepare_loops(loops)
     _leave_edit_mode(context, targets)
     _confirm_fuse(context, targets)

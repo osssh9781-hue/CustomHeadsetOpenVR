@@ -90,7 +90,7 @@ def _copy_into(src, dst):
     dst.update()
 
 
-def begin(context, target, loops, projector):
+def begin(context, target, loops, projector, kind='base'):
     """Before an Alt: Ramp carve on ``target``: keep the mesh as it is and the outline (an earlier live ramp is
     kept as it is first).  Returns the side that is deep (0)."""
     from . import armor_plate as ap
@@ -105,7 +105,8 @@ def begin(context, target, loops, projector):
     backup.use_fake_user = True
     segs = sides(loops[0])
     corners_w = _corners_world(context, target, projector, [a for a, _b in segs])
-    _write(target, {'loops': [[[float(x), float(y)] for x, y in lp] for lp in loops], 'proj': frozen, 'side': 0,
+    _write(target, {'kind': kind, 'loops': [[[float(x), float(y)] for x, y in lp] for lp in loops], 'proj': frozen,
+                    'side': 0,
                     'backup': backup.name, 'corners': [[float(x), float(y)] for x, y in (a for a, _b in segs)],
                     'corners_w': corners_w})
     context.scene[SCENE_KEY] = target.name
@@ -167,6 +168,9 @@ def recarve(context, ob):
     _BUSY[0] = True
     try:
         _copy_into(me, ob.data)
+        if rec.get('kind') == 'cut':             # 0.24.46 a Cut Ramp: the Cut settings
+            from . import cut_engine
+            return cut_engine.cut_ramp(context, [ob], loops, projector, edge=segs[side], live=False)
         return bm_.carve_surface(context, loops, projector, bm_.scene_defaults(context), [ob], ramp_edge=segs[side],
                                  live=False)
     finally:
@@ -183,10 +187,12 @@ def set_side(context, ob, side):
     return recarve(context, ob)
 
 
-def refresh(context):
-    """A Ramp slider changed: carve the live ramp again."""
+def refresh(context, kind=None):
+    """A Ramp slider changed: carve the live ramp again (only one of that ``kind``: 'base' / 'cut')."""
     ob = live_target(context)
     if ob is None or _BUSY[0]:
+        return
+    if kind is not None and record(ob).get('kind', 'base') != kind:
         return
     try:
         recarve(context, ob)
