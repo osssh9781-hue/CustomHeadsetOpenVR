@@ -63,5 +63,24 @@ bm_.perform_base(C, [SQUARE], TOP, cutter=True)
 d = [depth_at(x) for x in (-0.55, 0.0, 0.35, 0.5)]
 check('Soft 1 on the cube: still deep at the first edge, closed, and the far part eases out to the surface',
       abs(d[0] - 0.19) < 0.03 and 0.05 < d[1] < 0.15 and d[2] < 0.03 and d[3] < 0.01 and non_manifold(cube) == 0, d)
+# 0.24.46 no thin fins left at the corners on a bevelled edge (the opening goes up toward the viewer)
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+bpy.ops.mesh.primitive_cube_add(size=1.0, scale=(1.0, 6.0, 0.6))
+bar = C.active_object
+bpy.ops.object.transform_apply(scale=True)
+mod = bar.modifiers.new('b', 'BEVEL')
+mod.width, mod.segments = 0.12, 4
+bpy.ops.object.modifier_apply(modifier='b')
+probe = [(x, y) for x in (-0.405, 0.405) for y in (2.9, 2.94, 2.97)]          # just inside the corners, on the bevel
+C.view_layer.update()
+before = [S.ray_cast(C.evaluated_depsgraph_get(), Vector((x, y, 5)), Vector((0, 0, -1)))[1].z for x, y in probe]
+p.carve_depth, p.ramp_length, p.ramp_soft = 0.15, 1.0, 0.5
+bm_.perform_base(C, [[(458, 798), (542, 798), (542, 500), (458, 500)]], TOP, cutter=True)
+C.view_layer.update()
+after = [S.ray_cast(C.evaluated_depsgraph_get(), Vector((x, y, 5)), Vector((0, 0, -1)))[1].z for x, y in probe]
+check('Ramp over a bevelled end: the corners are carved too (no fin of the old surface left), closed',
+      all(b - a > 0.08 for a, b in zip(after, before)) and non_manifold(bar) == 0,
+      [round(b - a, 3) for a, b in zip(after, before)])
 p.alt_mode, p.ramp_length, p.ramp_soft = 'HEIGHT', 1.0, 0.5
 summary()

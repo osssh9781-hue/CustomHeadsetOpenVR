@@ -294,15 +294,23 @@ def fill_mesh(fill, p, width, height, size, sign=1.0, lift=0.0):
     tris = fill['tris']
     deepest = max(dist) if dist else 1.0
     scale = fill.get('scale')                      # 0.24.44 Alt: Ramp - how much of the depth each point gets
+    caps = fill.get('caps')                        # 0.24.46 per point offset of the opening (toward the viewer)
     sink = p.sink if p.sink > 0 else width * 0.08
     ew = p.edge * height * 2.0
     verts, top, bot = [], [], []
     for i, (c, n) in enumerate(zip(cos, nrms)):
         top.append(len(verts))
         h = edge_height(p.profile, dist[i], ew, deepest) * (scale[i] if scale else 1.0)
+        if caps is not None and i < nb:
+            # 0.24.46 the outline itself goes straight down the view ray too: the wall is one line through the
+            # surface point (down along a tilted normal it leaned in and missed the surface beside it - a fin)
+            n = Vector(caps[i]).normalized()          # (toward the viewer = 'out' of the surface)
         verts.append(c + n * (sign * ((height + lift) * h - lift)))
         bot.append(len(verts))
-        verts.append(c - n * (sink * sign))
+        if caps is not None:          # 0.24.46 the opening lifted toward the viewer: a column over the drawn area
+            verts.append(c + Vector(caps[i]))
+        else:
+            verts.append(c - n * (sink * sign))
     faces = []
     for a, b, c in tris:
         faces.append((top[a], top[b], top[c]))
@@ -725,6 +733,17 @@ def carve_area(context, target, groups, projector, settings, height, through=Fal
         soft = ramp[3] if len(ramp) > 3 else 0.0
         for f in fills:
             f['scale'] = soften_ramp(ramp_scale(f['scr'], f['outer'], a, b, length), f['dist'], soft)
+    if projector is not None:
+        # 0.24.46 the opening goes up toward the viewer (along each point's view ray), well clear of the surface: on
+        # a bent / bevelled surface the surface normals tilt and an opening along them dipped under the surface next
+        # to it - thin fins were left at the corners of the shape
+        clear = max(height * 0.6, size * 0.01)
+        for f in fills:
+            caps = []
+            for q in f['scr']:
+                _o, d = projector.ray(tuple(q))
+                caps.append(list(-Vector(d).normalized() * clear))
+            f['caps'] = caps
     parts = [fill_mesh(f, settings, height, height, size, sign=-1.0, lift=height * 0.04) for f in fills]
     carve_parts(context, target, parts)
     return height
