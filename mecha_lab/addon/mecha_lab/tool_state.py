@@ -30,8 +30,8 @@ TOOLS = (
     ('PERF', 'Perforate', 'Sci-fi perforated plate: honeycomb / circle / square / diamond holes through the selected '
      'meshes; live (size, gap, margin, rotation, offset), Apply to keep',
      'perforate', 'MOD_BOOLEAN', None, 'OK'),
-    ('SDRAW', 'Surface Draw', 'Draw on a mesh like in VR: a raised band along the line (Flat / Round / Ridge / Bevel); '
-     'every stroke keeps the first one\'s width and height, bands never pile up', 'surface_draw', 'GREASEPENCIL',
+    ('SDRAW', 'Surface Draw', 'Draw on a mesh like in VR: a raised band along the line (edges Square / Chamfer / Bevel); '
+     'every stroke keeps the first one\'s width and height, bands never pile up; Alt + draw cuts that area out', 'surface_draw', 'GREASEPENCIL',
      'mecha.surface_draw', 'OK'),
     ('RSYM', 'Radial Symmetry', 'Click a centre point: the selected meshes repeat round it (Count, the active mesh\'s '
      'local X / Y / Z axis); new Base Mesh / plates repeat too, Cut cuts every copy', 'radial_sym', 'MOD_ARRAY', None,
