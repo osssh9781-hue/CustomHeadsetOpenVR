@@ -81,7 +81,7 @@ def box(context, k=None):
     the way on a narrow screen); with the tool strip on the left (Tool Menu Place = Left): right of it."""
     tid = _stroke_tool(context)
     region = getattr(context, 'region', None)
-    if tid is None or region is None:
+    if tid is None:
         return None
     from . import ui_gpu as G, ui_bars
     k = G.ui_factor(context) if k is None else k
@@ -94,7 +94,9 @@ def box(context, k=None):
     w = max(keyw + what_w, _width(rows[0], 13 * k), keyw + 120 * k) + 2 * pad
     h = lh * len(rows) + 2 * pad
     left = ui_bars.left_inset(context)
-    if ui_bars.menu_on(context):
+    if region is None:                               # (no viewport region: the old bottom left place)
+        x, y = left + 14 * k, 90 * k
+    elif ui_bars.menu_on(context):
         x, y = left + 14 * k, 14 * k
         kk = k * ui_bars.strip_scale()
         mw = ui_bars.menu_layout(region.width, kk, ts.grouped_tools(), left)[4]

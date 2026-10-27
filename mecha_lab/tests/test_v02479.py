@@ -69,7 +69,7 @@ check('Name bubbles: a pass-through mouse-move item tracks the mouse', ('3D View
 r = bpy.ops.mch.ui_hover('INVOKE_DEFAULT') if False else None
 check('Quick HUD / key legend / Tool Active button move right of the strip',
       'strip_width' in inspect.getsource(qh.current) and 'strip_width' in inspect.getsource(
-          mecha_lab.key_legend._draw) and 'strip_width' in inspect.getsource(bb.active_button_pos))
+          mecha_lab.key_legend.box) and 'strip_width' in inspect.getsource(bb.active_button_pos))
 # paint once with stand-ins (no GPU in the background)
 CALLS = []
 real = {n: getattr(G, n) for n in ('rounded_rect', 'lines', 'text', 'image', 'glyph', 'fit')}
