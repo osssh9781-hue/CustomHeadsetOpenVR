@@ -28,7 +28,7 @@ import numpy as np
 
 import bpy
 
-VERSION = 3                 # engine API this module talks to
+VERSION = 4                 # engine API this module talks to (4: length_weight)
 SHAPE_TIE = 0.02           # the small shape term of plain decimation (Even Tris: 1.0)
 MASK_WEIGHT = 24.0          # a fully masked point's collapse cost x (1 + this): about 2x the density there
 _LIB = [None]               # the loaded library, False = none for this system
@@ -36,7 +36,8 @@ _LIB = [None]               # the loaded library, False = none for this system
 
 class _Opts(ctypes.Structure):
     _fields_ = [('boundary_weight', ctypes.c_float), ('min_quality', ctypes.c_float),
-                ('quality_weight', ctypes.c_float), ('lock_boundary', ctypes.c_int), ('threads', ctypes.c_int)]
+                ('quality_weight', ctypes.c_float), ('lock_boundary', ctypes.c_int), ('threads', ctypes.c_int),
+                ('length_weight', ctypes.c_float)]
 
 
 def lib_name():
@@ -97,7 +98,8 @@ def _ptr(a, t):
     return None if a is None else a.ctypes.data_as(ctypes.POINTER(t))
 
 
-def run(V, F, target, even=False, keep_borders=False, locked=None, weight=None, feat=None, nthreads=None):
+def run(V, F, target, even=False, keep_borders=False, locked=None, weight=None, feat=None, nthreads=None,
+        uniform=0.0):
     """Decimate triangles F (n x 3) over points V (n x 3) to about ``target`` triangles.
 
     Returns (points, triangles, source point of each point, source triangle of each triangle)."""
@@ -123,7 +125,7 @@ def run(V, F, target, even=False, keep_borders=False, locked=None, weight=None, 
     # 0.24.70 plain decimation keeps a small shape term too: on flat parts every collapse costs 0, without it the
     # slivers piled up and most collapses failed again and again (a 357k-triangle hard-surface part: 7 s -> 0.6 s)
     o = _Opts(1000.0, 0.25 if even else 0.0, 1.0 if even else SHAPE_TIE, 1 if keep_borders else 0,
-              nthreads or threads())
+              nthreads or threads(), uniform)
     nv = ctypes.c_int()
     nf = ctypes.c_int()
     rc = L.mdecim_run(_ptr(V, ctypes.c_float), len(V), _ptr(F, ctypes.c_int), len(F), int(target), ctypes.byref(o),

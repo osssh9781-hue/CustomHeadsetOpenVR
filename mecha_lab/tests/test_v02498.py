@@ -7,7 +7,7 @@ import time
 
 import numpy as np
 
-from _harness import bpy, check, fresh, summary
+from _harness import bmesh, bpy, check, fresh, summary
 
 import mecha_lab
 from mecha_lab import fast_decimate as fd, zb_sculpt as zs
@@ -121,6 +121,30 @@ v1 = vol(oV.astype(np.float64), oF.astype(np.int64))
 check('327,680 triangles to 300 in one go on 4 threads: the shape holds (each thread\'s block was taken almost to '
       'nothing and the result lost up to a third of its volume)', len(oF) == 300 and abs(v1 / v0 - 1) < 0.03,
       (len(oF), v1 / v0))
+bpy.data.objects.remove(ob)
+
+# --- engine 4: even spacing (the fine sampling the field-aligned quad remesher starts from) ------------------------
+bm = bmesh.new()
+bmesh.ops.create_cube(bm, size=2.0)
+me = bpy.data.meshes.new('Flat')
+bm.to_mesh(me)
+bm.free()
+ob = bpy.data.objects.new('Flat', me)
+C.collection.objects.link(ob)
+me.remesh_voxel_size = 0.025                     # a DynaMesh-like box: 78,732 triangles
+with C.temp_override(object=ob, active_object=ob):
+    bpy.ops.object.voxel_remesh()
+V0, T0 = arrays(ob.data)
+spread = {}
+for lw in (0.0, 0.1):
+    oV, oF, _vs, _fs = fd.run(V0, T0, 3000, even=True, uniform=lw)
+    e = np.concatenate([oF[:, [0, 1]], oF[:, [1, 2]], oF[:, [2, 0]]])
+    ln = np.linalg.norm(oV[e[:, 0]] - oV[e[:, 1]], axis=1)
+    spread[lw] = (round(float(ln.std() / ln.mean()), 3), round(float(ln.max() / ln.mean()), 2),
+                  round(float(np.abs(np.abs(oV).max(1) - 1.0).max()), 6))
+check('Even spacing: edges of one length on flat parts (spread and longest edge both clearly smaller), the box '
+      'keeps its shape', spread[0.1][0] < 0.85 * spread[0.0][0] and spread[0.1][1] < spread[0.0][1]
+      and spread[0.1][2] < 1e-4, spread)
 bpy.data.objects.remove(ob)
 
 # --- options ------------------------------------------------------------------------------------------------------

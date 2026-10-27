@@ -36,6 +36,8 @@ typedef struct {
   float quality_weight;  /* extra cost for thin triangles: rounder triangles, nicer topology */
   int lock_boundary;     /* 1: points on open borders never move */
   int threads;           /* <= 1: one thread */
+  float length_weight;   /* v4: extra cost length^4 x this - shortest edges first: even point spacing (sampling for
+                            the quad remesher); the quadric still keeps the shape and its hard edges */
 } MdecimOpts;
 
 typedef struct {
@@ -367,8 +369,13 @@ static double edge_cost(Ctx *c, int a, int b, double *p, int *keep_b) {
   } else {
     double mid[3] = {0.5 * (pa[0] + pb[0]), 0.5 * (pa[1] + pb[1]), 0.5 * (pa[2] + pb[2])};
     const double *cand[3] = {pa, pb, mid};
+    /* even spacing: off-centre placements cost a little (an endpoint wins every tie on flat parts otherwise and
+       the points there never spread out) */
+    double el0[3];
+    sub3(pa, pb, el0);
+    double cw = c->o.length_weight * dot3(el0, el0);
     for (int k = 0; k < 3; k++) {
-      double e = quad_eval(q, cand[k]);
+      double e = quad_eval(q, cand[k]) + (k < 2 ? 0.25 * cw * dot3(el0, el0) : 0.0);
       if (e < best) {
         best = e;
         memcpy(p, cand[k], sizeof(double) * 3);
@@ -380,7 +387,7 @@ static double edge_cost(Ctx *c, int a, int b, double *p, int *keep_b) {
       sub3(x, mid, d);
       sub3(pa, pb, el);
       if (dot3(d, d) < 4.0 * dot3(el, el)) {
-        double e = quad_eval(q, x);
+        double e = quad_eval(q, x) + cw * dot3(d, d);
         if (e < best) {
           best = e;
           memcpy(p, x, sizeof(double) * 3);
@@ -410,6 +417,12 @@ static int push_edge(Ctx *c, int a, int b) {
     sub3(&c->V[3 * a], &c->V[3 * b], el);
     double l2 = dot3(el, el);
     cost += c->o.quality_weight * (1.0 - w) * l2 * l2 * 1e-2;
+  }
+  if (c->o.length_weight > 0) {
+    double el[3];
+    sub3(&c->V[3 * a], &c->V[3 * b], el);
+    double l2 = dot3(el, el);
+    cost += c->o.length_weight * l2 * l2;
   }
   Entry e = {cost, a, b, c->ver[a], c->ver[b]};
   return heap_push(&c->h, e);
@@ -695,7 +708,7 @@ static void split_blocks(int *faces, int n, int parts, const float *cen, int *bl
 
 #define BLOCK_FLOOR 0.05
 
-EXPORT int mdecim_version(void) { return 3; }
+EXPORT int mdecim_version(void) { return 4; }
 
 EXPORT int mdecim_run(const float *Vin, int nv, const int *Fin, int nf, int target_faces, const MdecimOpts *opt,
                       const unsigned char *locked, const float *weight, const int *feat, int nfeat, float *outV,
