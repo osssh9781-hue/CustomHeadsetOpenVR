@@ -2,7 +2,7 @@
 
     top shelf      Edit Draw | Move Scale Rotate | Material | Zadd Zsub | Z Intensity  Focal Shift  Draw Size Dynamic
                    | Polish By Groups | Check Mesh Fix Mesh  /  Make PolyMesh3D | DynaMesh > SubDiv | OBJ STL | FBX
-    left shelf     SubTool / Geometry / Masking / Stroke / Decimation / Quad Remesh / Hard Edges buttons (the
+    left shelf     SubTool / Geometry / Masking / Stroke / Decimation / Quad Remesh / Edge Mesh / Hard Edges (the
                    Blender-layout drawer ``draw_tool_shelf`` read by panel_capture, like the side panel), then
                    brush / stroke / material / colour / symmetry / clip / initialize
     right          view shelf (Persp Floor Frame Move Zoom3D Rotate PolyF Transp Solo ...) and the SubTool list
@@ -126,6 +126,16 @@ def draw_tool_shelf(layout, context):
     box.prop(zb, 'qr_angle')
     ops(box.row(), ('Half', 'QR_HALF'), ('Same', 'QR_SAME'), ('Double', 'QR_DOUBLE'))
     box = layout.box()
+    box.label(text='Edge Mesh')
+    r = box.row()
+    ops(r, ('Edge Mesh', 'EDGE_MESH'))
+    r.prop(zb, 'em_detail')
+    r = box.row()
+    r.prop(zb, 'em_adaptive', toggle=True)
+    r.prop(zb, 'em_straight', toggle=True)
+    r.prop(zb, 'he_fit', toggle=True)
+    ops(box.row(), ('Half', 'EM_HALF'), ('Double', 'EM_DOUBLE'))
+    box = layout.box()
     box.label(text='Hard Edges')
     r = box.row()
     ops(r, ('Find Edges', 'HE_FIND'))
@@ -137,6 +147,7 @@ def draw_tool_shelf(layout, context):
     r = box.row()
     r.prop(zb, 'he_bevel', toggle=True)
     r.prop(zb, 'he_width')
+    box.row().prop(zb, 'he_style', expand=True)
     r = box.row()
     r.prop(zb, 'he_segments')
     r.prop(zb, 'he_profile')

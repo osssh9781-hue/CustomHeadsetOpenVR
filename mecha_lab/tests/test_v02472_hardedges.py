@@ -191,7 +191,9 @@ sharp = he.hard_flags(me)
 check('Outer Only: the inside corner of an L gets no bevel, the outside edges do', sharp.sum() > w.sum() > 0
       and (sharp & (w == 0)).sum() >= 1, (int(sharp.sum()), float(w.sum())))
 zb.he_outer = False
-check('... off again: all hard edges bevelled', edge_attr(L.data, 'bevel_weight_edge').sum() == sharp.sum())
+w2 = edge_attr(L.data, 'bevel_weight_edge')
+check('... off again: every hard edge bevelled (0.24.73 inside corners a narrower share, never more than full)',
+      ((w2 > 0) == sharp).all() and w2.max() <= 1.0, (int((w2 > 0).sum()), int(sharp.sum())))
 bpy.data.objects.remove(L)
 defaults()
 

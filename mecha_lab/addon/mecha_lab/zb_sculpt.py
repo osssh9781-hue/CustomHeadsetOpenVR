@@ -1278,6 +1278,10 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
                             update=_he_update, description='Bevel width')
     he_segments: IntProperty(name='Segments', default=2, min=1, max=12, update=_he_update,
                              description='Bevel segments (1 = a chamfer)')
+    he_style: EnumProperty(name='Bevel Style', default='ROUND', update=_he_update,
+                           items=[('ROUND', 'Round', 'Rounded edges (Segments / Shape)'),
+                                  ('CHAMFER', 'Chamfer', 'A flat cut along the edges with support loops: stays flat '
+                                                         'and crisp through Subdivide')])
     he_profile: FloatProperty(name='Shape', default=0.5, min=0.0, max=1.0, update=_he_update,
                               description='Bevel shape: 0.5 round, higher boxier, lower hollow')
     he_subdiv: IntProperty(name='Subdivide', default=0, min=0, max=4, update=_he_update,
@@ -1285,6 +1289,18 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
     he_normals: BoolProperty(name='Weighted Normals', default=False, update=_he_update,
                              description='Flat faces shade flat next to the bevels with custom normals (Blender / FBX '
                                          'only: ZBrush and OBJ do not keep them - leave off for Client Look)')
+    he_fit: BoolProperty(name='Fit to Original', default=True, update=_he_update,
+                         description='Edge Mesh: the subdivided surface is fitted back onto the dense mesh it was made '
+                                     'from (its shape kept exactly); the hard edges stay where they are')
+    # 0.24.73 Edge Mesh (edge_mesh): Decimate in steps -> hard edges -> quads on the flats -> live bevel + subdivide
+    em_detail: IntProperty(name='Detail', default=2000, min=100, soft_max=50000,
+                           description='Edge Mesh: triangles left after decimating in steps (fewer = lighter, the '
+                                       'edges come out cleaner; more = small details kept)')
+    em_adaptive: BoolProperty(name='Adaptive', default=True,
+                              description='Edge Mesh: points where an edge line bends (round ends, corners) are kept '
+                                          'longer - round ends stay round, straight edges stay light')
+    em_straight: BoolProperty(name='Straighten', default=True,
+                              description='Edge Mesh: straighten the small zigzag of the edge lines (sharp bends stay)')
     he_client: BoolProperty(name='Client Look', default=True, update=_he_update,
                             description='The mesh alone gives the hard look (no Sharp marks for the display, no custom '
                                         'normals): what you see is what Maya / Max / ZBrush show.  Apply leaves a '
@@ -1693,7 +1709,7 @@ def _mask_values(ob):
 RISKY = {'DYNAMESH', 'DYNA_UPDATE', 'DYNA_SUBDIV', 'DYNA_SUBDIV3', 'DECIMATE', 'QUAD_REMESH', 'HE_FIND', 'HE_APPLY',
          'DIVIDE', 'ZREMESH', 'HALF', 'SAME', 'DOUBLE', 'MIRROR_WELD', 'CLOSE_HOLES', 'EXTRACT', 'SPLIT_MASKED',
          'SPLIT_UNMASKED', 'SPLIT_HIDDEN', 'DEL_HIDDEN', 'MERGE_DOWN', 'MERGE_VISIBLE', 'POLYMESH3D', 'GROUPS_SPLIT',
-         'DEL_LOWER', 'FIX_MESH'}
+         'DEL_LOWER', 'FIX_MESH', 'EDGE_MESH'}
 
 
 def _edited():
@@ -1977,6 +1993,22 @@ def run(context, action):
         f = {'QR_HALF': 0.5, 'QR_SAME': 1.0, 'QR_DOUBLE': 2.0}[action]
         zb.qr_target = max(0.05, round(len(ob.data.polygons) * f / 1000.0, 2))
         return f'Quad Remesh Target {zb.qr_target:g}'
+    if action == 'EDGE_MESH':
+        from . import edge_mesh as em
+        from . import fast_decimate as fd
+        if not fd.available():
+            return 'Edge Mesh: the Fast Decimate engine is not available on this system'
+        if multires(ob) is not None:
+            return 'Edge Mesh: Del Higher / Del Lower first'
+        _mode(context, 'OBJECT')
+        try:
+            msg = em.build(context, ob, zb)
+        finally:
+            _mode(context, 'SCULPT')
+        return msg
+    if action in {'EM_HALF', 'EM_DOUBLE'}:
+        zb.em_detail = int(min(1_000_000, max(100, zb.em_detail * (0.5 if action == 'EM_HALF' else 2.0))))
+        return f'Edge Mesh Detail {zb.em_detail:,}'
     if action in {'HE_FIND', 'HE_APPLY', 'HE_CLEAR'}:
         from . import hard_edges as he
         if action == 'HE_FIND':
@@ -2145,7 +2177,8 @@ class _ZBPoll:
 
 # 0.24.65 actions that only change a setting / the view / a tool: no undo step (Ctrl+Z undoes what you did)
 SETTING_ACTIONS = set(TOOLS) | {'EDIT', 'SDIV_UP', 'SDIV_DOWN', 'CHECK_MESH', 'SWITCH_COLOR', 'SYM_X', 'POLYF', 'FRAME',
-                                'SOLO', 'EXPORT_OBJ', 'EXPORT_STL', 'FBX_EXPORT', 'QR_HALF', 'QR_SAME', 'QR_DOUBLE'}
+                                'SOLO', 'EXPORT_OBJ', 'EXPORT_STL', 'FBX_EXPORT', 'QR_HALF', 'QR_SAME', 'QR_DOUBLE',
+                                'EM_HALF', 'EM_DOUBLE'}
 
 
 def undo_step(message):

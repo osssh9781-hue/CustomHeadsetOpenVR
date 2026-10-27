@@ -19,6 +19,12 @@ and no custom normals (Weighted Normals off), so what Blender shows is what Maya
 edges are kept in an internal attribute; the support bevel + creased subdivision make them crisp with plain smooth
 shading.  Apply then leaves a plain mesh: modifiers baked, no Sharp / Crease / Bevel Weight / custom normals,
 every face smooth.
+
+0.24.73 the bevel is as wide as Width asks wherever it fits: Blender's own overlap test (the one Clamp Overlap
+runs) is done here edge by edge and only the bevel weights of the edges that would run over a neighbour are cut
+down (``fit_weights``) - with Clamp alone one tight spot anywhere narrowed every bevel of the part (a Width of
+1.2 % of the part came out as 0.1 %).  Edge Mesh (edge_mesh)
+results also get Fit to Original: a Shrinkwrap onto the dense mesh they were made from, away from the hard edges.
 """
 from __future__ import annotations
 
@@ -32,10 +38,20 @@ import bpy
 BEVEL = 'MCH_HE_Bevel'
 SUBSURF = 'MCH_HE_Subdivide'
 NORMALS = 'MCH_HE_Normals'
-LIVE = (BEVEL, SUBSURF, NORMALS)
+FIT = 'MCH_HE_Fit'              # 0.24.73 Edge Mesh: Shrinkwrap onto the dense original
+LIVE = (BEVEL, SUBSURF, FIT, NORMALS)
 KEY = 'mch_hard_edges'          # object: Find Edges ran on it (the live modifiers follow the shelf settings)
 CONVEX = '.mch_he_convex'       # edge: the faces meet outward (Outer Only)
 HARD = '.mch_he_hard'           # edge: a hard edge (kept here: with Client Look nothing is marked Sharp)
+PROBE_MAX = 60000               # set_live: up to this many polygons the bevel is test-run without Clamp Overlap
+PROBE_TOL = 0.3                 # ... it overlaps when one of its points is further than this x Width off the surface
+PROBE_ROUNDS = 6                # ... and the bevels around an overlap are halved this many times before Clamp goes on
+INSIDE = 0.4                    # inside (concave) hard edges get this share of the bevel Width
+FIT_SAFETY = 0.9                # fit_weights: an edge whose bevel would run over keeps this share of what fits
+FIT_ROUNDS = 12
+CHAMFER_SUPPORT = 0.12          # Chamfer: the support loops sit this share of the width in from each side
+SRC = 'mch_he_source'           # object: the dense original (off-scene, kept by a fake user) Fit to Original uses
+FIT_GROUP = 'mch_he_fit'        # point group: 1 = fit onto the original, 0 = stay (the hard edges)
 FLAT = math.radians(1.0)        # Merge Flats: faces closer than this to flat are joined
 SPECK = 0.02                    # a hard edge on its own shorter than this x the part size is not a hard edge
 MAX_POLYS = 300000              # beyond this: Decimate / Quad Remesh first (a bevel on a DynaMesh would take ages)
@@ -76,7 +92,7 @@ def find(ob, st):
     try:
         bm.from_mesh(me)
         hard = [e for e in bm.edges if len(e.link_faces) != 2 or e.calc_face_angle(0.0) > st.he_angle]
-        hard = _drop_specks(hard, size)
+        hard = drop_short_lines(_drop_specks(hard, size), size)
         for e in bm.edges:
             e.smooth = True
         for e in hard:
@@ -107,6 +123,96 @@ def find(ob, st):
     marks(me, st)
     ob[KEY] = 1
     return n, faces0, len(me.polygons)
+
+
+def fit_weights(me, w, width):
+    """Bevel weights ``w`` (per edge) cut down where the bevel would run over a neighbouring edge at ``width``: the
+    tests of Blender's Clamp Overlap (an edge squeezed to nothing between two bevels, a bevel sliding past the end of
+    the edge next to it), per face corner, on the actual weights; only the edges taking part in an overlap get
+    narrower (Clamp narrows all).  Returns the new weights."""
+    w = np.asarray(w, np.float64).copy()
+    if width <= 0 or not len(me.polygons) or not w.any():
+        return w.astype(np.float32)
+    nl = len(me.loops)
+    lv = np.empty(nl, np.int64)
+    le = np.empty(nl, np.int64)
+    me.loops.foreach_get('vertex_index', lv)
+    me.loops.foreach_get('edge_index', le)
+    ls = np.empty(len(me.polygons), np.int64)
+    lt = np.empty(len(me.polygons), np.int64)
+    me.polygons.foreach_get('loop_start', ls)
+    me.polygons.foreach_get('loop_total', lt)
+    co = np.empty(len(me.vertices) * 3)
+    me.vertices.foreach_get('co', co)
+    co = co.reshape(-1, 3)
+    pi_ = np.repeat(np.arange(len(ls)), lt)
+    k = np.arange(nl) - ls[pi_]
+    nxt = ls[pi_] + (k + 1) % lt[pi_]
+    prv = ls[pi_] + (k - 1) % lt[pi_]
+    eb, ea, ec = le, le[prv], le[nxt]                        # corner: edge B from vb to vc, A before it, C after
+    vb, vc, va, vd = lv, lv[nxt], lv[prv], lv[nxt[nxt]]
+    keep = (w[eb] > 0) | (w[ea] > 0) | (w[ec] > 0)            # (only corners next to a bevel can overlap)
+    eb, ea, ec, vb, vc, va, vd = eb[keep], ea[keep], ec[keep], vb[keep], vc[keep], va[keep], vd[keep]
+
+    def ang(p, q, r):                                          # angle at q
+        u, v = co[p] - co[q], co[r] - co[q]
+        c = (u * v).sum(1) / np.maximum(np.linalg.norm(u, axis=1) * np.linalg.norm(v, axis=1), 1e-30)
+        return np.arccos(np.clip(c, -1.0, 1.0))
+    th1, th2 = ang(va, vb, vc), ang(vb, vc, vd)
+    s1, s2, t1, t2 = np.sin(th1), np.sin(th2), np.tan(th1), np.tan(th2)
+    lb = np.linalg.norm(co[vb] - co[vc], axis=1)
+    la = np.linalg.norm(co[va] - co[vb], axis=1)
+    lc = np.linalg.norm(co[vd] - co[vc], axis=1)
+    g, h = t1 * t2, s1 * s2
+    for _r in range(FIT_ROUNDS):
+        ka, kb, kc = w[ea], w[eb], w[ec]
+        scale = np.ones(len(w))
+        bad = False
+        many = ((ka > 0).astype(int) + (kb > 0) + (kc > 0)) >= 2           # B squeezed between bevels
+        den = g * (ka * s2 + kc * s1) + kb * h * (t1 + t2)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            t = lb * g * h / den
+        hit = many & (den != 0) & (t >= 0) & (t < width)
+        if hit.any():
+            bad = True
+            f = FIT_SAFETY * t[hit] / width
+            for e, kk in ((ea, ka), (eb, kb), (ec, kc)):
+                m = kk[hit] > 0
+                np.minimum.at(scale, e[hit][m], f[m])
+        for lx, sx, kx in ((la, s1, ka), (lc, s2, kc)):                     # B's bevel slides past A / C
+            m = (kb > 0) & (kx == 0)
+            with np.errstate(divide='ignore', invalid='ignore'):
+                t = lx * sx / kb
+            hit = m & (t >= 0) & (t < width)
+            if hit.any():
+                bad = True
+                np.minimum.at(scale, eb[hit], FIT_SAFETY * t[hit] / width)
+        if not bad:
+            break
+        w *= scale
+    return w.astype(np.float32)
+
+
+def drop_short_lines(edges, size, share=None):
+    """Hard edges minus the short pieces on their own: connected runs of hard edges shorter than ``share`` x the part
+    size in all (a scratch of the decimation, not an edge of the part: its bevel shows as a mark on the face)."""
+    share = 0.5 * SPECK if share is None else share
+    parent = {}
+
+    def find(x):
+        while parent.setdefault(x, x) != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+    for e in edges:
+        a, b = find(e.verts[0].index), find(e.verts[1].index)
+        if a != b:
+            parent[a] = b
+    total = {}
+    for e in edges:
+        r = find(e.verts[0].index)
+        total[r] = total.get(r, 0.0) + e.calc_length()
+    return [e for e in edges if total[find(e.verts[0].index)] >= share * size]
 
 
 def _edge_faces(me):
@@ -193,7 +299,11 @@ def marks(me, st):
     hard = hard_flags(me)
     conv = _edge_bool(me, CONVEX)
     _set_edge_float(me, 'crease_edge', hard * (1.0 if st.he_crease else 0.0))
-    _set_edge_float(me, 'bevel_weight_edge', (hard & (conv | (not st.he_outer))).astype(np.float32))
+    w = (hard & (conv | (not st.he_outer))).astype(np.float32)
+    w[hard & ~conv] *= INSIDE                          # (inside corners: wide bevels fold over there)
+    if getattr(st, 'he_bevel', True):                  # 0.24.73 narrower only where it must be
+        w = fit_weights(me, w, st.he_width)
+    _set_edge_float(me, 'bevel_weight_edge', w)
     a = me.attributes.get('sharp_edge')
     if st.he_client:
         if a is not None:
@@ -217,10 +327,15 @@ def set_live(ob, st):
         bev.limit_method = 'WEIGHT'
         bev.edge_weight = 'bevel_weight_edge'
         bev.width = st.he_width
-        bev.segments = st.he_segments
-        bev.profile = st.he_profile
+        if getattr(st, 'he_style', 'ROUND') == 'CHAMFER':      # 0.24.73 flat cut + support loops (stays flat
+            _chamfer_profile(bev)                             # through Subdivide, edges of the cut stay crisp)
+        else:
+            bev.profile_type = 'SUPERELLIPSE'
+            bev.segments = st.he_segments
+            bev.profile = st.he_profile
         bev.use_clamp_overlap = True
         bev.harden_normals = st.he_normals
+        bev.use_clamp_overlap = not _fits_unclamped(ob, bev)     # 0.24.73 (Clamp narrows every bevel of the part)
     elif bev is not None:
         mods.remove(bev)
     sub = mods.get(SUBSURF)
@@ -232,6 +347,16 @@ def set_live(ob, st):
         sub.boundary_smooth = 'PRESERVE_CORNERS'
     elif sub is not None:
         mods.remove(sub)
+    fit = mods.get(FIT)
+    src = source(ob)
+    if src is not None and getattr(st, 'he_fit', True):
+        if fit is None:
+            fit = mods.new(FIT, 'SHRINKWRAP')
+        fit.target = src
+        fit.wrap_method = 'NEAREST_SURFACEPOINT'
+        fit.vertex_group = FIT_GROUP if ob.vertex_groups.get(FIT_GROUP) is not None else ''
+    elif fit is not None:
+        mods.remove(fit)
     nrm = mods.get(NORMALS)
     if st.he_normals:
         if nrm is None:
@@ -246,6 +371,98 @@ def set_live(ob, st):
         k = list(mods).index(m)
         if k != target:
             mods.move(k, target)
+
+
+def _probe_off(ob, bev):
+    """Test-run the bevel of ``ob`` without Clamp Overlap (one segment, on a probe object sharing the mesh): the points
+    of the result further than PROBE_TOL x Width off the surface (a one-segment bevel only slides points along the
+    edges next to it - a bevel running past the end of an edge leaves the surface).  None when it can't be tested."""
+    me = ob.data
+    scene = getattr(bpy.context, 'scene', None)
+    if scene is None:
+        return None
+    from mathutils.bvhtree import BVHTree
+    tmp = bpy.data.objects.new('.mch_he_probe', me)
+    try:
+        scene.collection.objects.link(tmp)
+        m = tmp.modifiers.new('probe', 'BEVEL')
+        m.affect = 'EDGES'
+        m.limit_method = 'WEIGHT'
+        m.edge_weight = bev.edge_weight
+        m.width = bev.width
+        m.segments = 1
+        m.use_clamp_overlap = False
+        dg = bpy.context.evaluated_depsgraph_get()
+        ev = tmp.evaluated_get(dg)
+        out = ev.to_mesh()
+        try:
+            pts = [v.co.copy() for v in out.vertices]
+        finally:
+            ev.to_mesh_clear()
+    except (RuntimeError, ReferenceError):
+        return None
+    finally:
+        bpy.data.objects.remove(tmp)
+    bvh = BVHTree.FromPolygons([v.co for v in me.vertices], [p.vertices for p in me.polygons])
+    tol = PROBE_TOL * bev.width
+    return [c for c in pts if (lambda h: h[0] is None or h[3] > tol)(bvh.find_nearest(c))]
+
+
+def _fits_unclamped(ob, bev):
+    """True when the bevel of ``ob`` overlaps nowhere without Clamp Overlap (Clamp narrows every bevel of the part to
+    its tightest spot) - where the test run still runs over, the bevels around it are halved and it runs again."""
+    me = ob.data
+    if bev.width <= 0 or not len(me.polygons) or len(me.polygons) > PROBE_MAX:
+        return False
+    a = me.attributes.get(bev.edge_weight or 'bevel_weight_edge')
+    if a is None or a.domain != 'EDGE':
+        return False
+    from mathutils.kdtree import KDTree
+    w = np.empty(len(me.edges), np.float32)
+    a.data.foreach_get('value', w)
+    if not w.any():
+        return True
+    ev = np.empty(len(me.edges) * 2, np.int64)
+    me.edges.foreach_get('vertices', ev)
+    ev = ev.reshape(-1, 2)
+    kd = KDTree(len(me.vertices))
+    for v in me.vertices:
+        kd.insert(v.co, v.index)
+    kd.balance()
+    for _r in range(PROBE_ROUNDS):
+        off = _probe_off(ob, bev)
+        if off is None:
+            return False
+        if not off:
+            return True
+        near = np.zeros(len(me.vertices), bool)
+        for c in off:
+            for _co, i, _d in kd.find_n(c, 3):
+                near[i] = True
+        ring = near[ev].any(1)                         # (the edges at those points, then one ring further)
+        near[ev[ring].ravel()] = True
+        w[near[ev].any(1)] *= 0.5
+        a.data.foreach_set('value', w)
+        me.update()
+    return False
+
+
+def _chamfer_profile(bev):
+    """Bevel profile for Chamfer: a straight cut with a support point near each side (3 segments)."""
+    bev.profile_type = 'CUSTOM'
+    bev.segments = 3
+    cp = bev.custom_profile
+    want = [(1.0, 0.0), (1.0 - CHAMFER_SUPPORT, CHAMFER_SUPPORT), (CHAMFER_SUPPORT, 1.0 - CHAMFER_SUPPORT), (0.0, 1.0)]
+    have = sorted(((round(p.location[0], 4), round(p.location[1], 4)) for p in cp.points), reverse=True)
+    if have != [(round(x, 4), round(y, 4)) for x, y in want]:
+        while len(cp.points) > 2:                     # (the two ends stay: Blender keeps at least two)
+            cp.points.remove(cp.points[1])
+        cp.points.add(want[1][0], want[1][1])
+        cp.points.add(want[2][0], want[2][1])
+    for p in cp.points:
+        p.handle_type_1 = p.handle_type_2 = 'VECTOR'
+    cp.use_sample_straight_edges = True
+    cp.update()
 
 
 def plain_mesh(context, ob):
@@ -277,7 +494,45 @@ def apply_live(context, ob, st=None):
                 n += 1
     if st is None or st.he_client:
         plain_mesh(context, ob)
+    drop_source(ob)
     return n
+
+
+def source(ob):
+    """The dense original an Edge Mesh result was made from (None when there is none)."""
+    try:
+        src = ob.get(SRC)
+    except (TypeError, ReferenceError):
+        return None
+    return src if isinstance(src, bpy.types.Object) and src.type == 'MESH' else None
+
+
+def keep_source(ob, me):
+    """Keep mesh ``me`` (the dense original) as the off-scene Fit to Original target of ``ob``: an object in no
+    scene (never exported, never seen) kept by a fake user."""
+    drop_source(ob)
+    src = bpy.data.objects.new(ob.name + '_EdgeSource', me)
+    src.use_fake_user = True
+    src.matrix_world = ob.matrix_world.copy()
+    ob[SRC] = src
+    return src
+
+
+def drop_source(ob):
+    """The off-scene original goes (Apply / Clear: nothing needs it any more)."""
+    src = source(ob)
+    ob.pop(SRC, None)
+    g = ob.vertex_groups.get(FIT_GROUP)
+    if g is not None:
+        ob.vertex_groups.remove(g)
+    if src is None:
+        return
+    me = src.data
+    src.use_fake_user = False
+    if src.users == 0:
+        bpy.data.objects.remove(src)
+        if me is not None and me.users == 0:
+            bpy.data.meshes.remove(me)
 
 
 def clear(ob):
@@ -293,6 +548,7 @@ def clear(ob):
             me.attributes.remove(a)
     me.update()
     ob.pop(KEY, None)
+    drop_source(ob)
 
 
 def live_update(st, context):
