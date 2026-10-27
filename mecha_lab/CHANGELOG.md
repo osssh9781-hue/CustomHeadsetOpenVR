@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 0.24.55 — Path Move: 전체(Whole) 모드를 바로 (2026-10-27)
+
+- 예전처럼 부품 단면 전체를 끌어내는 Extend를 **Whole**(전 Section)로 부르고, 바로 바꿀 수 있게 함:
+  - 드래그하는 **도중에 Tab** = Brush ↔ Whole (미리보기도 바로 바뀜, 헤더에 지금 방식 표시)
+  - Quick HUD와 우클릭 메뉴 Settings에 Brush / Whole 버튼
+  - 키 안내에 Tab 줄
+- 테스트: 134개 파일 3847/3847. test_v02474 늘어남(16). ZIP sha256 `d52add2430582c08ff86f0f775bbd5f46d90bf07591191cd5551dab85c25b4b2`.
+
 ## 0.24.54 — 3D 마우스, Path Move Extend가 브러시 크기만큼만 (2026-10-27)
 
 - **3D 마우스(MECHA LAB에서만 안 되던 것)**: 0.24.51에 넣은 휠 클릭 메뉴 게이트가 떠 있는 동안 다른 이벤트를 모두 잡아 두던 것을 고침 — 3D 마우스(NDOF)·트랙패드 이벤트가 오면 바로 놓아 주고, 나머지 이벤트도 그대로 넘김. (원인 추정: 실제 3D 마우스로는 확인 못 함 — 그래도 안 되면 Preferences > Middle Click = Mecha Menu를 끄고 알려 주세요.)

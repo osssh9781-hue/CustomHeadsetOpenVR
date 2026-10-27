@@ -1,4 +1,9 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.54 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.55 (Claude Code, 2026-10-14)
+
+## 0.24.55
+- ZIP sha256 `d52add2430582c08ff86f0f775bbd5f46d90bf07591191cd5551dab85c25b4b2`.
+- `concept_move.AREA_ITEMS` SECTION 이름 'Whole'. `MCH_OT_concept_path.modal`: TAB PRESS → `_toggle_area`(scene `path_area` 전환, info 있으면 미리보기 버리고 다시 analyse, 헤더 갱신). 헤더에 Extend 방식.
+- `quick_hud.SPEC['CPATH']`에 `path_area`. `key_legend.EXTRA['CPATH']` Tab 줄.
 
 ## 0.24.54
 - ZIP sha256 `24c5401726160e56b7d020f69a7c135a0b3c63732b760f95f2214ad5608ff2d4`.

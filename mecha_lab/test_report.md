@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.54
+# Test Report — Mecha Lab 0.24.55
+
+## 0.24.55 결과: 134개 파일 3847/3847 (`tests/test_log_bpy501_v02455.txt`, Blender 5.0.1 bpy). test_v02474(16): + Tab 전환(Brush → Whole → Brush, 미리보기 다시 읽기), 이름 Whole, Quick HUD / 메뉴 설정에 path_area, 키 안내 Tab. 실제 화면은 미검증.
 
 ## 0.24.54 결과: 134개 파일 3843/3843 (`tests/test_log_bpy501_v02454.txt`, Blender 5.0.1 bpy). test_v02474(12): Area 기본값, 브러시 평면(8변, 축 정렬), 0 / 12 / 30 분할 판에서 브러시 폭(0.2)만큼만 올라옴·닫힘·바깥 법선·나머지 그대로, 미리보기 analyse가 같은 패치(단면보다 작음), Auto Apply 끔 기록에 반지름, 모달 전달, 휠 클릭 게이트가 NDOF / 트랙패드 / 다른 이벤트를 넘김. 5.2.3 bpy에서도 test_v02474 통과. 실제 3D 마우스와 화면은 미검증.
 
