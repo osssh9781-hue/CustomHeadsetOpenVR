@@ -305,6 +305,7 @@ cg.tidy_rim = probe
 cut.edge_finish = 'BEVEL'
 ce.perform_closed(C, 'CUT', [t], [[(487, 300), (513, 300), (513, 700), (487, 700)]], TOP)
 cg.tidy_rim = orig
-check('after the cleanup every rim point is still on the cut wall (straight rim, even bevel band)',
-      seen.get('off', 1) < 1e-4, seen)
+check('dense triangles: the bevel is carved along the border (0.24.56, no sliver tidy-up), closed; if the old '
+      'tidy-up runs, every rim point stays on the cut wall', ('off' not in seen and non_manifold(t) == 0)
+      or seen.get('off', 1) < 1e-4, (seen, non_manifold(t)))
 summary()

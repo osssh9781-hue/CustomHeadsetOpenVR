@@ -905,6 +905,12 @@ def pulled_back(bm, before, verts, width):
     return moved
 
 
+def _rim_extent(edges):
+    """The biggest size of the cut's border (a width as big as the cut itself is not carved, it is limited)."""
+    pts = [v.co for e in edges for v in e.verts]
+    return max(max(p[i] for p in pts) - min(p[i] for p in pts) for i in range(3)) if pts else 0.0
+
+
 def finish_new_edges(mesh, mode='NONE', width=0.01, segments=3, profile=0.5, clamp=True, label='',
                      crisp=True):
     """Bevel/chamfer only edges between cutter faces and original faces.
@@ -925,6 +931,25 @@ def finish_new_edges(mesh, mode='NONE', width=0.01, segments=3, profile=0.5, cla
         if not edges:
             return 0
         limit = _bevel_limit(edges)
+        if clamp and width > limit and mode in {'CHAMFER', 'BEVEL'} and not label.startswith('Seam') \
+                and width < 0.25 * _rim_extent(edges):
+            # 0.24.56 the edges next to the cut are too short for Blender's bevel (slivers of the Boolean): carve the
+            # chamfer / round along the border instead (the GN Edge sweep - the full width, even all round; the
+            # old tidy-up below left notches and widths from 0 to 2x)
+            from . import rim_sweep
+            bm.free()
+            bm = bmesh.new()
+            n = rim_sweep.finish(mesh, mode, width, segments)
+            if n:
+                if crisp:
+                    flat_cut_faces(mesh)
+                    drop_custom_normals(mesh)
+                return n
+            bm.from_mesh(mesh)
+            layer = _face_flag_layer(bm)
+            edges = _rim_edges(bm, layer) if layer is not None else []
+            if not edges:
+                return 0
         if clamp and width > limit:
             # 0.24.23 slivers from the Boolean would clamp it to nothing: tidy a copy, keep it only when the
             # mesh stays as closed as it was
