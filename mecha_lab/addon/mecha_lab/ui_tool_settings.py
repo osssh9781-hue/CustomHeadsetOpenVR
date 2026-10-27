@@ -639,6 +639,8 @@ def draw_base(layout, context):
             box.label(text=p.last_error, icon='ERROR')
         if ob.get('mch_base_notes'):
             box.label(text=ob['mch_base_notes'], icon='INFO')
+        if ob.get('mch_base_attach'):                # 0.24.57 a line with its ends on meshes
+            box.row().prop(ob.mch_base, 'attach_curve', expand=True)
         target = box
     else:
         p = base_mesh.scene_defaults(context)

@@ -549,6 +549,8 @@ def _tool_keymap(mode):
         # 0.24.31 hold D + drag = Concept Move (before the tool's own left mouse)
         ('mch.concept_hold', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'key_modifier': 'D'}, None),
         ('mch.quick_hud_press', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'any': True}, None),   # 0.24.51 HUD next
+        # 0.24.57 a quick second click is a DOUBLE_CLICK: the HUD / card takes that too (+ + + on a card)
+        ('mch.quick_hud_press', {'type': 'LEFTMOUSE', 'value': 'DOUBLE_CLICK', 'any': True}, None),
         ('mch.cut_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'any': True},
          {'properties': [('mode', mode)]}),
         ('mch.rmb_gate', {'type': 'RIGHTMOUSE', 'value': 'PRESS'},
@@ -1310,6 +1312,12 @@ def draw_shape_palette(self, context):
         if brush.line_taper_on:
             sk.prop(brush, 'line_taper', text='', slider=True)
         sk.prop(brush, 'line_pressure', text='Pressure', icon='STYLUS_PRESSURE', toggle=True)
+        if tool in {'BASE', 'CBASE'}:                # 0.24.57 the ends stuck to the meshes under them
+            from . import base_mesh
+            bd = base_mesh.scene_defaults(context)
+            sk.prop(bd, 'line_attach', text='Attach Ends', icon='SNAP_FACE', toggle=True)
+            if bd.line_attach:
+                sk.prop(bd, 'attach_curve', text='')
     row.separator()
     sub = row.row(align=True)
     sub.template_icon_view(scene, 'mch_png_preset', show_labels=True, scale=isz(1.0), scale_popup=isz(5.0))

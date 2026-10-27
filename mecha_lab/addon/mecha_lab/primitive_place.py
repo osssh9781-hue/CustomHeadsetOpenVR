@@ -1623,6 +1623,7 @@ CLASSES = (MCH_PG_Place, MCH_OT_place_commit, MCH_OT_place_key, MCH_OT_place_alt
            MCH_PT_place_shapes)
 TOOL_KEYMAP = (
     ('mch.quick_hud_press', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'any': True}, None),   # 0.24.51
+    ('mch.quick_hud_press', {'type': 'LEFTMOUSE', 'value': 'DOUBLE_CLICK', 'any': True}, None),   # 0.24.57
     # click = move the ghost there; drag = box select; Shift+click = select
     ('mch.place_click', {'type': 'LEFTMOUSE', 'value': 'CLICK'}, None),
     ('mch.place_click', {'type': 'LEFTMOUSE', 'value': 'CLICK', 'alt': True}, {'properties': [('subtract', True)]}),

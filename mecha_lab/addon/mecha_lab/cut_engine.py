@@ -1299,6 +1299,16 @@ def triple_reset(context):
 FOLLOWERS = {'PLATE', 'CPLATE', 'SDRAW', 'FLOWER'}       # new parts made on a part: they follow its Mirror
 
 
+def surface_point(context, projector, xy):
+    """The first mesh surface under screen point ``xy`` (world location) or None."""
+    try:
+        o, d = projector.ray(tuple(xy))
+        hit, loc, _n, _i, ob, _m = context.scene.ray_cast(context.evaluated_depsgraph_get(), o, d)
+    except (AttributeError, TypeError, RuntimeError):
+        return None
+    return tuple(loc) if hit and ob is not None and ob.type == 'MESH' else None
+
+
 class StrokeLogic:
     """State machine of one shape stroke (plain Python so tests can drive it
     with simulated events; the Blender operator below only adds RNA).
@@ -1880,7 +1890,9 @@ class StrokeLogic:
                     msg = base_mesh.sketch_add(context, loops, self.projector, subtract=self.inverted())
                 else:
                     # Alt: the drawn solid cuts into the mesh (flipped bevel sides)
-                    msg = base_mesh.perform_base(context, loops, self.projector, cutter=self.inverted())
+                    attach, alt_loops = (None, None) if self.inverted() else self._line_attach(context, base_mesh)
+                    msg = base_mesh.perform_base(context, alt_loops or loops, self.projector, cutter=self.inverted(),
+                                                 attach=attach)
             else:
                 live = self._live_cut(context, targets)
                 from . import ramp_edit
@@ -1900,6 +1912,22 @@ class StrokeLogic:
             if r >= 4.0:
                 self.brush.custom_size = r
         return msg
+
+    def _line_attach(self, context, base_mesh):
+        """0.24.57 Base Mesh Line + Attach Ends: ((path, start hit, end hit), loops) - the ends on the meshes under
+        the first / last point of the line; Smooth also smooths the line in between (its ends stay)."""
+        p = base_mesh.scene_defaults(context)
+        if not (self._line_mode() and getattr(p, 'line_attach', False)):
+            return None, None
+        path = [tuple(q) for q in self._line_path()]
+        if len(path) < 2:
+            return None, None
+        loops = None
+        if p.attach_curve == 'SMOOTH' and len(path) > 2:
+            path = smooth_open(path, 6)
+            loops = self._line_loops(path) or None
+        return (path, surface_point(context, self.projector, path[0]),
+                surface_point(context, self.projector, path[-1])), loops
 
     def _live_cut(self, context, targets):
         """0.24.56 keep this cut live (one plain Cut on one part, not a ramp; Preferences: Live Last Cut)."""

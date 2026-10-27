@@ -65,7 +65,8 @@ SIDE_ITEMS = [
 FLIP_SIDES = {'TOP': 'BOTTOM', 'BOTTOM': 'TOP', 'BOTH': 'BOTH', 'NONE': 'NONE'}
 SETTING_KEYS = ('height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 'resolution', 'offset',
                 'bottom_too', 'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link', 'puff',
-                'outline_smooth', 'edge_round', 'peak')
+                'outline_smooth', 'edge_round', 'peak', 'attach_curve')
+ATTACH_KEY = 'mch_base_attach'          # 0.24.57 Line: the ends stuck to the meshes where the line began / ended
 MAX_DOME_POINTS = 12000
 MAX_PUFF_POINTS = 60000
 PUFF_RINGS = (0.12, 0.3, 0.55, 0.85)      # rows just inside the outline (in point spacings): an even round rim
@@ -151,6 +152,14 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
                          description='Draw = add to an orange sketch, Alt+draw = subtract from it; '
                                      'Enter makes the mesh (Alt+Enter cuts it into the mesh below). '
                                      'Off: every outline becomes a mesh at once (Alt+draw = cutter)')
+    line_attach: BoolProperty(name='Attach Ends', default=False,
+                              description='Line mode: the start of the line sticks to the mesh where you began drawing, '
+                                          'the end to the mesh where you let go (the line runs between them in 3D)')
+    attach_curve: EnumProperty(name='Between', default='SMOOTH', update=_rebuild_update, items=(
+        ('SMOOTH', 'Smooth', 'The line in between is smoothed and leaves each mesh gently (eases in and out)'),
+        ('DRAWN', 'As Drawn', 'The line in between is exactly what you drew, rising / falling evenly from one end to '
+                              'the other')),
+        description='Attach Ends: how the line runs between its two ends')
     surface_align: BoolProperty(name='Stick to Surface', default=True,
                                 description='Drawn over a mesh: the new solid sits ON that surface (turned to the '
                                             'surface normal, its bottom sunk just enough to leave no gap). '
@@ -1069,8 +1078,57 @@ def rebuild(ob):
         bm.to_mesh(ob.data)
     finally:
         bm.free()
+    if ob.get(ATTACH_KEY):
+        try:
+            attach_bend(ob.data, json.loads(ob[ATTACH_KEY]), ob.mch_base.attach_curve)
+        except (TypeError, ValueError, KeyError):
+            pass
     ob.data.update()
     ob['mch_base_notes'] = '; '.join(LAST_NOTES)      # 0.23.17 shown in the LIVE panel (e.g. width limited)
+
+
+def path_param(path, xy):
+    """0..1 along the 2D polyline ``path`` of the point nearest ``xy`` (by length)."""
+    best, t_best, run = None, 0.0, 0.0
+    lens = [math.dist(path[i], path[i + 1]) for i in range(len(path) - 1)]
+    total = sum(lens) or 1.0
+    for i, ln in enumerate(lens):
+        ax, ay = path[i]
+        bx, by = path[i + 1]
+        dx, dy = bx - ax, by - ay
+        u = 0.0 if ln < 1e-12 else max(0.0, min(1.0, ((xy[0] - ax) * dx + (xy[1] - ay) * dy) / (ln * ln)))
+        d = math.hypot(xy[0] - (ax + u * dx), xy[1] - (ay + u * dy))
+        if best is None or d < best:
+            best, t_best = d, (run + u * ln) / total
+        run += ln
+    return t_best
+
+
+def ease(t, curve):
+    """How far from the start depth to the end depth at ``t``: As Drawn = evenly, Smooth = eased in and out."""
+    t = max(0.0, min(1.0, t))
+    return t if curve == 'DRAWN' else t * t * (3.0 - 2.0 * t)
+
+
+def attach_bend(me, data, curve='SMOOTH'):
+    """0.24.57 Line Attach Ends: the flat solid (in its plane) bent so its start sits at depth ``z0`` and its end at
+    ``z1`` (object space; along the view ray when ``eye`` is set, so it looks the same from where it was drawn)."""
+    path = [tuple(q) for q in data['path']]
+    if len(path) < 2:
+        return
+    z0, z1 = float(data.get('z0', 0.0)), float(data.get('z1', 0.0))
+    eye = Vector(data['eye']) if data.get('eye') is not None else None
+    for v in me.vertices:
+        co = v.co
+        dz = z0 + (z1 - z0) * ease(path_param(path, (co.x, co.y)), curve)
+        if abs(dz) < 1e-12:
+            continue
+        if eye is not None:
+            d = co - eye
+            if abs(d.z) > 1e-9:
+                v.co = co + d * (dz / d.z)
+                continue
+        v.co = Vector((co.x, co.y, co.z + dz))
 
 
 # -----------------------------------------------------------------------------
@@ -1217,7 +1275,7 @@ def _local_groups(context, loops, projector, allow_invert=True):
     return groups, frame, screen_groups, embed
 
 
-def perform_base(context, loops, projector, cutter=False, targets=None):
+def perform_base(context, loops, projector, cutter=False, targets=None, attach=None):
     """Create the new solid (or, ``cutter=True`` = Alt, cut it into the
     mesh below).  Returns a report string; raises CutError (scene untouched)."""
     defaults = scene_defaults(context)
@@ -1230,7 +1288,32 @@ def perform_base(context, loops, projector, cutter=False, targets=None):
     if cutter:      # 0.24.23 Creature Base Mesh: Alt engraves the lump (as deep as it is thick); 0.24.37 Base Mesh:
         # the drawn shape carved in, as deep as Height (Alt: Like Cut = the Cut tool's way)
         return _perform_cutter(context, groups, frame, defaults, projector, screen_groups, targets)
-    return _create_live_base(context, groups, frame, defaults, embed)
+    msg = _create_live_base(context, groups, frame, defaults, embed)
+    ob = getattr(context, 'active_object', None) if attach is not None else None
+    if ob is not None and getattr(ob, 'mch_base', None) is not None and ob.mch_base.live:
+        set_attach(ob, frame, projector, *attach)
+        ends = sum(1 for h in attach[1:] if h is not None)
+        msg += f' | Attach Ends: {ends} of 2 on a mesh ({"As Drawn" if ob.mch_base.attach_curve == "DRAWN" else "Smooth"})'
+    return msg
+
+
+def set_attach(ob, frame, projector, path, hit0, hit1):
+    """0.24.57 remember the line (in the solid's plane) and the depths of the meshes at its two ends."""
+    inv = frame.inverted_safe()
+    n = Vector((frame[0][2], frame[1][2], frame[2][2]))
+    origin = frame.translation
+    loc = []
+    for q in path:
+        w = _plane_point(projector, q, origin, n)
+        lw = inv @ w
+        loc.append([lw.x, lw.y])
+    z0 = (inv @ Vector(hit0)).z if hit0 is not None else 0.0
+    z1 = (inv @ Vector(hit1)).z if hit1 is not None else 0.0
+    eye = None
+    if getattr(projector, 'is_perspective', False) and getattr(projector, 'eye', None) is not None:
+        eye = list(inv @ Vector(projector.eye))
+    ob[ATTACH_KEY] = json.dumps({'path': loc, 'z0': z0, 'z1': z1, 'eye': eye})
+    rebuild(ob)
 
 
 def profiles_for(context, live=None):

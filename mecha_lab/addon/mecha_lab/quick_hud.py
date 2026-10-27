@@ -213,6 +213,14 @@ def hit(context, mx, my):
     gx, gy = grip
     if abs(mx - gx) <= rw / 2 and abs(my - gy) <= rh / 2:
         return 'grip', None
+    # 0.24.57 anywhere else on the card (the gaps between rows, its edge): the nearest row / the title - a click
+    # on the card never falls through to the tool behind it
+    pad = 10 * k
+    top, bottom = gy + rh / 2 + pad, rows[-1][1] - rh / 2 - pad if rows else gy - rh / 2 - pad
+    if abs(mx - gx) <= rw / 2 + pad and bottom <= my <= top:
+        if my >= gy - rh / 2 or not rows:
+            return 'grip', None
+        return 'row', min(range(len(rows)), key=lambda i: abs(rows[i][1] - my))
     return None
 
 
@@ -412,6 +420,10 @@ def register():
     if kc is not None:                       # tools that are not Mecha drawing tools (they have it in their keymap)
         km = kc.keymaps.new(name='3D View', space_type='VIEW_3D')
         _keymaps.append((km, km.keymap_items.new('mch.quick_hud_press', 'LEFTMOUSE', 'PRESS', any=True)))
+        _keymaps.append((km, km.keymap_items.new('mch.quick_hud_press', 'LEFTMOUSE', 'DOUBLE_CLICK', any=True)))
+        km = kc.keymaps.new(name='Object Mode', space_type='EMPTY')      # 0.24.57 before Object Mode clicks too
+        _keymaps.append((km, km.keymap_items.new('mch.quick_hud_press', 'LEFTMOUSE', 'PRESS', any=True)))
+        _keymaps.append((km, km.keymap_items.new('mch.quick_hud_press', 'LEFTMOUSE', 'DOUBLE_CLICK', any=True)))
     if not bpy.app.background and _label_handle is None:
         _label_handle = bpy.types.SpaceView3D.draw_handler_add(_draw_labels, (), 'WINDOW', 'POST_PIXEL')
 

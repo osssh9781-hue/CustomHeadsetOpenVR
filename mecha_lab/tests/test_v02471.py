@@ -17,15 +17,17 @@ S = C.scene
 S.mch_settings.mch_active_tool = 'CUT'
 
 check('Every Mecha drawing tool (and Screw, Primitive) asks the HUD first on a left click',
-      all([k[0] for k in wui._tool_keymap(m)][:3] == ['mch.concept_hold', 'mch.quick_hud_press', 'mch.cut_stroke']
-          for m in ('CUT', 'BASE'))                       # hold D + drag stays first (0.24.37), then the HUD
+      all([k[0] for k in wui._tool_keymap(m)][:4] == ['mch.concept_hold', 'mch.quick_hud_press', 'mch.quick_hud_press',
+                                                       'mch.cut_stroke']
+          for m in ('CUT', 'BASE'))         # hold D + drag stays first (0.24.37), then the HUD (press, 0.24.57 double)
       and [k[0] for k in screw_stamp.TOOL_KEYMAP].index('mch.quick_hud_press')
       < [k[1].get('value') for k in screw_stamp.TOOL_KEYMAP].index('PRESS') + 1
       and primitive_place.TOOL_KEYMAP[0][0] == 'mch.quick_hud_press')
 km_items = [it for km in C.window_manager.keyconfigs.addon.keymaps if km.name == '3D View' for it in km.keymap_items
             if it.idname == 'mch.quick_hud_press']
-check('... and in 3D View for the other tools (Concept / Path Move, Curve)', len(km_items) == 1
-      and km_items[0].type == 'LEFTMOUSE' and km_items[0].any)
+check('... and in 3D View for the other tools (Concept / Path Move, Curve): press and (0.24.57) double-click',
+      len(km_items) == 2 and {it.value for it in km_items} == {'PRESS', 'DOUBLE_CLICK'}
+      and all(it.type == 'LEFTMOUSE' and it.any for it in km_items))
 check('... the old HUD gizmos are gone (nothing can beat the click any more)',
       not hasattr(qh, 'MCH_GGT_quick_hud') and qh.MCH_OT_quick_hud_press in qh.CLASSES)
 src = inspect.getsource(qh.MCH_OT_quick_hud_press.invoke)

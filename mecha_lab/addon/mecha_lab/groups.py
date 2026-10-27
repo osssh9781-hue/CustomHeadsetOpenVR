@@ -60,6 +60,47 @@ def members(g):
     return list(coll.all_objects) if coll is not None else []
 
 
+def _pivots(context, objs):
+    """The symmetry centres (mirror / radial empties) the parts in ``objs`` use."""
+    from . import radial_sym, symmetry
+    objs = set(objs)
+    out = []
+    rs = getattr(context.scene, 'mch_rsym', None)
+    rpiv = rs.pivot if rs is not None else None
+    for o in objs:
+        m = symmetry.mirror_mod(o)
+        p = m.mirror_object if m is not None else None
+        if p is not None and p not in objs and p not in out and (p.get('_mch_world_pivot') or p == rpiv):
+            out.append(p)
+    if rpiv is not None and rpiv not in out:
+        rad = radial_sym.members(context)
+        if rad and all(o in objs for o in rad):            # every radial part is in here: its centre comes along
+            out.append(rpiv)
+    return out
+
+
+def adopt_pivots(context, g):
+    """0.24.57 the symmetry centres of the group's parts follow the group: move the group and a mirrored / radial
+    part moves as one piece with its copies (they no longer spread round the world origin)."""
+    if not is_group(g):
+        return 0
+    n = 0
+    for p in _pivots(context, members(g)):
+        if p.parent is None or not is_group(p.parent):
+            mw = p.matrix_world.copy()
+            p.parent = g
+            p.matrix_world = mw
+            n += 1
+    return n
+
+
+def _release_pivots(g):
+    for p in [c for c in g.children if c.type == 'EMPTY' and not is_group(c) and GROUP_KEY not in c]:
+        mw = p.matrix_world.copy()
+        p.parent = g.parent
+        p.matrix_world = mw
+
+
 def carrier_of(g):
     return next((o for o in bpy.data.objects if o.get(CARRIER_KEY) == g.name), None) if g is not None else None
 
@@ -122,6 +163,7 @@ def create(context, objs, name='Group'):
             mw = o.matrix_world.copy()
             o.parent = g
             o.matrix_world = mw
+    adopt_pivots(context, g)
     for o in context.selected_objects:
         o.select_set(False)
     g.select_set(True)
@@ -162,6 +204,7 @@ def ungroup(context, g):
         bpy.data.collections.remove(coll)
     if context.scene.get(SCOPE_KEY) == g.name:
         exit_scope(context)
+    _release_pivots(g)
     bpy.data.objects.remove(g, do_unlink=True)
     return n
 

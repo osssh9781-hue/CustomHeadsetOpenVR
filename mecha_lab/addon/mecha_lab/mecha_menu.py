@@ -296,6 +296,8 @@ def build(context, mx, my, region_w, region_h, S=1.0):
 def _dynamic(context, ob, op, props, label, on):
     """Buttons whose effect depends on the state: Radial / Kaleido toggles, Enter / Exit, repetition on."""
     from . import groups, symmetry
+    if op == 'mch.actions_mirror' and groups.is_group(ob):          # 0.24.57 a group: the group's mirror
+        return props, label, groups.repeat_mode(ob) in {'MIRROR', 'KALEIDO'} and groups.repeat_axes(ob)[props['axis']]
     if op == 'mch.symmetry_mode' and props.get('mode', '').startswith('@'):
         now = symmetry.mode_of(ob) if ob is not None and ob.type == 'MESH' else 'OFF'
         if props['mode'] == '@RADIAL':

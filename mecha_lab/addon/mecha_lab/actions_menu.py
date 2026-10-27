@@ -203,9 +203,25 @@ class MCH_OT_actions_mirror(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         ob = context.active_object
+        if ob is not None and context.mode == 'OBJECT' and ob.type == 'EMPTY':
+            from . import groups
+            return groups.is_group(ob)
         return ob is not None and ob.type == 'MESH' and context.mode == 'OBJECT'
 
     def execute(self, context):
+        from . import groups
+        g = context.active_object
+        if groups.is_group(g):                 # 0.24.57 a group selected: the whole group is mirrored
+            axes = list(groups.repeat_axes(g)) if groups.repeat_mode(g) in {'MIRROR', 'KALEIDO'} else [False] * 3
+            axes[self.axis] = not axes[self.axis]
+            if any(axes):
+                mode = 'KALEIDO' if groups.repeat_mode(g) in {'RADIAL', 'KALEIDO'} else 'MIRROR'
+                groups.set_repeat(context, g, mode=mode, axes=axes)
+            else:
+                groups.set_repeat(context, g, mode='RADIAL' if groups.repeat_mode(g) == 'KALEIDO' else 'OFF')
+            context.window_manager.mch_sym_card = g.name
+            self.report({'INFO'}, f'{g.name}: Mirror {"XYZ"[self.axis]} ' + ('on' if axes[self.axis] else 'off'))
+            return {'FINISHED'}
         on = toggle_mirror(context.active_object, self.axis)
         self.report({'INFO'}, f'Symmetry {"XYZ"[self.axis]}: ' + ('on' if on else 'off'))
         return {'FINISHED'}

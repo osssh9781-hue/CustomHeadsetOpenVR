@@ -200,7 +200,19 @@ def set_mode(context, ob, mode):
     if mode in {'MIRROR', 'KALEIDO'}:
         new = mirror_mod(ob) is None
         _mirror_on(context, ob, KALEIDO_AXES[context.scene.mch_rsym.axis] if mode == 'KALEIDO' and new else None)
+    _follow_group(context, ob)
     return True
+
+
+def _follow_group(context, ob):
+    """0.24.57 a part in a group: its symmetry centre moves with the group."""
+    try:
+        from . import groups
+        g = groups.group_of(ob)
+        if g is not None and g != ob:
+            groups.adopt_pivots(context, g)
+    except (ImportError, AttributeError, ReferenceError):
+        pass
 
 
 def toggle_axis(context, ob, axis):
@@ -211,6 +223,7 @@ def toggle_axis(context, ob, axis):
         _mirror_off(ob)
         return False
     _mirror_on(context, ob, tuple(axes))
+    _follow_group(context, ob)
     return axes[axis]
 
 
@@ -550,6 +563,11 @@ def card_hit(context, x, y):
     if not cards or not cards[0].hit(x, y):
         return False, None
     it = next((i for i in reversed(items) if i.kind != 'card' and i.clickable() and i.hit(x, y)), None)
+    if it is None:                     # 0.24.57 just beside a button (within a few px) still counts
+        near = [i for i in items if i.kind != 'card' and i.clickable()
+                and i.x - 8 <= x <= i.x + i.w + 8 and i.y - 6 <= y <= i.y + i.h + 6]
+        if near:
+            it = min(near, key=lambda i: abs(i.x + i.w / 2 - x) + abs(i.y + i.h / 2 - y))
     return True, it
 
 

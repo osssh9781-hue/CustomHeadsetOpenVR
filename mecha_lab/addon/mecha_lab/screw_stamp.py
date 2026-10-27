@@ -474,6 +474,8 @@ def draw(layout, context):
 _LAST = [None, 0.0]        # the screw placed by the last click (a double-click takes it back)
 
 TOOL_KEYMAP = (
+    # 0.24.57 a quick second click on the Quick HUD / Symmetry card stays there (not the screw's double-click)
+    ('mch.quick_hud_press', {'type': 'LEFTMOUSE', 'value': 'DOUBLE_CLICK', 'any': True}, None),
     ('mch.screw_stamp', {'type': 'LEFTMOUSE', 'value': 'DOUBLE_CLICK'}, {'properties': [('leave', True)]}),
     ('mch.quick_hud_press', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'any': True}, None),   # 0.24.51 before the press
     ('mch.screw_stamp', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, None),
