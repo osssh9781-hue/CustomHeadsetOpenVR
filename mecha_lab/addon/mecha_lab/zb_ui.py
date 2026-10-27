@@ -99,6 +99,9 @@ def draw_tool_shelf(layout, context):
     r.prop(zb, 'double', toggle=True)
     r.prop(zb, 'lazy_mouse', toggle=True)
     r = box.row()
+    r.prop(zb, 'accu', toggle=True)
+    r.prop(zb, 'pressure', text='')
+    r = box.row()
     r.prop(zb, 'lazy_step')
     r.prop(zb, 'lazy_smooth')
     box.prop(zb, 'lazy_radius')
@@ -521,6 +524,9 @@ def _image_picker(context, kind, mx, my, region_w, region_h, k, Item):
     cells.append(('Folder...', ('op', 'mch.zb_alpha_folder' if alpha else 'mch.zb_texture_folder', {}),
                   src == 'FOLDER', None, ''))
     cells.append(('Alpha Off' if alpha else 'Texture Off', ('op', pick, {'path': ''}), not cur, None, ''))
+    old = len(zs.old_copies()) if alpha else 0
+    if old:                                          # 0.24.65 the brush copies 0.24.60 - 0.24.62 left behind
+        cells.append((f'Clean {old} old', ('op', 'mch.zb_action', {'action': 'CLEAN_COPIES'}), False, None, ''))
     cw = (w - 2 * PAD * k - GAP * k * (len(cells) - 1)) / len(cells)
     for i, (lab, act, on, data, prp) in enumerate(cells):
         out.append(Item('seg', x0 + PAD * k + i * (cw + GAP * k), y, cw, ROW * k, lab, '', on, True, act, data, prp))

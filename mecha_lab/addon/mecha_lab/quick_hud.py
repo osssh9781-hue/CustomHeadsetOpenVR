@@ -412,10 +412,12 @@ class MCH_OT_quick_hud_press(bpy.types.Operator):
                     except RuntimeError:
                         pass
                     return {'FINISHED'}
-            try:
-                bpy.ops.ed.undo_push(message='HUD ' + (rna.name or prop))
-            except RuntimeError:
-                pass
+            from . import undo_keep
+            if not undo_keep.is_setting(data):           # 0.24.65 a setting is no undo step
+                try:
+                    bpy.ops.ed.undo_push(message='HUD ' + (rna.name or prop))
+                except RuntimeError:
+                    pass
             return self._end(context, {'FINISHED'})
         return {'RUNNING_MODAL'}
 
@@ -459,10 +461,12 @@ class MCH_OT_quick_hud_press(bpy.types.Operator):
                         self._end(context, {'FINISHED'})
                         ui_bars.open_value(context, it)
                         return {'FINISHED'}
-                try:
-                    bpy.ops.ed.undo_push(message='Mecha ' + (it.label or it.prop))
-                except RuntimeError:
-                    pass
+                from . import undo_keep
+                if not undo_keep.is_setting(it.data):    # 0.24.65 a setting is no undo step
+                    try:
+                        bpy.ops.ed.undo_push(message='Mecha ' + (it.label or it.prop))
+                    except RuntimeError:
+                        pass
                 side_panel.dirty()
                 return self._end(context, {'FINISHED'})
         except (ReferenceError, AttributeError, KeyError, TypeError):

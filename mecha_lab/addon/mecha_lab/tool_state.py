@@ -536,6 +536,11 @@ def _on_undo_pre(scene, *_args):
         snapshot_ui_state(scene)
     except (ReferenceError, AttributeError):
         _undo_snapshot.clear()
+    try:                                     # 0.24.65 every tool / sculpt setting (undo_keep)
+        from . import undo_keep
+        undo_keep.snapshot(scene)
+    except (ReferenceError, AttributeError, ImportError, RuntimeError):
+        pass
 
 
 @bpy.app.handlers.persistent
@@ -543,6 +548,11 @@ def _on_undo_post(scene, *_args):
     try:
         restore_ui_state(scene)
     except (ReferenceError, AttributeError):
+        pass
+    try:
+        from . import undo_keep
+        undo_keep.restore(scene)
+    except (ReferenceError, AttributeError, ImportError, RuntimeError):
         pass
 
 

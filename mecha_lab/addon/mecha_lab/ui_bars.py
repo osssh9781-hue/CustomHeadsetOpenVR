@@ -500,16 +500,18 @@ def run(context, item):
             mecha_menu.run(context, item)
         elif kind == 'bool':
             ui_values.toggle(item.data, item.prop)
-            _undo(item.label)
+            _undo(item.label, item.data)
         elif kind == 'enum':
             ui_values.set(item.data, item.prop, a[1])
-            _undo(item.label)
+            _undo(item.label, item.data)
         elif kind == 'menu_enum':
             EDIT[:] = [item.data, item.prop]
             bpy.ops.wm.call_menu(name='MCH_MT_ui_choice')
         elif kind == 'op':
             mod, name = a[1].split('.')
-            getattr(getattr(bpy.ops, mod), name)('INVOKE_DEFAULT', **a[2])
+            # 0.24.65 like a click on a Blender button: an operator that changes the model gets its undo step
+            # (from here, inside the click handler, Blender had dropped it - Ctrl+Z then jumped further back)
+            getattr(getattr(bpy.ops, mod), name)('INVOKE_DEFAULT', True, **a[2])
         elif kind == 'menu':
             bpy.ops.wm.call_menu(name=a[1])
         elif kind == 'fold':
@@ -527,7 +529,12 @@ def run(context, item):
     return msg
 
 
-def _undo(what):
+def _undo(what, data=None):
+    """An undo step for a change to the model (a live part's value ...); 0.24.65 none for a setting: Ctrl+Z
+    undoes what you did, not the settings you chose (undo_keep)."""
+    from . import undo_keep
+    if undo_keep.is_setting(data):
+        return
     try:
         bpy.ops.ed.undo_push(message='Mecha ' + (what or 'setting'))
     except RuntimeError:

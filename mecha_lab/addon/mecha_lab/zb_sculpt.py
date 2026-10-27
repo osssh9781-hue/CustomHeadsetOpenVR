@@ -155,13 +155,18 @@ def activate(context, zname):
     except RuntimeError as ex:
         return str(ex).splitlines()[0]
     remember(zname)
-    tune(brush(context), zname)
+    b = brush(context)
+    tune(b, zname)
+    zb_cursor(b)
+    apply_pressure(b, context.scene.mch_zb.pressure)
+    restore_alpha(context)
     return ''
 
 
 # 0.24.60 ZBrush feel: the first time a brush is used in a file it gets ZBrush-like defaults (pen pressure on
 # size and intensity, a close Dots spacing, ZBrush-ish strength / falloff); later changes are kept.
-TUNE_ALL = {'use_pressure_strength': True, 'use_pressure_size': True, 'spacing': 5}
+TUNE_ALL = {'use_pressure_strength': True, 'use_pressure_size': True, 'spacing': 5,
+            'use_accumulate': False}                 # 0.24.65 ZBrush Accu off: a stroke does not pile up on itself
 TUNE = {
     'Standard': {'strength': 0.5, 'curve_distance_falloff_preset': 'SMOOTH'},
     'ClayBuildup': {'strength': 0.55, 'spacing': 6},
@@ -200,6 +205,54 @@ def tune(b, zname):
         b[TUNED_KEY] = 1
     except (TypeError, AttributeError):
         pass
+    return True
+
+
+# 0.24.65 ZBrush's red draw circle (Zadd and Zsub alike); once per brush, later colour changes are kept
+ZB_RED = (1.0, 0.14, 0.1, 0.9)
+CURSOR_KEY = 'mch_zb_cursor'
+
+
+def zb_cursor(b):
+    if b is None or b.get(CURSOR_KEY):
+        return False
+    for attr in ('cursor_color_add', 'cursor_color_subtract'):
+        if hasattr(b, attr):
+            setattr(b, attr, ZB_RED)
+    b[CURSOR_KEY] = 1
+    return True
+
+
+# 0.24.65 pen pressure -> Z Intensity (Blender's strength pressure curve): ZBrush = gentle start, Linear = Blender
+PRESSURE = (('ZBRUSH', 'ZBrush', 'A light touch gives a little less, like ZBrush (curve x^1.3)', 1.3),
+            ('LINEAR', 'Linear', 'Blender: strength follows the pressure 1 : 1', 1.0),
+            ('SOFT', 'Soft', 'Much less at a light touch: build up slowly (curve x^1.8)', 1.8),
+            ('FIRM', 'Firm', 'Strong already at a light touch (curve x^0.6)', 0.6))
+PRESSURE_KEY = 'mch_zb_pressure'
+
+
+def pressure_curve(feel, n=9):
+    power = next((p for k, _n, _d, p in PRESSURE if k == feel), 1.0)
+    return [(i / (n - 1.0), (i / (n - 1.0)) ** power) for i in range(n)]
+
+
+def apply_pressure(b, feel):
+    """The brush's strength pressure curve for ``feel`` (once per brush and feel)."""
+    cm = getattr(b, 'curve_strength', None) if b is not None else None
+    if cm is None or b.get(PRESSURE_KEY) == feel:
+        return False
+    pts = cm.curves[0].points
+    want = pressure_curve(feel)
+    while len(pts) > 2:
+        pts.remove(pts[1])
+    pts[0].location = want[0]
+    pts[-1].location = want[-1]
+    for x, y in want[1:-1]:
+        pts.new(x, y)
+    for p in pts:
+        p.handle_type = 'AUTO_CLAMPED'
+    cm.update()
+    b[PRESSURE_KEY] = feel
     return True
 
 
@@ -309,22 +362,55 @@ def alpha_texture(path, inverted=False):
     return dst.textures[0]
 
 
-def set_alpha(context, path):
-    """The brush's alpha (Blender: an image brush texture from the view) - '' = Alpha Off."""
+def _alpha_map(context):
+    import json
+    try:
+        return json.loads(context.scene.mch_zb.alpha_map or '{}')
+    except (TypeError, ValueError):
+        return {}
+
+
+def remember_alpha(context):
+    """0.24.65 Each ZBrush brush keeps its alpha (and Flh / Flv / Rot / Invr) in this file: it comes back when you
+    pick the brush again and after the file is opened again (Blender itself forgets it on its own brushes)."""
+    import json
     b = brush(context)
     if b is None:
-        return 'No brush'
-    if not path:
-        if b.texture is not None:
-            b.texture = None
-        return 'Alpha Off'
+        return
+    amap = _alpha_map(context)
+    path = current_alpha(context)
+    if path:
+        slot = b.texture_slot
+        amap[zb_name(b)] = {'path': path, 'inv': bool(b.texture and b.texture.name.endswith(INV)),
+                            'scale': list(slot.scale)[:2], 'angle': float(slot.angle)}
+    else:
+        amap.pop(zb_name(b), None)
+    context.scene.mch_zb.alpha_map = json.dumps(amap)
+
+
+def restore_alpha(context):
+    """Put the remembered alpha back on the brush when it has lost it; True when it did."""
+    b = brush(context)
+    if b is None or b.texture is not None:
+        return False
+    entry = _alpha_map(context).get(zb_name(b))
+    if not entry or not os.path.isfile(entry.get('path', '')):
+        return False
     try:
-        tex = alpha_texture(path)
-    except (RuntimeError, OSError) as ex:
-        return 'Alpha: ' + str(ex).splitlines()[0]
-    b.texture = tex
-    if b.texture != tex:
-        return 'Alpha: Blender did not take it on this brush'
+        b.texture = alpha_texture(entry['path'], inverted=entry.get('inv', False))
+    except (RuntimeError, OSError):
+        return False
+    if b.texture is None:
+        return False
+    _alpha_slot(b)
+    slot = b.texture_slot
+    sx, sy = entry.get('scale', (1.0, 1.0))
+    slot.scale[0], slot.scale[1] = sx, sy
+    slot.angle = entry.get('angle', 0.0)
+    return True
+
+
+def _alpha_slot(b):
     slot = b.texture_slot
     for mode in ('VIEW_PLANE', 'AREA_PLANE'):     # 0.24.61 from the view, like a ZBrush alpha
         try:
@@ -338,6 +424,27 @@ def set_alpha(context, path):
     if hasattr(b, 'use_primary_overlay'):         # the alpha shows in the brush circle
         b.use_primary_overlay = True
         b.texture_overlay_alpha = 40
+
+
+def set_alpha(context, path):
+    """The brush's alpha (Blender: an image brush texture from the view) - '' = Alpha Off."""
+    b = brush(context)
+    if b is None:
+        return 'No brush'
+    if not path:
+        if b.texture is not None:
+            b.texture = None
+        remember_alpha(context)
+        return 'Alpha Off'
+    try:
+        tex = alpha_texture(path)
+    except (RuntimeError, OSError) as ex:
+        return 'Alpha: ' + str(ex).splitlines()[0]
+    b.texture = tex
+    if b.texture != tex:
+        return 'Alpha: Blender did not take it on this brush'
+    _alpha_slot(b)
+    remember_alpha(context)
     return 'Alpha ' + os.path.splitext(os.path.basename(path))[0]
 
 
@@ -358,7 +465,35 @@ def alpha_edit(context, action):
         path = current_alpha(context)
         if path:                                     # (the inverted twin from the same alpha file)
             b.texture = alpha_texture(path, inverted=not tex.name.endswith(INV))
+    remember_alpha(context)
     return {'FLIP_H': 'Flip H', 'FLIP_V': 'Flip V', 'ROTATE': 'Rotate', 'INVERT': 'Invert'}.get(action, action)
+
+
+def old_copies():
+    """The '<brush> (ZB)' copies 0.24.60 - 0.24.62 left in the file (made for alphas; not used any more)."""
+    return [b for b in bpy.data.brushes if b.library is None and b.name.endswith(ZB_SUFFIX)]
+
+
+def clean_old_copies(context):
+    """Remove those copies (not the brush you sculpt with) and the alpha textures / images only they used."""
+    keep = brush(context)
+    texs = set()
+    n = 0
+    for b in old_copies():
+        if b == keep:
+            continue
+        if b.texture is not None and b.texture.library is None:
+            texs.add(b.texture.name)
+        bpy.data.brushes.remove(b)
+        n += 1
+    for name in texs:
+        t = bpy.data.textures.get((name, None))
+        if t is not None and t.users == 0:
+            img = t.image
+            bpy.data.textures.remove(t)
+            if img is not None and img.users == 0 and img.library is None:
+                bpy.data.images.remove(img)
+    return n
 
 
 # --- textures (ZBrush Texture: a colour image the Paint brush stamps, DragRect) -----------------------------------
@@ -813,6 +948,18 @@ def _lazy_mouse_set(self, v):
     _safe(f, None)
 
 
+def _pressure_update(self, context):
+    _safe(lambda: apply_pressure(brush(context), self.pressure), None)
+
+
+def _accu_get(self):
+    return _safe(lambda: bool(brush().use_accumulate), False)
+
+
+def _accu_set(self, v):
+    _safe(lambda: setattr(brush(), 'use_accumulate', bool(v)), None)
+
+
 def _highpoly_get(self):
     from . import zb_highpoly
     return zb_highpoly.pref_on()
@@ -1102,6 +1249,14 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
         ('FOLDER', 'Folder', 'Your own texture folder')])
     tex_dir: StringProperty(name='Texture Folder', subtype='DIR_PATH', default='',
                             description='A folder of texture images (PNG / JPG / TIF ...)')
+    accu: BoolProperty(name='Accu', get=_accu_get, set=_accu_set,
+                       description='Accumulate: the stroke piles up where it crosses itself (ZBrush Accu; off = '
+                                   'one stroke reaches its depth once - Blender Accumulate)')
+    pressure: EnumProperty(name='Pressure', default='ZBRUSH', items=[(k, n, d) for k, n, d, _p in PRESSURE],
+                           update=_pressure_update,
+                           description='How pen pressure sets Z Intensity (Blender strength pressure curve)')
+    alpha_map: StringProperty(default='{}', options={'HIDDEN'},
+                              description='(the alpha each ZBrush brush had: it comes back with the brush)')
     rgb_int: IntProperty(name='Rgb Intensity', default=100, min=0, max=100,
                          description='How strongly a texture stamp (or the paint) covers the colour underneath')
     fbx_scope: EnumProperty(name='Export', default='SELECTED', items=[
@@ -1238,6 +1393,45 @@ def dynamesh(context, ob, points):
     return ''
 
 
+FACE_SETS = '.sculpt_face_set'
+
+
+def mask_to_group(ob, limit=0.5):
+    """The masked faces (every corner masked over ``limit``) become a new polygroup (face set); True if any."""
+    import numpy as np
+    if not has_mask(ob):
+        return False
+    me = ob.data
+    vals = _mask_values(ob)
+    nf = len(me.polygons)
+    corner_v = np.empty(len(me.loops), dtype=np.int64)
+    me.loops.foreach_get('vertex_index', corner_v)
+    starts = np.empty(nf, dtype=np.int64)
+    me.polygons.foreach_get('loop_start', starts)
+    masked = np.minimum.reduceat(vals[corner_v], starts) > limit if nf else np.zeros(0, dtype=bool)
+    if not masked.any():
+        return False
+    att = me.attributes.get(FACE_SETS)
+    if att is None:
+        att = me.attributes.new(FACE_SETS, 'INT', 'FACE')
+        sets = np.ones(nf, dtype=np.int32)
+    else:
+        sets = np.empty(nf, dtype=np.int32)
+        att.data.foreach_get('value', sets)
+    sets[masked] = int(sets.max()) + 1
+    me.attributes[FACE_SETS].data.foreach_set('value', sets)
+    me.update()
+    return True
+
+
+def clear_mask(ob):
+    import numpy as np
+    att = ob.data.attributes.get('.sculpt_mask')
+    if att is not None:
+        att.data.foreach_set('value', np.zeros(len(att.data), dtype=np.float32))
+        ob.data.update()
+
+
 def has_mask(ob, eps=1e-4):
     if ob is None or ob.type != 'MESH':
         return False
@@ -1338,6 +1532,8 @@ def run(context, action):
     if action in TOOLS:
         bpy.ops.wm.tool_set_by_id(name=TOOLS[action])
         return ''
+    if action == 'CLEAN_COPIES':
+        return f'Removed {clean_old_copies(context)} old brush copies'
     if action == 'EDIT':
         bpy.ops.object.mode_set(mode='OBJECT' if context.mode == 'SCULPT' else 'SCULPT')
         return ''
@@ -1406,9 +1602,19 @@ def run(context, action):
         return 'DynaMesh off'
     if action in {'DYNAMESH', 'DYNA_UPDATE', 'DYNA_SUBDIV', 'DYNA_SUBDIV3'}:
         from .quick_hud import points_text
-        msg = dynamesh(context, ob, zb.points)
+        grouped = multires(ob) is None and mask_to_group(ob)   # 0.24.65 ZBrush: the masked part: its own polygroup
+        keep_attrs = ob.data.use_remesh_preserve_attributes
+        if grouped:
+            ob.data.use_remesh_preserve_attributes = True   # (the polygroups come through the remesh)
+        try:
+            msg = dynamesh(context, ob, zb.points)
+        finally:
+            if grouped:
+                ob.data.use_remesh_preserve_attributes = keep_attrs
         if msg:
             return msg
+        if grouped:
+            clear_mask(ob)
         if action in {'DYNA_SUBDIV', 'DYNA_SUBDIV3'}:
             _divide(context, ob, 3 if action == 'DYNA_SUBDIV3' else 2)
             ob.pop(DYNA_KEY, None)
@@ -1691,11 +1897,23 @@ class _ZBPoll:
         return on(context)
 
 
+# 0.24.65 actions that only change a setting / the view / a tool: no undo step (Ctrl+Z undoes what you did)
+SETTING_ACTIONS = set(TOOLS) | {'EDIT', 'SDIV_UP', 'SDIV_DOWN', 'CHECK_MESH', 'SWITCH_COLOR', 'SYM_X', 'POLYF', 'FRAME',
+                                'SOLO', 'EXPORT_OBJ', 'EXPORT_STL', 'FBX_EXPORT'}
+
+
+def undo_step(message):
+    try:
+        bpy.ops.ed.undo_push(message=message)
+    except RuntimeError:
+        pass
+
+
 class MCH_OT_zb_action(_ZBPoll, bpy.types.Operator):
     """ZBrush shelf action on the SubTool (Blender equivalent in the tooltip of each button)"""
     bl_idname = 'mch.zb_action'
     bl_label = 'ZBrush Action'
-    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    bl_options = {'REGISTER', 'INTERNAL'}       # (the undo step is pushed below: one per change to the model)
     action: StringProperty()
 
     def execute(self, context):
@@ -1705,6 +1923,8 @@ class MCH_OT_zb_action(_ZBPoll, bpy.types.Operator):
             msg = str(ex).splitlines()[0]
         if msg:
             self.report({'INFO'}, msg)
+        if self.action not in SETTING_ACTIONS:
+            undo_step('ZBrush ' + self.action.replace('_', ' ').title())
         _bump()
         return {'FINISHED'}
 
@@ -1886,6 +2106,10 @@ class MCH_OT_zb_press(_ZBPoll, bpy.types.Operator):
         if popup_open(context):
             close_popup(context)
             return {'FINISHED'}
+        try:
+            restore_alpha(context)                       # 0.24.65 the brush's alpha back (after a reopen / undo)
+        except (RuntimeError, AttributeError, OSError):
+            pass
         model, canvas = plan(event.ctrl, event.shift, event.alt)
         if event.alt and not event.ctrl and not event.shift:     # ZBrush: Alt + click another SubTool picks it
             other = object_under(context, event.mouse_region_x, event.mouse_region_y)
@@ -2301,7 +2525,7 @@ class MCH_OT_zb_alpha(_ZBPoll, bpy.types.Operator):
     """Use this alpha on the brush (empty: Alpha Off)"""
     bl_idname = 'mch.zb_alpha'
     bl_label = 'ZBrush Alpha'
-    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    bl_options = {'REGISTER', 'INTERNAL'}       # (a setting: no undo step)
     path: StringProperty(subtype='FILE_PATH')
 
     def execute(self, context):
@@ -2315,7 +2539,7 @@ class MCH_OT_zb_alpha_edit(_ZBPoll, bpy.types.Operator):
     """Alpha: Flip H / Flip V / Rotate 90 / Invert"""
     bl_idname = 'mch.zb_alpha_edit'
     bl_label = 'ZBrush Alpha Edit'
-    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    bl_options = {'REGISTER', 'INTERNAL'}       # (a setting: no undo step)
     action: StringProperty(default='FLIP_H')
 
     def execute(self, context):
@@ -2328,7 +2552,7 @@ class MCH_OT_zb_set(_ZBPoll, bpy.types.Operator):
     """Pick this (ZBrush picker: Material / Stroke) - the picker closes"""
     bl_idname = 'mch.zb_set'
     bl_label = 'ZBrush Pick'
-    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    bl_options = {'REGISTER', 'INTERNAL'}       # (a setting: no undo step)
     prop: StringProperty()
     value: StringProperty()
 
@@ -2466,6 +2690,21 @@ CLASSES = (MCH_PG_ZBrush, MCH_OT_zb_action, MCH_OT_zb_brush, MCH_OT_zb_append, M
            MCH_OT_zb_alpha_folder, MCH_OT_zb_set, MCH_OT_zb_texture, MCH_OT_zb_texture_folder, MCH_OT_zb_tex_stamp, MCH_OT_zb_close)
 _keymaps = []
 
+
+def _restore_alpha_later():
+    try:
+        restore_alpha(bpy.context)
+    except (RuntimeError, AttributeError, OSError, ReferenceError):
+        pass
+    return None
+
+
+@bpy.app.handlers.persistent
+def _on_load(*_args):
+    """0.24.65 a file opened again: the brush gets its remembered alpha back (a moment later, once loaded)."""
+    if not bpy.app.timers.is_registered(_restore_alpha_later):
+        bpy.app.timers.register(_restore_alpha_later, first_interval=1.0)
+
 # (key, ctrl, shift, alt, operator, properties)
 KEYS = (
     ('LEFTMOUSE', False, False, False, 'mch.zb_press', {}), ('LEFTMOUSE', False, True, False, 'mch.zb_press', {}),
@@ -2515,11 +2754,15 @@ def register():
                                                      shift=shift, alt=alt)))
     from . import zb_highpoly
     zb_highpoly.register()
+    if _on_load not in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(_on_load)
 
 
 def unregister():
     from . import zb_highpoly
     zb_highpoly.unregister()
+    while _on_load in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(_on_load)
     lasso_hide()
     stamp_hide()
     for km, kmi in _keymaps:
