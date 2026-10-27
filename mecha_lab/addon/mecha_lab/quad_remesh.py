@@ -21,6 +21,7 @@ from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty
 
 SRC_KEY = 'mch_quad_source'
 MISS_KEY = 'mch_quad_miss'
+BEVEL = 'MCH_Quad_Bevel'
 MISS_LIMIT = 1.0          # warn when more than one quad length of the cut edges got lost (> half a quad away)
 
 
@@ -39,6 +40,17 @@ class MCH_PG_QuadRemesh(bpy.types.PropertyGroup):
                               description='Also keep edges you marked Sharp or gave a Crease')
     smooth_shade: BoolProperty(name='Smooth + Sharp Edges', default=True,
                                description='Shade the result smooth with the kept edges sharp')
+    bevel: BoolProperty(name='Bevel Edges', default=False, update=_bevel_update,
+                        description='0.24.53 a live Bevel on the kept hard edges of the quad result')
+    bevel_edges: EnumProperty(name='Bevel', default='OUTER', update=_bevel_update, items=(
+        ('OUTER', 'Outer', 'Only the outside (convex) hard edges; inside corners of pockets stay sharp'),
+        ('ALL', 'All', 'Every kept hard edge')))
+
+
+def _bevel_update(self, context):
+    ob = context.active_object
+    if is_quad(ob):
+        set_bevel(ob, self)
 
 
 def is_quad(ob):
@@ -433,6 +445,48 @@ def build_mesh(context, src, st):
     return me, kept, miss
 
 
+def edge_weights(me, outer=True):
+    """Bevel weight 1 on the hard (sharp marked) edges - only the convex ones with ``outer``.  Returns how many."""
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        lay = bm.edges.layers.float.get('bevel_weight_edge') or bm.edges.layers.float.new('bevel_weight_edge')
+        n = 0
+        for e in bm.edges:
+            w = 0.0
+            if not e.smooth and e.is_manifold:
+                f1, f2 = e.link_faces
+                if not outer or (f2.calc_center_median() - f1.calc_center_median()).dot(f1.normal) < 0.0:
+                    w = 1.0
+            e[lay] = w
+            n += w > 0.0
+        bm.to_mesh(me)
+    finally:
+        bm.free()
+    me.update()
+    return n
+
+
+def set_bevel(ob, st):
+    """Add / update / remove the live Bevel of a quad result (width, segments, profile stay as the user set them)."""
+    bev = ob.modifiers.get(BEVEL)
+    if not st.bevel:
+        if bev is not None:
+            ob.modifiers.remove(bev)
+        return None
+    edge_weights(ob.data, st.bevel_edges == 'OUTER')
+    if bev is None:
+        bev = ob.modifiers.new(BEVEL, 'BEVEL')
+        bev.width = _size(ob.data) * 0.01
+        bev.segments = 2                                   # an even count keeps the corners all quads
+        bev.profile = 0.5
+    bev.limit_method = 'WEIGHT'
+    bev.use_clamp_overlap = True
+    bev.harden_normals = True
+    bev.miter_outer = 'MITER_ARC'
+    return bev
+
+
 def make(context, src, st):
     if src is None or src.type != 'MESH':
         raise RuntimeError('Select a mesh part first.')
@@ -445,6 +499,7 @@ def make(context, src, st):
     for mat in src.data.materials:
         me.materials.append(mat)
     ob[SRC_KEY] = src.name
+    set_bevel(ob, st)
     src.hide_set(True)
     for o in context.selected_objects:
         o.select_set(False)
@@ -465,6 +520,7 @@ def remake(context, ob, st):
     ob.data = me
     if old.users == 0:
         bpy.data.meshes.remove(old)
+    set_bevel(ob, st)
     return ob, kept, miss
 
 
@@ -505,7 +561,7 @@ class MCH_OT_quad_make(bpy.types.Operator):
 
 
 class MCH_OT_quad_apply(bpy.types.Operator):
-    """Keep the quad mesh as an ordinary mesh (the hidden original stays in the file)"""
+    """Keep the quad mesh as an ordinary mesh, the Bevel made permanent (the hidden original stays in the file)"""
     bl_idname = 'mch.quad_apply'
     bl_label = 'Apply Quad'
     bl_options = {'REGISTER', 'UNDO'}
@@ -516,6 +572,10 @@ class MCH_OT_quad_apply(bpy.types.Operator):
 
     def execute(self, context):
         ob = context.active_object
+        if ob.modifiers.get(BEVEL) is not None:
+            with context.temp_override(object=ob, active_object=ob, selected_objects=[ob],
+                                       selected_editable_objects=[ob]):
+                bpy.ops.object.modifier_apply(modifier=BEVEL)
         del ob[SRC_KEY]
         if MISS_KEY in ob:
             del ob[MISS_KEY]
@@ -554,6 +614,16 @@ def draw(layout, context):
     row.scale_y = 1.3
     row.operator('mch.quad_remesh', text='Re-make Quad' if is_quad(ob) else 'Make Quad',
                  icon='FILE_REFRESH' if is_quad(ob) else 'MOD_REMESH')
+    col = box.column(align=True)
+    row = col.row(align=True)
+    row.prop(st, 'bevel')
+    if st.bevel:
+        row.prop(st, 'bevel_edges', expand=True)
+        bev = ob.modifiers.get(BEVEL) if is_quad(ob) else None
+        if bev is not None:
+            col.prop(bev, 'width')
+            col.prop(bev, 'segments', text='Segments (even = all quads)')
+            col.prop(bev, 'profile', slider=True)
     if is_quad(ob):
         box.label(text=f'{len(ob.data.polygons)} quads')
         if ob.get(MISS_KEY, 0.0) > MISS_LIMIT:

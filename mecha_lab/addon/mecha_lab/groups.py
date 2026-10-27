@@ -5,8 +5,8 @@
 - Ungroup: the parts go back to where they were (their old collections), handle and collection removed.
 - Merge: the group's meshes (modifiers baked) become one mesh.
 - Enter / Exit (scope): inside a group everything else is shown as wire and cannot be selected.
-- Repetition (non-destructive, linked): Mirror (X / Y / Z planes through the handle), Radial (Count copies round
-  an axis of the handle) or Kaleido (both).  The copies are made by a Geometry Nodes object that shows the group's
+- Repetition (non-destructive, linked): Mirror (X / Y / Z planes), Radial (Count copies round an axis) or Kaleido
+  (both), about the world origin and axes (0.24.53 default; or the group handle, or the 3D cursor - Centre).  The copies are made by a Geometry Nodes object that shows the group's
   collection again, so editing a part changes every copy at once; switching it off removes them.  Apply makes
   the copies real objects.
 
@@ -260,6 +260,13 @@ def repeat_axis(g):
     return g.get('mch_rep_axis', 'Z') if g is not None else 'Z'
 
 
+CENTRES = ('WORLD', 'GROUP', 'CURSOR')
+
+
+def repeat_center(g):
+    return g.get('mch_rep_center', 'WORLD') if g is not None else 'WORLD'
+
+
 def repeat_count(g):
     return int(g.get('mch_rep_count', 6)) if g is not None else 6
 
@@ -344,7 +351,26 @@ def _orthonormal(r):
     return all(abs(p[i][j] - (1.0 if i == j else 0.0)) < 1e-6 for i in range(3) for j in range(3))
 
 
-def set_repeat(context, g, mode=None, axes=None, axis=None, count=None):
+def _place_carrier(context, g, car):
+    """The copies are made in the carrier's space: at the world origin (World), at the 3D cursor (Cursor, where it
+    was when picked) or following the handle (Group)."""
+    where = repeat_center(g)
+    if where == 'GROUP':
+        if car.parent != g:
+            car.parent = g
+        car.matrix_parent_inverse = Matrix.Identity(4)
+        car.matrix_basis = Matrix.Identity(4)
+        return
+    car.parent = None
+    if where == 'CURSOR':
+        if 'mch_rep_cursor' not in g:
+            g['mch_rep_cursor'] = list(context.scene.cursor.location)
+        car.matrix_world = Matrix.Translation(Vector(g['mch_rep_cursor']))
+    else:
+        car.matrix_world = Matrix.Identity(4)
+
+
+def set_repeat(context, g, mode=None, axes=None, axis=None, count=None, center=None):
     """Change the group's repetition; OFF removes the copies."""
     if not is_group(g):
         return None
@@ -356,6 +382,10 @@ def set_repeat(context, g, mode=None, axes=None, axis=None, count=None):
         g['mch_rep_axis'] = axis
     if count is not None:
         g['mch_rep_count'] = max(2, min(64, int(count)))
+    if center in CENTRES:
+        g['mch_rep_center'] = center
+        if center == 'CURSOR':
+            g['mch_rep_cursor'] = list(context.scene.cursor.location)
     mode = repeat_mode(g)
     car = carrier_of(g)
     if mode == 'OFF':
@@ -376,10 +406,8 @@ def set_repeat(context, g, mode=None, axes=None, axis=None, count=None):
         for c in g.users_collection:
             c.objects.link(car)
         car[CARRIER_KEY] = g.name
-        car.parent = g
-        car.matrix_parent_inverse = Matrix.Identity(4)
-        car.matrix_basis = Matrix.Identity(4)
         car.hide_select = True
+    _place_carrier(context, g, car)
     mod = car.modifiers.get(MOD_NAME) or car.modifiers.new(MOD_NAME, 'NODES')
     mod.node_group = tree
     return car
@@ -390,7 +418,9 @@ def make_real(context, g):
     if not is_group(g) or repeat_mode(g) == 'OFF':
         return 0
     coll = collection_of(g)
-    gm = g.matrix_world
+    car = carrier_of(g)
+    context.view_layer.update()
+    gm = car.matrix_world.copy() if car is not None else g.matrix_world.copy()     # the copies' frame
     gi = gm.inverted_safe()
     mats = copy_matrices(repeat_mode(g), repeat_axes(g), repeat_axis(g), repeat_count(g))
     made = 0

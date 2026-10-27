@@ -8,6 +8,8 @@ Working out which edge to draw first was the hard part, so an Alt: Ramp carve is
   mesh goes back to the copy and is carved again with that side deep;
 * Carve Depth / Ramp Length / Ramp Soft re-carve it at once;
 * Apply keeps it (the copy goes), Remove puts the mesh back as it was.
+* 0.24.53 the carved mesh's fingerprint is kept: if the mesh was edited after the ramp (moved points, another
+  cut ...), a slider no longer throws those edits away - the ramp is kept as it is (Applied) instead.
 
 ``corners`` and ``nearest_side`` are pure (tested headless).
 """
@@ -90,6 +92,28 @@ def _copy_into(src, dst):
     dst.update()
 
 
+def fingerprint(me):
+    import hashlib
+    import numpy as np
+    co = np.empty(len(me.vertices) * 3, dtype=np.float32)
+    me.vertices.foreach_get('co', co)
+    return f'{len(me.vertices)}:{len(me.polygons)}:{hashlib.md5(co.tobytes()).hexdigest()}'
+
+
+def stamp(ob):
+    """After a carve: remember what the carved mesh looks like."""
+    rec = record(ob)
+    if rec is not None:
+        rec['stamp'] = fingerprint(ob.data)
+        _write(ob, rec)
+
+
+def edited(ob):
+    """The mesh is not the one the last carve made (edited since)."""
+    rec = record(ob)
+    return rec is not None and 'stamp' in rec and rec['stamp'] != fingerprint(ob.data)
+
+
 def begin(context, target, loops, projector, kind='base'):
     """Before an Alt: Ramp carve on ``target``: keep the mesh as it is and the outline (an earlier live ramp is
     kept as it is first).  Returns the side that is deep (0)."""
@@ -161,6 +185,10 @@ def recarve(context, ob):
     me = bpy.data.meshes.get(rec.get('backup', ''))
     if me is None:
         raise cg.CutError('The ramp can no longer be changed (its saved mesh is gone): Apply or Remove it.')
+    if edited(ob):
+        finish(ob)                               # keep the edits: the ramp stays as it is
+        raise cg.CutError('The mesh was edited after the ramp, so the ramp was kept as it is (your edits stay). '
+                          'Draw a new ramp to change it.')
     loops = [[tuple(q) for q in lp] for lp in rec['loops']]
     segs = sides(loops[0])
     side = rec.get('side', 0) % max(1, len(segs))
@@ -170,9 +198,12 @@ def recarve(context, ob):
         _copy_into(me, ob.data)
         if rec.get('kind') == 'cut':             # 0.24.46 a Cut Ramp: the Cut settings
             from . import cut_engine
-            return cut_engine.cut_ramp(context, [ob], loops, projector, edge=segs[side], live=False)
-        return bm_.carve_surface(context, loops, projector, bm_.scene_defaults(context), [ob], ramp_edge=segs[side],
-                                 live=False)
+            out = cut_engine.cut_ramp(context, [ob], loops, projector, edge=segs[side], live=False)
+        else:
+            out = bm_.carve_surface(context, loops, projector, bm_.scene_defaults(context), [ob],
+                                    ramp_edge=segs[side], live=False)
+        stamp(ob)
+        return out
     finally:
         _BUSY[0] = False
 

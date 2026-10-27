@@ -37,6 +37,15 @@ mm.run(C, flat, hold=True)
 check('... Flat shades the part flat', not any(p.use_smooth for p in part.data.polygons))
 mm.run(C, next(i for i in items if i.label == 'Smooth'), hold=True)
 check('... Smooth shades it smooth', all(p.use_smooth for p in part.data.polygons))
+S.mch_settings.mch_active_tool = 'BASE'
+bitems = mm.build(C, 800, 450, 1600, 900, 1.0)
+lasso = [i for i in bitems if i.kind == 'tile' and i.action and i.action[0] == 'shape']
+check('Base Mesh menu: the profiles and the lasso shapes again (they had gone from the menu)',
+      any(i.kind == 'tile' and i.action[1] == 'mch.set_profile' for i in bitems) and len(lasso) >= 5
+      and 'Lasso' in [i.label for i in bitems if i.kind == 'section'])
+mm.run(C, next(i for i in lasso if i.action[1] != S.mch_brush.shape))
+check('... a lasso tile sets the shape', any(S.mch_brush.shape == i.action[1] for i in lasso))
+S.mch_settings.mch_active_tool = 'CUT'
 src = inspect.getsource(mm.MCH_OT_mecha_menu.modal)
 check('Clicks never close the menu (tools switch in place), moving off it does',
       "run(context, it, event.ctrl and not self.hold, True)" in src and 'self._near(x, y)' in src)
@@ -195,10 +204,25 @@ def copies(g):
 
 
 r = bpy.ops.mch.group_repeat(mode='MIRROR')
-check('Repetition Mirror X: linked copies through the handle', r == {'FINISHED'} and len(copies(g)) == 2
-      and all(abs(p.x - 3.0) < 1e-6 for p in copies(g)) and C.window_manager.mch_sym_card == g.name)
+check('Repetition Mirror X: linked copies across the world X plane (0.24.53: world axes by default)',
+      r == {'FINISHED'} and len(copies(g)) == 2 and gr.repeat_center(g) == 'WORLD'
+      and all(abs(p.x + 3.0) < 1e-6 for p in copies(g)) and C.window_manager.mch_sym_card == g.name,
+      [tuple(round(c, 3) for c in p) for p in copies(g)])
+gr.set_repeat(C, g, center='GROUP')
+check('... Centre Group: through the group handle instead', all(abs(p.x - 3.0) < 1e-6 for p in copies(g)))
+S.cursor.location = (1.0, 0.0, 0.0)
+gr.set_repeat(C, g, center='CURSOR')
+check('... Centre Cursor: through the 3D cursor', all(abs(p.x + 1.0) < 1e-6 for p in copies(g)))
+S.cursor.location = (0.0, 0.0, 0.0)
+gr.set_repeat(C, g, center='WORLD')
+g.location.y += 2.0
+C.view_layer.update()
+check('... World: moving the group moves the copies on the other side', all(abs(p.x + 3.0) < 1e-6 and p.y > 0.5
+                                                                          for p in copies(g)))
+g.location.y -= 2.0
+C.view_layer.update()
 gr.set_repeat(C, g, mode='RADIAL', count=4)
-check('Radial x4 round the handle: 3 copies of each part', len(copies(g)) == 6)
+check('Radial x4 round the world Z axis: 3 copies of each part', len(copies(g)) == 6)
 gr.set_repeat(C, g, mode='KALEIDO', axes=(True, False, False), count=3)
 check('Kaleido (mirror X + 3 round): 5 copies of each part', len(copies(g)) == 10)
 before = sorted(round(p.length, 4) for p in copies(g))
@@ -214,6 +238,16 @@ check('The group handle selected: the card is its Repetition', sy.card_target(C)
 items = sy.build_card(C, 1600, 900, 1.0)
 sy.run_card(C, next(i for i in items if i.label == 'Radial'))
 check('... Radial from the card', gr.repeat_mode(g) == 'RADIAL')
+items = sy.build_card(C, 1600, 900, 1.0)
+cen = {i.label: i for i in items if i.action and i.action[0] == 'sym_center'}
+check('... the group card has Centre World (on) / Group / Cursor', set(cen) == {'World', 'Group', 'Cursor'}
+      and cen['World'].on)
+sy.run_card(C, cen['Group'])
+check('... Group from the card', gr.repeat_center(g) == 'GROUP')
+sy.run_card(C, next(i for i in sy.build_card(C, 1600, 900, 1.0) if i.label == 'World'))
+card = next(i for i in sy.build_card(C, 1600, 900, 1.0) if i.kind == 'card')
+check('The card is docked at the right of the viewport (not over the part / group)', card.x + card.w > 1500
+      and card.x > 1000, (card.x, card.w))
 sy.run_card(C, next(i for i in sy.build_card(C, 1600, 900, 1.0) if i.label == '+'))
 check('... + one more copy', gr.repeat_count(g) == 4)
 n_before = len(gr.members(g))

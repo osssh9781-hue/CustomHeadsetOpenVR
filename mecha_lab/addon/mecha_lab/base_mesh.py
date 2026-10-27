@@ -1403,6 +1403,9 @@ def carve_surface(context, loops, projector, p, targets=None, ramp_edge=None, li
             failed.append(f'{t.name} ({str(ex).splitlines()[0][:60]})')
     if not done:
         raise cg.CutError('Alt Base Mesh: nothing was carved. ' + '; '.join(failed))
+    if is_ramp and live and len(targets) == 1:
+        from . import ramp_edit
+        ramp_edit.stamp(targets[0])               # 0.24.53 later edits are noticed (not thrown away)
     return f'Base Mesh carve (Alt): {", ".join(done)} | ' + \
         ('a window right through' if through else
          f'a ramp {height:.3g} deep, up to the surface (deep side: < > / Pick Edge in the panel)' if ramp else

@@ -120,8 +120,10 @@ pe = cube('PathEdit', (50, 0, 0), cuts=6)
 res = bpy.ops.mch.concept_path('EXEC_DEFAULT', space='WORLD', objects=json.dumps(['PathEdit']),
                                path=json.dumps([[50.5, 0, 0], [51, 0, 0], [51.5, 0, 0]]), radius=0.35, hardness=0.9,
                                mirror=False, generate_mesh=True, auto_apply=False)
-check('Path Move, Auto Apply off: each step remembered (Undo Last / Clear work on it)', res == {'FINISHED'}
-      and cm.has_base(pe) and len(cm.recorded_moves(pe)) >= 2)
+rec = cm.recorded_moves(pe)
+check('Path Move, Auto Apply off: remembered as one Path Move of its steps (0.24.53; Undo Last / Clear work on it)',
+      res == {'FINISHED'} and cm.has_base(pe) and len(rec) == 1 and rec[0].get('kind') == 'path'
+      and len(rec[0]['moves']) >= 2)
 from mecha_lab import ui_tool_settings as uts
 check('the panel draws the Cut-style options for both tools', 'draw_targets' in dir(cm) and 'CMOVE' in uts.DRAWERS
       and 'CPATH' in uts.DRAWERS)

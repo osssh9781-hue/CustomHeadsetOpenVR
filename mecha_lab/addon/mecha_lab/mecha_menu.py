@@ -200,6 +200,22 @@ def build(context, mx, my, region_w, region_h, S=1.0):
     if tiles:
         rows = (len(tiles) + cols - 1) // cols
         y -= rows * tile + (rows - 1) * 10 * S
+    if kind == 'PROFILE':
+        # 0.24.53 the lasso shapes too (the 0.24.49 popup had them under the profiles; the menu had lost them)
+        brush = context.scene.mch_brush
+        shapes = [(label, 'png:' + stem, ('shape', sid, ''), brush.shape == sid)
+                  for sid, label, _d, stem, _f in ts.SHAPES if sid != 'CUSTOM']
+        y -= 16 * S
+        mid.append(Item('section', px0, y - 18 * S, inner, 18 * S, 'Lasso'))
+        y -= 26 * S
+        scol = 6
+        st = (inner - (scol - 1) * 6 * S) / scol
+        for n, (label, icon, action, on) in enumerate(shapes):
+            c, r = n % scol, n // scol
+            mid.append(Item('tile', px0 + c * (st + 6 * S), y - (r + 1) * st - r * 6 * S, st, st,
+                            label, icon, on, True, action))
+        rows = (len(shapes) + scol - 1) // scol
+        y -= rows * st + (rows - 1) * 6 * S
     its = quick_hud.items(context)
     if its:
         y -= 16 * S

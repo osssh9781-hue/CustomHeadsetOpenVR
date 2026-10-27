@@ -683,6 +683,8 @@ def cut_ramp(context, targets, loops, projector, edge=None, live=True):
             failed.append(f'{t.name} ({str(ex).splitlines()[0][:60]})')
     if not done:
         raise cg.CutError('Ramp: nothing was carved. ' + '; '.join(failed))
+    if live and len(targets) == 1:
+        ramp_edit.stamp(targets[0])               # 0.24.53 later edits are noticed (not thrown away)
     return (f'Cut Ramp: {", ".join(done)} | {depth:.3g} deep at one side, up to the surface '
             '(deep side: < > / Pick Edge in GN Edge)' + (' | failed: ' + '; '.join(failed) if failed else ''))
 

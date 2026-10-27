@@ -13,8 +13,8 @@ buttons - Off / Mirror / Radial / Kaleido (= Mirror and Radial together).
 - Apply bakes it, Remove takes it off.  For a group (groups.py) the same card drives its Repetition instead.
 
 The card is drawn with the Mecha Menu painter; a left click on it is taken by ``mch.quick_hud_press`` (first in
-every Mecha tool keymap), so it works in any tool.  It shows next to the active part when it has a symmetry, or
-when opened from the Mecha Menu (Symmetry > Card).
+every Mecha tool keymap), so it works in any tool.  It shows (docked at the right of the viewport) when the active
+part has a symmetry, or when opened from the Mecha Menu (Symmetry > Card).
 """
 from __future__ import annotations
 
@@ -351,6 +351,15 @@ def build_card(context, region_w, region_h, S=1.0):
     for i, m in enumerate(MODES):
         items.append(Item('seg', pad + i * (seg_w + 4 * S), y, seg_w, 28 * S, MODE_NAMES[m], '', mode == m, True,
                           ('sym_mode', kind, m)))
+    if kind == 'GROUP' and mode != 'OFF':
+        from . import groups
+        y -= 34 * S                              # 0.24.53 about the world (default), the group or the cursor
+        items.append(Item('label', pad, y, 60 * S, 28 * S, 'Centre'))
+        cw = (inner - 60 * S - 8 * S) / 3
+        here = groups.repeat_center(ob)
+        for i, (c, name) in enumerate((('WORLD', 'World'), ('GROUP', 'Group'), ('CURSOR', 'Cursor'))):
+            items.append(Item('seg', pad + 60 * S + i * (cw + 4 * S), y, cw, 28 * S, name, '', here == c, True,
+                              ('sym_center', c)))
     if mode in {'MIRROR', 'KALEIDO'}:
         y -= 12 * S
         items.append(Item('section', pad, y - 18 * S, inner, 18 * S, 'Mirror'))
@@ -405,20 +414,18 @@ def build_card(context, region_w, region_h, S=1.0):
 
 
 def _anchor(context, ob, w, h, region_w, region_h, S):
-    """Bottom-left corner: right of the target's screen box, kept on screen."""
-    region, rv3d = context.region, getattr(context, 'region_data', None)
-    x, y = region_w - w - 20 * S, region_h * 0.5
-    if region is not None and rv3d is not None:
-        from bpy_extras import view3d_utils
-        pts = []
-        corners = ob.bound_box if ob.type != 'EMPTY' else [(0, 0, 0)]
-        for c in corners:
-            q = view3d_utils.location_3d_to_region_2d(region, rv3d, ob.matrix_world @ Vector(c))
-            if q is not None:
-                pts.append(q)
-        if pts:
-            x = max(p[0] for p in pts) + 30 * S
-            y = (max(p[1] for p in pts) + min(p[1] for p in pts)) / 2 - h / 2
+    """Bottom-left corner: docked at the right of the viewport (left of an overlapping sidebar), a bit below the
+    middle - 0.24.53 no longer next to the part, where it covered the part (and a group's boxes)."""
+    inset = 0.0
+    area = getattr(context, 'area', None)
+    try:
+        overlap = context.preferences.system.use_region_overlap
+    except AttributeError:
+        overlap = False
+    if area is not None and overlap:
+        inset = sum(r.width for r in area.regions if r.type == 'UI' and r.width > 1)
+    x = region_w - inset - w - 16 * S
+    y = region_h * 0.42 - h / 2
     x = min(max(x, 8 * S), region_w - w - 8 * S)
     y = min(max(y, 8 * S), region_h - h - 8 * S)
     return x, y
@@ -468,6 +475,8 @@ def run_card(context, item):
             groups.set_repeat(context, ob, axis=a[2])
         elif kind == 'sym_count':
             groups.set_repeat(context, ob, count=groups.repeat_count(ob) + a[2])
+        elif kind == 'sym_center':
+            groups.set_repeat(context, ob, center=a[1])
         elif kind == 'sym_apply':
             groups.make_real(context, ob)
         return 'Repetition: ' + MODE_NAMES.get(groups.repeat_mode(ob), '')

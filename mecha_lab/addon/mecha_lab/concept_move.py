@@ -778,6 +778,10 @@ def replay_one(me, mv):
         except ValueError:
             pass
         return
+    if mv.get('kind') == 'path':                # 0.24.53 a Path Move Stretch: all its steps in one go
+        steps = mv.get('moves', [])
+        generate(me, lambda co: run_path(co, steps), relax=mv.get('relax', 0))
+        return
     generate(me, move_field(mv), relax=mv.get('relax', 0))
 
 
@@ -1294,11 +1298,12 @@ class MCH_OT_concept_path(bpy.types.Operator):
             return 0
         if not self.auto_apply:
             keep_base(ob)
-        for mv in moves:
-            if self.generate_mesh:
-                generate(ob.data, move_field(mv))
-            else:
-                write_coords(ob.data, move_field(mv)(read_coords(ob.data)))
+        if self.generate_mesh:
+            # 0.24.53 all the steps as one field, one generate: step by step every call split the part again
+            # (about 1.5x the points per step - 59 s and 400k points on a 10k plate, open edges)
+            generate(ob.data, lambda co: run_path(co, moves))
+        else:
+            write_coords(ob.data, run_path(read_coords(ob.data), moves))
         if self.generate_mesh and self.even_out:
             bm = bmesh.new()
             bm.from_mesh(ob.data)
@@ -1311,8 +1316,7 @@ class MCH_OT_concept_path(bpy.types.Operator):
             bm.free()
             ob.data.update()
         if is_live(ob) or has_base(ob):
-            for mv in moves:
-                record_move(ob, mv)
+            record_move(ob, {'kind': 'path', 'moves': moves})
         return len(moves)
 
     def draw(self, context):

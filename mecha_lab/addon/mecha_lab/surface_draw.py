@@ -541,7 +541,50 @@ def _carve_fills(context, target, groups, projector, edge_world, profile, height
     where the Chamfer / Bevel edge ends (straight clean walls) and normals smoothed over the depth (an even
     floor on a bent surface).  ``segments`` = rows on a Bevel edge, ``fine`` = more points (Resolution / 28).
     0.24.47 ``soft`` (Ramp Soft): rows of points over the band where the sides round off - with too few the
-    softened sides came out as a sawtooth.  Same dicts as ``_project_fills``."""
+    softened sides came out as a sawtooth.  Same dicts as ``_project_fills``.
+    0.24.53 the layout (points, triangles, projection, distances) of the last call is kept: a live ramp carved
+    again with another deep side or depth on the same mesh does not lay it out again (the slow part)."""
+    key = _layout_key(target, groups, projector, edge_world, profile, segments, fine, soft)
+    raw = _LAYOUT.get(key) if key is not None else None
+    if raw is None:
+        raw = _carve_layout(context, target, groups, projector, edge_world, profile, segments, fine, soft)
+        _LAYOUT.clear()
+        if key is not None:
+            _LAYOUT[key] = raw
+    fills = []
+    for r in raw:
+        passes = int(min(40, max(2, (height / max(r['s'] * r['k'], 1e-12)) ** 2)))
+        nrms = smooth_normals(r['nrms'], r['tris'], passes)
+        fills.append({'cos': [list(c) for c in r['cos']], 'nrms': [list(n) for n in nrms],
+                      'tris': [list(t) for t in r['tris']], 'nb': r['nb'], 'dist': list(r['dist']),
+                      'scr': [list(q) for q in r['scr']], 'outer': [list(q) for q in r['outer']]})
+    if not fills:
+        raise cg.CutError('The outline is too small.')
+    return fills
+
+
+_LAYOUT = {}
+
+
+def _layout_key(target, groups, projector, edge_world, profile, segments, fine, soft):
+    import hashlib
+    import numpy as np
+    from . import armor_plate as ap
+    try:
+        frozen = ap.freeze_projector(projector)
+        me = target.data
+        co = np.empty(len(me.vertices) * 3, dtype=np.float32)
+        me.vertices.foreach_get('co', co)
+        h = hashlib.md5(co.tobytes())
+        h.update(np.asarray(target.matrix_world, dtype=np.float64).tobytes())
+        return json.dumps([h.hexdigest(), len(me.polygons), [[list(map(list, o)), [list(map(list, x)) for x in hs]]
+                                                              for o, hs in groups], frozen,
+                           round(edge_world, 9), profile, int(segments), round(fine, 6), round(soft, 6)])
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+def _carve_layout(context, target, groups, projector, edge_world, profile, segments, fine, soft):
     from types import SimpleNamespace
     from . import armor_plate as ap
     from . import base_mesh as bmm
@@ -590,12 +633,9 @@ def _carve_fills(context, target, groups, projector, edge_world, profile, height
         _b, pts, tris, nb, _shape, _nat, _sp = bmm.profile_field(outer, holes, q)
         cos, nrms, _miss = ap.project_patch(pts, projector, bvh)
         dist = [d * k for d in bmm._distances(pts, loops)]
-        passes = int(min(40, max(2, (height / max(s * k, 1e-12)) ** 2)))
-        nrms = smooth_normals(nrms, tris, passes)
-        fills.append({'cos': [list(c) for c in cos], 'nrms': [list(n) for n in nrms], 'tris': [list(t) for t in tris],
-                      'nb': nb, 'dist': dist, 'scr': [list(q) for q in pts], 'outer': [list(q) for q in outer]})
-    if not fills:
-        raise cg.CutError('The outline is too small.')
+        fills.append({'cos': [tuple(c) for c in cos], 'nrms': [Vector(n) for n in nrms],
+                      'tris': [tuple(t) for t in tris], 'nb': nb, 'dist': dist, 'scr': [tuple(q) for q in pts],
+                      'outer': [tuple(q) for q in outer], 's': s, 'k': k})
     return fills
 
 
