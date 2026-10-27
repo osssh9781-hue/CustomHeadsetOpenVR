@@ -1,4 +1,5 @@
-"""Prototype: field-aligned quads with the Instant Meshes formulas (Jakob, Tarini, Panozzo, Sorkine-Hornung 2015).
+"""Prototype (numpy) of the field-aligned quad remesher; the add-on runs its C port, tools_dev/native/mquad.c
+(quad_field.py).  Field-aligned quads with the Instant Meshes formulas (Jakob, Tarini, Panozzo, Sorkine-Hornung 2015).
 
 levels  - the dense mesh decimated by Mecha Lab's engine in even-spacing mode (fine ... coarse)
 field   - 4-RoSy orientation + 4-PoSy position, Gauss-Seidel by colour with the paper's sequential accumulation,

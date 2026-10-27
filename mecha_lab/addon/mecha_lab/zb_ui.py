@@ -2,7 +2,7 @@
 
     top shelf      Edit Draw | Move Scale Rotate | Material | Zadd Zsub | Z Intensity  Focal Shift  Draw Size Dynamic
                    | Polish By Groups | Check Mesh Fix Mesh  /  Make PolyMesh3D | DynaMesh > SubDiv | OBJ STL | FBX
-    left shelf     SubTool / Geometry / Masking / Stroke / Decimation buttons (the Blender-layout drawer
+    left shelf     SubTool / Geometry / Masking / Stroke / Decimation / Quad Remesh buttons (the Blender-layout drawer
                    ``draw_tool_shelf`` read by panel_capture, like the side panel), then brush / stroke / material /
                    colour / symmetry / clip / initialize
     right          view shelf (Persp Floor Frame Move Zoom3D Rotate PolyF Transp Solo ...) and the SubTool list
@@ -117,6 +117,14 @@ def draw_tool_shelf(layout, context):
     r.prop(zb, 'dec_mask', toggle=True)
     r.prop(zb, 'dec_groups', toggle=True)
     r.prop(zb, 'dec_borders', toggle=True)
+    box = layout.box()
+    box.label(text='Quad Remesh')
+    r = box.row()
+    ops(r, ('Quad Remesh', 'QUAD_REMESH'))
+    r.prop(zb, 'qr_target', text='Target')
+    box.row().prop(zb, 'qr_mode', expand=True)
+    box.prop(zb, 'qr_angle')
+    ops(box.row(), ('Half', 'QR_HALF'), ('Same', 'QR_SAME'), ('Double', 'QR_DOUBLE'))
 
 
 def _builder():

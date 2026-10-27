@@ -1247,6 +1247,17 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
                              description='Decimate: polygroup borders stay where they are')
     dec_borders: BoolProperty(name='Keep Borders', default=False,
                               description='Decimate: points on open borders do not move')
+    # 0.24.71 Quad Remesh: Mecha Lab's own field-aligned quad remesher (quad_field)
+    qr_target: FloatProperty(name='Target', default=5.0, min=0.05, soft_max=100.0, precision=1,
+                             description='Quad Remesh: how many polygons, in thousands (5 = 5,000)')
+    qr_mode: EnumProperty(name='Mode', default='MOSTLY',
+                          items=[('MOSTLY', 'Mostly Quads', 'Quads, with a few triangles where rows of quads end'),
+                                 ('ALL', 'All Quads', 'Only quads: made at a quarter of the count, then every face is '
+                                                      'split once (quad into 4, triangle into 3)')])
+    qr_angle: FloatProperty(name='Hard Edges', default=math.radians(30.0), min=math.radians(5.0),
+                            max=math.radians(90.0), subtype='ANGLE',
+                            description='Quad Remesh: faces meeting at more than this make a hard edge - the quads '
+                                        'line up along it and keep it sharp')
     inflate: IntProperty(name='Inflate', default=10, min=-100, max=100,
                          description='Deformation: how far Inflate pushes the surface out (minus = in)')
     thick: FloatProperty(name='Thick', default=0.02, min=0.0, soft_max=0.5, precision=3,
@@ -1640,7 +1651,8 @@ def _mask_values(ob):
 
 
 # 0.24.66 the steps that crash Blender most often: a recovery copy right before them (when anything changed)
-RISKY = {'DYNAMESH', 'DYNA_UPDATE', 'DYNA_SUBDIV', 'DYNA_SUBDIV3', 'DECIMATE', 'DIVIDE', 'ZREMESH', 'HALF', 'SAME',
+RISKY = {'DYNAMESH', 'DYNA_UPDATE', 'DYNA_SUBDIV', 'DYNA_SUBDIV3', 'DECIMATE', 'QUAD_REMESH', 'DIVIDE', 'ZREMESH',
+         'HALF', 'SAME',
          'DOUBLE', 'MIRROR_WELD', 'CLOSE_HOLES', 'EXTRACT', 'SPLIT_MASKED', 'SPLIT_UNMASKED', 'SPLIT_HIDDEN',
          'DEL_HIDDEN', 'MERGE_DOWN', 'MERGE_VISIBLE', 'POLYMESH3D', 'GROUPS_SPLIT', 'DEL_LOWER', 'FIX_MESH'}
 
@@ -1911,6 +1923,21 @@ def run(context, action):
             if m is not None:
                 m.sculpt_levels = m.levels = 0 if action == 'ALL_LOW' else m.total_levels
         return ''
+    if action == 'QUAD_REMESH':
+        from . import quad_field as qf
+        if multires(ob) is not None:
+            return 'Quad Remesh: Del Higher / Del Lower first'
+        _mode(context, 'OBJECT')
+        try:
+            msg = qf.remesh_object(ob, max(50, int(round(zb.qr_target * 1000))), all_quads=zb.qr_mode == 'ALL',
+                                   crease_deg=math.degrees(zb.qr_angle))
+        finally:
+            _mode(context, 'SCULPT')
+        return msg
+    if action in {'QR_HALF', 'QR_SAME', 'QR_DOUBLE'}:
+        f = {'QR_HALF': 0.5, 'QR_SAME': 1.0, 'QR_DOUBLE': 2.0}[action]
+        zb.qr_target = max(0.05, round(len(ob.data.polygons) * f / 1000.0, 2))
+        return f'Quad Remesh Target {zb.qr_target:g}'
     if action == 'DECIMATE':
         from . import fast_decimate as fd
         _mode(context, 'OBJECT')
@@ -2054,7 +2081,7 @@ class _ZBPoll:
 
 # 0.24.65 actions that only change a setting / the view / a tool: no undo step (Ctrl+Z undoes what you did)
 SETTING_ACTIONS = set(TOOLS) | {'EDIT', 'SDIV_UP', 'SDIV_DOWN', 'CHECK_MESH', 'SWITCH_COLOR', 'SYM_X', 'POLYF', 'FRAME',
-                                'SOLO', 'EXPORT_OBJ', 'EXPORT_STL', 'FBX_EXPORT'}
+                                'SOLO', 'EXPORT_OBJ', 'EXPORT_STL', 'FBX_EXPORT', 'QR_HALF', 'QR_SAME', 'QR_DOUBLE'}
 
 
 def undo_step(message):
