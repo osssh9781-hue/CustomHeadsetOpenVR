@@ -1,4 +1,10 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.53 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.54 (Claude Code, 2026-10-14)
+
+## 0.24.54
+- ZIP sha256 `24c5401726160e56b7d020f69a7c135a0b3c63732b760f95f2214ad5608ff2d4`.
+- `mecha_menu.MCH_OT_mecha_mmb_gate.modal`: NDOF* / TRACKPAD* → `{'FINISHED', 'PASS_THROUGH'}`, 그 밖은 `{'PASS_THROUGH'}`(전에는 RUNNING_MODAL로 잡아 둠).
+- `path_sweep`: `brush_planes(n0, drag, radius, sides)`, `_region`, `_patch`(브러시 평면들로 bisect → 안쪽 면 → 테두리 한 고리), `_grab`(BRUSH 우선, 실패 시 `_cut` SECTION). `analyse` / `extend`에 `radius`, `sides`; BRUSH 결과는 `recalc_face_normals`.
+- `concept_move`: `AREA_ITEMS`, `MCH_PG_concept.path_area`(BRUSH 기본), 연산자 `area`(SECTION 기본 - 스크립트 호환), `local_radius(context, ob, at)`, 모달 릴리스에서 area / shape / radius 전달, 기록에 radius / sides.
 
 ## 0.24.53
 - ZIP sha256 `fe29040e0980de94e33af1f282342b12d01a25aa1604c49c4f37d25e7fcda488`.

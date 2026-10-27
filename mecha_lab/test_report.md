@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.53
+# Test Report — Mecha Lab 0.24.54
+
+## 0.24.54 결과: 134개 파일 3843/3843 (`tests/test_log_bpy501_v02454.txt`, Blender 5.0.1 bpy). test_v02474(12): Area 기본값, 브러시 평면(8변, 축 정렬), 0 / 12 / 30 분할 판에서 브러시 폭(0.2)만큼만 올라옴·닫힘·바깥 법선·나머지 그대로, 미리보기 analyse가 같은 패치(단면보다 작음), Auto Apply 끔 기록에 반지름, 모달 전달, 휠 클릭 게이트가 NDOF / 트랙패드 / 다른 이벤트를 넘김. 5.2.3 bpy에서도 test_v02474 통과. 실제 3D 마우스와 화면은 미검증.
 
 ## 0.24.53 결과: 133개 파일 3831/3831 (`tests/test_log_bpy501_v02453.txt`, Blender 5.0.1 bpy). test_v02473(18): GN 그룹 노드 구성(UNION EXACT + DIFFERENCE MANIFOLD / 예전 EXACT), miter 길이(90° √2, 3배 제한), 닫힌 부품 GN Chamfer = fast 경로·닫힌 결과·모서리 폭, 열린 메시는 fast 안 씀; Path Move Stretch 한 번 계산(점 3배 미만, 닫힘, 기록 하나, 경로 따라감); Ramp 깊은 쪽 두 번 바꿔도 배치 1번, stamp, 편집 후 슬라이더 → 편집 유지·라이브 종료; Quad Bevel(기본 없음, WEIGHT·2단, Outer < All, 결과 전부 사각형, 끄기, Apply). test_v02472(62): 그룹 Repetition 월드 기준·Group·Cursor·핸들 이동, 카드 Centre, 카드 오른쪽 고정, Base Mesh 메뉴 Lasso. 측정(헤드리스, 참고): 2만 면 GN 컷 0.8~2.1초(전 8~13초), 1.6만 점 판 Stretch 0.96초(전 59초). 5.2.3 bpy에서도 test_v02473 · v02472 · v02470 · v02438 · v02461 · v02466 통과. 실제 화면은 미검증.
 
