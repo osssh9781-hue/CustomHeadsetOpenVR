@@ -43,7 +43,7 @@ LIVE = (BEVEL, SUBSURF, FIT, NORMALS)
 KEY = 'mch_hard_edges'          # object: Find Edges ran on it (the live modifiers follow the shelf settings)
 CONVEX = '.mch_he_convex'       # edge: the faces meet outward (Outer Only)
 HARD = '.mch_he_hard'           # edge: a hard edge (kept here: with Client Look nothing is marked Sharp)
-PROBE_MAX = 60000               # set_live: up to this many polygons the bevel is test-run without Clamp Overlap
+PROBE_MAX = 30000               # set_live: up to this many polygons the bevel is test-run without Clamp Overlap
 PROBE_TOL = 0.3                 # ... it overlaps when one of its points is further than this x Width off the surface
 PROBE_ROUNDS = 6                # ... and the bevels around an overlap are halved this many times before Clamp goes on
 INSIDE = 0.4                    # inside (concave) hard edges get this share of the bevel Width
@@ -610,7 +610,18 @@ def clear(ob):
 
 
 def live_update(st, context):
-    """A Hard Edges setting changed on the shelf: the active SubTool's live modifiers follow."""
+    """A Hard Edges setting changed on the shelf: the active SubTool's live modifiers follow.  0.24.73 at a pace set
+    by their cost while a slider is dragged (live_queue: the per-edge bevel fit and its test run on every step made
+    a big mesh stutter); the object and the settings are looked up again when it runs (Ctrl+Z may have replaced
+    them)."""
     ob = context.active_object
     if ob is not None and ob.type == 'MESH' and KEY in ob:
-        set_live(ob, st)
+        from . import live_queue
+        name = ob.name
+
+        def run():
+            o = bpy.data.objects.get(name)
+            scene = bpy.context.scene
+            if o is not None and o.type == 'MESH' and KEY in o and scene is not None and hasattr(scene, 'mch_zb'):
+                set_live(o, scene.mch_zb)
+        live_queue.queue(('hard_edges', name), run)

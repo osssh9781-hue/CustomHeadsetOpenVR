@@ -1,8 +1,21 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.72 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.73 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000. 0.24.73 Edge Mesh · Mesh Tools · 베벨 두께 · 스크롤 (미검증)
+- [ ] 지브러시 선반 Hard Edges 위에 **Edge Mesh** 상자(Edge Mesh · Detail · Adaptive / Straighten / Fit to Original · Half / Double), Hard Edges 상자에 **Bevel Style Round / Chamfer**
+- [ ] 촘촘한 부품(DynaMesh 또는 FBX)에서 Edge Mesh: 메시지 "Edge Mesh: … triangles in N steps, … hard edges", 걸린 시간, 조각 모드 그대로, 모서리가 깨끗한지(울퉁불퉁 · 가시 없음)
+- [ ] Width를 0.01 → 0.03으로 올리면 모서리가 눈에 띄게 둥글어지는지(전에는 거의 그대로), 좁은 곳은 얇게 남고 가시 · 금이 없는지
+- [ ] Chamfer로 바꾸면 평평하게 깎인 면 + 섭디 뒤에도 각이 남는지
+- [ ] Detail을 바꿔 Edge Mesh를 다시 누르면 처음 원본에서 다시 만드는지(점점 뭉개지지 않음)
+- [ ] Apply 뒤 커스텀 노멀 · 샤프 없는 메쉬, FBX로 내보내 마야 / 맥스 / 지브러시에서 같은 모양인지, Outliner에 원본 사본(_EdgeSource)이 안 보이는지
+- [ ] 사이드바 Mecha Lab 탭(Select 모드) **Mesh Tools**: 여러 메쉬 선택 → DynaMesh / Decimate / Quad Remesh / Edge Mesh / Find Edges / Apply / Clear가 전부에 한 번에, Ctrl+Z 한 번에 전부 원래대로
+- [ ] 지브러시 왼쪽 선반: 휠로 끝까지 내린 뒤 위로 올리면 바로 올라가는지, 빈 곳을 드래그하면 스크롤되는지(사이드 패널 · Layers 패널도)
+- [ ] Base Mesh / Face Extract 슬라이더를 빠르게 드래그해도 끊김 없이 따라오고, 놓으면 정확한 값으로 맞는지
+- [ ] 조각 중 Mask Invert · DynaMesh 등 선반 버튼 → 오브젝트 모드에서 다른 작업 → Ctrl+Z 여러 번: 블렌더가 죽지 않는지
+- [ ] 큰 메쉬에서 Divide 두 번: 메모리가 모자라면 "not divided" 안내만 나오고 멈추지 않는지
 
 ## A000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000. 0.24.72 Hard Edges (미검증)
 - [ ] 지브러시 선반에 Quad Remesh 아래 **Hard Edges** 상자(Find Edges · Angle · Merge Flats / Crease / Outer Only · Bevel · Width · Segments · Shape · Subdivide · Weighted Normals · Apply / Clear)

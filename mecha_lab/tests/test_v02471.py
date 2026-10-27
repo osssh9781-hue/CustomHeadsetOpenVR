@@ -55,7 +55,7 @@ qh.visible = qh_visible
 src = inspect.getsource(qh.MCH_OT_quick_hud_press.modal)
 check('Drag = value (Shift fine), Esc / RMB = back, click = type / next choice, Ctrl+click = default, undo step',
       'drag_value' in src and 'event.shift' in src and "'ESC'" in src and 'step_choice' in src
-      and 'reset(' in src and 'undo_push' in src and 'MCH_PT_quick_value' in src)
+      and 'reset(' in src and ('undo_push' in src or 'undo_keep.push' in src) and 'MCH_PT_quick_value' in src)
 
 # middle click
 mmb = [it for km in C.window_manager.keyconfigs.addon.keymaps for it in km.keymap_items

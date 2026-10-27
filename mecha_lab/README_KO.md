@@ -1,8 +1,17 @@
-# Mecha Lab 0.24.72 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.24.73 — 설치 · MECHA LAB Workspace · 사용법
 
-> **검증 수준:** Linux headless Blender **5.0.1 · 5.2.3**(`bpy`)에서 자동 테스트 163개 파일 / 4445개 항목을 돌렸습니다(결과: `test_report.md`).
+> **검증 수준:** Linux headless Blender **5.2.3**(`bpy`)에서 자동 테스트 167개 파일 / 4,589개 항목 + 무작위 기능 조합 크래시 테스트 200개를 돌렸습니다(결과: `test_report.md`).
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` A절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
+
+## 0.24.73 Edge Mesh — 촘촘한 메쉬 → 클라이언트에게 줄 깨끗한 메쉬
+1. 지브러시 화면 왼쪽 선반 **Edge Mesh** 상자(또는 사이드바 Mecha Lab 탭 > **Mesh Tools**, 오브젝트 모드에서 선택한 메쉬 전부).
+2. **Detail**(기본 2,000 삼각형)을 정하고 **Edge Mesh**: 데시메이트를 여러 번 누르듯 단계적으로 줄여 엣지를 찾고, 평면은 쿼드로 이어 붙인 뒤 라이브 베벨 + Subdivide + Fit to Original이 붙습니다.
+3. Hard Edges 상자에서 **Width**(베벨 두께) · **Segments** · **Bevel Style**(Round 둥글게 / Chamfer 평평하게 깎기) · **Subdivide**를 바로 조절합니다. 좁은 곳은 자동으로 얇게 들어갑니다.
+4. 마음에 들면 **Apply**: 커스텀 노멀 · 샤프 없는 보통 메쉬(마야 · 맥스 · 지브러시에서 같은 모양). Detail을 바꾸고 싶으면 Apply 전에 Edge Mesh를 다시 누르세요(처음 원본에서 다시 만듭니다).
+- 원본 촘촘한 메쉬는 Apply / Clear 전까지 씬 밖에 보관됩니다(화면 · Outliner · FBX에는 나오지 않음).
+- Apply 하지 않고 그대로 **File > Export > FBX**(기본 Apply Modifiers 켜짐)로 내보내도 클라이언트 메쉬(베벨 + Subdivide + Fit 적용)로 나갑니다.
+- **Adaptive**(둥근 끝 · 모서리 보존) · **Straighten**(엣지 선 펴기) · **Fit to Original**(원본 모양에 다시 맞추기)은 기본으로 켜져 있습니다.
 
 ## 0.23.2
 - **V** = 도구 파이. 왼쪽 **Mirror** 버튼도 기울이기 제스처(화면 아래 가운데 표시), 결과는 살아 있는 미러.

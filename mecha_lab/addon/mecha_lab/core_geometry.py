@@ -484,12 +484,15 @@ def gn_set(mod, ident, value):
 
 
 def non_manifold_edge_count(mesh):
-    bm = bmesh.new()
-    try:
-        bm.from_mesh(mesh)
-        return sum(1 for e in bm.edges if not e.is_manifold)
-    finally:
-        bm.free()
+    """Edges not shared by exactly two faces (BMesh's is_manifold).  0.24.73 counted from the face corners with numpy
+    (a BMesh copy + a Python loop over every edge was ~0.5 s of a 4.5 s Cut on 390k faces)."""
+    import numpy as np
+    ne = len(mesh.edges)
+    if not ne:
+        return 0
+    le = np.empty(len(mesh.loops), np.int64)
+    mesh.loops.foreach_get('edge_index', le)
+    return int((np.bincount(le, minlength=ne) != 2).sum())
 
 
 def overlap_edges(ob):
@@ -745,6 +748,17 @@ def boolean_result(context, target, cutter, operation, solver='AUTO',
             bpy.data.meshes.remove(tmp)
 
 
+def _any_true(attr):
+    """Any element of a boolean / number attribute set (numpy, not a Python loop over every face)."""
+    import numpy as np
+    vals = np.zeros(len(attr.data), np.float32 if attr.data_type == 'FLOAT' else bool)
+    try:
+        attr.data.foreach_get('value', vals)
+    except (TypeError, AttributeError, RuntimeError):
+        return any(v.value for v in attr.data)
+    return bool(vals.any())
+
+
 def _boolean_result(context, target, cutter, operation, solver='AUTO',
                     hole_tolerant=False, allow_empty=False):
     source_nm = non_manifold_edge_count(target.data)
@@ -766,7 +780,7 @@ def _boolean_result(context, target, cutter, operation, solver='AUTO',
             problems.append(f'{name}: empty result')
             continue
         attr = me.attributes.get(CUTTER_ATTR)
-        cutter_faces = attr is not None and any(v.value for v in attr.data)
+        cutter_faces = attr is not None and _any_true(attr)
         unchanged = not cutter_faces and (len(me.vertices), len(me.polygons)) == src_counts
         if unchanged:
             bpy.data.meshes.remove(me)

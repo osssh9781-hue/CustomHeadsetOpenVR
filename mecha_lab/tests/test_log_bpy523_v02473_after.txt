@@ -1,0 +1,151 @@
+====== test_v02471.py
+PASS Every Mecha drawing tool (and Screw, Primitive) asks the HUD first on a left click
+PASS ... and in 3D View for the other tools (Concept / Path Move, Curve): press and (0.24.57) double-click
+PASS ... the old HUD gizmos are gone (nothing can beat the click any more)
+PASS ... a click that is not on the HUD passes on to the tool
+PASS HUD rows and title under the view text (as drawn)
+PASS Hit test: a row
+PASS ... the title row (move the HUD)
+PASS ... elsewhere nothing (the click goes to the tool)
+PASS ... moved HUD: the hit area moves with it
+PASS Drag = value (Shift fine), Esc / RMB = back, click = type / next choice, Ctrl+click = default, undo step
+PASS Middle click: one key item, middle mouse with no Shift / Ctrl (pan / zoom untouched)
+PASS ... no movement + let go = the menu; a drag = the usual orbit
+PASS ... only in MECHA LAB, can be switched off
+PASS Mecha Menu: − / + size buttons under the tool strip
+PASS ... + makes everything bigger (preference Viewport Popups), − smaller, kept in 0.5 - 3  -- (1.0, 1.0)
+PASS ... clamped
+PASS Ctrl + wheel over the menu resizes it
+PASS Sidebar Icon Size shows Viewport Popups; presets and the saved sizes include it
+PASS The size factor follows it (menu, Quick HUD, key legend all use ui_factor)
+19/19 passed
+====== test_v02472_hardedges.py
+PASS Cube: Find Edges finds its 12 edges: creased, with a bevel weight  -- (12, 12)
+PASS ... Client Look (default): nothing marked Sharp for the display (the mesh alone gives the look)
+PASS ... every face shaded smooth (the sharp edges do the hard look), the object remembers it
+PASS Live modifiers at the end: Bevel (no Subdivide at 0, no Weighted Normals: custom normals are off by default)  -- ['MCH_HE_Bevel']
+PASS Width 0.1, 1 segment: a chamfer (6 + 12 + 8 faces), the size stays 2 x 2 x 2, closed  -- 26
+PASS ... the chamfer starts 0.1 in from each edge
+PASS Changing Segments on the shelf updates the live bevel at once
+PASS ... and Width
+PASS Bevel off + Subdivide 2: the creases keep the cube a cube (corners at 1, flat sides)  -- 96
+PASS Crease off: Subdivide rounds it  -- 0.8395062685012817
+PASS Weighted Normals on: that modifier comes (last)
+PASS ... off: it goes
+PASS Client Look off: the hard edges are marked Sharp for Blender's display
+PASS ... on again: the Sharp marks go
+PASS Clear: marks and live modifiers gone
+PASS Outer Only: the inside corner of an L gets no bevel, the outside edges do  -- (18, 13.0)
+PASS ... off again: every hard edge bevelled (0.24.73 inside corners a narrower share, never more than full)  -- (18, 18)
+PASS Decimated part: hard edges found, Merge Flats joins the flat triangles into big faces (fewer polygons)  -- (335, 7900, 726)
+PASS ... closed
+PASS ... the hard edges sit on the original creases (95 %+ of the crease within 0.5 % of the size)  -- 1.0
+PASS ... and every one of them runs along a real crease of the original (none on flat or round parts)  -- 0.0088
+PASS ... the live bevel makes a closed mesh with more faces  -- (1758, 726)
+PASS Merge Flats off: the triangles stay
+PASS Quad Remesh output: Find Edges keeps the quads (Merge Flats only joins triangle meshes), hard edges found  -- (355, 1977, 1977)
+PASS ... Subdivide on the quads: closed, 4x the faces after the bevel  -- (10952, 1977)
+PASS Apply: the live modifiers baked into the mesh  -- (2, 10952)
+PASS ... Client Look: a plain mesh - no Sharp / Crease / Bevel Weight / custom normals, every face smooth
+PASS Hard Edges has its own box on the ZBrush shelf: Find Edges + Angle, Merge Flats / Crease / Outer Only, Bevel + Width, Segments / Shape, Subdivide / Client Look, Weighted Normals, Apply / Clear  -- ({'HE_CLEAR', 'HE_APPLY', 'HE_FIND'}, {'he_width', 'he_normals', 'he_outer', 'he_segments', 'he_profile', 'he_subdiv', 'he_merge', 'he_crease', 'he_angle', 'he_bevel', 'he_style', 'he_client'})
+PASS Defaults: 30 degrees, Merge Flats, Crease, Bevel 2 segments, Client Look, no Weighted Normals, no Subdivide
+PASS Find Edges on the shelf: marks + live bevel, back in Sculpt Mode  -- ('SCULPT', ['MCH_HE_Bevel'])
+PASS ... a recovery copy is made before Find Edges / Apply (risky steps)
+PASS A shelf setting drives the SubTool's live bevel in Sculpt Mode
+PASS Ctrl+Z: the polygons, marks and modifiers as before, still in Sculpt Mode  -- (2888, 2888, 'SCULPT')
+PASS Apply on the shelf: baked, no live modifiers, the settings no longer drive it
+PASS ... (a setting change afterwards adds nothing)
+PASS Clear on the shelf: the marks go
+PASS A DynaMesh-size mesh (300k+ polygons): it says to Decimate / Quad Remesh first (nothing changed)  -- Hard Edges: 327,680 polygons - Decimate or Quad Remesh first
+37/37 passed
+====== test_v02474_edgemesh.py
+PASS Edge lines: every point on a closed outline has two hard neighbours; a straight run turns ~0, a corner 90  -- [90, 0, 90, 87, 6, 87]
+PASS Straighten: the slightly bent point (1, 1.05) moves towards the line, corners stay put  -- [1.0, 1.0125000476837158, 0.0]
+PASS Adaptive weights: corners / bending edge lines cost more to take away, flat points cost nothing extra  -- (120.99806213378906, 1.0)
+PASS Decimate in steps: down to the Detail triangles in several steps (fresh error every step)  -- (1500, 16)
+PASS ... the edges come out: the step, the slot and the hole leave hard edge lines  -- 217
+PASS Edge Mesh: a light mesh (about Detail triangles) with its hard edges marked  -- (1500, 'Edge Mesh: 45,568 -> 1,500 triangles in 16 steps, 218 hard edges, 426 quads + 648 triangles')
+PASS ... flats joined into quads (triangles stay where it is hard)  -- 426
+PASS ... live Bevel + Subdivide (Subdivide set to 2, Crease off: the support bevel makes the edge) + Fit to Original  -- ['MCH_HE_Bevel', 'MCH_HE_Subdivide', 'MCH_HE_Fit']
+PASS ... the dense original is kept off-scene for Fit to Original: in no scene (never exported), kept by a fake user  -- (True, 22784)
+PASS ... the fit point group holds the hard edges where they are (0) and fits the rest (1)
+PASS ... the live result evaluates (subdivided client mesh)  -- 22808
+PASS Bevel weights: on the hard edges only, full Width where it fits, narrower only where it must be  -- 1.0
+PASS ... the test run without Clamp leaves no point off the surface (no bevel runs over a neighbour)
+PASS ... so Clamp Overlap stays off (with Clamp one tight spot narrowed every bevel of the part)
+PASS Edge Mesh again: from the kept dense original (not the light result), the same original kept  -- (1000, 'Edge Mesh: 45,568 -> 1,000 triangles in 18 steps, 175 hard edges, 256 quads + 488 triangles')
+PASS Bevel Style Chamfer: a straight cut with a support point near each side (custom profile, 3 segments)  -- [(0.0, 1.0), (0.12, 0.88), (0.88, 0.12), (1.0, 0.0)]
+PASS ... back to Round: the round profile again
+PASS Apply: the client mesh - plain, no Sharp / custom normals, every face smooth  -- 3
+PASS ... the off-scene original is gone (nothing left to export or to keep in the file)
+PASS Clear: marks, live modifiers and the off-scene original gone
+PASS ZBrush shelf: Edge Mesh box (Edge Mesh, Half, Double) next to Hard Edges  -- ['EDGE_MESH', 'EM_DOUBLE', 'EM_HALF', 'EXTRACT', 'HALF', 'HE_APPLY', 'HE_CLEAR', 'HE_FIND']
+PASS ... Half / Double change Detail
+PASS ... Edge Mesh from the shelf in Sculpt Mode: done, back in Sculpt Mode  -- ({'FINISHED'}, 'SCULPT')
+PASS No add-on undo step in Sculpt Mode (an empty sculpt step after another one broke Blender's undo)
+PASS ... in Object Mode the step is pushed
+25/25 passed
+====== test_v02475_meshtools.py
+PASS Mecha Lab tab: Mesh Tools panel with DynaMesh / Decimate / Quad Remesh / Edge Mesh / Find Edges / Apply / Clear  -- ['DECIMATE', 'DYNAMESH', 'EDGE_MESH', 'HE_APPLY', 'HE_CLEAR', 'HE_FIND', 'QUAD_REMESH']
+PASS ... in the Mecha Lab sidebar tab, before High Poly
+PASS Decimate: every selected mesh, one undo step, Object Mode kept  -- (1024, 5120)
+PASS DynaMesh: both remeshed to about Points  -- [3104, 3104]
+PASS Quad Remesh: both mostly quads  -- [0.9380692167577414, 0.9380692167577414]
+PASS Edge Mesh: both get the light mesh + live bevel / subdivide / fit  -- [['MCH_HE_Bevel', 'MCH_HE_Subdivide', 'MCH_HE_Fit'], ['MCH_HE_Bevel', 'MCH_HE_Subdivide', 'MCH_HE_Fit']]
+PASS Apply: both plain client meshes, the off-scene originals gone
+PASS Find Edges + Clear on a selected mesh
+PASS A mesh that can't be done is skipped with its reason, the others still run  -- ({'FINISHED'}, [], ['MCH_HE_Bevel', 'MCH_HE_Subdivide'])
+PASS Only in Object Mode (the ZBrush shelf has them in Sculpt Mode)
+PASS Left tray: scrolling back up works at once from past the end (it seemed stuck for a while)  -- 52.0
+PASS ... and never runs past the last row  -- 100.0
+PASS Dragging an empty spot of the tray moves its rows with the mouse (0.24.73; before only the wheel did)  -- ({'RUNNING_MODAL'}, 30.0, {'FINISHED'})
+PASS ... the side panel, Layers panel and ZBrush trays are found under the mouse
+14/14 passed
+====== test_v02476_speed.py
+PASS Quad Patch: distances in blocks are exactly the all-at-once ones (a fraction of the memory)
+PASS ... the inside test in blocks agrees with the circle (border points aside)
+PASS ... no outline at all is an error, not a silent infinity  -- Quad Remesh: no outline segments
+PASS Quad quality: a result with none of the source's hard edges counts them all lost (it said 0 lost)  -- 20.0
+PASS Curve Repeat: one point up and another down by the same amount is a change (the summed size missed it)
+PASS Live rebuilds: without a window they run at once (tests / command line)
+PASS ... Ctrl+Z / file load drop what is waiting
+PASS ... a burst of updates for one part is one rebuild with the last value; flush runs it now  -- ['a', 'b2']
+PASS ... the pace follows the rebuild cost (twice its time, 0.05 .. 0.5 s)
+PASS ... Hard Edges sliders too (the per-edge bevel fit + test run on every slider step made big meshes stutter)
+PASS ... Base Mesh and Face Extract go through it
+PASS Find Edges + Merge Flats on 49k triangles: the flat points emptied by the engine first (dissolve alone: ~7 s here, ~30 s at 196k), the same result - a box of 6 faces, 12 hard edges  -- (49152, 6, 12, 0.23)
+12/12 passed
+====== test_v02469_zbfix.py
+PASS Extract without a mask: says to paint one (nothing made)
+PASS Extract: the masked part becomes a new SubTool (was an error every time: "thickness" unrecognized)  -- ['Body', 'Body_Extract']
+PASS ... Thick on its Solidify  -- ['SOLIDIFY']
+PASS ... and you keep sculpting the SubTool you were on (ZBrush)
+PASS ClipCurve / TrimCurve / TrimLasso / Move are not brushes: the ZBrush press lets Blender's tool take it
+PASS ... the tiles name Blender's Sculpt tools that exist in this Blender (Line Project / Line Trim / Lasso Trim; switching tools itself needs a window)
+PASS Every Blender operator call in the add-on only uses settings that operator has (in this Blender)
+PASS A press 10 px off the silhouette with a 50 px brush: still on the model (the ZBrush press turned the view)
+PASS ... 40 px off: the canvas (turns the view, as in ZBrush)
+PASS ... far out on the canvas: no ray cast at all (screen box first)
+PASS ... used for strokes (plain, Alt Zsub, Shift Smooth), not for Ctrl (mask lasso on the canvas)
+PASS Decimate, Ctrl+Z once: the old mesh, still in Sculpt Mode (took two presses and came back in Object Mode)  -- ('SCULPT', 5120, 1024, 5120)
+PASS ... Ctrl+Shift+Z: decimated again, in Sculpt Mode  -- ('SCULPT', 1024)
+PASS ... no step marker left in the scene (only the two stored steps carry it)
+14/14 passed
+====== test_v02473_safety.py
+PASS Free memory is known on this system (Linux: /proc/meminfo; Windows: GlobalMemoryStatusEx)  -- 15787495424
+PASS A result over the hard cap never fits; a small one does
+PASS ... nor one that needs more than half the free memory (it says how much)  -- 6,000,000 polygons need about 2.2 GB, only 3.7 GB is free
+PASS High Poly: when even Smoothness 1 is over the limit the level is 0 (it used to stay 1 and go over)
+PASS High Poly makes its copy
+PASS Not enough memory: refused, and the copy made before is still there, untouched  -- ({'CANCELLED'}, 1)
+PASS A rebuild that fails keeps the old copy (it was deleted first before)  -- (True, ['Part_HP'])
+PASS A rebuild that works replaces the old copy (one copy, same name)  -- ['Part_HP']
+PASS Divide that would not fit in memory is refused with a message (each Divide is 4x - 2M faces x 2 Divides took Blender down)  -- Divide: 5,120 polygons need about 0.1 GB, only 0.0 GB is free - not divided (Del Higher, or Decimate first)
+PASS ... and works when it fits
+PASS Decimate: a short locked / weight array is refused (it read past its end and took Blender down)
+PASS ... NaN positions and broken faces too
+PASS ... feat indices out of range too
+PASS ... a weight with NaN is cleaned (1 .. 1e6), the run goes on
+PASS Quad Remesh: NaN positions / broken faces are refused before the engine
+PASS Both engines' functions have their argument types declared (a wrong one is a Python error)
+16/16 passed

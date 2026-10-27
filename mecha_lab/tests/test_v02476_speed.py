@@ -73,6 +73,9 @@ check('... a burst of updates for one part is one rebuild with the last value; f
 lq._COST[('t', 'x')] = 0.2
 check('... the pace follows the rebuild cost (twice its time, 0.05 .. 0.5 s)',
       abs(lq._interval(('t', 'x')) - 0.4) < 1e-9 and lq._interval(('t', 'new')) == lq.MIN_INTERVAL)
+import inspect  # noqa: E402
+check('... Hard Edges sliders too (the per-edge bevel fit + test run on every slider step made big meshes stutter)',
+      'live_queue' in inspect.getsource(he.live_update) and he.PROBE_MAX <= 30000)
 check('... Base Mesh and Face Extract go through it', 'live_queue' in open(
     mecha_lab.__path__[0] + '/base_mesh.py').read() and 'live_queue' in open(mecha_lab.__path__[0] + '/face_extract.py').read())
 
