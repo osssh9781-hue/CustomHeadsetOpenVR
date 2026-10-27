@@ -1,29 +1,39 @@
-"""0.24.58 The bottom toolbar and the left tool strip drawn by Mecha Lab itself, in the Mecha Menu look.
+"""0.24.58 The viewport UI Mecha Lab draws itself, in the Mecha Menu look.
 
 - Bottom toolbar: one dark rounded bar at the bottom middle, the toolbar tools as icons (the tool in use on blue),
   their key letter small in the corner, the name in a bubble while the mouse is over a button.
-- Left tool strip: every tool, grouped by job (tool_state.TOOL_GROUPS), in a dark column at the left edge (right
-  of Blender's toolbar); it shrinks / takes a fourth column to fit the viewport height.
+- Left tool strip: every tool, grouped by job (tool_state.TOOL_GROUPS), at the left edge (right of Blender's
+  toolbar).  0.24.59: icon + name in two columns (Preferences: Tool Strip Names off = icons only, three columns),
+  its size in Icon Size (Tool Strip); it shrinks to fit the viewport height.
+- 0.24.59 Actions card: Apply Modifiers / the chosen tool on-off / Reset Axis / Origin / Symmetry / Mirror as
+  compact rows right of the strip (were round gizmo buttons with loose labels).
+- 0.24.59 Top bar (``top_bar``) and side panel (``side_panel``) go through here too: one hit test, one click
+  handler, one draw.
 
-Both are drawn with the Mecha Menu painter.  A left click is taken by ``mch.quick_hud_press`` (first in every
-Mecha tool keymap and in 3D View / Object Mode), so the buttons work in any tool and a click on a card never falls
-through to the tool behind it.  The mouse position for the name bubble comes from ``mch.ui_hover`` (a pass-through
-on mouse move).  Preferences: Drawn Toolbar / Tool Strip (off = the 0.12 button toolbar, no strip).
+A left click is taken by ``mch.quick_hud_press`` (an invisible gizmo over these, then the keymaps), so the buttons
+work in any tool and a click on a card never falls through to the tool behind it.  The mouse position for the name
+bubbles comes from ``mch.ui_hover`` (a pass-through on mouse move).
 """
 from __future__ import annotations
 
 import bpy
-from bpy.props import FloatVectorProperty
+from bpy.props import BoolProperty, FloatProperty, FloatVectorProperty
 
 from . import tool_state as ts
 
 BAR_BTN = 46.0           # px at size factor 1
 BAR_GAP = 6.0
 BAR_PAD = 10.0
-STRIP_ICON = 38.0
+STRIP_ICON = 38.0        # icons-only strip
 STRIP_GAP = 5.0
 STRIP_HEAD = 22.0
 STRIP_PAD = 8.0
+NAMED_W = 126.0          # 0.24.59 a named strip button (icon + name)
+NAMED_H = 26.0
+NAMED_GAP = 3.0
+NAMED_HEAD = 18.0
+ACT_W = 196.0            # 0.24.59 actions card
+ACT_ROW = 26.0
 BAR_ICON = {'SELECT': 'arrow', 'SKIN': 'WRINKLE', 'SHELL': 'SCALES'}
 
 
@@ -40,6 +50,11 @@ def bar_on(context):
 def strip_on(context):
     from . import bottom_bar
     return _pref('tool_strip', True) and bottom_bar.ui_active(context)
+
+
+def actions_on(context):
+    from . import bottom_bar
+    return _pref('drawn_toolbar', True) and bottom_bar.ui_active(context)
 
 
 def left_inset(context):
@@ -87,27 +102,43 @@ def bar_items(context, region_w, region_h, k=1.0):
     return out
 
 
-def strip_layout(region_h, k, groups):
-    """(columns, icon size, gap) so the strip fits ``region_h``."""
+def strip_layout(region_h, k, groups, named=False):
+    """(columns, size factor) so the strip fits ``region_h``."""
+    cell, gap, head = (NAMED_H, NAMED_GAP, NAMED_HEAD) if named else (STRIP_ICON, STRIP_GAP, STRIP_HEAD)
+
     def height(cols, s):
         rows = sum((len(r) + cols - 1) // cols for _n, r in groups)
-        return rows * (STRIP_ICON * s + STRIP_GAP * s) + len(groups) * STRIP_HEAD * s + 2 * STRIP_PAD * s
+        return rows * (cell + gap) * s + len(groups) * head * s + 2 * STRIP_PAD * s
     avail = max(200.0, region_h - 150.0 * k)
-    for cols in (3, 4, 5):
+    choices = (2, 3) if named else (3, 4, 5)
+    for cols in choices:
         s = min(k, k * avail / height(cols, k))
-        if s >= 0.7 * k or cols == 5:
+        if s >= (0.66 if named else 0.75) * k or cols == choices[-1]:
             return cols, s
-    return 5, k
+    return choices[-1], k
+
+
+def strip_scale():
+    try:
+        return max(0.5, float(_pref('strip_scale', 1.0)))
+    except (TypeError, ValueError):
+        return 1.0
 
 
 def strip_items(context, region_w, region_h, k=1.0):
     from .mecha_menu import Item
     groups = ts.grouped_tools()
-    cols, s = strip_layout(region_h, k, groups)
-    ic, gap, head, pad = STRIP_ICON * s, STRIP_GAP * s, STRIP_HEAD * s, STRIP_PAD * s
-    w = cols * ic + (cols - 1) * gap + 2 * pad
+    named = bool(_pref('strip_names', True))
+    kk = k * strip_scale()
+    cols, s = strip_layout(region_h, kk, groups, named)
+    cw = (NAMED_W if named else STRIP_ICON) * s
+    chh = (NAMED_H if named else STRIP_ICON) * s
+    gap = (NAMED_GAP if named else STRIP_GAP) * s
+    head = (NAMED_HEAD if named else STRIP_HEAD) * s
+    pad = STRIP_PAD * s
+    w = cols * cw + (cols - 1) * gap + 2 * pad
     rows = sum((len(r) + cols - 1) // cols for _n, r in groups)
-    h = rows * (ic + gap) + len(groups) * head + 2 * pad
+    h = rows * (chh + gap) + len(groups) * head + 2 * pad
     x0 = left_inset(context) + 12 * k
     top = region_h - 60 * k
     y0 = max(8 * k, top - h)
@@ -123,9 +154,9 @@ def strip_items(context, region_w, region_h, k=1.0):
         out.append(Item('striphead', x0 + pad, y, w - 2 * pad, head, name.upper()))
         for j, t in enumerate(rows_):
             c, r = j % cols, j // cols
-            out.append(Item('button', x0 + pad + c * (ic + gap), y - (r + 1) * (ic + gap) + gap, ic, ic, t[1],
-                            'png:' + t[3], t[0] == active, True, ('tool', t[0])))
-        y -= ((len(rows_) + cols - 1) // cols) * (ic + gap)
+            out.append(Item('sbtn' if named else 'button', x0 + pad + c * (cw + gap), y - (r + 1) * (chh + gap) + gap,
+                            cw, chh, t[1], 'png:' + t[3], t[0] == active, True, ('tool', t[0])))
+        y -= ((len(rows_) + cols - 1) // cols) * (chh + gap)
     return out
 
 
@@ -138,41 +169,226 @@ def strip_width(context, k=1.0):
     return cards[0].x + cards[0].w - left_inset(context) + 4 * k if cards else 0.0
 
 
+ACTIONS = (('apply_mods', 'stack', 'Apply Modifiers', ('op', 'mch.apply_modifiers_pick', {})),
+           ('reset_axis', 'axes', 'Reset Axis', ('op', 'mch.object_tidy', {'action': 'RESET_AXIS'})),
+           ('origin_geo', 'origin', 'Origin to Geometry', ('op', 'mch.object_tidy', {'action': 'ORIGIN_GEOMETRY'})),
+           ('origin_cur', 'origin', 'Origin to 3D Cursor', ('op', 'mch.object_tidy', {'action': 'ORIGIN_CURSOR'})),
+           ('symmetry', 'X', 'Symmetry', ('op', 'mch.object_tidy', {'action': 'SYMMETRY'})),
+           ('mirror', 'png:mirror', 'Mirror', ('op', 'mch.object_tidy', {'action': 'MIRROR'})))
+
+
+def actions_items(context, region_w, region_h, k=1.0):
+    """0.24.59 The compact actions card: the chosen tool's on / off row first, then the object actions."""
+    from .mecha_menu import Item
+    from . import bottom_bar
+    w, rh, pad = ACT_W * k, ACT_ROW * k, 6 * k
+    rows = []
+    tid, t = bottom_bar.chosen_tool(context)
+    if t is not None:
+        live = bottom_bar.tool_live(context)
+        rows.append(('arow', (t[1] + ('  ON' if live else '')), 'png:' + t[3], live, ('op', 'mch.tool_active', {})))
+        rows.append(None)                              # a thin rule
+    for _key, icon, label, action in ACTIONS:
+        if icon == 'png:mirror':
+            m = ts.TOOL_BY_ID.get('MIRROR')
+            icon = 'png:' + m[3] if m else 'X'
+        rows.append(('arow', label, icon, False, action))
+    h = sum(rh if r else 7 * k for r in rows) + 2 * pad
+    x0 = left_inset(context) + strip_width(context, k) + 12 * k
+    top = region_h - 150 * k                         # under the Quick HUD when it shows
+    try:
+        from . import quick_hud
+        its, grip, hud_rows = quick_hud.current(context)
+        if its:
+            top = (hud_rows[-1][1] if hud_rows else grip[1]) - quick_hud.ROW_H * k / 2 - 18 * k
+    except (AttributeError, KeyError, TypeError, ReferenceError, IndexError):
+        pass
+    y0 = max(top - h, 210 * k)                       # above the key legend
+    out = [Item('card', x0, y0, w, h)]
+    y = y0 + h - pad
+    for r in rows:
+        if r is None:
+            y -= 7 * k
+            out.append(Item('vrule', x0 + 10 * k, y + 3 * k, w - 20 * k, 1.0 * k))
+            continue
+        kind, label, icon, on, action = r
+        y -= rh
+        out.append(Item(kind, x0 + pad, y, w - 2 * pad, rh, label, icon, on, True, action))
+    return out
+
+
+_MEMO = {'key': None, 'time': 0.0, 'items': []}
+VERSION = [0]
+MEMO_TTL = 0.2           # s: the items are rebuilt at most this often unless something changed
+
+
+def bump():
+    """Something the drawn UI shows changed (a click here, undo, a data change): rebuild on the next look."""
+    VERSION[0] += 1
+
+
 def all_items(context):
+    """Every drawn card's items (bottom bar, strip, actions, side panel, top bar), memoised briefly - they are
+    asked for by the draw, the hover tracker and the click catcher on every mouse move."""
+    import time
     region = getattr(context, 'region', None)
     if region is None:
         return []
     from .ui_gpu import ui_factor
     k = ui_factor(context, region)
+    try:
+        ob = context.active_object
+        key = (region.width, region.height, round(k, 4), ts.effective_tool(context), ob.name if ob else '',
+               ob.mode if ob else '', VERSION[0])
+    except (AttributeError, ReferenceError):
+        key = None
+    now = time.monotonic()
+    if key is not None and key == _MEMO['key'] and now - _MEMO['time'] < MEMO_TTL:
+        return _MEMO['items']
+    out = _build_all(context, region, k)
+    _MEMO.update(key=key, time=now, items=out)
+    return out
+
+
+def _build_all(context, region, k):
     out = []
     try:
         if bar_on(context):
             out += bar_items(context, region.width, region.height, k)
         if strip_on(context):
             out += strip_items(context, region.width, region.height, k)
+        if actions_on(context):
+            out += actions_items(context, region.width, region.height, k)
+        from . import side_panel, top_bar
+        if side_panel.on(context):
+            out += side_panel.items(context, region.width, region.height, k)
+        if top_bar.on(context):
+            out += top_bar.items(context, region.width, region.height, k)
     except (AttributeError, KeyError, TypeError, ReferenceError):
-        return []
+        return out
     return out
 
 
+def _cards(items):
+    """[(card, its items)] - a hit test must only look at the items of the card under the mouse."""
+    groups = []
+    for it in items:
+        if it.kind == 'card':
+            groups.append((it, []))
+        elif groups:
+            groups[-1][1].append(it)
+    return groups
+
+
 def hit(context, x, y):
-    """(inside a bar / strip?, the button under the mouse or None)."""
+    """(inside a bar / strip / card / panel?, the clickable item under the mouse or None)."""
     items = all_items(context)
-    if not any(i.kind == 'card' and i.hit(x, y) for i in items):
-        return False, None
-    it = next((i for i in items if i.kind != 'card' and i.clickable() and i.hit(x, y)), None)
-    return True, it
+    inside = False
+    for card, its in reversed(_cards(items)):          # the last drawn is on top
+        if not card.hit(x, y):
+            continue
+        inside = True
+        it = next((i for i in its if i.clickable() and i.hit(x, y)), None)
+        if it is not None:
+            return True, it
+        return True, None
+    return inside, None
+
+
+EDIT = [None, '']        # the (data, prop) the value popup / choice menu edit
 
 
 def run(context, item):
-    """A button click: switch to that tool (Select / Move, Skin / Shell, a Mecha tool)."""
-    kind, tid = item.action[0], item.action[1]
+    """A click on a button: switch tool, set a value, run the operator ... (number bars are dragged by
+    ``mch.quick_hud_press`` itself).  Returns a short report."""
+    from . import side_panel, ui_values
+    a = item.action
+    kind = a[0]
+    msg = ''
     try:
-        bpy.ops.mch.bar_tool(tool=tid)
+        if kind in {'bar', 'tool'}:
+            bpy.ops.mch.bar_tool(tool=a[1])
+            t = ts.TOOL_BY_ID.get(a[1])
+            msg = t[1] if t else item.label
+        elif kind == 'shape':
+            bpy.ops.mch.set_shape(shape=a[1], preset='')
+            msg = item.label
+        elif kind == 'mode':
+            from . import mecha_menu
+            mecha_menu.run(context, item)
+        elif kind == 'bool':
+            ui_values.toggle(item.data, item.prop)
+            _undo(item.label)
+        elif kind == 'enum':
+            ui_values.set(item.data, item.prop, a[1])
+            _undo(item.label)
+        elif kind == 'menu_enum':
+            EDIT[:] = [item.data, item.prop]
+            bpy.ops.wm.call_menu(name='MCH_MT_ui_choice')
+        elif kind == 'op':
+            mod, name = a[1].split('.')
+            getattr(getattr(bpy.ops, mod), name)('INVOKE_DEFAULT', **a[2])
+        elif kind == 'menu':
+            bpy.ops.wm.call_menu(name=a[1])
+        elif kind == 'fold':
+            side_panel.toggle_fold(a[1], a[2])
+        elif kind == 'minimise':
+            wm = context.window_manager
+            wm.mch_side_min = not wm.mch_side_min
+    except (RuntimeError, TypeError, ValueError, AttributeError, KeyError, ReferenceError) as ex:
+        print('Mecha UI:', a, ex)
+        msg = str(ex).splitlines()[0][:120] if str(ex) else ''
+    side_panel.dirty()
+    return msg
+
+
+def _undo(what):
+    try:
+        bpy.ops.ed.undo_push(message='Mecha ' + (what or 'setting'))
     except RuntimeError:
-        return ''
-    t = ts.TOOL_BY_ID.get(tid)
-    return t[1] if t else item.label
+        pass
+
+
+def open_value(context, item):
+    """Click (no drag) on a number bar: type the exact value."""
+    EDIT[:] = [item.data, item.prop]
+    try:
+        bpy.ops.wm.call_panel(name='MCH_PT_ui_value', keep_open=False)
+    except RuntimeError:
+        pass
+
+
+class MCH_PT_ui_value(bpy.types.Panel):
+    """Type the exact value of a number bar"""
+    bl_idname = 'MCH_PT_ui_value'
+    bl_label = 'Value'
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'HEADER'
+    bl_ui_units_x = 12
+
+    def draw(self, context):
+        data, prop = EDIT
+        if data is None:
+            return
+        try:
+            self.layout.prop(data, prop)
+        except (TypeError, ReferenceError):
+            pass
+
+
+class MCH_MT_ui_choice(bpy.types.Menu):
+    """The choices of a closed list in the side panel / top bar"""
+    bl_idname = 'MCH_MT_ui_choice'
+    bl_label = 'Choose'
+
+    def draw(self, context):
+        data, prop = EDIT
+        if data is None:
+            return
+        try:
+            self.layout.props_enum(data, prop)
+        except (TypeError, ReferenceError):
+            pass
 
 
 # --- drawing ---------------------------------------------------------------------------------------------------
@@ -183,7 +399,10 @@ _handle = None
 def hovered(context, items):
     wm = context.window_manager
     x, y = tuple(getattr(wm, 'mch_ui_hover', (-1.0, -1.0)))
-    return next((i for i in items if i.kind != 'card' and i.clickable() and i.hit(x, y)), None)
+    for card, its in reversed(_cards(items)):
+        if card.hit(x, y):
+            return next((i for i in its if i.clickable() and i.hit(x, y)), None)
+    return None
 
 
 def _draw():
@@ -211,9 +430,9 @@ class MCH_OT_ui_hover(bpy.types.Operator):
     def invoke(self, context, event):
         try:
             wm = context.window_manager
-            if bar_on(context) or strip_on(context):
-                x, y = float(event.mouse_region_x), float(event.mouse_region_y)
-                items = all_items(context)
+            x, y = float(event.mouse_region_x), float(event.mouse_region_y)
+            items = all_items(context)
+            if items:
                 before = hovered(context, items)
                 wm.mch_ui_hover = (x, y)
                 if hovered(context, items) is not before and context.area:
@@ -223,13 +442,47 @@ class MCH_OT_ui_hover(bpy.types.Operator):
         return {'PASS_THROUGH'}
 
 
-CLASSES = (MCH_OT_ui_hover,)
+class MCH_OT_ui_scroll(bpy.types.Operator):
+    """0.24.59 The mouse wheel over the side panel scrolls it (elsewhere it zooms the view as always)"""
+    bl_idname = 'mch.ui_scroll'
+    bl_label = 'Mecha Panel Scroll'
+    bl_options = {'INTERNAL'}
+
+    def invoke(self, context, event):
+        from . import side_panel
+        try:
+            x, y = event.mouse_region_x, event.mouse_region_y
+            if not side_panel.over(context, x, y):
+                return {'PASS_THROUGH'}
+            from .ui_gpu import ui_factor
+            region = context.region
+            k = ui_factor(context, region)
+            step = 48.0 * k
+            side_panel.scroll_by(context, region.width, region.height, k,
+                                 step if event.type == 'WHEELDOWNMOUSE' else -step)
+            if context.area:
+                context.area.tag_redraw()
+            return {'FINISHED'}
+        except (AttributeError, KeyError, TypeError, ReferenceError):
+            return {'PASS_THROUGH'}
+
+
+CLASSES = (MCH_OT_ui_hover, MCH_OT_ui_scroll, MCH_PT_ui_value, MCH_MT_ui_choice)
 _keymaps = []
+
+
+@bpy.app.handlers.persistent
+def _dirty_handler(*_args):
+    from . import side_panel
+    side_panel.dirty()
 
 
 def register():
     global _handle
-    bpy.types.WindowManager.mch_ui_hover = FloatVectorProperty(size=2, default=(-1.0, -1.0), options={'SKIP_SAVE'})
+    wmt = bpy.types.WindowManager
+    wmt.mch_ui_hover = FloatVectorProperty(size=2, default=(-1.0, -1.0), options={'SKIP_SAVE'})
+    wmt.mch_side_scroll = FloatProperty(default=0.0, min=0.0, options={'SKIP_SAVE'})
+    wmt.mch_side_min = BoolProperty(default=False, options={'SKIP_SAVE'})
     for c in CLASSES:
         bpy.utils.register_class(c)
     wm = bpy.context.window_manager
@@ -237,6 +490,11 @@ def register():
     if kc is not None:
         km = kc.keymaps.new(name='3D View', space_type='VIEW_3D')
         _keymaps.append((km, km.keymap_items.new('mch.ui_hover', 'MOUSEMOVE', 'ANY', any=True)))
+        for wheel in ('WHEELUPMOUSE', 'WHEELDOWNMOUSE'):
+            _keymaps.append((km, km.keymap_items.new('mch.ui_scroll', wheel, 'PRESS')))
+    for hl in (bpy.app.handlers.undo_post, bpy.app.handlers.redo_post, bpy.app.handlers.depsgraph_update_post):
+        if _dirty_handler not in hl:
+            hl.append(_dirty_handler)
     if not bpy.app.background and _handle is None:
         _handle = bpy.types.SpaceView3D.draw_handler_add(_draw, (), 'WINDOW', 'POST_PIXEL')
 
@@ -249,6 +507,9 @@ def unregister():
         except (ValueError, RuntimeError):
             pass
         _handle = None
+    for hl in (bpy.app.handlers.undo_post, bpy.app.handlers.redo_post, bpy.app.handlers.depsgraph_update_post):
+        if _dirty_handler in hl:
+            hl.remove(_dirty_handler)
     for km, kmi in _keymaps:
         try:
             km.keymap_items.remove(kmi)
@@ -260,5 +521,6 @@ def unregister():
             bpy.utils.unregister_class(c)
         except RuntimeError:
             pass
-    if hasattr(bpy.types.WindowManager, 'mch_ui_hover'):
-        del bpy.types.WindowManager.mch_ui_hover
+    for name in ('mch_ui_hover', 'mch_side_scroll', 'mch_side_min'):
+        if hasattr(bpy.types.WindowManager, name):
+            delattr(bpy.types.WindowManager, name)

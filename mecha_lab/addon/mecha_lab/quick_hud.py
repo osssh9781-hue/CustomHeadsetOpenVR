@@ -244,8 +244,18 @@ class MCH_OT_quick_hud_press(bpy.types.Operator):
         except (AttributeError, KeyError, TypeError, ReferenceError, ImportError):
             inside, item = False, None
         if inside:
+            if item is not None and item.kind == 'mini':      # 0.24.59 a number bar: drag it / click = type
+                from . import ui_values
+                self.kind, self.index, self.ui_item = 'ui', None, item
+                self.x0, self.y0 = event.mouse_region_x, event.mouse_region_y
+                self.moved, self.ctrl = False, event.ctrl
+                self.init = ui_values.get(item.data, item.prop)
+                context.window_manager.modal_handler_add(self)
+                return {'RUNNING_MODAL'}
             if item is not None:
-                ui_bars.run(context, item)
+                msg = ui_bars.run(context, item)
+                if msg:
+                    self.report({'INFO'}, msg)
             if context.area:
                 context.area.tag_redraw()
             return {'FINISHED'}
@@ -292,6 +302,8 @@ class MCH_OT_quick_hud_press(bpy.types.Operator):
     def modal(self, context, event):
         if context.area:
             context.area.tag_redraw()
+        if self.kind == 'ui':
+            return self._modal_ui(context, event)
         dx, dy = event.mouse_region_x - self.x0, event.mouse_region_y - self.y0
         if event.type == 'MOUSEMOVE':
             if abs(dx) > 3 or abs(dy) > 3:
@@ -349,6 +361,46 @@ class MCH_OT_quick_hud_press(bpy.types.Operator):
             except RuntimeError:
                 pass
             return self._end(context, {'FINISHED'})
+        return {'RUNNING_MODAL'}
+
+    def _modal_ui(self, context, event):
+        """0.24.59 A number bar of the top bar / side panel: drag = change (Shift fine), click = type the value,
+        Ctrl+click = default, Esc / RMB = back."""
+        from . import side_panel, ui_bars, ui_values
+        it = self.ui_item
+        dx = event.mouse_region_x - self.x0
+        try:
+            if event.type == 'MOUSEMOVE':
+                if abs(dx) > 3 or abs(event.mouse_region_y - self.y0) > 3:
+                    self.moved = True
+                if self.moved and ui_values.kind(it.data, it.prop) in {'INT', 'FLOAT'}:
+                    v = ui_values.drag(it.data, it.prop, self.init, dx, fine=event.shift)
+                    if v != ui_values.get(it.data, it.prop):
+                        ui_values.set(it.data, it.prop, v)
+                    if context.area:
+                        context.area.header_text_set(ui_values.text(it.data, it.prop, it.label)
+                                                     + '   (Shift: fine, Esc / RMB: back)')
+                return {'RUNNING_MODAL'}
+            if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
+                if self.moved:
+                    ui_values.set(it.data, it.prop, self.init)
+                return self._end(context, {'CANCELLED'})
+            if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+                if not self.moved:
+                    if self.ctrl:
+                        ui_values.reset(it.data, it.prop)
+                    else:
+                        self._end(context, {'FINISHED'})
+                        ui_bars.open_value(context, it)
+                        return {'FINISHED'}
+                try:
+                    bpy.ops.ed.undo_push(message='Mecha ' + (it.label or it.prop))
+                except RuntimeError:
+                    pass
+                side_panel.dirty()
+                return self._end(context, {'FINISHED'})
+        except (ReferenceError, AttributeError, KeyError, TypeError):
+            return self._end(context, {'CANCELLED'})
         return {'RUNNING_MODAL'}
 
     def _end(self, context, result):

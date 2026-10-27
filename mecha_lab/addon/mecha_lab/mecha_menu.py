@@ -476,6 +476,10 @@ def _tip(x, y, label, S, side='RIGHT'):
     h = 26 * S
     if side == 'ABOVE':
         x, y = x - w / 2, y + 6 * S
+    elif side == 'BELOW':                         # 0.24.59 the top bar's shapes
+        x, y = x - w / 2, y - h - 6 * S
+    elif side == 'LEFT':                          # 0.24.59 the folded side panel
+        x, y = x - w, y - h / 2
     else:
         y -= h / 2
     G.rounded_rect(x, y, w, h, 8 * S, (0.02, 0.02, 0.025, 0.96))
@@ -565,12 +569,139 @@ def draw(items, hover, S, context):
                 G.rounded_rect(it.x, ty - 2 * S, it.w * f, 4 * S, 2 * S, G.ACCENT)
             kr = (9 if hot else 8) * S
             G.rounded_rect(it.x + it.w * f - kr, ty - kr, 2 * kr, 2 * kr, kr, G.TEXT)
+        elif it.kind in NEW_KINDS:                # 0.24.59 top bar, side panel, named strip, actions card
+            t2 = _draw_new(it, hot, S, white, dim)
+            if t2 is not None:
+                tip = t2
     if tip is not None:
         it, side = tip
         if side == 'RIGHT':
             _tip(it.x + it.w + 8 * S, it.y + it.h / 2, it.label, S)
+        elif side == 'BELOW':
+            _tip(it.x + it.w / 2, it.y, it.label, S, 'BELOW')
+        elif side == 'LEFT':
+            _tip(it.x - 8 * S, it.y + it.h / 2, it.label, S, 'LEFT')
         else:
             _tip(it.x + it.w / 2, it.y + it.h, it.label, S, 'ABOVE')
+
+
+NEW_KINDS = {'sbtn', 'arow', 'ibtn', 'mini', 'drop', 'switch', 'tbtn', 'pnote', 'sbg', 'shead', 'phead', 'pbtn', 'pmin',
+             'sbar', 'vrule', 'glabel'}
+BTN_BG = (0.17, 0.175, 0.19, 1.0)
+BTN_HOT = (0.24, 0.245, 0.27, 1.0)
+FILL = (0.22, 0.38, 0.72, 1.0)        # the Quick HUD's bar blue
+
+
+def _draw_new(it, hot, S, white, dim):
+    """One item of the 0.24.59 kinds.  Returns (item, side) when it wants a name bubble."""
+    from . import ui_values
+    k = it.kind
+    x, y, w, h = it.x, it.y, it.w, it.h
+    if k == 'sbtn':                       # tool strip: icon + name
+        if it.on:
+            G.rounded_rect(x, y, w, h, 8 * S, G.ACCENT)
+        elif hot:
+            G.rounded_rect(x, y, w, h, 8 * S, HOVER)
+        ic = h * 0.8
+        _icon(it.icon, x + 3 * S, y + (h - ic) / 2, ic, white, dim)
+        size = max(10.0 * S, min(13.0 * S, h * 0.46))
+        label = G.fit(it.label, size, w - ic - 12 * S)
+        G.text(x + ic + 9 * S, y + h / 2, label, size, white)
+        return (it, 'RIGHT') if hot and label != it.label else None
+    if k == 'arow':                       # actions card row
+        if it.on:
+            G.rounded_rect(x, y, w, h, 8 * S, G.ACCENT)
+        elif hot:
+            G.rounded_rect(x, y, w, h, 8 * S, HOVER)
+        ic = h * 0.62
+        _icon(it.icon, x + 6 * S, y + (h - ic) / 2, ic, white, dim)
+        G.text(x + ic + 14 * S, y + h / 2, G.fit(it.label, 12 * S, w - ic - 20 * S), 12 * S, white)
+        return None
+    if k == 'ibtn':                       # top bar shape: a big icon, the name in a bubble
+        if it.on:
+            G.rounded_rect(x, y, w, h, h / 2, G.ACCENT)
+        elif hot:
+            G.rounded_rect(x, y, w, h, h / 2, BTN_HOT)
+        ic = min(w, h) * 0.7
+        _icon(it.icon, x + (w - ic) / 2, y + (h - ic) / 2, ic, white, dim)
+        return (it, 'BELOW') if hot else None
+    if k == 'mini':                       # a number as a Quick HUD bar
+        try:
+            name, _s, val = ui_values.text(it.data, it.prop, it.label).partition('  ')
+            f = ui_values.fraction(it.data, it.prop)
+        except (AttributeError, KeyError, TypeError, ReferenceError):
+            return None
+        G.rounded_rect(x, y, w, h, h / 2, BTN_HOT if hot else BTN_BG)
+        if f > 0:
+            G.rounded_rect(x, y, max(h, w * f), h, h / 2, (FILL[0], FILL[1], FILL[2], dim))
+        vw = G.text(-9999, -9999, val, 12 * S)
+        G.text(x + 12 * S, y + h / 2, G.fit(name, 12 * S, w - vw - 30 * S), 12 * S, white)
+        G.text(x + w - 12 * S, y + h / 2, val, 12 * S, white, 'RIGHT')
+        return None
+    if k == 'drop':                       # a closed list: name ... value v
+        try:
+            name, _s, val = ui_values.text(it.data, it.prop).partition('  ')
+        except (AttributeError, KeyError, TypeError, ReferenceError):
+            return None
+        G.rounded_rect(x, y, w, h, h / 2, BTN_HOT if hot else BTN_BG)
+        if it.label:
+            vw = G.text(-9999, -9999, val, 12 * S)
+            G.text(x + 12 * S, y + h / 2, G.fit(it.label, 12 * S, w - vw - 44 * S), 12 * S, G.TEXT_DIM)
+            G.text(x + w - 26 * S, y + h / 2, val, 12 * S, white, 'RIGHT')
+        else:
+            G.text(x + (w - 14 * S) / 2, y + h / 2, G.fit(val, 12 * S, w - 30 * S), 12 * S, white, 'CENTER')
+        G.text(x + w - 12 * S, y + h / 2, 'v', 10 * S, G.TEXT_DIM, 'RIGHT')
+        return None
+    if k == 'switch':
+        G.text(x + 2 * S, y + h / 2, G.fit(it.label, 12 * S, w - 48 * S), 12 * S, white)
+        sw, sh = 36 * S, 20 * S
+        sx, sy = x + w - sw, y + (h - sh) / 2
+        G.rounded_rect(sx, sy, sw, sh, sh / 2, G.ACCENT if it.on else (0.24, 0.245, 0.27, 1.0))
+        kx = sx + (sw - sh + 3 * S if it.on else 3 * S)
+        G.rounded_rect(kx, sy + 3 * S, sh - 6 * S, sh - 6 * S, (sh - 6 * S) / 2, G.TEXT)
+        return None
+    if k == 'tbtn':                       # a panel button (operator / menu)
+        alert = it.icon == 'alert'
+        bg = G.ACCENT if it.on else ((0.55, 0.3, 0.08, 1.0) if alert else (BTN_HOT if hot else (0.2, 0.205, 0.225, 1.0)))
+        G.rounded_rect(x, y, w, h, h / 2, bg)
+        G.text(x + w / 2, y + h / 2, G.fit(it.label, 12 * S, w - 12 * S), 12 * S, white, 'CENTER')
+        return None
+    if k == 'pnote':
+        col = (1.0, 0.62, 0.16, 1.0) if it.icon == 'error' else G.TEXT_DIM
+        G.text(x, y + h / 2, G.fit(it.label, 10.5 * S, w), 10.5 * S, col)
+        return (it, 'BELOW') if False else None
+    if k == 'sbg':
+        G.rounded_rect(x - 4 * S, y, w + 8 * S, h, 12 * S, (1.0, 1.0, 1.0, 0.035))
+        return None
+    if k == 'shead':
+        if hot:
+            G.rounded_rect(x, y, w, h, 8 * S, HOVER)
+        G.text(x + 6 * S, y + h / 2, ('-  ' if it.on else '+  ') + G.fit(it.label, 10.5 * S, w - 24 * S), 10.5 * S,
+               (0.85, 0.86, 0.9, 1.0))
+        return None
+    if k == 'phead':
+        _icon(it.icon, x, y + (h - 30 * S) / 2, 30 * S, white)
+        G.text(x + 40 * S, y + h / 2, G.fit(it.label, 15 * S, w - 40 * S), 15 * S, G.TEXT)
+        return None
+    if k == 'pbtn':
+        G.rounded_rect(x, y, w, h, h / 2, BTN_HOT if hot else (0.2, 0.205, 0.225, 1.0))
+        G.text(x + w / 2, y + h / 2, it.label, 14 * S, G.TEXT_DIM, 'CENTER')
+        return None
+    if k == 'pmin':                       # the folded side panel: the tool icon
+        if hot:
+            G.rounded_rect(x, y, w, h, 10 * S, HOVER)
+        ic = min(w, h) * 0.75
+        _icon(it.icon, x + (w - ic) / 2, y + (h - ic) / 2, ic, white)
+        return (it, 'LEFT') if hot else None
+    if k == 'sbar':
+        G.rounded_rect(x, y, w, h, w / 2, (1.0, 1.0, 1.0, 0.25))
+        return None
+    if k == 'vrule':
+        G.rounded_rect(x, y, max(1.0, w), max(1.0, h), 0.5, (1.0, 1.0, 1.0, 0.14))
+        return None
+    if k == 'glabel':
+        G.text(x + 2 * S, y + h / 2, it.label, 10 * S, G.TEXT_DIM)
+    return None
 
 
 def _fraction(data, prop):

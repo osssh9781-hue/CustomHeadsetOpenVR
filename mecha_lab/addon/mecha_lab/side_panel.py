@@ -26,6 +26,7 @@ SECTION = 26.0
 NOTE = 17.0
 TOP_MARGIN = 150.0          # below the navigation gizmo
 BOTTOM_MARGIN = 16.0
+MIN_W = 44.0             # the folded panel: a small tab with the tool icon
 
 # shown in the top bar for every tool - not repeated here
 TOP_BAR_PROPS = {('mch_cut', 'depth_mode'), ('mch_cut', 'targets'), ('mch_settings', 'auto_apply'),
@@ -314,28 +315,44 @@ class Builder:
         self.gap(0.7)
 
 
-def tool_tree(context, tool):
+# --- reading the panels (cached: the viewport redraws far more often than the settings change) ------------------
+
+_CACHE = {'key': None, 'time': 0.0, 'trees': (None, None)}
+REFRESH = 0.5               # s: read again at least this often (changes made elsewhere: undo, the sidebar ...)
+
+
+def dirty():
+    """Read the panels again on the next draw (after a click here, a data change, undo)."""
+    _CACHE['key'] = None
+    from . import ui_bars
+    ui_bars.bump()
+
+
+def _trees(context, tool):
+    import time
     from . import ui_tool_settings as uts
+    ob = getattr(context, 'active_object', None)
+    key = (tool, ob.name if ob is not None else '', ob.mode if ob is not None else '')
+    now = time.monotonic()
+    if _CACHE['key'] == key and now - _CACHE['time'] < REFRESH:
+        return _CACHE['trees']
     drawer = uts.DRAWERS.get(tool)
-    return pc.capture(drawer, context) if drawer is not None else None
-
-
-def lasso_tree(context, tool):
-    from . import ui_tool_settings as uts
-    if tool not in ts.SHAPE_TOOLS:
-        return None
-    return pc.capture(lambda layout, ctx: uts.draw_shape_options(layout, ctx, tool), context)
+    tree = pc.capture(drawer, context) if drawer is not None else None
+    lasso = None
+    if tool in ts.SHAPE_TOOLS:
+        lasso = pc.capture(lambda layout, ctx: uts.draw_shape_options(layout, ctx, tool), context)
+    _CACHE.update(key=key, time=now, trees=(tree, lasso))
+    return tree, lasso
 
 
 def content(context, tool, x, width, k):
     """(items, content height) - the panel's rows, y measured down from 0."""
     b = Builder(tool, x, width, k)
-    tree = tool_tree(context, tool)
+    tree, lt = _trees(context, tool)
     if tree is not None:
         if tree.opts.get('error'):
             b.note(('note', 'Open the sidebar (N) for this tool', True, None, None, None, True), x, width)
         b.node(tree, x, width)
-    lt = lasso_tree(context, tool)
     if lt is not None and lt.children:
         b.section(lt, x, width, 'Lasso', start_folded=True)
     if b.help:
@@ -347,37 +364,110 @@ def content(context, tool, x, width, k):
     return b.out, -b.y
 
 
-def items(context, region_w, region_h, k=1.0, scroll=0.0):
-    """The panel as Items (region px).  Taller than the room: scrolled by ``scroll`` px, a scroll bar shows."""
+# --- where it is -------------------------------------------------------------------------------------------------
+
+def sidebar_open(context):
+    area = getattr(context, 'area', None)
+    return area is not None and any(r.type == 'UI' and r.width > 1 for r in area.regions)
+
+
+def on(context):
+    """Shown: preference on, MECHA LAB, a tool with a panel, and the sidebar (N) closed (it shows the same)."""
+    from .workspace_ui import pref
+    from . import bottom_bar, ui_tool_settings as uts
+    try:
+        return (pref('side_panel', True) and bottom_bar.ui_active(context) and not sidebar_open(context)
+                and ts.effective_tool(context) in uts.DRAWERS)
+    except (AttributeError, KeyError, TypeError, ReferenceError):
+        return False
+
+
+def minimised(context):
+    return bool(getattr(context.window_manager, 'mch_side_min', False))
+
+
+def taken(context, k):
+    """How much of the right side the panel takes (0 when it is not shown) - the top bar / cards keep clear."""
+    if not on(context):
+        return 0.0
+    return (MIN_W if minimised(context) else WIDTH + 12.0) * k + 12.0 * k
+
+
+
+def frame(region_w, region_h, k):
+    w = WIDTH * k
+    return region_w - w - 12 * k, region_h - TOP_MARGIN * k, w
+
+
+def layout(context, region_w, region_h, k=1.0):
+    """{'items': [...], 'clip': (x, y, w, h) of the scrolled rows or None, 'content': rows height, 'view': ...}."""
     from .mecha_menu import Item
     tool = ts.effective_tool(context)
     t = ts.TOOL_BY_ID.get(tool)
     if t is None:
-        return []
-    w = WIDTH * k
-    x0 = region_w - w - 12 * k
-    top = region_h - TOP_MARGIN * k
-    bottom = BOTTOM_MARGIN * k
+        return {'items': [], 'clip': None, 'content': 0.0, 'view': 0.0}
+    x0, top, w = frame(region_w, region_h, k)
+    if minimised(context):                       # a small tab: the tool icon, click = open again
+        mw = MIN_W * k
+        card = Item('card', region_w - mw - 12 * k, top - mw, mw, mw)
+        tab = Item('pmin', card.x + 4 * k, card.y + 4 * k, mw - 8 * k, mw - 8 * k, t[1], 'png:' + t[3], False, True,
+                   ('minimise',))
+        return {'items': [card, tab], 'clip': None, 'content': 0.0, 'view': 0.0}
     rows, h = content(context, tool, x0 + PAD * k, w - 2 * PAD * k, k)
-    room = top - bottom - HEAD * k - 2 * PAD * k
-    view = min(h, room)
-    scroll = max(0.0, min(scroll, h - view))
+    room = top - BOTTOM_MARGIN * k - HEAD * k - 2 * PAD * k
+    view = max(0.0, min(h, room))
+    wm = context.window_manager
+    scroll = max(0.0, min(float(getattr(wm, 'mch_side_scroll', 0.0)), h - view))
     card_h = HEAD * k + view + 2 * PAD * k
     out = [Item('card', x0, top - card_h, w, card_h)]
-    out.append(Item('phead', x0 + PAD * k, top - PAD * k - HEAD * k + 6 * k, w - 2 * PAD * k, HEAD * k - 6 * k,
-                    t[1].upper(), 'png:' + t[3], False, True, None))
+    out.append(Item('phead', x0 + PAD * k, top - PAD * k - HEAD * k + 6 * k, w - 2 * PAD * k - 34 * k,
+                    HEAD * k - 6 * k, t[1].upper(), 'png:' + t[3], False, True, None))
     out.append(Item('pbtn', x0 + w - PAD * k - 26 * k, top - PAD * k - 30 * k, 26 * k, 26 * k, '–', '', False, True,
                     ('minimise',)))
     y_top = top - PAD * k - HEAD * k
-    clip = (x0, y_top - view, w, view)
-    for it in rows:
+    cy, ch = y_top - view, view
+    for it in rows:                              # only whole rows inside the window (no half-drawn rows)
         it.y += y_top + scroll
-        if it.y + it.h < clip[1] - 1 or it.y > clip[1] + clip[3] + 1:
+        if it.kind == 'sbg':                     # a section's background: cut to the window
+            lo, hi = max(it.y, cy), min(it.y + it.h, cy + ch)
+            if hi - lo < 2 * k:
+                continue
+            it.y, it.h = lo, hi - lo
+        elif it.y < cy - 0.5 or it.y + it.h > cy + ch + 0.5:
             continue
         out.append(it)
     if h > view + 1:
         bar_h = max(30 * k, view * view / h)
         bar_y = y_top - bar_h - (view - bar_h) * (scroll / max(1e-6, h - view))
-        out.append(Item('sbar', x0 + w - 6 * k, bar_y, 3 * k, bar_h))
-    out[0].label = f'clip:{clip[0]:.1f},{clip[1]:.1f},{clip[2]:.1f},{clip[3]:.1f}'
-    return out
+        out.append(Item('sbar', x0 + w - 7 * k, bar_y, 3 * k, bar_h))
+    return {'items': out, 'clip': (x0, cy, w, ch), 'content': h, 'view': view}
+
+
+def items(context, region_w, region_h, k=1.0):
+    return layout(context, region_w, region_h, k)['items']
+
+
+def toggle_fold(key, start_folded):
+    if start_folded:
+        OPENED.symmetric_difference_update({key})
+    else:
+        FOLDED.symmetric_difference_update({key})
+    dirty()
+
+
+def scroll_by(context, region_w, region_h, k, dy):
+    lay = layout(context, region_w, region_h, k)
+    wm = context.window_manager
+    wm.mch_side_scroll = max(0.0, min(float(wm.mch_side_scroll) + dy, max(0.0, lay['content'] - lay['view'])))
+    from . import ui_bars
+    ui_bars.bump()
+
+
+def over(context, x, y):
+    """Is region point (x, y) on the panel?"""
+    region = getattr(context, 'region', None)
+    if region is None or not on(context):
+        return False
+    from .ui_gpu import ui_factor
+    its = items(context, region.width, region.height, ui_factor(context, region))
+    return bool(its) and its[0].hit(x, y)

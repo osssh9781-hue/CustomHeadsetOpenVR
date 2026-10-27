@@ -246,8 +246,10 @@ sy.run_card(C, cen['Group'])
 check('... Group from the card', gr.repeat_center(g) == 'GROUP')
 sy.run_card(C, next(i for i in sy.build_card(C, 1600, 900, 1.0) if i.label == 'World'))
 card = next(i for i in sy.build_card(C, 1600, 900, 1.0) if i.kind == 'card')
-check('The card is docked at the right of the viewport (not over the part / group)', card.x + card.w > 1500
-      and card.x > 1000, (card.x, card.w))
+from mecha_lab import side_panel as _sp          # 0.24.59 left of the side panel when it shows
+_room = 1600 - _sp.taken(C, 1.0)
+check('The card is docked at the right of the viewport (not over the part / group)', card.x + card.w > _room - 100
+      and card.x > _room - 600, (card.x, card.w, _room))
 sy.run_card(C, next(i for i in sy.build_card(C, 1600, 900, 1.0) if i.label == '+'))
 check('... + one more copy', gr.repeat_count(g) == 4)
 n_before = len(gr.members(g))

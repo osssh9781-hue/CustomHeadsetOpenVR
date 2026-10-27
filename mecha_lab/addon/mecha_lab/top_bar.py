@@ -1,87 +1,189 @@
-"""0.24.59 Top bar: the settings the drawing tools share, in one dark bar at the top middle of the viewport.
+"""0.24.59 Top bar: what the drawing tools share, big and clear at the top middle of the viewport (it replaces the
+shape / Sketch / Line / Surface ... buttons of Blender's tool header, which keeps only the Custom PNG picker).
 
-    DRAW  [Line] [Sketch] [Slow Line] (Strength) (Radius)  |  TARGET  [Auto] [Selected] [Active]
-          |  DEPTH  [Through All] [From Surface] (Depth)  |  [Auto Apply]
+    SHAPE [lasso][curve][rect][circle][ellipse][free][custom]  |  DRAW [Line] [Sketch] [Slow Line] (Strength)
+    (Radius)  |  LINE (Width) [Caps v] [Taper] (Taper) [Pressure] [Attach Ends]  |  [Surface] (Gap) [Through]
+    [Sim] [Preset v]  |  TARGET [Auto] [Selected] [Active]  |  DEPTH [Through All] [From Surface] (Depth)
+    |  [Auto Apply]  |  [Ortho]
 
-Only what the tool in use has: Line / Sketch where the tool draws lines / sketches, Target for the tools that draw
-on a mesh, Depth and Auto Apply for Cut / Split / Box Hide.  The tool's own settings are in the side panel
-(``side_panel``), which leaves these out.  Layout only so far (``items``).
+Only what the tool in use has; groups wrap to a second / third row when the room between the tool strip and the
+side panel is too narrow.  The tool's own settings are in the side panel (``side_panel``), which leaves these out.
 """
 from __future__ import annotations
 
 from . import tool_state as ts
 
-ROW = 28.0
-GAP = 6.0
-GROUP_GAP = 12.0
+ROW = 30.0
+ICON = 34.0
+GAP = 5.0
 PAD = 8.0
 TOP = 10.0
 CUT_LIKE = {'CUT', 'SPLIT', 'HIDE'}
 
 
+def _cell(kind, label, on=False, action=None, data=None, prop='', width=None, icon=''):
+    return {'kind': kind, 'label': label, 'on': on, 'action': action, 'data': data, 'prop': prop,
+            'width': width, 'icon': icon}
+
+
+def _seg(label, data, prop, on=None):
+    return _cell('seg', label, bool(getattr(data, prop)) if on is None else on, ('bool',), data, prop)
+
+
 def groups(context, tool):
-    """[(title, [cells])]; a cell: (kind, label, on, action, data, prop, width px at size 1)."""
-    from . import mecha_menu, target_rules
+    """[(title, [cells])] for the tool in use."""
+    from . import lasso_line, lasso_sketch, mecha_menu, target_rules
     scene = context.scene
     brush = getattr(scene, 'mch_brush', None)
     out = []
-    draw = [('seg', label, on, ('mode', key), None, '', None) for key, label, on in mecha_menu.draw_modes(context)]
+    if brush is None:
+        return out
+    if tool in ts.SHAPE_TOOLS:
+        out.append(('Shape', [_cell('ibtn', label, brush.shape == sid, ('shape', sid), icon='png:' + stem,
+                                    width=ICON) for sid, label, _d, stem, _f in ts.SHAPES]))
+    draw = [_cell('seg', label, on, ('mode', key)) for key, label, on in mecha_menu.draw_modes(context)]
     drawing = tool in target_rules.PICKING | target_rules.OWN_ROW - {'CMOVE', 'CPATH'}
-    if brush is not None and drawing:
-        draw.append(('seg', 'Slow Line', brush.stab_enable, ('bool',), brush, 'stab_enable', None))
+    if drawing:
+        draw.append(_seg('Slow Line', brush, 'stab_enable'))
         if brush.stab_enable:
-            draw.append(('mini', 'Strength', False, ('number',), brush, 'stab_strength', 150))
-            draw.append(('mini', 'Radius', False, ('number',), brush, 'stab_radius', 130))
+            draw.append(_cell('mini', 'Strength', action=('number',), data=brush, prop='stab_strength', width=150))
+            draw.append(_cell('mini', 'Radius', action=('number',), data=brush, prop='stab_radius', width=130))
     if draw:
         out.append(('Draw', draw))
+    line_tool = tool in lasso_line.MODES or tool in lasso_line.ALWAYS
+    if line_tool and (brush.line_mode or tool in lasso_line.ALWAYS):
+        line = [_cell('mini', 'Width', action=('number',), data=brush, prop='line_width', width=140),
+                _cell('drop', '', action=('menu_enum',), data=brush, prop='line_caps', width=96),
+                _seg('Taper', brush, 'line_taper_on')]
+        if brush.line_taper_on:
+            line.append(_cell('mini', 'Taper', action=('number',), data=brush, prop='line_taper', width=120))
+        line.append(_seg('Pressure', brush, 'line_pressure'))
+        if tool in {'BASE', 'CBASE'}:
+            from . import base_mesh
+            bd = base_mesh.scene_defaults(context)
+            line.append(_seg('Attach Ends', bd, 'line_attach'))
+            if bd.line_attach:
+                line.append(_cell('drop', '', action=('menu_enum',), data=bd, prop='attach_curve', width=104))
+        out.append(('Line', line))
+    extra = []
+    if tool in {'CUT', 'SPLIT', 'PLATE', 'WRINKLE'}:
+        extra.append(_seg('Surface', brush, 'surface_mode'))
+        if brush.surface_mode and tool in {'CUT', 'SPLIT'}:
+            extra.append(_cell('mini', 'Gap', action=('number',), data=brush, prop='surface_gap', width=110))
+    if tool in {'PLATE', 'WRINKLE', 'CPLATE'}:
+        extra.append(_seg('Through', brush, 'through_mode'))
+        if brush.through_mode and tool != 'CPLATE':
+            extra.append(_cell('mini', 'Crease', action=('number',), data=brush, prop='through_crease', width=120))
+    if tool == 'WRINKLE' and hasattr(scene, 'mch_wrinkle'):
+        ws = scene.mch_wrinkle
+        extra.append(_seg('Sim', ws, 'sim_after'))
+        if ws.sim_after:
+            extra.append(_cell('drop', '', action=('menu_enum',), data=ws, prop='sim_preset', width=110))
+    if extra:
+        out.append(('', extra))
     cut = getattr(scene, 'mch_cut', None)
-    if cut is not None and tool in target_rules.PICKING | target_rules.OWN_ROW - {'CMOVE', 'CPATH'}:
-        out.append(('Target', [('seg', label, cut.targets == ident, ('enum', ident), cut, 'targets', None)
-                               for ident, label in (('AUTO', 'Auto'), ('SELECTED', 'Selected'), ('ACTIVE', 'Active'))]))
+    if cut is not None and drawing:
+        out.append(('Target', [_cell('seg', label, cut.targets == ident, ('enum', ident), cut, 'targets')
+                               for ident, label in (('AUTO', 'Auto'), ('SELECTED', 'Selected'),
+                                                    ('ACTIVE', 'Active'))]))
     if cut is not None and tool in CUT_LIKE:
-        depth = [('seg', label, cut.depth_mode == ident, ('enum', ident), cut, 'depth_mode', None)
+        depth = [_cell('seg', label, cut.depth_mode == ident, ('enum', ident), cut, 'depth_mode')
                  for ident, label in (('THROUGH', 'Through All'), ('SURFACE', 'From Surface'))]
         if cut.depth_mode == 'SURFACE':
-            depth.append(('mini', 'Depth', False, ('number',), cut, 'depth', 140))
+            depth.append(_cell('mini', 'Depth', action=('number',), data=cut, prop='depth', width=130))
         out.append(('Depth', depth))
         st = getattr(scene, 'mch_settings', None)
         if st is not None and tool != 'HIDE':
-            out.append(('', [('seg', 'Auto Apply', st.auto_apply, ('bool',), st, 'auto_apply', None)]))
+            out.append(('', [_seg('Auto Apply', st, 'auto_apply')]))
+    from .workspace_ui import _ORTHO_LOCK_KEY
+    locked = bool(context.workspace and context.workspace.get(_ORTHO_LOCK_KEY, False))
+    out.append(('', [_cell('seg', 'Ortho', locked, ('op', 'mch.ortho_lock', {}))]))
     return out
 
 
-def items(context, region_w, region_h, k=1.0, left=0.0, right=0.0):
-    """The bar as Mecha Menu Items (region px), centred in the room between ``left`` and ``right`` (what the tool
-    strip / side panel take)."""
+def _width(c, k):
+    if c['width']:
+        return c['width'] * k
+    return (len(c['label']) * 7.0 + 24.0) * k
+
+
+def _group_width(title, cells, k):
+    w = sum(_width(c, k) for c in cells) + GAP * k * (len(cells) - 1)
+    if title:
+        w += (len(title) * 7.0 + 8.0) * k + GAP * k
+    return w
+
+
+def rows_of(gs, room, k):
+    """Groups packed into rows that fit ``room`` px (at most 3 rows; a too-wide group gets a row of its own)."""
+    rows, cur, cur_w = [], [], 0.0
+    sep = 14.0 * k
+    for g in gs:
+        gw = _group_width(g[0], g[1], k)
+        if cur and cur_w + sep + gw > room and len(rows) < 2:
+            rows.append(cur)
+            cur, cur_w = [], 0.0
+        cur_w += (sep if cur else 0.0) + gw
+        cur.append(g)
+    if cur:
+        rows.append(cur)
+    return rows
+
+
+def room(context, region_w, k):
+    """(left, right) px the bar may use: right of the tool strip, left of the side panel."""
+    from . import ui_bars
+    left = ui_bars.left_inset(context) + ui_bars.strip_width(context, k)
+    right = 0.0
+    try:
+        from . import side_panel
+        right = side_panel.taken(context, k)
+    except (ImportError, AttributeError, TypeError, ReferenceError):
+        pass
+    return left, region_w - right
+
+
+def items(context, region_w, region_h, k=1.0, left=None, right=None):
+    """The bar as Mecha Menu Items (region px)."""
     from .mecha_menu import Item
     tool = ts.effective_tool(context)
     gs = groups(context, tool)
     if not gs:
         return []
-    cells = []
-    for gi, (title, entries) in enumerate(gs):
-        if gi:
-            cells.append(('vrule', '', 1.0 * k))
-        if title:
-            cells.append(('glabel', title.upper(), (len(title) * 7.0 + 6) * k))
-        for e in entries:
-            w = (e[6] if e[6] else len(e[1]) * 7.0 + 26) * k
-            cells.append(('cell', e, w))
-    width = sum(c[2] for c in cells) + GAP * k * (len(cells) - 1) + 2 * PAD * k
-    room_l, room_r = left, region_w - right
-    x0 = max(room_l + 8 * k, (room_l + room_r - width) / 2.0)
-    h = ROW * k + 2 * PAD * k
-    y0 = region_h - TOP * k - h
-    out = [Item('card', x0, y0, width, h)]
-    x = x0 + PAD * k
-    y = y0 + PAD * k
-    for kind, e, w in cells:
-        if kind == 'vrule':
-            out.append(Item('vrule', x, y + 5 * k, 1.0 * k, ROW * k - 10 * k))
-        elif kind == 'glabel':
-            out.append(Item('glabel', x, y, w, ROW * k, e))
-        else:
-            ck, label, on, action, data, prop, _w = e
-            out.append(Item(ck, x, y, w, ROW * k, label, '', on, True, action, data, prop))
-        x += w + GAP * k
+    if left is None or right is None:
+        left, right = room(context, region_w, k)
+    avail = max(300.0 * k, right - left - 24 * k)
+    rows = rows_of(gs, avail - 2 * PAD * k, k)
+    sep = 14.0 * k
+    widths = [sum(_group_width(t, c, k) for t, c in r) + sep * (len(r) - 1) for r in rows]
+    width = max(widths) + 2 * PAD * k
+    height = len(rows) * ROW * k + (len(rows) - 1) * GAP * k + 2 * PAD * k
+    x0 = max(left + 8 * k, (left + right - width) / 2.0)
+    y0 = region_h - TOP * k - height
+    out = [Item('card', x0, y0, width, height)]
+    y = y0 + height - PAD * k - ROW * k
+    for r, rw in zip(rows, widths):
+        x = x0 + (width - rw) / 2.0
+        for gi, (title, cells) in enumerate(r):
+            if gi:
+                out.append(Item('vrule', x + sep / 2 - 0.5 * k, y + 6 * k, 1.0 * k, ROW * k - 12 * k))
+                x += sep
+            if title:
+                tw = (len(title) * 7.0 + 8.0) * k
+                out.append(Item('glabel', x, y, tw, ROW * k, title.upper()))
+                x += tw + GAP * k
+            for c in cells:
+                w = _width(c, k)
+                it = Item(c['kind'], x, y, w, ROW * k, c['label'], c['icon'], c['on'], True, c['action'],
+                          c['data'], c['prop'])
+                out.append(it)
+                x += w + GAP * k
+            x -= GAP * k
+        y -= ROW * k + GAP * k
     return out
+
+
+def on(context):
+    from .workspace_ui import pref
+    from . import bottom_bar
+    return pref('top_bar', True) and bottom_bar.ui_active(context)

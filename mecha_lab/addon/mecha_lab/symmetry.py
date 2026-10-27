@@ -539,6 +539,11 @@ def _anchor(context, ob, w, h, region_w, region_h, S):
     if area is not None and overlap:
         inset = sum(r.width for r in area.regions if r.type == 'UI' and r.width > 1)
     x = region_w - inset - w - 16 * S
+    try:                                         # 0.24.59 left of the side panel
+        from . import side_panel
+        x -= side_panel.taken(context, S)
+    except (ImportError, AttributeError, TypeError, ReferenceError):
+        pass
     y = region_h * 0.42 - h / 2
     x = min(max(x, 8 * S), region_w - w - 8 * S)
     y = min(max(y, 8 * S), region_h - h - 8 * S)

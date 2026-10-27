@@ -32,7 +32,7 @@ nc = [i for i in narrow if i.kind == 'card'][0]
 check('Narrow viewport: smaller buttons, the bar stays on screen', nc.x >= 0 and nc.x + nc.w <= 700)
 groups = ts.grouped_tools()
 strip = ub.strip_items(C, W, H, 1.0)
-sbtn = [i for i in strip if i.kind == 'button']
+sbtn = [i for i in strip if i.kind in {'button', 'sbtn'}]     # 0.24.59 'sbtn' = icon + name
 check('Left strip: every tool once, grouped with headings', len(sbtn) == sum(len(r) for _n, r in groups)
       and len([i for i in strip if i.kind == 'striphead']) == len(groups)
       and {i.action[1] for i in sbtn} == {t[0] for _n, r in groups for t in r})
@@ -48,7 +48,7 @@ ctx = types.SimpleNamespace(region=fake_region, area=None, window_manager=C.wind
                             preferences=C.preferences, workspace=C.workspace, mode='OBJECT')
 real_all = ub.all_items
 ub.all_items = lambda c: ub.bar_items(C, W, H, 1.0) + ub.strip_items(C, W, H, 1.0)
-plate = next(i for i in ub.strip_items(C, W, H, 1.0) if i.kind == 'button' and i.action[1] == 'PLATE')
+plate = next(i for i in ub.strip_items(C, W, H, 1.0) if i.kind in {'button', 'sbtn'} and i.action[1] == 'PLATE')
 inside, it = ub.hit(ctx, plate.x + 3, plate.y + 3)
 check('Click on a strip button: that tool', inside and it is not None and it.action == ('tool', 'PLATE'))
 ub.run(C, it)

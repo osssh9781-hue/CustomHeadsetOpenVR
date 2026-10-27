@@ -81,7 +81,7 @@ def handle_scale():
 # 0.14.3: icon sizes survive a restart even when Blender's preferences are not
 # saved (Auto-Save Preferences off): they are kept in the add-on's own small
 # file in the user config folder.  Blender's own preference file is untouched.
-SIZE_KEYS = ('icon_scale', 'toolbar_scale', 'handle_scale', 'mecha_ui_size', 'menu_size')   # 0.24.58 + RMB menu
+SIZE_KEYS = ('icon_scale', 'toolbar_scale', 'handle_scale', 'mecha_ui_size', 'menu_size', 'strip_scale')   # 0.24.59 + strip
 _SIZE_MUTE = [False]
 
 
@@ -1274,8 +1274,14 @@ def draw_shape_palette(self, context):
         return
     layout = self.layout
     tool = ts.effective_tool(context)
-    row = layout.row(align=True)
     brush = scene.mch_brush
+    if pref('top_bar', True):                    # 0.24.59 all of it is in the drawn top bar: only the PNG picker here
+        sub = layout.row(align=True)
+        sub.template_icon_view(scene, 'mch_png_preset', show_labels=True, scale=isz(1.0), scale_popup=isz(5.0))
+        sub.operator('mch.import_cut_png', text='', icon='IMPORT')
+        layout.separator_spacer()
+        return
+    row = layout.row(align=True)
     for sid, label, desc, stem, fallback in ts.SHAPES:
         if sid == 'CUSTOM':
             continue
@@ -1911,6 +1917,8 @@ def draw_icon_sizes(layout, p):
         col.prop(p, 'mecha_ui_size', slider=True)        # 0.24.51 Quick HUD, key legend, cards, toolbar, strip
     if hasattr(p, 'menu_size'):
         col.prop(p, 'menu_size', slider=True)            # 0.24.58 the RMB Mecha Menu on its own
+    if hasattr(p, 'strip_scale'):
+        col.prop(p, 'strip_scale', slider=True)          # 0.24.59 the left tool strip
     if hasattr(p, 'dial_flip'):
         layout.prop(p, 'dial_flip')
     if hasattr(p, 'bottom_toolbar'):
@@ -1936,6 +1944,8 @@ class MCH_OT_icon_size_preset(bpy.types.Operator):
             p.mecha_ui_size = self.factor
         if hasattr(p, 'menu_size'):
             p.menu_size = self.factor
+        if hasattr(p, 'strip_scale'):
+            p.strip_scale = self.factor
         save_sizes(p)
         for window in context.window_manager.windows:
             for area in window.screen.areas:
@@ -2265,6 +2275,18 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
                                             'off = the 0.12 round buttons')
     tool_strip: BoolProperty(name='Tool Strip', default=True,
                              description='0.24.58 every tool, grouped by job, in a column at the left of the viewport')
+    strip_names: BoolProperty(name='Tool Strip Names', default=True,
+                              description='0.24.59 the tool strip shows each tool\'s name next to its icon (two '
+                                          'columns); off = icons only')
+    strip_scale: FloatProperty(name='Tool Strip', default=1.0, min=0.5, max=2.5, subtype='FACTOR',
+                               update=_sizes_changed, description='0.24.59 size of the left tool strip')
+    top_bar: BoolProperty(name='Top Bar', default=True,
+                          description='0.24.59 shapes, Line / Sketch / Slow Line, Targets, Depth ... at the top '
+                                      'middle of the viewport (Blender\'s tool header keeps only the Custom PNG '
+                                      'picker)')
+    side_panel: BoolProperty(name='Side Panel', default=True,
+                             description='0.24.59 the tool\'s own settings at the right of the viewport while the '
+                                         'sidebar (N) is closed')
     safety_save: BoolProperty(name='Safety Save', default=True,
                               description='0.24.58 a recovery copy of the whole file in the temp folder before heavy steps '
                                           'and while idle (your own file and Blender settings are not touched)')
@@ -2301,6 +2323,10 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         row.prop(self, 'bottom_toolbar')
         row.prop(self, 'drawn_toolbar')
         row.prop(self, 'tool_strip')
+        row.prop(self, 'strip_names')
+        row = box.row()
+        row.prop(self, 'top_bar')
+        row.prop(self, 'side_panel')
         row.prop(self, 'toolbar_labels')
         box.row().prop(self, 'toolbar_size', expand=True)
         draw_icon_sizes(box, self)

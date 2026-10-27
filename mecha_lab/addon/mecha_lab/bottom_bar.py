@@ -386,8 +386,8 @@ class MCH_GGT_tool_active(bpy.types.GizmoGroup):
     bl_options = {'PERSISTENT', 'SCALE'}
 
     @classmethod
-    def poll(cls, context):
-        return ui_active(context) and chosen_tool(context)[1] is not None
+    def poll(cls, context):                      # 0.24.59 the drawn actions card has it (Drawn Toolbar on)
+        return ui_active(context) and chosen_tool(context)[1] is not None and not _pref('drawn_toolbar', True)
 
     def setup(self, context):
         gz = self.gizmos.new('GIZMO_GT_button_2d')
@@ -604,8 +604,8 @@ class MCH_GGT_object_tidy(bpy.types.GizmoGroup):
     bl_options = {'PERSISTENT', 'SCALE'}
 
     @classmethod
-    def poll(cls, context):
-        return ui_active(context)
+    def poll(cls, context):                      # 0.24.59 the drawn actions card has them (Drawn Toolbar on)
+        return ui_active(context) and not _pref('drawn_toolbar', True)
 
     def setup(self, context):
         self.items = []
@@ -676,9 +676,10 @@ def _draw_labels():
         context = bpy.context
         if not ui_active(context):
             return
-        if chosen_tool(context)[1] is not None:
-            _draw_active_label(context)
-        _draw_tidy_labels(context)
+        if not _pref('drawn_toolbar', True):     # 0.24.59 the drawn actions card has its own names
+            if chosen_tool(context)[1] is not None:
+                _draw_active_label(context)
+            _draw_tidy_labels(context)
         if not _pref('toolbar_labels', True):
             return
         import blf
