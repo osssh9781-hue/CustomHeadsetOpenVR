@@ -469,6 +469,7 @@ def brush_shelf(context, region_w, k, Item):
 
 
 KEYS_TEXT = ('ZBRUSH KEYS', 'Drag canvas   rotate, Shift: snap', 'Alt + drag canvas   move, let Alt go: zoom',
+             'Right drag (pen button)   rotate anywhere, Alt: move',
              'Alt / Shift   Zsub / Smooth', 'Ctrl + drag model   MaskPen, Alt: unmask', 'Ctrl + click canvas   invert mask',
              'Ctrl + lasso model   mask, Alt: unmask', 'Ctrl + drag canvas   clear mask / DynaMesh',
              'Alt + click SubTool   pick it', 'Ctrl+Shift   show only / polygroup', 'S / U / O   Size / Intensity / Focal',

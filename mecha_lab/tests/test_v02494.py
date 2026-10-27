@@ -170,7 +170,14 @@ check('G does not leave the ZBrush screen (Blender style / outside the tab it st
       not wui.MCH_OT_sculpt_back.poll(C) and 'zb_sculpt.on(context)' in inspect.getsource(
           wui.MCH_OT_sculpt_back.poll))
 check('The key card says Shift+D = Duplicate', any('Duplicate' in t for t in zu.KEYS_TEXT if t.startswith('D /')))
-check('Version 0.24.62', mecha_lab.bl_info['version'] == (0, 24, 62))
+check('Right drag turns the view anywhere on the ZBrush screen, over the model too (pen side button), Alt: move; '
+      'a right click still opens the menu', ('RIGHTMOUSE', False, False, False, 'mch.zb_popup', {}) in zs.KEYS
+      and ('RIGHTMOUSE', False, False, True, 'mch.zb_popup', {}) in zs.KEYS
+      and 'RMBDrag()' in inspect.getsource(zs.MCH_OT_zb_popup.invoke)
+      and 'rmb_drag_check' in inspect.getsource(zs.MCH_OT_zb_popup.modal)
+      and "event.value == 'RELEASE'" in inspect.getsource(zs.MCH_OT_zb_popup.modal))
+check('The key card says so', any(t.startswith('Right drag') for t in zu.KEYS_TEXT))
+check('Version 0.24.63', mecha_lab.bl_info['version'] == (0, 24, 63))
 zs.on = real_on
 wui.pref = real_pref
 hp.set_pref = hp_set

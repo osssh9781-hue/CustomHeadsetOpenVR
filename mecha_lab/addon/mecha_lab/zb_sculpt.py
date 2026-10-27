@@ -2146,7 +2146,9 @@ def close_popup(context):
 
 
 class MCH_OT_zb_popup(_ZBPoll, bpy.types.Operator):
-    """ZBrush menu at the cursor: Draw Size / Focal Shift / Z Intensity, Zadd / Zsub, Stroke, recent brushes"""
+    """ZBrush menu at the cursor: Draw Size / Focal Shift / Z Intensity, Zadd / Zsub, Stroke, recent brushes.
+    0.24.63 right button: a drag turns the view anywhere, over the model too (Alt: move, let Alt go: zoom) - the
+    pen's side button while hovering, like ZBrush; a click opens the menu"""
     bl_idname = 'mch.zb_popup'
     bl_label = 'ZBrush Menu'
     bl_options = {'INTERNAL'}
@@ -2154,12 +2156,30 @@ class MCH_OT_zb_popup(_ZBPoll, bpy.types.Operator):
     kind: StringProperty(default='MENU')
 
     def invoke(self, context, event):
+        if event.type == 'RIGHTMOUSE' and self.kind == 'MENU' and not self.focus:
+            self.rmb = RMBDrag()
+            self.rmb.rmb_drag_start(context, event)
+            self.event_xy = (event.mouse_region_x, event.mouse_region_y)
+            context.window_manager.modal_handler_add(self)
+            return {'RUNNING_MODAL'}
+        return self.open(context, (event.mouse_region_x, event.mouse_region_y))
+
+    def modal(self, context, event):
+        if self.rmb.rmb_drag_check(context, event):        # dragged: the view turns (zb_nav takes it)
+            return {'FINISHED'}
+        if event.type == 'RIGHTMOUSE' and event.value == 'RELEASE':
+            return self.open(context, self.event_xy)       # a click: the menu
+        if event.type == 'ESC':
+            return {'CANCELLED'}
+        return {'RUNNING_MODAL'}
+
+    def open(self, context, xy):
         wm = context.window_manager
         if wm.mch_zb_pop == self.kind and not self.focus:
             wm.mch_zb_pop = ''
         else:
             wm.mch_zb_pop = self.kind
-            wm.mch_zb_pop_xy = (event.mouse_region_x, event.mouse_region_y)
+            wm.mch_zb_pop_xy = xy
             wm.mch_zb_pop_focus = self.focus
         _bump()
         if context.area:
@@ -2503,6 +2523,7 @@ KEYS = (
     ('LEFTMOUSE', True, False, True, 'mch.zb_press', {}), ('LEFTMOUSE', True, True, False, 'mch.zb_press', {}),
     ('LEFTMOUSE', True, True, True, 'mch.zb_press', {}),
     ('SPACE', False, False, False, 'mch.zb_popup', {}), ('RIGHTMOUSE', False, False, False, 'mch.zb_popup', {}),
+    ('RIGHTMOUSE', False, False, True, 'mch.zb_popup', {}),         # 0.24.63 Alt + right drag = move the view
     ('S', False, False, False, 'mch.zb_popup', {'focus': 'draw_size'}),
     ('U', False, False, False, 'mch.zb_popup', {'focus': 'z_intensity'}),
     ('O', False, False, False, 'mch.zb_popup', {'focus': 'focal_shift'}),
