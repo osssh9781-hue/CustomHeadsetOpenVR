@@ -6,6 +6,10 @@ Builds a random part and runs a random sequence of ZBrush shelf actions (DynaMes
 Edges, Divide, Mirror, masks / split / extract, groups, holes ...), mode switches, High Poly and Ctrl+Z / Ctrl+Shift+Z
 on it.  Every step is logged (flushed) before it runs, so a crash names the step.  A Python error in a step is
 logged as ERROR and the scenario goes on; the process dying is the crash run_fuzz.py looks for.
+
+No bare ``ed.undo_push`` steps: three identical undo steps in a row (nothing changed between them), then any
+operator and Ctrl+Z take the headless bpy module down even without the add-on (Blender 5.2 bpy) - a harness
+artefact, not a user action.
 """
 import math
 import os
@@ -161,10 +165,13 @@ STEPS = {
     if faces() < 30000 else 'skip (big)',
     'undo': lambda: [bpy.ops.ed.undo() for _i in range(rng.randint(1, 3))],
     'redo': lambda: bpy.ops.ed.redo(),
-    'undo_push': lambda: bpy.ops.ed.undo_push(message='fuzz'),
+    'edge_mesh': lambda: (setattr(zb, 'em_detail', rng.choice([200, 1000, 3000])),
+                          setattr(zb, 'he_style', rng.choice(['ROUND', 'CHAMFER'])),
+                          setattr(zb, 'he_width', rng.choice([0.002, 0.01, 0.05])), act('EDGE_MESH')),
+    'he_style': lambda: setattr(zb, 'he_style', rng.choice(['ROUND', 'CHAMFER'])),
 }
 WEIGHTS = {'dynamesh': 3, 'decimate': 4, 'quad': 4, 'hard_find': 3, 'hard_sliders': 3, 'hard_apply': 2, 'undo': 3,
-           'redo': 1, 'divide': 2, 'mask': 2, 'undo_push': 3}
+           'redo': 1, 'divide': 2, 'mask': 2, 'edge_mesh': 3}
 names = list(STEPS)
 weights = [WEIGHTS.get(n, 1) for n in names]
 log(f'SCENARIO {seed}: part {part()} ({faces():,} faces)')

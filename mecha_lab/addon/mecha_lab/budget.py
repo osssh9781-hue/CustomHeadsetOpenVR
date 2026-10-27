@@ -8,6 +8,9 @@ from __future__ import annotations
 import sys
 
 BYTES_PER_FACE = 400            # a finished face in Blender: mesh + evaluated copy + undo + drawing (generous)
+MULTIRES_BYTES_PER_FACE = 20000  # a face of a Multires level: measured 0.24.73 (5.2) ~45 KB / face kept after a
+                                 # Divide of a 20k-triangle sphere (2.7 GB at level 1) - two Divides of a 58k DynaMesh
+                                 # ran out of memory; half of that measure (the GUI build may need less)
 HARD_FACES = 20_000_000         # never more than this in one result, whatever the memory says
 SHARE = 0.5                     # a result may use at most this share of the free memory
 

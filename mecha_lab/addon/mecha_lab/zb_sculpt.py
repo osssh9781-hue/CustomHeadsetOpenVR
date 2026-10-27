@@ -1362,7 +1362,7 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
 # two whole-file undo steps (before / after), and in the ZBrush screen Ctrl+Z / Ctrl+Shift+Z that leaves Sculpt Mode
 # goes straight back into it (on the SubTool that was sculpted).
 RESCULPT = 'mch_zb_resculpt'
-_REC = {'name': '', 'before': False, 'after': False}
+_REC = {'name': '', 'before': False, 'after': False, 'print': None}
 _PRE = {'mode': '', 'ob': ''}
 
 
@@ -1372,14 +1372,29 @@ def _mode(context, mode):
         return
     rec = _REC['name']
     if rec and mode == 'SCULPT' and ob.mode == 'OBJECT':      # the changed mesh, as a step of its own
-        context.scene[RESCULPT] = ob.name
-        undo_step(rec)
+        if _REC.get('print') != _mesh_print(ob):              # (0.24.73 nothing changed: no second, identical step -
+            context.scene[RESCULPT] = ob.name                 # three identical steps in a row broke Blender's undo)
+            undo_step(rec)
         _REC['after'] = True
     bpy.ops.object.mode_set(mode=mode)
     if rec and mode == 'OBJECT' and not _REC['before']:      # the mesh as it was, before the change
         context.scene[RESCULPT] = ob.name
         undo_step(rec + ' (before)')
         _REC['before'] = True
+        _REC['print'] = _mesh_print(ob)
+
+
+def _mesh_print(ob):
+    """A cheap fingerprint of the object's mesh (data, counts, point positions, attributes, modifiers)."""
+    try:
+        import numpy as np
+        me = ob.data
+        co = np.empty(len(me.vertices) * 3, np.float64)
+        me.vertices.foreach_get('co', co)
+        return (ob.name, me.as_pointer(), len(me.vertices), len(me.polygons), len(me.loops), float(co.sum()),
+                float(np.abs(co).sum()), tuple(sorted(a.name for a in me.attributes)), len(ob.modifiers))
+    except (AttributeError, ReferenceError, TypeError):
+        return None
 
 
 def _resculpt_later():
@@ -1537,7 +1552,7 @@ def _divide(context, ob, times=1):
     m = multires(ob)
     levels = m.total_levels if m is not None else 0
     faces = len(ob.data.polygons) * 4 ** (levels + times)
-    ok, why = budget.faces_fit(faces)
+    ok, why = budget.faces_fit(faces, budget.MULTIRES_BYTES_PER_FACE)
     if not ok:
         raise RuntimeError(f'Divide: {why} - not divided (Del Higher, or Decimate first)')
     m = _ensure_multires(ob)
@@ -2196,14 +2211,14 @@ class MCH_OT_zb_action(_ZBPoll, bpy.types.Operator):
     def execute(self, context):
         step = 'ZBrush ' + self.action.replace('_', ' ').title()
         if self.action not in SETTING_ACTIONS and context.mode == 'SCULPT':
-            _REC.update(name=step, before=False, after=False)
+            _REC.update(name=step, before=False, after=False, print=None)
         try:
             msg = run(context, self.action)
         except RuntimeError as ex:
             msg = str(ex).splitlines()[0]
         finally:
             recorded = _REC['after']
-            _REC.update(name='', before=False, after=False)
+            _REC.update(name='', before=False, after=False, print=None)
             if RESCULPT in context.scene:              # (only the two stored steps carry it)
                 del context.scene[RESCULPT]
         if msg:

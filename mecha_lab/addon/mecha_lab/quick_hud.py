@@ -284,6 +284,17 @@ def hit(context, mx, my):
     return None
 
 
+def scroll_target(context, x, y):
+    """The scrolling panel under region point (x, y): the side panel, the Layers panel or a ZBrush tray (None)."""
+    from . import layers_panel, side_panel, zb_ui
+    try:
+        return side_panel if side_panel.over(context, x, y) else \
+            layers_panel if layers_panel.over(context, x, y) else \
+            zb_ui if zb_ui.over_shelf(context, x, y) else None
+    except (AttributeError, KeyError, TypeError, ReferenceError):
+        return None
+
+
 class MCH_OT_quick_hud_press(bpy.types.Operator):
     """Quick HUD: drag a row = change it (Shift fine), click = type / next choice, Ctrl+click = default,
     drag the title = move the HUD.  A click elsewhere goes on to the tool"""
@@ -312,6 +323,13 @@ class MCH_OT_quick_hud_press(bpy.types.Operator):
                 msg = ui_bars.run(context, item)
                 if msg:
                     self.report({'INFO'}, msg)
+            else:                                       # 0.24.73 an empty spot of a scrolling tray: drag scrolls
+                panel = scroll_target(context, event.mouse_region_x, event.mouse_region_y)
+                if panel is not None:
+                    self.kind, self.index, self.panel = 'scroll', None, panel
+                    self.last_y = event.mouse_region_y
+                    context.window_manager.modal_handler_add(self)
+                    return {'RUNNING_MODAL'}
             if context.area:
                 context.area.tag_redraw()
             return {'FINISHED'}
@@ -349,6 +367,25 @@ class MCH_OT_quick_hud_press(bpy.types.Operator):
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
+    def _modal_scroll(self, context, event):
+        """0.24.73 Dragging an empty spot of the side panel / Layers panel / ZBrush trays moves their rows with the
+        mouse (before only the wheel scrolled them)."""
+        if event.type == 'MOUSEMOVE':
+            dy = event.mouse_region_y - self.last_y
+            self.last_y = event.mouse_region_y
+            if dy:
+                try:
+                    from .ui_gpu import ui_factor
+                    region = context.region
+                    self.panel.scroll_by(context, region.width, region.height, ui_factor(context, region), float(dy))
+                except (AttributeError, KeyError, TypeError, ReferenceError, ImportError):
+                    return {'CANCELLED'}
+            return {'RUNNING_MODAL'}
+        if (event.type == 'LEFTMOUSE' and event.value == 'RELEASE') or \
+                (event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS'):
+            return {'FINISHED'}
+        return {'RUNNING_MODAL'}
+
     def _item(self, context):
         its = items(context)
         return its[self.index] if self.index is not None and self.index < len(its) else (None, None)
@@ -358,6 +395,8 @@ class MCH_OT_quick_hud_press(bpy.types.Operator):
             context.area.tag_redraw()
         if self.kind == 'ui':
             return self._modal_ui(context, event)
+        if self.kind == 'scroll':
+            return self._modal_scroll(context, event)
         dx, dy = event.mouse_region_x - self.x0, event.mouse_region_y - self.y0
         if event.type == 'MOUSEMOVE':
             if abs(dx) > 3 or abs(dy) > 3:

@@ -227,8 +227,6 @@ def build(context, ob, st, report=None):
         raise RuntimeError('Edge Mesh: remove the shape keys first')
     V, T, mats = _read(me)
     target = max(MIN_TARGET, int(st.em_detail))
-    if len(T) <= target * 1.02:
-        raise RuntimeError(f'Edge Mesh: the mesh has only {len(T):,} triangles - Detail must be lower than that')
     ok, why = budget.faces_fit(len(T) * 2)
     if not ok:
         raise RuntimeError('Edge Mesh: ' + why)
@@ -275,5 +273,5 @@ def build(context, ob, st, report=None):
     if st.he_crease:                                 # (the support bevel makes the edge: a full crease on top
         st.he_crease = False                         # pinches it and shades wrong without Sharp marks)
     he.set_live(ob, st)
-    return (f'Edge Mesh: {nt0:,} -> {len(T):,} triangles in {steps} steps, {n:,} hard edges, {quads:,} quads + '
-            f'{tris:,} triangles')
+    head = f'{nt0:,} -> {len(T):,} triangles in {steps} steps' if steps else f'{nt0:,} triangles (lighter than Detail)'
+    return f'Edge Mesh: {head}, {n:,} hard edges, {quads:,} quads + {tris:,} triangles'

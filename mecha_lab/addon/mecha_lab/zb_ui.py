@@ -296,6 +296,7 @@ def shelf_a(context, region_w, region_h, k, Item, top, floor):
     rows, h = _shelf_rows(context, x0 + PAD * k, A_W * k - 2 * PAD * k, k)
     scroll = float(getattr(context.window_manager, 'mch_zb_scroll', 0.0))
     out, h, view = _scroll_card(Item, rows, h, x0, top, A_W * k, floor, k, scroll)
+    _MAX['mch_zb_scroll'] = max(0.0, h - view)
     return out
 
 
@@ -384,7 +385,9 @@ def shelf_b(context, k, Item, top, floor=0.0):
     row([_prop_cell(zb, 'res', 'mini', 'Res')])
     row([_ops_cell('Delete', 'DELETE')])
     scroll = float(getattr(context.window_manager, 'mch_zb_scroll_b', 0.0))
-    return _scroll_card(Item, out, -y, x0, top, w, floor, k, scroll)[0]
+    out, h, view = _scroll_card(Item, out, -y, x0, top, w, floor, k, scroll)
+    _MAX['mch_zb_scroll_b'] = max(0.0, h - view)
+    return out
 
 
 VIEW_SHELF = (('Persp', 'persp', 'isolate', None), ('Floor', 'floor', 'grid', None), ('Frame', None, 'isolate', 'FRAME'),
@@ -820,12 +823,21 @@ def corner_items(context, region_w, region_h, k=1.0):
 
 
 _OVER = ['A']               # which tray the wheel is over (over_shelf -> scroll_by)
+_MAX = {}                   # 0.24.73 how far each tray scrolls (set when drawn)
 
 
 def scroll_by(context, region_w, region_h, k, dy):
+    """Scroll the tray under the mouse by ``dy``.  0.24.73 kept inside its rows: the wheel used to run on past the
+    end - the tray drew the last rows, but the value kept growing and scrolling back up seemed to do nothing for a
+    while (the 'sometimes it doesn't scroll')."""
     wm = context.window_manager
     name = 'mch_zb_scroll_b' if _OVER[0] == 'B' else 'mch_zb_scroll'
-    setattr(wm, name, max(0.0, float(getattr(wm, name, 0.0)) + dy))
+    top = _MAX.get(name)
+    cur = float(getattr(wm, name, 0.0))
+    if top is not None:
+        cur = min(cur, top)
+    new = cur + dy
+    setattr(wm, name, max(0.0, min(new, top) if top is not None else new))
     from . import ui_bars
     ui_bars.bump()
 
