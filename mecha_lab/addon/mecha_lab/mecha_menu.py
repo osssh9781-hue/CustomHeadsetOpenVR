@@ -753,6 +753,13 @@ def _fraction(data, prop):
 
 # --- the operator ------------------------------------------------------------------------------------------
 
+def _pen_echo(op, event, window=0.35):
+    """0.24.65 A right press right after the menu opened, from a pen: the side button's own click repeated by the
+    tablet driver, not a 'close' - ignored."""
+    import time
+    return bool(getattr(event, 'is_tablet', False)) and time.monotonic() - getattr(op, 't_open', 0.0) < window
+
+
 class MCH_OT_mecha_menu(bpy.types.Operator):
     """Mecha Menu at the mouse: tools, the tool's shapes and settings, actions on the selection"""
     bl_idname = 'mch.mecha_menu'
@@ -772,6 +779,8 @@ class MCH_OT_mecha_menu(bpy.types.Operator):
         self.items = build(context, *self.mouse, self.region.width, self.region.height, self.S)
         self.hover = None
         self.drag = None
+        import time
+        self.t_open = time.monotonic()               # 0.24.65 (a pen can repeat the opening press)
         self._handle = bpy.types.SpaceView3D.draw_handler_add(self._draw, (), 'WINDOW', 'POST_PIXEL')
         _OPEN[0] = True
         context.window_manager.modal_handler_add(self)
@@ -849,6 +858,8 @@ class MCH_OT_mecha_menu(bpy.types.Operator):
                 and event.value == 'RELEASE':
             self._finish(context)                 # hold mode: letting go of Ctrl / Alt closes it
             return {'FINISHED'}
+        if event.type == 'RIGHTMOUSE' and event.value == 'PRESS' and _pen_echo(self, event):
+            return {'RUNNING_MODAL'}
         if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
             self._finish(context)
             return {'CANCELLED'}

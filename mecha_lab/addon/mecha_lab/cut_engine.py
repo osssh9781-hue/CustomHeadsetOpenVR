@@ -2447,6 +2447,7 @@ class GateLogic:
         from . import zb_sculpt                       # 0.24.60 ZBrush style: right-drag turns the view
         self.rmb = zb_sculpt.RMBDrag()
         self.rmb.rmb_drag_start(context, event)
+        self.rmb_up = False                         # 0.24.65 (pen: the press can come twice before a release)
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
@@ -2459,7 +2460,9 @@ class GateLogic:
         if getattr(self, 'rmb', None) is not None and self.rmb.rmb_drag_check(context, event):
             self._stop(context)
             return {'FINISHED'}
-        if event.type == 'RIGHTMOUSE' and event.value in {'PRESS', 'DOUBLE_CLICK'}:
+        if event.type == 'RIGHTMOUSE' and event.value == 'RELEASE':
+            self.rmb_up = True
+        if event.type == 'RIGHTMOUSE' and event.value in {'PRESS', 'DOUBLE_CLICK'} and getattr(self, 'rmb_up', True):
             self._stop(context)
             exit_tool(context)
             return {'FINISHED'}

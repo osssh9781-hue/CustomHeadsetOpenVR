@@ -21,7 +21,33 @@ BOOL_PREFIX = 'MCH Radial Boolean'
 MAX_EXTENT = 1.0e6                  # 1,000 km from the ring centre
 MAX_REALIZED_VERTS = 5_000_000      # about 4 GB while baking
 BOOLEAN_LIVE_LOAD = 50_000          # see boolean_load(): a few seconds per update, under 1 GB
-BOOLEAN_APPLY_LOAD = 400_000        # about 4 GB once
+
+
+def _ram_gb():
+    """0.24.65 This computer's memory in GB (16 when it cannot be read)."""
+    import os
+    import sys
+    try:
+        if sys.platform == 'win32':
+            import ctypes
+
+            class _Mem(ctypes.Structure):
+                _fields_ = [('dwLength', ctypes.c_ulong), ('dwMemoryLoad', ctypes.c_ulong)] + [
+                    (n, ctypes.c_ulonglong) for n in ('ullTotalPhys', 'ullAvailPhys', 'ullTotalPageFile',
+                                                      'ullAvailPageFile', 'ullTotalVirtual', 'ullAvailVirtual',
+                                                      'ullAvailExtendedVirtual')]
+            mem = _Mem()
+            mem.dwLength = ctypes.sizeof(_Mem)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(mem)):
+                return mem.ullTotalPhys / 2.0 ** 30
+            return 16.0
+        return os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES') / 2.0 ** 30
+    except (AttributeError, ValueError, OSError):
+        return 16.0
+
+
+# one Apply may use about a third of this computer's memory (about 10 KB per unit), at least about 4 GB
+BOOLEAN_APPLY_LOAD = max(400_000, int(_ram_gb() * 0.35 * 100_000))
 # Every named node of make_radial_group(); without MCH_Radial_Realize a bake would come out empty.
 NODE_NAMES = ('MCH_Radial_Points', 'MCH_Radial_Step', 'MCH_Radial_Start', 'MCH_Radial_Cos', 'MCH_Radial_Sin',
               'MCH_Radial_X', 'MCH_Radial_Y', 'MCH_Radial_Position', 'MCH_Radial_SetPosition', 'MCH_Radial_Phase',

@@ -132,7 +132,18 @@ files, _n = zs.alpha_files(C)
 zs.set_alpha(C, files[2])
 b = zs.brush(C)
 check('The alpha is projected from the view (ZBrush) and shows in the brush circle',
-      b.texture_slot.map_mode == 'VIEW_PLANE' and b.use_primary_overlay and not b.texture_slot.use_rake)
+      b.texture_slot.map_mode == 'VIEW_PLANE' and b.use_primary_overlay)
+check('0.24.65 The alpha turns with the stroke (ZBrush: a vertical alpha follows a sideways line - Blender Rake)',
+      b.texture_slot.use_rake and zb.alpha_directional)
+zb.alpha_directional = False
+check('... Directional off: it stays fixed on screen', not b.texture_slot.use_rake and not zb.alpha_directional)
+b.texture = None
+zs.restore_alpha(C)
+check('... remembered with the alpha (off stays off when it comes back)', zs.brush(C).texture is not None
+      and not zs.brush(C).texture_slot.use_rake)
+zb.alpha_directional = True
+check('... a Directional switch under Flh / Flv / Rot / Invr', any(
+    i.prop == 'alpha_directional' for i in zu.shelf_b(Ctx(), 1.0, Item, 1300) if i.kind == 'seg'))
 zs.set_alpha(C, '')
 
 # --- 0.24.63 alpha on the Paint brush (the case that stayed "Alpha Off" in a Blender window) ------------------------

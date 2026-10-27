@@ -313,6 +313,7 @@ def shelf_b(context, k, Item, top, floor=0.0):
              for lab, act in (('Flh', 'FLIP_H'), ('Flv', 'FLIP_V'), ('Rot', 'ROTATE'), ('Invr', 'INVERT'))]
     row(flips[:2])
     row(flips[2:])
+    row([_prop_cell(zb, 'alpha_directional', 'seg', 'Directional')])   # 0.24.65 the alpha follows the stroke
     st = zb.stroke                                   # Stroke / Material: tiles that open ZBrush's pickers
     mc = next(((n, p) for i, n, p in zs.matcaps(context) if i == _safe_matcap(zb)), ('Material', ''))
     pair((dict((k_, n) for k_, n, _b in zs.STROKES).get(st, 'Stroke'), zs.stroke_icon(st),

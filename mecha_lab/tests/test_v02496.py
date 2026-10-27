@@ -193,6 +193,21 @@ check('DynaMesh with a mask: remeshed, the masked part is its own polygroup, the
       (msg, set(vals.tolist())))
 check('... the mesh keeps your Preserve Attributes setting as it was', me.use_remesh_preserve_attributes == keep_pa)
 zs.run(C, 'DYNAMESH')                                # (turns DynaMesh off again)
+# --- a pen's side button in MECHA LAB (it worked on the ZBrush screen only) ---------------------------------------------
+from mecha_lab import cut_engine as ce, mecha_menu as mm
+r = zs.RMBDrag()
+ev = types.SimpleNamespace(mouse_x=100, mouse_y=100, alt=False, is_tablet=True, type='MOUSEMOVE', value='NOTHING')
+r.rmb_drag_start(types.SimpleNamespace(mode='OBJECT', workspace=None), ev)
+r.rmb_live = True
+moved = types.SimpleNamespace(mouse_x=110, mouse_y=102, alt=False, is_tablet=True, type='MOUSEMOVE', value='NOTHING')
+check('Pen side button: a small wobble while pressed is still a click (menu), not a turn of the view',
+      not r.rmb_drag_check(C, moved) and zs.RMBDrag.PEN_SLOP > zs.RMBDrag.MOUSE_SLOP)
+src = inspect.getsource(ce.GateLogic.modal)
+check('Drawing tools: a pen repeating the press does not count as the double right-click that leaves the tool',
+      "getattr(self, 'rmb_up', True)" in src and "event.value == 'RELEASE'" in src)
+op = types.SimpleNamespace(t_open=__import__('time').monotonic())
+check('Mecha Menu: the pen repeating its opening press does not close it at once', mm._pen_echo(
+    op, types.SimpleNamespace(is_tablet=True)) and not mm._pen_echo(op, types.SimpleNamespace(is_tablet=False)))
 zs.on = real_on
 mecha_lab.unregister()
 summary()

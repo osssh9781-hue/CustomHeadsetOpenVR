@@ -103,7 +103,8 @@ def snapshot(scene):
             'focal': int(b[zb_sculpt.FOCAL_KEY]) if zb_sculpt.FOCAL_KEY in b.keys() else None,
             'preset': b.curve_distance_falloff_preset,
             'texture': (tex.name, tex.library.filepath if tex.library is not None else '') if tex else None,
-            'slot': (tuple(slot.scale), slot.angle, slot.map_mode) if slot is not None else None}
+            'slot': (tuple(slot.scale), slot.angle, slot.map_mode, bool(getattr(slot, 'use_rake', False)))
+            if slot is not None else None}
 
 
 def _find_texture(key):
@@ -170,9 +171,9 @@ def restore(scene):
             b.texture = tex
             changed.append('brush.texture')
         if keep['slot'] is not None and b.texture_slot is not None:
-            scale, angle, mode = keep['slot']
+            scale, angle, mode, rake = keep['slot']
             slot = b.texture_slot
-            if tuple(slot.scale) != scale or slot.angle != angle or slot.map_mode != mode:
-                slot.scale, slot.angle, slot.map_mode = scale, angle, mode
+            if tuple(slot.scale) != scale or slot.angle != angle or slot.map_mode != mode or slot.use_rake != rake:
+                slot.scale, slot.angle, slot.map_mode, slot.use_rake = scale, angle, mode, rake
                 changed.append('brush.slot')
     return changed

@@ -382,7 +382,8 @@ def remember_alpha(context):
     if path:
         slot = b.texture_slot
         amap[zb_name(b)] = {'path': path, 'inv': bool(b.texture and b.texture.name.endswith(INV)),
-                            'scale': list(slot.scale)[:2], 'angle': float(slot.angle)}
+                            'scale': list(slot.scale)[:2], 'angle': float(slot.angle),
+                            'directional': bool(getattr(slot, 'use_rake', True))}
     else:
         amap.pop(zb_name(b), None)
     context.scene.mch_zb.alpha_map = json.dumps(amap)
@@ -402,7 +403,7 @@ def restore_alpha(context):
         return False
     if b.texture is None:
         return False
-    _alpha_slot(b)
+    _alpha_slot(b, entry.get('directional', True))
     slot = b.texture_slot
     sx, sy = entry.get('scale', (1.0, 1.0))
     slot.scale[0], slot.scale[1] = sx, sy
@@ -410,7 +411,9 @@ def restore_alpha(context):
     return True
 
 
-def _alpha_slot(b):
+def _alpha_slot(b, directional=True):
+    """0.24.65 ``directional``: the alpha turns with the stroke, like ZBrush (a vertical alpha follows the line you
+    draw - Blender texture Rake); off: it stays as it is on screen.  Rot turns it on top of that."""
     slot = b.texture_slot
     for mode in ('VIEW_PLANE', 'AREA_PLANE'):     # 0.24.61 from the view, like a ZBrush alpha
         try:
@@ -418,7 +421,7 @@ def _alpha_slot(b):
             break
         except (TypeError, ValueError):
             continue
-    for attr, v in (('use_rake', False), ('use_random', False)):
+    for attr, v in (('use_rake', bool(directional)), ('use_random', False)):
         if hasattr(slot, attr):
             setattr(slot, attr, v)
     if hasattr(b, 'use_primary_overlay'):         # the alpha shows in the brush circle
@@ -952,6 +955,17 @@ def _pressure_update(self, context):
     _safe(lambda: apply_pressure(brush(context), self.pressure), None)
 
 
+def _dir_get(self):
+    return _safe(lambda: bool(brush().texture_slot.use_rake), True)
+
+
+def _dir_set(self, v):
+    def f():
+        brush().texture_slot.use_rake = bool(v)
+        remember_alpha(bpy.context)
+    _safe(f, None)
+
+
 def _accu_get(self):
     return _safe(lambda: bool(brush().use_accumulate), False)
 
@@ -1249,6 +1263,10 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
         ('FOLDER', 'Folder', 'Your own texture folder')])
     tex_dir: StringProperty(name='Texture Folder', subtype='DIR_PATH', default='',
                             description='A folder of texture images (PNG / JPG / TIF ...)')
+    alpha_directional: BoolProperty(name='Directional', get=_dir_get, set=_dir_set,
+                                    description='The alpha turns with the stroke direction, like ZBrush (a vertical '
+                                                'alpha follows your line); off: it stays fixed on screen '
+                                                '(Blender texture Rake)')
     accu: BoolProperty(name='Accu', get=_accu_get, set=_accu_set,
                        description='Accumulate: the stroke piles up where it crosses itself (ZBrush Accu; off = '
                                    'one stroke reaches its depth once - Blender Accumulate)')
@@ -2502,10 +2520,14 @@ class RMBDrag:
     """ZBrush style for a right-button press that opens a menu: dragging turns the view instead
     (Alt: move, let Alt go: zoom); a click still opens the menu."""
 
+    PEN_SLOP = 14            # 0.24.65 px a pen may wobble with its side button pressed and still be a click
+    MOUSE_SLOP = 6
+
     def rmb_drag_start(self, context, event):
         self.rmb_xy = (event.mouse_x, event.mouse_y)
         self.rmb_alt = event.alt
         self.rmb_live = nav_on(context)
+        self.rmb_pen = bool(getattr(event, 'is_tablet', False))
 
     def rmb_drag_check(self, context, event):
         """True when this event turned the press into a view drag (the nav took over)."""
@@ -2514,7 +2536,8 @@ class RMBDrag:
         if not getattr(self, 'rmb_live', False) or event.type != 'MOUSEMOVE':
             return False
         x, y = self.rmb_xy
-        if abs(event.mouse_x - x) + abs(event.mouse_y - y) < 6:
+        pen = getattr(self, 'rmb_pen', False) or bool(getattr(event, 'is_tablet', False))
+        if abs(event.mouse_x - x) + abs(event.mouse_y - y) < (self.PEN_SLOP if pen else self.MOUSE_SLOP):
             return False
         bpy.ops.mch.zb_nav('INVOKE_DEFAULT', mode='PAN' if (self.rmb_alt or event.alt) else 'ROTATE',
                            button='RIGHTMOUSE', alt_start=self.rmb_alt)
