@@ -114,6 +114,9 @@ r, msg = run(bpy.ops.mch.radial_bake)
 check('Count 2048 of a small cube still bakes (no Boolean: instances realize cheaply)',
       r == {'FINISHED'} and len(car.data.vertices) == 2048 * 8, (r, msg))
 fresh()
+check('The bake limit follows this computer\'s memory (about a third of it, at least 5 million points)',
+      ra.MAX_REALIZED_VERTS >= 5_000_000 and ra.BOOLEAN_APPLY_LOAD >= 400_000 and ra._ram_gb() > 0)
+limit, ra.MAX_REALIZED_VERTS = ra.MAX_REALIZED_VERTS, 5_000_000      # (as on a 16 GB computer)
 src = mesh_obj('Dense', lambda bm: bmesh.ops.create_uvsphere(bm, u_segments=64, v_segments=48, radius=0.1),
                (1.2, 0, 0))
 select_only(src)
@@ -125,6 +128,7 @@ check('Too many realized points (2048 x 3010) are refused before baking',
 r, msg = run(bpy.ops.mch.radial_bake)
 check('Confirm refuses with a clear message and keeps the live ring',
       r == {'CANCELLED'} and 'Too many points' in msg and ra.get_radial(car) is not None, msg)
+ra.MAX_REALIZED_VERTS = limit
 fresh()
 tooth, car = ring()
 bm = bmesh.new()

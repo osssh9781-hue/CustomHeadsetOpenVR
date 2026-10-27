@@ -19,7 +19,6 @@ BOOL_PREFIX = 'MCH Radial Boolean'
 # 1e25 segfaults bpy 5.2.3; 192 copies take 12 s / 1.4 GB, 256 copies 42 s / 3.8 GB, 2048 copies were killed
 # for memory (> 15 GB, bpy 5.0.1 and 5.2.3). Baking costs about 0.8 KB per realized point (BMesh).
 MAX_EXTENT = 1.0e6                  # 1,000 km from the ring centre
-MAX_REALIZED_VERTS = 5_000_000      # about 4 GB while baking
 BOOLEAN_LIVE_LOAD = 50_000          # see boolean_load(): a few seconds per update, under 1 GB
 
 
@@ -46,8 +45,10 @@ def _ram_gb():
         return 16.0
 
 
-# one Apply may use about a third of this computer's memory (about 10 KB per unit), at least about 4 GB
+# one Apply / bake may use about a third of this computer's memory (Boolean: about 10 KB per unit; baking: about
+# 0.8 KB per realized point), at least the measured 4 GB (64 GB: about 22 GB, 30 million points)
 BOOLEAN_APPLY_LOAD = max(400_000, int(_ram_gb() * 0.35 * 100_000))
+MAX_REALIZED_VERTS = max(5_000_000, int(_ram_gb() * 0.35 * 2 ** 30 / 800))
 # Every named node of make_radial_group(); without MCH_Radial_Realize a bake would come out empty.
 NODE_NAMES = ('MCH_Radial_Points', 'MCH_Radial_Step', 'MCH_Radial_Start', 'MCH_Radial_Cos', 'MCH_Radial_Sin',
               'MCH_Radial_X', 'MCH_Radial_Y', 'MCH_Radial_Position', 'MCH_Radial_SetPosition', 'MCH_Radial_Phase',
