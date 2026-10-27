@@ -34,6 +34,8 @@ TILE_GAP = 4.0
 TILE_HEAD = 17.0
 MENU_SEP = 14.0          # 0.24.59 bottom main menu: room between two groups (a thin rule in it)
 MENU_MIN_W = 50.0        # narrower tiles than this: each group in three rows instead of two
+DOCK_W = 100.0           # 0.24.59 a tile of the actions dock (where the bottom toolbar was): big icon, name under
+DOCK_H = 66.0
 ACT_W = 196.0            # 0.24.59 actions card
 ACT_ROW = 26.0
 BAR_ICON = {'SELECT': 'arrow', 'SKIN': 'WRINKLE', 'SHELL': 'SCALES'}
@@ -45,8 +47,11 @@ def _pref(name, default=True):
 
 
 def bar_on(context):
+    """The drawn bottom toolbar - not with the bottom main menu (it has every tool; the actions dock takes the
+    toolbar's place)."""
     from . import bottom_bar
-    return _pref('bottom_toolbar') and _pref('drawn_toolbar', True) and bottom_bar.ui_active(context)
+    return (_pref('bottom_toolbar') and _pref('drawn_toolbar', True) and bottom_bar.ui_active(context)
+            and not menu_on(context))
 
 
 def menu_pos():
@@ -101,8 +106,6 @@ def bar_items(context, region_w, region_h, k=1.0):
         f = avail / w
         b, gap, pad, w = b * f, gap * f, pad * f, avail
     x0, y0 = (region_w - w) / 2.0, 22 * k
-    if menu_on(context):                              # 0.24.59 above the main menu
-        y0 = bottom_taken(context, k, region_w)
     out = [Item('card', x0, y0, w, b + 2 * pad)]
     try:
         active = current_bar_tool(context)
@@ -228,6 +231,8 @@ def menu_items(context, region_w, region_h, k=1.0):
         active = '' if bottom_bar.in_select(context) else ts.effective_tool(context)
     except (AttributeError, KeyError, TypeError):
         active = ''
+    from .bottom_bar import BAR_TOOLS
+    keys = {tid: key for tid, _l, key, *_r in BAR_TOOLS if key}
     x = x0 + pad
     top = y0 + h - pad
     for g, ((name, tools), n) in enumerate(zip(groups, cols)):
@@ -237,8 +242,11 @@ def menu_items(context, region_w, region_h, k=1.0):
         out.append(Item('striphead', x, top - head, gw, head, name.upper()))
         for j, t in enumerate(tools):
             c, r = j % n, j // n
-            out.append(Item('sbtn', x + c * (cw + gap), top - head - (r + 1) * ch - r * gap, cw, ch, t[1],
-                            'png:' + t[3], t[0] == active, True, ('tool', t[0]), 'ABOVE'))
+            tx, ty = x + c * (cw + gap), top - head - (r + 1) * ch - r * gap
+            out.append(Item('sbtn', tx, ty, cw, ch, t[1], 'png:' + t[3], t[0] == active, True, ('tool', t[0]),
+                            'ABOVE'))
+            if t[0] in keys:
+                out.append(Item('keycap', tx + cw - 10 * kk, ty + ch - 11 * kk, 8 * kk, 10 * kk, keys[t[0]]))
         x += gw + sep
     return out
 
@@ -337,6 +345,56 @@ def all_items(context):
     return out
 
 
+def dock_items(context, region_w, region_h, k=1.0):
+    """0.24.59 With the bottom main menu: the actions as big tiles where the bottom toolbar was (centred, on the
+    menu) - Select, the chosen tool on / off, then Apply Modifiers / Reset Axis / Origin / Symmetry / Mirror."""
+    from .mecha_menu import Item
+    from . import bottom_bar
+    kk = k * strip_scale()
+    tw, th, gap, pad = DOCK_W * kk, DOCK_H * kk, 6 * kk, 8 * kk
+    try:
+        sel = bottom_bar.in_select(context)
+    except (AttributeError, KeyError, TypeError):
+        sel = False
+    tiles = [('Select', _icon_for('SELECT'), sel, ('bar', 'SELECT'), 'F')]
+    tid, t = bottom_bar.chosen_tool(context)
+    if t is not None:
+        live = bottom_bar.tool_live(context)
+        tiles.append((t[1] + (' ON' if live else ' OFF'), 'png:' + t[3], live, ('op', 'mch.tool_active', {}), ''))
+    tiles.append(None)                                 # a thin rule
+    for _key, icon, label, action in ACTIONS:
+        if icon == 'png:mirror':
+            m = ts.TOOL_BY_ID.get('MIRROR')
+            icon = 'png:' + m[3] if m else 'X'
+        tiles.append((label, icon, False, action, ''))
+    n = sum(1 for c in tiles if c)
+    rule = 14 * kk
+    w = n * tw + (n - 1) * gap + rule * (len(tiles) - n) + 2 * pad
+    h = th + 2 * pad
+    x0, y0 = max(left_inset(context) + 8 * k, (region_w - w) / 2.0), bottom_taken(context, k, region_w)
+    out = [Item('card', x0, y0, w, h)]
+    x = x0 + pad
+    for c in tiles:
+        if c is None:
+            out.append(Item('vrule', x + rule / 2 - gap / 2 - 0.5 * k, y0 + pad + 6 * kk, 1.0 * k, th - 12 * kk))
+            x += rule
+            continue
+        label, icon, on, action, key = c
+        out.append(Item('sbtn', x, y0 + pad, tw, th, label, icon, on, True, action, 'ABOVE'))
+        if key:
+            out.append(Item('keycap', x + tw - 11 * kk, y0 + pad + th - 12 * kk, 8 * kk, 10 * kk, key))
+        x += tw + gap
+    return out
+
+
+def dock_top(context, k=1.0, region_w=None):
+    """Region px from the bottom the main menu + actions dock take (0 when the tiles are on the left)."""
+    base = bottom_taken(context, k, region_w)
+    if not base or not actions_on(context):
+        return base
+    return base + (DOCK_H + 16.0) * k * strip_scale() + 8 * k
+
+
 def _build_all(context, region, k):
     out = []
     try:
@@ -347,7 +405,10 @@ def _build_all(context, region, k):
         if menu_on(context):
             out += menu_items(context, region.width, region.height, k)
         if actions_on(context):
-            out += actions_items(context, region.width, region.height, k)
+            if menu_on(context):
+                out += dock_items(context, region.width, region.height, k)
+            else:
+                out += actions_items(context, region.width, region.height, k)
         from . import side_panel, top_bar
         if side_panel.on(context):
             out += side_panel.items(context, region.width, region.height, k)

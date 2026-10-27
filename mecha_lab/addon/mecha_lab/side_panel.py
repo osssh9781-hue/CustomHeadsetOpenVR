@@ -416,7 +416,7 @@ def layout(context, region_w, region_h, k=1.0):
     rows, h = content(context, tool, x0 + PAD * k, w - 2 * PAD * k, k)
     try:                                         # 0.24.59 above the bottom main menu
         from . import ui_bars
-        floor = ui_bars.bottom_taken(context, k, region_w)
+        floor = ui_bars.dock_top(context, k, region_w)
     except (ImportError, AttributeError, TypeError, ReferenceError):
         floor = 0.0
     room = top - BOTTOM_MARGIN * k - floor - HEAD * k - 2 * PAD * k
