@@ -1,4 +1,11 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.56 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.57 (Claude Code, 2026-10-14)
+
+## 0.24.57
+- ZIP sha256 `cfdcfa871f2cc02ca56b3f2580babc8056e49c8d3858b499c2e46da97d6075d4`.
+- `quick_hud`: `quick_hud_press` DOUBLE_CLICK 항목(도구 키맵, 3D View, Object Mode, Screw는 맨 앞), `hit()`가 카드 안 틈·가장자리 → 가까운 줄 / 제목. `symmetry.card_hit`: 버튼 8×6 px 근처 → 가장 가까운 버튼.
+- `groups._pivots / adopt_pivots / _release_pivots`: 그룹 안 부품의 미러 피벗(`_mch_world_pivot`, 래디얼 피벗)을 핸들 자식으로(래디얼 피벗은 모든 래디얼 부품이 그룹 안일 때만), Ungroup 시 풀기. `symmetry._follow_group`(set_mode / toggle_axis 뒤). `actions_menu.MCH_OT_actions_mirror`: 그룹 핸들이면 `set_repeat` MIRROR / KALEIDO 축 토글; `mecha_menu._dynamic` on 표시.
+- `base_mesh`: `line_attach`, `attach_curve`(SMOOTH / DRAWN, SETTING_KEYS, 라이브 rebuild), `ATTACH_KEY` JSON(path 평면 좌표, z0, z1, eye), `set_attach`, `attach_bend`(경로 위치 `path_param` → `ease`, 원근이면 시선 방향으로), `rebuild`가 적용. `perform_base(..., attach=)`. `cut_engine.surface_point`, `StrokeLogic._line_attach`(Line + Attach, Alt 아님; Smooth = `smooth_open(path, 6)` 후 띠 다시).
+- `core_geometry.finish_new_edges`: clamp가 켜져 있고 width > `_bevel_limit`이며 CHAMFER / BEVEL이고 width < 0.25 × `_rim_extent`(테두리 최대 크기)면 `rim_sweep.finish(mesh, mode, width, segments)`로 깎음(crisp면 `flat_cut_faces` + `drop_custom_normals`); 0이면 예전 `tidy_rim` 경로. 'Seam'(Primitive) 라벨은 제외.
 
 ## 0.24.56
 - ZIP sha256 `0ae80b16db7252c2347a27bbe88c0cecd20cd8dd98c6e427c055b21d50b60bac`.
