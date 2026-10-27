@@ -2462,7 +2462,9 @@ class GateLogic:
             return {'FINISHED'}
         if event.type == 'RIGHTMOUSE' and event.value == 'RELEASE':
             self.rmb_up = True
-        if event.type == 'RIGHTMOUSE' and event.value in {'PRESS', 'DOUBLE_CLICK'} and getattr(self, 'rmb_up', True):
+        # (Blender's DOUBLE_CLICK always follows a let-go; a plain second press only counts after one)
+        if event.type == 'RIGHTMOUSE' and (event.value == 'DOUBLE_CLICK' or (
+                event.value == 'PRESS' and getattr(self, 'rmb_up', True))):
             self._stop(context)
             exit_tool(context)
             return {'FINISHED'}

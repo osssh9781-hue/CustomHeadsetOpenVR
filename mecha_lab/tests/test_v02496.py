@@ -204,7 +204,7 @@ check('Pen side button: a small wobble while pressed is still a click (menu), no
       not r.rmb_drag_check(C, moved) and zs.RMBDrag.PEN_SLOP > zs.RMBDrag.MOUSE_SLOP)
 src = inspect.getsource(ce.GateLogic.modal)
 check('Drawing tools: a pen repeating the press does not count as the double right-click that leaves the tool',
-      "getattr(self, 'rmb_up', True)" in src and "event.value == 'RELEASE'" in src)
+      "getattr(self, 'rmb_up', True)" in src and "event.value == 'RELEASE'" in src and "'DOUBLE_CLICK'" in src)
 op = types.SimpleNamespace(t_open=__import__('time').monotonic())
 check('Mecha Menu: the pen repeating its opening press does not close it at once', mm._pen_echo(
     op, types.SimpleNamespace(is_tablet=True)) and not mm._pen_echo(op, types.SimpleNamespace(is_tablet=False)))
