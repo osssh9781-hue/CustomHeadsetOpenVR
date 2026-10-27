@@ -138,7 +138,8 @@ def rows_of(gs, room, k):
 
 
 def room(context, region_w, k):
-    """(left, right) px the bar may use: right of the tool strip, left of the side panel."""
+    """(left, right) px the bar may use: right of the tool strip, left of the side panel (``items`` uses the whole
+    width while the bar stays above the side panel's top)."""
     from . import ui_bars
     left = ui_bars.left_inset(context) + ui_bars.strip_width(context, k)
     right = 0.0
@@ -157,16 +158,25 @@ def items(context, region_w, region_h, k=1.0, left=None, right=None):
     gs = groups(context, tool)
     if not gs:
         return []
+    panel_top = None
     if left is None or right is None:
         left, right = room(context, region_w, k)
-    avail = max(300.0 * k, right - left - 24 * k)
-    rows = rows_of(gs, avail - 2 * PAD * k, k)
+        if right < region_w:                        # 0.24.59 the side panel starts lower: use the whole width
+            from . import side_panel
+            panel_top = side_panel.frame(region_w, region_h, k)[1]
     sep = 14.0 * k
-    widths = [sum(_group_width(t, c, k) for t, c in r) + sep * (len(r) - 1) for r in rows]
-    width = max(widths) + 2 * PAD * k
-    height = len(rows) * ROW * k + (len(rows) - 1) * GAP * k + 2 * PAD * k
-    x0 = max(left + 8 * k, (left + right - width) / 2.0)
-    y0 = region_h - TOP * k - height
+    for full in ((True, False) if panel_top is not None else (False,)):
+        r_edge = region_w if full else right
+        avail = max(300.0 * k, r_edge - left - 24 * k)
+        rows = rows_of(gs, avail - 2 * PAD * k, k)
+        widths = [sum(_group_width(t, c, k) for t, c in r) + sep * (len(r) - 1) for r in rows]
+        width = max(widths) + 2 * PAD * k
+        height = len(rows) * ROW * k + (len(rows) - 1) * GAP * k + 2 * PAD * k
+        y0 = region_h - TOP * k - height
+        if not full or y0 >= panel_top + 6 * k:
+            break
+    # 0.24.59 centred in the viewport (like the main menu below), moved only as far as the strip / panel need
+    x0 = max(left + 8 * k, min((region_w - width) / 2.0, r_edge - 8 * k - width))
     out = [Item('card', x0, y0, width, height)]
     y = y0 + height - PAD * k - ROW * k
     for r, rw in zip(rows, widths):
