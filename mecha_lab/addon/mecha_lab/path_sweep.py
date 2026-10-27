@@ -249,14 +249,23 @@ def _patch(bm, hit, drag, radius, sides=8):
     return order, border, patch
 
 
-def _grab(bm, hit, normal, radius=None, sides=8):
-    """(ordered loop verts, the edges along it, the faces carried to the path end or None, 'BRUSH' / 'SECTION')."""
+def _grab(bm, hit, normal, radius=None, sides=8, front_only=False, source=None):
+    """(ordered loop verts, the edges along it, the faces carried to the path end or None, 'BRUSH' / 'SECTION').
+    0.24.58 ``front_only`` (Back Mask): when the brush patch has no clean border, try a smaller brush (``bm`` is
+    read again from the mesh ``source`` first) and never fall back to the whole section - that would carry the far
+    side of a thin part along too; None when no patch works."""
     if radius:
-        got = _patch(bm, Vector(hit), Vector(normal), radius, sides)
-        if got is not None:
-            order, border, patch = got
-            bmesh.ops.split_edges(bm, edges=border)
-            return order, border, patch, 'BRUSH'
+        for f in ((1.0, 0.7, 0.5) if front_only else (1.0,)):
+            if f < 1.0 and source is not None:
+                bm.clear()
+                bm.from_mesh(source)
+            got = _patch(bm, Vector(hit), Vector(normal), radius * f, sides)
+            if got is not None:
+                order, border, patch = got
+                bmesh.ops.split_edges(bm, edges=border)
+                return order, border, patch, 'BRUSH'
+        if front_only:
+            return None
     got = _cut(bm, Vector(hit), Vector(normal))
     if got is None:
         return None
@@ -264,14 +273,14 @@ def _grab(bm, hit, normal, radius=None, sides=8):
     return order, cut_edges, _tip_faces(bm, cut_edges, Vector(hit), Vector(normal)), 'SECTION'
 
 
-def analyse(me, hit, normal, radius=None, sides=8):
+def analyse(me, hit, normal, radius=None, sides=8, front_only=False):
     """What a grab at ``hit`` dragged along ``normal`` would sweep (on a copy, nothing changes):
     {'loop': section points CCW, 'centre', 'tip': (coords, faces) of the cut-off end or None}.
     0.24.54 ``radius``: the patch under the brush (see ``_patch``), else the whole section."""
     bm = bmesh.new()
     bm.from_mesh(me)
     try:
-        got = _grab(bm, hit, normal, radius, sides)
+        got = _grab(bm, hit, normal, radius, sides, front_only, me)
         if got is None:
             return None
         order, _edges, tip, area = got
@@ -386,7 +395,7 @@ def soft_length(loop, centre, hardness):
     return soft * 3.0 * max((Vector(q) - Vector(centre)).length for q in loop)
 
 
-def extend(me, hit, normal, offsets, turn=True, taper=0.0, hardness=1.0, radius=None, sides=8):
+def extend(me, hit, normal, offsets, turn=True, taper=0.0, hardness=1.0, radius=None, sides=8, front_only=False):
     """Extend on the mesh itself.  Returns a short report, or raises ValueError (mesh untouched).
     0.24.40 ``hardness`` < 1: a soft start - where the path turns, the part bends out of the cut in a smooth curve
     instead of a kink (0 = softest); 1 = hard, the section follows the drawn path right from the cut."""
@@ -394,9 +403,10 @@ def extend(me, hit, normal, offsets, turn=True, taper=0.0, hardness=1.0, radius=
     bm = bmesh.new()
     bm.from_mesh(me)
     try:
-        got = _grab(bm, hit, normal, radius, sides)
+        got = _grab(bm, hit, normal, radius, sides, front_only, me)
         if got is None:
-            raise ValueError('no closed section where you grabbed')
+            raise ValueError('no clean brush patch where you grabbed (Back Mask keeps the far side out)'
+                             if front_only and radius else 'no closed section where you grabbed')
         order, _edges, tip, area = got
         loop = [v.co.copy() for v in order]
         if not ccw(loop, normal):

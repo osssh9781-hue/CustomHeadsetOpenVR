@@ -28,7 +28,7 @@ EXTRA = {
     'CBASE': ['Enter   make the sketch,  Alt+Enter   cut it in'],
     'CUT': ['T   targets: auto / selected'],
     'SPLIT': ['T   targets: auto / selected'],
-    'CPATH': ['Tab (dragging)   Extend: brush area / whole section'],
+    'CPATH': ['Tab (dragging)   Extend: brush area / whole section', 'B (dragging)   Back Mask: the far side stays put'],
 }
 COMMON = [
     'Shift   straight 0/45/90° · square / circle',

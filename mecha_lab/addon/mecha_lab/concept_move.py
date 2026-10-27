@@ -540,6 +540,10 @@ class MCH_PG_Concept(bpy.types.PropertyGroup):
                                              'Concept Move)')
     path_turn: BoolProperty(name='Follow Turns', default=True,
                             description='Path Move: the grabbed box / ball turns where the path bends')
+    path_back_mask: BoolProperty(name='Back Mask', default=False,
+                                 description='Path Move: the far side (faces turned away from you) stays put - a thin '
+                                             'part is pulled only on the side you grabbed.  Extend Brush then never '
+                                             'falls back to the whole section; Whole still takes the whole section')
     lock_size: BoolProperty(name='Real Size', default=False,
                             description='Keep the brush the same size in the scene (not on screen) when you zoom')
     radius_world: FloatProperty(name='Size', default=0.1, min=1e-4, soft_max=5.0, unit='LENGTH', precision=4,
@@ -780,13 +784,17 @@ def replay_one(me, mv):
         from . import path_sweep
         try:
             path_sweep.extend(me, mv['hit'], mv['normal'], mv['offsets'], mv.get('turn', True), mv.get('taper', 0.0),
-                              mv.get('hardness', 1.0), mv.get('radius'), mv.get('sides', 8))
+                              mv.get('hardness', 1.0), mv.get('radius'), mv.get('sides', 8),
+                              mv.get('front_only', False))
         except ValueError:
             pass
         return
     if mv.get('kind') == 'path':                # 0.24.53 a Path Move Stretch: all its steps in one go
         steps = mv.get('moves', [])
-        generate(me, lambda co: run_path(co, steps), relax=mv.get('relax', 0))
+        field = lambda co: run_path(co, steps)                       # noqa: E731
+        if mv.get('back'):                      # 0.24.58 Back Mask
+            field = back_field(me, field, mv['back'])
+        generate(me, field, relax=mv.get('relax', 0))
         return
     generate(me, move_field(mv), relax=mv.get('relax', 0))
 
@@ -1189,6 +1197,58 @@ def run_path(co, moves):
     return co
 
 
+def vertex_normals(me):
+    n = np.empty(len(me.vertices) * 3, dtype=np.float32)
+    me.vertices.foreach_get('normal', n)
+    return n.reshape(-1, 3).astype(np.float64)
+
+
+def facing_weights(normals, toward):
+    """0.24.58 Back Mask: 1 for points facing ``toward`` (the viewer), 0 for the far side, a short ramp between."""
+    t = np.asarray(toward, dtype=np.float64)
+    t = t / max(float(np.linalg.norm(t)), 1e-12)
+    return np.clip((np.asarray(normals, dtype=np.float64) @ t + 0.1) / 0.3, 0.0, 1.0)
+
+
+def toward_local(ob, toward, mref=None):
+    """The way to the viewer (scene) -> in ob's own space, for comparing with its normals (through its Mirror)."""
+    v = ob.matrix_world.to_3x3().transposed() @ Vector(toward)
+    if mref is not None:
+        v = mref.to_3x3() @ v
+    return list(v.normalized())
+
+
+def masked(field, rest0, w0):
+    """Back Mask: ``field`` held back by the weights ``w0`` of the points ``rest0`` (the mesh before the move).
+    Points added later (generate splits edges and appends them) take the weight of the nearest original point."""
+    n0 = len(rest0)
+    kd = []
+
+    def f(co):
+        co = np.asarray(co, dtype=np.float64)
+        moved = field(co)
+        w = np.empty(len(co))
+        k = min(n0, len(co))
+        w[:k] = w0[:k]
+        if len(co) > n0:
+            if not kd:
+                from mathutils.kdtree import KDTree
+                tree = KDTree(n0)
+                for i, c in enumerate(rest0):
+                    tree.insert(c, i)
+                tree.balance()
+                kd.append(tree)
+            w[n0:] = [w0[kd[0].find(c)[1]] for c in co[n0:]]
+        return co + w[:, None] * (moved - co)
+    return f
+
+
+def back_field(me, field, toward):
+    """``field`` with the Back Mask for the mesh as it is now (``toward``: the viewer, in the mesh's space)."""
+    rest = read_coords(me)
+    return masked(field, rest, facing_weights(vertex_normals(me), toward))
+
+
 class MCH_OT_concept_path(bpy.types.Operator):
     """Path Move: grab like Concept Move and drag a path - the box / ball keeps its shape and follows the way"""
     bl_idname = 'mch.concept_path'
@@ -1219,6 +1279,9 @@ class MCH_OT_concept_path(bpy.types.Operator):
                              description='Off: the moves stay editable (Undo Last / Clear / Apply in the panel)')
     method: EnumProperty(name='Method', items=PATH_METHODS, default='STRETCH')
     area: EnumProperty(name='Area', items=AREA_ITEMS, default='SECTION')
+    back_mask: BoolProperty(name='Back Mask', default=False,
+                            description='The far side (faces turned away from you) stays put')
+    toward: FloatVectorProperty(size=3, default=(0, 0, 1), options={'HIDDEN'})   # the way to the viewer (scene)
     grab_point: FloatVectorProperty(size=3, options={'HIDDEN'})   # Extend / Separate Tube: in the object's space
     grab_normal: FloatVectorProperty(size=3, default=(1, 0, 0), options={'HIDDEN'})
     offsets: StringProperty(options={'HIDDEN'})
@@ -1246,7 +1309,8 @@ class MCH_OT_concept_path(bpy.types.Operator):
             for ob in objs:
                 mref, own = local_frame(ob, pts[0])
                 lpts, lrad, laxes = local_path(ob, pts, self.radius * self.size, self.axes, mref)
-                n = self._run(ob, self.moves(lpts, lrad, laxes, self.mirror and not own), lpts, lrad)
+                n = self._run(ob, self.moves(lpts, lrad, laxes, self.mirror and not own), lpts, lrad,
+                              toward_local(ob, self.toward, mref) if self.back_mask else None)
             self.report({'INFO'}, f'Path Move: {n} steps')
             return {'FINISHED'}
         ob = context.active_object
@@ -1257,7 +1321,8 @@ class MCH_OT_concept_path(bpy.types.Operator):
         if not moves:
             self.report({'WARNING'}, 'Path Move: drag a path')
             return {'CANCELLED'}
-        n = self._run(ob, moves, [Vector(p) for p in json.loads(self.path)], self.radius * self.size)
+        n = self._run(ob, moves, [Vector(p) for p in json.loads(self.path)], self.radius * self.size,
+                      toward_local(ob, self.toward) if self.back_mask else None)
         self.report({'INFO'}, f'Path Move: {n} steps')
         return {'FINISHED'}
 
@@ -1280,15 +1345,20 @@ class MCH_OT_concept_path(bpy.types.Operator):
                     keep_base(ob)
                 rad = self.radius * self.size if self.area == 'BRUSH' else None
                 sides = 4 if self.shape == 'BOX' else 8
+                front = self.back_mask and rad is not None
                 msg = path_sweep.extend(ob.data, hit, normal, offsets, self.turn, self.taper, self.edge_hardness,
-                                        rad, sides)
+                                        rad, sides, front)
                 if has_base(ob):
                     record_move(ob, {'kind': 'extend', 'hit': list(hit), 'normal': list(normal),
                                      'offsets': [list(o) for o in offsets], 'turn': self.turn, 'taper': self.taper,
-                                     'hardness': self.edge_hardness, 'radius': rad, 'sides': sides})
+                                     'hardness': self.edge_hardness, 'radius': rad, 'sides': sides,
+                                     'front_only': front})
                 self.report({'INFO'}, f'Path Move {msg}')
                 return {'FINISHED'}
             except ValueError as exc:
+                if self.back_mask and self.area == 'BRUSH':  # a Separate Tube would take the whole section
+                    self.report({'WARNING'}, f'Path Move: {exc} - try a smaller brush or turn Back Mask off')
+                    return {'CANCELLED'}
                 self.report({'WARNING'}, f'Path Move: {exc} - made a Separate Tube instead')
         try:
             new = path_sweep.sweep_object(context, ob, hit, normal, offsets, self.turn, self.taper,
@@ -1303,17 +1373,21 @@ class MCH_OT_concept_path(bpy.types.Operator):
         self.report({'INFO'}, 'Path Move: Separate Tube (Merge in the panel joins it)')
         return {'FINISHED'}
 
-    def _run(self, ob, moves, pts, radius):
+    def _run(self, ob, moves, pts, radius, back=None):
+        """``back``: Back Mask on - the way to the viewer in ob's space (faces turned away stay put)."""
         if not moves:
             return 0
         if not self.auto_apply:
             keep_base(ob)
+        field = lambda co: run_path(co, moves)                       # noqa: E731
+        if back is not None:
+            field = back_field(ob.data, field, back)
         if self.generate_mesh:
             # 0.24.53 all the steps as one field, one generate: step by step every call split the part again
             # (about 1.5x the points per step - 59 s and 400k points on a 10k plate, open edges)
-            generate(ob.data, lambda co: run_path(co, moves))
+            generate(ob.data, field)
         else:
-            write_coords(ob.data, run_path(read_coords(ob.data), moves))
+            write_coords(ob.data, field(read_coords(ob.data)))
         if self.generate_mesh and self.even_out:
             bm = bmesh.new()
             bm.from_mesh(ob.data)
@@ -1326,7 +1400,7 @@ class MCH_OT_concept_path(bpy.types.Operator):
             bm.free()
             ob.data.update()
         if is_live(ob) or has_base(ob):
-            record_move(ob, {'kind': 'path', 'moves': moves})
+            record_move(ob, {'kind': 'path', 'moves': moves, **({'back': list(back)} if back is not None else {})})
         return len(moves)
 
     def draw(self, context):
@@ -1334,7 +1408,9 @@ class MCH_OT_concept_path(bpy.types.Operator):
         col.prop(self, 'size', slider=True)
         col.prop(self, 'hardness', slider=True)
         col.prop(self, 'taper', slider=True)
-        self.layout.prop(self, 'turn', toggle=True)
+        row = self.layout.row(align=True)
+        row.prop(self, 'turn', toggle=True)
+        row.prop(self, 'back_mask', toggle=True)
         if self.method != 'STRETCH':
             self.layout.prop(self, 'method', expand=True)
             return
@@ -1360,6 +1436,9 @@ class MCH_OT_concept_path(bpy.types.Operator):
             self.method_now = None
             self.preview_ob = None
             self.local_hit = self.mref @ (self.mwi @ self.hit)
+            rv3d = context.region_data                   # 0.24.58 Back Mask: the way to the viewer at the grab
+            eye = rv3d.view_matrix.inverted().translation
+            self.toward = (eye - self.hit) if rv3d.is_perspective else rv3d.view_rotation @ Vector((0.0, 0.0, 1.0))
         return res
 
     def _to_local(self, p):
@@ -1399,7 +1478,7 @@ class MCH_OT_concept_path(bpy.types.Operator):
             self.normal_l = normal.normalized()
             rad = local_radius(context, self.ob, self.hit) if st.path_area == 'BRUSH' else None
             self.info = path_sweep.analyse(self.ob.data, self.local_hit, self.normal_l, rad,
-                                           4 if st.shape == 'BOX' else 8) or False
+                                           4 if st.shape == 'BOX' else 8, st.path_back_mask and rad is not None) or False
             if self.info:
                 me = bpy.data.meshes.new('MCH_PathPreview')
                 self.preview_ob = bpy.data.objects.new('MCH_PathPreview', me)
@@ -1443,6 +1522,7 @@ class MCH_OT_concept_path(bpy.types.Operator):
             f'hardness {st.path_hardness:.2f}  |  Mirror X {"on" if st.mirror_x else "off"}  |  '
             + (f'Extend: {"brush area" if st.path_area == "BRUSH" else "whole section"} (Tab)  |  '
                if st.path_method == 'EXTEND' else '')
+            + f'Back Mask {"on" if st.path_back_mask else "off"} (B)  |  '
             + 'drag the way it should go   Wheel: depth   [ ]: size   3D mouse / MMB: view   RMB/Esc: cancel')
 
     def _target(self, context):
@@ -1488,7 +1568,14 @@ class MCH_OT_concept_path(bpy.types.Operator):
             lpts, lrad, laxes = local_path(ob, path, radius, axes, part['mref'])
             moves = path_moves(lpts, lrad, st.path_hardness, st.path_taper, st.mirror_x and not part['own'], st.shape,
                                laxes, st.path_turn)
-            write_coords(ob.data, run_path(part['orig'], moves) if moves else part['orig'])
+            co = run_path(part['orig'], moves) if moves else part['orig']
+            if moves and st.path_back_mask:                  # 0.24.58 the far side stays put
+                if part.get('back_w') is None:
+                    part['back_w'] = facing_weights(vertex_normals(ob.data),
+                                                    toward_local(ob, self.toward, part['mref']))
+                w = part['back_w']
+                co = part['orig'] + w[:, None] * (co - part['orig'])
+            write_coords(ob.data, co)
         self._header(context)
 
     def modal(self, context, event):
@@ -1514,6 +1601,13 @@ class MCH_OT_concept_path(bpy.types.Operator):
             self._preview(context)
         elif event.type == 'TAB' and event.value == 'PRESS':
             self._toggle_area(context)               # 0.24.55 Extend: the brush patch <-> the whole section
+        elif event.type == 'B' and event.value == 'PRESS':
+            st.path_back_mask = not st.path_back_mask    # 0.24.58 Back Mask on / off while dragging
+            if getattr(self, 'info', None) is not None:
+                self._drop_preview()
+                self.info = None
+            self._sig = None
+            self._preview(context)
         elif event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
             self._finish_ui(context)
             MCH_OT_concept_move._restore(self)               # back to the start: execute() does the real thing
@@ -1530,6 +1624,7 @@ class MCH_OT_concept_path(bpy.types.Operator):
                 self.edge_hardness = st.path_hardness
                 self.area, self.shape = st.path_area, st.shape
                 self.radius, self.size = local_radius(context, self.ob, self.hit), 1.0
+                self.back_mask = st.path_back_mask
                 return self.execute(context)
             path, radius, axes = self._world_path(context)
             if len(path) < 2:
@@ -1541,7 +1636,7 @@ class MCH_OT_concept_path(bpy.types.Operator):
             self.path = json.dumps([list(p) for p in path])
             self.radius, self.size, self.axes = radius, 1.0, axes
             self.hardness, self.taper, self.shape, self.mirror = st.path_hardness, st.path_taper, st.shape, st.mirror_x
-            self.turn = st.path_turn
+            self.turn, self.back_mask = st.path_turn, st.path_back_mask
             self.generate_mesh, self.even_out = st.keep_density, st.even_out
             return self.execute(context)
         elif event.type in {'RIGHTMOUSE', 'ESC'} and event.value == 'PRESS':
@@ -1691,7 +1786,9 @@ def draw_path(layout, context, compact=False):
     row.prop(st, 'lock_size', toggle=True)
     layout.prop(st, 'path_hardness', slider=True)
     layout.prop(st, 'path_taper', slider=True)
-    layout.prop(st, 'path_turn', toggle=True)
+    row = layout.row(align=True)
+    row.prop(st, 'path_turn', toggle=True)
+    row.prop(st, 'path_back_mask', toggle=True, icon='MOD_MASK')
     layout.prop(st, 'shape', text='' if compact else 'Shape')
     ob = context.active_object
     if ob is not None and mirror_reflections(ob):
