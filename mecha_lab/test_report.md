@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.67
+# Test Report — Mecha Lab 0.24.68
+
+## 0.24.68 결과: 켜기 수정 — test_v02499 36/36(새: 블렌더 시작 때의 제한 상태에서 add-on 전체 등록 + Safety Save 시작 + 표시 파일), test_v02483 14/14, test_v02494 34/34, test_v02498 24/24를 Blender 5.2.3 · 5.0.1 bpy에서 통과(`tests/test_log_v02468_start.txt`). 0.24.67 코드는 같은 시험에서 사용자 화면과 같은 "'_RestrictData' object has no attribute 'filepath'"가 남(재현 확인). 실제 Windows 블렌더 시작은 미검증.
 
 ## 0.24.67 결과: 회전만 바뀜 — 지브러시 테스트 v02492 80/80 · v02493 50/50 · v02494 34/34 · v02496 27/27 · v02498 24/24 · v02499 35/35를 Blender 5.2.3 · 5.0.1 bpy 둘 다에서 통과(`tests/test_log_v02467_zbrush.txt`). test_v02499에 회전 검사 추가(Z Up이면 300번 돌려도 기울기 0, 자유 회전은 기울어짐, Alt 중간 전환, Shift 스냅이 다음 칸으로 넘어감, 화면 축 회전). 실제 마우스 · 펜 회전 손맛은 미검증.
 

@@ -219,15 +219,17 @@ def write_marker():
         return
     try:
         os.makedirs(folder(), exist_ok=True)
-        data = {'pid': os.getpid(), 'file': bpy.data.filepath, 'beat': time.time(), 'recovery': LAST_PATH[0],
+        # (getattr: while Blender loads add-ons bpy.data cannot be read yet - 0.24.66 stopped the add-on there)
+        data = {'pid': os.getpid(), 'file': getattr(bpy.data, 'filepath', ''), 'beat': time.time(),
+                'recovery': LAST_PATH[0],
                 'saved': (time.time() - (time.monotonic() - LAST[0])) if LAST[0] else 0.0,
                 'started': START[0], 'blender': bpy.app.version_string}
         tmp = marker_path() + '.tmp'
         with open(tmp, 'w', encoding='utf-8') as f:
             json.dump(data, f)
         os.replace(tmp, marker_path())
-    except (OSError, TypeError, ValueError):
-        pass
+    except Exception as ex:                    # (best effort: never stop Blender or the add-on for a marker)
+        print('[Mecha Lab] Safety Save marker:', ex)
 
 
 START = [time.time()]
@@ -481,8 +483,13 @@ CLASSES = (MCH_OT_safety_save_now, MCH_OT_safety_open_folder, MCH_OT_safety_reco
 def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
-    if bpy.app.background:
-        return
+    if not bpy.app.background:
+        start()
+
+
+def start():
+    """The session part (not in background): timers, handlers, the crash check.  Runs while Blender loads add-ons,
+    when bpy.data cannot be read: nothing here reads it (the marker is written by the first tick)."""
     if not bpy.app.timers.is_registered(_tick):
         bpy.app.timers.register(_tick, first_interval=TICK, persistent=True)
     if _on_load not in bpy.app.handlers.load_post:
@@ -494,7 +501,7 @@ def register():
             bpy.app.timers.register(_offer, first_interval=2.0)
     except Exception as ex:
         print('[Mecha Lab] Safety Save crash check:', ex)
-    write_marker()
+    BEAT[0] = 0.0                                  # the first tick writes the marker
     atexit.register(_at_exit)
 
 

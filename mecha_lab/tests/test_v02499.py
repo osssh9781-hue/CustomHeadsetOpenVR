@@ -99,7 +99,7 @@ mine = ss.marker_path()
 check('This session keeps a marker next to the copies (Blender, file, newest copy)', os.path.isfile(mine))
 check('... refreshed every minute by the timer, removed when Blender closes normally (atexit) or the add-on goes',
       ss.HEARTBEAT <= 60 and 'write_marker()' in inspect.getsource(ss._tick)
-      and 'atexit.register(_at_exit)' in inspect.getsource(ss.register)
+      and 'atexit.register(_at_exit)' in inspect.getsource(ss.start)
       and 'remove_marker()' in inspect.getsource(ss.unregister))
 m, paths = ss.find_crashed()
 check('A running session (this one) is not a crash', m is None and mine not in paths)
@@ -134,7 +134,7 @@ check('A marker not refreshed for 10 minutes counts as gone too (its pid may be 
       'own Auto Save', m2 is not None and 'Auto Save' in ' '.join(ss.crash_text(m2)))
 os.remove(ss.marker_path(4242424))
 check('The offer comes 2 s after start (a timer), as a window with Open Recovery Copy / Open Folder',
-      "bpy.app.timers.register(_offer, first_interval=2.0)" in inspect.getsource(ss.register)
+      "bpy.app.timers.register(_offer, first_interval=2.0)" in inspect.getsource(ss.start)
       and 'invoke_props_dialog' in inspect.getsource(ss.MCH_OT_safety_crash.invoke))
 ss.CRASH[0] = m
 r = bpy.ops.mch.safety_crash('EXEC_DEFAULT')
@@ -196,5 +196,36 @@ check('Shift held: the view jumps square-on step by step (the turn goes on under
       len(shown) >= 3 and 'self.free' in src_nav and 'snap_rotation(self.free)' in src_nav, len(shown))
 check('Turn speed follows Blender\'s Orbit Sensitivity', 'view_rotate_sensitivity_turntable' in inspect.getsource(
       zs.MCH_OT_zb_nav._speed))
+
+
+# --- 0.24.68 fix: Blender starting with the add-on on (bpy.data cannot be read while add-ons load) -----------------
+import contextlib
+try:                                                 # (what Blender puts in place while it loads add-ons at start)
+    import _bpy_restrict_state as rs
+except ImportError:
+    import bpy_restrict_state as rs
+
+
+@contextlib.contextmanager
+def RestrictBlend():
+    # (the bpy module here is not the one _bpy_restrict_state patches: put its stand-ins on ours)
+    real = bpy.data, bpy.context
+    bpy.data, bpy.context = rs._data_restrict, rs._context_restrict
+    try:
+        yield
+    finally:
+        bpy.data, bpy.context = real
+err = ''
+try:
+    mecha_lab.unregister()
+    with RestrictBlend():
+        mecha_lab.register()
+        ss.start()                                   # (the part that runs only with a window, as at a real start)
+        ss.write_marker()
+except Exception as ex:
+    import traceback
+    err = traceback.format_exc().splitlines()[-1]
+check('Blender starts with the add-on on: it loads, Safety Save starts (0.24.66 stopped with "_RestrictData has no '
+      'attribute filepath")', not err and hasattr(bpy.ops.mch, 'safety_crash'), err)
 
 summary()
