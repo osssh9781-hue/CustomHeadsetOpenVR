@@ -245,6 +245,10 @@ def glyph(name, x, y, size, color=TEXT, width=2.0):
             lines([((cx - math.cos(a) * s * .38, cy - math.sin(a) * s * .38),
                     (cx + math.cos(a) * s * .38, cy + math.sin(a) * s * .38))], color, width)
         polyline(circle_pts(cx, cy, s * .38), color, width * 0.7)
+    elif name == 'grid':
+        for u in (.18, .5, .82):
+            for v in (.22, .56):
+                polyline([P(u - .1, v), P(u + .1, v), P(u + .1, v + .22), P(u - .1, v + .22)], color, width, True)
     elif name == 'card':
         polyline([P(.15, .25), P(.85, .25), P(.85, .80), P(.15, .80)], color, width, True)
         lines([(P(.25, .64), P(.75, .64)), (P(.25, .48), P(.60, .48)), (P(.25, .36), P(.68, .36))], color, width)

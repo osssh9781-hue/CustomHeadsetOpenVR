@@ -25,7 +25,8 @@ from mathutils import Matrix, Vector
 from . import tool_state as ts
 
 MODES = ('OFF', 'MIRROR', 'RADIAL', 'KALEIDO')
-MODE_NAMES = {'OFF': 'Off', 'MIRROR': 'Mirror', 'RADIAL': 'Radial', 'KALEIDO': 'Kaleido'}
+MODE_NAMES = {'OFF': 'Off', 'MIRROR': 'Mirror', 'RADIAL': 'Radial', 'KALEIDO': 'Kaleido', 'GRID': 'Grid'}
+GROUP_MODES = MODES + ('GRID',)                 # 0.24.55 a group can also repeat in a grid
 KALEIDO_AXES = {'Z': (True, False, False), 'X': (False, True, False), 'Y': (True, False, False)}   # holds the axis
 
 
@@ -223,6 +224,38 @@ def toggle_bisect(ob):
     return on
 
 
+def toggle_clip(ob):
+    """0.24.55 Clip: points on the mirror plane stay on it (the two halves never pull apart or cross)."""
+    m = mirror_mod(ob)
+    if m is None:
+        return False
+    m.use_clip = not m.use_clip
+    return m.use_clip
+
+
+def plane_quads(ob, scale=0.65):
+    """The mirror planes of ``ob`` to show: one quad (4 world points) per plane, through the mirror centre, about
+    the size of the part and its copy."""
+    m = mirror_mod(ob)
+    if m is None:
+        return []
+    frame = m.mirror_object.matrix_world if m.mirror_object is not None else ob.matrix_world
+    c = frame.translation
+    pts = [ob.matrix_world @ Vector(q) for q in ob.bound_box]
+    reach = max(max((p - c).length for p in pts), 1e-3) * scale * 1.6
+    out = []
+    for i in range(3):
+        if not m.use_axis[i]:
+            continue
+        a = frame.to_3x3().col[(i + 1) % 3].normalized() * reach
+        b = frame.to_3x3().col[(i + 2) % 3].normalized() * reach
+        out.append((i, [c - a - b, c + a - b, c + a + b, c - a + b]))
+    return out
+
+
+PLANE_COLORS = ((0.96, 0.3, 0.32, 0.10), (0.45, 0.85, 0.3, 0.10), (0.3, 0.55, 1.0, 0.10))
+
+
 def toggle_flip(ob):
     m = mirror_mod(ob)
     if m is None:
@@ -268,6 +301,53 @@ def set_center(context, ob, where):
         st.pivot.matrix_world.to_quaternion().to_matrix().to_4x4()
     radial_sym.refresh(context)
     return True
+
+
+def _under(context, ob):
+    """The part ``ob`` was made on: its parent (a screw), else the mesh whose box holds ``ob``'s middle (the
+    smallest such)."""
+    par = ob.parent
+    if par is not None and par.type == 'MESH':
+        return par
+    mid = ob.matrix_world @ (sum((Vector(c) for c in ob.bound_box), Vector()) / 8.0)
+    best, size = None, None
+    for o in context.scene.objects:
+        if o == ob or o.type != 'MESH' or mirror_mod(o) is None or not o.visible_get():
+            continue
+        pts = [o.matrix_world @ Vector(c) for c in o.bound_box]
+        lo = Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts)))
+        hi = Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts)))
+        pad = (hi - lo).length * 0.02
+        if all(lo[i] - pad <= mid[i] <= hi[i] + pad for i in range(3)):
+            vol = (hi - lo).length
+            if size is None or vol < size:
+                best, size = o, vol
+    return best
+
+
+def follow(context, ob, source=None):
+    """0.24.55 a new part made on a part with a live Mirror gets the same Mirror - its planes, its centre (the same
+    mirror object; a Local mirror of the part = across the part's own planes), bisect and flips.  Returns a short
+    report ('' = nothing done)."""
+    from . import mirror_tools
+    from .workspace_ui import pref
+    if not pref('symmetry_follow', True) or ob is None or ob.type != 'MESH' or mirror_mod(ob) is not None:
+        return ''
+    source = source or _under(context, ob)
+    m = mirror_mod(source) if source is not None and source != ob else None
+    if m is None or not any(m.use_axis):
+        return ''
+    mod = _mirror_on(context, ob, tuple(m.use_axis))
+    if mod is None:
+        return ''
+    made = mod.mirror_object
+    mod.mirror_object = m.mirror_object or source
+    if made is not None and made != mod.mirror_object:
+        mirror_tools._remove_unused_pivot(made)
+    for i in range(3):
+        mod.use_bisect_axis[i] = m.use_bisect_axis[i]
+        mod.use_bisect_flip_axis[i] = m.use_bisect_flip_axis[i]
+    return f' | Mirror {"".join(a for a, on in zip("XYZ", m.use_axis) if on)} like {source.name}'
 
 
 def apply(context, ob):
@@ -347,8 +427,9 @@ def build_card(context, region_w, region_h, S=1.0):
     items.append(Item('title', pad, y, inner - 30 * S, 26 * S, title))
     items.append(Item('pill', pad + inner - 26 * S, y + 1 * S, 26 * S, 24 * S, '×', '', False, True, ('sym_close',)))
     y -= 36 * S
-    seg_w = (inner - 3 * 4 * S) / 4
-    for i, m in enumerate(MODES):
+    modes = GROUP_MODES if kind == 'GROUP' else MODES
+    seg_w = (inner - (len(modes) - 1) * 4 * S) / len(modes)
+    for i, m in enumerate(modes):
         items.append(Item('seg', pad + i * (seg_w + 4 * S), y, seg_w, 28 * S, MODE_NAMES[m], '', mode == m, True,
                           ('sym_mode', kind, m)))
     if kind == 'GROUP' and mode != 'OFF':
@@ -360,6 +441,25 @@ def build_card(context, region_w, region_h, S=1.0):
         for i, (c, name) in enumerate((('WORLD', 'World'), ('GROUP', 'Group'), ('CURSOR', 'Cursor'))):
             items.append(Item('seg', pad + 60 * S + i * (cw + 4 * S), y, cw, 28 * S, name, '', here == c, True,
                               ('sym_center', c)))
+    if mode == 'GRID':
+        from . import groups
+        y -= 12 * S
+        items.append(Item('section', pad, y - 18 * S, inner, 18 * S, 'Grid'))
+        y -= 22 * S
+        grid = groups.repeat_grid(ob)
+        for i, name in enumerate('XYZ'):
+            y -= 32 * S
+            items.append(Item('label', pad, y, 60 * S, 28 * S, name))
+            items.append(Item('pill', pad + 60 * S, y, 40 * S, 28 * S, '−', '', False, True, ('sym_grid', i, -1)))
+            items.append(Item('note', pad + 104 * S, y, inner - 60 * S - 148 * S, 28 * S, f'{grid[i]}'))
+            items.append(Item('pill', pad + inner - 40 * S, y, 40 * S, 28 * S, '+', '', False, True,
+                              ('sym_grid', i, 1)))
+        y -= 32 * S
+        items.append(Item('label', pad, y, 60 * S, 28 * S, 'Gap'))
+        items.append(Item('pill', pad + 60 * S, y, 40 * S, 28 * S, '−', '', False, True, ('sym_gap', -0.1)))
+        items.append(Item('note', pad + 104 * S, y, inner - 60 * S - 148 * S, 28 * S,
+                          f'{groups.repeat_gap(ob):.1f}'))
+        items.append(Item('pill', pad + inner - 40 * S, y, 40 * S, 28 * S, '+', '', False, True, ('sym_gap', 0.1)))
     if mode in {'MIRROR', 'KALEIDO'}:
         y -= 12 * S
         items.append(Item('section', pad, y - 18 * S, inner, 18 * S, 'Mirror'))
@@ -371,10 +471,11 @@ def build_card(context, region_w, region_h, S=1.0):
         if kind == 'PART':
             m = mirror_mod(ob)
             y -= 34 * S
-            items.append(Item('toggle', pad, y, inner / 2 - 8 * S, 30 * S, 'Bisect', '',
-                              bool(m and any(m.use_bisect_axis)), True, ('sym_bisect',)))
-            items.append(Item('toggle', pad + inner / 2 + 8 * S, y, inner / 2 - 8 * S, 30 * S, 'Flip', '',
-                              bool(m and any(m.use_bisect_flip_axis)), True, ('sym_flip',)))
+            tw = (inner - 2 * 8 * S) / 3
+            for i, (name, on, act) in enumerate((('Bisect', bool(m and any(m.use_bisect_axis)), 'sym_bisect'),
+                                                 ('Flip', bool(m and any(m.use_bisect_flip_axis)), 'sym_flip'),
+                                                 ('Clip', bool(m and m.use_clip), 'sym_clip'))):
+                items.append(Item('toggle', pad + i * (tw + 8 * S), y, tw, 30 * S, name, '', on, True, (act,)))
     if mode in {'RADIAL', 'KALEIDO'}:
         y -= 12 * S
         items.append(Item('section', pad, y - 18 * S, inner, 18 * S, 'Radial'))
@@ -477,6 +578,12 @@ def run_card(context, item):
             groups.set_repeat(context, ob, count=groups.repeat_count(ob) + a[2])
         elif kind == 'sym_center':
             groups.set_repeat(context, ob, center=a[1])
+        elif kind == 'sym_grid':
+            grid = list(groups.repeat_grid(ob))
+            grid[a[1]] = max(1, grid[a[1]] + a[2])
+            groups.set_repeat(context, ob, grid=grid)
+        elif kind == 'sym_gap':
+            groups.set_repeat(context, ob, gap=groups.repeat_gap(ob) + a[1])
         elif kind == 'sym_apply':
             groups.make_real(context, ob)
         return 'Repetition: ' + MODE_NAMES.get(groups.repeat_mode(ob), '')
@@ -491,6 +598,8 @@ def run_card(context, item):
         toggle_bisect(ob)
     elif kind == 'sym_flip':
         toggle_flip(ob)
+    elif kind == 'sym_clip':
+        toggle_clip(ob)
     elif kind == 'sym_raxis':
         set_radial_axis(context, a[2])
     elif kind == 'sym_count':
@@ -504,6 +613,38 @@ def run_card(context, item):
 
 
 _handle = None
+_handle3d = None
+
+
+def _draw_planes():
+    """0.24.55 a see-through plane for each mirror plane of the card's part (while the card shows)."""
+    try:
+        context = bpy.context
+        kind, ob = card_target(context)
+        if kind != 'PART':
+            return
+        quads = plane_quads(ob)
+        if not quads:
+            return
+        import gpu
+        from gpu_extras.batch import batch_for_shader
+        sh = gpu.shader.from_builtin('UNIFORM_COLOR')
+        gpu.state.blend_set('ALPHA')
+        gpu.state.depth_test_set('LESS_EQUAL')
+        gpu.state.depth_mask_set(False)
+        sh.bind()
+        for i, q in quads:
+            col = PLANE_COLORS[i]
+            pos = [tuple(p) for p in q]
+            sh.uniform_float('color', col)
+            batch_for_shader(sh, 'TRIS', {'pos': pos}, indices=[(0, 1, 2), (0, 2, 3)]).draw(sh)
+            sh.uniform_float('color', (col[0], col[1], col[2], 0.55))
+            batch_for_shader(sh, 'LINE_STRIP', {'pos': pos + pos[:1]}).draw(sh)
+        gpu.state.depth_mask_set(True)
+        gpu.state.depth_test_set('NONE')
+        gpu.state.blend_set('NONE')
+    except Exception:          # never break viewport drawing
+        pass
 
 
 def _draw():
@@ -573,10 +714,19 @@ def register():
         bpy.utils.register_class(c)
     if not bpy.app.background and _handle is None:
         _handle = bpy.types.SpaceView3D.draw_handler_add(_draw, (), 'WINDOW', 'POST_PIXEL')
+    global _handle3d
+    if not bpy.app.background and _handle3d is None:
+        _handle3d = bpy.types.SpaceView3D.draw_handler_add(_draw_planes, (), 'WINDOW', 'POST_VIEW')
 
 
 def unregister():
-    global _handle
+    global _handle, _handle3d
+    if _handle3d is not None:
+        try:
+            bpy.types.SpaceView3D.draw_handler_remove(_handle3d, 'WINDOW')
+        except (ValueError, RuntimeError):
+            pass
+        _handle3d = None
     if _handle is not None:
         try:
             bpy.types.SpaceView3D.draw_handler_remove(_handle, 'WINDOW')

@@ -6,7 +6,8 @@
 - Merge: the group's meshes (modifiers baked) become one mesh.
 - Enter / Exit (scope): inside a group everything else is shown as wire and cannot be selected.
 - Repetition (non-destructive, linked): Mirror (X / Y / Z planes), Radial (Count copies round an axis) or Kaleido
-  (both), about the world origin and axes (0.24.53 default; or the group handle, or the 3D cursor - Centre).  The copies are made by a Geometry Nodes object that shows the group's
+  (both), about the world origin and axes (0.24.53 default; or the group handle, or the 3D cursor - Centre),
+  or Grid (0.24.55: X x Y x Z copies side by side, the group's size plus Gap apart).  The copies are made by a Geometry Nodes object that shows the group's
   collection again, so editing a part changes every copy at once; switching it off removes them.  Apply makes
   the copies real objects.
 
@@ -271,8 +272,39 @@ def repeat_count(g):
     return int(g.get('mch_rep_count', 6)) if g is not None else 6
 
 
-def copy_matrices(mode, axes=(True, False, False), axis='Z', count=6):
+def repeat_grid(g):
+    a = g.get('mch_rep_grid', [3, 1, 1]) if g is not None else [3, 1, 1]
+    return tuple(max(1, int(v)) for v in a)
+
+
+def repeat_gap(g):
+    return float(g.get('mch_rep_gap', 0.2)) if g is not None else 0.2
+
+
+def group_size(g):
+    """The world size (x, y, z) of the group's parts together."""
+    pts = [o.matrix_world @ Vector(c) for o in members(g) if o.type in {'MESH', 'CURVE'} for c in o.bound_box]
+    if not pts:
+        return Vector((1.0, 1.0, 1.0))
+    return Vector(tuple(max(p[i] for p in pts) - min(p[i] for p in pts) for i in range(3)))
+
+
+def grid_step(g):
+    size = group_size(g)
+    gap = repeat_gap(g)
+    return tuple(max(1e-4, size[i] * (1.0 + gap)) for i in range(3))
+
+
+def copy_matrices(mode, axes=(True, False, False), axis='Z', count=6, grid=(3, 1, 1), step=(1.0, 1.0, 1.0)):
     """The copies' transforms in the handle's frame (the original itself not included)."""
+    if mode == 'GRID':
+        out = []
+        for i in range(max(1, int(grid[0]))):
+            for j in range(max(1, int(grid[1]))):
+                for k in range(max(1, int(grid[2]))):
+                    if i or j or k:
+                        out.append(Matrix.Translation((i * step[0], j * step[1], k * step[2])))
+        return out
     mirrors = [Matrix.Identity(4)]
     if mode in {'MIRROR', 'KALEIDO'}:
         for i, on in enumerate(axes):
@@ -370,7 +402,12 @@ def _place_carrier(context, g, car):
         car.matrix_world = Matrix.Identity(4)
 
 
-def set_repeat(context, g, mode=None, axes=None, axis=None, count=None, center=None):
+def _mats(g):
+    return copy_matrices(repeat_mode(g), repeat_axes(g), repeat_axis(g), repeat_count(g), repeat_grid(g),
+                         grid_step(g))
+
+
+def set_repeat(context, g, mode=None, axes=None, axis=None, count=None, center=None, grid=None, gap=None):
     """Change the group's repetition; OFF removes the copies."""
     if not is_group(g):
         return None
@@ -382,6 +419,10 @@ def set_repeat(context, g, mode=None, axes=None, axis=None, count=None, center=N
         g['mch_rep_axis'] = axis
     if count is not None:
         g['mch_rep_count'] = max(2, min(64, int(count)))
+    if grid is not None:
+        g['mch_rep_grid'] = [max(1, min(32, int(v))) for v in grid]
+    if gap is not None:
+        g['mch_rep_gap'] = max(-0.5, min(5.0, float(gap)))
     if center in CENTRES:
         g['mch_rep_center'] = center
         if center == 'CURSOR':
@@ -398,7 +439,7 @@ def set_repeat(context, g, mode=None, axes=None, axis=None, count=None, center=N
         if tree is not None:
             bpy.data.node_groups.remove(tree)
         return None
-    mats = copy_matrices(mode, repeat_axes(g), repeat_axis(g), repeat_count(g))
+    mats = _mats(g)
     tree = _tree(g, mats)
     if car is None:
         me = bpy.data.meshes.new(g.name + ' Repetition')
@@ -422,7 +463,7 @@ def make_real(context, g):
     context.view_layer.update()
     gm = car.matrix_world.copy() if car is not None else g.matrix_world.copy()     # the copies' frame
     gi = gm.inverted_safe()
-    mats = copy_matrices(repeat_mode(g), repeat_axes(g), repeat_axis(g), repeat_count(g))
+    mats = _mats(g)
     made = 0
     sources = [o for o in members(g) if o.type in {'MESH', 'CURVE'} and not is_group(o)]
     for i, m in enumerate(mats):
@@ -504,7 +545,7 @@ class MCH_OT_group_repeat(bpy.types.Operator):
     bl_idname = 'mch.group_repeat'
     bl_label = 'Group Repetition'
     bl_options = {'REGISTER', 'UNDO'}
-    mode: bpy.props.EnumProperty(items=[(m, m.title(), '') for m in ('OFF', 'MIRROR', 'RADIAL', 'KALEIDO')],
+    mode: bpy.props.EnumProperty(items=[(m, m.title(), '') for m in ('OFF', 'MIRROR', 'RADIAL', 'KALEIDO', 'GRID')],
                                  default='MIRROR')
 
     @classmethod

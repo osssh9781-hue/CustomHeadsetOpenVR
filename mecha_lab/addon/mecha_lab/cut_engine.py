@@ -1296,6 +1296,9 @@ def triple_reset(context):
         pass
 
 
+FOLLOWERS = {'PLATE', 'CPLATE', 'SDRAW', 'FLOWER'}       # new parts made on a part: they follow its Mirror
+
+
 class StrokeLogic:
     """State machine of one shape stroke (plain Python so tests can drive it
     with simulated events; the Blender operator below only adds RNA).
@@ -1903,6 +1906,12 @@ class StrokeLogic:
             msg = (msg or '') + radial_sym.after_create(context, self.mode)
         except (ImportError, AttributeError, RuntimeError, ReferenceError):
             pass
+        if self.mode in FOLLOWERS:           # 0.24.55 ... and follows the Mirror of the part it was made on
+            try:
+                from . import symmetry
+                msg = (msg or '') + symmetry.follow(context, context.active_object)
+            except (ImportError, AttributeError, RuntimeError, ReferenceError):
+                pass
         self.report({'INFO'}, msg)
         self._cleanup(context)
         return {'FINISHED'}

@@ -362,6 +362,11 @@ class MCH_OT_screw_stamp(bpy.types.Operator):
         spin = random.uniform(0, math.pi) if (st.random_spin and st.kind == 'CROSS') else 0.0
         nrm = area_normal(context, target, loc, nrm, st.radius * 0.9)
         ob = place(context, target, loc, nrm, spin)
+        try:                                       # 0.24.55 a screw on a mirrored part is mirrored too
+            from . import symmetry
+            symmetry.follow(context, ob, target)
+        except (ImportError, AttributeError, RuntimeError, ReferenceError):
+            pass
         import time
         _LAST[0], _LAST[1] = ob.name, time.time()
         for o_ in context.selected_objects:

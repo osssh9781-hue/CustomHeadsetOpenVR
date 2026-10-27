@@ -2216,6 +2216,9 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
                                 description='The Symmetry card (Off / Mirror / Radial / Kaleido) beside a part with a '
                                             'symmetry, and the Repetition card of a selected group; off = the old '
                                             'mirror side buttons')
+    symmetry_follow: BoolProperty(name='New Parts Follow the Mirror', default=True,
+                                  description='A plate, Surface Draw stroke, Flower or screw made on a part with a live '
+                                              'Mirror gets the same Mirror (planes and centre)')
     mmb_menu: BoolProperty(name='Middle Click = Mecha Menu', default=True,
                            description='Middle mouse click (no movement) opens the Mecha Menu; a middle drag still '
                                        'orbits the view. MECHA LAB only. Switch off if orbiting feels different')
@@ -2273,7 +2276,9 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         row = box.row()
         row.prop(self, 'hold_menu')
         row.prop(self, 'mmb_menu')
-        box.row().prop(self, 'symmetry_card')
+        row = box.row()
+        row.prop(self, 'symmetry_card')
+        row.prop(self, 'symmetry_follow')
         box.prop(self, 'mecha_ui_size', slider=True)
         layout.prop(self, 'workspace_hotkeys')
         layout.prop(self, 'quick_menu')
