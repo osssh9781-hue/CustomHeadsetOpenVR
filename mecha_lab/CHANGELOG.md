@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 0.24.72 — 지브러시 Hard Edges: 엣지 찾기 → 크리즈 → 조절되는 베벨 (2026-10-27)
+
+- **새 Hard Edges 상자**(지브러시 화면 왼쪽 선반, Quad Remesh 아래 따로).
+  - **Find Edges** + **Angle**(기본 30°): 면이 이 각도보다 꺾인 엣지(와 열린 경계)를 찾아 Sharp + **Crease** + 베벨 가중치. 혼자 떨어진 짧은 엣지 하나(잡음)는 뺌.
+  - **Merge Flats**: 삼각형 메쉬(데시메이트 결과)면 각진 엣지 사이의 평평한 삼각형을 큰 면으로 합쳐서 베벨이 깨끗하게 — 쿼드(Quad Remesh 결과)는 그대로 둠.
+  - 라이브로 계속 조절: **Bevel**(켜기 / 끄기) · **Width** · **Segments**(1 = 챔퍼) · **Shape**(0.5 둥글게, 크면 각지게, 작으면 오목하게) · **Outer Only**(바깥쪽으로 꺾인 엣지만, 안쪽 모서리는 날카롭게) · **Crease** · **Subdivide**(Catmull-Clark 단계: 크리즈 엣지는 날카롭게, 평면은 면이 늘어남) · **Weighted Normals**(베벨 옆 평면이 평평하게 보이게).
+  - **Apply**: 라이브 베벨 / 섭디를 메쉬에 굽기. **Clear**: 표시와 라이브 수정자 지우기.
+- 흐름: DynaMesh → Decimate(또는 Quad Remesh) → Find Edges → 슬라이더로 베벨 조절 → Apply. 30만 면 넘는 메쉬는 먼저 줄이라고 안내(그대로 베벨하면 블렌더가 오래 멈춤).
+- 측정(헤드리스): 사용자 FBX 679,100점 → Decimate 2%(27,162면) → Find Edges 0.2초: 각진 엣지 3,358개, 평면 합치기로 4,480면, 라이브 베벨 13,010면. Quad Remesh 10k → Find Edges 0.04초(쿼드 그대로) → 베벨 + Subdivide 1 → 56,342면.
+- Find Edges / Apply 직전 Safety Save 사본, Ctrl+Z 한 번에 원래대로(조각 모드 그대로).
+- 테스트: {SUITE}. ZIP sha256 `{SHA}`.
+
 ## 0.24.71 — 지브러시 Quad Remesh: 우리 엔진으로 만든 쿼드 리메쉬 (2026-10-27)
 
 - **새 Quad Remesh 상자**(지브러시 화면 왼쪽 선반, Decimation 아래 따로): Quad Remesh 버튼 + Target(천 단위), **Mostly Quads**(네모 + 줄이 끝나는 곳에 삼각형 조금) / **All Quads**(전부 네모: 1/4 개수로 만든 뒤 모든 면을 한 번 나눔), **Hard Edges**(면이 이 각도보다 꺾이면 각진 엣지 — 네모 줄이 그 엣지를 따라가고 날카롭게 남음, 기본 30°), Half / Same / Double(지금 면 수 기준으로 Target 맞추기). 블렌더 Quadriflow(기존 ZRemesher 버튼)와는 별개.

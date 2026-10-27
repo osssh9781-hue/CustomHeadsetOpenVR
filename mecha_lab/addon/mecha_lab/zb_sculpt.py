@@ -1181,6 +1181,11 @@ def _cav_set(self, v):
 _cav = (_cav_get, _cav_set)
 
 
+def _he_update(self, context):
+    from . import hard_edges
+    hard_edges.live_update(self, context)
+
+
 class MCH_PG_ZBrush(bpy.types.PropertyGroup):
     draw_size: IntProperty(name='Draw Size', min=1, max=2000, soft_max=400, get=_size_get, set=_size_set,
                            description='Brush radius in pixels (Blender Radius)')
@@ -1258,6 +1263,27 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
                             max=math.radians(90.0), subtype='ANGLE',
                             description='Quad Remesh: faces meeting at more than this make a hard edge - the quads '
                                         'line up along it and keep it sharp')
+    # 0.24.72 Hard Edges (hard_edges): find the hard edges, crease them, a live adjustable bevel
+    he_angle: FloatProperty(name='Angle', default=math.radians(30.0), min=math.radians(1.0), max=math.radians(150.0),
+                            subtype='ANGLE', description='Find Edges: faces meeting at more than this make a hard edge')
+    he_merge: BoolProperty(name='Merge Flats', default=True,
+                           description='Find Edges on a triangle mesh (Decimate): join the near-flat triangles between '
+                                       'the hard edges into big faces first (cleaner bevels); quads stay quads')
+    he_crease: BoolProperty(name='Crease', default=True, update=_he_update,
+                            description='The hard edges get a full crease: Subdivide keeps them sharp')
+    he_outer: BoolProperty(name='Outer Only', default=False, update=_he_update,
+                           description='Bevel only the outward (convex) hard edges; inside corners stay sharp')
+    he_bevel: BoolProperty(name='Bevel', default=True, update=_he_update, description='A live bevel on the hard edges')
+    he_width: FloatProperty(name='Width', default=0.01, min=0.0, soft_max=0.5, precision=4, step=0.1, unit='LENGTH',
+                            update=_he_update, description='Bevel width')
+    he_segments: IntProperty(name='Segments', default=2, min=1, max=12, update=_he_update,
+                             description='Bevel segments (1 = a chamfer)')
+    he_profile: FloatProperty(name='Shape', default=0.5, min=0.0, max=1.0, update=_he_update,
+                              description='Bevel shape: 0.5 round, higher boxier, lower hollow')
+    he_subdiv: IntProperty(name='Subdivide', default=0, min=0, max=4, update=_he_update,
+                           description='Catmull-Clark levels: the creased edges stay sharp, flat parts get more faces')
+    he_normals: BoolProperty(name='Weighted Normals', default=True, update=_he_update,
+                             description='Flat faces shade flat next to the bevels')
     inflate: IntProperty(name='Inflate', default=10, min=-100, max=100,
                          description='Deformation: how far Inflate pushes the surface out (minus = in)')
     thick: FloatProperty(name='Thick', default=0.02, min=0.0, soft_max=0.5, precision=3,
@@ -1651,10 +1677,10 @@ def _mask_values(ob):
 
 
 # 0.24.66 the steps that crash Blender most often: a recovery copy right before them (when anything changed)
-RISKY = {'DYNAMESH', 'DYNA_UPDATE', 'DYNA_SUBDIV', 'DYNA_SUBDIV3', 'DECIMATE', 'QUAD_REMESH', 'DIVIDE', 'ZREMESH',
-         'HALF', 'SAME',
-         'DOUBLE', 'MIRROR_WELD', 'CLOSE_HOLES', 'EXTRACT', 'SPLIT_MASKED', 'SPLIT_UNMASKED', 'SPLIT_HIDDEN',
-         'DEL_HIDDEN', 'MERGE_DOWN', 'MERGE_VISIBLE', 'POLYMESH3D', 'GROUPS_SPLIT', 'DEL_LOWER', 'FIX_MESH'}
+RISKY = {'DYNAMESH', 'DYNA_UPDATE', 'DYNA_SUBDIV', 'DYNA_SUBDIV3', 'DECIMATE', 'QUAD_REMESH', 'HE_FIND', 'HE_APPLY',
+         'DIVIDE', 'ZREMESH', 'HALF', 'SAME', 'DOUBLE', 'MIRROR_WELD', 'CLOSE_HOLES', 'EXTRACT', 'SPLIT_MASKED',
+         'SPLIT_UNMASKED', 'SPLIT_HIDDEN', 'DEL_HIDDEN', 'MERGE_DOWN', 'MERGE_VISIBLE', 'POLYMESH3D', 'GROUPS_SPLIT',
+         'DEL_LOWER', 'FIX_MESH'}
 
 
 def _edited():
@@ -1938,6 +1964,31 @@ def run(context, action):
         f = {'QR_HALF': 0.5, 'QR_SAME': 1.0, 'QR_DOUBLE': 2.0}[action]
         zb.qr_target = max(0.05, round(len(ob.data.polygons) * f / 1000.0, 2))
         return f'Quad Remesh Target {zb.qr_target:g}'
+    if action in {'HE_FIND', 'HE_APPLY', 'HE_CLEAR'}:
+        from . import hard_edges as he
+        if action == 'HE_FIND':
+            if len(ob.data.polygons) > he.MAX_POLYS:
+                return f'Hard Edges: {len(ob.data.polygons):,} polygons - Decimate or Quad Remesh first'
+            if ob.data.shape_keys is not None:
+                return 'Hard Edges: remove the shape keys first'
+        if multires(ob) is not None:
+            return 'Hard Edges: Del Higher / Del Lower first'
+        _mode(context, 'OBJECT')
+        try:
+            if action == 'HE_FIND':
+                n, f0, f1 = he.find(ob, zb)
+                he.set_live(ob, zb)
+                msg = f'Hard Edges: {n:,} edges' + (f', {f0:,} > {f1:,} polygons (flats merged)' if f1 != f0 else '')
+            elif action == 'HE_APPLY':
+                k = he.apply_live(context, ob)
+                ob.pop(he.KEY, None)                 # (the shelf settings no longer drive this SubTool)
+                msg = f'Hard Edges: applied, {len(ob.data.polygons):,} polygons' if k else 'Hard Edges: nothing to apply'
+            else:
+                he.clear(ob)
+                msg = 'Hard Edges: cleared'
+        finally:
+            _mode(context, 'SCULPT')
+        return msg
     if action == 'DECIMATE':
         from . import fast_decimate as fd
         _mode(context, 'OBJECT')

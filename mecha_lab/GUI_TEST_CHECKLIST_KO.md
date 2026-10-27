@@ -1,8 +1,16 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.71 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.72 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000. 0.24.72 Hard Edges (미검증)
+- [ ] 지브러시 선반에 Quad Remesh 아래 **Hard Edges** 상자(Find Edges · Angle · Merge Flats / Crease / Outer Only · Bevel · Width · Segments · Shape · Subdivide · Weighted Normals · Apply / Clear)
+- [ ] Decimate(또는 Quad Remesh) 한 부품에서 Find Edges: 메시지 "Hard Edges: N edges …", 각진 곳에 날카로운 엣지가 잡히는지(Angle 20° / 45°로 바꿔 다시 눌러 비교)
+- [ ] Width · Segments · Shape 슬라이더를 움직이면 베벨이 바로 바뀌는지, Segments 1 = 챔퍼, 끊김 / 멈칫함이 없는지
+- [ ] Outer Only: 안쪽 모서리는 날카롭게 남는지 / Subdivide 1~2: 각진 엣지는 날카롭게, 평면은 그대로 평평한지
+- [ ] Apply 뒤 메쉬에 굽혀지고 슬라이더를 움직여도 더 안 바뀌는지, Clear로 표시가 지워지는지, Ctrl+Z 한 번에 원래대로(조각 모드)
+- [ ] 큰 DynaMesh(30만 면 넘음)에서 Find Edges: "Decimate or Quad Remesh first" 안내만 나오고 멈추지 않는지
 
 ## A00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000. 0.24.71 Quad Remesh (미검증)
 - [ ] 지브러시 화면 왼쪽 선반에 Decimation 아래 **Quad Remesh** 상자가 따로 있는지(Quad Remesh · Target · Mostly Quads / All Quads · Hard Edges · Half / Same / Double)
