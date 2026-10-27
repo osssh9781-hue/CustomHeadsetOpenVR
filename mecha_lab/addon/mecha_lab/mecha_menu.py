@@ -465,6 +465,10 @@ def draw(items, hover, S, context):
             G.text(it.x + it.w / 2, it.y + it.h / 2 - 2 * S, it.label, 11 * S, G.TEXT_DIM, 'CENTER')
         elif it.kind == 'note':
             G.text(it.x + it.w / 2, it.y + it.h / 2, it.label, 11 * S, G.TEXT_DIM, 'CENTER')
+        elif it.kind == 'keycap':                 # 0.24.58 a key letter in a toolbar button's corner
+            G.text(it.x + it.w / 2, it.y + it.h / 2, it.label, 9 * S, G.TEXT_DIM, 'CENTER')
+        elif it.kind == 'striphead':              # 0.24.58 a group name in the tool strip
+            G.text(it.x + 2 * S, it.y + it.h / 2, it.label, 9 * S, G.TEXT_DIM)
         elif it.kind == 'divider':
             G.rounded_rect(it.x + 8 * S, it.y, it.w - 16 * S, it.h, it.h / 2, RULE)
         elif it.kind in {'button', 'abtn'}:

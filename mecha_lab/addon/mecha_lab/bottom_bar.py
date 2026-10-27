@@ -278,7 +278,7 @@ class MCH_GGT_bottom_toolbar(bpy.types.GizmoGroup):
 
     @classmethod
     def poll(cls, context):
-        return _pref('bottom_toolbar') and ui_active(context)
+        return _pref('bottom_toolbar') and not _pref('drawn_toolbar', True) and ui_active(context)
 
     def setup(self, context):
         self.buttons = []
@@ -339,6 +339,12 @@ def active_button_pos(context):
     if tools is not None and tools.width > 1:
         left = max(0.0, float(tools.x + tools.width - region.x))
     f = max(0.6, float(_pref('toolbar_scale', 1.0) or 1.0))
+    try:                                         # 0.24.58 right of the left tool strip
+        from . import ui_bars
+        from .ui_gpu import ui_factor
+        left += ui_bars.strip_width(context, ui_factor(context, region))
+    except (ImportError, AttributeError, TypeError):
+        pass
     return left / ui + 30.0 * f, region.height / ui * 0.6     # 0.19.3: middle left (user placement)
 
 
@@ -676,7 +682,7 @@ def _draw_labels():
         if not _pref('toolbar_labels', True):
             return
         import blf
-        if not _pref('bottom_toolbar'):
+        if not _pref('bottom_toolbar') or _pref('drawn_toolbar', True):     # 0.24.58 the drawn bar has bubbles
             return
         region = context.region
         ui = context.preferences.system.ui_scale

@@ -2250,6 +2250,11 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
                                          'the drawing tool that is on (MECHA LAB only)')
     bottom_toolbar: BoolProperty(name='Bottom Toolbar', default=True,
                                  description='Tool buttons at the bottom centre of the viewport (MECHA LAB, Object Mode)')
+    drawn_toolbar: BoolProperty(name='Drawn Toolbar', default=True,
+                                description='0.24.58 the bottom toolbar as one dark bar (Mecha Menu look, names on hover); '
+                                            'off = the 0.12 round buttons')
+    tool_strip: BoolProperty(name='Tool Strip', default=True,
+                             description='0.24.58 every tool, grouped by job, in a column at the left of the viewport')
     toolbar_labels: BoolProperty(name='Names Under Icons', default=True)
     toolbar_size: EnumProperty(name='Toolbar Size', items=[('S', 'S', ''), ('M', 'M', ''), ('L', 'L', '')], default='M')
     icon_scale: FloatProperty(name='Panel Icons', default=1.0, min=0.5, max=2.5, subtype='FACTOR',
@@ -2276,6 +2281,8 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         box.label(text='Bottom toolbar / keys (0.12)')
         row = box.row()
         row.prop(self, 'bottom_toolbar')
+        row.prop(self, 'drawn_toolbar')
+        row.prop(self, 'tool_strip')
         row.prop(self, 'toolbar_labels')
         box.row().prop(self, 'toolbar_size', expand=True)
         draw_icon_sizes(box, self)

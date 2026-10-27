@@ -89,6 +89,11 @@ def _draw():
         w = max(widths + [keyw + 120 * k]) + 2 * pad
         h = lh * len(rows) + 2 * pad
         x, y = 14 * k, 90 * k
+        try:                                     # 0.24.58 right of the left tool strip
+            from . import ui_bars
+            x += ui_bars.left_inset(context) + ui_bars.strip_width(context, k)
+        except (ImportError, AttributeError, TypeError):
+            pass
         G.rounded_rect(x - 1, y - 1, w + 2, h + 2, 12 * k, G.CARD_EDGE)
         G.rounded_rect(x, y, w, h, 12 * k, G.CARD)
         for i, t in enumerate(rows):

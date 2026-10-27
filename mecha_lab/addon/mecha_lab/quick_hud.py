@@ -190,6 +190,11 @@ def current(context):
     tools = next((r for r in area.regions if r.type == 'TOOLS'), None) if area else None
     if tools is not None and tools.width > 1:
         left = max(0.0, float(tools.x + tools.width - context.region.x))
+    try:                                         # 0.24.58 right of the left tool strip
+        from . import ui_bars
+        left += ui_bars.strip_width(context, k)
+    except (ImportError, AttributeError, TypeError):
+        pass
     grip, rows = layout_rows(context.region.width, context.region.height, len(its), _offset(context), left, k)
     return its, grip, rows
 
@@ -232,6 +237,18 @@ class MCH_OT_quick_hud_press(bpy.types.Operator):
     bl_options = {'INTERNAL'}
 
     def invoke(self, context, event):
+        # 0.24.58 the drawn toolbar / tool strip
+        try:
+            from . import ui_bars
+            inside, item = ui_bars.hit(context, event.mouse_region_x, event.mouse_region_y)
+        except (AttributeError, KeyError, TypeError, ReferenceError, ImportError):
+            inside, item = False, None
+        if inside:
+            if item is not None:
+                ui_bars.run(context, item)
+            if context.area:
+                context.area.tag_redraw()
+            return {'FINISHED'}
         # 0.24.52 the Symmetry / Repetition card first (single clicks)
         try:
             from . import symmetry
