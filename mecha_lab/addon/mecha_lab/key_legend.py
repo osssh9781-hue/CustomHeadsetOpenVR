@@ -92,7 +92,7 @@ def _draw():
         try:                                     # 0.24.58 right of the left tool strip
             from . import ui_bars
             x += ui_bars.left_inset(context) + ui_bars.strip_width(context, k)
-            y += max(0.0, ui_bars.bottom_taken(context, k) - 80 * k)     # 0.24.59 above the bottom main menu
+            y += max(0.0, ui_bars.dock_top(context, k) - 80 * k)     # 0.24.59 above the main menu + actions dock
         except (ImportError, AttributeError, TypeError):
             pass
         G.rounded_rect(x - 1, y - 1, w + 2, h + 2, 12 * k, G.CARD_EDGE)

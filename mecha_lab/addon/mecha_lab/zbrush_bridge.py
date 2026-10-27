@@ -58,6 +58,10 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
                                           'slivers. Quads stay quads; the Blender mesh is not changed')
     keep_backup: BoolProperty(name='Keep Previous Mesh', default=True,
                               description='Keep the replaced mesh as <name>_preZBrush (fake user)')
+    export_format: EnumProperty(name='Format', default='OBJ', items=[      # 0.24.59 the Layers panel's Export
+        ('OBJ', 'OBJ', 'Wavefront OBJ (ZBrush, most programs)'), ('FBX', 'FBX', 'Autodesk FBX')])
+    export_scope: EnumProperty(name='Export', default='SELECTED', items=[
+        ('SELECTED', 'Selected', 'The selected meshes'), ('VISIBLE', 'Visible', 'Every visible mesh')])
     import_all: BoolProperty(name='Re-import Unchanged Files', default=False,
                              description='Also import files ZBrush did not modify')
 

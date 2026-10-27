@@ -293,6 +293,11 @@ def glyph(name, x, y, size, color=TEXT, width=2.0):
             lines([(P(.10, .50), P(.62, .50)), (P(.50, .62), P(.62, .50)), (P(.50, .38), P(.62, .50))], color, width)
         else:
             lines([(P(.62, .50), P(.10, .50)), (P(.22, .62), P(.10, .50)), (P(.22, .38), P(.10, .50))], color, width)
+    elif name == 'cube':                         # 0.24.59 a part in the Layers panel
+        polyline([P(.50, .88), P(.86, .70), P(.86, .30), P(.50, .12), P(.14, .30), P(.14, .70)], color, width, True)
+        lines([(P(.14, .70), P(.50, .52)), (P(.86, .70), P(.50, .52)), (P(.50, .52), P(.50, .12))], color, width)
+    elif name == 'curve':
+        polyline([P(.12, .25), P(.28, .55), P(.45, .72), P(.62, .66), P(.75, .45), P(.88, .78)], color, width)
     elif name == 'quad':
         for t in (.2, .5, .8):
             lines([(P(t, .2), P(t, .8)), (P(.2, t), P(.8, t))], color, width)

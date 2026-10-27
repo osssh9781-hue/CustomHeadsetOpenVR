@@ -159,15 +159,20 @@ def items(context, region_w, region_h, k=1.0, left=None, right=None):
     if not gs:
         return []
     panel_top = None
+    l_low = left
     if left is None or right is None:
+        from . import side_panel, ui_bars
         left, right = room(context, region_w, k)
-        if right < region_w:                        # 0.24.59 the side panel starts lower: use the whole width
-            from . import side_panel
+        l_low = left
+        if not ui_bars.strip_on(context):          # 0.24.59 the Layers panel starts as low as the side panel
+            l_low = ui_bars.left_inset(context)
+        if right < region_w or l_low < left:        # ... and the side panel starts lower: use the whole width
             panel_top = side_panel.frame(region_w, region_h, k)[1]
     sep = 14.0 * k
     for full in ((True, False) if panel_top is not None else (False,)):
         r_edge = region_w if full else right
-        avail = max(300.0 * k, r_edge - left - 24 * k)
+        l_edge = l_low if full else left
+        avail = max(300.0 * k, r_edge - l_edge - 24 * k)
         rows = rows_of(gs, avail - 2 * PAD * k, k)
         widths = [sum(_group_width(t, c, k) for t, c in r) + sep * (len(r) - 1) for r in rows]
         width = max(widths) + 2 * PAD * k
@@ -176,7 +181,7 @@ def items(context, region_w, region_h, k=1.0, left=None, right=None):
         if not full or y0 >= panel_top + 6 * k:
             break
     # 0.24.59 centred in the viewport (like the main menu below), moved only as far as the strip / panel need
-    x0 = max(left + 8 * k, min((region_w - width) / 2.0, r_edge - 8 * k - width))
+    x0 = max(l_edge + 8 * k, min((region_w - width) / 2.0, r_edge - 8 * k - width))
     out = [Item('card', x0, y0, width, height)]
     y = y0 + height - PAD * k - ROW * k
     for r, rw in zip(rows, widths):

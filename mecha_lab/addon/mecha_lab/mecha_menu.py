@@ -586,7 +586,7 @@ def draw(items, hover, S, context):
 
 
 NEW_KINDS = {'sbtn', 'arow', 'ibtn', 'mini', 'drop', 'switch', 'tbtn', 'pnote', 'sbg', 'shead', 'phead', 'pbtn', 'pmin',
-             'sbar', 'vrule', 'glabel'}
+             'sbar', 'vrule', 'glabel', 'lrow', 'lfold'}
 BTN_BG = (0.17, 0.175, 0.19, 1.0)
 BTN_HOT = (0.24, 0.245, 0.27, 1.0)
 FILL = (0.22, 0.38, 0.72, 1.0)        # the Quick HUD's bar blue
@@ -696,7 +696,33 @@ def _draw_new(it, hot, S, white, dim):
             G.rounded_rect(x, y, w, h, 10 * S, HOVER)
         ic = min(w, h) * 0.75
         _icon(it.icon, x + (w - ic) / 2, y + (h - ic) / 2, ic, white)
-        return (it, 'LEFT') if hot else None
+        return (it, it.data if it.data in {'RIGHT', 'ABOVE'} else 'LEFT') if hot else None
+    if k == 'lrow':                       # 0.24.59 a part / group in the Layers panel
+        d = it.data if isinstance(it.data, dict) else {}
+        if it.on:
+            G.rounded_rect(x, y, w, h, 7 * S, G.ACCENT if d.get('active') else (0.24, 0.48, 0.96, 0.45))
+        elif hot:
+            G.rounded_rect(x, y, w, h, 7 * S, HOVER)
+        a = 0.42 if d.get('hidden') else 1.0
+        col = (G.TEXT[0], G.TEXT[1], G.TEXT[2], a)
+        ic = h * 0.62
+        _icon(it.icon, x + 5 * S, y + (h - ic) / 2, ic, col, a)
+        bw = 0.0
+        badge = d.get('badge', '')
+        if badge:
+            bw = G.text(-9999, -9999, badge, 10 * S) + 8 * S
+            G.text(x + w - 6 * S, y + h / 2, badge, 10 * S, (1.0, 0.62, 0.16, a), 'RIGHT')
+        tx = x + ic + 12 * S
+        G.text(tx, y + h / 2, G.fit(it.label, 12 * S, w - (tx - x) - bw - 6 * S), 12 * S, col)
+        return None
+    if k == 'lfold':                      # a group's fold arrow
+        c = G.TEXT if hot else G.TEXT_DIM
+        cx, cy, r = x + w / 2, y + h / 2, 4 * S
+        if it.on:
+            G.polyline([(cx - r, cy + r / 2), (cx, cy - r / 2), (cx + r, cy + r / 2)], c, 1.6 * S)
+        else:
+            G.polyline([(cx - r / 2, cy + r), (cx + r / 2, cy), (cx - r / 2, cy - r)], c, 1.6 * S)
+        return None
     if k == 'sbar':
         G.rounded_rect(x, y, w, h, w / 2, (1.0, 1.0, 1.0, 0.25))
         return None

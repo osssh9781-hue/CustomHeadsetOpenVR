@@ -190,8 +190,12 @@ def strip_items(context, region_w, region_h, k=1.0):
 
 
 def strip_width(context, k=1.0):
-    """How much of the left side the strip takes (0 when it is off) - the Quick HUD / key legend go right of it."""
+    """How much of the left side the strip (or 0.24.59 the Layers panel) takes (0 when off) - the Quick HUD / key
+    legend go right of it."""
     region = getattr(context, 'region', None)
+    if region is not None and not strip_on(context):
+        from . import layers_panel
+        return layers_panel.taken(context, k)
     if region is None or not strip_on(context):
         return 0.0
     cards = [i for i in strip_items(context, region.width, region.height, k) if i.kind == 'card']
@@ -409,7 +413,9 @@ def _build_all(context, region, k):
                 out += dock_items(context, region.width, region.height, k)
             else:
                 out += actions_items(context, region.width, region.height, k)
-        from . import side_panel, top_bar
+        from . import layers_panel, side_panel, top_bar
+        if layers_panel.on(context):
+            out += layers_panel.items(context, region.width, region.height, k)
         if side_panel.on(context):
             out += side_panel.items(context, region.width, region.height, k)
         if top_bar.on(context):
@@ -485,6 +491,9 @@ def run(context, item):
         elif kind == 'minimise':
             wm = context.window_manager
             wm.mch_side_min = not wm.mch_side_min
+        elif kind == 'layers_min':
+            wm = context.window_manager
+            wm.mch_layers_min = not wm.mch_layers_min
     except (RuntimeError, TypeError, ValueError, AttributeError, KeyError, ReferenceError) as ex:
         print('Mecha UI:', a, ex)
         msg = str(ex).splitlines()[0][:120] if str(ex) else ''
@@ -593,23 +602,25 @@ class MCH_OT_ui_hover(bpy.types.Operator):
 
 
 class MCH_OT_ui_scroll(bpy.types.Operator):
-    """0.24.59 The mouse wheel over the side panel scrolls it (elsewhere it zooms the view as always)"""
+    """0.24.59 The mouse wheel over the side panel / Layers panel scrolls it (elsewhere it zooms the view)"""
     bl_idname = 'mch.ui_scroll'
     bl_label = 'Mecha Panel Scroll'
     bl_options = {'INTERNAL'}
 
     def invoke(self, context, event):
-        from . import side_panel
+        from . import layers_panel, side_panel
         try:
             x, y = event.mouse_region_x, event.mouse_region_y
-            if not side_panel.over(context, x, y):
+            panel = side_panel if side_panel.over(context, x, y) else \
+                layers_panel if layers_panel.over(context, x, y) else None
+            if panel is None:
                 return {'PASS_THROUGH'}
             from .ui_gpu import ui_factor
             region = context.region
             k = ui_factor(context, region)
             step = 48.0 * k
-            side_panel.scroll_by(context, region.width, region.height, k,
-                                 step if event.type == 'WHEELDOWNMOUSE' else -step)
+            panel.scroll_by(context, region.width, region.height, k,
+                            step if event.type == 'WHEELDOWNMOUSE' else -step)
             if context.area:
                 context.area.tag_redraw()
             return {'FINISHED'}
@@ -635,6 +646,8 @@ def register():
     wmt.mch_side_min = BoolProperty(default=False, options={'SKIP_SAVE'})
     for c in CLASSES:
         bpy.utils.register_class(c)
+    from . import layers_panel
+    layers_panel.register()
     wm = bpy.context.window_manager
     kc = wm.keyconfigs.addon if wm else None
     if kc is not None:
@@ -666,6 +679,11 @@ def unregister():
         except Exception:
             pass
     _keymaps.clear()
+    from . import layers_panel
+    try:
+        layers_panel.unregister()
+    except RuntimeError:
+        pass
     for c in reversed(CLASSES):
         try:
             bpy.utils.unregister_class(c)
