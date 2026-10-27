@@ -78,9 +78,9 @@ check('... the tool in use on blue, a long name says itself above the tile', cut
 dock = ub.dock_items(CTX, W, H, K)
 dt = [i for i in dock if i.kind == 'sbtn']
 check('Actions where the bottom toolbar was: Select first, then Apply Modifiers ... Mirror as big tiles',
-      dt[0].label == 'Select' and [i.label for i in dt][-6:] == ['Apply Modifiers', 'Reset Axis',
+      dt[0].label == 'Select' and [i.label for i in dt][-7:] == ['Apply Modifiers', 'Reset Axis',
                                                                  'Origin to Geometry', 'Origin to 3D Cursor',
-                                                                 'Symmetry', 'Mirror']
+                                                                 'Symmetry', 'Mirror', 'Search Tools (Ctrl+F)']
       and dt[0].w > cut.w and any(i.kind == 'keycap' and i.label == 'F' for i in dock))
 check('... on top of the menu, centred', abs(dock[0].y - ub.bottom_taken(CTX, K, W)) < 1e-6
       and dock[0].y > card.y + card.h and abs(dock[0].x + dock[0].w / 2 - W / 2) < 1.0)

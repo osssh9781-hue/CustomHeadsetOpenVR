@@ -202,8 +202,8 @@ check('Tool Strip size and names in Preferences / the Icon Size tab, saved with 
 acts = ub.actions_items(CTX, W, H, 1.0)
 rows_ = [i for i in acts if i.kind == 'arow']
 check('Actions card: one compact card - Apply Modifiers, Reset Axis, Origin x2, Symmetry, Mirror',
-      [i.label for i in rows_][-6:] == ['Apply Modifiers', 'Reset Axis', 'Origin to Geometry', 'Origin to 3D Cursor',
-                                         'Symmetry', 'Mirror'] and acts[0].w < 220)
+      [i.label for i in rows_][-7:] == ['Apply Modifiers', 'Reset Axis', 'Origin to Geometry', 'Origin to 3D Cursor',
+                                         'Symmetry', 'Mirror', 'Search Tools (Ctrl+F)'] and acts[0].w < 220)
 check('... the round gizmo buttons are off while the drawn UI is on',
       "not _pref('drawn_toolbar', True)" in inspect.getsource(bb.MCH_GGT_object_tidy.poll))
 check('One click catcher for all of it (the invisible gizmo asks the same hit test)',

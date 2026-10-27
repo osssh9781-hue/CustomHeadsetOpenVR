@@ -355,6 +355,10 @@ def content(context, tool, x, width, k):
         b.node(tree, x, width)
     if lt is not None and lt.children:
         b.section(lt, x, width, 'Lasso', start_folded=True)
+    from . import tool_presets                       # 0.24.65 the tool's presets (yours, kept for every file)
+    pt = pc.capture(lambda layout, ctx: tool_presets.draw_presets(layout, ctx, tool), context)
+    if pt is not None and pt.children and not pt.opts.get('error'):
+        b.section(pt, x, width, 'Presets', start_folded=True)
     if b.help:
         hn = pc.Node('box')
         for line in b.help:

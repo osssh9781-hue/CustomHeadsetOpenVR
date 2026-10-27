@@ -287,7 +287,8 @@ ACTIONS = (('apply_mods', 'stack', 'Apply Modifiers', ('op', 'mch.apply_modifier
            ('origin_geo', 'origin', 'Origin to Geometry', ('op', 'mch.object_tidy', {'action': 'ORIGIN_GEOMETRY'})),
            ('origin_cur', 'origin', 'Origin to 3D Cursor', ('op', 'mch.object_tidy', {'action': 'ORIGIN_CURSOR'})),
            ('symmetry', 'X', 'Symmetry', ('op', 'mch.object_tidy', {'action': 'SYMMETRY'})),
-           ('mirror', 'png:mirror', 'Mirror', ('op', 'mch.object_tidy', {'action': 'MIRROR'})))
+           ('mirror', 'png:mirror', 'Mirror', ('op', 'mch.object_tidy', {'action': 'MIRROR'})),
+           ('search', 'menu', 'Search Tools (Ctrl+F)', ('op', 'mch.tool_search', {})))   # 0.24.65
 
 
 def actions_items(context, region_w, region_h, k=1.0):
@@ -693,10 +694,11 @@ def register():
     wmt.mch_side_min = BoolProperty(default=False, options={'SKIP_SAVE'})
     for c in CLASSES:
         bpy.utils.register_class(c)
-    from . import layers_panel, zb_sculpt, zb_ui
+    from . import layers_panel, tool_presets, zb_sculpt, zb_ui
     layers_panel.register()
     zb_sculpt.register()                              # 0.24.60 ZBrush-style sculpting
     zb_ui.register()
+    tool_presets.register()                           # 0.24.65 Tool Search / Presets
     wm = bpy.context.window_manager
     kc = wm.keyconfigs.addon if wm else None
     if kc is not None:
@@ -728,8 +730,8 @@ def unregister():
         except Exception:
             pass
     _keymaps.clear()
-    from . import layers_panel, zb_sculpt, zb_ui
-    for mod in (zb_ui, zb_sculpt, layers_panel):
+    from . import layers_panel, tool_presets, zb_sculpt, zb_ui
+    for mod in (tool_presets, zb_ui, zb_sculpt, layers_panel):
         try:
             mod.unregister()
         except RuntimeError:
