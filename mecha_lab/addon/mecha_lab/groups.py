@@ -134,8 +134,7 @@ def create(context, objs, name='Group'):
     parent_coll.children.link(coll)
     centre, size = _world_box(objs)
     g = bpy.data.objects.new(coll.name, None)
-    g.empty_display_type = 'CUBE'
-    g.empty_display_size = max(0.05, max(size) * 0.55)
+    handle_look(g, size)
     g.show_in_front = True
     parent_coll.objects.link(g)
     g.matrix_world = Matrix.Translation(centre)
@@ -169,6 +168,79 @@ def create(context, objs, name='Group'):
     g.select_set(True)
     context.view_layer.objects.active = g
     return g
+
+
+def handle_look(g, size):
+    """0.24.58 The handle: a small cross at the centre (still a click target) - the group's outline is a box drawn
+    tight round its parts (``_draw_boxes``) instead of a cube as big as the longest side."""
+    g.empty_display_type = 'PLAIN_AXES'
+    g.empty_display_size = max(0.05, max(size) * 0.2)
+
+
+def tidy_handles(scene=None):
+    """Groups made before 0.24.58 (a big cube) get the small handle."""
+    for g in [o for o in bpy.data.objects if is_group(o) and o.empty_display_type == 'CUBE']:
+        parts = [o for o in members(g) if o.type == 'MESH']
+        if parts:
+            handle_look(g, _world_box(parts)[1])
+
+
+def group_box(g):
+    """World box (low, high corners) of the group's parts (its repetition copies not counted)."""
+    pts = []
+    for o in members(g):
+        if o.type in {'MESH', 'CURVE', 'SURFACE', 'FONT'} and not o.hide_get():
+            pts += [o.matrix_world @ Vector(c) for c in o.bound_box]
+    if not pts:
+        return None
+    return (Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts))),
+            Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts))))
+
+
+BOX_EDGES = ((0, 1), (1, 3), (3, 2), (2, 0), (4, 5), (5, 7), (7, 6), (6, 4), (0, 4), (1, 5), (2, 6), (3, 7))
+
+
+def box_lines(lo, hi, pad=0.02):
+    d = (hi - lo) * pad + Vector((1e-3, 1e-3, 1e-3))
+    lo, hi = lo - d, hi + d
+    c = [Vector((hi.x if i & 1 else lo.x, hi.y if i & 2 else lo.y, hi.z if i & 4 else lo.z)) for i in range(8)]
+    return [tuple(c[i]) for e in BOX_EDGES for i in e]
+
+
+def _draw_boxes():
+    try:
+        context = bpy.context
+        groups = [o for o in context.visible_objects if is_group(o)]
+        if not groups:
+            return
+        import gpu
+        from gpu_extras.batch import batch_for_shader
+        sh = gpu.shader.from_builtin('UNIFORM_COLOR')
+        gpu.state.blend_set('ALPHA')
+        sh.bind()
+        active = context.view_layer.objects.active
+        for g in groups:
+            box = group_box(g)
+            if box is None:
+                continue
+            col = ((1.0, 0.62, 0.16, 0.9) if g == active else (1.0, 0.5, 0.1, 0.75)) if g.select_get() \
+                else (0.85, 0.88, 0.9, 0.22)
+            sh.uniform_float('color', col)
+            batch_for_shader(sh, 'LINES', {'pos': box_lines(*box)}).draw(sh)
+        gpu.state.blend_set('NONE')
+    except Exception:          # never break viewport drawing
+        pass
+
+
+_box_handle = None
+
+
+@bpy.app.handlers.persistent
+def _on_load(_dummy=None):
+    try:
+        tidy_handles()
+    except (AttributeError, ReferenceError, RuntimeError):
+        pass
 
 
 def ungroup(context, g):
@@ -685,11 +757,26 @@ CLASSES = (MCH_OT_group, MCH_OT_group_action, MCH_OT_group_repeat, MCH_OT_group_
 
 
 def register():
+    global _box_handle
     for c in CLASSES:
         bpy.utils.register_class(c)
+    if _on_load not in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(_on_load)
+    if not bpy.app.background and _box_handle is None:
+        _box_handle = bpy.types.SpaceView3D.draw_handler_add(_draw_boxes, (), 'WINDOW', 'POST_VIEW')
+        bpy.app.timers.register(_on_load, first_interval=0.5)
 
 
 def unregister():
+    global _box_handle
+    if _box_handle is not None:
+        try:
+            bpy.types.SpaceView3D.draw_handler_remove(_box_handle, 'WINDOW')
+        except (ValueError, RuntimeError):
+            pass
+        _box_handle = None
+    if _on_load in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(_on_load)
     for c in reversed(CLASSES):
         try:
             bpy.utils.unregister_class(c)

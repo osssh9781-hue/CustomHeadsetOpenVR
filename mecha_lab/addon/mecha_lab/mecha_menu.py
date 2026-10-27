@@ -109,6 +109,25 @@ def _middle_kind(context):
     return 'PROFILE' if tool in {'BASE', 'CBASE'} else 'SHAPES'
 
 
+def draw_modes(context):
+    """0.24.58 [(key, label, on)] - the Line / Sketch switches the drawing tool in use supports."""
+    from . import lasso_line, lasso_sketch
+    tool = ts.effective_tool(context)
+    brush = getattr(context.scene, 'mch_brush', None)
+    if brush is None:
+        return []
+    out = []
+    if tool in lasso_line.MODES:
+        out.append(('line', 'Line', bool(brush.line_mode)))
+    if tool in lasso_sketch.MODES or tool in {'BASE', 'CBASE'}:
+        on = bool(getattr(brush, 'sketch_first', False))
+        if tool in {'BASE', 'CBASE'}:
+            pg = getattr(context.scene, 'mch_base' if tool == 'BASE' else 'mch_cbase', None)
+            on = bool(getattr(pg, 'sketch', on))
+        out.append(('sketch', 'Sketch', on))
+    return out
+
+
 def build(context, mx, my, region_w, region_h, S=1.0):
     """The whole menu as a list of Items (region px), placed around the mouse and kept on screen."""
     from . import quick_hud, tool_recent
@@ -217,6 +236,12 @@ def build(context, mx, my, region_w, region_h, S=1.0):
                             label, icon, on, True, action))
         rows = (len(shapes) + scol - 1) // scol
         y -= rows * st + (rows - 1) * 6 * S
+    modes = draw_modes(context)
+    if modes:                                   # 0.24.58 Line / Sketch on / off right here
+        y -= 12 * S + 30 * S
+        w = (inner - (len(modes) - 1) * 6 * S) / len(modes)
+        for k, (key, label, on) in enumerate(modes):
+            mid.append(Item('seg', px0 + k * (w + 6 * S), y, w, 28 * S, label, '', on, True, ('mode', key)))
     its = quick_hud.items(context)
     if its:
         y -= 16 * S
@@ -356,6 +381,14 @@ def run(context, item, ctrl=False, hold=False):
         return False
     if kind == 'ui_size':
         set_ui_size(ui_size() + 0.1 * a[1])
+        return False
+    if kind == 'mode':                          # 0.24.58 Line / Sketch
+        on = dict((k, v) for k, _l, v in draw_modes(context)).get(a[1], False)
+        if a[1] == 'line':
+            context.scene.mch_brush.line_mode = not on
+        else:
+            from . import lasso_sketch
+            lasso_sketch.set_on(context, not on)
         return False
     if kind == 'fav_set':
         ids = [s[0] for s in tool_recent.SETS]

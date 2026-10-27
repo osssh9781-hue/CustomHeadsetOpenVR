@@ -160,6 +160,111 @@ def miter(total, k, cap=3.0):
     return m if m.length <= cap else m.normalized() * cap
 
 
+def _chains(edges):
+    """The rim as ordered runs of vertices: [(verts, closed)].  A vertex where 3+ rim edges meet ends a run."""
+    nbr = {}
+    for e in edges:
+        a, b = e.verts
+        nbr.setdefault(a, []).append(b)
+        nbr.setdefault(b, []).append(a)
+    seen_e = set()
+    out = []
+
+    def walk(start, nxt):
+        run = [start]
+        prev, cur = start, nxt
+        while True:
+            seen_e.add(frozenset((prev.index, cur.index)))
+            run.append(cur)
+            if cur is start:
+                return run[:-1], True
+            if len(nbr[cur]) != 2:
+                return run, False
+            n2 = nbr[cur][0] if nbr[cur][1] is prev else nbr[cur][1]
+            if frozenset((cur.index, n2.index)) in seen_e:
+                return run, False
+            prev, cur = cur, n2
+    for v, ns in nbr.items():                     # open runs first: from their ends / junctions
+        if len(ns) != 2:
+            for n in ns:
+                if frozenset((v.index, n.index)) not in seen_e:
+                    out.append(walk(v, n))
+    for v, ns in nbr.items():                     # then the closed loops
+        for n in ns:
+            if frozenset((v.index, n.index)) not in seen_e:
+                out.append(walk(v, n))
+    return out
+
+
+def smooth_frames(bm, edges, acc, width, corner_deg=35.0):
+    """0.24.58 Per rim point (d_face, d_wall, out, corner?): the directions averaged over the rim within ``width``
+    either side, so a hand-drawn (slightly zigzag) cut gets one smooth bevel instead of a notch at every kink -
+    big widths crossed their neighbours' profiles (torn faces, very slow Booleans).  A real corner at that scale
+    (the rim turns more than ``corner_deg`` between ``width`` before and after) keeps its exact mitred profile."""
+    import math
+    out = {}
+    cos_c = math.cos(math.radians(corner_deg))
+    for run, closed in _chains(edges):
+        n = len(run)
+        if n < 3:
+            continue
+        pos = [v.co.copy() for v in run]
+        s = [0.0]
+        for i in range(1, n):
+            s.append(s[-1] + (pos[i] - pos[i - 1]).length)
+        total = s[-1] + ((pos[0] - pos[-1]).length if closed else 0.0)
+        for i, v in enumerate(run):
+            if v.index not in acc:
+                continue
+            sums = [Vector(), Vector(), Vector()]
+            before = after = None
+            for j, u in enumerate(run):
+                d = s[j] - s[i]
+                if closed:
+                    d = (d + 0.5 * total) % total - 0.5 * total
+                if abs(d) > width or u.index not in acc:
+                    continue
+                df, dw, o, _k = acc[u.index]
+                sums[0] += df.normalized()
+                sums[1] += dw.normalized()
+                sums[2] += o.normalized()
+                if d < 0 and (before is None or d < before[0]):
+                    before = (d, pos[j])
+                if d > 0 and (after is None or d > after[0]):
+                    after = (d, pos[j])
+            corner = True                         # no neighbour within the width (long straight edges) / a run's
+            if before is not None and after is not None:      # end: the exact mitred profile, as before
+                t0, t1 = pos[i] - before[1], after[1] - pos[i]
+                if t0.length > 1e-12 and t1.length > 1e-12:
+                    corner = t0.normalized().dot(t1.normalized()) < cos_c
+            if all(x.length > 1e-9 for x in sums):
+                out[v.index] = (sums[0].normalized(), sums[1].normalized(), sums[2].normalized(), corner)
+    return out
+
+
+def room_limits(bm, acc, frames, width):
+    """0.24.58 How wide the bevel may be at each rim point: under half the part's thickness along the old surface
+    and across the cut wall (rays from just inside the corner) - a width bigger than the part made the two sides'
+    bevels run into each other."""
+    from mathutils.bvhtree import BVHTree
+    bvh = BVHTree.FromBMesh(bm)
+    lim = {}
+    for vi, (df, dw, o, k) in acc.items():
+        fr = frames.get(vi)
+        dirs = (fr[0], fr[1]) if fr is not None and not fr[3] else (miter(df, k), miter(dw, k))
+        o = (fr[2] if fr is not None else o.normalized())
+        q = bm.verts[vi].co - o * (width * 0.02)
+        w = width
+        for d in dirs:
+            if d.length < 1e-9:
+                continue
+            hit = bvh.ray_cast(q, d.normalized(), width * 4.0 * d.length)
+            if hit[0] is not None:
+                w = min(w, 0.45 * hit[3] / d.length)
+        lim[vi] = max(w, width * 0.05)
+    return lim
+
+
 def mark_rim(mesh, mode, width, segments):
     """Store the rim edges and each rim point's profile on ``mesh``.  Returns (profile size, rim edge count)."""
     bm = bmesh.new()
@@ -195,11 +300,19 @@ def mark_rim(mesh, mode, width, segments):
         cols = [[0.0, 0.0, 0.0] * len(bm.verts) for _j in range(n)]
         dcol = [0.0, 0.0, 0.0] * len(bm.verts)
         bm.verts.ensure_lookup_table()
+        frames = smooth_frames(bm, edges, acc, width)
+        lim = room_limits(bm, acc, frames, width)
+        lim = _smooth_limits(edges, lim, width)
+        LAST['limited'] = min(lim.values()) if lim and min(lim.values()) < width * 0.98 else None
         for vi, (df, dw, out, k) in acc.items():
             if df.length < 1e-9 or dw.length < 1e-9 or out.length < 1e-9:
                 continue
-            pts = profile_points(bm.verts[vi].co, miter(df, k), miter(dw, k), out.normalized(), width, mode,
-                                 segments)
+            fr = frames.get(vi)
+            if fr is not None and not fr[3]:
+                d_face, d_wall, o = fr[0], fr[1], fr[2]
+            else:
+                d_face, d_wall, o = miter(df, k), miter(dw, k), out.normalized()
+            pts = profile_points(bm.verts[vi].co, d_face, d_wall, o, lim.get(vi, width), mode, segments)
             for j, q in enumerate(pts):
                 cols[j][vi * 3:vi * 3 + 3] = list(q)
             dcol[vi * 3:vi * 3 + 3] = list((dw.normalized() - df.normalized()).cross(out.normalized()))
@@ -271,6 +384,28 @@ def _clean(res, before):
     v1, open_edges = _volume(res)
     v0, _o = _volume(before)
     return open_edges == 0 and v0 > 0 and 0.5 * v0 < v1 <= v0 * 1.0001
+
+
+def _smooth_limits(edges, lim, width, passes=12):
+    """The width limits eased along the rim (a smaller limit spreads to its neighbours, never grows)."""
+    nbr = {}
+    for e in edges:
+        a, b = e.verts[0].index, e.verts[1].index
+        nbr.setdefault(a, []).append(b)
+        nbr.setdefault(b, []).append(a)
+    w = dict(lim)
+    if all(v >= width * 0.98 for v in w.values()):
+        return w
+    for _p in range(passes):
+        nxt = {}
+        for vi, val in w.items():
+            ns = [w[j] for j in nbr.get(vi, []) if j in w]
+            nxt[vi] = min(val, 0.5 * val + 0.5 * sum(ns) / len(ns)) if ns else val
+        w = nxt
+    return w
+
+
+LAST = {}
 
 
 def finish(mesh, mode='CHAMFER', width=0.01, segments=3):
