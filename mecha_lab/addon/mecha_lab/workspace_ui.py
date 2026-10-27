@@ -2295,6 +2295,9 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         ('BOTTOM', 'Bottom', '0.24.59 the main menu along the bottom; the actions where the bottom toolbar was, the '
                              'Layers panel on the left'),
         ('LEFT', 'Left', 'The 0.24.58 column at the left, with the bottom toolbar and the actions card')])
+    zbrush_sculpt: BoolProperty(name='ZBrush Sculpt', default=True, update=_ui_changed,
+                                description='0.24.60 Sculpt Mode in the MECHA LAB tab: ZBrush keys, names and shelves '
+                                            '(orange); off = Blender\'s own sculpt keys and panels')
     layers_panel: BoolProperty(name='Layers Panel', default=True,
                                description='0.24.59 parts and groups, Export and the ZBrush Bridge at the left of the '
                                            'viewport (with the tool menu at the bottom)')
@@ -2356,6 +2359,7 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         row = box.row()
         row.prop(self, 'tool_menu', expand=True)
         row.prop(self, 'layers_panel')
+        row.prop(self, 'zbrush_sculpt')
         row = box.row()
         row.prop(self, 'top_bar')
         row.prop(self, 'side_panel')

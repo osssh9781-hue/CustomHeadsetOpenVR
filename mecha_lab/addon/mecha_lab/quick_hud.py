@@ -126,7 +126,12 @@ def value_text(data, prop):
     v = getattr(data, prop)
     name = rna.name or prop
     if rna.type == 'ENUM':
-        label = next((i.name for i in rna.enum_items if i.identifier == v), str(v))
+        label = next((i.name for i in rna.enum_items if i.identifier == v), None)
+        if label is None:                          # 0.24.60 a dynamic list (MatCap): ask the UI for the name
+            try:
+                label = bpy.types.UILayout.enum_item_name(data, prop, v) or str(v)
+            except (TypeError, AttributeError):
+                label = str(v)
         return f'{name}  {label}'
     if rna.type == 'BOOLEAN':
         return f'{name}  {"On" if v else "Off"}'
@@ -137,7 +142,8 @@ def value_text(data, prop):
         return f'{name}  {math.degrees(v):.0f}°'
     if rna.subtype == 'FACTOR' or rna.subtype == 'PERCENTAGE':
         return f'{name}  {v:.2f}'
-    return f'{name}  {v:.3f}'
+    prec = getattr(rna, 'precision', 3)
+    return f'{name}  {v:.{prec}f}' if prec < 3 else f'{name}  {v:.3f}'      # 0.24.60 '5.0' (thousands)
 
 
 def drag_value(data, prop, start, dx, fine=False, px=None):
@@ -568,9 +574,9 @@ class MCH_GGT_ui_catch(bpy.types.GizmoGroup):
 
     @classmethod
     def poll(cls, context):
-        from . import bottom_bar
+        from . import bottom_bar, zb_sculpt
         try:
-            return bottom_bar.ui_active(context)
+            return bottom_bar.ui_active(context) or zb_sculpt.on(context)     # 0.24.60 + the ZBrush screen
         except (AttributeError, KeyError, TypeError, ReferenceError):
             return False
 

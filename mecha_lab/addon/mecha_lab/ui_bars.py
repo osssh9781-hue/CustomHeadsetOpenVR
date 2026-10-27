@@ -416,6 +416,13 @@ def dock_top(context, k=1.0, region_w=None):
 def _build_all(context, region, k):
     out = []
     try:
+        from . import zb_sculpt
+        if zb_sculpt.on(context):                     # 0.24.60 Sculpt Mode in MECHA LAB: the ZBrush screen
+            from . import zb_ui
+            return zb_ui.items(context, region.width, region.height, k)
+    except (AttributeError, KeyError, TypeError, ReferenceError, RuntimeError):
+        return out
+    try:
         if bar_on(context):
             out += bar_items(context, region.width, region.height, k)
         if strip_on(context):
@@ -587,7 +594,15 @@ def _draw():
         items = all_items(context)
         if items:
             from .ui_gpu import ui_factor
-            draw(items, hovered(context, items), ui_factor(context, context.region), context)
+            from . import mecha_menu, ui_gpu, zb_sculpt
+            orange = zb_sculpt.on(context)            # 0.24.60 the ZBrush screen: orange
+            keep = (ui_gpu.ACCENT, mecha_menu.FILL)
+            if orange:
+                ui_gpu.ACCENT, mecha_menu.FILL = zb_sculpt.ORANGE, zb_sculpt.ORANGE_FILL
+            try:
+                draw(items, hovered(context, items), ui_factor(context, context.region), context)
+            finally:
+                ui_gpu.ACCENT, mecha_menu.FILL = keep
     except Exception:          # never break viewport drawing
         pass
     from . import ui_gpu
@@ -622,11 +637,12 @@ class MCH_OT_ui_scroll(bpy.types.Operator):
     bl_options = {'INTERNAL'}
 
     def invoke(self, context, event):
-        from . import layers_panel, side_panel
+        from . import layers_panel, side_panel, zb_ui
         try:
             x, y = event.mouse_region_x, event.mouse_region_y
             panel = side_panel if side_panel.over(context, x, y) else \
-                layers_panel if layers_panel.over(context, x, y) else None
+                layers_panel if layers_panel.over(context, x, y) else \
+                zb_ui if zb_ui.over_shelf(context, x, y) else None
             if panel is None:
                 return {'PASS_THROUGH'}
             from .ui_gpu import ui_factor
@@ -660,8 +676,10 @@ def register():
     wmt.mch_side_min = BoolProperty(default=False, options={'SKIP_SAVE'})
     for c in CLASSES:
         bpy.utils.register_class(c)
-    from . import layers_panel
+    from . import layers_panel, zb_sculpt, zb_ui
     layers_panel.register()
+    zb_sculpt.register()                              # 0.24.60 ZBrush-style sculpting
+    zb_ui.register()
     wm = bpy.context.window_manager
     kc = wm.keyconfigs.addon if wm else None
     if kc is not None:
@@ -693,11 +711,12 @@ def unregister():
         except Exception:
             pass
     _keymaps.clear()
-    from . import layers_panel
-    try:
-        layers_panel.unregister()
-    except RuntimeError:
-        pass
+    from . import layers_panel, zb_sculpt, zb_ui
+    for mod in (zb_ui, zb_sculpt, layers_panel):
+        try:
+            mod.unregister()
+        except RuntimeError:
+            pass
     for c in reversed(CLASSES):
         try:
             bpy.utils.unregister_class(c)
