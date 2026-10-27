@@ -1,5 +1,46 @@
 # CHANGELOG
 
+## 0.24.65 — Ctrl+Z는 한 일만 되돌림(설정은 그대로), 지브러시 빨간 커서 · Accu · 압력 곡선 · 알파 기억, 도구 검색 · 프리셋 (2026-10-27)
+
+- **Ctrl+Z가 설정까지 되돌리던 것**: 화면 버튼으로 설정을 바꿀 때마다 되돌리기 단계가 생기던 것을 없앰(설정 = 장면의 도구 설정 · 브러시 · 크기/세기 · 화면 설정, 지금 고치고 있는 라이브 부품 값은 예전처럼 단계). 화면 버튼으로 실행한 작업(DynaMesh · Mirror 등)은 Blender 버튼처럼 자기 단계를 가짐(전에는 클릭 처리 안에서 빠져서 Ctrl+Z가 더 앞으로 가며 설정까지 되돌림). 되돌리기 / 다시 하기 직전의 설정(모든 도구 설정의 숫자 · 스위치 · 선택, 지브러시 브러시 크기 · 세기 · 대칭 · 캐비티 · 브러시 자체 설정)을 그대로 다시 넣음(업데이트 없이 저장값만 — 다시 만들지 않음).
+- **지브러시**: 빨간 브러시 원(Zadd / Zsub, 브러시마다 한 번 — 나중에 바꾼 색은 유지), **Accu**(한 획이 자기 위에 쌓이는지 = Blender Accumulate, 처음엔 꺼짐), **Pressure**(펜 압력 → 세기 곡선: ZBrush 살살 시작 / Linear / Soft / Firm), 왼쪽 Stroke 칸.
+- **알파가 획 방향을 따라감(Directional, 기본 켜짐)**: 지브러시처럼 세로 알파로 가로로 그어도 알파가 획 방향으로 돌아서 매끈한 줄(전에는 고정이라 오돌토돌한 줄무늬). Flh / Flv / Rot / Invr 아래 **Directional** 버튼으로 끄면 화면에 고정. 알파와 함께 기억, Ctrl+Z에도 유지.
+- **메카닉 랩에서 펜 오른쪽 버튼**(지브러시 화면에서만 되던 것): 버튼을 누른 채 펜이 조금 떨려도(14px까지, 마우스 6px) 클릭으로 봄, 그리기 도구에서 태블릿 드라이버가 누름을 두 번 보내도 '오른쪽 두 번 = 도구 나가기'로 보지 않음, Mecha Menu가 펜의 반복된 여는 누름에 바로 닫히지 않음.
+- **알파 기억**: 브러시마다 알파와 Flh / Flv / Rot / Invr를 이 파일에 기억 — 그 브러시를 다시 고르면, 획을 시작할 때, 파일을 다시 열면 돌아옴. Alpha Off는 잊음.
+- **예전 브러시 복사본 정리**: 0.24.60 ~ 0.24.62가 남긴 "… (ZB)" 브러시가 있으면 알파 창에 **Clean N old** 버튼(그 복사본과 그것만 쓰던 알파 텍스쳐 / 이미지 삭제, 지금 브러시는 그대로).
+- **DynaMesh + 마스크**: 마스크된 부분이 자기 폴리그룹이 되고(리메시를 거쳐도 유지), 마스크는 지워짐(지브러시처럼). 메시의 Preserve Attributes 설정은 원래대로.
+- **도구 검색**: 오브젝트 모드에서 **Ctrl+F** 또는 동작 줄의 **Search Tools** — 이름 일부를 치고 Enter.
+- **도구 프리셋**: 오른쪽 패널 맨 아래 접힌 **Presets** — Save(이름) / Load(목록) / Delete. 그 도구의 설정을 add-on 사용자 폴더에 저장(모든 파일에서, .blend 안에는 안 들어감). Load는 되돌리기 단계(라이브 부품이 바뀔 수 있어서).
+- **방사 배열(Radial) 보강**: 큰 Size(1e25)와 라이브 불리언에서 Blender 5.2가 죽던 것, 겹치는 이빨 2048개에서 메모리가 바닥나던 것을 막음: 너무 크거나 무거운 배열은 라이브 불리언 / 굽기 전에 멈추고 이유를 알림. 굽기 · 불리언 한도는 이 컴퓨터 메모리에 맞춰 늘어남(64GB면 더 큰 배열 허용)
+- 이미 들어 있던 것 확인(목록에 남아 있던 옛 항목): Cloth Plate 접힘 방향(위 / 아래 / 랜덤), 크리처 스킨(악어 · 용 · 고질라 · 두꺼비 · 코끼리 · 악어 등) · 크리처 쉘(무작위 면 · 혹 · 가장자리 들림 · 중력), 판 · 나사 스탬프의 미러 따라가기.
+- 테스트: Blender 5.2.3 bpy 161개 파일 4,394/4,394, Blender 5.0.1 bpy 161개 파일 4,393/4,393 통과(실패 0). ZIP sha256 `1185379e92e53b1dbe97eaad10f0110a09e5f29d85d458e4c390ff0c8de533b2`.
+
+## 0.24.64 — 알파를 지금 브러시에 바로 (2026-10-27)
+
+- 실제 블렌더 창에서 알파가 "Alpha Off"로 남던 것: 알파용 브러시 복사본으로 블렌더가 바꿔 주지 않았음. 블렌더 기본 브러시는 다른 .blend에서 링크한 텍스쳐는 받으므로, 알파마다 작은 .blend(일반 + 반전)를 add-on 사용자 폴더에 한 번 만들고 링크해서 **지금 쓰는 브러시에 바로**. 복사본 · 재시도 없음, 작업 파일에 새로 저장되는 것 없음. Invr = 반전 짝으로 바꿈.
+
+## 0.24.63 — 지브러시 화면에서 오른쪽 드래그 = 화면 회전 (2026-10-27)
+
+- 지브러시처럼 오른쪽 버튼 드래그(펜 옆 버튼을 띄운 채로)로 모델 위에서도 화면 회전, Alt = 이동(드래그 중 Alt 떼면 확대 / 축소), 그냥 오른쪽 클릭 = 브러시 메뉴. 키 안내에 표시.
+
+## 0.24.62 — 알파 브러시 복사본 전환 재시도 (2026-10-27)
+
+- (0.24.64에서 링크 텍스쳐 방식으로 바뀜) 블렌더가 복사본을 바로 못 찾을 때 0.25초마다 4초 동안 다시 시도, 끝내 안 되면 알파 칸 아래에 표시.
+
+## 0.24.61 — 하이폴 모드, Focal Shift 곡선, LazyStep 간격, Shift+D 복사 (2026-10-27)
+
+- **하이폴 모드**(Preferences / 오른쪽 세로 막대 **HiPoly**): 지브러시 화면에 있는 동안 Blender Sculpt Deform Only + Delay Viewport Updates, 무거운 화면 표시(와이어 · 통계 · 면 방향 · 캐비티 · 그림자 · X-Ray · 외곽선) 끔 — 나가거나 끄면 모두 원래대로(저장값은 화면에, 되돌리기 기록에는 안 남음; 창 두 개가 같은 장면이면 마지막 창이 나갈 때 되돌림). SubTool 칸에 무거운 것(Shape Key · 켜진 모디파이어 …) 표시. Blender Preferences는 안내만.
+- **Focal Shift**: 5단계 프리셋 대신 지브러시 모양 그대로의 곡선(마이너스 = 윗면 평평, 플러스 = 뾰족, 모든 값마다).
+- **LazyMouse**: LazyStep = 점 간격(지브러시), LazySmooth = 따라오는 부드러움.
+- 알파는 화면 기준 투영 + 브러시 원 안에 보임. **Shift+D = Duplicate**(D는 SDiv 올리기). **G**는 지브러시 화면에서 오브젝트 모드로 나가지 않음.
+
+## 0.24.60 — 지브러시식 조각 화면 (2026-10-27)
+
+- MECHA LAB 탭의 Sculpt Mode = 지브러시 이름 · 키 · 선반(주황): 왼쪽 SubTool / Geometry / Masking / Stroke …, 브러시 칸(브러시 · 알파 · 텍스쳐 · 스트로크 · 메테리얼 · 색 · 대칭 · Clip / Trim · Initialize, 화면이 낮으면 스크롤), 위쪽 막대(Edit / Draw / Move …, Mat, Zadd / Zsub, Z Intensity / Focal Shift / Draw Size, Dynamic …), 오른쪽 보기 막대 + SubTool 목록, 아래 브러시 줄, 키 안내. 오른쪽 위 **MECHA LAB | ZBRUSH** 전환 + **STYLE ZBrush | Blender**.
+- 마우스: 모델 위 = 조각(Alt Zsub, Shift Smooth, Ctrl MaskPen), 빈 곳 드래그 = 회전(Shift 스냅) / Alt 이동 / Alt 떼면 확대, Ctrl+클릭 = 마스크 반전, Ctrl+올가미 = 마스크, Ctrl+빈 곳 드래그 = 마스크 지우기 / 마스크 없으면 DynaMesh(버튼이 켜진 SubTool), Ctrl+Shift = 보이기 / 숨기기, Alt+다른 SubTool 클릭 = 선택. 키: Space / S / U / O 메뉴(밖으로 나가면 닫힘), B 브러시(B S T …), X 대칭, D SDiv, Ctrl+D Divide, Ctrl+W 폴리그룹. 오브젝트 모드에서도 빈 곳 드래그 = 회전.
+- DynaMesh = 점 개수로 복셀 리메시(버튼이 켜져 있는 동안 Ctrl+드래그로 다시), ZRemesher = Quadriflow, SDiv / Divide / Del Higher / Del Lower = Multires, Mask By Cavity(Intensity · Blur · Inv), CavityMask, Split / Extract / Groups / Merge / Decimate / Check · Fix Mesh / Append / Duplicate / Delete, OBJ / STL / FBX.
+- 알파(기본 14개 · 지브러시 ZAlphas · 내 폴더), 텍스쳐 스탬프(Paint + 드래그 = DragRect, 크기 · 회전 · 대칭 · 마스크 보호 · Rgb Intensity, 기본 텍스쳐 11개), 메테리얼 / 스트로크 / 텍스쳐 썸네일 선택창, 점 개수 100만부터 Mil 표시, 리메시를 지브러시 점 개수로(Active Points Count).
+
 ## 0.24.59 — 아래 메인 메뉴, 레이어 창, 위쪽 공통 막대, 오른쪽 도구 패널, 빠른 컷, 깔끔한 GN 베벨 (2026-10-27)
 
 - **위쪽 막대(가운데 위)**: 도형(라쏘 / 커브 라쏘 / 사각 / 원 / 타원 / 자유 / 커스텀)을 큰 아이콘으로, Line · Sketch · Slow Line(켜면 Strength · Radius 막대), Line 켜면 굵기 · 끝 모양 · Taper · Pressure · Attach Ends, Surface · Through · Sim, 대상(Auto / Selected / Active), 컷 계열은 깊이(Through All / From Surface + 깊이 막대) · Auto Apply, Ortho. 도구가 가진 것만, 좁으면 두세 줄로(줄 너비 고르게). Blender 위쪽 도구 헤더는 커스텀 PNG 고르는 칸만 남김.
