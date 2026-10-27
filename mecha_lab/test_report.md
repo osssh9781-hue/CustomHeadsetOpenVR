@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.71
+# Test Report — Mecha Lab 0.24.72
+
+## 0.24.72 결과: Blender 5.2.3 bpy 163개 파일 4,508/4,508 통과(실패 0, `tests/test_log_bpy523_v02472.txt`). 새 test_v02472_hardedges 32/32: 상자 → 12엣지 Sharp / Crease / 베벨 가중치, 폭 0.1 · 1단 = 챔퍼 26면 · 크기 그대로 · 닫힘, 선반 값 바꾸면 라이브 베벨 즉시 반영, Subdivide 2 + 크리즈 = 상자 유지(끄면 둥글게), Weighted Normals 끄기, Clear, Outer Only(L자 안쪽 모서리 베벨 없음), 데시메이트 부품(평면 합치기로 면 수 감소 · 닫힘 · 원래 크리즈의 100%가 찾은 엣지 위 · 찾은 엣지는 모두 실제 크리즈 위 · 라이브 베벨 닫힘), Merge Flats 끄면 삼각형 유지, Quad Remesh 결과는 쿼드 유지 + Subdivide + Apply, 지브러시 선반 상자 · 기본값 · 실행 후 조각 모드 · 실제 Ctrl+Z · Apply 뒤 설정이 더 안 바꿈 · 30만 면 넘으면 안내만. 실제 블렌더 화면은 미검증.
 
 ## 0.24.71 결과: Blender 5.2.3 bpy 162개 파일 4,476/4,476 통과(실패 0, `tests/test_log_bpy523_v02471.txt`). 새 테스트 test_v02471_quad 27/27: 엔진 · Windows DLL(mquad 내보내기, KERNEL32 + msvcrt만) · 하드서피스 부품 158k 삼각형 → 2,963면(목표 3,000) 1.7초 · 네모 98% · 점 97%가 엣지 4개 · 구멍 / 3면 엣지 0 · 면 중심 오차 평균 0.8% / 최대 8% (쿼드 한 칸 기준) · 원래 각진 엣지 94%가 쿼드 각진 엣지 위 · 같은 입력 = 같은 결과 · All Quads 100% · 폴리그룹 / 재질 / 마스크 · 12면 상자 · 열린 판 경계 유지 · 지브러시 선반 Quad Remesh 상자(Decimation과 따로) · Half · 선반 실행 후 조각 모드 · 실제 Ctrl+Z 한 번에 원래 메쉬 · Shape Key / Multires 안내. test_v02498 26/26(고른 간격: 복셀 상자 엣지 길이 퍼짐 0.29 → 0.22). C 엔진: AddressSanitizer + UBSan 오류 / 누수 없음(시험 부품 · 사용자 FBX All Quads, 1 · 4스레드 같은 결과), Windows DLL Wine 9.0에서 같은 점 / 면 수. 사용자 FBX(679,100점, 4코어): 2,500 → 2,620면 4.9초(네모 93%) / 10k → 10,202면 7.6초(96%) / All Quads 10k → 10,294면 4.6초(100%), 모두 구멍 · 3면 엣지 0. ZIP 설치 테스트 19/19. 실제 블렌더 화면 · Windows 속도는 미검증.
 

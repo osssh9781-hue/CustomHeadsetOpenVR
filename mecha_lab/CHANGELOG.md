@@ -10,7 +10,7 @@
 - 흐름: DynaMesh → Decimate(또는 Quad Remesh) → Find Edges → 슬라이더로 베벨 조절 → Apply. 30만 면 넘는 메쉬는 먼저 줄이라고 안내(그대로 베벨하면 블렌더가 오래 멈춤).
 - 측정(헤드리스): 사용자 FBX 679,100점 → Decimate 2%(27,162면) → Find Edges 0.2초: 각진 엣지 3,358개, 평면 합치기로 4,480면, 라이브 베벨 13,010면. Quad Remesh 10k → Find Edges 0.04초(쿼드 그대로) → 베벨 + Subdivide 1 → 56,342면.
 - Find Edges / Apply 직전 Safety Save 사본, Ctrl+Z 한 번에 원래대로(조각 모드 그대로).
-- 테스트: {SUITE}. ZIP sha256 `{SHA}`.
+- 테스트: Blender 5.2.3 bpy 전체 163개 파일 4,508/4,508 통과(`tests/test_log_bpy523_v02472.txt`). 새 test_v02472_hardedges 32개(상자 12엣지 · 크리즈 / 베벨 가중치 · 챔퍼 26면 · 슬라이더 즉시 반영 · Subdivide에서 크리즈 유지 / 끄면 둥글게 · Outer Only(L자 안쪽 모서리) · 데시메이트 부품: 평면 합치기 · 닫힘 · 원래 크리즈 위 · 쿼드 메쉬는 쿼드 유지 · Apply · Clear · 선반 상자 · 실제 Ctrl+Z · 30만 면 안내). 실제 블렌더 화면(슬라이더 손맛 · 셰이딩)은 미검증. ZIP sha256 `8759fb511e9f91abaf05b9df1574e4cd5e11e14c611153f54566b98231fe11ac`.
 
 ## 0.24.71 — 지브러시 Quad Remesh: 우리 엔진으로 만든 쿼드 리메쉬 (2026-10-27)
 
