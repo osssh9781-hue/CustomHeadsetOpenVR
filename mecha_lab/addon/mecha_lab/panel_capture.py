@@ -133,7 +133,7 @@ class Recorder:
     def separator_spacer(self):
         self._child('sep', factor=0.5)
 
-    def template_icon(self, icon_value=0, scale=1.0):
+    def template_icon(self, icon_value=0, **_k):          # (its size is the sidebar's business)
         self._child('icon', icon_value=icon_value)
 
 
