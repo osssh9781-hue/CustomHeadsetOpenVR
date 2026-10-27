@@ -26,10 +26,19 @@ MOD_SHELL = 'MCH_Extract_Shell'
 MOD_SIDE = 'MCH_Extract_SideBevel'
 
 
+def _rebuild_now(name):
+    ob = bpy.data.objects.get(name)
+    st = getattr(ob, 'mch_extract', None) if ob is not None else None
+    if st is not None and st.is_part and st.region is not None:
+        rebuild(ob)
+
+
 def _rebuild_update(self, context):
     ob = self.id_data
     if isinstance(ob, bpy.types.Object) and self.is_part and self.region is not None:
-        rebuild(ob)
+        from . import live_queue                 # 0.24.73 at a steady pace while a slider is dragged (R10)
+        name = ob.name
+        live_queue.queue(('face_extract', name), lambda: _rebuild_now(name))
 
 
 def _p(prop, **kw):
@@ -441,6 +450,8 @@ class MCH_OT_extract_apply(bpy.types.Operator):
 
     def execute(self, context):
         from . import core_geometry as cg
+        from . import live_queue
+        live_queue.flush()                  # 0.24.73 a rebuild still waiting goes in before applying
         done = []
         for ob in _part_targets(context):
             for name in (MOD_SIDE, MOD_SHELL):

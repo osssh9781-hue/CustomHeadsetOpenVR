@@ -1316,16 +1316,19 @@ _SIGS = {}
 
 
 def _source_sig(src, depsgraph):
-    """Placement + evaluated bounds (modifiers included) of a Repeat source."""
+    """Placement + evaluated bounds + a checksum of every point (modifiers included) of a Repeat source.  0.24.73
+    the points' checksum (crc32 of the coordinates) replaces their summed size: one point moved up and another down
+    by the same amount gave the same sum - the Repeat missed the change."""
     try:
         ev = src.evaluated_get(depsgraph)
         geo = ()
         me = ev.data if ev.type == 'MESH' else None
         if me is not None:
+            import zlib
             import numpy as np
             co = np.empty(len(me.vertices) * 3, dtype=np.float32)
             me.vertices.foreach_get('co', co)
-            geo = (len(me.vertices), len(me.polygons), round(float(np.abs(co).sum()), 5))
+            geo = (len(me.vertices), len(me.polygons), zlib.crc32(co.tobytes()))
         return (src.data.name if src.data else '', tuple(round(x, 6) for row in src.matrix_world for x in row),
                 tuple(round(c, 6) for corner in ev.bound_box for c in corner), geo)
     except (ReferenceError, AttributeError, RuntimeError):
@@ -1346,8 +1349,13 @@ def _on_depsgraph(scene, depsgraph):
     # 0.24.3 compare each source's state instead of reading depsgraph.updates (it can list IDs that were
     # just removed - an add-on deleting a temporary mesh, or Ctrl+Z - and reading those crashed Blender)
     todo = []
+    seen = {}                            # 0.24.73 a source shared by several Repeats is read once per update
     for ob in repeats:
-        sig = _source_sig(ob.mch_tube.source, depsgraph)
+        src = ob.mch_tube.source
+        key = src.name
+        if key not in seen:
+            seen[key] = _source_sig(src, depsgraph)
+        sig = seen[key]
         if _SIGS.get(ob.name) != sig:
             if ob.name in _SIGS:
                 todo.append(ob)

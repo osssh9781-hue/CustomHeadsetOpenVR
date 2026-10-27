@@ -53,6 +53,7 @@ CHAMFER_SUPPORT = 0.12          # Chamfer: the support loops sit this share of t
 SRC = 'mch_he_source'           # object: the dense original (off-scene, kept by a fake user) Fit to Original uses
 FIT_GROUP = 'mch_he_fit'        # point group: 1 = fit onto the original, 0 = stay (the hard edges)
 FLAT = math.radians(1.0)        # Merge Flats: faces closer than this to flat are joined
+FAST_MERGE = 20000              # ... from this many triangles the flat points are emptied by the engine first
 SPECK = 0.02                    # a hard edge on its own shorter than this x the part size is not a hard edge
 MAX_POLYS = 300000              # beyond this: Decimate / Quad Remesh first (a bevel on a DynaMesh would take ages)
 
@@ -83,10 +84,67 @@ def _drop_specks(hard, size):
                                     and e.calc_length() < SPECK * size)]
 
 
+def _empty_flats(ob, angle):
+    """0.24.73 Merge Flats on a big triangle mesh: the points inside flat areas (every face around within FLAT, no
+    hard edge) are taken away first by the decimation engine with every other point locked - the shape can't change
+    (only flat points go) and Blender's dissolve then has a few big triangles to join instead of 200,000 (it took 30 s
+    there).  Point attributes / UVs don't carry over; materials do.  Returns True when the mesh was replaced."""
+    from . import edge_mesh as em
+    from . import fast_decimate as fd
+    me = ob.data
+    if not fd.available() or getattr(me, 'shape_keys', None) is not None:
+        return False
+    V, T, mats = em._read(me)
+    if len(T) < FAST_MERGE:
+        return False
+    V64 = V.astype(np.float64)
+    n = np.cross(V64[T[:, 1]] - V64[T[:, 0]], V64[T[:, 2]] - V64[T[:, 0]])
+    n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-30)
+    avg = np.zeros_like(V64)
+    for k in range(3):
+        np.add.at(avg, T[:, k], n)
+    avg /= np.maximum(np.linalg.norm(avg, axis=1, keepdims=True), 1e-30)
+    worst = np.ones(len(V))
+    for k in range(3):
+        np.minimum.at(worst, T[:, k], (n * avg[T[:, k]]).sum(1))
+    lock = (worst < math.cos(FLAT)).astype(np.uint8)
+    H = em.hard_lines(V64, T, angle)
+    lock[H.ravel()] = 1
+    lp, _o1, _o2, turn, _deg = em.line_points(V64, H)
+    lock[lp[turn < FLAT]] = 0                # (points along a straight hard edge go too: along it nothing changes,
+                                             # and kept they leave needle triangles that block the merge)
+    if lock.all():
+        return False
+    oV, oT, _vs, fs = fd.run(V, T, 4, keep_borders=True, locked=lock)
+    if len(oT) >= len(T):
+        return False
+    new = fd.fresh_like(me)
+    try:
+        for name in [a.name for a in new.attributes]:
+            a = new.attributes.get(name)
+            if a is not None and not name.startswith('.') and name not in ('position', 'material_index'):
+                try:
+                    new.attributes.remove(a)
+                except RuntimeError:
+                    pass
+        fd.build_mesh(new, oV, oT)
+        if len(new.materials) > 1:
+            new.polygons.foreach_set('material_index', mats[fs].astype(np.int32))
+    except Exception:
+        bpy.data.meshes.remove(new)
+        raise
+    fd.swap_mesh(ob, new)
+    return True
+
+
 def find(ob, st):
     """Mark the hard edges of mesh object ``ob`` (Object Mode).  Returns (hard edges, polygons before, after)."""
     me = ob.data
     faces0 = len(me.polygons)
+    if st.he_merge and faces0 >= FAST_MERGE:
+        tri_share = sum(1 for _p in me.polygons if _p.loop_total == 3) / max(1, faces0) if faces0 < 2_000_000 else 1.0
+        if tri_share > 0.5 and _empty_flats(ob, st.he_angle):
+            me = ob.data
     size = _size(me)
     bm = bmesh.new()
     try:

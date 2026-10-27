@@ -130,25 +130,53 @@ def _shade(me, angle):
     me.update()
 
 
+PT_CHUNK = 256                  # 0.24.73 points x segments are compared in blocks: all at once a (N, M, 2) array
+SEG_CHUNK = 128                 # (50,000 points x 2,000 segments = 1.6 GB per temporary) took the memory
+
+
 def _inside(pts, segs):
-    """Even-odd test of 2D points (N, 2) against segments (M, 2, 2)."""
+    """Even-odd test of 2D points (N, 2) against segments (M, 2, 2) (in blocks: the crossings are counted per block)."""
     import numpy as np
-    a, b = segs[:, 0], segs[:, 1]
-    px, py = pts[:, 0:1], pts[:, 1:2]
-    ay, by_ = a[None, :, 1], b[None, :, 1]
-    cross = (ay > py) != (by_ > py)
-    with np.errstate(divide='ignore', invalid='ignore'):
-        x = a[None, :, 0] + (py - ay) * (b[None, :, 0] - a[None, :, 0]) / (by_ - ay)
-    return ((cross & (px < x)).sum(1) % 2) == 1
+    out = np.zeros(len(pts), bool)
+    for i in range(0, len(pts), PT_CHUNK):
+        p = pts[i:i + PT_CHUNK]
+        px, py = p[:, 0:1], p[:, 1:2]
+        odd = np.zeros(len(p), bool)
+        for j in range(0, len(segs), SEG_CHUNK):
+            s = segs[j:j + SEG_CHUNK]
+            a, b = s[:, 0], s[:, 1]
+            ay, by_ = a[None, :, 1], b[None, :, 1]
+            cross = (ay > py) != (by_ > py)
+            with np.errstate(divide='ignore', invalid='ignore'):
+                x = a[None, :, 0] + (py - ay) * (b[None, :, 0] - a[None, :, 0]) / (by_ - ay)
+            odd ^= ((cross & (px < x)).sum(1) % 2) == 1
+        out[i:i + len(p)] = odd
+    return out
 
 
-def _seg_dist(pts, segs):
+def _seg_dist_block(pts, segs):
     import numpy as np
     a, b = segs[None, :, 0], segs[None, :, 1]
     d = b - a
     t = ((pts[:, None] - a) * d).sum(2) / np.maximum((d * d).sum(2), 1e-30)
     q = a + d * np.clip(t, 0.0, 1.0)[..., None]
     return np.sqrt(((pts[:, None] - q) ** 2).sum(2)).min(1)
+
+
+def _seg_dist(pts, segs):
+    """Distance of each 2D point (N, 2) to the nearest segment (M, 2, 2), in blocks (same result, a fraction of the
+    memory)."""
+    import numpy as np
+    if not len(segs):
+        raise ValueError('Quad Remesh: no outline segments')
+    out = np.empty(len(pts), np.float64)
+    for i in range(0, len(pts), PT_CHUNK):
+        p = pts[i:i + PT_CHUNK]
+        best = np.full(len(p), np.inf)
+        for j in range(0, len(segs), SEG_CHUNK):
+            best = np.minimum(best, _seg_dist_block(p, segs[j:j + SEG_CHUNK]))
+        out[i:i + len(p)] = best
+    return out
 
 
 def _regions(bm, tol):
@@ -381,8 +409,10 @@ def _edge_miss(src_edges, me, h, angle):
                 pts += [a.lerp(b, i / k) for i in range(k + 1)]
     finally:
         bm.free()
-    if not pts or not src_edges:
+    if not src_edges:
         return 0.0
+    if not pts:                                  # 0.24.73 every hard edge gone is all lost, not "nothing lost"
+        return sum((a - b).length for a, b in src_edges) / h
     kd = KDTree(len(pts))
     for i, p in enumerate(pts):
         kd.insert(p, i)

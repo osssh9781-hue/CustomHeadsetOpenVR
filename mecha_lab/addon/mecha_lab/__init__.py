@@ -13,7 +13,7 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                mirror_tools, cut_presets, mask_tools, workspace_ui, ui_tool_settings,
                base_mesh, loft_surface, zbrush_bridge, subd_plane, deform_tools, primitive_tools,
                addon_safety, self_test, face_extract, edge_molding, hollow_shell, along_curve, cable, bottom_bar, station_primitive, station_gizmos,
-               primitive_place, primitive_hud, armor_plate, random_panels, mirror_hud, highpoly, mesh_tools, lasso_sketch,
+               primitive_place, primitive_hud, armor_plate, random_panels, mirror_hud, highpoly, mesh_tools, live_queue, lasso_sketch,
                cloth_wrinkle, last_used, robot_base, detail_stamp, surface_lasso,
                curve_tube, creature_shell, cloth_sim, box_hide, plate_detail, screw_stamp, lowpoly, fold_patch,
                creature_plate, belt_maker, creature_spike, creature_scales, flower_plate,
@@ -2056,6 +2056,7 @@ def _register():
     mirror_hud.register()
     highpoly.register()
     mesh_tools.register()
+    live_queue.register()
     lasso_sketch.register()
     cloth_wrinkle.register()
     last_used.register()
@@ -2159,6 +2160,7 @@ def _unregister_steps():
         ('last_used', last_used.unregister),
         ('cloth_wrinkle', cloth_wrinkle.unregister),
         ('lasso_sketch', lasso_sketch.unregister),
+        ('live_queue', live_queue.unregister),
         ('mesh_tools', mesh_tools.unregister),
         ('highpoly', highpoly.unregister),
         ('mirror_hud', mirror_hud.unregister),

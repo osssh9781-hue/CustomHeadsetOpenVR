@@ -77,14 +77,24 @@ CARRY_KEYS = ('profile', 'height', 'wall', 'bevel_width', 'bevel_segments', 'rou
               'edge_round')
 
 
+def _rebuild_now(name):
+    ob = bpy.data.objects.get(name)
+    st = getattr(ob, 'mch_base', None) if ob is not None else None
+    if st is None or not st.live or not st.outline:
+        return
+    try:
+        rebuild(ob)
+        st.last_error = ''
+    except (cg.CutError, ValueError, RuntimeError) as ex:
+        st.last_error = str(ex)
+
+
 def _rebuild_update(self, context):
     ob = self.id_data
     if isinstance(ob, bpy.types.Object) and self.live and self.outline:
-        try:
-            rebuild(ob)
-            self.last_error = ''
-        except (cg.CutError, ValueError, RuntimeError) as ex:
-            self.last_error = str(ex)
+        from . import live_queue                 # 0.24.73 at a steady pace while a slider is dragged (R10)
+        name = ob.name
+        live_queue.queue(('base_mesh', name), lambda: _rebuild_now(name))
         # 0.24.5 what you set on the live shape is used for the next one too (it reset to the old defaults)
         # 0.24.20 creature shapes carry into the Creature Base Mesh defaults, the others into Base Mesh
         st = getattr(getattr(context, 'scene', None), 'mch_cbase' if self.profile in CREATURE_PROFILES else 'mch_base',
@@ -1978,6 +1988,8 @@ def auto_apply_session(context):
     ONLY the live Base Meshes this tool created since it was entered.  Other
     objects and modifiers are never touched.  Freezing keeps the geometry
     (no data change) and is one undo step."""
+    from . import live_queue
+    live_queue.flush()                      # 0.24.73 a rebuild still waiting goes in before freezing
     names = list(context.scene.get(SESSION_KEY, []))
     for key in (SESSION_KEY, WS_KEY):
         if key in context.scene:
@@ -2127,6 +2139,8 @@ class MCH_OT_base_freeze(bpy.types.Operator):
         return active_live_base(context) is not None
 
     def execute(self, context):
+        from . import live_queue
+        live_queue.flush()                  # 0.24.73 a rebuild still waiting goes in before freezing
         ob = active_live_base(context)
         ob.mch_base.live = False
         self.report({'INFO'}, f'{ob.name}: frozen (no longer live)')
