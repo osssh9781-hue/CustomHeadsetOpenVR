@@ -176,6 +176,44 @@ def _write_attrs(me, attrs, vsrc, fpoly, corner_loop):
         a.data.foreach_set(key, vals[idx].ravel())
 
 
+def fresh_like(me):
+    """An empty copy of mesh ``me`` (its settings, materials and custom properties kept) to build a result into.
+    0.24.73: results are built into this and swapped in only when finished (a failure halfway left the SubTool with
+    no mesh), and only the object being worked on changes (an Alt+D twin keeps the old mesh)."""
+    new = me.copy()
+    new.clear_geometry()
+    return new
+
+
+def swap_mesh(ob, new):
+    """Put the finished mesh ``new`` on ``ob``; the old one goes when nothing else uses it (``new`` takes its name)."""
+    old = ob.data
+    name = old.name
+    ob.data = new
+    if old.users == 0:
+        bpy.data.meshes.remove(old)
+        new.name = name
+
+
+def build_mesh(new, V, faces, sizes=None):
+    """Fill the empty mesh ``new``: points V (n, 3), faces (m, k) - rows of point indices, or flat corner list with
+    ``sizes`` (corners per face)."""
+    V = np.ascontiguousarray(V, np.float32).reshape(-1, 3)
+    if sizes is None:
+        faces = np.ascontiguousarray(faces, np.int32)
+        sizes = np.full(len(faces), faces.shape[1] if faces.ndim == 2 else 3, np.int32)
+        corners = faces.ravel()
+    else:
+        corners = np.ascontiguousarray(faces, np.int32).ravel()
+    new.vertices.add(len(V))
+    new.vertices.foreach_set('co', V.ravel())
+    new.loops.add(len(corners))
+    new.loops.foreach_set('vertex_index', corners)
+    new.polygons.add(len(sizes))
+    new.polygons.foreach_set('loop_start', np.concatenate([[0], np.cumsum(sizes)[:-1]]).astype(np.int32))
+    new.update(calc_edges=True)
+
+
 def decimate_object(ob, keep_percent, even=False, quads=False, keep_mask=False, keep_groups=False,
                     keep_borders=False, nthreads=None):
     """Decimate mesh object ``ob`` (Object Mode) to about ``keep_percent`` % of its triangles.  Returns a message."""
@@ -229,27 +267,27 @@ def decimate_object(ob, keep_percent, even=False, quads=False, keep_mask=False, 
     uv_active = me.uv_layers.active.name if me.uv_layers.active else ''
     col_active = getattr(me.color_attributes, 'active_color_name', '')
     col_render = getattr(me.color_attributes, 'default_color_name', '')
-    me.clear_geometry()
-    me.vertices.add(len(oV))
-    me.vertices.foreach_set('co', oV.ravel())
-    me.loops.add(len(oF) * 3)
-    me.loops.foreach_set('vertex_index', oF.ravel())
-    me.polygons.add(len(oF))
-    me.polygons.foreach_set('loop_start', np.arange(0, len(oF) * 3, 3, dtype=np.int32))
-    me.update(calc_edges=True)
-    _write_attrs(me, attrs, vsrc, tpoly[fsrc], corner_loop)
-    if uv_active and uv_active in me.uv_layers:
-        me.uv_layers.active = me.uv_layers[uv_active]
+    new = fresh_like(me)
     try:
-        if col_active:
-            me.color_attributes.active_color_name = col_active
-        if col_render:
-            me.color_attributes.default_color_name = col_render
-    except (AttributeError, TypeError, KeyError):
-        pass
-    if quads:
-        join_quads(me)
-    me.update()
+        build_mesh(new, oV, oF)
+        _write_attrs(new, attrs, vsrc, tpoly[fsrc], corner_loop)
+        if uv_active and uv_active in new.uv_layers:
+            new.uv_layers.active = new.uv_layers[uv_active]
+        try:
+            if col_active:
+                new.color_attributes.active_color_name = col_active
+            if col_render:
+                new.color_attributes.default_color_name = col_render
+        except (AttributeError, TypeError, KeyError):
+            pass
+        if quads:
+            join_quads(new)
+        new.update()
+    except Exception:
+        bpy.data.meshes.remove(new)                  # the SubTool keeps its mesh
+        raise
+    swap_mesh(ob, new)
+    me = ob.data
     dt = time.perf_counter() - t0
     return f'Decimate: {polys0:,} > {len(me.polygons):,} polygons in {dt:.1f} s ({nthreads or threads()} threads)'
 

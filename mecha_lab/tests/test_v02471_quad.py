@@ -236,6 +236,56 @@ check('An open sheet keeps its border (not filled) and its size', opn > 40 and n
 bpy.data.objects.remove(cube)
 bpy.data.objects.remove(grid)
 
+# --- 0.24.73 a decimated part: its hard edges are followed (guide lines) and marked for Hard Edges -----------------
+from mecha_lab import hard_edges as he
+ob = part('Guided', 0.012)
+V0, T0 = arrays(ob.data)
+cr = creases(V0, T0)
+fd.decimate_object(ob, 3, even=True)
+Vd, Td = arrays(ob.data)
+P, Fq, _t, _p, st = qf.remesh_arrays(Vd, Td, 2500)
+check('A decimated input (few triangles per wanted face) is followed edge by edge: its hard edges become guide '
+      'lines', st['guide'] > 50, st['guide'])
+twin = ob.copy()
+C.collection.objects.link(twin)
+msg = qf.remesh_object(ob, 2500)
+me = ob.data
+hard = he.hard_flags(me)
+check('... the quads\' hard edges come marked (crease + bevel weight; Hard Edges bevel / subdivide work at once)',
+      hard.sum() > 50 and he.KEY in ob and (np.array([d.value for d in me.attributes['crease_edge'].data])[hard]
+                                             == 1.0).all() and 'hard edges marked' in msg, (int(hard.sum()), msg))
+ev = np.empty(len(me.edges) * 2, np.int64)
+me.edges.foreach_get('vertices', ev)
+ev = ev.reshape(-1, 2)[hard]
+co = np.empty(len(me.vertices) * 3)
+me.vertices.foreach_get('co', co)
+co = co.reshape(-1, 3)
+from mathutils.kdtree import KDTree
+kd = KDTree(len(cr))
+for i, p in enumerate(cr.tolist()):
+    kd.insert(p, i)
+kd.balance()
+far = np.array([kd.find(((co[a] + co[b]) * 0.5).tolist())[2] for a, b in ev])
+check('... and they run along the original creases (90 %+ of them within 2 % of the size)', np.mean(far < 0.04) > 0.9,
+      round(float(np.mean(far < 0.04)), 3))
+check('... an Alt+D twin keeps its own (old) mesh: only the SubTool worked on changes', twin.data is not me
+      and len(twin.data.polygons) != len(me.polygons), (len(twin.data.polygons), len(me.polygons)))
+n_before = len(ob.data.polygons)
+saved = fd._write_attrs
+fd._write_attrs = lambda *a, **k: (_ for _ in ()).throw(RuntimeError('simulated failure'))
+try:
+    try:
+        qf.remesh_object(ob, 1000)
+        failed = False
+    except RuntimeError:
+        failed = True
+finally:
+    fd._write_attrs = saved
+check('A failure halfway leaves the SubTool\'s mesh as it was (the result is built apart, then swapped in)',
+      failed and len(ob.data.polygons) == n_before and ob.data.name == me.name, (failed, len(ob.data.polygons)))
+bpy.data.objects.remove(twin)
+bpy.data.objects.remove(ob)
+
 # --- the ZBrush shelf -----------------------------------------------------------------------------------------------
 ob = part('ZB', 0.02)
 zs.on = lambda c: getattr(c, 'mode', '') == 'SCULPT'

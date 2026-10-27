@@ -142,7 +142,8 @@ def draw_tool_shelf(layout, context):
     r.prop(zb, 'he_profile')
     r = box.row()
     r.prop(zb, 'he_subdiv')
-    r.prop(zb, 'he_normals', toggle=True)
+    r.prop(zb, 'he_client', toggle=True)
+    box.prop(zb, 'he_normals', toggle=True)
     ops(box.row(), ('Apply', 'HE_APPLY'), ('Clear', 'HE_CLEAR'))
 
 

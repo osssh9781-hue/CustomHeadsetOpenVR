@@ -1282,8 +1282,13 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
                               description='Bevel shape: 0.5 round, higher boxier, lower hollow')
     he_subdiv: IntProperty(name='Subdivide', default=0, min=0, max=4, update=_he_update,
                            description='Catmull-Clark levels: the creased edges stay sharp, flat parts get more faces')
-    he_normals: BoolProperty(name='Weighted Normals', default=True, update=_he_update,
-                             description='Flat faces shade flat next to the bevels')
+    he_normals: BoolProperty(name='Weighted Normals', default=False, update=_he_update,
+                             description='Flat faces shade flat next to the bevels with custom normals (Blender / FBX '
+                                         'only: ZBrush and OBJ do not keep them - leave off for Client Look)')
+    he_client: BoolProperty(name='Client Look', default=True, update=_he_update,
+                            description='The mesh alone gives the hard look (no Sharp marks for the display, no custom '
+                                        'normals): what you see is what Maya / Max / ZBrush show.  Apply leaves a '
+                                        'plain mesh')
     inflate: IntProperty(name='Inflate', default=10, min=-100, max=100,
                          description='Deformation: how far Inflate pushes the surface out (minus = in)')
     thick: FloatProperty(name='Thick', default=0.02, min=0.0, soft_max=0.5, precision=3,
@@ -1980,7 +1985,7 @@ def run(context, action):
                 he.set_live(ob, zb)
                 msg = f'Hard Edges: {n:,} edges' + (f', {f0:,} > {f1:,} polygons (flats merged)' if f1 != f0 else '')
             elif action == 'HE_APPLY':
-                k = he.apply_live(context, ob)
+                k = he.apply_live(context, ob, zb)
                 ob.pop(he.KEY, None)                 # (the shelf settings no longer drive this SubTool)
                 msg = f'Hard Edges: applied, {len(ob.data.polygons):,} polygons' if k else 'Hard Edges: nothing to apply'
             else:

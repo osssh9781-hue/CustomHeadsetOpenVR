@@ -2,14 +2,17 @@
  * multi-threaded, loaded with ctypes (no Python API).  Built into the same library as mdecim.
  *
  * int mquad_run(int nlevels, const int *nv, const int *nf, const float *V, const int *F, const int *src,
- *               const MquadOpts *opt, MquadOut *out)
+ *               const float *guide, int nguide, const MquadOpts *opt, MquadOut *out)
  *   The surface sampled at nlevels resolutions, fine (0) to coarse: level k has nv[k] points (V: 3 floats each, the
  *   levels one after another) and nf[k] triangles (F: 3 indices into that level, one level after another).
  *   src (from level 1 on, one level after another): the point of level k - 1 each point of level k came from
  *   (Mecha Lab's decimation keeps one of the two points of every collapse).
+ *   guide (v2, may be NULL): nguide line segments (6 floats each) - the hard edges to follow (a decimated mesh's
+ *   edges): every level's edges lying on them (within opt->crease_tol) are its hard edges instead of the angle test.
  *   out: points (3 floats), faces (4 point indices, the 4th -1 for a triangle), for each face the fine triangle under
- *   its centre and for each point the fine point nearest it (attributes can be copied over).  Free with mquad_free.
- *   Returns 0 on success.
+ *   its centre, for each point the fine point nearest it (attributes can be copied over) and the result's edges on the
+ *   hard edges (point pairs).  Free with mquad_free.  Returns 0 on success (1 bad options, 2 out of memory, 3 a level
+ *   too small, 4 a triangle index out of range, 5 a point position not finite).
  *
  * 1. orientation field (4-RoSy) then position field (4-PoSy), coarse to fine, Gauss-Seidel by colour with the
  *    paper's extrinsic formulas; hard edges (and open borders) hold the direction, their lattice line and corners
@@ -44,6 +47,7 @@ typedef struct {
   int seed;
   int iters_orient[MAXLEV];  /* Gauss-Seidel sweeps per level (fine first) */
   int iters_pos[MAXLEV];
+  float crease_tol;          /* v2 guide: an edge whose ends and middle are this close to a guide line is on it */
 } MquadOpts;
 
 typedef struct {
@@ -54,7 +58,12 @@ typedef struct {
   int *vsrc;     /* nv: fine point nearest the point */
   int stats[8];  /* collapses, conflicts, points, holes filled, triangle pairs joined, triangles, quads,
                     faces dropped from edges on 3+ faces */
+  int nhard;     /* v2: result edges on the hard edges */
+  int *hard;     /* nhard * 2 point indices */
 } MquadOut;
+
+struct Hash;
+static int hash_nearest(struct Hash *H, const double *x, double *q);
 
 /* ---------- memory: everything goes when the run ends (longjmp out on failure) ---------- */
 
@@ -223,8 +232,18 @@ static int uf_find(int *par, int x) {
   return x;
 }
 
+static int hash_within(struct Hash *H, const double *x, double r);
+
+/* a point within tol of a guide line (only the cells that close are looked at) */
+static int on_guide(struct Hash *G, const double *x, double tol) { return hash_within(G, x, tol); }
+
+static int edge_on_guide(struct Hash *G, const double *a, const double *b, double tol) {
+  double mid[3] = {0.5 * (a[0] + b[0]), 0.5 * (a[1] + b[1]), 0.5 * (a[2] + b[2])};
+  return on_guide(G, a, tol) && on_guide(G, b, tol) && on_guide(G, mid, tol);
+}
+
 static void build_level(Mem *m, Level *L, const float *V, int nv, const int *F, int nf, double cos_cr,
-                        double min_chain, uint64_t *rng) {
+                        double min_chain, uint64_t *rng, struct Hash *guide, double tol) {
   L->nv = nv;
   L->nf = nf;
   L->F = F;
@@ -278,6 +297,8 @@ static void build_level(Mem *m, Level *L, const float *V, int nv, const int *F, 
     if (j - i != 2) {
       ecr[e] = 1;
       L->nbound++;
+    } else if (guide) {
+      ecr[e] = edge_on_guide(guide, &P[3 * E[2 * e]], &P[3 * E[2 * e + 1]], tol);
     } else {
       const double *na = &fn[3 * ek[i].f], *nb = &fn[3 * ek[i + 1].f];
       double la = norm3(na), lb = norm3(nb);
@@ -286,8 +307,8 @@ static void build_level(Mem *m, Level *L, const float *V, int nv, const int *F, 
     e++;
     i = j;
   }
-  /* hard-edge chains shorter than min_chain are not hard edges */
-  if (min_chain > 0) {
+  /* hard-edge chains shorter than min_chain are not hard edges (the angle test only: guide lines are meant) */
+  if (min_chain > 0 && !guide) {
     int *par = (int *)xmalloc(m, sizeof(int) * nv);
     double *len = (double *)xcalloc(m, nv, sizeof(double));
     for (int i = 0; i < nv; i++) par[i] = i;
@@ -660,7 +681,7 @@ static void sweep(Level *L, int what, double h, int threads) {
 
 /* ---------- closest points on the fine surface (spatial hash) ---------- */
 
-typedef struct {
+typedef struct Hash {
   double cell, lo[3];
   unsigned mask;
   int *bs, *items;
@@ -803,6 +824,33 @@ static double prim_closest(const Hash *H, int p, const double *x, double *q) {
   if (H->kind)
     return closest_seg(x, &H->P[3 * H->idx[2 * p]], &H->P[3 * H->idx[2 * p + 1]], q);
   return closest_tri(x, &H->P[3 * H->idx[3 * p]], &H->P[3 * H->idx[3 * p + 1]], &H->P[3 * H->idx[3 * p + 2]], q);
+}
+
+/* any primitive within r of x (r small against the cell: the cells round x only, no fallback) */
+static int hash_within(struct Hash *H, const double *x, double r) {
+  if (H->nprim == 0) return 0;
+  if (++H->st == 0x7fffffff) {
+    memset(H->stamp, 0, sizeof(int) * (H->nprim + 1));
+    H->st = 1;
+  }
+  int c0[3], c1[3];
+  for (int d = 0; d < 3; d++) {
+    c0[d] = (int)floor((x[d] - r - H->lo[d]) / H->cell);
+    c1[d] = (int)floor((x[d] + r - H->lo[d]) / H->cell);
+  }
+  double t[3];
+  for (int cx = c0[0]; cx <= c1[0]; cx++)
+    for (int cy = c0[1]; cy <= c1[1]; cy++)
+      for (int cz = c0[2]; cz <= c1[2]; cz++) {
+        unsigned b = hcell(cx, cy, cz, H->mask);
+        for (int k = H->bs[b]; k < H->bs[b + 1]; k++) {
+          int p = H->items[k];
+          if (p < 0 || H->stamp[p] == H->st) continue;
+          H->stamp[p] = H->st;
+          if (prim_closest(H, p, x, t) <= r * r) return 1;
+        }
+      }
+  return 0;
 }
 
 /* the closest point on any primitive (q) and that primitive; -1 when there are none */
@@ -1426,7 +1474,7 @@ static void snap_points(Hash *tri, Hash *seg, double *pos, const int *kind, int 
   }
 }
 
-EXPORT int mquad_version(void) { return 1; }
+EXPORT int mquad_version(void) { return 2; }
 
 EXPORT void mquad_free(MquadOut *out) {
   if (!out) return;
@@ -1434,15 +1482,30 @@ EXPORT void mquad_free(MquadOut *out) {
   free(out->F);
   free(out->fsrc);
   free(out->vsrc);
+  free(out->hard);
   out->V = NULL;
-  out->F = out->fsrc = out->vsrc = NULL;
-  out->nv = out->nf = 0;
+  out->F = out->fsrc = out->vsrc = out->hard = NULL;
+  out->nv = out->nf = out->nhard = 0;
 }
 
 EXPORT int mquad_run(int nlevels, const int *nv, const int *nf, const float *V, const int *F, const int *src,
-                     const MquadOpts *opt, MquadOut *out) {
-  if (nlevels < 1 || nlevels > MAXLEV || !opt || !out || opt->scale <= 0) return 1;
+                     const float *guide, int nguide, const MquadOpts *opt, MquadOut *out) {
+  if (nlevels < 1 || nlevels > MAXLEV || !opt || !out || !(opt->scale > 0) || !nv || !nf || !V || !F) return 1;
   memset(out, 0, sizeof(*out));
+  { /* inputs: indices in range, positions finite (a bad array must not crash Blender) */
+    size_t vo = 0, fo = 0;
+    for (int k = 0; k < nlevels; k++) {
+      if (nv[k] < 3 || nf[k] < 1) return 3;
+      for (size_t i = 0; i < 3 * (size_t)nv[k]; i++)
+        if (!isfinite(V[3 * vo + i])) return 5;
+      for (size_t i = 0; i < 3 * (size_t)nf[k]; i++)
+        if (F[3 * fo + i] < 0 || F[3 * fo + i] >= nv[k]) return 4;
+      vo += nv[k];
+      fo += nf[k];
+    }
+    for (int i = 0; guide && i < 6 * nguide; i++)
+      if (!isfinite(guide[i])) return 5;
+  }
   Mem mem;
   memset(&mem, 0, sizeof(mem));
   if (setjmp(mem.jb)) {
@@ -1454,13 +1517,44 @@ EXPORT int mquad_run(int nlevels, const int *nv, const int *nf, const float *V, 
   uint64_t rng = 0x9E3779B97F4A7C15ull ^ (uint64_t)(opt->seed + 1) * 0xBF58476D1CE4E5B9ull;
   double cos_cr = cos(opt->crease_deg * 3.14159265358979323846 / 180.0);
   Level *lv = (Level *)xcalloc(&mem, nlevels, sizeof(Level));
+  /* guide lines, cut into pieces of at most 2 quads (a long piece would span too many hash cells) */
+  Hash gh;
+  int use_guide = guide != NULL && nguide > 0;
+  double gtol = opt->crease_tol > 0 ? opt->crease_tol : 0.02 * h;
+  if (use_guide) {
+    int np = 0;
+    for (int i = 0; i < nguide; i++) {
+      double a[3] = {guide[6 * i], guide[6 * i + 1], guide[6 * i + 2]}, d[3];
+      double b[3] = {guide[6 * i + 3], guide[6 * i + 4], guide[6 * i + 5]};
+      sub3(b, a, d);
+      int k = (int)ceil(norm3(d) / (2.0 * h));
+      np += k < 1 ? 1 : (k > 100000 ? 100000 : k);
+    }
+    double *gp = (double *)xmalloc(&mem, sizeof(double) * 6 * (size_t)np);
+    int *gi = (int *)xmalloc(&mem, sizeof(int) * 2 * (size_t)np);
+    int w = 0;
+    for (int i = 0; i < nguide; i++) {
+      double a[3] = {guide[6 * i], guide[6 * i + 1], guide[6 * i + 2]}, d[3];
+      double b[3] = {guide[6 * i + 3], guide[6 * i + 4], guide[6 * i + 5]};
+      sub3(b, a, d);
+      int k = (int)ceil(norm3(d) / (2.0 * h));
+      k = k < 1 ? 1 : (k > 100000 ? 100000 : k);
+      for (int t = 0; t < k; t++) {
+        for (int c = 0; c < 3; c++) {
+          gp[6 * w + c] = a[c] + d[c] * t / k;
+          gp[6 * w + 3 + c] = a[c] + d[c] * (t + 1) / k;
+        }
+        gi[2 * w] = 2 * w;
+        gi[2 * w + 1] = 2 * w + 1;
+        w++;
+      }
+    }
+    hash_build(&mem, &gh, gp, 2 * w, gi, w, 1, h);
+  }
   size_t vo = 0, fo = 0, so = 0;
   for (int k = 0; k < nlevels; k++) {
-    if (nv[k] < 3 || nf[k] < 1) {
-      mem_free(&mem);
-      return 3;
-    }
-    build_level(&mem, &lv[k], V + 3 * vo, nv[k], F + 3 * fo, nf[k], cos_cr, opt->min_chain, &rng);
+    build_level(&mem, &lv[k], V + 3 * vo, nv[k], F + 3 * fo, nf[k], cos_cr, opt->min_chain, &rng,
+                use_guide ? &gh : NULL, gtol);
     vo += nv[k];
     fo += nf[k];
   }
@@ -1646,6 +1740,45 @@ EXPORT int mquad_run(int nlevels, const int *nv, const int *nf, const float *V, 
       ntri++;
     else
       nquad++;
+  }
+  /* the result's hard edges: on the guide lines, else where its faces meet at more than crease_deg */
+  {
+    int ne2;
+    FE *fe = face_edges(&mem, FF, npts, &ne2);
+    double *fnr = (double *)xcalloc(&mem, 3 * (size_t)FF->n + 3, sizeof(double));
+    for (int f = 0; f < FF->n; f++) {
+      int sz = fsize(&FF->f[f]);
+      for (int k = 0; k < sz; k++) {
+        double c[3];
+        cross3(&pos[3 * FF->f[f].v[k]], &pos[3 * FF->f[f].v[(k + 1) % sz]], c);
+        for (int d = 0; d < 3; d++) fnr[3 * f + d] += c[d];
+      }
+      normalize3(&fnr[3 * f]);
+    }
+    double tol_out = 0.15 * (opt->all_quads ? 0.5 * h : h);
+    if (tol_out < gtol) tol_out = gtol;
+    out->hard = (int *)malloc(sizeof(int) * 2 * ((size_t)ne2 + 1));
+    if (!out->hard) longjmp(mem.jb, 1);
+    int nh = 0;
+    for (int i = 0; i < ne2;) {
+      int j = i;
+      while (j < ne2 && fe[j].key == fe[i].key) j++;
+      int a = (int)(fe[i].key / npts), b = (int)(fe[i].key % npts);
+      int hard;
+      if (j - i != 2)
+        hard = 1;
+      else if (use_guide)
+        hard = edge_on_guide(&gh, &pos[3 * a], &pos[3 * b], tol_out);
+      else
+        hard = dot3(&fnr[3 * fe[i].f], &fnr[3 * fe[i + 1].f]) < cos_cr;
+      if (hard && remap[a] >= 0 && remap[b] >= 0) {
+        out->hard[2 * nh] = remap[a];
+        out->hard[2 * nh + 1] = remap[b];
+        nh++;
+      }
+      i = j;
+    }
+    out->nhard = nh;
   }
   out->nv = nout;
   out->nf = FF->n;

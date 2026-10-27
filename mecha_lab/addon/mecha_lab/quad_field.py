@@ -14,9 +14,11 @@ import time
 
 import numpy as np
 
+import bpy
+
 from . import fast_decimate as fd
 
-VERSION = 1                     # mquad API this module talks to
+VERSION = 2                     # mquad API this module talks to (2: guide lines, hard edges out)
 MAXLEV = 8
 LENGTH_WEIGHT = 0.1             # Fast Decimate even spacing for the levels
 LEVELS = (16.0, 4.0, 1.0, 0.25)  # level triangles per quad, fine to coarse
@@ -24,18 +26,25 @@ ITERS_ORIENT = (20, 30, 60)     # Gauss-Seidel sweeps per level (fine first); th
 ITERS_POS = (30, 40, 80)
 COARSE_ITERS = 200
 MIN_CHAIN = 1.5                 # hard-edge chains shorter than this many quads are ignored
+GUIDE_RATIO = 20.0              # an input with at most this many triangles per wanted face is followed edge by edge
 
 
 class _Opts(ctypes.Structure):
     _fields_ = [('scale', ctypes.c_float), ('crease_deg', ctypes.c_float), ('min_chain', ctypes.c_float),
                 ('all_quads', ctypes.c_int), ('threads', ctypes.c_int), ('seed', ctypes.c_int),
-                ('iters_orient', ctypes.c_int * MAXLEV), ('iters_pos', ctypes.c_int * MAXLEV)]
+                ('iters_orient', ctypes.c_int * MAXLEV), ('iters_pos', ctypes.c_int * MAXLEV),
+                ('crease_tol', ctypes.c_float)]
 
 
 class _Out(ctypes.Structure):
     _fields_ = [('nv', ctypes.c_int), ('nf', ctypes.c_int), ('V', ctypes.POINTER(ctypes.c_float)),
                 ('F', ctypes.POINTER(ctypes.c_int)), ('fsrc', ctypes.POINTER(ctypes.c_int)),
-                ('vsrc', ctypes.POINTER(ctypes.c_int)), ('stats', ctypes.c_int * 8)]
+                ('vsrc', ctypes.POINTER(ctypes.c_int)), ('stats', ctypes.c_int * 8), ('nhard', ctypes.c_int),
+                ('hard', ctypes.POINTER(ctypes.c_int))]
+
+
+_IP = ctypes.POINTER(ctypes.c_int)
+_FP = ctypes.POINTER(ctypes.c_float)
 
 
 def lib():
@@ -45,9 +54,14 @@ def lib():
         return None
     try:
         L.mquad_version.restype = ctypes.c_int
-        if L.mquad_version() < VERSION:
+        L.mquad_version.argtypes = []
+        if L.mquad_version() != VERSION:                # (the structures change between versions)
             return None
         L.mquad_run.restype = ctypes.c_int
+        L.mquad_run.argtypes = [ctypes.c_int, _IP, _IP, _FP, _IP, _IP, _FP, ctypes.c_int, ctypes.POINTER(_Opts),
+                                ctypes.POINTER(_Out)]
+        L.mquad_free.restype = None
+        L.mquad_free.argtypes = [ctypes.POINTER(_Out)]
     except AttributeError:
         return None
     return L
@@ -73,11 +87,38 @@ def subdivide(V, T, tsrc, vsrc):
     return V2, T2, np.tile(tsrc, 4), np.concatenate([vsrc, vsrc[a]])
 
 
-def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None, seed=0):
+def hard_segments(V, T, crease_deg):
+    """The input's hard edges as line segments (n, 2, 3): sides where its faces meet at more than ``crease_deg``,
+    and open borders."""
+    fn = np.cross(V[T[:, 1]] - V[T[:, 0]], V[T[:, 2]] - V[T[:, 0]]).astype(np.float64)
+    ln = np.linalg.norm(fn, axis=1)
+    fn /= np.maximum(ln, 1e-30)[:, None]
+    e = np.concatenate([T[:, [0, 1]], T[:, [1, 2]], T[:, [2, 0]]]).astype(np.int64)
+    f = np.tile(np.arange(len(T)), 3)
+    e.sort(1)
+    key = e[:, 0] * len(V) + e[:, 1]
+    o = np.argsort(key, kind='stable')
+    key, e, f = key[o], e[o], f[o]
+    first = np.r_[True, key[1:] != key[:-1]]
+    starts = np.nonzero(first)[0]
+    counts = np.diff(np.r_[starts, len(key)])
+    hard = counts != 2
+    two = np.nonzero(counts == 2)[0]
+    fa, fb = f[starts[two]], f[starts[two] + 1]
+    ok = (ln[fa] > 1e-30) & (ln[fb] > 1e-30)                # (a zero-area triangle has no direction)
+    hard[two] = ok & ((fn[fa] * fn[fb]).sum(1) < math.cos(math.radians(crease_deg)))
+    ee = e[starts[hard]]
+    return np.stack([V[ee[:, 0]], V[ee[:, 1]]], 1).astype(np.float32)
+
+
+def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None, seed=0, guide='auto'):
     """Quad remesh triangles T over points V to about ``target`` faces.
 
+    guide: 'auto' - a coarse input (a decimated part: at most GUIDE_RATIO triangles per wanted face) is followed edge
+    by edge (its hard edges become the quads' fixed lines); a dense one (DynaMesh) by the angle on the even sampling.
+    True / False force it.
     Returns (points (n, 3), faces (m, 4) with -1 as the 4th index of a triangle, the input triangle under each face,
-    the input point nearest each point, stats dict)."""
+    the input point nearest each point, stats dict with 'hard': the result's hard edges as point pairs (k, 2))."""
     L = lib()
     if L is None:
         raise RuntimeError('Quad Remesh engine not available on this system')
@@ -86,8 +127,15 @@ def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None,
     area = float(0.5 * np.linalg.norm(np.cross(V[T[:, 1]] - V[T[:, 0]], V[T[:, 2]] - V[T[:, 0]]), axis=1).sum())
     if area <= 0.0:
         raise RuntimeError('Quad Remesh: the mesh has no area')
+    if not np.isfinite(V).all():
+        raise RuntimeError('Quad Remesh: the mesh has invalid (NaN / infinite) point positions')
+    if len(T) and (int(T.min()) < 0 or int(T.max()) >= len(V)):
+        raise RuntimeError('Quad Remesh: the mesh has broken faces (point index out of range)')
     n_ext = max(12, int(target / 4) if all_quads else int(target))
     h = math.sqrt(area / n_ext)
+    if guide == 'auto':
+        guide = len(T) <= GUIDE_RATIO * max(int(target), 1)
+    segs = hard_segments(V, T, crease_deg) if guide else np.zeros((0, 2, 3), np.float32)
     counts = [int(n_ext * m) for m in LEVELS]
     counts = [c for k, c in enumerate(counts) if k == 0 or c >= 100]
     # the fine level needs small, even triangles: subdivide a coarse mesh first, then sample it evenly
@@ -121,6 +169,7 @@ def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None,
     o.all_quads = 1 if all_quads else 0
     o.threads = nthreads or fd.threads()
     o.seed = seed
+    o.crease_tol = 0.02 * h
     for k in range(n):
         o.iters_orient[k] = COARSE_ITERS if k == n - 1 else ITERS_ORIENT[min(k, len(ITERS_ORIENT) - 1)]
         o.iters_pos[k] = COARSE_ITERS if k == n - 1 else ITERS_POS[min(k, len(ITERS_POS) - 1)]
@@ -129,10 +178,10 @@ def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None,
     Vc = np.ascontiguousarray(np.concatenate([lv[0].ravel() for lv in levels]), np.float32)
     Fc = np.ascontiguousarray(np.concatenate([lv[1].ravel() for lv in levels]), np.int32)
     Sc = np.ascontiguousarray(np.concatenate(srcs) if srcs else np.zeros(1, np.int32), np.int32)
+    G = np.ascontiguousarray(segs.reshape(-1), np.float32)
     out = _Out()
-    rc = L.mquad_run(n, nv, nf, Vc.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
-                     Fc.ctypes.data_as(ctypes.POINTER(ctypes.c_int)), Sc.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
-                     ctypes.byref(o), ctypes.byref(out))
+    rc = L.mquad_run(n, nv, nf, Vc.ctypes.data_as(_FP), Fc.ctypes.data_as(_IP), Sc.ctypes.data_as(_IP),
+                     G.ctypes.data_as(_FP) if len(segs) else None, len(segs), ctypes.byref(o), ctypes.byref(out))
     if rc:
         raise RuntimeError(f'Quad Remesh failed (code {rc})')
     try:
@@ -144,10 +193,16 @@ def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None,
         psrc = np.ctypeslib.as_array(out.vsrc, shape=(out.nv,)).copy()
         stats = dict(zip(('collapses', 'conflicts', 'points', 'holes', 'joined', 'triangles', 'quads'),
                          list(out.stats)[:7]))
+        hard = (np.ctypeslib.as_array(out.hard, shape=(out.nhard * 2,)).reshape(-1, 2).copy() if out.nhard
+                else np.zeros((0, 2), np.int32))
+        if len(Fq) and (Fq.max() >= len(P) or (Fq[:, :3] < 0).any()) or len(hard) and hard.max() >= len(P):
+            raise RuntimeError('Quad Remesh: the engine returned broken faces')
     finally:
         L.mquad_free(ctypes.byref(out))
     stats['levels'] = [len(lv[1]) for lv in levels]
     stats['scale'] = h
+    stats['hard'] = hard
+    stats['guide'] = len(segs)
     return P, Fq, tsrc[fsrc], vsrc[psrc], stats
 
 
@@ -180,17 +235,24 @@ def remesh_object(ob, target, all_quads=False, crease_deg=30.0, nthreads=None):
     attrs = [a for a in fd._read_attrs(me) if a[2] in {'POINT', 'FACE'}]
     sizes = np.where(Fq[:, 3] < 0, 3, 4)
     loops = Fq[Fq >= 0]                                    # row by row: each face's corners in order
-    me.clear_geometry()
-    me.vertices.add(len(P))
-    me.vertices.foreach_set('co', P.astype(np.float32).ravel())
-    me.loops.add(len(loops))
-    me.loops.foreach_set('vertex_index', loops.astype(np.int32))
-    me.polygons.add(len(Fq))
-    me.polygons.foreach_set('loop_start', np.concatenate([[0], np.cumsum(sizes)[:-1]]).astype(np.int32))
-    me.update(calc_edges=True)
-    fd._write_attrs(me, attrs, psrc, tpoly[tsrc], None)
-    me.update()
+    new = fd.fresh_like(me)
+    try:
+        for a in [a for a in new.attributes if a.domain == 'CORNER' and not a.name.startswith('.')]:
+            new.attributes.remove(a)                       # (UVs / corner colours do not fit the new faces)
+        fd.build_mesh(new, P, loops, sizes)
+        fd._write_attrs(new, attrs, psrc, tpoly[tsrc], None)
+        from . import hard_edges
+        hard_edges.mark_pairs(new, st['hard'], crease=True)
+        new.update()
+    except Exception:
+        bpy.data.meshes.remove(new)                        # the SubTool keeps its mesh
+        raise
+    fd.swap_mesh(ob, new)
+    if len(st['hard']):
+        from . import hard_edges
+        ob[hard_edges.KEY] = 1                             # the Hard Edges bevel / subdivide work on it right away
     quads = int((sizes == 4).sum())
     dt = time.perf_counter() - t0
-    return (f'Quad Remesh: {polys0:,} > {len(Fq):,} polygons, {quads / len(Fq) * 100:.0f} % quads '
+    edges = f', {len(st["hard"]):,} hard edges marked' if len(st['hard']) else ''
+    return (f'Quad Remesh: {polys0:,} > {len(Fq):,} polygons, {quads / len(Fq) * 100:.0f} % quads{edges} '
             f'in {dt:.1f} s')

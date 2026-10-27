@@ -115,7 +115,7 @@ def near_share(pts, me, mask, tol):
 
 def defaults():
     for k in ('he_angle', 'he_merge', 'he_crease', 'he_outer', 'he_bevel', 'he_width', 'he_segments', 'he_profile',
-              'he_subdiv', 'he_normals'):
+              'he_subdiv', 'he_normals', 'he_client'):
         zb.property_unset(k)
 
 
@@ -124,17 +124,20 @@ defaults()
 cube = box((0, 0, 0), (1, 1, 1), 'Cube')
 n, f0, f1 = he.find(cube, zb)
 me = cube.data
-sharp = edge_attr(me, 'sharp_edge', bool)
-check('Cube: Find Edges marks its 12 edges sharp, creased, with a bevel weight', n == 12 and sharp.sum() == 12
+sharp = he.hard_flags(me)
+check('Cube: Find Edges finds its 12 edges: creased, with a bevel weight', n == 12 and sharp.sum() == 12
       and (edge_attr(me, 'crease_edge') == 1.0).sum() == 12 and (edge_attr(me, 'bevel_weight_edge') == 1.0).sum() == 12,
       (n, int(sharp.sum())))
+check('... Client Look (default): nothing marked Sharp for the display (the mesh alone gives the look)',
+      zb.he_client and me.attributes.get('sharp_edge') is None)
 check('... every face shaded smooth (the sharp edges do the hard look), the object remembers it', all(
     p.use_smooth for p in me.polygons) and he.KEY in cube)
 zb.he_width = 0.1
 zb.he_segments = 1
 he.set_live(cube, zb)
-check('Live modifiers at the end, in order: Bevel, Weighted Normals (no Subdivide at 0)',
-      [m.name for m in cube.modifiers] == [he.BEVEL, he.NORMALS], [m.name for m in cube.modifiers])
+check('Live modifiers at the end: Bevel (no Subdivide at 0, no Weighted Normals: custom normals are off by default)',
+      [m.name for m in cube.modifiers] == [he.BEVEL] and not cube.modifiers[he.BEVEL].harden_normals,
+      [m.name for m in cube.modifiers])
 ev = evaluated(cube)
 d = tuple(round(x, 4) for x in ev.vertices[0].co)
 co = np.array([v.co[:] for v in ev.vertices])
@@ -160,13 +163,19 @@ ev = evaluated(cube)
 co = np.array([v.co[:] for v in ev.vertices])
 check('Crease off: Subdivide rounds it', np.abs(co).max() < 0.95, float(np.abs(co).max()))
 bpy.data.meshes.remove(ev)
+zb.he_normals = True
+check('Weighted Normals on: that modifier comes (last)', cube.modifiers[-1].name == he.NORMALS)
 zb.he_normals = False
-check('Weighted Normals off: that modifier goes', he.NORMALS not in cube.modifiers)
+check('... off: it goes', he.NORMALS not in cube.modifiers)
+zb.he_client = False
+check('Client Look off: the hard edges are marked Sharp for Blender\'s display', edge_attr(cube.data, 'sharp_edge',
+                                                                                         bool).sum() == 12)
+zb.he_client = True
+check('... on again: the Sharp marks go', cube.data.attributes.get('sharp_edge') is None)
 defaults()
 he.set_live(cube, zb)
 he.clear(cube)
-check('Clear: marks and live modifiers gone', len(cube.modifiers) == 0 and edge_attr(cube.data, 'sharp_edge',
-                                                                                     bool).sum() == 0
+check('Clear: marks and live modifiers gone', len(cube.modifiers) == 0 and he.hard_flags(cube.data).sum() == 0
       and cube.data.attributes.get('bevel_weight_edge') is None and he.KEY not in cube)
 
 # --- Outer Only on an L shape ---------------------------------------------------------------------------------------
@@ -178,7 +187,7 @@ C.view_layer.objects.active = L
 he.live_update(zb, C)
 me = L.data
 w = edge_attr(me, 'bevel_weight_edge')
-sharp = edge_attr(me, 'sharp_edge', bool)
+sharp = he.hard_flags(me)
 check('Outer Only: the inside corner of an L gets no bevel, the outside edges do', sharp.sum() > w.sum() > 0
       and (sharp & (w == 0)).sum() >= 1, (int(sharp.sum()), float(w.sum())))
 zb.he_outer = False
@@ -194,7 +203,7 @@ fd.decimate_object(ob, 5)
 tris0 = len(ob.data.polygons)
 n, f0, f1 = he.find(ob, zb)
 me = ob.data
-sharp = edge_attr(me, 'sharp_edge', bool)
+sharp = he.hard_flags(me)
 check('Decimated part: hard edges found, Merge Flats joins the flat triangles into big faces (fewer polygons)',
       n > 50 and f1 < 0.6 * f0, (n, f0, f1))
 check('... closed', closed(me) == 0)
@@ -248,9 +257,14 @@ check('... Subdivide on the quads: closed, 4x the faces after the bevel', closed
       and len(ev.polygons) > 4 * q0, (len(ev.polygons), q0))
 bpy.data.meshes.remove(ev)
 C.view_layer.objects.active = ob
-k = he.apply_live(C, ob)
-check('Apply: the live modifiers baked into the mesh', k == 3 and len(ob.modifiers) == 0
-      and len(ob.data.polygons) > 4 * q0, (k, len(ob.data.polygons)))
+k = he.apply_live(C, ob, zb)
+me = ob.data
+check('Apply: the live modifiers baked into the mesh', k == 2 and len(ob.modifiers) == 0
+      and len(me.polygons) > 4 * q0, (k, len(me.polygons)))
+check('... Client Look: a plain mesh - no Sharp / Crease / Bevel Weight / custom normals, every face smooth',
+      all(me.attributes.get(n) is None for n in ('sharp_edge', 'crease_edge', 'bevel_weight_edge', he.HARD))
+      and not getattr(me, 'has_custom_normals', False) and all(p.use_smooth for p in me.polygons)
+      and closed(me) == 0)
 bpy.data.objects.remove(ob)
 defaults()
 
@@ -269,19 +283,19 @@ for nd in pc.walk(root):
         boxes[lab] = (acts, props)
 hb = boxes.get('Hard Edges')
 check('Hard Edges has its own box on the ZBrush shelf: Find Edges + Angle, Merge Flats / Crease / Outer Only, '
-      'Bevel + Width, Segments / Shape, Subdivide / Weighted Normals, Apply / Clear',
+      'Bevel + Width, Segments / Shape, Subdivide / Client Look, Weighted Normals, Apply / Clear',
       hb is not None and {'HE_FIND', 'HE_APPLY', 'HE_CLEAR'} <= hb[0] and {
           'he_angle', 'he_merge', 'he_crease', 'he_outer', 'he_bevel', 'he_width', 'he_segments', 'he_profile',
-          'he_subdiv', 'he_normals'} <= hb[1], hb)
-check('Defaults: 30 degrees, Merge Flats, Crease, Bevel 2 segments, Weighted Normals, no Subdivide',
+          'he_subdiv', 'he_normals', 'he_client'} <= hb[1], hb)
+check('Defaults: 30 degrees, Merge Flats, Crease, Bevel 2 segments, Client Look, no Weighted Normals, no Subdivide',
       abs(math.degrees(zb.he_angle) - 30) < 1e-4 and zb.he_merge and zb.he_crease and zb.he_bevel
-      and zb.he_segments == 2 and zb.he_normals and zb.he_subdiv == 0 and not zb.he_outer)
+      and zb.he_segments == 2 and zb.he_client and not zb.he_normals and zb.he_subdiv == 0 and not zb.he_outer)
 n0 = len(ob.data.polygons)
 bpy.ops.ed.undo_push(message='before')
 r = bpy.ops.mch.zb_action(action='HE_FIND')
 ob = bpy.data.objects['ZB']
 check('Find Edges on the shelf: marks + live bevel, back in Sculpt Mode', r == {'FINISHED'} and C.mode == 'SCULPT'
-      and he.BEVEL in ob.modifiers and edge_attr(ob.data, 'sharp_edge', bool).sum() > 0,
+      and he.BEVEL in ob.modifiers and he.hard_flags(ob.data).sum() > 0,
       (C.mode, [m.name for m in ob.modifiers]))
 check('... a recovery copy is made before Find Edges / Apply (risky steps)', {'HE_FIND', 'HE_APPLY'} <= zs.RISKY)
 zb.he_width = 0.02
@@ -301,7 +315,7 @@ zb.he_width = 0.05
 check('... (a setting change afterwards adds nothing)', len(ob.modifiers) == 0)
 bpy.ops.mch.zb_action(action='HE_CLEAR')
 ob = bpy.data.objects['ZB']
-check('Clear on the shelf: the marks go', edge_attr(ob.data, 'sharp_edge', bool).sum() == 0)
+check('Clear on the shelf: the marks go', he.hard_flags(ob.data).sum() == 0)
 bpy.ops.object.mode_set(mode='OBJECT')
 bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=8)
 big = C.active_object

@@ -147,6 +147,30 @@ check('Even spacing: edges of one length on flat parts (spread and longest edge 
       and spread[0.1][2] < 1e-4, spread)
 bpy.data.objects.remove(ob)
 
+# --- 0.24.73 the result is built apart and swapped in -----------------------------------------------------------
+ob = bumpy_sphere(5, 'Swap')
+twin = ob.copy()
+C.collection.objects.link(twin)
+n0 = len(ob.data.polygons)
+fd.decimate_object(ob, 30)
+check('Decimate changes only this SubTool: an Alt+D twin keeps the old mesh', len(twin.data.polygons) == n0
+      and len(ob.data.polygons) < 0.5 * n0, (len(twin.data.polygons), len(ob.data.polygons)))
+n1 = len(ob.data.polygons)
+saved = fd._write_attrs
+fd._write_attrs = lambda *a, **k: (_ for _ in ()).throw(RuntimeError('simulated failure'))
+try:
+    try:
+        fd.decimate_object(ob, 50)
+        failed = False
+    except RuntimeError:
+        failed = True
+finally:
+    fd._write_attrs = saved
+check('A failure halfway leaves the mesh as it was (nothing cleared first)', failed and len(ob.data.polygons) == n1,
+      (failed, len(ob.data.polygons), n1))
+bpy.data.objects.remove(twin)
+bpy.data.objects.remove(ob)
+
 # --- options ------------------------------------------------------------------------------------------------------
 ob = bumpy_sphere(6, 'Even')
 ob2 = ob.copy()
