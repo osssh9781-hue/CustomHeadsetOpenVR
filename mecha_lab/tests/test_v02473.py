@@ -57,7 +57,8 @@ SQ = [(440, 440), (440, 560), (560, 560), (560, 440)]
 t = block('Dense', cuts=12)
 cut.gn_finish, cut.gn_width, cut.gn_segments = 'CHAMFER', W, 4
 msg = ce.perform_closed(C, 'CUT', [t], [SQ], TOP, False)
-check('Cut + GN Chamfer on a closed part: the fast way, closed result', used == [True] and 'GN Chamfer' in msg
+check('Cut + GN Chamfer on a closed part: the fast way, closed result (0.24.68: the band is looked at first - a '
+      'square pocket\'s band crosses itself at the corners: self-union + Manifold)', used == ['band', True] and 'GN Chamfer' in msg
       and non_manifold(t) == 0, (used, msg))
 corner = top_at(0.6 + W / 2 * 0.7, 0.6 + W / 2 * 0.7)
 side = top_at(0.6 + W / 2, 0.0)

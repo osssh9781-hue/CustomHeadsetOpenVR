@@ -38,8 +38,15 @@ def _link(ng, a, b):
 
 def ensure_group(n, fast=True):
     """The node group for an ``n``-point profile (made once per n): ``fast`` = band self-union (Exact) then a
-    Manifold difference; else the whole difference Exact with Self Intersection (slow, takes any mesh)."""
-    name = f'MCH_RimSweep5_{n}' if fast else f'MCH_RimSweep4_{n}'
+    Manifold difference; False = the whole difference Exact with Self Intersection (slow, takes any mesh);
+    0.24.68 'direct' = the band straight into a Manifold difference (a band that does not cross itself: the Exact
+    self-union was ~95 % of the time), 'band' = the band alone (to look for crossings)."""
+    if fast == 'direct':
+        name = f'MCH_RimSweep6_{n}'
+    elif fast == 'band':
+        name = f'MCH_RimSweepBand_{n}'
+    else:
+        name = f'MCH_RimSweep5_{n}' if fast else f'MCH_RimSweep4_{n}'
     ng = bpy.data.node_groups.get(name)
     if ng is not None:
         return ng
@@ -105,7 +112,7 @@ def ensure_group(n, fast=True):
     _link(ng, sw.outputs['Output'], setp.inputs['Position'])
     boo = nodes.new('GeometryNodeMeshBoolean')
     boo.operation = 'DIFFERENCE'
-    if fast:
+    if fast:                                       # (True, 'direct', 'band')
         boo.solver = 'MANIFOLD'
     else:
         boo.solver = 'EXACT'
@@ -117,7 +124,13 @@ def ensure_group(n, fast=True):
     strip.inputs['Name'].default_value = '*'
     _link(ng, setp.outputs['Geometry'], strip.inputs['Geometry'])
     _link(ng, gin.outputs[0], boo.inputs['Mesh 1'])
-    if fast:
+    if fast == 'band':
+        _link(ng, strip.outputs['Geometry'], gout.inputs[0])
+        nodes.remove(boo)
+        return ng
+    if fast == 'direct':
+        _link(ng, strip.outputs['Geometry'], boo.inputs['Mesh 2'])
+    elif fast:
         uni = nodes.new('GeometryNodeMeshBoolean')       # the band alone, made one clean solid first
         uni.operation = 'UNION'
         uni.solver = 'EXACT'
@@ -265,6 +278,66 @@ def room_limits(bm, acc, frames, width):
     return lim
 
 
+def across_limits(edges, lim, width):
+    """0.24.68 Rim points that face each other across the cut (a small hole's opposite side, a narrow slot, the
+    other rim): each one's band reaches about ``width`` past the corner, so two of them closer than ~2.5 widths ran
+    into each other - a chamfer wider than a hole's radius made a lopsided funnel and an Exact Boolean of ~1 s for
+    one hole.  The width there is kept under 0.4 x that gap (a hole: about 0.8 x its radius).  Neighbours along
+    the rim do not count (the way round along the rim is not much longer than straight across)."""
+    from mathutils.kdtree import KDTree
+    pos, chain_s, chain_len = {}, {}, {}
+    for ci, (run, closed) in enumerate(_chains(edges)):
+        s = 0.0
+        for j, v in enumerate(run):
+            if j:
+                s += (v.co - run[j - 1].co).length
+            pos[v.index] = v.co.copy()
+            chain_s[v.index] = (ci, s)
+        chain_len[ci] = (s + ((run[0].co - run[-1].co).length if closed and len(run) > 1 else 0.0), closed)
+    if len(pos) < 3:
+        return lim
+    tree = KDTree(len(pos))
+    for vi, co in pos.items():
+        tree.insert(co, vi)
+    tree.balance()
+    out = dict(lim)
+    reach = 2.5 * width
+    for vi, co in pos.items():
+        if vi not in out:
+            continue
+        ci, s0 = chain_s[vi]
+        for co2, vj, d in tree.find_range(co, reach):
+            if vj == vi or d < 1e-12:
+                continue
+            cj, s1 = chain_s[vj]
+            if cj == ci:
+                total, closed = chain_len[ci]
+                along = abs(s1 - s0)
+                if closed:
+                    along = min(along, total - along)
+                if along < 1.5 * d:                  # a neighbour along the rim
+                    continue
+            out[vi] = min(out[vi], max(0.4 * d, width * 0.05))
+    return out
+
+
+def even_small_loops(edges, lim, width, size=30.0):
+    """0.24.68 A small closed rim (a hole, a short slot: round less than ``size`` widths) gets one width all round -
+    the narrowest - instead of a lopsided chamfer where one side had less room (by a part's edge)."""
+    out = dict(lim)
+    for run, closed in _chains(edges):
+        if not closed or len(run) < 3:
+            continue
+        length = sum((run[i].co - run[i - 1].co).length for i in range(len(run)))
+        ws = [out[v.index] for v in run if v.index in out]
+        if ws and length < size * width:
+            w = min(ws)
+            for v in run:
+                if v.index in out:
+                    out[v.index] = w
+    return out
+
+
 def mark_rim(mesh, mode, width, segments):
     """Store the rim edges and each rim point's profile on ``mesh``.  Returns (profile size, rim edge count)."""
     bm = bmesh.new()
@@ -302,7 +375,9 @@ def mark_rim(mesh, mode, width, segments):
         bm.verts.ensure_lookup_table()
         frames = smooth_frames(bm, edges, acc, width)
         lim = room_limits(bm, acc, frames, width)
+        lim = across_limits(edges, lim, width)
         lim = _smooth_limits(edges, lim, width)
+        lim = even_small_loops(edges, lim, width)
         LAST['limited'] = min(lim.values()) if lim and min(lim.values()) < width * 0.98 else None
         for vi, (df, dw, out, k) in acc.items():
             if df.length < 1e-9 or dw.length < 1e-9 or out.length < 1e-9:
@@ -368,6 +443,21 @@ def _sweep(mesh, n, fast):
         bpy.data.objects.remove(ob)
 
 
+def band_crosses(band):
+    """0.24.68 Does the swept band cross itself (faces that meet without sharing a point)?  Then it needs the
+    Exact self-union first; a band that does not can go straight into the Manifold difference."""
+    from mathutils.bvhtree import BVHTree
+    if len(band.polygons) == 0:
+        return False
+    verts = [v.co.copy() for v in band.vertices]
+    polys = [tuple(p.vertices) for p in band.polygons]
+    tree = BVHTree.FromPolygons(verts, polys, epsilon=0.0)
+    for i, j in tree.overlap(tree):
+        if i < j and not set(polys[i]) & set(polys[j]):
+            return True
+    return False
+
+
 def _volume(me):
     bm = bmesh.new()
     try:
@@ -419,10 +509,21 @@ def finish(mesh, mode='CHAMFER', width=0.01, segments=3):
         clear(mesh)
         return 0
     closed = cg.non_manifold_edge_count(mesh) == 0
-    res = _sweep(mesh, n, fast=closed)
-    if closed and not _clean(res, mesh):       # the fast result is not right: the slow, sure way
-        bpy.data.meshes.remove(res)
-        res = _sweep(mesh, n, fast=False)
+    res = None
+    if closed:                                 # 0.24.68 a band that does not cross itself: no Exact self-union
+        band = _sweep(mesh, n, 'band')
+        crosses = band_crosses(band)
+        bpy.data.meshes.remove(band)
+        if not crosses:
+            res = _sweep(mesh, n, 'direct')
+            if not _clean(res, mesh):
+                bpy.data.meshes.remove(res)
+                res = None
+    if res is None:
+        res = _sweep(mesh, n, fast=closed)
+        if closed and not _clean(res, mesh):   # the fast result is not right: the slow, sure way
+            bpy.data.meshes.remove(res)
+            res = _sweep(mesh, n, fast=False)
     try:
         if len(res.polygons) == 0:
             clear(mesh)
