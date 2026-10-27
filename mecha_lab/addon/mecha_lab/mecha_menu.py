@@ -495,7 +495,7 @@ def draw(items, hover, S, context):
         white = (G.TEXT[0], G.TEXT[1], G.TEXT[2], dim)
         hot = it is hover and it.clickable()
         if it.kind == 'card':
-            G.rounded_rect(it.x, it.y, it.w, it.h, 18 * S, G.CARD)
+            G.rounded_rect(it.x, it.y, it.w, it.h, 18 * S, G.card_color())
         elif it.kind == 'title':
             G.text(it.x, it.y + it.h / 2, it.label, 16 * S, G.TEXT)
         elif it.kind == 'section':

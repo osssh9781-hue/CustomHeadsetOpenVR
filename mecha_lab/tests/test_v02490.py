@@ -176,6 +176,59 @@ short = lp.layout(CTX, W, 640, 1.0)
 check('A short viewport: the Layers panel scrolls (the wheel over it moves it)', short['content'] > short['view']
       and 'layers_panel' in inspect.getsource(ub.MCH_OT_ui_scroll.invoke))
 
+# --- under Blender's header rows, Apply Modifiers, UI Size ----------------------------------------------------------
+R = types.SimpleNamespace
+hdr = [R(type='HEADER', x=0, y=H - 26, width=W, height=26), R(type='TOOL_HEADER', x=0, y=H - 52, width=W, height=26),
+       R(type='WINDOW', x=0, y=0, width=W, height=H)]
+CTX.area = R(type='VIEW_3D', regions=hdr)
+ub.bump()
+inset = ub.top_inset(CTX)
+bar2 = tb.items(CTX, W, H, 1.0)
+check("Top bar under Blender's see-through header rows (Region Overlap), not over them",
+      abs(inset - 52) < 1e-6 and bar2[0].y + bar2[0].h <= H - 52, (inset, bar2[0].y + bar2[0].h))
+hdr[0].y, hdr[1].y = H, H + 26                      # no overlap: the headers are outside the viewport region
+check('... no header over the viewport: no gap', ub.top_inset(CTX) == 0.0)
+CTX.area = None
+ub.bump()
+src = inspect.getsource(bb.MCH_OT_apply_modifiers_pick.invoke)
+check('Apply Modifiers: meshes already selected are applied at once (picking only when nothing is selected)',
+      'selected_editable_objects' in src and src.index('selected_editable_objects') < src.index('modal_handler_add'))
+m = part('Mod_Part', (5, 0, 0))
+m.modifiers.new('Bevel', 'BEVEL')
+select_only(m)
+bpy.ops.mch.apply_modifiers_pick()
+check('... the selected mesh: its modifiers applied', len(m.modifiers) == 0 and len(m.data.polygons) > 6)
+src = inspect.getsource(lp.draw_sizes)
+check('UI Size in the Layers panel (folded): Viewport Panels, RMB Menu, Tool Menu, presets',
+      all(k in src for k in ("'mecha_ui_size'", "'menu_size'", "'strip_scale'", 'icon_size_preset'))
+      and 'draw_sizes' in inspect.getsource(lp.content))
+
+# --- panel opacity, Quick HUD, key legend ---------------------------------------------------------------------------
+from mecha_lab import quick_hud as qh, ui_gpu as G
+real_pref2 = wui.pref
+wui.pref = lambda name, default=True: 0.4 if name == 'panel_opacity' else real_pref2(name, default)
+c, e = G.card_color(), G.card_color(edge=True)
+wui.pref = real_pref2
+check('Panel Opacity: only the card background follows it (Preferences / Layers panel > UI Size)',
+      abs(c[3] - 0.4) < 1e-6 and c[:3] == G.CARD[:3] and abs(e[3] - G.CARD_EDGE[3] * 0.4) < 1e-6
+      and 'panel_opacity' in wui.SIZE_KEYS and "'panel_opacity'" in inspect.getsource(lp.draw_sizes))
+check('... every card uses it (menus / bars / panels / cards, Quick HUD, key legend); buttons and bars do not',
+      'G.card_color()' in inspect.getsource(mm.draw) and 'card_color' in inspect.getsource(key_legend._draw)
+      and 'card_color' in inspect.getsource(qh._draw_labels)
+      and 'G.card_color' not in inspect.getsource(mm._draw_new))
+real_on, real_min = sp.on, sp.minimised
+sp.on = lambda c: True
+sp.minimised = lambda c: False
+hidden = not qh.visible(C)
+sp.minimised = lambda c: True
+back = qh._side_panel_shows(C)
+sp.on, sp.minimised = real_on, real_min
+check('Quick HUD: not shown while the side panel shows the same settings (folded panel: the HUD may show)',
+      hidden and not back)
+src = inspect.getsource(key_legend._draw)
+check('Key legend: the card fits the key column + the widest text (a long text ran out of it)',
+      'keyw + what_w' in src)
+
 # --- the old way back ---------------------------------------------------------------------------------------------
 ann = wui.MCH_AddonPreferences.__annotations__
 check('Preferences: Tool Menu Place (Bottom / Left) and Layers Panel', 'tool_menu' in ann and 'layers_panel' in ann

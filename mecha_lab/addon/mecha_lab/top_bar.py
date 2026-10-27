@@ -169,6 +169,8 @@ def items(context, region_w, region_h, k=1.0, left=None, right=None):
         if right < region_w or l_low < left:        # ... and the side panel starts lower: use the whole width
             panel_top = side_panel.frame(region_w, region_h, k)[1]
     sep = 14.0 * k
+    from . import ui_bars
+    inset = ui_bars.top_inset(context)             # 0.24.59 under Blender's see-through header rows
     for full in ((True, False) if panel_top is not None else (False,)):
         r_edge = region_w if full else right
         l_edge = l_low if full else left
@@ -177,7 +179,7 @@ def items(context, region_w, region_h, k=1.0, left=None, right=None):
         widths = [sum(_group_width(t, c, k) for t, c in r) + sep * (len(r) - 1) for r in rows]
         width = max(widths) + 2 * PAD * k
         height = len(rows) * ROW * k + (len(rows) - 1) * GAP * k + 2 * PAD * k
-        y0 = region_h - TOP * k - height
+        y0 = region_h - TOP * k - inset - height
         if not full or y0 >= panel_top + 6 * k:
             break
     # 0.24.59 centred in the viewport (like the main menu below), moved only as far as the strip / panel need

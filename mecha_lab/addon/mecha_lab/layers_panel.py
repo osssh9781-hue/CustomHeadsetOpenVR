@@ -7,8 +7,9 @@ Export and the ZBrush Bridge under them - drawn in the Mecha look like the side 
           [ ] Shoulder_L                 (eye)
           [ ] Forearm_L                  (eye)
       [ ] Torso                          (eye)
-    v EXPORT        OBJ | FBX, Selected | Visible, Apply Modifiers, ZBrush-safe Faces, Scale, [Export...]
-    v ZBRUSH BRIDGE [Send to ZBrush] [Import Back] [Open Folder], the folder, what was sent
+    > EXPORT        OBJ | FBX, Selected | Visible, Apply Modifiers, ZBrush-safe Faces, Scale, [Export...]
+    > ZBRUSH BRIDGE [Send to ZBrush] [Import Back] [Open Folder], the folder, what was sent
+    > UI SIZE       (Viewport Panels) (RMB Menu) (Tool Menu) (Panel Opacity) [Small] [Normal] [Large] [Huge]
 
 A click on a row selects the part (Shift: add / remove), on a group row the group handle; the eye hides / shows
 (a group: all its parts); [>] works inside the group (Enter / Exit, as in the Mecha Menu).  Groups fold with the
@@ -112,6 +113,23 @@ def draw_export(layout, context):
     op = row.operator('mch.export_mesh', text='Export...', icon='EXPORT')
     op.scope, op.file_format = s.export_scope, s.export_format
     op.apply_modifiers, op.split_ngons, op.scale = s.apply_modifiers, s.split_ngons, s.scale
+
+
+def draw_sizes(layout, context):
+    """0.24.59 the viewport UI sizes right here (were only in Preferences / the sidebar)."""
+    from .workspace_ui import prefs
+    p = prefs()
+    if p is None:
+        return
+    box = layout.box()
+    box.label(text='UI Size')
+    box.prop(p, 'mecha_ui_size')
+    box.prop(p, 'menu_size')
+    box.prop(p, 'strip_scale', text='Tool Menu')
+    box.prop(p, 'panel_opacity')
+    row = box.row()
+    for label, v in (('Small', 0.75), ('Normal', 1.0), ('Large', 1.4), ('Huge', 1.9)):
+        row.operator('mch.icon_size_preset', text=label).factor = v
 
 
 def draw_bridge(layout, context):
@@ -235,7 +253,7 @@ def content(context, x, width, k):
     y -= GAP * k
     b = side_panel.Builder(TOOL, x, width, k)
     b.y = y
-    for drawer in (draw_export, draw_bridge):        # folded at first (the list gets the room)
+    for drawer in (draw_export, draw_bridge, draw_sizes):     # folded at first (the list gets the room)
         node = pc.capture(drawer, context)
         if node.opts.get('error'):
             continue

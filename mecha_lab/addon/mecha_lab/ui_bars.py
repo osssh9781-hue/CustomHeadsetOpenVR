@@ -83,6 +83,20 @@ def left_inset(context):
     return max(0.0, float(tools.x + tools.width - region.x))
 
 
+def top_inset(context):
+    """0.24.59 Region px at the top covered by Blender's header / tool settings rows (with Region Overlap they lie
+    over the viewport, see-through) - the top bar goes under them."""
+    area, region = getattr(context, 'area', None), getattr(context, 'region', None)
+    if area is None or region is None:
+        return 0.0
+    top = region.y + region.height
+    low = top
+    for r in area.regions:
+        if r.type in {'HEADER', 'TOOL_HEADER'} and r.height > 1 and r.y < top and r.y > region.y + region.height / 2:
+            low = min(low, r.y)
+    return max(0.0, float(top - low))
+
+
 def _icon_for(tid):
     if tid in BAR_ICON:
         alias = BAR_ICON[tid]

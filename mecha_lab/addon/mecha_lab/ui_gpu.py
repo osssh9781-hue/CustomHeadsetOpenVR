@@ -24,6 +24,18 @@ TRACK = (0.22, 0.23, 0.26, 1.0)
 _TEX = {}             # path -> GPUTexture (or None when it could not be read)
 
 
+def card_color(edge=False):
+    """0.24.59 a card's background with Preferences > Panel Opacity - only the card: icons, text, buttons and value
+    bars on it stay solid."""
+    try:
+        from .workspace_ui import pref
+        a = max(0.0, min(1.0, float(pref('panel_opacity', CARD[3]))))
+    except (TypeError, ValueError, ImportError):
+        a = CARD[3]
+    c = CARD_EDGE if edge else CARD
+    return (c[0], c[1], c[2], c[3] * a if edge else a)
+
+
 def ui_factor(context, region=None, menu=False):
     """UI scale x a bump for big screens (4K at 100 % made everything tiny) x Preferences > Viewport Panels
     (0.24.58 ``menu``: x RMB Menu instead - the Mecha Menu has its own size)."""

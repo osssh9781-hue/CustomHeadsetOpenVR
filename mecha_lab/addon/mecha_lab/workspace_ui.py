@@ -81,7 +81,8 @@ def handle_scale():
 # 0.14.3: icon sizes survive a restart even when Blender's preferences are not
 # saved (Auto-Save Preferences off): they are kept in the add-on's own small
 # file in the user config folder.  Blender's own preference file is untouched.
-SIZE_KEYS = ('icon_scale', 'toolbar_scale', 'handle_scale', 'mecha_ui_size', 'menu_size', 'strip_scale')   # 0.24.59 + strip
+SIZE_KEYS = ('icon_scale', 'toolbar_scale', 'handle_scale', 'mecha_ui_size', 'menu_size', 'strip_scale',
+             'panel_opacity')   # 0.24.59 + tool tiles, panel opacity
 _SIZE_MUTE = [False]
 
 
@@ -1930,7 +1931,9 @@ def draw_icon_sizes(layout, p):
     if hasattr(p, 'menu_size'):
         col.prop(p, 'menu_size', slider=True)            # 0.24.58 the RMB Mecha Menu on its own
     if hasattr(p, 'strip_scale'):
-        col.prop(p, 'strip_scale', slider=True)          # 0.24.59 the left tool strip
+        col.prop(p, 'strip_scale', slider=True)          # 0.24.59 the tool tiles (bottom menu + actions, or strip)
+    if hasattr(p, 'panel_opacity'):
+        col.prop(p, 'panel_opacity', slider=True)        # 0.24.59 the cards' background only
     if hasattr(p, 'dial_flip'):
         layout.prop(p, 'dial_flip')
     if hasattr(p, 'bottom_toolbar'):
@@ -2298,7 +2301,12 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
     strip_names: BoolProperty(name='Tool Strip Names', default=True,
                               description='0.24.59 the tool strip shows each tool\'s name next to its icon (two '
                                           'columns); off = icons only')
-    strip_scale: FloatProperty(name='Tool Strip', default=1.0, min=0.5, max=2.5, subtype='FACTOR',
+    panel_opacity: FloatProperty(name='Panel Opacity', default=0.98, min=0.1, max=1.0, subtype='FACTOR',
+                                 update=_sizes_changed,
+                                 description='0.24.59 how solid the viewport cards are (menus, panels, HUD, key legend, '
+                                             'cards) - only their background: icons, text, buttons and bars stay '
+                                             'solid')
+    strip_scale: FloatProperty(name='Tool Menu', default=1.0, min=0.5, max=2.5, subtype='FACTOR',
                                update=_sizes_changed, description='0.24.59 size of the tool tiles (the main menu at '
                                                                   'the bottom and its actions, or the left strip)')
     top_bar: BoolProperty(name='Top Bar', default=True,

@@ -103,8 +103,19 @@ def visible(context):
         return False
     from . import bottom_bar
     try:
+        if _side_panel_shows(context):
+            return False
         return bottom_bar.ui_active(context) and not bottom_bar.in_select(context) and bool(items(context))
     except (AttributeError, KeyError, TypeError):
+        return False
+
+
+def _side_panel_shows(context):
+    """0.24.59 the side panel (open, not folded) has the same settings - and the RMB menu too: no HUD then."""
+    try:
+        from . import side_panel
+        return side_panel.on(context) and not side_panel.minimised(context)
+    except (ImportError, AttributeError, TypeError, ReferenceError):
         return False
 
 
@@ -450,8 +461,8 @@ def _draw_labels():
         gx, gy = grip
         top = gy + rh / 2 + pad
         bottom = rows[-1][1] - rh / 2 - pad
-        G.rounded_rect(gx - rw / 2 - pad - 1, bottom - 1, rw + 2 * pad + 2, top - bottom + 2, 12 * k, G.CARD_EDGE)
-        G.rounded_rect(gx - rw / 2 - pad, bottom, rw + 2 * pad, top - bottom, 12 * k, G.CARD)
+        G.rounded_rect(gx - rw / 2 - pad - 1, bottom - 1, rw + 2 * pad + 2, top - bottom + 2, 12 * k, G.card_color(edge=True))
+        G.rounded_rect(gx - rw / 2 - pad, bottom, rw + 2 * pad, top - bottom, 12 * k, G.card_color())
         tool = ts.TOOL_BY_ID.get(ts.effective_tool(context))
         G.text(gx - rw / 2, gy, (tool[1] if tool else '') + ' tool', 13 * k, G.TEXT)
         G.text(gx + rw / 2, gy, 'drag · click · Ctrl+click', 10 * k, G.TEXT_DIM, 'RIGHT')

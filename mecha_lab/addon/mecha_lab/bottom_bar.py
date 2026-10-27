@@ -512,7 +512,8 @@ def apply_all_modifiers(context, ob):
 
 
 class MCH_OT_apply_modifiers_pick(bpy.types.Operator):
-    """Click a mesh: all its modifiers are applied one after another, top to bottom (Esc / right-click: done)"""
+    """Apply the modifiers of the selected meshes, top to bottom; nothing selected: click a mesh (Esc / right-click:
+    done)"""
     bl_idname = 'mch.apply_modifiers_pick'
     bl_label = 'Apply Modifiers (click a mesh)'
     bl_options = {'REGISTER', 'UNDO'}
@@ -547,6 +548,8 @@ class MCH_OT_apply_modifiers_pick(bpy.types.Operator):
     def invoke(self, context, event):
         if context.area is None or context.area.type != 'VIEW_3D':
             return self.execute(context)
+        if any(o.type == 'MESH' for o in context.selected_editable_objects):
+            return self.execute(context)         # 0.24.59 already picked: apply now, no second pick
         context.window_manager.modal_handler_add(self)
         context.workspace.status_text_set('Apply Modifiers: click a mesh (its modifiers are applied top to bottom) '
                                           '| Esc / Right-click: done')

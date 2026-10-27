@@ -79,14 +79,12 @@ def _draw():
         k = G.ui_factor(context)
         rows = lines(tid)
         size, lh, pad = 12 * k, 20 * k, 12 * k
-        import blf
-        blf.size(0, size)
-        widths = []
-        for t in rows:
-            key, _sep, what = t.partition('   ')
-            widths.append(blf.dimensions(0, key)[0] + 16 * k + blf.dimensions(0, what)[0])
-        keyw = max(blf.dimensions(0, t.partition('   ')[0])[0] for t in rows[1:]) + 16 * k
-        w = max(widths + [keyw + 120 * k]) + 2 * pad
+        w_of = lambda s, sz=size: G.text(-9999, -9999, s, sz)      # measured as drawn
+        keyw = max(w_of(t.partition('   ')[0]) for t in rows[1:]) + 16 * k
+        what_w = max(w_of(t.partition('   ')[2]) for t in rows[1:])
+        # 0.24.59 the texts start at the key column, so the card is key column + the widest text (was per row:
+        # a short key with a long text ran out of the card)
+        w = max(keyw + what_w, w_of(rows[0], 13 * k), keyw + 120 * k) + 2 * pad
         h = lh * len(rows) + 2 * pad
         x, y = 14 * k, 90 * k
         try:                                     # 0.24.58 right of the left tool strip
@@ -95,8 +93,8 @@ def _draw():
             y += max(0.0, ui_bars.dock_top(context, k) - 80 * k)     # 0.24.59 above the main menu + actions dock
         except (ImportError, AttributeError, TypeError):
             pass
-        G.rounded_rect(x - 1, y - 1, w + 2, h + 2, 12 * k, G.CARD_EDGE)
-        G.rounded_rect(x, y, w, h, 12 * k, G.CARD)
+        G.rounded_rect(x - 1, y - 1, w + 2, h + 2, 12 * k, G.card_color(edge=True))
+        G.rounded_rect(x, y, w, h, 12 * k, G.card_color())
         for i, t in enumerate(rows):
             ty = y + h - pad - lh * (i + 0.5)
             if i == 0:
