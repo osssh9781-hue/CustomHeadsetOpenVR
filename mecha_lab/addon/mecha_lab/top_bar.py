@@ -115,19 +115,26 @@ def _group_width(title, cells, k):
 
 
 def rows_of(gs, room, k):
-    """Groups packed into rows that fit ``room`` px (at most 3 rows; a too-wide group gets a row of its own)."""
-    rows, cur, cur_w = [], [], 0.0
+    """Groups in the fewest rows that fit ``room`` px (at most 3), split so the rows are about equally wide (a
+    row with one lonely button looked odd)."""
+    import itertools
     sep = 14.0 * k
-    for g in gs:
-        gw = _group_width(g[0], g[1], k)
-        if cur and cur_w + sep + gw > room and len(rows) < 2:
-            rows.append(cur)
-            cur, cur_w = [], 0.0
-        cur_w += (sep if cur else 0.0) + gw
-        cur.append(g)
-    if cur:
-        rows.append(cur)
-    return rows
+    widths = [_group_width(t, c, k) for t, c in gs]
+
+    def row_w(a, b):
+        return sum(widths[a:b]) + sep * (b - a - 1)
+    n = len(gs)
+    for rows in (1, 2, 3):
+        best = None
+        for cuts in itertools.combinations(range(1, n), rows - 1):
+            bounds = (0,) + cuts + (n,)
+            w = max(row_w(a, b) for a, b in zip(bounds, bounds[1:]))
+            if best is None or w < best[0]:
+                best = (w, bounds)
+        if best is not None and (best[0] <= room or rows == 3 or rows >= n):
+            b = best[1]
+            return [gs[x:y] for x, y in zip(b, b[1:])]
+    return [gs]
 
 
 def room(context, region_w, k):
