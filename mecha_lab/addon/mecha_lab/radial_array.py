@@ -7,6 +7,7 @@ real mesh geometry. Source object is never deleted by create/cancel/apply.
 
 import math
 import bpy
+import numpy as np
 from mathutils import Matrix
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty
 
@@ -14,6 +15,18 @@ GN_MOD = 'MCH_Radial_Array'
 ROLE = 'MCH_RADIAL'
 EPSILON = 1.0e-6
 BOOL_PREFIX = 'MCH Radial Boolean'
+# 0.24.65 Crash guards, measured with 0.3 cube teeth on a 1.2 tire and the live Exact Boolean: a Size of
+# 1e25 segfaults bpy 5.2.3; 192 copies take 12 s / 1.4 GB, 256 copies 42 s / 3.8 GB, 2048 copies were killed
+# for memory (> 15 GB, bpy 5.0.1 and 5.2.3). Baking costs about 0.8 KB per realized point (BMesh).
+MAX_EXTENT = 1.0e6                  # 1,000 km from the ring centre
+MAX_REALIZED_VERTS = 5_000_000      # about 4 GB while baking
+BOOLEAN_LIVE_LOAD = 50_000          # see boolean_load(): a few seconds per update, under 1 GB
+BOOLEAN_APPLY_LOAD = 400_000        # about 4 GB once
+# Every named node of make_radial_group(); without MCH_Radial_Realize a bake would come out empty.
+NODE_NAMES = ('MCH_Radial_Points', 'MCH_Radial_Step', 'MCH_Radial_Start', 'MCH_Radial_Cos', 'MCH_Radial_Sin',
+              'MCH_Radial_X', 'MCH_Radial_Y', 'MCH_Radial_Position', 'MCH_Radial_SetPosition', 'MCH_Radial_Phase',
+              'MCH_Radial_Orient', 'MCH_Radial_Instances', 'MCH_Radial_CopyRot', 'MCH_Radial_RingRot',
+              'MCH_Radial_Realize', 'MCH_Radial_BakeSwitch')
 
 
 def radial_step(count, arc):
@@ -40,6 +53,60 @@ def get_radial(obj):
     if obj is None or obj.get('mch_role') != ROLE:
         return None
     return obj.modifiers.get(GN_MOD)
+
+
+def edit_problem(ob):
+    """0.24.65 Why the radial operators must not write into ``ob`` (library data, which Python could still
+    change without saving or undo), or ''."""
+    data = getattr(ob, 'data', None)
+    if ob.library is not None or (data is not None and data.library is not None):
+        return f'"{ob.name}" is linked from a library; make it local first'
+    if ob.override_library is not None:
+        return f'"{ob.name}" is a library override; make it local first'
+    return ''
+
+
+def in_view_layer(context, ob):
+    """0.24.65 select_set / active raise for an object outside the view layer (deleted from the scene but kept
+    by the ring's Source pointer, or in an excluded collection)."""
+    return ob is not None and context.view_layer.objects.get(ob.name) == ob
+
+
+def boolean_load(p, tris, size):
+    """0.24.65 Rough Exact Boolean memory of the ring (about 10 KB per unit in the measurements): cutter
+    triangles x (1 + neighbour copies crossing each triangle) ^ 2. Overlapping copies are what blows up."""
+    chord = 2.0 * abs(p.radius) * math.sin(radial_step(p.count, p.arc) / 2.0)
+    near = min(p.count - 1, 2 * int(size / chord)) if chord > EPSILON else p.count - 1
+    return p.count * tris * (1.0 + near / math.sqrt(max(tris, 1))) ** 2
+
+
+def realize_problem(carrier, boolean_limit=0):
+    """0.24.65 Why realizing the ring (Confirm, Radial Boolean) could crash Blender or run out of memory,
+    or '' when it is safe. ``boolean_limit`` > 0 also checks the Exact Boolean load."""
+    p = carrier.mch_radial
+    values = (p.radius, p.phase, p.arc, p.scale, p.height, p.base_angle, p.ring_rot_x, p.ring_rot_y,
+              p.ring_rot_z, p.copy_rot_x, p.copy_rot_y, p.copy_rot_z)
+    if not all(math.isfinite(v) for v in values):
+        return 'Radial values are not numbers (NaN / inf): re-enter Radius, Size and angles'
+    me = carrier.data
+    n = len(me.vertices)
+    if n == 0 or p.count < 1:
+        return 'Radial source mesh is empty'
+    if n * p.count > MAX_REALIZED_VERTS:
+        return f'Too many points to realize ({n * p.count:,}, limit {MAX_REALIZED_VERTS:,}): lower Count'
+    co = np.empty(n * 3, dtype=np.float32)
+    me.vertices.foreach_get('co', co)
+    if not np.isfinite(co).all():
+        return 'Radial source mesh has broken (NaN / inf) points'
+    reach = float(np.abs(co).max()) * math.sqrt(3.0) * p.scale
+    if abs(p.radius) + abs(p.height) + reach > MAX_EXTENT:
+        return 'Radial array is too large (over 1,000 km): lower Radius, Size or Z Offset'
+    if boolean_limit > 0:
+        co = co.reshape(-1, 3)
+        size = float(np.linalg.norm(co.max(axis=0) - co.min(axis=0))) * p.scale
+        if boolean_load(p, max(0, len(me.loops) - 2 * len(me.polygons)), size) > boolean_limit:
+            return 'Exact Boolean too heavy (many overlapping cutters): lower Count or Size'
+    return ''
 
 
 def _math(nodes, name, operation, value=None):
@@ -141,6 +208,30 @@ def make_radial_group(carrier):
     return ng
 
 
+def ensure_radial_group(obj):
+    """0.24.65 The ring's node group, rebuilt from the stored settings when it was removed or lost one of its
+    nodes (pre-0.9 rings, user edits) instead of a KeyError / None mid-operation. None without the GN modifier."""
+    mod = get_radial(obj)
+    if mod is None:
+        return None
+    old = mod.node_group
+    if old is not None and all(old.nodes.get(name) is not None for name in NODE_NAMES):
+        return old
+    mod.node_group = make_radial_group(obj)
+    if old is not None and old.users == 0:
+        bpy.data.node_groups.remove(old)
+    return mod.node_group
+
+
+def set_realize(carrier, realize):
+    """0.24.65 Realize Instances on / off; False when the switch node is missing."""
+    mod = get_radial(carrier)
+    switch = mod.node_group.nodes.get('MCH_Radial_BakeSwitch') if mod is not None and mod.node_group else None
+    if switch is not None:
+        switch.inputs['Switch'].default_value = bool(realize)
+    return switch is not None
+
+
 # Keep instances cheap during ordinary array edits. Turning on Boolean Preview
 # realizes cutters and runs the exact solver, so it is explicitly opt-in.
 def find_boolean_link(carrier):
@@ -157,15 +248,17 @@ def find_boolean_link(carrier):
 
 def set_boolean_preview(carrier, preview):
     mod = get_radial(carrier)
-    if mod is None or mod.node_group is None:
+    if mod is None:
         return
-    switch = mod.node_group.nodes.get('MCH_Radial_BakeSwitch')
-    if switch is None:
-        return
+    switch = mod.node_group.nodes.get('MCH_Radial_BakeSwitch') if mod.node_group is not None else None
     target, bool_mod = find_boolean_link(carrier)
-    enabled = bool(preview and bool_mod is not None)
+    # 0.24.65 The live cut pauses (cheap instances, Boolean hidden) while the node group is missing or the ring is
+    # too heavy / out of range for the Exact solver: it segfaults or runs out of memory there.
+    enabled = bool(preview and bool_mod is not None and switch is not None
+                   and not realize_problem(carrier, BOOLEAN_LIVE_LOAD))
     # Exact Boolean needs genuine evaluated meshes, not cheap GN instances.
-    switch.inputs['Switch'].default_value = enabled
+    if switch is not None:
+        switch.inputs['Switch'].default_value = enabled
     if bool_mod is not None:
         # Array cutters can overlap each other. Without the Boolean solver's
         # self-intersection option, a dense 360-degree ring may evaluate as an
@@ -236,6 +329,19 @@ class MCH_OT_radial_boolean_link(bpy.types.Operator):
         if target is carrier:
             self.report({'ERROR'}, 'The Boolean target and cutter cannot be the same object')
             return {'CANCELLED'}
+        # 0.24.65 A live ring as target, or a carrier modifier using the target, is a dependency cycle
+        # (Blender: 'Dependency cycle detected'); library data would be changed without saving.
+        problem = edit_problem(carrier) or edit_problem(target)
+        if not problem and get_radial(target) is not None:
+            problem = f'"{target.name}" is a live Radial Array: Confirm or Cancel it first'
+        if not problem and any(getattr(m, 'object', None) == target for m in carrier.modifiers):
+            problem = f'A modifier on the ring already uses "{target.name}" (dependency cycle)'
+        if not problem and ensure_radial_group(carrier) is None:
+            problem = 'Radial Geometry Nodes modifier is missing'
+        problem = problem or realize_problem(carrier, BOOLEAN_APPLY_LOAD)
+        if problem:
+            self.report({'ERROR'}, 'Radial Boolean: ' + problem)
+            return {'CANCELLED'}
         # Other existing modifiers/booleans on target are not touched.
         remove_boolean_link(carrier)
         bm = target.modifiers.new(BOOL_PREFIX + ' | ' + carrier.name, 'BOOLEAN')
@@ -246,6 +352,10 @@ class MCH_OT_radial_boolean_link(bpy.types.Operator):
         p.boolean_preview = True
         carrier.display_type = 'WIRE'
         set_boolean_preview(carrier, True)
+        live = realize_problem(carrier, BOOLEAN_LIVE_LOAD)
+        if live:
+            self.report({'WARNING'}, 'Radial Boolean linked; live preview paused (' + live + '). Apply still works')
+            return {'FINISHED'}
         self.report({'INFO'}, 'Radial Boolean linked. Adjust Count/Radius; disable preview for fast edits')
         return {'FINISHED'}
 
@@ -262,6 +372,10 @@ class MCH_OT_radial_boolean_unlink(bpy.types.Operator):
 
     def execute(self, context):
         carrier = context.active_object
+        problem = edit_problem(carrier)
+        if problem:
+            self.report({'ERROR'}, 'Unlink Radial Boolean: ' + problem)
+            return {'CANCELLED'}
         remove_boolean_link(carrier)
         carrier.display_type = 'TEXTURED'
         carrier.mch_radial.linked_target = None
@@ -286,7 +400,19 @@ class MCH_OT_radial_boolean_apply(bpy.types.Operator):
         if target is None or bm is None:
             self.report({'ERROR'}, 'No linked Boolean modifier')
             return {'CANCELLED'}
-        source = p.source
+        # 0.24.65 Every check runs before anything changes: a missing node group used to fail only after the
+        # ring was deleted (one cut, source left hidden), heavy / out-of-range rings crash the Exact solver.
+        problem = edit_problem(carrier) or edit_problem(target)
+        if not problem and target.mode != 'OBJECT':
+            problem = f'"{target.name}" is in {target.mode.title()} Mode: switch it to Object Mode first'
+        if not problem and ensure_radial_group(carrier) is None:
+            problem = 'Radial Geometry Nodes modifier is missing'
+        problem = problem or realize_problem(carrier, BOOLEAN_APPLY_LOAD)
+        if problem:
+            self.report({'ERROR'}, 'Radial Boolean apply: ' + problem)
+            return {'CANCELLED'}
+        # Names, not objects, are kept for the code after the ring is removed.
+        source_name = p.source.name if p.source is not None else ''
         source_was_hidden = p.source_was_hidden
         gn_mod = get_radial(carrier)
         ng = gn_mod.node_group
@@ -299,6 +425,7 @@ class MCH_OT_radial_boolean_apply(bpy.types.Operator):
             # Even if the user left fast mode active, evaluate real mesh cutters
             # for the final difference/intersect/union operation.
             set_boolean_preview(carrier, True)
+            set_realize(carrier, True)          # 0.24.65 also when the live preview is paused as too heavy
             bm.show_viewport = True
             bm.show_render = True
             if original_hidden:
@@ -323,7 +450,8 @@ class MCH_OT_radial_boolean_apply(bpy.types.Operator):
             bpy.data.meshes.remove(old_mesh)
         if ng.users == 0:
             bpy.data.node_groups.remove(ng)
-        if source is not None and source.name in bpy.data.objects:
+        source = bpy.data.objects.get(source_name) if source_name else None
+        if in_view_layer(context, source):
             source.hide_set(source_was_hidden)
         # Target stays selected so the result can be inspected immediately.
         if original_hidden:
@@ -338,17 +466,12 @@ class MCH_OT_radial_boolean_apply(bpy.types.Operator):
 
 def update_radial(self, context):
     obj = self.id_data
-    mod = get_radial(obj)
-    if mod is None or mod.node_group is None:
+    # Radial arrays made before v0.9 lack the rotation nodes: rebuild once.
+    # 0.24.65 The same for a removed node group or any missing node (was a KeyError on every edit).
+    group = ensure_radial_group(obj)
+    if group is None:
         return
-    nodes = mod.node_group.nodes
-    if nodes.get('MCH_Radial_CopyRot') is None or nodes.get('MCH_Radial_RingRot') is None:
-        # Radial arrays made before v0.9 lack the rotation nodes: rebuild once.
-        old = mod.node_group
-        mod.node_group = make_radial_group(obj)
-        if old.users == 0:
-            bpy.data.node_groups.remove(old)
-        nodes = mod.node_group.nodes
+    nodes = group.nodes
     # Only cheap node socket values are updated. No topology rebuild or bpy.ops.
     nodes['MCH_Radial_Points'].inputs['Count'].default_value = self.count
     nodes['MCH_Radial_Step'].inputs[1].default_value = radial_step(self.count, self.arc)
@@ -361,6 +484,10 @@ def update_radial(self, context):
     nodes['MCH_Radial_Instances'].inputs['Scale'].default_value = (self.scale,) * 3
     nodes['MCH_Radial_CopyRot'].inputs['Rotation'].default_value = (self.copy_rot_x, self.copy_rot_y, self.copy_rot_z)
     nodes['MCH_Radial_RingRot'].inputs['Rotation'].default_value = (self.ring_rot_x, self.ring_rot_y, self.ring_rot_z)
+    if self.boolean_preview:
+        # 0.24.65 Re-checked before the next depsgraph update: dragging Count / Size up with the live Exact
+        # Boolean on pauses the cut instead of running out of memory (or segfaulting on a huge Size).
+        set_boolean_preview(obj, True)
 
 
 class MCH_PG_Radial(bpy.types.PropertyGroup):
@@ -476,6 +603,15 @@ class MCH_OT_radial_bake(bpy.types.Operator):
         if find_boolean_link(ob)[1] is not None:
             self.report({'WARNING'}, 'Radial Boolean is linked: Apply Boolean or Unlink first')
             return {'CANCELLED'}
+        # 0.24.65 A removed node group is rebuilt (was an AttributeError); NaN / huge values or too many
+        # points (out of memory while baking) are refused before anything changes.
+        problem = edit_problem(ob)
+        if not problem and ensure_radial_group(ob) is None:
+            problem = 'Radial Geometry Nodes modifier is missing'
+        problem = problem or realize_problem(ob)
+        if problem:
+            self.report({'ERROR'}, 'Radial bake: ' + problem)
+            return {'CANCELLED'}
         mod = get_radial(ob)
         group = mod.node_group
         switch = group.nodes.get('MCH_Radial_BakeSwitch')
@@ -513,9 +649,15 @@ class MCH_OT_radial_cancel(bpy.types.Operator):
 
     def execute(self, context):
         ob = context.active_object
+        problem = edit_problem(ob)
+        if problem:
+            self.report({'ERROR'}, 'Cancel Radial Array: ' + problem)
+            return {'CANCELLED'}
         if find_boolean_link(ob)[1] is not None:
             remove_boolean_link(ob)
-        src = ob.mch_radial.source
+        # 0.24.65 The source is found again by name after the ring is removed, and only selected when it is in
+        # the view layer: a source deleted from the scene (kept by this pointer) raised after the ring was gone.
+        src_name = ob.mch_radial.source.name if ob.mch_radial.source is not None else ''
         was_hidden = ob.mch_radial.source_was_hidden
         mod = get_radial(ob)
         group = mod.node_group
@@ -525,7 +667,8 @@ class MCH_OT_radial_cancel(bpy.types.Operator):
             bpy.data.meshes.remove(mesh)
         if group is not None and group.users == 0:
             bpy.data.node_groups.remove(group)
-        if src and src.name in bpy.data.objects:
+        src = bpy.data.objects.get(src_name) if src_name else None
+        if in_view_layer(context, src):
             src.hide_set(was_hidden)
             if not was_hidden:
                 src.select_set(True)
@@ -598,9 +741,15 @@ class MCH_PT_radial(bpy.types.Panel):
                 box.label(text='Linked: ' + linked_target.name)
                 box.prop(p, 'boolean_preview', text='Live Boolean Preview')
                 box.label(text='OFF: fast instances; ON: real cut')
+                live = realize_problem(ob, BOOLEAN_LIVE_LOAD) if p.boolean_preview else ''
+                if live:
+                    box.label(text='Preview paused: ' + live, icon='ERROR')      # 0.24.65
                 r = box.row(align=True)
                 r.operator('mch.radial_boolean_apply', text='APPLY BOOLEAN', icon='CHECKMARK')
                 r.operator('mch.radial_boolean_unlink', text='UNLINK', icon='UNLINKED')
+            problem = realize_problem(ob) if bm is None else ''
+            if problem:
+                layout.label(text=problem, icon='ERROR')                       # 0.24.65 why Confirm will refuse
             row = layout.row(align=True)
             row.enabled = bm is None
             row.operator('mch.radial_bake', text='CONFIRM / APPLY', icon='CHECKMARK')
