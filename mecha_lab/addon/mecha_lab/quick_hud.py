@@ -422,7 +422,62 @@ def _draw_labels():
     ui_gpu.done()
 
 
-CLASSES = (MCH_OT_quick_hud_press, MCH_PT_quick_value)
+def over_ui(context, x, y):
+    """0.24.58 Is region point (x, y) on the drawn toolbar / tool strip, the Symmetry card or the Quick HUD?"""
+    try:
+        from . import ui_bars
+        if ui_bars.hit(context, x, y)[0]:
+            return True
+    except (AttributeError, KeyError, TypeError, ReferenceError, ImportError):
+        pass
+    try:
+        from . import symmetry
+        if symmetry.card_hit(context, x, y)[0]:
+            return True
+    except (AttributeError, KeyError, TypeError, ReferenceError, ImportError):
+        pass
+    try:
+        return visible(context) and hit(context, x, y) is not None
+    except (AttributeError, KeyError, TypeError, ReferenceError):
+        return False
+
+
+class MCH_GT_ui_catch(bpy.types.Gizmo):
+    """0.24.58 An invisible gizmo over the Mecha viewport panels.  Gizmos get the click before any tool keymap, so
+    a plain click / drag on the HUD, the Symmetry card or the toolbar works in every tool - also Blender's own
+    Select / Move, whose click-select used to come first (it deselected; only Ctrl + click got through)."""
+    bl_idname = 'MCH_GT_ui_catch'
+
+    def draw(self, context):
+        pass
+
+    def test_select(self, context, location):
+        return 0 if over_ui(context, location[0], location[1]) else -1
+
+
+class MCH_GGT_ui_catch(bpy.types.GizmoGroup):
+    bl_idname = 'MCH_GGT_ui_catch'
+    bl_label = 'Mecha Viewport Panels'
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'WINDOW'
+    bl_options = {'PERSISTENT'}
+
+    @classmethod
+    def poll(cls, context):
+        from . import bottom_bar
+        try:
+            return bottom_bar.ui_active(context)
+        except (AttributeError, KeyError, TypeError, ReferenceError):
+            return False
+
+    def setup(self, context):
+        gz = self.gizmos.new(MCH_GT_ui_catch.bl_idname)
+        gz.target_set_operator(MCH_OT_quick_hud_press.bl_idname)     # the same click handling as the keymaps
+        if hasattr(gz, 'use_tooltip'):
+            gz.use_tooltip = False                       # the panels show their own names
+
+
+CLASSES = (MCH_OT_quick_hud_press, MCH_PT_quick_value, MCH_GT_ui_catch, MCH_GGT_ui_catch)
 _keymaps = []
 
 

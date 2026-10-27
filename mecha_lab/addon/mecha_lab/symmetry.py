@@ -670,9 +670,7 @@ def _draw():
         context = bpy.context
         if context.region is None or context.region.type != 'WINDOW':
             return
-        from .mecha_menu import _OPEN, draw
-        if _OPEN[0]:
-            return
+        from .mecha_menu import draw              # 0.24.58 stays on while the Mecha Menu is open (it draws on top)
         items = card_items(context)
         if items:
             from .ui_gpu import ui_factor

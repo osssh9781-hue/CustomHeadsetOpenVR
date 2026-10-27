@@ -24,8 +24,9 @@ TRACK = (0.22, 0.23, 0.26, 1.0)
 _TEX = {}             # path -> GPUTexture (or None when it could not be read)
 
 
-def ui_factor(context, region=None):
-    """UI scale x a bump for big screens (4K at 100 % made everything tiny) x Preferences > Mecha UI Size."""
+def ui_factor(context, region=None, menu=False):
+    """UI scale x a bump for big screens (4K at 100 % made everything tiny) x Preferences > Viewport Panels
+    (0.24.58 ``menu``: x RMB Menu instead - the Mecha Menu has its own size)."""
     try:
         ui = context.preferences.system.ui_scale or 1.0      # 0 without a window
     except AttributeError:
@@ -35,7 +36,7 @@ def ui_factor(context, region=None):
     big = min(2.0, max(1.0, h / (950.0 * ui)))
     from .workspace_ui import pref
     try:
-        user = float(pref('mecha_ui_size', 1.0))
+        user = float(pref('menu_size' if menu else 'mecha_ui_size', 1.0))
     except (TypeError, ValueError):
         user = 1.0
     return ui * big * max(0.5, user)

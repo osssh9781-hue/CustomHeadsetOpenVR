@@ -92,6 +92,6 @@ check('Sidebar Icon Size shows Viewport Popups; presets and the saved sizes incl
       and 'mecha_ui_size' in inspect.getsource(wui.MCH_OT_icon_size_preset.execute))
 from mecha_lab import ui_gpu as G
 check('The size factor follows it (menu, Quick HUD, key legend all use ui_factor)',
-      "pref('mecha_ui_size'" in inspect.getsource(G.ui_factor) and 'ui_factor' in inspect.getsource(qh.current)
+      "'mecha_ui_size'" in inspect.getsource(G.ui_factor) and 'ui_factor' in inspect.getsource(qh.current)
       and 'ui_factor' in inspect.getsource(mecha_lab.key_legend._draw))
 summary()

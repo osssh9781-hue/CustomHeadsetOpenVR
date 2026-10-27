@@ -623,10 +623,12 @@ def _boolean_checked(context, cut, t, cutter, op, groups, projector, near, far, 
     try:
         return cg.boolean_result(context, t, cutter, op, cut.solver, cut.hole_tolerant)
     except cg.CutError as ex:
-        if 'whole object' not in str(ex):
+        if 'whole object' not in str(ex) and 'does not intersect' not in str(ex):
             raise
         inside, total, facts = cut_diagnosis(t, groups, projector, near, far, invert)
-        if op == 'DIFFERENCE' and total and inside == total:
+        if 'does not intersect' in str(ex):          # 0.24.58 the quick box test says so before any Boolean
+            msg = f'The shape does not intersect "{t.name}"; nothing was changed. [{facts}]'
+        elif op == 'DIFFERENCE' and total and inside == total:
             msg = (f'The drawn shape covers the whole of "{t.name}", so cutting would delete all of it; '
                    f'nothing was changed. Draw over only part of the object. [{facts}]')
         elif op == 'INTERSECT' and inside == 0:
@@ -750,6 +752,8 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
     if not auto_apply:
         return _make_live(context, mode, targets, cutter, invert)
     results, pieces, temp = [], [], []
+    solvers = []
+    t_start = time.perf_counter()
     edge_counts = []
     side_counts = {}
     skipped, failed = [], []
@@ -761,6 +765,7 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
                     op = 'INTERSECT' if invert else 'DIFFERENCE'
                     me, _solver = _boolean_checked(context, cut, t, cutter, op, groups, projector, near, far,
                                                    invert)
+                    solvers.append(_solver)
                     temp.append(me)
                     if _gn_on(cut):
                         edge_counts.append(_gn_finish(cut, me, scale))
@@ -776,6 +781,7 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
                     temp.append(inner)
                     outer, _s2 = _boolean_checked(context, cut, t, cutter_out or cutter, 'DIFFERENCE',
                                                   outer_groups if gap else groups, projector, near, far, False)
+                    solvers += [_s1, _s2]
                     temp.append(outer)
                     # Side A = remaining original object, Side B = the new "_Split" piece.
                     for me, side in ((outer, 'a'), (inner, 'b')):
@@ -820,6 +826,9 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
                 suffix = ' | WARNING: Edge Finish found 0 new edges; no bevel/chamfer'
             else:
                 suffix = f' | {cut.edge_finish}: {sum(edge_counts)} newly cut edges'
+        took = time.perf_counter() - t_start           # 0.24.58 a slow cut says how long and which solver
+        if took > 1.5:
+            suffix += f' | {took:.1f} s ({"/".join(sorted(set(solvers))).title()})'
         return (f'{verb}: {", ".join(t.name for t, _ in results)}{"".join(sorted(set(infos)))}{suffix}' +
                 _target_report(skipped, failed) +
                 (' | live primitive baked first: ' + ', '.join(baked) if baked else '') +
@@ -2101,6 +2110,15 @@ class StrokeLogic:
             return {'PASS_THROUGH'}
 
         xy, inside = self._region_xy(event)
+        if et == 'LEFTMOUSE' and ev in {'PRESS', 'DOUBLE_CLICK'} and inside and getattr(self, 'stage', '') != 'DRAG':
+            from . import quick_hud                # 0.24.58 a click on the HUD / card / toolbar while a shape is
+            if quick_hud.over_ui(context, xy[0], xy[1]):     # being drawn point by point: the panel, not a point
+                try:
+                    bpy.ops.mch.quick_hud_press('INVOKE_DEFAULT')
+                except RuntimeError:
+                    pass
+                self.region.tag_redraw()
+                return {'RUNNING_MODAL'}
         if self.mode == 'PLATE' and et in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'} and not (event.ctrl or event.shift):
             # 0.16 Armor Plate: the wheel steps through the plate profiles while drawing
             from . import armor_plate

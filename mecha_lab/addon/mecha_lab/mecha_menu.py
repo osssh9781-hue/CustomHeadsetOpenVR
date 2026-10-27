@@ -397,17 +397,18 @@ def run(context, item, ctrl=False, hold=False):
 def ui_size():
     from .workspace_ui import pref
     try:
-        return float(pref('mecha_ui_size', 1.0))
+        return float(pref('menu_size', 1.0))
     except (TypeError, ValueError):
         return 1.0
 
 
 def set_ui_size(v):
-    """Preferences > Viewport Popups (Mecha Menu, Quick HUD, key legend), kept in ui_sizes.json."""
+    """Preferences > RMB Menu (0.24.58 the Mecha Menu only; the other viewport panels have their own size), kept in
+    ui_sizes.json."""
     from .workspace_ui import prefs
     p = prefs()
-    if p is not None and hasattr(p, 'mecha_ui_size'):
-        p.mecha_ui_size = round(max(0.5, min(3.0, v)), 2)
+    if p is not None and hasattr(p, 'menu_size'):
+        p.menu_size = round(max(0.5, min(3.0, v)), 2)
 
 
 def _undo(message):
@@ -565,7 +566,7 @@ class MCH_OT_mecha_menu(bpy.types.Operator):
 
     def invoke(self, context, event):
         self.region = context.region
-        self.S = G.ui_factor(context, self.region)
+        self.S = G.ui_factor(context, self.region, menu=True)
         self.mouse = (event.mouse_region_x, event.mouse_region_y)
         self.items = build(context, *self.mouse, self.region.width, self.region.height, self.S)
         self.hover = None
@@ -669,13 +670,13 @@ class MCH_OT_mecha_menu(bpy.types.Operator):
                 self._finish(context)
                 bpy.ops.wm.call_panel(name='MCH_PT_quick_value', keep_open=False)
                 return {'FINISHED'}
-            self.S = G.ui_factor(context, self.region)
+            self.S = G.ui_factor(context, self.region, menu=True)
             self._rebuild(context)
             self.hover = self._at(x, y)
             return {'RUNNING_MODAL'}
         if event.ctrl and event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
             set_ui_size(ui_size() + (0.1 if event.type == 'WHEELUPMOUSE' else -0.1))   # Ctrl + wheel: size
-            self.S = G.ui_factor(context, self.region)
+            self.S = G.ui_factor(context, self.region, menu=True)
             self._rebuild(context)
             self.hover = self._at(x, y)
             return {'RUNNING_MODAL'}

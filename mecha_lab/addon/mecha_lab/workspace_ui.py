@@ -81,7 +81,7 @@ def handle_scale():
 # 0.14.3: icon sizes survive a restart even when Blender's preferences are not
 # saved (Auto-Save Preferences off): they are kept in the add-on's own small
 # file in the user config folder.  Blender's own preference file is untouched.
-SIZE_KEYS = ('icon_scale', 'toolbar_scale', 'handle_scale', 'mecha_ui_size')   # 0.24.51 + viewport popups
+SIZE_KEYS = ('icon_scale', 'toolbar_scale', 'handle_scale', 'mecha_ui_size', 'menu_size')   # 0.24.58 + RMB menu
 _SIZE_MUTE = [False]
 
 
@@ -123,6 +123,8 @@ def load_sizes(p=None):
         for k in SIZE_KEYS:
             if isinstance(data.get(k), (int, float)):
                 setattr(p, k, float(data[k]))
+        if 'menu_size' not in data and isinstance(data.get('mecha_ui_size'), (int, float)):
+            p.menu_size = float(data['mecha_ui_size'])     # 0.24.58 the menu keeps the size it had (one size before)
     finally:
         _SIZE_MUTE[0] = False
     return True
@@ -1906,7 +1908,9 @@ def draw_icon_sizes(layout, p):
     col.prop(p, 'toolbar_scale', slider=True)
     col.prop(p, 'handle_scale', slider=True)
     if hasattr(p, 'mecha_ui_size'):
-        col.prop(p, 'mecha_ui_size', slider=True)        # 0.24.51 Mecha Menu, Quick HUD, key legend
+        col.prop(p, 'mecha_ui_size', slider=True)        # 0.24.51 Quick HUD, key legend, cards, toolbar, strip
+    if hasattr(p, 'menu_size'):
+        col.prop(p, 'menu_size', slider=True)            # 0.24.58 the RMB Mecha Menu on its own
     if hasattr(p, 'dial_flip'):
         layout.prop(p, 'dial_flip')
     if hasattr(p, 'bottom_toolbar'):
@@ -1930,6 +1934,8 @@ class MCH_OT_icon_size_preset(bpy.types.Operator):
         p.icon_scale = p.toolbar_scale = p.handle_scale = self.factor
         if hasattr(p, 'mecha_ui_size'):
             p.mecha_ui_size = self.factor
+        if hasattr(p, 'menu_size'):
+            p.menu_size = self.factor
         save_sizes(p)
         for window in context.window_manager.windows:
             for area in window.screen.areas:
@@ -2220,10 +2226,14 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
                               description='Right-click in Select / Move opens the Mecha Actions popup (recent tools, '
                                           'favorites, actions on the selection) instead of Blender\'s object menu, '
                                           'MECHA LAB only. The popup has a button for Blender\'s menu')
-    mecha_ui_size: FloatProperty(name='Viewport Popups', default=1.0, min=0.5, max=3.0, subtype='FACTOR',
+    mecha_ui_size: FloatProperty(name='Viewport Panels', default=1.0, min=0.5, max=3.0, subtype='FACTOR',
                                  update=_sizes_changed,
-                                 description='Size of the Mecha Menu (RMB), Quick HUD and key legend (big screens '
-                                             'are already made larger automatically)')
+                                 description='Size of the Quick HUD, key legend, Symmetry card, drawn toolbar and tool '
+                                             'strip (big screens are already made larger automatically)')
+    menu_size: FloatProperty(name='RMB Menu', default=1.0, min=0.5, max=3.0, subtype='FACTOR',
+                             update=_sizes_changed,
+                             description='0.24.58 size of the Mecha Menu (RMB / middle click) on its own - also - / + in '
+                                         'the menu and Ctrl + wheel over it')
     symmetry_card: BoolProperty(name='Symmetry Card', default=True,
                                 description='The Symmetry card (Off / Mirror / Radial / Kaleido) beside a part with a '
                                             'symmetry, and the Repetition card of a selected group; off = the old '
@@ -2310,7 +2320,9 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         row.prop(self, 'symmetry_card')
         row.prop(self, 'symmetry_follow')
         box.row().prop(self, 'live_last_cut')
-        box.prop(self, 'mecha_ui_size', slider=True)
+        row = box.row()
+        row.prop(self, 'mecha_ui_size', slider=True)
+        row.prop(self, 'menu_size', slider=True)
         layout.prop(self, 'workspace_hotkeys')
         layout.prop(self, 'quick_menu')
         layout.prop(self, 'select_move_key')

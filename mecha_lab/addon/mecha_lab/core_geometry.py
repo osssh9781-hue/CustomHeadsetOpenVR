@@ -602,10 +602,126 @@ def _cutter_with_reflections(cutter, reflections):
     return me
 
 
+def loose_labels(mesh):
+    """0.24.58 A part number per vertex (vertices joined by edges share it) - numpy hooking + pointer jumping."""
+    import numpy as np
+    n = len(mesh.vertices)
+    labels = np.arange(n, dtype=np.int64)
+    if not len(mesh.edges):
+        return labels
+    ev = np.empty(len(mesh.edges) * 2, dtype=np.int64)
+    mesh.edges.foreach_get('vertices', ev)
+    a, b = ev[0::2], ev[1::2]
+    for _round in range(64):
+        la, lb = labels[a], labels[b]
+        diff = la != lb
+        if not diff.any():
+            break
+        lo, hi = np.minimum(la[diff], lb[diff]), np.maximum(la[diff], lb[diff])
+        np.minimum.at(labels, hi, lo)                     # hook the higher root under the lower
+        while True:
+            nxt = labels[labels]
+            if np.array_equal(nxt, labels):
+                break
+            labels = nxt
+    return labels
+
+
+def _world_box(ob):
+    import numpy as np
+    co = np.empty(len(ob.data.vertices) * 3, dtype=np.float64)
+    ob.data.vertices.foreach_get('co', co)
+    co = co.reshape(-1, 3)
+    m = np.array(ob.matrix_world, dtype=np.float64)
+    return co @ m[:3, :3].T + m[:3, 3]
+
+
+def touched_parts(target, cutter):
+    """0.24.58 (vertex mask of the loose parts whose box meets the cutter's box, parts touched, parts in all) - a
+    Cut only needs those (a mesh of many joined tubes: the Boolean on everything was slow, and the untouched
+    overlapping parts kept the fast Manifold solver from being used)."""
+    import numpy as np
+    labels = loose_labels(target.data)
+    uniq, inv = np.unique(labels, return_inverse=True)
+    if not len(cutter.data.vertices) or not len(uniq):
+        return None, 1, len(uniq)
+    tw, cw = _world_box(target), _world_box(cutter)
+    lo = np.full((len(uniq), 3), np.inf)
+    hi = np.full((len(uniq), 3), -np.inf)
+    np.minimum.at(lo, inv, tw)
+    np.maximum.at(hi, inv, tw)
+    pad = 1e-4 * max(1e-9, float(np.ptp(tw, axis=0).max()))
+    c_lo, c_hi = cw.min(axis=0) - pad, cw.max(axis=0) + pad
+    hit = np.all((lo <= c_hi) & (hi >= c_lo), axis=1)
+    return hit[inv], int(hit.sum()), len(uniq)
+
+
+def _mesh_without(mesh, drop_mask, name):
+    """A copy of ``mesh`` without the vertices in ``drop_mask`` (and their faces)."""
+    me = mesh.copy()
+    me.name = name
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        bm.verts.ensure_lookup_table()
+        idx = [int(i) for i in drop_mask.nonzero()[0]]
+        bmesh.ops.delete(bm, geom=[bm.verts[i] for i in idx], context='VERTS')
+        bm.to_mesh(me)
+    finally:
+        bm.free()
+    return me
+
+
+def _boolean_local(context, target, cutter, operation, solver, hole_tolerant, allow_empty):
+    """0.24.58 The Boolean on only the loose parts the cutter can reach; the others are added back untouched
+    (Difference) or left out (Intersect: they are outside the cutter).  None = not worth it (one part / all hit)."""
+    if operation not in {'DIFFERENCE', 'INTERSECT'}:
+        return None
+    try:
+        context.view_layer.update()                    # matrix_world up to date for the box test
+    except (AttributeError, RuntimeError):
+        pass
+    mask, n_hit, n_all = touched_parts(target, cutter)
+    if mask is None:
+        return None
+    if n_hit == 0:
+        raise CutError('The shape does not intersect the mesh; nothing was changed.')
+    if n_all < 2 or mask.all() or mask.mean() > 0.9:
+        return None
+    sub = _mesh_without(target.data, ~mask, target.data.name + '_mch_sub')
+    full = target.data
+    target.data = sub
+    try:
+        me, used = _boolean_result(context, target, cutter, operation, solver, hole_tolerant, allow_empty)
+    finally:
+        target.data = full
+        bpy.data.meshes.remove(sub)
+    if operation == 'DIFFERENCE':
+        rest = _mesh_without(full, mask, full.name + '_mch_rest')
+        bm = bmesh.new()
+        try:
+            bm.from_mesh(me)
+            bm.from_mesh(rest)
+            bm.to_mesh(me)
+        finally:
+            bm.free()
+            bpy.data.meshes.remove(rest)
+    LAST_BOOLEAN['parts'] = (n_hit, n_all)
+    return me, used
+
+
+LAST_BOOLEAN = {}
+
+
 def boolean_result(context, target, cutter, operation, solver='AUTO',
                    hole_tolerant=False, allow_empty=False):
-    """Run the Boolean with validation + solver fallback. Returns (mesh, solver)."""
+    """Run the Boolean with validation + solver fallback. Returns (mesh, solver).
+    0.24.58 only on the loose parts the cutter reaches (``_boolean_local``)."""
+    LAST_BOOLEAN.clear()
     try:
+        got = _boolean_local(context, target, cutter, operation, solver, hole_tolerant, allow_empty)
+        if got is not None:
+            return got
         return _boolean_result(context, target, cutter, operation, solver, hole_tolerant, allow_empty)
     except CutError as ex:
         # 0.24.58 a Split's inner part (Intersect) of a shape off the base mesh is empty, not 'unchanged'
@@ -618,6 +734,9 @@ def boolean_result(context, target, cutter, operation, solver='AUTO',
     old = cutter.data
     cutter.data = _cutter_with_reflections(cutter, reflections)
     try:
+        got = _boolean_local(context, target, cutter, operation, solver, hole_tolerant, allow_empty)
+        if got is not None:
+            return got
         return _boolean_result(context, target, cutter, operation, solver, hole_tolerant, allow_empty)
     finally:
         tmp = cutter.data
