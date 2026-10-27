@@ -51,7 +51,9 @@ del bpy.data.workspaces['Layout'][wui._ORTHO_LOCK_KEY]
 bpy.app.timers.unregister(wui._ortho_watchdog)
 
 kc = bpy.context.window_manager.keyconfigs.addon
-items = [(km.name, ki.idname, ki.type) for km in kc.keymaps for ki in km.keymap_items if ki.idname.startswith('mch.')]
+# (0.24.60 the ZBrush keys - Space = brush menu - live in the Sculpt keymap, only in the MECHA LAB tab)
+items = [(km.name, ki.idname, ki.type) for km in kc.keymaps for ki in km.keymap_items
+         if ki.idname.startswith('mch.') and not ki.idname.startswith('mch.zb_')]
 check('addon keymap: 0.23.13 no Space tool menu (Space moves the outline while drawing)',
       not any(i[2] == 'SPACE' for i in items), items)
 check('addon keymap: B/C via gated mch.hotkey only', {('Object Mode', 'mch.hotkey', 'B'), ('Object Mode', 'mch.hotkey', 'C')} <= set(items))

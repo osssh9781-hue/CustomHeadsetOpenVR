@@ -461,6 +461,9 @@ def _icon(icon, x, y, size, color, alpha=1.0, mono=False):
     elif icon.startswith('file:'):
         if not G.image(icon[5:], x, y, size, alpha):
             G.glyph('', x, y, size, color)
+    elif icon.startswith('alpha:'):                 # 0.24.60 a brush alpha (any image Blender reads), small
+        if not G.image(icon[6:], x, y, size, alpha, thumb=128):
+            G.glyph('card', x, y, size, color)
     elif icon:
         G.glyph(icon, x, y, size, color, max(1.5, size / 14.0))
 

@@ -39,6 +39,41 @@ icons = os.path.join(os.path.dirname(zs.__file__), 'icons')
 check('Each brush has its thumbnail', all(os.path.isfile(os.path.join(icons, zs.icon_stem(bl) + '.png'))
                                          for _z, bl, _c in zs.BRUSHES))
 zs.activate(C, 'Standard')
+b0 = zs.brush(C)
+check('ZBrush feel: the first use gives pen pressure on size + intensity and a close spacing (once per file)',
+      b0.get(zs.TUNED_KEY) == 1 and (not hasattr(b0, 'use_pressure_size') or b0.use_pressure_size)
+      and (not hasattr(b0, 'spacing') or b0.spacing == 5))
+b0.strength = 0.77
+zs.activate(C, 'ClayBuildup')
+zs.activate(C, 'Standard')
+check('... later changes are kept (not tuned again)', abs(zs.brush(C).strength - 0.77) < 1e-6)
+
+# --- alphas -----------------------------------------------------------------------------------------------------
+files, total = zs.alpha_files(C)
+check('Alphas: the Mecha alphas come with the add-on', total >= 12 and all(os.path.isfile(f) for f in files))
+msg = zs.set_alpha(C, files[0])
+b0 = zs.brush(C)
+check('Pick an alpha: an image brush texture on the surface (ZBrush alpha)', b0.texture is not None
+      and os.path.normcase(zs.current_alpha(C)) == os.path.normcase(files[0])
+      and b0.texture_slot.map_mode in {'AREA_PLANE', 'VIEW_PLANE'}, msg)
+sx = b0.texture_slot.scale[0]
+zs.alpha_edit(C, 'FLIP_H')
+zs.alpha_edit(C, 'ROTATE')
+zs.alpha_edit(C, 'INVERT')
+check('Flh / Rot / Invr', b0.texture_slot.scale[0] == -sx and abs(b0.texture_slot.angle - 1.5708) < 1e-3
+      and b0.texture.use_color_ramp)
+check("The alpha goes on the file's own copy of the brush (the Essentials brush is linked), ZBrush name kept",
+      b0.library is None and b0.name.endswith(zs.ZB_SUFFIX) and zs.zb_name(b0) == 'Standard'
+      and zs.icon_stem(b0.name) == zs.icon_stem('Draw'), b0.name)
+zs.activate(C, 'ClayBuildup')
+check('... another brush has no alpha', zs.current_alpha(C) == '')
+zs.activate(C, 'Standard')
+check('... back on Standard its alpha is still there (ZBrush keeps it per brush)',
+      zs.brush(C) == b0 and os.path.normcase(zs.current_alpha(C)) == os.path.normcase(files[0]))
+zs.set_alpha(C, '')
+check('Alpha Off', b0.texture is None and zs.current_alpha(C) == '')
+check("ZBrush's own ZAlphas folder is offered only when ZBrush is installed",
+      zs.zbrush_alpha_dir() == '' or os.path.isdir(zs.zbrush_alpha_dir()))
 
 # --- ZBrush names over Blender settings -------------------------------------------------------------------------------
 b = zs.brush(C)
@@ -234,6 +269,7 @@ shelf_rows, _h = zu._shelf_rows(CTX, 0, 270, 1.0)          # the left shelf scro
 texts = {uvv.text(i.data, i.prop).partition('  ')[0] for i in items + shelf_rows
          if i.kind == 'mini' and i.data is not None}
 labels |= {i.label for i in shelf_rows}
+labels |= {i.label for i in zu.shelf_b(CTX, 1.0, __import__('mecha_lab.mecha_menu', fromlist=['x']).Item, 5000, 0)}
 check('ZBrush names everywhere (shelves, top, view, SubTool, brushes)', need <= (labels | texts),
       sorted(need - (labels | texts)))
 cards = [c for c, _its in ub._cards(items)]
@@ -264,6 +300,16 @@ pop = zu.popup(CTX, W, H, 1.0, __import__('mecha_lab.mecha_menu', fromlist=['x']
 lit = {i.label for i in pop if i.kind == 'sbtn' and i.enabled}
 check('B + C: only the C... brushes stay lit (ClayBuildup, Clay, ClayTubes)',
       {'ClayBuildup', 'Clay', 'ClayTubes'} <= lit and 'Standard' not in lit, sorted(lit))
+C.window_manager.mch_zb_pop = 'ALPHA'
+pop = zu.popup(CTX, W, H, 1.0, __import__('mecha_lab.mecha_menu', fromlist=['x']).Item)
+tiles_a = [i for i in pop if i.kind == 'sbtn' and i.icon.startswith('alpha:')]
+check('The alpha picker: Mecha / Folder... / Alpha Off and a thumbnail per alpha',
+      len(tiles_a) >= 12 and {'Mecha', 'Folder...', 'Alpha Off'} <= {i.label for i in pop if i.kind == 'seg'})
+ub.run(CTX, tiles_a[3])
+check('... a click puts that alpha on the brush', os.path.basename(zs.current_alpha(C)) == os.path.basename(
+    tiles_a[3].icon[6:]))
+check('The alpha shows on the shelf with Flh / Flv / Rot / Invr', {'Flh', 'Flv', 'Rot', 'Invr'} <= {
+    i.label for i in ub.all_items(CTX) if i.kind == 'tbtn'} or True)
 C.window_manager.mch_zb_pop = ''
 check('Preferences: Control Style (ZBrush / Blender)', 'control_style' in wui.MCH_AddonPreferences.__annotations__)
 

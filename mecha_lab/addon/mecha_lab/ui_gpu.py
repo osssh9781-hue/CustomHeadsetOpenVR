@@ -153,10 +153,11 @@ def wrap2(s, size, width):
     return [fit(first, size, width), fit(rest, size, width)] if rest else [fit(first, size, width)]
 
 
-def _texture(path, mono=False):
+def _texture(path, mono=False, thumb=0):
     """GPU texture of a PNG; ``mono``: only its bright strokes, as white (Modeler's white line icons; the
-    dark tile the Mecha icons are drawn on disappears), tinted by the draw colour."""
-    key = (path, mono)
+    dark tile the Mecha icons are drawn on disappears), tinted by the draw colour.  ``thumb``: scaled down to
+    that many pixels first (0.24.60 alpha thumbnails - a 4K PSD alpha is not kept at full size)."""
+    key = (path, mono, thumb)
     if key in _TEX:
         return _TEX[key]
     tex = None
@@ -167,8 +168,16 @@ def _texture(path, mono=False):
             import numpy as np
             img = bpy.data.images.load(path, check_existing=False)
             w, h = img.size
+            if thumb and max(w, h) > thumb:
+                img.scale(thumb, thumb)
+                w, h = img.size
             px = np.empty(w * h * 4, dtype=np.float32)
             img.pixels.foreach_get(px)
+            if img.is_float:                     # 0.24.60 a float image (EXR MatCap) is linear: shown as sRGB
+                px = px.reshape(-1, 4)
+                c = np.clip(px[:, :3], 0.0, 1.0)
+                px[:, :3] = np.where(c <= 0.0031308, c * 12.92, 1.055 * np.power(c, 1 / 2.4) - 0.055)
+                px = px.reshape(-1)
             if mono:
                 px = px.reshape(-1, 4)
                 bright = px[:, :3].max(axis=1)
@@ -188,16 +197,34 @@ def _texture(path, mono=False):
     return tex
 
 
+def image_quad(path, corners, alpha=1.0, thumb=256):
+    """0.24.60 Draw an image on any four corners (bottom left, bottom right, top right, top left) - a turned
+    texture stamp preview.  False if not drawn."""
+    import gpu
+    from gpu_extras.batch import batch_for_shader
+    tex = _texture(path, False, thumb)
+    if tex is None:
+        return False
+    sh = _shader('IMAGE_COLOR')
+    batch = batch_for_shader(sh, 'TRI_FAN', {'pos': tuple(corners), 'texCoord': ((0, 0), (1, 0), (1, 1), (0, 1))})
+    gpu.state.blend_set('ALPHA')
+    sh.bind()
+    sh.uniform_sampler('image', tex)
+    sh.uniform_float('color', (1.0, 1.0, 1.0, alpha))
+    batch.draw(sh)
+    return True
+
+
 def icon_path(stem):
     return os.path.join(ICON_DIR, stem + '.png') if stem else ''
 
 
-def image(path, x, y, size, alpha=1.0, mono=False, tint=TEXT):
+def image(path, x, y, size, alpha=1.0, mono=False, tint=TEXT, thumb=0):
     """Draw a PNG (cached GPU texture) in a size x size square, bottom left (x, y). False if not drawn.
     ``mono``: as a one-colour line icon in ``tint``."""
     import gpu
     from gpu_extras.batch import batch_for_shader
-    tex = _texture(path, mono)
+    tex = _texture(path, mono, thumb)
     if tex is None:
         return False
     sh = _shader('IMAGE_COLOR')

@@ -24,6 +24,7 @@ import bpy
 from bpy.props import BoolProperty, StringProperty
 
 from . import panel_capture as pc
+from .quick_hud import points_text
 
 WIDTH = 270.0
 ROW = 26.0
@@ -218,8 +219,8 @@ def content(context, x, width, k):
         from . import point_counts
         act, tot = point_counts(context)
         y -= 17 * k
-        out.append(Item('pnote', x, y, width, 17 * k, f'Active Points {act:,}   Total Points {tot:,}', '', False,
-                        True))
+        out.append(Item('pnote', x, y, width, 17 * k,
+                        f'Active Points {points_text(act)}   Total Points {points_text(tot)}', '', False, True))
         y -= 4 * k
     except (ImportError, AttributeError, RuntimeError, ReferenceError):
         pass

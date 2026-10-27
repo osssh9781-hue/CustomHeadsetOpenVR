@@ -1939,8 +1939,10 @@ class MCH_OT_remesh(bpy.types.Operator):
                 self.report({'ERROR'}, 'Remesh failed: ' + str(ex))
                 return {'CANCELLED'}
         if s.apply_remesh:
-            self.report({'INFO'}, f'Voxel remesh: {len(ob.data.vertices):,} points'
-                        + (f' (asked {s.target_points:,})' if getattr(s, 'remesh_by', '') == 'POINTS' else '')
+            from .quick_hud import points_text
+            self.report({'INFO'}, f'Voxel remesh: {points_text(len(ob.data.vertices))} points'
+                        + (f' (asked {points_text(s.target_points)})' if getattr(s, 'remesh_by', '') == 'POINTS'
+                           else '')
                         + ' - high-poly topology, not quad retopology')
         else:
             self.report({'INFO'}, 'Voxel remesh complete — high-poly topology, not quad retopology')

@@ -6,7 +6,9 @@ Mouse (like ZBrush):
     drag on the model            sculpt with the brush            Alt: Zsub        Shift: Smooth
     drag on empty canvas         rotate (Shift: snap to a side)   Alt: move, let Alt go while dragging: zoom
     Ctrl + drag on the model     MaskPen                          Ctrl+Alt: unmask
-    Ctrl + click empty           invert the mask                  Ctrl + drag empty: mask lasso (Alt: unmask)
+    Ctrl + click empty           invert the mask                  Ctrl + lasso round the model: mask (Alt: unmask)
+    Ctrl + drag on empty canvas  a mask: cleared; no mask: DynaMesh again (when the SubTool's DynaMesh is on)
+    Alt + click another SubTool  it becomes the SubTool you sculpt
     Ctrl+Shift + click model     show only that polygroup         Ctrl+Shift + click empty: show all
     Ctrl+Shift + drag empty      show only what is inside         Ctrl+Shift+Alt: hide what is inside
 Keys: Space / right-click = brush menu at the cursor, S / U / O = it with Draw Size / Z Intensity / Focal Shift under
@@ -20,6 +22,7 @@ Quadriflow, SDiv / Divide / Del Higher are Multires.
 from __future__ import annotations
 
 import math
+import os
 
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
@@ -57,8 +60,15 @@ TOOLS = {'CLIP_CURVE': 'builtin.line_project', 'TRIM_CURVE': 'builtin.line_trim'
          'DRAW': 'builtin.brush', 'MOVE': 'builtin.move', 'SCALE': 'builtin.scale', 'ROTATE': 'builtin.rotate'}
 
 
+ZB_SUFFIX = ' (ZB)'          # the file's own copy of a brush (it can hold an alpha; the Essentials brush cannot)
+
+
+def bl_base(name):
+    return name[:-len(ZB_SUFFIX)] if name.endswith(ZB_SUFFIX) else name
+
+
 def icon_stem(bl_name):
-    return 'zb_' + bl_name.lower().replace('/', '_').replace(' ', '_')
+    return 'zb_' + bl_base(bl_name).lower().replace('/', '_').replace(' ', '_')
 
 
 # --- where it is on ----------------------------------------------------------------------------------------------
@@ -124,7 +134,35 @@ def unified(context=None):
 
 
 def zb_name(b):
-    return BY_BL.get(b.name, b.name) if b is not None else ''
+    if b is None:
+        return ''
+    base = bl_base(b.name)
+    return BY_BL.get(base, base)
+
+
+def _activate_local(name):
+    bpy.ops.brush.asset_activate(asset_library_type='LOCAL', relative_asset_identifier='Brush/' + name)
+
+
+def local_brush(context):
+    """The sculpt brush as the file's own copy ('<name> (ZB)'), made and switched to when the brush comes from
+    Blender's Essentials library: a linked brush cannot take this file's alpha texture.  None when no brush."""
+    b = brush(context)
+    if b is None or getattr(b, 'library', None) is None:
+        return b
+    name = b.name + ZB_SUFFIX
+    own = bpy.data.brushes.get((name, None))
+    if own is None:
+        own = b.copy()
+        own.name = name
+    try:
+        if own.asset_data is None:
+            own.asset_mark()
+        _activate_local(own.name)
+    except (RuntimeError, AttributeError, TypeError):
+        return None
+    b2 = brush(context)
+    return b2 if b2 is not None and b2.library is None else None
 
 
 def activate(context, zname):
@@ -138,11 +176,418 @@ def activate(context, zname):
     except (AttributeError, RuntimeError, TypeError):
         pass
     try:
-        bpy.ops.brush.asset_activate(asset_library_type='ESSENTIALS', relative_asset_identifier=LIB + entry[1])
+        own = bpy.data.brushes.get((entry[1] + ZB_SUFFIX, None))
+        if own is not None and own.asset_data is not None:
+            _activate_local(own.name)            # the brush with its alpha (ZBrush keeps the alpha per brush)
+        else:
+            bpy.ops.brush.asset_activate(asset_library_type='ESSENTIALS', relative_asset_identifier=LIB + entry[1])
     except RuntimeError as ex:
         return str(ex).splitlines()[0]
     remember(zname)
+    tune(brush(context), zname)
     return ''
+
+
+# 0.24.60 ZBrush feel: the first time a brush is used in a file it gets ZBrush-like defaults (pen pressure on
+# size and intensity, a close Dots spacing, ZBrush-ish strength / falloff); later changes are kept.
+TUNE_ALL = {'use_pressure_strength': True, 'use_pressure_size': True, 'spacing': 5}
+TUNE = {
+    'Standard': {'strength': 0.5, 'curve_distance_falloff_preset': 'SMOOTH'},
+    'ClayBuildup': {'strength': 0.55, 'spacing': 6},
+    'Clay': {'strength': 0.5},
+    'DamStandard': {'strength': 0.6},
+    'Inflat': {'strength': 0.45},
+    'Layer': {'strength': 0.5},
+    'Move': {'strength': 1.0, 'use_pressure_size': False, 'use_pressure_strength': False},
+    'Move Topological': {'strength': 1.0, 'use_pressure_size': False, 'use_pressure_strength': False},
+    'SnakeHook': {'use_pressure_size': False},
+    'Pose': {'use_pressure_size': False, 'use_pressure_strength': False},
+    'Smooth': {'strength': 1.0, 'use_pressure_size': False},
+    'sPolish': {'strength': 0.8},
+    'hPolish': {'strength': 0.6}, 'Polish': {'strength': 0.5}, 'Flatten': {'strength': 0.6},
+    'TrimDynamic': {'strength': 0.6}, 'TrimAdaptive': {'strength': 0.6}, 'Planar': {'strength': 0.6},
+    'MaskPen': {'strength': 1.0, 'use_pressure_size': False},
+}
+TUNED_KEY = 'mch_zb_tuned'
+
+
+def tune(b, zname):
+    """ZBrush-like defaults on ``b`` once per file (True when it changed it)."""
+    if b is None or b.get(TUNED_KEY):
+        return False
+    vals = dict(TUNE_ALL)
+    vals.update(TUNE.get(zname, {}))
+    for k, v in vals.items():
+        if k == 'spacing' and getattr(b, 'stroke_method', 'SPACE') not in {'SPACE', 'LINE', 'CURVE'}:
+            continue
+        if k in b.bl_rna.properties and not b.bl_rna.properties[k].is_readonly:
+            try:
+                setattr(b, k, v)
+            except (TypeError, ValueError, AttributeError):
+                pass
+    try:
+        b[TUNED_KEY] = 1
+    except (TypeError, AttributeError):
+        pass
+    return True
+
+
+# --- alphas (ZBrush: an image that shapes the brush) --------------------------------------------------------------
+
+ALPHA_DIR = os.path.join(os.path.dirname(__file__), 'alphas')
+ALPHA_EXT = {'.png', '.psd', '.tif', '.tiff', '.jpg', '.jpeg', '.bmp', '.tga', '.exr'}
+ZB_ALPHA_GLOBS = (r'C:\Program Files\Maxon ZBrush*\ZAlphas', r'C:\Program Files\Maxon\ZBrush*\ZAlphas',
+                  r'C:\Program Files\Pixologic\ZBrush*\ZAlphas', '/Applications/Maxon ZBrush*/ZAlphas',
+                  '/Applications/ZBrush*/ZAlphas')
+_ALPHA_CACHE = {}
+_ZB_DIRS = []
+
+
+def zbrush_alpha_dir():
+    """ZBrush's own alpha folder when ZBrush is installed here (read only), or ''."""
+    if not _ZB_DIRS:
+        import glob
+        found = []
+        for g in ZB_ALPHA_GLOBS:
+            found += sorted(glob.glob(g))
+        _ZB_DIRS.append(found[-1] if found else '')
+    return _ZB_DIRS[0]
+
+
+def alpha_folder(context):
+    zb = context.scene.mch_zb
+    if zb.alpha_source == 'ZBRUSH' and zbrush_alpha_dir():
+        return zbrush_alpha_dir()
+    if zb.alpha_source == 'FOLDER' and zb.alpha_dir:
+        return bpy.path.abspath(zb.alpha_dir)
+    return ALPHA_DIR
+
+
+def alpha_files(context, limit=42):
+    """The alpha images of the chosen folder (sorted, at most ``limit``; listed again every 2 s)."""
+    return image_files(alpha_folder(context), limit)
+
+
+def image_files(folder, limit=42):
+    import time
+    hit = _ALPHA_CACHE.get(folder)
+    if hit is None or time.monotonic() - hit[0] > 2.0:
+        try:
+            names = sorted(f for f in os.listdir(folder) if os.path.splitext(f)[1].lower() in ALPHA_EXT)
+        except OSError:
+            names = []
+        hit = (time.monotonic(), [os.path.join(folder, f) for f in names])
+        _ALPHA_CACHE[folder] = hit
+    return hit[1][:limit], len(hit[1])
+
+
+def current_alpha(context):
+    b = brush(context)
+    tex = getattr(b, 'texture', None) if b is not None else None
+    img = getattr(tex, 'image', None) if tex is not None else None
+    return bpy.path.abspath(img.filepath) if img is not None else ''
+
+
+def set_alpha(context, path):
+    """The brush's alpha (Blender: an image brush texture on the surface) - '' = Alpha Off."""
+    b = brush(context)
+    if b is None:
+        return 'No brush'
+    if not path:
+        if b.texture is not None:
+            b.texture = None
+        return 'Alpha Off'
+    b = local_brush(context)
+    if b is None:
+        return 'Alpha: this brush cannot take an alpha'
+    try:
+        img = bpy.data.images.load(path, check_existing=True)
+    except RuntimeError as ex:
+        return 'Alpha: ' + str(ex).splitlines()[0]
+    name = 'Alpha ' + os.path.splitext(os.path.basename(path))[0]
+    tex = bpy.data.textures.get(name)
+    if tex is None or tex.type != 'IMAGE':
+        tex = bpy.data.textures.new(name, 'IMAGE')
+    tex.image = img
+    tex.extension = 'CLIP'
+    b.texture = tex
+    slot = b.texture_slot
+    for mode in ('AREA_PLANE', 'VIEW_PLANE'):
+        try:
+            slot.map_mode = mode
+            break
+        except (TypeError, ValueError):
+            continue
+    return name
+
+
+def alpha_edit(context, action):
+    """Flip H / Flip V / Rotate 90 / Invert the brush alpha (ZBrush's alpha buttons)."""
+    b = brush(context)
+    tex = getattr(b, 'texture', None) if b is not None else None
+    if tex is None:
+        return 'Pick an alpha first'
+    slot = b.texture_slot
+    if action == 'FLIP_H':
+        slot.scale[0] = -slot.scale[0]
+    elif action == 'FLIP_V':
+        slot.scale[1] = -slot.scale[1]
+    elif action == 'ROTATE':
+        slot.angle = (slot.angle + math.pi / 2) % (2 * math.pi)
+    elif action == 'INVERT':
+        tex.use_color_ramp = not tex.use_color_ramp
+        if tex.use_color_ramp:
+            els = tex.color_ramp.elements
+            els[0].color = (1, 1, 1, 1)
+            els[-1].color = (0, 0, 0, 1)
+    return {'FLIP_H': 'Flip H', 'FLIP_V': 'Flip V', 'ROTATE': 'Rotate', 'INVERT': 'Invert'}.get(action, action)
+
+
+# --- textures (ZBrush Texture: a colour image the Paint brush stamps, DragRect) -----------------------------------
+
+TEXTURE_DIR = os.path.join(os.path.dirname(__file__), 'textures')
+ZB_TEXTURE_GLOBS = tuple(g.replace('ZAlphas', 'ZTextures') for g in ZB_ALPHA_GLOBS)
+_ZB_TEX_DIRS = []
+_TEX_PIX = {}
+
+
+def zbrush_texture_dir():
+    """ZBrush's own texture folder when ZBrush is installed here (read only), or ''."""
+    if not _ZB_TEX_DIRS:
+        import glob
+        found = []
+        for g in ZB_TEXTURE_GLOBS:
+            found += sorted(glob.glob(g))
+        _ZB_TEX_DIRS.append(found[-1] if found else '')
+    return _ZB_TEX_DIRS[0]
+
+
+def texture_folder(context):
+    zb = context.scene.mch_zb
+    if zb.tex_source == 'ZBRUSH' and zbrush_texture_dir():
+        return zbrush_texture_dir()
+    if zb.tex_source == 'FOLDER' and zb.tex_dir:
+        return bpy.path.abspath(zb.tex_dir)
+    return TEXTURE_DIR
+
+
+def texture_files(context, limit=42):
+    return image_files(texture_folder(context), limit)
+
+
+def current_texture(context):
+    p = bpy.path.abspath(context.scene.mch_zb.texture) if context.scene.mch_zb.texture else ''
+    return p if p and os.path.isfile(p) else ''
+
+
+def stamp_ready(context):
+    """A Texture is on and the brush is Paint: a press on the model stamps the texture (DragRect)."""
+    return bool(current_texture(context)) and zb_name(brush(context)) == 'Paint'
+
+
+def set_texture(context, path):
+    """ZBrush Texture ('' = Texture Off).  Picking one takes the Paint brush, which stamps it."""
+    zb = context.scene.mch_zb
+    zb.texture = path or ''
+    if not path:
+        return 'Texture Off'
+    name = os.path.splitext(os.path.basename(path))[0]
+    if zb_name(brush(context)) != 'Paint':
+        if activate(context, 'Paint'):
+            return f'Texture {name}: pick the Paint brush to stamp it'
+    return f'Texture {name}: drag on the model with Paint to stamp it'
+
+
+def texture_pixels(path, max_size=2048):
+    """(h, w, 4) float32 sRGB pixels of an image file (read once; again when the file changes) or None."""
+    import numpy as np
+    path = bpy.path.abspath(path)
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return None
+    hit = _TEX_PIX.get(path)
+    if hit is not None and hit[0] == mtime:
+        return hit[1]
+    try:
+        img = bpy.data.images.load(path, check_existing=False)
+    except RuntimeError:
+        return None
+    try:
+        w, h = img.size
+        if max(w, h) > max_size:
+            f = max_size / float(max(w, h))
+            img.scale(max(1, int(w * f)), max(1, int(h * f)))
+            w, h = img.size
+        px = np.empty(w * h * 4, dtype=np.float32)
+        img.pixels.foreach_get(px)
+        px = px.reshape(h, w, 4)
+        if img.is_float:                     # (a float image is linear: to sRGB like the 8-bit ones)
+            c = np.clip(px[..., :3], 0.0, 1.0)
+            px[..., :3] = np.where(c <= 0.0031308, c * 12.92, 1.055 * np.power(c, 1 / 2.4) - 0.055)
+    finally:
+        bpy.data.images.remove(img)         # nothing stays in the user's file
+    _TEX_PIX.clear()
+    _TEX_PIX[path] = (mtime, px)
+    return px
+
+
+def _color_layer(me):
+    att = me.color_attributes.active_color
+    if att is None:
+        import numpy as np
+        att = me.color_attributes.new('Color', 'FLOAT_COLOR', 'POINT')
+        att.data.foreach_set('color', np.ones(len(att.data) * 4, dtype=np.float32))
+        me.color_attributes.active_color = att
+        try:
+            me.color_attributes.render_color_index = me.color_attributes.active_color_index
+        except (AttributeError, TypeError):
+            pass
+    return att
+
+
+def stamp_rect(center, half, angle, aspect):
+    """The four corners (region px) of a DragRect stamp: centre, half width, turn, image height / width."""
+    cx, cy = center
+    ca, sa = math.cos(angle), math.sin(angle)
+    hw, hh = half, half * aspect
+    return [(cx + x * ca - y * sa, cy + x * sa + y * ca) for x, y in ((-hw, -hh), (hw, -hh), (hw, hh), (-hw, hh))]
+
+
+def texture_stamp(ob, px, matrix, width, height, center, half, angle, view, strength=1.0, mirrors=((1, 1, 1),)):
+    """Stamp the texture ``px`` ((h, w, 4) sRGB, alpha = how much) on ``ob``'s colour, ZBrush DragRect style.
+    ``matrix`` = perspective matrix x object matrix, ``center`` / ``half`` / ``angle`` in region px, ``view`` =
+    ('ORTHO', view direction) or ('PERSP', eye) in world space: only points facing the view take colour.  The
+    mask keeps points as they are.  ``mirrors``: symmetry - (sx, sy, sz) sign sets, (1, 1, 1) = the stamp itself.
+    Returns how many points it coloured."""
+    import numpy as np
+    me = ob.data
+    n = len(me.vertices)
+    if n == 0 or half <= 0.0 or px is None:
+        return 0
+    att = _color_layer(me)
+    co = np.empty(n * 3, dtype=np.float64)
+    nrm = np.empty(n * 3, dtype=np.float64)
+    me.vertices.foreach_get('co', co)
+    me.vertices.foreach_get('normal', nrm)
+    co, nrm = co.reshape(-1, 3), nrm.reshape(-1, 3)
+    mask = _mask_values(ob).astype(np.float64)
+    mw = np.array(ob.matrix_world, dtype=np.float64)
+    m = np.array(matrix, dtype=np.float64)
+    nmat = np.linalg.inv(mw[:3, :3]).T
+    ih, iw = px.shape[:2]
+    ca, sa = math.cos(-angle), math.sin(-angle)
+    hw, hh = half, half * ih / float(iw)
+    weight = np.zeros(n)
+    color = np.zeros((n, 3))
+    for sx, sy, sz in mirrors:               # each point looks where its mirror twin is on screen
+        sgn = np.array((sx, sy, sz), dtype=np.float64)
+        c = co * sgn
+        world = c @ mw[:3, :3].T + mw[:3, 3]
+        nw = (nrm * sgn) @ nmat.T
+        vd = np.broadcast_to(np.array(view[1], dtype=np.float64), world.shape) if view[0] == 'ORTHO' \
+            else world - np.array(view[1], dtype=np.float64)
+        facing = (nw * vd).sum(axis=1) < 0.0
+        h4 = np.hstack([c, np.ones((n, 1))]) @ m.T
+        ok = h4[:, 3] > 1e-9
+        w4 = np.where(ok, h4[:, 3], 1.0)
+        dx = (h4[:, 0] / w4 + 1.0) * 0.5 * width - center[0]
+        dy = (h4[:, 1] / w4 + 1.0) * 0.5 * height - center[1]
+        u = (dx * ca - dy * sa) / (2.0 * hw) + 0.5
+        v = (dx * sa + dy * ca) / (2.0 * hh) + 0.5
+        idx = np.nonzero(ok & facing & (u >= 0.0) & (u < 1.0) & (v >= 0.0) & (v < 1.0))[0]
+        if not len(idx):
+            continue
+        tex = px[np.clip((v[idx] * ih).astype(int), 0, ih - 1), np.clip((u[idx] * iw).astype(int), 0, iw - 1)]
+        wt = tex[:, 3] * strength
+        better = wt > weight[idx]            # (overlapping mirror stamps: the stronger one)
+        idx, wt, tex = idx[better], wt[better], tex[better]
+        weight[idx] = wt
+        color[idx] = tex[:, :3]
+    weight *= 1.0 - np.clip(mask, 0.0, 1.0)
+    hit = weight > 0.0
+    if not hit.any():
+        return 0
+    if att.domain == 'POINT':
+        wv, cv = weight, color
+    else:                                    # a face corner layer: each corner takes its point's stamp
+        lv = np.empty(len(me.loops), dtype=np.int64)
+        me.loops.foreach_get('vertex_index', lv)
+        wv, cv = weight[lv], color[lv]
+    cur = np.empty(len(att.data) * 4, dtype=np.float32)
+    att.data.foreach_get('color_srgb', cur)
+    cur = cur.reshape(-1, 4)
+    cur[:, :3] = cur[:, :3] * (1.0 - wv[:, None]) + cv * wv[:, None]
+    att.data.foreach_set('color_srgb', cur.ravel())
+    me.update()
+    return int(hit.sum())
+
+
+def stamp_mirrors(context):
+    """The symmetry sign sets for a stamp (X / Y / Z symmetry on: its mirror stamps too)."""
+    sc = context.tool_settings.sculpt
+    axes = [getattr(sc, f'use_symmetry_{a}', False) for a in 'xyz']
+    out = [(1, 1, 1)]
+    for i, on_ in enumerate(axes):
+        if on_:
+            out += [tuple(-s if j == i else s for j, s in enumerate(m)) for m in out]
+    return tuple(out)
+
+
+def apply_stamp(context, center, half, angle):
+    """Texture stamp on the SubTool from the view (the Ctrl+Z step: Blender's colour filter, zero strength)."""
+    ob = context.active_object
+    if ob is None or ob.type != 'MESH':
+        return 'Texture stamp: no SubTool'
+    px = texture_pixels(current_texture(context))
+    if px is None:
+        return 'Texture stamp: the texture cannot be read'
+    region, rv3d = context.region, context.region_data
+    if rv3d.is_perspective:
+        view = ('PERSP', tuple(rv3d.view_matrix.inverted().translation))
+    else:
+        view = ('ORTHO', tuple(rv3d.view_rotation @ Vector((0.0, 0.0, -1.0))))
+    if ob.data.color_attributes.active_color is not None and not bpy.app.background:
+        try:                                 # stores the colours before the stamp: one Ctrl+Z takes it back
+            bpy.ops.sculpt.color_filter('EXEC_DEFAULT', True, type='FILL', strength=0.0, fill_color=(1.0, 1.0, 1.0))
+        except (RuntimeError, TypeError):
+            pass
+    n = texture_stamp(ob, px, rv3d.perspective_matrix @ ob.matrix_world, region.width, region.height, center, half,
+                      angle, view, context.scene.mch_zb.rgb_int / 100.0, stamp_mirrors(context))
+    from .quick_hud import points_text
+    return f'Texture stamp: {points_text(n)} points' if n else 'Texture stamp: nothing under it'
+
+
+_STAMP = {'rect': None, 'path': '', 'handle': None}
+
+
+def _stamp_draw():
+    try:
+        rect = _STAMP['rect']
+        if rect:
+            from . import ui_gpu as G
+            G.image_quad(_STAMP['path'], rect, 0.55)
+            G.polyline(rect, ORANGE, 1.5, closed=True)
+    except Exception:          # never break viewport drawing
+        pass
+    from . import ui_gpu
+    ui_gpu.done()
+
+
+def stamp_show(rect, path):
+    _STAMP['rect'], _STAMP['path'] = rect, path
+    if _STAMP['handle'] is None and not bpy.app.background:
+        _STAMP['handle'] = bpy.types.SpaceView3D.draw_handler_add(_stamp_draw, (), 'WINDOW', 'POST_PIXEL')
+
+
+def stamp_hide():
+    _STAMP['rect'] = None
+    if _STAMP['handle'] is not None:
+        try:
+            bpy.types.SpaceView3D.draw_handler_remove(_STAMP['handle'], 'WINDOW')
+        except (ValueError, RuntimeError):
+            pass
+        _STAMP['handle'] = None
 
 
 RECENT = []                 # the last brushes used (the Space menu shows them)
@@ -414,6 +859,22 @@ def _matcap_items(self, context):
 _MATCAPS = []
 
 
+def matcaps(context):
+    """(identifier, name, image file) of each MatCap Blender has - the ZBrush Material picker."""
+    out = []
+    try:
+        for l in context.preferences.studio_lights:
+            if l.type == 'MATCAP':
+                out.append((l.name, l.name.rsplit('.', 1)[0].replace('_', ' ').title(), getattr(l, 'path', '')))
+    except (AttributeError, ReferenceError):
+        pass
+    return out
+
+
+def stroke_icon(key):
+    return 'png:zb_stroke_' + key.lower()
+
+
 def _matcap_get(self):
     def f():
         sh = space().shading
@@ -438,6 +899,23 @@ _sx, _sy, _sz = _sym('x'), _sym('y'), _sym('z')
 _floor = _view_bool(('overlay', 'show_floor'))
 _transp = _view_bool(('shading', 'show_xray'))
 _double = _view_bool(('shading', 'show_backface_culling'), invert=True)
+
+
+def automask_settings(context=None):
+    """Where Blender keeps the sculpt auto masking (5.2: Sculpt.mesh_automasking_settings; 5.0: Sculpt itself)."""
+    sc = (context or bpy.context).tool_settings.sculpt
+    return getattr(sc, 'mesh_automasking_settings', None) or sc
+
+
+def _cav_get(self):
+    return _safe(lambda: bool(automask_settings().use_automasking_cavity), False)
+
+
+def _cav_set(self, v):
+    _safe(lambda: setattr(automask_settings(), 'use_automasking_cavity', bool(v)), None)
+
+
+_cav = (_cav_get, _cav_set)
 
 
 class MCH_PG_ZBrush(bpy.types.PropertyGroup):
@@ -494,7 +972,30 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
     thick: FloatProperty(name='Thick', default=0.02, min=0.0, soft_max=0.5, precision=3,
                          description='Extract: thickness of the new shell')
     blur: IntProperty(name='Blur', default=2, min=0, max=20, description='Mask By Cavity: how often it is blurred')
+    cavity_int: IntProperty(name='Intensity', default=50, min=0, max=100,
+                            description='Mask By Cavity: how deep a dent has to be to get masked (Blender Factor)')
+    cavity_inv: BoolProperty(name='Inv', default=False,
+                             description='Mask By Cavity: mask the ridges instead of the dents')
+    cavity_auto: BoolProperty(name='CavityMask', get=_cav[0], set=_cav[1],
+                              description='Brush Auto Masking: the brush only works in the dents '
+                                          '(Blender Auto-Masking Cavity)')
     res: IntProperty(name='Res', default=4, min=1, max=64, description='QCube / QGrid resolution')
+    alpha_source: EnumProperty(name='Alphas', default='MECHA', items=[
+        ('MECHA', 'Mecha', 'The alphas that come with Mecha Lab'),
+        ('ZBRUSH', 'ZBrush', 'ZBrush\'s own ZAlphas folder (when ZBrush is installed - only read)'),
+        ('FOLDER', 'Folder', 'Your own alpha folder')])
+    alpha_dir: StringProperty(name='Alpha Folder', subtype='DIR_PATH', default='',
+                              description='A folder of alpha images (PNG / PSD / TIF ...)')
+    texture: StringProperty(name='Texture', subtype='FILE_PATH', default='',
+                            description='ZBrush Texture: the colour image the Paint brush stamps (empty = Texture Off)')
+    tex_source: EnumProperty(name='Textures', default='MECHA', items=[
+        ('MECHA', 'Mecha', 'The textures that come with Mecha Lab'),
+        ('ZBRUSH', 'ZBrush', 'ZBrush\'s own ZTextures folder (when ZBrush is installed - only read)'),
+        ('FOLDER', 'Folder', 'Your own texture folder')])
+    tex_dir: StringProperty(name='Texture Folder', subtype='DIR_PATH', default='',
+                            description='A folder of texture images (PNG / JPG / TIF ...)')
+    rgb_int: IntProperty(name='Rgb Intensity', default=100, min=0, max=100,
+                         description='How strongly a texture stamp (or the paint) covers the colour underneath')
     fbx_scope: EnumProperty(name='Export', default='SELECTED', items=[
         ('VISIBLE', 'Visible', 'FBX / OBJ / STL export: every visible SubTool'),
         ('SELECTED', 'Selected', 'FBX / OBJ / STL export: the selected SubTool(s)')])
@@ -603,6 +1104,15 @@ def _divide(context, ob, times=1):
     return m.total_levels
 
 
+DYNA_KEY = 'mch_dynamesh'
+
+
+def dynamesh_on(ob):
+    """The SubTool's DynaMesh is on (ZBrush: the DynaMesh button stays lit; Ctrl + drag on empty canvas remeshes
+    again).  Subdivision levels turn it off, as in ZBrush."""
+    return ob is not None and bool(ob.get(DYNA_KEY)) and multires(ob) is None
+
+
 def dynamesh(context, ob, points):
     from . import voxel_for_points
     if multires(ob) is not None:
@@ -611,10 +1121,95 @@ def dynamesh(context, ob, points):
     if v <= 0.0:
         return 'DynaMesh: no surface'
     ob.data.remesh_voxel_size = v
-    _mode(context, 'OBJECT')                 # (from Object Mode: the Sculpt Mode call crashed without a window)
-    bpy.ops.object.voxel_remesh()
-    _mode(context, 'SCULPT')
+    if bpy.app.background:
+        _mode(context, 'OBJECT')             # (without a window the Sculpt Mode call crashed)
+        bpy.ops.object.voxel_remesh()
+        _mode(context, 'SCULPT')
+    else:
+        bpy.ops.object.voxel_remesh()        # in Sculpt Mode like Blender's Ctrl+R: its own undo step
     return ''
+
+
+def has_mask(ob, eps=1e-4):
+    if ob is None or ob.type != 'MESH':
+        return False
+    vals = _mask_values(ob)
+    return bool(len(vals)) and float(vals.max()) > eps
+
+
+def empty_ctrl_drag(ob):
+    """What Ctrl + drag on empty canvas does (ZBrush): 'CLEAR_MASK' when something is masked (or the mask cannot
+    be read: subdivision levels), else 'DYNAMESH' when the SubTool's DynaMesh is on, else 'OFF'."""
+    if ob is None or ob.type != 'MESH':
+        return 'OFF'
+    if multires(ob) is not None or has_mask(ob):
+        return 'CLEAR_MASK'
+    return 'DYNAMESH' if dynamesh_on(ob) else 'OFF'
+
+
+def lasso_holds(co, matrix, width, height, path):
+    """Does the closed screen lasso ``path`` (region px) hold any of the points ``co`` ((n, 3) object space)?
+    ``matrix`` = the view's perspective matrix times the object's matrix."""
+    import numpy as np
+    if len(path) < 3 or not len(co):
+        return False
+    m = np.array(matrix, dtype=np.float64)
+    h = np.hstack([co, np.ones((len(co), 1))]) @ m.T
+    front = h[:, 3] > 1e-6
+    h = h[front]
+    if not len(h):
+        return False
+    px = (h[:, 0] / h[:, 3] + 1.0) * 0.5 * width
+    py = (h[:, 1] / h[:, 3] + 1.0) * 0.5 * height
+    poly = np.array(path, dtype=np.float64)
+    if len(poly) > 256:
+        poly = poly[np.linspace(0, len(poly) - 1, 256).astype(int)]
+    lo, hi = poly.min(axis=0), poly.max(axis=0)
+    box = (px >= lo[0]) & (px <= hi[0]) & (py >= lo[1]) & (py <= hi[1])
+    px, py = px[box], py[box]
+    if not len(px):
+        return False
+    inside = np.zeros(len(px), dtype=bool)
+    x2, y2 = poly[-1]
+    for x1, y1 in poly:                       # even-odd rule, every point against each edge at once
+        if y1 != y2:
+            cross = ((y1 > py) != (y2 > py)) & (px < (x2 - x1) * (py - y1) / (y2 - y1) + x1)
+            inside ^= cross
+        x2, y2 = x1, y1
+    return bool(inside.any())
+
+
+def lasso_touches(context, ob, path):
+    """Ctrl + lasso: does it go round (or over) the SubTool?  Then it masks; else it is a drag on empty canvas."""
+    import numpy as np
+    region, rv3d = getattr(context, 'region', None), getattr(context, 'region_data', None)
+    if ob is None or ob.type != 'MESH' or region is None or rv3d is None:
+        return True
+    me = ob.data
+    n = len(me.vertices)
+    co = np.empty(n * 3, dtype=np.float32)
+    me.vertices.foreach_get('co', co)
+    co = co.reshape(-1, 3)
+    if n > 400000:                            # a big mesh: every few points is enough to see the outline
+        co = co[::max(1, n // 400000)]
+    if lasso_holds(co, rv3d.perspective_matrix @ ob.matrix_world, region.width, region.height, path):
+        return True
+    from bpy_extras import view3d_utils       # a few big faces: no point inside, but the lasso is on a face
+    pts = path[::max(1, len(path) // 16)]
+    cx = sum(p[0] for p in path) / len(path)
+    cy = sum(p[1] for p in path) / len(path)
+    inv = ob.matrix_world.inverted()
+    for xy in list(pts) + [(cx, cy)]:
+        o = view3d_utils.region_2d_to_origin_3d(region, rv3d, xy)
+        d = view3d_utils.region_2d_to_vector_3d(region, rv3d, xy)
+        try:
+            lo = inv @ o
+            ld = (inv.to_3x3() @ d).normalized()
+            if ob.ray_cast(lo, ld)[0]:
+                return True
+        except (RuntimeError, ValueError):
+            return True
+    return False
 
 
 def _mask_values(ob):
@@ -698,13 +1293,20 @@ def run(context, action):
             return 'No subdivision levels (Ctrl+D: Divide)'
         zb.sdiv = m.sculpt_levels + (1 if action == 'SDIV_UP' else -1)
         return f'SDiv {m.sculpt_levels}'
-    if action in {'DYNAMESH', 'DYNA_SUBDIV', 'DYNA_SUBDIV3'}:
+    if action == 'DYNAMESH' and dynamesh_on(ob):           # ZBrush: pressing the lit DynaMesh turns it off
+        del ob[DYNA_KEY]
+        return 'DynaMesh off'
+    if action in {'DYNAMESH', 'DYNA_UPDATE', 'DYNA_SUBDIV', 'DYNA_SUBDIV3'}:
+        from .quick_hud import points_text
         msg = dynamesh(context, ob, zb.points)
         if msg:
             return msg
-        if action != 'DYNAMESH':
+        if action in {'DYNA_SUBDIV', 'DYNA_SUBDIV3'}:
             _divide(context, ob, 3 if action == 'DYNA_SUBDIV3' else 2)
-        return f'DynaMesh: {len(ob.data.vertices):,} points'
+            ob.pop(DYNA_KEY, None)
+        else:
+            ob[DYNA_KEY] = 1
+        return f'DynaMesh: {points_text(len(ob.data.vertices))} points'
     if action == 'ZREMESH':
         if multires(ob) is not None:
             return 'ZRemesher: Del Higher / Del Lower first'
@@ -780,10 +1382,9 @@ def run(context, action):
         return f'Inflate {zb.inflate}'
     if action == 'MASK_CAVITY':
         _mode(context, 'SCULPT')
-        bpy.ops.sculpt.mask_from_cavity()
-        for _i in range(zb.blur):
-            bpy.ops.sculpt.mask_filter(filter_type='SMOOTH')
-        return 'Mask By Cavity'
+        bpy.ops.sculpt.mask_from_cavity(mix_mode='MIX', mix_factor=1.0, settings_source='OPERATOR',
+                                        factor=zb.cavity_int / 100.0, blur_steps=zb.blur, invert=zb.cavity_inv)
+        return 'Mask By Cavity' + (' (ridges)' if zb.cavity_inv else '')
     if action == 'MASK_BLUR':
         bpy.ops.sculpt.mask_filter(filter_type='SMOOTH')
         return 'Mask: blur'
@@ -1090,9 +1691,78 @@ def plan(ctrl, shift, alt):
     return 'STROKE', 'ROTATE'
 
 
+def object_under(context, x, y):
+    """The (original) object under region px (x, y), or None."""
+    from bpy_extras import view3d_utils
+    region, rv3d = getattr(context, 'region', None), getattr(context, 'region_data', None)
+    if region is None or rv3d is None:
+        return None
+    origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, (x, y))
+    direction = view3d_utils.region_2d_to_vector_3d(region, rv3d, (x, y))
+    try:
+        hit, _loc, _nrm, _i, obj, _m = context.scene.ray_cast(context.evaluated_depsgraph_get(), origin, direction)
+    except (RuntimeError, ReferenceError, AttributeError):
+        return None
+    return getattr(obj, 'original', obj) if hit and obj is not None else None
+
+
+def ctrl_canvas_release(context, path, unmask=False):
+    """Ctrl pressed on empty canvas, let go (ZBrush): a click inverts the mask; a lasso round the model masks it
+    (Alt: unmasks); a drag on empty canvas clears the mask, or with no mask DynaMeshes again (empty_ctrl_drag)."""
+    ob = context.active_object
+    if not path:
+        bpy.ops.paint.mask_flood_fill('EXEC_DEFAULT', True, mode='INVERT')
+        return ''
+    if lasso_touches(context, ob, path):
+        bpy.ops.paint.mask_lasso_gesture('EXEC_DEFAULT', True, path=[{'name': '', 'loc': p, 'time': 0.0} for p in path],
+                                         mode='VALUE', value=0.0 if unmask else 1.0)
+        return ''
+    what = empty_ctrl_drag(ob)
+    if what == 'CLEAR_MASK':
+        bpy.ops.paint.mask_flood_fill('EXEC_DEFAULT', True, mode='VALUE', value=0.0)
+        return 'Mask cleared'
+    if what == 'DYNAMESH':
+        bpy.ops.mch.zb_action('EXEC_DEFAULT', True, action='DYNA_UPDATE')
+        return ''
+    return 'DynaMesh is off for this SubTool: Geometry > DynaMesh turns it on (then Ctrl + drag here remeshes)'
+
+
+_LASSO = {'path': None, 'handle': None}
+
+
+def _lasso_draw():
+    try:
+        path = _LASSO['path']
+        if path and len(path) > 1:
+            from . import ui_gpu as G
+            G.polyline(path, ORANGE, 2.0)
+            G.polyline([path[-1], path[0]], (ORANGE[0], ORANGE[1], ORANGE[2], 0.4), 1.0)
+    except Exception:          # never break viewport drawing
+        pass
+    from . import ui_gpu
+    ui_gpu.done()
+
+
+def lasso_show(path):
+    _LASSO['path'] = path
+    if _LASSO['handle'] is None and not bpy.app.background:
+        _LASSO['handle'] = bpy.types.SpaceView3D.draw_handler_add(_lasso_draw, (), 'WINDOW', 'POST_PIXEL')
+
+
+def lasso_hide():
+    _LASSO['path'] = None
+    if _LASSO['handle'] is not None:
+        try:
+            bpy.types.SpaceView3D.draw_handler_remove(_LASSO['handle'], 'WINDOW')
+        except (ValueError, RuntimeError):
+            pass
+        _LASSO['handle'] = None
+
+
 class MCH_OT_zb_press(_ZBPoll, bpy.types.Operator):
     """ZBrush mouse: on the model it sculpts (Alt Zsub, Shift Smooth, Ctrl mask), on the canvas it turns / moves
-    the view, Ctrl+click inverts the mask, Ctrl+Shift shows / hides"""
+    the view, Ctrl+click inverts the mask, Ctrl+lasso masks, Ctrl+drag on empty canvas clears the mask or
+    DynaMeshes, Ctrl+Shift shows / hides, Alt+click on another SubTool picks it"""
     bl_idname = 'mch.zb_press'
     bl_label = 'ZBrush Mouse'
     bl_options = {'INTERNAL'}
@@ -1109,10 +1779,21 @@ class MCH_OT_zb_press(_ZBPoll, bpy.types.Operator):
             close_popup(context)
             return {'FINISHED'}
         model, canvas = plan(event.ctrl, event.shift, event.alt)
+        if event.alt and not event.ctrl and not event.shift:     # ZBrush: Alt + click another SubTool picks it
+            other = object_under(context, event.mouse_region_x, event.mouse_region_y)
+            if other is not None and other.type == 'MESH' and other != context.active_object:
+                if switch_to(context, other):
+                    _bump()
+                    self.report({'INFO'}, f'SubTool: {other.name}')
+                    return {'FINISHED'}
         if model == 'GROUP_SOLO':
             r = bpy.ops.sculpt.face_set_change_visibility('INVOKE_DEFAULT', mode='TOGGLE')
             if 'FINISHED' in r:
                 return {'FINISHED'}
+        elif model == 'STROKE' and stamp_ready(context) and \
+                object_under(context, event.mouse_region_x, event.mouse_region_y) == context.active_object:
+            r = bpy.ops.mch.zb_tex_stamp('INVOKE_DEFAULT')       # Paint + Texture: a DragRect stamp
+            return {'FINISHED'} if 'RUNNING_MODAL' in r or 'FINISHED' in r else {'CANCELLED'}
         elif model == 'STROKE':
             r = bpy.ops.sculpt.brush_stroke('INVOKE_DEFAULT', **stroke_kwargs('STROKE')[0])
             if 'RUNNING_MODAL' in r or 'FINISHED' in r:
@@ -1133,27 +1814,49 @@ class MCH_OT_zb_press(_ZBPoll, bpy.types.Operator):
         if canvas in {'ROTATE', 'ROTATE_SNAP', 'PAN'}:
             return bpy.ops.mch.zb_nav('INVOKE_DEFAULT', mode='PAN' if canvas == 'PAN' else 'ROTATE')
         self.canvas, self.x0, self.y0 = canvas, event.mouse_region_x, event.mouse_region_y
+        self.path, self.moved = [(self.x0, self.y0)], False
+        if canvas.startswith('INVERT_OR'):           # Ctrl: our own lasso (decided when let go)
+            lasso_show(self.path)
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
     def modal(self, context, event):
-        if event.type == 'MOUSEMOVE':
-            if abs(event.mouse_region_x - self.x0) + abs(event.mouse_region_y - self.y0) > 5:
-                if self.canvas.startswith('INVERT_OR'):
-                    bpy.ops.paint.mask_lasso_gesture('INVOKE_DEFAULT', mode='VALUE',
-                                                     value=0.0 if 'UNMASK' in self.canvas else 1.0)
-                else:
-                    bpy.ops.paint.hide_show_lasso_gesture(
-                        'INVOKE_DEFAULT', action='HIDE', area='INSIDE' if 'HIDE_INSIDE' in self.canvas else 'OUTSIDE')
+        lasso = self.canvas.startswith('INVERT_OR')
+        if event.type in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE'}:
+            x, y = event.mouse_region_x, event.mouse_region_y
+            if abs(x - self.x0) + abs(y - self.y0) > 5:
+                self.moved = True
+            if lasso:
+                lx, ly = self.path[-1]
+                if abs(x - lx) + abs(y - ly) >= 3:
+                    self.path.append((x, y))
+                    if context.area:
+                        context.area.tag_redraw()
+                return {'RUNNING_MODAL'}
+            if self.moved:
+                bpy.ops.paint.hide_show_lasso_gesture(
+                    'INVOKE_DEFAULT', action='HIDE', area='INSIDE' if 'HIDE_INSIDE' in self.canvas else 'OUTSIDE')
                 return {'FINISHED'}
             return {'RUNNING_MODAL'}
         if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
-            if self.canvas.startswith('INVERT_OR'):
-                bpy.ops.paint.mask_flood_fill(mode='INVERT')
+            if lasso:
+                lasso_hide()
+                if context.area:
+                    context.area.tag_redraw()
+                try:
+                    msg = ctrl_canvas_release(context, self.path if self.moved and len(self.path) > 2 else None,
+                                              'UNMASK' in self.canvas)
+                except RuntimeError as ex:
+                    msg = str(ex).splitlines()[0]
+                if msg:
+                    self.report({'INFO'}, msg)
             else:
                 bpy.ops.paint.hide_show_all(action='SHOW')
             return {'FINISHED'}
         if event.type in {'ESC', 'RIGHTMOUSE'}:
+            lasso_hide()
+            if context.area:
+                context.area.tag_redraw()
             return {'CANCELLED'}
         return {'RUNNING_MODAL'}
 
@@ -1466,6 +2169,154 @@ class RMBDrag:
         return True
 
 
+class MCH_OT_zb_alpha(_ZBPoll, bpy.types.Operator):
+    """Use this alpha on the brush (empty: Alpha Off)"""
+    bl_idname = 'mch.zb_alpha'
+    bl_label = 'ZBrush Alpha'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    path: StringProperty(subtype='FILE_PATH')
+
+    def execute(self, context):
+        self.report({'INFO'}, set_alpha(context, self.path))
+        close_popup(context)
+        _bump()
+        return {'FINISHED'}
+
+
+class MCH_OT_zb_alpha_edit(_ZBPoll, bpy.types.Operator):
+    """Alpha: Flip H / Flip V / Rotate 90 / Invert"""
+    bl_idname = 'mch.zb_alpha_edit'
+    bl_label = 'ZBrush Alpha Edit'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    action: StringProperty(default='FLIP_H')
+
+    def execute(self, context):
+        self.report({'INFO'}, alpha_edit(context, self.action))
+        _bump()
+        return {'FINISHED'}
+
+
+class MCH_OT_zb_set(_ZBPoll, bpy.types.Operator):
+    """Pick this (ZBrush picker: Material / Stroke) - the picker closes"""
+    bl_idname = 'mch.zb_set'
+    bl_label = 'ZBrush Pick'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    prop: StringProperty()
+    value: StringProperty()
+
+    def execute(self, context):
+        zb = context.scene.mch_zb
+        if self.prop in {'matcap', 'stroke'}:
+            try:
+                setattr(zb, self.prop, self.value)
+            except (TypeError, ValueError) as ex:
+                self.report({'WARNING'}, str(ex).splitlines()[0])
+        close_popup(context)
+        _bump()
+        return {'FINISHED'}
+
+
+class MCH_OT_zb_texture(_ZBPoll, bpy.types.Operator):
+    """Use this texture (the Paint brush stamps it; empty: Texture Off)"""
+    bl_idname = 'mch.zb_texture'
+    bl_label = 'ZBrush Texture'
+    bl_options = {'REGISTER', 'INTERNAL'}
+    path: StringProperty(subtype='FILE_PATH')
+
+    def execute(self, context):
+        self.report({'INFO'}, set_texture(context, self.path))
+        close_popup(context)
+        _bump()
+        return {'FINISHED'}
+
+
+class MCH_OT_zb_texture_folder(_ZBPoll, bpy.types.Operator):
+    """Pick a folder of texture images"""
+    bl_idname = 'mch.zb_texture_folder'
+    bl_label = 'Texture Folder'
+    bl_options = {'INTERNAL'}
+    directory: StringProperty(subtype='DIR_PATH')
+
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        zb = context.scene.mch_zb
+        zb.tex_dir = self.directory
+        zb.tex_source = 'FOLDER'
+        _bump()
+        return {'FINISHED'}
+
+
+class MCH_OT_zb_tex_stamp(_ZBPoll, bpy.types.Operator):
+    """Texture stamp (ZBrush DragRect, Paint brush + Texture): drag from the centre - how far is the size, the
+    direction turns it; a click stamps at Draw Size.  Symmetry stamps the mirror too; the mask protects"""
+    bl_idname = 'mch.zb_tex_stamp'
+    bl_label = 'Texture Stamp'
+    bl_options = {'INTERNAL'}
+
+    def invoke(self, context, event):
+        self.c = (event.mouse_region_x, event.mouse_region_y)
+        self.half, self.angle = 0.0, 0.0
+        self.path = current_texture(context)
+        px = texture_pixels(self.path)
+        if px is None:
+            self.report({'WARNING'}, 'Texture stamp: the texture cannot be read')
+            return {'CANCELLED'}
+        self.aspect = px.shape[0] / float(px.shape[1])
+        stamp_show(None, self.path)
+        context.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+
+    def modal(self, context, event):
+        if event.type in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE'}:
+            dx, dy = event.mouse_region_x - self.c[0], event.mouse_region_y - self.c[1]
+            self.half = math.hypot(dx, dy)
+            if self.half > 2.0:
+                self.angle = math.atan2(dy, dx) - math.pi / 2       # dragging up = upright
+            _STAMP['rect'] = stamp_rect(self.c, self.half, self.angle, self.aspect) if self.half > 2.0 else None
+            if context.area:
+                context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+        if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+            stamp_hide()
+            half = self.half if self.half >= 6.0 else float(context.scene.mch_zb.draw_size)
+            try:
+                msg = apply_stamp(context, self.c, half, self.angle if self.half >= 6.0 else 0.0)
+            except (RuntimeError, ValueError, MemoryError) as ex:
+                msg = 'Texture stamp: ' + str(ex).splitlines()[0]
+            self.report({'INFO'}, msg)
+            if context.area:
+                context.area.tag_redraw()
+            return {'FINISHED'}
+        if event.type in {'ESC', 'RIGHTMOUSE'}:
+            stamp_hide()
+            if context.area:
+                context.area.tag_redraw()
+            return {'CANCELLED'}
+        return {'RUNNING_MODAL'}
+
+
+class MCH_OT_zb_alpha_folder(_ZBPoll, bpy.types.Operator):
+    """Pick a folder of alpha images"""
+    bl_idname = 'mch.zb_alpha_folder'
+    bl_label = 'Alpha Folder'
+    bl_options = {'INTERNAL'}
+    directory: StringProperty(subtype='DIR_PATH')
+
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        zb = context.scene.mch_zb
+        zb.alpha_dir = self.directory
+        zb.alpha_source = 'FOLDER'
+        _bump()
+        return {'FINISHED'}
+
+
 class MCH_OT_zb_close(bpy.types.Operator):
     """Close the ZBrush menu"""
     bl_idname = 'mch.zb_close'
@@ -1483,7 +2334,8 @@ class MCH_OT_zb_close(bpy.types.Operator):
 
 CLASSES = (MCH_PG_ZBrush, MCH_OT_zb_action, MCH_OT_zb_brush, MCH_OT_zb_append, MCH_OT_zb_subtool, MCH_OT_zb_press,
            MCH_OT_zb_restore_tool, MCH_OT_zb_nav, MCH_OT_zb_viewdrag, MCH_OT_zb_popup, MCH_OT_zb_brush_pick,
-           MCH_OT_zb_switch, MCH_OT_zb_style, MCH_OT_zb_obj_press, MCH_OT_zb_close)
+           MCH_OT_zb_switch, MCH_OT_zb_style, MCH_OT_zb_obj_press, MCH_OT_zb_alpha, MCH_OT_zb_alpha_edit,
+           MCH_OT_zb_alpha_folder, MCH_OT_zb_set, MCH_OT_zb_texture, MCH_OT_zb_texture_folder, MCH_OT_zb_tex_stamp, MCH_OT_zb_close)
 _keymaps = []
 
 # (key, ctrl, shift, alt, operator, properties)
@@ -1516,6 +2368,7 @@ def register():
     wmt.mch_zb_pop_xy = bpy.props.FloatVectorProperty(size=2, default=(0.0, 0.0), options={'SKIP_SAVE'})
     wmt.mch_zb_pop_focus = StringProperty(default='', options={'SKIP_SAVE'})
     wmt.mch_zb_scroll = FloatProperty(default=0.0, options={'SKIP_SAVE'})
+    wmt.mch_zb_scroll_b = FloatProperty(default=0.0, options={'SKIP_SAVE'})
     wm = bpy.context.window_manager
     kc = wm.keyconfigs.addon if wm else None
     if kc is not None:
@@ -1534,14 +2387,16 @@ def register():
 
 
 def unregister():
+    lasso_hide()
+    stamp_hide()
     for km, kmi in _keymaps:
         try:
             km.keymap_items.remove(kmi)
-        except (ReferenceError, RuntimeError):
+        except Exception:      # (a keymap item freed with its key config: like ui_bars, never stop unregister)
             pass
     _keymaps.clear()
     wmt = bpy.types.WindowManager
-    for name in ('mch_zb_pop', 'mch_zb_pop_xy', 'mch_zb_pop_focus', 'mch_zb_scroll'):
+    for name in ('mch_zb_pop', 'mch_zb_pop_xy', 'mch_zb_pop_focus', 'mch_zb_scroll', 'mch_zb_scroll_b'):
         if hasattr(wmt, name):
             delattr(wmt, name)
     if hasattr(bpy.types.Scene, 'mch_zb'):

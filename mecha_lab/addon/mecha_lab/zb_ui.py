@@ -12,10 +12,13 @@ Clicks go through ``ui_bars`` (hit test / run) like the rest of the drawn UI.
 """
 from __future__ import annotations
 
+import os
+
 import bpy
 
 from . import panel_capture as pc
 from . import zb_sculpt as zs
+from .quick_hud import points_text
 
 ROW = 24.0
 GAP = 4.0
@@ -66,7 +69,7 @@ def draw_tool_shelf(layout, context):
     ops(r, ('Divide', 'DIVIDE'))
     r.prop(zb, 'sdiv')
     r = box.row()
-    ops(r, ('DynaMesh', 'DYNAMESH'))
+    r.operator('mch.zb_action', text='DynaMesh', depress=zs.dynamesh_on(context.active_object)).action = 'DYNAMESH'
     r.prop(zb, 'points')
     r = box.row()
     ops(r, ('ZRemesher', 'ZREMESH'))
@@ -84,8 +87,12 @@ def draw_tool_shelf(layout, context):
     box.label(text='Masking')
     r = box.row()
     ops(r, ('Mask By Cavity', 'MASK_CAVITY'))
+    r.prop(zb, 'cavity_inv', toggle=True)
+    r = box.row()
+    r.prop(zb, 'cavity_int')
     r.prop(zb, 'blur')
     ops(box.row(), ('Invert', 'MASK_INVERT'), ('Clear', 'MASK_CLEAR'), ('Blur', 'MASK_BLUR'))
+    box.prop(zb, 'cavity_auto', toggle=True)
     box = layout.box()
     box.label(text='Stroke')
     r = box.row()
@@ -139,6 +146,14 @@ def _cells_width(cells, k):
     return sum((c.get('width') or (len(c['label']) * 7.0 + 22.0)) * k for c in cells) + GAP * k * (len(cells) - 1)
 
 
+def _matcap_name(context, zb):
+    try:
+        cur = zb.matcap
+    except (TypeError, AttributeError):
+        return 'Material'
+    return next((n for i, n, _p in zs.matcaps(context) if i == cur), 'Material')
+
+
 def top_shelf(context, region_w, region_h, k, Item):
     zb = context.scene.mch_zb
     tool = zs._tool_id(context)
@@ -147,7 +162,8 @@ def top_shelf(context, region_w, region_h, k, Item):
          ('', [_ops_cell('Move', 'MOVE', tool == 'builtin.move', 'seg'),
                _ops_cell('Scale', 'SCALE', tool == 'builtin.scale', 'seg'),
                _ops_cell('Rotate', 'ROTATE', tool == 'builtin.rotate', 'seg')]),
-         ('Mat', [_prop_cell(zb, 'matcap', 'drop', width=120)]),
+         ('Mat', [{'kind': 'tbtn', 'label': _matcap_name(context, zb), 'width': 120,
+                   'action': ('op', 'mch.zb_popup', {'kind': 'MATERIAL'})}]),
          ('', [_prop_cell(zb, 'zmode', 'seg', 'Zadd', 56, on=zb.zmode == 'ZADD', value='ZADD'),
                _prop_cell(zb, 'zmode', 'seg', 'Zsub', 56, on=zb.zmode == 'ZSUB', value='ZSUB')]),
          ('', [_prop_cell(zb, 'z_intensity', 'mini', width=150), _prop_cell(zb, 'focal_shift', 'mini', width=150),
@@ -233,19 +249,37 @@ def shelf_a(context, region_w, region_h, k, Item, top, floor):
     return out
 
 
-def shelf_b(context, k, Item, top):
+def _safe_matcap(zb):
+    try:
+        return zb.matcap
+    except (TypeError, AttributeError):
+        return ''
+
+
+def shelf_b(context, k, Item, top, floor=0.0):
+    """The brush tray (brush / alpha / stroke / material / texture, symmetry, clip, initialize); 0.24.60 it scrolls
+    when the viewport is too short for it (mouse wheel over it)."""
     zb = context.scene.mch_zb
     b = zs.brush(context)
     x0, w = 12 * k + A_W * k + 8 * k, B_W * k
     iw = w - 2 * PAD * k
     out = []
-    y = top - PAD * k
+    y = 0.0                                          # (rows from 0 down; _scroll_card puts them under ``top``)
     tool = zs._tool_id(context)
 
     def tile(label, icon, action, h=72.0, on=False):
         nonlocal y
         y -= h * k
         out.append(Item('sbtn', x0 + PAD * k, y, iw, h * k, label, icon, on, True, action, 'RIGHT'))
+        y -= GAP * k
+
+    def pair(a, b, h):                               # two half tiles side by side: (label, icon, action)
+        nonlocal y
+        y -= h * k
+        hw = (iw - GAP * k) / 2
+        for i, (label, icon, action) in enumerate((a, b)):
+            out.append(Item('sbtn', x0 + PAD * k + i * (hw + GAP * k), y, hw, h * k, label, icon, False, True, action,
+                            'RIGHT'))
         y -= GAP * k
 
     def head(text):
@@ -265,10 +299,21 @@ def shelf_b(context, k, Item, top):
     name = zs.zb_name(b)
     tile(name or 'Brush', 'png:' + zs.icon_stem(b.name) if b is not None else '',
          ('op', 'mch.zb_brush_pick', {}), 78.0)
-    head('STROKE')
-    row([_prop_cell(zb, 'stroke', 'drop')])
-    head('MATERIAL')
-    row([_prop_cell(zb, 'matcap', 'drop')])
+    ap = zs.current_alpha(context)                   # 0.24.60 the alpha / texture (click: ZBrush's pickers)
+    tp = zs.current_texture(context)
+    pair((os.path.splitext(os.path.basename(ap))[0] if ap else 'Alpha Off', ('alpha:' + ap) if ap else 'card',
+          ('op', 'mch.zb_popup', {'kind': 'ALPHA'})),
+         (os.path.splitext(os.path.basename(tp))[0] if tp else 'Texture Off', ('alpha:' + tp) if tp else 'card',
+          ('op', 'mch.zb_popup', {'kind': 'TEXTURE'})), 60.0)
+    flips = [{'kind': 'tbtn', 'label': lab, 'action': ('op', 'mch.zb_alpha_edit', {'action': act})}
+             for lab, act in (('Flh', 'FLIP_H'), ('Flv', 'FLIP_V'), ('Rot', 'ROTATE'), ('Invr', 'INVERT'))]
+    row(flips[:2])
+    row(flips[2:])
+    st = zb.stroke                                   # Stroke / Material: tiles that open ZBrush's pickers
+    mc = next(((n, p) for i, n, p in zs.matcaps(context) if i == _safe_matcap(zb)), ('Material', ''))
+    pair((dict((k_, n) for k_, n, _b in zs.STROKES).get(st, 'Stroke'), zs.stroke_icon(st),
+          ('op', 'mch.zb_popup', {'kind': 'STROKE'})),
+         (mc[0], ('alpha:' + mc[1]) if mc[1] else 'card', ('op', 'mch.zb_popup', {'kind': 'MATERIAL'})), 56.0)
     head('COLOR')
     row([_ops_cell('SwitchColor', 'SWITCH_COLOR')])
     row([_ops_cell('FillColor', 'FILL_COLOR')])
@@ -287,8 +332,8 @@ def shelf_b(context, k, Item, top):
     row([_ops_cell('QCube', 'QCUBE'), _ops_cell('QGrid', 'QGRID')])
     row([_prop_cell(zb, 'res', 'mini', 'Res')])
     row([_ops_cell('Delete', 'DELETE')])
-    h = top - y + PAD * k
-    return [Item('card', x0, top - h, w, h)] + out
+    scroll = float(getattr(context.window_manager, 'mch_zb_scroll_b', 0.0))
+    return _scroll_card(Item, out, -y, x0, top, w, floor, k, scroll)[0]
 
 
 VIEW_SHELF = (('Persp', 'persp', 'isolate', None), ('Floor', 'floor', 'grid', None), ('Frame', None, 'isolate', 'FRAME'),
@@ -345,7 +390,8 @@ def subtool_list(context, region_w, k, Item, top, floor):
     except (ImportError, RuntimeError, AttributeError):
         act = tot = 0
     y -= 18 * k + GAP * k
-    out.append(Item('pnote', ix, y, iw, 18 * k, f'Active Points {act:,}   Total Points {tot:,}', '', False, True))
+    out.append(Item('pnote', ix, y, iw, 18 * k, f'Active Points {points_text(act)}   Total Points {points_text(tot)}',
+                    '', False, True))
     y -= GAP * k
     active = context.active_object
     meshes = [o for o in sorted(context.view_layer.objects, key=lambda o: o.name.lower())
@@ -356,7 +402,7 @@ def subtool_list(context, region_w, k, Item, top, floor):
         hidden = layers_panel._hidden(context, ob)
         out.append(Item('lrow', ix, y, iw - 28 * k, 26 * k, ob.name, 'cube', ob == active, True,
                         ('op', 'mch.zb_subtool', {'name': ob.name}),
-                        {'hidden': hidden, 'badge': f'{_points(context, ob):,}', 'active': ob == active}))
+                        {'hidden': hidden, 'badge': points_text(_points(context, ob)), 'active': ob == active}))
         out.append(Item('pmin', ix + iw - 24 * k, y + 1 * k, 24 * k, 24 * k, 'Show' if hidden else 'Hide',
                         'eye_off' if hidden else 'eye', False, True, ('op', 'mch.layer_eye', {'name': ob.name}),
                         'LEFT'))
@@ -412,7 +458,8 @@ def brush_shelf(context, region_w, k, Item):
 
 KEYS_TEXT = ('ZBRUSH KEYS', 'Drag canvas   rotate, Shift: snap', 'Alt + drag canvas   move, let Alt go: zoom',
              'Alt / Shift   Zsub / Smooth', 'Ctrl + drag model   MaskPen, Alt: unmask', 'Ctrl + click canvas   invert mask',
-             'Ctrl + drag canvas   mask lasso', 'Ctrl+Shift   show only / polygroup', 'S / U / O   Size / Intensity / Focal',
+             'Ctrl + lasso model   mask, Alt: unmask', 'Ctrl + drag canvas   clear mask / DynaMesh',
+             'Alt + click SubTool   pick it', 'Ctrl+Shift   show only / polygroup', 'S / U / O   Size / Intensity / Focal',
              'Space / B   menu / brushes (B S T)', 'X   symmetry', 'D / Shift+D   SDiv up / down',
              'Ctrl+D / Ctrl+W   Divide / polygroup', 'F / Shift+F   Frame / PolyF')
 
@@ -436,6 +483,56 @@ def key_legend(context, k, Item, x0, y0):
     return out
 
 
+def _place(mx, my, w, h, region_w, region_h, k):
+    """A picker card round the mouse, kept inside the viewport."""
+    return (min(max(8 * k, mx - w / 2), region_w - w - 8 * k), min(max(8 * k, my - h / 2), region_h - h - 8 * k))
+
+
+def _image_picker(context, kind, mx, my, region_w, region_h, k, Item):
+    """ZBrush's Alpha / Texture picker: where from (Mecha / ZBrush / Folder...), Off, a thumbnail per image."""
+    import os
+    zb = context.scene.mch_zb
+    alpha = kind == 'ALPHA'
+    files, total = zs.alpha_files(context) if alpha else zs.texture_files(context)
+    cur = zs.current_alpha(context) if alpha else zs.current_texture(context)
+    src, prop = (zb.alpha_source, 'alpha_source') if alpha else (zb.tex_source, 'tex_source')
+    pick = 'mch.zb_alpha' if alpha else 'mch.zb_texture'
+    cols, tw = 7, 64 * k
+    rows = max(1, (len(files) + cols - 1) // cols)
+    extra = 0.0 if alpha else (28 + GAP) * k        # (Texture: the Rgb Intensity bar)
+    w = cols * tw + (cols - 1) * GAP * k + 2 * PAD * k
+    h = rows * tw + (rows - 1) * GAP * k + 2 * PAD * k + (ROW + GAP) * k + 20 * k + extra
+    x0, y0 = _place(mx, my, w, h, region_w, region_h, k)
+    out = [Item('card', x0, y0, w, h)]
+    y = y0 + h - PAD * k - ROW * k
+    cells = [('Mecha', ('enum', 'MECHA'), src == 'MECHA', zb, prop)]
+    if (zs.zbrush_alpha_dir() if alpha else zs.zbrush_texture_dir()):
+        cells.append(('ZBrush', ('enum', 'ZBRUSH'), src == 'ZBRUSH', zb, prop))
+    cells.append(('Folder...', ('op', 'mch.zb_alpha_folder' if alpha else 'mch.zb_texture_folder', {}),
+                  src == 'FOLDER', None, ''))
+    cells.append(('Alpha Off' if alpha else 'Texture Off', ('op', pick, {'path': ''}), not cur, None, ''))
+    cw = (w - 2 * PAD * k - GAP * k * (len(cells) - 1)) / len(cells)
+    for i, (lab, act, on, data, prp) in enumerate(cells):
+        out.append(Item('seg', x0 + PAD * k + i * (cw + GAP * k), y, cw, ROW * k, lab, '', on, True, act, data, prp))
+    if not alpha:
+        y -= (28 + GAP) * k
+        out.append(Item('mini', x0 + PAD * k, y, w - 2 * PAD * k, 28 * k, '', '', False, True, ('number',), zb,
+                        'rgb_int'))
+    y -= 20 * k
+    folder = zs.alpha_folder(context) if alpha else zs.texture_folder(context)
+    note = folder + (f'   (first {len(files)} of {total})' if total > len(files) else '')
+    if not alpha:
+        note = 'Paint + drag on the model: stamp (size / turn)   ' + note
+    out.append(Item('pnote', x0 + PAD * k, y + 2 * k, w - 2 * PAD * k, 16 * k, note))
+    for i, path in enumerate(files):
+        c, r = i % cols, i // cols
+        tx = x0 + PAD * k + c * (tw + GAP * k)
+        ty = y - GAP * k - (r + 1) * tw - r * GAP * k
+        out.append(Item('sbtn', tx, ty, tw, tw, os.path.splitext(os.path.basename(path))[0], 'alpha:' + path,
+                        os.path.normcase(path) == os.path.normcase(cur), True, ('op', pick, {'path': path}), 'ABOVE'))
+    return out
+
+
 def popup(context, region_w, region_h, k, Item):
     wm = context.window_manager
     kind = getattr(wm, 'mch_zb_pop', '')
@@ -444,6 +541,37 @@ def popup(context, region_w, region_h, k, Item):
     mx, my = wm.mch_zb_pop_xy
     zb = context.scene.mch_zb
     out = []
+    if kind in {'ALPHA', 'TEXTURE'}:
+        return _image_picker(context, kind, mx, my, region_w, region_h, k, Item)
+    if kind == 'MATERIAL':
+        caps = zs.matcaps(context)
+        cur = _safe_matcap(zb)
+        cols, tw = 8, 58 * k
+        rows = max(1, (len(caps) + cols - 1) // cols)
+        w = cols * tw + (cols - 1) * GAP * k + 2 * PAD * k
+        h = rows * (tw + 14 * k) + (rows - 1) * GAP * k + 2 * PAD * k + 20 * k
+        x0, y0 = _place(mx, my, w, h, region_w, region_h, k)
+        out.append(Item('card', x0, y0, w, h))
+        out.append(Item('glabel', x0 + PAD * k, y0 + h - PAD * k - 16 * k, w, 16 * k, 'MATERIAL  (MatCap)'))
+        for i, (ident, name, path) in enumerate(caps):
+            c, r = i % cols, i // cols
+            tx = x0 + PAD * k + c * (tw + GAP * k)
+            ty = y0 + h - PAD * k - 20 * k - (r + 1) * (tw + 14 * k) - r * GAP * k
+            out.append(Item('sbtn', tx, ty, tw, tw + 14 * k, name, ('alpha:' + path) if path else 'card', ident == cur,
+                            True, ('op', 'mch.zb_set', {'prop': 'matcap', 'value': ident}), 'ABOVE'))
+        return out
+    if kind == 'STROKE':
+        cols, tw, th = len(zs.STROKES), 74 * k, 74 * k
+        w = cols * tw + (cols - 1) * GAP * k + 2 * PAD * k
+        h = th + 2 * PAD * k + 20 * k
+        x0, y0 = _place(mx, my, w, h, region_w, region_h, k)
+        out.append(Item('card', x0, y0, w, h))
+        out.append(Item('glabel', x0 + PAD * k, y0 + h - PAD * k - 16 * k, w, 16 * k, 'STROKE'))
+        for i, (key, name, _bl) in enumerate(zs.STROKES):
+            tx = x0 + PAD * k + i * (tw + GAP * k)
+            out.append(Item('sbtn', tx, y0 + PAD * k, tw, th, name, zs.stroke_icon(key), zb.stroke == key, True,
+                            ('op', 'mch.zb_set', {'prop': 'stroke', 'value': key}), 'ABOVE'))
+        return out
     if kind == 'BRUSH':
         typed = wm.mch_zb_pop_focus
         cols = 6
@@ -489,8 +617,9 @@ def popup(context, region_w, region_h, k, Item):
                     'zmode'))
     out.append(Item('seg', x0 + PAD * k + cw + GAP * k, y, cw, ROW * k, 'Zsub', '', zb.zmode == 'ZSUB', True,
                     ('enum', 'ZSUB'), zb, 'zmode'))
-    out.append(Item('drop', x0 + PAD * k + 2 * (cw + GAP * k), y, cw, ROW * k, '', '', False, True, ('menu_enum',),
-                    zb, 'stroke'))
+    out.append(Item('tbtn', x0 + PAD * k + 2 * (cw + GAP * k), y, cw, ROW * k,
+                    dict((k_, n) for k_, n, _b in zs.STROKES).get(zb.stroke, 'Stroke'), '', False, True,
+                    ('op', 'mch.zb_popup', {'kind': 'STROKE'})))
     y -= GAP * k + 46 * k
     recent = (zs.RECENT + [z for z in zs.SHELF[0] if z not in zs.RECENT])[:6]
     tw = (iw - 5 * GAP * k) / 6
@@ -500,6 +629,43 @@ def popup(context, region_w, region_h, k, Item):
                         'png:' + zs.icon_stem(zs.BY_Z[z][1]), z == cur, True, ('op', 'mch.zb_brush', {'name': z}),
                         'ABOVE'))
     return out
+
+
+_POP_SEEN = {'key': None, 'inside': False}
+LEAVE_MARGIN = 24.0
+
+
+def popup_leave(context, x, y):
+    """0.24.60 ZBrush: the S / U / O / Space menu (and the brush / alpha pickers) close as soon as the mouse leaves
+    the card - a little margin round it.  A card that opened away from the mouse (pushed in from the edge) waits
+    until the mouse has been on it once, or has gone well away.  True when it closed."""
+    wm = context.window_manager
+    kind = getattr(wm, 'mch_zb_pop', '')
+    region = getattr(context, 'region', None)
+    if not kind or region is None:
+        _POP_SEEN['key'] = None
+        return False
+    from .mecha_menu import Item
+    from .ui_gpu import ui_factor
+    k = ui_factor(context, region)
+    cards = popup(context, region.width, region.height, k, Item)
+    if not cards:
+        return False
+    c = cards[0]
+    key = (kind, tuple(round(v) for v in wm.mch_zb_pop_xy))
+    if _POP_SEEN['key'] != key:
+        _POP_SEEN.update(key=key, inside=False)
+    m = LEAVE_MARGIN * k
+    inside = c.x - m <= x <= c.x + c.w + m and c.y - m <= y <= c.y + c.h + m
+    if inside:
+        _POP_SEEN['inside'] = True
+        return False
+    ox, oy = wm.mch_zb_pop_xy
+    if not _POP_SEEN['inside'] and abs(x - ox) + abs(y - oy) < 120 * k:
+        return False
+    zs.close_popup(context)
+    _POP_SEEN['key'] = None
+    return True
 
 
 def items(context, region_w, region_h, k=1.0):
@@ -512,8 +678,8 @@ def items(context, region_w, region_h, k=1.0):
         from . import point_counts
         act, tot = point_counts(context)
         yt = top_y0 - 20 * k
-        out.append(Item('pnote', 14 * k, yt, 300 * k, 16 * k, f'Active Points Count  {act:,}'))
-        out.append(Item('pnote', 14 * k, yt - 17 * k, 300 * k, 16 * k, f'Total Points Count  {tot:,}'))
+        out.append(Item('pnote', 14 * k, yt, 300 * k, 16 * k, f'Active Points Count  {points_text(act)}'))
+        out.append(Item('pnote', 14 * k, yt - 17 * k, 300 * k, 16 * k, f'Total Points Count  {points_text(tot)}'))
     except (ImportError, RuntimeError, AttributeError):
         top_y0 = region_h
     top = min(region_h - TOP_MARGIN * k, top_y0 - 50 * k)
@@ -521,7 +687,7 @@ def items(context, region_w, region_h, k=1.0):
     floor = (legend[0].y + legend[0].h if legend else shelf_top) + 10 * k
     out += top_items
     out += shelf_a(context, region_w, region_h, k, Item, top, floor)
-    out += shelf_b(context, k, Item, top)
+    out += shelf_b(context, k, Item, top, shelf_top + 10 * k)
     out += view_shelf(context, region_w, k, Item, top)
     out += subtool_list(context, region_w, k, Item, top, shelf_top + 10 * k)
     out += shelf
@@ -589,21 +755,34 @@ def corner_items(context, region_w, region_h, k=1.0):
     return out
 
 
+_OVER = ['A']               # which tray the wheel is over (over_shelf -> scroll_by)
+
+
 def scroll_by(context, region_w, region_h, k, dy):
     wm = context.window_manager
-    wm.mch_zb_scroll = max(0.0, float(wm.mch_zb_scroll) + dy)
+    name = 'mch_zb_scroll_b' if _OVER[0] == 'B' else 'mch_zb_scroll'
+    setattr(wm, name, max(0.0, float(getattr(wm, name, 0.0)) + dy))
     from . import ui_bars
     ui_bars.bump()
 
 
 def over_shelf(context, x, y):
-    """Is region point (x, y) on the left (scrolling) shelf?"""
+    """Is region point (x, y) on the left tray or the brush tray (both scroll)?"""
     from .ui_gpu import ui_factor
     region = getattr(context, 'region', None)
     if region is None or not zs.on(context):
         return False
     k = ui_factor(context, region)
-    return 12 * k <= x <= 12 * k + A_W * k and y < region.height - TOP_MARGIN * k
+    if y >= region.height - TOP_MARGIN * k:
+        return False
+    if 12 * k <= x <= 12 * k + A_W * k:
+        _OVER[0] = 'A'
+        return True
+    bx = 12 * k + A_W * k + 8 * k
+    if bx <= x <= bx + B_W * k:
+        _OVER[0] = 'B'
+        return True
+    return False
 
 
 class MCH_MT_zb_imm(bpy.types.Menu):

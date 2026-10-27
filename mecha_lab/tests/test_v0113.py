@@ -49,7 +49,8 @@ check('picking a shape selects the stamp tool shape', r == {'FINISHED'} and C.sc
 
 # --- hotkeys -----------------------------------------------------------------
 kc = C.window_manager.keyconfigs.addon
-keys = [(ki.idname, ki.type) for km in kc.keymaps for ki in km.keymap_items]
+# (0.24.60 the ZBrush keys live in the Sculpt keymap and work only in the MECHA LAB tab with the ZBrush style)
+keys = [(ki.idname, ki.type) for km in kc.keymaps for ki in km.keymap_items if not ki.idname.startswith('mch.zb_')]
 check('keys: Q toggle + V pie, F = Select / Move, N free', ('mch.tool_pie', 'V') in keys and
       ('mch.toggle_last_tool', 'Q') in keys and
       ('mch.select_move_key', 'F') in keys and not any(k[1] in {'N', 'W'} for k in keys), keys)

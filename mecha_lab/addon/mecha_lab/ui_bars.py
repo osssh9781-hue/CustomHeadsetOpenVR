@@ -624,13 +624,18 @@ class MCH_OT_ui_hover(bpy.types.Operator):
         try:
             wm = context.window_manager
             x, y = float(event.mouse_region_x), float(event.mouse_region_y)
+            from . import zb_sculpt, zb_ui
+            if zb_sculpt.on(context) and zb_sculpt.popup_open(context) and zb_ui.popup_leave(context, x, y):
+                bump()
+                if context.area:
+                    context.area.tag_redraw()
             items = all_items(context)
             if items:
                 before = hovered(context, items)
                 wm.mch_ui_hover = (x, y)
                 if hovered(context, items) is not before and context.area:
                     context.area.tag_redraw()
-        except (AttributeError, KeyError, TypeError, ReferenceError):
+        except (AttributeError, KeyError, TypeError, ReferenceError, ImportError, RuntimeError):
             pass
         return {'PASS_THROUGH'}
 

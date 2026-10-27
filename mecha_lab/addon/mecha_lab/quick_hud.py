@@ -121,6 +121,14 @@ def _side_panel_shows(context):
 
 # --- values -----------------------------------------------------------------------------------------------
 
+def points_text(v):
+    """0.24.60 ZBrush point counts: from a million in Mil (1,578,000 -> '1.578 Mil'), below with commas."""
+    v = int(v)
+    if abs(v) >= 1000000:
+        return f'{v / 1e6:.3f}'.rstrip('0').rstrip('.') + ' Mil'
+    return f'{v:,}' if abs(v) >= 10000 else str(v)
+
+
 def value_text(data, prop):
     rna = data.bl_rna.properties[prop]
     v = getattr(data, prop)
@@ -136,6 +144,8 @@ def value_text(data, prop):
     if rna.type == 'BOOLEAN':
         return f'{name}  {"On" if v else "Off"}'
     if rna.type == 'INT':
+        if 'Points' in name:                       # 0.24.60 2.5 Mil (ZBrush)
+            return f'{name}  {points_text(v)}'
         return f'{name}  {v:,}' if abs(v) >= 10000 else f'{name}  {v}'   # 0.24.59 20,000 points
     if rna.subtype in {'ANGLE'}:
         import math

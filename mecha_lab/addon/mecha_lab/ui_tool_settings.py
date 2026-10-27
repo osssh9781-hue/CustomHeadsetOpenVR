@@ -496,11 +496,13 @@ def draw_remesh(layout, context):
         row.operator('mch.remesh_points', text='Same').factor = 1.0
         row.operator('mch.remesh_points', text='Double').factor = 2.0
         from . import point_counts, voxel_for_points
+        from .quick_hud import points_text
         ob = context.active_object
         act, _tot = point_counts(context)
         if ob is not None and ob.type == 'MESH' and act:
             v = voxel_for_points(context, ob, s.target_points)
-            layout.label(text=f'Now {act:,} points  ->  about {s.target_points:,}  (voxel {v:.4f})')
+            layout.label(text=f'Now {points_text(act)} points  ->  about {points_text(s.target_points)}  '
+                                   f'(voxel {v:.4f})')
     else:
         layout.prop(s, 'voxel_size')
     row = layout.row(align=True)
