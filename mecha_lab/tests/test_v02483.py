@@ -38,7 +38,7 @@ check('... the next one within the interval does not', ss.checkpoint('test') == 
 p.safety_minutes = 0.0
 time.sleep(0.05)
 path2 = ss.checkpoint('test')
-files = sorted(os.listdir(TMP))
+files = sorted(f for f in os.listdir(TMP) if f.endswith('.blend'))     # (0.24.66: + the session marker)
 check('Every 0 min: each step; the copy before is kept as _prev, no half-written file left',
       path2 == path and files == ['untitled_recovery.blend', 'untitled_recovery_prev.blend'], files)
 p.safety_minutes = 3.0

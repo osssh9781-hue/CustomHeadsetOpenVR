@@ -1554,10 +1554,25 @@ def _mask_values(ob):
     return vals
 
 
+# 0.24.66 the steps that crash Blender most often: a recovery copy right before them (when anything changed)
+RISKY = {'DYNAMESH', 'DYNA_UPDATE', 'DYNA_SUBDIV', 'DYNA_SUBDIV3', 'DECIMATE', 'DIVIDE', 'ZREMESH', 'HALF', 'SAME',
+         'DOUBLE', 'MIRROR_WELD', 'CLOSE_HOLES', 'EXTRACT', 'SPLIT_MASKED', 'SPLIT_UNMASKED', 'SPLIT_HIDDEN',
+         'DEL_HIDDEN', 'MERGE_DOWN', 'MERGE_VISIBLE', 'POLYMESH3D', 'GROUPS_SPLIT', 'DEL_LOWER', 'FIX_MESH'}
+
+
+def _edited():
+    """A stroke / change starts now (Safety Save: there is something new to keep)."""
+    from . import safety_save
+    safety_save.note_edit()
+
+
 def run(context, action):
     """Do one ZBrush shelf action; '' when fine, else a short report."""
     ob = context.active_object
     zb = context.scene.mch_zb
+    if action in RISKY and ob is not None and ob.type == 'MESH':
+        from . import safety_save
+        safety_save.before_risky('ZBrush ' + action.replace('_', ' ').title())
     if action in TOOLS:
         bpy.ops.wm.tool_set_by_id(name=TOOLS[action])
         return ''
@@ -1959,6 +1974,7 @@ class MCH_OT_zb_action(_ZBPoll, bpy.types.Operator):
             self.report({'INFO'}, msg)
         if self.action not in SETTING_ACTIONS:
             undo_step('ZBrush ' + self.action.replace('_', ' ').title())
+            _edited()
         _bump()
         return {'FINISHED'}
 
@@ -2159,10 +2175,14 @@ class MCH_OT_zb_press(_ZBPoll, bpy.types.Operator):
         elif model == 'STROKE' and stamp_ready(context) and \
                 object_under(context, event.mouse_region_x, event.mouse_region_y) == context.active_object:
             r = bpy.ops.mch.zb_tex_stamp('INVOKE_DEFAULT')       # Paint + Texture: a DragRect stamp
-            return {'FINISHED'} if 'RUNNING_MODAL' in r or 'FINISHED' in r else {'CANCELLED'}
+            if 'RUNNING_MODAL' in r or 'FINISHED' in r:
+                _edited()
+                return {'FINISHED'}
+            return {'CANCELLED'}
         elif model == 'STROKE':
             r = bpy.ops.sculpt.brush_stroke('INVOKE_DEFAULT', **stroke_kwargs('STROKE')[0])
             if 'RUNNING_MODAL' in r or 'FINISHED' in r:
+                _edited()
                 return {'FINISHED'}
         else:
             kw, toggle = stroke_kwargs(model)
@@ -2173,6 +2193,7 @@ class MCH_OT_zb_press(_ZBPoll, bpy.types.Operator):
                 bpy.ops.mch.zb_restore_tool('INVOKE_DEFAULT', tool=swapped)
             r = bpy.ops.sculpt.brush_stroke('INVOKE_DEFAULT', **kw)
             if 'RUNNING_MODAL' in r or 'FINISHED' in r:
+                _edited()
                 return {'FINISHED'}
             if swapped:
                 bpy.ops.wm.tool_set_by_id(name=swapped)

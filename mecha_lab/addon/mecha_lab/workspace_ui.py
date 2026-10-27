@@ -2331,6 +2331,13 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
     safety_minutes: FloatProperty(name='Every (min)', default=3.0, min=0.0, max=60.0,
                                   description='At most one recovery copy per this many minutes (0 = before every '
                                               'heavy step)')
+    safety_rest: FloatProperty(name='Rest (s)', default=3.0, min=0.0, max=120.0,
+                               description='0.24.66 the quiet-moment copy (also while sculpting) waits until you '
+                                           'have not stroked or dragged the view for this long (ZBrush QuickSave '
+                                           'Rest Duration)')
+    safety_crash_prompt: BoolProperty(name='Offer Recovery After a Crash', default=True,
+                                      description='0.24.66 when Blender did not close normally last time, offer '
+                                                  'that session\'s newest recovery copy at the next start')
     toolbar_labels: BoolProperty(name='Names Under Icons', default=True)
     toolbar_size: EnumProperty(name='Toolbar Size', items=[('S', 'S', ''), ('M', 'M', ''), ('L', 'L', '')], default='M')
     icon_scale: FloatProperty(name='Panel Icons', default=1.0, min=0.5, max=2.5, subtype='FACTOR',
