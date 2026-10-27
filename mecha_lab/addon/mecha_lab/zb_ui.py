@@ -110,6 +110,13 @@ def draw_tool_shelf(layout, context):
     r = box.row()
     ops(r, ('Decimate Current', 'DECIMATE'))
     r.prop(zb, 'decimate', text='%')
+    r = box.row()
+    r.prop(zb, 'dec_even', toggle=True)
+    r.prop(zb, 'dec_quads', toggle=True)
+    r = box.row()
+    r.prop(zb, 'dec_mask', toggle=True)
+    r.prop(zb, 'dec_groups', toggle=True)
+    r.prop(zb, 'dec_borders', toggle=True)
 
 
 def _builder():

@@ -1236,6 +1236,17 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
     keep_border: BoolProperty(name='KeepBorder', default=True, description='ZRemesher keeps open borders')
     decimate: IntProperty(name='% of decimation', default=20, min=1, max=99, subtype='PERCENTAGE',
                           description='Decimate Current keeps this many percent of the polygons')
+    dec_even: BoolProperty(name='Even Tris', default=False,
+                           description='Decimate: keep the triangles round (no slivers) - nicer topology, '
+                                       'a little less exact')
+    dec_quads: BoolProperty(name='Allow Quads', default=False,
+                            description='Decimate: join pairs of triangles into quads afterwards')
+    dec_mask: BoolProperty(name='Keep Mask', default=True,
+                           description='Decimate: masked parts keep more detail')
+    dec_groups: BoolProperty(name='Keep Groups', default=True,
+                             description='Decimate: polygroup borders stay where they are')
+    dec_borders: BoolProperty(name='Keep Borders', default=False,
+                              description='Decimate: points on open borders do not move')
     inflate: IntProperty(name='Inflate', default=10, min=-100, max=100,
                          description='Deformation: how far Inflate pushes the surface out (minus = in)')
     thick: FloatProperty(name='Thick', default=0.02, min=0.0, soft_max=0.5, precision=3,
@@ -1780,12 +1791,17 @@ def run(context, action):
                 m.sculpt_levels = m.levels = 0 if action == 'ALL_LOW' else m.total_levels
         return ''
     if action == 'DECIMATE':
+        from . import fast_decimate as fd
         _mode(context, 'OBJECT')
-        mod = ob.modifiers.new('MCH_Decimate', 'DECIMATE')
-        mod.ratio = zb.decimate / 100.0
-        bpy.ops.object.modifier_apply(modifier=mod.name)
-        _mode(context, 'SCULPT')
-        return f'Decimate: {len(ob.data.polygons):,} polygons'
+        try:
+            if fd.available():
+                msg = fd.decimate_object(ob, zb.decimate, even=zb.dec_even, quads=zb.dec_quads, keep_mask=zb.dec_mask,
+                                         keep_groups=zb.dec_groups, keep_borders=zb.dec_borders)
+            else:
+                msg = fd.blender_decimate(context, ob, zb.decimate)
+        finally:
+            _mode(context, 'SCULPT')
+        return msg
     if action in {'CHECK_MESH', 'FIX_MESH'}:
         import bmesh
 
