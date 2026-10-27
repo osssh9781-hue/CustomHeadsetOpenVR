@@ -48,6 +48,20 @@ check('Live: Between = Smooth re-bends it - the same ends, gentler near them (ea
       abs(zs[0] - z[0]) < 0.05 and abs(zs[4] - z[4]) < 0.05 and (zs[1] - zs[0]) < (z[1] - z[0]) - 0.03, (z, zs))
 ob.mch_base.height = ob.mch_base.height * 1.5
 check('... and stays bent when another slider rebuilds it', abs(bottom(ob, 2) - zs[4]) < 0.03)
+
+
+def worst_twist(me):
+    """Largest distance of a face corner from its face plane (a twisted face shades broken)."""
+    worst = 0.0
+    for f in me.polygons:
+        c, n = f.center, f.normal
+        worst = max([worst] + [abs((me.vertices[i].co - c).dot(n)) for i in f.vertices])
+    return worst
+
+
+cap = [f for f in ob.data.polygons if abs(f.normal.z) > 0.5]
+check('0.24.58 The top / bottom are cut into many small faces across the line, none twisted (no broken shading)',
+      len(cap) >= 30 and worst_twist(ob.data) < 2e-3 and non_manifold(ob) == 0, (len(cap), worst_twist(ob.data)))
 src = inspect.getsource(ce.StrokeLogic._line_attach)
 check('The drawing tool: Line + Attach Ends (not Alt) passes the line and its two end points; Smooth smooths the line',
       'surface_point' in src and 'smooth_open' in src and '_line_attach(context, base_mesh)' in inspect.getsource(

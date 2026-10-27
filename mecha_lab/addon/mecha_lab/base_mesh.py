@@ -1110,6 +1110,38 @@ def ease(t, curve):
     return t if curve == 'DRAWN' else t * t * (3.0 - 2.0 * t)
 
 
+def densify_along(me, path, step=None):
+    """0.24.58 The flat solid's top / bottom are a few long faces; bent in 3D they twist and shade broken.  Cut the
+    mesh across the line at even steps (planes square to the 2D ``path``) and split the leftover n-gons into
+    triangles, so every face is small enough to follow the bend."""
+    lens = [math.dist(path[i], path[i + 1]) for i in range(len(path) - 1)]
+    total = sum(lens)
+    if total < 1e-9:
+        return
+    n = max(8, min(96, int(total / step) if step else 48))
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    i, run = 0, 0.0
+    for k in range(1, n):
+        at = total * k / n
+        while i < len(lens) - 1 and run + lens[i] < at:
+            run += lens[i]
+            i += 1
+        ln = lens[i]
+        if ln < 1e-12:
+            continue
+        u = (at - run) / ln
+        (ax, ay), (bx, by) = path[i], path[i + 1]
+        geom = bm.verts[:] + bm.edges[:] + bm.faces[:]
+        bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-6, plane_co=(ax + u * (bx - ax), ay + u * (by - ay), 0.0),
+                               plane_no=((bx - ax) / ln, (by - ay) / ln, 0.0))
+    big = [f for f in bm.faces if len(f.verts) > 4]
+    if big:
+        bmesh.ops.triangulate(bm, faces=big, quad_method='BEAUTY', ngon_method='BEAUTY')
+    bm.to_mesh(me)
+    bm.free()
+
+
 def attach_bend(me, data, curve='SMOOTH'):
     """0.24.57 Line Attach Ends: the flat solid (in its plane) bent so its start sits at depth ``z0`` and its end at
     ``z1`` (object space; along the view ray when ``eye`` is set, so it looks the same from where it was drawn)."""
@@ -1118,6 +1150,8 @@ def attach_bend(me, data, curve='SMOOTH'):
         return
     z0, z1 = float(data.get('z0', 0.0)), float(data.get('z1', 0.0))
     eye = Vector(data['eye']) if data.get('eye') is not None else None
+    if abs(z1 - z0) > 1e-9:
+        densify_along(me, path)
     for v in me.vertices:
         co = v.co
         dz = z0 + (z1 - z0) * ease(path_param(path, (co.x, co.y)), curve)
