@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.70
+# Test Report — Mecha Lab 0.24.71
+
+## 0.24.71 결과: Blender 5.2.3 bpy 162개 파일 4,476/4,476 통과(실패 0, `tests/test_log_bpy523_v02471.txt`). 새 테스트 test_v02471_quad 27/27: 엔진 · Windows DLL(mquad 내보내기, KERNEL32 + msvcrt만) · 하드서피스 부품 158k 삼각형 → 2,963면(목표 3,000) 1.7초 · 네모 98% · 점 97%가 엣지 4개 · 구멍 / 3면 엣지 0 · 면 중심 오차 평균 0.8% / 최대 8% (쿼드 한 칸 기준) · 원래 각진 엣지 94%가 쿼드 각진 엣지 위 · 같은 입력 = 같은 결과 · All Quads 100% · 폴리그룹 / 재질 / 마스크 · 12면 상자 · 열린 판 경계 유지 · 지브러시 선반 Quad Remesh 상자(Decimation과 따로) · Half · 선반 실행 후 조각 모드 · 실제 Ctrl+Z 한 번에 원래 메쉬 · Shape Key / Multires 안내. test_v02498 26/26(고른 간격: 복셀 상자 엣지 길이 퍼짐 0.29 → 0.22). C 엔진: AddressSanitizer + UBSan 오류 / 누수 없음(시험 부품 · 사용자 FBX All Quads, 1 · 4스레드 같은 결과), Windows DLL Wine 9.0에서 같은 점 / 면 수. 사용자 FBX(679,100점, 4코어): 2,500 → 2,620면 4.9초(네모 93%) / 10k → 10,202면 7.6초(96%) / All Quads 10k → 10,294면 4.6초(100%), 모두 구멍 · 3면 엣지 0. ZIP 설치 테스트 19/19. 실제 블렌더 화면 · Windows 속도는 미검증.
 
 ## 0.24.70 결과: 데시메이트 엔진만 바뀜 — Blender 5.2.3 bpy에서 test_v02498 25/25(새: 극단 비율 한 번에, 4코어), test_v02492 80/80, test_v02494 34/34, test_v02469_zbfix 14/14(`tests/test_log_v02470_decimate.txt`). 사용자 FBX(679,100점) 측정: 한 번에 281점 부피 -0.1 ~ -0.2%(전: -29%), 86% x 52번과 비교. Windows DLL: Wine 9.0에서 1.3M 삼각형 → 524 / 65,536 정상.
 
