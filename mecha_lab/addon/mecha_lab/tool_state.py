@@ -363,10 +363,19 @@ class MCH_PG_Brush(bpy.types.PropertyGroup):
 
 
 def _ramp_refresh_update(self, context):
-    """0.24.46 a Cut Ramp slider moved: the live ramp (if any) is carved again."""
+    """0.24.46 a Cut Ramp slider moved: the live ramp (if any) is carved again (0.24.56: or the last cut)."""
     try:
         from . import ramp_edit
-        ramp_edit.refresh(context, 'cut')
+        ramp_edit.refresh(context, ('cut', 'cutlive'))
+    except Exception:          # a slider must never fail
+        pass
+
+
+def _live_cut_update(self, context):
+    """0.24.56 a Cut / GN Edge setting changed: the last cut (still live) is cut again with it."""
+    try:
+        from . import ramp_edit
+        ramp_edit.refresh(context, 'cutlive')
     except Exception:          # a slider must never fail
         pass
 
@@ -375,7 +384,7 @@ class MCH_PG_Cut(bpy.types.PropertyGroup):
     depth_mode: EnumProperty(name='Depth', items=[
         ('THROUGH', 'Through All', 'Cut through the whole object along the view'),
         ('SURFACE', 'From Surface', 'Pocket of fixed depth starting at the surface under the shape')],
-        default='THROUGH')
+        default='THROUGH', update=_live_cut_update)
     depth: FloatProperty(name='Cut Depth', default=0.1, min=0.00001, soft_max=10.0, precision=4,
                          unit='LENGTH', update=_ramp_refresh_update)
     targets: EnumProperty(name='Targets', items=[
@@ -394,10 +403,11 @@ class MCH_PG_Cut(bpy.types.PropertyGroup):
     edge_finish: EnumProperty(name='Edge Finish', items=[
         ('NONE', 'Off', 'Keep the new cut edges sharp'),
         ('BEVEL', 'Bevel', 'Round only the NEW cut edges'),
-        ('CHAMFER', 'Chamfer', 'Flat chamfer on the NEW cut edges only')], default='NONE')
+        ('CHAMFER', 'Chamfer', 'Flat chamfer on the NEW cut edges only')], default='NONE', update=_live_cut_update)
     finish_width: FloatProperty(name='Width', default=0.01, min=0.0, soft_max=10.0, precision=4,
-                                unit='LENGTH', description='Edge Finish width in model units (type any value)')
-    finish_segments: IntProperty(name='Segments', default=3, min=1, max=32)
+                                unit='LENGTH', description='Edge Finish width in model units (type any value)',
+                                update=_live_cut_update)
+    finish_segments: IntProperty(name='Segments', default=3, min=1, max=32, update=_live_cut_update)
     finish_profile: FloatProperty(name='Profile', default=0.5, min=0.0, max=1.0)
     shared_mesh: EnumProperty(name='Shared Mesh', items=[
         ('SINGLE', 'This Object Only', 'Linked duplicates (Alt+D) keep the old mesh; this object gets its own copy'),
@@ -434,10 +444,13 @@ class MCH_PG_Cut(bpy.types.PropertyGroup):
         ('CHAMFER', 'Chamfer', 'A straight chamfer swept along the border of the drawn area (Geometry Nodes)'),
         ('BEVEL', 'Bevel', 'A round bevel swept along the border of the drawn area (Geometry Nodes)')],
         default='NONE', description='Geometry Nodes edge: a profile is swept along the new border and carved off - '
-                                    'even all the way round (the Edge Finish above is skipped while this is on)')
+                                    'even all the way round (the Edge Finish above is skipped while this is on)',
+        update=_live_cut_update)
     gn_width: FloatProperty(name='Width', default=0.01, min=0.0, soft_max=10.0, precision=4, unit='LENGTH',
-                            description='How far the GN edge reaches along the surface and down the cut wall')
-    gn_segments: IntProperty(name='Segments', default=4, min=1, max=24, description='Steps round a GN bevel')
+                            description='How far the GN edge reaches along the surface and down the cut wall',
+                            update=_live_cut_update)
+    gn_segments: IntProperty(name='Segments', default=4, min=1, max=24, description='Steps round a GN bevel',
+                             update=_live_cut_update)
     gn_ramp: BoolProperty(name='Ramp', default=False,
                           description='Cut: the drawn shape carved on a slope instead of a flat-bottomed pocket - deepest '
                                       '(Cut Depth) at the first side drawn, rising back to the surface (the deep side '

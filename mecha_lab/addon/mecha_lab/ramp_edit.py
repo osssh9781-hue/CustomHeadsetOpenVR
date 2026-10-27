@@ -8,6 +8,8 @@ Working out which edge to draw first was the hard part, so an Alt: Ramp carve is
   mesh goes back to the copy and is carved again with that side deep;
 * Carve Depth / Ramp Length / Ramp Soft re-carve it at once;
 * Apply keeps it (the copy goes), Remove puts the mesh back as it was.
+* 0.24.56 the same for a plain Cut ('cutlive'): the last cut stays live until the next one - Cut Depth / GN Edge
+  sliders (Quick HUD, menu, panel) cut it again from the kept mesh, as if you had cut with those settings.
 * 0.24.53 the carved mesh's fingerprint is kept: if the mesh was edited after the ramp (moved points, another
   cut ...), a slider no longer throws those edits away - the ramp is kept as it is (Applied) instead.
 
@@ -72,10 +74,16 @@ def record(ob):
         return None
 
 
-def live_target(context):
+RAMP_KINDS = ('base', 'cut')
+ALL_KINDS = RAMP_KINDS + ('cutlive',)
+
+
+def live_target(context, kinds=RAMP_KINDS):
+    """The object with the live record (a ramp by default; ``kinds`` = which ones)."""
     name = context.scene.get(SCENE_KEY)
     ob = bpy.data.objects.get(name) if name else None
-    return ob if ob is not None and record(ob) is not None else None
+    rec = record(ob) if ob is not None else None
+    return ob if rec is not None and rec.get('kind', 'base') in kinds else None
 
 
 def _write(ob, rec):
@@ -114,11 +122,11 @@ def edited(ob):
     return rec is not None and 'stamp' in rec and rec['stamp'] != fingerprint(ob.data)
 
 
-def begin(context, target, loops, projector, kind='base'):
+def begin(context, target, loops, projector, kind='base', extra=None):
     """Before an Alt: Ramp carve on ``target``: keep the mesh as it is and the outline (an earlier live ramp is
     kept as it is first).  Returns the side that is deep (0)."""
     from . import armor_plate as ap
-    old = live_target(context)
+    old = live_target(context, ALL_KINDS)
     if old is not None:
         finish(old)
     frozen = ap.freeze_projector(projector)
@@ -128,11 +136,13 @@ def begin(context, target, loops, projector, kind='base'):
     backup.name = 'MCH_RampBackup_' + target.name
     backup.use_fake_user = True
     segs = sides(loops[0])
-    corners_w = _corners_world(context, target, projector, [a for a, _b in segs])
-    _write(target, {'kind': kind, 'loops': [[[float(x), float(y)] for x, y in lp] for lp in loops], 'proj': frozen,
-                    'side': 0,
-                    'backup': backup.name, 'corners': [[float(x), float(y)] for x, y in (a for a, _b in segs)],
-                    'corners_w': corners_w})
+    corners_w = [] if kind == 'cutlive' else _corners_world(context, target, projector, [a for a, _b in segs])
+    rec = {'kind': kind, 'loops': [[[float(x), float(y)] for x, y in lp] for lp in loops], 'proj': frozen,
+           'side': 0,
+           'backup': backup.name, 'corners': [[float(x), float(y)] for x, y in (a for a, _b in segs)],
+           'corners_w': corners_w}
+    rec.update(extra or {})
+    _write(target, rec)
     context.scene[SCENE_KEY] = target.name
     return 0
 
@@ -199,6 +209,9 @@ def recarve(context, ob):
         if rec.get('kind') == 'cut':             # 0.24.46 a Cut Ramp: the Cut settings
             from . import cut_engine
             out = cut_engine.cut_ramp(context, [ob], loops, projector, edge=segs[side], live=False)
+        elif rec.get('kind') == 'cutlive':       # 0.24.56 the last plain cut, with the Cut settings now
+            from . import cut_engine
+            out = cut_engine.perform_closed(context, 'CUT', [ob], loops, projector, bool(rec.get('inverted')))
         else:
             out = bm_.carve_surface(context, loops, projector, bm_.scene_defaults(context), [ob],
                                     ramp_edge=segs[side], live=False)
@@ -219,11 +232,11 @@ def set_side(context, ob, side):
 
 
 def refresh(context, kind=None):
-    """A Ramp slider changed: carve the live ramp again (only one of that ``kind``: 'base' / 'cut')."""
-    ob = live_target(context)
+    """A slider changed: carve the live one again (only of that ``kind`` / those kinds: 'base' / 'cut' /
+    'cutlive')."""
+    kinds = ALL_KINDS if kind is None else ((kind,) if isinstance(kind, str) else tuple(kind))
+    ob = live_target(context, kinds)
     if ob is None or _BUSY[0]:
-        return
-    if kind is not None and record(ob).get('kind', 'base') != kind:
         return
     try:
         recarve(context, ob)

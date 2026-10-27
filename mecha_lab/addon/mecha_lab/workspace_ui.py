@@ -2223,6 +2223,9 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
     symmetry_follow: BoolProperty(name='New Parts Follow the Mirror', default=True,
                                   description='A plate, Surface Draw stroke, Flower or screw made on a part with a live '
                                               'Mirror gets the same Mirror (planes and centre)')
+    live_last_cut: BoolProperty(name='Live Last Cut', default=True,
+                                description='The last Cut stays live until the next one: Cut Depth / GN Edge sliders '
+                                            '(Quick HUD, menu, panel) cut it again')
     mmb_menu: BoolProperty(name='Middle Click = Mecha Menu', default=True,
                            description='Middle mouse click (no movement) opens the Mecha Menu; a middle drag still '
                                        'orbits the view. MECHA LAB only. Switch off if orbiting feels different')
@@ -2283,6 +2286,7 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         row = box.row()
         row.prop(self, 'symmetry_card')
         row.prop(self, 'symmetry_follow')
+        box.row().prop(self, 'live_last_cut')
         box.prop(self, 'mecha_ui_size', slider=True)
         layout.prop(self, 'workspace_hotkeys')
         layout.prop(self, 'quick_menu')

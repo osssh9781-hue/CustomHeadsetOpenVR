@@ -1882,12 +1882,31 @@ class StrokeLogic:
                     # Alt: the drawn solid cuts into the mesh (flipped bevel sides)
                     msg = base_mesh.perform_base(context, loops, self.projector, cutter=self.inverted())
             else:
-                msg = perform_closed(context, self.mode, targets, loops, self.projector, self.inverted())
+                live = self._live_cut(context, targets)
+                from . import ramp_edit
+                if live:                     # 0.24.56 the cut stays live: its sliders cut it again
+                    ramp_edit.begin(context, targets[0], loops, self.projector, kind='cutlive',
+                                    extra={'inverted': bool(self.inverted())})
+                try:
+                    msg = perform_closed(context, self.mode, targets, loops, self.projector, self.inverted())
+                except Exception:
+                    if live:
+                        ramp_edit.finish(targets[0])
+                    raise
+                if live:
+                    ramp_edit.stamp(targets[0])
         if self.shape == 'CUSTOM' and self.anchor is not None and self.mouse is not None:
             r = math.dist(self.anchor, self.mouse)
             if r >= 4.0:
                 self.brush.custom_size = r
         return msg
+
+    def _live_cut(self, context, targets):
+        """0.24.56 keep this cut live (one plain Cut on one part, not a ramp; Preferences: Live Last Cut)."""
+        from .workspace_ui import pref
+        cut = context.scene.mch_cut
+        return (self.mode == 'CUT' and targets is not None and len(targets) == 1 and not getattr(cut, 'gn_ramp', False)
+                and pref('live_last_cut', True))
 
     def _run(self, context, fn, keep_on_shape_error=False):
         try:
