@@ -734,12 +734,16 @@ def _draw_new(it, hot, S, white, dim):
     return None
 
 
+def _int_range(rna):
+    """The range an int bar shows: the hard range when it is small, else the soft one."""
+    lo, hi = rna.hard_min, rna.hard_max
+    return (rna.soft_min, rna.soft_max) if hi - lo > 64 else (lo, hi)
+
+
 def _fraction(data, prop):
     rna = data.bl_rna.properties[prop]
     v = getattr(data, prop)
-    lo, hi = (rna.hard_min, rna.hard_max) if rna.type == 'INT' else (rna.soft_min, rna.soft_max)
-    if rna.type == 'INT' and hi - lo > 64:
-        lo, hi = rna.soft_min, rna.soft_max
+    lo, hi = _int_range(rna) if rna.type == 'INT' else (rna.soft_min, rna.soft_max)
     span = hi - lo
     return max(0.0, min(1.0, (v - lo) / span)) if 0 < span < 1e7 else 0.0
 

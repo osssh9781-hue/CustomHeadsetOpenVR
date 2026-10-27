@@ -68,31 +68,55 @@ def _stroke_tool(context):
     return tid if native.startswith('mecha.') and tid in ts.TOOL_BY_ID else None
 
 
+def _width(s, size):
+    """Text width as drawn (the same font and size the card uses)."""
+    import blf
+    blf.size(0, size)
+    return blf.dimensions(0, s)[0]
+
+
+def box(context, k=None):
+    """(x, y, w, h, rows, keyw) of the card in region px, or None when no legend shows.
+    0.24.59 the bottom left corner, left of the main menu (above the menu and the actions when they are in
+    the way on a narrow screen); with the tool strip on the left (Tool Menu Place = Left): right of it."""
+    tid = _stroke_tool(context)
+    region = getattr(context, 'region', None)
+    if tid is None or region is None:
+        return None
+    from . import ui_gpu as G, ui_bars
+    k = G.ui_factor(context) if k is None else k
+    rows = lines(tid)
+    size, lh, pad = 12 * k, 20 * k, 12 * k
+    keyw = max(_width(t.partition('   ')[0], size) for t in rows[1:]) + 16 * k
+    what_w = max(_width(t.partition('   ')[2], size) for t in rows[1:])
+    # the texts start at the key column, so the card is key column + the widest text (was per row: a short key
+    # with a long text ran out of the card)
+    w = max(keyw + what_w, _width(rows[0], 13 * k), keyw + 120 * k) + 2 * pad
+    h = lh * len(rows) + 2 * pad
+    left = ui_bars.left_inset(context)
+    if ui_bars.menu_on(context):
+        x, y = left + 14 * k, 14 * k
+        kk = k * ui_bars.strip_scale()
+        mw = ui_bars.menu_layout(region.width, kk, ts.grouped_tools(), left)[4]
+        menu_x = max(left + 8 * k, (region.width - mw) / 2.0)
+        if x + w + 10 * k > menu_x:                  # no room beside the menu: above it and the actions
+            y = ui_bars.dock_top(context, k, region.width) + 6 * k
+    else:                                            # 0.24.58 right of the left tool strip, above the toolbar
+        x, y = left + 14 * k + ui_bars.strip_width(context, k), 90 * k
+    return x, y, w, h, rows, keyw
+
+
 def _draw():
     """0.24.50 readable: a dark rounded card bottom left, sized with the Mecha UI factor."""
     try:
         context = bpy.context
-        tid = _stroke_tool(context)
-        if tid is None:
-            return
         from . import ui_gpu as G
         k = G.ui_factor(context)
-        rows = lines(tid)
+        b = box(context, k)
+        if b is None:
+            return
+        x, y, w, h, rows, keyw = b
         size, lh, pad = 12 * k, 20 * k, 12 * k
-        w_of = lambda s, sz=size: G.text(-9999, -9999, s, sz)      # measured as drawn
-        keyw = max(w_of(t.partition('   ')[0]) for t in rows[1:]) + 16 * k
-        what_w = max(w_of(t.partition('   ')[2]) for t in rows[1:])
-        # 0.24.59 the texts start at the key column, so the card is key column + the widest text (was per row:
-        # a short key with a long text ran out of the card)
-        w = max(keyw + what_w, w_of(rows[0], 13 * k), keyw + 120 * k) + 2 * pad
-        h = lh * len(rows) + 2 * pad
-        x, y = 14 * k, 90 * k
-        try:                                     # 0.24.58 right of the left tool strip
-            from . import ui_bars
-            x += ui_bars.left_inset(context) + ui_bars.strip_width(context, k)
-            y += max(0.0, ui_bars.dock_top(context, k) - 80 * k)     # 0.24.59 above the main menu + actions dock
-        except (ImportError, AttributeError, TypeError):
-            pass
         G.rounded_rect(x - 1, y - 1, w + 2, h + 2, 12 * k, G.card_color(edge=True))
         G.rounded_rect(x, y, w, h, 12 * k, G.card_color())
         for i, t in enumerate(rows):

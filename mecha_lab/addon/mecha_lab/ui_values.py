@@ -66,18 +66,21 @@ def fraction(data, prop):
     return max(0.0, min(1.0, (v - lo) / (hi - lo))) if hi > lo else 0.0
 
 
-def drag(data, prop, start, dx, fine=False):
-    """The value after dragging ``dx`` px from ``start`` (the soft range over about 300 px, ints 1 per 8 px)."""
+def drag(data, prop, start, dx, fine=False, width=None):
+    """The value after dragging ``dx`` px from ``start`` (the soft range over about 300 px, ints 1 per 8 px).
+    0.24.59 ``width`` = the bar's width: its whole range over the bar, so the fill follows the mouse."""
     if not is_id(prop):
-        return quick_hud.drag_value(data, prop, start, dx, fine)
+        return quick_hud.drag_value(data, prop, start, dx, fine, px=width)
     ui = _ui(data, _key(prop))
     lo, hi = ui.get('soft_min', ui.get('min', 0.0)), ui.get('soft_max', ui.get('max', 1.0))
     hard_lo, hard_hi = ui.get('min', -1e30), ui.get('max', 1e30)
     k = 0.1 if fine else 1.0
+    px = width if width and width > 1 else 300.0
     if isinstance(start, int) and not isinstance(start, bool):
-        return int(max(hard_lo, min(hard_hi, start + round(dx * k / 8.0))))
+        per = max(4.0, px / (hi - lo)) if width and hi > lo else 8.0
+        return int(max(hard_lo, min(hard_hi, start + round(dx * k / per))))
     span = (hi - lo) if hi > lo else 1.0
-    return float(max(hard_lo, min(hard_hi, start + dx * k * span / 300.0)))
+    return float(max(hard_lo, min(hard_hi, start + dx * k * span / px)))
 
 
 def reset(data, prop):

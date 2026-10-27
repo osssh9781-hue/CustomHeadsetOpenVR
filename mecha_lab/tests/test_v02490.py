@@ -99,8 +99,20 @@ check('Top bar centred in the viewport (the side panels start below it)',
       abs(bar[0].x + bar[0].w / 2 - W / 2) < 1.0, (bar[0].x, bar[0].w))
 side = sp.items(CTX, W, H, 1.0)
 check('Side panel stays above the menu and the actions', side[0].y >= ub.dock_top(CTX, 1.0, W) - 1e-6)
-check('Key legend and Symmetry card go above the menu + actions',
-      'dock_top' in inspect.getsource(key_legend._draw) and 'dock_top' in inspect.getsource(symmetry._anchor))
+check('Symmetry card goes above the menu + actions', 'dock_top' in inspect.getsource(symmetry._anchor))
+real_stroke = key_legend._stroke_tool
+key_legend._stroke_tool = lambda c: 'BASE'
+wide = types.SimpleNamespace(width=3400, height=H, x=0, y=0, type='WINDOW')
+CTX.region = wide
+kb = key_legend.box(CTX, 1.0)
+CTX.region = Ctx.region
+kn = key_legend.box(CTX, 1.0)
+lay_floor = lp.frame(CTX, W, H, 1.0)[3]
+key_legend._stroke_tool = real_stroke
+check('Key legend: in the bottom left corner beside the main menu on a wide screen',
+      kb is not None and kb[1] < 20 and kb[0] < 40, kb[:4] if kb else None)
+check('... above the menu + actions when the menu leaves no room beside it; the Layers panel stays above it',
+      kn is not None and kn[1] >= ub.dock_top(CTX, 1.0, W) and lay_floor >= kn[1] + kn[3], (kn[:4], lay_floor))
 
 # --- layers panel ------------------------------------------------------------------------------------------------
 lay = lp.items(CTX, W, H, 1.0)
@@ -225,9 +237,27 @@ back = qh._side_panel_shows(C)
 sp.on, sp.minimised = real_on, real_min
 check('Quick HUD: not shown while the side panel shows the same settings (folded panel: the HUD may show)',
       hidden and not back)
-src = inspect.getsource(key_legend._draw)
+src = inspect.getsource(key_legend.box)
 check('Key legend: the card fits the key column + the widest text (a long text ran out of it)',
       'keyw + what_w' in src)
+
+# --- number bars: the fill follows the mouse ------------------------------------------------------------------------
+from mecha_lab import base_mesh, ui_values as uv
+bd = base_mesh.scene_defaults(C)
+rna = bd.bl_rna.properties['height']
+v_end = uv.drag(bd, 'height', rna.soft_min, 240.0, width=240.0)
+v_half = uv.drag(bd, 'height', rna.soft_min, 120.0, width=240.0)
+check('Number bar: dragging across the whole bar = its whole range (the fill follows the mouse; Base Mesh Height)',
+      abs(v_end - rna.soft_max) < 1e-3 * rna.soft_max and abs(v_half - (rna.soft_min + rna.soft_max) / 2) < 1e-2,
+      (v_end, v_half))
+seg = bd.bl_rna.properties['bevel_segments']
+s_end = uv.drag(bd, 'bevel_segments', seg.hard_min, 400.0, width=400.0)
+check('... whole numbers too (the whole range over the bar)', s_end == seg.hard_max, s_end)
+check('... Shift: ten times finer', abs(uv.drag(bd, 'height', 1.0, 240.0, fine=True, width=240.0) - 1.0
+                                        - (rna.soft_max - rna.soft_min) / 10) < 1e-3)
+src = inspect.getsource(qh.MCH_OT_quick_hud_press._modal_ui)
+check('... the drag keeps going at the viewport edge (the cursor wraps round) and uses the bar width',
+      'cursor_warp' in src and 'width=it.w' in src)
 
 # --- the old way back ---------------------------------------------------------------------------------------------
 ann = wui.MCH_AddonPreferences.__annotations__

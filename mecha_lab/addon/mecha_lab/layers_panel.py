@@ -270,6 +270,13 @@ def frame(context, region_w, region_h, k):
     from . import ui_bars
     x0 = ui_bars.left_inset(context) + 12 * k
     floor = ui_bars.bottom_taken(context, k, region_w) + BOTTOM_MARGIN * k
+    try:                                     # the key legend in the bottom left corner: stay above it
+        from . import key_legend
+        b = key_legend.box(context, k)
+        if b is not None and b[0] < x0 + WIDTH * k:
+            floor = max(floor, b[1] + b[3] + BOTTOM_MARGIN * k)
+    except (ImportError, AttributeError, TypeError, ValueError, ReferenceError):
+        pass
     return x0, region_h - TOP_MARGIN * k, WIDTH * k, floor
 
 

@@ -140,10 +140,22 @@ def value_text(data, prop):
     return f'{name}  {v:.3f}'
 
 
-def drag_value(data, prop, start, dx, fine=False):
-    """New value after dragging ``dx`` px from ``start`` (whole soft range ≈ 300 px; ints 1 per 8 px)."""
+def drag_value(data, prop, start, dx, fine=False, px=None):
+    """New value after dragging ``dx`` px from ``start`` (whole soft range ≈ 300 px; ints 1 per 8 px).
+    0.24.59 ``px`` = the bar's width: the bar's whole range over its own width, so the fill follows the mouse
+    (ints: at least 4 px a step)."""
     rna = data.bl_rna.properties[prop]
     k = 0.1 if fine else 1.0
+    if px and px > 1:
+        if rna.type == 'INT':
+            from .mecha_menu import _int_range
+            lo, hi = _int_range(rna)
+            per = max(4.0, px / (hi - lo)) if 0 < hi - lo < 1e7 else 8.0
+            return int(max(rna.hard_min, min(rna.hard_max, round(start + dx * k / per))))
+        span = rna.soft_max - rna.soft_min
+        if not (0.0 < span < 1e6):
+            span = max(abs(start) * 2.0, 0.1)
+        return max(rna.hard_min, min(rna.hard_max, start + dx * k * span / px))
     if rna.type == 'INT':
         lo, hi = rna.hard_min, rna.hard_max
         return int(max(lo, min(hi, round(start + dx * k / 8.0))))
@@ -153,6 +165,17 @@ def drag_value(data, prop, start, dx, fine=False):
         span = max(abs(start) * 2.0, 0.1)
     v = start + dx * k * span / 300.0
     return max(rna.hard_min, min(rna.hard_max, v))
+
+
+def _cursor(context, kind):
+    """A drag cursor while a bar is dragged (None: back to normal)."""
+    try:
+        if kind:
+            context.window.cursor_modal_set(kind)
+        else:
+            context.window.cursor_modal_restore()
+    except (AttributeError, RuntimeError, TypeError):
+        pass
 
 
 def step_choice(data, prop, step=1):
@@ -261,6 +284,7 @@ class MCH_OT_quick_hud_press(bpy.types.Operator):
                 self.x0, self.y0 = event.mouse_region_x, event.mouse_region_y
                 self.moved, self.ctrl = False, event.ctrl
                 self.init = ui_values.get(item.data, item.prop)
+                self.acc, self.last_x = 0.0, event.mouse_x        # 0.24.59 summed moves (the cursor wraps)
                 context.window_manager.modal_handler_add(self)
                 return {'RUNNING_MODAL'}
             if item is not None:
@@ -379,13 +403,23 @@ class MCH_OT_quick_hud_press(bpy.types.Operator):
         Ctrl+click = default, Esc / RMB = back."""
         from . import side_panel, ui_bars, ui_values
         it = self.ui_item
-        dx = event.mouse_region_x - self.x0
         try:
             if event.type == 'MOUSEMOVE':
-                if abs(dx) > 3 or abs(event.mouse_region_y - self.y0) > 3:
+                self.acc += event.mouse_x - self.last_x
+                self.last_x = event.mouse_x
+                if abs(self.acc) > 3 or abs(event.mouse_region_y - self.y0) > 3:
+                    if not self.moved:
+                        _cursor(context, 'SCROLL_X')
                     self.moved = True
+                region = context.region
+                rx = event.mouse_x - region.x
+                if self.moved and (rx < 8 or rx > region.width - 8):     # at the viewport edge: wrap round
+                    tx = int(region.x + region.width / 2)
+                    context.window.cursor_warp(tx, event.mouse_y)
+                    self.last_x = tx
                 if self.moved and ui_values.kind(it.data, it.prop) in {'INT', 'FLOAT'}:
-                    v = ui_values.drag(it.data, it.prop, self.init, dx, fine=event.shift)
+                    # 0.24.59 the bar's range over its own width: the fill follows the mouse
+                    v = ui_values.drag(it.data, it.prop, self.init, self.acc, fine=event.shift, width=it.w)
                     if v != ui_values.get(it.data, it.prop):
                         ui_values.set(it.data, it.prop, v)
                     if context.area:
@@ -418,6 +452,8 @@ class MCH_OT_quick_hud_press(bpy.types.Operator):
         if context.area:
             context.area.header_text_set(None)
             context.area.tag_redraw()
+        if getattr(self, 'kind', '') == 'ui' and getattr(self, 'moved', False):
+            _cursor(context, None)
         return result
 
 
