@@ -49,6 +49,10 @@ DEPTH_ITEMS = [
     ('THROUGH', 'Through All', 'Every target mesh inside the brush moves too (a plate on a body moves with it)'),
     ('SURFACE', 'From Surface', 'Only the mesh you grab'),
 ]
+AREA_ITEMS = [
+    ('BRUSH', 'Brush', '0.24.54 Extend pulls out only the surface under the brush (Box = square, Ball = round)'),
+    ('SECTION', 'Section', 'Extend pulls out the whole cross-section of the part (cut by a plane across the drag)'),
+]
 PATH_METHODS = [
     ('EXTEND', 'Extend', 'Cut where you grab and run that section along the path; the end goes to the end of the '
                          'path - one clean mesh that looks pulled (light while dragging)'),
@@ -528,6 +532,7 @@ class MCH_PG_Concept(bpy.types.PropertyGroup):
     path_taper: FloatProperty(name='Taper', default=0.0, min=0.0, max=0.95,
                               description='Path Move: thinner toward the end (0 = the same all the way)')
     path_method: EnumProperty(name='Method', items=PATH_METHODS, default='EXTEND')
+    path_area: EnumProperty(name='Area', items=AREA_ITEMS, default='BRUSH')
     path_hardness: FloatProperty(name='Hardness', default=1.0, min=0.0, max=1.0,
                                  description='Path Move: 1 = a hard start (the grabbed part runs straight out); lower = '
                                              'the mesh round the grab is pulled along too, fading out softly (like '
@@ -774,7 +779,7 @@ def replay_one(me, mv):
         from . import path_sweep
         try:
             path_sweep.extend(me, mv['hit'], mv['normal'], mv['offsets'], mv.get('turn', True), mv.get('taper', 0.0),
-                              mv.get('hardness', 1.0))
+                              mv.get('hardness', 1.0), mv.get('radius'), mv.get('sides', 8))
         except ValueError:
             pass
         return
@@ -1212,6 +1217,7 @@ class MCH_OT_concept_path(bpy.types.Operator):
     auto_apply: BoolProperty(name='Auto Apply', default=True,
                              description='Off: the moves stay editable (Undo Last / Clear / Apply in the panel)')
     method: EnumProperty(name='Method', items=PATH_METHODS, default='STRETCH')
+    area: EnumProperty(name='Area', items=AREA_ITEMS, default='SECTION')
     grab_point: FloatVectorProperty(size=3, options={'HIDDEN'})   # Extend / Separate Tube: in the object's space
     grab_normal: FloatVectorProperty(size=3, default=(1, 0, 0), options={'HIDDEN'})
     offsets: StringProperty(options={'HIDDEN'})
@@ -1271,11 +1277,14 @@ class MCH_OT_concept_path(bpy.types.Operator):
             try:
                 if not self.auto_apply:
                     keep_base(ob)
-                msg = path_sweep.extend(ob.data, hit, normal, offsets, self.turn, self.taper, self.edge_hardness)
+                rad = self.radius * self.size if self.area == 'BRUSH' else None
+                sides = 4 if self.shape == 'BOX' else 8
+                msg = path_sweep.extend(ob.data, hit, normal, offsets, self.turn, self.taper, self.edge_hardness,
+                                        rad, sides)
                 if has_base(ob):
                     record_move(ob, {'kind': 'extend', 'hit': list(hit), 'normal': list(normal),
                                      'offsets': [list(o) for o in offsets], 'turn': self.turn, 'taper': self.taper,
-                                     'hardness': self.edge_hardness})
+                                     'hardness': self.edge_hardness, 'radius': rad, 'sides': sides})
                 self.report({'INFO'}, f'Path Move {msg}')
                 return {'FINISHED'}
             except ValueError as exc:
@@ -1387,7 +1396,9 @@ class MCH_OT_concept_path(bpy.types.Operator):
             if normal.length < brush_world(context, self.hit) * 0.3:
                 return                                       # wait until the way it goes is clear
             self.normal_l = normal.normalized()
-            self.info = path_sweep.analyse(self.ob.data, self.local_hit, self.normal_l) or False
+            rad = local_radius(context, self.ob, self.hit) if st.path_area == 'BRUSH' else None
+            self.info = path_sweep.analyse(self.ob.data, self.local_hit, self.normal_l, rad,
+                                           4 if st.shape == 'BOX' else 8) or False
             if self.info:
                 me = bpy.data.meshes.new('MCH_PathPreview')
                 self.preview_ob = bpy.data.objects.new('MCH_PathPreview', me)
@@ -1503,6 +1514,8 @@ class MCH_OT_concept_path(bpy.types.Operator):
                 self.offsets = json.dumps([list(o) for o in offsets])
                 self.taper, self.turn, self.auto_apply = st.path_taper, st.path_turn, st.auto_apply
                 self.edge_hardness = st.path_hardness
+                self.area, self.shape = st.path_area, st.shape
+                self.radius, self.size = local_radius(context, self.ob, self.hit), 1.0
                 return self.execute(context)
             path, radius, axes = self._world_path(context)
             if len(path) < 2:
@@ -1525,6 +1538,12 @@ class MCH_OT_concept_path(bpy.types.Operator):
         if context.area:
             context.area.tag_redraw()
         return {'RUNNING_MODAL'}
+
+
+def local_radius(context, ob, at):
+    """The brush radius at ``at`` in ``ob``'s own space."""
+    sc = ob.matrix_world.to_scale()
+    return brush_world(context, at) / max(1e-9, (abs(sc.x) + abs(sc.y) + abs(sc.z)) / 3.0)
 
 
 def local_path(ob, pts, radius, axes, mref=None):
@@ -1639,6 +1658,8 @@ def draw_path(layout, context, compact=False):
     from . import path_sweep
     st = context.scene.mch_concept
     layout.prop(st, 'path_method', expand=not compact, text='' if compact else 'Method')
+    if st.path_method == 'EXTEND':
+        layout.prop(st, 'path_area', expand=True)
     if not compact:
         draw_knife(layout, context)
         draw_slow_line(layout, context)

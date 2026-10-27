@@ -6,6 +6,11 @@
 * Separate Tube: the same section swept into a new object (the original is untouched); Merge joins it later
   (Join = one object, Union = boolean).
 Both are light while you drag: only the new rings (and the tip) are rebuilt, never the whole mesh.
+0.24.54 Extend, Area Brush (the default from the viewport): only the surface under the brush is pulled out - the
+faces round the grab are cut to the brush (a square for Box, an octagon for Ball, across the surface) and that
+patch is extruded along the path.  The old Area Section (the whole cross-section of the part, cut by a plane
+across the drag) took 5-6x the brush on a plate.  A patch that cannot be made (an open edge, a hole) falls back
+to the section.
 ``min_rotation``, ``sweep_frames``, ``order_loop``, ``rings`` and ``tube_faces`` are pure; ``analyse``, ``extend``
 and ``sweep_object`` work on a mesh.
 """
@@ -182,28 +187,105 @@ def _cut(bm, hit, normal):
     return order, best
 
 
-def analyse(me, hit, normal):
+def _region(bm, f0, hit, n0, inside):
+    """Faces connected to ``f0`` facing about the way ``n0`` does whose middle passes ``inside``."""
+    out, stack = {f0}, [f0]
+    while stack:
+        f = stack.pop()
+        for e in f.edges:
+            for g in e.link_faces:
+                if g not in out and g.normal.dot(n0) > 0.5 and inside(g.calc_center_median()):
+                    out.add(g)
+                    stack.append(g)
+    return out
+
+
+def brush_planes(n0, drag, radius, sides=8):
+    """The brush outline as planes (point, outward normal) across the surface (normal ``n0``), the first side
+    square to the drag."""
+    n0 = Vector(n0).normalized()
+    u = Vector(drag) - n0 * Vector(drag).dot(n0)
+    if u.length < 1e-3 * max(1e-9, Vector(drag).length):     # pulled straight out: line up with the part's axes
+        axis = min((Vector(a) for a in ((1, 0, 0), (0, 1, 0), (0, 0, 1))), key=lambda a: abs(a.dot(n0)))
+        u = axis - n0 * axis.dot(n0)
+    u.normalize()
+    v = n0.cross(u)
+    out = []
+    for k in range(sides):
+        a = 2.0 * math.pi * k / sides
+        d = u * math.cos(a) + v * math.sin(a)
+        out.append((d * radius, d))
+    return out
+
+
+def _patch(bm, hit, drag, radius, sides=8):
+    """Cut the surface round ``hit`` to the brush and return (ordered border verts, border edges, patch faces) -
+    or None (no clean single border: an open edge, a hole, the whole part)."""
+    bvh = BVHTree.FromBMesh(bm)
+    loc, _n, idx, _d = bvh.find_nearest(hit)
+    if loc is None or radius <= 0:
+        return None
+    bm.faces.ensure_lookup_table()
+    f0 = bm.faces[idx]
+    n0 = f0.normal.copy()
+    hit = Vector(loc)
+    planes = brush_planes(n0, drag, radius, sides)
+    for off, d in planes:
+        near = _region(bm, f0, hit, n0, lambda c: (c - hit).length < radius * 3.0)
+        geom = list(near) + list({e for f in near for e in f.edges}) + list({v for f in near for v in f.verts})
+        bmesh.ops.bisect_plane(bm, geom=geom, dist=radius * 1e-4, plane_co=hit + off, plane_no=d)
+        bvh = BVHTree.FromBMesh(bm)
+        bm.faces.ensure_lookup_table()
+        _l, _n, idx, _d = bvh.find_nearest(hit)
+        f0 = bm.faces[idx]
+    eps = radius * 1e-3
+    patch = _region(bm, f0, hit, n0, lambda c: all((c - hit - off).dot(d) < eps for off, d in planes))
+    border = [e for f in patch for e in f.edges if sum(1 for g in e.link_faces if g in patch) == 1]
+    if not border or any(not e.is_manifold for e in border):
+        return None
+    order = order_loop([(e.verts[0], e.verts[1]) for e in border])
+    if order is None or len(order) < 3 or len(order) != len(border):
+        return None
+    return order, border, patch
+
+
+def _grab(bm, hit, normal, radius=None, sides=8):
+    """(ordered loop verts, the edges along it, the faces carried to the path end or None, 'BRUSH' / 'SECTION')."""
+    if radius:
+        got = _patch(bm, Vector(hit), Vector(normal), radius, sides)
+        if got is not None:
+            order, border, patch = got
+            bmesh.ops.split_edges(bm, edges=border)
+            return order, border, patch, 'BRUSH'
+    got = _cut(bm, Vector(hit), Vector(normal))
+    if got is None:
+        return None
+    order, cut_edges = got
+    return order, cut_edges, _tip_faces(bm, cut_edges, Vector(hit), Vector(normal)), 'SECTION'
+
+
+def analyse(me, hit, normal, radius=None, sides=8):
     """What a grab at ``hit`` dragged along ``normal`` would sweep (on a copy, nothing changes):
-    {'loop': section points CCW, 'centre', 'tip': (coords, faces) of the cut-off end or None}."""
+    {'loop': section points CCW, 'centre', 'tip': (coords, faces) of the cut-off end or None}.
+    0.24.54 ``radius``: the patch under the brush (see ``_patch``), else the whole section."""
     bm = bmesh.new()
     bm.from_mesh(me)
     try:
-        got = _cut(bm, Vector(hit), Vector(normal))
+        got = _grab(bm, hit, normal, radius, sides)
         if got is None:
             return None
-        order, cut_edges = got
+        order, _edges, tip, area = got
         loop = [v.co.copy() for v in order]
         if not ccw(loop, normal):
             loop.reverse()
         centre = sum(loop, Vector()) / len(loop)
-        tip = _tip_faces(bm, cut_edges, Vector(hit), Vector(normal))
         tip_mesh = None
         if tip is not None:
             vs = sorted({v for f in tip for v in f.verts}, key=lambda v: v.index)
             index = {v: i for i, v in enumerate(vs)}
             tip_mesh = (np.array([v.co[:] for v in vs], dtype=np.float64),
                         [tuple(index[v] for v in f.verts) for f in tip])
-        return {'loop': loop, 'centre': centre, 'tip': tip_mesh}
+        return {'loop': loop, 'centre': centre, 'tip': tip_mesh, 'area': area}
     finally:
         bm.free()
 
@@ -304,7 +386,7 @@ def soft_length(loop, centre, hardness):
     return soft * 3.0 * max((Vector(q) - Vector(centre)).length for q in loop)
 
 
-def extend(me, hit, normal, offsets, turn=True, taper=0.0, hardness=1.0):
+def extend(me, hit, normal, offsets, turn=True, taper=0.0, hardness=1.0, radius=None, sides=8):
     """Extend on the mesh itself.  Returns a short report, or raises ValueError (mesh untouched).
     0.24.40 ``hardness`` < 1: a soft start - where the path turns, the part bends out of the cut in a smooth curve
     instead of a kink (0 = softest); 1 = hard, the section follows the drawn path right from the cut."""
@@ -312,15 +394,14 @@ def extend(me, hit, normal, offsets, turn=True, taper=0.0, hardness=1.0):
     bm = bmesh.new()
     bm.from_mesh(me)
     try:
-        got = _cut(bm, hit, normal)
+        got = _grab(bm, hit, normal, radius, sides)
         if got is None:
             raise ValueError('no closed section where you grabbed')
-        order, cut_edges = got
+        order, _edges, tip, area = got
         loop = [v.co.copy() for v in order]
         if not ccw(loop, normal):
             loop.reverse()
         centre = sum(loop, Vector()) / len(loop)
-        tip = _tip_faces(bm, cut_edges, hit, normal)
         if tip is None:
             raise ValueError('the cut does not cut the end off (try Separate Tube)')
         tip_verts = {v for f in tip for v in f.verts}
@@ -356,10 +437,13 @@ def extend(me, hit, normal, offsets, turn=True, taper=0.0, hardness=1.0):
                     f.smooth, f.material_index = ref.smooth, ref.material_index
                 except ValueError:
                     pass
+        if area == 'BRUSH' and all(e.is_manifold for e in bm.edges):
+            bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])     # the patch walls: outward like the rest
         bm.normal_update()
         bm.to_mesh(me)
         me.update()
-        return f'Extend: {len(path) - 1} steps, section {n} points'
+        return f'Extend: {len(path) - 1} steps, ' + (f'brush patch {n} points' if area == 'BRUSH'
+                                                     else f'section {n} points')
     finally:
         bm.free()
 

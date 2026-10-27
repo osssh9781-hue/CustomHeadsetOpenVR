@@ -765,7 +765,9 @@ class MCH_OT_mecha_mmb_gate(bpy.types.Operator):
             return {'FINISHED'}
         if event.type == 'ESC':
             return {'CANCELLED'}
-        return {'RUNNING_MODAL'}
+        if event.type.startswith('NDOF') or event.type.startswith('TRACKPAD'):
+            return {'FINISHED', 'PASS_THROUGH'}       # 0.24.54 a 3D mouse / trackpad: never held up here
+        return {'PASS_THROUGH'}                       # 0.24.54 everything else goes on as usual
 
 
 def near(items, x, y, margin):
