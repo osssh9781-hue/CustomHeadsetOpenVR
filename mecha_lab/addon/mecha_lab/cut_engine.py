@@ -2444,6 +2444,9 @@ class GateLogic:
     def invoke(self, context, event):
         self.t0 = _now()
         self.timer = context.window_manager.event_timer_add(0.04, window=context.window)
+        from . import zb_sculpt                       # 0.24.60 ZBrush style: right-drag turns the view
+        self.rmb = zb_sculpt.RMBDrag()
+        self.rmb.rmb_drag_start(context, event)
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
@@ -2453,6 +2456,9 @@ class GateLogic:
             self.timer = None
 
     def modal(self, context, event):
+        if getattr(self, 'rmb', None) is not None and self.rmb.rmb_drag_check(context, event):
+            self._stop(context)
+            return {'FINISHED'}
         if event.type == 'RIGHTMOUSE' and event.value in {'PRESS', 'DOUBLE_CLICK'}:
             self._stop(context)
             exit_tool(context)

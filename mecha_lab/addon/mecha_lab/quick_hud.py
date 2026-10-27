@@ -576,7 +576,7 @@ class MCH_GGT_ui_catch(bpy.types.GizmoGroup):
     def poll(cls, context):
         from . import bottom_bar, zb_sculpt
         try:
-            return bottom_bar.ui_active(context) or zb_sculpt.on(context)     # 0.24.60 + the ZBrush screen
+            return bottom_bar.ui_active(context) or zb_sculpt.mecha_sculpt(context)   # 0.24.60 + ZBrush / card
         except (AttributeError, KeyError, TypeError, ReferenceError):
             return False
 

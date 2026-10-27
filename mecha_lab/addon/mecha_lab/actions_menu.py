@@ -289,10 +289,28 @@ class MCH_OT_actions_menu(bpy.types.Operator):
         return select_rmb_ok(context)      # elsewhere RMB keeps Blender's meaning
 
     def invoke(self, context, event):
+        from . import zb_sculpt
+        if zb_sculpt.nav_on(context):                 # 0.24.60 ZBrush style: right-drag turns the view
+            self.rmb = zb_sculpt.RMBDrag()
+            self.rmb.rmb_drag_start(context, event)
+            context.window_manager.modal_handler_add(self)
+            return {'RUNNING_MODAL'}
+        return self._open(context)
+
+    def _open(self, context):
         from . import mecha_menu
         if not (mecha_menu.use_menu() and mecha_menu.open_menu(context)):        # 0.24.50 Mecha Menu
             bpy.ops.wm.call_panel(name=MCH_PT_actions_popup.bl_idname, keep_open=False)
         return {'FINISHED'}
+
+    def modal(self, context, event):
+        if self.rmb.rmb_drag_check(context, event):
+            return {'FINISHED'}
+        if event.type == 'RIGHTMOUSE' and event.value == 'RELEASE':
+            return self._open(context)
+        if event.type == 'ESC':
+            return {'CANCELLED'}
+        return {'RUNNING_MODAL'}
 
     def execute(self, context):
         bpy.ops.wm.call_panel(name=MCH_PT_actions_popup.bl_idname, keep_open=False)

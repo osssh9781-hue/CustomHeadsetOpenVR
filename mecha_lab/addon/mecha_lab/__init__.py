@@ -1803,7 +1803,11 @@ def mesh_area_local(context, ob, voxel_weighted=False):
     ``voxel_weighted``: each face counted by |nx| + |ny| + |nz| - how many voxel walls a slanted surface crosses
     (a ball makes 1.5 x the points of a box of the same area)."""
     import numpy as np
-    me = ob.evaluated_get(context.evaluated_depsgraph_get()).data
+    try:
+        dg = context.evaluated_depsgraph_get()
+    except AttributeError:
+        dg = bpy.context.evaluated_depsgraph_get()
+    me = ob.evaluated_get(dg).data
     n = len(me.polygons)
     if not n:
         return 0.0
@@ -1828,10 +1832,15 @@ def voxel_for_points(context, ob, points):
 def point_counts(context):
     """(active points, total points) like ZBrush: the active mesh and every visible mesh, as shown (modifiers
     included)."""
-    dg = context.evaluated_depsgraph_get()
+    try:
+        dg = context.evaluated_depsgraph_get()
+        objs = context.visible_objects
+    except AttributeError:                       # (a panel drawn with a stand-in context)
+        dg = bpy.context.evaluated_depsgraph_get()
+        objs = bpy.context.visible_objects
     active = getattr(context, 'active_object', None)
     act = tot = 0
-    for o in context.visible_objects:
+    for o in objs:
         if o.type != 'MESH':
             continue
         try:

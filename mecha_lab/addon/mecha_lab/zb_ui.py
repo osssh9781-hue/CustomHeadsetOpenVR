@@ -165,7 +165,7 @@ def top_shelf(context, region_w, region_h, k, Item):
 
     def gw(title, cells):
         return _cells_width(cells, k) + ((len(title) * 7 + 8) * k + GAP * k if title else 0.0)
-    room = region_w - 40 * k
+    room = region_w - 2 * corner_reserve(context, region_w, region_h, k) - 16 * k
     wrapped = []
     for r in rows:                                   # too wide: the groups go on more lines (narrow screen)
         line, lw = [], 0.0
@@ -187,7 +187,7 @@ def top_shelf(context, region_w, region_h, k, Item):
     y0 = region_h - ui_bars.top_inset(context) - 10 * k - bh
     out = [Item('card', x0, y0, bw, bh)]
     y = y0 + bh - PAD * k - ROW * k
-    for r, rw in zip(rows, widths):
+    for r, rw in zip(rows, widths):          # (the corner card sits right of it)
         x = x0 + (bw - rw) / 2.0
         for gi, (title, cells) in enumerate(r):
             if gi:
@@ -526,7 +526,66 @@ def items(context, region_w, region_h, k=1.0):
     out += subtool_list(context, region_w, k, Item, top, shelf_top + 10 * k)
     out += shelf
     out += legend
+    out += corner_items(context, region_w, region_h, k)
     out += popup(context, region_w, region_h, k, Item)
+    return out
+
+
+CORNER_W, CORNER_SEG = 210.0, 99.0
+
+
+def corner_box(context, region_w, region_h, k):
+    """(x, y, w, h) of the MECHA LAB / ZBRUSH card in the top right corner (left of Blender's navigation gizmo
+    and an overlapping sidebar)."""
+    from . import ui_bars
+    w, h = CORNER_W * k, 2 * ROW * k + GAP * k + 2 * PAD * k
+    gizmo = 0.0
+    try:
+        prefs = context.preferences
+        if getattr(context.space_data, 'show_gizmo', True) and getattr(context.space_data, 'show_gizmo_navigate',
+                                                                       True):
+            gizmo = (prefs.view.gizmo_size_navigate_v3d + 24.0) * prefs.system.ui_scale
+    except AttributeError:
+        gizmo = 104.0 * k
+    inset = 0.0
+    area = getattr(context, 'area', None)
+    try:
+        if area is not None and context.preferences.system.use_region_overlap:
+            inset = sum(r.width for r in area.regions if r.type == 'UI' and r.width > 1)
+    except AttributeError:
+        pass
+    x = region_w - inset - gizmo - 12 * k - w
+    y = region_h - ui_bars.top_inset(context) - 10 * k - h
+    return max(8 * k, x), y, w, h
+
+
+def corner_reserve(context, region_w, region_h, k):
+    """How much of the top right the card (and the gizmo beside it) takes - the top bars keep clear."""
+    x, _y, _w, _h = corner_box(context, region_w, region_h, k)
+    return region_w - x + 8 * k
+
+
+def corner_items(context, region_w, region_h, k=1.0):
+    """0.24.60 MECHA LAB | ZBRUSH (Object / Sculpt Mode) and STYLE ZBrush | Blender."""
+    from .mecha_menu import Item
+    x0, y0, w, h = corner_box(context, region_w, region_h, k)
+    sculpt = getattr(context, 'mode', '') == 'SCULPT'
+    st = zs.style()
+    out = [Item('card', x0, y0, w, h)]
+    y = y0 + h - PAD * k - ROW * k
+    seg = (w - 2 * PAD * k - GAP * k) / 2
+    out.append(Item('seg', x0 + PAD * k, y, seg, ROW * k, 'MECHA LAB', '', not sculpt, True,
+                    ('op', 'mch.zb_switch', {'target': 'MECHA'})))
+    out.append(Item('seg', x0 + PAD * k + seg + GAP * k, y, seg, ROW * k, 'ZBRUSH', '', sculpt, True,
+                    ('op', 'mch.zb_switch', {'target': 'ZBRUSH'})))
+    y -= ROW * k + GAP * k
+    lw = 44 * k
+    out.append(Item('glabel', x0 + PAD * k, y, lw, ROW * k, 'STYLE'))
+    s2 = (w - 2 * PAD * k - lw - 2 * GAP * k) / 2
+    out.append(Item('seg', x0 + PAD * k + lw + GAP * k, y, s2, ROW * k, 'ZBrush', '', st == 'ZBRUSH', True,
+                    ('op', 'mch.zb_style', {'style': 'ZBRUSH'})))
+    out.append(Item('seg', x0 + PAD * k + lw + 2 * GAP * k + s2, y, s2, ROW * k, 'Blender', '', st == 'BLENDER', True,
+                    ('op', 'mch.zb_style', {'style': 'BLENDER'})))
     return out
 
 

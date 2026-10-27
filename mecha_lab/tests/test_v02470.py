@@ -117,7 +117,7 @@ check('Base Mesh: the card shows its profiles (Flat / Chamfer / Bevel ...)',
       and any(i.kind == 'tile' and i.action[1] == 'mch.set_profile' for i in items))
 check('RMB opens it (stroke tools and Select / Move), the old panel stays as an option',
       'mecha_menu.open_menu' in inspect.getsource(ce.GateLogic.modal)
-      and 'mecha_menu.open_menu' in inspect.getsource(am.MCH_OT_actions_menu.invoke)
+      and 'mecha_menu.open_menu' in inspect.getsource(am.MCH_OT_actions_menu._open)     # (0.24.60 click / drag)
       and "pref('classic_rmb_popup'" in inspect.getsource(mm.use_menu))
 
 # hold Ctrl + Alt

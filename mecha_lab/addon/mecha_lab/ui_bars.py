@@ -416,10 +416,11 @@ def dock_top(context, k=1.0, region_w=None):
 def _build_all(context, region, k):
     out = []
     try:
-        from . import zb_sculpt
+        from . import zb_sculpt, zb_ui
         if zb_sculpt.on(context):                     # 0.24.60 Sculpt Mode in MECHA LAB: the ZBrush screen
-            from . import zb_ui
             return zb_ui.items(context, region.width, region.height, k)
+        if zb_sculpt.mecha_sculpt(context):           # ... Blender style: Blender's sculpting, only the corner card
+            return zb_ui.corner_items(context, region.width, region.height, k)
     except (AttributeError, KeyError, TypeError, ReferenceError, RuntimeError):
         return out
     try:
@@ -441,6 +442,10 @@ def _build_all(context, region, k):
             out += side_panel.items(context, region.width, region.height, k)
         if top_bar.on(context):
             out += top_bar.items(context, region.width, region.height, k)
+        from . import bottom_bar
+        if bottom_bar.ui_active(context):              # 0.24.60 MECHA LAB | ZBRUSH card
+            from . import zb_ui
+            out += zb_ui.corner_items(context, region.width, region.height, k)
     except (AttributeError, KeyError, TypeError, ReferenceError):
         return out
     return out

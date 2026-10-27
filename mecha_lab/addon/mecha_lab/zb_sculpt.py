@@ -63,13 +63,49 @@ def icon_stem(bl_name):
 
 # --- where it is on ----------------------------------------------------------------------------------------------
 
-def on(context):
-    """Sculpt Mode in the MECHA LAB tab (Preferences: ZBrush Sculpt)."""
-    from .workspace_ui import pref
+STYLE = ['ZBRUSH']          # (used when the add-on preferences cannot be read)
+
+
+def style():
+    """'ZBRUSH' or 'BLENDER': how the MECHA LAB tab is driven (the corner card / Preferences: Control Style)."""
+    from .workspace_ui import prefs
+    p = prefs()
+    return getattr(p, 'control_style', STYLE[0]) if p is not None else STYLE[0]
+
+
+def set_style(value):
+    from .workspace_ui import prefs
+    STYLE[0] = value
+    p = prefs()
+    if p is not None and hasattr(p, 'control_style'):
+        p.control_style = value
+
+
+def mecha_tab(context):
     from . import tool_state as ts
     try:
-        return (bool(pref('zbrush_sculpt', True)) and getattr(context, 'mode', '') == 'SCULPT'
-                and ts.is_mecha_workspace(getattr(context, 'workspace', None)))
+        return ts.is_mecha_workspace(getattr(context, 'workspace', None))
+    except (AttributeError, ReferenceError):
+        return False
+
+
+def mecha_sculpt(context):
+    """Sculpt Mode in the MECHA LAB tab (either style - the corner card shows)."""
+    return getattr(context, 'mode', '') == 'SCULPT' and mecha_tab(context)
+
+
+def on(context):
+    """The ZBrush screen and keys: Sculpt Mode in the MECHA LAB tab with the ZBrush style."""
+    try:
+        return style() == 'ZBRUSH' and mecha_sculpt(context)
+    except (AttributeError, ReferenceError):
+        return False
+
+
+def nav_on(context):
+    """ZBrush navigation (canvas drag) in the MECHA LAB tab: Object or Sculpt Mode, ZBrush style."""
+    try:
+        return style() == 'ZBRUSH' and getattr(context, 'mode', '') in {'OBJECT', 'SCULPT'} and mecha_tab(context)
     except (AttributeError, ReferenceError):
         return False
 
@@ -1170,12 +1206,18 @@ def snap_rotation(q):
     return Matrix((xc, yc, zc)).transposed().to_quaternion()
 
 
-class MCH_OT_zb_nav(_ZBPoll, bpy.types.Operator):
+class MCH_OT_zb_nav(bpy.types.Operator):
     """ZBrush canvas drag: rotate (Shift: snap square-on), Alt: move, let Alt go while dragging: zoom"""
     bl_idname = 'mch.zb_nav'
     bl_label = 'ZBrush Navigate'
     bl_options = {'INTERNAL', 'BLOCKING'}
     mode: EnumProperty(items=[('ROTATE', 'Rotate', ''), ('PAN', 'Move', ''), ('ZOOM', 'Zoom', '')], default='ROTATE')
+    button: StringProperty(default='LEFTMOUSE', options={'SKIP_SAVE'})
+    alt_start: BoolProperty(default=False, options={'SKIP_SAVE'})
+
+    @classmethod
+    def poll(cls, context):
+        return nav_on(context) and getattr(context, 'region_data', None) is not None
 
     def invoke(self, context, event):
         rv3d = getattr(context, 'region_data', None)
@@ -1184,7 +1226,7 @@ class MCH_OT_zb_nav(_ZBPoll, bpy.types.Operator):
         self.rv3d = rv3d
         self.start = (rv3d.view_rotation.copy(), rv3d.view_location.copy(), rv3d.view_distance)
         self.last = (event.mouse_x, event.mouse_y)
-        self.alt_pan = self.mode == 'PAN' and event.alt
+        self.alt_pan = self.mode == 'PAN' and (event.alt or self.alt_start)
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
@@ -1209,9 +1251,10 @@ class MCH_OT_zb_nav(_ZBPoll, bpy.types.Operator):
             else:
                 rv3d.view_distance = max(1e-4, rv3d.view_distance * math.exp(-dy * 0.006))
             return {'RUNNING_MODAL'}
-        if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+        if event.type == self.button and event.value == 'RELEASE':
             return {'FINISHED'}
-        if event.type in {'ESC', 'RIGHTMOUSE'}:
+        if event.type == 'ESC' or (event.type in {'RIGHTMOUSE', 'LEFTMOUSE'} and event.type != self.button
+                                   and event.value == 'PRESS'):
             rv3d.view_rotation, rv3d.view_location, rv3d.view_distance = self.start
             return {'CANCELLED'}
         return {'RUNNING_MODAL'}
@@ -1309,6 +1352,120 @@ class MCH_OT_zb_brush_pick(_ZBPoll, bpy.types.Operator):
         return {'PASS_THROUGH'}
 
 
+class MCH_OT_zb_switch(bpy.types.Operator):
+    """MECHA LAB (Object Mode, the Mecha tools) or ZBRUSH (Sculpt Mode on the active mesh)"""
+    bl_idname = 'mch.zb_switch'
+    bl_label = 'MECHA LAB / ZBRUSH'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    target: EnumProperty(items=[('MECHA', 'MECHA LAB', ''), ('ZBRUSH', 'ZBRUSH', '')], default='ZBRUSH')
+
+    def execute(self, context):
+        ob = context.active_object
+        if self.target == 'MECHA':
+            if ob is not None and ob.mode != 'OBJECT':
+                bpy.ops.object.mode_set(mode='OBJECT')
+            _bump()
+            return {'FINISHED'}
+        if ob is None or ob.type != 'MESH':
+            mesh = next((o for o in context.selected_objects if o.type == 'MESH'), None)
+            if mesh is None:
+                self.report({'WARNING'}, 'ZBRUSH: pick a mesh first')
+                return {'CANCELLED'}
+            context.view_layer.objects.active = mesh
+        if context.active_object.mode != 'SCULPT':
+            bpy.ops.object.mode_set(mode='SCULPT')
+        _bump()
+        return {'FINISHED'}
+
+
+class MCH_OT_zb_style(bpy.types.Operator):
+    """ZBrush style (ZBrush screen and keys in Sculpt Mode, ZBrush canvas navigation) or Blender style (as Blender)"""
+    bl_idname = 'mch.zb_style'
+    bl_label = 'Control Style'
+    bl_options = {'INTERNAL'}
+    style: EnumProperty(items=[('ZBRUSH', 'ZBrush', ''), ('BLENDER', 'Blender', '')], default='ZBRUSH')
+
+    def execute(self, context):
+        set_style(self.style)
+        _bump()
+        for area in getattr(context.screen, 'areas', []):
+            area.tag_redraw()
+        return {'FINISHED'}
+
+
+def over_object(context, event):
+    """Is a visible object under the mouse (Object Mode, ZBrush style: empty canvas turns the view)?"""
+    from bpy_extras import view3d_utils
+    region, rv3d = context.region, context.region_data
+    if region is None or rv3d is None:
+        return True
+    xy = (event.mouse_region_x, event.mouse_region_y)
+    origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, xy)
+    direction = view3d_utils.region_2d_to_vector_3d(region, rv3d, xy)
+    try:
+        hit = context.scene.ray_cast(context.evaluated_depsgraph_get(), origin, direction)[0]
+    except (RuntimeError, ReferenceError):
+        return True
+    return bool(hit)
+
+
+def obj_select_state(context):
+    """Object Mode in MECHA LAB with Select / Move (no Mecha drawing tool waiting for a stroke)."""
+    from . import bottom_bar
+    try:
+        return bottom_bar.ui_active(context) and bottom_bar.in_select(context)
+    except (AttributeError, KeyError, TypeError, ReferenceError):
+        return False
+
+
+class MCH_OT_zb_obj_press(bpy.types.Operator):
+    """ZBrush style in Select / Move: drag the empty canvas = rotate (Shift snap), Alt = move / zoom,
+    Ctrl = box select; on an object Blender's select / move as before"""
+    bl_idname = 'mch.zb_obj_press'
+    bl_label = 'ZBrush Canvas (Object Mode)'
+    bl_options = {'INTERNAL'}
+
+    @classmethod
+    def poll(cls, context):
+        return nav_on(context) and getattr(context, 'mode', '') == 'OBJECT' and obj_select_state(context)
+
+    def invoke(self, context, event):
+        try:
+            from . import ui_bars
+            if ui_bars.hit(context, event.mouse_region_x, event.mouse_region_y)[0]:
+                return {'PASS_THROUGH'}
+        except (AttributeError, KeyError, TypeError, ReferenceError, ImportError):
+            pass
+        if over_object(context, event):
+            return {'PASS_THROUGH'}
+        if event.ctrl:
+            return bpy.ops.view3d.select_box('INVOKE_DEFAULT', mode='SET', wait_for_input=False)
+        return bpy.ops.mch.zb_nav('INVOKE_DEFAULT', mode='PAN' if event.alt else 'ROTATE')
+
+
+class RMBDrag:
+    """ZBrush style for a right-button press that opens a menu: dragging turns the view instead
+    (Alt: move, let Alt go: zoom); a click still opens the menu."""
+
+    def rmb_drag_start(self, context, event):
+        self.rmb_xy = (event.mouse_x, event.mouse_y)
+        self.rmb_alt = event.alt
+        self.rmb_live = nav_on(context)
+
+    def rmb_drag_check(self, context, event):
+        """True when this event turned the press into a view drag (the nav took over)."""
+        if event.type == 'RIGHTMOUSE' and event.value == 'RELEASE':
+            self.rmb_live = False                    # a click: the menu as before
+        if not getattr(self, 'rmb_live', False) or event.type != 'MOUSEMOVE':
+            return False
+        x, y = self.rmb_xy
+        if abs(event.mouse_x - x) + abs(event.mouse_y - y) < 6:
+            return False
+        bpy.ops.mch.zb_nav('INVOKE_DEFAULT', mode='PAN' if (self.rmb_alt or event.alt) else 'ROTATE',
+                           button='RIGHTMOUSE', alt_start=self.rmb_alt)
+        return True
+
+
 class MCH_OT_zb_close(bpy.types.Operator):
     """Close the ZBrush menu"""
     bl_idname = 'mch.zb_close'
@@ -1326,7 +1483,7 @@ class MCH_OT_zb_close(bpy.types.Operator):
 
 CLASSES = (MCH_PG_ZBrush, MCH_OT_zb_action, MCH_OT_zb_brush, MCH_OT_zb_append, MCH_OT_zb_subtool, MCH_OT_zb_press,
            MCH_OT_zb_restore_tool, MCH_OT_zb_nav, MCH_OT_zb_viewdrag, MCH_OT_zb_popup, MCH_OT_zb_brush_pick,
-           MCH_OT_zb_close)
+           MCH_OT_zb_switch, MCH_OT_zb_style, MCH_OT_zb_obj_press, MCH_OT_zb_close)
 _keymaps = []
 
 # (key, ctrl, shift, alt, operator, properties)
@@ -1368,6 +1525,12 @@ def register():
             for k, v in props.items():
                 setattr(kmi.properties, k, v)
             _keymaps.append((km, kmi))
+        # ZBrush style in Object Mode (Select / Move): the canvas turns the view
+        km = kc.keymaps.new(name='Object Mode', space_type='EMPTY')
+        for ctrl, shift, alt in ((False, False, False), (False, True, False), (False, False, True),
+                                 (True, False, False)):
+            _keymaps.append((km, km.keymap_items.new('mch.zb_obj_press', 'LEFTMOUSE', 'PRESS', ctrl=ctrl,
+                                                     shift=shift, alt=alt)))
 
 
 def unregister():

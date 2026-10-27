@@ -20,7 +20,8 @@ ob = C.active_object
 bpy.ops.object.mode_set(mode='SCULPT')
 zb = C.scene.mch_zb
 check('Sculpt Mode: the ZBrush screen is on (only in the MECHA LAB tab: real on() checks the workspace)',
-      zs.on(C) and 'is_mecha_workspace' in inspect.getsource(real_on) and "'SCULPT'" in inspect.getsource(real_on))
+      zs.on(C) and 'mecha_sculpt' in inspect.getsource(real_on) and 'is_mecha_workspace' in inspect.getsource(
+          zs.mecha_tab) and "'SCULPT'" in inspect.getsource(zs.mecha_sculpt))
 
 # --- brushes by ZBrush name ---------------------------------------------------------------------------------------
 msg = zs.activate(C, 'ClayBuildup')
@@ -250,7 +251,7 @@ uvv.set(zi.data, zi.prop, uvv.drag(zi.data, zi.prop, 20, zi.w, width=zi.w))
 check('Z Intensity bar: across the bar = 0 -> 100', zb.z_intensity == 100)
 src = inspect.getsource(ub._draw)
 check('Orange accent on the ZBrush screen', 'zb_sculpt.ORANGE' in src)
-check('Click catcher on in the ZBrush screen', 'zb_sculpt.on(context)' in inspect.getsource(
+check('Click catcher on in the ZBrush screen', 'zb_sculpt.mecha_sculpt(context)' in inspect.getsource(
     __import__('mecha_lab.quick_hud', fromlist=['x']).MCH_GGT_ui_catch.poll))
 C.window_manager.mch_zb_pop, C.window_manager.mch_zb_pop_xy, C.window_manager.mch_zb_pop_focus = 'MENU', (900, 700), \
     'draw_size'
@@ -264,6 +265,55 @@ lit = {i.label for i in pop if i.kind == 'sbtn' and i.enabled}
 check('B + C: only the C... brushes stay lit (ClayBuildup, Clay, ClayTubes)',
       {'ClayBuildup', 'Clay', 'ClayTubes'} <= lit and 'Standard' not in lit, sorted(lit))
 C.window_manager.mch_zb_pop = ''
-check('Preferences: ZBrush Sculpt on / off', 'zbrush_sculpt' in wui.MCH_AddonPreferences.__annotations__)
+check('Preferences: Control Style (ZBrush / Blender)', 'control_style' in wui.MCH_AddonPreferences.__annotations__)
+
+# --- the corner card: MECHA LAB | ZBRUSH, STYLE ZBrush | Blender -------------------------------------------------
+corner = [i for i in items if i.kind == 'seg' and i.label in {'MECHA LAB', 'ZBRUSH', 'ZBrush', 'Blender'}]
+cx = min(i.x for i in corner)
+check('Corner card top right: MECHA LAB | ZBRUSH (ZBRUSH lit in Sculpt Mode), STYLE ZBrush | Blender',
+      len(corner) == 4 and cx > W * 0.7 and min(i.y for i in corner) > H * 0.85
+      and next(i for i in corner if i.label == 'ZBRUSH').on and next(i for i in corner if i.label == 'ZBrush').on)
+top = [i for i in items if i.kind == 'card'][0]
+cc = zu.corner_box(CTX, W, H, 1.0)
+check('... the ZBrush top shelf keeps clear of it', top.x + top.w <= cc[0] + 1 or top.y + top.h <= cc[1] + 1,
+      (top.x + top.w, cc[0]))
+ub.run(CTX, next(i for i in corner if i.label == 'MECHA LAB'))
+check('MECHA LAB: back to Object Mode', C.mode == 'OBJECT')
+ub.run(CTX, next(i for i in corner if i.label == 'ZBRUSH'))
+check('ZBRUSH: Sculpt Mode on the active mesh', C.mode == 'SCULPT')
 zs.on = real_on
+zs.set_style('BLENDER')
+real_tab = zs.mecha_tab
+zs.mecha_tab = lambda c: True
+ub.bump()
+blender_items = ub.all_items(CTX)
+check('Blender style: Blender sculpting, only the corner card (no ZBrush keys: on() is off)',
+      not zs.on(C) and {i.label for i in blender_items if i.kind == 'seg'} == {'MECHA LAB', 'ZBRUSH', 'ZBrush',
+                                                                               'Blender'})
+check('... no ZBrush canvas navigation either', not zs.nav_on(C))
+zs.set_style('ZBRUSH')
+check('ZBrush style: canvas navigation on in Object and Sculpt Mode (MECHA LAB tab)', zs.nav_on(C))
+bpy.ops.object.mode_set(mode='OBJECT')
+kms = [(it.type, it.ctrl, it.alt) for k in C.window_manager.keyconfigs.addon.keymaps if k.name == 'Object Mode'
+       for it in k.keymap_items if it.idname == 'mch.zb_obj_press']
+check('Object Mode, Select / Move: the empty canvas turns the view (Alt move, Ctrl box select), objects still '
+      'select / move', len(kms) == 4 and 'over_object' in inspect.getsource(zs.MCH_OT_zb_obj_press.invoke)
+      and 'select_box' in inspect.getsource(zs.MCH_OT_zb_obj_press.invoke))
+
+
+class Ev:
+    def __init__(self, t, v='NOTHING', x=100, y=100, alt=False):
+        self.type, self.value, self.mouse_x, self.mouse_y, self.alt = t, v, x, y, alt
+
+
+r = zs.RMBDrag()
+r.rmb_drag_start(C, Ev('RIGHTMOUSE', 'PRESS'))
+released = (r.rmb_drag_check(C, Ev('RIGHTMOUSE', 'RELEASE')), r.rmb_drag_check(C, Ev('MOUSEMOVE', x=200)))
+check('Right button: a click still opens the menu (moving after the release does not turn the view)',
+      released == (False, False))
+src = inspect.getsource(__import__('mecha_lab.cut_engine', fromlist=['x']).GateLogic.modal)
+src2 = inspect.getsource(__import__('mecha_lab.actions_menu', fromlist=['x']).MCH_OT_actions_menu)
+check('... a right-drag turns the view in every Mecha tool and in Select / Move (ZBrush style)',
+      'rmb_drag_check' in src and 'rmb_drag_check' in src2)
+zs.mecha_tab = real_tab
 summary()

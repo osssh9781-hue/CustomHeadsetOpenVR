@@ -171,8 +171,14 @@ def items(context, region_w, region_h, k=1.0, left=None, right=None):
     sep = 14.0 * k
     from . import ui_bars
     inset = ui_bars.top_inset(context)             # 0.24.59 under Blender's see-through header rows
+    corner = 0.0
+    try:                                             # 0.24.60 the MECHA LAB / ZBRUSH card in the corner
+        from . import zb_ui
+        corner = zb_ui.corner_reserve(context, region_w, region_h, k)
+    except (ImportError, AttributeError, TypeError, ReferenceError):
+        pass
     for full in ((True, False) if panel_top is not None else (False,)):
-        r_edge = region_w if full else right
+        r_edge = (region_w - corner) if full else min(right, region_w - corner)
         l_edge = l_low if full else left
         avail = max(300.0 * k, r_edge - l_edge - 24 * k)
         rows = rows_of(gs, avail - 2 * PAD * k, k)
