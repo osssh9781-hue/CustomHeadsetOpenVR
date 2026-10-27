@@ -1,8 +1,17 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.65 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.66 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000. 0.24.66 Fast Decimate · 크래쉬 대비 저장 (미검증)
+- [ ] 알파를 고른 뒤에도 S / 우클릭 = 원래 조절 메뉴, 우클릭 드래그 = 화면 회전(알파 창이 뜨지 않음)
+- [ ] 지브러시 화면 Decimation: Decimate Current 뒤 메시지에 "… N threads"가 나오는지("(Blender)"가 나오면 엔진이 안 실린 것 — 콘솔 메시지를 보내 주세요)
+- [ ] 큰 메쉬(100만 면 이상)에서 블렌더 Decimate보다 빠른지, 모양 · 마스크 · 폴리그룹 · 폴리페인트가 남는지
+- [ ] Even Tris(삼각형이 고른지) · Allow Quads · Keep Mask(마스크된 곳이 촘촘한지) · Keep Groups · Keep Borders
+- [ ] 조각하다 3초 멈추면 콘솔에 "[Mecha Lab] Safety Save (quiet moment)", 획 도중엔 저장 안 됨, 저장할 때 멈칫하는 시간
+- [ ] DynaMesh / Decimate 직전 사본("Safety Save before ZBrush …")
+- [ ] 크래쉬 뒤 다시 켜면 복구 창(시험: 작업 관리자에서 Blender 끝내기 → 다시 실행), Open Recovery Copy로 열리는지
 
 ## A000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000. 0.24.60 ~ 0.24.65 지브러시 화면 · Ctrl+Z (미검증)
 - [ ] MECHA LAB 탭에서 조각 모드 = 주황 지브러시 화면, 오른쪽 위 MECHA LAB | ZBRUSH / STYLE ZBrush | Blender 전환

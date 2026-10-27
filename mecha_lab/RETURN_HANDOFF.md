@@ -1,4 +1,10 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.65 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.66 (Claude Code, 2026-10-14)
+
+## 0.24.66
+- ZIP sha256 `72f3eb3df2b857373ef1fff098b7a8a959b0d86eab7675d0aa891bc261ff95b0`.
+- `tools_dev/native/mdecim.c`(새, 순수 C, Python API 없음 → ctypes로 어떤 Blender에서나): `mdecim_run(V, nv, F, nf, target, opts, locked, weight, feat, nfeat, outV, outF, outVsrc, outFsrc, &out_nv, &out_nf)`, `mdecim_version()`(3). QEM(면 평면 + 열린 가장자리 / 폴리그룹 경계 평면, 넓이 가중), 최적점(3x3, 모서리 근처일 때) 또는 양 끝 / 가운데, 링크 조건(다양체 유지), 접힘 · 얇은 삼각형 검사, 힙 + 버전 번호. 큰 메쉬: 면 중심으로 스레드 수만큼 블록(히스토그램 이분) → 블록마다 이음 점은 건드리지 않고 목표의 약 3배까지 → 전체 한 번(쿼드릭은 이어받음 = 원래 표면 기준 오차). 각 붕괴가 점 하나를 남기므로 `outVsrc` / `outFsrc` = 원래 점 / 삼각형. `opts`: boundary_weight, min_quality / quality_weight(Even Tris), lock_boundary, threads. 빌드: `build_mdecim.sh`(gcc / x86_64-w64-mingw32-gcc, Windows = Win32 스레드, KERNEL32 + msvcrt만).
+- `fast_decimate.py`(새): `lib()`(Windows는 DLL을 add-on 사용자 폴더로 복사해 로드 — 업데이트 시 파일 잠김 방지), `run(...)`, `decimate_object(ob, keep_percent, even, quads, keep_mask, keep_groups, keep_borders)`(loop_triangles → 엔진 → `clear_geometry` + foreach_set, 속성: POINT = vsrc, FACE = polygon_index[fsrc], CORNER = 원래 코너(같은 점일 때) 아니면 그 점의 첫 코너; EDGE 속성은 버림), `group_borders`(`.sculpt_face_set` 경계 → feat), `join_quads`(bmesh.ops.join_triangles), `blender_decimate`(엔진이 없을 때). `zb_sculpt.run('DECIMATE')`가 사용, Scene.mch_zb에 dec_even / dec_quads / dec_mask / dec_groups / dec_borders.
+- `safety_save.py`: `idle_ok` 모드 = QUIET_MODES(Object · Sculpt · 페인트), `watch()`(0.5초 타이머: 모달 연산자 = BUSY, 조각 · 페인트 · 메쉬 · 변형 · MCH(보기 / nav 제외) = EDITED), `rested()`(pref `safety_rest`), `changed()`(EDITED > LAST), `note_edit()`(zb_press 획 시작 · zb_action), `before_risky(why)`(zb_sculpt.RISKY 동작 직전, 15초 간격), `save_now`는 `compress=False` + `write_marker()`. 크래쉬: `marker_path` = 폴더/session_<pid>.json(pid · file · beat · recovery · saved), 1분 HEARTBEAT, atexit / unregister에서 삭제, `find_crashed()`(pid가 없거나 10분 넘게 갱신 없음), `check_crash()`(사본 → `_crash_%Y%m%d_%H%M%S.blend`, 3개까지), `_offer`(2초 뒤 타이머 → `MCH_OT_safety_crash` invoke_props_dialog), `crash_text`. depsgraph_update_post / load_post 핸들러(persistent).
 
 ## 0.24.60 ~ 0.24.65
 - ZIP sha256 `1185379e92e53b1dbe97eaad10f0110a09e5f29d85d458e4c390ff0c8de533b2`.

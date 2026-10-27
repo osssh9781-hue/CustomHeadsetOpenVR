@@ -1,6 +1,6 @@
-# Mecha Lab 0.24.65 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.24.66 — 설치 · MECHA LAB Workspace · 사용법
 
-> **검증 수준:** Linux headless Blender **5.0.1 · 5.2.3**(`bpy`)에서 자동 테스트 161개 파일 / 4394개 항목을 돌렸습니다(결과: `test_report.md`).
+> **검증 수준:** Linux headless Blender **5.0.1 · 5.2.3**(`bpy`)에서 자동 테스트 163개 파일 / 4445개 항목을 돌렸습니다(결과: `test_report.md`).
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` A절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
 
