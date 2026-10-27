@@ -1,5 +1,10 @@
 # KNOWN LIMITATIONS — Mecha Lab 0.18.0
 
+## 0.24.53
+- Ramp: Base Mesh 램프는 Edge 폭이 깊이를 따라가서 Depth를 바꾸면 바닥 배치를 다시 만듦(깊은 쪽 변경만 빨라짐). Cut Ramp는 폭이 고정이라 Depth 변경도 재사용될 수 있음.
+- 램프 뒤 편집이 감지되면 램프는 확정되고 더 이상 < > / 슬라이더로 바뀌지 않음(편집을 지키기 위해).
+- 그룹 Repetition Cursor 중심은 고를 때의 커서 위치에 고정(나중에 커서를 옮겨도 그대로).
+
 ## 0.24.52
 - 파트 대칭의 Radial 중심 / Count / 축은 씬 전체에 하나(Point Radial Symmetry와 같은 것) — 파트마다 다른 Count는 그룹 Repetition으로.
 - Kaleido 파트에 Alt+X를 쓰면 미러 평면은 래디얼 중심을 지남(한 원점). 다른 중심이 필요하면 Mirror만 쓰거나 그룹 Repetition.

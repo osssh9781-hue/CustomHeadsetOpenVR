@@ -1,4 +1,14 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.52 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.53 (Claude Code, 2026-10-14)
+
+## 0.24.53
+- ZIP sha256 `fe29040e0980de94e33af1f282342b12d01a25aa1604c49c4f37d25e7fcda488`.
+- `rim_sweep.ensure_group(n, fast)`: fast = `MCH_RimSweep5_<n>`(띠 UNION EXACT + Self Intersection → DIFFERENCE MANIFOLD), 아니면 예전 `MCH_RimSweep4_<n>`. `finish`: 입력이 닫힌 메시면 fast, `_clean`(열린 모서리 0, 부피 0.5~1.0001배) 실패 시 slow. `miter(total, k)` = 2·s/|s|², 3배 제한.
+- `concept_move.MCH_OT_concept_path._run`: `generate(ob.data, lambda co: run_path(co, moves))` 한 번. 기록은 `{'kind': 'path', 'moves': [...]}` 하나, `replay_one`이 처리.
+- `surface_draw._carve_fills`: `_layout_key`(대상 메시 좌표 md5 + 행렬 + 외곽선 + 투영 + edge/profile/segments/fine/soft) → `_LAYOUT` 1개 캐시, `_carve_layout`이 원래 배치 계산, 법선 평활은 매번(height에 따라). `ramp_edit.fingerprint / stamp / edited`: 카브 직후 stamp, recarve 전에 다르면 `finish` 후 CutError.
+- `quad_remesh`: `bevel` / `bevel_edges`(OUTER/ALL), `edge_weights`, `set_bevel`(BEVEL `MCH_Quad_Bevel`, WEIGHT, segments 2, clamp, harden normals, MITER_ARC), Apply 시 적용.
+- `groups`: `repeat_center`(WORLD 기본 / GROUP / CURSOR), `_place_carrier`(WORLD = 부모 없음·원점, CURSOR = 저장된 커서 위치, GROUP = 핸들 자식), `make_real`은 캐리어 행렬 기준. 카드에 Centre 줄.
+- `symmetry._anchor`: 뷰포트 오른쪽(겹치는 UI 영역 폭만큼 안쪽), 높이 42%.
+- `mecha_menu.build`: PROFILE 카드 아래 'Lasso' 섹션 + 6열 모양 타일.
 
 ## 0.24.52
 - ZIP sha256 `b0638f3431dc43530b07a5c224ff4b846923476ddd0b686f7c7b581b43aaab25`.

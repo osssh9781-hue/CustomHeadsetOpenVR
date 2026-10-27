@@ -1,8 +1,17 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.52 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.53 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000. 0.24.53 (미검증)
+- [ ] 그룹 Repetition Mirror가 월드 X 평면 건너편에 생기는지, 카드 Centre World / Group / Cursor
+- [ ] Symmetry 카드가 뷰포트 오른쪽(사이드바 왼쪽)에 뜨고 물체를 가리지 않는지
+- [ ] Base Mesh에서 우클릭 메뉴에 Lasso 줄이 보이고 눌러서 모양이 바뀌는지
+- [ ] 촘촘한 부품에 GN Chamfer / Bevel 컷이 빨라졌는지, 모서리 폭이 고른지
+- [ ] Path Move Stretch가 빨리 끝나고 결과가 깨끗한지
+- [ ] Ramp: 깊은 쪽 < > 가 빨라졌는지, 램프 뒤 Edit Mode에서 점을 옮긴 다음 Soft를 움직여도 편집이 남는지
+- [ ] Quad Remesh Bevel Edges 켜기, Outer / All, 폭·단 수, Apply
 
 ## A0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000. 0.24.52 (미검증)
 - [ ] 메뉴 Shading: Flat / Auto Smooth / Smooth가 선택한 파트에 바로 적용되는지
