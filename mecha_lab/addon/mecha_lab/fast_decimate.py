@@ -29,6 +29,7 @@ import numpy as np
 import bpy
 
 VERSION = 3                 # engine API this module talks to
+SHAPE_TIE = 0.02           # the small shape term of plain decimation (Even Tris: 1.0)
 MASK_WEIGHT = 24.0          # a fully masked point's collapse cost x (1 + this): about 2x the density there
 _LIB = [None]               # the loaded library, False = none for this system
 
@@ -119,7 +120,9 @@ def run(V, F, target, even=False, keep_borders=False, locked=None, weight=None, 
         nfeat = len(feat)
     else:
         feat = None
-    o = _Opts(1000.0, 0.25 if even else 0.0, 1.0 if even else 0.0, 1 if keep_borders else 0,
+    # 0.24.70 plain decimation keeps a small shape term too: on flat parts every collapse costs 0, without it the
+    # slivers piled up and most collapses failed again and again (a 357k-triangle hard-surface part: 7 s -> 0.6 s)
+    o = _Opts(1000.0, 0.25 if even else 0.0, 1.0 if even else SHAPE_TIE, 1 if keep_borders else 0,
               nthreads or threads())
     nv = ctypes.c_int()
     nf = ctypes.c_int()
