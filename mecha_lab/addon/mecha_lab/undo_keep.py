@@ -174,6 +174,10 @@ def restore(scene):
             scale, angle, mode, rake = keep['slot']
             slot = b.texture_slot
             if tuple(slot.scale) != scale or slot.angle != angle or slot.map_mode != mode or slot.use_rake != rake:
-                slot.scale, slot.angle, slot.map_mode, slot.use_rake = scale, angle, mode, rake
+                for attr, val in (('scale', scale), ('angle', angle), ('map_mode', mode), ('use_rake', rake)):
+                    try:                               # (0.24.69 a map mode the brush cannot take now - e.g. no
+                        setattr(slot, attr, val)       # texture: no Area Plane - stopped the whole restore)
+                    except (TypeError, ValueError, AttributeError):
+                        pass
                 changed.append('brush.slot')
     return changed

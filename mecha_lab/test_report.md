@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.68
+# Test Report — Mecha Lab 0.24.69
+
+## 0.24.69 결과: Blender 5.2.3 bpy에서 관련 테스트 16개 파일 통과(`tests/test_log_v02469_fix.txt`): test_v02469_zbfix 14/14(Extract 실제 실행 · 브러시 아닌 도구는 블렌더로 · 실루엣 판정(가짜 정사영 뷰: 10 px 밖 = 획, 40 px 밖 = 회전, 먼 곳은 계산 없음) · 데시메이트 후 Ctrl+Z 한 번에 조각 모드 원래 메쉬 · Ctrl+Shift+Z · add-on 전체 블렌더 명령 설정 대조), test_v02468_holes 5/5(구멍 직행 Manifold · 고른 챔퍼 · 0.25초 안 · 작은 구멍 폭 제한 · 모서리 근처 고른 폭), 지브러시 · GN Edge 기존 테스트. 0.24.68 전체: 5.2.3 163개 파일 4,454/4,454. 실제 마우스 · 펜 · 타일 도구 전환(창 필요)은 미검증.
 
 ## 0.24.68 결과: 켜기 수정 — test_v02499 36/36(새: 블렌더 시작 때의 제한 상태에서 add-on 전체 등록 + Safety Save 시작 + 표시 파일), test_v02483 14/14, test_v02494 34/34, test_v02498 24/24를 Blender 5.2.3 · 5.0.1 bpy에서 통과(`tests/test_log_v02468_start.txt`). 0.24.67 코드는 같은 시험에서 사용자 화면과 같은 "'_RestrictData' object has no attribute 'filepath'"가 남(재현 확인). 실제 Windows 블렌더 시작은 미검증.
 

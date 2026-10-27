@@ -1,0 +1,35 @@
+== test_v02469_zbfix.py
+14/14 passed
+== test_v02468_holes.py
+5/5 passed
+== test_v02492.py
+(fixed below: test_v02492 80/80 after pointing the source check at extract())
+79/80 passed
+== test_v02493.py
+50/50 passed
+== test_v02494.py
+34/34 passed
+== test_v02496.py
+27/27 passed
+== test_v02498.py
+24/24 passed
+== test_v02499.py
+36/36 passed
+== test_v02473.py
+18/18 passed
+== test_v02469.py
+45/45 passed
+== test_v02461.py
+12/12 passed
+== test_v02464.py
+12/12 passed
+== test_v02467.py
+10/10 passed
+== test_v02476.py
+9/9 passed
+== test_v02487.py
+3/3 passed
+== test_v02489.py
+38/38 passed
+== test_v02492.py (rerun)
+80/80 passed

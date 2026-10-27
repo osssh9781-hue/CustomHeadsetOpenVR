@@ -188,7 +188,7 @@ bpy.ops.object.mode_set(mode='SCULPT')
 nb0 = len(bpy.data.objects)
 r = act('GROUPS_SPLIT')
 check('Groups Split: one SubTool per polygroup', len(bpy.data.objects) == nb0 + 1 and r.startswith('Groups Split'), r)
-src = inspect.getsource(zs.run)
+src = inspect.getsource(zs.run) + inspect.getsource(zs.extract)      # (0.24.69 Extract in its own function)
 check('Auto Groups / Polygroup from mask / Mask By Cavity / Mirror And Weld / Extract use Blender sculpt operators',
       all(op in src for op in ('face_sets_init', "face_sets_create(mode='MASKED')", 'mask_from_cavity',
                                 'sculpt.symmetrize', 'paint_mask_extract', 'mask_flood_fill')))

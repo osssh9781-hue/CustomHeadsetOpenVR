@@ -1299,10 +1299,91 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
 
 # --- actions ------------------------------------------------------------------------------------------------------
 
+# 0.24.69 a shelf action that leaves Sculpt Mode to change the mesh (Decimate, Duplicate, Merge ...): Ctrl+Z took two
+# presses (the first undid an empty sculpt step) and came back in Object Mode.  Now the Object Mode part is kept as
+# two whole-file undo steps (before / after), and in the ZBrush screen Ctrl+Z / Ctrl+Shift+Z that leaves Sculpt Mode
+# goes straight back into it (on the SubTool that was sculpted).
+RESCULPT = 'mch_zb_resculpt'
+_REC = {'name': '', 'before': False, 'after': False}
+_PRE = {'mode': '', 'ob': ''}
+
+
 def _mode(context, mode):
     ob = context.active_object
-    if ob is not None and ob.mode != mode:
-        bpy.ops.object.mode_set(mode=mode)
+    if ob is None or ob.mode == mode:
+        return
+    rec = _REC['name']
+    if rec and mode == 'SCULPT' and ob.mode == 'OBJECT':      # the changed mesh, as a step of its own
+        context.scene[RESCULPT] = ob.name
+        undo_step(rec)
+        _REC['after'] = True
+    bpy.ops.object.mode_set(mode=mode)
+    if rec and mode == 'OBJECT' and not _REC['before']:      # the mesh as it was, before the change
+        context.scene[RESCULPT] = ob.name
+        undo_step(rec + ' (before)')
+        _REC['before'] = True
+
+
+def _resculpt_later():
+    """After Ctrl+Z / Ctrl+Shift+Z landed on a shelf action's Object Mode step: back into Sculpt Mode."""
+    try:
+        ctx = bpy.context
+        scene = ctx.scene
+        name = scene.get(RESCULPT) if scene else None
+        if not name:
+            return None
+        del scene[RESCULPT]
+        ob = bpy.data.objects.get(name)
+        wm = ctx.window_manager
+        if ob is None or ob.type != 'MESH':
+            return None
+
+        def go():
+            if bpy.context.mode == 'EDIT_MESH':
+                bpy.ops.object.mode_set(mode='OBJECT')
+            if bpy.context.mode == 'OBJECT':
+                bpy.context.view_layer.objects.active = ob
+                ob.select_set(True)
+                bpy.ops.object.mode_set(mode='SCULPT')
+        if wm and wm.windows:
+            win = wm.windows[0]
+            with ctx.temp_override(window=win, screen=win.screen):
+                go()
+        else:                                          # (no window: tests)
+            go()
+        _bump()
+    except Exception as ex:
+        print('[Mecha Lab] ZBrush undo back to Sculpt Mode:', ex)
+    return None
+
+
+@bpy.app.handlers.persistent
+def _on_undo_redo_pre(scene, *_args):
+    try:
+        ctx = bpy.context
+        ob = ctx.active_object
+        _PRE.update(mode=ctx.mode, ob=ob.name if ob is not None else '')
+    except (AttributeError, ReferenceError):
+        _PRE.update(mode='', ob='')
+
+
+@bpy.app.handlers.persistent
+def _on_undo_redo(scene, *_args):
+    """Sculpting in the ZBrush screen, Ctrl+Z / Ctrl+Shift+Z came out of Sculpt Mode: back into it."""
+    try:
+        if scene is None or style() != 'ZBRUSH' or _PRE['mode'] != 'SCULPT' or \
+                bpy.context.mode not in {'OBJECT', 'EDIT_MESH'}:
+            return
+        ob = bpy.data.objects.get(_PRE['ob']) or bpy.context.active_object
+        if ob is None or ob.type != 'MESH':
+            return
+        scene[RESCULPT] = ob.name
+    except (AttributeError, ReferenceError, TypeError):
+        return
+    if bpy.app.background:
+        _resculpt_later()
+    elif not bpy.app.timers.is_registered(_resculpt_later):
+        bpy.app.timers.register(_resculpt_later, first_interval=0.0)
 
 
 def switch_to(context, ob):
@@ -1570,6 +1651,28 @@ def _edited():
     safety_save.note_edit()
 
 
+def extract(context, ob, thick):
+    """ZBrush Extract: the masked part as a new SubTool (Blender Mask Extract), ``thick`` thick (its Solidify).
+    0.24.69 Blender's operator has no thickness setting (0.24.60 passed one: Extract always failed) - the
+    thickness goes on the Solidify modifier it adds."""
+    before = set(bpy.data.objects)
+    props = bpy.ops.sculpt.paint_mask_extract.get_rna_type().properties
+    kw = {k: v for k, v in (('mask_threshold', 0.5), ('add_boundary_loop', True), ('smooth_iterations', 4),
+                            ('apply_shrinkwrap', True), ('add_solidify', thick > 0)) if k in props}
+    r = bpy.ops.sculpt.paint_mask_extract(**kw)
+    new = [o for o in bpy.data.objects if o not in before]
+    if 'FINISHED' not in r or not new:
+        return 'Extract: nothing came out (a mask above half strength is needed)'
+    for o in new:
+        o.name = ob.name + '_Extract'
+        for m in o.modifiers:
+            if m.type == 'SOLIDIFY':
+                m.thickness = thick
+    switch_to(context, ob)                          # ZBrush: the SubTool you were on stays the one sculpted
+    _mode(context, 'SCULPT')
+    return f'Extract: {new[0].name}'
+
+
 def run(context, action):
     """Do one ZBrush shelf action; '' when fine, else a short report."""
     ob = context.active_object
@@ -1617,8 +1720,7 @@ def run(context, action):
         if not _mask_values(ob).any():
             return 'Extract: paint a mask first (Ctrl + drag on the model)'
         _mode(context, 'SCULPT')
-        bpy.ops.sculpt.paint_mask_extract(thickness=zb.thick, apply_solidify=zb.thick > 0)
-        return 'Extract: new SubTool'
+        return extract(context, ob, zb.thick)
     if action == 'DIVIDE':
         _mode(context, 'SCULPT')
         return f'Divide: SDiv {_divide(context, ob)}'
@@ -1970,14 +2072,23 @@ class MCH_OT_zb_action(_ZBPoll, bpy.types.Operator):
     action: StringProperty()
 
     def execute(self, context):
+        step = 'ZBrush ' + self.action.replace('_', ' ').title()
+        if self.action not in SETTING_ACTIONS and context.mode == 'SCULPT':
+            _REC.update(name=step, before=False, after=False)
         try:
             msg = run(context, self.action)
         except RuntimeError as ex:
             msg = str(ex).splitlines()[0]
+        finally:
+            recorded = _REC['after']
+            _REC.update(name='', before=False, after=False)
+            if RESCULPT in context.scene:              # (only the two stored steps carry it)
+                del context.scene[RESCULPT]
         if msg:
             self.report({'INFO'}, msg)
         if self.action not in SETTING_ACTIONS:
-            undo_step('ZBrush ' + self.action.replace('_', ' ').title())
+            if not recorded:
+                undo_step(step)
             _edited()
         _bump()
         return {'FINISHED'}
@@ -2073,6 +2184,58 @@ def plan(ctrl, shift, alt):
     return 'STROKE', 'ROTATE'
 
 
+EDGE_GRACE = 0.5             # 0.24.69 part of the brush radius that may be off the model at the silhouette
+
+
+def brush_px(context):
+    """The brush radius on screen (px); scene-locked sizes: a middle guess."""
+    u, b = unified(context), brush(context)
+    src = u if u is not None and getattr(u, 'use_unified_size', False) else b
+    if src is None:
+        return 50.0
+    if getattr(src, 'use_locked_size', 'VIEW') == 'SCENE':
+        return 50.0
+    return float(getattr(src, 'size', 50))
+
+
+def near_model(context, x, y, frac=EDGE_GRACE):
+    """0.24.69 A press just off the silhouette while the brush circle already reaches the model counts as on it
+    (the exact cursor point decided before: strokes along the outline turned the view instead).  8 points round
+    the cursor at ``frac`` x the brush radius, against the SubTool only; a quick screen box test first (so a press
+    on the open canvas costs nothing)."""
+    from bpy_extras import view3d_utils
+    import math
+    ob = context.active_object
+    region, rv3d = getattr(context, 'region', None), getattr(context, 'region_data', None)
+    if ob is None or ob.type != 'MESH' or region is None or rv3d is None:
+        return False
+    r = brush_px(context) * frac
+    if r < 2.0:
+        return False
+    mw = ob.matrix_world
+    pts = [view3d_utils.location_3d_to_region_2d(region, rv3d, mw @ Vector(c)) for c in ob.bound_box]
+    pts = [p for p in pts if p is not None]
+    if len(pts) == 8 and not (min(p.x for p in pts) - r <= x <= max(p.x for p in pts) + r
+                              and min(p.y for p in pts) - r <= y <= max(p.y for p in pts) + r):
+        return False
+    try:
+        dg = context.evaluated_depsgraph_get()
+        inv = mw.inverted()
+    except (RuntimeError, ValueError):
+        return False
+    for k in range(8):
+        a = k * math.pi / 4.0
+        px, py = x + r * math.cos(a), y + r * math.sin(a)
+        o = view3d_utils.region_2d_to_origin_3d(region, rv3d, (px, py))
+        d = view3d_utils.region_2d_to_vector_3d(region, rv3d, (px, py))
+        try:
+            if ob.ray_cast(inv @ o, (inv.to_3x3() @ d).normalized(), depsgraph=dg)[0]:
+                return True
+        except (RuntimeError, ValueError):
+            return False
+    return False
+
+
 def object_under(context, x, y):
     """The (original) object under region px (x, y), or None."""
     from bpy_extras import view3d_utils
@@ -2164,6 +2327,8 @@ class MCH_OT_zb_press(_ZBPoll, bpy.types.Operator):
             restore_alpha(context)                       # 0.24.65 the brush's alpha back (after a reopen / undo)
         except (RuntimeError, AttributeError, OSError):
             pass
+        if not tool_is_brush(_tool_id(context)):         # 0.24.69 ClipCurve / TrimCurve / TrimLasso / Move ...:
+            return {'PASS_THROUGH'}                       # Blender's own tool takes the press (was a brush stroke)
         model, canvas = plan(event.ctrl, event.shift, event.alt)
         if event.alt and not event.ctrl and not event.shift:     # ZBrush: Alt + click another SubTool picks it
             other = object_under(context, event.mouse_region_x, event.mouse_region_y)
@@ -2184,7 +2349,12 @@ class MCH_OT_zb_press(_ZBPoll, bpy.types.Operator):
                 return {'FINISHED'}
             return {'CANCELLED'}
         elif model == 'STROKE':
-            r = bpy.ops.sculpt.brush_stroke('INVOKE_DEFAULT', **stroke_kwargs('STROKE')[0])
+            kw = stroke_kwargs('STROKE')[0]
+            r = bpy.ops.sculpt.brush_stroke('INVOKE_DEFAULT', **kw)
+            if not ('RUNNING_MODAL' in r or 'FINISHED' in r) and 'ignore_background_click' in kw and \
+                    near_model(context, event.mouse_region_x, event.mouse_region_y):
+                kw['ignore_background_click'] = False      # 0.24.69 at the silhouette: still a stroke
+                r = bpy.ops.sculpt.brush_stroke('INVOKE_DEFAULT', **kw)
             if 'RUNNING_MODAL' in r or 'FINISHED' in r:
                 _edited()
                 return {'FINISHED'}
@@ -2196,6 +2366,10 @@ class MCH_OT_zb_press(_ZBPoll, bpy.types.Operator):
                 bpy.ops.wm.tool_set_by_id(name='builtin_brush.mask')
                 bpy.ops.mch.zb_restore_tool('INVOKE_DEFAULT', tool=swapped)
             r = bpy.ops.sculpt.brush_stroke('INVOKE_DEFAULT', **kw)
+            if not ('RUNNING_MODAL' in r or 'FINISHED' in r) and model in {'ZSUB', 'SMOOTH'} and \
+                    'ignore_background_click' in kw and near_model(context, event.mouse_region_x, event.mouse_region_y):
+                kw['ignore_background_click'] = False      # 0.24.69 at the silhouette: still a stroke (Alt / Shift)
+                r = bpy.ops.sculpt.brush_stroke('INVOKE_DEFAULT', **kw)
             if 'RUNNING_MODAL' in r or 'FINISHED' in r:
                 _edited()
                 return {'FINISHED'}
@@ -2250,6 +2424,11 @@ class MCH_OT_zb_press(_ZBPoll, bpy.types.Operator):
                 context.area.tag_redraw()
             return {'CANCELLED'}
         return {'RUNNING_MODAL'}
+
+
+def tool_is_brush(idname):
+    """A painting tool (the ZBrush press runs a brush stroke); else a gesture / transform tool (its own press)."""
+    return idname in {'builtin.brush', ''} or idname.startswith('builtin_brush')
 
 
 def _tool_id(context):
@@ -2870,6 +3049,12 @@ def register():
     zb_highpoly.register()
     if _on_load not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(_on_load)
+    for lst in (bpy.app.handlers.undo_post, bpy.app.handlers.redo_post):
+        if _on_undo_redo not in lst:
+            lst.append(_on_undo_redo)
+    for lst in (bpy.app.handlers.undo_pre, bpy.app.handlers.redo_pre):
+        if _on_undo_redo_pre not in lst:
+            lst.append(_on_undo_redo_pre)
 
 
 def unregister():
@@ -2877,6 +3062,12 @@ def unregister():
     zb_highpoly.unregister()
     while _on_load in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_on_load)
+    for lst in (bpy.app.handlers.undo_post, bpy.app.handlers.redo_post):
+        while _on_undo_redo in lst:
+            lst.remove(_on_undo_redo)
+    for lst in (bpy.app.handlers.undo_pre, bpy.app.handlers.redo_pre):
+        while _on_undo_redo_pre in lst:
+            lst.remove(_on_undo_redo_pre)
     lasso_hide()
     stamp_hide()
     for km, kmi in _keymaps:
