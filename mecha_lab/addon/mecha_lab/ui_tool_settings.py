@@ -487,7 +487,22 @@ def draw_remesh(layout, context):
     layout.operator('mch.sculpt_move', icon='BRUSH_DATA')
     layout.separator()
     layout.prop(s, 'join_remesh')
-    layout.prop(s, 'voxel_size')
+    # 0.24.59 ZBrush numbers: points (the voxel size is worked out); Voxel Size stays as the other way
+    layout.row().prop(s, 'remesh_by', expand=True)
+    if s.remesh_by == 'POINTS':
+        layout.prop(s, 'target_points')
+        row = layout.row(align=True)
+        row.operator('mch.remesh_points', text='Half').factor = 0.5
+        row.operator('mch.remesh_points', text='Same').factor = 1.0
+        row.operator('mch.remesh_points', text='Double').factor = 2.0
+        from . import point_counts, voxel_for_points
+        ob = context.active_object
+        act, _tot = point_counts(context)
+        if ob is not None and ob.type == 'MESH' and act:
+            v = voxel_for_points(context, ob, s.target_points)
+            layout.label(text=f'Now {act:,} points  ->  about {s.target_points:,}  (voxel {v:.4f})')
+    else:
+        layout.prop(s, 'voxel_size')
     row = layout.row(align=True)
     row.prop(s, 'smooth_iterations')
     row.prop(s, 'smooth_factor')

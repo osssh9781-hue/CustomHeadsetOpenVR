@@ -131,7 +131,7 @@ def value_text(data, prop):
     if rna.type == 'BOOLEAN':
         return f'{name}  {"On" if v else "Off"}'
     if rna.type == 'INT':
-        return f'{name}  {v}'
+        return f'{name}  {v:,}' if abs(v) >= 10000 else f'{name}  {v}'   # 0.24.59 20,000 points
     if rna.subtype in {'ANGLE'}:
         import math
         return f'{name}  {math.degrees(v):.0f}°'
@@ -150,7 +150,11 @@ def drag_value(data, prop, start, dx, fine=False, px=None):
         if rna.type == 'INT':
             from .mecha_menu import _int_range
             lo, hi = _int_range(rna)
-            per = max(4.0, px / (hi - lo)) if 0 < hi - lo < 1e7 else 8.0
+            span = hi - lo
+            if 0 < span < 1e9 and px / span < 4.0:   # a big range (points): like a float, rounded
+                span = max(span, abs(start))
+                return int(max(rna.hard_min, min(rna.hard_max, round(start + dx * k * span / px))))
+            per = px / span if 0 < span < 1e9 else 8.0
             return int(max(rna.hard_min, min(rna.hard_max, round(start + dx * k / per))))
         span = rna.soft_max - rna.soft_min
         if not (0.0 < span < 1e6):

@@ -214,6 +214,15 @@ def content(context, x, width, k):
     for i, (label, action, ok) in enumerate(cells):
         out.append(Item('tbtn', x + i * (cw + GAP * k), y, cw, ROW * k, label, '', False, ok, action))
     y -= GAP * k
+    try:                                     # 0.24.59 ZBrush's Active / Total Points Count
+        from . import point_counts
+        act, tot = point_counts(context)
+        y -= 17 * k
+        out.append(Item('pnote', x, y, width, 17 * k, f'Active Points {act:,}   Total Points {tot:,}', '', False,
+                        True))
+        y -= 4 * k
+    except (ImportError, AttributeError, RuntimeError, ReferenceError):
+        pass
     rows = tree(context)
     active = getattr(context, 'active_object', None)
     inside = groups.scope(context)

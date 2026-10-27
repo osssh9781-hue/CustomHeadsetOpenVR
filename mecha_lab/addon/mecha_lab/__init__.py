@@ -566,6 +566,14 @@ class MCH_PG_Settings(bpy.types.PropertyGroup):
     fuse_smooth_factor: FloatProperty(name='Initial Smooth', default=0.8, min=0, max=2)
     join_remesh: BoolProperty(name='Join selected meshes first', default=True)
     voxel_size: FloatProperty(name='Voxel Size', default=0.025, min=0.0001, precision=4)
+    # 0.24.59 ZBrush numbers: how many points the remeshed mesh gets (the voxel size is worked out from it)
+    remesh_by: EnumProperty(name='Remesh By', default='POINTS', items=[
+        ('POINTS', 'Points', 'Say how many points (vertices) the result gets, like ZBrush\'s point count - the '
+                             'voxel size follows from the mesh size'),
+        ('VOXEL', 'Voxel Size', 'Blender\'s voxel size (a length)')])
+    target_points: bpy.props.IntProperty(name='Target Points', default=20000, min=200, soft_max=1000000,
+                                         description='About how many points (vertices) the remeshed mesh gets '
+                                                     '(ZBrush Active Points Count)')
     smooth_iterations: bpy.props.IntProperty(name='Smooth Iterations', default=2, min=0, max=30)
     smooth_factor: FloatProperty(name='Smooth Factor', default=0.55, min=0, max=2)
     apply_remesh: BoolProperty(name='Apply remesh + smooth', default=True)
@@ -1790,6 +1798,70 @@ class MCH_OT_sculpt_move(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def mesh_area_local(context, ob, voxel_weighted=False):
+    """Surface area of ``ob`` (with its modifiers) in its own units - the Remesh modifier works in those.
+    ``voxel_weighted``: each face counted by |nx| + |ny| + |nz| - how many voxel walls a slanted surface crosses
+    (a ball makes 1.5 x the points of a box of the same area)."""
+    import numpy as np
+    me = ob.evaluated_get(context.evaluated_depsgraph_get()).data
+    n = len(me.polygons)
+    if not n:
+        return 0.0
+    area = np.empty(n, dtype=np.float32)
+    me.polygons.foreach_get('area', area)
+    if voxel_weighted:
+        nrm = np.empty(n * 3, dtype=np.float32)
+        me.polygons.foreach_get('normal', nrm)
+        area = area * np.abs(nrm.reshape(-1, 3)).sum(axis=1)
+    return float(area.sum())
+
+
+def voxel_for_points(context, ob, points):
+    """0.24.59 The voxel size that gives about ``points`` vertices (a voxel remesh makes about one vertex per
+    voxel wall the surface crosses: points ~ weighted area / size^2).  0 when the mesh has no surface."""
+    a = mesh_area_local(context, ob, voxel_weighted=True)
+    if a <= 0.0 or points <= 0:
+        return 0.0
+    return max(1e-4, (a / float(points)) ** 0.5)
+
+
+def point_counts(context):
+    """(active points, total points) like ZBrush: the active mesh and every visible mesh, as shown (modifiers
+    included)."""
+    dg = context.evaluated_depsgraph_get()
+    active = getattr(context, 'active_object', None)
+    act = tot = 0
+    for o in context.visible_objects:
+        if o.type != 'MESH':
+            continue
+        try:
+            n = len(o.evaluated_get(dg).data.vertices)
+        except (RuntimeError, ReferenceError, AttributeError):
+            continue
+        tot += n
+        if o == active:
+            act = n
+    return act, tot
+
+
+class MCH_OT_remesh_points(bpy.types.Operator):
+    """Target Points from the active mesh's points: Half / Same / Double (like ZRemesher)"""
+    bl_idname = 'mch.remesh_points'
+    bl_label = 'Target Points'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    factor: FloatProperty(default=1.0)
+
+    def execute(self, context):
+        act, _tot = point_counts(context)
+        if not act:
+            self.report({'WARNING'}, 'Pick a mesh first')
+            return {'CANCELLED'}
+        s = context.scene.mch_settings
+        s.target_points = max(200, int(round(act * self.factor)))
+        s.remesh_by = 'POINTS'
+        return {'FINISHED'}
+
+
 class MCH_OT_remesh(bpy.types.Operator):
     bl_idname = 'mch.one_click_remesh'
     bl_label = 'Join + Voxel Remesh + Smooth'
@@ -1837,9 +1909,12 @@ class MCH_OT_remesh(bpy.types.Operator):
                 return {'CANCELLED'}
             ob = context.active_object
         # REMESH followed by Smooth; optionally apply immediately.
+        voxel = s.voxel_size
+        if getattr(s, 'remesh_by', 'VOXEL') == 'POINTS':         # 0.24.59 ZBrush point count
+            voxel = voxel_for_points(context, ob, s.target_points) or voxel
         remesh = ob.modifiers.new('MCH_VoxelRemesh', 'REMESH')
         remesh.mode = 'VOXEL'
-        remesh.voxel_size = s.voxel_size
+        remesh.voxel_size = voxel
         remesh.use_smooth_shade = True
         smooth = None
         if s.smooth_iterations > 0:
@@ -1854,7 +1929,12 @@ class MCH_OT_remesh(bpy.types.Operator):
             except RuntimeError as ex:
                 self.report({'ERROR'}, 'Remesh failed: ' + str(ex))
                 return {'CANCELLED'}
-        self.report({'INFO'}, 'Voxel remesh complete — high-poly topology, not quad retopology')
+        if s.apply_remesh:
+            self.report({'INFO'}, f'Voxel remesh: {len(ob.data.vertices):,} points'
+                        + (f' (asked {s.target_points:,})' if getattr(s, 'remesh_by', '') == 'POINTS' else '')
+                        + ' - high-poly topology, not quad retopology')
+        else:
+            self.report({'INFO'}, 'Voxel remesh complete — high-poly topology, not quad retopology')
         return {'FINISHED'}
 
 
@@ -1893,7 +1973,7 @@ CLASSES = (
     MCH_OT_boolean, MCH_OT_slice, MCH_OT_surface_cut, MCH_OT_draw_path, MCH_OT_path_handles_all,
     MCH_OT_edit_handles, MCH_OT_double_click, MCH_OT_point_radius,
     MCH_OT_bake_live, MCH_OT_save_asset, MCH_OT_insert_asset,
-    MCH_OT_sculpt_move, MCH_OT_remesh,
+    MCH_OT_sculpt_move, MCH_OT_remesh, MCH_OT_remesh_points,
     MCH_OT_select_tool, MCH_MT_tool_menu, *mask_tools.CLASSES,
     *radial_array.CLASSES[:-1],
     *cut_tools.CLASSES,
