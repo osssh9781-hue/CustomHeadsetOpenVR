@@ -2255,6 +2255,12 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
                                             'off = the 0.12 round buttons')
     tool_strip: BoolProperty(name='Tool Strip', default=True,
                              description='0.24.58 every tool, grouped by job, in a column at the left of the viewport')
+    safety_save: BoolProperty(name='Safety Save', default=True,
+                              description='0.24.58 a recovery copy of the whole file in the temp folder before heavy steps '
+                                          'and while idle (your own file and Blender settings are not touched)')
+    safety_minutes: FloatProperty(name='Every (min)', default=3.0, min=0.0, max=60.0,
+                                  description='At most one recovery copy per this many minutes (0 = before every '
+                                              'heavy step)')
     toolbar_labels: BoolProperty(name='Names Under Icons', default=True)
     toolbar_size: EnumProperty(name='Toolbar Size', items=[('S', 'S', ''), ('M', 'M', ''), ('L', 'L', '')], default='M')
     icon_scale: FloatProperty(name='Panel Icons', default=1.0, min=0.5, max=2.5, subtype='FACTOR',
@@ -2277,6 +2283,8 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
 
     def draw(self, context):
         layout = self.layout
+        from . import safety_save
+        safety_save.draw_prefs(layout, self)
         box = layout.box()
         box.label(text='Bottom toolbar / keys (0.12)')
         row = box.row()

@@ -608,7 +608,9 @@ def boolean_result(context, target, cutter, operation, solver='AUTO',
     try:
         return _boolean_result(context, target, cutter, operation, solver, hole_tolerant, allow_empty)
     except CutError as ex:
-        reflections = mirror_reflections(target) if 'does not intersect' in str(ex) else []
+        # 0.24.58 a Split's inner part (Intersect) of a shape off the base mesh is empty, not 'unchanged'
+        missed = 'does not intersect' in str(ex) or (operation == 'INTERSECT' and 'whole object' in str(ex))
+        reflections = mirror_reflections(target) if missed else []
         if not reflections or cutter.type != 'MESH':
             raise
     # 0.24.9 a live Mirror: the shape was drawn over the mirrored copy, which the Boolean (base mesh only)

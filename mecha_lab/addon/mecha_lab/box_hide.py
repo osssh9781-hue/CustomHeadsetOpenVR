@@ -5,6 +5,8 @@
 * Draw again = hide more (the volume grows), Alt + draw = restore that part (cut out of the volume).
 * Cap (per mesh): ON = the cut is closed with new faces (a solid), OFF = an open hole (just hidden).
 * Mirror X: every shape is also hidden on the other side of the mesh (its local X).
+* 0.24.58 Follow Symmetry: on a part with a live Mirror / Radial the shape is hidden on every symmetric copy too
+  (the hiding comes after the Mirror in the stack, so it used to hide only the side you drew on).
 * Show All = remove the modifier (nothing was changed), Apply = make the hiding permanent.
 """
 from __future__ import annotations
@@ -176,6 +178,33 @@ def _mirrored(bm_src, target):
     return bm
 
 
+def _transformed(bm_src, mat):
+    """The shape moved by ``mat`` (world space in, world space out); a reflection keeps it outward facing."""
+    bm = bm_src.copy()
+    bm.transform(mat)
+    if mat.to_3x3().determinant() < 0:
+        bmesh.ops.reverse_faces(bm, faces=bm.faces[:])
+    return bm
+
+
+def symmetry_copies(context, target):
+    """World matrices of every symmetric copy of ``target`` besides itself: its live Mirror (all axis combinations)
+    and, when it repeats round the Radial Symmetry centre, every turn (and turn x mirror, Kaleido)."""
+    mats = [Matrix.Identity(4)] + cg.mirror_reflections(target)
+    from . import radial_sym
+    st = getattr(context.scene, 'mch_rsym', None)
+    if st is not None and st.active and st.pivot is not None and target.modifiers.get(radial_sym.MOD_NAME):
+        turns = radial_sym.rotations(st.pivot.matrix_world.translation, radial_sym.axis_world(st), st.count)
+        mats = [r @ m for r in turns for m in mats]
+    ident = Matrix.Identity(4)
+    out = []
+    for m in mats:
+        if all(abs(m[i][j] - ident[i][j]) < 1e-6 for i in range(4) for j in range(4)):
+            continue
+        out.append(m)
+    return out
+
+
 def _flat(me):
     for p in me.polygons:
         p.use_smooth = False
@@ -245,14 +274,18 @@ def perform(context, targets, loops, projector, restore=False):
     groups = cg.prepare_loops(loops)
     near, far = ce._planes(context, targets, projector, [g[0] for g in groups])
     shape_me = cg.build_cutter_mesh(groups, projector, near, far, 'MCH_Hide_Shape')
-    done, untouched = [], []
+    done, untouched, followed = [], [], []
     try:
         for t in targets:
             bm_shape = bmesh.new()
             bm_shape.from_mesh(shape_me)
             parts = [bm_shape]
-            if st.mirror:
+            copies = symmetry_copies(context, t) if st.follow_symmetry else []
+            parts += [_transformed(bm_shape, m) for m in copies]
+            if st.mirror and not copies:
                 parts.append(_mirrored(bm_shape, t))
+            if copies:
+                followed.append(len(copies))
             try:
                 vol = volume_of(t)
                 if vol is not None:
@@ -285,7 +318,9 @@ def perform(context, targets, loops, projector, restore=False):
     msg = f'Box Hide: {verb} on {", ".join(done)}' if done else 'Box Hide: nothing hidden there'
     if untouched:
         msg += ' | nothing hidden on: ' + ', '.join(untouched)
-    if st.mirror:
+    if followed:
+        msg += f' | also on {max(followed)} symmetric cop{"y" if max(followed) == 1 else "ies"}'
+    elif st.mirror:
         msg += ' | Mirror X'
     return msg
 
@@ -360,7 +395,11 @@ class MCH_PG_BoxHide(bpy.types.PropertyGroup):
     cap: bpy.props.BoolProperty(name='Cap', default=True,
                                 description='Close the cut with new faces (a solid); off = an open hole')
     mirror: bpy.props.BoolProperty(name='Mirror X', default=False,
-                                   description='Also hide the same part on the other side of the mesh (its local X)')
+                                   description='Also hide the same part on the other side of the mesh (its local X) - '
+                                               'for meshes without a live Mirror')
+    follow_symmetry: bpy.props.BoolProperty(name='Follow Symmetry', default=True,
+                                            description='On a part with a live Mirror / Radial Symmetry: the same part '
+                                                        'is hidden on every symmetric copy too')
 
 
 class MCH_OT_box_hide_show_all(bpy.types.Operator):
@@ -456,7 +495,9 @@ def draw(layout, context):
     row = box.row(align=True)
     row.operator('mch.box_hide_cap', text='Cap', depress=st.cap).value = True
     row.operator('mch.box_hide_cap', text='Open', depress=not st.cap).value = False
-    box.prop(st, 'mirror', icon='MOD_MIRROR', toggle=True)
+    row = box.row(align=True)
+    row.prop(st, 'follow_symmetry', icon='MOD_MIRROR', toggle=True)
+    row.prop(st, 'mirror', toggle=True)
     row = box.row(align=True)
     row.scale_y = 1.2
     row.operator('mch.box_hide_show_all', icon='HIDE_OFF')

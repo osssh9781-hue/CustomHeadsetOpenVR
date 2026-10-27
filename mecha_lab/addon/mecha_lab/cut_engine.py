@@ -25,6 +25,7 @@ import sys
 import time
 import traceback
 
+import bmesh
 import bpy
 import gpu
 from bpy.props import EnumProperty, FloatProperty, IntProperty
@@ -841,9 +842,42 @@ def _target_report(skipped, failed):
     return out
 
 
+def _world_box(points):
+    xs, ys, zs = zip(*points)
+    return (min(xs), min(ys), min(zs)), (max(xs), max(ys), max(zs))
+
+
+def _boxes_touch(a, b, pad=1e-6):
+    return all(a[0][i] <= b[1][i] + pad and b[0][i] <= a[1][i] + pad for i in range(3))
+
+
+def mirror_live_cutter(target, cutter):
+    """0.24.58 Auto Apply off on a part with a live Mirror: a shape drawn over the mirrored copy is moved (its mesh
+    mirrored) onto the real half - the live Boolean only sees the base mesh.  True when it was moved."""
+    if not target.data.vertices or not cutter.data.vertices:
+        return False
+    tw, cw = target.matrix_world, cutter.matrix_world
+    base = _world_box([tw @ v.co for v in target.data.vertices])
+    pts = [cw @ v.co for v in cutter.data.vertices]
+    if _boxes_touch(_world_box(pts), base):
+        return False
+    for r in cg.mirror_reflections(target):
+        if _boxes_touch(_world_box([r @ p for p in pts]), base):
+            bm = bmesh.new()
+            bm.from_mesh(cutter.data)
+            bm.transform(cw.inverted_safe() @ r @ cw)
+            bmesh.ops.reverse_faces(bm, faces=bm.faces[:])         # a reflection turns the faces inside out
+            bm.to_mesh(cutter.data)
+            bm.free()
+            cutter.data.update()
+            return True
+    return False
+
+
 def _make_live(context, mode, targets, cutter, invert):
     """Auto Apply OFF: keep the cutter object and live Boolean modifiers."""
     cut = context.scene.mch_cut
+    mirror_live_cutter(targets[0], cutter)
     solver = {'AUTO': 'EXACT', 'FAST': 'FLOAT'}.get(cut.solver, cut.solver)
     cutter.name = 'MCH_Cut_Live'
     cutter.data.name = 'MCH_Cut_Live_Mesh'
@@ -1937,6 +1971,8 @@ class StrokeLogic:
                 and pref('live_last_cut', True))
 
     def _run(self, context, fn, keep_on_shape_error=False):
+        from . import safety_save              # 0.24.58 a recovery copy before the heavy step (when one is due)
+        safety_save.checkpoint(f'Mecha {self.mode}')
         try:
             msg = fn(context)
         except cg.CutError as ex:

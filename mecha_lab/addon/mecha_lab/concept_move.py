@@ -869,6 +869,8 @@ class MCH_OT_concept_move(bpy.types.Operator):
     def execute(self, context):
         """The real move (also re-run by F9 after undo): on the active object (Local), or on every listed object
         (World: Through All / Selected Only)."""
+        from . import safety_save              # 0.24.58 a recovery copy first (when one is due)
+        safety_save.checkpoint(self.bl_label)
         mv = self.move_dict()
         if self.space == 'WORLD':
             objs = [bpy.data.objects.get(n) for n in json.loads(self.objects or '[]')]
@@ -1297,6 +1299,8 @@ class MCH_OT_concept_path(bpy.types.Operator):
                           axes if axes is not None else self.axes, self.turn)
 
     def execute(self, context):
+        from . import safety_save              # 0.24.58 a recovery copy first (when one is due)
+        safety_save.checkpoint(self.bl_label)
         if self.method != 'STRETCH':
             return self._execute_section(context)
         if self.space == 'WORLD':                            # every listed object, each in its own space
