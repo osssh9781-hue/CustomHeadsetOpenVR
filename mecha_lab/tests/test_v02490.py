@@ -255,6 +255,13 @@ s_end = uv.drag(bd, 'bevel_segments', seg.hard_min, 400.0, width=400.0)
 check('... whole numbers too (the whole range over the bar)', s_end == seg.hard_max, s_end)
 check('... Shift: ten times finer', abs(uv.drag(bd, 'height', 1.0, 240.0, fine=True, width=240.0) - 1.0
                                         - (rna.soft_max - rna.soft_min) / 10) < 1e-3)
+br = S.mch_brush
+lw = br.bl_rna.properties['line_width']
+br.line_width = 0.339
+lw_end = uv.drag(br, 'line_width', 0.339, 140.0 * (1 - 0.339 / lw.soft_max), width=140.0)
+big = uv.drag(bd, 'height', 62.0, 100.0, width=200.0)
+check('... Line Width: the bar goes to 2 (was 0.5), its end = 2; a value past a bar (big scene) moves as fast as it is big',
+      lw.soft_max >= 2.0 and abs(lw_end - lw.soft_max) < 1e-3 and big - 62.0 >= 31.0 - 1e-6, (lw_end, big))
 src = inspect.getsource(qh.MCH_OT_quick_hud_press._modal_ui)
 check('... the drag keeps going at the viewport edge (the cursor wraps round) and uses the bar width',
       'cursor_warp' in src and 'width=it.w' in src)

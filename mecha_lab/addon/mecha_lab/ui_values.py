@@ -80,6 +80,8 @@ def drag(data, prop, start, dx, fine=False, width=None):
         per = max(4.0, px / (hi - lo)) if width and hi > lo else 8.0
         return int(max(hard_lo, min(hard_hi, start + round(dx * k / per))))
     span = (hi - lo) if hi > lo else 1.0
+    if width:
+        span = max(span, abs(start))        # past the bar's range: as fast as the value is big
     return float(max(hard_lo, min(hard_hi, start + dx * k * span / px)))
 
 

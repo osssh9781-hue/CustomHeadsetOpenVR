@@ -155,6 +155,7 @@ def drag_value(data, prop, start, dx, fine=False, px=None):
         span = rna.soft_max - rna.soft_min
         if not (0.0 < span < 1e6):
             span = max(abs(start) * 2.0, 0.1)
+        span = max(span, abs(start))           # a value past the bar's range (a big scene) moves as fast as it is big
         return max(rna.hard_min, min(rna.hard_max, start + dx * k * span / px))
     if rna.type == 'INT':
         lo, hi = rna.hard_min, rna.hard_max

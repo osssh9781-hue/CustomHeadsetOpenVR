@@ -331,8 +331,8 @@ class MCH_PG_Brush(bpy.types.PropertyGroup):
     line_mode: BoolProperty(name='Line', default=False,
                             description='Lasso / Curve Lasso / Stroke draw a LINE: the tool uses a band of Line Width '
                                         'around the path instead of the enclosed area')
-    line_width: FloatProperty(name='Line Width', default=0.02, min=0.0005, soft_max=0.5, max=20.0, unit='LENGTH',
-                              precision=4, description='Width of the band drawn in Line mode')
+    line_width: FloatProperty(name='Line Width', default=0.02, min=0.0005, soft_max=2.0, max=20.0, unit='LENGTH',
+                              precision=4, description='Width of the band drawn in Line mode')   # 0.24.59 soft 0.5 -> 2
     line_caps: EnumProperty(name='Line Ends', items=[('ROUND', 'Round', 'Round line ends'),
                                                      ('FLAT', 'Flat', 'Square line ends')], default='ROUND')
     # 0.24.21 like a pen: the line thins to a point at both ends (Taper) and / or follows the tablet pressure
