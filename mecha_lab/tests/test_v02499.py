@@ -105,7 +105,7 @@ m, paths = ss.find_crashed()
 check('A running session (this one) is not a crash', m is None and mine not in paths)
 gone = subprocess.Popen([sys.executable, '-c', 'pass'])
 gone.wait()
-rec = os.path.join(TMP, 'Robot_recovery.blend')
+rec = os.path.join(TMP, 'Robot_1a2b3c4d_recovery.blend')
 bpy.ops.wm.save_as_mainfile(filepath=rec, copy=True, check_existing=False)
 saved = time.time() - 300
 import json
@@ -127,11 +127,16 @@ check('At start its copy is renamed _crash_<date time> (this session\'s copies c
       and not os.path.exists(ss.marker_path(gone.pid)) and os.path.exists(ss.marker_path(os.getppid())),
       crash_files)
 os.remove(ss.marker_path(os.getppid()))
-with open(ss.marker_path(4242424), 'w') as f:      # (a live pid, but silent for an hour: the pid was reused)
+with open(ss.marker_path(4242424), 'w') as f:      # (a live Blender, silent for an hour: a long step)
     json.dump({'pid': os.getppid(), 'file': '', 'beat': time.time() - 3600, 'recovery': ''}, f)
 m2, paths2 = ss.find_crashed()
-check('A marker not refreshed for 10 minutes counts as gone too (its pid may be reused); no copy: says Blender\'s '
-      'own Auto Save', m2 is not None and 'Auto Save' in ' '.join(ss.crash_text(m2)))
+check('0.24.73 a live Blender silent for an hour (a long step stops its timer) is NOT taken for a crash - its copy '
+      'is left alone', m2 is None and ss.marker_path(4242424) not in paths2)
+with open(ss.marker_path(4242424), 'w') as f:      # (silent for 7 hours: the pid surely belongs to another program)
+    json.dump({'pid': os.getppid(), 'file': '', 'beat': time.time() - 7 * 3600, 'recovery': ''}, f)
+m2, paths2 = ss.find_crashed()
+check('... after 6 hours it counts as gone (the pid was reused); no copy: says Blender\'s own Auto Save',
+      m2 is not None and 'Auto Save' in ' '.join(ss.crash_text(m2)))
 os.remove(ss.marker_path(4242424))
 check('The offer comes 2 s after start (a timer), as a window with Open Recovery Copy / Open Folder',
       "bpy.app.timers.register(_offer, first_interval=2.0)" in inspect.getsource(ss.start)

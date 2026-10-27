@@ -32,7 +32,8 @@ ss._dirty = lambda: True                 # (headless Blender 5.2 does not mark A
 dirty0 = bpy.data.is_dirty
 path = ss.checkpoint('test')
 check('The first heavy step of a session saves the copy; the open file is not touched (no path, unsaved state)',
-      path and os.path.exists(path) and path.endswith('untitled_recovery.blend') and bpy.data.filepath == ''
+      path and os.path.exists(path) and os.path.basename(path).startswith(f'untitled_{os.getpid()}_')
+      and path.endswith('_recovery.blend') and bpy.data.filepath == ''
       and bpy.data.is_dirty == dirty0, path)
 check('... the next one within the interval does not', ss.checkpoint('test') == '')
 p.safety_minutes = 0.0
@@ -40,7 +41,7 @@ time.sleep(0.05)
 path2 = ss.checkpoint('test')
 files = sorted(f for f in os.listdir(TMP) if f.endswith('.blend'))     # (0.24.66: + the session marker)
 check('Every 0 min: each step; the copy before is kept as _prev, no half-written file left',
-      path2 == path and files == ['untitled_recovery.blend', 'untitled_recovery_prev.blend'], files)
+      path2 == path and files == sorted([os.path.basename(path), os.path.basename(path)[:-6] + '_prev.blend']), files)
 p.safety_minutes = 3.0
 with bpy.data.libraries.load(path) as (data_from, _data_to):
     names = list(data_from.objects)
@@ -57,9 +58,19 @@ check('Idle saves wait for a quiet moment: no modal operator, Object Mode (older
       and not ss.idle_ok(SimpleNamespace(window_manager=SimpleNamespace(windows=[win, busy]), mode='OBJECT'))
       and not ss.idle_ok(SimpleNamespace(window_manager=SimpleNamespace(windows=[win]), mode='EDIT_MESH'))
       and not ss.idle_ok(SimpleNamespace(window_manager=SimpleNamespace(windows=[SimpleNamespace()]), mode='OBJECT')))
-check('Named after the file; a recovered copy keeps saving under its first name',
-      ss.recovery_path('/w/Robot.blend').endswith('Robot_recovery.blend')
-      and ss.recovery_path('/t/Robot_recovery.blend').endswith(os.sep + 'Robot_recovery.blend'))
+a, b = ss.recovery_path('/w/Robot.blend'), ss.recovery_path('/other/Robot.blend')
+check('Named after the file + an id of its folder: two Robot.blend in different folders get different copies; a '
+      'recovered copy keeps saving under its first name',
+      os.path.basename(a).startswith('Robot_') and a.endswith('_recovery.blend') and a != b
+      and ss.recovery_path(a).endswith(os.path.basename(a)), (a, b))
+check('Unsaved files: one copy per session (two untitled Blenders do not overwrite each other), and the save in '
+      'progress has a per-Blender name', ss.recovery_path('') == ss.recovery_path('')
+      and str(os.getpid()) in os.path.basename(ss.recovery_path(''))
+      and "os.getpid()}_saving.blend" in inspect.getsource(ss.save_now))
+ss.LAST[0], ss.LAST_PATH[0], ss.EDITED[0] = 5.0, '/x/old_recovery.blend', 9.0
+ss._on_load(None)
+check('Opening another file starts its own copies, interval and changes (the last file\'s were carried over)',
+      ss.LAST[0] == 0.0 and ss.LAST_PATH[0] == '' and ss.EDITED[0] == 0.0)
 check('Hooked before the heavy steps: every stroke tool, Concept Move, Path Move',
       'safety_save.checkpoint' in inspect.getsource(ce.StrokeLogic._run)
       and 'safety_save.checkpoint' in inspect.getsource(cm.MCH_OT_concept_move.execute)

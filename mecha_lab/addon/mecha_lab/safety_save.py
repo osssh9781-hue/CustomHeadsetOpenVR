@@ -20,7 +20,7 @@ running; nothing is written when Blender crashes.  Mecha Lab adds:
 * before a heavy step (a stroke tool's Cut / Split / Base Mesh ..., Concept / Path Move) and
 * every few minutes while Blender is idle (no modal operator, Object Mode)
 
-a copy of the whole file to ``<temp>/MechaLab_Recovery/<file name>_recovery.blend`` (``copy=True``: the open file,
+a copy of the whole file to ``<temp>/MechaLab_Recovery/<file name>_<path id>_recovery.blend`` (``copy=True``: the open file,
 its path and its unsaved state are not touched; the user's own files and Blender settings are never changed).  At
 most one save per interval (Preferences: Safety Save, Every N minutes, 0 = before every heavy step), only when
 there are unsaved changes.  The copy is written to a temporary name first and then swapped in, the one before is
@@ -43,7 +43,8 @@ FOLDER = 'MechaLab_Recovery'
 TICK = 0.5                  # s between quiet-moment checks (cheap: modal operators, mode, unsaved flag)
 HEARTBEAT = 60.0            # s between session marker refreshes
 RISKY_GAP = 15.0            # s: at most one copy before risky steps per this
-STALE = 600.0               # s: a marker not refreshed for this long belongs to a gone session
+STALE = 600.0               # s: (before 0.24.73) a marker not refreshed for this long counted as a gone session
+PID_REUSE = 6 * 3600.0      # s: a live pid whose marker is this old is another program now (the pid was reused)
 LAST = [0.0]                # time.monotonic() of the last save (0 = none yet this session)
 LAST_PATH = ['']
 LAST_SECONDS = [0.0]        # how long the last save took
@@ -72,11 +73,22 @@ def folder():
     return os.path.join(base, FOLDER)
 
 
+def _ident(filepath):
+    """A short id of the file's full path: two ``model.blend`` in different folders get different copies."""
+    import hashlib
+    full = os.path.normcase(os.path.abspath(filepath))
+    return hashlib.sha1(full.encode('utf-8', 'replace')).hexdigest()[:8]
+
+
 def recovery_path(filepath=None):
-    stem = bpy.path.display_name_from_filepath(bpy.data.filepath if filepath is None else filepath) or 'untitled'
+    """``<name>_<path id>_recovery.blend`` (0.24.73: the name alone mixed up same-named files from different folders,
+    and every unsaved session shared one copy) - unsaved: ``untitled_<session>_recovery.blend``."""
+    fp = getattr(bpy.data, 'filepath', '') if filepath is None else filepath
+    stem = bpy.path.display_name_from_filepath(fp) or 'untitled'
     if stem.endswith('_recovery'):             # a recovered copy keeps saving under its first name
-        stem = stem[:-len('_recovery')] or 'untitled'
-    return os.path.join(folder(), f'{stem}_recovery.blend')
+        return os.path.join(folder(), f'{stem}.blend')
+    tag = _ident(fp) if fp else f'{os.getpid()}_{int(START[0]) % 100000}'
+    return os.path.join(folder(), f'{stem}_{tag}_recovery.blend')
 
 
 def latest():
@@ -106,7 +118,7 @@ def save_now():
     """Write the recovery copy now.  Returns its path (raises OSError / RuntimeError on failure)."""
     path = recovery_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path[:-len('.blend')] + '_saving.blend'
+    tmp = path[:-len('.blend')] + f'_{os.getpid()}_saving.blend'      # (per Blender: two never share one)
     if os.path.exists(tmp):
         os.remove(tmp)
     t = time.monotonic()
@@ -247,11 +259,18 @@ def pid_alive(pid):
         return True
     if sys.platform == 'win32':
         import ctypes
+        from ctypes import wintypes
         k = ctypes.WinDLL('kernel32', use_last_error=True)
+        k.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        k.OpenProcess.restype = wintypes.HANDLE              # (pointer sized: a plain int would cut it on 64 bit)
+        k.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+        k.GetExitCodeProcess.restype = wintypes.BOOL
+        k.CloseHandle.argtypes = [wintypes.HANDLE]
+        k.CloseHandle.restype = wintypes.BOOL
         h = k.OpenProcess(0x1000, False, int(pid))           # PROCESS_QUERY_LIMITED_INFORMATION
         if not h:
             return ctypes.get_last_error() == 5               # access denied: it exists
-        code = ctypes.c_ulong()
+        code = wintypes.DWORD()
         ok = k.GetExitCodeProcess(h, ctypes.byref(code))
         k.CloseHandle(h)
         return bool(ok) and code.value == 259                 # STILL_ACTIVE
@@ -267,7 +286,7 @@ def pid_alive(pid):
 
 
 def find_crashed():
-    """Markers of sessions that did not close normally: their Blender is gone (or silent for STALE seconds).
+    """Markers of sessions that did not close normally: their Blender is gone (or silent for PID_REUSE seconds).
     Returns (the newest one's data or None, all their paths)."""
     d = folder()
     try:
@@ -286,7 +305,9 @@ def find_crashed():
             continue
         if pid == os.getpid():
             continue
-        if not pid_alive(pid) or time.time() - float(data.get('beat', 0)) > STALE:
+        # 0.24.73 a live Blender is never taken for a crashed one, however long its marker was not refreshed (a
+        # long step stops the timer) - only after PID_REUSE, when the pid surely belongs to another program now
+        if not pid_alive(pid) or time.time() - float(data.get('beat', 0)) > PID_REUSE:
             found.append(data)
             paths.append(path)
     found.sort(key=lambda m: float(m.get('beat', 0)))
@@ -330,10 +351,11 @@ def check_crash():
             m['recovery'] = new
         except OSError:
             pass
-        try:
+        try:                                      # 0.24.73 the newest few per file (not overall)
             d = folder()
-            crashes = sorted((os.path.join(d, n) for n in os.listdir(d) if '_crash_' in n and n.endswith('.blend')),
-                             key=os.path.getmtime)
+            prefix = os.path.basename(new).split('_crash_')[0] + '_crash_'
+            crashes = sorted((os.path.join(d, n) for n in os.listdir(d) if n.startswith(prefix)
+                              and n.endswith('.blend')), key=os.path.getmtime)
             for old in crashes[:-KEEP_CRASH]:
                 os.remove(old)
         except OSError:
@@ -362,6 +384,11 @@ def _offer():
 
 @persistent
 def _on_load(_dummy):
+    """Another file is open now: its own copies, interval and changes (0.24.73: the last file's carried over)."""
+    LAST[0] = 0.0
+    LAST_PATH[0] = ''
+    LAST_SECONDS[0] = 0.0
+    EDITED[0] = 0.0
     write_marker()
 
 

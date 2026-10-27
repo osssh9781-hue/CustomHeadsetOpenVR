@@ -1516,6 +1516,14 @@ def _ensure_multires(ob):
 
 
 def _divide(context, ob, times=1):
+    """Multires Divide ``times`` (0.24.73: refused when the result would not fit in memory - each Divide is 4x)."""
+    from . import budget
+    m = multires(ob)
+    levels = m.total_levels if m is not None else 0
+    faces = len(ob.data.polygons) * 4 ** (levels + times)
+    ok, why = budget.faces_fit(faces)
+    if not ok:
+        raise RuntimeError(f'Divide: {why} - not divided (Del Higher, or Decimate first)')
     m = _ensure_multires(ob)
     for _i in range(times):
         bpy.ops.object.multires_subdivide(modifier=m.name, mode='CATMULL_CLARK')

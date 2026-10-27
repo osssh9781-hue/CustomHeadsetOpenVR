@@ -78,8 +78,14 @@ def lib():
             try:
                 L = ctypes.CDLL(_load_path(src))
                 L.mdecim_version.restype = ctypes.c_int
+                L.mdecim_version.argtypes = []
                 if L.mdecim_version() >= VERSION:
                     L.mdecim_run.restype = ctypes.c_int
+                    # 0.24.73 the argument types are declared (a wrong one is a Python error, not a crash)
+                    fp, ip = ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_int)
+                    L.mdecim_run.argtypes = [fp, ctypes.c_int, ip, ctypes.c_int, ctypes.c_int, ctypes.POINTER(_Opts),
+                                             ctypes.POINTER(ctypes.c_ubyte), fp, ip, ctypes.c_int, fp, ip, ip, ip,
+                                             ip, ip]
                     _LIB[0] = L
             except (OSError, AttributeError) as ex:
                 print('[Mecha Lab] Fast Decimate engine not loaded:', ex)
@@ -108,6 +114,22 @@ def run(V, F, target, even=False, keep_borders=False, locked=None, weight=None, 
         raise RuntimeError('Fast Decimate engine not available on this system')
     V = np.ascontiguousarray(V, np.float32).reshape(-1, 3)
     F = np.ascontiguousarray(F, np.int32).reshape(-1, 3)
+    # 0.24.73 the engine trusts its arrays: they are checked here (a short or broken one would read past its end)
+    if not np.isfinite(V).all():
+        raise RuntimeError('Fast Decimate: the mesh has invalid (NaN / infinite) point positions')
+    if len(F) and (int(F.min()) < 0 or int(F.max()) >= len(V)):
+        raise RuntimeError('Fast Decimate: the mesh has broken faces (point index out of range)')
+    if locked is not None and np.shape(locked) != (len(V),):
+        raise ValueError(f'Fast Decimate: locked needs one value per point ({len(V)}), got {np.shape(locked)}')
+    if weight is not None:
+        if np.shape(weight) != (len(V),):
+            raise ValueError(f'Fast Decimate: weight needs one value per point ({len(V)}), got {np.shape(weight)}')
+        weight = np.clip(np.nan_to_num(np.asarray(weight, np.float64), nan=1.0, posinf=1e6), 1.0, 1e6)
+    if feat is not None and len(feat):
+        feat = np.asarray(feat).reshape(-1, 3)
+        if (feat[:, :2] < 0).any() or (feat[:, :2] >= len(V)).any() or (feat[:, 2] < 0).any() \
+                or (feat[:, 2] >= len(F)).any():
+            raise ValueError('Fast Decimate: feat holds an index out of range')
     oV = np.empty_like(V)
     oF = np.empty_like(F)
     oVs = np.empty(len(V), np.int32)
@@ -134,7 +156,10 @@ def run(V, F, target, even=False, keep_borders=False, locked=None, weight=None, 
                       _ptr(oFs, ctypes.c_int), ctypes.byref(nv), ctypes.byref(nf))
     if rc:
         raise RuntimeError(f'Fast Decimate failed (code {rc})')
-    return oV[:nv.value], oF[:nf.value], oVs[:nv.value], oFs[:nf.value]
+    k, m = nv.value, nf.value
+    if not (0 <= k <= len(V) and 0 <= m <= len(F)) or (m and (int(oF[:m].min()) < 0 or int(oF[:m].max()) >= k)):
+        raise RuntimeError('Fast Decimate: the engine returned broken faces')
+    return oV[:k], oF[:m], oVs[:k], oFs[:m]
 
 
 # --- mesh attributes ----------------------------------------------------------------------------------------------

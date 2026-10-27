@@ -124,13 +124,13 @@ def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None,
         raise RuntimeError('Quad Remesh engine not available on this system')
     V = np.ascontiguousarray(V, np.float32).reshape(-1, 3)
     T = np.ascontiguousarray(T, np.int32).reshape(-1, 3)
-    area = float(0.5 * np.linalg.norm(np.cross(V[T[:, 1]] - V[T[:, 0]], V[T[:, 2]] - V[T[:, 0]]), axis=1).sum())
-    if area <= 0.0:
-        raise RuntimeError('Quad Remesh: the mesh has no area')
     if not np.isfinite(V).all():
         raise RuntimeError('Quad Remesh: the mesh has invalid (NaN / infinite) point positions')
     if len(T) and (int(T.min()) < 0 or int(T.max()) >= len(V)):
         raise RuntimeError('Quad Remesh: the mesh has broken faces (point index out of range)')
+    area = float(0.5 * np.linalg.norm(np.cross(V[T[:, 1]] - V[T[:, 0]], V[T[:, 2]] - V[T[:, 0]]), axis=1).sum())
+    if area <= 0.0:
+        raise RuntimeError('Quad Remesh: the mesh has no area')
     n_ext = max(12, int(target / 4) if all_quads else int(target))
     h = math.sqrt(area / n_ext)
     if guide == 'auto':

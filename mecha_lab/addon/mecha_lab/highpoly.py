@@ -38,10 +38,24 @@ def estimate_faces(faces, level, segments=2, sharp_share=0.3):
     return int(faces * (1.0 + sharp_share * segments) * 4 ** level)
 
 
-def safe_level(faces, level, segments=2, limit=MAX_FACES):
-    while level > 1 and estimate_faces(faces, level, segments) > limit:
+def safe_level(faces, level, segments=2, limit=None):
+    """The highest level up to ``level`` that stays under the limit (MAX_FACES and the free memory); 0 when even
+    level 1 does not (0.24.73: it used to stop at 1 and go over the limit)."""
+    from . import budget
+    if limit is None:
+        limit = min(MAX_FACES, budget.max_faces())
+    while level > 0 and estimate_faces(faces, level, segments) > limit:
         level -= 1
     return level
+
+
+class HighPolyError(RuntimeError):
+    """The high poly copy would be too big (nothing was changed)."""
+
+
+def _too_big(name, faces, segments):
+    return HighPolyError(f'{name}: {faces:,} faces is too many for High Poly '
+                         f'(about {estimate_faces(faces, 1, segments):,} even at Smoothness 1) - decimate it first')
 
 
 def is_highpoly(ob):
@@ -93,6 +107,10 @@ def creased_subdiv(context, ob, level, angle):
     finally:
         bm.free()
     level = safe_level(len(base.polygons), max(1, level), 0)
+    if level < 1:
+        n = len(base.polygons)
+        bpy.data.meshes.remove(base)
+        raise _too_big(ob.name, n, 0)
     tmp = bpy.data.objects.new('MCH_HP_tmp', base)
     context.scene.collection.objects.link(tmp)
     tmp.matrix_world = ob.matrix_world.copy()
@@ -119,11 +137,19 @@ def make_highpoly(context, ob, level, ratio, angle, segments, plate_detail=10):
     """Dense copy of ``ob`` in the HighPoly collection.  Returns (copy, level).
     Armor plates / live parts are rebuilt densely instead (shape kept exactly)."""
     st_coll = _collection(context)
-    for old in [o for o in st_coll.objects if o.get(SRC_KEY) == ob.name]:   # rebuild = replace
+    olds = [o for o in st_coll.objects if o.get(SRC_KEY) == ob.name]     # rebuild = replace (after success)
+    hp, level = _make_highpoly(context, ob, st_coll, level, ratio, angle, segments)
+    for old in olds:                         # 0.24.73 the old copy goes only now: a failure above keeps it
         me_old = old.data
         bpy.data.objects.remove(old)
         if me_old.users == 0:
             bpy.data.meshes.remove(me_old)
+    hp.name = ob.name + '_HP'
+    hp.data.name = ob.name + '_HP'
+    return hp, level
+
+
+def _make_highpoly(context, ob, st_coll, level, ratio, angle, segments):
     from . import armor_plate as ap
     from . import cloth_wrinkle as cw
     dense = cw.dense_mesh(context, ob) if cw.is_wrinkle(ob) else None
@@ -143,6 +169,10 @@ def make_highpoly(context, ob, level, ratio, angle, segments, plate_detail=10):
     dg = context.evaluated_depsgraph_get()
     base = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), depsgraph=dg)
     level = safe_level(len(base.polygons), level, segments)
+    if level < 1:
+        n = len(base.polygons)
+        bpy.data.meshes.remove(base)
+        raise _too_big(ob.name, n, segments)
     hp = bpy.data.objects.new(ob.name + '_HP', base)
     st_coll.objects.link(hp)
     hp.matrix_world = ob.matrix_world.copy()
@@ -160,8 +190,14 @@ def make_highpoly(context, ob, level, ratio, angle, segments, plate_detail=10):
     sub = hp.modifiers.new('MCH_HP_Subdiv', 'SUBSURF')
     sub.levels = sub.render_levels = level
     sub.quality = 3
-    dg = context.evaluated_depsgraph_get()
-    dense = bpy.data.meshes.new_from_object(hp.evaluated_get(dg), depsgraph=dg)
+    try:
+        dg = context.evaluated_depsgraph_get()
+        dense = bpy.data.meshes.new_from_object(hp.evaluated_get(dg), depsgraph=dg)
+    except Exception:                            # (the half-made copy goes; the old one is still there)
+        bpy.data.objects.remove(hp)
+        if base.users == 0:
+            bpy.data.meshes.remove(base)
+        raise
     hp.modifiers.clear()
     hp.data = dense
     dense.name = ob.name + '_HP'
@@ -206,12 +242,24 @@ class MCH_OT_make_highpoly(bpy.types.Operator):
     def execute(self, context):
         st = self
         obs = _targets(context)
-        made, lowered, faces = [], False, 0
+        made, lowered, faces, refused = [], False, 0, []
+        from . import budget
         for ob in obs:
-            hp, lv = make_highpoly(context, ob, st.level, st.edge, st.angle, st.segments, st.plate_detail)
+            try:
+                hp, lv = make_highpoly(context, ob, st.level, st.edge, st.angle, st.segments, st.plate_detail)
+            except HighPolyError as ex:          # (0.24.73 too big: refused before anything was made)
+                refused.append(str(ex))
+                continue
             lowered |= 0 < lv < st.level
             faces += len(hp.data.polygons)
             made.append(hp)
+            ok, why = budget.faces_fit(faces)
+            if not ok:                           # all of them together: stop before memory runs out
+                refused.append(f'stopped after {len(made)} object(s): {why}')
+                break
+        if not made:
+            self.report({'WARNING'}, 'High poly: ' + ('; '.join(refused) or 'nothing made'))
+            return {'CANCELLED'}
         if st.join and len(made) > 1:
             with context.temp_override(active_object=made[0], object=made[0], selected_objects=made,
                                        selected_editable_objects=made):
@@ -227,8 +275,11 @@ class MCH_OT_make_highpoly(bpy.types.Operator):
         for hp in made:
             hp.select_set(True)
         context.view_layer.objects.active = made[-1]
-        note = ' (smoothness lowered to stay under 3M faces)' if lowered else ''
-        self.report({'INFO'}, f'High poly: {len(made)} object(s), {faces:,} faces in "{COLL}"{note}')
+        note = ' (smoothness lowered to stay under the face limit)' if lowered else ''
+        if refused:
+            note += ' - ' + '; '.join(refused)
+        self.report({'WARNING'} if refused else {'INFO'},
+                    f'High poly: {len(made)} object(s), {faces:,} faces in "{COLL}"{note}')
         return {'FINISHED'}
 
 
