@@ -1644,10 +1644,8 @@ class MCH_GT_tube_slider(bpy.types.Gizmo):
         if cancel:
             tube_slider_spec(context.active_object, self.key)[4](self.init_value)
         else:
-            try:
-                bpy.ops.ed.undo_push(message='Mesh Curve ' + self.key)
-            except RuntimeError:
-                pass
+            from . import undo_keep
+            undo_keep.push('Mesh Curve ' + self.key)
 
 
 class MCH_GGT_tube_bar(bpy.types.GizmoGroup):

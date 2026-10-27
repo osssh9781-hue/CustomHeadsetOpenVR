@@ -536,10 +536,8 @@ def _undo(what, data=None):
     from . import undo_keep
     if undo_keep.is_setting(data):
         return
-    try:
-        bpy.ops.ed.undo_push(message='Mecha ' + (what or 'setting'))
-    except RuntimeError:
-        pass
+    from . import undo_keep
+    undo_keep.push('Mecha ' + (what or 'setting'))
 
 
 def open_value(context, item):

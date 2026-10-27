@@ -326,10 +326,8 @@ class MCH_OT_quick_hud_press(bpy.types.Operator):
                 msg = symmetry.run_card(context, item)
                 if msg:
                     self.report({'INFO'}, msg)
-                try:
-                    bpy.ops.ed.undo_push(message=msg or 'Symmetry')
-                except RuntimeError:
-                    pass
+                from . import undo_keep
+                undo_keep.push(msg or 'Symmetry')
             if context.area:
                 context.area.tag_redraw()
             return {'FINISHED'}
@@ -414,10 +412,7 @@ class MCH_OT_quick_hud_press(bpy.types.Operator):
                     return {'FINISHED'}
             from . import undo_keep
             if not undo_keep.is_setting(data):           # 0.24.65 a setting is no undo step
-                try:
-                    bpy.ops.ed.undo_push(message='HUD ' + (rna.name or prop))
-                except RuntimeError:
-                    pass
+                undo_keep.push('HUD ' + (rna.name or prop))
             return self._end(context, {'FINISHED'})
         return {'RUNNING_MODAL'}
 
@@ -463,10 +458,7 @@ class MCH_OT_quick_hud_press(bpy.types.Operator):
                         return {'FINISHED'}
                 from . import undo_keep
                 if not undo_keep.is_setting(it.data):    # 0.24.65 a setting is no undo step
-                    try:
-                        bpy.ops.ed.undo_push(message='Mecha ' + (it.label or it.prop))
-                    except RuntimeError:
-                        pass
+                    undo_keep.push('Mecha ' + (it.label or it.prop))
                 side_panel.dirty()
                 return self._end(context, {'FINISHED'})
         except (ReferenceError, AttributeError, KeyError, TypeError):

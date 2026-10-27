@@ -445,10 +445,8 @@ def set_ui_size(v):
 
 
 def _undo(message):
-    try:
-        bpy.ops.ed.undo_push(message=message)
-    except RuntimeError:
-        pass
+    from . import undo_keep
+    undo_keep.push(message)
 
 
 # --- drawing -------------------------------------------------------------------------------------------------

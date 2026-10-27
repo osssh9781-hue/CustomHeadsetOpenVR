@@ -1989,10 +1989,8 @@ def auto_apply_session(context):
             ob.mch_base.live = False
             frozen.append(name)
     if frozen:
-        try:
-            bpy.ops.ed.undo_push(message='Base Mesh: auto apply')
-        except RuntimeError:
-            pass
+        from . import undo_keep
+        undo_keep.push('Base Mesh: auto apply')
     return frozen
 
 

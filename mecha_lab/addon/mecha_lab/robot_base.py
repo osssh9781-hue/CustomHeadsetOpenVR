@@ -1304,10 +1304,8 @@ class MCH_GT_robot_slider(bpy.types.Gizmo):
         if cancel:
             slider_spec(context, self.key)[4](self.init_value)
         else:
-            try:
-                bpy.ops.ed.undo_push(message='Robot ' + self.key)
-            except RuntimeError:
-                pass
+            from . import undo_keep
+            undo_keep.push('Robot ' + self.key)
 
 
 class MCH_GGT_robot_hud(bpy.types.GizmoGroup):

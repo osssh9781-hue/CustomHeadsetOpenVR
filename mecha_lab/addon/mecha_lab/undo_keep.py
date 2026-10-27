@@ -27,6 +27,21 @@ BRUSH = ('size', 'unprojected_radius', 'strength', 'spacing', 'stroke_method', '
 _SNAP = {}
 
 
+def push(message):
+    """0.24.73 An undo step pushed by the add-on itself (a live slider, a shelf action, a HUD value ...); none in Sculpt
+    Mode.  There such a step is empty (Sculpt Mode's undo keeps only what its own operators record) and an empty step
+    right after another sculpt step (a stroke, a mask fill, DynaMesh, a second empty one) breaks Blender's undo: the
+    next Ctrl+Z after leaving Sculpt Mode took Blender down (reproduced on 5.2 without the add-on).  The sculpt
+    operators push their own steps; changes to the mesh go through Object Mode (their steps are pushed there)."""
+    try:
+        if bpy.context.mode == 'SCULPT':
+            return False
+        bpy.ops.ed.undo_push(message=message)
+        return True
+    except (RuntimeError, AttributeError):
+        return False
+
+
 def _live(pg):
     return any(isinstance(getattr(pg, n, None), bool) and getattr(pg, n) for n in ('live', 'active'))
 

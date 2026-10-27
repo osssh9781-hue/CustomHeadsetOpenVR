@@ -434,10 +434,8 @@ class MCH_GT_shell_slider(bpy.types.Gizmo):
         if cancel:
             slider_spec(context.active_object, self.key)[4](self.init_value)
         else:
-            try:
-                bpy.ops.ed.undo_push(message='Creature Shell ' + self.key)
-            except RuntimeError:
-                pass
+            from . import undo_keep
+            undo_keep.push('Creature Shell ' + self.key)
 
 
 class MCH_GGT_shell_hud(bpy.types.GizmoGroup):

@@ -2149,10 +2149,8 @@ SETTING_ACTIONS = set(TOOLS) | {'EDIT', 'SDIV_UP', 'SDIV_DOWN', 'CHECK_MESH', 'S
 
 
 def undo_step(message):
-    try:
-        bpy.ops.ed.undo_push(message=message)
-    except RuntimeError:
-        pass
+    from . import undo_keep
+    undo_keep.push(message)
 
 
 class MCH_OT_zb_action(_ZBPoll, bpy.types.Operator):

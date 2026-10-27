@@ -142,6 +142,8 @@ def flush_handle_undo(now=None):
     if not UNDO['pending'] or now - UNDO['last'] < UNDO_SETTLE:
         return False
     UNDO['pending'] = False
+    if getattr(bpy.context, 'mode', '') == 'SCULPT':      # (0.24.73 see undo_keep.push: no step in Sculpt Mode)
+        return False
     try:
         bpy.ops.ed.undo_push(message='Station Primitive handle')
     except RuntimeError:

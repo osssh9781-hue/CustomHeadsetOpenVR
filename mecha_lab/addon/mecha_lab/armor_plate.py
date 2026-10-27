@@ -1182,10 +1182,8 @@ class MCH_GT_plate_slider(bpy.types.Gizmo):
             ob = pending_plate(context)
             if ob is not None:
                 remember_plate(ob)
-            try:
-                bpy.ops.ed.undo_push(message='Plate ' + self.key)
-            except RuntimeError:
-                pass
+            from . import undo_keep
+            undo_keep.push('Plate ' + self.key)
 
 
 class MCH_GGT_plate_hud(bpy.types.GizmoGroup):

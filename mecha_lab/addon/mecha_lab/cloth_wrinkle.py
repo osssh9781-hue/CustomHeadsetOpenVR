@@ -2224,10 +2224,8 @@ class MCH_GT_wrinkle_slider(bpy.types.Gizmo):
         else:
             from . import last_used
             last_used.save()                       # kept right away (not only every 20 s)
-            try:
-                bpy.ops.ed.undo_push(message='Wrinkle ' + self.key)
-            except RuntimeError:
-                pass
+            from . import undo_keep
+            undo_keep.push('Wrinkle ' + self.key)
 
 
 class MCH_GGT_wrinkle_hud(bpy.types.GizmoGroup):
