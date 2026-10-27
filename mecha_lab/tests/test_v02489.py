@@ -182,13 +182,13 @@ check('Geometry Nodes style inputs ("[\\"name\\"]") work like settings: text, ba
 # --- strip with names, actions card ------------------------------------------------------------------------------
 strip = ub.strip_items(CTX, W, H, 1.0)
 named = [i for i in strip if i.kind == 'sbtn']
-check('Tool strip: a tile per tool - the icon on top, its name under it (square tiles, 3 to 6 columns)',
+check('Tool strip: a 6 : 4 tile per tool with its name inside (3 to 6 columns)',
       len(named) == sum(len(r) for _n, r in ts.grouped_tools()) and 3 <= len({round(i.x) for i in named}) <= 6
-      and all(i.label and abs(i.w - i.h) < 1e-6 and i.w >= 50 for i in named), (len({round(i.x) for i in named}),
-                                                                             named[0].w))
+      and all(i.label and abs(i.w / i.h - 1.5) < 1e-6 and i.w >= 60 for i in named), (len({round(i.x) for i in named}),
+                                                                                  named[0].w, named[0].h))
 src = inspect.getsource(mm._draw_new)
-check('... drawn with the icon in the top 60 % and the name (two lines at most) in the bottom 40 %',
-      'h * 0.4 + (h * 0.6 - ic) / 2' in src and 'G.wrap2' in src)
+check('... drawn with the icon in the top 80 % and the name in the bottom 20 % (a long name a bit smaller first)',
+      'band = h * 0.2' in src and 'size -= 0.5 * S' in src)
 bar_card = ub.bar_items(CTX, 1300, H, 1.0)[0]
 st = [i for i in ub.strip_items(CTX, 1300, H, 1.0) if i.kind == 'card'][0]
 check('... on a narrower screen it stays above the bottom toolbar', st.y >= bar_card.y + bar_card.h

@@ -597,20 +597,20 @@ def _draw_new(it, hot, S, white, dim):
     from . import ui_values
     k = it.kind
     x, y, w, h = it.x, it.y, it.w, it.h
-    if k == 'sbtn':                       # tool strip tile: the icon in the top 60 %, the name under it
+    if k == 'sbtn':                       # tool strip tile (6 : 4): the icon in the top 80 %, the name in the bottom 20 %
         if it.on:
-            G.rounded_rect(x, y, w, h, 10 * S, G.ACCENT)
+            G.rounded_rect(x, y, w, h, 9 * S, G.ACCENT)
         elif hot:
-            G.rounded_rect(x, y, w, h, 10 * S, HOVER)
-        ic = min(w * 0.62, h * 0.52)
-        _icon(it.icon, x + (w - ic) / 2, y + h * 0.4 + (h * 0.6 - ic) / 2, ic, white, dim)
-        size = max(8.5 * S, min(11.5 * S, w * 0.155))
-        lines = G.wrap2(it.label, size, w - 4 * S)
-        lh = size * 1.05
-        cy = y + h * 0.2 + (lh / 2 if len(lines) > 1 else 0)
-        for n, line in enumerate(lines):
-            G.text(x + w / 2, cy - n * lh, line, size, white, 'CENTER')
-        return (it, 'RIGHT') if hot and any(line.endswith('…') for line in lines) else None
+            G.rounded_rect(x, y, w, h, 9 * S, HOVER)
+        band = h * 0.2
+        ic = min(w * 0.62, (h - band) * 0.86)
+        _icon(it.icon, x + (w - ic) / 2, y + band + (h - band - ic) / 2, ic, white, dim)
+        size = max(8.0 * S, min(11.0 * S, h * 0.2))
+        while size > 7.5 * S and G.text(-9999, -9999, it.label, size) > w - 4 * S:
+            size -= 0.5 * S                   # a long name: a bit smaller first, cut only if still too long
+        label = G.fit(it.label, size, w - 4 * S)
+        G.text(x + w / 2, y + band * 0.55, label, size, white, 'CENTER')
+        return (it, 'RIGHT') if hot and label != it.label else None
     if k == 'arow':                       # actions card row
         if it.on:
             G.rounded_rect(x, y, w, h, 8 * S, G.ACCENT)

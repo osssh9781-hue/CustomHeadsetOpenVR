@@ -28,7 +28,8 @@ STRIP_ICON = 38.0        # icons-only strip
 STRIP_GAP = 5.0
 STRIP_HEAD = 22.0
 STRIP_PAD = 8.0
-TILE = 66.0              # 0.24.59 a named strip tile: the icon in the top 60 %, the name under it (40 %)
+TILE_W = 72.0            # 0.24.59 a named strip tile, 6 : 4 - the icon fills the top 80 %, the name the bottom 20 %
+TILE_H = 48.0
 TILE_GAP = 4.0
 TILE_HEAD = 17.0
 ACT_W = 196.0            # 0.24.59 actions card
@@ -104,7 +105,7 @@ def bar_items(context, region_w, region_h, k=1.0):
 def strip_layout(region_h, k, groups, named=False, avail=None):
     """(columns, size factor) so the strip fits ``avail`` px of height (default: the viewport less its margins).
     Named tiles keep their size and take more columns first (3 -> 6); icons only shrink a little first."""
-    cell, gap, head = (TILE, TILE_GAP, TILE_HEAD) if named else (STRIP_ICON, STRIP_GAP, STRIP_HEAD)
+    cell, gap, head = (TILE_H, TILE_GAP, TILE_HEAD) if named else (STRIP_ICON, STRIP_GAP, STRIP_HEAD)
 
     def height(cols, s):
         rows = sum((len(r) + cols - 1) // cols for _n, r in groups)
@@ -137,7 +138,8 @@ def strip_items(context, region_w, region_h, k=1.0):
     bottom = 8 * k
     for _pass in range(2):           # a second pass when the bottom toolbar would be under the strip
         cols, s = strip_layout(region_h, kk, groups, named, top - bottom if named else None)
-        cw = chh = (TILE if named else STRIP_ICON) * s
+        cw = (TILE_W if named else STRIP_ICON) * s
+        chh = (TILE_H if named else STRIP_ICON) * s
         gap = (TILE_GAP if named else STRIP_GAP) * s
         head = (TILE_HEAD if named else STRIP_HEAD) * s
         pad = STRIP_PAD * s
