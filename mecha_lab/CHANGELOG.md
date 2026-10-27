@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## 0.24.58 — 하단 툴바·왼쪽 도구 줄을 Mecha Menu 스타일로, Path Move Back Mask, 미러 Split·Box Hide, 안전 저장, Attach Ends 윗면 깨짐 수정 (2026-10-27)
+
+- **하단 툴바**: 둥근 버튼 대신 어두운 막대 하나에 아이콘만(지금 도구는 파랑), 단축키 글자는 버튼 구석에 작게, 이름은 마우스를 올리면 말풍선. 좁은 화면에서는 버튼이 작아져 화면 안에 맞음.
+- **왼쪽 도구 줄**: 모든 도구를 작업별(Block-out / Cut / Surface detail / Move / Symmetry & repeat / Curves / Creature / Cloth / Utility)로 묶은 세로 카드, 3열(화면이 낮으면 작아지거나 4~5열). 누르면 그 도구, 지금 도구는 파랑, 이름은 말풍선.
+- 클릭은 Quick HUD와 같은 방식(어느 도구에서든 먼저 받음, 카드 위 클릭은 뒤로 안 넘어감). Quick HUD · 키 안내 · Tool Active 버튼은 도구 줄 오른쪽으로 비켜남.
+- Preferences: Drawn Toolbar(끄면 예전 둥근 버튼) / Tool Strip(끄면 도구 줄 없음).
+- **Base Mesh Attach Ends 윗면·아랫면 깨짐**: 평평한 면이 길쭉한 큰 면 몇 개라서, 3D로 휘면 비틀려 줄무늬처럼 깨져 보이던 것 → 휘기 전에 선을 따라 촘촘하게 잘라(48칸) 면이 고르게 따라 휨(시험: 비틀림 0.094 → 0.0000002).
+- **Path Move Back Mask**(패널 버튼, 드래그 중 B): 얇은 부품을 당길 때 반대편 면(나를 등진 면)이 같이 끌려오던 것 → 켜면 반대편은 그대로. Stretch: 각 점이 나를 향한 정도만큼만 움직임(옆면은 조금씩). Extend Brush: 브러시 영역을 깔끔하게 못 잡으면 전체 단면으로 넘어가던 것(이게 반대편까지 끌려오던 원인) → 브러시를 작게(0.7, 0.5배) 다시 시도하고, 그래도 안 되면 아무것도 바꾸지 않고 알려 줌(Separate Tube도 안 만듦). Whole(전체 단면)은 원래대로 전체. Auto Apply 끈 편집 가능 이동에도 기억됨.
+- **실시간 미러 + Split 실패**: 미러 복사본 쪽에 그리면 '메시와 안 겹친다'로 실패하던 것(Cut은 됐음) → 실제 메시 쪽으로 뒤집어서 Split(Gap Split 포함). Auto Apply를 끈 라이브 컷도 복사본 쪽에 그리면 아무 효과가 없던 것 → 컷터를 실제 메시 쪽으로 옮김.
+- **Box Hide + 미러**: 미러 / 래디얼 / Kaleido가 켜진 부품은 그린 곳이 모든 대칭 복사본에서 같이 숨겨짐(Follow Symmetry, 기본 켬; 전에는 그린 쪽만). Alt로 다시 보이기 · Apply도 양쪽 같이. 미러 없는 부품은 예전 Mirror X 그대로.
+- **Safety Save(안전 저장)**: 무거운 작업(모든 그리기 도구의 실행, Concept / Path Move) 직전과, 쉬는 동안(모달 작업 없고 Object Mode) 몇 분마다 파일 전체 복사본을 임시 폴더 `MechaLab_Recovery/<파일이름>_recovery.blend`에 저장. 열려 있는 파일·경로·저장 안 됨 상태, Blender 설정은 안 건드림. 저장 안 된 변경이 있을 때만, 3분에 최대 한 번(Preferences에서 0~60분, 0 = 매번). 바로 전 것은 `_recovery_prev.blend`로 보관, 저장 도중 죽어도 이전 복사본은 남음. Preferences > Mecha Lab: Open Last Recovery / Open Recovery Folder / Save Recovery Copy Now. (Blender 자체 Auto Save는 모달 작업 중엔 미뤄지고, 크래시 순간엔 아무것도 저장하지 않음.)
+- 테스트: 143개 파일 3966/3966. test_v02479 · v02480 · v02481 · v02482 · v02483 추가, test_v02478 항목 추가. ZIP sha256 `6a18b4e29978fff7eab34166e41614d91b42fb0996fc2cb41d0ceef4fd7963d8`.
+
 ## 0.24.57 — 클릭 잘 먹게, 대칭 부품 그룹째 이동·그룹 미러, Base Mesh 라인 양 끝 붙이기, Edge Finish 고르게 (2026-10-27)
 
 - **Quick HUD 슬라이더 / Symmetry 카드 클릭**: 빠르게 두 번 누르면 두 번째가 '더블클릭'이 되어 다른 기능(나사 되돌리기 등)이 가져가던 것 → HUD / 카드가 더블클릭도 받음. 줄 사이 틈·카드 가장자리를 눌러도 가장 가까운 줄로, 버튼 바로 옆(몇 px)도 그 버튼으로. 카드 위 클릭은 뒤의 도구로 넘어가지 않음. Object Mode 키맵에도 먼저 등록.

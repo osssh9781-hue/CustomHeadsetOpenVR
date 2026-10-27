@@ -1,4 +1,15 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.57 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.58 (Claude Code, 2026-10-14)
+
+## 0.24.58
+- ZIP sha256 `6a18b4e29978fff7eab34166e41614d91b42fb0996fc2cb41d0ceef4fd7963d8`.
+- `ui_bars.py`(새): `bar_items`(BAR_TOOLS → 'abtn' + 'keycap'), `strip_items`(`ts.grouped_tools()` → 'striphead' + 'button', `strip_layout`이 높이에 맞춰 열 수 / 크기), `strip_width`, `left_inset`, `all_items`, `hit`, `run`(`mch.bar_tool`), POST_PIXEL `_draw`(mecha_menu.draw), `MCH_OT_ui_hover`(3D View MOUSEMOVE, PASS_THROUGH, `WM.mch_ui_hover`). prefs `drawn_toolbar`, `tool_strip`.
+- `concept_move`: scene `path_back_mask`, 연산자 `back_mask` / `toward`(시선 쪽, invoke에서 원근이면 눈−잡은 점). `facing_weights`(법선·시선 −0.1~0.2 램프), `toward_local`(mref 포함), `masked`(field를 가중치로, generate가 덧붙인 점은 가장 가까운 원래 점 가중치), `back_field`. `_run(..., back)`, 'path' 기록에 'back', `replay_one` 적용. 미리보기도 같은 가중치. 모달 B 토글, 헤더, key_legend.
+- `path_sweep._grab(..., front_only, source)`: 브러시 패치 실패 시 bm 다시 읽고 0.7 / 0.5배 반경, 그래도 실패면 None(SECTION 안 감). `analyse` / `extend`에 `front_only`; extend 기록 'front_only'. `_execute_section`: Back Mask + Brush에서 실패면 CANCELLED(Separate Tube 안 함).
+- `core_geometry.boolean_result`: 반사 컷터 재시도 조건에 INTERSECT의 'whole object'(빈 결과) 추가 → Split 안쪽 조각. `cut_engine.mirror_live_cutter`(`_make_live` 첫머리): 컷터 상자가 베이스 메시와 안 겹치고 반사본이 겹치면 컷터 메시를 반사(면 뒤집기).
+- `box_hide`: `symmetry_copies(context, t)`(cg.mirror_reflections 조합 × 래디얼 회전, 항등 제외), `_transformed`, PG `follow_symmetry`. perform에서 복사본마다 UNION / DIFFERENCE.
+- `safety_save.py`(새): `checkpoint(why)`(prefs `safety_save` / `safety_minutes`, `_dirty`, `due`, 배경 모드 제외), `save_now`(`wm.save_as_mainfile(copy=True)` → `_saving` → `_prev` 교체), `_tick` 30초 타이머(`idle_ok`: 모든 창 `modal_operators` 비었고 OBJECT), 연산자 save_now / open_folder / recover, `draw_prefs`. 연결: `StrokeLogic._run`, `MCH_OT_concept_move.execute`, `MCH_OT_concept_path.execute`.
+- `base_mesh.densify_along(me, path)`: `attach_bend` 전에(z0 ≠ z1일 때) 경로에 수직인 평면으로 48번 `bisect_plane`, 5각 이상 면은 삼각형으로.
+- `quick_hud_press.invoke`: `ui_bars.hit` 먼저. `quick_hud.current` / `key_legend._draw` / `bottom_bar.active_button_pos`가 strip 폭만큼 오른쪽. `MCH_GGT_bottom_toolbar.poll`·이름 라벨은 drawn_toolbar 끄면만. `mecha_menu.draw`에 'keycap', 'striphead'.
 
 ## 0.24.57
 - ZIP sha256 `cfdcfa871f2cc02ca56b3f2580babc8056e49c8d3858b499c2e46da97d6075d4`.
