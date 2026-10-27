@@ -2381,8 +2381,10 @@ class MCH_OT_zb_popup(_ZBPoll, bpy.types.Operator):
     bl_idname = 'mch.zb_popup'
     bl_label = 'ZBrush Menu'
     bl_options = {'INTERNAL'}
-    focus: StringProperty(default='')
-    kind: StringProperty(default='MENU')
+    # 0.24.66 SKIP_SAVE: Blender gives a key the last used value of what the key does not set - after the Alpha tile
+    # (kind ALPHA) S / right-click opened the alpha window instead of the menu
+    focus: StringProperty(default='', options={'SKIP_SAVE'})
+    kind: StringProperty(default='MENU', options={'SKIP_SAVE'})
 
     def invoke(self, context, event):
         if event.type == 'RIGHTMOUSE' and self.kind == 'MENU' and not self.focus:

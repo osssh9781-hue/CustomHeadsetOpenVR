@@ -142,4 +142,24 @@ check('Open Recovery Copy: the crashed session\'s scene comes back', r == {'FINI
 ss.remove_marker()
 check('The marker is removed on a normal exit', not os.path.exists(mine))
 
+# --- 0.24.66 fix: keys do not take over what a button last set ------------------------------------------------------
+import glob
+import re
+code = ''.join(open(f, encoding='utf-8').read() for f in glob.glob(os.path.join(os.path.dirname(ss.__file__), '*.py')))
+sticky = []
+for km in C.window_manager.keyconfigs.addon.keymaps:
+    for ki in km.keymap_items:
+        if not ki.idname.startswith('mch.') or ki.properties is None:
+            continue
+        for prop in ki.properties.bl_rna.properties:
+            if prop.identifier == 'rna_type' or prop.is_skip_save or ki.properties.is_property_set(prop.identifier):
+                continue
+            q = re.escape(ki.idname)
+            if re.search(r"['\"]" + q + r"['\"]\s*,\s*\{[^}]*['\"]" + prop.identifier + r"['\"]", code) or \
+                    re.search(re.escape('bpy.ops.' + ki.idname) + r"\([^)]*\b" + prop.identifier + r"\s*=", code):
+                sticky.append((km.name, ki.type, ki.idname, prop.identifier))
+check('No key takes over a value a button set last (after the Alpha tile, S / right-click still open the menu)',
+      not sticky and bpy.ops.mch.zb_popup.get_rna_type().properties['kind'].is_skip_save
+      and bpy.ops.mch.zb_popup.get_rna_type().properties['focus'].is_skip_save, sticky)
+
 summary()
