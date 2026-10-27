@@ -560,7 +560,85 @@ class MCH_OT_group_repeat(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_OT_group, MCH_OT_group_action, MCH_OT_group_repeat)
+class MCH_OT_group_pick(bpy.types.Operator):
+    """Select this group (its Repetition card shows); with Enter: work inside it"""
+    bl_idname = 'mch.group_pick'
+    bl_label = 'Pick Group'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    name: bpy.props.StringProperty()
+    enter: bpy.props.BoolProperty(default=False)
+
+    def execute(self, context):
+        g = bpy.data.objects.get(self.name)
+        if not is_group(g) or context.mode != 'OBJECT':
+            return {'CANCELLED'}
+        if self.enter:
+            enter_scope(context, g)
+        else:
+            exit_scope(context)
+            select_group(context, g)
+        return {'FINISHED'}
+
+
+def all_groups(context):
+    """The scene's groups, outer ones first (each with its depth)."""
+    out = []
+
+    def walk(g, depth):
+        out.append((g, depth))
+        for c in sorted((o for o in g.children if is_group(o)), key=lambda o: o.name):
+            walk(c, depth + 1)
+    for g in sorted((o for o in context.scene.objects if is_group(o) and group_of(o.parent) is None),
+                    key=lambda o: o.name):
+        walk(g, 0)
+    return out
+
+
+def draw_list(layout, context):
+    """0.24.55 the group list (sidebar): pick, enter, what repeats."""
+    rows = all_groups(context)
+    inside = scope(context)
+    if not rows:
+        layout.label(text='No groups yet (Mecha Menu > Groups > Group)', icon='INFO')
+        return
+    if inside is not None:
+        layout.operator('mch.group_action', text=f'Exit {inside.name}', icon='LOOP_BACK').action = 'EXIT'
+    col = layout.column(align=True)
+    for g, depth in rows:
+        row = col.row(align=True)
+        if depth:
+            row.label(text='', icon='BLANK1')
+        sel = context.active_object == g
+        op = row.operator('mch.group_pick', text=g.name, icon='GROUP', depress=sel)
+        op.name, op.enter = g.name, False
+        mode = repeat_mode(g)
+        row.label(text='' if mode == 'OFF' else mode.title())
+        op = row.operator('mch.group_pick', text='', icon='FORWARD' if inside != g else 'CHECKMARK')
+        op.name, op.enter = g.name, True
+
+
+class MCH_PT_groups(bpy.types.Panel):
+    bl_idname = 'MCH_PT_groups'
+    bl_label = 'Groups'
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'Mecha Lab'
+    bl_order = 76
+    bl_options = {'DEFAULT_CLOSED'}
+
+    @classmethod
+    def poll(cls, context):
+        from . import tool_state as ts
+        try:
+            return ts.sidebar_select(context)
+        except (AttributeError, KeyError):
+            return True
+
+    def draw(self, context):
+        draw_list(self.layout, context)
+
+
+CLASSES = (MCH_OT_group, MCH_OT_group_action, MCH_OT_group_repeat, MCH_OT_group_pick, MCH_PT_groups)
 
 
 def register():

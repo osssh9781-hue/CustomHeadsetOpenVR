@@ -121,6 +121,36 @@ check('... + on Z and Gap from the card', gr.repeat_grid(g) == (3, 2, 2) and abs
 n0 = len(gr.members(g))
 check('... Apply makes them real', gr.make_real(C, g) == 11 and len(gr.members(g)) == n0 + 11)
 bb.ui_active = real_ui
+inner = gr.create(C, [cube('GIn', size=0.5, loc=(25, 0, 0))])
+outer = gr.create(C, [inner, cube('GOut', size=0.5, loc=(26, 0, 0))])
+rows = [(x.name, d) for x, d in gr.all_groups(C)]
+check('Group list: every group, inner ones under their outer one', (outer.name, 0) in rows
+      and (inner.name, 1) in rows and rows.index((inner.name, 1)) == rows.index((outer.name, 0)) + 1, rows)
+bpy.ops.mch.group_pick(name=inner.name, enter=True)
+check('... pick with Enter: inside that group', gr.scope(C) == inner)
+bpy.ops.mch.group_pick(name=outer.name)
+check('... pick: out again, the group selected', gr.scope(C) is None and C.active_object == outer)
+class _L:
+    def __init__(self): self.calls = []
+    def __getattr__(self, n):
+        def f(*a, **k):
+            self.calls.append(n)
+            return types.SimpleNamespace() if n == 'operator' else self
+        return f
+lay = _L()
+gr.draw_list(lay, C)
+check('... the sidebar list draws (stand-in layout)', lay.calls.count('operator') >= 2 * len(rows))
+from mecha_lab import tool_state as ts
+groups = ts.grouped_tools()
+ids = [t[0] for _n, rows in groups for t in rows]
+check('Tool list by job: about 10 groups, every visible tool exactly once', 8 <= len(groups) <= 11
+      and sorted(ids) == sorted(t[0] for t in ts.VISIBLE_TOOLS) and len(ids) == len(set(ids)),
+      [(n, len(r)) for n, r in groups])
+from mecha_lab import workspace_ui as wui
+lay = _L()
+wui.icon_tile = (lambda real: (lambda *a, **k: [types.SimpleNamespace()]))(wui.icon_tile)
+wui.draw_tool_grid(lay, C, columns=3, scale=1.0)
+check('... the tool grid shows a heading per group', lay.calls.count('label') == len(groups))
 check('Mecha Menu: Repeat Grid', any(it[0] == 'Repeat Grid' for sec, its in mm.ACTIONS for it in its))
 
 # preference off

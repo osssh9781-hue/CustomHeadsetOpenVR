@@ -1141,11 +1141,15 @@ def draw_tool_grid(layout, context, columns=4, scale=3.0, tools=None):
     sm = layout.row()
     sm.scale_y = 1.4
     sm.operator('mch.select_move', icon='RESTRICT_SELECT_OFF')
-    grid = layout.grid_flow(row_major=True, columns=columns, even_columns=True, even_rows=True, align=False)
-    for tid, label, desc, stem, fallback, native, status in tools or ts.VISIBLE_TOOLS:
-        text = label + (' (todo)' if status == 'TODO' else '')
-        for op in icon_tile(grid, stem, fallback, 'mch.set_tool', text, scale, depress=(tid == active)):
-            op.tool = tid
+    groups = [('', list(tools))] if tools else ts.grouped_tools()     # 0.24.55 the full list by job
+    for name, rows in groups:
+        if name:
+            layout.label(text=name.upper())
+        grid = layout.grid_flow(row_major=True, columns=columns, even_columns=True, even_rows=True, align=False)
+        for tid, label, desc, stem, fallback, native, status in rows:
+            text = label + (' (todo)' if status == 'TODO' else '')
+            for op in icon_tile(grid, stem, fallback, 'mch.set_tool', text, scale, depress=(tid == active)):
+                op.tool = tid
 
 
 # 0.24.21 sculpt brush presets under the tool list: (label, essentials brush asset, icon stem, fallback icon)

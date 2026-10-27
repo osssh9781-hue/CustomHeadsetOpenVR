@@ -159,6 +159,35 @@ NATIVE_TO_TOOL = {t[5]: t[0] for t in TOOLS if t[5]}
 SHAPE_TOOLS = {'CUT', 'SPLIT', 'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2',
                'DETAIL3', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW'}
 
+# 0.24.55 the tool list by job (about 10 groups instead of one long list); a tool not listed goes to Other
+TOOL_GROUPS = (
+    ('Block-out', ('BASE', 'CBASE', 'SUBD', 'PRIMITIVE')),
+    ('Cut', ('CUT', 'SPLIT', 'HIDE', 'BOOLEAN', 'FUSE', 'PERF')),
+    ('Surface detail', ('PLATE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'SDRAW', 'SCREW', 'EXTRACT', 'MOLDING', 'BELT')),
+    ('Move', ('CMOVE', 'CPATH', 'POSE', 'REMESH')),
+    ('Symmetry & repeat', ('MIRROR', 'RSYM', 'RADIAL', 'ARRAY')),
+    ('Curves', ('TUBE', 'TUBE_SAME', 'SCURVE', 'CABLE', 'ALONG', 'LOFT')),
+    ('Creature', ('CPLATE', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'HAIR')),
+    ('Cloth', ('WRINKLE', 'CAPE', 'SCAPE', 'GARMENT', 'HOOD', 'SCARF')),
+    ('Utility', ('HOLLOW', 'ZBRUSH', 'SURFACE', 'LIBRARY', 'EDIT')),
+)
+
+
+def grouped_tools(tools=None):
+    """[(group name, [tool rows])] of the visible tools, in TOOL_GROUPS order; the rest under 'Other'."""
+    tools = list(tools if tools is not None else VISIBLE_TOOLS)
+    by_id = {t[0]: t for t in tools}
+    out, seen = [], set()
+    for name, ids in TOOL_GROUPS:
+        rows = [by_id[i] for i in ids if i in by_id]
+        seen.update(t[0] for t in rows)
+        if rows:
+            out.append((name, rows))
+    rest = [t for t in tools if t[0] not in seen]
+    if rest:
+        out.append(('Other', rest))
+    return out
+
 # Enum numbers keep v0.5.9 values so saved .blend files map to the same tool.
 _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRAW': 6,
                  'ARRAY': 7, 'RADIAL': 8, 'SURFACE': 9, 'LIBRARY': 10, 'EDIT': 11,
