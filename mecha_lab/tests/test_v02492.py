@@ -51,25 +51,35 @@ check('... later changes are kept (not tuned again)', abs(zs.brush(C).strength -
 # --- alphas -----------------------------------------------------------------------------------------------------
 files, total = zs.alpha_files(C)
 check('Alphas: the Mecha alphas come with the add-on', total >= 12 and all(os.path.isfile(f) for f in files))
+local_tex = {t.name for t in bpy.data.textures if t.library is None}
+local_img = {i.name for i in bpy.data.images if i.library is None}
 msg = zs.set_alpha(C, files[0])
 b0 = zs.brush(C)
-check('Pick an alpha: an image brush texture on the surface (ZBrush alpha)', b0.texture is not None
+check('Pick an alpha: an image brush texture from the view (ZBrush alpha)', b0.texture is not None
       and os.path.normcase(zs.current_alpha(C)) == os.path.normcase(files[0])
       and b0.texture_slot.map_mode in {'AREA_PLANE', 'VIEW_PLANE'}, msg)
+check('0.24.63 It goes on the brush you sculpt with (the Essentials brush itself): a texture linked from a small '
+      'file of its own - no brush copy, nothing new in your file', b0.library is not None and b0.name == 'Draw'
+      and b0.texture.library is not None and os.path.isfile(bpy.path.abspath(b0.texture.library.filepath))
+      and {t.name for t in bpy.data.textures if t.library is None} == local_tex
+      and {i.name for i in bpy.data.images if i.library is None} == local_img)
 sx = b0.texture_slot.scale[0]
 zs.alpha_edit(C, 'FLIP_H')
 zs.alpha_edit(C, 'ROTATE')
 zs.alpha_edit(C, 'INVERT')
-check('Flh / Rot / Invr', b0.texture_slot.scale[0] == -sx and abs(b0.texture_slot.angle - 1.5708) < 1e-3
-      and b0.texture.use_color_ramp)
-check("The alpha goes on the file's own copy of the brush (the Essentials brush is linked), ZBrush name kept",
-      b0.library is None and b0.name.endswith(zs.ZB_SUFFIX) and zs.zb_name(b0) == 'Standard'
-      and zs.icon_stem(b0.name) == zs.icon_stem('Draw'), b0.name)
+check('Flh / Rot / Invr (Invr = the inverted twin from the same file)', b0.texture_slot.scale[0] == -sx
+      and abs(b0.texture_slot.angle - 1.5708) < 1e-3 and b0.texture.name.endswith(zs.INV)
+      and os.path.normcase(zs.current_alpha(C)) == os.path.normcase(files[0]))
+zs.alpha_edit(C, 'INVERT')
+check('... Invr again: back', not b0.texture.name.endswith(zs.INV))
 zs.activate(C, 'ClayBuildup')
 check('... another brush has no alpha', zs.current_alpha(C) == '')
 zs.activate(C, 'Standard')
 check('... back on Standard its alpha is still there (ZBrush keeps it per brush)',
       zs.brush(C) == b0 and os.path.normcase(zs.current_alpha(C)) == os.path.normcase(files[0]))
+n_libs = len(bpy.data.libraries)
+zs.set_alpha(C, files[0])
+check('The same alpha again: the same linked texture (no second file / library)', len(bpy.data.libraries) == n_libs)
 zs.set_alpha(C, '')
 check('Alpha Off', b0.texture is None and zs.current_alpha(C) == '')
 check("ZBrush's own ZAlphas folder is offered only when ZBrush is installed",

@@ -60,7 +60,7 @@ TOOLS = {'CLIP_CURVE': 'builtin.line_project', 'TRIM_CURVE': 'builtin.line_trim'
          'DRAW': 'builtin.brush', 'MOVE': 'builtin.move', 'SCALE': 'builtin.scale', 'ROTATE': 'builtin.rotate'}
 
 
-ZB_SUFFIX = ' (ZB)'          # the file's own copy of a brush (it can hold an alpha; the Essentials brush cannot)
+ZB_SUFFIX = ' (ZB)'          # (0.24.60 - 0.24.62 made "<brush> (ZB)" copies for alphas: still named by ZBrush name)
 
 
 def bl_base(name):
@@ -140,88 +140,6 @@ def zb_name(b):
     return BY_BL.get(base, base)
 
 
-def _activate_local(name):
-    bpy.ops.brush.asset_activate(asset_library_type='LOCAL', relative_asset_identifier='Brush/' + name)
-
-
-def _is_active(context, name):
-    b = brush(context)
-    return b is not None and b.library is None and b.name == name
-
-
-_PENDING = {'name': '', 'until': 0.0, 'failed': ''}
-
-
-def _activate_later(name, seconds=4.0):
-    """0.24.62 In a Blender window a brush copy made a moment ago is not in Blender's asset list yet, so switching
-    to it does nothing (no error).  Try again every 0.25 s for a few seconds - the alpha is on the copy already."""
-    import time
-    _PENDING.update(name=name, until=time.monotonic() + seconds, failed='')
-    if not bpy.app.timers.is_registered(_activate_retry):
-        bpy.app.timers.register(_activate_retry, first_interval=0.2)
-
-
-def _activate_retry():
-    import time
-    name = _PENDING['name']
-    if not name or bpy.data.brushes.get((name, None)) is None:
-        _PENDING['name'] = ''
-        return None
-    if time.monotonic() > _PENDING['until']:         # (the shelf says so under the alpha tile)
-        _PENDING.update(name='', failed=name)
-        print(f'[Mecha Lab] ZBrush alpha: Blender did not switch to the brush "{name}" (asset list)')
-        _bump()
-        return None
-    try:
-        for win in bpy.context.window_manager.windows:
-            for area in win.screen.areas:
-                region = next((r for r in area.regions if r.type == 'WINDOW'), None)
-                if area.type != 'VIEW_3D' or region is None:
-                    continue
-                with bpy.context.temp_override(window=win, area=area, region=region):
-                    ctx = bpy.context
-                    if ctx.mode != 'SCULPT':
-                        continue
-                    if not _is_active(ctx, name):
-                        try:
-                            _activate_local(name)
-                        except (RuntimeError, TypeError):
-                            pass
-                    if _is_active(ctx, name):
-                        _PENDING['name'] = ''
-                        _bump()
-                        area.tag_redraw()
-                        return None
-    except (AttributeError, ReferenceError, RuntimeError):
-        pass
-    return 0.25
-
-
-def local_brush(context):
-    """The sculpt brush as the file's own copy ('<name> (ZB)'), made and switched to when the brush comes from
-    Blender's Essentials library: a linked brush cannot take this file's alpha texture.  None when no brush.
-    0.24.62 when Blender cannot switch to a copy made just now (its asset list is updated a moment later) the
-    copy is returned anyway and becomes the brush a moment later (``_activate_later``)."""
-    b = brush(context)
-    if b is None or getattr(b, 'library', None) is None:
-        return b
-    name = b.name + ZB_SUFFIX
-    own = bpy.data.brushes.get((name, None))
-    if own is None:
-        own = b.copy()
-        own.name = name
-    try:
-        if own.asset_data is None:
-            own.asset_mark()
-        _activate_local(own.name)
-    except (RuntimeError, AttributeError, TypeError):
-        pass
-    if _is_active(context, own.name):
-        return brush(context)
-    _activate_later(own.name)
-    return own
-
-
 def activate(context, zname):
     """Make the Blender brush behind ZBrush's ``zname`` the sculpt brush; '' or an error text."""
     entry = BY_Z.get(zname)
@@ -232,16 +150,8 @@ def activate(context, zname):
             bpy.ops.wm.tool_set_by_id(name='builtin.brush')
     except (AttributeError, RuntimeError, TypeError):
         pass
-    try:
-        own = bpy.data.brushes.get((entry[1] + ZB_SUFFIX, None))
-        if own is not None and own.asset_data is not None:
-            _activate_local(own.name)            # the brush with its alpha (ZBrush keeps the alpha per brush)
-            if not _is_active(context, own.name):    # (not in Blender's asset list yet: the plain one, then it)
-                bpy.ops.brush.asset_activate(asset_library_type='ESSENTIALS',
-                                             relative_asset_identifier=LIB + entry[1])
-                _activate_later(own.name)
-        else:
-            bpy.ops.brush.asset_activate(asset_library_type='ESSENTIALS', relative_asset_identifier=LIB + entry[1])
+    try:                                         # (the brush keeps its alpha while Blender runs, like ZBrush)
+        bpy.ops.brush.asset_activate(asset_library_type='ESSENTIALS', relative_asset_identifier=LIB + entry[1])
     except RuntimeError as ex:
         return str(ex).splitlines()[0]
     remember(zname)
@@ -349,8 +259,58 @@ def current_alpha(context):
     return bpy.path.abspath(img.filepath) if img is not None else ''
 
 
+INV = ' (Inv)'
+
+
+def _alpha_lib_dir():
+    """A folder of this add-on's own for the alpha texture files (Blender's extension user folder)."""
+    try:
+        return bpy.utils.extension_path_user(__package__, path='alpha_textures', create=True)
+    except (AttributeError, ValueError, TypeError, OSError):
+        return bpy.utils.user_resource('DATAFILES', path=os.path.join('mecha_lab', 'alpha_textures'), create=True)
+
+
+def alpha_texture(path, inverted=False):
+    """0.24.63 The alpha as an image texture linked from a small .blend of its own (made once per image in the
+    add-on's folder).  Blender's Essentials brushes are linked data: they take a linked texture, never one made in
+    this file - so the alpha goes on the brush you sculpt with, no brush copy, nothing new in your file."""
+    import hashlib
+    full = os.path.abspath(bpy.path.abspath(path))
+    key = hashlib.sha1(os.path.normcase(full).encode('utf-8')).hexdigest()[:12]
+    lib = os.path.join(_alpha_lib_dir(), f'alpha_{key}.blend')
+    base = 'ZB Alpha ' + os.path.splitext(os.path.basename(full))[0]
+    want = base + (INV if inverted else '')
+    for t in bpy.data.textures:
+        if t.library is not None and t.name == want and \
+                os.path.normcase(bpy.path.abspath(t.library.filepath)) == os.path.normcase(lib):
+            return t
+    if not os.path.isfile(lib):
+        img = bpy.data.images.load(full, check_existing=False)
+        made = []
+        try:
+            img.name = base
+            for name, inv in ((base, False), (base + INV, True)):
+                t = bpy.data.textures.new(name, 'IMAGE')
+                t.image = img
+                t.extension = 'CLIP'
+                if inv:                              # ZBrush Invr: white <-> black
+                    t.use_color_ramp = True
+                    els = t.color_ramp.elements
+                    els[0].color = (1.0, 1.0, 1.0, 1.0)
+                    els[-1].color = (0.0, 0.0, 0.0, 1.0)
+                made.append(t)
+            bpy.data.libraries.write(lib, set(made), path_remap='ABSOLUTE', fake_user=True)
+        finally:                                     # (only the file on disk keeps them; this file stays as it was)
+            for t in made:
+                bpy.data.textures.remove(t)
+            bpy.data.images.remove(img)
+    with bpy.data.libraries.load(lib, link=True) as (_src, dst):
+        dst.textures = [want]
+    return dst.textures[0]
+
+
 def set_alpha(context, path):
-    """The brush's alpha (Blender: an image brush texture on the surface) - '' = Alpha Off."""
+    """The brush's alpha (Blender: an image brush texture from the view) - '' = Alpha Off."""
     b = brush(context)
     if b is None:
         return 'No brush'
@@ -358,21 +318,13 @@ def set_alpha(context, path):
         if b.texture is not None:
             b.texture = None
         return 'Alpha Off'
-    b = local_brush(context)
-    if b is None:
-        return 'Alpha: this brush cannot take an alpha'
-    later = brush(context) is not b                  # (the copy becomes the brush in a moment)
     try:
-        img = bpy.data.images.load(path, check_existing=True)
-    except RuntimeError as ex:
+        tex = alpha_texture(path)
+    except (RuntimeError, OSError) as ex:
         return 'Alpha: ' + str(ex).splitlines()[0]
-    name = 'Alpha ' + os.path.splitext(os.path.basename(path))[0]
-    tex = bpy.data.textures.get(name)
-    if tex is None or tex.type != 'IMAGE':
-        tex = bpy.data.textures.new(name, 'IMAGE')
-    tex.image = img
-    tex.extension = 'CLIP'
     b.texture = tex
+    if b.texture != tex:
+        return 'Alpha: Blender did not take it on this brush'
     slot = b.texture_slot
     for mode in ('VIEW_PLANE', 'AREA_PLANE'):     # 0.24.61 from the view, like a ZBrush alpha
         try:
@@ -386,7 +338,7 @@ def set_alpha(context, path):
     if hasattr(b, 'use_primary_overlay'):         # the alpha shows in the brush circle
         b.use_primary_overlay = True
         b.texture_overlay_alpha = 40
-    return name + ('  (switching to the brush copy that holds it ...)' if later else '')
+    return 'Alpha ' + os.path.splitext(os.path.basename(path))[0]
 
 
 def alpha_edit(context, action):
@@ -403,11 +355,9 @@ def alpha_edit(context, action):
     elif action == 'ROTATE':
         slot.angle = (slot.angle + math.pi / 2) % (2 * math.pi)
     elif action == 'INVERT':
-        tex.use_color_ramp = not tex.use_color_ramp
-        if tex.use_color_ramp:
-            els = tex.color_ramp.elements
-            els[0].color = (1, 1, 1, 1)
-            els[-1].color = (0, 0, 0, 1)
+        path = current_alpha(context)
+        if path:                                     # (the inverted twin from the same alpha file)
+            b.texture = alpha_texture(path, inverted=not tex.name.endswith(INV))
     return {'FLIP_H': 'Flip H', 'FLIP_V': 'Flip V', 'ROTATE': 'Rotate', 'INVERT': 'Invert'}.get(action, action)
 
 
@@ -2570,8 +2520,6 @@ def register():
 def unregister():
     from . import zb_highpoly
     zb_highpoly.unregister()
-    if bpy.app.timers.is_registered(_activate_retry):
-        bpy.app.timers.unregister(_activate_retry)
     lasso_hide()
     stamp_hide()
     for km, kmi in _keymaps:

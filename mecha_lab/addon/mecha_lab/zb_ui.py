@@ -306,9 +306,6 @@ def shelf_b(context, k, Item, top, floor=0.0):
           ('op', 'mch.zb_popup', {'kind': 'ALPHA'})),
          (os.path.splitext(os.path.basename(tp))[0] if tp else 'Texture Off', ('alpha:' + tp) if tp else 'card',
           ('op', 'mch.zb_popup', {'kind': 'TEXTURE'})), 60.0)
-    if zs._PENDING.get('failed') and not ap:         # 0.24.62 Blender would not switch to the alpha's brush copy
-        y -= 16 * k
-        out.append(Item('pnote', x0 + PAD * k, y, iw, 16 * k, 'Alpha: brush not switched', '', False, True))
     flips = [{'kind': 'tbtn', 'label': lab, 'action': ('op', 'mch.zb_alpha_edit', {'action': act})}
              for lab, act in (('Flh', 'FLIP_H'), ('Flv', 'FLIP_V'), ('Rot', 'ROTATE'), ('Invr', 'INVERT'))]
     row(flips[:2])
