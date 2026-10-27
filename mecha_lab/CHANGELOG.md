@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 0.24.56 — 새 부품이 미러를 따라감, 마지막 컷 다시 조절, 그룹 Grid·목록, 도구 목록 그룹 (2026-10-27)
+
+- **새 부품이 미러를 따라감**: 미러가 켜진 부품 위에 Armor / Creature Plate, Surface Draw, Flower, 나사를 만들면 같은 미러(평면, 같은 중심, Bisect·Flip)가 붙음 — 반대쪽에도 바로 보임. Preferences: New Parts Follow the Mirror.
+- **마지막 컷 다시 조절(Live Last Cut)**: Cut 한 번(한 부품, 램프 아님) 뒤 다음 컷 전까지는 Cut Depth / Depth 방식 / GN Edge(종류·폭·단 수) / Edge Finish(종류·폭·단 수)를 Quick HUD·메뉴·패널에서 바꾸면 방금 컷이 그 값으로 다시 잘림. 컷 뒤에 메시를 편집했으면 편집을 지키고 더 이상 다시 자르지 않음. Preferences: Live Last Cut.
+- **Symmetry 카드**: Clip 토글(Bisect / Flip / Clip), 카드가 떠 있는 동안 뷰포트에 반투명 미러 평면(X 빨강 / Y 초록 / Z 파랑).
+- **그룹 Repetition Grid**: X × Y × Z 개, 그룹 크기 + Gap 간격으로 나란히. 카드에서 축별 − / +, Gap − / +. 메뉴 Repetition에 Repeat Grid.
+- **그룹 목록**: 사이드바 Mecha Lab > Groups — 그룹(안쪽 그룹은 들여쓰기), 반복 방식, 고르기 / 들어가기, Exit.
+- **도구 목록을 작업별로**: Block-out / Cut / Surface detail / Move / Symmetry & repeat / Curves / Creature / Cloth / Utility 제목 아래 묶음(사이드바·팝업 그리드).
+- 테스트: 136개 파일 3883/3883. test_v02475 · test_v02476 추가. ZIP sha256 `0ae80b16db7252c2347a27bbe88c0cecd20cd8dd98c6e427c055b21d50b60bac`.
+
 ## 0.24.55 — Path Move: 전체(Whole) 모드를 바로 (2026-10-27)
 
 - 예전처럼 부품 단면 전체를 끌어내는 Extend를 **Whole**(전 Section)로 부르고, 바로 바꿀 수 있게 함:

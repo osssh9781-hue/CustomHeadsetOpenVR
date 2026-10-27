@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.55
+# Test Report — Mecha Lab 0.24.56
+
+## 0.24.56 결과: 136개 파일 3883/3883 (`tests/test_log_bpy501_v02456.txt`, Blender 5.0.1 bpy). test_v02475(27): 미러 따라가기(같은 평면·중심·bisect·flip, 반대쪽 정점, 이미 있으면 그대로, 멀리 있으면 없음, 로컬 미러 = 원본 부품 기준, 나사 = 부모), 카드 Clip, 미러 평면 사각형·그리기(대역 페인터), 그룹 Grid(5 / 11개, 간격, 인스턴스, 카드 X/Y/Z·Gap, Apply), 그룹 목록(중첩 순서, 고르기 / 들어가기, 대역 레이아웃), 도구 그룹(모든 도구 한 번씩, 제목), Preferences 끔. test_v02476(9): Live Last Cut 조건, 도구 연결, 깊이 0.3 → 0.5 다시 자르기(닫힘), GN Chamfer 켜기, 편집 후 슬라이더 → 편집 유지·라이브 끝·백업 정리, Preferences 끔. 5.2.3 bpy에서도 test_v02475 · v02476 · v02474 통과. 실제 화면은 미검증.
 
 ## 0.24.55 결과: 134개 파일 3847/3847 (`tests/test_log_bpy501_v02455.txt`, Blender 5.0.1 bpy). test_v02474(16): + Tab 전환(Brush → Whole → Brush, 미리보기 다시 읽기), 이름 Whole, Quick HUD / 메뉴 설정에 path_area, 키 안내 Tab. 실제 화면은 미검증.
 

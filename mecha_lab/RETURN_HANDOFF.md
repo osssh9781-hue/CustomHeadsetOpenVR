@@ -1,4 +1,12 @@
-# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.55 (Claude Code, 2026-10-14)
+# RETURN HANDOFF → ChatGPT — Mecha Lab 0.24.56 (Claude Code, 2026-10-14)
+
+## 0.24.56
+- ZIP sha256 `0ae80b16db7252c2347a27bbe88c0cecd20cd8dd98c6e427c055b21d50b60bac`.
+- `symmetry.follow(context, ob, source=None)` / `_under`(부모 메시, 아니면 박스에 중심이 든 미러 부품 중 가장 작은 것): 미러 축·mirror_object(로컬 미러면 원본 부품)·bisect·flip 복사. `cut_engine.FOLLOWERS`(PLATE, CPLATE, SDRAW, FLOWER) → `_run` 뒤, `screw_stamp` 클릭 뒤. pref `symmetry_follow`.
+- `ramp_edit`: kind 'cutlive', `RAMP_KINDS` / `ALL_KINDS`, `live_target(context, kinds)`(기본은 램프만 → 램프 UI는 그대로), `begin(..., extra)`, `refresh(context, kind|kinds)`, recarve는 `perform_closed`. `StrokeLogic._live_cut`(CUT, 대상 1개, gn_ramp 아님, pref `live_last_cut`), `_execute_closed`에서 begin → perform_closed → stamp(실패 시 finish). `tool_state._live_cut_update`: depth_mode / edge_finish / finish_width / finish_segments / gn_finish / gn_width / gn_segments; depth는 `_ramp_refresh_update`가 ('cut', 'cutlive').
+- `symmetry`: `toggle_clip`, 카드 Clip, `plane_quads`, `PLANE_COLORS`, POST_VIEW `_draw_planes`.
+- `groups`: GRID(`repeat_grid`, `repeat_gap`, `group_size`, `grid_step`, `_mats`), `set_repeat(grid=, gap=)`, `MCH_OT_group_pick`, `all_groups`, `draw_list`, `MCH_PT_groups`. `symmetry.GROUP_MODES`, 카드 Grid 섹션(`sym_grid`, `sym_gap`). 메뉴 Repeat Grid, glyph 'grid'.
+- `tool_state.TOOL_GROUPS` / `grouped_tools`; `workspace_ui.draw_tool_grid`가 tools 없을 때 그룹 제목.
 
 ## 0.24.55
 - ZIP sha256 `d52add2430582c08ff86f0f775bbd5f46d90bf07591191cd5551dab85c25b4b2`.
