@@ -135,6 +135,33 @@ check('The alpha is projected from the view (ZBrush) and shows in the brush circ
       b.texture_slot.map_mode == 'VIEW_PLANE' and b.use_primary_overlay and not b.texture_slot.use_rake)
 zs.set_alpha(C, '')
 
+# --- 0.24.62 alpha in a Blender window: the brush copy is not in Blender's asset list at once ---------------------
+zs.activate(C, 'ClayBuildup')
+cb = bpy.data.brushes.get(('Clay Strips' + zs.ZB_SUFFIX, None))
+if cb is not None:
+    bpy.data.brushes.remove(cb)
+zs.activate(C, 'ClayBuildup')
+real_act = zs._activate_local
+zs._activate_local = lambda name: None              # (what a window does at first: no switch, no error)
+msg = zs.set_alpha(C, files[4])
+own = bpy.data.brushes.get(('Clay Strips' + zs.ZB_SUFFIX, None))
+check('A window that cannot switch at once: the alpha still goes on the brush copy, a retry is set up',
+      own is not None and own.texture is not None and zs.brush(C) != own and zs._PENDING['name'] == own.name
+      and bpy.app.timers.is_registered(zs._activate_retry) and 'switching' in msg, msg)
+zs._activate_local = real_act
+again = zs._activate_retry()                        # (the timer, once Blender's list has the copy)
+check('... a moment later the copy with the alpha is the brush (the tile shows the alpha)', again is None
+      and zs.brush(C) == own and zs.current_alpha(C) != '' and zs._PENDING['name'] == '')
+zs._activate_local = lambda name: None
+zs.activate(C, 'Standard')
+zs.activate(C, 'ClayBuildup')
+check('Picking that brush again while the window still lags: the plain brush now, its copy a moment later',
+      zs.brush(C).name == 'Clay Strips' and zs._PENDING['name'] == own.name)
+zs._activate_local = real_act
+zs._activate_retry()
+check('... then the copy with its alpha', zs.brush(C) == own and zs.current_alpha(C) != '')
+zs.set_alpha(C, '')
+
 # --- keys -------------------------------------------------------------------------------------------------------------
 check('Shift+D = Duplicate (asked: SDiv seldom used), D = SDiv up', (
     'D', False, True, False, 'mch.zb_action', {'action': 'DUPLICATE'}) in zs.KEYS and (
@@ -143,7 +170,7 @@ check('G does not leave the ZBrush screen (Blender style / outside the tab it st
       not wui.MCH_OT_sculpt_back.poll(C) and 'zb_sculpt.on(context)' in inspect.getsource(
           wui.MCH_OT_sculpt_back.poll))
 check('The key card says Shift+D = Duplicate', any('Duplicate' in t for t in zu.KEYS_TEXT if t.startswith('D /')))
-check('Version 0.24.61', mecha_lab.bl_info['version'] == (0, 24, 61))
+check('Version 0.24.62', mecha_lab.bl_info['version'] == (0, 24, 62))
 zs.on = real_on
 wui.pref = real_pref
 hp.set_pref = hp_set

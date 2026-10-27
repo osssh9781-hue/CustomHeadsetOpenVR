@@ -144,9 +144,64 @@ def _activate_local(name):
     bpy.ops.brush.asset_activate(asset_library_type='LOCAL', relative_asset_identifier='Brush/' + name)
 
 
+def _is_active(context, name):
+    b = brush(context)
+    return b is not None and b.library is None and b.name == name
+
+
+_PENDING = {'name': '', 'until': 0.0, 'failed': ''}
+
+
+def _activate_later(name, seconds=4.0):
+    """0.24.62 In a Blender window a brush copy made a moment ago is not in Blender's asset list yet, so switching
+    to it does nothing (no error).  Try again every 0.25 s for a few seconds - the alpha is on the copy already."""
+    import time
+    _PENDING.update(name=name, until=time.monotonic() + seconds, failed='')
+    if not bpy.app.timers.is_registered(_activate_retry):
+        bpy.app.timers.register(_activate_retry, first_interval=0.2)
+
+
+def _activate_retry():
+    import time
+    name = _PENDING['name']
+    if not name or bpy.data.brushes.get((name, None)) is None:
+        _PENDING['name'] = ''
+        return None
+    if time.monotonic() > _PENDING['until']:         # (the shelf says so under the alpha tile)
+        _PENDING.update(name='', failed=name)
+        print(f'[Mecha Lab] ZBrush alpha: Blender did not switch to the brush "{name}" (asset list)')
+        _bump()
+        return None
+    try:
+        for win in bpy.context.window_manager.windows:
+            for area in win.screen.areas:
+                region = next((r for r in area.regions if r.type == 'WINDOW'), None)
+                if area.type != 'VIEW_3D' or region is None:
+                    continue
+                with bpy.context.temp_override(window=win, area=area, region=region):
+                    ctx = bpy.context
+                    if ctx.mode != 'SCULPT':
+                        continue
+                    if not _is_active(ctx, name):
+                        try:
+                            _activate_local(name)
+                        except (RuntimeError, TypeError):
+                            pass
+                    if _is_active(ctx, name):
+                        _PENDING['name'] = ''
+                        _bump()
+                        area.tag_redraw()
+                        return None
+    except (AttributeError, ReferenceError, RuntimeError):
+        pass
+    return 0.25
+
+
 def local_brush(context):
     """The sculpt brush as the file's own copy ('<name> (ZB)'), made and switched to when the brush comes from
-    Blender's Essentials library: a linked brush cannot take this file's alpha texture.  None when no brush."""
+    Blender's Essentials library: a linked brush cannot take this file's alpha texture.  None when no brush.
+    0.24.62 when Blender cannot switch to a copy made just now (its asset list is updated a moment later) the
+    copy is returned anyway and becomes the brush a moment later (``_activate_later``)."""
     b = brush(context)
     if b is None or getattr(b, 'library', None) is None:
         return b
@@ -160,9 +215,11 @@ def local_brush(context):
             own.asset_mark()
         _activate_local(own.name)
     except (RuntimeError, AttributeError, TypeError):
-        return None
-    b2 = brush(context)
-    return b2 if b2 is not None and b2.library is None else None
+        pass
+    if _is_active(context, own.name):
+        return brush(context)
+    _activate_later(own.name)
+    return own
 
 
 def activate(context, zname):
@@ -179,6 +236,10 @@ def activate(context, zname):
         own = bpy.data.brushes.get((entry[1] + ZB_SUFFIX, None))
         if own is not None and own.asset_data is not None:
             _activate_local(own.name)            # the brush with its alpha (ZBrush keeps the alpha per brush)
+            if not _is_active(context, own.name):    # (not in Blender's asset list yet: the plain one, then it)
+                bpy.ops.brush.asset_activate(asset_library_type='ESSENTIALS',
+                                             relative_asset_identifier=LIB + entry[1])
+                _activate_later(own.name)
         else:
             bpy.ops.brush.asset_activate(asset_library_type='ESSENTIALS', relative_asset_identifier=LIB + entry[1])
     except RuntimeError as ex:
@@ -300,6 +361,7 @@ def set_alpha(context, path):
     b = local_brush(context)
     if b is None:
         return 'Alpha: this brush cannot take an alpha'
+    later = brush(context) is not b                  # (the copy becomes the brush in a moment)
     try:
         img = bpy.data.images.load(path, check_existing=True)
     except RuntimeError as ex:
@@ -324,7 +386,7 @@ def set_alpha(context, path):
     if hasattr(b, 'use_primary_overlay'):         # the alpha shows in the brush circle
         b.use_primary_overlay = True
         b.texture_overlay_alpha = 40
-    return name
+    return name + ('  (switching to the brush copy that holds it ...)' if later else '')
 
 
 def alpha_edit(context, action):
@@ -2487,6 +2549,8 @@ def register():
 def unregister():
     from . import zb_highpoly
     zb_highpoly.unregister()
+    if bpy.app.timers.is_registered(_activate_retry):
+        bpy.app.timers.unregister(_activate_retry)
     lasso_hide()
     stamp_hide()
     for km, kmi in _keymaps:
