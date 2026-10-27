@@ -88,7 +88,7 @@ check('Symmetry X button: live mirror on the part', am.mirror_mod(part) is not N
       and am.mirror_mod(part).use_axis[0])
 items = mm.build(C, 960, 540, W, H, 1.0)
 check('... shown on (blue) next time', find(items, 'abtn', 'Mirror X').on)
-seg = next(i for i in items if i.kind == 'seg' and not i.on)
+seg = next(i for i in items if i.kind == 'seg' and not i.on and i.data is not None)   # (Line / Sketch: modes)
 mm.run(C, seg)
 check('Segmented choice sets that value', getattr(seg.data, seg.prop) == seg.action[2])
 cut = S.mch_cut

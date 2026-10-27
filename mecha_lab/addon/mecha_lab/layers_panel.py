@@ -12,8 +12,8 @@ Export and the ZBrush Bridge under them - drawn in the Mecha look like the side 
 
 A click on a row selects the part (Shift: add / remove), on a group row the group handle; the eye hides / shows
 (a group: all its parts); [>] works inside the group (Enter / Exit, as in the Mecha Menu).  Groups fold with the
-arrow.  The wheel scrolls a long list.  Export and the Bridge share one set of options (the ZBrush settings), so
-"Send to ZBrush" and "Export" write the same mesh.
+arrow.  The wheel scrolls a long list.  Export and the Bridge start folded; they share one set of options (the
+ZBrush settings), so "Send to ZBrush" and "Export" write the same mesh.
 """
 from __future__ import annotations
 
@@ -235,10 +235,15 @@ def content(context, x, width, k):
     y -= GAP * k
     b = side_panel.Builder(TOOL, x, width, k)
     b.y = y
-    for drawer in (draw_export, draw_bridge):
+    for drawer in (draw_export, draw_bridge):        # folded at first (the list gets the room)
         node = pc.capture(drawer, context)
-        if not node.opts.get('error'):
-            b.node(node, x, width)
+        if node.opts.get('error'):
+            continue
+        for box in node.children:
+            if box.kind == 'box':
+                b.section(box, x, width, start_folded=True)
+            else:
+                b.node(box, x, width)
     out += b.out
     return out, -b.y
 

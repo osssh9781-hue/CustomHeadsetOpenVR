@@ -130,6 +130,18 @@ def load_sizes(p=None):
     return True
 
 
+def _ui_changed(self, context):
+    """0.24.59 a drawn-UI choice changed: lay the viewport UI out again."""
+    try:
+        from . import ui_bars
+        ui_bars.bump()
+        for window in context.window_manager.windows:
+            for area in window.screen.areas:
+                area.tag_redraw()
+    except (AttributeError, ReferenceError, ImportError):
+        pass
+
+
 def _sizes_changed(self, context):
     save_sizes(self)
     try:
@@ -2273,13 +2285,22 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
     drawn_toolbar: BoolProperty(name='Drawn Toolbar', default=True,
                                 description='0.24.58 the bottom toolbar as one dark bar (Mecha Menu look, names on hover); '
                                             'off = the 0.12 round buttons')
-    tool_strip: BoolProperty(name='Tool Strip', default=True,
-                             description='0.24.58 every tool, grouped by job, in a column at the left of the viewport')
+    tool_strip: BoolProperty(name='Tool Menu', default=True,
+                             description='0.24.58 every tool, grouped by job, as tiles (0.24.59: along the bottom of '
+                                         'the viewport, or a column at the left - Tool Menu Place)')
+    tool_menu: EnumProperty(name='Tool Menu Place', default='BOTTOM', update=_ui_changed, items=[
+        ('BOTTOM', 'Bottom', '0.24.59 the main menu along the bottom; the actions where the bottom toolbar was, the '
+                             'Layers panel on the left'),
+        ('LEFT', 'Left', 'The 0.24.58 column at the left, with the bottom toolbar and the actions card')])
+    layers_panel: BoolProperty(name='Layers Panel', default=True,
+                               description='0.24.59 parts and groups, Export and the ZBrush Bridge at the left of the '
+                                           'viewport (with the tool menu at the bottom)')
     strip_names: BoolProperty(name='Tool Strip Names', default=True,
                               description='0.24.59 the tool strip shows each tool\'s name next to its icon (two '
                                           'columns); off = icons only')
     strip_scale: FloatProperty(name='Tool Strip', default=1.0, min=0.5, max=2.5, subtype='FACTOR',
-                               update=_sizes_changed, description='0.24.59 size of the left tool strip')
+                               update=_sizes_changed, description='0.24.59 size of the tool tiles (the main menu at '
+                                                                  'the bottom and its actions, or the left strip)')
     top_bar: BoolProperty(name='Top Bar', default=True,
                           description='0.24.59 shapes, Line / Sketch / Slow Line, Targets, Depth ... at the top '
                                       'middle of the viewport (Blender\'s tool header keeps only the Custom PNG '
@@ -2324,6 +2345,9 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         row.prop(self, 'drawn_toolbar')
         row.prop(self, 'tool_strip')
         row.prop(self, 'strip_names')
+        row = box.row()
+        row.prop(self, 'tool_menu', expand=True)
+        row.prop(self, 'layers_panel')
         row = box.row()
         row.prop(self, 'top_bar')
         row.prop(self, 'side_panel')

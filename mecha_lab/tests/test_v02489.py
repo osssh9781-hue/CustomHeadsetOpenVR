@@ -18,6 +18,7 @@ C = bpy.context
 S = C.scene
 select_only(cube('A'))
 W, H = 2000, 1100
+HP = 1500          # the side panel's tests: a tall viewport (the bottom main menu takes the lower part)
 TOOL = ['CUT']
 real_tool = ts.effective_tool
 ts.effective_tool = lambda c: TOOL[0]
@@ -108,7 +109,7 @@ check('Empty viewport: not inside any card', not inside and it is None)
 
 # --- side panel ----------------------------------------------------------------------------------------------------
 items = fresh_items('WRINKLE')
-side = sp.items(CTX, W, H, 1.0)
+side = sp.items(CTX, W, HP, 1.0)
 card = side[0]
 check('Side panel: docked right under the navigation gizmo, the tool name on top',
       card.x + card.w <= W - 8 and card.x > W - 400 and any(i.kind == 'phead' and i.label == 'CLOTH PLATE'
@@ -131,12 +132,12 @@ check('... Ctrl+click = back to the default', abs(S.mch_wrinkle.lift - 0.002) < 
 src = inspect.getsource(qh.MCH_OT_quick_hud_press)
 check("The press operator: a number bar is dragged (Shift fine), click types, Ctrl+click resets, Esc puts back",
       "item.kind == 'mini'" in src and 'ui_values.drag' in src and 'open_value' in src and 'ui_values.reset' in src)
-lasso = next(i for i in sp.items(CTX, W, H, 1.0) if i.kind == 'shead' and i.label == 'LASSO')
-n_before = len(sp.items(CTX, W, H, 1.0))
+lasso = next(i for i in sp.items(CTX, W, HP, 1.0) if i.kind == 'shead' and i.label == 'LASSO')
+n_before = len(sp.items(CTX, W, HP, 1.0))
 ub.run(CTX, lasso)
-n_open = len(sp.items(CTX, W, H, 1.0))
-ub.run(CTX, next(i for i in sp.items(CTX, W, H, 1.0) if i.kind == 'shead' and i.label == 'LASSO'))
-check('Click a section title: it opens / folds', n_open > n_before and len(sp.items(CTX, W, H, 1.0)) == n_before,
+n_open = len(sp.items(CTX, W, HP, 1.0))
+ub.run(CTX, next(i for i in sp.items(CTX, W, HP, 1.0) if i.kind == 'shead' and i.label == 'LASSO'))
+check('Click a section title: it opens / folds', n_open > n_before and len(sp.items(CTX, W, HP, 1.0)) == n_before,
       (n_before, n_open))
 small = sp.layout(CTX, W, 520, 1.0)
 check('A short viewport: the panel scrolls (bar on the side), the wheel moves it', small['content'] > small['view']
@@ -148,9 +149,9 @@ check('... scrolled rows move up, only whole rows inside the window are shown', 
       and all(moved['clip'][1] - 1 <= i.y and i.y + i.h <= moved['clip'][1] + moved['clip'][3] + 1
               for i in moved['items'] if i.kind in {'mini', 'seg', 'switch', 'tbtn'}))
 C.window_manager.mch_side_scroll = 0.0
-mini = next(i for i in sp.items(CTX, W, H, 1.0) if i.kind == 'pbtn')
+mini = next(i for i in sp.items(CTX, W, HP, 1.0) if i.kind == 'pbtn')
 ub.run(CTX, mini)
-folded = sp.items(CTX, W, H, 1.0)
+folded = sp.items(CTX, W, HP, 1.0)
 check('– folds the panel to a small tab with the tool icon; click it to open again',
       C.window_manager.mch_side_min and any(i.kind == 'pmin' for i in folded) and folded[0].w < 60)
 ub.run(CTX, next(i for i in folded if i.kind == 'pmin'))
@@ -160,7 +161,7 @@ check('The Symmetry card keeps clear of the panel', 'side_panel.taken' in inspec
     __import__('mecha_lab.symmetry', fromlist=['x'])._anchor))
 TOOL[0] = 'BASE'
 sp.dirty()
-bside = sp.items(CTX, W, H, 1.0)
+bside = sp.items(CTX, W, HP, 1.0)
 alt = [i for i in bside if i.kind == 'seg' and i.action and i.action[0] == 'enum' and i.prop == 'alt_mode']
 check('Base Mesh: the Alt choices as one group of pills ("Alt" said once)', len(alt) == 5
       and not any(i.label.startswith('Alt:') for i in alt) and any(i.kind == 'pnote' and i.label == 'Alt'
