@@ -350,7 +350,8 @@ def shelf_b(context, k, Item, top, floor=0.0):
 
 VIEW_SHELF = (('Persp', 'persp', 'isolate', None), ('Floor', 'floor', 'grid', None), ('Frame', None, 'isolate', 'FRAME'),
               ('Move', None, 'arrow', ('viewdrag', 'PAN')), ('Zoom3D', None, 'origin', ('viewdrag', 'ZOOM')),
-              ('Rotate', None, 'radial', ('viewdrag', 'ROTATE')), ('PolyF', 'polyf', 'quad', None),
+              ('Rotate', None, 'radial', ('viewdrag', 'ROTATE')), ('Z Up', 'rot_zup', 'axes', None),
+              ('PolyF', 'polyf', 'quad', None),
               ('Transp', 'transp', 'card', None), ('Solo', None, 'eye', 'SOLO'), ('HiPoly', 'highpoly', 'lowpoly', None))
 
 

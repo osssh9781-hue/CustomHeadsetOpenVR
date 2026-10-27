@@ -1260,6 +1260,10 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
                               description='Brush Auto Masking: the brush only works in the dents '
                                           '(Blender Auto-Masking Cavity)')
     res: IntProperty(name='Res', default=4, min=1, max=64, description='QCube / QGrid resolution')
+    rot_zup: BoolProperty(name='Z Up', default=True,
+                          description='0.24.66 canvas turn keeps the model upright (left / right about the world Z, like '
+                                      'Blender Turntable / ZBrush Rotate Y); off: free turn about the screen (ZBrush '
+                                      'XYZ, the model can tilt)')
     alpha_source: EnumProperty(name='Alphas', default='MECHA', items=[
         ('MECHA', 'Mecha', 'The alphas that come with Mecha Lab'),
         ('ZBRUSH', 'ZBrush', 'ZBrush\'s own ZAlphas folder (when ZBrush is installed - only read)'),
@@ -2296,12 +2300,41 @@ def snap_rotation(q):
     return Matrix((xc, yc, zc)).transposed().to_quaternion()
 
 
+def nav_mode(start, alt_start, alt):
+    """0.24.66 the drag's mode for the keys held now (ZBrush): Alt held = move (a turn stops), let Alt go after a drag
+    that began with Alt = zoom, otherwise what the drag began as."""
+    if alt:
+        return 'PAN'
+    if start == 'PAN' and alt_start:
+        return 'ZOOM'
+    return start
+
+
+def nav_turn(q, dx, dy, z_up=True, s=0.006):
+    """The view rotation after a drag of (dx, dy) px.  z_up: left / right turns about the world Z (the model stays
+    upright, Blender Turntable / ZBrush Rotate Y); else about the screen's up (free, ZBrush XYZ - it can tilt)."""
+    right = q @ Vector((1, 0, 0))
+    if z_up:
+        up = q @ Vector((0, 1, 0))
+        turn = Quaternion(Vector((0, 0, 1)), -dx * s * (1.0 if up.z >= 0.0 else -1.0))
+    else:
+        turn = Quaternion(q @ Vector((0, 1, 0)), -dx * s)
+    return (turn @ Quaternion(right, dy * s) @ q).normalized()
+
+
+def nav_roll(q, dx, s=0.006):
+    """ZBrush Z rotation (Shift, click, let Shift go, drag): the view turns about the screen's axis."""
+    return (Quaternion(q @ Vector((0, 0, 1)), dx * s) @ q).normalized()
+
+
 class MCH_OT_zb_nav(bpy.types.Operator):
-    """ZBrush canvas drag: rotate (Shift: snap square-on), Alt: move, let Alt go while dragging: zoom"""
+    """ZBrush canvas drag: rotate (Shift held: snap square-on; Shift, click, let Shift go: turn about the screen
+    axis), Alt held: move (also during a turn), let Alt go after an Alt drag: zoom"""
     bl_idname = 'mch.zb_nav'
     bl_label = 'ZBrush Navigate'
     bl_options = {'INTERNAL', 'BLOCKING'}
-    mode: EnumProperty(items=[('ROTATE', 'Rotate', ''), ('PAN', 'Move', ''), ('ZOOM', 'Zoom', '')], default='ROTATE')
+    mode: EnumProperty(items=[('ROTATE', 'Rotate', ''), ('PAN', 'Move', ''), ('ZOOM', 'Zoom', '')], default='ROTATE',
+                       options={'SKIP_SAVE'})
     button: StringProperty(default='LEFTMOUSE', options={'SKIP_SAVE'})
     alt_start: BoolProperty(default=False, options={'SKIP_SAVE'})
 
@@ -2316,30 +2349,49 @@ class MCH_OT_zb_nav(bpy.types.Operator):
         self.rv3d = rv3d
         self.start = (rv3d.view_rotation.copy(), rv3d.view_location.copy(), rv3d.view_distance)
         self.last = (event.mouse_x, event.mouse_y)
+        self.begin = self.mode
         self.alt_pan = self.mode == 'PAN' and (event.alt or self.alt_start)
+        self.free = rv3d.view_rotation.copy()          # the turn without the Shift snap
+        self.snapped = False
+        self.shift_click = self.mode == 'ROTATE' and event.shift
+        self.roll = False
+        self.travel = 0
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
+
+    def _speed(self, context, z_up):
+        try:
+            inp = context.preferences.inputs
+            return inp.view_rotate_sensitivity_turntable if z_up else 0.006 * inp.view_rotate_sensitivity_trackball
+        except AttributeError:
+            return 0.006
 
     def modal(self, context, event):
         rv3d = self.rv3d
         if event.type == 'MOUSEMOVE':
             dx, dy = event.mouse_x - self.last[0], event.mouse_y - self.last[1]
             self.last = (event.mouse_x, event.mouse_y)
-            if self.mode == 'PAN' and self.alt_pan and not event.alt:
-                self.mode = 'ZOOM'                         # ZBrush: let Alt go while dragging = zoom
-            if self.mode == 'ROTATE':
-                q = rv3d.view_rotation
-                up = q @ Vector((0, 1, 0))
-                right = q @ Vector((1, 0, 0))
-                s = 0.006
-                q = Quaternion(up, -dx * s) @ Quaternion(right, dy * s) @ q
-                rv3d.view_rotation = snap_rotation(q) if event.shift else q.normalized()
-            elif self.mode == 'PAN':
+            if self.shift_click and not event.shift and self.travel < 4:
+                self.roll = True                           # Shift, click, let Shift go: Z rotation
+            self.travel += abs(dx) + abs(dy)
+            mode = nav_mode(self.begin, self.alt_pan, event.alt)
+            if mode == 'ROTATE':
+                z_up = getattr(context.scene.mch_zb, 'rot_zup', True)
+                s = self._speed(context, z_up)
+                if self.snapped and not event.shift:       # Shift let go: go on from the square-on view
+                    self.free = rv3d.view_rotation.copy()
+                self.free = nav_roll(self.free, dx, s) if self.roll else nav_turn(self.free, dx, dy, z_up, s)
+                self.snapped = event.shift and not self.roll
+                rv3d.view_rotation = snap_rotation(self.free) if self.snapped else self.free
+            elif mode == 'PAN':
                 q = rv3d.view_rotation
                 scale = rv3d.view_distance * 2.0 / max(1, context.region.height)
                 rv3d.view_location -= (q @ Vector((1, 0, 0))) * dx * scale + (q @ Vector((0, 1, 0))) * dy * scale
             else:
                 rv3d.view_distance = max(1e-4, rv3d.view_distance * math.exp(-dy * 0.006))
+            return {'RUNNING_MODAL'}
+        if event.type in {'LEFT_ALT', 'RIGHT_ALT'} and self.begin == 'ROTATE':
+            self.free = rv3d.view_rotation.copy()          # a turn stopped by Alt goes on from where it is
             return {'RUNNING_MODAL'}
         if event.type == self.button and event.value == 'RELEASE':
             return {'FINISHED'}

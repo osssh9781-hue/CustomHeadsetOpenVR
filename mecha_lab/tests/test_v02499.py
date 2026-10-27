@@ -12,7 +12,8 @@ from types import SimpleNamespace
 from _harness import bpy, check, fresh, summary
 
 import mecha_lab
-from mecha_lab import safety_save as ss, workspace_ui, zb_sculpt as zs
+from mecha_lab import safety_save as ss, workspace_ui, zb_sculpt as zs, zb_ui as zu
+from mathutils import Vector
 
 mecha_lab.register()
 fresh()
@@ -161,5 +162,39 @@ for km in C.window_manager.keyconfigs.addon.keymaps:
 check('No key takes over a value a button set last (after the Alpha tile, S / right-click still open the menu)',
       not sticky and bpy.ops.mch.zb_popup.get_rna_type().properties['kind'].is_skip_save
       and bpy.ops.mch.zb_popup.get_rna_type().properties['focus'].is_skip_save, sticky)
+
+
+# --- 0.24.66 view turn: Z stays up, Alt during a turn = move, Shift snap goes on ------------------------------------
+import math
+import random
+from mathutils import Euler, Quaternion as Q
+check('Alt held during a turn = move (the turn stops); let go = the turn again; an Alt drag let go = zoom',
+      zs.nav_mode('ROTATE', False, True) == 'PAN' and zs.nav_mode('ROTATE', False, False) == 'ROTATE'
+      and zs.nav_mode('PAN', True, False) == 'ZOOM' and zs.nav_mode('PAN', True, True) == 'PAN'
+      and zs.nav_mode('PAN', False, False) == 'PAN')
+random.seed(4)
+q0 = Euler((1.1, 0.0, 0.7)).to_quaternion()
+qz = qf = q0
+for _ in range(300):
+    dx, dy = random.uniform(-30, 30), random.uniform(-30, 30)
+    qz = zs.nav_turn(qz, dx, dy, True)
+    qf = zs.nav_turn(qf, dx, dy, False)
+tilt = lambda q: abs((q @ Vector((1, 0, 0))).z)
+check('Z Up (default): after any turning the model stays upright (the screen\'s left-right stays level)',
+      tilt(qz) < 1e-6 and C.scene.mch_zb.rot_zup, tilt(qz))
+check('... Free (ZBrush XYZ) can tilt - that was the odd Z before', tilt(qf) > 0.05, tilt(qf))
+check('... a Z Up button on the right view shelf', any(r[0] == 'Z Up' and r[1] == 'rot_zup' for r in zu.VIEW_SHELF))
+qr = zs.nav_roll(q0, 50)
+check('Shift, click, let Shift go, drag: turns about the screen axis (ZBrush Z rotation)',
+      ((qr @ Vector((0, 0, 1))) - (q0 @ Vector((0, 0, 1)))).length < 1e-6 and abs(qr.dot(q0)) < 0.999)
+free, shown = q0, set()
+for _ in range(80):
+    free = zs.nav_turn(free, 8, 0, True)
+    shown.add(tuple(round(v, 3) for v in zs.snap_rotation(free)))
+src_nav = inspect.getsource(zs.MCH_OT_zb_nav.modal)
+check('Shift held: the view jumps square-on step by step (the turn goes on underneath, it no longer sticks)',
+      len(shown) >= 3 and 'self.free' in src_nav and 'snap_rotation(self.free)' in src_nav, len(shown))
+check('Turn speed follows Blender\'s Orbit Sensitivity', 'view_rotate_sensitivity_turntable' in inspect.getsource(
+      zs.MCH_OT_zb_nav._speed))
 
 summary()

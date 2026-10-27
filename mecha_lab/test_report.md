@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.66
+# Test Report — Mecha Lab 0.24.67
+
+## 0.24.67 결과: 회전만 바뀜 — 지브러시 테스트 v02492 80/80 · v02493 50/50 · v02494 34/34 · v02496 27/27 · v02498 24/24 · v02499 35/35를 Blender 5.2.3 · 5.0.1 bpy 둘 다에서 통과(`tests/test_log_v02467_zbrush.txt`). test_v02499에 회전 검사 추가(Z Up이면 300번 돌려도 기울기 0, 자유 회전은 기울어짐, Alt 중간 전환, Shift 스냅이 다음 칸으로 넘어감, 화면 축 회전). 실제 마우스 · 펜 회전 손맛은 미검증.
 
 ## 0.24.66 결과: Blender 5.2.3 bpy 163개 파일 4,445/4,445, Blender 5.0.1 bpy 163개 파일 4,444/4,444 통과(실패 0, 커밋 828f473); 단축키 수정(4470fab) 뒤 test_v02499 28/28과 지브러시 테스트 v02492 · v02493 · v02494 · v02496을 두 버전에서 다시 돌려 모두 통과 (`tests/test_log_bpy501_v02466.txt` Blender 5.0.1 bpy, `tests/test_log_bpy523_v02466.txt` Blender 5.2.3 bpy). 새 테스트: test_v02498(엔진 로드 · Windows DLL 내보내기 / 의존성 · 327,680면 5%에서 블렌더보다 빠르고 오차 15% 안 · 닫힌 메쉬 유지 · Even Tris · Allow Quads · Keep Mask · 마스크 / 폴리그룹 / 재질 / 색 / UV 따라옴 · Keep Groups 경계 · Keep Borders · 지브러시 Decimate Current + 실제 Ctrl+Z · 엔진 없을 때 블렌더 · Shape Key / Multires 안내), test_v02499(단축키가 버튼의 마지막 값을 물려받지 않음 · 조각 모드 조용한 순간 · 획 / 화면 회전 구분 · 쉼 · 바뀐 것만 · 위험 작업 직전 사본이 작업 전 상태 · 압축 없음 · 15초 간격 · 세션 표시 파일 · 크래쉬 감지(끝난 프로세스 / 10분 침묵) · 사본 보관 이름 · 열기). 갱신: test_v02483(폴더에 표시 파일), test_v02494(버전). Windows DLL은 Wine 9.0에서 리눅스판과 같은 점 / 면 수 확인(1 · 4스레드). 창(크래쉬 복구 창 · 지브러시 선반 버튼)과 실제 Windows · 16코어 속도는 미검증.
 

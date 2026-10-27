@@ -1,0 +1,24 @@
+== 52 test_v02499.py
+35/35 passed
+== 52 test_v02492.py
+80/80 passed
+== 52 test_v02493.py
+50/50 passed
+== 52 test_v02494.py
+34/34 passed
+== 52 test_v02496.py
+27/27 passed
+== 52 test_v02498.py
+24/24 passed
+== 50 test_v02499.py
+35/35 passed
+== 50 test_v02492.py
+80/80 passed
+== 50 test_v02493.py
+50/50 passed
+== 50 test_v02494.py
+34/34 passed
+== 50 test_v02496.py
+27/27 passed
+== 50 test_v02498.py
+24/24 passed
