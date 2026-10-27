@@ -1,0 +1,9 @@
+== test_v02498.py
+  327,680 triangles -> 5 %: engine 0.81 s (4 threads), Blender 4.69 s; mean error 0.000249 / 0.000245
+25/25 passed
+== test_v02492.py
+80/80 passed
+== test_v02494.py
+34/34 passed
+== test_v02469_zbfix.py
+14/14 passed

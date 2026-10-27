@@ -693,6 +693,8 @@ static void split_blocks(int *faces, int n, int parts, const float *cen, int *bl
 
 /* ---------- entry point ---------- */
 
+#define BLOCK_FLOOR 0.05
+
 EXPORT int mdecim_version(void) { return 3; }
 
 EXPORT int mdecim_run(const float *Vin, int nv, const int *Fin, int nf, int target_faces, const MdecimOpts *opt,
@@ -728,6 +730,9 @@ EXPORT int mdecim_run(const float *Vin, int nv, const int *Fin, int nf, int targ
     double t = (double)target_faces / nf;
     double r1 = 3.0 * t;
     if (r1 > t + (1.0 - t) * 0.25) r1 = t + (1.0 - t) * 0.25;
+    /* never below 5 % in the blocks: a block taken almost to nothing round its frozen seam left long slivers fanning
+       from the seam, and the whole-mesh pass after them lost a third of the volume (679k quads -> 281 points) */
+    if (r1 < BLOCK_FLOOR) r1 = BLOCK_FLOOR;
     nblocks = threads;
     blocks = (Block *)calloc(nblocks, sizeof(Block));
     seam = (uint8_t *)calloc(nv, 1);

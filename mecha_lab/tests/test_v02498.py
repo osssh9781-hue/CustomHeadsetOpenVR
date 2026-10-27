@@ -111,6 +111,18 @@ check('... the message says how long and how many threads', 'threads' in msg and
 bpy.data.objects.remove(ob2)
 bpy.data.objects.remove(ob)
 
+# --- 0.24.70 an extreme single pass (blocks per thread floored at 5 %) ---------------------------------------------
+ob = bumpy_sphere(8, 'Extreme')
+V0, T0 = arrays(ob.data)
+vol = lambda V, T: float(np.einsum('ij,ij->i', V[T[:, 0]], np.cross(V[T[:, 1]], V[T[:, 2]])).sum() / 6)
+v0 = vol(V0, T0)
+oV, oF, _vs, _fs = fd.run(V0, T0, 300, nthreads=4)
+v1 = vol(oV.astype(np.float64), oF.astype(np.int64))
+check('327,680 triangles to 300 in one go on 4 threads: the shape holds (each thread\'s block was taken almost to '
+      'nothing and the result lost up to a third of its volume)', len(oF) == 300 and abs(v1 / v0 - 1) < 0.03,
+      (len(oF), v1 / v0))
+bpy.data.objects.remove(ob)
+
 # --- options ------------------------------------------------------------------------------------------------------
 ob = bumpy_sphere(6, 'Even')
 ob2 = ob.copy()
