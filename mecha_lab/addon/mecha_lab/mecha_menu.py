@@ -610,7 +610,8 @@ def _draw_new(it, hot, S, white, dim):
             size -= 0.5 * S                   # a long name: a bit smaller first, cut only if still too long
         label = G.fit(it.label, size, w - 4 * S)
         G.text(x + w / 2, y + band * 0.55, label, size, white, 'CENTER')
-        return (it, 'RIGHT') if hot and label != it.label else None
+        side = it.data if it.data in {'ABOVE', 'RIGHT'} else 'RIGHT'   # the bottom main menu: above
+        return (it, side) if hot and label != it.label else None
     if k == 'arow':                       # actions card row
         if it.on:
             G.rounded_rect(x, y, w, h, 8 * S, G.ACCENT)

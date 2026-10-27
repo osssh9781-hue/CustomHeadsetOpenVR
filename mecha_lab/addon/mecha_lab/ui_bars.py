@@ -32,6 +32,8 @@ TILE_W = 72.0            # 0.24.59 a named strip tile, 6 : 4 - the icon fills th
 TILE_H = 48.0
 TILE_GAP = 4.0
 TILE_HEAD = 17.0
+MENU_SEP = 14.0          # 0.24.59 bottom main menu: room between two groups (a thin rule in it)
+MENU_MIN_W = 50.0        # narrower tiles than this: each group in three rows instead of two
 ACT_W = 196.0            # 0.24.59 actions card
 ACT_ROW = 26.0
 BAR_ICON = {'SELECT': 'arrow', 'SKIN': 'WRINKLE', 'SHELL': 'SCALES'}
@@ -47,9 +49,19 @@ def bar_on(context):
     return _pref('bottom_toolbar') and _pref('drawn_toolbar', True) and bottom_bar.ui_active(context)
 
 
+def menu_pos():
+    """0.24.59 Where the tool tiles go: 'BOTTOM' (the main menu under the bottom toolbar) or 'LEFT' (the strip)."""
+    return 'LEFT' if _pref('tool_menu', 'BOTTOM') == 'LEFT' else 'BOTTOM'
+
+
 def strip_on(context):
     from . import bottom_bar
-    return _pref('tool_strip', True) and bottom_bar.ui_active(context)
+    return _pref('tool_strip', True) and menu_pos() == 'LEFT' and bottom_bar.ui_active(context)
+
+
+def menu_on(context):
+    from . import bottom_bar
+    return _pref('tool_strip', True) and menu_pos() == 'BOTTOM' and bottom_bar.ui_active(context)
 
 
 def actions_on(context):
@@ -89,6 +101,8 @@ def bar_items(context, region_w, region_h, k=1.0):
         f = avail / w
         b, gap, pad, w = b * f, gap * f, pad * f, avail
     x0, y0 = (region_w - w) / 2.0, 22 * k
+    if menu_on(context):                              # 0.24.59 above the main menu
+        y0 = bottom_taken(context, k, region_w)
     out = [Item('card', x0, y0, w, b + 2 * pad)]
     try:
         active = current_bar_tool(context)
@@ -181,6 +195,67 @@ def strip_width(context, k=1.0):
     return cards[0].x + cards[0].w - left_inset(context) + 4 * k if cards else 0.0
 
 
+def menu_layout(region_w, k, groups, left=0.0):
+    """(rows, [columns per group], tile w, tile h, card w, card h) of the bottom main menu: each group's tiles in
+    two rows side by side, the tiles as big as the strip's (6 : 4) while they fit the viewport width, three rows
+    when they would get narrower than MENU_MIN_W."""
+    avail = max(300.0 * k, region_w - 2 * left - 24 * k)
+    pad, gap, sep, head = STRIP_PAD * k, TILE_GAP * k, MENU_SEP * k, TILE_HEAD * k
+    for rows in (2, 3):
+        cols = [(len(r) + rows - 1) // rows for _n, r in groups]
+        fixed = 2 * pad + sep * (len(groups) - 1) + gap * (sum(cols) - len(cols))
+        cw = min(TILE_W * k, (avail - fixed) / max(1, sum(cols)))
+        if cw >= MENU_MIN_W * k or rows == 3:
+            break
+    ch = cw * TILE_H / TILE_W
+    return rows, cols, cw, ch, fixed + cw * sum(cols), 2 * pad + head + rows * ch + (rows - 1) * gap
+
+
+def menu_items(context, region_w, region_h, k=1.0):
+    """0.24.59 The main menu: every tool as a 6 : 4 tile (icon on top, name under it), grouped by job, in one
+    band along the bottom of the viewport (the bottom toolbar sits on it)."""
+    from .mecha_menu import Item
+    groups = ts.grouped_tools()
+    kk = k * strip_scale()
+    left = left_inset(context)
+    rows, cols, cw, ch, w, h = menu_layout(region_w, kk, groups, left)
+    pad, gap, sep, head = STRIP_PAD * kk, TILE_GAP * kk, MENU_SEP * kk, TILE_HEAD * kk
+    x0 = max(left + 8 * k, (region_w - w) / 2.0)
+    y0 = 8 * k
+    out = [Item('card', x0, y0, w, h)]
+    from . import bottom_bar
+    try:
+        active = '' if bottom_bar.in_select(context) else ts.effective_tool(context)
+    except (AttributeError, KeyError, TypeError):
+        active = ''
+    x = x0 + pad
+    top = y0 + h - pad
+    for g, ((name, tools), n) in enumerate(zip(groups, cols)):
+        gw = n * cw + (n - 1) * gap
+        if g:
+            out.append(Item('vrule', x - sep / 2 - 0.5 * k, y0 + pad + 2 * kk, 1.0 * k, h - 2 * pad - 4 * kk))
+        out.append(Item('striphead', x, top - head, gw, head, name.upper()))
+        for j, t in enumerate(tools):
+            c, r = j % n, j // n
+            out.append(Item('sbtn', x + c * (cw + gap), top - head - (r + 1) * ch - r * gap, cw, ch, t[1],
+                            'png:' + t[3], t[0] == active, True, ('tool', t[0]), 'ABOVE'))
+        x += gw + sep
+    return out
+
+
+def bottom_taken(context, k=1.0, region_w=None):
+    """0.24.59 Region px from the bottom the main menu takes (0 when the tiles are on the left) - the bottom
+    toolbar, key legend, actions card and side panel stay above it."""
+    region = getattr(context, 'region', None)
+    if not menu_on(context) or (region is None and region_w is None):
+        return 0.0
+    if region_w is None:
+        region_w = region.width
+    kk = k * strip_scale()
+    h = menu_layout(region_w, kk, ts.grouped_tools(), left_inset(context))[5]
+    return 8 * k + h + 8 * k
+
+
 ACTIONS = (('apply_mods', 'stack', 'Apply Modifiers', ('op', 'mch.apply_modifiers_pick', {})),
            ('reset_axis', 'axes', 'Reset Axis', ('op', 'mch.object_tidy', {'action': 'RESET_AXIS'})),
            ('origin_geo', 'origin', 'Origin to Geometry', ('op', 'mch.object_tidy', {'action': 'ORIGIN_GEOMETRY'})),
@@ -215,7 +290,7 @@ def actions_items(context, region_w, region_h, k=1.0):
             top = (hud_rows[-1][1] if hud_rows else grip[1]) - quick_hud.ROW_H * k / 2 - 18 * k
     except (AttributeError, KeyError, TypeError, ReferenceError, IndexError):
         pass
-    y0 = max(top - h, 210 * k)                       # above the key legend
+    y0 = max(top - h, 210 * k + max(0.0, bottom_taken(context, k, region_w) - 80 * k))   # above the key legend
     out = [Item('card', x0, y0, w, h)]
     y = y0 + h - pad
     for r in rows:
@@ -269,6 +344,8 @@ def _build_all(context, region, k):
             out += bar_items(context, region.width, region.height, k)
         if strip_on(context):
             out += strip_items(context, region.width, region.height, k)
+        if menu_on(context):
+            out += menu_items(context, region.width, region.height, k)
         if actions_on(context):
             out += actions_items(context, region.width, region.height, k)
         from . import side_panel, top_bar

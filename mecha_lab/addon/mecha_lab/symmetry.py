@@ -546,6 +546,11 @@ def _anchor(context, ob, w, h, region_w, region_h, S):
         pass
     y = region_h * 0.42 - h / 2
     x = min(max(x, 8 * S), region_w - w - 8 * S)
+    try:                                         # 0.24.59 above the bottom main menu
+        from . import ui_bars
+        y = max(y, ui_bars.bottom_taken(context, S) + 8 * S)
+    except (ImportError, AttributeError, TypeError, ReferenceError):
+        pass
     y = min(max(y, 8 * S), region_h - h - 8 * S)
     return x, y
 

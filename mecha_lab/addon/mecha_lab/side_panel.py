@@ -414,7 +414,12 @@ def layout(context, region_w, region_h, k=1.0):
                    ('minimise',))
         return {'items': [card, tab], 'clip': None, 'content': 0.0, 'view': 0.0}
     rows, h = content(context, tool, x0 + PAD * k, w - 2 * PAD * k, k)
-    room = top - BOTTOM_MARGIN * k - HEAD * k - 2 * PAD * k
+    try:                                         # 0.24.59 above the bottom main menu
+        from . import ui_bars
+        floor = ui_bars.bottom_taken(context, k, region_w)
+    except (ImportError, AttributeError, TypeError, ReferenceError):
+        floor = 0.0
+    room = top - BOTTOM_MARGIN * k - floor - HEAD * k - 2 * PAD * k
     view = max(0.0, min(h, room))
     wm = context.window_manager
     scroll = max(0.0, min(float(getattr(wm, 'mch_side_scroll', 0.0)), h - view))
