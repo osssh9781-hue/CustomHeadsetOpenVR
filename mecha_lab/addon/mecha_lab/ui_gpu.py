@@ -125,6 +125,22 @@ def fit(s, size, width):
     return s + '…'
 
 
+def wrap2(s, size, width):
+    """``s`` in at most two lines that fit ``width`` px (split at a space, the rest shortened with '…')."""
+    import blf
+    blf.size(0, size)
+    if blf.dimensions(0, s)[0] <= width or ' ' not in s:
+        return [fit(s, size, width)]
+    words = s.split(' ')
+    first = words[0]
+    i = 1
+    while i < len(words) and blf.dimensions(0, first + ' ' + words[i])[0] <= width:
+        first += ' ' + words[i]
+        i += 1
+    rest = ' '.join(words[i:])
+    return [fit(first, size, width), fit(rest, size, width)] if rest else [fit(first, size, width)]
+
+
 def _texture(path, mono=False):
     """GPU texture of a PNG; ``mono``: only its bright strokes, as white (Modeler's white line icons; the
     dark tile the Mecha icons are drawn on disappears), tinted by the draw colour."""

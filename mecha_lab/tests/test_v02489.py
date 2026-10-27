@@ -182,8 +182,17 @@ check('Geometry Nodes style inputs ("[\\"name\\"]") work like settings: text, ba
 # --- strip with names, actions card ------------------------------------------------------------------------------
 strip = ub.strip_items(CTX, W, H, 1.0)
 named = [i for i in strip if i.kind == 'sbtn']
-check('Tool strip: icon + name for every tool, two columns', len(named) == sum(len(r) for _n, r in ts.grouped_tools())
-      and len({round(i.x) for i in named}) == 2 and all(i.label for i in named))
+check('Tool strip: a tile per tool - the icon on top, its name under it (square tiles, 3 to 6 columns)',
+      len(named) == sum(len(r) for _n, r in ts.grouped_tools()) and 3 <= len({round(i.x) for i in named}) <= 6
+      and all(i.label and abs(i.w - i.h) < 1e-6 and i.w >= 50 for i in named), (len({round(i.x) for i in named}),
+                                                                             named[0].w))
+src = inspect.getsource(mm._draw_new)
+check('... drawn with the icon in the top 60 % and the name (two lines at most) in the bottom 40 %',
+      'h * 0.4 + (h * 0.6 - ic) / 2' in src and 'G.wrap2' in src)
+bar_card = ub.bar_items(CTX, 1300, H, 1.0)[0]
+st = [i for i in ub.strip_items(CTX, 1300, H, 1.0) if i.kind == 'card'][0]
+check('... on a narrower screen it stays above the bottom toolbar', st.y >= bar_card.y + bar_card.h
+      or st.x + st.w <= bar_card.x, (st.y, bar_card.y + bar_card.h))
 sc = [i for i in strip if i.kind == 'card'][0]
 check('... fits the viewport height', sc.y >= 0 and sc.y + sc.h <= H)
 check('Tool Strip size and names in Preferences / the Icon Size tab, saved with the other sizes',

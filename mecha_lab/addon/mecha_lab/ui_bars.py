@@ -28,10 +28,9 @@ STRIP_ICON = 38.0        # icons-only strip
 STRIP_GAP = 5.0
 STRIP_HEAD = 22.0
 STRIP_PAD = 8.0
-NAMED_W = 126.0          # 0.24.59 a named strip button (icon + name)
-NAMED_H = 26.0
-NAMED_GAP = 3.0
-NAMED_HEAD = 18.0
+TILE = 66.0              # 0.24.59 a named strip tile: the icon in the top 60 %, the name under it (40 %)
+TILE_GAP = 4.0
+TILE_HEAD = 17.0
 ACT_W = 196.0            # 0.24.59 actions card
 ACT_ROW = 26.0
 BAR_ICON = {'SELECT': 'arrow', 'SKIN': 'WRINKLE', 'SHELL': 'SCALES'}
@@ -102,18 +101,21 @@ def bar_items(context, region_w, region_h, k=1.0):
     return out
 
 
-def strip_layout(region_h, k, groups, named=False):
-    """(columns, size factor) so the strip fits ``region_h``."""
-    cell, gap, head = (NAMED_H, NAMED_GAP, NAMED_HEAD) if named else (STRIP_ICON, STRIP_GAP, STRIP_HEAD)
+def strip_layout(region_h, k, groups, named=False, avail=None):
+    """(columns, size factor) so the strip fits ``avail`` px of height (default: the viewport less its margins).
+    Named tiles keep their size and take more columns first (3 -> 6); icons only shrink a little first."""
+    cell, gap, head = (TILE, TILE_GAP, TILE_HEAD) if named else (STRIP_ICON, STRIP_GAP, STRIP_HEAD)
 
     def height(cols, s):
         rows = sum((len(r) + cols - 1) // cols for _n, r in groups)
         return rows * (cell + gap) * s + len(groups) * head * s + 2 * STRIP_PAD * s
-    avail = max(200.0, region_h - 150.0 * k)
-    choices = (2, 3) if named else (3, 4, 5)
+    if avail is None:
+        avail = region_h - 150.0 * k
+    avail = max(200.0, avail)
+    choices = (3, 4, 5, 6) if named else (3, 4, 5)
     for cols in choices:
         s = min(k, k * avail / height(cols, k))
-        if s >= (0.66 if named else 0.75) * k or cols == choices[-1]:
+        if s >= (0.92 if named else 0.75) * k or cols == choices[-1]:
             return cols, s
     return choices[-1], k
 
@@ -130,18 +132,26 @@ def strip_items(context, region_w, region_h, k=1.0):
     groups = ts.grouped_tools()
     named = bool(_pref('strip_names', True))
     kk = k * strip_scale()
-    cols, s = strip_layout(region_h, kk, groups, named)
-    cw = (NAMED_W if named else STRIP_ICON) * s
-    chh = (NAMED_H if named else STRIP_ICON) * s
-    gap = (NAMED_GAP if named else STRIP_GAP) * s
-    head = (NAMED_HEAD if named else STRIP_HEAD) * s
-    pad = STRIP_PAD * s
-    w = cols * cw + (cols - 1) * gap + 2 * pad
-    rows = sum((len(r) + cols - 1) // cols for _n, r in groups)
-    h = rows * (chh + gap) + len(groups) * head + 2 * pad
     x0 = left_inset(context) + 12 * k
-    top = region_h - 60 * k
-    y0 = max(8 * k, top - h)
+    top = region_h - (40 if named else 60) * k
+    bottom = 8 * k
+    for _pass in range(2):           # a second pass when the bottom toolbar would be under the strip
+        cols, s = strip_layout(region_h, kk, groups, named, top - bottom if named else None)
+        cw = chh = (TILE if named else STRIP_ICON) * s
+        gap = (TILE_GAP if named else STRIP_GAP) * s
+        head = (TILE_HEAD if named else STRIP_HEAD) * s
+        pad = STRIP_PAD * s
+        w = cols * cw + (cols - 1) * gap + 2 * pad
+        rows = sum((len(r) + cols - 1) // cols for _n, r in groups)
+        h = rows * (chh + gap) + len(groups) * head + 2 * pad
+        y0 = max(bottom, top - h)
+        clash = False
+        if bar_on(context) and _pass == 0:
+            bar = bar_items(context, region_w, region_h, k)[0]
+            clash = bar.x < x0 + w + 8 * k and y0 < bar.y + bar.h + 8 * k
+        if not clash:
+            break
+        bottom = bar.y + bar.h + 10 * k
     out = [Item('card', x0, y0, w, h)]
     from . import bottom_bar
     try:
