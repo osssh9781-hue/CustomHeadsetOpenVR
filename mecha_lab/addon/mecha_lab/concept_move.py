@@ -51,7 +51,8 @@ DEPTH_ITEMS = [
 ]
 AREA_ITEMS = [
     ('BRUSH', 'Brush', '0.24.54 Extend pulls out only the surface under the brush (Box = square, Ball = round)'),
-    ('SECTION', 'Section', 'Extend pulls out the whole cross-section of the part (cut by a plane across the drag)'),
+    ('SECTION', 'Whole', 'Extend pulls out the whole cross-section of the part (cut by a plane across the drag) - '
+                         'Tab while dragging switches'),
 ]
 PATH_METHODS = [
     ('EXTEND', 'Extend', 'Cut where you grab and run that section along the path; the end goes to the end of the '
@@ -1417,6 +1418,15 @@ class MCH_OT_concept_path(bpy.types.Operator):
         me.from_pydata([tuple(v) for v in verts], [], faces)
         me.update()
 
+    def _toggle_area(self, context):
+        st = context.scene.mch_concept
+        st.path_area = 'SECTION' if st.path_area == 'BRUSH' else 'BRUSH'
+        if getattr(self, 'info', None) is not None:          # read the grab again the other way
+            self._drop_preview()
+            self.info = None
+        self._header(context)
+        self._preview(context)
+
     def _drop_preview(self):
         ob = getattr(self, 'preview_ob', None)
         if ob is not None:
@@ -1431,7 +1441,9 @@ class MCH_OT_concept_path(bpy.types.Operator):
         context.area.header_text_set(
             f'Path Move  |  {len(getattr(self, "trail", [])) - 1} steps  {st.shape.title()}  taper {st.path_taper:.2f}  '
             f'hardness {st.path_hardness:.2f}  |  Mirror X {"on" if st.mirror_x else "off"}  |  '
-            'drag the way it should go   Wheel: depth   [ ]: size   3D mouse / MMB: view   RMB/Esc: cancel')
+            + (f'Extend: {"brush area" if st.path_area == "BRUSH" else "whole section"} (Tab)  |  '
+               if st.path_method == 'EXTEND' else '')
+            + 'drag the way it should go   Wheel: depth   [ ]: size   3D mouse / MMB: view   RMB/Esc: cancel')
 
     def _target(self, context):
         return MCH_OT_concept_move._target(self, context)
@@ -1500,6 +1512,8 @@ class MCH_OT_concept_path(bpy.types.Operator):
         elif event.type in {'LEFT_BRACKET', 'RIGHT_BRACKET'} and event.value == 'PRESS':
             scale_size(st, 1.15 if event.type == 'RIGHT_BRACKET' else 1 / 1.15)
             self._preview(context)
+        elif event.type == 'TAB' and event.value == 'PRESS':
+            self._toggle_area(context)               # 0.24.55 Extend: the brush patch <-> the whole section
         elif event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
             self._finish_ui(context)
             MCH_OT_concept_move._restore(self)               # back to the start: execute() does the real thing

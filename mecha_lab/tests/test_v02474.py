@@ -78,6 +78,26 @@ src = inspect.getsource(cm.MCH_OT_concept_path.modal)
 check('From the viewport: the scene Area, the shape and the brush (in the part\'s own size) go to Extend',
       'self.area, self.shape = st.path_area, st.shape' in src and 'local_radius' in src)
 
+# 0.24.55 the whole-section way close at hand
+import types
+from mecha_lab import key_legend as kl, quick_hud as qh
+S.mch_concept.path_area = 'BRUSH'
+dropped = []
+fake = types.SimpleNamespace(info={'loop': []}, _drop_preview=lambda: dropped.append(1), _header=lambda c: None,
+                             _preview=lambda c: None)
+cm.MCH_OT_concept_path._toggle_area(fake, C)
+check('Tab while dragging: Brush <-> Whole, the grab is read again', S.mch_concept.path_area == 'SECTION'
+      and fake.info is None and dropped == [1])
+cm.MCH_OT_concept_path._toggle_area(fake, C)
+check('... and back', S.mch_concept.path_area == 'BRUSH')
+check('The old way is called Whole; Tab is in the modal', bpy.types.MCH_PG_concept.bl_rna.properties['path_area']
+      .enum_items['SECTION'].name == 'Whole' if hasattr(bpy.types, 'MCH_PG_concept') else
+      dict((i[0], i[1]) for i in cm.AREA_ITEMS)['SECTION'] == 'Whole')
+S.mch_settings.mch_active_tool = 'CPATH'
+check('Quick HUD / Mecha Menu settings: Brush / Whole next to the method; the key legend tells Tab',
+      ('path_area' in [p for _d, p in qh.items(C)]) and any('Tab' in ln for ln in kl.lines('CPATH'))
+      and "'TAB'" in inspect.getsource(cm.MCH_OT_concept_path.modal))
+
 # the middle-click gate passes a 3D mouse on
 gate = mm.MCH_OT_mecha_mmb_gate.modal
 fake = lambda t, v='NOTHING': type('E', (), {'type': t, 'value': v, 'mouse_x': 0, 'mouse_y': 0})()
