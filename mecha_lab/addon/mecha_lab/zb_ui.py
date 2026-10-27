@@ -100,7 +100,8 @@ def draw_tool_shelf(layout, context):
     r.prop(zb, 'lazy_mouse', toggle=True)
     r = box.row()
     r.prop(zb, 'lazy_step')
-    r.prop(zb, 'lazy_radius')
+    r.prop(zb, 'lazy_smooth')
+    box.prop(zb, 'lazy_radius')
     box = layout.box()
     box.label(text='Decimation')
     r = box.row()
@@ -339,7 +340,7 @@ def shelf_b(context, k, Item, top, floor=0.0):
 VIEW_SHELF = (('Persp', 'persp', 'isolate', None), ('Floor', 'floor', 'grid', None), ('Frame', None, 'isolate', 'FRAME'),
               ('Move', None, 'arrow', ('viewdrag', 'PAN')), ('Zoom3D', None, 'origin', ('viewdrag', 'ZOOM')),
               ('Rotate', None, 'radial', ('viewdrag', 'ROTATE')), ('PolyF', 'polyf', 'quad', None),
-              ('Transp', 'transp', 'card', None), ('Solo', None, 'eye', 'SOLO'))
+              ('Transp', 'transp', 'card', None), ('Solo', None, 'eye', 'SOLO'), ('HiPoly', 'highpoly', 'lowpoly', None))
 
 
 def view_shelf(context, region_w, k, Item, top):
@@ -377,6 +378,7 @@ def _points(context, ob):
 
 def subtool_list(context, region_w, k, Item, top, floor):
     from . import layers_panel
+    zb = context.scene.mch_zb
     x0 = region_w - 12 * k - S_W * k
     w, iw = S_W * k, S_W * k - 2 * PAD * k
     ix = x0 + PAD * k
@@ -394,6 +396,13 @@ def subtool_list(context, region_w, k, Item, top, floor):
                     '', False, True))
     y -= GAP * k
     active = context.active_object
+    if zb.highpoly:                                  # 0.24.61 High Poly Mode: what still weighs on this SubTool
+        from . import zb_highpoly
+        notes = zb_highpoly.heavy(active)
+        for t in (['High Poly Mode on'] + notes[:3]):
+            y -= 16 * k
+            out.append(Item('pnote', ix, y, iw, 16 * k, t, '', False, True))
+        y -= GAP * k
     meshes = [o for o in sorted(context.view_layer.objects, key=lambda o: o.name.lower())
               if o.type == 'MESH' and layers_panel.listed(o)]
     room = int(max(1, (y - floor - 4 * (ROW + GAP) * k - 30 * k) // ((26 + 2) * k)))
@@ -460,7 +469,7 @@ KEYS_TEXT = ('ZBRUSH KEYS', 'Drag canvas   rotate, Shift: snap', 'Alt + drag can
              'Alt / Shift   Zsub / Smooth', 'Ctrl + drag model   MaskPen, Alt: unmask', 'Ctrl + click canvas   invert mask',
              'Ctrl + lasso model   mask, Alt: unmask', 'Ctrl + drag canvas   clear mask / DynaMesh',
              'Alt + click SubTool   pick it', 'Ctrl+Shift   show only / polygroup', 'S / U / O   Size / Intensity / Focal',
-             'Space / B   menu / brushes (B S T)', 'X   symmetry', 'D / Shift+D   SDiv up / down',
+             'Space / B   menu / brushes (B S T)', 'X   symmetry', 'D / Shift+D   SDiv up / Duplicate',
              'Ctrl+D / Ctrl+W   Divide / polygroup', 'F / Shift+F   Frame / PolyF')
 
 

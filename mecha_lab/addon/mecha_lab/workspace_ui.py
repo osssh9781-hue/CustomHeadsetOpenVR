@@ -1694,7 +1694,8 @@ class MCH_OT_sculpt_back(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == 'SCULPT'
+        from . import zb_sculpt               # 0.24.61 not on the ZBrush screen (G is not "leave" in ZBrush)
+        return context.mode == 'SCULPT' and not zb_sculpt.on(context)
 
     def execute(self, context):
         return bpy.ops.mch.select_move()
@@ -2299,6 +2300,10 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         ('ZBRUSH', 'ZBrush', '0.24.60 the MECHA LAB tab like ZBrush: Sculpt Mode = the ZBrush screen and keys '
                              '(orange); the empty canvas / a right-drag turns the view'),
         ('BLENDER', 'Blender', 'Blender\'s own sculpt keys and panels and view navigation')])
+    zb_highpoly: BoolProperty(name='High Poly Mode', default=False, update=_ui_changed,
+                              description='0.24.61 while the ZBrush screen is on: Blender Sculpt Deform Only + Delay '
+                                          'Viewport Updates, and the heavy viewport extras off (wireframe, statistics, '
+                                          'cavity, shadows, X-Ray, outline); all put back when you leave it')
     layers_panel: BoolProperty(name='Layers Panel', default=True,
                                description='0.24.59 parts and groups, Export and the ZBrush Bridge at the left of the '
                                            'viewport (with the tool menu at the bottom)')
@@ -2361,6 +2366,7 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         row.prop(self, 'tool_menu', expand=True)
         row.prop(self, 'layers_panel')
         row.prop(self, 'control_style', expand=True)
+        row.prop(self, 'zb_highpoly')
         row = box.row()
         row.prop(self, 'top_bar')
         row.prop(self, 'side_panel')

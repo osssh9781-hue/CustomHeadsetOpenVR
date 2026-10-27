@@ -312,12 +312,18 @@ def set_alpha(context, path):
     tex.extension = 'CLIP'
     b.texture = tex
     slot = b.texture_slot
-    for mode in ('AREA_PLANE', 'VIEW_PLANE'):
+    for mode in ('VIEW_PLANE', 'AREA_PLANE'):     # 0.24.61 from the view, like a ZBrush alpha
         try:
             slot.map_mode = mode
             break
         except (TypeError, ValueError):
             continue
+    for attr, v in (('use_rake', False), ('use_random', False)):
+        if hasattr(slot, attr):
+            setattr(slot, attr, v)
+    if hasattr(b, 'use_primary_overlay'):         # the alpha shows in the brush circle
+        b.use_primary_overlay = True
+        b.texture_overlay_alpha = 40
     return name
 
 
@@ -665,26 +671,61 @@ def _int_set(self, v):
     _safe(f, None)
 
 
+FOCAL_KEY = 'mch_focal'
+
+
+def zb_falloff(t, fs):
+    """0.24.61 ZBrush's brush profile at ``t`` (0 = centre, 1 = edge) for Focal Shift ``fs`` (-100 .. 100):
+    0 = a soft bell, minus = a flat top with a firmer edge, plus = pointier."""
+    t = min(max(float(t), 0.0), 1.0)
+    u = t
+    if fs < 0:
+        c = -fs / 100.0 * 0.85                       # the flat core grows with minus Focal Shift
+        if t <= c:
+            return 1.0
+        u = (t - c) / (1.0 - c)
+    s = 1.0 - u
+    v = s * s * (3.0 - 2.0 * s)
+    if fs > 0:
+        v = v ** (1.0 + fs / 25.0)
+    return v
+
+
+def set_focal_curve(b, fs, n=13):
+    """The brush falloff as a custom curve following ZBrush's Focal Shift (every value, not 5 presets)."""
+    fs = int(max(-100, min(100, fs)))
+    b.curve_distance_falloff_preset = 'CUSTOM'
+    cm = b.curve_distance_falloff
+    pts = cm.curves[0].points
+    xs = [i / (n - 1.0) for i in range(n)]
+    if fs < 0:
+        xs = sorted(set(xs + [round(-fs / 100.0 * 0.85, 4)]))
+    while len(pts) > 2:
+        pts.remove(pts[1])
+    pts[0].location = (0.0, zb_falloff(0.0, fs))
+    pts[-1].location = (1.0, zb_falloff(1.0, fs))
+    for x in xs[1:-1]:
+        pts.new(x, zb_falloff(x, fs))
+    for p in pts:
+        p.handle_type = 'AUTO_CLAMPED'
+    cm.update()
+    b[FOCAL_KEY] = fs
+
+
 def _focal_get(self):
     def f():
-        preset = brush().curve_distance_falloff_preset
-        stored = int(self.get('_focal', 0))
-        for lo, hi, p, mid in FOCAL:
-            if p == preset:
-                return stored if lo <= stored <= hi else mid
-        return stored
+        b = brush()
+        if b.curve_distance_falloff_preset == 'CUSTOM' and FOCAL_KEY in b.keys():
+            return int(b[FOCAL_KEY])
+        for _lo, _hi, p, mid in FOCAL:               # (a Blender preset: the Focal Shift nearest to it)
+            if p == b.curve_distance_falloff_preset:
+                return mid
+        return 0
     return _safe(f, 0)
 
 
 def _focal_set(self, v):
-    self['_focal'] = int(v)
-
-    def f():
-        for lo, hi, p, _mid in FOCAL:
-            if lo <= v <= hi:
-                brush().curve_distance_falloff_preset = p
-                return
-    _safe(f, None)
+    _safe(lambda: set_focal_curve(brush(), v), None)
 
 
 def _zmode_get(self):
@@ -713,12 +754,62 @@ def _brush_bool(attr):
     return get, set_
 
 
-def _lazy_step_get(self):
+STEP_KEY, SPACING_KEY = 'mch_lazy_step', 'mch_spacing0'
+
+
+def _lazy_smooth_get(self):
     return _safe(lambda: max(0.0, min(1.0, (brush().smooth_stroke_factor - 0.5) / 0.49)), 0.25)
 
 
-def _lazy_step_set(self, v):
+def _lazy_smooth_set(self, v):
     _safe(lambda: setattr(brush(), 'smooth_stroke_factor', 0.5 + 0.49 * max(0.0, min(1.0, v))), None)
+
+
+def _lazy_step_get(self):
+    """0.24.61 ZBrush LazyStep: the distance between the dots with LazyMouse on (0.05 = close, 1 = a dot every
+    Draw Size) - Blender brush Spacing."""
+    def f():
+        b = brush()
+        return float(b[STEP_KEY]) if STEP_KEY in b.keys() else b.spacing / 100.0
+    return _safe(f, 0.05)
+
+
+def _lazy_step_set(self, v):
+    def f():
+        b = brush()
+        b[STEP_KEY] = float(v)
+        if b.use_smooth_stroke:
+            b.spacing = max(1, int(round(v * 100)))
+    _safe(f, None)
+
+
+def _lazy_mouse_get(self):
+    return _safe(lambda: bool(brush().use_smooth_stroke), False)
+
+
+def _lazy_mouse_set(self, v):
+    """LazyMouse on: Blender's stroke stabilizer, and the dots LazyStep apart; off: the spacing it had."""
+    def f():
+        b = brush()
+        if v and not b.use_smooth_stroke:
+            b[SPACING_KEY] = int(b.spacing)
+            if STEP_KEY in b.keys():
+                b.spacing = max(1, int(round(float(b[STEP_KEY]) * 100)))
+        elif not v and b.use_smooth_stroke and SPACING_KEY in b.keys():
+            b.spacing = int(b[SPACING_KEY])
+        b.use_smooth_stroke = bool(v)
+    _safe(f, None)
+
+
+def _highpoly_get(self):
+    from . import zb_highpoly
+    return zb_highpoly.pref_on()
+
+
+def _highpoly_set(self, v):
+    from . import zb_highpoly
+    zb_highpoly.set_pref(v)
+    _safe(lambda: zb_highpoly.update(bpy.context), None)
 
 
 def _lazy_radius_get(self):
@@ -894,7 +985,6 @@ def _matcap_set(self, v):
 
 
 _bf = _brush_bool('use_frontface')
-_lazy = _brush_bool('use_smooth_stroke')
 _sx, _sy, _sz = _sym('x'), _sym('y'), _sym('z')
 _floor = _view_bool(('overlay', 'show_floor'))
 _transp = _view_bool(('shading', 'show_xray'))
@@ -931,10 +1021,16 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
                         get=_zmode_get, set=_zmode_set)
     backface_mask: BoolProperty(name='BackfaceMask', get=_bf[0], set=_bf[1],
                                 description='Do not sculpt the far side (Blender Front Faces Only)')
-    lazy_mouse: BoolProperty(name='LazyMouse', get=_lazy[0], set=_lazy[1],
+    lazy_mouse: BoolProperty(name='LazyMouse', get=_lazy_mouse_get, set=_lazy_mouse_set,
                              description='The stroke trails the pen (Blender Stabilize Stroke)')
-    lazy_step: FloatProperty(name='LazyStep', min=0.0, max=1.0, get=_lazy_step_get, set=_lazy_step_set,
-                             description='How smooth the trailing stroke is (Blender Stabilize Factor)')
+    lazy_step: FloatProperty(name='LazyStep', min=0.01, max=2.0, get=_lazy_step_get, set=_lazy_step_set,
+                             description='LazyMouse on: how far apart the dots are (0.05 close, 1 = a dot every '
+                                         'Draw Size) - stitches and rivets with an alpha (Blender Spacing)')
+    lazy_smooth: FloatProperty(name='LazySmooth', min=0.0, max=1.0, get=_lazy_smooth_get, set=_lazy_smooth_set,
+                               description='How smooth the trailing stroke is (Blender Stabilize Factor)')
+    highpoly: BoolProperty(name='HiPoly', get=_highpoly_get, set=_highpoly_set,
+                           description='High Poly Mode: Blender Sculpt Deform Only + Delay Viewport Updates and the '
+                                       'heavy viewport extras off while the ZBrush screen is on (all put back after)')
     lazy_radius: IntProperty(name='LazyRadius', min=1, max=200, get=_lazy_radius_get, set=_lazy_radius_set,
                              description='Trail length in pixels (Blender Stabilize Radius)')
     dynamic: BoolProperty(name='Dynamic', get=_dynamic_get, set=_dynamic_set,
@@ -2351,7 +2447,7 @@ KEYS = (
     ('B', False, False, False, 'mch.zb_brush_pick', {}), ('ESC', False, False, False, 'mch.zb_close', {}),
     ('X', False, False, False, 'mch.zb_action', {'action': 'SYM_X'}),
     ('D', False, False, False, 'mch.zb_action', {'action': 'SDIV_UP'}),
-    ('D', False, True, False, 'mch.zb_action', {'action': 'SDIV_DOWN'}),
+    ('D', False, True, False, 'mch.zb_action', {'action': 'DUPLICATE'}),     # 0.24.61 (asked: SDiv seldom used)
     ('D', True, False, False, 'mch.zb_action', {'action': 'DIVIDE'}),
     ('W', True, False, False, 'mch.zb_action', {'action': 'GROUPS_FROM_MASK'}),
     ('F', False, False, False, 'mch.zb_action', {'action': 'FRAME'}),
@@ -2384,9 +2480,13 @@ def register():
                                  (True, False, False)):
             _keymaps.append((km, km.keymap_items.new('mch.zb_obj_press', 'LEFTMOUSE', 'PRESS', ctrl=ctrl,
                                                      shift=shift, alt=alt)))
+    from . import zb_highpoly
+    zb_highpoly.register()
 
 
 def unregister():
+    from . import zb_highpoly
+    zb_highpoly.unregister()
     lasso_hide()
     stamp_hide()
     for km, kmi in _keymaps:

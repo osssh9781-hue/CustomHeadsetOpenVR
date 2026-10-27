@@ -85,16 +85,19 @@ strength = u.strength if u.use_unified_strength else b.strength
 check('Draw Size = Radius (px), Z Intensity = Strength x 100', size == 80 and abs(strength - 0.35) < 1e-6
       and zb.draw_size == 80 and zb.z_intensity == 35, (size, strength))
 zb.focal_shift = -80
-p1 = b.curve_distance_falloff_preset
+cm = b.curve_distance_falloff
+flat = cm.evaluate(cm.curves[0], 0.5)
 zb.focal_shift = 70
-check('Focal Shift: harder (-) = Constant, softer (+) = Sharp falloff', p1 == 'CONSTANT'
-      and b.curve_distance_falloff_preset == 'SHARP' and zb.focal_shift == 70)
+pointy = cm.evaluate(cm.curves[0], 0.5)
+check('Focal Shift: harder (-) = flat top, softer (+) = pointy (0.24.61 a custom ZBrush curve, every value)',
+      b.curve_distance_falloff_preset == 'CUSTOM' and flat > 0.95 and pointy < 0.2 and zb.focal_shift == 70,
+      (flat, pointy))
 zb.focal_shift = 0
 zb.zmode = 'ZSUB'
 check('Zadd / Zsub = brush direction', b.direction == 'SUBTRACT' and zb.zmode == 'ZSUB')
 zb.zmode = 'ZADD'
-zb.lazy_mouse, zb.lazy_step, zb.lazy_radius = True, 0.5, 40
-check('LazyMouse / LazyStep / LazyRadius = Stabilize Stroke', b.use_smooth_stroke and b.smooth_stroke_radius == 40
+zb.lazy_mouse, zb.lazy_smooth, zb.lazy_radius = True, 0.5, 40
+check('LazyMouse / LazySmooth / LazyRadius = Stabilize Stroke', b.use_smooth_stroke and b.smooth_stroke_radius == 40
       and abs(b.smooth_stroke_factor - 0.745) < 1e-3)
 zb.lazy_mouse = False
 zb.backface_mask = True
