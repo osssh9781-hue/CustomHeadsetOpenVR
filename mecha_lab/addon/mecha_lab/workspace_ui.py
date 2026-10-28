@@ -1234,6 +1234,8 @@ class MCH_OT_sculpt_brush(bpy.types.Operator):
             if context.view_layer.objects.active != ob:
                 context.view_layer.objects.active = ob
             if context.mode != 'SCULPT':
+                from . import zb_shading
+                zb_shading.enter(ob)                     # 0.24.76 Sharp edges look hard in Sculpt Mode too
                 bpy.ops.object.mode_set(mode='SCULPT')
         except RuntimeError as ex:
             self.report({'ERROR'}, f'Sculpt Mode not available: {ex}')

@@ -222,12 +222,17 @@ def update(context):
     return False
 
 
+def _shading_tick():
+    from . import zb_shading
+    return zb_shading.tick()
+
+
 def _tick():
     try:
         wm = bpy.context.window_manager
         for win in wm.windows:
             with bpy.context.temp_override(window=win, screen=win.screen):
-                if update(bpy.context) | fade_update(bpy.context):
+                if update(bpy.context) | fade_update(bpy.context) | _shading_tick():
                     for area in win.screen.areas:
                         area.tag_redraw()
     except Exception:          # (a closing window, a file loading: try again on the next tick)

@@ -1423,7 +1423,12 @@ def _mode(context, mode):
             context.scene[RESCULPT] = ob.name                 # three identical steps in a row broke Blender's undo)
             undo_step(rec)
         _REC['after'] = True
+    from . import zb_shading
+    if mode == 'SCULPT' and ob.mode == 'OBJECT':
+        zb_shading.enter(ob)                                  # 0.24.76 Sharp edges look hard in Sculpt Mode too
     bpy.ops.object.mode_set(mode=mode)
+    if mode == 'OBJECT':
+        zb_shading.restore(ob)                                # (the mesh as it was, before any step is recorded)
     if rec and mode == 'OBJECT' and not _REC['before']:      # the mesh as it was, before the change
         context.scene[RESCULPT] = ob.name
         undo_step(rec + ' (before)')
@@ -1464,6 +1469,8 @@ def _resculpt_later():
             if bpy.context.mode == 'OBJECT':
                 bpy.context.view_layer.objects.active = ob
                 ob.select_set(True)
+                from . import zb_shading
+                zb_shading.enter(ob)
                 bpy.ops.object.mode_set(mode='SCULPT')
         if wm and wm.windows:
             win = wm.windows[0]
@@ -2943,9 +2950,11 @@ class MCH_OT_zb_switch(bpy.types.Operator):
 
     def execute(self, context):
         ob = context.active_object
+        from . import zb_shading
         if self.target == 'MECHA':
             if ob is not None and ob.mode != 'OBJECT':
                 bpy.ops.object.mode_set(mode='OBJECT')
+                zb_shading.restore(ob)
             _bump()
             return {'FINISHED'}
         if ob is None or ob.type != 'MESH':
@@ -2955,6 +2964,8 @@ class MCH_OT_zb_switch(bpy.types.Operator):
                 return {'CANCELLED'}
             context.view_layer.objects.active = mesh
         if context.active_object.mode != 'SCULPT':
+            if context.active_object.mode == 'OBJECT':
+                zb_shading.enter(context.active_object)       # 0.24.76 Sharp edges look hard in Sculpt Mode too
             bpy.ops.object.mode_set(mode='SCULPT')
         _bump()
         return {'FINISHED'}
