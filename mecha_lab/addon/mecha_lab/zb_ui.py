@@ -530,7 +530,9 @@ KEYS_TEXT = ('ZBRUSH KEYS', 'Drag canvas   rotate, Shift: snap', 'Alt + drag can
              'Ctrl + lasso model   mask, Alt: unmask', 'Ctrl + drag canvas   clear mask / DynaMesh',
              'Alt + click SubTool   pick it', 'Ctrl+Shift   show only / polygroup', 'S / U / O   Size / Intensity / Focal',
              'Space / B   menu / brushes (B S T)', 'X   symmetry', 'D / Shift+D   SDiv up / Duplicate',
-             'Ctrl+D / Ctrl+W   Divide / polygroup', 'F / Shift+F   Frame / PolyF')
+             'Ctrl+D / Ctrl+W   Divide / polygroup', 'F / Shift+F   Frame / PolyF',
+             'Q   select mode (gizmo) / brush', 'G / R / S in select mode   move / rotate / scale',
+             'Tab   back to MECHA LAB')
 
 
 def key_legend(context, k, Item, x0, y0):

@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.75
+# Test Report — Mecha Lab 0.24.76
+
+## 0.24.76 결과: <<SUITE_REPORT>>
 
 ## 0.24.75 결과: Blender 5.2.3 bpy 169개 파일 — PASS 4,619 / FAIL 0(`tests/test_log_bpy523_v02475.txt`, FAILED FILES: none; 로그 안 Traceback 18개는 test_registration_recovery가 일부러 내는 것으로 0.24.74 로그와 같음). 새 test_v02478_cutquad 16: 컷 부품이 새 방식 · 메시지 · 닫힘(같은 부품에서 예전 방식은 열린 엣지 330) · 네모 98%(예전 65%) · 표면 오차 0.07% · 면 수 · 컷 엣지 100% 하드 엣지 · 0.7초 · 같은 메쉬 같은 결과 · 재질(입력 면과 100%) · 마스크 · 쿼드보다 좁은 홈(2배로 다시, 닫힘) · All Quads 100% · 열린 판 경계 유지 · 데시메이트 부품 · 촘촘한 DynaMesh는 예전 방식. 고친 기존 테스트: test_v02494(버전). 무작위 컷 부품 99개(Base Mesh + Cut / Line Cut / Ramp / Boolean, 헤드리스, 목표 1,500면): 98개 새 방식, 93개 닫힘, 네모 평균 94.6%, 표면 오차 중간값 0.14%(최대 4.1%), 시간 중간값 0.8초. 크래시 테스트(tests/fuzz) 시드 241~280: 40/40 정상. 새 zip 설치 19/19. GUI 미검증.
 

@@ -1,5 +1,24 @@
 # CHANGELOG
 
+## 0.24.76 — Fix Mesh, 깨진 부품도 Make Quad / Quad Remesh, 쿼드로 내보내기, 꺾인 면 자르기(Steep Edges), 지브러시 Tab · X · 셰이딩 (2026-10-28)
+
+- **Fix Mesh**(새 버튼: Mesh Tools 탭 · Remesh 도구 패널, 지브러시 Fix Mesh처럼): 겹쳐만 있고 안 붙은 점(틈)을 붙이고, 넓이 0인 찌그러진 면(불린 · n각형 쪼개기 찌꺼기)을 없애고, 같은 점에 겹친 면 · 합치면서 안에 남은 벽(면 3개가 붙은 엣지)을 지우고, 작은 구멍과 넓이 0인 실틈(T자 이음새)을 메우고, 노멀 방향을 맞춤. 큰 구멍은 Close All Holes로.
+  - 보내주신 FBX(오브젝트 72개 중 깨진 것 22개: 겹친 점 수백 개 · 넓이 0인 면 수백 개 · 안쪽 벽): 16개 완전히 닫힘, 4개는 엣지 1개 남음, 2개는 큰 구멍(Close All Holes 필요).
+- **Make Quad**(Remesh 도구의 예전 Flow / Patch): 열린 · 깨진 부품을 거절하던 것("open / non-manifold edges") 대신 먼저 Fix Mesh로 고치고 만듦. QuadriFlow(Flow)가 포기하면 Patch로 대신 하고 알려줌. 결과는 와이어프레임으로 보임. Faces가 1부터.
+  - 보내주신 FBX 69개: 예전 Flow 27개 · Patch 20개 실패 → 지금 2개씩만 실패(큰 구멍 부품 등). 단, 예전 Patch는 목표 면 수를 크게 넘기고(4,000 → 16,000 ~ 27,000) 결과에 열린 엣지가 남는 경우가 있어 **새 Quad Remesh를 권장** — Remesh 도구 패널 맨 위에 새 Quad Remesh(Target · Mostly / All Quads · Fix Mesh) 상자를 넣음.
+- **Quad Remesh**(새 엔진): 깨진 입력은 복사본을 Fix Mesh로 고쳐서 리메쉬(열린 판의 원래 경계는 그대로). 결과는 와이어프레임으로 보임. Target이 0.001(= 면 1개)부터(전에는 50부터). 2배 촘촘하게 해도 구멍이 줄지 않으면 4배는 건너뜀(시간 절약).
+- **내보내기(Export)**에 **Quad Mesh** 옵션: 내보내는 모든 오브젝트를 먼저 Fix Mesh + Quad Remesh(각진 엣지 유지)로 바꿔서 내보냄. **Quad Size**(내보내는 전체 크기의 %, 기본 1%)로 모든 부품이 같은 쿼드 크기(작은 나사는 면이 적게). **Client Look**을 켜면 각진 엣지에 좁은 베벨 + Subdivide까지 메쉬에 구워서 어느 프로그램에서도 똑같이 보임. 블렌더의 원래 메쉬는 그대로.
+  - 보내주신 FBX 앞 20개: 58초(오브젝트당 약 3초), 원래 메쉬 그대로, 다시 불러오면 네모 87%, 20개 중 4개에 얇은 벽이 붙은 엣지 남음.
+- **꺾인 면 자르기**(Base Mesh Alt Height / Ramp, Cut Ramp): 꺾인 표면 위에서는 평평한 면마다 그 면과 나란한 바닥을 만들고 만나는 곳은 날카롭게 — 촘촘한 격자 + 부드럽게 섞인 노멀 대신(바닥이 지저분하고 면이 수백 ~ 수천 개). 안 맞는 경우(곡면 · 조각 48개 넘음 · Chamfer / Bevel 테두리 · Through · 불린 실패)는 예전 방식으로 자동 전환.
+  - **Steep Edges** 옵션(Base Mesh Alt 패널 · Cut의 GN Edge > Ramp): **Even**(기본) = 모든 면에 같은 깊이(가파른 옆면으로 홈이 더 내려감), **Limit** = 보는 방향으로 같은 깊이(정면으로 보이는 면 기준, 돌아간 가파른 면은 얕게 — 예전처럼).
+  - 시험본과 같은 결과(꺾인 모서리 40건 똑같음), 가장 느린 경우(둥근 모서리 41조각 + Soft) 3.3초 → 0.9초.
+- **지브러시 화면**:
+  - **X 대칭**이 실제로 켜짐: 블렌더 5에서 조각 대칭은 메쉬의 Mirror X인데 예전 설정을 바꾸고 있어서 버튼만 켜지고 대칭은 안 됐음. 텍스처 스탬프 대칭도 같이.
+  - **Tab**: MECHA LAB 탭에서 MECHA LAB(오브젝트 모드) ↔ ZBRUSH(조각 모드). 다른 탭은 블렌더의 Tab(편집 모드) 그대로.
+  - **Q** = 브러시 ↔ 선택 모드(블렌더 Move 기즈모, Alt+클릭으로 다른 SubTool 선택), 선택 모드에서 **G / R / S** = 이동 / 회전 / 크기 기즈모(브러시일 때 S는 예전처럼 Draw Size).
+  - 지브러시 화면으로 가면 셰이딩이 부드럽게 바뀌던 것: High Poly Mode가 블렌더의 Deform Only를 켜서 Smooth by Angle(자동 스무스)이 꺼졌던 것 — 이제 Deform Only는 건드리지 않음(Delay Viewport Updates 등은 그대로).
+- 테스트: <<SUITE>>. 새 test_v02479_fixmesh 34: Fix Mesh(틈 · 넓이 0인 면 · 안쪽 벽 · 빠진 면 · 열린 판 경계 유지 · Close All Holes · 깨끗한 상자 그대로 · 버튼 2곳), Make Quad(깨진 부품 → 만들어짐 · 닫힘 · 와이어프레임 · 수리 알림 · Flow 실패 → Patch), Quad Remesh(깨진 부품 고친 복사본 · 닫힘 · 와이어프레임 · 복사본 안 남음 · 깨끗하면 수리 없음), Export(파일 · 원래 메쉬 그대로 · 임시 오브젝트 없음 · 세 부품 · 네모 · 닫힘 · 같은 쿼드 크기 · Client Look 면 수 · 모두 스무스). 새 test_v02480_facetcarve 20: 지붕(조각 2개 · 닫힘 · 바닥 깊이 1% 안 · 능선 날카로움 · 부피), Ramp · Ramp Soft, Steep Edges(Limit이 덜 깎음 · 같은 두 면이면 같음 · 평면 하나면 같음), 예전 방식 전환(곡면 · Chamfer · 꺼짐), Base Mesh Alt · Cut Ramp 실제 경로, 패널 표시 2곳. 새 test_v02481_keys 17: X 대칭(메쉬 Mirror X · 스탬프), Tab(키맵 2곳 · 다른 탭은 블렌더 · 오브젝트 ↔ 조각), High Poly가 Deform Only 안 건드림, 면 1개부터(Faces · Target · 12 / 37면 상자). 고친 기존 테스트: test_v02473(Live Ramp 레이아웃 재사용은 예전 방식에서 확인 — 평평한 윗면은 이제 꺾인 면 자르기라 레이아웃 자체가 없음), test_v02494(High Poly Mode: Deform Only 대신 Delay Updates로 확인, 버전), test_v02492(S 키 = Draw Size / Scale 기즈모). <<FUZZ>> 실제 블렌더 화면(GUI) · 우클릭 메뉴는 미검증. ZIP sha256 `<<SHA>>`.
+
 ## 0.24.75 — Quad Remesh: 컷 / Base Mesh로 만든 가벼운 부품을 그 엣지 그대로 쿼드로 (2026-10-28)
 
 - **Quad Remesh**(지브러시 선반 · Mesh Tools 탭, 버튼 · 설정 그대로): 가벼운 입력(원하는 면 수의 20배 이하 삼각형 — Base Mesh + Cut으로 만든 n각형 부품, 데시메이트한 부품)은 자동으로 새 방식.

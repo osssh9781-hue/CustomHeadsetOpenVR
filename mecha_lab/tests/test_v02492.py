@@ -240,7 +240,8 @@ kms = [(it.type, it.ctrl, it.shift, it.alt, it.idname) for k in C.window_manager
 need = {('SPACE', False, False, False, 'mch.zb_popup'), ('B', False, False, False, 'mch.zb_brush_pick'),
         ('X', False, False, False, 'mch.zb_action'), ('D', False, False, False, 'mch.zb_action'),
         ('D', True, False, False, 'mch.zb_action'), ('W', True, False, False, 'mch.zb_action'),
-        ('LEFTMOUSE', True, True, False, 'mch.zb_press'), ('S', False, False, False, 'mch.zb_popup')}
+        ('LEFTMOUSE', True, True, False, 'mch.zb_press'), ('S', False, False, False, 'mch.zb_gizmo')}   # 0.24.76 S:
+# Draw Size with the brush on, the Scale gizmo in select mode (Q)
 check('ZBrush keys in the Sculpt keymap (Space, S, B, X, D, Ctrl+D, Ctrl+W, the mouse)', need <= set(kms))
 check('... only in the MECHA LAB tab (every one polls on())',
       all(getattr(bpy.types, n).poll.__func__ is zs._ZBPoll.poll.__func__ for n in

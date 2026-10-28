@@ -2610,6 +2610,45 @@ def _tool_id(context):
         return 'builtin.brush'
 
 
+GIZMO_TOOLS = {'MOVE': 'builtin.move', 'ROTATE': 'builtin.rotate', 'SCALE': 'builtin.scale'}
+_LAST_BRUSH = ['builtin.brush']
+
+
+def in_gizmo(context):
+    return _tool_id(context) in GIZMO_TOOLS.values()
+
+
+class MCH_OT_zb_gizmo(_ZBPoll, bpy.types.Operator):
+    """0.24.76 Q: the brush <-> select mode (Blender's Move gizmo on the SubTool; Alt+click another SubTool picks
+    it).  G / R / S = Move / Rotate / Scale gizmo (S with the brush on: Draw Size, as before)"""
+    bl_idname = 'mch.zb_gizmo'
+    bl_label = 'ZBrush Select / Gizmo'
+    bl_options = {'INTERNAL'}
+    mode: EnumProperty(items=[('TOGGLE', 'Q', ''), ('MOVE', 'G', ''), ('ROTATE', 'R', ''), ('SCALE', 'S', '')],
+                       default='TOGGLE', options={'SKIP_SAVE'})
+
+    def invoke(self, context, event):
+        if self.mode == 'SCALE' and not in_gizmo(context):        # the brush is on: S = Draw Size
+            return bpy.ops.mch.zb_popup('INVOKE_DEFAULT', focus='draw_size')
+        return self.execute(context)
+
+    def execute(self, context):
+        cur = _tool_id(context)
+        if not in_gizmo(context):
+            _LAST_BRUSH[0] = cur or 'builtin.brush'
+        if self.mode == 'TOGGLE':
+            want = _LAST_BRUSH[0] if in_gizmo(context) else GIZMO_TOOLS['MOVE']
+        else:
+            want = GIZMO_TOOLS[self.mode]
+        try:
+            bpy.ops.wm.tool_set_by_id(name=want, space_type='VIEW_3D')
+        except (RuntimeError, TypeError) as ex:
+            self.report({'WARNING'}, str(ex).splitlines()[0])
+            return {'CANCELLED'}
+        _bump()
+        return {'FINISHED'}
+
+
 class MCH_OT_zb_restore_tool(bpy.types.Operator):
     """(Blender 5.0) back to the brush after a Ctrl mask stroke: the first event after the stroke"""
     bl_idname = 'mch.zb_restore_tool'
@@ -3165,7 +3204,7 @@ class MCH_OT_zb_close(bpy.types.Operator):
 
 
 CLASSES = (MCH_PG_ZBrush, MCH_OT_zb_action, MCH_OT_zb_brush, MCH_OT_zb_append, MCH_OT_zb_subtool, MCH_OT_zb_press,
-           MCH_OT_zb_restore_tool, MCH_OT_zb_nav, MCH_OT_zb_viewdrag, MCH_OT_zb_popup, MCH_OT_zb_brush_pick,
+           MCH_OT_zb_restore_tool, MCH_OT_zb_gizmo, MCH_OT_zb_nav, MCH_OT_zb_viewdrag, MCH_OT_zb_popup, MCH_OT_zb_brush_pick,
            MCH_OT_zb_switch, MCH_OT_zb_tab, MCH_OT_zb_style, MCH_OT_zb_obj_press, MCH_OT_zb_alpha, MCH_OT_zb_alpha_edit,
            MCH_OT_zb_alpha_folder, MCH_OT_zb_set, MCH_OT_zb_texture, MCH_OT_zb_texture_folder, MCH_OT_zb_tex_stamp, MCH_OT_zb_close)
 _keymaps = []
@@ -3193,7 +3232,10 @@ KEYS = (
     ('LEFTMOUSE', True, True, True, 'mch.zb_press', {}),
     ('SPACE', False, False, False, 'mch.zb_popup', {}), ('RIGHTMOUSE', False, False, False, 'mch.zb_popup', {}),
     ('RIGHTMOUSE', False, False, True, 'mch.zb_popup', {}),         # 0.24.63 Alt + right drag = move the view
-    ('S', False, False, False, 'mch.zb_popup', {'focus': 'draw_size'}),
+    ('S', False, False, False, 'mch.zb_gizmo', {'mode': 'SCALE'}),        # 0.24.76 Draw Size / Scale gizmo
+    ('Q', False, False, False, 'mch.zb_gizmo', {'mode': 'TOGGLE'}),       # 0.24.76 brush <-> select mode
+    ('G', False, False, False, 'mch.zb_gizmo', {'mode': 'MOVE'}),
+    ('R', False, False, False, 'mch.zb_gizmo', {'mode': 'ROTATE'}),
     ('U', False, False, False, 'mch.zb_popup', {'focus': 'z_intensity'}),
     ('O', False, False, False, 'mch.zb_popup', {'focus': 'focal_shift'}),
     ('B', False, False, False, 'mch.zb_brush_pick', {}), ('ESC', False, False, False, 'mch.zb_close', {}),

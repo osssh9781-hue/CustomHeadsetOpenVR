@@ -1,8 +1,15 @@
-# Mecha Lab 0.24.75 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.24.76 — 설치 · MECHA LAB Workspace · 사용법
 
 > **검증 수준:** Linux headless Blender **5.2.3**(`bpy`)에서 자동 테스트 169개 파일 / 4,619개 항목(실패 0) + 무작위 기능 조합 크래시 테스트 280개를 돌렸습니다(결과: `test_report.md`).
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` A절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
+
+## 0.24.76 Fix Mesh · 깨진 부품 쿼드 · 쿼드로 내보내기 · 꺾인 면 자르기 · 지브러시 키
+- **Fix Mesh**(Mesh Tools 탭 · Remesh 도구 패널): 불린 · 합치기 · 내보내기 뒤에 남는 틈 · 찌그러진 면 · 안쪽 벽 · 작은 구멍을 고쳐서 닫힌 부품으로. Make Quad · Quad Remesh는 이걸 먼저 저절로 함.
+- **Remesh 도구 패널**: 맨 위가 새 **Quad Remesh**(권장), 아래가 예전 **Make Quad**(Flow / Patch). 둘 다 면 1개부터. 결과는 와이어프레임으로 보임.
+- **Export**: **Quad Mesh**를 켜면 모든 오브젝트가 쿼드로(Quad Size = 전체 크기의 %), **Client Look**을 켜면 각진 엣지의 베벨 + Subdivide까지 구워서. 블렌더 메쉬는 그대로. 오브젝트당 수 초.
+- **꺾인 면 자르기**: Base Mesh Alt(Height / Ramp)와 Cut Ramp가 꺾인 표면에서 평평한 면마다 깨끗한 바닥. **Steep Edges**: Even(모든 면 같은 깊이) / Limit(보는 방향으로 같은 깊이, 가파른 옆면은 얕게).
+- **지브러시 화면**: **X** 대칭이 실제로 켜짐 · **Tab** = MECHA LAB ↔ ZBRUSH · **Q** = 선택 모드(기즈모) ↔ 브러시, 선택 모드에서 **G / R / S** = 이동 / 회전 / 크기 · 들어갈 때 셰이딩이 부드럽게 바뀌지 않음.
 
 ## 0.24.75 Quad Remesh — 컷으로 만든 가벼운 부품
 - Base Mesh + Cut으로 만든 부품(또는 데시메이트한 부품)에 **Quad Remesh**를 누르면 자동으로 부품의 엣지를 그대로 따라가는 쿼드가 됩니다(버튼 · 설정은 그대로). 메시지에 "(low-poly part: its own edges kept)".
