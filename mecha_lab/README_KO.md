@@ -4,13 +4,15 @@
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` A절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
 
-## 0.24.76 Fix Mesh · 깨진 부품 쿼드 · 쿼드로 내보내기 · 꺾인 면 자르기 · 지브러시 키 · 펜 우클릭
+## 0.24.76 Fix Mesh · 깨진 부품 쿼드 · 쿼드로 내보내기 · 꺾인 면 자르기 · 지브러시 키 · 펜 우클릭 · Silhouette Move
 - **Fix Mesh**(Mesh Tools 탭 · Remesh 도구 패널): 불린 · 합치기 · 내보내기 뒤에 남는 틈 · 찌그러진 면 · 안쪽 벽 · 작은 구멍을 고쳐서 닫힌 부품으로. Make Quad · Quad Remesh는 이걸 먼저 저절로 함.
 - **Remesh 도구 패널**: 맨 위가 새 **Quad Remesh**(권장), 아래가 예전 **Make Quad**(Flow / Patch). 둘 다 면 1개부터. 결과는 와이어프레임으로 보임.
 - **Export**: **Quad Mesh**를 켜면 모든 오브젝트가 쿼드로(Quad Size = 전체 크기의 %), **Client Look**을 켜면 각진 엣지의 베벨 + Subdivide까지 구워서. 블렌더 메쉬는 그대로. 오브젝트당 수 초.
 - **꺾인 면 자르기**: Base Mesh Alt(Height / Ramp)와 Cut Ramp가 꺾인 표면에서 평평한 면마다 깨끗한 바닥. **Steep Edges**: Even(모든 면 같은 깊이) / Limit(보는 방향으로 같은 깊이, 가파른 옆면은 얕게).
+- **Silhouette Move**(새 도구): Path Move인데 항상 부품 전체가 따라옴 — 잡고 끌면 부품이 늘어나고 휘어서 실루엣이 바뀜(예전 Path Move 느낌, Tab 필요 없음).
+- **Select**(F / Q / 아래 막대)가 블렌더 Select Box: 클릭 · 박스로 고르고 G / R / S로 이동 · 회전 · 크기.
 - **Make Quad → Cut → Re-make Quad**: 컷이 그대로 남음(바뀐 메시는 숨은 `…_Changed`로 보관).
-- **Alt 빼기 / Zsub가 안 되고 팝업이 뜨면**: Edit > Preferences > Input > Mouse > **Emulate 3 Button Mouse**를 끄세요(켜져 있으면 Alt+클릭이 가운데 클릭이 됨 — 패널에 빨간 경고가 나옴).
+- **팝업 메뉴가 뜻밖에 뜨면**: 화면 아래 상태 줄에 "Mecha Menu (무엇이 열었는지)"가 나옵니다 — 그 글자를 알려 주세요. Emulate 3 Button Mouse가 켜져 있으면 패널에 빨간 경고가 나옵니다(Alt+클릭이 가운데 클릭이 됨).
 - **지브러시 화면**: **X** 대칭이 실제로 켜짐 · **Tab** = MECHA LAB ↔ ZBRUSH · **Q** = 선택 모드(기즈모) ↔ 브러시, 선택 모드에서 **G / R / S** = 이동 / 회전 / 크기 · 들어갈 때 셰이딩이 부드럽게 바뀌지 않음 · 조각 중인 SubTool만 밝게(다른 오브젝트는 흐리게) · 펜 옆 버튼 우클릭이 조금 흔들려도 메뉴.
 
 ## 0.24.75 Quad Remesh — 컷으로 만든 가벼운 부품

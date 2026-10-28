@@ -14,8 +14,11 @@ Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전�
 - [ ] Smooth by Angle이 있는 각진 부품으로 지브러시 화면에 들어가도 셰이딩이 그대로인지(High Poly Mode 켠 상태에서도).
 - [ ] **펜 옆 버튼 우클릭**(MECHA LAB 선택 도구 · 지브러시 화면): 짧게 누르면 메뉴가 나오는지, 누른 채 끌면 화면이 도는지. 마우스 우클릭도 그대로인지. 그래도 안 나오면 펜 드라이버의 옆 버튼 설정(오른쪽 클릭인지)과 화면이 도는지 / 아무 일도 없는지 알려 주세요.
 - [ ] 부품 여러 개가 있는 장면에서 지브러시 화면으로 → 조각 중인 SubTool만 밝고 나머지는 흐린지, MECHA LAB으로 돌아오면 원래 밝기인지.
+- [ ] **Silhouette Move**(도구 목록 Move 그룹 / 아래 막대 Silhouette): 부품 위를 잡고 길이 방향으로 끌기 시작 → 부품 전체가 길을 따라 늘어나고 휘는지(Tab 없이). Path Move의 Tab(Brush / Whole)은 그대로인지.
+- [ ] **F / Q / 아래 막대 Select** → 블렌더 툴바에서 Select Box가 켜지는지, 드래그로 박스 선택, G / R / S로 이동 · 회전 · 크기.
+- [ ] 0.24.71에서 되던 "홀" 세 가지(Path Move Whole · 스케치 Alt 구멍 · Base Mesh / 컷 구멍)를 이 버전에서 다시: 안 되면 그때 화면 아래 메시지 · System Console 내용과 Emulate 3 Button Mouse 상태를 알려 주세요.
 - [ ] Make Quad → 결과를 Cut으로 자르기 → **Re-make Quad**: 컷 홈이 그대로 남는지, Outliner에 숨은 `…_Changed`가 생기는지.
-- [ ] Edit > Preferences > Input > Mouse > **Emulate 3 Button Mouse**가 켜져 있는지 확인. 켜져 있으면 사이드바 Mecha Lab 패널 · 지브러시 키 안내에 빨간 경고가 보이는지 → 끄고 나서 Base Mesh Alt 빼기 · 지브러시 Alt(Zsub)가 되는지.
+- [ ] Base Mesh Alt 빼기 · 지브러시 Alt(Zsub) · 스케치 Alt 구멍에서 팝업이 뜨면 **화면 아래 상태 줄의 "Mecha Menu (…)" 글자**를 알려 주세요(무엇이 열었는지). (참고: Emulate 3 Button Mouse가 켜져 있으면 사이드바 Mecha Lab 패널 · 지브러시 키 안내에 빨간 경고가 보임.)
 - [ ] Cut > GN Edge > Ramp + Ramp Soft로 길쭉한 경사 홈 → 둥근 옆면을 따라 톱니 없이 매끄러운지.
 
 ## A000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000. 0.24.75 Quad Remesh — 컷으로 만든 가벼운 부품 (미검증)
