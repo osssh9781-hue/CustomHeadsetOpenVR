@@ -167,7 +167,7 @@ def items(context, region_w, region_h, k=1.0, left=None, right=None):
         if not ui_bars.strip_on(context):          # 0.24.59 the Layers panel starts as low as the side panel
             l_low = ui_bars.left_inset(context)
         if right < region_w or l_low < left:        # ... and the side panel starts lower: use the whole width
-            panel_top = side_panel.frame(region_w, region_h, k)[1]
+            panel_top = side_panel.frame(region_w, region_h, k, context)[1]
     sep = 14.0 * k
     from . import ui_bars
     inset = ui_bars.top_inset(context)             # 0.24.59 under Blender's see-through header rows

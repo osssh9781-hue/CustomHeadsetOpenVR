@@ -302,6 +302,10 @@ def analyse(me, hit, normal, radius=None, sides=8, front_only=False):
 def _tip_faces(bm, cut_edges, hit, normal):
     """Split along the cut; the faces on the far side (the drag side) that the cut really cuts off - None when the
     cut does not separate them (an open sheet, a cut that misses part of the loop)."""
+    # 0.24.77 the faces round the cut, taken before the split: after it the cut edges stay with one side only, and
+    # when that was the far side 'nothing stays behind' came out (any mesh, by its face order - Extend then fell
+    # back to a Separate Tube, e.g. on a Quad Remeshed part)
+    around = {f for e in cut_edges for v in e.verts for f in v.link_faces}
     bmesh.ops.split_edges(bm, edges=cut_edges)
     seeds = set()
     for e in cut_edges:
@@ -321,7 +325,7 @@ def _tip_faces(bm, cut_edges, hit, normal):
                     stack.append(g)
     if any((f.calc_center_median() - hit).dot(normal) < -1e-6 for f in tip):
         return None                                          # it leaks round to the near side: not cut off
-    behind = [f for e in cut_edges for v in e.verts for f in v.link_faces if f not in tip]
+    behind = [f for f in around if f.is_valid and f not in tip]
     if not behind:
         return None                                          # nothing stays behind
     return tip

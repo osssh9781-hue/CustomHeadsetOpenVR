@@ -398,9 +398,19 @@ def taken(context, k):
 
 
 
-def frame(region_w, region_h, k):
+def frame(region_w, region_h, k, context=None):
     w = WIDTH * k
-    return region_w - w - 12 * k, region_h - TOP_MARGIN * k, w
+    x0, top = region_w - w - 12 * k, region_h - TOP_MARGIN * k
+    if context is not None:          # 0.24.77 below the corner card where they would meet (its VIEW row made it taller)
+        try:
+            from . import bottom_bar, zb_ui
+            if bottom_bar.ui_active(context):
+                cx, cy, cw, _ch = zb_ui.corner_box(context, region_w, region_h, k)
+                if cx < x0 + w and cx + cw > x0:
+                    top = min(top, cy - 8 * k)
+        except (ImportError, AttributeError, TypeError, ReferenceError):
+            pass
+    return x0, top, w
 
 
 def layout(context, region_w, region_h, k=1.0):
@@ -410,7 +420,7 @@ def layout(context, region_w, region_h, k=1.0):
     t = ts.TOOL_BY_ID.get(tool)
     if t is None:
         return {'items': [], 'clip': None, 'content': 0.0, 'view': 0.0}
-    x0, top, w = frame(region_w, region_h, k)
+    x0, top, w = frame(region_w, region_h, k, context)
     if minimised(context):                       # a small tab: the tool icon, click = open again
         mw = MIN_W * k
         card = Item('card', region_w - mw - 12 * k, top - mw, mw, mw)

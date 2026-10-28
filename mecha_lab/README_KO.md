@@ -1,10 +1,14 @@
 # Mecha Lab 0.24.77 — 설치 · MECHA LAB Workspace · 사용법
 
 > **검증 수준:** Linux headless Blender **5.2.3**(`bpy`)에서 자동 테스트 169개 파일 / 4,619개 항목(실패 0) + 무작위 기능 조합 크래시 테스트 280개를 돌렸습니다(결과: `test_report.md`).
-> **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` A절을 먼저 확인해 주세요.
+> **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` 맨 위 0.24.77 절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
 
-## 0.24.77 지브러시 화면에서도 각지게
+## 0.24.77 지브러시 화면에서도 각지게 · 컷 챔퍼 끝 · 쿼드 내보내기 · Wire / Solo
+- 라인 컷이 판 테두리로 빠져나가는 곳의 GN Chamfer / Bevel 끝에 뾰족한 이빨이 남던 것 수정. 깨진 부품에서 Chamfer / Bevel이 약 3배 빨라짐(그래도 깨진 부품은 먼저 **Fix Mesh** 권장 — 경고에 나옴).
+- Export > Quad Mesh가 작은 · 디테일 많은 부품도 모양 그대로(부품마다 쿼드 크기, 모양이 벗어나면 더 촘촘하게, 안 되면 고친 원래 모양).
+- MECHA LAB 화면 오른쪽 위 카드에 **VIEW Wire / Solo**: 와이어프레임 켜기 / 끄기, 고른 부품만 보기.
+- Path Move(Whole) · Silhouette Move가 어떤 메쉬에서는 Separate Tube로 빠지던 것 수정.
 - Make Quad · Quad Remesh처럼 면은 스무스 + 엣지는 Sharp인 부품이 지브러시 화면(조각 모드)에서 매끈하게 보이던 것: 지브러시 화면에 있는 동안만 Sharp 엣지 옆 면을 평면으로 보여 주고, MECHA LAB으로 돌아오면 원래대로.
 - Alt가 안 되면 Edit > Preferences > Input > Mouse > Emulate 3 Button Mouse를 끄고 ☰ > Save Preferences.
 

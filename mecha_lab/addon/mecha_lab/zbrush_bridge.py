@@ -144,7 +144,11 @@ def quad_copy(context, tmp, quad_size, client=False, subdiv=1):
     """0.24.76 Export Quad Mesh: the temporary export copy ``tmp`` rebuilt as quads about ``quad_size`` (scene units)
     apart - Fix Mesh first, then Quad Remesh with the part's hard edges kept - and, with ``client``, those edges
     given a narrow bevel + Subdivide baked in, every face smooth (looks the same in Maya / Max / ZBrush).  Returns
-    a short note ('' when done as asked)."""
+    a short note ('' when done as asked).
+    0.24.77 Each part keeps its shape: the quads are at most a PART_QUADS-th of the part's own size (one Quad Size for
+    the whole export made small / detailed parts a few dozen faces - flat shards in ZBrush), and the result is
+    measured against the part (FIT, the part after Fix Mesh): too far off, it is made again finer (x3, TRIES times);
+    still off, the part goes out as it was (repaired)."""
     from types import SimpleNamespace
     from . import hard_edges as he
     from . import quad_field as qf
@@ -155,17 +159,85 @@ def quad_copy(context, tmp, quad_size, client=False, subdiv=1):
         return 'shape keys: exported as it is'
     k = abs(tmp.matrix_world.to_3x3().determinant()) ** (1.0 / 3.0) or 1.0     # object -> world scale
     area = sum(p.area for p in me.polygons) * k * k
-    target = int(min(QUAD_MAX, max(QUAD_MIN, area / max(quad_size, 1e-9) ** 2)))
-    msg = qf.remesh_object(tmp, target)
-    if not msg.startswith('Quad Remesh') or ' > ' not in msg:
-        return msg                                     # (not remeshed: the copy goes out as it was)
+    diag = _diag(me) * k
+    q = min(quad_size, diag / PART_QUADS) if diag > 0 else quad_size
+    target = int(min(QUAD_MAX, max(QUAD_MIN, area / max(q, 1e-9) ** 2)))
+    from . import mesh_fix
+    orig = me.copy()
+    if mesh_fix.needs_fix(orig):                      # (measured against - and kept if need be - the repaired part:
+        mesh_fix.fix_mesh(orig, fill='CRACKS')        # a broken one's inside walls are not its shape)
+    err, msg = None, ''
+    try:
+        for _try in range(TRIES):
+            msg = qf.remesh_object(tmp, target)
+            if not msg.startswith('Quad Remesh') or ' > ' not in msg:
+                break                                  # (not remeshed: the copy goes out as it was)
+            err = fit_error(orig, tmp.data)
+            if err <= FIT or target >= QUAD_MAX:
+                break
+            _put_back(tmp, orig)                       # too far off: again, finer
+            target = int(min(QUAD_MAX, target * 3))
+            err = None
+        if err is None or err > FIT:
+            _put_back(tmp, orig)
+            return (msg if msg and not msg.startswith('Quad Remesh') else
+                    'kept as it was, repaired (quads could not keep its shape)')
+        if mesh_fix.needs_fix(tmp.data) and not mesh_fix.needs_fix(orig):
+            mesh_fix.fix_mesh(tmp.data, fill='SMALL')    # (a small hole the remesh left in a closed part: closed)
+    finally:
+        if orig.users == 0:
+            bpy.data.meshes.remove(orig)
     if client:
-        st = SimpleNamespace(he_crease=False, he_outer=False, he_bevel=True, he_width=0.2 * quad_size / k,
+        st = SimpleNamespace(he_crease=False, he_outer=False, he_bevel=True, he_width=0.2 * q / k,
                              he_segments=2, he_style='ROUND', he_profile=0.5, he_subdiv=max(0, int(subdiv)),
                              he_normals=False, he_client=True, he_fit=False, he_match=False)
         he.set_live(tmp, st)
         he.apply_live(context, tmp, st)
     return ''
+
+
+PART_QUADS = 20                 # 0.24.77 Export Quad Mesh: at least this many quads across a part (its diagonal)
+FIT = 0.005                     # ... 95 % of the part's own surface within this share of its size, or again finer
+TRIES = 4
+
+
+def _diag(me):
+    import numpy as np
+    co = np.empty(len(me.vertices) * 3, np.float64)
+    me.vertices.foreach_get('co', co)
+    co = co.reshape(-1, 3)
+    return float(np.linalg.norm(co.max(0) - co.min(0))) if len(co) else 0.0
+
+
+def fit_error(orig, new, samples=4000):
+    """How far the part's own surface (``orig`` points, up to ``samples``) is from ``new`` (same space): the 95th
+    percentile, as a share of the part's size (a lost corner, a thin wall gone flat, a piece gone - all show)."""
+    import bmesh
+    import numpy as np
+    from mathutils.bvhtree import BVHTree
+    co = np.empty(len(orig.vertices) * 3, np.float64)
+    orig.vertices.foreach_get('co', co)
+    co = co.reshape(-1, 3)
+    if not len(co) or not len(new.polygons):
+        return float('inf')
+    if len(co) > samples:
+        co = co[np.random.default_rng(0).choice(len(co), samples, replace=False)]
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(new)
+        bvh = BVHTree.FromBMesh(bm)
+    finally:
+        bm.free()
+    d = np.array([(bvh.find_nearest(p)[3] if bvh.find_nearest(p)[0] is not None else np.inf) for p in co])
+    size = _diag(orig)
+    return float(np.percentile(d, 95) / size) if size > 0 else 0.0
+
+
+def _put_back(tmp, orig):
+    old = tmp.data
+    tmp.data = orig.copy()
+    if old.users == 0:
+        bpy.data.meshes.remove(old)
 
 
 QUAD_MIN = 60                   # Export Quad Mesh: at least / at most this many faces per object

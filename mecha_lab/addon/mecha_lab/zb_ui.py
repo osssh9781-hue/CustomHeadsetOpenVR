@@ -785,7 +785,8 @@ def corner_box(context, region_w, region_h, k):
     """(x, y, w, h) of the MECHA LAB / ZBRUSH card in the top right corner (left of Blender's navigation gizmo
     and an overlapping sidebar)."""
     from . import ui_bars
-    w, h = CORNER_W * k, 2 * ROW * k + GAP * k + 2 * PAD * k
+    rows = 2 if getattr(context, 'mode', '') == 'SCULPT' else 3       # 0.24.77 + VIEW Wire | Solo on MECHA LAB
+    w, h = CORNER_W * k, rows * ROW * k + (rows - 1) * GAP * k + 2 * PAD * k
     gizmo = 0.0
     try:
         prefs = context.preferences
@@ -833,6 +834,13 @@ def corner_items(context, region_w, region_h, k=1.0):
                     ('op', 'mch.zb_style', {'style': 'ZBRUSH'})))
     out.append(Item('seg', x0 + PAD * k + lw + 2 * GAP * k + s2, y, s2, ROW * k, 'Blender', '', st == 'BLENDER', True,
                     ('op', 'mch.zb_style', {'style': 'BLENDER'})))
+    if not sculpt:                    # 0.24.77 the wireframe (Make Quad / Quad Remesh results show it) and Solo
+        y -= ROW * k + GAP * k        # (the ZBRUSH screen has its own PolyF / Solo on the right shelf)
+        out.append(Item('glabel', x0 + PAD * k, y, lw, ROW * k, 'VIEW'))
+        out.append(Item('seg', x0 + PAD * k + lw + GAP * k, y, s2, ROW * k, 'Wire', '', zs.wire_on(context), True,
+                        ('op', 'mch.view_toggle', {'action': 'WIRE'})))
+        out.append(Item('seg', x0 + PAD * k + lw + 2 * GAP * k + s2, y, s2, ROW * k, 'Solo', '', zs.solo_on(context),
+                        True, ('op', 'mch.view_toggle', {'action': 'SOLO'})))
     return out
 
 

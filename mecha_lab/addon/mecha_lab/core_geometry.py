@@ -517,7 +517,8 @@ def overlap_hint(ob, counts):
     if open_:
         what.append(f'{open_} edges are open (holes)')
     return (f'"{ob.name}" is not one clean solid: {" and ".join(what)}. Cut / Split need one closed volume - '
-            'Remesh it first (Remesh tool or its Run Key), then split / cut again.')
+            'Fix Mesh it (Mesh Tools tab / Remesh tool / ZBrush shelf) or Remesh it first (Remesh tool or its Run Key), then '
+            'split / cut again.')
 
 
 def check_target(ob):

@@ -307,6 +307,46 @@ def remesh_cut(me, target, all_quads=False, crease_deg=30.0, nthreads=None):
     return best[1]
 
 
+def drop_twins(me):
+    """0.24.77 Faces on the very same points.  A flat pocket of two such triangles (their edges used by nothing else)
+    goes completely - an FBX / Blender's mesh check keeps one of them and leaves a hole; a face lying on a face of the
+    surface goes alone.  Returns how many faces were removed."""
+    import bmesh
+    seen, twins = {}, []
+    for p in me.polygons:
+        key = tuple(sorted(p.vertices))
+        if key in seen:
+            twins.append((seen[key], p.index))
+        else:
+            seen[key] = p.index
+    if not twins:
+        return 0
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        bm.faces.ensure_lookup_table()
+        dead = set()
+        for a, b in twins:
+            fa, fb = bm.faces[a], bm.faces[b]
+            pair = {fa, fb}
+            if all(set(e.link_faces) <= pair for e in fa.edges):
+                dead |= pair
+            else:
+                dead.add(fb)
+        bmesh.ops.delete(bm, geom=list(dead), context='FACES_ONLY')
+        loose_e = [e for e in bm.edges if not e.link_faces]
+        if loose_e:
+            bmesh.ops.delete(bm, geom=loose_e, context='EDGES')
+        loose_v = [v for v in bm.verts if not v.link_faces]
+        if loose_v:
+            bmesh.ops.delete(bm, geom=loose_v, context='VERTS')
+        bm.to_mesh(me)
+    finally:
+        bm.free()
+    me.update()
+    return len(dead)
+
+
 def close_holes(me, fpoly, border=None, tol=0.0, max_sides=64, weld=0.0):
     """Close what the remesher left open - not the input's own border (``border`` / ``tol`` as in ``holes``): a crack
     (open sides lying on each other) is zipped by welding points closer than ``weld``, each open loop gets faces
@@ -565,6 +605,8 @@ def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nth
         from . import hard_edges
         hard_edges.mark_pairs(new, st['hard'], crease=True)
         new.update()
+        if drop_twins(new):                                # 0.24.77 (attributes / hard edges kept by BMesh)
+            sizes = np.array([len(p.vertices) for p in new.polygons])
     except Exception:
         bpy.data.meshes.remove(new)                        # the SubTool keeps its mesh
         raise

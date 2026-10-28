@@ -722,7 +722,7 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
         raise
     if broken:
         report += ' | WARNING: ' + '; '.join(f'{n} is not one clean solid ({c[0]} edges shared by 3+ faces, {c[1]} open '
-                                            'edges) - the result may be broken; Remesh it first'
+                                            'edges) - the result may be broken and slow to finish; Fix Mesh (or Remesh) it first'
                                             for n, c in broken.items())
     return report
 

@@ -2971,6 +2971,56 @@ class MCH_OT_zb_switch(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def wire_targets(context):
+    """0.24.77 The meshes the Wire button works on: the selected ones, else every visible mesh."""
+    sel = [o for o in context.selected_objects if o.type == 'MESH']
+    return sel or [o for o in context.visible_objects if o.type == 'MESH']
+
+
+def wire_on(context):
+    """Is the wireframe drawn over the parts (a Make Quad / Quad Remesh result shows it)?"""
+    return _safe(lambda: any(o.show_wire for o in wire_targets(context)), False)
+
+
+def solo_on(context):
+    """Is the view showing only the soloed parts (Blender's Local View)?"""
+    return _safe(lambda: getattr(context.space_data, 'local_view', None) is not None, False)
+
+
+class MCH_OT_view_toggle(bpy.types.Operator):
+    """Wire: the wireframe over the selected parts (all when none is selected) on / off.  Solo: only the selected
+    parts in the view (again: all back)"""
+    bl_idname = 'mch.view_toggle'
+    bl_label = 'View'
+    bl_options = {'INTERNAL'}
+    action: EnumProperty(items=[('WIRE', 'Wire', ''), ('SOLO', 'Solo', '')], default='WIRE')
+
+    def execute(self, context):
+        if self.action == 'WIRE':
+            obs = wire_targets(context)
+            if not obs:
+                self.report({'INFO'}, 'Wire: no mesh in the view')
+                return {'CANCELLED'}
+            new = not any(o.show_wire for o in obs)
+            for o in obs:
+                o.show_wire = new
+                if new:
+                    o.show_all_edges = True
+            self.report({'INFO'}, f'Wire {"on" if new else "off"} ({len(obs)} part{"s" * (len(obs) != 1)})')
+        else:
+            if not solo_on(context) and not context.selected_objects:
+                self.report({'WARNING'}, 'Solo: select the part(s) to show first')
+                return {'CANCELLED'}
+            try:
+                bpy.ops.view3d.localview(frame_selected=False)
+            except (RuntimeError, TypeError) as ex:
+                self.report({'WARNING'}, 'Solo: ' + str(ex).splitlines()[0])
+                return {'CANCELLED'}
+            self.report({'INFO'}, 'Solo on' if solo_on(context) else 'Solo off: all parts back')
+        _bump()
+        return {'FINISHED'}
+
+
 class MCH_OT_zb_style(bpy.types.Operator):
     """ZBrush style (ZBrush screen and keys in Sculpt Mode, ZBrush canvas navigation) or Blender style (as Blender)"""
     bl_idname = 'mch.zb_style'
@@ -3237,7 +3287,7 @@ class MCH_OT_zb_close(bpy.types.Operator):
 
 CLASSES = (MCH_PG_ZBrush, MCH_OT_zb_action, MCH_OT_zb_brush, MCH_OT_zb_append, MCH_OT_zb_subtool, MCH_OT_zb_press,
            MCH_OT_zb_restore_tool, MCH_OT_zb_gizmo, MCH_OT_zb_nav, MCH_OT_zb_viewdrag, MCH_OT_zb_popup, MCH_OT_zb_brush_pick,
-           MCH_OT_zb_switch, MCH_OT_zb_tab, MCH_OT_zb_style, MCH_OT_zb_obj_press, MCH_OT_zb_alpha, MCH_OT_zb_alpha_edit,
+           MCH_OT_zb_switch, MCH_OT_zb_tab, MCH_OT_view_toggle, MCH_OT_zb_style, MCH_OT_zb_obj_press, MCH_OT_zb_alpha, MCH_OT_zb_alpha_edit,
            MCH_OT_zb_alpha_folder, MCH_OT_zb_set, MCH_OT_zb_texture, MCH_OT_zb_texture_folder, MCH_OT_zb_tex_stamp, MCH_OT_zb_close)
 _keymaps = []
 

@@ -40,9 +40,13 @@ def ensure_group(n, fast=True):
     """The node group for an ``n``-point profile (made once per n): ``fast`` = band self-union (Exact) then a
     Manifold difference; False = the whole difference Exact with Self Intersection (slow, takes any mesh);
     0.24.68 'direct' = the band straight into a Manifold difference (a band that does not cross itself: the Exact
-    self-union was ~95 % of the time), 'band' = the band alone (to look for crossings)."""
+    self-union was ~95 % of the time), 'band' = the band alone (to look for crossings).  0.24.77 'open' = the band
+    self-union then an Exact difference without Self Intersection (an open / broken part: Self Intersection on the
+    whole part - every face against every other - was ~3x slower)."""
     if fast == 'direct':
         name = f'MCH_RimSweep6_{n}'
+    elif fast == 'open':
+        name = f'MCH_RimSweepOpen_{n}'
     elif fast == 'band':
         name = f'MCH_RimSweepBand_{n}'
     else:
@@ -112,7 +116,9 @@ def ensure_group(n, fast=True):
     _link(ng, sw.outputs['Output'], setp.inputs['Position'])
     boo = nodes.new('GeometryNodeMeshBoolean')
     boo.operation = 'DIFFERENCE'
-    if fast:                                       # (True, 'direct', 'band')
+    if fast == 'open':                             # Exact, the part as it is (no Self Intersection on it)
+        boo.solver = 'EXACT'
+    elif fast:                                     # (True, 'direct', 'band')
         boo.solver = 'MANIFOLD'
     else:
         boo.solver = 'EXACT'
@@ -130,7 +136,7 @@ def ensure_group(n, fast=True):
         return ng
     if fast == 'direct':
         _link(ng, strip.outputs['Geometry'], boo.inputs['Mesh 2'])
-    elif fast:
+    elif fast:                                     # (True, 'open')
         uni = nodes.new('GeometryNodeMeshBoolean')       # the band alone, made one clean solid first
         uni.operation = 'UNION'
         uni.solver = 'EXACT'
@@ -338,6 +344,55 @@ def even_small_loops(edges, lim, width, size=30.0):
     return out
 
 
+def trim_corners(edges, prof, width, turn_deg=30.0, reach=4.0):
+    """0.24.77 At a sharp turn of the rim that bends towards the cut (a convex corner: where a cut line comes out
+    over the part's edge, its rim turns from the face down the side) the profiles of the rim points just before and
+    after the corner lie behind the corner's own: the swept band folded back on itself there and the Boolean left a
+    thin spike standing at both ends of the cut.  Those profile points are put on the corner's (the offsets end where
+    they meet, as on a mitred frame).  A turn the other way (a hole's corner) spreads the profiles: nothing moves.
+    ``prof`` = {vertex index: [profile points]} (changed in place).  Returns how many rim points were trimmed."""
+    import math
+    cos_t = math.cos(math.radians(turn_deg))
+    moved_pts = set()
+    for run, closed in _chains(edges):
+        m = len(run)
+        if m < 3:
+            continue
+        for ci in range(m):
+            if not closed and ci in (0, m - 1):
+                continue
+            c = run[ci]
+            qc = prof.get(c.index)
+            if qc is None:
+                continue
+            t0 = c.co - run[ci - 1].co
+            t1 = run[(ci + 1) % m].co - c.co
+            if t0.length < 1e-12 or t1.length < 1e-12 or t0.normalized().dot(t1.normalized()) > cos_t:
+                continue
+            for step in (1, -1):
+                k = ci
+                for _i in range(m - 1):
+                    k += step
+                    if closed:
+                        k %= m
+                    elif not 0 <= k < m:
+                        break
+                    v = run[k]
+                    q = prof.get(v.index)
+                    away = v.co - c.co
+                    if q is None or v is c or away.length > reach * width:
+                        break
+                    moved = False
+                    for j in range(min(len(q), len(qc))):
+                        if (q[j] - qc[j]).dot(away) < 0.0:
+                            q[j] = qc[j] + away * 0.02          # (just past it: no zero-area faces in the band)
+                            moved = True
+                    if not moved:
+                        break
+                    moved_pts.add(v.index)
+    return len(moved_pts)
+
+
 def mark_rim(mesh, mode, width, segments):
     """Store the rim edges and each rim point's profile on ``mesh``.  Returns (profile size, rim edge count)."""
     bm = bmesh.new()
@@ -379,6 +434,7 @@ def mark_rim(mesh, mode, width, segments):
         lim = _smooth_limits(edges, lim, width)
         lim = even_small_loops(edges, lim, width)
         LAST['limited'] = min(lim.values()) if lim and min(lim.values()) < width * 0.98 else None
+        prof = {}
         for vi, (df, dw, out, k) in acc.items():
             if df.length < 1e-9 or dw.length < 1e-9 or out.length < 1e-9:
                 continue
@@ -387,10 +443,12 @@ def mark_rim(mesh, mode, width, segments):
                 d_face, d_wall, o = fr[0], fr[1], fr[2]
             else:
                 d_face, d_wall, o = miter(df, k), miter(dw, k), out.normalized()
-            pts = profile_points(bm.verts[vi].co, d_face, d_wall, o, lim.get(vi, width), mode, segments)
+            prof[vi] = profile_points(bm.verts[vi].co, d_face, d_wall, o, lim.get(vi, width), mode, segments)
+            dcol[vi * 3:vi * 3 + 3] = list((dw.normalized() - df.normalized()).cross(out.normalized()))
+        LAST['trimmed'] = trim_corners(edges, prof, width)
+        for vi, pts in prof.items():
             for j, q in enumerate(pts):
                 cols[j][vi * 3:vi * 3 + 3] = list(q)
-            dcol[vi * 3:vi * 3 + 3] = list((dw.normalized() - df.normalized()).cross(out.normalized()))
         rim_flags = [False] * len(bm.edges)
         for e in edges:
             rim_flags[e.index] = True
@@ -476,6 +534,19 @@ def _clean(res, before):
     return open_edges == 0 and v0 > 0 and 0.5 * v0 < v1 <= v0 * 1.0001
 
 
+def _open_edges(me):
+    return cg.non_manifold_edge_count(me) if len(me.polygons) else 1 << 30
+
+
+def _fair(res, before, count):
+    """An open part's result not falling apart: no big piece lost, not many more broken edges than the part had.  (On
+    a broken part neither way is clean - measured on a user's part, each was the better one about half the time, both
+    with hundreds of broken edges where it went wrong - so the old, ~3x slower way is only tried when this one fell
+    apart; the Cut's warning says to Fix Mesh first.)"""
+    return (len(res.polygons) >= 0.5 * len(before.polygons)
+            and _open_edges(res) <= _open_edges(before) + 2 * count + 8)
+
+
 def _smooth_limits(edges, lim, width, passes=12):
     """The width limits eased along the rim (a smaller limit spreads to its neighbours, never grows)."""
     nbr = {}
@@ -519,6 +590,13 @@ def finish(mesh, mode='CHAMFER', width=0.01, segments=3):
             if not _clean(res, mesh):
                 bpy.data.meshes.remove(res)
                 res = None
+    else:                                      # 0.24.77 an open / broken part: no Self Intersection on the part
+        res = _sweep(mesh, n, 'open')
+        if not _fair(res, mesh, count):        # worse than it was: the old way too, the better of the two kept
+            alt = _sweep(mesh, n, fast=False)
+            if _open_edges(alt) < _open_edges(res):
+                res, alt = alt, res
+            bpy.data.meshes.remove(alt)
     if res is None:
         res = _sweep(mesh, n, fast=closed)
         if closed and not _clean(res, mesh):   # the fast result is not right: the slow, sure way
