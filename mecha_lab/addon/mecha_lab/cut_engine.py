@@ -712,9 +712,12 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
     baked = [t.name for t in targets if cg.ensure_real_mesh(context, t)]
     for t in targets:
         cg.check_target(t)
+    from . import mesh_fix
+    fixed = mesh_fix.auto_fix(context, targets)                  # 0.24.81 a broken part is repaired first
     broken = {t.name: n for t in targets for n in (cg.overlap_edges(t),) if any(n)}     # 0.24.21
     try:
         report = _perform_closed(context, mode, targets, groups, projector, invert, cut, auto_apply, baked, frozen)
+        report += mesh_fix.auto_fix_note(fixed)
     except cg.CutError as ex:
         if broken:
             hints = ' '.join(cg.overlap_hint(bpy.data.objects[n], c) for n, c in broken.items() if n in bpy.data.objects)
@@ -937,6 +940,8 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
         station_primitive.freeze(t)
         cg.ensure_real_mesh(context, t)
         cg.check_target(t)
+    from . import mesh_fix
+    fixed = mesh_fix.auto_fix(context, targets)                  # 0.24.81 a broken part is repaired first
     # 0.24.36 From Surface: a 2-point line also stops at Cut Depth (the Boolean half-plane below, not the
     # plane bisect that goes all the way through)
     if len(points) == 2 and cut.fast_line and auto_apply and cut.depth_mode != 'SURFACE':
@@ -1012,7 +1017,7 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
                     suffix = f' | {cut.edge_finish}: {sum(line_bevel_counts)} new boundary edges'
             return ('Plane split: ' if mode == 'SPLIT' else 'Plane cut: ') + \
                 ', '.join(t.name for t, _ in results) + ''.join(sorted(set(infos))) + suffix + \
-                _target_report(skipped, failed)
+                _target_report(skipped, failed) + mesh_fix.auto_fix_note(fixed)
         finally:
             for me in temp:
                 if me.users == 0:

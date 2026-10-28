@@ -289,6 +289,38 @@ def needs_fix(me):
     return bool((cnt != 2).any())
 
 
+def auto_fix(context, targets, what='Cut'):
+    """0.24.81 Fix Mesh by itself before a Cut / Split / Box Hide / Boolean on a part that is not one clean solid
+    (open sides, edges shared by 3+ faces - most ZBrush / FBX parts): the Booleans failed on such parts with a
+    yellow "not one clean solid ... Fix Mesh it first" warning and nothing was cut.  Preferences > Auto Fix Mesh
+    (on).  Returns {part name: (broken edges before, after)} for the parts that were repaired."""
+    from .workspace_ui import pref
+    if not pref('auto_fix_mesh', True):
+        return {}
+    out = {}
+    for t in targets:
+        try:
+            me = t.data
+            if t.type != 'MESH' or me is None or me.library or not needs_fix(me):
+                continue
+            st = fix_mesh(me)
+            before = st.get('open_before', 0) + st.get('multi_before', 0)
+            after = st.get('open_after', 0) + st.get('multi_after', 0)
+            if changed(st) or after < before:
+                out[t.name] = (before, after)
+                t.update_tag()
+        except (RuntimeError, ReferenceError, AttributeError, ValueError):
+            continue
+    return out
+
+
+def auto_fix_note(fixed):
+    """' | Fix Mesh first: Body 71 -> 0 broken edges' or ''."""
+    if not fixed:
+        return ''
+    return ' | Fix Mesh first: ' + ', '.join(f'{n} {b:,} -> {a:,} broken edges' for n, (b, a) in fixed.items())
+
+
 def changed(st):
     return any(st.get(k) for k in ('welded', 'slivers', 'repeated', 'walls', 'fins', 'filled'))
 

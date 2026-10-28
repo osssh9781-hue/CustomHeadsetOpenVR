@@ -2349,6 +2349,10 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
                           description='0.24.59 shapes, Line / Sketch / Slow Line, Targets, Depth ... at the top '
                                       'middle of the viewport (Blender\'s tool header keeps only the Custom PNG '
                                       'picker)')
+    auto_fix_mesh: BoolProperty(name='Auto Fix Mesh before Cut', default=True,
+                                description='A part that is not one clean solid (open sides, edges shared by 3+ faces) is '
+                                            'repaired by itself before Cut / Split / Box Hide / Boolean - the Boolean failed '
+                                            'on it with a "not one clean solid" warning; off: the warning as before')
     alpha_overlay: BoolProperty(name='Alpha in Brush Circle', default=False,
                                 description='ZBrush screen: draw the alpha picture inside the brush circle (faint); off = '
                                             'the plain circle, the Alpha slot shows the picture')
@@ -2415,6 +2419,7 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         row.prop(self, 'toolbar_labels')
         box.row().prop(self, 'lasso_per_tool')
         box.row().prop(self, 'alpha_overlay')
+        box.row().prop(self, 'auto_fix_mesh')
         box.row().prop(self, 'toolbar_size', expand=True)
         draw_icon_sizes(box, self)
         row = box.row()

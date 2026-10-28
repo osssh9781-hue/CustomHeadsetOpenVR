@@ -298,6 +298,8 @@ def perform(context, targets, loops, projector, restore=False):
     groups = cg.prepare_loops(loops)
     near, far = ce._planes(context, targets, projector, [g[0] for g in groups])
     shape_me = cg.build_cutter_mesh(groups, projector, near, far, 'MCH_Hide_Shape')
+    from . import mesh_fix
+    fixed = mesh_fix.auto_fix(context, targets, 'Box Hide') if not restore else {}   # 0.24.81 a broken part first
     done, untouched, followed = [], [], []
     try:
         for t in targets:
@@ -346,7 +348,7 @@ def perform(context, targets, loops, projector, restore=False):
         msg += f' | also on {max(followed)} symmetric cop{"y" if max(followed) == 1 else "ies"}'
     elif st.mirror:
         msg += ' | Mirror X'
-    return msg
+    return msg + mesh_fix.auto_fix_note(fixed)
 
 
 def show_all(ob):
