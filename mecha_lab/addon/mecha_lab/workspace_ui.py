@@ -517,6 +517,11 @@ def activate_mecha_tool(context, tool_id):
             del settings['mch_native_at_choice']
     else:
         settings['mch_native_at_choice'] = ts.native_tool_id(context)
+    try:                                         # 0.24.78 this tool's own lasso settings back (at once, not on the timer)
+        from . import lasso_memory
+        lasso_memory.sync(context)
+    except (ImportError, AttributeError, TypeError, ReferenceError) as ex:
+        print('[Mecha Lab] lasso settings:', ex)
     for window in context.window_manager.windows:
         for area in window.screen.areas:
             if area.type in {'VIEW_3D', 'PROPERTIES'}:
@@ -1291,6 +1296,8 @@ def draw_shape_palette(self, context):
     tool = ts.effective_tool(context)
     brush = scene.mch_brush
     if pref('top_bar', True):                    # 0.24.59 all of it is in the drawn top bar: only the PNG picker here
+        if tool not in ts.SHAPE_TOOLS:           # 0.24.78 (and only for a tool that draws a shape)
+            return
         sub = layout.row(align=True)
         sub.template_icon_view(scene, 'mch_png_preset', show_labels=True, scale=isz(1.0), scale_popup=isz(5.0))
         sub.operator('mch.import_cut_png', text='', icon='IMPORT')
@@ -2338,6 +2345,10 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
                           description='0.24.59 shapes, Line / Sketch / Slow Line, Targets, Depth ... at the top '
                                       'middle of the viewport (Blender\'s tool header keeps only the Custom PNG '
                                       'picker)')
+    lasso_per_tool: BoolProperty(name='Lasso Settings per Tool', default=True,
+                                 description='0.24.78 the shape, its options, corners, Line and Slow Line you set in a '
+                                             'tool stay with that tool (switching tools brings back each one\'s own); '
+                                             'off = one set for every tool')
     side_panel: BoolProperty(name='Side Panel', default=True,
                              description='0.24.59 the tool\'s own settings at the right of the viewport while the '
                                          'sidebar (N) is closed')
@@ -2394,6 +2405,7 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         row.prop(self, 'top_bar')
         row.prop(self, 'side_panel')
         row.prop(self, 'toolbar_labels')
+        box.row().prop(self, 'lasso_per_tool')
         box.row().prop(self, 'toolbar_size', expand=True)
         draw_icon_sizes(box, self)
         row = box.row()

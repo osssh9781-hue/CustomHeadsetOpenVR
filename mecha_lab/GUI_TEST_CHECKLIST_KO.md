@@ -1,8 +1,14 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.77 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.78 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## 0.24.78 위 막대 라쏘 · 베벨, 도구별 기억 (미검증)
+- [ ] Concept Move / Path Move / Silhouette Move를 골랐을 때 블렌더 위 막대에 설정 줄이 안 나오고, 오른쪽 패널에 설정이 있는지.
+- [ ] Cut · Split · Base Mesh · Cloth Plate · Detail 등 여러 그리기 도구에서 위 막대 SHAPE 옆에 LASSO / CORNERS가 같은 자리에 나오는지(모양을 바꾸면 옵션도 바뀌는지).
+- [ ] Cut에서 GN EDGE · EDGE FINISH, Split에서 GN EDGE · SIDE A / B · Swap, Base Mesh에서 EDGE를 위 막대로 바꾸면 실제 결과에 반영되는지. 오른쪽 패널에 같은 설정이 두 번 안 나오는지.
+- [ ] Cut에서 Rectangle + Round 모서리, Base Mesh에서 Curve Lasso + Line으로 바꾼 뒤 도구를 왔다 갔다 하면 각자 설정이 돌아오는지. 저장 후 다시 열어도 그대로인지. Preferences에서 Lasso Settings per Tool을 끄면 한 벌이 되는지.
 
 ## 0.24.77 컷 챔퍼 끝 · 깨진 부품 속도 · 쿼드 내보내기 · Wire / Solo · Path Move (미검증)
 - [ ] 얇은 판을 라인 컷(관통)으로 가로질러 자르고 GN Edge Chamfer / Bevel → 컷 양 끝(판 바깥 테두리와 만나는 곳)에 뾰족한 이빨이 없는지.

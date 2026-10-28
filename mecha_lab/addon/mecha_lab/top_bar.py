@@ -1,10 +1,14 @@
 """0.24.59 Top bar: what the drawing tools share, big and clear at the top middle of the viewport (it replaces the
 shape / Sketch / Line / Surface ... buttons of Blender's tool header, which keeps only the Custom PNG picker).
 
-    SHAPE [lasso][curve][rect][circle][ellipse][free][custom]  |  DRAW [Line] [Sketch] [Slow Line] (Strength)
-    (Radius)  |  LINE (Width) [Caps v] [Taper] (Taper) [Pressure] [Attach Ends]  |  [Surface] (Gap) [Through]
-    [Sim] [Preset v]  |  TARGET [Auto] [Selected] [Active]  |  DEPTH [Through All] [From Surface] (Depth)
-    |  [Auto Apply]  |  [Ortho]
+    SHAPE [lasso][curve][rect][circle][ellipse][free][custom]  |  LASSO (the shape's own options)  |  CORNERS
+    [Sharp][Round][Chamfer] (Width) (Segments)  |  DRAW [Line] [Sketch] [Slow Line] (Strength) (Radius)  |  LINE
+    (Width) [Caps v] [Taper] (Taper) [Pressure] [Attach Ends]  |  [Surface] (Gap) [Through] [Sim] [Preset v]  |
+    TARGET [Auto] [Selected] [Active]  |  DEPTH [Through All] [From Surface] (Depth)  |  [Auto Apply]  |  GN EDGE /
+    EDGE FINISH / SIDE A · B / EDGE (the cut edge's bevel)  |  [Ortho]
+
+0.24.78 every lasso setting sits here, in the same place for every drawing tool (right after the shapes), and the
+bevel of the new cut edges (Cut / Split GN Edge, Edge Finish, Split per side; Base Mesh edge bevel) too.
 
 Only what the tool in use has; groups wrap to a second / third row when the room between the tool strip and the
 side panel is too narrow.  The tool's own settings are in the side panel (``side_panel``), which leaves these out.
@@ -41,6 +45,8 @@ def groups(context, tool):
     if tool in ts.SHAPE_TOOLS:
         out.append(('Shape', [_cell('ibtn', label, brush.shape == sid, ('shape', sid), icon='png:' + stem,
                                     width=ICON) for sid, label, _d, stem, _f in ts.SHAPES]))
+    if tool in ts.SHAPE_TOOLS:
+        out += lasso_groups(brush, tool)
     draw = [_cell('seg', label, on, ('mode', key)) for key, label, on in mecha_menu.draw_modes(context)]
     drawing = tool in target_rules.PICKING | target_rules.OWN_ROW - {'CMOVE', 'CPATH', 'SMOVE'}
     if drawing:
@@ -95,9 +101,104 @@ def groups(context, tool):
         st = getattr(scene, 'mch_settings', None)
         if st is not None and tool != 'HIDE':
             out.append(('', [_seg('Auto Apply', st, 'auto_apply')]))
+    out += edge_groups(context, tool)
     from .workspace_ui import _ORTHO_LOCK_KEY
     locked = bool(context.workspace and context.workspace.get(_ORTHO_LOCK_KEY, False))
     out.append(('', [_cell('seg', 'Ortho', locked, ('op', 'mch.ortho_lock', {}))]))
+    return out
+
+
+def _mini(label, data, prop, width=130):
+    return _cell('mini', label, action=('number',), data=data, prop=prop, width=width)
+
+
+def _enum_segs(data, prop, items):
+    v = getattr(data, prop)
+    return [_cell('seg', label, v == ident, ('enum', ident), data, prop) for ident, label in items]
+
+
+def lasso_groups(brush, tool):
+    """0.24.78 LASSO = the drawn shape's own options, CORNERS = the 2D lasso's corners (Lasso / Rectangle) - they
+    were in a folded Lasso section of the side panel."""
+    shape = brush.shape
+    cells = []
+    if shape in {'CIRCLE', 'ELLIPSE'}:
+        cells.append(_mini('Segments', brush, 'circle_segments', 140))
+    elif shape == 'CURVE_LASSO':
+        cells.append(_mini('Samples', brush, 'curve_resolution', 130))
+    elif shape == 'STROKE':
+        cells += [_mini('Spacing', brush, 'stroke_spacing', 130), _mini('Smooth', brush, 'stroke_smooth', 120),
+                  _mini('Simplify', brush, 'stroke_simplify', 130)]
+        if tool == 'MASK':
+            cells.append(_mini('Radius', brush, 'mask_brush_radius', 130))
+    elif shape == 'LASSO' and tool not in {'MASK', 'BASE', 'CBASE'}:
+        cells.append(_seg('Open Line', brush, 'line_open'))
+    elif shape == 'CUSTOM':
+        cells += [_mini('Size', brush, 'custom_size', 130), _mini('Rotation', brush, 'custom_rotation', 140),
+                  _seg('Rotate With Drag', brush, 'custom_drag_rotate')]
+    out = [('Lasso', cells)] if cells else []
+    if shape in {'LASSO', 'RECT'}:
+        corners = _enum_segs(brush, 'outline_corner', (('NONE', 'Sharp'), ('ROUND', 'Round'), ('CHAMFER', 'Chamfer')))
+        if brush.outline_corner != 'NONE':
+            corners.append(_mini('Width', brush, 'outline_radius', 130))
+            if brush.outline_corner == 'ROUND':
+                corners.append(_mini('Segments', brush, 'outline_segments', 140))
+        out.append(('Corners', corners))
+    return out
+
+
+FINISH3 = (('NONE', 'Off'), ('CHAMFER', 'Chamfer'), ('BEVEL', 'Bevel'))
+
+
+def _finish(label, data, kind, width, segments, extra=()):
+    """[Off][Chamfer][Bevel] (Width) (Segments on a bevel) for one finish enum."""
+    cells = _enum_segs(data, kind, FINISH3)
+    if getattr(data, kind) != 'NONE':
+        cells.append(_mini('Width', data, width, 130))
+        if getattr(data, kind) == 'BEVEL' and segments:
+            cells.append(_mini('Segments', data, segments, 140))
+        cells += list(extra)
+    return (label, cells)
+
+
+def edge_groups(context, tool):
+    """0.24.78 the bevel of the new cut edges: Cut / Split GN Edge (+ Split sides), the Edge Finish under it when GN
+    Edge is off (Split: per side), Base Mesh: its edge bevel."""
+    scene = context.scene
+    out = []
+    cut = getattr(scene, 'mch_cut', None)
+    if cut is not None and tool in {'CUT', 'SPLIT'}:
+        extra = [_cell('drop', '', action=('menu_enum',), data=cut, prop='gn_sides', width=96)] if tool == 'SPLIT' else []
+        out.append(_finish('GN Edge', cut, 'gn_finish', 'gn_width', 'gn_segments', extra))
+        if cut.gn_finish == 'NONE':
+            safe = [_seg('Clamp', cut, 'finish_clamp'), _seg('Crisp', cut, 'finish_crisp')]
+            if tool == 'CUT':
+                lbl, cells = _finish('Edge Finish', cut, 'edge_finish', 'finish_width', 'finish_segments')
+                if cut.edge_finish == 'BEVEL':
+                    cells.append(_mini('Profile', cut, 'finish_profile', 120))
+                if cut.edge_finish != 'NONE':
+                    cells += safe
+                out.append((lbl, cells))
+            else:
+                for side in ('a', 'b'):
+                    out.append(_finish(f'Side {side.upper()}', cut, f'side_{side}_finish', f'side_{side}_width',
+                                       f'side_{side}_segments'))
+                swap = [_cell('seg', '⇄ Swap', action=('op', 'mch.split_swap_sides', {}))]
+                out.append(('', swap + (safe if cut.side_a_finish != 'NONE' or cut.side_b_finish != 'NONE' else [])))
+    if tool == 'BASE':                           # (Creature Base Mesh: Puff / Ridge / Pillow, no edge bevel)
+        from . import base_mesh
+        ob = base_mesh.active_live_base(context)
+        p = ob.mch_base if ob is not None else base_mesh.scene_defaults(context)
+        if p is not None and hasattr(p, 'bevel_sides'):
+            cells = [_cell('seg', label, p.profile == pid, ('op', 'mch.set_profile', {'profile': pid}))
+                     for pid, label in (('FLAT', 'Flat'), ('CHAMFER', 'Chamfer'), ('BEVEL', 'Bevel'))]
+            if p.profile in {'BEVEL', 'CHAMFER'}:
+                cells.append(_cell('drop', '', action=('menu_enum',), data=p, prop='bevel_sides', width=104))
+                if p.bevel_sides != 'NONE':
+                    cells.append(_mini('Width', p, 'bevel_width', 130))
+                    if p.profile == 'BEVEL':
+                        cells.append(_mini('Segments', p, 'bevel_segments', 140))
+            out.append(('Edge', cells))
     return out
 
 

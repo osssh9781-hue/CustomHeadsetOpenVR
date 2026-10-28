@@ -1,8 +1,13 @@
-# Mecha Lab 0.24.77 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.24.78 — 설치 · MECHA LAB Workspace · 사용법
 
 > **검증 수준:** Linux headless Blender **5.2.3**(`bpy`)에서 자동 테스트 180개 파일 / 4,788개 항목(실패 0) + 무작위 기능 조합 크래시 테스트 280개를 돌렸습니다(결과: `test_report.md`).
-> **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` 맨 위 0.24.77 절을 먼저 확인해 주세요.
+> **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` 맨 위 0.24.78 절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
+
+## 0.24.78 라쏘 설정은 위 막대 같은 자리에 · 도구별 기억
+- 모든 그리기 도구의 위 막대에서 SHAPE 바로 옆에 LASSO(모양 옵션) · CORNERS(모서리 Round / Chamfer). 잘린 엣지 베벨(Cut / Split GN Edge · Edge Finish · Split 면별, Base Mesh 테두리 베벨)도 위 막대.
+- 라쏘 설정이 도구마다 따로 기억됨(Preferences > Lasso Settings per Tool로 끄기).
+- 컨셉 무브 · Path Move · Silhouette Move가 블렌더 위 막대를 설정으로 채우지 않음(설정은 오른쪽 패널).
 
 ## 0.24.77 지브러시 화면에서도 각지게 · 컷 챔퍼 끝 · 쿼드 내보내기 · Wire / Solo
 - 라인 컷이 판 테두리로 빠져나가는 곳의 GN Chamfer / Bevel 끝에 뾰족한 이빨이 남던 것 수정. 깨진 부품에서 Chamfer / Bevel이 약 3배 빨라짐(그래도 깨진 부품은 먼저 **Fix Mesh** 권장 — 경고에 나옴).

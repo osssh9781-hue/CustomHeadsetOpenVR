@@ -33,6 +33,17 @@ TOP_BAR_PROPS = {('mch_cut', 'depth_mode'), ('mch_cut', 'targets'), ('mch_settin
                  ('mch_brush', 'line_mode'), ('mch_brush', 'sketch_first'), ('mch_brush', 'stab_enable'),
                  ('mch_brush', 'stab_strength'), ('mch_brush', 'stab_radius'), ('mch_brush', 'stab_guide'),
                  ('mch_base', 'sketch'), ('mch_cbase', 'sketch')}
+# 0.24.78 the lasso's own options / corners and the cut edge's bevel moved to the top bar too
+TOP_BAR_PROPS |= {('mch_brush', p) for p in (
+    'circle_segments', 'curve_resolution', 'stroke_spacing', 'stroke_smooth', 'stroke_simplify', 'mask_brush_radius',
+    'custom_size', 'custom_rotation', 'custom_drag_rotate', 'line_open', 'outline_corner', 'outline_radius',
+    'outline_segments')}
+TOP_BAR_PROPS |= {('mch_cut', p) for p in (
+    'gn_finish', 'gn_width', 'gn_segments', 'gn_sides', 'edge_finish', 'finish_width', 'finish_segments',
+    'finish_profile', 'finish_clamp', 'finish_crisp', 'side_a_finish', 'side_a_width', 'side_a_segments',
+    'side_b_finish', 'side_b_width', 'side_b_segments')}
+TOP_BAR_PROPS |= {('mch_base', p) for p in ('bevel_sides', 'bevel_width', 'bevel_segments')}
+TOP_BAR_OPS = {'mch.set_profile', 'mch.split_swap_sides'}   # (set_profile: only the edge bevel's Flat / Chamfer / Bevel)
 # an icon-only button ('text=""'): a sign instead of the icon
 ICON_TEXT = {'ADD': '+', 'REMOVE': '−', 'X': '×', 'CANCEL': '×', 'CHECKMARK': '✓', 'LOOP_BACK': '↺',
              'FILE_REFRESH': '↻', 'TRIA_UP': '▲', 'TRIA_DOWN': '▼', 'TRIA_LEFT': '◀', 'TRIA_RIGHT': '▶',
@@ -53,6 +64,36 @@ def _owner(data):
 
 def is_top_bar(data, prop):
     return (_owner(data), prop) in TOP_BAR_PROPS
+
+
+def _moved_away(node, tool):
+    """0.24.78 A section whose settings all went to the top bar (and has no button left): not shown - it would be
+    a title with nothing (or only a note about those settings) under it."""
+    moved = [False]
+
+    def live(n):
+        if n.kind in {'prop', 'prop_enum'}:
+            if n.data is not None and is_top_bar(n.data, n.prop):
+                moved[0] = True
+                return False
+            return n.data is not None
+        if n.kind == 'op':
+            return not _op_moved(n)
+        if n.kind == 'menu':
+            return True
+        return any(live(c) for c in n.children)
+    return not live(node) and moved[0]
+
+
+def _op_moved(node):
+    idname = node.opts.get('idname')
+    return idname in TOP_BAR_OPS and (idname != 'mch.set_profile' or _edge_ops(node))
+
+
+def _edge_ops(node):
+    """An edge bevel button (Flat / Chamfer / Bevel) of the lasso section - not Base Mesh's own profile row."""
+    return node.opts.get('props', {}).get('profile') in {'FLAT', 'BEVEL', 'CHAMFER'} and \
+        node.parent is not None and len([c for c in node.parent.children if c.kind == 'op']) == 3
 
 
 def info(data, prop):
@@ -133,6 +174,8 @@ def _cells(node, tool):
     elif node.kind == 'op':
         import bpy
         idname = node.opts['idname']
+        if _op_moved(node):
+            return out
         text = node.opts.get('text')
         if text == '' and node.opts.get('icon', 'NONE') in ICON_TEXT:
             text = ICON_TEXT[node.opts['icon']]
@@ -282,6 +325,8 @@ class Builder:
 
     def section(self, node, x, w, title=None, start_folded=False):
         k = self.k
+        if _moved_away(node, self.tool):
+            return
         kids = list(node.children)
         head_cells = []
         if title is None and kids and kids[0].kind == 'label' and kids[0].opts.get('text'):

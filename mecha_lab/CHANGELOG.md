@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 0.24.78 — 라쏘 설정은 모든 도구의 위 막대 같은 자리에, 잘린 엣지 베벨도 위 막대로, 라쏘 설정 도구별 기억, 컨셉 무브 계열 위 막대 정리 (2026-10-28)
+
+- **컨셉 무브 계열(Concept Move · Path Move · Silhouette Move)**: 블렌더의 위 막대(Tool Header)에 도구 설정을 한 줄 가득 그리던 것(Extend · Brush / Whole · Size · Hardness · Taper ...)을 없앰 — 다른 Mecha 도구처럼 설정은 오른쪽 패널(사이드바를 열면 사이드바)에. 블렌더 위 막대의 Custom PNG 고르기도 모양을 그리는 도구에서만 나옴.
+- **라쏘 설정은 모든 그리기 도구(26개)의 위 막대 같은 자리에**: SHAPE 바로 옆에 **LASSO**(고른 모양의 옵션 — Circle / Ellipse: Segments, Curve Lasso: Samples, Free Draw: Spacing · Smooth · Simplify(Mask는 Radius도), Lasso: Open Line, Custom: Size · Rotation · Rotate With Drag)와 **CORNERS**(Lasso / Rectangle 2D 모서리: Sharp · Round · Chamfer + Width, Round는 Segments). 전에는 오른쪽 패널 맨 아래 접힌 Lasso 칸 안에 있었음.
+- **잘린 엣지 베벨도 위 막대로**(Ortho 앞):
+  - Cut: **GN EDGE** Off · Chamfer · Bevel + Width(Bevel은 Segments), GN Edge가 꺼져 있으면 **EDGE FINISH** Off · Chamfer · Bevel + Width · Segments · Profile · Clamp · Crisp.
+  - Split: **GN EDGE**(+ 어느 쪽: Both / Side A / Side B), GN Edge가 꺼져 있으면 **SIDE A** · **SIDE B** 각각 Off · Chamfer · Bevel + Width · Segments, ⇄ Swap, Clamp · Crisp.
+  - Base Mesh: **EDGE** Flat · Chamfer · Bevel + 베벨 위치(Top Only 등) · Width · Segments. (Creature Base Mesh는 Puff / Ridge / Pillow라 없음)
+  - 오른쪽 패널은 위 막대에 있는 것을 반복하지 않고, 설정이 다 위 막대로 가서 제목만 남는 칸은 아예 안 보임(Cut의 GN Edge 칸은 Ramp 때문에 남음). 사이드바(N)는 전부 그대로.
+- **라쏘 설정 도구별 기억**(Preferences > Lasso Settings per Tool, 기본 켜짐): 한 도구에서 바꾼 모양 · 모양 옵션 · 모서리 · Line(폭 · 끝 · Taper · Pressure) · Slow Line이 그 도구에 남고, 다른 도구로 가면 그 도구의 것이 돌아옴(처음 쓰는 도구는 지금 설정으로 시작). 파일에 저장되고, Ctrl+Z로는 바뀌지 않음. 끄면 예전처럼 모든 도구가 한 벌.
+- 테스트: <<SUITE78>>. 새 test_v02490_lassobar 38: 그리기 도구 26개 모두 SHAPE 다음 LASSO / CORNERS, 모양마다 옵션, Corners 클릭, Cut GN Edge / Edge Finish(Off일 때만) · Split GN Edge + 쪽 / Side A · B · Base Mesh Edge(클릭으로 Flat) · Creature / Box Hide / Plate에는 없음, 오른쪽 패널이 반복 안 함(4개 도구) · 빈 칸 안 보임 · Cut GN Edge 칸은 남음 · Base Mesh 자기 프로필 줄은 그대로, 컨셉 무브 3개 도구 블렌더 위 막대 비움(사이드바에는 그려짐), 도구별 기억(처음 도구 · 돌아가기 · 다른 도구 거쳐서 · 파일에 저장 · 다시 읽기 · 끄면 한 벌 · 설정 있음). 고친 기존 테스트: test_v02489(오른쪽 패널 Lasso 칸 검사는 Lasso 모양으로 — Rectangle은 이제 그 칸이 비어서 없음), test_v02494(버전). 실제 블렌더 화면(GUI)의 위 막대 모습 · 0.2초 감시 타이머(블렌더 자체 도구 목록으로 바꿨을 때)는 미검증. ZIP sha256 `<<SHA78>>`.
+
 ## 0.24.77 — 지브러시 화면 각진 모양, 컷 챔퍼 / 베벨 끝 뾰족함 · 깨진 부품에서 속도, 쿼드 내보내기 모양 유지, VIEW Wire · Solo 버튼, Path Move Extend (2026-10-28)
 
 - **지브러시 화면에서 각진 부품이 매끈하게(얼룩지게)보이던 것**: 블렌더의 조각 모드는 Sharp로 표시한 엣지를 화면에 그리지 않음(블렌더 자체 제약 — 오브젝트 모드만 반영). 그래서 면은 스무스 + 컷 엣지는 Sharp인 부품(Make Quad · Quad Remesh 결과 등)이 지브러시 화면에 들어가면 매끈하게 보였음(High Poly Mode와는 무관 — 0.24.76의 Deform Only 수정으로는 안 고쳐졌던 경우). 이제 지브러시 화면으로 들어갈 때 Sharp 엣지에 붙은 스무스 면만 평면(flat)으로 바꿔서 오브젝트 모드처럼 각지게 보이고, MECHA LAB으로 돌아오면 **정확히 그 면만 다시 스무스**(메시는 원래대로). 바꾼 면 목록은 오브젝트에 기록해 둬서 저장 · 다시 열기 · Ctrl+Z 뒤에도 오브젝트 모드에서 원래대로 돌려놓음. 그 사이 면이 바뀌었으면(DynaMesh · Remesh 등) 돌려놓을 것이 없음. 블렌더 스타일에서는 바꾸지 않음.

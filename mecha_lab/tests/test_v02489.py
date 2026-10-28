@@ -108,6 +108,7 @@ inside, it = ub.hit(CTX, 5, 5)
 check('Empty viewport: not inside any card', not inside and it is None)
 
 # --- side panel ----------------------------------------------------------------------------------------------------
+S.mch_brush.shape = 'LASSO'          # 0.24.78 (Rectangle: all its lasso settings are in the top bar - no Lasso section)
 items = fresh_items('WRINKLE')
 side = sp.items(CTX, W, HP, 1.0)
 card = side[0]

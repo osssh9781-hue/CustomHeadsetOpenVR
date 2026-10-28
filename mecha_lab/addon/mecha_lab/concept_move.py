@@ -1689,6 +1689,13 @@ def _closest_seg(a, b, q):
     return a + ab * t
 
 
+def _in_tool_header(context):
+    """0.24.78 Blender's tool header (the row at the top of the viewport): empty, like for every other Mecha tool -
+    the settings are in the side panel / sidebar (they filled the whole header row here)."""
+    region = getattr(context, 'region', None)
+    return region is not None and region.type == 'TOOL_HEADER'
+
+
 class MCH_TOOL_concept_path(bpy.types.WorkSpaceTool):
     bl_space_type = 'VIEW_3D'
     bl_context_mode = 'OBJECT'
@@ -1706,6 +1713,8 @@ class MCH_TOOL_concept_path(bpy.types.WorkSpaceTool):
     )
 
     def draw_settings(context, layout, tool):
+        if _in_tool_header(context):
+            return
         draw_path(layout, context, compact=True)
 
 
@@ -1726,6 +1735,8 @@ class MCH_TOOL_silhouette_move(bpy.types.WorkSpaceTool):
     )
 
     def draw_settings(context, layout, tool):
+        if _in_tool_header(context):
+            return
         draw_path(layout, context, compact=True, silhouette=True)
 
 
@@ -2095,6 +2106,8 @@ class MCH_TOOL_concept_move(bpy.types.WorkSpaceTool):
     )
 
     def draw_settings(context, layout, tool):
+        if _in_tool_header(context):
+            return
         draw(layout, context, compact=True)
 
 
