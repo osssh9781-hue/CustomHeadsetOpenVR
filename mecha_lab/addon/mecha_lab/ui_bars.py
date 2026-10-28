@@ -614,6 +614,10 @@ def _draw():
                 draw(items, hovered(context, items), ui_factor(context, context.region), context)
             finally:
                 ui_gpu.ACCENT, mecha_menu.FILL = keep
+        from . import toast                       # 0.24.82 short messages above the bottom toolbar
+        from .ui_gpu import ui_factor as _uf
+        k = _uf(context, context.region)
+        toast.draw(context, context.region.width, context.region.height, k, bottom_taken(context, k, context.region.width))
     except Exception:          # never break viewport drawing
         pass
     from . import ui_gpu

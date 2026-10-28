@@ -203,7 +203,8 @@ class MCH_OT_stack_apply(_Stack):
         try:
             note = apply_one(context, ob, self.name)
         except (RuntimeError, ReferenceError) as ex:
-            self.report({'ERROR'}, f'Apply: {ex}')
+            from . import toast
+            toast.report(self, 'ERROR', f'Apply: {ex}')
             return {'CANCELLED'}
         self.report({'INFO'}, f'Live Stack: {note}')
         return {'FINISHED'}
@@ -236,7 +237,8 @@ class MCH_OT_stack_apply_all(_Stack):
         try:
             n = apply_all(context, ob)
         except (RuntimeError, ReferenceError) as ex:
-            self.report({'ERROR'}, f'Apply All stopped: {ex}')
+            from . import toast
+            toast.report(self, 'ERROR', f'Apply All stopped: {ex}')
             return {'CANCELLED'}
         self.report({'INFO'}, f'Live Stack: {n} step{"s" if n != 1 else ""} applied')
         return {'FINISHED'}

@@ -180,17 +180,19 @@ class MCH_OT_last_redo(bpy.types.Operator):
         return context.mode == 'OBJECT' and available(context)
 
     def execute(self, context):
+        from . import toast
         try:
             msg = replay(context)
         except cg.CutError as ex:
-            self.report({'WARNING'}, str(ex))
+            toast.report(self, 'WARNING', str(ex))
             return {'CANCELLED'}
         except Exception as ex:
             import traceback
             traceback.print_exc()
-            self.report({'ERROR'}, f'Redo Last failed: {ex}')
+            toast.report(self, 'ERROR', f'Redo Last failed: {ex}')
             return {'CANCELLED'}
         self.report({'INFO'}, 'Redo Last: ' + msg)
+        toast.show('Redo Last: ' + msg, 'INFO', 2.5)
         return {'FINISHED'}
 
 

@@ -1996,16 +1996,17 @@ class StrokeLogic:
         except Exception:
             rec = None
         before = set(bpy.data.objects.keys()) if rec is not None else None
+        from . import toast                    # 0.24.82 what went wrong, drawn in the viewport for a moment
         try:
             msg = fn(context)
         except cg.CutError as ex:
-            self.report({'WARNING'}, str(ex))
+            toast.report(self, 'WARNING', str(ex))
             if keep_on_shape_error and ('crosses itself' in str(ex) or 'too small' in str(ex)):
                 return {'RUNNING_MODAL'}
             return self._cancel(context)
         except Exception as ex:  # unexpected: report, keep the scene intact
             traceback.print_exc()
-            self.report({'ERROR'}, f'Mecha {self.mode} failed: {ex}')
+            toast.report(self, 'ERROR', f'Mecha {self.mode} failed: {ex}')
             return self._cancel(context)
         try:                                 # 0.24.33 Point Radial Symmetry: a new part repeats too
             from . import radial_sym
@@ -2024,6 +2025,8 @@ class StrokeLogic:
             except Exception:
                 pass
         self.report({'INFO'}, msg)
+        if msg and ('kept as it was' in msg or 'could not' in msg or 'not one clean solid' in msg):
+            toast.show(msg, 'WARNING')             # (a result that is not what was asked: worth a glance)
         self._cleanup(context)
         return {'FINISHED'}
 
