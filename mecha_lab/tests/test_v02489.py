@@ -191,7 +191,10 @@ src = inspect.getsource(mm._draw_new)
 check('... drawn with the icon in the top 80 % and the name in the bottom 20 % (a long name a bit smaller first)',
       'band = h * 0.2' in src and 'size -= 0.5 * S' in src)
 bar_card = ub.bar_items(CTX, 1300, H, 1.0)[0]
+real_bar_on = ub.bar_on
+ub.bar_on = lambda c: True                       # (0.24.76 the strip only steps over the toolbar when it is on)
 st = [i for i in ub.strip_items(CTX, 1300, H, 1.0) if i.kind == 'card'][0]
+ub.bar_on = real_bar_on
 check('... on a narrower screen it stays above the bottom toolbar', st.y >= bar_card.y + bar_card.h
       or st.x + st.w <= bar_card.x, (st.y, bar_card.y + bar_card.h))
 sc = [i for i in strip if i.kind == 'card'][0]

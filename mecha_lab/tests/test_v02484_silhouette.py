@@ -27,8 +27,8 @@ check('Silhouette Move is a tool: name, own icon, Blender tool', row is not None
 check('... in the Move group next to Path Move, its own saved number',
       any(name == 'Move' and 'SMOVE' in ids for name, ids in ts.TOOL_GROUPS)
       and dict((t[0], t[4]) for t in ts.TOOL_ENUM_ITEMS)['SMOVE'] == 56)
-check('... in the bottom bar list and the V pie (under Move / Path)', any(t[0] == 'SMOVE' for t in bb.BAR_TOOLS)
-      and 'SMOVE' in bb.PIE_SHARED['PRIMITIVE'])
+check('... in the V pie (under Move / Path); the bottom bar keeps its tools', 'SMOVE' in bb.PIE_SHARED['PRIMITIVE']
+      and not any(t[0] == 'SMOVE' for t in bb.BAR_TOOLS))
 km = cm.MCH_TOOL_silhouette_move.bl_keymap[0]
 check('... its press starts Path Move with Silhouette on', km[0] == 'mch.concept_path' and
       ('silhouette', True) in km[2]['properties'])

@@ -17,7 +17,6 @@ BAR_TOOLS = (
     ('SELECT', 'Select', 'F', 'RESTRICT_SELECT_OFF', 'mch.select_move', None),
     ('CMOVE', 'Move', 'D', 'VIEW_PAN', 'mch.set_tool', 'CMOVE'),
     ('CPATH', 'Path', '', 'MOD_CURVE', 'mch.set_tool', 'CPATH'),
-    ('SMOVE', 'Silhouette', '', 'MOD_SIMPLEDEFORM', 'mch.set_tool', 'SMOVE'),
     ('CUT', 'Cut', 'C', 'SELECT_SUBTRACT', 'mch.set_tool', 'CUT'),
     ('SPLIT', 'Split', '', 'MOD_EDGESPLIT', 'mch.set_tool', 'SPLIT'),
     ('BASE', 'Base', '', 'MOD_SOLIDIFY', 'mch.set_tool', 'BASE'),

@@ -22,7 +22,7 @@ from __future__ import annotations
 import time
 
 import bpy
-from bpy.props import BoolProperty
+from bpy.props import BoolProperty, StringProperty
 
 from . import tool_state as ts
 
@@ -765,12 +765,18 @@ class MCH_OT_mecha_menu(bpy.types.Operator):
     bl_options = {'INTERNAL'}
     hold: BoolProperty(default=False, options={'SKIP_SAVE'},
                        description='Open while Ctrl + Alt are held; clicks never close it, letting go does')
+    source: StringProperty(default='', options={'SKIP_SAVE', 'HIDDEN'})   # 0.24.76 what opened it (status bar)
 
     @classmethod
     def poll(cls, context):
         return context.area is not None and context.area.type == 'VIEW_3D' and context.region is not None
 
     def invoke(self, context, event):
+        why = 'Ctrl + Alt held' if self.hold else self.source       # 0.24.76 said in the status bar / console: a
+        if why:                                                     # menu that pops up unasked shows its cause
+            self.report({'INFO'}, f'Mecha Menu ({why})')
+            print(f'[Mecha Lab] Mecha Menu opened by: {why}  (event {event.type} {event.value}, ctrl {event.ctrl} '
+                  f'alt {event.alt} shift {event.shift}, tablet {getattr(event, "is_tablet", False)})')
         self.region = context.region
         self.S = G.ui_factor(context, self.region, menu=True)
         self.mouse = (event.mouse_region_x, event.mouse_region_y)
@@ -928,9 +934,11 @@ class MCH_OT_mecha_hold_gate(bpy.types.Operator):
             self.keys['ctrl'] = False
         elif event.type in {'LEFT_ALT', 'RIGHT_ALT'} and event.value == 'RELEASE':
             self.keys['alt'] = False
-        if not all(self.keys.values()):
+        if event.type == 'MOUSEMOVE' and not (event.ctrl and event.alt):
+            self.keys['ctrl'] = self.keys['alt'] = False   # 0.24.76 not both held after all (a release missed / Alt
+        if not all(self.keys.values()):                    # alone): no menu while only Alt is down
             self._stop(context)
-            return {'FINISHED'}
+            return {'FINISHED', 'PASS_THROUGH'} if event.type == 'MOUSEMOVE' else {'FINISHED'}
         if event.type == 'TIMER':
             if time.monotonic() - self.t0 >= HOLD_DELAY:
                 self._stop(context)
@@ -980,7 +988,7 @@ class MCH_OT_mecha_mmb_gate(bpy.types.Operator):
                 return {'FINISHED'}
             return {'RUNNING_MODAL'}
         if event.type == 'MIDDLEMOUSE' and event.value == 'RELEASE':
-            open_menu(context)                        # a click: the menu
+            open_menu(context, 'middle click')        # a click: the menu
             return {'FINISHED'}
         if event.type == 'ESC':
             return {'CANCELLED'}
@@ -1008,10 +1016,10 @@ def near(items, x, y, margin):
                for a in cards for b in cards if a is not b) and bottom <= y <= top
 
 
-def open_menu(context):
-    """Open the Mecha Menu (False if it could not be opened here)."""
+def open_menu(context, source=''):
+    """Open the Mecha Menu (False if it could not be opened here).  ``source``: what opened it (status bar)."""
     try:
-        return bpy.ops.mch.mecha_menu('INVOKE_DEFAULT') == {'RUNNING_MODAL'}
+        return bpy.ops.mch.mecha_menu('INVOKE_DEFAULT', source=source) == {'RUNNING_MODAL'}
     except RuntimeError:
         return False
 

@@ -1467,13 +1467,13 @@ class MCH_OT_concept_path(bpy.types.Operator):
     def _method(self, context):
         """The method of this drag (0.24.44: always the one picked - switching a drag to Stretch by itself crashed
         Blender)."""
-        if self.silhouette:
+        if getattr(self, 'silhouette', False):
             return 'EXTEND'
         return getattr(self, 'method_now', None) or context.scene.mch_concept.path_method
 
     def _area(self, context):
         """0.24.76 Brush / Whole of this drag - Silhouette Move: always Whole (the part's whole section)."""
-        return 'SECTION' if self.silhouette else context.scene.mch_concept.path_area
+        return 'SECTION' if getattr(self, 'silhouette', False) else context.scene.mch_concept.path_area
 
     def _section_preview(self, context):
         """Extend / Separate Tube while dragging: only the new rings (and the carried end) are rebuilt."""
@@ -1487,7 +1487,7 @@ class MCH_OT_concept_path(bpy.types.Operator):
             if normal.length < brush_world(context, self.hit) * 0.3:
                 return                                       # wait until the way it goes is clear
             self.normal_l = normal.normalized()
-            rad = local_radius(context, self.ob, self.hit) if self._area(context) == 'BRUSH' else None
+            rad = local_radius(context, self.ob, self.hit) if MCH_OT_concept_path._area(self, context) == 'BRUSH' else None
             self.info = path_sweep.analyse(self.ob.data, self.local_hit, self.normal_l, rad,
                                            4 if st.shape == 'BOX' else 8, st.path_back_mask and rad is not None) or False
             if self.info:
@@ -1502,14 +1502,14 @@ class MCH_OT_concept_path(bpy.types.Operator):
             return
         path = path_sweep.path_from(self.info['centre'], offsets)
         verts, faces = path_sweep.preview_geometry(self.info, path, self.normal_l, st.path_turn, st.path_taper,
-                                                   self._method(context), st.path_hardness)
+                                                   MCH_OT_concept_path._method(self, context), st.path_hardness)
         me = self.preview_ob.data
         me.clear_geometry()
         me.from_pydata([tuple(v) for v in verts], [], faces)
         me.update()
 
     def _toggle_area(self, context):
-        if self.silhouette:                              # (Silhouette Move: always the whole section)
+        if getattr(self, 'silhouette', False):           # (Silhouette Move: always the whole section)
             return
         st = context.scene.mch_concept
         st.path_area = 'SECTION' if st.path_area == 'BRUSH' else 'BRUSH'
@@ -1530,7 +1530,7 @@ class MCH_OT_concept_path(bpy.types.Operator):
 
     def _header(self, context):
         st = context.scene.mch_concept
-        if self.silhouette:
+        if getattr(self, 'silhouette', False):
             context.area.header_text_set(
                 f'Silhouette Move  |  {len(getattr(self, "trail", [])) - 1} steps  the whole part follows  |  '
                 f'taper {st.path_taper:.2f}  hardness {st.path_hardness:.2f}  |  '

@@ -299,7 +299,7 @@ class MCH_OT_actions_menu(bpy.types.Operator):
 
     def _open(self, context):
         from . import mecha_menu
-        if not (mecha_menu.use_menu() and mecha_menu.open_menu(context)):        # 0.24.50 Mecha Menu
+        if not (mecha_menu.use_menu() and mecha_menu.open_menu(context, 'right click (Select)')):   # 0.24.50 Mecha Menu
             bpy.ops.wm.call_panel(name=MCH_PT_actions_popup.bl_idname, keep_open=False)
         return {'FINISHED'}
 

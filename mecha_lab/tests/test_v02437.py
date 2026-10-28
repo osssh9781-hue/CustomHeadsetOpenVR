@@ -12,7 +12,7 @@ check('their native tools', ts.TOOL_BY_ID['CMOVE'][5] == 'mecha.concept_move' an
 check('enum numbers new (saved files keep their old tools)', ts._ENUM_NUMBERS['CMOVE'] == 48 and ts._ENUM_NUMBERS['CPATH'] == 50
       and len(set(ts._ENUM_NUMBERS.values())) == len(ts._ENUM_NUMBERS))
 check('bottom bar buttons', {'CMOVE', 'CPATH'} <= {t[0] for t in bb.BAR_TOOLS})
-check('V pie: stacked under Primitive', bb.PIE_SHARED.get('PRIMITIVE') == ('CMOVE', 'CPATH'))
+check('V pie: stacked under Primitive', bb.PIE_SHARED.get('PRIMITIVE')[:2] == ('CMOVE', 'CPATH'))   # (0.24.76 + Silhouette Move)
 check('sidebar settings drawers', 'CMOVE' in uts.DRAWERS and 'CPATH' in uts.DRAWERS)
 check('an assignable key per tool (Hotkeys box)', {'CMOVE', 'CPATH'} <= set(wui.tool_key_ids()))
 items = [it for _km, it in wui._keymaps if it.idname == 'mch.concept_hold']

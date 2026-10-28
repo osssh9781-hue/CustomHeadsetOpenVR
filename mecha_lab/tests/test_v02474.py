@@ -76,7 +76,7 @@ check('Auto Apply off: the brush size is remembered for the replay', res == {'FI
 cm.drop_base(o)
 src = inspect.getsource(cm.MCH_OT_concept_path.modal)
 check('From the viewport: the scene Area, the shape and the brush (in the part\'s own size) go to Extend',
-      'self.area, self.shape = st.path_area, st.shape' in src and 'local_radius' in src)
+      'self.area, self.shape = self._area(context), st.shape' in src and 'local_radius' in src)
 
 # 0.24.55 the whole-section way close at hand
 import types
