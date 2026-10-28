@@ -7,6 +7,7 @@
 ## 0.24.82 Redo Last · 빌드 도장 · 내보내기 정리 · Quad Remesh 수율
 - **Redo Last**: 부품 만드는 도구로 그린 뒤 설정을 바꾸고 Actions 카드 / 메카 메뉴 / N 패널의 **Redo with current settings** → 같은 획이 지금 설정으로 다시 그려짐(만든 부품은 교체).
 - **Live Stack**: Layers 패널 LIVE STACK 섹션 / N 패널 — 부품의 라이브 단계(Mirror · Box Hide · Armor Shell · 베벨 …)를 순서대로, 눈 · ▲▼ · Apply · 제거 · Apply All.
+- Preferences > Hotkeys > **Check Conflicts**: Mecha 키가 가리는 블렌더 키 목록(클립보드).
 - zip 이름이 `mecha_lab-0.24.82_<날짜-시각>.zip`, Preferences 맨 위에 설치된 빌드 도장.
 - Export: 빈 오브젝트 제외, 작은 단순 부품의 쿼드 과밀 수정(자기 면 수 8배 상한), Client Look 열린 엣지 수정(0.24.81).
 - Quad Remesh: 얇은 벽 부품에서 요청의 1/6만 나오던 All Quads가 모자란 만큼 자동 재시도. 단계별 측정표는 CHANGELOG.

@@ -436,6 +436,8 @@ def draw_hotkey_editor(layout, context=None):
     row = box.row(align=True)
     row.operator('mch.hotkeys_save', icon='FILE_TICK')
     row.operator('mch.hotkeys_reset', icon='LOOP_BACK')
+    from . import keymap_check                           # 0.24.82 which Blender keys the Mecha keys sit on
+    keymap_check.draw(box, context)
 
 
 def draw_ortho_button(layout, context, text='Ortho Lock'):

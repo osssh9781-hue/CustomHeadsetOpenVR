@@ -243,6 +243,20 @@ def step_zbrush():
         yield 1.5
 
 
+def step_hotkeys():
+    """0.24.82 the hotkey conflict list needs Blender's real keyconfig (empty headless): Shift+D must be found
+    sitting on object.duplicate_move in Object Mode."""
+    try:
+        kc = mod('keymap_check')
+        found = kc.lines('user')
+        check('7. hotkey conflicts listed against the real keyconfig (Shift+D on object.duplicate_move among them)',
+              any('mch.duplicate' in l and 'object.duplicate_move' in l for l in found), (len(found), found[:3]))
+        with open(os.path.join(OUT, 'hotkey_conflicts.txt'), 'w') as f:
+            f.write('\n'.join(found) + '\n')
+    except Exception as ex:
+        check('7. hotkey conflicts', False, ex)
+
+
 def step_timers():
     try:
         lasso_memory, armor_shell = mod('lasso_memory'), mod('armor_shell')
@@ -263,6 +277,7 @@ def steps():
             step_bars()
             yield from step_cut()
             yield from step_zbrush()
+            step_hotkeys()
             step_timers()
     passed = sum(1 for _n, ok, _d in RESULTS if ok)
     with open(os.path.join(OUT, 'gui_result.txt'), 'w') as f:

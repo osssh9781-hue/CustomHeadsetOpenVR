@@ -8,6 +8,7 @@ Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전�
 - [ ] 설치 후 Preferences > Add-ons > Mecha Lab 맨 위에 "Mecha Lab 0.24.82 build <zip 이름의 날짜-시각>"이 보이는지.
 - [ ] Armor Plate를 라쏘로 그리고 → 위 막대 / HUD에서 Face Size 등을 바꾼 뒤 Actions 카드(또는 메카 메뉴 Actions > Redo Last, N 패널 "Last: Armor Plate")의 **Redo with current settings** → 같은 자리에 새 설정으로 다시 그려지고 이전 판은 사라지는지. Ctrl+Z 한 번에 되돌아오는지. Base Mesh · Plate Detail · Belt도.
 - [ ] Cut 뒤에는 Redo Last 버튼이 안 나오는지(Cut은 슬라이더로 다시 잘림).
+- [ ] Preferences > Hotkeys > Check Conflicts → 상태줄에 n개 + 클립보드에 목록(Shift+D / F / B / C / S / Q …)이 들어오는지.
 - [ ] 부품에 Mirror(대칭 카드) + Box Hide + 베벨을 걸고 Layers 패널 **LIVE STACK**에 세 줄이 순서대로 쉬운 이름으로 보이는지; 눈을 끄면 뷰포트에서 빠지는지; ▲▼로 순서를 바꾸면 결과가 바뀌는지; ✓로 Box Hide만 굽히고 나머지는 남는지; Apply All 뒤 모디파이어가 0개인지. N 패널에도 같은 카드.
 - [ ] 빈 오브젝트가 있는 파일 Export → 빈 오브젝트가 파일에 안 들어가는지. 작은 베벨 상자를 Quad Mesh로 내보내면 면 수가 수천이 아니라 수백인지.
 - [ ] ZBrush 선반 / Mesh Tools Quad Remesh All Quads를 얇은 벽 많은 부품에 8천으로 → 메시지에 "finer as the first try gave only …"가 붙고 면 수가 요청의 절반 이상인지.

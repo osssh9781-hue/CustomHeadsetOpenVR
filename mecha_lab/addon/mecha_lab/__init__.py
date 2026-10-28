@@ -14,7 +14,7 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                base_mesh, loft_surface, zbrush_bridge, subd_plane, deform_tools, primitive_tools,
                addon_safety, self_test, face_extract, edge_molding, hollow_shell, along_curve, cable, bottom_bar, station_primitive, station_gizmos,
                primitive_place, primitive_hud, armor_plate, random_panels, mirror_hud, highpoly, mesh_tools, live_queue, lasso_sketch,
-               cloth_wrinkle, last_used, last_op, live_stack, robot_base, detail_stamp, surface_lasso,
+               cloth_wrinkle, last_used, last_op, live_stack, keymap_check, robot_base, detail_stamp, surface_lasso,
                curve_tube, creature_shell, cloth_sim, box_hide, plate_detail, screw_stamp, lowpoly, fold_patch,
                creature_plate, belt_maker, creature_spike, creature_scales, flower_plate,
                surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, quad_remesh, mesh_fix, tool_recent, actions_menu, key_legend, quick_hud, mecha_menu, symmetry, groups, ui_bars, safety_save, lasso_memory, armor_shell)
@@ -2048,6 +2048,7 @@ def _register():
     ramp_edit.register()
     last_op.register()
     live_stack.register()
+    keymap_check.register()
     belt_maker.register()
     creature_spike.register()
     creature_scales.register()
@@ -2184,6 +2185,7 @@ def _unregister_steps():
         ('cape_gen', cape_gen.unregister),
         ('creature_hair', creature_hair.unregister),
         ('brush_resize', brush_resize.unregister),
+        ('keymap_check', keymap_check.unregister),
         ('live_stack', live_stack.unregister),
         ('last_op', last_op.unregister),
         ('ramp_edit', ramp_edit.unregister),
