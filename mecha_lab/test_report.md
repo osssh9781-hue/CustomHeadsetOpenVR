@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.79
+# Test Report — Mecha Lab 0.24.80
+
+## 0.24.80 결과: Blender 5.2.3 bpy 전체 183개 파일 PASS 4,878 / FAIL 0(`tests/test_log_bpy523_v02480.txt`, FAILED FILES: none; 로그 안 Traceback 18개는 test_registration_recovery가 일부러 내는 것; zip 설치 test_zip_install 19/19 포함). 새 test_v02496_shell 31: 새 오브젝트 · 모디파이어 맨 끝 · 부품 그대로 · 기본 Gap 1% / Thickness 2% · 닫힌 솔리드(Fewer Faces 3만 면 미만) · 안쪽 = Gap / 바깥 = Gap + Thickness(반 복셀 안) · 부피 방향, 슬라이더(Gap · Thickness · Smooth: 홈 메우되 Gap보다 안 가까움 · Detail · Fewer Faces 끄기 · 3복셀 미만 두께는 고른 면), Update from Part, 크기 2배 오브젝트(장면 단위 거리), Apply, 라이브 셸에 Split(셸로 잘림 · 닫힌 두 조각 · 안 부품 안 잘림), 라이브 프리미티브 굽기 경로 · Mesh Tools 굽기, 조각 / 에디트 모드 굽기(타이머 함수 직접 호출), 셸에서 다시 Extract 안 됨, 감쌀 게 없는 부품은 취소, ZBrush Armor Shell(일반 메시 · 조각 SubTool 유지 · Thick = 두께 · 저장 지점), Face Extract 패널 · 그려진 오른쪽 패널(버튼 / 셸 슬라이더) · ZBrush SubTool 카드 · N 패널. 고친 기존 테스트: test_v02494(버전). 블렌더 창에서 패널 모습 · 슬라이더 드래그 속도 · 손으로 조각 / 에디트 모드에 들어갔을 때 0.25초 타이머는 창 없는 bpy라 미검증. ZIP sha256 `4c80ee631fe25a7f8f05175c7813fd0739caddc35eda4891b32c3defc2705d7e`.
 
 ## 0.24.79 결과: Blender 5.2.3 bpy 전체 182개 파일 PASS 4,847 / FAIL 0(`tests/test_log_bpy523_v02479.txt`, FAILED FILES: none; 로그 안 Traceback 18개는 test_registration_recovery가 일부러 내는 것; zip 설치 test_zip_install 포함). 새 테스트: test_v02491_nav 21. 고친 기존 테스트: test_v02492, test_v02490_lassobar, test_v02494. 실제 마우스 드래그 · 화면 회전 · 마우스 밑 SubTool 클릭은 미검증.
 

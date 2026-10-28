@@ -8,8 +8,9 @@
   - **Update from Part**: 부품을 더 조각한 뒤 다시 감싸기(슬라이더 유지). **Apply Shell**: 일반 메시로.
   - 바로 **Cut / Split** 하면 됨: 자르기 전에 셸이 알아서 일반 메시로 굳음(Cut · Split · Boolean · Base Mesh 커터 등 라이브 프리미티브를 먼저 굳히는 모든 곳, Mesh Tools, 조각 / 에디트 모드로 들어갈 때). 굳히지 않으면 모디파이어 밑의 "부품 복사본"이 잘리기 때문. 자르는 대상은 선택된 셸뿐 — 안의 부품은 안 잘림.
   - 아무것도 안 나오는 부품(감쌀 부피가 없음)은 취소 + 경고, 빈 오브젝트를 남기지 않음.
+- 미리보기: `dist/armor_shell_preview_0.24.80.png`(겹쳐 붙인 기본 도형 로봇 9,232면 → 셸 15,263면 1.6초 → Split 14번, 판마다 0.4 ~ 2.8초, 모두 닫힌 조각).
 - **ZBrush 탭**: N 패널 SubTool의 Extract 옆 **Shell**, 오른쪽 SubTool 카드 맨 아래 **Extract | Armor Shell** — 바로 일반 메시 SubTool `<이름>_Shell`(두께 = Thick)로 만들고 조각하던 SubTool은 그대로. 무거운 동작이라 저장 지점 먼저.
-- 테스트: TESTLINE
+- 테스트: Blender 5.2.3 bpy 전체 183개 파일 PASS 4,878 / FAIL 0(`tests/test_log_bpy523_v02480.txt`, FAILED FILES: none; 로그 안 Traceback 18개는 test_registration_recovery가 일부러 내는 것; zip 설치 test_zip_install 19/19 포함). 새 test_v02496_shell 31: 새 오브젝트 · 모디파이어 맨 끝 · 부품 그대로 · 기본 Gap 1% / Thickness 2% · 닫힌 솔리드(Fewer Faces 3만 면 미만) · 안쪽 = Gap / 바깥 = Gap + Thickness(반 복셀 안) · 부피 방향, 슬라이더(Gap · Thickness · Smooth: 홈 메우되 Gap보다 안 가까움 · Detail · Fewer Faces 끄기 · 3복셀 미만 두께는 고른 면), Update from Part, 크기 2배 오브젝트(장면 단위 거리), Apply, 라이브 셸에 Split(셸로 잘림 · 닫힌 두 조각 · 안 부품 안 잘림), 라이브 프리미티브 굽기 경로 · Mesh Tools 굽기, 조각 / 에디트 모드 굽기(타이머 함수 직접 호출), 셸에서 다시 Extract 안 됨, 감쌀 게 없는 부품은 취소, ZBrush Armor Shell(일반 메시 · 조각 SubTool 유지 · Thick = 두께 · 저장 지점), Face Extract 패널 · 그려진 오른쪽 패널(버튼 / 셸 슬라이더) · ZBrush SubTool 카드 · N 패널. 고친 기존 테스트: test_v02494(버전). 블렌더 창에서 패널 모습 · 슬라이더 드래그 속도 · 손으로 조각 / 에디트 모드에 들어갔을 때 0.25초 타이머는 창 없는 bpy라 미검증. ZIP sha256 `4c80ee631fe25a7f8f05175c7813fd0739caddc35eda4891b32c3defc2705d7e`.
 
 ## 0.24.79 — 컨셉 무브 계열 설정은 Mecha 위 막대에, 화면 이동 NAV(ZBrush / Blender) 따로 고르기, ZBrush 이동에서도 선택 도구 (2026-10-28)
 
