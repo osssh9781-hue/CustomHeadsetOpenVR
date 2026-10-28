@@ -1,8 +1,16 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.79 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.80 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## 0.24.80 Armor Shell (미검증)
+- [ ] 조각한 부품을 고르고 Face Extract 도구 → 오른쪽 패널 맨 위 **Extract Whole Surface** → 부품을 감싸는 `<부품>_Shell`이 생기는지, 걸린 시간.
+- [ ] Gap · Thickness · Smooth · Detail · Fewer Faces 슬라이더를 끌 때 바로 바뀌는지, 끌기가 버벅이지 않는지(큰 부품에서도).
+- [ ] 셸에 Split / Cut 라쏘 → 셸만 잘리고 안의 부품은 그대로인지, 잘린 판이 닫힌 조각인지. 이어서 다른 판도 잘라 보기.
+- [ ] 셸을 고르고 조각 모드(Tab / ZBrush 탭)나 에디트 모드로 → 셸 모양 그대로 들어가는지(몸 모양으로 바뀌지 않는지).
+- [ ] Update from Part(부품을 더 조각한 뒤) · Apply Shell.
+- [ ] ZBrush 탭: SubTool 카드 맨 아래 **Armor Shell**, N 패널 Extract 옆 **Shell** → 새 SubTool `_Shell`(두께 = Thick)이 생기고 조각하던 SubTool 그대로인지.
 
 ## 0.24.79 컨셉 무브 위 막대 · NAV · 선택 (미검증)
 - [ ] Path Move / Silhouette Move / Concept Move를 고르면 Mecha 위 막대에 METHOD · BRUSH 설정이 나오고, 바꾸면 실제로 반영되는지.

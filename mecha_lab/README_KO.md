@@ -1,8 +1,12 @@
-# Mecha Lab 0.24.79 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.24.80 — 설치 · MECHA LAB Workspace · 사용법
 
 > **검증 수준:** Linux headless Blender **5.2.3**(`bpy`)에서 자동 테스트 182개 파일 / 4,847개 항목(실패 0) + 무작위 기능 조합 크래시 테스트 280개를 돌렸습니다(결과: `test_report.md`).
-> **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` 맨 위 0.24.79 절을 먼저 확인해 주세요.
+> **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` 맨 위 0.24.80 절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
+
+## 0.24.80 전체면 익스트랙트(Armor Shell)
+- Face Extract 도구 패널 맨 위 **Extract Whole Surface**: 부품 겉면 전체를 감싸는 닫힌 껍데기(Gap만큼 띄우고 Thickness만큼 바깥으로). Gap · Thickness · Smooth · Detail · Fewer Faces 슬라이더가 바로 반영되고, 그대로 Cut / Split로 잘라 갑옷 판으로(자르기 전에 알아서 굳음, 안의 부품은 안 잘림).
+- ZBrush 탭: N 패널 Extract 옆 **Shell**, SubTool 카드 **Armor Shell**(두께 = Thick, 바로 일반 메시).
 
 ## 0.24.79 컨셉 무브 설정 위 막대 · 화면 이동 NAV
 - Concept Move · Path Move · Silhouette Move의 브러시 설정이 Mecha 위 막대에.

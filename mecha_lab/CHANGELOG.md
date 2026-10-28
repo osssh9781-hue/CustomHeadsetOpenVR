@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## 0.24.80 — 전체면 익스트랙트(Armor Shell): 부품 겉면 전체를 껍데기로 떠서 잘라 외장 갑옷 만들기 (2026-10-28)
+
+- **Armor Shell**(Face Extract 도구 오른쪽 패널 맨 위 **Whole Surface: Armor Shell** → **Extract Whole Surface**, 오브젝트 모드에서 고른 부품): 부품 겉면 전체를 감싸는 닫힌 껍데기를 새 오브젝트 `<부품>_Shell`로 만듦(선택 · 활성). 부품 자체는 안 바뀜.
+  - 슬라이더(바로 반영): **Gap**(몸에서 띄우는 거리, 기본 부품 크기의 1%) · **Thickness**(바깥으로 두께, 기본 2%) · **Smooth**(근육 · 작은 디테일 사이 홈 메우기 — 그래도 Gap보다 가까이는 안 옴) · **Detail**(촘촘함: 부품 크기의 1/60 ~ 1/260) · **Fewer Faces**(기본 켜짐: 평평한 곳은 큰 면 — 면 수 약 1/20, 컷이 훨씬 빠름; 복셀 3개보다 얇은 껍데기에서는 안쪽 / 바깥 면이 닿을 수 있어 자동으로 꺼짐).
+  - 만드는 방법: 부품의 거리장(Blender 5.2 SDF 지오메트리 노드 — Mesh to SDF Grid → SDF Grid Mean(Smooth) + 원래 거리장과 합침 → Grid to Mesh 두 번)에서 Gap 위치 면(안쪽, 뒤집음)과 Gap + Thickness 위치 면(바깥)을 떠서 합침. 한 거리장의 두 면이라 서로 안 겹침 → 깊은 홈 · 겹쳐 붙은 부품이 있어도 항상 닫힌 하나의 솔리드. (먼저 해 본 Remesh + Solidify 모디파이어 방식은 Remesh가 껍데기 안을 메워 덩어리가 되고 한 번 계산에 20초씩 걸려서 버림)
+  - **Update from Part**: 부품을 더 조각한 뒤 다시 감싸기(슬라이더 유지). **Apply Shell**: 일반 메시로.
+  - 바로 **Cut / Split** 하면 됨: 자르기 전에 셸이 알아서 일반 메시로 굳음(Cut · Split · Boolean · Base Mesh 커터 등 라이브 프리미티브를 먼저 굳히는 모든 곳, Mesh Tools, 조각 / 에디트 모드로 들어갈 때). 굳히지 않으면 모디파이어 밑의 "부품 복사본"이 잘리기 때문. 자르는 대상은 선택된 셸뿐 — 안의 부품은 안 잘림.
+  - 아무것도 안 나오는 부품(감쌀 부피가 없음)은 취소 + 경고, 빈 오브젝트를 남기지 않음.
+- **ZBrush 탭**: N 패널 SubTool의 Extract 옆 **Shell**, 오른쪽 SubTool 카드 맨 아래 **Extract | Armor Shell** — 바로 일반 메시 SubTool `<이름>_Shell`(두께 = Thick)로 만들고 조각하던 SubTool은 그대로. 무거운 동작이라 저장 지점 먼저.
+- 테스트: TESTLINE
+
 ## 0.24.79 — 컨셉 무브 계열 설정은 Mecha 위 막대에, 화면 이동 NAV(ZBrush / Blender) 따로 고르기, ZBrush 이동에서도 선택 도구 (2026-10-28)
 
 - **컨셉 무브 · Path Move · Silhouette Move 설정이 Mecha 위 막대에**(0.24.78에서 블렌더 위 막대에서 뺀 뒤 어디에도 안 보이던 것): **METHOD**(Path Move: Extend 등 + Brush / Whole), **BRUSH**(Size · Real Size · Hardness · Taper · Follow Turns · Back Mask · 모양, Concept Move는 Hardness(Clay) · Falloff · Strength), Mirror X · Generate · Even Out · Follow View. 오른쪽 패널에는 나머지(Cuts · Knife Mesh · Auto Apply · 기록된 움직임)만.
