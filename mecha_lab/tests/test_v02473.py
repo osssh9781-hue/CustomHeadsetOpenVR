@@ -110,12 +110,14 @@ re_.set_side(C, cube, 2)
 check('Live ramp: another deep side reuses the layout (the slow part is not done again)',
       first == 1 and len(laid) == 1 and re_.record(cube)['side'] == 2, laid)
 p.carve_depth = 0.15
+re_.flush()                                   # 0.24.83 (the UI's timer)
 check('... a new depth too (for a Cut Ramp the edge width stays; Base Mesh edge follows depth: laid out again)',
       re_.record(cube) is not None)
 check('... the carved mesh is fingerprinted', 'stamp' in re_.record(cube) and not re_.edited(cube))
 cube.data.vertices[0].co.z += 0.37
 moved = cube.data.vertices[0].co.copy()
 p.ramp_soft = 0.2                              # a slider: before 0.24.53 this silently undid the edit
+re_.flush()
 check('Edit after the ramp, then move a Ramp slider: the edit stays, the ramp is kept as it is (no longer live)',
       (cube.data.vertices[0].co - moved).length < 1e-6 and re_.record(cube) is None and re_.live_target(C) is None)
 try:

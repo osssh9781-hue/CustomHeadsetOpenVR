@@ -47,6 +47,7 @@ check('> : the next side (top) is deep now, the left is not any more', depth_at(
 bpy.ops.mch.ramp_side(step=-2)
 check('< < : back past the first side to the last one (bottom)', depth_at(0, -0.55) > 0.15, depth_at(0, -0.55))
 p.carve_depth = 0.1
+re_.flush()                                   # 0.24.83 (the UI's timer; a slider never carves inside its update)
 check('Carve Depth slider: the live ramp is carved again at once', abs(depth_at(0, -0.55) - 0.095) < 0.02,
       depth_at(0, -0.55))
 import inspect

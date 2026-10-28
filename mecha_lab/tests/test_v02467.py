@@ -41,6 +41,7 @@ bpy.ops.mch.ramp_side(step=2)
 check('> > : the right side is deep now', depth_at(0.55, 0) > 0.15 and depth_at(-0.5, 0) < 0.03,
       (depth_at(0.55, 0), depth_at(-0.5, 0)))
 cut.depth = 0.1
+re_.flush()                                   # 0.24.83 (the UI's timer)
 check('Cut Depth slider: carved again at once', abs(depth_at(0.55, 0) - 0.095) < 0.02, depth_at(0.55, 0))
 bpy.ops.mch.ramp_remove()
 check('Remove: back as it was', len(cube.data.vertices) == n0 and depth_at(0.55, 0) == 0.0 and re_.record(cube) is None)

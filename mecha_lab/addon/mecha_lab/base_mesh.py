@@ -113,7 +113,7 @@ def _ramp_live_update(self, context):
     """0.24.45 a Ramp slider moved: the live ramp (if any) is carved again."""
     try:
         from . import ramp_edit
-        ramp_edit.refresh(context, 'base')
+        ramp_edit.refresh_later(context, 'base')     # 0.24.83 from a timer, not in the update
     except Exception:          # a slider must never fail
         pass
 

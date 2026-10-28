@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import bmesh
 import bpy
-from mathutils import Matrix
+from mathutils import Matrix, Vector
 
 from . import core_geometry as cg
 
@@ -234,6 +234,18 @@ def _flat(me):
         p.use_smooth = False
 
 
+UNIONS_KEY = 'mch_hide_unions'          # 0.24.83 how many shapes went into the volume (each one a little deeper)
+
+
+def _stretched(planes, f):
+    """The near / far planes pushed apart by ``f`` of their distance: a shape whose caps are not coplanar with the
+    ones already in the volume (the Exact union of two prisms on the same caps came back non-manifold - the second
+    Box Hide on a part, or a strip over a hidden part, failed)."""
+    near, far = planes
+    d = far - near
+    return near - d * f, far + d * f
+
+
 def _combine(context, vol, bm_add, op):
     """vol = vol (op) shape: UNION to hide more, DIFFERENCE to show again.  The volume stays one clean
     closed solid (the Manifold cut needs that); it is small, so the exact boolean here is quick."""
@@ -253,7 +265,17 @@ def _combine(context, vol, bm_add, op):
     try:
         vol.hide_set(False)
         try:
-            me, _solver = cg.boolean_result(context, vol, other, op, 'EXACT', False, allow_empty=True)
+            try:                               # 0.24.83 AUTO: Manifold on two clean prisms (coplanar caps are
+                me, _solver = cg.boolean_result(context, vol, other, op, 'AUTO', False, allow_empty=True)  # fine), Exact after
+            except cg.CutError:
+                # 0.24.83 coplanar caps / an edge on an edge: the shape grown by a hair and tried once more
+                bm = bmesh.new()
+                bm.from_mesh(other.data)
+                c = sum((v.co for v in bm.verts), Vector()) / max(1, len(bm.verts))
+                bmesh.ops.scale(bm, vec=(1.003, 1.003, 1.003), space=Matrix.Translation(-c), verts=bm.verts[:])
+                bm.to_mesh(other.data)
+                bm.free()
+                me, _solver = cg.boolean_result(context, vol, other, op, 'AUTO', False, allow_empty=True)
         finally:
             vol.hide_set(True)
     finally:
@@ -295,14 +317,24 @@ def perform(context, targets, loops, projector, restore=False):
     if not targets:
         raise cg.CutError('Box Hide: draw over a mesh.')
     st = context.scene.mch_hide
+    cut = context.scene.mch_cut
     groups = cg.prepare_loops(loops)
     near, far = ce._planes(context, targets, projector, [g[0] for g in groups])
-    shape_me = cg.build_cutter_mesh(groups, projector, near, far, 'MCH_Hide_Shape')
     from . import mesh_fix
     fixed = mesh_fix.auto_fix(context, targets, 'Box Hide') if not restore else {}   # 0.24.81 a broken part first
     done, untouched, followed = [], [], []
+    shapes = []
     try:
         for t in targets:
+            planes = (near, far)
+            if cut.depth_mode == 'SURFACE' and len(targets) > 1:      # 0.24.83 a pocket from each part's own surface
+                planes = ce.own_pocket(context, t, groups, projector, cut) or planes
+            vol0 = volume_of(t)
+            k = int(vol0.get(UNIONS_KEY, 0)) if vol0 is not None else 0
+            if vol0 is not None and vol0.data.polygons:
+                planes = _stretched(planes, 0.004 * (k + 1))          # 0.24.83 not coplanar with the shapes in there
+            shape_me = cg.build_cutter_mesh(groups, projector, *planes, 'MCH_Hide_Shape')
+            shapes.append(shape_me)
             bm_shape = bmesh.new()
             bm_shape.from_mesh(shape_me)
             parts = [bm_shape]
@@ -321,6 +353,7 @@ def perform(context, targets, loops, projector, restore=False):
                         vol = _new_volume(context, t)
                     for bm_part in parts:
                         _combine(context, vol, bm_part, 'UNION')
+                    vol[UNIONS_KEY] = k + 1
                     _ensure_modifier(t, vol, st.cap)
                     done.append(t.name)
                     continue
@@ -330,6 +363,7 @@ def perform(context, targets, loops, projector, restore=False):
                 # restore: cut the drawn shape out of the hide volume
                 for bm_part in parts:
                     _combine(context, vol, bm_part, 'DIFFERENCE')
+                vol[UNIONS_KEY] = k + 1
                 if not vol.data.polygons:
                     show_all(t)             # nothing hidden any more
                 else:
@@ -339,7 +373,8 @@ def perform(context, targets, loops, projector, restore=False):
                 for bm_part in parts:
                     bm_part.free()
     finally:
-        bpy.data.meshes.remove(shape_me)
+        for shape_me in shapes:
+            bpy.data.meshes.remove(shape_me)
     verb = 'Restored' if restore else 'Hidden'
     msg = f'Box Hide: {verb} on {", ".join(done)}' if done else 'Box Hide: nothing hidden there'
     if untouched:

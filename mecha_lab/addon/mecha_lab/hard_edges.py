@@ -58,6 +58,8 @@ FLAT = math.radians(1.0)        # Merge Flats: faces closer than this to flat ar
 FAST_MERGE = 20000              # ... from this many triangles the flat points are emptied by the engine first
 SPECK = 0.02                    # a hard edge on its own shorter than this x the part size is not a hard edge
 MAX_POLYS = 300000              # beyond this: Decimate / Quad Remesh first (a bevel on a DynaMesh would take ages)
+NOTE = 'mch_he_note'            # object: 0.24.83 what set_live had to do about the bevel (width halved / dropped)
+SOUND_ROUNDS = 3                # ... the bevel width is halved this many times when the bevel comes out broken
 
 
 def _size(me):
@@ -406,6 +408,7 @@ def set_live(ob, st):
         bev.use_clamp_overlap = True
         bev.harden_normals = st.he_normals
         bev.use_clamp_overlap = not _fits_unclamped(ob, bev)     # 0.24.73 (Clamp narrows every bevel of the part)
+        _keep_sound(ob, bev)                                     # 0.24.83 a broken bevel: narrower, else none
     elif bev is not None:
         mods.remove(bev)
     sub = mods.get(SUBSURF)
@@ -515,6 +518,52 @@ def _fits_unclamped(ob, bev):
         a.data.foreach_set('value', w)
         me.update()
     return False
+
+
+def _broken(ob):
+    """(open or 3+-face edges, zero-area faces, edges, faces) of the evaluated mesh of ``ob`` (its live stack
+    included)."""
+    try:
+        dg = bpy.context.evaluated_depsgraph_get()
+        me = ob.evaluated_get(dg).data
+        if not len(me.polygons):
+            return 0, 0, 0, 0
+        lv = np.empty(len(me.loops), np.int64)
+        me.loops.foreach_get('edge_index', lv)
+        cnt = np.bincount(lv, minlength=len(me.edges))
+        area = np.empty(len(me.polygons), np.float32)
+        me.polygons.foreach_get('area', area)
+        return int((cnt != 2).sum()), int((area < 1e-12).sum()), len(me.edges), len(me.polygons)
+    except (AttributeError, RuntimeError, ReferenceError, ValueError):
+        return 0, 0, 0, 0
+
+
+def _sound(ob, base_nm):
+    """The bevel result is sound when it adds no more broken edges / zero-area faces than a few (the bevel modifier
+    leaves the odd one where bevelled edges meet - that was always so and is harmless): over 8 or 0.1 % is broken."""
+    nm, zero, ne, nf = _broken(ob)
+    return nm - base_nm <= max(8, 0.001 * ne) and zero <= max(4, 0.001 * nf)
+
+
+def _keep_sound(ob, bev):
+    """0.24.83 The bevel modifier on a dense part with many hard edges (a DynaMesh / Decimate body: 2,000 hard edges,
+    0.04 wide) came out broken - open edges, edges shared by 3+ faces, zero-area faces by the hundred - even with
+    Clamp Overlap.  The result is checked; a broken one has its width halved (up to SOUND_ROUNDS times), and when
+    that does not help the bevel is dropped: a clean mesh without a bevel beats a broken one.  The note is reported
+    with Find Edges."""
+    from . import core_geometry as cg
+    ob.pop(NOTE, None)
+    base_nm = cg.non_manifold_edge_count(ob.data)
+    if _sound(ob, base_nm):
+        return
+    width0 = bev.width
+    for _r in range(SOUND_ROUNDS):
+        bev.width *= 0.5
+        if _sound(ob, base_nm):
+            ob[NOTE] = f'bevel width {width0:.4g} overlapped (broken faces), {bev.width:.4g} used'
+            return
+    ob.modifiers.remove(bev)
+    ob[NOTE] = f'bevel {width0:.4g} wide overlaps here whatever the width - no bevel (Decimate / Quad Remesh lower first)'
 
 
 def _chamfer_profile(bev):

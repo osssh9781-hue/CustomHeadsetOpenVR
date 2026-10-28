@@ -707,8 +707,9 @@ def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nth
         vol1 = _volume(new)
     n_new = len(new.polygons)
     closed_in = cg.non_manifold_edge_count(me) == 0
-    if closed_in and (vol0 > 0 and (vol1 < VOLUME_KEEP * vol0 or vol1 > vol0 / VOLUME_KEEP)
-                      or open_new > max(OPEN_OK_MIN, OPEN_OK * n_new) or multi_new):
+    twisted = cg.inconsistent_edges(new) if closed_in else 0   # 0.24.83 a wall thinner than a quad fused into a
+    if closed_in and (vol0 > 0 and (vol1 < VOLUME_KEEP * vol0 or vol1 > vol0 / VOLUME_KEEP)      # two-sided sheet
+                      or open_new > max(OPEN_OK_MIN, OPEN_OK * n_new) or multi_new or twisted):
         bpy.data.meshes.remove(new)
         tries = _st_tries.get(id(ob), 0)
         if tries < VOLUME_TRIES and target * 2 <= QUAD_MAX_FACES:
@@ -719,7 +720,8 @@ def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nth
                 _st_tries.pop(id(ob), None)
         why = (f'{open_new} sides would stay open' if open_new > max(OPEN_OK_MIN, OPEN_OK * max(1, n_new))
                else f'{multi_new} edges would carry 3+ faces' if multi_new
-               else f'the quads lost {100 - vol1 / max(vol0, 1e-12) * 100:.0f} % of its volume')
+               else f'{twisted} edges would have their faces flipped against each other (a wall fused into a sheet)'
+               if twisted else f'the quads lost {100 - vol1 / max(vol0, 1e-12) * 100:.0f} % of its volume')
         return (f'Quad Remesh{got_note}: the part is thinner than a quad at this count ({polys0:,} faces kept as '
                 f'they are - {why}): ask for more faces')
     fd.swap_mesh(ob, new)

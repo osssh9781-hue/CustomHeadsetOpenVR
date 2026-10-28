@@ -45,7 +45,8 @@ with ThreadPoolExecutor(parallel) as ex:
         lines = out.splitlines()
         steps_ = [l for l in lines if l.startswith('STEP')]
         errors = [l for l in lines if l.startswith(('ERROR', 'BAD'))]
-        results.append((seed, status, steps_[-1] if steps_ else '', errors, dt, lines))
+        fails = [l for l in lines if l.startswith(('FAIL', 'SLOW'))]          # 0.24.83 refusals / slow steps
+        results.append((seed, status, steps_[-1] if steps_ else '', errors, dt, lines, fails))
         print(f'{seed:4d} {status:5s} {dt:6.1f}s errors {len(errors)}  last: {steps_[-1] if steps_ else "-"}', flush=True)
 peak = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss / 1024
 by = collections.Counter(r[1] for r in results)
@@ -54,11 +55,11 @@ err_kinds = collections.Counter(e.split(':')[0].split(' ', 2)[-1] + ': ' + e.spl
 with open(os.path.join(HERE, REPORT), 'w', encoding='utf-8') as f:
     f.write(f'# Fuzz report: {count} scenarios x {steps} steps (seeds {first}..{first + count - 1})\n\n')
     f.write(f'{dict(by)} in {time.time() - t0:.0f} s, largest Blender process {peak:.0f} MB\n\n')
-    for seed, status, last, errors, dt, lines in results:
+    for seed, status, last, errors, dt, lines, fails in results:
         if status != 'OK':
             f.write(f'## seed {seed}: {status} ({dt:.0f} s)\n\nlast step: `{last}`\n\n```\n' +
                     '\n'.join(lines[-25:]) + '\n```\n\n')
-    bads = [(seed, e) for seed, status, last, errors, dt, lines in results for e in errors if e.startswith('BAD')]
+    bads = [(seed, e) for seed, status, last, errors, dt, lines, fails in results for e in errors if e.startswith('BAD')]
     if bads:
         f.write('## BAD results (the mesh after a step)\n\n')
         for seed, e in bads:
@@ -67,5 +68,10 @@ with open(os.path.join(HERE, REPORT), 'w', encoding='utf-8') as f:
     f.write('## Python errors inside steps (Blender lived)\n\n')
     for k, n in err_kinds.most_common():
         f.write(f'- {n} x {k}\n')
+    fails = [(seed, e) for seed, status, last, errors, dt, lines, fails in results for e in fails]
+    if fails:
+        f.write('\n## Refusals / slow steps (the tool said no, or took over 20 s)\n\n')
+        for seed, e in fails:
+            f.write(f'- seed {seed}: {e}\n')
 print(dict(by), f'{time.time() - t0:.0f}s', f'peak {peak:.0f} MB')
 print('errors:', err_kinds.most_common(20))

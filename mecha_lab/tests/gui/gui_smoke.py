@@ -259,6 +259,38 @@ def step_cut():
         check('4. Box Hide by real mouse, then Ctrl+Z: the hiding gone, Blender alive',
               hid and cube is not None and not any(m.name == 'MCH_BoxHide' for m in cube.modifiers),
               (hid, cube and [m.name for m in cube.modifiers]))
+        # 0.24.83 a Cut setting changed after a cut: the live last cut is cut again from a timer (never inside the
+        # property update - that took Blender down in the fuzz); the real window must stay up and the cut must change
+        try:
+            with bpy.context.temp_override(window=win, area=area, region=region):
+                mod('workspace_ui').activate_mecha_tool(bpy.context, 'CUT')
+        except Exception as ex:
+            print('activate CUT again:', ex)
+        yield 0.5
+        for x, y in pts + [pts[0]]:
+            xdo('mousemove', *to_x(win, x, y))
+            yield 0.3
+            xdo('click', 1)
+            yield 0.4
+        xdo('mousemove', *to_x(win, x0, y0))
+        yield 2.0
+        redraw()
+        cube = bpy.data.objects.get('Cube.001') or bpy.data.objects.get('Cube')
+        n_cut = len(cube.data.polygons) if cube else -1
+        scene = bpy.context.scene
+        scene.mch_cut.gn_finish, scene.mch_cut.gn_width = 'CHAMFER', 0.15   # (the update queues the re-cut)
+        yield 2.5
+        redraw()
+        cube = bpy.data.objects.get('Cube.001') or bpy.data.objects.get('Cube')
+        n_gn = len(cube.data.polygons) if cube else -1
+        scene.mch_cut.gn_finish = 'NONE'
+        yield 2.5
+        redraw()
+        cube = bpy.data.objects.get('Cube.001') or bpy.data.objects.get('Cube')
+        n_back = len(cube.data.polygons) if cube else -1
+        check('4. GN Edge switched on after a live cut: the cut is made again from a timer (chamfer faces added), '
+              'off again: back to the plain cut - Blender alive', n_cut > 0 and n_gn > n_cut and n_back == n_cut,
+              (n_cut, n_gn, n_back))
     else:
         check('4. xdotool for real mouse events', False, 'not installed - the cut step was skipped')
     shot('02_after_cut.png')

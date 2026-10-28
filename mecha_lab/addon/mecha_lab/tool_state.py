@@ -371,7 +371,7 @@ def _ramp_refresh_update(self, context):
     """0.24.46 a Cut Ramp slider moved: the live ramp (if any) is carved again (0.24.56: or the last cut)."""
     try:
         from . import ramp_edit
-        ramp_edit.refresh(context, ('cut', 'cutlive'))
+        ramp_edit.refresh_later(context, ('cut', 'cutlive'))      # 0.24.83 from a timer, not in the update
     except Exception:          # a slider must never fail
         pass
 
@@ -380,7 +380,7 @@ def _live_cut_update(self, context):
     """0.24.56 a Cut / GN Edge setting changed: the last cut (still live) is cut again with it."""
     try:
         from . import ramp_edit
-        ramp_edit.refresh(context, 'cutlive')
+        ramp_edit.refresh_later(context, 'cutlive')                # 0.24.83 from a timer, not in the update
     except Exception:          # a slider must never fail
         pass
 

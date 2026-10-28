@@ -47,17 +47,21 @@ re_.stamp(cube)
 check('After the cut: 0.3 deep, live (no ramp UI for it)', abs(floor() - 0.7) < 1e-3
       and re_.live_target(C, re_.ALL_KINDS) == cube and re_.live_target(C) is None, floor())
 cut.depth = 0.5
+re_.flush()                                   # 0.24.83 (the UI's timer; never inside the property update)
 check('Cut Depth slider: the cut is made again 0.5 deep', abs(floor() - 0.5) < 1e-3 and non_manifold(cube) == 0,
       floor())
 cut.gn_finish, cut.gn_width = 'CHAMFER', 0.05
+re_.flush()
 C.view_layer.update()
 hit, loc, *_ = S.ray_cast(C.evaluated_depsgraph_get(), Vector((0.6 + 0.025, 0, 5)), Vector((0, 0, -1)))
 check('GN Edge on: the same cut chamfered', hit and loc.z < 0.999 and abs(floor() - 0.5) < 1e-3, loc.z)
 cut.gn_finish = 'NONE'
+re_.flush()
 nv = len(cube.data.vertices)
 cube.data.vertices[0].co.z += 0.2
 moved = cube.data.vertices[0].co.copy()
 cut.depth = 0.2
+re_.flush()
 check('Edit after the cut, then a slider: the edit stays, the cut is no longer live',
       (cube.data.vertices[0].co - moved).length < 1e-6 and re_.live_target(C, re_.ALL_KINDS) is None)
 backups = [m for m in bpy.data.meshes if m.name.startswith('MCH_RampBackup_')]

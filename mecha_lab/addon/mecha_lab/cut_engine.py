@@ -457,6 +457,23 @@ def _planes(context, targets, projector, loops):
     return cg.depth_planes(projector, cg.object_world_bounds(targets), cut.depth_mode, hit, cut.depth)
 
 
+def own_pocket(context, t, groups, projector, cut):
+    """0.24.83 From Surface over several parts: the pocket of ``t`` starts at ITS surface under the shape.  One
+    depth range for all (the first surface hit) cut only that part; the others came back 'not touched (no
+    overlap)' - a plate above the body was never cut, a Box Hide 'did nothing'.  None = no surface of ``t`` under
+    the shape (the centre and the outline points miss it)."""
+    loops = [g[0] for g in groups]
+    hit = surface_hit(context, [t], projector, _loops_centroid(loops))
+    if hit is None:
+        for p in loops[0]:
+            hit = surface_hit(context, [t], projector, p)
+            if hit is not None:
+                break
+    if hit is None:
+        return None
+    return cg.depth_planes(projector, cg.object_world_bounds([t]), 'SURFACE', hit, cut.depth)
+
+
 def _object_scale(ob):
     s = ob.matrix_world.to_scale()
     return max((abs(s.x) + abs(s.y) + abs(s.z)) / 3.0, 1e-9)
@@ -766,6 +783,13 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
     cutter_out = radial_sym.replicate_cutter(context, targets, cutter_out)
     if not auto_apply:
         return _make_live(context, mode, targets, cutter, invert)
+    own = {}                                 # 0.24.83 From Surface on several parts: a pocket from each one's surface
+    if cut.depth_mode == 'SURFACE' and len(targets) > 1 and not gap:
+        for t in targets:
+            planes = own_pocket(context, t, groups, projector, cut)
+            if planes is not None and (planes[0] - near).length + (planes[1] - far).length > 1e-6:
+                c = cg.link_temp_object(context, cg.build_cutter_mesh(groups, projector, *planes, 'MCH_CutterMesh'))
+                own[t.name] = (radial_sym.replicate_cutter(context, [t], c), planes)
     results, pieces, temp = [], [], []
     solvers = []
     t_start = time.perf_counter()
@@ -775,10 +799,11 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
     try:
         for t in targets:
             scale = _object_scale(t)
+            cutter_t, (near_t, far_t) = own.get(t.name, (cutter, (near, far)))
             try:
                 if mode == 'CUT':
                     op = 'INTERSECT' if invert else 'DIFFERENCE'
-                    me, _solver = _boolean_checked(context, cut, t, cutter, op, groups, projector, near, far,
+                    me, _solver = _boolean_checked(context, cut, t, cutter_t, op, groups, projector, near_t, far_t,
                                                    invert)
                     solvers.append(_solver)
                     temp.append(me)
@@ -791,11 +816,11 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
                             crisp=cut.finish_crisp))
                     results.append((t, me))
                 else:  # SPLIT
-                    inner, _s1 = _boolean_checked(context, cut, t, cutter, 'INTERSECT',
-                                                  inner_groups if gap else groups, projector, near, far, False)
+                    inner, _s1 = _boolean_checked(context, cut, t, cutter_t, 'INTERSECT',
+                                                  inner_groups if gap else groups, projector, near_t, far_t, False)
                     temp.append(inner)
-                    outer, _s2 = _boolean_checked(context, cut, t, cutter_out or cutter, 'DIFFERENCE',
-                                                  outer_groups if gap else groups, projector, near, far, False)
+                    outer, _s2 = _boolean_checked(context, cut, t, cutter_out or cutter_t, 'DIFFERENCE',
+                                                  outer_groups if gap else groups, projector, near_t, far_t, False)
                     solvers += [_s1, _s2]
                     temp.append(outer)
                     # Side A = remaining original object, Side B = the new "_Split" piece.
@@ -819,11 +844,16 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
                               (' Failed: ' + '; '.join(failed) if failed else ''))
         infos = []
         junk = 0
+        crossing = []
         for t, me in pieces:
             cg.tidy_result(me, cg.mesh_size(t.data))          # 0.24.83 no slivers / folds / specks left behind
         for k, (t, me) in enumerate(results):
             cg.tidy_result(me, cg.mesh_size(t.data))
             _shut_holes(t, me)
+            if cg.non_manifold_edge_count(me) and not cg.non_manifold_edge_count(t.data):
+                n = cg.self_overlaps(t.data)                  # 0.24.83 a closed part whose cut came out broken: why
+                if n > 0:
+                    crossing.append(f'{t.name} crosses itself in {n:,} places (sculpted through its other side)')
             if mode == 'SPLIT' and cg.is_junk(me, cg.mesh_size(t.data)):
                 # nothing worth keeping stays on the part's side: the piece becomes the part instead
                 swap = next((j for j, (pt, pm) in enumerate(pieces) if pt == t and not cg.is_junk(pm, cg.mesh_size(t.data))), None)
@@ -863,6 +893,8 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
         took = time.perf_counter() - t_start           # 0.24.58 a slow cut says how long and which solver
         if took > 1.5:
             suffix += f' | {took:.1f} s ({"/".join(sorted(set(solvers))).title()})'
+        if crossing:
+            suffix += ' | WARNING: ' + '; '.join(crossing) + ' - the cut is broken there; DynaMesh or Fix Mesh it first'
         return (f'{verb}: {", ".join(t.name for t, _ in results)}{"".join(sorted(set(infos)))}{suffix}' +
                 _target_report(skipped, failed) +
                 (' | live primitive baked first: ' + ', '.join(baked) if baked else '') +
@@ -874,6 +906,8 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
                 bpy.data.meshes.remove(me)
         cg.remove_object_and_mesh(cutter)
         cg.remove_object_and_mesh(cutter_out)
+        for c, _planes_ in own.values():
+            cg.remove_object_and_mesh(c)
 
 
 def _target_report(skipped, failed):
@@ -1061,6 +1095,8 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
                 if me.users == 0:
                     bpy.data.meshes.remove(me)
     # Polyline: half-plane polygon prism through the Boolean pipeline.
+    if not targets:                       # 0.24.83 (a line over nothing - or over a part Box Hide hid there)
+        raise cg.CutError('The line does not cross any mesh; nothing was changed.')
     corners = []
     for co in cg.object_world_bounds(targets):
         p = projector.to_screen(co)

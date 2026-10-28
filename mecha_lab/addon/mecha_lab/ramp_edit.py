@@ -231,6 +231,38 @@ def set_side(context, ob, side):
     return recarve(context, ob)
 
 
+_PENDING = []
+
+
+def refresh_later(context, kind=None):
+    """0.24.83 A slider / Cut setting changed: the carve is run again from a timer, NOT inside the property
+    update callback - Blender went down (segfault in the GN rim sweep's depsgraph evaluation) when the live re-cut
+    ran inside the update of a Cut setting (fuzz seed 353: the same re-cut run right after the update is fine).
+    Headless (no timers run) the re-cut waits for ``flush()`` (tests / scripts call it)."""
+    kinds = ALL_KINDS if kind is None else ((kind,) if isinstance(kind, str) else tuple(kind))
+    _PENDING.extend(k for k in kinds if k not in _PENDING)
+    if bpy.app.background:
+        return
+    try:
+        if not bpy.app.timers.is_registered(flush):
+            bpy.app.timers.register(flush, first_interval=0.0)
+    except (ValueError, RuntimeError):
+        pass
+
+
+def flush():
+    """Run the re-carves queued by ``refresh_later`` (a timer in the UI; tests call it).  Returns None (timer: done)."""
+    if not _PENDING:
+        return None
+    kinds = tuple(_PENDING)
+    _PENDING.clear()
+    try:
+        refresh(bpy.context, kinds)
+    except (cg.CutError, RuntimeError, ReferenceError, AttributeError):
+        pass
+    return None
+
+
 def refresh(context, kind=None):
     """A slider changed: carve the live one again (only of that ``kind`` / those kinds: 'base' / 'cut' /
     'cutlive')."""

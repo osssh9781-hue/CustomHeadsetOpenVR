@@ -574,6 +574,8 @@ def finish(mesh, mode='CHAMFER', width=0.01, segments=3):
     number of rim edges finished (0 = nothing done, the mesh unchanged)."""
     if mode not in {'CHAMFER', 'BEVEL'} or width <= 0 or mesh.attributes.get(cg.CUTTER_ATTR) is None:
         return 0
+    if cg.multi_edge_count(mesh):               # 0.24.83 the GN sweep took Blender down (segfault) on a part with an
+        return 0                                 # edge shared by 3+ faces (a decimated body re-cut live): no sweep
     keep = {(a.name, a.domain) for a in mesh.attributes}
     n, count = mark_rim(mesh, mode, width, segments)
     if not count:

@@ -2143,6 +2143,8 @@ def run(context, action):
                 n, f0, f1 = he.find(ob, zb)
                 he.set_live(ob, zb)
                 msg = f'Hard Edges: {n:,} edges' + (f', {f0:,} > {f1:,} polygons (flats merged)' if f1 != f0 else '')
+                if ob.get(he.NOTE):                   # 0.24.83 the bevel had to be narrowed / dropped
+                    msg += ' | ' + str(ob[he.NOTE])
             elif action == 'HE_APPLY':
                 k = he.apply_live(context, ob, zb)
                 ob.pop(he.KEY, None)                 # (the shelf settings no longer drive this SubTool)

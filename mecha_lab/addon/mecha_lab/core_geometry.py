@@ -851,12 +851,150 @@ def mesh_size(me):
     return float(np.linalg.norm(co.max(0) - co.min(0)))
 
 
+def _bad_edges(bm):
+    """Edges with faces that are not shared by exactly two (open sides, 3+-face edges); wire edges do not count."""
+    return sum(1 for e in bm.edges if e.link_faces and len(e.link_faces) != 2)
+
+
+def _guarded(bm, fn):
+    """0.24.83 Run a clean-up stage on a copy; keep it only when it does not open the mesh or add 3+-face edges
+    (``bmesh.ops.dissolve_degenerate`` opened closed boolean results - 35 open edges on a 300-face part).
+    Returns (bmesh to go on with, the stage's count or 0 when it was dropped)."""
+    bad = _bad_edges(bm)
+    trial = bm.copy()
+    try:
+        n = fn(trial)
+    except (RuntimeError, ValueError, TypeError):
+        trial.free()
+        return bm, 0
+    if not n or _bad_edges(trial) > bad:
+        trial.free()
+        return bm, 0
+    bm.free()
+    return trial, n
+
+
+def _one_by_one(bm, pick, fixes, limit=256):
+    """0.24.83 The faces ``pick`` finds (zero-area, needles), each tried on its own with the ``fixes`` in turn (the
+    first that does not open the mesh is kept) - the bulk dissolve of a GN Edge / bevel result opened the mesh and was
+    dropped whole, and its zero-area faces all stayed.  Returns (bmesh, faces fixed)."""
+    done, tried = 0, set()
+    for _ in range(limit):
+        bm.faces.ensure_lookup_table()
+        cand = None
+        for f in pick(bm):
+            key = tuple(round(c, 6) for c in f.calc_center_median()) + (len(f.verts),)
+            if key not in tried:
+                cand, ckey = f.index, key
+                break
+        if cand is None:
+            break
+        tried.add(ckey)
+        for fix in fixes:
+            def stage(b, i=cand, fix=fix):
+                b.faces.ensure_lookup_table()
+                nf = len(b.faces)
+                fix(b, b.faces[i])
+                return 1 if len(b.faces) < nf else 0
+            bm, n = _guarded(bm, stage)
+            if n:
+                done += 1
+                break
+    return bm, done
+
+
+def _shortest(f):
+    return min(f.edges, key=lambda e: e.calc_length())
+
+
+def _longest(f):
+    return max(f.edges, key=lambda e: e.calc_length())
+
+
+def _collapse_short(b, f):
+    bmesh.ops.collapse(b, edges=[_shortest(f)], uvs=False)
+
+
+def _dissolve_long(b, f):
+    bmesh.ops.dissolve_edges(b, edges=[_longest(f)], use_verts=False, use_face_split=False)
+
+
+def _is_zero(f):
+    return f.calc_area() < 1e-12
+
+
+def _is_needle(f):
+    per = sum(e.calc_length() for e in f.edges)
+    return per > 0 and f.calc_area() / (per * per) < NEEDLE
+
+
+SPIKE_RATIO = 8.0               # a spike's shortest edge is this many times the typical edge round its neighbours
+SPIKE_ANGLE = math.radians(4.0)  # ... and every face at it is this thin there
+SPIKE_MAX_VERTS = 60000         # (the scan is Python per point)
+
+
+def _spike_verts(b):
+    """0.24.83 Points a bevel / GN edge left sticking out as a fan of needle faces: every edge at the point is far
+    longer than the edges round its neighbours and every face is needle-thin there (the fuzz's spike rule)."""
+    if len(b.verts) > SPIKE_MAX_VERTS:
+        return []
+    out = []
+    for v in b.verts:
+        if len(v.link_edges) < 2 or not v.link_faces:
+            continue
+        mine = min(e.calc_length() for e in v.link_edges)
+        around = sorted(e2.calc_length() for e in v.link_edges for e2 in e.other_vert(v).link_edges if e2 is not e)
+        if not around or mine <= SPIKE_RATIO * around[len(around) // 2]:
+            continue
+        thin = True
+        for f in v.link_faces:
+            vs = list(f.verts)
+            i = vs.index(v)
+            a, c = vs[i - 1].co - v.co, vs[(i + 1) % len(vs)].co - v.co
+            if a.length <= 0 or c.length <= 0 or a.angle(c) >= SPIKE_ANGLE:
+                thin = False
+                break
+        if thin:
+            out.append(v)
+    return out
+
+
+def _spikes_one_by_one(bm, limit=64):
+    """Each spike point dissolved on its own (its needle faces become one face), kept only when the mesh does not
+    open.  Returns (bmesh, spikes removed)."""
+    done, tried = 0, set()
+    for _ in range(limit):
+        bm.verts.ensure_lookup_table()
+        cand = None
+        for v in _spike_verts(bm):
+            key = tuple(round(c, 6) for c in v.co)
+            if key not in tried:
+                cand, ckey = v.index, key
+                break
+        if cand is None:
+            break
+        tried.add(ckey)
+
+        def stage(b, i=cand):
+            b.verts.ensure_lookup_table()
+            nv = len(b.verts)
+            bmesh.ops.dissolve_verts(b, verts=[b.verts[i]], use_face_split=False, use_boundary_tear=False)
+            return 1 if len(b.verts) < nv else 0
+
+        bm, n = _guarded(bm, stage)
+        done += n
+    return bm, done
+
+
 def tidy_result(me, ref_size=None, shards=True, slivers=True):
-    """0.24.83 A boolean / decimate / remesh result made clean: points on the same spot welded, zero-area faces
-    dissolved, folded faces (two faces on the same points, back to back - a paper-thin fin) removed, loose points
-    gone, and (``shards``) separate pieces of under 6 faces that are tiny next to the part (under 2 % of
-    ``ref_size``) dropped.  Returns a dict of counts (all zero = nothing was wrong)."""
-    out = dict(welded=0, degenerate=0, needles=0, folds=0, fins=0, loose=0, shards=0, flipped=0)
+    """0.24.82 A boolean / decimate / remesh result made clean: points on the same spot welded, zero-area faces
+    dissolved, needle slivers dissolved into their neighbours, folded faces (two faces on the same points, back to
+    back - a paper-thin fin) removed, loose points gone, and (``shards``) separate pieces of under 6 faces that are
+    tiny next to the part (under 2 % of ``ref_size``) dropped.  0.24.83 every stage is dropped again when it would
+    open the mesh (``_guarded``), and short edges are only welded when they are really degenerate (a millionth of
+    the part): the old 5 % of the median edge collapsed real bevel steps.  Returns a dict of counts (all zero =
+    nothing was wrong)."""
+    out = dict(welded=0, degenerate=0, needles=0, spikes=0, folds=0, fins=0, loose=0, shards=0, flipped=0)
     if me is None or not len(me.polygons):
         return out
     size = ref_size or mesh_size(me)
@@ -864,84 +1002,114 @@ def tidy_result(me, ref_size=None, shards=True, slivers=True):
     bm = bmesh.new()
     try:
         bm.from_mesh(me)
-        nv = len(bm.verts)
-        bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=eps)
-        out['welded'] = nv - len(bm.verts)
-        nf = len(bm.faces)
-        lens = sorted(e.calc_length() for e in bm.edges)
-        med = lens[len(lens) // 2] if lens else 0.0
-        degen = max(eps, min(1e-3 * size, 0.05 * med)) if slivers else eps   # (edges far shorter than the
-        bmesh.ops.dissolve_degenerate(bm, edges=bm.edges[:], dist=degen)         # part's own: slivers)
-        out['degenerate'] = nf - len(bm.faces)
+
+        def weld(b):
+            nv = len(b.verts)
+            bmesh.ops.remove_doubles(b, verts=b.verts[:], dist=eps)
+            return nv - len(b.verts)
+
+        bm, out['welded'] = _guarded(bm, weld)
+
+        def folds(b):             # (first: two faces on the same points are a fin, not two needles)
+            seen, twins = {}, []
+            for f in b.faces:
+                key = tuple(sorted(v.index for v in f.verts))
+                if key in seen:
+                    twins += [seen[key], f]
+                else:
+                    seen[key] = f
+            twins = list({f.index: f for f in twins}.values())
+            if twins:
+                bmesh.ops.delete(b, geom=twins, context='FACES')
+            return len(twins)
+
+        bm, out['folds'] = _guarded(bm, folds)
+
+        def degenerate(b):
+            nf = len(b.faces)
+            bmesh.ops.dissolve_degenerate(b, edges=b.edges[:], dist=eps)
+            return nf - len(b.faces)
+
+        bm, out['degenerate'] = _guarded(bm, degenerate)
+        if any(_is_zero(f) for f in bm.faces):              # (the bulk pass was dropped or missed some: one by one)
+            bm, n = _one_by_one(bm, lambda b: [f for f in b.faces if _is_zero(f)], (_collapse_short, _dissolve_long))
+            out['degenerate'] += n
         if slivers and len(bm.faces) > 1:
             # needles: faces far thinner than long (area / perimeter^2 under NEEDLE) - the boolean's slivers along a
             # cut on a dense part - dissolved into their neighbours
-            needles = []
-            for f in bm.faces:
-                per = sum(e.calc_length() for e in f.edges)
-                if per > 0 and f.calc_area() / (per * per) < NEEDLE:
-                    needles.append(f)
-            if needles and len(needles) < len(bm.faces) // 2:
-                bmesh.ops.dissolve_faces(bm, faces=needles, use_verts=False)
-                out['needles'] = len(needles)
-        seen = {}
-        folds = []
-        for f in bm.faces:
-            key = tuple(sorted(v.index for v in f.verts))
-            if key in seen:
-                folds += [seen[key], f]
-            else:
-                seen[key] = f
-        folds = list({f.index: f for f in folds}.values())
-        if folds:
-            bmesh.ops.delete(bm, geom=folds, context='FACES_ONLY')
-            out['folds'] = len(folds)
+            def needles(b):
+                thin = []
+                for f in b.faces:
+                    per = sum(e.calc_length() for e in f.edges)
+                    if per > 0 and f.calc_area() / (per * per) < NEEDLE:
+                        thin.append(f)
+                if not thin or len(thin) >= len(b.faces) // 2:
+                    return 0
+                bmesh.ops.dissolve_faces(b, faces=thin, use_verts=False)
+                return len(thin)
+
+            bm, out['needles'] = _guarded(bm, needles)
+            if any(_is_needle(f) for f in bm.faces):        # (a needle on its own: dissolve_faces leaves it)
+                bm, n = _one_by_one(bm, lambda b: [f for f in b.faces if _is_needle(f)], (_collapse_short, _dissolve_long))
+                out['needles'] += n
+            bm, out['spikes'] = _spikes_one_by_one(bm)      # 0.24.83 fans of needle faces round one far point
         if shards and len(bm.faces):
-            bm.verts.ensure_lookup_table()
-            seen_v = set()
-            drop = []
-            for v in bm.verts:
-                if v.index in seen_v or not v.link_faces:
-                    continue
-                stack, comp = [v], []
-                while stack:
-                    x = stack.pop()
-                    if x.index in seen_v:
+            def shard(b):
+                b.verts.ensure_lookup_table()
+                seen_v = set()
+                drop = []
+                for v in b.verts:
+                    if v.index in seen_v or not v.link_faces:
                         continue
-                    seen_v.add(x.index)
-                    comp.append(x)
-                    stack.extend(e.other_vert(x) for e in x.link_edges)
-                faces = {f for x in comp for f in x.link_faces}
-                if len(faces) < 6:
-                    lo = Vector((min(x.co.x for x in comp), min(x.co.y for x in comp), min(x.co.z for x in comp)))
-                    hi = Vector((max(x.co.x for x in comp), max(x.co.y for x in comp), max(x.co.z for x in comp)))
-                    if (hi - lo).length < 0.02 * size or len(faces) < 3:
-                        drop += list(faces)
-            if drop and len(drop) < len(bm.faces):
-                bmesh.ops.delete(bm, geom=drop, context='FACES_ONLY')
-                out['shards'] = len(drop)
+                    stack, comp = [v], []
+                    while stack:
+                        x = stack.pop()
+                        if x.index in seen_v:
+                            continue
+                        seen_v.add(x.index)
+                        comp.append(x)
+                        stack.extend(e.other_vert(x) for e in x.link_edges)
+                    faces = {f for x in comp for f in x.link_faces}
+                    if len(faces) < 8:
+                        lo = Vector((min(x.co.x for x in comp), min(x.co.y for x in comp), min(x.co.z for x in comp)))
+                        hi = Vector((max(x.co.x for x in comp), max(x.co.y for x in comp), max(x.co.z for x in comp)))
+                        # 0.24.83 ... or a few faces with next to no volume (a corner a GN chamfer shaved off)
+                        vol = abs(sum(f.calc_area() * f.normal.dot(f.calc_center_median()) for f in faces)) / 3.0
+                        if (hi - lo).length < 0.02 * size or len(faces) < 3 or vol < 1e-4 * size ** 3:
+                            drop += list(faces)
+                if not drop or len(drop) >= len(b.faces):
+                    return 0
+                bmesh.ops.delete(b, geom=drop, context='FACES')
+                return len(drop)
+
+            bm, out['shards'] = _guarded(bm, shard)
+
         # fins: an edge with 3+ faces keeps its two largest, the tiny ones hanging off it go
-        fins = set()
-        for e in bm.edges:
-            if len(e.link_faces) > 2:
-                fs = sorted(e.link_faces, key=lambda f: f.calc_area())
-                for f in fs[:-2]:
-                    if f.calc_area() < 0.05 * fs[-1].calc_area():
-                        fins.add(f)
-        if fins:
-            bmesh.ops.delete(bm, geom=list(fins), context='FACES_ONLY')
-            out['fins'] = len(fins)
+        def fins(b):
+            gone = set()
+            for e in b.edges:
+                if len(e.link_faces) > 2:
+                    fs = sorted(e.link_faces, key=lambda f: f.calc_area())
+                    for f in fs[:-2]:
+                        if f.calc_area() < 0.05 * fs[-1].calc_area():
+                            gone.add(f)
+            if gone:
+                bmesh.ops.delete(b, geom=list(gone), context='FACES')
+            return len(gone)
+
+        bm, out['fins'] = _guarded(bm, fins)
         loose = [v for v in bm.verts if not v.link_faces]
         if loose:
             bmesh.ops.delete(bm, geom=loose, context='VERTS')
             out['loose'] = len(loose)
         # a closed result with faces wound the wrong way (a remesh / boolean twist): the normals made consistent
         flipped = 0
-        if len(bm.faces) and all(len(e.link_faces) == 2 for e in bm.edges):
+        if len(bm.faces):                       # (0.24.83 an open result too: a Quad Remesh left 11 flipped faces)
             for e in bm.edges:
-                l1, l2 = e.link_loops[0], e.link_loops[1]
-                if l1.vert == l2.vert:
-                    flipped += 1
+                if len(e.link_faces) == 2:
+                    l1, l2 = e.link_loops[0], e.link_loops[1]
+                    if l1.vert == l2.vert:
+                        flipped += 1
             if flipped:
                 bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
                 out['flipped'] = flipped
@@ -976,6 +1144,63 @@ def is_junk(me, ref_size=None):
         if vol < 1e-6 * ref_size ** 3:
             return True
     return False
+
+
+def multi_edge_count(me):
+    """Edges shared by 3+ faces (mesh data, no bmesh)."""
+    try:
+        import numpy as np
+        if me is None or not len(me.polygons):
+            return 0
+        lv = np.empty(len(me.loops), np.int64)
+        me.loops.foreach_get('edge_index', lv)
+        return int((np.bincount(lv, minlength=len(me.edges)) > 2).sum())
+    except (AttributeError, ValueError, ImportError):
+        return 0
+
+
+def inconsistent_edges(me):
+    """0.24.83 Edges whose two faces run the same way along them (one is flipped against the other) - after
+    recalc_face_normals this is only non-zero on a non-orientable sheet (a wall thinner than a quad whose two sides
+    fused: a Quad Remesh result to retry finer or keep)."""
+    if me is None or not len(me.polygons):
+        return 0
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        n = 0
+        for e in bm.edges:
+            if len(e.link_faces) == 2 and e.link_loops[0].vert == e.link_loops[1].vert:
+                n += 1
+        return n
+    finally:
+        bm.free()
+
+
+def self_overlaps(me, limit=300000):
+    """0.24.83 How many pairs of faces of ``me`` cross each other (faces that share a point are neighbours, not
+    crossings): a sculpted thin plate pushed through its other side.  Booleans give broken results on such a part.
+    -1 = not checked (too big)."""
+    if me is None or not len(me.polygons) or len(me.polygons) > limit:
+        return -1
+    try:
+        from mathutils.bvhtree import BVHTree
+        bm = bmesh.new()
+        try:
+            bm.from_mesh(me)
+            bm.faces.ensure_lookup_table()
+            tree = BVHTree.FromBMesh(bm)
+            n = 0
+            for a, b in tree.overlap(tree):
+                if a < b:
+                    fa, fb = bm.faces[a], bm.faces[b]
+                    if not {v.index for v in fa.verts} & {v.index for v in fb.verts}:
+                        n += 1
+            return n
+        finally:
+            bm.free()
+    except (RuntimeError, ValueError, ImportError):
+        return -1
 
 
 def strip_cutter_faces(mesh):
