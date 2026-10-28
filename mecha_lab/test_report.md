@@ -1,6 +1,6 @@
 # Test Report — Mecha Lab 0.24.78
 
-## 0.24.78 결과: <<SUITE78_REPORT>>
+## 0.24.78 결과: Blender 5.2.3 bpy 전체 181개 파일 PASS 4,826 / FAIL 0(`tests/test_log_bpy523_v02478.txt`, FAILED FILES: none; 로그 안 Traceback 18개는 test_registration_recovery가 일부러 내는 것; zip 설치 test_zip_install 포함). 새 테스트: test_v02490_lassobar 38. 고친 기존 테스트: test_v02489(오른쪽 패널 Lasso 칸은 Lasso 모양으로 확인), test_v02494(버전). 실제 블렌더 화면(GUI)의 위 막대 · 블렌더 자체 도구 목록으로 바꿨을 때의 0.2초 감시는 미검증.
 
 ## 0.24.77 결과: Blender 5.2.3 bpy 전체 180개 파일 PASS 4,788 / FAIL 0(`tests/test_log_bpy523_v02477.txt`, FAILED FILES: none; 로그 안 Traceback 18개는 test_registration_recovery가 일부러 내는 것). 마지막 주석 한 줄 수정 뒤 다시 만든 zip으로 test_zip_install 19/19. 무작위 기능 조합 크래시 테스트 40개(시드 321~360): 40/40 정상(`tests/fuzz/fuzz_report.md`). 새 테스트: test_v02485_zbshading 10, test_v02486_exportfit 6, test_v02487_wiresolo 12, test_v02488_rimcorner 11, test_v02489_extendtip 7. 고친 기존 테스트: test_v02494(버전), test_v02479_fixmesh(내보내기 쿼드 크기). 실제 블렌더 화면(GUI) · Solo(Local View) · 카드 모양 · 사용자 메쉬에서의 Path Move는 미검증.
 
