@@ -20,13 +20,15 @@ count = int(args[0]) if len(args) > 0 else 100
 steps = int(args[1]) if len(args) > 1 else 12
 parallel = int(args[2]) if len(args) > 2 else 3
 first = int(args[3]) if len(args) > 3 else 1
-TIMEOUT = 600
+SCENARIO = args[4] if len(args) > 4 else 'scenario.py'          # 0.24.82 mech_scenario.py: the "build a mech" run
+REPORT = 'fuzz_report.md' if SCENARIO == 'scenario.py' else os.path.splitext(SCENARIO)[0] + '_report.md'
+TIMEOUT = 900
 
 
 def one(seed):
     t = time.time()
     try:
-        p = subprocess.run([sys.executable, os.path.join(HERE, 'scenario.py'), str(seed), str(steps)],
+        p = subprocess.run([sys.executable, os.path.join(HERE, SCENARIO), str(seed), str(steps)],
                            capture_output=True, text=True, timeout=TIMEOUT)
         out, code = p.stdout + p.stderr, p.returncode
     except subprocess.TimeoutExpired as ex:
@@ -49,13 +51,19 @@ peak = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss / 1024
 by = collections.Counter(r[1] for r in results)
 err_kinds = collections.Counter(e.split(':')[0].split(' ', 2)[-1] + ': ' + e.split(':', 2)[-1].strip()[:90]
                                 for r in results for e in r[3])
-with open(os.path.join(HERE, 'fuzz_report.md'), 'w', encoding='utf-8') as f:
+with open(os.path.join(HERE, REPORT), 'w', encoding='utf-8') as f:
     f.write(f'# Fuzz report: {count} scenarios x {steps} steps (seeds {first}..{first + count - 1})\n\n')
     f.write(f'{dict(by)} in {time.time() - t0:.0f} s, largest Blender process {peak:.0f} MB\n\n')
     for seed, status, last, errors, dt, lines in results:
         if status != 'OK':
             f.write(f'## seed {seed}: {status} ({dt:.0f} s)\n\nlast step: `{last}`\n\n```\n' +
                     '\n'.join(lines[-25:]) + '\n```\n\n')
+    bads = [(seed, e) for seed, status, last, errors, dt, lines in results for e in errors if e.startswith('BAD')]
+    if bads:
+        f.write('## BAD results (the mesh after a step)\n\n')
+        for seed, e in bads:
+            f.write(f'- seed {seed}: {e}\n')
+        f.write('\n')
     f.write('## Python errors inside steps (Blender lived)\n\n')
     for k, n in err_kinds.most_common():
         f.write(f'- {n} x {k}\n')
