@@ -77,6 +77,8 @@ SPEC = {
     'CPATH': [(_scene('mch_concept'), 'path_method'), (_scene('mch_concept'), 'path_area'),
               (_scene('mch_concept'), 'radius_px'),
               (_scene('mch_concept'), 'path_hardness'), (_scene('mch_concept'), 'path_taper')],
+    'SMOVE': [(_scene('mch_concept'), 'radius_px'), (_scene('mch_concept'), 'path_hardness'),
+              (_scene('mch_concept'), 'path_taper')],
     'TUBE': [(_scene('mch_tube_defaults'), 'radius')],
     'TUBE_SAME': [(_scene('mch_tube_defaults'), 'radius')],
 }

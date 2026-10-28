@@ -20,7 +20,7 @@ import bpy
 from mathutils import Matrix, Vector
 
 # tools whose panel already has the row (Cut / Split / Box Hide) or their own targets (Concept / Path Move)
-OWN_ROW = {'CUT', 'SPLIT', 'HIDE', 'CMOVE', 'CPATH'}
+OWN_ROW = {'CUT', 'SPLIT', 'HIDE', 'CMOVE', 'CPATH', 'SMOVE'}
 # viewport tools that draw on / pick a mesh under the mouse: these get the row in their panel
 PICKING = {'SDRAW', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER',
            'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'DETAIL', 'DETAIL2', 'DETAIL3', 'SCREW', 'WRINKLE',

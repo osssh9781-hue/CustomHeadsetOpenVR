@@ -1637,12 +1637,16 @@ def object_under_mouse(context, event):
     return bpy.data.objects.get(ob.name)
 
 
+SELECT_TOOL = 'builtin.select_box'      # 0.24.76 Select is Blender's Select Box (was the Move tool with its gizmo)
+
+
 class MCH_OT_select_move(bpy.types.Operator):
     """Replaces the removed Alt+click mode switch."""
     bl_idname = 'mch.select_move'
     bl_label = 'Select / Move'
-    bl_description = ('Blender selection + Move gizmo (click / Shift+click / box select, drag the gizmo). '
-                      'A running Cut / Split stroke is cancelled safely; pick Cut / Split again to start fresh')
+    bl_description = ('Blender selection with the Select Box tool (click / Shift+click / drag a box; G / R / S move, '
+                      'turn, scale). A running Cut / Split stroke is cancelled safely; pick Cut / Split again to start '
+                      'fresh')
     bl_options = {'REGISTER'}
 
     @classmethod
@@ -1657,7 +1661,7 @@ class MCH_OT_select_move(bpy.types.Operator):
                 pass
         try:
             # a running stroke modal sees the tool change and cancels itself (no cut)
-            set_native_tool(context, 'builtin.move')
+            set_native_tool(context, SELECT_TOOL)
         except (RuntimeError, TypeError) as ex:
             self.report({'WARNING'}, f'Move tool unavailable here: {ex}')
             return {'CANCELLED'}
@@ -1666,7 +1670,8 @@ class MCH_OT_select_move(bpy.types.Operator):
         space = context.space_data if getattr(context.space_data, 'type', '') == 'VIEW_3D' else None
         if space is not None and not space.show_gizmo:
             space.show_gizmo = True
-        self.report({'INFO'}, 'Select / Move: click or box-select objects, drag the gizmo. Pick a Mecha tool to continue')
+        self.report({'INFO'}, 'Select: click or drag a box round objects (G / R / S move, turn, scale). Pick a Mecha '
+                              'tool to continue')
         return {'FINISHED'}
 
 
@@ -1893,7 +1898,7 @@ class MCH_PT_main(bpy.types.Panel):
         if tool_id in target_rules.PICKING:      # 0.24.34 the Cut panel's Targets row, in every tool
             from . import ui_tool_settings
             ui_tool_settings.draw_targets(layout, context)
-        if tool_id in target_rules.PICKING | target_rules.OWN_ROW - {'CMOVE', 'CPATH'}:
+        if tool_id in target_rules.PICKING | target_rules.OWN_ROW - {'CMOVE', 'CPATH', 'SMOVE'}:
             from . import ui_tool_settings              # 0.24.36 Slow Line (Lazy Mouse) on / off, every drawing tool
             ui_tool_settings.draw_slow_line(layout, context)
         drawer = _drawers().get(tool_id)

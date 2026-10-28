@@ -29,6 +29,7 @@ EXTRA = {
     'CUT': ['T   targets: auto / selected'],
     'SPLIT': ['T   targets: auto / selected'],
     'CPATH': ['Tab (dragging)   Extend: brush area / whole section', 'B (dragging)   Back Mask: the far side stays put'],
+    'SMOVE': ['Drag from the part   the whole part follows the way (stretches, bends)'],
 }
 COMMON = [
     'Shift   straight 0/45/90° · square / circle',

@@ -1287,6 +1287,7 @@ class MCH_OT_concept_path(bpy.types.Operator):
     grab_point: FloatVectorProperty(size=3, options={'HIDDEN'})   # Extend / Separate Tube: in the object's space
     grab_normal: FloatVectorProperty(size=3, default=(1, 0, 0), options={'HIDDEN'})
     offsets: StringProperty(options={'HIDDEN'})
+    silhouette: BoolProperty(default=False, options={'HIDDEN', 'SKIP_SAVE'})   # 0.24.76 Silhouette Move: Whole always
 
     @classmethod
     def poll(cls, context):
@@ -1466,7 +1467,13 @@ class MCH_OT_concept_path(bpy.types.Operator):
     def _method(self, context):
         """The method of this drag (0.24.44: always the one picked - switching a drag to Stretch by itself crashed
         Blender)."""
+        if self.silhouette:
+            return 'EXTEND'
         return getattr(self, 'method_now', None) or context.scene.mch_concept.path_method
+
+    def _area(self, context):
+        """0.24.76 Brush / Whole of this drag - Silhouette Move: always Whole (the part's whole section)."""
+        return 'SECTION' if self.silhouette else context.scene.mch_concept.path_area
 
     def _section_preview(self, context):
         """Extend / Separate Tube while dragging: only the new rings (and the carried end) are rebuilt."""
@@ -1480,7 +1487,7 @@ class MCH_OT_concept_path(bpy.types.Operator):
             if normal.length < brush_world(context, self.hit) * 0.3:
                 return                                       # wait until the way it goes is clear
             self.normal_l = normal.normalized()
-            rad = local_radius(context, self.ob, self.hit) if st.path_area == 'BRUSH' else None
+            rad = local_radius(context, self.ob, self.hit) if self._area(context) == 'BRUSH' else None
             self.info = path_sweep.analyse(self.ob.data, self.local_hit, self.normal_l, rad,
                                            4 if st.shape == 'BOX' else 8, st.path_back_mask and rad is not None) or False
             if self.info:
@@ -1495,13 +1502,15 @@ class MCH_OT_concept_path(bpy.types.Operator):
             return
         path = path_sweep.path_from(self.info['centre'], offsets)
         verts, faces = path_sweep.preview_geometry(self.info, path, self.normal_l, st.path_turn, st.path_taper,
-                                                   st.path_method, st.path_hardness)
+                                                   self._method(context), st.path_hardness)
         me = self.preview_ob.data
         me.clear_geometry()
         me.from_pydata([tuple(v) for v in verts], [], faces)
         me.update()
 
     def _toggle_area(self, context):
+        if self.silhouette:                              # (Silhouette Move: always the whole section)
+            return
         st = context.scene.mch_concept
         st.path_area = 'SECTION' if st.path_area == 'BRUSH' else 'BRUSH'
         if getattr(self, 'info', None) is not None:          # read the grab again the other way
@@ -1521,6 +1530,12 @@ class MCH_OT_concept_path(bpy.types.Operator):
 
     def _header(self, context):
         st = context.scene.mch_concept
+        if self.silhouette:
+            context.area.header_text_set(
+                f'Silhouette Move  |  {len(getattr(self, "trail", [])) - 1} steps  the whole part follows  |  '
+                f'taper {st.path_taper:.2f}  hardness {st.path_hardness:.2f}  |  '
+                'drag the way it should go   Wheel: depth   [ ]: size   3D mouse / MMB: view   RMB/Esc: cancel')
+            return
         context.area.header_text_set(
             f'Path Move  |  {len(getattr(self, "trail", [])) - 1} steps  {st.shape.title()}  taper {st.path_taper:.2f}  '
             f'hardness {st.path_hardness:.2f}  |  Mirror X {"on" if st.mirror_x else "off"}  |  '
@@ -1626,9 +1641,9 @@ class MCH_OT_concept_path(bpy.types.Operator):
                 self.offsets = json.dumps([list(o) for o in offsets])
                 self.taper, self.turn, self.auto_apply = st.path_taper, st.path_turn, st.auto_apply
                 self.edge_hardness = st.path_hardness
-                self.area, self.shape = st.path_area, st.shape
+                self.area, self.shape = self._area(context), st.shape
                 self.radius, self.size = local_radius(context, self.ob, self.hit), 1.0
-                self.back_mask = st.path_back_mask
+                self.back_mask = st.path_back_mask and not self.silhouette
                 return self.execute(context)
             path, radius, axes = self._world_path(context)
             if len(path) < 2:
@@ -1692,6 +1707,26 @@ class MCH_TOOL_concept_path(bpy.types.WorkSpaceTool):
 
     def draw_settings(context, layout, tool):
         draw_path(layout, context, compact=True)
+
+
+class MCH_TOOL_silhouette_move(bpy.types.WorkSpaceTool):
+    bl_space_type = 'VIEW_3D'
+    bl_context_mode = 'OBJECT'
+    bl_idname = 'mecha.silhouette_move'
+    bl_label = 'Mecha Silhouette Move'
+    bl_description = ('0.24.76 Path Move that always pulls the whole part: cut where you grab, the whole section\n'
+                      'follows the way you go, so the part stretches and bends (its silhouette changes)')
+    bl_icon = 'ops.sculpt.cloth_filter'
+    bl_widget = None
+    bl_keymap = (
+        ('mch.concept_path', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, {'properties': [('silhouette', True)]}),
+        ('mch.concept_size', {'type': 'LEFT_BRACKET', 'value': 'PRESS'}, {'properties': [('factor', 1 / 1.15)]}),
+        ('mch.concept_size', {'type': 'RIGHT_BRACKET', 'value': 'PRESS'}, {'properties': [('factor', 1.15)]}),
+        ('mch.concept_resize', {'type': 'F', 'value': 'PRESS'}, None),
+    )
+
+    def draw_settings(context, layout, tool):
+        draw_path(layout, context, compact=True, silhouette=True)
 
 
 def knife_grid(bm, cuts):
@@ -1767,12 +1802,15 @@ def draw_knife(layout, context):
     row.operator('mch.knife_grid', icon='MOD_EDGESPLIT')
 
 
-def draw_path(layout, context, compact=False):
+def draw_path(layout, context, compact=False, silhouette=False):
     from . import path_sweep
     st = context.scene.mch_concept
-    layout.prop(st, 'path_method', expand=not compact, text='' if compact else 'Method')
-    if st.path_method == 'EXTEND':
-        layout.prop(st, 'path_area', expand=True)
+    if silhouette:                       # 0.24.76 Silhouette Move: Extend, the whole section - nothing to pick
+        layout.label(text='The whole part follows the drag', icon='MOD_SIMPLEDEFORM')
+    else:
+        layout.prop(st, 'path_method', expand=not compact, text='' if compact else 'Method')
+        if st.path_method == 'EXTEND':
+            layout.prop(st, 'path_area', expand=True)
     if not compact:
         draw_knife(layout, context)
         draw_slow_line(layout, context)
@@ -1781,7 +1819,7 @@ def draw_path(layout, context, compact=False):
         row = layout.row(align=True)
         row.operator('mch.path_merge', text='Merge: Join', icon='LINKED').mode = 'JOIN'
         row.operator('mch.path_merge', text='Merge: Union', icon='MOD_BOOLEAN').mode = 'UNION'
-    if not compact and st.path_method == 'STRETCH':
+    if not compact and st.path_method == 'STRETCH' and not silhouette:
         draw_targets(layout, context)
     elif not compact:
         layout.prop(st, 'auto_apply', text='Auto Apply (OFF = live, editable moves)')
@@ -1792,7 +1830,8 @@ def draw_path(layout, context, compact=False):
     layout.prop(st, 'path_taper', slider=True)
     row = layout.row(align=True)
     row.prop(st, 'path_turn', toggle=True)
-    row.prop(st, 'path_back_mask', toggle=True, icon='MOD_MASK')
+    if not silhouette:
+        row.prop(st, 'path_back_mask', toggle=True, icon='MOD_MASK')
     layout.prop(st, 'shape', text='' if compact else 'Shape')
     ob = context.active_object
     if ob is not None and mirror_reflections(ob):
@@ -2123,12 +2162,13 @@ def register():
     try:
         bpy.utils.register_tool(MCH_TOOL_concept_move, separator=True, group=False)
         bpy.utils.register_tool(MCH_TOOL_concept_path, after={MCH_TOOL_concept_move.bl_idname}, group=False)
+        bpy.utils.register_tool(MCH_TOOL_silhouette_move, after={MCH_TOOL_concept_path.bl_idname}, group=False)
     except (ValueError, RuntimeError):
         pass
 
 
 def unregister():
-    for tool in (MCH_TOOL_concept_path, MCH_TOOL_concept_move):
+    for tool in (MCH_TOOL_silhouette_move, MCH_TOOL_concept_path, MCH_TOOL_concept_move):
         try:
             bpy.utils.unregister_tool(tool)
         except (ValueError, RuntimeError, KeyError, AttributeError):

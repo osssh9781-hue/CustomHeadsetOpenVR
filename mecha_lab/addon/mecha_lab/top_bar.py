@@ -42,7 +42,7 @@ def groups(context, tool):
         out.append(('Shape', [_cell('ibtn', label, brush.shape == sid, ('shape', sid), icon='png:' + stem,
                                     width=ICON) for sid, label, _d, stem, _f in ts.SHAPES]))
     draw = [_cell('seg', label, on, ('mode', key)) for key, label, on in mecha_menu.draw_modes(context)]
-    drawing = tool in target_rules.PICKING | target_rules.OWN_ROW - {'CMOVE', 'CPATH'}
+    drawing = tool in target_rules.PICKING | target_rules.OWN_ROW - {'CMOVE', 'CPATH', 'SMOVE'}
     if drawing:
         draw.append(_seg('Slow Line', brush, 'stab_enable'))
         if brush.stab_enable:
