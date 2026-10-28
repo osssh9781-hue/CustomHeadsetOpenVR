@@ -9,6 +9,7 @@ Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전�
 - [ ] 그룹 안에 들어가(Enter) 부품 하나 Shift+D → 그 부품만, 같은 그룹 안에 남는지.
 - [ ] N > Mecha Lab > Groups 카드 **Origin to Geometry** → 핸들이 부품 가운데로 가고 부품은 안 움직이는지. 메카 메뉴 Groups > Group Origin도.
 - [ ] ZBrush 선반 / Mesh Tools **Quad Remesh**를 00001.fbx 같은 하드 엣지 많은 부품에 → 전보다 빨리 끝나고(1/2: 30초 → 8초 수준) 면 수가 요청의 2배를 넘지 않는지, 모양 · 하드 엣지가 전과 같은지.
+- [ ] 부품에 대칭 카드로 Mirror를 켠 뒤 Box Hide로 한쪽을 가리기 → 부품이 사라지지 않고 양쪽이 가려지는지.
 - [ ] ZBrush 탭에서 알파를 고르면 브러시 원 안에 검은 무늬가 안 보이는지(빨간 원만). Preferences > Alpha in Brush Circle을 켜면 연하게 보이는지.
 
 ## 0.24.80 Armor Shell (미검증)

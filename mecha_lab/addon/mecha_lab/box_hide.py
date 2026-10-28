@@ -151,6 +151,30 @@ def _new_volume(context, target):
     return vol
 
 
+def _manifold_in(target, mod):
+    """0.24.81 Is the geometry that reaches the Box Hide modifier one closed solid?  It was read off the base mesh:
+    with a live Mirror before it (Follow Symmetry) the mirrored mesh has a seam of doubled edges, the Manifold
+    solver got non-manifold input and gave nothing back - the whole part vanished.  The modifiers before it are
+    evaluated and looked at."""
+    idx = target.modifiers.find(mod.name)
+    before = [m for m in target.modifiers[:idx] if m.show_viewport] if idx > 0 else []
+    if not before:
+        return cg.non_manifold_edge_count(target.data) == 0
+    saved = [(m, m.show_viewport) for m in target.modifiers]
+    try:
+        for m, _show in saved:
+            m.show_viewport = m in before
+        dg = bpy.context.evaluated_depsgraph_get()
+        dg.update()
+        me = target.evaluated_get(dg).data
+        return cg.non_manifold_edge_count(me) == 0
+    except (RuntimeError, ReferenceError, AttributeError):
+        return False
+    finally:
+        for m, show in saved:
+            m.show_viewport = show
+
+
 def _ensure_modifier(target, vol, cap):
     mod = target.modifiers.get(MOD)
     g = build_group()
@@ -161,7 +185,7 @@ def _ensure_modifier(target, vol, cap):
     elif mod.node_group is not g:
         mod.node_group = g
     cg.gn_set(mod, _ident(g, 'Volume'), vol)
-    cg.gn_set(mod, _ident(g, 'Manifold'), cg.non_manifold_edge_count(target.data) == 0)
+    cg.gn_set(mod, _ident(g, 'Manifold'), _manifold_in(target, mod))
     size = max(target.dimensions) if max(target.dimensions) > 0 else 1.0
     cg.gn_set(mod, _ident(g, 'Epsilon'), size * 1e-4)
     target.update_tag()
