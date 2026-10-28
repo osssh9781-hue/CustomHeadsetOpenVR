@@ -556,14 +556,48 @@ def _gap_groups(groups, d):
                           'use a smaller Gap Width or a simpler shape.')
 
 
+_DROPPED = []                   # 0.24.83 parts whose Edge Finish / GN Edge was dropped (it broke the mesh)
+
+
+def _finish_guarded(me, fn, who):
+    """0.24.83 Run an edge finish (the legacy bevel, the GN sweep) on ``me`` and keep it only when it does not break
+    the mesh: a bevel too wide for the surface opened a plane-cut body (150 open edges) and a sphere (187), a GN
+    sweep on a crossing part tore it.  Broken: the plain cut is put back and the part is listed in ``_DROPPED``
+    (the report says so).  Returns the finish's count (0 when dropped)."""
+    nm0 = cg.non_manifold_edge_count(me)
+    backup = me.copy()
+    try:
+        n = fn()
+        if n and cg.non_manifold_edge_count(me) > nm0 + max(2, 0.001 * len(me.edges)):
+            bm = bmesh.new()
+            try:
+                bm.from_mesh(backup)
+                bm.to_mesh(me)
+            finally:
+                bm.free()
+            me.update()
+            _DROPPED.append(who)
+            return 0
+        return n
+    finally:
+        bpy.data.meshes.remove(backup)
+
+
+def _dropped_note():
+    if not _DROPPED:
+        return ''
+    names = ', '.join(dict.fromkeys(_DROPPED))
+    return f' | Edge Finish skipped on {names}: it broke the mesh there (too wide for the surface) - the plain cut kept'
+
+
 def _finish_side(cut, me, side, scale):
     mode = getattr(cut, f'side_{side}_finish')
     if mode == 'NONE':
         return 0
-    return cg.finish_new_edges(me, mode, getattr(cut, f'side_{side}_width') / scale,
+    return _finish_guarded(me, lambda: cg.finish_new_edges(me, mode, getattr(cut, f'side_{side}_width') / scale,
                                getattr(cut, f'side_{side}_segments'), 0.5,
                                clamp=getattr(cut, 'finish_clamp', True), label='Side ' + side.upper(),
-                               crisp=getattr(cut, 'finish_crisp', True))
+                               crisp=getattr(cut, 'finish_crisp', True)), 'side ' + side.upper())
 
 
 def _gn_on(cut, side=None):
@@ -575,7 +609,8 @@ def _gn_on(cut, side=None):
 
 def _gn_finish(cut, me, scale):
     from . import rim_sweep
-    return rim_sweep.finish(me, cut.gn_finish, cut.gn_width / scale, cut.gn_segments)
+    return _finish_guarded(me, lambda: rim_sweep.finish(me, cut.gn_finish, cut.gn_width / scale, cut.gn_segments),
+                           me.name.replace('_mch_sub', ''))
 
 
 def _side_report(cut, counts):
@@ -759,6 +794,7 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
 
 
 def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto_apply, baked, frozen):
+    _DROPPED.clear()
     near, far = _planes(context, targets, projector, [g[0] for g in groups])
     gap = mode == 'SPLIT' and cut.split_mode == 'GAP' and cut.gap_width > 0
     if gap and not auto_apply:
@@ -810,10 +846,10 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
                     if _gn_on(cut):
                         edge_counts.append(_gn_finish(cut, me, scale))
                     else:
-                        edge_counts.append(cg.finish_new_edges(
+                        edge_counts.append(_finish_guarded(me, lambda: cg.finish_new_edges(
                             me, cut.edge_finish, cut.finish_width / scale,
                             cut.finish_segments, cut.finish_profile, clamp=cut.finish_clamp,
-                            crisp=cut.finish_crisp))
+                            crisp=cut.finish_crisp), t.name))
                     results.append((t, me))
                 else:  # SPLIT
                     inner, _s1 = _boolean_checked(context, cut, t, cutter_t, 'INTERSECT',
@@ -895,6 +931,7 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
             suffix += f' | {took:.1f} s ({"/".join(sorted(set(solvers))).title()})'
         if crossing:
             suffix += ' | WARNING: ' + '; '.join(crossing) + ' - the cut is broken there; DynaMesh or Fix Mesh it first'
+        suffix += _dropped_note()
         return (f'{verb}: {", ".join(t.name for t, _ in results)}{"".join(sorted(set(infos)))}{suffix}' +
                 _target_report(skipped, failed) +
                 (' | live primitive baked first: ' + ', '.join(baked) if baked else '') +
@@ -994,6 +1031,7 @@ def _make_live(context, mode, targets, cutter, invert):
 @_with_finish_notes
 def perform_line(context, mode, targets, points, projector, side_xy, invert=False):
     """Open line cut / split. ``side_xy`` picks the half removed by Cut."""
+    _DROPPED.clear()
     scene = context.scene
     cut = scene.mch_cut
     auto_apply = scene.mch_settings.auto_apply if hasattr(scene, 'mch_settings') else True
@@ -1035,10 +1073,10 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
                         if cut.line_cap and _gn_on(cut):
                             line_bevel_counts.append(_gn_finish(cut, me, scale))
                         elif cut.line_cap:
-                            line_bevel_counts.append(cg.finish_new_edges(
+                            line_bevel_counts.append(_finish_guarded(me, lambda: cg.finish_new_edges(
                                 me, cut.edge_finish, cut.finish_width / scale,
                                 cut.finish_segments, cut.finish_profile, clamp=cut.finish_clamp,
-                        crisp=cut.finish_crisp))
+                                crisp=cut.finish_crisp), t.name))
                         results.append((t, me))
                     else:
                         cap = cut.split_cap and cut.line_cap
@@ -1088,7 +1126,7 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
                 else:
                     suffix = f' | {cut.edge_finish}: {sum(line_bevel_counts)} new boundary edges'
             return ('Plane split: ' if mode == 'SPLIT' else 'Plane cut: ') + \
-                ', '.join(t.name for t, _ in results) + ''.join(sorted(set(infos))) + suffix + \
+                ', '.join(t.name for t, _ in results) + ''.join(sorted(set(infos))) + suffix + _dropped_note() + \
                 _target_report(skipped, failed) + mesh_fix.auto_fix_note(fixed)
         finally:
             for me in temp:

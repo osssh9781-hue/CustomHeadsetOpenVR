@@ -252,6 +252,44 @@ src_ts = open(ts.__file__).read()
 check("the Cut / GN Edge / Ramp setting updates use refresh_later (the direct re-cut inside the update took Blender "
       "down: fuzz seed 353)", 'ramp_edit.refresh_later' in src_ts and 'ramp_edit.refresh(context' not in src_ts)
 
+# --- an edge finish that breaks the mesh is dropped, the plain cut kept ---------------------------------------------
+ce = __import__('mecha_lab.cut_engine', fromlist=['x'])
+g = cube('Guarded', 2.0, loc=(0, 12, 0))
+me = g.data
+ce._DROPPED.clear()
+
+
+def break_it():                      # a "finish" that deletes a face: the mesh opens
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.faces.ensure_lookup_table()
+    bmesh.ops.delete(bm, geom=[bm.faces[0]], context='FACES')
+    bm.to_mesh(me)
+    bm.free()
+    return 7
+
+
+n = ce._finish_guarded(me, break_it, 'Guarded')
+check('_finish_guarded: a finish that opens the mesh is undone (6 faces back, closed), counts 0, the part listed',
+      n == 0 and len(me.polygons) == 6 and non_manifold(g) == 0 and ce._DROPPED == ['Guarded'] and 'Guarded' in ce._dropped_note(),
+      (n, len(me.polygons), ce._DROPPED))
+ce._DROPPED.clear()
+
+
+def bevel_it():                      # a harmless finish: a real bevel on every edge
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bmesh.ops.bevel(bm, geom=bm.edges[:], offset=0.1, segments=1, affect='EDGES')
+    bm.to_mesh(me)
+    bm.free()
+    return 12
+
+
+n = ce._finish_guarded(me, bevel_it, 'Guarded')
+check('... a sound finish is kept as it is', n == 12 and len(me.polygons) > 6 and not ce._DROPPED, (n, len(me.polygons)))
+check('every edge finish of a Cut / Split / line cut goes through the guard',
+      open(ce.__file__).read().count('_finish_guarded(') >= 5)
+
 # --- a part that crosses itself: counted, and a broken cut on it says so --------------------------------------------
 sc = cube('Cross', 2.0, loc=(0, -8, 0))
 check('self_overlaps: a clean cube crosses itself nowhere', cg.self_overlaps(sc.data) == 0, cg.self_overlaps(sc.data))
