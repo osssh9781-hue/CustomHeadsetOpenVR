@@ -112,6 +112,19 @@ def on(context):
         return False
 
 
+EMULATE_NOTE = ('Alt+click is Blender\'s middle mouse here (Preferences > Input > Mouse > Emulate 3 Button Mouse '
+                'is on): Alt subtract (Base Mesh / Cut, ZBrush Zsub, Alt+click SubTool) cannot work - turn it off')
+
+
+def emulate_3_button(context=None):
+    """0.24.76 Blender's Emulate 3 Button Mouse: Alt+left press arrives as a middle press, Alt taken off (Alt
+    subtract / Zsub never seen; the middle-click menu opened instead)."""
+    try:
+        return bool((context or bpy.context).preferences.inputs.use_mouse_emulate_3_button)
+    except AttributeError:
+        return False
+
+
 def nav_on(context):
     """ZBrush navigation (canvas drag) in the MECHA LAB tab: Object or Sculpt Mode, ZBrush style."""
     try:
@@ -3017,13 +3030,17 @@ class RMBDrag:
     (Alt: move, let Alt go: zoom); a click still opens the menu."""
 
     PEN_SLOP = 14            # 0.24.65 px a pen may wobble with its side button pressed and still be a click
+    PEN_FAR = 60             # 0.24.76 ... and up to this many px if it lets go quickly (PEN_HOLD): pressing the side
+    PEN_HOLD = 0.25          # button moves the pen tip - a pen right-click turned the view, no menu
     MOUSE_SLOP = 6
 
     def rmb_drag_start(self, context, event):
+        import time
         self.rmb_xy = (event.mouse_x, event.mouse_y)
         self.rmb_alt = event.alt
         self.rmb_live = nav_on(context)
         self.rmb_pen = bool(getattr(event, 'is_tablet', False))
+        self.rmb_t0 = time.monotonic()
 
     def rmb_drag_check(self, context, event):
         """True when this event turned the press into a view drag (the nav took over)."""
@@ -3031,10 +3048,14 @@ class RMBDrag:
             self.rmb_live = False                    # a click: the menu as before
         if not getattr(self, 'rmb_live', False) or event.type != 'MOUSEMOVE':
             return False
+        import time
         x, y = self.rmb_xy
         pen = getattr(self, 'rmb_pen', False) or bool(getattr(event, 'is_tablet', False))
-        if abs(event.mouse_x - x) + abs(event.mouse_y - y) < (self.PEN_SLOP if pen else self.MOUSE_SLOP):
+        moved = abs(event.mouse_x - x) + abs(event.mouse_y - y)
+        if moved < (self.PEN_SLOP if pen else self.MOUSE_SLOP):
             return False
+        if pen and moved < self.PEN_FAR and time.monotonic() - getattr(self, 'rmb_t0', 0.0) < self.PEN_HOLD:
+            return False                             # (still a click if it lets go now)
         bpy.ops.mch.zb_nav('INVOKE_DEFAULT', mode='PAN' if (self.rmb_alt or event.alt) else 'ROTATE',
                            button='RIGHTMOUSE', alt_start=self.rmb_alt)
         return True

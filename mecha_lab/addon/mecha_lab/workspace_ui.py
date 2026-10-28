@@ -1865,6 +1865,14 @@ class MCH_PT_main(bpy.types.Panel):
             for name in addon_safety.FOREIGN:
                 box.label(text='  ' + name)
             box.label(text='Disable / remove it in Preferences, then restart Blender')
+        from . import zb_sculpt
+        if zb_sculpt.emulate_3_button(context):     # 0.24.76 Alt+click arrives as a middle click
+            box = layout.box()
+            box.alert = True
+            box.label(text='Emulate 3 Button Mouse is on:', icon='ERROR')
+            box.label(text='Alt+click = middle mouse, so Alt subtract /')
+            box.label(text='ZBrush Zsub cannot work. Turn it off in')
+            box.label(text='Preferences > Input > Mouse')
         if not in_ws:
             row = layout.row()
             row.scale_y = 1.5

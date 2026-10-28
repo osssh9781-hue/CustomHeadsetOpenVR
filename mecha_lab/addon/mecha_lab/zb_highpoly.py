@@ -152,6 +152,57 @@ def advice():
             'Windows: power plan High Performance; Blender on the fast GPU')
 
 
+FADE_KEY = 'mch_zb_fade'
+FADE_ALPHA = 0.5             # 0.24.76 the other objects this faded on the ZBrush screen (the SubTool stands out)
+
+
+def fade_apply(screen):
+    """0.24.76 The ZBrush screen: Blender's Fade Inactive Geometry on, so the active SubTool is the bright one (which
+    one is picked was hard to tell); what was there is kept on the screen."""
+    if screen is None or FADE_KEY in screen.keys():
+        return False
+    keep = {}
+    for idx, sp in _views(screen):
+        ov = sp.overlay
+        if hasattr(ov, 'show_fade_inactive'):
+            keep[idx] = [bool(ov.show_fade_inactive), float(getattr(ov, 'fade_inactive_alpha', FADE_ALPHA))]
+            ov.show_fade_inactive = True
+            if hasattr(ov, 'fade_inactive_alpha'):
+                ov.fade_inactive_alpha = FADE_ALPHA
+    screen[FADE_KEY] = json.dumps(keep)
+    return True
+
+
+def fade_restore(screen):
+    if screen is None or FADE_KEY not in screen.keys():
+        return False
+    try:
+        keep = json.loads(screen[FADE_KEY])
+    except (TypeError, ValueError):
+        keep = {}
+    del screen[FADE_KEY]
+    views = dict(_views(screen))
+    for idx, (on, alpha) in keep.items():
+        sp = views.get(idx)
+        if sp is None:
+            continue
+        sp.overlay.show_fade_inactive = bool(on)
+        if hasattr(sp.overlay, 'fade_inactive_alpha'):
+            sp.overlay.fade_inactive_alpha = float(alpha)
+    return True
+
+
+def fade_update(context):
+    """Fade on while the ZBrush screen is on (any High Poly setting), back as it was after."""
+    from . import zb_sculpt
+    screen = getattr(context, 'screen', None)
+    if screen is None:
+        return False
+    if zb_sculpt.on(context):
+        return fade_apply(screen)
+    return fade_restore(screen)
+
+
 def _wanted(context):
     from . import zb_sculpt
     return pref_on() and zb_sculpt.on(context)
@@ -176,7 +227,7 @@ def _tick():
         wm = bpy.context.window_manager
         for win in wm.windows:
             with bpy.context.temp_override(window=win, screen=win.screen):
-                if update(bpy.context):
+                if update(bpy.context) | fade_update(bpy.context):
                     for area in win.screen.areas:
                         area.tag_redraw()
     except Exception:          # (a closing window, a file loading: try again on the next tick)
@@ -195,5 +246,6 @@ def unregister():
     try:                                             # (the add-on going away: put every screen back)
         for screen in bpy.data.screens:
             restore(screen)
+            fade_restore(screen)
     except (AttributeError, ReferenceError, RuntimeError):
         pass

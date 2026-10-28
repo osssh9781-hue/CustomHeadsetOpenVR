@@ -8,12 +8,15 @@ Make Quad: a copy of the selected part (modifiers baked) is cleaned (close point
 consistent), every edge sharper than ``Edge Angle`` (and, if wanted, edges already marked sharp or with a
 crease) is marked sharp, then Blender's QuadriFlow rebuilds it as all quads with ``Preserve Sharp`` on, so
 the new quad lines run along those edges.  The original is kept, hidden.  Re-make with other settings or
-Apply (the copy becomes an ordinary mesh).
+Apply (the copy becomes an ordinary mesh).  0.24.76 Re-make on a copy that was changed since (a Cut, sculpting)
+works from the copy as it is now - the original would throw the change away; the changed mesh is kept (hidden)
+as the new original.
 """
 from __future__ import annotations
 
 import math
 import time
+import zlib
 
 import bmesh
 import bpy
@@ -21,6 +24,7 @@ from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty
 
 SRC_KEY = 'mch_quad_source'
 MISS_KEY = 'mch_quad_miss'
+SIG_KEY = 'mch_quad_sig'  # 0.24.76 fingerprint of the quad mesh as made (Re-make: was it changed since?)
 BEVEL = 'MCH_Quad_Bevel'
 MISS_LIMIT = 1.0          # warn when more than one quad length of the cut edges got lost (> half a quad away)
 
@@ -55,6 +59,19 @@ def _bevel_update(self, context):
 
 def is_quad(ob):
     return ob is not None and ob.type == 'MESH' and SRC_KEY in ob
+
+
+def _sig(me):
+    import numpy as np
+    co = np.empty(len(me.vertices) * 3, np.float32)
+    me.vertices.foreach_get('co', co)
+    return f'{len(me.vertices)}:{len(me.polygons)}:{zlib.crc32(co.tobytes())}'
+
+
+def edited(ob):
+    """0.24.76 The quad copy was changed after Make Quad (a Cut, sculpting ...) - or made before 0.24.76 (no
+    fingerprint: taken as changed, so nothing done on it is lost)."""
+    return is_quad(ob) and ob.get(SIG_KEY) != _sig(ob.data)
 
 
 def _size(me):
@@ -556,6 +573,7 @@ def make(context, src, st):
     for mat in src.data.materials:
         me.materials.append(mat)
     ob[SRC_KEY] = src.name
+    ob[SIG_KEY] = _sig(me)
     ob.show_wire = ob.show_all_edges = True           # 0.24.76 the new quads are shown
     set_bevel(ob, st)
     src.hide_set(True)
@@ -567,17 +585,45 @@ def make(context, src, st):
 
 
 def remake(context, ob, st):
-    src = bpy.data.objects.get(ob.get(SRC_KEY, ''))
-    if src is None:
-        raise RuntimeError('The original part is gone; cannot re-make.')
-    me, kept, miss, note = build_mesh(context, src, st)
+    keep = None
+    if edited(ob):
+        # 0.24.76 changed since Make Quad (a Cut ...): made again from the copy as it is now, its own Bevel left
+        # out (re-made from the original, the cut was gone - "Re-make does nothing"); that changed mesh is kept,
+        # hidden, as the new original (a later Re-make with other settings starts from it, the cut still there)
+        keep = ob.data
+        bev = ob.modifiers.get(BEVEL)
+        was = bev.show_viewport if bev is not None else None
+        if bev is not None:
+            bev.show_viewport = False
+        try:
+            me, kept, miss, note = build_mesh(context, ob, st)
+        finally:
+            if bev is not None:
+                bev.show_viewport = was
+        note = 'made from this mesh as changed (Cut ...), not the original' + (' | ' + note if note else '')
+    else:
+        src = bpy.data.objects.get(ob.get(SRC_KEY, ''))
+        if src is None:
+            raise RuntimeError('The original part is gone; cannot re-make.')
+        me, kept, miss, note = build_mesh(context, src, st)
     old = ob.data
-    me.name = old.name
+    name = old.name
+    if keep is not None:
+        keep.name = ob.name + '_Changed'
+    me.name = name
     for mat in old.materials:
         me.materials.append(mat)
     ob.data = me
-    if old.users == 0:
+    if keep is not None:
+        src = bpy.data.objects.new(ob.name + '_Changed', keep)
+        for coll in ob.users_collection:
+            coll.objects.link(src)
+        src.matrix_world = ob.matrix_world.copy()
+        src.hide_set(True)
+        ob[SRC_KEY] = src.name
+    elif old.users == 0:
         bpy.data.meshes.remove(old)
+    ob[SIG_KEY] = _sig(me)
     ob.show_wire = ob.show_all_edges = True
     set_bevel(ob, st)
     return ob, kept, miss, note
@@ -638,8 +684,9 @@ class MCH_OT_quad_apply(bpy.types.Operator):
                                        selected_editable_objects=[ob]):
                 bpy.ops.object.modifier_apply(modifier=BEVEL)
         del ob[SRC_KEY]
-        if MISS_KEY in ob:
-            del ob[MISS_KEY]
+        for key in (MISS_KEY, SIG_KEY):
+            if key in ob:
+                del ob[key]
         return {'FINISHED'}
 
 
@@ -697,6 +744,8 @@ def draw(layout, context):
             col.prop(bev, 'profile', slider=True)
     if is_quad(ob):
         box.label(text=f'{len(ob.data.polygons)} quads')
+        if edited(ob):
+            box.label(text='Changed since Make Quad: Re-make works from this mesh', icon='INFO')
         if ob.get(MISS_KEY, 0.0) > MISS_LIMIT:
             box.label(text='Some cut edges got lost: raise Faces or use Patch', icon='ERROR')
         row = box.row(align=True)

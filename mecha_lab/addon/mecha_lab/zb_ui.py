@@ -535,15 +535,22 @@ KEYS_TEXT = ('ZBRUSH KEYS', 'Drag canvas   rotate, Shift: snap', 'Alt + drag can
              'Tab   back to MECHA LAB')
 
 
+EMULATE_TEXT = ('! Alt   = middle mouse now (Emulate 3 Button', '! Zsub   Mouse is on): turn it off in',
+                '! Prefs   Preferences > Input > Mouse')
+
+
 def key_legend(context, k, Item, x0, y0):
     from .workspace_ui import pref
     if not pref('key_legend', True):
         return []
     lh, w = 17 * k, A_W * k
-    h = lh * len(KEYS_TEXT) + 12 * k
+    text = KEYS_TEXT
+    if zs.emulate_3_button(context):               # 0.24.76 Alt+click arrives as a middle click: say so first
+        text = (KEYS_TEXT[0],) + EMULATE_TEXT + KEYS_TEXT[1:]
+    h = lh * len(text) + 12 * k
     out = [Item('card', x0, y0, w, h)]
     y = y0 + h - 7 * k
-    for i, t in enumerate(KEYS_TEXT):
+    for i, t in enumerate(text):
         y -= lh
         if i == 0:
             out.append(Item('glabel', x0 + 12 * k, y, w - 24 * k, lh, t))

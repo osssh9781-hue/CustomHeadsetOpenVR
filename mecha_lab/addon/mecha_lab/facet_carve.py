@@ -704,7 +704,8 @@ class Plan:
 
     # -- Ramp Soft rows ---------------------------------------------------------------------------------------
     def soft_points(self):
-        """Rows across the ramp (constraint lines) and points near the walls on each row (free points)."""
+        """Rows across the ramp and lines along the walls in the rounded side band (constraint polylines), and
+        points in the band on each row where no such line runs (free points)."""
         if self.soft <= 0.0:
             return [], []
         ax, ay, nx, ny, reach = self.rg
@@ -739,8 +740,70 @@ class Plan:
                             else:
                                 hi_ = m
                         pts.append(q_at(0.5 * (lo_ + hi_)))
-        # the shallow end: a row right where the ramp reaches the surface (past it nothing more is carved)
-        return rows, pts
+        # ... and the same parts of the band all along the walls, as lines parallel to the outline (constraints):
+        # points only on the rows left long triangles from a wall point across the band - a sawtooth down the
+        # rounded sides, the middle too shallow
+        perim = sum(math.dist(lp[i - 1], lp[i]) for lp in self.loops for i in range(len(lp)))
+        sp = max(self.reach2_px, perim / 800.0)
+        keep_d = ext / 400.0
+        rl = [(ax + nx * (1.0 - r / n) * reach, ay + ny * (1.0 - r / n) * reach) for r in range(n + 1)]
+        lanes = []
+        for li, lp in enumerate(self.loops):
+            area = sum(lp[i - 1][0] * lp[i][1] - lp[i][0] * lp[i - 1][1] for i in range(len(lp)))
+            inward = 1.0 if (area > 0.0) == (li == 0) else -1.0       # left of the walk round the loop or right
+            for q in BAND:
+                want = q * self.reach2_px
+                chain = []                   # point / 'skip' (by a row: the row crosses the lane there) / None
+                for i in range(len(lp)):
+                    a, b = lp[i - 1], lp[i]
+                    ln = math.dist(a, b)
+                    if ln < 1e-9:
+                        continue
+                    ex, ey = (b[0] - a[0]) / ln, (b[1] - a[1]) / ln
+                    k = max(1, int(ln / sp))
+                    for j in range(k):
+                        t = ln * (j + 0.5) / k
+                        c = (a[0] + ex * t - ey * inward * want, a[1] + ey * t + ex * inward * want)
+                        if self.f_lin(c) <= 0.0 or abs(self.edist(c) - want) > 0.05 * want:
+                            chain.append(None)          # past the ramp / nearer another side (a corner)
+                        elif any(abs((c[0] - r0) * nx + (c[1] - r1) * ny) <= keep_d for r0, r1 in rl):
+                            chain.append('skip')
+                        else:
+                            chain.append(c)
+                if None in chain:
+                    k = chain.index(None)
+                    chain = chain[k:] + chain[:k]
+                elif chain:
+                    chain = chain + [chain[0]]          # all the way round
+                run = []
+                for c in chain + [None]:
+                    if isinstance(c, tuple) and run and math.dist(run[-1], c) > 3.0 * sp:
+                        c_, c = c, None
+                    else:
+                        c_ = None
+                    if c is None:
+                        if len(run) >= 2:
+                            lanes.append(run)
+                        else:
+                            pts.extend(run)
+                        run = [c_] if c_ is not None else []
+                    elif c != 'skip':
+                        run.append(c)
+        if lanes:
+            # the points on the rows where a lane already crosses: the crossing is that point (no slivers)
+            seg = [(r[i], r[i + 1]) for r in lanes for i in range(len(r) - 1)]
+            la = np.array([s_[0] for s_ in seg], float)
+            ld = np.array([s_[1] for s_ in seg], float) - la
+            ll = np.maximum((ld * ld).sum(1), 1e-18)
+            kept = []
+            for c in pts:
+                w = np.array(c, float) - la
+                t = np.clip((w * ld).sum(1) / ll, 0.0, 1.0)
+                r = w - ld * t[:, None]
+                if (r * r).sum(1).min() > (4.0 * keep_d) ** 2:
+                    kept.append(c)
+            pts = kept
+        return rows + lanes, pts
 
 
 def _triangulate(P, pairs):
@@ -760,13 +823,21 @@ def _triangulate(P, pairs):
         base = len(coords)
         coords += pl
         edges += [(base + i, base + i + 1) for i in range(len(pl) - 1)]
-    # free points (Ramp Soft side band, they sit on the rows) not too near a crease / the outline: no slivers
+    # free points (Ramp Soft side band, on the rows and along the walls) not too near a crease / the outline: no
+    # slivers
     keep_d = ext / 400.0
     cons = [(lp[i - 1], lp[i]) for lp in P.loops for i in range(len(lp))]
     cons += [(pl[i], pl[i + 1]) for pl in lines for i in range(len(pl) - 1)]
-    for q in free:
-        if min(_seg_d(q, a, b) for a, b in cons) > keep_d:
-            coords.append(q)
+    if free:
+        ca = np.array([c[0] for c in cons], float)
+        cd = np.array([c[1] for c in cons], float) - ca
+        cl = np.maximum((cd * cd).sum(1), 1e-18)
+        for q in free:
+            w = np.array(q, float) - ca
+            t = np.clip((w * cd).sum(1) / cl, 0.0, 1.0)
+            r = w - cd * t[:, None]
+            if (r * r).sum(1).min() > keep_d * keep_d:
+                coords.append(q)
     oV, _oE, oF, _oVo, _oEo, _oFo = delaunay_2d_cdt(coords, edges, [list(range(len(P.outer)))], 1, 1e-7 * ext, True)
     oV = [tuple(q) for q in oV]
     tris, labels = [], []

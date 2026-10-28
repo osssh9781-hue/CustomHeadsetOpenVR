@@ -955,10 +955,11 @@ class MCH_OT_mecha_mmb_gate(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        from . import bottom_bar
+        from . import bottom_bar, zb_sculpt
         from .workspace_ui import pref
         return (pref('mmb_menu', True) and context.area is not None and context.area.type == 'VIEW_3D'
-                and bottom_bar.ui_active(context) and not _OPEN[0])
+                and bottom_bar.ui_active(context) and not _OPEN[0]
+                and not zb_sculpt.emulate_3_button(context))  # 0.24.76 (that "middle press" is an Alt+click)
 
     def invoke(self, context, event):
         self.x0, self.y0 = event.mouse_x, event.mouse_y
