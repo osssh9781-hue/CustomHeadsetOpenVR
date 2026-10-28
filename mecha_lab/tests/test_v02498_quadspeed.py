@@ -83,6 +83,32 @@ if qf.available():
     check('The engine gives nothing back (seen on one part of a 45-part export): the part is kept, a message, no '
           'division by zero', 'nothing came back' in msg and len(ob.data.polygons) == n0, (msg, n0, len(ob.data.polygons)))
 
+# --- far fewer faces than asked: again, finer -------------------------------------------------------------------
+if qf.available():
+    ob = part()
+    calls = []
+    real = qf.remesh_arrays
+
+    def thin(V, T, target, **k):                      # the first try gives a seventh of what was asked (a thin-walled
+        calls.append(target)                          # sculpt in All Quads), the next the real count
+        P, Fq, ts_, ps_, st = real(V, T, target, **k)
+        if len(calls) == 1:
+            keep = max(12, len(Fq) // 7)
+            return P, Fq[:keep], ts_[:keep], ps_, st
+        return P, Fq, ts_, ps_, st
+    qf.remesh_arrays = thin
+    real_cut = qf.is_cut_mesh
+    qf.is_cut_mesh = lambda *a, **k: False               # (the dense path: the cut path has retries of its own)
+    try:
+        msg = qf.remesh_object(ob, 3000, all_quads=True)
+    finally:
+        qf.remesh_arrays, qf.is_cut_mesh = real, real_cut
+    check('The first try gives far fewer faces than asked (a seventh): a finer try follows, scaled by what was missing '
+          '(at most 4x, 8x in all), and the message says so', len(calls) == 2 and 3000 < calls[1] <= 4 * 3000
+          and 'finer as the first try gave only' in msg and len(ob.data.polygons) > 0.5 * 3000, (calls, msg[:90]))
+    check('... the limits: under half of the count asked for, up to 2 more tries, never past 8x',
+          qf.YIELD_MIN == 0.5 and qf.YIELD_TRIES == 2 and qf.YIELD_MAX_SCALE == 8.0)
+
 # --- the alpha no longer drawn in the brush circle -------------------------------------------------------------------
 props = __import__('mecha_lab.workspace_ui', fromlist=['x']).MCH_AddonPreferences.bl_rna.properties
 check('Preferences > Alpha in Brush Circle exists, off by default', 'alpha_overlay' in props

@@ -278,6 +278,9 @@ def holes(P, sides, border, tol):
     return sides[np.array(keep, bool)]
 
 
+YIELD_MIN = 0.5                 # 0.24.82 under this share of the faces asked for: again, finer (up to YIELD_TRIES)
+YIELD_TRIES = 2
+YIELD_MAX_SCALE = 8.0           # ... never more than this many times the count asked for
 CUT_TRIES = (1, 2)              # finer while the result has holes (a groove narrower than a quad); 0.24.81 4x no
                                 # more: it tripled the time and gave 4x the faces asked for, the holes close anyway
 HOLES_OK = 0.01                 # this share of the faces (at least 16 sides) left open: close them, no finer try
@@ -597,17 +600,26 @@ def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nth
     tpoly = np.empty(nt, np.int32)
     me.loop_triangles.foreach_get('polygon_index', tpoly)
     cut = is_cut_mesh(me, target)
+    asked, got_note = target, ''
     try:
-        if cut:
-            # 0.24.75 a low-poly part (Cut / Base Mesh / decimated): even triangles, its own edges as fixed lines
-            P, Fq, fpoly, pvert, st = remesh_cut(me, target, all_quads=all_quads, crease_deg=crease_deg,
-                                                 nthreads=nthreads)
-        else:
-            P, Fq, tsrc, psrc, st = remesh_arrays(V, T.reshape(-1, 3), target, all_quads=all_quads,
-                                                  crease_deg=crease_deg, nthreads=nthreads)
-            fpoly, pvert = tpoly[tsrc], psrc
+        for _try in range(1 + YIELD_TRIES):
+            if cut:
+                # 0.24.75 a low-poly part (Cut / Base Mesh / decimated): even triangles, its own edges as fixed lines
+                P, Fq, fpoly, pvert, st = remesh_cut(me, target, all_quads=all_quads, crease_deg=crease_deg,
+                                                     nthreads=nthreads)
+            else:
+                P, Fq, tsrc, psrc, st = remesh_arrays(V, T.reshape(-1, 3), target, all_quads=all_quads,
+                                                      crease_deg=crease_deg, nthreads=nthreads)
+                fpoly, pvert = tpoly[tsrc], psrc
+            # 0.24.82 far fewer faces than asked (a thin-walled sculpt: at the coarse scale All Quads works at, most
+            # walls are lost - 8,000 asked gave 1,076): again, the target scaled up by what was missing
+            if len(Fq) >= YIELD_MIN * asked or target >= asked * YIELD_MAX_SCALE or _try == YIELD_TRIES:
+                break
+            target = int(min(asked * YIELD_MAX_SCALE, target * max(1.5, min(4.0, asked / max(1, len(Fq))))))
+            got_note = f', {target / asked:.0f}x finer as the first try gave only {len(Fq):,} faces'
     except RuntimeError as ex:
         return str(ex)
+    target = asked
     if not len(Fq):                                        # 0.24.81 (seen on one part of a 45-part export: the
         return 'Quad Remesh: nothing came back - the part is kept as it is'   # mesh went out empty, then 0 / 0)
     attrs = [a for a in fd._read_attrs(me) if a[2] in {'POINT', 'FACE'}]
@@ -651,9 +663,9 @@ def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nth
     quads = int((sizes == 4).sum())
     dt = time.perf_counter() - t0
     edges = f', {len(st["hard"]):,} hard edges marked' if len(st['hard']) else ''
-    how = ''
+    how = got_note
     if cut:
-        how = ' (low-poly part: its own edges kept'
+        how += ' (low-poly part: its own edges kept'
         if st.get('tries', 1) > 1:
             how += f', {st["tries"]}x finer for a groove narrower than a quad'
         if closed and closed[0]:

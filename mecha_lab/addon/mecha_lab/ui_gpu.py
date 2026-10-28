@@ -260,6 +260,12 @@ def glyph(name, x, y, size, color=TEXT, width=2.0):
     if name == 'duplicate':
         polyline([P(.18, .30), P(.62, .30), P(.62, .74), P(.18, .74)], color, width, True)
         polyline([P(.38, .50), P(.38, .86), P(.82, .86), P(.82, .50), P(.62, .50)], color, width)
+    elif name == 'redo':                                 # 0.24.82 Redo Last: a circling arrow
+        import math as _m
+        arc = [(cx + s * .30 * _m.cos(a), cy + s * .30 * _m.sin(a)) for a in [_m.radians(t) for t in range(-60, 230, 10)]]
+        polyline(arc, color, width)
+        tip = arc[0]
+        lines([(tip, (tip[0] - s * .16, tip[1] - s * .02)), (tip, (tip[0] - s * .02, tip[1] + s * .16))], color, width)
     elif name == 'join':
         polyline([P(.12, .30), P(.46, .30), P(.46, .70), P(.12, .70)], color, width, True)
         polyline([P(.54, .30), P(.88, .30), P(.88, .70), P(.54, .70)], color, width, True)

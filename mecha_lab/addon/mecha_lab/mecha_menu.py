@@ -31,7 +31,8 @@ HOLD_DELAY = 0.25          # Ctrl + Alt held this long opens the menu in hold mo
 from . import ui_gpu as G
 
 ACTIONS = (            # (section, [(label, glyph or png stem, operator, props, needs, closes)])
-    ('Actions', [('Duplicate', 'duplicate', 'mch.duplicate', {}, 'sel', True),
+    ('Actions', [('Redo Last', 'redo', 'mch.last_redo', {}, 'redo', False),
+                 ('Duplicate', 'duplicate', 'mch.duplicate', {}, 'sel', True),
                  ('Join', 'join', 'object.join', {}, 'multi', False),
                  ('Delete', 'delete', 'object.delete', {'use_global': False}, 'sel', False),
                  ('Origin', 'origin', 'mch.object_tidy', {'action': 'ORIGIN_GEOMETRY'}, 'mesh', False),
@@ -86,6 +87,9 @@ class Item:
 def _needs_ok(context, needs):
     ob = context.active_object
     sel = list(getattr(context, 'selected_objects', []) or [])
+    if needs == 'redo':                                 # 0.24.82 a last drawn part to do again
+        from . import last_op
+        return last_op.available(context)
     if needs == 'sel':
         return bool(sel)
     if needs == 'multi':

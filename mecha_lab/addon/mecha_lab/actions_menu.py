@@ -132,6 +132,12 @@ def _live_rows(context):
     """Apply / Remove buttons for the live result under the selection (only those that fit)."""
     rows = []
     try:
+        from . import last_op                          # 0.24.82 the last drawn part, with the settings of now
+        if last_op.available(context):
+            rows.append(('mch.last_redo', 'Redo Last: ' + last_op.label(), 'FILE_REFRESH', {}))
+    except (ImportError, AttributeError, KeyError, TypeError):
+        pass
+    try:
         from . import ramp_edit
         if ramp_edit.live_target(context) is not None:
             rows += [('mch.ramp_apply', 'Apply Ramp', 'CHECKMARK', {}),

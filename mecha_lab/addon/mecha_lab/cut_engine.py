@@ -1988,6 +1988,14 @@ class StrokeLogic:
     def _run(self, context, fn, keep_on_shape_error=False):
         from . import safety_save              # 0.24.58 a recovery copy before the heavy step (when one is due)
         safety_save.checkpoint(f'Mecha {self.mode}')
+        from . import last_op                  # 0.24.82 Redo Last: the stroke is kept (taken before it runs)
+        rec = None
+        try:
+            if getattr(fn, '__name__', '') == '_execute_closed':
+                rec = last_op.capture(self, context)
+        except Exception:
+            rec = None
+        before = set(bpy.data.objects.keys()) if rec is not None else None
         try:
             msg = fn(context)
         except cg.CutError as ex:
@@ -2009,6 +2017,11 @@ class StrokeLogic:
                 from . import symmetry
                 msg = (msg or '') + symmetry.follow(context, context.active_object)
             except (ImportError, AttributeError, RuntimeError, ReferenceError):
+                pass
+        if rec is not None:
+            try:
+                last_op.remember(rec, [n for n in bpy.data.objects.keys() if n not in before])
+            except Exception:
                 pass
         self.report({'INFO'}, msg)
         self._cleanup(context)

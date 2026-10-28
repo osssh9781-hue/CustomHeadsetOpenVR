@@ -1,8 +1,15 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.81 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.82 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## 0.24.82 Redo Last · 빌드 도장 · 내보내기 (미검증)
+- [ ] 설치 후 Preferences > Add-ons > Mecha Lab 맨 위에 "Mecha Lab 0.24.82 build <zip 이름의 날짜-시각>"이 보이는지.
+- [ ] Armor Plate를 라쏘로 그리고 → 위 막대 / HUD에서 Face Size 등을 바꾼 뒤 Actions 카드(또는 메카 메뉴 Actions > Redo Last, N 패널 "Last: Armor Plate")의 **Redo with current settings** → 같은 자리에 새 설정으로 다시 그려지고 이전 판은 사라지는지. Ctrl+Z 한 번에 되돌아오는지. Base Mesh · Plate Detail · Belt도.
+- [ ] Cut 뒤에는 Redo Last 버튼이 안 나오는지(Cut은 슬라이더로 다시 잘림).
+- [ ] 빈 오브젝트가 있는 파일 Export → 빈 오브젝트가 파일에 안 들어가는지. 작은 베벨 상자를 Quad Mesh로 내보내면 면 수가 수천이 아니라 수백인지.
+- [ ] ZBrush 선반 / Mesh Tools Quad Remesh All Quads를 얇은 벽 많은 부품에 8천으로 → 메시지에 "finer as the first try gave only …"가 붙고 면 수가 요청의 절반 이상인지.
 
 ## 0.24.81 그룹 복사 · 원점 · Quad Remesh · 알파 커서 (미검증)
 > 0.24.81부터 리눅스 가상 화면의 **진짜 Blender 5.2.3 창**에서 자동 테스트(zip 설치 · MECHA LAB 열기 · 위 막대 그려짐 · 진짜 마우스 Cut 라쏘 · Tab ZBrush 전환)가 돕니다(`dist/gui_smoke_0.24.81_*.png`). Windows 창에서 다른 점이 보이면 그게 바로 다음 고칠 것입니다.
