@@ -221,6 +221,44 @@ def step_cut():
         check('4. a real-mouse lasso with the Cut tool cuts the cube (its points move or its faces change)',
               extent(cube) != e0 or len(cube.data.polygons) != n0,
               (n0, len(cube.data.polygons), e0[:2], extent(cube)[:2], [m.name for m in cube.modifiers]))
+        # 0.24.83 Ctrl+Z after the cut in the real window (the headless fuzz dies on undo: a bpy-without-a-window
+        # artefact - here it must put the cube back), then Ctrl+Shift+Z
+        xdo('key', 'ctrl+z')
+        yield 1.5
+        redraw()
+        cube = bpy.data.objects.get('Cube.001') or bpy.data.objects.get('Cube')
+        back = cube is not None and extent(cube) == e0
+        xdo('key', 'ctrl+shift+z')
+        yield 1.5
+        redraw()
+        cube = bpy.data.objects.get('Cube.001') or bpy.data.objects.get('Cube')
+        check('4. Ctrl+Z puts the cube back after the cut, Ctrl+Shift+Z cuts it again (no crash)',
+              back and cube is not None and extent(cube) != e0, (back, cube and extent(cube)[:2]))
+        # Box Hide + Ctrl+Z (the headless fuzz segfaults on exactly this: the real window must not)
+        try:
+            with bpy.context.temp_override(window=win, area=area, region=region):
+                mod('workspace_ui').activate_mecha_tool(bpy.context, 'HIDE')
+        except Exception as ex:
+            print('activate HIDE:', ex)
+        yield 0.5
+        n_mods = len(cube.modifiers) if cube else -1
+        for x, y in pts + [pts[0]]:
+            xdo('mousemove', *to_x(win, x, y))
+            yield 0.3
+            xdo('click', 1)
+            yield 0.4
+        xdo('mousemove', *to_x(win, x0, y0))
+        yield 2.0
+        redraw()
+        cube = bpy.data.objects.get('Cube.001') or bpy.data.objects.get('Cube')
+        hid = cube is not None and any(m.name == 'MCH_BoxHide' for m in cube.modifiers)
+        xdo('key', 'ctrl+z')
+        yield 2.0
+        redraw()
+        cube = bpy.data.objects.get('Cube.001') or bpy.data.objects.get('Cube')
+        check('4. Box Hide by real mouse, then Ctrl+Z: the hiding gone, Blender alive',
+              hid and cube is not None and not any(m.name == 'MCH_BoxHide' for m in cube.modifiers),
+              (hid, cube and [m.name for m in cube.modifiers]))
     else:
         check('4. xdotool for real mouse events', False, 'not installed - the cut step was skipped')
     shot('02_after_cut.png')

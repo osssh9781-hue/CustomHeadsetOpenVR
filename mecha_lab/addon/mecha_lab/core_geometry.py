@@ -836,6 +836,10 @@ def ensure_real_mesh(context, ob):
     return True
 
 
+NEEDLE = 2e-4                   # 0.24.83 tidy_result: a face with area / perimeter^2 under this is a needle (a square
+#                                 is 1/16 = 0.0625, a 1:100 strip 0.0025, a 1:1000 strip 0.00025)
+
+
 def mesh_size(me):
     """Diagonal of the mesh's own bounds (0 for no points)."""
     import numpy as np
@@ -852,7 +856,7 @@ def tidy_result(me, ref_size=None, shards=True, slivers=True):
     dissolved, folded faces (two faces on the same points, back to back - a paper-thin fin) removed, loose points
     gone, and (``shards``) separate pieces of under 6 faces that are tiny next to the part (under 2 % of
     ``ref_size``) dropped.  Returns a dict of counts (all zero = nothing was wrong)."""
-    out = dict(welded=0, degenerate=0, folds=0, fins=0, loose=0, shards=0, flipped=0)
+    out = dict(welded=0, degenerate=0, needles=0, folds=0, fins=0, loose=0, shards=0, flipped=0)
     if me is None or not len(me.polygons):
         return out
     size = ref_size or mesh_size(me)
@@ -869,6 +873,17 @@ def tidy_result(me, ref_size=None, shards=True, slivers=True):
         degen = max(eps, min(1e-3 * size, 0.05 * med)) if slivers else eps   # (edges far shorter than the
         bmesh.ops.dissolve_degenerate(bm, edges=bm.edges[:], dist=degen)         # part's own: slivers)
         out['degenerate'] = nf - len(bm.faces)
+        if slivers and len(bm.faces) > 1:
+            # needles: faces far thinner than long (area / perimeter^2 under NEEDLE) - the boolean's slivers along a
+            # cut on a dense part - dissolved into their neighbours
+            needles = []
+            for f in bm.faces:
+                per = sum(e.calc_length() for e in f.edges)
+                if per > 0 and f.calc_area() / (per * per) < NEEDLE:
+                    needles.append(f)
+            if needles and len(needles) < len(bm.faces) // 2:
+                bmesh.ops.dissolve_faces(bm, faces=needles, use_verts=False)
+                out['needles'] = len(needles)
         seen = {}
         folds = []
         for f in bm.faces:

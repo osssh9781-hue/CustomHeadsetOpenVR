@@ -562,6 +562,9 @@ def apply_live(context, ob, st=None):
             if ob.modifiers.get(name) is not None:
                 bpy.ops.object.modifier_apply(modifier=name)
                 n += 1
+    if n:
+        from . import core_geometry as cg                  # 0.24.83 a doubled corner the bevel left: dissolved
+        cg.tidy_result(ob.data, shards=False, slivers=False)
     if st is None or st.he_client:
         plain_mesh(context, ob)
     drop_source(ob)

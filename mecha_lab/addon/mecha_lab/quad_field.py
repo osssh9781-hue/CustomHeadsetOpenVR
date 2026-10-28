@@ -281,7 +281,7 @@ def holes(P, sides, border, tol):
 VOLUME_KEEP = 0.5               # 0.24.83 a closed part keeps at least this share of its volume (else finer / kept)
 VOLUME_TRIES = 2
 OPEN_OK = 0.03                  # ... and comes back closed, give or take this share of open sides (thin walls of a
-OPEN_OK_MIN = 8                 # sculpt; at least this many) - more than that: finer / kept as it is
+OPEN_OK_MIN = 2                 # sculpt; at least this many) - more than that: finer / kept as it is
 QUAD_MAX_FACES = 400000
 _st_tries = {}
 YIELD_MIN = 0.5                 # 0.24.82 under this share of the faces asked for: All Quads -> Mostly at the same
@@ -700,6 +700,11 @@ def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nth
     # at last the part is kept as it is
     vol0, vol1 = _volume(me), _volume(new)
     open_new, multi_new = _open_multi(new)
+    if (open_new or multi_new) and cg.non_manifold_edge_count(me) == 0:
+        from . import mesh_fix                             # (a few sides open on a closed part: shut first)
+        mesh_fix.fix_mesh(new, fill='SMALL')
+        open_new, multi_new = _open_multi(new)
+        vol1 = _volume(new)
     n_new = len(new.polygons)
     closed_in = cg.non_manifold_edge_count(me) == 0
     if closed_in and (vol0 > 0 and (vol1 < VOLUME_KEEP * vol0 or vol1 > vol0 / VOLUME_KEEP)
