@@ -608,6 +608,8 @@ def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nth
             fpoly, pvert = tpoly[tsrc], psrc
     except RuntimeError as ex:
         return str(ex)
+    if not len(Fq):                                        # 0.24.81 (seen on one part of a 45-part export: the
+        return 'Quad Remesh: nothing came back - the part is kept as it is'   # mesh went out empty, then 0 / 0)
     attrs = [a for a in fd._read_attrs(me) if a[2] in {'POINT', 'FACE'}]
     sizes = np.where(Fq[:, 3] < 0, 3, 4)
     loops = Fq[Fq >= 0]                                    # row by row: each face's corners in order
@@ -638,6 +640,9 @@ def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nth
     except Exception:
         bpy.data.meshes.remove(new)                        # the SubTool keeps its mesh
         raise
+    if not len(new.polygons):
+        bpy.data.meshes.remove(new)
+        return 'Quad Remesh: nothing came back - the part is kept as it is'
     fd.swap_mesh(ob, new)
     ob.show_wire = ob.show_all_edges = True               # 0.24.76 the new quads are shown
     if len(st['hard']):

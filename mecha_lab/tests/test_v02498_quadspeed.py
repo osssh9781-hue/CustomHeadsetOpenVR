@@ -68,6 +68,21 @@ if qf.available():
 else:
     check('(the C engine is not available here: the remesh runs were skipped)', True)
 
+# --- an empty result never replaces the part --------------------------------------------------------------------
+if qf.available():
+    ob = part()
+    n0 = len(ob.data.polygons)
+    real = qf.remesh_arrays
+    import numpy as np
+    qf.remesh_arrays = lambda *a, **k: (np.zeros((0, 3)), np.zeros((0, 4), np.int32), np.zeros(0, np.int32),
+                                        np.zeros(0, np.int32), {'hard': np.zeros((0, 2), np.int32)})
+    try:
+        msg = qf.remesh_object(ob, 20000)
+    finally:
+        qf.remesh_arrays = real
+    check('The engine gives nothing back (seen on one part of a 45-part export): the part is kept, a message, no '
+          'division by zero', 'nothing came back' in msg and len(ob.data.polygons) == n0, (msg, n0, len(ob.data.polygons)))
+
 # --- the alpha no longer drawn in the brush circle -------------------------------------------------------------------
 props = __import__('mecha_lab.workspace_ui', fromlist=['x']).MCH_AddonPreferences.bl_rna.properties
 check('Preferences > Alpha in Brush Circle exists, off by default', 'alpha_overlay' in props
