@@ -1,6 +1,6 @@
 # Test Report — Mecha Lab 0.24.79
 
-## 0.24.79 결과: <<SUITE79_REPORT>>
+## 0.24.79 결과: Blender 5.2.3 bpy 전체 182개 파일 PASS 4,847 / FAIL 0(`tests/test_log_bpy523_v02479.txt`, FAILED FILES: none; 로그 안 Traceback 18개는 test_registration_recovery가 일부러 내는 것; zip 설치 test_zip_install 포함). 새 테스트: test_v02491_nav 21. 고친 기존 테스트: test_v02492, test_v02490_lassobar, test_v02494. 실제 마우스 드래그 · 화면 회전 · 마우스 밑 SubTool 클릭은 미검증.
 
 ## 0.24.78 결과: Blender 5.2.3 bpy 전체 181개 파일 PASS 4,826 / FAIL 0(`tests/test_log_bpy523_v02478.txt`, FAILED FILES: none; 로그 안 Traceback 18개는 test_registration_recovery가 일부러 내는 것; zip 설치 test_zip_install 포함). 새 테스트: test_v02490_lassobar 38. 고친 기존 테스트: test_v02489(오른쪽 패널 Lasso 칸은 Lasso 모양으로 확인), test_v02494(버전). 실제 블렌더 화면(GUI)의 위 막대 · 블렌더 자체 도구 목록으로 바꿨을 때의 0.2초 감시는 미검증.
 

@@ -10,7 +10,7 @@
 - **ZBrush 이동일 때 선택 도구**:
   - MECHA LAB: 빈 곳 클릭 = 전체 선택 해제(전에는 아무것도 안 됨), 드래그 = 회전(예전처럼), Ctrl + 드래그 = 박스 선택, Shift + 빈 곳 클릭은 선택 유지.
   - ZBrush 화면 선택 모드(Q): 다른 SubTool을 **클릭하면 그것으로 바뀜**(Alt + 클릭도). 전에는 선택 모드에서 Alt + 클릭 검사가 "브러시가 아니면 블렌더 도구로 넘김" 뒤에 있어서 아무것도 안 됐음. 선택 모드에서 빈 곳 드래그 = 회전(NAV ZBrush).
-- 테스트: <<SUITE79>>. 새 test_v02491_nav 21: 카드 NAV 줄(STYLE 밑 · 카드 안 · ZBrush 켜짐), NAV Blender(설정에 저장 · 빈 곳 회전 꺼짐 · MECHA LAB 선택 도구가 클릭을 받음 · 선반 버튼은 됨 · 오른쪽 드래그 회전 꺼짐 · 키 안내 · ZBrush 마우스 코드), STYLE Blender에는 NAV 줄 없음, ZBrush 이동의 빈 곳 클릭 = 선택 해제(Shift는 유지) · 드래그 = 회전, 선택 모드 SubTool 클릭(순서 확인), Path / Silhouette / Concept Move 위 막대 내용 · Real Size · 오른쪽 패널이 반복 안 함(3개 도구). 고친 기존 테스트: test_v02492(코너 카드 검사에서 NAV 줄 버튼 제외), test_v02490_lassobar(컨셉 무브는 이제 BRUSH 묶음), test_v02494(버전). 실제 마우스 드래그 · 화면 회전 · 마우스 밑 SubTool 클릭은 창 없는 bpy라 미검증. ZIP sha256 `<<SHA79>>`.
+- 테스트: Blender 5.2.3 bpy 전체 182개 파일 PASS 4,847 / FAIL 0(`tests/test_log_bpy523_v02479.txt`, FAILED FILES: none; 로그 안 Traceback 18개는 test_registration_recovery가 일부러 내는 것; zip 설치 test_zip_install 포함). 새 test_v02491_nav 21: 카드 NAV 줄(STYLE 밑 · 카드 안 · ZBrush 켜짐), NAV Blender(설정에 저장 · 빈 곳 회전 꺼짐 · MECHA LAB 선택 도구가 클릭을 받음 · 선반 버튼은 됨 · 오른쪽 드래그 회전 꺼짐 · 키 안내 · ZBrush 마우스 코드), STYLE Blender에는 NAV 줄 없음, ZBrush 이동의 빈 곳 클릭 = 선택 해제(Shift는 유지) · 드래그 = 회전, 선택 모드 SubTool 클릭(순서 확인), Path / Silhouette / Concept Move 위 막대 내용 · Real Size · 오른쪽 패널이 반복 안 함(3개 도구). 고친 기존 테스트: test_v02492(코너 카드 검사에서 NAV 줄 버튼 제외), test_v02490_lassobar(컨셉 무브는 이제 BRUSH 묶음), test_v02494(버전). 실제 마우스 드래그 · 화면 회전 · 마우스 밑 SubTool 클릭은 창 없는 bpy라 미검증. ZIP sha256 `3e799defb1f97b0ac7223e3819a7c3167ecfc23f79868e0d3a32d4beda5b4399`.
 
 ## 0.24.78 — 라쏘 설정은 모든 도구의 위 막대 같은 자리에, 잘린 엣지 베벨도 위 막대로, 라쏘 설정 도구별 기억, 컨셉 무브 계열 위 막대 정리 (2026-10-28)
 
