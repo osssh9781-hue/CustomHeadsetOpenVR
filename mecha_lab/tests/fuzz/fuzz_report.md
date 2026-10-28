@@ -1,5 +1,15 @@
 # Fuzz reports (newest first)
 
+## 0.24.77 run: 40 scenarios x 12 steps (seeds 321..360)
+
+{'OK': 40} in 128 s, largest Blender process 6147 MB
+
+### Python errors inside steps (Blender lived)
+
+- 8 x undo: Operator bpy.ops.ed.undo.poll() failed, context is incorrect
+- 5 x redo: Operator bpy.ops.ed.redo.poll() failed, context is incorrect
+- 2 x highpoly: Operator bpy.ops.mch.make_highpoly.poll() failed, context is incorrect
+
 ## 0.24.76 run: 40 scenarios x 12 steps (seeds 281..320)
 
 {'OK': 38, 'CRASH': 1, 'HANG': 1} in 637 s, largest Blender process 7823 MB
