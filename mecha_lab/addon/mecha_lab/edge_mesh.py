@@ -279,33 +279,47 @@ def match_round(me, bvh):
     middle value of each edge and the edges before and after it on the same line (a line keeps one width).
     Written to the ROUND edge attribute (0 = sharp)."""
     hard = he.hard_flags(me)
-    f1, f2, cnt = he._edge_faces(me)
+    _f1, _f2, cnt = he._edge_faces(me)
     ne = len(me.edges)
     out = np.zeros(ne, np.float32)
     sel = np.flatnonzero(hard & (cnt == 2))
     if len(sel) and bvh is not None:
         nrm = np.empty(len(me.polygons) * 3)
         me.polygons.foreach_get('normal', nrm)
-        cen = np.empty(len(me.polygons) * 3)
-        me.polygons.foreach_get('center', cen)
         co = np.empty(len(me.vertices) * 3)
         me.vertices.foreach_get('co', co)
         ev = np.empty(ne * 2, np.int64)
         me.edges.foreach_get('vertices', ev)
-        nrm, cen, co, ev = nrm.reshape(-1, 3), cen.reshape(-1, 3), co.reshape(-1, 3), ev.reshape(-1, 2)
+        nrm, co, ev = nrm.reshape(-1, 3), co.reshape(-1, 3), ev.reshape(-1, 2)
+        le = np.empty(len(me.loops), np.int64)
+        me.loops.foreach_get('edge_index', le)
+        lv = np.empty(len(me.loops), np.int64)
+        me.loops.foreach_get('vertex_index', lv)
+        ls = np.empty(len(me.polygons), np.int64)
+        me.polygons.foreach_get('loop_start', ls)
+        lt = np.empty(len(me.polygons), np.int64)
+        me.polygons.foreach_get('loop_total', lt)
+        lp = np.repeat(np.arange(len(ls)), lt)
+        order = np.argsort(le, kind='stable')
+        start = np.searchsorted(le[order], sel)
+        l1, l2 = order[start], order[start + 1]
         a, b = co[ev[sel, 0]], co[ev[sel, 1]]
         span = np.linalg.norm(b - a, axis=1)
         e = (b - a) / np.maximum(span, 1e-30)[:, None]
 
-        def into(f):                                     # (unit direction into face f, across the edge; how deep)
-            n = nrm[f]
-            u = np.cross(n, e)
+        def into(lo):                                    # (unit direction into the face across the edge - from its
+            f = lp[lo]                                   # loop's turning: inside is left of the edge as the face runs
+            n = nrm[f]                                   # - and how far the face reaches that way; a big or bent
+            u = np.cross(n, e)                           # face's centre can lie outside it)
+            u[lv[lo] != ev[sel, 0]] *= -1.0
             u /= np.maximum(np.linalg.norm(u, axis=1), 1e-30)[:, None]
-            depth = ((cen[f] - a) * u).sum(1)
-            u[depth < 0] *= -1.0
-            return u, np.abs(depth)
-        u1, s1 = into(f1[sel])
-        u2, s2 = into(f2[sel])
+            reach = np.zeros(len(f))
+            for k, (fk, uk, ak) in enumerate(zip(f.tolist(), u, a)):
+                pts = co[lv[ls[fk]:ls[fk] + lt[fk]]]
+                reach[k] = float(((pts - ak) @ uk).max())
+            return f, u, 0.5 * np.maximum(reach, 0.0)
+        f1, u1, s1 = into(l1)
+        f2, u2, s2 = into(l2)
 
         def surface(pts, fallback):                      # (nearest original point + its normal, facing like ours)
             P = np.array(pts)
@@ -322,15 +336,16 @@ def match_round(me, bvh):
         ts = []
         for k in (0.25, 0.5, 0.75):
             m = a + k * (b - a)
-            p1 = n1 = p2 = n2 = None
-            for reach in (1.0, 2.0, 3.0):                # (as far in as the original is still that face's flat:
-                q1, m1 = surface(m + u1 * np.minimum(reach * s1, cap)[:, None], nrm[f1[sel]])   # away from the
-                q2, m2 = surface(m + u2 * np.minimum(reach * s2, cap)[:, None], nrm[f2[sel]])   # rounding)
-                if p1 is None:
-                    p1, n1, p2, n2 = q1, m1, q2, m2
-                    continue
-                ok = ((m1 * nrm[f1[sel]]).sum(1) > flat) & ((m2 * nrm[f2[sel]]).sum(1) > flat)
-                p1[ok], n1[ok], p2[ok], n2[ok] = q1[ok], m1[ok], q2[ok], m2[ok]
+            p1, n1, p2, n2 = m.copy(), nrm[f1].copy(), m.copy(), nrm[f2].copy()
+            used = np.zeros(len(sel))
+            read = np.zeros(len(sel), bool)
+            for reach in (0.25, 0.5, 1.0, 1.5):          # (as far in as the original is still that face's flat:
+                r1, r2 = np.minimum(reach * s1, cap), np.minimum(reach * s2, cap)     # away from the rounding;
+                q1, m1 = surface(m + u1 * r1[:, None], nrm[f1])                       # a face that isn't a
+                q2, m2 = surface(m + u2 * r2[:, None], nrm[f2])                       # rectangle can end
+                ok = ((m1 * nrm[f1]).sum(1) > flat) & ((m2 * nrm[f2]).sum(1) > flat)  # before its reach)
+                p1[ok], n1[ok], p2[ok], n2[ok], used[ok] = q1[ok], m1[ok], q2[ok], m2[ok], np.minimum(r1, r2)[ok]
+                read |= ok
             c12 = np.clip((n1 * n2).sum(1), -1.0, 1.0)
             det = np.maximum(1.0 - c12 ** 2, 1e-9)
             r1, r2 = (n1 * (p1 - m)).sum(1), (n2 * (p2 - m)).sum(1)
@@ -342,7 +357,8 @@ def match_round(me, bvh):
                 hit = bvh.find_nearest(p)
                 d[i] = hit[3] if hit[0] is not None else 0.0
             phi = np.maximum(np.arccos(c12), MATCH_TURN)
-            ts.append(d / np.tan(phi / 4.0))
+            ts.append(np.where(read, np.minimum(d / np.tan(phi / 4.0), used), 0.0))   # (wider than where its
+                                         # flats were read is not a rounding; flats not found: read as sharp)
         t = np.median(np.stack(ts), axis=0)
         # one width per line: the middle of each edge and its neighbours on the same line
         H = ev[sel]
