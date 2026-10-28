@@ -1871,8 +1871,9 @@ class MCH_PT_main(bpy.types.Panel):
         if not hasattr(scene, 'mch_settings'):
             return
         in_ws = ts.is_mecha_workspace(context.workspace)
-        from . import last_op                               # 0.24.82 the last drawn part, with the settings of now
+        from . import last_op, live_stack                   # 0.24.82 the last drawn part / the live steps on it
         last_op.draw(layout, context)
+        live_stack.draw(layout, context)
         from . import addon_safety
         if addon_safety.FOREIGN:
             box = layout.box()

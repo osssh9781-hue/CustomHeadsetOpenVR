@@ -89,10 +89,10 @@ if qf.available():
     calls = []
     real = qf.remesh_arrays
 
-    def thin(V, T, target, **k):                      # the first try gives a seventh of what was asked (a thin-walled
-        calls.append(target)                          # sculpt in All Quads), the next the real count
+    def thin(V, T, target, **k):                      # All Quads gives a seventh of what was asked (a thin-walled
+        calls.append((target, bool(k.get('all_quads'))))   # sculpt); Mostly at the same count the real count
         P, Fq, ts_, ps_, st = real(V, T, target, **k)
-        if len(calls) == 1:
+        if k.get('all_quads'):
             keep = max(12, len(Fq) // 7)
             return P, Fq[:keep], ts_[:keep], ps_, st
         return P, Fq, ts_, ps_, st
@@ -103,11 +103,12 @@ if qf.available():
         msg = qf.remesh_object(ob, 3000, all_quads=True)
     finally:
         qf.remesh_arrays, qf.is_cut_mesh = real, real_cut
-    check('The first try gives far fewer faces than asked (a seventh): a finer try follows, scaled by what was missing '
-          '(at most 4x, 8x in all), and the message says so', len(calls) == 2 and 3000 < calls[1] <= 4 * 3000
-          and 'finer as the first try gave only' in msg and len(ob.data.polygons) > 0.5 * 3000, (calls, msg[:90]))
-    check('... the limits: under half of the count asked for, up to 2 more tries, never past 8x',
-          qf.YIELD_MIN == 0.5 and qf.YIELD_TRIES == 2 and qf.YIELD_MAX_SCALE == 8.0)
+    check('All Quads keeps far fewer faces than asked (a seventh): Mostly Quads at the same count instead (the nearer '
+          'result), and the message says so', calls == [(3000, True), (3000, False)]
+          and 'kept only' in msg and 'Mostly Quads at the same count' in msg and len(ob.data.polygons) > 4 * 125,
+          (calls, msg[:120]))
+    check('... the rule: under half of the count asked for, no scaling (a thin-walled part is a cliff: 2x gave the '
+          'same share, 4x gave 8 times the count)', qf.YIELD_MIN == 0.5 and qf.YIELD_FALLBACK is True)
 
 # --- the alpha no longer drawn in the brush circle -------------------------------------------------------------------
 props = __import__('mecha_lab.workspace_ui', fromlist=['x']).MCH_AddonPreferences.bl_rna.properties

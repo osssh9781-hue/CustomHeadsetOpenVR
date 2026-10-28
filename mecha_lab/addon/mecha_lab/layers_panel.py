@@ -7,6 +7,7 @@ Export and the ZBrush Bridge under them - drawn in the Mecha look like the side 
           [ ] Shoulder_L                 (eye)
           [ ] Forearm_L                  (eye)
       [ ] Torso                          (eye)
+    v LIVE STACK    0.24.82 the live steps (modifiers) on the active part: eye, up / down, Apply, remove, Apply All
     > EXPORT        OBJ | FBX, Selected | Visible, Apply Modifiers, ZBrush-safe Faces, Scale, [Export...]
     > ZBRUSH BRIDGE [Send to ZBrush] [Import Back] [Open Folder], the folder, what was sent
     > UI SIZE       (Viewport Panels) (RMB Menu) (Tool Menu) (Panel Opacity) [Small] [Normal] [Large] [Huge]
@@ -263,13 +264,14 @@ def content(context, x, width, k):
     y -= GAP * k
     b = side_panel.Builder(TOOL, x, width, k)
     b.y = y
-    for drawer in (draw_export, draw_bridge, draw_sizes):     # folded at first (the list gets the room)
+    from . import live_stack                                  # 0.24.82 the live steps on the active part
+    for drawer in (live_stack.draw, draw_export, draw_bridge, draw_sizes):   # folded at first (the list gets the room)
         node = pc.capture(drawer, context)
         if node.opts.get('error'):
             continue
         for box in node.children:
             if box.kind == 'box':
-                b.section(box, x, width, start_folded=True)
+                b.section(box, x, width, start_folded=drawer is not live_stack.draw)
             else:
                 b.node(box, x, width)
     out += b.out

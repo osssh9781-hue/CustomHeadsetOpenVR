@@ -278,9 +278,8 @@ def holes(P, sides, border, tol):
     return sides[np.array(keep, bool)]
 
 
-YIELD_MIN = 0.5                 # 0.24.82 under this share of the faces asked for: again, finer (up to YIELD_TRIES)
-YIELD_TRIES = 2
-YIELD_MAX_SCALE = 8.0           # ... never more than this many times the count asked for
+YIELD_MIN = 0.5                 # 0.24.82 under this share of the faces asked for: All Quads -> Mostly at the same
+YIELD_FALLBACK = True           # count / Mostly -> 2x finer, once; the nearer result is kept (see _remesh_object)
 CUT_TRIES = (1, 2)              # finer while the result has holes (a groove narrower than a quad); 0.24.81 4x no
                                 # more: it tripled the time and gave 4x the faces asked for, the holes close anyway
 HOLES_OK = 0.01                 # this share of the faces (at least 16 sides) left open: close them, no finer try
@@ -601,25 +600,35 @@ def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nth
     me.loop_triangles.foreach_get('polygon_index', tpoly)
     cut = is_cut_mesh(me, target)
     asked, got_note = target, ''
+
+    def one(target, all_q):
+        if cut:
+            # 0.24.75 a low-poly part (Cut / Base Mesh / decimated): even triangles, its own edges as fixed lines
+            P, Fq, fpoly, pvert, st = remesh_cut(me, target, all_quads=all_q, crease_deg=crease_deg,
+                                                 nthreads=nthreads)
+        else:
+            P, Fq, tsrc, psrc, st = remesh_arrays(V, T.reshape(-1, 3), target, all_quads=all_q,
+                                                  crease_deg=crease_deg, nthreads=nthreads)
+            fpoly, pvert = tpoly[tsrc], psrc
+        return P, Fq, fpoly, pvert, st
     try:
-        for _try in range(1 + YIELD_TRIES):
-            if cut:
-                # 0.24.75 a low-poly part (Cut / Base Mesh / decimated): even triangles, its own edges as fixed lines
-                P, Fq, fpoly, pvert, st = remesh_cut(me, target, all_quads=all_quads, crease_deg=crease_deg,
-                                                     nthreads=nthreads)
+        P, Fq, fpoly, pvert, st = one(target, all_quads)
+        # 0.24.82 far fewer faces than asked: a thin-walled sculpt loses most walls at the coarse scale All Quads
+        # works at (8,000 asked gave 1,076; 2x / 4x finer gave 2,277 then 66,642 - a cliff, not a slope).  So no
+        # scaling: All Quads falls back to Mostly Quads at the same count, Mostly tries 2x once; the result nearer
+        # (in ratio) to what was asked is kept, and the message says what happened.
+        if YIELD_FALLBACK and len(Fq) < YIELD_MIN * asked:
+            first = (P, Fq, fpoly, pvert, st)
+            again = one(asked, False) if all_quads else one(asked * 2, False)
+            ratio = lambda n: abs(math.log(max(1, n) / asked))
+            if ratio(len(again[1])) < ratio(len(first[1])):
+                P, Fq, fpoly, pvert, st = again
+                got_note = (f' ({"All Quads" if all_quads else "the first try"} kept only {len(first[1]):,} faces'
+                            f' - thin walls: {"Mostly Quads at the same count" if all_quads else "2x finer"} instead)')
             else:
-                P, Fq, tsrc, psrc, st = remesh_arrays(V, T.reshape(-1, 3), target, all_quads=all_quads,
-                                                      crease_deg=crease_deg, nthreads=nthreads)
-                fpoly, pvert = tpoly[tsrc], psrc
-            # 0.24.82 far fewer faces than asked (a thin-walled sculpt: at the coarse scale All Quads works at, most
-            # walls are lost - 8,000 asked gave 1,076): again, the target scaled up by what was missing
-            if len(Fq) >= YIELD_MIN * asked or target >= asked * YIELD_MAX_SCALE or _try == YIELD_TRIES:
-                break
-            target = int(min(asked * YIELD_MAX_SCALE, target * max(1.5, min(4.0, asked / max(1, len(Fq))))))
-            got_note = f', {target / asked:.0f}x finer as the first try gave only {len(Fq):,} faces'
+                got_note = f' (only {len(Fq):,} faces could be kept: walls thinner than a quad)'
     except RuntimeError as ex:
         return str(ex)
-    target = asked
     if not len(Fq):                                        # 0.24.81 (seen on one part of a 45-part export: the
         return 'Quad Remesh: nothing came back - the part is kept as it is'   # mesh went out empty, then 0 / 0)
     attrs = [a for a in fd._read_attrs(me) if a[2] in {'POINT', 'FACE'}]
