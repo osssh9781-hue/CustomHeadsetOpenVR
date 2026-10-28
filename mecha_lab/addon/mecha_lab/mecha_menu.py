@@ -31,7 +31,7 @@ HOLD_DELAY = 0.25          # Ctrl + Alt held this long opens the menu in hold mo
 from . import ui_gpu as G
 
 ACTIONS = (            # (section, [(label, glyph or png stem, operator, props, needs, closes)])
-    ('Actions', [('Duplicate', 'duplicate', 'object.duplicate_move', {}, 'sel', True),
+    ('Actions', [('Duplicate', 'duplicate', 'mch.duplicate', {}, 'sel', True),
                  ('Join', 'join', 'object.join', {}, 'multi', False),
                  ('Delete', 'delete', 'object.delete', {'use_global': False}, 'sel', False),
                  ('Origin', 'origin', 'mch.object_tidy', {'action': 'ORIGIN_GEOMETRY'}, 'mesh', False),
@@ -52,7 +52,8 @@ ACTIONS = (            # (section, [(label, glyph or png stem, operator, props, 
                 ('Ungroup', 'ungroup', 'mch.group_action', {'action': 'UNGROUP'}, 'group', False),
                 ('Merge', 'merge', 'mch.group_action', {'action': 'MERGE'}, 'group', False),
                 ('Enter Group', 'enter', 'mch.group_action', {'action': '@SCOPE'}, 'group_or_scope', False),
-                ('Select Group', 'select_group', 'mch.group_action', {'action': 'SELECT'}, 'group', False)]),
+                ('Select Group', 'select_group', 'mch.group_action', {'action': 'SELECT'}, 'group', False),
+                ('Group Origin', 'origin', 'mch.group_action', {'action': 'ORIGIN'}, 'group', False)]),
     ('Repetition', [('Repeat Mirror', 'X', 'mch.group_repeat', {'mode': 'MIRROR'}, 'group', False),
                     ('Repeat Radial', 'radial', 'mch.group_repeat', {'mode': 'RADIAL'}, 'group', False),
                     ('Repeat Kaleido', 'kaleido', 'mch.group_repeat', {'mode': 'KALEIDO'}, 'group', False),
@@ -415,8 +416,8 @@ def run(context, item, ctrl=False, hold=False):
         return False
     if kind == 'op':
         _op, idname, props, closes = a
-        if hold and idname == 'object.duplicate_move':
-            idname = 'object.duplicate'                             # in place: the mouse is busy with the menu
+        if hold and idname == 'mch.duplicate':
+            props = dict(props, move=False)                         # in place: the mouse is busy with the menu
         mod, name = idname.split('.')
         fn = getattr(getattr(bpy.ops, mod), name)
         try:

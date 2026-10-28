@@ -29,6 +29,10 @@ ITERS_ORIENT = (20, 30, 60)     # Gauss-Seidel sweeps per level (fine first); th
 ITERS_POS = (30, 40, 80)
 COARSE_ITERS = 200
 MIN_CHAIN = 1.5                 # hard-edge chains shorter than this many quads are ignored
+COARSE_PLAIN = False             # plain decimation for an oversized coarse level (quality fell: off)
+COARSE_SCALE = True             # fewer sweeps on an oversized coarse level
+ITERS_MIN = 0.1
+COARSE_SLACK = 1.5              # a coarse level more than this x its wanted count: plain decimation instead
 GUIDE_RATIO = 20.0              # an input with at most this many triangles per wanted face is followed edge by edge
 
 
@@ -274,7 +278,9 @@ def holes(P, sides, border, tol):
     return sides[np.array(keep, bool)]
 
 
-CUT_TRIES = (1, 2, 4)           # finer while the result has holes (a groove narrower than a quad)
+CUT_TRIES = (1, 2)              # finer while the result has holes (a groove narrower than a quad); 0.24.81 4x no
+                                # more: it tripled the time and gave 4x the faces asked for, the holes close anyway
+HOLES_OK = 0.01                 # this share of the faces (at least 16 sides) left open: close them, no finer try
 
 
 def is_cut_mesh(me, target):
@@ -301,7 +307,7 @@ def remesh_cut(me, target, all_quads=False, crease_deg=30.0, nthreads=None):
         st['tries'] = k
         st['h'] = h
         best = (bad, (P, Fq, tpoly[tsrc], near[psrc], st))
-        if bad == 0:
+        if bad <= max(16, HOLES_OK * len(Fq)):        # 0.24.81 a few: closed below (a 2x finer try cost 2 s +)
             break
     best[1][4]['open'] = best[0]
     return best[1]
@@ -434,6 +440,23 @@ def close_holes(me, fpoly, border=None, tol=0.0, max_sides=64, weld=0.0):
         bm.free()
 
 
+def level_iters(wanted, got):
+    """Gauss-Seidel sweeps (orientation, position) per level, fine first.  0.24.81 a level that could not coarsen
+    to its count (the even decimation stops early on a part with many hard edges: level 3 wanted 935 faces, got
+    8,906) gets the sweeps its size pays for - the 200 coarse sweeps ran on a level nearly as big as the fine one
+    (Mostly Quads on a 7k-face part: 31 s, now 8 s, the same result)."""
+    n = len(got)
+    out = []
+    for k in range(n):
+        io = COARSE_ITERS if k == n - 1 else ITERS_ORIENT[min(k, len(ITERS_ORIENT) - 1)]
+        ip = COARSE_ITERS if k == n - 1 else ITERS_POS[min(k, len(ITERS_POS) - 1)]
+        if COARSE_SCALE and k > 0:
+            f = max(ITERS_MIN, min(1.0, wanted[k] / max(1, got[k])))
+            io, ip = max(ITERS_ORIENT[0], int(io * f)), max(ITERS_POS[0], int(ip * f))
+        out.append((io, ip))
+    return out
+
+
 def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None, seed=0, guide='auto'):
     """Quad remesh triangles T over points V to about ``target`` faces.
 
@@ -475,6 +498,12 @@ def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None,
         if c >= len(cur[1]):
             break
         oV, oF, vs, fs = fd.run(cur[0], cur[1], c, even=True, uniform=LENGTH_WEIGHT, nthreads=nthreads)
+        if k > 0 and COARSE_PLAIN and len(oF) > COARSE_SLACK * c:
+            # 0.24.81 the even decimation stops early on a part with many hard edges (a cut part: level 3 wanted
+            # 935 faces, got 8,906): the coarse levels were nearly as big as the fine one and the 200 coarse sweeps
+            # ran on them (Mostly Quads on a 7k-face part: 31 s).  A coarse level only seeds the field: the plain
+            # decimation reaches the count.
+            oV, oF, vs, fs = fd.run(cur[0], cur[1], c, even=False, nthreads=nthreads)
         if k == 0:
             tsrc = tsrc[fs]
             vsrc = vsrc[vs]
@@ -493,9 +522,8 @@ def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None,
     o.threads = nthreads or fd.threads()
     o.seed = seed
     o.crease_tol = 0.02 * h
-    for k in range(n):
-        o.iters_orient[k] = COARSE_ITERS if k == n - 1 else ITERS_ORIENT[min(k, len(ITERS_ORIENT) - 1)]
-        o.iters_pos[k] = COARSE_ITERS if k == n - 1 else ITERS_POS[min(k, len(ITERS_POS) - 1)]
+    for k, (io, ip) in enumerate(level_iters(counts, [len(lv[1]) for lv in levels])):
+        o.iters_orient[k], o.iters_pos[k] = io, ip
     nv = (ctypes.c_int * n)(*[len(lv[0]) for lv in levels])
     nf = (ctypes.c_int * n)(*[len(lv[1]) for lv in levels])
     Vc = np.ascontiguousarray(np.concatenate([lv[0].ravel() for lv in levels]), np.float32)

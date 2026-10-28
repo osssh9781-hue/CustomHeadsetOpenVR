@@ -1,8 +1,13 @@
-# Mecha Lab 0.24.80 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.24.81 — 설치 · MECHA LAB Workspace · 사용법
 
 > **검증 수준:** Linux headless Blender **5.2.3**(`bpy`)에서 자동 테스트 183개 파일 / 4,878개 항목(실패 0) + 무작위 기능 조합 크래시 테스트 280개를 돌렸습니다(결과: `test_report.md`).
-> **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` 맨 위 0.24.80 절을 먼저 확인해 주세요.
+> **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` 맨 위 0.24.81 절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
+
+## 0.24.81 그룹 복사 · 그룹 원점 · Quad Remesh 속도 · 알파 커서
+- 그룹을 고르고 **Shift+D**(Alt+D, 메뉴 Duplicate): 핸들만이 아니라 그룹 통째(부품 · 안의 그룹 · 반복)가 복사되고 바로 이동. Groups 카드 / 메카 메뉴에 **Origin to Geometry**(핸들을 부품 가운데로).
+- ZBrush 선반 · Mesh Tools의 **Quad Remesh**가 하드 엣지 많은 부품에서 2 ~ 4배 빨라지고 면 수가 요청에 가깝게(4배 재시도 없앰).
+- ZBrush 브러시 원 안에 알파가 검게 그려지던 것 기본 끔(Preferences > Alpha in Brush Circle).
 
 ## 0.24.80 전체면 익스트랙트(Armor Shell)
 - Face Extract 도구 패널 맨 위 **Extract Whole Surface**: 부품 겉면 전체를 감싸는 닫힌 껍데기(Gap만큼 띄우고 Thickness만큼 바깥으로). Gap · Thickness · Smooth · Detail · Fewer Faces 슬라이더가 바로 반영되고, 그대로 Cut / Split로 잘라 갑옷 판으로(자르기 전에 알아서 굳음, 안의 부품은 안 잘림).

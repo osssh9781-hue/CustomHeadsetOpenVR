@@ -1,8 +1,15 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.80 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.81 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## 0.24.81 그룹 복사 · 원점 · Quad Remesh · 알파 커서 (미검증)
+- [ ] 부품 몇 개를 Group → 핸들을 클릭하고 **Shift+D** → 그룹 전체(부품 · 안의 그룹 · 반복 복사본)가 따라오고 마우스로 바로 옮겨지는지. Alt+D도. 메카 메뉴 > Duplicate는 제자리 복사인지.
+- [ ] 그룹 안에 들어가(Enter) 부품 하나 Shift+D → 그 부품만, 같은 그룹 안에 남는지.
+- [ ] N > Mecha Lab > Groups 카드 **Origin to Geometry** → 핸들이 부품 가운데로 가고 부품은 안 움직이는지. 메카 메뉴 Groups > Group Origin도.
+- [ ] ZBrush 선반 / Mesh Tools **Quad Remesh**를 00001.fbx 같은 하드 엣지 많은 부품에 → 전보다 빨리 끝나고(1/2: 30초 → 8초 수준) 면 수가 요청의 2배를 넘지 않는지, 모양 · 하드 엣지가 전과 같은지.
+- [ ] ZBrush 탭에서 알파를 고르면 브러시 원 안에 검은 무늬가 안 보이는지(빨간 원만). Preferences > Alpha in Brush Circle을 켜면 연하게 보이는지.
 
 ## 0.24.80 Armor Shell (미검증)
 - [ ] 조각한 부품을 고르고 Face Extract 도구 → 오른쪽 패널 맨 위 **Extract Whole Surface** → 부품을 감싸는 `<부품>_Shell`이 생기는지, 걸린 시간.

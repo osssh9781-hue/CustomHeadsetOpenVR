@@ -88,7 +88,7 @@ def draw_actions(layout, context):
 
     _header(col, 'Actions')
     g = _grid(col)
-    _btn(g, 'object.duplicate_move', 'DUPLICATE', sel)
+    _btn(g, 'mch.duplicate', 'DUPLICATE', sel)
     _btn(g, 'object.join', 'AUTOMERGE_ON', len(meshes) > 1)
     _btn(g, 'object.delete', 'TRASH', sel, use_global=False)
     _btn(g, 'mch.object_tidy', 'PIVOT_MEDIAN', bool(meshes), action='ORIGIN_GEOMETRY')

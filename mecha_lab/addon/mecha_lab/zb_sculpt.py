@@ -464,9 +464,12 @@ def _alpha_slot(b, directional=True):
     for attr, v in (('use_rake', bool(directional)), ('use_random', False)):
         if hasattr(slot, attr):
             setattr(slot, attr, v)
-    if hasattr(b, 'use_primary_overlay'):         # the alpha shows in the brush circle
-        b.use_primary_overlay = True
-        b.texture_overlay_alpha = 40
+    if hasattr(b, 'use_primary_overlay'):
+        # 0.24.81 the alpha drawn inside the brush circle (Blender paints its black parts solid: a dark blot that
+        # got in the way) is off, like ZBrush - the Alpha slot shows the picture.  Preferences > Alpha in Brush Circle
+        from .workspace_ui import pref
+        b.use_primary_overlay = bool(pref('alpha_overlay', False))
+        b.texture_overlay_alpha = 25
 
 
 def set_alpha(context, path):

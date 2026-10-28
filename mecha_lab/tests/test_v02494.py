@@ -132,8 +132,8 @@ check('LazyMouse off: the spacing it had', not b.use_smooth_stroke and b.spacing
 files, _n = zs.alpha_files(C)
 zs.set_alpha(C, files[2])
 b = zs.brush(C)
-check('The alpha is projected from the view (ZBrush) and shows in the brush circle',
-      b.texture_slot.map_mode == 'VIEW_PLANE' and b.use_primary_overlay)
+check('The alpha is projected from the view (ZBrush); 0.24.81 not drawn in the brush circle (a dark blot) unless '
+      'Preferences > Alpha in Brush Circle', b.texture_slot.map_mode == 'VIEW_PLANE' and not b.use_primary_overlay)
 check('0.24.65 The alpha turns with the stroke (ZBrush: a vertical alpha follows a sideways line - Blender Rake)',
       b.texture_slot.use_rake and zb.alpha_directional)
 zb.alpha_directional = False
@@ -173,7 +173,7 @@ check('Right drag turns the view anywhere on the ZBrush screen, over the model t
       and 'rmb_drag_check' in inspect.getsource(zs.MCH_OT_zb_popup.modal)
       and "event.value == 'RELEASE'" in inspect.getsource(zs.MCH_OT_zb_popup.modal))
 check('The key card says so', any(t.startswith('Right drag') for t in zu.KEYS_TEXT))
-check('Version 0.24.80', mecha_lab.bl_info['version'] == (0, 24, 80))
+check('Version 0.24.81', mecha_lab.bl_info['version'] == (0, 24, 81))
 zs.on = real_on
 wui.pref = real_pref
 hp.set_pref = hp_set

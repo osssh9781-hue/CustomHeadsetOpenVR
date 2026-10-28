@@ -2349,6 +2349,9 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
                           description='0.24.59 shapes, Line / Sketch / Slow Line, Targets, Depth ... at the top '
                                       'middle of the viewport (Blender\'s tool header keeps only the Custom PNG '
                                       'picker)')
+    alpha_overlay: BoolProperty(name='Alpha in Brush Circle', default=False,
+                                description='ZBrush screen: draw the alpha picture inside the brush circle (faint); off = '
+                                            'the plain circle, the Alpha slot shows the picture')
     lasso_per_tool: BoolProperty(name='Lasso Settings per Tool', default=True,
                                  description='0.24.78 the shape, its options, corners, Line and Slow Line you set in a '
                                              'tool stay with that tool (switching tools brings back each one\'s own); '
@@ -2411,6 +2414,7 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         row.prop(self, 'side_panel')
         row.prop(self, 'toolbar_labels')
         box.row().prop(self, 'lasso_per_tool')
+        box.row().prop(self, 'alpha_overlay')
         box.row().prop(self, 'toolbar_size', expand=True)
         draw_icon_sizes(box, self)
         row = box.row()
@@ -2536,6 +2540,11 @@ def register_keymaps():
     _keymaps.append((km, km.keymap_items.new('mch.toggle_last_tool', 'Q', 'PRESS')))
     _keymaps.append((km, km.keymap_items.new('mch.tool_pie', 'V', 'PRESS')))
     km = kc.keymaps.new(name='Object Mode', space_type='EMPTY')
+    # 0.24.81 Shift+D / Alt+D: a group handle copies the whole group (Blender's copied the handle alone)
+    _keymaps.append((km, km.keymap_items.new('mch.duplicate', 'D', 'PRESS', shift=True)))
+    item = km.keymap_items.new('mch.duplicate', 'D', 'PRESS', alt=True)
+    item.properties.linked = True
+    _keymaps.append((km, item))
     item = km.keymap_items.new('mch.hotkey', 'B', 'PRESS')
     item.properties.action = 'BOOLEAN'
     _keymaps.append((km, item))

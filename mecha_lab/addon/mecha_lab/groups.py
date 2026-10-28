@@ -281,6 +281,100 @@ def ungroup(context, g):
     return n
 
 
+REP_KEYS = ('mch_rep_mode', 'mch_rep_axes', 'mch_rep_axis', 'mch_rep_count', 'mch_rep_center', 'mch_rep_cursor',
+            'mch_rep_grid', 'mch_rep_gap')
+
+
+def duplicate(context, g, linked=False):
+    """0.24.81 A copy of the whole group (Shift+D on a group handle copied the handle alone): a new collection next
+    to the group's, a new handle, every part copied (``linked``: sharing the mesh, Alt+D style) at the same place
+    under it, nested groups and the symmetry centres too, the repetition set up again.  Returns the new handle."""
+    if not is_group(g):
+        return None
+    coll = collection_of(g)
+    home = next((c for c in bpy.data.collections if coll is not None and coll.name in c.children), None)
+    if home is None:
+        home = context.scene.collection if coll is None or coll.name in context.scene.collection.children \
+            else next(iter(g.users_collection), context.scene.collection)
+    new_coll = bpy.data.collections.new(coll.name if coll is not None else g.name)
+    home.children.link(new_coll)
+    h = g.copy()
+    h.name = new_coll.name
+    h[GROUP_KEY] = new_coll.name
+    new_coll[GROUP_KEY] = h.name
+    for c in g.users_collection:
+        c.objects.link(h)
+    h.parent = g.parent
+    h.matrix_world = g.matrix_world.copy()
+    made = {g: h}
+    children = [o for o in (coll.objects if coll is not None else []) if CARRIER_KEY not in o]
+    for o in children:
+        if is_group(o):
+            sub = duplicate(context, o, linked)       # (its collection lands next to the old sub group's: moved below)
+            if sub is None:
+                continue
+            sc = collection_of(sub)
+            for pc in [c for c in bpy.data.collections if sc.name in c.children]:
+                pc.children.unlink(sc)
+            if sc.name in context.scene.collection.children:
+                context.scene.collection.children.unlink(sc)
+            new_coll.children.link(sc)
+            for c in list(sub.users_collection):
+                c.objects.unlink(sub)
+            new_coll.objects.link(sub)
+            made[o] = sub
+            continue
+        c = o.copy()
+        if o.data is not None and not linked:
+            c.data = o.data.copy()
+        c.animation_data_clear() if c.animation_data else None
+        new_coll.objects.link(c)
+        made[o] = c
+    for o, c in made.items():                          # parents inside the copy point at the copies
+        if o is g:
+            continue
+        if o.parent in made:
+            mw = o.matrix_world.copy()
+            c.parent = made[o.parent]
+            c.matrix_world = mw
+    for o, c in made.items():                          # modifier object links (mirror centres etc.) too
+        if o is g or c.type not in {'MESH', 'CURVE'}:
+            continue
+        for m in c.modifiers:
+            for attr in ('mirror_object', 'object', 'offset_object'):
+                tgt = getattr(m, attr, None) if hasattr(m, attr) else None
+                if tgt in made:
+                    setattr(m, attr, made[tgt])
+    if repeat_mode(g) != 'OFF':
+        for k in REP_KEYS:
+            if k in g:
+                h[k] = g[k]
+        set_repeat(context, h)
+    return h
+
+
+def recenter(context, g):
+    """0.24.81 Origin to Geometry for a group: the handle to the middle of its parts' box (the parts stay put;
+    Repetition about the handle follows).  Returns the new centre."""
+    if not is_group(g):
+        return None
+    box = group_box(g)
+    if box is None:
+        return None
+    centre = (box[0] + box[1]) / 2
+    kids = [(o, o.matrix_world.copy()) for o in g.children]
+    mw = g.matrix_world.copy()
+    mw.translation = centre
+    g.matrix_world = mw
+    context.view_layer.update()
+    for o, m in kids:
+        o.matrix_world = m
+    handle_look(g, box[1] - box[0])
+    if repeat_mode(g) != 'OFF':
+        set_repeat(context, g)
+    return centre
+
+
 def merge(context, g):
     """The group's meshes become one mesh (modifiers baked), still in the group."""
     meshes = [o for o in members(g) if o.type == 'MESH' and CARRIER_KEY not in o]
@@ -626,7 +720,9 @@ class MCH_OT_group_action(bpy.types.Operator):
         ('MERGE', 'Merge', 'The group\'s meshes become one mesh'),
         ('ENTER', 'Enter', 'Work inside the group; the rest is wire and cannot be picked'),
         ('EXIT', 'Exit', 'Back out of the group'),
-        ('SELECT', 'Select Group', 'Select the group handle (its Repetition card shows)')], default='SELECT')
+        ('SELECT', 'Select Group', 'Select the group handle (its Repetition card shows)'),
+        ('ORIGIN', 'Origin to Geometry', 'The group handle to the middle of its parts (the parts stay put)')],
+        default='SELECT')
 
     @classmethod
     def poll(cls, context):
@@ -650,8 +746,64 @@ class MCH_OT_group_action(bpy.types.Operator):
                 return {'CANCELLED'}
         elif self.action == 'ENTER':
             enter_scope(context, g)
+        elif self.action == 'ORIGIN':
+            if recenter(context, g) is None:
+                self.report({'WARNING'}, 'The group has no visible parts')
+                return {'CANCELLED'}
+            self.report({'INFO'}, f'{g.name}: origin to the middle of its parts')
         else:
             select_group(context, g)
+        return {'FINISHED'}
+
+
+class MCH_OT_duplicate(bpy.types.Operator):
+    """Duplicate the selection and move it (a group handle: the whole group - parts, nested groups, repetition)"""
+    bl_idname = 'mch.duplicate'
+    bl_label = 'Duplicate'
+    bl_options = {'REGISTER', 'UNDO'}
+    linked: bpy.props.BoolProperty(name='Linked', default=False, description='Copies share the mesh (Alt+D)')
+    move: bpy.props.BoolProperty(name='Move', default=True, options={'SKIP_SAVE'})
+
+    @classmethod
+    def poll(cls, context):
+        if context.mode != 'OBJECT' or not context.selected_objects:
+            return False
+        from . import tool_state as ts
+        return ts.is_mecha_workspace(context.workspace) or any(is_group(o) for o in context.selected_objects)
+
+    def invoke(self, context, event):
+        return self.execute(context)
+
+    def execute(self, context):
+        sel = list(context.selected_objects)
+        handles = [o for o in sel if is_group(o)]
+        inside = {o for g in handles for o in members(g)}
+        rest = [o for o in sel if o not in handles and o not in inside and CARRIER_KEY not in o]
+        new = []
+        for g in handles:
+            h = duplicate(context, g, self.linked)
+            if h is not None:
+                new.append(h)
+        if rest:
+            for o in sel:
+                o.select_set(False)
+            for o in rest:
+                o.select_set(True)
+            context.view_layer.objects.active = rest[0]
+            with context.temp_override(selected_objects=rest, selected_editable_objects=rest, active_object=rest[0]):
+                bpy.ops.object.duplicate(linked=self.linked)
+            new += [o for o in context.selected_objects if o not in sel]
+        if not new:
+            return {'CANCELLED'}
+        for o in context.selected_objects:
+            o.select_set(False)
+        for o in new:
+            o.select_set(True)
+        context.view_layer.objects.active = new[0]
+        if handles:
+            self.report({'INFO'}, f'Duplicated {len(handles)} group(s)' + (f' + {len(rest)} object(s)' if rest else ''))
+        if self.move and context.region is not None and context.region.type == 'WINDOW':
+            bpy.ops.transform.translate('INVOKE_DEFAULT')
         return {'FINISHED'}
 
 
@@ -718,6 +870,11 @@ def draw_list(layout, context):
         return
     if inside is not None:
         layout.operator('mch.group_action', text=f'Exit {inside.name}', icon='LOOP_BACK').action = 'EXIT'
+    g = group_of(context.active_object)
+    if g is not None:
+        row = layout.row(align=True)
+        row.operator('mch.duplicate', text='Duplicate', icon='DUPLICATE')
+        row.operator('mch.group_action', text='Origin to Geometry', icon='PIVOT_MEDIAN').action = 'ORIGIN'
     col = layout.column(align=True)
     for g, depth in rows:
         row = col.row(align=True)
@@ -753,7 +910,8 @@ class MCH_PT_groups(bpy.types.Panel):
         draw_list(self.layout, context)
 
 
-CLASSES = (MCH_OT_group, MCH_OT_group_action, MCH_OT_group_repeat, MCH_OT_group_pick, MCH_PT_groups)
+CLASSES = (MCH_OT_group, MCH_OT_group_action, MCH_OT_duplicate, MCH_OT_group_repeat, MCH_OT_group_pick,
+           MCH_PT_groups)
 
 
 def register():
