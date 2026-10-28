@@ -1,8 +1,12 @@
-# Mecha Lab 0.24.76 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.24.77 — 설치 · MECHA LAB Workspace · 사용법
 
 > **검증 수준:** Linux headless Blender **5.2.3**(`bpy`)에서 자동 테스트 169개 파일 / 4,619개 항목(실패 0) + 무작위 기능 조합 크래시 테스트 280개를 돌렸습니다(결과: `test_report.md`).
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` A절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
+
+## 0.24.77 지브러시 화면에서도 각지게
+- Make Quad · Quad Remesh처럼 면은 스무스 + 엣지는 Sharp인 부품이 지브러시 화면(조각 모드)에서 매끈하게 보이던 것: 지브러시 화면에 있는 동안만 Sharp 엣지 옆 면을 평면으로 보여 주고, MECHA LAB으로 돌아오면 원래대로.
+- Alt가 안 되면 Edit > Preferences > Input > Mouse > Emulate 3 Button Mouse를 끄고 ☰ > Save Preferences.
 
 ## 0.24.76 Fix Mesh · 깨진 부품 쿼드 · 쿼드로 내보내기 · 꺾인 면 자르기 · 지브러시 키 · 펜 우클릭 · Silhouette Move
 - **Fix Mesh**(Mesh Tools 탭 · Remesh 도구 패널): 불린 · 합치기 · 내보내기 뒤에 남는 틈 · 찌그러진 면 · 안쪽 벽 · 작은 구멍을 고쳐서 닫힌 부품으로. Make Quad · Quad Remesh는 이걸 먼저 저절로 함.

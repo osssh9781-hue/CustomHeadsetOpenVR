@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.76
+# Test Report — Mecha Lab 0.24.77
+
+## 0.24.77 결과: <<SUITE77_REPORT>>
 
 ## 0.24.76 결과: Blender 5.2.3 bpy 175개 파일 — PASS 4,742 / FAIL 0(`tests/test_log_bpy523_v02476.txt`, FAILED FILES: none). run_all이 이제 파일 안의 FAIL 줄도 실패로 셈(전에는 끝 코드만 봐서 test_v02467의 FAIL 1개가 "FAILED FILES: none"에 숨었음 — 이번에 그걸로 꺾인 면 자르기 Ramp Soft 톱니를 찾아 고침). 중간 전체 실행에서 test_v02472_hardedges가 한 번 요약 없이 끝남(프로세스 종료) — 따로 5번 37/37, 마지막 전체 실행에서도 통과. 새 테스트: test_v02479_fixmesh 34, test_v02480_facetcarve 20, test_v02481_keys 17, test_v02482_penfade 15, test_v02483_quadcut_alt 19, test_v02484_silhouette 15. 무작위 기능 조합 크래시 테스트 40개(시드 281~320): 정상 38 · 크래시 1 · 시간 초과 1 — 둘 다 0.24.75 코드로도 똑같이 재현되는 예전 문제(시드 282: High Poly 34만 면 → Hard Edges 설정 → Ctrl+Z에서 창 없는 bpy가 죽음; 시드 291: 10만 면 부품 Find Edges가 혼자 703초 — 0.24.75 717초, 제한 600초 초과)(`tests/fuzz/fuzz_report.md`). 새 zip 설치는 전체 테스트 안의 test_zip_install. 실제 블렌더 화면(GUI) · 실제 펜은 미검증.
 
