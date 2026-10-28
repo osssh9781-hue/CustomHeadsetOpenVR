@@ -1,7 +1,8 @@
 """0.24.76 Make Quad -> Cut -> Re-make Quad keeps the cut (Re-make used the hidden original: the cut was gone, as if
 nothing happened); Quad Remesh (new engine) -> Cut -> Quad Remesh keeps it too.  Blender's Emulate 3 Button Mouse
 (Alt+click arrives as a middle click, Alt taken off): the middle-click menu stays away and the panel / ZBrush key
-legend say why Alt subtract cannot work."""
+legend say why Alt subtract cannot work.  Path Move Extend (Brush) on a quad remeshed part keeps it outward (one grab
+turned the whole part inside out)."""
 import types
 
 from _harness import bpy, check, fresh, non_manifold, summary
@@ -103,6 +104,37 @@ do_cut(ob)
 msg = qf.remesh_object(ob, 1500)
 check('Quad Remesh -> Cut -> Quad Remesh (new engine, in place): the pocket stays, closed, quads',
       top() == 0.15 and non_manifold(ob) == 0 and 'Quad Remesh' in msg and len(ob.data.polygons) > 500, (top(), msg))
+
+# --- Path Move on a quad remeshed part ----------------------------------------------------------------------------
+import json
+import bmesh
+
+
+def signed_volume(o):
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    v = bm.calc_volume(signed=True)
+    bm.free()
+    return v
+
+
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+bpy.ops.mesh.primitive_cube_add(size=1)
+pm = C.active_object
+pm.scale = (2, 1, 0.3)
+bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+bev = pm.modifiers.new('b', 'BEVEL')
+bev.width, bev.segments = 0.08, 2
+bpy.ops.object.modifier_apply(modifier='b')
+qf.remesh_object(pm, 2000)
+v0 = signed_volume(pm)
+UP = [[0, 0, 0.05 * i] for i in range(10)] + [[0.05 * i, 0, 0.45] for i in range(1, 6)]
+r = bpy.ops.mch.concept_path('EXEC_DEFAULT', method='EXTEND', area='BRUSH', shape='SPHERE', objects=json.dumps([pm.name]),
+                             grab_point=(0.6, 0.1, 0.15), grab_normal=(0, 0, 1), offsets=json.dumps(UP), radius=0.1, size=1.0)
+pm = S.objects[pm.name]
+check('Path Move Extend (Brush) on a quad remeshed part: pulled out, closed, still outward (was inside out here)',
+      r == {'FINISHED'} and non_manifold(pm) == 0 and signed_volume(pm) > v0 > 0, (r, round(v0, 3), round(signed_volume(pm), 3)))
 
 # --- Emulate 3 Button Mouse ---------------------------------------------------------------------------------------
 inputs = C.preferences.inputs

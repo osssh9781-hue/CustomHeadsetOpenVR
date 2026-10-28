@@ -403,6 +403,7 @@ def extend(me, hit, normal, offsets, turn=True, taper=0.0, hardness=1.0, radius=
     bm = bmesh.new()
     bm.from_mesh(me)
     try:
+        outward = bm.calc_volume(signed=True) >= 0.0          # (the part's own way round, kept below)
         got = _grab(bm, hit, normal, radius, sides, front_only, me)
         if got is None:
             raise ValueError('no clean brush patch where you grabbed (Back Mask keeps the far side out)'
@@ -449,6 +450,8 @@ def extend(me, hit, normal, offsets, turn=True, taper=0.0, hardness=1.0, radius=
                     pass
         if area == 'BRUSH' and all(e.is_manifold for e in bm.edges):
             bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])     # the patch walls: outward like the rest
+            if (bm.calc_volume(signed=True) >= 0.0) != outward:
+                bmesh.ops.reverse_faces(bm, faces=bm.faces[:])     # 0.24.76 it turned the whole part inside out
         bm.normal_update()
         bm.to_mesh(me)
         me.update()
