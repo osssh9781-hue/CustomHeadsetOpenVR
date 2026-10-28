@@ -1805,7 +1805,7 @@ def _mask_values(ob):
 RISKY = {'DYNAMESH', 'DYNA_UPDATE', 'DYNA_SUBDIV', 'DYNA_SUBDIV3', 'DECIMATE', 'QUAD_REMESH', 'HE_FIND', 'HE_APPLY',
          'DIVIDE', 'ZREMESH', 'HALF', 'SAME', 'DOUBLE', 'MIRROR_WELD', 'CLOSE_HOLES', 'EXTRACT', 'SPLIT_MASKED',
          'SPLIT_UNMASKED', 'SPLIT_HIDDEN', 'DEL_HIDDEN', 'MERGE_DOWN', 'MERGE_VISIBLE', 'POLYMESH3D', 'GROUPS_SPLIT',
-         'DEL_LOWER', 'FIX_MESH', 'EDGE_MESH'}
+         'DEL_LOWER', 'FIX_MESH', 'EDGE_MESH', 'SHELL'}
 
 
 def _edited():
@@ -1884,6 +1884,25 @@ def run(context, action):
             return 'Extract: paint a mask first (Ctrl + drag on the model)'
         _mode(context, 'SCULPT')
         return extract(context, ob, zb.thick)
+    if action == 'SHELL':                          # 0.24.80 the whole surface as a shell, Thick thick, made real
+        from . import armor_shell
+        was = context.mode
+        _mode(context, 'OBJECT')
+        shell = armor_shell.make(context, ob, thickness=zb.thick if zb.thick > 0 else None)
+        empty = not armor_shell.face_count(context, shell)
+        if empty:
+            me = shell.data
+            bpy.data.objects.remove(shell)
+            if me.users == 0:
+                bpy.data.meshes.remove(me)
+        else:
+            msg = armor_shell.apply(context, shell)
+        switch_to(context, ob)
+        if was == 'SCULPT':
+            _mode(context, 'SCULPT')
+        if empty:
+            return 'Armor Shell: nothing came out - the SubTool has no closed volume (Fix Mesh / DynaMesh it first)'
+        return f'Armor Shell: {shell.name} ({msg.split(": ")[-1]}) - cut it into plates'
     if action == 'DIVIDE':
         _mode(context, 'SCULPT')
         return f'Divide: SDiv {_divide(context, ob)}'

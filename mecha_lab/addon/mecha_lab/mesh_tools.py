@@ -103,8 +103,10 @@ class MCH_OT_mesh_tool(bpy.types.Operator):
         done, last, skipped = 0, '', []
         wm.progress_begin(0, len(obs))
         try:
+            from . import armor_shell
             for k, ob in enumerate(obs):
                 try:
+                    armor_shell.bake_live(context, ob)      # 0.24.80 a live Armor Shell: on the shell, not its base
                     last = run_one(context, ob, zb, self.action)
                     done += 1
                 except (RuntimeError, ValueError, MemoryError) as ex:

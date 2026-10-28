@@ -561,6 +561,8 @@ def _fold(layout, context, key, title, default_closed=False):
 
 
 def draw(layout, context):
+    from . import armor_shell
+    armor_shell.draw(layout, context)              # 0.24.80 the whole surface as a shell (Object Mode)
     part = active_part(context)
     d = context.scene.mch_extract
     row = layout.row(align=True)

@@ -60,7 +60,7 @@ def draw_tool_shelf(layout, context):
     box.prop(zb, 'backface_mask', toggle=True)
     ops(box.row(), ('Split Unmasked', 'SPLIT_UNMASKED'), ('Split Masked', 'SPLIT_MASKED'))
     r = box.row()
-    ops(r, ('Extract', 'EXTRACT'))
+    ops(r, ('Extract', 'EXTRACT'), ('Shell', 'SHELL'))
     r.prop(zb, 'thick')
     box = layout.box()
     box.label(text='Geometry')
@@ -464,7 +464,7 @@ def subtool_list(context, region_w, k, Item, top, floor):
         y -= GAP * k
     meshes = [o for o in sorted(context.view_layer.objects, key=lambda o: o.name.lower())
               if o.type == 'MESH' and layers_panel.listed(o)]
-    room = int(max(1, (y - floor - 4 * (ROW + GAP) * k - 30 * k) // ((26 + 2) * k)))
+    room = int(max(1, (y - floor - 5 * (ROW + GAP) * k - 30 * k) // ((26 + 2) * k)))
     for ob in meshes[:room]:
         y -= 26 * k
         hidden = layers_panel._hidden(context, ob)
@@ -480,7 +480,8 @@ def subtool_list(context, region_w, k, Item, top, floor):
         out.append(Item('pnote', ix, y, iw, 17 * k, f'+ {len(meshes) - room} more', '', False, True))
     y -= GAP * k
     for a, b in ((('All Low', 'ALL_LOW'), ('All High', 'ALL_HIGH')), (('Duplicate', 'DUPLICATE'), ('Delete', 'DELETE')),
-                 (('Split Hidden', 'SPLIT_HIDDEN'), ('Groups Split', 'GROUPS_SPLIT'))):
+                 (('Split Hidden', 'SPLIT_HIDDEN'), ('Groups Split', 'GROUPS_SPLIT')),
+                 (('Extract', 'EXTRACT'), ('Armor Shell', 'SHELL'))):     # 0.24.80
         y -= ROW * k
         cw = (iw - GAP * k) / 2
         for i, (label, action) in enumerate((a, b)):

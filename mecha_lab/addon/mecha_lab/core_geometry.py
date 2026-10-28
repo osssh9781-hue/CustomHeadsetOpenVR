@@ -807,7 +807,11 @@ def ensure_real_mesh(context, ob):
     """A live Primitive (Geometry Nodes) has an EMPTY base mesh; Booleans work
     on the base mesh, so cutting it removed everything ("would delete the whole
     object").  Bake its evaluated geometry into a mesh of its own first (Alt+D
-    twins keep theirs).  Returns True when the object was baked."""
+    twins keep theirs).  Returns True when the object was baked.
+    0.24.80 a live Armor Shell too: its base mesh is the copy of the part under the shell modifiers."""
+    from . import armor_shell
+    if armor_shell.bake_live(context, ob):
+        return True
     if ob.type != 'MESH' or len(ob.data.polygons) or not ob.modifiers:
         return False
     dg = context.evaluated_depsgraph_get()
