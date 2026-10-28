@@ -6,14 +6,14 @@ thousands of faces).
 * One convex or one concave patch (any number of facets, corners of 3+ included), or a strip of facets with mixed
   folds that run right across the outline.
 * Facets steeper than 60 degrees to the view get no floor of their own (their neighbours' floors run over them).
-* Steep Edges (settings.steep): EVEN = every facet the full depth across it (near a steep side the groove runs
-  further down it); LIMIT = depth measured along the main direction of the surface under the outline (the facet
-  closest to it keeps the full depth, steeper ones less - a shallower groove down a steep side, as before).
+* Steep Edges (``settings.steep``): EVEN = every facet the full depth across it (near a steep side the groove runs
+  further down it); LIMIT = the same depth along the view everywhere, as on the facet seen most straight (a facet
+  turned away from the view gets less - a shallower groove down a steep side, as before).
 * Ramp Soft: the floor still follows each facet exactly, with rows of points across the ramp (the eased slope) and
   a few points near the walls (the rounded sides) instead of a full grid.
 * Anything else (a curved / dense surface, more than MAX_FACETS facets, Chamfer / Bevel edge profile, Through, a
-  Boolean that fails with this cutter) -> the old carve (carve returns False).
-LAST = what the last carve did (for the report / tests)."""
+  Boolean that fails with this cutter) -> the old carve (``carve`` returns False).
+``LAST`` = what the last carve did (for the report / tests)."""
 import math
 import time
 
@@ -33,8 +33,8 @@ BAND = (0.25, 0.5, 0.75, 1.0)   # Ramp Soft: points at these parts of the rounde
 STEEP_ITEMS = [
     ('EVEN', 'Even', 'Across a bent edge every face gets the full depth, measured across that face (near a steep '
                      'side the groove runs further down it)'),
-    ('LIMIT', 'Limit', 'The depth is measured along the main face under the outline: faces steeper than it get '
-                       'less (a shallower groove down a steep side, like the old carve)')]
+    ('LIMIT', 'Limit', 'The same depth along your view everywhere (as on the face you look at most straight): faces '
+                       'turned away get less - a shallower groove down a steep side, like the old carve')]
 LAST = {}                  # path ('facet' / 'old'), reason, facets, faces, seconds
 ENABLED = True             # (tests: False = always the old carve)
 
@@ -271,22 +271,12 @@ class Plan:
             self._m = np.array([f.m for f in self.facets])
 
     def _depth_share(self, vd, steep):
-        """f.m = the part of the depth taken across each facet: 1 (EVEN), or (LIMIT) the depth along the main
-        direction (the sample-weighted mean normal of the facets with a floor; the facet closest to it keeps 1)."""
+        """f.m = the part of the depth taken across each facet: 1 (EVEN), or (LIMIT) the same depth along the view
+        everywhere - as deep along the view as on the facet seen most straight (that one keeps 1, a facet turned
+        away from the view gets |n . view| / that one's: a shallower groove down a steep side)."""
+        top = max([abs(f.no.dot(vd)) for f in self.flat] or [1.0])
         for f in self.facets:
-            f.m = 1.0
-        if steep != 'LIMIT':
-            return
-        ref = Vector()
-        for fi in self.hit_fi:
-            k = self.owner.get(fi)
-            if k is not None and not self.facets[k].steep:
-                n = self.facets[k].no
-                ref += n if n.dot(vd) < 0 else -n
-        ref = ref.normalized() if ref.length > 1e-12 else -vd
-        top = max([abs(f.no.dot(ref)) for f in self.flat] or [1.0])
-        for f in self.facets:
-            f.m = min(1.0, abs(f.no.dot(ref)) / max(top, 1e-6))
+            f.m = 1.0 if steep != 'LIMIT' else min(1.0, abs(f.no.dot(vd)) / max(top, 1e-6))
 
     # -- facets ----------------------------------------------------------------------------------------------
     def _find(self, bm):
@@ -315,7 +305,6 @@ class Plan:
                 x += step
             y += step
         seeds, seen, ratios, hits = [], set(), [], []
-        self.hit_fi = []                      # the face under each hit sample (LIMIT: the main direction)
         prev = None
         for x in samples:
             o, d = _ray(proj, x)
@@ -337,7 +326,6 @@ class Plan:
             if near[0] is not None:
                 loc = near[0]
             hits.append((x, (loc - o).dot(d)))
-            self.hit_fi.append(fi)
             if fi not in seen:
                 seen.add(fi)
                 seeds.append(f)
@@ -401,7 +389,7 @@ class Plan:
                 if abs(te - t) > size * 1e-4:
                     self.debug = (x, te, t, [(f.idx, tuple(f.no), _t_plane(proj, x, f.co, f.no)) for f in facets])
                     raise Fallback('the surface under the outline is not one convex / concave patch')
-        self.facets, self.order, self.conv, self.owner = facets, order, conv, owner
+        self.facets, self.order, self.conv = facets, order, conv
         # all folds convex: the floor is the deepest facet floor everywhere (exact for a convex patch, also where
         # a narrow facet's floor is swallowed by its neighbours); all concave: the shallowest; mixed: in a row
         self.mode = mode
@@ -944,7 +932,7 @@ def merge_planar(verts, faces, deg=0.02):
 
 
 def carve(context, target, groups, projector, settings, height, ramp=None):
-    """Carve groups (screen outlines) into target with facet floors.  True when done; False when this
+    """Carve ``groups`` (screen outlines) into ``target`` with facet floors.  True when done; False when this
     surface / setting is not for it (the caller runs the old carve - the mesh is unchanged)."""
     from . import cape_gen
     from . import core_geometry as cg

@@ -681,8 +681,12 @@ def texture_stamp(ob, px, matrix, width, height, center, half, angle, view, stre
 
 def stamp_mirrors(context):
     """The symmetry sign sets for a stamp (X / Y / Z symmetry on: its mirror stamps too)."""
-    sc = context.tool_settings.sculpt
-    axes = [getattr(sc, f'use_symmetry_{a}', False) for a in 'xyz']
+    ob = context.active_object
+    if ob is not None and ob.type == 'MESH':                 # 0.24.76 the mesh's Mirror X / Y / Z (Blender 5)
+        axes = [getattr(ob.data, f'use_mirror_{a}', False) for a in 'xyz']
+    else:
+        sc = context.tool_settings.sculpt
+        axes = [getattr(sc, f'use_symmetry_{a}', False) for a in 'xyz']
     out = [(1, 1, 1)]
     for i, on_ in enumerate(axes):
         if on_:
@@ -1020,16 +1024,32 @@ def _stroke_set(self, v):
     _safe(lambda: setattr(brush(), 'stroke_method', STROKES[v][2]), None)
 
 
+def _sym_mesh():
+    ob = bpy.context.active_object
+    return ob.data if ob is not None and ob.type == 'MESH' else None
+
+
 def _sym(axis):
+    """0.24.76 Sculpt symmetry is the mesh's own Mirror X / Y / Z in Blender 5 (the old tool-settings switch did
+    nothing to the strokes: X turned the button on, not the symmetry)."""
     def get(self):
+        me = _sym_mesh()
+        if me is not None:
+            return bool(getattr(me, 'use_mirror_' + axis, False))
         return _safe(lambda: bool(getattr(bpy.context.tool_settings.sculpt, 'use_symmetry_' + axis)), False)
 
     def set_(self, v):
+        me = _sym_mesh()
+        if me is not None:
+            _safe(lambda: setattr(me, 'use_mirror_' + axis, bool(v)), None)
         _safe(lambda: setattr(bpy.context.tool_settings.sculpt, 'use_symmetry_' + axis, bool(v)), None)
     return get, set_
 
 
 def _radial_axis():
+    me = _sym_mesh()
+    if me is not None:
+        return next((i for i, a in enumerate('xyz') if getattr(me, 'use_mirror_' + a, False)), 0)
     sc = bpy.context.tool_settings.sculpt
     return next((i for i, a in enumerate('xyz') if getattr(sc, 'use_symmetry_' + a)), 0)
 
@@ -1253,8 +1273,9 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
     dec_borders: BoolProperty(name='Keep Borders', default=False,
                               description='Decimate: points on open borders do not move')
     # 0.24.71 Quad Remesh: Mecha Lab's own field-aligned quad remesher (quad_field)
-    qr_target: FloatProperty(name='Target', default=5.0, min=0.05, soft_max=100.0, precision=1,
-                             description='Quad Remesh: how many polygons, in thousands (5 = 5,000)')
+    qr_target: FloatProperty(name='Target', default=5.0, min=0.001, soft_max=100.0, precision=3, step=1,
+                             description='Quad Remesh: how many polygons, in thousands (5 = 5,000; 0.05 = 50; '
+                                         '0.001 = 1, any count)')
     qr_mode: EnumProperty(name='Mode', default='MOSTLY',
                           items=[('MOSTLY', 'Mostly Quads', 'Quads, with a few triangles where rows of quads end'),
                                  ('ALL', 'All Quads', 'Only quads: made at a quarter of the count, then every face is '
@@ -2012,14 +2033,14 @@ def run(context, action):
             return 'Quad Remesh: Del Higher / Del Lower first'
         _mode(context, 'OBJECT')
         try:
-            msg = qf.remesh_object(ob, max(50, int(round(zb.qr_target * 1000))), all_quads=zb.qr_mode == 'ALL',
+            msg = qf.remesh_object(ob, max(1, int(round(zb.qr_target * 1000))), all_quads=zb.qr_mode == 'ALL',
                                    crease_deg=math.degrees(zb.qr_angle))
         finally:
             _mode(context, 'SCULPT')
         return msg
     if action in {'QR_HALF', 'QR_SAME', 'QR_DOUBLE'}:
         f = {'QR_HALF': 0.5, 'QR_SAME': 1.0, 'QR_DOUBLE': 2.0}[action]
-        zb.qr_target = max(0.05, round(len(ob.data.polygons) * f / 1000.0, 2))
+        zb.qr_target = max(0.001, round(len(ob.data.polygons) * f / 1000.0, 3))
         return f'Quad Remesh Target {zb.qr_target:g}'
     if action == 'EDGE_MESH':
         from . import edge_mesh as em
@@ -2846,6 +2867,21 @@ class MCH_OT_zb_brush_pick(_ZBPoll, bpy.types.Operator):
         return {'PASS_THROUGH'}
 
 
+class MCH_OT_zb_tab(bpy.types.Operator):
+    """0.24.76 Tab in the MECHA LAB tab: MECHA LAB (Object Mode) <-> ZBRUSH (Sculpt Mode) - Edit Mode is not used
+    there (other tabs keep Blender's Tab)"""
+    bl_idname = 'mch.zb_tab'
+    bl_label = 'MECHA LAB <-> ZBRUSH'
+    bl_options = {'INTERNAL'}
+
+    @classmethod
+    def poll(cls, context):
+        return getattr(context, 'mode', '') in {'OBJECT', 'SCULPT'} and mecha_tab(context)
+
+    def execute(self, context):
+        return bpy.ops.mch.zb_switch(target='MECHA' if context.mode == 'SCULPT' else 'ZBRUSH')
+
+
 class MCH_OT_zb_switch(bpy.types.Operator):
     """MECHA LAB (Object Mode, the Mecha tools) or ZBRUSH (Sculpt Mode on the active mesh)"""
     bl_idname = 'mch.zb_switch'
@@ -3130,7 +3166,7 @@ class MCH_OT_zb_close(bpy.types.Operator):
 
 CLASSES = (MCH_PG_ZBrush, MCH_OT_zb_action, MCH_OT_zb_brush, MCH_OT_zb_append, MCH_OT_zb_subtool, MCH_OT_zb_press,
            MCH_OT_zb_restore_tool, MCH_OT_zb_nav, MCH_OT_zb_viewdrag, MCH_OT_zb_popup, MCH_OT_zb_brush_pick,
-           MCH_OT_zb_switch, MCH_OT_zb_style, MCH_OT_zb_obj_press, MCH_OT_zb_alpha, MCH_OT_zb_alpha_edit,
+           MCH_OT_zb_switch, MCH_OT_zb_tab, MCH_OT_zb_style, MCH_OT_zb_obj_press, MCH_OT_zb_alpha, MCH_OT_zb_alpha_edit,
            MCH_OT_zb_alpha_folder, MCH_OT_zb_set, MCH_OT_zb_texture, MCH_OT_zb_texture_folder, MCH_OT_zb_tex_stamp, MCH_OT_zb_close)
 _keymaps = []
 
@@ -3190,8 +3226,10 @@ def register():
             for k, v in props.items():
                 setattr(kmi.properties, k, v)
             _keymaps.append((km, kmi))
+        _keymaps.append((km, km.keymap_items.new('mch.zb_tab', 'TAB', 'PRESS')))      # 0.24.76 back to MECHA LAB
         # ZBrush style in Object Mode (Select / Move): the canvas turns the view
         km = kc.keymaps.new(name='Object Mode', space_type='EMPTY')
+        _keymaps.append((km, km.keymap_items.new('mch.zb_tab', 'TAB', 'PRESS')))      # 0.24.76 to ZBRUSH
         for ctrl, shift, alt in ((False, False, False), (False, True, False), (False, False, True),
                                  (True, False, False)):
             _keymaps.append((km, km.keymap_items.new('mch.zb_obj_press', 'LEFTMOUSE', 'PRESS', ctrl=ctrl,

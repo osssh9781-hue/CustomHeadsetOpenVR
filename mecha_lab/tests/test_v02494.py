@@ -38,8 +38,9 @@ ctx = types.SimpleNamespace(screen=screen, scene=C.scene, mode='SCULPT')
 check('Off: nothing changes', not hp.update(ctx) and not hp.applied(screen) and sp.overlay.show_wireframes)
 zb.highpoly = True                               # (the button applies it at once; the watcher would too)
 hp.update(ctx)
-check('On in the ZBrush screen: Deform Only + Delay Viewport Updates, wireframe / stats / cavity / X-Ray off',
-      hp.applied(screen) and sc.use_deform_only and sc.use_sculpt_delay_updates
+check('On in the ZBrush screen: Delay Viewport Updates, wireframe / stats / cavity / X-Ray off; 0.24.76 Deform Only '
+      'left alone (it hid Smooth by Angle: flat parts turned smooth)',
+      hp.applied(screen) and not sc.use_deform_only and sc.use_sculpt_delay_updates
       and not sp.overlay.show_wireframes and not sp.overlay.show_stats and not sp.shading.show_cavity
       and not sp.shading.show_xray)
 check('... applied once (no second change while it stays on)', not hp.update(ctx))
@@ -51,7 +52,7 @@ ctx.mode = 'SCULPT'
 hp.update(ctx)
 zb.highpoly = False
 check('Turning it off puts everything back too', hp.update(ctx) is False and not hp.applied(screen)
-      and sp.overlay.show_wireframes and not sc.use_deform_only or (not hp.applied(screen)
+      and sp.overlay.show_wireframes and not sc.use_sculpt_delay_updates or (not hp.applied(screen)
                                                                      and sp.overlay.show_wireframes))
 zb.highpoly = True
 hp.update(ctx)
@@ -60,12 +61,12 @@ check('What it changed is kept on the screen (not in the undo history), so a sav
 hp.restore(screen)
 zb.highpoly = False
 other = next(s for s in bpy.data.screens if s != screen and any(a.type == 'VIEW_3D' for a in s.areas))
-sc.use_deform_only = False
+sc.use_sculpt_delay_updates = False
 hp.apply(C.scene, screen)
 hp.apply(C.scene, other)
 hp.restore(screen)
 check('Two windows on one scene: the sculpt options stay light until the last one leaves, then go back',
-      sc.use_deform_only and hp.restore(other) and not sc.use_deform_only)
+      sc.use_sculpt_delay_updates and hp.restore(other) and not sc.use_sculpt_delay_updates)
 check('A watcher keeps it right every 0.4 s (mode / tab / style changes)', bpy.app.timers.is_registered(hp._tick))
 check('Blender Preferences are never changed (only named)', 'preferences' not in inspect.getsource(hp.apply).lower()
       and any('Undo Steps' in a for a in hp.advice()))
@@ -172,7 +173,7 @@ check('Right drag turns the view anywhere on the ZBrush screen, over the model t
       and 'rmb_drag_check' in inspect.getsource(zs.MCH_OT_zb_popup.modal)
       and "event.value == 'RELEASE'" in inspect.getsource(zs.MCH_OT_zb_popup.modal))
 check('The key card says so', any(t.startswith('Right drag') for t in zu.KEYS_TEXT))
-check('Version 0.24.75', mecha_lab.bl_info['version'] == (0, 24, 75))
+check('Version 0.24.76', mecha_lab.bl_info['version'] == (0, 24, 76))
 zs.on = real_on
 wui.pref = real_pref
 hp.set_pref = hp_set

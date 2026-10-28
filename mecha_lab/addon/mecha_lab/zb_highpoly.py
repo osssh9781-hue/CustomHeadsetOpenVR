@@ -1,9 +1,9 @@
 """0.24.61 High Poly Mode for the ZBrush screen (Preferences / the HiPoly button on the view shelf).
 
 While the ZBrush screen is on (Sculpt Mode in the MECHA LAB tab, ZBrush style) it takes the load off Blender:
-    - Blender's Sculpt options Deform Only (constructive modifiers such as Smooth by Angle / Subdivision / Mirror
-      are not worked out again on every brush step, and there is no second, evaluated copy of the mesh) and
-      Delay Viewport Updates (faster turning of the view),
+    - Blender's Sculpt option Delay Viewport Updates (faster turning of the view).  0.24.76 not Deform Only any
+      more: with it Smooth by Angle / Mirror / Subdivision were not shown while sculpting - flat-shaded parts turned
+      smooth the moment you went to the ZBrush screen,
     - the heavy viewport extras off: wireframe, statistics, face orientation, mesh analysis, cavity, shadows,
       X-Ray, the selection outline.
 Leaving the ZBrush screen (another mode, tab or style) or turning the mode off puts every one of them back as it
@@ -16,7 +16,7 @@ import json
 
 import bpy
 
-SCULPT = ('use_deform_only', 'use_sculpt_delay_updates')
+SCULPT = ('use_sculpt_delay_updates',)       # 0.24.76 (Deform Only hid Smooth by Angle: the shading changed)
 VIEW_OFF = (('overlay', 'show_wireframes'), ('overlay', 'show_stats'), ('overlay', 'show_face_orientation'),
             ('overlay', 'show_statvis'), ('shading', 'show_cavity'), ('shading', 'show_shadows'),
             ('shading', 'show_xray'), ('shading', 'show_object_outline'))

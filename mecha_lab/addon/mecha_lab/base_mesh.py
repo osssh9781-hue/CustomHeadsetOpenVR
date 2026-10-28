@@ -193,8 +193,8 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
                                            'thick, or the carve goes right through to the other side')
     carve_steep: EnumProperty(name='Steep Edges', items=fc.STEEP_ITEMS, default='EVEN', update=_ramp_live_update,
                               description='Alt: Height / Ramp over a bent edge (each flat face gets its own floor): '
-                                          'Even = every face the full depth across it, Limit = the depth measured '
-                                          'along the main face (shallower down a steep side, like before)')
+                                          'Even = every face the full depth across it, Limit = the same depth along '
+                                          'your view (shallower down a steep side, like before)')
     ramp_length: FloatProperty(name='Ramp Length', default=1.0, min=0.05, max=1.0, subtype='FACTOR',
                                update=_ramp_live_update,
                                description='Alt: Ramp - how far across the shape the slope goes (1 = it meets the '

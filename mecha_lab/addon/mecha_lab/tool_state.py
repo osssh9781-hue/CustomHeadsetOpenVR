@@ -466,8 +466,8 @@ class MCH_PG_Cut(bpy.types.PropertyGroup):
                                 description='How softly the slope runs into the surface and the side walls round off')
     gn_ramp_steep: EnumProperty(name='Steep Edges', items=fc.STEEP_ITEMS, default='EVEN', update=_ramp_refresh_update,
                                 description='Cut Ramp over a bent edge (each flat face gets its own floor): Even = '
-                                            'every face the full depth across it, Limit = the depth measured along '
-                                            'the main face (shallower down a steep side, like before)')
+                                            'every face the full depth across it, Limit = the same depth along your '
+                                            'view (shallower down a steep side, like before)')
     gn_ramp_res: IntProperty(name='Ramp Resolution', default=20, min=8, max=160, update=_ramp_refresh_update,
                              description='How many points the ramp is built from (more = smoother slope and sides, '
                                          'slower)')

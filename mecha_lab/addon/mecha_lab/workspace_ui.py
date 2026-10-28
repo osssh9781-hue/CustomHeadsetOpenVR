@@ -2301,9 +2301,10 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
                              '(orange); the empty canvas / a right-drag turns the view'),
         ('BLENDER', 'Blender', 'Blender\'s own sculpt keys and panels and view navigation')])
     zb_highpoly: BoolProperty(name='High Poly Mode', default=False, update=_ui_changed,
-                              description='0.24.61 while the ZBrush screen is on: Blender Sculpt Deform Only + Delay '
-                                          'Viewport Updates, and the heavy viewport extras off (wireframe, statistics, '
-                                          'cavity, shadows, X-Ray, outline); all put back when you leave it')
+                              description='0.24.61 while the ZBrush screen is on: Blender Sculpt Delay Viewport '
+                                          'Updates, and the heavy viewport extras off (wireframe, statistics, cavity, '
+                                          'shadows, X-Ray, outline); all put back when you leave it.  0.24.76 the '
+                                          'shading stays as it is (no Deform Only: Smooth by Angle keeps working)')
     layers_panel: BoolProperty(name='Layers Panel', default=True,
                                description='0.24.59 parts and groups, Export and the ZBrush Bridge at the left of the '
                                            'viewport (with the tool menu at the bottom)')

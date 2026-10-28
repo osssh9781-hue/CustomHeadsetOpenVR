@@ -31,7 +31,7 @@ class MCH_PG_QuadRemesh(bpy.types.PropertyGroup):
                          'onto them (thin slivers left by a cut can get lost)'),
         ('PATCH', 'Patch', 'The hard edges cut the part into flat patches, each filled with an even grid: '
                            'the hard edges stay exactly; best for flat hard-surface parts')))
-    faces: IntProperty(name='Faces', default=4000, min=100, max=200000,
+    faces: IntProperty(name='Faces', default=4000, min=1, max=200000,          # 0.24.76 any count (was 100 up)
                        description='About this many quads. More = thin chamfers and small cuts keep their shape')
     edge_angle: FloatProperty(name='Edge Angle', default=math.radians(30.0), min=math.radians(1.0),
                               max=math.radians(150.0), subtype='ANGLE',
@@ -84,8 +84,15 @@ def _marked(me):
     return out
 
 
+FIXED = {}                # 0.24.76 what the last ``prepare`` repaired (Fix Mesh stats; empty: nothing to repair)
+OPEN_OK = 4               # 0.24.76 Make Quad still runs with this many broken edges left after the repair
+
+
 def prepare(me, angle, keep_marked=True):
-    """Clean ``me`` for QuadriFlow and mark the edges to keep sharp.  Returns (kept edges, open edges)."""
+    """Clean ``me`` for QuadriFlow and mark the edges to keep sharp; 0.24.76 open sides / 3+-face edges left after
+    the cleanup are repaired as Fix Mesh does (``FIXED``).  Returns (kept edges, open edges)."""
+    from . import mesh_fix
+    FIXED.clear()
     marked = _marked(me) if keep_marked else set()
     bm = bmesh.new()
     try:
@@ -99,6 +106,8 @@ def prepare(me, angle, keep_marked=True):
         if loose:
             bmesh.ops.delete(bm, geom=loose, context='VERTS')
         bmesh.ops.dissolve_degenerate(bm, edges=bm.edges, dist=_size(me) * 1e-6)
+        if any(not e.is_manifold for e in bm.edges):
+            FIXED.update(mesh_fix.fix_bm(bm))
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
         kept = 0
         open_edges = 0
@@ -431,20 +440,38 @@ def _hard_list(me):
 
 
 def build_mesh(context, src, st):
-    """The quad mesh (object space of ``src``).  Returns (mesh, kept hard edges, edge miss / quad size)."""
+    """The quad mesh (object space of ``src``).  Returns (mesh, kept hard edges, edge miss / quad size, note)."""
     me = _baked(context, src)
-    kept, open_edges = prepare(me, st.edge_angle, st.keep_marked)
-    if open_edges:
+    notes = []
+    kept, open_edges = prepare(me, st.edge_angle, st.keep_marked)     # (repairs cracks, slivers, inside walls)
+    if FIXED:
+        notes.append(f'Fix Mesh first: {FIXED["open_before"] + FIXED["multi_before"]:,} broken edges -> '
+                     f'{FIXED["open_after"] + FIXED["multi_after"]:,}')
+    if open_edges > OPEN_OK:                         # (one or two left after the repair: Patch copes, Flow falls back)
         bpy.data.meshes.remove(me)
-        raise RuntimeError(f'The part has {open_edges} open / non-manifold edges. Close it first '
-                           '(Quad Remesh needs a closed solid).')
-    if st.method == 'PATCH':
+        raise RuntimeError(f'The part still has {open_edges} open / non-manifold edges after Fix Mesh (a big hole?): '
+                           'Fix Mesh with Close All Holes, or use Mesh Tools > Quad Remesh (works on open parts)')
+    method = st.method
+    if method == 'FLOW':
+        try:
+            out = _flow(context, src, st, me, kept)
+            return out + ('; '.join(notes),)
+        except RuntimeError as ex:                   # 0.24.76 QuadriFlow gave up: the Patch method instead
+            notes.append(f'{str(ex).splitlines()[0]} - used Patch instead')
+            me = _baked(context, src)
+            kept, _o = prepare(me, st.edge_angle, st.keep_marked)
+            method = 'PATCH'
+    if method == 'PATCH':
         build_patch(me, st.faces)
         for name in [a.name for a in me.attributes if a.name.startswith('mch_')]:
             me.attributes.remove(me.attributes[name])
         if st.smooth_shade:
             _shade(me, st.edge_angle)
-        return me, kept, 0.0
+        return me, kept, 0.0, '; '.join(notes)
+
+
+def _flow(context, src, st, me, kept):
+    """QuadriFlow on the prepared mesh ``me`` (freed on an error).  Returns (mesh, kept, miss)."""
     src_hard = _hard_list(me)
     area = sum(p.area for p in me.polygons)
     tmp = bpy.data.objects.new('MCH_Quad_tmp', me)
@@ -520,7 +547,7 @@ def set_bevel(ob, st):
 def make(context, src, st):
     if src is None or src.type != 'MESH':
         raise RuntimeError('Select a mesh part first.')
-    me, kept, miss = build_mesh(context, src, st)
+    me, kept, miss, note = build_mesh(context, src, st)
     me.name = src.name + '_Quad'
     ob = bpy.data.objects.new(src.name + '_Quad', me)
     for coll in src.users_collection:
@@ -529,20 +556,21 @@ def make(context, src, st):
     for mat in src.data.materials:
         me.materials.append(mat)
     ob[SRC_KEY] = src.name
+    ob.show_wire = ob.show_all_edges = True           # 0.24.76 the new quads are shown
     set_bevel(ob, st)
     src.hide_set(True)
     for o in context.selected_objects:
         o.select_set(False)
     ob.select_set(True)
     context.view_layer.objects.active = ob
-    return ob, kept, miss
+    return ob, kept, miss, note
 
 
 def remake(context, ob, st):
     src = bpy.data.objects.get(ob.get(SRC_KEY, ''))
     if src is None:
         raise RuntimeError('The original part is gone; cannot re-make.')
-    me, kept, miss = build_mesh(context, src, st)
+    me, kept, miss, note = build_mesh(context, src, st)
     old = ob.data
     me.name = old.name
     for mat in old.materials:
@@ -550,8 +578,9 @@ def remake(context, ob, st):
     ob.data = me
     if old.users == 0:
         bpy.data.meshes.remove(old)
+    ob.show_wire = ob.show_all_edges = True
     set_bevel(ob, st)
-    return ob, kept, miss
+    return ob, kept, miss, note
 
 
 class MCH_OT_quad_make(bpy.types.Operator):
@@ -574,14 +603,16 @@ class MCH_OT_quad_make(bpy.types.Operator):
         t = time.time()
         try:
             if is_quad(ob):
-                ob, kept, miss = remake(context, ob, st)
+                ob, kept, miss, extra = remake(context, ob, st)
             else:
-                ob, kept, miss = make(context, ob, st)
+                ob, kept, miss, extra = make(context, ob, st)
         except RuntimeError as ex:
             self.report({'WARNING'}, str(ex))
             return {'CANCELLED'}
         ob[MISS_KEY] = miss
         note = f'{ob.name}: {len(ob.data.polygons)} quads, {kept} hard edges kept ({time.time() - t:.1f} s)'
+        if extra:
+            note += ' | ' + extra
         if miss > MISS_LIMIT:
             self.report({'WARNING'}, note + '. Some cut edges were not kept (thin slivers): raise Faces '
                                             'or use the Patch method')
@@ -632,8 +663,18 @@ class MCH_OT_quad_show_source(bpy.types.Operator):
 def draw(layout, context):
     st = context.scene.mch_quadremesh
     ob = context.active_object
+    zb = getattr(context.scene, 'mch_zb', None)
+    if zb is not None:                               # 0.24.76 the new engine first (open / broken parts too, faster)
+        box = layout.box()
+        box.label(text='QUAD REMESH (new engine)', icon='MOD_REMESH')
+        r = box.row(align=True)
+        r.scale_y = 1.3
+        r.operator('mch.mesh_tool', text='Quad Remesh').action = 'QUAD_REMESH'
+        r.prop(zb, 'qr_target', text='Target (k)')
+        box.row(align=True).prop(zb, 'qr_mode', expand=True)
+        box.operator('mch.fix_mesh', icon='TOOL_SETTINGS')
     box = layout.box()
-    box.label(text='QUAD REMESH (keep cut edges)', icon='MOD_REMESH')
+    box.label(text='MAKE QUAD (old: QuadriFlow / Patch)', icon='MOD_REMESH')
     box.row(align=True).prop(st, 'method', expand=True)
     col = box.column(align=True)
     col.prop(st, 'faces')
@@ -662,7 +703,7 @@ def draw(layout, context):
         row.operator('mch.quad_show_source', icon='HIDE_OFF')
         row.operator('mch.quad_apply', icon='CHECKMARK')
     else:
-        box.label(text='Needs a closed part. Big meshes take a while', icon='INFO')
+        box.label(text='Broken parts are repaired first (Fix Mesh). Big meshes take a while', icon='INFO')
     if st.method == 'FLOW':
         box.label(text='Thin slivers from cuts: raise Faces or use Patch', icon='INFO')
 

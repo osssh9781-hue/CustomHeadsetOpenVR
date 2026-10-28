@@ -11,7 +11,7 @@ import bpy
 from bpy.props import StringProperty
 
 ACTIONS = {'DYNAMESH': 'DynaMesh', 'DECIMATE': 'Decimate', 'QUAD_REMESH': 'Quad Remesh', 'EDGE_MESH': 'Edge Mesh',
-           'HE_FIND': 'Find Edges', 'HE_APPLY': 'Apply', 'HE_CLEAR': 'Clear'}
+           'HE_FIND': 'Find Edges', 'HE_APPLY': 'Apply', 'HE_CLEAR': 'Clear', 'FIX_MESH': 'Fix Mesh'}
 HEAVY = {'DYNAMESH', 'DECIMATE', 'QUAD_REMESH', 'EDGE_MESH', 'HE_FIND', 'HE_APPLY'}
 
 
@@ -44,7 +44,7 @@ def run_one(context, ob, zb, action):
         return fd.decimate_object(ob, zb.decimate, even=zb.dec_even, quads=zb.dec_quads, keep_mask=zb.dec_mask,
                                   keep_groups=zb.dec_groups, keep_borders=zb.dec_borders)
     if action == 'QUAD_REMESH':
-        return qf.remesh_object(ob, max(50, int(round(zb.qr_target * 1000))), all_quads=zb.qr_mode == 'ALL',
+        return qf.remesh_object(ob, max(1, int(round(zb.qr_target * 1000))), all_quads=zb.qr_mode == 'ALL',
                                 crease_deg=math.degrees(zb.qr_angle))
     if action == 'EDGE_MESH':
         if not fd.available():
@@ -65,6 +65,11 @@ def run_one(context, ob, zb, action):
     if action == 'HE_CLEAR':
         he.clear(ob)
         return 'Hard Edges: cleared'
+    if action == 'FIX_MESH':                         # 0.24.76 like ZBrush's Fix Mesh
+        from . import mesh_fix
+        if ob.data.shape_keys is not None:
+            raise RuntimeError('remove the shape keys first')
+        return mesh_fix.report(mesh_fix.fix_mesh(ob.data))
     raise RuntimeError(f'unknown action {action}')
 
 
@@ -129,6 +134,8 @@ def draw(layout, context):
     r = box.row(align=True)
     op(r, 'DynaMesh', 'DYNAMESH')
     r.prop(zb, 'points', text='Points')
+    box.row(align=True).operator('mch.mesh_tool', text='Fix Mesh (weld cracks, slivers, inside walls, small holes)',
+                                 icon='TOOL_SETTINGS').action = 'FIX_MESH'
     col = box.column(align=True)
     r = col.row(align=True)
     op(r, 'Decimate', 'DECIMATE')

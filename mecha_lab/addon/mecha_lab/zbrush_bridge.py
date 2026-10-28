@@ -31,7 +31,7 @@ import uuid
 from pathlib import Path
 
 import bpy
-from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
 from mathutils import Matrix
 
 MANIFEST = 'mecha_zbrush_manifest.json'
@@ -138,6 +138,49 @@ def export_copy(context, ob, apply_modifiers, split_ngons=True):
     tmp.matrix_world = ob.matrix_world.copy()
     context.scene.collection.objects.link(tmp)
     return tmp
+
+
+def quad_copy(context, tmp, quad_size, client=False, subdiv=1):
+    """0.24.76 Export Quad Mesh: the temporary export copy ``tmp`` rebuilt as quads about ``quad_size`` (scene units)
+    apart - Fix Mesh first, then Quad Remesh with the part's hard edges kept - and, with ``client``, those edges
+    given a narrow bevel + Subdivide baked in, every face smooth (looks the same in Maya / Max / ZBrush).  Returns
+    a short note ('' when done as asked)."""
+    from types import SimpleNamespace
+    from . import hard_edges as he
+    from . import quad_field as qf
+    me = tmp.data
+    if not len(me.polygons):
+        return 'empty'
+    if me.shape_keys is not None:
+        return 'shape keys: exported as it is'
+    k = abs(tmp.matrix_world.to_3x3().determinant()) ** (1.0 / 3.0) or 1.0     # object -> world scale
+    area = sum(p.area for p in me.polygons) * k * k
+    target = int(min(QUAD_MAX, max(QUAD_MIN, area / max(quad_size, 1e-9) ** 2)))
+    msg = qf.remesh_object(tmp, target)
+    if not msg.startswith('Quad Remesh') or ' > ' not in msg:
+        return msg                                     # (not remeshed: the copy goes out as it was)
+    if client:
+        st = SimpleNamespace(he_crease=False, he_outer=False, he_bevel=True, he_width=0.2 * quad_size / k,
+                             he_segments=2, he_style='ROUND', he_profile=0.5, he_subdiv=max(0, int(subdiv)),
+                             he_normals=False, he_client=True, he_fit=False, he_match=False)
+        he.set_live(tmp, st)
+        he.apply_live(context, tmp, st)
+    return ''
+
+
+QUAD_MIN = 60                   # Export Quad Mesh: at least / at most this many faces per object
+QUAD_MAX = 60000
+
+
+def export_size(objects):
+    """Diagonal of the world bounding box of ``objects`` (the Quad Size % is of this)."""
+    from mathutils import Vector
+    pts = [o.matrix_world @ Vector(c) for o in objects for c in o.bound_box]
+    if not pts:
+        return 1.0
+    lo = Vector([min(p[i] for p in pts) for i in range(3)])
+    hi = Vector([max(p[i] for p in pts) for i in range(3)])
+    return max((hi - lo).length, 1e-6)
 
 
 def ngon_count(me):
@@ -380,10 +423,37 @@ class MCH_OT_export_mesh(bpy.types.Operator):
     split_ngons: BoolProperty(name='ZBrush-safe Faces', default=True,
                               description='Split faces with more than 4 corners into clean triangles (quads stay)')
     scale: FloatProperty(name='Scale', default=1.0, min=0.0001, soft_max=1000.0)
+    quad_mesh: BoolProperty(name='Quad Mesh', default=False,
+                            description='0.24.76 Every exported object rebuilt as quads first (Fix Mesh, then Quad '
+                                        'Remesh keeping its hard edges) - the Blender meshes stay as they are')
+    quad_size: FloatProperty(name='Quad Size', default=1.0, min=0.1, max=10.0, subtype='PERCENTAGE', precision=2,
+                             description='How far apart the quads are, in % of the size of everything exported (the '
+                                         'same size on every part: a small screw gets few quads)')
+    client_look: BoolProperty(name='Client Look', default=False,
+                              description='Also give the hard edges a narrow bevel + Subdivide, baked into the mesh: '
+                                          'it looks smooth with crisp edges in any program (more faces)')
+    client_subdiv: IntProperty(name='Subdivide', default=1, min=0, max=2,
+                               description='Client Look: Subdivide levels baked in (each level = 4x the faces)')
 
     @classmethod
     def poll(cls, context):
         return bool(export_objects(context, 'VISIBLE'))
+
+    def draw(self, context):
+        lay = self.layout
+        lay.prop(self, 'scope')
+        lay.prop(self, 'file_format')
+        lay.prop(self, 'apply_modifiers')
+        lay.prop(self, 'split_ngons')
+        lay.prop(self, 'scale')
+        box = lay.box()
+        box.prop(self, 'quad_mesh')
+        if self.quad_mesh:
+            box.prop(self, 'quad_size')
+            box.prop(self, 'client_look')
+            if self.client_look:
+                box.prop(self, 'client_subdiv')
+            box.label(text='About 1-30 s per object', icon='TIME')
 
     def invoke(self, context, event):
         if not export_objects(context, 'SELECTED'):
@@ -405,13 +475,25 @@ class MCH_OT_export_mesh(bpy.types.Operator):
                                                                       else 'nothing visible') + ')')
             return {'CANCELLED'}
         selected, active = list(context.selected_objects), context.view_layer.objects.active
-        temps, split, renamed = [], 0, []
+        temps, split, renamed, notes = [], 0, [], []
+        quad = export_size(obs) * self.quad_size / 100.0 if self.quad_mesh else 0.0
+        t0 = time.time()
+        wm = context.window_manager
+        wm.progress_begin(0, len(obs))
         try:
-            for ob in obs:
+            for i, ob in enumerate(obs):
                 if self.split_ngons:
                     src = ob.evaluated_get(context.evaluated_depsgraph_get()) if self.apply_modifiers else ob
                     split += ngon_count(src.data)
-                tmp = export_copy(context, ob, self.apply_modifiers, self.split_ngons)
+                tmp = export_copy(context, ob, self.apply_modifiers, self.split_ngons and not self.quad_mesh)
+                if quad > 0.0:
+                    try:
+                        note = quad_copy(context, tmp, quad, self.client_look, self.client_subdiv)
+                    except (RuntimeError, ValueError, MemoryError) as ex:
+                        note = str(ex).splitlines()[0][:80] if str(ex) else type(ex).__name__
+                    if note:
+                        notes.append(f'{ob.name}: {note}')
+                wm.progress_update(i + 1)
                 name = ob.name                             # the file gets the real names
                 ob.name = name + '__mch_export'
                 renamed.append((ob, name))
@@ -434,6 +516,7 @@ class MCH_OT_export_mesh(bpy.types.Operator):
             self.report({'ERROR'}, f'Export failed: {ex}')
             return {'CANCELLED'}
         finally:
+            wm.progress_end()
             for t in temps:
                 me = t.data
                 bpy.data.objects.remove(t, do_unlink=True)
@@ -445,7 +528,12 @@ class MCH_OT_export_mesh(bpy.types.Operator):
         if not path.is_file():
             self.report({'ERROR'}, 'Export produced no file')
             return {'CANCELLED'}
-        self.report({'INFO'}, f'Exported {len(obs)} mesh(es) to {path}' + (f' ({split} n-gons split)' if split else ''))
+        msg = f'Exported {len(obs)} mesh(es) to {path}' + (f' ({split} n-gons split)' if split and not quad else '')
+        if quad:
+            msg += f' | Quad Mesh ({quad:.3g} apart{", Client Look" if self.client_look else ""}) in {time.time() - t0:.0f} s'
+            if notes:
+                msg += f' | {len(notes)} not as asked: ' + '; '.join(notes[:3])
+        self.report({'WARNING'} if notes else {'INFO'}, msg)
         return {'FINISHED'}
 
 

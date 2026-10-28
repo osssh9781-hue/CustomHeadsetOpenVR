@@ -101,6 +101,8 @@ cube = C.active_object
 laid = []
 real_layout = sd._carve_layout
 sd._carve_layout = lambda *a, **k: laid.append(1) or real_layout(*a, **k)
+from mecha_lab import facet_carve as fc_       # 0.24.76 a flat top gets the facet carve (no layout at all): the
+fc_.ENABLED = False                            # layout cache is the old carve's (still the fallback) - tested on it
 bm_.perform_base(C, [SQ], TOP, cutter=True)
 first = len(laid)
 re_.set_side(C, cube, 1)
@@ -123,6 +125,7 @@ except cg.CutError:
     ok = False
 check('... nothing to re-carve any more', ok)
 sd._carve_layout = real_layout
+fc_.ENABLED = True
 
 # --- Quad Remesh bevel -----------------------------------------------------------------------------------------
 for o in list(bpy.data.objects):

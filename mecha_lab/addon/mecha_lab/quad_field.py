@@ -296,10 +296,11 @@ def remesh_cut(me, target, all_quads=False, crease_deg=30.0, nthreads=None):
         P, Fq, tsrc, psrc, st = remesh_arrays(V, T, target * k, all_quads=all_quads, crease_deg=crease_deg,
                                               nthreads=nthreads, guide=True)
         bad = len(holes(P, open_edges(Fq), border_tree(me, 0.25 * h), 0.5 * h))   # (an open plate's border stays)
-        if best is None or bad < best[0]:
-            st['tries'] = k
-            st['h'] = h
-            best = (bad, (P, Fq, tpoly[tsrc], near[psrc], st))
+        if best is not None and bad >= best[0]:
+            break                                    # 0.24.76 finer did not help: no use going finer still
+        st['tries'] = k
+        st['h'] = h
+        best = (bad, (P, Fq, tpoly[tsrc], near[psrc], st))
         if bad == 0:
             break
     best[1][4]['open'] = best[0]
@@ -499,6 +500,24 @@ def remesh_object(ob, target, all_quads=False, crease_deg=30.0, nthreads=None):
         return 'Quad Remesh: the engine is not available on this system'
     t0 = time.perf_counter()
     polys0 = len(me.polygons)
+    from . import mesh_fix
+    fixed, fixst = None, None
+    if mesh_fix.needs_fix(me):                         # 0.24.76 open sides / 3+-face edges: a repaired copy is
+        fixed = me.copy()                              # remeshed (welded cracks, no slivers / inside walls; an
+        fixst = mesh_fix.fix_mesh(fixed, fill='CRACKS')  # open plate's own border stays open)
+        if mesh_fix.changed(fixst):
+            me = fixed
+        else:
+            bpy.data.meshes.remove(fixed)
+            fixed = fixst = None
+    try:
+        return _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nthreads)
+    finally:
+        if fixed is not None and fixed.users == 0:
+            bpy.data.meshes.remove(fixed)
+
+
+def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nthreads):
     me.calc_loop_triangles()
     nt = len(me.loop_triangles)
     if nt < 4:
@@ -550,6 +569,7 @@ def remesh_object(ob, target, all_quads=False, crease_deg=30.0, nthreads=None):
         bpy.data.meshes.remove(new)                        # the SubTool keeps its mesh
         raise
     fd.swap_mesh(ob, new)
+    ob.show_wire = ob.show_all_edges = True               # 0.24.76 the new quads are shown
     if len(st['hard']):
         from . import hard_edges
         ob[hard_edges.KEY] = 1                             # the Hard Edges bevel / subdivide work on it right away
@@ -565,5 +585,8 @@ def remesh_object(ob, target, all_quads=False, crease_deg=30.0, nthreads=None):
             how += (', holes closed' if not closed[1] else
                     f', {closed[1]} sides left open / pinched (a wall thinner than a quad)')
         how += ')'
+    if fixst is not None:
+        fixed = fixst['open_before'] + fixst['multi_before'] - fixst['open_after'] - fixst['multi_after']
+        how += f' (Fix Mesh first: {fixed:,} broken edges repaired)'
     return (f'Quad Remesh{how}: {polys0:,} > {len(sizes):,} polygons, {quads / len(sizes) * 100:.0f} % quads{edges} '
             f'in {dt:.1f} s')
