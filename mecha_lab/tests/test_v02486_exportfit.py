@@ -77,4 +77,27 @@ check('The fit test: FIT 0.5 %, at least 20 quads across a part, up to 4 tries',
 check('Not as quads when the shape cannot be kept: the part goes out as it was (repaired)',
       'kept as it was, repaired' in __import__('inspect').getsource(zbb.quad_copy))
 
+# --- 0.24.81 Client Look round trip: closed, all quads ----------------------------------------------------------------
+for o in C.selected_objects:
+    o.select_set(False)
+big.select_set(True)
+small.select_set(True)
+C.view_layer.objects.active = big
+path = os.path.join(tempfile.mkdtemp(), 'client.obj')
+r = bpy.ops.mch.export_mesh(filepath=path, scope='SELECTED', file_format='OBJ', quad_mesh=True, quad_size=1.0,
+                            client_look=True, client_subdiv=1)
+before = set(bpy.data.objects)
+bpy.ops.wm.obj_import(filepath=path)
+got = [o for o in bpy.data.objects if o not in before and o.type == 'MESH']
+from mecha_lab import core_geometry as cg
+check('Quad Mesh + Client Look -> OBJ -> import: both parts closed (no open / 4-face edge), every face a quad',
+      r == {'FINISHED'} and len(got) == 2 and all(cg.non_manifold_edge_count(o.data) == 0 for o in got)
+      and all(all(p.loop_total == 4 for p in o.data.polygons) for o in got),
+      [(o.name, len(o.data.polygons), cg.non_manifold_edge_count(o.data)) for o in got])
+check('... a tiny corner the bevel folds on itself (seen on the user\'s part: one edge with 4 faces) is welded away '
+      'before the file is written', "mesh_fix.needs_fix(tmp.data)" in __import__('inspect').getsource(zbb.quad_copy)
+      and "fill='SMALL')    # with 4 faces" in __import__('inspect').getsource(zbb.quad_copy))
+check('The originals untouched by the export', all(len(src[n].data.polygons) == len(keep[n][1].polygons) for n in src)
+      and not any('_ZB' in o.name or '__mch_export' in o.name for o in bpy.data.objects))
+
 summary()

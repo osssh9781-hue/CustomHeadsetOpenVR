@@ -193,6 +193,8 @@ def quad_copy(context, tmp, quad_size, client=False, subdiv=1):
                              he_normals=False, he_client=True, he_fit=False, he_match=False)
         he.set_live(tmp, st)
         he.apply_live(context, tmp, st)
+        if mesh_fix.needs_fix(tmp.data):              # 0.24.81 the bevel can fold a tiny corner on itself (an edge
+            mesh_fix.fix_mesh(tmp.data, fill='SMALL')    # with 4 faces, a sliver): welded away, the part stays closed
     return ''
 
 
