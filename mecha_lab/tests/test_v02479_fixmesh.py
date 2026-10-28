@@ -307,7 +307,8 @@ check('Export Quad Mesh: mostly quads (>= 85 %; the 77-face screw >= 70 %)',
 check('Export Quad Mesh: closed (the broken part repaired on the way)', all(v[2] == (0, 0) for v in got.values()),
       {k: v[2] for k, v in got.items()})
 check('Export Quad Mesh: quads sized to each part too (0.24.77: the small screw is not cut down to a few faces), the '
-      'big broken part gets the most', got['Screw'][0] >= 200 and got['Screw'][0] < got['PartB'][0],
+      'big broken part gets the most (0.24.82: no part more than 8x its own faces, a finer try only over 1 %)',
+      got['Screw'][0] >= 100 and got['Screw'][0] < got['PartA'][0] and got['PartB'][0] < got['PartA'][0],
       {k: v[0] for k, v in got.items()})
 quad_faces = {k: v[0] for k, v in got.items()}
 

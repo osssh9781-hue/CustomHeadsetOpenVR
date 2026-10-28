@@ -152,10 +152,10 @@ check('The arrow folds a group', 'Hand_L' not in names2 and 'Arm_L' in names2)
 ub.run(CTX, next(i for i in lp.items(CTX, W, H, 1.0) if i.kind == 'lfold'))
 
 heads = [i for i in lay if i.kind == 'shead']
-check('Export and ZBrush Bridge under the list, folded at first',
-      [i.label for i in heads] == ['EXPORT', 'ZBRUSH BRIDGE'] and not any(i.on for i in heads)
-      and not any(i.kind == 'tbtn' and i.label == 'Export...' for i in lay))
-ub.run(CTX, heads[0])
+check('Live Stack (0.24.82, open at first), Export and ZBrush Bridge under the list, the last two folded at first',
+      [i.label for i in heads] == ['LIVE STACK', 'EXPORT', 'ZBRUSH BRIDGE'] and heads[0].on
+      and not any(i.on for i in heads[1:]) and not any(i.kind == 'tbtn' and i.label == 'Export...' for i in lay))
+ub.run(CTX, heads[1])
 TALL = 1600
 opened = lp.items(CTX, W, TALL, 1.0)
 exp = next((i for i in opened if i.kind == 'tbtn' and i.label == 'Export...'), None)
