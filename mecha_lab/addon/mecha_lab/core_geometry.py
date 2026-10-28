@@ -1121,14 +1121,19 @@ def tidy_result(me, ref_size=None, shards=True, slivers=True):
     return out
 
 
-def is_junk(me, ref_size=None):
+def is_junk(me, ref_size=None, open_ok=False):
     """A result not worth a part: under 4 faces, no area, a speck next to ``ref_size`` (under 1 % with fewer than 8
-    faces), or paper (no volume to speak of: under a millionth of ``ref_size`` cubed - a Split's gap shard)."""
-    if me is None or len(me.polygons) < 4:
+    faces), or paper (no volume to speak of: under a millionth of ``ref_size`` cubed - a Split's gap shard).
+    ``open_ok`` (a Split with Cap off: open shells are what was asked) skips the open-scrap and the volume rules."""
+    if me is None or not len(me.polygons):
         return True
     area = sum(p.area for p in me.polygons)
     size = mesh_size(me)
     if area <= 1e-12 * max(1.0, size * size) or size <= 0.0:
+        return True
+    if open_ok:                  # (an uncapped Split piece can be two flat patches: a part all the same)
+        return False
+    if len(me.polygons) < 4:
         return True
     if ref_size:
         if size < 0.01 * ref_size and len(me.polygons) < 8:

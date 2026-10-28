@@ -479,11 +479,12 @@ def _object_scale(ob):
     return max((abs(s.x) + abs(s.y) + abs(s.z)) / 3.0, 1e-9)
 
 
-def _shut_holes(target, me):
+def _shut_holes(target, me, cap=True):
     """0.24.83 A closed part's boolean result that came out open (slivers the solver left, digons): the small holes
-    shut, 3+-face edges tidied (mesh_fix, no big fills - an open plate stays an open plate)."""
+    shut, 3+-face edges tidied (mesh_fix, no big fills - an open plate stays an open plate).  ``cap`` False (a Split
+    / line cut with Cap off: open shells are what was asked) leaves it alone."""
     try:
-        if cg.non_manifold_edge_count(me) and not cg.non_manifold_edge_count(target.data):
+        if cap and cg.non_manifold_edge_count(me) and not cg.non_manifold_edge_count(target.data):
             from . import mesh_fix
             mesh_fix.fix_mesh(me, fill='SMALL')
     except (RuntimeError, ValueError, ReferenceError) as ex:
@@ -883,16 +884,17 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
         crossing = []
         for t, me in pieces:
             cg.tidy_result(me, cg.mesh_size(t.data))          # 0.24.83 no slivers / folds / specks left behind
+        capped = mode != 'SPLIT' or cut.split_cap
         for k, (t, me) in enumerate(results):
             cg.tidy_result(me, cg.mesh_size(t.data))
-            _shut_holes(t, me)
+            _shut_holes(t, me, capped)
             if cg.non_manifold_edge_count(me) and not cg.non_manifold_edge_count(t.data):
                 n = cg.self_overlaps(t.data)                  # 0.24.83 a closed part whose cut came out broken: why
                 if n > 0:
                     crossing.append(f'{t.name} crosses itself in {n:,} places (sculpted through its other side)')
-            if mode == 'SPLIT' and cg.is_junk(me, cg.mesh_size(t.data)):
+            if mode == 'SPLIT' and cg.is_junk(me, cg.mesh_size(t.data), not capped):
                 # nothing worth keeping stays on the part's side: the piece becomes the part instead
-                swap = next((j for j, (pt, pm) in enumerate(pieces) if pt == t and not cg.is_junk(pm, cg.mesh_size(t.data))), None)
+                swap = next((j for j, (pt, pm) in enumerate(pieces) if pt == t and not cg.is_junk(pm, cg.mesh_size(t.data), not capped)), None)
                 if swap is not None:
                     results[k] = (t, pieces[swap][1])
                     pieces[swap] = (t, me)
@@ -901,11 +903,11 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
         new_pieces = []
         for t, me in pieces:
             temp.remove(me)
-            if cg.is_junk(me, cg.mesh_size(t.data)):           # (a paper-thin shard of the gap: not a part)
+            if cg.is_junk(me, cg.mesh_size(t.data), not capped):   # (a paper-thin shard of the gap: not a part)
                 junk += 1
                 bpy.data.meshes.remove(me)
                 continue
-            _shut_holes(t, me)
+            _shut_holes(t, me, capped)
             new_pieces.append(_make_piece(t, me))
         for p in new_pieces:
             p.select_set(True)
@@ -1103,17 +1105,18 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
             if not results:
                 raise cg.CutError('The line does not cross any target; nothing was changed.' +
                                   (' Failed: ' + '; '.join(failed) if failed else ''))
+            capped = cut.line_cap and (mode != 'SPLIT' or cut.split_cap)
             for t, me in results:
                 cg.tidy_result(me, cg.mesh_size(t.data))
-                _shut_holes(t, me)
+                _shut_holes(t, me, capped)
             infos = [cg.commit_mesh(t, me, cut.shared_mesh) for t, me in results]
             for t, me in pieces:
                 temp.remove(me)
                 cg.tidy_result(me, cg.mesh_size(t.data))
-                if cg.is_junk(me, cg.mesh_size(t.data)):
+                if cg.is_junk(me, cg.mesh_size(t.data), not capped):
                     bpy.data.meshes.remove(me)
                     continue
-                _shut_holes(t, me)
+                _shut_holes(t, me, capped)
                 _make_piece(t, me).select_set(True)
             suffix = ''
             if mode == 'SPLIT':
