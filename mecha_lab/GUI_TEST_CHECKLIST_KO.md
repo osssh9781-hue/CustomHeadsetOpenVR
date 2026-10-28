@@ -1,8 +1,16 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.74 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.75 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000. 0.24.75 Quad Remesh — 컷으로 만든 가벼운 부품 (미검증)
+- [ ] Base Mesh + Cut 몇 번으로 만든 부품을 지브러시 선반 Quad Remesh(Target 1.5): 메시지에 "(low-poly part: its own edges kept)", 걸린 시간(헤드리스 0.6~2초)
+- [ ] 결과가 닫혀 있는지(Select > All by Trait > Non Manifold 0), 컷 엣지를 따라 주황 하드 엣지, 네모가 대부분인지
+- [ ] 좁은 홈(쿼드 한 칸보다 좁게)을 판 부품: "2x finer" 같은 메시지 + 구멍 없음
+- [ ] 재질 두 개를 칠한 부품: 결과에서 같은 자리 같은 재질
+- [ ] Mesh Tools 탭(오브젝트 모드, 여러 부품 선택)에서 Quad Remesh도 같은지
+- [ ] 촘촘한 DynaMesh 부품은 예전처럼(메시지에 "low-poly" 없음)
 
 ## A00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000. 0.24.74 Edge Mesh Auto Detail · Match Original (미검증)
 - [ ] Edge Mesh 상자에 **Auto** · **Tolerance**, **Fit to Original** 옆에 **Match Original**(Mesh Tools 탭에도)

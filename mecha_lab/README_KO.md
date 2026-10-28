@@ -1,8 +1,13 @@
-# Mecha Lab 0.24.74 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.24.75 — 설치 · MECHA LAB Workspace · 사용법
 
-> **검증 수준:** Linux headless Blender **5.2.3**(`bpy`)에서 자동 테스트 168개 파일 / 4,603개 항목(실패 0) + 무작위 기능 조합 크래시 테스트 240개를 돌렸습니다(결과: `test_report.md`).
+> **검증 수준:** Linux headless Blender **5.2.3**(`bpy`)에서 자동 테스트 169개 파일 / 4,619개 항목(실패 0) + 무작위 기능 조합 크래시 테스트 280개를 돌렸습니다(결과: `test_report.md`).
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` A절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
+
+## 0.24.75 Quad Remesh — 컷으로 만든 가벼운 부품
+- Base Mesh + Cut으로 만든 부품(또는 데시메이트한 부품)에 **Quad Remesh**를 누르면 자동으로 부품의 엣지를 그대로 따라가는 쿼드가 됩니다(버튼 · 설정은 그대로). 메시지에 "(low-poly part: its own edges kept)".
+- 쿼드 한 칸보다 좁은 홈이 있으면 저절로 2배 · 4배 촘촘하게 다시 하고(메시지에 "2x finer"), 그래도 남은 틈은 메웁니다. 열린 판의 원래 경계는 메우지 않습니다.
+- 주황 하드 엣지가 중간에 끊기는 곳: 두 엣지가 쿼드 한 칸보다 가까운 좁은 띠 · 여러 엣지가 만나는 모서리 · 얕게(30~40°) 꺾인 엣지 · 아주 짧은 엣지. **Target을 올리면** 좁은 띠가, **Hard Edges 각도를 낮추면** 얕은 엣지가 이어집니다.
 
 ## 0.24.74 Edge Mesh — Auto Detail · Match Original
 - **Auto**(기본 켜짐) + **Tolerance**(기본 0.006%): Detail을 직접 고르지 않아도 됩니다. 줄인 메쉬가 원본에서 부품 크기의 Tolerance% 넘게 벗어나기 직전까지 줄여서, 단순한 부품은 가볍게, 디테일 많은 부품은 촘촘하게 남깁니다. 찾은 삼각형 수는 **Detail** 칸에 적힙니다(사용자 FBX: 2,098 / 로봇 부품 5개: 588 ~ 5,660).
