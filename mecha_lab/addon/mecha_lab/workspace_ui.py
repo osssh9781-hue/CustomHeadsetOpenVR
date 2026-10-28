@@ -2257,6 +2257,24 @@ class MCH_PT_profile_popup(bpy.types.Panel):
         layout.label(text='RMB double-click or Esc in the viewport exits the tool')
 
 
+def build_label():
+    """'Mecha Lab 0.24.82 build 20261028-2359' - the stamp tools_dev/build_zip.py writes into the zip (build_stamp.txt
+    next to this file); a source checkout without one says so."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    try:                                                   # (an installed extension has no bl_info: the manifest)
+        import tomllib
+        with open(os.path.join(here, 'blender_manifest.toml'), 'rb') as f:
+            ver = tomllib.load(f)['version']
+    except Exception:
+        ver = '?'
+    try:
+        with open(os.path.join(here, 'build_stamp.txt'), encoding='utf-8') as f:
+            stamp = f.read().strip()
+        return 'Mecha Lab ' + stamp if stamp.startswith(ver) else f'Mecha Lab {ver} (zip stamp: {stamp})'
+    except OSError:
+        return f'Mecha Lab {ver} (source checkout, no build stamp)'
+
+
 class MCH_AddonPreferences(bpy.types.AddonPreferences):
     bl_idname = ADDON_ID
 
@@ -2398,6 +2416,7 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
 
     def draw(self, context):
         layout = self.layout
+        layout.label(text=build_label(), icon='INFO')      # 0.24.82 which build is installed (the zip's stamp)
         from . import safety_save
         safety_save.draw_prefs(layout, self)
         box = layout.box()

@@ -10,8 +10,15 @@ import sys
 from _harness import bpy, check, summary
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-zips = sorted(glob.glob(os.path.join(ROOT, 'dist', 'mecha_lab-*.zip')),
-              key=lambda p: tuple(int(x) for x in os.path.basename(p)[10:-4].split('.')))   # 0.10 > 0.9
+
+
+def _key(p):                                     # mecha_lab-0.24.82_20261028-2359.zip: version, then the build stamp
+    name = os.path.basename(p)[10:-4]
+    ver, _s, stamp = name.partition('_')
+    return tuple(int(x) for x in ver.split('.')), stamp                                   # 0.10 > 0.9
+
+
+zips = sorted(glob.glob(os.path.join(ROOT, 'dist', 'mecha_lab-*.zip')), key=_key)
 check('dist zip exists', bool(zips), zips)
 if zips:
     # The addon must come from the zip, not from ../addon on sys.path.
@@ -30,6 +37,13 @@ if zips:
     check('operators available after install', hasattr(bpy.ops.mch, 'cut_stroke') and 'MCH_OT_cut_stroke' in dir(bpy.types))
     prefs = bpy.context.preferences.addons[mod].preferences if mod in bpy.context.preferences.addons else None
     check('addon preferences registered (hotkey switches)', prefs is not None and hasattr(prefs, 'space_menu'))
+    import zipfile
+    with zipfile.ZipFile(zips[-1]) as z:
+        stamp = z.read('build_stamp.txt').decode().strip() if 'build_stamp.txt' in z.namelist() else ''
+    label = sys.modules[mod].workspace_ui.build_label() if mod in sys.modules else ''
+    check('0.24.82 the zip carries its build stamp (version + build time, also in the file name) and Preferences shows it',
+          stamp.startswith('0.24.') and ' build ' in stamp
+          and label == 'Mecha Lab ' + stamp and stamp.split('build ')[-1] in os.path.basename(zips[-1]), (stamp, label))
     kc = bpy.context.window_manager.keyconfigs.addon
     for cycle in range(3):          # docs/04 A1: disable / enable three times
         try:

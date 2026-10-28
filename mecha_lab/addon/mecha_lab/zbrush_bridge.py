@@ -148,7 +148,10 @@ def quad_copy(context, tmp, quad_size, client=False, subdiv=1):
     0.24.77 Each part keeps its shape: the quads are at most a PART_QUADS-th of the part's own size (one Quad Size for
     the whole export made small / detailed parts a few dozen faces - flat shards in ZBrush), and the result is
     measured against the part (FIT, the part after Fix Mesh): too far off, it is made again finer (x3, TRIES times);
-    still off, the part goes out as it was (repaired)."""
+    still off, the part goes out as it was (repaired).
+    0.24.82 Only a real loss (FIT_RETRY: 1 % of the part's size) brings a finer try, x2 and never past FACES_CAP times
+    the part's own faces; a part still over FIT_KEEP (2 %) goes out as it was.  (On the user's 45-part file the 3x
+    retries at 0.5 % turned bevelled 86-face boxes into 5,494 quads: 850k faces with Client Look.)"""
     from types import SimpleNamespace
     from . import hard_edges as he
     from . import quad_field as qf
@@ -161,7 +164,8 @@ def quad_copy(context, tmp, quad_size, client=False, subdiv=1):
     area = sum(p.area for p in me.polygons) * k * k
     diag = _diag(me) * k
     q = min(quad_size, diag / PART_QUADS) if diag > 0 else quad_size
-    target = int(min(QUAD_MAX, max(QUAD_MIN, area / max(q, 1e-9) ** 2)))
+    cap = max(QUAD_MIN, min(QUAD_MAX, FACES_CAP * len(me.polygons)))   # 0.24.82 a low-poly part never balloons
+    target = int(min(QUAD_MAX, cap, max(QUAD_MIN, area / max(q, 1e-9) ** 2)))
     from . import mesh_fix
     orig = me.copy()
     if mesh_fix.needs_fix(orig):                      # (measured against - and kept if need be - the repaired part:
@@ -173,12 +177,12 @@ def quad_copy(context, tmp, quad_size, client=False, subdiv=1):
             if not msg.startswith('Quad Remesh') or ' > ' not in msg:
                 break                                  # (not remeshed: the copy goes out as it was)
             err = fit_error(orig, tmp.data)
-            if err <= FIT or target >= QUAD_MAX:
-                break
-            _put_back(tmp, orig)                       # too far off: again, finer
-            target = int(min(QUAD_MAX, target * 3))
+            if err <= FIT_RETRY or target >= min(QUAD_MAX, cap):
+                break                                  # (close enough, or as fine as this part may get)
+            _put_back(tmp, orig)                       # a real loss (a corner, a wall): again, finer
+            target = int(min(QUAD_MAX, cap, target * 2))
             err = None
-        if err is None or err > FIT:
+        if err is None or err > FIT_KEEP:
             _put_back(tmp, orig)
             return (msg if msg and not msg.startswith('Quad Remesh') else
                     'kept as it was, repaired (quads could not keep its shape)')
@@ -199,7 +203,11 @@ def quad_copy(context, tmp, quad_size, client=False, subdiv=1):
 
 
 PART_QUADS = 20                 # 0.24.77 Export Quad Mesh: at least this many quads across a part (its diagonal)
-FIT = 0.005                     # ... 95 % of the part's own surface within this share of its size, or again finer
+FIT = 0.005                     # ... 95 % of the part's own surface within this share of its size: as asked
+FIT_RETRY = 0.01                # 0.24.82 over this it is made again finer (x2) - under it the rounding of a bevelled
+#                                 corner is all that is off, and 3x finer retries made an 86-face box 5,494 quads
+FIT_KEEP = 0.02                 # ... still over this after the tries: the part goes out as it was (repaired)
+FACES_CAP = 8                   # ... and a part never gets more than this many times its own faces
 TRIES = 4
 
 
@@ -471,12 +479,12 @@ def export_objects(context, scope):
         out = []
         for o in context.view_layer.objects:
             try:
-                if o.type == 'MESH' and o.visible_get():
+                if o.type == 'MESH' and o.visible_get() and len(o.data.polygons):
                     out.append(o)
             except (RuntimeError, ReferenceError):
                 pass
         return out
-    return [o for o in context.selected_objects if o.type == 'MESH']
+    return [o for o in context.selected_objects if o.type == 'MESH' and len(o.data.polygons)]   # (0.24.82 no empty ones)
 
 
 class MCH_OT_export_mesh(bpy.types.Operator):

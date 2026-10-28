@@ -67,13 +67,16 @@ bpy.ops.import_scene.fbx(filepath=path)
 got = {o.name.split('.')[0]: o for o in bpy.data.objects if o not in before and o.type == 'MESH'}
 check('Both parts in the file', set(got) == {'Big', 'Small'}, sorted(got))
 ls = lost95(src['Small'], got['Small']) if 'Small' in got else 9
-check('The small bevelled cylinder keeps its shape (95 % of its surface within 0.5 % of its size; one export-wide '
-      'quad size made it a few faces)', ls <= 0.0051 and len(got['Small'].data.polygons) >= 200,
+check('The small bevelled cylinder keeps its shape (95 % of its surface within 1 % of its size; one export-wide '
+      'quad size made it a few faces) and does not balloon (0.24.82: at most 8x its own faces)',
+      ls <= 0.0101 and 200 <= len(got['Small'].data.polygons) <= 8 * faces0['Small'],
       (round(ls, 4), len(got['Small'].data.polygons), faces0['Small']))
 lb = lost95(src['Big'], got['Big']) if 'Big' in got else 9
-check('... and the big plate too', lb <= 0.0051, round(lb, 4))
-check('The fit test: FIT 0.5 %, at least 20 quads across a part, up to 4 tries',
-      zbb.FIT == 0.005 and zbb.PART_QUADS == 20 and zbb.TRIES == 4)
+check('... and the big plate too', lb <= 0.0101, round(lb, 4))
+check('The fit test: as asked within 0.5 %, a finer try (x2) only over 1 %, kept as it was over 2 %, at least 20 '
+      'quads across a part, up to 4 tries, never more than 8x the part\'s faces',
+      zbb.FIT == 0.005 and zbb.FIT_RETRY == 0.01 and zbb.FIT_KEEP == 0.02 and zbb.PART_QUADS == 20 and zbb.TRIES == 4
+      and zbb.FACES_CAP == 8)
 check('Not as quads when the shape cannot be kept: the part goes out as it was (repaired)',
       'kept as it was, repaired' in __import__('inspect').getsource(zbb.quad_copy))
 
@@ -97,6 +100,16 @@ check('Quad Mesh + Client Look -> OBJ -> import: both parts closed (no open / 4-
 check('... a tiny corner the bevel folds on itself (seen on the user\'s part: one edge with 4 faces) is welded away '
       'before the file is written', "mesh_fix.needs_fix(tmp.data)" in __import__('inspect').getsource(zbb.quad_copy)
       and "fill='SMALL')    # with 4 faces" in __import__('inspect').getsource(zbb.quad_copy))
+empty = bpy.data.objects.new('Empty mesh', bpy.data.meshes.new('empty'))
+C.scene.collection.objects.link(empty)
+for o in C.selected_objects:
+    o.select_set(False)
+big.select_set(True)
+empty.select_set(True)
+check('0.24.82 an empty mesh object in the selection is left out of the export (and of the Visible scope)',
+      empty not in zbb.export_objects(C, 'SELECTED') and empty not in zbb.export_objects(C, 'VISIBLE')
+      and big in zbb.export_objects(C, 'SELECTED'))
+empty.select_set(False)
 check('The originals untouched by the export', all(len(src[n].data.polygons) == len(keep[n][1].polygons) for n in src)
       and not any('_ZB' in o.name or '__mch_export' in o.name for o in bpy.data.objects))
 
