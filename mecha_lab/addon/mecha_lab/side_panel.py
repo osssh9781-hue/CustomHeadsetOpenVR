@@ -43,6 +43,11 @@ TOP_BAR_PROPS |= {('mch_cut', p) for p in (
     'finish_profile', 'finish_clamp', 'finish_crisp', 'side_a_finish', 'side_a_width', 'side_a_segments',
     'side_b_finish', 'side_b_width', 'side_b_segments')}
 TOP_BAR_PROPS |= {('mch_base', p) for p in ('bevel_sides', 'bevel_width', 'bevel_segments')}
+# 0.24.79 Concept Move / Path Move / Silhouette Move: their brush settings are in the top bar
+TOP_BAR_PROPS |= {('mch_concept', p) for p in (
+    'path_method', 'path_area', 'radius_px', 'radius_world', 'lock_size', 'hardness', 'falloff', 'strength',
+    'path_hardness', 'path_taper', 'path_turn', 'path_back_mask', 'shape', 'mirror_x', 'keep_density', 'even_out',
+    'follow_view')}
 TOP_BAR_OPS = {'mch.set_profile', 'mch.split_swap_sides'}   # (set_profile: only the edge bevel's Flat / Chamfer / Bevel)
 # an icon-only button ('text=""'): a sign instead of the icon
 ICON_TEXT = {'ADD': '+', 'REMOVE': '−', 'X': '×', 'CANCEL': '×', 'CHECKMARK': '✓', 'LOOP_BACK': '↺',

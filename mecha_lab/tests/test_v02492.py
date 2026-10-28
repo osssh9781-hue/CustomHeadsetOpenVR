@@ -328,7 +328,8 @@ C.window_manager.mch_zb_pop = ''
 check('Preferences: Control Style (ZBrush / Blender)', 'control_style' in wui.MCH_AddonPreferences.__annotations__)
 
 # --- the corner card: MECHA LAB | ZBRUSH, STYLE ZBrush | Blender -------------------------------------------------
-corner = [i for i in items if i.kind == 'seg' and i.label in {'MECHA LAB', 'ZBRUSH', 'ZBrush', 'Blender'}]
+corner = [i for i in items if i.kind == 'seg' and i.label in {'MECHA LAB', 'ZBRUSH', 'ZBrush', 'Blender'}
+          and i.action and i.action[1] in {'mch.zb_switch', 'mch.zb_style'}]   # (0.24.79: not the NAV row)
 cx = min(i.x for i in corner)
 check('Corner card top right: MECHA LAB | ZBRUSH (ZBRUSH lit in Sculpt Mode), STYLE ZBrush | Blender',
       len(corner) == 4 and cx > W * 0.7 and min(i.y for i in corner) > H * 0.85

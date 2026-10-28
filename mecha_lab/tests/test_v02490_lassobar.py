@@ -178,7 +178,8 @@ except AttributeError:
     pass
 check('... elsewhere (the sidebar\'s tool tab) still drawn', lay.calls > 0)
 TOOL[0] = 'CMOVE'
-check('... and the Mecha top bar for them: no lasso groups (only Ortho)', groups('CMOVE') == [''])
+check('... and the Mecha top bar for them: no lasso groups (0.24.79: their brush settings instead)',
+      'Shape' not in groups('CMOVE') and 'Lasso' not in groups('CMOVE') and 'Brush' in groups('CMOVE'))
 
 # --- lasso settings per tool -----------------------------------------------------------------------------------
 ts.effective_tool = real_eff

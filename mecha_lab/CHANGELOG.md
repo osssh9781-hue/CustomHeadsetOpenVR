@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 0.24.79 — 컨셉 무브 계열 설정은 Mecha 위 막대에, 화면 이동 NAV(ZBrush / Blender) 따로 고르기, ZBrush 이동에서도 선택 도구 (2026-10-28)
+
+- **컨셉 무브 · Path Move · Silhouette Move 설정이 Mecha 위 막대에**(0.24.78에서 블렌더 위 막대에서 뺀 뒤 어디에도 안 보이던 것): **METHOD**(Path Move: Extend 등 + Brush / Whole), **BRUSH**(Size · Real Size · Hardness · Taper · Follow Turns · Back Mask · 모양, Concept Move는 Hardness(Clay) · Falloff · Strength), Mirror X · Generate · Even Out · Follow View. 오른쪽 패널에는 나머지(Cuts · Knife Mesh · Auto Apply · 기록된 움직임)만.
+- **NAV ZBrush | Blender**(오른쪽 위 카드 STYLE 밑, Preferences > View Navigation): 화면 이동 방식을 STYLE과 따로.
+  - **ZBrush**(예전 그대로): 빈 곳 드래그 = 회전(Shift 각도 맞춤), Alt = 이동, 오른쪽 드래그 = 회전.
+  - **Blender**: 블렌더 기본(가운데 버튼 회전 · Shift 이동 · Ctrl / 휠 확대, 내비게이션 기즈모). **ZBrush 탭의 ZBrush 화면 · 키는 그대로** — 빈 곳 드래그 / 오른쪽 드래그로는 안 돌고(오른쪽 클릭 = 메뉴), MECHA LAB 탭에서는 선택 도구가 빈 곳 드래그로 박스 선택. ZBrush 선반의 Move / Zoom3D / Rotate 버튼은 둘 다에서 됨. ZBrush 키 안내도 바뀜.
+  - STYLE이 Blender(블렌더 조각)일 때는 이동도 블렌더라 NAV 줄이 안 나옴.
+- **ZBrush 이동일 때 선택 도구**:
+  - MECHA LAB: 빈 곳 클릭 = 전체 선택 해제(전에는 아무것도 안 됨), 드래그 = 회전(예전처럼), Ctrl + 드래그 = 박스 선택, Shift + 빈 곳 클릭은 선택 유지.
+  - ZBrush 화면 선택 모드(Q): 다른 SubTool을 **클릭하면 그것으로 바뀜**(Alt + 클릭도). 전에는 선택 모드에서 Alt + 클릭 검사가 "브러시가 아니면 블렌더 도구로 넘김" 뒤에 있어서 아무것도 안 됐음. 선택 모드에서 빈 곳 드래그 = 회전(NAV ZBrush).
+- 테스트: <<SUITE79>>. 새 test_v02491_nav 21: 카드 NAV 줄(STYLE 밑 · 카드 안 · ZBrush 켜짐), NAV Blender(설정에 저장 · 빈 곳 회전 꺼짐 · MECHA LAB 선택 도구가 클릭을 받음 · 선반 버튼은 됨 · 오른쪽 드래그 회전 꺼짐 · 키 안내 · ZBrush 마우스 코드), STYLE Blender에는 NAV 줄 없음, ZBrush 이동의 빈 곳 클릭 = 선택 해제(Shift는 유지) · 드래그 = 회전, 선택 모드 SubTool 클릭(순서 확인), Path / Silhouette / Concept Move 위 막대 내용 · Real Size · 오른쪽 패널이 반복 안 함(3개 도구). 고친 기존 테스트: test_v02492(코너 카드 검사에서 NAV 줄 버튼 제외), test_v02490_lassobar(컨셉 무브는 이제 BRUSH 묶음), test_v02494(버전). 실제 마우스 드래그 · 화면 회전 · 마우스 밑 SubTool 클릭은 창 없는 bpy라 미검증. ZIP sha256 `<<SHA79>>`.
+
 ## 0.24.78 — 라쏘 설정은 모든 도구의 위 막대 같은 자리에, 잘린 엣지 베벨도 위 막대로, 라쏘 설정 도구별 기억, 컨셉 무브 계열 위 막대 정리 (2026-10-28)
 
 - **컨셉 무브 계열(Concept Move · Path Move · Silhouette Move)**: 블렌더의 위 막대(Tool Header)에 도구 설정을 한 줄 가득 그리던 것(Extend · Brush / Whole · Size · Hardness · Taper ...)을 없앰 — 다른 Mecha 도구처럼 설정은 오른쪽 패널(사이드바를 열면 사이드바)에. 블렌더 위 막대의 Custom PNG 고르기도 모양을 그리는 도구에서만 나옴.

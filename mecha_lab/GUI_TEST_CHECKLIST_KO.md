@@ -1,8 +1,13 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.78 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.79 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## 0.24.79 컨셉 무브 위 막대 · NAV · 선택 (미검증)
+- [ ] Path Move / Silhouette Move / Concept Move를 고르면 Mecha 위 막대에 METHOD · BRUSH 설정이 나오고, 바꾸면 실제로 반영되는지.
+- [ ] 오른쪽 위 카드 NAV를 Blender로 → MECHA LAB 선택 도구로 빈 곳 드래그 = 박스 선택, 가운데 버튼 = 회전. ZBrush 탭에서도 ZBrush 화면 그대로 + 가운데 버튼 회전, 빈 곳 드래그로는 안 도는지.
+- [ ] NAV ZBrush로 → MECHA LAB 빈 곳 클릭 = 선택 해제, 드래그 = 회전. ZBrush 탭에서 Q(선택 모드) 후 다른 SubTool 클릭 = 그것으로 바뀌는지.
 
 ## 0.24.78 위 막대 라쏘 · 베벨, 도구별 기억 (미검증)
 - [ ] Concept Move / Path Move / Silhouette Move를 골랐을 때 블렌더 위 막대에 설정 줄이 안 나오고, 오른쪽 패널에 설정이 있는지.

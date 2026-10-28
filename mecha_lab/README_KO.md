@@ -1,8 +1,13 @@
-# Mecha Lab 0.24.78 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.24.79 — 설치 · MECHA LAB Workspace · 사용법
 
 > **검증 수준:** Linux headless Blender **5.2.3**(`bpy`)에서 자동 테스트 181개 파일 / 4,826개 항목(실패 0) + 무작위 기능 조합 크래시 테스트 280개를 돌렸습니다(결과: `test_report.md`).
-> **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` 맨 위 0.24.78 절을 먼저 확인해 주세요.
+> **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` 맨 위 0.24.79 절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
+
+## 0.24.79 컨셉 무브 설정 위 막대 · 화면 이동 NAV
+- Concept Move · Path Move · Silhouette Move의 브러시 설정이 Mecha 위 막대에.
+- 오른쪽 위 카드 **NAV ZBrush | Blender**: ZBrush 화면은 그대로 두고 화면 이동만 블렌더 기본(가운데 버튼)으로. Blender로 두면 MECHA LAB 선택 도구가 빈 곳 드래그로 박스 선택.
+- ZBrush 이동일 때: 빈 곳 클릭 = 선택 해제, ZBrush 화면 선택 모드(Q)에서 다른 SubTool 클릭 = 그것으로.
 
 ## 0.24.78 라쏘 설정은 위 막대 같은 자리에 · 도구별 기억
 - 모든 그리기 도구의 위 막대에서 SHAPE 바로 옆에 LASSO(모양 옵션) · CORNERS(모서리 Round / Chamfer). 잘린 엣지 베벨(Cut / Split GN Edge · Edge Finish · Split 면별, Base Mesh 테두리 베벨)도 위 막대.

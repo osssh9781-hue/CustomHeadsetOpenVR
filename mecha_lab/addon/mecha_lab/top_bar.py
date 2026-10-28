@@ -102,6 +102,7 @@ def groups(context, tool):
         if st is not None and tool != 'HIDE':
             out.append(('', [_seg('Auto Apply', st, 'auto_apply')]))
     out += edge_groups(context, tool)
+    out += concept_groups(context, tool)
     from .workspace_ui import _ORTHO_LOCK_KEY
     locked = bool(context.workspace and context.workspace.get(_ORTHO_LOCK_KEY, False))
     out.append(('', [_cell('seg', 'Ortho', locked, ('op', 'mch.ortho_lock', {}))]))
@@ -199,6 +200,52 @@ def edge_groups(context, tool):
                     if p.profile == 'BEVEL':
                         cells.append(_mini('Segments', p, 'bevel_segments', 140))
             out.append(('Edge', cells))
+    return out
+
+
+CONCEPT_TOOLS = {'CMOVE', 'CPATH', 'SMOVE'}
+
+
+def concept_groups(context, tool):
+    """0.24.79 Concept Move / Path Move / Silhouette Move: the brush settings that filled Blender's tool header
+    (method, area, size, hardness, taper, turns, back mask, shape, mirror, generate, follow view) - here, in the
+    Mecha bar; the side panel keeps the rest (cuts, knife, auto apply, moves)."""
+    st = getattr(context.scene, 'mch_concept', None)
+    if st is None or tool not in CONCEPT_TOOLS:
+        return []
+    out = []
+    if tool == 'CPATH':
+        method = [_cell('drop', '', action=('menu_enum',), data=st, prop='path_method', width=150)]
+        if st.path_method == 'EXTEND':
+            method += _enum_segs(st, 'path_area', (('BRUSH', 'Brush'), ('SECTION', 'Whole')))
+        out.append(('Method', method))
+    brush = [_mini('Size', st, 'radius_world' if st.lock_size else 'radius_px', 140), _seg('Real Size', st, 'lock_size')]
+    if tool == 'CMOVE':
+        if st.falloff == 'CLAY':
+            brush.append(_mini('Hardness', st, 'hardness', 140))
+        brush.append(_cell('drop', '', action=('menu_enum',), data=st, prop='falloff', width=110))
+        brush.append(_mini('Strength', st, 'strength', 140))
+    else:
+        brush += [_mini('Hardness', st, 'path_hardness', 140), _mini('Taper', st, 'path_taper', 120),
+                  _seg('Follow Turns', st, 'path_turn')]
+        if tool == 'CPATH':
+            brush.append(_seg('Back Mask', st, 'path_back_mask'))
+    brush.append(_cell('drop', '', action=('menu_enum',), data=st, prop='shape', width=110))
+    out.append(('Brush', brush))
+    more = []
+    ob = getattr(context, 'active_object', None)
+    try:
+        from . import concept_move
+        own = ob is not None and concept_move.mirror_reflections(ob)
+    except (ImportError, AttributeError, TypeError, ReferenceError):
+        own = False
+    if not own:                                   # (an object with its own Mirror: that one, nothing to pick)
+        more.append(_seg('Mirror X', st, 'mirror_x'))
+    more.append(_seg('Generate', st, 'keep_density'))
+    if st.keep_density:
+        more.append(_seg('Even Out', st, 'even_out'))
+    more.append(_seg('Follow View', st, 'follow_view'))
+    out.append(('', more))
     return out
 
 

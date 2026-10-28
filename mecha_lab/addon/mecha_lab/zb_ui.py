@@ -528,7 +528,8 @@ KEYS_TEXT = ('ZBRUSH KEYS', 'Drag canvas   rotate, Shift: snap', 'Alt + drag can
              'Right drag (pen button)   rotate anywhere, Alt: move',
              'Alt / Shift   Zsub / Smooth', 'Ctrl + drag model   MaskPen, Alt: unmask', 'Ctrl + click canvas   invert mask',
              'Ctrl + lasso model   mask, Alt: unmask', 'Ctrl + drag canvas   clear mask / DynaMesh',
-             'Alt + click SubTool   pick it', 'Ctrl+Shift   show only / polygroup', 'S / U / O   Size / Intensity / Focal',
+             'Alt + click SubTool   pick it (select mode: a click)', 'Ctrl+Shift   show only / polygroup',
+             'S / U / O   Size / Intensity / Focal',
              'Space / B   menu / brushes (B S T)', 'X   symmetry', 'D / Shift+D   SDiv up / Duplicate',
              'Ctrl+D / Ctrl+W   Divide / polygroup', 'F / Shift+F   Frame / PolyF',
              'Q   select mode (gizmo) / brush', 'G / R / S in select mode   move / rotate / scale',
@@ -545,8 +546,11 @@ def key_legend(context, k, Item, x0, y0):
         return []
     lh, w = 17 * k, A_W * k
     text = KEYS_TEXT
+    if zs.nav_style() == 'BLENDER':                # 0.24.79 NAV Blender: the view keys are Blender's own
+        text = (text[0], 'Middle mouse   rotate, Shift: move, Ctrl / wheel: zoom') + tuple(
+            t for t in text[1:] if not t.startswith(('Drag canvas', 'Alt + drag canvas', 'Right drag')))
     if zs.emulate_3_button(context):               # 0.24.76 Alt+click arrives as a middle click: say so first
-        text = (KEYS_TEXT[0],) + EMULATE_TEXT + KEYS_TEXT[1:]
+        text = (text[0],) + EMULATE_TEXT + text[1:]
     h = lh * len(text) + 12 * k
     out = [Item('card', x0, y0, w, h)]
     y = y0 + h - 7 * k
@@ -786,6 +790,8 @@ def corner_box(context, region_w, region_h, k):
     and an overlapping sidebar)."""
     from . import ui_bars
     rows = 2 if getattr(context, 'mode', '') == 'SCULPT' else 3       # 0.24.77 + VIEW Wire | Solo on MECHA LAB
+    if zs.style() == 'ZBRUSH':
+        rows += 1                                                      # 0.24.79 + NAV ZBrush | Blender
     w, h = CORNER_W * k, rows * ROW * k + (rows - 1) * GAP * k + 2 * PAD * k
     gizmo = 0.0
     try:
@@ -834,6 +840,14 @@ def corner_items(context, region_w, region_h, k=1.0):
                     ('op', 'mch.zb_style', {'style': 'ZBRUSH'})))
     out.append(Item('seg', x0 + PAD * k + lw + 2 * GAP * k + s2, y, s2, ROW * k, 'Blender', '', st == 'BLENDER', True,
                     ('op', 'mch.zb_style', {'style': 'BLENDER'})))
+    if st == 'ZBRUSH':                # 0.24.79 how the view turns: the ZBrush canvas or Blender's own (middle mouse)
+        y -= ROW * k + GAP * k
+        nav = zs.nav_style()
+        out.append(Item('glabel', x0 + PAD * k, y, lw, ROW * k, 'NAV'))
+        out.append(Item('seg', x0 + PAD * k + lw + GAP * k, y, s2, ROW * k, 'ZBrush', '', nav == 'ZBRUSH', True,
+                        ('op', 'mch.zb_nav_style', {'nav': 'ZBRUSH'})))
+        out.append(Item('seg', x0 + PAD * k + lw + 2 * GAP * k + s2, y, s2, ROW * k, 'Blender', '', nav == 'BLENDER',
+                        True, ('op', 'mch.zb_nav_style', {'nav': 'BLENDER'})))
     if not sculpt:                    # 0.24.77 the wireframe (Make Quad / Quad Remesh results show it) and Solo
         y -= ROW * k + GAP * k        # (the ZBRUSH screen has its own PolyF / Solo on the right shelf)
         out.append(Item('glabel', x0 + PAD * k, y, lw, ROW * k, 'VIEW'))

@@ -2322,6 +2322,10 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         ('ZBRUSH', 'ZBrush', '0.24.60 the MECHA LAB tab like ZBrush: Sculpt Mode = the ZBrush screen and keys '
                              '(orange); the empty canvas / a right-drag turns the view'),
         ('BLENDER', 'Blender', 'Blender\'s own sculpt keys and panels and view navigation')])
+    zb_nav: EnumProperty(name='View Navigation', default='ZBRUSH', update=_ui_changed, items=[
+        ('ZBRUSH', 'ZBrush', '0.24.79 ZBrush style: drag the empty canvas / right-drag to turn the view (Alt: move)'),
+        ('BLENDER', 'Blender', 'Blender\'s own view keys (middle mouse, the navigation gizmo) - the ZBrush screen and '
+                               'keys stay; in MECHA LAB the Select tool box-selects on the empty canvas again')])
     zb_highpoly: BoolProperty(name='High Poly Mode', default=False, update=_ui_changed,
                               description='0.24.61 while the ZBrush screen is on: Blender Sculpt Delay Viewport '
                                           'Updates, and the heavy viewport extras off (wireframe, statistics, cavity, '
@@ -2400,6 +2404,7 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         row.prop(self, 'tool_menu', expand=True)
         row.prop(self, 'layers_panel')
         row.prop(self, 'control_style', expand=True)
+        row.prop(self, 'zb_nav', expand=True)
         row.prop(self, 'zb_highpoly')
         row = box.row()
         row.prop(self, 'top_bar')

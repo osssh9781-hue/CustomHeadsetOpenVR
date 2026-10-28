@@ -125,10 +125,37 @@ def emulate_3_button(context=None):
         return False
 
 
-def nav_on(context):
-    """ZBrush navigation (canvas drag) in the MECHA LAB tab: Object or Sculpt Mode, ZBrush style."""
+NAV = ['ZBRUSH']            # (used when the add-on preferences cannot be read)
+
+
+def nav_style():
+    """0.24.79 'ZBRUSH' or 'BLENDER': how the view is turned with the ZBrush style (the corner card's NAV row) -
+    ZBrush = the empty canvas / a right-drag turns it; Blender = Blender's own (middle mouse, the navigation gizmo),
+    the ZBrush screen and keys stay."""
+    from .workspace_ui import prefs
+    p = prefs()
+    return getattr(p, 'zb_nav', NAV[0]) if p is not None else NAV[0]
+
+
+def set_nav(value):
+    from .workspace_ui import prefs
+    NAV[0] = value
+    p = prefs()
+    if p is not None and hasattr(p, 'zb_nav'):
+        p.zb_nav = value
+
+
+def _nav_place(context):
     try:
         return style() == 'ZBRUSH' and getattr(context, 'mode', '') in {'OBJECT', 'SCULPT'} and mecha_tab(context)
+    except (AttributeError, ReferenceError):
+        return False
+
+
+def nav_on(context):
+    """ZBrush navigation (canvas drag) in the MECHA LAB tab: Object or Sculpt Mode, ZBrush style, NAV ZBrush."""
+    try:
+        return nav_style() == 'ZBRUSH' and _nav_place(context)
     except (AttributeError, ReferenceError):
         return False
 
@@ -2519,16 +2546,23 @@ class MCH_OT_zb_press(_ZBPoll, bpy.types.Operator):
             restore_alpha(context)                       # 0.24.65 the brush's alpha back (after a reopen / undo)
         except (RuntimeError, AttributeError, OSError):
             pass
-        if not tool_is_brush(_tool_id(context)):         # 0.24.69 ClipCurve / TrimCurve / TrimLasso / Move ...:
-            return {'PASS_THROUGH'}                       # Blender's own tool takes the press (was a brush stroke)
-        model, canvas = plan(event.ctrl, event.shift, event.alt)
-        if event.alt and not event.ctrl and not event.shift:     # ZBrush: Alt + click another SubTool picks it
+        brush_tool = tool_is_brush(_tool_id(context))
+        gizmo = in_gizmo(context)
+        if (event.alt or gizmo) and not event.ctrl and not event.shift:
+            # ZBrush: Alt + click another SubTool picks it; 0.24.79 in the select mode (Q) a plain click too - the
+            # Alt check came after "not a brush: pass through", so the select mode could not pick another one
             other = object_under(context, event.mouse_region_x, event.mouse_region_y)
             if other is not None and other.type == 'MESH' and other != context.active_object:
                 if switch_to(context, other):
                     _bump()
                     self.report({'INFO'}, f'SubTool: {other.name}')
                     return {'FINISHED'}
+        if not brush_tool:                               # 0.24.69 ClipCurve / TrimCurve / TrimLasso / Move ...:
+            if gizmo and nav_on(context) and object_under(context, event.mouse_region_x,
+                                                          event.mouse_region_y) is None:
+                return bpy.ops.mch.zb_nav('INVOKE_DEFAULT', mode='PAN' if event.alt else 'ROTATE')
+            return {'PASS_THROUGH'}                       # Blender's own tool takes the press (was a brush stroke)
+        model, canvas = plan(event.ctrl, event.shift, event.alt)
         if model == 'GROUP_SOLO':
             r = bpy.ops.sculpt.face_set_change_visibility('INVOKE_DEFAULT', mode='TOGGLE')
             if 'FINISHED' in r:
@@ -2569,6 +2603,8 @@ class MCH_OT_zb_press(_ZBPoll, bpy.types.Operator):
                 bpy.ops.wm.tool_set_by_id(name=swapped)
         # the canvas
         if canvas in {'ROTATE', 'ROTATE_SNAP', 'PAN'}:
+            if not nav_on(context):                  # 0.24.79 NAV Blender: the canvas does not turn the view
+                return {'PASS_THROUGH'}
             return bpy.ops.mch.zb_nav('INVOKE_DEFAULT', mode='PAN' if canvas == 'PAN' else 'ROTATE')
         self.canvas, self.x0, self.y0 = canvas, event.mouse_region_x, event.mouse_region_y
         self.path, self.moved = [(self.x0, self.y0)], False
@@ -2750,7 +2786,7 @@ class MCH_OT_zb_nav(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return nav_on(context) and getattr(context, 'region_data', None) is not None
+        return _nav_place(context) and getattr(context, 'region_data', None) is not None   # (shelf buttons: any NAV)
 
     def invoke(self, context, event):
         rv3d = getattr(context, 'region_data', None)
@@ -3021,6 +3057,22 @@ class MCH_OT_view_toggle(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_zb_nav_style(bpy.types.Operator):
+    """How the view is turned: ZBrush (the empty canvas / a right-drag) or Blender's own (middle mouse, the
+    navigation gizmo) - the ZBrush screen and keys stay either way"""
+    bl_idname = 'mch.zb_nav_style'
+    bl_label = 'View Navigation'
+    bl_options = {'INTERNAL'}
+    nav: EnumProperty(items=[('ZBRUSH', 'ZBrush', ''), ('BLENDER', 'Blender', '')], default='ZBRUSH')
+
+    def execute(self, context):
+        set_nav(self.nav)
+        _bump()
+        self.report({'INFO'}, 'View: ' + ('ZBrush (drag the empty canvas)' if self.nav == 'ZBRUSH'
+                                           else "Blender's own (middle mouse)"))
+        return {'FINISHED'}
+
+
 class MCH_OT_zb_style(bpy.types.Operator):
     """ZBrush style (ZBrush screen and keys in Sculpt Mode, ZBrush canvas navigation) or Blender style (as Blender)"""
     bl_idname = 'mch.zb_style'
@@ -3083,7 +3135,33 @@ class MCH_OT_zb_obj_press(bpy.types.Operator):
             return {'PASS_THROUGH'}
         if event.ctrl:
             return bpy.ops.view3d.select_box('INVOKE_DEFAULT', mode='SET', wait_for_input=False)
-        return bpy.ops.mch.zb_nav('INVOKE_DEFAULT', mode='PAN' if event.alt else 'ROTATE')
+        # 0.24.79 decided on the first move: a drag turns the view, a click on the empty canvas deselects all (the
+        # select tool's own click; before, a click there did nothing - "the select tool does not work")
+        self.x0, self.y0, self.alt = event.mouse_x, event.mouse_y, event.alt
+        try:
+            self.limit = max(3, context.preferences.inputs.drag_threshold_mouse)
+        except AttributeError:
+            self.limit = 3
+        context.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+
+    def modal(self, context, event):
+        if event.type in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE'}:
+            if abs(event.mouse_x - self.x0) + abs(event.mouse_y - self.y0) > self.limit:
+                bpy.ops.mch.zb_nav('INVOKE_DEFAULT', mode='PAN' if (self.alt or event.alt) else 'ROTATE',
+                                   alt_start=self.alt)
+                return {'FINISHED'}
+            return {'RUNNING_MODAL'}
+        if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+            if not event.shift:
+                try:
+                    bpy.ops.object.select_all(action='DESELECT')
+                except RuntimeError:
+                    pass
+            return {'FINISHED'}
+        if event.type in {'ESC', 'RIGHTMOUSE'}:
+            return {'CANCELLED'}
+        return {'RUNNING_MODAL'}
 
 
 class RMBDrag:
@@ -3287,7 +3365,7 @@ class MCH_OT_zb_close(bpy.types.Operator):
 
 CLASSES = (MCH_PG_ZBrush, MCH_OT_zb_action, MCH_OT_zb_brush, MCH_OT_zb_append, MCH_OT_zb_subtool, MCH_OT_zb_press,
            MCH_OT_zb_restore_tool, MCH_OT_zb_gizmo, MCH_OT_zb_nav, MCH_OT_zb_viewdrag, MCH_OT_zb_popup, MCH_OT_zb_brush_pick,
-           MCH_OT_zb_switch, MCH_OT_zb_tab, MCH_OT_view_toggle, MCH_OT_zb_style, MCH_OT_zb_obj_press, MCH_OT_zb_alpha, MCH_OT_zb_alpha_edit,
+           MCH_OT_zb_switch, MCH_OT_zb_tab, MCH_OT_view_toggle, MCH_OT_zb_nav_style, MCH_OT_zb_style, MCH_OT_zb_obj_press, MCH_OT_zb_alpha, MCH_OT_zb_alpha_edit,
            MCH_OT_zb_alpha_folder, MCH_OT_zb_set, MCH_OT_zb_texture, MCH_OT_zb_texture_folder, MCH_OT_zb_tex_stamp, MCH_OT_zb_close)
 _keymaps = []
 
