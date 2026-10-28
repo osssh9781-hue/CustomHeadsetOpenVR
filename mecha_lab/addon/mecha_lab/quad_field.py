@@ -5,6 +5,9 @@ position field (Instant Meshes, Jakob et al. 2015) are solved on them coarse to 
 constraints, and the quads are read off the fine one.  Mostly Quads keeps the few triangles where rows of quads
 end; All Quads makes the quads at half the count and splits every face once (quad -> 4, triangle -> 3).
 Polygroups, materials and point attributes (mask, colours) come along; UVs do not (new topology).
+0.24.75 a low-poly input (a Cut / Base Mesh part, a decimated one) is first laid out as even triangles - its points
+and edges kept, every face filled on its own plane - and its edges are the quads' fixed lines; while the result has
+holes (a groove narrower than a quad) it goes finer (2x, 4x), what is still open is closed.
 """
 from __future__ import annotations
 
@@ -109,6 +112,285 @@ def hard_segments(V, T, crease_deg):
     hard[two] = ok & ((fn[fa] * fn[fb]).sum(1) < math.cos(math.radians(crease_deg)))
     ee = e[starts[hard]]
     return np.stack([V[ee[:, 0]], V[ee[:, 1]]], 1).astype(np.float32)
+
+
+def _fill_face(P, h):
+    """Points inside polygon P (k, 2; counter-clockwise) on a staggered lattice h apart, none nearer than h / 2 to
+    its border."""
+    lo, hi = P.min(0), P.max(0)
+    ys = np.arange(lo[1] + 0.5 * h, hi[1], h * 0.866)
+    if not len(ys):
+        return np.zeros((0, 2))
+    rows = []
+    for r, y in enumerate(ys):
+        xs = np.arange(lo[0] + (0.5 + 0.5 * (r % 2)) * h, hi[0], h)
+        if len(xs):
+            rows.append(np.stack([xs, np.full(len(xs), y)], 1))
+    if not rows:
+        return np.zeros((0, 2))
+    Q = np.concatenate(rows)
+    A, B = P, np.roll(P, -1, 0)
+    # inside: even-odd crossings of a ray to +x
+    cross = ((A[None, :, 1] > Q[:, None, 1]) != (B[None, :, 1] > Q[:, None, 1]))
+    with np.errstate(divide='ignore', invalid='ignore'):
+        xi = A[None, :, 0] + (Q[:, None, 1] - A[None, :, 1]) * (B[None, :, 0] - A[None, :, 0]) / (B[None, :, 1] - A[None, :, 1])
+    inside = (cross & (Q[:, None, 0] < xi)).sum(1) % 2 == 1
+    Q = Q[inside]
+    if not len(Q):
+        return Q
+    E = B - A
+    L2 = np.maximum((E * E).sum(1), 1e-30)
+    t = np.clip(((Q[:, None, :] - A[None]) * E[None]).sum(2) / L2[None], 0.0, 1.0)
+    d = np.linalg.norm(Q[:, None, :] - (A[None] + t[..., None] * E[None]), axis=2).min(1)
+    return Q[d > 0.5 * h]
+
+
+def even_triangles(me, h):
+    """0.24.75 an exact Cut / Base Mesh part as even triangles about ``h`` big: its points and edges kept exactly
+    (long edges get points every ~h), every face filled on its own plane with points ~h apart.  (The polygons' own
+    fan triangles are long slivers: the remesher sampled them badly and lost the part's edges.)
+    Returns (V (n, 3), T (m, 3), the polygon under each triangle, the part's point nearest each point)."""
+    import bmesh
+    from mathutils import Vector
+    from mathutils.geometry import delaunay_2d_cdt
+    from mathutils.kdtree import KDTree
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        bm.normal_update()
+        bm.verts.ensure_lookup_table()
+        V = [v.co.copy() for v in bm.verts]
+        # long edges: points every ~h, shared by the two faces on them (each face's border walks them in its order)
+        along = {}
+        for e in bm.edges:
+            ln = e.calc_length()
+            k = int(math.ceil(ln / h)) - 1 if ln > 1.5 * h else 0
+            if k > 0:
+                a0, a1 = e.verts[0].co, e.verts[1].co
+                along[e.index] = list(range(len(V), len(V) + k))
+                V += [a0.lerp(a1, (j + 1) / (k + 1)) for j in range(k)]
+        T, TP = [], []
+        me.calc_loop_triangles()
+        own = {}
+        for lt in me.loop_triangles:
+            own.setdefault(lt.polygon_index, []).append(list(lt.vertices))
+        small = 0.6 * h * h
+        for f in bm.faces:
+            if f.calc_area() < small and not any(lp.edge.index in along for lp in f.loops) and f.index in own:
+                T += own[f.index]                            # (already small: its own triangles, no fill needed)
+                TP += [f.index] * len(own[f.index])
+                continue
+            ids = []
+            for lp in f.loops:
+                ids.append(lp.vert.index)
+                pts = along.get(lp.edge.index)
+                if pts:
+                    ids += pts if lp.edge.verts[0] is lp.vert else pts[::-1]
+            if len(ids) < 3:
+                continue
+            nrm = f.normal.normalized() if f.normal.length > 1e-12 else Vector((0, 0, 1))
+            o = V[ids[0]].copy()
+            a = Vector((1, 0, 0)) if abs(nrm.x) < 0.9 else Vector((0, 1, 0))
+            u = (a - nrm * a.dot(nrm)).normalized()
+            w = nrm.cross(u)
+            P = np.array([((V[i] - o).dot(u), (V[i] - o).dot(w)) for i in ids])
+            if 0.5 * np.sum(P[:, 0] * np.roll(P[:, 1], -1) - np.roll(P[:, 0], -1) * P[:, 1]) < 0:
+                P, ids = P[::-1].copy(), ids[::-1]
+            inner = _fill_face(P, h)
+            coords = [Vector(q) for q in P] + [Vector(q) for q in inner]
+            tris = []
+            try:
+                oV, _oE, oF, oVo, _a, _b = delaunay_2d_cdt(coords, [], [list(range(len(P)))], 1, 1e-9 * (1 + h), True)
+            except (ValueError, RuntimeError):
+                oF = None
+            if oF:
+                loc = {}
+                for k, orig in enumerate(oVo):
+                    s = [x for x in orig if x < len(coords)]
+                    if s and s[0] < len(P):
+                        loc[k] = ids[s[0]]
+                    else:
+                        q = Vector(oV[k])
+                        V.append(o + u * q.x + w * q.y)
+                        loc[k] = len(V) - 1
+                tris = [[loc[k] for k in t] for t in oF if len(t) == 3]
+            if not tris:                                     # (a face the CDT could not take: its own fan)
+                tris = [[ids[0], ids[k], ids[k + 1]] for k in range(1, len(ids) - 1)]
+            T += tris
+            TP += [f.index] * len(tris)
+        Va = np.array([tuple(v) for v in V], np.float32)
+        kd = KDTree(len(me.vertices))
+        for v in me.vertices:
+            kd.insert(v.co, v.index)
+        kd.balance()
+        near = np.array([kd.find(tuple(p))[1] for p in Va], np.int64)
+        return Va, np.array(T, np.int32), np.array(TP, np.int64), near
+    finally:
+        bm.free()
+
+
+def open_edges(Fq):
+    """Sides used by one face or by more than two (k, 2)."""
+    e = []
+    for f in Fq:
+        vs = [v for v in f if v >= 0]
+        e += [(min(vs[k], vs[(k + 1) % len(vs)]), max(vs[k], vs[(k + 1) % len(vs)])) for k in range(len(vs))]
+    if not e:
+        return np.zeros((0, 2), np.int64)
+    u, cnt = np.unique(np.array(e, np.int64), axis=0, return_counts=True)
+    return u[cnt != 2]
+
+
+def border_tree(me, step):
+    """Points every ``step`` along the input's own open borders (a KD tree), or None: sides of the result lying on
+    them are the part's border, not holes the remesher left."""
+    from mathutils.kdtree import KDTree
+    me.calc_loop_triangles()
+    count = {}
+    for p in me.polygons:
+        for ek in p.edge_keys:
+            count[ek] = count.get(ek, 0) + 1
+    pts = []
+    for (a, b), c in count.items():
+        if c == 1:
+            p0, p1 = me.vertices[a].co, me.vertices[b].co
+            n = max(1, int((p1 - p0).length / step))
+            pts += [p0.lerp(p1, j / n) for j in range(n + 1)]
+    if not pts:
+        return None
+    kd = KDTree(len(pts))
+    for k, p in enumerate(pts):
+        kd.insert(p, k)
+    kd.balance()
+    return kd
+
+
+def holes(P, sides, border, tol):
+    """The open ``sides`` that are not on the input's border (``border`` from ``border_tree``)."""
+    if border is None or not len(sides):
+        return sides
+    mid = (P[sides[:, 0]] + P[sides[:, 1]]) * 0.5
+    keep = [border.find(tuple(m))[2] > tol for m in mid]
+    return sides[np.array(keep, bool)]
+
+
+CUT_TRIES = (1, 2, 4)           # finer while the result has holes (a groove narrower than a quad)
+
+
+def is_cut_mesh(me, target):
+    """0.24.75 a low-poly input - an exact part made with Cut / Base Mesh, or a decimated one: at most GUIDE_RATIO
+    triangles per wanted face.  It is remeshed from even triangles with its own edges as the quads' fixed lines
+    (its fan / sliver triangles sampled badly: edges lost, open seams)."""
+    nt = len(me.loop_triangles)
+    return 0 < nt <= GUIDE_RATIO * max(int(target), 1)
+
+
+def remesh_cut(me, target, all_quads=False, crease_deg=30.0, nthreads=None):
+    """Quad Remesh of a low-poly part (see ``is_cut_mesh``).  Returns (points, faces, polygon under each face,
+    part's point nearest each point, stats with 'tries' = how much finer it had to go, 'open' = sides left open)."""
+    area = sum(p.area for p in me.polygons)
+    best = None
+    for k in CUT_TRIES:
+        h = math.sqrt(2.0 * area / max(1, 6 * target * k))
+        V, T, tpoly, near = even_triangles(me, h)
+        P, Fq, tsrc, psrc, st = remesh_arrays(V, T, target * k, all_quads=all_quads, crease_deg=crease_deg,
+                                              nthreads=nthreads, guide=True)
+        bad = len(holes(P, open_edges(Fq), border_tree(me, 0.25 * h), 0.5 * h))   # (an open plate's border stays)
+        if best is None or bad < best[0]:
+            st['tries'] = k
+            st['h'] = h
+            best = (bad, (P, Fq, tpoly[tsrc], near[psrc], st))
+        if bad == 0:
+            break
+    best[1][4]['open'] = best[0]
+    return best[1]
+
+
+def close_holes(me, fpoly, border=None, tol=0.0, max_sides=64, weld=0.0):
+    """Close what the remesher left open - not the input's own border (``border`` / ``tol`` as in ``holes``): a crack
+    (open sides lying on each other) is zipped by welding points closer than ``weld``, each open loop gets faces
+    (quads where they fit).  Returns (the polygon source of every face - new ones take a neighbour's -, hole sides
+    before, after, the old point of each point now or None, {welded old point: the old point it went to})."""
+    import bmesh
+    bm = bmesh.new()
+
+    def hole_sides():
+        out = []
+        for e in bm.edges:
+            if e.is_manifold:
+                continue
+            if border is not None and border.find((e.verts[0].co + e.verts[1].co) * 0.5)[2] <= tol:
+                continue
+            out.append(e)
+        return out
+
+    try:
+        bm.from_mesh(me)
+        fl = bm.faces.layers.int.new('mch_quad_src')
+        vl = bm.verts.layers.int.new('mch_quad_old')
+        for f in bm.faces:
+            f[fl] = int(fpoly[f.index]) + 1
+        for v in bm.verts:
+            v[vl] = v.index
+        sides = hole_sides()
+        before = len(sides)
+        if not before:
+            return fpoly, 0, 0, None, {}
+        welded = {}
+        if weld > 0.0:
+            tm = bmesh.ops.find_doubles(bm, verts=list({v for e in sides for v in e.verts}), dist=weld)['targetmap']
+            welded = {v[vl]: t[vl] for v, t in tm.items()}
+            if tm:
+                bmesh.ops.weld_verts(bm, targetmap=tm)
+            sides = hole_sides()
+        multi = list({f for e in sides if len(e.link_faces) > 2 for f in e.link_faces})
+        if multi:                                            # a fin (a side with 3+ faces): its faces go, then filled
+            bmesh.ops.delete(bm, geom=multi, context='FACES_ONLY')
+            loose = [v for v in bm.verts if not v.link_faces]
+            if loose:
+                bmesh.ops.delete(bm, geom=loose, context='VERTS')
+            sides = hole_sides()
+        for _r in range(3):
+            if not sides:
+                break
+            res = bmesh.ops.holes_fill(bm, edges=[e for e in sides if e.is_boundary], sides=max_sides)
+            new = res.get('faces', [])
+            if new:
+                tri = bmesh.ops.triangulate(bm, faces=new)['faces']
+                bmesh.ops.join_triangles(bm, faces=tri, cmp_seam=False, cmp_sharp=False, cmp_uvs=False,
+                                         cmp_vcols=False, cmp_materials=False, angle_face_threshold=math.radians(30),
+                                         angle_shape_threshold=math.radians(60))
+            sides = hole_sides()
+            # a flap (a face hanging into the hole by one side: two open sides, no closed loop to fill) goes
+            flaps = list({f for e in sides for f in e.link_faces if sum(1 for g in f.edges if g.is_boundary) >= 2})
+            if not flaps:
+                break
+            bmesh.ops.delete(bm, geom=flaps, context='FACES_ONLY')
+            loose = [v for v in bm.verts if not v.link_faces]
+            if loose:
+                bmesh.ops.delete(bm, geom=loose, context='VERTS')
+            sides = hole_sides()
+        for _r in range(8):                                  # new faces: the source of a face next to them
+            todo = [f for f in bm.faces if f[fl] <= 0]
+            if not todo:
+                break
+            for f in todo:
+                for e in f.edges:
+                    g = next((g for g in e.link_faces if g is not f and g[fl] > 0), None)
+                    if g is not None:
+                        f[fl] = g[fl]
+                        break
+        bm.verts.index_update()
+        bm.faces.index_update()
+        new2old = np.array([v[vl] for v in bm.verts], np.int64)
+        fpoly = np.array([max(f[fl], 1) - 1 for f in bm.faces], np.int64)
+        after = len(hole_sides())
+        bm.verts.layers.int.remove(vl)
+        bm.faces.layers.int.remove(fl)
+        bm.to_mesh(me)
+        return fpoly, before, after, new2old, welded
+    finally:
+        bm.free()
 
 
 def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None, seed=0, guide='auto'):
@@ -227,20 +509,40 @@ def remesh_object(ob, target, all_quads=False, crease_deg=30.0, nthreads=None):
     me.loop_triangles.foreach_get('vertices', T)
     tpoly = np.empty(nt, np.int32)
     me.loop_triangles.foreach_get('polygon_index', tpoly)
+    cut = is_cut_mesh(me, target)
     try:
-        P, Fq, tsrc, psrc, st = remesh_arrays(V, T.reshape(-1, 3), target, all_quads=all_quads,
-                                              crease_deg=crease_deg, nthreads=nthreads)
+        if cut:
+            # 0.24.75 a low-poly part (Cut / Base Mesh / decimated): even triangles, its own edges as fixed lines
+            P, Fq, fpoly, pvert, st = remesh_cut(me, target, all_quads=all_quads, crease_deg=crease_deg,
+                                                 nthreads=nthreads)
+        else:
+            P, Fq, tsrc, psrc, st = remesh_arrays(V, T.reshape(-1, 3), target, all_quads=all_quads,
+                                                  crease_deg=crease_deg, nthreads=nthreads)
+            fpoly, pvert = tpoly[tsrc], psrc
     except RuntimeError as ex:
         return str(ex)
     attrs = [a for a in fd._read_attrs(me) if a[2] in {'POINT', 'FACE'}]
     sizes = np.where(Fq[:, 3] < 0, 3, 4)
     loops = Fq[Fq >= 0]                                    # row by row: each face's corners in order
     new = fd.fresh_like(me)
+    closed = None
     try:
         for a in [a for a in new.attributes if a.domain == 'CORNER' and not a.name.startswith('.')]:
             new.attributes.remove(a)                       # (UVs / corner colours do not fit the new faces)
         fd.build_mesh(new, P, loops, sizes)
-        fd._write_attrs(new, attrs, psrc, tpoly[tsrc], None)
+        if cut and st.get('open'):
+            fpoly, b0, b1, new2old, welded = close_holes(new, fpoly, border_tree(me, 0.25 * st['h']), 0.5 * st['h'],
+                                                         weld=0.05 * st['h'])
+            closed = (b0, b1)
+            sizes = np.array([len(p.vertices) for p in new.polygons])
+            if new2old is not None:                        # (points welded: their attributes / hard edges follow)
+                pvert = pvert[new2old]
+                old2new = {int(o): n for n, o in enumerate(new2old)}
+                pairs = [(old2new.get(welded.get(int(a), int(a))), old2new.get(welded.get(int(b), int(b))))
+                         for a, b in st['hard']]
+                st['hard'] = np.array([(a, b) for a, b in pairs if a is not None and b is not None and a != b],
+                                      np.int32).reshape(-1, 2)
+        fd._write_attrs(new, attrs, pvert, fpoly, None)
         from . import hard_edges
         hard_edges.mark_pairs(new, st['hard'], crease=True)
         new.update()
@@ -254,5 +556,14 @@ def remesh_object(ob, target, all_quads=False, crease_deg=30.0, nthreads=None):
     quads = int((sizes == 4).sum())
     dt = time.perf_counter() - t0
     edges = f', {len(st["hard"]):,} hard edges marked' if len(st['hard']) else ''
-    return (f'Quad Remesh: {polys0:,} > {len(Fq):,} polygons, {quads / len(Fq) * 100:.0f} % quads{edges} '
+    how = ''
+    if cut:
+        how = ' (low-poly part: its own edges kept'
+        if st.get('tries', 1) > 1:
+            how += f', {st["tries"]}x finer for a groove narrower than a quad'
+        if closed and closed[0]:
+            how += (', holes closed' if not closed[1] else
+                    f', {closed[1]} sides left open / pinched (a wall thinner than a quad)')
+        how += ')'
+    return (f'Quad Remesh{how}: {polys0:,} > {len(sizes):,} polygons, {quads / len(sizes) * 100:.0f} % quads{edges} '
             f'in {dt:.1f} s')
