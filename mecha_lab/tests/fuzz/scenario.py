@@ -166,9 +166,11 @@ STEPS = {
     'undo': lambda: [bpy.ops.ed.undo() for _i in range(rng.randint(1, 3))],
     'redo': lambda: bpy.ops.ed.redo(),
     'edge_mesh': lambda: (setattr(zb, 'em_detail', rng.choice([200, 1000, 3000])),
+                          setattr(zb, 'em_auto', rng.random() < 0.5), setattr(zb, 'he_match', rng.random() < 0.7),
                           setattr(zb, 'he_style', rng.choice(['ROUND', 'CHAMFER'])),
                           setattr(zb, 'he_width', rng.choice([0.002, 0.01, 0.05])), act('EDGE_MESH')),
     'he_style': lambda: setattr(zb, 'he_style', rng.choice(['ROUND', 'CHAMFER'])),
+    'he_match': lambda: setattr(zb, 'he_match', not zb.he_match),
 }
 WEIGHTS = {'dynamesh': 3, 'decimate': 4, 'quad': 4, 'hard_find': 3, 'hard_sliders': 3, 'hard_apply': 2, 'undo': 3,
            'redo': 1, 'divide': 2, 'mask': 2, 'edge_mesh': 3}

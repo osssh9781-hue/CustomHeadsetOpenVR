@@ -15,6 +15,10 @@ stay and line up.
 
 The dense original is kept off-scene (an object in no scene, held by a fake user: never drawn, never exported) for
 Fit to Original until Apply / Clear.
+
+0.24.74 Auto Detail (``auto_detail``): the count from a Tolerance in % of the part size - plain steps while the light
+mesh stays that close to the original (``deviation``), then the last steps as with that Detail.  Match Original
+(``match_round``): every hard edge's bevel as round as the original is there; Width is the least.
 """
 from __future__ import annotations
 
@@ -41,6 +45,13 @@ MERGE = 0.2                     # points closer than this x the bevel Width are 
 MERGE_MAX = 0.02                # narrower than the bevel becomes one edge to round (at most this x the part size)
 EVEN_FROM = 3                   # the last steps (under this x the target) keep the triangles round: no slivers
                                 # along the edges (a bevel needs the faces next to an edge to reach Width away)
+AUTO_FROM = 30000               # Auto Detail: the light mesh is compared with the original once under this many
+AUTO_SAMPLES = 20000            # ... triangles, at this many points of the original
+AUTO_SHARE = 0.99               # ... this share of them must be within Tolerance
+AUTO_FLAT = 0.3                 # ... points away from the hard edges count this much (Fit to Original puts them back)
+MATCH_FLAT = math.radians(25.0)  # ... the original's flats are read where its normal is this close to the face's
+MATCH_TURN = math.radians(60.0)  # Match Original: on a shallower edge the gap to the original is too small to read
+                                # well - its bevel is worked out as if it turned this much (no noise blown up)
 
 
 def _tri_edges(T, nv):
@@ -123,8 +134,11 @@ def progressive(V, T, target, angle, step=STEP, adapt=True, mats=None, report=No
         n0 = len(T)
         goal = max(target, int(n0 * step))
         w = turn_weights(V, T, angle) if adapt and n0 <= ADAPT_FROM * target else None
-        V, T, _vs, fs = fd.run(V, T, goal, even=n0 <= EVEN_FROM * target, weight=w)
-        V, T = V.copy(), T.copy()
+        even = n0 <= EVEN_FROM * target
+        oV, oT, _vs, fs = fd.run(V, T, goal, even=even, weight=w)
+        if even and len(oT) > 1.05 * goal:               # 0.24.74 (round triangles only can't get past a mesh full of
+            oV, oT, _vs, fs = fd.run(V, T, goal, weight=w)  # slivers: that step plain - it stopped at 27k of 18k)
+        V, T = oV.copy(), oT.copy()
         if mats is not None:
             mats = mats[fs]
         steps += 1
@@ -133,6 +147,57 @@ def progressive(V, T, target, angle, step=STEP, adapt=True, mats=None, report=No
         if len(T) >= n0:                                 # (nothing more comes off: stop)
             break
     return V, T, mats, steps
+
+
+def deviation(P, V, T, angle):
+    """How far the light mesh (V, T) leaves the original, sampled at its points ``P``: the AUTO_SHARE quantile of
+    their distances to it - a point whose nearest face doesn't touch a hard edge counts AUTO_FLAT (the subdivided
+    surface is fitted back onto the original there; at the edges it isn't)."""
+    from mathutils.bvhtree import BVHTree
+    bvh = BVHTree.FromPolygons(np.asarray(V, np.float64).tolist(), np.asarray(T).tolist())
+    d = np.zeros(len(P))
+    face = np.zeros(len(P), np.int64)
+    for i, p in enumerate(P):
+        hit = bvh.find_nearest(p)
+        if hit[0] is not None:
+            d[i], face[i] = hit[3], hit[2]
+    H = hard_lines(np.asarray(V, np.float64), T, angle)
+    on = np.zeros(len(V), bool)
+    on[H.ravel()] = True
+    near = on[T].any(1)[face]
+    return float(np.quantile(np.where(near, d, AUTO_FLAT * d), AUTO_SHARE)) if len(P) else 0.0
+
+
+def auto_detail(V, T, tol, angle, report=None):
+    """Auto Detail: decimate in plain steps (as ``progressive`` does far above its target) while the light mesh stays
+    within ``tol`` of the original (``deviation``).  Returns (triangles, start) - start = (points, triangles, source
+    triangle of each) of the last step at least ADAPT_FROM x that many triangles: ``progressive`` goes on from there
+    to the count found exactly as it would have from the original (only its last steps differ)."""
+    V = np.ascontiguousarray(V, np.float32)
+    T = np.ascontiguousarray(T, np.int32)
+    rng = np.random.default_rng(0)
+    P = V[rng.choice(len(V), min(AUTO_SAMPLES, len(V)), replace=False)].astype(np.float64).tolist()
+    idx = np.arange(len(T))
+    snaps = [(len(T), V, T, idx)]                    # (only the ones the second pass may start from are kept)
+    good = len(T)
+    steps = 0
+    while len(T) > MIN_TARGET * 1.02:
+        n0 = len(T)
+        V, T, _vs, fs = fd.run(V, T, max(MIN_TARGET, int(n0 * STEP)), even=False)
+        V, T, idx = V.copy(), T.copy(), idx[fs]
+        steps += 1
+        if report:
+            report(steps, len(T))
+        if len(T) >= n0:
+            break
+        if len(T) <= AUTO_FROM and deviation(P, V, T, angle) > tol:
+            break
+        good = len(T)
+        snaps.append((len(T), V, T, idx))
+        while len(snaps) > 2 and snaps[1][0] >= ADAPT_FROM * good:
+            snaps.pop(0)                             # (the second-largest is still far enough above: the largest goes)
+    start = next((s for s in reversed(snaps) if s[0] >= ADAPT_FROM * good), snaps[0])
+    return good, start[1:]
 
 
 def straighten(V, H, iters=STRAIGHT_ITERS, limit=STRAIGHT):
@@ -198,6 +263,113 @@ def _mark_and_join(me, angle, size, merge=0.0):
     return n, quads, tris
 
 
+def _bvh(me):
+    from mathutils.bvhtree import BVHTree
+    V, T, _m = _read(me)
+    return BVHTree.FromPolygons(V.tolist(), T.tolist())
+
+
+def match_round(me, bvh):
+    """0.24.74 Match Original: per hard edge of the light mesh ``me``, the bevel width that rounds it like the dense
+    original (``bvh``) is rounded there.  The original's two flats are read a little way into each face (its own
+    surface and normal there - the light faces next to an edge lean over the rounding); where those planes meet is
+    the corner a sharp edge would have, and the original's surface is some gap ``d`` in from it.  A round edge of
+    radius r turning phi leaves d = r (sec(phi/2) - 1) and starts r tan(phi/2) = d cot(phi/4) in from the corner on
+    each face - the bevel width.  Measured at three points along the edge (the middle value), then one pass of the
+    middle value of each edge and the edges before and after it on the same line (a line keeps one width).
+    Written to the ROUND edge attribute (0 = sharp)."""
+    hard = he.hard_flags(me)
+    f1, f2, cnt = he._edge_faces(me)
+    ne = len(me.edges)
+    out = np.zeros(ne, np.float32)
+    sel = np.flatnonzero(hard & (cnt == 2))
+    if len(sel) and bvh is not None:
+        nrm = np.empty(len(me.polygons) * 3)
+        me.polygons.foreach_get('normal', nrm)
+        cen = np.empty(len(me.polygons) * 3)
+        me.polygons.foreach_get('center', cen)
+        co = np.empty(len(me.vertices) * 3)
+        me.vertices.foreach_get('co', co)
+        ev = np.empty(ne * 2, np.int64)
+        me.edges.foreach_get('vertices', ev)
+        nrm, cen, co, ev = nrm.reshape(-1, 3), cen.reshape(-1, 3), co.reshape(-1, 3), ev.reshape(-1, 2)
+        a, b = co[ev[sel, 0]], co[ev[sel, 1]]
+        span = np.linalg.norm(b - a, axis=1)
+        e = (b - a) / np.maximum(span, 1e-30)[:, None]
+
+        def into(f):                                     # (unit direction into face f, across the edge; how deep)
+            n = nrm[f]
+            u = np.cross(n, e)
+            u /= np.maximum(np.linalg.norm(u, axis=1), 1e-30)[:, None]
+            depth = ((cen[f] - a) * u).sum(1)
+            u[depth < 0] *= -1.0
+            return u, np.abs(depth)
+        u1, s1 = into(f1[sel])
+        u2, s2 = into(f2[sel])
+
+        def surface(pts, fallback):                      # (nearest original point + its normal, facing like ours)
+            P = np.array(pts)
+            N = np.array(fallback, dtype=np.float64)
+            for i, p in enumerate(pts.tolist()):
+                hit = bvh.find_nearest(p)
+                if hit[0] is not None:
+                    P[i] = hit[0]
+                    N[i] = hit[1]
+            N[(N * fallback).sum(1) < 0] *= -1.0
+            return P, N
+        cap = 0.1 * he._size(me)
+        flat = math.cos(MATCH_FLAT)
+        ts = []
+        for k in (0.25, 0.5, 0.75):
+            m = a + k * (b - a)
+            p1 = n1 = p2 = n2 = None
+            for reach in (1.0, 2.0, 3.0):                # (as far in as the original is still that face's flat:
+                q1, m1 = surface(m + u1 * np.minimum(reach * s1, cap)[:, None], nrm[f1[sel]])   # away from the
+                q2, m2 = surface(m + u2 * np.minimum(reach * s2, cap)[:, None], nrm[f2[sel]])   # rounding)
+                if p1 is None:
+                    p1, n1, p2, n2 = q1, m1, q2, m2
+                    continue
+                ok = ((m1 * nrm[f1[sel]]).sum(1) > flat) & ((m2 * nrm[f2[sel]]).sum(1) > flat)
+                p1[ok], n1[ok], p2[ok], n2[ok] = q1[ok], m1[ok], q2[ok], m2[ok]
+            c12 = np.clip((n1 * n2).sum(1), -1.0, 1.0)
+            det = np.maximum(1.0 - c12 ** 2, 1e-9)
+            r1, r2 = (n1 * (p1 - m)).sum(1), (n2 * (p2 - m)).sum(1)
+            x = m + ((r1 - c12 * r2) / det)[:, None] * n1 + ((r2 - c12 * r1) / det)[:, None] * n2
+            far = np.linalg.norm(x - m, axis=1) > span       # (planes nearly parallel: the edge itself)
+            x[far] = m[far]
+            d = np.zeros(len(sel))
+            for i, p in enumerate(x.tolist()):
+                hit = bvh.find_nearest(p)
+                d[i] = hit[3] if hit[0] is not None else 0.0
+            phi = np.maximum(np.arccos(c12), MATCH_TURN)
+            ts.append(d / np.tan(phi / 4.0))
+        t = np.median(np.stack(ts), axis=0)
+        # one width per line: the middle of each edge and its neighbours on the same line
+        H = ev[sel]
+        deg = np.bincount(H.ravel(), minlength=len(co))
+        first = np.full(len(co), -1, np.int64)
+        second = np.full(len(co), -1, np.int64)
+        for j, (i0, i1) in enumerate(H.tolist()):
+            for vtx in (i0, i1):
+                if first[vtx] < 0:
+                    first[vtx] = j
+                else:
+                    second[vtx] = j
+
+        def other(vtx, j):
+            o = np.where(first[vtx] == j, second[vtx], first[vtx])
+            return np.where(deg[vtx] == 2, o, j)
+        j = np.arange(len(H))
+        out[sel] = np.median(np.stack([t[other(H[:, 0], j)], t, t[other(H[:, 1], j)]]), axis=0)
+    a = me.attributes.get(he.ROUND)
+    if a is None or a.domain != 'EDGE' or a.data_type != 'FLOAT':
+        if a is not None:
+            me.attributes.remove(a)
+        a = me.attributes.new(he.ROUND, 'FLOAT', 'EDGE')
+    a.data.foreach_set('value', out)
+    return out[sel]
+
+
 def _fit_group(ob):
     """Point group for Fit to Original: 0 on the hard edges (they stay where they are), 1 everywhere else."""
     me = ob.data
@@ -232,7 +404,12 @@ def build(context, ob, st, report=None):
         raise RuntimeError('Edge Mesh: ' + why)
     angle = st.he_angle
     size = he._size(me)
-    nv0, nt0 = len(V), len(T)
+    nt0 = len(T)
+    auto = getattr(st, 'em_auto', False)
+    if auto:                                         # 0.24.74 the count from Tolerance (written back to Detail)
+        target, (V, T, idx) = auto_detail(V, T, st.em_tolerance * 0.01 * size, angle, report)
+        mats = mats[idx]
+        st.em_detail = max(MIN_TARGET, min(1_000_000, target))
     V, T, mats, steps = progressive(V, T, target, angle, adapt=st.em_adaptive, mats=mats, report=report)
     if st.em_straight:
         V = straighten(V, hard_lines(np.asarray(V, np.float64), T, angle))
@@ -251,6 +428,7 @@ def build(context, ob, st, report=None):
                     pass
         merge = min(MERGE * st.he_width, MERGE_MAX * size) if st.he_bevel else 0.0
         n, quads, tris = _mark_and_join(new, angle, size, merge)
+        match_round(new, _bvh(me))                   # 0.24.74 (Match Original reads it; kept for when it's turned on)
     except Exception:
         bpy.data.meshes.remove(new)
         raise
@@ -270,8 +448,12 @@ def build(context, ob, st, report=None):
     ob[he.KEY] = 1
     if st.he_subdiv == 0:                            # (the client look needs the subdivision)
         st.he_subdiv = 2
-    if st.he_crease:                                 # (the support bevel makes the edge: a full crease on top
-        st.he_crease = False                         # pinches it and shades wrong without Sharp marks)
+    if st.he_bevel and st.he_crease:                 # (the support bevel makes the edge: a full crease on top
+        st.he_crease = False                         # pinches it and shades wrong without Sharp marks; without
+                                                     # a bevel the crease is what keeps the edges)
     he.set_live(ob, st)
-    head = f'{nt0:,} -> {len(T):,} triangles in {steps} steps' if steps else f'{nt0:,} triangles (lighter than Detail)'
+    if len(T) < nt0:
+        head = f'{nt0:,} -> {len(T):,} triangles' + (' (Auto)' if auto else '')
+    else:
+        head = f'{nt0:,} triangles (' + ('already within Tolerance' if auto else 'lighter than Detail') + ')'
     return f'Edge Mesh: {head}, {n:,} hard edges, {quads:,} quads + {tris:,} triangles'

@@ -300,12 +300,26 @@ static int make_quadrics(const double *V, int nv, const int *F, int nf, const ui
 
 /* ---------- edge cost ---------- */
 
+#define SLIVER 1e-3   /* |cross| / longest edge^2 under this: the face's normal is not trusted */
+
+static double longest2(const double *const *p) {
+  double d0[3], d1[3], d2[3];
+  sub3(p[1], p[0], d0);
+  sub3(p[2], p[0], d1);
+  sub3(p[2], p[1], d2);
+  return fmax(dot3(d0, d0), fmax(dot3(d1, d1), dot3(d2, d2)));
+}
+
 /* faces of a and b after moving to p: none may flip or (with min_quality) get too thin. worst shape, or -1 */
 static double check_ring(Ctx *c, int a, int b, const double *p) {
   double worst = 1.0;
   for (int pass = 0; pass < 2; pass++) {
     int u = pass ? b : a;
     List *l = &c->vf[u];
+    /* the ring's own facing (area weighted), worked out at the first sliver: a sliver's normal is noise, so a face
+       that was a sliver is checked against its ring instead (a collapse folding a sliver over its neighbours passed
+       the test before) */
+    double ring[3] = {0, 0, 0}, lr = -1.0;
     for (int i = 0; i < l->n; i++) {
       int f = l->f[i];
       int *t = &c->F[3 * f];
@@ -326,7 +340,24 @@ static double check_ring(Ctx *c, int a, int b, const double *p) {
       cross3(e0, e1, n1);
       double l0 = sqrt(dot3(n0, n0)), l1 = sqrt(dot3(n1, n1));
       if (l1 <= 1e-30 * c->scale2) return -1.0;
-      if (dot3(n0, n1) < 0.3 * l0 * l1) return -1.0;
+      if (l0 >= SLIVER * longest2(o)) {
+        if (dot3(n0, n1) < 0.3 * l0 * l1) return -1.0;
+      } else if (l1 >= SLIVER * longest2(q)) {
+        if (lr < 0) {
+          for (int j = 0; j < l->n; j++) {
+            int *s3 = &c->F[3 * l->f[j]];
+            double a0[3], a1[3], an[3];
+            sub3(&c->V[3 * s3[1]], &c->V[3 * s3[0]], a0);
+            sub3(&c->V[3 * s3[2]], &c->V[3 * s3[0]], a1);
+            cross3(a0, a1, an);
+            ring[0] += an[0];
+            ring[1] += an[1];
+            ring[2] += an[2];
+          }
+          lr = sqrt(dot3(ring, ring));
+        }
+        if (lr > 0 && dot3(ring, n1) < 0.3 * lr * l1) return -1.0;
+      }
       double qn = tri_quality(q[0], q[1], q[2]);
       if (qn < c->o.min_quality) {
         double qo = tri_quality(o[0], o[1], o[2]);

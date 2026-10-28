@@ -1289,6 +1289,9 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
     he_normals: BoolProperty(name='Weighted Normals', default=False, update=_he_update,
                              description='Flat faces shade flat next to the bevels with custom normals (Blender / FBX '
                                          'only: ZBrush and OBJ do not keep them - leave off for Client Look)')
+    he_match: BoolProperty(name='Match Original', default=True, update=_he_update,
+                           description='Edge Mesh: each edge\'s bevel as round as the original is at that edge - '
+                                       'sharp edges keep Width, rounded ones get wider (up to 5 % of the part)')
     he_fit: BoolProperty(name='Fit to Original', default=True, update=_he_update,
                          description='Edge Mesh: the subdivided surface is fitted back onto the dense mesh it was made '
                                      'from (its shape kept exactly); the hard edges stay where they are')
@@ -1296,6 +1299,16 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
     em_detail: IntProperty(name='Detail', default=2000, min=100, soft_max=50000,
                            description='Edge Mesh: triangles left after decimating in steps (fewer = lighter, the '
                                        'edges come out cleaner; more = small details kept)')
+    # 0.24.74 Auto Detail: the count from how closely the light mesh must follow the original
+    em_auto: BoolProperty(name='Auto', default=True,
+                          description='Edge Mesh: find Detail from Tolerance - decimate while the light mesh stays that '
+                                      'close to the original (simple parts get lighter, detailed ones keep more); the '
+                                      'count found is written to Detail')
+    em_tolerance: FloatProperty(name='Tolerance', default=0.006, min=0.0005, max=1.0, soft_max=0.1, precision=3,
+                                step=0.1, subtype='PERCENTAGE',
+                                description='Edge Mesh Auto: how far the light mesh may leave the original, in % of the '
+                                            'part size (smaller = more triangles); 99 % of the original must be '
+                                            'within it, the flats count less (Fit to Original puts them back)')
     em_adaptive: BoolProperty(name='Adaptive', default=True,
                               description='Edge Mesh: points where an edge line bends (round ends, corners) are kept '
                                           'longer - round ends stay round, straight edges stay light')
@@ -2022,8 +2035,9 @@ def run(context, action):
             _mode(context, 'SCULPT')
         return msg
     if action in {'EM_HALF', 'EM_DOUBLE'}:
+        zb.em_auto = False                           # 0.24.74 (from the count Auto found: Detail by hand now)
         zb.em_detail = int(min(1_000_000, max(100, zb.em_detail * (0.5 if action == 'EM_HALF' else 2.0))))
-        return f'Edge Mesh Detail {zb.em_detail:,}'
+        return f'Edge Mesh Detail {zb.em_detail:,} (Auto off)'
     if action in {'HE_FIND', 'HE_APPLY', 'HE_CLEAR'}:
         from . import hard_edges as he
         if action == 'HE_FIND':

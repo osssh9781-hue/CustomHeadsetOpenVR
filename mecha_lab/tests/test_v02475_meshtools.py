@@ -67,6 +67,7 @@ check('Quad Remesh: both mostly quads', r == {'FINISHED'} and min(quads) > 0.8, 
 c = block('C')
 d = block('D', (3, 0, 0))
 select(c, d)
+zb.em_auto = False
 zb.em_detail = 400
 zb.he_width = 0.05
 r = bpy.ops.mch.mesh_tool(action='EDGE_MESH')

@@ -94,6 +94,8 @@ Hp = em.hard_lines(Vp.astype(np.float64), Tp, math.radians(30))
 check('... the edges come out: the step, the slot and the hole leave hard edge lines', len(Hp) > 60, len(Hp))
 
 # --- Edge Mesh on the object ------------------------------------------------------------------------------------------
+zb.em_auto = False                              # (0.24.74 Auto Detail / Match Original: test_v02477)
+zb.he_match = False
 zb.em_detail = 1500
 zb.he_width = 0.01
 zb.he_segments = 2
@@ -166,8 +168,10 @@ acts = {x.opts.get('props', {}).get('action') for x in pc.walk(node) if x.kind =
 check('ZBrush shelf: Edge Mesh box (Edge Mesh, Half, Double) next to Hard Edges',
       {'EDGE_MESH', 'EM_HALF', 'EM_DOUBLE', 'HE_FIND'} <= acts, sorted(a for a in acts if a.startswith(('E', 'H'))))
 zb.em_detail = 2000
+zb.em_auto = True
 zs.run(C, 'EM_HALF')
-check('... Half / Double change Detail', zb.em_detail == 1000)
+check('... Half / Double change Detail (and turn Auto off: from the count it found, by hand)',
+      zb.em_detail == 1000 and not zb.em_auto)
 part3 = dense_part('Part3')
 zs.on = lambda c: getattr(c, 'mode', '') == 'SCULPT'
 bpy.ops.object.mode_set(mode='SCULPT')

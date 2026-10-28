@@ -1,8 +1,15 @@
-# Mecha Lab 0.24.73 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.24.74 — 설치 · MECHA LAB Workspace · 사용법
 
 > **검증 수준:** Linux headless Blender **5.2.3**(`bpy`)에서 자동 테스트 167개 파일 / 4,589개 항목 + 무작위 기능 조합 크래시 테스트 200개를 돌렸습니다(결과: `test_report.md`).
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` A절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
+
+## 0.24.74 Edge Mesh — Auto Detail · Match Original
+- **Auto**(기본 켜짐) + **Tolerance**(기본 0.006%): Detail을 직접 고르지 않아도 됩니다. 줄인 메쉬가 원본에서 부품 크기의 Tolerance% 넘게 벗어나기 직전까지 줄여서, 단순한 부품은 가볍게, 디테일 많은 부품은 촘촘하게 남깁니다. 찾은 삼각형 수는 **Detail** 칸에 적힙니다(사용자 FBX: 2,098 / 로봇 부품 5개: 588 ~ 5,660).
+  - 더 가볍게 / 더 촘촘하게 하려면 Tolerance를 키우거나(가볍게) 줄이세요(촘촘하게). **Half / Double**을 누르면 찾은 수의 절반 / 두 배로 Auto가 꺼진 채 직접 정하게 됩니다.
+  - 평면 · 곡면은 Fit to Original이 원본 모양으로 다시 붙이므로 덜 따지고, 각진 엣지 근처를 더 따집니다.
+- **Match Original**(기본 켜짐): 원본에서 날카로운 엣지는 Width 그대로 얇게, 원본에서 둥글게 깎인 엣지는 그만큼 넓은 베벨(최대 부품 크기의 5%). Width는 "가장 얇은 베벨"이 됩니다. 끄면 예전처럼 모든 엣지가 Width 하나.
+- 데시메이트 엔진: 거의 선처럼 얇은 삼각형(한 줄 위의 세 점 — n각형을 단순 분할한 메쉬에 많음) 옆에서 면이 뒤집혀 접히던 것을 막음.
 
 ## 0.24.73 Edge Mesh — 촘촘한 메쉬 → 클라이언트에게 줄 깨끗한 메쉬
 1. 지브러시 화면 왼쪽 선반 **Edge Mesh** 상자(또는 사이드바 Mecha Lab 탭 > **Mesh Tools**, 오브젝트 모드에서 선택한 메쉬 전부).

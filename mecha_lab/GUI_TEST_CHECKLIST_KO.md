@@ -1,8 +1,16 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.73 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.74 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## A00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000. 0.24.74 Edge Mesh Auto Detail · Match Original (미검증)
+- [ ] Edge Mesh 상자에 **Auto** · **Tolerance**, **Fit to Original** 옆에 **Match Original**(Mesh Tools 탭에도)
+- [ ] Auto 켜고 촘촘한 부품에서 Edge Mesh: 메시지에 "(Auto)", Detail 칸에 찾은 삼각형 수가 적히는지, 단순한 부품은 가볍고 복잡한 부품은 촘촘한지
+- [ ] Tolerance를 0.003 / 0.012로 바꿔 다시: 삼각형이 늘고 / 줄어드는지, 걸린 시간
+- [ ] Half / Double: 찾은 수의 절반 / 두 배 + Auto가 꺼지는지
+- [ ] Match Original 켜고 끄기: 원본에서 둥근 엣지만 베벨이 넓어지고, 날카로운 엣지는 그대로인지, 가시 · 금이 없는지
+- [ ] n각형이 많은 원본(로봇 부품을 Subdivide Simple 한 것)에서 Edge Mesh: 검게 뒤집힌 면 · 접힌 자국이 없는지
 
 ## A0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000. 0.24.73 Edge Mesh · Mesh Tools · 베벨 두께 · 스크롤 (미검증)
 - [ ] 지브러시 선반 Hard Edges 위에 **Edge Mesh** 상자(Edge Mesh · Detail · Adaptive / Straighten / Fit to Original · Half / Double), Hard Edges 상자에 **Bevel Style Round / Chamfer**

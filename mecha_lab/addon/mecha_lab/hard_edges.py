@@ -43,6 +43,7 @@ LIVE = (BEVEL, SUBSURF, FIT, NORMALS)
 KEY = 'mch_hard_edges'          # object: Find Edges ran on it (the live modifiers follow the shelf settings)
 CONVEX = '.mch_he_convex'       # edge: the faces meet outward (Outer Only)
 HARD = '.mch_he_hard'           # edge: a hard edge (kept here: with Client Look nothing is marked Sharp)
+ROUND = '.mch_he_round'         # edge: Edge Mesh - how round the original is there (bevel width it matches)
 PROBE_MAX = 30000               # set_live: up to this many polygons the bevel is test-run without Clamp Overlap
 PROBE_TOL = 0.3                 # ... it overlaps when one of its points is further than this x Width off the surface
 PROBE_ROUNDS = 6                # ... and the bevels around an overlap are halved this many times before Clamp goes on
@@ -50,6 +51,7 @@ INSIDE = 0.4                    # inside (concave) hard edges get this share of 
 FIT_SAFETY = 0.9                # fit_weights: an edge whose bevel would run over keeps this share of what fits
 FIT_ROUNDS = 12
 CHAMFER_SUPPORT = 0.12          # Chamfer: the support loops sit this share of the width in from each side
+MATCH_MAX = 0.05                # Match Original: no edge's bevel wider than this x the part size
 SRC = 'mch_he_source'           # object: the dense original (off-scene, kept by a fake user) Fit to Original uses
 FIT_GROUP = 'mch_he_fit'        # point group: 1 = fit onto the original, 0 = stay (the hard edges)
 FLAT = math.radians(1.0)        # Merge Flats: faces closer than this to flat are joined
@@ -353,14 +355,23 @@ def hard_flags(me):
 
 
 def marks(me, st):
-    """Crease, bevel weight and (no Client Look) Sharp from the hard edges and the shelf settings (any mode)."""
+    """Crease, bevel weight and (no Client Look) Sharp from the hard edges and the shelf settings (any mode).
+    Returns the bevel Width the weights go with (more than the shelf's with Match Original)."""
     hard = hard_flags(me)
     conv = _edge_bool(me, CONVEX)
     _set_edge_float(me, 'crease_edge', hard * (1.0 if st.he_crease else 0.0))
     w = (hard & (conv | (not st.he_outer))).astype(np.float32)
     w[hard & ~conv] *= INSIDE                          # (inside corners: wide bevels fold over there)
+    width = st.he_width
+    rnd = me.attributes.get(ROUND)
+    if getattr(st, 'he_match', False) and rnd is not None and rnd.domain == 'EDGE' and width > 0 and w.any():
+        r = np.empty(len(me.edges), np.float32)        # 0.24.74 each edge as round as the original there: the
+        rnd.data.foreach_get('value', r)               # shelf's Width is the least (a sharp edge keeps it)
+        want = np.where(w > 0, np.maximum(w * width, np.minimum(r, MATCH_MAX * _size(me))), 0.0)
+        width = max(width, float(want.max()))
+        w = (want / width).astype(np.float32)
     if getattr(st, 'he_bevel', True):                  # 0.24.73 narrower only where it must be
-        w = fit_weights(me, w, st.he_width)
+        w = fit_weights(me, w, width)
     _set_edge_float(me, 'bevel_weight_edge', w)
     a = me.attributes.get('sharp_edge')
     if st.he_client:
@@ -371,12 +382,13 @@ def marks(me, st):
             a = me.attributes.new('sharp_edge', 'BOOLEAN', 'EDGE')
         a.data.foreach_set('value', hard)
     me.update()
+    return width
 
 
 def set_live(ob, st):
     """Add / update / remove the live Bevel, Subdivide and Weighted Normals of ``ob`` (in that order, last)."""
     mods = ob.modifiers
-    marks(ob.data, st)
+    width = marks(ob.data, st)
     bev = mods.get(BEVEL)
     if st.he_bevel:
         if bev is None:
@@ -384,7 +396,7 @@ def set_live(ob, st):
         bev.affect = 'EDGES'
         bev.limit_method = 'WEIGHT'
         bev.edge_weight = 'bevel_weight_edge'
-        bev.width = st.he_width
+        bev.width = width
         if getattr(st, 'he_style', 'ROUND') == 'CHAMFER':      # 0.24.73 flat cut + support loops (stays flat
             _chamfer_profile(bev)                             # through Subdivide, edges of the cut stay crisp)
         else:
@@ -527,7 +539,7 @@ def plain_mesh(context, ob):
     """Client Look: no Sharp / Crease / Bevel Weight / custom normals, every face smooth - the mesh alone gives
     the look (the same in Maya / Max / ZBrush)."""
     me = ob.data
-    for name in ('sharp_edge', 'crease_edge', 'bevel_weight_edge', HARD, CONVEX, 'custom_normal'):
+    for name in ('sharp_edge', 'crease_edge', 'bevel_weight_edge', HARD, CONVEX, ROUND, 'custom_normal'):
         a = me.attributes.get(name)
         if a is not None:
             me.attributes.remove(a)
@@ -600,7 +612,7 @@ def clear(ob):
         if m is not None:
             ob.modifiers.remove(m)
     me = ob.data
-    for name in ('sharp_edge', 'crease_edge', 'bevel_weight_edge', CONVEX, HARD):
+    for name in ('sharp_edge', 'crease_edge', 'bevel_weight_edge', CONVEX, HARD, ROUND):
         a = me.attributes.get(name)
         if a is not None:
             me.attributes.remove(a)
