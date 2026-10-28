@@ -166,6 +166,8 @@ def draw_gn_edge(layout, context, mode='CUT'):
             c.prop(cut, 'gn_ramp_length', slider=True)
             c.prop(cut, 'gn_ramp_soft', slider=True)
             c.prop(cut, 'gn_ramp_res')
+            if cut.gn_finish == 'NONE':                   # 0.24.76 bent edges: one floor per flat face
+                box.row(align=True).prop(cut, 'gn_ramp_steep', expand=True)
             box.label(text='Deep side: the first edge (change it after: < > / Pick Edge)', icon='INFO')
             from . import ramp_edit
             ramp_edit.draw_panel(box, context)
@@ -614,6 +616,8 @@ def _draw_base_sketch(layout, context, base_mesh):
         box.column(align=True).prop(sp, 'alt_mode', expand=True)            # 0.24.37 Alt: Height / Through / like Cut
         if sp.alt_mode in {'HEIGHT', 'RAMP'}:
             box.prop(sp, 'carve_depth')                                     # 0.24.38 0 = Height
+            if sp.profile not in {'CHAMFER', 'BEVEL'}:                      # 0.24.76 bent edges: a floor per face
+                box.row(align=True).prop(sp, 'carve_steep', expand=True)
             if sp.alt_mode == 'RAMP':                                       # 0.24.44 deep at the first edge
                 box.prop(sp, 'ramp_length', slider=True)
                 box.prop(sp, 'ramp_soft', slider=True)

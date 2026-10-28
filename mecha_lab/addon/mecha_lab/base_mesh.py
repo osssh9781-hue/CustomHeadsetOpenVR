@@ -38,6 +38,7 @@ from mathutils.geometry import delaunay_2d_cdt
 from . import target_rules
 from . import core_geometry as cg
 from . import tool_state as ts
+from . import facet_carve as fc
 
 PROFILES = (
     ('FLAT', 'Flat', 'Flat top and straight side walls', 'profile_flat', 'MESH_PLANE'),
@@ -190,6 +191,10 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
                                update=_ramp_live_update,
                                description='Alt + draw carves this deep (0 = Height). Keep it less than the part is '
                                            'thick, or the carve goes right through to the other side')
+    carve_steep: EnumProperty(name='Steep Edges', items=fc.STEEP_ITEMS, default='EVEN', update=_ramp_live_update,
+                              description='Alt: Height / Ramp over a bent edge (each flat face gets its own floor): '
+                                          'Even = every face the full depth across it, Limit = the depth measured '
+                                          'along the main face (shallower down a steep side, like before)')
     ramp_length: FloatProperty(name='Ramp Length', default=1.0, min=0.05, max=1.0, subtype='FACTOR',
                                update=_ramp_live_update,
                                description='Alt: Ramp - how far across the shape the slope goes (1 = it meets the '
@@ -1498,7 +1503,8 @@ def carve_surface(context, loops, projector, p, targets=None, ramp_edge=None, li
     height = max(getattr(p, 'carve_depth', 0.0) or p.height, 1e-5)
     st = SimpleNamespace(profile=SURFACE_CARVE.get(p.profile, 'SQUARE'), edge=0.35, sink=0.0, edge_abs=getattr(p, 'bevel_width', 0.05),
                          fill_res=max(15, min(60, getattr(p, 'resolution', 28))),
-                         segments=getattr(p, 'bevel_segments', 4), fine=getattr(p, 'resolution', 28) / 28.0)
+                         segments=getattr(p, 'bevel_segments', 4), fine=getattr(p, 'resolution', 28) / 28.0,
+                         steep=getattr(p, 'carve_steep', 'EVEN'))
     ramp = None
     is_ramp = ramp_edge is not None or getattr(p, 'alt_mode', 'HEIGHT') == 'RAMP'
     if is_ramp:                     # 0.24.44 the first side drawn is the deep side (0.24.45: or the one picked later)

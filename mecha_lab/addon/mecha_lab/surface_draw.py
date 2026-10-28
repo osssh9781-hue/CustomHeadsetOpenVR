@@ -757,8 +757,13 @@ def carve_area(context, target, groups, projector, settings, height, through=Fal
     everywhere along the surface (``settings``: profile SQUARE / CHAMFER / BEVEL, edge, sink, fill_res).
     0.24.38 ``through``: as deep as the part is thick under the outline (and a bit) - a window right through
     it, the rest stays as a frame.  ``settings.edge_abs`` (if set) = the edge size in scene units.  Returns the
-    depth used."""
+    depth used.
+    0.24.76 a Flat edge over a faceted surface: one floor plane per flat face (``facet_carve``), this one if not."""
     from . import cape_gen
+    if not through:
+        from . import facet_carve
+        if facet_carve.carve(context, target, groups, projector, settings, height, ramp=ramp):
+            return height
     bvh, lo, hi = cape_gen._body(context, target)
     size = (hi - lo).length
     edge = getattr(settings, 'edge_abs', None)

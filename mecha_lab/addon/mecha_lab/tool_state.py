@@ -11,6 +11,8 @@ Separation (docs/01 "data design"):
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty
 
+from . import facet_carve as fc
+
 WORKSPACE_NAME = 'MECHA LAB'
 WORKSPACE_TAG = 'mch_workspace'
 
@@ -462,6 +464,10 @@ class MCH_PG_Cut(bpy.types.PropertyGroup):
     gn_ramp_soft: FloatProperty(name='Ramp Soft', default=0.5, min=0.0, max=1.0, subtype='FACTOR',
                                 update=_ramp_refresh_update,
                                 description='How softly the slope runs into the surface and the side walls round off')
+    gn_ramp_steep: EnumProperty(name='Steep Edges', items=fc.STEEP_ITEMS, default='EVEN', update=_ramp_refresh_update,
+                                description='Cut Ramp over a bent edge (each flat face gets its own floor): Even = '
+                                            'every face the full depth across it, Limit = the depth measured along '
+                                            'the main face (shallower down a steep side, like before)')
     gn_ramp_res: IntProperty(name='Ramp Resolution', default=20, min=8, max=160, update=_ramp_refresh_update,
                              description='How many points the ramp is built from (more = smoother slope and sides, '
                                          'slower)')
