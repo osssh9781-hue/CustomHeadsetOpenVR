@@ -1,0 +1,26 @@
+3D View: MMB  mch.mecha_mmb_gate  shadows  view3d.rotate
+Object Mode: RMB  mch.actions_menu  shadows  wm.call_menu
+Object Mode: Shift+D  mch.duplicate  shadows  object.duplicate_move
+Object Mode: Alt+D  mch.duplicate  shadows  object.duplicate_move_linked
+Object Mode: S  mch.hotkey (SPLIT CUT)  shadows  transform.resize
+Object Mode: Alt+A  mch.hotkey (PLATE CUT)  shadows  object.select_all
+Object Mode: Left Bracket  mch.line_width_key  shadows  object.select_hierarchy
+Object Mode: Right Bracket  mch.line_width_key  shadows  object.select_hierarchy
+Sculpt: LMB  mch.zb_press  shadows  sculpt.brush_stroke
+Sculpt: Shift+LMB  mch.zb_press  shadows  sculpt.brush_stroke
+Sculpt: Alt+LMB  mch.zb_press  shadows  sculpt.brush_stroke
+Sculpt: Ctrl+LMB  mch.zb_press  shadows  sculpt.brush_stroke
+Sculpt: Ctrl+Alt+LMB  mch.zb_press  shadows  sculpt.brush_stroke
+Sculpt: RMB  mch.zb_popup  shadows  brush.stencil_control
+Sculpt: RMB  mch.zb_popup  shadows  wm.call_panel
+Sculpt: Alt+RMB  mch.zb_popup  shadows  brush.stencil_control
+Sculpt: S  mch.zb_gizmo  shadows  brush.asset_activate
+Sculpt: G  mch.zb_gizmo  shadows  brush.asset_activate
+Sculpt: R  mch.zb_gizmo  shadows  sculpt.dyntopo_detail_size_edit
+Sculpt: R  mch.zb_gizmo  shadows  object.voxel_size_edit
+Sculpt: B  mch.zb_brush_pick  shadows  paint.mask_box_gesture
+Sculpt: X  mch.zb_action  shadows  paint.brush_colors_flip
+Sculpt: Ctrl+W  mch.zb_action  shadows  sculpt.face_set_edit
+Sculpt: F  mch.zb_action  shadows  wm.radial_control
+Sculpt: Shift+F  mch.zb_action  shadows  wm.radial_control
+Sculpt: G  mch.sculpt_back  shadows  brush.asset_activate

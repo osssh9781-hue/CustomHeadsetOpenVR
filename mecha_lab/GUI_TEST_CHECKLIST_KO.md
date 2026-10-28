@@ -1,8 +1,15 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.82 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.83 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## 0.24.83 컷 · Box Hide · Hard Edges (미검증)
+- [ ] 큐브 위에 얇은 판을 띄워 놓고(둘 다 보이게 위에서) Cut, Depth = From Surface, 깊이 0.05 로 두 부품에 걸치게 라쏘 → 둘 다 자기 윗면에서 0.05 포켓이 생기는지(전: 판만 또는 몸통만).
+- [ ] Box Hide 를 같은 부품에 겹치게 두 번, 그 위에 얇은 띠 하나 → 셋 다 가려지는지(전: 두 번째에서 "non-manifold" 실패). Alt 로 되돌리기도.
+- [ ] DynaMesh 한 몸통을 Decimate(10 %) → Quad Remesh(Mostly) 뒤 Cut / Cut + Edge Finish Bevel / GN Edge Chamfer / Cut Ramp 를 여러 번 → 부품이 열리거나(와이어프레임에서 구멍) 부스러기가 남지 않는지.
+- [ ] ZBrush 화면 Hard Edges 를 촘촘한 몸통에 → 메시지에 "bevel width … used" 또는 "no bevel" 이 나오면 메시가 깨끗한지(열린 변 없음).
+- [ ] Cut Ramp: 평평한 블록에 깊이 0.3 → 첫 변 쪽이 깊고 반대쪽이 표면으로 올라오는지.
 
 ## 0.24.82 Redo Last · 빌드 도장 · 내보내기 (미검증)
 - [ ] 설치 후 Preferences > Add-ons > Mecha Lab 맨 위에 "Mecha Lab 0.24.82 build <zip 이름의 날짜-시각>"이 보이는지.

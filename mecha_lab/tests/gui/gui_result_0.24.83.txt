@@ -1,0 +1,14 @@
+PASS 1. install the add-on zip  -- /home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.83_20261028-2306.zip
+PASS 2. the MECHA LAB workspace exists  -- ['Animation', 'Compositing', 'Geometry Nodes', 'Layout', 'MECHA LAB', 'Modeling', 'Rendering', 'Scripting', 'Sculpting', 'Shading', 'Texture Paint', 'UV Editing']
+PASS 2. ... and is the window's workspace  -- MECHA LAB
+PASS 3. the drawn bars are registered  -- <capsule object "RNA_HANDLE" at 0x7f93357b3560>
+PASS 3. the window drew (X capture not black) and the band under the 3D view header is drawn on (several greys + the blue accent: the Mecha top bar)  -- (1920, 1080, 0, 14, 5)
+PASS 4. a real-mouse lasso with the Cut tool cuts the cube (its points move or its faces change)  -- (6, 6, [(-1.0, -1.0, -1.0), (-1.0, -1.0, 1.0)], [(-1.0, -1.0, -1.0), (-1.0, -1.0, 1.0)], [])
+PASS 4. Ctrl+Z puts the cube back after the cut, Ctrl+Shift+Z cuts it again (no crash)  -- (True, [(-1.0, -1.0, -1.0), (-1.0, -1.0, 1.0)])
+PASS 4. Box Hide by real mouse, then Ctrl+Z: the hiding gone, Blender alive  -- (True, [])
+PASS 4. GN Edge switched on after a live cut: the cut is made again from a timer (chamfer: more faces than the plain re-cut), off again: the plain cut again - Blender alive  -- (25, 25, 13)
+PASS 5. Tab switches MECHA LAB <-> the ZBrush screen  -- ('MECHA LAB', 'MECHA LAB', 'SCULPT')
+PASS 7. hotkey conflicts listed against the real keyconfig (Shift+D on object.duplicate_move among them)  -- (26, ['3D View: MMB  mch.mecha_mmb_gate  shadows  view3d.rotate', 'Object Mode: RMB  mch.actions_menu  shadows  wm.call_menu', 'Object Mode: Shift+D  mch.duplicate  shadows  object.duplicate_move'])
+PASS 6. the lasso memory timer ticks
+PASS 6. the armor shell timer ticks
+13/13 passed

@@ -23,10 +23,12 @@ export MCH_GUI_ZIP="$ZIP" MCH_GUI_OUT="$HERE/out" MCH_GUI_ROOT="$ROOT"
 export BLENDER_USER_CONFIG="$SCRATCH/cfg" BLENDER_USER_SCRIPTS="$SCRATCH/scripts" BLENDER_USER_EXTENSIONS="$SCRATCH/ext"
 if ! pgrep -f "Xvfb :99" >/dev/null; then
   Xvfb :99 -screen 0 1920x1080x24 >/dev/null 2>&1 &
-  sleep 2
 fi
+for _i in $(seq 1 40); do [ -S /tmp/.X11-unix/X99 ] && break; sleep 0.25; done   # (X up before Blender: else it tries
+sleep 1                                                                            #  Wayland and dies)
 export DISPLAY=:99
 export LIBGL_ALWAYS_SOFTWARE=1 MESA_LOADER_DRIVER_OVERRIDE=llvmpipe GALLIUM_DRIVER=llvmpipe
 unset WAYLAND_DISPLAY
-export XDG_RUNTIME_DIR="$SCRATCH/xdg"; mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"
+# (a Unix socket path may be 108 bytes at most: the runtime dir must be short, so not under the scratch dir)
+export XDG_RUNTIME_DIR="/tmp/mch_xdg_$$"; mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"
 "$DIR/blender" --window-geometry 0 0 1920 1080 --python "$HERE/gui_smoke.py" -- "$@" 2>&1 | tee "$HERE/out/gui_log.txt"
