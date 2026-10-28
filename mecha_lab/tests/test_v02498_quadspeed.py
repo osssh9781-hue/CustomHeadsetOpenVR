@@ -104,9 +104,9 @@ if qf.available():
     finally:
         qf.remesh_arrays, qf.is_cut_mesh = real, real_cut
     check('All Quads keeps far fewer faces than asked (a seventh): Mostly Quads at the same count instead (the nearer '
-          'result), and the message says so', calls == [(3000, True), (3000, False)]
-          and 'kept only' in msg and 'Mostly Quads at the same count' in msg and len(ob.data.polygons) > 4 * 125,
-          (calls, msg[:120]))
+          'result), and the message says so (0.24.83: the cut-down result is open, so the closed-part guard then '
+          'tries finer and keeps the part)', calls[:2] == [(3000, True), (3000, False)]
+          and 'kept only' in msg and 'Mostly Quads at the same count' in msg, (calls, msg[:120]))
     check('... the rule: under half of the count asked for, no scaling (a thin-walled part is a cliff: 2x gave the '
           'same share, 4x gave 8 times the count)', qf.YIELD_MIN == 0.5 and qf.YIELD_FALLBACK is True)
 

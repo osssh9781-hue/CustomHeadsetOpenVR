@@ -254,6 +254,8 @@ def decimate_object(ob, keep_percent, even=False, quads=False, keep_mask=False, 
     nv = len(me.vertices)
     if nt < 8:
         return 'Decimate: nothing to decimate'
+    if nt <= 24:                                      # 0.24.83 a 12-triangle plate at 30 % came back a tetrahedron
+        return 'Decimate: the mesh is already light (24 triangles or fewer): nothing to take away'
     V = np.empty(nv * 3, np.float32)
     me.vertices.foreach_get('co', V)
     T = np.empty(nt * 3, np.int32)
@@ -279,7 +281,7 @@ def decimate_object(ob, keep_percent, even=False, quads=False, keep_mask=False, 
             g = np.empty(len(me.polygons), np.int32)
             a.data.foreach_get('value', g)
             feat = group_borders(T, g[tpoly], nv)
-    target = max(4, int(round(nt * keep_percent / 100.0)))
+    target = max(12, int(round(nt * keep_percent / 100.0)))   # (never under a box's 12 triangles)
     oV, oF, vsrc, fsrc = run(V, T, target, even=even, keep_borders=keep_borders, weight=weight, feat=feat,
                              nthreads=nthreads)
     # corners: the triangle's own corner when it still has its point, else any corner of the point that stayed
@@ -308,13 +310,16 @@ def decimate_object(ob, keep_percent, even=False, quads=False, keep_mask=False, 
         if quads:
             join_quads(new)
         new.update()
+        from . import core_geometry as cg
+        tidy = cg.tidy_result(new, shards=False, slivers=False)   # 0.24.83 folded fins (back to back) removed
     except Exception:
         bpy.data.meshes.remove(new)                  # the SubTool keeps its mesh
         raise
     swap_mesh(ob, new)
     me = ob.data
     dt = time.perf_counter() - t0
-    return f'Decimate: {polys0:,} > {len(me.polygons):,} polygons in {dt:.1f} s ({nthreads or threads()} threads)'
+    note = f', {tidy["folds"]} folded faces removed' if tidy.get('folds') else ''
+    return f'Decimate: {polys0:,} > {len(me.polygons):,} polygons in {dt:.1f} s ({nthreads or threads()} threads){note}'
 
 
 def group_borders(T, tgroup, nv):

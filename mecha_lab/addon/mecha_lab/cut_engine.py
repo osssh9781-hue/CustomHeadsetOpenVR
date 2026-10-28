@@ -807,11 +807,29 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
             raise cg.CutError('The shape does not intersect any target; nothing was changed.' +
                               (' Failed: ' + '; '.join(failed) if failed else ''))
         infos = []
-        for t, me in results:
+        junk = 0
+        for t, me in pieces:
+            cg.tidy_result(me, cg.mesh_size(t.data))          # 0.24.83 no slivers / folds / specks left behind
+        for k, (t, me) in enumerate(results):
+            cg.tidy_result(me, cg.mesh_size(t.data))
+            if mode == 'SPLIT' and cg.is_junk(me, cg.mesh_size(t.data)):
+                # nothing worth keeping stays on the part's side: the piece becomes the part instead
+                swap = next((j for j, (pt, pm) in enumerate(pieces) if pt == t and not cg.is_junk(pm, cg.mesh_size(t.data))), None)
+                if swap is not None:
+                    results[k] = (t, pieces[swap][1])
+                    pieces[swap] = (t, me)
+                    me = results[k][1]
             infos.append(cg.commit_mesh(t, me, cut.shared_mesh))
         new_pieces = []
         for t, me in pieces:
             temp.remove(me)
+            if cg.is_junk(me, cg.mesh_size(t.data)):           # (a paper-thin shard of the gap: not a part)
+                junk += 1
+                bpy.data.meshes.remove(me)
+                continue
+            if cg.non_manifold_edge_count(me) and not cg.non_manifold_edge_count(t.data):
+                from . import mesh_fix                         # (a closed part's piece came out open: small holes shut)
+                mesh_fix.fix_mesh(me, fill='SMALL')
             new_pieces.append(_make_piece(t, me))
         for p in new_pieces:
             p.select_set(True)
@@ -820,6 +838,8 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
         suffix = ''
         if mode == 'SPLIT':
             suffix = _side_report(cut, side_counts) if cut.split_cap else ''
+            if junk:
+                suffix += f' | {junk} paper-thin shard(s) dropped'
         elif _gn_on(cut):
             suffix = (f' | GN {cut.gn_finish.title()}: {sum(edge_counts)} border edges' if sum(edge_counts)
                       else ' | WARNING: GN Edge found no new border edges')
@@ -1001,9 +1021,15 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
             if not results:
                 raise cg.CutError('The line does not cross any target; nothing was changed.' +
                                   (' Failed: ' + '; '.join(failed) if failed else ''))
+            for t, me in results:
+                cg.tidy_result(me, cg.mesh_size(t.data))
             infos = [cg.commit_mesh(t, me, cut.shared_mesh) for t, me in results]
             for t, me in pieces:
                 temp.remove(me)
+                cg.tidy_result(me, cg.mesh_size(t.data))
+                if cg.is_junk(me, cg.mesh_size(t.data)):
+                    bpy.data.meshes.remove(me)
+                    continue
                 _make_piece(t, me).select_set(True)
             suffix = ''
             if mode == 'SPLIT':

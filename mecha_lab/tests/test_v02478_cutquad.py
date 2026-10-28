@@ -151,7 +151,8 @@ msg = qf.remesh_object(src, 1500)
 dt = time.perf_counter() - t0
 n_open, n_quads, n_dev = stats(src, ref)
 check('Message says the part\'s own edges were kept', 'own edges kept' in msg, msg)
-check('Closed: no open sides (the old way left open seams on this part)', n_open == 0 and o_open > 0, (n_open, o_open))
+check('Closed: no open sides (0.24.83: the old way is guarded the same now - a closed part comes back closed)',
+      n_open == 0 and o_open == 0, (n_open, o_open))
 check('Mostly quads: at least 90 % (old way on the same part less)', n_quads >= 0.9 and n_quads > o_quads,
       (round(n_quads, 3), round(o_quads, 3)))
 check('On the original surface: every point within 1 % of the part size', n_dev < 0.01, round(n_dev, 5))

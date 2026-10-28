@@ -836,6 +836,133 @@ def ensure_real_mesh(context, ob):
     return True
 
 
+def mesh_size(me):
+    """Diagonal of the mesh's own bounds (0 for no points)."""
+    import numpy as np
+    if not len(me.vertices):
+        return 0.0
+    co = np.empty(len(me.vertices) * 3, np.float64)
+    me.vertices.foreach_get('co', co)
+    co = co.reshape(-1, 3)
+    return float(np.linalg.norm(co.max(0) - co.min(0)))
+
+
+def tidy_result(me, ref_size=None, shards=True, slivers=True):
+    """0.24.83 A boolean / decimate / remesh result made clean: points on the same spot welded, zero-area faces
+    dissolved, folded faces (two faces on the same points, back to back - a paper-thin fin) removed, loose points
+    gone, and (``shards``) separate pieces of under 6 faces that are tiny next to the part (under 2 % of
+    ``ref_size``) dropped.  Returns a dict of counts (all zero = nothing was wrong)."""
+    out = dict(welded=0, degenerate=0, folds=0, fins=0, loose=0, shards=0, flipped=0)
+    if me is None or not len(me.polygons):
+        return out
+    size = ref_size or mesh_size(me)
+    eps = max(1e-9, 1e-6 * size)
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        nv = len(bm.verts)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=eps)
+        out['welded'] = nv - len(bm.verts)
+        nf = len(bm.faces)
+        lens = sorted(e.calc_length() for e in bm.edges)
+        med = lens[len(lens) // 2] if lens else 0.0
+        degen = max(eps, min(1e-3 * size, 0.05 * med)) if slivers else eps   # (edges far shorter than the
+        bmesh.ops.dissolve_degenerate(bm, edges=bm.edges[:], dist=degen)         # part's own: slivers)
+        out['degenerate'] = nf - len(bm.faces)
+        seen = {}
+        folds = []
+        for f in bm.faces:
+            key = tuple(sorted(v.index for v in f.verts))
+            if key in seen:
+                folds += [seen[key], f]
+            else:
+                seen[key] = f
+        folds = list({f.index: f for f in folds}.values())
+        if folds:
+            bmesh.ops.delete(bm, geom=folds, context='FACES_ONLY')
+            out['folds'] = len(folds)
+        if shards and len(bm.faces):
+            bm.verts.ensure_lookup_table()
+            seen_v = set()
+            drop = []
+            for v in bm.verts:
+                if v.index in seen_v or not v.link_faces:
+                    continue
+                stack, comp = [v], []
+                while stack:
+                    x = stack.pop()
+                    if x.index in seen_v:
+                        continue
+                    seen_v.add(x.index)
+                    comp.append(x)
+                    stack.extend(e.other_vert(x) for e in x.link_edges)
+                faces = {f for x in comp for f in x.link_faces}
+                if len(faces) < 6:
+                    lo = Vector((min(x.co.x for x in comp), min(x.co.y for x in comp), min(x.co.z for x in comp)))
+                    hi = Vector((max(x.co.x for x in comp), max(x.co.y for x in comp), max(x.co.z for x in comp)))
+                    if (hi - lo).length < 0.02 * size or len(faces) < 3:
+                        drop += list(faces)
+            if drop and len(drop) < len(bm.faces):
+                bmesh.ops.delete(bm, geom=drop, context='FACES_ONLY')
+                out['shards'] = len(drop)
+        # fins: an edge with 3+ faces keeps its two largest, the tiny ones hanging off it go
+        fins = set()
+        for e in bm.edges:
+            if len(e.link_faces) > 2:
+                fs = sorted(e.link_faces, key=lambda f: f.calc_area())
+                for f in fs[:-2]:
+                    if f.calc_area() < 0.05 * fs[-1].calc_area():
+                        fins.add(f)
+        if fins:
+            bmesh.ops.delete(bm, geom=list(fins), context='FACES_ONLY')
+            out['fins'] = len(fins)
+        loose = [v for v in bm.verts if not v.link_faces]
+        if loose:
+            bmesh.ops.delete(bm, geom=loose, context='VERTS')
+            out['loose'] = len(loose)
+        # a closed result with faces wound the wrong way (a remesh / boolean twist): the normals made consistent
+        flipped = 0
+        if len(bm.faces) and all(len(e.link_faces) == 2 for e in bm.edges):
+            for e in bm.edges:
+                l1, l2 = e.link_loops[0], e.link_loops[1]
+                if l1.vert == l2.vert:
+                    flipped += 1
+            if flipped:
+                bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+                out['flipped'] = flipped
+        if any(out.values()):
+            bm.to_mesh(me)
+            me.update()
+    finally:
+        bm.free()
+    return out
+
+
+def is_junk(me, ref_size=None):
+    """A result not worth a part: under 4 faces, no area, a speck next to ``ref_size`` (under 1 % with fewer than 8
+    faces), or paper (no volume to speak of: under a millionth of ``ref_size`` cubed - a Split's gap shard)."""
+    if me is None or len(me.polygons) < 4:
+        return True
+    area = sum(p.area for p in me.polygons)
+    size = mesh_size(me)
+    if area <= 1e-12 * max(1.0, size * size) or size <= 0.0:
+        return True
+    if ref_size:
+        if size < 0.01 * ref_size and len(me.polygons) < 8:
+            return True
+        if len(me.polygons) < 32 and non_manifold_edge_count(me) > 0:   # a small open scrap (a boolean that broke)
+            return True
+        bm = bmesh.new()
+        try:
+            bm.from_mesh(me)
+            vol = abs(bm.calc_volume(signed=True))
+        finally:
+            bm.free()
+        if vol < 1e-6 * ref_size ** 3:
+            return True
+    return False
+
+
 def strip_cutter_faces(mesh):
     """Delete faces that came from the cutter (open, un-capped cut)."""
     attr = mesh.attributes.get(CUTTER_ATTR)

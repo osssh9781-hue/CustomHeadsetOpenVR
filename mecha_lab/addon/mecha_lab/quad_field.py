@@ -278,6 +278,12 @@ def holes(P, sides, border, tol):
     return sides[np.array(keep, bool)]
 
 
+VOLUME_KEEP = 0.5               # 0.24.83 a closed part keeps at least this share of its volume (else finer / kept)
+VOLUME_TRIES = 2
+OPEN_OK = 0.03                  # ... and comes back closed, give or take this share of open sides (thin walls of a
+OPEN_OK_MIN = 8                 # sculpt; at least this many) - more than that: finer / kept as it is
+QUAD_MAX_FACES = 400000
+_st_tries = {}
 YIELD_MIN = 0.5                 # 0.24.82 under this share of the faces asked for: All Quads -> Mostly at the same
 YIELD_FALLBACK = True           # count / Mostly -> 2x finer, once; the nearer result is kept (see _remesh_object)
 CUT_TRIES = (1, 2)              # finer while the result has holes (a groove narrower than a quad); 0.24.81 4x no
@@ -313,6 +319,28 @@ def remesh_cut(me, target, all_quads=False, crease_deg=30.0, nthreads=None):
             break
     best[1][4]['open'] = best[0]
     return best[1]
+
+
+def _open_multi(me):
+    """(open sides, edges with 3+ faces) of a mesh."""
+    import numpy as np
+    ne = len(me.edges)
+    if not ne:
+        return 0, 0
+    le = np.empty(len(me.loops), np.int64)
+    me.loops.foreach_get('edge_index', le)
+    n = np.bincount(le, minlength=ne)
+    return int((n == 1).sum()), int((n > 2).sum())
+
+
+def _volume(me):
+    import bmesh
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        return abs(bm.calc_volume(signed=True))
+    finally:
+        bm.free()
 
 
 def drop_twins(me):
@@ -658,12 +686,37 @@ def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nth
         new.update()
         if drop_twins(new):                                # 0.24.77 (attributes / hard edges kept by BMesh)
             sizes = np.array([len(p.vertices) for p in new.polygons])
+        from . import core_geometry as cg
+        if any(cg.tidy_result(new, shards=False, slivers=False).values()):   # 0.24.83 zero-area faces dissolved
+            sizes = np.array([len(p.vertices) for p in new.polygons])
     except Exception:
         bpy.data.meshes.remove(new)                        # the SubTool keeps its mesh
         raise
     if not len(new.polygons):
         bpy.data.meshes.remove(new)
         return 'Quad Remesh: nothing came back - the part is kept as it is'
+    # 0.24.83 a closed part thinner than a quad came back as a flat sheet (its two sides on the same points: no
+    # volume, holes once the folds are cleaned): the volume must survive, else finer (x2, up to VOLUME_TRIES) and
+    # at last the part is kept as it is
+    vol0, vol1 = _volume(me), _volume(new)
+    open_new, multi_new = _open_multi(new)
+    n_new = len(new.polygons)
+    closed_in = cg.non_manifold_edge_count(me) == 0
+    if closed_in and (vol0 > 0 and (vol1 < VOLUME_KEEP * vol0 or vol1 > vol0 / VOLUME_KEEP)
+                      or open_new > max(OPEN_OK_MIN, OPEN_OK * n_new) or multi_new):
+        bpy.data.meshes.remove(new)
+        tries = _st_tries.get(id(ob), 0)
+        if tries < VOLUME_TRIES and target * 2 <= QUAD_MAX_FACES:
+            _st_tries[id(ob)] = tries + 1
+            try:
+                return _remesh_object(ob, me, polys0, t0, fixst, target * 2, all_quads, crease_deg, nthreads)
+            finally:
+                _st_tries.pop(id(ob), None)
+        why = (f'{open_new} sides would stay open' if open_new > max(OPEN_OK_MIN, OPEN_OK * max(1, n_new))
+               else f'{multi_new} edges would carry 3+ faces' if multi_new
+               else f'the quads lost {100 - vol1 / max(vol0, 1e-12) * 100:.0f} % of its volume')
+        return (f'Quad Remesh{got_note}: the part is thinner than a quad at this count ({polys0:,} faces kept as '
+                f'they are - {why}): ask for more faces')
     fd.swap_mesh(ob, new)
     ob.show_wire = ob.show_all_edges = True               # 0.24.76 the new quads are shown
     if len(st['hard']):

@@ -38,7 +38,14 @@ rng = random.Random(seed)
 fresh()
 mecha_lab.register()
 C = bpy.context
-S = C.scene
+
+
+class _Scene:
+    def __getattr__(self, k):
+        return getattr(bpy.context.scene, k)
+
+
+S = _Scene()
 zs.on = lambda c: getattr(c, 'mode', '') == 'SCULPT'
 S.mch_brush.shape = 'LASSO'
 S.mch_brush.line_open = False
@@ -161,6 +168,24 @@ def quality(ob):
     bm.edges.ensure_lookup_table()
     lens = np.array([e.calc_length() for e in bm.edges]) if len(bm.edges) else np.zeros(0)
     med = float(np.median(lens)) if len(lens) else 0.0
+    # a spike: a point whose shortest edge is 8x longer than the typical edge around its neighbours (local, so a
+    # low-poly part with big flat faces next to a dense bevel is not a spike)
+    for v in bm.verts:
+        if len(v.link_edges) < 2 or not v.link_faces:
+            continue
+        mine = min(e.calc_length() for e in v.link_edges)
+        around = [e2.calc_length() for e in v.link_edges for e2 in e.other_vert(v).link_edges if e2 is not e]
+        if not around or mine <= 8.0 * float(np.median(around)):
+            continue
+        # ... and every face at the point is a needle there (a boolean cap n-gon next to dense triangles is not)
+        angles = []
+        for f in v.link_faces:
+            vs = f.verts
+            i = [x.index for x in vs].index(v.index)
+            a, b = vs[i - 1].co - v.co, vs[(i + 1) % len(vs)].co - v.co
+            angles.append(a.angle(b) if a.length > 0 and b.length > 0 else 0.0)
+        if angles and max(angles) < math.radians(4.0):
+            out['spike'] += 1
     for e in bm.edges:
         n = len(e.link_faces)
         if n == 0:
@@ -174,8 +199,6 @@ def quality(ob):
             if l1.vert == l2.vert:                       # both faces walk the edge the same way: one is flipped
                 out['flipped'] += 1
     out['loose'] = sum(1 for v in bm.verts if not v.link_edges)
-    if med > 0:
-        out['spike'] = int((lens > 25.0 * med).sum())
     seen = {}
     for f in bm.faces:
         a = f.calc_area()
@@ -226,7 +249,21 @@ def judge(step, name, ob, before):
         bad.append(f'slivers {before["sliver"]} -> {after["sliver"]}')
     for b in bad:
         log(f'BAD {step} {name} on {ob.name}: {b}')
+    if bad:
+        save_bad(step, name)
     return after
+
+
+def save_bad(step, name):
+    if os.environ.get('MECH_SAVE_BAD') and (step, name) not in SAVED:
+        SAVED.add((step, name))
+        path = os.path.join(os.environ.get('MECH_SAVE_DIR', OUT), f'bad_{seed}_{step}_{name}.blend')
+        to_object()
+        bpy.ops.wm.save_as_mainfile(filepath=path, copy=True)
+        log(f'  saved {path}')
+
+
+SAVED = set()
 
 
 OPEN_OK = {'split'}         # (nothing here should open a closed part; Split pieces are closed too)
@@ -395,6 +432,7 @@ def export_roundtrip():
             continue
     if notes:
         log('BAD export round trip: ' + '; '.join(notes))
+        save_bad('export', 'export')
     C.view_layer.objects.active = ms[0]
     return f'{r} {len(new)} parts back'
 
@@ -497,7 +535,12 @@ for i in range(nsteps):
                 bads = {k: v for k, v in q.items() if k in ('nan', 'multi', 'spike', 'twins', 'flipped', 'zero', 'debris') and v}
                 if bads:
                     log(f'BAD {i} {name}: new part {o.name} {bads}')
+                    save_bad(i, name)
         log(f'  ok {time.perf_counter() - t:.2f}s {str(r)[:100]}')
+        if os.environ.get('MECH_SAVE_STEP') == str(i):             # (a probe wants the scene after this step)
+            to_object()
+            bpy.ops.wm.save_as_mainfile(filepath=os.path.join(os.environ.get('MECH_SAVE_DIR', OUT),
+                                                              f'step_{seed}_{i}.blend'), copy=True)
     except Exception as ex:
         log(f'ERROR {i} {name}: {type(ex).__name__}: {str(ex).splitlines()[0][:150] if str(ex) else ""}')
 log(f'DONE {seed} in {time.perf_counter() - t_all:.1f}s')
