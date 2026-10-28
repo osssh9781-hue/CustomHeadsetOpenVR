@@ -1,6 +1,6 @@
 # Mecha Lab 0.24.81 — 설치 · MECHA LAB Workspace · 사용법
 
-> **검증 수준:** Linux headless Blender **5.2.3**(`bpy`)에서 자동 테스트 183개 파일 / 4,878개 항목(실패 0) + 무작위 기능 조합 크래시 테스트 280개를 돌렸습니다(결과: `test_report.md`).
+> **검증 수준:** Linux headless Blender **5.2.3**(`bpy`)에서 자동 테스트 187개 파일 / 4,917개 항목(실패 0) + 무작위 기능 조합 크래시 테스트 280개, 그리고 0.24.81부터 리눅스 가상 화면의 **진짜 Blender 5.2.3 창** 자동 테스트(설치 · 워크스페이스 · 그려진 막대 · 진짜 마우스 Cut · Tab) 9/9를 돌렸습니다(결과: `test_report.md`).
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` 맨 위 0.24.81 절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
 
@@ -8,6 +8,7 @@
 - 그룹을 고르고 **Shift+D**(Alt+D, 메뉴 Duplicate): 핸들만이 아니라 그룹 통째(부품 · 안의 그룹 · 반복)가 복사되고 바로 이동. Groups 카드 / 메카 메뉴에 **Origin to Geometry**(핸들을 부품 가운데로).
 - ZBrush 선반 · Mesh Tools의 **Quad Remesh**가 하드 엣지 많은 부품에서 2 ~ 4배 빨라지고 면 수가 요청에 가깝게(4배 재시도 없앰).
 - ZBrush 브러시 원 안에 알파가 검게 그려지던 것 기본 끔(Preferences > Alpha in Brush Circle).
+- Cut · Split · 라인 컷 · Box Hide가 깨진 부품에서 manifold 경고만 내고 안 잘리던 것: 자르기 전에 Fix Mesh 자동(Preferences > Auto Fix Mesh before Cut). Mirror 켠 부품에 Box Hide 하면 사라지던 것 수정. Export Quad Mesh + Client Look에 열린 엣지가 남던 것 수정.
 - 깨진 부품에서 Cut / Split / Box Hide가 "manifold" 경고만 내고 안 잘리던 것: 자르기 전에 Fix Mesh가 자동으로 돎(Preferences > Auto Fix Mesh before Cut). Mirror를 켠 부품에 Box Hide 하면 부품이 사라지던 것 수정.
 
 ## 0.24.80 전체면 익스트랙트(Armor Shell)
