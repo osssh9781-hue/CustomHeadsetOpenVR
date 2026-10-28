@@ -51,17 +51,14 @@ def _drop_loose(bm):
         bmesh.ops.delete(bm, geom=wires, context='EDGES')
 
 
-def _inside(bm, faces, size):
+def _inside(bvh, faces, size, nfaces):
     """True when the surface piece ``faces`` lies inside the rest of the solid: from points on it, rays leave the
-    rest an odd number of times (majority of a few rays from a few faces)."""
-    from mathutils.bvhtree import BVHTree
-    keep = set(faces)
-    rest = [f for f in bm.faces if f not in keep]
-    if not rest:
+    rest an odd number of times (majority of a few rays from a few faces).  0.24.81 ``bvh`` is one tree of the
+    whole mesh (hits on the piece itself are stepped over) - a tree of the rest was built for every piece before:
+    270 pieces on a 163k-face ZBrush part = 47 s of a 51 s Fix Mesh."""
+    keep = {f.index for f in faces}
+    if len(keep) >= nfaces:
         return False
-    verts = [v.co.copy() for v in bm.verts]
-    idx = {v: i for i, v in enumerate(bm.verts)}
-    bvh = BVHTree.FromPolygons(verts, [[idx[v] for v in f.verts] for f in rest], epsilon=0.0)
     probes = sorted(faces, key=lambda f: -f.calc_area())[:5]
     votes = 0
     total = 0
@@ -74,7 +71,8 @@ def _inside(bm, faces, size):
                 hit = bvh.ray_cast(o, d, size * 4.0)
                 if hit[0] is None:
                     break
-                n += 1
+                if hit[2] not in keep:
+                    n += 1
                 o = hit[0] + d * (size * 1e-6)
             votes += n % 2
             total += 1
@@ -104,10 +102,14 @@ def _inside_walls(bm, size):
                         stack.append(g)
         pieces.append(piece)
     gone = []
+    from mathutils.bvhtree import BVHTree
+    bm.faces.index_update()
+    bvh = BVHTree.FromBMesh(bm, epsilon=0.0)
+    nfaces = len(bm.faces)
     for piece in sorted(pieces, key=len):
-        if len(piece) > 0.5 * len(bm.faces):
+        if len(piece) > 0.5 * nfaces:
             continue                                 # (the main surface itself is never a wall)
-        if _inside(bm, piece, size):
+        if _inside(bvh, piece, size, nfaces):
             gone += piece
     if gone:
         bmesh.ops.delete(bm, geom=gone, context='FACES_ONLY')

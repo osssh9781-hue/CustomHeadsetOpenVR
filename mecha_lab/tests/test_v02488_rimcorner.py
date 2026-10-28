@@ -120,7 +120,10 @@ for v in vs:                                    # a hole's corner (the profiles 
 check('... a turn the other way (the offsets spread): nothing is moved', rs.trim_corners(edges, prof, W) == 0)
 bm.free()
 
-# an open / broken part
+# an open / broken part (0.24.81 Auto Fix Mesh would repair it first: off here, this is about the open-part path)
+from mecha_lab import workspace_ui as wu
+real_pref = wu.pref
+wu.pref = lambda name, default=True: False if name == 'auto_fix_mesh' else real_pref(name, default)
 used.clear()
 ob = plate(hole=True)
 nm0 = non_manifold(ob)
@@ -137,6 +140,7 @@ check('... a result that fell apart: the old way is tried too (the one with fewe
       used == ['open', False] and 'GN Chamfer' in msg and len(ob.data.polygons) > 100, (used, msg))
 rs._fair = real_fair
 rs._sweep = real_sweep
+wu.pref = real_pref
 
 fresh()
 for o in list(bpy.data.objects):

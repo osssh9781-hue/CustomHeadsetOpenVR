@@ -10,6 +10,7 @@
   - 결과(같은 부품): Mostly 1/4 **1.6초**, 1/2 **8.3초**(7,445면 — 이 부품은 1/2 크기가 하필 홈 폭과 비슷해 2배 재시도가 필요), 8천 **5초**; All Quads 1/2 **3.6초 · 7,450면**(15,242면이던 것), 8천 5.8초. 쿼드 비율 · 열린 엣지 · 원래 면과의 거리(최대 0.05 %)는 전과 같음. 기존 쿼드 테스트 5개 파일 모두 통과.
   - 남은 한계(KNOWN_LIMITATIONS): 깨진 부품(이 FBX처럼 얇은 벽)에서 All Quads 1/4는 요청의 절반(974면)에 열린 변 112개 — 얇은 벽이 쿼드 하나보다 얇으면 닫지 못함. Fix Mesh 후에도 같음(벽 자체가 얇음).
 - **"자르고 싶은 곳에서 manifold 노란 경고가 뜨며 안 잘리던 것"(Cut · Split · 라인 컷 · Box Hide)**: 깨진 부품(열린 변, 면 3개 이상이 붙은 엣지 — ZBrush / FBX 부품 대부분)에서 불린이 실패하면 "not one clean solid … Fix Mesh it first" 경고만 나오고 손으로 Fix Mesh를 해야 했음. 이제 그런 부품은 **자르기 전에 Fix Mesh가 자동으로** 돌고(Preferences > **Auto Fix Mesh before Cut**, 기본 켜짐) 결과 메시지에 "Fix Mesh first: Body 20 → 0 broken edges"처럼 적힘. 끄면 예전처럼 경고. Fix Mesh는 Ctrl+Z 한 단계에 같이 들어감.
+- **Fix Mesh 12배 빨라짐**(MCH_Base.009 16만 면 · 깨진 엣지 5,880개: **51초 → 4초**, 같은 결과): 안쪽 벽을 찾을 때 조각(270개)마다 나머지 메시 전체의 BVH 트리를 새로 만들었음 → 트리 하나를 만들고 조각 자신에 맞은 광선은 건너뜀. Quad Remesh(깨진 부품은 먼저 Fix Mesh)와 새 Auto Fix Mesh 컷이 같이 빨라짐.
 - **Mirror + Box Hide 같이 쓰면 부품이 통째로 사라지던 것**(물어보셔서 돌려 보니 재현): 라이브 Mirror(대칭 카드)가 있는 부품에 Box Hide(Follow Symmetry: 가리기가 Mirror 뒤에 옴)를 하면 평가 결과가 빈 메시. Box Hide 모디파이어의 Manifold 플래그를 원본 메시(닫힘)에서 읽었는데, 실제로 모디파이어에 들어오는 건 미러된 메시(이음새에 겹친 엣지)라 Manifold 솔버가 아무것도 안 돌려줬음. 이제 모디파이어 앞의 것들을 평가한 메시로 판단. Box Hide 먼저 → Mirror 나중은 전부터 됐고 그대로.
 - **ZBrush 브러시 원 안의 알파 무늬**(검게 보이던 것): 블렌더가 알파 그림을 커서 안에 그릴 때 검은 부분을 불투명하게 칠해서 얼룩처럼 보였음. 이제 **기본 꺼짐**(ZBrush처럼 — 알파는 왼쪽 선반 Alpha 칸에 보임). 보고 싶으면 Preferences > **Alpha in Brush Circle**(연하게).
 - 테스트: TESTLINE
