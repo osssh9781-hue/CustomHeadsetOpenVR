@@ -766,10 +766,8 @@ class MCH_OT_duplicate(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        if context.mode != 'OBJECT' or not context.selected_objects:
-            return False
-        from . import tool_state as ts
-        return ts.is_mecha_workspace(context.workspace) or any(is_group(o) for o in context.selected_objects)
+        # (anywhere: plain objects get Blender's duplicate + grab from it, so the key loses nothing outside MECHA LAB)
+        return context.mode == 'OBJECT' and bool(context.selected_objects)
 
     def invoke(self, context, event):
         return self.execute(context)

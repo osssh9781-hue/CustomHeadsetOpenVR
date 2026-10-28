@@ -128,8 +128,12 @@ check('... Mecha Menu / Actions card Duplicate too', any(op == 'mch.duplicate' f
       and 'mch.duplicate' in __import__('inspect').getsource(__import__('mecha_lab.actions_menu', fromlist=['x'])))
 ts.is_mecha_workspace = real_ws
 select(e)
-check('Outside MECHA LAB a plain object\'s Shift+D stays Blender\'s (the Mecha one only steps in for a group)',
-      not groups.MCH_OT_duplicate.poll(C))
+check('Outside MECHA LAB too (the Mecha Menu / Actions card call it there): a plain object gets Blender\'s duplicate + '
+      'grab through it', groups.MCH_OT_duplicate.poll(C))
 select(g)
 check('... a group handle anywhere: the Mecha duplicate', groups.MCH_OT_duplicate.poll(C))
+select(e)
+bpy.ops.object.mode_set(mode='EDIT')
+check('... not in Edit mode (Blender\'s own Shift+D there)', not groups.MCH_OT_duplicate.poll(C))
+bpy.ops.object.mode_set(mode='OBJECT')
 summary()

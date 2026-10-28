@@ -11,7 +11,13 @@ Steps (each one PASS / FAIL in gui_result.txt):
      bpy.ops with a window / region override) and the cube loses faces; screenshot 02
   5. Tab switches to the ZBrush screen (orange UI); screenshot 03; Tab back
   6. the lasso-memory / shell timers tick (bpy.app.timers.is_registered)
-The checks are deliberately coarse: they catch "nothing drew", "the key did nothing", "the operator raised"."""
+The checks are deliberately coarse: they catch "nothing drew", "the key did nothing", "the operator raised".
+
+The steps run as one generator driven by an app timer: every ``yield seconds`` hands the window back to Blender's
+event loop for that long.  That is what lets a workspace switch take effect (Blender applies it from the event loop),
+real X mouse / key events get handled, and the screen redraw between them - a ``time.sleep`` inside the timer only
+freezes everything."""
+import importlib
 import os
 import shutil
 import subprocess
@@ -19,6 +25,14 @@ import sys
 import time
 
 import bpy
+
+
+def mod(name):
+    """The add-on's module ``name`` (an installed extension lives under bl_ext.<repo>.mecha_lab)."""
+    pkg = next((k for k in sys.modules if k == 'mecha_lab' or k.endswith('.mecha_lab')), None)
+    if pkg is None:
+        raise ImportError('mecha_lab is not loaded')
+    return importlib.import_module(f'{pkg}.{name}')
 
 OUT = os.environ.get('MCH_GUI_OUT', os.path.dirname(os.path.abspath(__file__)))
 ZIP = os.environ.get('MCH_GUI_ZIP', '')
@@ -30,14 +44,28 @@ def check(name, cond, detail=''):
     print(('PASS ' if cond else 'FAIL ') + name + ('  -- ' + str(detail) if detail else ''))
 
 
+def redraw(n=3):
+    """A few real redraws (the drawn bars draw in the POST_PIXEL handler of a real window redraw)."""
+    try:
+        win = bpy.context.window_manager.windows[0]
+        with bpy.context.temp_override(window=win, screen=win.screen, area=win.screen.areas[0]):
+            bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=n)
+    except Exception as ex:
+        print('redraw failed:', ex)
+
+
 def shot(name):
+    """Blender's own screenshot (the GL framebuffer) and the X screen (ImageMagick import) next to it."""
     path = os.path.join(OUT, name)
+    redraw()
     try:
         win = bpy.context.window_manager.windows[0]
         with bpy.context.temp_override(window=win, screen=win.screen, area=win.screen.areas[0]):
             bpy.ops.screen.screenshot(filepath=path)
     except Exception as ex:                      # (a headless build has no screenshot)
         print('screenshot failed:', ex)
+    if shutil.which('import'):
+        subprocess.run(['import', '-window', 'root', path.replace('.png', '_x.png')], check=False)
     return path
 
 
@@ -57,6 +85,22 @@ def xdo(*args):
     return True
 
 
+def focus_window():
+    """The Blender window gets the keyboard focus (no window manager on Xvfb: nothing gives it otherwise)."""
+    if shutil.which('xdotool') is None:
+        return False
+    r = subprocess.run(['xdotool', 'search', '--name', 'Blender'], capture_output=True, text=True)
+    ids = [x for x in r.stdout.split() if x.strip()]
+    for wid in ids:
+        subprocess.run(['xdotool', 'windowfocus', '--sync', wid], check=False)
+    return bool(ids)
+
+
+def to_x(win, x, y):
+    """Blender window coords (origin bottom-left) -> X screen coords (origin top-left)."""
+    return int(x), int(win.height - y)
+
+
 def step_install():
     ok = False
     try:
@@ -65,40 +109,69 @@ def step_install():
     except Exception as ex:
         check('1. install the add-on zip', False, ex)
         return False
-    check('1. install the add-on zip', ok and 'mecha_lab' in ' '.join(sys.modules), ZIP)
+    check('1. install the add-on zip', ok and any(k.endswith('mecha_lab') for k in sys.modules), ZIP)
     return ok
 
 
+def close_splash():
+    """The splash screen takes every click until the mouse leaves it: the mouse goes to a corner, then Escape."""
+    focus_window()
+    xdo('mousemove', 30, 540)
+    yield 0.3
+    xdo('key', 'Escape')
+    yield 0.5
+    redraw()
+
+
 def step_workspace():
+    yield from close_splash()
     ws = next((w for w in bpy.data.workspaces if w.name.startswith('MECHA LAB')), None)
+    win = bpy.context.window_manager.windows[0]
     if ws is None:
         try:
-            bpy.ops.mch.workspace_open()
+            with bpy.context.temp_override(window=win, screen=win.screen, area=win.screen.areas[0]):
+                bpy.ops.mch.workspace_open()
         except Exception as ex:
-            print('create_workspace:', ex)
+            print('workspace_open:', ex)
         ws = next((w for w in bpy.data.workspaces if w.name.startswith('MECHA LAB')), None)
-    check('2. the MECHA LAB workspace exists', ws is not None)
+    check('2. the MECHA LAB workspace exists', ws is not None, [w.name for w in bpy.data.workspaces])
     if ws is not None:
-        bpy.context.window.workspace = ws
-    return ws is not None
+        try:
+            win.workspace = ws                      # (applied by the event loop: hence the yield)
+        except Exception as ex:
+            print('set workspace:', ex)
+        yield 1.0
+        redraw(5)
+        yield 0.5
+        check('2. ... and is the window\'s workspace', win.workspace == ws, win.workspace.name)
+    STATE['ws'] = ws is not None
 
 
 def step_bars():
     try:
-        from mecha_lab import ui_bars
+        ui_bars = mod('ui_bars')
         handlers = getattr(ui_bars, '_handle', None)
         check('3. the drawn bars are registered', bool(handlers), handlers)
     except Exception as ex:
         check('3. the drawn bars are registered', False, ex)
     path = shot('01_workspace.png')
+    xpath = path.replace('.png', '_x.png')          # the X screen capture (Blender's own is black on software GL)
     try:
-        img = bpy.data.images.load(path)
+        img = bpy.data.images.load(xpath if os.path.isfile(xpath) else path)
+        img.colorspace_settings.name = 'Non-Color'      # (as sRGB the dark greys all read 0.0 in linear)
         w, h = img.size
         px = list(img.pixels)
-        # the top band: anything that is not the viewport grey means something drew there
-        band = [px[((h - 20) * w + x) * 4:((h - 20) * w + x) * 4 + 3] for x in range(0, w, 50)]
-        drew = sum(1 for p in band if abs(p[0] - p[1]) > 0.03 or p[0] > 0.45 or p[0] < 0.15)
-        check('3. screenshot: the top band is drawn (not plain viewport)', drew > 3, (w, h, drew))
+        win, area, region = view3d()
+        # the Mecha top bar sits just under the 3D view's header: a band across the viewport's top, 40 - 80 px down
+        band = [px[(y * w + x) * 4:(y * w + x) * 4 + 3] for y in range(region.y + region.height - 80,
+                                                                          region.y + region.height - 40, 10)
+                for x in range(region.x + 10, region.x + region.width - 10, 25)]
+        colours = {tuple(round(c * 20) for c in p) for p in band}
+        black = sum(1 for p in band if max(p) < 0.02)
+        blue = sum(1 for p in band if p[2] > 0.5 and p[2] > p[0] + 0.2)      # the blue accent (SHAPE / MECHA LAB)
+        check('3. the window drew (X capture not black) and the band under the 3D view header is drawn on '
+              '(several greys + the blue accent: the Mecha top bar)', black < len(band) // 2 and len(colours) >= 6
+              and blue > 0, (w, h, black, len(colours), blue))
     except Exception as ex:
         check('3. screenshot readable', False, ex)
 
@@ -107,28 +180,47 @@ def step_cut():
     bpy.ops.mesh.primitive_cube_add(size=2.0)
     cube = bpy.context.active_object
     n0 = len(cube.data.polygons)
+
+    def extent(ob):                               # (a box lasso cuts the cube down to a smaller box: still 6 faces
+        dg = bpy.context.evaluated_depsgraph_get()   # and 8 points, so the points themselves are compared)
+        return sorted(tuple(round(c, 3) for c in v.co) for v in ob.evaluated_get(dg).data.vertices)
+    e0 = extent(cube)
     win, area, region = view3d()
     if area is None:
         check('4. a 3D view', False)
         return
     try:
         with bpy.context.temp_override(window=win, area=area, region=region):
-            from mecha_lab import workspace_ui
-            workspace_ui.activate_mecha_tool(bpy.context, 'CUT')
+            mod('workspace_ui').activate_mecha_tool(bpy.context, 'CUT')
     except Exception as ex:
         print('activate_tool:', ex)
-    # a lasso over the right half of the viewport, as real mouse events
+    yield 0.5
+    redraw()
+    try:
+        tool = bpy.context.workspace.tools.from_space_view3d_mode('OBJECT', create=False)
+        print('active tool:', tool.idname if tool else None, '| workspace:', bpy.context.window.workspace.name)
+    except Exception as ex:
+        print('tool lookup:', ex)
+    # a lasso over the right half of the viewport, as real mouse clicks (the cube sits in the middle): the Cut tool's
+    # click flow - a click per corner, a click on the first corner closes and applies
     x0, y0 = region.x + region.width // 2, region.y + region.height // 2
-    pts = [(x0 + 20, y0 - 200), (x0 + 400, y0 - 200), (x0 + 400, y0 + 200), (x0 + 20, y0 + 200)]
-    if xdo('mousemove', pts[0][0], 1080 - pts[0][1]):
-        xdo('mousedown', 1)
-        for x, y in pts[1:]:
-            xdo('mousemove', x, 1080 - y)
-            time.sleep(0.05)
-        xdo('mouseup', 1)
-        time.sleep(1.0)
-        check('4. a real-mouse lasso with the Cut tool cuts the cube', len(cube.data.polygons) != n0,
-              (n0, len(cube.data.polygons)))
+    # (the WINDOW region runs under the overlapping sidebar: the corners stay within 250 px of the middle)
+    pts = [(x0 + 10, y0 + 200), (x0 + 250, y0 + 200), (x0 + 250, y0 - 200), (x0 + 10, y0 - 200)]
+    if focus_window() and xdo('mousemove', *to_x(win, x0, y0)):
+        yield 0.5
+        for x, y in pts + [pts[0]]:
+            xdo('mousemove', *to_x(win, x, y))
+            yield 0.3
+            xdo('click', 1)
+            yield 0.4
+        xdo('mousemove', *to_x(win, x0, y0))      # (the tool finishes the cut on the next event / redraw)
+        yield 0.5
+        redraw()
+        yield 2.0
+        redraw()
+        check('4. a real-mouse lasso with the Cut tool cuts the cube (its points move or its faces change)',
+              extent(cube) != e0 or len(cube.data.polygons) != n0,
+              (n0, len(cube.data.polygons), e0[:2], extent(cube)[:2], [m.name for m in cube.modifiers]))
     else:
         check('4. xdotool for real mouse events', False, 'not installed - the cut step was skipped')
     shot('02_after_cut.png')
@@ -136,31 +228,42 @@ def step_cut():
 
 def step_zbrush():
     win, area, region = view3d()
+    before = bpy.context.window.workspace.name
+    focus_window()
+    xdo('mousemove', *to_x(win, region.x + region.width // 2, region.y + region.height // 2))
+    yield 0.3
     if xdo('key', 'Tab'):
-        time.sleep(1.0)
-        check('5. Tab opens the ZBrush screen', bpy.context.mode == 'SCULPT' or 'ZBRUSH' in str(
-            getattr(bpy.context.scene, 'mch_zb', '')), bpy.context.mode)
+        yield 2.0
+        redraw()
+        after = bpy.context.window.workspace.name
+        check('5. Tab switches MECHA LAB <-> the ZBrush screen', after != before or bpy.context.mode == 'SCULPT',
+              (before, after, bpy.context.mode))
         shot('03_zbrush.png')
         xdo('key', 'Tab')
-        time.sleep(0.5)
+        yield 1.5
 
 
 def step_timers():
     try:
-        from mecha_lab import lasso_memory, armor_shell
+        lasso_memory, armor_shell = mod('lasso_memory'), mod('armor_shell')
         check('6. the lasso memory timer ticks', bpy.app.timers.is_registered(lasso_memory._tick))
         check('6. the armor shell timer ticks', bpy.app.timers.is_registered(armor_shell._tick))
     except Exception as ex:
         check('6. timers', False, ex)
 
 
-def main():
+STATE = {}
+
+
+def steps():
     os.makedirs(OUT, exist_ok=True)
-    if step_install() and step_workspace():
-        step_bars()
-        step_cut()
-        step_zbrush()
-        step_timers()
+    if step_install():
+        yield from step_workspace()
+        if STATE.get('ws'):
+            step_bars()
+            yield from step_cut()
+            yield from step_zbrush()
+            step_timers()
     passed = sum(1 for _n, ok, _d in RESULTS if ok)
     with open(os.path.join(OUT, 'gui_result.txt'), 'w') as f:
         for n, ok, d in RESULTS:
@@ -168,7 +271,28 @@ def main():
         f.write(f'{passed}/{len(RESULTS)} passed\n')
     print(f'{passed}/{len(RESULTS)} passed')
     bpy.app.timers.register(lambda: bpy.ops.wm.quit_blender() and None, first_interval=1.0)
-    return None
 
 
-bpy.app.timers.register(main, first_interval=2.0)
+GEN = steps()
+
+
+def main():
+    """One step per timer tick; the value a step yields is the pause (seconds of event loop) before the next."""
+    try:
+        return next(GEN)
+    except StopIteration:
+        return None
+    except Exception as ex:
+        import traceback
+        traceback.print_exc()
+        check('the smoke test itself raised', False, ex)
+        passed = sum(1 for _n, ok, _d in RESULTS if ok)
+        with open(os.path.join(OUT, 'gui_result.txt'), 'w') as f:
+            for n, ok, d in RESULTS:
+                f.write(('PASS ' if ok else 'FAIL ') + n + ('  -- ' + d if d else '') + '\n')
+            f.write(f'{passed}/{len(RESULTS)} passed\n')
+        bpy.app.timers.register(lambda: bpy.ops.wm.quit_blender() and None, first_interval=1.0)
+        return None
+
+
+bpy.app.timers.register(main, first_interval=6.0)

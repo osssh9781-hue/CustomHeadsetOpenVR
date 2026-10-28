@@ -106,7 +106,7 @@ select_only(part)
 am.draw(Lay(), C)
 ids = {o for o, _t in OPS}
 check('Actions popup draws: tool strip | Actions panel, valid operators and icons',
-      not ERR and {'mch.set_tool', 'mch.tool_fav_toggle', 'object.duplicate_move', 'object.join', 'object.delete',
+      not ERR and {'mch.set_tool', 'mch.tool_fav_toggle', 'mch.duplicate', 'object.join', 'object.delete',
                    'mch.actions_mirror', 'object.hide_view_set', 'object.hide_view_clear',
                    'view3d.localview', 'mch.one_click_remesh', 'mch.quad_remesh', 'mch.lowpoly_make'} <= ids,
       (ERR, sorted(ids)))

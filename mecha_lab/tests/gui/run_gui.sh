@@ -26,4 +26,7 @@ if ! pgrep -f "Xvfb :99" >/dev/null; then
   sleep 2
 fi
 export DISPLAY=:99
+export LIBGL_ALWAYS_SOFTWARE=1 MESA_LOADER_DRIVER_OVERRIDE=llvmpipe GALLIUM_DRIVER=llvmpipe
+unset WAYLAND_DISPLAY
+export XDG_RUNTIME_DIR="$SCRATCH/xdg"; mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"
 "$DIR/blender" --window-geometry 0 0 1920 1080 --python "$HERE/gui_smoke.py" -- "$@" 2>&1 | tee "$HERE/out/gui_log.txt"

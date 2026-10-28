@@ -5,6 +5,7 @@ Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전�
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
 
 ## 0.24.81 그룹 복사 · 원점 · Quad Remesh · 알파 커서 (미검증)
+> 0.24.81부터 리눅스 가상 화면의 **진짜 Blender 5.2.3 창**에서 자동 테스트(zip 설치 · MECHA LAB 열기 · 위 막대 그려짐 · 진짜 마우스 Cut 라쏘 · Tab ZBrush 전환)가 돕니다(`dist/gui_smoke_0.24.81_*.png`). Windows 창에서 다른 점이 보이면 그게 바로 다음 고칠 것입니다.
 - [ ] 부품 몇 개를 Group → 핸들을 클릭하고 **Shift+D** → 그룹 전체(부품 · 안의 그룹 · 반복 복사본)가 따라오고 마우스로 바로 옮겨지는지. Alt+D도. 메카 메뉴 > Duplicate는 제자리 복사인지.
 - [ ] 그룹 안에 들어가(Enter) 부품 하나 Shift+D → 그 부품만, 같은 그룹 안에 남는지.
 - [ ] N > Mecha Lab > Groups 카드 **Origin to Geometry** → 핸들이 부품 가운데로 가고 부품은 안 움직이는지. 메카 메뉴 Groups > Group Origin도.
