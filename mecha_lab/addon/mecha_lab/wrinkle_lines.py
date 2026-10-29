@@ -89,8 +89,10 @@ class MCH_PG_WrinkleLines(bpy.types.PropertyGroup):
                         default=5.0, min=0.5, max=30.0, subtype='PERCENTAGE', update=_tube_changed)
     fade: FloatProperty(name='End Fade', description='The tube fades out over this much of the line at each end',
                         default=20.0, min=0.0, max=50.0, subtype='PERCENTAGE', update=_tube_changed)
-    shrink: FloatProperty(name='Shrink', description='How much the cloth laid over the mesh shrinks (more = deeper folds)',
+    shrink: FloatProperty(name='Shrink', description='How much the cloth laid over the mesh shrinks (more = it hugs the tubes tighter)',
                           default=33.0, min=0.0, max=90.0, subtype='PERCENTAGE')
+    slack: FloatProperty(name='Looseness', description='Extra fabric: the cloth is this much bigger than the surface, so it sags and bunches (a loose sleeve)',
+                         default=0.0, min=0.0, max=60.0, subtype='PERCENTAGE')
     fold: FloatProperty(name='Fold Strength', description='The height of the tubes (Crease: how deep the groove is)',
                         default=100.0, min=0.0, max=200.0, subtype='PERCENTAGE', update=_tube_changed)
     gravity: FloatProperty(name='Gravity', default=30.0, min=0.0, max=300.0, subtype='PERCENTAGE')
@@ -260,9 +262,10 @@ KEEP_SCALE = 0.1                 # Silhouette Keep 100 % -> the goal spring weig
 KEEP_RATE = 0.3
 REPICK = 0.5                     # a cloth point re-picks its collider point when it slid this x the mean edge length
 FIELD_CHUNK = 2048
-# fabric: bending constraint strength, contact friction, damping
-FABRIC_SIM = {'COTTON': (0.5, 0.3, 0.3), 'DENIM': (1.0, 0.5, 0.4), 'SILK': (0.2, 0.15, 0.2), 'LEATHER': (1.0, 0.6, 0.5),
-              'KNIT': (0.4, 0.3, 0.3)}
+# fabric: bending constraint strength, contact friction, damping, smoothing (a Laplacian pull per pass: the
+# folds come out broad and soft instead of a quilt of cell-sized crumples)
+FABRIC_SIM = {'COTTON': (0.5, 0.3, 0.3, 0.25), 'DENIM': (1.0, 0.5, 0.4, 0.4), 'SILK': (0.2, 0.15, 0.2, 0.1),
+              'LEATHER': (1.0, 0.6, 0.5, 0.5), 'KNIT': (0.4, 0.3, 0.3, 0.2)}
 
 
 def _subdivide(me, levels):
@@ -395,12 +398,13 @@ def build(context, ob, st, sess):
         sel = np.zeros(len(me.vertices), bool)
         me.vertices.foreach_get('select', sel)
         pin[sel] = 1.0
-    bend, friction, damping = FABRIC_SIM.get(st.fabric, FABRIC_SIM['COTTON'])
+    bend, friction, damping, smooth = FABRIC_SIM.get(st.fabric, FABRIC_SIM['COTTON'])
     vi = mio.read_corner_verts(me)
     start, tot = mio.read_face_starts(me)
     cloth = cloth_pbd.Cloth(co, vi, start, tot, bend=bend, keep=st.keep / 100.0 * KEEP_SCALE, pin=pin)
     cloth.sor = SOR
-    cloth.scale_e = cloth.scale_b = 1.0 - st.shrink / 100.0
+    cloth.smooth = smooth
+    cloth.scale_e = cloth.scale_b = (1.0 - st.shrink / 100.0) * (1.0 + st.slack / 100.0)
     cloth.init = co.copy()
     edge_len = float(np.mean(np.linalg.norm(co[cloth.edges[:, 1]] - co[cloth.edges[:, 0]], axis=1))) if len(cloth.edges) else tube_r
     kd = KDTree(len(collider))
@@ -543,7 +547,7 @@ def run(context):
 
 
 def _snapshot(st):
-    return tuple(getattr(st, k) for k in ('mode', 'fabric', 'size', 'fade', 'shrink', 'fold', 'gravity', 'keep',
+    return tuple(getattr(st, k) for k in ('mode', 'fabric', 'size', 'fade', 'shrink', 'slack', 'fold', 'gravity', 'keep',
                                           'pin_boundary', 'pin_selected', 'self_collision', 'detail', 'frames'))
 
 
@@ -1114,6 +1118,7 @@ def draw(layout, context):
     col = box.column(align=True)
     col.label(text='Cloth over them', icon='MOD_CLOTH')
     col.prop(st, 'shrink', slider=True)
+    col.prop(st, 'slack', slider=True)
     col.prop(st, 'gravity', slider=True)
     col.prop(st, 'keep', slider=True)
     r = box.row(align=True)
