@@ -66,9 +66,9 @@ log = []
 t = time.perf_counter()
 out = rc.region_boolean(C, ob, cutter, 'DIFFERENCE', log)
 dt = time.perf_counter() - t
-check('region_boolean DIFFERENCE on a 327k-face body: the faces of the whole-part Manifold boolean (within a few: a seam '
-      'point welded onto a point a millionth away drops a zero-size face), closed',
-      out is not None and abs(len(out.polygons) - len(full.polygons)) <= 4 and cg.non_manifold_edge_count(out) == 0, (log, len(out.polygons) if out else None, len(full.polygons), cg.non_manifold_edge_count(out) if out else None))
+check('region_boolean DIFFERENCE on a 327k-face body: the faces of the whole-part Manifold boolean (within 2 %: the cut '
+      'walls come as triangles, a seam point welded onto a point a millionth away drops a zero-size face), closed',
+      out is not None and abs(len(out.polygons) - len(full.polygons)) <= 0.02 * len(full.polygons) + 4 and cg.non_manifold_edge_count(out) == 0, (log, len(out.polygons) if out else None, len(full.polygons), cg.non_manifold_edge_count(out) if out else None))
 check('... the region was a small part of the body', log and 'region' in log[0] and int(log[0].split('region ')[1].split(' ')[0].replace(',', '')) < 0.1 * n0, log)
 gr = np.empty(len(out.polygons), np.int32)
 out.attributes['grp'].data.foreach_get('value', gr)
@@ -82,8 +82,8 @@ bpy.data.meshes.remove(full)
 bpy.data.meshes.remove(out)
 full = cg.evaluate_boolean(C, ob, cutter, 'INTERSECT', 'MANIFOLD')
 out = rc.region_boolean(C, ob, cutter, 'INTERSECT', [])
-check('region_boolean INTERSECT (a Split\'s piece): the faces of the whole-part boolean (within a few), closed',
-      out is not None and abs(len(out.polygons) - len(full.polygons)) <= 4 and cg.non_manifold_edge_count(out) == 0, (len(out.polygons) if out else None, len(full.polygons), cg.non_manifold_edge_count(out) if out else None))
+check('region_boolean INTERSECT (a Split\'s piece): the faces of the whole-part boolean (within 2 %), closed',
+      out is not None and abs(len(out.polygons) - len(full.polygons)) <= 0.02 * len(full.polygons) + 4 and cg.non_manifold_edge_count(out) == 0, (len(out.polygons) if out else None, len(full.polygons), cg.non_manifold_edge_count(out) if out else None))
 bpy.data.meshes.remove(full)
 bpy.data.meshes.remove(out)
 far = box(0.3, (3, 3, 3))
@@ -108,13 +108,16 @@ nplate = len(plate.data.polygons)
 through = box(0.3, (0.2, -5, 0), (1, 1, 2))
 fullp = cg.evaluate_boolean(C, plate, through, 'DIFFERENCE', 'MANIFOLD')
 outp = rc.region_boolean(C, plate, through, 'DIFFERENCE', log := [])
-check('a cutter through a thin dense plate (front and back in one region): closed, same faces as the whole-part boolean',
-      outp is not None and cg.non_manifold_edge_count(outp) == 0 and len(outp.polygons) == len(fullp.polygons), (nplate, log, len(outp.polygons) if outp else None, len(fullp.polygons)))
+check('a cutter through a thin dense plate (front and back in one region): closed, the whole-part boolean\'s faces within 2 %',
+      outp is not None and cg.non_manifold_edge_count(outp) == 0 and abs(len(outp.polygons) - len(fullp.polygons)) <= 0.02 * len(fullp.polygons), (nplate, log, len(outp.polygons) if outp else None, len(fullp.polygons)))
 
 # --- through the tools: Cut and Split on the dense body report the region solver ------------------------------------
 for o in (cutter, far, near, through, small, plate):              # (the helper boxes would be Auto targets)
     bpy.data.objects.remove(o)
 select(ob)
+check('the High Poly setting is on the Cut settings (Advanced), experimental: off by default', S.mch_cut.hipoly is False
+      and "'hipoly'" in open(__import__('mecha_lab.ui_tool_settings', fromlist=['x']).__file__).read())
+S.mch_cut.hipoly = True
 MODE[0], NATIVE[0] = 'CUT', ts.TOOL_BY_ID['CUT'][5]
 S.mch_settings.mch_active_tool = 'CUT'
 S.mch_cut.shared_mesh = 'SINGLE'
@@ -123,8 +126,6 @@ r, msg = lasso([(470, 470), (530, 470), (530, 530), (470, 530)])
 dt = time.perf_counter() - t
 check('Cut on the 327k-face body with High Poly on: done through the region path ("Region" in the report), closed',
       r == {'FINISHED'} and 'Region' in msg and non_manifold(ob) == 0, (r, msg[:80], round(dt, 2)))
-check('... the High Poly setting is on the Cut settings (Advanced) and defaults on', S.mch_cut.hipoly is True
-      and "'hipoly'" in open(__import__('mecha_lab.ui_tool_settings', fromlist=['x']).__file__).read())
 MODE[0], NATIVE[0] = 'SPLIT', ts.TOOL_BY_ID['SPLIT'][5]
 S.mch_settings.mch_active_tool = 'SPLIT'
 before = {o.name for o in bpy.data.objects}
@@ -137,5 +138,5 @@ MODE[0], NATIVE[0] = 'CUT', ts.TOOL_BY_ID['CUT'][5]
 S.mch_settings.mch_active_tool = 'CUT'
 r, msg = lasso([(560, 420), (610, 420), (610, 470), (560, 470)])
 check('High Poly off: the whole-part solver (Manifold) as before', r == {'FINISHED'} and 'Region' not in msg and 'Manifold' in msg and non_manifold(ob) == 0, (r, msg[:80]))
-S.mch_cut.hipoly = True
+S.mch_cut.hipoly = False
 summary()

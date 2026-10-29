@@ -405,7 +405,7 @@ class MCH_PG_Cut(bpy.types.PropertyGroup):
         ('FAST', 'Float', 'Legacy fast solver (least robust)')], default='AUTO')
     hole_tolerant: BoolProperty(name='Hole Tolerant', default=False,
                                 description='Exact solver option for meshes with holes/non-manifold parts (slower)')
-    hipoly: BoolProperty(name='High Poly', default=True,                  # 0.24.86
+    hipoly: BoolProperty(name='High Poly (experimental)', default=False,   # 0.24.86 (off until the equivalence tests pass)
                          description='A dense part (100k faces and more): the boolean runs only on the faces round the '
                                      'shape and is stitched back - 2 to 7 times faster, the rest of the part untouched. '
                                      'Off: the whole part goes through the solver')

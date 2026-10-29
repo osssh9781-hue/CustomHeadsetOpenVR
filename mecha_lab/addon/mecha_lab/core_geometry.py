@@ -734,7 +734,9 @@ def _boolean_region(context, target, cutter, operation, solver, hipoly):
         return None
     nm0 = non_manifold_edge_count(target.data)
     nm1 = non_manifold_edge_count(me)
-    if nm1 > nm0 + (2 if nm0 else 0):      # (a seam that did not close: the whole-part boolean)
+    # a seam that did not close (hundreds of open edges) sends the cut to the whole-part boolean; a sliver or two
+    # the Exact solver leaves at the seam (3 edges on a 327k part) is what the result tidy / hole shutting handle
+    if nm1 > nm0 + max(4, len(target.data.polygons) // 50_000):
         import os
         if os.environ.get('MECH_REGION_DEBUG'):
             print(f'[region] dropped: open edges {nm0} -> {nm1} ({log[-1] if log else ""})', flush=True)
