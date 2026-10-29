@@ -1,6 +1,6 @@
 # Test Report — Mecha Lab 0.24.87
 
-## 0.24.87 결과: __T87__
+## 0.24.87 결과: Blender 5.2.3 bpy 전체 201개 파일 PASS 5,091 / FAIL 0(`tests/test_log_bpy523_v02487.txt`, FAILED FILES: none; Traceback 24개는 test_registration_recovery). 새 테스트 test_v02514_boxes_all 10. 실제 블렌더 창 자동 테스트 13/13(`tests/gui/gui_result_0.24.87.txt`). 퍼즈는 0.24.86 것(코드 변경이 UI 토글뿐). ZIP sha256 `68eae9184d305127774768cf13a611777993bccdc7d1ed5f219411115e30db94` (`mecha_lab-0.24.87_20261029-0742.zip`).
 
 ## 0.24.86 결과: Blender 5.2.3 bpy 전체 200개 파일 PASS 5,081 / FAIL 0(`tests/test_log_bpy523_v02486.txt`, FAILED FILES: none; 로그 안 Traceback 24개는 전부 test_registration_recovery가 일부러 내는 것). 새 테스트 test_v02510_hipoly 11 · test_v02511_tidy_sub 10 · test_v02512_bg 13 · test_v02513_tees 6. 영역 경로 강제 컷 기하 93/93, 파이프라인 무작위 테스트 20 × 12: 영역 강제(seed 1001~) **20 OK · 크래시 0**(품질 메모 20줄: GN Edge · 컷 베벨 뒤 부스러기 · 스파이크 — KNOWN 0.24.83 부류; 134면 Thin7 에서 Fix Mesh 가 126변을 연 것 1건은 134면 부품에까지 영역 경로를 강제한 조건), 보통 설정(seed 1101~, High Poly 꺼짐) **20 OK · 크래시 0 · 컷이 부품을 연 것 0**(품질 메모: GN Edge 뒤 0-면적 면 31 · 부스러기, Quad Remesh 가 134면 Block 에서 면을 못 낸 것 2 — KNOWN; `tests/fuzz/pipe_scenario_report.md` 는 보통 설정 실행). 실제 블렌더 창 자동 테스트 **13/13**(`tests/gui/gui_result_0.24.86.txt`). ZIP sha256 `4914a19135c1a3f70f4b18fd0324219e7d51251d056de1703573ecd53d4488c7` (`mecha_lab-0.24.86_20261029-0649.zip`). 하이폴리 컷 동일성 · 속도 측정표는 CHANGELOG 0.24.86.
 
