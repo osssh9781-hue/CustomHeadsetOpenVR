@@ -1232,6 +1232,7 @@ _COLORS = {
     'HOOD': (0.6, 0.5, 0.85, 1.0),
     'SCARF': (0.85, 0.5, 0.55, 1.0),
     'WRINKLE': (0.95, 0.45, 0.75, 1.0),
+    'CDRAPE': (0.85, 0.45, 0.65, 1.0),            # 0.24.92 Cloth Drape
     'HIDE': (1.0, 0.62, 0.10, 1.0),               # 0.23.17 Box Hide: orange like Cut (hide and Alt = show)
     'DETAIL': (0.95, 0.85, 0.35, 1.0),            # 0.24 Plate Detail: yellow
     'DETAIL2': (0.95, 0.85, 0.35, 1.0),
@@ -1695,7 +1696,7 @@ class StrokeLogic:
             except RuntimeError as ex:
                 self.report({'WARNING'}, str(ex))
             return {'CANCELLED'}
-        if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER',
+        if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER',
                      'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF'} and self.shape == 'LASSO' and self.brush.line_open:
             self.brush.line_open = False
         self.ui = ui_scale(context)
@@ -2075,6 +2076,9 @@ class StrokeLogic:
             elif self.mode == 'WRINKLE':
                 from . import cloth_wrinkle
                 msg = cloth_wrinkle.perform_wrinkle(context, loops, self.projector)
+            elif self.mode == 'CDRAPE':
+                from . import cloth_drape
+                msg = cloth_drape.perform(context, loops, self.projector)
             elif self.mode in {'DETAIL', 'DETAIL2', 'DETAIL3'}:
                 from . import plate_detail
                 msg = plate_detail.perform(context, loops, self.projector, self.mode)
@@ -2189,7 +2193,7 @@ class StrokeLogic:
         if self.shape in {'LASSO', 'CURVE_LASSO'}:
             self._clean_points()
             if self.shape == 'LASSO' and len(self.pts) >= 2 and (self.line_open or len(self.pts) == 2):
-                if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER',
+                if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER',
                      'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF'}:
                     self.report({'WARNING'}, 'This tool needs a closed outline (3+ points)')
                     return {'RUNNING_MODAL'}
@@ -2363,7 +2367,7 @@ class StrokeLogic:
             self._hint(context)
             self.region.tag_redraw()
             return {'RUNNING_MODAL'}
-        if et == 'F' and ev == 'PRESS' and self.shape == 'LASSO' and self.mode not in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER',
+        if et == 'F' and ev == 'PRESS' and self.shape == 'LASSO' and self.mode not in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER',
                      'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF'}:
             self.line_open = not self.line_open
             self.brush.line_open = self.line_open
@@ -2566,6 +2570,7 @@ class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
         ('MASK', 'Mask', 'Add face mask (Alt: erase)'),
         ('BASE', 'Base Mesh', 'Create a new solid from the drawn outline'),
         ('PLATE', 'Armor Plate', 'New armour plate on the mesh under the outline'),
+        ('CDRAPE', 'Cloth Drape', 'A loose cloth laid over the region under the outline'),
         ('CBASE', 'Creature Base Mesh', 'New rounded solid (Puff / Ridge / Pillow) from the drawn outline'),
         ('CPLATE', 'Creature Plate', 'New rounded plate (Puff / Ridge / Pillow) on the mesh under the outline'),
         ('BELT', 'Belt Maker', 'A strap around the mesh where the line crosses it, or along the line'),

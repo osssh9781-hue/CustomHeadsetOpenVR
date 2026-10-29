@@ -7,6 +7,9 @@
 ## 0.24.92 Wrinkle Lines(주름 선)
 - MECHA LAB 의 **Wrinkle Lines** 도구(Cloth 그룹; ZBrush 선반의 "Draw Lines" 버튼으로도): 메시 위에 선을 **드래그**로 긋고(점 드래그 = 이동, Shift+클릭 = 점 추가, Ctrl+클릭 = 점 삭제, X = 선 삭제), **Space** = 선을 따라 얇은 튜브(슬라이더 실시간: Wrinkle Size · Fold Strength · Tube Lift · End Fade · Line Strength), **Space 한 번 더** = 메시 복사본을 천으로 덮어 시뮬(Looseness · Shrink · Gravity · Silhouette Keep · 원단), **Enter** = 메시에 쓰기, **Esc** = 되돌리기.
 - 기본값은 참고 영상에 가장 가까웠던 조합(헐렁함 20 %, 중력 100 %, Cotton). 천 조건은 전부 슬라이더라 취향대로 바꾸고 Presets 에 저장.
+- 콜리전은 거리 격자로 가볍게, 4만 점 넘는 메시는 데시메이트 사본에서 돌고 결과만 원래 메시에(**Sim Points**, 0 = 끔).
+- **Cloth Drape**(Cloth 그룹): 메시 위에 라쏘 → 그 영역에 헐렁한 천이 "Cloth Drape" 오브젝트로 생김 → **Space** 로 떨어뜨림(가장자리만 고정, 라쏘 아래 몸만 콜리전) → **Enter** 남김 / **Esc** 지움. 원단 · 헐렁함 · 조임 · 중력 · 달라붙음 · 틈 · 세밀도 · 프레임 슬라이더, 바꾸고 Space 면 다시.
+- **ZBrush 탭**: 아래 브러시 선반에 Blender 클로스 브러시 8개(ClothDrag …), 왼쪽 선반에 Cloth Brush 설정 상자와 Cloth Filter 버튼.
 - 메시는 **면이 고른 것**(DynaMesh · Quad Remesh 결과)이 좋습니다. 가로 세로가 심하게 다른 길쭉한 면의 격자에서는 세로 줄무늬가 납니다(KNOWN_LIMITATIONS).
 
 ## 0.24.91 컷 Edge Finish · 정리 속도

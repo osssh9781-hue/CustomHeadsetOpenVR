@@ -15,7 +15,7 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                addon_safety, self_test, face_extract, edge_molding, hollow_shell, along_curve, cable, bottom_bar, station_primitive, station_gizmos,
                primitive_place, primitive_hud, armor_plate, random_panels, mirror_hud, highpoly, mesh_tools, live_queue, lasso_sketch,
                cloth_wrinkle, last_used, last_op, live_stack, keymap_check, robot_base, detail_stamp, surface_lasso,
-               curve_tube, creature_shell, cloth_sim, box_hide, plate_detail, screw_stamp, wrinkle_lines, lowpoly, fold_patch,
+               curve_tube, creature_shell, cloth_sim, box_hide, plate_detail, screw_stamp, wrinkle_lines, cloth_drape, lowpoly, fold_patch,
                creature_plate, belt_maker, creature_spike, creature_scales, flower_plate,
                surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, bg_jobs, quad_remesh, mesh_fix, tool_recent, actions_menu, key_legend, quick_hud, mecha_menu, symmetry, groups, ui_bars, safety_save, lasso_memory, armor_shell)
 import os
@@ -2084,6 +2084,7 @@ def _register():
     plate_detail.register()
     screw_stamp.register()
     wrinkle_lines.register()
+    cloth_drape.register()
     lowpoly.register()
     quad_remesh.register()
     mesh_fix.register()
@@ -2165,6 +2166,7 @@ def _unregister_steps():
         ('mesh_fix', mesh_fix.unregister),
         ('quad_remesh', quad_remesh.unregister),
         ('lowpoly', lowpoly.unregister),
+        ('cloth_drape', cloth_drape.unregister),
         ('wrinkle_lines', wrinkle_lines.unregister),
         ('screw_stamp', screw_stamp.unregister),
         ('plate_detail', plate_detail.unregister),

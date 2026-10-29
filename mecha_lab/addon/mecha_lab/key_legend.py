@@ -30,6 +30,7 @@ EXTRA = {
     'SPLIT': ['T   targets: auto / selected'],
     'CPATH': ['Tab (dragging)   Extend: brush area / whole section', 'B (dragging)   Back Mask: the far side stays put'],
     'SMOVE': ['Drag from the part   the whole part follows the way (stretches, bends)'],
+    'CDRAPE': ['Lasso on a mesh   a loose cloth over that region', 'Space   drape / pause,  Enter   keep the cloth,  Esc   drop it'],
     'WLINES': ['Drag   a wrinkle line,  drag a point   move it', 'Shift + click   add a point,  Ctrl + click   remove it,  X   remove the line',
                'Space   simulate / pause,  Enter   keep,  Esc   back'],
 }

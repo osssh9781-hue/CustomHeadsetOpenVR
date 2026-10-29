@@ -1,0 +1,92 @@
+"""0.24.92 Cloth Drape: lasso a region on a mesh -> an even patch laid over it as a loose cloth (rim pinned), the
+body under it a light grid collider, frames on a timer; Enter keeps the cloth object, Esc drops it."""
+import inspect
+import math
+
+import numpy as np
+from _harness import bpy, check, fresh, select_only, summary
+from mathutils import Vector
+
+import mecha_lab
+from mecha_lab import cloth_drape as cd, cut_engine as ce, tool_state as ts, workspace_ui as wsui
+
+mecha_lab.register()
+fresh()
+C = bpy.context
+S = C.scene
+
+
+PX = 400.0                      # the outline is in "pixels": 400 px = 1 unit
+
+
+class Proj:                     # an orthographic "view" from -Y: outline points are (x, z) x PX
+    view_dir = Vector((0, 1, 0))
+
+    def ray(self, xy):
+        return Vector((xy[0] / PX, -5.0, xy[1] / PX)), Vector((0, 1, 0))
+
+
+bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, segments=96, ring_count=64)
+body = C.active_object
+select_only(body)
+loops = [[(x * PX, y * PX) for x, y in [(-0.4, 0.5), (0.0, 0.6), (0.4, 0.5), (0.45, 0.0), (0.35, -0.45), (0.0, -0.55), (-0.35, -0.45), (-0.45, 0.0)]]]
+st = S.mch_cdrape
+vals = (st.slack, st.shrink, st.gravity, st.stick, st.keep, st.gap, st.spacing)
+check('Settings: Cotton, Looseness 25, Shrink 0, Gravity 200, Stickiness 30, Keep 5, Gap 0.6 %, Pin Rim, 60 frames, Detail 1.5 %',
+      st.fabric == 'COTTON' and st.pin_rim and st.frames == 60 and np.allclose(vals, (25.0, 0.0, 200.0, 30.0, 5.0, 0.6, 1.5), atol=1e-5),
+      (st.fabric, vals, st.pin_rim, st.frames))
+target, me, nb, size = cd.patch_from_loops(C, loops, Proj(), st.spacing)
+check('The outline becomes an even patch on the mesh under it (quads, the rim points first)',
+      target is body and len(me.polygons) > 500 and nb > 30 and sum(1 for p in me.polygons if len(p.vertices) == 4) > len(me.polygons) * 0.6
+      and 0.9 < size < 1.6, (len(me.vertices), len(me.polygons), nb, size))
+co_patch = np.array([v.co[:] for v in me.vertices])
+check('... and it lies on the sphere (radius 1 within 1 %)', np.allclose(np.linalg.norm(co_patch, axis=1), 1.0, atol=0.01))
+info = cd.drape(C, body, me, nb, size, st, frames=30)
+co = np.array([v.co[:] for v in me.vertices])
+r = np.linalg.norm(co, axis=1)
+check('drape: the cloth stays outside the body (collider = the body points under the patch only), it moved, no NaN',
+      info['inside'] == 0 and r.min() > 0.99 and info['collider'] < len(body.data.vertices) and info['collider'] > 500
+      and np.linalg.norm(co - co_patch, axis=1).max() > size * 0.02 and np.all(np.isfinite(co)), info)
+check('... the rim stayed sewn where it was drawn (within the gap)',
+      np.linalg.norm(co[:nb] - co_patch[:nb], axis=1).max() < size * 0.02, np.linalg.norm(co[:nb] - co_patch[:nb], axis=1).max())
+check('... in a second or two (30 frames, grid included)', info['time'] < 6.0, round(info['time'], 2))
+bpy.data.meshes.remove(me)
+# the live flow
+msg = cd.perform(C, loops, Proj())
+ob = C.view_layer.objects.active
+check('perform: a "Cloth Drape" object parented to the body, selected, the session ready (not running)',
+      ob is not None and ob.name.startswith('Cloth Drape') and ob.parent is body and cd.sim_active() and not cd.SIM['running']
+      and 'Space' in msg, msg)
+before = np.array([v.co[:] for v in ob.data.vertices])
+cd.SIM['running'] = True
+for _ in range(10):
+    cd.step(C)
+after = np.array([v.co[:] for v in ob.data.vertices])
+check('step: frames move the cloth object', cd.SIM['sess']['frame'] == 10 and np.linalg.norm(after - before, axis=1).max() > 1e-4)
+st.gravity = 400.0
+check('restart with new sliders: back to the laid patch, frame 0', cd.restart(C) and cd.SIM['sess']['frame'] == 0
+      and cd.SIM['snapshot'][3] == 400.0)
+st.gravity = 200.0
+try:
+    cd.perform(C, loops, Proj())
+    second = False
+except Exception as ex:
+    second = 'first' in str(ex)
+check('A second lasso while one cloth is live is refused (keep or drop it first)', second)
+msg = cd.confirm(C)
+check('Enter keeps the object, the session ends', 'kept' in msg and not cd.sim_active() and bpy.data.objects.get(ob.name) is not None, msg)
+cd.perform(C, loops, Proj())
+name = C.view_layer.objects.active.name
+msg = cd.cancel(C)
+check('Esc drops the cloth object', 'dropped' in msg and bpy.data.objects.get(name) is None and not cd.sim_active())
+check('Tool wiring: CDRAPE in the tool table (Cloth group, lasso shape), the cut engine dispatch + colour, the workspace tool with Space',
+      'CDRAPE' in ts.TOOL_BY_ID and 'CDRAPE' in ts.SHAPE_TOOLS and any('CDRAPE' in g[1] for g in ts.TOOL_GROUPS if g[0] == 'Cloth')
+      and "cloth_drape.perform" in inspect.getsource(ce) and 'CDRAPE' in ce._COLORS
+      and any(k[0] == 'mch.cdrape_sim' for k in wsui.MCH_TOOL_cloth_drape.bl_keymap))
+src = inspect.getsource(cd.draw)
+check('Panel: Drape / Restart / Keep / Drop + every slider', all(k in src for k in ("'slack'", "'shrink'", "'gravity'", "'stick'", "'keep'", "'gap'",
+                                                                                   "'spacing'", "'pin_rim'", "'frames'", "'fabric'", 'Keep (Enter)', 'Drop (Esc)')))
+from mecha_lab import tool_presets
+name, pg = tool_presets.group_for(S, 'CDRAPE')
+check('Tool Presets save the Cloth Drape sliders (scene.mch_cdrape)', name == 'mch_cdrape' and pg is not None)
+summary()

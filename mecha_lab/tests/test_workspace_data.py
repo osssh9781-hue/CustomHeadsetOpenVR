@@ -56,7 +56,7 @@ items = [(km.name, ki.idname, ki.type) for km in kc.keymaps for ki in km.keymap_
          if ki.idname.startswith('mch.') and not ki.idname.startswith('mch.zb_')]
 check('addon keymap: 0.23.13 no Space tool menu (Space moves the outline while drawing; 0.24.92 the Wrinkle Lines tool '
       'alone uses Space = simulate, like the reference add-on - it draws no outline)',
-      not any(i[2] == 'SPACE' and i[1] != 'mch.wrinkle_sim' for i in items), items)
+      not any(i[2] == 'SPACE' and i[1] not in ('mch.wrinkle_sim', 'mch.cdrape_sim') for i in items), items)
 check('addon keymap: B/C via gated mch.hotkey only', {('Object Mode', 'mch.hotkey', 'B'), ('Object Mode', 'mch.hotkey', 'C')} <= set(items))
 check('no ungated mch.boolean / draw_delete_cut keys', not any(i[1] in ('mch.boolean', 'mch.draw_delete_cut') for i in items))
 
