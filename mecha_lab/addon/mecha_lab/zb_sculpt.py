@@ -1323,6 +1323,15 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
                           items=[('MOSTLY', 'Mostly Quads', 'Quads, with a few triangles where rows of quads end'),
                                  ('ALL', 'All Quads', 'Only quads: made at a quarter of the count, then every face is '
                                                       'split once (quad into 4, triangle into 3)')])
+    # 0.24.84 Re-Fix (refix): DynaMesh at a picked resolution, then a clean Decimate / Quad Remesh
+    refix_finish: EnumProperty(name='Finish', default='DECIMATE',
+                               items=[('DECIMATE', 'Decimate', 'DynaMesh, then an even Decimate to Faces (fast; '
+                                                                'triangles, Quads toggle of Decimate honoured)'),
+                                      ('QUAD', 'Quad Remesh', 'DynaMesh, then Quad Remesh (Mostly Quads) to Faces')],
+                               description='Re-Fix: what the clean mesh is made with after the DynaMesh')
+    refix_faces: IntProperty(name='Faces', default=0, min=0, soft_max=200000,
+                             description='Re-Fix: polygons the clean mesh should have; 0 = Auto (what the part has '
+                                         'now, 2,000 .. 40,000)')
     qr_angle: FloatProperty(name='Hard Edges', default=math.radians(30.0), min=math.radians(5.0),
                             max=math.radians(90.0), subtype='ANGLE',
                             description='Quad Remesh: faces meeting at more than this make a hard edge - the quads '
@@ -1805,7 +1814,7 @@ def _mask_values(ob):
 
 
 # 0.24.66 the steps that crash Blender most often: a recovery copy right before them (when anything changed)
-RISKY = {'DYNAMESH', 'DYNA_UPDATE', 'DYNA_SUBDIV', 'DYNA_SUBDIV3', 'DECIMATE', 'QUAD_REMESH', 'HE_FIND', 'HE_APPLY',
+RISKY = {'DYNAMESH', 'DYNA_UPDATE', 'DYNA_SUBDIV', 'DYNA_SUBDIV3', 'DECIMATE', 'QUAD_REMESH', 'REFIX', 'HE_FIND', 'HE_APPLY',
          'DIVIDE', 'ZREMESH', 'HALF', 'SAME', 'DOUBLE', 'MIRROR_WELD', 'CLOSE_HOLES', 'EXTRACT', 'SPLIT_MASKED',
          'SPLIT_UNMASKED', 'SPLIT_HIDDEN', 'DEL_HIDDEN', 'MERGE_DOWN', 'MERGE_VISIBLE', 'POLYMESH3D', 'GROUPS_SPLIT',
          'DEL_LOWER', 'FIX_MESH', 'EDGE_MESH', 'SHELL'}
@@ -2096,6 +2105,16 @@ def run(context, action):
             if m is not None:
                 m.sculpt_levels = m.levels = 0 if action == 'ALL_LOW' else m.total_levels
         return ''
+    if action == 'REFIX':                         # 0.24.84 DynaMesh > clean Decimate / Quad Remesh in one go
+        from . import refix
+        _mode(context, 'OBJECT')
+        try:
+            msg = refix.run(context, ob, zb)
+        except RuntimeError as ex:
+            msg = 'Re-Fix: ' + str(ex)
+        finally:
+            _mode(context, 'SCULPT')
+        return msg
     if action == 'QUAD_REMESH':
         from . import quad_field as qf
         if multires(ob) is not None:

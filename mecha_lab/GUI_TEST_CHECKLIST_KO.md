@@ -1,8 +1,13 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.83 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.84 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## 0.24.84 Re-Fix (미검증)
+- [ ] 얇은 판을 ZBrush 화면에서 반대쪽까지 밀어 조각한 뒤(자기 교차) N 패널 Geometry > **Re-Fix** → 한 덩어리 닫힌 메시가 되고 메시지에 "self-crossings N > 0" 이 나오는지. Faces 0(Auto) / 5000 / Finish Quad Remesh 도.
+- [ ] Box Hide 로 가린 부품에 Mesh Tools > Re-Fix → 가린 자리가 진짜로 파인 채 깨끗한 메시가 되는지("live step(s) applied first").
+- [ ] Re-Fix 뒤 Cut + Edge Finish Bevel 폭을 크게(부품의 5 %) → 베벨이 들어가는지(전엔 "skipped").
 
 ## 0.24.83 컷 · Box Hide · Hard Edges (미검증)
 - [ ] 큐브 위에 얇은 판을 띄워 놓고(둘 다 보이게 위에서) Cut, Depth = From Surface, 깊이 0.05 로 두 부품에 걸치게 라쏘 → 둘 다 자기 윗면에서 0.05 포켓이 생기는지(전: 판만 또는 몸통만).

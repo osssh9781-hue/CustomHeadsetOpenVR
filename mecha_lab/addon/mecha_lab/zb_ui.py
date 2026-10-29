@@ -118,6 +118,12 @@ def draw_tool_shelf(layout, context):
     r.prop(zb, 'dec_groups', toggle=True)
     r.prop(zb, 'dec_borders', toggle=True)
     box = layout.box()
+    box.label(text='Re-Fix')                     # 0.24.84 DynaMesh > clean Decimate / Quad Remesh in one go
+    r = box.row()
+    ops(r, ('Re-Fix', 'REFIX'))
+    r.prop(zb, 'refix_faces', text='Faces')
+    box.row().prop(zb, 'refix_finish', expand=True)
+    box = layout.box()
     box.label(text='Quad Remesh')
     r = box.row()
     ops(r, ('Quad Remesh', 'QUAD_REMESH'))

@@ -173,7 +173,7 @@ check('Right drag turns the view anywhere on the ZBrush screen, over the model t
       and 'rmb_drag_check' in inspect.getsource(zs.MCH_OT_zb_popup.modal)
       and "event.value == 'RELEASE'" in inspect.getsource(zs.MCH_OT_zb_popup.modal))
 check('The key card says so', any(t.startswith('Right drag') for t in zu.KEYS_TEXT))
-check('Version 0.24.83', mecha_lab.bl_info['version'] == (0, 24, 83))
+check('Version 0.24.84', mecha_lab.bl_info['version'] == (0, 24, 84))
 zs.on = real_on
 wui.pref = real_pref
 hp.set_pref = hp_set

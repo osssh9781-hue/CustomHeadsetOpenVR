@@ -1197,10 +1197,23 @@ def self_overlaps(me, limit=300000):
             tree = BVHTree.FromBMesh(bm)
             n = 0
             for a, b in tree.overlap(tree):
-                if a < b:
-                    fa, fb = bm.faces[a], bm.faces[b]
-                    if not {v.index for v in fa.verts} & {v.index for v in fb.verts}:
-                        n += 1
+                if a >= b:
+                    continue
+                fa, fb = bm.faces[a], bm.faces[b]
+                if {v.index for v in fa.verts} & {v.index for v in fb.verts}:
+                    continue
+                # a real crossing: each face has points clearly on both sides of the other's plane - clearly = past
+                # a thousandth of the faces' own size (faces that only touch - a boolean seam, a T-junction, coplanar
+                # neighbours, the two walls of a pinched fold a voxel remesh leaves - do not)
+                eps = 1e-3 * max(max(e.calc_length() for e in fa.edges), max(e.calc_length() for e in fb.edges))
+                crossing = True
+                for f, g in ((fa, fb), (fb, fa)):
+                    ds = [(v.co - g.verts[0].co).dot(g.normal) for v in f.verts]
+                    if min(ds) > -eps or max(ds) < eps:
+                        crossing = False
+                        break
+                if crossing:
+                    n += 1
             return n
         finally:
             bm.free()

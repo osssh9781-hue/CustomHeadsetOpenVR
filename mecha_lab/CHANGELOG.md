@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## 0.24.84 — Re-Fix 버튼: DynaMesh 를 알맞은 해상도로 돌리고 깨끗한 Decimate / Quad Remesh 로 되돌려 다시 쓰기 좋게 (2026-10-29)
+
+- **Re-Fix**(사이드바 N > Mecha Lab > Mesh Tools 의 Fix Mesh 아래, ZBrush 화면 N 패널 Geometry 의 Re-Fix 상자, ZBrush 액션 `REFIX` — 단축키 지정 가능): 작업하다 지저분해진 부품(얇은 판을 반대쪽까지 밀어 조각한 것, 깨진 컷, 라이브 단계가 잔뜩 붙은 것)을 한 번에 **깨끗한 가벼운 솔리드**로 되돌립니다. 손으로 하시던 DynaMesh → Decimate / Quad Remesh 그대로이고, 숫자는 제가 고릅니다.
+  - 순서: 라이브 단계(Box Hide · Armor Shell · Hard Edges 베벨 · Mirror …) 먼저 굳힘 → 작은 구멍 메움 → **DynaMesh**(면 수 × 8 점, 12만 ~ 50만; Quad Remesh 마감이면 25만까지 — 쿼드 솔버가 느린 부분) → **Decimate**(고르게, C 엔진) 또는 **Quad Remesh**(Mostly Quads, 선반의 Hard Edges 각도)로 **Faces** 만큼 → 남은 구멍 메움.
+  - **Faces** 0 = Auto(지금 그 부품의 면 수, 2,000 ~ 40,000). **Finish**: Decimate(빠름, 삼각형; Decimate 의 Quads 토글 따름) / Quad Remesh.
+  - Decimate 마감에서 **벽이 삼각형보다 얇아 두 면이 서로 뚫고 나오면** 면 수를 2배씩(2번까지) 올려 다시 함 — 메시지에 "faces raised to 8,000: a wall thinner than the triangles".
+  - 메시지: "Re-Fix (Decimate): 790 > 7,982 faces (DynaMesh 121,676 points, asked 2,000 …) | open edges 0 > 0 | self-crossings 337 > 0 | 1 live step(s) applied first".
+  - DynaMesh 는 Fix Poles · Preserve Volume 둘 다 끄고 돌림: Preserve Volume 은 눌린 주름의 두 벽을 서로 뚫게 했고(교차 1,115), Fix Poles 는 변 4개를 열어 놓았음. 그냥 복셀 리메시가 깨끗함(교차 0 · 열린 변 0).
+- **자기 교차 세기(`self_overlaps`)가 닿기만 한 면도 세던 것**: 불리언 이음새 · T 자 이음 · 같은 평면 이웃 · 복셀 리메시가 남긴 눌린 주름의 두 벽을 교차로 셌음(깨끗한 DynaMesh 결과에서 177). 이제 **서로의 평면을 양쪽으로 확실히(면 크기의 1/1000 넘게) 지나는 쌍만** 셉니다 — 0.24.83 의 "crosses itself" 경고도 이 기준.
+- 테스트: __SUITE__ 새 테스트: test_v02507_refix 11(교차 세기 · Auto 면 수 · 점 수 규칙 · 뚫린 판 Re-Fix(Decimate) → 닫힘 · 교차 0 · 라이브 Box Hide 있는 몸통 Re-Fix(Quad) → 굳힌 뒤 닫힌 쿼드 · Mesh Tools 버튼). 보내주신 장면의 판(4만 면 · 교차 418): Decimate 2.8초 → 교차 0 · 닫힘, Quad 23초 → 교차 1. __GUI__ ZIP sha256 __SHA__.
+
 ## 0.24.83 — 컷 · 컷 베벨 · GN Edge · 컷 램프 · Box Hide · ZBrush 파이프라인(DynaMesh → Decimate → Quad Remesh → 다시 컷) 무작위 테스트로 찾은 깨짐 수정 (2026-10-28)
 
 "특히 오류가 많은 컷, 컷 베벨, 컷 램프가 제대로 들어갔는지, 복스하이드가 가끔 안 되는 것, DynaMesh → Decimate → Quad Remesh 뒤 다시 작업하면 메시가 깨지는 것"을 그대로 돌리는 무작위 테스트(`tests/fuzz/pipe_scenario.py`)를 만들어 세 번 돌리고(각 40 ~ 60 장면 × 12 단계, 장면마다 블렌더 프로세스 하나), 나온 것을 고쳤습니다. 테스트가 보는 것: 단계마다 NaN · 열린 변 · 면 3개 이상 붙은 변 · 0-면적 면 · 바늘 면 · 같은 점 위 겹친 면 · 뒤집힌 면 · 부스러기 조각(BAD), **도구가 "됐다"고 했는데 그 부품의 평가 메시가 그대로인 것(NOOP — 모양 안 점 중 그 부품 위에 있는 점이 있을 때만)**, **Cut Ramp 가 평평한 윗면에서 첫 변 쪽이 Cut Depth 만큼 깊고 반대쪽은 표면으로 올라오며 어디서도 요청보다 깊지 않은지(RAMP)**, 도구가 거부한 것(FAIL)과 20초 넘게 걸린 단계(SLOW). 첫 실행(40 × 12): BAD 90줄 · 거부 60줄.

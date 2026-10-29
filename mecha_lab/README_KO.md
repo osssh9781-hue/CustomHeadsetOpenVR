@@ -4,6 +4,10 @@
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` 맨 위 0.24.81 절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
 
+## 0.24.84 Re-Fix 버튼
+- **Re-Fix**(Mesh Tools / ZBrush N 패널 Geometry / 액션 `REFIX`): 지저분해진 부품을 DynaMesh(알맞은 점 수) → 깨끗한 Decimate 또는 Quad Remesh 로 한 번에 되돌림. Faces 0 = Auto. 라이브 단계는 먼저 굳힘, 메시지에 전후 면 수 · 열린 변 · 자기 교차.
+- 넓은 베벨이 안 들어가던 촘촘한 부품은 Re-Fix 한 번 뒤에 넣으면 됩니다.
+
 ## 0.24.83 컷 · 컷 베벨 · GN Edge · 컷 램프 · Box Hide · ZBrush 파이프라인 깨짐 수정
 - 0.24.82의 결과 정리가 **닫힌 컷을 열던 것** 수정(정리 단계마다 열리면 버림, 0-면적 · 바늘 면은 하나씩).
 - **From Surface** 로 두 부품 위에 그리면 둘 다 자기 표면에서 포켓(위에 뜬 판이 안 잘리고 Box Hide 가 아무것도 안 하던 것).

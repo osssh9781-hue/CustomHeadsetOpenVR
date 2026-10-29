@@ -11,8 +11,8 @@ import bpy
 from bpy.props import StringProperty
 
 ACTIONS = {'DYNAMESH': 'DynaMesh', 'DECIMATE': 'Decimate', 'QUAD_REMESH': 'Quad Remesh', 'EDGE_MESH': 'Edge Mesh',
-           'HE_FIND': 'Find Edges', 'HE_APPLY': 'Apply', 'HE_CLEAR': 'Clear', 'FIX_MESH': 'Fix Mesh'}
-HEAVY = {'DYNAMESH', 'DECIMATE', 'QUAD_REMESH', 'EDGE_MESH', 'HE_FIND', 'HE_APPLY'}
+           'HE_FIND': 'Find Edges', 'HE_APPLY': 'Apply', 'HE_CLEAR': 'Clear', 'FIX_MESH': 'Fix Mesh', 'REFIX': 'Re-Fix'}
+HEAVY = {'DYNAMESH', 'DECIMATE', 'QUAD_REMESH', 'EDGE_MESH', 'HE_FIND', 'HE_APPLY', 'REFIX'}
 
 
 def _targets(context):
@@ -65,6 +65,9 @@ def run_one(context, ob, zb, action):
     if action == 'HE_CLEAR':
         he.clear(ob)
         return 'Hard Edges: cleared'
+    if action == 'REFIX':                            # 0.24.84 DynaMesh > clean Decimate / Quad Remesh
+        from . import refix
+        return refix.run(context, ob, zb)
     if action == 'FIX_MESH':                         # 0.24.76 like ZBrush's Fix Mesh
         from . import mesh_fix
         if ob.data.shape_keys is not None:
@@ -138,6 +141,8 @@ def draw(layout, context):
     r.prop(zb, 'points', text='Points')
     box.row(align=True).operator('mch.mesh_tool', text='Fix Mesh (weld cracks, slivers, inside walls, small holes)',
                                  icon='TOOL_SETTINGS').action = 'FIX_MESH'
+    from . import refix
+    refix.draw_row(box, zb)                          # 0.24.84 Re-Fix
     col = box.column(align=True)
     r = col.row(align=True)
     op(r, 'Decimate', 'DECIMATE')
