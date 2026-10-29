@@ -1283,6 +1283,7 @@ TOOL_KEYMAP = (
     ('mch.wrinkle_line_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, None),
     ('mch.wrinkle_line_hover', {'type': 'MOUSEMOVE', 'value': 'ANY'}, None),
     ('mch.wrinkle_line_delete', {'type': 'X', 'value': 'PRESS'}, None),
+    ('mch.brush_resize', {'type': 'F', 'value': 'PRESS'}, None),            # F + mouse = size (every Mecha tool)
     ('mch.wrinkle_sim', {'type': 'SPACE', 'value': 'PRESS'}, None),
     ('mch.rmb_gate', {'type': 'RIGHTMOUSE', 'value': 'PRESS'}, {'properties': [('popup', 'SHAPE')]}),
     ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),

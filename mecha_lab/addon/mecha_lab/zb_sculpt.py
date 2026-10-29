@@ -43,12 +43,20 @@ BRUSHES = (
     ('sPolish', 'Relax Slide', 'SP'), ('Move Topological', 'Elastic Grab', 'MT'), ('Polish', 'Fill/Deepen', 'PO'),
     ('Smooth', 'Smooth', 'SM'), ('MaskPen', 'Mask', 'MP'), ('Pinch', 'Pinch/Magnify', 'PN'), ('Blob', 'Blob', 'BB'),
     ('Pose', 'Pose', 'PS'), ('Polygroupit', 'Face Set Paint', 'PG'),
+    # 0.24.92 Blender's cloth brushes (the sculpt cloth solver), ZBrush-style names
+    ('ClothDrag', 'Drag Cloth', 'CD'), ('ClothFolds', 'Pinch Folds Cloth', 'CF'), ('ClothPinch', 'Pinch Point Cloth', 'CP'),
+    ('ClothPush', 'Push Cloth', 'CU'), ('ClothGrab', 'Grab Cloth', 'CG'), ('ClothInflate', 'Inflate Cloth', 'CI'),
+    ('ClothExpand', 'Expand/Contract Cloth', 'CE'), ('ClothRandom', 'Grab Random Cloth', 'CR'),
 )
+CLOTH_BRUSHES = ('ClothDrag', 'ClothFolds', 'ClothPinch', 'ClothPush', 'ClothGrab', 'ClothInflate', 'ClothExpand',
+                 'ClothRandom')
+CLOTH_FILTERS = (('GRAVITY', 'Gravity'), ('INFLATE', 'Inflate'), ('EXPAND', 'Expand'), ('PINCH', 'Pinch'), ('SCALE', 'Scale'))
 BY_Z = {z: (z, bl, code) for z, bl, code in BRUSHES}
 BY_BL = {bl: z for z, bl, _c in BRUSHES}
 SHELF = (('Standard', 'Paint', 'ClayBuildup', 'Move', 'SnakeHook', 'DamStandard', 'Layer', 'Clay', 'Inflat',
           'ClayTubes'),
-         ('hPolish', 'TrimDynamic', 'TrimAdaptive', 'Flatten', 'Planar', 'sPolish', 'Move Topological', 'Polish'))
+         ('hPolish', 'TrimDynamic', 'TrimAdaptive', 'Flatten', 'Planar', 'sPolish', 'Move Topological', 'Polish'),
+         CLOTH_BRUSHES)
 # ZBrush stroke names -> Blender stroke methods
 STROKES = (('FREEHAND', 'FreeHand', 'DOTS'), ('DOTS', 'Dots', 'SPACE'), ('DRAGDOT', 'DragDot', 'DRAG_DOT'),
            ('DRAGRECT', 'DragRect', 'ANCHORED'), ('SPRAY', 'Spray', 'AIRBRUSH'), ('LINE', 'LineII', 'LINE'),
@@ -224,6 +232,8 @@ TUNE = {
     'TrimDynamic': {'strength': 0.6}, 'TrimAdaptive': {'strength': 0.6}, 'Planar': {'strength': 0.6},
     'MaskPen': {'strength': 1.0, 'use_pressure_size': False},
 }
+for _z in CLOTH_BRUSHES:                       # (a cloth stroke keeps its size and strength: pressure would restart the sim)
+    TUNE[_z] = {'use_pressure_size': False, 'use_pressure_strength': False}
 TUNED_KEY = 'mch_zb_tuned'
 
 
@@ -2409,6 +2419,26 @@ class MCH_OT_zb_action(_ZBPoll, bpy.types.Operator):
         return {'FINISHED'}
 
 
+def is_cloth(b):
+    """True for a Blender cloth brush (the sculpt cloth solver)."""
+    return b is not None and getattr(b, 'sculpt_brush_type', '') == 'CLOTH'
+
+
+class MCH_OT_zb_cloth_filter(_ZBPoll, bpy.types.Operator):
+    """Blender's Cloth Filter on the whole mesh: click, then drag left / right for the amount (Enter / click ends)"""
+    bl_idname = 'mch.zb_cloth_filter'
+    bl_label = 'Cloth Filter'
+    bl_options = {'REGISTER', 'INTERNAL'}
+    kind: EnumProperty(items=[(k, n, '') for k, n in CLOTH_FILTERS], default='GRAVITY')
+
+    def invoke(self, context, event):
+        try:
+            return bpy.ops.sculpt.cloth_filter('INVOKE_DEFAULT', type=self.kind)
+        except RuntimeError as ex:
+            self.report({'WARNING'}, str(ex).splitlines()[0])
+            return {'CANCELLED'}
+
+
 class MCH_OT_zb_brush(_ZBPoll, bpy.types.Operator):
     """Pick this brush (a Blender Essentials brush under its ZBrush name)"""
     bl_idname = 'mch.zb_brush'
@@ -3459,7 +3489,7 @@ class MCH_OT_zb_close(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_PG_ZBrush, MCH_OT_zb_action, MCH_OT_zb_brush, MCH_OT_zb_append, MCH_OT_zb_subtool, MCH_OT_zb_press,
+CLASSES = (MCH_PG_ZBrush, MCH_OT_zb_action, MCH_OT_zb_brush, MCH_OT_zb_cloth_filter, MCH_OT_zb_append, MCH_OT_zb_subtool, MCH_OT_zb_press,
            MCH_OT_zb_restore_tool, MCH_OT_zb_gizmo, MCH_OT_zb_nav, MCH_OT_zb_viewdrag, MCH_OT_zb_popup, MCH_OT_zb_brush_pick,
            MCH_OT_zb_switch, MCH_OT_zb_tab, MCH_OT_view_toggle, MCH_OT_zb_nav_style, MCH_OT_zb_style, MCH_OT_zb_obj_press, MCH_OT_zb_alpha, MCH_OT_zb_alpha_edit,
            MCH_OT_zb_alpha_folder, MCH_OT_zb_set, MCH_OT_zb_texture, MCH_OT_zb_texture_folder, MCH_OT_zb_tex_stamp, MCH_OT_zb_close)

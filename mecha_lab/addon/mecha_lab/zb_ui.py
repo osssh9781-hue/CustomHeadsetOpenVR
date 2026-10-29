@@ -2,7 +2,8 @@
 
     top shelf      Edit Draw | Move Scale Rotate | Material | Zadd Zsub | Z Intensity  Focal Shift  Draw Size Dynamic
                    | Polish By Groups | Check Mesh Fix Mesh  /  Make PolyMesh3D | DynaMesh > SubDiv | OBJ STL | FBX
-    left shelf     SubTool / Geometry / Masking / Stroke / Decimation / Quad Remesh / Edge Mesh / Hard Edges / Wrinkle Lines (the
+    left shelf     SubTool / Geometry / Masking / Stroke / Decimation / Quad Remesh / Edge Mesh / Hard Edges / Cloth Brush /
+                   Wrinkle Lines (the
                    Blender-layout drawer ``draw_tool_shelf`` read by panel_capture, like the side panel), then
                    brush / stroke / material / colour / symmetry / clip / initialize
     right          view shelf (Persp Floor Frame Move Zoom3D Rotate PolyF Transp Solo ...) and the SubTool list
@@ -176,6 +177,33 @@ def draw_tool_shelf(layout, context):
     r.prop(zb, 'he_client', toggle=True)
     box.prop(zb, 'he_normals', toggle=True)
     ops(box.row(), ('Apply', 'HE_APPLY'), ('Clear', 'HE_CLEAR'))
+    b = zs.brush(context)                                     # 0.24.92 Blender's cloth brush settings, as they are
+    box = layout.box()
+    box.label(text='Cloth Brush')
+    if zs.is_cloth(b):
+        box.row().prop(b, 'cloth_deform_type', text='')
+        r = box.row()
+        r.prop(b, 'cloth_simulation_area_type', text='')
+        r.prop(b, 'cloth_force_falloff_type', text='')
+        r = box.row()
+        r.prop(b, 'cloth_sim_limit')
+        r.prop(b, 'cloth_sim_falloff')
+        r = box.row()
+        r.prop(b, 'cloth_mass')
+        r.prop(b, 'cloth_damping')
+        box.prop(b, 'cloth_constraint_softbody_strength', text='Silhouette Keep')
+        r = box.row()
+        r.prop(b, 'use_cloth_pin_simulation_boundary', text='Pin Boundary', toggle=True)
+        r.prop(b, 'use_cloth_collision', text='Collision', toggle=True)
+    else:
+        box.label(text='pick a cloth brush below (ClothDrag ...)')
+    box.label(text='Cloth Filter (whole mesh: click, drag)')
+    r = box.row()
+    for kind, name in zs.CLOTH_FILTERS[:3]:
+        r.operator('mch.zb_cloth_filter', text=name).kind = kind
+    r = box.row()
+    for kind, name in zs.CLOTH_FILTERS[3:]:
+        r.operator('mch.zb_cloth_filter', text=name).kind = kind
     wl = getattr(context.scene, 'mch_wlines', None)          # 0.24.92 Wrinkle Lines (the Mecha tool, opened from here)
     if wl is not None:
         box = layout.box()
@@ -522,8 +550,8 @@ def subtool_list(context, region_w, k, Item, top, floor):
 def brush_shelf(context, region_w, k, Item):
     b = zs.brush(context)
     cur = zs.zb_name(b)
-    groups = [list(zs.SHELF[0]), ['IMM', 'APPEND'], list(zs.SHELF[1]), ['SPLIT_HIDDEN', 'AUTO_GROUPS']]
-    cols = [5, 1, 4, 1]
+    groups = [list(zs.SHELF[0]), ['IMM', 'APPEND'], list(zs.SHELF[1]), list(zs.SHELF[2]), ['SPLIT_HIDDEN', 'AUTO_GROUPS']]
+    cols = [5, 1, 4, 4, 1]                       # 0.24.92 the cloth brushes as their own group
     tw, th, gap, sep, pad = TILE_W * k, TILE_H * k, GAP * k, SEP * k, PAD * k
     width = sum(c * tw + (c - 1) * gap for c in cols) + sep * (len(groups) - 1) + 2 * pad
     height = 2 * th + gap + 2 * pad
