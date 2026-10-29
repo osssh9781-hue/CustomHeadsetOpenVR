@@ -596,8 +596,34 @@ def _region_sub(kept, walls, size):
         opn = [e for e in bm.edges if e.is_valid and len(e.link_faces) == 1]
         if opn:
             bmesh.ops.holes_fill(bm, edges=opn, sides=8)
+            # a hole the fill would not take (three points in a line: a zero-area triangle) is a T-junction the
+            # fill uncovered: the point in the middle goes onto the long edge, then one more fill
+            for _pass in range(3):
+                if not _seam_tees(bm, 10 * eps):
+                    break
+            opn = [e for e in bm.edges if e.is_valid and len(e.link_faces) == 1]
+            if opn:
+                bmesh.ops.holes_fill(bm, edges=opn, sides=8)
+            # a stray sliver: a tiny face none of whose edges has a neighbour (a zero-area triangle the fill left
+            # standing on three points of a closed surface) - its three open edges are the only ones left
+            stray = [f for f in bm.faces if f.is_valid and f.calc_area() < (10 * eps) ** 2
+                     and all(len(e.link_faces) == 1 for e in f.edges)]
+            if stray:
+                bmesh.ops.delete(bm, geom=stray, context='FACES')
+                if dbg:
+                    print(f'[region] sub: {len(stray)} stray sliver face(s) dropped', flush=True)
         if dbg:
-            print(f'[region] sub: open edges after the hole fill {sum(1 for e in bm.edges if len(e.link_faces) == 1)}', flush=True)
+            left = [e for e in bm.edges if e.is_valid and len(e.link_faces) == 1]
+            print(f'[region] sub: open edges after the hole fill {len(left)} (tol {10 * eps:.2e})', flush=True)
+            for e in left[:12]:
+                a, b = e.verts[0].co, e.verts[1].co
+                d = b - a
+                L = d.length
+                near = []
+                for v in {v for x in left for v in x.verts} - set(e.verts):
+                    t = (v.co - a).dot(d) / (L * L) if L else -1
+                    near.append((round(t, 3), f'{((a + d * t) - v.co).length:.2e}', v.index, len(v.link_faces)))
+                print(f'[region]      open edge {e.verts[0].index}-{e.verts[1].index} L {L:.2e}: other open points (t, off-line, idx, faces) {sorted(near)[:6]}', flush=True)
         tiny = [f for f in bm.faces if f.is_valid and f.calc_area() < eps * eps
                 and any(len(e.link_faces) > 2 for e in f.edges)]
         if tiny:
@@ -634,9 +660,9 @@ def _seam_tees(bm, tol):
         a, b = e.verts[0].co.copy(), e.verts[1].co.copy()
         d = b - a
         L = d.length
-        if L <= tol:
-            continue
-        mid = (a + b) * 0.5
+        if L <= 1e-12:
+            continue                                    # (a short open edge is split like any other: the first
+        mid = (a + b) * 0.5                             #  voxel-quad case missed was a 2.9e-4 edge under a 3.6e-4 tol)
         for co, i, _dist in kd.find_range(mid, L * 0.5 + tol):
             v = pts[i]
             if not v.is_valid or v in e.verts:
