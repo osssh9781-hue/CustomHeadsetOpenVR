@@ -25,6 +25,7 @@ from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
 
 from . import primitive_place
 from . import screw_stamp
+from . import wrinkle_lines
 from . import tool_state as ts
 
 ADDON_ID = __package__
@@ -704,6 +705,21 @@ class MCH_TOOL_plate_detail2(bpy.types.WorkSpaceTool):
         _draw_tool_settings(context, layout, tool)
 
 
+class MCH_TOOL_wrinkle_lines(bpy.types.WorkSpaceTool):
+    bl_space_type = 'VIEW_3D'
+    bl_context_mode = 'OBJECT'
+    bl_idname = 'mecha.wrinkle_lines'
+    bl_label = 'Mecha Wrinkle Lines'
+    bl_description = ('Drag guide lines on a mesh; Space: a short cloth simulation folds the surface along them.\n'
+                      'Shift + click: add a point, Ctrl + click: remove it, X: remove a line, Enter: keep, Esc: back / exit')
+    bl_icon = 'ops.curve.draw'
+    bl_widget = None
+    bl_keymap = wrinkle_lines.TOOL_KEYMAP
+
+    def draw_settings(context, layout, tool):
+        _draw_tool_settings(context, layout, tool)
+
+
 class MCH_TOOL_screw_stamp(bpy.types.WorkSpaceTool):
     bl_space_type = 'VIEW_3D'
     bl_context_mode = 'OBJECT'
@@ -1036,7 +1052,7 @@ class MCH_TOOL_primitive(bpy.types.WorkSpaceTool):
 
 NATIVE_TOOLS = (MCH_TOOL_cut, MCH_TOOL_split, MCH_TOOL_base_mesh, MCH_TOOL_primitive, MCH_TOOL_armor_plate,
                 MCH_TOOL_cloth_wrinkle, MCH_TOOL_box_hide, MCH_TOOL_plate_detail, MCH_TOOL_plate_detail2, MCH_TOOL_plate_detail3,
-                MCH_TOOL_screw_stamp, MCH_TOOL_creature_base, MCH_TOOL_creature_plate,
+                MCH_TOOL_screw_stamp, MCH_TOOL_wrinkle_lines, MCH_TOOL_creature_base, MCH_TOOL_creature_plate,
                 MCH_TOOL_belt_maker, MCH_TOOL_creature_spike, MCH_TOOL_creature_scales,
                 MCH_TOOL_scale_brush, MCH_TOOL_bridge_patch, MCH_TOOL_flower_plate, MCH_TOOL_surface_curve, MCH_TOOL_cape, MCH_TOOL_scarf_cape, MCH_TOOL_creature_hair, MCH_TOOL_surface_draw, MCH_TOOL_clothing, MCH_TOOL_hood, MCH_TOOL_scarf)   # MCH_TOOL_mask kept, not registered (Mask hidden)
 
@@ -1085,6 +1101,7 @@ def register_native_tools():
     bpy.utils.register_tool(MCH_TOOL_plate_detail2, after={MCH_TOOL_plate_detail.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_plate_detail3, after={MCH_TOOL_plate_detail2.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_screw_stamp, after={MCH_TOOL_plate_detail3.bl_idname}, group=False)
+    bpy.utils.register_tool(MCH_TOOL_wrinkle_lines, after={MCH_TOOL_cloth_wrinkle.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_creature_base, after={MCH_TOOL_base_mesh.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_creature_plate, after={MCH_TOOL_screw_stamp.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_belt_maker, after={MCH_TOOL_creature_plate.bl_idname}, group=False)
@@ -1717,7 +1734,7 @@ class MCH_OT_sculpt_back(bpy.types.Operator):
         return bpy.ops.mch.select_move()
 
 
-LINE_KEY_SKIP = {'mecha.screw_stamp', 'mecha.primitive'}
+LINE_KEY_SKIP = {'mecha.screw_stamp', 'mecha.primitive', 'mecha.wrinkle_lines'}
 
 
 class MCH_OT_line_width_key(bpy.types.Operator):

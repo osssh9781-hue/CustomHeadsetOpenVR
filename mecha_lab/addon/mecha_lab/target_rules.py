@@ -23,7 +23,7 @@ from mathutils import Matrix, Vector
 OWN_ROW = {'CUT', 'SPLIT', 'HIDE', 'CMOVE', 'CPATH', 'SMOVE'}
 # viewport tools that draw on / pick a mesh under the mouse: these get the row in their panel
 PICKING = {'SDRAW', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER',
-           'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'DETAIL', 'DETAIL2', 'DETAIL3', 'SCREW', 'WRINKLE',
+           'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'DETAIL', 'DETAIL2', 'DETAIL3', 'SCREW', 'WRINKLE', 'WLINES',
            'PRIMITIVE', 'MASK', 'TUBE', 'TUBE_SAME', 'DRAW', 'CABLE'}
 
 

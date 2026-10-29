@@ -989,6 +989,11 @@ def draw_screw(layout, context):
     screw_stamp.draw(layout, context)
 
 
+def draw_wrinkle_lines(layout, context):
+    from . import wrinkle_lines
+    wrinkle_lines.draw(layout, context)
+
+
 def draw_tube(layout, context):
     from . import curve_tube
     curve_tube.draw(layout, context)
@@ -1033,7 +1038,7 @@ DRAWERS = {
     'MASK': draw_mask, 'DRAW': draw_draw, 'ARRAY': draw_array, 'EDIT': draw_edit,
     'LIBRARY': draw_library, 'REMESH': draw_remesh, 'POSE': draw_pose,
     'BASE': draw_base, 'LOFT': draw_loft, 'ZBRUSH': draw_zbrush, 'SUBD': draw_subd,
-    'PRIMITIVE': draw_primitive, 'PLATE': draw_plate, 'WRINKLE': draw_wrinkle, 'CBASE': draw_base,
+    'PRIMITIVE': draw_primitive, 'PLATE': draw_plate, 'WRINKLE': draw_wrinkle, 'WLINES': draw_wrinkle_lines, 'CBASE': draw_base,
     'CPLATE': draw_cplate, 'BELT': draw_belt, 'SPIKE': draw_spike,
     'SCALES': draw_scales, 'SBRUSH': draw_scale_brush, 'BRIDGE': draw_bridge, 'FLOWER': draw_flower, 'CAPE': draw_cape, 'SCAPE': draw_scarf_cape, 'HAIR': draw_hair, 'GARMENT': draw_clothing, 'HOOD': draw_hood, 'SCARF': draw_scarf, 'SCURVE': draw_surface_curve,
     'EXTRACT': draw_extract, 'MOLDING': draw_molding, 'HOLLOW': draw_hollow, 'ALONG': draw_along,

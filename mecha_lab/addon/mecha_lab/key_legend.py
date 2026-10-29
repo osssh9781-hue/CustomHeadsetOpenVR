@@ -30,6 +30,8 @@ EXTRA = {
     'SPLIT': ['T   targets: auto / selected'],
     'CPATH': ['Tab (dragging)   Extend: brush area / whole section', 'B (dragging)   Back Mask: the far side stays put'],
     'SMOVE': ['Drag from the part   the whole part follows the way (stretches, bends)'],
+    'WLINES': ['Drag   a wrinkle line,  drag a point   move it', 'Shift + click   add a point,  Ctrl + click   remove it,  X   remove the line',
+               'Space   simulate / pause,  Enter   keep,  Esc   back'],
 }
 COMMON = [
     'Shift   straight 0/45/90° · square / circle',
