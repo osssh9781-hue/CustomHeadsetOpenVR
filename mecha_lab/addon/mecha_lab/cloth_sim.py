@@ -775,7 +775,7 @@ def draw(layout, context):
     r.prop(st, 'sim_preset', text='')
     r = box.row(align=True)
     if hasattr(context.scene, 'mch_pcloth_fast'):
-        r.prop(context.scene, 'mch_pcloth_fast', toggle=True)
+        r.prop(context.scene, 'mch_pcloth_fast')
     zb = getattr(context.scene, 'mch_zb', None)
     if zb is not None and hasattr(zb, 'bg_jobs'):
         r.prop(zb, 'bg_jobs', text='Background', toggle=True)           # 0.24.88 the bake in a second Blender
