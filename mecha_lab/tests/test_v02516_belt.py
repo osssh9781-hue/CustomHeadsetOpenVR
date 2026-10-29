@@ -40,15 +40,24 @@ def body(name, loc=(0, 0, 0)):
 
 b = body('Body')
 line = [scr(-1.3, 0.1), scr(0, 0.1), scr(1.3, 0.1)]
+check('Relative Width on by default (7.5 % of the loop: the same look on any part size)',
+      C.scene.mch_belt.relative is True and abs(C.scene.mch_belt.width_pct - 7.5) < 1e-6)
+msg = bmk.perform(C, line, proj)
+belt = C.active_object
+check('a relative belt on a 2 m part: width 0.149 (7 % of the loop), said in the report',
+      'loop 1.99' in msg and 'width 0.149 = 7 % (relative)' in msg, msg)
+bpy.data.objects.remove(belt)
+C.scene.mch_belt.relative = False
 C.scene.mch_belt.width = 0.02
 msg = bmk.perform(C, line, proj)
 belt = C.active_object
-check('the report says the loop size and the width as a share of it', 'loop 1.99' in msg and 'width 0.02 = 1 %' in msg, msg)
-check('a thin belt is remembered for the next one (as before)', abs(C.scene.mch_belt.width - 0.02) < 1e-6)
+check('absolute width: the report says the loop size and the width as a share of it', 'loop 1.99' in msg and 'width 0.02 = 1 %' in msg, msg)
+check('a thin belt is remembered for the next one (as before)', abs(C.scene.mch_belt.width - 0.02) < 1e-6 and C.scene.mch_belt.relative is False)
 r = bpy.ops.mch.belt_defaults()
-check('Defaults: the live belt and the next-belt settings back to the factory width 0.15',
-      r == {'FINISHED'} and abs(belt.mch_belt.width - 0.15) < 1e-6 and abs(C.scene.mch_belt.width - 0.15) < 1e-6)
-check('... the live belt rebuilt with it', abs(size(belt) - 2.06) < 0.05 and 'width 0.15 = 8 %' in bmk.size_note(belt), bmk.size_note(belt))
+check('Defaults: the live belt and the next-belt settings back to the factory values (relative 7.5 %)',
+      r == {'FINISHED'} and belt.mch_belt.relative is True and abs(belt.mch_belt.width - 0.15) < 1e-6
+      and C.scene.mch_belt.relative is True and abs(C.scene.mch_belt.width - 0.15) < 1e-6)
+check('... the live belt rebuilt with it', abs(size(belt) - 2.06) < 0.05 and 'width 0.149 = 7 %' in bmk.size_note(belt), bmk.size_note(belt))
 src = open(bmk.__file__).read()
 check('the panel: Defaults next to "Settings for the next belt" and next to Apply, the size line on a live belt',
       src.count("operator('mch.belt_defaults'") == 2 and "box.label(text=note[3:]" in src)

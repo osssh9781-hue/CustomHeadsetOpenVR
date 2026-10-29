@@ -18,8 +18,10 @@ import math
 
 import bmesh
 import bpy
+import numpy as np
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
 from mathutils import Matrix, Vector
+from mathutils.bvhtree import BVHTree
 
 from . import target_rules
 from . import core_geometry as cg
@@ -33,9 +35,11 @@ PRESET_ITEMS = [('PLAIN', 'Plain Strap', 'A plain rectangular strap', 'MESH_PLAN
 MODE_ITEMS = [('WRAP', 'Wrap Around', 'All the way around the mesh where the line crosses it', 'MESH_TORUS', 0),
               ('FOLLOW', 'Follow Line', 'Exactly along the drawn line on the surface', 'IPO_LINEAR', 1)]
 LIVE_KEYS = ('preset', 'mode', 'width', 'thickness', 'lift', 'edge_round', 'rail_height', 'rail_width',
-             'groove', 'bolts', 'bolt_spacing', 'smooth', 'density', 'ribs', 'buckle', 'buckle_shift')
+             'groove', 'bolts', 'bolt_spacing', 'smooth', 'density', 'ribs', 'buckle', 'buckle_shift',
+             'relative', 'width_pct')
 PATH_KEYS = ('mode', 'smooth', 'density')           # these change the path on the mesh
 _CACHE = {}
+_RAW = {}                  # 0.24.89 the loop on the mesh before resampling (see raw_loop)
 
 
 def _update(self, context):
@@ -66,6 +70,10 @@ class MCH_PG_Belt(bpy.types.PropertyGroup):
     """Scene.mch_belt = settings for the next belt; Object.mch_belt = live belt."""
     preset: _p(EnumProperty, name='Preset', items=PRESET_ITEMS, default='PLAIN')
     mode: _p(EnumProperty, name='Mode', items=MODE_ITEMS, default='WRAP')
+    relative: _p(BoolProperty, name='Relative Width', default=True,                     # 0.24.89
+                 description='Width as a share of the belt loop (the same look on any part size); off = Width in length')
+    width_pct: _p(FloatProperty, name='Width %', default=7.5, min=0.1, soft_max=40.0, max=100.0, precision=1,
+                  subtype='PERCENTAGE', description='Relative: strap width as % of the loop size')
     width: _p(FloatProperty, name='Width', default=0.15, min=0.001, soft_max=2.0, precision=4, unit='LENGTH')
     thickness: _p(FloatProperty, name='Thickness', default=0.025, min=0.0005, soft_max=0.5, precision=4,
                   unit='LENGTH')
@@ -273,17 +281,113 @@ def pick_target(context, projector, path):
     return bpy.data.objects[max(counts, key=counts.get)] if counts else None
 
 
-def _world_mesh(context, ob):
-    dg = context.evaluated_depsgraph_get()
-    ev = ob.evaluated_get(dg)
-    me = ev.to_mesh()
+class _Target:
+    """0.24.89 The belt's mesh, read once and kept while it does not change: world points / faces (numpy, through
+    the built-in attributes) and a BVH built in C (object space, queries translated).  A belt on a 1.3M-face part
+    copied the whole mesh into bmesh and built a Python-list BVH on every slider change (3.4 s each, measured)."""
+
+    def __init__(self, context, ob):
+        dg = context.evaluated_depsgraph_get()
+        ev = ob.evaluated_get(dg)
+        self.mw = ev.matrix_world.copy()
+        self.inv = self.mw.inverted_safe()
+        self.nrm_m = self.mw.to_3x3().inverted_safe().transposed()
+        me = ev.to_mesh()
+        try:
+            from . import mesh_io as mio
+            co = mio.read_co(me)
+            M = np.array(self.mw, dtype=np.float64)
+            self.co = co @ M[:3, :3].T + M[:3, 3]
+            self.start, self.tot = mio.read_face_starts(me)
+            self.vi = mio.read_corner_verts(me)
+            self.ce = mio.read_corner_edges(me)
+            self.nedges = len(me.edges)
+        finally:
+            ev.to_mesh_clear()
+        self.bvh = BVHTree.FromObject(ev, dg)
+        self.center = Vector(self.co.mean(0)) if len(self.co) else Vector()
+
+    # the BVH in world terms
+    def find_nearest(self, q):
+        loc, n, i, d = self.bvh.find_nearest(self.inv @ Vector(q))
+        if loc is None:
+            return None, None, -1, None
+        w = self.mw @ loc
+        nw = (self.nrm_m @ n).normalized() if n is not None else None
+        return w, nw, i, (Vector(q) - w).length
+
+    def ray_cast(self, o, d):
+        lo = self.inv @ Vector(o)
+        ld = (self.inv.to_3x3() @ Vector(d))
+        loc, n, i, dist = self.bvh.ray_cast(lo, ld)
+        if loc is None:
+            return None, None, -1, None
+        w = self.mw @ loc
+        return w, ((self.nrm_m @ n).normalized() if n is not None else None), i, (w - Vector(o)).length
+
+
+def _stamp(context, ob):
+    """What the cached target was read from: counts, transform, a hash of the points, the modifier stack."""
+    me = ob.data
     try:
-        bm = bmesh.new()
-        bm.from_mesh(me)
-        bm.transform(ev.matrix_world)
-    finally:
-        ev.to_mesh_clear()
-    return bm
+        from . import mesh_io as mio
+        co = mio.read_co(me, np.float32)
+        h = (float(co.sum()), float(np.abs(co).sum()))
+    except (AttributeError, RuntimeError, ValueError):
+        h = (0.0, 0.0)
+    mods = tuple((m.type, bool(m.show_viewport)) for m in ob.modifiers)
+    return (ob.name, me.name, len(me.vertices), len(me.polygons), tuple(round(v, 6) for row in ob.matrix_world for v in row), h, mods)
+
+
+_TARGETS = {}            # target name -> (stamp, _Target)
+
+
+def target_data(context, ob):
+    st = _stamp(context, ob)
+    hit = _TARGETS.get(ob.name)
+    if hit is not None and hit[0] == st:
+        return hit[1]
+    t = _Target(context, ob)
+    _TARGETS[ob.name] = (st, t)
+    return t
+
+
+def plane_section(td, a, no):
+    """0.24.89 Where the plane (point ``a``, normal ``no``) crosses the mesh: [(points in order, closed)] with
+    numpy - every face crossed by the plane gives one segment between its two crossing edges; the segments chain
+    by the mesh edge they share.  (The bmesh bisect copied and cut the whole 1.3M-face part: 2 s per call.)"""
+    co, start, tot, vi, ce = td.co, td.start, td.tot, td.vi, td.ce
+    if not len(tot):
+        return []
+    a = np.asarray(a, np.float64)
+    no = np.asarray(no, np.float64)
+    dist = (co - a) @ no                              # signed distance of every point
+    nxt = np.arange(1, len(vi) + 1)
+    nxt[start + tot - 1] = start
+    d0, d1 = dist[vi], dist[vi[nxt]]
+    cross = (d0 > 0) != (d1 > 0)                      # the corner edge crosses the plane
+    if not cross.any():
+        return []
+    fid = np.repeat(np.arange(len(tot)), tot)
+    cf = fid[cross]
+    order = np.argsort(cf, kind='stable')
+    cf, ci = cf[order], np.flatnonzero(cross)[order]
+    # faces with exactly two crossings give a segment (others: a point on the plane / concave - skipped)
+    uf, first, cnt = np.unique(cf, return_index=True, return_counts=True)
+    two = cnt == 2
+    ia, ib = ci[first[two]], ci[first[two] + 1]
+    ea, eb = ce[ia], ce[ib]
+    # the crossing point on each mesh edge (only the crossing corners: all 3.9M of a 1.3M-face part took 1.7 s)
+    idx = np.concatenate([ia, ib])
+    t = d0[idx] / (d0[idx] - d1[idx] + 1e-300)
+    A = co[vi[idx]]
+    P = A + (co[vi[nxt[idx]]] - A) * t[:, None]
+    pt = {}
+    for j, e in enumerate(np.concatenate([ea, eb]).tolist()):
+        if e not in pt:
+            pt[e] = Vector(P[j])
+    chains = loops_from_edges(list(zip(ea.tolist(), eb.tolist())))
+    return [([pt[e] for e in ch if e in pt], closed) for ch, closed in chains]
 
 
 def _wrap_path(context, target, projector, path):
@@ -291,37 +395,29 @@ def _wrap_path(context, target, projector, path):
     p0, p1 = path[0], path[-1]
     if math.dist(p0, p1) < 2.0:
         raise cg.CutError('Wrap: draw a line across the part (it says where the belt goes).')
-    bm = _world_mesh(context, target)
-    try:
-        center = sum((v.co for v in bm.verts), Vector()) / max(1, len(bm.verts))
-        o0, d0 = (Vector(v) for v in projector.ray(p0))
-        o1, d1 = (Vector(v) for v in projector.ray(p1))
-        k = max(0.1, (center - o0).dot(d0))
-        a, b = o0 + d0 * k, o1 + d1 * k
-        c = o0 + d0 * (k + 1.0)
-        no = (b - a).cross(c - a)
-        if no.length < 1e-12:
-            raise cg.CutError('Wrap: the line is too short.')
-        no.normalize()
-        res = bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:], plane_co=a, plane_no=no,
-                                     dist=1e-7)
-        cut_edges = [e for e in res['geom_cut'] if isinstance(e, bmesh.types.BMEdge)]
-        chains = loops_from_edges([(e.verts[0].index, e.verts[1].index) for e in cut_edges]) if cut_edges else []
-        bm.verts.ensure_lookup_table()
-        if not chains:
-            raise cg.CutError('Wrap: the line does not cross the mesh.')
-        mid = path[len(path) // 2]
-        om, dm = (Vector(v) for v in projector.ray(mid))
+    td = target_data(context, target)
+    center = td.center
+    o0, d0 = (Vector(v) for v in projector.ray(p0))
+    o1, d1 = (Vector(v) for v in projector.ray(p1))
+    k = max(0.1, (center - o0).dot(d0))
+    a, b = o0 + d0 * k, o1 + d1 * k
+    c = o0 + d0 * (k + 1.0)
+    no = (b - a).cross(c - a)
+    if no.length < 1e-12:
+        raise cg.CutError('Wrap: the line is too short.')
+    no.normalize()
+    chains = [ch for ch in plane_section(td, a, no) if len(ch[0]) >= 3]
+    if not chains:
+        raise cg.CutError('Wrap: the line does not cross the mesh.')
+    mid = path[len(path) // 2]
+    om, dm = (Vector(v) for v in projector.ray(mid))
 
-        def ray_dist(co):
-            v = co - om
-            return (v - dm * v.dot(dm)).length
+    def ray_dist(q):
+        v = q - om
+        return (v - dm * v.dot(dm)).length
 
-        best = min(chains, key=lambda ch: min(ray_dist(bm.verts[i].co) for i in ch[0]))
-        pts = [bm.verts[i].co.copy() for i in best[0]]
-        return pts, best[1]
-    finally:
-        bm.free()
+    best = min(chains, key=lambda ch: min(ray_dist(q) for q in ch[0]))
+    return [q.copy() for q in best[0]], best[1]
 
 
 def _follow_path(context, target, projector, path, step_px=4.0):
@@ -330,34 +426,63 @@ def _follow_path(context, target, projector, path, step_px=4.0):
     for a, b in zip(path, path[1:]):
         n = max(1, int(math.dist(a, b) / step_px))
         dense += [(a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n) for k in range(1, n + 1)]
-    bvh, _v, _p = ap._target_bvh(context, target)
-    cos, _n, _miss = ap.project_patch(dense, projector, bvh)
+    td = target_data(context, target)
+    cos, _n, _miss = ap.project_patch(dense, projector, td)
     return [Vector(c) for c in cos], False
 
 
-def surface_path(context, ob, src, p):
-    """Cached (points, normals, closed) of the belt path on its mesh."""
-    key = (src.get('stamp'), tuple(round(float(getattr(p, k)), 4) if not isinstance(getattr(p, k), str)
-                                   else getattr(p, k) for k in PATH_KEYS), round(p.width, 5))
-    hit = _CACHE.get(ob.name)
-    if hit is not None and hit[0] == key:
-        return hit[1]
+def raw_loop(context, ob, src, p):
+    """0.24.89 The belt line on the mesh before resampling: (points, closed, loop size).  Cached apart from the
+    width / smoothing so a slider change does not cut the part again."""
     from . import armor_plate as ap
     target = bpy.data.objects.get(src.get('target', ''))
     if target is None or target.type != 'MESH':
         raise cg.CutError('The mesh the belt was drawn on is gone.')
+    key = (src.get('stamp'), p.mode, _stamp(context, target))
+    hit = _RAW.get(ob.name)
+    if hit is not None and hit[0] == key:
+        return hit[1]
     projector = ap.thaw_projector(src['proj'])
     path = [tuple(q) for q in src['path']]
     if p.mode == 'WRAP':
         pts, closed = _wrap_path(context, target, projector, path)
     else:
         pts, closed = _follow_path(context, target, projector, path)
-    step = max(1e-5, p.width / max(0.2, p.density))
+    size = 0.0
+    if pts:
+        lo = Vector((min(q.x for q in pts), min(q.y for q in pts), min(q.z for q in pts)))
+        hi = Vector((max(q.x for q in pts), max(q.y for q in pts), max(q.z for q in pts)))
+        size = float(max(hi - lo))
+    data = (pts, closed, size)
+    _RAW[ob.name] = (key, data)
+    return data
+
+
+def strap_width(p, size):
+    """The strap width in length: Width, or Width % of the loop size (Relative Width)."""
+    if getattr(p, 'relative', False) and size > 0:
+        return max(1e-4, size * p.width_pct / 100.0)
+    return p.width
+
+
+def surface_path(context, ob, src, p):
+    """Cached (points, normals, closed) of the belt path on its mesh."""
+    from . import armor_plate as ap
+    pts, closed, size = raw_loop(context, ob, src, p)
+    width = strap_width(p, size)
+    key = (src.get('stamp'), tuple(round(float(getattr(p, k)), 4) if not isinstance(getattr(p, k), str)
+                                   else getattr(p, k) for k in PATH_KEYS), round(width, 5), len(pts), closed)
+    hit = _CACHE.get(ob.name)
+    if hit is not None and hit[0] == key:
+        return hit[1]
+    target = bpy.data.objects.get(src.get('target', ''))
+    projector = ap.thaw_projector(src['proj'])
+    step = max(1e-5, width / max(0.2, p.density))
     pts = resample(pts, step, closed)
     if len(pts) < 2:
         raise cg.CutError('The belt path is too short.')
     pts = smooth_path(pts, p.smooth, closed)
-    bvh, _v, _f = ap._target_bvh(context, target)
+    bvh = target_data(context, target)
     center = sum(pts, Vector()) / len(pts)
     nrms, snapped = [], []
     for q in pts:
@@ -390,7 +515,8 @@ def build(context, ob):
         raise cg.CutError('This belt was applied.')
     p = ob.mch_belt
     pts, nrms, closed = surface_path(context, ob, src, p)
-    prof = strap_profile(p.preset, p.width, p.thickness, p.edge_round, p.rail_height, p.rail_width, p.groove,
+    width = strap_width(p, raw_loop(context, ob, src, p)[2])
+    prof = strap_profile(p.preset, width, p.thickness, p.edge_round, p.rail_height, p.rail_width, p.groove,
                          p.ribs)
     verts, faces = sweep(pts, nrms, prof, closed, p.lift)
     extra = []
@@ -576,6 +702,7 @@ def perform(context, path, projector):
         rebuild(context, ob)
     except Exception:
         _CACHE.pop(ob.name, None)
+        _RAW.pop(ob.name, None)
         bpy.data.objects.remove(ob, do_unlink=True)
         bpy.data.meshes.remove(me)
         raise
@@ -595,14 +722,9 @@ def perform(context, path, projector):
 def loop_size(ob):
     """0.24.89 The belt path's extent (world): the biggest side of its bounding box."""
     try:
-        pts = _CACHE[ob.name][1][0]
+        return float(_RAW[ob.name][1][2])
     except (KeyError, IndexError, TypeError):
         return 0.0
-    if not pts:
-        return 0.0
-    lo = Vector((min(q.x for q in pts), min(q.y for q in pts), min(q.z for q in pts)))
-    hi = Vector((max(q.x for q in pts), max(q.y for q in pts), max(q.z for q in pts)))
-    return float(max(hi - lo))
 
 
 def size_note(ob):
@@ -612,7 +734,8 @@ def size_note(ob):
     size = loop_size(ob)
     if size <= 0:
         return ''
-    return f' | loop {size:.3g}, width {p.width:.3g} = {100.0 * p.width / size:.0f} %'
+    w = strap_width(p, size)
+    return f' | loop {size:.3g}, width {w:.3g} = {100.0 * w / size:.0f} %' + (' (relative)' if p.relative else '')
 
 
 class MCH_OT_belt_defaults(bpy.types.Operator):
@@ -659,6 +782,7 @@ class MCH_OT_belt_apply(bpy.types.Operator):
         ob.mch_belt.live = False
         del ob[SRC_KEY]
         _CACHE.pop(ob.name, None)
+        _RAW.pop(ob.name, None)
         self.report({'INFO'}, f'{ob.name}: applied')
         return {'FINISHED'}
 
@@ -683,7 +807,12 @@ def draw(layout, context):
     target.row(align=True).prop(p, 'mode', expand=True)
     target.row(align=True).prop(p, 'preset', expand=True)
     col = target.column(align=True)
-    col.prop(p, 'width')
+    r = col.row(align=True)
+    r.prop(p, 'relative', text='Relative', toggle=True)                 # 0.24.89 width as % of the loop
+    if p.relative:
+        r.prop(p, 'width_pct', text='Width')
+    else:
+        r.prop(p, 'width')
     col.prop(p, 'thickness')
     col.prop(p, 'lift')
     col = target.column(align=True)
