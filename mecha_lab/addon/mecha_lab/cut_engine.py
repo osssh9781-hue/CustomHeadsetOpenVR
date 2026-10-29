@@ -685,7 +685,7 @@ def cut_diagnosis(target, groups, projector, near, far, invert):
 def _boolean_checked(context, cut, t, cutter, op, groups, projector, near, far, invert):
     """boolean_result + a precise explanation when the result would be empty."""
     try:
-        return cg.boolean_result(context, t, cutter, op, cut.solver, cut.hole_tolerant)
+        return cg.boolean_result(context, t, cutter, op, cut.solver, cut.hole_tolerant, hipoly=getattr(cut, 'hipoly', True))
     except cg.CutError as ex:
         if 'whole object' not in str(ex) and 'does not intersect' not in str(ex):
             raise

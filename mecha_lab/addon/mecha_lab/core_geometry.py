@@ -719,12 +719,42 @@ def _boolean_local(context, target, cutter, operation, solver, hole_tolerant, al
 LAST_BOOLEAN = {}
 
 
+def _boolean_region(context, target, cutter, operation, solver, hipoly):
+    """0.24.86 A dense part (``region_cut.MIN_FACES`` faces and more): the boolean on the faces round the cutter
+    only.  None = not done (small part, nothing cut, the check failed): the whole-part paths run."""
+    if not hipoly or solver not in {'AUTO', 'EXACT'}:
+        return None
+    from . import region_cut
+    log = []
+    try:
+        me = region_cut.region_boolean(context, target, cutter, operation, log)
+    except (RuntimeError, ValueError, MemoryError, ReferenceError, AttributeError):
+        return None
+    if me is None:
+        return None
+    nm0 = non_manifold_edge_count(target.data)
+    nm1 = non_manifold_edge_count(me)
+    if nm1 > nm0 + (2 if nm0 else 0):      # (a seam that did not close: the whole-part boolean)
+        import os
+        if os.environ.get('MECH_REGION_DEBUG'):
+            print(f'[region] dropped: open edges {nm0} -> {nm1} ({log[-1] if log else ""})', flush=True)
+        bpy.data.meshes.remove(me)
+        LAST_BOOLEAN['region_dropped'] = log[-1] if log else 'open seam'
+        return None
+    LAST_BOOLEAN['region'] = log[-1] if log else ''
+    return me, 'REGION'
+
+
 def boolean_result(context, target, cutter, operation, solver='AUTO',
-                   hole_tolerant=False, allow_empty=False):
+                   hole_tolerant=False, allow_empty=False, hipoly=True):
     """Run the Boolean with validation + solver fallback. Returns (mesh, solver).
-    0.24.58 only on the loose parts the cutter reaches (``_boolean_local``)."""
+    0.24.58 only on the loose parts the cutter reaches (``_boolean_local``).  0.24.86 a dense part: only the faces
+    round the cutter (``_boolean_region``; ``hipoly`` = the cut setting High Poly)."""
     LAST_BOOLEAN.clear()
     try:
+        got = _boolean_region(context, target, cutter, operation, solver, hipoly)
+        if got is not None:
+            return got
         got = _boolean_local(context, target, cutter, operation, solver, hole_tolerant, allow_empty)
         if got is not None:
             return got
@@ -740,6 +770,9 @@ def boolean_result(context, target, cutter, operation, solver='AUTO',
     old = cutter.data
     cutter.data = _cutter_with_reflections(cutter, reflections)
     try:
+        got = _boolean_region(context, target, cutter, operation, solver, hipoly)
+        if got is not None:
+            return got
         got = _boolean_local(context, target, cutter, operation, solver, hole_tolerant, allow_empty)
         if got is not None:
             return got

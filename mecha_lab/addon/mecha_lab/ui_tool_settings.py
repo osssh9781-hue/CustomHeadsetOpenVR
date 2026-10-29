@@ -232,6 +232,7 @@ def draw_cut(layout, context, mode='CUT'):
     c.prop(cut, 'solver')
     if cut.solver in {'AUTO', 'EXACT'}:
         c.prop(cut, 'hole_tolerant')
+        c.prop(cut, 'hipoly')                  # 0.24.86
     c.prop(cut, 'shared_mesh')
     c.prop(cut, 'fast_line')
     c.prop(cut, 'line_cap')
