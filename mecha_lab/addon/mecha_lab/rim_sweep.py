@@ -504,16 +504,44 @@ def _sweep(mesh, n, fast):
 def band_crosses(band):
     """0.24.68 Does the swept band cross itself (faces that meet without sharing a point)?  Then it needs the
     Exact self-union first; a band that does not can go straight into the Manifold difference."""
+    return band_cross_count(band, stop=1) > 0
+
+
+def band_cross_count(band, stop=None):
+    """0.24.91 How many face pairs of the band cross (``stop``: enough once that many are found)."""
     from mathutils.bvhtree import BVHTree
     if len(band.polygons) == 0:
-        return False
+        return 0
     verts = [v.co.copy() for v in band.vertices]
     polys = [tuple(p.vertices) for p in band.polygons]
     tree = BVHTree.FromPolygons(verts, polys, epsilon=0.0)
+    n = 0
     for i, j in tree.overlap(tree):
         if i < j and not set(polys[i]) & set(polys[j]):
-            return True
-    return False
+            n += 1
+            if stop is not None and n >= stop:
+                break
+    return n
+
+
+DENSE = 5000                 # band faces: a tangled band past this is given up (its Exact self-union ran 35 s / 457 s)
+TANGLED = 4                  # band crossings per rim edge: past this the band is swept at half the width
+
+
+def _settle(res, before):
+    """0.24.91 A fast result with a few open edges (the fuzz: ONE open edge sent a 9k-face piece down the 63 s
+    all-Exact way): the small holes shut, then judged again.  True when clean after that."""
+    if len(res.polygons) == 0:
+        return False
+    open_edges = _open_edges(res)
+    if open_edges == 0 or open_edges > 8:
+        return _clean(res, before)
+    try:
+        from . import mesh_fix
+        mesh_fix.fix_mesh(res, fill='SMALL')
+    except (RuntimeError, ValueError):
+        return False
+    return _clean(res, before)
 
 
 def _volume(me):
@@ -569,6 +597,13 @@ def _smooth_limits(edges, lim, width, passes=12):
 LAST = {}
 
 
+def _skip(mesh, why):
+    LAST['skipped'] = why
+    LAST.pop('narrowed', None)
+    clear(mesh)
+    return 0
+
+
 def finish(mesh, mode='CHAMFER', width=0.01, segments=3):
     """Chamfer / bevel the cut's rim on ``mesh`` (object space) with the Geometry Nodes sweep.  Returns the
     number of rim edges finished (0 = nothing done, the mesh unchanged)."""
@@ -583,15 +618,36 @@ def finish(mesh, mode='CHAMFER', width=0.01, segments=3):
         return 0
     closed = cg.non_manifold_edge_count(mesh) == 0
     res = None
+    tangled = False
+    LAST.pop('skipped', None)
+    LAST.pop('narrowed', None)
     if closed:                                 # 0.24.68 a band that does not cross itself: no Exact self-union
         band = _sweep(mesh, n, 'band')
-        crosses = band_crosses(band)
+        band_faces = len(band.polygons)
+        crosses = band_cross_count(band, stop=TANGLED * count + 1)
         bpy.data.meshes.remove(band)
+        for _half in range(2):                 # 0.24.91 a band tangled in itself (a jagged rim, the profile wider
+            if crosses <= TANGLED * count:     #  than its wiggles: 9,050 crossings on 938 rim edges, 15 + 63 s):
+                break                          #  half the width, and once more - a narrower chamfer that finishes
+            width *= 0.5
+            n, count = mark_rim(mesh, mode, width, segments)
+            if not count:
+                clear(mesh)
+                return 0
+            band = _sweep(mesh, n, 'band')
+            band_faces = len(band.polygons)
+            crosses = band_cross_count(band, stop=TANGLED * count + 1)
+            bpy.data.meshes.remove(band)
+            LAST['narrowed'] = width
+        tangled = crosses > TANGLED * count
         if not crosses:
             res = _sweep(mesh, n, 'direct')
             if not _clean(res, mesh):
                 bpy.data.meshes.remove(res)
                 res = None
+        elif tangled and band_faces > DENSE:   # 0.24.91 a big tangled band: its Exact self-union ran 35 s / 457 s
+            return _skip(mesh, f'Edge Finish skipped: the rim is too jagged for a {mode.lower()} this wide '
+                               f'({band_faces:,}-face band crossing itself) - Fix Mesh / DynaMesh it, or a narrower width')
     else:                                      # 0.24.77 an open / broken part: no Self Intersection on the part
         res = _sweep(mesh, n, 'open')
         if not _fair(res, mesh, count):        # worse than it was: the old way too, the better of the two kept
@@ -601,8 +657,11 @@ def finish(mesh, mode='CHAMFER', width=0.01, segments=3):
             bpy.data.meshes.remove(alt)
     if res is None:
         res = _sweep(mesh, n, fast=closed)
-        if closed and not _clean(res, mesh):   # the fast result is not right: the slow, sure way
+        if closed and not _settle(res, mesh):  # the fast result is not right: the slow, sure way
             bpy.data.meshes.remove(res)
+            if tangled:                        # 0.24.91 ... not on a tangled band (35 s to 7 min, and no better)
+                return _skip(mesh, 'Edge Finish skipped: the swept band did not come out clean on a jagged rim '
+                                   f'({len(mesh.polygons):,} faces) - Fix Mesh / DynaMesh it, or a narrower width')
             res = _sweep(mesh, n, fast=False)
     try:
         if len(res.polygons) == 0:

@@ -1,8 +1,11 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.90 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.91 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## 0.24.91 Edge Finish 건너뛰기 (미검증)
+- [ ] DynaMesh 한 부품(노이즈 브러시로 거칠게)에 Cut + Edge Finish Chamfer → 몇 초 안에 끝나고, 안 됐으면 경고줄에 "Edge Finish skipped: the rim is too jagged …" 가 보이는지. 매끈한 부품에선 예전처럼 챔퍼가 붙는지.
 
 ## 0.24.90 Cloth Plate LIVE 값 (미검증)
 - [ ] Cloth Plate 라쏘 → 사이드바 LIVE 상자에 Edge Trim(Trim Width / Trim Height) 부터 Folds · Sections 까지 슬라이더가 보이고, Trim Width 를 끌면 테두리가 바로 바뀌는지. 그려진 사이드 패널(막대)에서도.

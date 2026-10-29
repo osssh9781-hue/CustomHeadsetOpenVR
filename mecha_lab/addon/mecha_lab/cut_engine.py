@@ -958,7 +958,8 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
             if not edge_counts:
                 suffix = ' | Edge Finish skipped (uncapped or Live cut)'
             elif sum(edge_counts) == 0:
-                suffix = ' | WARNING: Edge Finish found 0 new edges; no bevel/chamfer'
+                from . import rim_sweep
+                suffix = ' | WARNING: ' + (rim_sweep.LAST.get('skipped') or 'Edge Finish found 0 new edges; no bevel/chamfer')
             else:
                 suffix = f' | {cut.edge_finish}: {sum(edge_counts)} newly cut edges'
         took = time.perf_counter() - t_start           # 0.24.58 a slow cut says how long and which solver

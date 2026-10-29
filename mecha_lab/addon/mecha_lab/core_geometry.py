@@ -1054,15 +1054,74 @@ def _flipped_pairs(me, fmask=None):
     return len(np.unique(key)) < len(key)
 
 
-def _one_by_one(bm, pick, fixes, limit=256):
+SUB_FACES = 2000                # 0.24.91 _one_by_one: a mesh past this size is worked on a cut-out round the candidates
+
+
+def _ring_edges(verts):
+    es = set()
+    for v in verts:
+        es.update(v.link_edges)
+        for f in v.link_faces:
+            es.update(f.edges)
+    return es
+
+
+def _bad_in(edges):
+    return sum(1 for e in edges if e.is_valid and e.link_faces and len(e.link_faces) != 2)
+
+
+def _guarded_local(bm, elem_of, fn):
+    """0.24.91 ``_guarded`` for a one-element fix (a face's edge collapsed or dissolved, a point dissolved): only
+    the edges round the element are counted - a collapse or a dissolve changes face counts there and nowhere else -
+    not the whole part per try (the whole-part count was half of a 68 s tidy).  ``elem_of(trial)`` finds the face /
+    point in the copy, ``fn(trial, elem)`` fixes it and says how many it fixed."""
+    trial = bm.copy()
+    try:
+        el = elem_of(trial)
+        ring = _ring_edges(el.verts if hasattr(el, 'verts') else (el,))
+        bad0 = _bad_in(ring)
+        n = fn(trial, el)
+    except (RuntimeError, ValueError, TypeError, IndexError):
+        trial.free()
+        return bm, 0
+    if not n or _bad_in(ring) > bad0:
+        trial.free()
+        return bm, 0
+    bm.free()
+    return trial, n
+
+
+def _one_by_one(bm, pick, fixes, limit=256, test=None):
     """0.24.83 The faces ``pick`` finds (zero-area, needles), each tried on its own with the ``fixes`` in turn (the
     first that does not open the mesh is kept) - the bulk dissolve of a GN Edge / bevel result opened the mesh and was
-    dropped whole, and its zero-area faces all stayed.  Returns (bmesh, faces fixed)."""
+    dropped whole, and its zero-area faces all stayed.  Returns (bmesh, faces fixed).  0.24.91 on a mesh past
+    ``SUB_FACES`` the candidates and two rings of faces round them are cut out, fixed on their own and put back
+    (every try copied and re-counted the whole part: 68 s of a 96 s chamfer cut on a 10k-face fuzz knob with
+    1,700 tries)."""
+    if len(bm.faces) > SUB_FACES:
+        got = _one_by_one_chunks(bm, pick, fixes, limit, test)
+        if got is not None:
+            return got
     done, tried = 0, set()
+    gen = 0
+    if test is not None and bm.faces.layers.int.get('_mch_cand') is None:
+        bm.faces.layers.int.new('_mch_cand')    # (made before any face is held: a new layer drops the proxies)
     for _ in range(limit):
         bm.faces.ensure_lookup_table()
+        bm.faces.index_update()             # (a cut-out's faces, made with faces.new, carry index -1 until this)
         cand = None
-        for f in pick(bm):
+        found = None
+        if test is not None:                # 0.24.91 ``test(b, f)``: the faces ``pick`` found last time are marked
+            lay = bm.faces.layers.int.get('_mch_cand')     # and only re-checked - not the whole mesh scanned per
+            if gen:                         # try (5 ms of a 8 ms try on a 1k-face cut-out)
+                found = [f for f in bm.faces if f[lay] == gen and test(bm, f)]
+        if not found:
+            found = pick(bm)
+            if test is not None:
+                gen += 1
+                for f in found:
+                    f[lay] = gen
+        for f in found:
             key = tuple(round(c, 6) for c in f.calc_center_median()) + (len(f.verts),)
             if key not in tried:
                 cand, ckey = f.index, key
@@ -1071,16 +1130,196 @@ def _one_by_one(bm, pick, fixes, limit=256):
             break
         tried.add(ckey)
         for fix in fixes:
-            def stage(b, i=cand, fix=fix):
-                b.faces.ensure_lookup_table()
+            def stage(b, f, fix=fix):
                 nf = len(b.faces)
-                fix(b, b.faces[i])
+                fix(b, f)
                 return 1 if len(b.faces) < nf else 0
-            bm, n = _guarded(bm, stage)
+
+            def face_of(b, i=cand):
+                b.faces.ensure_lookup_table()
+                return b.faces[i]
+            bm, n = _guarded_local(bm, face_of, stage)
             if n:
                 done += 1
                 break
+    lay = bm.faces.layers.int.get('_mch_cand')
+    if lay is not None:                     # (never into the mesh as an attribute)
+        bm.faces.layers.int.remove(lay)
     return bm, done
+
+
+CHUNK = 12                      # candidates per cut-out (a cut-out of a few hundred faces, a few passes)
+CHUNK_LIMIT = 4096              # tries on the cut-outs (a try there is ~2 ms, not 40: the 256 cap left 760 of 1,024
+#                                 zero-area faces of a jagged boolean rim as they were)
+CHUNK_BUDGET = 2.0              # seconds per call: a DynaMesh-noise rim can carry thousands of slivers per cut;
+#                                 past this the rest stay (as every one of them did before 0.24.91)
+
+
+def _one_by_one_chunks(bm, pick, fixes, limit, test=None):
+    """0.24.91 ``_one_by_one_sub`` pass after pass, ``CHUNK`` candidates at a time, until none is left, a pass fixes
+    nothing, or ``limit`` tries are spent.  None = the first pass was not worth it / not safe."""
+    import time
+    done, passes = 0, 0
+    tried = set()
+    limit = max(limit, CHUNK_LIMIT)
+    chunk = CHUNK
+    t0 = time.perf_counter()
+    while limit > 0 and time.perf_counter() - t0 < CHUNK_BUDGET:
+        bm.faces.ensure_lookup_table()
+        cand = []
+        found = pick(bm)
+        if passes == 0:                     # (a long list - 1,700 zero-area faces on a jagged boolean rim - in
+            chunk = min(4 * CHUNK, max(CHUNK, len(found) // 32))     # bigger cut-outs: fewer passes)
+        for f in found:
+            key = tuple(round(c, 6) for c in f.calc_center_median()) + (len(f.verts),)
+            if key not in tried:
+                tried.add(key)
+                cand.append(f)
+                if len(cand) >= chunk:
+                    break
+        if not cand:
+            break
+        got = _one_by_one_sub(bm, cand, pick, fixes, min(limit, 4 * len(cand)), test)
+        if got is None:
+            return None if passes == 0 else (bm, done)
+        passes += 1
+        bm, n = got
+        done += n
+        limit -= len(cand)
+        if not n:
+            break
+    return bm, done
+
+
+def _one_by_one_sub(bm, cand, pick, fixes, limit, test=None):
+    """0.24.91 ``_one_by_one`` on a cut-out: the candidate faces ``cand`` and two rings round them go into their
+    own small bmesh (the candidates' points are then interior: a collapse or dissolve never touches the cut-out's
+    rim), the fixes run there, and the cut-out replaces the region in a copy of the part - kept when the part's rim
+    points all sit where they were and no edge opened.  None = not worth it or not safe (the caller goes the plain
+    way).  Per-face data (smooth, material, the near marks) and the corner data (UVs, colours) of faces left as
+    they were come along; a merged face gets fresh corner data."""
+    bm.faces.ensure_lookup_table()
+    bm.verts.ensure_lookup_table()
+    bm.faces.index_update()                 # (faces / points a pass added carry index -1 until this)
+    bm.verts.index_update()
+    if not cand:
+        return bm, 0
+    region = set(cand)
+    for _ring in range(2):
+        grow = set()
+        for f in region:
+            for v in f.verts:
+                grow.update(v.link_faces)
+        region |= grow
+    if len(region) > SUB_FACES or len(region) * 4 > len(bm.faces):
+        return None
+    rverts = {v for f in region for v in f.verts}
+    boundary = {v for v in rverts if any(f not in region for f in v.link_faces)}
+    bad_before = _bad_in(_ring_edges(rverts))        # (the edges at the region's points: the put-back is judged there)
+    own = {v for f in cand for v in f.verts}       # the fixes stay on faces made of the candidates' own points:
+    #  a collapse there only ever drops ring-1 faces, so the cut-out's rim (two rings out) keeps every point
+    near_f = bm.faces.layers.int.get('_mch_near')
+    near_v = bm.verts.layers.int.get('_mch_near')
+    sub = bmesh.new()
+    sv = sub.verts.layers.int.new('_mch_src')
+    sb = sub.verts.layers.int.new('_mch_bnd')
+    sf = sub.faces.layers.int.new('_mch_srcf')
+    s_near_f = sub.faces.layers.int.new('_mch_near') if near_f is not None else None
+    s_near_v = sub.verts.layers.int.new('_mch_near') if near_v is not None else None
+    vmap = {}
+    for v in rverts:
+        nv = sub.verts.new(v.co)
+        nv[sv] = v.index
+        nv[sb] = 0 if v in own else (2 if v in boundary else 1)
+        if s_near_v is not None:
+            nv[s_near_v] = v[near_v]
+        vmap[v] = nv
+    fverts = {}
+    for f in region:
+        try:
+            nf = sub.faces.new([vmap[v] for v in f.verts])
+        except ValueError:
+            sub.free()
+            return None
+        nf[sf] = f.index
+        nf.smooth = f.smooth
+        nf.material_index = f.material_index
+        if s_near_f is not None:
+            nf[s_near_f] = f[near_f]
+        fverts[f.index] = tuple(v.index for v in f.verts)
+    # the corner data of the region's faces (copied back onto faces that come out unchanged)
+    loop_layers = [(kind, lay) for kind, coll in (('uv', bm.loops.layers.uv), ('col', bm.loops.layers.color),
+                                                  ('col', bm.loops.layers.float_color)) for lay in coll]
+    corner = {}
+    if loop_layers:
+        for f in region:
+            corner[f.index] = [[(l[lay].uv.copy() if kind == 'uv' else l[lay][:]) for kind, lay in loop_layers]
+                               for l in f.loops]
+
+    def pick_sub(b):
+        lay = b.verts.layers.int.get('_mch_bnd')
+        return [f for f in pick(b) if not any(v[lay] for v in f.verts)]
+
+    def test_sub(b, f):
+        lay = b.verts.layers.int.get('_mch_bnd')
+        return not any(v[lay] for v in f.verts) and test(b, f)
+
+    sub, done = _one_by_one(sub, pick_sub, fixes, limit, test_sub if test is not None else None)
+    if not done:
+        sub.free()
+        return bm, 0
+    sv, sb, sf = sub.verts.layers.int['_mch_src'], sub.verts.layers.int['_mch_bnd'], sub.faces.layers.int['_mch_srcf']
+    s_near_f = sub.faces.layers.int.get('_mch_near')
+    s_near_v = sub.verts.layers.int.get('_mch_near')
+    bidx = {v.index: v.co.copy() for v in boundary}
+    kept = {v[sv] for v in sub.verts if v[sb] == 2}
+    if kept != set(bidx) or any((v.co - bidx[v[sv]]).length > 0 for v in sub.verts if v[sb] == 2):
+        sub.free()
+        return None
+    trial = bm.copy()
+    trial.verts.ensure_lookup_table()
+    trial.faces.ensure_lookup_table()
+    tv = {i: trial.verts[i] for i in bidx}
+    bmesh.ops.delete(trial, geom=[trial.faces[i] for i in fverts], context='FACES')
+    t_near_f = trial.faces.layers.int.get('_mch_near')
+    t_near_v = trial.verts.layers.int.get('_mch_near')
+    t_layers = [(kind, (trial.loops.layers.uv if kind == 'uv' else
+                        (trial.loops.layers.color if lay.name in bm.loops.layers.color else trial.loops.layers.float_color))[lay.name])
+                for kind, lay in loop_layers]
+    nmap = {}
+    for v in sub.verts:
+        if v[sb] == 2:
+            nmap[v] = tv[v[sv]]
+        else:
+            nv = trial.verts.new(v.co)
+            nmap[v] = nv
+            if t_near_v is not None and s_near_v is not None:
+                nv[t_near_v] = v[s_near_v]
+    for f in sub.faces:
+        try:
+            nf = trial.faces.new([nmap[v] for v in f.verts])
+        except ValueError:
+            trial.free()
+            sub.free()
+            return None
+        nf.smooth = f.smooth
+        nf.material_index = f.material_index
+        if t_near_f is not None and s_near_f is not None:
+            nf[t_near_f] = f[s_near_f]
+        src = f[sf]
+        if corner and tuple(v[sv] for v in f.verts) == fverts.get(src):
+            for nl, vals in zip(nf.loops, corner[src]):
+                for (kind, lay), val in zip(t_layers, vals):
+                    if kind == 'uv':
+                        nl[lay].uv = val
+                    else:
+                        nl[lay] = val
+    sub.free()
+    if _bad_in(_ring_edges(set(nmap.values()))) > bad_before:
+        trial.free()
+        return None
+    bm.free()
+    return trial, done
 
 
 def _shortest(f):
@@ -1152,27 +1391,23 @@ def _spike_verts(b, lay=None):
 
 def _spikes_one_by_one(bm, limit=64, lay=None):
     """Each spike point dissolved on its own (its needle faces become one face), kept only when the mesh does not
-    open.  Returns (bmesh, spikes removed)."""
-    done, tried = 0, set()
-    for _ in range(limit):
-        bm.verts.ensure_lookup_table()
-        cand = None
-        for v in _spike_verts(bm, lay):
-            key = tuple(round(c, 6) for c in v.co)
-            if key not in tried:
-                cand, ckey = v.index, key
-                break
-        if cand is None:
-            break
-        tried.add(ckey)
-
-        def stage(b, i=cand):
-            b.verts.ensure_lookup_table()
+    open.  Returns (bmesh, spikes removed).  0.24.91 the spikes are found once (the scan is Python over every point;
+    it ran again after each one: 24 s of a fuzz cut's tidy) and taken highest index first, so a removed point never
+    shifts the index of one still to do; the guard counts the edges round the point, not the whole part."""
+    done = 0
+    bm.verts.ensure_lookup_table()
+    bm.verts.index_update()
+    cand = sorted((v.index for v in _spike_verts(bm, lay)), reverse=True)[:limit]
+    for i in cand:
+        def stage(b, v):
             nv = len(b.verts)
-            bmesh.ops.dissolve_verts(b, verts=[b.verts[i]], use_face_split=False, use_boundary_tear=False)
+            bmesh.ops.dissolve_verts(b, verts=[v], use_face_split=False, use_boundary_tear=False)
             return 1 if len(b.verts) < nv else 0
 
-        bm, n = _guarded(bm, stage)
+        def vert_of(b, i=i):
+            b.verts.ensure_lookup_table()
+            return b.verts[i]
+        bm, n = _guarded_local(bm, vert_of, stage)
         done += n
     return bm, done
 
@@ -1280,7 +1515,8 @@ def tidy_result(me, ref_size=None, shards=True, slivers=True, before=None, flip=
             bm, out['degenerate'] = _guarded(bm, degenerate, bad)
             changed = changed or out['degenerate'] > 0
         if (changed or min_area < 1e-12) and any(_is_zero(f) for f in faces_of(bm)):   # (the bulk pass was dropped or missed some: one by one)
-            bm, n = _one_by_one(bm, lambda b: [f for f in faces_of(b) if _is_zero(f)], (_collapse_short, _dissolve_long))
+            bm, n = _one_by_one(bm, lambda b: [f for f in faces_of(b) if _is_zero(f)], (_collapse_short, _dissolve_long),
+                                test=lambda b, f: _is_zero(f))
             out['degenerate'] += n
         if slivers and len(bm.faces) > 1:
             # needles: faces far thinner than long (area / perimeter^2 under NEEDLE) - the boolean's slivers along a
@@ -1303,7 +1539,8 @@ def tidy_result(me, ref_size=None, shards=True, slivers=True, before=None, flip=
             if thin_faces(bm):                          # (0.24.85 looked at first: no needle, no copy of the mesh)
                 bm, out['needles'] = _guarded(bm, needles, bad)
             if any(_is_needle(f) for f in faces_of(bm)):    # (a needle on its own: dissolve_faces leaves it)
-                bm, n = _one_by_one(bm, lambda b: [f for f in faces_of(b) if _is_needle(f)], (_collapse_short, _dissolve_long))
+                bm, n = _one_by_one(bm, lambda b: [f for f in faces_of(b) if _is_needle(f)], (_collapse_short, _dissolve_long),
+                                    test=lambda b, f: _is_needle(f))
                 out['needles'] += n
             bm, out['spikes'] = _spikes_one_by_one(bm, lay='_mch_near' if lv is not None else None)   # 0.24.83 fans of needle faces round one far point
         if shards and len(bm.faces):
