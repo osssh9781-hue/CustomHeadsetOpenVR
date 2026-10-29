@@ -26,13 +26,14 @@ import numpy as np
 from mathutils.kdtree import KDTree
 
 TAG = 'mch_region_src'
+SRC = 'mch_region_face'
 LAST_TIMES = {}                   # the last region boolean's stage times (region / extract / boolean / knife / sort / stitch)
 LAST_REGION = {}                  # the last stitched result: {'name': mesh name, 'faces': total, 'untouched': first N faces untouched}
 TIDY_SUB_MIN = 50_000             # faces: below this the whole-mesh tidy is as fast as taking the region out
 MIN_FACES = int(os.environ.get('MECH_REGION_MIN', 100_000))   # (below this the whole-part boolean is as fast)
 MARGIN = 0.15                     # of the cutter's box diagonal, each side
 RINGS = 2
-_SKIP = {'position', '.edge_verts', '.corner_vert', '.corner_edge', TAG}
+_SKIP = {'position', '.edge_verts', '.corner_vert', '.corner_edge', TAG, SRC}
 _TYPES = {'FLOAT': ('value', 1, np.float32), 'INT': ('value', 1, np.int32), 'INT8': ('value', 1, np.int32),
           'BOOLEAN': ('value', 1, bool), 'FLOAT_VECTOR': ('vector', 3, np.float32), 'FLOAT2': ('vector', 2, np.float32),
           'FLOAT_COLOR': ('color', 4, np.float32), 'BYTE_COLOR': ('color', 4, np.float32),
@@ -181,6 +182,8 @@ def region_boolean(context, target, cutter, operation, log=None):
                                                                                 #  clamps indices to the slots it has)
     a = patch.attributes.new(TAG, 'INT', 'FACE')
     a.data.foreach_set('value', np.ones(len(patch.polygons), np.int32))
+    a = patch.attributes.new(SRC, 'INT', 'FACE')              # (which part face each triangle came from: the quads
+    a.data.foreach_set('value', np.nonzero(fmask)[0].astype(np.int32))   #  are put back together after the boolean)
     for name, domain, dtype in _attr_list(me):        # (the patch carries the part's attributes into the boolean)
         vals = _read_attr(me, name, domain, dtype)
         if vals is None or domain == 'EDGE':
@@ -540,6 +543,24 @@ def _region_sub(kept, walls, size):
         drop = [f for f, k in zip(bm.faces, kface.tolist()) if not k]
         if drop:
             bmesh.ops.delete(bm, geom=drop, context='FACES')
+        # a quad / n-gon the cut never touched came through the boolean as its triangles: put back together
+        # (the triangles of one source face that still share their diagonal, with no new point on it)
+        src = bm.faces.layers.int.get(SRC)
+        if src is not None:
+            groups = {}
+            for f in bm.faces:
+                if f.is_valid and len(f.verts) == 3:
+                    groups.setdefault(f[src], []).append(f)
+            diag = []
+            for fs in groups.values():
+                if len(fs) < 2:
+                    continue
+                for e in {e for f in fs for e in f.edges}:
+                    lf = e.link_faces
+                    if len(lf) == 2 and lf[0] in fs and lf[1] in fs and not any(len(x.link_faces) != 2 for x in e.verts[0].link_edges if False):
+                        diag.append(e)
+            if diag:
+                bmesh.ops.dissolve_edges(bm, edges=diag, use_verts=False, use_face_split=False)
         if len(wt):
             vs = [bm.verts.new(tuple(p)) for p in wc.tolist()]
             start = np.concatenate([[0], np.cumsum(wt)[:-1]])
@@ -922,16 +943,38 @@ def fix_holes_sub(me, size, fill='SMALL'):
     """0.24.86 ``mesh_fix.fix_mesh`` on the faces round the open edges only (a dense part: the whole-mesh fix took
     14 s of a 1.3M-face cut for 19 sliver edges).  False = not done (nothing open, or the rim could not be put
     back): the caller runs the whole-mesh fix."""
-    from . import mesh_fix
+    import bmesh
     fm = open_edge_faces(me)
     if fm is None or fm.sum() >= 0.3 * len(fm):
         return False
     sub, _used = extract_faces(me, fm, 'MCH_HoleSub')
     try:
-        st = mesh_fix.fix_mesh(sub, fill=fill)
+        # at the PART's scale (mesh_fix welds relative to the mesh it gets - the tiny sub - and took rim points)
+        eps = 1e-5 * max(1e-9, size)
+        bm = bmesh.new()
+        try:
+            bm.from_mesh(sub)
+            bnd = [v for v in bm.verts if any(len(e.link_faces) == 1 for e in v.link_edges)]
+            if bnd:
+                bmesh.ops.remove_doubles(bm, verts=bnd, dist=eps)
+            short = [e for e in bm.edges if e.is_valid and e.calc_length() < eps]
+            if short:
+                bmesh.ops.dissolve_degenerate(bm, edges=short, dist=eps)
+            opn = [e for e in bm.edges if e.is_valid and len(e.link_faces) == 1]
+            filled = 0
+            if opn:
+                filled = len(bmesh.ops.holes_fill(bm, edges=opn, sides=12).get('faces', []))
+            tiny = [f for f in bm.faces if f.is_valid and f.calc_area() < eps * eps
+                    and any(len(e.link_faces) > 2 for e in f.edges)]
+            if tiny:
+                bmesh.ops.delete(bm, geom=tiny, context='FACES_ONLY')
+            bm.to_mesh(sub)
+        finally:
+            bm.free()
         ok = replace_faces(me, fm, sub, size)
         if os.environ.get('MECH_REGION_DEBUG'):
-            print(f'[region] holes: {int(fm.sum()):,} faces round the open edges of {len(fm):,}; fix {st}; put back {ok}', flush=True)
+            print(f'[region] holes: {int(fm.sum()):,} faces round the open edges of {len(fm):,}; {len(bnd)} open points, '
+                  f'{len(short)} short edges, {filled} holes filled; put back {ok}', flush=True)
         return ok
     finally:
         bpy.data.meshes.remove(sub)
