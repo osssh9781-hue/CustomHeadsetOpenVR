@@ -1,166 +1,143 @@
-# Fuzz report: 40 scenarios x 12 steps (seeds 601..640)
+# Fuzz report: 20 scenarios x 12 steps (seeds 900..919)
 
-{'OK': 40} in 1009 s, largest Blender process 4569 MB
+{'OK': 20} in 215 s, largest Blender process 1186 MB
 
 ## BAD results (the mesh after a step)
 
-- seed 601: BAD 3 hide_restore on Knob: NOOP - finished (Box Hide: Restored on Knob) but the part did not change (2 of 5 points inside the shape are over it)
-- seed 603: BAD 11 cut_ramp on Knob: debris pieces 0 -> 1
-- seed 603: BAD 11 cut_ramp on Block: zero-area faces 0 -> 2
-- seed 604: BAD 10 cut_plain on Block: spikes 0 -> 1
-- seed 605: BAD 6 cut_gn on Body: spikes 0 -> 1
-- seed 607: BAD 10 cut_bevel on PlateB: debris pieces 0 -> 1
-- seed 612: BAD 10 decimate on Block: slivers 0 -> 4
-- seed 612: BAD 11 decimate on Body: edges with 3+ faces 0 -> 1
-- seed 612: BAD 11 decimate on Body: slivers 0 -> 43
-- seed 614: BAD 10 cut_gn on PlateA: spikes 0 -> 1
-- seed 618: BAD 8 cut_bevel on Knob: spikes 0 -> 1
-- seed 618: BAD 8 cut_bevel on Knob: zero-area faces 0 -> 2
-- seed 618: BAD 8 cut_bevel on Thin66: spikes 0 -> 1
-- seed 618: BAD 8 cut_bevel on Thin66: zero-area faces 0 -> 11
-- seed 618: BAD 10 cut_bevel on Thin66: spikes 1 -> 2
-- seed 618: BAD 11 decimate on Thin66: edges with 3+ faces 0 -> 1
-- seed 618: BAD 11 decimate on Thin66: spikes 2 -> 4
-- seed 618: BAD 11 decimate on Thin66: zero-area faces 1 -> 32
-- seed 618: BAD 11 decimate on Thin66: slivers 0 -> 332
-- seed 622: BAD 7 cut_bevel on Block: zero-area faces 0 -> 1
-- seed 622: BAD 8 cut_bevel on Block: zero-area faces 1 -> 5
-- seed 622: BAD 11 cut_ramp on Block: zero-area faces 0 -> 1
-- seed 623: BAD 10 cut_gn on Body: zero-area faces 0 -> 1
-- seed 624: BAD 4 cut_line on PlateA: NOOP - finished (Cut: Body | not touched (no overlap): PlateA) but the part did not change (1 of 3 points inside the shape are over it)
-- seed 624: BAD 8 sculpt on PlateA: spikes 0 -> 1
-- seed 625: BAD 5 cut_bevel on Body: zero-area faces 0 -> 1
-- seed 626: BAD 3 decimate on Block: slivers 0 -> 3
-- seed 626: BAD 4 pipeline on Block: closed part now has 22 open edges
-- seed 626: BAD 7 decimate on Block: slivers 0 -> 9
-- seed 629: BAD 9 cut_ramp on Block: spikes 0 -> 3
-- seed 629: BAD 11 cut_gn on Block: debris pieces 0 -> 1
-- seed 632: BAD 2 cut_bevel on Knob: spikes 0 -> 3
-- seed 632: BAD 7 cut_line on Knob: zero-area faces 0 -> 1
-- seed 632: BAD 11 decimate on Block: slivers 0 -> 16
-- seed 635: BAD 1 cut_line on PlateA: NOOP - finished (Cut: Body | CHAMFER: 18 newly cut edges | not touched (no ov) but the part did not change (2 of 3 points inside the shape are over it)
-- seed 635: BAD 10 quad on Body: NOOP - Quad Remesh: no faces came out (try more polygons)
-- seed 636: BAD 1 cut_bevel on Knob: spikes 0 -> 2
-- seed 638: BAD 6 cut_ramp on Knob: zero-area faces 0 -> 1
-- seed 639: BAD 6 hard_edges on PlateA: zero-area faces 0 -> 5
-- seed 639: BAD 7 cut_ramp on Body: spikes 0 -> 2
-- seed 639: BAD 7 cut_ramp on Body: zero-area faces 0 -> 2
-- seed 639: BAD 7 cut_ramp on Body: debris pieces 0 -> 1
-- seed 639: BAD 7 cut_ramp on PlateA: zero-area faces 5 -> 6
-- seed 639: BAD 9 decimate on PlateA: zero-area faces 6 -> 12
-- seed 639: BAD 9 decimate on PlateA: slivers 4 -> 180
-- seed 639: BAD 10 hard_edges on PlateA: zero-area faces 12 -> 18
+- seed 901: BAD 4 cut_gn on Body: spikes 0 -> 1
+- seed 901: BAD 4 cut_gn on Body: zero-area faces 0 -> 1
+- seed 901: BAD 4 cut_gn on Body: debris pieces 0 -> 6
+- seed 903: BAD 6 cut_bevel on Body: spikes 0 -> 1
+- seed 903: BAD 6 cut_bevel on Body: faces on the same points 0 -> 1
+- seed 903: BAD 6 cut_bevel on Body: zero-area faces 0 -> 4
+- seed 903: BAD 6 cut_bevel on Body: debris pieces 0 -> 3
+- seed 903: BAD 8 cut_line on Body: spikes 1 -> 3
+- seed 904: BAD 3 cut_bevel on Body: zero-area faces 0 -> 8
+- seed 904: BAD 3 cut_bevel on Body: debris pieces 0 -> 5
+- seed 904: BAD 5 cut_plain on Body: faces on the same points 0 -> 3
+- seed 904: BAD 5 cut_plain on Body: debris pieces 5 -> 7
+- seed 904: BAD 11 hide_strip on Knob_Hidden: NOOP - finished (Box Hide: Hidden on Knob) but the part did not change (2 of 6 points inside the shape are over it)
+- seed 905: BAD 0 cut_plain on Body: debris pieces 0 -> 1
+- seed 906: BAD 5 cut_gn on Thin4: spikes 0 -> 1
+- seed 906: BAD 5 cut_gn on Thin4: debris pieces 0 -> 2
+- seed 906: BAD 9 cut_gn on Knob: spikes 0 -> 3
+- seed 906: BAD 9 cut_gn on Knob: debris pieces 0 -> 2
+- seed 907: BAD 2 cut_gn on Block: debris pieces 0 -> 1
+- seed 908: BAD 4 pipeline on PlateA: debris pieces 0 -> 1
+- seed 908: BAD 7 cut_gn on Body: debris pieces 0 -> 1
+- seed 909: BAD 8 decimate on Block: slivers 0 -> 8
+- seed 910: BAD 7 cut_line on Body: spikes 0 -> 2
+- seed 910: BAD 7 cut_line on Body: debris pieces 0 -> 3
+- seed 910: BAD 7 cut_line on Block: debris pieces 0 -> 3
+- seed 910: BAD 8 cut_ramp on Block: spikes 0 -> 86
+- seed 910: BAD 8 cut_ramp on Block: faces on the same points 0 -> 14
+- seed 910: BAD 8 cut_ramp on Block: zero-area faces 0 -> 68
+- seed 910: BAD 8 cut_ramp on Block: debris pieces 3 -> 92
+- seed 911: BAD 1 cut_bevel on Body: debris pieces 0 -> 1
+- seed 911: BAD 6 cut_line on PlateA: debris pieces 0 -> 1
+- seed 912: BAD 8 cut_gn on Thin80: zero-area faces 0 -> 2
+- seed 912: BAD 8 cut_gn on Thin80: debris pieces 0 -> 5
+- seed 913: BAD 3 cut_bevel on Body: debris pieces 0 -> 1
+- seed 913: BAD 4 cut_gn on Body: spikes 0 -> 2
+- seed 913: BAD 4 cut_gn on Body: debris pieces 1 -> 5
+- seed 913: BAD 4 cut_gn on PlateA: debris pieces 0 -> 1
+- seed 913: BAD 7 cut_bevel on PlateA: debris pieces 0 -> 7
+- seed 913: BAD 8 pipeline on PlateA: closed part now has 18 open edges
+- seed 914: BAD 0 cut_gn on Body: closed part now has 54 open edges
+- seed 914: BAD 0 cut_gn on Body: spikes 0 -> 1
+- seed 914: BAD 0 cut_gn on Body: debris pieces 0 -> 2
+- seed 914: BAD 8 cut_bevel on Knob: debris pieces 0 -> 1
+- seed 914: BAD 11 cut_ramp on Knob: spikes 0 -> 2
+- seed 915: BAD 5 cut_gn on PlateB: zero-area faces 0 -> 1
+- seed 915: BAD 5 cut_gn on PlateB: debris pieces 0 -> 1
+- seed 917: BAD 2 cut_gn on Body: spikes 0 -> 1
+- seed 917: BAD 2 cut_gn on Body: debris pieces 0 -> 1
+- seed 917: BAD 10 cut_ramp on PlateB: spikes 0 -> 5
+- seed 917: BAD 10 cut_ramp on PlateB: zero-area faces 0 -> 1
+- seed 917: BAD 10 cut_ramp on PlateB: debris pieces 0 -> 1
+- seed 918: BAD 5 cut_bevel on PlateB: debris pieces 0 -> 1
+- seed 919: BAD 10 pipeline on Knob: debris pieces 0 -> 2
 
 ## Python errors inside steps (Blender lived)
 
-- 1 x hide_restore on Knob: Restored on Knob) but the part did not change (2 of 5 points inside the shape are over it)
-- 1 x cut_ramp on Knob: debris pieces 0 -> 1
-- 1 x cut_ramp on Block: zero-area faces 0 -> 2
-- 1 x cut_plain on Block: spikes 0 -> 1
-- 1 x cut_gn on Body: spikes 0 -> 1
-- 1 x cut_bevel on PlateB: debris pieces 0 -> 1
-- 1 x decimate on Block: slivers 0 -> 4
-- 1 x decimate on Body: edges with 3+ faces 0 -> 1
-- 1 x decimate on Body: slivers 0 -> 43
-- 1 x cut_gn on PlateA: spikes 0 -> 1
-- 1 x cut_bevel on Knob: spikes 0 -> 1
-- 1 x cut_bevel on Knob: zero-area faces 0 -> 2
-- 1 x cut_bevel on Thin66: spikes 0 -> 1
-- 1 x cut_bevel on Thin66: zero-area faces 0 -> 11
-- 1 x cut_bevel on Thin66: spikes 1 -> 2
-- 1 x decimate on Thin66: edges with 3+ faces 0 -> 1
-- 1 x decimate on Thin66: spikes 2 -> 4
-- 1 x decimate on Thin66: zero-area faces 1 -> 32
-- 1 x decimate on Thin66: slivers 0 -> 332
-- 1 x cut_bevel on Block: zero-area faces 0 -> 1
-- 1 x cut_bevel on Block: zero-area faces 1 -> 5
-- 1 x cut_ramp on Block: zero-area faces 0 -> 1
+- 3 x cut_gn on Body: spikes 0 -> 1
+- 2 x cut_gn on Body: debris pieces 0 -> 1
+- 2 x cut_bevel on Body: debris pieces 0 -> 1
 - 1 x cut_gn on Body: zero-area faces 0 -> 1
-- 1 x cut_line on PlateA: Body | not touched (no overlap): PlateA) but the part did not change (1 of 3 points inside
-- 1 x sculpt on PlateA: spikes 0 -> 1
-- 1 x cut_bevel on Body: zero-area faces 0 -> 1
-- 1 x decimate on Block: slivers 0 -> 3
-- 1 x pipeline on Block: closed part now has 22 open edges
-- 1 x decimate on Block: slivers 0 -> 9
-- 1 x cut_ramp on Block: spikes 0 -> 3
+- 1 x cut_gn on Body: debris pieces 0 -> 6
+- 1 x cut_bevel on Body: spikes 0 -> 1
+- 1 x cut_bevel on Body: faces on the same points 0 -> 1
+- 1 x cut_bevel on Body: zero-area faces 0 -> 4
+- 1 x cut_bevel on Body: debris pieces 0 -> 3
+- 1 x cut_line on Body: spikes 1 -> 3
+- 1 x cut_bevel on Body: zero-area faces 0 -> 8
+- 1 x cut_bevel on Body: debris pieces 0 -> 5
+- 1 x cut_plain on Body: faces on the same points 0 -> 3
+- 1 x cut_plain on Body: debris pieces 5 -> 7
+- 1 x hide_strip on Knob_Hidden: Hidden on Knob) but the part did not change (2 of 6 points inside the shape are over it)
+- 1 x cut_plain on Body: debris pieces 0 -> 1
+- 1 x cut_gn on Thin4: spikes 0 -> 1
+- 1 x cut_gn on Thin4: debris pieces 0 -> 2
+- 1 x cut_gn on Knob: spikes 0 -> 3
+- 1 x cut_gn on Knob: debris pieces 0 -> 2
 - 1 x cut_gn on Block: debris pieces 0 -> 1
-- 1 x cut_bevel on Knob: spikes 0 -> 3
-- 1 x cut_line on Knob: zero-area faces 0 -> 1
-- 1 x decimate on Block: slivers 0 -> 16
-- 1 x cut_line on PlateA: Body | CHAMFER: 18 newly cut edges | not touched (no ov) but the part did not change (2 of
-- 1 x quad on Body: no faces came out (try more polygons)
-- 1 x cut_bevel on Knob: spikes 0 -> 2
-- 1 x cut_ramp on Knob: zero-area faces 0 -> 1
-- 1 x hard_edges on PlateA: zero-area faces 0 -> 5
-- 1 x cut_ramp on Body: spikes 0 -> 2
-- 1 x cut_ramp on Body: zero-area faces 0 -> 2
-- 1 x cut_ramp on Body: debris pieces 0 -> 1
-- 1 x cut_ramp on PlateA: zero-area faces 5 -> 6
-- 1 x decimate on PlateA: zero-area faces 6 -> 12
-- 1 x decimate on PlateA: slivers 4 -> 180
-- 1 x hard_edges on PlateA: zero-area faces 12 -> 18
+- 1 x pipeline on PlateA: debris pieces 0 -> 1
+- 1 x decimate on Block: slivers 0 -> 8
+- 1 x cut_line on Body: spikes 0 -> 2
+- 1 x cut_line on Body: debris pieces 0 -> 3
+- 1 x cut_line on Block: debris pieces 0 -> 3
+- 1 x cut_ramp on Block: spikes 0 -> 86
+- 1 x cut_ramp on Block: faces on the same points 0 -> 14
+- 1 x cut_ramp on Block: zero-area faces 0 -> 68
+- 1 x cut_ramp on Block: debris pieces 3 -> 92
+- 1 x cut_line on PlateA: debris pieces 0 -> 1
+- 1 x cut_gn on Thin80: zero-area faces 0 -> 2
+- 1 x cut_gn on Thin80: debris pieces 0 -> 5
+- 1 x cut_gn on Body: spikes 0 -> 2
+- 1 x cut_gn on Body: debris pieces 1 -> 5
+- 1 x cut_gn on PlateA: debris pieces 0 -> 1
+- 1 x cut_bevel on PlateA: debris pieces 0 -> 7
+- 1 x pipeline on PlateA: closed part now has 18 open edges
+- 1 x cut_gn on Body: closed part now has 54 open edges
+- 1 x cut_gn on Body: debris pieces 0 -> 2
+- 1 x cut_bevel on Knob: debris pieces 0 -> 1
+- 1 x cut_ramp on Knob: spikes 0 -> 2
+- 1 x cut_gn on PlateB: zero-area faces 0 -> 1
+- 1 x cut_gn on PlateB: debris pieces 0 -> 1
+- 1 x cut_ramp on PlateB: spikes 0 -> 5
+- 1 x cut_ramp on PlateB: zero-area faces 0 -> 1
+- 1 x cut_ramp on PlateB: debris pieces 0 -> 1
+- 1 x cut_bevel on PlateB: debris pieces 0 -> 1
+- 1 x pipeline on Knob: debris pieces 0 -> 2
 
 ## Refusals / slow steps (the tool said no, or took over 20 s)
 
-- seed 602: FAIL 0 cut_alt on PlateB: {'CANCELLED'} Auto Target: the shape does not cover any mesh; nothing was changed.
-- seed 602: FAIL 10 cut_line on Block: {'PASS_THROUGH'} 
-- seed 604: SLOW 4 cut_bevel on Block: 28.3s
-- seed 604: FAIL 7 cut_ramp on Block: {'CANCELLED'} Boolean failed safely, mesh unchanged. EXACT: result has 99 non-manifold edges
-- seed 604: FAIL 8 hide_restore on Block: {'CANCELLED'} The shape does not intersect the mesh; nothing was changed.
-- seed 605: FAIL 10 cut_line on PlateB: {'CANCELLED'} Aim the shape at the mesh surface (Depth mode = From Surface).
-- seed 606: FAIL 0 cut_ramp on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 610: FAIL 2 hide_strip on PlateB: {'CANCELLED'} Auto Target: the shape does not cover any mesh; nothing was changed.
-- seed 610: FAIL 7 cut_plain on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 613: FAIL 6 cut_ramp on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 614: FAIL 6 cut_plain on PlateA: {'FINISHED'} Cut: PlateA | FAILED, left unchanged: Body (Boolean failed safely, mesh unchanged. EXACT: result has 9 non-manifol)
-- seed 615: FAIL 1 cut_ramp on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 616: SLOW 7 pipeline on PlateA: 26.0s
-- seed 617: FAIL 7 cut_gn on PlateA: {'CANCELLED'} The shape does not intersect any target; nothing was changed. Failed: Body (Boolean failed safely, mesh unchanged. EXACT
-- seed 617: FAIL 8 cut_ramp on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 617: FAIL 10 cut_alt on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 618: SLOW 8 cut_bevel on Thin66: 99.2s
-- seed 620: FAIL 4 cut_gn on PlateA: {'CANCELLED'} Auto Target: the shape does not cover any mesh; nothing was changed.
-- seed 620: FAIL 5 cut_ramp on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 620: FAIL 6 cut_line on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 620: FAIL 9 cut_gn on Block: {'CANCELLED'} Auto Target: the shape does not cover any mesh; nothing was changed.
-- seed 621: FAIL 3 cut_plain on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 621: FAIL 9 hide_strip on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 622: FAIL 7 cut_bevel on Block: {'CANCELLED'} Aim the shape at the mesh surface (Depth mode = From Surface).
-- seed 622: FAIL 9 cut_line on Block: {'CANCELLED'} The line does not cross any mesh; nothing was changed.
-- seed 622: FAIL 10 cut_bevel on Block: {'CANCELLED'} Auto Target: the shape does not cover any mesh; nothing was changed.
-- seed 623: FAIL 0 cut_ramp on Body: {'FINISHED'} Cut Ramp: Body | 1.7 deep at one side, up to the surface (deep side: < > / Pick Edge in GN Edge) | failed: PlateA (The s
-- seed 625: FAIL 1 cut_line on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 625: FAIL 3 hide_strip on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 625: FAIL 9 cut_gn on Knob: {'CANCELLED'} Auto Target: the shape does not cover any mesh; nothing was changed.
-- seed 625: FAIL 10 hide_restore on Knob: {'CANCELLED'} The shape does not intersect the mesh; nothing was changed.
-- seed 626: FAIL 11 cut_line on Block: {'CANCELLED'} The line does not cross any mesh; nothing was changed.
-- seed 627: FAIL 1 cut_bevel on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 627: FAIL 4 hide_part on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 627: FAIL 5 cut_gn on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 627: FAIL 6 cut_plain on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 627: FAIL 7 cut_line on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 627: FAIL 10 hide_part on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 627: FAIL 11 cut_bevel on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 628: FAIL 4 cut_ramp on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 628: FAIL 5 cut_gn on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 630: FAIL 4 quad on PlateA: Quad Remesh: nothing came back - the part is kept as it is
-- seed 630: FAIL 8 cut_gn on PlateB: {'CANCELLED'} Boolean failed safely, mesh unchanged. EXACT: result has 13 non-manifold edges
-- seed 631: FAIL 1 cut_ramp on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 631: FAIL 3 cut_gn on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 632: SLOW 2 cut_bevel on Knob: 103.7s
-- seed 632: SLOW 3 cut_gn on Knob: 331.7s
-- seed 633: FAIL 3 cut_alt on PlateA: {'CANCELLED'} Auto Target: the shape does not cover any mesh; nothing was changed.
-- seed 635: FAIL 2 cut_ramp on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 635: FAIL 3 cut_line on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 635: FAIL 5 hide_restore on Body: {'CANCELLED'} The shape does not intersect the mesh; nothing was changed.
-- seed 635: FAIL 7 cut_alt on PlateA: {'CANCELLED'} The result would delete the whole object; nothing was changed. [Body: Keep inside (Alt invert or Split inner part) - the
-- seed 635: FAIL 8 cut_gn on Body: {'CANCELLED'} Auto Target: the shape does not cover any mesh; nothing was changed.
-- seed 636: FAIL 5 cut_gn on Knob: {'CANCELLED'} Auto Target: the shape does not cover any mesh; nothing was changed.
-- seed 636: FAIL 7 cut_bevel on Knob: {'CANCELLED'} Auto Target: the shape does not cover any mesh; nothing was changed.
-- seed 636: FAIL 10 cut_alt on PlateB: {'CANCELLED'} No target geometry to cut.
-- seed 636: FAIL 11 cut_gn on PlateB: {'CANCELLED'} Auto Target: the shape does not cover any mesh; nothing was changed.
-- seed 638: FAIL 2 cut_ramp on PlateB: {'CANCELLED'} The shape does not intersect the mesh; nothing was changed.
-- seed 638: FAIL 6 cut_ramp on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 638: FAIL 10 cut_ramp on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
-- seed 639: FAIL 8 quad on PlateA: Quad Remesh (All Quads kept only 37 faces - thin walls: Mostly Quads at the same count instead): the part is thinner tha
-- seed 640: FAIL 9 hide_part on Block: {'CANCELLED'} Auto Target: the shape does not cover any mesh; nothing was changed.
+- seed 901: FAIL 1 cut_bevel on Body: {'CANCELLED'} Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 901: FAIL 3 cut_line on Knob: {'CANCELLED'} Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 901: FAIL 5 cut_ramp on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
+- seed 901: FAIL 10 hide_part on PlateB: {'CANCELLED'} Auto Target: the shape does not cover any mesh; nothing was changed.
+- seed 901: FAIL 11 cut_bevel on PlateB: {'CANCELLED'} Auto Target: the shape does not cover any mesh; nothing was changed.
+- seed 902: FAIL 9 cut_gn on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
+- seed 903: SLOW 6 cut_bevel on PlateA: 51.9s
+- seed 903: FAIL 11 cut_plain on PlateA: {'CANCELLED'} Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 905: FAIL 2 cut_line on PlateB: {'CANCELLED'} Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 905: FAIL 6 cut_ramp on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
+- seed 905: FAIL 8 cut_plain on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
+- seed 905: FAIL 9 cut_ramp on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
+- seed 905: FAIL 10 cut_gn on Block: {'PASS_THROUGH'} invoke: {'PASS_THROUGH'}
+- seed 906: FAIL 9 cut_gn on Thin4: {'FINISHED'} Cut: Knob | GN Chamfer: 56 border edges | FAILED, left unchanged: Thin4 (Boolean failed safely, mesh unchanged. EXACT: r
+- seed 906: FAIL 11 cut_gn on Thin4: {'FINISHED'} Cut: Thin4 | GN Bevel: 535 border edges | 5.1 s (Exact) | FAILED, left unchanged: Knob (Boolean failed safely, mesh unch
+- seed 910: FAIL 10 cut_gn on Block: {'CANCELLED'} Auto Target: the shape does not cover any mesh; nothing was changed.
+- seed 911: FAIL 8 cut_bevel on PlateA: {'FINISHED'} Cut: PlateA | BEVEL: 41 newly cut edges | FAILED, left unchanged: Body (Boolean failed safely, mesh unchanged. EXACT: re
+- seed 911: FAIL 9 hide_restore on PlateA: {'CANCELLED'} The shape does not intersect the mesh; nothing was changed.
+- seed 912: FAIL 9 hide_strip on Thin80: {'CANCELLED'} Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 913: SLOW 8 pipeline on PlateA: 64.4s
+- seed 915: FAIL 8 cut_line on PlateB: {'CANCELLED'} No target geometry to cut.
+- seed 915: FAIL 9 cut_line on PlateB: {'CANCELLED'} The line does not cross any mesh; nothing was changed.
+- seed 917: SLOW 11 quad on Thin25: 20.8s
+- seed 918: FAIL 3 cut_line on PlateB: {'CANCELLED'} No target geometry to cut.
+- seed 918: FAIL 6 cut_plain on PlateB: {'CANCELLED'} Auto Target: the shape does not cover any mesh; nothing was changed.
+- seed 919: FAIL 7 hide_part on Knob: {'CANCELLED'} Auto Target: the shape does not cover any mesh; nothing was changed.
+- seed 919: FAIL 8 cut_bevel on Knob: {'CANCELLED'} Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 919: FAIL 9 hide_strip on Knob: {'CANCELLED'} Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 919: FAIL 11 cut_bevel on Knob: {'CANCELLED'} Auto Target: the shape does not cover any mesh; nothing was changed.
