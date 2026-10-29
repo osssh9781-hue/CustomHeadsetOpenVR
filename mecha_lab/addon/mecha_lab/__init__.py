@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 24, 86),
+    "version": (0, 24, 87),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
     "description": "Cut, Split, Base Mesh, Boolean, Face Extract, Armor Sculpt, Molding, Cable, Hollow, curve arrays, Mirror",
@@ -493,6 +493,11 @@ class MCH_PG_Live(bpy.types.PropertyGroup):
 TOOL_ITEMS = tool_state.TOOL_ENUM_ITEMS
 
 
+def _redraw_areas(context):
+    for area in (context.screen.areas if getattr(context, 'screen', None) else []):
+        area.tag_redraw()
+
+
 class MCH_PG_Settings(bpy.types.PropertyGroup):
     # v0.5.9 session toggle; hotkeys are now scoped to the MECHA LAB workspace.
     mch_enabled: BoolProperty(name='Enable Mecha Lab Hotkeys (legacy, unused)', default=False)
@@ -500,6 +505,9 @@ class MCH_PG_Settings(bpy.types.PropertyGroup):
     mch_mask_thickness: FloatProperty(name='Raise Thickness', default=0.05, min=0.0001,
         soft_max=1.0, precision=4, description='Outward thickness for masked face extraction')
     auto_apply: BoolProperty(name='Auto Apply', default=True, description='Apply Booleans/Cut and Remove immediately; OFF keeps editable cut curves and boolean modifiers')
+    group_boxes: BoolProperty(name='Group Box Lines', default=True,                       # 0.24.87 all groups' boxes
+        description='Draw the box lines of every group in the viewport (off: none, whatever the per-group eye says)',
+        update=lambda self, context: _redraw_areas(context))
     keep_cutter: BoolProperty(name='Keep cutter after apply', default=False)
     cut_draw_style: EnumProperty(name='Cut Shape', items=[
         ('POLYLINE','Points / Line','Left click 2+ points; Enter to choose the side to discard'),

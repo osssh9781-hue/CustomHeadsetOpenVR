@@ -1,8 +1,12 @@
-# Mecha Lab 0.24.86 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.24.87 — 설치 · MECHA LAB Workspace · 사용법
 
 > **검증 수준:** Linux headless Blender **5.2.3**(`bpy`)에서 자동 테스트 200개 파일 / 5,081개 항목(실패 0) + 무작위 기능 조합 크래시 테스트 280개, 그리고 0.24.81부터 리눅스 가상 화면의 **진짜 Blender 5.2.3 창** 자동 테스트(설치 · 워크스페이스 · 그려진 막대 · 진짜 마우스 Cut · Tab · 단축키 충돌 목록) 13/13를 돌렸습니다(결과: `test_report.md`).
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` 맨 위 0.24.81 절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
+
+## 0.24.87 그룹 박스선 전체 끄기
+- 장면 설정 **Group Box Lines**(기본 켜짐): Layers 패널 머리의 상자 버튼 또는 Groups 카드 맨 위 토글. 끄면 모든 그룹의 상자 선이 안 보입니다(선택해도). 그룹별 눈은 그대로.
+- 컷 엔진 검토 문서 `CUT_ENGINE_REVIEW_KO.md`(국소 Boolean vs SDF 측정 비교, 다음 단계).
 
 ## 0.24.86 하이폴리 컷(실험) · 정리 · 구멍 메움 영역만 · 백그라운드 Quad Remesh / Re-Fix
 - **High Poly(실험, 기본 꺼짐)**: 컷 설정 Advanced. 켜면 10만 면 이상 부품의 Cut · Split 불리언이 획 주변만 상대하고, 결과가 이상하면 전체 불리언으로 자동 전환. 전체 불리언과 같은 솔리드(부피 1e-6 이내, 닫힘, 바깥 면 동일)인지 세 부품에서 확인함. 속도는 Exact 가 필요한 부품과 100만 면 이상에서 2 ~ 4배(CHANGELOG 표).

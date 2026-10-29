@@ -209,9 +209,17 @@ def box_lines(lo, hi, pad=0.02):
     return [tuple(c[i]) for e in BOX_EDGES for i in e]
 
 
+def boxes_on(context):
+    """0.24.87 the scene-wide switch for every group's box lines (Layers panel head / Groups card)."""
+    st = getattr(getattr(context, 'scene', None), 'mch_settings', None)
+    return st is None or bool(st.group_boxes)
+
+
 def _draw_boxes():
     try:
         context = bpy.context
+        if not boxes_on(context):
+            return
         groups = [o for o in context.visible_objects if is_group(o)]
         if not groups:
             return
@@ -852,6 +860,22 @@ class MCH_OT_group_box_eye(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_group_boxes_all(bpy.types.Operator):
+    """Show / hide the box lines of every group at once (the per-group eye stays as it is)"""
+    bl_idname = 'mch.group_boxes_all'
+    bl_label = 'All Group Box Lines'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+
+    def execute(self, context):
+        st = getattr(context.scene, 'mch_settings', None)
+        if st is None:
+            return {'CANCELLED'}
+        st.group_boxes = not st.group_boxes
+        for area in context.screen.areas if context.screen else []:
+            area.tag_redraw()
+        return {'FINISHED'}
+
+
 class MCH_OT_group_pick(bpy.types.Operator):
     """Select this group (its Repetition card shows); with Enter: work inside it"""
     bl_idname = 'mch.group_pick'
@@ -893,6 +917,9 @@ def draw_list(layout, context):
     if not rows:
         layout.label(text='No groups yet (Mecha Menu > Groups > Group)', icon='INFO')
         return
+    st = getattr(context.scene, 'mch_settings', None)
+    if st is not None:                                                   # 0.24.87 every group's box lines at once
+        layout.prop(st, 'group_boxes', text='Box Lines (all groups)', icon='MESH_CUBE' if st.group_boxes else 'CUBE', toggle=True)
     if inside is not None:
         layout.operator('mch.group_action', text=f'Exit {inside.name}', icon='LOOP_BACK').action = 'EXIT'
     g = group_of(context.active_object)
@@ -938,7 +965,7 @@ class MCH_PT_groups(bpy.types.Panel):
         draw_list(self.layout, context)
 
 
-CLASSES = (MCH_OT_group, MCH_OT_group_action, MCH_OT_duplicate, MCH_OT_group_repeat, MCH_OT_group_box_eye,
+CLASSES = (MCH_OT_group, MCH_OT_group_action, MCH_OT_duplicate, MCH_OT_group_repeat, MCH_OT_group_box_eye, MCH_OT_group_boxes_all,
            MCH_OT_group_pick, MCH_PT_groups)
 
 

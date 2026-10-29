@@ -300,6 +300,7 @@ def frame(context, region_w, region_h, k):
 def layout(context, region_w, region_h, k=1.0):
     """{'items', 'content', 'view'} like side_panel.layout (whole rows only, a scroll bar when it is long)."""
     from .mecha_menu import Item
+    from . import groups
     x0, top, w, floor = frame(context, region_w, region_h, k)
     if minimised(context):
         mw = MIN_W * k
@@ -313,8 +314,12 @@ def layout(context, region_w, region_h, k=1.0):
     scroll = max(0.0, min(float(getattr(context.window_manager, 'mch_layers_scroll', 0.0)), h - view))
     card_h = HEAD * k + view + 2 * PAD * k
     out = [Item('card', x0, top - card_h, w, card_h)]
-    out.append(Item('phead', x0 + PAD * k, top - PAD * k - HEAD * k + 6 * k, w - 2 * PAD * k - 34 * k,
+    out.append(Item('phead', x0 + PAD * k, top - PAD * k - HEAD * k + 6 * k, w - 2 * PAD * k - 62 * k,
                     HEAD * k - 6 * k, 'LAYERS', 'stack', False, True, None))
+    boxes = groups.boxes_on(context)                                     # 0.24.87 every group's box lines at once
+    out.append(Item('pmin', x0 + w - PAD * k - 54 * k, top - PAD * k - 30 * k, 26 * k, 26 * k,
+                    'Hide all group box lines' if boxes else 'Show all group box lines', 'card', boxes, True,
+                    ('op', 'mch.group_boxes_all', {}), 'RIGHT'))
     out.append(Item('pbtn', x0 + w - PAD * k - 26 * k, top - PAD * k - 30 * k, 26 * k, 26 * k, '–', '', False, True,
                     ('layers_min',)))
     y_top = top - PAD * k - HEAD * k
