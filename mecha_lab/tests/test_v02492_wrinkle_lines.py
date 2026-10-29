@@ -78,8 +78,10 @@ SPECS = [[(240, 0.8), (200, 0.5), (230, 0.2), (270, 0.0), (310, 0.2), (335, 0.6)
 ob = sleeve()
 lines = put_lines(ob, SPECS)
 st = S.mch_wlines
-check('Settings: Wrinkle Size 5 % (tube = 1/3 of it), Fold 100, End Fade 20, Shrink 33, Gravity 30, Keep 47, boundary pinned',
-      (st.size, st.fold, st.fade, st.shrink, st.gravity, st.keep, st.pin_boundary) == (5.0, 100.0, 20.0, 33.0, 30.0, 47.0, True))
+check('Settings (the D look): Wrinkle Size 5 % (tube = 1/3 of it), Fold 100, Lift 0, End Fade 20, Shrink 0, Looseness 20, '
+      'Gravity 100, Keep 47, Cotton, boundary pinned',
+      (st.size, st.fold, st.lift, st.fade, st.shrink, st.slack, st.gravity, st.keep, st.fabric, st.pin_boundary)
+      == (5.0, 100.0, 0.0, 20.0, 0.0, 20.0, 100.0, 47.0, 'COTTON', True))
 st.detail = False
 st.frames = 20
 co0 = np.array([v.co[:] for v in ob.data.vertices])
@@ -106,8 +108,8 @@ st.fold = 100.0
 t = time.perf_counter()
 wl.build(C, ob, st, sess)
 cloth = sess['cloth']
-check('Cloth: a copy a little above the tubes, rest lengths shrunk 33 %, the two open rings pinned',
-      abs(cloth.scale_e - 0.67) < 1e-9 and np.count_nonzero(cloth.pin >= 1) == 2 * 64
+check('Cloth: a copy a little above the tubes, rest lengths 20 % longer (Looseness), the two open rings pinned',
+      abs(cloth.scale_e - 1.2) < 1e-9 and np.count_nonzero(cloth.pin >= 1) == 2 * 64
       and np.all(np.linalg.norm(cloth.co[:, :2], axis=1) > 0.5), (cloth.scale_e, np.count_nonzero(cloth.pin >= 1)))
 for _ in range(20):
     wl.advance(sess, st)
@@ -125,8 +127,8 @@ check('The pinned rings did not move; the rest moved and folded (points moved, s
 check('Gravity is world down in local space (the sleeve upright: -Z)', np.allclose(sess['gdir'], (0, 0, -1)))
 check('20 frames on a 6k-point sleeve under 4 s', dt < 4.0, round(dt, 2))
 check('Nothing is NaN / exploded', np.all(np.isfinite(co)) and np.abs(co).max() < 5.0, np.abs(co).max())
-check('The cloth sticks (friction): the mid points of the sleeve did not slide down the whole tube',
-      co[:, 2].min() > -1.6, co[:, 2].min())
+check('The cloth sticks (friction): it did not slide down the sleeve (the loose fabric hangs a little under the bottom ring at most)',
+      co[:, 2].min() > -1.8, co[:, 2].min())
 
 # -- simulate (one go) + the live flow --------------------------------------------------------------------------
 fresh()
@@ -178,4 +180,19 @@ check('Panel: Tubes / Simulate / Keep / Back, the tube sliders (size, fold, fade
                              'Keep (Enter)', 'Back (Esc)', "'pin_boundary'")))
 keys = [k[0] for k in wl.TOOL_KEYMAP]
 check('Tool keys: Space simulate, X remove line, Shift / Ctrl click points', 'mch.wrinkle_sim' in keys and 'mch.wrinkle_line_delete' in keys)
+st.lift = 100.0
+sess = wl.prepare(C, ob, st, wl._lines_of(ob))
+_shape, hl = wl.tube_shape(sess, st)
+check('Tube Lift 100 %: a full pipe on the surface (height up to 2 radii; a wall at its sides, so most of the band is at least 1 radius up)',
+      abs(hl.max() - 2 * sess['tube_r']) < 0.02 * sess['tube_r']
+      and np.count_nonzero(hl > sess['tube_r'] * 0.99) > 0.5 * np.count_nonzero(hl > 1e-9), (hl.max(), sess['tube_r']))
+st.lift = 0.0
+from mecha_lab import zb_ui
+check('The ZBrush left shelf has a Wrinkle Lines box that opens the tool (back in MECHA LAB) + the main sliders',
+      'Wrinkle Lines' in inspect.getsource(zb_ui.draw_tool_shelf) and 'mch.wrinkle_lines_open' in inspect.getsource(zb_ui.draw_tool_shelf)
+      and hasattr(bpy.types, 'MCH_OT_wrinkle_lines_open'))
+from mecha_lab import tool_presets
+name, pg = tool_presets.group_for(S, 'WLINES')
+check('Tool Presets know the Wrinkle Lines settings (scene.mch_wlines): save your own fabric presets',
+      name == 'mch_wlines' and pg is not None and 'slack' in tool_presets.values(pg))
 summary()

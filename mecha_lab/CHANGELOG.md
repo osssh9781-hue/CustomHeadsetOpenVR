@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 0.24.92 — Wrinkle Lines: 선을 그으면 튜브 + 덮은 천 시뮬로 주름 (2026-10-29)
+
+X 의 "CL Sculpt Assistant"(Calappa Lab) 주름 시뮬을 우리 식으로: 메시에 가이드 선을 긋고 Space 두 번이면 선 자리에 주름이 잡힙니다. 관찰(참고 영상 · 사용자 지적)대로 **두 단계**입니다.
+
+- **1단계 튜브(Space)**: 그은 선마다 **얇은 둥근 튜브**(Wrinkle Size 5 % × 1/3 = 부품 크기의 1.7 %)를 표면에 올립니다. Fold Strength = 튜브 높이, **Tube Lift** = 튜브를 표면에서 들어올림(0 = 반쯤 묻힘, 100 % = 같은 굵기의 파이프가 통째로 올라앉음), End Fade = 선 끝에서 사라지는 길이(선 길이의 %), Line Strength = 마지막 선의 세기(선마다 기억). 슬라이더가 **실시간**으로 모양에 반영되고, Enter 로 튜브만 확정할 수도 있습니다. Crease 모드는 튜브 대신 홈.
+- **2단계 천(Space 한 번 더)**: 마블러스 디자이너처럼 — **메시 복사본을 표면 조금 위에 천으로 깔고**, 열린 가장자리(소매 끝)만 고정(Pin Mesh Boundary / Pin Selected), **원래 표면 + 튜브는 안쪽 콜리전**. 천은 Looseness 만큼 표면보다 크고(기본 20 % — 헐렁한 소매), Shrink 로 조이고(기본 0), 중력(기본 100 %) 에 처지며, 콜리전에 닿으면 마찰로 붙습니다. 천이 튜브에 걸려 그 아래로 접히고 선 사이 천이 구겨집니다. Silhouette Keep 은 시작 모양으로 약하게 당기는 스프링. 원단 프리셋(Cotton 기본 · Denim · Silk · Leather · Knit)은 굽힘 · 마찰 · 감쇠 · 펴짐. 프레임은 타이머로 돌아 접히는 것이 보이고(Space 멈춤 / 계속), Enter 는 천을 메시에 씀(점 수 같음 — UV · 다른 데이터 그대로), Esc 는 백업으로 되돌림. 설정은 Tool Presets(사이드 패널 Presets) 에 저장됩니다(`scene.mch_wlines`).
+- 어떤 메시든 됩니다: 콜리전은 "천의 점이 가장 가까운 콜리전 점의 접평면 위에 머문다"(점이 미끄러지면 KD 트리로 다시 고름)라 원기둥 전용이 아닙니다. 솔버는 0.24.92 의 `cloth_pbd`(numpy 위치 기반 천; 길이 · 굽힘 제약, 라플라시안 펴짐, 콜리전 콜백). 2.5만 점 30프레임 약 5 ~ 8초(프레임당 0.2초), 6천 점 20프레임 0.5초. 2만 면 미만 메시는 Add Detail 로 먼저 세분(접힘엔 점이 필요).
+- **ZBrush 선반**(왼쪽, Hard Edges 아래)에 Wrinkle Lines 상자: "Draw Lines (MECHA LAB)" 이 오브젝트 모드의 도구로 보내고, 주요 슬라이더(Size · Fold · Looseness · Gravity · 원단) 도 거기서.
+- 결과 비교 그림: `dist/wrinkle_lines_0.24.92_looseness.png`(참고 영상 프레임 vs Looseness 10 ~ 20 %), `dist/wrinkle_lines_0.24.92_tube_lift.png`(Tube Lift 0 / 50 / 100 %), `dist/wrinkle_lines_0.24.92_gui_kept.png`(실제 창에서 Space · Space · Enter 로 남긴 메시).
+- 중간에 버린 방식(기록): 블렌더 Cloth 모디파이어의 shrink 그룹(움푹 + 자갈 노이즈), 스컬프트 Cloth 브러시를 파이썬으로 긋기(`sculpt.brush_stroke` 는 되나 Cloth Filter 는 파이썬에서 호출 불가, 선이 통째로 튀어나옴), 선을 홀드하고 전체를 줄이는 PBD(선 둘레만 튀어나옴), 튜브 능선 + 약한 Drag Cloth(변화 거의 없음).
+- 테스트: Blender 5.2.3 bpy 전체 __FILES__개 파일 PASS __PASS__ / FAIL __FAIL__(`tests/test_log_bpy523_v02492.txt`, FAILED FILES: __FAILED__; Traceback 24개는 test_registration_recovery). 새 테스트 test_v02492_wrinkle_lines 30(tube_field 의 단면 · 끝 페이드 · 닫힌 선 · 여러 선 · Tube Lift, 튜브 단계의 높이 · 반지름 · 실시간 갱신 · Crease, 천 단계의 콜리전 밖 유지 · 고정 링 · 마찰 · 중력 방향 · 속도 · NaN 없음, simulate · start / run / step / confirm / cancel 흐름 · 백업 정리, 패널 · 키맵 · ZBrush 선반 · 프리셋). 실제 블렌더 창: 도구 활성 → Space(튜브) → Space(천 30프레임, 타이머) → Enter 가 끝까지 돌고 메시가 남음(2.5만 점 소매 23.5초, `dist/wrinkle_lines_0.24.92_gui_kept.png`); 자동 GUI 테스트 __GUI__(`tests/gui/gui_result_0.24.92.txt`). ZIP sha256 `__SHA__` (`__ZIP__`).
+
 ## 0.24.91 — 컷 Edge Finish(베벨 · 챔퍼) 가 들쭉날쭉한 부품에서 멈추지 않음 · 컷 정리 빠르게 (2026-10-29)
 
 퍼즈(시드 1205)가 찾은 "15k 면 DynaMesh 손잡이에 베벨 컷 90초"(KNOWN_LIMITATIONS 0.24.88) 를 잰 결과, 두 군데였습니다.

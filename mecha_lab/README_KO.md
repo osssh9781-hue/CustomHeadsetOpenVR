@@ -1,8 +1,13 @@
-# Mecha Lab 0.24.91 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.24.92 — 설치 · MECHA LAB Workspace · 사용법
 
 > **검증 수준:** Linux headless Blender **5.2.3**(`bpy`)에서 자동 테스트 205개 파일 / 5,144개 항목(실패 0) + 무작위 기능 조합 크래시 테스트 280개, 그리고 0.24.81부터 리눅스 가상 화면의 **진짜 Blender 5.2.3 창** 자동 테스트(설치 · 워크스페이스 · 그려진 막대 · 진짜 마우스 Cut · Tab · 단축키 충돌 목록) 13/13를 돌렸습니다(결과: `test_report.md`).
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` 맨 위 0.24.81 절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
+
+## 0.24.92 Wrinkle Lines(주름 선)
+- MECHA LAB 의 **Wrinkle Lines** 도구(Cloth 그룹; ZBrush 선반의 "Draw Lines" 버튼으로도): 메시 위에 선을 **드래그**로 긋고(점 드래그 = 이동, Shift+클릭 = 점 추가, Ctrl+클릭 = 점 삭제, X = 선 삭제), **Space** = 선을 따라 얇은 튜브(슬라이더 실시간: Wrinkle Size · Fold Strength · Tube Lift · End Fade · Line Strength), **Space 한 번 더** = 메시 복사본을 천으로 덮어 시뮬(Looseness · Shrink · Gravity · Silhouette Keep · 원단), **Enter** = 메시에 쓰기, **Esc** = 되돌리기.
+- 기본값은 참고 영상에 가장 가까웠던 조합(헐렁함 20 %, 중력 100 %, Cotton). 천 조건은 전부 슬라이더라 취향대로 바꾸고 Presets 에 저장.
+- 메시는 **면이 고른 것**(DynaMesh · Quad Remesh 결과)이 좋습니다. 가로 세로가 심하게 다른 길쭉한 면의 격자에서는 세로 줄무늬가 납니다(KNOWN_LIMITATIONS).
 
 ## 0.24.91 컷 Edge Finish · 정리 속도
 - 들쭉날쭉한 테두리(DynaMesh 노이즈)에 베벨 · 챔퍼 컷이 몇 분씩 걸리던 것: 폭을 줄여 다시 하고, 그래도 안 되면 1초 안에 건너뛰고 경고줄에 이유. 퍼즈 측정 90초 → 28초.

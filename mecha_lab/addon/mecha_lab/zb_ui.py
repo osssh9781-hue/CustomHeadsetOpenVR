@@ -2,7 +2,7 @@
 
     top shelf      Edit Draw | Move Scale Rotate | Material | Zadd Zsub | Z Intensity  Focal Shift  Draw Size Dynamic
                    | Polish By Groups | Check Mesh Fix Mesh  /  Make PolyMesh3D | DynaMesh > SubDiv | OBJ STL | FBX
-    left shelf     SubTool / Geometry / Masking / Stroke / Decimation / Quad Remesh / Edge Mesh / Hard Edges (the
+    left shelf     SubTool / Geometry / Masking / Stroke / Decimation / Quad Remesh / Edge Mesh / Hard Edges / Wrinkle Lines (the
                    Blender-layout drawer ``draw_tool_shelf`` read by panel_capture, like the side panel), then
                    brush / stroke / material / colour / symmetry / clip / initialize
     right          view shelf (Persp Floor Frame Move Zoom3D Rotate PolyF Transp Solo ...) and the SubTool list
@@ -176,6 +176,18 @@ def draw_tool_shelf(layout, context):
     r.prop(zb, 'he_client', toggle=True)
     box.prop(zb, 'he_normals', toggle=True)
     ops(box.row(), ('Apply', 'HE_APPLY'), ('Clear', 'HE_CLEAR'))
+    wl = getattr(context.scene, 'mch_wlines', None)          # 0.24.92 Wrinkle Lines (the Mecha tool, opened from here)
+    if wl is not None:
+        box = layout.box()
+        box.label(text='Wrinkle Lines')
+        box.operator('mch.wrinkle_lines_open', text='Draw Lines (MECHA LAB)')
+        r = box.row()
+        r.prop(wl, 'size')
+        r.prop(wl, 'fold')
+        r = box.row()
+        r.prop(wl, 'slack')
+        r.prop(wl, 'gravity')
+        box.row().prop(wl, 'fabric', expand=True)
 
 
 def _builder():

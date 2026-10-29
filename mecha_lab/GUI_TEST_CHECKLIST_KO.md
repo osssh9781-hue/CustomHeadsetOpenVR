@@ -1,8 +1,15 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.91 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.92 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## 0.24.92 Wrinkle Lines (리눅스 실제 창에서 Space · Space · Enter 흐름만 확인; Windows 미검증)
+- [ ] 원기둥(DynaMesh 또는 Quad Remesh 로 면을 고르게) 선택 → MECHA LAB 의 Wrinkle Lines 도구 → 메시 위를 드래그하면 분홍 선과 점이 붙고 화면을 돌려도 따라오는지. 점 드래그 · Shift+클릭 · Ctrl+클릭 · X.
+- [ ] Space → 선을 따라 얇은 튜브가 보이고, Wrinkle Size / Fold Strength / Tube Lift / End Fade 를 끌면 바로 바뀌는지.
+- [ ] Space 한 번 더 → 천이 프레임마다 접히는 것이 보이고(헤더에 frame n / 30), Space 로 멈춤 / 계속, Enter 로 남고 Esc 로 처음 메시로 돌아오는지. Ctrl+Z 도.
+- [ ] ZBrush 탭 왼쪽 선반 맨 아래 Wrinkle Lines 상자의 "Draw Lines (MECHA LAB)" 이 오브젝트 모드 + 도구로 보내는지.
+- [ ] 사이드 패널 Presets 에 Wrinkle Lines 설정이 저장 · 복원되는지.
 
 ## 0.24.91 Edge Finish 건너뛰기 (미검증)
 - [ ] DynaMesh 한 부품(노이즈 브러시로 거칠게)에 Cut + Edge Finish Chamfer → 몇 초 안에 끝나고, 안 됐으면 경고줄에 "Edge Finish skipped: the rim is too jagged …" 가 보이는지. 매끈한 부품에선 예전처럼 챔퍼가 붙는지.

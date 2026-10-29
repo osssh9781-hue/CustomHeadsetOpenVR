@@ -92,12 +92,12 @@ class MCH_PG_WrinkleLines(bpy.types.PropertyGroup):
     fade: FloatProperty(name='End Fade', description='The tube fades out over this much of the line at each end',
                         default=20.0, min=0.0, max=50.0, subtype='PERCENTAGE', update=_tube_changed)
     shrink: FloatProperty(name='Shrink', description='How much the cloth laid over the mesh shrinks (more = it hugs the tubes tighter)',
-                          default=33.0, min=0.0, max=90.0, subtype='PERCENTAGE')
+                          default=0.0, min=0.0, max=90.0, subtype='PERCENTAGE')
     slack: FloatProperty(name='Looseness', description='Extra fabric: the cloth is this much bigger than the surface, so it sags and bunches (a loose sleeve)',
-                         default=0.0, min=0.0, max=60.0, subtype='PERCENTAGE')
+                         default=20.0, min=0.0, max=60.0, subtype='PERCENTAGE')
     fold: FloatProperty(name='Fold Strength', description='The height of the tubes (Crease: how deep the groove is)',
                         default=100.0, min=0.0, max=200.0, subtype='PERCENTAGE', update=_tube_changed)
-    gravity: FloatProperty(name='Gravity', default=30.0, min=0.0, max=300.0, subtype='PERCENTAGE')
+    gravity: FloatProperty(name='Gravity', default=100.0, min=0.0, max=300.0, subtype='PERCENTAGE')
     keep: FloatProperty(name='Silhouette Keep', description='How firmly the surface away from the lines stays where it is',
                         default=47.0, min=0.0, max=100.0, subtype='PERCENTAGE')
     strength: FloatProperty(name='Line Strength', description='The strength of the last drawn line (each line keeps its own)',
@@ -266,8 +266,9 @@ REPICK = 0.5                     # a cloth point re-picks its collider point whe
 FIELD_CHUNK = 2048
 # fabric: bending constraint strength, contact friction, damping, smoothing (a Laplacian pull per pass: the
 # folds come out broad and soft instead of a quilt of cell-sized crumples)
-FABRIC_SIM = {'COTTON': (0.5, 0.3, 0.3, 0.25), 'DENIM': (1.0, 0.5, 0.4, 0.4), 'SILK': (0.2, 0.15, 0.2, 0.1),
-              'LEATHER': (1.0, 0.6, 0.5, 0.5), 'KNIT': (0.4, 0.3, 0.3, 0.2)}
+# (smoothing above ~0.8 makes a checkerboard: the presets stay under it)
+FABRIC_SIM = {'COTTON': (1.0, 0.3, 0.3, 0.5), 'DENIM': (1.0, 0.5, 0.4, 0.7), 'SILK': (0.3, 0.15, 0.2, 0.25),
+              'LEATHER': (1.0, 0.6, 0.5, 0.8), 'KNIT': (0.6, 0.3, 0.3, 0.4)}
 
 
 def _subdivide(me, levels):
@@ -1059,6 +1060,26 @@ class MCH_OT_wrinkle_sim(bpy.types.Operator):
         return {'CANCELLED'}
 
 
+class MCH_OT_wrinkle_lines_open(bpy.types.Operator):
+    """Open the Wrinkle Lines tool on the active mesh (from the ZBrush screen: back to MECHA LAB, Object Mode)"""
+    bl_idname = 'mch.wrinkle_lines_open'
+    bl_label = 'Wrinkle Lines'
+    bl_options = {'INTERNAL'}
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.view_layer.objects.active
+        return ob is not None and ob.type == 'MESH' and getattr(context, 'mode', '') in {'OBJECT', 'SCULPT'}
+
+    def execute(self, context):
+        if context.mode == 'SCULPT':
+            bpy.ops.mch.zb_switch(target='MECHA')
+        from . import workspace_ui
+        workspace_ui.activate_mecha_tool(context, 'WLINES')
+        self.report({'INFO'}, 'Wrinkle Lines: drag lines on the mesh · Space tubes · Space cloth · Enter keep')
+        return {'FINISHED'}
+
+
 class MCH_OT_wrinkle_sim_control(bpy.types.Operator):
     """Run / pause, keep, go back or restart the live simulation (the panel buttons)"""
     bl_idname = 'mch.wrinkle_sim_control'
@@ -1152,7 +1173,7 @@ TOOL_KEYMAP = (
 )
 
 CLASSES = (MCH_PG_WrinkleLines, MCH_OT_wrinkle_line_stroke, MCH_OT_wrinkle_line_hover, MCH_OT_wrinkle_line_delete,
-           MCH_OT_wrinkle_sim, MCH_OT_wrinkle_sim_control)
+           MCH_OT_wrinkle_sim, MCH_OT_wrinkle_lines_open, MCH_OT_wrinkle_sim_control)
 
 
 def register():
