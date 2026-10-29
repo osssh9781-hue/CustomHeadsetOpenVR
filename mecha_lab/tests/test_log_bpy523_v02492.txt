@@ -2805,3 +2805,143 @@ PASS operator registered
 22/22 passed
 ====================================================================== 
  test_v0223.py
+PASS Surface for Armor Plate and Cloth Plate too
+PASS outline points on the surface, seen from two sides  -- [1.48, 1.478, 1.477, 1.48, 1.48]
+PASS Enter: a live Armor Plate from the surface outline  -- Armor plate "Ball_Plate" on Ball (Chamfer 45, 222 clean faces)
+PASS plate sits on the ball, on the drawn side (front-right)  -- (1.0, 0.55, -1.15)
+PASS plate keeps its outline for live edits (HUD sliders)
+PASS Enter: a live Cloth Plate from the surface outline  -- Cloth plate "Ball_Wrinkle" on Ball (padded panel, no pattern) | 2 point(s) past the surface edge
+PASS Line + Surface: an Armor Plate strip along the surface  -- Armor plate "Ball_Plate.001" on Ball (Chamfer 45, 267 clean faces)
+PASS strip about Line Width wide  -- (1.828, 0.381, 0.402)
+PASS 2 points (no Line): asks for 3
+PASS view along the drawn area: centred, fits
+
+10/10 passed
+====================================================================== 
+ test_v0230.py
+PASS SMOOTH: open path starts and ends at the end points  -- 25
+PASS BSPLINE: open path starts and ends at the end points  -- 41
+PASS LINEAR: open path starts and ends at the end points  -- 25
+PASS Smooth passes through every point
+PASS B-Spline is softer (does not reach the middle points)
+PASS Closed: 4 segments, back near the start
+PASS radius is interpolated along the curve
+PASS frames: orthonormal
+PASS tube with FLAT caps: closed, normals out  -- (0, 0.09232336913998994)
+PASS tube with ROUND caps: closed, normals out  -- (0, 0.09617112854016178)
+PASS open caps: open tube ends
+PASS hole: hollow pipe, closed walls
+PASS closed ring tube: closed
+PASS SQUARE profile: closed
+PASS FLAT profile: closed
+PASS twist changes the tube
+PASS repeat: 5 spheres along the curve
+PASS repeat spacing: first / last at the ends
+PASS Tube tool in the tool list, toolbar and pie
+PASS first click makes a live tube object
+PASS 3 points -> a solid tube right away (not a curve line)
+PASS air points at the depth of the first point (3D cursor plane)  -- [(-2.0, 0.0, 0.0), (0.0, 0.0, 1.0), (2.0, 0.0, 0.0)]
+PASS drag a point
+PASS click on the line inserts a point
+PASS Ctrl+Wheel on a point: its radius
+PASS 0.24.38 orange radius handle right beside the point (26 px on screen), whatever the radius  -- 26.00003245475137
+PASS drag the orange handle twice as far: that point gets twice the radius  -- ('RADIUS', 'Radius: 0.1000', 0.10000000149011612, 0.05000000074505806)
+PASS ... and the handle is back beside the point after the drag
+PASS other points keep their radius
+PASS X on a point deletes it
+PASS point on a mesh sits on its surface  -- (0.0, -1.0, -2.999999761581421)
+PASS done keeps the live tube
+PASS Sides slider rebuilds
+PASS Radius slider  -- (3.1497464776039124, 3.2994933128356934)
+PASS profile changes the tube
+PASS cap changes the tube
+PASS hole changes the tube
+PASS spline changes the tube
+PASS closed changes the tube
+PASS twist changes the tube
+PASS taper_end changes the tube
+PASS resolution changes the tube
+PASS Repeat: spheres along the curve
+PASS Repeat an object
+PASS Repeat count
+Info: Applied 1 tube(s)
+PASS Apply: plain mesh, points gone
+PASS one point only: removed on done
+PASS operators registered
+
+48/48 passed
+====================================================================== 
+ test_v02315.py
+PASS big then small panel: sizes differ a lot  -- (4.972, 0.461)
+PASS remembered lengths scaled to the new panel (Pinch Length, Puff)  -- (0.14289464056491852, 0.14289463611404035)
+PASS non-length values copied exactly (Fan)
+PASS the small panel stays small (no shards)  -- 0.454
+Info: Cloth preset "BigPreset" saved
+Info: Cloth preset "SmallPreset" saved
+Info: Cloth preset "SmallPreset"
+PASS preset from a small panel on a big one: Puff follows the size  -- (0.19886130094528198, 0.1988613138434791)
+PASS presets store the panel size of their lengths
+PASS absurd remembered lengths are clamped on a new panel (Puff, Fold Length, Crumple, thickness)  -- (0.13828513026237488, 0.9219008684158325, 0.023047521710395813, 0.4609504390775495)
+PASS ... and the panel stays small
+PASS Billow: lower preset default, an old absolute Billow is dropped
+PASS Cloth Plate and Panel Cloth are the 0.23.9 ones (no Center Calm / membrane / Panel Cloth sliders)
+PASS a length remembered without its size (old file) is dropped, others kept  -- {'Fan': 3.0}
+PASS Space no longer opens the tool menu
+PASS Space + mouse move shifts every point by the mouse motion (stroke still running)  -- ([(330.0, 330.0), (670.0, 330.0), (680.0, 660.0)], [(370.0, 280.0), (710.0, 280.0), (720.0, 610.0)])
+PASS after Space is released the mouse no longer moves the outline
+
+14/14 passed
+====================================================================== 
+ test_v02316.py
+PASS Box Hide is a tool (list, native tool, shapes)
+PASS hide: the part inside is gone, the cut is capped (closed)  -- ({'FINISHED'}, 'Box Hide: Hidden on B', 48.0, 0)
+PASS ... non-destructive: the mesh data is untouched, a hidden volume object holds the shape
+PASS Open (cap off): an open hole  -- 12
+PASS Alt + draw over the same place: shown again (nothing hidden left -> modifier removed)  -- ({'FINISHED'}, 'Box Hide: Restored on B')
+PASS Alt over part of the hidden area: only that part comes back  -- 52.8
+PASS two overlapping hides add up (the overlap counted once)  -- 39.6
+Info: Box Hide: shown again on 1 mesh(es)
+PASS Show All: everything back, the hide volume removed
+PASS Mirror X: the same part hidden on the other side too  -- (48.0, 'Box Hide: Hidden on B | Mirror X')
+Info: Box Hide applied on 1 mesh(es)
+PASS Apply: the hiding becomes real geometry, modifier and volume gone  -- 48.0
+PASS drawing over empty space: nothing changes, a clear message  -- ({'CANCELLED'}, 'Auto Target: the shape does not cover any mesh; nothing was changed.')
+
+11/11 passed
+====================================================================== 
+ test_v02317.py
+PASS outline is orange like Cut (Alt red like every tool)
+PASS no Exact boolean in the hide group
+PASS heavy test mesh (100k faces)  -- 100000
+PASS 100k faces, Cap on: evaluates in under 3 s (was 46 s with Exact)  -- (0.22, 70836)
+PASS 100k faces, Cap off: evaluates in under 3 s (was 46 s with Exact)  -- (0.21, 70816)
+Info: Box Hide: shown again on 1 mesh(es)
+PASS Selected Only: only the selected mesh is hidden  -- ({'FINISHED'}, 'Box Hide: Hidden on A')
+Info: Box Hide: shown again on 1 mesh(es)
+PASS Auto Target: every mesh the shape covers  -- ({'FINISHED'}, 'Box Hide: Hidden on A, B')
+
+7/7 passed
+====================================================================== 
+ test_v02318.py
+PASS two overlapping shapes merge into one outline (area 7)  -- (1, 7.0)
+PASS merged outline keeps only its corners (8)  -- 8
+PASS Alt inside = a hole (area 15)  -- (1, 15.0)
+PASS outer counter-clockwise, hole clockwise
+PASS Alt across the border = a notch (area 15)
+PASS Alt through the middle = two pieces  -- (2, 3.0)
+PASS order matters: adding inside a hole makes an island  -- (2, 13.0)
+PASS subtract everything = empty sketch
+PASS a stroke that already has a hole keeps it
+PASS shapes sharing an edge become one outline  -- 1
+PASS live Base Mesh right after drawing
+PASS Chamfer width 0.4 on a 6 cm plate: the top is 0.4 narrower on each side (was capped at 0.057)  -- (-1.600000023841858, 1.600000023841858)
+PASS ... and the rim drops (45 deg up to 95 % of the height)  -- [0.0, 0.003, 0.06]
+PASS Bevel: a rounded rim (several heights), still closed  -- [0.0, 0.003, 0.0248, 0.0433, 0.0557, 0.06]
+PASS a width wider than the shape is limited by the shape, and the panel says so  -- top width limited to 0.98 by the shape
+PASS Bottom: the bottom face is inset instead  -- 1.7000001668930054
+PASS Both sides: closed, no error
+PASS Mirror Apply / Remove buttons: hidden in Cut, shown in the Mirror tool
+
+18/18 passed
+====================================================================== 
+ test_v02319.py
