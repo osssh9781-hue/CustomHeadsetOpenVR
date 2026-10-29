@@ -115,17 +115,16 @@ for _ in range(20):
     wl.advance(sess, st)
 dt = time.perf_counter() - t
 co = cloth.co
-N, Cc = sess['nrm'], sess['collider']
-height = ((co - Cc[sess['ref']]) * N[sess['ref']]).sum(1)
-check('After 20 frames the cloth stays outside the collider (never deeper than a sliver under the margin)',
-      height.min() > sess['margin'] - tube_r * 0.5, (height.min(), sess['margin']))
+height = sess['grid'].distance(co)
+check('After 20 frames the cloth stays outside the collider grid (never deeper than a sliver under the margin)',
+      height.min() > sess['margin'] - tube_r * 0.5 and sess['grid'].cells > 1000, (height.min(), sess['margin'], sess['grid'].cells))
 pinned = cloth.pin >= 1
 check('The pinned rings did not move; the rest moved and folded (points moved, spread of radii)',
       np.allclose(co[pinned], cloth.init[pinned]) and np.linalg.norm(co - cloth.init, axis=1).max() > tube_r * 0.4
       and (np.linalg.norm(co[:, :2], axis=1).max() - np.linalg.norm(co[:, :2], axis=1).min()) > tube_r * 0.4,
       np.linalg.norm(co - cloth.init, axis=1).max())
 check('Gravity is world down in local space (the sleeve upright: -Z)', np.allclose(sess['gdir'], (0, 0, -1)))
-check('20 frames on a 6k-point sleeve under 4 s', dt < 4.0, round(dt, 2))
+check('20 frames on a 6k-point sleeve under 4 s (the collider grid built in it)', dt < 4.0, (round(dt, 2), round(sess['grid_time'], 2)))
 check('Nothing is NaN / exploded', np.all(np.isfinite(co)) and np.abs(co).max() < 5.0, np.abs(co).max())
 check('The cloth sticks (friction): it did not slide down the sleeve (the loose fabric hangs a little under the bottom ring at most)',
       co[:, 2].min() > -1.8, co[:, 2].min())
@@ -191,6 +190,43 @@ from mecha_lab import zb_ui
 check('The ZBrush left shelf has a Wrinkle Lines box that opens the tool (back in MECHA LAB) + the main sliders',
       'Wrinkle Lines' in inspect.getsource(zb_ui.draw_tool_shelf) and 'mch.wrinkle_lines_open' in inspect.getsource(zb_ui.draw_tool_shelf)
       and hasattr(bpy.types, 'MCH_OT_wrinkle_lines_open'))
+# -- the light collider grid (pure) + the proxy path --------------------------------------------------------------
+from mecha_lab import cloth_pbd
+ang = np.linspace(0, 2 * math.pi, 400, endpoint=False)
+th = np.linspace(0.1, math.pi - 0.1, 200)
+A, T = np.meshgrid(ang, th, indexing='ij')
+pts = np.stack([np.sin(T) * np.cos(A), np.sin(T) * np.sin(A), np.cos(T)], -1).reshape(-1, 3) * 0.7
+grid = cloth_pbd.GridCollider(pts, pts / 0.7, cell=0.02, band=3)
+q = np.array([[0.75, 0, 0], [0, 0.65, 0], [0.5, 0.5, 0.0], [0, 0, 0.7 + 0.03]])
+d = grid.distance(q)
+truth = np.linalg.norm(q, axis=1) - 0.7
+check('GridCollider: the signed distance to a sphere within a cell (outside +, inside -)',
+      np.allclose(d, truth, atol=0.02) and d[1] < 0 < d[0], (d, truth))
+far = grid.distance(np.array([[0.0, 0.0, 0.0], [3.0, 0, 0]]))
+check('Far from the surface (outside the band / the grid): no distance, no push', np.all(far > 1e6))
+co = q.copy()
+touch = grid.push(co, margin=0.02)
+check('push: points inside come out to the margin along the normal, touching ones are flagged',
+      abs(np.linalg.norm(co[1]) - 0.72) < 0.02 and abs(np.linalg.norm(co[0]) - 0.75) < 1e-9 and touch[1] and touch[2] and not touch[0],
+      (np.linalg.norm(co, axis=1), touch))
+fresh()
+S = C.scene
+ob = sleeve('S4', NA=200, NZ=300)
+lines = put_lines(ob, SPECS)
+st = S.mch_wlines
+st.detail = False
+st.sim_points = 15000
+t = time.perf_counter()
+info = wl.simulate(C, ob, st, lines, frames=10)
+dt = time.perf_counter() - t
+co = np.array([v.co[:] for v in ob.data.vertices])
+rr = np.linalg.norm(co[:, :2], axis=1)
+check('A 60k-point mesh over Sim Points runs on a light copy (about 15k points) and the result lands on the full mesh',
+      info['proxy'] > 0 and info['proxy'] < 20000 and len(co) == 301 * 200 and rr.max() > 0.5 + 0.02 and np.all(np.isfinite(co))
+      and rr.min() > 0.45, info)
+check('... in a few seconds (10 frames, the map + grid included)', dt < 25.0, round(dt, 1))
+src = inspect.getsource(wl.draw)
+check("Panel: Sim Points next to Frames", "'sim_points'" in src)
 from mecha_lab import tool_presets
 name, pg = tool_presets.group_for(S, 'WLINES')
 check('Tool Presets know the Wrinkle Lines settings (scene.mch_wlines): save your own fabric presets',

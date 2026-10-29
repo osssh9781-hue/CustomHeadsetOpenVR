@@ -110,6 +110,9 @@ class MCH_PG_WrinkleLines(bpy.types.PropertyGroup):
     detail: BoolProperty(name='Add Detail', description='A coarse mesh (under 20k faces) is subdivided first: folds need points',
                          default=True)
     frames: IntProperty(name='Frames', default=30, min=5, max=120)
+    sim_points: IntProperty(name='Sim Points', description='A mesh with more points than this is simulated on a lighter decimated copy '
+                            '(the cloth and the collider), and the result is put back on the mesh (0 = always the mesh itself)',
+                            default=40000, min=0, soft_max=300000)
     show: BoolProperty(name='Show Lines', default=True)
 
 
@@ -262,7 +265,10 @@ DAMPING = 0.3
 GRAV_UNIT = 0.0015 / (0.3 * 3.3) # gravity 30 % on a 3.3-unit part = the probe's 0.0015 / frame^2 (x part size)
 KEEP_SCALE = 0.1                 # Silhouette Keep 100 % -> the goal spring weight (47 % = a gentle pull back)
 KEEP_RATE = 0.3
-REPICK = 0.5                     # a cloth point re-picks its collider point when it slid this x the mean edge length
+GRID_BAND = 2                    # the collider grid: cells each way round the surface that hold a distance
+GRID_MIN = 128                   # ... and at least this many cells across the part (the cell = the proxy's edge length, if bigger)
+MAP_K = 8                        # a mesh point follows this many nearest proxy points (Gaussian weights)
+MAP_SMOOTH = 3                   # Laplacian passes over the mesh's edges on the carried displacement (no proxy bumps)
 FIELD_CHUNK = 2048
 # fabric: bending constraint strength, contact friction, damping, smoothing (a Laplacian pull per pass: the
 # folds come out broad and soft instead of a quilt of cell-sized crumples)
@@ -351,6 +357,69 @@ def _gravity_dir(ob):
     return np.array(d.normalized(), np.float64)
 
 
+def proxy_mesh(context, ob, target):
+    """A decimated copy of ``ob``'s mesh with about ``target`` points (Blender's Decimate, collapse), as numpy:
+    dict(co, nrm, vi, start, tot).  The copy object is removed again."""
+    me = ob.data
+    ratio = min(1.0, max(0.01, target / max(1, len(me.vertices))))
+    tmp = bpy.data.objects.new(ob.name + '_mch_wl_proxy', me)
+    context.scene.collection.objects.link(tmp)
+    try:
+        md = tmp.modifiers.new('Decimate', 'DECIMATE')
+        md.decimate_type = 'COLLAPSE'
+        md.ratio = ratio
+        md.use_collapse_triangulate = False
+        dg = context.evaluated_depsgraph_get()
+        ev = tmp.evaluated_get(dg)
+        pm = ev.to_mesh()
+        try:
+            pm.update()
+            start, tot = mio.read_face_starts(pm)
+            out = dict(co=mio.read_co(pm), nrm=_normals(pm), vi=mio.read_corner_verts(pm), start=start, tot=tot,
+                       boundary=boundary_verts(pm), points=len(pm.vertices))
+        finally:
+            ev.to_mesh_clear()
+    finally:
+        bpy.data.objects.remove(tmp)
+    return out
+
+
+def point_map(co, proxy_co, k=MAP_K):
+    """For every point of ``co`` the ``k`` nearest proxy points and Gaussian weights (N, k) over the spread of
+    those neighbours - so a proxy displacement can be put onto the full mesh without the proxy's bumps."""
+    n = len(co)
+    kd = KDTree(len(proxy_co))
+    for i, p in enumerate(proxy_co):
+        kd.insert(p, i)
+    kd.balance()
+    idx = np.zeros((n, k), np.int64)
+    d = np.full((n, k), 1e9)
+    for i in range(n):
+        for j, (_p, index, dist) in enumerate(kd.find_n(co[i], k)):
+            idx[i, j] = index
+            d[i, j] = dist
+    sigma = np.maximum(d[:, -1:], 1e-9) * 0.6
+    w = np.exp(-(d / sigma) ** 2)
+    w /= np.maximum(w.sum(1), 1e-12)[:, None]
+    return idx, w
+
+
+def smooth_field(values, edges, n, passes=MAP_SMOOTH, amount=0.5):
+    """``values`` (N, 3) pulled toward the neighbours' mean over ``edges`` a few times (the carried displacement
+    made smooth over the full mesh)."""
+    if not len(edges) or passes <= 0:
+        return values
+    a, b = edges[:, 0], edges[:, 1]
+    deg = np.maximum(np.bincount(a, minlength=n) + np.bincount(b, minlength=n), 1).astype(np.float64)
+    v = values.copy()
+    for _ in range(passes):
+        acc = np.zeros_like(v)
+        for kk in range(3):
+            acc[:, kk] = np.bincount(a, weights=v[b, kk], minlength=n) + np.bincount(b, weights=v[a, kk], minlength=n)
+        v += (acc / deg[:, None] - v) * amount
+    return v
+
+
 def prepare(context, ob, st, lines):
     """Stage 1 - the tubes: Add Detail, the line field on the mesh.  Returns the session dict (no cloth yet)."""
     me = ob.data
@@ -360,8 +429,20 @@ def prepare(context, ob, st, lines):
     target = target_of(context, ob, fresh=True)
     co = mio.read_co(me)
     paths = [np.array([list(p) for p in line_path(target, ln)]) for ln in lines]
-    return dict(stage='preview', co0=co, nrm=_normals(me), paths=paths, strengths=[ln['strength'] for ln in lines],
-                size=target.size, levels=levels, verts=len(co), frames=st.frames, frame=0, field=None, field_key=None)
+    sess = dict(stage='preview', co0=co, nrm=_normals(me), paths=paths, strengths=[ln['strength'] for ln in lines],
+                size=target.size, levels=levels, verts=len(co), frames=st.frames, frame=0, field=None, field_key=None,
+                proxy=None)
+    if st.sim_points and len(co) > st.sim_points:          # the heavy mesh: the cloth + collider on a light copy
+        from . import cloth_pbd
+        px = proxy_mesh(context, ob, st.sim_points)
+        px['idx'], px['w'] = point_map(co, px['co'])
+        start, tot = mio.read_face_starts(me)
+        px['edges'] = cloth_pbd.edges_of(mio.read_corner_verts(me).astype(np.int64), start.astype(np.int64),
+                                         tot.astype(np.int64))[0]
+        px['field'] = None
+        px['field_key'] = None
+        sess['proxy'] = px
+    return sess
 
 
 def tube_shape(sess, st):
@@ -376,6 +457,14 @@ def tube_shape(sess, st):
     h = sess['field'] * tube_r * sign * st.fold / 100.0
     sess['tube_r'] = tube_r
     sess['h'] = h
+    px = sess.get('proxy')
+    if px is not None:
+        if px['field'] is None or px['field_key'] != key:
+            px['field'] = tube_field(px['co'], sess['paths'], sess['strengths'], tube_r, fade=st.fade / 100.0,
+                                     lift=st.lift / 100.0)
+            px['field_key'] = key
+        px['h'] = px['field'] * tube_r * sign * st.fold / 100.0
+        px['shape'] = px['co'] + px['nrm'] * px['h'][:, None]
     return sess['co0'] + sess['nrm'] * h[:, None], h
 
 
@@ -388,79 +477,100 @@ def preview(sess, st, me):
 
 
 def build(context, ob, st, sess):
-    """Stage 2 - the cloth: a copy of the mesh laid over the collider (the original surface a margin in + the
-    tubes), the open edges pinned, the rest lengths shrunk; the collider pushes the cloth out, with friction."""
+    """Stage 2 - the cloth: a copy of the mesh (or of its light proxy) laid over the collider (the surface a margin
+    in + the tubes, baked into a distance grid), the open edges pinned, the rest lengths shrunk / loosened; the
+    collider pushes the cloth out, with friction."""
     from . import cloth_pbd
     me = ob.data
     shape, h = tube_shape(sess, st)
     tube_r = sess['tube_r']
     margin = tube_r * MARGIN
-    nrm = sess['nrm']
+    px = sess.get('proxy')
+    if px is not None:
+        nrm, shape = px['nrm'], px['shape']
+        vi, start, tot = px['vi'], px['start'], px['tot']
+        bnd = px['boundary']
+        sel_full = None
+        if st.pin_selected:
+            sel_full = np.zeros(len(me.vertices), bool)
+            me.vertices.foreach_get('select', sel_full)
+    else:
+        nrm = sess['nrm']
+        vi = mio.read_corner_verts(me)
+        start, tot = mio.read_face_starts(me)
+        bnd = boundary_verts(me) if st.pin_boundary else np.zeros(0, np.int64)
     collider = shape - nrm * margin
     co = shape + nrm * (tube_r * GAP)
     pin = np.zeros(len(co))
-    bnd = boundary_verts(me) if st.pin_boundary else np.zeros(0, np.int64)
-    if len(bnd):
+    if st.pin_boundary and len(bnd):
         pin[bnd] = 1.0
+    if px is not None:
+        full_pin = np.zeros(len(me.vertices), bool)
+        if st.pin_boundary:
+            fb = boundary_verts(me)
+            if len(fb):
+                full_pin[fb] = True
+        if sel_full is not None:
+            full_pin |= sel_full
+        px['full_pin'] = full_pin
     if st.pin_selected:
-        sel = np.zeros(len(me.vertices), bool)
-        me.vertices.foreach_get('select', sel)
-        pin[sel] = 1.0
+        if px is None:
+            sel = np.zeros(len(me.vertices), bool)
+            me.vertices.foreach_get('select', sel)
+            pin[sel] = 1.0
+        elif sel_full is not None and np.any(sel_full):        # a proxy point is pinned when its nearest mesh point is
+            kd = KDTree(int(np.count_nonzero(sel_full)))
+            for i, p in enumerate(sess['co0'][sel_full]):
+                kd.insert(p, i)
+            kd.balance()
+            edge = float(np.mean(np.linalg.norm(co[vi[1:]] - co[vi[:-1]], axis=1))) if len(vi) > 1 else tube_r
+            for i in range(len(co)):
+                if kd.find(co[i])[2] < edge:
+                    pin[i] = 1.0
     bend, friction, damping, smooth = FABRIC_SIM.get(st.fabric, FABRIC_SIM['COTTON'])
-    vi = mio.read_corner_verts(me)
-    start, tot = mio.read_face_starts(me)
     cloth = cloth_pbd.Cloth(co, vi, start, tot, bend=bend, keep=st.keep / 100.0 * KEEP_SCALE, pin=pin)
     cloth.sor = SOR
     cloth.smooth = smooth
     cloth.scale_e = cloth.scale_b = (1.0 - st.shrink / 100.0) * (1.0 + st.slack / 100.0)
     cloth.init = co.copy()
     edge_len = float(np.mean(np.linalg.norm(co[cloth.edges[:, 1]] - co[cloth.edges[:, 0]], axis=1))) if len(cloth.edges) else tube_r
-    kd = KDTree(len(collider))
-    for i, p in enumerate(collider):
-        kd.insert(p, i)
-    kd.balance()
-    sess.update(stage='run', cloth=cloth, collider=collider, kd=kd, ref=np.arange(len(co)), pick=co.copy(),
-                margin=margin, repick=edge_len * REPICK, friction=friction, damping=damping, frame=0,
-                gdir=_gravity_dir(ob), frames=st.frames)
+    cell = max(edge_len, sess['size'] / GRID_MIN)
+    t = time.perf_counter()
+    grid = cloth_pbd.GridCollider(collider, nrm, cell, band=GRID_BAND)
+    sess.update(stage='run', cloth=cloth, grid=grid, grid_time=time.perf_counter() - t, margin=margin,
+                friction=friction, damping=damping, frame=0, gdir=_gravity_dir(ob), frames=st.frames)
     cloth.collide = lambda c: collide(c, sess)
     return sess
 
 
 def collide(cloth, sess):
-    """The collider: every cloth point stays ``margin`` above the tangent plane of its collider point (re-picked
-    by nearness when it slid); a touching point is held back toward where the frame began (friction)."""
-    C, N = sess['collider'], sess['nrm']
-    ref = sess['ref']
-    rel = cloth.co - C[ref]
-    hgt = (rel * N[ref]).sum(1)
-    inside = hgt < sess['margin']
-    if np.any(inside):
-        cloth.co[inside] += N[ref[inside]] * (sess['margin'] - hgt[inside])[:, None]
+    """The collider grid: every cloth point stays ``margin`` outside the surface; a touching point is held back
+    toward where the frame began (friction)."""
+    touch = sess['grid'].push(cloth.co, sess['margin'])
     fr = sess['friction']
-    if fr > 0:
-        touch = hgt < sess['margin'] * 1.5
-        if np.any(touch):
-            cloth.co[touch] += (cloth.prev[touch] - cloth.co[touch]) * fr
+    if fr > 0 and np.any(touch):
+        cloth.co[touch] += (cloth.prev[touch] - cloth.co[touch]) * fr
 
 
-def repick(sess):
-    """Cloth points that slid more than ``repick`` since their last pick get the nearest collider point again."""
+def positions(sess):
+    """The mesh positions for the current cloth: the cloth itself, or (proxy) the tubes shape of the mesh plus the
+    proxy's displacement carried over by the point map."""
     cloth = sess['cloth']
-    moved = np.linalg.norm(cloth.co - sess['pick'], axis=1) > sess['repick']
-    idx = np.nonzero(moved)[0]
-    if not len(idx):
-        return 0
-    kd, ref = sess['kd'], sess['ref']
-    for i in idx:
-        ref[i] = kd.find(cloth.co[i])[1]
-    sess['pick'][idx] = cloth.co[idx]
-    return len(idx)
+    px = sess.get('proxy')
+    if px is None:
+        return cloth.co
+    disp = cloth.co - cloth.init
+    full_shape = sess['co0'] + sess['nrm'] * sess['h'][:, None]
+    carried = (disp[px['idx']] * px['w'][:, :, None]).sum(1)
+    carried = smooth_field(carried, px['edges'], len(full_shape))
+    if 'full_pin' in px:                                  # the mesh's own pinned points stay (not a neighbour's move)
+        carried[px['full_pin']] = 0.0
+    return full_shape + carried
 
 
 def advance(sess, st):
     """One frame: gravity, then the solver with the collider.  Returns the positions."""
     cloth = sess['cloth']
-    repick(sess)
     g = sess['gdir'] * (GRAV_UNIT * st.gravity / 100.0 * sess['size'])
     keep_rate = KEEP_RATE if st.keep > 0 else 0.0
     cloth.step(force=None, gravity=g, damping=sess['damping'], iterations=ITERATIONS, keep_rate=keep_rate)
@@ -477,10 +587,12 @@ def simulate(context, ob, st, lines, frames=None):
         sess['frames'] = frames
     for _ in range(sess['frames']):
         advance(sess, st)
-    mio.write_co(ob.data, sess['cloth'].co)
+    mio.write_co(ob.data, positions(sess))
     ob.data.update()
+    px = sess.get('proxy')
     return dict(levels=sess['levels'], verts=sess['verts'], radius=sess['tube_r'], frames=sess['frames'],
-                time=time.perf_counter() - t, lifted=int(np.count_nonzero(sess['h'] > sess['tube_r'] * 0.05)))
+                time=time.perf_counter() - t, lifted=int(np.count_nonzero(sess['h'] > sess['tube_r'] * 0.05)),
+                proxy=px['points'] if px else 0, grid_cells=sess['grid'].cells, grid_time=sess['grid_time'])
 
 
 def cleanup(ob):
@@ -556,7 +668,7 @@ def run(context):
 
 def _snapshot(st):
     return tuple(getattr(st, k) for k in ('mode', 'fabric', 'size', 'fade', 'lift', 'shrink', 'slack', 'fold', 'gravity', 'keep',
-                                          'pin_boundary', 'pin_selected', 'self_collision', 'detail', 'frames'))
+                                          'pin_boundary', 'pin_selected', 'self_collision', 'detail', 'frames', 'sim_points'))
 
 
 def step(context):
@@ -570,8 +682,8 @@ def step(context):
         SIM['done'] = True
         return False
     st = settings(context)
-    co = advance(sess, st)
-    mio.write_co(ob.data, co)
+    advance(sess, st)
+    mio.write_co(ob.data, positions(sess))
     ob.data.update()
     return True
 
@@ -626,8 +738,10 @@ def status():
     if stage() == 'preview':
         return 'tubes: set Wrinkle Size / Fold / End Fade  (Space simulate · Enter keep the tubes · Esc back)'
     n = SIM['sess']['frame']
+    px = SIM['sess'].get('proxy')
+    light = f'  [light copy: {px["points"]:,} points]' if px else ''
     if SIM.get('done'):
-        return f'done: frame {n} / {SIM["frames"]}  (Enter keep · Esc back · Space again from the start)'
+        return f'done: frame {n} / {SIM["frames"]}  (Enter keep · Esc back · Space again from the start){light}'
     return (f'{"running" if SIM["running"] else "paused"}: frame {n} / {SIM["frames"]}  '
             f'(Space {"pause" if SIM["running"] else "continue"} · Enter keep · Esc back)')
 
@@ -1156,7 +1270,9 @@ def draw(layout, context):
     r = box.row(align=True)
     r.prop(st, 'self_collision', toggle=True)
     r.prop(st, 'detail', toggle=True)
-    box.prop(st, 'frames')
+    r = box.row(align=True)
+    r.prop(st, 'frames')
+    r.prop(st, 'sim_points')
 
 
 TOOL_KEYMAP = (

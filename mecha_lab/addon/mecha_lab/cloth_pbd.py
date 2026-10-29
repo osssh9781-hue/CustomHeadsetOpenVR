@@ -153,3 +153,105 @@ class Cloth:
         if mask is not None:
             f *= mask[:, None]
         return f
+
+
+# -----------------------------------------------------------------------------
+# 0.24.92 a light collider: a signed-distance grid round a point cloud with normals
+# -----------------------------------------------------------------------------
+
+
+class GridCollider:
+    """The collider surface baked once into a narrow-band signed-distance grid: every cell within ``band`` cells
+    of a collider point holds the distance to the tangent plane of its nearest collider point; after that a
+    query is a trilinear look-up (numpy, no per-point Python), whatever the size of the collider or the cloth.
+    Cells outside the band count as far outside (no push).
+
+    Built without a per-cell search: every point splats its plane into the cells round it (``np.minimum.at`` keeps
+    the nearest point per cell), so a 40k-point proxy bakes in well under a second.
+
+    ``points`` (M, 3) + ``normals`` (M, 3): the collider surface (a decimated proxy is fine - the planes bridge
+    the coarse faces).  ``cell``: the grid spacing (about the proxy's edge length).  ``band``: cells each way."""
+
+    FAR = 1e9
+
+    def __init__(self, points, normals, cell, band=3):
+        P = np.asarray(points, np.float64)
+        N = np.asarray(normals, np.float64)
+        self.cell = float(cell)
+        self.band = int(band)
+        lo = P.min(0) - (band + 1) * cell
+        hi = P.max(0) + (band + 1) * cell
+        dims = np.maximum(np.ceil((hi - lo) / cell).astype(int) + 1, 2)
+        self.origin = lo
+        self.dims = dims
+        self.strides = np.array([dims[1] * dims[2], dims[2], 1], np.int64)
+        total = int(dims[0] * dims[1] * dims[2])
+        ijk = np.floor((P - lo) / cell).astype(np.int64)
+        r = np.arange(-band, band + 1)
+        off = np.stack(np.meshgrid(r, r, r, indexing='ij'), -1).reshape(-1, 3)
+        best = np.full(total, np.inf)
+        sdf = np.full(total, self.FAR, np.float32)
+        grad = np.zeros((total, 3), np.float32)
+        step = max(1, 2_000_000 // len(off))                  # points per chunk (memory: chunk x offsets)
+        for s0 in range(0, len(P), step):
+            pi = np.arange(s0, min(s0 + step, len(P)))
+            cells = (ijk[pi, None, :] + off[None, :, :]).reshape(-1, 3)
+            src = np.repeat(pi, len(off))
+            ok = np.all((cells >= 0) & (cells < dims), axis=1)
+            cells, src = cells[ok], src[ok]
+            flat = (cells * self.strides).sum(1)
+            centre = lo + (cells + 0.5) * cell
+            d2 = ((centre - P[src]) ** 2).sum(1)
+            np.minimum.at(best, flat, d2)
+            win = d2 <= best[flat]
+            fw, sw = flat[win], src[win]
+            sdf[fw] = ((centre[win] - P[sw]) * N[sw]).sum(1)
+            grad[fw] = N[sw]
+        self.sdf = sdf
+        self.grad = grad
+        self.cells = int(np.count_nonzero(np.isfinite(best)))
+
+    def _corners(self, co):
+        f = (np.asarray(co, np.float64) - self.origin) / self.cell - 0.5
+        i0 = np.floor(f).astype(np.int64)
+        t = (f - i0).astype(np.float32)
+        inside = np.all((i0 >= 0) & (i0 + 1 < self.dims), axis=1)
+        base = (np.clip(i0, 0, self.dims - 2) * self.strides).sum(1)
+        ws, idxs = [], []
+        tx, ty, tz = t[:, 0], t[:, 1], t[:, 2]
+        for dx in (0, 1):
+            wx = tx if dx else 1.0 - tx
+            for dy in (0, 1):
+                wy = wx * (ty if dy else 1.0 - ty)
+                for dz in (0, 1):
+                    ws.append(wy * (tz if dz else 1.0 - tz))
+                    idxs.append(base + (dx * self.strides[0] + dy * self.strides[1] + dz))
+        return inside, ws, idxs
+
+    def distance(self, co):
+        """The signed distance of each point (FAR outside the band / the grid): a trilinear look-up."""
+        inside, ws, idxs = self._corners(co)
+        d = np.zeros(len(co), np.float32)
+        for w, idx in zip(ws, idxs):
+            d += w * self.sdf[idx]
+        d[~inside] = self.FAR
+        return d
+
+    def push(self, co, margin, touch_at=1.5):
+        """Points closer than ``margin`` are moved out along the gradient to ``margin`` (in place; the gradient is
+        looked up only for them).  Returns the mask of points touching (closer than ``touch_at`` x margin)."""
+        inside, ws, idxs = self._corners(co)
+        d = np.zeros(len(co), np.float32)
+        for w, idx in zip(ws, idxs):
+            d += w * self.sdf[idx]
+        d[~inside] = self.FAR
+        hit = np.nonzero(d < margin)[0]
+        if len(hit):
+            g = np.zeros((len(hit), 3), np.float32)
+            for w, idx in zip(ws, idxs):
+                g += w[hit, None] * self.grad[idx[hit]]
+            g = g.astype(np.float64)
+            ln = np.linalg.norm(g, axis=1)
+            ln[ln < 1e-9] = 1.0
+            co[hit] += g / ln[:, None] * (margin - d[hit])[:, None]
+        return d < margin * touch_at
