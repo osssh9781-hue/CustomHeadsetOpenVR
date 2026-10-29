@@ -767,7 +767,8 @@ class MCH_OT_duplicate(bpy.types.Operator):
     bl_idname = 'mch.duplicate'
     bl_label = 'Duplicate'
     bl_options = {'REGISTER', 'UNDO'}
-    linked: bpy.props.BoolProperty(name='Linked', default=False, description='Copies share the mesh (Alt+D)')
+    linked: bpy.props.BoolProperty(name='Linked', default=False, description='Copies share the mesh (Alt+D)',
+                                   options={'SKIP_SAVE'})      # 0.24.85 (the Linked Copy button must not make Shift+D linked)
     move: bpy.props.BoolProperty(name='Move', default=True, options={'SKIP_SAVE'})
 
     @classmethod

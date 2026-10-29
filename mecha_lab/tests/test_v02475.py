@@ -62,7 +62,7 @@ real_ui = bb.ui_active
 bb.ui_active = lambda c: True
 items = sy.build_card(C, 1600, 900, 1.0)
 tog = {i.label: i for i in items if i.kind == 'toggle'}
-check('Card: Bisect / Flip / Clip side by side', set(tog) == {'Bisect', 'Flip', 'Clip'})
+check('Card: Bisect / Flip / Clip side by side (+ the 0.24.85 Plane toggle)', set(tog) == {'Bisect', 'Flip', 'Clip', 'Plane'})
 was = bm_.use_clip
 sy.run_card(C, tog['Clip'])
 check('... Clip toggles the mirror\'s clipping', bm_.use_clip != was)
