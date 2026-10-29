@@ -492,9 +492,8 @@ def non_manifold_edge_count(mesh):
     ne = len(mesh.edges)
     if not ne:
         return 0
-    le = np.empty(len(mesh.loops), np.int64)
-    mesh.loops.foreach_get('edge_index', le)
-    return int((np.bincount(le, minlength=ne) != 2).sum())
+    from . import mesh_io as mio
+    return int((mio.edge_face_counts(mesh) != 2).sum())
 
 
 def overlap_edges(ob):
@@ -503,9 +502,8 @@ def overlap_edges(ob):
     try:
         import numpy as np
         me = ob.data
-        idx = np.zeros(len(me.loops), dtype=np.int64)
-        me.loops.foreach_get('edge_index', idx)
-        count = np.bincount(idx, minlength=len(me.edges))
+        from . import mesh_io as mio
+        count = mio.edge_face_counts(me)
         return int((count > 2).sum()), int((count == 1).sum())
     except (AttributeError, ImportError, ValueError):
         return 0, 0
@@ -615,9 +613,9 @@ def loose_labels(mesh):
     labels = np.arange(n, dtype=np.int64)
     if not len(mesh.edges):
         return labels
-    ev = np.empty(len(mesh.edges) * 2, dtype=np.int64)
-    mesh.edges.foreach_get('vertices', ev)
-    a, b = ev[0::2], ev[1::2]
+    from . import mesh_io as mio
+    ev = mio.read_edge_verts(mesh)
+    a, b = ev[:, 0], ev[:, 1]
     for _round in range(64):
         la, lb = labels[a], labels[b]
         diff = la != lb
@@ -635,9 +633,8 @@ def loose_labels(mesh):
 
 def _world_box(ob):
     import numpy as np
-    co = np.empty(len(ob.data.vertices) * 3, dtype=np.float64)
-    ob.data.vertices.foreach_get('co', co)
-    co = co.reshape(-1, 3)
+    from . import mesh_io as mio
+    co = mio.read_co(ob.data)
     m = np.array(ob.matrix_world, dtype=np.float64)
     return co @ m[:3, :3].T + m[:3, 3]
 
@@ -882,9 +879,8 @@ def mesh_size(me):
     import numpy as np
     if not len(me.vertices):
         return 0.0
-    co = np.empty(len(me.vertices) * 3, np.float64)
-    me.vertices.foreach_get('co', co)
-    co = co.reshape(-1, 3)
+    from . import mesh_io as mio
+    co = mio.read_co(me)
     return float(np.linalg.norm(co.max(0) - co.min(0)))
 
 
@@ -930,12 +926,9 @@ def _twin_faces(me, fmask=None):
     n = len(me.polygons)
     if n < 2:
         return False
-    tot = np.empty(n, np.int32)
-    me.polygons.foreach_get('loop_total', tot)
-    start = np.empty(n, np.int32)
-    me.polygons.foreach_get('loop_start', start)
-    vi = np.empty(len(me.loops), np.int64)
-    me.loops.foreach_get('vertex_index', vi)
+    from . import mesh_io as mio
+    start, tot = mio.read_face_starts(me)
+    vi = mio.read_corner_verts(me)
     if tot.max() <= 4:
         key = np.full((n, 4), -1, np.int64)
         for k in range(4):
@@ -956,12 +949,9 @@ def _twin_faces(me, fmask=None):
 
 def _mesh_min_edge_area(me):
     """0.24.85 (shortest edge, smallest face area) of the mesh, numpy."""
-    co = np.empty(len(me.vertices) * 3, np.float64)
-    me.vertices.foreach_get('co', co)
-    co = co.reshape(-1, 3)
-    ev = np.empty(len(me.edges) * 2, np.int32)
-    me.edges.foreach_get('vertices', ev)
-    ev = ev.reshape(-1, 2)
+    from . import mesh_io as mio
+    co = mio.read_co(me)
+    ev = mio.read_edge_verts(me)
     d = np.linalg.norm(co[ev[:, 0]] - co[ev[:, 1]], axis=1) if len(ev) else np.zeros(0)
     area = np.empty(len(me.polygons), np.float64)
     me.polygons.foreach_get('area', area)
@@ -973,9 +963,8 @@ def _bad_edges_mesh(me):
     ne = len(me.edges)
     if not ne:
         return 0
-    le = np.empty(len(me.loops), np.int64)
-    me.loops.foreach_get('edge_index', le)
-    cnt = np.bincount(le, minlength=ne)
+    from . import mesh_io as mio
+    cnt = mio.edge_face_counts(me)
     return int(((cnt != 2) & (cnt > 0)).sum())
 
 
@@ -996,10 +985,9 @@ def shade_result(me, mode='SMOOTH', angle=math.radians(30.0)):
     ne = len(me.edges)
     sharp = np.zeros(ne, bool)
     if ne:
-        tot = np.empty(n, np.int32)
-        me.polygons.foreach_get('loop_total', tot)
-        le = np.empty(len(me.loops), np.int64)
-        me.loops.foreach_get('edge_index', le)
+        from . import mesh_io as mio
+        _start, tot = mio.read_face_starts(me)
+        le = mio.read_corner_edges(me)
         lf = np.repeat(np.arange(n), tot)
         order = np.argsort(le, kind='stable')
         le_s, lf_s = le[order], lf[order]
@@ -1031,18 +1019,14 @@ def _changed_faces(me, before, size):
         return None, None
     q = 1e-6 * max(size, 1e-9)
     def keys(m):
-        co = np.empty(len(m.vertices) * 3, np.float64)
-        m.vertices.foreach_get('co', co)
-        k = np.round(co.reshape(-1, 3) / q).astype(np.int64)
+        from . import mesh_io as mio
+        k = np.round(mio.read_co(m) / q).astype(np.int64)
         return (k[:, 0] * 73856093) ^ (k[:, 1] * 19349663) ^ (k[:, 2] * 83492791)
     new_v = ~np.isin(keys(me), keys(before))
     n = len(me.polygons)
-    tot = np.empty(n, np.int32)
-    me.polygons.foreach_get('loop_total', tot)
-    start = np.empty(n, np.int32)
-    me.polygons.foreach_get('loop_start', start)
-    vi = np.empty(len(me.loops), np.int64)
-    me.loops.foreach_get('vertex_index', vi)
+    from . import mesh_io as mio
+    start, tot = mio.read_face_starts(me)
+    vi = mio.read_corner_verts(me)
     fmask = np.maximum.reduceat(new_v[vi].astype(np.int8), start).astype(bool)
     vmask = np.zeros(len(me.vertices), bool)
     vmask[vi[np.repeat(fmask, tot)]] = True                    # (one ring: the faces round those faces too)
@@ -1059,12 +1043,9 @@ def _flipped_pairs(me, fmask=None):
     n = len(me.polygons)
     if n < 2:
         return False
-    tot = np.empty(n, np.int32)
-    me.polygons.foreach_get('loop_total', tot)
-    start = np.empty(n, np.int32)
-    me.polygons.foreach_get('loop_start', start)
-    vi = np.empty(len(me.loops), np.int64)
-    me.loops.foreach_get('vertex_index', vi)
+    from . import mesh_io as mio
+    start, tot = mio.read_face_starts(me)
+    vi = mio.read_corner_verts(me)
     nxt = np.arange(1, len(vi) + 1)
     nxt[start + tot - 1] = start
     key = vi * (len(me.vertices) + 1) + vi[nxt]
@@ -1403,8 +1384,8 @@ def _loose_verts(me):
     """0.24.85 Does the mesh have points with no face?  (numpy)"""
     if not len(me.vertices):
         return False
-    vi = np.empty(len(me.loops), np.int64)
-    me.loops.foreach_get('vertex_index', vi)
+    from . import mesh_io as mio
+    vi = mio.read_corner_verts(me)
     return bool((np.bincount(vi, minlength=len(me.vertices)) == 0).any())
 
 
@@ -1444,9 +1425,8 @@ def multi_edge_count(me):
         import numpy as np
         if me is None or not len(me.polygons):
             return 0
-        lv = np.empty(len(me.loops), np.int64)
-        me.loops.foreach_get('edge_index', lv)
-        return int((np.bincount(lv, minlength=len(me.edges)) > 2).sum())
+        from . import mesh_io as mio
+        return int((mio.edge_face_counts(me) > 2).sum())
     except (AttributeError, ValueError, ImportError):
         return 0
 

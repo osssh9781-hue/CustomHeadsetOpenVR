@@ -25,9 +25,12 @@ import bpy
 import numpy as np
 from mathutils.kdtree import KDTree
 
+from . import mesh_io as mio
+
 TAG = 'mch_region_src'
 SRC = 'mch_region_face'
 LAST_TIMES = {}                   # the last region boolean's stage times (region / extract / boolean / knife / sort / stitch)
+_PRE_TIDY = {}                    # the tidy run on the region sub-mesh inside the stitch (counts, seconds)
 LAST_REGION = {}                  # the last stitched result: {'name': mesh name, 'faces': total, 'untouched': first N faces untouched}
 TIDY_SUB_MIN = 50_000             # faces: below this the whole-mesh tidy is as fast as taking the region out
 MIN_FACES = int(os.environ.get('MECH_REGION_MIN', 100_000))   # (below this the whole-part boolean is as fast)
@@ -41,16 +44,20 @@ _TYPES = {'FLOAT': ('value', 1, np.float32), 'INT': ('value', 1, np.int32), 'INT
 
 
 def arrays(me):
-    n = len(me.polygons)
-    co = np.empty(len(me.vertices) * 3)
-    me.vertices.foreach_get('co', co)
-    tot = np.empty(n, np.int32)
-    me.polygons.foreach_get('loop_total', tot)
-    start = np.empty(n, np.int32)
-    me.polygons.foreach_get('loop_start', start)
-    vi = np.empty(len(me.loops), np.int64)
-    me.loops.foreach_get('vertex_index', vi)
-    return co.reshape(-1, 3), tot, start, vi
+    """(points (n, 3) float64, face sizes, face starts, corner point indices int64) - from the mesh's built-in
+    attributes (0.24.86: 0.36 s -> 0.06 s on 1.3M faces)."""
+    start, tot = mio.read_face_starts(me)
+    return mio.read_co(me), tot, start, mio.read_corner_verts(me)
+
+
+def _shared_points(vi, lm, nv):
+    """Points used by corners on both sides of the corner mask ``lm`` (the rim between two face sets).  Two
+    boolean marks: ``np.intersect1d`` sorted the 3.9M corners of a 1.3M-face part (0.5 s); this is 15 ms."""
+    a = np.zeros(nv, bool)
+    b = np.zeros(nv, bool)
+    a[vi[lm]] = True
+    b[vi[~lm]] = True
+    return np.flatnonzero(a & b)
 
 
 def build(V, corners, sizes, name, like=None):
@@ -64,9 +71,9 @@ def build(V, corners, sizes, name, like=None):
     if not len(sizes):
         return m                                    # (an empty mesh to fill later)
     m.vertices.add(len(V))
-    m.vertices.foreach_set('co', np.ascontiguousarray(V, np.float64).ravel())
+    mio.write_co(m, V)
     m.loops.add(len(corners))
-    m.loops.foreach_set('vertex_index', np.ascontiguousarray(corners, np.int32))
+    mio.write_corner_verts(m, corners)
     m.polygons.add(len(sizes))
     m.polygons.foreach_set('loop_start', np.concatenate([[0], np.cumsum(sizes)[:-1]]).astype(np.int32))
     m.update(calc_edges=True)
@@ -273,10 +280,12 @@ def region_boolean(context, target, cutter, operation, log=None):
     t3 = time.perf_counter()
     LAST_TIMES.clear()
     LAST_TIMES.update(region=t0b - t0, extract=t1 - t0b, boolean=t1b - t1, knife=t2 - t1b, sort=t2b - t2,
-                      stitch=t3 - t2b, faces_region=nreg, faces_total=len(tot), walls=int(len(wS)))
+                      stitch=t3 - t2b, faces_region=nreg, faces_total=len(tot), walls=int(len(wS)),
+                      tidy=_PRE_TIDY.get('counts'), tidy_s=_PRE_TIDY.get('s', 0.0))
+    _PRE_TIDY.clear()
     if log is not None:
         log.append(f'region {nreg:,} of {len(tot):,} faces: region {t0b - t0:.2f} extract {t1 - t0b:.2f} boolean {t1b - t1:.2f} '
-                   f'knife {t2 - t1b:.2f} sort {t2b - t2:.2f} stitch {t3 - t2b:.2f} s')
+                   f'knife {t2 - t1b:.2f} sort {t2b - t2:.2f} stitch {t3 - t2b:.2f} s (tidy {LAST_TIMES["tidy_s"]:.2f} s in the stitch)')
     return out
 
 
@@ -576,9 +585,19 @@ def _region_sub(kept, walls, size):
         short = [e for e in bm.edges if e.is_valid and e.calc_length() < eps]
         if short:
             bmesh.ops.dissolve_degenerate(bm, edges=short, dist=eps)
+        dbg = bool(os.environ.get('MECH_REGION_DEBUG'))
+        if dbg:
+            print(f'[region] sub: open edges after the seam weld {sum(1 for e in bm.edges if len(e.link_faces) == 1)}', flush=True)
+        for _pass in range(3):                 # (an edge with two such points: the new edge gets the next pass)
+            if not _seam_tees(bm, 10 * eps):
+                break
+        if dbg:
+            print(f'[region] sub: open edges after the T-junction pass {sum(1 for e in bm.edges if len(e.link_faces) == 1)}', flush=True)
         opn = [e for e in bm.edges if e.is_valid and len(e.link_faces) == 1]
         if opn:
             bmesh.ops.holes_fill(bm, edges=opn, sides=8)
+        if dbg:
+            print(f'[region] sub: open edges after the hole fill {sum(1 for e in bm.edges if len(e.link_faces) == 1)}', flush=True)
         tiny = [f for f in bm.faces if f.is_valid and f.calc_area() < eps * eps
                 and any(len(e.link_faces) > 2 for e in f.edges)]
         if tiny:
@@ -593,11 +612,64 @@ def _region_sub(kept, walls, size):
     return sub
 
 
+def _seam_tees(bm, tol):
+    """T-junctions on the seam: the solver and the knife put the same crossing a little apart (one side has a
+    point the other has not, or two points where the other has one - 4e-5 on a 1.3M-face part, past the weld).
+    An open point that lies on an open edge of the other side splits that edge there and is welded to the new
+    point.  Only open geometry is looked at (a few hundred points)."""
+    import bmesh
+    opn = [e for e in bm.edges if e.is_valid and len(e.link_faces) == 1]
+    if not opn:
+        return 0
+    pts = {v for e in opn for v in e.verts}
+    pts = [v for v in pts]
+    kd = KDTree(len(pts))
+    for i, v in enumerate(pts):
+        kd.insert(v.co, i)
+    kd.balance()
+    done = 0
+    for e in opn:
+        if not e.is_valid or len(e.link_faces) != 1:
+            continue
+        a, b = e.verts[0].co.copy(), e.verts[1].co.copy()
+        d = b - a
+        L = d.length
+        if L <= tol:
+            continue
+        mid = (a + b) * 0.5
+        for co, i, _dist in kd.find_range(mid, L * 0.5 + tol):
+            v = pts[i]
+            if not v.is_valid or v in e.verts:
+                continue
+            t = (v.co - a).dot(d) / (L * L)
+            if t <= 0.0 or t >= 1.0:
+                continue
+            if ((a + d * t) - v.co).length > tol:
+                continue
+            try:
+                _ne, nv = bmesh.utils.edge_split(e, e.verts[0], t)
+            except (ValueError, RuntimeError):
+                continue
+            bmesh.ops.remove_doubles(bm, verts=[nv, v], dist=tol * 2)
+            done += 1
+            break
+    return done
+
+
 def _stitch(me, co, tot, vi, fmask, lm, kept, walls, target, cutter, rim, operation):
     """The untouched faces of ``me`` + the cleaned region (patch result + walls), the rim welded: a new mesh."""
     size = float(np.linalg.norm(co.max(0) - co.min(0))) if len(co) else 1.0
     sub = _region_sub(kept, walls, size)
     try:
+        # the cut's result tidy, on the region while it is still a small mesh (the cut's own tidy then finds nothing
+        # and need not take the region out and put it back a second time: 1.4 s on 1.3M faces)
+        from . import core_geometry as cg
+        t = time.perf_counter()
+        try:
+            _PRE_TIDY['counts'] = cg.tidy_result(sub, size, before=None, flip=False)
+        except (RuntimeError, ValueError, AttributeError, IndexError, MemoryError):
+            _PRE_TIDY['counts'] = None
+        _PRE_TIDY['s'] = time.perf_counter() - t
         out = build(np.zeros((0, 3)), np.zeros(0, np.int64), np.zeros(0, np.int32), me.name + '_cut', like=me)
         if not replace_faces(me, fmask, sub, size, into=out):
             bpy.data.meshes.remove(out)
@@ -693,9 +765,7 @@ def _carry_attrs(out, me, kept, walls, fmask, lm, kface, klm, wface, wlm, used, 
 
 
 def _edge_keys(me, vmap):
-    ev = np.empty(len(me.edges) * 2, np.int64)
-    me.edges.foreach_get('vertices', ev)
-    ev = vmap[ev.reshape(-1, 2)]
+    ev = vmap[mio.read_edge_verts(me)]
     ok = (ev >= 0).all(1)
     a, b = np.minimum(ev[:, 0], ev[:, 1]), np.maximum(ev[:, 0], ev[:, 1])
     return a * 4_000_000_000 + b, ok
@@ -808,7 +878,7 @@ def replace_faces(me, fmask, sub, size, into=None):
     lm = np.repeat(fmask, tot)
     # the rim: the part's points that faces on both sides use (a point on an open sliver edge inside the region is
     # no rim point - the fix may weld it away, and no untouched face needs it)
-    rim_part = np.intersect1d(vi[lm], vi[~lm])
+    rim_part = _shared_points(vi, lm, len(co))
     sc, st, _ss, sv = arrays(sub)
     if not len(sc):
         return False
@@ -878,9 +948,9 @@ def replace_faces(me, fmask, sub, size, into=None):
     else:
         me.clear_geometry()
     me.vertices.add(int(used.sum()))
-    me.vertices.foreach_set('co', np.ascontiguousarray(V[used], np.float64).ravel())
+    mio.write_co(me, V[used])
     me.loops.add(len(corners))
-    me.loops.foreach_set('vertex_index', np.ascontiguousarray(newidx[corners], np.int32))
+    mio.write_corner_verts(me, newidx[corners])
     me.polygons.add(len(sizes))
     me.polygons.foreach_set('loop_start', np.concatenate([[0], np.cumsum(sizes)[:-1]]).astype(np.int32))
     me.update(calc_edges=True)
@@ -925,8 +995,7 @@ def open_edge_faces(me, rings=2):
     """The faces round the open / 3+-face edges of ``me`` (plus ``rings`` rings), as a face mask; None when there
     are none."""
     co, tot, start, vi = arrays(me)
-    le = np.empty(len(me.loops), np.int64)
-    me.loops.foreach_get('edge_index', le)
+    le = mio.read_corner_edges(me)
     cnt = np.bincount(le, minlength=len(me.edges))
     bad = (cnt != 2) & (cnt > 0)
     if not bad.any():

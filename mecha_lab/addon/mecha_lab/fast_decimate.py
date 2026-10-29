@@ -234,10 +234,11 @@ def build_mesh(new, V, faces, sizes=None):
         corners = faces.ravel()
     else:
         corners = np.ascontiguousarray(faces, np.int32).ravel()
+    from . import mesh_io as mio
     new.vertices.add(len(V))
-    new.vertices.foreach_set('co', V.ravel())
+    mio.write_co(new, V)
     new.loops.add(len(corners))
-    new.loops.foreach_set('vertex_index', corners)
+    mio.write_corner_verts(new, corners)
     new.polygons.add(len(sizes))
     new.polygons.foreach_set('loop_start', np.concatenate([[0], np.cumsum(sizes)[:-1]]).astype(np.int32))
     new.update(calc_edges=True)

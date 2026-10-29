@@ -285,9 +285,8 @@ def needs_fix(me):
     import numpy as np
     if not len(me.polygons):
         return False
-    lv = np.empty(len(me.loops), np.int64)
-    me.loops.foreach_get('edge_index', lv)
-    cnt = np.bincount(lv, minlength=len(me.edges))
+    from . import mesh_io as mio
+    cnt = mio.edge_face_counts(me)
     return bool((cnt != 2).any())
 
 
