@@ -1,24 +1,26 @@
-"""0.24.92 Wrinkle Lines: draw guide lines on a mesh, a short cloth simulation folds the surface along them.
+"""0.24.92 Wrinkle Lines: draw guide lines on a mesh, thin tubes go along them, a cloth laid over the mesh folds
+over the tubes.
 
-Not a full garment simulation: the aim is "a pretty wrinkle where I want it" on a game model.  The mesh itself
-(no copy, no new layer) becomes a cloth for a few frames:
+Not a full garment simulation: the aim is "a pretty wrinkle where I want it" on a game model.  Two stages:
 
-    * along the drawn lines the fabric is **shrunk** (Blender cloth Shrinking through a vertex group whose weight
-      falls off with the distance to the lines: Wrinkle Size) - the surface gathers there and folds;
-    * the mesh boundary (open edges: the ends of a sleeve) is pinned, everything far from the lines is pinned
-      *softly* (Silhouette Keep = the pin weight away from the lines), so the part keeps its shape and the folds
-      stay where the lines are;
-    * a fabric preset (Cotton / Denim / Silk / Leather / Knit) sets mass and stiffness, Gravity the sag;
-    * Crease mode pushes the line itself in (a fold line) and shrinks a narrow band round it.
+    1. **Tubes** (Space): along every drawn line a thin round tube (Wrinkle Size x 1/3 of the part size, Fold
+       Strength its height, End Fade the fade-out at the ends, Line Strength per line) is laid on the surface -
+       live with the sliders, Enter keeps just that;
+    2. **Cloth** (Space again): the way a garment is draped in Marvelous Designer - a copy of the mesh is laid a
+       little above the surface, its open edges (the ends of a sleeve) pinned, its rest lengths shrunk (Shrink),
+       gravity pulls it, and the original surface with the tubes is the **collider** inside: the cloth cannot
+       pass through it and sticks to it (friction).  The cloth hangs on the tubes and folds below them, the fabric
+       between the lines crumples; Silhouette Keep is a soft spring back to the start.  Enter writes the cloth into
+       the mesh (same points, so nothing else changes), Esc puts the saved copy back.
+    Crease mode lays a groove instead of a tube: the cloth sags into it, a fold line.
 
 Keys (the Wrinkle Lines tool):  drag = a new line on the surface · drag a point = move it · Shift + click = a point
 added to the nearest line · Ctrl + click = that point removed · X = the line under the mouse removed ·
-Space = run / pause the simulation · Enter = keep the result · Esc = back to the start (the lines stay).
+Space = tubes / simulate / pause · Enter = keep · Esc = back to the start (the lines stay).
 
 The lines live on the object (``PROP``, local space) so they stay on the mesh while orbiting and survive a save.
-The simulation runs in the user's scene frame by frame (a timer), so the cloth is seen folding; Enter bakes the
-frame into the mesh, Esc puts the saved copy of the mesh back.  ``weights`` and ``simulate`` are plain functions
-(tested headless).
+The frames run in the user's scene on a timer, so the cloth is seen folding.  ``tube_field``, ``prepare`` /
+``build`` / ``advance`` and ``simulate`` are plain functions (tested headless); the solver is ``cloth_pbd``.
 """
 from __future__ import annotations
 
@@ -53,8 +55,8 @@ FABRICS = (
 )
 FABRIC_ITEMS = tuple((f[0], f[1], f[2]) for f in FABRICS)
 FABRIC_BY_ID = {f[0]: f[3] for f in FABRICS}
-MODES = (('WRINKLE', 'Wrinkle Line', 'The fabric gathers along the line: soft folds run off it'),
-         ('CREASE', 'Crease', 'A fold line: the line itself is pushed in, a narrow band shrinks round it'))
+MODES = (('WRINKLE', 'Wrinkle Line', 'A tube along the line under the cloth: the cloth folds over and off it'),
+         ('CREASE', 'Crease', 'A groove along the line: the cloth sags into it, a fold line'))
 
 
 # -----------------------------------------------------------------------------
@@ -62,20 +64,40 @@ MODES = (('WRINKLE', 'Wrinkle Line', 'The fabric gathers along the line: soft fo
 # -----------------------------------------------------------------------------
 
 
+def _strength_changed(st, context):
+    lines = _lines_of(context.view_layer.objects.active)
+    if lines:
+        lines[-1]['strength'] = st.strength / 100.0
+        _save(context.view_layer.objects.active, lines)
+        if sim_active() and SIM['sess'].get('stage') == 'preview':
+            SIM['sess']['strengths'] = [ln['strength'] for ln in lines]
+            _tube_changed(st, context)
+
+
+def _tube_changed(st, context):
+    if refresh(context):
+        for area in context.screen.areas if context.screen else ():
+            if area.type == 'VIEW_3D':
+                area.tag_redraw()
+
+
+
 class MCH_PG_WrinkleLines(bpy.types.PropertyGroup):
-    mode: EnumProperty(name='Mode', items=MODES, default='WRINKLE')
+    mode: EnumProperty(name='Mode', items=MODES, default='WRINKLE', update=_tube_changed)
     fabric: EnumProperty(name='Fabric', items=FABRIC_ITEMS, default='COTTON')
-    size: FloatProperty(name='Wrinkle Size', description='How far from a line the fabric gathers, as % of the part size',
-                        default=5.0, min=0.5, max=30.0, subtype='PERCENTAGE')
-    shrink: FloatProperty(name='Shrink', description='How much the fabric along a line shrinks (more = deeper folds)',
+    size: FloatProperty(name='Wrinkle Size', description='The thickness of the tube laid along a line, as % of the part size (x 3)',
+                        default=5.0, min=0.5, max=30.0, subtype='PERCENTAGE', update=_tube_changed)
+    fade: FloatProperty(name='End Fade', description='The tube fades out over this much of the line at each end',
+                        default=20.0, min=0.0, max=50.0, subtype='PERCENTAGE', update=_tube_changed)
+    shrink: FloatProperty(name='Shrink', description='How much the cloth laid over the mesh shrinks (more = deeper folds)',
                           default=33.0, min=0.0, max=90.0, subtype='PERCENTAGE')
-    fold: FloatProperty(name='Fold Strength', description='Wrinkle Line: how hard the line pulls; Crease: how deep the line is pushed in',
-                        default=100.0, min=0.0, max=200.0, subtype='PERCENTAGE')
+    fold: FloatProperty(name='Fold Strength', description='The height of the tubes (Crease: how deep the groove is)',
+                        default=100.0, min=0.0, max=200.0, subtype='PERCENTAGE', update=_tube_changed)
     gravity: FloatProperty(name='Gravity', default=30.0, min=0.0, max=300.0, subtype='PERCENTAGE')
     keep: FloatProperty(name='Silhouette Keep', description='How firmly the surface away from the lines stays where it is',
                         default=47.0, min=0.0, max=100.0, subtype='PERCENTAGE')
     strength: FloatProperty(name='Line Strength', description='The strength of the last drawn line (each line keeps its own)',
-                            default=100.0, min=0.0, max=200.0, subtype='PERCENTAGE', update=lambda s, c: _strength_changed(s, c))
+                            default=100.0, min=0.0, max=200.0, subtype='PERCENTAGE', update=_strength_changed)
     pin_boundary: BoolProperty(name='Pin Mesh Boundary', description='The open edges of the mesh (the ends of a sleeve) stay put',
                                default=True)
     pin_selected: BoolProperty(name='Pin Selected', description='Points selected in Edit Mode stay put too', default=False)
@@ -89,13 +111,6 @@ class MCH_PG_WrinkleLines(bpy.types.PropertyGroup):
 
 def settings(context):
     return getattr(context.scene, 'mch_wlines', None)
-
-
-def _strength_changed(st, context):
-    lines = _lines_of(context.view_layer.objects.active)
-    if lines:
-        lines[-1]['strength'] = st.strength / 100.0
-        _save(context.view_layer.objects.active, lines)
 
 
 # -----------------------------------------------------------------------------
@@ -234,15 +249,20 @@ def boundary_verts(me):
 # the simulation (cloth_pbd: the sculpt-cloth way)
 # -----------------------------------------------------------------------------
 
-RIDGE = 0.5                      # Crease: the line pushed in by Wrinkle Size x this x Fold Strength
-PINCH = 0.3                      # Wrinkle Line: the pull toward the line per frame, x Fold Strength x line strength
-KEEP_RATE = 0.1                  # Silhouette Keep 47 % -> this much of the way back per frame (x keep / 0.47)
-ITERATIONS = 12                  # constraint passes per frame
-SOR = 1.6
-JITTER = 0.02                    # x Wrinkle Size: the nudge a perfectly even surface needs to start folding
-# fabric: bending constraint strength, Laplacian smoothing (fold breadth), damping
-FABRIC_SIM = {'COTTON': (0.5, 0.2, 0.1), 'DENIM': (1.0, 0.4, 0.2), 'SILK': (0.2, 0.1, 0.05), 'LEATHER': (1.0, 0.5, 0.3),
-              'KNIT': (0.4, 0.15, 0.1)}
+TUBE = 1.0 / 3.0                 # the tube's radius = Wrinkle Size x this (5 % -> 1.7 % of the part size)
+MARGIN = 0.25                    # the cloth rests this x tube radius above the collider (the collider sits that far in)
+GAP = 0.6                        # the cloth copy starts this x tube radius above the collider
+ITERATIONS = 6                   # constraint passes per frame
+SOR = 1.3
+DAMPING = 0.3
+GRAV_UNIT = 0.0015 / (0.3 * 3.3) # gravity 30 % on a 3.3-unit part = the probe's 0.0015 / frame^2 (x part size)
+KEEP_SCALE = 0.1                 # Silhouette Keep 100 % -> the goal spring weight (47 % = a gentle pull back)
+KEEP_RATE = 0.3
+REPICK = 0.5                     # a cloth point re-picks its collider point when it slid this x the mean edge length
+FIELD_CHUNK = 2048
+# fabric: bending constraint strength, contact friction, damping
+FABRIC_SIM = {'COTTON': (0.5, 0.3, 0.3), 'DENIM': (1.0, 0.5, 0.4), 'SILK': (0.2, 0.15, 0.2), 'LEATHER': (1.0, 0.6, 0.5),
+              'KNIT': (0.4, 0.3, 0.3)}
 
 
 def _subdivide(me, levels):
@@ -265,48 +285,108 @@ def detail_levels(faces):
     return int(min(MAX_DETAIL_LEVELS, max(1, math.floor(math.log(DETAIL_TARGET / faces, 4)))))
 
 
-def line_field(co, paths, strengths, radius, crease=False):
-    """Per point: the weight of the nearest line (``weights``) and the nearest point ON that line (the pinch
-    target).  Returns (w, target)."""
+def tube_field(co, paths, strengths, radius, fade=0.2):
+    """Per point the height (0..1, x the line's strength) of a round tube of ``radius`` lying along each line:
+    ``sqrt(1 - (d / r)^2)`` from the exact distance to the polyline, the ends fading out over ``fade`` of the
+    line's length (a closed line has no ends).  ``co`` (N, 3), ``paths`` lists / arrays of points - pure numpy."""
     n = len(co)
-    w = np.zeros(n)
-    target = co.copy()
-    r = radius * (0.5 if crease else 1.0)
+    h = np.zeros(n)
+    if n == 0 or radius <= 0:
+        return h
+    co = np.asarray(co, np.float64)
     for path, strength in zip(paths, strengths):
-        if len(path) < 2 or strength <= 0 or r <= 0:
+        P = np.asarray([list(p) for p in path], np.float64)
+        if len(P) < 2 or strength <= 0:
             continue
-        kd = KDTree(len(path))
-        for i, p in enumerate(path):
-            kd.insert(p, i)
-        kd.balance()
-        d = np.empty(n)
-        near = np.empty((n, 3))
-        for i in range(n):
-            pt, _j, dist = kd.find(co[i])
-            d[i], near[i] = dist, pt
-        t = np.clip(d / r, 0.0, 1.0)
-        f = ((1.0 - t) if crease else (1.0 - t * t) ** 2) * strength
-        better = f > w
-        w[better] = np.clip(f[better], 0.0, 1.0)
-        target[better] = near[better]
-    return w, target
+        A, B = P[:-1], P[1:]
+        AB = B - A
+        L2 = np.maximum((AB * AB).sum(1), 1e-18)
+        seg = np.sqrt(L2)
+        acc = np.concatenate([[0.0], np.cumsum(seg)])
+        total = max(acc[-1], 1e-9)
+        closed = np.linalg.norm(P[0] - P[-1]) < radius * 0.5
+        for s0 in range(0, n, FIELD_CHUNK):
+            c = co[s0:s0 + FIELD_CHUNK]
+            diff = c[:, None, :] - A[None, :, :]
+            t = np.clip((diff * AB[None]).sum(2) / L2[None], 0.0, 1.0)
+            proj = A[None] + t[:, :, None] * AB[None]
+            d2 = ((c[:, None, :] - proj) ** 2).sum(2)
+            j = d2.argmin(1)
+            rows = np.arange(len(c))
+            d = np.sqrt(d2[rows, j])
+            u = np.clip(d / radius, 0.0, 1.0)
+            hh = np.sqrt(np.maximum(1.0 - u * u, 0.0))
+            if not closed and fade > 0:
+                along = (acc[j] + t[rows, j] * seg[j]) / total
+                e = np.clip(np.minimum(along, 1.0 - along) / fade, 0.0, 1.0)
+                hh *= e * e * (3.0 - 2.0 * e)
+            h[s0:s0 + FIELD_CHUNK] = np.maximum(h[s0:s0 + FIELD_CHUNK], hh * strength)
+    return h
 
 
-def build(context, ob, st, lines):
-    """The cloth for ``ob``'s mesh (Add Detail first): the line field, the pins, the solver.  Returns the
-    session dict."""
-    from . import cloth_pbd
+def _normals(me):
+    nrm = np.empty(len(me.vertices) * 3, np.float64)
+    me.vertices.foreach_get('normal', nrm)
+    return nrm.reshape(-1, 3)
+
+
+def _gravity_dir(ob):
+    """World down in the object's local space (unit)."""
+    try:
+        d = ob.matrix_world.to_3x3().inverted() @ Vector((0.0, 0.0, -1.0))
+    except ValueError:
+        d = Vector((0.0, 0.0, -1.0))
+    if d.length < 1e-9:
+        d = Vector((0.0, 0.0, -1.0))
+    return np.array(d.normalized(), np.float64)
+
+
+def prepare(context, ob, st, lines):
+    """Stage 1 - the tubes: Add Detail, the line field on the mesh.  Returns the session dict (no cloth yet)."""
     me = ob.data
     levels = detail_levels(len(me.polygons)) if st.detail else 0
     if levels:
         _subdivide(me, levels)
     target = target_of(context, ob, fresh=True)
-    size = target.size
-    radius = size * st.size / 100.0
     co = mio.read_co(me)
     paths = [np.array([list(p) for p in line_path(target, ln)]) for ln in lines]
-    crease = st.mode == 'CREASE'
-    w, tgt = line_field(co, paths, [ln['strength'] for ln in lines], radius, crease=crease)
+    return dict(stage='preview', co0=co, nrm=_normals(me), paths=paths, strengths=[ln['strength'] for ln in lines],
+                size=target.size, levels=levels, verts=len(co), frames=st.frames, frame=0, field=None, field_key=None)
+
+
+def tube_shape(sess, st):
+    """The tubes on the original surface for the current sliders: the collider positions (N, 3) and the heights."""
+    tube_r = sess['size'] * st.size / 100.0 * TUBE
+    key = (round(st.size, 4), round(st.fade, 4), tuple(sess['strengths']))
+    if sess['field'] is None or sess['field_key'] != key:
+        sess['field'] = tube_field(sess['co0'], sess['paths'], sess['strengths'], tube_r, fade=st.fade / 100.0)
+        sess['field_key'] = key
+    sign = -1.0 if st.mode == 'CREASE' else 1.0
+    h = sess['field'] * tube_r * sign * st.fold / 100.0
+    sess['tube_r'] = tube_r
+    sess['h'] = h
+    return sess['co0'] + sess['nrm'] * h[:, None], h
+
+
+def preview(sess, st, me):
+    """The tubes written into the mesh (stage 1, live with the sliders)."""
+    shape, _h = tube_shape(sess, st)
+    mio.write_co(me, shape)
+    me.update()
+    return shape
+
+
+def build(context, ob, st, sess):
+    """Stage 2 - the cloth: a copy of the mesh laid over the collider (the original surface a margin in + the
+    tubes), the open edges pinned, the rest lengths shrunk; the collider pushes the cloth out, with friction."""
+    from . import cloth_pbd
+    me = ob.data
+    shape, h = tube_shape(sess, st)
+    tube_r = sess['tube_r']
+    margin = tube_r * MARGIN
+    nrm = sess['nrm']
+    collider = shape - nrm * margin
+    co = shape + nrm * (tube_r * GAP)
     pin = np.zeros(len(co))
     bnd = boundary_verts(me) if st.pin_boundary else np.zeros(0, np.int64)
     if len(bnd):
@@ -315,55 +395,80 @@ def build(context, ob, st, lines):
         sel = np.zeros(len(me.vertices), bool)
         me.vertices.foreach_get('select', sel)
         pin[sel] = 1.0
-    if crease and st.fold > 0:               # the line pushed in and held: a fold line the cloth settles round
-        nrm = np.zeros((len(co), 3))
-        me.vertices.foreach_get('normal', nrm.ravel())
-        depth = radius * RIDGE * st.fold / 100.0
-        co = co - nrm * (w * depth)[:, None]
-        pin = np.maximum(pin, np.clip(w * 2.0 - 0.5, 0.0, 1.0))
-    bend, smooth, damping = FABRIC_SIM.get(st.fabric, FABRIC_SIM['COTTON'])
+    bend, friction, damping = FABRIC_SIM.get(st.fabric, FABRIC_SIM['COTTON'])
     vi = mio.read_corner_verts(me)
     start, tot = mio.read_face_starts(me)
-    cloth = cloth_pbd.Cloth(co, vi, start, tot, bend=bend, keep=st.keep / 100.0, pin=pin)
+    cloth = cloth_pbd.Cloth(co, vi, start, tot, bend=bend, keep=st.keep / 100.0 * KEEP_SCALE, pin=pin)
     cloth.sor = SOR
-    cloth.smooth = smooth * (0.5 + 0.5 * st.size / 5.0)        # (a bigger Wrinkle Size: broader folds)
-    cloth.jitter(radius * JITTER, seed=1)
+    cloth.scale_e = cloth.scale_b = 1.0 - st.shrink / 100.0
     cloth.init = co.copy()
-    return dict(cloth=cloth, w=w, target=tgt, radius=radius, centre=co.mean(0), damping=damping, crease=crease,
-                levels=levels, verts=len(co), frames=st.frames, frame=0, fps=max(1.0, context.scene.render.fps / max(1e-6, context.scene.render.fps_base)))
+    edge_len = float(np.mean(np.linalg.norm(co[cloth.edges[:, 1]] - co[cloth.edges[:, 0]], axis=1))) if len(cloth.edges) else tube_r
+    kd = KDTree(len(collider))
+    for i, p in enumerate(collider):
+        kd.insert(p, i)
+    kd.balance()
+    sess.update(stage='run', cloth=cloth, collider=collider, kd=kd, ref=np.arange(len(co)), pick=co.copy(),
+                margin=margin, repick=edge_len * REPICK, friction=friction, damping=damping, frame=0,
+                gdir=_gravity_dir(ob), frames=st.frames)
+    cloth.collide = lambda c: collide(c, sess)
+    return sess
+
+
+def collide(cloth, sess):
+    """The collider: every cloth point stays ``margin`` above the tangent plane of its collider point (re-picked
+    by nearness when it slid); a touching point is held back toward where the frame began (friction)."""
+    C, N = sess['collider'], sess['nrm']
+    ref = sess['ref']
+    rel = cloth.co - C[ref]
+    hgt = (rel * N[ref]).sum(1)
+    inside = hgt < sess['margin']
+    if np.any(inside):
+        cloth.co[inside] += N[ref[inside]] * (sess['margin'] - hgt[inside])[:, None]
+    fr = sess['friction']
+    if fr > 0:
+        touch = hgt < sess['margin'] * 1.5
+        if np.any(touch):
+            cloth.co[touch] += (cloth.prev[touch] - cloth.co[touch]) * fr
+
+
+def repick(sess):
+    """Cloth points that slid more than ``repick`` since their last pick get the nearest collider point again."""
+    cloth = sess['cloth']
+    moved = np.linalg.norm(cloth.co - sess['pick'], axis=1) > sess['repick']
+    idx = np.nonzero(moved)[0]
+    if not len(idx):
+        return 0
+    kd, ref = sess['kd'], sess['ref']
+    for i in idx:
+        ref[i] = kd.find(cloth.co[i])[1]
+    sess['pick'][idx] = cloth.co[idx]
+    return len(idx)
 
 
 def advance(sess, st):
-    """One frame of the session: the forces of this frame (scale toward the centre, the pinch toward the lines,
-    gravity), then the solver.  Returns the positions."""
+    """One frame: gravity, then the solver with the collider.  Returns the positions."""
     cloth = sess['cloth']
-    n = cloth.n
-    force = np.zeros((n, 3))
-    frames = max(1, sess['frames'])
-    if st.shrink > 0:
-        force += cloth.scale_force(st.shrink / 100.0 / frames, sess['centre'])
-    if not sess['crease'] and st.fold > 0:
-        force += cloth.toward_force(sess['target'], PINCH * st.fold / 100.0, mask=sess['w'])
-    dt = 1.0 / sess['fps']
-    g = -9.8 * st.gravity / 100.0 * dt * dt * sess['radius'] / 0.05      # (scaled to the part: 5 % size = 1 unit)
-    keep_rate = KEEP_RATE * (st.keep / 47.0) if st.keep > 0 else 0.0
-    cloth.step(force=force, gravity=(0.0, 0.0, g), damping=sess['damping'], iterations=ITERATIONS, keep_rate=keep_rate)
+    repick(sess)
+    g = sess['gdir'] * (GRAV_UNIT * st.gravity / 100.0 * sess['size'])
+    keep_rate = KEEP_RATE if st.keep > 0 else 0.0
+    cloth.step(force=None, gravity=g, damping=sess['damping'], iterations=ITERATIONS, keep_rate=keep_rate)
     sess['frame'] += 1
     return cloth.co
 
 
 def simulate(context, ob, st, lines, frames=None):
-    """Headless / in one go: every frame, the last written into the mesh.  Returns the session info + time."""
+    """Headless / in one go: the tubes, then every frame, the last written into the mesh.  Returns info + time."""
     t = time.perf_counter()
-    sess = build(context, ob, st, lines)
+    sess = prepare(context, ob, st, lines)
+    build(context, ob, st, sess)
     if frames is not None:
         sess['frames'] = frames
     for _ in range(sess['frames']):
         advance(sess, st)
     mio.write_co(ob.data, sess['cloth'].co)
     ob.data.update()
-    return dict(levels=sess['levels'], verts=sess['verts'], radius=sess['radius'], frames=sess['frames'],
-                time=time.perf_counter() - t, shrink=float(sess['w'].max()) if len(sess['w']) else 0.0)
+    return dict(levels=sess['levels'], verts=sess['verts'], radius=sess['tube_r'], frames=sess['frames'],
+                time=time.perf_counter() - t, lifted=int(np.count_nonzero(sess['h'] > sess['tube_r'] * 0.05)))
 
 
 def cleanup(ob):
@@ -382,7 +487,12 @@ def _sim_ob():
     return bpy.data.objects.get(SIM.get('ob', '')) if SIM else None
 
 
+def stage():
+    return SIM['sess']['stage'] if sim_active() else ''
+
+
 def start(context, ob, st):
+    """Stage 1: the tubes shown on the mesh (a backup kept); Space then runs the cloth."""
     lines = _lines_of(ob)
     if not lines:
         return None, 'Wrinkle Lines: draw a line on the mesh first'
@@ -392,7 +502,8 @@ def start(context, ob, st):
     backup.name = ob.data.name + '_mch_wl_backup'
     backup.use_fake_user = True
     try:
-        sess = build(context, ob, st, lines)
+        sess = prepare(context, ob, st, lines)
+        preview(sess, st, ob.data)
     except Exception:
         old = ob.data
         ob.data = backup                 # (Add Detail may have subdivided it already)
@@ -402,21 +513,45 @@ def start(context, ob, st):
             bpy.data.meshes.remove(old)
         raise
     SIM.clear()
-    SIM.update(ob=ob.name, backup=backup.name, sess=sess, frames=sess['frames'], running=True, want=None,
+    SIM.update(ob=ob.name, backup=backup.name, sess=sess, frames=sess['frames'], running=False, want=None,
                snapshot=_snapshot(st), done=False, info=dict(levels=sess['levels'], verts=sess['verts']))
     return SIM['info'], None
 
 
+def refresh(context):
+    """A tube slider moved while the tubes are shown: the shape again."""
+    if stage() != 'preview':
+        return False
+    ob = _sim_ob()
+    st = settings(context)
+    if ob is None or st is None:
+        return False
+    preview(SIM['sess'], st, ob.data)
+    SIM['snapshot'] = _snapshot(st)
+    return True
+
+
+def run(context):
+    """Stage 2 from the shown tubes: the cloth built, the frames start."""
+    ob = _sim_ob()
+    st = settings(context)
+    if ob is None or st is None or stage() != 'preview':
+        return False
+    build(context, ob, st, SIM['sess'])
+    SIM.update(frames=SIM['sess']['frames'], running=True, done=False, snapshot=_snapshot(st))
+    return True
+
+
 def _snapshot(st):
-    return tuple(getattr(st, k) for k in ('mode', 'fabric', 'size', 'shrink', 'fold', 'gravity', 'keep', 'pin_boundary',
-                                          'pin_selected', 'self_collision', 'detail', 'frames'))
+    return tuple(getattr(st, k) for k in ('mode', 'fabric', 'size', 'fade', 'shrink', 'fold', 'gravity', 'keep',
+                                          'pin_boundary', 'pin_selected', 'self_collision', 'detail', 'frames'))
 
 
 def step(context):
     """One frame on, written into the mesh; False when the last frame is reached."""
     ob = _sim_ob()
     sess = SIM.get('sess')
-    if ob is None or sess is None:
+    if ob is None or sess is None or sess['stage'] != 'run':
         return False
     if sess['frame'] >= SIM['frames']:
         SIM['running'] = False
@@ -430,20 +565,21 @@ def step(context):
 
 
 def confirm(context):
-    """The simulated frame stays in the mesh; the backup dropped."""
+    """The shown state (tubes or the simulated frame) stays in the mesh; the backup dropped."""
     ob = _sim_ob()
     if ob is None:
         return 'nothing to keep'
     n = SIM['sess']['frame']
+    what = 'the tubes' if stage() == 'preview' else f'frame {n}'
     _finish(context)
     _TARGET.pop(ob.name, None)
     for ln in _lines_of(ob):
         ln['path'] = None
-    return f'Wrinkle Lines: kept frame {n} ({len(ob.data.vertices):,} points)'
+    return f'Wrinkle Lines: kept {what} ({len(ob.data.vertices):,} points)'
 
 
 def cancel(context):
-    """The mesh as it was before the simulation (the lines stay)."""
+    """The mesh as it was before (the lines stay)."""
     ob = _sim_ob()
     backup = bpy.data.meshes.get(SIM.get('backup', ''))
     if ob is not None:
@@ -465,14 +601,18 @@ def cancel(context):
 
 def _finish(context):
     backup = bpy.data.meshes.get(SIM.get('backup', ''))
-    if backup is not None and backup.users == 0:
-        bpy.data.meshes.remove(backup)
+    if backup is not None:
+        backup.use_fake_user = False
+        if backup.users == 0:
+            bpy.data.meshes.remove(backup)
     SIM.clear()
 
 
 def status():
     if not sim_active():
         return ''
+    if stage() == 'preview':
+        return 'tubes: set Wrinkle Size / Fold / End Fade  (Space simulate · Enter keep the tubes · Esc back)'
     n = SIM['sess']['frame']
     if SIM.get('done'):
         return f'done: frame {n} / {SIM["frames"]}  (Enter keep · Esc back · Space again from the start)'
@@ -790,6 +930,7 @@ class MCH_OT_wrinkle_sim(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     _timer = None
+    _area = None
 
     @classmethod
     def poll(cls, context):
@@ -815,6 +956,7 @@ class MCH_OT_wrinkle_sim(bpy.types.Operator):
             self.report({'WARNING'}, err)
             return {'CANCELLED'}
         self.ob = ob.name
+        self._area = context.area
         wm = context.window_manager
         self._timer = wm.event_timer_add(0.02, window=context.window)
         wm.modal_handler_add(self)
@@ -838,6 +980,8 @@ class MCH_OT_wrinkle_sim(bpy.types.Operator):
         if not sim_active():
             self._end(context)
             return {'CANCELLED'}
+        if context.area is not None and context.area != self._area:
+            self._hint(context)
         want = SIM.get('want')
         if want:
             SIM['want'] = None
@@ -868,6 +1012,9 @@ class MCH_OT_wrinkle_sim(bpy.types.Operator):
 
     def _toggle(self, context):
         st = settings(context)
+        if stage() == 'preview':
+            run(context)                  # the tubes are set: the cloth goes
+            return
         if SIM.get('done'):
             self._restart(context)
             return
@@ -877,12 +1024,14 @@ class MCH_OT_wrinkle_sim(bpy.types.Operator):
         SIM['running'] = not SIM['running']
 
     def _restart(self, context):
+        """From the start with the current settings: the tubes again, then the cloth."""
         st = settings(context)
         ob = _sim_ob()
         cancel(context)
         if ob is not None and st is not None:
             try:
                 start(context, ob, st)
+                run(context)
             except Exception as ex:
                 self.report({'ERROR'}, f'Wrinkle Lines failed: {ex}')
 
@@ -933,9 +1082,19 @@ def draw(layout, context):
         box.label(text=status(), icon='PLAY')
     else:
         box.label(text=f'{len(lines)} line(s) on {ob.name}' if lines and ob else 'drag on the mesh: a wrinkle line', icon='INFO')
+        box.label(text='Space: tubes on the lines  ·  Space: the cloth over them', icon='BLANK1')
     r = box.row(align=True)
-    r.operator('mch.wrinkle_sim_control', text='Pause (Space)' if (live and SIM.get('running')) else
-               ('Continue (Space)' if live and not SIM.get('done') else 'Simulate (Space)'), icon='PLAY').action = 'toggle'
+    if not live:
+        run_text, run_icon = 'Tubes (Space)', 'CURVE_DATA'
+    elif stage() == 'preview':
+        run_text, run_icon = 'Simulate (Space)', 'PLAY'
+    elif SIM.get('done'):
+        run_text, run_icon = 'Again (Space)', 'FILE_REFRESH'
+    elif SIM.get('running'):
+        run_text, run_icon = 'Pause (Space)', 'PAUSE'
+    else:
+        run_text, run_icon = 'Continue (Space)', 'PLAY'
+    r.operator('mch.wrinkle_sim_control', text=run_text, icon=run_icon).action = 'toggle'
     r.operator('mch.wrinkle_sim_control', text='Restart', icon='FILE_REFRESH').action = 'restart'
     r = box.row(align=True)
     r.enabled = live
@@ -948,9 +1107,13 @@ def draw(layout, context):
     box.row().prop(st, 'mode', expand=True)
     box.row().prop(st, 'fabric', expand=True)
     col = box.column(align=True)
+    col.label(text='Tubes along the lines', icon='CURVE_DATA')
     col.prop(st, 'size', slider=True)
-    col.prop(st, 'shrink', slider=True)
     col.prop(st, 'fold', slider=True)
+    col.prop(st, 'fade', slider=True)
+    col = box.column(align=True)
+    col.label(text='Cloth over them', icon='MOD_CLOTH')
+    col.prop(st, 'shrink', slider=True)
     col.prop(st, 'gravity', slider=True)
     col.prop(st, 'keep', slider=True)
     r = box.row(align=True)
