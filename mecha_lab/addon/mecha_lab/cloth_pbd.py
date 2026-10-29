@@ -131,8 +131,8 @@ class Cloth:
                 self._smooth(self.smooth)
             if np.any(self.keep > 0):
                 self.co += (self.init - self.co) * (self.keep * keep_rate / iterations)[:, None]
-            if np.any(self.pin > 0):
-                self.co = self.co * (1.0 - self.pin)[:, None] + before * self.pin[:, None]
+            if np.any(self.pin > 0):        # (a pin holds its point where it started: Blender's mask)
+                self.co = self.co * (1.0 - self.pin)[:, None] + self.init * self.pin[:, None]
         return self.co
 
     # -- filters ------------------------------------------------------------------------------------------------
