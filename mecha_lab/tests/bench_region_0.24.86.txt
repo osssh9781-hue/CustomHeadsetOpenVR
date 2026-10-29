@@ -36,22 +36,22 @@ CUT hipoly=False: 5.47s total  nm 0  Cut: Icosphere | 5.4 s (Manifold)
 CUT hipoly=True: 3.29s total  nm 0  Cut: Icosphere | 3.2 s (Region)
    boolean 1.95 | commit 0.70 | post: finish 0.02 | post: holes 0.02 | post: open-edge counts 0.11 | post: tidy 0.66 | other (lasso, planes, cutter, bookkeeping) -0.19
    boolean stages: region 0.18 | extract 0.05 | boolean 0.36 | knife 0.15 | sort 0.04 | stitch 1.14 | region faces 21,863 walls 4
-===== vox3m (bench_region.py, Blender 5.2.3 bpy, 4-core Linux, 0.24.86)
+===== vox3m (bench_region.py, Blender 5.2.3 bpy, 4-core Linux, 0.24.86; rerun after the seam T-junction fix)
 BODY vox3m: 2,119,848 faces, 2,119,850 points, volume 4.200163
-  column (through, 0.2 wide) DIFFERENCE: manifold 16.21s exact 63.11s REGION 5.64s [region 0.42 extract 0.62 boolean 0.84 knife 0.41 sort 0.12 stitch 3.24 s (tidy 0.29 s in the stitch)]
-      faces full 2,105,598 region 2,106,219 | open edges 0 | volume full 4.125334 region 4.125334 rel diff 4.11e-09
-      original faces found unchanged in the output: 2,104,793 (faces outside the region 2,092,877; in the region 26,971) | grp same 2,104,793/2,104,793 material same 2,104,793 | smooth 2,106,215/2,106,219
-  column (through, 0.2 wide) INTERSECT: manifold 9.52s exact 46.02s REGION 3.89s [region 0.51 extract 0.16 boolean 0.84 knife 0.44 sort 0.19 stitch 1.75 s (tidy 0.40 s in the stitch)]
-      faces full 15,053 region 15,706 | open edges 3 | volume full 0.074829 region 0.074829 rel diff 1.52e-06
-      original faces found unchanged in the output: 14,249 (faces outside the region 2,092,877; in the region 26,971) | grp same 14,249/14,249 material same 14,249 | smooth 15,702/15,706
-  pocket (shallow box) DIFFERENCE: manifold 13.72s exact 59.16s REGION 5.09s [region 0.45 extract 0.18 boolean 0.80 knife 0.38 sort 0.08 stitch 3.21 s (tidy 0.22 s in the stitch)]
+  column (through, 0.2 wide) DIFFERENCE: manifold 16.33s exact 72.36s REGION 6.25s [region 0.39 extract 0.63 boolean 1.12 knife 0.34 sort 0.11 stitch 3.66 s (tidy 0.26 s in the stitch)]
+      faces full 2,105,598 region 2,106,217 | open edges 0 | volume full 4.125334 region 4.125334 rel diff 4.11e-09
+      original faces found unchanged in the output: 2,104,793 (faces outside the region 2,092,877; in the region 26,971) | grp same 2,104,793/2,104,793 material same 2,104,793 | smooth 2,106,213/2,106,217
+  column (through, 0.2 wide) INTERSECT: manifold 10.60s exact 43.83s REGION 3.68s [region 0.51 extract 0.19 boolean 0.82 knife 0.35 sort 0.15 stitch 1.65 s (tidy 0.33 s in the stitch)]
+      faces full 15,053 region 15,704 | open edges 0 | volume full 0.074829 region 0.074829 rel diff 1.52e-06
+      original faces found unchanged in the output: 14,249 (faces outside the region 2,092,877; in the region 26,971) | grp same 14,249/14,249 material same 14,249 | smooth 15,700/15,704
+  pocket (shallow box) DIFFERENCE: manifold 14.53s exact 58.69s REGION 5.24s [region 0.41 extract 0.18 boolean 1.12 knife 0.37 sort 0.09 stitch 3.07 s (tidy 0.16 s in the stitch)]
       faces full 2,107,017 region 2,107,431 | open edges 0 | volume full 4.193752 region 4.193752 rel diff 2.65e-08
       original faces found unchanged in the output: 2,106,477 (faces outside the region 2,094,710; in the region 25,138) | grp same 2,106,477/2,106,477 material same 2,106,477 | smooth 2,107,426/2,107,431
-  pocket (shallow box) INTERSECT: manifold 15.41s exact 49.30s REGION 2.87s [region 0.39 extract 0.43 boolean 0.63 knife 0.31 sort 0.07 stitch 1.04 s (tidy 0.16 s in the stitch)]
+  pocket (shallow box) INTERSECT: manifold 7.49s exact 45.40s REGION 3.08s [region 0.63 extract 0.26 boolean 0.75 knife 0.34 sort 0.07 stitch 1.03 s (tidy 0.15 s in the stitch)]
       faces full 13,362 region 13,795 | open edges 0 | volume full 0.006412 region 0.006412 rel diff 9.42e-07
       original faces found unchanged in the output: 12,835 (faces outside the region 2,094,710; in the region 25,138) | grp same 12,835/12,835 material same 12,835 | smooth 13,790/13,795
-CUT hipoly=False: 22.40s total  nm 0  Cut: Icosphere | 22.1 s (Manifold)
-   boolean 14.08 | commit 1.74 | post: finish 0.06 | post: holes 0.06 | post: open-edge counts 0.29 | post: tidy 6.07 | other (lasso, planes, cutter, bookkeeping) 0.11
-CUT hipoly=True: 8.51s total  nm 0  Cut: Icosphere | 8.3 s (Region)
-   boolean 5.07 | commit 1.73 | post: finish 0.05 | post: holes 0.06 | post: open-edge counts 0.29 | post: tidy 1.49 | other (lasso, planes, cutter, bookkeeping) -0.19
-   boolean stages: region 0.36 | extract 0.16 | boolean 0.82 | knife 0.38 | sort 0.16 | stitch 3.07 | region faces 22,254 walls 4
+CUT hipoly=False: 24.29s total  nm 0  Cut: Icosphere | 24.0 s (Manifold)
+   boolean 15.46 | commit 1.87 | post: finish 0.06 | post: holes 0.07 | post: open-edge counts 0.31 | post: tidy 6.41 | other (lasso, planes, cutter, bookkeeping) 0.13
+CUT hipoly=True: 8.85s total  nm 0  Cut: Icosphere | 8.6 s (Region)
+   boolean 5.23 | commit 1.90 | post: finish 0.07 | post: holes 0.07 | post: open-edge counts 0.34 | post: tidy 1.41 | other (lasso, planes, cutter, bookkeeping) -0.16
+   boolean stages: region 0.51 | extract 0.18 | boolean 0.74 | knife 0.34 | sort 0.17 | stitch 3.14 | region faces 22,254 walls 4

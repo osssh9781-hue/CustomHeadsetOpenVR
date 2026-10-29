@@ -1,8 +1,14 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.85 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.86 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## 0.24.86 High Poly 컷(실험) · 백그라운드 Quad Remesh (미검증)
+- [ ] 컷 설정 Advanced > **High Poly** 켜고 DynaMesh 50만 점 몸통에 Cut → 메시지에 "(Region)", 결과 닫힘, 끄고 같은 컷과 모양이 같은지(와이어 켜고 벽 삼각형 구성만 다름). Split 도.
+- [ ] 같은 몸통에 Exact 솔버로 High Poly 켜고/끄고 시간 비교.
+- [ ] ZBrush 선반 Quad Remesh 에 **Background** 켜고 10만 면 부품 → 창이 안 멈추고 상태 줄에 시간이 흐르다 결과가 얹히는지; 도중 Cancel; 도중에 그 부품을 스컬프하면 "dropped" 메시지.
+- [ ] Re-Fix 도 Background 로.
 
 ## 0.24.85 하이폴리 컷 · 결과 음영 · Linked Copy · 박스선 눈 · 미러 평면 (미검증)
 - [ ] DynaMesh 50만 점 몸통에 Cut / Split → 전보다 눈에 띄게 빨리 끝나고(수 초) 결과가 닫혀 있는지(메시지에 열린 변 경고 없음).
