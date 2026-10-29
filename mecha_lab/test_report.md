@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.90
+# Test Report — Mecha Lab 0.24.91
+
+## 0.24.91 결과: Blender 5.2.3 bpy 전체 205개 파일 PASS 5,144 / FAIL 0(`tests/test_log_bpy523_v02491.txt`, FAILED FILES: none; Traceback 24개는 test_registration_recovery). 새 테스트 test_v02518_tidy_sub 12(하나씩 고치기: 고른 면만 바뀜 · 20k 면 잘라내기 0.4초 · UV 보존 · 표시 레이어 안 남음 · 예전 방식 같은 결과 · 밴드 교차 수 · `_skip` · 경고 문구 · 상수). 실제 블렌더 창 자동 테스트 13/13(`tests/gui/gui_result_0.24.91.txt`). 퍼즈 pipe 시드 1200 ~ 1209 10개 OK(크래시 0; 시드 1205 cut_bevel 24 ~ 34초, 전 90초). ZIP sha256 `5b01f2459bdce591ef3bc6eac53e89fedb61632369ac0f8b35161fdc474f34b5` (`mecha_lab-0.24.91_20261029-1537.zip`).
 
 ## 0.24.90 결과: Blender 5.2.3 bpy 전체 204개 파일 PASS 5,132 / FAIL 0(`tests/test_log_bpy523_v02490.txt`, FAILED FILES: none; Traceback 24개는 test_registration_recovery). 새 테스트 test_v02517_cloth_live 10(Trim Width 가 부품 크기의 % 로 읽히고 쓰면 노드 입력 · 기억 · 각도 · 정수 · 네이티브 패널 · 그려진 패널 · Apply 뒤). 실제 블렌더 창 자동 테스트 13/13(`tests/gui/gui_result_0.24.90.txt`). ZIP sha256 `27e2fa1ac0a67384a49def5f09fa0f8ce5446e06c77264236b14efc4906cff7c` (`mecha_lab-0.24.90_20261029-1355.zip`).
 
