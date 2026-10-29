@@ -1197,6 +1197,9 @@ def tidy_result(me, ref_size=None, shards=True, slivers=True, before=None, flip=
         # 0.24.86 a dense part: the faces round the cut taken out, tidied on their own and put back (the stages
         # below copied the whole part per stage: 4.5 s of a 10 s cut on 1.3M faces)
         from . import region_cut as rc
+        if (os.environ.get('MECH_REGION_FAST') and rc.LAST_REGION.get('name') == me.name
+                and rc.LAST_REGION.get('faces') == len(me.polygons) and rc.LAST_TIMES.get('tidy') is not None):
+            return dict(rc.LAST_TIMES['tidy'])     # 0.24.87 prototype: the region was tidied inside the stitch
         try:
             fm = rc.region_faces_of(me, before, size)
             if fm is not None and 0 < fm.sum() < 0.3 * len(fm):

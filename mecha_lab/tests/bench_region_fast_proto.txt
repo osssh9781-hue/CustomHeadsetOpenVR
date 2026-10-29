@@ -1,0 +1,25 @@
+===== ico9, MECH_REGION_FAST=1 (prototype: datablock swap commit, tidy done in the stitch)
+BODY ico9: 1,310,720 faces, 655,362 points, volume 4.200177
+   [probe] tidy_result(1679 faces, before=False): 0.02s -> {'welded': 0, 'degenerate': 0, 'needles': 0, 'spikes': 0, 'folds': 0, 'fins': 0, 'loose': 0, 'shards': 0, 'flipped': 0}
+   [probe] tidy_result(1299229 faces, before=True): 0.97s -> {'welded': 0, 'degenerate': 0, 'needles': 0, 'spikes': 0, 'folds': 0, 'fins': 0, 'loose': 0, 'shards': 0, 'flipped': 0}
+CUT hipoly=False: 8.58s total  nm 0  Cut: Icosphere | 8.4 s (Manifold)
+   boolean 6.22 | commit 1.14 | post: finish 0.03 | post: holes 0.02 | post: open-edge counts 0.16 | post: tidy 0.99 | other (lasso, planes, cutter, bookkeeping) 0.02
+   [probe] tidy_result(10366 faces, before=False): 0.09s -> {'welded': 0, 'degenerate': 0, 'needles': 0, 'spikes': 0, 'folds': 0, 'fins': 0, 'loose': 0, 'shards': 0, 'flipped': 0}
+   [probe] replace_faces: 0.98s -> True
+   [probe] tidy_result(1299223 faces, before=True): 0.00s -> {'welded': 0, 'degenerate': 0, 'needles': 0, 'spikes': 0, 'folds': 0, 'fins': 0, 'loose': 0, 'shards': 0, 'flipped': 0}
+CUT hipoly=True: 2.31s total  nm 0  Cut: Icosphere | 2.2 s (Region)
+   boolean 2.09 | post: finish 0.02 | post: holes 0.03 | post: open-edge counts 0.17 | post: tidy 0.09 | other (lasso, planes, cutter, bookkeeping) -0.10
+   boolean stages: region 0.18 | extract 0.05 | boolean 0.35 | knife 0.16 | sort 0.04 | stitch 1.23 | region faces 21,863 walls 4
+===== vox3m, MECH_REGION_FAST=1
+BODY vox3m: 2,119,848 faces, 2,119,850 points, volume 4.200163
+   [probe] tidy_result(1339 faces, before=False): 0.02s -> {'welded': 1, 'degenerate': 0, 'needles': 0, 'spikes': 0, 'folds': 0, 'fins': 0, 'loose': 0, 'shards': 0, 'flipped': 0}
+   [probe] replace_faces: 5.10s -> True
+   [probe] tidy_result(2108687 faces, before=True): 8.73s -> {'welded': 1, 'degenerate': 0, 'needles': 0, 'spikes': 0, 'folds': 0, 'fins': 0, 'loose': 0, 'shards': 0, 'flipped': 0}
+CUT hipoly=False: 36.19s total  nm 0  Cut: Icosphere | 35.9 s (Manifold)
+   boolean 21.43 | commit 5.42 | post: finish 0.06 | post: holes 0.06 | post: open-edge counts 0.36 | post: tidy 8.76 | other (lasso, planes, cutter, bookkeeping) 0.11
+   [probe] tidy_result(11655 faces, before=False): 0.15s -> {'welded': 0, 'degenerate': 0, 'needles': 0, 'spikes': 0, 'folds': 0, 'fins': 0, 'loose': 0, 'shards': 0, 'flipped': 0}
+   [probe] replace_faces: 2.50s -> True
+   [probe] tidy_result(2109249 faces, before=True): 0.00s -> {'welded': 0, 'degenerate': 0, 'needles': 0, 'spikes': 0, 'folds': 0, 'fins': 0, 'loose': 0, 'shards': 0, 'flipped': 0}
+CUT hipoly=True: 5.44s total  nm 0  Cut: Icosphere | 5.2 s (Region)
+   boolean 4.93 | post: finish 0.05 | post: holes 0.05 | post: open-edge counts 0.33 | post: tidy 0.15 | other (lasso, planes, cutter, bookkeeping) -0.07
+   boolean stages: region 0.41 | extract 0.16 | boolean 0.74 | knife 0.27 | sort 0.08 | stitch 3.10 | region faces 22,254 walls 4

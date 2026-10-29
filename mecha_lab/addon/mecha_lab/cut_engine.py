@@ -506,6 +506,24 @@ def _shut_holes(target, me, cap=True):
         print('Mecha: shut holes:', ex)
 
 
+def _commit_result(target, me, policy):
+    """The cut result onto the part.  MECH_REGION_FAST (0.24.87 prototype): a High Poly (region) result is a whole
+    new mesh already built with the part's settings and materials - it becomes the part's mesh (one datablock swap,
+    as Decimate does) instead of the bmesh round trip of ``commit_mesh`` (0.7 s on 1.3M faces, 1.9 s on 2.1M).
+    Only for a single-user mesh without shape keys; the swap is one undo step like the copy was."""
+    import os
+    if os.environ.get('MECH_REGION_FAST'):
+        from . import region_cut as rc
+        old = target.data
+        if (rc.LAST_REGION.get('name') == me.name and rc.LAST_REGION.get('faces') == len(me.polygons)
+                and old.users == 1 and old.shape_keys is None and not target.get('mch_linked') and me.users == 0):
+            from . import fast_decimate as fd
+            cg.remove_cutter_attribute(me)
+            fd.swap_mesh(target, me)
+            return ''
+    return cg.commit_mesh(target, me, policy)
+
+
 def _make_piece(target, mesh, suffix='_Split'):
     piece = target.copy()
     piece.data = mesh
@@ -914,7 +932,7 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
                     results[k] = (t, pieces[swap][1])
                     pieces[swap] = (t, me)
                     me = results[k][1]
-            infos.append(cg.commit_mesh(t, me, cut.shared_mesh))
+            infos.append(_commit_result(t, me, cut.shared_mesh))
         new_pieces = []
         for t, me in pieces:
             temp.remove(me)

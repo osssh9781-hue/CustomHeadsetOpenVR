@@ -1,0 +1,11 @@
+BODY ico9: 1,310,720 faces, mean edge 0.00489
+local shell (part inside the region box, Manifold intersect): 16,299 faces, 1.83s, open edges 0
+exact boolean of the shell: 1.82s -> 15,726 faces, open edges 0
+   exact boolean (reference): 15,726 faces | wall faces 1 (area 1.827e-01): their points 19 off the plane rms 1.18e-08 max 2.47e-08; wall area with the normal within 1 deg of the plane 100.0% | rounded faces along the wall edge (normal 15-75 deg off, within 3 voxels): 0, area 0.00e+00 = 0.0% of the band
+voxel remesh (OpenVDB SDF) of the cut shell at voxel 4.89e-03 (1.0 x edge): 0.65s
+   SDF 1.0 x edge: 143,382 faces | wall faces 9,270 (area 1.536e-01): their points 9,344 off the plane rms 6.27e-04 max 7.32e-03; wall area with the normal within 1 deg of the plane 95.7% | rounded faces along the wall edge (normal 15-75 deg off, within 3 voxels): 894, area 1.93e-02 = 11.4% of the band
+voxel remesh (OpenVDB SDF) of the cut shell at voxel 2.45e-03 (0.5 x edge): 2.12s
+   SDF 0.5 x edge: 569,890 faces | wall faces 36,293 (area 1.511e-01): their points 36,461 off the plane rms 2.24e-04 max 3.66e-03; wall area with the normal within 1 deg of the plane 97.9% | rounded faces along the wall edge (normal 15-75 deg off, within 3 voxels): 1,691, area 9.31e-03 = 5.9% of the band
+voxel remesh (OpenVDB SDF) of the cut shell at voxel 1.22e-03 (0.25 x edge): 8.21s
+   SDF 0.25 x edge: 2,283,992 faces | wall faces 144,166 (area 1.501e-01): their points 144,535 off the plane rms 7.92e-05 max 1.83e-03; wall area with the normal within 1 deg of the plane 99.0% | rounded faces along the wall edge (normal 15-75 deg off, within 3 voxels): 3,595, area 4.78e-03 = 3.1% of the band
+voxel remesh of the WHOLE part at the edge length: 3.33s -> 852,410 faces
