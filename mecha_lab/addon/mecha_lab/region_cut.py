@@ -856,7 +856,10 @@ def fix_holes_sub(me, size, fill='SMALL'):
         return False
     sub, _used = extract_faces(me, fm, 'MCH_HoleSub')
     try:
-        mesh_fix.fix_mesh(sub, fill=fill)
-        return replace_faces(me, fm, sub, size)
+        st = mesh_fix.fix_mesh(sub, fill=fill)
+        ok = replace_faces(me, fm, sub, size)
+        if os.environ.get('MECH_REGION_DEBUG'):
+            print(f'[region] holes: {int(fm.sum()):,} faces round the open edges of {len(fm):,}; fix {st}; put back {ok}', flush=True)
+        return ok
     finally:
         bpy.data.meshes.remove(sub)

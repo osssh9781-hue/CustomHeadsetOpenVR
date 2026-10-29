@@ -133,7 +133,11 @@ def draw_tool_shelf(layout, context):
     r = box.row()
     ops(r, ('Quad Remesh', 'QUAD_REMESH'))
     r.prop(zb, 'qr_target', text='Target')
-    box.row().prop(zb, 'qr_mode', expand=True)
+    r = box.row()
+    r.prop(zb, 'qr_mode', expand=True)
+    r.prop(zb, 'bg_jobs', text='Background', toggle=True)        # 0.24.86 a second Blender does the work
+    from . import bg_jobs
+    bg_jobs.draw_status(box, context.active_object)
     box.prop(zb, 'qr_angle')
     ops(box.row(), ('Half', 'QR_HALF'), ('Same', 'QR_SAME'), ('Double', 'QR_DOUBLE'))
     box = layout.box()

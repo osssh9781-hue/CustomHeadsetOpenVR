@@ -17,7 +17,7 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                cloth_wrinkle, last_used, last_op, live_stack, keymap_check, robot_base, detail_stamp, surface_lasso,
                curve_tube, creature_shell, cloth_sim, box_hide, plate_detail, screw_stamp, lowpoly, fold_patch,
                creature_plate, belt_maker, creature_spike, creature_scales, flower_plate,
-               surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, quad_remesh, mesh_fix, tool_recent, actions_menu, key_legend, quick_hud, mecha_menu, symmetry, groups, ui_bars, safety_save, lasso_memory, armor_shell)
+               surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, bg_jobs, quad_remesh, mesh_fix, tool_recent, actions_menu, key_legend, quick_hud, mecha_menu, symmetry, groups, ui_bars, safety_save, lasso_memory, armor_shell)
 import os
 import re
 from pathlib import Path
@@ -2046,6 +2046,7 @@ def _register():
     radial_sym.register()
     brush_resize.register()
     ramp_edit.register()
+    bg_jobs.register()                   # 0.24.86 background Quad Remesh / Re-Fix
     last_op.register()
     live_stack.register()
     keymap_check.register()
@@ -2188,6 +2189,7 @@ def _unregister_steps():
         ('keymap_check', keymap_check.unregister),
         ('live_stack', live_stack.unregister),
         ('last_op', last_op.unregister),
+        ('bg_jobs', bg_jobs.unregister),
         ('ramp_edit', ramp_edit.unregister),
         ('radial_sym', radial_sym.unregister),
         ('surface_draw', surface_draw.unregister),

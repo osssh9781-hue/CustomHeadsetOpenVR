@@ -1315,6 +1315,10 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
                              description='Decimate: polygroup borders stay where they are')
     dec_borders: BoolProperty(name='Keep Borders', default=False,
                               description='Decimate: points on open borders do not move')
+    bg_jobs: BoolProperty(name='Background', default=True,                # 0.24.86
+                          description='Quad Remesh and Re-Fix on a part of 20k faces or more run in a second Blender '
+                                      'behind the window: keep sculpting, the result lands on the part when it is '
+                                      'done (dropped if the part changed meanwhile). Off: the window waits')
     result_shade: EnumProperty(name='Shading', default='SMOOTH',          # 0.24.85
                                items=[('SMOOTH', 'Smooth', 'Decimate / Quad Remesh / Re-Fix results: every face smooth, '
                                        'edges sharper than the Hard Edges angle marked sharp - written into the mesh, '
@@ -1824,6 +1828,28 @@ def _mask_values(ob):
 
 
 # 0.24.66 the steps that crash Blender most often: a recovery copy right before them (when anything changed)
+def bg_params(zb, kind):
+    """The shelf settings a background worker needs for ``kind`` (plain values: they travel as JSON)."""
+    p = dict(result_shade=getattr(zb, 'result_shade', 'SMOOTH'), qr_angle=float(getattr(zb, 'qr_angle', math.radians(30.0))))
+    if kind == 'QUAD_REMESH':
+        p.update(target=max(1, int(round(zb.qr_target * 1000))), all_quads=zb.qr_mode == 'ALL', crease_deg=math.degrees(zb.qr_angle))
+    else:
+        p.update(refix_finish=getattr(zb, 'refix_finish', 'DECIMATE'), refix_faces=int(getattr(zb, 'refix_faces', 0)),
+                 refix_smooth=int(getattr(zb, 'refix_smooth', 2)))
+    return p
+
+
+def background_job(context, ob, zb, kind):
+    """0.24.86 Start ``kind`` in a background Blender when the shelf says so and the part is big enough.  Returns
+    the start message, or '' when the action should run here and now."""
+    from . import bg_jobs
+    if not getattr(zb, 'bg_jobs', False) or len(ob.data.polygons) < bg_jobs.BG_MIN or not bg_jobs.can_run():
+        return ''
+    if ob.data.shape_keys is not None or multires(ob) is not None:
+        return ''
+    return bg_jobs.start(context, ob, kind, bg_params(zb, kind))
+
+
 def shade_result(ob, zb):
     """0.24.85 The shelf's result shading (Smooth by angle / Flat / Keep) onto a Decimate / Quad Remesh / Re-Fix result."""
     from . import core_geometry as cg
@@ -2128,6 +2154,9 @@ def run(context, action):
         from . import refix
         _mode(context, 'OBJECT')
         try:
+            bg = background_job(context, ob, zb, 'REFIX')
+            if bg:
+                return bg
             msg = refix.run(context, ob, zb)
         except RuntimeError as ex:
             msg = 'Re-Fix: ' + str(ex)
@@ -2140,6 +2169,9 @@ def run(context, action):
             return 'Quad Remesh: Del Higher / Del Lower first'
         _mode(context, 'OBJECT')
         try:
+            bg = background_job(context, ob, zb, 'QUAD_REMESH')
+            if bg:
+                return bg
             msg = qf.remesh_object(ob, max(1, int(round(zb.qr_target * 1000))), all_quads=zb.qr_mode == 'ALL',
                                    crease_deg=math.degrees(zb.qr_angle))
             shade_result(ob, zb)

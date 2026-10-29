@@ -47,6 +47,9 @@ def run_one(context, ob, zb, action):
         zs.shade_result(ob, zb)                      # 0.24.85
         return msg
     if action == 'QUAD_REMESH':
+        bg = zs.background_job(context, ob, zb, 'QUAD_REMESH')     # 0.24.86
+        if bg:
+            return bg
         msg = qf.remesh_object(ob, max(1, int(round(zb.qr_target * 1000))), all_quads=zb.qr_mode == 'ALL',
                                crease_deg=math.degrees(zb.qr_angle))
         zs.shade_result(ob, zb)
@@ -72,6 +75,9 @@ def run_one(context, ob, zb, action):
         return 'Hard Edges: cleared'
     if action == 'REFIX':                            # 0.24.84 DynaMesh > clean Decimate / Quad Remesh
         from . import refix
+        bg = zs.background_job(context, ob, zb, 'REFIX')          # 0.24.86
+        if bg:
+            return bg
         return refix.run(context, ob, zb)
     if action == 'FIX_MESH':                         # 0.24.76 like ZBrush's Fix Mesh
         from . import mesh_fix
@@ -161,6 +167,9 @@ def draw(layout, context):
     r = col.row(align=True)
     op(r, 'Quad Remesh', 'QUAD_REMESH')
     r.prop(zb, 'qr_target', text='Target')
+    r.prop(zb, 'bg_jobs', text='Background', toggle=True)        # 0.24.86
+    from . import bg_jobs
+    bg_jobs.draw_status(col, context.active_object)
     col.row(align=True).prop(zb, 'qr_mode', expand=True)
     col = box.column(align=True)
     r = col.row(align=True)
