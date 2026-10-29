@@ -6,7 +6,7 @@
 
 - **`Object.mch_cloth_live`**: HUD 슬라이더 표(SLIDERS)의 항목마다 RNA 속성 하나(길이는 **부품 크기의 %**, 각도는 도, 나머지는 %). 읽고 쓰면 노드 입력에 바로 반영되고(기존 `set_input` 경로: 다음 플레이트에 기억 · 주름선 갱신), Apply 뒤엔 0 으로 읽히고 쓰기는 무시.
 - LIVE 상자에 **그룹별로**: Edge Trim(Trim Width · Trim Height) → Shape(Height · Puff · Puff Width · Edge Roll · Gravity · Center Fade) → Folds → Sections → Stitch / Pattern. 크리처 스킨이면 Skin · Edge · Shape. 그려진 사이드 패널에도 같은 바들.
-- 테스트: __T90__
+- 테스트: Blender 5.2.3 bpy 전체 204개 파일 PASS 5,132 / FAIL 0(`tests/test_log_bpy523_v02490.txt`, FAILED FILES: none; Traceback 24개는 test_registration_recovery). 새 테스트 test_v02517_cloth_live 10(Trim Width 가 부품 크기의 % 로 읽히고 쓰면 노드 입력 · 기억 · 각도 · 정수 · 네이티브 패널 · 그려진 패널 · Apply 뒤). 실제 블렌더 창 자동 테스트 13/13(`tests/gui/gui_result_0.24.90.txt`). ZIP sha256 `27e2fa1ac0a67384a49def5f09fa0f8ce5446e06c77264236b14efc4906cff7c` (`mecha_lab-0.24.90_20261029-1355.zip`).
 
 ## 0.24.89 — Belt Maker: 큰 몸통에서 8배 빠르게 · 슬라이더 즉시 · 폭을 비율로 (2026-10-29)
 

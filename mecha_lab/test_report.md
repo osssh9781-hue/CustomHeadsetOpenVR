@@ -1,6 +1,6 @@
 # Test Report — Mecha Lab 0.24.90
 
-## 0.24.90 결과: __T90__
+## 0.24.90 결과: Blender 5.2.3 bpy 전체 204개 파일 PASS 5,132 / FAIL 0(`tests/test_log_bpy523_v02490.txt`, FAILED FILES: none; Traceback 24개는 test_registration_recovery). 새 테스트 test_v02517_cloth_live 10(Trim Width 가 부품 크기의 % 로 읽히고 쓰면 노드 입력 · 기억 · 각도 · 정수 · 네이티브 패널 · 그려진 패널 · Apply 뒤). 실제 블렌더 창 자동 테스트 13/13(`tests/gui/gui_result_0.24.90.txt`). ZIP sha256 `27e2fa1ac0a67384a49def5f09fa0f8ce5446e06c77264236b14efc4906cff7c` (`mecha_lab-0.24.90_20261029-1355.zip`).
 
 ## 0.24.89 결과: Blender 5.2.3 bpy 전체 203개 파일 PASS 5,122 / FAIL 0(`tests/test_log_bpy523_v02489.txt`, FAILED FILES: none; Traceback 24개는 test_registration_recovery). 새 테스트 test_v02516_belt 10(상대 폭 기본값 · 보고의 루프 크기 · Defaults · 플레이트 / 적용된 벨트 / 미러 반쪽 몸통 위에서도 루프는 부품 크기). 실제 블렌더 창 자동 테스트 13/13(`tests/gui/gui_result_0.24.89.txt`). 퍼즈는 0.24.88 것(벨트는 퍼즈 시나리오에 없음). ZIP sha256 `cd75bdd56185cf6363f24e9c0571ae9b70c0338c3fa0a544dff5661ec3a99929` (`mecha_lab-0.24.89_20261029-1123.zip`).
 
