@@ -1196,7 +1196,7 @@ def _spikes_one_by_one(bm, limit=64, lay=None):
     return bm, done
 
 
-def tidy_result(me, ref_size=None, shards=True, slivers=True, before=None):
+def tidy_result(me, ref_size=None, shards=True, slivers=True, before=None, flip=True):
     """0.24.82 A boolean / decimate / remesh result made clean: points on the same spot welded, zero-area faces
     dissolved, needle slivers dissolved into their neighbours, folded faces (two faces on the same points, back to
     back - a paper-thin fin) removed, loose points gone, and (``shards``) separate pieces of under 6 faces that are
@@ -1211,6 +1211,18 @@ def tidy_result(me, ref_size=None, shards=True, slivers=True, before=None):
         return out
     size = ref_size or mesh_size(me)
     eps = max(1e-9, 1e-6 * size)
+    if before is not None and len(me.polygons) >= 50_000:
+        # 0.24.86 a dense part: the faces round the cut taken out, tidied on their own and put back (the stages
+        # below copied the whole part per stage: 4.5 s of a 10 s cut on 1.3M faces)
+        from . import region_cut as rc
+        try:
+            fm = rc.region_faces_of(me, before, size)
+            if fm is not None and 0 < fm.sum() < 0.3 * len(fm):
+                got = rc.tidy_sub(me, fm, size, shards, slivers)
+                if got is not None:
+                    return got
+        except (RuntimeError, ValueError, AttributeError, MemoryError, IndexError):
+            pass
     bad = [None]                            # 0.24.85 the bad-edge count, shared by the stages (one count, not five)
     fmask = vmask = None
     try:                                    # 0.24.85 numpy looks first: a clean result skips the bmesh stages
@@ -1364,7 +1376,7 @@ def tidy_result(me, ref_size=None, shards=True, slivers=True, before=None):
             out['loose'] = len(loose)
         # a closed result with faces wound the wrong way (a remesh / boolean twist): the normals made consistent
         flipped = 0
-        if len(bm.faces) and (flipped_maybe or any(out.values())):   # (0.24.83 an open result too: a Quad Remesh left 11 flipped faces)
+        if flip and len(bm.faces) and (flipped_maybe or any(out.values())):   # (0.24.83 an open result too: a Quad Remesh left 11 flipped faces)
             for e in bm.edges:
                 if len(e.link_faces) == 2:
                     l1, l2 = e.link_loops[0], e.link_loops[1]

@@ -26,6 +26,9 @@ import numpy as np
 from mathutils.kdtree import KDTree
 
 TAG = 'mch_region_src'
+LAST_TIMES = {}                   # the last region boolean's stage times (region / extract / boolean / knife / sort / stitch)
+LAST_REGION = {}                  # the last stitched result: {'name': mesh name, 'faces': total, 'untouched': first N faces untouched}
+TIDY_SUB_MIN = 50_000             # faces: below this the whole-mesh tidy is as fast as taking the region out
 MIN_FACES = int(os.environ.get('MECH_REGION_MIN', 100_000))   # (below this the whole-part boolean is as fast)
 MARGIN = 0.15                     # of the cutter's box diagonal, each side
 RINGS = 2
@@ -163,6 +166,7 @@ def region_boolean(context, target, cutter, operation, log=None):
     fmask = region_mask(co, tot, start, vi, lo - m, hi + m, frame=(mu, R))
     fmask0 = fmask
     nreg = int(fmask.sum())
+    t0b = time.perf_counter()
     if os.environ.get('MECH_REGION_DEBUG'):
         print(f'[region] cutter {len(cb)} pts ext {np.round(ext, 3).tolist()} margin {m:.3f} region {nreg:,} of {len(tot):,} '
               f'cutter at {np.round(np.array(cutter.matrix_world.translation), 3).tolist()} target at {np.round(np.array(target.matrix_world.translation), 3).tolist()}', flush=True)
@@ -171,7 +175,8 @@ def region_boolean(context, target, cutter, operation, log=None):
     # the patch (region faces, points compacted) with its origin tag
     lm = np.repeat(fmask, tot)
     pverts, pcorners = np.unique(vi[lm], return_inverse=True)
-    patch = build(co[pverts], pcorners, tot[fmask], 'MCH_RegionPatch')
+    patch = build(co[pverts], pcorners, tot[fmask], 'MCH_RegionPatch', like=me)   # (its material slots: the solver
+                                                                                #  clamps indices to the slots it has)
     a = patch.attributes.new(TAG, 'INT', 'FACE')
     a.data.foreach_set('value', np.ones(len(patch.polygons), np.int32))
     for name, domain, dtype in _attr_list(me):        # (the patch carries the part's attributes into the boolean)
@@ -202,6 +207,7 @@ def region_boolean(context, target, cutter, operation, log=None):
             kept = cg.evaluate_boolean(context, tmp, cutter, 'DIFFERENCE', 'EXACT')
         else:
             kept = cg.evaluate_boolean(context, tmp, cutter, 'INTERSECT', 'EXACT')
+        t1b = time.perf_counter()
         # the cutter's walls: the solver sorts the cutter's pieces by the patch's winding number, which an open
         # patch cannot give (a thin column through a part: the pieces inside vanish from Intersect, Union and
         # Difference alike) - so the cutter is only SPLIT along the patch (Edit-mode Intersect / Knife, no sorting)
@@ -223,6 +229,7 @@ def region_boolean(context, target, cutter, operation, log=None):
         if pieces is None:
             return None
         wV, wC, wS = _walls(patch, pieces, R)
+        t2b = time.perf_counter()
         if os.environ.get('MECH_REGION_DEBUG'):
             print(f'[region] walls inside the part: {len(wS)} faces', flush=True)
         # nothing cut (the cutter is in the box but misses the surface): the whole-part path says so properly
@@ -240,8 +247,12 @@ def region_boolean(context, target, cutter, operation, log=None):
         for mm in (patch, kept):
             bpy.data.meshes.remove(mm)
     t3 = time.perf_counter()
+    LAST_TIMES.clear()
+    LAST_TIMES.update(region=t0b - t0, extract=t1 - t0b, boolean=t1b - t1, knife=t2 - t1b, sort=t2b - t2,
+                      stitch=t3 - t2b, faces_region=nreg, faces_total=len(tot), walls=int(len(wS)))
     if log is not None:
-        log.append(f'region {nreg:,} of {len(tot):,} faces: mask {t1 - t0:.2f} booleans {t2 - t1:.2f} stitch {t3 - t2:.2f} s')
+        log.append(f'region {nreg:,} of {len(tot):,} faces: region {t0b - t0:.2f} extract {t1 - t0b:.2f} boolean {t1b - t1:.2f} '
+                   f'knife {t2 - t1b:.2f} sort {t2b - t2:.2f} stitch {t3 - t2b:.2f} s')
     return out
 
 
@@ -517,6 +528,8 @@ def _stitch(me, co, tot, vi, fmask, lm, kept, walls, target, cutter, rim, operat
     newidx = np.cumsum(used) - 1
     out = build(V[used], newidx[corners], sizes, me.name + '_cut', like=me)
     _carry_attrs(out, me, kept, None, fmask, lm, kface, klm, wface, wlm, used, newidx, n0, len(kc), ckeep, fkeep)
+    LAST_REGION.clear()
+    LAST_REGION.update(name=out.name, faces=len(out.polygons), untouched=int(fkeep[:int((~fmask).sum())].sum()))
     if os.environ.get('MECH_REGION_DEBUG'):
         print(f'[region] {operation}: faces part {int((~fmask).sum())} kept {int(kface.sum())} walls {len(wt)} -> out {len(out.polygons)} '
               f'(points part {int(used[:n0].sum())} kept {int(used[n0:n0 + len(kc)].sum())} walls {int(used[n0 + len(kc):].sum())})', flush=True)
@@ -631,3 +644,185 @@ def _edge_attr(out, me, kept, walls, name, dtype, mine, used, newidx, n0, nk):
         hit = skeys[pos] == okeys
         vals[hit] = v[pos[hit]]
     return vals
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# 0.24.86 the result tidy on the changed region only: the faces round the cut taken out as a small mesh (attributes
+# along), tidied, and put back with the rim welded onto the part's own points.  The whole-mesh tidy walked a 1.3M-face
+# part for a few hundred new faces (4.5 s of a 10 s cut).
+# ---------------------------------------------------------------------------------------------------------------------
+
+def _write_attr(me, name, domain, dtype, vals):
+    key, w, dt = _TYPES[dtype]
+    try:
+        a = me.attributes.get(name)
+        if a is None or a.domain != domain or a.data_type != dtype:
+            if a is not None:
+                me.attributes.remove(a)
+            a = me.attributes.new(name, dtype, domain)
+        a.data.foreach_set(key, np.ascontiguousarray(vals, dt).ravel())
+    except (RuntimeError, TypeError, ValueError):
+        pass
+
+
+def _edge_lookup(me, vmap):
+    """Sorted edge keys (by output point indices) of ``me`` and the matching row order, for edge attribute copies."""
+    keys, ok = _edge_keys(me, vmap)
+    order = np.argsort(keys)
+    return keys[order], order, ok
+
+
+def region_faces_of(me, before, size):
+    """The faces to tidy after a cut: the stitched region of the last High Poly cut when ``me`` is that result,
+    else the faces with a point ``before`` does not have (plus a ring).  None = everything."""
+    from . import core_geometry as cg
+    n = len(me.polygons)
+    if LAST_REGION.get('name') == me.name and LAST_REGION.get('faces') == n:
+        fmask = np.zeros(n, bool)
+        fmask[LAST_REGION['untouched']:] = True
+        co, tot, start, vi = arrays(me)
+        vm = np.zeros(len(co), bool)
+        vm[vi[np.repeat(fmask, tot)]] = True            # (one ring round the stitched faces)
+        fmask = np.maximum.reduceat(vm[vi].astype(np.int8), start).astype(bool)
+        return fmask
+    fmask, _vmask = cg._changed_faces(me, before, size)
+    return fmask
+
+
+def extract_faces(me, fmask, name='MCH_TidySub'):
+    """A mesh of the faces ``fmask`` with the part's point / face / corner / edge attributes.  Returns (mesh, the
+    part's point indices the mesh's points came from)."""
+    co, tot, start, vi = arrays(me)
+    lm = np.repeat(fmask, tot)
+    used, inv = np.unique(vi[lm], return_inverse=True)
+    sub = build(co[used], inv, tot[fmask], name, like=me)
+    for aname, domain, dtype in _attr_list(me):
+        vals = _read_attr(me, aname, domain, dtype)
+        if vals is None:
+            continue
+        if domain == 'POINT':
+            v = vals[used]
+        elif domain == 'FACE':
+            v = vals[fmask]
+        elif domain == 'CORNER':
+            v = vals[lm]
+        else:
+            vmap = np.full(len(co), -1, np.int64)
+            vmap[used] = np.arange(len(used))
+            skeys, sorder, sok = _edge_lookup(me, vmap)
+            skeys, sv = skeys[sok[sorder]], vals[sorder][sok[sorder]]
+            okeys, _oo = _edge_keys(sub, np.arange(len(sub.vertices)))
+            pos = np.searchsorted(skeys, okeys)
+            pos[pos >= len(skeys)] = 0
+            hit = skeys[pos] == okeys
+            v = np.zeros((len(sub.edges), vals.shape[1]), vals.dtype)
+            v[hit] = sv[pos[hit]]
+        _write_attr(sub, aname, domain, dtype, v)
+    return sub, used
+
+
+def replace_faces(me, fmask, sub, size):
+    """The faces ``fmask`` of ``me`` replaced in place by ``sub`` (a tidied copy of them), the rim welded onto the
+    part's points.  False (``me`` untouched) when a rim point of the part has no match in ``sub``."""
+    from mathutils.kdtree import KDTree
+    co, tot, start, vi = arrays(me)
+    lm = np.repeat(fmask, tot)
+    pverts, pinv = np.unique(vi[lm], return_inverse=True)
+    rim_part = pverts[_boundary_verts(pinv, tot[fmask])]
+    sc, st, _ss, sv = arrays(sub)
+    if not len(sc):
+        return False
+    rim_sub = _boundary_verts(sv, st)
+    eps = 1e-6 * max(1e-9, size)
+    kd = KDTree(len(rim_sub))
+    for j, i in enumerate(rim_sub.tolist()):
+        kd.insert(sc[i], j)
+    kd.balance()
+    sub_to_part = np.full(len(sc), -1, np.int64)
+    for i in rim_part.tolist():
+        hit = kd.find(co[i])
+        if hit[0] is None or hit[2] > eps:
+            return False                              # (a rim point moved or vanished: the whole-mesh tidy instead)
+        sub_to_part[rim_sub[hit[1]]] = i
+    # the new point list: the part's points, then the sub's non-rim points
+    n0 = len(co)
+    new_sub = sub_to_part < 0
+    sub_to_part[new_sub] = n0 + np.arange(int(new_sub.sum()))
+    V = np.concatenate([co, sc[new_sub]])
+    corners = np.concatenate([vi[~lm], sub_to_part[sv]])
+    sizes = np.concatenate([tot[~fmask], st])
+    used = np.zeros(len(V), bool)
+    used[corners] = True
+    newidx = np.cumsum(used) - 1
+    # attributes read before the geometry goes
+    attrs = []
+    for aname, domain, dtype in _attr_list(me):
+        mine = _read_attr(me, aname, domain, dtype)
+        if mine is None:
+            continue
+        theirs = _read_attr(sub, aname, domain, dtype)
+        key, w, dt = _TYPES[dtype]
+        if domain == 'POINT':
+            vals = np.zeros((int(used.sum()), w), dt)
+            vals[newidx[:n0][used[:n0]]] = mine[used[:n0]]
+            if theirs is not None:
+                vals[newidx[n0:]] = theirs[new_sub]
+        elif domain == 'FACE':
+            vals = np.concatenate([mine[~fmask], theirs if theirs is not None else np.zeros((len(st), w), dt)])
+        elif domain == 'CORNER':
+            vals = np.concatenate([mine[~lm], theirs if theirs is not None else np.zeros((len(sv), w), dt)])
+        else:
+            vals = ('EDGE', mine, theirs)
+        attrs.append((aname, domain, dtype, vals))
+    # edge attribute sources, by output point indices
+    emaps = []
+    for aname, domain, dtype, vals in attrs:
+        if domain == 'EDGE':
+            vmap_me = np.where(used[:n0], newidx[:n0], -1)
+            vmap_sub = newidx[sub_to_part]
+            emaps.append((aname, dtype, vals[1], vmap_me, vals[2], vmap_sub))
+    old_edge_keys = [(_edge_lookup(me, vm), v) for (_a, _d, v, vm, _t, _vs) in emaps]
+    sub_edge_keys = [(_edge_lookup(sub, vs), t) if t is not None else None for (_a, _d, _v, _vm, t, vs) in emaps]
+    me.clear_geometry()
+    me.vertices.add(int(used.sum()))
+    me.vertices.foreach_set('co', np.ascontiguousarray(V[used], np.float64).ravel())
+    me.loops.add(len(corners))
+    me.loops.foreach_set('vertex_index', np.ascontiguousarray(newidx[corners], np.int32))
+    me.polygons.add(len(sizes))
+    me.polygons.foreach_set('loop_start', np.concatenate([[0], np.cumsum(sizes)[:-1]]).astype(np.int32))
+    me.update(calc_edges=True)
+    ei = 0
+    for aname, domain, dtype, vals in attrs:
+        if domain != 'EDGE':
+            _write_attr(me, aname, domain, dtype, vals)
+            continue
+        (okeys, oorder, ook), ov = old_edge_keys[ei]
+        sk = sub_edge_keys[ei]
+        ei += 1
+        keys, _ok = _edge_keys(me, np.arange(len(me.vertices)))
+        out_vals = np.zeros((len(me.edges), ov.shape[1]), ov.dtype)
+        for (skeys, sorder, sok), v in ([((okeys, oorder, ook), ov)] + ([((sk[0][0], sk[0][1], sk[0][2]), sk[1])] if sk else [])):
+            k2, v2 = skeys[sok[sorder]], v[sorder][sok[sorder]]
+            if not len(k2):
+                continue
+            pos = np.searchsorted(k2, keys)
+            pos[pos >= len(k2)] = 0
+            hit = k2[pos] == keys
+            out_vals[hit] = v2[pos[hit]]
+        _write_attr(me, aname, 'EDGE', dtype, out_vals)
+    return True
+
+
+def tidy_sub(me, fmask, size, shards, slivers):
+    """The whole tidy on the faces ``fmask`` only (a small mesh), put back into ``me``.  Returns the counts, or None
+    when the sub-mesh path could not be used (the caller runs the whole-mesh tidy)."""
+    from . import core_geometry as cg
+    sub, _used = extract_faces(me, fmask)
+    try:
+        out = cg.tidy_result(sub, size, shards=shards, slivers=slivers, before=None, flip=False)
+        if any(out.values()):
+            if not replace_faces(me, fmask, sub, size):
+                return None
+        return out
+    finally:
+        bpy.data.meshes.remove(sub)

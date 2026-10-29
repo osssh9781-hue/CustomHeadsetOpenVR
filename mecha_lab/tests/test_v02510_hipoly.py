@@ -137,6 +137,7 @@ S.mch_cut.hipoly = False
 MODE[0], NATIVE[0] = 'CUT', ts.TOOL_BY_ID['CUT'][5]
 S.mch_settings.mch_active_tool = 'CUT'
 r, msg = lasso([(560, 420), (610, 420), (610, 470), (560, 470)])
-check('High Poly off: the whole-part solver (Manifold) as before', r == {'FINISHED'} and 'Region' not in msg and 'Manifold' in msg and non_manifold(ob) == 0, (r, msg[:80]))
+check('High Poly off: the whole-part solver as before (no "Region" in the report)', r == {'FINISHED'} and 'Region' not in msg
+      and cg.LAST_BOOLEAN.get('region') is None and non_manifold(ob) == 0, (r, msg[:80]))
 S.mch_cut.hipoly = False
 summary()
