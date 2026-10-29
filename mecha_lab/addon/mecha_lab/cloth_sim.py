@@ -245,24 +245,79 @@ def setup_cloth(scene, ob, frames=30, quality=5, mass=0.15, pressure=4.0, shrink
     return cm
 
 
-def bake(context, objs, frames):
-    """Play the frames (the cloth caches fill) and keep the last frame as each object's mesh."""
+def bake(context, objs, frames, colliders=()):
+    """Play the frames (the cloth caches fill) and keep the last frame as each object's mesh.
+
+    0.24.88 The frames run in a **temporary scene** holding only the cloth and its colliders: stepping the user's
+    scene re-evaluated everything time-dependent or freshly tagged in it (a Mirror on a 1.3M-face part: +3 s per
+    bake, measured) and left its frame counter and caches touched.  The scene's fps and gravity are copied so the
+    cloth's time step and weight are the same."""
     scene = context.scene
     keep = scene.frame_current
     start = scene.frame_start
-    for f in range(start, start + frames + 1):
-        scene.frame_set(f)
-    dg = context.evaluated_depsgraph_get()
-    for ob in objs:
-        me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), depsgraph=dg)
-        old = ob.data
-        for m in [m for m in ob.modifiers if m.type == 'CLOTH']:
-            ob.modifiers.remove(m)
-        ob.data = me
-        me.name = old.name
-        if old.users == 0:
-            bpy.data.meshes.remove(old)
-    scene.frame_set(keep)
+    tmp = bpy.data.scenes.new('MCH_ClothBake')
+    try:
+        tmp.frame_start, tmp.frame_end = start, start + frames
+        tmp.render.fps, tmp.render.fps_base = scene.render.fps, scene.render.fps_base
+        tmp.use_gravity, tmp.gravity = scene.use_gravity, scene.gravity
+        for o in list(objs) + [c for c in colliders if c is not None]:
+            try:
+                tmp.collection.objects.link(o)
+            except RuntimeError:
+                pass
+        for f in range(start, start + frames + 1):
+            tmp.frame_set(f)
+        dg = tmp.view_layers[0].depsgraph
+        if dg is None:
+            dg = context.evaluated_depsgraph_get()
+        for ob in objs:
+            me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), depsgraph=dg)
+            old = ob.data
+            for m in [m for m in ob.modifiers if m.type == 'CLOTH']:
+                ob.modifiers.remove(m)
+            ob.data = me
+            me.name = old.name
+            if old.users == 0:
+                bpy.data.meshes.remove(old)
+    finally:
+        for o in list(tmp.collection.objects):
+            try:
+                tmp.collection.objects.unlink(o)
+            except RuntimeError:
+                pass
+        bpy.data.scenes.remove(tmp)
+    if scene.frame_current != keep:
+        scene.frame_set(keep)
+
+
+def cloth_params(cm):
+    """0.24.88 The cloth modifier's settings as a plain dict (for the background worker)."""
+    s, c = cm.settings, cm.collision_settings
+    return dict(quality=int(s.quality), mass=float(s.mass), bend=float(s.bending_stiffness),
+                tension=float(s.tension_stiffness), compression=float(s.compression_stiffness),
+                shear=float(s.shear_stiffness), use_pressure=bool(s.use_pressure),
+                pressure=float(s.uniform_pressure_force), shrink_min=float(s.shrink_min),
+                shrink_max=float(s.shrink_max), vg_mass=s.vertex_group_mass, vg_shrink=s.vertex_group_shrink,
+                vg_pressure=s.vertex_group_pressure, gravity=float(s.effector_weights.gravity),
+                air=float(s.air_damping), distance_min=float(c.distance_min),
+                collision_quality=int(c.collision_quality), self_collision=bool(c.use_self_collision),
+                self_distance=float(c.self_distance_min), frame_start=int(cm.point_cache.frame_start),
+                frame_end=int(cm.point_cache.frame_end))
+
+
+def apply_cloth_params(cm, p):
+    """0.24.88 ``cloth_params`` back onto a cloth modifier."""
+    s, c = cm.settings, cm.collision_settings
+    s.quality = p['quality']; s.mass = p['mass']; s.bending_stiffness = p['bend']
+    s.tension_stiffness = p['tension']; s.compression_stiffness = p['compression']; s.shear_stiffness = p['shear']
+    s.use_pressure = p['use_pressure']; s.uniform_pressure_force = p['pressure']
+    s.shrink_min = p['shrink_min']; s.shrink_max = p['shrink_max']
+    s.vertex_group_mass = p['vg_mass'] or ''; s.vertex_group_shrink = p['vg_shrink'] or ''
+    s.vertex_group_pressure = p['vg_pressure'] or ''
+    s.effector_weights.gravity = p['gravity']; s.air_damping = p['air']
+    c.use_collision = True; c.distance_min = p['distance_min']; c.collision_quality = p['collision_quality']
+    c.use_self_collision = p['self_collision']; c.self_distance_min = p['self_distance']
+    cm.point_cache.frame_start = p['frame_start']; cm.point_cache.frame_end = p['frame_end']
 
 
 def _region_collider(context, parts, name):
@@ -286,8 +341,11 @@ def panel_cloth(context, sources, edit_object=None, frames=30, quality=5, seed=1
                 shrink=-0.05, gravity=1.0, cuts=2, noise=0.0, subsurf=1, pin='BORDER', collide=True,
                 self_collision=False, thickness=0.005, split='NONE', angle=30.0, join=True, hide_source=True,
                 bend=0.5, shrink_max=None, random_islands=False, variation=0.0, collider='REGION',
-                preset='', remove_faces=False, tension=1.0):
-    """Make + simulate + bake the cloth objects.  Returns the new objects."""
+                preset='', remove_faces=False, tension=1.0, background=False):
+    """Make + simulate + bake the cloth objects.  Returns the new objects.
+
+    0.24.88 ``background``: the frames run in a second Blender (bg_jobs); the cloth object appears at once with
+    its flat start and gets the baked mesh when the worker is done (status row + Cancel in the Panel Cloth box)."""
     if not collide:
         collider = 'NONE'
     groups = {}
@@ -317,7 +375,7 @@ def panel_cloth(context, sources, edit_object=None, frames=30, quality=5, seed=1
         size = max((max(v.co[k] for v in me.vertices) - min(v.co[k] for v in me.vertices)) for k in range(3))
         thick = max(thickness, size * 0.003)
         me.update()
-        if getattr(context.scene, 'mch_pcloth_fast', False):
+        if getattr(context.scene, 'mch_pcloth_fast', True):
             # 0.24.2 Fast Start: all normals read once (reading v.normal after moving verts recomputes every
             # normal each time - seconds on a fine panel).  The start differs a hair, so folds land a bit
             # elsewhere; off = exactly the old result.
@@ -353,8 +411,36 @@ def panel_cloth(context, sources, edit_object=None, frames=30, quality=5, seed=1
         ob['mch_pcloth_preset'] = preset
         set_sliders(ob, tension, gravity)
         made.append((ob, items))
+    if background and made and _background_ok():
+        from . import bg_jobs
+        started = []
+        for ob, items in made:
+            cm = next((m for m in ob.modifiers if m.type == 'CLOTH'), None)
+            body = items[0][2]
+            cols = [t.data for t in temp_objs if t.name == ob.name + '_Collider']
+            if collider == 'BODY' and body is not None and body.type == 'MESH':
+                cols = [body.data]
+            msg = bg_jobs.start(context, ob, 'PANEL_CLOTH', dict(cloth=cloth_params(cm), colliders=[m.name for m in cols],
+                                                                  fps=float(context.scene.render.fps / context.scene.render.fps_base),
+                                                                  gravity=list(context.scene.gravity) if context.scene.use_gravity else [0.0, 0.0, 0.0]),
+                                extra=cols)
+            if cm is not None:
+                ob.modifiers.remove(cm)
+            ob['mch_pcloth_pending'] = 1
+            started.append(msg)
+        for body in temp_cols:
+            m = body.modifiers.get('MCH_TempCollision')
+            if m is not None:
+                body.modifiers.remove(m)
+        for t in temp_objs:
+            me = t.data
+            bpy.data.objects.remove(t)
+            if me.users == 0:
+                bpy.data.meshes.remove(me)
+        LAST_BACKGROUND[:] = started
+        return _after_bake(made, subsurf, hide_source, edit_object)
     try:
-        bake(context, [m[0] for m in made], frames)
+        bake(context, [m[0] for m in made], frames, colliders=temp_objs + temp_cols)
     finally:
         for body in temp_cols:
             m = body.modifiers.get('MCH_TempCollision')
@@ -365,15 +451,35 @@ def panel_cloth(context, sources, edit_object=None, frames=30, quality=5, seed=1
             bpy.data.objects.remove(t)
             if me.users == 0:
                 bpy.data.meshes.remove(me)
-    out = []
-    for ob, items in made:
-        for p in ob.data.polygons:
-            p.use_smooth = True
+    finish_cloth([m[0] for m in made])
+    return _after_bake(made, subsurf, hide_source, edit_object)
+
+
+LAST_BACKGROUND = []            # the start messages of the last background bake (the operator reports them)
+
+
+def _background_ok():
+    from . import bg_jobs
+    return bg_jobs.can_run()
+
+
+def finish_cloth(obs):
+    """0.24.88 After the frames: smooth faces, the sim-only vertex groups gone (also run on a background result)."""
+    for ob in obs:
+        if ob.data is not None:
+            ob.data.polygons.foreach_set('use_smooth', [True] * len(ob.data.polygons))
         for vg_name in (SHRINK_GROUP, PRESSURE_GROUP):
             vg = ob.vertex_groups.get(vg_name)
             if vg is not None:
                 ob.vertex_groups.remove(vg)
-        if subsurf > 0:
+        if 'mch_pcloth_pending' in ob:
+            del ob['mch_pcloth_pending']
+
+
+def _after_bake(made, subsurf, hide_source, edit_object):
+    out = []
+    for ob, items in made:
+        if subsurf > 0 and ob.modifiers.get('MCH_Subsurf') is None:
             ob.modifiers.new('MCH_Subsurf', 'SUBSURF').levels = subsurf
         if hide_source and items[0][0] is not edit_object:
             for src, _f, _b in items:
@@ -381,6 +487,12 @@ def panel_cloth(context, sources, edit_object=None, frames=30, quality=5, seed=1
                 src.hide_render = True
         out.append(ob)
     return out
+
+
+def use_background(context):
+    """0.24.88 The Background toggle (ZBrush shelf / Mesh Tools, default on) decides for Panel Cloth too."""
+    zb = getattr(context.scene, 'mch_zb', None)
+    return bool(getattr(zb, 'bg_jobs', False)) and _background_ok()
 
 
 def run_preset(context, sources, preset, **over):
@@ -392,7 +504,7 @@ def run_preset(context, sources, preset, **over):
                        noise=v['noise'], bend=v['bend'], random_islands=v['random'], variation=v['variation'],
                        shrink_max=v['shrink'] * 2.2 if v['random'] else None, preset=preset,
                        **{k: over[k] for k in over if k in ('collider', 'split', 'angle', 'seed', 'pin', 'join',
-                                                              'subsurf', 'thickness', 'tension')})
+                                                              'subsurf', 'thickness', 'tension', 'background')})
 
 
 def is_pcloth(ob):
@@ -439,7 +551,11 @@ def redo(context, ob, preset, tension=None, gravity=None, puff=None):
         gravity = ob.mch_pcloth_gravity if ob.get(GRAVITY_KEY) is not None else None
     if puff is None:
         puff = ob.mch_pcloth_puff
+    from . import bg_jobs
+    if bg_jobs.busy(ob):
+        return []
     srcs = [bpy.data.objects[n] for n in names]
+    background = use_background(context)
     me = ob.data
     bpy.data.objects.remove(ob)
     if me.users == 0:
@@ -447,7 +563,7 @@ def redo(context, ob, preset, tension=None, gravity=None, puff=None):
     for s in srcs:
         s.hide_set(False)
         s.hide_render = False
-    made = run_preset(context, srcs, preset, **sim_values(preset, tension, gravity, puff))
+    made = run_preset(context, srcs, preset, background=background, **sim_values(preset, tension, gravity, puff))
     for o in made:
         set_sliders(o, tension, gravity if gravity is not None else preset_values(preset)['gravity'], puff)
     return made
@@ -600,7 +716,7 @@ class MCH_OT_panel_cloth(bpy.types.Operator):
                                self.collider != 'NONE', self.self_collision, self.thickness, self.split,
                                math.degrees(self.angle), self.join, self.hide_source, self.bend,
                                self.shrink_max, self.random_islands, self.variation, self.collider,
-                               self.preset, self.remove_faces)
+                               self.preset, self.remove_faces, background=use_background(context))
         except ValueError as exc:
             self.report({'WARNING'}, str(exc))
             return {'CANCELLED'}
@@ -610,7 +726,11 @@ class MCH_OT_panel_cloth(bpy.types.Operator):
             o.select_set(True)
         if made:
             context.view_layer.objects.active = made[0]
-        self.report({'INFO'}, f'Panel Cloth: {len(made)} cloth object(s), {self.frames} frames baked')
+        if LAST_BACKGROUND:
+            self.report({'INFO'}, '; '.join(LAST_BACKGROUND))
+            LAST_BACKGROUND.clear()
+        else:
+            self.report({'INFO'}, f'Panel Cloth: {len(made)} cloth object(s), {self.frames} frames baked')
         return {'FINISHED'}
 
 
@@ -645,10 +765,16 @@ def draw(layout, context):
     r = box.row(align=True)
     r.prop(st, 'sim_after', text='Sim after lasso', toggle=True)
     r.prop(st, 'sim_preset', text='')
+    r = box.row(align=True)
     if hasattr(context.scene, 'mch_pcloth_fast'):
-        box.prop(context.scene, 'mch_pcloth_fast')
+        r.prop(context.scene, 'mch_pcloth_fast', toggle=True)
+    zb = getattr(context.scene, 'mch_zb', None)
+    if zb is not None and hasattr(zb, 'bg_jobs'):
+        r.prop(zb, 'bg_jobs', text='Background', toggle=True)           # 0.24.88 the bake in a second Blender
     box.operator('mch.panel_cloth', text='Panel Cloth on selection', icon='MOD_CLOTH')
     ob = context.active_object
+    from . import bg_jobs
+    bg_jobs.draw_status(box, ob)
     if is_pcloth(ob):
         col = box.column(align=True)
         col.prop(ob, 'mch_pcloth_puff', slider=True)
@@ -703,9 +829,9 @@ def register():
         if _on_undo_pre not in lst:
             lst.append(_on_undo_pre)
     bpy.types.Scene.mch_pcloth_fast = BoolProperty(
-        name='Fast Start', default=False,
+        name='Fast Start', default=True,                                  # 0.24.88 on: 2.9 s less per bake (measured)
         description='Prepare the cloth much faster (big panels: seconds less). The folds come out a little '
-                    'different from the usual result; off = the usual result')
+                    'different from the 0.24.1 result; off = that result')
     bpy.types.Object.mch_pcloth_puff = FloatProperty(
         name='Puff', default=1.0, min=0.0, max=5.0, soft_max=3.0, update=_slider_update,
         description='Panel Cloth: how much it puffs up - 1 = preset, 0 = flat, 2 = twice as much (Refresh bakes it)')

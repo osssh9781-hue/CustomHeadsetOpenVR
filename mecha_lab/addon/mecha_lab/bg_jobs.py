@@ -20,7 +20,7 @@ import bpy
 BG_MIN = 20_000                   # faces: below this the action runs inline (the start-up of a second Blender costs ~2 s)
 JOBS = {}                         # object name -> job dict
 _TIMER_ON = False
-KINDS = {'QUAD_REMESH': 'Quad Remesh', 'REFIX': 'Re-Fix'}
+KINDS = {'QUAD_REMESH': 'Quad Remesh', 'REFIX': 'Re-Fix', 'PANEL_CLOTH': 'Panel Cloth'}
 
 
 def _worker_cmd(job_json):
@@ -47,8 +47,9 @@ def busy(ob):
     return j is not None and j['proc'].poll() is None
 
 
-def start(context, ob, kind, params):
-    """Launch ``kind`` on ``ob`` in the background.  Returns a message."""
+def start(context, ob, kind, params, extra=()):
+    """Launch ``kind`` on ``ob`` in the background.  Returns a message.  ``extra``: more meshes the worker needs
+    (0.24.88 a cloth bake's colliders), written into the same file."""
     if ob.type != 'MESH' or ob.data is None:
         return f'{KINDS.get(kind, kind)}: not a mesh'
     if busy(ob):
@@ -57,12 +58,17 @@ def start(context, ob, kind, params):
     d = tempfile.mkdtemp(prefix='mch_bg_')
     src = os.path.join(d, 'in.blend')
     out = os.path.join(d, 'out.blend')
-    me.use_fake_user = True
+    meshes = [me] + [m for m in extra if m is not None and m is not me]
+    was = [m.use_fake_user for m in meshes]
+    for m in meshes:
+        m.use_fake_user = True
     try:
-        bpy.data.libraries.write(src, {me}, fake_user=True)
+        bpy.data.libraries.write(src, set(meshes), fake_user=True)
     finally:
-        me.use_fake_user = False
-    job = {'kind': kind, 'in': src, 'mesh': me.name, 'out': out, 'params': params}
+        for m, w in zip(meshes, was):
+            m.use_fake_user = w
+    job = {'kind': kind, 'in': src, 'mesh': me.name, 'out': out, 'params': params,
+           'extra': [m.name for m in meshes[1:]]}
     cmd = _worker_cmd(json.dumps(job))
     log = open(os.path.join(d, 'log.txt'), 'w')
     try:
@@ -150,6 +156,9 @@ def _apply(j):
     new = dst.meshes[0]
     new.use_fake_user = False
     fd.swap_mesh(ob, new)
+    if j['kind'] == 'PANEL_CLOTH':
+        from . import cloth_sim
+        cloth_sim.finish_cloth([ob])
     j['message'] = res.get('message', '') + f' | background, {time.perf_counter() - j["started"]:.0f} s'
     try:
         bpy.ops.ed.undo_push(message=KINDS.get(j['kind'], j['kind']))

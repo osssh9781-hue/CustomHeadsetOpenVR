@@ -1409,7 +1409,7 @@ def _sim_after(context, st, obs, msg):
     if not getattr(st, 'sim_after', False) or getattr(st, 'creature', False):
         return msg
     from . import cloth_sim
-    made = cloth_sim.run_preset(context, obs, st.sim_preset, collider='REGION')
+    made = cloth_sim.run_preset(context, obs, st.sim_preset, collider='REGION', background=cloth_sim.use_background(context))
     for o in context.selected_objects:
         o.select_set(False)
     for o in made:

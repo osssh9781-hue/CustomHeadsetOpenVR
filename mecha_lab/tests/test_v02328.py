@@ -55,7 +55,7 @@ bpy.ops.mch.panel_cloth_redo(preset='SILK')
 s = C.active_object
 check('preset redo: Gravity back to the preset, Tension kept', abs(s.mch_pcloth_gravity - cs.preset_values('SILK')['gravity'])
       < 1e-6 and abs(s.mch_pcloth_tension - 3.0) < 1e-6)
-check('Fast Start is off by default (the usual result)', S.mch_pcloth_fast is False)
+check('Fast Start is on by default (0.24.88: 2.9 s less per bake; off = the 0.24.1 result)', S.mch_pcloth_fast is True)
 S.mch_pcloth_fast = True
 for o in list(bpy.data.objects):
     o.select_set(False)
