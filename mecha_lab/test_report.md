@@ -1,6 +1,6 @@
 # Test Report — Mecha Lab 0.24.88
 
-## 0.24.88 결과: __T88__
+## 0.24.88 결과: Blender 5.2.3 bpy 전체 202개 파일 PASS 5,112 / FAIL 0(`tests/test_log_bpy523_v02488.txt`, FAILED FILES: none; Traceback 24개는 test_registration_recovery). 새 테스트 test_v02515_cloth_bg 21(임시 장면 베이크 · 백그라운드 베이크가 창 안과 같은 높이 · 도중 Refresh 거부 · 임시 콜라이더 정리 · 자기 충돌 기본값 · Cloth 프리셋 교차 0 · 바늘 면 없음). 고친 기존 테스트 test_v02328(Fast Start 기본 켜짐). 파이프라인 무작위 테스트 20 × 12(seed 1201~): 20 OK · 크래시 0(품질 메모는 KNOWN 부류; seed 1205 의 베벨 컷 90초는 0.24.87 과 같음 — KNOWN). 실제 블렌더 창 자동 테스트 13/13(`tests/gui/gui_result_0.24.88.txt`). ZIP sha256 `0035142150fb236c30e5fa6055960319f842517597a18dda1efb99f63b72c8e3` (`mecha_lab-0.24.88_20261029-1013.zip`).
 
 ## 0.24.87 결과: Blender 5.2.3 bpy 전체 201개 파일 PASS 5,091 / FAIL 0(`tests/test_log_bpy523_v02487.txt`, FAILED FILES: none; Traceback 24개는 test_registration_recovery). 새 테스트 test_v02514_boxes_all 10. 실제 블렌더 창 자동 테스트 13/13(`tests/gui/gui_result_0.24.87.txt`). 퍼즈는 0.24.86 것(코드 변경이 UI 토글뿐). ZIP sha256 `68eae9184d305127774768cf13a611777993bccdc7d1ed5f219411115e30db94` (`mecha_lab-0.24.87_20261029-0742.zip`).
 
