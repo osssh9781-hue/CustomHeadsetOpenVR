@@ -215,6 +215,10 @@ def swap_mesh(ob, new):
     old = ob.data
     name = old.name
     ob.data = new
+    if ob.get('mch_linked'):                       # 0.24.84 linked group copies follow (they shared the old mesh)
+        for o in bpy.data.objects:
+            if o is not ob and o.type == 'MESH' and o.data is old and o.get('mch_linked'):
+                o.data = new
     if old.users == 0:
         bpy.data.meshes.remove(old)
         new.name = name

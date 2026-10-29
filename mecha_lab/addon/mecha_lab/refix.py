@@ -5,7 +5,8 @@ again.  The way the user works by hand (DynaMesh > Decimate > Quad Remesh) with 
 * live stack applied first (Box Hide, Armor Shell, Hard Edges bevel ... become real faces), small holes shut
 * DynaMesh: enough points to carry the part's detail (``points_for``: 8 x the target faces, 120k .. 500k; a Quad
   Remesh finish stops at 250k - the quad solver is the slow part) - a self-crossing sculpt comes out as one solid
-* Decimate (even, the C engine) or Quad Remesh (Mostly Quads, the shelf's hard-edge angle) to ``faces`` polygons;
+* two light smoothing passes (the voxel grain off the flats; ``refix_smooth`` 0 = none)
+* Decimate (even, quads, the C engine) or Quad Remesh (Mostly Quads, the shelf's hard-edge angle) to ``faces`` polygons;
   Faces 0 = Auto: what the part has now, 2,000 .. 40,000
 * the report says faces before > after, open edges and self-crossings before > after
 
@@ -88,6 +89,13 @@ def run(context, ob, zb):
     dyna = len(me.vertices)
     if not len(me.polygons):
         raise RuntimeError('DynaMesh gave nothing (the part is thinner than its voxels everywhere)')
+    smooth = int(getattr(zb, 'refix_smooth', 2))
+    if smooth > 0:                                  # 0.24.85 the voxel grain off the flats (2 light passes)
+        m = ob.modifiers.new('MCH_refix_smooth', 'SMOOTH')
+        m.factor, m.iterations = 0.5, smooth
+        with context.temp_override(object=ob, active_object=ob):
+            bpy.ops.object.modifier_apply(modifier=m.name)
+        me = ob.data
     raised = ''
     if finish == 'QUAD':
         note = qf.remesh_object(ob, faces, all_quads=False, crease_deg=math.degrees(getattr(zb, 'qr_angle', math.radians(30))))
@@ -101,11 +109,12 @@ def run(context, ob, zb):
             for _try in range(FINER_TRIES + 1):
                 me.calc_loop_triangles()
                 keep = 100.0 * want / max(1, len(me.loop_triangles))
-                if fd.available():
-                    note = fd.decimate_object(ob, min(100.0, keep), even=True, quads=bool(getattr(zb, 'dec_quads', False)))
+                if fd.available():                   # 0.24.85 quads: flats come out as clean quads, not a tri grain
+                    note = fd.decimate_object(ob, min(100.0, keep), even=True, quads=True)
                 else:
                     note = fd.blender_decimate(context, ob, min(100.0, keep))
-                if cg.self_overlaps(ob.data, CROSS_LIMIT) <= 0 or want * 2 > len(dyna_me.polygons) or _try == FINER_TRIES:
+                crossing = cg.self_overlaps(ob.data, CROSS_LIMIT)
+                if crossing <= max(2, want // 2000) or want * 2 > len(dyna_me.polygons) or _try == FINER_TRIES:
                     break
                 fd.swap_mesh(ob, dyna_me.copy())        # back to the DynaMesh, finer
                 me = ob.data
@@ -124,6 +133,8 @@ def run(context, ob, zb):
         mesh_fix.fix_mesh(me, all_holes=True)
         if hasattr(cg, 'tidy_result'):
             cg.tidy_result(me, shards=False, slivers=False)
+    from . import zb_sculpt as zs2
+    zs2.shade_result(ob, zb)                                  # 0.24.85 smooth, sharp edges by angle (export-ready)
     open1, cross1 = cg.non_manifold_edge_count(me), cg.self_overlaps(me, CROSS_LIMIT)
     out = (f'Re-Fix ({how}): {faces0:,} > {len(me.polygons):,} faces (DynaMesh {dyna:,} points, asked {faces:,}{raised}) | '
            f'open edges {open0} > {open1}')
@@ -145,3 +156,4 @@ def draw_row(layout, zb):
     r = col.row(align=True)
     r.prop(zb, 'refix_finish', expand=True)
     r.prop(zb, 'refix_faces', text='Faces')
+    r.prop(zb, 'refix_smooth', text='Smooth')

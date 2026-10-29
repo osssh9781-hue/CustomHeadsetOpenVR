@@ -1315,6 +1315,13 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
                              description='Decimate: polygroup borders stay where they are')
     dec_borders: BoolProperty(name='Keep Borders', default=False,
                               description='Decimate: points on open borders do not move')
+    result_shade: EnumProperty(name='Shading', default='SMOOTH',          # 0.24.85
+                               items=[('SMOOTH', 'Smooth', 'Decimate / Quad Remesh / Re-Fix results: every face smooth, '
+                                       'edges sharper than the Hard Edges angle marked sharp - written into the mesh, '
+                                       'so an exported file looks the same in the client\'s viewer'),
+                                      ('FLAT', 'Flat', 'every face flat (the facets show)'),
+                                      ('KEEP', 'Keep', 'the shading the result came with (as before 0.24.85)')],
+                               description='The shading a Decimate / Quad Remesh / Re-Fix result gets')
     # 0.24.71 Quad Remesh: Mecha Lab's own field-aligned quad remesher (quad_field)
     qr_target: FloatProperty(name='Target', default=5.0, min=0.001, soft_max=100.0, precision=3, step=1,
                              description='Quad Remesh: how many polygons, in thousands (5 = 5,000; 0.05 = 50; '
@@ -1329,6 +1336,9 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
                                                                 'triangles, Quads toggle of Decimate honoured)'),
                                       ('QUAD', 'Quad Remesh', 'DynaMesh, then Quad Remesh (Mostly Quads) to Faces')],
                                description='Re-Fix: what the clean mesh is made with after the DynaMesh')
+    refix_smooth: IntProperty(name='Smooth', default=2, min=0, max=6,
+                              description='Re-Fix: light smoothing passes after the DynaMesh (the voxel grain off the '
+                                          'flats; 0 = none, keeps every sharp corner as the voxels left it)')
     refix_faces: IntProperty(name='Faces', default=0, min=0, soft_max=200000,
                              description='Re-Fix: polygons the clean mesh should have; 0 = Auto (what the part has '
                                          'now, 2,000 .. 40,000)')
@@ -1814,6 +1824,15 @@ def _mask_values(ob):
 
 
 # 0.24.66 the steps that crash Blender most often: a recovery copy right before them (when anything changed)
+def shade_result(ob, zb):
+    """0.24.85 The shelf's result shading (Smooth by angle / Flat / Keep) onto a Decimate / Quad Remesh / Re-Fix result."""
+    from . import core_geometry as cg
+    try:
+        return cg.shade_result(ob.data, getattr(zb, 'result_shade', 'SMOOTH'), float(getattr(zb, 'qr_angle', math.radians(30.0))))
+    except (RuntimeError, ValueError, AttributeError, ReferenceError):
+        return -1
+
+
 RISKY = {'DYNAMESH', 'DYNA_UPDATE', 'DYNA_SUBDIV', 'DYNA_SUBDIV3', 'DECIMATE', 'QUAD_REMESH', 'REFIX', 'HE_FIND', 'HE_APPLY',
          'DIVIDE', 'ZREMESH', 'HALF', 'SAME', 'DOUBLE', 'MIRROR_WELD', 'CLOSE_HOLES', 'EXTRACT', 'SPLIT_MASKED',
          'SPLIT_UNMASKED', 'SPLIT_HIDDEN', 'DEL_HIDDEN', 'MERGE_DOWN', 'MERGE_VISIBLE', 'POLYMESH3D', 'GROUPS_SPLIT',
@@ -2123,6 +2142,7 @@ def run(context, action):
         try:
             msg = qf.remesh_object(ob, max(1, int(round(zb.qr_target * 1000))), all_quads=zb.qr_mode == 'ALL',
                                    crease_deg=math.degrees(zb.qr_angle))
+            shade_result(ob, zb)
         finally:
             _mode(context, 'SCULPT')
         return msg
@@ -2183,6 +2203,7 @@ def run(context, action):
                                          keep_groups=zb.dec_groups, keep_borders=zb.dec_borders)
             else:
                 msg = fd.blender_decimate(context, ob, zb.decimate)
+            shade_result(ob, zb)
         finally:
             _mode(context, 'SCULPT')
         return msg

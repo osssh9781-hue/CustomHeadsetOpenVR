@@ -100,6 +100,6 @@ check('is_junk: a small open scrap (a boolean that broke) is junk too',
       cg.is_junk(mesh_with([(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (0, 0, 1), (1, 0, 1)],
                            [(0, 1, 2, 3), (0, 1, 5, 4), (1, 2, 5), (0, 3, 4)]), ref_size=5.0))
 check('A Split / Cut result goes through tidy_result; a junk Split piece is dropped and said',
-      'cg.tidy_result(me, cg.mesh_size(t.data))' in __import__('inspect').getsource(__import__('mecha_lab.cut_engine', fromlist=['x'])._perform_closed)
+      'cg.tidy_result(me, cg.mesh_size(t.data), before=t.data)' in __import__('inspect').getsource(__import__('mecha_lab.cut_engine', fromlist=['x'])._perform_closed)
       and 'paper-thin shard' in __import__('inspect').getsource(__import__('mecha_lab.cut_engine', fromlist=['x'])._perform_closed))
 summary()

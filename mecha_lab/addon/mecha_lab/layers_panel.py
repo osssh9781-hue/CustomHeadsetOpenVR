@@ -250,6 +250,11 @@ def content(context, x, width, k):
                             'Exit' if inside == ob else 'Work inside', 'exit' if inside == ob else 'enter', False,
                             True, ('op', 'mch.group_pick', {'name': ob.name, 'enter': inside != ob}), 'RIGHT'))
             right -= 26 * k
+            box_off = bool(ob.get(groups.BOX_HIDDEN_KEY))        # 0.24.84 the group's box lines: on / off
+            out.append(Item('pmin', right - 24 * k, y + 1 * k, 24 * k, rh - 2 * k,
+                            'Box lines off' if box_off else 'Box lines on', 'card', not box_off, True,
+                            ('op', 'mch.group_box_eye', {'name': ob.name}), 'RIGHT'))
+            right -= 26 * k
             mode = groups.repeat_mode(ob)
             badge = '' if mode == 'OFF' else mode.title()
         try:

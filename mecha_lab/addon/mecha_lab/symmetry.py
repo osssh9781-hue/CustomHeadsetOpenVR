@@ -489,6 +489,16 @@ def build_card(context, region_w, region_h, S=1.0):
                                                  ('Flip', bool(m and any(m.use_bisect_flip_axis)), 'sym_flip'),
                                                  ('Clip', bool(m and m.use_clip), 'sym_clip'))):
                 items.append(Item('toggle', pad + i * (tw + 8 * S), y, tw, 30 * S, name, '', on, True, (act,)))
+            # 0.24.85 the coloured planes: on / off and how see-through (Preferences keeps it)
+            from .workspace_ui import pref
+            y -= 34 * S
+            show = bool(pref('sym_plane_show', True))
+            alpha = float(pref('sym_plane_alpha', 0.10))
+            items.append(Item('toggle', pad, y, 60 * S, 28 * S, 'Plane', '', show, True, ('sym_plane',)))
+            items.append(Item('pill', pad + 68 * S, y, 40 * S, 28 * S, '-5%', '', False, show, ('sym_plane_alpha', -0.05)))
+            items.append(Item('note', pad + 112 * S, y, inner - 112 * S - 44 * S, 28 * S, f'{alpha * 100:.0f} %'))
+            items.append(Item('pill', pad + inner - 40 * S, y, 40 * S, 28 * S, '+5%', '', False, show,
+                              ('sym_plane_alpha', 0.05)))
     if mode in {'RADIAL', 'KALEIDO'}:
         y -= 12 * S
         items.append(Item('section', pad, y - 18 * S, inner, 18 * S, 'Radial'))
@@ -628,6 +638,19 @@ def run_card(context, item):
         toggle_flip(ob)
     elif kind == 'sym_clip':
         toggle_clip(ob)
+    elif kind == 'sym_plane':                         # 0.24.85 the planes on / off
+        from .workspace_ui import prefs
+        p = prefs()
+        if p is not None:
+            p.sym_plane_show = not p.sym_plane_show
+        return 'Mirror planes ' + ('on' if p is None or p.sym_plane_show else 'off')
+    elif kind == 'sym_plane_alpha':                   # 0.24.85 ... and their opacity in 5 % steps
+        from .workspace_ui import prefs
+        p = prefs()
+        if p is not None:
+            p.sym_plane_alpha = max(0.0, min(1.0, p.sym_plane_alpha + a[1]))
+            return f'Mirror planes {p.sym_plane_alpha * 100:.0f} %'
+        return ''
     elif kind == 'sym_raxis':
         set_radial_axis(context, a[2])
     elif kind == 'sym_count':
@@ -651,6 +674,10 @@ def _draw_planes():
         kind, ob = card_target(context)
         if kind != 'PART':
             return
+        from .workspace_ui import pref
+        alpha = float(pref('sym_plane_alpha', 0.10))         # 0.24.85 off switch + opacity (card, Preferences)
+        if not pref('sym_plane_show', True) or alpha <= 0.0:
+            return
         quads = plane_quads(ob)
         if not quads:
             return
@@ -664,9 +691,9 @@ def _draw_planes():
         for i, q in quads:
             col = PLANE_COLORS[i]
             pos = [tuple(p) for p in q]
-            sh.uniform_float('color', col)
+            sh.uniform_float('color', (col[0], col[1], col[2], alpha))
             batch_for_shader(sh, 'TRIS', {'pos': pos}, indices=[(0, 1, 2), (0, 2, 3)]).draw(sh)
-            sh.uniform_float('color', (col[0], col[1], col[2], 0.55))
+            sh.uniform_float('color', (col[0], col[1], col[2], min(1.0, 0.3 + alpha * 2.5)))
             batch_for_shader(sh, 'LINE_STRIP', {'pos': pos + pos[:1]}).draw(sh)
         gpu.state.depth_mask_set(True)
         gpu.state.depth_test_set('NONE')

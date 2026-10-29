@@ -1,8 +1,16 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.84 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.85 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## 0.24.85 하이폴리 컷 · 결과 음영 · Linked Copy · 박스선 눈 · 미러 평면 (미검증)
+- [ ] DynaMesh 50만 점 몸통에 Cut / Split → 전보다 눈에 띄게 빨리 끝나고(수 초) 결과가 닫혀 있는지(메시지에 열린 변 경고 없음).
+- [ ] Decimate 뒤 Shading = Smooth(기본): 면이 매끈하고 꺾이는 모서리는 또렷한지; Flat 로 바꾸고 다시 Decimate → 각진 면; FBX 로 내보내 다시 불러와도 같은 음영인지.
+- [ ] Re-Fix 결과의 평면이 전(0.24.84)보다 매끈한지(Smooth 2, Decimate Quads).
+- [ ] 그룹 선택 → Groups 카드 **Linked Copy** → 복사본을 옆으로 옮기고 원본 부품에 Cut → 복사본에도 같은 컷이 보이는지; Duplicate 는 안 따라오는지.
+- [ ] Layers 패널 그룹 줄의 박스선 눈 → 그 그룹 상자 선만 사라지고, 그룹을 선택하면 보이는지.
+- [ ] Mirror 켠 부품의 Symmetry 카드: Plane 끄면 색깔 평면 사라짐, +5 % 누르면 진해짐, Preferences 값과 같이 움직이는지.
 
 ## 0.24.84 Re-Fix (미검증)
 - [ ] 얇은 판을 ZBrush 화면에서 반대쪽까지 밀어 조각한 뒤(자기 교차) N 패널 Geometry > **Re-Fix** → 한 덩어리 닫힌 메시가 되고 메시지에 "self-crossings N > 0" 이 나오는지. Faces 0(Auto) / 5000 / Finish Quad Remesh 도.

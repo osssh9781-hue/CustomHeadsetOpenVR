@@ -117,12 +117,17 @@ def draw_tool_shelf(layout, context):
     r.prop(zb, 'dec_mask', toggle=True)
     r.prop(zb, 'dec_groups', toggle=True)
     r.prop(zb, 'dec_borders', toggle=True)
+    r = box.row()
+    r.label(text='Shading')
+    r.prop(zb, 'result_shade', expand=True)        # 0.24.85
     box = layout.box()
     box.label(text='Re-Fix')                     # 0.24.84 DynaMesh > clean Decimate / Quad Remesh in one go
     r = box.row()
     ops(r, ('Re-Fix', 'REFIX'))
     r.prop(zb, 'refix_faces', text='Faces')
-    box.row().prop(zb, 'refix_finish', expand=True)
+    r = box.row()
+    r.prop(zb, 'refix_finish', expand=True)
+    r.prop(zb, 'refix_smooth', text='Smooth')
     box = layout.box()
     box.label(text='Quad Remesh')
     r = box.row()

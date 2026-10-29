@@ -2312,6 +2312,10 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
     symmetry_follow: BoolProperty(name='New Parts Follow the Mirror', default=True,
                                   description='A plate, Surface Draw stroke, Flower or screw made on a part with a live '
                                               'Mirror gets the same Mirror (planes and centre)')
+    sym_plane_show: BoolProperty(name='Show Mirror Planes', default=True,
+                                 description='The coloured see-through planes of a live Mirror (Symmetry card)')
+    sym_plane_alpha: FloatProperty(name='Mirror Plane Opacity', default=0.10, min=0.0, max=1.0, subtype='FACTOR',
+                                   description='How solid the mirror planes are drawn (0 = invisible)')
     live_last_cut: BoolProperty(name='Live Last Cut', default=True,
                                 description='The last Cut stays live until the next one: Cut Depth / GN Edge sliders '
                                             '(Quick HUD, menu, panel) cut it again')
@@ -2462,6 +2466,9 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         row.prop(self, 'symmetry_card')
         row.prop(self, 'symmetry_follow')
         box.row().prop(self, 'live_last_cut')
+        r = box.row(align=True)
+        r.prop(self, 'sym_plane_show')
+        r.prop(self, 'sym_plane_alpha', text='Opacity')
         row = box.row()
         row.prop(self, 'mecha_ui_size', slider=True)
         row.prop(self, 'menu_size', slider=True)

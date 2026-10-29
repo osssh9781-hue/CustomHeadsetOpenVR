@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.84
+# Test Report — Mecha Lab 0.24.85
+
+## 0.24.85 결과: Blender 5.2.3 bpy 전체 __FILES85__개 파일 PASS __PASS85__ / FAIL 0(`tests/test_log_bpy523_v02485.txt`, FAILED FILES: none; 로그 안 Traceback 24개는 전부 test_registration_recovery가 일부러 내는 것). 새 테스트 test_v02508_linked 26 · test_v02509_cut_speed 9. 파이프라인 무작위 테스트 20 × 12: __FUZZ85__. 실제 블렌더 창 자동 테스트 __GUI85__(`tests/gui/gui_result_0.24.85.txt`). ZIP sha256 `__SHA85__` (`__ZIP85__`).
 
 ## 0.24.84 결과: Blender 5.2.3 bpy 전체 194개 파일 PASS 5,006 / FAIL 0(`tests/test_log_bpy523_v02484.txt`, FAILED FILES: none; 로그 안 Traceback 24개는 전부 test_registration_recovery가 일부러 내는 것). 새 테스트 test_v02507_refix 11. 실제 블렌더 창 자동 테스트 13/13(`tests/gui/gui_result_0.24.84.txt`, 최종 zip 설치 포함). ZIP sha256 `6d4570693f9b3eee5b52d55a854cae33cbcf63384df938f07614b1fa508cffca` (`mecha_lab-0.24.84_20261029-0318.zip`).
 

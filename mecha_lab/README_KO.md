@@ -1,8 +1,16 @@
-# Mecha Lab 0.24.82 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.24.85 — 설치 · MECHA LAB Workspace · 사용법
 
-> **검증 수준:** Linux headless Blender **5.2.3**(`bpy`)에서 자동 테스트 193개 파일 / 4,995개 항목(실패 0) + 무작위 기능 조합 크래시 테스트 280개, 그리고 0.24.81부터 리눅스 가상 화면의 **진짜 Blender 5.2.3 창** 자동 테스트(설치 · 워크스페이스 · 그려진 막대 · 진짜 마우스 Cut · Tab · 단축키 충돌 목록) 10/10를 돌렸습니다(결과: `test_report.md`).
+> **검증 수준:** Linux headless Blender **5.2.3**(`bpy`)에서 자동 테스트 __FILES85__개 파일 / __PASS85__개 항목(실패 0) + 무작위 기능 조합 크래시 테스트 280개, 그리고 0.24.81부터 리눅스 가상 화면의 **진짜 Blender 5.2.3 창** 자동 테스트(설치 · 워크스페이스 · 그려진 막대 · 진짜 마우스 Cut · Tab · 단축키 충돌 목록) 10/10를 돌렸습니다(결과: `test_report.md`).
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` 맨 위 0.24.81 절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
+
+## 0.24.85 하이폴리 컷 속도 · 결과 음영 · 연결된 그룹 복사 · 박스선 눈 · 미러 평면
+- **컷 · 스플릿이 하이폴리에서 3 ~ 4배 빨라짐**(82k면 2.8 → 0.6초, 327k면 8.8 → 2.4초): 결과 정리가 컷 주변 면만 봄. **데시메이트 속도**도 0.24.81 수준으로 돌아옴(정리 단계가 결과 면 수만큼 느리게 하던 것).
+- **Shading**(Decimate 줄, 기본 Smooth): Decimate · Quad Remesh · Re-Fix 결과를 스무스 + 각도(Hard Edges 각도)보다 꺾이는 변 샤프로 — 메시 데이터라 내보낸 파일이 받는 쪽에서 설정 없이 같은 모양. Flat / Keep 도.
+- **Re-Fix** 결과 면 정리: DynaMesh 뒤 스무딩 2회(Smooth 0 ~ 6) + Decimate Quads.
+- **Linked Copy**(Groups 카드 · 메카 메뉴 Groups): 복사한 그룹의 부품이 원본과 한 메시 — 원본을 Cut · Decimate · Re-Fix 하면 복사본도 바뀜. Box Hide 같은 모디파이어 단계는 오브젝트마다라 전파 안 됨. Duplicate 는 전처럼 독립.
+- **그룹 박스선 눈**: Layers 패널 그룹 줄 · Groups 카드 — 그룹마다 상자 선 끄기.
+- **미러 평면**: Symmetry 카드 Mirror 절의 Plane 토글 · −5 % / +5 %, Preferences 의 Show Mirror Planes / Mirror Plane Opacity.
 
 ## 0.24.84 Re-Fix 버튼
 - **Re-Fix**(Mesh Tools / ZBrush N 패널 Geometry / 액션 `REFIX`): 지저분해진 부품을 DynaMesh(알맞은 점 수) → 깨끗한 Decimate 또는 Quad Remesh 로 한 번에 되돌림. Faces 0 = Auto. 라이브 단계는 먼저 굳힘, 메시지에 전후 면 수 · 열린 변 · 자기 교차.

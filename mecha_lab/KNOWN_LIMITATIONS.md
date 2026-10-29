@@ -1,5 +1,12 @@
 # KNOWN LIMITATIONS — Mecha Lab 0.18.0
 
+## 0.24.85
+- Linked Copy 그룹: 메시를 공유하므로 Cut · Split · Decimate · Quad Remesh · Re-Fix · Fix Mesh 는 전파되지만, **모디파이어로 붙는 라이브 단계(Box Hide · Armor Shell · Hard Edges 베벨 · Mirror · Live Stack)는 오브젝트마다**라서 원본에만 붙음. 복사본에도 같이 보이게 하려면 원본에서 Apply(굳힘)한 뒤.
+- Linked Copy 의 부품을 Split 하면 떨어져 나온 조각은 새 오브젝트(원본 쪽에만 생김); 남은 몸통은 공유.
+- 컷 결과 정리가 **컷 주변만** 보므로, 컷 전에 이미 있던 바늘 면 · 스파이크 · 조각은 컷이 고치지 않음(전에는 컷할 때마다 몸통 전체를 정리했음). 전체 정리는 Fix Mesh / Re-Fix.
+- Shading = Smooth 는 샤프 변을 Hard Edges 각도(기본 30°) 하나로 정함 — 그보다 완만한 의도된 모서리는 스무스로 뭉개져 보일 수 있음(각도를 낮추거나 Keep).
+- 미러 평면 투명도는 전역(Preferences) 값 — 부품마다 다르게는 안 됨.
+
 ## 0.24.84
 - Re-Fix 는 DynaMesh 를 거치므로 **복셀보다 얇은 벽은 사라지고 날카로운 모서리는 조금 둥글어짐**(DynaMesh 와 같음). 면 수(Faces)를 올리면 점 수도 올라가 덜함.
 - Re-Fix 의 Quad Remesh 마감은 큰 부품(4만 면)에서 20초 넘게 걸림(Decimate 마감 3초). 쿼드가 꼭 필요하지 않으면 Decimate.

@@ -40,12 +40,17 @@ def run_one(context, ob, zb, action):
         return f'DynaMesh: {len(ob.data.vertices):,} points'
     if action == 'DECIMATE':
         if not fd.available():
-            return fd.blender_decimate(context, ob, zb.decimate)
-        return fd.decimate_object(ob, zb.decimate, even=zb.dec_even, quads=zb.dec_quads, keep_mask=zb.dec_mask,
-                                  keep_groups=zb.dec_groups, keep_borders=zb.dec_borders)
+            msg = fd.blender_decimate(context, ob, zb.decimate)
+        else:
+            msg = fd.decimate_object(ob, zb.decimate, even=zb.dec_even, quads=zb.dec_quads, keep_mask=zb.dec_mask,
+                                     keep_groups=zb.dec_groups, keep_borders=zb.dec_borders)
+        zs.shade_result(ob, zb)                      # 0.24.85
+        return msg
     if action == 'QUAD_REMESH':
-        return qf.remesh_object(ob, max(1, int(round(zb.qr_target * 1000))), all_quads=zb.qr_mode == 'ALL',
-                                crease_deg=math.degrees(zb.qr_angle))
+        msg = qf.remesh_object(ob, max(1, int(round(zb.qr_target * 1000))), all_quads=zb.qr_mode == 'ALL',
+                               crease_deg=math.degrees(zb.qr_angle))
+        zs.shade_result(ob, zb)
+        return msg
     if action == 'EDGE_MESH':
         if not fd.available():
             raise RuntimeError('the Fast Decimate engine is not available on this system')
@@ -151,6 +156,7 @@ def draw(layout, context):
     r.prop(zb, 'dec_even', toggle=True)
     r.prop(zb, 'dec_quads', toggle=True)
     r.prop(zb, 'dec_borders', toggle=True)
+    col.row(align=True).prop(zb, 'result_shade', expand=True)     # 0.24.85 result shading (export-ready)
     col = box.column(align=True)
     r = col.row(align=True)
     op(r, 'Quad Remesh', 'QUAD_REMESH')

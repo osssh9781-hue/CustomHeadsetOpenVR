@@ -883,10 +883,10 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
         junk = 0
         crossing = []
         for t, me in pieces:
-            cg.tidy_result(me, cg.mesh_size(t.data))          # 0.24.83 no slivers / folds / specks left behind
+            cg.tidy_result(me, cg.mesh_size(t.data), before=t.data)          # 0.24.83 no slivers / folds / specks left behind
         capped = mode != 'SPLIT' or cut.split_cap
         for k, (t, me) in enumerate(results):
-            cg.tidy_result(me, cg.mesh_size(t.data))
+            cg.tidy_result(me, cg.mesh_size(t.data), before=t.data)
             _shut_holes(t, me, capped)
             if cg.non_manifold_edge_count(me) and not cg.non_manifold_edge_count(t.data):
                 n = cg.self_overlaps(t.data)                  # 0.24.83 a closed part whose cut came out broken: why
@@ -1107,12 +1107,12 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
                                   (' Failed: ' + '; '.join(failed) if failed else ''))
             capped = cut.line_cap and (mode != 'SPLIT' or cut.split_cap)
             for t, me in results:
-                cg.tidy_result(me, cg.mesh_size(t.data))
+                cg.tidy_result(me, cg.mesh_size(t.data), before=t.data)
                 _shut_holes(t, me, capped)
             infos = [cg.commit_mesh(t, me, cut.shared_mesh) for t, me in results]
             for t, me in pieces:
                 temp.remove(me)
-                cg.tidy_result(me, cg.mesh_size(t.data))
+                cg.tidy_result(me, cg.mesh_size(t.data), before=t.data)
                 if cg.is_junk(me, cg.mesh_size(t.data), not capped):
                     bpy.data.meshes.remove(me)
                     continue

@@ -24,6 +24,8 @@ from mathutils import Matrix, Vector
 GROUP_KEY = 'mch_group'                  # on the handle: its collection's name
 FROM_KEY = 'mch_group_from'              # on a member: the collections it came from (json)
 CARRIER_KEY = 'mch_group_carrier'        # on the repetition object: the handle's name
+LINKED_KEY = 'mch_linked'                # 0.24.85 on a part: it shares its mesh with a linked group copy (edits
+BOX_HIDDEN_KEY = 'mch_box_hidden'        #   on one show on all); on a handle: its box lines are off
 SCOPE_KEY = 'mch_scope'                  # on the scene: the handle of the group we are in
 SAVED_KEY = 'mch_scope_saved'            # on other objects while in a group: [hide_select, display_type]
 MOD_NAME = 'MCH_GroupRepeat'
@@ -220,6 +222,8 @@ def _draw_boxes():
         sh.bind()
         active = context.view_layer.objects.active
         for g in groups:
+            if g.get(BOX_HIDDEN_KEY) and not g.select_get():    # 0.24.85 the Layers panel's box eye (a selected
+                continue                                       #  group still shows its box)
             box = group_box(g)
             if box is None:
                 continue
@@ -327,6 +331,8 @@ def duplicate(context, g, linked=False):
         c = o.copy()
         if o.data is not None and not linked:
             c.data = o.data.copy()
+        elif o.data is not None:                       # 0.24.84 linked: both keep the one mesh - a Cut / Decimate /
+            o[LINKED_KEY] = c[LINKED_KEY] = 1          # Re-Fix on either changes it for all (commit_mesh, swap_mesh)
         c.animation_data_clear() if c.animation_data else None
         new_coll.objects.link(c)
         made[o] = c
@@ -825,6 +831,26 @@ class MCH_OT_group_repeat(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_group_box_eye(bpy.types.Operator):
+    """Show / hide this group's box lines in the viewport (a selected group always shows them)"""
+    bl_idname = 'mch.group_box_eye'
+    bl_label = 'Group Box Lines'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    name: bpy.props.StringProperty()
+
+    def execute(self, context):
+        g = bpy.data.objects.get(self.name)
+        if g is None or not is_group(g):
+            return {'CANCELLED'}
+        if g.get(BOX_HIDDEN_KEY):
+            del g[BOX_HIDDEN_KEY]
+        else:
+            g[BOX_HIDDEN_KEY] = 1
+        for area in context.screen.areas if context.screen else []:
+            area.tag_redraw()
+        return {'FINISHED'}
+
+
 class MCH_OT_group_pick(bpy.types.Operator):
     """Select this group (its Repetition card shows); with Enter: work inside it"""
     bl_idname = 'mch.group_pick'
@@ -872,6 +898,7 @@ def draw_list(layout, context):
     if g is not None:
         row = layout.row(align=True)
         row.operator('mch.duplicate', text='Duplicate', icon='DUPLICATE')
+        row.operator('mch.duplicate', text='Linked Copy', icon='LINKED').linked = True      # 0.24.85
         row.operator('mch.group_action', text='Origin to Geometry', icon='PIVOT_MEDIAN').action = 'ORIGIN'
     col = layout.column(align=True)
     for g, depth in rows:
@@ -883,6 +910,8 @@ def draw_list(layout, context):
         op.name, op.enter = g.name, False
         mode = repeat_mode(g)
         row.label(text='' if mode == 'OFF' else mode.title())
+        row.operator('mch.group_box_eye', text='', icon='MESH_CUBE' if not g.get(BOX_HIDDEN_KEY) else 'CUBE',
+                     depress=not g.get(BOX_HIDDEN_KEY)).name = g.name                          # 0.24.84 box lines
         op = row.operator('mch.group_pick', text='', icon='FORWARD' if inside != g else 'CHECKMARK')
         op.name, op.enter = g.name, True
 
@@ -908,8 +937,8 @@ class MCH_PT_groups(bpy.types.Panel):
         draw_list(self.layout, context)
 
 
-CLASSES = (MCH_OT_group, MCH_OT_group_action, MCH_OT_duplicate, MCH_OT_group_repeat, MCH_OT_group_pick,
-           MCH_PT_groups)
+CLASSES = (MCH_OT_group, MCH_OT_group_action, MCH_OT_duplicate, MCH_OT_group_repeat, MCH_OT_group_box_eye,
+           MCH_OT_group_pick, MCH_PT_groups)
 
 
 def register():
