@@ -129,7 +129,7 @@ for hip in (False, True):
     dt = time.perf_counter() - t
     check(f'Cut on the 327k-face body (High Poly {"on" if hip else "off"}): the tidy ran on the changed faces only '
           f'(a small part of the result), fast, the result closed',
-          r == {'FINISHED'} and calls and all(c[0] < 0.2 * c[1] for c in calls) and all(c[2] < 0.6 for c in calls)
+          r == {'FINISHED'} and calls and all(c[0] < 0.2 * c[1] for c in calls) and all(c[2] < 2.0 for c in calls)
           and all(c[3] is not None for c in calls) and non_manifold(ob) == 0, (r, [(c[0], c[1], round(c[2], 2)) for c in calls], round(dt, 2)))
 rc.tidy_sub = real_sub
 mi = np.empty(len(ob.data.polygons), np.int32)

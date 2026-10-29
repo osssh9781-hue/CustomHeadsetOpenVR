@@ -60,6 +60,8 @@ def build(V, corners, sizes, name, like=None):
         m.name = name
     else:
         m = bpy.data.meshes.new(name)
+    if not len(sizes):
+        return m                                    # (an empty mesh to fill later)
     m.vertices.add(len(V))
     m.vertices.foreach_set('co', np.ascontiguousarray(V, np.float64).ravel())
     m.loops.add(len(corners))
@@ -189,6 +191,19 @@ def region_boolean(context, target, cutter, operation, log=None):
             b.data.foreach_set(_TYPES[dtype][0], vals[idx].ravel())
         except (RuntimeError, TypeError, ValueError):
             pass
+    # the patch's quads / n-gons split into triangles once, here: the boolean and the knife then see the same
+    # triangles and cut the same seam (each would split a non-planar quad its own way - a T-junction per quad)
+    if int(tot[fmask].max()) > 3:
+        import bmesh
+        bmp = bmesh.new()
+        try:
+            bmp.from_mesh(patch)
+            bmesh.ops.triangulate(bmp, faces=[f for f in bmp.faces if len(f.verts) > 3], quad_method='BEAUTY', ngon_method='BEAUTY')
+            bmp.to_mesh(patch)
+        finally:
+            bmp.free()
+        patch.update()
+    pco, ptot, _pst, pvi = arrays(patch)
     tmp = bpy.data.objects.new('MCH_RegionPatch', patch)
     context.scene.collection.objects.link(tmp)
     tmp.matrix_world = target.matrix_world.copy()
@@ -207,12 +222,18 @@ def region_boolean(context, target, cutter, operation, log=None):
             kept = cg.evaluate_boolean(context, tmp, cutter, 'DIFFERENCE', 'EXACT')
         else:
             kept = cg.evaluate_boolean(context, tmp, cutter, 'INTERSECT', 'EXACT')
+        # the slivers the solver leaves at the seam (edges a millionth long, zero-size faces): welded away on the
+        # small result now, not found as open edges on the whole part later (a 1.3M-face part: 3.7 s of hole work)
+        try:
+            _clean_seam(kept, float(np.linalg.norm(co.max(0) - co.min(0))))
+        except (RuntimeError, ValueError):
+            pass
         t1b = time.perf_counter()
         # the cutter's walls: the solver sorts the cutter's pieces by the patch's winding number, which an open
         # patch cannot give (a thin column through a part: the pieces inside vanish from Intersect, Union and
         # Difference alike) - so the cutter is only SPLIT along the patch (Edit-mode Intersect / Knife, no sorting)
         # and the pieces are sorted here, by a ray along the cutter's axis (``_walls``)
-        pieces = _knife_pieces(context, target, cutter, co[pverts], pcorners, tot[fmask], M)
+        pieces = _knife_pieces(context, target, cutter, pco, pvi, ptot, M)
     except Exception:
         bpy.data.objects.remove(tmp)
         bpy.data.meshes.remove(patch)
@@ -254,6 +275,44 @@ def region_boolean(context, target, cutter, operation, log=None):
         log.append(f'region {nreg:,} of {len(tot):,} faces: region {t0b - t0:.2f} extract {t1 - t0b:.2f} boolean {t1b - t1:.2f} '
                    f'knife {t2 - t1b:.2f} sort {t2b - t2:.2f} stitch {t3 - t2b:.2f} s')
     return out
+
+
+def _clean_seam(kept, size):
+    """The Exact solver's leftovers at the seam of the patch result: points a hundred-thousandth apart welded (on
+    the open edges only), edges that short dissolved, zero-size faces hanging on 3+-face edges dropped."""
+    import bmesh
+    eps = 1e-5 * max(1e-9, size)
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(kept)
+        bnd = [v for v in bm.verts if any(len(e.link_faces) != 2 for e in v.link_edges)]
+        if bnd:
+            bmesh.ops.remove_doubles(bm, verts=bnd, dist=eps)
+        short = [e for e in bm.edges if e.is_valid and e.calc_length() < eps]
+        if short:
+            bmesh.ops.dissolve_degenerate(bm, edges=short, dist=eps)
+        tiny = [f for f in bm.faces if f.is_valid and f.calc_area() < eps * eps
+                and any(len(e.link_faces) > 2 for e in f.edges)]
+        if tiny:
+            bmesh.ops.delete(bm, geom=tiny, context='FACES_ONLY')
+        # a face the solver dropped inside the result (a non-planar quad cut through): a hole of a few sides,
+        # filled - the patch rim and the cut outline have far more sides than 8 and stay open
+        opn = [e for e in bm.edges if e.is_valid and len(e.link_faces) == 1]
+        filled = 0
+        if opn:
+            res = bmesh.ops.holes_fill(bm, edges=opn, sides=8)
+            filled = len(res.get('faces', []))
+        if os.environ.get('MECH_REGION_DEBUG'):
+            print(f'[region] seam clean: {len(bnd)} boundary points, {len(short)} short edges, {len(tiny)} tiny faces, '
+                  f'{filled} small holes filled', flush=True)
+            for e in [e for e in bm.edges if e.is_valid and len(e.link_faces) > 2][:3]:
+                print(f'[region]   3-face edge len {e.calc_length():.2e}: ' + ' | '.join(
+                    f'f{f.index} n{len(f.verts)} area {f.calc_area():.2e} verts {sorted(v.index for v in f.verts)}' for f in e.link_faces), flush=True)
+                for f in e.link_faces:
+                    print(f'[region]      f{f.index} edges faces ' + str([len(x.link_faces) for x in f.edges]), flush=True)
+        bm.to_mesh(kept)
+    finally:
+        bm.free()
 
 
 def _knife_pieces(context, target, cutter, pV, pcorners, psizes, M):
@@ -401,7 +460,16 @@ def _merge_flat(V, corners, sizes):
                 pass
         size = float(np.linalg.norm(V.max(0) - V.min(0))) if len(V) > 1 else 1.0
         bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-7 * max(size, 1e-9))
-        bmesh.ops.dissolve_limit(bm, angle_limit=1e-2, verts=[], edges=bm.edges[:])   # (edges only: the seam points stay)
+        # edges between two coplanar triangles dissolved, the points all kept (dissolve_limit took the seam's
+        # collinear points with it: a T-junction against the patch, an open edge per missing point)
+        flat = []
+        for e in bm.edges:
+            if len(e.link_faces) == 2:
+                a, b = e.link_faces
+                if a.normal.length > 0 and b.normal.length > 0 and a.normal.angle(b.normal, 1.0) < 1e-2:
+                    flat.append(e)
+        if flat:
+            bmesh.ops.dissolve_edges(bm, edges=flat, use_verts=False, use_face_split=False)
         bm.verts.ensure_lookup_table()
         bm.verts.index_update()
         Vo = np.array([v.co[:] for v in bm.verts]) if len(bm.verts) else np.zeros((0, 3))
@@ -452,95 +520,78 @@ def _reversed_corners(vi, tot):
     return vi[idx]
 
 
-def _stitch(me, co, tot, vi, fmask, lm, kept, walls, target, cutter, rim, operation):
-    """Untouched faces + the patch result's own faces + the cutter's wall faces, seams welded.  ``rim``: the part's
-    points on the patch boundary (the untouched side of the seam); ``walls``: (V, corners, sizes) in the part's
-    space."""
-    kc, kt, ks, kv = arrays(kept)
+def _region_sub(kept, walls, size):
+    """The patch result's own faces (tag 1) and the cutter's walls as ONE small mesh, cleaned with bmesh: the seam
+    welded (points a hundred-thousandth apart, on open edges only), degenerate edges dissolved, holes of up to 8
+    sides shut (the solver's slivers at the seam become tiny holes once the walls are on), zero-size faces on
+    3+-face edges dropped.  The walls are turned to run against the patch faces along the seam.  Returns a mesh
+    (caller owns it)."""
+    import bmesh
+    kc, kt, _ks, kv = arrays(kept)
+    kface = _tagged(kept, 1)
     wc, wv, wt = walls
-    kface = _tagged(kept, 1)                   # the patch's faces (the cutter's that slipped in are dropped)
-    wface = np.ones(len(wt), bool)
-    # the walls' orientation: whatever the cutter's was (a mirrored or inside-out cutter flips it), the walls must run
-    # against the patch faces along the seam - counted on the seam edges, flipped when they run the same way
-    if _same_way(kv[np.repeat(kface, kt)], kt[kface], wv, wt, kc, wc, co):
+    if len(wt) and _same_way(kv[np.repeat(kface, kt)], kt[kface], wv, wt, kc, wc, kc):
         wv = _reversed_corners(wv, wt)
-    # output points: the part's own, then the two results' (their own point lists; welded below)
-    n0 = len(co)
-    klm = np.repeat(kface, kt)
-    wlm = np.repeat(wface, wt)
-    V = np.concatenate([co, kc, wc])
-    corners = np.concatenate([vi[~lm], kv[klm] + n0, wv[wlm] + n0 + len(kc)])
-    sizes = np.concatenate([tot[~fmask], kt[kface], wt[wface]])
-    # seams: the rim of the untouched part, the rims of the two results
-    rim_part = rim if (~fmask).any() else np.zeros(0, np.int64)
-    rim_kept = _boundary_verts(kv[klm], kt[kface]) + n0
-    rim_walls = _boundary_verts(wv[wlm], wt[wface]) + n0 + len(kc)
-    bnd = np.concatenate([rim_part, rim_kept, rim_walls]).astype(np.int64)
-    if os.environ.get('MECH_REGION_DEBUG') and len(rim_walls) and len(rim_kept):
-        from mathutils.kdtree import KDTree as _KD
-        kdk = _KD(len(rim_kept))
-        for j, i in enumerate(rim_kept.tolist()):
-            kdk.insert(V[i], j)
-        kdk.balance()
-        ds = np.array([kdk.find(V[i])[2] for i in rim_walls.tolist()])
-        print(f'[region]   seam: walls rim {len(rim_walls)} pts, kept rim {len(rim_kept)} pts, part rim {len(rim_part)}; '
-              f'walls->kept nearest: min {ds.min():.2e} median {np.median(ds):.2e} max {ds.max():.2e}; '
-              f'walls rim bbox {np.round(V[rim_walls].min(0), 3).tolist()}..{np.round(V[rim_walls].max(0), 3).tolist()} '
-              f'kept rim bbox {np.round(V[rim_kept].min(0), 3).tolist()}..{np.round(V[rim_kept].max(0), 3).tolist()}', flush=True)
-    side = np.concatenate([np.zeros(len(rim_part), np.int8), np.ones(len(rim_kept), np.int8), np.full(len(rim_walls), 2, np.int8)])
-    remap = np.arange(len(V))
-    if len(bnd):
-        kd = KDTree(len(bnd))
-        pts = V[bnd]
-        for j in range(len(bnd)):
-            kd.insert(pts[j], j)
-        kd.balance()
-        eps = 1e-5 * max(1e-9, float(np.linalg.norm(co.max(0) - co.min(0))))   # (the two booleans round a seam point apart by ~1e-6)
-        parent = list(range(len(bnd)))
-
-        def root(i):
-            while parent[i] != i:
-                parent[i] = parent[parent[i]]
-                i = parent[i]
-            return i
-
-        for j in range(len(bnd)):                  # (only points of different sides are welded: a seam, never a
-            for _c, k, d in kd.find_range(pts[j], eps):   # short edge of one piece)
-                if side[k] != side[j]:
-                    a, b = root(j), root(k)
-                    if a != b:
-                        parent[max(a, b)] = min(a, b)
-        for j in range(len(bnd)):
-            remap[bnd[j]] = bnd[root(j)]
-    corners = remap[corners]
-    # a corner repeated in its face (two seam points welded onto one): dropped, a face left with under 3 corners goes
-    start = np.concatenate([[0], np.cumsum(sizes)[:-1]])
-    nxt = np.arange(1, len(corners) + 1)
-    nxt[start + sizes - 1] = start
-    ckeep = corners != corners[nxt]
-    fsizes = np.add.reduceat(ckeep.astype(np.int32), start) if len(sizes) else sizes
-    fkeep = fsizes >= 3
-    ckeep &= np.repeat(fkeep, sizes)
-    corners, sizes = corners[ckeep], fsizes[fkeep]
-    # drop the points no face uses (the region's inner points, welded duplicates)
-    used = np.zeros(len(V), bool)
-    used[corners] = True
-    newidx = np.cumsum(used) - 1
-    out = build(V[used], newidx[corners], sizes, me.name + '_cut', like=me)
-    _carry_attrs(out, me, kept, None, fmask, lm, kface, klm, wface, wlm, used, newidx, n0, len(kc), ckeep, fkeep)
-    LAST_REGION.clear()
-    LAST_REGION.update(name=out.name, faces=len(out.polygons), untouched=int(fkeep[:int((~fmask).sum())].sum()))
-    if os.environ.get('MECH_REGION_DEBUG'):
-        print(f'[region] {operation}: faces part {int((~fmask).sum())} kept {int(kface.sum())} walls {len(wt)} -> out {len(out.polygons)} '
-              f'(points part {int(used[:n0].sum())} kept {int(used[n0:n0 + len(kc)].sum())} walls {int(used[n0 + len(kc):].sum())})', flush=True)
-        side_all = np.concatenate([np.zeros(n0, np.int32), np.ones(len(kc), np.int32), np.full(len(wc), 2, np.int32)])
-        a = out.attributes.new('mch_dbg_side', 'INT', 'POINT')
-        a.data.foreach_set('value', side_all[used])
-        debug_open_edges(out, V[used])
-    return out
+    sub = kept.copy()                          # (the patch result's attributes stay on its faces)
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(sub)
+        bm.faces.ensure_lookup_table()
+        drop = [f for f, k in zip(bm.faces, kface.tolist()) if not k]
+        if drop:
+            bmesh.ops.delete(bm, geom=drop, context='FACES')
+        if len(wt):
+            vs = [bm.verts.new(tuple(p)) for p in wc.tolist()]
+            start = np.concatenate([[0], np.cumsum(wt)[:-1]])
+            for a, n in zip(start.tolist(), wt.tolist()):
+                try:
+                    bm.faces.new([vs[i] for i in wv[a:a + n].tolist()])
+                except ValueError:
+                    pass
+        eps = 1e-5 * max(1e-9, size)
+        bnd = [v for v in bm.verts if any(len(e.link_faces) != 2 for e in v.link_edges)]
+        if bnd:
+            bmesh.ops.remove_doubles(bm, verts=bnd, dist=eps)
+        short = [e for e in bm.edges if e.is_valid and e.calc_length() < eps]
+        if short:
+            bmesh.ops.dissolve_degenerate(bm, edges=short, dist=eps)
+        opn = [e for e in bm.edges if e.is_valid and len(e.link_faces) == 1]
+        if opn:
+            bmesh.ops.holes_fill(bm, edges=opn, sides=8)
+        tiny = [f for f in bm.faces if f.is_valid and f.calc_area() < eps * eps
+                and any(len(e.link_faces) > 2 for e in f.edges)]
+        if tiny:
+            bmesh.ops.delete(bm, geom=tiny, context='FACES_ONLY')
+        loose = [v for v in bm.verts if not v.link_faces]
+        if loose:
+            bmesh.ops.delete(bm, geom=loose, context='VERTS')
+        bm.to_mesh(sub)
+    finally:
+        bm.free()
+    sub.update()
+    return sub
 
 
-def debug_open_edges(out, V):
+def _stitch(me, co, tot, vi, fmask, lm, kept, walls, target, cutter, rim, operation):
+    """The untouched faces of ``me`` + the cleaned region (patch result + walls), the rim welded: a new mesh."""
+    size = float(np.linalg.norm(co.max(0) - co.min(0))) if len(co) else 1.0
+    sub = _region_sub(kept, walls, size)
+    try:
+        out = build(np.zeros((0, 3)), np.zeros(0, np.int64), np.zeros(0, np.int32), me.name + '_cut', like=me)
+        if not replace_faces(me, fmask, sub, size, into=out):
+            bpy.data.meshes.remove(out)
+            raise RuntimeError('region: a rim point of the part is missing from the cut region')
+        LAST_REGION.clear()
+        LAST_REGION.update(name=out.name, faces=len(out.polygons), untouched=int((~fmask).sum()))
+        if os.environ.get('MECH_REGION_DEBUG'):
+            print(f'[region] {operation}: faces part {int((~fmask).sum())} region {len(sub.polygons)} -> out {len(out.polygons)}', flush=True)
+            debug_open_edges(out, None)
+        return out
+    finally:
+        bpy.data.meshes.remove(sub)
+
+
+def debug_open_edges(out, V=None):
     """(MECH_REGION_DEBUG) Where are the open edges of a stitched result: by side and nearest other point."""
     import bmesh
     from mathutils.kdtree import KDTree
@@ -562,10 +613,16 @@ def debug_open_edges(out, V):
             k = tuple(sorted((int(side[e.verts[0].index]), int(side[e.verts[1].index]))))
             hist[k] = hist.get(k, 0) + 1
         print(f'[region]   by side (0 part, 1 kept, 2 walls): {hist}', flush=True)
-        for e in opn[:4]:
+        for e in opn[:3]:
+            print(f'[region]   open edge faces {len(e.link_faces)} len {e.calc_length():.2e} verts ' +
+                  str([(v.index, int(side[v.index]), len(v.link_faces)) for v in e.verts]), flush=True)
+            for f in e.link_faces:
+                print(f'[region]      face {f.index} n{len(f.verts)} area {f.calc_area():.2e} verts {[v.index for v in f.verts]} '
+                      f'edge faces {[len(x.link_faces) for x in f.edges]}', flush=True)
             for v in e.verts:
-                near = [(round(d, 7), int(side[i])) for (_c, i, d) in kd.find_n(v.co, 3) if i != v.index]
-                print(f'[region]   v{v.index} side {side[v.index]} faces {len(v.link_faces)} nearest {near}', flush=True)
+                for f in v.link_faces:
+                    if f not in e.link_faces:
+                        print(f'[region]      round v{v.index}: face {f.index} verts {[x.index for x in f.verts]} edge faces {[len(x.link_faces) for x in f.edges]}', flush=True)
     bm.free()
 
 
@@ -721,9 +778,10 @@ def extract_faces(me, fmask, name='MCH_TidySub'):
     return sub, used
 
 
-def replace_faces(me, fmask, sub, size):
-    """The faces ``fmask`` of ``me`` replaced in place by ``sub`` (a tidied copy of them), the rim welded onto the
-    part's points.  False (``me`` untouched) when a rim point of the part has no match in ``sub``."""
+def replace_faces(me, fmask, sub, size, into=None):
+    """The faces ``fmask`` of ``me`` replaced by ``sub`` (a tidied / cut copy of them), the rim welded onto the
+    part's points - in place, or written into the empty mesh ``into`` (``me`` untouched).  False when a rim point
+    of the part has no match in ``sub`` (nothing written)."""
     from mathutils.kdtree import KDTree
     co, tot, start, vi = arrays(me)
     lm = np.repeat(fmask, tot)
@@ -794,7 +852,10 @@ def replace_faces(me, fmask, sub, size):
             emaps.append((aname, dtype, vals[1], vmap_me, vals[2], vmap_sub))
     old_edge_keys = [(_edge_lookup(me, vm), v) for (_a, _d, v, vm, _t, _vs) in emaps]
     sub_edge_keys = [(_edge_lookup(sub, vs), t) if t is not None else None for (_a, _d, _v, _vm, t, vs) in emaps]
-    me.clear_geometry()
+    if into is not None:
+        me = into
+    else:
+        me.clear_geometry()
     me.vertices.add(int(used.sum()))
     me.vertices.foreach_set('co', np.ascontiguousarray(V[used], np.float64).ravel())
     me.loops.add(len(corners))
