@@ -589,7 +589,52 @@ def perform(context, path, projector):
     context.view_layer.objects.active = ob
     preset = dict((i[0], i[1]) for i in PRESET_ITEMS)[p.preset]
     how = 'around' if p.mode == 'WRAP' else 'along the line on'
-    return f'Belt "{ob.name}" {how} {target.name} ({preset})'
+    return f'Belt "{ob.name}" {how} {target.name} ({preset}){size_note(ob)}'
+
+
+def loop_size(ob):
+    """0.24.89 The belt path's extent (world): the biggest side of its bounding box."""
+    try:
+        pts = _CACHE[ob.name][1][0]
+    except (KeyError, IndexError, TypeError):
+        return 0.0
+    if not pts:
+        return 0.0
+    lo = Vector((min(q.x for q in pts), min(q.y for q in pts), min(q.z for q in pts)))
+    hi = Vector((max(q.x for q in pts), max(q.y for q in pts), max(q.z for q in pts)))
+    return float(max(hi - lo))
+
+
+def size_note(ob):
+    """0.24.89 ' | loop 2.06, width 0.150 = 7 %' - so a strap that came out thin or a loop that is small says why
+    (the next belt starts with the last belt's settings; Defaults resets them)."""
+    p = ob.mch_belt
+    size = loop_size(ob)
+    if size <= 0:
+        return ''
+    return f' | loop {size:.3g}, width {p.width:.3g} = {100.0 * p.width / size:.0f} %'
+
+
+class MCH_OT_belt_defaults(bpy.types.Operator):
+    """Belt settings back to the factory values (the next belt starts with the last belt's settings - this resets
+    that); on a live belt: that belt too"""
+    bl_idname = 'mch.belt_defaults'
+    bl_label = 'Defaults'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        targets = [context.scene.mch_belt]
+        ob = live_belt(context)
+        if ob is not None:
+            targets.insert(0, ob.mch_belt)
+        for p in targets:
+            for k in LIVE_KEYS:
+                try:
+                    p.property_unset(k)
+                except (AttributeError, TypeError, RuntimeError):
+                    pass
+        self.report({'INFO'}, 'Belt: factory settings' + (f' ({ob.name} rebuilt)' if ob is not None else ''))
+        return {'FINISHED'}
 
 
 def live_belt(context):
@@ -626,9 +671,14 @@ def draw(layout, context):
         box.label(text='LIVE: ' + ob.name, icon='MOD_CURVE')
         if p.last_error:
             box.label(text=p.last_error, icon='ERROR')
+        note = size_note(ob)
+        if note:
+            box.label(text=note[3:], icon='DRIVER_DISTANCE')          # 0.24.89 loop size, width as a share of it
         target = box
     else:
-        layout.label(text='Settings for the next belt', icon='MOD_CURVE')
+        r = layout.row(align=True)
+        r.label(text='Settings for the next belt', icon='MOD_CURVE')
+        r.operator('mch.belt_defaults', text='', icon='LOOP_BACK')      # 0.24.89 (the last belt's values are kept)
         target = layout
     target.row(align=True).prop(p, 'mode', expand=True)
     target.row(align=True).prop(p, 'preset', expand=True)
@@ -659,7 +709,9 @@ def draw(layout, context):
     col.prop(p, 'smooth')
     col.prop(p, 'density')
     if ob is not None:
-        target.operator('mch.belt_apply', icon='CHECKMARK')
+        r = target.row(align=True)
+        r.operator('mch.belt_apply', icon='CHECKMARK')
+        r.operator('mch.belt_defaults', text='', icon='LOOP_BACK')
     col = layout.column(align=True)
     col.scale_y = 0.8
     for line in ('Click points (or Free Draw) over a mesh, Enter / double-click',
@@ -668,7 +720,7 @@ def draw(layout, context):
         col.label(text=line)
 
 
-CLASSES = (MCH_PG_Belt, MCH_OT_belt_apply)
+CLASSES = (MCH_PG_Belt, MCH_OT_belt_apply, MCH_OT_belt_defaults)
 
 
 def register():
