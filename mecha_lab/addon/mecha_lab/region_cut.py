@@ -727,23 +727,34 @@ def replace_faces(me, fmask, sub, size):
     from mathutils.kdtree import KDTree
     co, tot, start, vi = arrays(me)
     lm = np.repeat(fmask, tot)
-    pverts, pinv = np.unique(vi[lm], return_inverse=True)
-    rim_part = pverts[_boundary_verts(pinv, tot[fmask])]
+    # the rim: the part's points that faces on both sides use (a point on an open sliver edge inside the region is
+    # no rim point - the fix may weld it away, and no untouched face needs it)
+    rim_part = np.intersect1d(vi[lm], vi[~lm])
     sc, st, _ss, sv = arrays(sub)
     if not len(sc):
         return False
-    rim_sub = _boundary_verts(sv, st)
+    # every rim point of the part must still be a point of the sub-mesh (any point: a point on an open sliver edge
+    # is a rim point here and an inner point once its hole is shut)
     eps = 1e-6 * max(1e-9, size)
-    kd = KDTree(len(rim_sub))
-    for j, i in enumerate(rim_sub.tolist()):
-        kd.insert(sc[i], j)
+    kd = KDTree(len(sc))
+    for j in range(len(sc)):
+        kd.insert(sc[j], j)
     kd.balance()
     sub_to_part = np.full(len(sc), -1, np.int64)
+    missed = []
     for i in rim_part.tolist():
         hit = kd.find(co[i])
         if hit[0] is None or hit[2] > eps:
-            return False                              # (a rim point moved or vanished: the whole-mesh tidy instead)
-        sub_to_part[rim_sub[hit[1]]] = i
+            missed.append((i, None if hit[0] is None else float(hit[2])))
+            if not os.environ.get('MECH_REGION_DEBUG'):
+                return False                          # (a rim point moved or vanished: the whole-mesh tidy instead)
+            continue
+        sub_to_part[hit[1]] = i
+    if missed:
+        if os.environ.get('MECH_REGION_DEBUG'):
+            print(f'[region] replace_faces: {len(missed)} of {len(rim_part)} rim points not found in the sub-mesh '
+                  f'(nearest {[m[1] for m in missed[:5]]}, eps {eps:.2e})', flush=True)
+        return False
     # the new point list: the part's points, then the sub's non-rim points
     n0 = len(co)
     new_sub = sub_to_part < 0

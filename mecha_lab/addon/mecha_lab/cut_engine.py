@@ -375,8 +375,15 @@ def auto_targets(view_layer, projector, loops):
     lx1, ly1 = max(p[0] for p in allp), max(p[1] for p in allp)
     samples = None
     out = []
-    for ob in view_layer.objects:
-        if ob is None or not _auto_candidate(ob):      # 0.24.3 a just-removed temporary object leaves None
+    try:
+        view_layer.update()          # 0.24.86 a temporary cutter removed a moment ago: its base must be gone before the
+    except (AttributeError, RuntimeError):   # walk (a segfault seen twice here at the second cut of a test)
+        pass
+    for ob in list(view_layer.objects):
+        try:
+            if ob is None or not _auto_candidate(ob):  # 0.24.3 a just-removed temporary object leaves None
+                continue
+        except ReferenceError:
             continue
         corners = [projector.to_screen(c) for c in cg.object_world_bounds([ob])]
         corners = [c for c in corners if c is not None]
@@ -486,7 +493,8 @@ def _shut_holes(target, me, cap=True):
     try:
         if cap and cg.non_manifold_edge_count(me) and not cg.non_manifold_edge_count(target.data):
             from . import mesh_fix
-            if len(me.polygons) >= 50_000:              # 0.24.86 a dense part: only round the open edges
+            import os
+            if len(me.polygons) >= 50_000 and not os.environ.get('MECH_NO_SUBHOLES'):   # 0.24.86 a dense part: only round the open edges
                 from . import region_cut as rc
                 try:
                     if rc.fix_holes_sub(me, cg.mesh_size(me)):

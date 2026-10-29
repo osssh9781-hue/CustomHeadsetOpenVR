@@ -1211,7 +1211,8 @@ def tidy_result(me, ref_size=None, shards=True, slivers=True, before=None, flip=
         return out
     size = ref_size or mesh_size(me)
     eps = max(1e-9, 1e-6 * size)
-    if before is not None and len(me.polygons) >= 50_000:
+    import os
+    if before is not None and len(me.polygons) >= 50_000 and not os.environ.get('MECH_NO_SUBTIDY'):
         # 0.24.86 a dense part: the faces round the cut taken out, tidied on their own and put back (the stages
         # below copied the whole part per stage: 4.5 s of a 10 s cut on 1.3M faces)
         from . import region_cut as rc
