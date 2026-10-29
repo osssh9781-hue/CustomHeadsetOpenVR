@@ -9,7 +9,7 @@
   - 메시지: "Re-Fix (Decimate): 790 > 7,982 faces (DynaMesh 121,676 points, asked 2,000 …) | open edges 0 > 0 | self-crossings 337 > 0 | 1 live step(s) applied first".
   - DynaMesh 는 Fix Poles · Preserve Volume 둘 다 끄고 돌림: Preserve Volume 은 눌린 주름의 두 벽을 서로 뚫게 했고(교차 1,115), Fix Poles 는 변 4개를 열어 놓았음. 그냥 복셀 리메시가 깨끗함(교차 0 · 열린 변 0).
 - **자기 교차 세기(`self_overlaps`)가 닿기만 한 면도 세던 것**: 불리언 이음새 · T 자 이음 · 같은 평면 이웃 · 복셀 리메시가 남긴 눌린 주름의 두 벽을 교차로 셌음(깨끗한 DynaMesh 결과에서 177). 이제 **서로의 평면을 양쪽으로 확실히(면 크기의 1/1000 넘게) 지나는 쌍만** 셉니다 — 0.24.83 의 "crosses itself" 경고도 이 기준.
-- 테스트: __SUITE__ 새 테스트: test_v02507_refix 11(교차 세기 · Auto 면 수 · 점 수 규칙 · 뚫린 판 Re-Fix(Decimate) → 닫힘 · 교차 0 · 라이브 Box Hide 있는 몸통 Re-Fix(Quad) → 굳힌 뒤 닫힌 쿼드 · Mesh Tools 버튼). 보내주신 장면의 판(4만 면 · 교차 418): Decimate 2.8초 → 교차 0 · 닫힘, Quad 23초 → 교차 1. __GUI__ ZIP sha256 __SHA__.
+- 테스트: Blender 5.2.3 bpy 전체 194개 파일 PASS 5,006 / FAIL 0(`tests/test_log_bpy523_v02484.txt`, FAILED FILES: none; 로그 안 Traceback 24개는 전부 test_registration_recovery가 일부러 내는 것). 새 테스트: test_v02507_refix 11(교차 세기 · Auto 면 수 · 점 수 규칙 · 뚫린 판 Re-Fix(Decimate) → 닫힘 · 교차 0 · 라이브 Box Hide 있는 몸통 Re-Fix(Quad) → 굳힌 뒤 닫힌 쿼드 · Mesh Tools 버튼). 보내주신 장면의 판(4만 면 · 교차 418): Decimate 2.8초 → 교차 0 · 닫힘, Quad 23초 → 교차 1. 전후 그림 `dist/refix_before_after_0.24.84.png`. 실제 블렌더 창 자동 테스트 13/13(`tests/gui/gui_result_0.24.84.txt`, 최종 zip 설치 포함). ZIP sha256 `6d4570693f9b3eee5b52d55a854cae33cbcf63384df938f07614b1fa508cffca` (`mecha_lab-0.24.84_20261029-0318.zip`).
 
 ## 0.24.83 — 컷 · 컷 베벨 · GN Edge · 컷 램프 · Box Hide · ZBrush 파이프라인(DynaMesh → Decimate → Quad Remesh → 다시 컷) 무작위 테스트로 찾은 깨짐 수정 (2026-10-28)
 
