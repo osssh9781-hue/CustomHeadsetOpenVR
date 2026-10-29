@@ -1,6 +1,6 @@
 # Mecha Lab 0.24.92 — 설치 · MECHA LAB Workspace · 사용법
 
-> **검증 수준:** Linux headless Blender **5.2.3**(`bpy`)에서 자동 테스트 205개 파일 / 5,144개 항목(실패 0) + 무작위 기능 조합 크래시 테스트 280개, 그리고 0.24.81부터 리눅스 가상 화면의 **진짜 Blender 5.2.3 창** 자동 테스트(설치 · 워크스페이스 · 그려진 막대 · 진짜 마우스 Cut · Tab · 단축키 충돌 목록) 13/13를 돌렸습니다(결과: `test_report.md`).
+> **검증 수준:** Linux headless Blender **5.2.3**(`bpy`)에서 자동 테스트 208개 파일 / 5,200개 항목(첫 전체 실행 실패 1 — 선반 겹침, 고친 뒤 혼자 통과) + 무작위 기능 조합 크래시 테스트 280개, 그리고 0.24.81부터 리눅스 가상 화면의 **진짜 Blender 5.2.3 창** 자동 테스트(설치 · 워크스페이스 · 그려진 막대 · 진짜 마우스 Cut · Tab · 단축키 충돌 목록) 13/13를 돌렸습니다(결과: `test_report.md`).
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` 맨 위 0.24.81 절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
 
@@ -9,7 +9,7 @@
 - 기본값은 참고 영상에 가장 가까웠던 조합(헐렁함 20 %, 중력 100 %, Cotton). 천 조건은 전부 슬라이더라 취향대로 바꾸고 Presets 에 저장.
 - 콜리전은 거리 격자로 가볍게, 4만 점 넘는 메시는 데시메이트 사본에서 돌고 결과만 원래 메시에(**Sim Points**, 0 = 끔).
 - **Cloth Drape**(Cloth 그룹): 메시 위에 라쏘 → 그 영역에 헐렁한 천이 "Cloth Drape" 오브젝트로 생김 → **Space** 로 떨어뜨림(가장자리만 고정, 라쏘 아래 몸만 콜리전) → **Enter** 남김 / **Esc** 지움. 원단 · 헐렁함 · 조임 · 중력 · 달라붙음 · 틈 · 세밀도 · 프레임 슬라이더, 바꾸고 Space 면 다시.
-- **ZBrush 탭**: 아래 브러시 선반에 Blender 클로스 브러시 8개(ClothDrag …), 왼쪽 선반에 Cloth Brush 설정 상자와 Cloth Filter 버튼.
+- **ZBrush 탭**: Blender 클로스 브러시 8개(ClothDrag …; 선반에 4개, B 팝업에 전부), 왼쪽 선반에 Cloth Brush 설정 상자와 Cloth Filter 버튼.
 - 메시는 **면이 고른 것**(DynaMesh · Quad Remesh 결과)이 좋습니다. 가로 세로가 심하게 다른 길쭉한 면의 격자에서는 세로 줄무늬가 납니다(KNOWN_LIMITATIONS).
 
 ## 0.24.91 컷 Edge Finish · 정리 속도

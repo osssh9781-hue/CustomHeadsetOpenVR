@@ -56,7 +56,7 @@ BY_BL = {bl: z for z, bl, _c in BRUSHES}
 SHELF = (('Standard', 'Paint', 'ClayBuildup', 'Move', 'SnakeHook', 'DamStandard', 'Layer', 'Clay', 'Inflat',
           'ClayTubes'),
          ('hPolish', 'TrimDynamic', 'TrimAdaptive', 'Flatten', 'Planar', 'sPolish', 'Move Topological', 'Polish'),
-         CLOTH_BRUSHES)
+         ('ClothDrag', 'ClothFolds', 'ClothPush', 'ClothGrab'))      # (the shelf: 4 cloth tiles; all 8 under B)
 # ZBrush stroke names -> Blender stroke methods
 STROKES = (('FREEHAND', 'FreeHand', 'DOTS'), ('DOTS', 'Dots', 'SPACE'), ('DRAGDOT', 'DragDot', 'DRAG_DOT'),
            ('DRAGRECT', 'DragRect', 'ANCHORED'), ('SPRAY', 'Spray', 'AIRBRUSH'), ('LINE', 'LineII', 'LINE'),

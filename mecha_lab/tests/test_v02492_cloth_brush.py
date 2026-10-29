@@ -14,9 +14,16 @@ bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, segments=32, ring_count=16)
 ob = C.active_object
 select_only(ob)
 bpy.ops.object.mode_set(mode='SCULPT')
-check('8 cloth brushes in the ZBrush brush table, their own shelf group, B letters all distinct',
-      len(zs.CLOTH_BRUSHES) == 8 and all(z in zs.BY_Z for z in zs.CLOTH_BRUSHES) and zs.SHELF[2] == zs.CLOTH_BRUSHES
-      and len({c for _z, _b, c in zs.BRUSHES}) == len(zs.BRUSHES))
+check('8 cloth brushes in the ZBrush brush table (all under B), four of them a shelf group, B letters all distinct',
+      len(zs.CLOTH_BRUSHES) == 8 and all(z in zs.BY_Z for z in zs.CLOTH_BRUSHES) and len(zs.SHELF[2]) == 4
+      and set(zs.SHELF[2]) <= set(zs.CLOTH_BRUSHES) and len({c for _z, _b, c in zs.BRUSHES}) == len(zs.BRUSHES))
+from mecha_lab import zb_ui as zu, ui_bars as ub, mecha_menu as mm
+for W in (1920, 2560):
+    items, _y = zu.brush_shelf(bpy.context, W, 1.0 if W == 1920 else 1.5, mm.Item)
+    card = items[0]
+    k = 1.0 if W == 1920 else 1.5
+    check(f'The bottom brush shelf with the cloth group still clears the key legend card at {W} px wide',
+          card.x > (12 + zu.A_W) * k, (round(card.x), round(card.w), round((12 + zu.A_W) * k)))
 ok, bad = [], []
 for z in zs.CLOTH_BRUSHES:
     msg = zs.activate(C, z)

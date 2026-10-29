@@ -24,7 +24,7 @@ from .quick_hud import points_text
 ROW = 24.0
 GAP = 4.0
 PAD = 8.0
-SEP = 12.0
+SEP = 10.0
 A_W = 290.0             # left shelf (actions)
 B_W = 116.0             # left shelf (brush / symmetry ...)
 V_W = 74.0              # view shelf
@@ -551,7 +551,7 @@ def brush_shelf(context, region_w, k, Item):
     b = zs.brush(context)
     cur = zs.zb_name(b)
     groups = [list(zs.SHELF[0]), ['IMM', 'APPEND'], list(zs.SHELF[1]), list(zs.SHELF[2]), ['SPLIT_HIDDEN', 'AUTO_GROUPS']]
-    cols = [5, 1, 4, 4, 1]                       # 0.24.92 the cloth brushes as their own group
+    cols = [5, 1, 4, 2, 1]                       # 0.24.92 four cloth brushes as their own group (B: all eight)
     tw, th, gap, sep, pad = TILE_W * k, TILE_H * k, GAP * k, SEP * k, PAD * k
     width = sum(c * tw + (c - 1) * gap for c in cols) + sep * (len(groups) - 1) + 2 * pad
     height = 2 * th + gap + 2 * pad
