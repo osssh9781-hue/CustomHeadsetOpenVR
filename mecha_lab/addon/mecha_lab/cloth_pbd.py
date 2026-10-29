@@ -101,6 +101,7 @@ class Cloth:
         self.co += rng.normal(0.0, amount, self.co.shape) * (1.0 - self.pin)[:, None]     # (pinned points stay)
         self.prev = self.co.copy()
 
+    collide = None       # optional callback(cloth) run after every constraint pass: pushes points out of a collider
     smooth = 0.0         # a Laplacian pull toward the neighbours' mean per pass: the folds come out broad and
     #                      soft instead of a quilt of cell-sized creases (the 2-ring bending alone is too weak)
 
@@ -133,6 +134,8 @@ class Cloth:
                 self.co += (self.init - self.co) * (self.keep * keep_rate / iterations)[:, None]
             if np.any(self.pin > 0):        # (a pin holds its point where it started: Blender's mask)
                 self.co = self.co * (1.0 - self.pin)[:, None] + self.init * self.pin[:, None]
+            if self.collide is not None:
+                self.collide(self)
         return self.co
 
     # -- filters ------------------------------------------------------------------------------------------------
