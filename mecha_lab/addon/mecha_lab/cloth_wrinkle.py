@@ -2322,6 +2322,94 @@ def _draw_labels():
         pass
 
 
+def _live_props():
+    """0.24.90 One RNA property per HUD slider (SLIDERS) on ``Object.mch_cloth_live``, reading / writing the
+    layer's Geometry Nodes input through ``slider_spec`` (lengths as % of the panel size, angles in degrees, the
+    rest in %).  Blender 5.2 moved the modifier inputs off ``mod["Socket_x"]``, which the LIVE box drew: every
+    live value (Trim Width among them) vanished from the sidebar and the drawn side panel."""
+    ann = {}
+    for key, label, name, lo, hi, kind in SLIDERS:
+        if name == 'ALLSCALE':
+            continue                                    # Object.mch_cloth_scale
+
+        getter, setter = _live_accessors(key, kind)
+        if kind == 'SIZE':
+            ann[key] = bpy.props.FloatProperty(name=label, min=lo / 10.0, max=hi / 10.0, precision=1,
+                                               subtype='PERCENTAGE', get=getter, set=setter,
+                                               description=f'{name}: as % of the panel size')
+        elif kind == 'DEG':
+            ann[key] = bpy.props.IntProperty(name=label + ' (deg)', min=lo, max=hi, get=getter, set=setter,
+                                             description=f'{name} in degrees')
+        elif kind in ('PCT', 'RAND'):
+            ann[key] = bpy.props.IntProperty(name=label, min=lo, max=hi, subtype='PERCENTAGE', get=getter, set=setter,
+                                             description=name)
+        else:
+            ann[key] = bpy.props.IntProperty(name=label, min=lo, max=hi, get=getter, set=setter, description=name)
+    return ann
+
+
+def _live_accessors(key, kind):
+    """(get, set) for one live slider property (Blender wants plain 1- and 2-argument functions)."""
+    def getter(self):
+        ob = self.id_data
+        if active_live(ob) is None:
+            return 0.0 if kind == 'SIZE' else 0
+        try:
+            v = slider_spec(None, key, ob)[1]
+        except (StopIteration, AttributeError, KeyError, TypeError, ReferenceError):
+            return 0.0 if kind == 'SIZE' else 0
+        return v / 10.0 if kind == 'SIZE' else v
+
+    def setter(self, value):
+        ob = self.id_data
+        if active_live(ob) is None:
+            return
+        try:
+            slider_spec(None, key, ob)[4](value * 10.0 if kind == 'SIZE' else value)
+        except (StopIteration, AttributeError, KeyError, TypeError, ReferenceError):
+            pass
+    return getter, setter
+
+
+def active_live(ob):
+    """The object when it is a live Cloth Plate / Creature Skin layer (its node modifier still on), else None."""
+    try:
+        return ob if ob is not None and ob.type == 'MESH' and ob.modifiers.get(MOD) is not None else None
+    except (AttributeError, ReferenceError):
+        return None
+
+
+LIVE_GROUPS = (('Edge Trim', ('trim_w', 'trim_h')),
+               ('Shape', ('lift', 'puff', 'puff_w', 'roll', 'gravity', 'center_fade')),
+               ('Folds', ('pinch', 'pinch2', 'pinch_sp', 'pinch_len', 'sharp', 'fan', 'tilt', 'tilt_rand', 'len_rand',
+                         'variety', 'fan_mix', 'asym', 'thin', 'random')),
+               ('Sections', ('sections', 'sec_turn', 'sec_height', 'sec_bend', 'sec_start', 'sec_end', 'sec_move')),
+               ('Stitch / Pattern', ('stitch', 'strength')))
+SKIN_GROUPS = (('Skin', ('skin_scale', 'skin_depth', 'skin_random', 'skin_organic', 'skin_irregular')),
+               ('Edge', ('shrink', 'shrink_w', 'skin_edge_w', 'skin_edge_h')),
+               ('Shape', ('lift', 'gravity', 'puff', 'puff_w', 'scale', 'strength')))
+
+
+class MCH_PG_ClothLive(bpy.types.PropertyGroup):
+    __annotations__ = _live_props()
+
+
+def draw_live_inputs(layout, ob):
+    """0.24.90 The live layer's values as sliders, grouped (Edge Trim first: Trim Width / Trim Height)."""
+    live = getattr(ob, 'mch_cloth_live', None)
+    if live is None:
+        return
+    keys = set(live.bl_rna.properties.keys())
+    for title, names in (SKIN_GROUPS if is_creature(ob) else LIVE_GROUPS):
+        names = [n for n in names if n in keys]
+        if not names:
+            continue
+        layout.label(text=title)
+        col = layout.column(align=True)
+        for n in names:
+            col.prop(live, n, slider=True)
+
+
 def draw(layout, context):
     st = context.scene.mch_wrinkle
     box = layout.box()
@@ -2357,10 +2445,7 @@ def draw(layout, context):
         big = sub.row(align=True)
         big.scale_y = 1.3
         big.prop(ob, 'mch_cloth_scale', slider=True)        # 0.23.23 Overall Scale (same as the HUD slider)
-        mod = ob.modifiers.get(MOD)
-        c = sub.column(align=True)
-        for name, *_r in INPUTS:
-            c.prop(mod, f'["{_ident(name)}"]', text=name)
+        draw_live_inputs(sub, ob)                           # 0.24.90 (was mod["Socket_x"]: nothing on 5.2)
         r = sub.row(align=True)
         r.scale_y = 1.3
         r.operator('mch.wrinkle_apply', text='Apply', icon='CHECKMARK')
@@ -2375,7 +2460,7 @@ def draw(layout, context):
     c.label(text='Apply bakes; the mesh you draw on is not changed')
 
 
-CLASSES = (MCH_PG_Wrinkle, MCH_OT_wrinkle_preset_save, MCH_OT_wrinkle_preset_load, MCH_OT_wrinkle_preset_delete,
+CLASSES = (MCH_PG_Wrinkle, MCH_PG_ClothLive, MCH_OT_wrinkle_preset_save, MCH_OT_wrinkle_preset_load, MCH_OT_wrinkle_preset_delete,
            MCH_MT_wrinkle_presets, MCH_OT_wrinkle_presets_menu, MCH_OT_wrinkle_type, MCH_OT_wrinkle_trim, MCH_OT_wrinkle_seam, MCH_OT_wrinkle_reset, MCH_OT_wrinkle_reroll, MCH_OT_wrinkle_apply, MCH_OT_wrinkle_remove,
            MCH_GT_wrinkle_slider, MCH_GGT_wrinkle_hud, MCH_OT_wrinkle_skin, MCH_OT_wrinkle_skin_edge,
            MCH_OT_creature_brush)
@@ -2386,6 +2471,7 @@ def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Scene.mch_wrinkle = bpy.props.PointerProperty(type=MCH_PG_Wrinkle)
+    bpy.types.Object.mch_cloth_live = bpy.props.PointerProperty(type=MCH_PG_ClothLive)     # 0.24.90
     bpy.types.Object.mch_cloth_scale = bpy.props.IntProperty(
         name='Overall Scale', default=100, min=10, max=400, subtype='PERCENTAGE', update=_overall_update,
         description='Every length of this Cloth Plate together (folds, puff, roll, stitch, thickness) - not the trim')
@@ -2405,6 +2491,8 @@ def unregister():
         del bpy.types.Scene.mch_wrinkle
     if hasattr(bpy.types.Object, 'mch_cloth_scale'):
         del bpy.types.Object.mch_cloth_scale
+    if hasattr(bpy.types.Object, 'mch_cloth_live'):
+        del bpy.types.Object.mch_cloth_live
     for c in reversed(CLASSES):
         try:
             bpy.utils.unregister_class(c)

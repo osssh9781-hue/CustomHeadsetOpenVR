@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 0.24.90 — Cloth Plate 의 라이브 값(Trim Width 등)이 패널에 돌아옴 (2026-10-29)
+
+"클로스 플레이트 트림 폭 설정이 사라졌어" — 원인: 블렌더 **5.2** 가 지오메트리 노드 모디파이어 입력을 `mod["Socket_x"]` 에서 `mod.properties.inputs` 로 옮겼는데(0.24.5x 의 5.2 호환 작업에서 읽기 · 쓰기는 고쳤지만), 사이드바의 **LIVE 상자가 그 옛 경로로 입력 62개를 그리고 있어** 5.2 에서는 아무것도 안 그려졌습니다(그려진 사이드 패널도 같은 그림을 쓰므로 둘 다 비었음). Trim Width · Trim Height · Puff · Fold … 전부.
+
+- **`Object.mch_cloth_live`**: HUD 슬라이더 표(SLIDERS)의 항목마다 RNA 속성 하나(길이는 **부품 크기의 %**, 각도는 도, 나머지는 %). 읽고 쓰면 노드 입력에 바로 반영되고(기존 `set_input` 경로: 다음 플레이트에 기억 · 주름선 갱신), Apply 뒤엔 0 으로 읽히고 쓰기는 무시.
+- LIVE 상자에 **그룹별로**: Edge Trim(Trim Width · Trim Height) → Shape(Height · Puff · Puff Width · Edge Roll · Gravity · Center Fade) → Folds → Sections → Stitch / Pattern. 크리처 스킨이면 Skin · Edge · Shape. 그려진 사이드 패널에도 같은 바들.
+- 테스트: __T90__
+
 ## 0.24.89 — Belt Maker: 큰 몸통에서 8배 빠르게 · 슬라이더 즉시 · 폭을 비율로 (2026-10-29)
 
 "벨트가 예전같지 않아 작고, 엄청 느려" — 잰 것(`tools_dev/bench/`: `probe_belt3`): 벨트 코드는 10월 26일 이후 안 바뀌었고, 작아 보이는 것은 **폭이 절대 길이(0.15)** 라 큰 하이폴리 몸통에선 가늘게 나오는 것, 느린 것은 **몸통 전체를 bmesh 로 복사해 평면으로 자르고 파이썬 리스트 BVH 를 짓는 구조**라 면 수에 비례했기 때문입니다(130만 면 몸통: 첫 벨트 6.4초, **슬라이더 한 칸마다 3.4초**).

@@ -1,8 +1,11 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.89 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.90 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## 0.24.90 Cloth Plate LIVE 값 (미검증)
+- [ ] Cloth Plate 라쏘 → 사이드바 LIVE 상자에 Edge Trim(Trim Width / Trim Height) 부터 Folds · Sections 까지 슬라이더가 보이고, Trim Width 를 끌면 테두리가 바로 바뀌는지. 그려진 사이드 패널(막대)에서도.
 
 ## 0.24.89 Belt Maker (미검증)
 - [ ] 하이폴리 몸통(50만 면 이상)에 벨트 → 1초 안에 나오고, Width / Smooth 슬라이더가 바로 따라오는지. 폭이 몸통에 비해 보기 좋은 비율인지(Relative 7.5 %).
