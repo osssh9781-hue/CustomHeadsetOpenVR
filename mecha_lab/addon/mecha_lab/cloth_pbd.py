@@ -98,7 +98,7 @@ class Cloth:
     def jitter(self, amount, seed=1):
         """A little random offset (x ``amount``): a perfectly regular surface needs it to start folding."""
         rng = np.random.default_rng(seed)
-        self.co += rng.normal(0.0, amount, self.co.shape)
+        self.co += rng.normal(0.0, amount, self.co.shape) * (1.0 - self.pin)[:, None]     # (pinned points stay)
         self.prev = self.co.copy()
 
     smooth = 0.0         # a Laplacian pull toward the neighbours' mean per pass: the folds come out broad and

@@ -39,19 +39,8 @@ from . import surface_lasso as sl
 from . import target_rules
 
 PROP = 'mch_wlines'
-SHRINK_GROUP = 'mch_wl_shrink'
-PIN_GROUP = 'mch_wl_pin'
-MOD = 'MCH_WrinkleLines'
 HIT_PX = 14.0
 DETAIL_FACES = 20000             # a mesh under this is subdivided before the simulation (folds need points)
-RIDGE = 0.25                     # the line's ridge height: Wrinkle Size x this x Fold Strength
-HOLD = 0.5                       # how firmly the ridge is held (pin weight at the line)
-KEEP_SCALE = 1.0                 # Silhouette Keep -> soft pin weight
-GROW_FAR = 0.25                  # excess fabric away from the lines, x Shrink
-GROW_LINE = 0.6                  # ... along the lines
-QUALITY = 3                      # solver steps per frame (the presets' 5 - 6: twice the time, same look)
-BEND_SCALE = 10.0                # bending stiffness x this: the fold wavelength grows past the grid cell (bend 0.5 on a
-#                                 25k-point tube buckled per cell: a pebbled noise instead of folds)
 DETAIL_TARGET = 40000
 MAX_DETAIL_LEVELS = 2
 # Blender's own cloth presets (Cotton = the defaults) + a soft knit
@@ -242,8 +231,18 @@ def boundary_verts(me):
 
 
 # -----------------------------------------------------------------------------
-# the simulation
+# the simulation (cloth_pbd: the sculpt-cloth way)
 # -----------------------------------------------------------------------------
+
+RIDGE = 0.5                      # Crease: the line pushed in by Wrinkle Size x this x Fold Strength
+PINCH = 0.3                      # Wrinkle Line: the pull toward the line per frame, x Fold Strength x line strength
+KEEP_RATE = 0.1                  # Silhouette Keep 47 % -> this much of the way back per frame (x keep / 0.47)
+ITERATIONS = 12                  # constraint passes per frame
+SOR = 1.6
+JITTER = 0.02                    # x Wrinkle Size: the nudge a perfectly even surface needs to start folding
+# fabric: bending constraint strength, Laplacian smoothing (fold breadth), damping
+FABRIC_SIM = {'COTTON': (0.5, 0.2, 0.1), 'DENIM': (1.0, 0.4, 0.2), 'SILK': (0.2, 0.1, 0.05), 'LEATHER': (1.0, 0.5, 0.3),
+              'KNIT': (0.4, 0.15, 0.1)}
 
 
 def _subdivide(me, levels):
@@ -260,15 +259,43 @@ def _subdivide(me, levels):
 
 def detail_levels(faces):
     """Subdivision levels for a coarse mesh: up to ~DETAIL_TARGET faces (one level = 4x), at least one under
-    DETAIL_FACES (6k faces -> 1 level = 25k: a 30-frame cloth in ~20 s; 2 levels = 98k took 115 s)."""
+    DETAIL_FACES."""
     if faces >= DETAIL_FACES or faces == 0:
         return 0
     return int(min(MAX_DETAIL_LEVELS, max(1, math.floor(math.log(DETAIL_TARGET / faces, 4)))))
 
 
-def setup(context, ob, st, lines, frame0):
-    """The mesh made a cloth for the frames from ``frame0``: Add Detail, the shrink / pin groups, the modifier.
-    Returns dict(levels, verts, shrink=max weight, pinned=count)."""
+def line_field(co, paths, strengths, radius, crease=False):
+    """Per point: the weight of the nearest line (``weights``) and the nearest point ON that line (the pinch
+    target).  Returns (w, target)."""
+    n = len(co)
+    w = np.zeros(n)
+    target = co.copy()
+    r = radius * (0.5 if crease else 1.0)
+    for path, strength in zip(paths, strengths):
+        if len(path) < 2 or strength <= 0 or r <= 0:
+            continue
+        kd = KDTree(len(path))
+        for i, p in enumerate(path):
+            kd.insert(p, i)
+        kd.balance()
+        d = np.empty(n)
+        near = np.empty((n, 3))
+        for i in range(n):
+            pt, _j, dist = kd.find(co[i])
+            d[i], near[i] = dist, pt
+        t = np.clip(d / r, 0.0, 1.0)
+        f = ((1.0 - t) if crease else (1.0 - t * t) ** 2) * strength
+        better = f > w
+        w[better] = np.clip(f[better], 0.0, 1.0)
+        target[better] = near[better]
+    return w, target
+
+
+def build(context, ob, st, lines):
+    """The cloth for ``ob``'s mesh (Add Detail first): the line field, the pins, the solver.  Returns the
+    session dict."""
+    from . import cloth_pbd
     me = ob.data
     levels = detail_levels(len(me.polygons)) if st.detail else 0
     if levels:
@@ -279,9 +306,8 @@ def setup(context, ob, st, lines, frame0):
     co = mio.read_co(me)
     paths = [np.array([list(p) for p in line_path(target, ln)]) for ln in lines]
     crease = st.mode == 'CREASE'
-    w = weights(co, paths, [ln['strength'] for ln in lines], radius, crease=crease)
-    keep = st.keep / 100.0
-    pin = np.full(len(co), keep * KEEP_SCALE)          # the soft pin: the surface pulled back toward where it was
+    w, tgt = line_field(co, paths, [ln['strength'] for ln in lines], radius, crease=crease)
+    pin = np.zeros(len(co))
     bnd = boundary_verts(me) if st.pin_boundary else np.zeros(0, np.int64)
     if len(bnd):
         pin[bnd] = 1.0
@@ -289,81 +315,59 @@ def setup(context, ob, st, lines, frame0):
         sel = np.zeros(len(me.vertices), bool)
         me.vertices.foreach_get('select', sel)
         pin[sel] = 1.0
-    if st.fold > 0 and w.max() > 0:          # the line as a ridge: pushed out (Crease: in) and held there
+    if crease and st.fold > 0:               # the line pushed in and held: a fold line the cloth settles round
         nrm = np.zeros((len(co), 3))
         me.vertices.foreach_get('normal', nrm.ravel())
-        depth = radius * RIDGE * st.fold / 100.0 * (-1.0 if crease else 1.0)
-        bump = w if not crease else np.clip((w - 0.5) * 2.0, 0.0, 1.0)
-        co2 = co + nrm * (bump * depth)[:, None]
-        mio.write_co(me, co2)
-        pin = np.maximum(pin, np.clip(bump * HOLD * st.fold / 100.0, 0.0, 1.0))
-    for name in (SHRINK_GROUP, PIN_GROUP):
-        vg = ob.vertex_groups.get(name)
-        if vg is not None:
-            ob.vertex_groups.remove(vg)
-    vg = ob.vertex_groups.new(name=SHRINK_GROUP)
-    for i in np.nonzero(w > 1e-4)[0].tolist():
-        vg.add([i], float(w[i]), 'REPLACE')
-    vp = ob.vertex_groups.new(name=PIN_GROUP)
-    for i in np.nonzero(pin > 1e-4)[0].tolist():
-        vp.add([i], float(min(1.0, pin[i])), 'REPLACE')
-    cm = ob.modifiers.get(MOD)
-    if cm is not None:
-        ob.modifiers.remove(cm)
-    cm = ob.modifiers.new(MOD, 'CLOTH')
-    apply_settings(cm, st, radius, frame0)
-    return dict(levels=levels, verts=len(me.vertices), shrink=float(w.max()) if len(w) else 0.0,
-                pinned=int((pin >= 0.999).sum()), radius=radius)
+        depth = radius * RIDGE * st.fold / 100.0
+        co = co - nrm * (w * depth)[:, None]
+        pin = np.maximum(pin, np.clip(w * 2.0 - 0.5, 0.0, 1.0))
+    bend, smooth, damping = FABRIC_SIM.get(st.fabric, FABRIC_SIM['COTTON'])
+    vi = mio.read_corner_verts(me)
+    start, tot = mio.read_face_starts(me)
+    cloth = cloth_pbd.Cloth(co, vi, start, tot, bend=bend, keep=st.keep / 100.0, pin=pin)
+    cloth.sor = SOR
+    cloth.smooth = smooth * (0.5 + 0.5 * st.size / 5.0)        # (a bigger Wrinkle Size: broader folds)
+    cloth.jitter(radius * JITTER, seed=1)
+    cloth.init = co.copy()
+    return dict(cloth=cloth, w=w, target=tgt, radius=radius, centre=co.mean(0), damping=damping, crease=crease,
+                levels=levels, verts=len(co), frames=st.frames, frame=0, fps=max(1.0, context.scene.render.fps / max(1e-6, context.scene.render.fps_base)))
 
 
-def apply_settings(cm, st, radius, frame0):
-    fab = FABRIC_BY_ID[st.fabric]
-    s = cm.settings
-    s.quality = QUALITY
-    s.mass = fab['mass']
-    s.tension_stiffness = fab['tension']
-    s.compression_stiffness = fab['compression']
-    s.shear_stiffness = fab['shear']
-    s.bending_stiffness = fab['bend'] * BEND_SCALE
-    s.air_damping = 1.0
-    grow = st.shrink / 100.0                 # the excess fabric: the cloth grows (a negative Blender shrink) and,
-    s.shrink_min = -grow * GROW_FAR          # with the ends pinned and the silhouette held, has to fold; more of
-    s.shrink_max = -grow * GROW_LINE         # it along the lines, so the folds gather there
-    s.vertex_group_shrink = SHRINK_GROUP
-    s.vertex_group_mass = PIN_GROUP
-    s.pin_stiffness = 1.0
-    s.effector_weights.gravity = st.gravity / 100.0
-    c = cm.collision_settings
-    c.use_collision = False
-    c.use_self_collision = st.self_collision
-    if st.self_collision:
-        c.self_distance_min = max(1e-4, radius * 0.1)
-        c.collision_quality = 2
-    cm.point_cache.frame_start = frame0
-    cm.point_cache.frame_end = frame0 + st.frames
+def advance(sess, st):
+    """One frame of the session: the forces of this frame (scale toward the centre, the pinch toward the lines,
+    gravity), then the solver.  Returns the positions."""
+    cloth = sess['cloth']
+    n = cloth.n
+    force = np.zeros((n, 3))
+    frames = max(1, sess['frames'])
+    if st.shrink > 0:
+        force += cloth.scale_force(st.shrink / 100.0 / frames, sess['centre'])
+    if not sess['crease'] and st.fold > 0:
+        force += cloth.toward_force(sess['target'], PINCH * st.fold / 100.0, mask=sess['w'])
+    dt = 1.0 / sess['fps']
+    g = -9.8 * st.gravity / 100.0 * dt * dt * sess['radius'] / 0.05      # (scaled to the part: 5 % size = 1 unit)
+    keep_rate = KEEP_RATE * (st.keep / 47.0) if st.keep > 0 else 0.0
+    cloth.step(force=force, gravity=(0.0, 0.0, g), damping=sess['damping'], iterations=ITERATIONS, keep_rate=keep_rate)
+    sess['frame'] += 1
+    return cloth.co
 
 
 def simulate(context, ob, st, lines, frames=None):
-    """Headless / one go: the cloth set up and every frame stepped in a temporary scene; the last frame kept as the
-    mesh.  Returns the setup info + the time."""
-    from . import cloth_sim
+    """Headless / in one go: every frame, the last written into the mesh.  Returns the session info + time."""
     t = time.perf_counter()
-    f0 = context.scene.frame_current
-    info = setup(context, ob, st, lines, f0)
-    cloth_sim.bake(context, [ob], frames or st.frames)
-    cleanup(ob)
-    info['time'] = time.perf_counter() - t
-    return info
+    sess = build(context, ob, st, lines)
+    if frames is not None:
+        sess['frames'] = frames
+    for _ in range(sess['frames']):
+        advance(sess, st)
+    mio.write_co(ob.data, sess['cloth'].co)
+    ob.data.update()
+    return dict(levels=sess['levels'], verts=sess['verts'], radius=sess['radius'], frames=sess['frames'],
+                time=time.perf_counter() - t, shrink=float(sess['w'].max()) if len(sess['w']) else 0.0)
 
 
 def cleanup(ob):
-    cm = ob.modifiers.get(MOD)
-    if cm is not None:
-        ob.modifiers.remove(cm)
-    for name in (SHRINK_GROUP, PIN_GROUP):
-        vg = ob.vertex_groups.get(name)
-        if vg is not None:
-            ob.vertex_groups.remove(vg)
+    """(nothing to take off the object: the solver lives outside it)"""
 
 
 # the live session (one at a time)
@@ -387,11 +391,9 @@ def start(context, ob, st):
     backup = ob.data.copy()
     backup.name = ob.data.name + '_mch_wl_backup'
     backup.use_fake_user = True
-    f0 = context.scene.frame_current
     try:
-        info = setup(context, ob, st, lines, f0)
+        sess = build(context, ob, st, lines)
     except Exception:
-        cleanup(ob)
         old = ob.data
         ob.data = backup                 # (Add Detail may have subdivided it already)
         backup.name = old.name
@@ -400,9 +402,9 @@ def start(context, ob, st):
             bpy.data.meshes.remove(old)
         raise
     SIM.clear()
-    SIM.update(ob=ob.name, backup=backup.name, f0=f0, frame=f0, frames=st.frames, running=True, want=None,
-               info=info, snapshot=_snapshot(st), done=False)
-    return info, None
+    SIM.update(ob=ob.name, backup=backup.name, sess=sess, frames=sess['frames'], running=True, want=None,
+               snapshot=_snapshot(st), done=False, info=dict(levels=sess['levels'], verts=sess['verts']))
+    return SIM['info'], None
 
 
 def _snapshot(st):
@@ -411,37 +413,33 @@ def _snapshot(st):
 
 
 def step(context):
-    """One frame on; False when the last frame is reached."""
+    """One frame on, written into the mesh; False when the last frame is reached."""
     ob = _sim_ob()
-    if ob is None:
+    sess = SIM.get('sess')
+    if ob is None or sess is None:
         return False
-    if SIM['frame'] >= SIM['f0'] + SIM['frames']:
+    if sess['frame'] >= SIM['frames']:
         SIM['running'] = False
         SIM['done'] = True
         return False
-    SIM['frame'] += 1
-    context.scene.frame_set(SIM['frame'])
+    st = settings(context)
+    co = advance(sess, st)
+    mio.write_co(ob.data, co)
+    ob.data.update()
     return True
 
 
 def confirm(context):
-    """The simulated frame baked into the mesh; the backup dropped."""
+    """The simulated frame stays in the mesh; the backup dropped."""
     ob = _sim_ob()
     if ob is None:
         return 'nothing to keep'
-    dg = context.evaluated_depsgraph_get()
-    me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), depsgraph=dg)
-    old = ob.data
-    cleanup(ob)
-    ob.data = me
-    me.name = old.name
-    if old.users == 0:
-        bpy.data.meshes.remove(old)
+    n = SIM['sess']['frame']
     _finish(context)
     _TARGET.pop(ob.name, None)
     for ln in _lines_of(ob):
         ln['path'] = None
-    return f'Wrinkle Lines: kept frame {SIM.get("frame", 0) - SIM.get("f0", 0)} ({len(me.vertices):,} points)'
+    return f'Wrinkle Lines: kept frame {n} ({len(ob.data.vertices):,} points)'
 
 
 def cancel(context):
@@ -449,7 +447,6 @@ def cancel(context):
     ob = _sim_ob()
     backup = bpy.data.meshes.get(SIM.get('backup', ''))
     if ob is not None:
-        cleanup(ob)
         if backup is not None:
             old = ob.data
             ob.data = backup
@@ -470,16 +467,13 @@ def _finish(context):
     backup = bpy.data.meshes.get(SIM.get('backup', ''))
     if backup is not None and backup.users == 0:
         bpy.data.meshes.remove(backup)
-    f0 = SIM.get('f0')
-    if f0 is not None and context.scene.frame_current != f0:
-        context.scene.frame_set(f0)
     SIM.clear()
 
 
 def status():
     if not sim_active():
         return ''
-    n = SIM['frame'] - SIM['f0']
+    n = SIM['sess']['frame']
     if SIM.get('done'):
         return f'done: frame {n} / {SIM["frames"]}  (Enter keep · Esc back · Space again from the start)'
     return (f'{"running" if SIM["running"] else "paused"}: frame {n} / {SIM["frames"]}  '
