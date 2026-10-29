@@ -1,4 +1,6 @@
-# Test Report — Mecha Lab 0.24.87
+# Test Report — Mecha Lab 0.24.88
+
+## 0.24.88 결과: __T88__
 
 ## 0.24.87 결과: Blender 5.2.3 bpy 전체 201개 파일 PASS 5,091 / FAIL 0(`tests/test_log_bpy523_v02487.txt`, FAILED FILES: none; Traceback 24개는 test_registration_recovery). 새 테스트 test_v02514_boxes_all 10. 실제 블렌더 창 자동 테스트 13/13(`tests/gui/gui_result_0.24.87.txt`). 퍼즈는 0.24.86 것(코드 변경이 UI 토글뿐). ZIP sha256 `68eae9184d305127774768cf13a611777993bccdc7d1ed5f219411115e30db94` (`mecha_lab-0.24.87_20261029-0742.zip`).
 

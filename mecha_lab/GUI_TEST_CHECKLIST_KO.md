@@ -1,8 +1,12 @@
-# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.87 / Windows 11 / Blender 5.0.2
+# GUI 수용 테스트 체크리스트 — Mecha Lab 0.24.88 / Windows 11 / Blender 5.0.2
 
 **새 파일**(File > New > General)에서 진행하세요. 실제 작업 파일로 테스트하지 마세요.
 Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전체 텍스트**를 복사해 전달해 주세요.
 각 항목에 ✅ / ❌ / 메모를 적어 주시면 다음 수정에 그대로 사용합니다.
+
+## 0.24.88 Panel Cloth 백그라운드 (미검증)
+- [ ] Cloth Plate 라쏘 + Sim 켜고 → 천이 바로 생기고 상자에 "Panel Cloth running in the background … s" 가 흐르다 주름이 얹히는지(창은 그대로 움직이는지). Cancel 도.
+- [ ] Cloth 프리셋 결과에 서로 뚫린 면이 없는지(와이어 켜고 접힌 곳).
 
 ## 0.24.87 그룹 박스선 전체 끄기 (미검증)
 - [ ] 그룹 두 개 만들고 Layers 패널 머리의 상자 버튼 → 두 그룹 모두 상자 선이 사라지는지(선택해도), 다시 누르면 돌아오는지. Groups 카드의 "Box Lines (all groups)" 토글도 같은 값.

@@ -70,4 +70,26 @@ check('... faces smooth, Subsurf on', all(p.use_smooth for p in pc.data.polygons
 check('the Panel Cloth box shows the Background toggle and the status row', "r.prop(zb, 'bg_jobs'" in open(cs.__file__).read()
       and 'bg_jobs.draw_status(box, ob)' in open(cs.__file__).read())
 check('the lasso Sim-after path follows the toggle', 'background=cloth_sim.use_background(context)' in open(__import__('mecha_lab.cloth_wrinkle', fromlist=['x']).__file__).read())
+
+# --- quality: self collision on by default, no crossing folds, padded family with fewer sub-steps ------------------
+from mecha_lab import core_geometry as cg
+import inspect
+check('setup_cloth: self collision on by default, collision quality 2, self distance = the contact thickness',
+      inspect.signature(cs.setup_cloth).parameters['self_collision'].default is True
+      and 'c.self_distance_min = thickness' in inspect.getsource(cs.setup_cloth))
+check('the padded presets run 3 - 4 solver steps per frame, the fabric presets keep 6 - 8',
+      cs.preset_values('PADDING')['quality'] == 3 and cs.preset_values('PUFFER')['quality'] == 4
+      and cs.preset_values('CLOTH')['quality'] == 6 and cs.preset_values('SILK')['quality'] == 8)
+S.mch_zb.bg_jobs = False
+bpy.data.objects.remove(pc)
+plate.hide_set(False); plate.select_set(True); C.view_layer.objects.active = plate
+made = cs.run_preset(C, [plate], 'CLOTH', collider='REGION')
+cl = made[0]
+cross = cg.self_overlaps(cl.data)
+area = np.empty(len(cl.data.polygons)); cl.data.polygons.foreach_get('area', area)
+check('CLOTH preset: the baked cloth has no faces passing through each other (0.24.87: 229 - 485 crossing pairs)', cross == 0, cross)
+check('... and no sliver faces (smallest face at least 5 % of the mean; was 0.05 %)', area.min() / area.mean() > 0.05, area.min() / area.mean())
+check('... the folds are there (not flattened by the collision)', height(cl) > 0.02, height(cl))
+check('run_preset passes self_collision through (the earlier experiment silently dropped it)',
+      "'self_collision'" in inspect.getsource(cs.run_preset))
 summary()

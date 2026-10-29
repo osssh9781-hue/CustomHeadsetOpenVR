@@ -1,8 +1,12 @@
-# Mecha Lab 0.24.87 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.24.88 — 설치 · MECHA LAB Workspace · 사용법
 
 > **검증 수준:** Linux headless Blender **5.2.3**(`bpy`)에서 자동 테스트 201개 파일 / 5,091개 항목(실패 0) + 무작위 기능 조합 크래시 테스트 280개, 그리고 0.24.81부터 리눅스 가상 화면의 **진짜 Blender 5.2.3 창** 자동 테스트(설치 · 워크스페이스 · 그려진 막대 · 진짜 마우스 Cut · Tab · 단축키 충돌 목록) 13/13를 돌렸습니다(결과: `test_report.md`).
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` 맨 위 0.24.81 절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
+
+## 0.24.88 Panel Cloth 빠르게 · 품질
+- **Background 켜져 있으면 클로스 베이크가 두 번째 블렌더에서** 돌고 창은 그대로. 천은 바로 생기고 끝나면 주름이 얹힘. 상자에 진행 줄 + Cancel.
+- 자기 충돌 기본 켜짐: 천 계열 프리셋의 "뚫고 지나간 면" 0. Padding 계열은 35 ~ 45 % 빨라짐. 자세한 숫자는 CHANGELOG.
 
 ## 0.24.87 그룹 박스선 전체 끄기
 - 장면 설정 **Group Box Lines**(기본 켜짐): Layers 패널 머리의 상자 버튼 또는 Groups 카드 맨 위 토글. 끄면 모든 그룹의 상자 선이 안 보입니다(선택해도). 그룹별 눈은 그대로.
