@@ -87,6 +87,8 @@ class MCH_PG_WrinkleLines(bpy.types.PropertyGroup):
     fabric: EnumProperty(name='Fabric', items=FABRIC_ITEMS, default='COTTON')
     size: FloatProperty(name='Wrinkle Size', description='The thickness of the tube laid along a line, as % of the part size (x 3)',
                         default=5.0, min=0.5, max=30.0, subtype='PERCENTAGE', update=_tube_changed)
+    lift: FloatProperty(name='Tube Lift', description='How far the tube stands off the surface: 0 = half sunk in, 100 % = a full round pipe lying on it',
+                        default=0.0, min=0.0, max=100.0, subtype='PERCENTAGE', update=_tube_changed)
     fade: FloatProperty(name='End Fade', description='The tube fades out over this much of the line at each end',
                         default=20.0, min=0.0, max=50.0, subtype='PERCENTAGE', update=_tube_changed)
     shrink: FloatProperty(name='Shrink', description='How much the cloth laid over the mesh shrinks (more = it hugs the tubes tighter)',
@@ -288,10 +290,12 @@ def detail_levels(faces):
     return int(min(MAX_DETAIL_LEVELS, max(1, math.floor(math.log(DETAIL_TARGET / faces, 4)))))
 
 
-def tube_field(co, paths, strengths, radius, fade=0.2):
+def tube_field(co, paths, strengths, radius, fade=0.2, lift=0.0):
     """Per point the height (0..1, x the line's strength) of a round tube of ``radius`` lying along each line:
     ``sqrt(1 - (d / r)^2)`` from the exact distance to the polyline, the ends fading out over ``fade`` of the
-    line's length (a closed line has no ends).  ``co`` (N, 3), ``paths`` lists / arrays of points - pure numpy."""
+    line's length (a closed line has no ends).  ``lift`` (0..1) raises the whole tube off the surface by that
+    x radius: 0 = a half-sunk tube, 1 = a full round pipe lying on the surface (a wall at its sides).
+    ``co`` (N, 3), ``paths`` lists / arrays of points - pure numpy."""
     n = len(co)
     h = np.zeros(n)
     if n == 0 or radius <= 0:
@@ -319,6 +323,8 @@ def tube_field(co, paths, strengths, radius, fade=0.2):
             d = np.sqrt(d2[rows, j])
             u = np.clip(d / radius, 0.0, 1.0)
             hh = np.sqrt(np.maximum(1.0 - u * u, 0.0))
+            if lift > 0:
+                hh = (hh + lift) * (u < 1.0)
             if not closed and fade > 0:
                 along = (acc[j] + t[rows, j] * seg[j]) / total
                 e = np.clip(np.minimum(along, 1.0 - along) / fade, 0.0, 1.0)
@@ -360,9 +366,10 @@ def prepare(context, ob, st, lines):
 def tube_shape(sess, st):
     """The tubes on the original surface for the current sliders: the collider positions (N, 3) and the heights."""
     tube_r = sess['size'] * st.size / 100.0 * TUBE
-    key = (round(st.size, 4), round(st.fade, 4), tuple(sess['strengths']))
+    key = (round(st.size, 4), round(st.fade, 4), round(st.lift, 4), tuple(sess['strengths']))
     if sess['field'] is None or sess['field_key'] != key:
-        sess['field'] = tube_field(sess['co0'], sess['paths'], sess['strengths'], tube_r, fade=st.fade / 100.0)
+        sess['field'] = tube_field(sess['co0'], sess['paths'], sess['strengths'], tube_r, fade=st.fade / 100.0,
+                                   lift=st.lift / 100.0)
         sess['field_key'] = key
     sign = -1.0 if st.mode == 'CREASE' else 1.0
     h = sess['field'] * tube_r * sign * st.fold / 100.0
@@ -547,7 +554,7 @@ def run(context):
 
 
 def _snapshot(st):
-    return tuple(getattr(st, k) for k in ('mode', 'fabric', 'size', 'fade', 'shrink', 'slack', 'fold', 'gravity', 'keep',
+    return tuple(getattr(st, k) for k in ('mode', 'fabric', 'size', 'fade', 'lift', 'shrink', 'slack', 'fold', 'gravity', 'keep',
                                           'pin_boundary', 'pin_selected', 'self_collision', 'detail', 'frames'))
 
 
@@ -1114,6 +1121,7 @@ def draw(layout, context):
     col.label(text='Tubes along the lines', icon='CURVE_DATA')
     col.prop(st, 'size', slider=True)
     col.prop(st, 'fold', slider=True)
+    col.prop(st, 'lift', slider=True)
     col.prop(st, 'fade', slider=True)
     col = box.column(align=True)
     col.label(text='Cloth over them', icon='MOD_CLOTH')
