@@ -826,3 +826,37 @@ def tidy_sub(me, fmask, size, shards, slivers):
         return out
     finally:
         bpy.data.meshes.remove(sub)
+
+
+def open_edge_faces(me, rings=2):
+    """The faces round the open / 3+-face edges of ``me`` (plus ``rings`` rings), as a face mask; None when there
+    are none."""
+    co, tot, start, vi = arrays(me)
+    le = np.empty(len(me.loops), np.int64)
+    me.loops.foreach_get('edge_index', le)
+    cnt = np.bincount(le, minlength=len(me.edges))
+    bad = (cnt != 2) & (cnt > 0)
+    if not bad.any():
+        return None
+    fmask = np.maximum.reduceat(bad[le].astype(np.int8), start).astype(bool)
+    for _ in range(rings):
+        vm = np.zeros(len(co), bool)
+        vm[vi[np.repeat(fmask, tot)]] = True
+        fmask = np.maximum.reduceat(vm[vi].astype(np.int8), start).astype(bool)
+    return fmask
+
+
+def fix_holes_sub(me, size, fill='SMALL'):
+    """0.24.86 ``mesh_fix.fix_mesh`` on the faces round the open edges only (a dense part: the whole-mesh fix took
+    14 s of a 1.3M-face cut for 19 sliver edges).  False = not done (nothing open, or the rim could not be put
+    back): the caller runs the whole-mesh fix."""
+    from . import mesh_fix
+    fm = open_edge_faces(me)
+    if fm is None or fm.sum() >= 0.3 * len(fm):
+        return False
+    sub, _used = extract_faces(me, fm, 'MCH_HoleSub')
+    try:
+        mesh_fix.fix_mesh(sub, fill=fill)
+        return replace_faces(me, fm, sub, size)
+    finally:
+        bpy.data.meshes.remove(sub)

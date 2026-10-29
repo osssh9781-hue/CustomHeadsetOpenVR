@@ -486,6 +486,13 @@ def _shut_holes(target, me, cap=True):
     try:
         if cap and cg.non_manifold_edge_count(me) and not cg.non_manifold_edge_count(target.data):
             from . import mesh_fix
+            if len(me.polygons) >= 50_000:              # 0.24.86 a dense part: only round the open edges
+                from . import region_cut as rc
+                try:
+                    if rc.fix_holes_sub(me, cg.mesh_size(me)):
+                        return
+                except (RuntimeError, ValueError, AttributeError, IndexError, MemoryError):
+                    pass
             mesh_fix.fix_mesh(me, fill='SMALL')
     except (RuntimeError, ValueError, ReferenceError) as ex:
         print('Mecha: shut holes:', ex)
