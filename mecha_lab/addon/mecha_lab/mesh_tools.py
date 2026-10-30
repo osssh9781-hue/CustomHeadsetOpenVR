@@ -11,8 +11,9 @@ import bpy
 from bpy.props import StringProperty
 
 ACTIONS = {'DYNAMESH': 'DynaMesh', 'DECIMATE': 'Decimate', 'QUAD_REMESH': 'Quad Remesh', 'EDGE_MESH': 'Edge Mesh',
-           'HE_FIND': 'Find Edges', 'HE_APPLY': 'Apply', 'HE_CLEAR': 'Clear', 'FIX_MESH': 'Fix Mesh', 'REFIX': 'Re-Fix'}
-HEAVY = {'DYNAMESH', 'DECIMATE', 'QUAD_REMESH', 'EDGE_MESH', 'HE_FIND', 'HE_APPLY', 'REFIX'}
+           'HE_FIND': 'Find Edges', 'HE_APPLY': 'Apply', 'HE_CLEAR': 'Clear', 'FIX_MESH': 'Fix Mesh', 'REFIX': 'Re-Fix',
+           'BAKE_HP': 'Bake High Poly'}
+HEAVY = {'DYNAMESH', 'DECIMATE', 'QUAD_REMESH', 'EDGE_MESH', 'HE_FIND', 'HE_APPLY', 'REFIX', 'BAKE_HP'}
 
 
 def _targets(context):
@@ -79,6 +80,9 @@ def run_one(context, ob, zb, action):
         if bg:
             return bg
         return refix.run(context, ob, zb)
+    if action == 'BAKE_HP':                          # 0.24.95 hard edges fixed, the rest subdivided + rounded
+        from . import bake_highpoly as bk
+        return bk.run(context, ob, zb)
     if action == 'FIX_MESH':                         # 0.24.76 like ZBrush's Fix Mesh
         from . import mesh_fix
         if ob.data.shape_keys is not None:
@@ -198,6 +202,9 @@ def draw(layout, context):
     r = col.row(align=True)
     op(r, 'Apply', 'HE_APPLY')
     op(r, 'Clear', 'HE_CLEAR')
+    from . import bake_highpoly as bk                # 0.24.95
+    col = box.column(align=True)
+    bk.draw_rows(col, zb, op)
 
 
 class MCH_PT_mesh_tools(bpy.types.Panel):

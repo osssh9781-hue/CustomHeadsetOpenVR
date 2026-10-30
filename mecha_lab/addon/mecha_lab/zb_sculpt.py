@@ -1395,6 +1395,15 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
     he_fit: BoolProperty(name='Fit to Original', default=True, update=_he_update,
                          description='Edge Mesh: the subdivided surface is fitted back onto the dense mesh it was made '
                                      'from (its shape kept exactly); the hard edges stay where they are')
+    # 0.24.95 Bake High Poly (bake_highpoly): hard edges fixed, the faces between them subdivided + rounded
+    bk_target: IntProperty(name='Target', default=1000, min=10, max=4000,
+                           description='Bake High Poly: faces wanted, in thousands (the subdivision levels come from it)')
+    bk_rounding: IntProperty(name='Rounding', default=100, min=0, max=100, subtype='PERCENTAGE',
+                             description='Bake High Poly: 100 = the faces between the hard edges fully rounded (no '
+                                         'facets), 0 = the original shape exactly, only denser')
+    bk_fillet: FloatProperty(name='Fillet %', default=0.0, min=0.0, max=3.0, precision=2, step=5,
+                             description='Bake High Poly: a small round fillet on the hard edges, as a percent of the '
+                                         'part size (a bake likes a little edge width); 0 = razor sharp')
     # 0.24.73 Edge Mesh (edge_mesh): Decimate in steps -> hard edges -> quads on the flats -> live bevel + subdivide
     em_detail: IntProperty(name='Detail', default=2000, min=100, soft_max=50000,
                            description='Edge Mesh: triangles left after decimating in steps (fewer = lighter, the '
@@ -1882,7 +1891,7 @@ def shade_result(ob, zb):
         return -1
 
 
-RISKY = {'DYNAMESH', 'DYNA_UPDATE', 'DYNA_SUBDIV', 'DYNA_SUBDIV3', 'DECIMATE', 'QUAD_REMESH', 'REFIX', 'HE_FIND', 'HE_APPLY',
+RISKY = {'DYNAMESH', 'DYNA_UPDATE', 'DYNA_SUBDIV', 'DYNA_SUBDIV3', 'DECIMATE', 'QUAD_REMESH', 'REFIX', 'HE_FIND', 'HE_APPLY', 'BAKE_HP',
          'DIVIDE', 'ZREMESH', 'HALF', 'SAME', 'DOUBLE', 'MIRROR_WELD', 'CLOSE_HOLES', 'EXTRACT', 'SPLIT_MASKED',
          'SPLIT_UNMASKED', 'SPLIT_HIDDEN', 'DEL_HIDDEN', 'MERGE_DOWN', 'MERGE_VISIBLE', 'POLYMESH3D', 'GROUPS_SPLIT',
          'DEL_LOWER', 'FIX_MESH', 'EDGE_MESH', 'SHELL'}
@@ -2216,6 +2225,18 @@ def run(context, action):
         _mode(context, 'OBJECT')
         try:
             msg = em.build(context, ob, zb)
+        finally:
+            _mode(context, 'SCULPT')
+        return msg
+    if action == 'BAKE_HP':                          # 0.24.95
+        from . import bake_highpoly as bk
+        if multires(ob) is not None:
+            return 'Bake High Poly: Del Higher / Del Lower first'
+        _mode(context, 'OBJECT')
+        try:
+            msg = bk.run(context, ob, zb)
+        except (RuntimeError, ValueError, MemoryError) as ex:
+            msg = f'Bake High Poly: {ex}'
         finally:
             _mode(context, 'SCULPT')
         return msg

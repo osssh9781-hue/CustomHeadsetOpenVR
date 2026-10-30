@@ -177,6 +177,10 @@ def draw_tool_shelf(layout, context):
     r.prop(zb, 'he_client', toggle=True)
     box.prop(zb, 'he_normals', toggle=True)
     ops(box.row(), ('Apply', 'HE_APPLY'), ('Clear', 'HE_CLEAR'))
+    from . import bake_highpoly as bk                         # 0.24.95 a dense copy for baking (edges kept)
+    box = layout.box()
+    box.label(text='Bake High Poly')
+    bk.draw_rows(box, zb, lambda row, text, action: ops(row, (text, action)))
     b = zs.brush(context)                                     # 0.24.92 Blender's cloth brush settings, as they are
     box = layout.box()
     box.label(text='Cloth Brush')
