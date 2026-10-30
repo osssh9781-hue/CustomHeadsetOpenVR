@@ -59,8 +59,9 @@ src = inspect.getsource(zs.ctrl_canvas_release)
 check('Ctrl let go on the canvas: click inverts, lasso round the model masks (Alt unmasks), empty: clear / DynaMesh',
       "mode='INVERT'" in src and 'mask_lasso_gesture' in src and "'path'" not in src and 'path=[' in src
       and "value=0.0 if unmask else 1.0" in src and "action='DYNA_UPDATE'" in src and "mode='VALUE', value=0.0" in src)
-check('DynaMesh in a window runs in Sculpt Mode (its own Ctrl+Z step), Object Mode only without a window',
-      'bpy.app.background' in inspect.getsource(zs.dynamesh))
+check('0.24.94 DynaMesh runs in Object Mode round the safe fixes (dynamesh_fix prepare / cleanup), back to Sculpt after (a Ctrl+Z step of its own via _mode)',
+      'dfx.prepare' in inspect.getsource(zs.dynamesh) and 'dfx.cleanup' in inspect.getsource(zs.dynamesh)
+      and "_mode(context, 'SCULPT')" in inspect.getsource(zs.dynamesh))
 check('The DynaMesh button is drawn lit while on (depress)', 'depress=zs.dynamesh_on' in inspect.getsource(
     zu.draw_tool_shelf))
 

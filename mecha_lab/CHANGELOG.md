@@ -1,6 +1,8 @@
 # CHANGELOG
 
-## 0.24.94 — 천에 주름이 생김: 넓은 굽힘 + Wrinkles 슬라이더 (2026-10-30)
+## 0.24.94 — Safe DynaMesh · 천에 주름이 생김: 넓은 굽힘 + Wrinkles 슬라이더 (2026-10-30)
+
+- **Safe DynaMesh**(사용자: "ZBrush 에서는 DynaMesh 가 되는데 Blender ZBrush 탭에서 DynaMesh 하면 메시가 뚫리면서 파편화"): ZBrush 는 어떤 메시든 먼저 닫힌 부피로 만들지만 Blender 복셀 리메시(OpenVDB)는 닫힌 부피를 요구합니다 — **열린 가장자리**(시트 · 구멍 · 뽑은 판)는 부피가 새어 구멍 / 빈 결과, **뒤집힌 면**(일관되지 않은 와인딩)은 그 자리가 안팎이 바뀌어 구멍, **비매니폴드 · 떨어진 조각**은 파편으로 남습니다. 이제 DynaMesh 마다 `dynamesh_fix.prepare` 가 먼저 돕니다: 겹친 점 합치기, 법선 일관화(`recalc_face_normals`), **모든 경계 루프 덮기**(덮개 면적이 메시 면적의 절반을 넘으면 시트의 바깥 윤곽이므로 덮지 않음), 그래도 열려 있으면(시트) **복셀 3개 두께로 Solidify**, 떨어진 점 · 선 제거; 리메시 뒤 `cleanup` 이 메시의 2 % 미만인 떨어진 조각(가장 큰 조각의 절반 미만일 때만)을 버립니다. 메시지에 한 일이 붙습니다("safe: 1 hole filled, 48 flipped edges fixed, 1 sliver dropped"). 잰 것: 열린 20×20 격자 → 닫힌 한 덩어리(예전엔 빈 결과), 윗부분을 잘라 낸 구 → 구멍 메워진 구, 절반 뒤집힌 구 → 멀쩡한 구, 구 + 작은 사면체 → 사면체 버려짐. 얇은 벽 보정(`cap_voxel`, 가장 얇은 벽의 1/3 로 복셀 제한)은 재 보니 Blender 리메시가 0.02 벽을 0.12 복셀에서도 멀쩡히 유지해 기본 꺼짐(점만 늘림). DynaMesh 는 이제 항상 오브젝트 모드에서 돌고 스컬프트로 돌아옴(`_mode` 가 되돌리기 단계를 남김).
 
 사용자: "너가 만든 거 너무 주름이 안 생기는 거 아니여?" — 맞았습니다. 잰 결과 두 가지였습니다.
 
@@ -8,7 +10,7 @@
 - **넓은 굽힘**(`cloth_pbd.Cloth.set_far` · `ring_pairs`): 2 · 3 · 4칸 떨어진 점끼리도 쉬는 거리를 지키는 제약(세기 1 / 0.8 / 0.6)을 패스마다 걸어 셀 노이즈는 눌리고 몇 칸 폭의 접힘이 살아납니다. 쌍은 점마다 엣지 그래프 BFS 로(6.7천 점 0.13초, 2.5만 점 0.5초), 쉬는 거리는 Looseness 배율의 평균으로. 제약이 3배라 시간이 늘었습니다(2.5만 점 소매 30프레임 8 → 21초; C 로 옮길 후보).
 - **Wrinkles 슬라이더**(Wrinkle Lines · Cloth Drape, 기본 **50**): `wrinkle_params` — 100 = 굽힘 0.5 · 스무딩 0.1 · 넓은 굽힘 전부 · 시작 지터 엣지의 0.3(조밀한 주름), 0 = 예전 솔버 그대로(원단의 굽힘 · 스무딩, 넓은 굽힘 없음). 팔 실험에서 넓은 굽힘이 켜진 채 스무딩 0.1 = 조밀, 0.3 ~ 0.4 = 조금 부드럽게, 0.5 + 넓은 굽힘 없음 = 예전의 매끈한 모습이라, 스무딩은 슬라이더 제곱으로 0.5 → 0.1(70 = 0.3, 50 = 0.4), 넓은 굽힘 세기는 슬라이더 그대로. 사용자가 2번(100) → "좀만 줄이면" 70 → "한 30 % 줄여봐" 50 으로 정함: `dist/wrinkle_lines_wrinkles50_0.24.94.png`(50 · 와이어 · 70), `dist/wrinkle_lines_smoothing_steps_0.24.94.png`(스무딩 0.1 / 0.2 / 0.3 / 0.4 / 예전). 조끼(Front + Back)는 윗변에 매달려 팽팽해 여분 천이 없으므로 여전히 매끈 — 주름을 원하면 헐렁함을 올리고 중력을 내리거나 Wrap Pressure 로 누르면 됨. Sew Copy 에서 압력 150 · 헐렁 40 이면 정맥처럼 갈라진 눌린 주름.
 - 봉제 틈: 넓은 굽힘이 옆선을 조금 열어 둠(구 테스트 1 → 7 cm, 허용 10 cm 로).
-- 테스트: Blender 5.2.3 bpy 전체 209개 파일 PASS 5,280 / FAIL 0(`tests/test_log_bpy523_v02494.txt`, FAILED FILES: none; Traceback 26개 = test_registration_recovery). test_v02492_wrinkle_lines 42 → 46(wrinkle_params 매핑 · 기본 50 · 5×5 격자의 2링 쌍 · Wrinkles 100 이 0 보다 접힘 2배 이상 · 몸 밖), test_v02494 버전. 실제 블렌더 창 자동 테스트 13/13(`tests/gui/gui_result_0.24.94.txt`, 이 zip). ZIP sha256 `58789e69b085b9108416969e29783884e6867f56ac3c5275707c73b0c1ec6a02` (`mecha_lab-0.24.94_20261030-0750.zip`).
+- 테스트: Blender 5.2.3 bpy 전체 209개 파일 PASS 5,280 / FAIL 0(`tests/test_log_bpy523_v02494.txt`, FAILED FILES: none; Traceback 26개 = test_registration_recovery — Safe DynaMesh 이전의 실행; 그 뒤 test_v02494_dynamesh 14/14 · test_v02493 50/50 혼자). 새 테스트 test_v02494_dynamesh 14(시트 · 구멍 · 뒤집힘 · 얇은 벽 측정 · 조각 · 메시지), test_v02492_wrinkle_lines 42 → 46(wrinkle_params 매핑 · 기본 50 · 5×5 격자의 2링 쌍 · Wrinkles 100 이 0 보다 접힘 2배 이상 · 몸 밖), test_v02494 버전. 실제 블렌더 창 자동 테스트 13/13(`tests/gui/gui_result_0.24.94.txt`, 이 zip). ZIP sha256 `58789e69b085b9108416969e29783884e6867f56ac3c5275707c73b0c1ec6a02` (`mecha_lab-0.24.94_20261030-0750.zip`).
 
 ## 0.24.93 — Paint Lab(세 번째 화면) · 앞판 + 뒷판 봉제 · Sew Copy · Stop at Pins · 실제 창 클로스 브러시 · 패딩 (2026-10-30)
 

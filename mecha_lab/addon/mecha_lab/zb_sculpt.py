@@ -1691,20 +1691,30 @@ def dynamesh_on(ob):
     return ob is not None and bool(ob.get(DYNA_KEY)) and multires(ob) is None
 
 
+LAST_FIX = {'text': ''}          # what Safe DynaMesh changed on the last remesh (for the message)
+
+
 def dynamesh(context, ob, points):
-    from . import voxel_for_points
+    """0.24.94 Safe DynaMesh: the mesh made a closed volume first (holes filled, a sheet solidified, normals
+    consistent), the voxel capped under the thinnest wall, slivers dropped after - the holes / fragments Blender's
+    voxel remesh made of open, flipped or thin meshes (dynamesh_fix)."""
+    from . import voxel_for_points, dynamesh_fix as dfx
     if multires(ob) is not None:
         return 'DynaMesh: this SubTool has subdivision levels - Del Higher / Del Lower first'
     v = voxel_for_points(context, ob, points)
     if v <= 0.0:
         return 'DynaMesh: no surface'
-    ob.data.remesh_voxel_size = v
-    if bpy.app.background:
-        _mode(context, 'OBJECT')             # (without a window the Sculpt Mode call crashed)
+    LAST_FIX['text'] = ''
+    _mode(context, 'OBJECT')                 # (the mesh is edited: Object Mode; without a window Sculpt crashed)
+    try:
+        done = dfx.prepare(ob.data, v)
+        v2, thin = dfx.cap_voxel(ob.data, v) if dfx.USE_THIN_CAP else (v, 0.0)
+        ob.data.remesh_voxel_size = v2
         bpy.ops.object.voxel_remesh()
+        dropped = dfx.cleanup(ob.data)
+        LAST_FIX['text'] = dfx.describe(done, v, v2, thin, dropped)
+    finally:
         _mode(context, 'SCULPT')
-    else:
-        bpy.ops.object.voxel_remesh()        # in Sculpt Mode like Blender's Ctrl+R: its own undo step
     return ''
 
 
@@ -2022,7 +2032,8 @@ def run(context, action):
             ob.pop(DYNA_KEY, None)
         else:
             ob[DYNA_KEY] = 1
-        return f'DynaMesh: {points_text(len(ob.data.vertices))} points'
+        fix = LAST_FIX.get('text', '')
+        return f'DynaMesh: {points_text(len(ob.data.vertices))} points' + (f'  (safe: {fix})' if fix else '')
     if action == 'ZREMESH':
         if multires(ob) is not None:
             return 'ZRemesher: Del Higher / Del Lower first'
