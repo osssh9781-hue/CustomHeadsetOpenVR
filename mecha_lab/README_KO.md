@@ -5,7 +5,7 @@
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
 
 ## 0.24.95 엣지 기억 · Bake High Poly
-- **엣지 기억**: 자르기 계열(Cut · Line Cut · Base Mesh 빼기 · Boolean · Plate Detail · 프리미티브)과 **Box Hide Apply / Split Off** 가 만든 엣지가 메시에 남습니다(Sharp + 크리즈 + 내부 표시). Hard Edges 의 Find Edges 는 그 엣지를 각도와 상관없이 하드로 쓰고, Decimate 는 그 선을 지키고, DynaMesh · Quad Remesh · Re-Fix 뒤에는 새 메시의 가까운 엣지로 옮겨 찍습니다. ZBrush 로 보낼 때 "Creases as Polygroups" 가 그대로 폴리그룹으로 만듭니다.
+- **엣지 기억**: 자르기 계열(Cut · Line Cut · Base Mesh 빼기 · Boolean · Plate Detail · 프리미티브), **Box Hide Apply / Split Off**, 그리고 부품을 만드는 도구 전부(Armor Plate · Plate Detail · Creature Plate · Scale Brush · Flower Plate · Mech Ridge · Surface Draw · Bridge Patch · Screw · Edge Molding · Face Extract · Base Mesh)가 만든 엣지가 메시에 남습니다(Sharp + 크리즈 + 내부 표시). Hard Edges 의 Find Edges 는 그 엣지를 각도와 상관없이 하드로 쓰고, Decimate 는 그 선을 지키고, DynaMesh · Quad Remesh · Re-Fix 뒤에는 새 메시의 가까운 엣지로 옮겨 찍습니다. ZBrush 로 보낼 때 "Creases as Polygroups" 가 그대로 폴리그룹으로 만듭니다.
 - **Bake High Poly**(ZBrush 선반 Hard Edges 아래 · Mecha Lab 탭 Mesh Tools): 베이크용 조밀 복사본. 하드 엣지는 그 자리에 고정, 사이 면은 분할 + 둥글림이라 데시메이트 삼각형 띠가 사라집니다. **Target**(천 면) · **Rounding**(100 둥글게 / 0 원본 그대로) · **Fillet %**(모서리에 얇은 둥근 베벨). 결과는 `BakeHP` 컬렉션에, 원본은 숨김.
 
 ## 0.24.94 Safe DynaMesh · 크리즈 → ZBrush · Wrinkles 슬라이더

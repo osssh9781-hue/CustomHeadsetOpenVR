@@ -30,4 +30,12 @@ check('Bake High Poly: action BAKE_HP on the ZBrush screen (risky = safety save)
                                                                  for p in ('bk_target', 'bk_rounding', 'bk_fillet')))
 check('Bake High Poly box on the ZBrush shelf after Hard Edges, rows in Mesh Tools',
       "label(text='Bake High Poly')" in inspect.getsource(zu.draw_tool_shelf) and 'bk.draw_rows' in inspect.getsource(mt.draw))
+import glob, os
+hooked = sorted(os.path.basename(f) for f in glob.glob(os.path.join(os.path.dirname(em.__file__), '*.py'))
+                if '_em.mark_generated(' in open(f, encoding='utf-8').read())
+check('mark_generated hooked into every part-making tool (13 modules)',
+      set(hooked) >= {'armor_plate.py', 'base_mesh.py', 'bridge_patch.py', 'creature_plate.py', 'edge_molding.py', 'face_extract.py',
+                      'flower_plate.py', 'mech_ridge.py', 'plate_detail.py', 'scale_brush.py', 'screw_stamp.py', 'surface_draw.py',
+                      'surface_lasso.py'}, hooked)
+check('boolean_result flags any cutter', 'flag_cutter(cutter)' in inspect.getsource(cg.boolean_result))
 summary()

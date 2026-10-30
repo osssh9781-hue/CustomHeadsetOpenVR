@@ -4395,3 +4395,883 @@ PASS GN CHAMFER: a second cut leaves the first notch as it was (every point stil
 12/12 passed
 ====================================================================== 
  test_v02465.py
+PASS ramp scale: 1 at the first edge, 0.5 half way, 0 at the far side  -- [1.0, 0.5, 0.0]
+PASS ... whichever way round the edge was drawn; Ramp Length 0.5 = flush half way  -- [1.0, 0.0, 0.0]
+PASS first edge = the first two points of the outline
+PASS Ramp: carved, closed  -- ('Base Mesh carve (Alt): Cube | a ramp 0.2 deep, up to the surface (deep side: < > / Pick Edge in the panel)', 0)
+PASS ... deep at the first edge, half way down in the middle, almost flush at the far side  -- [0.191, 0.096, 0.009]
+PASS ... outside the shape the top is untouched
+PASS Ramp Length 0.5: the slope reaches the surface half way across, the far half untouched  -- [0.187, 0.122, 0.0]
+PASS Ramp Soft: eased (smoothstep) along the slope - near the surface it fades in gently, deep end unchanged  -- [1.0, 0.5, 0.028000000000000004, 0.2531851851851852]
+PASS ... and the sides round off where it is shallow (a point near the outline gets less)  -- [1.0, 0.5, 0.028000000000000004, 0.2531851851851852]
+PASS Ramp Soft 0 = the straight slope
+PASS Soft 1 on the cube: still deep at the first edge, closed, and the far part eases out to the surface  -- [0.19, 0.096, 0.006, 0.0]
+PASS Ramp over a bevelled end: the corners are carved too (no fin of the old surface left), closed  -- [0.203, 0.252, 0.272, 0.203, 0.252, 0.272]
+
+12/12 passed
+====================================================================== 
+ test_v02466.py
+PASS a clicked polygon keeps its corners
+PASS a free-drawn square: simplified to its 4 sides  -- 4
+PASS the side nearest a point
+PASS after Alt: Ramp the ramp is live (the mesh before it is kept)
+PASS deep side 1 = the first edge (left)  -- (0.191, 0.009)
+PASS > : the next side (top) is deep now, the left is not any more  -- (0.191, 0.009, 0.096)
+PASS < < : back past the first side to the last one (bottom)  -- 0.191
+PASS Carve Depth slider: the live ramp is carved again at once  -- 0.096
+PASS the panel shows it (< > / Pick Edge / Apply / Remove)
+PASS Remove: the mesh is back as it was, nothing live left
+PASS Apply: kept with the picked side (right deep), nothing live left  -- 0.191
+PASS a new ramp keeps the earlier live one as it is (one live at a time)
+
+12/12 passed
+====================================================================== 
+ test_v02467.py
+PASS Ramp is in the GN Edge menu of the Cut panel, Off by default
+PASS Cut with Ramp: a slope, deep at the first side (left), up to the surface at the far side, closed  -- ('Cut Ramp: Cube | 0.2 deep at one side, up to the surface (deep side: < > / Pick Edge in GN Edge)', 0.191, 0.096, 0.009)
+PASS ... it stays live (a Cut ramp)
+PASS > > : the right side is deep now  -- (0.191, 0.009)
+PASS Cut Depth slider: carved again at once  -- 0.096
+PASS Remove: back as it was
+PASS GN Edge Chamfer: the deep wall is a chamfer (part way down next to the outline), closed  -- (0.052, 0.183)
+PASS Apply: kept, nothing live
+PASS Ramp off: the usual flat pocket  -- (0.2, 0.2)
+PASS a long thin ramp with Ramp Soft: the softened side is smooth along its length (no sawtooth), closed  -- (0.001, [0.893, 0.885, 0.877, 0.868, 0.859, 0.85, 0.841, 0.833])
+
+10/10 passed
+====================================================================== 
+ test_v02468.py
+PASS Quad Remesh is in the Remesh panel
+Info: QuadriFlow: Remeshing completed
+Info: Part_Quad: 2919 quads, 49 hard edges kept (1.7 s)
+PASS Make Quad: a new all-quad copy near Faces, closed  -- ({'FINISHED'}, 2919)
+PASS ... the original is kept, hidden, untouched (its live boolean too)
+PASS ... the cut and boolean edges stay as hard quad lines (close to the old edges)  -- (0.0009, 0.0033)
+PASS ... the shape stays the same (every new point on the old surface)  -- 0.0068
+PASS ... smooth shading with the kept edges sharp
+PASS ... no Mecha Lab cut attributes carried over
+Info: QuadriFlow: Remeshing completed
+Warning: Part_Quad: 1185 quads, 49 hard edges kept (1.0 s). Some cut edges were not kept (thin slivers): raise Faces or use the Patch method
+PASS Re-make: the same copy, rebuilt with the new Faces  -- 1185
+PASS Show Original toggles the original
+PASS Apply: an ordinary mesh now
+Info: QuadriFlow: Remeshing completed
+Info: Cube_Quad: 1976 quads, 26 hard edges kept (0.9 s)
+PASS Edge Angle 10: the soft fold stays a quad line  -- 0.0027
+Info: QuadriFlow: Remeshing completed
+Info: Cube_Quad: 1976 quads, 24 hard edges kept (1.0 s)
+PASS ... Edge Angle 30 leaves the 20 degree fold soft, 10 marks it hard  -- (24, 26)
+PASS Keep Marked Edges: edges marked Sharp count as hard even under Edge Angle
+Info: QuadriFlow: Remeshing completed
+Info: Cube_Quad: 1976 quads, 26 hard edges kept (1.0 s)
+PASS ... and stays a quad line  -- 0.0027
+Warning: The part still has 40 open / non-manifold edges after Fix Mesh (a big hole?): Fix Mesh with Close All Holes, or use Mesh Tools > Quad Remesh (works on open parts)
+PASS Open mesh (a plane): refused with a message, nothing made
+PASS ... the message says why
+PASS Method: Flow (default) and Patch, in the panel
+Info: QuadriFlow: Remeshing completed
+Warning: Cube_Quad: 2971 quads, 59 hard edges kept (2.0 s). Some cut edges were not kept (thin slivers): raise Faces or use the Patch method
+PASS Flow on thin slivers: the lost edge length is measured and warned about (panel line too)  -- 1.7
+Info: Cube_Quad.001: 3350 quads, 59 hard edges kept (0.1 s)
+PASS Patch: all quads, near Faces, closed  -- 3350
+PASS ... every cut / boolean edge kept (nothing lost)
+PASS ... exactly on the old edges  -- (0.0, 2.9802322387695312e-08)
+PASS ... the shape is the same (flat patches stay flat)  -- 0.00039238285551870117
+PASS ... even quads: most edges near the quad size  -- (0.087, 0.087)
+PASS ... the flat top is mostly a grid lined up with the part (quads near h, axis aligned)  -- (411, 528)
+Info: Sphere_Quad: 2976 quads, 0 hard edges kept (0.3 s)
+PASS Patch on a curved part: still all quads and closed (no flat patches to grid)  -- 2976
+
+25/25 passed
+====================================================================== 
+ test_v02468_holes.py
+  hole r 0.12, chamfer 0.036: 0.060 s
+PASS A round hole: its band does not cross itself - straight into the Manifold difference (no Exact self-union)  -- (['band', 'direct'], 'Cut: MCH_Base | GN Chamfer: 128 border edges')
+PASS ... the chamfer is even all round (0.036 out from the hole) and the part stays closed  -- (np.float64(0.1558578442090124), np.float64(0.1560000658035297))
+PASS ... quick (the old Exact self-union took ~0.3-1 s here)  -- 0.05976931000031982
+PASS A chamfer wider than a small hole's radius stays under it (no funnel past the axis), even all round, quick  -- (np.float64(0.051686271267062774), np.float64(0.05181082358713438), 0.0303164580000157)
+PASS A hole next to the part's bevelled corner: one even width all round (was 0.008 on the corner side, 0.030 on the other)  -- (np.float64(0.06810521214166494), np.float64(0.06817016325279758))
+
+5/5 passed
+====================================================================== 
+ test_v02469.py
+PASS Recent is empty at first
+PASS Recent: newest first, no repeats, hidden tools left out, at most 5  -- ['SPLIT', 'DETAIL', 'SCREW', 'BASE', 'CUT']
+PASS ... kept across a restart (last_used.json)
+PASS Favorites: three sets with sensible defaults
+PASS Star pins a tool, again unpins it
+PASS ... at most 8 per set (a 9th is refused)
+PASS Switching the set shows its own favorites
+Warning: Favorites are full (8); unpin one first
+PASS Star operator works
+PASS Actions popup draws: tool strip | Actions panel, valid operators and icons  -- ([], ['mch.actions_mirror', 'mch.duplicate', 'mch.lowpoly_make', 'mch.object_tidy', 'mch.one_click_remesh', 'mch.quad_remesh', 'mch.set_tool', 'mch.tool_fav_toggle', 'object.delete', 'object.hide_view_clear', 'object.hide_view_set', 'object.join', 'object.shade_auto_smooth', 'view3d.localview'])
+PASS ... Modeler style: icon-only buttons in the Actions panel, section titles Actions / Resolution / Symmetry / Repetition / Visibility
+PASS Tool card (middle): Shapes / Stamps tabs, the shape grid, the key settings - no bad names
+PASS Base Mesh card draws too
+PASS Icon-only tool buttons still name the tool (tooltip "Cut: ...")
+PASS ... the tool RMB popups (shapes / profiles) show it on top; the big tool menu shows recent + favorites
+PASS ... a Live section only when something live is selected
+Info: Symmetry X: on
+PASS Symmetry X: a live Mirror on the part (clipped, merged)
+PASS ... the Cut / plate tools follow it (mirror reflections seen)
+Info: Symmetry Z: on
+PASS Symmetry Z added to the same mirror
+Info: Symmetry X: off
+Info: Symmetry Z: off
+PASS All axes off: the mirror is removed
+Info: Symmetry Y: on
+PASS ... the Live section offers Apply Modifiers once the part has one
+Info: 1 modifiers applied
+PASS Apply Modifiers bakes the mirror  -- (8, 12)
+PASS RMB opens the Actions popup in Select / Move (one key item, Object Mode)
+PASS ... but not outside MECHA LAB (Blender's RMB menu stays there)
+PASS ... the popup has a button for Blender's own object menu
+PASS ... it can be switched off (Preferences: RMB Actions Menu)
+PASS Quick HUD: Cut shows depth, GN finish, width, segments, ramp  -- ['depth', 'gn_finish', 'gn_width', 'gn_segments', 'gn_ramp']
+PASS ... every core tool has 1-5 rows that exist  -- {'CUT': 5, 'SPLIT': 4, 'BASE': 5, 'CBASE': 4, 'PLATE': 2, 'SDRAW': 4, 'SCREW': 3, 'CMOVE': 3, 'CPATH': 5, 'TUBE': 1}
+PASS Drag: +300 px ≈ the whole soft range, Shift = a tenth, clamped
+PASS ... whole numbers: 1 step per 8 px
+PASS Click on a choice steps to the next one
+PASS Ctrl+click: back to the default
+PASS Value text: name and value
+PASS HUD sits upper left, rows under the grip, the grip moves it
+PASS ... kept inside the viewport
+PASS HUD click operator and value popup registered; hidden outside MECHA LAB (0.24.51: no gizmos)
+PASS ... Armor Plate: hidden while its own live HUD is up (no double HUD)
+PASS Wide viewport: one row, full size (as before)
+PASS Narrow (700 px): smaller buttons, one row, all inside  -- (30.14012738853503, 27.070063694267517, 672.9299363057324)
+PASS Very narrow (420 px): two rows, all inside, rows apart  -- (33.80487804878049, [42.902, 92.707])
+PASS UI scale fix: the toolbar is centred with the unscaled width
+PASS Key legend: the tool name, what Alt does there, the shared keys
+PASS ... Armor Plate: Alt carves, wheel = profile
+PASS ... tools without an Alt meaning show none; unknown tool: nothing
+PASS ... can be switched off (Preferences: Key Legend)
+PASS Preferences show the new switches
+
+45/45 passed
+====================================================================== 
+ test_v02469_zbfix.py
+PASS Extract without a mask: says to paint one (nothing made)
+Info: Extract: Body_Extract
+PASS Extract: the masked part becomes a new SubTool (was an error every time: "thickness" unrecognized)  -- ['Body', 'Body_Extract']
+PASS ... Thick on its Solidify  -- ['SOLIDIFY']
+PASS ... and you keep sculpting the SubTool you were on (ZBrush)
+PASS ClipCurve / TrimCurve / TrimLasso / Move are not brushes: the ZBrush press lets Blender's tool take it
+PASS ... the tiles name Blender's Sculpt tools that exist in this Blender (Line Project / Line Trim / Lasso Trim; switching tools itself needs a window)
+PASS Every Blender operator call in the add-on only uses settings that operator has (in this Blender)
+PASS A press 10 px off the silhouette with a 50 px brush: still on the model (the ZBrush press turned the view)
+PASS ... 40 px off: the canvas (turns the view, as in ZBrush)
+PASS ... far out on the canvas: no ray cast at all (screen box first)
+PASS ... used for strokes (plain, Alt Zsub, Shift Smooth), not for Ctrl (mask lasso on the canvas)
+Info: Decimate: 5,120 > 1,024 polygons in 0.0 s (4 threads)
+00:00.808  bpy.rna          | WARNING current value '3' matches no enum in 'BrushTextureSlot', '', 'map_mode'
+PASS Decimate, Ctrl+Z once: the old mesh, still in Sculpt Mode (took two presses and came back in Object Mode)  -- ('SCULPT', 5120, 1024, 5120)
+00:00.816  bpy.rna          | WARNING current value '3' matches no enum in 'BrushTextureSlot', '', 'map_mode'
+PASS ... Ctrl+Shift+Z: decimated again, in Sculpt Mode  -- ('SCULPT', 1024)
+PASS ... no step marker left in the scene (only the two stored steps carry it)
+
+14/14 passed
+====================================================================== 
+ test_v0247.py
+PASS 12 JPEGs imported in one go  -- ({'FINISHED'}, 12, ['Imported 12 Cut shape(s)'])
+PASS previews rebuilt once for the whole batch  -- [1]
+PASS enum lists the imported shapes
+PASS redraws read no preset file (cached)  -- [0]
+PASS cached list is the same object
+PASS 50 redraws are fast  -- 0.005
+PASS changed preset name shows up
+PASS test source is big  -- 7629403
+PASS big source gets a small _thumb.png  -- 77516
+PASS list icon uses the small thumbnail
+PASS library copy is at most 192 px  -- (64, 64)
+PASS delete removes json, source and _thumb
+PASS deleted shape leaves the list
+PASS cleanup helper exists
+PASS stale mch.stamp_scale items removed  -- 1
+Warning keymap '3D View Tool: Object, Mecha Surface Draw' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Creature Hair' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Scarf Cape' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Cape' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Surface Curve' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Flower Plate' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Bridge Patch' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Scale Brush' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Creature Scales' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Creature Spike' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Belt Maker' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Creature Plate' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Creature Base Mesh' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Wrinkle Lines' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Cloth Drape' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Screw Stamp' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Plate Detail 3' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Plate Detail 2' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Plate Detail' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Box Hide' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Cloth Plate' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Armor Plate' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Primitive' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Base Mesh' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Split' not found in 'Blender addon'!
+Warning keymap '3D View Tool: Object, Mecha Cut' not found in 'Blender addon'!
+PASS Cut tool keymap exists
+PASS tool keymap rebuilt from the current bindings (no old wheel item)  -- [('mch.concept_hold', 'LEFTMOUSE'), ('mch.quick_hud_press', 'LEFTMOUSE'), ('mch.quick_hud_press', 'LEFTMOUSE'), ('mch.cut_stroke', 'LEFTMOUSE'), ('mch.rmb_gate', 'RIGHTMOUSE'), ('mch.toggle_targets', 'T'), ('mch.brush_resize', 'F'), ('mch.lasso_sketch_key', 'RET'), ('mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('mch.lasso_sketch_key', 'RET'), ('mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('mch.lasso_sketch_clear', 'ESC'), ('mch.lasso_sketch_undo', 'BACK_SPACE'), ('mch.exit_tool', 'ESC'), ('mch.stamp_rotate', 'R'), ('mch.stamp_rotate', 'R'), ('mch.line_width_step', 'LEFT_BRACKET'), ('mch.line_width_step', 'RIGHT_BRACKET')]
+
+17/17 passed
+====================================================================== 
+ test_v02470.py
+PASS Three cards side by side: tool strip | tool card | Actions
+PASS ... all on screen
+PASS Strip: Select first, then the recent tools (icons), the current tool on (blue)
+PASS Card title "Cut tool", Shapes / Stamps tabs, a 4-column grid of the 6 shapes
+PASS Settings = the Quick HUD rows (sliders, segmented choices, toggles)  -- ['seg', 'seg', 'slider', 'seg', 'seg', 'seg', 'slider', 'slider', 'toggle']
+PASS Actions panel sections like Modeler  -- ['Settings', 'Actions', 'Shading', 'Resolution', 'Symmetry', 'Groups', 'Repetition', 'Visibility']
+PASS ... every button runs a real operator
+PASS Bigger on big screens (size factor)
+PASS Size factor: 4K at 100 % doubles, a normal screen stays, Mecha UI Size multiplies
+PASS Opened at a screen corner: still all on screen
+PASS Shape tile: sets the shape, the menu stays
+PASS Stamps tab
+PASS ... the grid shows stamps (or a note when there are none)
+Info: Symmetry X: on
+PASS Symmetry X button: live mirror on the part
+PASS ... shown on (blue) next time
+PASS Segmented choice sets that value
+PASS Ctrl + click on a slider: default
+PASS Click on a slider (no drag): type the value
+PASS Star pins / unpins the tool; the set name cycles the favorites sets
+PASS Tool button closes the menu; held (Ctrl + Alt) it switches in place and stays
+PASS Held: Duplicate makes the copy in place (no grab), the menu stays
+PASS Base Mesh: the card shows its profiles (Flat / Chamfer / Bevel ...)
+PASS RMB opens it (stroke tools and Select / Move), the old panel stays as an option
+PASS Hold Ctrl + Alt: keys for either order (left / right)
+PASS ... opens after a moment held (sooner + click = a normal Ctrl + Alt draw)
+PASS ... in hold mode clicks never close it, letting go of Ctrl / Alt does
+PASS ... only in MECHA LAB
+PASS Quick HUD: under the view name text, twice as big on a 4K screen
+PASS Quick HUD and key legend paint dark rounded cards with the size factor
+PASS Text fits its button (shortened with …)
+PASS Icons are read into GPU textures and the temporary image is removed (nothing left in the file)
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.658  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.659  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.660  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.661  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.662  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.663  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.664  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'height', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'bevel_width', 'subtype'
+00:00.665  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.666  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+00:00.666  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'offset', 'subtype'
+PASS Drawing code runs for every hovered button (stand-in painter)
+PASS Key legend paints its card and lines
+
+33/33 passed
+====================================================================== 
+ test_v02471.py
+PASS Every Mecha drawing tool (and Screw, Primitive) asks the HUD first on a left click
+PASS ... and in 3D View for the other tools (Concept / Path Move, Curve): press and (0.24.57) double-click
+PASS ... the old HUD gizmos are gone (nothing can beat the click any more)
+PASS ... a click that is not on the HUD passes on to the tool
+PASS HUD rows and title under the view text (as drawn)
+PASS Hit test: a row
+PASS ... the title row (move the HUD)
+PASS ... elsewhere nothing (the click goes to the tool)
+PASS ... moved HUD: the hit area moves with it
+PASS Drag = value (Shift fine), Esc / RMB = back, click = type / next choice, Ctrl+click = default, undo step
+PASS Middle click: one key item, middle mouse with no Shift / Ctrl (pan / zoom untouched)
+PASS ... no movement + let go = the menu; a drag = the usual orbit
+PASS ... only in MECHA LAB, can be switched off
+PASS Mecha Menu: − / + size buttons under the tool strip
+PASS ... + makes everything bigger (preference Viewport Popups), − smaller, kept in 0.5 - 3  -- (1.0, 1.0)
+PASS ... clamped
+PASS Ctrl + wheel over the menu resizes it
+PASS Sidebar Icon Size shows Viewport Popups; presets and the saved sizes include it
+PASS The size factor follows it (menu, Quick HUD, key legend all use ui_factor)
+
+19/19 passed
+====================================================================== 
+ test_v02471_quad.py
+PASS The quad remesher is in the engine (Linux x64 here)  -- mdecim_linux_x64.so
+PASS ... and in the Windows DLL (mquad_run / mquad_version / mquad_free; still only KERNEL32 + msvcrt)  -- 74752
+PASS Its source is in tools_dev/native and the build script builds it into the same library
+PASS 158,004 triangles -> about 3,000 polygons (within 15 %)  -- (2963, [48000, 12000, 3000, 750])
+PASS ... mostly quads (95 %+), 93 %+ of the points with 4 edges  -- (0.9817752278096524, 0.967983651226158)
+PASS ... closed: no holes, no edge on 3 faces  -- (0, 0)
+PASS ... on the surface (face centres: mean < 2 %, max < 15 % of a quad)  -- (0.008453085087859696, 0.0795422251368102)
+PASS ... the hard edges stay hard edges of the quads (90 %+ of the original crease within 0.1 quad of one)  -- 0.9443298969072165
+PASS ... quick (C engine: under 15 s here, 4 threads)  -- 1.55
+PASS The same result every time  -- ((3435.226, 2936, 2963, 17297241), (3435.226, 2936, 2963, 17297241))
+PASS All Quads: only quads, about the same count, closed  -- (3072, 1.0, 0, 0)
+PASS ... hard edges kept too (85 %+)  -- 0.942680412371134
+PASS remesh_object: the SubTool itself becomes quads, the message says how many and how long  -- Quad Remesh: 79,002 > 2,009 polygons, 99 % quads, 358 hard edges marked in 1.3 s
+PASS Polygroups come along  -- {1, 2}
+PASS Materials come along  -- (3, 1.0, [1032, 977])
+PASS The mask comes along
+PASS A 12-triangle cube is subdivided first: about 1,500 quads, closed, same size  -- ('Quad Remesh (low-poly part: its own edges kept): 6 > 1,494 polygons, 100 % quads, 206 hard edges marked in 0.9 s', 0, 0.9959839357429718, (2.0, 1.0, 0.5))
+PASS An open sheet keeps its border (not filled) and its size  -- ('Quad Remesh (low-poly part: its own edges kept): 3,600 > 800 polygons, 100 % quads, 114 hard edges marked in 0.9 s', 114, 0, 0.9975)
+PASS A decimated input (few triangles per wanted face) is followed edge by edge: its hard edges become guide lines  -- 508
+PASS ... the quads' hard edges come marked (crease + bevel weight; Hard Edges bevel / subdivide work at once)  -- (390, 'Quad Remesh (low-poly part: its own edges kept): 4,740 > 2,511 polygons, 99 % quads, 390 hard edges marked in 2.2 s')
+PASS ... and they run along the original creases (90 %+ of them within 2 % of the size)  -- 1.0
+PASS ... an Alt+D twin keeps its own (old) mesh: only the SubTool worked on changes  -- (4740, 2511)
+PASS A failure halfway leaves the SubTool's mesh as it was (the result is built apart, then swapped in)  -- (True, 2511)
+PASS Quad Remesh has its own box on the ZBrush shelf (not under Decimation)  -- ['Bake High Poly', 'Cloth Brush', 'Decimation', 'Edge Mesh', 'Geometry', 'Hard Edges', 'Masking', 'Quad Remesh', 'Re-Fix', 'Stroke', 'SubTool', 'Wrinkle Lines']
+PASS ... Quad Remesh + Target, Mostly Quads / All Quads side by side, Hard Edges, Half / Same / Double  -- ({'QUAD_REMESH', 'QR_DOUBLE', 'QR_HALF', 'QR_SAME'}, {'qr_target', 'qr_mode', 'bg_jobs', 'qr_angle'}, [True])
+PASS Mostly Quads by default, Hard Edges 30 degrees
+Info: Quad Remesh Target 14.447
+PASS Half: the target becomes half the polygons now (a setting, no undo step)  -- (14.446999549865723, 28894)
+Info: Quad Remesh: 28,894 > 1,532 polygons, 100 % quads, 328 hard edges marked in 0.3 s
+PASS Quad Remesh on the shelf: All Quads, about 1,500, back in Sculpt Mode  -- (1532, 1.0, 'SCULPT')
+PASS ... a recovery copy is made before it (one of the risky steps)
+00:13.244  bpy.rna          | WARNING current value '3' matches no enum in 'BrushTextureSlot', '', 'map_mode'
+PASS Ctrl+Z brings the polygons back, still in Sculpt Mode  -- (28894, 28894, 'SCULPT')
+PASS Shape keys: it says to remove them first (nothing changed)
+PASS Multires: it says to delete / apply the levels first
+
+32/32 passed
+====================================================================== 
+ test_v02472.py
+PASS Menu: a Shading section with Flat / Auto Smooth / Smooth
+PASS ... Flat shades the part flat
+PASS ... Smooth shades it smooth
+PASS Base Mesh menu: the profiles and the lasso shapes again (they had gone from the menu)
+PASS ... a lasso tile sets the shape
+PASS Clicks never close the menu (tools switch in place), moving off it does
+PASS ... "near": over a card yes, in the gap between cards yes, far away no
+PASS ... a middle click while the menu is open does not open a second one
+Info: Symmetry X: on
+PASS Menu Mirror X = the same live mirror as Alt+X (MCH_Mirror; the card, Apply and Enter see it)
+PASS ... a copy on the other side of the world centre
+PASS Menu Radial: with a mirror on it means Kaleido
+Info: Part: Symmetry Kaleido
+PASS Kaleido: mirror first, then the radial copies
+PASS Count: 4 copies round the axis
+PASS Radial only: the mirror goes, the copies stay
+PASS Radial axis X
+PASS Mirror only: the radial copies, helper and centre go
+PASS Mirror planes X + Z (bisect off: 4 whole copies)
+PASS Bisect toggle: on only for the active planes
+PASS ... and off again
+PASS Flip toggle
+PASS Last plane off: the mirror ends
+PASS A 0.24.49 menu mirror is taken over (one mirror, its planes kept)
+PASS Apply bakes it into the mesh
+PASS No symmetry: no card
+PASS Card opened from the menu (Symmetry Card)
+PASS Card: Off / Mirror / Radial / Kaleido
+PASS ... Kaleido shows Mirror (X Y Z, Bisect, Flip) and Radial (axis, count, centre), Apply / Remove
+PASS ... + adds a copy
+PASS ... a new Kaleido starts with the plane that holds the radial axis (axis X: the Y plane)
+PASS ... Mirror Z plane
+PASS ... Kaleido: the mirror planes go through the radial centre (its mirror object)
+PASS ... Remove: off, card closed
+PASS ... Remove: the radial centre is gone, nothing points at it
+PASS Kaleido = mirror in each slice: the copies are symmetric to the X plane and to a quarter turn round Z  -- 64
+PASS ... move the centre: the mirror planes move with it (one origin)
+PASS ... back to Mirror: the radial centre goes, the mirror is on the mirror centre again
+PASS Card clicks are taken first by the HUD click operator (in every tool)
+PASS The old mirror side buttons are replaced by the card (Preferences: Symmetry Card)
+Info: Group: 2 objects grouped
+PASS Group: a handle at the middle, the parts inside follow it
+PASS ... move the handle: the parts move
+PASS Repetition Mirror X: linked copies across the world X plane (0.24.53: world axes by default)  -- [(-3.0, 1.0, -0.0), (-3.0, -1.0, -0.0)]
+PASS ... Centre Group: through the group handle instead
+PASS ... Centre Cursor: through the 3D cursor
+PASS ... World: moving the group moves the copies on the other side
+PASS Radial x4 round the world Z axis: 3 copies of each part
+PASS Kaleido (mirror X + 3 round): 5 copies of each part
+PASS Linked: move a part and its copies move too
+PASS The group handle selected: the card is its Repetition
+PASS ... Radial from the card
+PASS ... the group card has Centre World (on) / Group / Cursor
+PASS ... Group from the card
+PASS The card is docked at the right of the viewport (not over the part / group)  -- (960.0, 300.0, 1276.0)
+PASS ... + one more copy
+PASS Apply: the copies become real objects in the group, the repetition is off
+PASS Enter: everything else is wire and cannot be picked
+PASS Exit: as before
+PASS Merge: the group's meshes are one mesh
+Info: Ungrouped 1 objects
+PASS Ungroup: back in its old collection, handle and group collection gone
+PASS Groups in groups: the inner group (handle + collection) goes inside
+PASS ... grouping parts inside a group: the new group nests in that group
+PASS ... ungroup it: back in the outer group
+PASS ... the outer repetition copies the inner group too
+
+62/62 passed
+====================================================================== 
+ test_v02472_hardedges.py
+PASS Cube: Find Edges finds its 12 edges: creased, with a bevel weight  -- (12, 12)
+PASS ... Client Look (default): nothing marked Sharp for the display (the mesh alone gives the look)
+PASS ... every face shaded smooth (the sharp edges do the hard look), the object remembers it
+PASS Live modifiers at the end: Bevel (no Subdivide at 0, no Weighted Normals: custom normals are off by default)  -- ['MCH_HE_Bevel']
+PASS Width 0.1, 1 segment: a chamfer (6 + 12 + 8 faces), the size stays 2 x 2 x 2, closed  -- 26
+PASS ... the chamfer starts 0.1 in from each edge
+PASS Changing Segments on the shelf updates the live bevel at once
+PASS ... and Width
+PASS Bevel off + Subdivide 2: the creases keep the cube a cube (corners at 1, flat sides)  -- 96
+PASS Crease off: Subdivide rounds it  -- 0.8395062685012817
+PASS Weighted Normals on: that modifier comes (last)
+PASS ... off: it goes
+PASS Client Look off: the hard edges are marked Sharp for Blender's display
+PASS ... on again: the Sharp marks go
+PASS Clear: marks and live modifiers gone
+PASS Outer Only: the inside corner of an L gets no bevel, the outside edges do  -- (18, 13.0)
+PASS ... off again: every hard edge bevelled (0.24.73 inside corners a narrower share, never more than full)  -- (18, 18)
+PASS Decimated part: hard edges found, Merge Flats joins the flat triangles into big faces (fewer polygons)  -- (332, 7900, 726)
+PASS ... closed
+PASS ... the hard edges sit on the original creases (95 %+ of the crease within 0.5 % of the size)  -- 1.0
+PASS ... and every one of them runs along a real crease of the original (none on flat or round parts)  -- 0.0088
+PASS ... the live bevel makes a closed mesh with more faces  -- (1752, 726)
+PASS Merge Flats off: the triangles stay
+PASS Quad Remesh output: Find Edges keeps the quads (Merge Flats only joins triangle meshes), hard edges found  -- (355, 1977, 1977)
+PASS ... Subdivide on the quads: closed, 4x the faces after the bevel  -- (10952, 1977)
+PASS Apply: the live modifiers baked into the mesh  -- (2, 10952)
+PASS ... Client Look: a plain mesh - no Sharp / Crease / Bevel Weight / custom normals, every face smooth
+PASS Hard Edges has its own box on the ZBrush shelf: Find Edges + Angle, Merge Flats / Crease / Outer Only, Bevel + Width, Segments / Shape, Subdivide / Client Look, Weighted Normals, Apply / Clear  -- ({'HE_FIND', 'HE_APPLY', 'HE_CLEAR'}, {'he_outer', 'he_bevel', 'he_segments', 'he_profile', 'he_angle', 'he_style', 'he_width', 'he_subdiv', 'he_crease', 'he_merge', 'he_normals', 'he_client'})
+PASS Defaults: 30 degrees, Merge Flats, Crease, Bevel 2 segments, Client Look, no Weighted Normals, no Subdivide
+Info: Hard Edges: 231 edges, 2,888 > 441 polygons (flats merged)
+PASS Find Edges on the shelf: marks + live bevel, back in Sculpt Mode  -- ('SCULPT', ['MCH_HE_Bevel'])
+PASS ... a recovery copy is made before Find Edges / Apply (risky steps)
+PASS A shelf setting drives the SubTool's live bevel in Sculpt Mode
+00:03.090  bpy.rna          | WARNING current value '3' matches no enum in 'BrushTextureSlot', '', 'map_mode'
+PASS Ctrl+Z: the polygons, marks and modifiers as before, still in Sculpt Mode  -- (2888, 2888, 'SCULPT')
+Info: Hard Edges: 231 edges, 2,888 > 441 polygons (flats merged)
+Info: Hard Edges: applied, 1,154 polygons
+PASS Apply on the shelf: baked, no live modifiers, the settings no longer drive it
+PASS ... (a setting change afterwards adds nothing)
+Info: Hard Edges: cleared
+PASS Clear on the shelf: the marks go
+PASS A DynaMesh-size mesh (300k+ polygons): it says to Decimate / Quad Remesh first (nothing changed)  -- Hard Edges: 327,680 polygons - Decimate or Quad Remesh first
+
+37/37 passed
+====================================================================== 
+ test_v02473.py
+PASS GN Edge group: the band joined with itself (Exact) then taken away with Manifold; the old one all Exact
+PASS Corner width: two edges at 90 degrees go sqrt(2) along the middle (was 1: 71 % at corners), capped
+PASS Cut + GN Chamfer on a closed part: the fast way, closed result (0.24.68: the band is looked at first - a square pocket's band crosses itself at the corners: self-union + Manifold)  -- (['band', True], 'Cut: Dense | GN Chamfer: 36 border edges')
+PASS ... the chamfer is as wide at the corner as along the side  -- (0.96, 0.948)
+PASS An open part never takes the fast way (Manifold needs a closed solid)
+Info: Path Move: 11 steps
+PASS Stretch along a path: one pass - the points grow a little, not about 1.5x per step; closed  -- (2648, 3782)
+PASS ... remembered as one Path Move (Undo Last takes the whole path)
+PASS ... the part follows the path  -- 2.286961555480957
+PASS Live ramp: another deep side reuses the layout (the slow part is not done again)  -- [1]
+PASS ... a new depth too (for a Cut Ramp the edge width stays; Base Mesh edge follows depth: laid out again)
+PASS ... the carved mesh is fingerprinted
+PASS Edit after the ramp, then move a Ramp slider: the edit stays, the ramp is kept as it is (no longer live)
+PASS ... nothing to re-carve any more
+Info: Part_Quad: 1806 quads, 56 hard edges kept (0.0 s)
+PASS Quad result: no bevel unless asked
+PASS Bevel Edges: a live Bevel on the kept edges by weight, 2 segments (all quads); Outer = fewer edges than All (the pocket floor corners stay sharp)  -- (256, 312)
+PASS ... the bevelled result is all quads and closed  -- 2342
+PASS Bevel off: the modifier goes
+PASS Apply: the bevel is made real  -- (1806, 2482)
+
+18/18 passed
+====================================================================== 
+ test_v02473_safety.py
+PASS Free memory is known on this system (Linux: /proc/meminfo; Windows: GlobalMemoryStatusEx)  -- 15964893184
+PASS A result over the hard cap never fits; a small one does
+PASS ... nor one that needs more than half the free memory (it says how much)  -- 6,000,000 polygons need about 2.2 GB, only 3.7 GB is free
+PASS High Poly: when even Smoothness 1 is over the limit the level is 0 (it used to stay 1 and go over)
+Info: High poly: 1 object(s), 3,840 faces in "HighPoly"
+PASS High Poly makes its copy
+Warning: High poly: Part: 320 faces is too many for High Poly (about 2,048 even at Smoothness 1) - decimate it first
+PASS Not enough memory: refused, and the copy made before is still there, untouched  -- ({'CANCELLED'}, 1)
+PASS A rebuild that fails keeps the old copy (it was deleted first before)  -- (True, ['Part_HP'])
+PASS A rebuild that works replaces the old copy (one copy, same name)  -- ['Part_HP']
+PASS Divide that would not fit in memory is refused with a message (each Divide is 4x - 2M faces x 2 Divides took Blender down)  -- Divide: 5,120 polygons need about 0.1 GB, only 0.0 GB is free - not divided (Del Higher, or Decimate first)
+PASS ... and works when it fits
+PASS Decimate: a short locked / weight array is refused (it read past its end and took Blender down)
+PASS ... NaN positions and broken faces too
+PASS ... feat indices out of range too
+PASS ... a weight with NaN is cleaned (1 .. 1e6), the run goes on
+PASS Quad Remesh: NaN positions / broken faces are refused before the engine
+PASS Both engines' functions have their argument types declared (a wrong one is a Python error)
+
+16/16 passed
+====================================================================== 
+ test_v02474.py
+PASS Path Move has Area Brush (default) / Section; the operator keeps Section for scripts
+PASS Brush outline: 8 sides square to the drag across the surface; pulled straight out it lines up with the axes
+Info: Path Move Extend: 12 steps, brush patch 8 points
+PASS 0 cuts, SPHERE: only a brush-wide column comes up (closed, outward, along the path)  -- (0, 0.0194, 0.19999998807907104)
+PASS 0 cuts: the rest of the plate stays where it was
+Info: Path Move Extend: 12 steps, brush patch 16 points
+PASS 12 cuts, SPHERE: only a brush-wide column comes up (closed, outward, along the path)  -- (0, 0.0196, 0.20000000298023224)
+PASS 12 cuts: the rest of the plate stays where it was
+Info: Path Move Extend: 12 steps, brush patch 22 points
+PASS 30 cuts, BOX: only a brush-wide column comes up (closed, outward, along the path)  -- (0, 0.0238, 0.20000000298023224)
+PASS 30 cuts: the rest of the plate stays where it was
+PASS The drag preview reads the same patch (Brush) - much smaller than the section  -- (0.11504902926016927, 0.5220153263018986)
+Info: Path Move Extend: 12 steps, brush patch 16 points
+PASS Auto Apply off: the brush size is remembered for the replay  -- ({'FINISHED'}, [{'kind': 'extend', 'hit': [0.20000000298023224, 0.10000000149011612, 0.15000000596046448], 'normal': [0.0, 0.0, 1.0], 'offsets': [[0.0, 0.0, 0.0], [0.0, 0.0, 0.05000000074505806], [0.0, 0.0, 0.10000000149011612], [0.0, 0.0, 0.15000000596046448], [0.0, 0.0, 0.20000000298023224], [0.0, 0.0, 0.25], [0.0, 0.0, 0.30000001192092896], [0.0, 0.0, 0.3499999940395355], [0.05000000074505806, 0.0, 0.3499999940395355], [0.10000000149011612, 0.0, 0.3499999940395355], [0.15000000596046448, 0.0, 0.3499999940395355], [0.20000000298023224, 0.0, 0.3499999940395355], [0.25, 0.0, 0.3499999940395355]], 'turn': True, 'taper': 0.0, 'hardness': 1.0, 'radius': 0.10000000149011612, 'sides': 8, 'front_only': False}])
+PASS From the viewport: the scene Area, the shape and the brush (in the part's own size) go to Extend
+PASS Tab while dragging: Brush <-> Whole, the grab is read again
+PASS ... and back
+PASS The old way is called Whole; Tab is in the modal
+PASS Quick HUD / Mecha Menu settings: Brush / Whole next to the method; the key legend tells Tab
+PASS Middle-click gate: a 3D mouse (NDOF) or trackpad event ends it and goes on; other events pass through
+
+16/16 passed
+====================================================================== 
+ test_v02474_edgemesh.py

@@ -145,6 +145,7 @@ def head_mesh(kind, r, h, recess=0.5, name='MCH_Screw'):
     finally:
         bm.free()
     me.shade_smooth()
+    from . import edge_memory as _em; _em.mark_generated(me)   # 0.24.95 Edge Memory: the head's own lines
     try:
         me.set_sharp_from_angle(angle=math.radians(40))
     except (AttributeError, TypeError):
@@ -168,7 +169,6 @@ def is_screw(ob):
 def rebuild(ob):
     s = ob.mch_screw
     me = head_mesh(s.kind, s.radius, s.radius * s.height, s.recess, name=ob.name)
-    from . import edge_memory as _em; _em.mark_generated(me)   # 0.24.95 Edge Memory: the part's own lines
     old = ob.data
     for m in old.materials:
         me.materials.append(m)
