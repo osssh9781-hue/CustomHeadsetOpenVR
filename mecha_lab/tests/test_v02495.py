@@ -38,4 +38,15 @@ check('mark_generated hooked into every part-making tool (13 modules)',
                       'flower_plate.py', 'mech_ridge.py', 'plate_detail.py', 'scale_brush.py', 'screw_stamp.py', 'surface_draw.py',
                       'surface_lasso.py'}, hooked)
 check('boolean_result flags any cutter', 'flag_cutter(cutter)' in inspect.getsource(cg.boolean_result))
+from mecha_lab import actions_menu as am, highpoly as hp
+from mecha_lab.mecha_menu import Item
+check('Right-click menus: Bake High Poly in the Mecha Lab Actions popup (Resolution) and in Blender\'s object context menu',
+      "action='BAKE_HP'" in inspect.getsource(am.draw_actions) and "'BAKE_HP'" in inspect.getsource(hp._context_menu))
+wm = bpy.context.window_manager
+wm.mch_zb_pop, wm.mch_zb_pop_xy, wm.mch_zb_pop_focus = 'MENU', (500, 400), ''
+items = zu.popup(bpy.context, 1200, 900, 1.0, Item)
+acts = [it.action[2].get('action') for it in items if getattr(it, 'action', None) and isinstance(it.action, tuple)
+        and len(it.action) > 2 and it.action[0] == 'op' and it.action[1] == 'mch.zb_action']
+check('ZBrush right-click popup: a DynaMesh / Decimate / Bake High Poly row', {'DYNAMESH', 'DECIMATE', 'BAKE_HP'} <= set(acts), acts)
+wm.mch_zb_pop = ''
 summary()

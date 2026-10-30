@@ -100,6 +100,7 @@ def draw_actions(layout, context):
     _btn(g, 'mch.one_click_remesh', 'MOD_REMESH', mesh_on)
     _btn(g, 'mch.quad_remesh', 'MESH_GRID', mesh_on)
     _btn(g, 'mch.lowpoly_make', 'MOD_DECIM', mesh_on)
+    _btn(g, 'mch.mesh_tool', 'MOD_SUBSURF', mesh_on, action='BAKE_HP')      # 0.24.95 Bake High Poly
 
     _header(col, 'Symmetry')
     m = mirror_mod(ob) if mesh_on else None

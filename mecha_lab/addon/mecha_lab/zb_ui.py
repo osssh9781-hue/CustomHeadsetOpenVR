@@ -763,7 +763,7 @@ def popup(context, region_w, region_h, k, Item):
         return out
     w = 330 * k
     bars = ('draw_size', 'focal_shift', 'z_intensity')
-    h = PAD * k * 2 + 3 * (28 + GAP) * k + (ROW + GAP) * k + 46 * k
+    h = PAD * k * 2 + 3 * (28 + GAP) * k + (ROW + GAP) * k + 46 * k + (ROW + GAP) * k   # (+ the actions row)
     focus = wm.mch_zb_pop_focus
     x0 = mx - w / 2
     y0 = my - h + PAD * k + 14 * k
@@ -795,6 +795,10 @@ def popup(context, region_w, region_h, k, Item):
         out.append(Item('sbtn', x0 + PAD * k + i * (tw + GAP * k), y, tw, 46 * k, z,
                         'png:' + zs.icon_stem(zs.BY_Z[z][1]), z == cur, True, ('op', 'mch.zb_brush', {'name': z}),
                         'ABOVE'))
+    y -= GAP * k + ROW * k                            # 0.24.95 the heavy actions at the cursor (user: the RMB menu)
+    for i, (lab, action) in enumerate((('DynaMesh', 'DYNAMESH'), ('Decimate', 'DECIMATE'), ('Bake High Poly', 'BAKE_HP'))):
+        out.append(Item('tbtn', x0 + PAD * k + i * (cw + GAP * k), y, cw, ROW * k, lab, '', False, True,
+                        ('op', 'mch.zb_action', {'action': action})))
     return out
 
 
