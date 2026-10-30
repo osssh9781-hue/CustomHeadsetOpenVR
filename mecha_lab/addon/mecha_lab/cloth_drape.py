@@ -64,6 +64,8 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
     thickness: FloatProperty(name='Thickness', description='The cloth gets a Solidify modifier of this thickness (% of the outline / body size; 0 = a single surface)',
                              default=0.0, min=0.0, max=5.0, subtype='PERCENTAGE')
     pin_rim: BoolProperty(name='Pin Rim', description='The outline edge stays where it was drawn (sewn on); off: the cloth is free. Front + Back: only the top edge is held', default=True)
+    puff: FloatProperty(name='Puff', description='Sew Copy: the pressure that lifts the cloth away from the plate it is sewn to (a pillow / padding); 0 = only gravity and looseness',
+                        default=50.0, min=0.0, max=200.0, subtype='PERCENTAGE')
     two_sides: BoolProperty(name='Front + Back', description='The lasso also makes a back piece on the far side of the body and the two are sewn together down the sides (the top and bottom stay open), like front / back pattern pieces in Marvelous Designer',
                             default=False)
     stop_at_pins: BoolProperty(name='Stop at Pins', description='The cloth cannot hang lower (world down) than the lowest pinned point', default=False)
@@ -190,7 +192,7 @@ def patch_two_sides(context, loops, projector, spacing_pct):
     return target, me, nb, _bbox_size(front_l + back_l), info
 
 
-def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_ob=None, wrap=False, sew=None, pin_idx=None):
+def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_ob=None, wrap=False, sew=None, pin_idx=None, puff=False):
     """The cloth + the collider for the mesh ``me``: a lasso patch (local space of ``target``, the first ``nb``
     points its rim) or (``to_cloth``: the matrix that brings the target's points into the cloth's space) a mesh
     of its own laid on ``target``.  Returns the session."""
@@ -214,9 +216,9 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
         if len(rim):
             pin[rim] = 1.0
     elif st.pin_rim:
-        if to_cloth is None:
+        if to_cloth is None and not puff:
             pin[:min(nb, n)] = 1.0
-        else:                                         # a mesh of its own: its open edges are the rim
+        else:                                         # a mesh of its own / a sewn copy: its open edges are the rim
             rim = wl.boundary_verts(me)
             if len(rim):
                 pin[rim] = 1.0
@@ -271,7 +273,7 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
         tn = tn @ R.T
         tn /= np.maximum(np.linalg.norm(tn, axis=1), 1e-12)[:, None]
     lo, hi = co.min(0) - size * PAD, co.max(0) + size * PAD
-    if to_cloth is not None or wrap or sew is not None:    # a mesh of its own may slide far down the body: the whole body
+    if to_cloth is not None or wrap or sew is not None or puff:    # a mesh of its own may slide far down the body: the whole body
         near = np.ones(len(tco), bool) if len(tco) <= 400000 else np.all((tco >= lo - size * 2) & (tco <= hi + size * 2), axis=1)
     else:
         near = np.all((tco >= lo) & (tco <= hi), axis=1)
@@ -282,6 +284,8 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
                                   cell=max(spacing * 0.8, size / 160.0), band=GRID_BAND)
     sess = dict(cloth=cloth, grid=grid, margin=margin, friction=st.stick / 100.0, damping=damping, wrap=wrap, tubes=tubes,
                 sew=int(len(sew)) if sew is not None else 0,
+                puff=(size * 0.0015 * st.puff / 50.0) if puff else 0.0, puff_dir=nrm.copy() if puff else None,
+                puff_max=size * 0.35 * (st.slack / 100.0) ** 0.5 if puff else 0.0,
                 press=(size * 0.004 * st.wrap_tight / 50.0) if wrap else 0.0,
                 gdir=wl._gravity_dir(gdir_ob or target), size=size, frames=st.frames, frame=0, points=n, collider=int(near.sum()),
                 grid_time=time.perf_counter() - t, stage='run')
@@ -337,6 +341,11 @@ def advance(sess, st):
         d, inward = sess['grid'].inward(cloth.co)
         f = inward * sess['press']
         f[d <= sess['margin'] * 1.2] = 0.0
+        force = f if force is None else force + f
+    if sess.get('puff', 0.0) > 0 and sess.get('puff_dir') is not None:   # the sewn copy's pillow: away from the plate
+        lift = ((cloth.co - cloth.init) * sess['puff_dir']).sum(1)            # how far off the plate already
+        room = np.clip(1.0 - lift / max(sess['puff_max'], 1e-9), 0.0, 1.0)   # the extra fabric sets the height
+        f = sess['puff_dir'] * (sess['puff'] * room * (1.0 - cloth.pin))[:, None]
         force = f if force is None else force + f
     cloth.step(force=force, gravity=g, damping=sess['damping'], iterations=ITERATIONS,
                keep_rate=KEEP_RATE if st.keep > 0 else 0.0)
@@ -554,9 +563,58 @@ def perform_wrap(context, body):
             f'(Space wrap · Enter keep · Esc drop)')
 
 
+def perform_sew_copy(context, plate):
+    """A sheet you extracted (a plate) copied: the copy is the cloth, its edges sewn to the plate's edges (the
+    same points, held), the plate itself the collider - a light one, just that sheet.  Looseness + Puff lift the
+    copy off the plate between the seams like a pillow / padding; gravity sags it.  A new object "Cloth Sew"
+    (Enter keeps, Esc drops)."""
+    st = settings(context)
+    if st is None:
+        raise cg.CutError('Cloth Drape settings missing')
+    if sim_active():
+        raise cg.CutError('Cloth Drape: keep (Enter) or drop (Esc) the cloth you have first')
+    if plate is None or plate.type != 'MESH' or not len(plate.data.polygons):
+        raise cg.CutError('Select the plate (the extracted sheet) to copy and sew')
+    if not len(wl.boundary_verts(plate.data)):
+        raise cg.CutError('Sew Copy: the plate has no open edge to sew along (a closed mesh - use Wrap This Mesh)')
+    me = plate.data.copy()
+    me.name = 'MCH_ClothSew'
+    for p in me.polygons:
+        p.use_smooth = True
+    co = mio.read_co(me)
+    size = float(np.linalg.norm(co.max(0) - co.min(0)))
+    ob = bpy.data.objects.new('Cloth Sew', me)
+    coll = plate.users_collection[0] if plate.users_collection else context.scene.collection
+    coll.objects.link(ob)
+    ob.matrix_world = plate.matrix_world.copy()
+    ob.parent = plate
+    ob.matrix_parent_inverse = plate.matrix_world.inverted_safe()
+    ob[SRC_KEY] = plate.name
+    for o in context.selected_objects:
+        o.select_set(False)
+    ob.select_set(True)
+    context.view_layer.objects.active = ob
+    try:
+        sess = build(context, plate, me, 0, size, st, to_cloth=None, pin_sel=False, gdir_ob=plate, puff=True)
+    except Exception:
+        bpy.data.objects.remove(ob)
+        bpy.data.meshes.remove(me)
+        raise
+    c = sess['cloth']
+    sewn = c.pin >= 1
+    c.co[sewn] = c.init[sewn] = c.prev[sewn] = co[sewn]       # the seam: the copy's edge exactly on the plate's edge
+    mio.write_co(me, c.co)
+    me.update()
+    SIM.clear()
+    SIM.update(ob=ob.name, target=plate.name, nb=0, size=size, sess=sess, running=False, done=False, want=None,
+               surface=co.copy(), start=c.init.copy(), snapshot=_snapshot(st), mode='SEW')
+    return (f'Sew Copy of {plate.name}: {sess["points"]:,} cloth points, {int(sewn.sum()):,} sewn on the edge, puff {st.puff:.0f} % '
+            f'(Space simulate · Enter keep · Esc drop)')
+
+
 def _snapshot(st):
     return tuple(getattr(st, k) for k in ('fabric', 'slack', 'shrink', 'gravity', 'stick', 'keep', 'gap', 'pin_rim', 'frames',
-                                          'wrap_tight', 'use_lines', 'stop_at_pins', 'two_sides'))
+                                          'wrap_tight', 'use_lines', 'stop_at_pins', 'two_sides', 'puff'))
 
 
 def restart(context):
@@ -569,7 +627,14 @@ def restart(context):
     me = ob.data
     mio.write_co(me, SIM['surface'])              # the laid patch again, then the cloth with the current sliders
     me.update()
-    sess = build(context, target, me, SIM['nb'], SIM['size'], st, sew=SIM.get('sew'), pin_idx=SIM.get('pin_idx'))
+    mode = SIM.get('mode')
+    sess = build(context, target, me, SIM['nb'], SIM['size'], st, sew=SIM.get('sew'), pin_idx=SIM.get('pin_idx'),
+                 to_cloth=SIM.get('to_cloth'), pin_sel=bool(SIM.get('pin_sel')), gdir_ob=ob if mode == 'MESH' else target,
+                 wrap=mode == 'WRAP', puff=mode == 'SEW')
+    if mode == 'SEW':
+        c = sess['cloth']
+        sewn = c.pin >= 1
+        c.co[sewn] = c.init[sewn] = c.prev[sewn] = SIM['surface'][sewn]
     mio.write_co(me, sess['cloth'].co)
     me.update()
     SIM.update(sess=sess, running=True, done=False, start=sess['cloth'].init.copy(), snapshot=_snapshot(st))
@@ -809,6 +874,27 @@ class MCH_OT_cdrape_wrap(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_cdrape_sew_copy(bpy.types.Operator):
+    """Copy the active plate (an extracted sheet) as a cloth sewn to it along its edges: the plate is the collider, the copy lifts off between the seams (Puff, Looseness) like a pillow; Space simulates, Enter keeps the new object, Esc drops it"""
+    bl_idname = 'mch.cdrape_sew_copy'
+    bl_label = 'Sew Copy'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.view_layer.objects.active
+        return ob is not None and ob.type == 'MESH' and context.mode == 'OBJECT' and not sim_active()
+
+    def execute(self, context):
+        try:
+            msg = perform_sew_copy(context, context.view_layer.objects.active)
+        except cg.CutError as ex:
+            self.report({'WARNING'}, str(ex))
+            return {'CANCELLED'}
+        self.report({'INFO'}, msg)
+        return {'FINISHED'}
+
+
 class MCH_OT_cdrape_lines(bpy.types.Operator):
     """Draw wrinkle lines on the body (the Wrinkle Lines tool): they become tubes under the cloth. Pick the Cloth Drape tool again to drape"""
     bl_idname = 'mch.cdrape_lines'
@@ -883,6 +969,10 @@ def draw(layout, context):
     r = box.row(align=True)
     r.prop(st, 'wrap_tight', slider=True)
     r.prop(st, 'wrap_points')
+    r = box.row(align=True)
+    r.enabled = not live
+    r.operator('mch.cdrape_sew_copy', text='Sew Copy (plate copied, edges sewn)', icon='MOD_SOLIDIFY')
+    box.prop(st, 'puff', slider=True)
     ob = context.view_layer.objects.active
     body = bpy.data.objects.get(SIM.get('target', '')) if live else ob
     n_lines = len(wl._lines_of(body)) if body is not None and body.type == 'MESH' else 0
@@ -917,7 +1007,8 @@ def draw(layout, context):
     box.prop(st, 'thickness', slider=True)
 
 
-CLASSES = (MCH_PG_ClothDrape, MCH_OT_cdrape_sim, MCH_OT_cdrape_mesh, MCH_OT_cdrape_wrap, MCH_OT_cdrape_lines, MCH_OT_cdrape_control)
+CLASSES = (MCH_PG_ClothDrape, MCH_OT_cdrape_sim, MCH_OT_cdrape_mesh, MCH_OT_cdrape_wrap, MCH_OT_cdrape_sew_copy, MCH_OT_cdrape_lines,
+           MCH_OT_cdrape_control)
 
 
 def register():
