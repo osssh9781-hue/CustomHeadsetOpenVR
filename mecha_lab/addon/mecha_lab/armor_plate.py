@@ -305,6 +305,7 @@ def build_region(points, tris, cos_local, nrms_local, quads=True):
             bmesh.ops.delete(bm, geom=loose, context='VERTS')
         me = bpy.data.meshes.new('MCH_PlateRegion')
         bm.to_mesh(me)
+        from . import edge_memory as _em; _em.mark_generated(me)   # 0.24.95 Edge Memory: the part's own lines
     finally:
         bm.free()
     me.update()

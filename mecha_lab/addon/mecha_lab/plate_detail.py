@@ -704,7 +704,8 @@ def build_mesh(p, name):
 def rebuild(ob):
     p = ob.mch_pdetail
     me = build_mesh(p, ob.name)
-    old = ob.data
+
+    from . import edge_memory as _em; _em.mark_generated(me)   # 0.24.95 Edge Memory: the part's own lines    old = ob.data
     for m in old.materials:
         me.materials.append(m)
     ob.data = me

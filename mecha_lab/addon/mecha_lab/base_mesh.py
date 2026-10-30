@@ -1091,6 +1091,7 @@ def rebuild(ob):
     bm = build_bmesh(groups, ob.mch_base)
     try:
         bm.to_mesh(ob.data)
+        from . import edge_memory as _em; _em.mark_generated(ob.data)   # 0.24.95 Edge Memory: the part's own lines
     finally:
         bm.free()
     if ob.get(ATTACH_KEY):
@@ -1405,6 +1406,7 @@ def _create_live_base(context, groups, frame, defaults, embed=0.0):
     me = bpy.data.meshes.new('MCH_BaseMesh')
     try:
         bm.to_mesh(me)
+        from . import edge_memory as _em; _em.mark_generated(me)   # 0.24.95 Edge Memory: the part's own lines
     finally:
         bm.free()
     ob = bpy.data.objects.new('MCH_Base', me)

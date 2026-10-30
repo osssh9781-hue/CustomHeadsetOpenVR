@@ -240,3 +240,47 @@ def restore(me, kept):
     except Exception as ex:
         print('Mecha: edge memory restore:', ex)
         return 0
+
+
+GEN_ANGLE = math.radians(30.0)   # a generated part: faces meeting at more than this = a line the tool made
+
+
+def geometry_mask(me, angle=GEN_ANGLE, specks=True):
+    """bool per edge from the geometry alone: boundary / non-manifold edges and the edges whose two faces meet at
+    more than ``angle`` (a lone such edge with no hard neighbour at either end dropped when ``specks``)."""
+    from . import mesh_io as mio
+    ne, nf = len(me.edges), len(me.polygons)
+    out = np.zeros(ne, bool)
+    if ne == 0 or nf == 0:
+        return out
+    e_sorted, f_sorted, starts, ends = _edge_faces(me)
+    cnt = ends - starts
+    out[e_sorted[starts[cnt != 2]]] = True
+    s2 = starts[cnt == 2]
+    nrm = np.empty(nf * 3, np.float32)
+    me.polygons.foreach_get('normal', nrm)
+    nrm = nrm.reshape(-1, 3)
+    d = np.einsum('ij,ij->i', nrm[f_sorted[s2]], nrm[f_sorted[s2 + 1]])
+    ang = e_sorted[s2[d < math.cos(angle)]]
+    if specks and len(ang):
+        ev = mio.read_edge_verts(me)
+        deg = np.bincount(ev[ang].ravel(), minlength=len(me.vertices))
+        lone = (deg[ev[ang, 0]] == 1) & (deg[ev[ang, 1]] == 1)
+        ang = ang[~lone]
+    out[ang] = True
+    return out
+
+
+def mark_generated(me, angle=GEN_ANGLE):
+    """The marks of a part a tool just built or rebuilt (plates, Base Mesh, ridges, screws, molding, patches):
+    its rim (boundary) and its own creases - exact here, because the geometry is the tool's clean output.  Replaces
+    the old marks (a rebuild makes new geometry).  Returns the number marked."""
+    try:
+        m = geometry_mask(me, angle)
+    except Exception as ex:
+        print('Mecha: edge memory (generated):', ex)
+        return 0
+    if not m.any():
+        clear(me)
+        return 0
+    return mark_edges(me, m, add=False)

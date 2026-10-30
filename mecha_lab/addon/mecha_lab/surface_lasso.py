@@ -251,6 +251,7 @@ def split_along_loop(context, ob, loop_world, normals_world, gap=0.0005, margin=
         bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.index not in keep], context='FACES')
         part_me = bpy.data.meshes.new(f'{ob.name}_part{k}')
         bm.to_mesh(part_me)
+        from . import edge_memory as _em; _em.mark_generated(part_me)   # 0.24.95 Edge Memory: the part's own lines
         bm.free()
         part = bpy.data.objects.new(part_me.name, part_me)
         for coll in ob.users_collection:

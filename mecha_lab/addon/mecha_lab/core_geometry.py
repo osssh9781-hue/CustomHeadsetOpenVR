@@ -441,6 +441,26 @@ def build_cutter_mesh(groups, projector, near_co, far_co, name='MCH_Cutter'):
     return me
 
 
+def flag_cutter(cutter):
+    """0.24.95 the cutter's faces carry the cutter flag (all of them) when nothing set it: the Boolean passes the
+    flag onto the faces it leaves, and remove_cutter_attribute turns those into Edge Memory marks."""
+    try:
+        me = cutter.data if hasattr(cutter, 'data') else cutter
+        if me is None or not hasattr(me, 'polygons') or not len(me.polygons):
+            return False
+        attr = me.attributes.get(CUTTER_ATTR)
+        if attr is not None and attr.domain == 'FACE' and _any_true(attr):
+            return False
+        if attr is not None:
+            me.attributes.remove(attr)
+        attr = me.attributes.new(CUTTER_ATTR, 'BOOLEAN', 'FACE')
+        attr.data.foreach_set('value', [True] * len(me.polygons))
+        return True
+    except (AttributeError, RuntimeError, ReferenceError) as ex:
+        print('Mecha: flag_cutter:', ex)
+        return False
+
+
 def link_temp_object(context, mesh, name='MCH_Cutter_TEMP'):
     ob = bpy.data.objects.new(name, mesh)
     # The master collection is always part of the view layer, so the Boolean
@@ -750,7 +770,8 @@ def boolean_result(context, target, cutter, operation, solver='AUTO',
     0.24.58 only on the loose parts the cutter reaches (``_boolean_local``).  0.24.86 a dense part: only the faces
     round the cutter (``_boolean_region``; ``hipoly`` = the cut setting High Poly)."""
     LAST_BOOLEAN.clear()
-    try:
+    flag_cutter(cutter)                               # 0.24.95 every cut leaves Edge Memory marks (see
+    try:                                              # remove_cutter_attribute), whoever built the cutter
         got = _boolean_region(context, target, cutter, operation, solver, hipoly)
         if got is not None:
             return got

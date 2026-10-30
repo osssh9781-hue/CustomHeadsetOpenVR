@@ -338,6 +338,7 @@ def rebuild(context, ob):
     try:
         bmesh.ops.transform(bm, matrix=ob.matrix_world.inverted_safe(), verts=bm.verts[:])
         bm.to_mesh(ob.data)
+        from . import edge_memory as _em; _em.mark_generated(ob.data)   # 0.24.95 Edge Memory: the part's own lines
     finally:
         bm.free()
     from . import live_subtract

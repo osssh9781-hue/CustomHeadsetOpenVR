@@ -258,6 +258,7 @@ def rebuild(ob):
     bm = build_bmesh(ob.mch_molding.chains, ob.mch_molding)
     try:
         bm.to_mesh(ob.data)
+        from . import edge_memory as _em; _em.mark_generated(ob.data)   # 0.24.95 Edge Memory: the part's own lines
     finally:
         bm.free()
     if ob.mch_molding.smooth_shading:

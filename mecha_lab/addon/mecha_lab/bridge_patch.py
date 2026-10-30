@@ -461,6 +461,7 @@ def rebuild(context, ob):
         for f in bm.faces:
             f.smooth = True
         bm.to_mesh(me)
+        from . import edge_memory as _em; _em.mark_generated(me)   # 0.24.95 Edge Memory: the part's own lines
     finally:
         bm.free()
     try:
