@@ -168,4 +168,72 @@ on_top_rim = (np.abs(co[ev[mk]][:, :, 2] - 1.0) < 1e-5).all(1) & ((np.abs(np.abs
                                                                    | (np.abs(np.abs(co[ev[mk]][:, :, 1]) - 1.0) < 1e-5).all(1))
 check('transfer onto a dense cube (8x8 per side): the top rim is found again - 32 edges, every one on the rim',
       n_t == 32 and mk.sum() == 32 and on_top_rim.all(), (n_t, int(mk.sum()), int((~on_top_rim).sum())))
+
+# ---- Fast Decimate keeps the remembered edges, DynaMesh / Quad Remesh get them back -----------------------------
+from mecha_lab import fast_decimate as fd, mesh_tools as mt
+
+
+def pocket_cube(name):
+    ob = cube(name, 2.0)
+    ce.perform_closed(C, 'CUT', [ob], [rect(0.0, 0.0, 1.0, 1.0)], TOP)
+    bm = bmesh.new(); bm.from_mesh(ob.data)
+    bmesh.ops.triangulate(bm, faces=bm.faces[:])
+    for _ in range(3):
+        bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=1, use_grid_fill=True)
+    bm.to_mesh(ob.data); bm.free()
+    return ob
+
+
+def on_pocket(me):
+    """share of the marked edges whose both ends lie on the pocket's outline lines (x or y = +-0.5 and z = +-1, or
+    a vertical corner x,y = +-0.5)."""
+    co = np.array([v.co[:] for v in me.vertices]); ev = np.array([e.vertices[:] for e in me.edges]); mk = em.marked(me)
+    if not mk.any():
+        return 0.0
+    p = co[ev[mk]]
+    half = np.abs(np.abs(p[:, :, :2]) - 0.5) < 1e-3
+    top = np.abs(np.abs(p[:, :, 2]) - 1.0) < 1e-3
+    ok = (half.any(2) & (np.abs(p[:, :, :2]) <= 0.5 + 1e-3).all(2) & (top | half.all(2))).all(1)
+    return float(ok.mean())
+
+
+if fd.available():
+    ob = pocket_cube('Dec')
+    n0 = em.count(ob.data)
+    tris0 = len(ob.data.polygons)
+    msg = fd.decimate_object(ob, 10.0)
+    n1 = em.count(ob.data)
+    check(f'Fast Decimate to 10 % of a dense pocket cube ({tris0:,} tris): the remembered edges are kept as lines and '
+          f'marked again on the result', n0 > 0 and n1 >= 12 and 'remembered edges kept' in msg, (n0, n1, msg))
+    check('... and every one of them lies on the pocket outline (the lines did not drift)', on_pocket(ob.data) > 0.95, on_pocket(ob.data))
+    ob = pocket_cube('Dec2')
+    em.clear(ob.data)
+    fd.decimate_object(ob, 10.0)
+    check('(without memory the same decimation marks nothing: the marks come only from the memory)', em.count(ob.data) == 0)
+else:
+    print('SKIP Fast Decimate engine not available here')
+
+ob = pocket_cube('Dyna')
+n0 = em.count(ob.data)
+S.mch_zb.points = 30                                  # (thousand points)
+msg = mt.run_one(C, ob, S.mch_zb, 'DYNAMESH')
+n1 = em.count(ob.data)
+check('DynaMesh (voxel remesh) of the pocket cube: the marks come back onto the new mesh\'s edges along the old lines',
+      n0 > 0 and n1 > 0 and 'remembered edges back' in msg, (n0, n1, msg))
+check('... all of them near the pocket outline (within 1.5 % of the size)', on_pocket(ob.data) > 0.0 and
+      em.count(ob.data) < len(ob.data.edges) * 0.2, (on_pocket(ob.data), em.count(ob.data), len(ob.data.edges)))
+ob = pocket_cube('Swap')
+new = ob.data.copy()
+em.clear(new)                                         # (a plain copy would carry the marks itself)
+k = fd.swap_mesh(ob, new)
+check('swap_mesh carries the memory onto a new mesh that has none (every remesh that swaps meshes: Quad Remesh, '
+      'Re-Fix, Hard Edges)', k > 0 and em.count(ob.data) == k, k)
+
+# ---- the ZBrush export reads the marks (crease 1.0 -> polygroup regions) --------------------------------------
+from mecha_lab import zbrush_bridge as zbb
+ob = cube('Exp', 2.0)
+ce.perform_closed(C, 'CUT', [ob], [rect(0.0, 0.0, 1.0, 1.0)], TOP)
+ids, n_regions, n_creased = zbb.crease_regions(ob.data)
+check('Export to ZBrush: the remembered cut edges are creases, so "Creases as Polygroups" splits the part at them '
+      '(the pocket cube: more than one region, 12+ creased edges)', n_regions > 1 and n_creased >= 12, (n_regions, n_creased))
 summary()

@@ -148,18 +148,28 @@ def lines(me, mask=None):
     return co[ev]
 
 
+def mesh_size(me):
+    from . import mesh_io as mio
+    co = mio.read_co(me)
+    return float(np.linalg.norm(co.max(0) - co.min(0))) if len(co) else 1.0
+
+
 def transfer(old_me, new_me, tol=TRANSFER_TOL):
     """Marks carried from ``old_me`` to ``new_me`` (a remesh of it): an edge of the new mesh whose both ends lie
     within ``tol`` x size of an old marked segment, and whose direction follows it, is marked.  Returns the number
     of edges marked on the new mesh."""
+    return transfer_segments(lines(old_me), mesh_size(old_me), new_me, tol)
+
+
+def transfer_segments(seg, size, new_me, tol=TRANSFER_TOL):
+    """``transfer`` from the old marked lines as segments (n, 2, 3) (``lines``) and the old mesh size: for a tool
+    that swaps the mesh out before the new one exists (Fast Decimate)."""
     from mathutils import Vector
     from mathutils.bvhtree import BVHTree
     from . import mesh_io as mio
-    seg = lines(old_me)
+    seg = np.asarray(seg, np.float64).reshape(-1, 2, 3)
     if not len(seg) or not len(new_me.edges):
         return 0
-    co = mio.read_co(old_me)
-    size = float(np.linalg.norm(co.max(0) - co.min(0))) if len(co) else 1.0
     tol = tol * size
     # the old marked lines as thin triangles so a BVH can answer "nearest point on any marked line"
     verts, polys = [], []
@@ -208,3 +218,25 @@ def transfer(old_me, new_me, tol=TRANSFER_TOL):
 def describe(me):
     n = count(me)
     return f'{n:,} remembered edge{"s" * (n != 1)}' if n else 'no remembered edges'
+
+
+def remember(me):
+    """Before a remesh that works in place (voxel remesh): (segments, size) of the marks, or None."""
+    try:
+        if not count(me):
+            return None
+        return lines(me), mesh_size(me)
+    except Exception:
+        return None
+
+
+def restore(me, kept):
+    """After it: the marks back onto the new edges (``remember``'s result).  Returns the edges marked."""
+    if kept is None:
+        return 0
+    try:
+        seg, size = kept
+        return transfer_segments(seg, size, me)
+    except Exception as ex:
+        print('Mecha: edge memory restore:', ex)
+        return 0

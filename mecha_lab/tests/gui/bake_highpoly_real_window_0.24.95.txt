@@ -1,0 +1,5 @@
+cut: faces 12 memory 12 remembered edges
+Bake High Poly (shelf): {'FINISHED'} mode SCULPT result Part_BakeHP faces 2562 collection BakeHP original hidden True active Part_BakeHP
+pocket outline points on the bake (x = +-0.5, z = 1): 34 max |co| 1.0
+Bake High Poly (Mesh Tools): {'FINISHED'} result Cyl_BakeHP faces 4098
+DONE

@@ -210,10 +210,20 @@ def fresh_like(me):
     return new
 
 
-def swap_mesh(ob, new):
-    """Put the finished mesh ``new`` on ``ob``; the old one goes when nothing else uses it (``new`` takes its name)."""
+def swap_mesh(ob, new, memory=True):
+    """Put the finished mesh ``new`` on ``ob``; the old one goes when nothing else uses it (``new`` takes its name).
+    0.24.95 ``memory``: the old mesh's Edge Memory marks are carried onto the new one (its edges nearest to the old
+    marked lines) unless the new mesh already has memory.  Returns the number of edges marked that way."""
     old = ob.data
     name = old.name
+    kept = 0
+    if memory and old is not new:
+        try:
+            from . import edge_memory as em
+            if em.count(old) and not em.has_memory(new):
+                kept = em.transfer(old, new)
+        except Exception as ex:                       # memory is a bonus: never fail the swap over it
+            print('Mecha: edge memory transfer:', ex)
     ob.data = new
     if ob.get('mch_linked'):                       # 0.24.84 linked group copies follow (they shared the old mesh)
         for o in bpy.data.objects:
@@ -222,6 +232,7 @@ def swap_mesh(ob, new):
     if old.users == 0:
         bpy.data.meshes.remove(old)
         new.name = name
+    return kept
 
 
 def build_mesh(new, V, faces, sizes=None):
@@ -244,9 +255,37 @@ def build_mesh(new, V, faces, sizes=None):
     new.update(calc_edges=True)
 
 
+def hard_feat(me, T, nv):
+    """0.24.95 (point, point, triangle) for every remembered hard edge (Edge Memory): the engine keeps those sides
+    like open borders, so a cut's outline survives the decimation.  None when the mesh has no memory."""
+    from . import edge_memory as em
+    m = em.marked(me)
+    if not m.any():
+        return None
+    ev = np.empty(len(me.edges) * 2, np.int32)
+    me.edges.foreach_get('vertices', ev)
+    ev = ev.reshape(-1, 2)[m].astype(np.int64)
+    want = ev.min(1) * nv + ev.max(1)
+    e = np.concatenate([T[:, [0, 1]], T[:, [1, 2]], T[:, [2, 0]]]).astype(np.int64)
+    tri = np.tile(np.arange(len(T)), 3)
+    key = e.min(1) * nv + e.max(1)
+    order = np.argsort(key, kind='stable')
+    k = key[order]
+    pos = np.searchsorted(k, want)
+    pos = np.minimum(pos, len(k) - 1)
+    hit = k[pos] == want
+    if not hit.any():
+        return None
+    s = order[pos[hit]]
+    return np.stack([e[s, 0], e[s, 1], tri[s]], 1).astype(np.int32)
+
+
 def decimate_object(ob, keep_percent, even=False, quads=False, keep_mask=False, keep_groups=False,
-                    keep_borders=False, nthreads=None):
-    """Decimate mesh object ``ob`` (Object Mode) to about ``keep_percent`` % of its triangles.  Returns a message."""
+                    keep_borders=False, nthreads=None, keep_edges=True):
+    """Decimate mesh object ``ob`` (Object Mode) to about ``keep_percent`` % of its triangles.  Returns a message.
+    ``keep_edges`` (0.24.95): the remembered hard edges (Edge Memory) are kept like borders and marked again on
+    the result."""
+    from . import edge_memory as em
     me = ob.data
     if me.shape_keys is not None:
         return 'Decimate: remove the shape keys first'
@@ -286,6 +325,12 @@ def decimate_object(ob, keep_percent, even=False, quads=False, keep_mask=False, 
             g = np.empty(len(me.polygons), np.int32)
             a.data.foreach_get('value', g)
             feat = group_borders(T, g[tpoly], nv)
+    seg = None
+    if keep_edges and em.count(me):
+        hf = hard_feat(me, T, nv)
+        if hf is not None:
+            feat = hf if feat is None else np.concatenate([feat, hf])
+            seg, size0 = em.lines(me), em.mesh_size(me)
     target = max(12, int(round(nt * keep_percent / 100.0)))   # (never under a box's 12 triangles)
     oV, oF, vsrc, fsrc = run(V, T, target, even=even, keep_borders=keep_borders, weight=weight, feat=feat,
                              nthreads=nthreads)
@@ -317,6 +362,7 @@ def decimate_object(ob, keep_percent, even=False, quads=False, keep_mask=False, 
         new.update()
         from . import core_geometry as cg
         tidy = cg.tidy_result(new, shards=False, slivers=False)   # 0.24.83 folded fins (back to back) removed
+        kept = em.transfer_segments(seg, size0, new) if seg is not None else 0
     except Exception:
         bpy.data.meshes.remove(new)                  # the SubTool keeps its mesh
         raise
@@ -324,6 +370,8 @@ def decimate_object(ob, keep_percent, even=False, quads=False, keep_mask=False, 
     me = ob.data
     dt = time.perf_counter() - t0
     note = f', {tidy["folds"]} folded faces removed' if tidy.get('folds') else ''
+    if kept:
+        note += f', {kept:,} remembered edges kept'
     return f'Decimate: {polys0:,} > {len(me.polygons):,} polygons in {dt:.1f} s ({nthreads or threads()} threads){note}'
 
 

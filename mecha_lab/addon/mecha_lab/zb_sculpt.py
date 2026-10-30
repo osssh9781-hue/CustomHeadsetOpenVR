@@ -1716,12 +1716,15 @@ def dynamesh(context, ob, points):
     LAST_FIX['text'] = ''
     _mode(context, 'OBJECT')                 # (the mesh is edited: Object Mode; without a window Sculpt crashed)
     try:
+        from . import edge_memory as em
+        kept = em.remember(ob.data)                  # 0.24.95 the marks come back onto the new edges
         done = dfx.prepare(ob.data, v)
         v2, thin = dfx.cap_voxel(ob.data, v) if dfx.USE_THIN_CAP else (v, 0.0)
         ob.data.remesh_voxel_size = v2
         bpy.ops.object.voxel_remesh()
         dropped = dfx.cleanup(ob.data)
-        LAST_FIX['text'] = dfx.describe(done, v, v2, thin, dropped)
+        n_mem = em.restore(ob.data, kept)
+        LAST_FIX['text'] = dfx.describe(done, v, v2, thin, dropped) + (f', {n_mem:,} remembered edges back' if n_mem else '')
     finally:
         _mode(context, 'SCULPT')
     return ''

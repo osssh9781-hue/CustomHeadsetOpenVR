@@ -1,8 +1,12 @@
-# Mecha Lab 0.24.94 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.24.95 — 설치 · MECHA LAB Workspace · 사용법
 
 > **검증 수준:** Linux headless Blender **5.2.3**(`bpy`)에서 자동 테스트 210개 파일 / 5,303개 항목(전부 통과; test_v02494_crease_groups 는 테스트 쪽 버그를 고친 뒤 단독 실행 10/10) + 무작위 기능 조합 크래시 테스트 280개, 그리고 0.24.81부터 리눅스 가상 화면의 **진짜 Blender 5.2.3 창** 자동 테스트(설치 · 워크스페이스 · 그려진 막대 · 진짜 마우스 Cut · Tab · 단축키 충돌 목록) 13/13를 돌렸습니다(결과: `test_report.md`).
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` 맨 위 0.24.81 절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
+
+## 0.24.95 엣지 기억 · Bake High Poly
+- **엣지 기억**: 자르기 계열(Cut · Line Cut · Base Mesh 빼기 · Boolean · Plate Detail · 프리미티브)과 **Box Hide Apply / Split Off** 가 만든 엣지가 메시에 남습니다(Sharp + 크리즈 + 내부 표시). Hard Edges 의 Find Edges 는 그 엣지를 각도와 상관없이 하드로 쓰고, Decimate 는 그 선을 지키고, DynaMesh · Quad Remesh · Re-Fix 뒤에는 새 메시의 가까운 엣지로 옮겨 찍습니다. ZBrush 로 보낼 때 "Creases as Polygroups" 가 그대로 폴리그룹으로 만듭니다.
+- **Bake High Poly**(ZBrush 선반 Hard Edges 아래 · Mecha Lab 탭 Mesh Tools): 베이크용 조밀 복사본. 하드 엣지는 그 자리에 고정, 사이 면은 분할 + 둥글림이라 데시메이트 삼각형 띠가 사라집니다. **Target**(천 면) · **Rounding**(100 둥글게 / 0 원본 그대로) · **Fillet %**(모서리에 얇은 둥근 베벨). 결과는 `BakeHP` 컬렉션에, 원본은 숨김.
 
 ## 0.24.94 Safe DynaMesh · 크리즈 → ZBrush · Wrinkles 슬라이더
 - **크리즈를 ZBrush 로**: ZBrush 는 FBX · OBJ 의 크리즈 값을 읽지 않으므로, 내보내기(보내기 · Export)의 **Creases as Polygroups**(기본 켜짐)가 크리즈 · Sharp 엣지로 나뉜 영역마다 머티리얼 PG_001 … 을 붙여 보냅니다. ZBrush 에서 FBX 를 "Mats as Polygroups" 로 가져온 뒤 Tool > Geometry > Crease > **CreasePG** 를 누르면 같은 선이 크리즈가 됩니다.

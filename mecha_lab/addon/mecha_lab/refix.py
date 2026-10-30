@@ -83,9 +83,12 @@ def run(context, ob, zb):
     me.remesh_voxel_size = v
     me.use_remesh_fix_poles = False             # (Fix Poles left 4 open edges, Preserve Volume made the two walls
     me.use_remesh_preserve_volume = False       #  of a pinched fold cross each other: 1,115 crossings - plain is clean)
+    from . import edge_memory as em
+    kept = em.remember(me)                      # 0.24.95 the marks come back onto the new edges
     with context.temp_override(object=ob, active_object=ob, selected_objects=[ob], selected_editable_objects=[ob]):
         bpy.ops.object.voxel_remesh()
     me = ob.data
+    em.restore(me, kept)
     dyna = len(me.vertices)
     if not len(me.polygons):
         raise RuntimeError('DynaMesh gave nothing (the part is thinner than its voxels everywhere)')

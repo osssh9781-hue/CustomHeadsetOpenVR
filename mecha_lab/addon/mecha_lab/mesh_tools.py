@@ -35,10 +35,13 @@ def run_one(context, ob, zb, action):
         if v <= 0.0:
             raise RuntimeError('no surface')
         ob.data.remesh_voxel_size = v
+        from . import edge_memory as em
+        kept = em.remember(ob.data)                  # 0.24.95
         with context.temp_override(object=ob, active_object=ob, selected_objects=[ob],
                                    selected_editable_objects=[ob]):
             bpy.ops.object.voxel_remesh()
-        return f'DynaMesh: {len(ob.data.vertices):,} points'
+        n_mem = em.restore(ob.data, kept)
+        return f'DynaMesh: {len(ob.data.vertices):,} points' + (f', {n_mem:,} remembered edges back' if n_mem else '')
     if action == 'DECIMATE':
         if not fd.available():
             msg = fd.blender_decimate(context, ob, zb.decimate)

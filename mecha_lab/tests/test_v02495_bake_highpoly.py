@@ -138,7 +138,7 @@ info = bk.bake_mesh(me, levels=2, fillet=0.03)
 co = coords(me)
 check('Cube with a 3 % fillet: the 12 edges beveled, a closed mesh, the corner region rounded (no point at the old '
       'corner (1,1,1), points between 0.9 and 1 along the edges)',
-      info['fillet_edges'] == 12 and non_manifold(me) == 0 and np.abs(co).max() <= 1.0 + 0.01
+      info['fillet_edges'] == 12 and non_manifold(me) == 0 and np.abs(co).max() <= 1.0 + 1e-3
       and not (np.abs(np.abs(co) - 1.0) < 1e-4).all(1).any() and info['faces'] > 96,
       (info['fillet_edges'], info['faces'], non_manifold(me), float(np.abs(co).max()), int((np.abs(np.abs(co) - 1.0) < 1e-4).all(1).sum())))
 bpy.data.meshes.remove(me)

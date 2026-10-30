@@ -152,6 +152,7 @@ def planar_normals(me, tol=FLAT_TOL):
     flat = _face_bool(me, FLAT)
     if not flat.any():
         return out
+    strip = _face_bool(me, STRIP)
     cv = mio.read_corner_verts(me)
     _start, tot = mio.read_face_starts(me)
     f_of = np.repeat(np.arange(nf), tot)
@@ -159,12 +160,13 @@ def planar_normals(me, tol=FLAT_TOL):
     me.polygons.foreach_get('normal', nrm)
     nrm = nrm.reshape(-1, 3).astype(np.float64)
     avg = np.zeros((nv, 3))
-    for k in range(3):
-        avg[:, k] = np.bincount(cv, weights=nrm[f_of, k], minlength=nv)
+    keep = ~strip[f_of]                                   # a fillet strip round the point does not count: the ring
+    for k in range(3):                                    # where a flat meets its fillet stays in the flat's plane
+        avg[:, k] = np.bincount(cv[keep], weights=nrm[f_of[keep], k], minlength=nv)
     ln = np.linalg.norm(avg, axis=1)
     avg[ln > 1e-12] /= ln[ln > 1e-12][:, None]
     d = np.einsum('ij,ij->i', nrm[f_of], avg[cv])
-    d = np.where(flat[f_of], d, -2.0)                    # a non-flat face round the point: not planar
+    d = np.where(flat[f_of], d, np.where(strip[f_of], 1.0, -2.0))   # a non-flat, non-strip face: not planar
     mind = np.ones(nv)
     np.minimum.at(mind, cv, d)
     planar = (mind > math.cos(tol)) & (ln > 1e-12)
@@ -172,9 +174,28 @@ def planar_normals(me, tol=FLAT_TOL):
     return out
 
 
-def taubin(co, E, hard, iters=ITERS, lam=LAM, mu=MU, plane_n=None):
+def strip_points(me):
+    """bool per point: every face round it is a fillet strip face (the strip's inside): those only shrink (no
+    Taubin grow step), so the fillet rounds inward and never bulges past the flats it joins."""
+    from . import mesh_io as mio
+    nv = len(me.vertices)
+    strip = _face_bool(me, STRIP)
+    if not strip.any():
+        return np.zeros(nv, bool)
+    cv = mio.read_corner_verts(me)
+    _start, tot = mio.read_face_starts(me)
+    f_of = np.repeat(np.arange(len(me.polygons)), tot)
+    allstrip = np.ones(nv, bool)
+    np.logical_and.at(allstrip, cv, strip[f_of])
+    has = np.zeros(nv, bool)
+    has[cv] = True
+    return allstrip & has
+
+
+def taubin(co, E, hard, iters=ITERS, lam=LAM, mu=MU, plane_n=None, shrink_only=None):
     """Taubin-smoothed copy of ``co``: E = edges (m, 2), hard = bool per edge.  Points on hard lines slide along
-    them, corners stay, points with a ``plane_n`` normal stay in that plane.  Returns (co, corners, line points)."""
+    them, corners stay, points with a ``plane_n`` normal stay in that plane, ``shrink_only`` points skip the grow
+    step (a fillet strip).  Returns (co, corners, line points)."""
     co = np.array(co, np.float64)
     nv = len(co)
     Eh = E[hard]
@@ -219,6 +240,8 @@ def taubin(co, E, hard, iters=ITERS, lam=LAM, mu=MU, plane_n=None):
             d[~free] = 0
             if plane_n is not None:
                 d -= np.einsum('ij,ij->i', d, plane_n)[:, None] * plane_n
+            if shrink_only is not None and w < 0:
+                d[shrink_only] = 0
             co += w * d
     return co, int(corner.sum()), int(line.sum())
 
@@ -318,11 +341,11 @@ def bake_mesh(me, levels, rounding=1.0, fillet=0.0, angle=math.radians(30.0), it
     for _ in range(levels):
         _subdivide(me)
         co, E, sharp = _arrays(me)
-        co, corners, lines = taubin(co, E, sharp, iters, plane_n=planar_normals(me))
+        co, corners, lines = taubin(co, E, sharp, iters, plane_n=planar_normals(me), shrink_only=strip_points(me))
         me.vertices.foreach_set('co', co.astype(np.float32).ravel())
         me.update()
     co, E, sharp = _arrays(me)
-    co, corners, lines = taubin(co, E, sharp, iters, plane_n=planar_normals(me))
+    co, corners, lines = taubin(co, E, sharp, iters, plane_n=planar_normals(me), shrink_only=strip_points(me))
     if src is not None:
         co = _reproject(co, src, 1.0 - max(0.0, min(1.0, rounding)))
         bpy.data.meshes.remove(src)

@@ -389,8 +389,11 @@ def fuse(context, objects, voxel):
     me = target.data
     me.remesh_voxel_size = max(voxel, 1e-4)
     me.remesh_voxel_adaptivity = 0.0
+    from . import edge_memory as em
+    kept = em.remember(me)                      # 0.24.95
     with context.temp_override(active_object=target, object=target):
         bpy.ops.object.voxel_remesh()
+    em.restore(target.data, kept)
     for p in target.data.polygons:
         p.use_smooth = True
     return target
