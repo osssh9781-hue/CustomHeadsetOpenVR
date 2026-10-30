@@ -300,7 +300,7 @@ def geometry_mask(me, angle=GEN_ANGLE, specks=True):
     me.polygons.foreach_get('normal', nrm)
     nrm = nrm.reshape(-1, 3)
     d = np.einsum('ij,ij->i', nrm[f_sorted[s2]], nrm[f_sorted[s2 + 1]])
-    ang = e_sorted[s2[d < math.cos(angle)]]
+    ang = e_sorted[s2[d < math.cos(angle) - 1e-4]]      # (strictly more than the angle: a 2-segment bevel's 30-degree rows stay soft)
     if specks and len(ang):
         ev = mio.read_edge_verts(me)
         deg = np.bincount(ev[ang].ravel(), minlength=len(me.vertices))

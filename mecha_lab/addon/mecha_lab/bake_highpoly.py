@@ -30,7 +30,9 @@ import numpy as np
 
 COLL = 'BakeHP'
 SRC_KEY = 'mch_bakehp_src'
-LAM, MU = 0.5, -0.53          # Taubin smoothing: shrink step, then the grow step that gives the volume back
+LAM, MU = 0.5, -0.5           # Taubin smoothing: shrink step, then the grow step that gives the volume back.  Equal
+#                               sizes: no frequency is ever amplified (a bigger grow step ran away between fixed
+#                               lines on a pocket corner: +4 % of the part after four levels)
 ITERS = 10                    # Taubin pairs per level
 MAX_LEVELS = 4
 TURN = math.radians(25.0)      # a hard line bending more than this at a point: that point is a corner
@@ -38,7 +40,12 @@ MIN_FACES = 4
 INFO = {}                     # the last run, for the tests / message
 STRIP = '.mch_bk_strip'       # face: made by the fillet bevel (free to round)
 FLAT = '.mch_bk_flat'         # face: a true flat (every edge hard, coplanar with its neighbour, or next to a strip)
+REGION = '.mch_bk_region'     # face: its coplanar region id on the source (rides through the subdivision)
+PLANES = {}                   # flat region id -> (normal, offset): the plane it lies in
+STRIP_PLANES = {}             # strip region id -> flat region ids whose planes its points never cross
 FLAT_TOL = math.radians(1.0)
+ANGLE_EPS = 1e-4              # hard_mask: 'more than the angle' with a margin, so exactly-30-degree bevel rows stay soft
+FLAT_RATIO = 3.0              # a flat region is at least this much bigger (sqrt area) than any soft neighbour region
 
 
 def hard_mask(me, angle=math.radians(30.0), memory=True, specks=True):
@@ -61,8 +68,8 @@ def hard_mask(me, angle=math.radians(30.0), memory=True, specks=True):
         me.polygons.foreach_get('normal', nrm)
         nrm = nrm.reshape(-1, 3)
         d = np.einsum('ij,ij->i', nrm[f_sorted[s2]], nrm[f_sorted[s2 + 1]])
-        ang = e_sorted[s2[d < math.cos(angle)]]
-        if specks and len(ang):
+        ang = e_sorted[s2[d < math.cos(angle) - ANGLE_EPS]]      # (strictly more than the angle: a 2-segment
+        if specks and len(ang):                                    # bevel's 30-degree rows are soft, not lines)
             ev = mio.read_edge_verts(me)
             deg = np.bincount(ev[ang].ravel(), minlength=len(me.vertices))
             lone = (deg[ev[ang, 0]] == 1) & (deg[ev[ang, 1]] == 1)
@@ -102,11 +109,14 @@ def _face_bool(me, name):
     return out
 
 
-def flag_flats(me, hard, tol=FLAT_TOL):
-    """Face flag FLAT: a face that is a true flat - every edge of it is a hard line, or coplanar with the face
-    across it, or next to a fillet strip, or a boundary.  A facet of a curved surface (its neighbour a few degrees
-    off, no hard line between) is NOT flat: it may round.  Returns the number of flat faces."""
+def flag_flats(me, hard, tol=FLAT_TOL, ratio=None):
+    """Face flag FLAT: a face of a true flat.  Faces are grouped into coplanar regions (neighbours within ``tol``);
+    a region is flat when every neighbouring region it meets across a soft edge (not hard, not coplanar, not a
+    fillet strip) is much smaller than it - ``ratio`` x in size (sqrt of area).  A cube's top next to a bevel strip:
+    flat (the strip rows are thin).  A facet of a curved surface next to facets of the same size: not flat - it
+    rounds.  A region with no soft neighbour at all (every edge hard or a boundary) is flat.  Returns the count."""
     from . import edge_memory as em
+    ratio = FLAT_RATIO if ratio is None else ratio
     nf = len(me.polygons)
     if nf == 0:
         return 0
@@ -115,19 +125,103 @@ def flag_flats(me, hard, tol=FLAT_TOL):
     nrm = np.empty(nf * 3, np.float32)
     me.polygons.foreach_get('normal', nrm)
     nrm = nrm.reshape(-1, 3)
-    ok_face = np.ones(nf, bool) & ~strip
+    area = np.empty(nf, np.float32)
+    me.polygons.foreach_get('area', area)
     cnt = ends - starts
     two = np.flatnonzero(cnt == 2)
     s2 = starts[two]
     fa, fb = f_sorted[s2], f_sorted[s2 + 1]
     d = np.einsum('ij,ij->i', nrm[fa], nrm[fb])
-    ok_edge = (d > math.cos(tol)) | hard[e_sorted[s2]]
-    # fa is fine with this edge if ok_edge, or the face across it is a strip (and the same for fb)
-    bad_a = ~(ok_edge | strip[fb])
-    bad_b = ~(ok_edge | strip[fa])
-    ok_face[fa[bad_a]] = False
-    ok_face[fb[bad_b]] = False
-    more = np.flatnonzero(cnt > 2)                       # non-manifold: never a flat
+    coplanar = d > math.cos(tol)
+    # coplanar regions: label propagation over the coplanar pairs (no scipy here)
+    region = np.arange(nf)
+    pa, pb = fa[coplanar], fb[coplanar]
+    for _ in range(64):
+        lo = np.minimum(region[pa], region[pb])
+        before = region.copy()
+        np.minimum.at(region, pa, lo)
+        np.minimum.at(region, pb, lo)
+        region = region[region]                      # (pointer jumping: a few rounds settle any region)
+        if np.array_equal(region, before):
+            break
+    _u, region = np.unique(region, return_inverse=True)
+    nr = int(region.max()) + 1
+    r_area = np.bincount(region, weights=area, minlength=nr)
+    r_len = np.sqrt(np.maximum(r_area, 0.0))
+    soft = ~coplanar & ~hard[e_sorted[s2]] & ~strip[fa] & ~strip[fb]
+    ra, rb = region[fa[soft]], region[fb[soft]]
+    biggest = np.zeros(nr)                            # the largest soft neighbour region of each region
+    np.maximum.at(biggest, ra, r_len[rb])
+    np.maximum.at(biggest, rb, r_len[ra])
+    flat_region = r_len >= ratio * biggest             # (no soft neighbour: biggest 0 -> flat)
+    ok_face = flat_region[region] & ~strip
+    # the small regions a flat meets across a soft edge (bevel strip rows, corner patches, fillet rows) are strips:
+    # they round but only ever shrink (Taubin's grow step overshoots on a tight patch between held rings)
+    big_flat = np.zeros(nr)
+    np.maximum.at(big_flat, ra, np.where(flat_region[rb], r_len[rb], 0.0))
+    np.maximum.at(big_flat, rb, np.where(flat_region[ra], r_len[ra], 0.0))
+    for _ in range(3):                                 # ... and the small regions next to those (corner patches)
+        grown = big_flat.copy()
+        is_strip = ~flat_region & (big_flat >= ratio * r_len)
+        np.maximum.at(grown, ra, np.where(is_strip[rb], big_flat[rb], 0.0))
+        np.maximum.at(grown, rb, np.where(is_strip[ra], big_flat[ra], 0.0))
+        if np.array_equal(grown, big_flat):
+            break
+        big_flat = grown
+    strip_region = ~flat_region & (big_flat >= ratio * r_len)
+    # the planes of the flat regions, and for every strip region the flat planes it must never cross (its own
+    # soft flat neighbours, and through neighbouring strips their flats): bake_mesh clamps the strip points to them
+    cx = np.empty(nf * 3, np.float32)
+    me.polygons.foreach_get('center', cx)
+    cx = cx.reshape(-1, 3)
+    pn = np.zeros((nr, 3))
+    pc = np.zeros((nr, 3))
+    for k in range(3):
+        pn[:, k] = np.bincount(region, weights=nrm[:, k] * area, minlength=nr)
+        pc[:, k] = np.bincount(region, weights=cx[:, k] * area, minlength=nr)
+    ln = np.linalg.norm(pn, axis=1)
+    pn[ln > 1e-12] /= ln[ln > 1e-12][:, None]
+    pc[r_area > 0] /= r_area[r_area > 0][:, None]
+    PLANES.clear()
+    for r in np.flatnonzero(flat_region):
+        PLANES[int(r)] = (pn[r].copy(), float(pn[r] @ pc[r]))
+    touch = {}
+    for a_, b_ in zip(ra.tolist(), rb.tolist()):
+        touch.setdefault(a_, set()).add(b_)
+        touch.setdefault(b_, set()).add(a_)
+    STRIP_PLANES.clear()
+    strip_ids = set(np.flatnonzero(strip_region).tolist()) | set(region[strip].tolist())
+    for r in strip_ids:
+        seen, frontier, flats = {r}, [r], set()
+        for _ in range(3):                             # (a corner patch reaches its flats through the strip rows)
+            nxt = []
+            for q in frontier:
+                for nb in touch.get(q, ()):
+                    if nb in PLANES:
+                        flats.add(nb)
+                    elif nb in strip_ids and nb not in seen:
+                        seen.add(nb)
+                        nxt.append(nb)
+            frontier = nxt
+        if flats:
+            STRIP_PLANES[int(r)] = sorted(flats)
+    ra_ = me.attributes.get(REGION)
+    if ra_ is not None and (ra_.domain != 'FACE' or ra_.data_type != 'INT'):
+        me.attributes.remove(ra_)
+        ra_ = None
+    if ra_ is None:
+        ra_ = me.attributes.new(REGION, 'INT', 'FACE')
+    ra_.data.foreach_set('value', region.astype(np.int32))
+    new_strip = strip_region[region] & ~strip
+    if new_strip.any():
+        st = me.attributes.get(STRIP)
+        if st is not None and st.domain != 'FACE':
+            me.attributes.remove(st)
+            st = None
+        if st is None:
+            st = me.attributes.new(STRIP, 'BOOLEAN', 'FACE')
+        st.data.foreach_set('value', strip | new_strip)
+    more = np.flatnonzero(cnt > 2)                     # non-manifold: never a flat
     for k in more:
         ok_face[f_sorted[starts[k]:ends[k]]] = False
     a = me.attributes.get(FLAT)
@@ -160,13 +254,13 @@ def planar_normals(me, tol=FLAT_TOL):
     me.polygons.foreach_get('normal', nrm)
     nrm = nrm.reshape(-1, 3).astype(np.float64)
     avg = np.zeros((nv, 3))
-    keep = ~strip[f_of]                                   # a fillet strip round the point does not count: the ring
-    for k in range(3):                                    # where a flat meets its fillet stays in the flat's plane
+    keep = flat[f_of]                                     # only the flat faces round the point count: the ring where
+    for k in range(3):                                    # a flat meets a fillet / bevel strip stays in the flat's plane
         avg[:, k] = np.bincount(cv[keep], weights=nrm[f_of[keep], k], minlength=nv)
     ln = np.linalg.norm(avg, axis=1)
     avg[ln > 1e-12] /= ln[ln > 1e-12][:, None]
     d = np.einsum('ij,ij->i', nrm[f_of], avg[cv])
-    d = np.where(flat[f_of], d, np.where(strip[f_of], 1.0, -2.0))   # a non-flat, non-strip face: not planar
+    d = np.where(flat[f_of], d, 1.0)                      # a non-flat face round the point is ignored
     mind = np.ones(nv)
     np.minimum.at(mind, cv, d)
     planar = (mind > math.cos(tol)) & (ln > 1e-12)
@@ -192,10 +286,44 @@ def strip_points(me):
     return allstrip & has
 
 
-def taubin(co, E, hard, iters=ITERS, lam=LAM, mu=MU, plane_n=None, shrink_only=None):
+def corner_arrays(me):
+    """(corner vertex, next corner's vertex round the face, face of each corner) for ``vertex_normals``."""
+    from . import mesh_io as mio
+    cv = mio.read_corner_verts(me)
+    start, tot = mio.read_face_starts(me)
+    nf = len(me.polygons)
+    f_of = np.repeat(np.arange(nf), tot)
+    idx = np.arange(len(cv))
+    nxt = idx + 1
+    last = np.asarray(start) + np.asarray(tot) - 1
+    nxt[last] = np.asarray(start)
+    return cv.astype(np.int64), cv[nxt].astype(np.int64), f_of
+
+
+def vertex_normals(co, corners):
+    """Area-weighted point normals from the current positions (Newell's face normals summed round each point)."""
+    cv, cvn, f_of = corners
+    nv = len(co)
+    nf = int(f_of.max()) + 1 if len(f_of) else 0
+    cr = np.cross(co[cv], co[cvn])
+    fn = np.zeros((nf, 3))
+    for k in range(3):
+        fn[:, k] = np.bincount(f_of, weights=cr[:, k], minlength=nf)
+    vn = np.zeros((nv, 3))
+    for k in range(3):
+        vn[:, k] = np.bincount(cv, weights=fn[f_of, k], minlength=nv)
+    ln = np.linalg.norm(vn, axis=1)
+    ok = ln > 1e-14
+    vn[ok] /= ln[ok][:, None]
+    return vn
+
+
+def taubin(co, E, hard, iters=ITERS, lam=LAM, mu=MU, plane_n=None, shrink_only=None, corners=None):
     """Taubin-smoothed copy of ``co``: E = edges (m, 2), hard = bool per edge.  Points on hard lines slide along
     them, corners stay, points with a ``plane_n`` normal stay in that plane, ``shrink_only`` points skip the grow
-    step (a fillet strip).  Returns (co, corners, line points)."""
+    step (a fillet strip).  With ``corners`` (corner_arrays) a free point moves along its own normal only: no
+    drift across the surface, so a flat next to a bevel strip stays where it is and the strip alone rounds (without
+    it the ring between them slid into the strip and the box's edges bowed).  Returns (co, corners, line points)."""
     co = np.array(co, np.float64)
     nv = len(co)
     Eh = E[hard]
@@ -221,6 +349,10 @@ def taubin(co, E, hard, iters=ITERS, lam=LAM, mu=MU, plane_n=None, shrink_only=N
         turn = v2[cs > -math.cos(TURN)]
         corner[turn] = True
         line[turn] = False
+        keep = line[v2]
+        lv, lj1, lj2 = v2[keep], vj[f2][keep], vj[f2 + 1][keep]   # a line point and its two line neighbours
+    else:
+        lv = lj1 = lj2 = np.zeros(0, np.int64)
     free = ~corner
 
     def avg(c, EE, deg):
@@ -233,17 +365,70 @@ def taubin(co, E, hard, iters=ITERS, lam=LAM, mu=MU, plane_n=None, shrink_only=N
     for _ in range(iters):
         for w in (lam, mu):
             t = avg(co, E, deg_all)
-            if len(Eh):
-                th = avg(co, Eh, deg_h)
-                t[line] = th[line]
+            if len(lv):                                   # a line point: onto the chord between its two line
+                p1, p2 = co[lj1], co[lj2]                 # neighbours, at the spot NEAREST to where it is (the
+                dv = p2 - p1                              # chord's middle would drag it along a long edge - a
+                l2 = np.einsum('ij,ij->i', dv, dv)        # Boolean sliver's - by half the part)
+                u = np.clip(np.einsum('ij,ij->i', co[lv] - p1, dv) / np.maximum(l2, 1e-18), 0.0, 1.0)
+                t[lv] = p1 + u[:, None] * dv
             d = t - co
             d[~free] = 0
+            if corners is not None:                   # free points: along the normal only (no surface drift)
+                vn = vertex_normals(co, corners)
+                along = np.einsum('ij,ij->i', d, vn)[:, None] * vn
+                d = np.where(line[:, None], d, along)
             if plane_n is not None:
                 d -= np.einsum('ij,ij->i', d, plane_n)[:, None] * plane_n
             if shrink_only is not None and w < 0:
                 d[shrink_only] = 0
             co += w * d
     return co, int(corner.sum()), int(line.sum())
+
+
+def _face_int(me, name):
+    out = np.zeros(len(me.polygons), np.int32)
+    a = me.attributes.get(name)
+    if a is not None and a.domain == 'FACE':
+        a.data.foreach_get('value', out)
+    return out
+
+
+def clamp_strips(me, co):
+    """Strip points (bevel rows, corner patches, fillet rows) pushed back onto the planes of the flats they belong
+    to when a smoothing step carried them past one: a bevelled box edge rounds inside its corner, never bulges
+    out of the box.  Returns the number of points moved."""
+    if not STRIP_PLANES:
+        return 0
+    from . import mesh_io as mio
+    strip = _face_bool(me, STRIP)
+    if not strip.any():
+        return 0
+    region = _face_int(me, REGION)
+    cv = mio.read_corner_verts(me)
+    _start, tot = mio.read_face_starts(me)
+    f_of = np.repeat(np.arange(len(me.polygons)), tot)
+    sel = strip[f_of]
+    key = np.unique(region[f_of[sel]].astype(np.int64) * len(co) + cv[sel])
+    reg = key // len(co)
+    vert = key % len(co)
+    moved = 0
+    order = np.argsort(reg, kind='stable')
+    reg, vert = reg[order], vert[order]
+    starts = np.flatnonzero(np.r_[True, reg[1:] != reg[:-1]])
+    ends = np.append(starts[1:], len(reg))
+    for a, b in zip(starts, ends):
+        planes = STRIP_PLANES.get(int(reg[a]))
+        if not planes:
+            continue
+        vs = vert[a:b]
+        for pid in planes:
+            n, d = PLANES[pid]
+            sd = co[vs] @ n - d
+            out = sd > 1e-9
+            if out.any():
+                co[vs[out]] -= sd[out][:, None] * n
+                moved += int(out.sum())
+    return moved
 
 
 def _subdivide(me):
@@ -341,16 +526,18 @@ def bake_mesh(me, levels, rounding=1.0, fillet=0.0, angle=math.radians(30.0), it
     for _ in range(levels):
         _subdivide(me)
         co, E, sharp = _arrays(me)
-        co, corners, lines = taubin(co, E, sharp, iters, plane_n=planar_normals(me), shrink_only=strip_points(me))
+        co, corners, lines = taubin(co, E, sharp, iters, plane_n=planar_normals(me), corners=corner_arrays(me))
+        clamp_strips(me, co)
         me.vertices.foreach_set('co', co.astype(np.float32).ravel())
         me.update()
     co, E, sharp = _arrays(me)
-    co, corners, lines = taubin(co, E, sharp, iters, plane_n=planar_normals(me), shrink_only=strip_points(me))
+    co, corners, lines = taubin(co, E, sharp, iters, plane_n=planar_normals(me), corners=corner_arrays(me))
+    clamp_strips(me, co)
     if src is not None:
         co = _reproject(co, src, 1.0 - max(0.0, min(1.0, rounding)))
         bpy.data.meshes.remove(src)
     me.vertices.foreach_set('co', co.astype(np.float32).ravel())
-    for name in (STRIP, FLAT):
+    for name in (STRIP, FLAT, REGION):
         a = me.attributes.get(name)
         if a is not None:
             me.attributes.remove(a)

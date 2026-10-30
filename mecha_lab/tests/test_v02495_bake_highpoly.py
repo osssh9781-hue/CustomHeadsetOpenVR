@@ -143,6 +143,30 @@ check('Cube with a 3 % fillet: the 12 edges beveled, a closed mesh, the corner r
       (info['fillet_edges'], info['faces'], non_manifold(me), float(np.abs(co).max()), int((np.abs(np.abs(co) - 1.0) < 1e-4).all(1).sum())))
 bpy.data.meshes.remove(me)
 
+# ---- the user's case: a part with a LIVE bevel on its edges (Hard Edges bevel / a Bevel modifier) ---------------
+# 0.24.95 fix: the bevel strip's faces meet their neighbours at 30 degrees or less, so they are not hard lines; the
+# flats next to them must still stay flat and the box edges straight (they bowed inward before: points drifted
+# across the surface into the strip).  Now a free point moves along its normal only.
+ob = cube('Bevelled')
+mod = ob.modifiers.new('B', 'BEVEL')
+mod.width, mod.segments = 0.06, 2
+hp, info = bk.build(C, ob, target_faces=20000)
+co = coords(hp.data)
+flat_x = co[np.abs(np.abs(co[:, 0]) - 1.0) < 1e-3]       # points that still sit on the x = +-1 flats
+n_flat = len(flat_x)
+inside = (np.abs(co) <= 1.0 + 1e-3).all()
+# the strip's middle line along the top-front edge (x in (-0.94, 0.94), near y = -1, z = 1): straight = its
+# distance from the edge is the same all along
+mid = co[(np.abs(co[:, 0]) < 0.9) & (co[:, 1] < -0.9) & (co[:, 2] > 0.9) & (co[:, 1] > -0.999) & (co[:, 2] < 0.999)]   # the strip itself
+r = np.hypot(mid[:, 1] + 1.0, mid[:, 2] - 1.0)
+slabs = [r[(mid[:, 0] >= a) & (mid[:, 0] < a + 0.28)] for a in np.arange(-0.7, 0.7, 0.28)]     # (away from the corner patches)
+profile_same = max(abs(sl.min() - slabs[0].min()) + abs(sl.max() - slabs[0].max()) for sl in slabs if len(sl))
+check('A cube with a live 2-segment bevel (width 0.06): the flats stay flat (hundreds of points still exactly on x = +-1), '
+      'nothing leaves the cube, and the edge runs straight (the strip profile is the same in every slab along its middle)',
+      n_flat > 300 and inside and len(mid) > 50 and profile_same < 0.01, (n_flat, inside, len(mid), float(profile_same)))
+check('... the strip keeps its bevel depth (the 2-segment arc\'s middle line is 0.0249 from the corner line: points between 0.02 and 0.06)',
+      0.02 < r.min() and r.max() < 0.061, (float(r.min()), float(r.max())))
+
 # ---- Edge Memory: a remembered shallow line stays put through the bake ----------------------------------------
 ob = cube('Mem')
 me = ob.data
