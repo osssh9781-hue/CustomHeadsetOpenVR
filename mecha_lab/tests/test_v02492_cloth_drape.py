@@ -432,6 +432,58 @@ if parts is not None:
           and co_s[:, 0].mean() > 0.05 and co_s[:, 1].mean() < -0.3, (r_s.min(), r_s.max(), co_s[:, 0].mean(), co_s[:, 1].mean()))
     cd.cancel(C)
 S.mch_brush.surface_mode = False
+# ---- 0.24.95 Drape Mask (user: "지브러시 탭에서 하는 것처럼 마스크 씌워서는 못해?"): the masked faces lift off as the cloth
+bpy.ops.mesh.primitive_cube_add(size=2.0, location=(0, 0, 30))
+cube = C.active_object
+fm = cd.faces_mesh(cube.data, [0, 1])
+check('faces_mesh: two cube faces -> a mesh of 2 faces on their 6 (or 8) points, smooth, local coordinates kept',
+      len(fm.polygons) == 2 and len(fm.vertices) in (6, 8) and all(p.use_smooth for p in fm.polygons)
+      and all(abs(abs(v.co.x) - 1.0) < 1e-6 for v in fm.vertices), (len(fm.polygons), len(fm.vertices)))
+bpy.data.meshes.remove(fm)
+bpy.data.objects.remove(cube)
+select_only(body)
+check('masked_faces: no mask attribute -> nothing', len(cd.masked_faces(body.data)) == 0)
+try:
+    cd.perform_masked(C, body)
+    check('perform_masked without a mask raises', False)
+except cg.CutError as ex:
+    check('perform_masked without a mask raises (paint one first)', 'mask' in str(ex), str(ex))
+att = body.data.attributes.new(cd.MASK_ATTR, 'FLOAT', 'POINT')
+zs = np.array([v.co.z for v in body.data.vertices])
+att.data.foreach_set('value', (zs > 0.45).astype(np.float32))        # the cap of the sphere masked
+n_masked = len(cd.masked_faces(body.data))
+check('masked_faces: the cap faces (corner mask averaging >= 0.5: at least half the corners) and nothing else',
+      len(body.data.polygons) * 0.2 < n_masked < len(body.data.polygons) * 0.45
+      and all(sum(zs[i] > 0.45 for i in body.data.polygons[f].vertices) * 2 >= len(body.data.polygons[f].vertices) for f in cd.masked_faces(body.data)),
+      (n_masked, len(body.data.polygons)))
+msg = cd.perform_masked(C, body)
+ob_m = C.view_layer.objects.active
+check('perform_masked: a "Cloth Drape" object of the masked faces, parented to the body, the session ready',
+      ob_m is not None and ob_m.name.startswith('Cloth Drape') and ob_m.parent is body and len(ob_m.data.polygons) == n_masked
+      and cd.sim_active() and not cd.SIM['running'] and cd.SIM.get('source') == 'MASK', msg)
+sess = cd.SIM['sess']
+rim = int((sess['cloth'].pin >= 1).sum())
+check('... its open rim is pinned (Pin Rim), the rest free', 0 < rim < len(ob_m.data.vertices) and 'pinned' in msg, (rim, len(ob_m.data.vertices)))
+st.gravity = 200.0
+cd.SIM['running'] = True
+for _ in range(15):
+    cd.step(C)
+co_m = np.array([v.co[:] for v in ob_m.data.vertices])
+check('... it drapes on the sphere like a lasso cloth (outside the body, moved, no NaN)',
+      np.linalg.norm(co_m, axis=1).min() > 0.99 and np.all(np.isfinite(co_m)) and sess['frame'] == 15, np.linalg.norm(co_m, axis=1).min())
+msg = cd.confirm(C)
+check('Enter keeps the cloth object', 'kept' in msg and bpy.data.objects.get(ob_m.name) is not None and not cd.sim_active(), msg)
+bpy.data.objects.remove(ob_m)
+att.data.foreach_set('value', np.ones(len(body.data.vertices), np.float32))
+try:
+    cd.perform_masked(C, body)
+    check('the whole body masked raises (no rim to hang from)', False)
+except cg.CutError as ex:
+    check('the whole body masked raises (no rim to hang from)', 'whole' in str(ex), str(ex))
+body.data.attributes.remove(att)
+check('Drape Mask operator registered, in the panel and on the ZBrush cloth box',
+      hasattr(bpy.types, 'MCH_OT_cdrape_mask') and "'mch.cdrape_mask'" in inspect.getsource(cd.draw_panel if hasattr(cd, 'draw_panel') else cd)
+      and 'mch.cdrape_mask' in inspect.getsource(__import__('mecha_lab.zb_ui', fromlist=['x'])))
 check('Cloth Drape key maps carry the sketch keys (Enter / Alt+Enter / Backspace / Esc) and Space for the drape',
       any(k[0] == 'mch.lasso_sketch_key' for k in wsui.MCH_TOOL_cloth_drape.bl_keymap) and any(k[0] == 'mch.cdrape_sim' for k in wsui.MCH_TOOL_cloth_drape.bl_keymap))
 summary()

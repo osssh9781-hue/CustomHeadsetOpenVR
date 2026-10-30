@@ -208,6 +208,9 @@ def draw_tool_shelf(layout, context):
     r = box.row()
     for kind, name in zs.CLOTH_FILTERS[3:]:
         r.operator('mch.zb_cloth_filter', text=name).kind = kind
+    if getattr(context.scene, 'mch_cdrape', None) is not None:      # 0.24.95 Drape Mask: the mask lifts off as a cloth
+        box.label(text='Cloth Drape from the mask')
+        box.operator('mch.cdrape_mask', text='Drape Mask (Space pause · Enter keep · Esc drop)', icon='MOD_CLOTH')
     wl = getattr(context.scene, 'mch_wlines', None)          # 0.24.92 Wrinkle Lines (the Mecha tool, opened from here)
     if wl is not None:
         box = layout.box()

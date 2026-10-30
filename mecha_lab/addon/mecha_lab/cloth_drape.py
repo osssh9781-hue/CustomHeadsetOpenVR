@@ -274,7 +274,7 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
         if len(rim):
             pin[rim] = 1.0
     elif st.pin_rim:
-        if to_cloth is None and not puff:
+        if to_cloth is None and not puff and nb > 0:
             pin[:min(nb, n)] = 1.0
         else:                                         # a mesh of its own / a sewn copy: its open edges are the rim
             rim = wl.boundary_verts(me)
@@ -615,6 +615,106 @@ def perform(context, loops, projector):
     pieces = f'front + back, {len(sew):,} seam pairs, ' if sew is not None else ''
     return (f'Cloth Drape on {target.name}: {pieces}{sess["points"]:,} points over {sess["collider"]:,} body points '
             f'(Space drape · Enter keep · Esc drop)')
+
+
+# -----------------------------------------------------------------------------
+# 0.24.95 Drape Mask (user: "지브러시 탭에서 하는 것처럼 마스크 씌워서는 못해?"): the masked faces of the body become the cloth
+# -----------------------------------------------------------------------------
+
+MASK_ATTR = '.sculpt_mask'
+MASK_MIN = 0.5                   # a face is in the cloth when its corners' mask averages at least this
+
+
+def masked_faces(me, threshold=MASK_MIN):
+    """Indices of the faces whose corner mask (Sculpt Mode / the ZBrush tab) averages >= ``threshold``."""
+    att = me.attributes.get(MASK_ATTR)
+    if att is None or not len(me.polygons):
+        return np.zeros(0, np.int64)
+    vals = np.empty(len(me.vertices), np.float32)
+    att.data.foreach_get('value', vals)
+    vi = mio.read_corner_verts(me)
+    start, tot = mio.read_face_starts(me)
+    mean = np.add.reduceat(vals[vi].astype(np.float64), start) / np.maximum(tot, 1)
+    return np.nonzero(mean >= threshold)[0].astype(np.int64)
+
+
+def faces_mesh(me, faces, name='Cloth Drape'):
+    """A new mesh of ``me``'s faces ``faces`` (same local coordinates, smooth shaded, points compacted)."""
+    vi = mio.read_corner_verts(me)
+    start, tot = mio.read_face_starts(me)
+    faces = np.asarray(faces, np.int64)
+    corner_face = np.repeat(np.arange(len(start)), tot)
+    keep = np.zeros(len(start), bool)
+    keep[faces] = True
+    corners = np.nonzero(keep[corner_face])[0]
+    uniq, inv = np.unique(vi[corners], return_inverse=True)
+    co = mio.read_co(me)[uniq]
+    tots = tot[faces]
+    starts = np.concatenate(([0], np.cumsum(tots)[:-1])) if len(tots) else np.zeros(0, np.int64)
+    new = bpy.data.meshes.new(name)
+    new.vertices.add(len(uniq))
+    new.vertices.foreach_set('co', co.ravel())
+    new.loops.add(len(inv))
+    new.loops.foreach_set('vertex_index', inv.astype(np.int32))
+    new.polygons.add(len(faces))
+    new.polygons.foreach_set('loop_start', starts.astype(np.int32))
+    new.polygons.foreach_set('loop_total', tots.astype(np.int32))
+    new.polygons.foreach_set('use_smooth', np.ones(len(faces), bool))
+    new.update(calc_edges=True)
+    new.validate()
+    return new
+
+
+def perform_masked(context, body):
+    """The masked region of ``body`` (painted in Sculpt Mode / the ZBrush tab) lifted off as the cloth: the same
+    flow as a lasso - a "Cloth Drape" object parented to the body, its open rim pinned, the body the collider."""
+    st = settings(context)
+    if st is None:
+        raise cg.CutError('Cloth Drape settings missing')
+    if sim_active():
+        raise cg.CutError('Cloth Drape: keep (Enter) or drop (Esc) the cloth you have first')
+    if body is None or body.type != 'MESH':
+        raise cg.CutError('Drape Mask: the active object must be a mesh with a mask')
+    if context.mode != 'OBJECT':
+        bpy.ops.object.mode_set(mode='OBJECT')
+    faces = masked_faces(body.data)
+    if len(faces) < 3:
+        raise cg.CutError('Drape Mask: paint a mask on the body first (Sculpt Mode / the ZBrush tab mask brush)')
+    if len(faces) == len(body.data.polygons):
+        raise cg.CutError('Drape Mask: the whole body is masked - the cloth needs an unmasked rim to hang from')
+    me = faces_mesh(body.data, faces)
+    if not len(me.polygons) or not len(wl.boundary_verts(me)):
+        bpy.data.meshes.remove(me)
+        raise cg.CutError('Drape Mask: the masked region has no open edge (a closed shell): mask a patch, not all of it')
+    co = mio.read_co(me)
+    size = float(np.linalg.norm(co.max(0) - co.min(0)))
+    ob = bpy.data.objects.new('Cloth Drape', me)
+    coll = body.users_collection[0] if body.users_collection else context.scene.collection
+    coll.objects.link(ob)
+    ob.matrix_world = body.matrix_world.copy()
+    ob.parent = body
+    ob.matrix_parent_inverse = body.matrix_world.inverted_safe()
+    ob[SRC_KEY] = body.name
+    for o in context.selected_objects:
+        o.select_set(False)
+    ob.select_set(True)
+    context.view_layer.objects.active = ob
+    surface = co.copy()
+    try:
+        sess = build(context, body, me, 0, size, st)
+    except Exception:
+        bpy.data.objects.remove(ob)
+        bpy.data.meshes.remove(me)
+        raise
+    mio.write_co(me, sess['cloth'].co)
+    me.update()
+    SIM.clear()
+    SIM.update(ob=ob.name, target=body.name, nb=0, size=size, sess=sess, running=False, done=False, want=None,
+               surface=surface, start=sess['cloth'].init.copy(), snapshot=_snapshot(st), sew=None, pin_idx=None,
+               spacing=float(st.spacing), source='MASK')
+    rim = int(np.count_nonzero(sess['cloth'].pin >= 1))
+    return (f'Cloth Drape from the mask on {body.name}: {len(faces):,} faces, {sess["points"]:,} points ({rim:,} on the rim pinned), '
+            f'{sess["collider"]:,} body points (Space drape · Enter keep · Esc drop)')
 
 
 def body_for(context, cloth):
@@ -1151,6 +1251,37 @@ class MCH_OT_cdrape_mesh(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_cdrape_mask(bpy.types.Operator):
+    """Drape Mask: the masked faces of the active mesh (Sculpt Mode / ZBrush tab mask) lift off as the cloth, pinned at the rim, the body the collider; the drape starts at once (Space pause, Enter keep, Esc drop)"""
+    bl_idname = 'mch.cdrape_mask'
+    bl_label = 'Drape Mask'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.view_layer.objects.active
+        return (ob is not None and ob.type == 'MESH' and context.mode in {'OBJECT', 'SCULPT'} and not sim_active()
+                and ob.data.attributes.get(MASK_ATTR) is not None)
+
+    def execute(self, context):
+        try:
+            msg = perform_masked(context, context.view_layer.objects.active)
+        except cg.CutError as ex:
+            self.report({'WARNING'}, str(ex))
+            return {'CANCELLED'}
+        self.report({'INFO'}, msg)
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        r = self.execute(context)
+        if 'FINISHED' in r and context.area is not None and context.area.type == 'VIEW_3D':
+            try:
+                bpy.ops.mch.cdrape_sim('INVOKE_DEFAULT')       # start draping right away (any tool: the modal has the keys)
+            except RuntimeError:
+                pass
+        return r
+
+
 class MCH_OT_cdrape_wrap(bpy.types.Operator):
     """Wrap the active mesh in a cloth like a wrapping cloth (bojagi): a copy of it lifted off, pulled in by Wrap Tightness, the excess bunching into wrinkles; Space wraps, Enter keeps the new object, Esc drops it"""
     bl_idname = 'mch.cdrape_wrap'
@@ -1261,6 +1392,9 @@ def draw(layout, context):
     r = box.row()
     r.enabled = not live
     r.operator('mch.cdrape_mesh', text='Drape This Mesh (on the other selected)', icon='MOD_CLOTH')
+    r = box.row()
+    r.enabled = not live
+    r.operator('mch.cdrape_mask', text='Drape Mask (masked faces lift off as the cloth)', icon='MOD_MASK')
     r = box.row(align=True)
     r.enabled = not live
     r.operator('mch.cdrape_wrap', text='Wrap This Mesh (like a wrapping cloth)', icon='MOD_SHRINKWRAP')
@@ -1322,7 +1456,7 @@ def draw(layout, context):
     box.prop(st, 'thickness', slider=True)
 
 
-CLASSES = (MCH_PG_ClothDrape, MCH_OT_cdrape_sim, MCH_OT_cdrape_mesh, MCH_OT_cdrape_wrap, MCH_OT_cdrape_sew_copy, MCH_OT_cdrape_lines,
+CLASSES = (MCH_PG_ClothDrape, MCH_OT_cdrape_sim, MCH_OT_cdrape_mesh, MCH_OT_cdrape_mask, MCH_OT_cdrape_wrap, MCH_OT_cdrape_sew_copy, MCH_OT_cdrape_lines,
            MCH_OT_cdrape_control)
 
 
