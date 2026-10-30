@@ -243,6 +243,29 @@ bpy.data.meshes.remove(me2)
 from mecha_lab import tool_presets
 name, pg = tool_presets.group_for(S, 'CDRAPE')
 check('Tool Presets save the Cloth Drape sliders (scene.mch_cdrape)', name == 'mch_cdrape' and pg is not None)
+# ---- 0.24.95 a COARSE CURVED body (ico sphere, 320 big facets): the cloth lies on the smooth surface the facets
+# stand for (Phong samples), not on the facets (user: "is it because it is curved that it sticks like this?" -
+# the facet ridges showed through the cloth)
+body.location = (0.0, 0.0, -20.0)
+bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=1.0)
+dome = C.active_object
+select_only(dome)
+C.view_layer.update()
+st.slack, st.gravity, st.stop_at_pins = 10.0, 100.0, False
+loops_d = [[(x * PX, y * PX) for x, y in [(-0.45, 0.45), (0.45, 0.45), (0.45, -0.45), (-0.45, -0.45)]]]
+target_d, me_d, nb_d, size_d = cd.patch_from_loops(C, loops_d, Proj(), st.spacing)
+cd.drape(C, dome, me_d, nb_d, size_d, st, frames=40)
+r_d = np.linalg.norm(np.array([v.co[:] for v in me_d.vertices]), axis=1)
+check('Coarse ico dome: the cloth rides the smooth surface - no point down on a facet (radius min > 0.955; the facet '
+      'centres sit at 0.935) and the radius spread under 0.03 (facets alone: 0.0355)',
+      target_d is dome and r_d.min() > 0.955 and r_d.std() < 0.03, (float(r_d.min()), float(r_d.std())))
+bpy.data.meshes.remove(me_d)
+bpy.data.objects.remove(dome)
+body.location = (0.0, 0.0, 0.0)
+C.view_layer.update()
+select_only(body)
+st.slack, st.gravity = 25.0, 200.0
+
 # ---- 0.24.95 Padding (quilting) + Trim (piping) ----------------------------------------------------------------
 on = cd.quilt_lines(np.array([[0.0, 0.0], [0.1, 0.05], [0.2, 0.2], [0.05, 0.1], [0.4, 0.33]]), 0.2, 0.011, 'SQUARE')
 check('quilt_lines SQUARE, cell 0.2: points on a seam (0,0), (0.2,0.2), (0.4, 0.33 -> near 0.4 across) count, the others not',

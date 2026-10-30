@@ -355,6 +355,8 @@ class GridCollider:
 
 # 0.24.95 the collider as a point cloud that covers the FACES too (a flat face with points only at its corners was a
 # hole in the grid: the cloth fell through the user's recessed floor)
+SMOOTH_COS = math.cos(math.radians(35.0))   # surface_samples: a corner normal this close to the face blends in
+PHONG = 0.75                  # surface_samples: how far the samples move onto the curved (Phong) patch, 0 = flat facets
 MAX_SAMPLES = 600_000           # surface_samples: at most this many extra points on the body's faces
 
 
@@ -402,6 +404,14 @@ def surface_samples(me, co, nrm, near, spacing, lo=None, hi=None, limit=MAX_SAMP
     ln = np.linalg.norm(fn, axis=1)
     ok = ln > 1e-18
     fn[ok] /= ln[ok][:, None]
+    # the sample's normal: the corners' point normals blended (a coarse CURVED body then reads as a smooth surface,
+    # not as its facets - the cloth showed the facet rings), except at a corner whose point normal is far off the
+    # face (a box edge / corner: there the face normal stays, so the flat stays flat up to its edge)
+    cn = []
+    for k in range(3):
+        vn = nrm[T[:, k]]
+        agree = np.einsum('ij,ij->i', vn, fn) > SMOOTH_COS
+        cn.append(np.where(agree[:, None], vn, fn))
     longest = np.maximum.reduce([np.linalg.norm(B - A, axis=1), np.linalg.norm(Cc - B, axis=1), np.linalg.norm(A - Cc, axis=1)])
     n_div = np.ceil(longest / spacing).astype(np.int64)
     total = int(np.maximum(n_div - 1, 0).astype(np.int64).__mul__(np.maximum(n_div - 2, 0)).sum() // 2)
@@ -417,9 +427,27 @@ def surface_samples(me, co, nrm, near, spacing, lo=None, hi=None, limit=MAX_SAMP
         v = (j[m] / n).astype(np.float64)
         if not len(u):
             continue
-        P = (A[tris][:, None, :] * (1 - u - v)[None, :, None] + B[tris][:, None, :] * u[None, :, None]
-             + Cc[tris][:, None, :] * v[None, :, None]).reshape(-1, 3)
+        w0, w1, w2 = (1 - u - v)[None, :, None], u[None, :, None], v[None, :, None]
+        P = (A[tris][:, None, :] * w0 + B[tris][:, None, :] * w1 + Cc[tris][:, None, :] * w2).reshape(-1, 3)
+        # Phong tessellation: the sample moved onto the curved patch the corner normals describe (its projections
+        # onto the three corners' tangent planes, blended) - a coarse curved body reads as the smooth surface it
+        # stands for, not as its facets; at a hard corner the "normal" is the face's own, so a flat stays flat
+        if PHONG > 0:
+            curved = np.zeros_like(P)
+            for k, (V, Nk) in enumerate(((A, cn[0]), (B, cn[1]), (Cc, cn[2]))):
+                Vt = np.repeat(V[tris], len(u), axis=0)
+                Nt = np.repeat(Nk[tris], len(u), axis=0)
+                wk = (w0, w1, w2)[k].reshape(1, -1, 1)
+                proj = P - np.einsum('ij,ij->i', P - Vt, Nt)[:, None] * Nt
+                curved += (np.repeat(wk, len(tris), axis=0).reshape(-1, 1)) * proj
+            P = (1.0 - PHONG) * P + PHONG * curved
+        Nn = (cn[0][tris][:, None, :] * w0 + cn[1][tris][:, None, :] * w1 + cn[2][tris][:, None, :] * w2).reshape(-1, 3)
+        nl = np.linalg.norm(Nn, axis=1)
+        bad = nl < 1e-9
+        Nn[~bad] /= nl[~bad][:, None]
+        if bad.any():
+            Nn[bad] = np.repeat(fn[tris], len(u), axis=0)[bad]
         pts.append(P)
-        nms.append(np.repeat(fn[tris], len(u), axis=0))
+        nms.append(Nn)
     return np.concatenate(pts), np.concatenate(nms)
 
