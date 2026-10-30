@@ -57,6 +57,8 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
                               default=50.0, min=0.0, max=200.0, subtype='PERCENTAGE')
     wrap_points: IntProperty(name='Wrap Points', description='Wrap This Mesh: the cloth copy is kept to about this many points (a decimated copy of a heavy body)',
                              default=40000, min=1000, soft_max=300000)
+    thickness: FloatProperty(name='Thickness', description='The cloth gets a Solidify modifier of this thickness (% of the outline / body size; 0 = a single surface)',
+                             default=0.0, min=0.0, max=5.0, subtype='PERCENTAGE')
     pin_rim: BoolProperty(name='Pin Rim', description='The outline edge stays where it was drawn (sewn on); off: the cloth is free', default=True)
     frames: IntProperty(name='Frames', default=60, min=5, max=300)
 
@@ -132,7 +134,22 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
     cloth = cloth_pbd.Cloth(cloth_co, vi, start, tot, bend=bend, keep=st.keep / 100.0 * KEEP_SCALE, pin=pin)
     cloth.sor = SOR
     cloth.smooth = smooth
-    cloth.scale_e = cloth.scale_b = (1.0 - st.shrink / 100.0) * (1.0 + st.slack / 100.0)
+    scale = (1.0 - st.shrink / 100.0) * (1.0 + st.slack / 100.0)
+    cloth.scale_e = cloth.scale_b = scale
+    if np.any(pin >= 1) and scale != 1.0:            # the fabric next to a seam cannot be loose at once: taper over 4 rings
+        ring = np.full(n, 99, np.int64)
+        ring[pin >= 1] = 0
+        a, b = cloth.edges[:, 0], cloth.edges[:, 1]
+        for k in range(1, 5):
+            nb_ring = np.minimum(ring[a], ring[b]) + 1
+            upd = np.minimum(ring[a], nb_ring)
+            np.minimum.at(ring, a, upd)
+            np.minimum.at(ring, b, np.minimum(ring[b], nb_ring))
+        tap = np.clip(ring / 4.0, 0.0, 1.0)
+        tap_e = np.minimum(tap[a], tap[b])
+        cloth.scale_e = 1.0 + (scale - 1.0) * tap_e
+        ba, bb = cloth.bends[:, 0], cloth.bends[:, 1]
+        cloth.scale_b = 1.0 + (scale - 1.0) * np.minimum(tap[ba], tap[bb])
     cloth.max_step = max(spacing * 1.5, size * 0.01)
     cloth.init = cloth_co.copy()
     # the collider: the target's points near the patch only, with their normals, baked into a grid
@@ -421,6 +438,19 @@ def _drop_backup():
             bpy.data.meshes.remove(backup)
 
 
+def add_thickness(ob, size, st):
+    """A Solidify modifier (outward) on a cloth object when Thickness is set: the cloth gets a body."""
+    if st is None or st.thickness <= 0 or ob is None:
+        return False
+    md = ob.modifiers.get('MCH Cloth Thickness') or ob.modifiers.new('MCH Cloth Thickness', 'SOLIDIFY')
+    md.thickness = size * st.thickness / 100.0
+    md.offset = 1.0
+    md.use_even_offset = False            # (even offset divides by the corner angle: a crumpled cloth would spike)
+    md.use_quality_normals = True
+    md.use_rim = True
+    return True
+
+
 def confirm(context):
     ob = _ob()
     if ob is None:
@@ -428,9 +458,10 @@ def confirm(context):
         SIM.clear()
         return 'nothing to keep'
     n = SIM['sess']['frame']
+    thick = add_thickness(ob, SIM['size'], settings(context)) if SIM.get('mode') != 'MESH' else False
     _drop_backup()
     SIM.clear()
-    return f'Cloth Drape: kept "{ob.name}" at frame {n} ({len(ob.data.vertices):,} points)'
+    return f'Cloth Drape: kept "{ob.name}" at frame {n} ({len(ob.data.vertices):,} points{", thickness on" if thick else ""})'
 
 
 def cancel(context):
@@ -665,6 +696,7 @@ def draw(layout, context):
     r = box.row(align=True)
     r.prop(st, 'pin_rim', toggle=True)
     r.prop(st, 'frames')
+    box.prop(st, 'thickness', slider=True)
 
 
 CLASSES = (MCH_PG_ClothDrape, MCH_OT_cdrape_sim, MCH_OT_cdrape_mesh, MCH_OT_cdrape_wrap, MCH_OT_cdrape_control)

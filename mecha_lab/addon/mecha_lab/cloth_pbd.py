@@ -83,6 +83,7 @@ class Cloth:
         length = np.linalg.norm(d, axis=1)
         length[length < 1e-12] = 1e-12
         corr = (length - rest) / length * strength * self.sor
+        np.clip(corr, -0.5, 0.5, out=corr)          # (a pass never moves an end more than half the edge: no fling)
         wa = 1.0 / self.mass[a]
         wb = 1.0 / self.mass[b]
         ws = wa + wb
