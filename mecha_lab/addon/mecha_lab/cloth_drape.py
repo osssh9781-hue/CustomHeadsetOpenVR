@@ -56,8 +56,13 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
     proxy_faces: IntProperty(name='Proxy Faces', description='Triangles per proxy mesh (lighter meshes are used as they are)', default=40000, min=1000, max=2000000)
     show_proxy: BoolProperty(name='Show Proxies', default=False, description='Show the collider proxies as wire (hidden otherwise)',
                              update=_show_proxy_update)
-    cape_length: FloatProperty(name='Length', description='Cape: how far the cloth hangs from the drawn line, as % of the body size', default=50.0, min=5.0, max=200.0, subtype='PERCENTAGE')
-    cape_flare: FloatProperty(name='Flare', description='Cape: how much wider the hem is than the drawn line (0 = exactly as wide as the points you placed)', default=0.0, min=0.0, max=300.0, subtype='PERCENTAGE')
+    drape_mode: EnumProperty(name='Mode', items=[
+        ('AREA', 'Area', 'Draw round a region: a loose cloth laid over it, pinned at its rim'),
+        ('CAPE', 'Cape', 'Draw a line (or, Surface on, click points) across the shoulders: a cape hangs from it, as wide as the line'),
+        ('NECK', 'Neck Cloth', 'Draw round the neck: a cloth hangs from the loop and settles over the shoulders')],
+        default='AREA')
+    cape_length: FloatProperty(name='Length', description='Cape / Neck Cloth: how far the cloth hangs from the drawn line, as % of the body size (changed before Space: the cloth is made again)', default=50.0, min=2.0, max=200.0, subtype='PERCENTAGE')
+    cape_flare: FloatProperty(name='Flare', description='Cape: how much wider the hem is than the drawn line (0 = exactly as wide as the points you placed; the Neck Cloth is a round ring)', default=0.0, min=0.0, max=300.0, subtype='PERCENTAGE')
     mask_points: IntProperty(name='Cloth Points', description='Drape Mask: the masked faces are rebuilt as an even, lighter cloth of about this many points '
                              '(0 = from Cloth Detail; never more points than the body has there)', default=0, min=0, max=200000)
     spacing: FloatProperty(name='Cloth Detail', description='The patch spacing as % of the outline size (smaller = more points, finer folds)',
@@ -623,10 +628,17 @@ def _ob():
 
 
 def perform(context, loops, projector):
-    """Lasso -> the cloth object laid over the region (flat), the session ready: Space drapes it."""
+    """Lasso -> the cloth object laid over the region (flat), the session ready: Space drapes it.  Mode Cape: the
+    drawn line hangs a cape; Mode Neck: the drawn loop hangs a neck cloth."""
     st = settings(context)
     if st is None:
         raise cg.CutError('Cloth Drape settings missing')
+    if getattr(st, 'drape_mode', 'AREA') in {'CAPE', 'NECK'}:
+        if sim_active():
+            raise cg.CutError('Cloth Drape: keep (Enter) or drop (Esc) the cloth you have first')
+        closed = st.drape_mode == 'NECK'
+        body, pts = line_from_screen(context, max(loops, key=len), projector, closed)
+        return perform_hang(context, body, pts, closed)
     if sim_active():
         raise cg.CutError('Cloth Drape: keep (Enter) or drop (Esc) the cloth you have first')
     sew = pin_idx = None
@@ -877,23 +889,28 @@ def perform_masked(context, body):
 # -----------------------------------------------------------------------------
 
 
-def _resample(pts, step):
-    """The polyline ``pts`` (N, 3) resampled every ``step`` along its length (ends kept)."""
+def _resample(pts, step, closed=False):
+    """The polyline ``pts`` (N, 3) resampled every ``step`` along its length (ends kept; ``closed``: round the
+    loop, the first point not repeated)."""
     pts = np.asarray(pts, np.float64)
+    if closed:
+        pts = np.concatenate([pts, pts[:1]])
     seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
     total = float(seg.sum())
-    n = max(2, int(round(total / max(step, 1e-9))) + 1)
+    n = max(3 if closed else 2, int(round(total / max(step, 1e-9))) + (0 if closed else 1))
     at = np.concatenate(([0.0], np.cumsum(seg)))
-    t = np.linspace(0.0, total, n)
+    t = np.linspace(0.0, total, n + 1)[:-1] if closed else np.linspace(0.0, total, n)
     return np.stack([np.interp(t, at, pts[:, k]) for k in range(3)], axis=1)
 
 
-def cape_patch(body, line, length, flare, step, gap, down):
-    """The hanging cloth for a cape: ``line`` (N, 3) the drawn points on ``body`` (its local space), resampled every
-    ``step``; from each, a column of points goes ``length`` down (``down``, unit) a ``step`` at a time, every new
-    point pushed out of the body (nearest surface point + its normal x ``gap``) and kept a ``step`` from the one
-    above, the columns spreading sideways to a hem ``flare`` x wider.  Returns (mesh, nb): the top row first
-    (nb points: the line, pinned by Pin Rim)."""
+def hang_patch(body, line, length, flare, step, gap, down, closed=False):
+    """The hanging cloth of a Cape (``closed`` False: an open line across the shoulders) or a Neck Cloth (a closed
+    loop round the neck): ``line`` (N, 3) on ``body`` (its local space) resampled every ``step``; from each point
+    a column goes ``length`` straight down a ``step`` at a time.  A point only ever moves OUT (never sideways) to
+    clear the body by ``gap`` - out = the line's facing for a cape, the radial direction from the loop's centre for
+    a neck cloth - and going down never comes back in, so the cloth hangs from the farthest-out part (shoulder
+    blades, shoulders) as wide as the placed points.  ``flare`` (%) widens the hem.  Returns (mesh, nb): the top
+    row first (nb points, pinned by Pin Rim)."""
     from mathutils.bvhtree import BVHTree
     import bmesh
     bm = bmesh.new()
@@ -910,98 +927,198 @@ def cape_patch(body, line, length, flare, step, gap, down):
         if loc is None:
             return q
         loc, nrm = np.array(loc), np.array(nrm)
-        if np.dot(q - loc, nrm) < gap:
-            return loc + nrm * gap
-        return q
-    top = _resample(line, step)
+        return loc + nrm * gap if np.dot(q - loc, nrm) < gap else q
+    top = np.array([push(p) for p in _resample(line, step, closed)])
     n = len(top)
-    top = np.array([push(p) for p in top])
     rows = max(2, int(round(length / step)))
-    # "out": the way the cape faces (the line's surface normals, across the fall)
-    out = np.zeros(3)
-    for p in top:
-        loc, nrm, _i, _d = tree.find_nearest(Vector(p))
-        if loc is not None:
-            out += np.array(nrm)
-    out -= down * np.dot(out, down)
-    if np.linalg.norm(out) < 1e-9:
-        out = np.cross(down, top[-1] - top[0])
-    out /= max(np.linalg.norm(out), 1e-12)
-    # sideways: only the Flare (0 = the hem exactly as wide as the placed points)
-    tang = np.gradient(top, axis=0)
-    tang -= down[None, :] * (tang @ down)[:, None]
-    tang /= np.maximum(np.linalg.norm(tang, axis=1), 1e-12)[:, None]
-    u = np.linspace(-0.5, 0.5, n)
-    width = float(np.linalg.norm(np.diff(top, axis=0), axis=1).sum())
-    side = (u * width * (flare / 100.0) / rows)[:, None] * tang
-    reach = float(np.linalg.norm(body.dimensions)) * 2.0 + length
 
-    def clear(q):
-        """``q`` moved straight out (along ``out``, never sideways) until it is ``gap`` off the outermost body
-        surface on that line: a flat sheet hanging behind the body, as wide as the placed points."""
-        far = q + out * reach
-        loc, _n, _i, _d = tree.ray_cast(Vector(far), Vector(-out), reach * 2.0)
+    def flat(v):
+        v = v - down * np.dot(v, down)
+        return v / max(np.linalg.norm(v), 1e-12)
+    if closed:                                            # radial, from the loop's centre
+        c = top.mean(0)
+        out = np.array([flat(p - c) for p in top])
+        radius = float(np.mean(np.linalg.norm((top - c) - np.outer((top - c) @ down, down), axis=1)))
+        side = out * (radius * flare / 100.0 / rows)
+    else:                                                 # the line's facing (its surface normals)
+        o = np.zeros(3)
+        for p in top:
+            loc, nrm, _i, _d = tree.find_nearest(Vector(p))
+            if loc is not None:
+                o += np.array(nrm)
+        o = o - down * np.dot(o, down)
+        if np.linalg.norm(o) < 1e-9:
+            o = np.cross(down, top[-1] - top[0])
+        out = np.repeat(flat(o)[None, :], n, axis=0)
+        tang = np.gradient(top, axis=0)
+        tang = np.array([flat(t) for t in tang])
+        u = np.linspace(-0.5, 0.5, n)
+        width = float(np.linalg.norm(np.diff(top, axis=0), axis=1).sum())
+        side = (u * width * (flare / 100.0) / rows)[:, None] * tang
+    reach = float(np.linalg.norm(body.dimensions)) * 2.0 + length * 2.0
+
+    def clear(q, o):
+        loc, _n, _i, _d = tree.ray_cast(Vector(q + o * reach), Vector(-o), reach * 2.0)
         if loc is None:
             return q
-        lift = float(np.dot(np.array(loc) - q, out)) + gap
-        return q + out * lift if lift > 0.0 else q
+        lift = float(np.dot(np.array(loc) - q, o)) + gap
+        return q + o * lift if lift > 0.0 else q
     grid = [top]
     cur = top.copy()
-    level = top @ out                                            # going down, no point comes back in along "out"
+    level = np.einsum('ij,ij->i', top, out)
     for _r in range(rows):
         nxt = cur + down * step + side
         for i in range(n):
-            q = clear(nxt[i])
-            d = float(q @ out) - level[i]
+            q = clear(nxt[i], out[i])
+            d = float(q @ out[i]) - level[i]
             if d < 0.0:
-                q = q - out * d
+                q = q - out[i] * d
             nxt[i] = q
-        level = nxt @ out
+        level = np.einsum('ij,ij->i', nxt, out)
         grid.append(nxt)
         cur = nxt
     co = np.concatenate(grid)
     faces = []
+    cols = n if closed else n - 1
     for r in range(rows):
         a, b = r * n, (r + 1) * n
-        for i in range(n - 1):
-            faces.append((a + i, a + i + 1, b + i + 1, b + i))
-    # the faces must face away from the body (build lifts the cloth along its normals)
-    vote = 0.0
+        for i in range(cols):
+            j = (i + 1) % n
+            faces.append((a + i, a + j, b + j, b + i))
+    vote = 0.0                                            # the faces face away from the body (build lifts along them)
     for f in faces[::max(1, len(faces) // 64)]:
-        c = co[list(f)].mean(0)
+        cen = co[list(f)].mean(0)
         fn = np.cross(co[f[1]] - co[f[0]], co[f[3]] - co[f[0]])
-        loc, nrm, _i, _d = tree.find_nearest(Vector(c))
+        loc, nrm, _i, _d = tree.find_nearest(Vector(cen))
         if loc is not None:
             vote += float(np.dot(fn, np.array(nrm)))
     if vote < 0.0:
         faces = [tuple(reversed(f)) for f in faces]
     from . import fast_decimate as fd
-    me = bpy.data.meshes.new('Cloth Cape')
+    me = bpy.data.meshes.new('Neck Cloth' if closed else 'Cloth Cape')
     fd.build_mesh(me, co, np.array(faces, np.int64))
     me.polygons.foreach_set('use_smooth', np.ones(len(faces), bool))
     me.update()
     return me, n
 
 
-def perform_cape(context, body, line_world):
-    """Cape: ``line_world`` (N >= 2 points on ``body``, world) -> a "Cloth Cape" hanging from it (the line pinned),
-    the session ready: Space drapes it (Enter keep, Esc drop)."""
-    st = settings(context)
-    if st is None:
-        raise cg.CutError('Cloth Drape settings missing')
-    if sim_active():
-        raise cg.CutError('Cloth Drape: keep (Enter) or drop (Esc) the cloth you have first')
-    if body is None or body.type != 'MESH' or len(line_world) < 2:
-        raise cg.CutError('Cape: place at least 2 points on the body (shoulders / collar)')
-    inv = body.matrix_world.inverted_safe()
-    line = np.array([(inv @ Vector(p))[:] for p in line_world], np.float64)
+def neck_patch(body, loop, length, step, gap, down):
+    """The Neck Cloth: a flat ring (annulus) at the height of ``loop`` (closed, round the neck, ``body`` local
+    space): the inner edge is the loop (pinned by Pin Rim), the rings go ``length`` out a ``step`` at a time with
+    more points on every ring (``2 pi r / step``) so the cells stay even all the way out; any point inside the body
+    is put just outside it.  Gravity then lays it over the shoulders like a round capelet.  Returns (mesh, nb)."""
+    from mathutils.bvhtree import BVHTree
+    import bmesh
+    import math as _m
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(body.data)
+        tree = BVHTree.FromBMesh(bm)
+    finally:
+        bm.free()
+    down = np.asarray(down, np.float64)
+    down /= max(np.linalg.norm(down), 1e-12)
+    up = -down
+
+    def push(q):
+        loc, nrm, _i, _d = tree.find_nearest(Vector(q))
+        if loc is None:
+            return q
+        loc, nrm = np.array(loc), np.array(nrm)
+        return loc + nrm * gap if np.dot(q - loc, nrm) < gap else q
+    top = np.array([push(p) for p in _resample(loop, step, closed=True)])
+    c = top.mean(0)
+    e1 = (top[0] - c) - up * np.dot(top[0] - c, up)
+    e1 /= max(np.linalg.norm(e1), 1e-12)
+    e2 = np.cross(up, e1)
+    rel = top - c
+    ang = np.unwrap(np.arctan2(rel @ e2, rel @ e1))
+    if ang[-1] < ang[0]:                                     # round the loop counter-clockwise (seen from above)
+        top = top[::-1].copy()
+        rel = top - c
+        ang = np.unwrap(np.arctan2(rel @ e2, rel @ e1))
+    ang = ang - ang[0]
+    rad = np.hypot(rel @ e1, rel @ e2)
+    hgt = rel @ up
+    n0 = len(top)
+    a_per = np.concatenate([ang, [2.0 * _m.pi]])
+    r_per = np.concatenate([rad, rad[:1]])
+    h_per = np.concatenate([hgt, hgt[:1]])
+    rings = [top]
+    angles = [np.concatenate([ang, [2.0 * _m.pi]])]
+    for k in range(1, max(1, int(round(length / step))) + 1):
+        rk = float(rad.mean()) + k * step
+        m = max(n0, int(_m.ceil(2.0 * _m.pi * rk / step)))
+        th = np.arange(m) * (2.0 * _m.pi / m)
+        r = np.interp(th, a_per, r_per) + k * step
+        h = np.interp(th, a_per, h_per)
+        pts = c + np.outer(h, up) + np.outer(r * np.cos(th), e1) + np.outer(r * np.sin(th), e2)
+        rings.append(np.array([push(p) for p in pts]))
+        angles.append(np.concatenate([th, [2.0 * _m.pi]]))
+    starts = np.cumsum([0] + [len(r) for r in rings])
+    faces = []
+    for k in range(1, len(rings)):
+        A, B = angles[k - 1], angles[k]
+        ma, mb = len(A) - 1, len(B) - 1
+        oa, ob_ = starts[k - 1], starts[k]
+        i = j = 0
+        while i < ma or j < mb:                              # zip the two rings together by angle
+            if j >= mb or (i < ma and A[i + 1] <= B[j + 1]):
+                faces.append((oa + i, oa + (i + 1) % ma, ob_ + j % mb))
+                i += 1
+            else:
+                faces.append((oa + i % ma, ob_ + (j + 1) % mb, ob_ + j))
+                j += 1
+    co = np.concatenate(rings)
+    vote = 0.0
+    for f in faces[::max(1, len(faces) // 64)]:
+        fn = np.cross(co[f[1]] - co[f[0]], co[f[2]] - co[f[0]])
+        vote += float(np.dot(fn, up))                        # (the ring faces up, away from the shoulders under it)
+    if vote < 0.0:
+        faces = [tuple(reversed(f)) for f in faces]
+    from . import fast_decimate as fd
+    me = bpy.data.meshes.new('Neck Cloth')
+    fd.build_mesh(me, co, np.array(faces, np.int64))
+    me.polygons.foreach_set('use_smooth', np.ones(len(faces), bool))
+    me.update()
+    return me, n0
+
+
+def cape_patch(body, line, length, flare, step, gap, down):
+    """(the open-line case of ``hang_patch``)"""
+    return hang_patch(body, line, length, flare, step, gap, down, closed=False)
+
+
+def _hang_args(body, st):
+    """(size, step, gap, down, length) for a cape / neck cloth on ``body`` with the current settings."""
     bco = mio.read_co(body.data)
     size = float(np.linalg.norm(bco.max(0) - bco.min(0)))
     step = size * st.spacing / 100.0
     down = np.array(wl._gravity_dir(body)[:], np.float64)
     gap = size * st.gap / 100.0 + step * 0.5
-    me, nb = cape_patch(body, line, size * st.cape_length / 100.0, st.cape_flare, step, gap, down)
-    ob = bpy.data.objects.new('Cloth Cape', me)
+    return size, step, gap, down, size * st.cape_length / 100.0
+
+
+def perform_hang(context, body, line_world, closed=False):
+    """Cape (an open line of points on ``body``, world: shoulders / collar) or Neck Cloth (``closed``: a loop round
+    the neck) -> the cloth hanging from it, the line pinned (Pin Rim), the session ready: Space drapes it (Enter
+    keep, Esc drop).  Length / Flare / Cloth Detail changed before Space rebuild it from the same line."""
+    st = settings(context)
+    kind = 'Neck Cloth' if closed else 'Cloth Cape'
+    if st is None:
+        raise cg.CutError('Cloth Drape settings missing')
+    if sim_active():
+        raise cg.CutError('Cloth Drape: keep (Enter) or drop (Esc) the cloth you have first')
+    need = 3 if closed else 2
+    if body is None or body.type != 'MESH' or len(line_world) < need:
+        raise cg.CutError('Neck Cloth: draw round the neck (3+ points on the body)' if closed else
+                          'Cape: place at least 2 points on the body (shoulders / collar)')
+    inv = body.matrix_world.inverted_safe()
+    line = np.array([(inv @ Vector(p))[:] for p in line_world], np.float64)
+    size, step, gap, down, length = _hang_args(body, st)
+    me, nb = (neck_patch(body, line, length, step, gap, down) if closed else
+              hang_patch(body, line, length, st.cape_flare, step, gap, down, False))
+    ob = bpy.data.objects.new(kind, me)
     coll = body.users_collection[0] if body.users_collection else context.scene.collection
     coll.objects.link(ob)
     ob.matrix_world = body.matrix_world.copy()
@@ -1024,9 +1141,62 @@ def perform_cape(context, body, line_world):
     SIM.clear()
     SIM.update(ob=ob.name, target=body.name, nb=nb, size=size, sess=sess, running=False, done=False, want=None,
                surface=surface, start=sess['cloth'].init.copy(), snapshot=_snapshot(st), sew=None, pin_idx=None,
-               spacing=float(st.spacing), source='CAPE')
-    return (f'Cloth Cape on {body.name}: {sess["points"]:,} points, {nb} on the line pinned, '
-            f'{sess["collider"]:,} body points (Space drape · Enter keep · Esc drop)')
+               spacing=float(st.spacing), source='NECK' if closed else 'CAPE', line=line, closed=closed,
+               hang=_hang_key(st))
+    return (f'{kind} on {body.name}: {sess["points"]:,} points, {nb} on the line pinned, '
+            f'{sess["collider"]:,} body points (Length / Flare then Space drape · Enter keep · Esc drop)')
+
+
+def perform_cape(context, body, line_world):
+    return perform_hang(context, body, line_world, closed=False)
+
+
+def _hang_key(st):
+    return (round(float(st.cape_length), 4), round(float(st.cape_flare), 4), round(float(st.spacing), 4), round(float(st.gap), 4))
+
+
+def rebuild_hang(context):
+    """A cape / neck cloth made again from its line when Length / Flare / Cloth Detail / Gap changed (Space or
+    Restart).  Returns True when the mesh was replaced."""
+    st = settings(context)
+    ob, body = _ob(), bpy.data.objects.get(SIM.get('target', ''))
+    if SIM.get('line') is None or st is None or ob is None or body is None or SIM.get('hang') == _hang_key(st):
+        return False
+    size, step, gap, down, length = _hang_args(body, st)
+    me, nb = (neck_patch(body, SIM['line'], length, step, gap, down) if SIM.get('closed') else
+              hang_patch(body, SIM['line'], length, st.cape_flare, step, gap, down, False))
+    old = ob.data
+    me.name = old.name
+    ob.data = me
+    if old.users == 0:
+        bpy.data.meshes.remove(old)
+    SIM.update(nb=nb, size=size, surface=mio.read_co(me).copy(), spacing=float(st.spacing), hang=_hang_key(st))
+    return True
+
+
+def line_from_screen(context, loop, projector, closed):
+    """The drawn screen line (a stroke across the shoulders, or round the neck) as points on the mesh under it:
+    (body, world points).  The body is the mesh most of the stroke lands on (a straight stroke has no area, so the
+    lasso's own surface pick cannot be used)."""
+    from . import target_rules
+    dg = context.evaluated_depsgraph_get()
+    hits = []
+    for xy in loop:
+        o, d = projector.ray(xy)
+        ok, loc, _n, _i, ob, _m = target_rules.scene_ray(context, dg, Vector(o), Vector(d))
+        if ok and ob is not None and ob.type == 'MESH':
+            hits.append((ob.name, Vector(loc)))
+    if not hits:
+        raise cg.CutError('Draw over a mesh.')
+    names = [h[0] for h in hits]
+    name = max(set(names), key=names.count)
+    pts = []
+    for n_, w in hits:
+        if n_ == name and (not pts or (w - pts[-1]).length > 1e-6):
+            pts.append(w)
+    if not closed and len(pts) > 2 and (pts[0] - pts[-1]).length < 1e-6:
+        pts.pop()
+    return bpy.data.objects[name], pts
 
 
 def body_for(context, cloth):
@@ -1217,12 +1387,14 @@ def _snapshot(st):
     return tuple(getattr(st, k) for k in ('fabric', 'slack', 'shrink', 'gravity', 'stick', 'keep', 'gap', 'pin_rim', 'frames',
                                           'wrap_tight', 'use_lines', 'stop_at_pins', 'two_sides', 'puff', 'wrinkles',
                                           'padding', 'pad_pattern', 'pad_size', 'pad_puff', 'trim', 'trim_width',
-                                          'collide_with', 'use_proxy', 'proxy_faces'))
+                                          'collide_with', 'use_proxy', 'proxy_faces',
+                                          'cape_length', 'cape_flare', 'spacing'))
 
 
 def restart(context):
     """The cloth back to the laid patch, the session rebuilt with the current sliders (Cloth Detail needs a new lasso)."""
     grab_end_event()
+    rebuild_hang(context)                         # 0.24.95 a cape / neck cloth: Length / Flare / Detail rebuild it
     ob = _ob()
     st = settings(context)
     target = bpy.data.objects.get(SIM.get('target', ''))
@@ -1234,7 +1406,7 @@ def restart(context):
     mode = SIM.get('mode')
     sess = build(context, target, me, SIM['nb'], SIM['size'], st, sew=SIM.get('sew'), pin_idx=SIM.get('pin_idx'),
                  to_cloth=SIM.get('to_cloth'), pin_sel=bool(SIM.get('pin_sel')), gdir_ob=ob if mode == 'MESH' else target,
-                 wrap=mode == 'WRAP', puff=mode == 'SEW', tether=SIM.get('source') == 'CAPE')
+                 wrap=mode == 'WRAP', puff=mode == 'SEW', tether=SIM.get('source') in {'CAPE', 'NECK'})
     if mode == 'SEW':
         c = sess['cloth']
         sewn = c.pin >= 1
@@ -1687,7 +1859,16 @@ def draw(layout, context):
     box = layout.box()
     box.label(text='Cloth Drape', icon='MOD_CLOTH')
     live = sim_active()
-    box.label(text=status() if live else 'draw a lasso on the mesh: a loose cloth over that region', icon='PLAY' if live else 'INFO')
+    hint = {'AREA': 'draw a lasso on the mesh: a loose cloth over that region',
+            'CAPE': 'draw a line across the shoulders (Surface: click points), Enter: a cape hangs from it',
+            'NECK': 'draw round the neck (Surface: click points round it), Enter: a cloth over the shoulders'}
+    box.label(text=status() if live else hint.get(st.drape_mode, hint['AREA']), icon='PLAY' if live else 'INFO')
+    box.row().prop(st, 'drape_mode', expand=True)                     # 0.24.95 Area / Cape / Neck Cloth
+    if st.drape_mode in {'CAPE', 'NECK'} or SIM.get('line') is not None:
+        r = box.row(align=True)
+        r.prop(st, 'cape_length', slider=True)
+        if st.drape_mode == 'CAPE':
+            r.prop(st, 'cape_flare', slider=True)
     r = box.row(align=True)
     r.enabled = live
     if SIM.get('done'):
@@ -1754,7 +1935,7 @@ def draw(layout, context):
     rr.prop(st, 'proxy_faces', text='Faces')
     rr.prop(st, 'show_proxy', text='', icon='HIDE_OFF' if st.show_proxy else 'HIDE_ON', toggle=True)
     col.prop(st, 'spacing', slider=True, text='Cloth Detail (less = finer)')
-    if sim_active() and SIM.get('spacing') is not None and abs(float(st.spacing) - SIM['spacing']) > 1e-6:
+    if sim_active() and SIM.get('line') is None and SIM.get('spacing') is not None and abs(float(st.spacing) - SIM['spacing']) > 1e-6:
         box.label(text='Cloth Detail changes the NEXT lasso (this cloth keeps its mesh)', icon='INFO')
     r = box.row(align=True)
     r.prop(st, 'two_sides', toggle=True, icon='MOD_MIRROR')

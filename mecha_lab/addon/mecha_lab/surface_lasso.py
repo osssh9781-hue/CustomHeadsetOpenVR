@@ -408,10 +408,31 @@ class SurfaceLogic:
         ppu = (size * 0.4) / max(r, 1e-6)
         return cg.OrthoProjector(rot, c, ppu, (size, size))
 
+    def _finish_hang(self, context, closed):
+        """0.24.95 Cloth Drape Cape / Neck Cloth: the clicked points (traced along the surface) hang the cloth."""
+        from . import cloth_drape
+        from . import core_geometry as cg
+        if len(self.points) < (3 if closed else 2):
+            return None, 'Surface Lasso: place at least %d points' % (3 if closed else 2)
+        self.closed = closed
+        self._rebuild()
+        pts = self.loop_local()
+        if not closed and self.segments:
+            pts.append(self.segments[-1][-1])
+        ob = bpy.data.objects.get(self.target.name)
+        try:
+            msg = cloth_drape.perform_hang(context, ob, [self.target.to_world(p) for p in pts], closed)
+        except cg.CutError as ex:
+            return None, str(ex)
+        return [context.view_layer.objects.active], msg
+
     def _finish_patch(self, context):
         """Armor Plate / Cloth Plate from the surface outline (or a band in Line mode)."""
         from . import lasso_line
         brush = context.scene.mch_brush
+        dm = getattr(getattr(context.scene, 'mch_cdrape', None), 'drape_mode', 'AREA')
+        if self.mode == 'CDRAPE' and dm in {'CAPE', 'NECK'}:
+            return self._finish_hang(context, dm == 'NECK')
         line = bool(getattr(brush, 'line_mode', False))
         if len(self.points) < (2 if line else 3):
             return None, 'Surface Lasso: place at least %d points' % (2 if line else 3)

@@ -2078,6 +2078,9 @@ class StrokeLogic:
                 msg = cloth_wrinkle.perform_wrinkle(context, loops, self.projector)
             elif self.mode == 'CDRAPE':
                 from . import cloth_drape
+                dst = getattr(context.scene, 'mch_cdrape', None)
+                if dst is not None and dst.drape_mode in {'CAPE', 'NECK'} and self._line_mode() and len(self.pts) >= 2:
+                    loops = [list(self.pts)]          # 0.24.95 Cape / Neck Cloth: the drawn path itself, not its band
                 msg = cloth_drape.perform(context, loops, self.projector)
             elif self.mode in {'DETAIL', 'DETAIL2', 'DETAIL3'}:
                 from . import plate_detail

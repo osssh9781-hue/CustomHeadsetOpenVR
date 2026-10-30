@@ -1,0 +1,167 @@
+"""0.24.95 Cloth Drape Cape / Neck Cloth (user: "점을 딱딱 찍어 엔터를 누르면 천이 생겨, 시뮬 돌리면 망토 / 원을 그려 엔터 -
+길이 조절 슬라이더 - 목도리(목 위에 얹어 놓는 천)", "당연히 찍은 만큼만 나와야지"): a line across the back hangs a cape as
+wide as the line, a loop round the neck hangs a cloth over the shoulders; Length / Flare / Detail rebuild it before
+Space; long-range tethers keep a cloth hung from one edge from stretching."""
+import inspect
+import math
+import types
+
+import numpy as np
+from _harness import bpy, check, fresh, select_only, summary
+from mathutils import Quaternion, Vector
+
+import mecha_lab
+from mecha_lab import cloth_drape as cd, cloth_pbd, core_geometry as cg, cut_engine as ce, mesh_io as mio, surface_lasso as sl
+from mecha_lab import wrinkle_lines as wl
+
+mecha_lab.register()
+fresh()
+C = bpy.context
+S = C.scene
+st = S.mch_cdrape
+st.padding, st.trim, st.stop_at_pins, st.two_sides = False, False, False, False
+PX = 400.0
+
+
+class Back:                     # an orthographic "view" from +Y (the back): outline points are (x, z) x PX
+    view_dir = Vector((0, -1, 0))
+
+    def ray(self, xy):
+        return Vector((xy[0] / PX, 5.0, xy[1] / PX)), Vector((0, -1, 0))
+
+
+def clear():
+    for o in list(bpy.data.objects):
+        bpy.data.objects.remove(o)
+
+
+# ---- the body: a standing cylinder (r 0.3, z 0 .. 1.6); the cape line across its back (+Y) near the top
+clear()
+bpy.ops.mesh.primitive_cylinder_add(radius=0.3, depth=1.6, vertices=48, location=(0, 0, 0.8))
+body = C.active_object
+select_only(body)
+check('Settings: Mode Area by default, Cape / Neck Cloth there; Length 50 %, Flare 0 (as wide as the points)',
+      st.drape_mode == 'AREA' and {'CAPE', 'NECK'} <= {i.identifier for i in st.bl_rna.properties['drape_mode'].enum_items}
+      and abs(st.cape_length - 50.0) < 1e-6 and abs(st.cape_flare) < 1e-6)
+line = [Vector((x, math.sqrt(0.09 - x * x), 0.65)) for x in np.linspace(-0.2, 0.2, 9)]   # on the surface, at the back (local: z 1.45 - 0.8)
+size, step, gap, down, length = cd._hang_args(body, st)
+me, nb = cd.hang_patch(body, np.array([p[:] for p in line]), length, 0.0, step, gap, down, closed=False)
+co = mio.read_co(me)
+rows = len(co) // nb
+G = co.reshape(rows, nb, 3)
+across = np.linalg.norm(np.diff(G, axis=1), axis=2)
+check('hang_patch (cape): a grid nb x rows, the top row on the line, as wide as the line (x within the line +- a cell)',
+      rows > 10 and nb >= 9 and co[:, 0].min() > -0.2 - step * 1.5 and co[:, 0].max() < 0.2 + step * 1.5,
+      (nb, rows, co[:, 0].min(), co[:, 0].max()))
+check('... no column fans out (the widest gap between columns under 3 cells)', across.max() < step * 3.0, (across.max(), step))
+check('... every point outside the body (radius >= 0.3), hanging down from the line',
+      np.hypot(co[:, 0], co[:, 1]).min() > 0.3 * math.cos(math.pi / 48) - 1e-6 and co[:, 2].min() < 0.65 - length * 0.8, (np.hypot(co[:, 0], co[:, 1]).min(), co[:, 2].min()))
+bpy.data.meshes.remove(me)
+
+# ---- the lasso path: Mode Cape, a line drawn across the back (seen from behind)
+st.drape_mode = 'CAPE'
+stroke = [(x * PX, 1.45 * PX) for x in np.linspace(-0.2, 0.2, 12)]
+msg = cd.perform(C, [stroke], Back())
+ob = C.view_layer.objects.active
+sess = cd.SIM.get('sess')
+check('Mode Cape + a drawn line: a "Cloth Cape" parented to the body, the line pinned, the session ready',
+      ob is not None and ob.name.startswith('Cloth Cape') and ob.parent is body and cd.sim_active() and cd.SIM['source'] == 'CAPE'
+      and int((sess['cloth'].pin >= 1).sum()) == cd.SIM['nb'] and 'Cape' in msg, msg)
+check('... long-range tethers on (a cloth hung from one edge cannot stretch like rubber)',
+      sess['cloth'].tether is not None and len(sess['cloth'].tether[0]) == len(sess['cloth'].co) - cd.SIM['nb'])
+n0 = len(ob.data.vertices)
+st.gravity = 200.0
+for _ in range(40):
+    cd.advance(sess, st)
+c = sess['cloth'].co
+check('drape 40 frames: finite, outside the body, hanging (not stretched past its length x Looseness)',
+      np.all(np.isfinite(c)) and np.hypot(c[:, 0], c[:, 1]).min() > 0.29 and c[:, 2].min() > 0.65 - length * (1 + st.slack / 100.0) * 1.1,   # (body space)
+      (np.hypot(c[:, 0], c[:, 1]).min(), c[:, 2].min()))
+st.cape_length = 80.0
+check('Length is in the snapshot (a change restarts the drape with Space)', 'cape_length' in inspect.getsource(cd._snapshot))
+cd.restart(C)
+ob = C.view_layer.objects.active
+check('Length 50 -> 80 and Space / Restart: the cape is made again from the same line, longer',
+      len(ob.data.vertices) > n0 * 1.4 and cd.SIM['source'] == 'CAPE' and cd.SIM['sess']['frame'] == 0, (n0, len(ob.data.vertices)))
+st.cape_flare = 60.0
+cd.restart(C)
+w = mio.read_co(ob.data)
+check('Flare 60: the hem wider than the line', w[:, 0].max() - w[:, 0].min() > 0.4 * 1.3, w[:, 0].max() - w[:, 0].min())
+st.cape_flare, st.cape_length = 0.0, 50.0
+msg = cd.confirm(C)
+check('Enter keeps the cape', 'kept' in msg and not cd.sim_active(), msg)
+bpy.data.objects.remove(ob)
+
+# ---- Neck Cloth: a loop round the "neck" of a ball (z 0.6 on a sphere of r 1: the shoulders below it)
+clear()
+bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, segments=64, ring_count=32)
+ball = C.active_object
+select_only(ball)
+st.drape_mode = 'NECK'
+loop = [Vector((0.8 * math.cos(a), 0.8 * math.sin(a), 0.6)) for a in np.linspace(0, 2 * math.pi, 24, endpoint=False)]
+msg = cd.perform_hang(C, ball, loop, closed=True)
+ob = C.view_layer.objects.active
+me = ob.data
+rim = wl.boundary_verts(me)
+nb = cd.SIM['nb']
+co = cd.SIM['surface']
+inner = set(range(nb))
+check('Neck Cloth: a flat ring round the loop - only the neck ring and the outer hem are open (no side seam)',
+      ob.name.startswith('Neck Cloth') and cd.SIM['source'] == 'NECK' and inner <= set(rim.tolist()) and len(rim) > nb * 1.5
+      and len(me.polygons) > 100, (len(rim), nb, msg))
+el = np.array([(co[e.vertices[0]] - co[e.vertices[1]]) for e in me.edges])
+el = np.linalg.norm(el, axis=1)
+check('... the cells stay even out to the hem (more points on every ring: longest edge under 2.5 x the median)',
+      el.max() < 2.5 * np.median(el), (el.min(), np.median(el), el.max()))
+r_top = np.hypot(co[:nb, 0], co[:nb, 1]).mean()
+r_all = np.hypot(co[:, 0], co[:, 1])
+check('... it reaches out past the shoulders (the hem ring farther out than the neck by about Length), every point outside the ball',
+      r_all.max() > r_top + 0.5 and np.linalg.norm(co, axis=1).min() > 0.99, (r_top, r_all.max(), np.linalg.norm(co, axis=1).min()))
+sess = cd.SIM['sess']
+for _ in range(30):
+    cd.advance(sess, st)
+check('... drapes 30 frames: finite, outside the ball', np.all(np.isfinite(sess['cloth'].co)) and np.linalg.norm(sess['cloth'].co, axis=1).min() > 0.98,
+      np.linalg.norm(sess['cloth'].co, axis=1).min())
+cd.cancel(C)
+
+# ---- Surface mode: clicked points on the ball (front view), Mode Cape
+FRONT = cg.OrthoProjector(Quaternion((1, 0, 0), math.radians(90)))
+sl.make_projector = lambda region, rv3d: FRONT
+
+
+class Ctx:
+    def __init__(self):
+        self.area = types.SimpleNamespace(type='VIEW_3D', header_text_set=lambda t: None, tag_redraw=lambda: None)
+        self.region = types.SimpleNamespace(width=1000, height=1000)
+        self.region_data = object()
+
+    scene = property(lambda self: bpy.context.scene)
+    view_layer = property(lambda self: bpy.context.view_layer)
+    selected_objects = property(lambda self: bpy.context.selected_objects)
+    collection = property(lambda self: bpy.context.scene.collection)
+    preferences = property(lambda self: bpy.context.preferences)
+
+    def evaluated_depsgraph_get(self):
+        return bpy.context.evaluated_depsgraph_get()
+
+
+S.mch_brush.surface_mode = True
+st.drape_mode = 'CAPE'
+ctx, op = Ctx(), sl.SurfaceLogic()
+op.start(ctx, (440, 550), 'CDRAPE')
+for xy in [(500, 560), (560, 550)]:
+    op.click(ctx, xy)
+parts, msg = op.finish(ctx)
+ob = C.view_layer.objects.active
+check('Surface + Mode Cape: 3 clicked points on the body hang a cape from them (open line, not closed)',
+      parts is not None and ob is not None and ob.name.startswith('Cloth Cape') and cd.SIM.get('closed') is False, msg)
+if cd.sim_active():
+    cd.cancel(C)
+S.mch_brush.surface_mode = False
+st.drape_mode = 'AREA'
+check('The lasso tool hands Cape / Neck Cloth the drawn path itself in Line mode (not its band)',
+      "dst.drape_mode in {'CAPE', 'NECK'} and self._line_mode()" in inspect.getsource(ce))
+check('Panel: Mode row and Length / Flare', "'drape_mode', expand=True" in inspect.getsource(cd.draw) and "'cape_length'" in inspect.getsource(cd.draw))
+check('cloth_pbd.tethers: free points tied to the nearest pinned one along the cloth', cloth_pbd.tethers(
+      np.array([[0, 0, 0], [1, 0, 0], [2, 0, 0.]]), np.array([[0, 1], [1, 2]]), np.array([1.0, 0, 0]))[2].tolist() == [1.0, 2.0])
+summary()
