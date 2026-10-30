@@ -43,6 +43,8 @@ GRAV = wl.GRAV_UNIT * 1.5        # gravity 100 % on the drape = the probe's "x1.
 
 class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
     fabric: EnumProperty(name='Fabric', items=wl.FABRIC_ITEMS, default='COTTON')
+    mask_points: IntProperty(name='Cloth Points', description='Drape Mask: the masked faces are rebuilt as an even, lighter cloth of about this many points '
+                             '(0 = from Cloth Detail; never more points than the body has there)', default=0, min=0, max=200000)
     spacing: FloatProperty(name='Cloth Detail', description='The patch spacing as % of the outline size (smaller = more points, finer folds)',
                            default=1.5, min=0.4, max=6.0, subtype='PERCENTAGE')
     slack: FloatProperty(name='Looseness', description='Extra fabric: the cloth is this much bigger than the region, so it sags and bunches',
@@ -665,6 +667,105 @@ def faces_mesh(me, faces, name='Cloth Drape'):
     return new
 
 
+REMESH_ITERS = 5                 # Drape Mask: isotropic remesh passes after the decimation (even triangles)
+
+
+def rim_loops_idx(me):
+    """The open loops of ``me`` as lists of point indices (in order)."""
+    ev = mio.read_edge_verts(me)
+    be = ev[mio.edge_face_counts(me) == 1]
+    nbr = {}
+    for a, b in be:
+        nbr.setdefault(int(a), []).append(int(b))
+        nbr.setdefault(int(b), []).append(int(a))
+    seen, loops = set(), []
+    for s0 in nbr:
+        if s0 in seen:
+            continue
+        loop, prev, cur = [s0], None, s0
+        seen.add(s0)
+        while True:
+            nx = [x for x in nbr[cur] if x != prev and x not in seen]
+            if not nx:
+                break
+            prev, cur = cur, nx[0]
+            loop.append(cur)
+            seen.add(cur)
+        loops.append(loop)
+    return loops
+
+
+def rim_locks(me, co, length):
+    """(N,) uint8: one rim point every ``length`` along each open loop (the decimation keeps those)."""
+    locked = np.zeros(len(co), np.uint8)
+    for loop in rim_loops_idx(me):
+        acc = 0.0
+        locked[loop[0]] = 1
+        for i in range(1, len(loop)):
+            acc += float(np.linalg.norm(co[loop[i]] - co[loop[i - 1]]))
+            if acc >= length:
+                locked[loop[i]] = 1
+                acc = 0.0
+    return locked
+
+
+def light_patch(me, target_points):
+    """The masked patch ``me`` (dense, the body's own faces) rebuilt as an even, lighter triangle mesh of about
+    ``target_points`` points: Fast Decimate (fast, any size) to about the count, then an isotropic remesh
+    (``iso_remesh``: split / collapse / flip / relax, every inside point back on the body) so the triangles are
+    even.  Returns a new Mesh, or None when the patch is already light enough / no engine."""
+    import bmesh
+    from mathutils.bvhtree import BVHTree
+    from . import fast_decimate as fd
+    from . import iso_remesh
+    n = len(me.vertices)
+    if target_points <= 0 or target_points >= n * 0.9 or not fd.available():
+        return None
+    area = sum(p.area for p in me.polygons)
+    me.calc_loop_triangles()
+    T = np.empty((len(me.loop_triangles), 3), np.int64)
+    me.loop_triangles.foreach_get('vertices', T.ravel())
+    V = mio.read_co(me)
+    length = iso_remesh.target_length(area, target_points)
+    # the rim: one point locked every ``length`` along each open loop (keep_borders locks EVERY rim point, so a dense
+    # body's rim stayed dense; with no locks the rim was eaten down to 3 points).  The plain decimation reaches the
+    # count (the even one stops early on a dense patch: 4k points for 1k asked)
+    locked = rim_locks(me, V, length)
+    V2, F2, _vs, _fs = fd.run(V, T, int(max(4, 2 * target_points)), even=False, keep_borders=False, locked=locked)
+    if len(F2) < 2:
+        return None
+    new = bpy.data.meshes.new(me.name)
+    fd.build_mesh(new, np.asarray(V2, np.float64), np.asarray(F2, np.int64))
+    src = bmesh.new()                    # the points go back onto the masked region itself (a multi-million body
+    try:                                 # would take minutes to turn into a BVH from Python lists)
+        src.from_mesh(me)
+        tree = BVHTree.FromBMesh(src)
+    finally:
+        src.free()
+
+    def project(p):
+        loc = tree.find_nearest(p)[0]
+        return loc if loc is not None else p
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(new)
+        iso_remesh.remesh(bm, length, project, REMESH_ITERS)
+        bm.to_mesh(new)
+    finally:
+        bm.free()
+    new.polygons.foreach_set('use_smooth', np.ones(len(new.polygons), bool))
+    new.update()
+    new.validate()
+    return new
+
+
+def mask_target_points(st, size):
+    """Drape Mask's point count: the Cloth Points setting, or (0) what Cloth Detail would give a lasso of this size."""
+    if st.mask_points > 0:
+        return int(st.mask_points)
+    return int(round((100.0 / max(st.spacing, 0.05)) ** 2 * 0.8))      # (a round patch: ~0.8 of the square's points)
+
+
 def perform_masked(context, body):
     """The masked region of ``body`` (painted in Sculpt Mode / the ZBrush tab) lifted off as the cloth: the same
     flow as a lasso - a "Cloth Drape" object parented to the body, its open rim pinned, the body the collider."""
@@ -686,6 +787,11 @@ def perform_masked(context, body):
     if not len(me.polygons) or not len(wl.boundary_verts(me)):
         bpy.data.meshes.remove(me)
         raise cg.CutError('Drape Mask: the masked region has no open edge (a closed shell): mask a patch, not all of it')
+    dense = len(me.vertices)
+    light = light_patch(me, mask_target_points(st, 0.0))     # 0.24.95 lighter, even cloth (the body stays dense)
+    if light is not None:
+        bpy.data.meshes.remove(me)
+        me = light
     co = mio.read_co(me)
     size = float(np.linalg.norm(co.max(0) - co.min(0)))
     ob = bpy.data.objects.new('Cloth Drape', me)
@@ -713,7 +819,8 @@ def perform_masked(context, body):
                surface=surface, start=sess['cloth'].init.copy(), snapshot=_snapshot(st), sew=None, pin_idx=None,
                spacing=float(st.spacing), source='MASK')
     rim = int(np.count_nonzero(sess['cloth'].pin >= 1))
-    return (f'Cloth Drape from the mask on {body.name}: {len(faces):,} faces, {sess["points"]:,} points ({rim:,} on the rim pinned), '
+    lighter = f' (rebuilt lighter from {dense:,})' if light is not None else ''
+    return (f'Cloth Drape from the mask on {body.name}: {len(faces):,} faces, {sess["points"]:,} points{lighter}, {rim:,} on the rim pinned, '
             f'{sess["collider"]:,} body points (Space drape · Enter keep · Esc drop)')
 
 
@@ -1395,6 +1502,7 @@ def draw(layout, context):
     r = box.row()
     r.enabled = not live
     r.operator('mch.cdrape_mask', text='Drape Mask (masked faces lift off as the cloth)', icon='MOD_MASK')
+    r.prop(st, 'mask_points', text='Points')
     r = box.row(align=True)
     r.enabled = not live
     r.operator('mch.cdrape_wrap', text='Wrap This Mesh (like a wrapping cloth)', icon='MOD_SHRINKWRAP')

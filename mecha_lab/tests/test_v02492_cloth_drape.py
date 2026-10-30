@@ -9,7 +9,7 @@ from _harness import bpy, check, fresh, select_only, summary
 from mathutils import Quaternion, Vector
 
 import mecha_lab
-from mecha_lab import cloth_drape as cd, core_geometry as cg, cut_engine as ce, lasso_sketch as ls, surface_lasso as sl, tool_state as ts, workspace_ui as wsui
+from mecha_lab import cloth_drape as cd, core_geometry as cg, cut_engine as ce, lasso_sketch as ls, surface_lasso as sl, tool_state as ts, workspace_ui as wsui, wrinkle_lines as wl
 
 mecha_lab.register()
 fresh()
@@ -456,6 +456,7 @@ check('masked_faces: the cap faces (corner mask averaging >= 0.5: at least half 
       len(body.data.polygons) * 0.2 < n_masked < len(body.data.polygons) * 0.45
       and all(sum(zs[i] > 0.45 for i in body.data.polygons[f].vertices) * 2 >= len(body.data.polygons[f].vertices) for f in cd.masked_faces(body.data)),
       (n_masked, len(body.data.polygons)))
+st.mask_points = 100000                                          # more than the body has there: the faces as they are
 msg = cd.perform_masked(C, body)
 ob_m = C.view_layer.objects.active
 check('perform_masked: a "Cloth Drape" object of the masked faces, parented to the body, the session ready',
@@ -474,6 +475,30 @@ check('... it drapes on the sphere like a lasso cloth (outside the body, moved, 
 msg = cd.confirm(C)
 check('Enter keeps the cloth object', 'kept' in msg and bpy.data.objects.get(ob_m.name) is not None and not cd.sim_active(), msg)
 bpy.data.objects.remove(ob_m)
+# the lighter cloth (user: "마스크로 뽑은 면을 좀 더 낮은 면으로 바꾸고 그다음 클로스를 돌리는 게 낫겠는데")
+st.mask_points = 500
+msg = cd.perform_masked(C, body)
+ob_l = C.view_layer.objects.active
+n_dense = len(cd.faces_mesh(body.data, cd.masked_faces(body.data)).vertices)
+co_l = np.array([v.co[:] for v in ob_l.data.vertices])
+rim_l = wl.boundary_verts(ob_l.data)
+check('Cloth Points 500: the masked patch is rebuilt lighter (about 500 points instead of the body\'s), the rim kept',
+      450 < len(co_l) < 560 and n_dense > 1500 and 'lighter' in msg and len(rim_l) > 30, (len(co_l), n_dense, len(rim_l), msg))
+surf = cd.SIM['surface']
+check('... triangles, every point of the laid patch on the sphere (relaxed and put back on the body)',
+      all(len(p.vertices) == 3 for p in ob_l.data.polygons) and np.abs(np.linalg.norm(surf, axis=1) - 1.0).max() < 0.005,
+      np.abs(np.linalg.norm(surf, axis=1) - 1.0).max())
+el = np.linalg.norm(surf[[e.vertices[0] for e in ob_l.data.edges]] - surf[[e.vertices[1] for e in ob_l.data.edges]], axis=1)
+check('... even edges (isotropic remesh: longest under 2 x the median, shortest over 0.4 x)',
+      el.max() < 2.0 * np.median(el) and el.min() > 0.4 * np.median(el), (el.min(), np.median(el), el.max()))
+cd.SIM['running'] = True
+for _ in range(10):
+    cd.step(C)
+co_l2 = np.array([v.co[:] for v in ob_l.data.vertices])
+check('... and it drapes (outside the sphere, finite)', np.linalg.norm(co_l2, axis=1).min() > 0.99 and np.all(np.isfinite(co_l2)))
+cd.cancel(C)
+st.mask_points = 0
+check('Cloth Points 0 = from Cloth Detail (1.5 % -> about 3,500 points for a lasso-sized patch)', 3000 < cd.mask_target_points(st, 0.0) < 4000, cd.mask_target_points(st, 0.0))
 att.data.foreach_set('value', np.ones(len(body.data.vertices), np.float32))
 try:
     cd.perform_masked(C, body)
