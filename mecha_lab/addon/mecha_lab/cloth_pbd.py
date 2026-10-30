@@ -74,6 +74,45 @@ def ring_pairs(edges, n, rings=(2, 3, 4)):
     return {r: np.array(v, np.int64).reshape(-1, 2) for r, v in out.items()}
 
 
+def tethers(co, edges, pinned, scale=1.0):
+    """Long-range attachments for ``Cloth.tether``: every free point tied to its nearest pinned point along the
+    cloth (multi-source Dijkstra over the edges), the limit = that distance x ``scale``.  Returns (idx, anchor, max)
+    or None when nothing is pinned."""
+    import heapq
+    co = np.asarray(co, np.float64)
+    n = len(co)
+    pinned = np.nonzero(np.asarray(pinned) >= 1.0)[0]
+    if not len(pinned) or not len(edges):
+        return None
+    w = np.linalg.norm(co[edges[:, 1]] - co[edges[:, 0]], axis=1)
+    adj = [[] for _ in range(n)]
+    for (a, b), l in zip(edges.tolist(), w.tolist()):
+        adj[a].append((b, l))
+        adj[b].append((a, l))
+    dist = np.full(n, np.inf)
+    src = np.full(n, -1, np.int64)
+    heap = []
+    for p in pinned.tolist():
+        dist[p] = 0.0
+        src[p] = p
+        heap.append((0.0, p))
+    heapq.heapify(heap)
+    while heap:
+        d, v = heapq.heappop(heap)
+        if d > dist[v]:
+            continue
+        for u, l in adj[v]:
+            nd = d + l
+            if nd < dist[u]:
+                dist[u] = nd
+                src[u] = src[v]
+                heapq.heappush(heap, (nd, u))
+    free = np.nonzero((src >= 0) & (dist > 0))[0]
+    if not len(free):
+        return None
+    return free, src[free], dist[free] * float(scale)
+
+
 class Cloth:
     def __init__(self, co, faces_vi, faces_start, faces_tot, mass=None, bend=0.5, keep=0.0, pin=None):
         self.co = np.array(co, np.float64)
@@ -164,6 +203,20 @@ class Cloth:
     sew = None           # (M, 2) point pairs pulled together (rest length 0): the seams between pattern pieces
     sew_strength = 1.0   # how hard per pass (ramped up over the first frames by the caller)
     sew_pbd = True       # the seams as plain length-0 constraints here; off when the caller pulls them its own way
+    tether = None        # 0.24.95 (idx, anchor, max): long-range attachments - a point can be no farther from its
+    #                      nearest pinned point than ``max`` (the rest distance along the cloth): a cloth hung from
+    #                      one edge (a cape) cannot stretch like rubber however few the constraint passes
+
+    def apply_tether(self):
+        if self.tether is not None:
+            idx, anc, mx = self.tether
+            d = self.co[idx] - self.co[anc]
+            ln = np.linalg.norm(d, axis=1)
+            over = ln > mx
+            if np.any(over):
+                i = idx[over]
+                self.co[i] = self.co[anc[over]] + d[over] * (mx[over] / ln[over])[:, None]
+
     hold = None          # 0.24.95 (idx, weight, target): the grabbed points are held at ``target`` by ``weight``
     #                      every pass (the user drags the cloth out of the body while it drapes)
 
@@ -206,6 +259,7 @@ class Cloth:
             if np.any(self.pin > 0):        # (a pin holds its point where it started: Blender's mask)
                 self.co = self.co * (1.0 - self.pin)[:, None] + self.init * self.pin[:, None]
             self.apply_hold()
+            self.apply_tether()
             if self.collide is not None:
                 self.collide(self)
         if self.max_step > 0:

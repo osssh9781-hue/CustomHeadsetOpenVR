@@ -56,6 +56,8 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
     proxy_faces: IntProperty(name='Proxy Faces', description='Triangles per proxy mesh (lighter meshes are used as they are)', default=40000, min=1000, max=2000000)
     show_proxy: BoolProperty(name='Show Proxies', default=False, description='Show the collider proxies as wire (hidden otherwise)',
                              update=_show_proxy_update)
+    cape_length: FloatProperty(name='Length', description='Cape: how far the cloth hangs from the drawn line, as % of the body size', default=50.0, min=5.0, max=200.0, subtype='PERCENTAGE')
+    cape_flare: FloatProperty(name='Flare', description='Cape: how much wider the hem is than the drawn line', default=40.0, min=0.0, max=300.0, subtype='PERCENTAGE')
     mask_points: IntProperty(name='Cloth Points', description='Drape Mask: the masked faces are rebuilt as an even, lighter cloth of about this many points '
                              '(0 = from Cloth Detail; never more points than the body has there)', default=0, min=0, max=200000)
     spacing: FloatProperty(name='Cloth Detail', description='The patch spacing as % of the outline size (smaller = more points, finer folds)',
@@ -265,7 +267,8 @@ def surface_samples(*a, **k):
     return _pbd.surface_samples(*a, **k)
 
 
-def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_ob=None, wrap=False, sew=None, pin_idx=None, puff=False):
+def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_ob=None, wrap=False, sew=None, pin_idx=None, puff=False,
+          tether=False):
     """The cloth + the collider for the mesh ``me``: a lasso patch (local space of ``target``, the first ``nb``
     points its rim) or (``to_cloth``: the matrix that brings the target's points into the cloth's space) a mesh
     of its own laid on ``target``.  Returns the session."""
@@ -318,6 +321,8 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
         cloth.far_scale = far_scale
     scale = (1.0 - st.shrink / 100.0) * (1.0 + st.slack / 100.0)
     cloth.scale_e = cloth.scale_b = scale
+    if tether:                                       # 0.24.95 a cloth hung from one edge (Cape): no rubber stretch
+        cloth.tether = cloth_pbd.tethers(cloth_co, edges, pin, scale=max(scale, 1.0) * 1.02)
     if np.any(pin >= 1) and scale != 1.0:            # the fabric next to a seam cannot be loose at once: taper over 4 rings
         ring = np.full(n, 99, np.int64)
         ring[pin >= 1] = 0
@@ -866,6 +871,170 @@ def perform_masked(context, body):
             f'{sess["collider"]:,} body points (Space drape · Enter keep · Esc drop)')
 
 
+# -----------------------------------------------------------------------------
+# 0.24.95 Cape (user: "위에 라쏘로 점을 딱딱 찍어 ... 엔터를 누르면 천이 생겨 ... 시뮬 돌리면 망토"): a line of points on the
+# body (shoulders / collar) -> a cloth hanging from it, the line pinned, then the drape
+# -----------------------------------------------------------------------------
+
+
+def _resample(pts, step):
+    """The polyline ``pts`` (N, 3) resampled every ``step`` along its length (ends kept)."""
+    pts = np.asarray(pts, np.float64)
+    seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
+    total = float(seg.sum())
+    n = max(2, int(round(total / max(step, 1e-9))) + 1)
+    at = np.concatenate(([0.0], np.cumsum(seg)))
+    t = np.linspace(0.0, total, n)
+    return np.stack([np.interp(t, at, pts[:, k]) for k in range(3)], axis=1)
+
+
+def cape_patch(body, line, length, flare, step, gap, down):
+    """The hanging cloth for a cape: ``line`` (N, 3) the drawn points on ``body`` (its local space), resampled every
+    ``step``; from each, a column of points goes ``length`` down (``down``, unit) a ``step`` at a time, every new
+    point pushed out of the body (nearest surface point + its normal x ``gap``) and kept a ``step`` from the one
+    above, the columns spreading sideways to a hem ``flare`` x wider.  Returns (mesh, nb): the top row first
+    (nb points: the line, pinned by Pin Rim)."""
+    from mathutils.bvhtree import BVHTree
+    import bmesh
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(body.data)
+        tree = BVHTree.FromBMesh(bm)
+    finally:
+        bm.free()
+    down = np.asarray(down, np.float64)
+    down /= max(np.linalg.norm(down), 1e-12)
+
+    def push(q):
+        loc, nrm, _i, _d = tree.find_nearest(Vector(q))
+        if loc is None:
+            return q
+        loc, nrm = np.array(loc), np.array(nrm)
+        if np.dot(q - loc, nrm) < gap:
+            return loc + nrm * gap
+        return q
+    top = _resample(line, step)
+    n = len(top)
+    top = np.array([push(p) for p in top])
+    rows = max(2, int(round(length / step)))
+    tang = np.gradient(top, axis=0)
+    tang -= down[None, :] * (tang @ down)[:, None]                  # (sideways = across the fall)
+    tang /= np.maximum(np.linalg.norm(tang, axis=1), 1e-12)[:, None]
+    u = np.linspace(-0.5, 0.5, n)
+    width = float(np.linalg.norm(np.diff(top, axis=0), axis=1).sum())
+    side = (u * width * (flare / 100.0) / rows)[:, None] * tang      # per row: the hem ends ``flare`` wider
+    def sweep(p, move):
+        """``p`` moved by ``move`` without passing through the body: a hit slides along the surface it meets
+        (a thin arm is never jumped across, as a push to the nearest surface could)."""
+        ln = float(np.linalg.norm(move))
+        if ln < 1e-12:
+            return p
+        d = move / ln
+        loc, nrm, _i, dist = tree.ray_cast(Vector(p), Vector(d), ln + gap)
+        if loc is None:
+            return p + move
+        nrm = np.array(nrm)
+        if np.dot(nrm, d) > 0.0:
+            nrm = -nrm
+        rest = move * max(0.0, 1.0 - (dist - gap) / ln)
+        rest -= nrm * np.dot(rest, nrm)                              # what is left of the move, along the surface
+        q = np.array(loc) + nrm * gap
+        loc2, _n2, _i2, _d2 = tree.ray_cast(Vector(q), Vector(rest / max(np.linalg.norm(rest), 1e-12)),
+                                            float(np.linalg.norm(rest)) + gap) if np.linalg.norm(rest) > 1e-9 else (None,) * 4
+        return q + rest if loc2 is None else q
+    # "out": the way the cape faces (the line's surface normals, across the fall).  Going down, no point comes
+    # back in along it: the cloth falls straight from the farthest-out part (shoulder blades, seat) instead of
+    # following the body into the gap between the legs or round the arms to the front
+    out = np.zeros(3)
+    for p in top:
+        loc, nrm, _i, _d = tree.find_nearest(Vector(p))
+        if loc is not None:
+            out += np.array(nrm)
+    out -= down * np.dot(out, down)
+    out = out / np.linalg.norm(out) if np.linalg.norm(out) > 1e-9 else None
+    grid = [top]
+    cur = top.copy()
+    for _r in range(rows):
+        nxt = cur.copy()
+        for i in range(n):
+            q = sweep(cur[i], down * step + side[i])
+            if out is not None:
+                back = float(np.dot(q - cur[i], out))
+                if back < 0.0:
+                    q = q - out * back
+            nxt[i] = q
+        grid.append(nxt)
+        cur = nxt
+    co = np.concatenate(grid)
+    faces = []
+    for r in range(rows):
+        a, b = r * n, (r + 1) * n
+        for i in range(n - 1):
+            faces.append((a + i, a + i + 1, b + i + 1, b + i))
+    # the faces must face away from the body (build lifts the cloth along its normals)
+    vote = 0.0
+    for f in faces[::max(1, len(faces) // 64)]:
+        c = co[list(f)].mean(0)
+        fn = np.cross(co[f[1]] - co[f[0]], co[f[3]] - co[f[0]])
+        loc, nrm, _i, _d = tree.find_nearest(Vector(c))
+        if loc is not None:
+            vote += float(np.dot(fn, np.array(nrm)))
+    if vote < 0.0:
+        faces = [tuple(reversed(f)) for f in faces]
+    from . import fast_decimate as fd
+    me = bpy.data.meshes.new('Cloth Cape')
+    fd.build_mesh(me, co, np.array(faces, np.int64))
+    me.polygons.foreach_set('use_smooth', np.ones(len(faces), bool))
+    me.update()
+    return me, n
+
+
+def perform_cape(context, body, line_world):
+    """Cape: ``line_world`` (N >= 2 points on ``body``, world) -> a "Cloth Cape" hanging from it (the line pinned),
+    the session ready: Space drapes it (Enter keep, Esc drop)."""
+    st = settings(context)
+    if st is None:
+        raise cg.CutError('Cloth Drape settings missing')
+    if sim_active():
+        raise cg.CutError('Cloth Drape: keep (Enter) or drop (Esc) the cloth you have first')
+    if body is None or body.type != 'MESH' or len(line_world) < 2:
+        raise cg.CutError('Cape: place at least 2 points on the body (shoulders / collar)')
+    inv = body.matrix_world.inverted_safe()
+    line = np.array([(inv @ Vector(p))[:] for p in line_world], np.float64)
+    bco = mio.read_co(body.data)
+    size = float(np.linalg.norm(bco.max(0) - bco.min(0)))
+    step = size * st.spacing / 100.0
+    down = np.array(wl._gravity_dir(body)[:], np.float64)
+    gap = size * st.gap / 100.0 + step * 0.5
+    me, nb = cape_patch(body, line, size * st.cape_length / 100.0, st.cape_flare, step, gap, down)
+    ob = bpy.data.objects.new('Cloth Cape', me)
+    coll = body.users_collection[0] if body.users_collection else context.scene.collection
+    coll.objects.link(ob)
+    ob.matrix_world = body.matrix_world.copy()
+    ob.parent = body
+    ob.matrix_parent_inverse = body.matrix_world.inverted_safe()
+    ob[SRC_KEY] = body.name
+    for o in context.selected_objects:
+        o.select_set(False)
+    ob.select_set(True)
+    context.view_layer.objects.active = ob
+    surface = mio.read_co(me).copy()
+    try:
+        sess = build(context, body, me, nb, size, st, tether=True)
+    except Exception:
+        bpy.data.objects.remove(ob)
+        bpy.data.meshes.remove(me)
+        raise
+    mio.write_co(me, sess['cloth'].co)
+    me.update()
+    SIM.clear()
+    SIM.update(ob=ob.name, target=body.name, nb=nb, size=size, sess=sess, running=False, done=False, want=None,
+               surface=surface, start=sess['cloth'].init.copy(), snapshot=_snapshot(st), sew=None, pin_idx=None,
+               spacing=float(st.spacing), source='CAPE')
+    return (f'Cloth Cape on {body.name}: {sess["points"]:,} points, {nb} on the line pinned, '
+            f'{sess["collider"]:,} body points (Space drape · Enter keep · Esc drop)')
+
+
 def body_for(context, cloth):
     """The mesh the cloth drops onto: another selected mesh, else the cloth's parent mesh."""
     others = [o for o in context.selected_objects if o != cloth and o.type == 'MESH']
@@ -1071,7 +1240,7 @@ def restart(context):
     mode = SIM.get('mode')
     sess = build(context, target, me, SIM['nb'], SIM['size'], st, sew=SIM.get('sew'), pin_idx=SIM.get('pin_idx'),
                  to_cloth=SIM.get('to_cloth'), pin_sel=bool(SIM.get('pin_sel')), gdir_ob=ob if mode == 'MESH' else target,
-                 wrap=mode == 'WRAP', puff=mode == 'SEW')
+                 wrap=mode == 'WRAP', puff=mode == 'SEW', tether=SIM.get('source') == 'CAPE')
     if mode == 'SEW':
         c = sess['cloth']
         sewn = c.pin >= 1
