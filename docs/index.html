@@ -840,8 +840,9 @@ function deleteStagePage(proj,key,page){
   return true;
 }
 function deleteStageFromProject(proj,key){
-  const list=stagePageList(proj,key);
-  const hasRecords=list.some(p=>p.done||p.date)||!!projectDeadline(proj,key);
+  const list=isPerPage(key)?stagePageList(proj,key):[];
+  const single=isPerPage(key)?null:getSingle(proj,key);
+  const hasRecords=list.some(p=>p.done||p.date)||!!single?.done||!!single?.date||!!projectDeadline(proj,key);
   const warning=hasRecords?'\n이 단계의 완료/일정/마감 기록도 함께 삭제됩니다.':'';
   if(!window.confirm(`${stageLabel(key)} 단계를 이 프로젝트에서 삭제할까요?${warning}`)) return false;
   proj.stages=proj.stages.filter(k=>k!==key);
@@ -1079,7 +1080,7 @@ function renderMain(){
   if(stages.length && !stages.some(k=>own(expandedStages,k))) expandedStages[stages[0]]=true;
   area.innerHTML=`
     ${singles.length?`<section class="sheet" id="singleSheet"><div class="sheet-title"><h2>1회 작업</h2><div class="progress">완료 <b>${singleDone}/${singles.length}</b></div></div>
-      ${singles.map(k=>{const v=getSingle(proj,k);return `<div class="onetime-row" data-stage="${k}"><span class="stage-dot" style="background:${stageColor(k)}"></span><div class="one-info"><div class="one-title">${esc(stageLabel(k))}</div><button class="one-date" title="날짜를 눌러 일정을 배정하거나 변경하세요">${esc(shortDate(v.date))}</button></div><span class="one-status">${v.done?'완료':'진행 전'}</span>${deadlineControlHtml(proj,k)}<button class="switch${v.done?' on':''}" role="switch" aria-checked="${v.done}" aria-label="${esc(stageLabel(k))} 완료" style="${v.done?'background:'+stageColor(k):''}"></button></div>`;}).join('')}</section>`:''}
+      ${singles.map(k=>{const v=getSingle(proj,k);return `<div class="onetime-row" data-stage="${k}"><span class="stage-dot" style="background:${stageColor(k)}"></span><div class="one-info"><div class="one-title">${esc(stageLabel(k))}</div><button class="one-date" title="날짜를 눌러 일정을 배정하거나 변경하세요">${esc(shortDate(v.date))}</button></div><span class="one-status">${v.done?'완료':'진행 전'}</span>${deadlineControlHtml(proj,k)}<button type="button" class="stage-delete-toggle one-delete-btn" data-delete-single="${k}" aria-label="${esc(stageLabel(k))} 삭제" title="이 프로젝트에서 1회 작업 삭제">🗑</button><button class="switch${v.done?' on':''}" role="switch" aria-checked="${v.done}" aria-label="${esc(stageLabel(k))} 완료" style="${v.done?'background:'+stageColor(k):''}"></button></div>`;}).join('')}</section>`:''}
     <section class="sheet" id="pageSheet">
       <div class="sheet-title"><h2>페이지 체크리스트</h2><div class="sheet-title-tools"><div class="progress mono">배정 <b>${assignedCount}/${totalPageTasks}</b> &nbsp;·&nbsp; 완료 <span class="done-badge">${doneCount}/${totalPageTasks}</span></div><button class="small-btn add-project-stage-btn" id="toggleProjectStageAdd">＋ 작업 단계</button></div></div>
       <div class="project-stage-add" id="projectStageAdd" hidden>
@@ -1101,6 +1102,11 @@ function renderMain(){
       const dt=getSingle(proj,k).date;
       if(dt) openModal(dt,k);
       else {$('calendarSheet').scrollIntoView({behavior:'smooth',block:'start'});showToast('달력에서 작업할 날짜를 선택해주세요');}
+    };
+    row.querySelector('.one-delete-btn').onclick=e=>{
+      e.stopPropagation();
+      if(!editable())return;
+      if(deleteStageFromProject(proj,k)){scheduleSave();renderMain();showToast(`${stageLabel(k)} 1회 작업을 삭제했어요`);}
     };
   });
   stages.forEach(k=>{
