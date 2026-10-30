@@ -1,0 +1,14 @@
+workspace MECHA LAB
+mode SCULPT
+zb_brush ClothDrag: {'FINISHED'} Drag Cloth cloth True deform DRAG sim area DYNAMIC
+shot A1_clothdrag_shelf.png
+A2 python stroke ClothDrag: {'FINISHED'} points moved 0 max 0.0
+A3 REAL mouse drag ClothDrag (xdotool): points moved 475 max 0.0415
+shot A4_clothdrag_strokes.png
+mask attribute True ['UVMap', '.select_vert', '.select_edge', '.select_poly', 'sharp_face', '.uv_select_vert', '.uv_select_edge', '.uv_select_face']
+masked points 2353 of 9409
+shot B1_mask_grid.png
+B2 Cloth Filter Inflate (our shelf operator) invoke: {'RUNNING_MODAL'}
+B3 after the drag: masked lines moved max 0.0 cells moved max 0.0848 cells mean |dz| 0.0493
+shot B4_padding.png
+DONE
