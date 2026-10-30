@@ -257,6 +257,13 @@
   .pick-cell:hover{ border-color:var(--border-strong); }
   .pick-cell.mine{ background:var(--brand); border-color:var(--brand); color:#fff; font-weight:700; }
   .pick-cell.elsewhere{ opacity:0.35; cursor:not-allowed; }
+  .pick-cell.completed-page{
+    background:#6f746f!important;border-color:#5f645f!important;color:#fff!important;
+    opacity:1!important;cursor:not-allowed!important;font-weight:800;box-shadow:none!important;
+    flex-direction:column;gap:1px;line-height:1.05;
+  }
+  .pick-cell.completed-page .done-label{font-size:8.5px;font-weight:800;letter-spacing:-.02em;}
+  .pick-cell.completed-page.mine{background:#59635b!important;border-color:#4f594f!important;}
   .pick-cell.spread{ box-shadow: inset 0 0 0 1.5px var(--success); }
 
   .modal-actions{ display:flex; gap:8px; }
@@ -1269,14 +1276,23 @@ function renderPickArea(proj){
   const picked=modalDrafts.get(k);
   const stagePages=stagePageList(proj,k);
   stagePages.forEach(p=>{
-    const elsewhere=p.date && p.date!==currentModalDate,difficulty=pageDifficulty(p);
-    const cell=document.createElement('button');cell.className='pick-cell diff-'+difficulty+(picked.has(p.num)?' mine':'')+(elsewhere?' elsewhere':'');
-    cell.textContent=p.num+'·'+difficulty;cell.disabled=!!elsewhere;cell.dataset.page=String(p.num);
-    cell.setAttribute('aria-pressed',String(picked.has(p.num)));cell.setAttribute('aria-label',`${p.num}페이지${elsewhere?' · '+shortDate(p.date)+' 배정됨':''}`);
-    if(elsewhere) cell.title=shortDate(p.date)+'에 배정됨. 기존 날짜에서 해제 후 옮길 수 있어요.';
-    cell.onclick=()=>{if(picked.has(p.num)) picked.delete(p.num);else picked.add(p.num);cell.classList.toggle('mine',picked.has(p.num));cell.setAttribute('aria-pressed',String(picked.has(p.num)));};grid.append(cell);
+    const elsewhere=p.date && p.date!==currentModalDate,difficulty=pageDifficulty(p),completed=!!p.done;
+    const cell=document.createElement('button');cell.className='pick-cell diff-'+difficulty+(picked.has(p.num)?' mine':'')+(elsewhere?' elsewhere':'')+(completed?' completed-page':'');
+    cell.dataset.page=String(p.num);
+    if(completed) cell.innerHTML=`<span>${p.num}</span><span class="done-label">완료</span>`;
+    else cell.textContent=p.num+'·'+difficulty;
+    cell.disabled=completed||!!elsewhere;
+    cell.setAttribute('aria-pressed',String(picked.has(p.num)));
+    cell.setAttribute('aria-label',`${p.num}페이지${completed?' · 완료되어 일정 변경 불가':elsewhere?' · '+shortDate(p.date)+' 배정됨':''}`);
+    if(completed) cell.title='이미 완료된 페이지라 일정에 추가하거나 변경할 수 없어요.';
+    else if(elsewhere) cell.title=shortDate(p.date)+'에 배정됨. 기존 날짜에서 해제 후 옮길 수 있어요.';
+    if(!completed) cell.onclick=()=>{if(picked.has(p.num)) picked.delete(p.num);else picked.add(p.num);cell.classList.toggle('mine',picked.has(p.num));cell.setAttribute('aria-pressed',String(picked.has(p.num)));};
+    grid.append(cell);
   });
-  if(stagePages.some(p=>p.date&&p.date!==currentModalDate)) {const hint=document.createElement('p');hint.className='muted';hint.textContent='흐린 페이지는 다른 날짜에 배정되어 있어요. 기존 날짜에서 해제 후 옮길 수 있어요.';area.append(hint);}
+  const hints=[];
+  if(stagePages.some(p=>p.done)) hints.push('진한 칸은 이미 완료된 페이지라 일정 선택이 잠겨 있어요.');
+  if(stagePages.some(p=>!p.done&&p.date&&p.date!==currentModalDate)) hints.push('흐린 페이지는 다른 날짜에 배정되어 있어요. 기존 날짜에서 해제 후 옮길 수 있어요.');
+  if(hints.length){const hint=document.createElement('p');hint.className='muted';hint.textContent=hints.join(' ');area.append(hint);}
 }
 function closeModal(){if(dateSaving) return;hideOverlay('overlay');currentModalDate=null;modalDrafts.clear();}
 $('holidaySwitch').onclick=()=>{modalHoliday=!modalHoliday;modalHolidayOverride=modalHoliday;updateHolidayControl();};
