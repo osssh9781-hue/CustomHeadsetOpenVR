@@ -4,7 +4,8 @@
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` 맨 위 0.24.81 절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
 
-## 0.24.94 Safe DynaMesh · Wrinkles 슬라이더
+## 0.24.94 Safe DynaMesh · 크리즈 → ZBrush · Wrinkles 슬라이더
+- **크리즈를 ZBrush 로**: ZBrush 는 FBX · OBJ 의 크리즈 값을 읽지 않으므로, 내보내기(보내기 · Export)의 **Creases as Polygroups**(기본 켜짐)가 크리즈 · Sharp 엣지로 나뉜 영역마다 머티리얼 PG_001 … 을 붙여 보냅니다. ZBrush 에서 FBX 를 "Mats as Polygroups" 로 가져온 뒤 Tool > Geometry > Crease > **CreasePG** 를 누르면 같은 선이 크리즈가 됩니다.
 - ZBrush 탭의 **DynaMesh** 가 메시를 뚫거나 조각내지 않습니다: 돌리기 전에 구멍을 메우고, 열린 시트는 두께를 주고, 뒤집힌 면을 바로잡고, 끝난 뒤 작은 조각을 버립니다. 메시지에 한 일이 적힙니다.
 - Wrinkle Lines · Cloth Drape 의 **Wrinkles**(기본 50): 올리면 몇 칸 폭의 잔주름이 촘촘히(100), 내리면 예전처럼 매끈한 큰 접힘(0). 2 · 3 · 4칸 떨어진 점끼리 거리를 지키는 넓은 굽힘이라 셀 노이즈 없이 접힙니다. 시간은 약 2.5배.
 

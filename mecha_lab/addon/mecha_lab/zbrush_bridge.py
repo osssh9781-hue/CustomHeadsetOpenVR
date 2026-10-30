@@ -56,6 +56,11 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
                               description='Faces with more than 4 corners (Boolean / cut n-gons) are split into clean '
                                           'triangles for ZBrush only - ZBrush fans them and concave ones tear into '
                                           'slivers. Quads stay quads; the Blender mesh is not changed')
+    crease_groups: BoolProperty(name='Creases as Polygroups', default=True,
+                                description='0.24.94 ZBrush reads no crease values from OBJ / FBX. The faces between the creased '
+                                            '(and sharp) edges get a material each (PG_001 ...) = ZBrush polygroups on import '
+                                            '(FBX: Import Mats as Polygroups); Tool > Geometry > Crease > CreasePG then creases '
+                                            'every polygroup border - the same lines')
     keep_backup: BoolProperty(name='Keep Previous Mesh', default=True,
                               description='Keep the replaced mesh as <name>_preZBrush (fake user)')
     export_format: EnumProperty(name='Format', default='OBJ', items=[      # 0.24.59 the Layers panel's Export
@@ -114,6 +119,100 @@ def _restore_selection(context, selected, active):
             context.view_layer.objects.active = active
         except (ReferenceError, RuntimeError):
             pass
+
+
+CREASE_MIN = 0.5            # an edge creased this much (or marked sharp) is a polygroup border
+GROUP_PREFIX = 'PG_'
+
+
+def crease_regions(me, threshold=CREASE_MIN):
+    """Per-face region ids (numpy int64) of the faces between creased / sharp edges: a flood fill over the face
+    graph that does not cross a creased edge.  Returns (ids, region count, creased edge count); one region and 0
+    when the mesh has no creases."""
+    import numpy as np
+    from . import mesh_io as mio
+    nf = len(me.polygons)
+    if nf == 0:
+        return np.zeros(0, np.int64), 0, 0
+    ne = len(me.edges)
+    crease = np.zeros(ne, np.float32)
+    att = me.attributes.get('crease_edge')
+    if att is not None and att.domain == 'EDGE':
+        att.data.foreach_get('value', crease)
+    sharp = np.zeros(ne, bool)
+    att = me.attributes.get('sharp_edge')
+    if att is not None and att.domain == 'EDGE':
+        att.data.foreach_get('value', sharp)
+    border = (crease >= threshold) | sharp
+    n_border = int(border.sum())
+    if n_border == 0:
+        return np.zeros(nf, np.int64), 1, 0
+    ce = mio.read_corner_edges(me).astype(np.int64)
+    start, tot = mio.read_face_starts(me)
+    f_of = np.repeat(np.arange(nf), tot)
+    keep = ~border[ce]                                  # corners whose edge may be crossed
+    order = np.argsort(ce[keep], kind='stable')
+    e_sorted = ce[keep][order]
+    f_sorted = f_of[keep][order]
+    first = np.ones(len(e_sorted), bool)
+    first[1:] = e_sorted[1:] != e_sorted[:-1]
+    starts = np.flatnonzero(first)
+    ends = np.append(starts[1:], len(e_sorted))
+    # neighbour pairs across every crossable edge shared by two faces
+    pairs = [(f_sorted[a], f_sorted[a + 1]) for a, b in zip(starts, ends) if b - a == 2]
+    ids = -np.ones(nf, np.int64)
+    adj = [[] for _ in range(nf)]
+    for a, b in pairs:
+        adj[a].append(b)
+        adj[b].append(a)
+    region = 0
+    for f in range(nf):
+        if ids[f] >= 0:
+            continue
+        stack = [f]
+        ids[f] = region
+        while stack:
+            g = stack.pop()
+            for h in adj[g]:
+                if ids[h] < 0:
+                    ids[h] = region
+                    stack.append(h)
+        region += 1
+    return ids, region, n_border
+
+
+def crease_materials(ob, threshold=CREASE_MIN):
+    """0.24.94 Creases as polygroups: a material per crease region on the export copy ``ob`` (PG_001 ..., a colour
+    each like ZBrush's polygroups).  ZBrush imports materials as polygroups (FBX: "Import Mats as Polygroups";
+    OBJ: material groups) and reads no crease values from either file; CreasePG in ZBrush then creases every
+    polygroup border = the creased lines.  Returns the number of regions (0 = no creases: nothing changed)."""
+    import colorsys
+    me = ob.data
+    ids, n, n_border = crease_regions(me, threshold)
+    if n_border == 0 or n < 2:
+        return 0
+    me.materials.clear()
+    for rid in range(n):
+        name = f'{GROUP_PREFIX}{rid + 1:03d}'
+        mat = bpy.data.materials.get(name)
+        if mat is None:
+            mat = bpy.data.materials.new(name)
+            r, g, b = colorsys.hsv_to_rgb((rid * 0.618034) % 1.0, 0.55, 0.85)
+            mat.diffuse_color = (r, g, b, 1.0)
+        me.materials.append(mat)
+    me.polygons.foreach_set('material_index', ids.astype('int32'))
+    me.update()
+    return n
+
+
+def drop_crease_materials():
+    """The PG_ materials made for an export removed again once nothing uses them."""
+    for mat in list(bpy.data.materials):
+        if mat.name.startswith(GROUP_PREFIX) and mat.users == 0:
+            bpy.data.materials.remove(mat)
+
+
+crease_vertex_groups = crease_materials          # (the first version grouped by vertex groups: OBJ ties on shared corners)
 
 
 def export_copy(context, ob, apply_modifiers, split_ngons=True):
@@ -286,8 +385,10 @@ def send_objects(context, objects, settings):
             try:
                 tmp.select_set(True)
                 context.view_layer.objects.active = tmp
+                groups = crease_materials(tmp) if getattr(settings, 'crease_groups', True) else 0
                 bpy.ops.wm.obj_export(filepath=str(path), export_selected_objects=True,
-                                      apply_modifiers=False, export_materials=False,
+                                      apply_modifiers=False, export_materials=groups > 0,
+                                      export_material_groups=groups > 0,
                                       export_uv=True, export_normals=True, export_triangulated_mesh=False,
                                       forward_axis=settings.forward_axis, up_axis=settings.up_axis,
                                       global_scale=settings.scale)
@@ -296,6 +397,7 @@ def send_objects(context, objects, settings):
                 bpy.data.objects.remove(tmp, do_unlink=True)
                 if me.users == 0:
                     bpy.data.meshes.remove(me)
+                drop_crease_materials()
             if not path.is_file():
                 raise RuntimeError(f'OBJ export produced no file for {ob.name}')
             data['objects'][zid] = {
@@ -505,6 +607,8 @@ class MCH_OT_export_mesh(bpy.types.Operator):
     split_ngons: BoolProperty(name='ZBrush-safe Faces', default=True,
                               description='Split faces with more than 4 corners into clean triangles (quads stay)')
     scale: FloatProperty(name='Scale', default=1.0, min=0.0001, soft_max=1000.0)
+    crease_groups: BoolProperty(name='Creases as Polygroups', default=True,
+                                description='The faces between creased / sharp edges get a material each (PG_001 ...) = ZBrush polygroups on import (FBX: Import Mats as Polygroups; CreasePG in ZBrush then creases their borders)')
     quad_mesh: BoolProperty(name='Quad Mesh', default=False,
                             description='0.24.76 Every exported object rebuilt as quads first (Fix Mesh, then Quad '
                                         'Remesh keeping its hard edges) - the Blender meshes stay as they are')
@@ -527,6 +631,7 @@ class MCH_OT_export_mesh(bpy.types.Operator):
         lay.prop(self, 'file_format')
         lay.prop(self, 'apply_modifiers')
         lay.prop(self, 'split_ngons')
+        lay.prop(self, 'crease_groups')
         lay.prop(self, 'scale')
         box = lay.box()
         box.prop(self, 'quad_mesh')
@@ -558,6 +663,7 @@ class MCH_OT_export_mesh(bpy.types.Operator):
             return {'CANCELLED'}
         selected, active = list(context.selected_objects), context.view_layer.objects.active
         temps, split, renamed, notes = [], 0, [], []
+        grouped = 0
         quad = export_size(obs) * self.quad_size / 100.0 if self.quad_mesh else 0.0
         t0 = time.time()
         wm = context.window_manager
@@ -576,6 +682,9 @@ class MCH_OT_export_mesh(bpy.types.Operator):
                     if note:
                         notes.append(f'{ob.name}: {note}')
                 wm.progress_update(i + 1)
+                if self.crease_groups:
+                    if crease_materials(tmp):
+                        grouped += 1
                 name = ob.name                             # the file gets the real names
                 ob.name = name + '__mch_export'
                 renamed.append((ob, name))
@@ -590,7 +699,8 @@ class MCH_OT_export_mesh(bpy.types.Operator):
             if self.file_format == 'OBJ':
                 bpy.ops.wm.obj_export(filepath=str(path), export_selected_objects=True, apply_modifiers=False,
                                       export_materials=True, export_uv=True, export_normals=True,
-                                      export_triangulated_mesh=False, global_scale=self.scale)
+                                      export_triangulated_mesh=False, global_scale=self.scale,
+                                      export_material_groups=grouped > 0)
             else:
                 bpy.ops.export_scene.fbx(filepath=str(path), use_selection=True, use_mesh_modifiers=False,
                                          global_scale=self.scale, object_types={'MESH'})
@@ -606,11 +716,15 @@ class MCH_OT_export_mesh(bpy.types.Operator):
                     bpy.data.meshes.remove(me)
             for ob, name in renamed:
                 ob.name = name
+            drop_crease_materials()
             _restore_selection(context, selected, active)
         if not path.is_file():
             self.report({'ERROR'}, 'Export produced no file')
             return {'CANCELLED'}
         msg = f'Exported {len(obs)} mesh(es) to {path}' + (f' ({split} n-gons split)' if split and not quad else '')
+        if grouped:
+            msg += (f' | creases as polygroups (materials PG_) on {grouped} mesh(es): in ZBrush import with '
+                    f'"Mats as Polygroups", then Tool > Geometry > Crease > CreasePG')
         if quad:
             msg += f' | Quad Mesh ({quad:.3g} apart{", Client Look" if self.client_look else ""}) in {time.time() - t0:.0f} s'
             if notes:

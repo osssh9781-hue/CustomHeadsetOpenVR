@@ -109,6 +109,7 @@ def draw_export(layout, context):
     box.row().prop(s, 'export_scope', expand=True)
     box.prop(s, 'apply_modifiers', text='Apply Modifiers')
     box.prop(s, 'split_ngons')
+    box.prop(s, 'crease_groups')
     box.prop(s, 'scale')
     row = box.row()
     row.scale_y = 1.4
