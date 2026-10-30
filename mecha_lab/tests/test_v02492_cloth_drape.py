@@ -117,6 +117,30 @@ msg = cd.confirm(C)
 check('Enter keeps the changed mesh, the backup gone', 'kept' in msg and 'Piece_mch_cd_backup' not in bpy.data.meshes
       and not np.allclose(np.array([v.co[:] for v in piece.data.vertices]), before))
 check('The operator + the panel button exist', hasattr(bpy.types, 'MCH_OT_cdrape_mesh') and 'mch.cdrape_mesh' in inspect.getsource(cd.draw))
+# -- the body's wrinkle lines as tubes under the cloth ---------------------------------------------------------------
+import json
+from mecha_lab import wrinkle_lines as wl
+pts = [Vector((math.sin(t) * 0.866, -math.cos(t) * 0.866, 0.5)) for t in np.linspace(-0.8, 0.8, 12)]   # an arc on the back (-Y) at z = 0.5
+body[wl.PROP] = json.dumps([dict(pts=[list(p) for p in pts], nrm=[list(p.normalized()) for p in pts], strength=1.0)])
+wl._CACHE.pop(body.name, None)
+st.use_lines = True
+target, me2, nb2, size2 = cd.patch_from_loops(C, loops, Proj(), st.spacing)
+info_t = cd.drape(C, body, me2, nb2, size2, st, frames=30)
+co_t = np.array([v.co[:] for v in me2.vertices])
+band_t = co_t[(co_t[:, 2] > 0.42) & (co_t[:, 2] < 0.58) & (co_t[:, 1] < -0.7)]
+st.use_lines = False
+me3 = cd.patch_from_loops(C, loops, Proj(), st.spacing)[1]
+info_f = cd.drape(C, body, me3, nb2, size2, st, frames=30)
+co_f = np.array([v.co[:] for v in me3.vertices])
+band_f = co_f[(co_f[:, 2] > 0.42) & (co_f[:, 2] < 0.58) & (co_f[:, 1] < -0.7)]
+lift = np.linalg.norm(band_t, axis=1).max() - np.linalg.norm(band_f, axis=1).max()
+check('Lines as Tubes: over the drawn line the cloth rests higher than without it (a tube under it, about the tube radius)',
+      info_t['collider'] > 0 and len(band_t) > 5 and lift > 0.012, (lift, len(band_t)))
+bpy.data.meshes.remove(me3)
+st.use_lines = True
+check('The Draw Lines operator + the Lines as Tubes toggle + the tube sliders are in the panel',
+      hasattr(bpy.types, 'MCH_OT_cdrape_lines') and all(k in inspect.getsource(cd.draw) for k in ("'use_lines'", 'mch.cdrape_lines', "'lift'", "'fade'")))
+bpy.data.meshes.remove(me2)
 from mecha_lab import tool_presets
 name, pg = tool_presets.group_for(S, 'CDRAPE')
 check('Tool Presets save the Cloth Drape sliders (scene.mch_cdrape)', name == 'mch_cdrape' and pg is not None)

@@ -10,6 +10,8 @@ Marvelous Designer) and drops onto the body.
     Or **Drape This Mesh**: the active mesh itself (a remeshed piece of your own) is the cloth, laid as it is on
     the other selected mesh (or its parent) - its open edges are the rim, selected points stay too; Enter keeps
     the mesh changed, Esc puts the saved copy back.
+    In every mode the wrinkle lines drawn on the body (the Wrinkle Lines tool, Draw Lines button) are tubes on the
+    collider: the cloth catches and folds on them (Lines as Tubes; the tube sliders are the Wrinkle Lines ones).
     Or **Wrap This Mesh**: a cloth round the whole body like a wrapping cloth (bojagi) - a copy of the body (a
     light one for a heavy body), lifted off by Gap and bigger by Looseness, pressed onto the body by Wrap Pressure
     (like vacuum packing) so the excess fabric bunches into wrinkles; a new "Cloth Wrap" object.
@@ -57,6 +59,8 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
                               default=50.0, min=0.0, max=200.0, subtype='PERCENTAGE')
     wrap_points: IntProperty(name='Wrap Points', description='Wrap This Mesh: the cloth copy is kept to about this many points (a decimated copy of a heavy body)',
                              default=40000, min=1000, soft_max=300000)
+    use_lines: BoolProperty(name='Lines as Tubes', description='The wrinkle lines drawn on the body (Wrinkle Lines tool) become tubes under the cloth: it catches and folds on them',
+                            default=True)
     thickness: FloatProperty(name='Thickness', description='The cloth gets a Solidify modifier of this thickness (% of the outline / body size; 0 = a single surface)',
                              default=0.0, min=0.0, max=5.0, subtype='PERCENTAGE')
     pin_rim: BoolProperty(name='Pin Rim', description='The outline edge stays where it was drawn (sewn on); off: the cloth is free', default=True)
@@ -155,6 +159,17 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
     # the collider: the target's points near the patch only, with their normals, baked into a grid
     tco = mio.read_co(target.data)
     tn = wl._normals(target.data)
+    tubes = 0
+    lines = wl._lines_of(target) if st.use_lines else []
+    if lines:                                         # the drawn lines as tubes on the body: the cloth catches on them
+        wst = wl.settings(context)
+        tgt = wl.target_of(context, target)
+        paths = [np.array([list(p) for p in wl.line_path(tgt, ln)]) for ln in lines]
+        tube_r = tgt.size * wst.size / 100.0 * wl.TUBE
+        h = wl.tube_field(tco, paths, [ln['strength'] for ln in lines], tube_r, fade=wst.fade / 100.0, lift=wst.lift / 100.0)
+        sign = -1.0 if wst.mode == 'CREASE' else 1.0
+        tco = tco + tn * (h * tube_r * sign * wst.fold / 100.0)[:, None]
+        tubes = int(np.count_nonzero(h > 0.05))
     if to_cloth is not None:
         M = np.array(to_cloth, np.float64)
         tco = tco @ M[:3, :3].T + M[:3, 3]
@@ -171,7 +186,7 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
     t = time.perf_counter()
     grid = cloth_pbd.GridCollider(tco[near] - tn[near] * (gap - margin) if gap > margin else tco[near], tn[near],
                                   cell=max(spacing * 0.8, size / 160.0), band=GRID_BAND)
-    sess = dict(cloth=cloth, grid=grid, margin=margin, friction=st.stick / 100.0, damping=damping, wrap=wrap,
+    sess = dict(cloth=cloth, grid=grid, margin=margin, friction=st.stick / 100.0, damping=damping, wrap=wrap, tubes=tubes,
                 press=(size * 0.004 * st.wrap_tight / 50.0) if wrap else 0.0,
                 gdir=wl._gravity_dir(gdir_ob or target), size=size, frames=st.frames, frame=0, points=n, collider=int(near.sum()),
                 grid_time=time.perf_counter() - t, stage='run')
@@ -389,13 +404,14 @@ def perform_wrap(context, body):
     SIM.clear()
     SIM.update(ob=ob.name, target=body.name, nb=0, size=size, sess=sess, running=False, done=False, want=None,
                surface=surface, start=sess['cloth'].init.copy(), snapshot=_snapshot(st), mode='WRAP')
-    return (f'Cloth Wrap round {body.name}: {sess["points"]:,} cloth points, looseness {st.slack:.0f} %, pressure {st.wrap_tight:.0f} % '
+    tubes = f', {sess["tubes"]:,} points of tubes' if sess.get('tubes') else ''
+    return (f'Cloth Wrap round {body.name}: {sess["points"]:,} cloth points, looseness {st.slack:.0f} %, pressure {st.wrap_tight:.0f} %{tubes} '
             f'(Space wrap · Enter keep · Esc drop)')
 
 
 def _snapshot(st):
     return tuple(getattr(st, k) for k in ('fabric', 'slack', 'shrink', 'gravity', 'stick', 'keep', 'gap', 'pin_rim', 'frames',
-                                          'wrap_tight'))
+                                          'wrap_tight', 'use_lines'))
 
 
 def restart(context):
@@ -627,6 +643,24 @@ class MCH_OT_cdrape_wrap(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_cdrape_lines(bpy.types.Operator):
+    """Draw wrinkle lines on the body (the Wrinkle Lines tool): they become tubes under the cloth. Pick the Cloth Drape tool again to drape"""
+    bl_idname = 'mch.cdrape_lines'
+    bl_label = 'Draw Lines'
+    bl_options = {'INTERNAL'}
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.view_layer.objects.active
+        return ob is not None and ob.type == 'MESH' and context.mode == 'OBJECT' and not sim_active()
+
+    def execute(self, context):
+        from . import workspace_ui
+        workspace_ui.activate_mecha_tool(context, 'WLINES')
+        self.report({'INFO'}, 'Wrinkle Lines: drag lines on the body, then pick Cloth Drape again (the lines stay)')
+        return {'FINISHED'}
+
+
 class MCH_OT_cdrape_control(bpy.types.Operator):
     """Drape / pause, keep, drop or restart the cloth (the panel buttons)"""
     bl_idname = 'mch.cdrape_control'
@@ -683,6 +717,22 @@ def draw(layout, context):
     r = box.row(align=True)
     r.prop(st, 'wrap_tight', slider=True)
     r.prop(st, 'wrap_points')
+    ob = context.view_layer.objects.active
+    body = bpy.data.objects.get(SIM.get('target', '')) if live else ob
+    n_lines = len(wl._lines_of(body)) if body is not None and body.type == 'MESH' else 0
+    r = box.row(align=True)
+    r.prop(st, 'use_lines', text=f'Lines as Tubes ({n_lines})', toggle=True)
+    rr = r.row()
+    rr.enabled = not live
+    rr.operator('mch.cdrape_lines', text='Draw Lines', icon='GREASEPENCIL')
+    wst = wl.settings(context)
+    if wst is not None and st.use_lines:
+        r = box.row(align=True)
+        r.prop(wst, 'size', text='Tube Size')
+        r.prop(wst, 'fold', text='Height')
+        r = box.row(align=True)
+        r.prop(wst, 'lift', text='Lift')
+        r.prop(wst, 'fade', text='End Fade')
     box.row().prop(st, 'fabric', expand=True)
     col = box.column(align=True)
     col.prop(st, 'slack', slider=True)
@@ -699,7 +749,7 @@ def draw(layout, context):
     box.prop(st, 'thickness', slider=True)
 
 
-CLASSES = (MCH_PG_ClothDrape, MCH_OT_cdrape_sim, MCH_OT_cdrape_mesh, MCH_OT_cdrape_wrap, MCH_OT_cdrape_control)
+CLASSES = (MCH_PG_ClothDrape, MCH_OT_cdrape_sim, MCH_OT_cdrape_mesh, MCH_OT_cdrape_wrap, MCH_OT_cdrape_lines, MCH_OT_cdrape_control)
 
 
 def register():

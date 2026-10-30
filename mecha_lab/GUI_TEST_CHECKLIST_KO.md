@@ -13,6 +13,7 @@ Window > Toggle System Console을 켜 두고, 오류가 나오면 **콘솔 전�
 
 ## 0.24.92 Cloth Drape · ZBrush 클로스 브러시 (미검증)
 - [ ] 몸통 메시에 Cloth Drape 도구로 라쏘 → 분홍 천 오브젝트가 바로 생기고, Space 로 떨어지며 가장자리는 그대로인지, Enter 로 남고 Esc 로 지워지는지. Looseness / Gravity / Stickiness 를 바꾸고 Space → 다시 도는지.
+- [ ] 원통 메시를 활성으로 Wrap This Mesh → 천이 감싸고 Space 로 조여지며 위아래 끝이 그대로인지, Thickness 를 주고 Enter 하면 두께가 붙는지. Draw Lines 로 선을 긋고 돌아와 Wrap 하면 선 자리에 천이 걸리는지.
 - [ ] ZBrush 탭 아래 선반에 ClothDrag … 8개 타일(아이콘)이 보이고 누르면 왼쪽 Cloth Brush 상자에 값들이 나오며 스트로크가 천처럼 움직이는지. Cloth Filter Gravity 를 누르고 끌면 전체가 처지는지.
 
 ## 0.24.91 Edge Finish 건너뛰기 (미검증)
