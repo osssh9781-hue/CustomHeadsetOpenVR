@@ -198,6 +198,24 @@ check(f'Base Mesh (3-segment bevel) + pocket -> Bake High Poly: the bounding box
       f'bevel rows held as lines, nothing runs away ({info["faces0"]:,} -> {info["faces"]:,} faces)',
       lo_d < 0.002 and hi_d < 0.002 and info['bevel_rows'] > 0, (float(lo_d), float(hi_d), info['bevel_rows'], info['faces0'], info['faces']))
 
+# ---- 0.24.95 preclean: a doubled sliver lying on a flat (a Boolean leftover) is merged before the bake ----------
+ob = cube('Dirty')
+bm = bmesh.new(); bm.from_mesh(ob.data)
+bm.verts.ensure_lookup_table()
+top = [v for v in bm.verts if v.co.z > 0.9]
+a, b = top[0], top[1]
+v1 = bm.verts.new(a.co.copy()); v2 = bm.verts.new(b.co.copy()); v3 = bm.verts.new(((a.co + b.co) / 2) + Vector((0, 0.001, 0)))
+bm.faces.new((v1, v2, v3))                                 # a sliver with its own doubled points, on the top face
+lv = bm.verts.new((3, 3, 3))                               # a loose point
+bm.to_mesh(ob.data); bm.free()
+me = ob.data.copy()
+info = bk.bake_mesh(me, levels=1)
+co = coords(me)
+check('preclean: the sliver\'s doubled points are merged into the cube\'s, the loose point dropped, and the bake stays inside the cube',
+      info['cleaned']['merged'] == 2 and info['cleaned']['loose'] >= 1 and np.abs(co).max() <= 1.0 + 1e-4, (info['cleaned'], float(np.abs(co).max())))
+check('... the message says what was cleaned', 'cleaned first' in bk.describe(info), bk.describe(info))
+bpy.data.meshes.remove(me)
+
 # ---- Edge Memory: a remembered shallow line stays put through the bake ----------------------------------------
 ob = cube('Mem')
 me = ob.data

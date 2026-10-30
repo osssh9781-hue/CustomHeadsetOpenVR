@@ -74,7 +74,8 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
     frames: IntProperty(name='Frames', default=60, min=5, max=300)
     # 0.24.95 Padding (quilting): seam lines held down on the body, the cells between them puffed up
     padding: BoolProperty(name='Padding', description='Quilted padding: a pattern of seam lines is held on the body and the cloth between them puffs up (needs some Looseness)', default=False)
-    pad_pattern: EnumProperty(name='Pattern', items=[('SQUARE', 'Square', 'Seams along and across the outline'), ('DIAMOND', 'Diamond', 'Seams at 45 degrees')], default='DIAMOND')
+    pad_pattern: EnumProperty(name='Pattern', items=[('SQUARE', 'Square', 'Seams along and across the outline'), ('DIAMOND', 'Diamond', 'Seams at 45 degrees'),
+                                                     ('NONE', 'Whole', 'No seams: the whole drawn area puffs up as one cushion (the rim held)')], default='DIAMOND')
     pad_size: FloatProperty(name='Cell', description='Padding: the seam spacing as % of the outline size', default=15.0, min=3.0, max=60.0, subtype='PERCENTAGE')
     pad_puff: FloatProperty(name='Puff', description='Padding: how hard the cells are blown up between the seams', default=60.0, min=0.0, max=200.0, subtype='PERCENTAGE')
     # 0.24.95 Trim: a piping tube round the cloth's edge, made when the cloth is kept
@@ -285,7 +286,8 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
         pin[sel] = 1.0
     n_quilt = 0
     uv = read_uv(me) if getattr(st, 'padding', False) and sew is None and not wrap and not puff and to_cloth is None else None
-    if uv is not None:                                # 0.24.95 Padding: the seam lines held, the cells puffed
+    pad_on = uv is not None
+    if uv is not None and st.pad_pattern != 'NONE':    # 0.24.95 Padding: the seam lines held, the cells puffed
         uv_edge = float(np.mean(np.linalg.norm(uv[edges[:, 1]] - uv[edges[:, 0]], axis=1))) if len(edges) else 0.02
         on = quilt_lines(uv, st.pad_size / 100.0, uv_edge * 0.55, st.pad_pattern)
         pin[on] = 1.0
@@ -366,9 +368,10 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
                 gdir=wl._gravity_dir(gdir_ob or target), size=size, frames=st.frames, frame=0, points=n, collider=int(len(sco)),
                 grid_time=time.perf_counter() - t, stage='run')
 
-    if n_quilt:                                       # the padding's puff: the cells blow up between the held seams
+    if pad_on:                                        # the padding's puff: the cells (or the whole area: Whole) blow up
+        cell = st.pad_size / 100.0 if st.pad_pattern != 'NONE' else 1.0
         sess.update(puff=size * 0.0015 * st.pad_puff / 50.0, puff_dir=nrm.copy(),
-                    puff_max=size * (st.pad_size / 100.0) * 0.6 * max(0.15, st.slack / 100.0) ** 0.5, quilt=n_quilt)
+                    puff_max=size * cell * 0.6 * max(0.15, st.slack / 100.0) ** 0.5, quilt=n_quilt)
 
     def collide(c):
         touch = grid.push(c.co, sess['margin'])

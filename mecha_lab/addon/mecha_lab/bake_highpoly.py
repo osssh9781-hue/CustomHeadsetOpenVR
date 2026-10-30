@@ -594,10 +594,56 @@ def _collection(context):
     return coll
 
 
+def preclean(me):
+    """0.24.95 before the bake: doubled points merged, zero-area faces and loose bits dropped, face normals made
+    consistent - a Boolean's leftover fin or a doubled sliver lying on a flat would otherwise come out of the bake
+    as a dark streak (its copy moves on its own).  Returns dict(merged, degenerate, loose, flipped)."""
+    done = dict(merged=0, degenerate=0, loose=0, flipped=0)
+    size = _mesh_size(me)
+    if size <= 0 or len(me.polygons) == 0:
+        return done
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        nv, nf = len(bm.verts), len(bm.faces)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=size * 1e-6)
+        done['merged'] = nv - len(bm.verts)
+        bmesh.ops.dissolve_degenerate(bm, edges=bm.edges[:], dist=size * 1e-6)
+        done['degenerate'] = nf - len(bm.faces)
+        loose = [v for v in bm.verts if not v.link_faces]
+        loose_e = [e for e in bm.edges if not e.link_faces]
+        done['loose'] = len(loose) + len(loose_e)
+        if loose_e:
+            bmesh.ops.delete(bm, geom=loose_e, context='EDGES')
+        if loose:
+            bmesh.ops.delete(bm, geom=[v for v in loose if v.is_valid], context='VERTS')
+        before = sum(1 for e in bm.edges if len(e.link_faces) == 2 and _winding(e.link_faces[0], e) == _winding(e.link_faces[1], e))
+        if before:
+            bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+            done['flipped'] = before
+        if any(done.values()):
+            bm.to_mesh(me)
+            me.update()
+    finally:
+        bm.free()
+    return done
+
+
+def _winding(face, edge):
+    vs = face.verts
+    n = len(vs)
+    for i in range(n):
+        a, b = vs[i], vs[(i + 1) % n]
+        if {a, b} == set(edge.verts):
+            return a is edge.verts[0]
+    return None
+
+
 def bake_mesh(me, levels, rounding=1.0, fillet=0.0, angle=math.radians(30.0), iters=ITERS):
     """``me`` subdivided + rounded IN PLACE (a copy the caller made).  Returns dict(faces0, faces, hard, corners,
     lines, fillet_edges, levels, seconds)."""
     t0 = time.time()
+    cleaned = preclean(me)
     faces0 = len(me.polygons)
     hard = hard_mask(me, angle)
     rows = bevel_rows(me, hard)
@@ -634,7 +680,8 @@ def bake_mesh(me, levels, rounding=1.0, fillet=0.0, angle=math.radians(30.0), it
             me.attributes.remove(a)
     me.update()
     info = dict(faces0=faces0, faces=len(me.polygons), hard=n_hard, corners=corners, lines=lines,
-                fillet_edges=n_fillet, flats=n_flat, bevel_rows=n_rows, levels=levels, seconds=time.time() - t0)
+                fillet_edges=n_fillet, flats=n_flat, bevel_rows=n_rows, levels=levels, seconds=time.time() - t0,
+                cleaned=cleaned)
     INFO.clear()
     INFO.update(info)
     return info
@@ -686,6 +733,7 @@ def describe(info):
     return (f'Bake High Poly: {f["faces0"]:,} -> {f["faces"]:,} faces (x4^{f["levels"]}), {f["hard"]:,} hard edges kept '
             f'({f["corners"]:,} corners fixed)' + (f', {f["bevel_rows"]:,} bevel row edges held' if f.get('bevel_rows') else '')
             + (f', fillet on {f["fillet_edges"]:,} edges' if f.get('fillet_edges') else '')
+            + (', cleaned first: ' + ', '.join(f'{v} {k}' for k, v in f['cleaned'].items() if v) if f.get('cleaned') and any(f['cleaned'].values()) else '')
             + f', {f["seconds"]:.1f} s')
 
 

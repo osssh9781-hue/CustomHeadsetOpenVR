@@ -266,6 +266,19 @@ check('... after 40 frames the cells stand off the sphere above the seams (free 
       r_q[~seam].mean() > r_q[seam].mean() + 0.005 and r_q.min() > 0.99 and np.all(np.isfinite(co_q)),
       (float(r_q[~seam].mean()), float(r_q[seam].mean()), float(r_q.min())))
 bpy.data.meshes.remove(me_p)
+# Whole: no seams, the drawn area puffs as one cushion (user: "no quilting, just the shape I drew puffing up")
+st.pad_pattern = 'NONE'
+target, me_w, nb_w, size_w = cd.patch_from_loops(C, loops, Proj(), st.spacing)
+sess_w = cd.build(C, body, me_w, nb_w, size_w, st)
+pin_w = sess_w['cloth'].pin
+for _ in range(40):
+    cd.advance(sess_w, st)
+r_w = np.linalg.norm(sess_w['cloth'].co, axis=1)
+check('Padding "Whole": only the rim is held (no seam pins), the puff is on, and the middle stands higher off the sphere than the rim',
+      int((pin_w >= 1).sum()) == nb_w and sess_w.get('puff', 0) > 0 and sess_w.get('quilt', 0) == 0 and r_w[nb_w:].mean() > r_w[:nb_w].mean() + 0.01,
+      (int((pin_w >= 1).sum()), nb_w, float(r_w[nb_w:].mean()), float(r_w[:nb_w].mean())))
+bpy.data.meshes.remove(me_w)
+st.pad_pattern = 'DIAMOND'
 st.padding = False
 st.trim, st.trim_width = True, 2.0
 msg = cd.perform(C, loops, Proj())
