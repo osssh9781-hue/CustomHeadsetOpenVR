@@ -255,6 +255,10 @@ def build_mesh(new, V, faces, sizes=None):
     new.update(calc_edges=True)
 
 
+FEAT_DENSE = 5000             # hard_feat: on a dense mesh ...
+FEAT_SHARE = 0.5              # ... with more than this share of its edges marked, the marks are not trusted
+
+
 def hard_feat(me, T, nv):
     """0.24.95 (point, point, triangle) for every remembered hard edge (Edge Memory): the engine keeps those sides
     like open borders, so a cut's outline survives the decimation.  None when the mesh has no memory."""
@@ -262,6 +266,8 @@ def hard_feat(me, T, nv):
     m = em.marked(me)
     if not m.any():
         return None
+    if len(me.edges) > FEAT_DENSE and m.mean() > FEAT_SHARE:     # smeared marks (a remesh kept the attribute by
+        return None                                                # nearest point): nothing could collapse
     ev = np.empty(len(me.edges) * 2, np.int32)
     me.edges.foreach_get('vertices', ev)
     ev = ev.reshape(-1, 2)[m].astype(np.int64)

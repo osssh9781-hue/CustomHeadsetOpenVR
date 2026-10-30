@@ -229,6 +229,23 @@ k = fd.swap_mesh(ob, new)
 check('swap_mesh carries the memory onto a new mesh that has none (every remesh that swaps meshes: Quad Remesh, '
       'Re-Fix, Hard Edges)', k > 0 and em.count(ob.data) == k, k)
 
+# ---- Blender's own voxel remesh (Preserve Attributes) must not smear the marks over the new mesh ---------------
+ob = cube('Smear', 2.0)
+em.mark_generated(ob.data)
+ob.data.remesh_voxel_size = 0.05
+with C.temp_override(object=ob, active_object=ob, selected_objects=[ob], selected_editable_objects=[ob]):
+    bpy.ops.object.voxel_remesh()
+n_raw = 0
+a = ob.data.attributes.get(em.ATTR)
+if a is not None:
+    raw = np.zeros(len(ob.data.edges), bool); a.data.foreach_get('value', raw); n_raw = int(raw.sum())
+n_seen = em.count(ob.data)
+check('Blender\'s voxel remesh copies the attribute onto (nearly) every new edge; the stamp (12 marks / 12 edges) '
+      'shows it, so the memory reads as empty and the attribute is dropped',
+      n_raw > 1000 and n_seen == 0 and not em.has_memory(ob.data) and ob.data.attributes.get(em.ATTR) is None, (n_raw, n_seen))
+ob = pocket_cube('Grow')                               # (a subdivision grows the marks legitimately: kept)
+check('... while a subdivided cut cube keeps its grown marks (96 from 12: split edges keep them)', em.count(ob.data) == 96, em.count(ob.data))
+
 # ---- the ZBrush export reads the marks (crease 1.0 -> polygroup regions) --------------------------------------
 from mecha_lab import zbrush_bridge as zbb
 ob = cube('Exp', 2.0)

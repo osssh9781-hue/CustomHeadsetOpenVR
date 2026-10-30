@@ -21,7 +21,8 @@ import math
 
 import numpy as np
 
-ATTR = 'mch_hard'                 # edge BOOLEAN: a remembered hard edge
+ATTR = '.mch_hard'                # edge BOOLEAN: a remembered hard edge (internal name: Blender's voxel remesh
+#                                   'Preserve Attributes' would otherwise smear it over EVERY new edge)
 INNER_ANGLE = math.radians(30.0)  # two cutter faces meeting at more than this = a line of the cut itself
 TRANSFER_TOL = 0.015              # transfer: an edge of the new mesh within this x mesh size of an old marked line
 
@@ -36,12 +37,42 @@ def _edge_attr(me, name, dtype='BOOLEAN'):
     return a
 
 
+STAMP_N = 'mch_hard_n'            # mesh property: how many edges were marked when the marks were written
+STAMP_E = 'mch_hard_e'            # mesh property: how many edges the mesh had then
+SMEAR = 3                         # marks grown past SMEAR x (stamp + 8) with another edge count ...
+SMEAR_SHARE = 0.5                 # ... and onto more than this share of all edges = a remesh smeared them
+
+
+def _stamp(me, n):
+    try:
+        me[STAMP_N] = int(n)
+        me[STAMP_E] = int(len(me.edges))
+    except (TypeError, AttributeError):
+        pass
+
+
+def _smeared(me, n):
+    """True when the marks cannot be the ones written: Blender's voxel remesh 'Preserve Attributes' copies the
+    attribute onto EVERY nearby new edge (a 12-edge cube came back with all 20,172 edges marked)."""
+    n0 = me.get(STAMP_N)
+    e0 = me.get(STAMP_E)
+    if n0 is None or e0 is None:
+        return False
+    ne = len(me.edges)
+    # (a subdivision also grows the marks - legitimately, the split edges keep them - but never onto most edges)
+    return ne != int(e0) and n > SMEAR * (int(n0) + 8) and n > SMEAR_SHARE * ne
+
+
 def marked(me):
-    """bool per edge: remembered hard edges (all False when the mesh has no memory)."""
+    """bool per edge: remembered hard edges (all False when the mesh has no memory, or the marks were smeared by
+    a remesh - those are dropped)."""
     out = np.zeros(len(me.edges), bool)
     a = me.attributes.get(ATTR)
     if a is not None and a.domain == 'EDGE' and len(a.data) == len(out):
         a.data.foreach_get('value', out)
+        if _smeared(me, int(out.sum())):
+            clear(me)
+            out[:] = False
     return out
 
 
@@ -51,7 +82,9 @@ def count(me):
 
 def has_memory(me):
     a = me.attributes.get(ATTR)
-    return a is not None and a.domain == 'EDGE'
+    if a is None or a.domain != 'EDGE':
+        return False
+    return bool(marked(me).any()) or me.get(STAMP_N) == 0
 
 
 def mark_edges(me, mask, sharp=True, crease=True, add=True):
@@ -68,6 +101,7 @@ def mark_edges(me, mask, sharp=True, crease=True, add=True):
         m |= marked(me)
     a = _edge_attr(me, ATTR)
     a.data.foreach_set('value', m)
+    _stamp(me, int(m.sum()))
     if sharp:
         s = _edge_attr(me, 'sharp_edge')
         cur = np.zeros(ne, bool)
@@ -87,6 +121,9 @@ def clear(me):
     a = me.attributes.get(ATTR)
     if a is not None:
         me.attributes.remove(a)
+    for k in (STAMP_N, STAMP_E):
+        if k in me:
+            del me[k]
 
 
 def _edge_faces(me):
@@ -225,7 +262,9 @@ def remember(me):
     try:
         if not count(me):
             return None
-        return lines(me), mesh_size(me)
+        kept = lines(me), mesh_size(me)
+        clear(me)                                    # (nothing for the remesh to smear: restore marks it afresh)
+        return kept
     except Exception:
         return None
 

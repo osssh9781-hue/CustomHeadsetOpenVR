@@ -10,7 +10,7 @@ from mecha_lab import hard_edges as he, mesh_tools as mt, zb_sculpt as zs, zb_ui
 mecha_lab.register()
 fresh()
 check('Version 0.24.95', mecha_lab.bl_info['version'] == (0, 24, 95))
-check('Edge Memory: one mark name shared by every reader', em.ATTR == 'mch_hard')
+check('Edge Memory: one mark name shared by every reader (internal: a voxel remesh does not smear it)', em.ATTR == '.mch_hard')
 check('remove_cutter_attribute (every cut-type tool\'s last step) turns the cutter flag into Edge Memory marks',
       'edge_memory.mark_cut_borders' in inspect.getsource(cg.remove_cutter_attribute))
 check('Box Hide Apply and Split Off flag the volume and take the marks',
