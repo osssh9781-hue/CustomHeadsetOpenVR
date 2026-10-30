@@ -6,7 +6,8 @@ import numpy as np
 from _harness import bmesh, bpy, check, fresh, non_manifold, summary
 
 import mecha_lab
-from mecha_lab import bake_highpoly as bk, core_geometry as cg, edge_memory as em, mesh_tools as mt, zb_sculpt as zs
+from mecha_lab import bake_highpoly as bk, core_geometry as cg, cut_engine as ce, edge_memory as em, mesh_tools as mt, zb_sculpt as zs
+from mathutils import Quaternion, Vector
 
 mecha_lab.register()
 fresh()
@@ -166,6 +167,36 @@ check('A cube with a live 2-segment bevel (width 0.06): the flats stay flat (hun
       n_flat > 300 and inside and len(mid) > 50 and profile_same < 0.01, (n_flat, inside, len(mid), float(profile_same)))
 check('... the strip keeps its bevel depth (the 2-segment arc\'s middle line is 0.0249 from the corner line: points between 0.02 and 0.06)',
       0.02 < r.min() and r.max() < 0.061, (float(r.min()), float(r.max())))
+
+# ---- the user's part: a Base Mesh with bevelled sides (3 segments = rows 0.9 long and 0.01 wide) + a pocket ----
+# 0.24.95: the rows' faces are so thin that (a) the plain neighbour average sat at the far end of a row (a constant
+# pull the Taubin pair never cancelled: a corner crept 0.09 per level) and (b) re-measured normals swung into the
+# row's long direction (a corner ran 0.5 in one level).  Now neighbours weigh by 1 / edge length, the normals are
+# measured once per level, and a run of narrow bent rows turning less than 100 degrees is a modelled bevel whose
+# rows are held as lines.
+from mecha_lab import base_mesh as bmm
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+sb = S.mch_base
+sb.profile, sb.height, sb.bevel_width, sb.bevel_segments, sb.bevel_sides, sb.offset = 'BEVEL', 0.5, 0.04, 3, 'TOP', 0.0
+PPU = 100.0
+TOPV = cg.OrthoProjector(Quaternion(), center=Vector((0, 0, 0)), pixels_per_unit=PPU)
+lp = ce.rect_loop((500 - 0.9 * PPU, 500 - 0.5 * PPU), (500 + 0.9 * PPU, 500 + 0.5 * PPU))
+before = set(bpy.data.objects)
+bmm.perform_base(C, [lp], TOPV)
+base = [o for o in bpy.data.objects if o not in before][0]
+select(base)
+S.mch_settings.auto_apply = True
+S.mch_cut.targets = 'ACTIVE'
+ce.perform_closed(C, 'CUT', [base], [ce.rect_loop((500 - 0.2 * PPU, 500 - 0.2 * PPU), (500 + 0.2 * PPU, 500 + 0.2 * PPU))], TOPV)
+src_co = coords(base.data)
+hp, info = bk.build(C, base, target_faces=60000)
+co = coords(hp.data)
+lo_d = np.abs(co.min(0) - src_co.min(0)).max()
+hi_d = np.abs(co.max(0) - src_co.max(0)).max()
+check(f'Base Mesh (3-segment bevel) + pocket -> Bake High Poly: the bounding box is the original\'s (off by under 0.002), '
+      f'bevel rows held as lines, nothing runs away ({info["faces0"]:,} -> {info["faces"]:,} faces)',
+      lo_d < 0.002 and hi_d < 0.002 and info['bevel_rows'] > 0, (float(lo_d), float(hi_d), info['bevel_rows'], info['faces0'], info['faces']))
 
 # ---- Edge Memory: a remembered shallow line stays put through the bake ----------------------------------------
 ob = cube('Mem')

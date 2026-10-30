@@ -30,7 +30,7 @@ import numpy as np
 
 COLL = 'BakeHP'
 SRC_KEY = 'mch_bakehp_src'
-LAM, MU = 0.5, -0.5           # Taubin smoothing: shrink step, then the grow step that gives the volume back.  Equal
+LAM, MU = 0.5, -0.53          # Taubin smoothing: shrink step, then the slightly bigger grow step that gives the volume back
 #                               sizes: no frequency is ever amplified (a bigger grow step ran away between fixed
 #                               lines on a pocket corner: +4 % of the part after four levels)
 ITERS = 10                    # Taubin pairs per level
@@ -45,6 +45,8 @@ PLANES = {}                   # flat region id -> (normal, offset): the plane it
 STRIP_PLANES = {}             # strip region id -> flat region ids whose planes its points never cross
 FLAT_TOL = math.radians(1.0)
 ANGLE_EPS = 1e-4              # hard_mask: 'more than the angle' with a margin, so exactly-30-degree bevel rows stay soft
+BEVEL_TURN = math.radians(100.0)   # bevel_rows: a run of rows turning up to this is a bevel; more = a curved surface
+BEVEL_NARROW = 0.25           # bevel_rows: a row's short side is under this share of its long side
 FLAT_RATIO = 3.0              # a flat region is at least this much bigger (sqrt area) than any soft neighbour region
 
 
@@ -78,6 +80,82 @@ def hard_mask(me, angle=math.radians(30.0), memory=True, specks=True):
     if memory:
         hard |= em.marked(me)
     return hard
+
+
+def bevel_rows(me, hard, narrow=BEVEL_NARROW, lo=math.radians(2.0), hi=math.radians(70.0)):
+    """bool per edge: the long edges of bevel rows - a narrow quad (short side under ``narrow`` x its long side)
+    whose two long edges both bend (between ``lo`` and ``hi``, so neither is flat nor already a hard edge's 90):
+    a row of a modelled bevel / chamfer.  Those edges become lines, so the bevel keeps exactly the profile it was
+    modelled with (the user: "a run of similar angles = a bevel").  Rows along existing hard edges count too."""
+    from . import edge_memory as em
+    from . import mesh_io as mio
+    ne, nf = len(me.edges), len(me.polygons)
+    out = np.zeros(ne, bool)
+    if nf == 0:
+        return out
+    start, tot = mio.read_face_starts(me)
+    quads = np.flatnonzero(np.asarray(tot) == 4)
+    if not len(quads):
+        return out
+    ce = mio.read_corner_edges(me)
+    co = mio.read_co(me)
+    ev = mio.read_edge_verts(me)
+    el = np.linalg.norm(co[ev[:, 0]] - co[ev[:, 1]], axis=1)
+    st = np.asarray(start)[quads]
+    e4 = np.stack([ce[st], ce[st + 1], ce[st + 2], ce[st + 3]], 1)        # the quad's edges in order
+    l4 = el[e4]
+    pairA = np.minimum(l4[:, 0], l4[:, 2])                                  # opposite pairs: (0,2) and (1,3)
+    pairB = np.minimum(l4[:, 1], l4[:, 3])
+    maxA = np.maximum(l4[:, 0], l4[:, 2])
+    maxB = np.maximum(l4[:, 1], l4[:, 3])
+    # dihedral per edge
+    e_sorted, f_sorted, starts, ends = em._edge_faces(me)
+    cnt = ends - starts
+    s2 = starts[cnt == 2]
+    nrm = np.empty(nf * 3, np.float32)
+    me.polygons.foreach_get('normal', nrm)
+    nrm = nrm.reshape(-1, 3)
+    bend = np.zeros(ne)
+    d = np.clip(np.einsum('ij,ij->i', nrm[f_sorted[s2]], nrm[f_sorted[s2 + 1]]), -1.0, 1.0)
+    bend[e_sorted[s2]] = np.arccos(d)
+    qa, qb = [], []                                                         # the row quads' two long edges
+    for long_pair, short_max in (((0, 2), maxB), ((1, 3), maxA)):
+        a, b = e4[:, long_pair[0]], e4[:, long_pair[1]]
+        rows = (short_max < narrow * np.minimum(el[a], el[b])) & (bend[a] > lo) & (bend[a] < hi) & (bend[b] > lo) & (bend[b] < hi)
+        qa.append(a[rows])
+        qb.append(b[rows])
+    qa, qb = np.concatenate(qa), np.concatenate(qb)
+    if not len(qa):
+        return out
+    # rows sharing a long edge form a run; a run that turns up to BEVEL_TURN in all is a bevel (its rows held as
+    # lines: the profile stays as modelled), a run that turns more is a curved surface - a 16-sided cylinder, a
+    # half-pipe groove - and rounds
+    nq = len(qa)
+    comp = np.arange(nq)
+    key = np.concatenate([qa, qb])
+    qid = np.concatenate([np.arange(nq), np.arange(nq)])
+    order = np.argsort(key, kind='stable')
+    key, qid = key[order], qid[order]
+    same = np.flatnonzero(key[1:] == key[:-1])                            # two rows on one long edge
+    pa, pb = qid[same], qid[same + 1]
+    for _ in range(64):
+        before = comp.copy()
+        lo_ = np.minimum(comp[pa], comp[pb])
+        np.minimum.at(comp, pa, lo_)
+        np.minimum.at(comp, pb, lo_)
+        comp = comp[comp]
+        if np.array_equal(comp, before):
+            break
+    _u, comp = np.unique(comp, return_inverse=True)
+    nc = int(comp.max()) + 1
+    # the turn of a run: every distinct long edge of its rows, once
+    ek = np.unique(np.stack([np.concatenate([comp, comp]), np.concatenate([qa, qb])], 1), axis=0)
+    turn = np.bincount(ek[:, 0], weights=bend[ek[:, 1]], minlength=nc)
+    is_bevel = turn <= BEVEL_TURN
+    sel = is_bevel[comp]
+    out[qa[sel]] = True
+    out[qb[sel]] = True
+    return out
 
 
 def levels_for(faces, target, max_levels=MAX_LEVELS):
@@ -355,13 +433,24 @@ def taubin(co, E, hard, iters=ITERS, lam=LAM, mu=MU, plane_n=None, shrink_only=N
         lv = lj1 = lj2 = np.zeros(0, np.int64)
     free = ~corner
 
+    # neighbours weighted by 1 / edge length (from the level's start): on a bevel row 0.9 long and 0.005 wide the
+    # plain average sat near the far end of the row, a constant pull the Taubin pair never cancelled - the point
+    # crept along its normal 0.004 per pair, 0.09 per level (the user's bevelled block)
+    wl = 1.0 / np.maximum(np.linalg.norm(co[E[:, 0]] - co[E[:, 1]], axis=1), 1e-9)
+    wsum = np.bincount(E[:, 0], weights=wl, minlength=nv) + np.bincount(E[:, 1], weights=wl, minlength=nv)
+
     def avg(c, EE, deg):
         s = np.zeros_like(c)
         for k in range(3):
-            s[:, k] = (np.bincount(EE[:, 0], weights=c[EE[:, 1], k], minlength=nv)
-                       + np.bincount(EE[:, 1], weights=c[EE[:, 0], k], minlength=nv))
-        return s / np.maximum(deg, 1)[:, None]
+            s[:, k] = (np.bincount(EE[:, 0], weights=wl * c[EE[:, 1], k], minlength=nv)
+                       + np.bincount(EE[:, 1], weights=wl * c[EE[:, 0], k], minlength=nv))
+        return s / np.maximum(wsum, 1e-12)[:, None]
 
+    # the normals a free point moves along: from the positions at the START of the level, never re-measured while
+    # smoothing - on a bevel strip 0.005 wide and 0.9 long, a move of 0.008 tilts the strip's faces by 60 degrees,
+    # the "normal" swings into the strip's long direction and the big in-plane Laplacian pours into it (the user's
+    # bevelled block: a bottom corner ran 0.5 away in one level)
+    vn = vertex_normals(co, corners) if corners is not None else None
     for _ in range(iters):
         for w in (lam, mu):
             t = avg(co, E, deg_all)
@@ -373,8 +462,7 @@ def taubin(co, E, hard, iters=ITERS, lam=LAM, mu=MU, plane_n=None, shrink_only=N
                 t[lv] = p1 + u[:, None] * dv
             d = t - co
             d[~free] = 0
-            if corners is not None:                   # free points: along the normal only (no surface drift)
-                vn = vertex_normals(co, corners)
+            if vn is not None:                        # free points: along the normal only (no surface drift)
                 along = np.einsum('ij,ij->i', d, vn)[:, None] * vn
                 d = np.where(line[:, None], d, along)
             if plane_n is not None:
@@ -512,6 +600,9 @@ def bake_mesh(me, levels, rounding=1.0, fillet=0.0, angle=math.radians(30.0), it
     t0 = time.time()
     faces0 = len(me.polygons)
     hard = hard_mask(me, angle)
+    rows = bevel_rows(me, hard)
+    n_rows = int((rows & ~hard).sum())
+    hard = hard | rows
     n_hard = int(hard.sum())
     a = me.attributes.get('sharp_edge') or me.attributes.new('sharp_edge', 'BOOLEAN', 'EDGE')
     a.data.foreach_set('value', hard)                       # (bmesh carries Sharp through the subdivision)
@@ -543,7 +634,7 @@ def bake_mesh(me, levels, rounding=1.0, fillet=0.0, angle=math.radians(30.0), it
             me.attributes.remove(a)
     me.update()
     info = dict(faces0=faces0, faces=len(me.polygons), hard=n_hard, corners=corners, lines=lines,
-                fillet_edges=n_fillet, flats=n_flat, levels=levels, seconds=time.time() - t0)
+                fillet_edges=n_fillet, flats=n_flat, bevel_rows=n_rows, levels=levels, seconds=time.time() - t0)
     INFO.clear()
     INFO.update(info)
     return info
@@ -593,7 +684,8 @@ def build(context, ob, target_faces=1_000_000, rounding=1.0, fillet=0.0, angle=m
 def describe(info):
     f = info
     return (f'Bake High Poly: {f["faces0"]:,} -> {f["faces"]:,} faces (x4^{f["levels"]}), {f["hard"]:,} hard edges kept '
-            f'({f["corners"]:,} corners fixed)' + (f', fillet on {f["fillet_edges"]:,} edges' if f.get('fillet_edges') else '')
+            f'({f["corners"]:,} corners fixed)' + (f', {f["bevel_rows"]:,} bevel row edges held' if f.get('bevel_rows') else '')
+            + (f', fillet on {f["fillet_edges"]:,} edges' if f.get('fillet_edges') else '')
             + f', {f["seconds"]:.1f} s')
 
 
