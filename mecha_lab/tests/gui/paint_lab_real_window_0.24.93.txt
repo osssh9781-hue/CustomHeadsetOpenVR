@@ -1,0 +1,10 @@
+switch PAINT {'FINISHED'} mode SCULPT flag True on True brush Paint
+look SOLID STUDIO paint.sl VERTEX Standard
+load photo {'FINISHED'} photo stripes tex MCH_PaintStencilTex linked True map VIEW_PLANE
+hue 120 rebaked: first stripe (was red) -> [0.0, 0.73, 0.0]
+Q pressed: stencil_on True map STENCIL pos (692, 476) dim (623, 312)
+Q again: stencil_on False map VIEW_PLANE
+REAL stroke Paint (red): 65 points coloured, mean colour there (np.float32(1.0), np.float32(0.21), np.float32(0.21))
+Alt + click eyedrop: brush colour now (1.0, 0.1, 0.1) (expected red)
+mask by brightness {'FINISHED'} masked mean 0.996 max 1.0
+DONE

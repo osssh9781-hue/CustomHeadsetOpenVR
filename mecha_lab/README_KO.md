@@ -4,6 +4,12 @@
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` 맨 위 0.24.81 절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
 
+## 0.24.93 Paint Lab · 앞판 + 뒷판 봉제 · Sew Copy · Stop at Pins · 패딩
+- **PAINT**(오른쪽 위 카드 MECHA | ZBRUSH | PAINT): 폴리페인트 화면. 브러시 선반에 Paint · PaintSoft · PaintSquare · PaintBlend · Smear · Blur. 왼쪽 선반: **Load Photo** 로 사진을 가져와 Hue · Saturation · Contrast · Brightness · Rotation · Flip 으로 보정하면 그게 브러시 텍스처 / 스텐실; **Q** 로 스텐실을 켜고 끄고(켜지면 오른쪽 드래그로 옮김, Shift: 크기, Ctrl: 회전); **Alt + 모델 클릭** = 폴리페인트 색 스포이드(Alt + 다른 메시 = 선택); 마스크 **By Brightness**(Black · White 범위) · **By Edges**(각도 · Soft · Grow) · **By Cavity** · Invert · Clear; **Look** Paint(기본) / Exact / Material — 색이 그대로 보이는 세팅(paint 스튜디오 라이트 · Standard 뷰 변환, Material 은 중성 HDRI + Khronos PBR Neutral).
+- Cloth Drape 패널의 **Front + Back**: 라쏘 하나로 몸의 앞 · 뒤에 같은 조각을 깔고 옆선을 봉제해 몸을 감쌉니다(위아래는 열림, Pin Rim = 윗변만). **Sew Copy**: 뽑아 둔 판을 복사해 가장자리끼리 꿰매고 판을 콜리전으로 복사본만 시뮬(Puff · Wrap Pressure · Looseness · Gravity).
+- **Stop at Pins**(Wrinkle Lines · Cloth Drape): 켜면 천이 가장 낮은 고정 점보다 아래로 안 처집니다.
+- 패딩: ZBrush 탭에서 Ctrl 드래그로 누빔선을 마스크하고 선반의 Cloth Filter **Inflate** 를 끌면 마스크 선은 그대로, 칸만 부풀어 누빔 패딩이 됩니다(실제 창에서 확인).
+
 ## 0.24.92 Wrinkle Lines(주름 선)
 - MECHA LAB 의 **Wrinkle Lines** 도구(Cloth 그룹; ZBrush 선반의 "Draw Lines" 버튼으로도): 메시 위에 선을 **드래그**로 긋고(점 드래그 = 이동, Shift+클릭 = 점 추가, Ctrl+클릭 = 점 삭제, X = 선 삭제), **Space** = 선을 따라 얇은 튜브(슬라이더 실시간: Wrinkle Size · Fold Strength · Tube Lift · End Fade · Line Strength), **Space 한 번 더** = 메시 복사본을 천으로 덮어 시뮬(Looseness · Shrink · Gravity · Silhouette Keep · 원단), **Enter** = 메시에 쓰기, **Esc** = 되돌리기. 선을 안 긋고 Space 를 누르면 **내가 스컬핑한 능선 그대로**가 콜리전이 되어 천이 떨어집니다(튜브 단계 건너뜀).
 - 기본값은 참고 영상에 가장 가까웠던 조합(헐렁함 20 %, 중력 100 %, Cotton). 천 조건은 전부 슬라이더라 취향대로 바꾸고 Presets 에 저장.
