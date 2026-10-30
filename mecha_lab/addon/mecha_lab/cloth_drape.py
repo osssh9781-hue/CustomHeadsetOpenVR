@@ -70,7 +70,7 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
                             default=False)
     stop_at_pins: BoolProperty(name='Stop at Pins', description='The cloth cannot hang lower (world down) than the lowest pinned point', default=False)
     wrinkles: FloatProperty(name='Wrinkles', description='How much the cloth folds: 0 = smooth broad folds, 100 = wide bending (points up to 4 edges apart hold their distance, little smoothing, a little jitter) - folds a few cells wide wherever the fabric is loose',
-                            default=70.0, min=0.0, max=100.0, subtype='PERCENTAGE')
+                            default=50.0, min=0.0, max=100.0, subtype='PERCENTAGE')
     frames: IntProperty(name='Frames', default=60, min=5, max=300)
 
 

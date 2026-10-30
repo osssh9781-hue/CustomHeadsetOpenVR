@@ -1,8 +1,11 @@
-# Mecha Lab 0.24.93 — 설치 · MECHA LAB Workspace · 사용법
+# Mecha Lab 0.24.94 — 설치 · MECHA LAB Workspace · 사용법
 
 > **검증 수준:** Linux headless Blender **5.2.3**(`bpy`)에서 자동 테스트 209개 파일 / 5,258개 항목(전체 실행에서 코너 카드 글자 기대값 2개 실패 — 고친 뒤 통과) + 무작위 기능 조합 크래시 테스트 280개, 그리고 0.24.81부터 리눅스 가상 화면의 **진짜 Blender 5.2.3 창** 자동 테스트(설치 · 워크스페이스 · 그려진 막대 · 진짜 마우스 Cut · Tab · 단축키 충돌 목록) 13/13를 돌렸습니다(결과: `test_report.md`).
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` 맨 위 0.24.81 절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
+
+## 0.24.94 Wrinkles 슬라이더
+- Wrinkle Lines · Cloth Drape 의 **Wrinkles**(기본 50): 올리면 몇 칸 폭의 잔주름이 촘촘히(100), 내리면 예전처럼 매끈한 큰 접힘(0). 2 · 3 · 4칸 떨어진 점끼리 거리를 지키는 넓은 굽힘이라 셀 노이즈 없이 접힙니다. 시간은 약 2.5배.
 
 ## 0.24.93 Paint Lab · 앞판 + 뒷판 봉제 · Sew Copy · Stop at Pins · 패딩
 - **PAINT**(오른쪽 위 카드 MECHA | ZBRUSH | PAINT): 폴리페인트 화면. 브러시 선반에 Paint · PaintSoft · PaintSquare · PaintBlend · Smear · Blur. 왼쪽 선반: **Load Photo** 로 사진을 가져와 Hue · Saturation · Contrast · Brightness · Rotation · Flip 으로 보정하면 그게 브러시 텍스처 / 스텐실; **Q** 로 스텐실을 켜고 끄고(켜지면 오른쪽 드래그로 옮김, Shift: 크기, Ctrl: 회전); **Alt + 모델 클릭** = 폴리페인트 색 스포이드(Alt + 다른 메시 = 선택); 마스크 **By Brightness**(Black · White 범위) · **By Edges**(각도 · Soft · Grow) · **By Cavity** · Invert · Clear; **Look** Paint(기본) / Exact / Material — 색이 그대로 보이는 세팅(paint 스튜디오 라이트 · Standard 뷰 변환, Material 은 중성 HDRI + Khronos PBR Neutral).

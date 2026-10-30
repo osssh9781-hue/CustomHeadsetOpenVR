@@ -279,6 +279,50 @@ st.stop_at_pins = False
 check('Stop at Pins is in the panel and the snapshot', "'stop_at_pins'" in inspect.getsource(wl.draw_panel if hasattr(wl, 'draw_panel') else wl)
       and 'stop_at_pins' in inspect.getsource(wl._snapshot))
 
+# -- 0.24.94 Wrinkles: wide bending + the slider ---------------------------------------------------------------
+cot = wl.FABRIC_SIM['COTTON']
+p0, p50, p100 = wl.wrinkle_params(cot, 0), wl.wrinkle_params(cot, 50), wl.wrinkle_params(cot, 100)
+check('wrinkle_params: 0 = the old solver (fabric bend / smooth, no wide bending), 100 = bend .5 / smooth .1 / full wide bending, 50 in between (smooth .4)',
+      p0 == (cot[0], cot[3], 0.0, 0.0) and abs(p100[0] - 0.5) < 1e-9 and abs(p100[1] - 0.1) < 1e-9 and p100[2] == 1.0
+      and abs(p50[1] - 0.4) < 1e-9 and p50[2] == 0.5, (p0, p50, p100))
+check('The default is Wrinkles 50 (user: 70 then 30 % less) in Wrinkle Lines and Cloth Drape',
+      abs(S.mch_wlines.wrinkles - 50.0) < 1e-6 and abs(S.mch_cdrape.wrinkles - 50.0) < 1e-6)
+sq = cloth_pbd.Cloth(np.array([[x, y, 0.0] for y in range(5) for x in range(5)], float),
+                     np.array([i for y in range(4) for x in range(4) for i in (y * 5 + x, y * 5 + x + 1, (y + 1) * 5 + x + 1, (y + 1) * 5 + x)]),
+                     np.arange(0, 64, 4), np.full(16, 4))
+n_far = sq.set_far()
+pairs = cloth_pbd.ring_pairs(sq.edges, sq.n, (2,))[2]
+check('set_far on a 5x5 grid: pairs 2 edges apart include (0, 2) and (0, 6) but not an edge (0, 1); 3 rings of pairs built',
+      n_far > 0 and any((a, b) == (0, 2) for a, b in pairs.tolist()) and any((a, b) == (0, 6) for a, b in pairs.tolist())
+      and not any((a, b) == (0, 1) for a, b in pairs.tolist()) and len(sq.far) == 3, (n_far, len(pairs)))
+fresh()
+S = C.scene
+ob = sleeve('S8')
+lines = put_lines(ob, SPECS)
+st = S.mch_wlines
+st.detail = False
+st.wrinkles = 100.0
+info = wl.simulate(C, ob, st, lines, frames=15)
+co_w = mio.read_co(ob.data)
+st.wrinkles = 0.0
+ob0 = sleeve('S9')
+lines = put_lines(ob0, SPECS)
+info0 = wl.simulate(C, ob0, st, lines, frames=15)
+co_0 = mio.read_co(ob0.data)
+def fold_measure(co, me):
+    vi = mio.read_corner_verts(me).astype(np.int64)
+    start, tot = mio.read_face_starts(me)
+    e = cloth_pbd.edges_of(vi, start.astype(np.int64), tot.astype(np.int64))[0]
+    acc = np.zeros_like(co)
+    for k in range(3):
+        acc[:, k] = np.bincount(e[:, 0], weights=co[e[:, 1], k], minlength=len(co)) + np.bincount(e[:, 1], weights=co[e[:, 0], k], minlength=len(co))
+    deg = np.bincount(e.ravel(), minlength=len(co))
+    return float(np.linalg.norm(acc / np.maximum(deg, 1)[:, None] - co, axis=1).mean())
+fw, f0 = fold_measure(co_w, ob.data), fold_measure(co_0, ob0.data)
+check('Wrinkles 100 folds the sleeve far more than 0 (the fold measure x2 at least), still finite and outside the body',
+      fw > f0 * 2 and np.all(np.isfinite(co_w)) and np.linalg.norm(co_w[:, :2], axis=1).min() > 0.45, (fw, f0))
+st.wrinkles = 50.0
+
 from mecha_lab import tool_presets
 name, pg = tool_presets.group_for(S, 'WLINES')
 check('Tool Presets know the Wrinkle Lines settings (scene.mch_wlines): save your own fabric presets',

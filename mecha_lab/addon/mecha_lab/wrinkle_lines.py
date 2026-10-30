@@ -107,7 +107,7 @@ class MCH_PG_WrinkleLines(bpy.types.PropertyGroup):
     pin_boundary: BoolProperty(name='Pin Mesh Boundary', description='The open edges of the mesh (the ends of a sleeve) stay put',
                                default=True)
     wrinkles: FloatProperty(name='Wrinkles', description='How much the cloth folds: 0 = smooth broad folds (the old solver), 100 = wide bending (points up to 4 edges apart hold their distance, little smoothing, a little jitter) - folds a few cells wide everywhere the fabric is loose',
-                            default=70.0, min=0.0, max=100.0, subtype='PERCENTAGE')
+                            default=50.0, min=0.0, max=100.0, subtype='PERCENTAGE')
     stop_at_pins: BoolProperty(name='Stop at Pins', description='The cloth cannot hang lower (world down) than the lowest pinned point: nothing sags below the bottom ring',
                                default=False)
     pin_selected: BoolProperty(name='Pin Selected', description='Points selected in Edit Mode stay put too', default=False)
