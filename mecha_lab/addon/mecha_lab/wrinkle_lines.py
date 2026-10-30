@@ -99,7 +99,8 @@ class MCH_PG_WrinkleLines(bpy.types.PropertyGroup):
                          default=20.0, min=0.0, max=60.0, subtype='PERCENTAGE')
     fold: FloatProperty(name='Fold Strength', description='The height of the tubes (Crease: how deep the groove is)',
                         default=100.0, min=0.0, max=200.0, subtype='PERCENTAGE', update=_tube_changed)
-    gravity: FloatProperty(name='Gravity', default=100.0, min=0.0, max=300.0, subtype='PERCENTAGE')
+    gravity: FloatProperty(name='Gravity', default=100.0, min=-300.0, max=300.0, subtype='PERCENTAGE',
+                           description='How hard the cloth drops (world down); below 0 it floats up (0.24.95)')
     keep: FloatProperty(name='Silhouette Keep', description='How firmly the surface away from the lines stays where it is',
                         default=47.0, min=0.0, max=100.0, subtype='PERCENTAGE')
     strength: FloatProperty(name='Line Strength', description='The strength of the last drawn line (each line keeps its own)',
@@ -565,7 +566,9 @@ def build(context, ob, st, sess):
         cloth.init = co.copy()
     cell = max(edge_len, sess['size'] / GRID_MIN)
     t = time.perf_counter()
-    grid = cloth_pbd.GridCollider(collider, nrm, cell, band=GRID_BAND)
+    spts, snrm = cloth_pbd.surface_samples(me, collider, nrm, np.ones(len(collider), bool), cell * GRID_BAND,   # 0.24.95
+                                           tris=cloth_pbd.fan_triangles(vi, start, tot))
+    grid = cloth_pbd.GridCollider(spts, snrm, cell, band=GRID_BAND)
     sess.update(stage='run', cloth=cloth, grid=grid, grid_time=time.perf_counter() - t, margin=margin,
                 friction=friction, damping=damping, frame=0, gdir=_gravity_dir(ob), frames=st.frames)
     cloth.collide = lambda c: collide(c, sess)

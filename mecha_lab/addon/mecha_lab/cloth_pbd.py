@@ -13,6 +13,8 @@ Cost: a 25k-point tube with 50k structural + 50k bending constraints, 5 passes -
 """
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 
@@ -349,3 +351,75 @@ class GridCollider:
             ln[ln < 1e-9] = 1.0
             co[hit] += g / ln[:, None] * (margin - d[hit])[:, None]
         return d < margin * touch_at
+
+
+# 0.24.95 the collider as a point cloud that covers the FACES too (a flat face with points only at its corners was a
+# hole in the grid: the cloth fell through the user's recessed floor)
+MAX_SAMPLES = 600_000           # surface_samples: at most this many extra points on the body's faces
+
+
+def fan_triangles(vi, start, tot):
+    """Triangles (n, 3) from polygon corner arrays (each polygon fanned from its first corner)."""
+    vi, start, tot = np.asarray(vi, np.int64), np.asarray(start, np.int64), np.asarray(tot, np.int64)
+    out = []
+    for k in range(1, int(tot.max()) - 1 if len(tot) else 0):
+        sel = tot > k + 1
+        out.append(np.stack([vi[start[sel]], vi[start[sel] + k], vi[start[sel] + k + 1]], 1))
+    return np.concatenate(out) if out else np.zeros((0, 3), np.int64)
+
+
+def surface_samples(me, co, nrm, near, spacing, lo=None, hi=None, limit=MAX_SAMPLES, tris=None):
+    """The body as a point cloud for the collider: its points (``co``, ``nrm`` - possibly lifted by the tubes) plus
+    points spread over every face bigger than ``spacing`` (barycentric grids on the loop triangles, the triangle's
+    normal), so a flat face is solid between its corners.  ``near`` picks the body points that count; a triangle
+    with any near corner is sampled.  Returns (points, normals)."""
+    co = np.asarray(co, np.float64)
+    nrm = np.asarray(nrm, np.float64)
+    pts = [co[near]]
+    nms = [nrm[near]]
+    if tris is None:                                     # from the mesh ...
+        me.calc_loop_triangles()
+        nt = len(me.loop_triangles)
+        if nt == 0 or spacing <= 0:
+            return np.concatenate(pts), np.concatenate(nms)
+        T = np.empty(nt * 3, np.int32)
+        me.loop_triangles.foreach_get('vertices', T)
+        T = T.reshape(-1, 3).astype(np.int64)
+    else:                                                # ... or given (a proxy's polygons, fanned)
+        T = np.asarray(tris, np.int64).reshape(-1, 3)
+        if len(T) == 0 or spacing <= 0:
+            return np.concatenate(pts), np.concatenate(nms)
+    keep = near[T].any(1)
+    if lo is not None and hi is not None:                # a big face whose corners are all far away still counts
+        tlo = np.minimum.reduce([co[T[:, 0]], co[T[:, 1]], co[T[:, 2]]])   # when it crosses the cloth's region
+        thi = np.maximum.reduce([co[T[:, 0]], co[T[:, 1]], co[T[:, 2]]])
+        keep |= np.all((thi >= lo) & (tlo <= hi), axis=1)
+    T = T[keep]
+    if not len(T):
+        return np.concatenate(pts), np.concatenate(nms)
+    A, B, Cc = co[T[:, 0]], co[T[:, 1]], co[T[:, 2]]
+    fn = np.cross(B - A, Cc - A)
+    ln = np.linalg.norm(fn, axis=1)
+    ok = ln > 1e-18
+    fn[ok] /= ln[ok][:, None]
+    longest = np.maximum.reduce([np.linalg.norm(B - A, axis=1), np.linalg.norm(Cc - B, axis=1), np.linalg.norm(A - Cc, axis=1)])
+    n_div = np.ceil(longest / spacing).astype(np.int64)
+    total = int(np.maximum(n_div - 1, 0).astype(np.int64).__mul__(np.maximum(n_div - 2, 0)).sum() // 2)
+    if total > limit:                                    # too many: a coarser grid on EVERY face (never a face left out)
+        spacing *= math.sqrt(total / limit)
+        n_div = np.ceil(longest / spacing).astype(np.int64)
+    big = np.flatnonzero((n_div >= 3) & ok)              # (a triangle under 3 steps across has no inside point)
+    for n in np.unique(n_div[big]):
+        tris = big[n_div[big] == n]
+        i, j = np.meshgrid(np.arange(n + 1), np.arange(n + 1), indexing='ij')
+        m = (i + j <= n) & (i > 0) & (j > 0) & (i + j < n)    # strictly inside (the edges / corners are the points)
+        u = (i[m] / n).astype(np.float64)
+        v = (j[m] / n).astype(np.float64)
+        if not len(u):
+            continue
+        P = (A[tris][:, None, :] * (1 - u - v)[None, :, None] + B[tris][:, None, :] * u[None, :, None]
+             + Cc[tris][:, None, :] * v[None, :, None]).reshape(-1, 3)
+        pts.append(P)
+        nms.append(np.repeat(fn[tris], len(u), axis=0))
+    return np.concatenate(pts), np.concatenate(nms)
+

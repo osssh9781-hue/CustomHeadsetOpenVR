@@ -45,12 +45,51 @@ info = cd.drape(C, body, me, nb, size, st, frames=30)
 co = np.array([v.co[:] for v in me.vertices])
 r = np.linalg.norm(co, axis=1)
 check('drape: the cloth stays outside the body (collider = the body points under the patch only), it moved, no NaN',
-      info['inside'] == 0 and r.min() > 0.99 and info['collider'] < len(body.data.vertices) and info['collider'] > 500
+      info['inside'] == 0 and r.min() > 0.99 and info['collider'] < len(body.data.vertices) * 3 and info['collider'] > 500
       and np.linalg.norm(co - co_patch, axis=1).max() > size * 0.02 and np.all(np.isfinite(co)), info)
 check('... the rim stayed sewn where it was drawn (within the gap)',
       np.linalg.norm(co[:nb] - co_patch[:nb], axis=1).max() < size * 0.02, np.linalg.norm(co[:nb] - co_patch[:nb], axis=1).max())
 check('... in a second or two (30 frames, grid included)', info['time'] < 6.0, round(info['time'], 2))
 bpy.data.meshes.remove(me)
+# 0.24.95 Gravity below zero: the cloth floats UP (user: "gravity needs minus values too")
+st.stop_at_pins = False
+zs = {}
+for g in (200.0, -200.0):
+    st.gravity = g
+    target, me_g, nb_g, size_g = cd.patch_from_loops(C, loops, Proj(), st.spacing)
+    co_p = np.array([v.co[:] for v in me_g.vertices])
+    cd.drape(C, body, me_g, nb_g, size_g, st, frames=30)
+    co_g = np.array([v.co[:] for v in me_g.vertices])
+    zs[g] = float((co_g[nb_g:, 2] - co_p[nb_g:, 2]).mean())      # the free points' mean rise
+    bpy.data.meshes.remove(me_g)
+st.gravity = 200.0
+check('Gravity -200: the free cloth points go UP (their mean rise above the start is positive), with +200 they go down',
+      zs[-200.0] > 0.0 > zs[200.0] and cd.MCH_PG_ClothDrape.bl_rna.properties['gravity'].hard_min <= -600.0, zs)
+# 0.24.95 a coarse body: a box with 8 points and big flat faces - the cloth must rest ON the top face, not fall
+# through it (the collider samples the faces now; before, only the points were in the grid and the flat between
+# them was a hole: the user's recessed floor showed through the wrinkles)
+body.location = (0.0, 0.0, -20.0)                     # (the sphere out of the way: the rays must hit the box)
+bpy.ops.mesh.primitive_cube_add(size=2.0)
+box = C.active_object
+box.scale = (1.5, 0.25, 1.5)                          # (the test's view looks from -Y: the big flat face is y = -0.25)
+bpy.ops.object.transform_apply(scale=True)
+select_only(box)
+C.view_layer.update()
+st.slack, st.gravity, st.stop_at_pins = 60.0, 300.0, False
+loops_box = [[(x * PX, y * PX) for x, y in [(-0.5, 0.5), (0.5, 0.5), (0.5, -0.5), (-0.5, -0.5)]]]
+target_b, me_b, nb_b, size_b = cd.patch_from_loops(C, loops_box, Proj(), st.spacing)
+info_b = cd.drape(C, box, me_b, nb_b, size_b, st, frames=40)
+co_b = np.array([v.co[:] for v in me_b.vertices])
+check('A coarse box (8 points, 6 faces): the cloth stays OUTSIDE its big flat face (every point at y <= -0.25 + 0.3 % of '
+      'the outline, none through the wall), the collider holds face samples, not just 8 points',
+      target_b is box and co_b[:, 1].max() <= -0.25 + 0.003 * size_b and info_b['collider'] > 100,
+      (float(co_b[:, 1].max()), info_b['collider'], info_b['inside']))
+bpy.data.meshes.remove(me_b)
+bpy.data.objects.remove(box)
+body.location = (0.0, 0.0, 0.0)
+C.view_layer.update()
+select_only(body)
+st.slack, st.gravity = 25.0, 200.0
 # Stop at Pins: a big loose cloth on the sphere's lower half hangs below the rim's lowest point - with the rule it cannot
 loops_lo = [[(x * PX, y * PX) for x, y in [(-0.5, 0.1), (0.0, 0.15), (0.5, 0.1), (0.55, -0.4), (0.3, -0.75), (-0.3, -0.75), (-0.55, -0.4)]]]
 st.slack = 60.0

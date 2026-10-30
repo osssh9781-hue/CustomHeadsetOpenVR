@@ -49,7 +49,7 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
                          default=25.0, min=0.0, max=80.0, subtype='PERCENTAGE')
     shrink: FloatProperty(name='Shrink', description='The cloth pulled tight (against Looseness)',
                           default=0.0, min=0.0, max=60.0, subtype='PERCENTAGE')
-    gravity: FloatProperty(name='Gravity', description='How hard the cloth drops (world down)', default=200.0, min=0.0, max=600.0, subtype='PERCENTAGE')
+    gravity: FloatProperty(name='Gravity', description='How hard the cloth drops (world down); below 0 it floats UP instead (0.24.95)', default=200.0, min=-600.0, max=600.0, subtype='PERCENTAGE')
     stick: FloatProperty(name='Stickiness', description='Friction against the body: 0 slides, 100 sticks where it lands',
                          default=30.0, min=0.0, max=100.0, subtype='PERCENTAGE')
     keep: FloatProperty(name='Silhouette Keep', description='A soft spring back to the laid patch', default=5.0, min=0.0, max=100.0, subtype='PERCENTAGE')
@@ -194,6 +194,12 @@ def patch_two_sides(context, loops, projector, spacing_pct):
     return target, me, nb, _bbox_size(front_l + back_l), info
 
 
+def surface_samples(*a, **k):
+    """(0.24.95: lives in cloth_pbd, shared with Wrinkle Lines)"""
+    from . import cloth_pbd as _pbd
+    return _pbd.surface_samples(*a, **k)
+
+
 def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_ob=None, wrap=False, sew=None, pin_idx=None, puff=False):
     """The cloth + the collider for the mesh ``me``: a lasso patch (local space of ``target``, the first ``nb``
     points its rim) or (``to_cloth``: the matrix that brings the target's points into the cloth's space) a mesh
@@ -286,17 +292,22 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
         near = np.ones(len(tco), bool) if len(tco) <= 400000 else np.all((tco >= lo - size * 2) & (tco <= hi + size * 2), axis=1)
     else:
         near = np.all((tco >= lo) & (tco <= hi), axis=1)
-    if not np.any(near):
-        raise cg.CutError('The body is nowhere near the cloth')
     t = time.perf_counter()
-    grid = cloth_pbd.GridCollider(tco[near] - tn[near] * (gap - margin) if gap > margin else tco[near], tn[near],
-                                  cell=max(spacing * 0.8, size / 160.0), band=GRID_BAND)
+    cell = max(spacing * 0.8, size / 160.0)
+    # 0.24.95 the body's FACES are sampled too, not just its points: a big flat face has no points across it, and
+    # the grid's narrow band round the points left holes the cloth fell through (the user's recessed floor showed
+    # through the wrinkles)
+    sco, snrm = surface_samples(target.data, tco, tn, near, cell * GRID_BAND, lo - size * 2, hi + size * 2)   # (samples 2 cells
+    #                                                                                   apart: the band round each is 2 cells, no cell left empty between them)
+    if not len(sco):
+        raise cg.CutError('The body is nowhere near the cloth')
+    grid = cloth_pbd.GridCollider(sco - snrm * (gap - margin) if gap > margin else sco, snrm, cell=cell, band=GRID_BAND)
     sess = dict(cloth=cloth, grid=grid, margin=margin, friction=st.stick / 100.0, damping=damping, wrap=wrap, tubes=tubes,
                 sew=int(len(sew)) if sew is not None else 0,
                 puff=(size * 0.0015 * st.puff / 50.0) if puff else 0.0, puff_dir=nrm.copy() if puff else None,
                 puff_max=size * 0.35 * (st.slack / 100.0) ** 0.5 if puff else 0.0,
                 press=(size * 0.004 * st.wrap_tight / 50.0) if (wrap or puff) else 0.0,
-                gdir=wl._gravity_dir(gdir_ob or target), size=size, frames=st.frames, frame=0, points=n, collider=int(near.sum()),
+                gdir=wl._gravity_dir(gdir_ob or target), size=size, frames=st.frames, frame=0, points=n, collider=int(len(sco)),
                 grid_time=time.perf_counter() - t, stage='run')
 
     def collide(c):
