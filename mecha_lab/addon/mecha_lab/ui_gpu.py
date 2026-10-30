@@ -349,6 +349,10 @@ def glyph(name, x, y, size, color=TEXT, width=2.0):
     elif name == 'lowpoly':
         polyline([P(.50, .85), P(.85, .25), P(.15, .25)], color, width, True)
         lines([(P(.50, .85), P(.50, .25))], color, width)
+    elif name == 'bakehp':                       # 0.24.95 Bake High Poly: a dense grid inside a crisp outline
+        polyline([P(.15, .15), P(.85, .15), P(.85, .85), P(.15, .85)], color, width, True)
+        for t in (.32, .5, .68):
+            lines([(P(t, .15), P(t, .85)), (P(.15, t), P(.85, t))], color, width * 0.6)
     elif name in {'X', 'Y', 'Z'}:
         text(cx, cy, name, s * .55, color, 'CENTER')
     elif name == 'eye' or name == 'eye_off':

@@ -42,6 +42,14 @@ from mecha_lab import actions_menu as am, highpoly as hp
 from mecha_lab.mecha_menu import Item
 check('Right-click menus: Bake High Poly in the Mecha Lab Actions popup (Resolution) and in Blender\'s object context menu',
       "action='BAKE_HP'" in inspect.getsource(am.draw_actions) and "'BAKE_HP'" in inspect.getsource(hp._context_menu))
+from mecha_lab import mecha_menu as mm
+res = dict((sec, rows) for sec, rows in mm.ACTIONS)['Resolution']
+check('Mecha Menu (the drawn right-click panel): Resolution has Bake HP -> mch.mesh_tool BAKE_HP, with its own glyph',
+      any(r[0] == 'Bake HP' and r[2] == 'mch.mesh_tool' and r[3].get('action') == 'BAKE_HP' and r[1] == 'bakehp' for r in res), res)
+bpy.ops.mesh.primitive_cube_add(size=2)
+items = mm.build(bpy.context, 600, 400, 1600, 900, 1.0)
+check('... and build() lays it out as a button', any(getattr(it, 'label', '') == 'Bake HP' for it in items),
+      [getattr(it, 'label', '') for it in items if 'Bake' in str(getattr(it, 'label', ''))])
 wm = bpy.context.window_manager
 wm.mch_zb_pop, wm.mch_zb_pop_xy, wm.mch_zb_pop_focus = 'MENU', (500, 400), ''
 items = zu.popup(bpy.context, 1200, 900, 1.0, Item)
