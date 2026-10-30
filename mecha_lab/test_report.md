@@ -1,6 +1,6 @@
-# Test Report — Mecha Lab 0.24.92
+# Test Report — Mecha Lab 0.24.95
 
-## 0.24.95 결과: (전체 테스트 실행 중 — 끝나면 채움) 새 테스트 test_v02495_edge_memory 24/24 · test_v02495_bake_highpoly 25/25 · test_v02495 10/10 단독 PASS; 실제 창 `tests/gui/bake_highpoly_real_window_0.24.95.txt` PASS.
+## 0.24.95 결과: Blender 5.2.3 bpy 전체 215개 파일 PASS 5,395 / FAIL 0(`tests/test_log_bpy523_v02495.txt`, FAILED FILES: none; Traceback 26개 = test_registration_recovery). 새 테스트 test_v02495_edge_memory 26 · test_v02495_edge_memory_tools 28 · test_v02495_bake_highpoly 25 · test_v02495 12. 실제 블렌더 창 자동 테스트 13/13(`tests/gui/gui_result_0.24.95.txt`, 이 zip) + Bake High Poly 창 확인 `tests/gui/bake_highpoly_real_window_0.24.95.txt`. 두 번째 전체 실행(zip 1415)은 PASS 5,392 / FAIL 1(test_v02478_cutquad: 복셀 리메시가 엣지 기억을 번지게 함 → 고침)이었고, 이 세 번째 실행이 최종. ZIP sha256 `f106531039e2766a6f639ea010dab9d17143520411c8763d08ed576dd178750b` (`mecha_lab-0.24.95_20261030-1441.zip`).
 
 ## 0.24.94 결과: Blender 5.2.3 bpy 전체 210개 파일 PASS 5,303 / FAIL 0(`tests/test_log_bpy523_v02494.txt`; Traceback 27개 = test_registration_recovery 26 + test_v02494_crease_groups 1 — 그 파일은 마지막 검사 직전에 테스트 쪽 버그(지운 오브젝트가 view_layer.objects 에 None 으로 남음)로 멈춤, 6/10 까지 PASS; 고친 뒤 단독 실행 10/10 PASS(MAX_REGIONS 검사 포함) — 전체 재실행은 아직 안 함). test_v02494_dynamesh 14(Safe DynaMesh), test_v02492_wrinkle_lines 46(Wrinkles 4), test_v02494 버전. 실제 블렌더 창: Safe DynaMesh(잘라 낸 구 → 구멍 메워진 한 덩어리, 선반 버튼 · Ctrl 드래그 경로, `tests/gui/dynamesh_real_window_0.24.94.txt`). 실제 블렌더 창 자동 테스트 13/13(`tests/gui/gui_result_0.24.94.txt`, zip 0918 로 실행; 최종 zip 0941 은 거기에 MAX_REGIONS 400 상한만 더한 것 — 창 테스트 재실행은 안 함). ZIP sha256 `de5c2cbe2728643e95323d4d9664a72c2611e470f46642d76f64c52bb9169da8` (`mecha_lab-0.24.94_20261030-0941.zip`).
 
