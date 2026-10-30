@@ -447,6 +447,64 @@
     .project-stage-add{grid-template-columns:1fr 1fr;}
     .project-stage-add .stage-add-pages{max-width:none;}
   }
+
+  /* Project workflow status + reorder */
+  .project-order-hint{margin-top:-4px;margin-bottom:10px;}
+  .project-row-main{display:flex;align-items:flex-start;gap:8px;min-width:0;flex:1;}
+  .project-copy{min-width:0;flex:1;}
+  .project-drag-handle{
+    width:28px;height:28px;flex:0 0 auto;border:1px dashed var(--border-strong);border-radius:7px;
+    background:var(--surface-soft);color:var(--ink-faint);font-size:13px;font-weight:800;cursor:grab;
+    touch-action:none;user-select:none;-webkit-user-select:none;
+  }
+  .project-drag-handle:hover{color:var(--ink-soft);border-color:var(--ink-faint);}
+  .proj-row.project-dragging{opacity:.7;border-color:var(--brand);box-shadow:var(--shadow-md);}
+  body.project-reordering{user-select:none;-webkit-user-select:none;}
+  .status-btn{
+    height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--border);
+    background:var(--surface);color:var(--ink-soft);font-size:10.5px;font-weight:700;cursor:pointer;white-space:nowrap;
+  }
+  .status-btn:hover{background:var(--surface-soft);color:var(--ink);}
+  .status-btn.complete-btn.on{background:var(--success);border-color:var(--success);color:#fff;}
+  .status-btn.settle-btn.on{background:var(--brand);border-color:var(--brand);color:#fff;}
+  .status-btn.settle-btn.pending{border-color:var(--warning);color:var(--warning);background:#fffaf2;}
+  .tab.payment-pending{box-shadow:inset 0 -2px 0 var(--warning);}
+  .tab.settled{opacity:.48;}
+  .project-jump{
+    display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:7px 9px;
+    margin:5px 0 4px;border:1px solid var(--border);border-radius:7px;background:var(--surface-soft);
+    color:var(--ink);font-size:11px;font-weight:700;cursor:pointer;text-align:left;
+  }
+  .project-jump:hover{border-color:var(--brand);color:var(--brand);background:var(--brand-soft);}
+  .project-jump .jump-arrow{font-size:13px;color:var(--brand);}
+  .other-project-entry{margin-bottom:7px;}
+
+  /* Stronger planning / completion states */
+  .page-cell.has-date:not(.on){
+    background:
+      repeating-linear-gradient(135deg,var(--accent-soft) 0,var(--accent-soft) 7px,transparent 7px,transparent 13px),
+      var(--surface);
+    border-color:var(--accent);
+  }
+  .page-cell.has-date:not(.on)::after{width:6px;height:6px;background:var(--accent);}
+  .cal-day.plan-done{
+    background-image:repeating-linear-gradient(135deg,rgba(76,122,81,.12) 0,rgba(76,122,81,.12) 7px,transparent 7px,transparent 14px);
+    box-shadow:inset 0 0 0 1px rgba(76,122,81,.32);
+  }
+  .cal-day.plan-done::after{
+    content:"✓";position:absolute;top:3px;right:4px;font-size:9px;font-weight:900;color:var(--success);
+  }
+  .chip.task-done{opacity:.56;text-decoration:line-through;text-decoration-thickness:1px;}
+  .chip.deadline-chip{
+    color:#fff!important;font-weight:900!important;border-width:1px!important;
+    box-shadow:0 1px 3px rgba(30,25,15,.22)!important;letter-spacing:-.01em;
+  }
+  .deadline-btn.on{background:var(--brand)!important;border-color:var(--brand)!important;color:#fff!important;}
+  @media(max-width:430px){
+    .proj-row{align-items:flex-start;}
+    .proj-row .actions{max-width:150px;flex-wrap:wrap;justify-content:flex-end;}
+    .status-btn{padding:0 6px;font-size:10px;}
+  }
 </style>
 </head>
 <body>
@@ -480,7 +538,7 @@
 <div class="overlay" id="settingsOverlay">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" tabindex="-1">
     <h3 class="display" id="settingsTitle">설정</h3><div class="modal-sub">프로젝트와 작업 단계를 관리하세요</div>
-    <label class="section-label">프로젝트</label><div id="projList"></div>
+    <label class="section-label">프로젝트</label><p class="muted project-order-hint">↕ 프로젝트 왼쪽 핸들을 길게 누르고 위아래로 끌면 순서를 바꿀 수 있어요. 작업 완료와 정산 완료는 별도로 관리됩니다.</p><div id="projList"></div>
     <div class="field-row"><div class="field"><label for="newProjName">새 프로젝트 이름</label><input id="newProjName" maxlength="80" placeholder="예: 초등교재 3권"></div>
     <div class="field" style="max-width:100px"><label for="newProjPages">총 페이지</label><input type="number" id="newProjPages" placeholder="38" min="1" max="500" step="1"></div></div>
     <div class="field"><label>필요한 작업을 모두 선택하세요</label><div class="stage-choices" id="newProjStageList"></div><p class="muted" id="pageRequirementHint"></p></div>
@@ -548,6 +606,8 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<'
 const safeKey = k => typeof k === 'string' && /^[a-z][a-z0-9_-]{0,79}$/i.test(k) && !['__proto__','constructor','prototype'].includes(k);
 function pad(n){ return String(n).padStart(2,'0'); }
 function dateKey(y,m,d){ return `${y}-${pad(m+1)}-${pad(d)}`; }
+function todayKey(){ const d=new Date(); return dateKey(d.getFullYear(),d.getMonth(),d.getDate()); }
+function compactDate(key){ if(!validDate(key)) return ''; const [,m,d]=key.split('-').map(Number); return `${m}/${d}`; }
 function validDate(key){
   if(typeof key !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(key)) return false;
   const [y,m,d]=key.split('-').map(Number), dt=new Date(y,m-1,d);
@@ -667,6 +727,55 @@ function bindStageReorder(root,proj){
     };
   });
 }
+function bindProjectReorder(list){
+  list.querySelectorAll('.project-drag-handle').forEach(handle=>{
+    handle.onpointerdown=e=>{
+      if(e.pointerType==='mouse'&&e.button!==0) return;
+      const row=handle.closest('.proj-row');if(!row) return;
+      const pointerId=e.pointerId,startY=e.clientY,original=state.projects.map(p=>p.id).join('|');
+      let timer=null,dragging=false,moved=false,cancelled=false;
+      const cleanup=()=>{
+        clearTimeout(timer);
+        window.removeEventListener('pointermove',move,{capture:true});
+        window.removeEventListener('pointerup',finish,{capture:true});
+        window.removeEventListener('pointercancel',finish,{capture:true});
+      };
+      const startDrag=()=>{
+        if(cancelled||!editable()) return;
+        dragging=true;row.classList.add('project-dragging');document.body.classList.add('project-reordering');
+        try{handle.setPointerCapture(pointerId);}catch(_){}
+        try{navigator.vibrate?.(12);}catch(_){}
+      };
+      const move=ev=>{
+        if(ev.pointerId!==pointerId) return;
+        if(!dragging){if(Math.abs(ev.clientY-startY)>8){cancelled=true;clearTimeout(timer);}return;}
+        ev.preventDefault();moved=true;
+        const others=[...list.querySelectorAll('.proj-row:not(.project-dragging)')];
+        let before=null;
+        for(const el of others){const r=el.getBoundingClientRect();if(ev.clientY<r.top+r.height/2){before=el;break;}}
+        if(before) list.insertBefore(row,before); else list.append(row);
+      };
+      const finish=ev=>{
+        if(ev.pointerId!==pointerId) return;
+        cleanup();
+        if(!dragging) return;
+        ev.preventDefault();
+        try{handle.releasePointerCapture(pointerId);}catch(_){}
+        row.classList.remove('project-dragging');document.body.classList.remove('project-reordering');
+        const order=[...list.querySelectorAll('.proj-row')].map(el=>el.dataset.project);
+        if(moved&&order.join('|')!==original){
+          const byId=new Map(state.projects.map(p=>[p.id,p]));
+          state.projects=order.map(id=>byId.get(id)).filter(Boolean);
+          scheduleSave();renderTabs();showToast('프로젝트 순서를 저장했어요');
+        }
+      };
+      timer=setTimeout(startDrag,220);
+      window.addEventListener('pointermove',move,{capture:true});
+      window.addEventListener('pointerup',finish,{capture:true});
+      window.addEventListener('pointercancel',finish,{capture:true});
+    };
+  });
+}
 function pageDifficulty(p){
   const n=Number(p?.difficulty);
   return n===1||n===2||n===3?n:(p?.spread?3:2);
@@ -707,7 +816,7 @@ function makePages(n,stages=LEGACY_STAGES){ return Array.from({length:n},(_,i)=>
 function defaultState(){
   const pages=makePages(38);
   const stagePages=Object.fromEntries(LEGACY_STAGES.map(k=>[k,makeStagePages(38)]));
-  return {version:5,stageDefs:DEFAULT_STAGE_DEFS.map(d=>({...d})),archivedStageDefs:[],projects:[{id:uid(),name:'삽화 프로젝트',totalPages:38,stages:[...LEGACY_STAGES],pages,stagePages,singleStatus:{},deadlines:{},completed:false}],holidayOverrides:{}};
+  return {version:5,stageDefs:DEFAULT_STAGE_DEFS.map(d=>({...d})),archivedStageDefs:[],projects:[{id:uid(),name:'삽화 프로젝트',totalPages:38,stages:[...LEGACY_STAGES],pages,stagePages,singleStatus:{},deadlines:{},completed:false,completedDate:null,settled:false,settledDate:null}],holidayOverrides:{}};
 }
 function normalizeDefs(defs){
   if(!Array.isArray(defs)) throw new Error('작업 단계 목록이 올바르지 않아요');
@@ -786,7 +895,7 @@ function upgradeToV5(input){
     let id=typeof proj.id==='string' && safeKey(proj.id)?proj.id:uid();
     if(ids.has(id)) id=uid(); ids.add(id);
     const maxPages=Math.max(pages.length,...Object.values(normalizedStagePages).map(list=>Array.isArray(list)?list.length:0));
-    const out={...proj,id,stages,pages,stagePages:normalizedStagePages,totalPages:maxPages,singleStatus,deadlines,completed:!!proj.completed};
+    const out={...proj,id,stages,pages,stagePages:normalizedStagePages,totalPages:maxPages,singleStatus,deadlines,completed:!!proj.completed,completedDate:validDate(proj.completedDate)?proj.completedDate:null,settled:!!proj.settled,settledDate:validDate(proj.settledDate)?proj.settledDate:null};
     delete out.finalStage; return out;
   });
   const holidayOverrides={};
@@ -897,8 +1006,10 @@ function renderTabs(){
   const wrap=$('tabsWrap');wrap.replaceChildren();
   state.projects.forEach(proj=>{
     const tab=document.createElement('button');tab.type='button';
-    tab.className='tab'+(proj.id===activeProjectId?' active':'')+(proj.completed?' completed':'');
-    tab.textContent=(proj.completed?'✓ ':'')+proj.name;tab.setAttribute('aria-pressed',String(proj.id===activeProjectId));
+    tab.className='tab'+(proj.id===activeProjectId?' active':'')+(proj.completed?' completed':'')+(proj.completed&&!proj.settled?' payment-pending':'')+(proj.settled?' settled':'');
+    tab.textContent=(proj.completed?'✓ ':'')+(proj.settled?'₩ ':'')+proj.name;
+    tab.title=proj.completed?(proj.settled?'작업 완료 · 정산 완료':'작업 완료 · 정산 대기'):'작업 진행 중';
+    tab.setAttribute('aria-pressed',String(proj.id===activeProjectId));
     tab.onclick=()=>{activeProjectId=proj.id;render();};wrap.append(tab);
   });
   const add=document.createElement('button');add.className='tab add-tab';add.textContent='+ 새 프로젝트';add.onclick=openSettings;wrap.append(add);
@@ -926,7 +1037,7 @@ function renderMain(){
         <div class="stage-add-pages"><label for="projectStageInitialPages">초기 페이지</label><input type="number" id="projectStageInitialPages" min="0" max="500" step="1" value="${suggestedPages}"></div>
         <button class="small-btn" id="confirmProjectStageAdd">추가</button>
       </div>
-      ${stages.length?stages.map(k=>{const list=stagePageList(proj,k);return `<div class="accordion${expandedStages[k]?' open':''}" data-stage="${k}"><div class="accordion-header"><button class="accordion-toggle" aria-expanded="${!!expandedStages[k]}" title="클릭: 펼치기 · 길게 누르고 끌기: 순서 변경"><span class="htitle"><span class="drag-grip" aria-hidden="true">↕</span><span class="stage-swatch" style="background:${stageColor(k)}"></span>${esc(stageLabel(k))}<span class="hcount">완료 ${list.filter(p=>p.done).length}/${list.length} · ${list.length}p</span></span><span class="accordion-chevron">▾</span></button>${deadlineControlHtml(proj,k)}</div><div class="accordion-body"><div class="page-grid" id="grid-${k}" style="--accent:${stageColor(k)}"></div></div></div>`;}).join(''):'<p class="muted">아직 페이지별 작업 단계가 없어요. 위의 + 작업 단계에서 추가할 수 있어요.</p>'}
+      ${stages.length?stages.map(k=>{const list=stagePageList(proj,k);return `<div class="accordion${expandedStages[k]?' open':''}" data-stage="${k}"><div class="accordion-header"><button class="accordion-toggle" aria-expanded="${!!expandedStages[k]}" title="클릭: 펼치기 · 길게 누르고 끌기: 순서 변경"><span class="htitle"><span class="drag-grip" aria-hidden="true">↕</span><span class="stage-swatch" style="background:${stageColor(k)}"></span>${esc(stageLabel(k))}<span class="hcount">완료 ${list.filter(p=>p.done).length}/${list.length} · ${list.length}p</span></span><span class="accordion-chevron">▾</span></button>${deadlineControlHtml(proj,k)}</div><div class="accordion-body"><div class="page-grid" id="grid-${k}" style="--accent:${stageColor(k)};--accent-soft:${stageSoft(k)}"></div></div></div>`;}).join(''):'<p class="muted">아직 페이지별 작업 단계가 없어요. 위의 + 작업 단계에서 추가할 수 있어요.</p>'}
       <div class="legend"><span class="stage-order-hint">↕ 단계 제목을 길게 누르고 위아래로 끌면 순서를 바꿀 수 있어요</span><span>각 단계의 맨 끝 ＋는 그 단계에만 페이지를 1개 추가해요</span><span>페이지 번호를 누르면 완료 표시가 바뀌어요</span><span>오른쪽 위 숫자: 난이도 1=0.5점 · 2=1점 · 3=2점</span><span>왼쪽 위 점은 일정 배정됨</span></div>
     </section>
     <div class="workload-legend"><span><i class="wl-bar light"></i>여유 (1~2점)</span><span><i class="wl-bar mid"></i>적정 (3~4점)</span><span><i class="wl-bar heavy"></i>과다 (5점 이상)</span><span>전체 진행 프로젝트 합산 · 페이지 난이도 1=0.5점, 2=1점, 3=2점 · 1회 작업 1점</span></div>
@@ -997,22 +1108,22 @@ function deadlineEntriesOnDate(proj,key){
 }
 function deadlineChipHtml(item,projName='',isOther=false){
   const k=item.stage,prefix=projName?Array.from(projName).slice(0,2).join('')+' ':'';
-  const label=prefix+'마감 '+stageAbbr(k);
+  const label='◆ '+prefix+'마감 '+stageAbbr(k);
   const title=`${projName?projName+' · ':''}${stageLabel(k)} · 단계 마감일`;
-  return `<span class="chip deadline-chip${isOther?' chip-other-proj':''}" style="${stageStyle(k)}" title="${esc(title)}">${esc(label)}</span>`;
+  return `<span class="chip deadline-chip${isOther?' chip-other-proj':''}" style="background:${stageColor(k)};border-color:${stageColor(k)};color:#fff" title="${esc(title)}">${esc(label)}</span>`;
 }
 function dayWorkload(key){
   let score=0,count=0,pageCount=0,singleCount=0;
   state.projects.filter(p=>!p.completed).forEach(proj=>entriesOnDate(proj,key).forEach(item=>{count++;score+=item.single?1:difficultyScore(item.difficulty);if(item.single) singleCount++;else pageCount++;}));
   return {score,count,pageCount,singleCount,level:score>=5?'heavy':score>=3?'mid':score>0?'light':'none'};
 }
-function otherProjectsOnDate(key,excludeId){return state.projects.filter(p=>!p.completed&&p.id!==excludeId).map(p=>({name:p.name,entries:entriesOnDate(p,key)})).filter(p=>p.entries.length);}
+function otherProjectsOnDate(key,excludeId){return state.projects.filter(p=>!p.completed&&p.id!==excludeId).map(p=>({id:p.id,name:p.name,entries:entriesOnDate(p,key)})).filter(p=>p.entries.length);}
 function chipHtml(item,projName='',isOther=false){
   const k=item.stage,prefix=projName?Array.from(projName).slice(0,2).join('')+' ':'';
   const difficulty=item.single?null:(Number(item.difficulty)||2);
   const label=prefix+(item.single?stageAbbr(k):`${item.num}${stageAbbr(k)}·${difficulty}`)+(item.done?'✓':'');
   const title=`${projName?projName+' · ':''}${stageLabel(k)} · ${item.single?'프로젝트 1회':item.num+'페이지 · '+difficultyText(difficulty)}${item.done?' · 완료':''}`;
-  return `<span class="chip${difficulty?' diff-'+difficulty:''}${isOther?' chip-other-proj':''}" style="${stageStyle(k)}" title="${esc(title)}">${esc(label)}</span>`;
+  return `<span class="chip${difficulty?' diff-'+difficulty:''}${item.done?' task-done':''}${isOther?' chip-other-proj':''}" style="${stageStyle(k)}" title="${esc(title)}">${esc(label)}</span>`;
 }
 function shiftMonth(delta){const dt=new Date(viewYear,viewMonth+delta,1);viewYear=dt.getFullYear();viewMonth=dt.getMonth();}
 function renderCalendarNav(proj){
@@ -1027,9 +1138,11 @@ function renderCalendarNav(proj){
     const key=dateKey(viewYear,viewMonth,day),name=holidayName(key),dow=new Date(viewYear,viewMonth,day).getDay();
     const projects=calendarViewMode==='all'?state.projects.filter(p=>!p.completed):[proj];
     const deadlineCount=projects.reduce((n,p)=>n+deadlineEntriesOnDate(p,key).length,0);
+    const visibleEntries=projects.flatMap(p=>entriesOnDate(p,key));
+    const planDone=visibleEntries.length>0&&visibleEntries.every(item=>item.done);
     const chips=projects.map(p=>deadlineEntriesOnDate(p,key).map(item=>deadlineChipHtml(item,calendarViewMode==='all'?p.name:'',p.id!==proj.id)).join('')+entriesOnDate(p,key).map(item=>chipHtml(item,calendarViewMode==='all'?p.name:'',p.id!==proj.id)).join('')).join('');
     const load=dayWorkload(key);
-    html+=`<button class="cal-day${name?' holiday':''}${load.level!=='none'?' load-'+load.level:''}${dow===0?' sunday':dow===6?' saturday':''}${today===key?' today':''}" data-key="${key}" data-holiday="${esc(name)}" aria-label="${viewMonth+1}월 ${day}일${name?' '+esc(name):''}, 작업 ${load.count}건 ${load.score}점${deadlineCount?', 마감 '+deadlineCount+'건':''}"><span class="d mono">${day}</span><span class="chips">${chips}</span>${load.score?`<span class="load-badge ${load.level}" title="${load.count}건 · 업무량 ${load.score}점">${load.score}점</span>`:''}</button>`;
+    html+=`<button class="cal-day${name?' holiday':''}${load.level!=='none'?' load-'+load.level:''}${planDone?' plan-done':''}${dow===0?' sunday':dow===6?' saturday':''}${today===key?' today':''}" data-key="${key}" data-holiday="${esc(name)}" aria-label="${viewMonth+1}월 ${day}일${name?' '+esc(name):''}, 작업 ${load.count}건 ${load.score}점${planDone?', 표시된 작업 모두 완료':''}${deadlineCount?', 마감 '+deadlineCount+'건':''}"><span class="d mono">${day}</span><span class="chips">${chips}</span>${load.score?`<span class="load-badge ${load.level}" title="${load.count}건 · 업무량 ${load.score}점">${load.score}점</span>`:''}</button>`;
   }
   const visibleKeys=calendarViewMode==='all'?state.stageDefs.filter(d=>state.projects.some(p=>!p.completed&&p.stages.includes(d.key))).map(d=>d.key):projectStages(proj);
   html+='</div><div class="legend">'+visibleKeys.map(k=>`<span><i class="stage-dot" style="background:${stageColor(k)}"></i>${esc(stageLabel(k))}${isPerPage(k)?'':' (1회)'}</span>`).join('')+'<span><i class="deadline-legend-mark">◆</i>단계 마감일</span></div>';
@@ -1054,7 +1167,11 @@ function openModal(key,preferredStage){
   $('modalDow').textContent=`${['일','월','화','수','목','금','토'][new Date(y,m-1,d).getDay()]}요일 · ${proj.name}${KR_HOLIDAYS[key]?' · '+KR_HOLIDAYS[key]:''}`;
   updateHolidayControl();
   const others=otherProjectsOnDate(key,proj.id),load=dayWorkload(key);
-  $('otherProjectsBlock').innerHTML=others.length?`<div class="field"><label>다른 프로젝트 작업 · 전체 ${load.count}건 / ${load.score}점</label>${others.map(o=>`<div class="muted"><b>${esc(o.name)}</b> ${o.entries.map(item=>chipHtml(item)).join(' ')}</div>`).join('')}</div>`:'';
+  $('otherProjectsBlock').innerHTML=others.length?`<div class="field"><label>다른 프로젝트 작업 · 전체 ${load.count}건 / ${load.score}점</label>${others.map(o=>`<div class="other-project-entry"><button type="button" class="project-jump" data-project="${esc(o.id)}"><span>${esc(o.name)}</span><span class="jump-arrow">이동 ›</span></button><div class="muted">${o.entries.map(item=>chipHtml(item)).join(' ')}</div></div>`).join('')}</div>`:'';
+  $('otherProjectsBlock').querySelectorAll('.project-jump').forEach(btn=>btn.onclick=()=>{
+    const target=state.projects.find(p=>p.id===btn.dataset.project);if(!target)return;
+    activeProjectId=target.id;render();openModal(key);showToast(`${target.name} 프로젝트로 이동했어요`);
+  });
   renderModalStageTabs(proj);renderPickArea(proj);showOverlay('overlay');
 }
 function updateHolidayControl(){
@@ -1115,8 +1232,18 @@ function renderProjList(){
     const ps=pageStages(proj),ss=singleStages(proj);
     const pageTotal=ps.reduce((n,k)=>n+stagePageList(proj,k).length,0),pageDone=ps.reduce((n,k)=>n+stagePageList(proj,k).filter(p=>p.done).length,0);
     const summary=[ps.length?`페이지 작업 ${pageDone}/${pageTotal} 완료`:'',ss.length?`1회 작업 ${ss.filter(k=>getSingle(proj,k).done).length}/${ss.length} 완료`:''].filter(Boolean).join(' · ');
-    row.innerHTML=`<div><div class="name">${esc(proj.name)}</div><div class="meta">${summary || '선택된 단계 없음'}</div><div class="meta">${projectStages(proj).map(k=>esc(stageLabel(k))).join(' · ')}</div></div><div class="actions"><button class="icon-btn complete-btn${proj.completed?' on':''}" aria-label="${esc(proj.name)} 프로젝트 완료" aria-pressed="${proj.completed}" title="프로젝트 완료 표시">✓</button><button class="icon-btn danger del-btn" aria-label="${esc(proj.name)} 삭제" title="삭제">✕</button></div>`;
-    row.querySelector('.complete-btn').onclick=async()=>{if(!editable())return;proj.completed=!proj.completed;renderProjList();render();await persistNow();};
+    const workflow=[proj.completed?`작업 완료${proj.completedDate?' '+compactDate(proj.completedDate):''}`:'작업 진행 중',proj.settled?`정산 완료${proj.settledDate?' '+compactDate(proj.settledDate):''}`:(proj.completed?'정산 대기':'정산 전')].join(' · ');
+    row.innerHTML=`<div class="project-row-main"><button type="button" class="project-drag-handle" aria-label="${esc(proj.name)} 순서 변경" title="길게 누르고 드래그">↕</button><div class="project-copy"><div class="name">${esc(proj.name)}</div><div class="meta">${summary || '선택된 단계 없음'}</div><div class="meta">${projectStages(proj).map(k=>esc(stageLabel(k))).join(' · ')}</div><div class="meta">${workflow}</div></div></div><div class="actions"><button class="status-btn complete-btn${proj.completed?' on':''}" aria-label="${esc(proj.name)} 작업 완료" aria-pressed="${proj.completed}" title="작업 완료 여부">✓ 작업</button><button class="status-btn settle-btn${proj.settled?' on':proj.completed?' pending':''}" aria-label="${esc(proj.name)} 정산 완료" aria-pressed="${proj.settled}" title="입금/정산 완료 여부">₩ 정산</button><button class="icon-btn danger del-btn" aria-label="${esc(proj.name)} 삭제" title="삭제">✕</button></div>`;
+    row.querySelector('.complete-btn').onclick=async()=>{
+      if(!editable())return;
+      proj.completed=!proj.completed;proj.completedDate=proj.completed?(proj.completedDate||todayKey()):null;
+      renderProjList();render();await persistNow();showToast(proj.completed?'작업 완료로 표시했어요':'작업 완료 표시를 해제했어요');
+    };
+    row.querySelector('.settle-btn').onclick=async()=>{
+      if(!editable())return;
+      proj.settled=!proj.settled;proj.settledDate=proj.settled?(proj.settledDate||todayKey()):null;
+      renderProjList();renderTabs();await persistNow();showToast(proj.settled?'정산 완료로 표시했어요':'정산 완료 표시를 해제했어요');
+    };
     row.querySelector('.del-btn').onclick=()=>{
       if(!editable())return;
       const actions=row.querySelector('.actions');
@@ -1129,6 +1256,7 @@ function renderProjList(){
       };
     };list.append(row);
   });
+  bindProjectReorder(list);
 }
 function updatePageRequirement(){
   const required=state.stageDefs.some(d=>d.perPage&&newProjStages.has(d.key));
@@ -1186,7 +1314,7 @@ $('addProjBtn').onclick=async()=>{
   if(perPage.length&&(!Number.isInteger(totalPages)||totalPages<1||totalPages>500)){showToast('페이지 수는 1~500 사이의 정수로 입력해주세요');return;}
   const singleStatus=Object.fromEntries(stages.filter(k=>!isPerPage(k)).map(k=>[k,{done:false,date:null}]));
   const pages=makePages(totalPages,perPage),stagePages=Object.fromEntries(perPage.map(k=>[k,makeStagePages(totalPages)]));
-  const proj={id:uid(),name,totalPages,stages,pages,stagePages,singleStatus,deadlines:{},completed:false};
+  const proj={id:uid(),name,totalPages,stages,pages,stagePages,singleStatus,deadlines:{},completed:false,completedDate:null,settled:false,settledDate:null};
   state.projects.push(proj);activeProjectId=proj.id;$('newProjName').value='';$('newProjPages').value='';
   renderProjList();render();if(await persistNow())showToast('프로젝트를 추가했어요');
 };
