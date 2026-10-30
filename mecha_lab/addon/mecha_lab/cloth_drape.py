@@ -72,6 +72,14 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
     wrinkles: FloatProperty(name='Wrinkles', description='How much the cloth folds: 0 = smooth broad folds, 100 = wide bending (points up to 4 edges apart hold their distance, little smoothing, a little jitter) - folds a few cells wide wherever the fabric is loose',
                             default=50.0, min=0.0, max=100.0, subtype='PERCENTAGE')
     frames: IntProperty(name='Frames', default=60, min=5, max=300)
+    # 0.24.95 Padding (quilting): seam lines held down on the body, the cells between them puffed up
+    padding: BoolProperty(name='Padding', description='Quilted padding: a pattern of seam lines is held on the body and the cloth between them puffs up (needs some Looseness)', default=False)
+    pad_pattern: EnumProperty(name='Pattern', items=[('SQUARE', 'Square', 'Seams along and across the outline'), ('DIAMOND', 'Diamond', 'Seams at 45 degrees')], default='DIAMOND')
+    pad_size: FloatProperty(name='Cell', description='Padding: the seam spacing as % of the outline size', default=15.0, min=3.0, max=60.0, subtype='PERCENTAGE')
+    pad_puff: FloatProperty(name='Puff', description='Padding: how hard the cells are blown up between the seams', default=60.0, min=0.0, max=200.0, subtype='PERCENTAGE')
+    # 0.24.95 Trim: a piping tube round the cloth's edge, made when the cloth is kept
+    trim: BoolProperty(name='Trim', description='A round piping along the cloth edge (its own object "Cloth Trim", child of the cloth) when the cloth is kept', default=False)
+    trim_width: FloatProperty(name='Trim Width', description='The piping thickness as % of the outline size', default=1.5, min=0.2, max=8.0, subtype='PERCENTAGE')
 
 
 def settings(context):
@@ -121,7 +129,48 @@ def patch_from_loops(context, loops, projector, spacing_pct):
     cos_l, nrm_l = _project_local(context, target, pts, projector, bvh)
     me = ap.build_region(pts, tris, cos_l, nrm_l, quads=True)
     me.name = 'MCH_ClothDrape'
+    store_uv(me, pts)
     return target, me, nb, _bbox_size(cos_l)
+
+
+UV_ATTR = '.mch_pad_uv'          # point FLOAT2: the patch point's place in the drawn outline (0..1 of its size)
+
+
+def store_uv(me, pts):
+    """The screen coordinates of the patch points, scaled by the outline size, kept on the mesh (Padding lays its
+    seam pattern out in them: a straight grid in the view, however the body bends)."""
+    P = np.asarray(pts, np.float64)[:len(me.vertices)]
+    if len(P) != len(me.vertices):
+        return
+    lo = P.min(0)
+    size = max(float((P.max(0) - lo).max()), 1e-9)
+    a = me.attributes.get(UV_ATTR)
+    if a is None or a.domain != 'POINT' or a.data_type != 'FLOAT2':
+        if a is not None:
+            me.attributes.remove(a)
+        a = me.attributes.new(UV_ATTR, 'FLOAT2', 'POINT')
+    a.data.foreach_set('vector', ((P - lo) / size).ravel())
+
+
+def read_uv(me):
+    a = me.attributes.get(UV_ATTR)
+    if a is None or a.domain != 'POINT':
+        return None
+    out = np.empty(len(me.vertices) * 2, np.float64)
+    a.data.foreach_get('vector', out)
+    return out.reshape(-1, 2)
+
+
+def quilt_lines(uv, cell, width, pattern='DIAMOND'):
+    """bool per point: on a seam of the quilting pattern - lines every ``cell`` (outline units) in both directions,
+    a point counts when it is within ``width`` of one; DIAMOND turns the grid by 45 degrees."""
+    P = np.asarray(uv, np.float64)
+    if pattern == 'DIAMOND':
+        c, s_ = math.cos(math.pi / 4), math.sin(math.pi / 4)
+        P = np.stack([P[:, 0] * c - P[:, 1] * s_, P[:, 0] * s_ + P[:, 1] * c], 1)
+    m = np.mod(P, cell)
+    d = np.minimum(m, cell - m)
+    return (d[:, 0] <= width) | (d[:, 1] <= width)
 
 
 class _BackProjector:
@@ -234,6 +283,13 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
         sel = np.zeros(n, bool)
         me.vertices.foreach_get('select', sel)
         pin[sel] = 1.0
+    n_quilt = 0
+    uv = read_uv(me) if getattr(st, 'padding', False) and sew is None and not wrap and not puff and to_cloth is None else None
+    if uv is not None:                                # 0.24.95 Padding: the seam lines held, the cells puffed
+        uv_edge = float(np.mean(np.linalg.norm(uv[edges[:, 1]] - uv[edges[:, 0]], axis=1))) if len(edges) else 0.02
+        on = quilt_lines(uv, st.pad_size / 100.0, uv_edge * 0.55, st.pad_pattern)
+        pin[on] = 1.0
+        n_quilt = int(on.sum())
     fabric = wl.FABRIC_SIM.get(st.fabric, wl.FABRIC_SIM['COTTON'])
     friction, damping = fabric[1], fabric[2]
     bend, smooth, far_scale, jit = wl.wrinkle_params(fabric, getattr(st, 'wrinkles', 0.0))
@@ -309,6 +365,10 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
                 press=(size * 0.004 * st.wrap_tight / 50.0) if (wrap or puff) else 0.0,
                 gdir=wl._gravity_dir(gdir_ob or target), size=size, frames=st.frames, frame=0, points=n, collider=int(len(sco)),
                 grid_time=time.perf_counter() - t, stage='run')
+
+    if n_quilt:                                       # the padding's puff: the cells blow up between the held seams
+        sess.update(puff=size * 0.0015 * st.pad_puff / 50.0, puff_dir=nrm.copy(),
+                    puff_max=size * (st.pad_size / 100.0) * 0.6 * max(0.15, st.slack / 100.0) ** 0.5, quilt=n_quilt)
 
     def collide(c):
         touch = grid.push(c.co, sess['margin'])
@@ -634,7 +694,8 @@ def perform_sew_copy(context, plate):
 
 def _snapshot(st):
     return tuple(getattr(st, k) for k in ('fabric', 'slack', 'shrink', 'gravity', 'stick', 'keep', 'gap', 'pin_rim', 'frames',
-                                          'wrap_tight', 'use_lines', 'stop_at_pins', 'two_sides', 'puff', 'wrinkles'))
+                                          'wrap_tight', 'use_lines', 'stop_at_pins', 'two_sides', 'puff', 'wrinkles',
+                                          'padding', 'pad_pattern', 'pad_size', 'pad_puff', 'trim', 'trim_width'))
 
 
 def restart(context):
@@ -725,10 +786,100 @@ def confirm(context):
     n = SIM['sess']['frame']
     welded = weld_seams(ob.data, SIM.get('sew')) if SIM.get('sew') is not None else 0
     thick = add_thickness(ob, SIM['size'], settings(context)) if SIM.get('mode') != 'MESH' else False
+    trim = add_trim(context, ob, SIM['size'], settings(context))
     _drop_backup()
     SIM.clear()
     return (f'Cloth Drape: kept "{ob.name}" at frame {n} ({len(ob.data.vertices):,} points'
-            f'{f", {welded} seam points welded" if welded else ""}{", thickness on" if thick else ""})')
+            f'{f", {welded} seam points welded" if welded else ""}{", thickness on" if thick else ""}'
+            f'{f", trim on {trim} edge loops" if trim else ""})')
+
+
+def rim_loops(me):
+    """The mesh's open edge loops as ordered point index lists (closed where the loop closes)."""
+    import bmesh
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        bm.verts.ensure_lookup_table()
+        bnd = [e for e in bm.edges if e.is_boundary]
+        nxt = {}
+        for e in bnd:
+            a, b = e.verts[0].index, e.verts[1].index
+            nxt.setdefault(a, []).append(b)
+            nxt.setdefault(b, []).append(a)
+        seen = set()
+        loops = []
+        for v0 in list(nxt):
+            if v0 in seen:
+                continue
+            loop, cur, prev = [v0], v0, None
+            seen.add(v0)
+            while True:
+                cand = [w for w in nxt.get(cur, []) if w != prev and w not in seen]
+                if not cand:
+                    break
+                prev, cur = cur, cand[0]
+                loop.append(cur)
+                seen.add(cur)
+            closed = len(loop) > 2 and loop[0] in nxt.get(loop[-1], [])
+            loops.append((loop, closed))
+        return loops
+    finally:
+        bm.free()
+
+
+def rim_tube_mesh(me, radius, segments=8):
+    """A round piping along every open edge loop of ``me``: (verts, faces) of the tubes."""
+    co = mio.read_co(me)
+    nrm = wl._normals(me)
+    verts, faces = [], []
+    for loop, closed in rim_loops(me):
+        if len(loop) < 2:
+            continue
+        P = co[loop]
+        N = nrm[loop]
+        T = np.roll(P, -1, 0) - np.roll(P, 1, 0) if closed else np.gradient(P, axis=0)
+        T /= np.maximum(np.linalg.norm(T, axis=1), 1e-12)[:, None]
+        B = np.cross(T, N)
+        B /= np.maximum(np.linalg.norm(B, axis=1), 1e-12)[:, None]
+        N2 = np.cross(B, T)
+        ang = np.linspace(0.0, 2.0 * math.pi, segments, endpoint=False)
+        ring = (np.cos(ang)[None, :, None] * N2[:, None, :] + np.sin(ang)[None, :, None] * B[:, None, :]) * radius
+        R = P[:, None, :] + ring                                   # (m, segments, 3)
+        base = len(verts)
+        verts.extend(R.reshape(-1, 3).tolist())
+        m = len(loop)
+        for i in range(m if closed else m - 1):
+            j = (i + 1) % m
+            for k in range(segments):
+                k2 = (k + 1) % segments
+                faces.append((base + i * segments + k, base + i * segments + k2, base + j * segments + k2, base + j * segments + k))
+    return verts, faces
+
+
+def add_trim(context, ob, size, st):
+    """0.24.95 Trim: a piping tube round the cloth's open edges as its own object 'Cloth Trim' (child of the cloth,
+    so it follows it).  Returns the number of edge loops piped."""
+    if st is None or not getattr(st, 'trim', False) or ob is None:
+        return 0
+    verts, faces = rim_tube_mesh(ob.data, size * st.trim_width / 200.0)
+    if not faces:
+        return 0
+    me = bpy.data.meshes.new(ob.name + ' Trim')
+    me.from_pydata(verts, [], faces)
+    me.validate()
+    me.update()
+    for p in me.polygons:
+        p.use_smooth = True
+    trim = bpy.data.objects.new('Cloth Trim', me)
+    coll = ob.users_collection[0] if ob.users_collection else context.scene.collection
+    coll.objects.link(trim)
+    trim.parent = ob
+    trim.matrix_world = ob.matrix_world.copy()
+    trim.matrix_parent_inverse = ob.matrix_world.inverted_safe()
+    for mat in ob.data.materials:
+        me.materials.append(mat)
+    return len(rim_loops(ob.data))
 
 
 def cancel(context):
@@ -1024,6 +1175,20 @@ def draw(layout, context):
     r.prop(st, 'two_sides', toggle=True, icon='MOD_MIRROR')
     r.prop(st, 'pin_rim', toggle=True)
     r.prop(st, 'stop_at_pins', toggle=True)
+    r = box.row(align=True)                              # 0.24.95 Padding + Trim
+    r.prop(st, 'padding', toggle=True, icon='MESH_GRID')
+    rr = r.row(align=True)
+    rr.active = st.padding
+    rr.prop(st, 'pad_pattern', text='')
+    r = box.row(align=True)
+    r.active = st.padding
+    r.prop(st, 'pad_size', slider=True)
+    r.prop(st, 'pad_puff', slider=True)
+    r = box.row(align=True)
+    r.prop(st, 'trim', toggle=True, icon='MOD_SKIN')
+    rr = r.row(align=True)
+    rr.active = st.trim
+    rr.prop(st, 'trim_width', slider=True)
     box.prop(st, 'frames')
     box.prop(st, 'thickness', slider=True)
 

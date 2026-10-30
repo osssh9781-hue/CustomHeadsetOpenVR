@@ -243,4 +243,48 @@ bpy.data.meshes.remove(me2)
 from mecha_lab import tool_presets
 name, pg = tool_presets.group_for(S, 'CDRAPE')
 check('Tool Presets save the Cloth Drape sliders (scene.mch_cdrape)', name == 'mch_cdrape' and pg is not None)
+# ---- 0.24.95 Padding (quilting) + Trim (piping) ----------------------------------------------------------------
+on = cd.quilt_lines(np.array([[0.0, 0.0], [0.1, 0.05], [0.2, 0.2], [0.05, 0.1], [0.4, 0.33]]), 0.2, 0.011, 'SQUARE')
+check('quilt_lines SQUARE, cell 0.2: points on a seam (0,0), (0.2,0.2), (0.4, 0.33 -> near 0.4 across) count, the others not',
+      list(on) == [True, False, True, False, True], list(on))
+on_d = cd.quilt_lines(np.array([[0.0, 0.0], [0.1, 0.1], [0.1, -0.1]]), 0.2, 0.011, 'DIAMOND')
+check('quilt_lines DIAMOND: the grid turned 45 degrees ((0.1, 0.1) sits on a turned seam)', bool(on_d[0]) and bool(on_d[1]), list(on_d))
+st.padding, st.pad_pattern, st.pad_size, st.pad_puff, st.slack, st.gravity, st.stop_at_pins = True, 'DIAMOND', 20.0, 100.0, 30.0, 100.0, False
+target, me_p, nb_p, size_p = cd.patch_from_loops(C, loops, Proj(), st.spacing)
+uv = cd.read_uv(me_p)
+check('The patch keeps its screen layout on the mesh (uv 0..1 of the outline size)', uv is not None and uv.min() >= -1e-6 and uv.max() <= 1.0 + 1e-6 and len(uv) == len(me_p.vertices))
+sess = cd.build(C, body, me_p, nb_p, size_p, st)
+pin = sess['cloth'].pin
+check('Padding: the seam points are held (far more pins than the rim alone), the puff is on',
+      sess.get('quilt', 0) > 0 and (pin >= 1).sum() > nb_p * 1.5 and sess.get('puff', 0) > 0, (sess.get('quilt'), int((pin >= 1).sum()), nb_p))
+for _ in range(40):
+    cd.advance(sess, st)
+co_q = sess['cloth'].co
+r_q = np.linalg.norm(co_q, axis=1)
+seam = pin >= 1
+check('... after 40 frames the cells stand off the sphere above the seams (free points higher than seam points), nothing inside the sphere',
+      r_q[~seam].mean() > r_q[seam].mean() + 0.005 and r_q.min() > 0.99 and np.all(np.isfinite(co_q)),
+      (float(r_q[~seam].mean()), float(r_q[seam].mean()), float(r_q.min())))
+bpy.data.meshes.remove(me_p)
+st.padding = False
+st.trim, st.trim_width = True, 2.0
+msg = cd.perform(C, loops, Proj())
+ob_c = cd._ob()
+msg2 = cd.confirm(C)
+trim_ob = bpy.data.objects.get('Cloth Trim')
+rim_n = cd.SIM.get('nb') if cd.SIM else None
+check('Trim: on Keep a piping tube object "Cloth Trim", child of the cloth, 8 faces per rim edge, round the outline',
+      trim_ob is not None and trim_ob.parent == ob_c and len(trim_ob.data.polygons) == len(cd.rim_loops(ob_c.data)[0][0]) * 8
+      and 'trim on 1 edge loops' in msg2, (len(trim_ob.data.polygons) if trim_ob else None, msg2))
+co_t = np.array([v.co[:] for v in trim_ob.data.vertices])
+co_r = np.array([ob_c.data.vertices[i].co[:] for i in cd.rim_loops(ob_c.data)[0][0]])
+from mathutils.kdtree import KDTree
+kd = KDTree(len(co_r)); [kd.insert(Vector(c), i) for i, c in enumerate(co_r)]; kd.balance()
+far = max(kd.find(Vector(c))[2] for c in co_t)
+check('... every trim point within the piping radius of the rim', far <= size_p * 0.02 / 2 + 1e-3, far)
+st.trim = False
+for o in (trim_ob, ob_c):
+    if o is not None:
+        bpy.data.objects.remove(o)
+check('Settings snapshot covers the new options (a change restarts the drape)', all(k in inspect.getsource(cd._snapshot) for k in ("'padding'", "'pad_size'", "'trim'", "'trim_width'")))
 summary()
