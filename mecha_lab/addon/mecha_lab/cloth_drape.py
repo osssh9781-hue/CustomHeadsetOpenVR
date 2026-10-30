@@ -24,7 +24,7 @@ import time
 import bpy
 import numpy as np
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 from . import core_geometry as cg
 from . import mesh_io as mio
@@ -41,8 +41,21 @@ PAD = 0.2                        # the collider takes the mesh points this x the
 GRAV = wl.GRAV_UNIT * 1.5        # gravity 100 % on the drape = the probe's "x1.5" of the Wrinkle Lines unit
 
 
+def _show_proxy_update(st, context):
+    from . import collider_proxy
+    collider_proxy.set_visible(context, st.show_proxy)
+
+
 class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
     fabric: EnumProperty(name='Fabric', items=wl.FABRIC_ITEMS, default='COTTON')
+    collide_with: EnumProperty(name='Collide With', items=[
+        ('BODY', 'Body', 'The mesh under the cloth only'),
+        ('TARGETS', 'Targets', 'Follow the Targets setting (T): Auto = every visible mesh, Selected = the selected meshes, Active = the body; never the cloth being made')],
+        default='BODY')
+    use_proxy: BoolProperty(name='Proxy', default=True, description='Collide with low-resolution copies of the meshes (made once, kept in the hidden "MCH Cloth Proxies" collection, remade when a mesh changes): a heavy body bakes its collider fast')
+    proxy_faces: IntProperty(name='Proxy Faces', description='Triangles per proxy mesh (lighter meshes are used as they are)', default=40000, min=1000, max=2000000)
+    show_proxy: BoolProperty(name='Show Proxies', default=False, description='Show the collider proxies as wire (hidden otherwise)',
+                             update=_show_proxy_update)
     mask_points: IntProperty(name='Cloth Points', description='Drape Mask: the masked faces are rebuilt as an even, lighter cloth of about this many points '
                              '(0 = from Cloth Detail; never more points than the body has there)', default=0, min=0, max=200000)
     spacing: FloatProperty(name='Cloth Detail', description='The patch spacing as % of the outline size (smaller = more points, finer folds)',
@@ -328,8 +341,12 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
         cloth.sew_pbd = False
         cloth.sew_strength = 0.0                      # ramped up over the first frames (advance)
     # the collider: the target's points near the patch only, with their normals, baked into a grid
-    tco = mio.read_co(target.data)
-    tn = wl._normals(target.data)
+    from . import collider_proxy as cpx
+    cloth_obs = [o for o in bpy.data.objects if o.data == me]
+    use_proxy = bool(getattr(st, 'use_proxy', False))
+    body_me, body_temp = cpx.proxy_mesh(context, target, st.proxy_faces) if use_proxy else (target.data, False)
+    tco = mio.read_co(body_me)
+    tn = wl._normals(body_me)
     tubes = 0
     lines = wl._lines_of(target) if st.use_lines else []
     if lines:                                         # the drawn lines as tubes on the body: the cloth catches on them
@@ -357,8 +374,33 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
     # 0.24.95 the body's FACES are sampled too, not just its points: a big flat face has no points across it, and
     # the grid's narrow band round the points left holes the cloth fell through (the user's recessed floor showed
     # through the wrinkles)
-    sco, snrm = surface_samples(target.data, tco, tn, near, cell * GRID_BAND, lo - size * 2, hi + size * 2)   # (samples 2 cells
-    #                                                                                   apart: the band round each is 2 cells, no cell left empty between them)
+    try:
+        sco, snrm = surface_samples(body_me, tco, tn, near, cell * GRID_BAND, lo - size * 2, hi + size * 2)   # (samples 2 cells
+        #                                                                               apart: the band round each is 2 cells, no cell left empty between them)
+    finally:
+        if body_temp:
+            bpy.data.meshes.remove(body_me)
+    # 0.24.95 the other meshes the cloth hits (Collide With: Targets), each from its proxy, in the cloth's space
+    others = cpx.meshes_for(context, target, cloth_obs, getattr(st, 'collide_with', 'BODY'))[1:]
+    if others:
+        world_to = (Matrix(to_cloth) if to_cloth is not None else Matrix.Identity(4)) @ target.matrix_world.inverted_safe()
+        pts, nms = [sco], [snrm]
+        for o in others:
+            m, temp = cpx.proxy_mesh(context, o, st.proxy_faces) if use_proxy else (o.data, False)
+            try:
+                M = np.array(world_to @ o.matrix_world, np.float64)
+                oc = mio.read_co(m) @ M[:3, :3].T + M[:3, 3]
+                on = wl._normals(m) @ np.linalg.inv(M[:3, :3])
+                on /= np.maximum(np.linalg.norm(on, axis=1), 1e-12)[:, None]
+                onear = np.all((oc >= lo - size * 2) & (oc <= hi + size * 2), axis=1)
+                if onear.any() or len(m.polygons):
+                    a, b = surface_samples(m, oc, on, onear, cell * GRID_BAND, lo - size * 2, hi + size * 2)
+                    pts.append(a)
+                    nms.append(b)
+            finally:
+                if temp:
+                    bpy.data.meshes.remove(m)
+        sco, snrm = np.concatenate(pts), np.concatenate(nms)
     if not len(sco):
         raise cg.CutError('The body is nowhere near the cloth')
     grid = cloth_pbd.GridCollider(sco - snrm * (gap - margin) if gap > margin else sco, snrm, cell=cell, band=GRID_BAND)
@@ -1011,7 +1053,8 @@ def perform_sew_copy(context, plate):
 def _snapshot(st):
     return tuple(getattr(st, k) for k in ('fabric', 'slack', 'shrink', 'gravity', 'stick', 'keep', 'gap', 'pin_rim', 'frames',
                                           'wrap_tight', 'use_lines', 'stop_at_pins', 'two_sides', 'puff', 'wrinkles',
-                                          'padding', 'pad_pattern', 'pad_size', 'pad_puff', 'trim', 'trim_width'))
+                                          'padding', 'pad_pattern', 'pad_size', 'pad_puff', 'trim', 'trim_width',
+                                          'collide_with', 'use_proxy', 'proxy_faces'))
 
 
 def restart(context):
@@ -1539,6 +1582,14 @@ def draw(layout, context):
     col.prop(st, 'keep', slider=True)
     col = box.column(align=True)
     col.prop(st, 'gap', slider=True)
+    r = box.row(align=True)                              # 0.24.95 what the cloth collides with
+    r.prop(st, 'collide_with', expand=True)
+    r = box.row(align=True)
+    r.prop(st, 'use_proxy', toggle=True, icon='MESH_ICOSPHERE')
+    rr = r.row(align=True)
+    rr.active = st.use_proxy
+    rr.prop(st, 'proxy_faces', text='Faces')
+    rr.prop(st, 'show_proxy', text='', icon='HIDE_OFF' if st.show_proxy else 'HIDE_ON', toggle=True)
     col.prop(st, 'spacing', slider=True, text='Cloth Detail (less = finer)')
     if sim_active() and SIM.get('spacing') is not None and abs(float(st.spacing) - SIM['spacing']) > 1e-6:
         box.label(text='Cloth Detail changes the NEXT lasso (this cloth keeps its mesh)', icon='INFO')

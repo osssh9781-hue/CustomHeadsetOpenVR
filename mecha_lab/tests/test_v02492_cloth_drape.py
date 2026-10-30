@@ -509,6 +509,63 @@ body.data.attributes.remove(att)
 check('Drape Mask operator registered, in the panel and on the ZBrush cloth box',
       hasattr(bpy.types, 'MCH_OT_cdrape_mask') and "'mch.cdrape_mask'" in inspect.getsource(cd.draw_panel if hasattr(cd, 'draw_panel') else cd)
       and 'mch.cdrape_mask' in inspect.getsource(__import__('mecha_lab.zb_ui', fromlist=['x'])))
+# ---- 0.24.95 Collide With + proxies (user: "충돌용 바디 별도의 저해상도 프록시 메쉬 ... 모든 메쉬를 프록시화, 지금 만드는 천 제외")
+from mecha_lab import collider_proxy as cpx
+body.location = (0.0, 0.0, 0.0)
+for o in [o for o in bpy.data.objects if o is not body]:
+    bpy.data.objects.remove(o)
+bpy.ops.mesh.primitive_ico_sphere_add(radius=0.15, subdivisions=6, location=(0.0, -1.3, 0.0))   # 81,920 triangles in front
+wall = C.active_object
+select_only(body)
+S.mch_cut.targets = 'AUTO'
+st.two_sides, st.padding, st.trim = False, False, False
+st.collide_with, st.use_proxy, st.proxy_faces = 'BODY', True, 5000
+check('meshes_for: Body = the body only; Targets + Auto = every visible mesh; Targets + Active = the body',
+      cpx.meshes_for(C, body, (), 'BODY') == [body] and set(cpx.meshes_for(C, body, (), 'TARGETS')) == {body, wall}
+      and (setattr(S.mch_cut, 'targets', 'ACTIVE') or cpx.meshes_for(C, body, (), 'TARGETS') == [body]))
+S.mch_cut.targets = 'AUTO'
+wall_pts = np.array([v.co[:] for v in wall.data.vertices]) + np.array(wall.location)    # (body at the origin: its space = world)
+msg = cd.perform(C, loops, Proj())
+ob_c = C.view_layer.objects.active
+d_body = cd.SIM['sess']['grid'].distance(wall_pts)
+check('Collide With Body: the other mesh is not in the collider (far)', np.median(np.abs(d_body)) > 1.0, float(np.median(np.abs(d_body))))
+check('meshes_for never takes the cloth being made', ob_c not in cpx.meshes_for(C, body, [ob_c], 'TARGETS') and wall in cpx.meshes_for(C, body, [ob_c], 'TARGETS'))
+cd.cancel(C)
+st.collide_with = 'TARGETS'
+msg = cd.perform(C, loops, Proj())
+grid = cd.SIM['sess']['grid']
+d_t = grid.distance(wall_pts)
+check('Collide With Targets (Auto): the other mesh is in the collider (its surface at distance ~0)',
+      np.median(np.abs(d_t)) < grid.cell * 2, (float(np.median(np.abs(d_t))), grid.cell))
+coll = bpy.data.collections.get(cpx.COLL)
+px = [o for o in coll.objects if o.get(cpx.SRC) == wall.name] if coll else []
+ntri = sum(len(p.vertices) - 2 for p in px[0].data.polygons) if px else 0
+check('... from a low-res proxy: "<name>_proxy" in the hidden "MCH Cloth Proxies" collection, about Proxy Faces triangles, not selectable / rendered',
+      len(px) == 1 and px[0].name == wall.name + '_proxy' and coll.hide_viewport and coll.hide_render and px[0].hide_select
+      and 4000 <= ntri <= 6000, (len(px), ntri))
+check('... the body (12k triangles, over the 5k budget) gets its proxy too; a mesh under the budget is used as it is',
+      any(o.get(cpx.SRC) == body.name for o in coll.objects) and cpx.proxy_mesh(C, body, 20000) == (body.data, False))
+data0 = px[0].data
+cd.cancel(C)
+cd.perform(C, loops, Proj())
+check('a second drape reuses the proxy (not made again)', px[0].data == data0)
+cd.cancel(C)
+wall.data.vertices[0].co.x += 0.01
+wall.data.update()
+cd.perform(C, loops, Proj())
+check('... the mesh changed: the proxy is made again', px[0].data != data0 and px[0].name == wall.name + '_proxy')
+cd.cancel(C)
+st.show_proxy = True
+check('Show Proxies shows the collection (wire)', not coll.hide_viewport and px[0].display_type == 'WIRE')
+st.show_proxy = False
+st.use_proxy = False
+cd.perform(C, loops, Proj())
+check('Proxy off: the mesh itself is the collider (still in it)', np.median(np.abs(cd.SIM['sess']['grid'].distance(wall_pts))) < cd.SIM['sess']['grid'].cell * 2)
+cd.cancel(C)
+st.use_proxy, st.collide_with = True, 'BODY'
+check('Snapshot covers Collide With / Proxy (a change restarts the drape)', all(k in inspect.getsource(cd._snapshot) for k in ("'collide_with'", "'use_proxy'", "'proxy_faces'")))
+check('cpx.clear removes every proxy and the collection', cpx.clear(C) >= 1 and bpy.data.collections.get(cpx.COLL) is None)
+bpy.data.objects.remove(wall)
 check('Cloth Drape key maps carry the sketch keys (Enter / Alt+Enter / Backspace / Esc) and Space for the drape',
       any(k[0] == 'mch.lasso_sketch_key' for k in wsui.MCH_TOOL_cloth_drape.bl_keymap) and any(k[0] == 'mch.cdrape_sim' for k in wsui.MCH_TOOL_cloth_drape.bl_keymap))
 summary()
