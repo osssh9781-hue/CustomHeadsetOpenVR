@@ -5698,3 +5698,1748 @@ PASS Nothing under the ends: made as before (flat)
 9/9 passed
 ====================================================================== 
  test_v02478_cutquad.py
+PASS The test part is a low-poly cut part (n-gons): it takes the new way  -- 111
+PASS Message says the part's own edges were kept  -- Quad Remesh (low-poly part: its own edges kept): 111 > 1,600 polygons, 98 % quads, 349 hard edges marked in 0.9 s
+PASS Closed: no open sides (0.24.83: the old way is guarded the same now - a closed part comes back closed)  -- (0, 0)
+PASS Mostly quads: at least 90 % (old way on the same part less)  -- (0.98, 0.739)
+PASS On the original surface: every point within 1 % of the part size  -- 0.00068
+PASS About the asked count (1,500; up to 4x when it had to go finer)  -- 1600
+PASS The cut edges become marked hard edges (at least 85 % of their length away from corners)  -- 1.0
+PASS Fast: under 5 s  -- 0.89
+PASS Same mesh, same result (deterministic)  -- (1600, 1600)
+PASS Materials come along: each face has the material of the input face under it (95 %+)  -- 1.0
+PASS Mask comes along (each point: the mask of the nearest input point)  -- 0.999
+PASS A slot narrower than a quad: closed, on the surface  -- (0, 0.00099, 'Quad Remesh (low-poly part: its own edges kept, holes closed): 118 > 844 polygons, 97 % quads, 293 hard edges marked in 0.4 s')
+PASS All Quads on a cut part: closed, (almost) all quads  -- (0, 1.0)
+PASS An open low-poly plate: its border stays open (not capped), no extra rounds, no holes inside  -- (7.999, 0, 'Quad Remesh (low-poly part: its own edges kept): 6 > 415 polygons, 94 % quads, 80 hard edges marked in 0.2 s')
+PASS A decimated part also takes the new way: closed, 90 %+ quads, on the surface  -- (True, 0, 0.973, 0.00156)
+PASS A dense (DynaMesh) part keeps the sampled way (not the low-poly one)  -- 120860
+
+16/16 passed
+====================================================================== 
+ test_v02479.py
+PASS Bottom toolbar: one dark bar, bottom middle, a button per toolbar tool
+PASS ... every button inside the bar, icons (PNG / glyph), key letters
+PASS Narrow viewport: smaller buttons, the bar stays on screen
+PASS Left strip: every tool once, grouped with headings
+PASS ... a column at the left edge, inside the viewport, the tool in use on (blue)
+PASS Short viewport: the strip shrinks / adds a column to fit
+PASS Click on a strip button: that tool
+PASS ... switches to it
+PASS Click on the strip / bar background: taken (nothing behind), no button
+PASS Click in the viewport: not taken (the tool gets it)
+PASS The HUD click operator asks the bar / strip first
+PASS The round-button toolbar is off while the drawn one is on (Preferences)
+PASS Name bubbles: a pass-through mouse-move item tracks the mouse
+PASS Quick HUD / key legend / Tool Active button move right of the strip
+PASS Drawing runs (stand-in painter): cards, icons, key letters, headings, a name bubble
+
+15/15 passed
+====================================================================== 
+ test_v02479_fixmesh.py
+PASS Fix Mesh: a crack (points on each other, not welded) -> closed  -- (11, 0, 0, 0, {'faces_before': 10, 'open_before': 11, 'multi_before': 0, 'welded': 4, 'slivers': 0, 'repeated': 0, 'walls': 0, 'fins': 0, 'filled': 1, 'open_after': 0, 'multi_after': 0, 'faces_after': 13})
+PASS Fix Mesh: the crack's points welded  -- {'faces_before': 10, 'open_before': 11, 'multi_before': 0, 'welded': 4, 'slivers': 0, 'repeated': 0, 'walls': 0, 'fins': 0, 'filled': 1, 'open_after': 0, 'multi_after': 0, 'faces_after': 13}
+PASS Fix Mesh: the box keeps its volume (1.0)  -- 1.0
+PASS Fix Mesh: normals all outward  -- 1.0
+PASS Fix Mesh: zero-area triangles (split n-gon slivers) dissolved, closed  -- ({'faces_before': 7, 'open_before': 0, 'multi_before': 0, 'welded': 0, 'slivers': 1, 'repeated': 0, 'walls': 0, 'fins': 0, 'filled': 0, 'open_after': 0, 'multi_after': 0, 'faces_after': 6}, 6)
+PASS Fix Mesh: a join with its shared wall inside (3-face edges) -> the wall goes, closed  -- (0, 4, {'faces_before': 11, 'open_before': 0, 'multi_before': 4, 'welded': 0, 'slivers': 0, 'repeated': 0, 'walls': 1, 'fins': 0, 'filled': 0, 'open_after': 0, 'multi_after': 0, 'faces_after': 10})
+PASS Fix Mesh: two boxes joined = 10 outer faces  -- 10
+PASS Fix Mesh: a missing face is filled  -- {'faces_before': 5, 'open_before': 4, 'multi_before': 0, 'welded': 0, 'slivers': 0, 'repeated': 0, 'walls': 0, 'fins': 0, 'filled': 1, 'open_after': 0, 'multi_after': 0, 'faces_after': 6}
+PASS Fix Mesh: an open plate keeps its border (a big hole is not capped)  -- {'faces_before': 16, 'open_before': 16, 'multi_before': 0, 'welded': 0, 'slivers': 0, 'repeated': 0, 'walls': 0, 'fins': 0, 'filled': 0, 'open_after': 16, 'multi_after': 0, 'faces_after': 16}
+PASS Fix Mesh: Close All Holes caps it  -- {'faces_before': 16, 'open_before': 16, 'multi_before': 0, 'welded': 0, 'slivers': 0, 'repeated': 0, 'walls': 0, 'fins': 0, 'filled': 1, 'open_after': 0, 'multi_after': 0, 'faces_after': 25}
+PASS Fix Mesh: a clean box is left as it is  -- {'faces_before': 6, 'open_before': 0, 'multi_before': 0, 'welded': 0, 'slivers': 0, 'repeated': 0, 'walls': 0, 'fins': 0, 'filled': 0, 'open_after': 0, 'multi_after': 0, 'faces_after': 6}
+PASS Fix Mesh: needs_fix tells broken from clean
+Info: Fix Mesh: 15 broken edges -> 0 (closed) | 4 points welded, 1 inside wall faces, 1 holes filled
+PASS Fix Mesh button (mch.fix_mesh) repairs the selected mesh  -- {'FINISHED'}
+Info: Fix Mesh: 11 broken edges -> 0 (closed) | 4 points welded, 1 holes filled
+PASS Mesh Tools: Fix Mesh  -- {'FINISHED'}
+PASS broken part: has open sides before  -- (56, 0)
+Info: Broken_Quad: 1892 quads, 96 hard edges kept (0.1 s)
+PASS Make Quad (Patch) on a broken part: repaired first and made (was refused: "open / non-manifold edges")  -- ({'FINISHED'}, 'Broken_Quad')
+PASS Make Quad result: closed  -- (0, 0)
+PASS Make Quad result: shown as wireframe
+PASS Make Quad: the repair is noted ("Fix Mesh first")  -- {'faces_before': 11, 'open_before': 0, 'multi_before': 4, 'welded': 0, 'slivers': 0, 'repeated': 0, 'walls': 1, 'fins': 0, 'filled': 0, 'open_after': 0, 'multi_after': 0, 'faces_after': 10}
+PASS Make Quad Flow: QuadriFlow failing -> the Patch method instead, with a note  -- QuadriFlow could not remesh this part (try more Faces or a smaller Edge Angle). - used Patch instead
+PASS Quad Remesh on a broken part: a repaired copy is remeshed ("Fix Mesh first")  -- Quad Remesh (low-poly part: its own edges kept, holes closed) (Fix Mesh first: 15 broken edges repaired): 15 > 1,489 polygons, 98 % quads, 204 hard edges marked in 2.4 s
+PASS Quad Remesh result: closed  -- (0, 0)
+PASS Quad Remesh result: shown as wireframe
+PASS Quad Remesh: the repaired copy is not left in the file  -- ['B2', 'Broken_Quad', 'Clean', 'Crack', 'Hole', 'MCH_BaseMesh', 'MCH_BaseMesh.001', 'MCH_BaseMesh.002', 'MCH_BaseMesh.003', 'MCH_BaseMesh.004', 'NewQR', 'Op', 'Op2', 'Plate', 'Sliver', 'Wall', 'Walled', 'Walled.001']
+PASS Quad Remesh on a clean part: no repair step  -- Quad Remesh (low-poly part: its own edges kept): 6 > 600 polygons, 100 % quads, 120 hard edges marked in 0.3 s
+
+FBX export starting... '/tmp/mch_export_7lhfeudi/quad.fbx'
+export finished in 0.0086 sec.
+Info: Exported 3 mesh(es) to /tmp/mch_export_7lhfeudi/quad.fbx | Quad Mesh (0.067 apart) in 1 s
+PASS Export Quad Mesh: FBX written  -- {'FINISHED'}
+PASS Export Quad Mesh: the Blender meshes stay as they were
+PASS Export Quad Mesh: no temporary object left
+FBX version: 7400
+PASS Export Quad Mesh: all three parts in the file  -- ['PartA', 'PartB', 'Screw']
+PASS Export Quad Mesh: mostly quads (>= 85 %; the 77-face screw >= 70 %)  -- {'PartA': 0.98, 'PartB': 0.95, 'Screw': 0.87}
+PASS Export Quad Mesh: closed (the broken part repaired on the way)  -- {'PartA': (0, 0), 'PartB': (0, 0), 'Screw': (0, 0)}
+PASS Export Quad Mesh: quads sized to each part too (0.24.77: the small screw is not cut down to a few faces), the big broken part gets the most (0.24.82: no part more than 8x its own faces, a finer try only over 1 %)  -- {'PartA': 522, 'PartB': 126, 'Screw': 134}
+
+FBX export starting... '/tmp/mch_export_7lhfeudi/client.fbx'
+export finished in 0.0085 sec.
+Info: Exported 1 mesh(es) to /tmp/mch_export_7lhfeudi/client.fbx | Quad Mesh (0.0119 apart, Client Look) in 0 s
+FBX version: 7400
+PASS Export Client Look: written, about 4x the faces (bevel + Subdivide 1 baked)  -- ({'FINISHED'}, (3742, 1.0, (0, 0), 3742, 0.13604626103642906), 522)
+PASS Export Client Look: every face smooth, closed  -- (3742, 1.0, (0, 0), 3742, 0.13604626103642906)
+
+34/34 passed
+====================================================================== 
+ test_v0248.py
+PASS Alt+X -> MIRROR in Object Mode  -- ('Object Mode', 'MIRROR')
+PASS S -> SPLIT in Object Mode  -- ('Object Mode', 'SPLIT')
+PASS Alt+A -> PLATE in Object Mode  -- ('Object Mode', 'PLATE')
+PASS S item only with nothing selected
+PASS poll ok in MECHA LAB, Object Mode
+PASS S with a selection passes through (Blender Scale)  -- ({'PASS_THROUGH'}, [])
+PASS Split moved to D: works with a selection too  -- ({'FINISHED'}, ['SPLIT'])
+PASS Split moved to Shift+S: works with a selection too  -- ({'FINISHED'}, ['SPLIT'])
+PASS S with nothing selected -> Split tool  -- ({'FINISHED'}, ['SPLIT'])
+PASS Alt+A -> Armor Plate tool  -- ({'FINISHED'}, ['PLATE'])
+PASS Alt+X with nothing selected: warning, no tool change  -- ({'CANCELLED'}, ['Mirror: select a mesh or a collection instance'])
+PASS Alt+X with a mesh selected -> live lean Mirror  -- ({'RUNNING_MODAL'}, [(('INVOKE_DEFAULT',), {'keep_live': True})])
+
+12/12 passed
+====================================================================== 
+ test_v02480.py
+PASS Back Mask: off by default, on the operator too (F9)
+PASS Facing weights: facing you 1, the far side 0, side-on a short ramp  -- [np.float64(1.0), np.float64(0.0), np.float64(0.33333333333333337), np.float64(1.0)]
+Info: Path Move: 2 steps
+PASS Stretch without it: the bottom is dragged along too (what the mask is for)  -- 0.3999999947845936
+Info: Path Move: 2 steps
+PASS Stretch + Back Mask: the top is pulled, the bottom (far side) stays put, still closed  -- (0.399999987334013, 0.0)
+Info: Path Move: 2 steps
+PASS Auto Apply off: the move remembers the mask; rebuilt the same  -- dict_keys(['kind', 'moves', 'back'])
+PASS A brush patch that fails: without the mask the whole section, with it nothing (3 brush sizes tried)  -- ('SECTION', [0.3, 0.21, 0.15])
+PASS ... a smaller brush that works is used (the mesh read again first, not left half cut)  -- [0.3, 0.21]
+Warning: Path Move: no clean brush patch where you grabbed (Back Mask keeps the far side out) - try a smaller brush or turn Back Mask off
+PASS Extend: nothing is changed and no Separate Tube (that would take the whole section)
+Info: Path Move Extend: 2 steps, brush patch 24 points
+PASS Extend Brush + Back Mask on a thin plate: pulled out of the top, the bottom untouched, closed  -- (np.float64(0.44999998807907104), np.float64(-0.05000000074505806))
+PASS While dragging: B turns it on / off; the header and key legend say so
+PASS Panel and F9: the Back Mask button
+
+11/11 passed
+====================================================================== 
+ test_v02480_facetcarve.py
+PASS roof, Height: the facet carve (2 faces under the outline)  -- {'path': 'facet', 'reason': None, 'facets': [2], 'faces': 7, 'seconds': 0.04567697099992074}
+PASS roof, Height: closed, few faces (was ~350 with the grid)  -- (13, 0)
+PASS roof, Height: the floor is the depth below each face (measured across it) within 1 %  -- [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+PASS roof, Height: a sharp crease under the ridge (depth / cos there too)  -- (-0.05590105056762695, 0.4499998092651367)
+PASS roof, Height: the volume taken = outline area x depth (about)  -- (0.006708204765073278, 0.00670820393249937)
+PASS roof, Ramp: the facet carve, closed, few faces  -- ({'path': 'facet', 'reason': None, 'facets': [2], 'faces': 7, 'seconds': 0.025308884999958536}, 12)
+PASS roof, Ramp Soft 0.5: the facet carve, closed, under 1,000 faces (the grid made ~6,000)  -- ({'path': 'facet', 'reason': None, 'facets': [2], 'faces': 336, 'seconds': 0.09767535199989652}, 317)
+PASS Steep Edges: across the chamfer both ways use the facet carve and stay closed  -- {'EVEN': (0.001865097526765419, 'facet', 0, [2]), 'LIMIT': (0.0014400008511544216, 'facet', 0, [2])}
+PASS Steep Edges: Limit takes less off a steep side than Even  -- {'EVEN': (0.001865097526765419, 'facet', 0, [2]), 'LIMIT': (0.0014400008511544216, 'facet', 0, [2])}
+PASS Steep Edges: two equal roof faces - Limit = Even (both seen as straight)  -- {'EVEN': 0.006708204765073278, 'LIMIT': 0.006708204765073278}
+PASS Steep Edges: on one flat face only - Limit = Even  -- {'EVEN': 0.003600002083182452, 'LIMIT': 0.003600002083182452}
+PASS a curved, dense surface: the old carve (more facets than MAX_FACETS)  -- {'path': 'old', 'reason': 'more than 48 facets under the outline (a curved surface)', 'seconds': 0.019569217000025674}
+PASS ... and it still carved  -- 2120
+PASS a Chamfer edge: the old carve  -- {'path': 'old', 'reason': 'CHAMFER', 'seconds': 2.9289999474713113e-06}
+PASS switched off (tests): the old carve, and it still works  -- {'path': 'old', 'reason': 'off', 'seconds': 2.5080003069888335e-06}
+PASS settings: Base Mesh carve_steep and Cut gn_ramp_steep, Even by default
+PASS Base Mesh Alt carve (Height) on the roof: the facet carve  -- ('Base Mesh carve (Alt): Roof | 0.05 deep along the surface', {'path': 'facet', 'reason': None, 'facets': [2], 'faces': 7, 'seconds': 0.017556475999754184})
+PASS Cut Ramp across the chamfer: the facet carve, Limit takes less than Even  -- (0.0008922819235632484, 0.0006923075403157952)
+PASS Cut panel (GN Edge > Ramp) shows Steep Edges
+PASS Base Mesh panel (Alt: Height) shows Steep Edges
+
+20/20 passed
+====================================================================== 
+ test_v02481.py
+PASS Split drawn over the mirrored copy: works, the piece is cut from the real half (x 1.6..2.4) and keeps the Mirror  -- ('Split: P', (1.600000023841858, 2.4000000953674316))
+PASS Gap Split drawn over the mirrored copy: works, the piece is cut from the real half (x 1.6..2.4) and keeps the Mirror  -- ('Gap split: P', (1.6100000143051147, 2.390000104904175))
+PASS Split on the real half: as before
+PASS Cut over the mirrored copy: still works
+PASS Auto Apply off, CUT over the copy: the live cutter moved onto the real half, the part really cut  -- (1.600000023841858, 24)
+PASS Auto Apply off, SPLIT over the copy: the live cutter moved onto the real half, the part really cut  -- (1.600000023841858, 24)
+PASS Auto Apply off on the real half: the cutter stays where drawn
+
+7/7 passed
+====================================================================== 
+ test_v02481_keys.py
+PASS X symmetry: turns on the mesh's Mirror X (what the strokes use in Blender 5)
+PASS ... and off again
+PASS the switch shows the mesh's own setting
+PASS texture stamps mirror with it  -- ((1, 1, 1), (-1, 1, 1))
+PASS ... one stamp without it
+PASS X key = the symmetry action
+PASS Tab: in Object Mode and Sculpt key maps  -- {'Object Mode', 'Sculpt'}
+PASS Tab: not in the MECHA LAB tab -> Blender's own Tab (Edit Mode)
+PASS Tab in the MECHA LAB tab (Object Mode): available
+PASS ... goes to ZBRUSH (Sculpt Mode)  -- SCULPT
+PASS ... and Tab again back to MECHA LAB (Object Mode)  -- OBJECT
+PASS High Poly Mode: Deform Only is not touched (it hid Smooth by Angle: flat parts looked smooth)
+PASS Make Quad Faces: down to 1
+PASS Quad Remesh Target: down to 0.001 (= 1 face)
+PASS ... a Faces value under 100 stays as typed  -- 37
+PASS Quad Remesh to 12 faces on a box: about that many, closed  -- (13, 'Quad Remesh (low-poly part: its own edges kept): 6 > 13 polygons, 69 % quads, 16 hard edges marked in 0.0 s')
+PASS Quad Remesh to 37 faces on a box: about that many, closed  -- (51, 'Quad Remesh (low-poly part: its own edges kept): 6 > 51 polygons, 92 % quads, 35 hard edges marked in 0.0 s')
+
+17/17 passed
+====================================================================== 
+ test_v02482.py
+PASS Follow Symmetry: on by default (the old local Mirror X stays for parts without a live Mirror)
+PASS Drawn over the real half: both sides hidden the same  -- ((98, 98), (112, 112), 'Box Hide: Hidden on P | also on 1 symmetric copy')
+PASS Drawn over the mirrored copy: both sides hidden the same  -- ((98, 98), (112, 112), 'Box Hide: Hidden on P | also on 1 symmetric copy')
+PASS Follow Symmetry off: only the side drawn on (as before)  -- ((98, 98), (112, 98))
+PASS Alt (show again) over the copy: both sides back  -- (98, 98)
+Info: Applied modifier was not first, result may not be as expected
+PASS Apply: the real half keeps the hole, the Mirror shows it on both sides  -- ((112, 112), (112, 112))
+PASS Radial x6: hidden on the other 5 turns too  -- 5
+PASS Kaleido (turns x mirror): every copy  -- 11
+PASS No live symmetry: no copies (the local Mirror X button still works there)
+PASS Panel: Follow Symmetry next to Mirror X
+
+10/10 passed
+====================================================================== 
+ test_v02482_penfade.py
+PASS Pen: the tip wobbles 42 px right after the side button press -> still a click (no view turn)
+PASS ... let go: the menu (the press was a click)
+PASS Pen held a moment and moved 42 px: the view turns (right-drag)  -- [{'mode': 'ROTATE', 'button': 'RIGHTMOUSE', 'alt_start': False}]
+PASS Pen moved far (80 px) at once: the view turns
+PASS Pen: a small wobble (10 px) is a click at any time
+PASS Mouse: unchanged - 10 px turns the view at once
+PASS Pen tolerance values
+PASS ZBrush screen on: the other objects are faded (Fade Inactive Geometry), the picked one stays bright
+PASS ... once (no change while it stays on)
+PASS Leaving the ZBrush screen: back as it was
+PASS ... once
+PASS A user who had it on keeps it on
+PASS Turning the add-on off puts it back too
+PASS The watcher drives it (every tick, with High Poly Mode)
+PASS Ramp Soft on a long thin ramp (facet carve): smooth along the walls and in the middle, closed, few faces  -- ('facet', 7e-05, 1177, 0.18)
+
+15/15 passed
+====================================================================== 
+ test_v02483.py
+PASS Preferences: Safety Save on, every 3 minutes
+PASS Background (tests, command line): no save unless asked
+PASS No unsaved changes (just saved): nothing - your own file is up to date
+Info: Saved copy as "untitled_16844_35582_recovery_16844_saving.blend"
+[Mecha Lab] Safety Save before test: /tmp/mch_safety_z8d19520/untitled_16844_35582_recovery.blend (0.0 s)
+PASS The first heavy step of a session saves the copy; the open file is not touched (no path, unsaved state)  -- /tmp/mch_safety_z8d19520/untitled_16844_35582_recovery.blend
+PASS ... the next one within the interval does not
+Info: Saved copy as "untitled_16844_35582_recovery_16844_saving.blend"
+[Mecha Lab] Safety Save before test: /tmp/mch_safety_z8d19520/untitled_16844_35582_recovery.blend (0.0 s)
+PASS Every 0 min: each step; the copy before is kept as _prev, no half-written file left  -- ['untitled_16844_35582_recovery.blend', 'untitled_16844_35582_recovery_prev.blend']
+PASS The copy is a real .blend with the scene in it  -- ['P']
+PASS Newest copy found for Open Last Recovery
+PASS Safety Save off: nothing
+PASS Idle saves wait for a quiet moment: no modal operator, Object Mode (older Blender: never)
+PASS Named after the file + an id of its folder: two Robot.blend in different folders get different copies; a recovered copy keeps saving under its first name  -- ('/tmp/mch_safety_z8d19520/Robot_8601a71a_recovery.blend', '/tmp/mch_safety_z8d19520/Robot_7a7ea0fb_recovery.blend')
+PASS Unsaved files: one copy per session (two untitled Blenders do not overwrite each other), and the save in progress has a per-Blender name
+PASS Opening another file starts its own copies, interval and changes (the last file's were carried over)
+PASS Hooked before the heavy steps: every stroke tool, Concept Move, Path Move
+PASS Preferences show it (folder, newest copy, Open Last Recovery / Open Folder / Save Now)
+00:00.700  blend            | Read blend: "/tmp/mch_safety_z8d19520/untitled_16844_35582_recovery.blend"
+PASS Open Last Recovery: the scene comes back
+
+16/16 passed
+====================================================================== 
+ test_v02483_quadcut_alt.py
+Info: Cube_Quad: 2056 quads, 16 hard edges kept (0.1 s)
+PASS Make Quad: the copy remembers how it was made (not changed yet)  -- <IDPropertyGroupViewKeys "user_properties">
+PASS Cut on the quad copy: a pocket, the copy counts as changed  -- 0.15
+Info: Cube_Quad: 4322 quads, 422 hard edges kept (0.4 s) | made from this mesh as changed (Cut ...), not the original
+PASS Re-make Quad after the cut: the pocket stays (was: made again from the original - the cut gone)  -- ({'FINISHED'}, 0.15, 0)
+PASS ... new quads, not "changed" any more; the changed mesh (with the cut) kept hidden as the new original  -- (4322, 'Cube_Quad_Changed')
+PASS ... the first original still there, hidden, untouched  -- 98
+PASS ... its own Bevel modifier is not baked in (switched back on after)
+Info: Cube_Quad: 4020 quads, 422 hard edges kept (0.4 s)
+PASS Re-make with other settings, nothing changed in between: still the pocket, fewer quads  -- (0.15, 4020)
+Info: Cube_Quad: 2056 quads, 16 hard edges kept (0.1 s)
+Info: Cube_Quad: 1160 quads, 16 hard edges kept (0.0 s)
+PASS Re-make on an unchanged copy: from the original as before (the Faces setting takes)  -- (2056, 1160)
+PASS A quad copy made before 0.24.76 (no fingerprint) counts as changed: nothing done on it is lost
+PASS Apply: the fingerprint goes with the rest
+PASS Remesh panel draws
+PASS Quad Remesh -> Cut -> Quad Remesh (new engine, in place): the pocket stays, closed, quads  -- (0.15, 'Quad Remesh (low-poly part: its own edges kept): 1,259 > 1,547 polygons, 98 % quads, 471 hard edges marked in 0.9 s')
+Info: Path Move Extend: 14 steps, brush patch 24 points
+PASS Path Move Extend (Brush) on a quad remeshed part: pulled out, closed, still outward (was inside out here)  -- ({'FINISHED'}, 0.575, 0.598)
+PASS Middle click menu: on as before (Emulate 3 Button Mouse off)
+PASS ... the ZBrush key legend as before
+PASS Emulate 3 Button Mouse on (Alt+click = a middle click): the middle-click menu stays away
+PASS ... the ZBrush key legend says Alt is the middle mouse now and where to turn it off  -- ['ZBRUSH KEYS', '! Alt', '= middle mouse now (Emulate 3 Button', '! Zsub', 'Mouse is on): turn it off in']
+PASS ... the Mecha Lab panel says so too  -- ['', '', 'LIVE STACK', 'Cube: nothing live (a plain mesh)', '', 'Emulate 3 Button Mouse is on:']
+PASS Blender Preferences are only read, never changed
+
+19/19 passed
+====================================================================== 
+ test_v02484.py
+PASS Preferences: RMB Menu size next to Viewport Panels
+PASS Sidebar Icon Size tab shows both; presets set both; saved with the other sizes
+PASS The menu uses RMB Menu, the panels Viewport Panels  -- (1.0, 2.0)
+PASS Menu − / + and Ctrl + wheel change the menu size only
+PASS The menu operator scales itself by RMB Menu
+PASS Sizes saved before 0.24.58 (one size): the menu keeps the size it had  -- {'icon_scale': 1.2, 'toolbar_scale': 1.0, 'handle_scale': 1.0, 'mecha_ui_size': 1.4, 'menu_size': 1.4}
+PASS Drawn toolbar, tool strip and Symmetry card stay on while the menu is open
+PASS The invisible panel gizmo is "hit" over the toolbar / strip, the Symmetry card and the Quick HUD only
+PASS ... it runs the same click operator, no tooltip, in every tool (gizmos come before tool keymaps, so Blender Select / Move's click-select no longer takes the click)
+PASS While a shape is drawn point by point, a click on a panel works the panel (not a new point)
+
+10/10 passed
+====================================================================== 
+ test_v02484_silhouette.py
+PASS Silhouette Move is a tool: name, own icon, Blender tool  -- ('SMOVE', 'Silhouette Move', 'Path Move that always pulls the whole part: cut where you grab, the whole section follows the way you go, so the part stretches and bends - its silhouette changes (the Path Move of before 0.24.54, Whole without Tab)', 'silhouette_move', 'MOD_SIMPLEDEFORM', 'mecha.silhouette_move', 'OK')
+PASS ... in the Move group next to Path Move, its own saved number
+PASS ... in the V pie (under Move / Path); the bottom bar keeps its tools
+PASS ... its press starts Path Move with Silhouette on
+PASS ... key legend says what it does  -- ['SILHOUETTE MOVE', 'Drag from the part   the whole part follows the way (stretches, bends)', 'Shift   straight 0/45/90° · square / circle', 'Ctrl   from the centre', 'F   brush size     [ ]   line width', 'D + drag   Concept Move', 'RMB   tools + actions + shapes     RMB×2 / Esc   exit', 'Q   Select <-> last tool     V   tool pie']
+PASS ... Quick HUD: size, hardness, taper (no Method / Area to pick)  -- ['radius_px', 'path_hardness', 'path_taper']
+PASS ... panel: no Method / Area / Back Mask, the size and the taper are there  -- (None, ['knife_cuts', 'stab_enable', 'auto_apply', 'radius_px', 'lock_size', 'path_hardness', 'path_taper', 'path_turn', 'shape', 'mirror_x', 'keep_density', 'even_out', 'follow_view'])
+PASS ... like Path Move: its own row of options (Targets not shown)
+PASS Silhouette Move: Whole and Extend whatever Path Move is set to
+PASS ... Tab changes nothing (and leaves Path Move's own setting alone)
+PASS Path Move itself: as set
+PASS The drag reads Brush / Whole and the method through the tool (not the Path Move setting)
+Info: Path Move Extend: 14 steps, section 52 points
+PASS What it does: the whole part from the grab on follows the drag - longer and bent up, closed, outward  -- ({'FINISHED'}, 0.206, 2.2, 0.65)
+PASS Select (F / bottom bar / Q) switches to Blender's Select Box, not the Move tool
+Info: Select: click or drag a box round objects (G / R / S move, turn, scale). Pick a Mecha tool to continue
+PASS ... and it does (where a 3D view is open)  -- ({'FINISHED'}, 'builtin.select_box')
+
+15/15 passed
+====================================================================== 
+ test_v02485.py
+PASS Cut on one tube of a body + 8 tubes: the same result as the Boolean on everything (faces, volume, closed)  -- ((0.024869558999853325, 792, 2.53506, 0), (0.01280165499974828, 792, 2.53506, 0))
+PASS ... only the parts the shape reaches went into the Boolean; the far tubes are untouched, materials kept  -- ({'parts': (1, 9)}, True, [0, 1])
+PASS Split: the piece is only what the shape cut out (the other parts are not in it)  -- 64
+[Mecha Lab] cut failed: The shape does not intersect "P"; nothing was changed. [shape covers 0/1000 vertices of P | shape px (1380,1380)-(1420,1420) in ? | ORTHO | Alt/invert off | Mecha Lab 0.24.92]
+PASS A shape beside the mesh: "does not intersect" at once, with the facts  -- The shape does not intersect "P"; nothing was changed. [shape covers 0/1000 vertices of P 
+PASS Over the live Mirror copy: cut on the real half (mirrored back), still only the parts reached  -- ('Cut: P', {'parts': (1, 9)})
+PASS Loose parts found (body + 8 tubes)
+PASS A slow cut says how long it took and which solver
+
+7/7 passed
+====================================================================== 
+ test_v02485_zbshading.py
+PASS A smooth part with its box edges Sharp: no flat faces at first
+PASS Into Sculpt Mode on the ZBrush screen: the faces along the Sharp edges are flat (48), the middle ones smooth (6)  -- ('SCULPT', 48)
+PASS Back in Object Mode: exactly as it was (no flat faces, no attribute left, nothing kept on the object)
+PASS MECHA LAB -> ZBRUSH button: the same (the user's own flat face stays flat)  -- ({'FINISHED'}, 49)
+PASS ZBRUSH -> MECHA LAB: put back - only the user's own flat face  -- 1
+PASS Left Sculpt Mode another way: still flat until the watcher comes by
+PASS ... the watcher puts it back
+PASS Faces changed in between: nothing put back, no error, nothing left on the object
+PASS Blender style: Sculpt Mode as Blender has it (no change)
+PASS No Sharp edges (a sculpt): untouched
+
+10/10 passed
+====================================================================== 
+ test_v02486.py
+PASS New group: a small cross handle, not a cube  -- ('PLAIN_AXES', 0.6000000238418579)
+PASS The outline box is the parts' own size (0.2 x 0.2 x 3)  -- (0.20000000298023224, 0.20000000298023224, 3.0)
+PASS ... drawn as 12 edges
+PASS A group made before (a big cube) is tidied
+PASS Tidied when a file is opened; the box is drawn in the viewport (selected: orange)
+
+5/5 passed
+====================================================================== 
+ test_v02486_exportfit.py
+
+FBX export starting... '/tmp/tmpxkaugil0/fit.fbx'
+export finished in 0.0052 sec.
+Warning: Exported 2 mesh(es) to /tmp/tmpxkaugil0/fit.fbx | Quad Mesh (0.155 apart) in 1 s | 1 not as asked: Big: kept as it was, repaired (quads could not keep its shape)
+PASS Export with Quad Mesh (Quad Size 1 % of the whole export): written  -- {'FINISHED'}
+FBX version: 7400
+PASS Both parts in the file  -- ['Big', 'Small']
+PASS The small bevelled cylinder keeps its shape (95 % of its surface within 1 % of its size; one export-wide quad size made it a few faces) and does not balloon (0.24.82: at most 8x its own faces)  -- (0.0037, 1305, 338)
+PASS ... and the big plate too
+PASS The fit test: as asked within 0.5 %, a finer try (x2) only over 1 %, kept as it was over 2 %, at least 20 quads across a part, up to 4 tries, never more than 8x the part's faces
+PASS Not as quads when the shape cannot be kept: the part goes out as it was (repaired)
+Writing to /tmp/tmpbtl5k367/client.obj
+OBJ export of 'client.obj' took 5.08 ms
+Info: File exported successfully
+Warning: Exported 2 mesh(es) to /tmp/tmpbtl5k367/client.obj | Quad Mesh (0.155 apart, Client Look) in 1 s | 1 not as asked: Big: kept as it was, repaired (quads could not keep its shape)
+OBJ import of 'client.obj' took 8.46 ms
+PASS Quad Mesh + Client Look -> OBJ -> import: both parts closed (no open / 4-face edge), every face a quad  -- [('Big.002', 6, 0), ('Small.002', 6778, 0)]
+PASS ... a tiny corner the bevel folds on itself (seen on the user's part: one edge with 4 faces) is welded away before the file is written
+PASS 0.24.82 an empty mesh object in the selection is left out of the export (and of the Visible scope)
+PASS The originals untouched by the export
+
+10/10 passed
+====================================================================== 
+ test_v02487.py
+PASS Zigzag cut through a thin band with a big GN Bevel: closed result, no torn faces  -- ('Cut: MCH_Base | GN Bevel: 76 border edges', 0)
+PASS ... the width was limited where the band is thin (under half of the 0.1 left)  -- {'limited': 0.00989999994635582, 'trimmed': 0}
+(took 0.1 s)
+PASS A square cut keeps square corners: the chamfer is exactly the width all round (corners mitred)  -- [-1.0, -0.6, 0.2, 0.6, 1.0]
+
+3/3 passed
+====================================================================== 
+ test_v02487_wiresolo.py
+PASS MECHA LAB corner card: a VIEW row with Wire and Solo under MECHA LAB | ZBRUSH and STYLE  -- ['Blender', 'MECHA LAB', 'Solo', 'Wire', 'ZBRUSH', 'ZBrush']
+PASS ... Wire lit while a part shows its wireframe, Solo dark (not soloed)
+PASS ... the card holds the third row  -- (1236.8842105263159, 187.9578947368421, 1249.0105263157898)
+Info: Wire off (2 parts)
+PASS Wire with nothing selected: every visible part's wireframe off
+PASS ... the button goes dark
+Info: Wire on (1 part)
+PASS Wire with a part selected: only that one shows its wireframe (all edges)
+Info: Wire off (1 part)
+PASS ... again: off
+Warning: Solo: select the part(s) to show first
+PASS Solo with nothing selected (and not soloed): nothing happens, it says what to do
+Warning: Solo: Operator bpy.ops.view3d.localview.poll() failed, context is incorrect
+PASS Solo without a 3D view (bpy has no window): no error, nothing changed  -- {'CANCELLED'}
+PASS The side panel starts below the corner card where they would meet  -- (1212.6315789473683, 1236.8842105263159, True)
+PASS ... without a context it is where it was
+PASS ZBRUSH screen: the corner card as before (its own PolyF / Solo on the right shelf)  -- ['Blender', 'MECHA LAB', 'ZBRUSH', 'ZBrush']
+
+12/12 passed
+====================================================================== 
+ test_v02488.py
+PASS CUT: Line and Sketch buttons in the menu  -- ['Line', 'Sketch']
+PASS CUT: Line on / off (the menu stays open)
+PASS CUT: Sketch on / off  -- (False, True)
+PASS BASE: Line and Sketch buttons in the menu  -- ['Line', 'Sketch']
+PASS BASE: Line on / off (the menu stays open)
+PASS BASE: Sketch on / off  -- (False, True)
+PASS A tool without line drawing (Concept Move): no switches
+
+7/7 passed
+====================================================================== 
+ test_v02488_rimcorner.py
+PASS (before) A band cut through a plate with GN Chamfer: needle points at the cut's ends (the folded band)  -- [(0.313, 0.669, 0.003), (0.312, 0.669, 0.003)]
+PASS GN Chamfer: the profiles at the corners are trimmed, no needle point left, the part closed  -- (2, [], 'Cut: Plate | GN Chamfer: 144 border edges')
+PASS ... and its band no longer crosses itself: straight into the Manifold difference (was the Exact self-union first)  -- ['band', 'direct']
+PASS GN Bevel: the profiles at the corners are trimmed, no needle point left, the part closed  -- (2, [], 'Cut: Plate | GN Bevel: 144 border edges')
+PASS ... and its band no longer crosses itself: straight into the Manifold difference (was the Exact self-union first)  -- ['band', 'direct']
+PASS trim_corners: the points closer than the width to the corner go to (just past) the corner's point, the ones further away stay  -- (4, {('x', 0.1): (0.1, 0.0, -0.03), ('x', 0.05): (0.05, 0.0, -0.03), ('x', 0.02): (0.03, 0.0, -0.03), ('x', 0.01): (0.03, 0.0, -0.03), ('x', 0.0): (0.03, 0.0, -0.03), ('z', 0.01): (0.03, 0.0, -0.03), ('z', 0.02): (0.03, 0.0, -0.03), ('z', 0.05): (0.03, 0.0, -0.05), ('z', 0.1): (0.03, 0.0, -0.1)})
+PASS ... a turn the other way (the offsets spread): nothing is moved
+PASS An open part: the Exact difference without Self Intersection on the part (not the old all-Exact way)  -- (['open'], 4, 4)
+PASS ... the Cut says it is not one clean solid and to Fix Mesh first  -- Cut: Plate | GN Chamfer: 144 border edges | WARNING: Plate is not one clean solid (0 edges shared by 3+ faces, 4 open edges) - the result may be broken and slow to finish; Fix Mesh (or Remesh) it first
+PASS ... a result that fell apart: the old way is tried too (the one with fewer broken edges kept)  -- (['open', False], 'Cut: Plate | GN Chamfer: 144 border edges | WARNING: Plate is not one clean solid (0 edges shared by 3+ faces, 4 open edges) - the result may be broken and slow to finish; Fix Mesh (or Remesh) it first')
+PASS The "not one clean solid" hint names Fix Mesh and Remesh
+
+11/11 passed
+====================================================================== 
+ test_v02489.py
+PASS Every tool panel can be read without drawing it
+PASS ... the Cut panel as a tree: its settings, boxes, buttons
+PASS Top bar: the shapes as big icons (all of them, the one in use on), at the top middle
+PASS ... Line / Sketch / Slow Line, Target, Depth, Auto Apply, Surface, Ortho for Cut  -- ['Active', 'Auto', 'Auto Apply', 'Bevel', 'Chamfer', 'From Surface', 'Line', 'Off', 'Open Line', 'Ortho', 'Round', 'Selected', 'Sharp', 'Sketch', 'Slow Line', 'Surface', 'Through All']
+PASS Base Mesh: no Depth / Auto Apply (not its settings)
+PASS ... Line on: its width, caps, Taper, Pressure, Attach Ends join the bar
+PASS A narrow viewport: the groups wrap to more rows, the bar stays inside  -- [982, 1017, 1052]
+PASS Blender's tool header keeps only the Custom PNG picker while the top bar is on
+PASS Hit test: the shape button under the mouse
+PASS ... click: that shape
+PASS Target Selected from the bar
+PASS Slow Line on: its two bars appear in the top bar
+PASS Empty viewport: not inside any card
+PASS Side panel: docked right under the navigation gizmo, the tool name on top
+PASS ... numbers as bars, choices as pills, switches, buttons, folded Lasso / Help sections  -- ['card', 'drop', 'mini', 'pbtn', 'phead', 'pnote', 'sbg', 'seg', 'shead', 'switch', 'tbtn']
+PASS ... what the top bar shows is not repeated (Targets / Slow Line / Line / Sketch / Auto Apply)
+PASS Click a pill: that choice (Cloth Plate type Puffer)
+PASS A number bar drags the value (the press operator does this on the mouse)
+PASS ... Ctrl+click = back to the default
+PASS The press operator: a number bar is dragged (Shift fine), click types, Ctrl+click resets, Esc puts back
+PASS Click a section title: it opens / folds  -- (40, 57)
+PASS A short viewport: the panel scrolls (bar on the side), the wheel moves it
+PASS ... scrolled rows move up, only whole rows inside the window are shown
+PASS – folds the panel to a small tab with the tool icon; click it to open again
+PASS ... open again
+PASS Hidden while the sidebar (N) is open (it shows the same)
+PASS The Symmetry card keeps clear of the panel
+PASS Base Mesh: the Alt choices as one group of pills ("Alt" said once)
+PASS ... a panel button runs its operator (profile Bevel)
+PASS Geometry Nodes style inputs ("[\"name\"]") work like settings: text, bar position, drag, reset
+PASS Tool strip: a 6 : 4 tile per tool with its name inside (3 to 6 columns)  -- (4, 71.93162393162393, 47.95441595441595)
+PASS ... drawn with the icon in the top 80 % and the name in the bottom 20 % (a long name a bit smaller first)
+PASS ... on a narrower screen it stays above the bottom toolbar  -- (215.0, 88.0)
+PASS ... fits the viewport height
+PASS Tool Strip size and names in Preferences / the Icon Size tab, saved with the other sizes
+PASS Actions card: one compact card - Apply Modifiers, Reset Axis, Origin x2, Symmetry, Mirror
+PASS ... the round gizmo buttons are off while the drawn UI is on
+PASS One click catcher for all of it (the invisible gizmo asks the same hit test)
+
+38/38 passed
+====================================================================== 
+ test_v02489_extendtip.py
+PASS A cylinder (26 faces): grabbed on the side, the end above is cut off (it was "not cut off" -> Separate Tube)
+PASS ... Extend works on the mesh itself: new rings, the end carried up the path, still closed  -- ('Extend: 2 steps, section 24 points', 1.5, 2.707106828689575)
+PASS A cylinder (386 faces): grabbed on the side, the end above is cut off (it was "not cut off" -> Separate Tube)
+PASS ... Extend works on the mesh itself: new rings, the end carried up the path, still closed  -- ('Extend: 2 steps, section 96 points', 1.5, 2.707106828689575)
+Info: Quad Remesh (low-poly part: its own edges kept): 386 > 5,205 polygons, 98 % quads, 137 hard edges marked in 2.4 s
+PASS A Quad Remeshed part: the end is cut off wherever it is grabbed  -- ({'FINISHED'}, 3)
+PASS ... and Extend works on it (closed)  -- Extend: 1 steps, section 68 points
+PASS An open sheet: still "not cut off" (nothing to carry - Separate Tube as before)
+
+7/7 passed
+====================================================================== 
+ test_v0249.py
+PASS live Mirror, original side: cut  -- ({'FINISHED'}, 'Cut: H')
+PASS live Mirror, original side: pocket on the base half at local x 2.2 .. 2.8  -- [2.2, 2.8]
+PASS live Mirror, original side: still one closed solid
+PASS live Mirror, mirrored side: cut  -- ({'FINISHED'}, 'Cut: H')
+PASS live Mirror, mirrored side: pocket on the base half at local x 2.2 .. 2.8  -- [2.2, 2.8]
+PASS live Mirror, mirrored side: still one closed solid
+PASS live Mirror, flipped: original now on the left: cut  -- ({'FINISHED'}, 'Cut: H')
+PASS live Mirror, flipped: original now on the left: pocket on the base half at local x 2.2 .. 2.8  -- [2.2, 2.8]
+PASS live Mirror, flipped: original now on the left: still one closed solid
+PASS live Mirror, flipped: mirrored copy now on the right: cut  -- ({'FINISHED'}, 'Cut: H')
+PASS live Mirror, flipped: mirrored copy now on the right: pocket on the base half at local x 2.2 .. 2.8  -- [2.2, 2.8]
+PASS live Mirror, flipped: mirrored copy now on the right: still one closed solid
+PASS pivot Mirror, mirrored side: cut at the reflected place  -- ({'FINISHED'}, 'Cut: P', [2.55, 3.05])
+PASS no Mirror, off the mesh: nothing changed  -- ({'CANCELLED'}, 'Auto Target: the shape does not cover any mesh; nothing was changed.')
+PASS no temporary meshes left  -- ['H', 'H.001', 'H.002', 'H.003', 'MCH_RampBackup_H', 'MCH_RampBackup_H.001', 'MCH_RampBackup_H.002', 'MCH_RampBackup_H.003', 'MCH_RampBackup_P', 'N', 'P']
+
+15/15 passed
+====================================================================== 
+ test_v02490.py
+PASS Tool menu at the bottom by default: the left strip and the bottom toolbar are off, the menu is on
+PASS Main menu: every tool once as a 6 : 4 tile with its name, a title per group
+PASS ... one band along the bottom, inside the viewport, centred
+PASS ... two rows on a wide screen  -- [19, 64]
+PASS ... a narrow screen: three rows, still inside
+PASS ... the toolbar's key letters on their tiles (Move D, Cut C, Boolean B)  -- {'B', 'D', 'C'}
+PASS ... the tool in use on blue, a long name says itself above the tile
+PASS Actions where the bottom toolbar was: Select first, then Apply Modifiers ... Mirror as big tiles
+PASS ... on top of the menu, centred
+PASS ... no floating actions card in this mode
+PASS A click on a menu tile hits that tool
+PASS ... a click on Select hits the Select button
+PASS Top bar centred in the viewport (the side panels start below it)  -- (355.0, 1290.0)
+PASS Side panel stays above the menu and the actions
+PASS Symmetry card goes above the menu + actions
+PASS Key legend: in the bottom left corner beside the main menu on a wide screen  -- (14.0, 14.0, 343.0, 204.0)
+PASS ... above the menu + actions when the menu leaves no room beside it; the Layers panel stays above it  -- ((14.0, 233.38095238095238, 343.0, 204.0), 447.3809523809524)
+PASS Layers panel on the left: groups first with their parts under them, then the loose parts  -- ['Arm_L', 'Hand_L', 'Shoulder_L', 'Backpack', 'Torso']
+PASS ... repetition helpers are not listed, the group says it mirrors
+PASS ... the selected part on blue
+PASS ... parts of a group indented
+PASS ... the left cards go right of it (Quick HUD, key legend)
+PASS Click a row: that part is selected and active
+PASS ... Shift adds to the selection
+PASS The eye hides the part
+PASS ... shown dimmed with the closed eye
+PASS ... a group eye hides all its parts
+PASS ... and shows them again
+PASS The arrow folds a group
+PASS Live Stack (0.24.82, open at first), Export and ZBrush Bridge under the list, the last two folded at first
+PASS ... open Export: format, what, options and the Export button with those settings
+PASS ... choosing FBX changes what Export writes
+PASS ... open the Bridge: Send to ZBrush, Import Back, Open Folder
+PASS ... drawing never makes the exchange folder
+PASS – folds the Layers panel to a small tab
+PASS ... and opens again
+PASS A short viewport: the Layers panel scrolls (the wheel over it moves it)
+PASS Top bar under Blender's see-through header rows (Region Overlap), not over them  -- (52.0, 1038.0)
+PASS ... no header over the viewport: no gap
+PASS Apply Modifiers: meshes already selected are applied at once (picking only when nothing is selected)
+Info: Mod_Part: applied 1 modifier(s) in order - Bevel
+PASS ... the selected mesh: its modifiers applied
+PASS UI Size in the Layers panel (folded): Viewport Panels, RMB Menu, Tool Menu, presets
+PASS Panel Opacity: only the card background follows it (Preferences / Layers panel > UI Size)
+PASS ... every card uses it (menus / bars / panels / cards, Quick HUD, key legend); buttons and bars do not
+PASS Quick HUD: not shown while the side panel shows the same settings (folded panel: the HUD may show)
+PASS Key legend: the card fits the key column + the widest text (a long text ran out of it)
+PASS Number bar: dragging across the whole bar = its whole range (the fill follows the mouse; Base Mesh Height)  -- (10.0, 5.000049999998737)
+PASS ... whole numbers too (the whole range over the bar)  -- 32
+PASS ... Shift: ten times finer
+PASS ... Line Width: the bar goes to 2 (was 0.5), its end = 2; a value past a bar (big scene) moves as fast as it is big  -- (1.9995847499802766, 93.0)
+PASS ... the drag keeps going at the viewport edge (the cursor wraps round) and uses the bar width
+PASS Preferences: Tool Menu Place (Bottom / Left) and Layers Panel
+PASS ... Left: the strip, the bottom toolbar and the actions card come back, no menu / dock / Layers panel
+
+53/53 passed
+====================================================================== 
+ test_v02490_lassobar.py
+PASS Every drawing tool (27): SHAPE, then LASSO / CORNERS right after it (the same place)
+PASS CIRCLE: its own options in the bar (circle_segments)  -- ['circle_segments']
+PASS ELLIPSE: its own options in the bar (circle_segments)  -- ['circle_segments']
+PASS CURVE_LASSO: its own options in the bar (curve_resolution)  -- ['curve_resolution']
+PASS STROKE: its own options in the bar (stroke_simplify, stroke_smooth, stroke_spacing)  -- ['stroke_simplify', 'stroke_smooth', 'stroke_spacing']
+PASS CUSTOM: its own options in the bar (custom_rotation, custom_size)  -- ['custom_rotation', 'custom_size']
+PASS Free Draw on Mask: + its brush radius
+PASS Lasso: Open Line + CORNERS Sharp / Round / Chamfer
+PASS ... Round: its Width and Segments join
+PASS ... a click on Chamfer: the corners chamfered (the segments go)
+PASS Rectangle: CORNERS too (no LASSO group)
+PASS Cut: GN EDGE and (GN Edge off) EDGE FINISH in the bar, before Ortho  -- ['Shape', 'Lasso', 'Corners', 'Draw', '', 'Target', 'Depth', '', 'GN Edge', 'Edge Finish', '']
+PASS GN Edge Bevel: Width and Segments; Edge Finish goes (it is skipped while GN Edge is on)
+PASS Edge Finish Bevel from the bar: Width, Segments, Profile, Clamp, Crisp
+PASS Split: GN EDGE (+ sides), SIDE A, SIDE B  -- ['Shape', 'Lasso', 'Corners', 'Draw', '', 'Target', 'Depth', '', 'GN Edge', 'Side A', 'Side B', '', '']
+PASS ... Side B Chamfer: its width
+PASS ... GN Edge on: its Split Sides choice, the per-side finishes go
+PASS Base Mesh: EDGE Flat / Chamfer / Bevel + sides, width, segments
+PASS ... Flat from the bar: the base mesh profile flat
+PASS Creature Base Mesh: no edge bevel group (Puff / Ridge / Pillow)
+PASS Box Hide / Plate: no edge group
+PASS Side panel (CUT): nothing that is in the top bar
+PASS Side panel (SPLIT): nothing that is in the top bar
+PASS Side panel (BASE): nothing that is in the top bar
+PASS Side panel (WRINKLE): nothing that is in the top bar
+PASS ... Split: no GN EDGE / per-side finish sections left with only their titles  -- ['ADVANCED', 'HELP', 'LASSO', 'PRESETS', 'SPLIT']
+PASS ... Cut: the GN Edge section stays for Ramp
+PASS ... Base Mesh keeps its own profile row (Flat / Bevel / Chamfer / Dome ...)  -- 5
+PASS Concept / Path / Silhouette Move: nothing in Blender's tool header (it was the whole settings row)  -- [True, True, True]
+PASS ... elsewhere (the sidebar's tool tab) still drawn
+PASS ... and the Mecha top bar for them: no lasso groups (0.24.79: their brush settings instead)
+PASS First time in Base Mesh: it starts with what you had (Rectangle, Round corners)
+PASS Back to Cut: Cut's own (Rectangle, Round, no Line)  -- ('RECT', 'ROUND', False)
+PASS Base Mesh again (through Concept Move): its own (Curve Lasso, Line on)
+PASS Saved in the file with the scene (each tool's set)  -- ['BASE', 'CUT']
+PASS ... read back after a reload (memory dropped): Cut's from the file  -- RECT
+PASS Preference off: one set for every tool (Base Mesh keeps the Circle)
+PASS The preference exists (Lasso Settings per Tool, on by default)
+
+38/38 passed
+====================================================================== 
+ test_v02491.py
+PASS Remesh by Points is the default (ZBrush point count), Voxel Size the other way
+Info: Voxel remesh: 8024 points (asked 8000) - high-poly topology, not quad retopology
+Info: Voxel remesh: 30,032 points (asked 30,000) - high-poly topology, not quad retopology
+Info: Voxel remesh: 8216 points (asked 8000) - high-poly topology, not quad retopology
+Info: Voxel remesh: 30,248 points (asked 30,000) - high-poly topology, not quad retopology
+Info: Voxel remesh: 7520 points (asked 8000) - high-poly topology, not quad retopology
+Info: Voxel remesh: 30,176 points (asked 30,000) - high-poly topology, not quad retopology
+PASS Voxel remesh lands near the asked point count (sphere / cube / long cylinder, 8,000 and 30,000: within 15 %)  -- [('sphere', 8000, 8024), ('sphere', 30000, 30032), ('cube', 8000, 8216), ('cube', 30000, 30248), ('long', 8000, 7520), ('long', 30000, 30176)]
+PASS Active / Total Points Count (as shown, modifiers included)  -- (1986, 1986)
+PASS Half / Double from the active mesh (like ZRemesher)  -- (993, 3972)
+PASS The Remesh panel: Points / Voxel Size, Target Points, Half / Same / Double, 'Now N points -> about M'
+PASS The Layers panel shows Active / Total Points
+PASS Big numbers with a thousands comma (20,000)
+PASS A points bar drags in big steps (not one point per 4 px)  -- 519900
+
+8/8 passed
+====================================================================== 
+ test_v02491_nav.py
+PASS Corner card (ZBrush style): a NAV row ZBrush | Blender under STYLE  -- ['STYLE', 'NAV', 'VIEW']
+PASS ... the card holds it (4 rows in MECHA LAB: + VIEW)
+PASS ZBrush navigation: the canvas / right-drag turn the view (as before)
+Info: View: Blender's own (middle mouse)
+PASS NAV Blender (from the card): kept in the preferences, the canvas no longer turns the view
+PASS ... the MECHA LAB Select tool gets the press again (the ZBrush canvas press does not run)
+PASS ... the ZBrush shelf's Move / Zoom3D / Rotate buttons still work (they turn the view on purpose)
+PASS ... a right-drag no longer turns the view (a right click opens the menu as before)
+PASS ... the ZBrush key legend says Middle mouse instead of the canvas drags  -- ['Middle mouse', 'rotate, Shift: move, Ctrl / wheel: zoom', 'Alt / Shift', 'Zsub / Smooth', 'Ctrl + drag model', 'MaskPen, Alt: unmask']
+PASS ... the ZBrush mouse: the canvas does not turn the view with NAV Blender
+PASS STYLE Blender: no NAV row (Blender's own anyway)
+PASS ZBrush navigation, Select tool: a click on the empty canvas deselects all (it did nothing)
+PASS ... Shift + click on the canvas keeps the selection
+PASS ... a drag past the drag threshold turns the view (Alt: move)
+PASS ZBrush select mode (Q): a click on another SubTool picks it - checked before "not a brush: pass through" (Alt + click did nothing in the select mode)
+PASS Path Move: METHOD (Extend v, Brush | Whole) and BRUSH (Size, Real Size, Hardness, Taper, Follow Turns, Back Mask, Shape) in the Mecha top bar  -- (['Method', 'Brush', '', ''], ['even_out', 'follow_view', 'keep_density', 'lock_size', 'mirror_x', 'path_area', 'path_back_mask', 'path_hardness', 'path_method', 'path_taper', 'path_turn', 'radius_px', 'shape'])
+PASS Silhouette Move: no method / area / back mask (always Extend, Whole)
+PASS Concept Move: Size, Hardness (Clay), Falloff, Strength, Shape, Mirror X, Generate, Follow View
+PASS ... Real Size on: the size in scene units
+PASS Side panel (CMOVE): the top bar's settings not repeated, the rest still there
+PASS Side panel (CPATH): the top bar's settings not repeated, the rest still there
+PASS Side panel (SMOVE): the top bar's settings not repeated, the rest still there
+
+21/21 passed
+====================================================================== 
+ test_v02492.py
+PASS Sculpt Mode: the ZBrush screen is on (only in the MECHA LAB tab: real on() checks the workspace)
+PASS ClayBuildup = Blender Clay Strips (Essentials brush)
+PASS ... shown by its ZBrush name
+Warning: Tool cannot be set with an empty space
+Warning: Tool cannot be set with an empty space
+Warning: Tool cannot be set with an empty space
+PASS Every ZBrush brush on the shelves opens its Blender brush  -- ['Clay', 'ClayBuildup', 'ClayTubes', 'DamStandard', 'Inflat', 'Layer', 'Move', 'Paint', 'SnakeHook', 'Standard']
+PASS B letters are unique (B S T = Standard, B C B = ClayBuildup, B D S = DamStandard, B M V = Move)
+PASS Each brush has its thumbnail
+PASS ZBrush feel: the first use gives pen pressure on size + intensity and a close spacing (once per file)
+PASS ... later changes are kept (not tuned again)
+PASS Alphas: the Mecha alphas come with the add-on
+PASS Pick an alpha: an image brush texture from the view (ZBrush alpha)  -- Alpha Alpha 01 Round
+PASS 0.24.63 It goes on the brush you sculpt with (the Essentials brush itself): a texture linked from a small file of its own - no brush copy, nothing new in your file
+PASS Flh / Rot / Invr (Invr = the inverted twin from the same file)
+PASS ... Invr again: back
+PASS ... another brush has no alpha
+PASS ... back on Standard its alpha is still there (ZBrush keeps it per brush)
+PASS The same alpha again: the same linked texture (no second file / library)
+PASS Alpha Off
+PASS ZBrush's own ZAlphas folder is offered only when ZBrush is installed
+PASS Draw Size = Radius (px), Z Intensity = Strength x 100  -- (80, 0.3499999940395355)
+PASS Focal Shift: harder (-) = flat top, softer (+) = pointy (0.24.61 a custom ZBrush curve, every value)  -- (1.0, 0.07179372012615204)
+PASS Zadd / Zsub = brush direction
+PASS LazyMouse / LazySmooth / LazyRadius = Stabilize Stroke
+PASS BackfaceMask = Front Faces Only
+PASS Stroke DragRect = Anchored
+PASS >X< = symmetry X
+PASS (R) RadialCount 6 round the symmetry axis
+PASS Divide x2: Multires, SDiv 2 / 2
+PASS SDiv slider = sculpt level
+PASS Del Higher: levels above the current one gone
+PASS Del Lower below the top level: says to go up first (Blender keeps the base)  -- Del Lower: go to the highest SDiv first (Blender keeps its base mesh)
+PASS Del Lower at the top: this level is the base (no Multires left)
+PASS DynaMesh by points (6,000 asked)  -- ('DynaMesh: 6216 points', 6216)
+Info: QuadriFlow: Remeshing completed
+PASS ZRemesher (Quadriflow) to Target Polygons Count 1.5 = 1,500  -- ('ZRemesher: 1,822 polygons', 1822)
+PASS Half: Target from the current polygons
+PASS Mirror flips the SubTool across X
+PASS Check Mesh reports  -- Check Mesh: clean
+PASS Fix Mesh runs
+PASS Split Masked without a mask: says so  -- Split: paint a mask first (Ctrl + drag on the model)
+PASS Split Masked: the masked part is a new SubTool  -- Split: Sphere_masked
+PASS Groups Split: one SubTool per polygroup  -- Groups Split: 1 new SubTool(s)
+PASS Auto Groups / Polygroup from mask / Mask By Cavity / Mirror And Weld / Extract use Blender sculpt operators
+PASS Close Holes fills the open border the split left  -- ('Close Holes', 0)
+PASS Duplicate: a new SubTool, sculpted
+PASS Delete: gone, another SubTool sculpted
+PASS Append / IMM Primitives: a new Sphere3D SubTool at the cursor  -- Append: Sphere3D
+PASS SubTool pick: sculpt another object
+PASS Decimate Current keeps ~30 % of the points  -- (617, 182)
+PASS MergeVisible: one SubTool  -- Merged 4 SubTools
+PASS Edit = Object / Sculpt Mode
+PASS Mouse: drag model = sculpt, canvas = rotate; Alt = Zsub / move; Shift = Smooth / snap
+PASS ... Ctrl = MaskPen / invert or mask lasso; Ctrl+Alt unmask; Ctrl+Shift = polygroup / show-hide
+PASS ... Ctrl mask stroke: Blender 5.2's brush switch for the stroke, 5.0 the Mask tool
+PASS ... strokes skip the canvas (ignore_background_click), so a canvas drag turns the view
+PASS ZBrush keys in the Sculpt keymap (Space, S, B, X, D, Ctrl+D, Ctrl+W, the mouse)
+PASS ... only in the MECHA LAB tab (every one polls on())
+PASS Shift while turning snaps to a square-on view
+PASS The ZBrush screen replaces the Mecha UI in Sculpt Mode
+00:02.810  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'he_width', 'subtype'
+00:02.810  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'he_width', 'subtype'
+00:02.810  bpy.rna          | WARNING current value '65536' matches no enum in 'FloatProperty', 'he_width', 'subtype'
+PASS ZBrush names everywhere (shelves, top, view, SubTool, brushes)
+PASS Cards stay inside the viewport
+PASS A brush tile click hits that brush
+PASS ... and picks it (Crease Sharp)
+PASS Z Intensity bar: across the bar = 0 -> 100
+PASS Orange accent on the ZBrush screen
+PASS Click catcher on in the ZBrush screen
+PASS S: the menu at the cursor with Draw Size under the mouse
+PASS B + C: only the C... brushes stay lit (ClayBuildup, Clay, ClayTubes)  -- ['Clay', 'ClayBuildup', 'ClayTubes', 'ClothDrag', 'ClothExpand', 'ClothFolds', 'ClothGrab', 'ClothInflate', 'ClothPinch', 'ClothPush', 'ClothRandom']
+PASS The alpha picker: Mecha / Folder... / Alpha Off and a thumbnail per alpha
+Info: Alpha Alpha 04 Soft Square
+PASS ... a click puts that alpha on the brush
+PASS The alpha shows on the shelf with Flh / Flv / Rot / Invr
+PASS Preferences: Control Style (ZBrush / Blender)
+PASS Corner card top right: MECHA LAB | ZBRUSH (ZBRUSH lit in Sculpt Mode), STYLE ZBrush | Blender
+PASS ... the ZBrush top shelf keeps clear of it  -- (2148.547368421053, 2338.0)
+PASS MECHA LAB: back to Object Mode
+PASS ZBRUSH: Sculpt Mode on the active mesh
+PASS Blender style: Blender sculpting, only the corner card (no ZBrush keys: on() is off)
+PASS ... no ZBrush canvas navigation either
+PASS ZBrush style: canvas navigation on in Object and Sculpt Mode (MECHA LAB tab)
+PASS Object Mode, Select / Move: the empty canvas turns the view (Alt move, Ctrl box select), objects still select / move
+PASS Right button: a click still opens the menu (moving after the release does not turn the view)
+PASS ... a right-drag turns the view in every Mecha tool and in Select / Move (ZBrush style)
+
+80/80 passed
+====================================================================== 
+ test_v02492_cloth_brush.py
+PASS 8 cloth brushes in the ZBrush brush table (all under B), four of them a shelf group, B letters all distinct
+PASS The bottom brush shelf with the cloth group still clears the key legend card at 1920 px wide  -- (422, 1076, 302)
+PASS The bottom brush shelf with the cloth group still clears the key legend card at 2560 px wide  -- (473, 1614, 453)
+PASS Every cloth brush activates (Blender Essentials) and is a CLOTH brush under its ZBrush name
+PASS A cloth brush keeps its size / strength (no pen pressure on them: pressure would restart the simulation)
+PASS Its settings are the brush's own: deform type, sim area, limit, mass, damping, softbody, pin, collision
+PASS The left shelf has a Cloth Brush box with those settings and the five Cloth Filter buttons
+PASS The bottom brush shelf draws the cloth group
+PASS The Cloth Filter operator exists (Gravity / Inflate / Expand / Pinch / Scale)
+PASS Every cloth brush has its icon (the Essentials preview)
+PASS Back to a normal brush: not a cloth brush
+
+11/11 passed
+====================================================================== 
+ test_v02492_cloth_drape.py
+PASS Settings: Cotton, Looseness 25, Shrink 0, Gravity 200, Stickiness 30, Keep 5, Gap 0.6 %, Pin Rim, 60 frames, Detail 1.5 %  -- ('COTTON', (25.0, 0.0, 200.0, 30.0, 5.0, 0.6000000238418579, 1.5), True, 60)
+PASS The outline becomes an even patch on the mesh under it (quads, the rim points first)  -- (3637, 3700, 408, 1.4786823372725966)
+PASS ... and it lies on the sphere (radius 1 within 1 %)
+PASS drape: the cloth stays outside the body (collider = the body points under the patch only), it moved, no NaN  -- {'points': 3637, 'collider': 1094, 'frames': 30, 'time': 0.5716492149999794, 'grid_cells': 83374, 'inside': 0}
+PASS ... the rim stayed sewn where it was drawn (within the gap)  -- 0.01920238610290074
+PASS ... in a second or two (30 frames, grid included)  -- 0.57
+PASS perform: a "Cloth Drape" object parented to the body, selected, the session ready (not running)  -- Cloth Drape on Sphere: 3,637 points over 1,094 body points (Space drape · Enter keep · Esc drop)
+PASS step: frames move the cloth object
+PASS restart with new sliders: back to the laid patch, frame 0
+PASS A second lasso while one cloth is live is refused (keep or drop it first)
+PASS Enter keeps the object, the session ends  -- Cloth Drape: kept "Cloth Drape" at frame 0 (3,637 points)
+PASS Esc drops the cloth object
+PASS Tool wiring: CDRAPE in the tool table (Cloth group, lasso shape), the cut engine dispatch + colour, the workspace tool with Space
+PASS Panel: Drape / Restart / Keep / Drop + every slider
+PASS body_for: the other selected mesh is the body
+PASS Drape This Mesh: the grid itself is the cloth on the sphere, its open edges pinned, a backup kept  -- Cloth Drape: "Piece" itself on Sphere - 1,681 points, 160 pinned, 6,050 body points (Space drape · Enter keep · Esc put back)
+PASS ... it drops onto the sphere and stays outside it (world space, the sphere is the collider)  -- (np.float64(0.2115881232501423), np.float64(1.0077471498594892))
+PASS Esc puts the mesh back as it was  -- Cloth Drape: the mesh put back
+PASS Enter keeps the changed mesh, the backup gone
+PASS The operator + the panel button exist
+PASS Lines as Tubes: over the drawn line the cloth rests higher than without it (a tube under it, about the tube radius)  -- (np.float64(0.01966766033995393), 335)
+PASS The Draw Lines operator + the Lines as Tubes toggle + the tube sliders are in the panel
+PASS Tool Presets save the Cloth Drape sliders (scene.mch_cdrape)
+
+23/23 passed
+====================================================================== 
+ test_v02492_wrinkle_lines.py
+PASS tube_field: 1 on the line, 0 beyond the tube radius, a round profile in between (no end fade)  -- (np.float64(1.0), np.float64(0.0))
+PASS End fade: full in the middle, 0 at the ends, part way near an end (25 % of the length)  -- (np.float64(1.0), np.float64(2.6645351068991477e-15), np.float64(0.5000000335276122))
+PASS A closed line has no ends (the ring is full all round) and the line strength scales the tube  -- (np.float64(0.49261693329531264), np.float64(0.5))
+PASS Several lines: the highest tube wins at every point
+PASS No lines / no points: zeros
+PASS Settings (the D look): Wrinkle Size 5 % (tube = 1/3 of it), Fold 100, Lift 0, End Fade 20, Shrink 0, Looseness 20, Gravity 100, Keep 47, Cotton, boundary pinned
+PASS Tubes: radius = size x 5 % / 3, the surface lifted up to about one radius along the lines, nowhere pushed in  -- (0.05527707983925666, np.float64(0.05527707983925666), np.float64(0.5552770798392567))
+PASS Tubes: most of the sleeve untouched (the tubes are thin)  -- 0.03817654639175258
+PASS Fold Strength = the tube height (50 % -> half), the field reused (no recompute)
+PASS Crease mode: a groove (the heights negative)
+PASS Cloth: a copy a little above the tubes, rest lengths 20 % longer (Looseness), the two open rings pinned  -- (1.2, np.int64(128))
+PASS After 20 frames the cloth stays outside the collider grid (never deeper than a sliver under the margin)  -- (np.float32(0.011731395), 0.013819269959814164, 33545)
+PASS The pinned rings did not move; the rest moved and folded (points moved, spread of radii)  -- 0.23908601022595297
+PASS Gravity is world down in local space (the sleeve upright: -Z)
+PASS 20 frames on a 6k-point sleeve under 4 s (the collider grid built in it)  -- (0.78, 0.27)
+PASS Nothing is NaN / exploded  -- 1.6009883685013473
+PASS The cloth sticks (friction): it did not slide down the sleeve (the loose fabric hangs a little under the bottom ring at most)  -- -1.6009883685013473
+PASS simulate writes the result into the mesh (same point count), reports time / tubes lifted  -- {'levels': 0, 'verts': 6208, 'radius': 0.05527707983925666, 'frames': 10, 'time': 0.6561393189999762, 'lifted': 223, 'proxy': 0, 'grid_cells': 33545, 'grid_time': 0.19255341699999917}
+PASS start = stage 1: the tubes shown in the mesh, a backup kept, no cloth yet
+PASS A tube slider moved while the tubes are shown: the shape updates live
+PASS Space from the tubes = the cloth stage; frames step until done
+PASS Enter keeps the frame; the backup is dropped; nothing else changes  -- Wrinkle Lines: kept frame 8 (6,208 points)
+PASS Esc goes back to the mesh before the tubes
+PASS Enter while the tubes are shown keeps just the tubes  -- Wrinkle Lines: kept the tubes (6,208 points)
+PASS status text names the stage
+PASS Panel: Tubes / Simulate / Keep / Back, the tube sliders (size, fold, fade) and the cloth sliders (shrink, gravity, keep)
+PASS Tool keys: Space simulate, X remove line, Shift / Ctrl click points
+PASS Tube Lift 100 %: a full pipe on the surface (height up to 2 radii; a wall at its sides, so most of the band is at least 1 radius up)  -- (np.float64(0.11633438159405085), 0.0581722486893935)
+PASS The ZBrush left shelf has a Wrinkle Lines box that opens the tool (back in MECHA LAB) + the main sliders
+PASS GridCollider: the signed distance to a sphere within a cell (outside +, inside -)  -- (array([ 0.05012051, -0.04985733,  0.00723441,  0.02776489], dtype=float32), array([ 0.05      , -0.05      ,  0.00710678,  0.03      ]))
+PASS Far from the surface (outside the band / the grid): no distance, no push
+PASS push: points inside come out to the margin along the normal, touching ones are flagged  -- (array([0.75      , 0.71985717, 0.71987234, 0.73      ]), array([False,  True,  True,  True]))
+PASS A 60k-point mesh over Sim Points runs on a light copy (about 15k points) and the result lands on the full mesh  -- {'levels': 0, 'verts': 60200, 'radius': 0.05527707983925666, 'frames': 10, 'time': 4.703466752999702, 'lifted': 2240, 'proxy': 15150, 'grid_cells': 64415, 'grid_time': 0.931865081000069}
+PASS ... in a few seconds (10 frames, the map + grid included)  -- 4.7
+PASS Panel: Sim Points next to Frames
+PASS simulate with no lines: no tubes, the sculpted mesh is the collider, the cloth still drops and changes  -- {'levels': 0, 'verts': 6208, 'radius': 0.05608642165352176, 'frames': 10, 'time': 0.4110946700002387, 'lifted': 0, 'proxy': 0, 'grid_cells': 34304, 'grid_time': 0.16414556399968205}
+PASS start with no lines skips the tube stage: straight into the cloth frames (backup kept), Esc puts it back  -- (None, 'run')
+PASS ... and after Esc the mesh is as before, no session
+PASS Tool Presets know the Wrinkle Lines settings (scene.mch_wlines): save your own fabric presets
+
+39/39 passed
+====================================================================== 
+ test_v02493.py
+PASS Points in Mil like ZBrush from a million (1.578 Mil, 2.5 Mil, 1 Mil), commas below  -- ['1.578 Mil', '2.5 Mil', '1 Mil', '250,000', '999']
+PASS The DynaMesh points bar reads 2.5 Mil  -- Points  2.5 Mil
+PASS A new SubTool: DynaMesh off
+PASS ... Ctrl + drag on empty canvas with no mask and DynaMesh off does nothing
+PASS DynaMesh: remeshed and the button stays lit (DynaMesh on)  -- DynaMesh: 4088 points
+PASS ... Ctrl + drag on empty canvas, no mask: DynaMesh again
+PASS ... something masked: Ctrl + drag on empty canvas clears the mask (no remesh)
+PASS DynaMesh again (the Ctrl drag update) keeps it on  -- DynaMesh: 4136 points
+PASS Pressing the lit DynaMesh turns it off (ZBrush)
+PASS Ctrl let go on the canvas: click inverts, lasso round the model masks (Alt unmasks), empty: clear / DynaMesh
+PASS DynaMesh in a window runs in Sculpt Mode (its own Ctrl+Z step), Object Mode only without a window
+PASS The DynaMesh button is drawn lit while on (depress)
+PASS A lasso round the model holds points (it masks)
+PASS A lasso on empty canvas holds none (clear mask / DynaMesh)
+PASS ... a big lasso round everything holds them too
+PASS The press: Ctrl on the canvas draws our own lasso (orange) and decides when let go
+PASS Alt + click another SubTool picks it (ZBrush)
+PASS Mask By Cavity: Intensity / Blur / Inv (ridges) go to Blender Mask From Cavity
+PASS CavityMask (brush auto masking) = Blender Auto-Masking Cavity
+PASS ... off again
+PASS S menu: the mouse on it keeps it open
+PASS ... a little past its edge still open
+PASS ... out of the card: it closes
+PASS The hover tracker closes it on every mouse move
+PASS Stroke picker: a tile with its icon per stroke (FreeHand, Dots, DragDot, DragRect, Spray, LineII, Curve)
+PASS ... a click picks it (Blender Anchored) and the picker closes
+PASS Material picker: a thumbnail per MatCap  -- (27, 27)
+PASS ... a click puts that MatCap on and closes
+PASS Texture picker: Mecha / Folder... / Texture Off, Rgb Intensity and a thumbnail per texture
+Info: Texture Hazard Stripes: drag on the model with Paint to stamp it
+PASS ... a click picks the texture and the Paint brush (it stamps)
+PASS Shelf tiles: Stroke / Material / Texture open the pickers  -- ['Alpha Off', 'Basic Side', 'ClipCurve', 'Dots', 'Hazard Stripes', 'Paint', 'TrimCurve', 'TrimLasso']
+PASS The brush tray scrolls on a short viewport (stays above the brush shelf, scroll bar)
+PASS ... the mouse wheel over it scrolls it (its own scroll)
+PASS ... down 48 px
+PASS Top shelf Mat opens the Material picker too
+PASS Texture pixels read once (sRGB, with alpha)
+PASS Stamp: the texture lands inside the DragRect (yellow and black stripes)  -- (900, np.float64(1.0))
+PASS ... outside it the colour stays (white)
+PASS ... a new colour layer was made (Color, white)
+PASS The mask protects (masked half stays white, the other half takes the stamp)
+PASS Only points facing the view take it (from below: nothing)
+PASS Symmetry X stamps the mirror side too
+PASS Rgb Intensity 50: half way to the texture
+PASS DragRect corners: half width 50, turned 90 deg, image aspect kept  -- [(125.0, 50.0), (125.0, 150.0), (75.0, 150.0), (75.0, 50.0)]
+PASS A face corner colour layer takes the stamp too
+PASS One Ctrl+Z takes a stamp back (in a window: Blender colour filter at zero strength stores the colours)
+PASS Paint + Texture: a press on the model starts the stamp (DragRect), elsewhere the brush as before
+PASS The stamp: drag = size, direction = turn, a click = Draw Size; preview of the texture while dragging
+PASS Mecha textures come with the add-on (hazard stripes, camo, carbon, decals ...)
+PASS Texture Off: back to the normal Paint stroke
+
+50/50 passed
+====================================================================== 
+ test_v02494.py
+PASS High Poly Mode is a preference (off at first) and a HiPoly button on the view shelf
+PASS Off: nothing changes
+PASS On in the ZBrush screen: Delay Viewport Updates, wireframe / stats / cavity / X-Ray off; 0.24.76 Deform Only left alone (it hid Smooth by Angle: flat parts turned smooth)
+PASS ... applied once (no second change while it stays on)
+PASS Leaving the ZBrush screen puts everything back as it was
+PASS Turning it off puts everything back too
+PASS What it changed is kept on the screen (not in the undo history), so a saved file is put back too
+PASS Two windows on one scene: the sculpt options stay light until the last one leaves, then go back
+PASS A watcher keeps it right every 0.4 s (mode / tab / style changes)
+PASS Blender Preferences are never changed (only named)
+PASS It names what weighs on the SubTool (shape keys, modifiers ...)  -- ['1 shape key(s): sculpting with them is slow', 'modifiers on: Smooth']
+PASS High Poly Mode on: the SubTool card says so
+PASS Every Focal Shift value has its own curve (custom), read back as set
+PASS Focal Shift 0: a soft bell (1 at the centre, 0.5 half way, 0 at the edge)  -- [1.0, 0.8437501788139343, 0.5, 0.15625008940696716, -3.899913281202316e-09]
+PASS ... minus: a flat top (still 1 half way at -100) with a firm edge  -- [1.0, 1.0, 1.0, 1.0, 8.615983233539737e-07]
+PASS ... plus: pointier (less half way the higher it goes)  -- (0.125, 0.03125)
+PASS The curve follows zb_falloff (ZBrush profile) closely
+PASS LazyStep with LazyMouse off: kept for later, the spacing stays
+PASS LazyMouse on: dots LazyStep apart (0.6 = 60 % of the Draw Size) - stitches / rivets with an alpha
+PASS ... LazyStep 1: a dot every Draw Size
+PASS LazyMouse off: the spacing it had
+PASS The alpha is projected from the view (ZBrush); 0.24.81 not drawn in the brush circle (a dark blot) unless Preferences > Alpha in Brush Circle
+PASS 0.24.65 The alpha turns with the stroke (ZBrush: a vertical alpha follows a sideways line - Blender Rake)
+PASS ... Directional off: it stays fixed on screen
+PASS ... remembered with the alpha (off stays off when it comes back)
+PASS ... a Directional switch under Flh / Flv / Rot / Invr
+PASS Paint brush + alpha: on the brush itself at once (a linked texture; no brush switch to wait for)  -- Alpha Alpha 05 Ring
+PASS No "(ZB)" brush copies and no retry timers any more
+PASS Shift+D = Duplicate (asked: SDiv seldom used), D = SDiv up
+PASS G does not leave the ZBrush screen (Blender style / outside the tab it still goes back to Select / Move)
+PASS The key card says Shift+D = Duplicate
+PASS Right drag turns the view anywhere on the ZBrush screen, over the model too (pen side button), Alt: move; a right click still opens the menu
+PASS The key card says so
+PASS Version 0.24.92
+
+34/34 passed
+====================================================================== 
+ test_v02495_radial.py
+PASS Count 1 / 0 have no step, a full ring of 4 is a quarter turn, NaN arc gives a finite step
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+PASS Count is clamped to 1 .. 2048 by the property  -- (1, 2048)
+PASS A normal ring is safe to realize and to cut
+PASS NaN Radius is refused by the realize check (the property itself accepts NaN)  -- Radial values are not numbers (NaN / inf): re-enter Radius, Size and angles
+PASS A Size of 1e25 is refused as too large  -- Radial array is too large (over 1,000 km): lower Radius, Size or Z Offset
+Info: Radial Array confirmed. Original source remains available (possibly hidden).
+PASS Zero Radius still bakes (all copies at the centre)  -- ({'FINISHED'}, '', 64)
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+PASS Dense ring: 24 teeth are fine live, 192 pause the live cut but still apply, 2048 are refused  -- {24: ('', ''), 192: ('Exact Boolean too heavy (many overlapping cutters): lower Count or Size', ''), 2048: ('Exact Boolean too heavy (many overlapping cutters): lower Count or Size', 'Exact Boolean too heavy (many overlapping cutters): lower Count or Size')}
+Info: Radial Array confirmed. Original source remains available (possibly hidden).
+PASS Count 2048 of a small cube still bakes (no Boolean: instances realize cheaply)  -- ({'FINISHED'}, '')
+PASS The bake limit follows this computer's memory (about a third of it, at least 5 million points)
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+PASS Too many realized points (2048 x 3010) are refused before baking  -- Too many points to realize (6,164,480, limit 5,000,000): lower Count
+Error: Radial bake: Too many points to realize (6,164,480, limit 5,000,000): lower Count
+PASS Confirm refuses with a clear message and keeps the live ring  -- Error: Radial bake: Too many points to realize (6,164,480, limit 5,000,000): lower Count
+
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+PASS An emptied ring source is refused  -- Radial source mesh is empty
+Error: Radial bake: Radial source mesh is empty
+PASS Confirm on an empty ring is refused, not baked to nothing  -- Error: Radial bake: Radial source mesh is empty
+
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+Info: Radial Boolean linked. Adjust Count/Radius; disable preview for fast edits
+PASS Link at 24 teeth: live cut on (realized cutters, Boolean shown)  -- ({'FINISHED'}, '')
+PASS Over the live budget the cut pauses (instances, Boolean hidden) and the panel says why  -- ['LIVE: adjust without baking', 'Ring rotation (whole array)', 'Copy rotation (each copy, own space)', 'RADIAL BOOLEAN | Tire Tread Cut', 'Linked: Tire', 'OFF: fast instances; ON: real cut', 'Preview paused: Exact Boolean too heavy (many overlapping cutters): lower Count or Size', 'Source object remains preserved']
+PASS Back under the budget the live cut resumes by itself
+PASS NaN Radius pauses the live cut
+Error: Radial Boolean apply: Radial values are not numbers (NaN / inf): re-enter Radius, Size and angles
+PASS Apply with NaN values is refused; ring and target untouched  -- Error: Radial Boolean apply: Radial values are not numbers (NaN / inf): re-enter Radius, Size and angles
+
+Error: Radial Boolean apply: Exact Boolean too heavy (many overlapping cutters): lower Count or Size
+PASS Apply over the memory budget is refused before evaluating  -- Error: Radial Boolean apply: Exact Boolean too heavy (many overlapping cutters): lower Count or Size
+
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+Info: Radial Boolean linked. Adjust Count/Radius; disable preview for fast edits
+Info: Radial Boolean applied to target; source mesh preserved
+PASS Apply still realizes the cutters when only the live preview is paused  -- ({'FINISHED'}, '', 1.5033753090431483, 1.797952407700638)
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+Warning: Radial Boolean linked; live preview paused (Exact Boolean too heavy (many overlapping cutters): lower Count or Size). Apply still works
+PASS Link of a ring over the live budget links it with the live preview paused  -- ({'FINISHED'}, '')
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+Info: Radial Array confirmed. Original source remains available (possibly hidden).
+PASS Confirm after the node group was deleted rebuilds it and bakes the full ring (was an AttributeError)  -- ({'FINISHED'}, '')
+PASS No orphan radial node group is left
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+PASS Editing a ring that lost a node rebuilds it (was a KeyError on every edit)
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+Info: Radial Array confirmed. Original source remains available (possibly hidden).
+PASS Confirm after the Realize node was deleted rebuilds the group instead of baking an empty mesh  -- ({'FINISHED'}, '', 64)
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+Info: Radial Boolean linked. Adjust Count/Radius; disable preview for fast edits
+Info: Radial Boolean applied to target; source mesh preserved
+PASS Boolean apply after the node group was deleted cuts all 8 teeth and shows the source again (was: one cut, then an error with the ring already gone)  -- ({'FINISHED'}, '', 1.697453482062492, 1.797952407700638, False)
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+PASS Without the GN modifier: no rebuild, edits are harmless, Confirm is unavailable  -- Operator bpy.ops.mch.radial_bake.poll() failed, context is incorrect
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+PASS Cancel with the source deleted from the scene finishes cleanly (was a RuntimeError after the ring was gone)  -- ({'FINISHED'}, '')
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+PASS Cancel with the source removed entirely  -- ({'FINISHED'}, '')
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+PASS Cancel finds a renamed source, shows and selects it again  -- ({'FINISHED'}, '')
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+Info: Radial Boolean linked. Adjust Count/Radius; disable preview for fast edits
+Info: Radial Boolean applied to target; source mesh preserved
+PASS Boolean apply with the source deleted from the scene  -- ({'FINISHED'}, '')
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+Error: Radial Boolean: "B_Radial" is a live Radial Array: Confirm or Cancel it first
+PASS A live Radial Array cannot be the Boolean target (dependency cycle)  -- Error: Radial Boolean: "B_Radial" is a live Radial Array: Confirm or Cancel it first
+
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+Error: Radial Boolean: A modifier on the ring already uses "Tire" (dependency cycle)
+PASS A target already used by a modifier on the ring is refused (dependency cycle)  -- Error: Radial Boolean: A modifier on the ring already uses "Tire" (dependency cycle)
+
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+Info: Radial Boolean linked. Adjust Count/Radius; disable preview for fast edits
+Error: Radial Boolean apply: "Tire" is in Edit Mode: switch it to Object Mode first
+PASS Boolean apply while the target is in Edit Mode is refused before evaluating  -- Error: Radial Boolean apply: "Tire" is in Edit Mode: switch it to Object Mode first
+
+PASS ... and the target mesh is unchanged
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+Info: Saved copy as "radial_lib.blend"
+Error: Radial Boolean: "Tooth_Radial" is linked from a library; make it local first
+Error: Radial bake: "Tooth_Radial" is linked from a library; make it local first
+Error: Cancel Radial Array: "Tooth_Radial" is linked from a library; make it local first
+PASS A ring linked from a library: Link / Confirm / Cancel refuse with a clear message  -- [({'CANCELLED'}, 'Error: Radial Boolean: "Tooth_Radial" is linked from a library; make it local first\n'), ({'CANCELLED'}, 'Error: Radial bake: "Tooth_Radial" is linked from a library; make it local first\n'), ({'CANCELLED'}, 'Error: Cancel Radial Array: "Tooth_Radial" is linked from a library; make it local first\n')]
+Info: Saved copy as "tire_lib.blend"
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+Error: Radial Boolean: "Tire" is linked from a library; make it local first
+PASS A linked target is refused (its mesh would change without saving)  -- Error: Radial Boolean: "Tire" is linked from a library; make it local first
+
+Info: Saved copy as "tooth_lib.blend"
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+PASS A linked source still works: Create (snapshot) and Cancel, the library object is not written  -- ('', '')
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+Info: Radial Array confirmed. Original source remains available (possibly hidden).
+PASS Confirm twice: the second is unavailable, the baked mesh is unchanged  -- ('Operator bpy.ops.mch.radial_bake.poll() failed, context is incorrect', 64)
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+Info: Radial Boolean linked. Adjust Count/Radius; disable preview for fast edits
+Info: Radial Boolean applied to target; source mesh preserved
+PASS Boolean apply twice: the second is unavailable (ring gone), the target is unchanged  -- Operator bpy.ops.mch.radial_boolean_apply.poll() failed, context is incorrect
+PASS No bpy ID is kept in module globals or operator classes
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+Info: Radial Boolean linked. Adjust Count/Radius; disable preview for fast edits
+PASS Size 1e25 with the live cut on pauses it before the depsgraph runs
+PASS ... and the depsgraph update survives (bpy 5.2.3 segfaulted here)
+
+43/43 passed
+====================================================================== 
+ test_v02496.py
+PASS Ctrl+Z: the new part is gone, the settings changed after the last step stay (ZBrush and Mecha tools)  -- (0, 5555, 0.029999999329447746)
+PASS Ctrl+Shift+Z: the part is back, the settings still yours
+PASS ... sculpt settings too (Draw Size / brush size, symmetry)  -- (90,)
+PASS Settings are no undo step of their own: scene tool settings / brush / view = settings, a live part = model
+PASS ... a tool group editing a live part is not a setting
+PASS The drawn UI skips the undo step for a setting, Blender-like undo for operators
+PASS ZBrush shelf: a change to the model is an undo step, a setting / view / tool switch is not
+PASS ZBrush red draw circle (Zadd and Zsub)
+PASS ... a colour you set later is kept
+PASS Accu off at first (ZBrush): a stroke does not pile up on itself
+PASS Accu on = Blender Accumulate
+PASS Pen pressure: ZBrush curve at first (a light touch gives a little less)  -- 0.4061259925365448
+PASS ... Firm: strong at a light touch
+PASS ... Linear = Blender
+PASS Accu / Pressure are on the left shelf (Stroke)
+PASS The alpha is remembered for the brush (with Flh / Rot)
+PASS ... picking the brush again brings it back, flips and turn too
+PASS ... and before a stroke (after a reopen / undo)
+PASS ... and after a file is opened (a moment later)
+PASS Alpha Off forgets it
+PASS Old brush copies in the file: the alpha picker offers to clean them
+PASS ... Clean removes them and the alpha textures / images only they used  -- Removed 1 old brush copies
+PASS DynaMesh with a mask: remeshed, the masked part is its own polygroup, the mask is cleared (ZBrush)  -- ('DynaMesh: 3104 points', {1, 2})
+PASS ... the mesh keeps your Preserve Attributes setting as it was
+PASS Pen side button: a small wobble while pressed is still a click (menu), not a turn of the view
+PASS Drawing tools: a pen repeating the press does not count as the double right-click that leaves the tool
+PASS Mecha Menu: the pen repeating its opening press does not close it at once
+
+27/27 passed
+====================================================================== 
+ test_v02496_shell.py
+Info: Armor Shell: Body_Shell, 6,576 faces (Gap / Thickness / Smooth / Detail in the panel; cut it with Cut / Split)
+PASS Extract Whole Surface: a new object Body_Shell (active, selected) with the live shell modifier last  -- ({'FINISHED'}, 'Body_Shell')
+PASS ... the part itself unchanged (its own mesh, not edited)
+PASS ... Gap 1 % / Thickness 2 % of the part's size by default  -- (0.03200000151991844, 0.06400000303983688)
+PASS ... one closed solid (no open / 3-face edges), Fewer Faces on: light to cut (under 30k faces)  -- (6576, 0)
+PASS ... the inside Gap off the part, the outside Gap + Thickness (within half a voxel; Smooth only moves it out)  -- (0.0272, 0.0316, 0.0918, 0.0954, 0.02)
+PASS ... its faces point out of the shell's material (a positive volume, about area x thickness)  -- 1.2774472014861535
+PASS Gap slider: the shell moves out at once  -- (np.float64(0.09944169223308563), np.float64(0.16349487006664276))
+PASS Thickness slider: thicker outward, the inside stays  -- (np.float64(0.09944169223308563), np.float64(0.24939481168985367))
+PASS Smooth slider: hollows filled (the shell lifts off the waist) but never closer than the Gap  -- (np.float64(0.10001257061958313), np.float64(0.1227872297167778), np.float64(0.09581220895051956))
+PASS Detail slider: finer (more faces)  -- (6245, 10771)
+PASS Fewer Faces off: even small faces everywhere (many more), still closed and as close to the Gap  -- (6576, 151652, np.float64(0.03200007230043411))
+PASS ... a shell under 3 voxels thick keeps even faces (adaptive surfaces could touch there)  -- {'Voxel': 0.02, 'Gap': 0.032, 'Outer': 0.062, 'Band': 6, 'Smooth': 4, 'Adaptivity': 0.0}
+Info: Armor Shell: updated from Body
+PASS Update from Part (the part changed): the shell wraps the new shape, the sliders kept  -- ({'FINISHED'}, np.float64(0.031697724014520645))
+Info: Armor Shell: Scaled_Shell, 6,576 faces (Gap / Thickness / Smooth / Detail in the panel; cut it with Cut / Split)
+PASS A part scaled x2 (not applied): defaults from its real size, distances in scene units  -- (0.06400000303983688, np.float64(0.06314850598573685), np.float64(0.19088608026504517), 0.04000000059604645)
+Info: Armor Shell applied: 6,576 faces
+PASS Apply Shell: a plain mesh (no modifier, no longer live), the same faces, closed  -- ({'FINISHED'}, 6576, 6576)
+PASS Split on a live shell: cut as the shell (made real first), two closed halves - not the copy of the part under the modifier  -- Split: Body_Shell | live primitive baked first: Body_Shell
+PASS ... the part inside is not cut (only the active shell)
+PASS ... the same bake runs for every tool that bakes a live primitive first (Cut / Split / Boolean / Base Mesh cutters)
+PASS ... and Mesh Tools (Remesh / Decimate / Quad Remesh ... on the shell, not its base)
+Info: Armor Shell: Body_Shell, 6,576 faces (Gap / Thickness / Smooth / Detail in the panel; cut it with Cut / Split)
+PASS Sculpt Mode on a live shell (the timer): made real and back in Sculpt Mode (the brush works on the shell)  -- ('SCULPT', 6576, 6576)
+Info: Armor Shell: Body_Shell.001, 6,576 faces (Gap / Thickness / Smooth / Detail in the panel; cut it with Cut / Split)
+PASS ... Edit Mode too  -- EDIT
+PASS Extract on a shell: not offered (a shell of a live shell)
+Warning: Armor Shell: nothing came out - "Plane" has no closed volume to wrap (Fix Mesh / Remesh it first)
+PASS A part with nothing to wrap: Cancelled with a warning, no empty object left behind  -- {'CANCELLED'}
+PASS ZBrush Armor Shell: a new SubTool Sub_Shell, made real (no modifier), still sculpting the old SubTool  -- Armor Shell: Sub_Shell (149,892 faces) - cut it into plates
+PASS ... Thick 0.05 = its thickness (outside at Gap + 0.05)  -- 0.08200005441904068
+PASS ... a save point first (a heavy step, like Extract)
+PASS Face Extract panel: the Armor Shell box on top (Extract Whole Surface, or the shell's sliders)
+PASS ... in the drawn side panel (Face Extract tool): Extract Whole Surface  -- ['mch.shell_extract', 'mch.face_extract', 'mch.face_extract']
+Info: Armor Shell: Sub_Shell.001, 6,576 faces (Gap / Thickness / Smooth / Detail in the panel; cut it with Cut / Split)
+PASS ... a live shell active: Gap / Thickness / Smooth / Detail, Update from Part, Apply Shell  -- (['detail', 'gap', 'light', 'smooth', 'thickness'], ['mch.shell_update', 'mch.shell_apply', 'mch.face_extract', 'mch.face_extract'])
+PASS ZBrush SubTool card: Extract | Armor Shell row  -- ['ALL_LOW', 'ALL_HIGH', 'DUPLICATE', 'DELETE', 'SPLIT_HIDDEN', 'GROUPS_SPLIT', 'EXTRACT', 'SHELL']
+PASS ZBrush N panel: Shell next to Extract
+
+31/31 passed
+====================================================================== 
+ test_v02497.py
+PASS Tool Search lists every Mecha tool by name
+PASS Ctrl+F = Tool Search (Object Mode), and a Search tile with the actions
+Info: Armor Plate
+PASS Picking a tool in the search switches to it  -- PLATE
+PASS The tool's settings group is found (Armor Plate = scene.mch_plate)
+PASS Save: the tool's settings under your name, in the add-on's user folder (not in the .blend)  -- Preset "Test Thick" saved
+PASS Load: the settings come back  -- (0.009999999776482582, 0.009999999776482582, 'Preset "Test Thick"')
+PASS A tool without settings says so
+PASS Delete
+PASS The side panel has a folded Presets section for the tool
+PASS Presets load is an undo step (it may change a live part), Save / Delete only touch your preset file
+
+10/10 passed
+====================================================================== 
+ test_v02497_groupdup.py
+Info: Duplicated 1 group(s)
+PASS Shift+D on a group handle: a new group (handle, its own collection), the handle selected and active  -- ({'FINISHED'}, 'Outer.001')
+PASS ... every part copied (4 cubes), each its own mesh, at the same place  -- 4
+PASS ... the nested group copied too (its own handle and collection under the new one)
+PASS ... the parts follow the new handle, not the old one
+PASS ... Repetition (Mirror X) set up again on the copy
+PASS ... the old group untouched
+PASS Move the new handle: its parts move, the old group's do not
+Info: Duplicated 1 group(s)
+PASS Alt+D on a group: the copies share the meshes
+PASS Shift+D on a plain object: one copy (as before)
+Info: Duplicated 1 group(s) + 1 object(s)
+PASS ... a group and an object together: the group as a whole + the object, all the copies selected
+PASS ... a part picked inside a group: that part alone, still in the group
+Info: Outer: origin to the middle of its parts
+PASS Group > Origin to Geometry: the handle at the middle of its parts, the parts where they were  -- ({'FINISHED'}, Vector((11.5, 1.0, 0.0)), Vector((11.5, 1.0, 0.0)))
+PASS ... in the Groups sidebar card (Duplicate / Origin to Geometry) and the Mecha Menu (Group Origin)
+PASS Shift+D and Alt+D (Object Mode) run mch.duplicate  -- [('mch.duplicate', 1, 0), ('mch.duplicate', 0, 1)]
+PASS ... Mecha Menu / Actions card Duplicate too
+PASS Outside MECHA LAB too (the Mecha Menu / Actions card call it there): a plain object gets Blender's duplicate + grab through it
+PASS ... a group handle anywhere: the Mecha duplicate
+PASS ... not in Edit mode (Blender's own Shift+D there)
+
+18/18 passed
+====================================================================== 
+ test_v02498.py
+PASS The engine for this system loads (Linux x64 here; Windows x64 DLL ships too)  -- ('mdecim_linux_x64.so', ['mdecim_win_x64.dll', 'mdecim_linux_x64.so'])
+PASS The Windows engine is there: a PE DLL exporting mdecim_run / mdecim_version, only KERNEL32 + msvcrt  -- 74752
+PASS Its source and build script are in tools_dev/native
+  327,680 triangles -> 5 %: engine 0.74 s (4 threads), Blender 3.92 s; mean error 0.000249 / 0.000245
+PASS 5 % of a 327,680-triangle mesh: about that many polygons  -- Decimate: 327,680 > 16,384 polygons in 0.7 s (4 threads)
+PASS ... faster than Blender's Decimate (same polygon count)  -- (0.7366825959998096, 3.9172624630000428)
+PASS ... about the same error as Blender (within 15 %)  -- (0.00024857469367583465, 0.0002448586308763581)
+PASS ... the closed mesh stays closed (every edge on 2 faces)
+PASS ... the message says how long and how many threads  -- Decimate: 327,680 > 16,384 polygons in 0.7 s (4 threads)
+PASS 327,680 triangles to 300 in one go on 4 threads: the shape holds (each thread's block was taken almost to nothing and the result lost up to a third of its volume)  -- (300, 0.9938215720024581)
+PASS Even spacing: edges of one length on flat parts (spread and longest edge both clearly smaller), the box keeps its shape  -- {0.0: (0.294, 2.35, 0.0), 0.1: (0.219, 1.96, 0.0)}
+PASS Decimate changes only this SubTool: an Alt+D twin keeps the old mesh  -- (5120, 1536)
+PASS A failure halfway leaves the mesh as it was (nothing cleared first)  -- (True, 1536, 1536)
+PASS Even Tris: far fewer thin triangles (nicer topology)  -- (0.0146484375, 0.0048828125)
+PASS Allow Quads: pairs of triangles become quads
+PASS Keep Mask: the masked half keeps clearly more points  -- (729, 289, 'Decimate: 20,480 > 2,048 polygons in 0.1 s (4 threads)')
+PASS ... and stays masked (the mask comes along)
+PASS Polygroups come along (each polygon keeps its group)
+PASS Keep Groups: the polygroup border stays where it was  -- 0.00784472525119781
+PASS Materials come along
+PASS Colours come along  -- (0, 788, [], [])
+PASS The UV map is still there
+PASS Keep Borders: border points stay exactly where they were  -- 320
+PASS Decimate options on the ZBrush shelf (Even Tris / Allow Quads / Keep Mask / Keep Groups / Keep Borders)
+Info: Decimate: 20,480 > 4,096 polygons in 0.1 s (4 threads)
+PASS Decimate Current runs the engine, back in Sculpt Mode  -- (20480, 4096)
+00:08.204  bpy.rna          | WARNING current value '3' matches no enum in 'BrushTextureSlot', '', 'map_mode'
+PASS Ctrl+Z brings the polygons back  -- 20480
+PASS Without the engine (other systems) Blender's Decimate is used  -- Decimate (Blender): 10,240 polygons
+PASS Shape keys: it says to remove them first (nothing changed)
+PASS Multires: it says to delete / apply the levels first
+
+28/28 passed
+====================================================================== 
+ test_v02498_quadspeed.py
+PASS Levels that reach their counts: the sweeps as before (20/30, 30/40, 60/80, coarsest 200/200)  -- [(20, 30), (30, 40), (60, 80), (200, 200)]
+PASS Levels that could not coarsen (a part with many hard edges): their sweeps cut by how far they fell short, never under the fine level's  -- [(20, 30), (30, 40), (20, 30), (20, 30)]
+PASS At most a 2x finer retry, and none for a few open sides (1 %, at least 16)
+PASS MOSTLY on a 1,196-face part with many hard edges, target 598: within 2.2x of the count asked for, closed, quads, under 20 s  -- (1191, 1.3, 'Quad Remesh (low-poly part: its own edges kept, 2x finer for a groove narrower than a quad')
+PASS ALL on a 1,196-face part with many hard edges, target 598: within 2.2x of the count asked for, closed, quads, under 20 s  -- (1176, 0.5, 'Quad Remesh (low-poly part: its own edges kept, 2x finer for a groove narrower than a quad')
+PASS The engine gives nothing back (seen on one part of a 45-part export): the part is kept, a message, no division by zero  -- ('Quad Remesh: nothing came back - the part is kept as it is', 1196, 1196)
+PASS All Quads keeps far fewer faces than asked (a seventh): Mostly Quads at the same count instead (the nearer result), and the message says so (0.24.83: the cut-down result is open, so the closed-part guard then tries finer and keeps the part)  -- ([(3000, True), (3000, False), (6000, True), (6000, False), (12000, True), (12000, False)], 'Quad Remesh (All Quads kept only 412 faces - thin walls: Mostly Quads at the same count instead): the part is thinner th')
+PASS ... the rule: under half of the count asked for, no scaling (a thin-walled part is a cliff: 2x gave the same share, 4x gave 8 times the count)
+PASS Preferences > Alpha in Brush Circle exists, off by default
+PASS ... the alpha slot follows it (the alpha picture inside the circle painted its black parts solid)
+
+10/10 passed
+====================================================================== 
+ test_v02499.py
+PASS Preferences: Rest (s) 3 and Offer Recovery After a Crash
+PASS Quiet moments now also in Sculpt Mode and paint modes, still not in Edit Mode or during any modal operator
+PASS A sculpt stroke running = a change and interaction
+PASS Turning the view = interaction only (no copy just for looking around)
+PASS ... and it must be followed by a rest (Rest seconds) before a copy
+PASS After 10 s without strokes or view drags: rested
+PASS Nothing changed since the last copy: no new copy
+PASS A change after it (a ZBrush stroke press / shelf action): a copy is wanted
+PASS ZBrush strokes and shelf actions note the change
+PASS The quiet-moment timer looks every half second (cheap checks) and needs: due, changed, rested, quiet
+Info: Saved copy as "untitled_26069_35731_recovery_26069_saving.blend"
+[Mecha Lab] Safety Save before ZBrush Decimate: /tmp/mch_safety66_g9g9c7e8/untitled_26069_35731_recovery.blend (0.0 s)
+PASS ZBrush Decimate: a recovery copy right before it, made in Sculpt Mode  -- ('/tmp/mch_safety66_g9g9c7e8/untitled_26069_35731_recovery.blend', 'Decimate: 5,120 > 1,280 polygons in 0.0 s (4 threads)')
+PASS ... the copy holds the model as it was before the step  -- (5120, 5120)
+PASS Copies are written uncompressed (quick for big sculpts)  -- b'BLENDER'
+PASS The risky steps: DynaMesh, Decimate, Divide, ZRemesher, Mirror And Weld, Close Holes, Extract, Split, Merge
+PASS ... not again within 15 s
+PASS ... nor when nothing changed since the last copy
+Info: Saved copy as "untitled_26069_35731_recovery_26069_saving.blend"
+[Mecha Lab] Safety Save before test: /tmp/mch_safety66_g9g9c7e8/untitled_26069_35731_recovery.blend (0.0 s)
+PASS ... but after a change, 15 s later: yes
+PASS This session keeps a marker next to the copies (Blender, file, newest copy)
+PASS ... refreshed every minute by the timer, removed when Blender closes normally (atexit) or the add-on goes
+PASS A running session (this one) is not a crash
+Info: Saved copy as "Robot_1a2b3c4d_recovery.blend"
+PASS A marker whose Blender is gone = a crashed session; another live Blender is not
+PASS The window says which file, when the copy was made and how much before it stopped  -- ['Blender closed unexpectedly last time (Robot.blend).', 'Mecha Lab recovery copy from 04:43:51 (about 5 min before it stopped)', 'Open it now? (what is open now is replaced - save it first if needed)']
+PASS At start its copy is renamed _crash_<date time> (this session's copies cannot overwrite it), its marker goes  -- ['Robot_1a2b3c4d_crash_20261030_044351.blend']
+PASS 0.24.73 a live Blender silent for an hour (a long step stops its timer) is NOT taken for a crash - its copy is left alone
+PASS ... after 6 hours it counts as gone (the pid was reused); no copy: says Blender's own Auto Save
+PASS The offer comes 2 s after start (a timer), as a window with Open Recovery Copy / Open Folder
+00:00.854  blend            | Read blend: "/tmp/mch_safety66_g9g9c7e8/Robot_1a2b3c4d_crash_20261030_044351.blend"
+PASS Open Recovery Copy: the crashed session's scene comes back
+PASS The marker is removed on a normal exit
+PASS No key takes over a value a button set last (after the Alpha tile, S / right-click still open the menu)
+PASS Alt held during a turn = move (the turn stops); let go = the turn again; an Alt drag let go = zoom
+PASS Z Up (default): after any turning the model stays upright (the screen's left-right stays level)  -- 3.5762786865234375e-07
+PASS ... Free (ZBrush XYZ) can tilt - that was the odd Z before  -- 0.8644312024116516
+PASS ... a Z Up button on the right view shelf
+PASS Shift, click, let Shift go, drag: turns about the screen axis (ZBrush Z rotation)
+PASS Shift held: the view jumps square-on step by step (the turn goes on underneath, it no longer sticks)  -- 3
+PASS Turn speed follows Blender's Orbit Sensitivity
+PASS Blender starts with the add-on on: it loads, Safety Save starts (0.24.66 stopped with "_RestrictData has no attribute filepath")
+
+37/37 passed
+====================================================================== 
+ test_v02499_mirrorhide.py
+PASS A live Mirror, then Box Hide (Follow Symmetry): the part is still there, the end hidden on both sides  -- (10, -0.6, 0.6, 'Box Hide: Hidden on Body | also on 1 symmetric copy')
+PASS ... the modifier knows the mirrored mesh that reaches it is not one closed solid (the seam)
+PASS ... the Mirror stays live
+PASS Box Hide first, then the Mirror: the hidden result is mirrored (as before)  -- (11, -0.6, 0.6)
+PASS No modifier before it: a closed base mesh still takes the fast Manifold solver
+
+5/5 passed
+====================================================================== 
+ test_v02500_autofix.py
+PASS The test part is broken (edges shared by 3+ faces, open edges)  -- (16, 4)
+PASS Cut on it: Fix Mesh runs first by itself, the cut goes through, the message says so  -- Cut: Body | Fix Mesh first: Body 20 -> 0 broken edges
+PASS A line cut on it too (one side kept, closed)  -- ('Plane cut: Body | Fix Mesh first: Body 20 -> 0 broken edges', 0.0, 1.0)
+PASS Box Hide on it: repaired first, something is hidden  -- ('Box Hide: Hidden on Body | Fix Mesh first: Body 20 -> 0 broken edges', 65)
+PASS Preferences > Auto Fix Mesh off: not repaired (the warning / failure as before)  -- Cut: Body | WARNING: Body is not one clean solid (16 edges shared by 3+ faces, 4 open edges) - the result may be broken and slow to finish; Fix Mesh (or Remesh)
+PASS The preference exists, on by default
+
+6/6 passed
+====================================================================== 
+ test_v02501_lastop.py
+PASS Nothing drawn yet: nothing to redo
+PASS Armor Plate drawn: the stroke is remembered with the parts it made  -- ({'FINISHED'}, ['Box_Plate'], 'Armor plate "Box_Plate" on Box (Chamfer 45, 26 clean faces) ', {'mode': 'PLATE', 'shape': 'LASSO', 'pts': '..', 'anchor': '..', 'mouse': '..', 'inverted': '..', 'line_mode': '..', 'fill': '..', 'loops': '..', 'path': '..', 'proj': '..', 'targets': [], 'made': ['Box_Plate'], 'label': '..'}, 1)
+PASS ... the label names the tool and the count  -- Armor Plate (1 part)
+Info: Redo Last: Armor plate "Box_Plate" on Box (Chamfer 45, 75 clean faces) | 12 point(s) past the surface edge
+PASS Redo Last: the first part is gone, the same outline drawn again with the new setting (more faces)  -- ({'FINISHED'}, ['Box_Plate'], 104, 250)
+PASS ... the part deleted by hand: nothing to redo until something is drawn
+PASS A Cut is not remembered here (it stays live on its own)  -- Cut: Box
+PASS Base Mesh drawn: remembered  -- ({'FINISHED'}, ['MCH_Base'], 'Base Mesh created: MCH_Base (Flat, 8 verts, closed solid)')
+Info: Redo Last: Base Mesh created: MCH_Base (Flat, 8 verts, closed solid)
+PASS ... Redo Last makes it again (the old one gone, a new one there)  -- ({'FINISHED'}, ['MCH_Base'])
+PASS Buttons: the Actions card (live rows), the Mecha Menu (Actions > Redo Last), the N panel
+PASS Only part-making tools are remembered (Cut / Split / Box Hide / Mask stay out)
+
+10/10 passed
+====================================================================== 
+ test_v02502_livestack.py
+PASS A plain mesh: nothing live
+PASS Mirror + Box Hide + Bevel + Subdivide: four steps in stack order with plain names  -- ['Mirror', 'Box Hide', 'Bevel', 'MySubdiv (Subdivide)']
+PASS ... the order note: Mirror before Box Hide = both sides hidden  -- ['Mirror before Box Hide: both sides are hidden (Follow Symmetry)']
+PASS The eye: Box Hide hidden in the viewport (still in the stack), more faces show
+Info: Mirror before Box Hide: both sides are hidden (Follow Symmetry)
+PASS Up: the Bevel before Box Hide
+Info: Mirror before Box Hide: both sides are hidden (Follow Symmetry)
+PASS ... and back down
+Info: Applied modifier was not first, result may not be as expected
+00:00.838  bpy.rna          | WARNING current value '179' matches no enum in 'NodesModifier', '', 'type'
+00:00.838  bpy.rna          | WARNING current value '179' matches no enum in 'NodesModifier', '', 'type'
+Info: Live Stack:  applied
+PASS Apply Box Hide: the tool's own Apply (its record gone), the modifier baked, the others stay  -- ['MCH_Mirror', 'Bevel', 'MySubdiv']
+Info: Live Stack: MySubdiv (Subdivide) removed
+PASS Remove: the Subdivide gone
+Info: Live Stack: 2 steps applied
+PASS Apply All: Mirror (the symmetry card's apply) + Bevel baked in order, the mesh as it was shown  -- (0, 67, 67)
+PASS Names: Mecha modifiers get plain names, Blender ones their type
+PASS ... Armor Shell not last: a note  -- ['Armor Shell is not last: what comes after shapes the shell, not the part']
+PASS Shown in the Layers panel (a section, open at first) and N > Mecha Lab
+
+12/12 passed
+====================================================================== 
+ test_v02503_keycheck.py
+PASS same_key: key + modifiers + key_modifier, PRESS vs ANY
+PASS describe: Shift+D, D+LMB, double click  -- ('Shift+D', 'D+LMB')
+PASS The Mecha keys are found in the add-on keyconfig (Shift+D duplicate among them)  -- 455
+PASS Against a keyconfig with Blender's keys: Shift+D sits on duplicate_move, Alt+D on the linked one, Q on view3d.select; H / I (no Mecha key there) are not listed  -- [('3D View', 'mch.toggle_last_tool', 'view3d.select'), ('Object Mode', 'mch.duplicate', 'object.duplicate_move'), ('Object Mode', 'mch.duplicate', 'object.duplicate_move_linked')]
+PASS ... as readable lines (keymap: key  mecha op  shadows  blender op)  -- ['3D View: Q  mch.toggle_last_tool  shadows  view3d.select', 'Object Mode: Shift+D  mch.duplicate  shadows  object.duplicate_move', 'Object Mode: Alt+D  mch.duplicate  shadows  object.duplicate_move_linked']
+Info: Hotkeys: no Mecha key sits on a Blender key in the same keymap
+PASS The real user keyconfig here is empty (headless): no conflicts, the operator still runs
+PASS Preferences > Hotkeys shows the check
+
+7/7 passed
+====================================================================== 
+ test_v02504_toast.py
+PASS Two toasts up, oldest first, with their seconds left and kinds  -- [(3.0, 'WARNING', 'Cut: not one clean solid'), (3.5, 'ERROR', 'Mecha CUT failed: boom')]
+PASS The same line again: once, moved to the bottom with a fresh time
+PASS At most 3 kept (the newest)
+PASS Expired ones go
+PASS A long / multi-line message: the first line, cut to 160; an unknown kind is INFO; own seconds
+PASS toast.report: the operator report always, a toast for WARNING / ERROR only
+PASS Headless: no redraw timer is armed
+PASS Hooked in: the drawing gate (CutError / failures / kept-as-it-was results), Redo Last, Live Stack apply, drawn above the bottom toolbar
+
+8/8 passed
+====================================================================== 
+ test_v02505_tidy.py
+PASS tidy_result: the folded fin (2 faces) and the speck (1 face) gone, the box closed and intact  -- ({'faces': 9, 'nm': 4}, {'welded': 0, 'degenerate': 1, 'needles': 0, 'spikes': 0, 'folds': 2, 'fins': 0, 'loose': 3, 'shards': 0, 'flipped': 0}, 6)
+PASS ... a doubled point welded and its zero-area face dissolved  -- {'welded': 1, 'degenerate': 0, 'needles': 0, 'spikes': 0, 'folds': 0, 'fins': 0, 'loose': 0, 'shards': 0, 'flipped': 0}
+PASS is_junk: under 4 faces / no area / a speck next to the part; a real piece is not
+PASS Decimate on a 12-triangle plate: left alone with a message (was a tetrahedron)  -- ('Decimate: the mesh is already light (24 triangles or fewer): nothing to take away', 6)
+PASS Decimate on a noisy sphere: no edge with 3+ faces, no faces on the same points, closed  -- (0, 0, 'Decimate: 1,152 > 552 polygons in 0.0 s (4 threads)')
+PASS Quad Remesh on a small thin plate: no zero-area faces  -- (0, 'Quad Remesh (low-poly part: its own edges kept): 6 > 66 polygons, 94 %')
+PASS Quad Remesh (All Quads, few faces) on a plate thinner than a quad: finer until the volume survives, or kept as it is - never a flat sheet with holes  -- ('Quad Remesh (low-poly part: its own edges kept): 6 > 92 polygons, 100 % quads, 48 hard edg', 92, 0.98)
+PASS is_junk: a small open scrap (a boolean that broke) is junk too
+PASS A Split / Cut result goes through tidy_result; a junk Split piece is dropped and said
+
+9/9 passed
+====================================================================== 
+ test_v02506_pipe.py
+PASS _guarded: a stage that opens a closed mesh (one face deleted) is dropped - the mesh stays as it was  -- (0, 6)
+PASS 12 random cuts on a bevelled + remeshed + decimated body: none leaves the closed body open (the 0.24.82 tidy opened 35 edges on such a part)
+[Mecha Lab] cleaned stale registrations: {'classes': 468, 'props': 122, 'handlers': 37, 'draw_funcs': 4, 'keymap_items': 504, 'tools': 29}
+PASS From Surface over the base AND the plate above it: both get a 0.05 pocket from their OWN surface (one range for all cut only the plate; the base was "not touched")  -- ('Cut: Base, Plate', 0.95001220703125, 1.549993872642517)
+PASS ... both parts still closed
+PASS own_pocket: None for a part not under the shape
+PASS Box Hide twice on the same part (the second shape overlaps the first, same near / far caps): both hide  -- ('Box Hide: Hidden on Blk', 'Box Hide: Hidden on Blk', 6, 12, 16)
+PASS ... a thin strip over the hidden part hides too (failed: "EXACT: result has 34 non-manifold edges")  -- ('Box Hide: Hidden on Blk', 16, 25)
+PASS ... the hide volume stays one clean solid; the shapes went in one after the other (counted)  -- (0, 3)
+Info: Box Hide: shown again on 1 mesh(es)
+PASS An open-line cut over no mesh at all says so (it said "Targets are outside the view")  -- ({'CANCELLED'}, 'No target geometry to cut.')
+PASS Cut Ramp: deepest (about Cut Depth 0.3) at the first side drawn, rising to the surface at the far side, half way in between  -- ('Cut Ramp: Ramp | 0.3 deep at one side, up to the surface (de', 0.7389984130859375, 0.8559951782226562, 0.9730072021484375)
+PASS ... the block stays closed
+PASS Hard Edges on a clean cube: the bevel is sound - no note, the width as asked  -- (None, ['MCH_HE_Bevel'])
+PASS _sound: the odd broken edge the bevel modifier leaves where bevels meet is tolerated (8 or 0.1 %), more is not
+PASS ... a bevel that comes out broken (60 bad edges, 100 zero faces) is halved until it is sound: 0.05 > 0.025 > 0.0125, and the note says so  -- (0.012500000186264515, 'bevel width 0.05 overlapped (broken faces), 0.0125 used', [0.05000000074505806, 0.02500000037252903, 0.012500000186264515])
+PASS ... broken whatever the width: no bevel, the note tells why (a clean mesh without a bevel beats a broken one)  -- ('bevel 0.05 wide overlaps here whatever the width - no bevel (Decimate / Quad Remesh lower first)', [])
+PASS ... Find Edges reports the note
+PASS tidy_result: a 4-face piece 0.5 wide (25 % of the part) with next to no volume is a shard and goes  -- ({'welded': 0, 'degenerate': 0, 'needles': 0, 'spikes': 0, 'folds': 0, 'fins': 0, 'loose': 0, 'shards': 4, 'flipped': 0}, 6)
+PASS refresh_later queues the kinds (headless: no timer, flush() runs them once; the UI registers a 0 s timer)
+PASS ... flush empties the queue and returns None (the timer is done)
+PASS the Cut / GN Edge / Ramp setting updates use refresh_later (the direct re-cut inside the update took Blender down: fuzz seed 353)
+PASS _finish_guarded: a finish that opens the mesh is undone (6 faces back, closed), counts 0, the part listed  -- (0, 6, ['Guarded'])
+PASS ... a sound finish is kept as it is  -- (12, 26)
+PASS every edge finish of a Cut / Split / line cut goes through the guard
+PASS self_overlaps: a clean cube crosses itself nowhere
+PASS ... a face pushed through a part counts as a crossing (6 cube faces x 1: the one inside crosses the walls it pokes through, the one above crosses nothing)  -- 1
+PASS ... too big to check = -1
+PASS A closed part whose cut came out broken is checked for crossings and the WARNING says so
+
+27/27 passed
+Error: Not freed memory blocks: 9, total unfreed memory 0.002220 MB
+====================================================================== 
+ test_v02507_refix.py
+PASS self_overlaps: a bevelled body with a bolt hole (seams, T-junctions, coplanar neighbours) crosses itself nowhere
+PASS ... a thin plate whose top was sculpted through its bottom crosses itself (many pairs)  -- 241
+PASS auto faces: what the part has, 2,000 .. 40,000
+PASS DynaMesh points for the result: 8 per face, 120k .. 500k (250k before a Quad Remesh)
+PASS Re-Fix (Decimate) on the crossing plate: one closed solid, no crossings left (the faces raised while a wall was thinner than the triangles: 2,000 > 4,000 / 8,000), says so  -- ('Re-Fix (Decimate): 1,920 > 3,414 faces (DynaMesh 115,036 points, asked 2,000) | open edges 0 > 0 | self-crossings 241 > 0', 3414, 0)
+PASS a Box Hide is live on the body before Re-Fix  -- ({'FINISHED'}, 'Box Hide: Hidden on Cube, Plate')
+PASS Re-Fix (Quad Remesh) with a live Box Hide: the hiding is applied first (said), the result is closed, mostly quads, about 3,000 faces  -- ('Re-Fix (Quad Remesh): 136 > 3,038 faces (DynaMesh 118,724 points, asked 3,000) | open edges 0 > 0 | 1 live step(s) applied first', 3038, 3032)
+PASS ... the hidden column is gone from the mesh now (a ray through it misses the top)  -- (False, False)
+PASS Mesh Tools and the ZBrush action know 'REFIX' (heavy: a safety save first)
+PASS the shelf settings: Finish (Decimate / Quad Remesh) and Faces (0 = Auto)
+Info: Re-Fix (Decimate): 2,694 > 2,777 faces (DynaMesh 114,550 points, asked 1,500) | open edges 0 > 0 | self-crossings 1 > 1
+PASS Mesh Tools > Re-Fix runs on the selected mesh (Object Mode): closed, Faces 1,500 asked (raised when a wall is thinner)  -- ({'FINISHED'}, 'Re-Fix (Decimate): 3,414 > 2,694 faces (DynaMesh 113,190 points, asked 1,500) | open edges 0 > 0 | self-crossings 0 > 1 | 1 live step(s) applied first', 2777)
+
+11/11 passed
+====================================================================== 
+ test_v02508_linked.py
+PASS Linked Copy of a group: the copies share the parts' meshes, both sides are marked linked  -- ('G.001', ['PartA.001', 'PartB.001'])
+PASS A Cut on the original (Shared Mesh = This Object Only, the default) still cuts the ONE mesh: the linked copy shows the same cut, the mesh stays shared  -- ({'FINISHED'}, 'Cut: PartA (shared mesh: 2 users updated)', True)
+PASS swap_mesh (Decimate / Quad Remesh / Re-Fix): the linked copies move onto the new mesh with the original (the old mesh gone, the new one takes its name)  -- ('PartA', 'PartA')
+PASS a plain Duplicate still copies the meshes (its parts are their own)
+PASS Groups card: a Linked Copy button; Mecha Menu > Groups: Linked Copy
+PASS a group draws its box lines (nothing hidden yet)
+PASS Layers panel / Groups card box eye: the group's box lines are off (a selected group still shows them)
+PASS ... and on again
+PASS the Layers panel group row has the box eye next to the enter button
+PASS Preferences: Show Mirror Planes (on) and Mirror Plane Opacity (10 %)
+PASS the card is the part's
+PASS Symmetry card (Mirror on a part): a Plane toggle, a - / + opacity stepper and the percentage  -- ['', 'Symmetry  ·  PartA', '×', 'Off', 'Mirror', 'Radial', 'Kaleido', 'Mirror', 'Mirror X', 'Mirror Y', 'Mirror Z', 'Bisect', 'Flip', 'Clip', 'Plane', '-5%', '10 %', '+5%', 'Apply', 'Remove']
+PASS ... Plane click: the planes are off (Preferences)
+PASS ... + twice: 20 %  -- 0.2
+PASS ... - past 0 stops at 0
+PASS the plane drawing reads both: off or 0 % draws nothing, the opacity is the fill
+PASS Shading option on the Decimate rows (Smooth default / Flat / Keep)
+PASS shade_result SMOOTH on a flat cylinder: every face smooth, the 96 rim edges (90 degrees) sharp, the side and cap edges not  -- 96
+PASS ... FLAT: every face flat
+PASS ... KEEP: untouched
+PASS Decimate (Mesh Tools) with Shading = Smooth: the result is smooth with its rim sharp  -- Decimate: 188 > 38 polygons in 0.0 s (4 threads)
+PASS ... Shading = Flat: flat
+PASS numpy pre-checks: a clean cylinder has no twin faces, no flipped pair, no short edge
+PASS ... a folded (twin) face is seen
+PASS ... and the tidy still removes it (the fin gone, the cylinder still closed)  -- {'welded': 0, 'degenerate': 0, 'needles': 0, 'spikes': 0, 'folds': 2, 'fins': 0, 'loose': 0, 'shards': 0, 'flipped': 0}
+PASS tidy of a clean 82k-face sphere: nothing found, under 0.6 s (was ~1 s: every stage copied the mesh)  -- 0.04
+
+26/26 passed
+====================================================================== 
+ test_v02509_cut_speed.py
+PASS twin pre-check: the two triangles with equal sums and sums of squares are NOT twins (an n-gon mesh: the hash path)
+PASS ... a real twin n-gon (same points, reversed) is
+PASS ... and only looked for among the masked faces when a mask is given
+PASS Cut on a 20k-face body passes the part's mesh as "before": the tidy looks at the faces round the cut only (under 15 % of the result)  -- ({'FINISHED'}, (304, 4853))
+PASS _changed_faces: every face with a new point is in, plus one ring; a face far from the cut is not
+PASS _changed_faces without a "before" mesh: everything (None)
+PASS a fin (two faces back to back on a cut edge) is removed by the local tidy  -- {'welded': 0, 'degenerate': 0, 'needles': 0, 'spikes': 0, 'folds': 2, 'fins': 0, 'loose': 0, 'shards': 0, 'flipped': 0}
+PASS Cut on an 82k-face body: done, closed, under 1.6 s (0.24.84: 2.8 s, 2.4 s of it the whole-body tidy scans)  -- ({'FINISHED'}, 0.31)
+PASS Split on the same body: done, under 2.2 s (was 3.0 s)  -- ({'FINISHED'}, 0.55)
+
+9/9 passed
+====================================================================== 
+ test_v02510_hipoly.py
+PASS region_boolean DIFFERENCE on a 327k-face body: the faces of the whole-part Manifold boolean (within 2 %: the cut walls come as triangles, a seam point welded onto a point a millionth away drops a zero-size face), closed  -- (['region 6,090 of 327,680 faces: region 0.17 extract 0.01 boolean 0.12 knife 0.06 sort 0.02 stitch 0.17 s (tidy 0.03 s in the stitch)'], 324719, 324721, 0)
+PASS ... the region was a small part of the body  -- ['region 6,090 of 327,680 faces: region 0.17 extract 0.01 boolean 0.12 knife 0.06 sort 0.02 stitch 0.17 s (tidy 0.03 s in the stitch)']
+PASS ... face / point attributes, material indices and the material slots come along
+PASS region_boolean INTERSECT (a Split's piece): the faces of the whole-part boolean (within 2 %), closed  -- (3268, 3270, 0)
+PASS a cutter that misses the body: None (the whole-part path reports it)
+PASS a small part: None (the whole-part boolean is as fast)
+PASS a cutter through a thin dense plate (front and back in one region): closed, the whole-part boolean's faces within 2 %  -- (393216, ['region 5,940 of 393,216 faces: region 0.07 extract 0.02 boolean 0.23 knife 0.11 sort 0.03 stitch 0.29 s (tidy 0.05 s in the stitch)'], 390716, 390408)
+PASS the High Poly setting is on the Cut settings (Advanced), experimental: off by default
+PASS Cut on the 327k-face body with High Poly on: done through the region path ("Region" in the report), closed  -- ({'FINISHED'}, 'Cut: Icosphere | 2.3 s (Region)', 2.37)
+PASS Split on it: both pieces closed, the piece through the region path  -- ({'FINISHED'}, 'Split: Icosphere | 3.4 s (Region)', ['Icosphere_Split'])
+PASS High Poly off: the whole-part solver as before (no "Region" in the report)  -- ({'FINISHED'}, 'Cut: Icosphere')
+
+11/11 passed
+====================================================================== 
+ test_v02511_tidy_sub.py
+PASS extract_faces: the masked faces as a mesh with the attributes along  -- (4012, 4012)
+PASS ... face values are the originals in order
+PASS ... point values follow the points
+PASS ... edge values come along (by the edge's two points)
+PASS replace_faces with the sub-mesh unchanged: the part is back as it was - same faces, closed, same size  -- (True, 81920, 81920, 0)
+PASS ... the face attributes and material indices of every face are the originals (untouched first, then the region)
+PASS ... a moved rim point: replace_faces refuses and leaves the part alone
+PASS Cut on the 327k-face body (High Poly off): the tidy ran on the changed faces only (a small part of the result), fast, the result closed  -- ({'FINISHED'}, [(2308, 305928, 0.09)], 1.37)
+PASS Cut on the 327k-face body (High Poly on): the tidy ran on the changed faces only (a small part of the result), fast, the result closed  -- ({'FINISHED'}, [(15487, 281053, 0.19)], 1.85)
+PASS ... attributes and materials survived both cuts  -- (True, True, [0, 1], 3, ['UVMap', 'grp', 'mask', 'material_index', 'position', 'sharp_edge', 'sharp_face'])
+
+10/10 passed
+====================================================================== 
+ test_v02512_bg.py
+PASS the shelf has a Background toggle (on) and the worker can run here
+PASS Quad Remesh on an 82k-face part with Background on: starts a worker and returns at once, the part untouched  -- Quad Remesh started in the background on Big (20,480 faces) - keep working
+PASS ... the status line says it runs, with a Cancel button
+PASS ... a second start on the same part is refused while it runs  -- Quad Remesh: already running on Big - wait or cancel it
+Mecha: Quad Remesh (low-poly part: its own edges kept): 20,480 > 4,269 polygons, 90 % quads, 229 hard edges marked in 3.2 s | background, 5 s
+PASS ... when the worker is done the result lands on the part: quads, far fewer faces, closed, message with the background time  -- ('Quad Remesh (low-poly part: its own edges kept): 20,480 > 4,269 polygons, 90 % quads, 229 hard edges marked in 3.2 s | b', 4269, 0)
+PASS ... nothing runs any more, the temp files are gone
+PASS Cancel: the worker is killed, the part keeps its mesh, the status says cancelled  -- ('Quad Remesh on Big2: cancelled', 20480, 20480)
+Mecha: Quad Remesh on Big3: the part changed while it ran - the background result was dropped (Quad Remesh (low-poly part: its own edges kept): 20,480 > 4,)
+PASS a part that changed while the worker ran keeps its own mesh and the message says the result was dropped  -- ('Quad Remesh on Big3: the part changed while it ran - the background result was dropped (Quad Remesh ', 20470, 20470)
+PASS a small part (under 20k faces) runs inline as before  -- Quad Remesh (low-poly part: its own edges kept): 6 > 4,076 p
+PASS Background off: the big part runs inline too  -- Quad Remesh (low-poly part: its own edges kept): 20,480 > 4,
+PASS Re-Fix on a big part with Background on: starts a worker  -- Re-Fix started in the background on Big5 (20,480 faces) - keep working
+Mecha: Re-Fix (Decimate): 20,480 > 2,038 faces (DynaMesh 119,464 points, asked 3,000) | open edges 0 > 0 | background, 2 s
+PASS ... Re-Fix result lands: a clean light mesh, closed  -- ('Re-Fix (Decimate): 20,480 > 2,038 faces (DynaMesh 119,464 points, asked 3,000) | open edges 0 > 0 | background, 2 s', 2038)
+PASS the Mesh Tools and ZBrush panels show the Background toggle and the status row
+
+13/13 passed
+====================================================================== 
+ test_v02513_tees.py
+PASS a point on the other side's open edge: the edge split there and welded (3 open edges fewer, one split)  -- (9, 6, 1)
+PASS ... the two faces stay, the mesh has the same 7 points (the split point merged into the existing one)  -- (2, 7)
+PASS a point a little off the line (within the tolerance), not at the middle: welded too  -- 6
+PASS a point farther from the line than the tolerance: left alone  -- (9, 0)
+PASS an open edge shorter than the tolerance is still split (the voxel-quad T-junction that stayed open)  -- (6, 1)
+PASS an empty mesh: nothing to do
+
+6/6 passed
+====================================================================== 
+ test_v02514_boxes_all.py
+PASS Scene setting Group Box Lines exists and is on by default
+PASS drawing guard: on
+PASS Layers head / Groups card button: all box lines off
+PASS drawing guard: off (the box drawing returns before any group is looked at)
+PASS the per-group eye is untouched by it
+PASS ... and on again
+PASS the Layers panel head has the all-groups box button next to the minimise button
+PASS the Groups card has the Box Lines (all groups) toggle
+PASS the drawn head item exists and is pressed while the lines are on
+PASS ... and released while they are off
+
+10/10 passed
+====================================================================== 
+ test_v02515_cloth_bg.py
+PASS a cloth plate to simulate  -- Cloth plate "Box_Wrinkle" on Box (padded panel, no pattern)
+PASS Fast Start on by default
+PASS inline bake: the cloth puffed up (PADDING)  -- (0.5729113578796388, 5.353311848999965)
+PASS ... the user's scene kept its frame and no scene was left behind  -- (7, 1)
+PASS ... sim-only vertex groups gone, faces smooth, Subsurf on
+PASS ... source hidden
+PASS use_background follows the Background toggle (forced worker here)
+PASS background: the cloth object is there at once (flat start, pending flag), no cloth modifier on it, a job running  -- (0.020400047302246094, ['Panel Cloth started in the background on Box_Wrinkle_PCloth (9,448 faces) - keep working'])
+PASS ... Refresh while it runs is refused (nothing made, the cloth kept)
+PASS ... the temporary collider object is gone from the scene
+Mecha: Panel Cloth: 30 frames baked (9,448 faces) | background, 7 s
+PASS ... the worker finished and its result was applied  -- ['Panel Cloth: 30 frames baked (9,448 faces) | background, 7 s']
+PASS ... the folds landed: puffed up like the inline bake, pending flag cleared, groups gone  -- (0.020400047302246094, 0.5729113578796388)
+PASS ... faces smooth, Subsurf on
+PASS the Panel Cloth box shows the Background toggle and the status row
+PASS the lasso Sim-after path follows the toggle
+PASS setup_cloth: self collision on by default, collision quality 2, self distance = the contact thickness
+PASS the padded presets run 3 - 4 solver steps per frame, the fabric presets keep 6 - 8
+PASS CLOTH preset: the baked cloth has no faces passing through each other (0.24.87: 229 - 485 crossing pairs)
+PASS ... and no sliver faces (smallest face at least 5 % of the mean; was 0.05 %)  -- 0.1325873296601397
+PASS ... the folds are there (not flattened by the collision)  -- 0.09804625511169451
+PASS run_preset passes self_collision through (the earlier experiment silently dropped it)
+
+21/21 passed
+====================================================================== 
+ test_v02516_belt.py
+PASS Relative Width on by default (7.5 % of the loop: the same look on any part size)
+PASS a relative belt on a 2 m part: width 0.149 (7 % of the loop), said in the report  -- Belt "Body_Belt" around Body (Plain Strap) | loop 1.99, width 0.149 = 7 % (relative)
+PASS absolute width: the report says the loop size and the width as a share of it  -- Belt "Body_Belt.001" around Body (Plain Strap) | loop 1.99, width 0.02 = 1 %
+PASS a thin belt is remembered for the next one (as before)
+Info: Belt: factory settings (Body_Belt.001 rebuilt)
+PASS Defaults: the live belt and the next-belt settings back to the factory values (relative 7.5 %)
+PASS ... the live belt rebuilt with it  --  | loop 1.99, width 0.149 = 7 % (relative)
+PASS the panel: Defaults next to "Settings for the next belt" and next to Apply, the size line on a live belt
+Info: Body_Belt.001: applied
+PASS a belt drawn across an applied belt: still the part-sized loop  -- ('Belt "Body_Belt.001_Belt" around Body_Belt.001 (Plain Strap) | loop 2, width 0.15 = 7 % (relative)', 2.070274591445923)
+PASS a belt drawn across an armor plate: around the body, part-sized  -- ('Belt "Body_Belt.002" around Body (Plain Strap) | loop 1.99, width 0.149 = 7 % (relative)', 2.0645999908447266)
+PASS a half body with a Mirror modifier: the loop goes round both halves  -- ('Belt "Half_Belt" around Half (Plain Strap) | loop 1.99, width 0.149 = 7 % (relative)', 2.064600110054016)
+
+10/10 passed
+====================================================================== 
+ test_v02517_cloth_live.py
+PASS a live cloth plate with piping  -- Cloth plate "Box_Wrinkle" on Box (padded panel, no pattern)
+PASS Trim Width reads as % of the panel size (piping preset: 2.2 %)  -- (2.200000047683716, 0.02200000033909462)
+PASS ... setting it writes the node input (6 % of the size) and the layer updates  -- 0.2908225953578949
+PASS ... and is remembered for the next plate (last used)
+PASS Trim Height can go below zero (a sunk welt)
+PASS an angle slider in degrees
+PASS an int slider
+PASS the native panel draws the live sliders (Trim Width / Trim Height, Puff, Fold ...) without an error  -- ['Creature Skin', 'Type', 'Edge Trim', 'Height', 'Sections', 'All-over Pattern (optional)', 'Pattern Depth', 'Scale', 'Thickness', 'Face Size (px)', 'Overall Scale', 'Trim Width']
+PASS the drawn side panel shows them as bars under LIVE  -- ['Height', 'Sections', 'Pattern Depth', 'Scale', 'Thickness', 'Face Size (px)', 'Overall Scale', 'Trim Width', 'Trim Height', 'Height', 'Puff', 'Puff Width', 'Edge Roll', 'Gravity', 'Center Fade', 'Pinch 1 (big folds)', 'Pinch 2 (small folds)', 'Fold Spacing']
+PASS after Apply the sliders read 0 and setting does nothing (no modifier)
+
+10/10 passed
+====================================================================== 
+ test_v02518_tidy_sub.py
+PASS (1) two needles on a small part: both fixed, no edge opened  -- (2, 2, 0)
+PASS ... and only faces round the needles changed  -- (20, 0)
+PASS (2) 80 needles on a 20k-face part: all fixed on the cut-outs, no edge opened  -- (82, 78, 0, 0)
+PASS ... in under 1.5 s (the whole-part way: ~3.5 s here, 68 s on the fuzz knob)  -- 0.35
+PASS ... the UVs of every face left as it was came along  -- (19395, 0, 20016)
+PASS ... and no candidate-mark layer is left on the bmesh
+PASS ... the plain way (SUB_FACES raised) fixes the same needles  -- (79, 0)
+PASS a cut-out with no candidates: (bmesh, 0)
+PASS band_cross_count: a face through another is a crossing (and stop ends the count early)
+PASS _skip: 0 rim edges, the reason kept for the warning, the rim marks cleared
+PASS the Cut's 0-edge warning says the sweep's reason when there is one
+PASS the dense-part cap and the tangle ratio are set
+
+12/12 passed
+====================================================================== 
+ test_v090_features.py
+PASS mesh curve draw starts
+PASS polyline points are Straight (VECTOR) by default  -- ['VECTOR', 'VECTOR', 'VECTOR', 'VECTOR']
+PASS clicking an existing point makes it Smooth (no new point)
+PASS double-clicking a point toggles it Smooth
+PASS clicking again toggles back to Straight
+PASS S switches new points to Smooth
+PASS Backspace keeps the remaining point types
+PASS Enter creates the live Mesh Curve  -- ['Live curve created. Sidebar: Resolution, Rotation, Twist, Smooth/Straight.']
+PASS new live nodes present (twist, profile rotation)
+PASS free draw samples many points  -- 40
+PASS free draw points are Smooth (AUTO), not straight  -- {'AUTO'}
+Info: 3 points set to Smooth
+PASS All Smooth works in Object Mode
+PASS straight (VECTOR) segments have no in-between rows
+PASS smooth points really curve the sweep (bulges above the straight segment y=0.5)  -- 0.7424572706222534
+PASS Curve Resolution controls the sweep density  -- (288, 2080)
+PASS Profile Segments controls the round section
+PASS Rotation Z rotates the cross-section
+PASS Rotation X rotates the cross-section
+PASS Twist turns the section along the path (start fixed, rest rotated)
+PASS old live curve is rebuilt with the new nodes
+PASS bake still works
+PASS array Rotation Z turns every copy
+PASS array Twist changes copy orientation along the path
+PASS Curve Edit Mode double-click keymap is ACTIVE (was inactive since v0.5.9)
+Info: SubD Plane created: Tab to edit, extrude edges with E
+PASS SubD Plane created with Simple -> Catmull-Clark -> Solidify  -- [('MCH_SubD_Simple', 'SUBSURF', 'SIMPLE'), ('MCH_SubD_CatmullClark', 'SUBSURF', 'CATMULL_CLARK'), ('MCH_SubD_Solidify', 'SOLIDIFY', None)]
+PASS Simple and Catmull-Clark act together (independent sliders)  -- (6, 48, 2176)
+PASS both levels written to their own modifier
+PASS levels limited to 0..5
+PASS Solidify thickness/offset live
+PASS modifiers visible in Edit Mode
+Info: Crease 0.80 on 1 edges
+PASS edges can be extruded in Edit Mode, crease written to selected edges
+Info: MCH_SubDPlane: SubD stack applied (4288 faces)
+PASS Apply All bakes the stack in order  -- (4288, 4288)
+PASS SubD stack can be added to an existing mesh
+PASS Rotate Each Copy defaults OFF (scene and object)
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+PASS copies keep the source orientation when Rotate Each Copy is OFF
+PASS OFF: all copies share the source axes (no tilt)  -- {(1.0, -0.0, -0.0), (0.0, 0.0, 1.0), (-0.0, 1.0, -0.0)}
+PASS ON: copies turn along the ring (more edge directions)  -- 7
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+PASS Ring Rotation X tilts the whole ring into the XZ plane  -- (0.1000000536441803, 1.8320508003234863)
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+PASS Copy Rotation Z turns each copy in place (long axis now Y)  -- <Vector (0.0000, 0.4000, 0.0000)>
+Info: Radial Array: edit controls in Mecha Lab > Radial Array, then Confirm
+PASS Start Angle moves the first copy  -- 30.00000044529205
+PASS old radial arrays are upgraded with rotation nodes
+Info: Radial Array confirmed. Original source remains available (possibly hidden).
+PASS radial bake still works
+PASS Normal Split unchanged (volumes 6 + 2)
+PASS Gap Split removes a strip of Gap Width (piece 0.8², hole 1.2²)  -- (5.11999977111816, 1.2800000381469727, 'Gap split: Target')
+PASS Gap Split parts are separate closed objects
+PASS gap stays centred on the drawn outline
+PASS straight Gap Split: two halves 0.2 apart, centred  -- (-0.10000002384185791, 0.10000002384185791)
+PASS straight Gap Split capped
+PASS polyline Gap Split works
+PASS curved (circle) Gap Split closed
+PASS Gap Split with Cap OFF leaves open shells
+[Mecha Lab] cut failed: The drawn shape covers the whole of "Target", so cutting would delete all of it; nothing was changed. Draw over only part of the object. [shape covers 8/8 vertices of Target | shape px (375,375)-(625,625) in ? | ORTHO | Alt/invert off | Mecha Lab 0.24.92]
+PASS too wide gap refused, mesh unchanged  -- The drawn shape covers the whole of "Target", so cutting would delete all of it; nothing was changed. Draw over only part of the object. [shape covers 8/8 vertices of Target | shape px (375,375)-(625,625) in ? | ORTHO | Alt/invert off | Mecha Lab 0.24.92]
+PASS Gap Split with Auto Apply OFF refused with message
+PASS NORMAL: Side A bevel only (A rounded, B sharp)  -- (36, 12, 6, 6, 'Split: Target | A bevel: 8 edges')
+PASS NORMAL: original cube corners untouched by the side bevel
+PASS GAP: Side A bevel only (A rounded, B sharp)  -- (36, 12, 6, 6, 'Gap split: Target | A bevel: 8 edges')
+PASS GAP: original cube corners untouched by the side bevel
+PASS Swap Sides exchanges A/B settings
+PASS plane split: Side B chamfered, Side A plain
+PASS Cut Edge Finish unchanged by the Split side settings
+PASS Sharp keeps the outline
+PASS Chamfer: two points per corner, cut back by Corner Width
+PASS Round: Corner Segments controls the arc
+PASS Corner Width controls the size
+PASS width is clamped on short edges (no overlap)
+PASS live preview while drawing Lasso: NONE corners (3 pts)  -- 3
+PASS live preview while drawing Lasso: CHAMFER corners (6 pts)  -- 6
+PASS live preview while drawing Lasso: ROUND corners (21 pts)  -- 21
+PASS live preview while dragging a Rectangle shows rounded corners
+PASS rounded-corner rectangle cut applied, closed
+
+70/70 passed
+====================================================================== 
+ test_workspace_data.py
+PASS configure_screen picks the 3D view
+PASS toolbar / tool header / sidebar shown
+PASS configure_screen keeps areas (only region flags; <=4px rect recompute)  -- ([('PROPERTIES', 1579, 23, 339, 839), ('OUTLINER', 1579, 865, 339, 189), ('DOPESHEET_EDITOR', 2, 23, 1574, 74), ('VIEW_3D', 2, 100, 1574, 954)], [('PROPERTIES', 1579, 23, 339, 839), ('OUTLINER', 1579, 865, 339, 189), ('DOPESHEET_EDITOR', 2, 23, 1574, 74), ('VIEW_3D', 0, 98, 1578, 956)])
+PASS no left tool area on stock Layout
+PASS register created no workspace
+PASS find_mecha_workspace none by default
+PASS stock workspace not detected as MECHA
+PASS tagged workspace detected (even if renamed)
+PASS Ortho Lock forces ORTHO on a 3D view
+PASS Ortho Lock operator registered
+PASS Ortho Lock timer re-armed when a locked file is loaded
+PASS addon keymap: 0.23.13 no Space tool menu (Space moves the outline while drawing; 0.24.92 the Wrinkle Lines tool alone uses Space = simulate, like the reference add-on - it draws no outline)  -- [('3D View', 'mch.primitive_rmb', 'RIGHTMOUSE'), ('3D View', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View', 'mch.mecha_hold_gate', 'LEFT_ALT'), ('3D View', 'mch.mecha_hold_gate', 'RIGHT_ALT'), ('3D View', 'mch.mecha_hold_gate', 'LEFT_CTRL'), ('3D View', 'mch.mecha_hold_gate', 'RIGHT_CTRL'), ('3D View', 'mch.mecha_mmb_gate', 'MIDDLEMOUSE'), ('3D View', 'mch.ui_hover', 'MOUSEMOVE'), ('3D View', 'mch.ui_scroll', 'WHEELUPMOUSE'), ('3D View', 'mch.ui_scroll', 'WHEELDOWNMOUSE'), ('3D View', 'mch.toggle_last_tool', 'Q'), ('3D View', 'mch.tool_pie', 'V'), ('3D View Tool: Object, Mecha Concept Move', 'mch.concept_move', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Concept Move', 'mch.concept_add', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Concept Move', 'mch.concept_size', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Concept Move', 'mch.concept_size', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Concept Move', 'mch.concept_resize', 'F'), ('3D View Tool: Object, Mecha Path Move', 'mch.concept_path', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Path Move', 'mch.concept_size', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Path Move', 'mch.concept_size', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Path Move', 'mch.concept_resize', 'F'), ('3D View Tool: Object, Mecha Silhouette Move', 'mch.concept_path', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Silhouette Move', 'mch.concept_size', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Silhouette Move', 'mch.concept_size', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Silhouette Move', 'mch.concept_resize', 'F'), ('Object Mode', 'mch.actions_menu', 'RIGHTMOUSE'), ('Object Mode', 'mch.quick_hud_press', 'LEFTMOUSE'), ('Object Mode', 'mch.quick_hud_press', 'LEFTMOUSE'), ('Object Mode', 'mch.tool_search', 'F'), ('Object Mode', 'mch.duplicate', 'D'), ('Object Mode', 'mch.duplicate', 'D'), ('Object Mode', 'mch.hotkey', 'B'), ('Object Mode', 'mch.hotkey', 'C'), ('Object Mode', 'mch.hotkey', 'X'), ('Object Mode', 'mch.hotkey', 'S'), ('Object Mode', 'mch.hotkey', 'A'), ('Object Mode', 'mch.hotkey', 'L'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.hotkey', 'NONE'), ('Object Mode', 'mch.select_move_key', 'F'), ('Object Mode', 'mch.concept_hold', 'LEFTMOUSE'), ('Object Mode', 'mch.enter_apply', 'RET'), ('Object Mode', 'mch.enter_apply', 'NUMPAD_ENTER'), ('Object Mode', 'mch.line_width_key', 'LEFT_BRACKET'), ('Object Mode', 'mch.line_width_key', 'RIGHT_BRACKET'), ('Sculpt', 'mch.sculpt_back', 'G'), ('3D View Tool: Object, Mecha Cut', 'mch.concept_hold', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Cut', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Cut', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Cut', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Cut', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Cut', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Cut', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Cut', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Cut', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Cut', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Cut', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Cut', 'mch.lasso_sketch_clear', 'ESC'), ('3D View Tool: Object, Mecha Cut', 'mch.lasso_sketch_undo', 'BACK_SPACE'), ('3D View Tool: Object, Mecha Cut', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Cut', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Cut', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Cut', 'mch.line_width_step', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Cut', 'mch.line_width_step', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Split', 'mch.concept_hold', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Split', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Split', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Split', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Split', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Split', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Split', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Split', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Split', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Split', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Split', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Split', 'mch.lasso_sketch_clear', 'ESC'), ('3D View Tool: Object, Mecha Split', 'mch.lasso_sketch_undo', 'BACK_SPACE'), ('3D View Tool: Object, Mecha Split', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Split', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Split', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Split', 'mch.line_width_step', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Split', 'mch.line_width_step', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.concept_hold', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.base_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.base_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.base_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.base_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.base_sketch_clear', 'ESC'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.base_sketch_undo', 'BACK_SPACE'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.line_width_step', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Base Mesh', 'mch.line_width_step', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Primitive', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Primitive', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_click', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_click', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_key', 'RET'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_key', 'RET'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_alt', 'LEFT_ALT'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_alt', 'RIGHT_ALT'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_alt', 'LEFT_ALT'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_alt', 'RIGHT_ALT'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_undo_key', 'Z'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_undo_key', 'Z'), ('3D View Tool: Object, Mecha Primitive', 'mch.primitive_rmb', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Primitive', 'mch.place_hide', 'ESC'), ('3D View Tool: Object, Mecha Primitive', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.concept_hold', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.lasso_sketch_clear', 'ESC'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.lasso_sketch_undo', 'BACK_SPACE'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.line_width_step', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Armor Plate', 'mch.line_width_step', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.concept_hold', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.lasso_sketch_clear', 'ESC'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.lasso_sketch_undo', 'BACK_SPACE'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.line_width_step', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Cloth Plate', 'mch.line_width_step', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Box Hide', 'mch.concept_hold', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Box Hide', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Box Hide', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Box Hide', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Box Hide', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Box Hide', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Box Hide', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Box Hide', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Box Hide', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Box Hide', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Box Hide', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Box Hide', 'mch.lasso_sketch_clear', 'ESC'), ('3D View Tool: Object, Mecha Box Hide', 'mch.lasso_sketch_undo', 'BACK_SPACE'), ('3D View Tool: Object, Mecha Box Hide', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Box Hide', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Box Hide', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Box Hide', 'mch.line_width_step', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Box Hide', 'mch.line_width_step', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Plate Detail', 'mch.concept_hold', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Plate Detail', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Plate Detail', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Plate Detail', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Plate Detail', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Plate Detail', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Plate Detail', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Plate Detail', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Plate Detail', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Plate Detail', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Plate Detail', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Plate Detail', 'mch.lasso_sketch_clear', 'ESC'), ('3D View Tool: Object, Mecha Plate Detail', 'mch.lasso_sketch_undo', 'BACK_SPACE'), ('3D View Tool: Object, Mecha Plate Detail', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Plate Detail', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Plate Detail', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Plate Detail', 'mch.line_width_step', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Plate Detail', 'mch.line_width_step', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Plate Detail 2', 'mch.concept_hold', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Plate Detail 2', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Plate Detail 2', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Plate Detail 2', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Plate Detail 2', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Plate Detail 2', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Plate Detail 2', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Plate Detail 2', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Plate Detail 2', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Plate Detail 2', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Plate Detail 2', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Plate Detail 2', 'mch.lasso_sketch_clear', 'ESC'), ('3D View Tool: Object, Mecha Plate Detail 2', 'mch.lasso_sketch_undo', 'BACK_SPACE'), ('3D View Tool: Object, Mecha Plate Detail 2', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Plate Detail 2', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Plate Detail 2', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Plate Detail 2', 'mch.line_width_step', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Plate Detail 2', 'mch.line_width_step', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Plate Detail 3', 'mch.concept_hold', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Plate Detail 3', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Plate Detail 3', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Plate Detail 3', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Plate Detail 3', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Plate Detail 3', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Plate Detail 3', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Plate Detail 3', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Plate Detail 3', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Plate Detail 3', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Plate Detail 3', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Plate Detail 3', 'mch.lasso_sketch_clear', 'ESC'), ('3D View Tool: Object, Mecha Plate Detail 3', 'mch.lasso_sketch_undo', 'BACK_SPACE'), ('3D View Tool: Object, Mecha Plate Detail 3', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Plate Detail 3', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Plate Detail 3', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Plate Detail 3', 'mch.line_width_step', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Plate Detail 3', 'mch.line_width_step', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Screw Stamp', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Screw Stamp', 'mch.screw_stamp', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Screw Stamp', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Screw Stamp', 'mch.screw_stamp', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Screw Stamp', 'mch.screw_stamp', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Screw Stamp', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Screw Stamp', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Cloth Drape', 'mch.concept_hold', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Cloth Drape', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Cloth Drape', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Cloth Drape', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Cloth Drape', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Cloth Drape', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Cloth Drape', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Cloth Drape', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Cloth Drape', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Cloth Drape', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Cloth Drape', 'mch.line_width_step', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Cloth Drape', 'mch.line_width_step', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Cloth Drape', 'mch.cdrape_sim', 'SPACE'), ('3D View Tool: Object, Mecha Wrinkle Lines', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Wrinkle Lines', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Wrinkle Lines', 'mch.wrinkle_line_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Wrinkle Lines', 'mch.wrinkle_line_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Wrinkle Lines', 'mch.wrinkle_line_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Wrinkle Lines', 'mch.wrinkle_line_hover', 'MOUSEMOVE'), ('3D View Tool: Object, Mecha Wrinkle Lines', 'mch.wrinkle_line_delete', 'X'), ('3D View Tool: Object, Mecha Wrinkle Lines', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Wrinkle Lines', 'mch.wrinkle_sim', 'SPACE'), ('3D View Tool: Object, Mecha Wrinkle Lines', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Wrinkle Lines', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Creature Base Mesh', 'mch.concept_hold', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Creature Base Mesh', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Creature Base Mesh', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Creature Base Mesh', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Creature Base Mesh', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Creature Base Mesh', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Creature Base Mesh', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Creature Base Mesh', 'mch.base_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Creature Base Mesh', 'mch.base_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Creature Base Mesh', 'mch.base_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Creature Base Mesh', 'mch.base_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Creature Base Mesh', 'mch.base_sketch_clear', 'ESC'), ('3D View Tool: Object, Mecha Creature Base Mesh', 'mch.base_sketch_undo', 'BACK_SPACE'), ('3D View Tool: Object, Mecha Creature Base Mesh', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Creature Base Mesh', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Creature Base Mesh', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Creature Base Mesh', 'mch.line_width_step', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Creature Base Mesh', 'mch.line_width_step', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Creature Plate', 'mch.concept_hold', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Creature Plate', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Creature Plate', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Creature Plate', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Creature Plate', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Creature Plate', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Creature Plate', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Creature Plate', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Creature Plate', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Creature Plate', 'mch.lasso_sketch_key', 'RET'), ('3D View Tool: Object, Mecha Creature Plate', 'mch.lasso_sketch_key', 'NUMPAD_ENTER'), ('3D View Tool: Object, Mecha Creature Plate', 'mch.lasso_sketch_clear', 'ESC'), ('3D View Tool: Object, Mecha Creature Plate', 'mch.lasso_sketch_undo', 'BACK_SPACE'), ('3D View Tool: Object, Mecha Creature Plate', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Creature Plate', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Creature Plate', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Creature Plate', 'mch.line_width_step', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Creature Plate', 'mch.line_width_step', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Belt Maker', 'mch.concept_hold', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Belt Maker', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Belt Maker', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Belt Maker', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Belt Maker', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Belt Maker', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Belt Maker', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Belt Maker', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Belt Maker', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Belt Maker', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Belt Maker', 'mch.line_width_step', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Belt Maker', 'mch.line_width_step', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Creature Spike', 'mch.concept_hold', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Creature Spike', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Creature Spike', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Creature Spike', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Creature Spike', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Creature Spike', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Creature Spike', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Creature Spike', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Creature Spike', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Creature Spike', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Creature Spike', 'mch.line_width_step', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Creature Spike', 'mch.line_width_step', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Creature Scales', 'mch.concept_hold', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Creature Scales', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Creature Scales', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Creature Scales', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Creature Scales', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Creature Scales', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Creature Scales', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Creature Scales', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Creature Scales', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Creature Scales', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Creature Scales', 'mch.line_width_step', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Creature Scales', 'mch.line_width_step', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Scale Brush', 'mch.concept_hold', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Scale Brush', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Scale Brush', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Scale Brush', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Scale Brush', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Scale Brush', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Scale Brush', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Scale Brush', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Scale Brush', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Scale Brush', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Scale Brush', 'mch.line_width_step', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Scale Brush', 'mch.line_width_step', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Bridge Patch', 'mch.concept_hold', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Bridge Patch', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Bridge Patch', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Bridge Patch', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Bridge Patch', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Bridge Patch', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Bridge Patch', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Bridge Patch', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Bridge Patch', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Bridge Patch', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Bridge Patch', 'mch.line_width_step', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Bridge Patch', 'mch.line_width_step', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Flower Plate', 'mch.concept_hold', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Flower Plate', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Flower Plate', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Flower Plate', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Flower Plate', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Flower Plate', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Flower Plate', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Flower Plate', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Flower Plate', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Flower Plate', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Flower Plate', 'mch.line_width_step', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Flower Plate', 'mch.line_width_step', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Surface Curve', 'mch.concept_hold', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Surface Curve', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Surface Curve', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Surface Curve', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Surface Curve', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Surface Curve', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Surface Curve', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Surface Curve', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Surface Curve', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Surface Curve', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Surface Curve', 'mch.line_width_step', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Surface Curve', 'mch.line_width_step', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Cape', 'mch.concept_hold', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Cape', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Cape', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Cape', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Cape', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Cape', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Cape', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Cape', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Cape', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Cape', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Cape', 'mch.line_width_step', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Cape', 'mch.line_width_step', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Scarf Cape', 'mch.concept_hold', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Scarf Cape', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Scarf Cape', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Scarf Cape', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Scarf Cape', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Scarf Cape', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Scarf Cape', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Scarf Cape', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Scarf Cape', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Scarf Cape', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Scarf Cape', 'mch.line_width_step', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Scarf Cape', 'mch.line_width_step', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Creature Hair', 'mch.concept_hold', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Creature Hair', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Creature Hair', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Creature Hair', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Creature Hair', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Creature Hair', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Creature Hair', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Creature Hair', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Creature Hair', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Creature Hair', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Creature Hair', 'mch.line_width_step', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Creature Hair', 'mch.line_width_step', 'RIGHT_BRACKET'), ('3D View Tool: Object, Mecha Surface Draw', 'mch.concept_hold', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Surface Draw', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Surface Draw', 'mch.quick_hud_press', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Surface Draw', 'mch.cut_stroke', 'LEFTMOUSE'), ('3D View Tool: Object, Mecha Surface Draw', 'mch.rmb_gate', 'RIGHTMOUSE'), ('3D View Tool: Object, Mecha Surface Draw', 'mch.toggle_targets', 'T'), ('3D View Tool: Object, Mecha Surface Draw', 'mch.brush_resize', 'F'), ('3D View Tool: Object, Mecha Surface Draw', 'mch.exit_tool', 'ESC'), ('3D View Tool: Object, Mecha Surface Draw', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Surface Draw', 'mch.stamp_rotate', 'R'), ('3D View Tool: Object, Mecha Surface Draw', 'mch.line_width_step', 'LEFT_BRACKET'), ('3D View Tool: Object, Mecha Surface Draw', 'mch.line_width_step', 'RIGHT_BRACKET'), ('Curve', 'mch.double_click_point', 'LEFTMOUSE')]
+PASS addon keymap: B/C via gated mch.hotkey only
+PASS no ungated mch.boolean / draw_delete_cut keys
+PASS unregister removes all addon keymap items
+PASS unregister removes tool header palette
+PASS re-register/unregister leaves no duplicate keys
+
+17/17 passed
+====================================================================== 
+ test_zbrush_bridge.py
+Writing to /tmp/mch_zb_tvo9lgey/PartA__c490373b6233.obj
+OBJ export of 'PartA__c490373b6233.obj' took 0.21 ms
+Info: File exported successfully
+Writing to /tmp/mch_zb_tvo9lgey/PartB__e439fa4d197f.obj
+OBJ export of 'PartB__e439fa4d197f.obj' took 0.13 ms
+Info: File exported successfully
+Info: Sent 2 object(s) to /tmp/mch_zb_tvo9lgey
+PASS send: one OBJ per selected object (no join)  -- ['PartA__c490373b6233.obj', 'PartB__e439fa4d197f.obj']
+PASS objects stay separate in Blender
+PASS selection restored after send
+PASS manifest written with ids
+Info: Updated 0, unchanged 2, re-created 0
+PASS import with no ZBrush changes leaves meshes alone
+OBJ import of 'PartA__c490373b6233.obj' took 0.50 ms
+Info: Updated 1, unchanged 1, re-created 0
+PASS import back replaces only the changed object
+PASS object transform kept
+PASS modifiers kept
+PASS geometry really changed  -- (2.0, 3.5712286233901978)
+PASS previous mesh kept as backup (fake user)
+Writing to /tmp/mch_zb2_1qb80rv1/Exact__98d41a4740fe.obj
+OBJ export of 'Exact__98d41a4740fe.obj' took 0.16 ms
+Info: File exported successfully
+Info: Sent 1 object(s) to /tmp/mch_zb2_1qb80rv1
+OBJ import of 'Exact__98d41a4740fe.obj' took 0.41 ms
+Info: Updated 1, unchanged 0, re-created 0
+PASS unchanged round trip restores local coordinates (<1e-5)  -- 9.310543150790517e-07
+Writing to /tmp/mch_zb2_1qb80rv1/Renamed__244cde29d243.obj
+OBJ export of 'Renamed__244cde29d243.obj' took 0.15 ms
+Info: File exported successfully
+Info: Sent 1 object(s) to /tmp/mch_zb2_1qb80rv1
+OBJ import of 'Renamed__244cde29d243.obj' took 0.39 ms
+Info: Updated 1, unchanged 1, re-created 0
+PASS renamed object found by id and updated
+OBJ import of 'Renamed__244cde29d243.obj' took 0.31 ms
+Info: Updated 0, unchanged 1, re-created 1
+PASS deleted object re-created from its file
+Warning: Updated 0, unchanged 1, re-created 0 | RenamedLater: file missing
+PASS missing file reported, no crash
+PASS status lists the missing file  -- [('Exact', 'Exact__98d41a4740fe.obj', 'sent'), ('RenamedLater', 'Renamed__244cde29d243.obj', 'missing')]
+Writing to /tmp/mch_zb3_f2zwokei/Shared1__b072708e3cb9.obj
+OBJ export of 'Shared1__b072708e3cb9.obj' took 0.18 ms
+Info: File exported successfully
+Info: Sent 1 object(s) to /tmp/mch_zb3_f2zwokei
+OBJ import of 'Shared1__b072708e3cb9.obj' took 0.37 ms
+Info: Updated 1, unchanged 0, re-created 0
+PASS shared mesh: twin keeps the original data
+PASS GoZ is detected only as information (None here)
+
+17/17 passed
+====================================================================== 
+ test_zip_install.py
+PASS dist zip exists  -- ['/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.9.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.10.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.11.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.11.1.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.11.2.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.11.3.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.12.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.13.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.13.1.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.13.2.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.14.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.14.1.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.14.2.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.14.3.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.14.4.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.15.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.16.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.17.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.18.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.18.1.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.18.2.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.19.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.19.1.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.19.2.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.19.3.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.20.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.20.1.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.20.2.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.20.3.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.20.4.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.21.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.21.1.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.22.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.22.1.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.22.2.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.1.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.2.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.3.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.4.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.5.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.6.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.7.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.8.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.9.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.10.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.11.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.12.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.13.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.14.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.15.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.16.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.17.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.18.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.19.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.20.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.21.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.22.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.23.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.24.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.25.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.26.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.23.27.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.0.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.1.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.2.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.3.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.4.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.5.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.6.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.7.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.8.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.9.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.10.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.11.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.12.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.13.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.15.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.16.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.17.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.18.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.19.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.20.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.21.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.22.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.23.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.24.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.25.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.26.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.27.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.28.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.29.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.30.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.31.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.32.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.33.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.34.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.35.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.36.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.37.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.38.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.39.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.40.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.41.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.42.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.43.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.44.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.45.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.46.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.47.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.48.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.49.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.50.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.51.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.52.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.53.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.54.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.55.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.56.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.57.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.58.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.59.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.60.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.61.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.62.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.63.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.64.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.65.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.66.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.67.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.68.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.69.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.70.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.71.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.72.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.73.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.74.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.75.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.76.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.77.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.78.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.79.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.80.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.81.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.82_20261028-1839.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.83_20261028-2306.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.84_20261029-0318.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.85_20261029-0434.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.86_20261029-0649.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.87_20261029-0742.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.88_20261029-1013.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.89_20261029-1123.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.90_20261029-1355.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.91_20261029-1537.zip', '/home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.92_20261030-0445.zip']
+PASS user_default repo available
+STATUS Installed "mecha_lab"
+PASS package_install_files FINISHED
+PASS extension enabled  -- ['io_anim_bvh', 'io_curve_svg', 'io_mesh_uv_layout', 'io_scene_fbx', 'io_scene_gltf2', 'cycles', 'pose_library', 'bl_pkg', 'bl_ext.user_default.mecha_lab']
+PASS operators available after install
+PASS addon preferences registered (hotkey switches)
+PASS 0.24.82 the zip carries its build stamp (version + build time, also in the file name) and Preferences shows it  -- ('0.24.92 build 20261030-0445', 'Mecha Lab 0.24.92 build 20261030-0445')
+PASS cycle 0: disable works
+PASS cycle 0: no hotkeys left after disable
+PASS cycle 0: re-enable works (no "already registered")
+PASS cycle 0: keymap items not duplicated  -- 504
+PASS cycle 1: disable works
+PASS cycle 1: no hotkeys left after disable
+PASS cycle 1: re-enable works (no "already registered")
+PASS cycle 1: keymap items not duplicated  -- 504
+PASS cycle 2: disable works
+PASS cycle 2: no hotkeys left after disable
+PASS cycle 2: re-enable works (no "already registered")
+PASS cycle 2: keymap items not duplicated  -- 504
+PASS Mirror panel available after cycles
+
+20/20 passed
+
+FAILED FILES: none
