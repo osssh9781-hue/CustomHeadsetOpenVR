@@ -1,6 +1,6 @@
 # Mecha Lab 0.24.92 — 설치 · MECHA LAB Workspace · 사용법
 
-> **검증 수준:** Linux headless Blender **5.2.3**(`bpy`)에서 자동 테스트 208개 파일 / 5,200개 항목(첫 전체 실행 실패 1 — 선반 겹침, 고친 뒤 혼자 통과) + 무작위 기능 조합 크래시 테스트 280개, 그리고 0.24.81부터 리눅스 가상 화면의 **진짜 Blender 5.2.3 창** 자동 테스트(설치 · 워크스페이스 · 그려진 막대 · 진짜 마우스 Cut · Tab · 단축키 충돌 목록) 13/13를 돌렸습니다(결과: `test_report.md`).
+> **검증 수준:** Linux headless Blender **5.2.3**(`bpy`)에서 자동 테스트 208개 파일 / 5,234개 항목(전부 통과) + 무작위 기능 조합 크래시 테스트 280개, 그리고 0.24.81부터 리눅스 가상 화면의 **진짜 Blender 5.2.3 창** 자동 테스트(설치 · 워크스페이스 · 그려진 막대 · 진짜 마우스 Cut · Tab · 단축키 충돌 목록) 13/13를 돌렸습니다(결과: `test_report.md`).
 > **Windows 11 + Blender 5.0.2 GUI에서는 실행된 적이 없습니다.** `GUI_TEST_CHECKLIST_KO.md` 맨 위 0.24.81 절을 먼저 확인해 주세요.
 > 문제가 남아 있으면 N > Mecha Lab > Workspace & Hotkeys > **Run Mecha Lab Self Test** 결과(클립보드)를 보내 주세요.
 
