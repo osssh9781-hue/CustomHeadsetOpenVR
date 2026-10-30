@@ -49,13 +49,13 @@ def corner_segs():
 K = ui_factor(CTX, CTX.region)                  # (the drawn UI's size factor)
 items, seg = corner_segs()
 check('MECHA LAB corner card: a VIEW row with Wire and Solo under MECHA LAB | ZBRUSH and STYLE',
-      bottom_bar.ui_active(CTX) and {'MECHA LAB', 'ZBRUSH', 'ZBrush', 'Blender', 'Wire', 'Solo'} <= set(seg)
+      bottom_bar.ui_active(CTX) and {'MECHA', 'ZBRUSH', 'PAINT', 'ZBrush', 'Blender', 'Wire', 'Solo'} <= set(seg)
       and seg['Wire'].y < seg['ZBrush'].y and abs(seg['Wire'].y - seg['Solo'].y) < 0.5
       and any(i.kind == 'glabel' and i.label == 'VIEW' for i in items), sorted(seg))
 check('... Wire lit while a part shows its wireframe, Solo dark (not soloed)', seg['Wire'].on and not seg['Solo'].on)
 cx, cy, cw, ch = zu.corner_box(CTX, W, H, K)
 check('... the card holds the third row', all(cy - 0.5 <= seg[n].y and seg[n].y + seg[n].h <= cy + ch + 0.5
-                                              for n in ('Wire', 'Solo', 'MECHA LAB')), (cy, ch, seg['Wire'].y))
+                                              for n in ('Wire', 'Solo', 'MECHA')), (cy, ch, seg['Wire'].y))
 
 ub.run(CTX, seg['Wire'])
 check('Wire with nothing selected: every visible part\'s wireframe off', not a.show_wire and not b.show_wire)
@@ -96,7 +96,7 @@ real_zon = zs.on
 zs.on = lambda c: True
 segs = set(corner_segs()[1])
 check('ZBRUSH screen: the corner card as before (its own PolyF / Solo on the right shelf)',
-      'Wire' not in segs and 'MECHA LAB' in segs, sorted(segs))
+      'Wire' not in segs and 'MECHA' in segs, sorted(segs))
 zs.on = real_zon
 bpy.ops.object.mode_set(mode='OBJECT')
 ts.is_mecha_workspace = real_ws

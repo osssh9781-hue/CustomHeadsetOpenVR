@@ -328,17 +328,17 @@ C.window_manager.mch_zb_pop = ''
 check('Preferences: Control Style (ZBrush / Blender)', 'control_style' in wui.MCH_AddonPreferences.__annotations__)
 
 # --- the corner card: MECHA LAB | ZBRUSH, STYLE ZBrush | Blender -------------------------------------------------
-corner = [i for i in items if i.kind == 'seg' and i.label in {'MECHA LAB', 'ZBRUSH', 'ZBrush', 'Blender'}
+corner = [i for i in items if i.kind == 'seg' and i.label in {'MECHA', 'ZBRUSH', 'PAINT', 'ZBrush', 'Blender'}
           and i.action and i.action[1] in {'mch.zb_switch', 'mch.zb_style'}]   # (0.24.79: not the NAV row)
 cx = min(i.x for i in corner)
 check('Corner card top right: MECHA LAB | ZBRUSH (ZBRUSH lit in Sculpt Mode), STYLE ZBrush | Blender',
-      len(corner) == 4 and cx > W * 0.7 and min(i.y for i in corner) > H * 0.85
+      len(corner) == 5 and cx > W * 0.7 and min(i.y for i in corner) > H * 0.85
       and next(i for i in corner if i.label == 'ZBRUSH').on and next(i for i in corner if i.label == 'ZBrush').on)
 top = [i for i in items if i.kind == 'card'][0]
 cc = zu.corner_box(CTX, W, H, 1.0)
 check('... the ZBrush top shelf keeps clear of it', top.x + top.w <= cc[0] + 1 or top.y + top.h <= cc[1] + 1,
       (top.x + top.w, cc[0]))
-ub.run(CTX, next(i for i in corner if i.label == 'MECHA LAB'))
+ub.run(CTX, next(i for i in corner if i.label == 'MECHA'))
 check('MECHA LAB: back to Object Mode', C.mode == 'OBJECT')
 ub.run(CTX, next(i for i in corner if i.label == 'ZBRUSH'))
 check('ZBRUSH: Sculpt Mode on the active mesh', C.mode == 'SCULPT')
@@ -349,7 +349,7 @@ zs.mecha_tab = lambda c: True
 ub.bump()
 blender_items = ub.all_items(CTX)
 check('Blender style: Blender sculpting, only the corner card (no ZBrush keys: on() is off)',
-      not zs.on(C) and {i.label for i in blender_items if i.kind == 'seg'} == {'MECHA LAB', 'ZBRUSH', 'ZBrush',
+      not zs.on(C) and {i.label for i in blender_items if i.kind == 'seg'} == {'MECHA', 'ZBRUSH', 'PAINT', 'ZBrush',
                                                                                'Blender'})
 check('... no ZBrush canvas navigation either', not zs.nav_on(C))
 zs.set_style('ZBRUSH')
