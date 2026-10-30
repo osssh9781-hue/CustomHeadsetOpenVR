@@ -55,7 +55,7 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
     keep: FloatProperty(name='Silhouette Keep', description='A soft spring back to the laid patch', default=5.0, min=0.0, max=100.0, subtype='PERCENTAGE')
     gap: FloatProperty(name='Gap', description='How far above the body the cloth rests, as % of the outline size',
                        default=0.6, min=0.0, max=5.0, subtype='PERCENTAGE')
-    wrap_tight: FloatProperty(name='Wrap Pressure', description='Wrap This Mesh: how hard the loose cloth is pressed onto the body (like vacuum packing) - the excess fabric (Looseness) bunches into wrinkles',
+    wrap_tight: FloatProperty(name='Wrap Pressure', description='Wrap This Mesh / Sew Copy: how hard the loose cloth is pressed onto the body (like vacuum packing) - the excess fabric (Looseness) bunches into wrinkles',
                               default=50.0, min=0.0, max=200.0, subtype='PERCENTAGE')
     wrap_points: IntProperty(name='Wrap Points', description='Wrap This Mesh: the cloth copy is kept to about this many points (a decimated copy of a heavy body)',
                              default=40000, min=1000, soft_max=300000)
@@ -286,7 +286,7 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
                 sew=int(len(sew)) if sew is not None else 0,
                 puff=(size * 0.0015 * st.puff / 50.0) if puff else 0.0, puff_dir=nrm.copy() if puff else None,
                 puff_max=size * 0.35 * (st.slack / 100.0) ** 0.5 if puff else 0.0,
-                press=(size * 0.004 * st.wrap_tight / 50.0) if wrap else 0.0,
+                press=(size * 0.004 * st.wrap_tight / 50.0) if (wrap or puff) else 0.0,
                 gdir=wl._gravity_dir(gdir_ob or target), size=size, frames=st.frames, frame=0, points=n, collider=int(near.sum()),
                 grid_time=time.perf_counter() - t, stage='run')
 
@@ -337,7 +337,7 @@ def advance(sess, st):
     if cloth.sew is not None:
         cloth.sew_strength = min(1.0, (sess['frame'] + 1) / max(1.0, sess['frames'] * SEW_RAMP))
     g = sess['gdir'] * (GRAV * st.gravity / 100.0 * sess['size'])
-    if sess.get('wrap') and sess.get('press', 0.0) > 0:          # the wrap's pressure: every point toward the body
+    if sess.get('press', 0.0) > 0:                               # the wrap's pressure: every point toward the body / plate
         d, inward = sess['grid'].inward(cloth.co)
         f = inward * sess['press']
         f[d <= sess['margin'] * 1.2] = 0.0
