@@ -397,14 +397,30 @@ def show_all(ob):
     ob.update_tag()
 
 
+def _flag_volume(vol):
+    """0.24.95 the volume's faces carry the cutter flag, so the faces it leaves on the part are known and become
+    Edge Memory marks (the Boolean node passes face attributes through)."""
+    if vol is None or vol.type != 'MESH' or not len(vol.data.polygons):
+        return
+    me = vol.data
+    attr = me.attributes.get(cg.CUTTER_ATTR)
+    if attr is None or attr.domain != 'FACE':
+        if attr is not None:
+            me.attributes.remove(attr)
+        attr = me.attributes.new(cg.CUTTER_ATTR, 'BOOLEAN', 'FACE')
+    attr.data.foreach_set('value', [True] * len(me.polygons))
+
+
 def apply(context, ob):
     """Make the hiding permanent: the modifier is applied (other modifiers stay)."""
     mod = ob.modifiers.get(MOD)
     if mod is None:
         return False
     vol = volume_of(ob)
+    _flag_volume(vol)
     with context.temp_override(object=ob, active_object=ob, selected_objects=[ob], selected_editable_objects=[ob]):
         bpy.ops.object.modifier_apply(modifier=mod.name)
+    cg.remove_cutter_attribute(ob.data)          # 0.24.95 -> Edge Memory marks on the hole's edges
     if vol is not None and not _sharers(vol, ob):
         cg.remove_object_and_mesh(vol)
     return True
@@ -425,6 +441,7 @@ def split_off(context, ob):
         piece.modifiers.remove(mod)
     piece.name = ob.name + '_Hidden'
     vol.hide_set(False)
+    _flag_volume(vol)
     try:
         me, _solver = cg.boolean_result(context, piece, vol, 'INTERSECT', 'AUTO', False)
     except cg.CutError:
@@ -438,6 +455,7 @@ def split_off(context, ob):
             me.materials.append(m)
     piece.data = me
     me.name = piece.name
+    cg.remove_cutter_attribute(me)        # 0.24.95 -> Edge Memory marks on the piece's cut edges
     if old.users == 0:
         bpy.data.meshes.remove(old)
     set_cap(ob, True)                     # the rest is closed too, like Split

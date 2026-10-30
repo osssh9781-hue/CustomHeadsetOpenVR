@@ -35,6 +35,8 @@ import numpy as np
 import bmesh
 import bpy
 
+from . import edge_memory as em
+
 BEVEL = 'MCH_HE_Bevel'
 SUBSURF = 'MCH_HE_Subdivide'
 NORMALS = 'MCH_HE_Normals'
@@ -155,6 +157,9 @@ def find(ob, st):
         bm.from_mesh(me)
         hard = [e for e in bm.edges if len(e.link_faces) != 2 or e.calc_face_angle(0.0) > st.he_angle]
         hard = drop_short_lines(_drop_specks(hard, size), size)
+        mem = bm.edges.layers.bool.get(em.ATTR)              # 0.24.95 Edge Memory: the edges a tool made are hard
+        if mem is not None:                                  # whatever their angle (a shallow cut, a gentle boolean)
+            hard = list({*hard, *(e for e in bm.edges if e[mem])})
         for e in bm.edges:
             e.smooth = True
         for e in hard:

@@ -2048,7 +2048,13 @@ def flat_cut_faces(mesh):
 
 def remove_cutter_attribute(mesh):
     """Every copy of the cutter flag goes (0.24.42: a Geometry Nodes result can carry it twice, on faces and on
-    points - a copy left behind made the NEXT cut finish this cut's border again)."""
+    points - a copy left behind made the NEXT cut finish this cut's border again).  0.24.95 right before it goes,
+    the flag becomes Edge Memory marks (the cut's outline + the cutter's own creases: edge_memory)."""
+    try:
+        from . import edge_memory
+        edge_memory.mark_cut_borders(mesh, CUTTER_ATTR)
+    except Exception as ex:                                   # memory is a bonus: never fail a cut over it
+        print('Mecha: edge memory:', ex)
     for _ in range(8):
         attr = mesh.attributes.get(CUTTER_ATTR)
         if attr is None:
