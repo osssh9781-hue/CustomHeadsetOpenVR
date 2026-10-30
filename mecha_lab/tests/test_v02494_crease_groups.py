@@ -77,7 +77,8 @@ g2 = zb.crease_materials(grid)
 check(f'More than {zb.MAX_REGIONS} regions ({n_regions}): no materials, a note for the message instead (ZBrush would stall)',
       n_regions == 900 and g2 == 0 and len(grid.data.materials) == 0 and 'crease regions' in zb.LAST_SKIP['text'], zb.LAST_SKIP['text'][:60])
 bpy.data.objects.remove(grid)
-for o in C.view_layer.objects:
+C.view_layer.update()            # a just-removed object leaves a stale None entry in view_layer.objects
+for o in bpy.data.objects:
     o.select_set(o is cube)
 C.view_layer.objects.active = cube
 check('The setting is on by default in the ZBrush bridge settings and drawn in the Layers panel',

@@ -1,7 +1,7 @@
-PASS 1. install the add-on zip  -- /home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.94_20261030-0828.zip
+PASS 1. install the add-on zip  -- /home/user/CustomHeadsetOpenVR/mecha_lab/dist/mecha_lab-0.24.94_20261030-0918.zip
 PASS 2. the MECHA LAB workspace exists  -- ['Animation', 'Compositing', 'Geometry Nodes', 'Layout', 'MECHA LAB', 'Modeling', 'Rendering', 'Scripting', 'Sculpting', 'Shading', 'Texture Paint', 'UV Editing']
 PASS 2. ... and is the window's workspace  -- MECHA LAB
-PASS 3. the drawn bars are registered  -- <capsule object "RNA_HANDLE" at 0x7f1dfa88ba10>
+PASS 3. the drawn bars are registered  -- <capsule object "RNA_HANDLE" at 0x7f5dbf28ba10>
 PASS 3. the window drew (X capture not black) and the band under the 3D view header is drawn on (several greys + the blue accent: the Mecha top bar)  -- (1920, 1080, 0, 14, 4)
 PASS 4. a real-mouse lasso with the Cut tool cuts the cube (its points move or its faces change)  -- (6, 6, [(-1.0, -1.0, -1.0), (-1.0, -1.0, 1.0)], [(-1.0, -1.0, -1.0), (-1.0, -1.0, 1.0)], [])
 PASS 4. Ctrl+Z puts the cube back after the cut, Ctrl+Shift+Z cuts it again (no crash)  -- (True, [(-1.0, -1.0, -1.0), (-1.0, -1.0, 1.0)])
