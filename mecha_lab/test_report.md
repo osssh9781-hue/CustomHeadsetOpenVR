@@ -1,6 +1,6 @@
 # Test Report — Mecha Lab 0.24.92
 
-## 0.24.94 결과: TESTLINE. test_v02492_wrinkle_lines 46(Wrinkles 4), test_v02494 버전. 자동 GUI 테스트 GUILINE. ZIPLINE.
+## 0.24.94 결과: Blender 5.2.3 bpy 전체 209개 파일 PASS 5,280 / FAIL 0(`tests/test_log_bpy523_v02494.txt`, FAILED FILES: none; Traceback 26개 = test_registration_recovery). test_v02492_wrinkle_lines 46(Wrinkles 4), test_v02494 버전. 실제 블렌더 창 자동 테스트 13/13(`tests/gui/gui_result_0.24.94.txt`, 이 zip). ZIP sha256 `58789e69b085b9108416969e29783884e6867f56ac3c5275707c73b0c1ec6a02` (`mecha_lab-0.24.94_20261030-0750.zip`).
 
 ## 0.24.93 결과: Blender 5.2.3 bpy 전체 209개 파일 PASS 5,256 / FAIL 2(`tests/test_log_bpy523_v02493.txt`, FAILED FILES: test_v02487_wiresolo · test_v02492 — 둘 다 코너 카드 글자가 MECHA LAB | ZBRUSH 에서 MECHA | ZBRUSH | PAINT 로 바뀐 것을 기대값이 모르던 것; 기대값을 고친 뒤 혼자 다시 12/12 · 80/80; Traceback 28개 = test_registration_recovery 24 + 그 FAIL 과 관련 4). 새 검사: test_v02493_paint_lab 29, test_v02492_cloth_drape 33(Front + Back 봉제 10 · Stop at Pins 2), test_v02492_wrinkle_lines 42(floor 3), test_v02494 버전. 실제 블렌더 창: Paint Lab(PAINT 전환 · 사진 스텐실 · 진짜 Q · 진짜 마우스 칠하기 65 점 · Alt 클릭 스포이드 · 밝기 마스크, `tests/gui/paint_lab_real_window_0.24.93.txt`), ZBrush ClothDrag 진짜 마우스 드래그 475 점 이동, Cloth Filter Inflate + 격자 마스크 → 마스크 선 0 이동 · 칸 8.5 cm(`tests/gui/zb_cloth_real_window_0.24.93.txt`); 실제 블렌더 창 자동 테스트 13/13(`tests/gui/gui_result_0.24.93.txt`, 이 zip). ZIP sha256 `c4ab9ebd95729d5221cb6aa0fd732114fb76c99d6b0012beb05998082d974e4e` (`mecha_lab-0.24.93_20261030-0543.zip`).
 
