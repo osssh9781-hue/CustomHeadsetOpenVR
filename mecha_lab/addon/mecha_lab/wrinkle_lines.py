@@ -13,6 +13,8 @@ Not a full garment simulation: the aim is "a pretty wrinkle where I want it" on 
        between the lines crumples; Silhouette Keep is a soft spring back to the start.  Enter writes the cloth into
        the mesh (same points, so nothing else changes), Esc puts the saved copy back.
     Crease mode lays a groove instead of a tube: the cloth sags into it, a fold line.
+    **No lines** (Space with nothing drawn): stage 1 is skipped and the mesh as it is - the ridges you sculpted
+    by hand with any brush - is the collider; the same cloth drops over it.
 
 Keys (the Wrinkle Lines tool):  drag = a new line on the surface · drag a point = move it · Shift + click = a point
 added to the nearest line · Ctrl + click = that point removed · X = the line under the mouse removed ·
@@ -618,8 +620,6 @@ def stage():
 def start(context, ob, st):
     """Stage 1: the tubes shown on the mesh (a backup kept); Space then runs the cloth."""
     lines = _lines_of(ob)
-    if not lines:
-        return None, 'Wrinkle Lines: draw a line on the mesh first'
     if sim_active():
         return None, 'a simulation is already on (Enter / Esc)'
     backup = ob.data.copy()
@@ -638,7 +638,14 @@ def start(context, ob, st):
         raise
     SIM.clear()
     SIM.update(ob=ob.name, backup=backup.name, sess=sess, frames=sess['frames'], running=False, want=None,
-               snapshot=_snapshot(st), done=False, info=dict(levels=sess['levels'], verts=sess['verts']))
+               snapshot=_snapshot(st), done=False, info=dict(levels=sess['levels'], verts=sess['verts'],
+                                                             sculpted=not lines))
+    if not lines:                        # no lines: the mesh as sculpted (its own ridges) is the collider
+        try:
+            run(context)
+        except Exception:
+            cancel(context)
+            raise
     return SIM['info'], None
 
 
@@ -1228,10 +1235,13 @@ def draw(layout, context):
         box.label(text=status(), icon='PLAY')
     else:
         box.label(text=f'{len(lines)} line(s) on {ob.name}' if lines and ob else 'drag on the mesh: a wrinkle line', icon='INFO')
-        box.label(text='Space: tubes on the lines  ·  Space: the cloth over them', icon='BLANK1')
+        if lines:
+            box.label(text='Space: tubes on the lines  ·  Space: the cloth over them', icon='BLANK1')
+        else:
+            box.label(text='no lines: Space drops the cloth over the mesh as sculpted', icon='BLANK1')
     r = box.row(align=True)
     if not live:
-        run_text, run_icon = 'Tubes (Space)', 'CURVE_DATA'
+        run_text, run_icon = ('Tubes (Space)', 'CURVE_DATA') if lines else ('Simulate (Space)', 'PLAY')
     elif stage() == 'preview':
         run_text, run_icon = 'Simulate (Space)', 'PLAY'
     elif SIM.get('done'):

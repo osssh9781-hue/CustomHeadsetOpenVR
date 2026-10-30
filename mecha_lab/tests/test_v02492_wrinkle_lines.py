@@ -227,6 +227,34 @@ check('A 60k-point mesh over Sim Points runs on a light copy (about 15k points) 
 check('... in a few seconds (10 frames, the map + grid included)', dt < 25.0, round(dt, 1))
 src = inspect.getsource(wl.draw)
 check("Panel: Sim Points next to Frames", "'sim_points'" in src)
+# -- no lines: the mesh as sculpted (its own ridges) is the collider -----------------------------------------------
+fresh()
+S = C.scene
+ob = sleeve('S5')
+from mecha_lab import mesh_io as mio
+co_s = mio.read_co(ob.data)
+ridge = np.exp(-((co_s[:, 2] - 0.3) / 0.08) ** 2)                       # a sculpted ring round the sleeve
+mio.write_co(ob.data, co_s * (1.0 + 0.08 * ridge)[:, None] * np.array([1, 1, 0]) + co_s * np.array([0, 0, 1]))
+ob.data.update()
+co_s = mio.read_co(ob.data)
+st = S.mch_wlines
+st.detail = False
+info = wl.simulate(C, ob, st, [], frames=10)
+co = mio.read_co(ob.data)
+check('simulate with no lines: no tubes, the sculpted mesh is the collider, the cloth still drops and changes',
+      info['lifted'] == 0 and np.all(np.isfinite(co)) and np.linalg.norm(co - co_s, axis=1).max() > 1e-3
+      and np.abs(co).max() < 5.0, info)
+ob2 = sleeve('S6')
+st.frames = 6
+before = mio.read_co(ob2.data)
+info, err = wl.start(C, ob2, st)
+check('start with no lines skips the tube stage: straight into the cloth frames (backup kept), Esc puts it back',
+      err is None and info.get('sculpted') is True and wl.stage() == 'run' and wl.SIM['running']
+      and all(wl.step(C) for _ in range(6)) and not wl.step(C) and wl.SIM['done'], (err, wl.stage()))
+wl.cancel(C)
+check('... and after Esc the mesh is as before, no session', not wl.sim_active()
+      and np.allclose(mio.read_co(ob2.data), before, atol=1e-6))
+
 from mecha_lab import tool_presets
 name, pg = tool_presets.group_for(S, 'WLINES')
 check('Tool Presets know the Wrinkle Lines settings (scene.mch_wlines): save your own fabric presets',
