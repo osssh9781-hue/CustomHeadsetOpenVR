@@ -255,6 +255,30 @@ wl.cancel(C)
 check('... and after Esc the mesh is as before, no session', not wl.sim_active()
       and np.allclose(mio.read_co(ob2.data), before, atol=1e-6))
 
+# -- Stop at Pins: the cloth cannot hang below the lowest pinned ring ---------------------------------------------
+from mecha_lab import cloth_pbd
+sq = cloth_pbd.Cloth(np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], float), np.array([0, 1, 2, 3]), np.array([0]), np.array([4]))
+sq.floor = (np.array([0.0, 0.0, -1.0]), 0.5)
+for _ in range(5):
+    sq.step(gravity=np.array([0, 0, -0.3]))
+check('cloth_pbd floor: under gravity the square stops at the level (0.5 down), not below',
+      abs(sq.co[:, 2].min() + 0.5) < 1e-9, sq.co[:, 2].min())
+fresh()
+S = C.scene
+ob = sleeve('S7')
+lines = put_lines(ob, SPECS)
+st = S.mch_wlines
+st.detail = False
+st.stop_at_pins = True
+info = wl.simulate(C, ob, st, lines, frames=20)
+co = mio.read_co(ob.data)
+edge = 3.0 / 96
+check('Wrinkle Lines Stop at Pins: nothing below the bottom ring (-1.5, half a mean edge = 2 cm allowed) - before it hung to -1.8',
+      co[:, 2].min() >= -1.5 - 0.03 and np.all(np.isfinite(co)), co[:, 2].min())
+st.stop_at_pins = False
+check('Stop at Pins is in the panel and the snapshot', "'stop_at_pins'" in inspect.getsource(wl.draw_panel if hasattr(wl, 'draw_panel') else wl)
+      and 'stop_at_pins' in inspect.getsource(wl._snapshot))
+
 from mecha_lab import tool_presets
 name, pg = tool_presets.group_for(S, 'WLINES')
 check('Tool Presets know the Wrinkle Lines settings (scene.mch_wlines): save your own fabric presets',

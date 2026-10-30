@@ -106,6 +106,8 @@ class MCH_PG_WrinkleLines(bpy.types.PropertyGroup):
                             default=100.0, min=0.0, max=200.0, subtype='PERCENTAGE', update=_strength_changed)
     pin_boundary: BoolProperty(name='Pin Mesh Boundary', description='The open edges of the mesh (the ends of a sleeve) stay put',
                                default=True)
+    stop_at_pins: BoolProperty(name='Stop at Pins', description='The cloth cannot hang lower (world down) than the lowest pinned point: nothing sags below the bottom ring',
+                               default=False)
     pin_selected: BoolProperty(name='Pin Selected', description='Points selected in Edit Mode stay put too', default=False)
     self_collision: BoolProperty(name='Cloth Self Collision', description='Folds do not pass through each other (slower)',
                                  default=False)
@@ -542,6 +544,8 @@ def build(context, ob, st, sess):
     sess.update(stage='run', cloth=cloth, grid=grid, grid_time=time.perf_counter() - t, margin=margin,
                 friction=friction, damping=damping, frame=0, gdir=_gravity_dir(ob), frames=st.frames)
     cloth.collide = lambda c: collide(c, sess)
+    if st.stop_at_pins and np.any(pin >= 1):              # nothing hangs below the lowest pinned point
+        cloth.floor = (sess['gdir'], float((co[pin >= 1] @ sess['gdir']).max()) + edge_len * 0.5)
     return sess
 
 
@@ -675,7 +679,8 @@ def run(context):
 
 def _snapshot(st):
     return tuple(getattr(st, k) for k in ('mode', 'fabric', 'size', 'fade', 'lift', 'shrink', 'slack', 'fold', 'gravity', 'keep',
-                                          'pin_boundary', 'pin_selected', 'self_collision', 'detail', 'frames', 'sim_points'))
+                                          'pin_boundary', 'pin_selected', 'self_collision', 'detail', 'frames', 'sim_points',
+                                          'stop_at_pins'))
 
 
 def step(context):
@@ -1278,6 +1283,7 @@ def draw(layout, context):
     r.prop(st, 'pin_boundary', toggle=True)
     r.prop(st, 'pin_selected', toggle=True)
     r = box.row(align=True)
+    r.prop(st, 'stop_at_pins', toggle=True)
     r.prop(st, 'self_collision', toggle=True)
     r.prop(st, 'detail', toggle=True)
     r = box.row(align=True)

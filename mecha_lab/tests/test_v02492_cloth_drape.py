@@ -51,6 +51,24 @@ check('... the rim stayed sewn where it was drawn (within the gap)',
       np.linalg.norm(co[:nb] - co_patch[:nb], axis=1).max() < size * 0.02, np.linalg.norm(co[:nb] - co_patch[:nb], axis=1).max())
 check('... in a second or two (30 frames, grid included)', info['time'] < 6.0, round(info['time'], 2))
 bpy.data.meshes.remove(me)
+# Stop at Pins: a big loose cloth on the sphere's lower half hangs below the rim's lowest point - with the rule it cannot
+loops_lo = [[(x * PX, y * PX) for x, y in [(-0.5, 0.1), (0.0, 0.15), (0.5, 0.1), (0.55, -0.4), (0.3, -0.75), (-0.3, -0.75), (-0.55, -0.4)]]]
+st.slack = 60.0
+for flag in (False, True):
+    st.stop_at_pins = flag
+    target, me, nb, size = cd.patch_from_loops(C, loops_lo, Proj(), st.spacing)
+    co_p = np.array([v.co[:] for v in me.vertices])
+    cd.drape(C, body, me, nb, size, st, frames=40)
+    co = np.array([v.co[:] for v in me.vertices])
+    rim_low = co_p[:nb, 2].min()
+    if flag:
+        check('Stop at Pins: no point lower than the lowest rim point (half a spacing = about 2 cm allowed)',
+              co[:, 2].min() >= rim_low - 0.03, (co[:, 2].min(), rim_low))
+    else:
+        check('(without it the loose cloth sags below the rim)', co[:, 2].min() < rim_low - 1e-3, (co[:, 2].min(), rim_low))
+    bpy.data.meshes.remove(me)
+st.slack = 25.0
+st.stop_at_pins = False
 # the live flow
 msg = cd.perform(C, loops, Proj())
 ob = C.view_layer.objects.active
@@ -84,7 +102,7 @@ check('Tool wiring: CDRAPE in the tool table (Cloth group, lasso shape), the cut
       and "cloth_drape.perform" in inspect.getsource(ce) and 'CDRAPE' in ce._COLORS
       and any(k[0] == 'mch.cdrape_sim' for k in wsui.MCH_TOOL_cloth_drape.bl_keymap))
 src = inspect.getsource(cd.draw)
-check('Panel: Drape / Restart / Keep / Drop + every slider', all(k in src for k in ("'slack'", "'shrink'", "'gravity'", "'stick'", "'keep'", "'gap'",
+check('Panel: Drape / Restart / Keep / Drop + every slider', all(k in src for k in ("'slack'", "'shrink'", "'gravity'", "'stick'", "'keep'", "'gap'", "'stop_at_pins'",
                                                                                    "'spacing'", "'pin_rim'", "'frames'", "'fabric'", 'Keep (Enter)', 'Drop (Esc)')))
 # -- the mesh itself as the cloth (a remeshed piece of your own) ----------------------------------------------------
 bpy.ops.mesh.primitive_grid_add(size=1.2, x_subdivisions=40, y_subdivisions=40, location=(0, 0, 1.08))

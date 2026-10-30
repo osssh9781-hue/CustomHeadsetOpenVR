@@ -116,6 +116,8 @@ class Cloth:
 
     max_step = 0.0       # a point moves at most this far per frame (0 = no cap): a pole fan's thin triangles
     #                      can otherwise throw a point off in one frame
+    floor = None         # (down (3,), level): no point goes further down than ``level`` along ``down`` - the cloth
+    #                      cannot hang below the lowest pinned ring (Stop at Pins)
 
     def step(self, force=None, gravity=None, damping=0.1, iterations=5, keep_rate=0.3):
         """One frame: velocity + forces, then the constraint passes.  ``force`` (N, 3) a per-point push for this
@@ -151,7 +153,17 @@ class Cloth:
             over = ln > self.max_step * 2.0
             if np.any(over):
                 self.co[over] = before[over] + d[over] * (self.max_step * 2.0 / ln[over])[:, None]
+        if self.floor is not None:
+            self.clamp_floor()
         return self.co
+
+    def clamp_floor(self):
+        down, level = self.floor
+        down = np.asarray(down, np.float64)
+        depth = self.co @ down
+        over = depth > level
+        if np.any(over):
+            self.co[over] -= down[None, :] * (depth[over] - level)[:, None]
 
     # -- filters ------------------------------------------------------------------------------------------------
     def scale_force(self, amount, centre=None, mask=None):

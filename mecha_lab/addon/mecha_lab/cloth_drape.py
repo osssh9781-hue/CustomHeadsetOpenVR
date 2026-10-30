@@ -64,6 +64,7 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
     thickness: FloatProperty(name='Thickness', description='The cloth gets a Solidify modifier of this thickness (% of the outline / body size; 0 = a single surface)',
                              default=0.0, min=0.0, max=5.0, subtype='PERCENTAGE')
     pin_rim: BoolProperty(name='Pin Rim', description='The outline edge stays where it was drawn (sewn on); off: the cloth is free', default=True)
+    stop_at_pins: BoolProperty(name='Stop at Pins', description='The cloth cannot hang lower (world down) than the lowest pinned point', default=False)
     frames: IntProperty(name='Frames', default=60, min=5, max=300)
 
 
@@ -197,6 +198,8 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
         if fr > 0 and np.any(touch):
             c.co[touch] += (c.prev[touch] - c.co[touch]) * fr
     cloth.collide = collide
+    if st.stop_at_pins and np.any(pin >= 1):              # nothing hangs below the lowest pinned point
+        cloth.floor = (sess['gdir'], float((cloth_co[pin >= 1] @ sess['gdir']).max()) + spacing * 0.5)
     return sess
 
 
@@ -411,7 +414,7 @@ def perform_wrap(context, body):
 
 def _snapshot(st):
     return tuple(getattr(st, k) for k in ('fabric', 'slack', 'shrink', 'gravity', 'stick', 'keep', 'gap', 'pin_rim', 'frames',
-                                          'wrap_tight', 'use_lines'))
+                                          'wrap_tight', 'use_lines', 'stop_at_pins'))
 
 
 def restart(context):
@@ -745,7 +748,8 @@ def draw(layout, context):
     col.prop(st, 'spacing', slider=True)
     r = box.row(align=True)
     r.prop(st, 'pin_rim', toggle=True)
-    r.prop(st, 'frames')
+    r.prop(st, 'stop_at_pins', toggle=True)
+    box.prop(st, 'frames')
     box.prop(st, 'thickness', slider=True)
 
 
