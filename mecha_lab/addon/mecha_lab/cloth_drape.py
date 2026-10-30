@@ -7,6 +7,9 @@ Marvelous Designer) and drops onto the body.
        light distance grid (``cloth_pbd.GridCollider``) the cloth cannot pass through and sticks to (friction);
     3. the cloth is its own object ("Cloth Drape") from the first frame: Space runs / pauses the frames on a
        timer, Enter keeps the object, Esc removes it.  Every setting is a slider (saved in Tool Presets).
+    Or **Drape This Mesh**: the active mesh itself (a remeshed piece of your own) is the cloth, laid as it is on
+    the other selected mesh (or its parent) - its open edges are the rim, selected points stay too; Enter keeps
+    the mesh changed, Esc puts the saved copy back.
 """
 from __future__ import annotations
 
@@ -86,8 +89,10 @@ def patch_from_loops(context, loops, projector, spacing_pct):
     return target, me, nb, max((hi - lo).length, 1e-6)
 
 
-def build(context, target, me, nb, size, st):
-    """The cloth + the collider for the patch mesh ``me`` (local space of ``target``).  Returns the session."""
+def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_ob=None):
+    """The cloth + the collider for the mesh ``me``: a lasso patch (local space of ``target``, the first ``nb``
+    points its rim) or (``to_cloth``: the matrix that brings the target's points into the cloth's space) a mesh
+    of its own laid on ``target``.  Returns the session."""
     from . import cloth_pbd
     co = mio.read_co(me)
     n = len(co)
@@ -101,7 +106,16 @@ def build(context, target, me, nb, size, st):
     cloth_co = co + nrm * (gap + spacing * GAP)
     pin = np.zeros(n)
     if st.pin_rim:
-        pin[:min(nb, n)] = 1.0
+        if to_cloth is None:
+            pin[:min(nb, n)] = 1.0
+        else:                                         # a mesh of its own: its open edges are the rim
+            rim = wl.boundary_verts(me)
+            if len(rim):
+                pin[rim] = 1.0
+    if pin_sel:
+        sel = np.zeros(n, bool)
+        me.vertices.foreach_get('select', sel)
+        pin[sel] = 1.0
     bend, friction, damping, smooth = wl.FABRIC_SIM.get(st.fabric, wl.FABRIC_SIM['COTTON'])
     cloth = cloth_pbd.Cloth(cloth_co, vi, start, tot, bend=bend, keep=st.keep / 100.0 * KEEP_SCALE, pin=pin)
     cloth.sor = SOR
@@ -110,14 +124,25 @@ def build(context, target, me, nb, size, st):
     cloth.init = cloth_co.copy()
     # the collider: the target's points near the patch only, with their normals, baked into a grid
     tco = mio.read_co(target.data)
-    lo, hi = co.min(0) - size * PAD, co.max(0) + size * PAD
-    near = np.all((tco >= lo) & (tco <= hi), axis=1)
     tn = wl._normals(target.data)
+    if to_cloth is not None:
+        M = np.array(to_cloth, np.float64)
+        tco = tco @ M[:3, :3].T + M[:3, 3]
+        R = np.linalg.inv(M[:3, :3]).T
+        tn = tn @ R.T
+        tn /= np.maximum(np.linalg.norm(tn, axis=1), 1e-12)[:, None]
+    lo, hi = co.min(0) - size * PAD, co.max(0) + size * PAD
+    if to_cloth is not None:                         # a mesh of its own may slide far down the body: the whole body
+        near = np.ones(len(tco), bool) if len(tco) <= 400000 else np.all((tco >= lo - size * 2) & (tco <= hi + size * 2), axis=1)
+    else:
+        near = np.all((tco >= lo) & (tco <= hi), axis=1)
+    if not np.any(near):
+        raise cg.CutError('The body is nowhere near the cloth')
     t = time.perf_counter()
     grid = cloth_pbd.GridCollider(tco[near] - tn[near] * (gap - margin) if gap > margin else tco[near], tn[near],
                                   cell=max(spacing * 0.8, size / 160.0), band=GRID_BAND)
     sess = dict(cloth=cloth, grid=grid, margin=margin, friction=st.stick / 100.0, damping=damping,
-                gdir=wl._gravity_dir(target), size=size, frames=st.frames, frame=0, points=n, collider=int(near.sum()),
+                gdir=wl._gravity_dir(gdir_ob or target), size=size, frames=st.frames, frame=0, points=n, collider=int(near.sum()),
                 grid_time=time.perf_counter() - t, stage='run')
 
     def collide(c):
@@ -198,6 +223,56 @@ def perform(context, loops, projector):
             f'(Space drape · Enter keep · Esc drop)')
 
 
+def body_for(context, cloth):
+    """The mesh the cloth drops onto: another selected mesh, else the cloth's parent mesh."""
+    others = [o for o in context.selected_objects if o != cloth and o.type == 'MESH']
+    if len(others) == 1:
+        return others[0]
+    if cloth.parent is not None and cloth.parent.type == 'MESH':
+        return cloth.parent
+    return None
+
+
+def perform_mesh(context, cloth, body):
+    """The selected mesh itself as the cloth (a remeshed piece of your own), laid as it is on ``body``: its open
+    edges are the rim (Pin Rim), selected points stay too; Space drapes, Enter keeps the mesh, Esc puts it back."""
+    st = settings(context)
+    if st is None:
+        raise cg.CutError('Cloth Drape settings missing')
+    if sim_active():
+        raise cg.CutError('Cloth Drape: keep (Enter) or drop (Esc) the cloth you have first')
+    if cloth is None or cloth.type != 'MESH' or body is None or body.type != 'MESH' or body == cloth:
+        raise cg.CutError('Select the cloth mesh (active) and the body mesh it drops onto')
+    me = cloth.data
+    if not len(me.polygons):
+        raise cg.CutError('The cloth mesh has no faces')
+    backup = me.copy()
+    backup.name = me.name + '_mch_cd_backup'
+    backup.use_fake_user = True
+    co = mio.read_co(me)
+    size = float(np.linalg.norm(co.max(0) - co.min(0)))
+    to_cloth = cloth.matrix_world.inverted_safe() @ body.matrix_world
+    sel = np.zeros(len(me.vertices), bool)
+    me.vertices.foreach_get('select', sel)
+    pin_sel = bool(sel.any()) and not bool(sel.all())      # (a fresh primitive has every point selected: not a pin)
+    try:
+        sess = build(context, body, me, 0, size, st, to_cloth=to_cloth, pin_sel=pin_sel, gdir_ob=cloth)
+    except Exception:
+        backup.use_fake_user = False
+        bpy.data.meshes.remove(backup)
+        raise
+    surface = co.copy()
+    mio.write_co(me, sess['cloth'].co)
+    me.update()
+    SIM.clear()
+    SIM.update(ob=cloth.name, target=body.name, nb=0, size=size, sess=sess, running=False, done=False, want=None,
+               surface=surface, start=sess['cloth'].init.copy(), snapshot=_snapshot(st), mode='MESH',
+               backup=backup.name, to_cloth=to_cloth, pin_sel=pin_sel)
+    rim = int(np.count_nonzero(sess['cloth'].pin >= 1))
+    return (f'Cloth Drape: "{cloth.name}" itself on {body.name} - {sess["points"]:,} points, {rim:,} pinned, '
+            f'{sess["collider"]:,} body points (Space drape · Enter keep · Esc put back)')
+
+
 def _snapshot(st):
     return tuple(getattr(st, k) for k in ('fabric', 'slack', 'shrink', 'gravity', 'stick', 'keep', 'gap', 'pin_rim', 'frames'))
 
@@ -234,18 +309,39 @@ def step(context):
     return True
 
 
+def _drop_backup():
+    backup = bpy.data.meshes.get(SIM.get('backup', ''))
+    if backup is not None:
+        backup.use_fake_user = False
+        if backup.users == 0:
+            bpy.data.meshes.remove(backup)
+
+
 def confirm(context):
     ob = _ob()
     if ob is None:
+        _drop_backup()
         SIM.clear()
         return 'nothing to keep'
     n = SIM['sess']['frame']
+    _drop_backup()
     SIM.clear()
     return f'Cloth Drape: kept "{ob.name}" at frame {n} ({len(ob.data.vertices):,} points)'
 
 
 def cancel(context):
     ob = _ob()
+    if ob is not None and SIM.get('mode') == 'MESH':         # the mesh itself: put the saved copy back
+        backup = bpy.data.meshes.get(SIM.get('backup', ''))
+        if backup is not None:
+            old = ob.data
+            ob.data = backup
+            backup.name = old.name
+            backup.use_fake_user = False
+            if old.users == 0:
+                bpy.data.meshes.remove(old)
+        SIM.clear()
+        return 'Cloth Drape: the mesh put back'
     if ob is not None:
         me = ob.data
         bpy.data.objects.remove(ob)
@@ -259,10 +355,11 @@ def status():
     if not sim_active():
         return ''
     sess = SIM['sess']
+    esc = 'put back' if SIM.get('mode') == 'MESH' else 'drop'
     if SIM.get('done'):
-        return f'done: frame {sess["frame"]} / {sess["frames"]}  (Enter keep · Esc drop · Space again)'
+        return f'done: frame {sess["frame"]} / {sess["frames"]}  (Enter keep · Esc {esc} · Space again)'
     return (f'{"draping" if SIM["running"] else "ready"}: frame {sess["frame"]} / {sess["frames"]}  '
-            f'(Space {"pause" if SIM["running"] else "drape"} · Enter keep · Esc drop)')
+            f'(Space {"pause" if SIM["running"] else "drape"} · Enter keep · Esc {esc})')
 
 
 class MCH_OT_cdrape_sim(bpy.types.Operator):
@@ -348,6 +445,32 @@ class MCH_OT_cdrape_sim(bpy.types.Operator):
         return result
 
 
+class MCH_OT_cdrape_mesh(bpy.types.Operator):
+    """Drape the active mesh itself (a remeshed piece of your own) onto the other selected mesh (or its parent): its open edges / selected points stay, Space drapes, Enter keeps it, Esc puts it back"""
+    bl_idname = 'mch.cdrape_mesh'
+    bl_label = 'Drape This Mesh'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.view_layer.objects.active
+        return ob is not None and ob.type == 'MESH' and context.mode == 'OBJECT' and not sim_active()
+
+    def execute(self, context):
+        cloth = context.view_layer.objects.active
+        body = body_for(context, cloth)
+        if body is None:
+            self.report({'WARNING'}, 'Cloth Drape: select the body mesh too (or parent the cloth to it)')
+            return {'CANCELLED'}
+        try:
+            msg = perform_mesh(context, cloth, body)
+        except cg.CutError as ex:
+            self.report({'WARNING'}, str(ex))
+            return {'CANCELLED'}
+        self.report({'INFO'}, msg)
+        return {'FINISHED'}
+
+
 class MCH_OT_cdrape_control(bpy.types.Operator):
     """Drape / pause, keep, drop or restart the cloth (the panel buttons)"""
     bl_idname = 'mch.cdrape_control'
@@ -394,7 +517,10 @@ def draw(layout, context):
     r = box.row(align=True)
     r.enabled = live
     r.operator('mch.cdrape_control', text='Keep (Enter)', icon='CHECKMARK').action = 'confirm'
-    r.operator('mch.cdrape_control', text='Drop (Esc)', icon='X').action = 'cancel'
+    r.operator('mch.cdrape_control', text='Put Back (Esc)' if SIM.get('mode') == 'MESH' else 'Drop (Esc)', icon='X').action = 'cancel'
+    r = box.row()
+    r.enabled = not live
+    r.operator('mch.cdrape_mesh', text='Drape This Mesh (on the other selected)', icon='MOD_CLOTH')
     box.row().prop(st, 'fabric', expand=True)
     col = box.column(align=True)
     col.prop(st, 'slack', slider=True)
@@ -410,7 +536,7 @@ def draw(layout, context):
     r.prop(st, 'frames')
 
 
-CLASSES = (MCH_PG_ClothDrape, MCH_OT_cdrape_sim, MCH_OT_cdrape_control)
+CLASSES = (MCH_PG_ClothDrape, MCH_OT_cdrape_sim, MCH_OT_cdrape_mesh, MCH_OT_cdrape_control)
 
 
 def register():

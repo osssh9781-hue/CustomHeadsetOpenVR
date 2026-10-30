@@ -86,6 +86,37 @@ check('Tool wiring: CDRAPE in the tool table (Cloth group, lasso shape), the cut
 src = inspect.getsource(cd.draw)
 check('Panel: Drape / Restart / Keep / Drop + every slider', all(k in src for k in ("'slack'", "'shrink'", "'gravity'", "'stick'", "'keep'", "'gap'",
                                                                                    "'spacing'", "'pin_rim'", "'frames'", "'fabric'", 'Keep (Enter)', 'Drop (Esc)')))
+# -- the mesh itself as the cloth (a remeshed piece of your own) ----------------------------------------------------
+bpy.ops.mesh.primitive_grid_add(size=1.2, x_subdivisions=40, y_subdivisions=40, location=(0, 0, 1.08))
+piece = C.active_object
+piece.name = 'Piece'
+piece.rotation_euler = (0.0, 0.0, 0.3)
+body.select_set(True)
+piece.select_set(True)
+C.view_layer.objects.active = piece
+check('body_for: the other selected mesh is the body', cd.body_for(C, piece) is body)
+before = np.array([v.co[:] for v in piece.data.vertices])
+msg = cd.perform_mesh(C, piece, body)
+check('Drape This Mesh: the grid itself is the cloth on the sphere, its open edges pinned, a backup kept',
+      cd.sim_active() and cd.SIM['mode'] == 'MESH' and cd.SIM['ob'] == 'Piece' and 'pinned' in msg
+      and bpy.data.meshes.get(cd.SIM['backup']) is not None and int(np.count_nonzero(cd.SIM['sess']['cloth'].pin >= 1)) == 4 * 40, msg)
+cd.SIM['running'] = True
+for _ in range(40):
+    cd.step(C)
+after = np.array([v.co[:] for v in piece.data.vertices])
+world = after @ np.array(piece.matrix_world.to_3x3()).T + np.array(piece.matrix_world.translation)
+check('... it drops onto the sphere and stays outside it (world space, the sphere is the collider)',
+      np.linalg.norm(after - before, axis=1).max() > 0.05 and np.linalg.norm(world, axis=1).min() > 0.985,
+      (np.linalg.norm(after - before, axis=1).max(), np.linalg.norm(world, axis=1).min()))
+msg = cd.cancel(C)
+restored = np.array([v.co[:] for v in piece.data.vertices])
+check('Esc puts the mesh back as it was', 'put back' in msg and np.allclose(restored, before, atol=1e-6) and not cd.sim_active()
+      and 'Piece_mch_cd_backup' not in bpy.data.meshes, msg)
+cd.perform_mesh(C, piece, body)
+msg = cd.confirm(C)
+check('Enter keeps the changed mesh, the backup gone', 'kept' in msg and 'Piece_mch_cd_backup' not in bpy.data.meshes
+      and not np.allclose(np.array([v.co[:] for v in piece.data.vertices]), before))
+check('The operator + the panel button exist', hasattr(bpy.types, 'MCH_OT_cdrape_mesh') and 'mch.cdrape_mesh' in inspect.getsource(cd.draw))
 from mecha_lab import tool_presets
 name, pg = tool_presets.group_for(S, 'CDRAPE')
 check('Tool Presets save the Cloth Drape sliders (scene.mch_cdrape)', name == 'mch_cdrape' and pg is not None)
