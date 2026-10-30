@@ -47,6 +47,9 @@ BRUSHES = (
     ('ClothDrag', 'Drag Cloth', 'CD'), ('ClothFolds', 'Pinch Folds Cloth', 'CF'), ('ClothPinch', 'Pinch Point Cloth', 'CP'),
     ('ClothPush', 'Push Cloth', 'CU'), ('ClothGrab', 'Grab Cloth', 'CG'), ('ClothInflate', 'Inflate Cloth', 'CI'),
     ('ClothExpand', 'Expand/Contract Cloth', 'CE'), ('ClothRandom', 'Grab Random Cloth', 'CR'),
+    # 0.24.93 Paint Lab: Blender's colour brushes (the sculpt-mode paint on colour attributes)
+    ('PaintSoft', 'Paint Soft', 'PF'), ('PaintSquare', 'Paint Square', 'PQ'), ('PaintBlend', 'Paint Blend', 'PD'),
+    ('Smear', 'Smear', 'SR'), ('Blur', 'Blur', 'BU'),
 )
 CLOTH_BRUSHES = ('ClothDrag', 'ClothFolds', 'ClothPinch', 'ClothPush', 'ClothGrab', 'ClothInflate', 'ClothExpand',
                  'ClothRandom')
@@ -2683,6 +2686,14 @@ class MCH_OT_zb_press(_ZBPoll, bpy.types.Operator):
                     _bump()
                     self.report({'INFO'}, f'SubTool: {other.name}')
                     return {'FINISHED'}
+            if event.alt and other is not None and other == context.active_object:
+                from . import paint_lab
+                if paint_lab.flag(context):               # 0.24.93 Paint Lab: Alt + click the model = eyedropper
+                    col = paint_lab.eyedrop(context, (event.mouse_region_x, event.mouse_region_y))
+                    if col is not None:
+                        _bump()
+                        self.report({'INFO'}, 'colour %.2f %.2f %.2f' % col)
+                    return {'FINISHED'}
         if not brush_tool:                               # 0.24.69 ClipCurve / TrimCurve / TrimLasso / Move ...:
             if gizmo and nav_on(context) and object_under(context, event.mouse_region_x,
                                                           event.mouse_region_y) is None:
@@ -2812,6 +2823,10 @@ class MCH_OT_zb_gizmo(_ZBPoll, bpy.types.Operator):
     def invoke(self, context, event):
         if self.mode == 'SCALE' and not in_gizmo(context):        # the brush is on: S = Draw Size
             return bpy.ops.mch.zb_popup('INVOKE_DEFAULT', focus='draw_size')
+        if self.mode == 'TOGGLE':
+            from . import paint_lab
+            if paint_lab.flag(context):                            # 0.24.93 Paint Lab: Q = the stencil on / off
+                return bpy.ops.mch.paint_stencil('INVOKE_DEFAULT', action='TOGGLE')
         return self.execute(context)
 
     def execute(self, context):
@@ -3012,6 +3027,15 @@ class MCH_OT_zb_popup(_ZBPoll, bpy.types.Operator):
 
     def invoke(self, context, event):
         if event.type == 'RIGHTMOUSE' and self.kind == 'MENU' and not self.focus:
+            from . import paint_lab
+            st = paint_lab.settings(context)
+            if paint_lab.flag(context) and st is not None and st.stencil_on and not event.alt:
+                # 0.24.93 Paint Lab with the stencil up: right drag moves it, Shift: scales, Ctrl: turns
+                mode = 'SCALE' if event.shift else 'ROTATION' if event.ctrl else 'TRANSLATION'
+                try:
+                    return bpy.ops.brush.stencil_control('INVOKE_DEFAULT', mode=mode, texmode='PRIMARY')
+                except (RuntimeError, TypeError):
+                    pass
             self.rmb = RMBDrag()
             self.rmb.rmb_drag_start(context, event)
             self.event_xy = (event.mouse_region_x, event.mouse_region_y)
@@ -3106,13 +3130,16 @@ class MCH_OT_zb_tab(bpy.types.Operator):
 class MCH_OT_zb_switch(bpy.types.Operator):
     """MECHA LAB (Object Mode, the Mecha tools) or ZBRUSH (Sculpt Mode on the active mesh)"""
     bl_idname = 'mch.zb_switch'
-    bl_label = 'MECHA LAB / ZBRUSH'
+    bl_label = 'MECHA LAB / ZBRUSH / PAINT LAB'
     bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
-    target: EnumProperty(items=[('MECHA', 'MECHA LAB', ''), ('ZBRUSH', 'ZBRUSH', '')], default='ZBRUSH')
+    target: EnumProperty(items=[('MECHA', 'MECHA LAB', ''), ('ZBRUSH', 'ZBRUSH', ''), ('PAINT', 'PAINT LAB', '')],
+                         default='ZBRUSH')
 
     def execute(self, context):
         ob = context.active_object
-        from . import zb_shading
+        from . import zb_shading, paint_lab
+        if self.target != 'PAINT' and paint_lab.flag(context):
+            paint_lab.leave(context)
         if self.target == 'MECHA':
             if ob is not None and ob.mode != 'OBJECT':
                 bpy.ops.object.mode_set(mode='OBJECT')
@@ -3129,6 +3156,8 @@ class MCH_OT_zb_switch(bpy.types.Operator):
             if context.active_object.mode == 'OBJECT':
                 zb_shading.enter(context.active_object)       # 0.24.76 Sharp edges look hard in Sculpt Mode too
             bpy.ops.object.mode_set(mode='SCULPT')
+        if self.target == 'PAINT':                            # 0.24.93 the Paint Lab screen on top of Sculpt Mode
+            paint_lab.enter(context)
         _bump()
         return {'FINISHED'}
 

@@ -17,7 +17,7 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                cloth_wrinkle, last_used, last_op, live_stack, keymap_check, robot_base, detail_stamp, surface_lasso,
                curve_tube, creature_shell, cloth_sim, box_hide, plate_detail, screw_stamp, wrinkle_lines, cloth_drape, lowpoly, fold_patch,
                creature_plate, belt_maker, creature_spike, creature_scales, flower_plate,
-               surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, bg_jobs, quad_remesh, mesh_fix, tool_recent, actions_menu, key_legend, quick_hud, mecha_menu, symmetry, groups, ui_bars, safety_save, lasso_memory, armor_shell)
+               surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, bg_jobs, quad_remesh, mesh_fix, tool_recent, actions_menu, key_legend, quick_hud, mecha_menu, symmetry, groups, ui_bars, safety_save, lasso_memory, armor_shell, paint_lab)
 import os
 import re
 from pathlib import Path
@@ -2095,6 +2095,7 @@ def _register():
     mecha_menu.register()
     symmetry.register()
     groups.register()
+    paint_lab.register()                 # 0.24.93 (before ui_bars: the ZBrush screen asks it which screen is up)
     ui_bars.register()
     safety_save.register()
     fold_patch.register()
@@ -2156,6 +2157,7 @@ def _unregister_steps():
         ('fold_patch', fold_patch.unregister),
         ('safety_save', safety_save.unregister),
         ('ui_bars', ui_bars.unregister),
+        ('paint_lab', paint_lab.unregister),
         ('groups', groups.unregister),
         ('symmetry', symmetry.unregister),
         ('mecha_menu', mecha_menu.unregister),

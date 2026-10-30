@@ -609,7 +609,11 @@ def _draw():
             orange = zb_sculpt.on(context)            # 0.24.60 the ZBrush screen: orange
             keep = (ui_gpu.ACCENT, mecha_menu.FILL)
             if orange:
-                ui_gpu.ACCENT, mecha_menu.FILL = zb_sculpt.ORANGE, zb_sculpt.ORANGE_FILL
+                from . import paint_lab
+                if paint_lab.flag(context):           # 0.24.93 the Paint Lab screen: cyan
+                    ui_gpu.ACCENT, mecha_menu.FILL = paint_lab.ACCENT, paint_lab.ACCENT_FILL
+                else:
+                    ui_gpu.ACCENT, mecha_menu.FILL = zb_sculpt.ORANGE, zb_sculpt.ORANGE_FILL
             try:
                 draw(items, hovered(context, items), ui_factor(context, context.region), context)
             finally:

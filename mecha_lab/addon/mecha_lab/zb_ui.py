@@ -232,6 +232,14 @@ def _builder():
 
 
 def _shelf_rows(context, x, width, k):
+    from . import paint_lab
+    if paint_lab.flag(context):                      # 0.24.93 Paint Lab: its own left shelf
+        b = _builder()('PL', x, width, k)
+        node = pc.capture(paint_lab.draw_paint_shelf, context)
+        if node.opts.get('error'):
+            return [], 0.0
+        b.node(node, x, width)
+        return b.out, -b.y
     b = _builder()('ZB', x, width, k)
     node = pc.capture(draw_tool_shelf, context)
     if node.opts.get('error'):
@@ -550,8 +558,13 @@ def subtool_list(context, region_w, k, Item, top, floor):
 def brush_shelf(context, region_w, k, Item):
     b = zs.brush(context)
     cur = zs.zb_name(b)
-    groups = [list(zs.SHELF[0]), ['IMM', 'APPEND'], list(zs.SHELF[1]), list(zs.SHELF[2]), ['SPLIT_HIDDEN', 'AUTO_GROUPS']]
-    cols = [5, 1, 4, 2, 1]                       # 0.24.92 four cloth brushes as their own group (B: all eight)
+    from . import paint_lab
+    if paint_lab.flag(context):                  # 0.24.93 Paint Lab: the colour brushes + Mask / Smooth
+        groups = [list(paint_lab.PAINT_BRUSHES), ['MaskPen', 'Smooth', 'Standard', 'Polygroupit']]
+        cols = [3, 2]
+    else:
+        groups = [list(zs.SHELF[0]), ['IMM', 'APPEND'], list(zs.SHELF[1]), list(zs.SHELF[2]), ['SPLIT_HIDDEN', 'AUTO_GROUPS']]
+        cols = [5, 1, 4, 2, 1]                   # 0.24.92 four cloth brushes as their own group (B: all eight)
     tw, th, gap, sep, pad = TILE_W * k, TILE_H * k, GAP * k, SEP * k, PAD * k
     width = sum(c * tw + (c - 1) * gap for c in cols) + sep * (len(groups) - 1) + 2 * pad
     height = 2 * th + gap + 2 * pad
@@ -596,12 +609,21 @@ EMULATE_TEXT = ('! Alt   = middle mouse now (Emulate 3 Button', '! Zsub   Mouse 
                 '! Prefs   Preferences > Input > Mouse')
 
 
+PAINT_KEYS_TEXT = ('PAINT LAB KEYS', 'Drag model   paint (Alt: eyedrop the polypaint colour)',
+                   'Alt + click SubTool   pick it', 'Q   stencil on / off (the photo over the view)',
+                   'Right drag   move the stencil, Shift: scale, Ctrl: turn',
+                   'Drag canvas   rotate view, Alt: move', 'Ctrl + drag model   mask, Alt: unmask',
+                   'S / U / O   Size / Intensity / Focal', 'Space / B   menu / brushes', 'X   symmetry',
+                   'Tab   back to MECHA LAB')
+
+
 def key_legend(context, k, Item, x0, y0):
     from .workspace_ui import pref
     if not pref('key_legend', True):
         return []
     lh, w = 17 * k, A_W * k
-    text = KEYS_TEXT
+    from . import paint_lab
+    text = PAINT_KEYS_TEXT if paint_lab.flag(context) else KEYS_TEXT
     if zs.nav_style() == 'BLENDER':                # 0.24.79 NAV Blender: the view keys are Blender's own
         text = (text[0], 'Middle mouse   rotate, Shift: move, Ctrl / wheel: zoom') + tuple(
             t for t in text[1:] if not t.startswith(('Drag canvas', 'Alt + drag canvas', 'Right drag')))
@@ -883,11 +905,15 @@ def corner_items(context, region_w, region_h, k=1.0):
     st = zs.style()
     out = [Item('card', x0, y0, w, h)]
     y = y0 + h - PAD * k - ROW * k
-    seg = (w - 2 * PAD * k - GAP * k) / 2
-    out.append(Item('seg', x0 + PAD * k, y, seg, ROW * k, 'MECHA LAB', '', not sculpt, True,
+    from . import paint_lab
+    paint = sculpt and paint_lab.flag(context)                 # 0.24.93 the third screen: PAINT LAB
+    seg = (w - 2 * PAD * k - 2 * GAP * k) / 3
+    out.append(Item('seg', x0 + PAD * k, y, seg, ROW * k, 'MECHA', '', not sculpt, True,
                     ('op', 'mch.zb_switch', {'target': 'MECHA'})))
-    out.append(Item('seg', x0 + PAD * k + seg + GAP * k, y, seg, ROW * k, 'ZBRUSH', '', sculpt, True,
+    out.append(Item('seg', x0 + PAD * k + seg + GAP * k, y, seg, ROW * k, 'ZBRUSH', '', sculpt and not paint, True,
                     ('op', 'mch.zb_switch', {'target': 'ZBRUSH'})))
+    out.append(Item('seg', x0 + PAD * k + 2 * (seg + GAP * k), y, seg, ROW * k, 'PAINT', '', paint, True,
+                    ('op', 'mch.zb_switch', {'target': 'PAINT'})))
     y -= ROW * k + GAP * k
     lw = 44 * k
     out.append(Item('glabel', x0 + PAD * k, y, lw, ROW * k, 'STYLE'))
