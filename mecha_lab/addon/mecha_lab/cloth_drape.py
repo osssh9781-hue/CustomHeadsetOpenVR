@@ -63,7 +63,9 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
                             default=True)
     thickness: FloatProperty(name='Thickness', description='The cloth gets a Solidify modifier of this thickness (% of the outline / body size; 0 = a single surface)',
                              default=0.0, min=0.0, max=5.0, subtype='PERCENTAGE')
-    pin_rim: BoolProperty(name='Pin Rim', description='The outline edge stays where it was drawn (sewn on); off: the cloth is free', default=True)
+    pin_rim: BoolProperty(name='Pin Rim', description='The outline edge stays where it was drawn (sewn on); off: the cloth is free. Front + Back: only the top edge is held', default=True)
+    two_sides: BoolProperty(name='Front + Back', description='The lasso also makes a back piece on the far side of the body and the two are sewn together down the sides (the top and bottom stay open), like front / back pattern pieces in Marvelous Designer',
+                            default=False)
     stop_at_pins: BoolProperty(name='Stop at Pins', description='The cloth cannot hang lower (world down) than the lowest pinned point', default=False)
     frames: IntProperty(name='Frames', default=60, min=5, max=300)
 
@@ -77,8 +79,7 @@ def settings(context):
 # -----------------------------------------------------------------------------
 
 
-def patch_from_loops(context, loops, projector, spacing_pct):
-    """The outline meshed and projected: (target, mesh (local space of target), rim point count, outline size)."""
+def _screen_patch(context, loops, projector, spacing_pct):
     from . import armor_plate as ap
     groups = cg.prepare_loops(loops)
     target = ap.pick_surface(context, projector, groups)
@@ -91,20 +92,105 @@ def patch_from_loops(context, loops, projector, spacing_pct):
     pts, tris, nb = ap.screen_patch(groups, spacing=size_px * spacing_pct / 100.0, min_spacing=2.0)
     if not tris:
         raise cg.CutError('The outline is too small for a cloth.')
-    bvh, _wv, _polys = ap._target_bvh(context, target)
+    return target, pts, tris, nb
+
+
+def _project_local(context, target, pts, projector, bvh):
+    from . import armor_plate as ap
     cos, nrms, _missing = ap.project_patch(pts, projector, bvh)
     inv = target.matrix_world.inverted_safe()
     rot = inv.to_3x3()
-    cos_l = [inv @ c for c in cos]
-    nrm_l = [(rot @ n).normalized() for n in nrms]
-    me = ap.build_region(pts, tris, cos_l, nrm_l, quads=True)
-    me.name = 'MCH_ClothDrape'
+    return [inv @ c for c in cos], [(rot @ n).normalized() for n in nrms]
+
+
+def _bbox_size(cos_l):
     lo = Vector([min(c[k] for c in cos_l) for k in range(3)])
     hi = Vector([max(c[k] for c in cos_l) for k in range(3)])
-    return target, me, nb, max((hi - lo).length, 1e-6)
+    return max((hi - lo).length, 1e-6)
 
 
-def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_ob=None, wrap=False):
+def patch_from_loops(context, loops, projector, spacing_pct):
+    """The outline meshed and projected: (target, mesh (local space of target), rim point count, outline size)."""
+    from . import armor_plate as ap
+    target, pts, tris, nb = _screen_patch(context, loops, projector, spacing_pct)
+    bvh, _wv, _polys = ap._target_bvh(context, target)
+    cos_l, nrm_l = _project_local(context, target, pts, projector, bvh)
+    me = ap.build_region(pts, tris, cos_l, nrm_l, quads=True)
+    me.name = 'MCH_ClothDrape'
+    return target, me, nb, _bbox_size(cos_l)
+
+
+class _BackProjector:
+    """The same view rays cast back from behind the body: the far side of the surface."""
+
+    def __init__(self, projector, far):
+        self.p = projector
+        self.far = far
+        self.view_dir = -projector.view_dir
+        self.is_perspective = False
+        self.eye = projector.eye + projector.view_dir * far
+
+    def ray(self, xy):
+        o, d = self.p.ray(xy)
+        return o + d * self.far, -d
+
+    def to_screen(self, co):
+        return self.p.to_screen(co)
+
+
+def rim_classes(pts, nb):
+    """The outline points (the first ``nb`` of ``pts``, loop order) sorted into the seams: 'side' where the outline
+    runs more up-down than across (sewn), else 'top' / 'bottom' by the outline's mid height (open)."""
+    P = np.asarray(pts[:nb], np.float64)
+    if nb < 3:
+        return np.zeros(nb, bool), np.zeros(nb, bool), np.zeros(nb, bool)
+    t = np.roll(P, -1, 0) - np.roll(P, 1, 0)
+    side = np.abs(t[:, 1]) > np.abs(t[:, 0])
+    mid = 0.5 * (P[:, 1].max() + P[:, 1].min())
+    top = ~side & (P[:, 1] > mid)
+    bottom = ~side & ~top
+    return side, top, bottom
+
+
+def patch_two_sides(context, loops, projector, spacing_pct):
+    """Front + Back: the outline projected on the near side AND the far side of the body - two pattern pieces in one
+    mesh (the front's points first).  Returns (target, mesh, rim point count, size, info) with info['sew'] the
+    (M, 2) side-seam pairs (front point, back point), info['top'] / info['bottom'] the open edges' point indices
+    (both pieces)."""
+    from . import armor_plate as ap
+    target, pts, tris, nb = _screen_patch(context, loops, projector, spacing_pct)
+    bvh, _wv, _polys = ap._target_bvh(context, target)
+    mw = target.matrix_world
+    corners = [mw @ Vector(c) for c in target.bound_box]
+    o0, d0 = projector.ray(pts[0])
+    far = max((c - o0).dot(d0) for c in corners) + max((corners[6] - corners[0]).length, 1e-3)
+    front_l, front_n = _project_local(context, target, pts, projector, bvh)
+    back_l, back_n = _project_local(context, target, pts, _BackProjector(projector, far), bvh)
+    me_f = ap.build_region(pts, tris, front_l, front_n, quads=True)
+    me_b = ap.build_region(pts, tris, back_l, back_n, quads=True)
+    try:
+        if len(me_f.vertices) != len(pts) or len(me_b.vertices) != len(pts):
+            raise cg.CutError('Front + Back: the outline could not be meshed on both sides')
+        nf = len(pts)
+        verts = [v.co[:] for v in me_f.vertices] + [v.co[:] for v in me_b.vertices]
+        faces = [tuple(p.vertices) for p in me_f.polygons] + [tuple(i + nf for i in p.vertices) for p in me_b.polygons]
+    finally:
+        bpy.data.meshes.remove(me_f)
+        bpy.data.meshes.remove(me_b)
+    me = bpy.data.meshes.new('MCH_ClothDrape')
+    me.from_pydata(verts, [], faces)
+    me.update()
+    side, top, bottom = rim_classes(pts, nb)
+    idx = np.arange(nb)
+    sew = np.stack([idx[side], idx[side] + nf], 1) if np.any(side) else np.zeros((0, 2), np.int64)
+    near_seam = np.roll(side, 1) | np.roll(side, -1) | np.roll(side, 2) | np.roll(side, -2)
+    top_pin = top & ~near_seam                       # (the top edge is held, but not right next to the seam: no notch)
+    info = dict(sew=sew, top=np.concatenate([idx[top_pin], idx[top_pin] + nf]), bottom=np.concatenate([idx[bottom], idx[bottom] + nf]),
+                front=nf, far=far)
+    return target, me, nb, _bbox_size(front_l + back_l), info
+
+
+def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_ob=None, wrap=False, sew=None, pin_idx=None):
     """The cloth + the collider for the mesh ``me``: a lasso patch (local space of ``target``, the first ``nb``
     points its rim) or (``to_cloth``: the matrix that brings the target's points into the cloth's space) a mesh
     of its own laid on ``target``.  Returns the session."""
@@ -120,7 +206,10 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
     margin = max(spacing * MARGIN, gap * 0.5)
     cloth_co = co + nrm * (gap + spacing * GAP)
     pin = np.zeros(n)
-    if st.pin_rim and wrap:                           # a wrapped tube: its open ends held firmly
+    if sew is not None:                               # front + back pieces: the seams hold them, only the top edge pinned
+        if st.pin_rim and pin_idx is not None and len(pin_idx):
+            pin[np.asarray(pin_idx, np.int64)] = 1.0
+    elif st.pin_rim and wrap:                         # a wrapped tube: its open ends held firmly
         rim = wl.boundary_verts(me)
         if len(rim):
             pin[rim] = 1.0
@@ -157,6 +246,10 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
         cloth.scale_b = 1.0 + (scale - 1.0) * np.minimum(tap[ba], tap[bb])
     cloth.max_step = max(spacing * 1.5, size * 0.01)
     cloth.init = cloth_co.copy()
+    if sew is not None and len(sew):
+        cloth.sew = np.asarray(sew, np.int64)         # (the pairs; the pull itself is seam_pull in the collide pass)
+        cloth.sew_pbd = False
+        cloth.sew_strength = 0.0                      # ramped up over the first frames (advance)
     # the collider: the target's points near the patch only, with their normals, baked into a grid
     tco = mio.read_co(target.data)
     tn = wl._normals(target.data)
@@ -178,7 +271,7 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
         tn = tn @ R.T
         tn /= np.maximum(np.linalg.norm(tn, axis=1), 1e-12)[:, None]
     lo, hi = co.min(0) - size * PAD, co.max(0) + size * PAD
-    if to_cloth is not None or wrap:                 # a mesh of its own may slide far down the body: the whole body
+    if to_cloth is not None or wrap or sew is not None:    # a mesh of its own may slide far down the body: the whole body
         near = np.ones(len(tco), bool) if len(tco) <= 400000 else np.all((tco >= lo - size * 2) & (tco <= hi + size * 2), axis=1)
     else:
         near = np.all((tco >= lo) & (tco <= hi), axis=1)
@@ -188,6 +281,7 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
     grid = cloth_pbd.GridCollider(tco[near] - tn[near] * (gap - margin) if gap > margin else tco[near], tn[near],
                                   cell=max(spacing * 0.8, size / 160.0), band=GRID_BAND)
     sess = dict(cloth=cloth, grid=grid, margin=margin, friction=st.stick / 100.0, damping=damping, wrap=wrap, tubes=tubes,
+                sew=int(len(sew)) if sew is not None else 0,
                 press=(size * 0.004 * st.wrap_tight / 50.0) if wrap else 0.0,
                 gdir=wl._gravity_dir(gdir_ob or target), size=size, frames=st.frames, frame=0, points=n, collider=int(near.sum()),
                 grid_time=time.perf_counter() - t, stage='run')
@@ -197,36 +291,73 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
         fr = sess['friction']
         if fr > 0 and np.any(touch):
             c.co[touch] += (c.prev[touch] - c.co[touch]) * fr
+        if c.sew is not None and c.sew_strength > 0:
+            c.co += seam_pull(sess, c.sew_strength)
     cloth.collide = collide
     if st.stop_at_pins and np.any(pin >= 1):              # nothing hangs below the lowest pinned point
         cloth.floor = (sess['gdir'], float((cloth_co[pin >= 1] @ sess['gdir']).max()) + spacing * 0.5)
     return sess
 
 
+SEW_RAMP = 0.3                   # the seams pull at full strength after this share of the frames
+
+
+def seam_pull(sess, strength):
+    """The seams' pull (one constraint pass) that slides ALONG the body: the straight line between a front point
+    and its back point runs through the body, so the pull's part into the surface is dropped and each end walks
+    round the side toward the other (the way a sewn piece is drawn round an avatar); once the two are within a
+    step of each other they close straight.  Capped per pass at half the cloth's step (no tunnelling)."""
+    cloth = sess['cloth']
+    a, b = cloth.sew[:, 0], cloth.sew[:, 1]
+    d = cloth.co[b] - cloth.co[a]
+    L = np.linalg.norm(d, axis=1)
+    L[L < 1e-12] = 1e-12
+    _da, na = sess['grid'].inward(cloth.co[a])
+    _db, nb_ = sess['grid'].inward(cloth.co[b])
+    cap = cloth.max_step * 0.5 if cloth.max_step > 0 else L.max()
+    close = (L < cap * 2.0)[:, None]
+    ta = np.where(close, d, d - na * (d * na).sum(1)[:, None])
+    tb = np.where(close, -d, -d - nb_ * ((-d) * nb_).sum(1)[:, None])
+    amt = np.minimum(L * 0.5 * strength, cap)
+    force = np.zeros_like(cloth.co)
+    for t, idx in ((ta, a), (tb, b)):
+        ln = np.linalg.norm(t, axis=1)
+        ok = ln > 1e-9
+        np.add.at(force, idx[ok], t[ok] / ln[ok][:, None] * amt[ok][:, None])
+    return force
+
+
 def advance(sess, st):
     cloth = sess['cloth']
-    g = sess['gdir'] * (GRAV * st.gravity / 100.0 * sess['size'])
     force = None
+    if cloth.sew is not None:
+        cloth.sew_strength = min(1.0, (sess['frame'] + 1) / max(1.0, sess['frames'] * SEW_RAMP))
+    g = sess['gdir'] * (GRAV * st.gravity / 100.0 * sess['size'])
     if sess.get('wrap') and sess.get('press', 0.0) > 0:          # the wrap's pressure: every point toward the body
         d, inward = sess['grid'].inward(cloth.co)
-        force = inward * sess['press']
-        force[d <= sess['margin'] * 1.2] = 0.0
+        f = inward * sess['press']
+        f[d <= sess['margin'] * 1.2] = 0.0
+        force = f if force is None else force + f
     cloth.step(force=force, gravity=g, damping=sess['damping'], iterations=ITERATIONS,
                keep_rate=KEEP_RATE if st.keep > 0 else 0.0)
     sess['frame'] += 1
     return cloth.co
 
 
-def drape(context, target, me, nb, size, st, frames=None):
+def drape(context, target, me, nb, size, st, frames=None, sew=None, pin_idx=None):
     """Headless / one go: the patch mesh draped in place.  Returns info."""
     t = time.perf_counter()
-    sess = build(context, target, me, nb, size, st)
+    sess = build(context, target, me, nb, size, st, sew=sew, pin_idx=pin_idx)
     for _ in range(frames if frames is not None else st.frames):
         advance(sess, st)
     mio.write_co(me, sess['cloth'].co)
     me.update()
-    return dict(points=sess['points'], collider=sess['collider'], frames=sess['frame'], time=time.perf_counter() - t,
+    info = dict(points=sess['points'], collider=sess['collider'], frames=sess['frame'], time=time.perf_counter() - t,
                 grid_cells=sess['grid'].cells, inside=int((sess['grid'].distance(sess['cloth'].co) < sess['margin'] * 0.5).sum()))
+    if sess['cloth'].sew is not None:
+        c = sess['cloth']
+        info['seam_gap'] = float(np.linalg.norm(c.co[c.sew[:, 1]] - c.co[c.sew[:, 0]], axis=1).mean())
+    return info
 
 
 # -----------------------------------------------------------------------------
@@ -252,7 +383,12 @@ def perform(context, loops, projector):
         raise cg.CutError('Cloth Drape settings missing')
     if sim_active():
         raise cg.CutError('Cloth Drape: keep (Enter) or drop (Esc) the cloth you have first')
-    target, me, nb, size = patch_from_loops(context, loops, projector, st.spacing)
+    sew = pin_idx = None
+    if st.two_sides:
+        target, me, nb, size, info = patch_two_sides(context, loops, projector, st.spacing)
+        sew, pin_idx = info['sew'], info['top']
+    else:
+        target, me, nb, size = patch_from_loops(context, loops, projector, st.spacing)
     for p in me.polygons:
         p.use_smooth = True
     ob = bpy.data.objects.new('Cloth Drape', me)
@@ -267,13 +403,19 @@ def perform(context, loops, projector):
     ob.select_set(True)
     context.view_layer.objects.active = ob
     surface = mio.read_co(me).copy()
-    sess = build(context, target, me, nb, size, st)
+    try:
+        sess = build(context, target, me, nb, size, st, sew=sew, pin_idx=pin_idx)
+    except Exception:
+        bpy.data.objects.remove(ob)
+        bpy.data.meshes.remove(me)
+        raise
     mio.write_co(me, sess['cloth'].co)
     me.update()
     SIM.clear()
     SIM.update(ob=ob.name, target=target.name, nb=nb, size=size, sess=sess, running=False, done=False, want=None,
-               surface=surface, start=sess['cloth'].init.copy(), snapshot=_snapshot(st))
-    return (f'Cloth Drape on {target.name}: {sess["points"]:,} points over {sess["collider"]:,} body points '
+               surface=surface, start=sess['cloth'].init.copy(), snapshot=_snapshot(st), sew=sew, pin_idx=pin_idx)
+    pieces = f'front + back, {len(sew):,} seam pairs, ' if sew is not None else ''
+    return (f'Cloth Drape on {target.name}: {pieces}{sess["points"]:,} points over {sess["collider"]:,} body points '
             f'(Space drape · Enter keep · Esc drop)')
 
 
@@ -414,7 +556,7 @@ def perform_wrap(context, body):
 
 def _snapshot(st):
     return tuple(getattr(st, k) for k in ('fabric', 'slack', 'shrink', 'gravity', 'stick', 'keep', 'gap', 'pin_rim', 'frames',
-                                          'wrap_tight', 'use_lines', 'stop_at_pins'))
+                                          'wrap_tight', 'use_lines', 'stop_at_pins', 'two_sides'))
 
 
 def restart(context):
@@ -427,7 +569,7 @@ def restart(context):
     me = ob.data
     mio.write_co(me, SIM['surface'])              # the laid patch again, then the cloth with the current sliders
     me.update()
-    sess = build(context, target, me, SIM['nb'], SIM['size'], st)
+    sess = build(context, target, me, SIM['nb'], SIM['size'], st, sew=SIM.get('sew'), pin_idx=SIM.get('pin_idx'))
     mio.write_co(me, sess['cloth'].co)
     me.update()
     SIM.update(sess=sess, running=True, done=False, start=sess['cloth'].init.copy(), snapshot=_snapshot(st))
@@ -470,6 +612,25 @@ def add_thickness(ob, size, st):
     return True
 
 
+def weld_seams(me, sew):
+    """The sewn pairs become one point each (the front point stays): the pieces are one surface."""
+    import bmesh
+    if sew is None or not len(sew):
+        return 0
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.verts.ensure_lookup_table()
+    tm = {}
+    for a, b in np.asarray(sew, np.int64):
+        if a != b and 0 <= a < len(bm.verts) and 0 <= b < len(bm.verts):
+            tm[bm.verts[int(b)]] = bm.verts[int(a)]
+    bmesh.ops.weld_verts(bm, targetmap=tm)
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    return len(tm)
+
+
 def confirm(context):
     ob = _ob()
     if ob is None:
@@ -477,10 +638,12 @@ def confirm(context):
         SIM.clear()
         return 'nothing to keep'
     n = SIM['sess']['frame']
+    welded = weld_seams(ob.data, SIM.get('sew')) if SIM.get('sew') is not None else 0
     thick = add_thickness(ob, SIM['size'], settings(context)) if SIM.get('mode') != 'MESH' else False
     _drop_backup()
     SIM.clear()
-    return f'Cloth Drape: kept "{ob.name}" at frame {n} ({len(ob.data.vertices):,} points{", thickness on" if thick else ""})'
+    return (f'Cloth Drape: kept "{ob.name}" at frame {n} ({len(ob.data.vertices):,} points'
+            f'{f", {welded} seam points welded" if welded else ""}{", thickness on" if thick else ""})')
 
 
 def cancel(context):
@@ -747,6 +910,7 @@ def draw(layout, context):
     col.prop(st, 'gap', slider=True)
     col.prop(st, 'spacing', slider=True)
     r = box.row(align=True)
+    r.prop(st, 'two_sides', toggle=True, icon='MOD_MIRROR')
     r.prop(st, 'pin_rim', toggle=True)
     r.prop(st, 'stop_at_pins', toggle=True)
     box.prop(st, 'frames')

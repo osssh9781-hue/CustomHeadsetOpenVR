@@ -73,9 +73,10 @@ class Cloth:
     # -- constraints --------------------------------------------------------------------------------------------
     sor = 1.0            # over-relaxation of the Jacobi passes (1.5 - 1.8: the edges hold their length with fewer passes)
 
-    def _project(self, pairs, rest, strength):
+    def _project(self, pairs, rest, strength, max_move=None):
         """One Jacobi pass of the length constraints ``pairs`` toward ``rest``: every point gets the mean of the
-        corrections its constraints ask for (the mass-weighted split between the two ends)."""
+        corrections its constraints ask for (the mass-weighted split between the two ends).  ``max_move`` caps the
+        pull of one pass in length units (a seam a body-width apart must not tunnel through the collider)."""
         if not len(pairs):
             return
         a, b = pairs[:, 0], pairs[:, 1]
@@ -84,6 +85,9 @@ class Cloth:
         length[length < 1e-12] = 1e-12
         corr = (length - rest) / length * strength * self.sor
         np.clip(corr, -0.5, 0.5, out=corr)          # (a pass never moves an end more than half the edge: no fling)
+        if max_move is not None:
+            lim = max_move / length
+            np.clip(corr, -lim, lim, out=corr)
         wa = 1.0 / self.mass[a]
         wb = 1.0 / self.mass[b]
         ws = wa + wb
@@ -118,6 +122,9 @@ class Cloth:
     #                      can otherwise throw a point off in one frame
     floor = None         # (down (3,), level): no point goes further down than ``level`` along ``down`` - the cloth
     #                      cannot hang below the lowest pinned ring (Stop at Pins)
+    sew = None           # (M, 2) point pairs pulled together (rest length 0): the seams between pattern pieces
+    sew_strength = 1.0   # how hard per pass (ramped up over the first frames by the caller)
+    sew_pbd = True       # the seams as plain length-0 constraints here; off when the caller pulls them its own way
 
     def step(self, force=None, gravity=None, damping=0.1, iterations=5, keep_rate=0.3):
         """One frame: velocity + forces, then the constraint passes.  ``force`` (N, 3) a per-point push for this
@@ -139,6 +146,9 @@ class Cloth:
             self._project(self.edges, self.rest_e * self.scale_e, 1.0)
             if self.bend > 0 and len(self.bends):
                 self._project(self.bends, self.rest_b * self.scale_b, self.bend)
+            if self.sew is not None and len(self.sew) and self.sew_strength > 0 and self.sew_pbd:
+                self._project(self.sew, np.zeros(len(self.sew)), self.sew_strength,
+                              max_move=self.max_step * 0.5 if self.max_step > 0 else None)
             if self.smooth > 0:
                 self._smooth(self.smooth)
             if np.any(self.keep > 0):

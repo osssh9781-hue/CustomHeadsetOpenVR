@@ -69,6 +69,48 @@ for flag in (False, True):
     bpy.data.meshes.remove(me)
 st.slack = 25.0
 st.stop_at_pins = False
+# Front + Back: the outline on the near AND the far side of the sphere, the side seams sewn
+class Proj2(Proj):
+    eye = Vector((0, -50, 0)); is_perspective = False
+    def to_screen(self, co): return (co[0] * PX, co[2] * PX)
+loops_w = [[(x * PX, y * PX) for x, y in [(-0.85, 0.5), (0.0, 0.55), (0.85, 0.5), (0.88, 0.0), (0.85, -0.5), (0.0, -0.55), (-0.85, -0.5), (-0.88, 0.0)]]]
+target, me2, nb2, size2, info = cd.patch_two_sides(C, loops_w, Proj2(), st.spacing)
+co2 = np.array([v.co[:] for v in me2.vertices])
+nf = info['front']
+check('patch_two_sides: two pieces in one mesh (front first), the front on y < 0, the back on y > 0, both on the sphere',
+      len(co2) == 2 * nf and np.all(co2[:nf, 1] < 0) and np.all(co2[nf:, 1] > 0) and np.allclose(np.linalg.norm(co2, axis=1), 1.0, atol=0.02),
+      (len(co2), nf, co2[:nf, 1].max(), co2[nf:, 1].min()))
+side, top, bottom = cd.rim_classes([(x, y) for x, y in [(-1, 1), (0, 1.1), (1, 1), (1.1, 0), (1, -1), (0, -1.1), (-1, -1), (-1.1, 0)]], 8)
+check('rim_classes: the left / right points are the side seams, the rest top or bottom',
+      list(side) == [False, False, False, True, False, False, False, True] and list(top) == [True, True, True, False, False, False, False, False]
+      and int(bottom.sum()) == 3)
+sew = info['sew']
+check('... the seam pairs join a front rim point to the same back rim point; the open top edge indexed on both pieces',
+      len(sew) > 10 and np.all(sew[:, 1] - sew[:, 0] == nf) and len(info['top']) > 4 and np.all(np.isin(info['top'][len(info['top']) // 2:], np.arange(nf, 2 * nf))),
+      (len(sew), len(info['top'])))
+gap0 = np.linalg.norm(co2[sew[:, 1]] - co2[sew[:, 0]], axis=1).mean()
+info_d = cd.drape(C, body, me2, nb2, size2, st, frames=60, sew=sew, pin_idx=info['top'])
+co3 = np.array([v.co[:] for v in me2.vertices])
+check('drape with the seams: the two pieces are pulled together round the sides (the seam gap from ~0.8 to about 1 cm), outside the sphere, no NaN',
+      info_d['seam_gap'] < 0.05 and np.linalg.norm(co3, axis=1).min() > 0.97 and np.all(np.isfinite(co3)), (gap0, info_d['seam_gap'], np.linalg.norm(co3, axis=1).min()))
+n_before = len(me2.vertices)
+welded = cd.weld_seams(me2, sew)
+check('weld_seams: every seam pair becomes one point', welded == len(sew) and len(me2.vertices) == n_before - len(sew), (welded, len(me2.vertices)))
+bpy.data.meshes.remove(me2)
+st.two_sides = True
+msg = cd.perform(C, loops_w, Proj2())
+ob2 = C.view_layer.objects.active
+check('perform with Front + Back on: the message names the seam pairs, the session carries them', 'front + back' in msg and cd.SIM.get('sew') is not None
+      and cd.SIM['sess']['cloth'].sew is not None, msg)
+cd.SIM['running'] = True
+for _ in range(8):
+    cd.step(C)
+check('... frames run, the seam strength ramps up from 0', cd.SIM['sess']['frame'] == 8 and 0 < cd.SIM['sess']['cloth'].sew_strength <= 1.0)
+n_before = len(ob2.data.vertices)
+msg = cd.confirm(C)
+check('Enter welds the seams into one surface', 'welded' in msg and len(ob2.data.vertices) == n_before - len(cd.SIM.get('sew', [])) if cd.SIM else 'welded' in msg and len(ob2.data.vertices) < n_before, msg)
+bpy.data.objects.remove(ob2)
+st.two_sides = False
 # the live flow
 msg = cd.perform(C, loops, Proj())
 ob = C.view_layer.objects.active
@@ -102,7 +144,7 @@ check('Tool wiring: CDRAPE in the tool table (Cloth group, lasso shape), the cut
       and "cloth_drape.perform" in inspect.getsource(ce) and 'CDRAPE' in ce._COLORS
       and any(k[0] == 'mch.cdrape_sim' for k in wsui.MCH_TOOL_cloth_drape.bl_keymap))
 src = inspect.getsource(cd.draw)
-check('Panel: Drape / Restart / Keep / Drop + every slider', all(k in src for k in ("'slack'", "'shrink'", "'gravity'", "'stick'", "'keep'", "'gap'", "'stop_at_pins'",
+check('Panel: Drape / Restart / Keep / Drop + every slider', all(k in src for k in ("'slack'", "'shrink'", "'gravity'", "'stick'", "'keep'", "'gap'", "'stop_at_pins'", "'two_sides'",
                                                                                    "'spacing'", "'pin_rim'", "'frames'", "'fabric'", 'Keep (Enter)', 'Drop (Esc)')))
 # -- the mesh itself as the cloth (a remeshed piece of your own) ----------------------------------------------------
 bpy.ops.mesh.primitive_grid_add(size=1.2, x_subdivisions=40, y_subdivisions=40, location=(0, 0, 1.08))
