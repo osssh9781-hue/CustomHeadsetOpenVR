@@ -57,7 +57,7 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
     show_proxy: BoolProperty(name='Show Proxies', default=False, description='Show the collider proxies as wire (hidden otherwise)',
                              update=_show_proxy_update)
     cape_length: FloatProperty(name='Length', description='Cape: how far the cloth hangs from the drawn line, as % of the body size', default=50.0, min=5.0, max=200.0, subtype='PERCENTAGE')
-    cape_flare: FloatProperty(name='Flare', description='Cape: how much wider the hem is than the drawn line', default=40.0, min=0.0, max=300.0, subtype='PERCENTAGE')
+    cape_flare: FloatProperty(name='Flare', description='Cape: how much wider the hem is than the drawn line (0 = exactly as wide as the points you placed)', default=0.0, min=0.0, max=300.0, subtype='PERCENTAGE')
     mask_points: IntProperty(name='Cloth Points', description='Drape Mask: the masked faces are rebuilt as an even, lighter cloth of about this many points '
                              '(0 = from Cloth Detail; never more points than the body has there)', default=0, min=0, max=200000)
     spacing: FloatProperty(name='Cloth Detail', description='The patch spacing as % of the outline size (smaller = more points, finer folds)',
@@ -917,52 +917,46 @@ def cape_patch(body, line, length, flare, step, gap, down):
     n = len(top)
     top = np.array([push(p) for p in top])
     rows = max(2, int(round(length / step)))
-    tang = np.gradient(top, axis=0)
-    tang -= down[None, :] * (tang @ down)[:, None]                  # (sideways = across the fall)
-    tang /= np.maximum(np.linalg.norm(tang, axis=1), 1e-12)[:, None]
-    u = np.linspace(-0.5, 0.5, n)
-    width = float(np.linalg.norm(np.diff(top, axis=0), axis=1).sum())
-    side = (u * width * (flare / 100.0) / rows)[:, None] * tang      # per row: the hem ends ``flare`` wider
-    def sweep(p, move):
-        """``p`` moved by ``move`` without passing through the body: a hit slides along the surface it meets
-        (a thin arm is never jumped across, as a push to the nearest surface could)."""
-        ln = float(np.linalg.norm(move))
-        if ln < 1e-12:
-            return p
-        d = move / ln
-        loc, nrm, _i, dist = tree.ray_cast(Vector(p), Vector(d), ln + gap)
-        if loc is None:
-            return p + move
-        nrm = np.array(nrm)
-        if np.dot(nrm, d) > 0.0:
-            nrm = -nrm
-        rest = move * max(0.0, 1.0 - (dist - gap) / ln)
-        rest -= nrm * np.dot(rest, nrm)                              # what is left of the move, along the surface
-        q = np.array(loc) + nrm * gap
-        loc2, _n2, _i2, _d2 = tree.ray_cast(Vector(q), Vector(rest / max(np.linalg.norm(rest), 1e-12)),
-                                            float(np.linalg.norm(rest)) + gap) if np.linalg.norm(rest) > 1e-9 else (None,) * 4
-        return q + rest if loc2 is None else q
-    # "out": the way the cape faces (the line's surface normals, across the fall).  Going down, no point comes
-    # back in along it: the cloth falls straight from the farthest-out part (shoulder blades, seat) instead of
-    # following the body into the gap between the legs or round the arms to the front
+    # "out": the way the cape faces (the line's surface normals, across the fall)
     out = np.zeros(3)
     for p in top:
         loc, nrm, _i, _d = tree.find_nearest(Vector(p))
         if loc is not None:
             out += np.array(nrm)
     out -= down * np.dot(out, down)
-    out = out / np.linalg.norm(out) if np.linalg.norm(out) > 1e-9 else None
+    if np.linalg.norm(out) < 1e-9:
+        out = np.cross(down, top[-1] - top[0])
+    out /= max(np.linalg.norm(out), 1e-12)
+    # sideways: only the Flare (0 = the hem exactly as wide as the placed points)
+    tang = np.gradient(top, axis=0)
+    tang -= down[None, :] * (tang @ down)[:, None]
+    tang /= np.maximum(np.linalg.norm(tang, axis=1), 1e-12)[:, None]
+    u = np.linspace(-0.5, 0.5, n)
+    width = float(np.linalg.norm(np.diff(top, axis=0), axis=1).sum())
+    side = (u * width * (flare / 100.0) / rows)[:, None] * tang
+    reach = float(np.linalg.norm(body.dimensions)) * 2.0 + length
+
+    def clear(q):
+        """``q`` moved straight out (along ``out``, never sideways) until it is ``gap`` off the outermost body
+        surface on that line: a flat sheet hanging behind the body, as wide as the placed points."""
+        far = q + out * reach
+        loc, _n, _i, _d = tree.ray_cast(Vector(far), Vector(-out), reach * 2.0)
+        if loc is None:
+            return q
+        lift = float(np.dot(np.array(loc) - q, out)) + gap
+        return q + out * lift if lift > 0.0 else q
     grid = [top]
     cur = top.copy()
+    level = top @ out                                            # going down, no point comes back in along "out"
     for _r in range(rows):
-        nxt = cur.copy()
+        nxt = cur + down * step + side
         for i in range(n):
-            q = sweep(cur[i], down * step + side[i])
-            if out is not None:
-                back = float(np.dot(q - cur[i], out))
-                if back < 0.0:
-                    q = q - out * back
+            q = clear(nxt[i])
+            d = float(q @ out) - level[i]
+            if d < 0.0:
+                q = q - out * d
             nxt[i] = q
+        level = nxt @ out
         grid.append(nxt)
         cur = nxt
     co = np.concatenate(grid)
