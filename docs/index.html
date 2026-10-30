@@ -1121,7 +1121,7 @@ function renderMain(){
     const toggle=area.querySelector(`.accordion[data-stage="${k}"] .accordion-toggle`);
     toggle.onclick=()=>{if(toggle.dataset.suppressClick==='1'){delete toggle.dataset.suppressClick;return;}expandedStages[k]=!expandedStages[k];renderMain();};
   });
-  area.querySelectorAll('.stage-delete-toggle').forEach(btn=>btn.onclick=e=>{
+  area.querySelectorAll('.stage-delete-toggle[data-delete-stage]').forEach(btn=>btn.onclick=e=>{
     e.stopPropagation();
     if(!editable())return;
     const k=btn.dataset.deleteStage,key=proj.id+':'+k;
