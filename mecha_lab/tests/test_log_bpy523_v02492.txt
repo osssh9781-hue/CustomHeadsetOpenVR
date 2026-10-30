@@ -3156,3 +3156,1542 @@ PASS without Alt each tool keeps its colour
 86/86 passed
 ====================================================================== 
  test_v02328.py
+PASS cloth made with the sliders on it  -- Cloth plate "Box_Wrinkle" on Box (padded panel, no pattern) | Panel Cloth (Cloth): 1 baked
+PASS setting the values on a new cloth did not queue a bake
+PASS Tension change does not bake by itself, the cloth is marked
+Info: Panel Cloth refreshed (Puff 1.00, Tension 3.00, Gravity 1.00)
+PASS baked again: new cloth active, keeps Tension 3
+PASS Tension 3 = a third of the preset slack, stiffer
+PASS tighter cloth folds less (height span not bigger)  -- (0.17057251930236816, 0.08205223083496094)
+PASS refreshed cloth is not marked
+Info: Panel Cloth refreshed (Puff 1.00, Tension 3.00, Gravity 4.00)
+PASS Gravity change bakes again and is kept
+Info: Panel Cloth: Silk
+PASS preset redo: Gravity back to the preset, Tension kept
+PASS Fast Start is on by default (0.24.88: 2.9 s less per bake; off = the 0.24.1 result)
+Info: Panel Cloth: Silk
+PASS Fast Start bakes too
+PASS unregister removes the slider properties
+
+12/12 passed
+====================================================================== 
+ test_v0233.py
+PASS IK: segment lengths kept  -- [0.9999999951105565, 0.9999999925494194, 0.9999999399296922]
+PASS IK: root pinned
+PASS IK: tip reaches a reachable target  -- (1.9999998807907104, 1.4999994039535522, 0.0)
+PASS IK: unreachable target -> chain stretches toward it
+PASS IK: dragging a middle point pulls the rest like a rope
+PASS IK unpinned: the whole chain follows
+PASS IK toggle (bar button)
+PASS IK pin option, default on
+PASS Fold Asymmetry + Fold Thinness inputs and HUD sliders
+PASS Fold Sharp range widened
+PASS asymmetric section: steep side + crease + soft side in the fold field
+PASS fold width floor from the panel resolution (no beads)
+
+12/12 passed
+====================================================================== 
+ test_v0234.py
+PASS standing cloth plate made  -- Cloth plate "Box_Wrinkle" on Box (padded panel, no pattern) | 203 point(s) past the surface edge
+PASS Fold Direction input (Up / Down / Random), Up by default
+PASS folds exist on the standing panel  -- (37, 37)
+PASS Up: going upward a fold rises over a long gentle slope, drops on a short steep wall  -- (1380, 995)
+PASS Down: the steep wall is underneath  -- (998, 1377)
+PASS five skins (+ Croc Back since 0.23.6) + four border finishes
+PASS skin inputs in the node group
+PASS every skin preset makes a creature skin plate  -- [True, True, True, True, True]
+PASS skins are displaced (scales / warts / cracks show up)  -- [(78010, 0.1784), (78010, 0.3366), (78010, 0.1672), (78010, 0.1743), (78010, 0.1775)]
+PASS cloth features off on a skin (puff low, no stitch / trim / pinch)
+PASS scales get smaller toward the border (Edge Shrink on)
+Info: Creature skin: Dragon
+PASS Skin button cycles the preset
+PASS Edge button cycles the border finishing
+PASS skin HUD: skin + edge buttons, skin sliders only on a creature
+PASS bottom toolbar: Skin + Shell buttons
+Info: Creature Skin: draw on the mesh
+PASS Skin brush = Cloth Plate with the creature layer
+Info: Creature Shell: draw on the mesh
+PASS Shell brush = Armor Plate with the creature layer
+PASS shell node group + inputs
+PASS Shell lasso: an armor plate with the shell layer, body unchanged  -- Armor plate "Body_Plate" on Body (Chamfer 45, 30 clean faces) | 7 point(s) past the surface edge
+PASS shell faces outward (toward the viewer)  -- (0.0, 0.0, 1.0)
+PASS hard plates + bulges displace the plate
+PASS Lift S raises the plate edge off the body  -- (np.float64(2.2187), np.float64(2.4479))
+PASS Lift S toggles back off
+PASS N / E / W lift toggles
+PASS reroll = new random plates
+PASS Gravity moves the raised parts
+PASS shell values remembered for the next shell
+PASS Remove Shell
+PASS Add Shell to any plate
+Info: Creature Skin: draw on the mesh
+
+29/29 passed
+====================================================================== 
+ test_v0235.py
+PASS shell: Organic / Edge Shrink / Shrink Width / Edge Irregular inputs, appended after the old ones
+PASS shell HUD sliders for them
+PASS Shrink Width scales with the plate
+PASS shell plate made  -- Armor plate "Body_Plate" on Body (Chamfer 45, 30 clean faces) | 7 point(s) past the surface edge
+PASS Organic bends the plates (the surface changes)
+PASS Edge Shrink: the inside keeps its wide plates, the border gets smaller ones  -- (94, 44090, np.float64(0.0), np.float64(0.15627169609069824))
+PASS Edge Irregular moves the small-plate border
+PASS skin: Skin Organic / Skin Irregular inputs + sliders
+PASS skin plate made  -- Creature skin "B2_Wrinkle" on B2 (Godzilla) | 137 point(s) past the surface edge
+PASS Skin Organic bends the scale edges
+PASS Skin Irregular moves the shrink border
+
+11/11 passed
+====================================================================== 
+ test_v0236.py
+PASS six skins, Croc Back is Skin 6
+PASS scales built round (dome from the scale centre + narrow groove), spikes, keel
+PASS crocodile / dragon / croc back plates made
+PASS each is displaced  -- {'CROC': 0.1784, 'DRAGON': 0.3366, 'CROC_BACK': 0.2644}
+PASS dragon spikes stick out far above the pebbles (more than the croc scales)  -- (np.float64(5.39), np.float64(1.77))
+
+5/5 passed
+====================================================================== 
+ test_v0237.py
+PASS Through + Crease brush options
+PASS through: a band over a cylinder takes the front AND the back (2 panels)  -- [(-1.0, 7.559235370990791e-08), (-7.57475717705347e-08, 1.0)]
+PASS through: the front panel is the top half, the back the bottom half  -- [(-1.0, 7.559235370990791e-08), (-7.57475717705347e-08, 1.0)]
+PASS through: the panels follow the outline (x within the band)  -- (-1.0, 1.0)
+PASS through: the region is refined to the Face Size (many small faces)  -- 6784
+PASS through: sharp creases split the panels (cube: 6 sides at 50 deg)  -- 6
+PASS through: Crease 180 = only the silhouette splits (front + back)  -- 2
+PASS Cloth Plate Through: a front and a back cloth layer around the cylinder  -- ('Cloth plate through Cylinder: 2 panel(s) (front / back / creases)', [(-0.9999999403953552, 1.258693345107531e-07), (-7.116921807437393e-08, 1.0)])
+PASS Cloth Plate Through: every layer has folds
+PASS Armor Plate Through: a front and a back plate  -- Armor plate through Cylinder: 2 plate(s) (Chamfer 45, front / back / creases)
+PASS Through plates keep their outline + panel for Face Size
+PASS Face Size rebuild of a Through plate  -- (True, 131, 1773)
+PASS Puffer / Cotton / Drape types
+PASS Crumple layer inputs
+PASS each type makes a cloth plate
+PASS older type unchanged: no crumple / billow
+PASS Puffer: 5 stitched channels, no border folds or fans
+PASS Cotton: crumple creases on, Drape: big billows on
+PASS the crumple layer shapes the cloth  -- 0.09122234582901001
+
+19/19 passed
+====================================================================== 
+ test_v0238.py
+PASS Pinch 2 input + two HUD sliders (big / small folds)
+PASS new layers start with Pinch 2 = Pinch 1 (same look as before)
+PASS Pinch 2 alone changes the small folds
+PASS Pinch 1 alone changes the big folds
+PASS the two act on different folds
+PASS Panel Cloth: a new _PCloth object, the source only hidden
+PASS baked: no cloth modifier left, a Subdivision modifier on top
+PASS subdivided before the sim (Cuts)  -- 1369
+PASS Pressure puffs the panel up, the pinned border stays  -- 1.241
+PASS not through the body (collider)  -- 1.011
+PASS the body got its temporary collider removed again
+PASS cloth helpers: collider of a cloth layer = its body
+PASS Through front + back -> one joined cloth around the cylinder  -- 1
+PASS the seams are welded: only the two sleeve ends are open  -- (-1.0, 1.0)
+Info: Panel Cloth: 1 cloth object(s), 5 frames baked
+PASS Panel Cloth operator
+Info: Panel Cloth: 1 cloth object(s), 5 frames baked
+PASS Panel Cloth from selected faces (Edit Mode)
+
+16/16 passed
+====================================================================== 
+ test_v0239.py
+PASS presets: padding family + cloth family
+PASS padding presets puff (pressure), cloth presets do not puff and fold (shrink < 0)
+PASS padding stronger than 0.23.8 (pressure 4)
+PASS Sim toggle + preset on the Cloth Plate settings
+PASS Sim after lasso: a baked _PCloth, the cloth layer hidden  -- Cloth plate "Box_Wrinkle" on Box (padded panel, no pattern) | Panel Cloth (Puffer): 1 baked
+PASS the source cloth plate is kept (hidden)
+PASS the temporary region collider is gone, the body untouched
+PASS puffed up above the box top, nothing sunk into it  -- (2.02, 2.776)
+Info: Panel Cloth: Cloth
+PASS redo: the same source baked again with another preset (one cloth object, not two)
+PASS Cloth preset: flatter than Puffer (folds, no puff)  -- (0.198, 0.776)
+PASS Split Angle: a cube becomes 6 separate pieces  -- 6
+PASS random per piece: the shrink / pressure groups are cleaned up after the bake
+PASS Split Seam: the marked seam opens (more border points)  -- (48, 32)
+Info: Panel Cloth: 1 cloth object(s), 4 frames baked
+PASS Remove Faces: the selected faces leave the source mesh
+
+14/14 passed
+====================================================================== 
+ test_v0240.py
+PASS two tools, lasso tools, bottom bar buttons
+PASS lasso on a mesh -> live detail parented to it  -- Plate Detail "B_Detail" on B (2-layer trim, 38 faces)
+PASS closed solid, B untouched
+PASS low: top below 5% of the size, bottom just under the surface  -- (np.float64(0.09616661071777344), np.float64(-0.009616613388061523), 4.808326244354248)
+PASS edge high: the outer layer is the highest level  -- (np.float64(0.09616661071777344), 0.09616652689874172)
+PASS a change queues a rebuild
+PASS width change rebuilt the mesh
+PASS height change: higher edge
+PASS 3-layer preset: values from the preset for this size
+PASS inside high: inside panel highest (sum of layers + inside height)  -- 0.29811620712280273
+PASS 2 screws
+PASS values remembered for the next detail (as fractions)
+PASS Select-mode panel shows for the live detail
+PASS Apply: plain mesh, not live
+PASS detail drawn over an armour plate lands on the plate  -- Plate Detail "B2_Plate_Detail" on B2_Plate (3-layer trim, 54 faces)
+PASS Detail 2: smooth rise object  -- Plate Detail "B2_Rise" on B2 (smooth rise, 128 faces)
+PASS rises to Height, edge at the surface  -- (np.float64(0.17021465301513672), 0.16829141974449158)
+PASS wider slope = narrower top  -- (np.float64(2.390251636505127), np.float64(1.3805031776428223))
+PASS slope shape CHAMFER builds
+PASS slope shape DOME builds
+PASS slope shape FOOT builds
+PASS Remove deletes it
+PASS unregister removes the properties
+
+23/23 passed
+====================================================================== 
+ test_v0240b.py
+PASS tool + bottom bar button + sidebar drawer
+PASS DOME: closed solid, top at its height, sunk below the base  -- (320, 0.02250000089406967, -0.012500000186264515)
+PASS POST: closed solid, top at its height, sunk below the base  -- (128, 0.07000000029802322, -0.012500000186264515)
+PASS SOCKET: closed solid, top at its height, sunk below the base  -- (192, 0.04500000178813934, -0.012500000186264515)
+PASS SOCKET: has a hole / slot below the top
+PASS CROSS: closed solid, top at its height, sunk below the base  -- (94, 0.014999999664723873, -0.012500000186264515)
+PASS CROSS: has a hole / slot below the top
+PASS click on the top: a screw on the surface, parented
+PASS click on the side: aligned to the side normal (+X)  -- (1.0, 0.0, 3.422854177870249e-08)
+PASS screws follow the mesh
+PASS live height
+PASS live head change (usual height for the head)
+PASS last edit remembered for the next click
+PASS Alt + click removes the screw under the mouse
+PASS one screw left  -- 1
+Info: 1 screw(s) joined
+PASS Join: the screw becomes part of the mesh
+PASS unregister removes the properties
+
+17/17 passed
+====================================================================== 
+ test_v0241.py
+PASS Detail 1 / 2 / Box Hide get the sketch keys
+PASS Detail + sketch: outlines collected, no detail yet
+Info: Plate Detail "B_Detail" on B (2-layer trim, 81 faces)
+PASS Enter: one detail from the combined outline
+PASS ... L-shaped union (covers both squares, not their bounding box)
+PASS Lift moves the detail along the normal
+PASS negative Lift sinks it
+Info: Plate Detail "B_Rise" on B (smooth rise, 415 faces)
+PASS Detail 2 + sketch with a hole subtracted
+PASS Round: flat at the foot and at the top (grows out of the surface)
+PASS Chamfer: straight
+PASS foot edge kept sharp from the skirt (no dark seam)  -- 38
+PASS Chamfer builds
+PASS Vertical preset: soft foot + straight-up wall
+PASS foot is tangent to the surface (starts flat), then the wall is vertical up to the top  -- ([0.0, 0.07722416690357259, 0.1492436167115329, 0.21120441733679046, 0.2589305646707509, 0.2892054348908879, 0.2999885769192514, 0.3061202309692522], [0.0, 0.01010962753818616, 0.039757146359672244, 0.08694438731301436, 0.14849104752759296, 0.2202490349301502, 0.29738203935048774, 1.0])
+PASS Slanted preset: wall 70 degrees, foot kept
+PASS Round preset back
+Info: Box Hide: Hidden on B
+PASS Box Hide + sketch: Enter hides once
+
+16/16 passed
+====================================================================== 
+ test_v02410.py
+PASS DETAIL3: in the tool list, bottom bar, settings drawer
+PASS TUBE_SAME: in the tool list, bottom bar, settings drawer
+PASS DETAIL3 is a lasso tool with sketch and a native tool
+PASS lasso -> live flat panel parented to the mesh  -- Plate Detail "B_Panel" on B (flat panel, 6 faces)
+PASS one flat top at Height (no trim levels): only two height levels (top, embedded bottom)  -- [np.float64(-0.00962), np.float64(0.09617)]
+PASS height about 2% of the size by default  -- (0.09616652131080627, 4.808326244354248)
+PASS closed solid, light, the mesh under it untouched  -- 6
+PASS straight walls: the top reaches the outline (as wide as the bottom)
+PASS Height live
+PASS Lift moves it along the normal
+PASS Enter applies it (same Enter as the other details)
+PASS sidebar maps TRIM to its tool
+PASS sidebar maps RISE to its tool
+PASS sidebar maps FLAT to its tool
+PASS Plate Detail 1 still makes a layered trim
+PASS new curve in Same Size mode
+PASS Same Size: 4 copies, all the same size despite point radius / start-end size  -- [0.11547005921602249, 0.11547017097473145, 0.11547005921602249, 0.11547005921602249]
+PASS Radius scales every copy together (x2)  -- [0.23094011843204498, 0.23094011843204498, 0.2309403419494629, 0.23094011843204498]
+PASS Size scales every copy together (x0.5)  -- [0.11547005921602249, 0.11547017097473145, 0.11547005921602249, 0.11547005921602249]
+PASS normal Repeat still follows the point radius / start-end size  -- [0.057735029608011246, 0.26943016052246094, 0.36373090744018555, 0.06928203254938126]
+PASS Same Size curves are followed for source edits like Repeat
+PASS tool pick passes the mode to the draw operator
+PASS named Line Curve in the tool list / bottom bar
+PASS Mesh Curve defaults have no Line Curve mode (separate tool)
+PASS the Mode toggle never turns a Line Curve into Tube / Repeat
+PASS Mesh Curve Mode toggle stays Tube / Repeat
+PASS Mesh Curve Mode toggle stays Tube / Repeat
+PASS Mesh Curve Mode toggle stays Tube / Repeat
+PASS Line Curve HUD only in the Line Curve tool
+PASS ... and shown there
+PASS a Mesh Curve repeat is not the Line Curve tool's
+
+31/31 passed
+====================================================================== 
+ test_v02411.py
+Info: Box Hide: Hidden on A
+PASS sketch Enter with Selected Only: only the selected mesh is hidden  -- ({'FINISHED'}, True, False)
+Warning: The sketch does not cover a mesh (selected): nothing was hidden.
+PASS sketch Enter with Selected Only and nothing selected: nothing hidden  -- {'CANCELLED'}
+Info: Box Hide: Hidden on A, B
+PASS sketch Enter with Auto Target: every covered mesh
+PASS first hide on A  -- Box Hide: Hidden on A
+PASS the duplicate starts with the same volume (as Shift+D does)
+PASS second hide on A only  -- Box Hide: Hidden on A
+PASS the duplicate got its own volume
+PASS the duplicate keeps only the first hidden part  -- (8, 8)
+PASS A has both parts
+PASS volumes are named for their mesh
+PASS Show All on A keeps the volume a duplicate still uses
+
+11/11 passed
+====================================================================== 
+ test_v02412.py
+Info: Smart Fuse: 4 part(s) fused into P0
+PASS 5 selected: all fused into the active mesh  -- ({'FINISHED'}, ['P0'])
+PASS one closed solid, no fuse modifiers left  -- (0, [])
+PASS it spans all five parts  -- 8.0
+Warning: Smart Fuse: 2 part(s) fused into P0 | not fused (no overlap): Far
+PASS a separate part stays (reported), the overlapping ones fuse  -- ({'FINISHED'}, [('Far', False), ('P0', False)])
+Info: Smart Fuse live preview created; edit settings, then Confirm / Apply.
+PASS two: live preview as before
+Info: Smart Fuse live preview created; edit settings, then Confirm / Apply.
+PASS next part onto the live preview: the first is confirmed, the new one is live  -- {'FINISHED'}
+Info: Smart Fuse applied; resulting mesh stays on the originally active object.
+PASS confirm: one closed solid of three parts
+Info: Smart Fuse live preview created; edit settings, then Confirm / Apply.
+Info: Smart Fuse applied; resulting mesh stays on the originally active object.
+PASS fuse 1 (two at a time): done, still closed, seam mark cleared  -- ({'FINISHED'}, {'FINISHED'}, 0)
+Info: Smart Fuse live preview created; edit settings, then Confirm / Apply.
+Info: Smart Fuse applied; resulting mesh stays on the originally active object.
+PASS fuse 2 (two at a time): done, still closed, seam mark cleared  -- ({'FINISHED'}, {'FINISHED'}, 0)
+Info: Smart Fuse live preview created; edit settings, then Confirm / Apply.
+Info: Smart Fuse applied; resulting mesh stays on the originally active object.
+PASS fuse 3 (two at a time): done, still closed, seam mark cleared  -- ({'FINISHED'}, {'FINISHED'}, 0)
+Info: Smart Fuse live preview created; edit settings, then Confirm / Apply.
+Info: Smart Fuse applied; resulting mesh stays on the originally active object.
+PASS fuse 4 (two at a time): done, still closed, seam mark cleared  -- ({'FINISHED'}, {'FINISHED'}, 0)
+Error: Smart Fuse setup failed: No intersection seam found: the two meshes must really overlap. Touching, separate or open (non-closed) meshes cannot be fused.
+  (operator reported) Error: Smart Fuse setup failed: No intersection seam found: the two meshes must really overlap. Touching, separate or open (non-closed) meshes cannot be fused.
+PASS after fuses, a far part is still refused (the old seam mark no longer counts)  -- {'CANCELLED'}
+Info: Smart Fuse live preview created; edit settings, then Confirm / Apply.
+PASS live preview before the cut
+PASS cut on the live preview: fuse baked, source gone, cut done  -- ({'FINISHED'}, 'Cut: A')
+PASS the hole is in the former source part (x 2.0 .. 2.4)
+PASS still one closed solid, no fuse modifiers
+
+16/16 passed
+====================================================================== 
+ test_v02413.py
+PASS a collection instance is recognised
+PASS lean start: one live mirrored instance of the same collection  -- 1
+PASS twin = master mirrored across world X  -- ((-3.0, 0.9999999403953552, 0.5000000596046448), (3.0, 1.0, 0.5))
+PASS the twin is a mirror image (negative determinant)
+PASS moving / rotating the original moves the twin
+PASS X + Y: three mirrored instances
+PASS finish keeps them
+PASS re-mirror replaces the twins (Z only)
+PASS Esc restores the previous twins
+PASS remove leaves no helper empties
+PASS 3D cursor plane: twin at 2 - x  -- -2.0
+PASS the twin is not put inside its own collection
+PASS Alt+X on a collection instance -> instance mirror; on a mesh -> mesh mirror  -- ['inst', 'mesh']
+PASS only a curve selected: plain message (no poll error)  -- ['Mirror: select a mesh or a collection instance (selected: Curve - convert it to a mesh first)']
+PASS curve + collection instance -> instance mirror
+PASS left Mirror / Symmetry buttons use the same entry (mesh keep-live / apply, instance)  -- [('mesh', True), ('mesh', False), 'inst']
+PASS mesh selected: mch.mirror_lean poll passes (0.24.13 lost its Python class: poll() failed)
+00:00.693  operator         | ERROR Invalid operator call 'MCH_OT_mirror_lean'
+PASS start_mirror with a mesh (no 3D View here): no poll error  -- ({'PASS_THROUGH'}, [])
+PASS the two mirror operators are separate classes
+PASS collection instance selected: instance operator poll passes
+PASS instance mirror operator registered
+
+21/21 passed
+====================================================================== 
+ test_v02415.py
+PASS pointing at Body: it becomes the mirror centre  -- ('Body', (1.5, 0.0, 0.0))
+PASS axis X toward Body, the Arm side kept (copy lands beyond Body)  -- ((True, False, False), (True, False, False))
+PASS the message names it  -- +X across Body
+PASS the copy is on the far side of Body (x about 5)  -- (-2.5, 5.5)
+PASS off any object: back to the normal lean (world origin)
+PASS finish keeps the mirror across Body
+PASS the selected object itself is never the pivot
+PASS instance: its own collection parts are not a pivot
+PASS instance pointing at Body: mirrored instance beyond it (x = 5)  -- ('Body', [(5.0, 2.5, 2.18556948539117e-07)])
+PASS Esc: no twin left
+
+10/10 passed
+====================================================================== 
+ test_v02416.py
+PASS Puff 1 = the preset (no pressure override, same result as before)
+PASS Puff 2 = twice the preset pressure, 0 = none
+PASS a preset with no puff (Cloth) gets some added
+PASS new cloth: Puff slider at 1  -- Cloth plate "Box_Wrinkle" on Box (padded panel, no pattern) | Panel Cloth (Padding): 1 baked
+PASS Puff change only marks the cloth (no bake by itself)
+Info: Panel Cloth refreshed (Puff 2.50, Tension 1.00, Gravity 0.30)
+PASS Refresh with Puff 2.5: new cloth keeps 2.5 and puffs higher  -- (0.5722852706909181, 0.6838851451873778)
+Info: Panel Cloth refreshed (Puff 0.00, Tension 1.00, Gravity 0.30)
+PASS Puff 0: flatter than the preset  -- (0.2186422348022461, 0.5722852706909181)
+PASS Puff slider drawn in the panel
+
+8/8 passed
+====================================================================== 
+ test_v02417.py
+PASS L = lasso shape menu
+PASS one key item per tool of the left list
+PASS tool keys unassigned by default
+PASS Cut / Split / Armor Plate keep C / S / Alt+A
+PASS Hotkeys box lists every tool + Save / Default
+PASS Save writes the keys  -- 59
+PASS after a restart: Ctrl+K = Base Mesh, J = Cut
+PASS the other keys are unchanged
+PASS tool key -> that tool; L -> the shape popup  -- ['DETAIL3', ('panel', 'MCH_PT_shape_popup')]
+PASS Default Keys: file removed, C = Cut again, Base Mesh unassigned
+PASS Line Curve: a solid tube (not dots) of one thickness despite point radius 1 / 3 / 0.3 and start / end size  -- (400, np.float64(0.09999999852325936), np.float64(0.10000000461060017))
+PASS Thickness makes all of it thicker
+PASS it belongs to the Line Curve tool
+PASS no per-point thickness handle on a Line Curve
+PASS the tool starts a LINE curve
+PASS Mesh Curve (Tube) still follows the point radius  -- 0.9375
+PASS new left-list pictures used and present  -- {'HIDE': 'hide', 'PLATE': 'armor', 'DETAIL': 'detail1', 'DETAIL2': 'detail2', 'DETAIL3': 'detail3', 'SCREW': 'screw', 'WRINKLE': 'cloth', 'TUBE': 'tube', 'TUBE_SAME': 'line_curve'}
+PASS no two tools of the left list share a picture
+
+18/18 passed
+====================================================================== 
+ test_v02418.py
+PASS cap True: hidden  -- Box Hide: Hidden on Body
+PASS cap True: Split Off made a separate mesh  -- {'FINISHED'}
+PASS cap True: the rest has a real hole, no Box Hide modifier left
+PASS cap True: both closed solids  -- (0, 0)
+PASS cap True: volumes add up (rest 6.000 + part 2.000 = 8.000)  -- (6.0, 2.0, 7.999999999999999)
+PASS cap True: the new part is selected / active
+PASS cap True: no hide volume left
+PASS cap False: hidden  -- Box Hide: Hidden on Body
+PASS cap False: Split Off made a separate mesh  -- {'FINISHED'}
+PASS cap False: the rest has a real hole, no Box Hide modifier left
+PASS cap False: both closed solids  -- (0, 0)
+PASS cap False: volumes add up (rest 6.000 + part 2.000 = 8.000)  -- (6.0, 2.0, 7.999999999999999)
+PASS cap False: the new part is selected / active
+PASS cap False: no hide volume left
+PASS Split Off button in the Box Hide panel
+PASS nothing hidden: Split Off does nothing
+PASS custom shapes folded at start
+PASS folded: the custom grid is not drawn
+PASS opened: the custom grid is drawn
+
+19/19 passed
+====================================================================== 
+ test_v02420.py
+PASS Puff is a Base Mesh profile with its own picture
+PASS profile_puff.png exists
+PASS circle: one closed lump  -- Base Mesh created: MCH_Base (Puff, 9810 verts, closed solid)
+PASS round on both sides (symmetric about the drawing plane)  -- (-0.7892107367515564, 0.7892107367515564)
+PASS circle radius 1 -> a round lump (half height ~0.79 R, Poisson inflation)  -- 0.7892107367515564
+PASS volume of a rounded lens (~3.3)  -- 3.2826741867634897
+PASS smooth shaded
+PASS body + arm: closed  -- Base Mesh created: MCH_Base (Puff, 4129 verts, closed solid)
+PASS the arm is a thin tube (half height ~1.1 x half width 0.2)  -- 0.21189692616462708
+PASS the body is a fat lump (half height ~ 1)  -- 0.859088659286499
+PASS live: settings stored on the object
+PASS Height slider starts at the real height (not Auto)  -- (0.8615189790725708, 0.859088659286499)
+PASS Height = half rebuilds live: half as thick, same outline  -- (0.859088659286499, 0.4283325970172882)
+PASS Height x2: taller than wide, still closed
+PASS the next shape starts at Auto height again (Height is not carried over)
+PASS the same thickness at low and high Resolution (only smoother)  -- [0.7874948382377625, 0.7893986701965332]
+PASS a taper tapers smoothly (thickness falls steadily toward the narrow end)  -- [0.5217577219009399, 0.5032840371131897, 0.3958655595779419, 0.27990105748176575]
+PASS star (concave) / top: closed lump  -- Base Mesh created: MCH_Base (Puff, 6725 verts, closed solid)
+PASS star (concave) / oblique: closed lump  -- Base Mesh created: MCH_Base (Puff, 6725 verts, closed solid)
+PASS thin strip / top: closed lump  -- Base Mesh created: MCH_Base (Puff, 1930 verts, closed solid)
+PASS thin strip / oblique: closed lump  -- Base Mesh created: MCH_Base (Puff, 1939 verts, closed solid)
+PASS ring outline (with hole) -> a closed donut, tube half height ~0.56  -- ('Base Mesh created: MCH_Base (Puff, 9872 verts, closed solid)', 0.559952974319458)
+PASS low resolution 4: still closed (narrow parts split, no doubled faces)  -- Base Mesh created: MCH_Base (Puff, 335 verts, closed solid)
+PASS low resolution 8: still closed (narrow parts split, no doubled faces)  -- Base Mesh created: MCH_Base.001 (Puff, 567 verts, closed solid)
+PASS Alt cutter refuses Dome with a message (no flat cap)
+PASS panel: Height (peak) slider for the creature shapes
+
+26/26 passed
+====================================================================== 
+ test_v02420_bend.py
+PASS bend_coords: no bend = same point
+PASS bend_coords: 180 deg up turns the end straight up (a half circle)  -- (0.6366197723675814, 0.6366197723675814)
+PASS bend axis = the long side of the outline  -- (1.0, 0.0)
+PASS FLAT: made
+PASS FLAT: Bend Up lifts both ends  -- ('', 0.632, 0.0)
+PASS FLAT: bent shape stays closed
+PASS FLAT: Bend Down drops both ends
+PASS FLAT: Bend Sideways curves it in plan, thickness unchanged  -- (0.8, 1.429, 0.20000000298023224, 0.20000000298023224)
+PASS FLAT: sideways bent shape stays closed
+PASS FLAT: bend back to 0 = the straight shape again  -- (8, 8)
+PASS BEVEL: made
+PASS BEVEL: Bend Up lifts both ends  -- ('', 0.632, 0.0)
+PASS BEVEL: bent shape stays closed
+PASS BEVEL: Bend Down drops both ends
+PASS BEVEL: Bend Sideways curves it in plan, thickness unchanged  -- (0.8, 1.429, 0.20000000298023224, 0.20000000298023224)
+PASS BEVEL: sideways bent shape stays closed
+PASS BEVEL: bend back to 0 = the straight shape again  -- (24, 24)
+PASS DOME: made
+PASS DOME: Bend Up lifts both ends  -- ('', 0.648, 0.0)
+PASS DOME: bent shape stays closed
+PASS DOME: Bend Down drops both ends
+PASS DOME: Bend Sideways curves it in plan, thickness unchanged  -- (0.8, 1.429, 0.23000000417232513, 0.23000000417232513)
+PASS DOME: sideways bent shape stays closed
+PASS DOME: bend back to 0 = the straight shape again  -- (274, 274)
+PASS PUFF: made
+PASS PUFF: Bend Up lifts both ends  -- ('', 0.248, -0.398)
+PASS PUFF: bent shape stays closed
+PASS PUFF: Bend Down drops both ends
+PASS PUFF: Bend Sideways curves it in plan, thickness unchanged  -- (0.779, 1.186, 0.8023757934570312, 0.8023757934570312)
+PASS PUFF: sideways bent shape stays closed
+PASS PUFF: bend back to 0 = the straight shape again  -- (1018, 1018)
+PASS Angle fold: both sides meet on the joint (no gap)  -- ((8.660254180448135e-10, 0.3309401081758503), (-8.660254180448135e-10, 0.3309401081758503))
+PASS Angle fold: one side stays straight at the fold angle
+PASS Corner Round 0 = the sharp fold
+PASS Corner Round: past the round nothing changes
+PASS Corner Round: starts smoothly where the round begins  -- ((0.04242640631583247, 0.0010050500785229871), (0.04242640687119285, 0.001005050633883342))
+PASS Corner Round: the outer tip moves in (rounded off)  -- ((0.0, -0.0414213562373095), (0.0, -0.016568542494923802))
+PASS Outer Round only: the inner face stays sharp
+PASS Inner Round: the inside of the fold fills in (rounded hollow)  -- ((0.0, 0.24142135623730954), (0.0, 0.2662741699796952))
+PASS Inner Round: starts smoothly where the round begins
+PASS Outer + Inner Round: the outer round leaves the inner face alone (thick enough)
+PASS Corner Round: both sides of the round match
+PASS FLAT Angle: ends lift, closed  -- ('', 0)
+PASS FLAT Angle: the side past the fold is straight (45 deg each side)
+PASS FLAT Angle sideways: closed
+PASS FLAT Angle sideways, full Corner Round: closed
+PASS FLAT Angle down, full Corner Round: closed
+PASS BEVEL Angle: ends lift, closed  -- ('', 0)
+PASS BEVEL Angle: the side past the fold is straight (45 deg each side)
+PASS BEVEL Angle sideways: closed
+PASS BEVEL Angle sideways, full Corner Round: closed
+PASS BEVEL Angle down, full Corner Round: closed
+PASS PUFF Angle: ends lift, closed  -- ('', 0)
+PASS PUFF Angle: the side past the fold is straight (45 deg each side)
+PASS PUFF Angle sideways: closed
+PASS PUFF Angle sideways, full Corner Round: closed
+PASS PUFF Angle down, full Corner Round: closed
+PASS Bend Position moves the fold along the length  -- (0.0, 1.0)
+PASS new shapes start straight
+
+59/59 passed
+====================================================================== 
+ test_v02420_bridge.py
+PASS soft_fill harmonic: a straight join between the held ends  -- [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
+PASS soft_fill biharmonic: the slope carries on across the gap  -- [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
+PASS bump: 0 at the held ends, 1 in the middle
+PASS spread: blurs a value to its neighbours, fading
+PASS the gap is empty before
+PASS patch made  -- Bridge patch "Bridge_Patch" (1091 points)
+PASS patch is a closed solid
+PASS the gap is covered by the patch, in front  -- (0.03686849772930145, 'Bridge_Patch')
+PASS the steep side near a lump is covered like a skin  -- Bridge_Patch
+PASS where the lump faces you, the lump shows (the patch rim is under it)  -- Sphere
+PASS Bulge + pushes the middle of the gap toward you  -- (0.03686849772930145, 0.47974616289138794)
+PASS Bulge - pulls it in  -- (0.03686849772930145, -0.40603405237197876)
+PASS Round: a round neck - the middle comes forward, the sides curve back  -- (0.03686849772930145, 0.6282990574836731, 0.011915251612663269, 0.42362695932388306)
+PASS Round: still a closed solid
+PASS Fill: a solid reaching into the meshes (much more volume than the sheet)  -- (0.17394712073284246, 1.5689235984639924)
+PASS Fill: closed solid
+PASS Fill: the back mirrors the front about the meshes' middle (a full round neck)  -- (0.6282990574836731, -0.6282788515090942)
+PASS smooth = 0.0: rebuilt, closed  -- ('', 0)
+PASS quality = HIGH: rebuilt, closed  -- ('', 0)
+PASS quality = LOW: rebuilt, closed  -- ('', 0)
+PASS thickness = 0.08: rebuilt, closed  -- ('', 0)
+PASS overlap = 6: rebuilt, closed  -- ('', 0)
+PASS wrap = 1.2217304763960306: rebuilt, closed  -- ('', 0)
+PASS sink = 2.0: rebuilt, closed  -- ('', 0)
+Info: Bridge_Patch: applied
+PASS Apply: plain mesh
+PASS whole lasso: made, closed  -- Bridge patch "Bridge_Patch" (1681 points)
+PASS whole lasso: covers the lasso over both meshes (not trimmed to the gap)  -- (-1.575, 1.2)
+PASS whole lasso: covers the gap, in front  -- (0.24331578612327576, 'Bridge_Patch')
+PASS whole lasso: a smooth curve joins the two meshes' fronts (no step)  -- [0.63, 0.57, 0.49, 0.36, 0.32, 0.27, 0.24, 0.24, 0.27, 0.36, 0.47, 0.53, 0.57]
+PASS whole lasso: across, the sides curve back (round section)  -- (0.24331578612327576, 0.04463812708854675)
+PASS whole lasso: Fill 1 = the back goes past the meshes' middle into their far half  -- (0.5019843578338623, -0.2103452980518341)
+PASS whole lasso: Fill 0 = the back only to the middle  -- (-0.2103452980518341, 0.0)
+PASS whole lasso: Round rebuilds, closed
+PASS touching parts, Fill Crease 0: the patch hides under the surfaces  -- Sphere
+PASS Fill Crease: the patch rides over the crease (fills the valley)  -- (0.2897655963897705, 0.45543429255485535)
+PASS Fill Crease: away from the crease the mesh still shows  -- Sphere
+PASS Fill Crease: closed solid
+PASS a lasso fully on one surface is refused  -- Bridge Patch: the whole lasso is on a mesh - draw it across the gap.
+PASS a lasso over nothing is refused  -- Bridge Patch: the lasso touches no mesh.
+PASS nothing left behind after a refusal
+
+40/40 passed
+====================================================================== 
+ test_v02420_cushion.py
+PASS Cushion is a Base Mesh profile (not a Creature one)
+PASS Cushion made, closed  -- Base Mesh created: MCH_Base (Cushion, 5288 verts, closed solid)
+PASS Height = total thickness  -- 0.4992
+PASS puffy on both sides (symmetric about the drawn plane)  -- (0.24957618117332458, -0.24957618117332458)
+PASS pinched to a seam at the edge  -- 0.11834313720464706
+PASS Edge Round: a bigger, puffier rim (lower toward the edge)  -- (0.23302923142910004, 0.16796991229057312)
+PASS Edge Round: still closed
+PASS the middle is the fullest
+PASS Height slider rebuilds the cushion
+PASS Alt cutter refuses a cushion (no flat cap)  -- Alt cutter supports Flat / Chamfer / Bevel and the creature profiles (Dome / Cushion have no flat cap).
+
+10/10 passed
+====================================================================== 
+ test_v02420_keys.py
+PASS a Remesh + Smooth run key exists
+PASS it starts unassigned (you pick the key)  -- NONE
+PASS it is labelled in the Hotkeys box
+PASS the key runs the Remesh action
+PASS CBASE has its own picture (cbase.png)
+PASS CPLATE has its own picture (cplate.png)
+PASS BELT has its own picture (belt.png)
+PASS SPIKE has its own picture (spike.png)
+PASS SCALES has its own picture (scales.png)
+PASS SBRUSH has its own picture (scale_brush.png)
+PASS BRIDGE has its own picture (bridge_patch.png)
+PASS FLOWER has its own picture (flower.png)
+PASS SCURVE has its own picture (surface_curve.png)
+PASS profile picture profile_puff.png
+PASS profile picture profile_ridge.png
+PASS profile picture profile_pillow.png
+PASS profile picture profile_cushion.png
+PASS Plate Detail 1 / 2 / 3 take the Line button
+
+18/18 passed
+====================================================================== 
+ test_v02421.py
+PASS Creature Base Mesh starts at Resolution 15  -- 15
+PASS Base Mesh keeps its own Resolution (28)  -- 28
+PASS Creature Plate starts at Resolution 15  -- 15
+PASS set only once (your own value stays)
+PASS Sketch on: releasing Free Draw puts the stroke into the sketch (no points to edit)  -- ({'FINISHED'}, 'DRAG', 'STROKE')
+PASS nothing made yet (only the sketch)
+PASS Sketch off: Free Draw applies on release as before  -- {'FINISHED'}
+PASS Blender's sculpt brush library is there  -- /tmp/claude-0/-home-user-CustomHeadsetOpenVR/7e2bc25f-fcd2-5c43-817f-f359a797ad9a/scratchpad/bpy52/lib/python3.13/site-packages/bpy/5.2/datafiles/assets/brushes/essentials_brushes-mesh_sculpt.blend
+PASS sculpt tile Draw: Blender has the "Draw" brush
+PASS sculpt tile Clay Strips: Blender has the "Clay Strips" brush
+PASS sculpt tile Inflate: Blender has the "Inflate/Deflate" brush
+PASS sculpt tile Grab: Blender has the "Grab" brush
+PASS sculpt tile Smooth: Blender has the "Smooth" brush
+PASS sculpt tile Crease: Blender has the "Crease Polish" brush
+PASS sculpt tiles have pictures
+PASS no mesh: the sculpt tiles wait for one
+PASS a selected mesh is the sculpt target even when not active
+Info: Sculpt: Clay Strips - Select / Move in the tool list goes back to Object Mode
+PASS a sculpt tile goes to Sculpt Mode on the mesh  -- ({'FINISHED'}, 'SCULPT')
+PASS Taper: full width in the middle, a point at the ends
+PASS Taper 0: even width
+PASS a tapered line is pointed at the ends, full in the middle  -- (6.6, 40.0, 40.0)
+PASS pen pressure: light = thin, hard = wide  -- (10.0, 38.0)
+PASS ] bigger / [ smaller Line Width
+PASS [ / ] keys in the drawing tools
+PASS ] while drawing changes the width too
+PASS parts joined with an inside wall: found as not one solid (edges with 3+ faces)  -- (4, 0)
+PASS a clean cube is one solid  -- (0, 0)
+PASS the message says why and what to do (Remesh first)
+PASS Taper button off = even width (the amount is kept), on = pointed  -- (33225, 19992)
+PASS Pressure is a button too (off by default)
+PASS the plate covers the middle before
+PASS Alt + draw: that area is cut out of the Creature Plate (a hole)  -- ('Cut out of "Sphere_CreaturePlate" (1 cut; it stays live)', 'Sphere')
+PASS it stays live: a slider rebuilds it and the hole stays
+PASS a second Alt outline over the edge = a notch
+PASS Alt over no plate: nothing made, a clear message  -- Alt + draw engraves into a mesh: draw over one (nothing was changed).
+PASS Apply keeps the cut mesh, drops the kept outlines
+PASS Plate Detail made
+PASS Alt + draw cuts a Plate Detail too  -- Box
+
+38/38 passed
+====================================================================== 
+ test_v02422.py
+PASS all enabled modifiers applied, top to bottom  -- (['Array', 'Bevel', 'Subsurf'], '')
+PASS the mesh is what the stack showed (order kept)  -- ((294, 288), (294, 288))
+PASS a switched-off modifier stays (not applied)
+PASS result is a closed mesh
+PASS stack order respected (overlapping array after bevel)
+PASS no modifiers: nothing to do, no error
+Info: Sel: applied 1 modifier(s) in order - Sub
+PASS without a click it applies the selected meshes  -- {'FINISHED'}
+PASS the button sits above the tool button in the viewport list
+
+8/8 passed
+====================================================================== 
+ test_v02423.py
+PASS Creature Plate Alt with no live plate: engraves into the mesh (no error)  -- Engraved into "Sphere" (Alt): as deep as the plate is thick (0.123)
+PASS no new object is made
+PASS the middle sits lower than before (a pocket)  -- (0.40000009536743164, 0.2753605842590332)
+PASS only as deep as the plate is thick (not through the mesh)  -- 0.2753605842590332
+PASS outside the outline the surface is untouched
+PASS volume went down a little  -- (112.6438378129049, 112.5768844979533)
+PASS the mesh stays closed
+PASS Height sets the depth (deeper with a bigger Height)  -- 0.4006021022796631
+PASS over a live Creature Plate: the hole goes into the plate, the body is untouched
+PASS Creature Plate sketch Alt+Enter: engraves (nothing new made)  -- Engraved into "Sphere" (Alt): as deep as the plate is thick (0.123)
+PASS the sketch is cleared after
+PASS Enter (no Alt) still makes a Creature Plate  -- Creature plate "Sphere_CreaturePlate.001" on Sphere (Puff, 4256 faces)
+PASS Creature Base Mesh tool picks its own settings
+PASS Creature Base Mesh Alt: engraves into the mesh (Puff is allowed now)  -- Engraved (Alt) into Sphere: as deep as the shape is thick
+PASS a pocket, not a hole through  -- (0.40000009536743164, -0.006801128387451172)
+PASS the mesh stays closed
+PASS no new object
+PASS Creature Base Mesh sketch Alt+Enter: engraves too  -- Engraved (Alt) into Sphere: as deep as the shape is thick
+PASS regular Base Mesh Alt still cuts through (unchanged)
+PASS [ / ] are in Object Mode too (Line Width smaller / bigger)  -- [('mch.line_width_key', 'LEFT_BRACKET', 0.87), ('mch.line_width_key', 'RIGHT_BRACKET', 1.15)]
+PASS G in Sculpt Mode = back to Select / Move  -- [('mch.zb_press', 'LEFTMOUSE'), ('mch.zb_press', 'LEFTMOUSE'), ('mch.zb_press', 'LEFTMOUSE'), ('mch.zb_press', 'LEFTMOUSE'), ('mch.zb_press', 'LEFTMOUSE'), ('mch.zb_press', 'LEFTMOUSE'), ('mch.zb_press', 'LEFTMOUSE'), ('mch.zb_popup', 'SPACE'), ('mch.zb_popup', 'RIGHTMOUSE'), ('mch.zb_popup', 'RIGHTMOUSE'), ('mch.zb_gizmo', 'S'), ('mch.zb_gizmo', 'Q'), ('mch.zb_gizmo', 'G'), ('mch.zb_gizmo', 'R'), ('mch.zb_popup', 'U'), ('mch.zb_popup', 'O'), ('mch.zb_brush_pick', 'B'), ('mch.zb_close', 'ESC'), ('mch.zb_action', 'X'), ('mch.zb_action', 'D'), ('mch.zb_action', 'D'), ('mch.zb_action', 'D'), ('mch.zb_action', 'W'), ('mch.zb_action', 'F'), ('mch.zb_action', 'F'), ('mch.zb_tab', 'TAB'), ('mch.sculpt_back', 'G')]
+PASS [ / ] work in a Mecha drawing tool
+PASS ...not in Blender's own tools (its select parent / child stays)
+PASS ...not in Screw Stamp / Primitive
+Info: Line Width 2.30 cm
+PASS the step makes the line wider  -- (0.019999999552965164, 0.022999998182058334)
+PASS sculpt_back waits for Sculpt Mode
+PASS ...and is ready there
+PASS CUT BEVEL on a dense triangle mesh: full width (not limited by slivers)  -- Cut: Icosphere | BEVEL: 378 newly cut edges
+PASS CUT BEVEL: closed mesh  -- [0]
+PASS CUT CHAMFER on a dense triangle mesh: full width (not limited by slivers)  -- Cut: Icosphere | CHAMFER: 378 newly cut edges
+PASS CUT CHAMFER: closed mesh  -- [0]
+PASS SPLIT BEVEL on a dense triangle mesh: full width (not limited by slivers)  -- Split: Icosphere | A bevel: 378 edges, B bevel: 378 edges
+PASS SPLIT BEVEL: closed mesh  -- [0, 0]
+
+33/33 passed
+====================================================================== 
+ test_v02424.py
+PASS ccw keeps a counter-clockwise outline, flips a clockwise one
+PASS Straighten: a wobbly free-drawn side becomes one straight edge  -- [(0.0, 0.0), (40.0, 0.22353394814380464), (40.0, 20.0), (0.0, 20.0)]
+PASS wedge of the bottom edge: a point above its slope near it is cut
+PASS ...a point below its slope is kept
+PASS Armor Plate profile Mech Ridge makes a live Mech Ridge plate  -- Mech Ridge plate "Cube_MechRidge" on Cube (244 faces)
+PASS closed mesh
+PASS a box = a hip roof: exactly 4 flat sloped facets (crisp, no rounding)  -- {(-0.42, -0.0, 0.91), (-0.0, -0.42, 0.91), (0.42, 0.0, 0.91), (0.0, 0.42, 0.91)}
+PASS every facet rises at the Slope angle  -- {(-0.42, -0.0, 0.91), (-0.0, -0.42, 0.91), (0.42, 0.0, 0.91), (0.0, 0.42, 0.91)}
+PASS ridge height = edge wall + half width x tan(Slope)  -- (0.40189066529273987, 0.40189053672771075)
+PASS the bottom sits in the surface (Sink)
+PASS Max Height: cut flat (a mesa top), live  -- 0.1423111855983734
+PASS Ridge Chamfer adds flat strips on the ridge lines  -- (244, 290)
+PASS Ridge Bevel (4 segments): more faces, shaded round
+PASS ...the creases (chamfer / bevel borders, walls) are marked sharp (crisp), the bevel steps are not  -- (154, 847)
+PASS Outer Edge Chamfer works too, still closed
+PASS the next plate starts with these settings
+PASS Gable (long side): only the 2 long slopes (no sloped end triangles)  -- {(0.0, -0.42, 0.91), (0.0, 0.42, 0.91)}
+PASS ...the ridge reaches both ends of the plate  -- (-1.2000000476837158, 1.2000000476837158)
+PASS ...closed mesh
+PASS the panel knows which edges slope (mask per edge)  -- 1010
+PASS Turn: the gable runs across instead  -- {(-0.42, 0.0, 0.91), (0.42, 0.0, 0.91)}
+PASS Shed: one single slope  -- {(0.0, -0.42, 0.91)}
+PASS ...closed, rising to the upright far side
+PASS Turn moves the Shed slope to the next edge
+PASS Half Hip: 3 slopes (one upright end)  -- {(-0.42, -0.0, 0.91), (-0.0, -0.42, 0.91), (-0.0, 0.42, 0.91)}
+PASS Corner: 2 neighbouring slopes  -- {(0.42, -0.0, 0.91), (0.0, 0.42, 0.91)}
+PASS Every Other Edge: 2 opposite slopes on a box  -- {(-0.42, 0.0, 0.91), (0.42, 0.0, 0.91)}
+PASS an edge button makes that edge upright and switches to Custom  -- ('0111', {(-0.42, 0.0, 0.91), (0.42, 0.0, 0.91), (0.0, 0.42, 0.91)})
+PASS the last sloped edge cannot be turned off
+PASS sloped_edges: a hexagon with Every Other Edge
+PASS end_edges: a long box has its 2 short sides as ends
+PASS Hip again: 4 facets
+PASS Apply: plain mesh
+PASS L-shaped outline on a sphere: closed plate  -- ('Mech Ridge plate "Sphere_MechRidge" on Sphere (386 faces)', 0)
+PASS it sits on the curved surface (the plate is hit first, above the sphere)
+PASS other profiles still make the usual Armor Plate
+PASS a clicked polygon keeps every corner (24-gon: 24 edges; free draw is still straightened)
+PASS 5-gon: every Edge Pattern gives a closed plate with all 5 edges (chamfered)
+PASS 5-gon: quick (under 3 s each)  -- 0.01
+PASS 6-gon: every Edge Pattern gives a closed plate with all 6 edges (chamfered)
+PASS 6-gon: quick (under 3 s each)  -- 0.01
+PASS 8-gon: every Edge Pattern gives a closed plate with all 8 edges (chamfered)
+PASS 8-gon: quick (under 3 s each)  -- 0.01
+PASS 12-gon: every Edge Pattern gives a closed plate with all 12 edges (chamfered)
+PASS 12-gon: quick (under 3 s each)  -- 0.01
+PASS 20-gon: every Edge Pattern gives a closed plate with all 20 edges (chamfered)
+PASS 20-gon: quick (under 3 s each)  -- 0.02
+PASS 24-gon: every Edge Pattern gives a closed plate with all 24 edges (chamfered)
+PASS 24-gon: quick (under 3 s each)  -- 0.02
+PASS 12-point star: every Edge Pattern gives a closed plate with all 12 edges (chamfered)
+PASS 12-point star: quick (under 3 s each)  -- 0.04
+PASS 16-point star: every Edge Pattern gives a closed plate with all 16 edges (chamfered)
+PASS 16-point star: quick (under 3 s each)  -- 0.06
+PASS 5-gon Hip: 5 sloped facets (pyramid roof)  -- {(0.73, -0.43, 0.54), (-0.44, 0.26, 0.86), (0.32, 0.28, 0.91), (0.17, 0.77, 0.62), (0.32, -0.72, 0.62), (0.08, 0.34, 0.94), (0.37, -0.21, 0.91), (-0.26, -0.23, 0.94), (0.73, -0.42, 0.54), (-0.42, -0.04, 0.91), (0.36, -0.21, 0.91), (-0.18, -0.82, 0.54), (-0.3, 0.18, 0.94), (0.18, 0.81, 0.55), (-0.38, -0.34, 0.86), (-0.34, 0.77, 0.54), (0.34, -0.76, 0.55), (0.14, -0.32, 0.94), (-0.17, 0.39, 0.91), (-0.84, -0.08, 0.54), (-0.09, -0.41, 0.91), (-0.01, -0.0, 1.0), (0.51, 0.05, 0.86), (0.35, 0.04, 0.94), (0.07, 0.34, 0.94), (0.63, 0.56, 0.54)}
+PASS 6-gon Hip: 6 sloped facets (pyramid roof)  -- {(-0.22, 0.3, 0.93), (0.33, -0.46, 0.82), (0.36, 0.8, 0.48), (-0.77, 0.35, 0.54), (0.22, -0.3, 0.93), (0.01, -0.01, 1.0), (0.39, -0.17, 0.91), (0.15, 0.34, 0.93), (-0.68, -0.49, 0.54), (-0.15, -0.34, 0.93), (0.04, -0.42, 0.91), (-0.37, -0.04, 0.93), (-0.01, -0.0, 1.0), (0.08, -0.84, 0.54), (-0.36, -0.8, 0.48), (-0.04, 0.42, 0.91), (0.77, -0.35, 0.54), (0.34, 0.25, 0.91), (0.37, 0.04, 0.93), (0.87, 0.09, 0.48), (0.68, 0.49, 0.54), (0.33, 0.73, 0.59), (-0.57, -0.06, 0.82), (-0.08, 0.84, 0.54), (-0.34, -0.25, 0.91), (-0.33, 0.46, 0.82), (-0.39, 0.17, 0.91), (0.8, 0.08, 0.59), (-0.33, -0.73, 0.59)}
+PASS 8-gon Hip: 8 sloped facets (pyramid roof)  -- {(-0.31, 0.25, 0.92), (0.52, 0.64, 0.57), (-0.2, 0.37, 0.91), (0.2, -0.35, 0.92), (0.59, 0.72, 0.37), (-0.81, 0.24, 0.54), (-0.64, 0.52, 0.57), (0.0, -0.0, 1.0), (-0.01, -0.01, 1.0), (-0.72, 0.58, 0.37), (0.39, 0.04, 0.92), (-0.06, 0.64, 0.76), (-0.12, -0.4, 0.91), (0.92, 0.09, 0.37), (0.82, 0.08, 0.57), (0.04, -0.39, 0.92), (0.81, -0.24, 0.54), (-0.39, -0.04, 0.92), (0.06, -0.64, 0.76), (-0.59, -0.72, 0.37), (0.31, -0.25, 0.92), (0.2, -0.37, 0.91), (0.74, 0.4, 0.54), (0.4, -0.74, 0.54), (0.12, 0.4, 0.91), (-0.24, -0.81, 0.54), (-0.04, 0.39, 0.92), (-0.72, 0.59, 0.37), (-0.01, -0.0, 1.0), (-0.64, -0.06, 0.76), (-0.37, -0.2, 0.91), (0.25, 0.31, 0.92), (-0.25, -0.31, 0.92), (0.4, -0.12, 0.91), (-0.52, -0.64, 0.57), (-0.4, 0.12, 0.91), (0.24, 0.81, 0.54), (0.5, -0.41, 0.76), (-0.4, 0.74, 0.54), (-0.74, -0.4, 0.54), (-0.35, -0.2, 0.92), (0.37, 0.2, 0.91)}
+PASS DETAIL: Alt over a plain mesh engraves the detail into it (no error, no new object)  -- Engraved a trim into "Cube" (Alt)
+PASS DETAIL: ...only a shallow recess (as deep as the detail is tall), closed mesh  -- (0.1248038659578583, 0)
+PASS DETAIL2: Alt over a plain mesh engraves the detail into it (no error, no new object)  -- Engraved a rise into "Cube" (Alt)
+PASS DETAIL2: ...only a shallow recess (as deep as the detail is tall), closed mesh  -- (0.27705569951376674, 0)
+PASS DETAIL3: Alt over a plain mesh engraves the detail into it (no error, no new object)  -- Engraved a panel into "Cube" (Alt)
+PASS DETAIL3: ...only a shallow recess (as deep as the detail is tall), closed mesh  -- (0.22627449035633163, 0)
+PASS Alt on a live detail: the cut walls are flat (no dark smear), the rest stays as it was  -- (3, 6)
+PASS ...with sharp borders around the cut  -- 22
+PASS Crisp Shading: the chamfer band has sharp borders  -- 168
+PASS ...the chamfer strip and the cut walls are flat, the body stays smooth
+PASS ...closed mesh
+PASS custom normals (FBX) are dropped so they do not smear over the cut  -- (True, False)
+PASS Crisp Shading off: custom normals are kept (old behaviour)
+PASS dense triangles: the bevel is carved along the border (0.24.56, no sliver tidy-up), closed; if the old tidy-up runs, every rim point stays on the cut wall  -- ({}, 0)
+
+70/70 passed
+====================================================================== 
+ test_v02428.py
+PASS hem: Straight is even, Round / Pointed longest in the middle
+PASS hem: Split has a notch in the middle
+PASS tatter: 40 columns, torn strips between 0.4 and 1  -- (0.551561973962306, 0.9801878904484067)
+PASS tatter 0 = untouched
+PASS columns: top and bottom of the outline across it
+PASS CAPELET: a live cape on the body, closed mesh  -- ('Cape "Body_Cape" on Body (Capelet, 10386 faces)', 0)
+PASS CLOAK: a live cape on the body, closed mesh  -- ('Cape "Body_Cape.001" on Body (Cloak, 9798 faces)', 0)
+PASS PONCHO: a live cape on the body, closed mesh  -- ('Cape "Body_Cape.002" on Body (Poncho, 11170 faces)', 0)
+PASS RAGGED: a live cape on the body, closed mesh  -- ('Cape "Body_Cape.003" on Body (Ragged, 9798 faces)', 0)
+PASS the style fills in the sliders (Ragged = torn hem)
+PASS Capelet is short, Cloak long (hangs to the legs)  -- (0.8721150755882263, -2.0707972049713135)
+PASS it hangs behind the body (the side it was drawn from)
+PASS Poncho spreads wider than the Cloak  -- (4.101499795913696, 2.912451148033142)
+PASS the cloak does not go into the body
+PASS Length is live (shorter = the hem moves up)  -- (-2.0707972049713135, 0.2001909464597702)
+PASS Wrap carries it further round the body (comes forward)  -- -1.28173828125
+PASS Straight: the sides drop plumb (narrower hem than spreading out)  -- (2.910154700279236, 2.2124191522598267)
+PASS folds off / tatter still a closed mesh
+PASS a tall drawing = Outline: the hem follows its bottom (z = -1)  -- -0.9390220642089844
+PASS the new cape was hung on the body, not on the older capes
+PASS Apply: plain mesh
+PASS drawing next to the body: a clear message  -- Draw the cape over a body (start at the shoulders).
+PASS Cape is in the tool list
+PASS Cape has its icon
+PASS Enter applies a live cape
+PASS the drawing tool sends Cape outlines to the generator
+PASS Only Drawn Width is on by default, finer columns / rows
+PASS Only Drawn Width: the cape is as wide as the drawing (1.9), even a Poncho  -- 1.9050142168998718
+PASS Only Drawn Width: it does not come round to the front  -- 0.03725177049636841
+PASS and it is still a closed mesh
+
+30/30 passed
+====================================================================== 
+ test_v02429.py
+PASS roots: about Count points, all inside the area  -- 45
+PASS roots: same seed = same points
+PASS tube radius: thinner toward the tip, rope ridges vary it round
+PASS a strand rises along the normal, then gravity bends it down
+PASS DREADS: live hair on the body, closed tubes  -- ('Creature hair "Body_Hair" on Body (Dreads, 7965 faces)', 0)
+PASS TENTACLE: live hair on the body, closed tubes  -- ('Creature hair "Body_Hair.001" on Body (Tentacles, 1631 faces)', 0)
+PASS QUILLS: live hair on the body, closed tubes  -- ('Creature hair "Body_Hair.002" on Body (Quills, 8388 faces)', 0)
+PASS STRANDS: live hair on the body, closed tubes  -- ('Creature hair "Body_Hair.003" on Body (Strands, 25164 faces)', 0)
+PASS Dreads fall well below the head (to the back / shoulders)  -- -1.4236994981765747
+PASS Quills stand up (little gravity): stay above the head bottom  -- 2.734497308731079
+PASS Dreads have rings in material slot 2 (own colour)  -- ({0, 1}, ['MCH Hair', 'MCH Hair Rings'])
+PASS below the head the dreads do not go into the body (shoulders / back)
+PASS Count is live (fewer strands)  -- (7965, 3835)
+PASS Rings 0: no slot-2 faces
+PASS Straight: the strands hang straighter (less sideways spread below the shoulders)  -- (3.341583013534546, 2.165542483329773)
+PASS rope / wave still closed
+PASS Apply: plain mesh
+PASS drawing next to the head: a clear message  -- Draw the hair area on a head (the scalp).
+PASS Creature Hair is in the tool list with its icon
+PASS Enter applies live hair
+PASS the drawing tool sends Hair outlines to the generator
+
+21/21 passed
+====================================================================== 
+ test_v0243.py
+PASS handlers do not read depsgraph.updates (no live tubes / lofts)
+PASS undo / redo handlers registered
+PASS after undo the Tube handler stays out for a moment
+PASS ... and comes back
+PASS no depsgraph.updates access left in either handler
+PASS Sketch on: Alt + draw with no sketch starts one (no "draw a shape first" error)  -- Box Hide sketch: added (1 piece(s)) | Enter: hide, Alt+Enter: show again, Backspace: last, Esc: clear
+Info: Box Hide: Restored on B
+PASS Alt + Enter: the hidden part shows again
+Info: Box Hide: Hidden on B
+PASS Enter: hides
+PASS unregister removes the undo handlers
+
+9/9 passed
+====================================================================== 
+ test_v02431.py
+PASS relax: a fixed point stays, the others move toward their neighbours
+PASS TSHIRT: a live garment on the body, closed mesh  -- ('T-Shirt "Body_TShirt" on Body (22503 faces)', 0)
+PASS TSHIRT: covers front and back (seen through)
+PASS TSHIRT: stays off the body
+PASS PANTS: a live garment on the body, closed mesh  -- ('Pants "Body_Pants" on Body (8524 faces)', 0)
+PASS PANTS: covers front and back (seen through)
+PASS PANTS: stays off the body
+PASS the top reaches up to the shoulders, the pants down the legs
+PASS a top is layer 1 (over pants, layer 0)
+PASS Fit is live (looser = further from the body)  -- (0.1398028845914259, 0.37330484303447725)
+PASS more wrinkles: still a closed mesh
+PASS Apply: plain mesh
+PASS drawing next to the body: a clear message  -- Draw the garment outline over a body.
+PASS Clothing is in the tool list
+PASS Enter applies a live garment
+
+15/15 passed
+====================================================================== 
+ test_v02432.py
+PASS scarf section: an oval Height x Thickness
+PASS tail taper: full width at the top, narrower at the end
+PASS hood direction: theta 0 / phi 90 = the front, phi 0 = up
+PASS hood CLOAK: a live hood on the body, closed mesh, off the head  -- ('Hood "Body_Hood" on Body (Cloak Hood, 3556 faces)', 0, 0)
+PASS hood CLOAK: the face opening looks at the viewer  -- (1000.4052124023438, 999.5879516601562)
+PASS hood CLOAK: covers the back of the head
+PASS cloak hood: the cowl reaches down over the shoulders  -- 1.8483885526657104
+PASS hood TACTICAL: a live hood on the body, closed mesh, off the head  -- ('Hood "Body_Hood.001" on Body (Tactical, 2642 faces)', 0, 0)
+PASS hood TACTICAL: the face opening looks at the viewer  -- (1000.3193969726562, 999.5879516601562)
+PASS hood TACTICAL: covers the back of the head
+PASS hood MONK: a live hood on the body, closed mesh, off the head  -- ('Hood "Body_Hood.002" on Body (Monk, 2842 faces)', 0, 0)
+PASS hood MONK: the face opening looks at the viewer  -- (1000.3858642578125, 999.5879516601562)
+PASS hood MONK: covers the back of the head
+PASS Peak is live (the back top goes further back)  -- (0.5169183015823364, 0.6964168548583984)
+PASS Turn 180: the opening goes to the back (the face is covered)
+PASS hood Apply: plain mesh
+PASS scarf WRAP: a live scarf, closed mesh, off the body  -- ('Scarf "Body_Scarf" on Body (Wrap, 1284 faces)', 0, 0)
+PASS scarf WRAP: wraps all round the neck
+PASS scarf WRAP: the ends hang down the chest  -- 1.5356433391571045
+PASS scarf COWL: a live scarf, closed mesh, off the body  -- ('Scarf "Body_Scarf.001" on Body (Cowl, 400 faces)', 0, 0)
+PASS scarf COWL: wraps all round the neck
+PASS scarf COWL: no ends - stays at the neck  -- 2.295497417449951
+PASS scarf SHEMAGH: a live scarf, closed mesh, off the body  -- ('Scarf "Body_Scarf.002" on Body (Shemagh, 1344 faces)', 0, 0)
+PASS scarf SHEMAGH: wraps all round the neck
+PASS scarf SHEMAGH: the ends hang down the chest  -- 1.7638764381408691
+PASS scarf LONG: a live scarf, closed mesh, off the body  -- ('Scarf "Body_Scarf.003" on Body (Long Tail, 1140 faces)', 0, 0)
+PASS scarf LONG: wraps all round the neck
+PASS scarf LONG: the ends hang down the chest  -- 0.9226779937744141
+PASS Wraps is live (one more tube)
+PASS Tail Length is live (the tails hang lower)
+PASS Ends None: only the wraps
+PASS scarf Apply: plain mesh
+PASS mecha_lab.hood_gen: drawing next to the body - a clear message  -- Draw round the head (the hood goes over it).
+PASS mecha_lab.scarf_gen: drawing next to the body - a clear message  -- Draw round the neck (the scarf wraps round it).
+PASS Hood and Scarf are in the tool list
+PASS Enter applies a live hood / scarf
+
+36/36 passed
+====================================================================== 
+ test_v02433.py
+PASS 0.24.31 Quad Cloth panel hidden while EXPERIMENTAL_CLOTH is off
+PASS rib wave: ridge 1, groove 0
+PASS pillow: 0 on the seam, 1 in the middle
+PASS nothing selected: a clear message  -- Select the quad faces to turn into cloth (Edit Mode, face select).
+PASS Rib: new object, quads kept, source faces hidden  -- Rib Knit "Retopo_Rib" from 288 faces (288 quads) on Body
+PASS Rib: snug on the body (close) with ridges (distance varies)  -- (0.006399995181709528, 0.009465507231652737)
+PASS Rib: thickness is a Solidify modifier
+PASS Cloth: simulated and pinned at the join  -- Cloth "Retopo_Cloth" from 2304 faces (2304 quads) on Body, 576 pinned, 25 frames
+PASS Cloth: the sim moved it (slack folds)  -- (9504, 9792)
+PASS Cloth: stays out of the body
+PASS Cloth: no cloth / pin left on it, the body unchanged
+PASS Geometry Nodes solver (5.2): runs, leaves no node group / attribute behind  -- Cloth "Retopo_Cloth.001" from 2304 faces (2304 quads) on Body, 576 pinned, 25 frames
+PASS the source mesh keeps all its faces (only hidden)
+PASS Quad Cloth in Edit Mode panel + face menus
+
+14/14 passed
+====================================================================== 
+ test_v02434.py
+PASS clay: the middle moves whole, fades to 0 past the edge  -- [1.0, 1.0, 0.0, 0.0, 0.0]
+PASS elastic: exactly the drag at the centre, nothing far away  -- ([1.0, 0.0], [0.3846153846153847, 0.0])
+PASS hardness: high = more moves whole; sharp is tight  -- (np.float64(1.0), np.float64(0.12620027434842243), np.float64(0.125))
+PASS box brush: the corner of the square counts like its edge (a square, not a circle)  -- [0.9, 0.9, 1.3]
+PASS box moves the corner of its square fully, a sphere of the same size does not  -- (np.float64(1.0), np.float64(0.004718659272691945))
+PASS mirror X: the other side moves the mirrored way, far points stay  -- [[1.5, 0.0, 0.0], [-1.5, 0.0, 0.0], [0.0, 0.0, 3.0]]
+PASS mirror off: only one side
+PASS clay pull: the grabbed lump moved out whole (keeps its thickness)  -- (np.float64(2.0), np.float64(0.3901805579662323))
+PASS Keep Density: stretched edges split (more verts), still one piece  -- (48, 482, 534)
+PASS Generate: the pull is really built (edges split), no edge much longer than the usual  -- (592, 0.25369315400167153, 0.19603406501919424)
+PASS Generate: the pulled tip reached the target  -- 2.999999761581421
+PASS operator (F9 values): Pull x1.5 moves the top 1.5 up, Box shape  -- ({'FINISHED'}, 2.5)
+PASS plain mesh: no move record (it is just the mesh)
+PASS Add Clay: a round quad ball of the given size
+PASS Fuse: the blobs become one object, remeshed  -- (1.492975115776062, 7306)
+PASS a live hood is a live object
+PASS live hood: pulled up, the move recorded  -- (3.3075194358825684, 3.9014928340911865)
+PASS live hood: a slider rebuild keeps the pull (no Apply needed)  -- (3.3075194358825684, 3.901951551437378)
+Info: 1 move(s) cleared
+PASS Clear Moves: back to what the sliders make  -- (3.3075194358825684, 3.307398557662964)
+PASS Concept Move operator + tool registered
+
+20/20 passed
+====================================================================== 
+ test_v02435.py
+PASS EXPERIMENTAL_CLOTH is off in this build
+PASS Clothing / Hood / Scarf not in the visible tool list  -- ['ALONG', 'ARRAY', 'BASE', 'BELT', 'BOOLEAN', 'BRIDGE', 'CABLE', 'CAPE', 'CBASE', 'CDRAPE', 'CMOVE', 'CPATH', 'CPLATE', 'CUT', 'DETAIL', 'DETAIL2', 'DETAIL3', 'EDIT', 'EXTRACT', 'FLOWER', 'FUSE', 'HAIR', 'HIDE', 'HOLLOW', 'LIBRARY', 'LOFT', 'MIRROR', 'MOLDING', 'PERF', 'PLATE', 'POSE', 'PRIMITIVE', 'RADIAL', 'REMESH', 'RSYM', 'SBRUSH', 'SCALES', 'SCAPE', 'SCREW', 'SCURVE', 'SDRAW', 'SMOVE', 'SPIKE', 'SPLIT', 'SUBD', 'SURFACE', 'TUBE', 'TUBE_SAME', 'WLINES', 'WRINKLE', 'ZBRUSH']
+PASS Cape and Creature Hair still visible
+PASS hidden tools stay in the enum (saved files keep their tool)
+PASS Quad Cloth panel not registered
+PASS hood / scarf / clothing operators kept (old live objects can still be applied)
+PASS Cape apply operator present
+PASS Concept Move operator present
+PASS unregister works with the hidden tools never registered  -- True
+
+9/9 passed
+====================================================================== 
+ test_v02437.py
+PASS Concept Move and Path Move in the tool list (Jungle Gym removed)
+PASS their native tools
+PASS enum numbers new (saved files keep their old tools)
+PASS bottom bar buttons
+PASS V pie: stacked under Primitive
+PASS sidebar settings drawers
+PASS an assignable key per tool (Hotkeys box)
+PASS hold D + drag key item (Object Mode)  -- [('LEFTMOUSE', 'D')]
+PASS hold D + drag also first in the Mecha drawing tools
+PASS the hold key shows in the Hotkeys box (and is saved)
+PASS hold operator registered
+PASS picking Path Move from the menu selects it
+PASS turn: the grabbed part turns round the grab point (90 degrees)  -- [[1.1102230246251565e-16, 1.0, 0.0]]
+PASS turn with Mirror X: the other side turns the mirrored way  -- [[2.837869792588271, 0.9182168195493894, 0.0], [-2.837869792588271, 0.9182168195493894, 0.0]]
+PASS no turn = the old move exactly
+PASS F9 Turn: the cube turned 45 degrees (corner now on the X axis)  -- 0.7071067690849304
+PASS size in pixels by default ([ ] / F drag)
+PASS Real Size: the scene size changes instead
+PASS F = brush size in the Concept Move tool
+PASS no Mirror modifier: no reflections (Concept Mirror X as before)
+PASS a grab on the mirrored copy is mapped onto the real half
+PASS a grab on the real half stays where it is
+PASS mirror round a pivot object: reflected about its plane
+PASS two axes: three mirrored copies
+PASS light preview (CLAY): same as the full move, far fewer points computed  -- (438, 0.0)
+PASS light preview (ELASTIC): same as the full move, far fewer points computed  -- (653, 0.0)
+PASS Even Out: the faces of the pulled part are more even than without  -- (0.23671140136735122, 0.11781986427992996)
+PASS Even Out keeps the shape (the pull still reaches as far)  -- (np.float64(1.999999761581421), np.float64(1.999999761581421))
+PASS Even Out: the sharp corners of a box stay sharp  -- 24
+PASS path moves: one short grab per step, the turns add up to the bend (90 degrees)  -- 90.0
+PASS the box turns with the path (its X axis now points up the new way)  -- [[1.1102230246251565e-16, 0.0, 1.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 1.1102230246251565e-16]]
+PASS Taper 0: the same size all the way
+PASS Follow Turns off: no turning
+PASS the shake is taken out of a hand-drawn path, the ends stay
+Info: Path Move: 4 steps
+PASS Path Move (BOX): the grabbed part arrives at the end of the path, still as wide as it was  -- (np.float64(3.4000000953674316), [0.3382265567779541, 0.8312500715255737, 0.8312500715255737])
+PASS Path Move (BOX): a body along the path (not a thin thread)  -- (92, 0.84375)
+Info: Path Move: 4 steps
+PASS Path Move (SPHERE): the grabbed part arrives at the end of the path, still as wide as it was  -- (np.float64(3.4000000953674316), [0.37918639183044434, 0.8187500238418579, 0.8187500238418579])
+PASS Path Move (SPHERE): a body along the path (not a thin thread)  -- (380, 0.8250000476837158)
+Info: Path Move: 5 steps
+Info: Path Move: 5 steps
+PASS Path Move round a bend: it goes up the new way  -- 1.7999999523162842
+PASS Follow Turns: the end turned with the path (its flat side faces up, wide across X)  -- (np.float64(0.8187499046325684), np.float64(0.3420131206512451))
+PASS Ctrl + mouse right: the front turns to the right (round the screen up axis)  -- ((0.0, 1.0, 0.0), 89.999995674289)
+PASS Ctrl + mouse up: the front tips up (round the screen right axis)  -- (0.0, 1.0, 7.549790126404332e-08)
+PASS follows the view: the axis is the screen up axis in the world
+
+43/43 passed
+====================================================================== 
+ test_v02438.py
+PASS panel defaults: From Surface, Auto Target, Auto Apply on
+PASS Auto Target: the first mesh under the mouse  -- Front
+PASS Active: looks through other meshes to the active one  -- ('Back', (0.0, -0.5, 0.0))
+PASS Selected Only: only selected meshes count
+PASS From Surface: only the grabbed mesh
+PASS Through All: also the plate inside the brush, not the far cube  -- ['Back', 'Plate']
+PASS Through All + Selected Only: only selected ones  -- ['Back']
+PASS Through All move: the cube and the plate on it both pull out  -- {'Back': 0.7999999523162842, 'Plate': 0.800000011920929}
+PASS rotated / scaled object: pulled along the scene Y by the scene distance  -- (1.0, 0.0)
+PASS Auto Apply off: the mesh before is kept, both moves remembered
+Info: 1 move(s) left
+PASS Undo Last: only the second move is taken back  -- ((440, 3), (440, 3))
+Info: 1 move(s) cleared
+PASS Clear: back to the mesh before the moves, nothing kept
+Info: Moves applied
+PASS Apply: the move stays, the kept mesh is gone
+PASS Auto Apply on: nothing extra kept (as before)
+Info: Path Move: 3 steps
+PASS Path Move, Through All: both meshes follow the path  -- (1.7000000476837158, 2.0)
+Info: Path Move: 2 steps
+PASS Path Move, Auto Apply off: remembered as one Path Move of its steps (0.24.53; Undo Last / Clear work on it)
+PASS the panel draws the Cut-style options for both tools
+
+17/17 passed
+====================================================================== 
+ test_v02439.py
+PASS Extend is the default Path Move method
+PASS smallest turn between two directions
+PASS frames turn with the path (ends pointing up)
+PASS Follow Turns off: no turning
+PASS loop order from edges
+PASS loop direction seen from the drag direction
+PASS the section where you grab is read (a closed loop) with the cut-off end
+Info: Path Move Extend: 9 steps, section 16 points
+PASS Extend: one closed mesh, outward faces  -- (0, 20.681337678894607)
+PASS Extend: it goes along the path and up the bend  -- (np.float64(4.289949417114258), np.float64(2.1899495124816895))
+PASS Extend: light - few new points (rings only), quick  -- (98, 258, 0.0018835067749023438)
+PASS Extend: the section keeps its size along the way (no thinning, no stretching)  -- 2.0
+PASS Extend: the original end is carried to the end of the path, its flat side facing the new way  -- 25
+Info: Path Move Extend: 5 steps, section 16 points
+PASS Taper: the end is smaller  -- 1.0
+Info: Path Move: Separate Tube (Merge in the panel joins it)
+PASS Separate Tube: a new object, the mesh untouched
+PASS Separate Tube: a closed tube (capped)  -- (0, 12.681338103664206)
+Info: Merged into Src (Join)
+PASS Merge Join: one object
+Info: Path Move: Separate Tube (Merge in the panel joins it)
+Info: Merged into SrcU (Union)
+PASS Merge Union: one closed surface
+Warning: Path Move: no closed section where you grabbed - made a Separate Tube instead
+Warning: Path Move: no closed section where you grabbed
+PASS no closed section: tells and changes nothing
+Info: Path Move Extend: 9 steps, section 16 points
+PASS Extend, Auto Apply off: remembered
+Info: 1 move(s) cleared
+PASS Clear: back to the mesh before
+Info: Path Move: Separate Tube (Merge in the panel joins it)
+PASS big mesh (32514 points): Separate Tube in about a second  -- 0.23
+
+21/21 passed
+====================================================================== 
+ test_v02440.py
+PASS tool in the list with its settings
+PASS HEX hole: 6 corners, counter-clockwise
+PASS SQUARE hole: 4 corners, counter-clockwise
+PASS DIAMOND hole: 4 corners, counter-clockwise
+PASS CIRCLE hole: 24 corners, counter-clockwise
+PASS honeycomb hole: 1 across the flats
+PASS honeycomb: neighbours one pitch apart (size + gap) in every direction  -- 1.2
+PASS square grid: straight rows
+PASS rotation turns the grid
+PASS cutter: one closed prism per hole
+Info: Perforate: 47 holes on 1 mesh(es) - change them in the panel, Apply to keep
+PASS perforate: live holes (Boolean + hidden cutter)  -- 47
+PASS Auto direction: drilled through the thin side (Z)
+PASS the result really has holes, still a closed solid
+PASS margin: no hole within the margin of the edge  -- (0.9300000071525574, 0.41569221019744873)
+PASS live: smaller holes = more of them at once  -- (47, 109)
+PASS live: CIRCLE pattern
+PASS live: SQUARE pattern
+PASS live: DIAMOND pattern
+PASS live: rotation
+PASS quick to change (one slider step)  -- 0.1
+Info: Perforate: 33 holes on 1 mesh(es) - change them in the panel, Apply to keep
+PASS irregular outline: no holes over the missing corner
+Info: Perforate: 9 holes on 1 mesh(es) - change them in the panel, Apply to keep
+PASS mirrored object: holes before the Mirror (symmetrical)
+PASS Apply: holes in the mesh, cutter gone
+PASS Remove: the mesh as it was
+
+24/24 passed
+====================================================================== 
+ test_v02441.py
+PASS tool in the list with settings
+PASS Cloth Brush and Cloth Wrap are gone
+PASS Bevel (round edge) profile: 0 at the edges, 1 in the middle
+PASS Ridge / Round / Bevel profiles
+PASS Square (default): straight sides - full height right to the edge
+PASS fill edge: Square full at the outline, Chamfer / Bevel rise from 0
+PASS round ends: 0 at both ends, full in the middle
+PASS first stroke: a live band on the body, width from the Line Width  -- ('Surface Draw: 1 stroke(s), 0 filled area(s) on Body', 0.10000000149011612)
+PASS the band is a closed solid
+PASS it stands Height above the surface (no more)  -- 1.0332501355968546
+PASS a second stroke joins the same object
+PASS crossing the first band: still the same height (does not pile up)  -- 1.033383173689167
+PASS Keep First Size: the width and height stayed
+PASS live: the shape changes all strokes
+PASS live: height  -- 1.0801358174013818
+PASS Remove Last Stroke
+PASS Fill Area: the area joins the same live object  -- Surface Draw: 1 stroke(s), 1 filled area(s) on Body
+PASS the filled area is a closed solid with everything else
+PASS Square fill: as high as the strokes (Height), straight walls at the outline  -- 1.080084281614116
+PASS Chamfer fill rebuilds (closed)
+PASS Remove Last Stroke takes the fill (the last thing) away
+PASS cut engine: with Fill Area a lasso is an area, without it a line
+PASS ... and off again
+PASS before: band vertices in the area  -- 36
+PASS Alt cut: the area is gone, the drawing stays live (1 cut kept)  -- ('Cut out of "Body_Draw" (1 cut; it stays live)', 0)
+PASS ... still a closed solid
+PASS a slider rebuild keeps the cut
+PASS a new stroke over the area: cut too (the outline is kept)
+PASS Alt + draw where no drawing is: tells, cuts nothing
+PASS Apply: plain mesh (the kept cuts go too)
+PASS a line off the mesh: tells, makes nothing
+
+31/31 passed
+====================================================================== 
+ test_v02443.py
+PASS tool in the list with settings
+PASS one step: a quarter turn round the pivot
+PASS Count rotations, the first is no turn
+Info: Radial Symmetry x4 on 1 mesh(es) - new Base Mesh / plates get it too, Cut cuts every copy
+PASS 4 copies round the centre point  -- [(-2.0, 0.0), (-0.0, -2.0), (0.0, 2.0), (2.0, 0.0)]
+PASS Count is live
+Info: Radial Symmetry x6 on 1 mesh(es) - new Base Mesh / plates get it too, Cut cuts every copy
+PASS the active mesh's own axis: copies now go round its local Z (up and down too)  -- (-2.4150636196136475, 2.4150636196136475)
+PASS Remove: no modifier, no helper, no pivot
+Info: Radial Symmetry x4 on 1 mesh(es) - new Base Mesh / plates get it too, Cut cuts every copy
+PASS a new part drawn while it is on repeats too
+PASS only drawing tools that make parts
+PASS Cut drawn on a copy: the part itself is cut (so every copy is)  -- ('Cut: Part', 16, 0.839999959468841)
+PASS Apply: the copies are real
+
+11/11 passed
+====================================================================== 
+ test_v02444.py
+PASS default: Auto Target (nothing changes for anyone)
+PASS every drawing tool gets the row (Cut / Split / Box Hide / Move already have it)
+PASS Auto Target: the ray stops at the front mesh
+PASS Selected Only: looks through the front mesh to the selected one
+PASS ... select the front one: it is used
+PASS Active: only the active mesh
+PASS Armor / Creature Plate, Flower, Cloth Plate pick (pick_surface): the selected mesh
+PASS Cape / Clothing / Hood / Scarf / Hair pick (pick_body): the selected mesh
+PASS Belt / Spike / Scales / Scale Brush / Surface Curve pick: the selected mesh
+PASS Cut-engine pick under the mouse: the selected mesh
+PASS Surface Draw with Selected Only: drawn on the selected (back) mesh, through the front one  -- Surface Draw: 1 stroke(s), 0 filled area(s) on Back
+PASS the new band is now the selection, and it lets its base mesh through
+PASS a second stroke still lands on the back mesh (same live object)
+PASS Auto Target again: the front mesh gets it  -- Surface Draw: 1 stroke(s), 0 filled area(s) on Front
+PASS Selected Only with nothing selected: tells, makes nothing
+
+15/15 passed
+====================================================================== 
+ test_v02445.py
+PASS Scarf Cape tool: in the list, with its settings and icon
+PASS its own settings; Gravity only there by default use
+PASS Cape: folds run down (the sheet changes across it)  -- (0.0022523675992236875, 0.04842365682125092)
+PASS Scarf Cape: folds run across (the sheet changes down it)  -- (0.007013987041101223, 0.0009550673346365652)
+PASS Scarf Cape: the folds fade out at the drawn ends (clean side edges)
+PASS Gravity: the middle sags down, the drawn ends stay  -- (-2.0, -2.191999912261963)
+PASS Gravity does nothing on a normal Cape
+PASS a drawn line = the top edge of a thin outline under it
+PASS Scarf Cape on the body: live, closed mesh, folds across  -- ('Scarf Cape "Body_ScarfCape" on Body (Cloak, 7054 faces)', 0)
+PASS it is not a plain Cape (the Cape panel does not take it)
+PASS as wide as the drawn line (left to right, 190 px of 1000 px view)  -- 1.8929693102836609
+PASS a line that is not across: tells, makes nothing
+PASS cut engine: the Scarf Cape tool always draws a line
+PASS Gravity is live (more = hangs lower in the middle)  -- (-1.8636467456817627, -2.0961146354675293)
+PASS the next Scarf Cape starts like this one; the Cape settings did not change
+PASS a plain Cape still has folds down
+PASS Apply: plain mesh
+
+17/17 passed
+====================================================================== 
+ test_v02446.py
+PASS the operator is there
+PASS F = brush size in every Mecha drawing tool (Cut, Base Mesh, plates, Surface Draw, capes ...)
+PASS ... and in the Screw Stamp
+PASS F outside the tools is still Select / Move
+PASS a lasso tool: Line Width
+PASS x2 = twice as wide
+PASS kept inside the limits (not below the minimum)
+PASS Surface Draw: Line Width and the kept Width / Height of the next stroke scale together
+PASS ... not stored yet (0 = from the Line Width): only the Line Width
+PASS PNG stamp shape: Stamp Radius (pixels)
+PASS Mask Brush stroke: Mask Brush Radius
+PASS Screw Stamp: Size
+
+12/12 passed
+====================================================================== 
+ test_v02447.py
+PASS Ctrl+Z keeps every brush size
+PASS after Ctrl+Z the sizes are what they were (not the old ones)  -- ['line_width', 'radius_px']
+PASS Knife Mesh: 3 slices per side of a cube (4 cuts)  -- 9
+PASS the faces are split evenly (no edge longer than the spacing)  -- 0.5
+PASS the shape stays the same (same box, closed, still on the cube faces)
+Info: Knife Mesh: 1 mesh(es), 9 slices
+PASS the button: the selected mesh, even spacing along each side (its own space)  -- (9, 3)
+PASS Knife Mesh is in the Concept Move and Path Move panels
+
+7/7 passed
+====================================================================== 
+ test_v02448.py
+PASS Through All, 2 points: the fast plane cut, all the way through  -- ('Plane cut: Cube', (None, None))
+PASS From Surface, 2 points: only Cut Depth deep (a step, the bottom stays)  -- ('Cut: Cube.001', 0.5, -1.0)
+PASS From Surface, a polyline: Cut Depth too  -- (-0.20001220703125, -1.0)
+
+3/3 passed
+====================================================================== 
+ test_v02449.py
+PASS the switch is called Slow Line
+PASS in the panel of every drawing tool, and in Path Move
+PASS on: strength / radius / guide sliders, and a note for the Lasso shape
+PASS the stroke engine starts it in every drawing mode (Surface Draw, Belt, Cape, Cut ...)
+PASS it follows slowly: one quick mouse jump is not reached at once  -- (9.540187791386066, 0.0)
+PASS off: not active (the old exact line)
+
+6/6 passed
+====================================================================== 
+ test_v0245.py
+PASS Enter keymap item registered
+PASS a live detail -> Enter target is Plate Detail
+PASS Enter applies it
+PASS nothing live selected -> no Enter target
+Info: Select: click or drag a box round objects (G / R / S move, turn, scale). Pick a Mecha tool to continue
+PASS double-click with nothing drawn: the stroke ends, nothing is cut  -- {'CANCELLED'}
+PASS ... the object under the mouse becomes selected / active
+Info: Select: click or drag a box round objects (G / R / S move, turn, scale). Pick a Mecha tool to continue
+PASS a double-click arriving at a new stroke also leaves
+PASS while drawing a lasso, double-click still closes and applies it  -- ({'FINISHED'}, [(('INFO',), 'Cut: B, B_Detail')])
+PASS the click placed a screw  -- (1, ['Screw', 1793335431.4450557])
+Info: Select: click or drag a box round objects (G / R / S move, turn, scale). Pick a Mecha tool to continue
+PASS double-click takes the screw back and leaves
+PASS Screw keymap: double-click first
+PASS a JPEG file was written
+PASS JPEG imports as a cut shape (alpha mode falls back to brightness)  -- [14]
+PASS library keeps a real PNG copy
+PASS file browser shows JPG files
+PASS two files imported in one go (Auto: alpha PNG by its alpha, JPEG by brightness)  -- ({'FINISHED'}, ['box_alpha_9b9b5aca55974694.json', 'circle_a0632d44bf1543ad.json'], ['Imported 2 Cut shape(s)'])
+PASS box: one clean outline
+PASS circle: one clean outline
+PASS no wheel keys in the tool keymap (wheel zooms)
+PASS Base Mesh made a live shape  -- Base Mesh created: MCH_Base (Flat, 8 verts, closed solid)
+PASS the next shape keeps the last settings (height / profile / width)  -- (0.7699999809265137, 'CHAMFER')
+PASS Alt in Base Mesh cuts like Cut: From Surface depth makes a pocket, the back stays closed  -- ('Cut: Hull', [-1.0, 0.7, 1.0])
+PASS Box Hide made, nothing selected  -- Box Hide: Hidden on HideMe
+PASS Box Hide tool: Enter target = Box Hide without a selection
+Info: Box Hide applied on 1 mesh(es)
+PASS Enter applies it (the hole is real, modifier gone)  -- ({'FINISHED'}, 13)
+PASS another tool + nothing selected: Enter does not apply a hidden mesh by itself
+
+26/26 passed
+====================================================================== 
+ test_v02450.py
+PASS Shift: a straight piece from where Shift went down, snapped to 45 degrees  -- {45}
+PASS the free part before it stays as it was
+PASS turn the mouse: it snaps to 0 degrees (90 / 45 steps)
+PASS let go of Shift: drawing goes on freely from the end of the straight piece
+PASS Shift again, then release: the line ends exactly on the 90 degree end
+PASS Shift: a straight piece from where Shift went down, snapped to 45 degrees (Slow Line on)  -- {45}
+PASS the free part before it stays as it was (Slow Line on)
+PASS turn the mouse: it snaps to 0 degrees (90 / 45 steps) (Slow Line on)
+PASS let go of Shift: drawing goes on freely from the end of the straight piece (Slow Line on)
+PASS Shift again, then release: the line ends exactly on the 90 degree end (Slow Line on)
+
+10/10 passed
+====================================================================== 
+ test_v02451.py
+PASS Box Hide is a Line tool now
+PASS Line: a 2-point line hides a band across the cube (Line Width 0.5 x 4 x 4 = 8 hidden)  -- ({'RUNNING_MODAL'}, 'Box Hide: Hidden on B', 56.0)
+Info: Box Hide: shown again on 1 mesh(es)
+
+2/2 passed
+====================================================================== 
+ test_v02452.py
+PASS the centre misses, so the front-most surface under the line is used  -- <Vector (-0.5000, -1.0000, -0.0500)>
+PASS facing the view (Stick to Surface off): on the front face, not at the 3D cursor depth  -- <Vector (1.2500, -1.0000, 0.0000)>
+PASS Stick to Surface on: also on the front face  -- <Vector (-0.5000, -1.0000, -0.0500)>
+PASS an outline over the mesh: the centre as before
+PASS nothing under it at all: back to the 3D cursor depth (as before)
+
+5/5 passed
+====================================================================== 
+ test_v02453.py
+PASS Invert is a Base Mesh option, off by default
+PASS normal, on the surface: grows toward you (from y = 0 to -0.5)  -- (-0.5, 0.009999999776482582)
+PASS Invert, on the surface: grows back into the mesh (from y = 0 to +0.5)  -- (-0.009999999776482582, 0.5)
+PASS normal, nothing under it: from the 3D cursor depth toward you  -- (-0.5, 1.0268562888882116e-08)
+PASS Invert, nothing under it: from the 3D cursor depth back  -- (-1.0268562888882116e-08, 0.5)
+PASS the outline stays where it was drawn (not mirrored)
+PASS a closed solid, faces pointing out
+
+7/7 passed
+====================================================================== 
+ test_v02454.py
+PASS Base Mesh Alt: Carve Height is the default
+PASS Alt (Carve Height): a pocket as deep as Height (0.6 x 0.6 x 0.5), closed, nothing else made  -- ('Base Mesh carve (Alt): Cube | 0.5 deep along the surface', 7.820000003576278)
+PASS ... the pocket floor is Height behind the front face (y = -0.5)  -- [-1.0, -0.5]
+PASS ... Invert on does not turn the carve outward  -- 7.820000003576278
+PASS Alt: Like Cut = the Cut tool (Through All: a hole right through)  -- 7.280000014305116
+PASS Alt with a line half off the mesh: still finds it and carves (0.5 x 0.1 x 0.5)  -- 7.975000001490115
+PASS Alt on a ball: the pocket follows the surface (floor Height = 0.1 below it everywhere, not flat)  -- ('Base Mesh carve (Alt): Sphere | 0.1 deep along the surface', (0.898, 0.9))
+PASS Carve Depth 0.2 (Height 0.5): the pocket is 0.2 deep  -- 7.927999984264375
+PASS Alt: Through = a window right through the plate (0.6 x 0.6 hole in a 0.15 plate), Height ignored  -- ('Base Mesh carve (Alt): Cube | a window right through', 0.09600000488758105)
+PASS ... you can see through it
+PASS Alt: Inside = a channel in the middle (1 x 0.1 x 0.1 out of 0.2), the front face stays closed  -- ('Base Mesh carve (Alt): Cube | a channel inside (windows where it crosses the side walls)', 0.009992855339588741, Vector((0.0, -0.09999990463256836, 0.0)), (0.0, 0.0, 0.0))
+PASS ... it opens as windows on the side walls (see right through it from the side; the wall above stays)  -- ((False, Vector((0.0, 0.0, 0.0)), Vector((0.0, 0.0, 0.0)), -1), Vector((0.5, 0.0, 0.20000000298023224)))
+PASS Surface Draw Alt on a plain mesh: a groove as deep as Height along the line (about 1.2 x 0.1 x 0.05)  -- ('Carved into "Cube" (Alt): 0.05 deep, 0.1 wide', 0.006000001132435706)
+PASS ... the groove floor is Height behind the surface
+PASS Surface Draw Alt with Fill Area: a pocket (0.6 x 0.6 x 0.05)  -- 0.018000003934106168
+PASS Alt where there is no mesh: tells, changes nothing
+PASS the stroke engine: Surface Draw Alt keeps the line (a band, not an area)
+
+17/17 passed
+====================================================================== 
+ test_v02455.py
+PASS the Export button is there
+PASS the test block has 2 n-gons (6 corners)
+Writing to /tmp/tmp93yw_6h7/block.obj
+OBJ export of 'block.obj' took 1.69 ms
+Info: File exported successfully
+Info: Exported 1 mesh(es) to /tmp/tmp93yw_6h7/block.obj (2 n-gons split)
+PASS OBJ written: no face with more than 4 corners, the 6 side quads kept  -- ({'FINISHED'}, [3, 3, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3])
+PASS ... named like the object (not Block.001)  -- ['o Block']
+PASS the Blender mesh is unchanged, the name is back, no extra object left
+Writing to /tmp/tmp93yw_6h7/raw.obj
+OBJ export of 'raw.obj' took 0.11 ms
+Info: File exported successfully
+Info: Exported 1 mesh(es) to /tmp/tmp93yw_6h7/raw.obj
+PASS ZBrush-safe Faces off: the n-gons go as they are
+
+FBX export starting... '/tmp/tmp93yw_6h7/block.fbx'
+export finished in 0.0054 sec.
+Info: Exported 1 mesh(es) to /tmp/tmp93yw_6h7/block.fbx (2 n-gons split)
+PASS FBX too
+Writing to /tmp/tmp93yw_6h7/sel.obj
+OBJ export of 'sel.obj' took 0.18 ms
+Info: File exported successfully
+Info: Exported 1 mesh(es) to /tmp/tmp93yw_6h7/sel.obj (2 n-gons split)
+Writing to /tmp/tmp93yw_6h7/vis.obj
+OBJ export of 'vis.obj' took 0.26 ms
+Info: File exported successfully
+Info: Exported 2 mesh(es) to /tmp/tmp93yw_6h7/vis.obj (2 n-gons split)
+PASS Export Selected: only the selected mesh  -- ['Block']
+PASS Export Visible: every visible mesh, the hidden one stays out  -- ['Block', 'Other']
+PASS ... and the selection is as it was
+PASS the ZBrush bridge sends the same clean faces (export copy)
+
+11/11 passed
+====================================================================== 
+ test_v02456.py
+PASS the auto re-place runs after every change
+Info: Radial Symmetry x4 on 1 mesh(es) - new Base Mesh / plates get it too, Cut cuts every copy
+PASS turned + moved: copy 2 is still the first one turned a quarter round the SAME pivot (0, 0, 0) and Z  -- (Vector((2.500000238418579, 0.5, 0.30000001192092896)), Vector((-0.4999998211860657, 2.500000238418579, 0.3000001311302185)))
+PASS ... point for point (the copies turn with the mesh, round the fixed axis)
+PASS the pivot did not move or turn
+PASS copy 0 is the mesh where it is (only it turned)
+PASS moving the pivot re-places the copies round the new point
+PASS Distance +0.5: the mesh is 0.5 further from the axis, the copies with it  -- (2.5495097567963922, 3.0495097628176193)
+PASS ... -0.3: closer than at first, straight in (the height along the axis stays)  -- (2.249509731496368, 2.5495097567963922, 0.30000001192092896, 0.30000001192092896, 2.5495097567963922)
+PASS Apply: the copies become real, the handler leaves the mesh alone
+
+9/9 passed
+====================================================================== 
+ test_v02457.py
+PASS CHAMFER: carved, closed, no sliver faces in the groove  -- ('Base Mesh carve (Alt): Plate | 0.035 deep along the surface', 0, 0)
+PASS CHAMFER: the full depth in the middle of the band, everywhere along it  -- [0.037282228244942206, 0.03514885902404785, 0.037362813724678534]
+PASS BEVEL: carved, closed, no sliver faces in the groove  -- ('Base Mesh carve (Alt): Plate | 0.035 deep along the surface', 0, 0)
+PASS BEVEL: the full depth in the middle of the band, everywhere along it  -- [0.03728246666352131, 0.03514862060546875, 0.03736352898041584]
+PASS FLAT: carved, closed, no sliver faces in the groove  -- ('Base Mesh carve (Alt): Plate | 0.035 deep along the surface', 0, 0)
+PASS FLAT: the full depth in the middle of the band, everywhere along it  -- [0.03727936722199299, 0.03505969047546387, 0.03727936722199299]
+PASS Bevel: the Segments slider gives the carved edge more steps (still clean)  -- (1818, 3702, 0, 0)
+PASS Resolution: more points in the carve (smoother along the line), still clean  -- (1190, 3916, 0, 0)
+PASS smoothed normals stay unit length and lean together  -- [Vector((0.0, 0.4488081634044647, 0.8936281204223633)), Vector((0.0, 0.47488129138946533, 0.8800498843193054)), Vector((0.0, 0.4488081634044647, 0.8936281204223633))]
+
+9/9 passed
+====================================================================== 
+ test_v02458.py
+PASS Path Move has its own Hardness (1 = hard, as before); Move keeps its own
+PASS the Path Move panel shows it
+PASS soft start: leaves the cut along the part (not at 45 degrees), same points, the far part unchanged  -- <Vector (0.9424, 0.0000, 0.3344)>
+PASS Hardness 1 = no soft start
+Info: Path Move Extend: 15 steps, section 48 points
+Info: Path Move Extend: 15 steps, section 48 points
+PASS Hardness 1: one closed mesh, the mesh behind the cut stays (as before)  -- (0, 1.1701219574334083, np.float64(0.0))
+PASS Hardness 0.3: one closed mesh, the mesh behind the cut still stays  -- (0, 1.178722665824445, np.float64(0.0))
+PASS ... and right after the cut it bends up gently (lower there than the hard kink), a soft curve  -- (np.float64(0.3290229941912964), np.float64(0.2745582569853566))
+PASS ... the end still goes to the end of the path  -- (array([2.70104122, 0.25      , 1.80104053]), array([2.70104122, 0.25      , 1.80104041]))
+
+8/8 passed
+====================================================================== 
+ test_v02459.py
+PASS the picked face (+X) faces into the surface (normal +Z) and sits on the hit point  -- (Vector((-4.470348358154297e-08, 0.0, 1.5)), Quaternion((0.7071068286895752, 0.0, 0.7071067690849304, 0.0)))
+PASS Stamp Depth presses it in along the surface normal
+PASS Align to Surface off: only moved, not turned
+PASS a click on the ghost picks the face it hits (local point and outward normal)  -- (Vector((0.0, -0.5, 0.30000001192092896)), Vector((0.0, -1.0, 0.0)))
+PASS a click past the ghost picks nothing
+PASS how far the box reaches behind its -Y face: 1
+PASS the picked face on the ghost, also after resizing it (kept as a part of Size)  -- (Vector((0.20000000298023224, 0.0, 0.0)), Vector((1.0, 0.0, 0.0)))
+PASS click on the top of the cube: the long box lies flat on it, its +X face down, 25 % of 0.4 in  -- ((-7.450580596923828e-09, 0.0, 1.100000023841858), Quaternion((0.7071068286895752, 0.0, 0.7071067690849304, 0.0)))
+PASS Subtract: a stamp 0.1 deep in the shape of that face (a 1.2 long slot), closed mesh  -- ([-1.0, 0.9, 1.0], 'Box subtracted from Cube')
+PASS ... the slot is as long as the box (1.2) and as wide as it (0.4)  -- [(-0.6000000238418579, -0.20000000298023224, 0.8999999761581421), (-0.6000000238418579, 0.20000000298023224, 0.8999999761581421), (0.6000000238418579, -0.20000000298023224, 0.9000000953674316), (0.6000000238418579, 0.20000000298023224, 0.9000000953674316)]
+PASS Add on the side: merged into the cube (a hair in, no face lying on the surface), closed  -- (1, 1.3960001468658447)
+PASS first click: Z straight out of the surface
+PASS next click on a surface facing the same way: the same turn as before
+PASS on the side: the same turn against that surface (tilted 30 degrees off its normal the same way)
+PASS Remember Turn off: Z straight out again
+PASS Turn Reset: the next click starts straight again
+PASS nearest surface for a picked face: the closest mesh within reach (top of the low cube)  -- (Vector((0.0, 0.0, -5.0)), Vector((0.0, 0.0, 1.0)), bpy.data.objects['Cube.001'])
+PASS ... nothing within reach: none
+PASS ... Selected Only: an unselected mesh is left out
+PASS the panel and the Alt+click stamp key are there
+
+20/20 passed
+====================================================================== 
+ test_v02460.py
+PASS the clicked triangle itself is tilted a lot (the case that stood the screw crooked)  -- 45.00000125223908
+PASS the plane under the head: nearly straight up  -- 2.1181249045514634
+PASS a click there: the screw stands straight on the panel  -- 2.3777578972633964
+PASS on a ball: still the normal of the ball there (within a few degrees)  -- 0.9821808824827163
+PASS off the edge (fewer than 5 hits): the clicked normal is kept
+
+5/5 passed
+====================================================================== 
+ test_v02461.py
+PASS its own settings (Off by default); the old Edge Finish untouched
+PASS CHAMFER: cut + GN edge on a dense mesh, closed  -- ('Cut: Dense | GN Chamfer: 64 border edges', 0)
+PASS CHAMFER: half the width out from the border the surface is half the width down, evenly all round  -- [0.96, 0.96, 0.96, 0.96, 0.96, 0.96, 0.96, 0.96, 0.96, 0.96, 0.96, 0.96]
+PASS CHAMFER: past the width the top is untouched  -- 1.0
+PASS CHAMFER: no helper attributes left on the mesh
+PASS BEVEL: cut + GN edge on a dense mesh, closed  -- ('Cut: Dense | GN Bevel: 64 border edges', 0)
+PASS BEVEL: there the surface is rounded down (between the chamfer line and the top), evenly all round  -- [0.9876, 0.9877, 0.9876, 0.9876, 0.9876, 0.9877, 0.9876, 0.9877, 0.9876, 0.9876, 0.9876, 0.9877]
+PASS BEVEL: past the width the top is untouched  -- 1.0
+PASS BEVEL: no helper attributes left on the mesh
+PASS Split, Both: the outer part and the new piece both chamfered at the border, both closed  -- (0.96, 'Sp', 0.96, 'Sp_Split', 'Split: Sp')
+PASS Split, Side B only: the piece chamfered, the outer part left sharp  -- (1.0, 0.96)
+PASS the GN Edge menu is in the Cut / Split panel
+
+12/12 passed
+====================================================================== 
+ test_v02462.py
+PASS mirror through the surface: 0.3 above -> 0.3 below; on / just under the surface -> a hair above  -- [(0.0, 0.0, -0.30000001192092896), (1.000000238418579, -2.384185791015625e-07, 0.010999999940395355), (0.0, 1.0, 0.009999999776482582)]
+PASS Alt: carved into the cube, closed, no plate object left  -- ('Armor plate carved into "Cube" (Alt: Chamfer 45 the other way round, 0.0569 deep)', 0, 1)
+PASS ... the recess is as deep as the plate would be tall  -- (0.05685067176818848, 0.056850433349609375)
+PASS ... outside the drawn shape the top is untouched  -- 1.000000238418579
+PASS Alt Carve Depth 0.02: the recess is 0.02 deep (not the plate height), still closed  -- (0.019999980926513672, 'Armor plate carved into "Cube" (Alt: Chamfer 45 the other way round, 0.02 deep)')
+PASS mirror with a depth scale: 0.3 above -> 0.15 below  -- (0.0, 0.0, -0.15000000596046448)
+PASS the setting is in the Armor Plate panel
+PASS the Armor Plate tool sends Alt + draw here (and a plain draw still makes a plate)
+
+8/8 passed
+====================================================================== 
+ test_v02463.py
+PASS a 90 degree corner in the path: opened up so no turn is tighter than the section  -- (0.0707106675860561, 0.40669173704165373)
+PASS a straight path stays as it is
+PASS section radius = the farthest section point from its centre
+PASS small brush on the wide plate end: stays Extend (no switch to Stretch)  -- ('EXTEND', True)
+PASS a brush about as big as the plate end: Extend as before (the section is swept)  -- ('EXTEND', True)
+
+5/5 passed
+====================================================================== 
+ test_v02464.py
+PASS Edge Finish BEVEL (SURFACE): a notch over a bevelled edge, nothing sticks out, closed  -- ('Cut: Cube | BEVEL: 9 newly cut edges', 0, 0)
+PASS GN Edge BEVEL (SURFACE): same, inside and closed  -- ('Cut: Cube | GN Bevel: 9 border edges', 0)
+PASS Edge Finish CHAMFER (SURFACE): a notch over a bevelled edge, nothing sticks out, closed  -- ('Cut: Cube | CHAMFER: 9 newly cut edges', 0, 0)
+PASS GN Edge CHAMFER (SURFACE): same, inside and closed  -- ('Cut: Cube | GN Chamfer: 9 border edges', 0)
+PASS Edge Finish BEVEL (THROUGH): a notch over a bevelled edge, nothing sticks out, closed  -- ('Cut: Cube | BEVEL: 16 newly cut edges', 0, 0)
+PASS GN Edge BEVEL (THROUGH): same, inside and closed  -- ('Cut: Cube | GN Bevel: 16 border edges', 0)
+PASS Edge Finish CHAMFER (THROUGH): a notch over a bevelled edge, nothing sticks out, closed  -- ('Cut: Cube | CHAMFER: 16 newly cut edges', 0, 0)
+PASS GN Edge CHAMFER (THROUGH): same, inside and closed  -- ('Cut: Cube | GN Chamfer: 16 border edges', 0)
+PASS GN BEVEL: after the cut no cutter flag and one UVMap (on corners) are left  -- [('UVMap', 'CORNER'), ('sharp_face', 'FACE'), ('position', 'POINT')]
+PASS GN BEVEL: a second cut leaves the first notch as it was (every point still on its old surface, only the new border finished)  -- (0.0, 65, 64, 'Cut: Cube | GN Bevel: 14 border edges')
+PASS GN CHAMFER: after the cut no cutter flag and one UVMap (on corners) are left  -- [('UVMap', 'CORNER'), ('sharp_face', 'FACE'), ('position', 'POINT')]
+PASS GN CHAMFER: a second cut leaves the first notch as it was (every point still on its old surface, only the new border finished)  -- (0.0, 33, 32, 'Cut: Cube | GN Chamfer: 14 border edges')
+
+12/12 passed
+====================================================================== 
+ test_v02465.py
+PASS ramp scale: 1 at the first edge, 0.5 half way, 0 at the far side  -- [1.0, 0.5, 0.0]
+PASS ... whichever way round the edge was drawn; Ramp Length 0.5 = flush half way  -- [1.0, 0.0, 0.0]
+PASS first edge = the first two points of the outline
+PASS Ramp: carved, closed  -- ('Base Mesh carve (Alt): Cube | a ramp 0.2 deep, up to the surface (deep side: < > / Pick Edge in the panel)', 0)
+PASS ... deep at the first edge, half way down in the middle, almost flush at the far side  -- [0.191, 0.096, 0.009]
+PASS ... outside the shape the top is untouched
+PASS Ramp Length 0.5: the slope reaches the surface half way across, the far half untouched  -- [0.187, 0.122, 0.0]
+PASS Ramp Soft: eased (smoothstep) along the slope - near the surface it fades in gently, deep end unchanged  -- [1.0, 0.5, 0.028000000000000004, 0.2531851851851852]
+PASS ... and the sides round off where it is shallow (a point near the outline gets less)  -- [1.0, 0.5, 0.028000000000000004, 0.2531851851851852]
+PASS Ramp Soft 0 = the straight slope
+PASS Soft 1 on the cube: still deep at the first edge, closed, and the far part eases out to the surface  -- [0.19, 0.096, 0.006, 0.0]
+PASS Ramp over a bevelled end: the corners are carved too (no fin of the old surface left), closed  -- [0.203, 0.252, 0.272, 0.203, 0.252, 0.272]
+
+12/12 passed
+====================================================================== 
+ test_v02466.py
+PASS a clicked polygon keeps its corners
+PASS a free-drawn square: simplified to its 4 sides  -- 4
+PASS the side nearest a point
+PASS after Alt: Ramp the ramp is live (the mesh before it is kept)
+PASS deep side 1 = the first edge (left)  -- (0.191, 0.009)
+PASS > : the next side (top) is deep now, the left is not any more  -- (0.191, 0.009, 0.096)
+PASS < < : back past the first side to the last one (bottom)  -- 0.191
+PASS Carve Depth slider: the live ramp is carved again at once  -- 0.096
+PASS the panel shows it (< > / Pick Edge / Apply / Remove)
+PASS Remove: the mesh is back as it was, nothing live left
+PASS Apply: kept with the picked side (right deep), nothing live left  -- 0.191
+PASS a new ramp keeps the earlier live one as it is (one live at a time)
+
+12/12 passed
+====================================================================== 
+ test_v02467.py
+PASS Ramp is in the GN Edge menu of the Cut panel, Off by default
+PASS Cut with Ramp: a slope, deep at the first side (left), up to the surface at the far side, closed  -- ('Cut Ramp: Cube | 0.2 deep at one side, up to the surface (deep side: < > / Pick Edge in GN Edge)', 0.191, 0.096, 0.009)
+PASS ... it stays live (a Cut ramp)
+PASS > > : the right side is deep now  -- (0.191, 0.009)
+PASS Cut Depth slider: carved again at once  -- 0.096
+PASS Remove: back as it was
+PASS GN Edge Chamfer: the deep wall is a chamfer (part way down next to the outline), closed  -- (0.052, 0.183)
+PASS Apply: kept, nothing live
+PASS Ramp off: the usual flat pocket  -- (0.2, 0.2)
+PASS a long thin ramp with Ramp Soft: the softened side is smooth along its length (no sawtooth), closed  -- (0.001, [0.893, 0.885, 0.877, 0.868, 0.859, 0.85, 0.841, 0.833])
+
+10/10 passed
+====================================================================== 
+ test_v02468.py
