@@ -67,6 +67,19 @@ check('mch.export_mesh OBJ: usemtl PG_ per region and material groups (g) in the
 r = bpy.ops.mch.export_mesh(filepath=os.path.join(d, 'export2.obj'), scope='SELECTED', file_format='OBJ', crease_groups=False, apply_modifiers=False)
 txt3 = open(os.path.join(d, 'export2.obj'), encoding='utf-8').read()
 check('... and no PG_ without it', 'PG_' not in txt3)
+# too many regions: a grid with every edge creased would be one material per face - the feature steps aside
+bpy.ops.mesh.primitive_grid_add(x_subdivisions=30, y_subdivisions=30, size=2.0)
+grid = C.active_object
+ga = grid.data.attributes.new('crease_edge', 'FLOAT', 'EDGE')
+ga.data.foreach_set('value', np.ones(len(grid.data.edges), np.float32))
+n_regions = zb.crease_regions(grid.data)[1]
+g2 = zb.crease_materials(grid)
+check(f'More than {zb.MAX_REGIONS} regions ({n_regions}): no materials, a note for the message instead (ZBrush would stall)',
+      n_regions == 900 and g2 == 0 and len(grid.data.materials) == 0 and 'crease regions' in zb.LAST_SKIP['text'], zb.LAST_SKIP['text'][:60])
+bpy.data.objects.remove(grid)
+for o in C.view_layer.objects:
+    o.select_set(o is cube)
+C.view_layer.objects.active = cube
 check('The setting is on by default in the ZBrush bridge settings and drawn in the Layers panel',
       C.scene.mch_zbrush.crease_groups and "'crease_groups'" in open(os.path.join(os.path.dirname(zb.__file__), 'layers_panel.py'), encoding='utf-8').read())
 summary()

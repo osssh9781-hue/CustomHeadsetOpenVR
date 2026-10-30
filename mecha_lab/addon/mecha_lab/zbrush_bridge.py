@@ -123,6 +123,10 @@ def _restore_selection(context, selected, active):
 
 CREASE_MIN = 0.5            # an edge creased this much (or marked sharp) is a polygroup border
 GROUP_PREFIX = 'PG_'
+MAX_REGIONS = 400           # more crease regions than this = that many materials in the file: ZBrush's FBX import
+#                             sits on "Reading data..." for ages making a polygroup per material - the feature then
+#                             steps aside (a plain file) and the export message says so
+LAST_SKIP = {'text': ''}
 
 
 def crease_regions(me, threshold=CREASE_MIN):
@@ -189,7 +193,12 @@ def crease_materials(ob, threshold=CREASE_MIN):
     import colorsys
     me = ob.data
     ids, n, n_border = crease_regions(me, threshold)
+    LAST_SKIP['text'] = ''
     if n_border == 0 or n < 2:
+        return 0
+    if n > MAX_REGIONS:
+        LAST_SKIP['text'] = (f'{ob.name}: {n} crease regions - more than {MAX_REGIONS} materials would stall ZBrush\'s '
+                             f'FBX import, so the file went out without polygroups (Hard Edges > fewer creases, or OBJ)')
         return 0
     me.materials.clear()
     for rid in range(n):
@@ -685,6 +694,8 @@ class MCH_OT_export_mesh(bpy.types.Operator):
                 if self.crease_groups:
                     if crease_materials(tmp):
                         grouped += 1
+                    elif LAST_SKIP['text']:
+                        notes.append(LAST_SKIP['text'])
                 name = ob.name                             # the file gets the real names
                 ob.name = name + '__mch_export'
                 renamed.append((ob, name))
