@@ -445,12 +445,25 @@
   .page-cell.add-page-cell:hover{border-color:var(--brand);background:var(--brand-soft);}
 
   /* Per-stage page deletion */
-  .mini-btn.delete-page-btn{
-    bottom:2px;right:2px;top:auto;width:18px;height:18px;border:1px solid var(--border);
-    background:rgba(255,255,255,.94);color:var(--danger);font-size:11px;font-weight:800;z-index:2;
+  .stage-delete-toggle{
+    width:28px;height:28px;flex:0 0 auto;margin-right:9px;border:1px solid var(--border);
+    border-radius:7px;background:var(--surface);color:var(--ink-faint);cursor:pointer;font-size:13px;
   }
-  .mini-btn.delete-page-btn:hover{background:var(--danger-soft);border-color:var(--danger);}
-  .page-cell.on .mini-btn.delete-page-btn{background:rgba(255,255,255,.96);color:var(--danger);}
+  .stage-delete-toggle:hover{background:var(--danger-soft);border-color:var(--danger);color:var(--danger);}
+  .stage-delete-toggle.on{background:var(--danger);border-color:var(--danger);color:#fff;}
+  .stage-delete-panel{
+    display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px;
+    padding:8px 9px;border:1px dashed var(--danger);border-radius:8px;background:var(--danger-soft);
+    color:var(--danger);font-size:10.5px;font-weight:700;
+  }
+  .stage-delete-panel .small-btn{border-color:var(--danger);color:var(--danger);background:#fff;}
+  .stage-delete-panel .small-btn:hover{background:var(--danger);color:#fff;}
+  .mini-btn.delete-page-btn{
+    bottom:2px;right:2px;top:auto;width:18px;height:18px;border:1px solid var(--danger);
+    background:rgba(255,255,255,.97);color:var(--danger);font-size:11px;font-weight:900;z-index:3;
+  }
+  .mini-btn.delete-page-btn:hover{background:var(--danger);color:#fff;}
+  .page-cell.delete-target{box-shadow:inset 0 0 0 1px rgba(174,89,114,.4);}
 
   @media(max-width:520px){
     .project-stage-add{grid-template-columns:1fr 1fr;}
@@ -630,7 +643,7 @@ function hashColor(key){
   return colors[hash%colors.length];
 }
 let state=null, activeProjectId=null, saveBlocked=false, ready=false;
-let expandedStages={}, calendarViewMode='active';
+let expandedStages={}, calendarViewMode='active', stageDeleteMode=null;
 let viewYear=new Date().getFullYear(), viewMonth=new Date().getMonth();
 let newProjStages=new Set(['sketch','line']);
 function stageDef(key){ return state.stageDefs.find(d=>d.key===key); }
@@ -818,6 +831,20 @@ function deleteStagePage(proj,key,page){
   if(hasData&&!window.confirm(`${stageLabel(key)} ${page.num}페이지에 완료/일정 기록이 있어요. 그래도 삭제할까요?`)) return false;
   list.splice(index,1);
   list.forEach((p,i)=>{p.num=i+1;});
+  syncProjectPageTotal(proj);
+  return true;
+}
+function deleteStageFromProject(proj,key){
+  const list=stagePageList(proj,key);
+  const hasRecords=list.some(p=>p.done||p.date)||!!projectDeadline(proj,key);
+  const warning=hasRecords?'\n이 단계의 완료/일정/마감 기록도 함께 삭제됩니다.':'';
+  if(!window.confirm(`${stageLabel(key)} 단계를 이 프로젝트에서 삭제할까요?${warning}`)) return false;
+  proj.stages=proj.stages.filter(k=>k!==key);
+  if(isRecord(proj.stagePages)) delete proj.stagePages[key];
+  if(isRecord(proj.deadlines)) delete proj.deadlines[key];
+  if(isRecord(proj.singleStatus)) delete proj.singleStatus[key];
+  delete expandedStages[key];
+  stageDeleteMode=null;
   syncProjectPageTotal(proj);
   return true;
 }
@@ -1056,8 +1083,8 @@ function renderMain(){
         <div class="stage-add-pages"><label for="projectStageInitialPages">초기 페이지</label><input type="number" id="projectStageInitialPages" min="0" max="500" step="1" value="${suggestedPages}"></div>
         <button class="small-btn" id="confirmProjectStageAdd">추가</button>
       </div>
-      ${stages.length?stages.map(k=>{const list=stagePageList(proj,k);return `<div class="accordion${expandedStages[k]?' open':''}" data-stage="${k}"><div class="accordion-header"><button class="accordion-toggle" aria-expanded="${!!expandedStages[k]}" title="클릭: 펼치기 · 길게 누르고 끌기: 순서 변경"><span class="htitle"><span class="drag-grip" aria-hidden="true">↕</span><span class="stage-swatch" style="background:${stageColor(k)}"></span>${esc(stageLabel(k))}<span class="hcount">완료 ${list.filter(p=>p.done).length}/${list.length} · ${list.length}p</span></span><span class="accordion-chevron">▾</span></button>${deadlineControlHtml(proj,k)}</div><div class="accordion-body"><div class="page-grid" id="grid-${k}" style="--accent:${stageColor(k)};--accent-soft:${stageSoft(k)}"></div></div></div>`;}).join(''):'<p class="muted">아직 페이지별 작업 단계가 없어요. 위의 + 작업 단계에서 추가할 수 있어요.</p>'}
-      <div class="legend"><span class="stage-order-hint">↕ 단계 제목을 길게 누르고 위아래로 끌면 순서를 바꿀 수 있어요</span><span>각 단계의 맨 끝 ＋는 그 단계에만 페이지를 추가하고, 페이지 오른쪽 아래 ×는 해당 단계에서만 삭제해요</span><span>페이지 번호를 누르면 완료 표시가 바뀌어요</span><span>오른쪽 위 숫자: 난이도 1=0.5점 · 2=1점 · 3=2점</span><span>왼쪽 위 점은 일정 배정됨</span></div>
+      ${stages.length?stages.map(k=>{const list=stagePageList(proj,k),deleteMode=stageDeleteMode===proj.id+':'+k;return `<div class="accordion${expandedStages[k]?' open':''}${deleteMode?' delete-mode':''}" data-stage="${k}"><div class="accordion-header"><button class="accordion-toggle" aria-expanded="${!!expandedStages[k]}" title="클릭: 펼치기 · 길게 누르고 끌기: 순서 변경"><span class="htitle"><span class="drag-grip" aria-hidden="true">↕</span><span class="stage-swatch" style="background:${stageColor(k)}"></span>${esc(stageLabel(k))}<span class="hcount">완료 ${list.filter(p=>p.done).length}/${list.length} · ${list.length}p</span></span><span class="accordion-chevron">▾</span></button>${deadlineControlHtml(proj,k)}<button type="button" class="stage-delete-toggle${deleteMode?' on':''}" data-delete-stage="${k}" aria-label="${esc(stageLabel(k))} 삭제 메뉴" aria-pressed="${deleteMode}" title="페이지/단계 삭제">🗑</button></div><div class="accordion-body">${deleteMode?`<div class="stage-delete-panel"><span>삭제할 페이지의 ×를 누르거나 단계 전체를 삭제할 수 있어요.</span><button type="button" class="small-btn delete-whole-stage" data-delete-whole="${k}">🗑 ${esc(stageLabel(k))} 단계 삭제</button></div>`:''}<div class="page-grid" id="grid-${k}" style="--accent:${stageColor(k)};--accent-soft:${stageSoft(k)}"></div></div></div>`;}).join(''):'<p class="muted">아직 페이지별 작업 단계가 없어요. 위의 + 작업 단계에서 추가할 수 있어요.</p>'}
+      <div class="legend"><span class="stage-order-hint">↕ 단계 제목을 길게 누르고 위아래로 끌면 순서를 바꿀 수 있어요</span><span>마감일 옆 🗑를 누르면 개별 페이지 삭제 또는 단계 전체 삭제가 가능해요</span><span>페이지 번호를 누르면 완료 표시가 바뀌어요</span><span>오른쪽 위 숫자: 난이도 1=0.5점 · 2=1점 · 3=2점</span><span>왼쪽 위 점은 일정 배정됨</span></div>
     </section>
     <div class="workload-legend"><span><i class="wl-bar light"></i>여유 (1~2점)</span><span><i class="wl-bar mid"></i>적정 (3~4점)</span><span><i class="wl-bar heavy"></i>과다 (5점 이상)</span><span>전체 진행 프로젝트 합산 · 페이지 난이도 1=0.5점, 2=1점, 3=2점 · 1회 작업 1점</span></div>
     <section class="sheet" id="calendarSheet"></section>`;
@@ -1075,6 +1102,20 @@ function renderMain(){
     renderStageGrid(proj,k);
     const toggle=area.querySelector(`.accordion[data-stage="${k}"] .accordion-toggle`);
     toggle.onclick=()=>{if(toggle.dataset.suppressClick==='1'){delete toggle.dataset.suppressClick;return;}expandedStages[k]=!expandedStages[k];renderMain();};
+  });
+  area.querySelectorAll('.stage-delete-toggle').forEach(btn=>btn.onclick=e=>{
+    e.stopPropagation();
+    if(!editable())return;
+    const k=btn.dataset.deleteStage,key=proj.id+':'+k;
+    stageDeleteMode=stageDeleteMode===key?null:key;
+    if(stageDeleteMode) expandedStages[k]=true;
+    renderMain();
+  });
+  area.querySelectorAll('.delete-whole-stage').forEach(btn=>btn.onclick=e=>{
+    e.stopPropagation();
+    if(!editable())return;
+    const k=btn.dataset.deleteWhole;
+    if(deleteStageFromProject(proj,k)){scheduleSave();renderMain();showToast(`${stageLabel(k)} 단계를 프로젝트에서 삭제했어요`);}
   });
 
   const addPanel=$('projectStageAdd');
@@ -1100,20 +1141,23 @@ function renderMain(){
   renderCalendarNav(proj);
 }
 function renderStageGrid(proj,k){
-  const grid=$('grid-'+k),list=stagePageList(proj,k);
+  const grid=$('grid-'+k),list=stagePageList(proj,k),deleteMode=stageDeleteMode===proj.id+':'+k;
   list.forEach(p=>{
-    const difficulty=pageDifficulty(p);
+    const difficulty=pageDifficulty(p),deletedNum=p.num;
     const cell=document.createElement('div');
-    cell.className='page-cell diff-'+difficulty+(p.date?' has-date':'')+(p.done?' on':'');
-    cell.innerHTML=`<span class="num mono">${p.num}</span><button class="check-hit" aria-label="${p.num}페이지 ${esc(stageLabel(k))} 완료" aria-pressed="${!!p.done}" title="${p.date?shortDate(p.date):'일정 미배정'}"></button><button class="mini-btn diff-btn diff-${difficulty}" aria-label="${p.num}페이지 ${difficultyText(difficulty)}" title="${difficultyText(difficulty)} · 누르면 변경">${difficulty}</button><button class="mini-btn delete-page-btn" aria-label="${p.num}페이지 삭제" title="이 단계에서 이 페이지 삭제">×</button>`;
-    cell.querySelector('.check-hit').onclick=()=>{if(!editable()) return;p.done=!p.done;scheduleSave();renderMain();};
-    cell.querySelector('.diff-btn').onclick=()=>{if(!editable()) return;const next=difficulty===3?1:difficulty+1;p.difficulty=next;p.spread=next===3;scheduleSave();renderMain();};
-    cell.querySelector('.delete-page-btn').onclick=e=>{e.stopPropagation();if(!editable())return;if(deleteStagePage(proj,k,p)){scheduleSave();renderMain();showToast(`${stageLabel(k)}에서 ${p.num}페이지를 삭제했어요`);}};
+    cell.className='page-cell diff-'+difficulty+(p.date?' has-date':'')+(p.done?' on':'')+(deleteMode?' delete-target':'');
+    cell.innerHTML=`<span class="num mono">${p.num}</span><button class="check-hit" aria-label="${p.num}페이지 ${esc(stageLabel(k))} 완료" aria-pressed="${!!p.done}" title="${p.date?shortDate(p.date):'일정 미배정'}"></button><button class="mini-btn diff-btn diff-${difficulty}" aria-label="${p.num}페이지 ${difficultyText(difficulty)}" title="${difficultyText(difficulty)} · 누르면 변경">${difficulty}</button>${deleteMode?`<button class="mini-btn delete-page-btn" aria-label="${p.num}페이지 삭제" title="이 단계에서 이 페이지 삭제">×</button>`:''}`;
+    cell.querySelector('.check-hit').onclick=()=>{if(deleteMode)return;if(!editable()) return;p.done=!p.done;scheduleSave();renderMain();};
+    cell.querySelector('.diff-btn').onclick=()=>{if(deleteMode)return;if(!editable()) return;const next=difficulty===3?1:difficulty+1;p.difficulty=next;p.spread=next===3;scheduleSave();renderMain();};
+    const del=cell.querySelector('.delete-page-btn');
+    if(del) del.onclick=e=>{e.stopPropagation();if(!editable())return;if(deleteStagePage(proj,k,p)){scheduleSave();renderMain();showToast(`${stageLabel(k)}에서 ${deletedNum}페이지를 삭제했어요`);}};
     grid.append(cell);
   });
-  const add=document.createElement('button');add.type='button';add.className='page-cell add-page-cell';add.setAttribute('aria-label',`${stageLabel(k)} 페이지 추가`);add.title=`${stageLabel(k)}에만 페이지 추가`;add.textContent='＋';
-  add.onclick=()=>{if(!editable())return;const num=addStagePage(proj,k);scheduleSave();renderMain();showToast(`${stageLabel(k)}에 ${num}페이지를 추가했어요`);};
-  grid.append(add);
+  if(!deleteMode){
+    const add=document.createElement('button');add.type='button';add.className='page-cell add-page-cell';add.setAttribute('aria-label',`${stageLabel(k)} 페이지 추가`);add.title=`${stageLabel(k)}에만 페이지 추가`;add.textContent='＋';
+    add.onclick=()=>{if(!editable())return;const num=addStagePage(proj,k);scheduleSave();renderMain();showToast(`${stageLabel(k)}에 ${num}페이지를 추가했어요`);};
+    grid.append(add);
+  }
 }
 function entriesOnDate(proj,key){
   const entries=[];
