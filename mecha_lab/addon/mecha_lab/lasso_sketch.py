@@ -1,4 +1,4 @@
-"""0.19.3 Sketch First for every lasso tool (Cut, Split, Armor Plate; Base
+"""0.19.3 Sketch First for every lasso tool (Cut, Split, Armor Plate, Cloth Drape ...; Base
 Mesh keeps its own sketch, switched by the same button).
 
 With the Sketch button on (next to the shapes in the viewport header):
@@ -25,7 +25,7 @@ from . import core_geometry as cg
 from . import tool_state as ts
 
 KEY = 'mch_lasso_sketch'          # Scene ID prop (JSON) - Ctrl+Z steps back through it
-MODES = {'CUT', 'SPLIT', 'PLATE', 'CPLATE', 'WRINKLE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'HIDE'}   # 0.24.1 + Plate Detail 1 / 2, Box Hide
+MODES = {'CUT', 'SPLIT', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'HIDE'}   # 0.24.1 + Plate Detail 1 / 2, Box Hide; 0.24.95 Cloth Drape
 
 
 def is_on(context):
@@ -156,6 +156,9 @@ def commit(context, alt=False):
     elif mode == 'WRINKLE':
         from . import cloth_wrinkle as cw
         msg = cw.perform_wrinkle(context, loops, proj)
+    elif mode == 'CDRAPE':
+        from . import cloth_drape          # 0.24.95 Cloth Drape sketch: the combined outline is the cloth region
+        msg = cloth_drape.perform(context, loops, proj)
     elif mode in {'DETAIL', 'DETAIL2', 'DETAIL3'} and alt:
         from . import live_subtract        # 0.24.26 Alt+Enter: take the sketch out (live detail or engrave)
         msg = live_subtract.perform(context, 'DETAIL', loops, proj, tool=mode)

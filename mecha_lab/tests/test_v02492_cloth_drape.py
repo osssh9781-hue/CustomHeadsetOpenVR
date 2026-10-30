@@ -5,10 +5,10 @@ import math
 
 import numpy as np
 from _harness import bpy, check, fresh, select_only, summary
-from mathutils import Vector
+from mathutils import Quaternion, Vector
 
 import mecha_lab
-from mecha_lab import cloth_drape as cd, cut_engine as ce, tool_state as ts, workspace_ui as wsui
+from mecha_lab import cloth_drape as cd, core_geometry as cg, cut_engine as ce, lasso_sketch as ls, tool_state as ts, workspace_ui as wsui
 
 mecha_lab.register()
 fresh()
@@ -323,4 +323,23 @@ for o in (trim_ob, ob_c):
     if o is not None:
         bpy.data.objects.remove(o)
 check('Settings snapshot covers the new options (a change restarts the drape)', all(k in inspect.getsource(cd._snapshot) for k in ("'padding'", "'pad_size'", "'trim'", "'trim_width'")))
+
+# ---- 0.24.95 Sketch mode (user: "클로스 드레이프에는 스케치 모드가 없어?"): Sketch on -> outlines add up, Enter = the cloth
+ls.clear(S)
+st.two_sides = False
+TOPP = cg.OrthoProjector(Quaternion(), center=Vector((0, 0, 0)), pixels_per_unit=200.0, size=(1000, 1000))   # top view
+msg = ls.add(C, 'CDRAPE', [[(420, 420), (580, 420), (580, 580), (420, 580)]], TOPP)
+check('Cloth Drape is a sketch tool: with Sketch on a drawn outline joins the sketch, no cloth yet',
+      'CDRAPE' in ls.MODES and ls.data(S) is not None and ls.data(S)['mode'] == 'CDRAPE' and not cd.sim_active(), msg)
+ls.add(C, 'CDRAPE', [[(560, 460), (660, 460), (660, 540), (560, 540)]], TOPP)        # a second shape widens it to the right
+msg = ls.commit(C)
+ob = C.view_layer.objects.active
+co_s = np.array([v.co[:] for v in ob.data.vertices])
+check('Enter: the combined outline becomes one Cloth Drape (session ready, sketch cleared)',
+      cd.sim_active() and ob.name.startswith('Cloth Drape') and ls.data(S) is None and 'Space' in msg, msg)
+check('... the cloth covers both shapes (x from -0.4 to +0.8 units, one piece)',
+      co_s[:, 0].min() < -0.35 and co_s[:, 0].max() > 0.75 and len(ob.data.vertices) > 200, (co_s[:, 0].min(), co_s[:, 0].max()))
+cd.cancel(C)
+check('Cloth Drape key maps carry the sketch keys (Enter / Alt+Enter / Backspace / Esc) and Space for the drape',
+      any(k[0] == 'mch.lasso_sketch_key' for k in wsui.MCH_TOOL_cloth_drape.bl_keymap) and any(k[0] == 'mch.cdrape_sim' for k in wsui.MCH_TOOL_cloth_drape.bl_keymap))
 summary()

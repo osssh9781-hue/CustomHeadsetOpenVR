@@ -505,7 +505,8 @@ def perform(context, loops, projector):
     me.update()
     SIM.clear()
     SIM.update(ob=ob.name, target=target.name, nb=nb, size=size, sess=sess, running=False, done=False, want=None,
-               surface=surface, start=sess['cloth'].init.copy(), snapshot=_snapshot(st), sew=sew, pin_idx=pin_idx)
+               surface=surface, start=sess['cloth'].init.copy(), snapshot=_snapshot(st), sew=sew, pin_idx=pin_idx,
+               spacing=float(st.spacing))
     pieces = f'front + back, {len(sew):,} seam pairs, ' if sew is not None else ''
     return (f'Cloth Drape on {target.name}: {pieces}{sess["points"]:,} points over {sess["collider"]:,} body points '
             f'(Space drape · Enter keep · Esc drop)')
@@ -1173,7 +1174,9 @@ def draw(layout, context):
     col.prop(st, 'keep', slider=True)
     col = box.column(align=True)
     col.prop(st, 'gap', slider=True)
-    col.prop(st, 'spacing', slider=True)
+    col.prop(st, 'spacing', slider=True, text='Cloth Detail (less = finer)')
+    if sim_active() and SIM.get('spacing') is not None and abs(float(st.spacing) - SIM['spacing']) > 1e-6:
+        box.label(text='Cloth Detail changes the NEXT lasso (this cloth keeps its mesh)', icon='INFO')
     r = box.row(align=True)
     r.prop(st, 'two_sides', toggle=True, icon='MOD_MIRROR')
     r.prop(st, 'pin_rim', toggle=True)
