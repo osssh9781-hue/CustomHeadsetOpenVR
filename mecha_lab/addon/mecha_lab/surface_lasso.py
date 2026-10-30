@@ -1,6 +1,7 @@
 """0.22.1 Surface Lasso (stage 1): draw ON the mesh, orbit while drawing, split along the loop.
 
-With the Surface button on (viewport header, next to Line) the Cut / Split tools
+With the Surface button on (viewport header, next to Line) the Cut / Split tools (and Armor Plate, Cloth Plate,
+Cloth Drape: Enter lays the patch)
 draw on the surface instead of the screen:
 
     click            add a point stuck to the surface (stored on the object,
@@ -26,8 +27,8 @@ from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 from . import target_rules
 
-MODES = {'CUT', 'SPLIT', 'PLATE', 'WRINKLE'}
-PATCH_MODES = {'PLATE', 'WRINKLE'}        # 0.22.2: Armor Plate / Cloth Plate from a surface outline
+MODES = {'CUT', 'SPLIT', 'PLATE', 'WRINKLE', 'CDRAPE'}
+PATCH_MODES = {'PLATE', 'WRINKLE', 'CDRAPE'}        # 0.22.2: Armor Plate / Cloth Plate from a surface outline; 0.24.95 Cloth Drape
 HIT_PX = 12.0
 _draw_ops = []
 
@@ -438,6 +439,9 @@ class SurfaceLogic:
             if self.mode == 'PLATE':
                 from . import armor_plate
                 msg = armor_plate.perform_plate(context, [loop], view)
+            elif self.mode == 'CDRAPE':            # 0.24.95 Cloth Drape from an outline drawn on the surface
+                from . import cloth_drape
+                msg = cloth_drape.perform(context, [loop], view)
             else:
                 from . import cloth_wrinkle
                 msg = cloth_wrinkle.perform_wrinkle(context, [loop], view)

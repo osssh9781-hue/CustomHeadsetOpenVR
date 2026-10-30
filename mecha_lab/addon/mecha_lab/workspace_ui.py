@@ -1356,7 +1356,7 @@ def draw_shape_palette(self, context):
     lb.prop(brush, 'line_mode', text='Line', icon='IPO_LINEAR', toggle=True)
     if tool == 'CPLATE':                         # 0.24.20 Creature Plate: through front and back
         sk.prop(brush, 'through_mode', text='Through', icon='XRAY', toggle=True)
-    if tool in {'CUT', 'SPLIT', 'PLATE', 'WRINKLE'}:
+    if tool in {'CUT', 'SPLIT', 'PLATE', 'WRINKLE', 'CDRAPE'}:
         sk.prop(brush, 'surface_mode', text='Surface', icon='SNAP_FACE', toggle=True)
         if brush.surface_mode and tool in {'CUT', 'SPLIT'}:
             sk.prop(brush, 'surface_gap', text='Gap')

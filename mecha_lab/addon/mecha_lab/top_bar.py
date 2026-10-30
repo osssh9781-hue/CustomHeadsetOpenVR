@@ -72,7 +72,7 @@ def groups(context, tool):
                 line.append(_cell('drop', '', action=('menu_enum',), data=bd, prop='attach_curve', width=104))
         out.append(('Line', line))
     extra = []
-    if tool in {'CUT', 'SPLIT', 'PLATE', 'WRINKLE'}:
+    if tool in {'CUT', 'SPLIT', 'PLATE', 'WRINKLE', 'CDRAPE'}:
         extra.append(_seg('Surface', brush, 'surface_mode'))
         if brush.surface_mode and tool in {'CUT', 'SPLIT'}:
             extra.append(_cell('mini', 'Gap', action=('number',), data=brush, prop='surface_gap', width=110))

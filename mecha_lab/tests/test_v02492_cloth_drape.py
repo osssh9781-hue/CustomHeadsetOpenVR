@@ -2,13 +2,14 @@
 body under it a light grid collider, frames on a timer; Enter keeps the cloth object, Esc drops it."""
 import inspect
 import math
+import types
 
 import numpy as np
 from _harness import bpy, check, fresh, select_only, summary
 from mathutils import Quaternion, Vector
 
 import mecha_lab
-from mecha_lab import cloth_drape as cd, core_geometry as cg, cut_engine as ce, lasso_sketch as ls, tool_state as ts, workspace_ui as wsui
+from mecha_lab import cloth_drape as cd, core_geometry as cg, cut_engine as ce, lasso_sketch as ls, surface_lasso as sl, tool_state as ts, workspace_ui as wsui
 
 mecha_lab.register()
 fresh()
@@ -383,6 +384,54 @@ check('Esc ends the session with no grab left', 'dropped' in cd.cancel(C) and cd
 check('The modal takes the left mouse for the grab and the status line says so',
       all(k_ in inspect.getsource(cd.MCH_OT_cdrape_sim.modal) for k_ in ("grab_start_event", "grab_move_event", "grab_end_event", "'LEFTMOUSE'"))
       and 'drag the cloth' in inspect.getsource(cd.status))
+# ---- 0.24.95 Surface mode (user: "그냥 표면에 그리는 모드도 만들어 주라"): points clicked ON the body, orbit between
+S.mch_brush.surface_mode = True
+check('Cloth Drape is a Surface Lasso tool (the Surface button shows for it)', sl.enabled(C, 'CDRAPE') and 'CDRAPE' in sl.PATCH_MODES
+      and "'CDRAPE'}:\n        sk.prop(brush, 'surface_mode'" in inspect.getsource(wsui))
+FRONT = cg.OrthoProjector(Quaternion((1, 0, 0), math.radians(90)))                      # looking along +Y at the sphere
+SIDE = cg.OrthoProjector(Quaternion((0, 0, 1), math.radians(90)) @ Quaternion((1, 0, 0), math.radians(90)))
+VIEW = [FRONT]
+sl.make_projector = lambda region, rv3d: VIEW[0]
+
+
+class Ctx:
+    def __init__(self):
+        self.area = types.SimpleNamespace(type='VIEW_3D', header_text_set=lambda t: None, tag_redraw=lambda: None)
+        self.region = types.SimpleNamespace(width=1000, height=1000)
+        self.region_data = object()
+
+    scene = property(lambda self: bpy.context.scene)
+    view_layer = property(lambda self: bpy.context.view_layer)
+    selected_objects = property(lambda self: bpy.context.selected_objects)
+    collection = property(lambda self: bpy.context.scene.collection)
+    preferences = property(lambda self: bpy.context.preferences)
+
+    def evaluated_depsgraph_get(self):
+        return bpy.context.evaluated_depsgraph_get()
+
+
+select_only(body)
+ctx, op = Ctx(), sl.SurfaceLogic()
+VIEW[0] = FRONT
+op.start(ctx, (450, 450), 'CDRAPE')
+for xy in [(540, 450), (540, 560)]:
+    op.click(ctx, xy)
+VIEW[0] = SIDE                                       # orbit while drawing: the outline goes round to the side
+for xy in [(450, 560), (450, 450)]:
+    op.click(ctx, xy)
+check('Surface: 5 points stuck on the sphere, seen from two views', len(op.points) == 5 and all(abs(p.length - 1.0) < 0.05 for p in op.world_points()),
+      [round(p.length, 3) for p in op.world_points()])
+parts, msg = op.finish(ctx)
+ob_s = C.view_layer.objects.active
+check('Enter: a Cloth Drape laid over the drawn region (session ready)', parts is not None and ob_s is not None and ob_s.name.startswith('Cloth Drape')
+      and cd.sim_active() and not cd.SIM['running'], msg)
+if parts is not None:
+    co_s = np.array([(ob_s.matrix_world @ v.co)[:] for v in ob_s.data.vertices])
+    r_s = np.linalg.norm(co_s, axis=1)
+    check('... the cloth sits just off the sphere on the drawn (front-right) side', r_s.min() > 0.99 and r_s.max() < 1.1
+          and co_s[:, 0].mean() > 0.05 and co_s[:, 1].mean() < -0.3, (r_s.min(), r_s.max(), co_s[:, 0].mean(), co_s[:, 1].mean()))
+    cd.cancel(C)
+S.mch_brush.surface_mode = False
 check('Cloth Drape key maps carry the sketch keys (Enter / Alt+Enter / Backspace / Esc) and Space for the drape',
       any(k[0] == 'mch.lasso_sketch_key' for k in wsui.MCH_TOOL_cloth_drape.bl_keymap) and any(k[0] == 'mch.cdrape_sim' for k in wsui.MCH_TOOL_cloth_drape.bl_keymap))
 summary()
