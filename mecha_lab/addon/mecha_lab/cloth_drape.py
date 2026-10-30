@@ -10,9 +10,13 @@ Marvelous Designer) and drops onto the body.
     Or **Drape This Mesh**: the active mesh itself (a remeshed piece of your own) is the cloth, laid as it is on
     the other selected mesh (or its parent) - its open edges are the rim, selected points stay too; Enter keeps
     the mesh changed, Esc puts the saved copy back.
+    Or **Wrap This Mesh**: a cloth round the whole body like a wrapping cloth (bojagi) - a copy of the body (a
+    light one for a heavy body), lifted off by Gap and bigger by Looseness, pressed onto the body by Wrap Pressure
+    (like vacuum packing) so the excess fabric bunches into wrinkles; a new "Cloth Wrap" object.
 """
 from __future__ import annotations
 
+import math
 import time
 
 import bpy
@@ -49,6 +53,10 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
     keep: FloatProperty(name='Silhouette Keep', description='A soft spring back to the laid patch', default=5.0, min=0.0, max=100.0, subtype='PERCENTAGE')
     gap: FloatProperty(name='Gap', description='How far above the body the cloth rests, as % of the outline size',
                        default=0.6, min=0.0, max=5.0, subtype='PERCENTAGE')
+    wrap_tight: FloatProperty(name='Wrap Pressure', description='Wrap This Mesh: how hard the loose cloth is pressed onto the body (like vacuum packing) - the excess fabric (Looseness) bunches into wrinkles',
+                              default=50.0, min=0.0, max=200.0, subtype='PERCENTAGE')
+    wrap_points: IntProperty(name='Wrap Points', description='Wrap This Mesh: the cloth copy is kept to about this many points (a decimated copy of a heavy body)',
+                             default=40000, min=1000, soft_max=300000)
     pin_rim: BoolProperty(name='Pin Rim', description='The outline edge stays where it was drawn (sewn on); off: the cloth is free', default=True)
     frames: IntProperty(name='Frames', default=60, min=5, max=300)
 
@@ -89,7 +97,7 @@ def patch_from_loops(context, loops, projector, spacing_pct):
     return target, me, nb, max((hi - lo).length, 1e-6)
 
 
-def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_ob=None):
+def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_ob=None, wrap=False):
     """The cloth + the collider for the mesh ``me``: a lasso patch (local space of ``target``, the first ``nb``
     points its rim) or (``to_cloth``: the matrix that brings the target's points into the cloth's space) a mesh
     of its own laid on ``target``.  Returns the session."""
@@ -105,7 +113,11 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
     margin = max(spacing * MARGIN, gap * 0.5)
     cloth_co = co + nrm * (gap + spacing * GAP)
     pin = np.zeros(n)
-    if st.pin_rim:
+    if st.pin_rim and wrap:                           # a wrapped tube: its open ends held firmly
+        rim = wl.boundary_verts(me)
+        if len(rim):
+            pin[rim] = 1.0
+    elif st.pin_rim:
         if to_cloth is None:
             pin[:min(nb, n)] = 1.0
         else:                                         # a mesh of its own: its open edges are the rim
@@ -121,6 +133,7 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
     cloth.sor = SOR
     cloth.smooth = smooth
     cloth.scale_e = cloth.scale_b = (1.0 - st.shrink / 100.0) * (1.0 + st.slack / 100.0)
+    cloth.max_step = max(spacing * 1.5, size * 0.01)
     cloth.init = cloth_co.copy()
     # the collider: the target's points near the patch only, with their normals, baked into a grid
     tco = mio.read_co(target.data)
@@ -132,7 +145,7 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
         tn = tn @ R.T
         tn /= np.maximum(np.linalg.norm(tn, axis=1), 1e-12)[:, None]
     lo, hi = co.min(0) - size * PAD, co.max(0) + size * PAD
-    if to_cloth is not None:                         # a mesh of its own may slide far down the body: the whole body
+    if to_cloth is not None or wrap:                 # a mesh of its own may slide far down the body: the whole body
         near = np.ones(len(tco), bool) if len(tco) <= 400000 else np.all((tco >= lo - size * 2) & (tco <= hi + size * 2), axis=1)
     else:
         near = np.all((tco >= lo) & (tco <= hi), axis=1)
@@ -141,7 +154,8 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
     t = time.perf_counter()
     grid = cloth_pbd.GridCollider(tco[near] - tn[near] * (gap - margin) if gap > margin else tco[near], tn[near],
                                   cell=max(spacing * 0.8, size / 160.0), band=GRID_BAND)
-    sess = dict(cloth=cloth, grid=grid, margin=margin, friction=st.stick / 100.0, damping=damping,
+    sess = dict(cloth=cloth, grid=grid, margin=margin, friction=st.stick / 100.0, damping=damping, wrap=wrap,
+                press=(size * 0.004 * st.wrap_tight / 50.0) if wrap else 0.0,
                 gdir=wl._gravity_dir(gdir_ob or target), size=size, frames=st.frames, frame=0, points=n, collider=int(near.sum()),
                 grid_time=time.perf_counter() - t, stage='run')
 
@@ -157,7 +171,12 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
 def advance(sess, st):
     cloth = sess['cloth']
     g = sess['gdir'] * (GRAV * st.gravity / 100.0 * sess['size'])
-    cloth.step(force=None, gravity=g, damping=sess['damping'], iterations=ITERATIONS,
+    force = None
+    if sess.get('wrap') and sess.get('press', 0.0) > 0:          # the wrap's pressure: every point toward the body
+        d, inward = sess['grid'].inward(cloth.co)
+        force = inward * sess['press']
+        force[d <= sess['margin'] * 1.2] = 0.0
+    cloth.step(force=force, gravity=g, damping=sess['damping'], iterations=ITERATIONS,
                keep_rate=KEEP_RATE if st.keep > 0 else 0.0)
     sess['frame'] += 1
     return cloth.co
@@ -273,8 +292,93 @@ def perform_mesh(context, cloth, body):
             f'{sess["collider"]:,} body points (Space drape · Enter keep · Esc put back)')
 
 
+def wrap_copy(context, body, target_points):
+    """An even, pole-free copy of ``body``'s surface for the wrapping cloth: Blender's voxel remesh at the voxel
+    size that gives about ``target_points`` points (the surface area / target).  dict(co, vi, start, tot)."""
+    me = body.data
+    area = sum(p.area for p in me.polygons) or 1.0
+    voxel = max(math.sqrt(area / max(target_points, 100)), 1e-5)
+    tmp = bpy.data.objects.new(body.name + '_mch_cd_wrap', me)
+    context.scene.collection.objects.link(tmp)
+    try:
+        md = tmp.modifiers.new('Remesh', 'REMESH')
+        md.mode = 'VOXEL'
+        md.voxel_size = voxel
+        md.use_smooth_shade = True
+        dg = context.evaluated_depsgraph_get()
+        ev = tmp.evaluated_get(dg)
+        pm = ev.to_mesh()
+        try:
+            pm.update()
+            start, tot = mio.read_face_starts(pm)
+            out = dict(co=mio.read_co(pm), vi=mio.read_corner_verts(pm), start=start, tot=tot, points=len(pm.vertices), voxel=voxel)
+        finally:
+            ev.to_mesh_clear()
+    finally:
+        bpy.data.objects.remove(tmp)
+    return out
+
+
+def perform_wrap(context, body):
+    """A wrapping cloth round the whole body, like a bojagi: a copy of the body's mesh (decimated to Wrap Points),
+    lifted off it by Gap, is the cloth; nothing is pinned; Wrap Tightness shortens its threads so it pulls in onto
+    the body and the excess bunches into wrinkles, gravity sags it; the body is the collider.  A new object
+    "Cloth Wrap" (Enter keeps, Esc drops)."""
+    st = settings(context)
+    if st is None:
+        raise cg.CutError('Cloth Drape settings missing')
+    if sim_active():
+        raise cg.CutError('Cloth Drape: keep (Enter) or drop (Esc) the cloth you have first')
+    if body is None or body.type != 'MESH' or not len(body.data.polygons):
+        raise cg.CutError('Select the mesh to wrap')
+    src = body.data
+    open_rim = len(wl.boundary_verts(src)) > 0
+    if open_rim:                                            # a tube / sleeve: the copy keeps its open ends (pinned)
+        if len(src.vertices) > st.wrap_points:
+            px = wl.proxy_mesh(context, body, st.wrap_points)
+            me = bpy.data.meshes.new('MCH_ClothWrap')
+            faces = [tuple(int(v) for v in px['vi'][s0:s0 + t]) for s0, t in zip(px['start'], px['tot'])]
+            me.from_pydata([tuple(c) for c in px['co']], [], faces)
+        else:
+            me = src.copy()
+            me.name = 'MCH_ClothWrap'
+    else:                                                   # closed: an even voxel copy (no pole fans, no slivers)
+        px = wrap_copy(context, body, st.wrap_points)
+        if not px['points']:
+            raise cg.CutError('The wrap copy came out empty (is the mesh closed enough for a voxel remesh?)')
+        me = bpy.data.meshes.new('MCH_ClothWrap')
+        faces = [tuple(int(v) for v in px['vi'][s0:s0 + t]) for s0, t in zip(px['start'], px['tot'])]
+        me.from_pydata([tuple(c) for c in px['co']], [], faces)
+    me.update()
+    for p in me.polygons:
+        p.use_smooth = True
+    co = mio.read_co(me)
+    size = float(np.linalg.norm(co.max(0) - co.min(0)))
+    ob = bpy.data.objects.new('Cloth Wrap', me)
+    coll = body.users_collection[0] if body.users_collection else context.scene.collection
+    coll.objects.link(ob)
+    ob.matrix_world = body.matrix_world.copy()
+    ob.parent = body
+    ob.matrix_parent_inverse = body.matrix_world.inverted_safe()
+    ob[SRC_KEY] = body.name
+    for o in context.selected_objects:
+        o.select_set(False)
+    ob.select_set(True)
+    context.view_layer.objects.active = ob
+    surface = co.copy()
+    sess = build(context, body, me, 0, size, st, to_cloth=None, pin_sel=False, gdir_ob=body, wrap=True)
+    mio.write_co(me, sess['cloth'].co)
+    me.update()
+    SIM.clear()
+    SIM.update(ob=ob.name, target=body.name, nb=0, size=size, sess=sess, running=False, done=False, want=None,
+               surface=surface, start=sess['cloth'].init.copy(), snapshot=_snapshot(st), mode='WRAP')
+    return (f'Cloth Wrap round {body.name}: {sess["points"]:,} cloth points, looseness {st.slack:.0f} %, pressure {st.wrap_tight:.0f} % '
+            f'(Space wrap · Enter keep · Esc drop)')
+
+
 def _snapshot(st):
-    return tuple(getattr(st, k) for k in ('fabric', 'slack', 'shrink', 'gravity', 'stick', 'keep', 'gap', 'pin_rim', 'frames'))
+    return tuple(getattr(st, k) for k in ('fabric', 'slack', 'shrink', 'gravity', 'stick', 'keep', 'gap', 'pin_rim', 'frames',
+                                          'wrap_tight'))
 
 
 def restart(context):
@@ -471,6 +575,27 @@ class MCH_OT_cdrape_mesh(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_cdrape_wrap(bpy.types.Operator):
+    """Wrap the active mesh in a cloth like a wrapping cloth (bojagi): a copy of it lifted off, pulled in by Wrap Tightness, the excess bunching into wrinkles; Space wraps, Enter keeps the new object, Esc drops it"""
+    bl_idname = 'mch.cdrape_wrap'
+    bl_label = 'Wrap This Mesh'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.view_layer.objects.active
+        return ob is not None and ob.type == 'MESH' and context.mode == 'OBJECT' and not sim_active()
+
+    def execute(self, context):
+        try:
+            msg = perform_wrap(context, context.view_layer.objects.active)
+        except cg.CutError as ex:
+            self.report({'WARNING'}, str(ex))
+            return {'CANCELLED'}
+        self.report({'INFO'}, msg)
+        return {'FINISHED'}
+
+
 class MCH_OT_cdrape_control(bpy.types.Operator):
     """Drape / pause, keep, drop or restart the cloth (the panel buttons)"""
     bl_idname = 'mch.cdrape_control'
@@ -521,6 +646,12 @@ def draw(layout, context):
     r = box.row()
     r.enabled = not live
     r.operator('mch.cdrape_mesh', text='Drape This Mesh (on the other selected)', icon='MOD_CLOTH')
+    r = box.row(align=True)
+    r.enabled = not live
+    r.operator('mch.cdrape_wrap', text='Wrap This Mesh (like a wrapping cloth)', icon='MOD_SHRINKWRAP')
+    r = box.row(align=True)
+    r.prop(st, 'wrap_tight', slider=True)
+    r.prop(st, 'wrap_points')
     box.row().prop(st, 'fabric', expand=True)
     col = box.column(align=True)
     col.prop(st, 'slack', slider=True)
@@ -536,7 +667,7 @@ def draw(layout, context):
     r.prop(st, 'frames')
 
 
-CLASSES = (MCH_PG_ClothDrape, MCH_OT_cdrape_sim, MCH_OT_cdrape_mesh, MCH_OT_cdrape_control)
+CLASSES = (MCH_PG_ClothDrape, MCH_OT_cdrape_sim, MCH_OT_cdrape_mesh, MCH_OT_cdrape_wrap, MCH_OT_cdrape_control)
 
 
 def register():

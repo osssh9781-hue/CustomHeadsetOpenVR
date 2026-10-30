@@ -113,11 +113,19 @@ class Cloth:
         mean = acc / np.maximum(self.deg_e, 1)[:, None]
         self.co += (mean - self.co) * amount
 
+    max_step = 0.0       # a point moves at most this far per frame (0 = no cap): a pole fan's thin triangles
+    #                      can otherwise throw a point off in one frame
+
     def step(self, force=None, gravity=None, damping=0.1, iterations=5, keep_rate=0.3):
         """One frame: velocity + forces, then the constraint passes.  ``force`` (N, 3) a per-point push for this
         step (a filter), ``gravity`` (3,) per step.  Pinned points are put back by their pin weight."""
         before = self.co.copy()
         vel = (self.co - self.prev) * (1.0 - damping)
+        if self.max_step > 0:
+            ln = np.linalg.norm(vel, axis=1)
+            over = ln > self.max_step
+            if np.any(over):
+                vel[over] *= (self.max_step / ln[over])[:, None]
         self.prev = self.co.copy()
         self.co = self.co + vel
         if gravity is not None:
@@ -136,6 +144,12 @@ class Cloth:
                 self.co = self.co * (1.0 - self.pin)[:, None] + self.init * self.pin[:, None]
             if self.collide is not None:
                 self.collide(self)
+        if self.max_step > 0:
+            d = self.co - before
+            ln = np.linalg.norm(d, axis=1)
+            over = ln > self.max_step * 2.0
+            if np.any(over):
+                self.co[over] = before[over] + d[over] * (self.max_step * 2.0 / ln[over])[:, None]
         return self.co
 
     # -- filters ------------------------------------------------------------------------------------------------
@@ -227,6 +241,22 @@ class GridCollider:
                     ws.append(wy * (tz if dz else 1.0 - tz))
                     idxs.append(base + (dx * self.strides[0] + dy * self.strides[1] + dz))
         return inside, ws, idxs
+
+    def inward(self, co):
+        """(distance, unit direction toward the surface) of each point - the pull of a wrap.  Points outside
+        the band get no direction (zeros)."""
+        inside, ws, idxs = self._corners(co)
+        d = np.zeros(len(co), np.float32)
+        g = np.zeros((len(co), 3), np.float32)
+        for w, idx in zip(ws, idxs):
+            d += w * self.sdf[idx]
+            g += w[:, None] * self.grad[idx]
+        d[~inside] = self.FAR
+        ln = np.linalg.norm(g, axis=1)
+        ok = (ln > 1e-9) & inside & (d < self.FAR)
+        out = np.zeros((len(co), 3))
+        out[ok] = -g[ok] / ln[ok][:, None]
+        return d, out
 
     def distance(self, co):
         """The signed distance of each point (FAR outside the band / the grid): a trilinear look-up."""
