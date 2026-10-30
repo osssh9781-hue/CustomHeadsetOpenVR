@@ -91,8 +91,8 @@ check('... the seam pairs join a front rim point to the same back rim point; the
 gap0 = np.linalg.norm(co2[sew[:, 1]] - co2[sew[:, 0]], axis=1).mean()
 info_d = cd.drape(C, body, me2, nb2, size2, st, frames=60, sew=sew, pin_idx=info['top'])
 co3 = np.array([v.co[:] for v in me2.vertices])
-check('drape with the seams: the two pieces are pulled together round the sides (the seam gap from ~0.8 to about 1 cm), outside the sphere, no NaN',
-      info_d['seam_gap'] < 0.05 and np.linalg.norm(co3, axis=1).min() > 0.97 and np.all(np.isfinite(co3)), (gap0, info_d['seam_gap'], np.linalg.norm(co3, axis=1).min()))
+check('drape with the seams: the two pieces are pulled together round the sides (the seam gap from ~0.8 to a few cm; the wide bending of Wrinkles 70 holds it a little open), outside the sphere, no NaN',
+      info_d['seam_gap'] < 0.1 and np.linalg.norm(co3, axis=1).min() > 0.97 and np.all(np.isfinite(co3)), (gap0, info_d['seam_gap'], np.linalg.norm(co3, axis=1).min()))
 n_before = len(me2.vertices)
 welded = cd.weld_seams(me2, sew)
 check('weld_seams: every seam pair becomes one point', welded == len(sew) and len(me2.vertices) == n_before - len(sew), (welded, len(me2.vertices)))

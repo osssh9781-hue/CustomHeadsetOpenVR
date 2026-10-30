@@ -47,6 +47,31 @@ def edges_of(faces_vi, faces_start, faces_tot):
     return edges, pairs, f_of
 
 
+def ring_pairs(edges, n, rings=(2, 3, 4)):
+    """Point pairs at graph distance exactly r for r in ``rings``: a BFS from every point over the edge graph.
+    Returns {r: (M, 2) int64 (a < b)}."""
+    nb = [[] for _ in range(n)]
+    for a, b in np.asarray(edges, np.int64).tolist():
+        nb[a].append(b)
+        nb[b].append(a)
+    R = max(rings)
+    out = {r: [] for r in rings}
+    for u in range(n):
+        seen = {u}
+        frontier = [u]
+        for r in range(1, R + 1):
+            nxt = []
+            for v in frontier:
+                for w in nb[v]:
+                    if w not in seen:
+                        seen.add(w)
+                        nxt.append(w)
+            if r in rings:
+                out[r].extend((u, w) for w in nxt if w > u)
+            frontier = nxt
+    return {r: np.array(v, np.int64).reshape(-1, 2) for r, v in out.items()}
+
+
 class Cloth:
     def __init__(self, co, faces_vi, faces_start, faces_tot, mass=None, bend=0.5, keep=0.0, pin=None):
         self.co = np.array(co, np.float64)
@@ -100,6 +125,15 @@ class Cloth:
         deg = np.maximum(deg, 1)
         self.co += acc / deg[:, None]
 
+    def set_far(self, rings=(2, 3, 4), strengths=(1.0, 0.8, 0.6)):
+        """The wide bending constraints: every pair of points exactly r edges apart (r in ``rings``) keeps its
+        rest distance with the given strength.  A BFS from every point over the edge graph (python sets: about
+        0.15 s per 10k points)."""
+        pairs = ring_pairs(self.edges, self.n, rings)
+        self.far = [(pairs[r], np.linalg.norm(self.co[pairs[r][:, 1]] - self.co[pairs[r][:, 0]], axis=1), float(st))
+                    for r, st in zip(rings, strengths) if len(pairs[r])]
+        return sum(len(f[0]) for f in self.far)
+
     def jitter(self, amount, seed=1):
         """A little random offset (x ``amount``): a perfectly regular surface needs it to start folding."""
         rng = np.random.default_rng(seed)
@@ -122,6 +156,9 @@ class Cloth:
     #                      can otherwise throw a point off in one frame
     floor = None         # (down (3,), level): no point goes further down than ``level`` along ``down`` - the cloth
     #                      cannot hang below the lowest pinned ring (Stop at Pins)
+    far = None           # [(pairs, rest, strength), ...] wide bending: points 2, 3, 4 edges apart keep their distance,
+    #                      so the cloth cannot crumple cell by cell and buckles into folds a few cells wide instead
+    far_scale = 1.0      # x the far strengths (the Wrinkles slider)
     sew = None           # (M, 2) point pairs pulled together (rest length 0): the seams between pattern pieces
     sew_strength = 1.0   # how hard per pass (ramped up over the first frames by the caller)
     sew_pbd = True       # the seams as plain length-0 constraints here; off when the caller pulls them its own way
@@ -146,6 +183,10 @@ class Cloth:
             self._project(self.edges, self.rest_e * self.scale_e, 1.0)
             if self.bend > 0 and len(self.bends):
                 self._project(self.bends, self.rest_b * self.scale_b, self.bend)
+            if self.far and self.far_scale > 0:
+                sc = float(np.mean(self.scale_e)) if np.ndim(self.scale_e) else float(self.scale_e)
+                for pairs, rest, strength in self.far:
+                    self._project(pairs, rest * sc, strength * self.far_scale)
             if self.sew is not None and len(self.sew) and self.sew_strength > 0 and self.sew_pbd:
                 self._project(self.sew, np.zeros(len(self.sew)), self.sew_strength,
                               max_move=self.max_step * 0.5 if self.max_step > 0 else None)

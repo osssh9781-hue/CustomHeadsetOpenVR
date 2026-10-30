@@ -106,6 +106,8 @@ class MCH_PG_WrinkleLines(bpy.types.PropertyGroup):
                             default=100.0, min=0.0, max=200.0, subtype='PERCENTAGE', update=_strength_changed)
     pin_boundary: BoolProperty(name='Pin Mesh Boundary', description='The open edges of the mesh (the ends of a sleeve) stay put',
                                default=True)
+    wrinkles: FloatProperty(name='Wrinkles', description='How much the cloth folds: 0 = smooth broad folds (the old solver), 100 = wide bending (points up to 4 edges apart hold their distance, little smoothing, a little jitter) - folds a few cells wide everywhere the fabric is loose',
+                            default=70.0, min=0.0, max=100.0, subtype='PERCENTAGE')
     stop_at_pins: BoolProperty(name='Stop at Pins', description='The cloth cannot hang lower (world down) than the lowest pinned point: nothing sags below the bottom ring',
                                default=False)
     pin_selected: BoolProperty(name='Pin Selected', description='Points selected in Edit Mode stay put too', default=False)
@@ -264,6 +266,22 @@ TUBE = 1.0 / 3.0                 # the tube's radius = Wrinkle Size x this (5 % 
 MARGIN = 0.25                    # the cloth rests this x tube radius above the collider (the collider sits that far in)
 GAP = 0.6                        # the cloth copy starts this x tube radius above the collider
 ITERATIONS = 6                   # constraint passes per frame
+WRINKLE_BEND = 0.5               # 0.24.93 at Wrinkles 100 %: the 1-ring bending, the smoothing and the start jitter
+WRINKLE_SMOOTH = 0.1
+WRINKLE_JITTER = 0.3
+
+
+def wrinkle_params(fabric, wrinkles):
+    """(bend, smooth, far_scale, jitter) for the Wrinkles slider (0..100) on a FABRIC_SIM tuple.  The arm test
+    (0.24.93): with the wide bending on, smoothing 0.1 = dense folds, 0.3 - 0.4 = a little softer, 0.5 and no wide
+    bending = the old smooth look; so the smoothing runs 0.5 -> 0.1 on the square of the slider (70 % = 0.3,
+    50 % = 0.4) and the wide bending's strength follows the slider itself."""
+    bend, _fr, _da, smooth = fabric
+    w = max(0.0, min(1.0, wrinkles / 100.0))
+    return (bend * (1.0 - w) + WRINKLE_BEND * w,
+            smooth * (1.0 - w * w) + WRINKLE_SMOOTH * w * w,
+            w,
+            WRINKLE_JITTER * w)
 SOR = 1.3
 DAMPING = 0.3
 GRAV_UNIT = 0.0015 / (0.3 * 3.3) # gravity 30 % on a 3.3-unit part = the probe's 0.0015 / frame^2 (x part size)
@@ -531,13 +549,20 @@ def build(context, ob, st, sess):
             for i in range(len(co)):
                 if kd.find(co[i])[2] < edge:
                     pin[i] = 1.0
-    bend, friction, damping, smooth = FABRIC_SIM.get(st.fabric, FABRIC_SIM['COTTON'])
+    fabric = FABRIC_SIM.get(st.fabric, FABRIC_SIM['COTTON'])
+    friction, damping = fabric[1], fabric[2]
+    bend, smooth, far_scale, jit = wrinkle_params(fabric, getattr(st, 'wrinkles', 0.0))
     cloth = cloth_pbd.Cloth(co, vi, start, tot, bend=bend, keep=st.keep / 100.0 * KEEP_SCALE, pin=pin)
     cloth.sor = SOR
     cloth.smooth = smooth
     cloth.scale_e = cloth.scale_b = (1.0 - st.shrink / 100.0) * (1.0 + st.slack / 100.0)
     cloth.init = co.copy()
     edge_len = float(np.mean(np.linalg.norm(co[cloth.edges[:, 1]] - co[cloth.edges[:, 0]], axis=1))) if len(cloth.edges) else tube_r
+    if far_scale > 0:                                     # 0.24.93 wide bending: folds a few cells wide, not cell noise
+        cloth.set_far()
+        cloth.far_scale = far_scale
+        cloth.jitter(edge_len * jit)
+        cloth.init = co.copy()
     cell = max(edge_len, sess['size'] / GRID_MIN)
     t = time.perf_counter()
     grid = cloth_pbd.GridCollider(collider, nrm, cell, band=GRID_BAND)
@@ -680,7 +705,7 @@ def run(context):
 def _snapshot(st):
     return tuple(getattr(st, k) for k in ('mode', 'fabric', 'size', 'fade', 'lift', 'shrink', 'slack', 'fold', 'gravity', 'keep',
                                           'pin_boundary', 'pin_selected', 'self_collision', 'detail', 'frames', 'sim_points',
-                                          'stop_at_pins'))
+                                          'stop_at_pins', 'wrinkles'))
 
 
 def step(context):
@@ -1278,6 +1303,7 @@ def draw(layout, context):
     col.prop(st, 'shrink', slider=True)
     col.prop(st, 'slack', slider=True)
     col.prop(st, 'gravity', slider=True)
+    col.prop(st, 'wrinkles', slider=True)
     col.prop(st, 'keep', slider=True)
     r = box.row(align=True)
     r.prop(st, 'pin_boundary', toggle=True)

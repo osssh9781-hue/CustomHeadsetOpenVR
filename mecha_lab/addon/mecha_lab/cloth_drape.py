@@ -69,6 +69,8 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
     two_sides: BoolProperty(name='Front + Back', description='The lasso also makes a back piece on the far side of the body and the two are sewn together down the sides (the top and bottom stay open), like front / back pattern pieces in Marvelous Designer',
                             default=False)
     stop_at_pins: BoolProperty(name='Stop at Pins', description='The cloth cannot hang lower (world down) than the lowest pinned point', default=False)
+    wrinkles: FloatProperty(name='Wrinkles', description='How much the cloth folds: 0 = smooth broad folds, 100 = wide bending (points up to 4 edges apart hold their distance, little smoothing, a little jitter) - folds a few cells wide wherever the fabric is loose',
+                            default=70.0, min=0.0, max=100.0, subtype='PERCENTAGE')
     frames: IntProperty(name='Frames', default=60, min=5, max=300)
 
 
@@ -226,10 +228,15 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
         sel = np.zeros(n, bool)
         me.vertices.foreach_get('select', sel)
         pin[sel] = 1.0
-    bend, friction, damping, smooth = wl.FABRIC_SIM.get(st.fabric, wl.FABRIC_SIM['COTTON'])
+    fabric = wl.FABRIC_SIM.get(st.fabric, wl.FABRIC_SIM['COTTON'])
+    friction, damping = fabric[1], fabric[2]
+    bend, smooth, far_scale, jit = wl.wrinkle_params(fabric, getattr(st, 'wrinkles', 0.0))
     cloth = cloth_pbd.Cloth(cloth_co, vi, start, tot, bend=bend, keep=st.keep / 100.0 * KEEP_SCALE, pin=pin)
     cloth.sor = SOR
     cloth.smooth = smooth
+    if far_scale > 0:                                     # 0.24.93 wide bending: folds a few cells wide, not cell noise
+        cloth.set_far()
+        cloth.far_scale = far_scale
     scale = (1.0 - st.shrink / 100.0) * (1.0 + st.slack / 100.0)
     cloth.scale_e = cloth.scale_b = scale
     if np.any(pin >= 1) and scale != 1.0:            # the fabric next to a seam cannot be loose at once: taper over 4 rings
@@ -247,6 +254,8 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
         ba, bb = cloth.bends[:, 0], cloth.bends[:, 1]
         cloth.scale_b = 1.0 + (scale - 1.0) * np.minimum(tap[ba], tap[bb])
     cloth.max_step = max(spacing * 1.5, size * 0.01)
+    if jit > 0:
+        cloth.jitter(spacing * jit)
     cloth.init = cloth_co.copy()
     if sew is not None and len(sew):
         cloth.sew = np.asarray(sew, np.int64)         # (the pairs; the pull itself is seam_pull in the collide pass)
@@ -614,7 +623,7 @@ def perform_sew_copy(context, plate):
 
 def _snapshot(st):
     return tuple(getattr(st, k) for k in ('fabric', 'slack', 'shrink', 'gravity', 'stick', 'keep', 'gap', 'pin_rim', 'frames',
-                                          'wrap_tight', 'use_lines', 'stop_at_pins', 'two_sides', 'puff'))
+                                          'wrap_tight', 'use_lines', 'stop_at_pins', 'two_sides', 'puff', 'wrinkles'))
 
 
 def restart(context):
@@ -995,6 +1004,7 @@ def draw(layout, context):
     col.prop(st, 'shrink', slider=True)
     col.prop(st, 'gravity', slider=True)
     col.prop(st, 'stick', slider=True)
+    col.prop(st, 'wrinkles', slider=True)
     col.prop(st, 'keep', slider=True)
     col = box.column(align=True)
     col.prop(st, 'gap', slider=True)
