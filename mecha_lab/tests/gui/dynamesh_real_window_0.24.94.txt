@@ -1,0 +1,6 @@
+before {'open': 48, 'nonmanifold': 0, 'flipped': 0, 'parts': 1, 'verts': 1009, 'faces': 1008}
+DynaMesh (shelf): {'FINISHED'} mode SCULPT on True fix: 1 hole filled
+after 1 {'open': 0, 'nonmanifold': 0, 'flipped': 0, 'parts': 1, 'verts': 272, 'faces': 270}
+DynaMesh again (Ctrl drag canvas path): {'FINISHED'} mode SCULPT fix: 
+after 2 {'open': 0, 'nonmanifold': 0, 'flipped': 0, 'parts': 1, 'verts': 272, 'faces': 270}
+DONE
