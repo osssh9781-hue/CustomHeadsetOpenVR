@@ -164,6 +164,13 @@ class Cloth:
     sew = None           # (M, 2) point pairs pulled together (rest length 0): the seams between pattern pieces
     sew_strength = 1.0   # how hard per pass (ramped up over the first frames by the caller)
     sew_pbd = True       # the seams as plain length-0 constraints here; off when the caller pulls them its own way
+    hold = None          # 0.24.95 (idx, weight, target): the grabbed points are held at ``target`` by ``weight``
+    #                      every pass (the user drags the cloth out of the body while it drapes)
+
+    def apply_hold(self):
+        if self.hold is not None:
+            idx, w, tgt = self.hold
+            self.co[idx] = self.co[idx] * (1.0 - w)[:, None] + tgt * w[:, None]
 
     def step(self, force=None, gravity=None, damping=0.1, iterations=5, keep_rate=0.3):
         """One frame: velocity + forces, then the constraint passes.  ``force`` (N, 3) a per-point push for this
@@ -198,6 +205,7 @@ class Cloth:
                 self.co += (self.init - self.co) * (self.keep * keep_rate / iterations)[:, None]
             if np.any(self.pin > 0):        # (a pin holds its point where it started: Blender's mask)
                 self.co = self.co * (1.0 - self.pin)[:, None] + self.init * self.pin[:, None]
+            self.apply_hold()
             if self.collide is not None:
                 self.collide(self)
         if self.max_step > 0:
@@ -208,6 +216,7 @@ class Cloth:
                 self.co[over] = before[over] + d[over] * (self.max_step * 2.0 / ln[over])[:, None]
         if self.floor is not None:
             self.clamp_floor()
+        self.apply_hold()                   # (the grabbed points follow the hand whatever the frame cap)
         return self.co
 
     def clamp_floor(self):

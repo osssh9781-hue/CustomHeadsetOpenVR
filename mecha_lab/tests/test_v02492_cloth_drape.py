@@ -340,6 +340,49 @@ check('Enter: the combined outline becomes one Cloth Drape (session ready, sketc
 check('... the cloth covers both shapes (x from -0.4 to +0.8 units, one piece)',
       co_s[:, 0].min() < -0.35 and co_s[:, 0].max() > 0.75 and len(ob.data.vertices) > 200, (co_s[:, 0].min(), co_s[:, 0].max()))
 cd.cancel(C)
+
+# ---- 0.24.95 grab while it drapes (user: "중간중간 메시에 들어갈 때가 있어서 내가 잡아서 뗄 수 있게, 재생하는 중에")
+st.slack, st.gravity, st.stop_at_pins = 25.0, 200.0, False
+cd.perform(C, loops, Proj())
+ob = C.view_layer.objects.active
+sess = cd.SIM['sess']
+cl = sess['cloth']
+for _ in range(10):
+    cd.advance(sess, st)
+free = np.nonzero(cl.pin < 1.0)[0]
+k = int(free[np.argmax(cl.co[free, 2])])                       # the highest free point: pull it further up
+xy = np.c_[cl.co[:, 0] * PX + 500.0, cl.co[:, 2] * PX + 500.0]  # a fake screen: x -> px, z -> py (the test's view from -Y)
+grab = cd.grab_pick(sess, xy, (xy[k, 0] + 5.0, xy[k, 1] - 3.0), sess['spacing'])
+check('grab_pick: a press within 40 px takes the nearest free point and its neighbours (weights 1 at the centre, falling to 0)',
+      grab is not None and np.hypot(*(xy[grab['centre']] - xy[k])) < 40 and len(grab['idx']) > 5
+      and abs(grab['w'][list(grab['idx']).index(grab['centre'])] - 1.0) < 1e-9
+      and grab['w'].min() >= 0.0 and grab['w'].max() <= 1.0, None if grab is None else (grab['centre'], k, len(grab['idx'])))
+k = grab['centre']
+check('... a press far from the cloth grabs nothing (the lasso tool gets the click)', cd.grab_pick(sess, xy, (-5000.0, -5000.0), sess['spacing']) is None)
+check('... pinned rim points are never grabbed', all(cl.pin[i] < 1.0 for i in grab['idx']))
+z0 = cl.co[k, 2]
+start = cl.co[grab['idx']].copy()
+target = cd.grab_move(sess, grab, np.array([0.0, 0.0, 0.4]), running=True)
+for _ in range(8):
+    cd.advance(sess, st)                                           # the drape runs on while the hand holds the points
+check('grab_move while draping: the held point follows the hand through the frames (0.4 up, gravity notwithstanding)',
+      abs(cl.co[k, 2] - (z0 + 0.4)) < 0.02 and cl.hold is not None, (cl.co[k, 2], z0 + 0.4))
+moved = np.linalg.norm(cl.co[grab['idx']] - start, axis=1)
+check('... the neighbours came along less the further out (weights)', moved[grab['w'] > 0.8].mean() > moved[grab['w'] < 0.2].mean() + 0.05,
+      (moved[grab['w'] > 0.8].mean(), moved[grab['w'] < 0.2].mean()))
+cd.grab_release(sess, grab)
+check('grab_release: the hold is gone, no velocity left on the grabbed points', cl.hold is None and np.allclose(cl.prev[grab['idx']], cl.co[grab['idx']]))
+cd.advance(sess, st)
+cd.SIM['running'] = False
+grab2 = cd.grab_pick(sess, xy, (xy[k, 0], xy[k, 1]), sess['spacing'])
+c0 = cl.co[k].copy()
+cd.grab_move(sess, grab2, np.array([0.2, 0.0, 0.0]), running=False)
+check('paused: the grabbed points are put under the hand straight away', np.allclose(cl.co[k], c0 + (0.2, 0.0, 0.0)) and np.allclose(cl.prev[k], cl.co[k]))
+cd.grab_release(sess, grab2)
+check('Esc ends the session with no grab left', 'dropped' in cd.cancel(C) and cd.SIM.get('grab') is None)
+check('The modal takes the left mouse for the grab and the status line says so',
+      all(k_ in inspect.getsource(cd.MCH_OT_cdrape_sim.modal) for k_ in ("grab_start_event", "grab_move_event", "grab_end_event", "'LEFTMOUSE'"))
+      and 'drag the cloth' in inspect.getsource(cd.status))
 check('Cloth Drape key maps carry the sketch keys (Enter / Alt+Enter / Backspace / Esc) and Space for the drape',
       any(k[0] == 'mch.lasso_sketch_key' for k in wsui.MCH_TOOL_cloth_drape.bl_keymap) and any(k[0] == 'mch.cdrape_sim' for k in wsui.MCH_TOOL_cloth_drape.bl_keymap))
 summary()

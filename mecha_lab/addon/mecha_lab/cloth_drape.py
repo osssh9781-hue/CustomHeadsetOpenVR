@@ -361,6 +361,7 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
         raise cg.CutError('The body is nowhere near the cloth')
     grid = cloth_pbd.GridCollider(sco - snrm * (gap - margin) if gap > margin else sco, snrm, cell=cell, band=GRID_BAND)
     sess = dict(cloth=cloth, grid=grid, margin=margin, friction=st.stick / 100.0, damping=damping, wrap=wrap, tubes=tubes,
+                spacing=spacing,
                 sew=int(len(sew)) if sew is not None else 0,
                 puff=(size * 0.0015 * st.puff / 50.0) if puff else 0.0, puff_dir=nrm.copy() if puff else None,
                 puff_max=size * 0.35 * (st.slack / 100.0) ** 0.5 if puff else 0.0,
@@ -387,6 +388,8 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
 
 
 SEW_RAMP = 0.3                   # the seams pull at full strength after this share of the frames
+GRAB_PX = 40.0                   # 0.24.95 grab: the nearest cloth point within this many pixels of the click
+GRAB_RADIUS = 4.0                # ... pulls the points within this x the patch spacing with it (smooth falloff)
 
 
 def seam_pull(sess, strength):
@@ -434,6 +437,108 @@ def advance(sess, st):
                keep_rate=KEEP_RATE if st.keep > 0 else 0.0)
     sess['frame'] += 1
     return cloth.co
+
+
+# -----------------------------------------------------------------------------
+# 0.24.95 grab: drag the cloth while it drapes (user: "중간중간 메시에 들어갈 때가 있어서 잡아서 뗄 수 있게")
+# -----------------------------------------------------------------------------
+
+
+def grab_pick(sess, xy, mouse, spacing):
+    """The grab for a click at ``mouse`` (px): ``xy`` (N, 2) the cloth points on screen (NaN = behind the view).
+    Returns dict(idx, w, start) - the nearest point within GRAB_PX and the points within GRAB_RADIUS x spacing of
+    it (weights 1 at the centre, 0 at the rim) - or None.  Pinned points are not taken."""
+    cloth = sess['cloth']
+    d2 = ((xy - np.asarray(mouse, np.float64)[None, :]) ** 2).sum(1)
+    d2[~np.isfinite(d2)] = np.inf
+    d2[cloth.pin >= 1.0] = np.inf
+    k = int(np.argmin(d2))
+    if not d2[k] <= GRAB_PX ** 2:
+        return None
+    r = max(spacing * GRAB_RADIUS, 1e-9)
+    dist = np.linalg.norm(cloth.co - cloth.co[k][None, :], axis=1)
+    idx = np.nonzero((dist < r) & (cloth.pin < 1.0))[0]
+    w = (1.0 - (dist[idx] / r) ** 2) ** 2
+    return dict(idx=idx, w=w, start=cloth.co[idx].copy(), centre=k)
+
+
+def grab_move(sess, grab, offset, running):
+    """The grabbed points follow the hand: ``offset`` (3,) in the cloth's space.  While the drape runs they are
+    held there every pass (``Cloth.hold``); paused, they are put there straight away."""
+    cloth = sess['cloth']
+    idx, w = grab['idx'], grab['w']
+    target = grab['start'] + np.asarray(offset, np.float64)[None, :] * w[:, None]
+    cloth.hold = (idx, w, target)
+    if not running:
+        cloth.co[idx] = target
+        cloth.prev[idx] = target
+    return target
+
+
+def grab_release(sess, grab):
+    """Let go: the points stay where they are, with no velocity to fling them."""
+    cloth = sess['cloth']
+    cloth.hold = None
+    cloth.prev[grab['idx']] = cloth.co[grab['idx']]
+
+
+def _screen_xy(region, rv3d, matrix, co):
+    """(N, 2) pixel positions of local points ``co`` seen through the view (NaN behind the eye)."""
+    m = np.array(rv3d.perspective_matrix @ matrix, np.float64)
+    h = co @ m[:3, :3].T + m[:3, 3][None, :]
+    w = co @ m[3, :3] + m[3, 3]
+    with np.errstate(divide='ignore', invalid='ignore'):
+        ndc = h[:, :2] / w[:, None]
+    xy = np.empty_like(ndc)
+    xy[:, 0] = (ndc[:, 0] + 1.0) * 0.5 * region.width
+    xy[:, 1] = (ndc[:, 1] + 1.0) * 0.5 * region.height
+    xy[w <= 1e-9] = np.nan
+    return xy
+
+
+def grab_start_event(context, event):
+    """Left press in the 3D view: pick the cloth under the mouse.  Returns True when a grab began."""
+    ob = _ob()
+    sess = SIM.get('sess')
+    region, rv3d = context.region, context.region_data
+    if ob is None or sess is None or region is None or rv3d is None:
+        return False
+    cloth = sess['cloth']
+    xy = _screen_xy(region, rv3d, ob.matrix_world, cloth.co)
+    grab = grab_pick(sess, xy, (event.mouse_region_x, event.mouse_region_y), sess.get('spacing', sess['size'] * 0.02))
+    if grab is None:
+        return False
+    from bpy_extras import view3d_utils
+    anchor = ob.matrix_world @ Vector(cloth.co[grab['centre']])
+    grab['anchor'] = anchor
+    grab['inv'] = ob.matrix_world.inverted_safe().to_3x3()
+    hit = view3d_utils.region_2d_to_location_3d(region, rv3d, (event.mouse_region_x, event.mouse_region_y), anchor)
+    grab['mouse0'] = hit if hit is not None else anchor
+    SIM['grab'] = grab
+    return True
+
+
+def grab_move_event(context, event):
+    ob = _ob()
+    sess, grab = SIM.get('sess'), SIM.get('grab')
+    region, rv3d = context.region, context.region_data
+    if ob is None or sess is None or grab is None or region is None or rv3d is None:
+        return
+    from bpy_extras import view3d_utils
+    hit = view3d_utils.region_2d_to_location_3d(region, rv3d, (event.mouse_region_x, event.mouse_region_y), grab['anchor'])
+    if hit is None:
+        return
+    offset = grab['inv'] @ (hit - grab['mouse0'])            # the hand's move in the cloth's space (view plane)
+    grab_move(sess, grab, np.array(offset[:], np.float64), bool(SIM.get('running')))
+    if not SIM.get('running'):
+        mio.write_co(ob.data, sess['cloth'].co)
+        ob.data.update()
+
+
+def grab_end_event():
+    sess, grab = SIM.get('sess'), SIM.pop('grab', None)
+    if sess is not None and grab is not None:
+        grab_release(sess, grab)
 
 
 def drape(context, target, me, nb, size, st, frames=None, sew=None, pin_idx=None):
@@ -704,6 +809,7 @@ def _snapshot(st):
 
 def restart(context):
     """The cloth back to the laid patch, the session rebuilt with the current sliders (Cloth Detail needs a new lasso)."""
+    grab_end_event()
     ob = _ob()
     st = settings(context)
     target = bpy.data.objects.get(SIM.get('target', ''))
@@ -913,10 +1019,12 @@ def status():
         return ''
     sess = SIM['sess']
     esc = 'put back' if SIM.get('mode') == 'MESH' else 'drop'
+    grab = SIM.get('grab')
+    held = f'  · holding {len(grab["idx"]):,} points' if grab else '  · drag the cloth to pull it'
     if SIM.get('done'):
-        return f'done: frame {sess["frame"]} / {sess["frames"]}  (Enter keep · Esc {esc} · Space again)'
+        return f'done: frame {sess["frame"]} / {sess["frames"]}  (Enter keep · Esc {esc} · Space again){held}'
     return (f'{"draping" if SIM["running"] else "ready"}: frame {sess["frame"]} / {sess["frames"]}  '
-            f'(Space {"pause" if SIM["running"] else "drape"} · Enter keep · Esc {esc})')
+            f'(Space {"pause" if SIM["running"] else "drape"} · Enter keep · Esc {esc}){held}')
 
 
 class MCH_OT_cdrape_sim(bpy.types.Operator):
@@ -953,6 +1061,7 @@ class MCH_OT_cdrape_sim(bpy.types.Operator):
             context.window_manager.event_timer_remove(self._timer)
             self._timer = None
         SIM.pop('modal', None)
+        grab_end_event()
         if context.area:
             context.area.header_text_set(None)
             context.area.tag_redraw()
@@ -979,6 +1088,20 @@ class MCH_OT_cdrape_sim(bpy.types.Operator):
                 step(context)
                 self._hint(context)
             return {'RUNNING_MODAL'}
+        if SIM.get('grab'):                                   # 0.24.95 dragging the cloth
+            if event.type == 'MOUSEMOVE':
+                grab_move_event(context, event)
+                return {'RUNNING_MODAL'}
+            if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+                grab_end_event()
+                self._hint(context)
+                return {'RUNNING_MODAL'}
+            if event.type in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE'}:
+                return {'RUNNING_MODAL'}
+        if event.type == 'LEFTMOUSE' and event.value == 'PRESS' and not (event.ctrl or event.alt or event.shift):
+            if grab_start_event(context, event):            # a press on the cloth: grab it (off the cloth: the tool's)
+                self._hint(context)
+                return {'RUNNING_MODAL'}
         if event.type == 'SPACE' and event.value == 'PRESS':
             self._toggle(context)
             self._hint(context)
