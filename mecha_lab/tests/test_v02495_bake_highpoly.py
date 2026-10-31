@@ -412,4 +412,18 @@ check('Copy off: the part itself becomes the high poly - no new object, same nam
       (off, r, len(ob.data.polygons), f0, [m.name for m in ob.modifiers]))
 bpy.ops.mch.bake_copy_toggle()
 check('... the toggle back on', zbs.bk_copy is True)
+
+# ---- Round never folds (user screenshots: pinched corners after Round on boolean-heavy parts)
+from mecha_lab import bake_highpoly as _bk
+ob = beveled_block(2)
+for o in C.selected_objects:
+    o.select_set(False)
+ob.select_set(True)
+C.view_layer.objects.active = ob
+hpr, inf = _bk.build(C, ob, target_faces=60000, bevels='ROUND')
+check('Round on a clean beveled block: the subdivision surface is used (no folds, no fallback)',
+      not inf.get('subd_folds') and len(_bk._fold_points(hpr.data)) == 0 and 'subdivision surface' in _bk.describe(inf),
+      _bk.describe(inf))
+check('Round keeps a safe way out: folds found -> pinned and made again; still folding -> the gentle rounding, then Keep '
+      '(the message says which)', all(k in inspect.getsource(_bk) for k in ('_subd_round_safe', 'round_as_keep', '_fold_points')))
 summary()

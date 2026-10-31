@@ -655,6 +655,61 @@ def clamp_strips(me, co):
     return moved
 
 
+def _fold_points(me, limit=100.0):
+    """Midpoints of the smooth (not Sharp) edges whose faces fold more than ``limit`` degrees."""
+    from . import edge_memory as em
+    e_s, f_s, st, en = em._edge_faces(me)
+    s2 = st[(en - st) == 2]
+    if not len(s2):
+        return np.zeros((0, 3))
+    n = np.empty(len(me.polygons) * 3, np.float32)
+    me.polygons.foreach_get('normal', n)
+    n = n.reshape(-1, 3)
+    ang = np.degrees(np.arccos(np.clip(np.einsum('ij,ij->i', n[f_s[s2]], n[f_s[s2 + 1]]), -1.0, 1.0)))
+    sharp = np.zeros(len(me.edges), bool)
+    a = me.attributes.get('sharp_edge')
+    if a is not None and a.domain == 'EDGE':
+        a.data.foreach_get('value', sharp)
+    bad = e_s[s2][(~sharp[e_s[s2]]) & (ang > limit)]
+    co, E, _sh = _arrays(me)
+    return (co[E[bad, 0]] + co[E[bad, 1]]) * 0.5
+
+
+def _subd_round_safe(me, hard, levels, tries=3):
+    """0.24.95 ``_subd_round`` that does not fold: after each try the low's vertices nearest the folds are pinned
+    (their edges creased) and it is made again.  ``me`` gets the result only when no fold is left.  Returns
+    (creased edges, folds left)."""
+    from mathutils.kdtree import KDTree
+    co, E, _sh = _arrays(me)
+    kd = KDTree(len(co))
+    for i, c in enumerate(co):
+        kd.insert(c, i)
+    kd.balance()
+    pinned = np.zeros(len(co), bool)
+    hard = np.asarray(hard[:len(E)], bool)
+    n_c, folds = 0, 0
+    for t in range(tries + 1):
+        work = me.copy()
+        try:
+            n_c = _subd_round(work, hard | pinned[E[:, 0]] | pinned[E[:, 1]], levels)
+            pts = _fold_points(work)
+            folds = len(pts)
+            if folds == 0:
+                bm = bmesh.new()
+                try:
+                    bm.from_mesh(work)
+                    bm.to_mesh(me)
+                finally:
+                    bm.free()
+                return n_c, 0
+        finally:
+            bpy.data.meshes.remove(work)
+        for p in pts:
+            for _c, i, _d in kd.find_n(p, 2):
+                pinned[i] = True
+    return n_c, folds
+
+
 def _subd_round(me, hard, levels):
     """0.24.95 ``me`` (in place) through ``levels`` of Catmull-Clark with ``hard`` creased (1.0) and every other edge
     smooth, on the limit surface; Sharp = the creased edges of the result.  Returns the number of creased edges."""
@@ -829,7 +884,8 @@ def _winding(face, edge):
     return None
 
 
-def bake_mesh(me, levels, rounding=1.0, fillet=0.0, angle=math.radians(30.0), iters=ITERS, bevels='KEEP'):
+def bake_mesh(me, levels, rounding=1.0, fillet=0.0, angle=math.radians(30.0), iters=ITERS, bevels='KEEP',
+              fallback_levels=None):
     """``me`` subdivided + rounded IN PLACE (a copy the caller made).  Returns dict(faces0, faces, hard, corners,
     lines, fillet_edges, levels, seconds)."""
     t0 = time.time()
@@ -838,6 +894,7 @@ def bake_mesh(me, levels, rounding=1.0, fillet=0.0, angle=math.radians(30.0), it
     hard = hard_mask(me, angle)
     rows = bevel_rows(me, hard)
     n_released = 0
+    subd_folds = 0
     if bevels == 'ROUND':                                   # 0.24.95 Round Bevels (user: "베벨 부분이 각지게 나올 때가
         band, rows_f = bevel_band(me, faces=True)           # 있어서 좀 더 부드럽게"): the bevel / chamfer bands are not held -
         n_released = int((hard & band).sum())               # their rows and borders let go, so flag_flats makes them strips
@@ -864,9 +921,16 @@ def bake_mesh(me, levels, rounding=1.0, fillet=0.0, angle=math.radians(30.0), it
         # 22.5 degree row line through the Taubin rounding - it only smooths a few points wide, and every cut across
         # the bevel pinned its profile; the subdivision surface makes the rows one smooth fillet, the creased edges stay
         # sharp, a flat with creased rims stays flat)
-        corners = _subd_round(me, hard, levels)
-        co = _arrays(me)[0]
-        levels = -levels                                    # (the loop below is the Keep engine's)
+        # ... but on a boolean-heavy part it can fold the surface (the user's guard MCH_Base.173: 96 folds, the
+        # blade piece MCH_Base.095: 205 - pinched corners): the folds are pinned and it is made again (up to 3
+        # times); a part that still folds gets the safe rounding below instead (no fold ever; the message says so)
+        n_c, subd_folds = _subd_round_safe(me, hard, levels)
+        if subd_folds == 0:
+            corners = n_c
+            co = _arrays(me)[0]
+            levels = -levels                                # (the loop below is the Keep engine's)
+        elif fallback_levels:
+            levels = fallback_levels
     for _ in range(max(0, levels)):
         _subdivide(me)
         co, E, sharp = _arrays(me)
@@ -890,6 +954,7 @@ def bake_mesh(me, levels, rounding=1.0, fillet=0.0, angle=math.radians(30.0), it
     me.update()
     info = dict(faces0=faces0, faces=len(me.polygons), hard=n_hard, corners=corners, lines=lines,
                 fillet_edges=n_fillet, flats=n_flat, bevel_rows=n_rows, bevel_round=n_released, bevels=bevels,
+                subd_folds=subd_folds,
                 levels=levels, seconds=time.time() - t0,
                 cleaned=cleaned)
     INFO.clear()
@@ -910,6 +975,9 @@ def build(context, ob, target_faces=1_000_000, rounding=1.0, fillet=0.0, angle=m
     try:
         faces0 = len(me.polygons)
         levels = levels_for(faces0, target_faces)
+        keep_levels = levels                                               # (Round's safe fallback: Keep's count)
+        while keep_levels > 1 and not budget.faces_fit(faces0 * 4 ** keep_levels)[0]:
+            keep_levels -= 1
         sides = np.array([len(p.vertices) for p in me.polygons])
         quads1 = int(np.where(sides > 4, 3 * (sides - 2), sides).sum())   # (Round: the faces after level 1 -
         if bevels == 'ROUND':                                              # n-gons cut into triangles, each a
@@ -930,7 +998,23 @@ def build(context, ob, target_faces=1_000_000, rounding=1.0, fillet=0.0, angle=m
             cg.drop_custom_normals(me)
         except (RuntimeError, AttributeError):
             pass
-        info = bake_mesh(me, levels, rounding, fillet, angle, bevels=bevels)
+        before = me.copy() if bevels == 'ROUND' else None
+        try:
+            info = bake_mesh(me, levels, rounding, fillet, angle, bevels=bevels, fallback_levels=keep_levels)
+            if before is not None and info.get('subd_folds') and len(_fold_points(me)):
+                # the gentle rounding folds this part too (the user's guard MCH_Base.173: 4 spots): Keep instead
+                folds = info['subd_folds']
+                bm = bmesh.new()
+                try:
+                    bm.from_mesh(before)
+                    bm.to_mesh(me)
+                finally:
+                    bm.free()
+                info = bake_mesh(me, keep_levels, rounding, fillet, angle, bevels='KEEP')
+                info.update(subd_folds=folds, round_as_keep=True)
+        finally:
+            if before is not None:
+                bpy.data.meshes.remove(before)
     except Exception:
         bpy.data.meshes.remove(me)
         raise
@@ -985,6 +1069,11 @@ def describe(info):
     return (f'Bake High Poly: {f["faces0"]:,} -> {f["faces"]:,} faces (x4^{f["levels"]}), {f["hard"]:,} hard edges kept '
             f'({f["corners"]:,} corners fixed)' + (f', {f["bevel_rows"]:,} bevel row edges held' if f.get('bevel_rows') else '')
             + (f', bevels rounded ({f["bevel_round"]:,} edges let go)' if f.get('bevel_round') else '')
+            + ((' | Round: the subdivision folds this part (' + f'{f["subd_folds"]:,} spots) and so does the gentle '
+                'rounding - made as Keep (bevels as modelled)') if f.get('round_as_keep')
+               else (' | Round: the subdivision folds this part (' + f'{f["subd_folds"]:,} spots) - the gentle rounding '
+                     'used instead (bevels less smooth)') if f.get('subd_folds')
+               else (', subdivision surface' if f.get('bevels') == 'ROUND' else ''))
             + (f', fillet on {f["fillet_edges"]:,} edges' if f.get('fillet_edges') else '')
             + (', cleaned first: ' + ', '.join(f'{v} {k}' for k, v in f['cleaned'].items() if v) if f.get('cleaned') and any(f['cleaned'].values()) else '')
             + f', {f["seconds"]:.1f} s')
