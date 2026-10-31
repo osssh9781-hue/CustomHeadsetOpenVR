@@ -655,6 +655,48 @@ def clamp_strips(me, co):
     return moved
 
 
+def _subd_round(me, hard, levels):
+    """0.24.95 ``me`` (in place) through ``levels`` of Catmull-Clark with ``hard`` creased (1.0) and every other edge
+    smooth, on the limit surface; Sharp = the creased edges of the result.  Returns the number of creased edges."""
+    ne = len(me.edges)
+    a = me.attributes.get('crease_edge')
+    if a is not None and (a.domain != 'EDGE' or a.data_type != 'FLOAT'):
+        me.attributes.remove(a)
+        a = None
+    if a is None:
+        a = me.attributes.new('crease_edge', 'FLOAT', 'EDGE')
+    a.data.foreach_set('value', np.asarray(hard[:ne], np.float32))
+    tmp = bpy.data.objects.new('.mch_bk_subd', me)
+    bpy.context.scene.collection.objects.link(tmp)
+    try:
+        m = tmp.modifiers.new('subd', 'SUBSURF')
+        m.levels = m.render_levels = int(levels)
+        m.use_creases = True
+        m.use_limit_surface = True
+        dg = bpy.context.evaluated_depsgraph_get()
+        out = bpy.data.meshes.new_from_object(tmp.evaluated_get(dg), preserve_all_data_layers=True, depsgraph=dg)
+    finally:
+        bpy.data.objects.remove(tmp, do_unlink=True)
+    try:
+        bm = bmesh.new()
+        try:
+            bm.from_mesh(out)
+            bm.to_mesh(me)
+        finally:
+            bm.free()
+    finally:
+        bpy.data.meshes.remove(out)
+    ne = len(me.edges)
+    cr = np.zeros(ne, np.float32)
+    a = me.attributes.get('crease_edge')
+    if a is not None and a.domain == 'EDGE':
+        a.data.foreach_get('value', cr)
+    sharp = cr > 0.5
+    sa = me.attributes.get('sharp_edge') or me.attributes.new('sharp_edge', 'BOOLEAN', 'EDGE')
+    sa.data.foreach_set('value', sharp)
+    return int(sharp.sum())
+
+
 def _subdivide(me):
     bm = bmesh.new()
     try:
@@ -805,16 +847,26 @@ def bake_mesh(me, levels, rounding=1.0, fillet=0.0, angle=math.radians(30.0), it
     n_flat = flag_flats(me, hard)
     src = me.copy() if rounding < 0.999 else None            # the surface the points go back to
     corners = lines = 0
-    for _ in range(levels):
+    if bevels == 'ROUND':
+        # 0.24.95 Round = Catmull-Clark with the hard edges creased (the user's FBX MCH_Base.084: a 4-row bevel kept every
+        # 22.5 degree row line through the Taubin rounding - it only smooths a few points wide, and every cut across
+        # the bevel pinned its profile; the subdivision surface makes the rows one smooth fillet, the creased edges stay
+        # sharp, a flat with creased rims stays flat)
+        corners = _subd_round(me, hard, levels)
+        co = _arrays(me)[0]
+        levels = -levels                                    # (the loop below is the Keep engine's)
+    for _ in range(max(0, levels)):
         _subdivide(me)
         co, E, sharp = _arrays(me)
         co, corners, lines = taubin(co, E, sharp, iters, plane_n=planar_normals(me), corners=corner_arrays(me))
         clamp_strips(me, co)
         me.vertices.foreach_set('co', co.astype(np.float32).ravel())
         me.update()
-    co, E, sharp = _arrays(me)
-    co, corners, lines = taubin(co, E, sharp, iters, plane_n=planar_normals(me), corners=corner_arrays(me))
-    clamp_strips(me, co)
+    if levels >= 0:
+        co, E, sharp = _arrays(me)
+        co, corners, lines = taubin(co, E, sharp, iters, plane_n=planar_normals(me), corners=corner_arrays(me))
+        clamp_strips(me, co)
+    levels = abs(levels)
     if src is not None:
         co = _reproject(co, src, 1.0 - max(0.0, min(1.0, rounding)))
         bpy.data.meshes.remove(src)
@@ -843,12 +895,16 @@ def build(context, ob, target_faces=1_000_000, rounding=1.0, fillet=0.0, angle=m
     try:
         faces0 = len(me.polygons)
         levels = levels_for(faces0, target_faces)
+        loops0 = len(me.loops)
+
+        def made(lv):                              # (Round = Catmull-Clark: an n-gon becomes n quads at level 1)
+            return loops0 * 4 ** (lv - 1) if bevels == 'ROUND' else faces0 * 4 ** lv
         while levels > 1:
-            ok, _why = budget.faces_fit(faces0 * 4 ** levels)
+            ok, _why = budget.faces_fit(made(levels))
             if ok:
                 break
             levels -= 1
-        ok, why = budget.faces_fit(faces0 * 4 ** levels)
+        ok, why = budget.faces_fit(made(levels))
         if not ok:
             raise RuntimeError(why)
         try:
