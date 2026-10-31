@@ -160,6 +160,7 @@ def bevel_rows(me, hard, narrow=BEVEL_NARROW, lo=math.radians(2.0), hi=math.radi
 
 
 BEVEL_ABS = 0.08              # bevel_band: a band row / thin face is also narrow under this share of the part size
+BAND_WIDE = 2.5               # bevel_band: a face this much wider than its run's narrow rows is a flat between bevels
 
 
 def bevel_band(me, narrow=BEVEL_NARROW, lo=math.radians(2.0), hi=math.radians(70.0), abs_share=BEVEL_ABS, faces=False):
@@ -206,12 +207,12 @@ def bevel_band(me, narrow=BEVEL_NARROW, lo=math.radians(2.0), hi=math.radians(70
             across = np.maximum(el[e4[:, k]], el[e4[:, m]])
             ok = bent[a] & bent[b] & ((across < narrow * np.minimum(el[a], el[b])) | (across < abs_share * size))
             rows_e += [np.stack([quads[ok], a[ok]], 1), np.stack([quads[ok], b[ok]], 1)]
+    longest = np.maximum.reduceat(el[ce], start)
+    area = np.empty(nf, np.float32)
+    me.polygons.foreach_get('area', area)
     others = np.flatnonzero(tot != 4)
     if len(others):
         perim = np.add.reduceat(el[ce], start)
-        longest = np.maximum.reduceat(el[ce], start)
-        area = np.empty(nf, np.float32)
-        me.polygons.foreach_get('area', area)
         width = 2.0 * area / np.maximum(perim, 1e-12)
         w, lg = width[others], longest[others]
         thin = np.zeros(nf, bool)                     # (thin against itself, or small and still somewhat thin: a
@@ -222,6 +223,35 @@ def bevel_band(me, narrow=BEVEL_NARROW, lo=math.radians(2.0), hi=math.radians(70
     if not rows_e:
         return (out, core) if faces else out
     re_ = np.unique(np.concatenate(rows_e), axis=0)    # (face, edge) pairs
+    # a run (faces joined across shared row edges) can hold a FLAT too: a long bar's top between two bevels is a
+    # narrow quad between two bent edges like any row.  In a run the rows are the narrow ones - a face over
+    # BAND_WIDE x the run's narrow quarter is a flat between bevels and stays (the 2-row bar's top rounded into a
+    # hump, MCH_Base.006's front block too)
+    across = np.where(tot == 3, 2.0, 1.0) * area / np.maximum(longest, 1e-12)
+    o = np.argsort(re_[:, 1], kind='stable')
+    se, sf = re_[o, 1], re_[o, 0]
+    same = np.flatnonzero(se[1:] == se[:-1])
+    pa, pb = sf[same], sf[same + 1]
+    run = np.arange(nf)
+    for _ in range(64):
+        before = run.copy()
+        lo_ = np.minimum(run[pa], run[pb])
+        np.minimum.at(run, pa, lo_)
+        np.minimum.at(run, pb, lo_)
+        run = run[run]
+        if np.array_equal(run, before):
+            break
+    cf = np.unique(re_[:, 0])
+    oo = np.lexsort((across[cf], run[cf]))
+    rs, fs = run[cf][oo], cf[oo]
+    first = np.flatnonzero(np.r_[True, rs[1:] != rs[:-1]])
+    count = np.diff(np.r_[first, len(rs)])
+    ref = np.zeros(nf)
+    ref[rs[first]] = across[fs[first + (count - 1) // 4]]
+    wide = across > BAND_WIDE * ref[run]
+    re_ = re_[~wide[re_[:, 0]]]
+    if not len(re_):
+        return (out, core) if faces else out
     hits = np.bincount(re_[:, 1], minlength=ne)
     inner = hits >= 2
     core[re_[inner[re_[:, 1]], 0]] = True              # band faces that meet another band row

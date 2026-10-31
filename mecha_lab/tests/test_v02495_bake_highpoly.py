@@ -340,6 +340,9 @@ bpy.data.meshes.remove(me)
 
 # ---- a broken spot (open / non-manifold edges): the bevels round it are held (MCH_Base.006's notch crumpled)
 ob = beveled_block(2)
+arr = ob.modifiers.new('a', 'ARRAY')                    # (four blocks apart: the far ones must not change)
+arr.count, arr.relative_offset_displace = 4, (1.5, 0.0, 0.0)
+bpy.ops.object.convert(target='MESH')
 me = ob.data
 _b0, f0 = bk.bevel_band(me, faces=True)
 bm = bmesh.new()
@@ -362,7 +365,15 @@ ring1 = np.array([hole_v[list(p.vertices)].any() for p in me.polygons])
 ring1_e = np.zeros(len(me.edges), bool)
 for p in np.flatnonzero(ring1):
     ring1_e[[me.loops[li].edge_index for li in me.polygons[int(p)].loop_indices]] = True
-check('... a face cut out of a bevel row: no band face, no let-go edge next to the hole; the rest of the band still '
-      'rounds', (ecnt == 1).any() and not (f1 & ring1).any() and not (b1 & ring1_e).any() and f1.sum() > 0.8 * f0.sum(),
-      (int((ecnt == 1).sum()), int((f1 & ring1).sum()), int((b1 & ring1_e).sum()), int(f1.sum()), int(f0.sum())))
+near_v = hole_v.copy()                                  # (four rings out: beyond them the band is as it was)
+for _ in range(4):
+    nr = np.array([near_v[list(p.vertices)].any() for p in me.polygons])
+    for p in np.flatnonzero(nr):
+        near_v[list(me.polygons[int(p)].vertices)] = True
+far = ~np.array([near_v[list(p.vertices)].any() for p in me.polygons])
+f0_left = np.delete(f0, int(np.flatnonzero(f0)[len(np.flatnonzero(f0)) // 2]))   # (f0 had the deleted face)
+check('... a face cut out of a bevel row: no band face, no let-go edge next to the hole; away from it the band is '
+      'the same', (ecnt == 1).any() and not (f1 & ring1).any() and not (b1 & ring1_e).any() and far.any()
+      and np.array_equal(f1[far], f0_left[far]) and f1[far].any(),
+      (int((ecnt == 1).sum()), int((f1 & ring1).sum()), int((b1 & ring1_e).sum()), int(far.sum()), int(f1[far].sum()), int(f0_left[far].sum())))
 summary()
