@@ -208,6 +208,8 @@ def draw(layout, context):
     from . import bake_highpoly as bk                # 0.24.95
     col = box.column(align=True)
     bk.draw_rows(col, zb, op)
+    from . import bake_maps                          # 0.24.95 bake the high onto the low (Normal / AO / Color)
+    bake_maps.draw(layout, context)
 
 
 class MCH_PT_mesh_tools(bpy.types.Panel):

@@ -713,8 +713,9 @@ def build(context, ob, target_faces=1_000_000, rounding=1.0, fillet=0.0, angle=m
     except Exception:
         bpy.data.meshes.remove(me)
         raise
-    for mat in ob.data.materials:
-        me.materials.append(mat)
+    if not len(me.materials):                     # (the evaluated copy brings the slots already: no doubles)
+        for mat in ob.data.materials:
+            me.materials.append(mat)
     me.shade_smooth()
     hp = bpy.data.objects.new(ob.name + '_BakeHP', me)
     hp.matrix_world = ob.matrix_world.copy()

@@ -181,6 +181,8 @@ def draw_tool_shelf(layout, context):
     box = layout.box()
     box.label(text='Bake High Poly')
     bk.draw_rows(box, zb, lambda row, text, action: ops(row, (text, action)))
+    from . import bake_maps                                   # 0.24.95 bake the high onto the low
+    bake_maps.draw(layout, context)
     b = zs.brush(context)                                     # 0.24.92 Blender's cloth brush settings, as they are
     box = layout.box()
     box.label(text='Cloth Brush')
