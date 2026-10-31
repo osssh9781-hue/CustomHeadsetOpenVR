@@ -355,6 +355,10 @@ def glyph(name, x, y, size, color=TEXT, width=2.0):
             lines([(P(t, .15), P(t, .85)), (P(.15, t), P(.85, t))], color, width * 0.6)
     elif name in {'X', 'Y', 'Z'}:
         text(cx, cy, name, s * .55, color, 'CENTER')
+    elif name == 'flip':                         # 0.24.95 Flip left / right: a shape and its mirror image across a line
+        lines([(P(.50, .12), P(.50, .88))], color, width * 0.6)
+        polyline([P(.42, .22), P(.12, .50), P(.42, .78)], color, width, True)
+        polyline([P(.58, .22), P(.88, .50), P(.58, .78)], color, width, True)
     elif name == 'eye' or name == 'eye_off':
         polyline([P(.10, .50), P(.30, .70), P(.50, .76), P(.70, .70), P(.90, .50), P(.70, .30), P(.50, .24),
                   P(.30, .30)], color, width, True)

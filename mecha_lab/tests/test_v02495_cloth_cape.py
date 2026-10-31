@@ -86,8 +86,8 @@ check('Pleats set by hand (3 more than auto): that many, the same 1.5 x fabric (
 check('Curtain 0: the flat sheet as before (the top row as long as the line, no pleats)', abs(arc(tf) - cd.HANG_INFO['base_width']) < step
       and cd.hang_patch(body, L, length, 0.0, step, gap, down, False, 0.0)[1] == nb_f and cd.HANG_INFO['pleats'] == 0)
 # Heading (off by default: the pleats right from the line, as before); on: the top edge flat on the line, the pleats grow in
-check('Heading 0 by default; Folds Down by default, Folds Across there', abs(st.cape_heading) < 1e-6 and st.cape_folds == 'DOWN'
-      and 'ACROSS' in {i.identifier for i in st.bl_rna.properties['cape_folds'].enum_items})
+check('Heading 0 by default; Folds: Curtain by default, Along Line there', abs(st.cape_heading) < 1e-6 and st.cape_folds == 'DOWN'
+      and 'ALONG' in {i.identifier for i in st.bl_rna.properties['cape_folds'].enum_items})
 me_h, nb_h = cd.hang_patch(body, L, length, 0.0, step, gap, down, False, 50.0, 0, size * 0.04, 'DOWN', 0.3)
 ch = mio.read_co(me_h)
 Gh = ch.reshape(-1, nb_h, 3)
@@ -96,33 +96,43 @@ band = int(round(length * 0.3 / step))
 check('Heading 30 %: the top row flat on the line, the pleats grow in under it to full depth by 30 % of the length',
       np.abs(off_h[0]).max() < step * 0.25 and off_h[band + 2].max() > 0.9 * cd.HANG_INFO['depth'] and nb_h == nb_c,
       (np.abs(off_h[0]).max(), off_h[band + 2].max(), cd.HANG_INFO['depth']))
-# Folds Across: the LENGTH gathered (rows bulge out), the top row + both side columns pinned (listed first)
-me_a, nb_a = cd.hang_patch(body, L, length, 0.0, step, gap, down, False, 50.0, 0, size * 0.04, 'ACROSS', 0.0)
+# Folds Along Line (user: "주름이 내가 긋는 선 방향대로 ... 가로로 그어서 가로로 나오는 게 하나", and the sketch: the folds sweep
+# across into the END of the stroke): a plain sheet, the line pinned, the side edge at the stroke's end gathered up
+me_a, nb_a = cd.hang_patch(body, L, length, 0.0, step, gap, down, False, 50.0, 0, size * 0.04, 'ALONG', 0.0)
 ia = dict(cd.HANG_INFO)
 ca = mio.read_co(me_a)
 R, n = ia['rows'], ia['cols']
-check('Folds Across: the top row + both side columns pinned (nb counts them, they come first), the rest free',
-      ia['folds'] == 'ACROSS' and nb_a == n + 2 * (R - 1) and len(ca) == R * n, (nb_a, n, R))
-sideL = np.concatenate([[0], np.arange(n, n + R - 1)])          # (the left column: top-left, then the pinned side list)
-colL = ca[sideL]
-check('... down a side the cloth is 1.5 x the hanging length (the extra folded into pleats bulging out), pleats auto',
-      abs(float(np.linalg.norm(np.diff(colL, axis=0), axis=1).sum()) / length - 1.5) < 0.1 and ia['pleats'] >= 2
-      and np.ptp(colL[:, 1]) > step, (float(np.linalg.norm(np.diff(colL, axis=0), axis=1).sum()) / length, ia))
-check('... every point outside the body', np.hypot(ca[:, 0], ca[:, 1]).min() > 0.3 * math.cos(math.pi / 48) - 1e-6)
-me_a0, nb_a0 = cd.hang_patch(body, L, length, 0.0, step, gap, down, False, 0.0, 0, size * 0.04, 'ACROSS', 0.0)
-check('... Curtain 0 with Folds Across: the plain sheet (only the line pinned)', nb_a0 == nb_f and cd.HANG_INFO['pleats'] == 0)
+tk_idx, tk_tgt = ia['tacks']
+check('Folds Along Line: a plain sheet (no pleats), only the drawn line pinned; the side edge where the stroke ENDS tacked '
+      '(every row below the top), the start side free', ia['folds'] == 'ALONG' and ia['pleats'] == 0 and nb_a == n == nb_f
+      and len(tk_idx) == R - 1 and np.all(tk_idx % n == n - 1), (nb_a, n, R, len(tk_idx)))
+endcol = ca[np.arange(R) * n + n - 1]
+check('... its tack targets squeeze that edge into its top length / (1 + 2 x Curtain): 50 % -> half the length, in order, '
+      'on the edge itself (outside the body)', abs(ia['depth'] - length / 2.0) < 1e-9 and tk_tgt[:, 2].min() > endcol[0, 2] - ia['depth'] - step
+      and np.all(np.diff(tk_tgt[:, 2]) <= 1e-9) and np.abs(tk_tgt[:, :2] - endcol[0, :2]).max() < 1e-6
+      and np.hypot(tk_tgt[:, 0], tk_tgt[:, 1]).min() > 0.3 * math.cos(math.pi / 48) - 1e-6, (ia['depth'], tk_tgt[:, 2].min()))
+me_b, _nb_b = cd.hang_patch(body, L, length, 0.0, step, gap, down, False, 50.0, 0, size * 0.04, 'ALONG', 0.0, 'BOTH')
+tb = cd.HANG_INFO['tacks'][0]
+check('Both Ends: both side edges gathered (the start side too) - the folds sag between them',
+      len(tb) == 2 * (R - 1) and set(np.unique(tb % n)) == {0, n - 1} and cd.HANG_INFO['sides'] == 'BOTH', (len(tb), R))
+bpy.data.meshes.remove(me_b)
+me_a0, nb_a0 = cd.hang_patch(body, L, length, 0.0, step, gap, down, False, 0.0, 0, size * 0.04, 'ALONG', 0.0)
+check('... Curtain 0 with Along Line: the plain sheet, nothing gathered', nb_a0 == nb_f and cd.HANG_INFO.get('tacks') is None)
 for m_ in (me_f, me_c, me4, me_h, me_a, me_a0):
     bpy.data.meshes.remove(m_)
 for m_ in [m for m in bpy.data.meshes if m.users == 0 and m.name.startswith('Cloth Cape')]:
     bpy.data.meshes.remove(m_)
 
 # ---- the lasso path: Mode Cape, a line drawn across the back (seen from behind)
-st.drape_mode = 'CAPE'
+check('Mode Cape Sim there (the curtain / swag cape, split from the plain Cape)', 'CSIM' in {i.identifier for i in st.bl_rna.properties['drape_mode'].enum_items}
+      and {i.name for i in st.bl_rna.properties['cape_folds'].enum_items} == {'Vertical', 'Horizontal'}
+      and {i.identifier for i in st.bl_rna.properties['cape_sides'].enum_items} == {'END', 'BOTH'} and st.cape_sides == 'END')
+st.drape_mode = 'CSIM'
 stroke = [(x * PX, 1.45 * PX) for x in np.linspace(-0.2, 0.2, 12)]
 msg = cd.perform(C, [stroke], Back())
 ob = C.view_layer.objects.active
 sess = cd.SIM.get('sess')
-check('Mode Cape + a drawn line: a "Cloth Cape" parented to the body, the line pinned, the session ready',
+check('Mode Cape Sim + a drawn line: a "Cloth Cape" parented to the body, the line pinned, the session ready',
       ob is not None and ob.name.startswith('Cloth Cape') and ob.parent is body and cd.sim_active() and cd.SIM['source'] == 'CAPE'
       and int((sess['cloth'].pin >= 1).sum()) == cd.SIM['nb'] and 'Cape' in msg, msg)
 check('... long-range tethers on (a cloth hung from one edge cannot stretch like rubber)',
@@ -153,10 +163,22 @@ check('Curtain 50 -> 0 / Pleats with the cape waiting: made again at once (fewer
       1.3 < n80 / max(n_flat, 1) < 1.7 and 'cape_gather' in inspect.getsource(cd._snapshot) and 'cape_pleats' in inspect.getsource(cd._snapshot)
       and "'cape_gather'" in inspect.getsource(cd.draw), (n80, n_flat))
 st.cape_gather, st.cape_pleats = 50.0, 0
-st.cape_folds = 'ACROSS'
-check('Folds Across with the cape waiting: made again at once, its sides pinned too (more pinned points than the line)',
-      cd.SIM['nb'] > cd.HANG_INFO['cols'] and cd.HANG_INFO['folds'] == 'ACROSS' and 'cape_folds' in inspect.getsource(cd._snapshot)
+st.cape_folds = 'ALONG'
+check('Along Line with the cape waiting: made again at once, its end side gathered (tacks in the session)',
+      cd.SIM.get('tacks') is not None and cd.HANG_INFO['folds'] == 'ALONG' and 'cape_folds' in inspect.getsource(cd._snapshot)
       and "'cape_folds'" in inspect.getsource(cd.draw) and "'cape_heading'" in inspect.getsource(cd.draw), (cd.SIM['nb'], cd.HANG_INFO))
+cd.restart(C)
+cl = cd.SIM['sess']['cloth']
+check('... Space: the line pinned AND the end side tacked (pulled up over the first frames), no Looseness',
+      cd.SIM.get('no_slack') and abs(cl.scale_e - (1.0 - st.shrink / 100.0)) < 1e-9 and cl.tack is not None
+      and int((cl.pin >= 1).sum()) == cd.SIM['nb'], (cl.scale_e, int((cl.pin >= 1).sum()), cd.SIM['nb']))
+sess = cd.SIM['sess']
+for _ in range(sess['frames']):
+    cd.advance(sess, st)
+ti, tt = cl.tack[0], cl.tack[1]
+check('... after the drape the end side sits gathered at its targets (within 2 cm), the cloth finite',
+      np.all(np.isfinite(cl.co)) and np.linalg.norm(cl.co[ti] - tt, axis=1).max() < 0.02, np.linalg.norm(cl.co[ti] - tt, axis=1).max())
+cd.SIM['running'] = False
 st.cape_folds = 'DOWN'
 ob = C.view_layer.objects.active
 st.cape_flare = 60.0
@@ -167,6 +189,12 @@ st.cape_flare, st.cape_length = 0.0, 50.0
 msg = cd.confirm(C)
 check('Enter keeps the cape', 'kept' in msg and not cd.sim_active(), msg)
 bpy.data.objects.remove(ob)
+st.drape_mode = 'CAPE'                                   # the plain Cape: no curtain whatever Curtain says
+st.cape_gather = 50.0
+cd.perform(C, [stroke], Back())
+check('Mode Cape (plain): a flat sheet - no pleats, nothing gathered (Curtain / Folds are Cape Sim settings only)',
+      cd.HANG_INFO['pleats'] == 0 and cd.SIM.get('tacks') is None and not cd.SIM.get('csim') and cd.SIM['nb'] == cd.HANG_INFO['cols'])
+cd.cancel(C)
 
 # ---- Neck Cloth: a loop round the "neck" of a ball (z 0.6 on a sphere of r 1: the shoulders below it)
 clear()
@@ -288,7 +316,7 @@ if cd.sim_active():
 S.mch_brush.surface_mode = False
 st.drape_mode = 'AREA'
 check('The lasso tool hands Cape / Neck Cloth the drawn path itself in Line mode (not its band)',
-      "dst.drape_mode in {'CAPE', 'NECK'} and self._line_mode()" in inspect.getsource(ce))
+      "dst.drape_mode in {'CAPE', 'CSIM', 'NECK'} and self._line_mode()" in inspect.getsource(ce))
 check('Panel: Mode row and Length / Flare', "'drape_mode', expand=True" in inspect.getsource(cd.draw) and "'cape_length'" in inspect.getsource(cd.draw))
 check('cloth_pbd.tethers: free points tied to the nearest pinned one along the cloth', cloth_pbd.tethers(
       np.array([[0, 0, 0], [1, 0, 0], [2, 0, 0.]]), np.array([[0, 1], [1, 2]]), np.array([1.0, 0, 0]))[2].tolist() == [1.0, 2.0])

@@ -803,9 +803,12 @@ def popup(context, region_w, region_h, k, Item):
                         'png:' + zs.icon_stem(zs.BY_Z[z][1]), z == cur, True, ('op', 'mch.zb_brush', {'name': z}),
                         'ABOVE'))
     y -= GAP * k + ROW * k                            # 0.24.95 the heavy actions at the cursor (user: the RMB menu)
-    for i, (lab, action) in enumerate((('DynaMesh', 'DYNAMESH'), ('Decimate', 'DECIMATE'), ('Bake High Poly', 'BAKE_HP'))):
-        out.append(Item('tbtn', x0 + PAD * k + i * (cw + GAP * k), y, cw, ROW * k, lab, '', False, True,
-                        ('op', 'mch.zb_action', {'action': action})))
+    acts = [(lab, ('op', 'mch.zb_action', {'action': a})) for lab, a in (('DynaMesh', 'DYNAMESH'), ('Decimate', 'DECIMATE'),
+                                                                        ('Bake HP', 'BAKE_HP'))]
+    acts.append(('Flip', ('op', 'mch.flip_object', {'axis': 'X'})))   # 0.24.95 left / right (user: "우클릭 팝업에 뒤집기")
+    aw = (iw - (len(acts) - 1) * GAP * k) / len(acts)
+    for i, (lab, action) in enumerate(acts):
+        out.append(Item('tbtn', x0 + PAD * k + i * (aw + GAP * k), y, aw, ROW * k, lab, '', False, True, action))
     return out
 
 

@@ -324,7 +324,66 @@ class MCH_OT_actions_menu(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_OT_actions_mirror, MCH_OT_actions_apply_modifiers, MCH_PT_actions_popup, MCH_OT_actions_menu)
+def flip_objects(context, obs, axis=0):
+    """0.24.95 Flip (user: "좌우 오브젝트 뒤집는 거"): the objects mirrored left-right (``axis`` 0 = world X) through
+    their middle - one object in place (its origin), several as a group (round the middle of their origins, so an
+    assembly stays together).  The reflection goes into the mesh itself (points, shape keys, face winding turned so
+    the outside stays outside) - no negative scale left on the object.  Returns the number flipped."""
+    from mathutils import Matrix, Vector
+    obs = [o for o in obs if o.type == 'MESH']
+    if not obs:
+        return 0
+    piv = sum((o.matrix_world.translation for o in obs), Vector()) / len(obs)
+    S = Matrix.Identity(3)
+    S[axis][axis] = -1.0
+    done = set()
+    for ob in obs:
+        W = ob.matrix_world.copy()
+        L = W.to_3x3()
+        try:
+            A = L.inverted() @ S @ L                  # (the same reflection in the object's own space)
+        except ValueError:
+            continue
+        me = ob.data
+        if me.name not in done:                      # (a mesh shared by linked copies: once)
+            me.transform(A.to_4x4(), shape_keys=True)
+            me.flip_normals()
+            me.update()
+            done.add(me.name)
+        t = W.translation.copy()
+        t[axis] = 2.0 * piv[axis] - t[axis]
+        W.translation = t
+        ob.matrix_world = W
+    return len(obs)
+
+
+class MCH_OT_flip_object(bpy.types.Operator):
+    """Flip: mirror the selected objects left-right (one in place, several round their middle as a group) - the mesh
+    itself is flipped, no negative scale"""
+    bl_idname = 'mch.flip_object'
+    bl_label = 'Flip'
+    bl_options = {'REGISTER', 'UNDO'}
+    axis: bpy.props.EnumProperty(items=[('X', 'Left / Right', ''), ('Y', 'Front / Back', ''), ('Z', 'Up / Down', '')],
+                                 default='X')
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode in {'OBJECT', 'SCULPT'} and any(o.type == 'MESH' for o in context.selected_objects)
+
+    def execute(self, context):
+        sculpt = context.mode == 'SCULPT'
+        if sculpt:
+            bpy.ops.object.mode_set(mode='OBJECT')
+        try:
+            n = flip_objects(context, list(context.selected_objects), 'XYZ'.index(self.axis))
+        finally:
+            if sculpt:
+                bpy.ops.object.mode_set(mode='SCULPT')
+        self.report({'INFO'}, f'Flip {self.axis}: {n} object(s)')
+        return {'FINISHED'}
+
+
+CLASSES = (MCH_OT_actions_mirror, MCH_OT_actions_apply_modifiers, MCH_PT_actions_popup, MCH_OT_actions_menu, MCH_OT_flip_object)
 _keymaps = []
 
 

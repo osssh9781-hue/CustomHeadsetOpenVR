@@ -81,6 +81,8 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
     drape_mode: EnumProperty(name='Mode', items=[
         ('AREA', 'Area', 'Draw round a region: a loose cloth laid over it, pinned at its rim'),
         ('CAPE', 'Cape', 'Draw a line (or, Surface on, click points) across the shoulders: a cape hangs from it, as wide as the line'),
+        ('CSIM', 'Cape Sim', 'Draw a line across the shoulders: a cape with folds - Vertical (curtain pleats hanging from the line) or '
+         'Horizontal (a swag: the folds sweep across into one end of the line, or sag between both)'),
         ('NECK', 'Neck Cloth', 'Draw round the neck: a vertical tube round it (Tube) or a ring over the shoulders (Ring)'),
         ('PANEL', 'Panel', 'Draw a polygon: a flat cloth panel facing you in front of the body (like a pattern piece); Tack Pins then Drape This Mesh')],
         default='AREA')
@@ -98,10 +100,16 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
                                default=50.0, min=0.0, max=200.0, subtype='PERCENTAGE', update=_hang_live_update)
     cape_pleats: IntProperty(name='Pleats', description='Cape curtain: how many pleats along the line (0 = auto, about one every 4 % of the body size)',
                              default=0, min=0, max=60, update=_hang_live_update)
-    cape_folds: EnumProperty(name='Folds', items=[('DOWN', 'Folds Down', 'Curtain: the top gathered into pleats, the folds run down the cape'),
-                                                  ('ACROSS', 'Folds Across', 'The length gathered into pleats held at both sides (like a Roman '
-                                                   'shade): the folds run across the cape')],
+    cape_folds: EnumProperty(name='Folds', items=[('DOWN', 'Vertical', 'Curtain: the top gathered into pleats along your line, the folds '
+                                                   'hang straight down from it'),
+                                                  ('ALONG', 'Horizontal', 'A swag: the side edge where your stroke ENDS (or both, with Both '
+                                                   'Ends) is gathered up to the line, so the folds sweep across, the way you drew the line '
+                                                   '(Curtain % = how high it is gathered)')],
                              default='DOWN', update=_hang_live_update)
+    cape_sides: EnumProperty(name='Gather', items=[('END', 'One End', 'Only the side where your stroke ends is gathered: the folds sweep '
+                                                    'across into that end, the start side hangs free'),
+                                                   ('BOTH', 'Both Ends', 'Both sides gathered: the folds sag between them like a swag '
+                                                    'valance')], default='END', update=_hang_live_update)
     cape_heading: FloatProperty(name='Heading', description='Curtain: the top edge stays flat on the line and the pleats grow in over this much '
                                 '(% of the Length) - a clean top instead of pleat heads right at the line (0 = pleats from the very top)',
                                 default=0.0, min=0.0, max=60.0, subtype='PERCENTAGE', update=_hang_live_update)
@@ -340,7 +348,7 @@ def show_start(me, surface, size, st):
 
 
 def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_ob=None, wrap=False, sew=None, pin_idx=None, puff=False,
-          tether=False, tacks=None, offset_lift=False):
+          tether=False, tacks=None, offset_lift=False, no_slack=False, keep_rim=False):
     """The cloth + the collider for the mesh ``me``: a lasso patch (local space of ``target``, the first ``nb``
     points its rim) or (``to_cloth``: the matrix that brings the target's points into the cloth's space) a mesh
     of its own laid on ``target``.  Returns the session."""
@@ -363,7 +371,7 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
         rim = wl.boundary_verts(me)
         if len(rim):
             pin[rim] = 1.0
-    elif st.pin_rim and tacks is None:                # (tacked: the tack pins hold it, not the rim)
+    elif st.pin_rim and (tacks is None or keep_rim):  # (tacked: the tack pins hold it, not the rim - a swag keeps both)
         if to_cloth is None and not puff and nb > 0:
             pin[:min(nb, n)] = 1.0
         else:                                         # a mesh of its own / a sewn copy: its open edges are the rim
@@ -391,8 +399,8 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
     if far_scale > 0:                                     # 0.24.93 wide bending: folds a few cells wide, not cell noise
         cloth.set_far()
         cloth.far_scale = far_scale
-    scale = (1.0 - st.shrink / 100.0) * (1.0 + st.slack / 100.0)
-    cloth.scale_e = cloth.scale_b = scale
+    scale = (1.0 - st.shrink / 100.0) * (1.0 + (0.0 if no_slack else st.slack) / 100.0)   # (Along Line: the pleats are the
+    cloth.scale_e = cloth.scale_b = scale                                                 #  extra fabric - no Looseness)
     if tacks is not None:                            # 0.24.95 tack pins: (cloth point idx, body point in cloth space)
         tk = np.asarray(tacks[0], np.int64)
         cloth.tack = (tk, np.asarray(tacks[1], np.float64), 0.0)
@@ -758,7 +766,7 @@ def perform(context, loops, projector):
         raise cg.CutError('Cloth Drape settings missing')
     if getattr(st, 'drape_mode', 'AREA') == 'PANEL':
         return perform_panel(context, loops, projector)
-    if getattr(st, 'drape_mode', 'AREA') in {'CAPE', 'NECK'}:
+    if getattr(st, 'drape_mode', 'AREA') in {'CAPE', 'CSIM', 'NECK'}:
         if sim_active():
             raise cg.CutError('Cloth Drape: keep (Enter) or drop (Esc) the cloth you have first')
         closed = st.drape_mode == 'NECK'
@@ -1106,7 +1114,7 @@ def curtain_top(top, out, step, gather, pleats, pleat_width, fade=0.0):
 
 
 def hang_patch(body, line, length, flare, step, gap, down, closed=False, gather=0.0, pleats=0, pleat_width=0.05, folds='DOWN',
-               heading=0.0):
+               heading=0.0, sides='END'):
     """The hanging cloth of a Cape (``closed`` False: an open line across the shoulders) or a Neck Cloth (a closed
     loop round the neck): ``line`` (N, 3) on ``body`` (its local space) resampled every ``step``; from each point
     a column goes ``length`` straight down a ``step`` at a time.  A point only ever moves OUT (never sideways) to
@@ -1116,9 +1124,9 @@ def hang_patch(body, line, length, flare, step, gap, down, closed=False, gather=
     row first (nb points, pinned by Pin Rim).  Cape: ``gather`` > 0 makes it a curtain (``curtain_top``):
         ``folds`` 'DOWN' - the top row folded into pleats, the folds run down the cloth; ``heading`` (a share of the
             length) keeps the top edge flat on the line and grows the pleats in over that much (a clean top);
-        ``folds`` 'ACROSS' - the cloth's LENGTH folded into pleats (rows bulging out, like a Roman shade): the top
-            row and both side columns pinned (nb counts them all: they come first), so the middle sags into folds
-            that run across; ``heading`` grows the first pleat in from a flat top."""
+        ``folds`` 'ALONG' - a swag: a plain sheet whose side edge at the END of the drawn line is gathered up into
+            its top ``length / (1 + 2 gather / 100)`` (tack targets in HANG_INFO['tacks']; the sim pulls them in), so
+            the folds sweep across, into the end of the line; the start side hangs free."""
     from mathutils.bvhtree import BVHTree
     import bmesh
     bm = bmesh.new()
@@ -1139,7 +1147,7 @@ def hang_patch(body, line, length, flare, step, gap, down, closed=False, gather=
     top = np.array([push(p) for p in _resample(line, step, closed)])
     n = len(top)
     rows = max(2, int(round(length / step)))
-    wave = heights = vwave = None
+    wave = heights = None
 
     def flat(v):
         v = v - down * np.dot(v, down)
@@ -1163,14 +1171,8 @@ def hang_patch(body, line, length, flare, step, gap, down, closed=False, gather=
         width = float(base_s[-1])
         at = base_s
         k, depth = 0, 0.0                                 # 0.24.95 the curtain
-        if folds == 'ACROSS' and gather > 0.0 and length > step * 4:
-            prof = np.zeros((rows + 1, 3))                 # (the straight hang, down the cloth, as a line in x)
-            prof[:, 0] = np.linspace(0.0, length, rows + 1)
-            pts, _a, k, depth = curtain_top(prof, np.array([0.0, 1.0, 0.0]), step, gather, pleats, pleat_width * 2.0,
-                                            fade=length * heading)
-            if k:
-                heights, vwave = pts[:, 0], pts[:, 1]      # (each row's height down the cloth, its pleat offset out)
-                rows = len(heights) - 1
+        if folds == 'ALONG':                              # (the swag: a plain sheet, its end side gathered below)
+            pass
         else:
             pleated, at_p, k, depth = curtain_top(top, flat(o), step, gather, pleats, pleat_width)
             if k and heading > 0.0:
@@ -1198,7 +1200,7 @@ def hang_patch(body, line, length, flare, step, gap, down, closed=False, gather=
     grid = [top]
     cur = top.copy()
     level = np.einsum('ij,ij->i', top, out)
-    dhs = np.diff(heights) if heights is not None else np.full(rows, step)
+    dhs = np.full(rows, step)
     for _r in range(rows):
         nxt = cur + down * dhs[_r] + side
         for i in range(n):
@@ -1213,8 +1215,25 @@ def hang_patch(body, line, length, flare, step, gap, down, closed=False, gather=
     if wave is not None:                                  # curtain DOWN: the pleats, grown in under a flat top edge
         hl = length * heading
         grid = [g + out * (wave * (1.0 if hl <= 0.0 else float(_smooth01(r * step / hl))))[:, None] for r, g in enumerate(grid)]
-    elif vwave is not None:                               # curtain ACROSS: every row its pleat offset out
-        grid = [g + out * float(vwave[r]) for r, g in enumerate(grid)]
+    swag = None
+    if folds == 'ALONG' and gather > 0.0 and not closed and len(grid) > 2:
+        # 0.24.95 the swag (user's sketch: the folds sweep across, into the END of the line you drew): the side edge
+        # at the stroke's end gathered up - each of its points tacked to where the point ``drop / length`` of the
+        # way down from it hung (the edge squeezed into its top ``drop``) - the start side hangs free
+        R = len(grid)
+        drop = length / (1.0 + 2.0 * gather / 100.0)
+        at_h = np.arange(R) * (drop / length)           # (fractional rows)
+        lo_r = np.clip(np.floor(at_h).astype(int), 0, R - 1)
+        hi_r = np.clip(lo_r + 1, 0, R - 1)
+        f = (at_h - lo_r)[:, None]
+        idx, tgt = [], []
+        for c in ([0, n - 1] if sides == 'BOTH' else [n - 1]):   # (Both Ends: the start side too)
+            col = np.array([g[c] for g in grid])
+            idx.append(np.arange(1, R) * n + c)
+            tgt.append((col[lo_r] * (1.0 - f) + col[hi_r] * f)[1:])
+        swag = (np.concatenate(idx), np.concatenate(tgt))
+        k, depth = 0, drop
+        HANG_INFO.update(folds='ALONG', depth=drop, sides=sides)
     co = np.concatenate(grid)
     faces = []
     cols = n if closed else n - 1
@@ -1233,17 +1252,7 @@ def hang_patch(body, line, length, flare, step, gap, down, closed=False, gather=
     if vote < 0.0:
         faces = [tuple(reversed(f)) for f in faces]
     nb = n
-    if vwave is not None and not closed:                 # ACROSS: the side columns hold the pleats - pinned, listed first
-        R = len(grid)
-        pinned = list(range(n)) + [r * n for r in range(1, R)] + [r * n + n - 1 for r in range(1, R)]
-        rest = np.setdiff1d(np.arange(len(co)), pinned)
-        order = np.concatenate([np.array(pinned, np.int64), rest])
-        inv = np.empty(len(order), np.int64)
-        inv[order] = np.arange(len(order))
-        co = co[order]
-        faces = [tuple(int(inv[v]) for v in f) for f in faces]
-        nb = len(pinned)
-    HANG_INFO.update(cols=n, rows=len(grid))
+    HANG_INFO.update(cols=n, rows=len(grid), tacks=swag)
     from . import fast_decimate as fd
     me = bpy.data.meshes.new('Neck Cloth' if closed else 'Cloth Cape')
     fd.build_mesh(me, co, np.array(faces, np.int64))
@@ -1476,9 +1485,10 @@ def perform_hang(context, body, line_world, closed=False):
     inv = body.matrix_world.inverted_safe()
     line = np.array([(inv @ Vector(p))[:] for p in line_world], np.float64)
     size, step, gap, down, length = _hang_args(body, st)
+    csim = not closed and st.drape_mode == 'CSIM'          # 0.24.95 Cape Sim: the curtain / swag; Cape: a plain sheet
     me, nb = (_neck_mesh(body, line, length, step, gap, down, st) if closed else
-              hang_patch(body, line, length, st.cape_flare, step, gap, down, False, st.cape_gather, st.cape_pleats, size * 0.04,
-                         st.cape_folds, st.cape_heading / 100.0))
+              hang_patch(body, line, length, st.cape_flare, step, gap, down, False, st.cape_gather if csim else 0.0, st.cape_pleats,
+                         size * 0.04, st.cape_folds, st.cape_heading / 100.0, st.cape_sides))
     ob = bpy.data.objects.new(kind, me)
     coll = body.users_collection[0] if body.users_collection else context.scene.collection
     coll.objects.link(ob)
@@ -1492,7 +1502,10 @@ def perform_hang(context, body, line_world, closed=False):
     context.view_layer.objects.active = ob
     surface = mio.read_co(me).copy()
     try:
-        sess = build(context, body, me, nb, size, st, tether=True, offset_lift=True)
+        along = HANG_INFO.get('folds') == 'ALONG' and not closed
+        swag = HANG_INFO.get('tacks') if along else None
+        sess = build(context, body, me, nb, size, st, tether=True, offset_lift=True, no_slack=along, tacks=swag,
+                     keep_rim=True)
     except Exception:
         bpy.data.objects.remove(ob)
         bpy.data.meshes.remove(me)
@@ -1503,9 +1516,10 @@ def perform_hang(context, body, line_world, closed=False):
     SIM.update(ob=ob.name, target=body.name, nb=nb, size=size, sess=sess, running=False, done=False, want=None,
                surface=surface, start=sess['cloth'].init.copy(), snapshot=_snapshot(st), sew=None, pin_idx=None,
                spacing=float(st.spacing), source='NECK' if closed else 'CAPE', line=line, closed=closed,
-               hang=_hang_key(st))
-    return (f'{kind} on {body.name}: {sess["points"]:,} points, {nb} pinned' + (' (the line + both sides: folds across)'
-            if HANG_INFO.get('folds') == 'ACROSS' and not closed else ' on the line') + ', '
+               hang=_hang_key(st), no_slack=along, tacks=swag, csim=csim)
+    return (f'{kind} on {body.name}: {sess["points"]:,} points, {nb} pinned' + (
+            ' on the line, its end side gathered up (a swag)' if HANG_INFO.get('folds') == 'ALONG' and not closed
+            else ' on the line') + ', '
             f'{sess["collider"]:,} body points (Length / Flare then Space drape · Enter keep · Esc drop)')
 
 
@@ -1515,7 +1529,8 @@ def perform_cape(context, body, line_world):
 
 def _hang_key(st):
     return (round(float(st.cape_length), 4), round(float(st.cape_flare), 4), round(float(st.spacing), 4), round(float(st.gap), 4),
-            round(float(st.cape_gather), 4), int(st.cape_pleats), st.cape_folds, round(float(st.cape_heading), 4), st.neck_style, bool(st.neck_pin_top), round(float(st.neck_bottom), 4), round(float(st.neck_top), 4))
+            round(float(st.cape_gather), 4), int(st.cape_pleats), st.cape_folds, round(float(st.cape_heading), 4), st.cape_sides,
+            st.neck_style, bool(st.neck_pin_top), round(float(st.neck_bottom), 4), round(float(st.neck_top), 4))
 
 
 def rebuild_hang(context):
@@ -1527,14 +1542,17 @@ def rebuild_hang(context):
         return False
     size, step, gap, down, length = _hang_args(body, st)
     me, nb = (_neck_mesh(body, SIM['line'], length, step, gap, down, st) if SIM.get('closed') else
-              hang_patch(body, SIM['line'], length, st.cape_flare, step, gap, down, False, st.cape_gather, st.cape_pleats,
-                         size * 0.04, st.cape_folds, st.cape_heading / 100.0))
+              hang_patch(body, SIM['line'], length, st.cape_flare, step, gap, down, False,
+                         st.cape_gather if SIM.get('csim') else 0.0, st.cape_pleats, size * 0.04, st.cape_folds,
+                         st.cape_heading / 100.0, st.cape_sides))
     old = ob.data
     me.name = old.name
     ob.data = me
     if old.users == 0:
         bpy.data.meshes.remove(old)
-    SIM.update(nb=nb, size=size, surface=mio.read_co(me).copy(), spacing=float(st.spacing), hang=_hang_key(st))
+    along = HANG_INFO.get('folds') == 'ALONG' and not SIM.get('closed')
+    SIM.update(nb=nb, size=size, surface=mio.read_co(me).copy(), spacing=float(st.spacing), hang=_hang_key(st),
+               no_slack=along, tacks=HANG_INFO.get('tacks') if along else None)
     return True
 
 
@@ -1874,7 +1892,7 @@ def _snapshot(st):
                                           'wrap_tight', 'use_lines', 'stop_at_pins', 'two_sides', 'puff', 'wrinkles',
                                           'padding', 'pad_pattern', 'pad_size', 'pad_puff', 'trim', 'trim_width',
                                           'collide_with', 'use_proxy', 'proxy_faces',
-                                          'cape_length', 'cape_flare', 'cape_gather', 'cape_pleats', 'cape_folds', 'cape_heading', 'spacing', 'neck_style', 'neck_pin_top', 'neck_bottom', 'neck_top', 'mask_points', 'offset'))
+                                          'cape_length', 'cape_flare', 'cape_gather', 'cape_pleats', 'cape_folds', 'cape_heading', 'cape_sides', 'spacing', 'neck_style', 'neck_pin_top', 'neck_bottom', 'neck_top', 'mask_points', 'offset'))
 
 
 def restart(context):
@@ -1894,7 +1912,8 @@ def restart(context):
     mode = SIM.get('mode')
     sess = build(context, target, me, SIM['nb'], SIM['size'], st, sew=SIM.get('sew'), pin_idx=SIM.get('pin_idx'),
                  to_cloth=SIM.get('to_cloth'), pin_sel=bool(SIM.get('pin_sel')), gdir_ob=ob if mode == 'MESH' else target,
-                 wrap=mode == 'WRAP', puff=mode == 'SEW', tether=SIM.get('source') in {'CAPE', 'NECK'}, tacks=SIM.get('tacks'),
+                 wrap=mode == 'WRAP', puff=mode == 'SEW', tether=SIM.get('source') in {'CAPE', 'NECK'}, tacks=SIM.get('tacks'), no_slack=bool(SIM.get('no_slack')),
+                 keep_rim=SIM.get('source') == 'CAPE',
                  offset_lift=SIM.get('source') in {'CAPE', 'NECK', 'MASK', 'AREA'})
     if mode == 'SEW':
         c = sess['cloth']
@@ -2504,13 +2523,14 @@ def draw(layout, context):
     live = sim_active()
     hint = {'AREA': 'draw a lasso on the mesh: a loose cloth over that region',
             'CAPE': 'draw a line across the shoulders (Surface: click points), Enter: a cape hangs from it',
+            'CSIM': 'draw a line across the shoulders: Vertical = curtain pleats, Horizontal = folds the way you drew',
             'NECK': 'draw round the neck (Surface: click points round it), Enter: a cloth over the shoulders',
             'PANEL': 'draw a polygon: a flat panel in front of the body; Tack Pins, then Drape This Mesh'}
     box.label(text=status() if live else hint.get(st.drape_mode, hint['AREA']), icon='PLAY' if live else 'INFO')
     box.row().prop(st, 'drape_mode', expand=True)                     # 0.24.95 Area / Cape / Neck Cloth
     if live and SIM.get('line') is not None and not SIM.get('running') and SIM['sess'].get('frame', 0) == 0:
         box.label(text='set the shape with the sliders (it follows them), then Space drapes it', icon='MODIFIER')
-    if st.drape_mode in {'CAPE', 'NECK'} or SIM.get('line') is not None:
+    if st.drape_mode in {'CAPE', 'CSIM', 'NECK'} or SIM.get('line') is not None:
         if st.drape_mode == 'NECK':
             r = box.row(align=True)
             r.prop(st, 'neck_style', expand=True)
@@ -2521,13 +2541,17 @@ def draw(layout, context):
                 r.prop(st, 'neck_top', slider=True)
         r = box.row(align=True)
         r.prop(st, 'cape_length', slider=True)
-        if st.drape_mode == 'CAPE':
+        if st.drape_mode in {'CAPE', 'CSIM'}:
             r.prop(st, 'cape_flare', slider=True)
-            box.row(align=True).prop(st, 'cape_folds', expand=True)     # 0.24.95 the curtain
+        if st.drape_mode == 'CSIM':                       # 0.24.95 Cape Sim: Vertical (curtain) / Horizontal (swag)
+            box.row(align=True).prop(st, 'cape_folds', expand=True)
             r = box.row(align=True)
             r.prop(st, 'cape_gather', slider=True)
-            r.prop(st, 'cape_pleats')
-            box.row(align=True).prop(st, 'cape_heading', slider=True)
+            if st.cape_folds == 'DOWN':
+                r.prop(st, 'cape_pleats')
+                box.row(align=True).prop(st, 'cape_heading', slider=True)
+            else:
+                box.row(align=True).prop(st, 'cape_sides', expand=True)
     r = box.row(align=True)
     r.enabled = live
     if SIM.get('done'):

@@ -431,7 +431,7 @@ class SurfaceLogic:
         from . import lasso_line
         brush = context.scene.mch_brush
         dm = getattr(getattr(context.scene, 'mch_cdrape', None), 'drape_mode', 'AREA')
-        if self.mode == 'CDRAPE' and dm in {'CAPE', 'NECK'}:
+        if self.mode == 'CDRAPE' and dm in {'CAPE', 'CSIM', 'NECK'}:
             return self._finish_hang(context, dm == 'NECK')
         line = bool(getattr(brush, 'line_mode', False))
         if len(self.points) < (2 if line else 3):
