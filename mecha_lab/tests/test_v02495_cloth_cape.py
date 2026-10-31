@@ -77,7 +77,10 @@ c = sess['cloth'].co
 check('drape 40 frames: finite, outside the body, hanging (not stretched past its length x Looseness)',
       np.all(np.isfinite(c)) and np.hypot(c[:, 0], c[:, 1]).min() > 0.29 and c[:, 2].min() > 0.65 - length * (1 + st.slack / 100.0) * 1.1,   # (body space)
       (np.hypot(c[:, 0], c[:, 1]).min(), c[:, 2].min()))
+cd.SIM['running'] = False
 st.cape_length = 80.0
+check('Length 50 -> 80 with the cape waiting: it is made again at once from the same line (before Space)',
+      len(C.view_layer.objects.active.data.vertices) > n0 * 1.4, (n0, len(C.view_layer.objects.active.data.vertices)))
 check('Length is in the snapshot (a change restarts the drape with Space)', 'cape_length' in inspect.getsource(cd._snapshot))
 cd.restart(C)
 ob = C.view_layer.objects.active
@@ -129,6 +132,22 @@ cd.cancel(C)
 st.neck_pin_top = False
 cd.perform_hang(C, neck_ob, tloop, closed=True)
 check('Pin Top off: only the bottom ring pinned', int((cd.SIM['sess']['cloth'].pin >= 1).sum()) == cd.SIM['nb'] == tn)
+# 0.24.95 set the shape first (user: "위 고리랑 아래 고리 사이즈를 다르게 ... 원기둥 사이즈랑 위아래 고리를 먼저 정하고 그 다음에 시뮬")
+tob = C.view_layer.objects.active
+st.neck_top = 100.0                                     # (the slider's update: the waiting tube follows right away)
+tc = mio.read_co(tob.data)
+r_bot = np.hypot(tc[:tn, 0], tc[:tn, 1]).mean()
+r_top = np.hypot(tc[-tn:, 0], tc[-tn:, 1]).mean()
+check('Top Size 100: the waiting tube follows the slider at once - a cone, the top ring about twice the neck radius wider',
+      r_top > r_bot + 0.1 and not cd.SIM['running'] and np.allclose(cd.SIM['surface'], tc), (r_bot, r_top))
+st.neck_bottom = -50.0
+tc = mio.read_co(tob.data)
+check('Bottom Size -50: smaller, but never inside the neck', np.hypot(tc[:tn, 0], tc[:tn, 1]).min() > 0.12 * math.cos(math.pi / 48) - 1e-6,
+      np.hypot(tc[:tn, 0], tc[:tn, 1]).min())
+cd.restart(C)
+check('Space after setting the shape: the drape starts from it (frame 0, the cloth on the new shape)',
+      cd.SIM['running'] and cd.SIM['sess']['frame'] == 0 and len(cd.SIM['sess']['cloth'].co) == len(tob.data.vertices))
+st.neck_top, st.neck_bottom = 0.0, 0.0
 cd.cancel(C)
 st.neck_pin_top, st.cape_length = True, 50.0
 bpy.data.objects.remove(neck_ob)
