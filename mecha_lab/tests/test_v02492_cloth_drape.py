@@ -175,10 +175,53 @@ except Exception as ex:
 check('A second lasso while one cloth is live is refused (keep or drop it first)', second)
 msg = cd.confirm(C)
 check('Enter keeps the object, the session ends', 'kept' in msg and not cd.sim_active() and bpy.data.objects.get(ob.name) is not None, msg)
+kept = bpy.data.objects.get(ob.name)
+kept_me = kept.data
+bpy.data.objects.remove(kept)                 # (a kept cloth lies over the ball: a new lasso there would land on it)
+bpy.data.meshes.remove(kept_me)
 cd.perform(C, loops, Proj())
 name = C.view_layer.objects.active.name
 msg = cd.cancel(C)
 check('Esc drops the cloth object', 'dropped' in msg and bpy.data.objects.get(name) is None and not cd.sim_active())
+# ---- 0.24.95 the lasso cloth gets Offset + Cloth Detail before Space, like the mask / cape cloths (user: "라쏘로 뽑아서
+# 붙일 수 있지? ... 그래 넣어줘")
+st.offset = 2.0
+cd.perform(C, loops, Proj())
+ob_a = C.view_layer.objects.active
+surf = cd.SIM['surface']
+shown = lambda: np.array([v.co[:] for v in ob_a.data.vertices])
+d0 = np.linalg.norm(shown() - surf, axis=1)
+csize = float(np.linalg.norm(surf.max(0) - surf.min(0)))
+check('Lasso cloth: before Space it is shown lifted off the ball the same everywhere (where the drape starts: the rest shape)',
+      cd.SIM['source'] == 'AREA' and d0.min() > 1e-3 and np.ptp(d0) < 1e-6 and np.allclose(cd.SIM['sess']['cloth'].init, shown(), atol=1e-6),
+      (d0.min(), np.ptp(d0)))
+st.offset = 8.0
+d1 = np.linalg.norm(shown() - surf, axis=1)
+check('Offset 8 %: the waiting lasso cloth lifts at once to 8 % of its size (no new lasso)',
+      abs(d1.mean() - csize * 0.08) < csize * 0.003 and np.ptp(d1) < 1e-6, (d1.mean(), csize * 0.08))
+n0 = len(ob_a.data.vertices)
+sp0 = st.spacing
+st.spacing = sp0 / 2.0                       # (the slider: the waiting cloth is made again from the same lasso)
+n1 = len(ob_a.data.vertices)
+surf1 = cd.SIM['surface']
+check('Cloth Detail halved before Space: the lasso cloth is made again at once from the same lasso, more points (2 x +), '
+      'laid on the ball (not on the old cloth over it), shown lifted by Offset',
+      n1 > 2.0 * n0 and np.allclose(np.linalg.norm(surf1, axis=1), 1.0, atol=0.02)
+      and abs(np.linalg.norm(shown() - surf1, axis=1).mean() - float(np.linalg.norm(surf1.max(0) - surf1.min(0))) * 0.08) < csize * 0.003,
+      (n0, n1, np.linalg.norm(surf1, axis=1).min()))
+cd.restart(C)
+check('Space after it: the drape runs the new cloth from the shape on screen (frame 0)',
+      cd.SIM['running'] and len(cd.SIM['sess']['cloth'].co) == n1 and cd.SIM['sess']['frame'] == 0
+      and abs(np.linalg.norm(cd.SIM['sess']['cloth'].init - surf1, axis=1).mean() - float(np.linalg.norm(surf1.max(0) - surf1.min(0))) * 0.08) < csize * 0.003)
+st.spacing = sp0
+check('... the slider while it runs leaves the running cloth alone', len(ob_a.data.vertices) == n1)
+cd.cancel(C)
+st.spacing = sp0 / 2.0
+_t, me_fresh, _nb, _sz = cd.patch_from_loops(C, loops, Proj(), st.spacing)
+check('... the same cloth a new lasso at that Cloth Detail gives (same points)', len(me_fresh.vertices) == n1, (len(me_fresh.vertices), n1))
+bpy.data.meshes.remove(me_fresh)
+st.spacing = sp0
+st.offset = 2.0
 check('Tool wiring: CDRAPE in the tool table (Cloth group, lasso shape), the cut engine dispatch + colour, the workspace tool with Space',
       'CDRAPE' in ts.TOOL_BY_ID and 'CDRAPE' in ts.SHAPE_TOOLS and any('CDRAPE' in g[1] for g in ts.TOOL_GROUPS if g[0] == 'Cloth')
       and "cloth_drape.perform" in inspect.getsource(ce) and 'CDRAPE' in ce._COLORS

@@ -47,9 +47,11 @@ def _hang_live_update(st, context):
     try:
         if not sim_active() or SIM.get('running'):
             return
-        changed = rebuild_mask(context) if SIM.get('source') == 'MASK' else (SIM.get('line') is not None and rebuild_hang(context))
+        src = SIM.get('source')
+        changed = (rebuild_mask(context) if src == 'MASK' else rebuild_area(context) if src == 'AREA'
+                   else (SIM.get('line') is not None and rebuild_hang(context)))
         ob = _ob()
-        if ob is not None and SIM.get('source') in {'MASK', 'CAPE', 'NECK'}:
+        if ob is not None and src in {'MASK', 'CAPE', 'NECK', 'AREA'}:
             show_start(ob.data, SIM['surface'], SIM['size'], settings(context))      # (Offset: no rebuild, just the lift)
             changed = True
         if changed:
@@ -99,7 +101,7 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
                              '(0 = from Cloth Detail; never more points than the body has there; before Space the cloth follows the slider)',
                              default=0, min=0, max=200000, update=_hang_live_update)
     spacing: FloatProperty(name='Cloth Detail', description='The patch spacing as % of the outline size (smaller = more points, finer folds)',
-                           default=1.5, min=0.4, max=6.0, subtype='PERCENTAGE')
+                           default=1.5, min=0.4, max=6.0, subtype='PERCENTAGE', update=_hang_live_update)
     slack: FloatProperty(name='Looseness', description='Extra fabric: the cloth is this much bigger than the region, so it sags and bunches',
                          default=25.0, min=0.0, max=80.0, subtype='PERCENTAGE')
     shrink: FloatProperty(name='Shrink', description='The cloth pulled tight (against Looseness)',
@@ -698,6 +700,44 @@ def _ob():
     return bpy.data.objects.get(SIM.get('ob', '')) if SIM else None
 
 
+def _area_key(st):
+    return (round(float(st.spacing), 4),)
+
+
+def rebuild_area(context):
+    """0.24.95 a lasso cloth not draping yet, made again from the same lasso and view when Cloth Detail changed (the
+    slider, or Space / Restart).  Returns True when the mesh was replaced."""
+    from . import armor_plate as ap
+    st = settings(context)
+    ob = _ob()
+    if SIM.get('source') != 'AREA' or SIM.get('loops') is None or st is None or ob is None or SIM.get('area_key') == _area_key(st):
+        return False
+    p = SIM['proj']
+    proj = ap.thaw_projector(p) if isinstance(p, dict) else p
+    hidden = ob.hide_viewport
+    ob.hide_viewport = True                       # (the rays must find the body, not this cloth over it)
+    try:
+        context.view_layer.update()
+        sew = pin_idx = None
+        if SIM.get('two'):
+            _t, me, nb, size, info = patch_two_sides(context, SIM['loops'], proj, st.spacing)
+            sew, pin_idx = info['sew'], info['top']
+        else:
+            _t, me, nb, size = patch_from_loops(context, SIM['loops'], proj, st.spacing)
+    finally:
+        ob.hide_viewport = hidden
+    for f in me.polygons:
+        f.use_smooth = True
+    old = ob.data
+    me.name = old.name
+    ob.data = me
+    if old.users == 0:
+        bpy.data.meshes.remove(old)
+    SIM.update(nb=nb, size=size, surface=mio.read_co(me).copy(), sew=sew, pin_idx=pin_idx, area_key=_area_key(st),
+               spacing=float(st.spacing))
+    return True
+
+
 def perform(context, loops, projector):
     """Lasso -> the cloth object laid over the region (flat), the session ready: Space drapes it.  Mode Cape: the
     drawn line hangs a cape; Mode Neck: the drawn loop hangs a neck cloth."""
@@ -735,17 +775,20 @@ def perform(context, loops, projector):
     context.view_layer.objects.active = ob
     surface = mio.read_co(me).copy()
     try:
-        sess = build(context, target, me, nb, size, st, sew=sew, pin_idx=pin_idx)
+        sess = build(context, target, me, nb, size, st, sew=sew, pin_idx=pin_idx, offset_lift=True)
     except Exception:
         bpy.data.objects.remove(ob)
         bpy.data.meshes.remove(me)
         raise
-    mio.write_co(me, sess['cloth'].co)
+    mio.write_co(me, sess['cloth'].init)          # (the clean starting shape on screen until Space)
     me.update()
+    from . import armor_plate as ap
+    frozen = ap.freeze_projector(projector)       # 0.24.95 the lasso + its view kept: Cloth Detail rebuilds it before Space
     SIM.clear()
     SIM.update(ob=ob.name, target=target.name, nb=nb, size=size, sess=sess, running=False, done=False, want=None,
                surface=surface, start=sess['cloth'].init.copy(), snapshot=_snapshot(st), sew=sew, pin_idx=pin_idx,
-               spacing=float(st.spacing))
+               spacing=float(st.spacing), source='AREA', loops=[[tuple(p) for p in lp] for lp in loops],
+               proj=frozen if frozen is not None else projector, two=bool(st.two_sides), area_key=_area_key(st))
     pieces = f'front + back, {len(sew):,} seam pairs, ' if sew is not None else ''
     return (f'Cloth Drape on {target.name}: {pieces}{sess["points"]:,} points over {sess["collider"]:,} body points '
             f'(Space drape · Enter keep · Esc drop)')
@@ -1732,6 +1775,7 @@ def restart(context):
     grab_end_event()
     rebuild_hang(context)                         # 0.24.95 a cape / neck cloth: Length / Flare / Detail rebuild it
     rebuild_mask(context)                         # 0.24.95 a Drape Mask cloth: Points / Detail rebuild it
+    rebuild_area(context)                         # 0.24.95 a lasso cloth: Cloth Detail rebuilds it from the same lasso
     ob = _ob()
     st = settings(context)
     target = bpy.data.objects.get(SIM.get('target', ''))
@@ -1744,7 +1788,7 @@ def restart(context):
     sess = build(context, target, me, SIM['nb'], SIM['size'], st, sew=SIM.get('sew'), pin_idx=SIM.get('pin_idx'),
                  to_cloth=SIM.get('to_cloth'), pin_sel=bool(SIM.get('pin_sel')), gdir_ob=ob if mode == 'MESH' else target,
                  wrap=mode == 'WRAP', puff=mode == 'SEW', tether=SIM.get('source') in {'CAPE', 'NECK'}, tacks=SIM.get('tacks'),
-                 offset_lift=SIM.get('source') in {'CAPE', 'NECK', 'MASK'})
+                 offset_lift=SIM.get('source') in {'CAPE', 'NECK', 'MASK', 'AREA'})
     if mode == 'SEW':
         c = sess['cloth']
         sewn = c.pin >= 1
@@ -2370,7 +2414,6 @@ def draw(layout, context):
                 r.prop(st, 'neck_top', slider=True)
         r = box.row(align=True)
         r.prop(st, 'cape_length', slider=True)
-        r.prop(st, 'offset', slider=True)
         if st.drape_mode == 'CAPE':
             r.prop(st, 'cape_flare', slider=True)
     r = box.row(align=True)
@@ -2400,7 +2443,6 @@ def draw(layout, context):
     r.enabled = not live
     r.operator('mch.cdrape_mask', text='Drape Mask (masked faces lift off as the cloth)', icon='MOD_MASK')
     r.prop(st, 'mask_points', text='Points')
-    r.prop(st, 'offset', text='Offset')
     r = box.row(align=True)
     r.enabled = not live
     r.operator('mch.cdrape_wrap', text='Wrap This Mesh (like a wrapping cloth)', icon='MOD_SHRINKWRAP')
@@ -2437,6 +2479,7 @@ def draw(layout, context):
     col.prop(st, 'keep', slider=True)
     col = box.column(align=True)
     col.prop(st, 'gap', slider=True)
+    col.prop(st, 'offset', slider=True)
     r = box.row(align=True)                              # 0.24.95 what the cloth collides with
     r.prop(st, 'collide_with', expand=True)
     r = box.row(align=True)
@@ -2446,7 +2489,7 @@ def draw(layout, context):
     rr.prop(st, 'proxy_faces', text='Faces')
     rr.prop(st, 'show_proxy', text='', icon='HIDE_OFF' if st.show_proxy else 'HIDE_ON', toggle=True)
     col.prop(st, 'spacing', slider=True, text='Cloth Detail (less = finer)')
-    if sim_active() and SIM.get('line') is None and SIM.get('spacing') is not None and abs(float(st.spacing) - SIM['spacing']) > 1e-6:
+    if sim_active() and SIM.get('source') not in {'AREA', 'MASK', 'CAPE', 'NECK'} and SIM.get('spacing') is not None and abs(float(st.spacing) - SIM['spacing']) > 1e-6:
         box.label(text='Cloth Detail changes the NEXT lasso (this cloth keeps its mesh)', icon='INFO')
     r = box.row(align=True)
     r.prop(st, 'two_sides', toggle=True, icon='MOD_MIRROR')
