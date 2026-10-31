@@ -73,7 +73,8 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
     drape_mode: EnumProperty(name='Mode', items=[
         ('AREA', 'Area', 'Draw round a region: a loose cloth laid over it, pinned at its rim'),
         ('CAPE', 'Cape', 'Draw a line (or, Surface on, click points) across the shoulders: a cape hangs from it, as wide as the line'),
-        ('NECK', 'Neck Cloth', 'Draw round the neck: a vertical tube round it (Tube) or a ring over the shoulders (Ring)')],
+        ('NECK', 'Neck Cloth', 'Draw round the neck: a vertical tube round it (Tube) or a ring over the shoulders (Ring)'),
+        ('PANEL', 'Panel', 'Draw a polygon: a flat cloth panel facing you in front of the body (like a pattern piece); Tack Pins then Drape This Mesh')],
         default='AREA')
     neck_style: EnumProperty(name='Neck Style', items=[
         ('TUBE', 'Tube', 'A vertical cylinder round the neck (a snood / gaiter): from the drawn loop up by Length, the extra fabric (Looseness) bunches into folds'),
@@ -295,7 +296,7 @@ def surface_samples(*a, **k):
 
 
 def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_ob=None, wrap=False, sew=None, pin_idx=None, puff=False,
-          tether=False):
+          tether=False, tacks=None):
     """The cloth + the collider for the mesh ``me``: a lasso patch (local space of ``target``, the first ``nb``
     points its rim) or (``to_cloth``: the matrix that brings the target's points into the cloth's space) a mesh
     of its own laid on ``target``.  Returns the session."""
@@ -318,7 +319,7 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
         rim = wl.boundary_verts(me)
         if len(rim):
             pin[rim] = 1.0
-    elif st.pin_rim:
+    elif st.pin_rim and tacks is None:                # (tacked: the tack pins hold it, not the rim)
         if to_cloth is None and not puff and nb > 0:
             pin[:min(nb, n)] = 1.0
         else:                                         # a mesh of its own / a sewn copy: its open edges are the rim
@@ -348,6 +349,12 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
         cloth.far_scale = far_scale
     scale = (1.0 - st.shrink / 100.0) * (1.0 + st.slack / 100.0)
     cloth.scale_e = cloth.scale_b = scale
+    if tacks is not None:                            # 0.24.95 tack pins: (cloth point idx, body point in cloth space)
+        tk = np.asarray(tacks[0], np.int64)
+        cloth.tack = (tk, np.asarray(tacks[1], np.float64), 0.0)
+        tp = np.zeros(n)
+        tp[tk] = 1.0                                 # (a few pins hold the whole panel: without tethers its weight
+        cloth.tether = cloth_pbd.tethers(cloth_co, edges, tp, scale=max(scale, 1.0) * 1.02)   # stretched it off them)
     if tether:                                       # 0.24.95 a cloth hung from one edge (Cape): no rubber stretch
         cloth.tether = cloth_pbd.tethers(cloth_co, edges, pin, scale=max(scale, 1.0) * 1.02)
     if np.any(pin >= 1) and scale != 1.0:            # the fabric next to a seam cannot be loose at once: taper over 4 rings
@@ -464,6 +471,8 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
 
 
 SEW_RAMP = 0.3                   # the seams pull at full strength after this share of the frames
+TACK_RAMP = 0.25                 # the tack pins pull at full strength after this share of the frames
+TACK_KEY = 'mch_tacks'           # cloth object prop (JSON): [{v, body, p (body local), n}] - Tack Pins
 GRAB_PX = 40.0                   # 0.24.95 grab: the nearest cloth point within this many pixels of the click
 GRAB_RADIUS = 4.0                # ... pulls the points within this x the patch spacing with it (smooth falloff)
 
@@ -498,6 +507,9 @@ def advance(sess, st):
     force = None
     if cloth.sew is not None:
         cloth.sew_strength = min(1.0, (sess['frame'] + 1) / max(1.0, sess['frames'] * SEW_RAMP))
+    if cloth.tack is not None:                       # the tack pins pull in over the first frames, then hold
+        idx, tgt, _w = cloth.tack
+        cloth.tack = (idx, tgt, min(1.0, (sess['frame'] + 1) / max(1.0, sess['frames'] * TACK_RAMP)))
     g = sess['gdir'] * (GRAV * st.gravity / 100.0 * sess['size'])
     if sess.get('press', 0.0) > 0:                               # the wrap's pressure: every point toward the body / plate
         d, inward = sess['grid'].inward(cloth.co)
@@ -655,6 +667,8 @@ def perform(context, loops, projector):
     st = settings(context)
     if st is None:
         raise cg.CutError('Cloth Drape settings missing')
+    if getattr(st, 'drape_mode', 'AREA') == 'PANEL':
+        return perform_panel(context, loops, projector)
     if getattr(st, 'drape_mode', 'AREA') in {'CAPE', 'NECK'}:
         if sim_active():
             raise cg.CutError('Cloth Drape: keep (Enter) or drop (Esc) the cloth you have first')
@@ -1341,6 +1355,121 @@ def body_for(context, cloth):
     return None
 
 
+# -----------------------------------------------------------------------------
+# 0.24.95 Panel + Tack Pins (user: "다각형으로 그은 플랜을 핀으로 천 하나 사람 하나 찍고, 반대도 ... 붙어서 시뮬, 핀 여러 개
+# 마블러스 디자이너처럼")
+# -----------------------------------------------------------------------------
+
+
+def tacks_of(ob):
+    import json
+    try:
+        data = json.loads(ob.get(TACK_KEY, '[]')) if ob is not None else []
+    except (TypeError, ValueError):
+        data = []
+    return [t for t in data if isinstance(t, dict) and 'v' in t and 'p' in t and 'body' in t]
+
+
+def _write_tacks(ob, data):
+    import json
+    if data:
+        ob[TACK_KEY] = json.dumps(data)
+    elif TACK_KEY in ob.keys():
+        del ob[TACK_KEY]
+
+
+def add_tack(cloth, cloth_point, body, body_point, body_normal=None):
+    """A tack pin: the cloth point nearest ``cloth_point`` (world) tied to ``body_point`` (world) on ``body``.
+    Returns the cloth point index."""
+    inv = cloth.matrix_world.inverted_safe()
+    co = mio.read_co(cloth.data)
+    q = np.array((inv @ Vector(cloth_point))[:])
+    v = int(np.argmin(np.linalg.norm(co - q[None, :], axis=1)))
+    binv = body.matrix_world.inverted_safe()
+    p = binv @ Vector(body_point)
+    n = (binv.to_3x3() @ Vector(body_normal)).normalized() if body_normal is not None else Vector((0, 0, 0))
+    data = [t for t in tacks_of(cloth) if t['v'] != v]
+    data.append({'v': v, 'body': body.name, 'p': list(p[:]), 'n': list(n[:])})
+    _write_tacks(cloth, data)
+    return v
+
+
+def pop_tack(cloth):
+    data = tacks_of(cloth)
+    if data:
+        data.pop()
+        _write_tacks(cloth, data)
+    return len(data)
+
+
+def clear_tacks(cloth):
+    _write_tacks(cloth, [])
+
+
+def tack_targets(cloth, offset):
+    """(idx, targets in the cloth's space, first body) of the cloth's tack pins; each body point lifted ``offset``
+    along its normal (the cloth sits on the body, not in it)."""
+    data = tacks_of(cloth)
+    idx, tgt, body = [], [], None
+    inv = cloth.matrix_world.inverted_safe()
+    nv = len(cloth.data.vertices)
+    for t in data:
+        b = bpy.data.objects.get(t['body'])
+        if b is None or not (0 <= int(t['v']) < nv):
+            continue
+        body = body or b
+        w = b.matrix_world @ (Vector(t['p']) + Vector(t.get('n', (0, 0, 0))) * offset)
+        idx.append(int(t['v']))
+        tgt.append((inv @ w)[:])
+    if not idx:
+        return None, None, None
+    return np.array(idx, np.int64), np.array(tgt, np.float64), body
+
+
+def perform_panel(context, loops, projector):
+    """Mode Panel: the drawn polygon as a flat cloth panel facing the view, a little in front of the mesh under
+    it (or at the 3D cursor's depth): a "Cloth Panel" object, ready for Tack Pins and Drape This Mesh."""
+    from . import armor_plate as ap
+    from . import target_rules
+    st = settings(context)
+    groups = cg.prepare_loops(loops)
+    outline = [p for outer, _h in groups for p in outer]
+    xs = [p[0] for p in outline]
+    ys = [p[1] for p in outline]
+    size_px = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
+    pts, tris, _nb = ap.screen_patch(groups, spacing=size_px * st.spacing / 100.0, min_spacing=2.0)
+    if not tris:
+        raise cg.CutError('The outline is too small for a panel.')
+    cxy = (sum(xs) / len(xs), sum(ys) / len(ys))
+    o, d = projector.ray(cxy)
+    o, d = Vector(o), Vector(d).normalized()
+    dg = context.evaluated_depsgraph_get()
+    ok, loc, _n, _i, hit_ob, _m = target_rules.scene_ray(context, dg, o, d)
+    if ok and hit_ob is not None:
+        bsize = float(Vector(hit_ob.dimensions).length)
+        p0 = Vector(loc) - d * (bsize * 0.06)                    # just in front of the body
+    else:
+        p0 = o + d * max((context.scene.cursor.location - o).dot(d), 0.1)
+    cos, nrms = [], []
+    for xy in pts:
+        oo, dd = projector.ray(xy)
+        oo, dd = Vector(oo), Vector(dd).normalized()
+        den = dd.dot(d)
+        t = (p0 - oo).dot(d) / den if abs(den) > 1e-9 else 0.0
+        cos.append(oo + dd * t)
+        nrms.append(-d)
+    me = ap.build_region(pts, tris, cos, nrms, quads=True)
+    me.name = 'Cloth Panel'
+    ob = bpy.data.objects.new('Cloth Panel', me)
+    context.scene.collection.objects.link(ob) if not context.collection else context.collection.objects.link(ob)
+    for x in context.selected_objects:
+        x.select_set(False)
+    ob.select_set(True)
+    context.view_layer.objects.active = ob
+    return (f'Cloth Panel: {len(me.vertices):,} points, facing you - Tack Pins (click the panel, then the body; '
+            f'as many as you like), then Drape This Mesh')
+
+
 def perform_mesh(context, cloth, body):
     """The selected mesh itself as the cloth (a remeshed piece of your own), laid as it is on ``body``: its open
     edges are the rim (Pin Rim), selected points stay too; Space drapes, Enter keeps the mesh, Esc puts it back."""
@@ -1363,8 +1492,12 @@ def perform_mesh(context, cloth, body):
     sel = np.zeros(len(me.vertices), bool)
     me.vertices.foreach_get('select', sel)
     pin_sel = bool(sel.any()) and not bool(sel.all())      # (a fresh primitive has every point selected: not a pin)
+    tk_idx, tk_tgt, _tb = tack_targets(cloth, size * st.gap / 100.0 + size * 0.004)
+    tacks = (tk_idx, tk_tgt) if tk_idx is not None else None
+    if tacks is not None:
+        pin_sel = False                                     # (the tack pins hold it)
     try:
-        sess = build(context, body, me, 0, size, st, to_cloth=to_cloth, pin_sel=pin_sel, gdir_ob=cloth)
+        sess = build(context, body, me, 0, size, st, to_cloth=to_cloth, pin_sel=pin_sel, gdir_ob=cloth, tacks=tacks)
     except Exception:
         backup.use_fake_user = False
         bpy.data.meshes.remove(backup)
@@ -1375,8 +1508,11 @@ def perform_mesh(context, cloth, body):
     SIM.clear()
     SIM.update(ob=cloth.name, target=body.name, nb=0, size=size, sess=sess, running=False, done=False, want=None,
                surface=surface, start=sess['cloth'].init.copy(), snapshot=_snapshot(st), mode='MESH',
-               backup=backup.name, to_cloth=to_cloth, pin_sel=pin_sel)
+               backup=backup.name, to_cloth=to_cloth, pin_sel=pin_sel, tacks=tacks)
     rim = int(np.count_nonzero(sess['cloth'].pin >= 1))
+    if tacks is not None:
+        return (f'Cloth Drape: "{cloth.name}" on {body.name} with {len(tacks[0])} tack pins - {sess["points"]:,} points, '
+                f'{sess["collider"]:,} body points (Space drape: the pins pull in and hold · Enter keep · Esc put back)')
     return (f'Cloth Drape: "{cloth.name}" itself on {body.name} - {sess["points"]:,} points, {rim:,} pinned, '
             f'{sess["collider"]:,} body points (Space drape · Enter keep · Esc put back)')
 
@@ -1538,7 +1674,7 @@ def restart(context):
     mode = SIM.get('mode')
     sess = build(context, target, me, SIM['nb'], SIM['size'], st, sew=SIM.get('sew'), pin_idx=SIM.get('pin_idx'),
                  to_cloth=SIM.get('to_cloth'), pin_sel=bool(SIM.get('pin_sel')), gdir_ob=ob if mode == 'MESH' else target,
-                 wrap=mode == 'WRAP', puff=mode == 'SEW', tether=SIM.get('source') in {'CAPE', 'NECK'})
+                 wrap=mode == 'WRAP', puff=mode == 'SEW', tether=SIM.get('source') in {'CAPE', 'NECK'}, tacks=SIM.get('tacks'))
     if mode == 'SEW':
         c = sess['cloth']
         sewn = c.pin >= 1
@@ -1857,7 +1993,9 @@ class MCH_OT_cdrape_mesh(bpy.types.Operator):
         cloth = context.view_layer.objects.active
         body = body_for(context, cloth)
         if body is None:
-            self.report({'WARNING'}, 'Cloth Drape: select the body mesh too (or parent the cloth to it)')
+            body = tack_targets(cloth, 0.0)[2]            # 0.24.95 the body the tack pins are on
+        if body is None:
+            self.report({'WARNING'}, 'Cloth Drape: select the body mesh too (or parent the cloth to it, or Tack Pins it)')
             return {'CANCELLED'}
         try:
             msg = perform_mesh(context, cloth, body)
@@ -1865,6 +2003,158 @@ class MCH_OT_cdrape_mesh(bpy.types.Operator):
             self.report({'WARNING'}, str(ex))
             return {'CANCELLED'}
         self.report({'INFO'}, msg)
+        return {'FINISHED'}
+
+
+def _ray_skip(context, xy, skip=None):
+    """The first mesh under the mouse (region pixel ``xy``), looking through ``skip`` (the cloth in front of the
+    body).  Returns (object, world point, world normal) or (None, None, None)."""
+    from bpy_extras import view3d_utils
+    region, rv3d = context.region, context.region_data
+    o = view3d_utils.region_2d_to_origin_3d(region, rv3d, xy)
+    d = view3d_utils.region_2d_to_vector_3d(region, rv3d, xy).normalized()
+    dg = context.evaluated_depsgraph_get()
+    for _ in range(8):
+        ok, loc, nrm, _i, ob, _m = context.scene.ray_cast(dg, o, d)
+        if not ok or ob is None:
+            return None, None, None
+        if skip is not None and ob == skip:
+            o = loc + d * 1e-4
+            continue
+        return ob, loc, nrm
+    return None, None, None
+
+
+_TACK_DRAW = {}
+
+
+def _tack_draw():
+    """The tack pins of the cloth being tacked: cloth points (orange), body points (blue), a line for each pair."""
+    try:
+        cloth = bpy.data.objects.get(_TACK_DRAW.get('cloth', ''))
+        if cloth is None:
+            return
+        import gpu
+        from gpu_extras.batch import batch_for_shader
+        co = mio.read_co(cloth.data)
+        a_pts, b_pts, lines = [], [], []
+        for t in tacks_of(cloth):
+            b = bpy.data.objects.get(t['body'])
+            if b is None or not (0 <= int(t['v']) < len(co)):
+                continue
+            a = cloth.matrix_world @ Vector(co[int(t['v'])])
+            bb = b.matrix_world @ Vector(t['p'])
+            a_pts.append(a[:])
+            b_pts.append(bb[:])
+            lines += [a[:], bb[:]]
+        pend = _TACK_DRAW.get('pending')
+        sh = gpu.shader.from_builtin('UNIFORM_COLOR')
+        gpu.state.blend_set('ALPHA')
+        gpu.state.depth_test_set('NONE')
+        if lines:
+            gpu.state.line_width_set(2.0)
+            sh.uniform_float('color', (1.0, 0.85, 0.2, 0.9))
+            batch_for_shader(sh, 'LINES', {'pos': lines}).draw(sh)
+        gpu.state.point_size_set(9.0)
+        for pts, col in ((a_pts, (1.0, 0.45, 0.1, 1.0)), (b_pts, (0.25, 0.6, 1.0, 1.0)), ([pend] if pend else [], (1.0, 1.0, 1.0, 1.0))):
+            if pts:
+                sh.uniform_float('color', col)
+                batch_for_shader(sh, 'POINTS', {'pos': pts}).draw(sh)
+        gpu.state.point_size_set(1.0)
+        gpu.state.line_width_set(1.0)
+        gpu.state.blend_set('NONE')
+    except Exception:            # (never break viewport drawing)
+        pass
+
+
+class MCH_OT_cdrape_tack(bpy.types.Operator):
+    """Tack Pins (like Marvelous Designer): click a point on the cloth, then the point on the body it goes to - as many pairs as you like.  Backspace: undo the last, Enter / right click: done.  Drape This Mesh then pulls each pin onto its body point"""
+    bl_idname = 'mch.cdrape_tack'
+    bl_label = 'Tack Pins'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    _handle = None
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.view_layer.objects.active
+        return (ob is not None and ob.type == 'MESH' and context.mode == 'OBJECT' and context.area is not None
+                and context.area.type == 'VIEW_3D' and not sim_active())
+
+    def _hint(self, context):
+        n = len(tacks_of(self.cloth))
+        step_txt = 'click the BODY point it goes to' if self.pending is not None else 'click a point on the CLOTH'
+        context.area.header_text_set(f'Tack Pins ({n}): {step_txt}  ·  Backspace undo  ·  Enter / right click done  ·  middle mouse view')
+        context.area.tag_redraw()
+
+    def invoke(self, context, event):
+        self.cloth = context.view_layer.objects.active
+        self.pending = None
+        _TACK_DRAW.clear()
+        _TACK_DRAW['cloth'] = self.cloth.name
+        if MCH_OT_cdrape_tack._handle is None:
+            MCH_OT_cdrape_tack._handle = bpy.types.SpaceView3D.draw_handler_add(_tack_draw, (), 'WINDOW', 'POST_VIEW')
+        context.window_manager.modal_handler_add(self)
+        self._hint(context)
+        return {'RUNNING_MODAL'}
+
+    def _end(self, context):
+        if MCH_OT_cdrape_tack._handle is not None:
+            bpy.types.SpaceView3D.draw_handler_remove(MCH_OT_cdrape_tack._handle, 'WINDOW')
+            MCH_OT_cdrape_tack._handle = None
+        _TACK_DRAW.clear()
+        if context.area:
+            context.area.header_text_set(None)
+            context.area.tag_redraw()
+
+    def modal(self, context, event):
+        if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+            xy = (event.mouse_region_x, event.mouse_region_y)
+            if self.pending is None:
+                ob, loc, _n = _ray_skip(context, xy)
+                if ob != self.cloth:
+                    self.report({'WARNING'}, 'Tack Pins: click on the cloth first')
+                else:
+                    self.pending = loc
+                    _TACK_DRAW['pending'] = loc[:]
+            else:
+                ob, loc, nrm = _ray_skip(context, xy, skip=self.cloth)
+                if ob is None or ob.type != 'MESH':
+                    self.report({'WARNING'}, 'Tack Pins: click on the body')
+                else:
+                    add_tack(self.cloth, self.pending, ob, loc, nrm)
+                    self.pending = None
+                    _TACK_DRAW.pop('pending', None)
+            self._hint(context)
+            return {'RUNNING_MODAL'}
+        if event.type == 'BACK_SPACE' and event.value == 'PRESS':
+            if self.pending is not None:
+                self.pending = None
+                _TACK_DRAW.pop('pending', None)
+            else:
+                pop_tack(self.cloth)
+            self._hint(context)
+            return {'RUNNING_MODAL'}
+        if event.type in {'RET', 'NUMPAD_ENTER', 'RIGHTMOUSE', 'ESC'} and event.value == 'PRESS':
+            self._end(context)
+            self.report({'INFO'}, f'Tack Pins: {len(tacks_of(self.cloth))} on "{self.cloth.name}" - Drape This Mesh pulls them in')
+            return {'FINISHED'}
+        return {'PASS_THROUGH'}
+
+
+class MCH_OT_cdrape_tack_clear(bpy.types.Operator):
+    """Remove every tack pin of the active cloth"""
+    bl_idname = 'mch.cdrape_tack_clear'
+    bl_label = 'Clear Tack Pins'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.view_layer.objects.active
+        return ob is not None and bool(tacks_of(ob))
+
+    def execute(self, context):
+        clear_tacks(context.view_layer.objects.active)
         return {'FINISHED'}
 
 
@@ -1993,7 +2283,8 @@ def draw(layout, context):
     live = sim_active()
     hint = {'AREA': 'draw a lasso on the mesh: a loose cloth over that region',
             'CAPE': 'draw a line across the shoulders (Surface: click points), Enter: a cape hangs from it',
-            'NECK': 'draw round the neck (Surface: click points round it), Enter: a cloth over the shoulders'}
+            'NECK': 'draw round the neck (Surface: click points round it), Enter: a cloth over the shoulders',
+            'PANEL': 'draw a polygon: a flat panel in front of the body; Tack Pins, then Drape This Mesh'}
     box.label(text=status() if live else hint.get(st.drape_mode, hint['AREA']), icon='PLAY' if live else 'INFO')
     box.row().prop(st, 'drape_mode', expand=True)                     # 0.24.95 Area / Cape / Neck Cloth
     if live and SIM.get('line') is not None and not SIM.get('running') and SIM['sess'].get('frame', 0) == 0:
@@ -2025,9 +2316,15 @@ def draw(layout, context):
     r.enabled = live
     r.operator('mch.cdrape_control', text='Keep (Enter)', icon='CHECKMARK').action = 'confirm'
     r.operator('mch.cdrape_control', text='Put Back (Esc)' if SIM.get('mode') == 'MESH' else 'Drop (Esc)', icon='X').action = 'cancel'
+    r = box.row(align=True)                              # 0.24.95 Tack Pins (Marvelous Designer's tack)
+    r.enabled = not live
+    act = context.view_layer.objects.active
+    n_tk = len(tacks_of(act)) if act is not None else 0
+    r.operator('mch.cdrape_tack', text=f'Tack Pins ({n_tk}): cloth point, then body point', icon='PINNED')
+    r.operator('mch.cdrape_tack_clear', text='', icon='X')
     r = box.row()
     r.enabled = not live
-    r.operator('mch.cdrape_mesh', text='Drape This Mesh (on the other selected)', icon='MOD_CLOTH')
+    r.operator('mch.cdrape_mesh', text='Drape This Mesh (on the other selected / its tack pins)', icon='MOD_CLOTH')
     r = box.row()
     r.enabled = not live
     r.operator('mch.cdrape_mask', text='Drape Mask (masked faces lift off as the cloth)', icon='MOD_MASK')
@@ -2101,7 +2398,7 @@ def draw(layout, context):
     box.prop(st, 'thickness', slider=True)
 
 
-CLASSES = (MCH_PG_ClothDrape, MCH_OT_cdrape_sim, MCH_OT_cdrape_mesh, MCH_OT_cdrape_mask, MCH_OT_cdrape_wrap, MCH_OT_cdrape_sew_copy, MCH_OT_cdrape_lines,
+CLASSES = (MCH_PG_ClothDrape, MCH_OT_cdrape_sim, MCH_OT_cdrape_mesh, MCH_OT_cdrape_mask, MCH_OT_cdrape_tack, MCH_OT_cdrape_tack_clear, MCH_OT_cdrape_wrap, MCH_OT_cdrape_sew_copy, MCH_OT_cdrape_lines,
            MCH_OT_cdrape_control)
 
 

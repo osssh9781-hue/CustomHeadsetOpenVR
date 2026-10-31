@@ -217,6 +217,39 @@ class Cloth:
                 i = idx[over]
                 self.co[i] = self.co[anc[over]] + d[over] * (mx[over] / ln[over])[:, None]
 
+    tack = None          # 0.24.95 (idx, target, w): tack pins (Marvelous Designer's tack).  Each tacked point is a pin
+    #                      whose anchor walks to its body point a small step per pass (w ramps the step 0 -> 1); the
+    #                      collider runs after every step and the anchor follows where it put the point, so the pin
+    #                      walks ROUND the body (never through a shoulder) and the cloth hangs from it on the way
+    tack_anchor = None
+
+    def apply_tack(self):
+        if self.tack is None:
+            return
+        idx, tgt, w = self.tack
+        if self.tack_anchor is None:
+            self.tack_anchor = self.co[idx].copy()
+            self.pin[idx] = 1.0
+        a = self.tack_anchor
+        if w > 0.0:
+            mv = tgt - a
+            ln = np.linalg.norm(mv, axis=1)
+            cap = self.max_step * 0.3 if self.max_step > 0 else float('inf')
+            near = ln <= cap * 0.5
+            a[near] = tgt[near]
+            far = ~near
+            if np.any(far):
+                a[far] += mv[far] * (np.minimum(ln[far], cap) * min(1.0, w) / ln[far])[:, None]
+        self.init[idx] = a
+        self.co[idx] = a
+
+    def tack_follow(self):
+        """(after the collider) the anchors follow where the collider put the tacked points: outside the body"""
+        if self.tack is not None and self.tack_anchor is not None:
+            idx = self.tack[0]
+            self.tack_anchor = self.co[idx].copy()
+            self.init[idx] = self.tack_anchor
+
     hold = None          # 0.24.95 (idx, weight, target): the grabbed points are held at ``target`` by ``weight``
     #                      every pass (the user drags the cloth out of the body while it drapes)
 
@@ -259,9 +292,11 @@ class Cloth:
             if np.any(self.pin > 0):        # (a pin holds its point where it started: Blender's mask)
                 self.co = self.co * (1.0 - self.pin)[:, None] + self.init * self.pin[:, None]
             self.apply_hold()
+            self.apply_tack()
             self.apply_tether()
             if self.collide is not None:
                 self.collide(self)
+                self.tack_follow()
         if self.max_step > 0:
             d = self.co - before
             ln = np.linalg.norm(d, axis=1)
