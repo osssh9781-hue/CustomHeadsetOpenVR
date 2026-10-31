@@ -48,8 +48,11 @@ def _hang_live_update(st, context):
         if not sim_active() or SIM.get('running'):
             return
         changed = rebuild_mask(context) if SIM.get('source') == 'MASK' else (SIM.get('line') is not None and rebuild_hang(context))
+        ob = _ob()
+        if ob is not None and SIM.get('source') in {'MASK', 'CAPE', 'NECK'}:
+            show_start(ob.data, SIM['surface'], SIM['size'], settings(context))      # (Offset: no rebuild, just the lift)
+            changed = True
         if changed:
-            ob = _ob()
             if ob is not None:
                 ob.data.update()
             if context is not None and context.area is not None:
@@ -89,6 +92,9 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
     neck_pin_top: BoolProperty(name='Pin Top', default=True, description='Neck Cloth Tube: the top ring held too (off: it slides down and piles up)', update=_hang_live_update)
     cape_length: FloatProperty(name='Length', description='Cape / Neck Cloth: how far the cloth hangs from the drawn line, as % of the body size (changed before Space: the cloth is made again)', default=50.0, min=2.0, max=200.0, subtype='PERCENTAGE', update=_hang_live_update)
     cape_flare: FloatProperty(name='Flare', description='Cape: how much wider the hem is than the drawn line (0 = exactly as wide as the points you placed; the Neck Cloth is a round ring)', default=0.0, min=0.0, max=300.0, subtype='PERCENTAGE', update=_hang_live_update)
+    offset: FloatProperty(name='Offset', description='Drape Mask / Cape / Neck Cloth: how far the cloth starts off the body, as % of the cloth\'s size - '
+                          'its rest shape too, so it is a little bigger than the body and never pulls itself into it (what you see before Space is where it starts)',
+                          default=2.0, min=0.0, max=20.0, subtype='PERCENTAGE', update=_hang_live_update)
     mask_points: IntProperty(name='Cloth Points', description='Drape Mask: the masked faces are rebuilt as an even, lighter cloth of about this many points '
                              '(0 = from Cloth Detail; never more points than the body has there; before Space the cloth follows the slider)',
                              default=0, min=0, max=200000, update=_hang_live_update)
@@ -299,8 +305,28 @@ def surface_samples(*a, **k):
     return _pbd.surface_samples(*a, **k)
 
 
+def start_lift(co, spacing, size, st):
+    """0.24.95 how far a Drape Mask / Cape / Neck Cloth starts off the body: the usual Gap + half a cell, or Offset
+    (% of the cloth's own size) when bigger (user: "마스크 영역을 몸보다 조금 크게 만드는 게 안정적이지 않나?")."""
+    base = size * st.gap / 100.0 + spacing * GAP
+    csize = float(np.linalg.norm(co.max(0) - co.min(0))) if len(co) else 0.0
+    return max(base, csize * float(getattr(st, 'offset', 0.0)) / 100.0)
+
+
+def show_start(me, surface, size, st):
+    """Put the waiting cloth where it will start (``surface`` lifted along its normals by ``start_lift``): what you
+    see before Space is the real starting shape, a little off the body."""
+    mio.write_co(me, surface)
+    me.update()
+    nrm = wl._normals(me)
+    ev = mio.read_edge_verts(me)
+    spacing = float(np.mean(np.linalg.norm(surface[ev[:, 1]] - surface[ev[:, 0]], axis=1))) if len(ev) else size * 0.02
+    mio.write_co(me, surface + nrm * start_lift(surface, spacing, size, st))
+    me.update()
+
+
 def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_ob=None, wrap=False, sew=None, pin_idx=None, puff=False,
-          tether=False, tacks=None):
+          tether=False, tacks=None, offset_lift=False):
     """The cloth + the collider for the mesh ``me``: a lasso patch (local space of ``target``, the first ``nb``
     points its rim) or (``to_cloth``: the matrix that brings the target's points into the cloth's space) a mesh
     of its own laid on ``target``.  Returns the session."""
@@ -314,7 +340,7 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
     spacing = float(np.mean(np.linalg.norm(co[edges[:, 1]] - co[edges[:, 0]], axis=1))) if len(edges) else size * 0.02
     gap = size * st.gap / 100.0
     margin = max(spacing * MARGIN, gap * 0.5)
-    cloth_co = co + nrm * (gap + spacing * GAP)
+    cloth_co = co + nrm * (start_lift(co, spacing, size, st) if offset_lift else (gap + spacing * GAP))
     pin = np.zeros(n)
     if sew is not None:                               # front + back pieces: the seams hold them, only the top edge pinned
         if st.pin_rim and pin_idx is not None and len(pin_idx):
@@ -943,12 +969,13 @@ def perform_masked(context, body):
     context.view_layer.objects.active = ob
     surface = co.copy()
     try:
-        sess = build(context, body, me, 0, size, st)
+        sess = build(context, body, me, 0, size, st, offset_lift=True)
     except Exception:
         bpy.data.objects.remove(ob)
         bpy.data.meshes.remove(me)
         raise
-    me.update()                                   # (the clean cloth stays on screen until Space)
+    mio.write_co(me, sess['cloth'].init)          # (the clean starting shape on screen until Space: a little off the body)
+    me.update()
     SIM.clear()
     SIM.update(ob=ob.name, target=body.name, nb=0, size=size, sess=sess, running=False, done=False, want=None,
                surface=surface, start=sess['cloth'].init.copy(), snapshot=_snapshot(st), sew=None, pin_idx=None,
@@ -1317,12 +1344,13 @@ def perform_hang(context, body, line_world, closed=False):
     context.view_layer.objects.active = ob
     surface = mio.read_co(me).copy()
     try:
-        sess = build(context, body, me, nb, size, st, tether=True)
+        sess = build(context, body, me, nb, size, st, tether=True, offset_lift=True)
     except Exception:
         bpy.data.objects.remove(ob)
         bpy.data.meshes.remove(me)
         raise
-    me.update()                                   # (the clean shape stays on screen until Space: no start jitter)
+    mio.write_co(me, sess['cloth'].init)          # (the clean starting shape on screen until Space: no start jitter)
+    me.update()
     SIM.clear()
     SIM.update(ob=ob.name, target=body.name, nb=nb, size=size, sess=sess, running=False, done=False, want=None,
                surface=surface, start=sess['cloth'].init.copy(), snapshot=_snapshot(st), sew=None, pin_idx=None,
@@ -1696,7 +1724,7 @@ def _snapshot(st):
                                           'wrap_tight', 'use_lines', 'stop_at_pins', 'two_sides', 'puff', 'wrinkles',
                                           'padding', 'pad_pattern', 'pad_size', 'pad_puff', 'trim', 'trim_width',
                                           'collide_with', 'use_proxy', 'proxy_faces',
-                                          'cape_length', 'cape_flare', 'spacing', 'neck_style', 'neck_pin_top', 'neck_bottom', 'neck_top', 'mask_points'))
+                                          'cape_length', 'cape_flare', 'spacing', 'neck_style', 'neck_pin_top', 'neck_bottom', 'neck_top', 'mask_points', 'offset'))
 
 
 def restart(context):
@@ -1715,7 +1743,8 @@ def restart(context):
     mode = SIM.get('mode')
     sess = build(context, target, me, SIM['nb'], SIM['size'], st, sew=SIM.get('sew'), pin_idx=SIM.get('pin_idx'),
                  to_cloth=SIM.get('to_cloth'), pin_sel=bool(SIM.get('pin_sel')), gdir_ob=ob if mode == 'MESH' else target,
-                 wrap=mode == 'WRAP', puff=mode == 'SEW', tether=SIM.get('source') in {'CAPE', 'NECK'}, tacks=SIM.get('tacks'))
+                 wrap=mode == 'WRAP', puff=mode == 'SEW', tether=SIM.get('source') in {'CAPE', 'NECK'}, tacks=SIM.get('tacks'),
+                 offset_lift=SIM.get('source') in {'CAPE', 'NECK', 'MASK'})
     if mode == 'SEW':
         c = sess['cloth']
         sewn = c.pin >= 1
@@ -2341,6 +2370,7 @@ def draw(layout, context):
                 r.prop(st, 'neck_top', slider=True)
         r = box.row(align=True)
         r.prop(st, 'cape_length', slider=True)
+        r.prop(st, 'offset', slider=True)
         if st.drape_mode == 'CAPE':
             r.prop(st, 'cape_flare', slider=True)
     r = box.row(align=True)
@@ -2370,6 +2400,7 @@ def draw(layout, context):
     r.enabled = not live
     r.operator('mch.cdrape_mask', text='Drape Mask (masked faces lift off as the cloth)', icon='MOD_MASK')
     r.prop(st, 'mask_points', text='Points')
+    r.prop(st, 'offset', text='Offset')
     r = box.row(align=True)
     r.enabled = not live
     r.operator('mch.cdrape_wrap', text='Wrap This Mesh (like a wrapping cloth)', icon='MOD_SHRINKWRAP')

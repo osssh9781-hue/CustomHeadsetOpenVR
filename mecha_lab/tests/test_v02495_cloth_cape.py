@@ -139,7 +139,7 @@ tc = mio.read_co(tob.data)
 r_bot = np.hypot(tc[:tn, 0], tc[:tn, 1]).mean()
 r_top = np.hypot(tc[-tn:, 0], tc[-tn:, 1]).mean()
 check('Top Size 100: the waiting tube follows the slider at once - a cone, the top ring about twice the neck radius wider',
-      r_top > r_bot + 0.1 and not cd.SIM['running'] and np.allclose(cd.SIM['surface'], tc), (r_bot, r_top))
+      r_top > r_bot + 0.1 and not cd.SIM['running'] and np.ptp(np.linalg.norm(tc - cd.SIM['surface'], axis=1)) < 1e-6, (r_bot, r_top))
 st.neck_bottom = -50.0
 tc = mio.read_co(tob.data)
 check('Bottom Size -50: smaller, but never inside the neck', np.hypot(tc[:tn, 0], tc[:tn, 1]).min() > 0.12 * math.cos(math.pi / 48) - 1e-6,

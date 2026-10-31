@@ -51,8 +51,21 @@ n0 = len(ob.data.vertices)
 st.mask_points = 2400                                    # (the slider: the waiting cloth follows at once)
 n1 = len(ob.data.vertices)
 check('Points 800 -> 2400 before Space: the mask cloth is made again at once, about 3 x the points',
-      2.3 < n1 / max(n0, 1) < 3.7 and np.allclose(cd.SIM['surface'], mio.read_co(ob.data)), (n0, n1))
+      2.3 < n1 / max(n0, 1) < 3.7 and np.ptp(np.linalg.norm(mio.read_co(ob.data) - cd.SIM['surface'], axis=1)) < 1e-6, (n0, n1))
+# Offset (user: "마스크 영역을 몸보다 조금 크게 만드는 게 안정적이지 않나?"): what you see before Space is where it starts
+surf = cd.SIM['surface']
+d0 = np.linalg.norm(mio.read_co(ob.data) - surf, axis=1)
+csize = float(np.linalg.norm(surf.max(0) - surf.min(0)))
+check('Offset 2 % (default): the waiting cloth is shown lifted off the body by 2 % of its size, the same everywhere',
+      abs(d0.mean() - csize * 0.02) < csize * 0.002 and np.ptp(d0) < 1e-6, (d0.mean(), csize * 0.02))
+st.offset = 6.0
+d1 = np.linalg.norm(mio.read_co(ob.data) - surf, axis=1)
+check('Offset 6 %: the slider lifts it at once (no rebuild), 3 x as far', abs(d1.mean() - csize * 0.06) < csize * 0.002, (d1.mean(), csize * 0.06))
 cd.restart(C)
+check('Space after it: the drape starts exactly from the shape on screen (the rest shape = the lifted one)',
+      np.allclose(cd.SIM['sess']['cloth'].init, surf + (mio.read_co(ob.data) - surf) * 0 + (cd.SIM['sess']['cloth'].init - surf)) and
+      abs(np.linalg.norm(cd.SIM['sess']['cloth'].init - surf, axis=1).mean() - csize * 0.06) < csize * 0.002)
+st.offset = 2.0
 check('Space / Restart after it: the drape starts from the new cloth', cd.SIM['running'] and len(cd.SIM['sess']['cloth'].co) == n1
       and cd.SIM['sess']['frame'] == 0)
 check('Points is in the snapshot', 'mask_points' in cd._snapshot.__code__.co_consts or "'mask_points'" in open(cd.__file__).read())
