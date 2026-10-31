@@ -43,7 +43,8 @@ def block(name, loc=(0, 0, 0)):
 node = pc.capture(mt.draw, C)
 acts = {x.opts.get('props', {}).get('action') for x in pc.walk(node) if x.kind == 'op'} - {None}
 check('Mecha Lab tab: Mesh Tools panel with DynaMesh / Decimate / Quad Remesh / Edge Mesh / Find Edges / Apply / Clear',
-      set(mt.ACTIONS) <= acts, sorted(acts))
+      set(mt.ACTIONS) - set(getattr(mt, 'BAKE_MODES', {})) <= acts, sorted(acts))   # (0.24.95 HP Keep / Round:
+#                                                    right-click shortcuts for Bake HP + its Bevels setting, not rows)
 check('... in the Mecha Lab sidebar tab, before High Poly', mt.MCH_PT_mesh_tools.bl_category == 'Mecha Lab'
       and mt.MCH_PT_mesh_tools.bl_order < 80)
 

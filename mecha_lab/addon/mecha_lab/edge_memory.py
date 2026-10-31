@@ -143,9 +143,11 @@ def _edge_faces(me):
     return e_sorted, f_sorted, starts, ends
 
 
-def mark_cut_borders(me, cutter_attr='mch_cutter_face', inner_angle=INNER_ANGLE):
+def mark_cut_borders(me, cutter_attr='mch_cutter_face', inner_angle=INNER_ANGLE, old_co=None):
     """The cutter flag (faces) turned into edge marks: cutter / original borders + the cutter's own creases.
-    Returns the number of edges marked now (0 when there is no flag, or nothing was cut)."""
+    ``old_co`` (0.24.95): the part's points before the cut - with an Edge Finish band on the mesh, the faces with a
+    point the cut made count as round the cut too.  Returns the number of edges marked now (0 when there is no flag,
+    or nothing was cut)."""
     attr = me.attributes.get(cutter_attr)
     nf = len(me.polygons)
     if attr is None or attr.domain != 'FACE' or nf == 0 or len(me.edges) == 0:
@@ -163,17 +165,267 @@ def mark_cut_borders(me, cutter_attr='mch_cutter_face', inner_angle=INNER_ANGLE)
     border = ca != cb
     both = ca & cb
     hard = border.copy()
+    nrm = None
     if both.any():
         nrm = np.empty(nf * 3, np.float32)
         me.polygons.foreach_get('normal', nrm)
         nrm = nrm.reshape(-1, 3)
         d = np.einsum('ij,ij->i', nrm[fa[both]], nrm[fb[both]])
         hard[np.flatnonzero(both)[d < math.cos(inner_angle)]] = True
+    fin = me.attributes.get(FIN_BAND)
+    if fin is not None and fin.domain == 'FACE' and len(fin.data) == nf:
+        # 0.24.95 an Edge Finish band (the cutter flag is mixed there): its border is a line (marked when it was
+        # made too - the result tidy may have moved it round a sliver since); inside it only a real corner is a line,
+        # the rows of a round stay soft; and round the cut (two rings of faces from the cutter's and the band's) every
+        # edge sharper than a miter is a line - where a groove leaves the part the bevel mixed the flags of the wall
+        # and the part's side, and that corner came out unmarked
+        band = np.zeros(nf, bool)
+        fin.data.foreach_get('value', band)
+        if nrm is None:
+            nrm = np.empty(nf * 3, np.float32)
+            me.polygons.foreach_get('normal', nrm)
+            nrm = nrm.reshape(-1, 3)
+        d = np.einsum('ij,ij->i', nrm[fa], nrm[fb])
+        sharp = d < math.cos(FIN_MITER)
+        inside = band[fa] & band[fb]
+        hard[inside] = d[inside] < math.cos(FIN_ROW)
+        hard |= band[fa] != band[fb]
+        from . import mesh_io as mio
+        cv = mio.read_corner_verts(me)
+        start, tot = mio.read_face_starts(me)
+        near = cut | band
+        for _ring in range(2):
+            pts = np.zeros(len(me.vertices), bool)
+            pts[cv[np.repeat(near, tot)]] = True
+            near = np.add.reduceat(pts[cv].astype(np.int32), start) > 0
+        hard |= near[fa] & near[fb] & sharp
+        if old_co is not None and len(old_co):
+            co = mio.read_co(me)
+            q = (float(np.linalg.norm(np.ptp(old_co, axis=0))) or 1.0) * 1e-6
+            made = ~np.isin(_pos_keys(co, q), _pos_keys(np.asarray(old_co, np.float64), q))
+            new_f = np.add.reduceat(made[cv].astype(np.int32), start) > 0
+            hard |= (new_f[fa] | new_f[fb]) & sharp
     idx = ea[hard]
     if not len(idx):
         return 0
     mark_edges(me, idx)
     return int(len(idx))
+
+
+# ---- 0.24.95 Edge Finish bands (user: ZBrush CreasePG + Divide crumpled the parts cut with Line Cut + Chamfer /
+# Bevel - "특정 부분이 크리즈가 안 생기나봐").  The finish replaces the cut's rim by a band of new faces before the
+# cut is committed; the cutter flag on those faces is mixed (Blender's bevel copies it from either side), so
+# ``mark_cut_borders`` left the band's border with the old surface unmarked: 2,004 of 4,798 hard edges on a plate
+# cut with Line Cut + Chamfer, and the top, the band and the wall became ONE polygroup in ZBrush (no crease there,
+# so Divide rounded it and the long fan triangles carried the bend across the whole face).
+# Now the band is found by geometry (faces with a new point whose centre left the surface the finish started from),
+# its two borders are marked, and its inner rows stay soft (a real corner inside it - a miter - is still a line).
+FIN_BAND = '.mch_fin_band'        # face BOOLEAN: the faces an Edge Finish carved (until the cut is committed)
+FIN_MITER = math.radians(50.0)    # round the cut, two faces meeting at more than this = a line
+FIN_ROW = math.radians(40.0)      # inside a band: up to this a row of a round (soft); more - a miter, a chamfer's edge
+
+
+def finish_snapshot(me):
+    """What ``finish_band`` compares with: the points, a copy of the mesh (its surface), the marked lines and the
+    edges before an Edge Finish runs.  The copy is ``finish_marks``'s to remove."""
+    from . import mesh_io as mio
+    return mio.read_co(me), me.copy(), lines(me), mio.read_edge_verts(me)
+
+
+def _drop_snapshot(snap):
+    try:
+        if snap is not None and snap[1] is not None and snap[1].users == 0:
+            import bpy
+            bpy.data.meshes.remove(snap[1])
+    except (ReferenceError, RuntimeError):
+        pass
+
+
+def _pos_keys(co, q):
+    k = np.round(co / q).astype(np.int64)
+    return (k[:, 0] * 73856093) ^ (k[:, 1] * 19349663) ^ (k[:, 2] * 83492791)
+
+
+def _pair_keys(ka, kb):
+    return np.minimum(ka, kb) * 1000003 + np.maximum(ka, kb)
+
+
+def _restore_lines(me, seg, co, new_pt, q, size, old_co=None, old_ev=None):
+    """A step that rebuilds faces (the finish round its band, the result tidy dissolving the slivers it leaves)
+    brings their edges back without the marks they had - the part's own corner next to a groove's end lost its
+    crease.  An unmarked edge that is an old marked edge again (same two points), or lies along one (both ends and
+    its middle on the old line, running along it: a piece of it, or two pieces joined), gets its mark back.  Returns
+    the number restored.  ``old_co`` / ``old_ev``: the mesh before the step - only the edges it made are looked
+    at (an edge that was there and unmarked stays so; 0.83 s -> a few ms on a 124k-face cut)."""
+    from mathutils import Vector
+    from mathutils.bvhtree import BVHTree
+    from . import mesh_io as mio
+    seg = np.asarray(seg, np.float64).reshape(-1, 2, 3)
+    if not len(seg) or not len(me.edges):
+        return 0
+    ev = mio.read_edge_verts(me)
+    mk = marked(me)
+    keys = _pos_keys(co, q)
+    ka, kb = _pos_keys(seg[:, 0], q), _pos_keys(seg[:, 1], q)
+    pair = _pair_keys(keys[ev[:, 0]], keys[ev[:, 1]])
+    same = ~mk & np.isin(pair, _pair_keys(ka, kb))
+    out = list(np.flatnonzero(same))
+    ok_pt = new_pt | np.isin(keys, np.concatenate([ka, kb]))   # (a new point, or one that was on a marked line)
+    cand = ~mk & ~same & ok_pt[ev[:, 0]] & ok_pt[ev[:, 1]]
+    if old_co is not None and old_ev is not None and len(old_ev):
+        ok = _pos_keys(np.asarray(old_co, np.float64), q)
+        cand &= ~np.isin(pair, _pair_keys(ok[old_ev[:, 0]], ok[old_ev[:, 1]]))
+    cand = np.flatnonzero(cand)
+    if len(cand):
+        tol = 2e-6 * size
+        pts = co[ev[cand]].reshape(-1, 3)              # (only the marked lines round the edges looked at)
+        lo, hi = pts.min(0) - 2 * tol, pts.max(0) + 2 * tol
+        near = ((np.minimum(seg[:, 0], seg[:, 1]) <= hi) & (np.maximum(seg[:, 0], seg[:, 1]) >= lo)).all(1)
+        seg = seg[near]
+        cand = cand if len(seg) else cand[:0]
+    if len(cand):
+        verts, polys = [], []
+        for i, (a, b) in enumerate(seg):              # (thin triangles: "nearest point on a marked line")
+            d = b - a
+            side = np.cross(d, (0.0, 0.0, 1.0) if abs(d[2]) < 0.9 * np.linalg.norm(d) else (1.0, 0.0, 0.0))
+            n = np.linalg.norm(side)
+            side = side / n * 1e-7 * size if n > 0 else np.array([0.0, 0.0, 1e-7 * size])
+            verts += [Vector(a), Vector(b), Vector(b + side)]
+            polys.append((3 * i, 3 * i + 1, 3 * i + 2))
+        tree = BVHTree.FromPolygons(verts, polys, all_triangles=True)
+        for ei in cand:
+            a, b = co[ev[ei, 0]], co[ev[ei, 1]]
+            d = b - a
+            ln = np.linalg.norm(d)
+            if ln < 1e-12:
+                continue
+            hits = [tree.find_nearest(Vector(p), tol) for p in (a, b, 0.5 * (a + b))]
+            if any(h[0] is None for h in hits):
+                continue
+            for idx in {hits[0][2], hits[1][2]}:
+                sd = seg[idx][1] - seg[idx][0]
+                ls = np.linalg.norm(sd)
+                if ls > 1e-12 and abs(float(np.dot(d, sd))) / (ln * ls) > 0.999:
+                    out.append(ei)
+                    break
+    if out:
+        mark_edges(me, np.array(out, np.int64))
+    return len(out)
+
+
+def finish_band(me, snap, width):
+    """After an Edge Finish on ``me`` (``snap`` = ``finish_snapshot`` from before it): the old marks the finish
+    dropped put back (``_restore_lines``), the band it carved flagged and its borders marked.  Returns the number of
+    band faces."""
+    import bmesh
+    from mathutils import Vector
+    from mathutils.bvhtree import BVHTree
+    from . import mesh_io as mio
+    old_co, old_me, old_seg, old_ev = snap
+    nf = len(me.polygons)
+    if nf == 0 or not len(old_co):
+        return 0
+    co = mio.read_co(me)
+    size = float(np.linalg.norm(np.ptp(old_co, axis=0))) or 1.0
+    q = size * 1e-6
+    new_pt = ~np.isin(_pos_keys(co, q), _pos_keys(old_co, q))
+    _restore_lines(me, old_seg, co, new_pt, q, size, old_co, old_ev)
+    cv = mio.read_corner_verts(me)
+    start, tot = mio.read_face_starts(me)
+    cand = np.flatnonzero(np.add.reduceat(new_pt[cv].astype(np.int32), start) > 0)
+    if not len(cand):
+        return 0
+    # the faces' own triangles (the middle of a big C-shaped top face is not on it - it lies over the hole or the
+    # groove, and the whole face was taken for band): a face is band only when none of its triangles' centres is on
+    # the surface the finish started from
+    me.calc_loop_triangles()
+    nt = len(me.loop_triangles)
+    tv = np.empty(nt * 3, np.int64)
+    me.loop_triangles.foreach_get('vertices', tv)
+    tp = np.empty(nt, np.int64)
+    me.loop_triangles.foreach_get('polygon_index', tp)
+    is_cand = np.zeros(nf, bool)
+    is_cand[cand] = True
+    ti = np.flatnonzero(is_cand[tp])
+    tc = co[tv.reshape(-1, 3)[ti]].mean(1)
+    bm = bmesh.new()                              # (the surface before, built in C: a Python list of 120k faces
+    try:                                          #  took 0.5 s per cut)
+        bm.from_mesh(old_me)
+        bvh = BVHTree.FromBMesh(bm)
+    finally:
+        bm.free()
+    tol = max(2e-6 * size, 1e-4 * width)
+    on = np.zeros(nf, bool)
+    for t, c in zip(tp[ti], tc):
+        if on[t]:
+            continue
+        hit = bvh.find_nearest(Vector(c))
+        if hit[3] is not None and hit[3] <= tol:
+            on[t] = True
+    band = is_cand & ~on
+    if not band.any():
+        return 0
+    a = me.attributes.get(FIN_BAND)
+    if a is not None and a.domain == 'FACE' and len(a.data) == nf:
+        had = np.zeros(nf, bool)
+        a.data.foreach_get('value', had)
+        band |= had
+    elif a is not None:
+        me.attributes.remove(a)
+        a = None
+    if a is None:
+        a = me.attributes.new(FIN_BAND, 'BOOLEAN', 'FACE')
+    a.data.foreach_set('value', band)
+    e_sorted, f_sorted, starts, ends = _edge_faces(me)
+    s2 = starts[(ends - starts) == 2]
+    fa, fb = f_sorted[s2], f_sorted[s2 + 1]
+    border = e_sorted[s2][band[fa] != band[fb]]
+    if len(border):
+        mark_edges(me, border)
+    return int(band.sum())
+
+
+def keep_marks(me, fn):
+    """Run ``fn`` (a step that rebuilds faces of ``me``: the cut's result tidy) and put back the marks it dropped
+    (``_restore_lines``).  Returns fn's result."""
+    from . import mesh_io as mio
+    try:
+        seg = lines(me)
+        old_co = mio.read_co(me) if len(seg) else None
+        old_ev = mio.read_edge_verts(me) if len(seg) else None
+    except Exception as ex:                    # (memory is a bonus: never fail a cut over it)
+        print('Mecha: edge memory (keep):', ex)
+        return fn()
+    r = fn()
+    if old_co is not None and len(old_co) and len(me.edges):
+        try:
+            co = mio.read_co(me)
+            size = float(np.linalg.norm(np.ptp(old_co, axis=0))) or 1.0
+            q = size * 1e-6
+            _restore_lines(me, seg, co, ~np.isin(_pos_keys(co, q), _pos_keys(old_co, q)), q, size, old_co, old_ev)
+        except Exception as ex:
+            print('Mecha: edge memory (keep):', ex)
+    return r
+
+
+def finish_marks(me, fn, width):
+    """Run the Edge Finish ``fn`` on ``me`` and remember the band it carved (``finish_band``).  Returns fn's
+    result."""
+    try:
+        snap = finish_snapshot(me)
+    except Exception as ex:                    # (memory is a bonus: never fail a cut over it)
+        print('Mecha: edge memory (finish):', ex)
+        return fn()
+    try:
+        n = fn()
+        if n:
+            try:
+                finish_band(me, snap, width)
+            except Exception as ex:
+                print('Mecha: edge memory (finish band):', ex)
+        return n
+    finally:
+        _drop_snapshot(snap)
 
 
 def lines(me, mask=None):

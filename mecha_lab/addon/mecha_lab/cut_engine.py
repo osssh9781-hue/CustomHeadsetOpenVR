@@ -643,8 +643,11 @@ def _gn_on(cut, side=None):
 
 def _gn_finish(cut, me, scale):
     from . import rim_sweep
-    return _finish_guarded(me, lambda: rim_sweep.finish(me, cut.gn_finish, cut.gn_width / scale, ts.res_n(cut.gn_segments)),
-                           me.name.replace('_mch_sub', ''))
+    from . import edge_memory
+    width = cut.gn_width / scale
+    return _finish_guarded(me, lambda: edge_memory.finish_marks(
+        me, lambda: rim_sweep.finish(me, cut.gn_finish, width, ts.res_n(cut.gn_segments)), width),
+        me.name.replace('_mch_sub', ''))
 
 
 def _side_report(cut, counts):

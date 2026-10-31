@@ -1493,6 +1493,13 @@ def _spikes_one_by_one(bm, limit=64, lay=None):
 
 
 def tidy_result(me, ref_size=None, shards=True, slivers=True, before=None, flip=True):
+    """``_tidy_result``; 0.24.95 the Edge Memory marks on the edges it rebuilds are put back
+    (``edge_memory.keep_marks``: dissolving a sliver at a groove's end took the crease off the part's own corner)."""
+    from . import edge_memory
+    return edge_memory.keep_marks(me, lambda: _tidy_result(me, ref_size, shards, slivers, before, flip))
+
+
+def _tidy_result(me, ref_size=None, shards=True, slivers=True, before=None, flip=True):
     """0.24.82 A boolean / decimate / remesh result made clean: points on the same spot welded, zero-area faces
     dissolved, needle slivers dissolved into their neighbours, folded faces (two faces on the same points, back to
     back - a paper-thin fin) removed, loose points gone, and (``shards``) separate pieces of under 6 faces that are
@@ -2025,6 +2032,17 @@ def _rim_extent(edges):
 
 def finish_new_edges(mesh, mode='NONE', width=0.01, segments=3, profile=0.5, clamp=True, label='',
                      crisp=True):
+    """Bevel/chamfer only edges between cutter faces and original faces (``_finish_new_edges``); 0.24.95 the band
+    it carves is remembered (Edge Memory: its two borders marked, its rows soft - ``edge_memory.finish_marks``)."""
+    if mode == 'NONE' or width <= 0 or mesh.attributes.get(CUTTER_ATTR) is None:
+        return 0
+    from . import edge_memory
+    return edge_memory.finish_marks(mesh, lambda: _finish_new_edges(mesh, mode, width, segments, profile, clamp,
+                                                                    label, crisp), width)
+
+
+def _finish_new_edges(mesh, mode='NONE', width=0.01, segments=3, profile=0.5, clamp=True, label='',
+                      crisp=True):
     """Bevel/chamfer only edges between cutter faces and original faces.
 
     ``clamp`` keeps Blender's overlap clamp (safe geometry); when the requested
@@ -2126,20 +2144,22 @@ def flat_cut_faces(mesh):
     return len(cut)
 
 
-def remove_cutter_attribute(mesh):
+def remove_cutter_attribute(mesh, old_co=None):
     """Every copy of the cutter flag goes (0.24.42: a Geometry Nodes result can carry it twice, on faces and on
     points - a copy left behind made the NEXT cut finish this cut's border again).  0.24.95 right before it goes,
-    the flag becomes Edge Memory marks (the cut's outline + the cutter's own creases: edge_memory)."""
+    the flag becomes Edge Memory marks (the cut's outline + the cutter's own creases: edge_memory; ``old_co`` = the
+    part's points before the cut, when known)."""
     try:
         from . import edge_memory
-        edge_memory.mark_cut_borders(mesh, CUTTER_ATTR)
+        edge_memory.mark_cut_borders(mesh, CUTTER_ATTR, old_co=old_co)
     except Exception as ex:                                   # memory is a bonus: never fail a cut over it
         print('Mecha: edge memory:', ex)
-    for _ in range(8):
-        attr = mesh.attributes.get(CUTTER_ATTR)
-        if attr is None:
-            break
-        mesh.attributes.remove(attr)
+    for name in (CUTTER_ATTR, '.mch_fin_band'):              # (0.24.95 + the Edge Finish band flag)
+        for _ in range(8):
+            attr = mesh.attributes.get(name)
+            if attr is None:
+                break
+            mesh.attributes.remove(attr)
 
 
 def commit_mesh(target, new_mesh, shared_policy='SINGLE'):
@@ -2154,15 +2174,23 @@ def commit_mesh(target, new_mesh, shared_policy='SINGLE'):
         info = ' (shared mesh made single-user for this object)'
     elif me.users > 1:
         info = f' (shared mesh: {me.users} users updated)'
+    old_co = None
+    if new_mesh.attributes.get('.mch_fin_band') is not None:   # (an Edge Finish ran: the part's points before the
+        from . import mesh_io                                    #  cut tell the marks where the cut made new ones)
+        old_co = mesh_io.read_co(me)
     bm = bmesh.new()
     try:
         bm.from_mesh(new_mesh)
         bm.to_mesh(me)
     finally:
         bm.free()
-    for mat in list(new_mesh.materials)[len(me.materials):]:
+    from . import edge_memory
+    for key in (edge_memory.STAMP_N, edge_memory.STAMP_E):   # 0.24.95 the mark count written on the result (an
+        if key in new_mesh:                                  # Edge Finish band marks hundreds of edges) goes with
+            me[key] = new_mesh[key]                          # it: the part's old count made the jump look like a
+    for mat in list(new_mesh.materials)[len(me.materials):]:  # remesh smearing the marks, and they were all wiped
         me.materials.append(mat)
-    remove_cutter_attribute(me)
+    remove_cutter_attribute(me, old_co)
     me.update()
     return info
 

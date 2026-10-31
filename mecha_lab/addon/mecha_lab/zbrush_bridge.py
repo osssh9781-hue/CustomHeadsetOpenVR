@@ -238,7 +238,15 @@ def export_copy(context, ob, apply_modifiers, split_ngons=True):
             bm.from_mesh(me)
             ngons = [f for f in bm.faces if len(f.verts) > 4]
             if ngons:
-                bmesh.ops.triangulate(bm, faces=ngons, quad_method='BEAUTY', ngon_method='BEAUTY')
+                res = bmesh.ops.triangulate(bm, faces=ngons, quad_method='BEAUTY', ngon_method='BEAUTY')
+                # 0.24.95 an n-gon that is folded (where a bevelled groove leaves the part) splits into triangles
+                # meeting at a real angle - with each other and with the faces round it (the n-gon's averaged normal
+                # hid it): such an edge is a line too (Sharp), or "Creases as Polygroups" would put both sides in one
+                # polygroup and ZBrush's Divide would round the fold
+                import math
+                for e in {e for f in res.get('faces', []) for e in f.edges}:
+                    if len(e.link_faces) == 2 and e.calc_face_angle(0.0) > math.radians(50.0):
+                        e.smooth = False
                 bm.to_mesh(me)
         finally:
             bm.free()
