@@ -58,6 +58,38 @@ check('... every point outside the body (radius >= 0.3), hanging down from the l
       np.hypot(co[:, 0], co[:, 1]).min() > 0.3 * math.cos(math.pi / 48) - 1e-6 and co[:, 2].min() < 0.65 - length * 0.8, (np.hypot(co[:, 0], co[:, 1]).min(), co[:, 2].min()))
 bpy.data.meshes.remove(me)
 
+# ---- 0.24.95 Curtain (user: "위에 시작 부분을 커튼처럼 만들어 주면 중간 부분이 예뻐질 것 같아"): the top gathered into pleats
+check('Settings: Curtain 50 % (on by default), Pleats 0 = auto', abs(st.cape_gather - 50.0) < 1e-6 and st.cape_pleats == 0)
+L = np.array([p[:] for p in line])
+me_f, nb_f = cd.hang_patch(body, L, length, 0.0, step, gap, down, False, 0.0)
+me_c, nb_c = cd.hang_patch(body, L, length, 0.0, step, gap, down, False, 50.0, 0, size * 0.04)
+info = dict(cd.HANG_INFO)
+cf, cc = mio.read_co(me_f), mio.read_co(me_c)
+tf, tc = cf[:nb_f], cc[:nb_c]
+arc = lambda t: float(np.linalg.norm(np.diff(t, axis=0), axis=1).sum())
+check('Curtain 50: the top row is 1.5 x the line long (the extra fabric folded in), about 1.5 x the columns',
+      abs(arc(tc) / arc(tf) - 1.5) < 0.08 and 1.3 < nb_c / nb_f < 1.7, (arc(tc) / arc(tf), nb_f, nb_c))
+order = np.argsort(tf[:, 0])
+off = tc[:, 1] - np.interp(tc[:, 0], tf[order, 0], tf[order, 1])          # (out = +Y at the back of the cylinder)
+crest = [i for i in range(1, len(off) - 1) if off[i] >= off[i - 1] and off[i] > off[i + 1] and off[i] > 0.5 * off.max()]
+check('... folded into pleats that bulge OUT only (pinch points on the line, crests the pleat depth out), as many crests as pleats',
+      off.min() > -step * 0.25 and abs(off.max() - info['depth']) < step * 0.5 and info['depth'] > step and len(crest) == info['pleats'] >= 2,
+      (off.min(), off.max(), info, len(crest)))
+Gc = cc.reshape(-1, nb_c, 3)
+check('... the folds run straight down the cloth from the pleats (every row the same pattern), every point outside the body',
+      np.abs(Gc[:, :, :2] - Gc[0, :, :2]).max() < 1e-6 and np.hypot(cc[:, 0], cc[:, 1]).min() > 0.3 * math.cos(math.pi / 48) - 1e-6,
+      np.abs(Gc[:, :, :2] - Gc[0, :, :2]).max())
+me4, nb4 = cd.hang_patch(body, L, length, 0.0, step, gap, down, False, 50.0, info['pleats'] + 3, size * 0.04)
+check('Pleats set by hand (3 more than auto): that many, the same 1.5 x fabric (so shallower pleats)',
+      cd.HANG_INFO['pleats'] == info['pleats'] + 3 and cd.HANG_INFO['depth'] < info['depth']
+      and abs(arc(mio.read_co(me4)[:nb4]) / arc(tf) - 1.5) < 0.08, cd.HANG_INFO)
+check('Curtain 0: the flat sheet as before (the top row as long as the line, no pleats)', abs(arc(tf) - cd.HANG_INFO['base_width']) < step
+      and cd.hang_patch(body, L, length, 0.0, step, gap, down, False, 0.0)[1] == nb_f and cd.HANG_INFO['pleats'] == 0)
+for m_ in (me_f, me_c, me4):
+    bpy.data.meshes.remove(m_)
+for m_ in [m for m in bpy.data.meshes if m.users == 0 and m.name.startswith('Cloth Cape')]:
+    bpy.data.meshes.remove(m_)
+
 # ---- the lasso path: Mode Cape, a line drawn across the back (seen from behind)
 st.drape_mode = 'CAPE'
 stroke = [(x * PX, 1.45 * PX) for x in np.linspace(-0.2, 0.2, 12)]
@@ -86,6 +118,16 @@ cd.restart(C)
 ob = C.view_layer.objects.active
 check('Length 50 -> 80 and Space / Restart: the cape is made again from the same line, longer',
       len(ob.data.vertices) > n0 * 1.4 and cd.SIM['source'] == 'CAPE' and cd.SIM['sess']['frame'] == 0, (n0, len(ob.data.vertices)))
+n80 = len(ob.data.vertices)
+cd.SIM['running'] = False
+st.cape_gather = 0.0
+n_flat = len(C.view_layer.objects.active.data.vertices)
+st.cape_pleats = 5
+check('Curtain 50 -> 0 / Pleats with the cape waiting: made again at once (fewer columns without the pleats); both in the snapshot',
+      1.3 < n80 / max(n_flat, 1) < 1.7 and 'cape_gather' in inspect.getsource(cd._snapshot) and 'cape_pleats' in inspect.getsource(cd._snapshot)
+      and "'cape_gather'" in inspect.getsource(cd.draw), (n80, n_flat))
+st.cape_gather, st.cape_pleats = 50.0, 0
+ob = C.view_layer.objects.active
 st.cape_flare = 60.0
 cd.restart(C)
 w = mio.read_co(ob.data)

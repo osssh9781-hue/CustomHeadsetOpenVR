@@ -93,6 +93,11 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
                             default=0.0, min=-50.0, max=300.0, subtype='PERCENTAGE', update=_hang_live_update)
     neck_pin_top: BoolProperty(name='Pin Top', default=True, description='Neck Cloth Tube: the top ring held too (off: it slides down and piles up)', update=_hang_live_update)
     cape_length: FloatProperty(name='Length', description='Cape / Neck Cloth: how far the cloth hangs from the drawn line, as % of the body size (changed before Space: the cloth is made again)', default=50.0, min=2.0, max=200.0, subtype='PERCENTAGE', update=_hang_live_update)
+    cape_gather: FloatProperty(name='Curtain', description='Cape: the top gathered like a curtain - this much extra fabric folded into pleats '
+                               'along the drawn line, so folds run down the cape (0 = a flat sheet; changed before Space: the cloth is made again)',
+                               default=50.0, min=0.0, max=200.0, subtype='PERCENTAGE', update=_hang_live_update)
+    cape_pleats: IntProperty(name='Pleats', description='Cape curtain: how many pleats along the line (0 = auto, about one every 4 % of the body size)',
+                             default=0, min=0, max=60, update=_hang_live_update)
     cape_flare: FloatProperty(name='Flare', description='Cape: how much wider the hem is than the drawn line (0 = exactly as wide as the points you placed; the Neck Cloth is a round ring)', default=0.0, min=0.0, max=300.0, subtype='PERCENTAGE', update=_hang_live_update)
     offset: FloatProperty(name='Offset', description='Drape Mask / Cape / Neck Cloth: how far the cloth starts off the body, as % of the cloth\'s size - '
                           'its rest shape too, so it is a little bigger than the body and never pulls itself into it (what you see before Space is where it starts)',
@@ -1049,14 +1054,52 @@ def _resample(pts, step, closed=False):
     return np.stack([np.interp(t, at, pts[:, k]) for k in range(3)], axis=1)
 
 
-def hang_patch(body, line, length, flare, step, gap, down, closed=False):
+HANG_INFO = {}                    # the last cape built: pleat count / depth (tests, message)
+
+
+def curtain_top(top, out, step, gather, pleats, pleat_width):
+    """0.24.95 the Cape's top row gathered like a curtain (user: "위에 시작 부분을 커튼처럼 만들어 주면 중간 부분이 예뻐질 것
+    같아"): the line ``top`` (every ``step``) folded into ``pleats`` pleats that bulge OUT along ``out`` - zero at the
+    pinch points (on the line), deepest between them - deep enough that the row is ``1 + gather / 100`` times the line's
+    length; resampled every ``step``.  Returns (new top row, each point's distance along the line, pleat count, depth)."""
+    seg = np.linalg.norm(np.diff(top, axis=0), axis=1)
+    s = np.concatenate([[0.0], np.cumsum(seg)])
+    L = float(s[-1])
+    if gather <= 0.0 or L <= step * 2 or len(top) < 3:
+        return top, s, 0, 0.0
+    k = int(pleats) if pleats > 0 else max(1, int(round(L / max(pleat_width, step * 4))))
+    want = L * (1.0 + gather / 100.0)
+    ss = np.linspace(0.0, L, max(400, 40 * k))
+    w = 2.0 * np.pi * k / L
+
+    base = np.stack([np.interp(ss, s, top[:, j]) for j in range(3)], 1)
+
+    def sample(A):
+        """The pleated row every ``step`` (points, their place along the line, its length as sampled)."""
+        curve = base + np.outer(0.5 * A * (1.0 - np.cos(w * ss)), out)
+        cl = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(curve, axis=0), axis=1))])
+        m = max(3, int(round(cl[-1] / step)) + 1)
+        at = np.linspace(0.0, cl[-1], m)
+        pts = np.stack([np.interp(at, cl, curve[:, j]) for j in range(3)], 1)
+        return pts, np.interp(at, cl, ss), float(np.linalg.norm(np.diff(pts, axis=0), axis=1).sum())
+    lo, hi = 0.0, L                                   # (the depth whose row - as the cloth samples it, every step - is
+    for _ in range(50):                               #  ``want`` long: a coarse cloth cuts the pleats' curves short)
+        mid = 0.5 * (lo + hi)
+        lo, hi = (mid, hi) if sample(mid)[2] < want else (lo, mid)
+    A = 0.5 * (lo + hi)
+    new, at_s, _len = sample(A)
+    return new, at_s, k, A
+
+
+def hang_patch(body, line, length, flare, step, gap, down, closed=False, gather=0.0, pleats=0, pleat_width=0.05):
     """The hanging cloth of a Cape (``closed`` False: an open line across the shoulders) or a Neck Cloth (a closed
     loop round the neck): ``line`` (N, 3) on ``body`` (its local space) resampled every ``step``; from each point
     a column goes ``length`` straight down a ``step`` at a time.  A point only ever moves OUT (never sideways) to
     clear the body by ``gap`` - out = the line's facing for a cape, the radial direction from the loop's centre for
     a neck cloth - and going down never comes back in, so the cloth hangs from the farthest-out part (shoulder
     blades, shoulders) as wide as the placed points.  ``flare`` (%) widens the hem.  Returns (mesh, nb): the top
-    row first (nb points, pinned by Pin Rim)."""
+    row first (nb points, pinned by Pin Rim).  Cape: ``gather`` > 0 folds the top row into curtain pleats
+    (``curtain_top``) - the folds run down the cloth from them."""
     from mathutils.bvhtree import BVHTree
     import bmesh
     bm = bmesh.new()
@@ -1095,11 +1138,16 @@ def hang_patch(body, line, length, flare, step, gap, down, closed=False):
         o = o - down * np.dot(o, down)
         if np.linalg.norm(o) < 1e-9:
             o = np.cross(down, top[-1] - top[0])
+        base_tang = np.array([flat(t) for t in np.gradient(top, axis=0)])
+        base_s = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(top, axis=0), axis=1))])
+        width = float(base_s[-1])
+        top, at, k, depth = curtain_top(top, flat(o), step, gather, pleats, pleat_width)   # 0.24.95 curtain pleats
+        HANG_INFO.update(pleats=k, depth=depth, base_width=width)
+        n = len(top)
         out = np.repeat(flat(o)[None, :], n, axis=0)
-        tang = np.gradient(top, axis=0)
-        tang = np.array([flat(t) for t in tang])
-        u = np.linspace(-0.5, 0.5, n)
-        width = float(np.linalg.norm(np.diff(top, axis=0), axis=1).sum())
+        tang = np.stack([np.interp(at, base_s, base_tang[:, j]) for j in range(3)], 1)   # (the line's own direction)
+        tang /= np.maximum(np.linalg.norm(tang, axis=1), 1e-12)[:, None]
+        u = at / max(width, 1e-12) - 0.5
         side = (u * width * (flare / 100.0) / rows)[:, None] * tang
     reach = float(np.linalg.norm(body.dimensions)) * 2.0 + length * 2.0
 
@@ -1373,7 +1421,7 @@ def perform_hang(context, body, line_world, closed=False):
     line = np.array([(inv @ Vector(p))[:] for p in line_world], np.float64)
     size, step, gap, down, length = _hang_args(body, st)
     me, nb = (_neck_mesh(body, line, length, step, gap, down, st) if closed else
-              hang_patch(body, line, length, st.cape_flare, step, gap, down, False))
+              hang_patch(body, line, length, st.cape_flare, step, gap, down, False, st.cape_gather, st.cape_pleats, size * 0.04))
     ob = bpy.data.objects.new(kind, me)
     coll = body.users_collection[0] if body.users_collection else context.scene.collection
     coll.objects.link(ob)
@@ -1409,7 +1457,7 @@ def perform_cape(context, body, line_world):
 
 def _hang_key(st):
     return (round(float(st.cape_length), 4), round(float(st.cape_flare), 4), round(float(st.spacing), 4), round(float(st.gap), 4),
-            st.neck_style, bool(st.neck_pin_top), round(float(st.neck_bottom), 4), round(float(st.neck_top), 4))
+            round(float(st.cape_gather), 4), int(st.cape_pleats), st.neck_style, bool(st.neck_pin_top), round(float(st.neck_bottom), 4), round(float(st.neck_top), 4))
 
 
 def rebuild_hang(context):
@@ -1421,7 +1469,8 @@ def rebuild_hang(context):
         return False
     size, step, gap, down, length = _hang_args(body, st)
     me, nb = (_neck_mesh(body, SIM['line'], length, step, gap, down, st) if SIM.get('closed') else
-              hang_patch(body, SIM['line'], length, st.cape_flare, step, gap, down, False))
+              hang_patch(body, SIM['line'], length, st.cape_flare, step, gap, down, False, st.cape_gather, st.cape_pleats,
+                         size * 0.04))
     old = ob.data
     me.name = old.name
     ob.data = me
@@ -1767,7 +1816,7 @@ def _snapshot(st):
                                           'wrap_tight', 'use_lines', 'stop_at_pins', 'two_sides', 'puff', 'wrinkles',
                                           'padding', 'pad_pattern', 'pad_size', 'pad_puff', 'trim', 'trim_width',
                                           'collide_with', 'use_proxy', 'proxy_faces',
-                                          'cape_length', 'cape_flare', 'spacing', 'neck_style', 'neck_pin_top', 'neck_bottom', 'neck_top', 'mask_points', 'offset'))
+                                          'cape_length', 'cape_flare', 'cape_gather', 'cape_pleats', 'spacing', 'neck_style', 'neck_pin_top', 'neck_bottom', 'neck_top', 'mask_points', 'offset'))
 
 
 def restart(context):
@@ -2416,6 +2465,9 @@ def draw(layout, context):
         r.prop(st, 'cape_length', slider=True)
         if st.drape_mode == 'CAPE':
             r.prop(st, 'cape_flare', slider=True)
+            r = box.row(align=True)                      # 0.24.95 the curtain top
+            r.prop(st, 'cape_gather', slider=True)
+            r.prop(st, 'cape_pleats')
     r = box.row(align=True)
     r.enabled = live
     if SIM.get('done'):
