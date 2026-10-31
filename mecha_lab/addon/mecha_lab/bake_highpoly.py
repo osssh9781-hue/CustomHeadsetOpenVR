@@ -897,8 +897,11 @@ def bake_mesh(me, levels, rounding=1.0, fillet=0.0, angle=math.radians(30.0), it
     return info
 
 
-def build(context, ob, target_faces=1_000_000, rounding=1.0, fillet=0.0, angle=math.radians(30.0), bevels='KEEP'):
-    """The BakeHP copy of mesh object ``ob``: (new object, info).  Raises RuntimeError when it can't."""
+def build(context, ob, target_faces=1_000_000, rounding=1.0, fillet=0.0, angle=math.radians(30.0), bevels='KEEP',
+          copy=True):
+    """The BakeHP copy of mesh object ``ob``: (new object, info).  ``copy`` False: ``ob`` itself becomes the high poly
+    (its modifiers were in the evaluated mesh, so they go; a live tool part stops being live) - (ob, info).  Raises
+    RuntimeError when it can't."""
     from . import budget
     from . import core_geometry as cg
     if ob.type != 'MESH' or len(ob.data.polygons) < MIN_FACES:
@@ -935,6 +938,8 @@ def build(context, ob, target_faces=1_000_000, rounding=1.0, fillet=0.0, angle=m
         for mat in ob.data.materials:
             me.materials.append(mat)
     me.shade_smooth()
+    if not copy:
+        return _in_place(context, ob, me), info
     hp = bpy.data.objects.new(ob.name + '_BakeHP', me)
     hp.matrix_world = ob.matrix_world.copy()
     hp[SRC_KEY] = ob.name
@@ -945,6 +950,34 @@ def build(context, ob, target_faces=1_000_000, rounding=1.0, fillet=0.0, angle=m
     hp.select_set(True)
     context.view_layer.objects.active = hp
     return hp, info
+
+
+LIVE_FLAGS = (('mch_base', 'live'), ('mch_extract', 'is_part'), ('mch_tube', 'live'), ('mch_screw', 'live'),
+              ('mch_station', 'live'), ('mch_molding', 'is_molding'), ('mch_pdetail', 'live'), ('mch_hollow', 'active'))
+
+
+def _in_place(context, ob, me):
+    """0.24.95 Copy off: the part's own mesh replaced by the high poly ``me``."""
+    old = ob.data
+    name = old.name
+    ob.data = me
+    if old.users == 0:
+        bpy.data.meshes.remove(old)
+    me.name = name
+    ob.modifiers.clear()                                  # (they are in the high poly already)
+    for pg, flag in LIVE_FLAGS:                           # (a slider would rebuild the low part over it)
+        p = getattr(ob, pg, None)
+        if p is not None and getattr(p, flag, False):
+            try:
+                setattr(p, flag, False)
+            except (AttributeError, TypeError):
+                pass
+    for o in context.selected_objects:
+        o.select_set(False)
+    ob.hide_set(False)
+    ob.select_set(True)
+    context.view_layer.objects.active = ob
+    return ob
 
 
 def describe(info):
@@ -960,7 +993,10 @@ def describe(info):
 def run(context, ob, zb):
     """From the shelf / Mesh Tools settings (``scene.mch_zb``).  Returns the message."""
     hp, info = build(context, ob, target_faces=int(zb.bk_target) * 1000, rounding=zb.bk_rounding / 100.0,
-                     fillet=zb.bk_fillet / 100.0, angle=zb.he_angle, bevels=getattr(zb, 'bk_bevels', 'KEEP'))
+                     fillet=zb.bk_fillet / 100.0, angle=zb.he_angle, bevels=getattr(zb, 'bk_bevels', 'KEEP'),
+                     copy=getattr(zb, 'bk_copy', True))
+    if hp is ob:
+        return describe(info) + f' -> {ob.name} itself (no copy)'
     return describe(info) + f' -> {hp.name} (original hidden)'
 
 
@@ -976,4 +1012,6 @@ def draw_rows(col, zb, op):
     r = col.row(align=True)
     r.prop(zb, 'bk_rounding', slider=True)
     r.prop(zb, 'bk_fillet')
-    col.row(align=True).prop(zb, 'bk_bevels', expand=True)          # 0.24.95 Keep / Round bevels
+    r = col.row(align=True)
+    r.prop(zb, 'bk_bevels', expand=True)                             # 0.24.95 Keep / Round bevels
+    r.prop(zb, 'bk_copy', toggle=True, icon='DUPLICATE')             # 0.24.95 off: the part itself

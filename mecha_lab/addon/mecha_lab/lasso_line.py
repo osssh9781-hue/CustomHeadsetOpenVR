@@ -31,11 +31,11 @@ def enabled(context, mode, shape=None):
     return shape is None or shape in {'LASSO', 'CURVE_LASSO', 'STROKE'}
 
 
-def _resample(path, step):
+def _resample(path, step, ceil=False):
     out = [tuple(path[0])]
     for a, b in zip(path, path[1:]):
         d = math.dist(a, b)
-        n = max(1, int(d / step))
+        n = max(1, int(math.ceil(d / step - 1e-9)) if ceil else int(d / step))
         for k in range(1, n + 1):
             t = k / n
             out.append((a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t))
@@ -116,8 +116,12 @@ def band(path, width_px, cap='ROUND', cap_segments=8, taper=0.0, pressure=None):
     if len(path) < 2:
         return []
     hw = max(0.5, width_px / 2.0)
-    path = _resample(path, max(1.0, hw / 2.0))
-    path = _smooth(path, 2)
+    from . import tool_state as _ts                  # 0.24.95 (user, a Line cut at Res 800 %: "덜 촘촘해"): the band's
+    step = hw / 2.0 / _ts.res_scale()                # path was resampled every half half-width whatever the
+    path = _resample(path, max(0.25, step), ceil=_ts.res_scale() > 1.0)   # Resolution - a wide band's curve came
+    #                                                  out in 10 px facets (above 100 %: no segment over the step)
+    path = _smooth(path, min(200, max(2, int(round(2 * _ts.res_scale() ** 2)))))   # (the same smoothing width:
+    #                                                                   passes x the square of the point density)
     n = len(path)
     acc = [0.0]
     for a, b in zip(path, path[1:]):

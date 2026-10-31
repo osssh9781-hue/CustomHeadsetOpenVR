@@ -45,7 +45,8 @@ ACTIONS = (            # (section, [(label, glyph or png stem, operator, props, 
                     ('Quad', 'quad', 'mch.quad_remesh', {}, 'active', True),
                     ('Low Poly', 'lowpoly', 'mch.lowpoly_make', {}, 'active', True),
                     ('HP Keep', 'bakehp', 'mch.mesh_tool', {'action': 'BAKE_HP_KEEP'}, 'active', True),    # 0.24.95
-                    ('HP Round', 'bakehp', 'mch.mesh_tool', {'action': 'BAKE_HP_ROUND'}, 'active', True)]),
+                    ('HP Round', 'bakehp', 'mch.mesh_tool', {'action': 'BAKE_HP_ROUND'}, 'active', True),
+                    ('HP Copy', 'duplicate', 'mch.bake_copy_toggle', {}, '', False)]),     # 0.24.95 on = lit
     ('Symmetry', [('Mirror X', 'X', 'mch.actions_mirror', {'axis': 0}, 'active', False),
                   ('Mirror Y', 'Y', 'mch.actions_mirror', {'axis': 1}, 'active', False),
                   ('Mirror Z', 'Z', 'mch.actions_mirror', {'axis': 2}, 'active', False),
@@ -341,6 +342,9 @@ def _dynamic(context, ob, op, props, label, on):
     if op == 'mch.group_action' and props.get('action') == '@SCOPE':
         inside = groups.scope(context) is not None
         return {'action': 'EXIT' if inside else 'ENTER'}, 'Exit Group' if inside else 'Enter Group', inside
+    if op == 'mch.bake_copy_toggle':                                 # 0.24.95 lit while Bake HP makes a copy
+        zb = getattr(context.scene, 'mch_zb', None)
+        return props, label, bool(zb is not None and zb.bk_copy)
     if op == 'mch.group_repeat':
         g = groups.group_of(ob)
         return props, label, g is not None and groups.repeat_mode(g) == props['mode']

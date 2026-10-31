@@ -20,6 +20,21 @@ BAKE_MODES = {'BAKE_HP_KEEP': 'KEEP', 'BAKE_HP_ROUND': 'ROUND'}   # 0.24.95 the 
 #                                                               팝업에 등록해 줘, 킵이랑"): the Bevels setting, then Bake HP
 
 
+class MCH_OT_bake_copy_toggle(bpy.types.Operator):
+    """0.24.95 Bake High Poly Copy on / off from the right-click menus (user: "왜 복사가 돼? 그것도 버튼으로 끌 수 있게")"""
+    bl_idname = 'mch.bake_copy_toggle'
+    bl_label = 'Bake HP Copy'
+    bl_description = ('Bake High Poly: on = a "<part>_BakeHP" copy (the part hidden); off = the part itself becomes the '
+                      'high poly (Ctrl+Z gets it back)')
+    bl_options = {'REGISTER'}
+
+    def execute(self, context):
+        zb = context.scene.mch_zb
+        zb.bk_copy = not zb.bk_copy
+        self.report({'INFO'}, 'Bake High Poly: ' + ('makes a copy' if zb.bk_copy else 'changes the part itself (no copy)'))
+        return {'FINISHED'}
+
+
 def bake_mode(zb, action):
     """BAKE_HP_KEEP / _ROUND set the Bake High Poly Bevels setting (it stays, the panel shows it); True for any Bake HP."""
     if action in BAKE_MODES:
@@ -242,7 +257,7 @@ class MCH_PT_mesh_tools(bpy.types.Panel):
         draw(self.layout, context)
 
 
-CLASSES = (MCH_OT_mesh_tool, MCH_PT_mesh_tools)
+CLASSES = (MCH_OT_mesh_tool, MCH_OT_bake_copy_toggle, MCH_PT_mesh_tools)
 
 
 def register():

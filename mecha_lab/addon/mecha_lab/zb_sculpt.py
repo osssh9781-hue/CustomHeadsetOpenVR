@@ -1403,8 +1403,13 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
                                          'facets), 0 = the original shape exactly, only denser')
     bk_bevels: EnumProperty(name='Bevels', items=[
         ('KEEP', 'Keep Bevels', 'Bake High Poly: modelled bevels / chamfers keep their profile exactly (their rows are held as lines)'),
-        ('ROUND', 'Round Bevels', 'Bake High Poly: modelled bevels / chamfers round into smooth fillets between the flats (no '
-                  'facets on a 2-3 segment bevel); the flats stay flat')], default='KEEP')
+        ('ROUND', 'Round Bevels', 'Bake High Poly: the hard edges stay sharp (creased), everything else - the modelled bevels '
+                  'too - goes through subdivision (Catmull-Clark) into one smooth surface; a lone chamfer stays flat')],
+        default='KEEP')
+    bk_copy: BoolProperty(name='Copy', default=True,     # 0.24.95 (user: "왜 복사가 돼? 그것도 버튼으로 끌 수 있게")
+                          description='Bake High Poly: on = a "<part>_BakeHP" copy (the part hidden, Bake Maps finds the '
+                                      'pair); off = the part itself becomes the high poly (its modifiers applied, a live '
+                                      'part stops being live; Ctrl+Z gets it back)')
     bk_fillet: FloatProperty(name='Fillet %', default=0.0, min=0.0, max=3.0, precision=2, step=5,
                              description='Bake High Poly: a small round fillet on the hard edges, as a percent of the '
                                          'part size (a bake likes a little edge width); 0 = razor sharp')

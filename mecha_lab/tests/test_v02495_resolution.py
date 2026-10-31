@@ -152,4 +152,19 @@ check('Wired into the other tools (source): plate / extract bevels, Edge Molding
           __import__('mecha_lab.plate_detail', fromlist=['x']), __import__('mecha_lab.mech_ridge', fromlist=['x']),
           __import__('mecha_lab.station_primitive', fromlist=['x']), __import__('mecha_lab.primitive_place', fromlist=['x']),
           __import__('mecha_lab.lasso_line', fromlist=['x']))))
+
+# ---- Line mode band (user, a Line cut at Res 800 %: "덜 촘촘해" - the band's path was resampled every half
+# half-width whatever the Resolution)
+from mecha_lab import lasso_line as ll
+arc = [(100 + 300 * math.sin(t / 40.0), 100 + 300 * (1 - math.cos(t / 40.0))) for t in range(0, 63)]
+st.geo_res = 100
+b100 = ll.band(arc, 40.0)
+st.geo_res = 200
+b200 = ll.band(arc, 40.0)
+st.geo_res = 800
+b800 = ll.band(arc, 40.0)
+st.geo_res = 100
+check('Line mode band: 100 % as before (140 points on this arc), about 2x at 200 %, about 5x at 800 %',
+      len(b100) == 140 and 1.7 * len(b100) < len(b200) < 2.3 * len(b100) and len(b800) > 4.5 * len(b100),
+      (len(b100), len(b200), len(b800)))
 summary()

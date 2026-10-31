@@ -388,4 +388,28 @@ for act, mode in (('BAKE_HP_ROUND', 'ROUND'), ('BAKE_HP_KEEP', 'KEEP')):
     check(f'mch.mesh_tool {act}: Bake High Poly with Bevels {mode} (the setting set to it too), a heavy action on both screens',
           r == {'FINISHED'} and bk.INFO.get('bevels') == mode and C.scene.mch_zb.bk_bevels == mode
           and act in mt.HEAVY and act in zs.RISKY, (r, bk.INFO.get('bevels'), C.scene.mch_zb.bk_bevels))
+
+# ---- Copy off (user: "왜 복사가 돼? 그것도 버튼으로 끌 수 있게")
+zbs = C.scene.mch_zb
+check('Setting: Copy (on by default) next to Bevels; the toggle operator in the right-click menus',
+      zbs.bl_rna.properties['bk_copy'].default is True and "'bk_copy'" in inspect.getsource(bk.draw_rows)
+      and hasattr(bpy.types, 'MCH_OT_bake_copy_toggle'))
+bpy.ops.mch.bake_copy_toggle()
+off = zbs.bk_copy
+ob = beveled_block(2)
+ob.name = 'InPlace'
+mod = ob.modifiers.new('w', 'WEIGHTED_NORMAL')
+n_before = len(bpy.data.objects)
+f0 = len(ob.data.polygons)
+for o in C.selected_objects:
+    o.select_set(False)
+ob.select_set(True)
+C.view_layer.objects.active = ob
+r = bpy.ops.mch.mesh_tool(action='BAKE_HP_KEEP')
+check('Copy off: the part itself becomes the high poly - no new object, same name, more faces, modifiers gone, still shown',
+      off is False and r == {'FINISHED'} and len(bpy.data.objects) == n_before and bpy.data.objects.get('InPlace') is ob
+      and len(ob.data.polygons) > 10 * f0 and len(ob.modifiers) == 0 and not ob.hide_get() and not bk.is_bake(ob),
+      (off, r, len(ob.data.polygons), f0, [m.name for m in ob.modifiers]))
+bpy.ops.mch.bake_copy_toggle()
+check('... the toggle back on', zbs.bk_copy is True)
 summary()

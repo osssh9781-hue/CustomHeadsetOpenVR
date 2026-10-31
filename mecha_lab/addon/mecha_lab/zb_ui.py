@@ -808,6 +808,8 @@ def popup(context, region_w, region_h, k, Item):
     acts = [(lab, ('op', 'mch.zb_action', {'action': a})) for lab, a in (('DynaMesh', 'DYNAMESH'), ('Decimate', 'DECIMATE'),
                                                                         ('HP Keep', 'BAKE_HP_KEEP'),
                                                                         ('HP Round', 'BAKE_HP_ROUND'))]
+    zbs = getattr(context.scene, 'mch_zb', None)                      # 0.24.95 Bake HP Copy on / off at the cursor
+    acts.append(('HP Copy ' + ('On' if zbs is None or zbs.bk_copy else 'Off'), ('op', 'mch.bake_copy_toggle', {})))
     acts.append(('Flip', ('op', 'mch.flip_object', {'axis': 'X'})))   # 0.24.95 left / right (user: "우클릭 팝업에 뒤집기")
     aw = (iw - (len(acts) - 1) * GAP * k) / len(acts)
     for i, (lab, action) in enumerate(acts):
