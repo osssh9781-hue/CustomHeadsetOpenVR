@@ -543,8 +543,9 @@ ntri = sum(len(p.vertices) - 2 for p in px[0].data.polygons) if px else 0
 check('... from a low-res proxy: "<name>_proxy" in the hidden "MCH Cloth Proxies" collection, about Proxy Faces triangles, not selectable / rendered',
       len(px) == 1 and px[0].name == wall.name + '_proxy' and coll.hide_viewport and coll.hide_render and px[0].hide_select
       and 4000 <= ntri <= 6000, (len(px), ntri))
-check('... the body (12k triangles, over the 5k budget) gets its proxy too; a mesh under the budget is used as it is',
-      any(o.get(cpx.SRC) == body.name for o in coll.objects) and cpx.proxy_mesh(C, body, 20000) == (body.data, False))
+check('... the body itself collides through a LOCAL piece (only the region round the cloth: here lighter than the budget, '
+      'so no proxy object); a mesh under the budget is used as it is',
+      not any(o.get(cpx.SRC) == body.name and not o.get(cpx.LOCAL) for o in coll.objects) and cpx.proxy_mesh(C, body, 20000) == (body.data, False))
 data0 = px[0].data
 cd.cancel(C)
 cd.perform(C, loops, Proj())

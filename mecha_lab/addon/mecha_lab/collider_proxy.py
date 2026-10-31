@@ -107,7 +107,7 @@ def proxy_mesh(context, ob, faces):
             return src, handed
         sig = _signature(src)
         name = ob.name + '_proxy'
-        px = next((o for o in collection(context).objects if o.get(SRC) == ob.name), None)
+        px = next((o for o in collection(context).objects if o.get(SRC) == ob.name and not o.get(LOCAL)), None)
         if px is not None and px.get(SIG) == sig and px.type == 'MESH':
             px.matrix_world = ob.matrix_world.copy()
             return px.data, False
@@ -126,6 +126,72 @@ def proxy_mesh(context, ob, faces):
             px.hide_render = True
             px.hide_select = True
             px[SRC] = ob.name
+        else:
+            old = px.data
+            px.data = new
+            if old.users == 0:
+                bpy.data.meshes.remove(old)
+        px[SIG] = sig
+        px.matrix_world = ob.matrix_world.copy()
+        return new, False
+    finally:
+        if temp:
+            bpy.data.meshes.remove(src)
+
+
+LOCAL = 'mch_proxy_local'
+
+
+def local_proxy_mesh(context, ob, lo, hi, faces):
+    """0.24.95 a LOCAL proxy (user: "마스크한 영역은 콜리전으로 로우 메시 뽑고 ..."): only the part of ``ob``'s evaluated
+    mesh inside the box ``lo`` .. ``hi`` (object space: where the cloth can reach), decimated to about ``faces``
+    triangles - the whole budget on that region instead of on the whole body, so a dense body keeps its shape
+    there.  Cached as "<name>_proxy_local" until the mesh or the region changes.  Returns (mesh, temporary?)."""
+    from . import fast_decimate as fd
+    from . import mesh_io as mio
+    from .cloth_drape import faces_mesh
+    src, temp = _evaluated(context, ob)
+    try:
+        lo = np.asarray(lo, np.float64)
+        hi = np.asarray(hi, np.float64)
+        co = mio.read_co(src)
+        inside = np.all((co >= lo) & (co <= hi), axis=1)
+        vi = mio.read_corner_verts(src)
+        start, tot = mio.read_face_starts(src)
+        if not inside.any() or not len(start):
+            handed, temp = temp, False
+            return src, handed
+        sel = np.nonzero(np.add.reduceat(inside[vi].astype(np.int32), start) > 0)[0]
+        nt = int((np.asarray(tot)[sel] - 2).sum())
+        if nt <= faces * 1.2 or not fd.available():   # (light enough already: the region itself)
+            return faces_mesh(src, sel, name=ob.name + '_region'), True
+        sig = _signature(src) + '|' + ','.join(f'{x:.4g}' for x in np.concatenate([lo, hi])) + f'|{int(faces)}'
+        name = ob.name + '_proxy_local'
+        coll = collection(context)
+        px = next((o for o in coll.objects if o.get(SRC) == ob.name and o.get(LOCAL)), None)
+        if px is not None and px.get(SIG) == sig and px.type == 'MESH':
+            px.matrix_world = ob.matrix_world.copy()
+            return px.data, False
+        region = faces_mesh(src, sel, name=name)
+        try:
+            region.calc_loop_triangles()
+            T = np.empty((len(region.loop_triangles), 3), np.int64)
+            region.loop_triangles.foreach_get('vertices', T.ravel())
+            V2, F2, _vs, _fs = fd.run(mio.read_co(region), T, int(faces), keep_borders=True)
+        finally:
+            bpy.data.meshes.remove(region)
+        new = bpy.data.meshes.new(name)
+        fd.build_mesh(new, np.asarray(V2, np.float64), np.asarray(F2, np.int64))
+        new.polygons.foreach_set('use_smooth', np.ones(len(new.polygons), bool))
+        new.update()
+        if px is None:
+            px = bpy.data.objects.new(name, new)
+            coll.objects.link(px)
+            px.display_type = 'WIRE'
+            px.hide_render = True
+            px.hide_select = True
+            px[SRC] = ob.name
+            px[LOCAL] = True
         else:
             old = px.data
             px.data = new

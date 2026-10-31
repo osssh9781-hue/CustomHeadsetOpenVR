@@ -45,7 +45,10 @@ def _hang_live_update(st, context):
     """0.24.95 a cape / neck cloth laid but not draping yet: its shape follows the sliders right away (set the shape
     first, then Space drapes it)."""
     try:
-        if SIM.get('line') is not None and sim_active() and not SIM.get('running') and rebuild_hang(context):
+        if not sim_active() or SIM.get('running'):
+            return
+        changed = rebuild_mask(context) if SIM.get('source') == 'MASK' else (SIM.get('line') is not None and rebuild_hang(context))
+        if changed:
             ob = _ob()
             if ob is not None:
                 ob.data.update()
@@ -87,7 +90,8 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
     cape_length: FloatProperty(name='Length', description='Cape / Neck Cloth: how far the cloth hangs from the drawn line, as % of the body size (changed before Space: the cloth is made again)', default=50.0, min=2.0, max=200.0, subtype='PERCENTAGE', update=_hang_live_update)
     cape_flare: FloatProperty(name='Flare', description='Cape: how much wider the hem is than the drawn line (0 = exactly as wide as the points you placed; the Neck Cloth is a round ring)', default=0.0, min=0.0, max=300.0, subtype='PERCENTAGE', update=_hang_live_update)
     mask_points: IntProperty(name='Cloth Points', description='Drape Mask: the masked faces are rebuilt as an even, lighter cloth of about this many points '
-                             '(0 = from Cloth Detail; never more points than the body has there)', default=0, min=0, max=200000)
+                             '(0 = from Cloth Detail; never more points than the body has there; before Space the cloth follows the slider)',
+                             default=0, min=0, max=200000, update=_hang_live_update)
     spacing: FloatProperty(name='Cloth Detail', description='The patch spacing as % of the outline size (smaller = more points, finer folds)',
                            default=1.5, min=0.4, max=6.0, subtype='PERCENTAGE')
     slack: FloatProperty(name='Looseness', description='Extra fabric: the cloth is this much bigger than the region, so it sags and bunches',
@@ -383,7 +387,14 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
     from . import collider_proxy as cpx
     cloth_obs = [o for o in bpy.data.objects if o.data == me]
     use_proxy = bool(getattr(st, 'use_proxy', False))
-    body_me, body_temp = cpx.proxy_mesh(context, target, st.proxy_faces) if use_proxy else (target.data, False)
+    if use_proxy and to_cloth is None and not wrap and sew is None and not puff:
+        # 0.24.95 the collider is only the body round the cloth anyway: spend the whole proxy budget there
+        body_me, body_temp = cpx.local_proxy_mesh(context, target, co.min(0) - size * PAD * 2, co.max(0) + size * PAD * 2,
+                                                  st.proxy_faces)
+    elif use_proxy:
+        body_me, body_temp = cpx.proxy_mesh(context, target, st.proxy_faces)
+    else:
+        body_me, body_temp = target.data, False
     tco = mio.read_co(body_me)
     tn = wl._normals(body_me)
     tubes = 0
@@ -861,6 +872,36 @@ def mask_target_points(st, size):
     return int(round((100.0 / max(st.spacing, 0.05)) ** 2 * 0.8))      # (a round patch: ~0.8 of the square's points)
 
 
+def _mask_key(st):
+    return (int(st.mask_points), round(float(st.spacing), 4))
+
+
+def rebuild_mask(context):
+    """0.24.95 a Drape Mask cloth not draping yet, made again when Points / Cloth Detail changed (the slider, or
+    Space / Restart).  Returns True when the mesh was replaced."""
+    st = settings(context)
+    ob, body = _ob(), bpy.data.objects.get(SIM.get('target', ''))
+    if SIM.get('source') != 'MASK' or st is None or ob is None or body is None or SIM.get('mask_key') == _mask_key(st):
+        return False
+    faces = masked_faces(body.data)
+    if len(faces) < 3:
+        return False
+    me = faces_mesh(body.data, faces)
+    light = light_patch(me, mask_target_points(st, 0.0))
+    if light is not None:
+        bpy.data.meshes.remove(me)
+        me = light
+    old = ob.data
+    me.name = old.name
+    ob.data = me
+    if old.users == 0:
+        bpy.data.meshes.remove(old)
+    co = mio.read_co(me)
+    SIM.update(surface=co.copy(), size=float(np.linalg.norm(co.max(0) - co.min(0))), mask_key=_mask_key(st),
+               spacing=float(st.spacing))
+    return True
+
+
 def perform_masked(context, body):
     """The masked region of ``body`` (painted in Sculpt Mode / the ZBrush tab) lifted off as the cloth: the same
     flow as a lasso - a "Cloth Drape" object parented to the body, its open rim pinned, the body the collider."""
@@ -907,12 +948,11 @@ def perform_masked(context, body):
         bpy.data.objects.remove(ob)
         bpy.data.meshes.remove(me)
         raise
-    mio.write_co(me, sess['cloth'].co)
-    me.update()
+    me.update()                                   # (the clean cloth stays on screen until Space)
     SIM.clear()
     SIM.update(ob=ob.name, target=body.name, nb=0, size=size, sess=sess, running=False, done=False, want=None,
                surface=surface, start=sess['cloth'].init.copy(), snapshot=_snapshot(st), sew=None, pin_idx=None,
-               spacing=float(st.spacing), source='MASK')
+               spacing=float(st.spacing), source='MASK', mask_key=_mask_key(st))
     rim = int(np.count_nonzero(sess['cloth'].pin >= 1))
     lighter = f' (rebuilt lighter from {dense:,})' if light is not None else ''
     return (f'Cloth Drape from the mask on {body.name}: {len(faces):,} faces, {sess["points"]:,} points{lighter}, {rim:,} on the rim pinned, '
@@ -1656,13 +1696,14 @@ def _snapshot(st):
                                           'wrap_tight', 'use_lines', 'stop_at_pins', 'two_sides', 'puff', 'wrinkles',
                                           'padding', 'pad_pattern', 'pad_size', 'pad_puff', 'trim', 'trim_width',
                                           'collide_with', 'use_proxy', 'proxy_faces',
-                                          'cape_length', 'cape_flare', 'spacing', 'neck_style', 'neck_pin_top', 'neck_bottom', 'neck_top'))
+                                          'cape_length', 'cape_flare', 'spacing', 'neck_style', 'neck_pin_top', 'neck_bottom', 'neck_top', 'mask_points'))
 
 
 def restart(context):
     """The cloth back to the laid patch, the session rebuilt with the current sliders (Cloth Detail needs a new lasso)."""
     grab_end_event()
     rebuild_hang(context)                         # 0.24.95 a cape / neck cloth: Length / Flare / Detail rebuild it
+    rebuild_mask(context)                         # 0.24.95 a Drape Mask cloth: Points / Detail rebuild it
     ob = _ob()
     st = settings(context)
     target = bpy.data.objects.get(SIM.get('target', ''))
