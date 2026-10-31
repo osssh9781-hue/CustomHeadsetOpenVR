@@ -13,10 +13,10 @@ from bpy.props import StringProperty
 ACTIONS = {'DYNAMESH': 'DynaMesh', 'DECIMATE': 'Decimate', 'QUAD_REMESH': 'Quad Remesh', 'EDGE_MESH': 'Edge Mesh',
            'HE_FIND': 'Find Edges', 'HE_APPLY': 'Apply', 'HE_CLEAR': 'Clear', 'FIX_MESH': 'Fix Mesh', 'REFIX': 'Re-Fix',
            'BAKE_HP': 'Bake High Poly', 'BAKE_HP_KEEP': 'Bake High Poly (Keep Bevels)',
-           'BAKE_HP_ROUND': 'Bake High Poly (Round Bevels)'}
+           'BAKE_HP_ROUND': 'Bake High Poly (Round Bevels)', 'BAKE_HP_DIVIDE': 'Bake High Poly (Divide)'}
 HEAVY = {'DYNAMESH', 'DECIMATE', 'QUAD_REMESH', 'EDGE_MESH', 'HE_FIND', 'HE_APPLY', 'REFIX', 'BAKE_HP', 'BAKE_HP_KEEP',
-         'BAKE_HP_ROUND'}
-BAKE_MODES = {'BAKE_HP_KEEP': 'KEEP', 'BAKE_HP_ROUND': 'ROUND'}   # 0.24.95 the right-click buttons (user: "라운드도 우클릭
+         'BAKE_HP_ROUND', 'BAKE_HP_DIVIDE'}
+BAKE_MODES = {'BAKE_HP_KEEP': 'KEEP', 'BAKE_HP_ROUND': 'ROUND', 'BAKE_HP_DIVIDE': 'DIVIDE'}   # 0.24.95 the right-click buttons (user: "라운드도 우클릭
 #                                                               팝업에 등록해 줘, 킵이랑"): the Bevels setting, then Bake HP
 
 

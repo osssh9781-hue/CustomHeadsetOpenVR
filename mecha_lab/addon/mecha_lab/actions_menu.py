@@ -102,6 +102,7 @@ def draw_actions(layout, context):
     _btn(g, 'mch.lowpoly_make', 'MOD_DECIM', mesh_on)
     _btn(g, 'mch.mesh_tool', 'MOD_SUBSURF', mesh_on, action='BAKE_HP_KEEP')     # 0.24.95 Bake High Poly, Keep / Round
     _btn(g, 'mch.mesh_tool', 'SPHERECURVE', mesh_on, action='BAKE_HP_ROUND')
+    _btn(g, 'mch.mesh_tool', 'MOD_MULTIRES', mesh_on, action='BAKE_HP_DIVIDE')   # 0.24.95 the ZBrush way, fast
     zbs = getattr(context.scene, 'mch_zb', None)
     _btn(g, 'mch.bake_copy_toggle', 'DUPLICATE', True, depress=bool(zbs is not None and zbs.bk_copy))   # 0.24.95
 

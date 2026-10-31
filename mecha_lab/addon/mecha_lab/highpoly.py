@@ -328,6 +328,7 @@ def _context_menu(self, context):
         self.layout.operator('mch.make_highpoly', icon='MOD_SUBSURF')
         self.layout.operator('mch.mesh_tool', text='Bake High Poly (Keep)', icon='MOD_SUBSURF').action = 'BAKE_HP_KEEP'
         self.layout.operator('mch.mesh_tool', text='Bake High Poly (Round)', icon='MOD_SUBSURF').action = 'BAKE_HP_ROUND'
+        self.layout.operator('mch.mesh_tool', text='Bake High Poly (Divide)', icon='MOD_MULTIRES').action = 'BAKE_HP_DIVIDE'
 
 
 class MCH_PT_highpoly(bpy.types.Panel):

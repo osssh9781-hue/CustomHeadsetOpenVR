@@ -418,8 +418,12 @@ def apply(context, ob):
         return False
     vol = volume_of(ob)
     _flag_volume(vol)
-    with context.temp_override(object=ob, active_object=ob, selected_objects=[ob], selected_editable_objects=[ob]):
-        bpy.ops.object.modifier_apply(modifier=mod.name)
+    from . import edge_memory
+
+    def _apply():
+        with context.temp_override(object=ob, active_object=ob, selected_objects=[ob], selected_editable_objects=[ob]):
+            bpy.ops.object.modifier_apply(modifier=mod.name)
+    edge_memory.keep_marks(ob.data, _apply)      # 0.24.95 (the part's earlier marks along what the Boolean rebuilt)
     cg.remove_cutter_attribute(ob.data)          # 0.24.95 -> Edge Memory marks on the hole's edges
     if vol is not None and not _sharers(vol, ob):
         cg.remove_object_and_mesh(vol)

@@ -825,6 +825,21 @@ def _boolean_region(context, target, cutter, operation, solver, hipoly):
 
 def boolean_result(context, target, cutter, operation, solver='AUTO',
                    hole_tolerant=False, allow_empty=False, hipoly=True):
+    """``_boolean_result``; 0.24.95 the part's Edge Memory marks carried onto the edges the Boolean made along its
+    old marked lines (the Manifold solver rebuilds the faces it touches without their edge marks: a random-holes box
+    lost the creases of earlier cuts with every cut from the side - ``edge_memory.carry_marks``)."""
+    got = _boolean_result_any(context, target, cutter, operation, solver, hole_tolerant, allow_empty, hipoly)
+    try:
+        if got is not None and got[0] is not None and getattr(target, 'type', '') == 'MESH':
+            from . import edge_memory
+            edge_memory.carry_marks(target.data, got[0])
+    except Exception as ex:                                   # (memory is a bonus: never fail a cut over it)
+        print('Mecha: edge memory (boolean):', ex)
+    return got
+
+
+def _boolean_result_any(context, target, cutter, operation, solver='AUTO',
+                        hole_tolerant=False, allow_empty=False, hipoly=True):
     """Run the Boolean with validation + solver fallback. Returns (mesh, solver).
     0.24.58 only on the loose parts the cutter reaches (``_boolean_local``).  0.24.86 a dense part: only the faces
     round the cutter (``_boolean_region``; ``hipoly`` = the cut setting High Poly)."""

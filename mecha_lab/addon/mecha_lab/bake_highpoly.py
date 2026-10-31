@@ -892,6 +892,8 @@ def bake_mesh(me, levels, rounding=1.0, fillet=0.0, angle=math.radians(30.0), it
     cleaned = preclean(me)
     faces0 = len(me.polygons)
     hard = hard_mask(me, angle)
+    if bevels == 'DIVIDE':
+        return _divide(me, hard, levels, fillet, t0, faces0, cleaned)
     rows = bevel_rows(me, hard)
     n_released = 0
     subd_folds = 0
@@ -980,12 +982,12 @@ def build(context, ob, target_faces=1_000_000, rounding=1.0, fillet=0.0, angle=m
             keep_levels -= 1
         sides = np.array([len(p.vertices) for p in me.polygons])
         quads1 = int(np.where(sides > 4, 3 * (sides - 2), sides).sum())   # (Round: the faces after level 1 -
-        if bevels == 'ROUND':                                              # n-gons cut into triangles, each a
+        if bevels in ('ROUND', 'DIVIDE'):                                  # n-gons cut into triangles, each a
             levels = min(range(1, MAX_LEVELS + 1),                         # fan of 3 quads) - the level nearest
                          key=lambda lv: abs(math.log(max(1, quads1 * 4 ** (lv - 1)) / max(1, target_faces))))
 
         def made(lv):
-            return quads1 * 4 ** (lv - 1) if bevels == 'ROUND' else faces0 * 4 ** lv
+            return quads1 * 4 ** (lv - 1) if bevels in ('ROUND', 'DIVIDE') else faces0 * 4 ** lv
         while levels > 1:
             ok, _why = budget.faces_fit(made(levels))
             if ok:
@@ -1064,6 +1066,35 @@ def _in_place(context, ob, me):
     return ob
 
 
+def _divide(me, hard, levels, fillet, t0, faces0, cleaned):
+    """0.24.95 Divide (user: "지브러시 디바이드는 렉이 안 걸리는데 하드 엣지는 킵이든 라운드든 렉이 너무 걸려 - 디바이드식으로
+    추가해 줘"): ZBrush's Divide with CreasePG - one Catmull-Clark pass (Blender's Subdivision Surface, in C) with the
+    hard edges creased.  A flat with creased rims stays exactly flat, the hard edges stay sharp, everything between
+    them (a modelled bevel's rows, a curve's facets) is smoothed.  No rounding passes, no fold checks: the time is
+    the subdivision's alone.  ``fillet`` > 0: a narrow 2-row bevel on the hard edges first, its rows soft - Divide
+    rounds it into a soft edge (ZBrush's crease level, as geometry)."""
+    n_fillet = 0
+    size = _mesh_size(me)
+    if fillet > 0.0 and size > 0.0:
+        a = me.attributes.get('sharp_edge') or me.attributes.new('sharp_edge', 'BOOLEAN', 'EDGE')
+        a.data.foreach_set('value', hard)
+        n_fillet = _fillet(me, hard, fillet * size)
+        hard = _arrays(me)[2]
+        for name in (STRIP,):
+            s = me.attributes.get(name)
+            if s is not None:
+                me.attributes.remove(s)
+    n_hard = int(hard.sum())
+    _subd_round(me, hard, levels)
+    me.update()
+    info = dict(faces0=faces0, faces=len(me.polygons), hard=n_hard, corners=0, lines=0, fillet_edges=n_fillet,
+                flats=0, bevel_rows=0, bevel_round=0, bevels='DIVIDE', subd_folds=0, levels=levels,
+                seconds=time.time() - t0, cleaned=cleaned)
+    INFO.clear()
+    INFO.update(info)
+    return info
+
+
 def describe(info):
     f = info
     return (f'Bake High Poly: {f["faces0"]:,} -> {f["faces"]:,} faces (x4^{f["levels"]}), {f["hard"]:,} hard edges kept '
@@ -1073,7 +1104,8 @@ def describe(info):
                 'rounding - made as Keep (bevels as modelled)') if f.get('round_as_keep')
                else (' | Round: the subdivision folds this part (' + f'{f["subd_folds"]:,} spots) - the gentle rounding '
                      'used instead (bevels less smooth)') if f.get('subd_folds')
-               else (', subdivision surface' if f.get('bevels') == 'ROUND' else ''))
+               else (', subdivision surface' if f.get('bevels') == 'ROUND'
+                     else ', Divide (subdivision surface, hard edges creased)' if f.get('bevels') == 'DIVIDE' else ''))
             + (f', fillet on {f["fillet_edges"]:,} edges' if f.get('fillet_edges') else '')
             + (', cleaned first: ' + ', '.join(f'{v} {k}' for k, v in f['cleaned'].items() if v) if f.get('cleaned') and any(f['cleaned'].values()) else '')
             + f', {f["seconds"]:.1f} s')
@@ -1102,5 +1134,5 @@ def draw_rows(col, zb, op):
     r.prop(zb, 'bk_rounding', slider=True)
     r.prop(zb, 'bk_fillet')
     r = col.row(align=True)
-    r.prop(zb, 'bk_bevels', expand=True)                             # 0.24.95 Keep / Round bevels
+    r.prop(zb, 'bk_bevels', expand=True)                             # 0.24.95 Keep / Round / Divide
     r.prop(zb, 'bk_copy', toggle=True, icon='DUPLICATE')             # 0.24.95 off: the part itself

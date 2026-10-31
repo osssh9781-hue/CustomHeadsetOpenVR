@@ -287,8 +287,9 @@ def creases(me):
     return float(np.degrees(np.arccos(np.clip(np.einsum('ij,ij->i', n[f_s[s2]], n[f_s[s2 + 1]]), -1, 1))).max())
 
 
-check('Setting: Bevels Keep (as before) / Round', zs.MCH_PG_ZBrush.bl_rna.properties['bk_bevels'].default == 'KEEP'
-      and {i.identifier for i in zs.MCH_PG_ZBrush.bl_rna.properties['bk_bevels'].enum_items} == {'KEEP', 'ROUND'}
+check('Setting: Bevels Keep (as before) / Round (/ Divide: test_v02495_bake_divide)',
+      zs.MCH_PG_ZBrush.bl_rna.properties['bk_bevels'].default == 'KEEP'
+      and {'KEEP', 'ROUND'} <= {i.identifier for i in zs.MCH_PG_ZBrush.bl_rna.properties['bk_bevels'].enum_items}
       and "'bk_bevels'" in inspect.getsource(bk.draw_rows))
 for seg, tri, label in ((2, False, '2-segment bevel'), (3, False, '3-segment bevel'), (2, True, '2-segment bevel, triangulated')):
     res = {}

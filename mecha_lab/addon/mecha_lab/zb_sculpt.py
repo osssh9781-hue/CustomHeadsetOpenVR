@@ -1404,7 +1404,10 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
     bk_bevels: EnumProperty(name='Bevels', items=[
         ('KEEP', 'Keep Bevels', 'Bake High Poly: modelled bevels / chamfers keep their profile exactly (their rows are held as lines)'),
         ('ROUND', 'Round Bevels', 'Bake High Poly: the hard edges stay sharp (creased), everything else - the modelled bevels '
-                  'too - goes through subdivision (Catmull-Clark) into one smooth surface; a lone chamfer stays flat')],
+                  'too - goes through subdivision (Catmull-Clark) into one smooth surface; a lone chamfer stays flat'),
+        ('DIVIDE', 'Divide', 'Bake High Poly the ZBrush way (Divide with the hard edges creased): one subdivision pass '
+                   'in C, no rounding passes - fast. Flats stay flat, hard edges sharp, the rest smoothed (Fillet % '
+                   'gives the hard edges a soft round)')],
         default='KEEP')
     bk_copy: BoolProperty(name='Copy', default=True,     # 0.24.95 (user: "왜 복사가 돼? 그것도 버튼으로 끌 수 있게")
                           description='Bake High Poly: on = a "<part>_BakeHP" copy (the part hidden, Bake Maps finds the '
@@ -1903,7 +1906,7 @@ def shade_result(ob, zb):
         return -1
 
 
-RISKY = {'DYNAMESH', 'DYNA_UPDATE', 'DYNA_SUBDIV', 'DYNA_SUBDIV3', 'DECIMATE', 'QUAD_REMESH', 'REFIX', 'HE_FIND', 'HE_APPLY', 'BAKE_HP', 'BAKE_HP_KEEP', 'BAKE_HP_ROUND',
+RISKY = {'DYNAMESH', 'DYNA_UPDATE', 'DYNA_SUBDIV', 'DYNA_SUBDIV3', 'DECIMATE', 'QUAD_REMESH', 'REFIX', 'HE_FIND', 'HE_APPLY', 'BAKE_HP', 'BAKE_HP_KEEP', 'BAKE_HP_ROUND', 'BAKE_HP_DIVIDE',
          'DIVIDE', 'ZREMESH', 'HALF', 'SAME', 'DOUBLE', 'MIRROR_WELD', 'CLOSE_HOLES', 'EXTRACT', 'SPLIT_MASKED',
          'SPLIT_UNMASKED', 'SPLIT_HIDDEN', 'DEL_HIDDEN', 'MERGE_DOWN', 'MERGE_VISIBLE', 'POLYMESH3D', 'GROUPS_SPLIT',
          'DEL_LOWER', 'FIX_MESH', 'EDGE_MESH', 'SHELL'}

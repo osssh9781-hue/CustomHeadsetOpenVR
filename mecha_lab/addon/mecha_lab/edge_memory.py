@@ -385,6 +385,21 @@ def finish_band(me, snap, width):
     return int(band.sum())
 
 
+def carry_marks(old_me, new_me):
+    """The marks of ``old_me`` put onto the edges of ``new_me`` (a Boolean result of it, same space) that lie along
+    its marked lines and were made by the step (``_restore_lines``).  Returns the number marked."""
+    from . import mesh_io as mio
+    seg = lines(old_me)
+    if not len(seg) or not len(new_me.edges):
+        return 0
+    old_co = mio.read_co(old_me)
+    co = mio.read_co(new_me)
+    size = float(np.linalg.norm(np.ptp(old_co, axis=0))) or 1.0
+    q = size * 1e-6
+    return _restore_lines(new_me, seg, co, ~np.isin(_pos_keys(co, q), _pos_keys(old_co, q)), q, size, old_co,
+                          mio.read_edge_verts(old_me))
+
+
 def keep_marks(me, fn):
     """Run ``fn`` (a step that rebuilds faces of ``me``: the cut's result tidy) and put back the marks it dropped
     (``_restore_lines``).  Returns fn's result."""
