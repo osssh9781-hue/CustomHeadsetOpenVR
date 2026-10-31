@@ -321,6 +321,8 @@ def _sync_modifiers(ob):
     # keep order: side bevel first, then shell
     if side is not None and shell is not None and ob.modifiers.find(MOD_SIDE) > ob.modifiers.find(MOD_SHELL):
         ob.modifiers.move(ob.modifiers.find(MOD_SIDE), ob.modifiers.find(MOD_SHELL))
+    from . import edge_memory as _em                 # 0.24.95 the bevel / shell edges creased too (last on the stack)
+    _em.sync_crease_modifier(ob, side is not None or shell is not None)
 
 
 def _parts_collection(context, sub=COLL_PARTS):
@@ -456,7 +458,8 @@ class MCH_OT_extract_apply(bpy.types.Operator):
         live_queue.flush()                  # 0.24.73 a rebuild still waiting goes in before applying
         done = []
         for ob in _part_targets(context):
-            for name in (MOD_SIDE, MOD_SHELL):
+            from . import edge_memory as _em
+            for name in (MOD_SIDE, MOD_SHELL, _em.CREASE_MOD):      # (0.24.95 the crease step too: it is the last)
                 mod = ob.modifiers.get(name)
                 if mod is not None:
                     cg.apply_single_modifier(context, ob, mod)

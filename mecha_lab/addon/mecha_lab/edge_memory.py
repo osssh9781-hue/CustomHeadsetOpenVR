@@ -323,3 +323,120 @@ def mark_generated(me, angle=GEN_ANGLE):
         clear(me)
         return 0
     return mark_edges(me, m, add=False)
+
+
+# ---- 0.24.95 live parts: the marks on the FINAL shape (user: "아머 플레이트 할 때 나오는 메시들도 엣지 부분에 크리즈
+# 남겨 줄래?") ----------------------------------------------------------------------------------------------------
+# A plate's own mesh is marked (``mark_generated``), but its Bevel / Solidify modifiers make new edges after that:
+# the bevel's border lines and the shell's corner edges came out uncreased, and the creases of a beveled edge were
+# copied onto every row INSIDE the round strip.  This node group (last on the stack) marks the result again with
+# the same rule as ``mark_generated`` - open edges, faces meeting at more than the angle, the plate's own surface
+# lines (``mch_crease``) - as crease 1.0 + the Edge Memory mark, and clears the crease everywhere else.
+CREASE_GROUP = 'MCH Edge Crease'
+CREASE_MOD = 'MCH_EdgeCrease'
+CREASE_VER = 1
+
+
+def _compare_inputs(node, kind):
+    """The A / B sockets of a Compare node for ``kind`` (older Blender lists every type's pair, newer only the
+    set type's)."""
+    want = {'FLOAT': 'VALUE', 'INT': 'INT'}[kind]
+    socks = [i for i in node.inputs if i.type == want and getattr(i, 'enabled', True)]
+    if len(socks) < 2:
+        socks = [i for i in node.inputs if i.type == want]
+    return socks[0], socks[1]
+
+
+def crease_group():
+    import bpy
+    ng = bpy.data.node_groups.get(CREASE_GROUP)
+    if ng is not None and ng.get('mch_ver') == CREASE_VER:
+        return ng
+    if ng is None:
+        ng = bpy.data.node_groups.new(CREASE_GROUP, 'GeometryNodeTree')
+    else:
+        ng.nodes.clear()
+        ng.interface.clear()
+    ng.interface.new_socket('Geometry', in_out='INPUT', socket_type='NodeSocketGeometry')
+    ang = ng.interface.new_socket('Angle', in_out='INPUT', socket_type='NodeSocketFloat')
+    ang.subtype = 'ANGLE'
+    ang.default_value = GEN_ANGLE + 1e-4
+    ang.min_value = 0.0
+    ng.interface.new_socket('Geometry', in_out='OUTPUT', socket_type='NodeSocketGeometry')
+    N, L = ng.nodes, ng.links
+    gi = N.new('NodeGroupInput')
+    go = N.new('NodeGroupOutput')
+    angle = N.new('GeometryNodeInputMeshEdgeAngle')
+    nb = N.new('GeometryNodeInputMeshEdgeNeighbors')
+    steep = N.new('FunctionNodeCompare')
+    steep.data_type = 'FLOAT'
+    steep.operation = 'GREATER_THAN'
+    a, b = _compare_inputs(steep, 'FLOAT')
+    L.new(angle.outputs['Unsigned Angle'], a)
+    L.new(gi.outputs['Angle'], b)
+    open_ = N.new('FunctionNodeCompare')
+    open_.data_type = 'INT'
+    open_.operation = 'NOT_EQUAL'
+    a, b = _compare_inputs(open_, 'INT')
+    L.new(nb.outputs['Face Count'], a)
+    b.default_value = 2
+    lines = N.new('GeometryNodeInputNamedAttribute')
+    lines.data_type = 'FLOAT'
+    lines.inputs['Name'].default_value = 'mch_crease'
+    on_line = N.new('FunctionNodeCompare')
+    on_line.data_type = 'FLOAT'
+    on_line.operation = 'GREATER_THAN'
+    a, b = _compare_inputs(on_line, 'FLOAT')
+    L.new(lines.outputs['Attribute'], a)
+    b.default_value = 0.5
+    or1 = N.new('FunctionNodeBooleanMath')
+    or1.operation = 'OR'
+    L.new(steep.outputs['Result'], or1.inputs[0])
+    L.new(open_.outputs['Result'], or1.inputs[1])
+    or2 = N.new('FunctionNodeBooleanMath')
+    or2.operation = 'OR'
+    L.new(or1.outputs['Boolean'], or2.inputs[0])
+    L.new(on_line.outputs['Result'], or2.inputs[1])
+    crease = N.new('GeometryNodeStoreNamedAttribute')
+    crease.data_type = 'FLOAT'
+    crease.domain = 'EDGE'
+    crease.inputs['Name'].default_value = 'crease_edge'
+    L.new(gi.outputs['Geometry'], crease.inputs['Geometry'])
+    L.new(or2.outputs['Boolean'], crease.inputs['Value'])
+    mark = N.new('GeometryNodeStoreNamedAttribute')
+    mark.data_type = 'BOOLEAN'
+    mark.domain = 'EDGE'
+    mark.inputs['Name'].default_value = ATTR
+    L.new(crease.outputs['Geometry'], mark.inputs['Geometry'])
+    L.new(or2.outputs['Boolean'], mark.inputs['Value'])
+    L.new(mark.outputs['Geometry'], go.inputs['Geometry'])
+    for k, n in enumerate((gi, angle, nb, lines, steep, open_, on_line, or1, or2, crease, mark, go)):
+        n.location = (k * 180 - 900, 0)
+    ng['mch_ver'] = CREASE_VER
+    return ng
+
+
+def sync_crease_modifier(ob, on):
+    """The crease node group last on ``ob``'s modifier stack when ``on`` (a part whose own modifiers make edges),
+    removed when not.  Returns the modifier or None."""
+    mod = ob.modifiers.get(CREASE_MOD)
+    if not on:
+        if mod is not None:
+            ob.modifiers.remove(mod)
+        return None
+    try:
+        if mod is None:
+            mod = ob.modifiers.new(CREASE_MOD, 'NODES')
+        if mod.node_group is None or mod.node_group.name != CREASE_GROUP or mod.node_group.get('mch_ver') != CREASE_VER:
+            mod.node_group = crease_group()
+        mod.show_expanded = False
+        last = len(ob.modifiers) - 1
+        i = ob.modifiers.find(CREASE_MOD)
+        if i != last:
+            ob.modifiers.move(i, last)
+        return mod
+    except Exception as ex:                       # (an unexpected node layout: the base marks stay, the part is still made)
+        print('Mecha: edge crease modifier:', ex)
+        if ob.modifiers.get(CREASE_MOD) is not None:
+            ob.modifiers.remove(ob.modifiers[CREASE_MOD])
+        return None

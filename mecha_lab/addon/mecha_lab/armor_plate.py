@@ -760,6 +760,18 @@ def apply_plate(ob):
     ob.modifiers.clear()
     ob.data = me
     me.name = old.name
+    try:                                          # 0.24.95 the marks of the final shape (bevel / shell edges included)
+        from . import edge_memory as _em
+        import numpy as _np
+        _em.mark_generated(me)
+        lines = me.attributes.get('mch_crease')
+        if lines is not None and lines.domain == 'EDGE' and len(me.edges):
+            v = _np.zeros(len(me.edges), _np.float32)
+            lines.data.foreach_get('value', v)
+            if (v > 0.5).any():
+                _em.mark_edges(me, v > 0.5, add=True)
+    except Exception as ex:
+        print('Mecha: plate apply marks:', ex)
     p.is_part = False
     p.region = p.surround = None
     if SRC_KEY in ob:
