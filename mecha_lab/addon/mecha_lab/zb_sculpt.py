@@ -1898,7 +1898,7 @@ def shade_result(ob, zb):
         return -1
 
 
-RISKY = {'DYNAMESH', 'DYNA_UPDATE', 'DYNA_SUBDIV', 'DYNA_SUBDIV3', 'DECIMATE', 'QUAD_REMESH', 'REFIX', 'HE_FIND', 'HE_APPLY', 'BAKE_HP',
+RISKY = {'DYNAMESH', 'DYNA_UPDATE', 'DYNA_SUBDIV', 'DYNA_SUBDIV3', 'DECIMATE', 'QUAD_REMESH', 'REFIX', 'HE_FIND', 'HE_APPLY', 'BAKE_HP', 'BAKE_HP_KEEP', 'BAKE_HP_ROUND',
          'DIVIDE', 'ZREMESH', 'HALF', 'SAME', 'DOUBLE', 'MIRROR_WELD', 'CLOSE_HOLES', 'EXTRACT', 'SPLIT_MASKED',
          'SPLIT_UNMASKED', 'SPLIT_HIDDEN', 'DEL_HIDDEN', 'MERGE_DOWN', 'MERGE_VISIBLE', 'POLYMESH3D', 'GROUPS_SPLIT',
          'DEL_LOWER', 'FIX_MESH', 'EDGE_MESH', 'SHELL'}
@@ -2235,7 +2235,8 @@ def run(context, action):
         finally:
             _mode(context, 'SCULPT')
         return msg
-    if action == 'BAKE_HP':                          # 0.24.95
+    from . import mesh_tools as _mt
+    if _mt.bake_mode(zb, action):                    # 0.24.95 (Keep / Round from the right-click popup)
         from . import bake_highpoly as bk
         if multires(ob) is not None:
             return 'Bake High Poly: Del Higher / Del Lower first'

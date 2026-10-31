@@ -376,4 +376,16 @@ check('... a face cut out of a bevel row: no band face, no let-go edge next to t
       'the same', (ecnt == 1).any() and not (f1 & ring1).any() and not (b1 & ring1_e).any() and far.any()
       and np.array_equal(f1[far], f0_left[far]) and f1[far].any(),
       (int((ecnt == 1).sum()), int((f1 & ring1).sum()), int((b1 & ring1_e).sum()), int(far.sum()), int(f1[far].sum()), int(f0_left[far].sum())))
+
+# ---- the right-click buttons (user: "라운드도 우클릭 팝업에 등록해 줘, 킵이랑")
+for act, mode in (('BAKE_HP_ROUND', 'ROUND'), ('BAKE_HP_KEEP', 'KEEP')):
+    ob = beveled_block(2)
+    for o in C.selected_objects:
+        o.select_set(False)
+    ob.select_set(True)
+    C.view_layer.objects.active = ob
+    r = bpy.ops.mch.mesh_tool(action=act)
+    check(f'mch.mesh_tool {act}: Bake High Poly with Bevels {mode} (the setting set to it too), a heavy action on both screens',
+          r == {'FINISHED'} and bk.INFO.get('bevels') == mode and C.scene.mch_zb.bk_bevels == mode
+          and act in mt.HEAVY and act in zs.RISKY, (r, bk.INFO.get('bevels'), C.scene.mch_zb.bk_bevels))
 summary()

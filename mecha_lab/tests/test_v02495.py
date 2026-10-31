@@ -40,21 +40,25 @@ check('mark_generated hooked into every part-making tool (13 modules)',
 check('boolean_result flags any cutter', 'flag_cutter(cutter)' in inspect.getsource(cg.boolean_result))
 from mecha_lab import actions_menu as am, highpoly as hp
 from mecha_lab.mecha_menu import Item
-check('Right-click menus: Bake High Poly in the Mecha Lab Actions popup (Resolution) and in Blender\'s object context menu',
-      "action='BAKE_HP'" in inspect.getsource(am.draw_actions) and "'BAKE_HP'" in inspect.getsource(hp._context_menu))
+check('Right-click menus: Bake High Poly Keep and Round in the Mecha Lab Actions popup (Resolution) and in Blender\'s '
+      'object context menu', all(f"action='{a}'" in inspect.getsource(am.draw_actions) and f"'{a}'" in inspect.getsource(hp._context_menu)
+                                 for a in ('BAKE_HP_KEEP', 'BAKE_HP_ROUND')))
 from mecha_lab import mecha_menu as mm
 res = dict((sec, rows) for sec, rows in mm.ACTIONS)['Resolution']
-check('Mecha Menu (the drawn right-click panel): Resolution has Bake HP -> mch.mesh_tool BAKE_HP, with its own glyph',
-      any(r[0] == 'Bake HP' and r[2] == 'mch.mesh_tool' and r[3].get('action') == 'BAKE_HP' and r[1] == 'bakehp' for r in res), res)
+check('Mecha Menu (the drawn right-click panel): Resolution has HP Keep / HP Round -> mch.mesh_tool BAKE_HP_KEEP / _ROUND '
+      '(user: "라운드도 우클릭 팝업에 등록해 줘, 킵이랑"), with the Bake HP glyph',
+      all(any(r[0] == lab and r[2] == 'mch.mesh_tool' and r[3].get('action') == a and r[1] == 'bakehp' for r in res)
+          for lab, a in (('HP Keep', 'BAKE_HP_KEEP'), ('HP Round', 'BAKE_HP_ROUND'))), res)
 bpy.ops.mesh.primitive_cube_add(size=2)
 items = mm.build(bpy.context, 600, 400, 1600, 900, 1.0)
-check('... and build() lays it out as a button', any(getattr(it, 'label', '') == 'Bake HP' for it in items),
-      [getattr(it, 'label', '') for it in items if 'Bake' in str(getattr(it, 'label', ''))])
+check('... and build() lays them out as buttons', {'HP Keep', 'HP Round'} <= {getattr(it, 'label', '') for it in items},
+      [getattr(it, 'label', '') for it in items if 'HP' in str(getattr(it, 'label', ''))])
 wm = bpy.context.window_manager
 wm.mch_zb_pop, wm.mch_zb_pop_xy, wm.mch_zb_pop_focus = 'MENU', (500, 400), ''
 items = zu.popup(bpy.context, 1200, 900, 1.0, Item)
 acts = [it.action[2].get('action') for it in items if getattr(it, 'action', None) and isinstance(it.action, tuple)
         and len(it.action) > 2 and it.action[0] == 'op' and it.action[1] == 'mch.zb_action']
-check('ZBrush right-click popup: a DynaMesh / Decimate / Bake High Poly row', {'DYNAMESH', 'DECIMATE', 'BAKE_HP'} <= set(acts), acts)
+check('ZBrush right-click popup: a DynaMesh / Decimate / HP Keep / HP Round row',
+      {'DYNAMESH', 'DECIMATE', 'BAKE_HP_KEEP', 'BAKE_HP_ROUND'} <= set(acts), acts)
 wm.mch_zb_pop = ''
 summary()

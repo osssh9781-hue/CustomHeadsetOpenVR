@@ -12,8 +12,19 @@ from bpy.props import StringProperty
 
 ACTIONS = {'DYNAMESH': 'DynaMesh', 'DECIMATE': 'Decimate', 'QUAD_REMESH': 'Quad Remesh', 'EDGE_MESH': 'Edge Mesh',
            'HE_FIND': 'Find Edges', 'HE_APPLY': 'Apply', 'HE_CLEAR': 'Clear', 'FIX_MESH': 'Fix Mesh', 'REFIX': 'Re-Fix',
-           'BAKE_HP': 'Bake High Poly'}
-HEAVY = {'DYNAMESH', 'DECIMATE', 'QUAD_REMESH', 'EDGE_MESH', 'HE_FIND', 'HE_APPLY', 'REFIX', 'BAKE_HP'}
+           'BAKE_HP': 'Bake High Poly', 'BAKE_HP_KEEP': 'Bake High Poly (Keep Bevels)',
+           'BAKE_HP_ROUND': 'Bake High Poly (Round Bevels)'}
+HEAVY = {'DYNAMESH', 'DECIMATE', 'QUAD_REMESH', 'EDGE_MESH', 'HE_FIND', 'HE_APPLY', 'REFIX', 'BAKE_HP', 'BAKE_HP_KEEP',
+         'BAKE_HP_ROUND'}
+BAKE_MODES = {'BAKE_HP_KEEP': 'KEEP', 'BAKE_HP_ROUND': 'ROUND'}   # 0.24.95 the right-click buttons (user: "라운드도 우클릭
+#                                                               팝업에 등록해 줘, 킵이랑"): the Bevels setting, then Bake HP
+
+
+def bake_mode(zb, action):
+    """BAKE_HP_KEEP / _ROUND set the Bake High Poly Bevels setting (it stays, the panel shows it); True for any Bake HP."""
+    if action in BAKE_MODES:
+        zb.bk_bevels = BAKE_MODES[action]
+    return action == 'BAKE_HP' or action in BAKE_MODES
 
 
 def _targets(context):
@@ -83,7 +94,7 @@ def run_one(context, ob, zb, action):
         if bg:
             return bg
         return refix.run(context, ob, zb)
-    if action == 'BAKE_HP':                          # 0.24.95 hard edges fixed, the rest subdivided + rounded
+    if bake_mode(zb, action):                        # 0.24.95 hard edges fixed, the rest subdivided + rounded
         from . import bake_highpoly as bk
         return bk.run(context, ob, zb)
     if action == 'FIX_MESH':                         # 0.24.76 like ZBrush's Fix Mesh

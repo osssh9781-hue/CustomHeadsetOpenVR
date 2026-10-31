@@ -44,7 +44,8 @@ ACTIONS = (            # (section, [(label, glyph or png stem, operator, props, 
     ('Resolution', [('Remesh', 'png:remesh', 'mch.one_click_remesh', {}, 'active', True),
                     ('Quad', 'quad', 'mch.quad_remesh', {}, 'active', True),
                     ('Low Poly', 'lowpoly', 'mch.lowpoly_make', {}, 'active', True),
-                    ('Bake HP', 'bakehp', 'mch.mesh_tool', {'action': 'BAKE_HP'}, 'active', True)]),   # 0.24.95
+                    ('HP Keep', 'bakehp', 'mch.mesh_tool', {'action': 'BAKE_HP_KEEP'}, 'active', True),    # 0.24.95
+                    ('HP Round', 'bakehp', 'mch.mesh_tool', {'action': 'BAKE_HP_ROUND'}, 'active', True)]),
     ('Symmetry', [('Mirror X', 'X', 'mch.actions_mirror', {'axis': 0}, 'active', False),
                   ('Mirror Y', 'Y', 'mch.actions_mirror', {'axis': 1}, 'active', False),
                   ('Mirror Z', 'Z', 'mch.actions_mirror', {'axis': 2}, 'active', False),

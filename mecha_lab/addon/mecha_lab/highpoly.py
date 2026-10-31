@@ -326,7 +326,8 @@ def _context_menu(self, context):
     if context.mode == 'OBJECT' and _targets(context):
         self.layout.separator()
         self.layout.operator('mch.make_highpoly', icon='MOD_SUBSURF')
-        self.layout.operator('mch.mesh_tool', text='Bake High Poly', icon='MOD_SUBSURF').action = 'BAKE_HP'   # 0.24.95
+        self.layout.operator('mch.mesh_tool', text='Bake High Poly (Keep)', icon='MOD_SUBSURF').action = 'BAKE_HP_KEEP'
+        self.layout.operator('mch.mesh_tool', text='Bake High Poly (Round)', icon='MOD_SUBSURF').action = 'BAKE_HP_ROUND'
 
 
 class MCH_PT_highpoly(bpy.types.Panel):

@@ -806,7 +806,8 @@ def popup(context, region_w, region_h, k, Item):
                         'ABOVE'))
     y -= GAP * k + ROW * k                            # 0.24.95 the heavy actions at the cursor (user: the RMB menu)
     acts = [(lab, ('op', 'mch.zb_action', {'action': a})) for lab, a in (('DynaMesh', 'DYNAMESH'), ('Decimate', 'DECIMATE'),
-                                                                        ('Bake HP', 'BAKE_HP'))]
+                                                                        ('HP Keep', 'BAKE_HP_KEEP'),
+                                                                        ('HP Round', 'BAKE_HP_ROUND'))]
     acts.append(('Flip', ('op', 'mch.flip_object', {'axis': 'X'})))   # 0.24.95 left / right (user: "우클릭 팝업에 뒤집기")
     aw = (iw - (len(acts) - 1) * GAP * k) / len(acts)
     for i, (lab, action) in enumerate(acts):
