@@ -98,6 +98,41 @@ bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, segments=64, ring_count=32)
 ball = C.active_object
 select_only(ball)
 st.drape_mode = 'NECK'
+check('Neck Cloth: Tube (a vertical cylinder) by default, Ring as the other style, Pin Top on',
+      st.neck_style == 'TUBE' and 'RING' in {i.identifier for i in st.bl_rna.properties['neck_style'].enum_items} and st.neck_pin_top)
+# the tube: round a cylinder "neck" (r 0.12, z 0 .. 1) standing on nothing
+neck_ob = None
+bpy.ops.mesh.primitive_cylinder_add(radius=0.12, depth=1.0, vertices=48, location=(3.0, 0, 0.5))
+neck_ob = C.active_object
+tloop = [Vector((3.0 + 0.12 * math.cos(a), 0.12 * math.sin(a), 0.3)) for a in np.linspace(0, 2 * math.pi, 24, endpoint=False)]
+st.cape_length = 20.0
+msg = cd.perform_hang(C, neck_ob, tloop, closed=True)
+tob = C.view_layer.objects.active
+tco = cd.SIM['surface']
+tn = cd.SIM['nb'] // 2
+rad = np.hypot(tco[:, 0], tco[:, 1])
+h = tco[:, 2]
+trim = wl.boundary_verts(tob.data)
+check('Tube: a vertical cylinder from the loop straight up by Length (every point at the loop radius + gap, no taper)',
+      tob.name.startswith('Neck Cloth') and rad.max() - rad.min() < 0.01 and abs((h.max() - h.min()) - cd._hang_args(neck_ob, st)[4]) < cd._hang_args(neck_ob, st)[1] * 1.01,
+      (rad.min(), rad.max(), h.max() - h.min(), msg))
+check('... open only at the bottom and top rings (no side seam); with Pin Top both rings pinned',
+      len(trim) == 2 * tn and int((cd.SIM['sess']['cloth'].pin >= 1).sum()) == 2 * tn, (len(trim), tn))
+sess_t = cd.SIM['sess']
+for _ in range(30):
+    cd.advance(sess_t, st)
+ct = sess_t['cloth'].co
+check('... drapes 30 frames: finite, never inside the neck (radius >= 0.12), the extra fabric folds (not a smooth cylinder any more)',
+      np.all(np.isfinite(ct)) and np.hypot(ct[:, 0], ct[:, 1]).min() > 0.12 * math.cos(math.pi / 48) - 1e-3
+      and np.hypot(ct[:, 0], ct[:, 1]).std() > 0.002, (np.hypot(ct[:, 0], ct[:, 1]).min(), np.hypot(ct[:, 0], ct[:, 1]).std()))
+cd.cancel(C)
+st.neck_pin_top = False
+cd.perform_hang(C, neck_ob, tloop, closed=True)
+check('Pin Top off: only the bottom ring pinned', int((cd.SIM['sess']['cloth'].pin >= 1).sum()) == cd.SIM['nb'] == tn)
+cd.cancel(C)
+st.neck_pin_top, st.cape_length = True, 50.0
+bpy.data.objects.remove(neck_ob)
+st.neck_style = 'RING'                                   # (the ring checks below)
 loop = [Vector((0.8 * math.cos(a), 0.8 * math.sin(a), 0.6)) for a in np.linspace(0, 2 * math.pi, 24, endpoint=False)]
 msg = cd.perform_hang(C, ball, loop, closed=True)
 ob = C.view_layer.objects.active
@@ -123,6 +158,7 @@ for _ in range(30):
 check('... drapes 30 frames: finite, outside the ball', np.all(np.isfinite(sess['cloth'].co)) and np.linalg.norm(sess['cloth'].co, axis=1).min() > 0.98,
       np.linalg.norm(sess['cloth'].co, axis=1).min())
 cd.cancel(C)
+st.neck_style = 'TUBE'
 
 # ---- Surface mode: clicked points on the ball (front view), Mode Cape
 FRONT = cg.OrthoProjector(Quaternion((1, 0, 0), math.radians(90)))

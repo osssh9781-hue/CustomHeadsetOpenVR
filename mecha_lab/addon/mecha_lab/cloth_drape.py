@@ -59,8 +59,12 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
     drape_mode: EnumProperty(name='Mode', items=[
         ('AREA', 'Area', 'Draw round a region: a loose cloth laid over it, pinned at its rim'),
         ('CAPE', 'Cape', 'Draw a line (or, Surface on, click points) across the shoulders: a cape hangs from it, as wide as the line'),
-        ('NECK', 'Neck Cloth', 'Draw round the neck: a cloth hangs from the loop and settles over the shoulders')],
+        ('NECK', 'Neck Cloth', 'Draw round the neck: a vertical tube round it (Tube) or a ring over the shoulders (Ring)')],
         default='AREA')
+    neck_style: EnumProperty(name='Neck Style', items=[
+        ('TUBE', 'Tube', 'A vertical cylinder round the neck (a snood / gaiter): from the drawn loop up by Length, the extra fabric (Looseness) bunches into folds'),
+        ('RING', 'Ring', 'A flat ring out from the loop that settles over the shoulders like a round capelet')], default='TUBE')
+    neck_pin_top: BoolProperty(name='Pin Top', default=True, description='Neck Cloth Tube: the top ring held too (off: it slides down and piles up)')
     cape_length: FloatProperty(name='Length', description='Cape / Neck Cloth: how far the cloth hangs from the drawn line, as % of the body size (changed before Space: the cloth is made again)', default=50.0, min=2.0, max=200.0, subtype='PERCENTAGE')
     cape_flare: FloatProperty(name='Flare', description='Cape: how much wider the hem is than the drawn line (0 = exactly as wide as the points you placed; the Neck Cloth is a round ring)', default=0.0, min=0.0, max=300.0, subtype='PERCENTAGE')
     mask_points: IntProperty(name='Cloth Points', description='Drape Mask: the masked faces are rebuilt as an even, lighter cloth of about this many points '
@@ -1002,6 +1006,90 @@ def hang_patch(body, line, length, flare, step, gap, down, closed=False):
     return me, n
 
 
+def neck_tube(body, loop, length, step, gap, down, pin_top=True):
+    """The Neck Cloth as a vertical cylinder (Tube): the drawn ``loop`` (closed, round the neck, ``body`` local
+    space) stacked straight up ``length`` a ``step`` at a time - the same cross-section on every ring - any point
+    inside the body (a jaw wider than the neck) moved straight out.  Returns (mesh, nb): the bottom ring first and,
+    with ``pin_top``, the top ring right after it (nb = both: Pin Rim holds them)."""
+    from mathutils.bvhtree import BVHTree
+    import bmesh
+    import math as _m
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(body.data)
+        tree = BVHTree.FromBMesh(bm)
+    finally:
+        bm.free()
+    down = np.asarray(down, np.float64)
+    down /= max(np.linalg.norm(down), 1e-12)
+    up = -down
+
+    def push(q):
+        loc, nrm, _i, _d = tree.find_nearest(Vector(q))
+        if loc is None:
+            return q
+        loc, nrm = np.array(loc), np.array(nrm)
+        return loc + nrm * gap if np.dot(q - loc, nrm) < gap else q
+    top = np.array([push(p) for p in _resample(loop, step, closed=True)])
+    c = top.mean(0)
+    e1 = (top[0] - c) - up * np.dot(top[0] - c, up)
+    e1 /= max(np.linalg.norm(e1), 1e-12)
+    e2 = np.cross(up, e1)
+    rel = top - c
+    ang = np.unwrap(np.arctan2(rel @ e2, rel @ e1))
+    if ang[-1] < ang[0]:
+        top = top[::-1].copy()
+    n0 = len(top)
+    rows = max(1, int(round(length / step)))
+    reach = float(np.linalg.norm(body.dimensions)) * 2.0
+
+    # one cross-section for the whole tube: in every direction round the neck the radius is what clears the body
+    # at ALL heights of the tube (a jaw / chin wider than the neck) - a straight cylinder, not dented point by point
+    rel = top - c
+    hgt = rel @ up
+    flat_rel = rel - np.outer(hgt, up)
+    rad = np.linalg.norm(flat_rel, axis=1)
+    o = flat_rel / np.maximum(rad, 1e-12)[:, None]
+    need = rad.copy()
+    for k in range(0, rows + 1):
+        for i in range(n0):
+            base = c + up * (hgt[i] + k * step)
+            loc, _n, _i, _d = tree.ray_cast(Vector(base + o[i] * reach), Vector(-o[i]), reach)
+            if loc is not None:
+                need[i] = max(need[i], float(np.dot(np.array(loc) - base, o[i])) + gap)
+    need = np.maximum(need, rad)
+    rings = [c + np.outer(hgt + k * step, up) + o * need[:, None] for k in range(rows + 1)]
+    order = [0, rows] + list(range(1, rows)) if pin_top else list(range(rows + 1))
+    slot = {r: i for i, r in enumerate(order)}
+    co = np.concatenate([rings[r] for r in order])
+    faces = []
+    for k in range(rows):
+        a, b = slot[k] * n0, slot[k + 1] * n0
+        for i in range(n0):
+            j = (i + 1) % n0
+            faces.append((a + i, a + j, b + j, b + i))
+    vote = 0.0                                               # facing out, away from the neck
+    for f in faces[::max(1, len(faces) // 64)]:
+        cen = co[list(f)].mean(0)
+        fn = np.cross(co[f[1]] - co[f[0]], co[f[3]] - co[f[0]])
+        o = (cen - c) - up * np.dot(cen - c, up)
+        vote += float(np.dot(fn, o))
+    if vote < 0.0:
+        faces = [tuple(reversed(f)) for f in faces]
+    from . import fast_decimate as fd
+    me = bpy.data.meshes.new('Neck Cloth')
+    fd.build_mesh(me, co, np.array(faces, np.int64))
+    me.polygons.foreach_set('use_smooth', np.ones(len(faces), bool))
+    me.update()
+    return me, n0 * (2 if pin_top else 1)
+
+
+def _neck_mesh(body, loop, length, step, gap, down, st):
+    if getattr(st, 'neck_style', 'TUBE') == 'RING':
+        return neck_patch(body, loop, length, step, gap, down)
+    return neck_tube(body, loop, length, step, gap, down, bool(getattr(st, 'neck_pin_top', True)))
+
+
 def neck_patch(body, loop, length, step, gap, down):
     """The Neck Cloth: a flat ring (annulus) at the height of ``loop`` (closed, round the neck, ``body`` local
     space): the inner edge is the loop (pinned by Pin Rim), the rings go ``length`` out a ``step`` at a time with
@@ -1116,7 +1204,7 @@ def perform_hang(context, body, line_world, closed=False):
     inv = body.matrix_world.inverted_safe()
     line = np.array([(inv @ Vector(p))[:] for p in line_world], np.float64)
     size, step, gap, down, length = _hang_args(body, st)
-    me, nb = (neck_patch(body, line, length, step, gap, down) if closed else
+    me, nb = (_neck_mesh(body, line, length, step, gap, down, st) if closed else
               hang_patch(body, line, length, st.cape_flare, step, gap, down, False))
     ob = bpy.data.objects.new(kind, me)
     coll = body.users_collection[0] if body.users_collection else context.scene.collection
@@ -1152,7 +1240,8 @@ def perform_cape(context, body, line_world):
 
 
 def _hang_key(st):
-    return (round(float(st.cape_length), 4), round(float(st.cape_flare), 4), round(float(st.spacing), 4), round(float(st.gap), 4))
+    return (round(float(st.cape_length), 4), round(float(st.cape_flare), 4), round(float(st.spacing), 4), round(float(st.gap), 4),
+            st.neck_style, bool(st.neck_pin_top))
 
 
 def rebuild_hang(context):
@@ -1163,7 +1252,7 @@ def rebuild_hang(context):
     if SIM.get('line') is None or st is None or ob is None or body is None or SIM.get('hang') == _hang_key(st):
         return False
     size, step, gap, down, length = _hang_args(body, st)
-    me, nb = (neck_patch(body, SIM['line'], length, step, gap, down) if SIM.get('closed') else
+    me, nb = (_neck_mesh(body, SIM['line'], length, step, gap, down, st) if SIM.get('closed') else
               hang_patch(body, SIM['line'], length, st.cape_flare, step, gap, down, False))
     old = ob.data
     me.name = old.name
@@ -1388,7 +1477,7 @@ def _snapshot(st):
                                           'wrap_tight', 'use_lines', 'stop_at_pins', 'two_sides', 'puff', 'wrinkles',
                                           'padding', 'pad_pattern', 'pad_size', 'pad_puff', 'trim', 'trim_width',
                                           'collide_with', 'use_proxy', 'proxy_faces',
-                                          'cape_length', 'cape_flare', 'spacing'))
+                                          'cape_length', 'cape_flare', 'spacing', 'neck_style', 'neck_pin_top'))
 
 
 def restart(context):
@@ -1865,6 +1954,11 @@ def draw(layout, context):
     box.label(text=status() if live else hint.get(st.drape_mode, hint['AREA']), icon='PLAY' if live else 'INFO')
     box.row().prop(st, 'drape_mode', expand=True)                     # 0.24.95 Area / Cape / Neck Cloth
     if st.drape_mode in {'CAPE', 'NECK'} or SIM.get('line') is not None:
+        if st.drape_mode == 'NECK':
+            r = box.row(align=True)
+            r.prop(st, 'neck_style', expand=True)
+            if st.neck_style == 'TUBE':
+                r.prop(st, 'neck_pin_top', toggle=True)
         r = box.row(align=True)
         r.prop(st, 'cape_length', slider=True)
         if st.drape_mode == 'CAPE':
