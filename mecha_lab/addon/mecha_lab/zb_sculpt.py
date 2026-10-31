@@ -1401,6 +1401,10 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
     bk_rounding: IntProperty(name='Rounding', default=100, min=0, max=100, subtype='PERCENTAGE',
                              description='Bake High Poly: 100 = the faces between the hard edges fully rounded (no '
                                          'facets), 0 = the original shape exactly, only denser')
+    bk_bevels: EnumProperty(name='Bevels', items=[
+        ('KEEP', 'Keep Bevels', 'Bake High Poly: modelled bevels / chamfers keep their profile exactly (their rows are held as lines)'),
+        ('ROUND', 'Round Bevels', 'Bake High Poly: modelled bevels / chamfers round into smooth fillets between the flats (no '
+                  'facets on a 2-3 segment bevel); the flats stay flat')], default='KEEP')
     bk_fillet: FloatProperty(name='Fillet %', default=0.0, min=0.0, max=3.0, precision=2, step=5,
                              description='Bake High Poly: a small round fillet on the hard edges, as a percent of the '
                                          'part size (a bake likes a little edge width); 0 = razor sharp')

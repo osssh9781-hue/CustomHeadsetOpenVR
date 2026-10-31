@@ -41,6 +41,7 @@ INFO = {}                     # the last run, for the tests / message
 STRIP = '.mch_bk_strip'       # face: made by the fillet bevel (free to round)
 FLAT = '.mch_bk_flat'         # face: a true flat (every edge hard, coplanar with its neighbour, or next to a strip)
 REGION = '.mch_bk_region'     # face: its coplanar region id on the source (rides through the subdivision)
+BAND = '.mch_bk_band'         # face: a row of a bevel band Round Bevels let go (never a flat, never makes one round)
 PLANES = {}                   # flat region id -> (normal, offset): the plane it lies in
 STRIP_PLANES = {}             # strip region id -> flat region ids whose planes its points never cross
 FLAT_TOL = math.radians(1.0)
@@ -158,6 +159,95 @@ def bevel_rows(me, hard, narrow=BEVEL_NARROW, lo=math.radians(2.0), hi=math.radi
     return out
 
 
+BEVEL_ABS = 0.08              # bevel_band: a band row / thin face is also narrow under this share of the part size
+
+
+def bevel_band(me, narrow=BEVEL_NARROW, lo=math.radians(2.0), hi=math.radians(70.0), abs_share=BEVEL_ABS, faces=False):
+    """0.24.95 Round Bevels: bool per edge - the bent edges of bevel bands of 2+ rows, any length: a band face is a
+    quad whose two opposite edges both bend (between ``lo`` and ``hi``) with the quad narrow between them (under
+    ``narrow`` x their length, or under ``abs_share`` of the part size - a row along a short edge is not narrow
+    against it), or a thin triangle / n-gon (inscribed width under ``narrow`` / 2 of its longest edge or half the
+    size share) as a decimate / bevel tool leaves them.  A lone row (a chamfer) and a real corner (wide faces, or
+    bent past ``hi``) are not in it, nor is anything within two rings of an open / non-manifold edge (a broken cut:
+    let go, its mess crumpled - MCH_Base.006's notch).  ``faces``: (edges, bool per face - the band's row faces)."""
+    from . import edge_memory as em
+    from . import mesh_io as mio
+    ne, nf = len(me.edges), len(me.polygons)
+    out = np.zeros(ne, bool)
+    core = np.zeros(nf, bool)
+    if nf == 0 or ne == 0:
+        return (out, core) if faces else out
+    co = mio.read_co(me)
+    size = float(np.linalg.norm(co.max(0) - co.min(0))) if len(co) else 0.0
+    ev = mio.read_edge_verts(me)
+    el = np.linalg.norm(co[ev[:, 0]] - co[ev[:, 1]], axis=1)
+    ce = mio.read_corner_edges(me)
+    start, tot = mio.read_face_starts(me)
+    tot = np.asarray(tot)
+    e_sorted, f_sorted, starts, ends = em._edge_faces(me)
+    cnt = ends - starts
+    s2 = starts[cnt == 2]
+    nrm = np.empty(nf * 3, np.float32)
+    me.polygons.foreach_get('normal', nrm)
+    nrm = nrm.reshape(-1, 3)
+    fa, fb = f_sorted[s2], f_sorted[s2 + 1]
+    bend = np.zeros(ne)
+    bend[e_sorted[s2]] = np.arccos(np.clip(np.einsum('ij,ij->i', nrm[fa], nrm[fb]), -1.0, 1.0))
+    bent = (bend > lo) & (bend < hi)
+    # each band face's ROW EDGES: a quad row's two bent opposite edges (narrow between them), a thin triangle /
+    # n-gon's bent edges; an edge that is a row edge of two band faces is INNER (row meets row)
+    rows_e = []
+    quads = np.flatnonzero(tot == 4)
+    if len(quads):
+        st = np.asarray(start)[quads]
+        e4 = np.stack([ce[st], ce[st + 1], ce[st + 2], ce[st + 3]], 1)
+        for (i, j), (k, m) in (((0, 2), (1, 3)), ((1, 3), (0, 2))):
+            a, b = e4[:, i], e4[:, j]
+            across = np.maximum(el[e4[:, k]], el[e4[:, m]])
+            ok = bent[a] & bent[b] & ((across < narrow * np.minimum(el[a], el[b])) | (across < abs_share * size))
+            rows_e += [np.stack([quads[ok], a[ok]], 1), np.stack([quads[ok], b[ok]], 1)]
+    others = np.flatnonzero(tot != 4)
+    if len(others):
+        perim = np.add.reduceat(el[ce], start)
+        longest = np.maximum.reduceat(el[ce], start)
+        area = np.empty(nf, np.float32)
+        me.polygons.foreach_get('area', area)
+        width = 2.0 * area / np.maximum(perim, 1e-12)
+        w, lg = width[others], longest[others]
+        thin = np.zeros(nf, bool)                     # (thin against itself, or small and still somewhat thin: a
+        thin[others] = (w < (narrow / 2.0) * lg) | ((w < abs_share * size * 0.5) & (w < narrow * lg))   # fat corner
+        fi = np.repeat(np.arange(nf), tot)                                                             # patch is not)
+        sel = thin[fi] & bent[ce]
+        rows_e.append(np.stack([fi[sel], ce[sel]], 1))
+    if not rows_e:
+        return (out, core) if faces else out
+    re_ = np.unique(np.concatenate(rows_e), axis=0)    # (face, edge) pairs
+    hits = np.bincount(re_[:, 1], minlength=ne)
+    inner = hits >= 2
+    core[re_[inner[re_[:, 1]], 0]] = True              # band faces that meet another band row
+    ecnt = np.zeros(ne, np.int64)
+    ecnt[e_sorted[starts]] = cnt
+    if (ecnt != 2).any():                              # (two rings of faces round an open / non-manifold edge)
+        cv = mio.read_corner_verts(me)
+        fi = np.repeat(np.arange(nf), tot)
+        vb = np.zeros(len(co), bool)
+        vb[ev[ecnt != 2].ravel()] = True
+        near = np.zeros(nf, bool)
+        for _ in range(2):
+            np.logical_or.at(near, fi, vb[cv])
+            vb[cv[near[fi]]] = True
+        core &= ~near
+        out_ok = np.ones(ne, bool)
+        out_ok[ce[near[fi]]] = False
+    else:
+        out_ok = None
+    keep = core[re_[:, 0]]                             # (a lone row - a chamfer - has no inner edge: it stays flat)
+    out[re_[keep, 1]] = True
+    if out_ok is not None:
+        out &= out_ok
+    return (out, core) if faces else out
+
+
 def levels_for(faces, target, max_levels=MAX_LEVELS):
     """Subdivision levels so ``faces`` x 4^levels reaches ``target`` (never more than max_levels, at least 1)."""
     faces = max(1, int(faces))
@@ -199,6 +289,7 @@ def flag_flats(me, hard, tol=FLAT_TOL, ratio=None):
     if nf == 0:
         return 0
     strip = _face_bool(me, STRIP)
+    band = _face_bool(me, BAND) & ~strip
     e_sorted, f_sorted, starts, ends = em._edge_faces(me)
     nrm = np.empty(nf * 3, np.float32)
     me.polygons.foreach_get('normal', nrm)
@@ -226,12 +317,27 @@ def flag_flats(me, hard, tol=FLAT_TOL, ratio=None):
     nr = int(region.max()) + 1
     r_area = np.bincount(region, weights=area, minlength=nr)
     r_len = np.sqrt(np.maximum(r_area, 0.0))
+    # Round Bevels: a region of let-go bevel rows is never a flat, and it counts by its WIDTH next to a flat - a long
+    # row is "big" by area (0.9 x 0.03 against a 0.5 plateau) and the plateau next to it rounded into ripples
+    # (MCH_Base.006); a corner patch between rows is as small as the rows are wide, so it still rounds with them
+    r_band = np.bincount(region, weights=area * band, minlength=nr) > 0.5 * r_area
+    r_size = r_len
+    if r_band.any():
+        from . import mesh_io as mio
+        co_ = mio.read_co(me)
+        ev_ = mio.read_edge_verts(me)
+        el_ = np.linalg.norm(co_[ev_[:, 0]] - co_[ev_[:, 1]], axis=1)
+        st_, _tot = mio.read_face_starts(me)
+        perim = np.add.reduceat(el_[mio.read_corner_edges(me)], st_)
+        r_w = np.zeros(nr)
+        np.maximum.at(r_w, region, 2.0 * area / np.maximum(perim, 1e-12))
+        r_size = np.where(r_band, r_w, r_len)
     soft = ~coplanar & ~hard[e_sorted[s2]] & ~strip[fa] & ~strip[fb]
     ra, rb = region[fa[soft]], region[fb[soft]]
     biggest = np.zeros(nr)                            # the largest soft neighbour region of each region
-    np.maximum.at(biggest, ra, r_len[rb])
-    np.maximum.at(biggest, rb, r_len[ra])
-    flat_region = r_len >= ratio * biggest             # (no soft neighbour: biggest 0 -> flat)
+    np.maximum.at(biggest, ra, r_size[rb])
+    np.maximum.at(biggest, rb, r_size[ra])
+    flat_region = (r_len >= ratio * biggest) & ~r_band   # (no soft neighbour: biggest 0 -> flat)
     ok_face = flat_region[region] & ~strip
     # the small regions a flat meets across a soft edge (bevel strip rows, corner patches, fillet rows) are strips:
     # they round but only ever shrink (Taubin's grow step overshoots on a tight patch between held rings)
@@ -240,13 +346,13 @@ def flag_flats(me, hard, tol=FLAT_TOL, ratio=None):
     np.maximum.at(big_flat, rb, np.where(flat_region[ra], r_len[ra], 0.0))
     for _ in range(3):                                 # ... and the small regions next to those (corner patches)
         grown = big_flat.copy()
-        is_strip = ~flat_region & (big_flat >= ratio * r_len)
+        is_strip = ~flat_region & ((big_flat >= ratio * r_len) | (r_band & (big_flat > 0)))
         np.maximum.at(grown, ra, np.where(is_strip[rb], big_flat[rb], 0.0))
         np.maximum.at(grown, rb, np.where(is_strip[ra], big_flat[ra], 0.0))
         if np.array_equal(grown, big_flat):
             break
         big_flat = grown
-    strip_region = ~flat_region & (big_flat >= ratio * r_len)
+    strip_region = ~flat_region & ((big_flat >= ratio * r_len) | (r_band & (big_flat > 0)))
     # the planes of the flat regions, and for every strip region the flat planes it must never cross (its own
     # soft flat neighbours, and through neighbouring strips their flats): bake_mesh clamps the strip points to them
     cx = np.empty(nf * 3, np.float32)
@@ -639,7 +745,7 @@ def _winding(face, edge):
     return None
 
 
-def bake_mesh(me, levels, rounding=1.0, fillet=0.0, angle=math.radians(30.0), iters=ITERS):
+def bake_mesh(me, levels, rounding=1.0, fillet=0.0, angle=math.radians(30.0), iters=ITERS, bevels='KEEP'):
     """``me`` subdivided + rounded IN PLACE (a copy the caller made).  Returns dict(faces0, faces, hard, corners,
     lines, fillet_edges, levels, seconds)."""
     t0 = time.time()
@@ -647,8 +753,17 @@ def bake_mesh(me, levels, rounding=1.0, fillet=0.0, angle=math.radians(30.0), it
     faces0 = len(me.polygons)
     hard = hard_mask(me, angle)
     rows = bevel_rows(me, hard)
-    n_rows = int((rows & ~hard).sum())
-    hard = hard | rows
+    n_released = 0
+    if bevels == 'ROUND':                                   # 0.24.95 Round Bevels (user: "베벨 부분이 각지게 나올 때가
+        band, rows_f = bevel_band(me, faces=True)           # 있어서 좀 더 부드럽게"): the bevel / chamfer bands are not held -
+        n_released = int((hard & band).sum())               # their rows and borders let go, so flag_flats makes them strips
+        hard = hard & ~band                                 # between the flats: they round into fillets, the flats stay flat
+        n_rows = 0
+        ba = me.attributes.get(BAND) or me.attributes.new(BAND, 'BOOLEAN', 'FACE')   # (before the fillet: its
+        ba.data.foreach_set('value', rows_f)                                           # bevel keeps the layer)
+    else:                                                   # Keep: the rows held as lines (the profile as modelled)
+        n_rows = int((rows & ~hard).sum())
+        hard = hard | rows
     n_hard = int(hard.sum())
     a = me.attributes.get('sharp_edge') or me.attributes.new('sharp_edge', 'BOOLEAN', 'EDGE')
     a.data.foreach_set('value', hard)                       # (bmesh carries Sharp through the subdivision)
@@ -674,20 +789,21 @@ def bake_mesh(me, levels, rounding=1.0, fillet=0.0, angle=math.radians(30.0), it
         co = _reproject(co, src, 1.0 - max(0.0, min(1.0, rounding)))
         bpy.data.meshes.remove(src)
     me.vertices.foreach_set('co', co.astype(np.float32).ravel())
-    for name in (STRIP, FLAT, REGION):
+    for name in (STRIP, FLAT, REGION, BAND):
         a = me.attributes.get(name)
         if a is not None:
             me.attributes.remove(a)
     me.update()
     info = dict(faces0=faces0, faces=len(me.polygons), hard=n_hard, corners=corners, lines=lines,
-                fillet_edges=n_fillet, flats=n_flat, bevel_rows=n_rows, levels=levels, seconds=time.time() - t0,
+                fillet_edges=n_fillet, flats=n_flat, bevel_rows=n_rows, bevel_round=n_released, bevels=bevels,
+                levels=levels, seconds=time.time() - t0,
                 cleaned=cleaned)
     INFO.clear()
     INFO.update(info)
     return info
 
 
-def build(context, ob, target_faces=1_000_000, rounding=1.0, fillet=0.0, angle=math.radians(30.0)):
+def build(context, ob, target_faces=1_000_000, rounding=1.0, fillet=0.0, angle=math.radians(30.0), bevels='KEEP'):
     """The BakeHP copy of mesh object ``ob``: (new object, info).  Raises RuntimeError when it can't."""
     from . import budget
     from . import core_geometry as cg
@@ -709,7 +825,7 @@ def build(context, ob, target_faces=1_000_000, rounding=1.0, fillet=0.0, angle=m
             cg.drop_custom_normals(me)
         except (RuntimeError, AttributeError):
             pass
-        info = bake_mesh(me, levels, rounding, fillet, angle)
+        info = bake_mesh(me, levels, rounding, fillet, angle, bevels=bevels)
     except Exception:
         bpy.data.meshes.remove(me)
         raise
@@ -733,6 +849,7 @@ def describe(info):
     f = info
     return (f'Bake High Poly: {f["faces0"]:,} -> {f["faces"]:,} faces (x4^{f["levels"]}), {f["hard"]:,} hard edges kept '
             f'({f["corners"]:,} corners fixed)' + (f', {f["bevel_rows"]:,} bevel row edges held' if f.get('bevel_rows') else '')
+            + (f', bevels rounded ({f["bevel_round"]:,} edges let go)' if f.get('bevel_round') else '')
             + (f', fillet on {f["fillet_edges"]:,} edges' if f.get('fillet_edges') else '')
             + (', cleaned first: ' + ', '.join(f'{v} {k}' for k, v in f['cleaned'].items() if v) if f.get('cleaned') and any(f['cleaned'].values()) else '')
             + f', {f["seconds"]:.1f} s')
@@ -741,7 +858,7 @@ def describe(info):
 def run(context, ob, zb):
     """From the shelf / Mesh Tools settings (``scene.mch_zb``).  Returns the message."""
     hp, info = build(context, ob, target_faces=int(zb.bk_target) * 1000, rounding=zb.bk_rounding / 100.0,
-                     fillet=zb.bk_fillet / 100.0, angle=zb.he_angle)
+                     fillet=zb.bk_fillet / 100.0, angle=zb.he_angle, bevels=getattr(zb, 'bk_bevels', 'KEEP'))
     return describe(info) + f' -> {hp.name} (original hidden)'
 
 
@@ -757,3 +874,4 @@ def draw_rows(col, zb, op):
     r = col.row(align=True)
     r.prop(zb, 'bk_rounding', slider=True)
     r.prop(zb, 'bk_fillet')
+    col.row(align=True).prop(zb, 'bk_bevels', expand=True)          # 0.24.95 Keep / Round bevels

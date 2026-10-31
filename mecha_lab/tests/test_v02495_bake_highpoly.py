@@ -257,4 +257,112 @@ check('mch.mesh_tool BAKE_HP operator: FINISHED, Part3_BakeHP made', r == {'FINI
 import inspect
 src = inspect.getsource(__import__('mecha_lab.zb_ui', fromlist=['x']).draw_tool_shelf)
 check('ZBrush shelf: a Bake High Poly box after Hard Edges', "label(text='Bake High Poly')" in src and src.index('Hard Edges') < src.index('Bake High Poly'))
+
+# ---- 0.24.95 Round Bevels (user: "베벨 부분이 각지게 나올 때가 있어서 좀 더 부드럽게 ... 힘들면 두 종류를 만들어도"): the
+# modelled bevel bands let go (not held as lines), so they round between the flats; a lone chamfer row stays flat
+C = bpy.context
+
+
+def beveled_block(seg, tri=False, width=0.025):
+    for o in list(bpy.data.objects):
+        bpy.data.objects.remove(o)
+    bpy.ops.mesh.primitive_cube_add(size=1.0)
+    ob = C.active_object
+    ob.scale = (1.0, 0.6, 0.4)
+    bpy.ops.object.transform_apply(scale=True)
+    m = ob.modifiers.new('b', 'BEVEL')
+    m.width, m.segments, m.limit_method = width, seg, 'NONE'
+    if tri:
+        ob.modifiers.new('t', 'TRIANGULATE')
+    bpy.ops.object.convert(target='MESH')
+    return ob
+
+
+def creases(me):
+    e_s, f_s, st, en = em._edge_faces(me)
+    s2 = st[(en - st) == 2]
+    n = np.empty(len(me.polygons) * 3, np.float32)
+    me.polygons.foreach_get('normal', n)
+    n = n.reshape(-1, 3)
+    return float(np.degrees(np.arccos(np.clip(np.einsum('ij,ij->i', n[f_s[s2]], n[f_s[s2 + 1]]), -1, 1))).max())
+
+
+check('Setting: Bevels Keep (as before) / Round', zs.MCH_PG_ZBrush.bl_rna.properties['bk_bevels'].default == 'KEEP'
+      and {i.identifier for i in zs.MCH_PG_ZBrush.bl_rna.properties['bk_bevels'].enum_items} == {'KEEP', 'ROUND'}
+      and "'bk_bevels'" in inspect.getsource(bk.draw_rows))
+for seg, tri, label in ((2, False, '2-segment bevel'), (3, False, '3-segment bevel'), (2, True, '2-segment bevel, triangulated')):
+    res = {}
+    for mode in ('KEEP', 'ROUND'):
+        ob = beveled_block(seg, tri)
+        dims = np.array(ob.dimensions)
+        hp, info = bk.build(C, ob, target_faces=60000, bevels=mode)
+        res[mode] = (creases(hp.data), np.abs(np.array(hp.dimensions) / dims - 1.0).max(), info)
+    check(f'Round Bevels, {label}: the sharpest crease left clearly softer than Keep (under 70 %), the part the same size '
+          '(within 0.5 %)', res['ROUND'][0] < 0.7 * res['KEEP'][0] and res['ROUND'][1] < 0.005,
+          (round(res['KEEP'][0], 1), round(res['ROUND'][0], 1), res['ROUND'][1]))
+ob = beveled_block(1)
+hk, _i = bk.build(C, ob, target_faces=60000, bevels='KEEP')
+ck = creases(hk.data)
+ob = beveled_block(1)
+hr, ir = bk.build(C, ob, target_faces=60000, bevels='ROUND')
+check('Round Bevels: a lone chamfer row (1 segment) is not a bevel - it keeps its flat face (same creases as Keep)',
+      abs(creases(hr.data) - ck) < 0.5 and ir.get('bevel_round', 0) == 0, (ck, creases(hr.data)))
+ob = beveled_block(2)
+_h, info = bk.build(C, ob, target_faces=60000, bevels='ROUND')
+check('... the message says the bevels were rounded', 'bevels rounded' in bk.describe(info), bk.describe(info))
+
+# ---- a flat next to LONG let-go rows stays a flat (MCH_Base.006: a plateau beside long bevel rows was "small" next
+# to them by area, so it rounded with them into ripples) - the rows count by their width
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+bpy.ops.mesh.primitive_cube_add(size=1.0)
+bar = C.active_object
+bar.scale = (3.0, 0.3, 0.3)
+bpy.ops.object.transform_apply(scale=True)
+m = bar.modifiers.new('b', 'BEVEL')
+m.width, m.segments, m.limit_method = 0.06, 2, 'NONE'
+bpy.ops.object.convert(target='MESH')
+me = bar.data.copy()
+hard = bk.hard_mask(me)
+band, rows_f = bk.bevel_band(me, faces=True)
+nz = np.empty(len(me.polygons) * 3, np.float32)
+me.polygons.foreach_get('normal', nz)
+top = nz.reshape(-1, 3)[:, 2] > 0.999
+bk.flag_flats(me, hard & ~band)
+by_area = bool(bk._face_bool(me, bk.FLAT)[top].all())
+ba = me.attributes.new(bk.BAND, 'BOOLEAN', 'FACE')
+ba.data.foreach_set('value', rows_f)
+bk.flag_flats(me, hard & ~band)
+by_width = bool(bk._face_bool(me, bk.FLAT)[top].all())
+check('Round Bevels, a long bar: its top beside the long let-go rows is still a flat (rows counted by width); by area '
+      'alone it was not', top.any() and rows_f.any() and by_width and not by_area, (int(top.sum()), by_width, by_area))
+bpy.data.meshes.remove(me)
+
+# ---- a broken spot (open / non-manifold edges): the bevels round it are held (MCH_Base.006's notch crumpled)
+ob = beveled_block(2)
+me = ob.data
+_b0, f0 = bk.bevel_band(me, faces=True)
+bm = bmesh.new()
+bm.from_mesh(me)
+bm.faces.ensure_lookup_table()
+bmesh.ops.delete(bm, geom=[bm.faces[int(np.flatnonzero(f0)[len(np.flatnonzero(f0)) // 2])]], context='FACES_ONLY')
+bm.to_mesh(me)
+bm.free()
+me.update()
+b1, f1 = bk.bevel_band(me, faces=True)
+e_s, f_s, st, en = em._edge_faces(me)
+ecnt = np.zeros(len(me.edges), int)
+ecnt[e_s[st]] = en - st
+ev = np.empty(len(me.edges) * 2, np.int32)
+me.edges.foreach_get('vertices', ev)
+ev = ev.reshape(-1, 2)
+hole_v = np.zeros(len(me.vertices), bool)
+hole_v[ev[ecnt == 1].ravel()] = True
+ring1 = np.array([hole_v[list(p.vertices)].any() for p in me.polygons])
+ring1_e = np.zeros(len(me.edges), bool)
+for p in np.flatnonzero(ring1):
+    ring1_e[[me.loops[li].edge_index for li in me.polygons[int(p)].loop_indices]] = True
+check('... a face cut out of a bevel row: no band face, no let-go edge next to the hole; the rest of the band still '
+      'rounds', (ecnt == 1).any() and not (f1 & ring1).any() and not (b1 & ring1_e).any() and f1.sum() > 0.8 * f0.sum(),
+      (int((ecnt == 1).sum()), int((f1 & ring1).sum()), int((b1 & ring1_e).sum()), int(f1.sum()), int(f0.sum())))
 summary()
