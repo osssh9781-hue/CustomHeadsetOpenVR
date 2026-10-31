@@ -85,7 +85,33 @@ check('Pleats set by hand (3 more than auto): that many, the same 1.5 x fabric (
       and abs(arc(mio.read_co(me4)[:nb4]) / arc(tf) - 1.5) < 0.08, cd.HANG_INFO)
 check('Curtain 0: the flat sheet as before (the top row as long as the line, no pleats)', abs(arc(tf) - cd.HANG_INFO['base_width']) < step
       and cd.hang_patch(body, L, length, 0.0, step, gap, down, False, 0.0)[1] == nb_f and cd.HANG_INFO['pleats'] == 0)
-for m_ in (me_f, me_c, me4):
+# Heading (off by default: the pleats right from the line, as before); on: the top edge flat on the line, the pleats grow in
+check('Heading 0 by default; Folds Down by default, Folds Across there', abs(st.cape_heading) < 1e-6 and st.cape_folds == 'DOWN'
+      and 'ACROSS' in {i.identifier for i in st.bl_rna.properties['cape_folds'].enum_items})
+me_h, nb_h = cd.hang_patch(body, L, length, 0.0, step, gap, down, False, 50.0, 0, size * 0.04, 'DOWN', 0.3)
+ch = mio.read_co(me_h)
+Gh = ch.reshape(-1, nb_h, 3)
+off_h = Gh[:, :, 1] - np.interp(Gh[0, :, 0], tf[order, 0], tf[order, 1])[None, :]
+band = int(round(length * 0.3 / step))
+check('Heading 30 %: the top row flat on the line, the pleats grow in under it to full depth by 30 % of the length',
+      np.abs(off_h[0]).max() < step * 0.25 and off_h[band + 2].max() > 0.9 * cd.HANG_INFO['depth'] and nb_h == nb_c,
+      (np.abs(off_h[0]).max(), off_h[band + 2].max(), cd.HANG_INFO['depth']))
+# Folds Across: the LENGTH gathered (rows bulge out), the top row + both side columns pinned (listed first)
+me_a, nb_a = cd.hang_patch(body, L, length, 0.0, step, gap, down, False, 50.0, 0, size * 0.04, 'ACROSS', 0.0)
+ia = dict(cd.HANG_INFO)
+ca = mio.read_co(me_a)
+R, n = ia['rows'], ia['cols']
+check('Folds Across: the top row + both side columns pinned (nb counts them, they come first), the rest free',
+      ia['folds'] == 'ACROSS' and nb_a == n + 2 * (R - 1) and len(ca) == R * n, (nb_a, n, R))
+sideL = np.concatenate([[0], np.arange(n, n + R - 1)])          # (the left column: top-left, then the pinned side list)
+colL = ca[sideL]
+check('... down a side the cloth is 1.5 x the hanging length (the extra folded into pleats bulging out), pleats auto',
+      abs(float(np.linalg.norm(np.diff(colL, axis=0), axis=1).sum()) / length - 1.5) < 0.1 and ia['pleats'] >= 2
+      and np.ptp(colL[:, 1]) > step, (float(np.linalg.norm(np.diff(colL, axis=0), axis=1).sum()) / length, ia))
+check('... every point outside the body', np.hypot(ca[:, 0], ca[:, 1]).min() > 0.3 * math.cos(math.pi / 48) - 1e-6)
+me_a0, nb_a0 = cd.hang_patch(body, L, length, 0.0, step, gap, down, False, 0.0, 0, size * 0.04, 'ACROSS', 0.0)
+check('... Curtain 0 with Folds Across: the plain sheet (only the line pinned)', nb_a0 == nb_f and cd.HANG_INFO['pleats'] == 0)
+for m_ in (me_f, me_c, me4, me_h, me_a, me_a0):
     bpy.data.meshes.remove(m_)
 for m_ in [m for m in bpy.data.meshes if m.users == 0 and m.name.startswith('Cloth Cape')]:
     bpy.data.meshes.remove(m_)
@@ -127,6 +153,11 @@ check('Curtain 50 -> 0 / Pleats with the cape waiting: made again at once (fewer
       1.3 < n80 / max(n_flat, 1) < 1.7 and 'cape_gather' in inspect.getsource(cd._snapshot) and 'cape_pleats' in inspect.getsource(cd._snapshot)
       and "'cape_gather'" in inspect.getsource(cd.draw), (n80, n_flat))
 st.cape_gather, st.cape_pleats = 50.0, 0
+st.cape_folds = 'ACROSS'
+check('Folds Across with the cape waiting: made again at once, its sides pinned too (more pinned points than the line)',
+      cd.SIM['nb'] > cd.HANG_INFO['cols'] and cd.HANG_INFO['folds'] == 'ACROSS' and 'cape_folds' in inspect.getsource(cd._snapshot)
+      and "'cape_folds'" in inspect.getsource(cd.draw) and "'cape_heading'" in inspect.getsource(cd.draw), (cd.SIM['nb'], cd.HANG_INFO))
+st.cape_folds = 'DOWN'
 ob = C.view_layer.objects.active
 st.cape_flare = 60.0
 cd.restart(C)
