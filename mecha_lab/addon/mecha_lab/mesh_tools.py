@@ -210,6 +210,8 @@ def draw(layout, context):
     bk.draw_rows(col, zb, op)
     from . import bake_maps                          # 0.24.95 bake the high onto the low (Normal / AO / Color)
     bake_maps.draw(layout, context)
+    from . import final_export                       # 0.24.95 high copies at the Final Resolution + low / high FBX
+    final_export.draw(layout, context)
 
 
 class MCH_PT_mesh_tools(bpy.types.Panel):

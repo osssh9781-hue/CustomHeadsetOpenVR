@@ -1089,9 +1089,22 @@ def _groups_from_json(text):
             for g in data['groups']]
 
 
+def _made_res(text):
+    """0.24.95 the Resolution the stored outline was drawn at (parts from before: 100 %)."""
+    try:
+        return float(json.loads(text).get('res', 1.0)) or 1.0
+    except (ValueError, TypeError, AttributeError):
+        return 1.0
+
+
 def rebuild(ob):
-    """Regenerate a live Base Mesh object from its stored outline + settings."""
+    """Regenerate a live Base Mesh object from its stored outline + settings.  At another Resolution than the
+    outline was drawn at, its curved runs are resampled to match (0.24.95: a part made at 100 %, rebuilt at 200 %
+    has the round outline of a new 200 % one)."""
     groups = _groups_from_json(ob.mch_base.outline)
+    f = ts.res_scale() / _made_res(ob.mch_base.outline)
+    if abs(f - 1.0) > 1e-6:
+        groups = [(cg.reres_loop(o, f), [cg.reres_loop(h, f) for h in hs]) for o, hs in groups]
     bm = build_bmesh(groups, ob.mch_base)
     try:
         bm.to_mesh(ob.data)
@@ -1427,7 +1440,8 @@ def _create_live_base(context, groups, frame, defaults, embed=0.0):
     live.embed = embed
     if defaults.profile in CREATURE_PROFILES and defaults.peak <= 0 and LAST_NATURAL:
         live.peak = LAST_NATURAL[0]            # 0.24.20 the Height slider starts at the real height
-    live.outline = json.dumps({'groups': [{'outer': g[0], 'holes': g[1]} for g in groups]})
+    live.outline = json.dumps({'groups': [{'outer': g[0], 'holes': g[1]} for g in groups],
+                               'res': ts.res_scale()})                  # (0.24.95 drawn at this Resolution)
     live.live = True
     session = list(context.scene.get(SESSION_KEY, []))
     session.append(ob.name)

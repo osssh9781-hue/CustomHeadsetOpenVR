@@ -75,6 +75,65 @@ def point_in_loops(p, loops):
     return inside
 
 
+def reres_loop(loop, factor, corner=math.radians(25.0)):
+    """0.24.95 a closed 2D outline at another Resolution (a part made at one Resolution, rebuilt at another): the
+    CURVED runs - points turning less than ``corner`` between segments of like length (a circle, a round corner, a
+    curve) - are resampled along a Catmull-Rom curve through their own points, x ``factor`` segments; corners and
+    straight edges stay exactly as they are.  factor 1 gives the loop back unchanged."""
+    n = len(loop)
+    if n < 3 or abs(factor - 1.0) < 1e-6:
+        return [tuple(p) for p in loop]
+    P = [(float(p[0]), float(p[1])) for p in loop]
+    L = [math.dist(P[i], P[(i + 1) % n]) for i in range(n)]          # segment i: P[i] -> P[i + 1]
+    turn = []
+    for i in range(n):
+        a, b, c = P[i - 1], P[i], P[(i + 1) % n]
+        ux, uy, vx, vy = b[0] - a[0], b[1] - a[1], c[0] - b[0], c[1] - b[1]
+        lu, lv = math.hypot(ux, uy), math.hypot(vx, vy)
+        if lu < 1e-12 or lv < 1e-12:
+            turn.append(math.pi)
+            continue
+        turn.append(math.acos(max(-1.0, min(1.0, (ux * vx + uy * vy) / (lu * lv)))))
+    smooth = [1e-3 < t < corner for t in turn]
+    curved = []                                           # (a long straight side next to a round corner: not curved)
+    for i in range(n):
+        lo = min(L[i - 1], L[(i + 1) % n])
+        curved.append(smooth[i] and smooth[(i + 1) % n] and lo > 1e-12 and L[i] <= 2.5 * lo)
+
+    def at(t):
+        k = int(math.floor(t))
+        u = t - k
+        p1, p2 = P[k % n], P[(k + 1) % n]
+        if u <= 0.0:
+            return p1
+        # past the ends of a curved run the curve does not lean on the straight edge's far point (it would bulge):
+        # the end tangent is the end chord itself
+        p0 = P[(k - 1) % n] if curved[(k - 1) % n] else (2 * p1[0] - p2[0], 2 * p1[1] - p2[1])
+        p3 = P[(k + 2) % n] if curved[(k + 1) % n] else (2 * p2[0] - p1[0], 2 * p2[1] - p1[1])
+        u2, u3 = u * u, u * u * u
+        return tuple(0.5 * (2 * p1[d] + (p2[d] - p0[d]) * u + (2 * p0[d] - 5 * p1[d] + 4 * p2[d] - p3[d]) * u2
+                            + (3 * p1[d] - p0[d] - 3 * p2[d] + p3[d]) * u3) for d in (0, 1))
+
+    if all(curved):                                       # a circle / ellipse / blob: one closed run
+        N = max(3, int(round(n * factor)))
+        return [at(j * n / N) for j in range(N)]
+    start = next(i for i in range(n) if not curved[i - 1])
+    out, i = [], 0
+    while i < n:
+        k = (start + i) % n
+        if not curved[k]:
+            out.append(P[k])
+            i += 1
+            continue
+        m = 0
+        while i + m < n and curved[(start + i + m) % n]:
+            m += 1
+        N = max(1, int(round(m * factor)))
+        out.extend(at(k + j * m / N) for j in range(N))
+        i += m
+    return out
+
+
 def dedupe_loop(loop, eps=0.5):
     out = []
     for p in loop:

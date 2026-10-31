@@ -292,13 +292,29 @@ def hud_for(context, tools):
         return True
 
 
+DRAFT = [False]          # 0.24.95 live_queue: a slider drag is rebuilding a slow part - the Preview Resolution
+
+
 def res_scale(context=None):
-    """0.24.95 the global Resolution (scene.mch_settings.geo_res, %) as a factor: 1.0 = every tool as set."""
+    """0.24.95 the global Resolution (scene.mch_settings.geo_res, %) as a factor: 1.0 = every tool as set.  While
+    live_queue rebuilds during a drag (DRAFT) it is held at the Preview Resolution."""
     try:
-        sc = (context or bpy.context).scene
-        return max(0.1, float(sc.mch_settings.geo_res) / 100.0)
+        st = (context or bpy.context).scene.mch_settings
+        s = max(0.1, float(st.geo_res) / 100.0)
+        if DRAFT[0] and st.geo_draft:
+            s = min(s, max(0.1, float(st.geo_draft_res) / 100.0))
+        return s
     except Exception:
         return 1.0
+
+
+def draft_differs(context=None):
+    """Fast Preview would change something: on, and the Preview Resolution under the Resolution."""
+    try:
+        st = (context or bpy.context).scene.mch_settings
+        return bool(st.geo_draft) and st.geo_draft_res < st.geo_res
+    except Exception:
+        return False
 
 
 def res_n(n, lo=1, hi=None, context=None):

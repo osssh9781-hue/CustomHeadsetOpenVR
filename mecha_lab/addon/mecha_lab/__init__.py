@@ -17,7 +17,7 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                cloth_wrinkle, last_used, last_op, live_stack, keymap_check, robot_base, detail_stamp, surface_lasso,
                curve_tube, creature_shell, cloth_sim, box_hide, plate_detail, screw_stamp, wrinkle_lines, cloth_drape, lowpoly, fold_patch,
                creature_plate, belt_maker, creature_spike, creature_scales, flower_plate,
-               surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, bg_jobs, quad_remesh, mesh_fix, tool_recent, actions_menu, key_legend, quick_hud, mecha_menu, symmetry, groups, ui_bars, safety_save, lasso_memory, armor_shell, paint_lab, bake_maps)
+               surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, bg_jobs, quad_remesh, mesh_fix, tool_recent, actions_menu, key_legend, quick_hud, mecha_menu, symmetry, groups, ui_bars, safety_save, lasso_memory, armor_shell, paint_lab, bake_maps, res_parts, final_export)
 import os
 import re
 from pathlib import Path
@@ -512,6 +512,12 @@ class MCH_PG_Settings(bpy.types.PropertyGroup):
     # 0.24.95 one Resolution for every made / cut shape (user: "베이스 메시로 생성되는 원이나 베벨에 해상도를 올릴 수 있게,
     # 컷으로 자르는 면도 늘리거나 줄일 수 있게, 다른 툴도 다 - 최종으로 낼 때 하이폴리여야 돼서"): circle / curve / round
     # corner / Line end / bevel / finish / profile segment counts are all x this (100 % = as each tool sets them)
+    geo_draft: BoolProperty(name='Fast Preview While Dragging', default=True,
+                            description='While a slider is dragged, a slow part (a rebuild over 0.12 s) is remade at '
+                                        'the Preview Resolution; when you let go it is made once more at the full '
+                                        'Resolution')
+    geo_draft_res: IntProperty(name='Preview Resolution', default=100, min=25, max=400, subtype='PERCENTAGE',
+                               description='The Resolution used while dragging (only when it is lower than Resolution)')
     geo_res: IntProperty(name='Resolution', default=100, min=25, soft_max=400, max=800, subtype='PERCENTAGE',
                          description='Resolution of everything the tools make or cut: circles, curves, rounded '
                                      'corners, line ends, bevels / edge finish, profiles and screw / detail rings are '
@@ -2079,6 +2085,8 @@ def _register():
     highpoly.register()
     mesh_tools.register()
     bake_maps.register()
+    res_parts.register()
+    final_export.register()
     live_queue.register()
     lasso_sketch.register()
     cloth_wrinkle.register()
@@ -2194,6 +2202,8 @@ def _unregister_steps():
         ('cloth_wrinkle', cloth_wrinkle.unregister),
         ('lasso_sketch', lasso_sketch.unregister),
         ('live_queue', live_queue.unregister),
+        ('final_export', final_export.unregister),
+        ('res_parts', res_parts.unregister),
         ('bake_maps', bake_maps.unregister),
         ('mesh_tools', mesh_tools.unregister),
         ('highpoly', highpoly.unregister),

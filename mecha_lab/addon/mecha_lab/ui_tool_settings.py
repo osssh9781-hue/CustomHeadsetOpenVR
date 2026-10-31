@@ -69,7 +69,14 @@ def draw_shape_options(layout, context, mode):
         name = 'Free Draw (closed outline)'
     box = _section(layout, 'Shape: ' + name + '  (palette top-left / RMB)', 'SELECT_SET')
     if mode != 'MASK' and hasattr(context.scene, 'mch_settings'):        # 0.24.95 the global Resolution
-        box.prop(context.scene.mch_settings, 'geo_res', text='Resolution (all tools)', slider=True)
+        r = box.row(align=True)
+        r.prop(context.scene.mch_settings, 'geo_res', text='Resolution (all tools)', slider=True)
+        r.operator('mch.apply_resolution', text='Apply to Parts')
+        r = box.row(align=True)
+        r.prop(context.scene.mch_settings, 'geo_draft', text='Fast Preview While Dragging')
+        sub = r.row(align=True)
+        sub.active = context.scene.mch_settings.geo_draft
+        sub.prop(context.scene.mch_settings, 'geo_draft_res', text='Preview')
     col = box.column(align=True)
     if shape in {'CIRCLE', 'ELLIPSE'}:
         col.prop(brush, 'circle_segments')

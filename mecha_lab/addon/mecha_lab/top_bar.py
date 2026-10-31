@@ -51,7 +51,8 @@ def groups(context, tool):
     if tool in ts.SHAPE_TOOLS:
         out += lasso_groups(brush, tool)
     if tool in RES_TOOLS and hasattr(scene, 'mch_settings'):       # 0.24.95 one Resolution for all made / cut shapes
-        out.append(('Resolution', [_mini('Res', scene.mch_settings, 'geo_res', 120)]))
+        out.append(('Resolution', [_mini('Res', scene.mch_settings, 'geo_res', 120),
+                                   _cell('seg', 'Apply to Parts', action=('op', 'mch.apply_resolution', {}))]))
     draw = [_cell('seg', label, on, ('mode', key)) for key, label, on in mecha_menu.draw_modes(context)]
     drawing = tool in target_rules.PICKING | target_rules.OWN_ROW - {'CMOVE', 'CPATH', 'SMOVE'}
     if drawing:
