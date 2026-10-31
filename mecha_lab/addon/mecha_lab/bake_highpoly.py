@@ -666,6 +666,18 @@ def _subd_round(me, hard, levels):
     if a is None:
         a = me.attributes.new('crease_edge', 'FLOAT', 'EDGE')
     a.data.foreach_set('value', np.asarray(hard[:ne], np.float32))
+    # an n-gon is cut into triangles first, inside its own outline: Catmull-Clark puts an n-gon's face point at the
+    # mean of its corners, which for a long concave n-gon (a curved blade's side, the user's MCH_Base.189) lies
+    # OUTSIDE it - the new faces fold over and the part twists (the crease layer rides along; new diagonals 0)
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        big = [f for f in bm.faces if len(f.verts) > 4]
+        if big:
+            bmesh.ops.triangulate(bm, faces=big, quad_method='BEAUTY', ngon_method='BEAUTY')
+            bm.to_mesh(me)
+    finally:
+        bm.free()
     tmp = bpy.data.objects.new('.mch_bk_subd', me)
     bpy.context.scene.collection.objects.link(tmp)
     try:
@@ -895,10 +907,14 @@ def build(context, ob, target_faces=1_000_000, rounding=1.0, fillet=0.0, angle=m
     try:
         faces0 = len(me.polygons)
         levels = levels_for(faces0, target_faces)
-        loops0 = len(me.loops)
+        sides = np.array([len(p.vertices) for p in me.polygons])
+        quads1 = int(np.where(sides > 4, 3 * (sides - 2), sides).sum())   # (Round: the faces after level 1 -
+        if bevels == 'ROUND':                                              # n-gons cut into triangles, each a
+            levels = min(range(1, MAX_LEVELS + 1),                         # fan of 3 quads) - the level nearest
+                         key=lambda lv: abs(math.log(max(1, quads1 * 4 ** (lv - 1)) / max(1, target_faces))))
 
-        def made(lv):                              # (Round = Catmull-Clark: an n-gon becomes n quads at level 1)
-            return loops0 * 4 ** (lv - 1) if bevels == 'ROUND' else faces0 * 4 ** lv
+        def made(lv):
+            return quads1 * 4 ** (lv - 1) if bevels == 'ROUND' else faces0 * 4 ** lv
         while levels > 1:
             ok, _why = budget.faces_fit(made(levels))
             if ok:
