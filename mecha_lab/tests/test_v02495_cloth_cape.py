@@ -76,9 +76,14 @@ check('... folded into pleats that bulge OUT only (pinch points on the line, cre
       off.min() > -step * 0.25 and abs(off.max() - info['depth']) < step * 0.5 and info['depth'] > step and len(crest) == info['pleats'] >= 2,
       (off.min(), off.max(), info, len(crest)))
 Gc = cc.reshape(-1, nb_c, 3)
-check('... the folds run straight down the cloth from the pleats (every row the same pattern), every point outside the body',
-      np.abs(Gc[:, :, :2] - Gc[0, :, :2]).max() < 1e-6 and np.hypot(cc[:, 0], cc[:, 1]).min() > 0.3 * math.cos(math.pi / 48) - 1e-6,
-      np.abs(Gc[:, :, :2] - Gc[0, :, :2]).max())
+keep = int((length * cd.PLEAT_KEEP) / step)                # (rows that keep the full pleat depth)
+gone = int(np.ceil(length * (cd.PLEAT_KEEP + cd.PLEAT_FADE) / step)) + 1
+offs = Gc[:, :, 1] - np.interp(Gc[0, :, 0], tf[order, 0], tf[order, 1])[None, :]
+check('... the pleats laid over the sheet that follows the body: the same pattern at full depth down the top 25 % of the length '
+      '(user: "등이 굽어 있어서 윗면 바로 아래에서 펴진 것 같아"), easing out below, every point outside the body',
+      np.abs(Gc[:keep, :, :2] - Gc[0, :, :2]).max() < step * 0.05 and np.ptp(offs[gone:], axis=1).max() < 0.25 * info['depth']
+      and np.hypot(cc[:, 0], cc[:, 1]).min() > 0.3 * math.cos(math.pi / 48) - 1e-6,
+      (np.abs(Gc[:keep, :, :2] - Gc[0, :, :2]).max(), np.ptp(offs[gone:], axis=1).max(), info['depth']))
 me4, nb4 = cd.hang_patch(body, L, length, 0.0, step, gap, down, False, 50.0, info['pleats'] + 3, size * 0.04)
 check('Pleats set by hand (3 more than auto): that many, the same 1.5 x fabric (so shallower pleats)',
       cd.HANG_INFO['pleats'] == info['pleats'] + 3 and cd.HANG_INFO['depth'] < info['depth']
@@ -88,14 +93,14 @@ check('Curtain 0: the flat sheet as before (the top row as long as the line, no 
 # Heading (off by default: the pleats right from the line, as before); on: the top edge flat on the line, the pleats grow in
 check('Heading 0 by default; Folds: Curtain by default, Along Line there', abs(st.cape_heading) < 1e-6 and st.cape_folds == 'DOWN'
       and 'ALONG' in {i.identifier for i in st.bl_rna.properties['cape_folds'].enum_items})
-me_h, nb_h = cd.hang_patch(body, L, length, 0.0, step, gap, down, False, 50.0, 0, size * 0.04, 'DOWN', 0.3)
+me_h, nb_h = cd.hang_patch(body, L, length, 0.0, step, gap, down, False, 50.0, 0, size * 0.04, 'DOWN', 0.15)
 ch = mio.read_co(me_h)
 Gh = ch.reshape(-1, nb_h, 3)
 off_h = Gh[:, :, 1] - np.interp(Gh[0, :, 0], tf[order, 0], tf[order, 1])[None, :]
-band = int(round(length * 0.3 / step))
-check('Heading 30 %: the top row flat on the line, the pleats grow in under it to full depth by 30 % of the length',
-      np.abs(off_h[0]).max() < step * 0.25 and off_h[band + 2].max() > 0.9 * cd.HANG_INFO['depth'] and nb_h == nb_c,
-      (np.abs(off_h[0]).max(), off_h[band + 2].max(), cd.HANG_INFO['depth']))
+band = int(round(length * 0.15 / step))
+check('Heading 15 %: the top row flat on the line, the pleats grow in under it to full depth by 15 % of the length',
+      np.abs(off_h[0]).max() < step * 0.25 and off_h[band + 1].max() > 0.9 * cd.HANG_INFO['depth'] and nb_h == nb_c,
+      (np.abs(off_h[0]).max(), off_h[band + 1].max(), cd.HANG_INFO['depth']))
 # Folds Along Line (user: "주름이 내가 긋는 선 방향대로 ... 가로로 그어서 가로로 나오는 게 하나", and the sketch: the folds sweep
 # across into the END of the stroke): a plain sheet, the line pinned, the side edge at the stroke's end gathered up
 me_a, nb_a = cd.hang_patch(body, L, length, 0.0, step, gap, down, False, 50.0, 0, size * 0.04, 'ALONG', 0.0)

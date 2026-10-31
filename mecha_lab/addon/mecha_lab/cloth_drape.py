@@ -1070,6 +1070,8 @@ def _resample(pts, step, closed=False):
 
 
 HANG_INFO = {}                    # the last cape built: pleat count / depth (tests, message)
+PLEAT_KEEP = 0.25                 # Cape Sim Vertical: the pleats keep their full depth down this share of the length,
+PLEAT_FADE = 0.35                 #  then ease out over this share (the sim drapes the rest from them)
 
 
 def _smooth01(x):
@@ -1175,12 +1177,10 @@ def hang_patch(body, line, length, flare, step, gap, down, closed=False, gather=
             pass
         else:
             pleated, at_p, k, depth = curtain_top(top, flat(o), step, gather, pleats, pleat_width)
-            if k and heading > 0.0:
-                flat_top = np.stack([np.interp(at_p, base_s, top[:, j]) for j in range(3)], 1)
-                wave = (pleated - flat_top) @ flat(o)        # (each column's pleat offset out: grown in under the top)
-                top, at = flat_top, at_p
-            elif k:                                          # (the pleats right from the line: the columns hang from them)
-                top, at = pleated, at_p
+            if k:                                            # 0.24.95 the sheet laid along the back first, the pleats on
+                flat_top = np.stack([np.interp(at_p, base_s, top[:, j]) for j in range(3)], 1)   # top of it (user: "등이 굽어 있어서
+                wave = (pleated - flat_top) @ flat(o)        #  윗면 바로 아래에서 펴진 것 같아" - hanging the pleated row and
+                top, at = flat_top, at_p                     #  pushing points out of a curved back flattened them)
         HANG_INFO.clear()
         HANG_INFO.update(pleats=k, depth=depth, base_width=width, folds=folds if k else 'NONE')
         n = len(top)
@@ -1212,9 +1212,15 @@ def hang_patch(body, line, length, flare, step, gap, down, closed=False, gather=
         level = np.einsum('ij,ij->i', nxt, out)
         grid.append(nxt)
         cur = nxt
-    if wave is not None:                                  # curtain DOWN: the pleats, grown in under a flat top edge
-        hl = length * heading
-        grid = [g + out * (wave * (1.0 if hl <= 0.0 else float(_smooth01(r * step / hl))))[:, None] for r, g in enumerate(grid)]
+    if wave is not None:                                  # curtain DOWN: the pleats over the sheet - full depth down to
+        hl = length * heading                             # PLEAT_KEEP of the length, then they ease out by PLEAT_KEEP +
+        fade = []                                         # PLEAT_FADE (deep pleats all the way read as separate tubes);
+        for r in range(len(grid)):                        # Heading grows them in under a flat top edge
+            h = r * step
+            f_in = 1.0 if hl <= 0.0 else float(_smooth01(h / hl))
+            f_out = 1.0 - float(_smooth01((h - length * PLEAT_KEEP) / (length * PLEAT_FADE)))
+            fade.append(f_in * f_out)
+        grid = [g + out * (wave * fade[r])[:, None] for r, g in enumerate(grid)]
     swag = None
     if folds == 'ALONG' and gather > 0.0 and not closed and len(grid) > 2:
         # 0.24.95 the swag (user's sketch: the folds sweep across, into the END of the line you drew): the side edge
