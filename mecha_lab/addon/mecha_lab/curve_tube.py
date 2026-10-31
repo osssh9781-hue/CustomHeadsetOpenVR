@@ -409,7 +409,7 @@ def tube_mesh(samples, s):
             out_dir = -1.0 if first else 1.0
             rings_idx = [base]
             if cap == 'ROUND':
-                steps = 4
+                steps = ts.res_n(4, 2)
                 for k in range(1, steps):
                     ang = (math.pi / 2) * k / steps
                     rings_idx.append(add_ring(ring(end, math.cos(ang), out_dir * rr * math.sin(ang))))
@@ -565,10 +565,19 @@ def set_points(ob, pts):
     ob[PTS_KEY] = [c for p, r in pts for c in (p.x, p.y, p.z, float(r))]
 
 
+def _res_sides(kind, sides):
+    """0.24.95 the cross-section points x the global Resolution - for a round section (12+ sides; fewer is a polygon
+    the user picked, a hexagon stays a hexagon) and the square's points along its sides."""
+    if kind == 'SQUARE' or int(sides) >= 12:
+        return ts.res_n(sides, 3)
+    return sides
+
+
 def settings(tb):
     return dict(mode=tb.mode, radius=tb.radius, taper_start=tb.taper_start, taper_end=tb.taper_end,
-                profile=tb.profile, sides=tb.sides, ratio=tb.ratio, cap=tb.cap, hole=tb.hole, rotate=tb.rotate,
-                twist=tb.twist, closed=tb.closed, spline=tb.spline, res=tb.resolution, count=tb.count,
+                profile=tb.profile, sides=_res_sides(tb.profile, tb.sides), ratio=tb.ratio, cap=tb.cap, hole=tb.hole,
+                rotate=tb.rotate, twist=tb.twist, closed=tb.closed, spline=tb.spline, res=ts.res_n(tb.resolution),
+                count=tb.count,
                 lines=tb.lines, line_height=tb.line_height, line_width=tb.line_width, line_rotate=tb.line_rotate,
                 profile_loop=object_profile(tb.profile_object) if tb.profile == 'OBJECT' else None,
                 size=tb.size, follow_radius=tb.follow_radius, align=tb.align, spacing_mode=tb.spacing_mode,

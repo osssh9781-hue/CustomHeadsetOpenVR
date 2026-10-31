@@ -25,7 +25,7 @@ from mathutils import Vector, Matrix
 from mathutils.geometry import intersect_line_plane
 from bpy_extras import view3d_utils
 from bpy.props import (
-    BoolProperty, EnumProperty, FloatProperty, PointerProperty, StringProperty,
+    BoolProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty, StringProperty,
 )
 
 # -----------------------------------------------------------------------------
@@ -509,6 +509,15 @@ class MCH_PG_Settings(bpy.types.PropertyGroup):
         description='Draw the box lines of every group in the viewport (off: none, whatever the per-group eye says)',
         update=lambda self, context: _redraw_areas(context))
     keep_cutter: BoolProperty(name='Keep cutter after apply', default=False)
+    # 0.24.95 one Resolution for every made / cut shape (user: "베이스 메시로 생성되는 원이나 베벨에 해상도를 올릴 수 있게,
+    # 컷으로 자르는 면도 늘리거나 줄일 수 있게, 다른 툴도 다 - 최종으로 낼 때 하이폴리여야 돼서"): circle / curve / round
+    # corner / Line end / bevel / finish / profile segment counts are all x this (100 % = as each tool sets them)
+    geo_res: IntProperty(name='Resolution', default=100, min=25, soft_max=400, max=800, subtype='PERCENTAGE',
+                         description='Resolution of everything the tools make or cut: circles, curves, rounded '
+                                     'corners, line ends, bevels / edge finish, profiles and screw / detail rings are '
+                                     'all made with their segment counts x this. 100 % = as set in each tool; 200 % '
+                                     'for high poly, 50 % for a quick block-out. Applies to new shapes (a live shape '
+                                     'rebuilt by a slider takes it for its bevels)')
     cut_draw_style: EnumProperty(name='Cut Shape', items=[
         ('POLYLINE','Points / Line','Left click 2+ points; Enter to choose the side to discard'),
         ('FREEHAND','Freehand','Drag to draw a freehand cut contour'),

@@ -385,7 +385,8 @@ def wall_profile(height, wall_angle, foot):
         th = math.acos(max(-1.0, 1.0 - height / r))
         d1, y1 = r * math.sin(th), height
     ds, hs = [0.0], [0.0]
-    n = 6
+    from . import tool_state as _ts
+    n = _ts.res_n(6, 2)                              # (x Resolution, 0.24.95)
     for i in range(1, n + 1):
         a = th * i / n
         ds.append(r * math.sin(a))
@@ -417,7 +418,8 @@ def build_rise(region_me, height, ramp, embed=0.0, name='MCH_PlateRise', profile
         if profile == 'WALL':
             levels, heights = wall_profile(height, wall_angle, foot)
         else:
-            segs = 1 if profile == 'CHAMFER' else RISE_SEGMENTS
+            from . import tool_state as _ts
+            segs = 1 if profile == 'CHAMFER' else _ts.res_n(RISE_SEGMENTS, 2)   # (x Resolution, 0.24.95)
             levels = [ramp * k / segs for k in range(segs + 1)]
             heights = [height * float(rise_curve(np.array(k / segs), profile)) for k in range(segs + 1)]
         dl = _field_layer(bm, 'd', dist_to_segments(np.array([tuple(v.co) for v in bm.verts]), A, B))

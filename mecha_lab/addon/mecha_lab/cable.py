@@ -198,7 +198,8 @@ def _profile_curve(ob, p):
     w = p.thickness
     h = w * (1.0 if p.profile == 'SQUARE' else p.profile_ratio)
     if p.profile == 'OVAL':
-        n = max(8, p.profile_resolution * 4)
+        from . import tool_state as _ts
+        n = max(8, _ts.res_n(p.profile_resolution) * 4)                  # (x Resolution, 0.24.95)
         pts = [(w / 2 * math.cos(2 * math.pi * k / n), h / 2 * math.sin(2 * math.pi * k / n)) for k in range(n)]
     else:
         pts = [(-w / 2, -h / 2), (w / 2, -h / 2), (w / 2, h / 2), (-w / 2, h / 2)]
@@ -214,13 +215,14 @@ def rebuild_look(ob):
     p = ob.mch_cable
     cu = ob.data
     cu.dimensions = '3D'
-    cu.resolution_u = p.resolution
+    from . import tool_state as _ts
+    cu.resolution_u = min(1024, _ts.res_n(p.resolution))                   # (x Resolution, 0.24.95)
     cu.use_fill_caps = True
     cu.twist_mode = 'MINIMUM'
     if p.profile == 'ROUND':
         cu.bevel_mode = 'ROUND'
         cu.bevel_depth = p.thickness / 2
-        cu.bevel_resolution = p.profile_resolution
+        cu.bevel_resolution = min(32, _ts.res_n(p.profile_resolution))
         cu.bevel_object = None
         base = 1.0
     elif p.profile == 'CUSTOM' and p.custom_profile is not None:

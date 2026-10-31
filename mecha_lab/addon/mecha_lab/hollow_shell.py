@@ -145,7 +145,8 @@ def sync(ob):
         rim_mod.limit_method = 'VGROUP'
         rim_mod.vertex_group = VG_RIM_OUT
         rim_mod.width = p.rim_bevel
-        rim_mod.segments = p.rim_bevel_segments
+        from . import tool_state as _ts
+        rim_mod.segments = _ts.res_n(p.rim_bevel_segments)                 # (x Resolution, 0.24.95)
         rim_mod.use_clamp_overlap = True
     elif rim_mod is not None:
         mods.remove(rim_mod)

@@ -144,8 +144,9 @@ def spec_of(ob):
     if p.sym_lr:
         for d in sts:
             d['width_r'], d['thick_r'], d['corner_r'] = d['width_l'], d['thick_l'], d['corner_l']
-    return dict(kind=p.kind, sides=p.sides, ridge=p.ridge, res=p.res, quality=p.quality, seg_mode=p.seg_mode,
-                seg_bend=p.seg_bend, seg_run=p.seg_run, cap_start=p.cap_start, cap_end=p.cap_end,
+    from . import tool_state as _ts                         # (res / bend segments x Resolution, 0.24.95)
+    return dict(kind=p.kind, sides=p.sides, ridge=p.ridge, res=_ts.res_n(p.res, 2), quality=p.quality,
+                seg_mode=p.seg_mode, seg_bend=_ts.res_n(p.seg_bend), seg_run=p.seg_run, cap_start=p.cap_start, cap_end=p.cap_end,
                 cap_len=p.cap_len, stations=sts)
 
 
@@ -199,8 +200,9 @@ def _write_mesh(me, result, p=None):
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
         if p is not None:
             # 0.15: Bevel / Chamfer of the side edges (polygon corners) and of the end rims
-            _finish(bm, layer, TAG_SIDE, p.corner_finish, p.corner_width, p.corner_segments)
-            _finish(bm, layer, TAG_END, p.cap_finish, p.cap_width, p.cap_segments)
+            from . import tool_state as _ts
+            _finish(bm, layer, TAG_SIDE, p.corner_finish, p.corner_width, _ts.res_n(p.corner_segments))
+            _finish(bm, layer, TAG_END, p.cap_finish, p.cap_width, _ts.res_n(p.cap_segments))
             bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
         bm.edges.layers.int.remove(layer)
         for f in bm.faces:

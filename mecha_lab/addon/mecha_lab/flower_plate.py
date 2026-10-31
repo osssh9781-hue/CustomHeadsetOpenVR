@@ -128,7 +128,8 @@ def source(ob):
 
 def _field(context, ob, src, p):
     """Cached: points on the surface (cos, nrms), triangles, outline count, rim shape, start index."""
-    key = (src.get('stamp'), p.resolution, round(p.outline_smooth, 4), round(p.edge_round, 4))
+    from . import tool_state as _ts
+    key = (src.get('stamp'), p.resolution, round(p.outline_smooth, 4), round(p.edge_round, 4), _ts.res_scale())
     hit = _CACHE.get(ob.name)
     if hit is not None and hit[0] == key:
         return hit[1]

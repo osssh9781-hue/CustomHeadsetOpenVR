@@ -198,7 +198,8 @@ def line_loop(context, projector, path, brush, pressure=None):
     if len(path) < 2:
         return []
     ppu = pixels_per_unit(context, projector, path[0])
-    return band(path, max(1.0, brush.line_width * ppu), brush.line_caps,
+    from . import tool_state as ts
+    return band(path, max(1.0, brush.line_width * ppu), brush.line_caps, cap_segments=ts.res_n(8, 2),
                 taper=getattr(brush, 'line_taper', 0.0) if getattr(brush, 'line_taper_on', False) else 0.0,
                 pressure=pressure if getattr(brush, 'line_pressure', False) else None)
 

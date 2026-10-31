@@ -68,6 +68,8 @@ def draw_shape_options(layout, context, mode):
     elif shape == 'STROKE':
         name = 'Free Draw (closed outline)'
     box = _section(layout, 'Shape: ' + name + '  (palette top-left / RMB)', 'SELECT_SET')
+    if mode != 'MASK' and hasattr(context.scene, 'mch_settings'):        # 0.24.95 the global Resolution
+        box.prop(context.scene.mch_settings, 'geo_res', text='Resolution (all tools)', slider=True)
     col = box.column(align=True)
     if shape in {'CIRCLE', 'ELLIPSE'}:
         col.prop(brush, 'circle_segments')

@@ -34,6 +34,9 @@ def _seg(label, data, prop, on=None):
     return _cell('seg', label, bool(getattr(data, prop)) if on is None else on, ('bool',), data, prop)
 
 
+RES_TOOLS = ts.SHAPE_TOOLS | {'SCREW', 'PERF', 'SUBD'}
+
+
 def groups(context, tool):
     """[(title, [cells])] for the tool in use."""
     from . import lasso_line, lasso_sketch, mecha_menu, target_rules
@@ -47,6 +50,8 @@ def groups(context, tool):
                                     width=ICON) for sid, label, _d, stem, _f in ts.SHAPES]))
     if tool in ts.SHAPE_TOOLS:
         out += lasso_groups(brush, tool)
+    if tool in RES_TOOLS and hasattr(scene, 'mch_settings'):       # 0.24.95 one Resolution for all made / cut shapes
+        out.append(('Resolution', [_mini('Res', scene.mch_settings, 'geo_res', 120)]))
     draw = [_cell('seg', label, on, ('mode', key)) for key, label, on in mecha_menu.draw_modes(context)]
     drawing = tool in target_rules.PICKING | target_rules.OWN_ROW - {'CMOVE', 'CPATH', 'SMOVE'}
     if drawing:

@@ -292,6 +292,25 @@ def hud_for(context, tools):
         return True
 
 
+def res_scale(context=None):
+    """0.24.95 the global Resolution (scene.mch_settings.geo_res, %) as a factor: 1.0 = every tool as set."""
+    try:
+        sc = (context or bpy.context).scene
+        return max(0.1, float(sc.mch_settings.geo_res) / 100.0)
+    except Exception:
+        return 1.0
+
+
+def res_n(n, lo=1, hi=None, context=None):
+    """A segment / sample count x the global Resolution (at least ``lo``, at most ``hi``); n itself at 100 %."""
+    s = res_scale(context)
+    if s == 1.0:
+        v = int(n)
+    else:
+        v = max(int(lo), int(round(n * s)))
+    return min(v, int(hi)) if hi is not None else max(v, int(lo))
+
+
 def tool_is(context, tool_id):
     return bool(getattr(context, 'scene', None) and hasattr(context.scene, 'mch_settings')
                 and effective_tool(context) == tool_id)

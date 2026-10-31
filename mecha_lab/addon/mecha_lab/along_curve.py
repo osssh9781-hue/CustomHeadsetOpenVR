@@ -41,7 +41,8 @@ _AXIS_VEC = {'POS_X': Vector((1, 0, 0)), 'NEG_X': Vector((-1, 0, 0)), 'POS_Y': V
 def new_curve(context, name, length=4.0, points=5, start=Vector()):
     cu = bpy.data.curves.new(name, 'CURVE')
     cu.dimensions = '3D'
-    cu.resolution_u = 24
+    from . import tool_state as _ts
+    cu.resolution_u = min(1024, _ts.res_n(24, 4))                           # (x Resolution, 0.24.95)
     spl = cu.splines.new('BEZIER')
     spl.bezier_points.add(points - 1)
     for i, bp in enumerate(spl.bezier_points):

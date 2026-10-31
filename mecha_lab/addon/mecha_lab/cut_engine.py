@@ -629,7 +629,7 @@ def _finish_side(cut, me, side, scale):
     if mode == 'NONE':
         return 0
     return _finish_guarded(me, lambda: cg.finish_new_edges(me, mode, getattr(cut, f'side_{side}_width') / scale,
-                               getattr(cut, f'side_{side}_segments'), 0.5,
+                               ts.res_n(getattr(cut, f'side_{side}_segments')), 0.5,
                                clamp=getattr(cut, 'finish_clamp', True), label='Side ' + side.upper(),
                                crisp=getattr(cut, 'finish_crisp', True)), 'side ' + side.upper())
 
@@ -643,7 +643,7 @@ def _gn_on(cut, side=None):
 
 def _gn_finish(cut, me, scale):
     from . import rim_sweep
-    return _finish_guarded(me, lambda: rim_sweep.finish(me, cut.gn_finish, cut.gn_width / scale, cut.gn_segments),
+    return _finish_guarded(me, lambda: rim_sweep.finish(me, cut.gn_finish, cut.gn_width / scale, ts.res_n(cut.gn_segments)),
                            me.name.replace('_mch_sub', ''))
 
 
@@ -766,7 +766,8 @@ def cut_ramp(context, targets, loops, projector, edge=None, live=True):
     fin = getattr(cut, 'gn_finish', 'NONE')
     st = SimpleNamespace(profile={'CHAMFER': 'CHAMFER', 'BEVEL': 'BEVEL'}.get(fin, 'SQUARE'), edge=0.35, sink=0.0,
                          edge_abs=cut.gn_width if fin != 'NONE' else None, fill_res=28,
-                         segments=getattr(cut, 'gn_segments', 4), fine=getattr(cut, 'gn_ramp_res', 20) / 28.0,
+                         segments=ts.res_n(getattr(cut, 'gn_segments', 4)),
+                         fine=getattr(cut, 'gn_ramp_res', 20) / 28.0 * ts.res_scale(),
                          steep=getattr(cut, 'gn_ramp_steep', 'EVEN'))
     ramp = (edge[0], edge[1], getattr(cut, 'gn_ramp_length', 1.0), getattr(cut, 'gn_ramp_soft', 0.5))
     if live and len(targets) == 1:
@@ -882,7 +883,7 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
                     else:
                         edge_counts.append(_finish_guarded(me, lambda: cg.finish_new_edges(
                             me, cut.edge_finish, cut.finish_width / scale,
-                            cut.finish_segments, cut.finish_profile, clamp=cut.finish_clamp,
+                            ts.res_n(cut.finish_segments), cut.finish_profile, clamp=cut.finish_clamp,
                             crisp=cut.finish_crisp), t.name))
                     results.append((t, me))
                 else:  # SPLIT
@@ -1111,7 +1112,7 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
                         elif cut.line_cap:
                             line_bevel_counts.append(_finish_guarded(me, lambda: cg.finish_new_edges(
                                 me, cut.edge_finish, cut.finish_width / scale,
-                                cut.finish_segments, cut.finish_profile, clamp=cut.finish_clamp,
+                                ts.res_n(cut.finish_segments), cut.finish_profile, clamp=cut.finish_clamp,
                                 crisp=cut.finish_crisp), t.name))
                         results.append((t, me))
                     else:
@@ -1545,11 +1546,11 @@ class StrokeLogic:
             n = len(pts)
             sharp = list(self.sharp[:n]) + [False] * (n - len(self.sharp))
             over = list(self.overrides[:n]) + [None] * (n - len(self.overrides))
-            return curve_lasso_spline(pts, sharp, over, self.brush.curve_resolution, self.brush.curve_smoothness,
-                                      closed=False)
+            return curve_lasso_spline(pts, sharp, over, ts.res_n(self.brush.curve_resolution, 2),
+                                      self.brush.curve_smoothness, closed=False)
         if self.shape == 'STROKE':
             pts = smooth_open(pts, self.brush.stroke_smooth)
-            return cg.simplify_open(pts, self.brush.stroke_simplify)
+            return cg.simplify_open(pts, self.brush.stroke_simplify / ts.res_scale())
         return pts
 
     def _line_loops(self, pts=None):
@@ -1592,11 +1593,11 @@ class StrokeLogic:
         pts = self.pts if pts is None else pts
         n = len(pts)
         rounds = list(self.rounds[:n]) + [0.0] * (n - len(self.rounds))
-        return curve_lasso_loop(pts, rounds, self.brush.curve_resolution)
+        return curve_lasso_loop(pts, rounds, ts.res_n(self.brush.curve_resolution, 2))   # (x Resolution, 0.24.95)
 
     def _outline(self, loop):
         b = self.brush
-        return round_corners(loop, b.outline_radius, b.outline_corner, b.outline_segments)
+        return round_corners(loop, b.outline_radius, b.outline_corner, ts.res_n(b.outline_segments))
 
     def preview_loops(self):
         m = self.mouse
@@ -1627,9 +1628,9 @@ class StrokeLogic:
         if self.shape == 'RECT':
             return [self._outline(rect_loop(self.anchor, m, shift, ctrl))]
         if self.shape == 'CIRCLE':
-            return [circle_loop(self.anchor, m, b.circle_segments)]
+            return [circle_loop(self.anchor, m, ts.res_n(b.circle_segments, 8))]
         if self.shape == 'ELLIPSE':
-            return [ellipse_loop(self.anchor, m, b.circle_segments, shift, ctrl)]
+            return [ellipse_loop(self.anchor, m, ts.res_n(b.circle_segments, 8), shift, ctrl)]
         if self.shape == 'CUSTOM':
             r = math.dist(self.anchor, m)
             angle = b.custom_rotation
@@ -1941,7 +1942,7 @@ class StrokeLogic:
             return [self._outline(list(self.pts))]
         if self.shape == 'STROKE':
             pts = smooth_open(self.pts, self.brush.stroke_smooth)
-            pts = cg.simplify_open(pts, self.brush.stroke_simplify)
+            pts = cg.simplify_open(pts, self.brush.stroke_simplify / ts.res_scale())
             return [cg.trim_closing_overlap(pts)]
         return self._drag_loops(self.mouse, event_ctrl, event_shift)
 

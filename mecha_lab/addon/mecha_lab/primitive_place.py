@@ -233,13 +233,13 @@ _SHAPE_CACHE = {}
 
 def st_shape(st):
     """Cached ``ghost_shape`` for the ghost state."""
-    key = (st.kind, tuple(round(v, 6) for v in st.size), st.segments, round(st.top_x, 5), round(st.top_y, 5),
-           st.edge, round(st.edge_width, 6), st.edge_segments)
+    segs, esegs = ts.res_n(st.segments, 8), ts.res_n(st.edge_segments)    # (x Resolution, 0.24.95)
+    key = (st.kind, tuple(round(v, 6) for v in st.size), segs, round(st.top_x, 5), round(st.top_y, 5),
+           st.edge, round(st.edge_width, 6), esegs)
     hit = _SHAPE_CACHE.get('v')
     if hit is not None and hit[0] == key:
         return hit[1]
-    out = ghost_shape(st.kind, st.size, st.segments, (st.top_x, st.top_y), st.edge, st.edge_width,
-                      st.edge_segments)
+    out = ghost_shape(st.kind, st.size, segs, (st.top_x, st.top_y), st.edge, st.edge_width, esegs)
     _SHAPE_CACHE['v'] = (key, out)
     return out
 
@@ -826,7 +826,7 @@ COMMITTED = {'sig': None}
 def ghost_signature(st):
     return (tuple(round(v, 6) for v in st.location), tuple(round(v, 6) for v in st.rotation),
             tuple(round(v, 6) for v in st.size), st.kind, round(st.top_x, 5), round(st.top_y, 5), st.edge,
-            round(st.edge_width, 6), st.edge_segments, st.segments)
+            round(st.edge_width, 6), st.edge_segments, st.segments, ts.res_scale())
 
 
 def mark_committed(st):
@@ -884,7 +884,7 @@ def commit(context, st, subtract=False):
                                                 solver)
                 temp.append(me)
                 if st.merge != 'HARD':
-                    cg.finish_new_edges(me, st.merge, st.finish_width / _object_scale(t), st.finish_segments,
+                    cg.finish_new_edges(me, st.merge, st.finish_width / _object_scale(t), ts.res_n(st.finish_segments),
                                         0.5, clamp=True, label='Seam')
                 cg.commit_mesh(t, me)
                 done.append(t)

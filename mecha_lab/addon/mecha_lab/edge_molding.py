@@ -68,6 +68,12 @@ class MCH_PG_Molding(bpy.types.PropertyGroup):
 # =============================================================================
 
 
+def _res(n):
+    """0.24.95 a segment count x the global Resolution."""
+    from . import tool_state as _ts
+    return _ts.res_n(n)
+
+
 def _fillet_pts(prev_pt, c, next_pt, size, seg):
     from .panel_gen import _fillet
     return _fillet(prev_pt, c, next_pt, size, seg, 0.5)
@@ -87,7 +93,8 @@ def profile_points(p):
                 pts = [((x - (max(xs) + min(xs)) / 2) / sx * w, (y - min(ys)) / sy * h) for x, y in pts]
                 return _ccw(pts)
     if p.profile == 'ROUND':
-        n = max(3, p.profile_resolution)
+        from . import tool_state as _ts
+        n = max(3, _ts.res_n(p.profile_resolution, 3))                    # (x Resolution, 0.24.95)
         pts = [(-w / 2, 0.0)] + [(-w / 2 * math.cos(math.pi * k / n), h * math.sin(math.pi * k / n))
                                  for k in range(1, n)] + [(w / 2, 0.0)]
         return _ccw(pts)
@@ -114,7 +121,8 @@ def profile_points(p):
             if i < 2:                      # keep the base corners sharp (sits on the surface)
                 out.append(poly[i])
                 continue
-            out.extend(_fillet_pts(poly[i - 1], poly[i], poly[(i + 1) % n], p.bevel_width, p.bevel_segments))
+            out.extend(_fillet_pts(poly[i - 1], poly[i], poly[(i + 1) % n], p.bevel_width,
+                                   _res(p.bevel_segments)))
         poly = out
     return _ccw(poly)
 

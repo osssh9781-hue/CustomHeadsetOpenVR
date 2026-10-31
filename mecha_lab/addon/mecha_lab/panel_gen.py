@@ -422,24 +422,25 @@ def chamfer_wd(width, angle, depth, mode):
 
 
 def column_params(p, theta, armor):
-    """Edge parameters of one boundary column (top + base edge)."""
+    """Edge parameters of one boundary column (top + base edge).  Segment counts x the global Resolution."""
+    from . import tool_state as _ts
     if armor:
         thick = _blend(p, theta, 'thickness')
         cw = _blend(p, theta, 'chamfer_width')
         ca = _blend(p, theta, 'chamfer_angle')
         bw = _blend(p, theta, 'bevel_width')
         w = dir_weights(theta)
-        seg = max(int(round(getattr(p, f'{d.lower()}_bevel_segments'))) for d in DIRS if w[d] > 0.02)
+        seg = _ts.res_n(max(int(round(getattr(p, f'{d.lower()}_bevel_segments'))) for d in DIRS if w[d] > 0.02))
         cw, cd = chamfer_wd(cw, ca, 0.0, 'WIDTH_ANGLE')
         return {'height': thick, 'cw': cw, 'cd': cd, 'dir': 'IN', 'bw': bw, 'seg': seg,
                 'prof': p.bevel_profile, 'ow': p.outer_chamfer_width,
                 'od': p.outer_chamfer_width * math.tan(p.outer_chamfer_angle), 'obw': p.outer_bevel_width,
-                'oseg': p.bevel_segments}
+                'oseg': _ts.res_n(p.bevel_segments)}
     cw, cd = chamfer_wd(p.chamfer_width, p.chamfer_angle, p.chamfer_depth, p.chamfer_mode)
     return {'height': p.extract_height, 'cw': cw, 'cd': cd, 'dir': p.chamfer_direction,
-            'bw': p.bevel_width, 'seg': p.bevel_segments, 'prof': p.bevel_profile,
+            'bw': p.bevel_width, 'seg': _ts.res_n(p.bevel_segments), 'prof': p.bevel_profile,
             'ow': p.outer_chamfer_width, 'od': p.outer_chamfer_width * math.tan(p.outer_chamfer_angle),
-            'obw': p.outer_bevel_width, 'oseg': p.bevel_segments}
+            'obw': p.outer_bevel_width, 'oseg': _ts.res_n(p.bevel_segments)}
 
 
 def directional_height(p, theta, r):

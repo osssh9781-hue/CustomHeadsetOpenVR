@@ -300,7 +300,8 @@ def _sync_modifiers(ob):
             side = ob.modifiers.new(MOD_SIDE, 'BEVEL')
         side.limit_method = 'WEIGHT'
         side.width = p.bevel_width
-        side.segments = p.bevel_segments
+        from . import tool_state as _ts
+        side.segments = _ts.res_n(p.bevel_segments)                   # (x Resolution, 0.24.95)
         side.profile = p.bevel_profile
         side.use_clamp_overlap = True
         side.harden_normals = False

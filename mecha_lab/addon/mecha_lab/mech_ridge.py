@@ -568,14 +568,15 @@ def build(context, src, p, target):
             try:
                 lay = mark_edges(roof)
                 auto = (hi - lo).length
+                from . import tool_state as _ts                  # (segments x Resolution, 0.24.95)
                 roof = _finish_safe(roof, 2, p.edge_finish,
-                                    (p.edge_width if p.edge_width > 0 else 0.012 * auto) / k, p.edge_segments)
+                                    (p.edge_width if p.edge_width > 0 else 0.012 * auto) / k, _ts.res_n(p.edge_segments))
                 roof = _finish_safe(roof, 1, p.ridge_finish,
-                                    (p.ridge_width if p.ridge_width > 0 else 0.012 * auto) / k, p.ridge_segments)
+                                    (p.ridge_width if p.ridge_width > 0 else 0.012 * auto) / k, _ts.res_n(p.ridge_segments))
                 mark_creases(roof)
                 xs = [q[0] for q in poly]
                 ys = [q[1] for q in poly]
-                grid_cut(roof, max(max(xs) - min(xs), max(ys) - min(ys)) / max(2, p.resolution))
+                grid_cut(roof, max(max(xs) - min(xs), max(ys) - min(ys)) / max(2, p.resolution * _ts.res_scale()))
                 _lay_on_surface(roof, projector, bvh, k, p.sink if p.sink > 0 else 0.02 * auto)
                 roof.to_mesh(tmp)
                 out.from_mesh(tmp)

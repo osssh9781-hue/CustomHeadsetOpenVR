@@ -114,24 +114,26 @@ def _cross_mesh(r, h, sink, slot_w, slot_l, depth, segments=SEGMENTS):
 
 
 def head_mesh(kind, r, h, recess=0.5, name='MCH_Screw'):
+    from . import tool_state as _ts
     sink = r * SINK
+    seg = _ts.res_n(SEGMENTS, 8)                     # round segments x the global Resolution (0.24.95)
     if kind == 'DOME':
-        n = 8
+        n = _ts.res_n(8, 2)
         prof = [(0.0, h)] + [(r * math.sin(math.pi * 0.5 * k / n), h * math.cos(math.pi * 0.5 * k / n))
                              for k in range(1, n + 1)] + [(r, -sink), (0.0, -sink)]
-        verts, faces = revolve(prof)
+        verts, faces = revolve(prof, seg)
     elif kind == 'POST':
         c = min(r * 0.15, h * 0.3)
-        verts, faces = revolve([(0.0, h), (r - c, h), (r, h - c), (r, -sink), (0.0, -sink)])
+        verts, faces = revolve([(0.0, h), (r - c, h), (r, h - c), (r, -sink), (0.0, -sink)], seg)
     elif kind == 'SOCKET':
         c = min(r * 0.1, h * 0.2)
         ri = r * 0.55
         d = max(1e-5, min(h * 0.95, h * recess))
         verts, faces = revolve([(0.0, h - d), (ri, h - d), (ri, h), (r - c, h), (r, h - c), (r, -sink),
-                                (0.0, -sink)])
+                                (0.0, -sink)], seg)
     else:
         d = max(1e-5, min(h * 0.9, h * recess))
-        verts, faces = _cross_mesh(r, h, sink, r * 0.22, r * 1.4, d)
+        verts, faces = _cross_mesh(r, h, sink, r * 0.22, r * 1.4, d, seg)
     me = bpy.data.meshes.new(name)
     me.from_pydata(verts, [], faces)
     me.validate()

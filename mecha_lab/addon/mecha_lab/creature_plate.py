@@ -208,7 +208,8 @@ def _through_parts(context, src, p, target, projector):
     xs = [q[0] for lp in src['loops'] for q in lp]
     ys = [q[1] for lp in src['loops'] for q in lp]
     extent = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
-    spacing = max(2.0, extent / max(4.0, p.resolution * 1.5))
+    from . import tool_state as _ts
+    spacing = max(2.0, extent / max(4.0, p.resolution * 1.5 * _ts.res_scale()))     # (x Resolution, 0.24.95)
     panels = tr.panels_for(context, target, groups, projector, spacing, 180.0, split=False)
     parts = []
     for pn in panels:

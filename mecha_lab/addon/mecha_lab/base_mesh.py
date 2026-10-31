@@ -473,7 +473,10 @@ def _dome_points(outer, holes, p, rings=(), density=1.0, rim=1.0, cap=MAX_DOME_P
     extent = max(max(xs) - min(xs), max(ys) - min(ys))
     if extent <= 1e-9:
         raise cg.CutError('Outline has no size.')
-    spacing = extent / max(4, p.resolution * density)
+    spacing = extent / max(4, p.resolution * density * ts.res_scale())     # (x Resolution, 0.24.95)
+    if ts.res_scale() > 1.0:          # (a raised Resolution never makes a working shape fail: held at the point budget)
+        bw, bh = max(xs) - min(xs), max(ys) - min(ys)
+        spacing = max(spacing, math.sqrt(max(bw * bh, 1e-18) / (cap * 1.8)))
     dense = [cg.dedupe_loop(_densify(lp, spacing * rim), spacing * 1e-3) for lp in loops]
     boundary = [q for lp in dense for q in lp]
     interior = []
@@ -762,8 +765,8 @@ def side_values(p, flip=False):
     """(sides, top (width, segments), bottom (width, segments)).  ``flip`` =
     Alt cutter: Top<->Bottom, Both swaps the two settings, None unchanged."""
     sides = getattr(p, 'bevel_sides', 'TOP')
-    top = (p.bevel_width, p.bevel_segments)
-    bottom = top if getattr(p, 'bevel_link', True) else (p.bevel_width_bottom, p.bevel_segments_bottom)
+    top = (p.bevel_width, ts.res_n(p.bevel_segments))                   # (segments x Resolution, 0.24.95)
+    bottom = top if getattr(p, 'bevel_link', True) else (p.bevel_width_bottom, ts.res_n(p.bevel_segments_bottom))
     if flip:
         sides = FLIP_SIDES[sides]
         if sides == 'BOTH':
@@ -1061,7 +1064,8 @@ def _bend(bm, groups, p):
                 reach = max(reach, fold_tangent(max(round_, round_in) * (rng[1] - rng[0]), ang / 2.0))
         cuts += [mid + sgn * reach * k / 6 for k in range(1, 7) for sgn in (-1, 1) if reach > 1e-9]
     elif p.profile not in PUFF_BUILT and p.profile != 'DOME':
-        cuts = [lo + (hi - lo) * k / 24 for k in range(1, 24)]   # flat caps are single faces: slice them to curve
+        nb = ts.res_n(24, 6)
+        cuts = [lo + (hi - lo) * k / nb for k in range(1, nb)]   # flat caps are single faces: slice them to curve
     else:
         cuts = []
     for u in cuts:
@@ -1134,7 +1138,7 @@ def densify_along(me, path, step=None):
     total = sum(lens)
     if total < 1e-9:
         return
-    n = max(8, min(96, int(total / step) if step else 48))
+    n = max(8, min(ts.res_n(96, 8), int(total / step) if step else ts.res_n(48, 8)))
     bm = bmesh.new()
     bm.from_mesh(me)
     i, run = 0, 0.0
@@ -1505,7 +1509,8 @@ def carve_surface(context, loops, projector, p, targets=None, ramp_edge=None, li
     height = max(getattr(p, 'carve_depth', 0.0) or p.height, 1e-5)
     st = SimpleNamespace(profile=SURFACE_CARVE.get(p.profile, 'SQUARE'), edge=0.35, sink=0.0, edge_abs=getattr(p, 'bevel_width', 0.05),
                          fill_res=max(15, min(60, getattr(p, 'resolution', 28))),
-                         segments=getattr(p, 'bevel_segments', 4), fine=getattr(p, 'resolution', 28) / 28.0,
+                         segments=ts.res_n(getattr(p, 'bevel_segments', 4)),
+                         fine=getattr(p, 'resolution', 28) / 28.0 * ts.res_scale(),
                          steep=getattr(p, 'carve_steep', 'EVEN'))
     ramp = None
     is_ramp = ramp_edge is not None or getattr(p, 'alt_mode', 'HEIGHT') == 'RAMP'

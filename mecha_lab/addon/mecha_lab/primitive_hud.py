@@ -229,7 +229,7 @@ def commit_station(context, ob, subtract=False):
                 res, _s = cg.boolean_result(context, t, ob, 'DIFFERENCE' if subtract else 'UNION', solver)
                 temp.append(res)
                 if st is not None and st.merge != 'HARD':
-                    cg.finish_new_edges(res, st.merge, st.finish_width, st.finish_segments, 0.5, label='Seam')
+                    cg.finish_new_edges(res, st.merge, st.finish_width, ts.res_n(st.finish_segments), 0.5, label='Seam')
                 cg.commit_mesh(t, res)
                 done.append(t)
             except (cg.CutError, RuntimeError) as ex:
