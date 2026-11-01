@@ -145,35 +145,46 @@ def _edge_faces(me):
 
 def mark_cut_borders(me, cutter_attr='mch_cutter_face', inner_angle=INNER_ANGLE, old_co=None):
     """The cutter flag (faces) turned into edge marks: cutter / original borders + the cutter's own creases.
-    ``old_co`` (0.24.95): the part's points before the cut - with an Edge Finish band on the mesh, the faces with a
-    point the cut made count as round the cut too.  Returns the number of edges marked now (0 when there is no flag,
-    or nothing was cut)."""
+    ``old_co`` (0.24.95): the part's points before the cut - every edge sharper than a miter with a point the cut
+    made is a line too (a random-holes stress test: the cutter flag can be lost whole - an Edge Finish, a
+    line groove through earlier holes - and the rim of that cut came out unmarked).  Returns the number of edges
+    marked now (0 when there is nothing to go by, or nothing was cut)."""
+    from . import mesh_io as mio
     attr = me.attributes.get(cutter_attr)
     nf = len(me.polygons)
-    if attr is None or attr.domain != 'FACE' or nf == 0 or len(me.edges) == 0:
+    fin = me.attributes.get(FIN_BAND)
+    has_fin = fin is not None and fin.domain == 'FACE' and len(fin.data) == nf
+    has_old = old_co is not None and len(old_co) > 0
+    if nf == 0 or len(me.edges) == 0 or ((attr is None or attr.domain != 'FACE') and not has_fin and not has_old):
         return 0
     cut = np.zeros(nf, bool)
-    attr.data.foreach_get('value', cut)
-    if not cut.any() or cut.all():
+    if attr is not None and attr.domain == 'FACE':
+        attr.data.foreach_get('value', cut)
+    if (not cut.any() or cut.all()) and not has_fin and not has_old:
         return 0
     e_sorted, f_sorted, starts, ends = _edge_faces(me)
     two = (ends - starts) == 2
     s2 = starts[two]
     ea = e_sorted[s2]
     fa, fb = f_sorted[s2], f_sorted[s2 + 1]
-    ca, cb = cut[fa], cut[fb]
-    border = ca != cb
-    both = ca & cb
-    hard = border.copy()
-    nrm = None
-    if both.any():
-        nrm = np.empty(nf * 3, np.float32)
-        me.polygons.foreach_get('normal', nrm)
-        nrm = nrm.reshape(-1, 3)
-        d = np.einsum('ij,ij->i', nrm[fa[both]], nrm[fb[both]])
-        hard[np.flatnonzero(both)[d < math.cos(inner_angle)]] = True
-    fin = me.attributes.get(FIN_BAND)
-    if fin is not None and fin.domain == 'FACE' and len(fin.data) == nf:
+    if cut.any() and not cut.all():
+        ca, cb = cut[fa], cut[fb]
+        hard = ca != cb
+        both = ca & cb
+    else:                                            # (no usable flag: the band and the new points decide)
+        hard = np.zeros(len(ea), bool)
+        both = hard.copy()
+    nrm = np.empty(nf * 3, np.float32)
+    me.polygons.foreach_get('normal', nrm)
+    nrm = nrm.reshape(-1, 3)
+    d = np.einsum('ij,ij->i', nrm[fa], nrm[fb])
+    hard |= both & (d < math.cos(inner_angle))
+    sharp = d < math.cos(FIN_MITER)
+    cv = start = tot = None
+    if has_fin or has_old:
+        cv = mio.read_corner_verts(me)
+        start, tot = mio.read_face_starts(me)
+    if has_fin:
         # 0.24.95 an Edge Finish band (the cutter flag is mixed there): its border is a line (marked when it was
         # made too - the result tidy may have moved it round a sliver since); inside it only a real corner is a line,
         # the rows of a round stay soft; and round the cut (two rings of faces from the cutter's and the band's) every
@@ -181,30 +192,21 @@ def mark_cut_borders(me, cutter_attr='mch_cutter_face', inner_angle=INNER_ANGLE,
         # and the part's side, and that corner came out unmarked
         band = np.zeros(nf, bool)
         fin.data.foreach_get('value', band)
-        if nrm is None:
-            nrm = np.empty(nf * 3, np.float32)
-            me.polygons.foreach_get('normal', nrm)
-            nrm = nrm.reshape(-1, 3)
-        d = np.einsum('ij,ij->i', nrm[fa], nrm[fb])
-        sharp = d < math.cos(FIN_MITER)
         inside = band[fa] & band[fb]
         hard[inside] = d[inside] < math.cos(FIN_ROW)
         hard |= band[fa] != band[fb]
-        from . import mesh_io as mio
-        cv = mio.read_corner_verts(me)
-        start, tot = mio.read_face_starts(me)
         near = cut | band
         for _ring in range(2):
             pts = np.zeros(len(me.vertices), bool)
             pts[cv[np.repeat(near, tot)]] = True
             near = np.add.reduceat(pts[cv].astype(np.int32), start) > 0
         hard |= near[fa] & near[fb] & sharp
-        if old_co is not None and len(old_co):
-            co = mio.read_co(me)
-            q = (float(np.linalg.norm(np.ptp(old_co, axis=0))) or 1.0) * 1e-6
-            made = ~np.isin(_pos_keys(co, q), _pos_keys(np.asarray(old_co, np.float64), q))
-            new_f = np.add.reduceat(made[cv].astype(np.int32), start) > 0
-            hard |= (new_f[fa] | new_f[fb]) & sharp
+    if has_old:
+        co = mio.read_co(me)
+        q = (float(np.linalg.norm(np.ptp(old_co, axis=0))) or 1.0) * 1e-6
+        made = ~np.isin(_pos_keys(co, q), _pos_keys(np.asarray(old_co, np.float64), q))
+        ev = mio.read_edge_verts(me)[ea]               # (an edge with a point the cut made - not every edge of a face
+        hard |= (made[ev[:, 0]] | made[ev[:, 1]]) & sharp   # it touched: a cube's own rims stay as they were)
     idx = ea[hard]
     if not len(idx):
         return 0

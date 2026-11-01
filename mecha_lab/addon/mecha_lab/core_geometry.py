@@ -2189,10 +2189,8 @@ def commit_mesh(target, new_mesh, shared_policy='SINGLE'):
         info = ' (shared mesh made single-user for this object)'
     elif me.users > 1:
         info = f' (shared mesh: {me.users} users updated)'
-    old_co = None
-    if new_mesh.attributes.get('.mch_fin_band') is not None:   # (an Edge Finish ran: the part's points before the
-        from . import mesh_io                                    #  cut tell the marks where the cut made new ones)
-        old_co = mesh_io.read_co(me)
+    from . import mesh_io                              # 0.24.95 the part's points before the cut: the marks find the
+    old_co = mesh_io.read_co(me) if len(me.vertices) else None   # rim of the cut by its new points too
     bm = bmesh.new()
     try:
         bm.from_mesh(new_mesh)

@@ -23,7 +23,9 @@ PPU = 100.0
 VIEWS = {'TOP': cg.OrthoProjector(Quaternion(), pixels_per_unit=PPU),
          'FRONT': cg.OrthoProjector(Euler((math.pi / 2, 0, 0)).to_quaternion(), pixels_per_unit=PPU),
          'SIDE': cg.OrthoProjector(Euler((math.pi / 2, 0, math.pi / 2)).to_quaternion(), pixels_per_unit=PPU)}
-HALF = {'TOP': (1.5, 1.5), 'FRONT': (1.5, 0.5), 'SIDE': (1.5, 0.5)}     # (the box seen from each view)
+DX, DY, DZ = (float(v) for v in os.environ.get('MCH_DIMS', '3,3,1').split(','))   # (the box; other shapes: env)
+SIZE = max(DX, DY, DZ)
+HALF = {'TOP': (DX / 2, DY / 2), 'FRONT': (DX / 2, DZ / 2), 'SIDE': (DY / 2, DZ / 2)}     # (seen from each view)
 
 
 def P(x, y):
@@ -34,7 +36,7 @@ me = bpy.data.meshes.new('box')
 bm = bmesh.new()
 bmesh.ops.create_cube(bm, size=1.0)
 for v in bm.verts:
-    v.co = Vector((v.co.x * 3, v.co.y * 3, v.co.z * 1))
+    v.co = Vector((v.co.x * DX, v.co.y * DY, v.co.z * DZ))
 bm.to_mesh(me)
 bm.free()
 ob = bpy.data.objects.new('Box', me)
@@ -61,7 +63,7 @@ def unmarked(m, lo=50.0, slivers=False):
     bad = (ang > lo) & ~em.marked(m)[e]
     if not slivers:
         area = np.empty(len(m.polygons)); m.polygons.foreach_get('area', area)
-        tiny = 1e-5 * 3.0 ** 2           # (a 1 cm square on this 3 m box)
+        tiny = 1e-5 * SIZE ** 2          # (a 1 cm square on a 3 m box)
         bad &= (area[fa] > tiny) & (area[fb] > tiny)
     return int(bad.sum())
 
@@ -109,7 +111,7 @@ for step in range(int(os.environ.get('MCH_STEPS', '28'))):
             msg = ce.perform_closed(C, 'CUT', [ob], [ll.line_loop(C, proj, pts, S.mch_brush)], proj)
         else:                                       # Box Hide: a box hidden, a small cylinder brought back inside
             proj = VIEWS['TOP']
-            cx, cy = random.uniform(-1.2, 1.2), random.uniform(-1.2, 1.2)
+            cx, cy = random.uniform(-DX / 2 + 0.3, DX / 2 - 0.3), random.uniform(-DY / 2 + 0.3, DY / 2 - 0.3)
             w = random.uniform(0.4, 0.8)
             bh.perform(C, [ob], [ce.rect_loop(P(cx - w / 2, cy - w / 2), P(cx + w / 2, cy + w / 2))], proj)
             bh.perform(C, [ob], [circle('TOP', cx, cy, w * 0.2)], proj, restore=True)
@@ -148,7 +150,7 @@ zm = bpy.data.meshes.new_from_object(tmp.evaluated_get(C.evaluated_depsgraph_get
 zc = np.empty(len(zm.vertices) * 3); zm.vertices.foreach_get('co', zc)
 zd = np.array([bvh.find_nearest(Vector(p))[3] for p in zc.reshape(-1, 3)])
 check(f'ZBrush-style CreasePG + Divide x2 ({len(zm.polygons):,} faces): points more than 1 % of the box off it '
-      f'{int((zd > 0.03).sum())}, the farthest {zd.max() / 3 * 100:.2f} % of the box', zd.max() < 0.09, zd.max())
+      f'{int((zd > 0.01 * SIZE).sum())}, the farthest {zd.max() / SIZE * 100:.2f} % of the box', zd.max() < 0.03 * SIZE, zd.max())
 bpy.data.meshes.remove(zm)
 bpy.data.objects.remove(tmp)
 if OUT:
@@ -161,7 +163,7 @@ co = np.empty(len(hp.data.vertices) * 3)
 hp.data.vertices.foreach_get('co', co)
 d = np.array([bvh.find_nearest(Vector(p))[3] for p in co.reshape(-1, 3)])
 check(f'Bake High Poly Divide: {len(hp.data.polygons):,} faces in {dt:.1f} s; points more than 1 % of the box off '
-      f'it: {int((d > 0.03).sum())}, the farthest {d.max() / 3 * 100:.2f} % of the box', d.max() < 0.09, d.max())
+      f'it: {int((d > 0.01 * SIZE).sum())}, the farthest {d.max() / SIZE * 100:.2f} % of the box', d.max() < 0.03 * SIZE, d.max())
 if OUT:
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, f'stress_box_{SEED}_divided.blend'))
 summary()

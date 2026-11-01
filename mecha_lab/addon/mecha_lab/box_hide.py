@@ -423,8 +423,10 @@ def apply(context, ob):
     def _apply():
         with context.temp_override(object=ob, active_object=ob, selected_objects=[ob], selected_editable_objects=[ob]):
             bpy.ops.object.modifier_apply(modifier=mod.name)
+    from . import mesh_io
+    old_co = mesh_io.read_co(ob.data) if len(ob.data.vertices) else None   # (the part's points before: the hole's
     edge_memory.keep_marks(ob.data, _apply)      # 0.24.95 (the part's earlier marks along what the Boolean rebuilt)
-    cg.remove_cutter_attribute(ob.data)          # 0.24.95 -> Edge Memory marks on the hole's edges
+    cg.remove_cutter_attribute(ob.data, old_co)  # 0.24.95 -> Edge Memory marks on the hole's edges (rim by its new points too)
     if vol is not None and not _sharers(vol, ob):
         cg.remove_object_and_mesh(vol)
     return True
