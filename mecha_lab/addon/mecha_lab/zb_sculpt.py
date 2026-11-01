@@ -3551,6 +3551,32 @@ class MCH_OT_zb_alpha_folder(_ZBPoll, bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_zb_image_file(_ZBPoll, bpy.types.Operator):
+    """0.24.95 Load one image file (PNG / JPG / TIF / PSD ...) as the brush alpha - or, from the Texture picker, as the
+    Paint texture (the user: "알파 png 불러오는 창 어딨어?" - only a whole folder could be picked)"""
+    bl_idname = 'mch.zb_image_file'
+    bl_label = 'Load Image'
+    bl_options = {'INTERNAL'}
+    kind: StringProperty(default='ALPHA')
+    filepath: StringProperty(subtype='FILE_PATH')
+    filter_glob: StringProperty(default='*' + ';*'.join(sorted(ALPHA_EXT)), options={'HIDDEN'})
+
+    def invoke(self, context, event):
+        close_popup(context)
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        path = bpy.path.abspath(self.filepath)
+        if not path or not os.path.isfile(path):
+            self.report({'WARNING'}, 'Load Image: pick an image file')
+            return {'CANCELLED'}
+        msg = set_texture(context, path) if self.kind == 'TEXTURE' else set_alpha(context, path)
+        self.report({'INFO'}, msg)
+        _bump()
+        return {'FINISHED'}
+
+
 class MCH_OT_zb_close(bpy.types.Operator):
     """Close the ZBrush menu"""
     bl_idname = 'mch.zb_close'
@@ -3569,7 +3595,7 @@ class MCH_OT_zb_close(bpy.types.Operator):
 CLASSES = (MCH_PG_ZBrush, MCH_OT_zb_action, MCH_OT_zb_brush, MCH_OT_zb_cloth_filter, MCH_OT_zb_append, MCH_OT_zb_subtool, MCH_OT_zb_press,
            MCH_OT_zb_restore_tool, MCH_OT_zb_gizmo, MCH_OT_zb_nav, MCH_OT_zb_viewdrag, MCH_OT_zb_popup, MCH_OT_zb_brush_pick,
            MCH_OT_zb_switch, MCH_OT_zb_tab, MCH_OT_view_toggle, MCH_OT_zb_nav_style, MCH_OT_zb_style, MCH_OT_zb_obj_press, MCH_OT_zb_alpha, MCH_OT_zb_alpha_edit,
-           MCH_OT_zb_alpha_folder, MCH_OT_zb_set, MCH_OT_zb_texture, MCH_OT_zb_texture_folder, MCH_OT_zb_tex_stamp, MCH_OT_zb_close)
+           MCH_OT_zb_alpha_folder, MCH_OT_zb_image_file, MCH_OT_zb_set, MCH_OT_zb_texture, MCH_OT_zb_texture_folder, MCH_OT_zb_tex_stamp, MCH_OT_zb_close)
 _keymaps = []
 
 

@@ -836,6 +836,50 @@ def pending_plate(context):
     return ob if plate_source(ob) is not None else None
 
 
+def live_any(context):
+    """(the active plate still waiting for Apply, 'PLATE' - a Face Extract plate - or 'MRIDGE') / (None, None)."""
+    ob = pending_plate(context)
+    if ob is not None:
+        return ob, 'PLATE'
+    from . import mech_ridge
+    ob = mech_ridge.live_plate(context)
+    return (ob, 'MRIDGE') if ob is not None else (None, None)
+
+
+def swap_profile(context, ob, kind, preset):
+    """0.24.95 (user: "아머 플레이트 할 때 왜 메카 리지랑 다른 거가 바뀌지가 않아?") the live plate ``ob`` drawn again
+    from its own outline and view as ``preset`` when the profile changes kind: Mech Ridge is a plate of its own (a
+    sloped roof, mech_ridge.py) and the other profiles are Face Extract parts - picking one from the other only set
+    the NEXT plate.  The old plate is hidden while the new one is cast (it lands on the part, not on the old
+    plate) and removed once the new one stands; when that fails the old plate stays.  Returns the report."""
+    from . import face_extract as fx
+    from . import mech_ridge
+    src = plate_source(ob) if kind == 'PLATE' else mech_ridge.source(ob)
+    if src is None or not src.get('loops') or src.get('proj') is None:
+        raise cg.CutError('This plate has no saved outline: draw it again with the new profile.')
+    if src.get('through') is not None:
+        raise cg.CutError('A Through plate cannot change to Mech Ridge: draw it again with that profile.')
+    loops = [[tuple(q) for q in lp] for lp in src['loops']]
+    proj = thaw_projector(src['proj'])
+    if proj is None:
+        raise cg.CutError('The view this plate was drawn in is lost: draw it again with the new profile.')
+    was = ob.hide_get()
+    ob.hide_set(True)
+    try:
+        msg = perform_plate(context, loops, proj, preset)
+    except cg.CutError:
+        ob.hide_set(was)
+        raise
+    if kind == 'PLATE':
+        fx._remove_part(ob)
+    else:
+        me = ob.data
+        bpy.data.objects.remove(ob)
+        if me is not None and me.users == 0:
+            bpy.data.meshes.remove(me)
+    return msg
+
+
 def _spacing_update(self, context):
     ob = pending_plate(context)
     if ob is not None and plate_source(ob).get('spacing') != self.spacing:
@@ -873,8 +917,16 @@ class MCH_OT_plate_preset(bpy.types.Operator):
         from . import face_extract as fx
         context.scene.mch_plate.preset = self.preset
         ob = context.active_object
+        live, kind = live_any(context)
+        if live is not None and (kind == 'MRIDGE') != (self.preset == 'MRIDGE'):
+            try:                                # 0.24.95 Mech Ridge <-> the others: the plate drawn again
+                self.report({'INFO'}, swap_profile(context, live, kind, self.preset))
+            except cg.CutError as ex:
+                self.report({'WARNING'}, str(ex).splitlines()[0])
+                return {'CANCELLED'}
+            return {'FINISHED'}
         if self.preset == 'MRIDGE':
-            return {'FINISHED'}                 # its own live plate: the next drawn plate
+            return {'FINISHED'}                 # (a Mech Ridge plate already: nothing to change)
         if ob is not None and is_plate_or_part(ob) and ob.mch_extract.region is not None:
             reg = ob.mch_extract.region
             pts = [v.co for v in reg.vertices]
@@ -969,9 +1021,15 @@ class MCH_OT_plate_apply(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return pending_plate(context) is not None
+        return live_any(context)[0] is not None
 
     def execute(self, context):
+        live, kind = live_any(context)
+        if kind == 'MRIDGE':                    # 0.24.95 (the HUD shows for Mech Ridge plates too)
+            from . import mech_ridge
+            mech_ridge.apply(live)
+            self.report({'INFO'}, 'Applied 1 plate(s)')
+            return {'FINISHED'}
         obs = [o for o in context.selected_objects if plate_source(o) is not None]
         ob = pending_plate(context)
         if ob is not None and ob not in obs:
@@ -990,13 +1048,21 @@ class MCH_OT_plate_cancel(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return pending_plate(context) is not None
+        return live_any(context)[0] is not None
 
     def execute(self, context):
         from . import face_extract as fx
-        ob = pending_plate(context)
-        target = ob.mch_extract.source
-        fx._remove_part(ob)
+        ob, kind = live_any(context)
+        if kind == 'MRIDGE':                    # 0.24.95 (the HUD shows for Mech Ridge plates too)
+            from . import mech_ridge
+            target = bpy.data.objects.get((mech_ridge.source(ob) or {}).get('target', ''))
+            me = ob.data
+            bpy.data.objects.remove(ob)
+            if me is not None and me.users == 0:
+                bpy.data.meshes.remove(me)
+        else:
+            target = ob.mch_extract.source
+            fx._remove_part(ob)
         if target is not None and target.name in context.view_layer.objects:
             target.select_set(True)
             context.view_layer.objects.active = target
@@ -1140,7 +1206,7 @@ def _hud_current(context):
     except (AttributeError, TypeError):
         return None, {}
     from .primitive_hud import anchored, release_anchor
-    ob = pending_plate(context)
+    ob, kind = live_any(context)
     region, rv3d = context.region, context.region_data
     if ob is None or region is None or rv3d is None:
         if ob is None:
@@ -1152,7 +1218,13 @@ def _hud_current(context):
     for c in ob.bound_box:
         q = view3d_utils.location_3d_to_region_2d(region, rv3d, ob.matrix_world @ Vector(c))
         pts.append(None if q is None else (q[0] / ui, q[1] / ui))
-    return ob, anchored('plate', ob.name, region, hud_layout(pts, region.width / ui, region.height / ui))
+    lay = hud_layout(pts, region.width / ui, region.height / ui)
+    if kind == 'MRIDGE':                        # 0.24.95 its own settings are in the panel: Apply / Remove / profile
+        lay = {k: v for k, v in lay.items() if k in MRIDGE_HUD}
+    return ob, anchored('plate', ob.name, region, lay)
+
+
+MRIDGE_HUD = ('apply', 'cancel', 'prev', 'next')
 
 
 class MCH_GT_plate_slider(bpy.types.Gizmo):
@@ -1208,7 +1280,7 @@ class MCH_GGT_plate_hud(bpy.types.GizmoGroup):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == 'OBJECT' and ts.hud_for(context, {'PLATE'}) and pending_plate(context) is not None
+        return context.mode == 'OBJECT' and ts.hud_for(context, {'PLATE'}) and live_any(context)[0] is not None
 
     def setup(self, context):
         self.items = {}

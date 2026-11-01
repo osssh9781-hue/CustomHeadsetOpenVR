@@ -681,6 +681,7 @@ def _image_picker(context, kind, mx, my, region_w, region_h, k, Item):
     cells = [('Mecha', ('enum', 'MECHA'), src == 'MECHA', zb, prop)]
     if (zs.zbrush_alpha_dir() if alpha else zs.zbrush_texture_dir()):
         cells.append(('ZBrush', ('enum', 'ZBRUSH'), src == 'ZBRUSH', zb, prop))
+    cells.append(('File...', ('op', 'mch.zb_image_file', {'kind': kind}), False, None, ''))   # 0.24.95 one image
     cells.append(('Folder...', ('op', 'mch.zb_alpha_folder' if alpha else 'mch.zb_texture_folder', {}),
                   src == 'FOLDER', None, ''))
     cells.append(('Alpha Off' if alpha else 'Texture Off', ('op', pick, {'path': ''}), not cur, None, ''))
