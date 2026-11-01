@@ -41,7 +41,7 @@ check('Each brush has its thumbnail', all(os.path.isfile(os.path.join(icons, zs.
 zs.activate(C, 'Standard')
 b0 = zs.brush(C)
 check('ZBrush feel: the first use gives pen pressure on size + intensity and a close spacing (once per file)',
-      b0.get(zs.TUNED_KEY) == 1 and (not hasattr(b0, 'use_pressure_size') or b0.use_pressure_size)
+      b0.get(zs.TUNED_KEY) == zs.TUNE_VERSION and (not hasattr(b0, 'use_pressure_size') or b0.use_pressure_size)
       and (not hasattr(b0, 'spacing') or b0.spacing == 5))
 b0.strength = 0.77
 zs.activate(C, 'ClayBuildup')

@@ -220,7 +220,12 @@ TUNE_ALL = {'use_pressure_strength': True, 'use_pressure_size': True, 'spacing':
             'use_accumulate': False}                 # 0.24.65 ZBrush Accu off: a stroke does not pile up on itself
 TUNE = {
     'Standard': {'strength': 0.5, 'curve_distance_falloff_preset': 'SMOOTH'},
-    'ClayBuildup': {'strength': 0.55, 'spacing': 6},
+    # 0.24.95 (user: "지브러시에서는 ㄹㅇ 빌드업이 돼서 계속 올라오는데 블렌더는 안 그래"): Accu on - going over the same
+    # place again in one stroke piles up (off: a stroke reaches its height once and stops); the clay plane a little
+    # higher, so each pass adds about the same again instead of levelling off; strength a little lower, so the first
+    # pass is about what it was.  Measured (one stroke back and forth, 40 px): 1 / 3 / 6 passes 7.9 / 21 / 36 mm
+    # (was 6.5 / 9.6 / 9.9 - it stopped rising)
+    'ClayBuildup': {'strength': 0.4, 'spacing': 6, 'use_accumulate': True, 'plane_offset': 0.3},
     'Clay': {'strength': 0.5},
     'DamStandard': {'strength': 0.6},
     'Inflat': {'strength': 0.45},
@@ -238,12 +243,41 @@ TUNE = {
 for _z in CLOTH_BRUSHES:                       # (a cloth stroke keeps its size and strength: pressure would restart the sim)
     TUNE[_z] = {'use_pressure_size': False, 'use_pressure_strength': False}
 TUNED_KEY = 'mch_zb_tuned'
+TUNE_VERSION = 2
+# defaults changed since a brush was tuned by an older version: version -> {brush: {setting: (old, new)}} - a setting
+# is changed only while it still has the old default (a value the user set stays)
+UPGRADE = {2: {'ClayBuildup': {'strength': (0.55, 0.4), 'use_accumulate': (False, True), 'plane_offset': (0.15, 0.3)}}}
+
+
+def _same(a, b):
+    if isinstance(b, float):
+        try:
+            return abs(float(a) - b) < 1e-4
+        except (TypeError, ValueError):
+            return False
+    return a == b
 
 
 def tune(b, zname):
     """ZBrush-like defaults on ``b`` once per file (True when it changed it)."""
-    if b is None or b.get(TUNED_KEY):
+    if b is None:
         return False
+    done = int(b.get(TUNED_KEY) or 0)
+    if done >= TUNE_VERSION:
+        return False
+    if done:                                     # (tuned by an older version: only its changed defaults, if untouched)
+        for ver in range(done + 1, TUNE_VERSION + 1):
+            for k, (old, new) in UPGRADE.get(ver, {}).get(zname, {}).items():
+                if k in b.bl_rna.properties and _same(getattr(b, k), old):
+                    try:
+                        setattr(b, k, new)
+                    except (TypeError, ValueError, AttributeError):
+                        pass
+        try:
+            b[TUNED_KEY] = TUNE_VERSION
+        except (TypeError, AttributeError):
+            pass
+        return True
     vals = dict(TUNE_ALL)
     vals.update(TUNE.get(zname, {}))
     for k, v in vals.items():
@@ -255,7 +289,7 @@ def tune(b, zname):
             except (TypeError, ValueError, AttributeError):
                 pass
     try:
-        b[TUNED_KEY] = 1
+        b[TUNED_KEY] = TUNE_VERSION
     except (TypeError, AttributeError):
         pass
     return True
