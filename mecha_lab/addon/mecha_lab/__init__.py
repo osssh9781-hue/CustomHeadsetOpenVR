@@ -17,7 +17,7 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                cloth_wrinkle, last_used, last_op, live_stack, keymap_check, robot_base, detail_stamp, surface_lasso,
                curve_tube, creature_shell, cloth_sim, box_hide, plate_detail, screw_stamp, wrinkle_lines, cloth_drape, lowpoly, fold_patch,
                creature_plate, belt_maker, creature_spike, creature_scales, flower_plate,
-               surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, bg_jobs, quad_remesh, mesh_fix, tool_recent, actions_menu, key_legend, quick_hud, mecha_menu, symmetry, groups, ui_bars, safety_save, lasso_memory, armor_shell, paint_lab, bake_maps, res_parts, final_export)
+               surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, bg_jobs, quad_remesh, mesh_fix, tool_recent, actions_menu, key_legend, quick_hud, mecha_menu, symmetry, groups, ui_bars, safety_save, lasso_memory, armor_shell, paint_lab, bake_maps, res_parts, final_export, mech_shader)
 import os
 import re
 from pathlib import Path
@@ -2087,6 +2087,7 @@ def _register():
     bake_maps.register()
     res_parts.register()
     final_export.register()
+    mech_shader.register()
     live_queue.register()
     lasso_sketch.register()
     cloth_wrinkle.register()
@@ -2202,6 +2203,7 @@ def _unregister_steps():
         ('cloth_wrinkle', cloth_wrinkle.unregister),
         ('lasso_sketch', lasso_sketch.unregister),
         ('live_queue', live_queue.unregister),
+        ('mech_shader', mech_shader.unregister),
         ('final_export', final_export.unregister),
         ('res_parts', res_parts.unregister),
         ('bake_maps', bake_maps.unregister),
