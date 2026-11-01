@@ -411,11 +411,25 @@ def _flag_volume(vol):
     attr.data.foreach_set('value', [True] * len(me.polygons))
 
 
+def _all_hidden(context, ob):
+    """0.24.95 True when the hiding takes the whole part (its evaluated mesh has no face left)."""
+    try:
+        ev = ob.evaluated_get(context.evaluated_depsgraph_get())
+        return len(ev.data.polygons) == 0
+    except (RuntimeError, ReferenceError, AttributeError):
+        return False
+
+
 def apply(context, ob):
-    """Make the hiding permanent: the modifier is applied (other modifiers stay)."""
+    """Make the hiding permanent: the modifier is applied (other modifiers stay).  0.24.95 refused (CutError, the
+    hiding stays live) when it hides the whole part - a combination fuzz left empty objects behind (a small piece
+    under a big Box Hide, then Apply)."""
     mod = ob.modifiers.get(MOD)
     if mod is None:
         return False
+    if _all_hidden(context, ob):
+        raise cg.CutError(f'Box Hide: all of "{ob.name}" is hidden - applying would leave an empty object '
+                          f'(Show All, or delete the part)')
     vol = volume_of(ob)
     _flag_volume(vol)
     from . import edge_memory
@@ -425,8 +439,9 @@ def apply(context, ob):
             bpy.ops.object.modifier_apply(modifier=mod.name)
     from . import mesh_io
     old_co = mesh_io.read_co(ob.data) if len(ob.data.vertices) else None   # (the part's points before: the hole's
+    old_ev = mesh_io.read_edge_verts(ob.data) if len(ob.data.edges) else None
     edge_memory.keep_marks(ob.data, _apply)      # 0.24.95 (the part's earlier marks along what the Boolean rebuilt)
-    cg.remove_cutter_attribute(ob.data, old_co)  # 0.24.95 -> Edge Memory marks on the hole's edges (rim by its new points too)
+    cg.remove_cutter_attribute(ob.data, old_co, old_ev)  # 0.24.95 -> Edge Memory marks on the hole's edges (rim by its new points too)
     if vol is not None and not _sharers(vol, ob):
         cg.remove_object_and_mesh(vol)
     return True
@@ -438,6 +453,9 @@ def split_off(context, ob):
     vol = volume_of(ob)
     if vol is None:
         return None
+    if _all_hidden(context, ob):                  # 0.24.95 (the rest would be an empty object)
+        raise cg.CutError(f'Box Hide: all of "{ob.name}" is hidden - nothing would be left to split it off from '
+                          f'(Show All, or keep it as it is)')
     piece = ob.copy()
     piece.data = ob.data.copy()
     for coll in ob.users_collection:
@@ -511,8 +529,16 @@ class MCH_OT_box_hide_apply(bpy.types.Operator):
         if context.mode != 'OBJECT':
             bpy.ops.object.mode_set(mode='OBJECT')
         obs = _hidden_selected(context)
-        n = sum(1 for o in obs if apply(context, o))
-        self.report({'INFO'}, f'Box Hide applied on {n} mesh(es)')
+        n, refused = 0, []
+        for o in obs:
+            try:
+                n += int(bool(apply(context, o)))
+            except cg.CutError as ex:                 # 0.24.95 (all of it hidden: kept live)
+                refused.append(str(ex))
+        if refused:
+            self.report({'WARNING'}, f'Box Hide applied on {n} mesh(es) | ' + ' | '.join(refused[:2]))
+        else:
+            self.report({'INFO'}, f'Box Hide applied on {n} mesh(es)')
         return {'FINISHED'}
 
 

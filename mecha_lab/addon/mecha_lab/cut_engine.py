@@ -524,14 +524,15 @@ def _commit_result(target, me, policy):
     return cg.commit_mesh(target, me, policy)
 
 
-def _make_piece(target, mesh, suffix='_Split'):
+def _make_piece(target, mesh, suffix='_Split', old=None):
+    """``old`` (0.24.95): the part's (points, edges) before the cut - for the piece's Edge Memory marks."""
     piece = target.copy()
     piece.data = mesh
     mesh.name = target.data.name + suffix
     piece.name = target.name + suffix
     for coll in target.users_collection:
         coll.objects.link(piece)
-    cg.remove_cutter_attribute(mesh)
+    cg.remove_cutter_attribute(mesh, *(old or (None, None)))
     return piece
 
 
@@ -726,11 +727,15 @@ def _boolean_checked(context, cut, t, cutter, op, groups, projector, near, far, 
         if 'whole object' not in str(ex) and 'does not intersect' not in str(ex):
             raise
         inside, total, facts = cut_diagnosis(t, groups, projector, near, far, invert)
-        if 'does not intersect' in str(ex):          # 0.24.58 the quick box test says so before any Boolean
-            msg = f'The shape does not intersect "{t.name}"; nothing was changed. [{facts}]'
-        elif op == 'DIFFERENCE' and total and inside == total:
+        if op == 'DIFFERENCE' and total and inside == total:   # 0.24.95 first: the part wholly inside the shape
+            # (no face crossed - the quick test said "does not intersect" while every point was covered; combo fuzz)
             msg = (f'The drawn shape covers the whole of "{t.name}", so cutting would delete all of it; '
                    f'nothing was changed. Draw over only part of the object. [{facts}]')
+        elif op == 'INTERSECT' and total and inside == total:   # (a Split / Keep inside over the whole part)
+            msg = (f'The drawn shape covers the whole of "{t.name}" - there is nothing to split off; nothing was '
+                   f'changed. Draw over only part of the object. [{facts}]')
+        elif 'does not intersect' in str(ex):        # 0.24.58 the quick box test says so before any Boolean
+            msg = f'The shape does not intersect "{t.name}"; nothing was changed. [{facts}]'
         elif op == 'INTERSECT' and inside == 0:
             msg = f'The shape does not intersect "{t.name}"; nothing was changed. [{facts}]'
         else:
@@ -920,10 +925,13 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
         junk = 0
         crossing = []
         for t, me in pieces:
-            cg.tidy_result(me, cg.mesh_size(t.data), before=t.data)          # 0.24.83 no slivers / folds / specks left behind
+            cg.tidy_result(me, cg.mesh_size(t.data), before=t.data, warped=True)          # 0.24.83 no slivers / folds / specks left behind
         capped = mode != 'SPLIT' or cut.split_cap
+        from . import mesh_io as mio                     # 0.24.95 each split part's points + edges before the cut: the
+        olds = {t.name: (mio.read_co(t.data), mio.read_edge_verts(t.data))     # new piece's marks find its rim and
+                for t, _me in pieces if len(t.data.vertices)}                  # the old points its Boolean joined anew
         for k, (t, me) in enumerate(results):
-            cg.tidy_result(me, cg.mesh_size(t.data), before=t.data)
+            cg.tidy_result(me, cg.mesh_size(t.data), before=t.data, warped=True)
             _shut_holes(t, me, capped)
             if cg.non_manifold_edge_count(me) and not cg.non_manifold_edge_count(t.data):
                 n = cg.self_overlaps(t.data)                  # 0.24.83 a closed part whose cut came out broken: why
@@ -945,7 +953,7 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
                 bpy.data.meshes.remove(me)
                 continue
             _shut_holes(t, me, capped)
-            new_pieces.append(_make_piece(t, me))
+            new_pieces.append(_make_piece(t, me, old=olds.get(t.name)))
         for p in new_pieces:
             p.select_set(True)
         verb = {'CUT': 'Kept inside' if invert else 'Cut',
@@ -963,7 +971,9 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
                 suffix = ' | Edge Finish skipped (uncapped or Live cut)'
             elif sum(edge_counts) == 0:
                 from . import rim_sweep
-                suffix = ' | WARNING: ' + (rim_sweep.LAST.get('skipped') or 'Edge Finish found 0 new edges; no bevel/chamfer')
+                fin_skipped = any(' skipped: the edges next to the cut' in n for n in cg.FINISH_NOTES)   # 0.24.95
+                suffix = '' if fin_skipped else ' | WARNING: ' + (rim_sweep.LAST.get('skipped') or
+                                                             'Edge Finish found 0 new edges; no bevel/chamfer')
             else:
                 suffix = f' | {cut.edge_finish}: {sum(edge_counts)} newly cut edges'
         took = time.perf_counter() - t_start           # 0.24.58 a slow cut says how long and which solver
@@ -1145,17 +1155,20 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
                                   (' Failed: ' + '; '.join(failed) if failed else ''))
             capped = cut.line_cap and (mode != 'SPLIT' or cut.split_cap)
             for t, me in results:
-                cg.tidy_result(me, cg.mesh_size(t.data), before=t.data)
+                cg.tidy_result(me, cg.mesh_size(t.data), before=t.data, warped=True)
                 _shut_holes(t, me, capped)
+            from . import mesh_io as mio                 # 0.24.95 (the pieces' Edge Memory: the part before the cut)
+            olds = {t.name: (mio.read_co(t.data), mio.read_edge_verts(t.data)) for t, _me in pieces
+                    if len(t.data.vertices)}
             infos = [cg.commit_mesh(t, me, cut.shared_mesh) for t, me in results]
             for t, me in pieces:
                 temp.remove(me)
-                cg.tidy_result(me, cg.mesh_size(t.data), before=t.data)
+                cg.tidy_result(me, cg.mesh_size(t.data), before=t.data, warped=True)
                 if cg.is_junk(me, cg.mesh_size(t.data), not capped):
                     bpy.data.meshes.remove(me)
                     continue
                 _shut_holes(t, me, capped)
-                _make_piece(t, me).select_set(True)
+                _make_piece(t, me, old=olds.get(t.name)).select_set(True)
             suffix = ''
             if mode == 'SPLIT':
                 suffix = _side_report(cut, side_counts) + (' | gap' if cut.split_mode == 'GAP' else '')

@@ -830,12 +830,60 @@ def boolean_result(context, target, cutter, operation, solver='AUTO',
     lost the creases of earlier cuts with every cut from the side - ``edge_memory.carry_marks``)."""
     got = _boolean_result_any(context, target, cutter, operation, solver, hole_tolerant, allow_empty, hipoly)
     try:
+        if got is not None and got[0] is not None:
+            split_warped(got[0], mesh_size(target.data) if getattr(target, 'type', '') == 'MESH' else None)
+    except Exception as ex:                                   # (a tidy-up: never fail a cut over it)
+        print('Mecha: warped faces:', ex)
+    try:
         if got is not None and got[0] is not None and getattr(target, 'type', '') == 'MESH':
             from . import edge_memory
             edge_memory.carry_marks(target.data, got[0])
     except Exception as ex:                                   # (memory is a bonus: never fail a cut over it)
         print('Mecha: edge memory (boolean):', ex)
     return got
+
+
+WARP_TOL = 0.005          # a face bent more than this share of the part off its own plane is cut into triangles
+
+
+def split_warped(me, size=None, tol=WARP_TOL):
+    """0.24.95 (combo fuzz: 18 of 100 random parts) the Boolean's n-gons that are not flat - the Manifold solver
+    joins its triangles back into faces, and a face round a pocket came out with one corner lifted a fifth of the
+    part off the floor (a 13-gon: what it covers was a guess, and Divide bulged 3 % of the part there).  Such a face
+    is cut into triangles inside its own outline; flat faces are left as they are.  Returns how many were cut."""
+    from . import mesh_io as mio
+    nf = len(me.polygons)
+    if nf == 0:
+        return 0
+    start, tot = mio.read_face_starts(me)
+    if not (tot > 3).any():
+        return 0
+    co = mio.read_co(me)
+    cv = mio.read_corner_verts(me)
+    own = float(np.ptp(co, axis=0).max()) if len(co) else 0.0   # (a small Split piece: bent for ITS size)
+    size = min(size, own) if size else own
+    if size <= 0.0:
+        return 0
+    nrm = np.empty(nf * 3)
+    me.polygons.foreach_get('normal', nrm)
+    nrm = nrm.reshape(-1, 3)
+    fid = np.repeat(np.arange(nf), tot)
+    cen = np.add.reduceat(co[cv], start) / tot[:, None]
+    dev = np.maximum.reduceat(np.abs(np.einsum('ij,ij->i', co[cv] - cen[fid], nrm[fid])), start)
+    bent = np.flatnonzero((tot > 3) & (dev > tol * size))
+    if not len(bent):
+        return 0
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        bm.faces.ensure_lookup_table()
+        bmesh.ops.triangulate(bm, faces=[bm.faces[i] for i in bent.tolist()], quad_method='BEAUTY',
+                              ngon_method='BEAUTY')
+        bm.to_mesh(me)
+    finally:
+        bm.free()
+    me.update()
+    return int(len(bent))
 
 
 def _boolean_result_any(context, target, cutter, operation, solver='AUTO',
@@ -1507,11 +1555,25 @@ def _spikes_one_by_one(bm, limit=64, lay=None):
     return bm, done
 
 
-def tidy_result(me, ref_size=None, shards=True, slivers=True, before=None, flip=True):
+def tidy_result(me, ref_size=None, shards=True, slivers=True, before=None, flip=True, warped=False):
     """``_tidy_result``; 0.24.95 the Edge Memory marks on the edges it rebuilds are put back
-    (``edge_memory.keep_marks``: dissolving a sliver at a groove's end took the crease off the part's own corner)."""
+    (``edge_memory.keep_marks``: dissolving a sliver at a groove's end took the crease off the part's own corner).
+    ``warped`` (0.24.95, a cut's result): faces bent off their plane cut into triangles (``split_warped``) - not for a
+    remesh / decimate, whose quads on a curved part are bent by design."""
     from . import edge_memory
-    return edge_memory.keep_marks(me, lambda: _tidy_result(me, ref_size, shards, slivers, before, flip))
+
+    def run():
+        out = _tidy_result(me, ref_size, shards, slivers, before, flip)
+        if warped:                  # 0.24.95 (combo fuzz) a needle dissolved into its neighbour across a corner, or an
+            try:                    # Edge Finish's band end, left a face bent off its plane: cut into triangles
+                n = split_warped(me, ref_size)
+            except (RuntimeError, ValueError, AttributeError) as ex:
+                print('Mecha: warped faces:', ex)
+                n = 0
+            if isinstance(out, dict) and n:
+                out['warped'] = n
+        return out
+    return edge_memory.keep_marks(me, run)
 
 
 def _tidy_result(me, ref_size=None, shards=True, slivers=True, before=None, flip=True):
@@ -1860,6 +1922,7 @@ def _face_flag_layer(bm):
 
 
 FINISH_NOTES = []   # B10: per-operation notes about widths Blender had to limit
+FINISH_MIN_SHARE = 0.05   # 0.24.95 a finish clamped below this share of its width is skipped (see _finish_new_edges)
 
 
 def _bevel_limit(edges):
@@ -2026,14 +2089,47 @@ def drop_custom_normals(mesh):
     return False
 
 
-def pulled_back(bm, before, verts, width):
+def _inside(bvh, p, size):
+    """``p`` inside the closed shape ``bvh``: an odd number of its faces crossed by a ray from it (two slanted rays
+    must agree, so a ray through an edge or a corner does not decide)."""
+    votes = []
+    for d in (Vector((0.5773, 0.5774, 0.5774)), Vector((-0.4082, 0.8165, -0.4083))):
+        n, o = 0, p.copy()
+        step = max(size, 1e-6) * 1e-6
+        for _ in range(256):
+            hit, _nrm, _i, dist = bvh.ray_cast(o, d)
+            if hit is None:
+                break
+            n += 1
+            o = hit + d * step
+        votes.append(n % 2 == 1)
+    return votes[0] and votes[1]
+
+
+def pulled_back(bm, before, verts, width, closed=False):
     """Points of ``verts`` that lie outside the shape ``before`` (a BVH of it) go onto its nearest surface.
-    Returns how many moved."""
+    ``closed`` (0.24.95): a point whose nearest surface point is on an EDGE of the shape (the offset lies along the
+    face found, its dot with that normal 0) is tested by rays too, when ``bm`` has no open edge - a combination
+    fuzz: a Bevel on a cut through a box pushed two points 1.2 % of the box below its floor, in the plane of its end
+    face, and the normal test kept them.  (The closed check and the size are looked at only for such a point: a
+    loop over every point of a dense part would cost a second per cut.)  Returns how many moved."""
     moved = 0
     tol = max(width * 1e-3, 1e-7)
+    shape = []                                   # (closed, size) once a point needs the ray test
     for v in {v for v in verts if v.is_valid}:
         loc, nrm, _i, _d = before.find_nearest(v.co)
-        if loc is not None and (v.co - loc).dot(nrm) > tol:
+        if loc is None:
+            continue
+        off = v.co - loc
+        out = off.dot(nrm) > tol
+        if not out and closed and off.length > max(tol, 1e-3 * width) and abs(off.dot(nrm)) < 0.5 * off.length:
+            if not shape:
+                pts = [x.co for x in bm.verts]
+                shape.append(all(e.is_manifold for e in bm.edges))
+                shape.append(max(max(p[i] for p in pts) - min(p[i] for p in pts) for i in range(3)) if pts else 0.0)
+            if shape[0]:
+                out = not _inside(before, v.co, shape[1])
+        if out:
             v.co = loc
             moved += 1
     return moved
@@ -2107,6 +2203,14 @@ def _finish_new_edges(mesh, mode='NONE', width=0.01, segments=3, profile=0.5, cl
                 limit = _bevel_limit(edges)
             else:
                 work.free()
+        if clamp and limit < FINISH_MIN_SHARE * width:
+            # 0.24.95 a combination fuzz (seed 42): a 0.04 bevel clamped to 0.00004 made a band of zero-width faces,
+            # the result tidy dissolved it and merged the hole's curved wall into one 56-sided face bent 36 % of the
+            # part's size - Divide then spanned a sheet across the hole.  So little of the finish is worth nothing:
+            # the plain cut is kept and the message says so
+            FINISH_NOTES.append(f'{label + " " if label else ""}{mode.lower()} skipped: the edges next to the cut '
+                                f'allow only {limit:.2g} of the {width:.4g} width (the plain cut kept)')
+            return 0
         if clamp and width > limit:
             FINISH_NOTES.append(f'{label + " " if label else ""}{mode.lower()} width {width:.4g} limited to '
                                 f'about {limit:.4g} by short neighbouring edges (Clamp Overlap ON)')
@@ -2123,7 +2227,7 @@ def _finish_new_edges(mesh, mode='NONE', width=0.01, segments=3, profile=0.5, cl
         # 0.24.42 where the cut meets another (bevelled) edge of the part, Blender's bevel can slide points OUT of
         # the part - dark spikes sticking out at the ends of a notch.  A bevel only takes material away: any
         # point that ended outside the old shape goes back onto its surface.
-        pulled_back(bm, before, res.get('verts', []), width)
+        pulled_back(bm, before, res.get('verts', []), width, closed=True)
         if crisp:
             crisp_shading(bm, res.get('faces', []), mode == 'BEVEL' and segments > 1)
         bm.normal_update()
@@ -2159,14 +2263,14 @@ def flat_cut_faces(mesh):
     return len(cut)
 
 
-def remove_cutter_attribute(mesh, old_co=None):
+def remove_cutter_attribute(mesh, old_co=None, old_ev=None):
     """Every copy of the cutter flag goes (0.24.42: a Geometry Nodes result can carry it twice, on faces and on
     points - a copy left behind made the NEXT cut finish this cut's border again).  0.24.95 right before it goes,
     the flag becomes Edge Memory marks (the cut's outline + the cutter's own creases: edge_memory; ``old_co`` = the
-    part's points before the cut, when known)."""
+    part's points before the cut, when known; ``old_ev`` its edges' point pairs)."""
     try:
         from . import edge_memory
-        edge_memory.mark_cut_borders(mesh, CUTTER_ATTR, old_co=old_co)
+        edge_memory.mark_cut_borders(mesh, CUTTER_ATTR, old_co=old_co, old_ev=old_ev)
     except Exception as ex:                                   # memory is a bonus: never fail a cut over it
         print('Mecha: edge memory:', ex)
     for name in (CUTTER_ATTR, '.mch_fin_band'):              # (0.24.95 + the Edge Finish band flag)
@@ -2191,6 +2295,7 @@ def commit_mesh(target, new_mesh, shared_policy='SINGLE'):
         info = f' (shared mesh: {me.users} users updated)'
     from . import mesh_io                              # 0.24.95 the part's points before the cut: the marks find the
     old_co = mesh_io.read_co(me) if len(me.vertices) else None   # rim of the cut by its new points too
+    old_ev = mesh_io.read_edge_verts(me) if len(me.edges) else None  # (+ the old points the Boolean joined anew)
     bm = bmesh.new()
     try:
         bm.from_mesh(new_mesh)
@@ -2203,7 +2308,7 @@ def commit_mesh(target, new_mesh, shared_policy='SINGLE'):
             me[key] = new_mesh[key]                          # it: the part's old count made the jump look like a
     for mat in list(new_mesh.materials)[len(me.materials):]:  # remesh smearing the marks, and they were all wiped
         me.materials.append(mat)
-    remove_cutter_attribute(me, old_co)
+    remove_cutter_attribute(me, old_co, old_ev)
     me.update()
     return info
 

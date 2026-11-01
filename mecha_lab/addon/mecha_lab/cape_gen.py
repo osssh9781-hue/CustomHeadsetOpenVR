@@ -136,6 +136,9 @@ def _body(context, target):
         polys = [tuple(p.vertices) for p in me.polygons]
     finally:
         ev.to_mesh_clear()
+    if not polys:                       # 0.24.95 (combo fuzz): a part a Box Hide hides all of - nothing to draw on
+        from .core_geometry import CutError
+        raise CutError(f'"{target.name}" has no faces to work on (a Box Hide may hide all of it - Show All first).')
     lo = Vector([min(v[k] for v in verts) for k in range(3)])
     hi = Vector([max(v[k] for v in verts) for k in range(3)])
     data = (BVHTree.FromPolygons(verts, polys), lo, hi)

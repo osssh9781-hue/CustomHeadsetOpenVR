@@ -710,6 +710,74 @@ def _subd_round_safe(me, hard, levels, tries=3):
     return n_c, folds
 
 
+CORNER_TURN = math.radians(30.0)
+
+
+def _crease_corners(me, hard, turn=CORNER_TURN):
+    """0.24.95 the points where a creased line turns (more than ``turn``) or ends get a vertex crease (a corner:
+    Catmull-Clark keeps it).  A point on exactly two creased edges is otherwise a crease point - the subdivision
+    smooths the line THROUGH it like a curve: a stair-stepped rim (a cylinder's facet with the edges of later cuts
+    along it, the combination fuzz seed 42) was rounded off 12 % of the part's size.  Returns the number of corners."""
+    from . import mesh_io as mio
+    nv = len(me.vertices)
+    hard = np.asarray(hard, bool)
+    if nv == 0 or not hard.any():
+        return 0
+    ev = mio.read_edge_verts(me)[hard]
+    co = mio.read_co(me)
+    deg = np.bincount(ev.ravel(), minlength=nv)
+    corner = (deg == 1) | (deg >= 3)
+    two = np.flatnonzero(deg == 2)
+    if len(two):
+        ends = np.concatenate([ev, ev[:, ::-1]])              # (v, other) for both ends of every creased edge
+        order = np.argsort(ends[:, 0], kind='stable')
+        ends = ends[order]
+        first = np.searchsorted(ends[:, 0], two)
+        d1 = co[ends[first, 1]] - co[two]
+        d2 = co[ends[first + 1, 1]] - co[two]
+        n1 = np.linalg.norm(d1, axis=1)
+        n2 = np.linalg.norm(d2, axis=1)
+        ok = (n1 > 0) & (n2 > 0)
+        cosang = np.full(len(two), -1.0)
+        cosang[ok] = np.einsum('ij,ij->i', d1[ok], d2[ok]) / (n1[ok] * n2[ok])
+        corner[two[cosang > -math.cos(turn)]] = True       # (a straight line: the two edges point opposite ways)
+    a = me.attributes.get('crease_vert')
+    if a is not None and (a.domain != 'POINT' or a.data_type != 'FLOAT'):
+        me.attributes.remove(a)
+        a = None
+    if a is None:
+        a = me.attributes.new('crease_vert', 'FLOAT', 'POINT')
+    a.data.foreach_set('value', corner.astype(np.float32))
+    return int(corner.sum())
+
+
+def _convex_quad(f):
+    """Every corner of quad ``f`` turns the same way round its normal (its corner mean is inside it)."""
+    vs = [v.co for v in f.verts]
+    n = f.normal
+    return all((vs[i] - vs[i - 1]).cross(vs[(i + 1) % 4] - vs[i]).dot(n) > 0.0 for i in range(4))
+
+
+def _cut_first(me):
+    """The faces Divide cuts into triangles first: n-gons and concave quads (``_convex_quad``, in numpy)."""
+    from . import mesh_io as mio
+    nf = len(me.polygons)
+    if nf == 0:
+        return np.zeros(0, np.int64)
+    start, tot = mio.read_face_starts(me)
+    q = np.flatnonzero(tot == 4)
+    bad = tot > 4
+    if len(q):
+        co = mio.read_co(me)
+        cv = mio.read_corner_verts(me)
+        nrm = np.empty(nf * 3)
+        me.polygons.foreach_get('normal', nrm)
+        p = co[cv[start[q][:, None] + np.arange(4)]]
+        turn = np.cross(p - np.roll(p, 1, axis=1), np.roll(p, -1, axis=1) - p)
+        bad[q] = ~(np.einsum('qkj,qj->qk', turn, nrm.reshape(-1, 3)[q]) > 0.0).all(1)
+    return np.flatnonzero(bad)
+
+
 def _subd_round(me, hard, levels):
     """0.24.95 ``me`` (in place) through ``levels`` of Catmull-Clark with ``hard`` creased (1.0) and every other edge
     smooth, on the limit surface; Sharp = the creased edges of the result.  Returns the number of creased edges."""
@@ -721,13 +789,18 @@ def _subd_round(me, hard, levels):
     if a is None:
         a = me.attributes.new('crease_edge', 'FLOAT', 'EDGE')
     a.data.foreach_set('value', np.asarray(hard[:ne], np.float32))
+    _crease_corners(me, hard[:ne])
     # an n-gon is cut into triangles first, inside its own outline: Catmull-Clark puts an n-gon's face point at the
     # mean of its corners, which for a long concave n-gon (a curved blade's side, the user's MCH_Base.189) lies
     # OUTSIDE it - the new faces fold over and the part twists (the crease layer rides along; new diagonals 0)
+    # 0.24.95 (combo fuzz) a concave quad too: a window cut next to a part's side left a spike quad (two of its
+    # sides doubling back) whose corner mean lay in the window - Divide bulged 5 % of the part into it
     bm = bmesh.new()
     try:
+        cut = _cut_first(me)
         bm.from_mesh(me)
-        big = [f for f in bm.faces if len(f.verts) > 4]
+        bm.faces.ensure_lookup_table()
+        big = [bm.faces[i] for i in cut.tolist()]
         if big:
             bmesh.ops.triangulate(bm, faces=big, quad_method='BEAUTY', ngon_method='BEAUTY')
             bm.to_mesh(me)
@@ -974,6 +1047,9 @@ def build(context, ob, target_faces=1_000_000, rounding=1.0, fillet=0.0, angle=m
     if ob.type != 'MESH' or len(ob.data.polygons) < MIN_FACES:
         raise RuntimeError('needs a mesh with faces')
     me = _evaluated_copy(context, ob)
+    if len(me.polygons) < MIN_FACES:                 # 0.24.95 (a combination fuzz: a part wholly under a live Box
+        bpy.data.meshes.remove(me)                   #  Hide came out as a 0-face "high poly")
+        raise RuntimeError('nothing to bake: the part\'s modifiers (a Box Hide ...) leave no faces')
     try:
         faces0 = len(me.polygons)
         levels = levels_for(faces0, target_faces)

@@ -143,12 +143,15 @@ def _edge_faces(me):
     return e_sorted, f_sorted, starts, ends
 
 
-def mark_cut_borders(me, cutter_attr='mch_cutter_face', inner_angle=INNER_ANGLE, old_co=None):
+def mark_cut_borders(me, cutter_attr='mch_cutter_face', inner_angle=INNER_ANGLE, old_co=None, old_ev=None):
     """The cutter flag (faces) turned into edge marks: cutter / original borders + the cutter's own creases.
     ``old_co`` (0.24.95): the part's points before the cut - every edge sharper than a miter with a point the cut
     made is a line too (a random-holes stress test: the cutter flag can be lost whole - an Edge Finish, a
     line groove through earlier holes - and the rim of that cut came out unmarked).  Returns the number of edges
-    marked now (0 when there is nothing to go by, or nothing was cut)."""
+    marked now (0 when there is nothing to go by, or nothing was cut).
+    ``old_ev`` (0.24.95, the old edges' point pairs): an edge sharper than a miter between two OLD points that was
+    not an edge before is a line too - the Boolean rebuilt the faces round the cut and joined old points anew
+    (a combination fuzz: a pocket next to a saw-toothed carve rim left 16 such corners without a crease)."""
     from . import mesh_io as mio
     attr = me.attributes.get(cutter_attr)
     nf = len(me.polygons)
@@ -207,6 +210,15 @@ def mark_cut_borders(me, cutter_attr='mch_cutter_face', inner_angle=INNER_ANGLE,
         made = ~np.isin(_pos_keys(co, q), _pos_keys(np.asarray(old_co, np.float64), q))
         ev = mio.read_edge_verts(me)[ea]               # (an edge with a point the cut made - not every edge of a face
         hard |= (made[ev[:, 0]] | made[ev[:, 1]]) & sharp   # it touched: a cube's own rims stay as they were)
+        cand = np.flatnonzero(sharp & ~hard)          # (only the sharp edges not marked yet are looked up: a full
+        if old_ev is not None and len(old_ev) and len(cand):   # isin over 1.5M edges took 1.5 s, this 0.05 s)
+            ok = _pos_keys(np.asarray(old_co, np.float64), q)
+            nk = _pos_keys(co, q)
+            old_ev = np.asarray(old_ev)
+            op = np.sort(_pair_keys(ok[old_ev[:, 0]], ok[old_ev[:, 1]]))
+            cp = _pair_keys(nk[ev[cand, 0]], nk[ev[cand, 1]])
+            at = np.clip(np.searchsorted(op, cp), 0, len(op) - 1)
+            hard[cand[op[at] != cp]] = True
     idx = ea[hard]
     if not len(idx):
         return 0
