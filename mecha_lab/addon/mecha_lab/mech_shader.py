@@ -28,7 +28,7 @@ from bpy.props import EnumProperty, FloatProperty, FloatVectorProperty, PointerP
 
 KEY = 'mch_mech'                    # the material's settings (PropertyGroup on bpy.types.Material)
 CURV = 'mch_curv'
-VERSION = 3                          # (the node tree's layout: an older one is made anew)
+VERSION = 4                          # (the node tree's layout: an older one is made anew)
 MAP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mech_maps')
 
 # slot -> (label, tiles per unit (x Map Scale), colour map (sRGB) or data, [(id, label)])
@@ -69,15 +69,19 @@ MAPS = {
 }
 MAP_KEYS = tuple(MAPS)
 # what each emission map glows on: (constant, edges, crevices, scratches, its own image)
+# maps the material always uses (not stepped): dust on what faces up, grime streaks down the walls, a broad colour
+# variation - (slot, map, tiles per unit)
+FIXED = {'dust': ('dirt', 'DUST', 1.0), 'streak': ('dirt', 'STREAKS', 1.0), 'vary': ('rough', 'PATCHY', 0.35)}
 EMIT_SOURCE = {'FULL': (1, 0, 0, 0, 0), 'EDGES': (0, 1, 0, 0, 0), 'CREVICES': (0, 0, 1, 0, 0),
                'SCRATCH': (0, 0, 0, 1, 0)}
 
 # ---- material presets: every slider + the maps
-BASE = dict(base_color=(0.55, 0.56, 0.58), metallic=1.0, roughness=0.35, rough_amount=0.35, paint=0.0,
+BASE = dict(base_color=(0.77, 0.78, 0.78), metallic=1.0, roughness=0.35, rough_amount=0.35, paint=0.0,
             paint_color=(0.55, 0.06, 0.04), paint_rough=0.45, edge_wear=0.0, scratches=0.0, rust=0.0,
             rust_scratch=0.0, rust_color=(1.0, 1.0, 1.0), dirt=0.0, dirt_color=(0.16, 0.12, 0.08), snow=0.0,
             emission=0.0, emit_color=(0.1, 0.7, 1.0), cloth=0.0, bump=1.0, coat=0.0, ao=0.5,
             h_base=0.3, h_scratch=0.6, h_chip=0.5, h_rust=0.6, h_dirt=0.4, h_snow=0.7, h_weave=0.7,
+            aniso=0.0, dust=0.0, streaks=0.0, variation=0.3,
             base_map='MOTTLED', rough_map='SMUDGE', chip_map='FLAKES', scratch_map='FINE', rust_map='PATCHES',
             dirt_map='GRIME', snow_map='POWDER', emit_map='EDGES', weave_map='CANVAS')
 
@@ -97,27 +101,27 @@ def _m(**kw):
 
 
 PRESETS = [
-    ('PLASTIC', 'Glossy Plastic', _m(coat=0.3, h_base=0.15, base_color=(0.85, 0.85, 0.82), metallic=0.0, roughness=0.25,
-                                     rough_amount=0.15, base_map='FLAT', rough_map='FINE')),
+    ('PLASTIC', 'Glossy Plastic', _m(coat=0.3, h_base=0.15, variation=0.1, base_color=(0.85, 0.85, 0.82), metallic=0.0,
+                                     roughness=0.25, rough_amount=0.15, base_map='FLAT', rough_map='FINE')),
     ('PLASTIC_MATTE', 'Matte Plastic', _m(h_base=0.3, base_color=(0.12, 0.13, 0.14), metallic=0.0, roughness=0.6,
                                           rough_amount=0.25, base_map='FLAT', rough_map='GRUNGE')),
     ('RUBBER', 'Rubber', _m(h_base=0.4, base_color=(0.04, 0.04, 0.045), metallic=0.0, roughness=0.85, rough_amount=0.2,
                             base_map='FLAT', rough_map='FINE')),
-    ('STEEL', 'Steel', _m(h_base=0.25, base_color=(0.56, 0.57, 0.58), roughness=0.3, base_map='MOTTLED',
+    ('STEEL', 'Steel', _m(h_base=0.25, base_color=(0.77, 0.78, 0.78), roughness=0.3, base_map='MOTTLED',
                           rough_map='SMUDGE')),
-    ('BRUSHED', 'Brushed Aluminium', _m(h_base=0.5, base_color=(0.78, 0.79, 0.8), roughness=0.28, rough_amount=0.45,
-                                        base_map='BRUSHED', rough_map='BRUSHED')),
-    ('GUNMETAL', 'Gunmetal', _m(h_base=0.2, coat=0.15, base_color=(0.16, 0.17, 0.18), roughness=0.38,
+    ('BRUSHED', 'Brushed Aluminium', _m(h_base=0.1, aniso=0.75, base_color=(0.91, 0.92, 0.92), roughness=0.3,
+                                        rough_amount=0.45, base_map='BRUSHED', rough_map='BRUSHED')),
+    ('GUNMETAL', 'Gunmetal', _m(h_base=0.2, coat=0.15, base_color=(0.42, 0.43, 0.45), roughness=0.38,
                                 base_map='MOTTLED', rough_map='FINGER')),
-    ('CAST', 'Cast Iron', _m(h_base=0.9, bump=1.2, base_color=(0.3, 0.3, 0.31), roughness=0.65, rough_amount=0.45,
-                             base_map='CAST', rough_map='GRUNGE')),
-    ('FORGED', 'Forged Steel', _m(h_base=1.0, bump=1.2, base_color=(0.45, 0.46, 0.47), roughness=0.4, base_map='FORGED',
+    ('CAST', 'Cast Iron', _m(h_base=0.9, bump=1.2, dust=0.25, base_color=(0.62, 0.62, 0.62), roughness=0.65,
+                             rough_amount=0.45, base_map='CAST', rough_map='GRUNGE')),
+    ('FORGED', 'Forged Steel', _m(h_base=1.0, bump=1.2, base_color=(0.7, 0.7, 0.71), roughness=0.4, base_map='FORGED',
                                   rough_map='WORN')),
-    ('HEAT', 'Exhaust Metal', _m(h_base=0.2, base_color=(0.6, 0.58, 0.56), roughness=0.35, base_map='HEAT',
+    ('HEAT', 'Exhaust Metal', _m(h_base=0.2, streaks=0.3, base_color=(0.8, 0.78, 0.75), roughness=0.35, base_map='HEAT',
                                  rough_map='SMUDGE')),
-    ('BRASS', 'Brass', _m(h_base=0.3, base_color=(0.78, 0.6, 0.28), roughness=0.3, base_map='MOTTLED',
+    ('BRASS', 'Brass', _m(h_base=0.3, base_color=(0.96, 0.88, 0.62), roughness=0.3, base_map='MOTTLED',
                           rough_map='SMUDGE')),
-    ('COPPER', 'Copper Patina', _m(h_base=0.6, base_color=(0.85, 0.45, 0.3), roughness=0.35, base_map='PATINA',
+    ('COPPER', 'Copper Patina', _m(h_base=0.6, base_color=(0.98, 0.8, 0.72), roughness=0.35, base_map='PATINA',
                                    rough_map='PATCHY')),
     ('CARBON', 'Carbon Fibre', _m(coat=1.0, h_base=0.5, base_color=(0.3, 0.3, 0.32), metallic=0.0, roughness=0.2,
                                   base_map='CARBON', rough_map='CLEAN')),
@@ -131,14 +135,16 @@ PRESETS = [
                                         rough_map='SMUDGE')),
     ('RUSTY', 'Rusty Scratches', _m(h_rust=0.7, paint=1.0, paint_color=(0.2, 0.28, 0.2), edge_wear=0.25, scratches=0.55,
                                     rust=0.15, rust_scratch=0.85, scratch_map='FINE', rust_map='SPOTS')),
-    ('RUSTED', 'Rusted Steel', _m(h_rust=0.9, bump=1.3, roughness=0.5, rust=0.6, rust_map='HEAVY', dirt=0.2)),
-    ('DIRTY', 'Dirty Metal', _m(h_dirt=0.5, roughness=0.45, dirt=0.55, dirt_map='GRIME', scratches=0.2)),
-    ('MUDDY', 'Muddy Paint', _m(h_dirt=0.9, bump=1.2, paint=1.0, paint_color=(0.35, 0.38, 0.28), edge_wear=0.2,
-                                dirt=0.75, dirt_map='MUD')),
+    ('RUSTED', 'Rusted Steel', _m(h_rust=0.9, bump=1.3, base_color=(0.5, 0.5, 0.5), roughness=0.6, rust=0.7,
+                                  rust_map='HEAVY', dirt=0.3, streaks=0.5)),
+    ('DIRTY', 'Dirty Metal', _m(h_dirt=0.5, roughness=0.45, dirt=0.55, dirt_map='GRIME', scratches=0.2, streaks=0.45,
+                                dust=0.35)),
+    ('MUDDY', 'Muddy Paint', _m(h_dirt=0.9, bump=1.2, dust=0.25, paint=1.0, paint_color=(0.35, 0.38, 0.28),
+                                edge_wear=0.2, dirt=0.75, dirt_map='MUD')),
     ('SNOWY', 'Snowy Metal', _m(h_snow=0.9, paint=1.0, paint_color=(0.18, 0.2, 0.24), edge_wear=0.15, snow=0.55,
                                 snow_map='PATCHY')),
     ('BATTLE', 'Battle Worn', _m(bump=1.2, paint=1.0, paint_color=(0.42, 0.45, 0.4), edge_wear=0.4, scratches=0.45,
-                                 rust=0.25, rust_scratch=0.6, dirt=0.4, chip_map='BIG')),
+                                 rust=0.25, rust_scratch=0.6, dirt=0.4, chip_map='BIG', streaks=0.35, dust=0.25)),
     ('EMISSIVE', 'Emissive Panel', _m(coat=0.2, paint=1.0, paint_color=(0.08, 0.09, 0.1), emission=6.0,
                                       emit_color=(0.1, 0.75, 1.0), emit_map='CREVICES')),
     ('CIRCUIT', 'Glowing Circuit', _m(coat=0.3, paint=1.0, paint_color=(0.05, 0.06, 0.07), emission=5.0,
@@ -316,11 +322,15 @@ def build(mat):
             maps['rust_mask'] = b.image('rust_mask', vec)
         if slot == 'base':
             maps['base_h'] = b.image('base_h', vec)
+    for name, (slot, _ident, tiles) in FIXED.items():         # (dust, grime streaks, colour variation: one map each)
+        sc = b.math('MULTIPLY', gscale, tiles)
+        sc.node.name = 'mch:scale:' + name
+        maps[name] = b.image(name, b.vmath('SCALE', tc.outputs['Object'], fac=sc))
     img = {k: nd.outputs['Color'] for k, nd in maps.items()}
     v = {k: b.value(k) for k in ('metallic', 'roughness', 'rough_amount', 'paint', 'paint_rough', 'edge_wear',
                                  'scratches', 'rust', 'rust_scratch', 'dirt', 'snow', 'emission', 'cloth', 'bump',
                                  'edge_width', 'coat', 'ao', 'h_base', 'h_scratch', 'h_chip', 'h_rust', 'h_dirt',
-                                 'h_snow', 'h_weave')}
+                                 'h_snow', 'h_weave', 'aniso', 'dust', 'streaks', 'variation')}
     c = {k: b.rgb(k) for k in ('base_color', 'paint_color', 'rust_color', 'dirt_color', 'emit_color')}
     w = {k: b.value('emit_w_' + k) for k in ('const', 'edge', 'cav', 'scratch', 'pattern')}
     # edges / crevices: the mesh's convexity (mch_curv) + Cycles' Bevel normal
@@ -350,8 +360,11 @@ def build(mat):
     scratch = b.threshold(img['scratch'], b.math('MULTIPLY', v['scratches'], 0.75), 0.05)
     bare = b.math('MAXIMUM', chip, scratch)
     paint = b.math('MULTIPLY', v['paint'], b.math('SUBTRACT', 1.0, bare), clamp=True)
-    rust_base = b.threshold(b.math('ADD', b.math('MULTIPLY', cav, 0.5), b.math('MULTIPLY', img['rust_mask'], 0.7),
-                                   clamp=True), v['rust'], 0.08)
+    # (the rust's edge broken up by the fine dust map: real rust eats in ragged, not in clean blobs)
+    rust_base = b.threshold(b.math('ADD', b.math('ADD', b.math('MULTIPLY', cav, 0.5),
+                                                 b.math('MULTIPLY', img['rust_mask'], 0.6)),
+                                   b.math('MULTIPLY', b.math('SUBTRACT', img['dust'], 0.5), 0.3), clamp=True),
+                            v['rust'], 0.12)
     rust_in = b.math('MULTIPLY', b.math('MULTIPLY', bare, v['rust_scratch']),
                      b.math('ADD', 0.45, b.math('MULTIPLY', img['rust_mask'], 0.55)), clamp=True)
     rust = b.math('MAXIMUM', rust_base, rust_in)
@@ -360,6 +373,15 @@ def build(mat):
                                           v['dirt'], 0.12), 0.92)
     snow = b.threshold(b.math('ADD', b.math('MULTIPLY', nz, 0.8), b.math('MULTIPLY', img['snow'], 0.3), clamp=True),
                        b.math('MULTIPLY', v['snow'], 1.1), 0.06)
+    side = b.math('SUBTRACT', 1.0, b.math('ABSOLUTE', nz))                # (walls 1, floors / tops 0)
+    streak = b.threshold(b.math('MULTIPLY', b.math('ADD', b.math('MULTIPLY', img['streak'], 0.85),
+                                                   b.math('MULTIPLY', cav, 0.3)), side, clamp=True),
+                         v['streaks'], 0.25)
+    streak = b.math('MULTIPLY', streak, b.math('SUBTRACT', 1.0, snow))
+    dust = b.threshold(b.math('ADD', b.math('MULTIPLY', b.math('MAXIMUM', nz, 0.0), 0.6),
+                              b.math('MULTIPLY', img['dust'], 0.5), clamp=True), v['dust'], 0.2)
+    dust = b.math('MULTIPLY', b.math('MULTIPLY', dust, 0.85), b.math('SUBTRACT', 1.0, snow))
+    worn = b.math('MULTIPLY', b.math('MULTIPLY', edge, v['edge_wear']), b.math('SUBTRACT', 1.0, paint))
     cloth = v['cloth']
     weave = img['weave']
     # colour: base x its map (the map is about 0.5 grey: x2), scratches bright, paint, rust, dirt, snow
@@ -374,11 +396,21 @@ def build(mat):
     rust_col = b.mixc(1.0, img['rust'], c['rust_color'], 'MULTIPLY')
     col = b.mixc(rust, col, rust_col)
     col = b.mixc(dirt, col, b.mixc(0.5, c['dirt_color'], b.mixc(1.0, c['dirt_color'], img['dirt'], 'MULTIPLY')))
+    # (worn edges of bare metal polished a little brighter; the whole surface a little uneven - nothing is one colour)
+    col = b.mixc(b.math('MULTIPLY', worn, b.math('MULTIPLY', v['metallic'], 0.35)), col,
+                 b.vmath('SCALE', col, fac=1.35))
+    col = b.vmath('SCALE', col, fac=b.math('ADD', 1.0, b.math('MULTIPLY', b.math('SUBTRACT', img['vary'], 0.5),
+                                                              b.math('MULTIPLY', v['variation'], 1.2))))
+    streak_col = b.mixc(b.math('MULTIPLY', v['rust'], 1.5), b.vmath('SCALE', c['dirt_color'], fac=4.0),
+                        b.mixc(1.0, _lin((0.5, 0.24, 0.1)) + (1.0,), c['rust_color'], 'MULTIPLY'))
+    col = b.mixc(b.math('MULTIPLY', streak, 0.6), col, b.mixc(1.0, col, streak_col, 'MULTIPLY'))
+    col = b.mixc(dust, col, _lin((0.6, 0.57, 0.52)) + (1.0,))
     col = b.mixc(snow, col, (0.88, 0.9, 0.94, 1.0))
     b.link(col, bsdf.inputs['Base Color'])
     keep = b.math('MULTIPLY', b.math('SUBTRACT', 1.0, paint),
                   b.math('MULTIPLY', b.math('SUBTRACT', 1.0, rust),
                          b.math('MULTIPLY', b.math('SUBTRACT', 1.0, dirt), b.math('SUBTRACT', 1.0, snow))))
+    keep = b.math('MULTIPLY', keep, b.math('SUBTRACT', 1.0, b.math('MAXIMUM', dust, b.math('MULTIPLY', streak, 0.5))))
     b.link(b.math('MULTIPLY', b.math('MULTIPLY', v['metallic'], keep), b.math('SUBTRACT', 1.0, cloth)),
            bsdf.inputs['Metallic'])
     # roughness: the base + its map, the paint's own, rougher scratches, rust / dirt / snow, cloth
@@ -386,8 +418,11 @@ def build(mat):
     r = b.math('ADD', v['roughness'], var, clamp=True)
     r = b.mixf(paint, r, b.math('ADD', v['paint_rough'], b.math('MULTIPLY', var, 0.5), clamp=True))
     r = b.math('ADD', r, b.math('MULTIPLY', scratch, 0.18), clamp=True)
+    r = b.math('SUBTRACT', r, b.math('MULTIPLY', worn, 0.2), clamp=True)          # (rubbed edges: polished)
     r = b.mixf(rust, r, b.math('ADD', 0.72, b.math('MULTIPLY', img['rust_mask'], 0.25)))
     r = b.mixf(dirt, r, 0.93)
+    r = b.mixf(b.math('MULTIPLY', streak, 0.6), r, 0.8)
+    r = b.mixf(dust, r, 0.92)
     r = b.mixf(snow, r, 0.55)
     r = b.mixf(b.math('MULTIPLY', cloth, 0.6), r, b.math('ADD', 0.7, b.math('MULTIPLY', weave, 0.25)))
     b.link(r, bsdf.inputs['Roughness'])
@@ -396,7 +431,22 @@ def build(mat):
     unbroken = b.math('MULTIPLY', b.math('SUBTRACT', 1.0, scratch),
                       b.math('MULTIPLY', b.math('SUBTRACT', 1.0, rust),
                              b.math('MULTIPLY', b.math('SUBTRACT', 1.0, dirt), b.math('SUBTRACT', 1.0, snow))))
+    unbroken = b.math('MULTIPLY', unbroken, b.math('SUBTRACT', 1.0, b.math('MAXIMUM', dust, streak)))
     b.link(b.math('MULTIPLY', v['coat'], unbroken), bsdf.inputs['Coat Weight'])
+    # brushed metal: the highlight stretched across the brush lines.  The maps' lines run along the image's v, which
+    # box projection lays along z on the walls and along x on top: the tangent is the image's u (object y, or x on
+    # the walls facing y), taken to world space
+    on = b.node('ShaderNodeSeparateXYZ')
+    b.link(tc.outputs['Normal'], on.inputs['Vector'])
+    ay = b.math('ABSOLUTE', on.outputs['Y'])
+    faces_y = b.math('MULTIPLY', b.math('GREATER_THAN', ay, b.math('ABSOLUTE', on.outputs['X'])),
+                     b.math('GREATER_THAN', ay, b.math('ABSOLUTE', on.outputs['Z'])))
+    tan = b.node('ShaderNodeVectorTransform', 'mch:tangent')
+    tan.vector_type, tan.convert_from, tan.convert_to = 'VECTOR', 'OBJECT', 'WORLD'
+    b.link(b.mixc(faces_y, (0.0, 1.0, 0.0, 1.0), (1.0, 0.0, 0.0, 1.0)), tan.inputs['Vector'])
+    b.link(tan.outputs['Vector'], bsdf.inputs['Tangent'])
+    b.link(b.math('MULTIPLY', v['aniso'], b.math('MULTIPLY', b.math('SUBTRACT', 1.0, paint), keep)),
+           bsdf.inputs['Anisotropic'])
     b.link(b.math('ADD', 0.04, b.math('MULTIPLY', var, 0.3), clamp=True), bsdf.inputs['Coat Roughness'])
     # relief: scratches / chips cut in, rust / snow / weave stand out, the roughness map a little
     # relief: every layer its own height (the Base map's height map, scratches / chips cut in, rust / dirt / snow /
@@ -412,6 +462,7 @@ def build(mat):
     h = b.math('ADD', h, b.math('MULTIPLY', b.math('MULTIPLY', snow, b.math('ADD', b.math('MULTIPLY', img['snow'], 0.5),
                                                                         0.6)), v['h_snow']))
     h = b.math('ADD', h, b.math('MULTIPLY', b.math('MULTIPLY', cloth, weave), v['h_weave']))
+    h = b.math('ADD', h, b.math('MULTIPLY', dust, b.math('MULTIPLY', img['dust'], 0.25)))
     bump = b.node('ShaderNodeBump', 'mch:bumpnode')
     b.put(bump.inputs['Strength'], b.math('MINIMUM', v['bump'], 1.0))
     bump.inputs['Distance'].default_value = 0.004
@@ -470,6 +521,10 @@ def sync(mat):
                 img = map_image(slot, ident, mask=True)
                 if nd.image != img:
                     nd.image = img
+    for name, (slot, ident, _tiles) in FIXED.items():
+        nd = nodes.get('mch:img:' + name)
+        if nd is not None and nd.image is None:
+            nd.image = map_image(slot, ident, data=True)
     src = EMIT_SOURCE.get(st.emit_map, (0, 0, 0, 0, 1))
     for k, val in zip(('const', 'edge', 'cav', 'scratch', 'pattern'), src):
         setv('emit_w_' + k, float(val))
@@ -500,11 +555,18 @@ def apply_preset(mat, ident):
 WEAR_WIDTH = 0.025          # a rounding this tight (x the mesh's size) counts as a full edge / crevice
 
 
+SHARP_SIN = 0.34            # an edge leaving a point's tangent plane by more than ~20 degrees: a hard corner
+
+
 def store_curvature(me, smooth=4, width=WEAR_WIDTH):
     """Each point's convexity (+1 an edge, -1 a crevice, 0 flat or gently curved) into the float point attribute
-    ``mch_curv``: the mean curvature from its edges (a neighbour L away dropping h below the tangent plane:
-    2h / L^2 = 1 / radius) times ``width`` x the mesh's size, so a rounding of that radius or tighter is a full edge
-    and a big gentle dome stays clean; smoothed ``smooth`` times.  Returns the number of points."""
+    ``mch_curv``.  Along each of its edges: a neighbour L away dropping h below the tangent plane bends 2h / L^2
+    = 1 / radius, times ``width`` x the mesh's size (a rounding that tight or tighter is a full edge, a big gentle
+    dome stays clean), capped at 1 - or a full edge / crevice at once when the edge leaves the plane steeply (a hard
+    corner, even on a low-poly part).  Capped per edge BEFORE the average (a tight bevel's huge bend no longer
+    outweighs the flat around it), then smoothed ``smooth`` times over neighbours within about the wear width only
+    (a long edge of a coarse face passes nothing on - before, a big flat face a few points from its bevel read as all
+    edge).  Returns the number of points."""
     nv = len(me.vertices)
     if nv == 0 or not len(me.edges):
         return 0
@@ -521,22 +583,32 @@ def store_curvature(me, smooth=4, width=WEAR_WIDTH):
     l2 = np.einsum('ij,ij->i', d, d)
     ok = l2 > 1e-18
     d, ev2, l2 = d[ok], ev[ok], l2[ok]
-    ka = -2.0 * np.einsum('ij,ij->i', nrm[ev2[:, 0]], d) / l2          # (b below a's tangent plane: convex at a)
-    kb = 2.0 * np.einsum('ij,ij->i', nrm[ev2[:, 1]], d) / l2
+    ln = np.sqrt(l2)
+    size = float(np.linalg.norm(co.max(0) - co.min(0))) or 1.0
+    reach = width * size
+
+    def bend(nd):                                     # nd: the neighbour's height over the tangent plane
+        k = np.clip(-2.0 * nd / l2 * reach, -1.0, 1.0)
+        return np.where(np.abs(nd) > SHARP_SIN * ln, -np.sign(nd), k)
+    ka = bend(np.einsum('ij,ij->i', nrm[ev2[:, 0]], d))               # (b below a's tangent plane: convex at a)
+    kb = bend(-np.einsum('ij,ij->i', nrm[ev2[:, 1]], d))
     acc = np.zeros(nv)
     cnt = np.zeros(nv)
     np.add.at(acc, ev2[:, 0], ka)
     np.add.at(acc, ev2[:, 1], kb)
     np.add.at(cnt, ev2[:, 0], 1)
     np.add.at(cnt, ev2[:, 1], 1)
-    k = acc / np.maximum(cnt, 1)
+    k = np.clip(acc / np.maximum(cnt, 1), -1.0, 1.0)
+    w = np.exp(-(ln / reach) ** 2)
+    wn = np.zeros(nv)
+    np.add.at(wn, ev2[:, 0], w)
+    np.add.at(wn, ev2[:, 1], w)
     for _ in range(max(0, int(smooth))):
         s = np.zeros(nv)
-        np.add.at(s, ev2[:, 0], k[ev2[:, 1]])
-        np.add.at(s, ev2[:, 1], k[ev2[:, 0]])
-        k = 0.5 * k + 0.5 * s / np.maximum(cnt, 1)
-    size = float(np.linalg.norm(co.max(0) - co.min(0))) or 1.0
-    k = np.clip(k * width * size, -1.0, 1.0).astype(np.float32)
+        np.add.at(s, ev2[:, 0], w * k[ev2[:, 1]])
+        np.add.at(s, ev2[:, 1], w * k[ev2[:, 0]])
+        k = (k + s) / (1.0 + wn)
+    k = k.astype(np.float32)
     att = me.attributes.get(CURV)
     if att is not None and (att.domain != 'POINT' or att.data_type != 'FLOAT'):
         me.attributes.remove(att)
@@ -608,6 +680,11 @@ class MCH_PG_MechShader(bpy.types.PropertyGroup):
     h_dirt: _slider('Dirt Height', 0.4, desc='How thick the dirt / mud is caked on')
     h_snow: _slider('Snow Height', 0.7, desc='How thick the snow lies')
     h_weave: _slider('Weave Height', 0.7, desc='Relief of the cloth weave')
+    aniso: _slider('Brushed', 0.0, desc='Anisotropic highlight of bare metal, stretched across the brush lines '
+                                        '(Cycles)')
+    dust: _slider('Dust', 0.0, desc='Fine dust settled on what faces up')
+    streaks: _slider('Grime Streaks', 0.0, desc='Dirt / rust run down the walls (rust tints them)')
+    variation: _slider('Variation', 0.3, desc='The surface a little uneven in colour, as nothing real is one colour')
     coat: _slider('Clear Coat', 0.0, desc='A glossy coat over the surface (lacquered paint, carbon), broken by '
                                           'scratches, rust, dirt, snow')
     ao: _slider('Crevice AO', 0.5, desc='Crevices found by ambient occlusion too (dirt / rust gather there)')
@@ -937,13 +1014,15 @@ def draw(layout, context):
     col.prop(st, 'metallic', slider=True)
     col.prop(st, 'roughness', slider=True)
     col.prop(st, 'coat', slider=True)
+    col.prop(st, 'aniso', slider=True)
     _map_row(col, st, 'base')
     col.prop(st, 'h_base', slider=True)
+    col.prop(st, 'variation', slider=True)
     for slot, amount, extra, height in (
             ('rough', 'rough_amount', (), None),
             ('chip', 'edge_wear', ('paint', 'paint_color', 'paint_rough'), 'h_chip'),
             ('scratch', 'scratches', (), 'h_scratch'), ('rust', 'rust', ('rust_scratch', 'rust_color'), 'h_rust'),
-            ('dirt', 'dirt', ('dirt_color',), 'h_dirt'), ('snow', 'snow', (), 'h_snow'),
+            ('dirt', 'dirt', ('dirt_color', 'dust', 'streaks'), 'h_dirt'), ('snow', 'snow', (), 'h_snow'),
             ('emit', 'emission', ('emit_color',), None), ('weave', 'cloth', (), 'h_weave')):
         sub = box.column(align=True)
         for e in extra:

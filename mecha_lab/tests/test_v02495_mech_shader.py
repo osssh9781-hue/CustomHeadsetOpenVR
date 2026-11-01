@@ -55,6 +55,36 @@ flat &= np.abs(co).min(1) < 0.5                                  # (the middle o
 check('Apply: a Mech material on the block (Chipped Paint), its edges measured: the bevels convex, the face middles '
       'flat', r == {'FINISHED'} and ms.is_mech(mat) and st.preset == 'CHIPPED' and k[corner].mean() > 0.5
       and np.abs(k[flat]).mean() < 0.1, (round(float(k[corner].mean()), 2), round(float(np.abs(k[flat]).mean()), 3)))
+# coarse flats (boolean / Simple-subdivided parts): a big flat face is only a few points from its bevel - the wear must
+# not run across it.  Before: 93 % of the mech test part's area read as an edge (the paint all chipped off).
+bpy.ops.mesh.primitive_cube_add(location=(0, 6, 0))
+cq = C.active_object
+cq.modifiers.new('b', 'BEVEL').width = 0.03
+cq.modifiers['b'].segments = 3
+sub = cq.modifiers.new('s', 'SUBSURF')
+sub.subdivision_type, sub.levels = 'SIMPLE', 2
+bpy.ops.object.convert(target='MESH')
+ms.store_curvature(cq.data)
+kq = np.zeros(len(cq.data.vertices))
+cq.data.attributes[ms.CURV].data.foreach_get('value', kq)
+cqo = np.array([v.co[:] for v in cq.data.vertices])
+on_bevel = (np.abs(cqo) > 0.975).sum(1) >= 2
+mid = ((np.abs(cqo) > 0.999).sum(1) == 1) & (np.abs(cqo).min(1) < 0.9)
+check('Coarse flat faces (bevel + Simple subdivision): the faces read flat (before: up to a full edge), the bevels '
+      'clearly more', np.abs(kq[mid]).max() < 0.15 and kq[on_bevel].mean() > max(0.12, 3 * np.abs(kq[mid]).mean()),
+      (round(float(np.abs(kq[mid]).max()), 3), round(float(kq[on_bevel].mean()), 2), int(mid.sum())))
+bpy.ops.mesh.primitive_cube_add(location=(0, 9, 0))
+lp = C.active_object
+ms.store_curvature(lp.data)
+kl = np.zeros(8)
+lp.data.attributes[ms.CURV].data.foreach_get('value', kl)
+check('... a low-poly cube (8 points, sharp): its corners are full edges', kl.min() > 0.99, kl.round(2).tolist())
+for o in (cq, lp):
+    bpy.data.objects.remove(o)
+for o in C.selected_objects:
+    o.select_set(False)
+ob.select_set(True)
+C.view_layer.objects.active = ob
 nodes = mat.node_tree.nodes
 check('... every slot\'s map on its image node (box projection: no UVs needed), the data maps Non-Color',
       all(nodes['mch:img:' + s].image is not None and nodes['mch:img:' + s].projection == 'BOX'
@@ -67,6 +97,11 @@ bump = next(n for n in nodes if n.bl_idname == 'ShaderNodeBump')
 check('... one Bump node into the BSDF\'s Normal, its Height fed (the layers\' heights)',
       bump.inputs['Height'].is_linked and nodes['mch:bsdf'].inputs['Normal'].links
       and nodes['mch:bsdf'].inputs['Normal'].links[0].from_node == bump)
+check('... the fixed maps on their nodes (dust, grime streaks, colour variation)',
+      all(nodes['mch:img:' + k].image is not None for k in ms.FIXED), [k for k in ms.FIXED])
+check('... brushed metal: Anisotropic and a world-space Tangent wired',
+      nodes['mch:bsdf'].inputs['Anisotropic'].is_linked and nodes['mch:bsdf'].inputs['Tangent'].links[0].from_node
+      == nodes['mch:tangent'] and nodes['mch:tangent'].convert_to == 'WORLD')
 check('... Clear Coat and AO crevices wired', nodes['mch:bsdf'].inputs['Coat Weight'].is_linked
       and nodes['mch:ao_node'].bl_idname == 'ShaderNodeAmbientOcclusion'
       and nodes['mch:ao'].bl_idname == 'ShaderNodeValue' and nodes['mch:ao_node'].outputs['AO'].is_linked)
@@ -112,8 +147,20 @@ check('... the Height sliders too (Weave Height, Height, Clear Coat)',
       and abs(nodes['mch:coat'].outputs[0].default_value - 0.8) < 1e-6)
 st.base_map = 'CAST'
 check('... a Base map step brings its own height map', nodes['mch:img:base_h'].image.name.startswith('CAST_height'))
-check('Preset colours picked on screen are stored linear (Steel\'s 0.56 grey -> about 0.27)',
-      abs(dict((p[0], p[2]) for p in ms.PRESETS)['STEEL']['base_color'][0] - 0.274) < 0.01)
+spec = dict((p[0], p[2]) for p in ms.PRESETS)
+check('Metals at measured reflectance: Steel about 0.56, Aluminium about 0.91 (linear), Brass yellow, Copper red',
+      abs(spec['STEEL']['base_color'][0] - 0.56) < 0.03 and spec['BRUSHED']['base_color'][0] > 0.78
+      and spec['BRASS']['base_color'][2] < spec['BRASS']['base_color'][0] * 0.6
+      and spec['COPPER']['base_color'][0] > spec['COPPER']['base_color'][1] > spec['COPPER']['base_color'][2],
+      [tuple(round(x, 2) for x in spec[k]['base_color']) for k in ('STEEL', 'BRUSHED', 'BRASS', 'COPPER')])
+check('... Brushed Aluminium brushed, Dirty Metal dusty and streaked', spec['BRUSHED']['aniso'] > 0.5
+      and spec['DIRTY']['dust'] > 0 and spec['DIRTY']['streaks'] > 0)
+mat['mch_mech'] = 3
+nodes.remove(nodes['mch:tangent'])
+st.dust = 0.5
+check('A Mech material from before (node layout 3): made anew at the next change',
+      mat['mch_mech'] == ms.VERSION and mat.node_tree.nodes.get('mch:tangent') is not None)
+nodes = mat.node_tree.nodes
 
 # ---- no Mech material yet: stepping the preset applies it
 bpy.ops.mesh.primitive_uv_sphere_add(location=(4, 0, 0))
@@ -159,5 +206,6 @@ check('Panel: the preset, every map with its slider and Height, Clear Coat, AO, 
       {'preset', 'base_map', 'rough_map', 'chip_map', 'scratch_map', 'rust_map', 'dirt_map', 'snow_map', 'emit_map',
        'weave_map', 'edge_wear', 'scratches', 'rust', 'rust_scratch', 'dirt', 'snow', 'emission', 'cloth',
        'roughness', 'map_scale', 'bump', 'h_base', 'h_scratch', 'h_chip', 'h_rust', 'h_dirt', 'h_snow', 'h_weave',
-       'coat', 'ao', 'mch_mech_hdri', 'mch_mech_hdri_strength', 'mch_mech_hdri_rot'} <= props, sorted(props))
+       'coat', 'ao', 'aniso', 'dust', 'streaks', 'variation', 'mch_mech_hdri', 'mch_mech_hdri_strength',
+       'mch_mech_hdri_rot'} <= props, sorted(props))
 summary()
