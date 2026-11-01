@@ -1,8 +1,8 @@
 """0.24.95 Sphere icons for the Mech Shader presets (user: "메테리얼 창도 아이콘으로 보이게 해 줄래? 구 형태로").
 
-Every material preset and every Edge Wear preset on a shader ball - a sphere with a groove round its middle, so the
-edge wear (the groove's lips) and the crevice layers (its bottom) show too - lit by the interior HDRI (as the lookdev
-sheet), Cycles, 128 px, transparent background:
+Every material preset and every Edge Wear preset on a shader ball - a panelled sphere (two grooves round it, four
+from top to bottom, like a mech part's panel lines), so the edge wear (the grooves' lips) and the crevice layers (their
+bottoms) show too - lit by the interior HDRI (as the lookdev sheet), Cycles, 128 px, transparent background:
     addon/mecha_lab/mech_icons/mat_<PRESET>.png      the material presets
     addon/mecha_lab/mech_icons/wear_<PRESET>.png     the Edge Wear presets, on Chipped Paint
 
@@ -21,27 +21,35 @@ ADDON = os.path.join(os.path.dirname(HERE), 'addon')
 sys.path.insert(0, ADDON)
 import mecha_lab  # noqa: E402
 
-OUT = os.path.join(ADDON, 'mecha_lab', 'mech_icons')
+OUT = os.environ.get('MCH_ICON_OUT') or os.path.join(ADDON, 'mecha_lab', 'mech_icons')
 SIZE = 128
 SPP = 48
-GROOVE_Z, GROOVE_HALF, GROOVE_DEPTH, GROOVE_LIP = 0.22, 0.035, 0.05, 0.012
+GROOVE_HALF, GROOVE_DEPTH, GROOVE_LIP = 0.07, 0.08, 0.035   # (wider than the edge measure (2.5 % of the size): its lips read as edges)
+RINGS = (0.3, -0.4)                       # grooves round the ball (height)
+MERIDIANS = (20.0, 110.0, 200.0, 290.0)   # grooves from top to bottom (degrees round z)
+EDGE_SMOOTH = 0                           # (store_curvature smoothing for the ball - the add-on's default is 4: on this dense ball it thins a groove lip to 0.46 of a full edge)
+
+
+def _groove(off):
+    return GROOVE_DEPTH if off <= 0 else GROOVE_DEPTH * max(0.0, 1.0 - off / GROOVE_LIP)
 
 
 def ball():
-    """A UV sphere (radius 1) with a flat-bottomed groove round it a little above the middle."""
+    """A panelled sphere (radius 1): flat-bottomed grooves round it and from top to bottom (pushed in along the
+    radius), an even icosphere so the grooves are crisp everywhere."""
     me = bpy.data.meshes.new('ball')
     bm = bmesh.new()
-    bmesh.ops.create_uvsphere(bm, u_segments=128, v_segments=160, radius=1.0)
+    bmesh.ops.create_icosphere(bm, subdivisions=7, radius=1.0)
+    planes = [(-math.sin(math.radians(a)), math.cos(math.radians(a))) for a in MERIDIANS]
     for v in bm.verts:
-        z = v.co.z
-        off = abs(z - GROOVE_Z) - GROOVE_HALF
-        d = GROOVE_DEPTH if off <= 0 else GROOVE_DEPTH * max(0.0, 1.0 - off / GROOVE_LIP)
+        x, y, z = v.co
+        d = 0.0
+        for z0 in RINGS:
+            d = max(d, _groove(abs(z - z0) - GROOVE_HALF))
+        for nx, ny in planes:
+            d = max(d, _groove(abs(x * nx + y * ny) - GROOVE_HALF) if (x * -ny + y * nx) > 0 else 0.0)
         if d > 0:
-            r = math.hypot(v.co.x, v.co.y)
-            if r > 1e-6:
-                k = (r - d) / r
-                v.co.x *= k
-                v.co.y *= k
+            v.co *= (1.0 - d)
     bm.to_mesh(me)
     bm.free()
     for p in me.polygons:
@@ -117,8 +125,9 @@ def main():
         else:
             mat = ms.new_material('CHIPPED')
             ms.apply_wear(mat, ident)
-        ms.assign(C, [ob], mat)
-        if old is not None and old.users == 0:
+        ms.assign(C, [ob], mat, edges=False)
+        ms.store_curvature(ob.data, smooth=EDGE_SMOOTH)   # (the ball's lips and groove bottoms are close: measured
+        if old is not None and old.users == 0:              #  with less smoothing, so they do not cancel out)
             bpy.data.materials.remove(old)
         st = mat.mch_mech                                  # (glass / see-through: refraction is noisy - more samples)
         bpy.context.scene.cycles.samples = SPP * 6 if (st.glass > 0.0 or st.alpha < 1.0) else SPP

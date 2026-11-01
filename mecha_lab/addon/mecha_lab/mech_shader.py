@@ -29,7 +29,7 @@ from bpy.props import EnumProperty, FloatProperty, FloatVectorProperty, PointerP
 
 KEY = 'mch_mech'                    # the material's settings (PropertyGroup on bpy.types.Material)
 CURV = 'mch_curv'
-VERSION = 7                          # (the node tree's layout: an older one is made anew)
+VERSION = 8                          # (the node tree's layout: an older one is made anew)
 MAP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mech_maps')
 
 # slot -> (label, tiles per unit (x Map Scale), colour map (sRGB) or data, [(id, label)])
@@ -90,6 +90,9 @@ BASE = dict(base_color=(0.77, 0.78, 0.78), metallic=1.0, roughness=0.35, rough_a
             chip_follow=0.65, chip_reach=0.0, chip_soft=0.04, chip_breakup=0.0, chip_scale=1.0,
             edge_mat=0.0, edge_color=(0.75, 0.75, 0.76), edge_metal=1.0, edge_rough=0.3, edge_polish=1.0,
             edge_map='FLAT',
+            # 0.24.95 (user: "스크래치 색깔 조절도 넣어 주라"): the scratches' own colour, Tint 0 = as before (the metal
+            # underneath, a little brighter)
+            scratch_color=(0.85, 0.85, 0.86), scratch_tint=0.0,
             base_map='MOTTLED', rough_map='SMUDGE', chip_map='FLAKES', scratch_map='FINE', rust_map='PATCHES',
             dirt_map='GRIME', snow_map='POWDER', emit_map='EDGES', weave_map='CANVAS')
 
@@ -428,9 +431,9 @@ def build(mat):
                                  'h_snow', 'h_weave', 'aniso', 'dust', 'streaks', 'variation', 'primer',
                                  'paint_pattern', 'dirt_low', 'glass', 'ior', 'alpha', 'snow_soft', 'dirt_top',
                                  'chip_follow', 'chip_reach', 'chip_soft', 'chip_breakup', 'edge_mat', 'edge_metal',
-                                 'edge_rough', 'edge_polish')}
+                                 'edge_rough', 'edge_polish', 'scratch_tint')}
     c = {k: b.rgb(k) for k in ('base_color', 'paint_color', 'rust_color', 'dirt_color', 'emit_color',
-                               'primer_color', 'edge_color')}
+                               'primer_color', 'edge_color', 'scratch_color')}
     w = {k: b.value('emit_w_' + k) for k in ('const', 'edge', 'cav', 'scratch', 'pattern')}
     # edges / crevices: the mesh's convexity (mch_curv) + Cycles' Bevel normal
     att = b.node('ShaderNodeAttribute', 'mch:curv')
@@ -519,6 +522,8 @@ def build(mat):
     edge_col = b.vmath('SCALE', b.mixc(1.0, c['edge_color'], img['edge_tex'], 'MULTIPLY'), fac=2.0)
     under = b.mixc(emask, base_col, edge_col)
     col = b.mixc(paint, b.mixc(primer, under, c['primer_color']), paint_col)
+    # (0.24.95 the scratches tinted their own colour: Scratch Tint 0 = the material underneath, 1 = Scratch Color)
+    col = b.mixc(b.math('MULTIPLY', scratch, v['scratch_tint']), col, c['scratch_color'])
     rust_col = b.mixc(1.0, img['rust'], c['rust_color'], 'MULTIPLY')
     col = b.mixc(rust, col, rust_col)
     col = b.mixc(dirt, col, b.mixc(0.5, c['dirt_color'], b.mixc(1.0, c['dirt_color'], img['dirt'], 'MULTIPLY')))
@@ -853,6 +858,9 @@ class MCH_PG_MechShader(bpy.types.PropertyGroup):
     paint_rough: _slider('Paint Roughness', 0.45)
     edge_wear: _slider('Edge Wear', 0.0, desc='Paint chipped off the edges (and the Chips map)')
     scratches: _slider('Scratches', 0.0)
+    scratch_color: _color('Scratch Color', BASE['scratch_color'])
+    scratch_tint: _slider('Scratch Tint', 0.0, desc='The scratches\' colour: 0 the material underneath (bare metal, a '
+                                                   'little brighter), 1 the Scratch Color')
     rust: _slider('Rust', 0.0, desc='Rust in the crevices (and the Rust map)')
     rust_scratch: _slider('Rust in Scratches', 0.0, desc='Rust showing in the scratches and chips')
     rust_color: _color('Rust Tint', BASE['rust_color'])
@@ -1414,7 +1422,7 @@ def draw(layout, context):
             ('chip', 'edge_wear', ('paint', 'paint_color', 'paint_rough', 'paint_pattern', 'primer', 'primer_color'),
              ('chip_follow', 'chip_reach', 'chip_soft', 'chip_breakup', 'chip_scale', 'edge_mat', 'edge_color',
               'edge_metal', 'edge_rough', 'edge_polish'), 'h_chip'),
-            ('scratch', 'scratches', (), (), 'h_scratch'),
+            ('scratch', 'scratches', ('scratch_color', 'scratch_tint'), (), 'h_scratch'),
             ('rust', 'rust', ('rust_scratch', 'rust_color'), (), 'h_rust'),
             ('dirt', 'dirt', ('dirt_color',), ('dirt_top', 'dirt_low', 'dust', 'streaks'), 'h_dirt'),
             ('snow', 'snow', (), ('snow_soft',), 'h_snow'),

@@ -109,6 +109,16 @@ check('Edge Wear (user: "엣지 텍스처랑 색깔, 까지는 마스크, 러프
                                                 'h_chip'))
       and by_prop(its, 'edge_color', 'swatch') and by_prop(its, 'edge_map', 'drop')
       and by_prop(its, 'primer_color', 'swatch'))
+check('Scratches (user: "스크래치 색깔 조절도 넣어 주라"): a Scratch Color swatch + Scratch Tint, then the amount, map, depth',
+      by_prop(its, 'scratch_color', 'swatch') and by_prop(its, 'scratch_tint', 'mini') and by_prop(its, 'scratches', 'mini')
+      and by_prop(its, 'scratch_map', 'drop'))
+st.scratch_tint = 0.7
+st.scratch_color = (0.9, 0.1, 0.05)
+nodes0 = mat.node_tree.nodes
+check('... written into the material (Tint 0.7, the colour), Tint 0 by default (looks as before)',
+      abs(nodes0['mch:scratch_tint'].outputs[0].default_value - 0.7) < 1e-6
+      and abs(nodes0['mch:scratch_color'].outputs[0].default_value[0] - 0.9) < 1e-6 and ms.BASE['scratch_tint'] == 0.0)
+st.scratch_tint = 0.0
 check('... small headings: Mask / At the chips / Primer', sum(1 for i in its if i.kind == 'pnote' and (
       i.label.startswith('Mask') or i.label.startswith('At the chips') or i.label.startswith('Primer'))) == 3)
 

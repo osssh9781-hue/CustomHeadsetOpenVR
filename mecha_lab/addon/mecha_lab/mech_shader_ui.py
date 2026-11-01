@@ -29,7 +29,7 @@ from . import side_panel as sp
 PAGE = 'MATERIAL'
 # (slot, section title, what makes it "in use", rows before the amount, the amount, rows after, its height)
 LAYERS = (
-    ('scratch', 'Scratches', ('scratches',), (), 'scratches', (), 'h_scratch'),
+    ('scratch', 'Scratches', ('scratches',), ('scratch_color', 'scratch_tint'), 'scratches', (), 'h_scratch'),
     ('rust', 'Rust', ('rust', 'rust_scratch'), ('rust_color',), 'rust', ('rust_scratch',), 'h_rust'),
     ('dirt', 'Dirt', ('dirt', 'dirt_top', 'dirt_low', 'dust', 'streaks'), ('dirt_color',), 'dirt',
      ('dirt_top', 'dirt_low', 'dust', 'streaks'), 'h_dirt'),
