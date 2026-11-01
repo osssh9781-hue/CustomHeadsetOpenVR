@@ -355,6 +355,10 @@ def glyph(name, x, y, size, color=TEXT, width=2.0):
             lines([(P(t, .15), P(t, .85)), (P(.15, t), P(.85, t))], color, width * 0.6)
     elif name in {'X', 'Y', 'Z'}:
         text(cx, cy, name, s * .55, color, 'CENTER')
+    elif name == 'material':                     # 0.24.95 Material (Mech Shader): a shaded ball, its highlight and rim
+        polyline(circle_pts(cx, cy, s * .34), color, width)
+        polyline(circle_pts(cx - s * .12, cy + s * .12, s * .07, 12), color, width * 0.8)   # the highlight
+        polyline(circle_pts(cx + s * .05, cy - s * .05, s * .22, 16, 285.0, 375.0), color, width * 0.6)   # its shade
     elif name == 'fixholes':                     # 0.24.95 Fix Holes: a surface with a hole, a patch over it
         polyline([P(.12, .18), P(.88, .18), P(.88, .82), P(.12, .82)], color, width, True)
         polyline([P(.36, .36), P(.64, .36), P(.64, .64), P(.36, .64)], color, width * 0.7, True)

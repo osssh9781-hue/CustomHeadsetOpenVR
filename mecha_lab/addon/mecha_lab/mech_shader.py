@@ -1301,6 +1301,8 @@ SCENE_PROPS = ('mch_mech_preset', 'mch_mech_hdri', 'mch_mech_hdri_strength', 'mc
 def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
+    from . import mech_shader_ui                      # 0.24.95 the Material page of the Mecha Lab side panel
+    mech_shader_ui.register()
     bpy.types.Material.mch_mech = PointerProperty(type=MCH_PG_MechShader)
     T = bpy.types.Scene
     T.mch_mech_preset = EnumProperty(name='Mech Shader Preset', items=[(k, n, n) for k, n, _s in PRESETS],
@@ -1319,6 +1321,8 @@ def register():
 
 
 def unregister():
+    from . import mech_shader_ui
+    mech_shader_ui.unregister()
     for attr, owner in [('mch_mech', bpy.types.Material)] + [(p, bpy.types.Scene) for p in SCENE_PROPS]:
         try:
             delattr(owner, attr)

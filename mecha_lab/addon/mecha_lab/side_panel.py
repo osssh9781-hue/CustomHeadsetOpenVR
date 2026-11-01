@@ -22,6 +22,7 @@ ROW = 28.0
 GAP = 6.0
 PAD = 12.0
 HEAD = 40.0
+TABS = 34.0              # 0.24.95 the Tool | Material tabs under the title
 SECTION = 26.0
 NOTE = 17.0
 TOP_MARGIN = 150.0          # below the navigation gizmo
@@ -395,8 +396,17 @@ def _trees(context, tool):
     return tree, lasso
 
 
+def page(context):
+    """0.24.95 What the panel shows: 'TOOL' (the tool's settings) or 'MATERIAL' (Mech Shader + HDRI,
+    ``mech_shader_ui``) - the two tabs at its top."""
+    return getattr(context.window_manager, 'mch_side_page', 'TOOL')
+
+
 def content(context, tool, x, width, k):
     """(items, content height) - the panel's rows, y measured down from 0."""
+    if page(context) == 'MATERIAL':
+        from . import mech_shader_ui
+        return mech_shader_ui.content(context, x, width, k)
     b = Builder(tool, x, width, k)
     tree, lt = _trees(context, tool)
     if tree is not None:
@@ -426,12 +436,13 @@ def sidebar_open(context):
 
 
 def on(context):
-    """Shown: preference on, MECHA LAB, a tool with a panel, and the sidebar (N) closed (it shows the same)."""
+    """Shown: preference on, MECHA LAB, a tool with a panel (or the Material page: in any tool), and the sidebar
+    (N) closed (it shows the same)."""
     from .workspace_ui import pref
     from . import bottom_bar, ui_tool_settings as uts
     try:
         return (pref('side_panel', True) and bottom_bar.ui_active(context) and not sidebar_open(context)
-                and ts.effective_tool(context) in uts.DRAWERS)
+                and (ts.effective_tool(context) in uts.DRAWERS or page(context) == 'MATERIAL'))
     except (AttributeError, KeyError, TypeError, ReferenceError):
         return False
 
@@ -466,15 +477,18 @@ def frame(region_w, region_h, k, context=None):
 def layout(context, region_w, region_h, k=1.0):
     """{'items': [...], 'clip': (x, y, w, h) of the scrolled rows or None, 'content': rows height, 'view': ...}."""
     from .mecha_menu import Item
+    from . import ui_tool_settings as uts
     tool = ts.effective_tool(context)
     t = ts.TOOL_BY_ID.get(tool)
-    if t is None:
+    mat_page = page(context) == 'MATERIAL'
+    if t is None and not mat_page:
         return {'items': [], 'clip': None, 'content': 0.0, 'view': 0.0}
+    name, icon = ('Material', 'material') if mat_page else (t[1], 'png:' + t[3])
     x0, top, w = frame(region_w, region_h, k, context)
     if minimised(context):                       # a small tab: the tool icon, click = open again
         mw = MIN_W * k
         card = Item('card', region_w - mw - 12 * k, top - mw, mw, mw)
-        tab = Item('pmin', card.x + 4 * k, card.y + 4 * k, mw - 8 * k, mw - 8 * k, t[1], 'png:' + t[3], False, True,
+        tab = Item('pmin', card.x + 4 * k, card.y + 4 * k, mw - 8 * k, mw - 8 * k, name, icon, False, True,
                    ('minimise',))
         return {'items': [card, tab], 'clip': None, 'content': 0.0, 'view': 0.0}
     rows, h = content(context, tool, x0 + PAD * k, w - 2 * PAD * k, k)
@@ -483,17 +497,26 @@ def layout(context, region_w, region_h, k=1.0):
         floor = ui_bars.dock_top(context, k, region_w)
     except (ImportError, AttributeError, TypeError, ReferenceError):
         floor = 0.0
-    room = top - BOTTOM_MARGIN * k - floor - HEAD * k - 2 * PAD * k
+    head = (HEAD + TABS) * k
+    room = top - BOTTOM_MARGIN * k - floor - head - 2 * PAD * k
     view = max(0.0, min(h, room))
     wm = context.window_manager
     scroll = max(0.0, min(float(getattr(wm, 'mch_side_scroll', 0.0)), h - view))
-    card_h = HEAD * k + view + 2 * PAD * k
+    card_h = head + view + 2 * PAD * k
     out = [Item('card', x0, top - card_h, w, card_h)]
     out.append(Item('phead', x0 + PAD * k, top - PAD * k - HEAD * k + 6 * k, w - 2 * PAD * k - 34 * k,
-                    HEAD * k - 6 * k, t[1].upper(), 'png:' + t[3], False, True, None))
+                    HEAD * k - 6 * k, name.upper(), icon, False, True, None))
     out.append(Item('pbtn', x0 + w - PAD * k - 26 * k, top - PAD * k - 30 * k, 26 * k, 26 * k, '–', '', False, True,
                     ('minimise',)))
-    y_top = top - PAD * k - HEAD * k
+    # 0.24.95 the two pages: the tool's settings | Material (Mech Shader + HDRI)
+    tw = (w - 2 * PAD * k - GAP * k) / 2
+    ty = top - PAD * k - HEAD * k - (TABS - 6) * k
+    has_tool = t is not None and tool in uts.DRAWERS
+    out.append(Item('ptab', x0 + PAD * k, ty, tw, (TABS - 8) * k, t[1] if t is not None else 'Tool', '',
+                    not mat_page, has_tool or mat_page, ('page', 'TOOL')))
+    out.append(Item('ptab', x0 + PAD * k + tw + GAP * k, ty, tw, (TABS - 8) * k, 'Material', '', mat_page, True,
+                    ('page', 'MATERIAL')))
+    y_top = top - PAD * k - head
     cy, ch = y_top - view, view
     for it in rows:                              # only whole rows inside the window (no half-drawn rows)
         it.y += y_top + scroll

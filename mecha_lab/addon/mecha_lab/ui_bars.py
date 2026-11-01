@@ -523,6 +523,10 @@ def run(context, item):
         elif kind == 'layers_min':
             wm = context.window_manager
             wm.mch_layers_min = not wm.mch_layers_min
+        elif kind == 'page':                      # 0.24.95 side panel: the tool's settings | Material
+            bpy.ops.mch.side_page(page=a[1])
+        elif kind == 'color':                     # 0.24.95 a colour swatch: the colour picker
+            open_value(context, item)
     except (RuntimeError, TypeError, ValueError, AttributeError, KeyError, ReferenceError) as ex:
         print('Mecha UI:', a, ex)
         msg = str(ex).splitlines()[0][:120] if str(ex) else ''
@@ -543,6 +547,8 @@ def _undo(what, data=None):
 def open_value(context, item):
     """Click (no drag) on a number bar: type the exact value."""
     EDIT[:] = [item.data, item.prop]
+    if bpy.app.background or getattr(context, 'window', None) is None:    # (no real window: call_panel crashes)
+        return
     try:
         bpy.ops.wm.call_panel(name='MCH_PT_ui_value', keep_open=False)
     except RuntimeError:
@@ -562,9 +568,45 @@ class MCH_PT_ui_value(bpy.types.Panel):
         if data is None:
             return
         try:
+            rna = data.bl_rna.properties.get(prop)
+            if rna is not None and rna.subtype in {'COLOR', 'COLOR_GAMMA'}:     # 0.24.95 a swatch: the picker
+                self.layout.label(text=rna.name)
+                self.layout.template_color_picker(data, prop, value_slider=True)
+                self.layout.prop(data, prop, text='')
+                return
             self.layout.prop(data, prop)
         except (TypeError, ReferenceError):
             pass
+
+
+class MCH_OT_side_page(bpy.types.Operator):
+    """Show the tool's settings or the material (Mech Shader + HDRI) in the Mecha Lab side panel"""
+    bl_idname = 'mch.side_page'
+    bl_label = 'Side Panel Page'
+    bl_options = {'INTERNAL'}
+    page: bpy.props.EnumProperty(items=[('TOOL', 'Tool', 'The tool\'s settings'),
+                                        ('MATERIAL', 'Material', 'Mech Shader + HDRI')], default='MATERIAL')
+
+    def execute(self, context):
+        from . import side_panel
+        wm = context.window_manager
+        if wm.mch_side_page != self.page:
+            wm.mch_side_scroll = 0.0
+        wm.mch_side_page = self.page
+        wm.mch_side_min = False
+        side_panel.dirty()
+        for w in wm.windows:
+            for a in w.screen.areas:
+                if a.type == 'VIEW_3D':
+                    a.tag_redraw()
+        if self.page == 'MATERIAL' and getattr(context, 'area', None) is not None and not side_panel.on(context):
+            from .workspace_ui import pref
+            why = ('the sidebar (N) is open - it has the same (Mecha Lab tab, Mech Shader)'
+                   if side_panel.sidebar_open(context) else
+                   'the side panel is off (Preferences, Side Panel) - the sidebar (N) has it'
+                   if not pref('side_panel', True) else 'the sidebar (N) has it (Mecha Lab tab, Mech Shader)')
+            self.report({'INFO'}, 'Material: ' + why)
+        return {'FINISHED'}
 
 
 class MCH_MT_ui_choice(bpy.types.Menu):
@@ -682,7 +724,7 @@ class MCH_OT_ui_scroll(bpy.types.Operator):
             return {'PASS_THROUGH'}
 
 
-CLASSES = (MCH_OT_ui_hover, MCH_OT_ui_scroll, MCH_PT_ui_value, MCH_MT_ui_choice)
+CLASSES = (MCH_OT_ui_hover, MCH_OT_ui_scroll, MCH_PT_ui_value, MCH_MT_ui_choice, MCH_OT_side_page)
 _keymaps = []
 
 
@@ -698,6 +740,8 @@ def register():
     wmt.mch_ui_hover = FloatVectorProperty(size=2, default=(-1.0, -1.0), options={'SKIP_SAVE'})
     wmt.mch_side_scroll = FloatProperty(default=0.0, min=0.0, options={'SKIP_SAVE'})
     wmt.mch_side_min = BoolProperty(default=False, options={'SKIP_SAVE'})
+    wmt.mch_side_page = bpy.props.EnumProperty(items=[('TOOL', 'Tool', ''), ('MATERIAL', 'Material', '')],
+                                               default='TOOL', options={'SKIP_SAVE'})
     for c in CLASSES:
         bpy.utils.register_class(c)
     from . import layers_panel, tool_presets, zb_sculpt, zb_ui
@@ -747,6 +791,6 @@ def unregister():
             bpy.utils.unregister_class(c)
         except RuntimeError:
             pass
-    for name in ('mch_ui_hover', 'mch_side_scroll', 'mch_side_min'):
+    for name in ('mch_ui_hover', 'mch_side_scroll', 'mch_side_min', 'mch_side_page'):
         if hasattr(bpy.types.WindowManager, name):
             delattr(bpy.types.WindowManager, name)

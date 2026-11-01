@@ -38,7 +38,9 @@ ACTIONS = (            # (section, [(label, glyph or png stem, operator, props, 
                  ('Origin', 'origin', 'mch.object_tidy', {'action': 'ORIGIN_GEOMETRY'}, 'mesh', False),
                  ('Reset Axis', 'axes', 'mch.object_tidy', {'action': 'RESET_AXIS'}, 'mesh', False),
                  ('Flip', 'flip', 'mch.flip_object', {'axis': 'X'}, 'mesh', False),     # 0.24.95 left / right
-                 ('Fix Holes', 'fixholes', 'mch.fix_mesh', {}, 'mesh', False)]),   # 0.24.95 Fix Mesh, mirror holes too
+                 ('Fix Holes', 'fixholes', 'mch.fix_mesh', {}, 'mesh', False),    # 0.24.95 Fix Mesh, mirror holes too
+                 # 0.24.95 Mech Shader + HDRI: the Material page of the side panel (the 9th slot: no new row)
+                 ('Material', 'material', 'mch.side_page', {'page': 'MATERIAL'}, '', True)]),
     ('Shading', [('Flat', 'shade_flat', 'object.shade_flat', {}, 'mesh', False),
                  ('Auto Smooth', 'shade_auto', 'object.shade_auto_smooth', {}, 'mesh', False),
                  ('Smooth', 'shade_smooth', 'object.shade_smooth', {}, 'mesh', False)]),
@@ -602,7 +604,7 @@ def draw(items, hover, S, context):
 
 
 NEW_KINDS = {'sbtn', 'arow', 'ibtn', 'mini', 'drop', 'switch', 'tbtn', 'pnote', 'sbg', 'shead', 'phead', 'pbtn', 'pmin',
-             'sbar', 'vrule', 'glabel', 'lrow', 'lfold'}
+             'sbar', 'vrule', 'glabel', 'lrow', 'lfold', 'swatch', 'ptab'}
 BTN_BG = (0.17, 0.175, 0.19, 1.0)
 BTN_HOT = (0.24, 0.245, 0.27, 1.0)
 FILL = (0.22, 0.38, 0.72, 1.0)        # the Quick HUD's bar blue
@@ -671,6 +673,25 @@ def _draw_new(it, hot, S, white, dim):
         else:
             G.text(x + (w - 14 * S) / 2, y + h / 2, G.fit(val, 12 * S, w - 30 * S), 12 * S, white, 'CENTER')
         G.text(x + w - 12 * S, y + h / 2, 'v', 10 * S, G.TEXT_DIM, 'RIGHT')
+        return None
+    if k == 'ptab':                       # 0.24.95 side panel page tab (the tool | Material): a pill, blue = shown
+        G.rounded_rect(x, y, w, h, h / 2, G.ACCENT if it.on else (BTN_HOT if hot else BTN_BG))
+        G.text(x + w / 2, y + h / 2, G.fit(it.label, 12 * S, w - 12 * S), 12 * S, white if it.enabled or it.on
+               else G.TEXT_DIM, 'CENTER')
+        return None
+    if k == 'swatch':                     # 0.24.95 a colour: its name ... the colour (click = colour picker)
+        try:
+            c = [float(v) for v in getattr(it.data, it.prop)][:3]
+            linear = it.data.bl_rna.properties[it.prop].subtype == 'COLOR'
+        except (AttributeError, KeyError, TypeError, ReferenceError):
+            return None
+        if linear:                        # (shown as the colour picker shows it)
+            c = [12.92 * v if v <= 0.0031308 else 1.055 * v ** (1 / 2.4) - 0.055 for v in c]
+        G.rounded_rect(x, y, w, h, h / 2, BTN_HOT if hot else BTN_BG)
+        sw = min(70 * S, w * 0.4)
+        G.text(x + 12 * S, y + h / 2, G.fit(it.label, 12 * S, w - sw - 24 * S), 12 * S, white)
+        G.rounded_rect(x + w - sw - 4 * S, y + 4 * S, sw, h - 8 * S, (h - 8 * S) / 2,
+                       (c[0], c[1], c[2], 1.0))
         return None
     if k == 'switch':
         G.text(x + 2 * S, y + h / 2, G.fit(it.label, 12 * S, w - 48 * S), 12 * S, white)
