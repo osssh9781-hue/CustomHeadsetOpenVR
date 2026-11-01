@@ -5,8 +5,10 @@ from top to bottom, like a mech part's panel lines), so the edge wear (the groov
 bottoms) show too - lit by the interior HDRI (as the lookdev sheet), Cycles, 128 px, transparent background:
     addon/mecha_lab/mech_icons/mat_<PRESET>.png      the material presets
     addon/mecha_lab/mech_icons/wear_<PRESET>.png     the Edge Wear presets, on Chipped Paint
+    addon/mecha_lab/mech_icons/hdri_<name>.png       previews of Blender's own HDRIs (256 x 128; the user's
+                                                     HDRIs get theirs in Blender, ``mech_shader.hdri_icon``)
 
-    <python with bpy> tools_dev/make_mech_preset_icons.py [mat|wear|all] [PRESET ...]
+    <python with bpy> tools_dev/make_mech_preset_icons.py [mat|wear|hdri|all] [PRESET ...]
 """
 import math
 import os
@@ -133,6 +135,14 @@ def main():
     from mecha_lab import mech_shader as ms
     bpy.ops.wm.read_factory_settings(use_empty=True)
     os.makedirs(OUT, exist_ok=True)
+    if which in {'hdri', 'all'}:
+        for f in ms.hdri_files():
+            out = os.path.join(OUT, 'hdri_' + os.path.splitext(f)[0] + '.png')
+            ms.make_hdri_thumb(os.path.join(ms.hdri_dir(), f), out)
+            print('HDRI', f, '->', out, flush=True)
+        if which == 'hdri':
+            print('ICONS DONE', flush=True)
+            return
     scene_setup()
     ob = ball()
     C = bpy.context

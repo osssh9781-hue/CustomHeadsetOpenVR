@@ -74,6 +74,20 @@ def grid(b, x, w, tiles, cols=GRID_COLS):
     b.y -= sp.GAP * k
 
 
+def hgrid(b, x, w, tiles, cols=2):
+    """0.24.95 HDRI previews (2 : 1 panoramas) in rows of ``cols``: tiles = [(label, icon, on, action)]."""
+    k = b.k
+    gap = 5 * k
+    tw = (w - (cols - 1) * gap) / cols
+    th = (tw - 6 * k) / 2 + 6 * k + 15 * k
+    for i, (label, ic, on, action) in enumerate(tiles):
+        c = i % cols
+        if c == 0:
+            b.y -= th + (gap if i else 0)
+        b.out.append(b.Item('htile', x + c * (tw + gap), b.y, tw, th, label, ic, on, True, action))
+    b.y -= sp.GAP * k
+
+
 def _cell(kind, label, action, data=None, prop=None, on=False, active=True):
     return (kind, label, on, action, data, prop, active)
 
@@ -310,6 +324,12 @@ def hdri_content(context, x, width, k):
             button('▶', 'mch.mech_hdri', action='SET', step=1))
     row(b, x, width, [button('Set HDRI', 'mch.mech_hdri', action='SET'),
                       button('Off', 'mch.mech_hdri', action='OFF')])
+
+    def previews(sx, sw):                        # (0.24.95 user: "hdri 도 미리 보기 넣어 줘") click = that HDRI, on
+        hgrid(b, sx, sw, [(n, ms.hdri_icon(ident), sc.mch_mech_hdri == ident,
+                           ('op', 'mch.mech_hdri', {'action': 'SET', 'ident': ident}))
+                          for ident, n, *_r in ms._hdri_items(None, context) if ident != 'NONE'])
+    section(b, 'hdri_previews', 'HDRIs', x, width, previews)
 
     def folder(sx, sw):
         d = ms.user_hdri_dir()

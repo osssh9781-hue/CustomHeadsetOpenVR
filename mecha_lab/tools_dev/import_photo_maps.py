@@ -212,5 +212,18 @@ def main(src):
     print(f'{done} maps from {src} into {OUT}')
 
 
+def one(slot, ident, f):
+    """A single map from one image (0.24.95: the user's burlap photo for the Weave maps):
+    python3 tools_dev/import_photo_maps.py --one <slot> <ID> <image>"""
+    colour = slot in ('base', 'rust')
+    a = np.asarray(Image.open(f).convert('RGB' if colour else 'L')).astype(np.float64) / 255.0
+    a, how = tile(slot, ident, a)
+    p = write(slot, ident, np.clip(a, 0, 1), '.jpg', quality=88)
+    print(f'{slot}/{ident}: {how} -> {p}')
+
+
 if __name__ == '__main__':
-    main(sys.argv[1])
+    if sys.argv[1] == '--one':
+        one(sys.argv[2], sys.argv[3], sys.argv[4])
+    else:
+        main(sys.argv[1])

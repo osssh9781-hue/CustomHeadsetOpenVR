@@ -262,6 +262,16 @@ def flow():
     xdo('mousemove', 300, 1200)
     yield 1.5
     shot('5_hdri_page.png')
+    # an HDRI preview (0.24.95 user: "hdri 도 미리 보기 넣어 줘"): a real click on the Forest picture
+    tile = yield from scrolled_to(lambda i: i.kind == 'htile' and 'forest' in i.label.lower())
+    log('Forest preview at', click(tile))
+    yield 0.4
+    xdo('click', 1)
+    yield 3.0
+    log('real click on the Forest preview: HDRI', S.mch_mech_hdri, 'on', ms.hdri_world(S) is not None)
+    xdo('mousemove', 300, 1200)
+    yield 2.0
+    shot('6_hdri_previews.png')
     log('DONE')
     bpy.ops.wm.quit_blender()
 

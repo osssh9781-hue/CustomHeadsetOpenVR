@@ -66,7 +66,7 @@ MAPS = {
     'weave': ('Weave', 2.0, False, [('CANVAS', 'Canvas'), ('DENIM', 'Denim'), ('NYLON', 'Nylon'),
                                     ('RIPSTOP', 'Ripstop'), ('WOOL', 'Wool'), ('FELT', 'Felt'),
                                     ('QUILT', 'Quilted'), ('LEATHER', 'Leather'), ('KNIT', 'Knit'),
-                                    ('MESH', 'Mesh Net')]),
+                                    ('MESH', 'Mesh Net'), ('BURLAP', 'Burlap')]),   # (0.24.95 the user's photo)
 }
 MAP_KEYS = tuple(MAPS)
 # what each emission map glows on: (constant, edges, crevices, scratches, its own image)
@@ -183,6 +183,10 @@ PRESETS = [
     ('CLOTH_PADDED', 'Cloth Padded', _m(h_weave=1.0, bump=1.5, base_color=(0.25, 0.28, 0.2), metallic=0.0,
                                         roughness=0.75, cloth=1.0, base_map='FLAT', weave_map='QUILT', dirt=0.25,
                                         dirt_map='DUST')),
+    # 0.24.95 (user: "옷 패턴에 이거도 넣어 줘" - a coarse burlap weave photo): the Burlap weave map
+    ('CLOTH_BURLAP', 'Cloth Burlap', _m(map_scale=0.5, h_weave=1.0, bump=1.3, base_color=(0.55, 0.46, 0.32),
+                                        metallic=0.0, roughness=0.88, rough_amount=0.15, cloth=1.0, base_map='MOTTLED',
+                                        weave_map='BURLAP', variation=0.4)),        # (a coarse weave: Map Scale 0.5)
     ('LEATHER', 'Leather', _m(h_weave=0.8, base_color=(0.22, 0.12, 0.07), metallic=0.0, roughness=0.55, cloth=0.6,
                               base_map='MOTTLED', weave_map='LEATHER')),
 ]
@@ -1177,6 +1181,102 @@ def _hdri_items(self, context):
     return _HDRI_ITEMS
 
 
+# --- HDRI previews (0.24.95 user: "hdri 도 미리 보기 넣어 줘") ----------------------------------------------------
+HDRI_THUMB = (256, 128)
+ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mech_icons')
+_THUMB_QUEUE = []
+_THUMB_FAILED = set()
+
+
+def make_hdri_thumb(src_path, out_path, size=HDRI_THUMB):
+    """A small picture of HDRI ``src_path`` (the whole panorama, PNG): made small by Blender, its brightness set
+    by its mean (a dark night HDRI still shows), tone mapped, sRGB."""
+    import numpy as np
+    W, H = size
+    img = bpy.data.images.load(src_path, check_existing=False)
+    try:
+        if not img.size[0] or not img.size[1]:
+            raise RuntimeError(f'cannot read {src_path}')
+        is_float = img.is_float
+        img.scale(W, H)
+        px = np.empty(W * H * 4, np.float32)
+        img.pixels.foreach_get(px)
+    finally:
+        bpy.data.images.remove(img)
+    a = px.reshape(H, W, 4)[..., :3].astype(np.float64)
+    if not is_float:
+        a = np.where(a <= 0.04045, a / 12.92, ((a + 0.055) / 1.055) ** 2.4)
+    lum = a @ np.array([0.2126, 0.7152, 0.0722])
+    a = a * min(max(0.35 / max(float(lum.mean()), 1e-5), 0.05), 50.0)
+    a = np.clip(a / (1.0 + a) * 1.3, 0.0, 1.0)
+    a = np.where(a <= 0.0031308, a * 12.92, 1.055 * a ** (1 / 2.4) - 0.055)
+    out = bpy.data.images.new('mch_hdri_thumb', W, H, alpha=False)
+    try:
+        rgba = np.concatenate([a, np.ones((H, W, 1))], -1).astype(np.float32)
+        out.pixels.foreach_set(rgba.ravel())
+        out.filepath_raw = out_path
+        out.file_format = 'PNG'
+        out.save()
+    finally:
+        bpy.data.images.remove(out)
+    return out_path
+
+
+def thumb_dir():
+    """Where the previews of the user's HDRIs are kept: Blender's temporary folder (gone when Blender closes - the
+    user's HDRI folder and Blender's settings are not touched)."""
+    import tempfile
+    d = os.path.join(bpy.app.tempdir or tempfile.gettempdir(), 'mch_hdri_thumbs')
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def hdri_icon(ident):
+    """'file:<png>' of an HDRI's preview - Blender's own come with the add-on, the user's are made once (one at a
+    time, off the draw); '' until it is there."""
+    import zlib
+    if not ident.startswith(USER):
+        p = os.path.join(ICON_DIR, 'hdri_' + os.path.splitext(ident)[0] + '.png')
+        if os.path.isfile(p):
+            return 'file:' + p
+    path = hdri_path(ident)
+    try:
+        info = os.stat(path)
+    except OSError:
+        return ''
+    key = zlib.crc32(f'{path}|{info.st_mtime}|{info.st_size}'.encode()) & 0xffffffff
+    out = os.path.join(thumb_dir(), f'{key:08x}.png')
+    if os.path.isfile(out):
+        return 'file:' + out
+    if path not in _THUMB_FAILED and all(q[0] != path for q in _THUMB_QUEUE):
+        _THUMB_QUEUE.append((path, out))
+        if not bpy.app.timers.is_registered(_thumb_tick):
+            bpy.app.timers.register(_thumb_tick, first_interval=0.1)
+    return ''
+
+
+def _thumb_tick():
+    """One preview per tick (a big HDRI takes a moment to read), then the panel redrawn."""
+    if not _THUMB_QUEUE:
+        return None
+    src, out = _THUMB_QUEUE.pop(0)
+    try:
+        make_hdri_thumb(src, out)
+    except (RuntimeError, OSError, ValueError, MemoryError) as ex:
+        print('Mech Shader: no HDRI preview for', src, ex)
+        _THUMB_FAILED.add(src)
+    try:
+        from . import ui_bars
+        ui_bars.bump()
+        for w in bpy.context.window_manager.windows:
+            for a in w.screen.areas:
+                if a.type == 'VIEW_3D':
+                    a.tag_redraw()
+    except (AttributeError, ReferenceError, ImportError):
+        pass
+    return 0.05 if _THUMB_QUEUE else None
+
+
 def hdri_world(scene):
     """The scene's world when it is the Mech Shader HDRI, else None."""
     w = scene.world
@@ -1342,9 +1442,15 @@ back).  The arrows step to the next HDRI"""
     bl_options = {'REGISTER', 'UNDO'}
     action: EnumProperty(items=[('SET', 'Set', ''), ('OFF', 'Off', '')], default='SET')
     step: bpy.props.IntProperty(default=0)
+    ident: StringProperty(default='', options={'SKIP_SAVE'})      # (0.24.95 a preview clicked: that HDRI)
 
     def execute(self, context):
         sc = context.scene
+        if self.ident and self.action == 'SET':
+            if self.ident not in [i[0] for i in _hdri_items(None, context)]:
+                self.report({'WARNING'}, f'HDRI: {self.ident} is not in the list')
+                return {'CANCELLED'}
+            sc.mch_mech_hdri = self.ident
         if self.action == 'OFF':
             if not hdri_off(context):
                 self.report({'INFO'}, 'HDRI: the scene\'s world is not the Mech Shader HDRI')

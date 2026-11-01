@@ -23,7 +23,8 @@ missing = [(s, k) for s in ms.MAP_KEYS for k, _l in ms.MAPS[s][3] if ms.map_path
 missing += [('rust', k + '_mask') for k, _l in ms.MAPS['rust'][3] if ms.map_path('rust', k + '_mask') is None]
 missing += [('base', k + '_height') for k, _l in ms.MAPS['base'][3] if ms.map_path('base', k + '_height') is None]
 check('Ten maps per slot (Base + its height map, Roughness, Chips, Scratches, Rust colour + mask, Dirt, Snow, Emission, Weave), all '
-      'on disk', all(len(ms.MAPS[s][3]) == 10 for s in ms.MAP_KEYS) and not missing, missing)
+      'on disk - Weave eleven (0.24.95 + the user\'s Burlap photo)',
+      all(len(ms.MAPS[s][3]) == (11 if s == 'weave' else 10) for s in ms.MAP_KEYS) and not missing, missing)
 seam = []
 for slot, ident in (('rough', 'SMUDGE'), ('base', 'MOTTLED'), ('dirt', 'MUD'), ('snow', 'PATCHY'), ('chip', 'BIG')):
     img = bpy.data.images.load(ms.map_path(slot, ident))

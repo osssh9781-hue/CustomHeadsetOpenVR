@@ -609,7 +609,7 @@ def draw(items, hover, S, context):
 
 
 NEW_KINDS = {'sbtn', 'arow', 'ibtn', 'mini', 'drop', 'switch', 'tbtn', 'pnote', 'sbg', 'shead', 'phead', 'pbtn', 'pmin',
-             'sbar', 'vrule', 'glabel', 'lrow', 'lfold', 'swatch', 'ptab', 'mtile'}
+             'sbar', 'vrule', 'glabel', 'lrow', 'lfold', 'swatch', 'ptab', 'mtile', 'htile'}
 BTN_BG = (0.17, 0.175, 0.19, 1.0)
 BTN_HOT = (0.24, 0.245, 0.27, 1.0)
 FILL = (0.22, 0.38, 0.72, 1.0)        # the Quick HUD's bar blue
@@ -691,6 +691,25 @@ def _draw_new(it, hot, S, white, dim):
             G.rounded_rect(ix + ic * 0.1, iy + ic * 0.1, ic * 0.8, ic * 0.8, ic * 0.4, (0.45, 0.46, 0.5, 1.0))
         size = 9.5 * S
         label = G.fit(it.label, size, w - 4 * S)
+        G.text(x + w / 2, y + band * 0.5, label, size, white, 'CENTER')
+        return (it, 'ABOVE') if hot and label != it.label else None
+    if k == 'htile':                      # 0.24.95 an HDRI: its panorama (2 : 1), the name under it
+        if it.on:
+            G.rounded_rect(x, y, w, h, 8 * S, G.ACCENT)
+        elif hot:
+            G.rounded_rect(x, y, w, h, 8 * S, HOVER)
+        band = 14 * S
+        iw = w - 6 * S
+        ih = min(iw / 2.0, h - band - 4 * S)
+        iw = ih * 2.0
+        ix, iy = x + (w - iw) / 2, y + band + (h - band - ih) / 2
+        drawn = it.icon.startswith('file:') and G.image_quad(it.icon[5:], ((ix, iy), (ix + iw, iy), (ix + iw, iy + ih),
+                                                                           (ix, iy + ih)))
+        if not drawn:                     # (its preview is still being made)
+            G.rounded_rect(ix, iy, iw, ih, 4 * S, (0.3, 0.31, 0.34, 1.0))
+            G.text(ix + iw / 2, iy + ih / 2, '...', 11 * S, G.TEXT_DIM, 'CENTER')
+        size = 10 * S
+        label = G.fit(it.label, size, w - 6 * S)
         G.text(x + w / 2, y + band * 0.5, label, size, white, 'CENTER')
         return (it, 'ABOVE') if hot and label != it.label else None
     if k == 'ptab':                       # 0.24.95 side panel page tab (the tool | Material): a pill, blue = shown
