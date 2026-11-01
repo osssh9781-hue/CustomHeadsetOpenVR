@@ -33,15 +33,24 @@ VERSION = 8                          # (the node tree's layout: an older one is 
 MAP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mech_maps')
 
 # slot -> (label, tiles per unit (x Map Scale), colour map (sRGB) or data, [(id, label)])
+# 0.24.95 the user's sci-fi pack ("우리 기존 메테리얼 탭에 넣을 베이스 컬러랑 러프니스"): 20 materials, each a Base map
+# (its colour taken out - the colour is the preset's - its detail and colour variation kept) and a Roughness map
+SCIFI_MAPS = [('TITANIUM', 'Titanium Satin'), ('CERAKOTE', 'Gunmetal Cerakote'), ('IVORY', 'Ivory Ceramic'),
+              ('NAVAL', 'Naval Blue Enamel'), ('OLIVE', 'Military Olive'), ('OXIDE', 'Oxide Red Paint'),
+              ('YELLOW', 'Industrial Yellow'), ('ARCTIC', 'Arctic White'), ('TWILL', 'Carbon Twill'),
+              ('FCARBON', 'Forged Carbon'), ('ARAMID', 'Aramid Weave'), ('ELASTOMER', 'Black Elastomer'),
+              ('NICKEL', 'Nickel Alloy'), ('HEAT_TI', 'Heat Titanium'), ('OX_COPPER', 'Oxidized Copper'),
+              ('THERMAL', 'Thermal Ceramic'), ('ABLATIVE', 'Ablative Composite'), ('MICROHEX', 'Microhex Composite'),
+              ('CERMET', 'Titanium Cermet'), ('BIOMETAL', 'Alien Biometal')]
 MAPS = {
     'base': ('Base', 1.5, True, [('FLAT', 'Flat'), ('MOTTLED', 'Mottled'), ('BRUSHED', 'Brushed'),
                                  ('CAST', 'Cast / Pitted'), ('FORGED', 'Forged'), ('HEAT', 'Heat Tint'),
                                  ('PATINA', 'Patina'), ('PEEL', 'Peeling Paint'), ('CARBON', 'Carbon Fibre'),
-                                 ('CAMO', 'Camo')]),
+                                 ('CAMO', 'Camo')] + SCIFI_MAPS),
     'rough': ('Roughness', 1.5, False, [('CLEAN', 'Clean'), ('FINE', 'Fine Noise'), ('SMUDGE', 'Smudges'),
                                         ('FINGER', 'Fingerprints'), ('BRUSHED', 'Brushed'), ('PATCHY', 'Patchy'),
                                         ('GRUNGE', 'Grunge'), ('WATER', 'Water Spots'), ('STREAKS', 'Rain Streaks'),
-                                        ('WORN', 'Worn Polish')]),
+                                        ('WORN', 'Worn Polish')] + SCIFI_MAPS),
     'chip': ('Chips', 1.5, False, [('SOFT', 'Soft Wear'), ('FLAKES', 'Flakes'), ('BIG', 'Big Chips'),
                                    ('DOTS', 'Dots'), ('CRACKED', 'Cracked'), ('PEEL', 'Peeling'),
                                    ('SCUFF', 'Scuffs'), ('GRAIN', 'Fine Grain'), ('BLOTCH', 'Blotches'),
@@ -189,6 +198,46 @@ PRESETS = [
                                         weave_map='BURLAP', variation=0.4)),        # (a coarse weave: Map Scale 0.5)
     ('LEATHER', 'Leather', _m(h_weave=0.8, base_color=(0.22, 0.12, 0.07), metallic=0.0, roughness=0.55, cloth=0.6,
                               base_map='MOTTLED', weave_map='LEATHER')),
+] + [
+    # 0.24.95 the user's sci-fi pack: each on its own Base + Roughness map; the colour and roughness are the maps'
+    # own means (``tools_dev/import_photo_maps.py --scifi`` prints them), Roughness Map 1 = the map's contrast as made.
+    # Coatings are a Paint over metal (Paint Pattern 1: the map shows in the paint; edge wear shows the metal)
+    (k, n, _m(**dict(dict(base_map=k, rough_map=k, rough_amount=1.0, variation=0.12), **kw))) for k, n, kw in (
+        ('TITANIUM', 'Titanium Satin', dict(base_color=(0.54, 0.538, 0.537), roughness=0.52, h_base=0.2)),
+        ('CERAKOTE', 'Gunmetal Cerakote', dict(paint=1.0, paint_pattern=1.0, paint_color=(0.33, 0.332, 0.337),
+                                               paint_rough=0.48, coat=0.1, h_base=0.3)),
+        ('IVORY', 'Ivory Ceramic', dict(paint=1.0, paint_pattern=1.0, paint_color=(0.908, 0.869, 0.801),
+                                        paint_rough=0.6, coat=0.2, h_base=0.2)),
+        ('NAVAL', 'Naval Blue Enamel', dict(paint=1.0, paint_pattern=1.0, paint_color=(0.287, 0.407, 0.548),
+                                            paint_rough=0.46, coat=0.3, h_base=0.25)),
+        ('OLIVE', 'Military Olive', dict(paint=1.0, paint_pattern=1.0, paint_color=(0.364, 0.366, 0.245),
+                                         paint_rough=0.51, coat=0.1, h_base=0.25)),
+        ('OXIDE', 'Oxide Red Paint', dict(paint=1.0, paint_pattern=1.0, paint_color=(0.663, 0.237, 0.186),
+                                          paint_rough=0.5, coat=0.2, h_base=0.25)),
+        ('YELLOW', 'Industrial Yellow', dict(paint=1.0, paint_pattern=1.0, paint_color=(0.843, 0.64, 0.192),
+                                             paint_rough=0.56, coat=0.2, h_base=0.25)),
+        ('ARCTIC', 'Arctic White', dict(paint=1.0, paint_pattern=1.0, paint_color=(0.841, 0.836, 0.82),
+                                        paint_rough=0.59, coat=0.2, h_base=0.2)),
+        ('TWILL', 'Carbon Twill', dict(base_color=(0.244, 0.242, 0.235), metallic=0.0, roughness=0.36, coat=0.6,
+                                       h_base=0.4)),
+        ('FCARBON', 'Forged Carbon', dict(base_color=(0.255, 0.255, 0.253), metallic=0.0, roughness=0.32, coat=0.8,
+                                          h_base=0.2)),
+        ('ARAMID', 'Aramid Weave', dict(base_color=(0.734, 0.599, 0.342), metallic=0.0, roughness=0.52, coat=0.2,
+                                        h_base=0.5)),
+        ('ELASTOMER', 'Black Elastomer', dict(base_color=(0.215, 0.216, 0.218), metallic=0.0, roughness=0.5,
+                                              h_base=0.4)),
+        ('NICKEL', 'Nickel Alloy', dict(base_color=(0.642, 0.607, 0.564), roughness=0.47, h_base=0.2)),
+        ('HEAT_TI', 'Heat Titanium', dict(base_color=(0.447, 0.416, 0.422), roughness=0.47, h_base=0.15)),
+        ('OX_COPPER', 'Oxidized Copper', dict(base_color=(0.687, 0.417, 0.286), roughness=0.42, h_base=0.3)),
+        ('THERMAL', 'Thermal Ceramic', dict(base_color=(0.359, 0.358, 0.358), metallic=0.0, roughness=0.53,
+                                            h_base=0.5)),
+        ('ABLATIVE', 'Ablative Composite', dict(base_color=(0.435, 0.34, 0.269), metallic=0.0, roughness=0.48,
+                                                h_base=0.5)),
+        ('MICROHEX', 'Microhex Composite', dict(base_color=(0.314, 0.315, 0.316), metallic=0.0, roughness=0.43,
+                                                coat=0.2, h_base=0.4)),
+        ('CERMET', 'Titanium Cermet', dict(base_color=(0.619, 0.612, 0.599), metallic=0.3, roughness=0.58,
+                                           h_base=0.4)),
+        ('BIOMETAL', 'Alien Biometal', dict(base_color=(0.374, 0.383, 0.311), roughness=0.37, h_base=0.5)))
 ]
 PRESET_IDS = tuple(p[0] for p in PRESETS)
 

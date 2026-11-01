@@ -110,9 +110,10 @@ def _smooth_fill(d, known, sigma):
     """``d`` known only where ``known``: smoothed and carried over the rest (normalised convolution)."""
     gy, gx = _gmat(d.shape[0], sigma), _gmat(d.shape[1], sigma)
     k = known.astype(np.float64)
-    num = gy @ (d * k) @ gx.T
-    den = gy @ k @ gx.T
-    return num / np.maximum(den, 1e-6)
+    den = np.maximum(gy @ k @ gx.T, 1e-6)
+    if d.ndim == 3:
+        return np.stack([(gy @ (d[..., c] * k) @ gx.T) / den for c in range(d.shape[2])], -1)
+    return (gy @ (d * k) @ gx.T) / den
 
 
 def _off_edge(cost, outer_first):
@@ -137,8 +138,9 @@ def _heal_band(a, a_hp, src, src_hp, valid, centre, half, overlap, step, used, k
     overlaps - None: as much as it takes; a number: from the differences smaller than that, at most that); joined
     along the cheapest cut through each overlap.
     ``span`` (first row, rows): only those rows, the rows just before and after them kept (they meet the patches);
-    None: the whole band round (the last patch meets the first).  ``a`` / ``a_hp`` are changed in place."""
-    n0, n1 = a.shape
+    None: the whole band round (the last patch meets the first).  ``a`` / ``a_hp`` are changed in place.  ``a`` /
+    ``src`` greyscale or colour (h x w x channels: the same patches and cuts for every channel; ``*_hp`` grey)."""
+    n0, n1 = a.shape[:2]
     x0 = centre - half - overlap
     w = 2 * (half + overlap)
     cols = np.arange(x0, x0 + w) % n1
@@ -204,10 +206,13 @@ def _heal_band(a, a_hp, src, src_hp, valid, centre, half, overlap, step, used, k
         if ease is None:
             fix = _smooth_fill(d, known, 0.18 * w)
         else:                                       # (masks: from the small differences only - black against white
-            fix = np.clip(_smooth_fill(d, known & (np.abs(d) < ease), 0.18 * w), -ease, ease)   # is not a shade)
+            small = known & (np.abs(d) < ease) if d.ndim == 2 else known & (np.abs(d).max(2) < ease)   # is not a
+            fix = np.clip(_smooth_fill(d, small, 0.18 * w), -ease, ease)                                # shade)
         patch = patch + fix
         # where the patch is kept: right of the left cut, left of the right cut, under the top cut (above the bottom)
         err = (patch - tgt) ** 2
+        if err.ndim == 3:
+            err = err.sum(2)
         mask = np.ones((h, w))
         p = _min_path(_off_edge(err[:, :overlap], True))
         mask[np.arange(w)[None, :] <= p[:, None]] = 0.0
@@ -225,7 +230,8 @@ def _heal_band(a, a_hp, src, src_hp, valid, centre, half, overlap, step, used, k
             mask[0] = 0.0
         if i == k - 1:
             mask[-1] = 0.0
-        a[np.ix_(rows, cols)] = tgt * (1.0 - mask) + patch * mask
+        mc = mask if a.ndim == 2 else mask[..., None]
+        a[np.ix_(rows, cols)] = tgt * (1.0 - mc) + patch * mc
         a_hp[np.ix_(rows, cols)] = tgt_hp * (1.0 - mask) + patch_hp * mask
     return a
 
@@ -262,19 +268,21 @@ def heal_tile(a, crop=0, half=72, overlap=64, step=200, ease=None, periodic=Fals
     has blurred / shifted to fake a seamless edge), the map shifted by half (its seams now cross in the middle, its
     own middle continuous across the wrap), then the two seam lines covered with patches of the map from elsewhere
     (``_heal_band``: down the vertical seam, then across the horizontal one).  Only a band ~2 x (half + overlap) px
-    wide round each seam changes; the rest is the map as it was (moved by half).  Greyscale.  ``ease``: how much a
+    wide round each seam changes; the rest is the map as it was (moved by half).  Greyscale or colour (h x w x 3:
+    matched on its brightness, every channel cut the same).  ``ease``: how much a
     patch's brightness may be shifted to meet its surroundings (None: freely - heights; a little for black / white
     masks, which a smooth shift would turn grey).  ``periodic``: first the map's own slow shading made to meet across
     its edges (``periodic_part`` - heights whose corners are lit differently)."""
     if crop:
         a = a[crop:-crop, crop:-crop]
     if periodic:
-        a = periodic_part(a)
-    n0, n1 = a.shape
+        a = periodic_part(a) if a.ndim == 2 else np.stack([periodic_part(a[..., c]) for c in range(a.shape[2])], -1)
+    n0, n1 = a.shape[:2]
     a = np.roll(np.roll(a, n0 // 2, 0), n1 // 2, 1)
     cy, cx = n0 // 2, n1 // 2
     src = a.copy()
-    src_hp = 2.0 * src - gblur(src, 12.0)        # (matched on the map with its fine detail doubled)
+    g = lum(src)
+    src_hp = 2.0 * g - gblur(g, 12.0)            # (matched on the map with its fine detail doubled)
     a_hp = src_hp.copy()
     used = []
     away = 2 * (half + overlap)
@@ -288,12 +296,12 @@ def heal_tile(a, crop=0, half=72, overlap=64, step=200, ease=None, periodic=Fals
         return ~cross_y[:, None] & ~cross_x[None, :]
     a = _heal_band(a, a_hp, src, src_hp, valid, cx, half, overlap, step, used, away, ease)
     used_t = [(x, y) for y, x in used]
-    aT, a_hpT = a.T.copy(), a_hp.T.copy()
+    aT, a_hpT = np.swapaxes(a, 0, 1).copy(), a_hp.T.copy()
     # (across the horizontal seam: not through the vertical band's middle - its patches run on across the seam
     # there - so from one side of it round to the other)
-    _heal_band(aT, a_hpT, src.T.copy(), src_hp.T.copy(), lambda h, w: valid(w, h).T, cy, half, overlap, step,
-               used_t, away, ease, span=(cx + half - overlap, n1 - 2 * half + 2 * overlap))
-    return np.ascontiguousarray(aT.T)
+    _heal_band(aT, a_hpT, np.swapaxes(src, 0, 1).copy(), src_hp.T.copy(), lambda h, w: valid(w, h).T, cy, half,
+               overlap, step, used_t, away, ease, span=(cx + half - overlap, n1 - 2 * half + 2 * overlap))
+    return np.ascontiguousarray(np.swapaxes(aT, 0, 1))
 
 
 def period(g, axis):
@@ -474,9 +482,91 @@ def creature(src, crop=160):
     print(f'{done} creature maps into {CREATURE_OUT}')
 
 
+
+# 0.24.95 the user's "SciFi_Base_Roughness_40" pack: <base|rough>/<slot>_scifi_<nn>_<name>.jpg -> our ids
+SCIFI = {'01': 'TITANIUM', '02': 'CERAKOTE', '03': 'IVORY', '04': 'NAVAL', '05': 'OLIVE', '06': 'OXIDE',
+         '07': 'YELLOW', '08': 'ARCTIC', '09': 'TWILL', '10': 'FCARBON', '11': 'ARAMID', '12': 'ELASTOMER',
+         '13': 'NICKEL', '14': 'HEAT_TI', '15': 'OX_COPPER', '16': 'THERMAL', '17': 'ABLATIVE', '18': 'MICROHEX',
+         '19': 'CERMET', '20': 'BIOMETAL'}
+# (how much of the colour map's fine detail becomes relief: paint grain a little, colour islands hardly)
+SCIFI_HEIGHT = {'HEAT_TI': 0.15, 'OX_COPPER': 0.5, 'NAVAL': 0.6, 'OLIVE': 0.6, 'OXIDE': 0.6, 'YELLOW': 0.6,
+                'ARCTIC': 0.6, 'IVORY': 0.6, 'CERAKOTE': 0.7, 'TITANIUM': 0.6, 'NICKEL': 0.6, 'BIOMETAL': 0.7}
+SCIFI_SIZE = 1024
+
+
+def _srgb_lin(x):
+    x = np.maximum(x, 0.0)
+    return np.where(x <= 0.04045, x / 12.92, ((x + 0.055) / 1.055) ** 2.4)
+
+
+def _lin_srgb(x):
+    x = np.clip(x, 0.0, 1.0)
+    return np.where(x <= 0.0031308, x * 12.92, 1.055 * x ** (1.0 / 2.4) - 0.055)
+
+
+def _resize(a, n):
+    if a.shape[0] == n:
+        return a
+    if a.ndim == 2:
+        return np.asarray(Image.fromarray(a.astype(np.float32), 'F').resize((n, n), Image.LANCZOS)).astype(np.float64)
+    return np.stack([_resize(a[..., c], n) for c in range(a.shape[2])], -1)
+
+
+def scifi(src):
+    """0.24.95 The user's sci-fi pack (20 Base Color + 20 Roughness, 1254 px, "seamless not guaranteed") into the
+    Base and Roughness slots, our ids (``SCIFI``), 1024 px:
+
+    * every map made seamless (``heal_tile``; its slow shading first made to meet - ``periodic``);
+    * Base: each channel scaled to a 0.5 mean (the shader does colour x map x 2), so the map keeps its detail and its
+      colour variation and the material's own colour goes in the preset; a map whose specks would clip is scaled a
+      little less, and the preset's colour makes up for it.  Its height map from its fine detail (``SCIFI_HEIGHT``).
+    * Roughness: shifted to a 0.5 mean, contrast kept (the preset's Roughness = the map's mean, Roughness Map 1 =
+      its contrast as made).
+    Prints each preset's colour (sRGB, as the presets are written) and roughness.
+        python3 tools_dev/import_photo_maps.py --scifi <pack folder>"""
+    out = {}
+    for f in sorted(glob.glob(os.path.join(src, '*', '*_scifi_*.jpg'))):
+        slot = os.path.basename(os.path.dirname(f))
+        num = os.path.basename(f).split('_scifi_')[1][:2]
+        ident = SCIFI.get(num)
+        if slot not in ('base', 'rough') or ident is None:
+            continue
+        before = max(seam(np.asarray(Image.open(f).convert('L')).astype(np.float64)[1:-1, 1:-1] / 255.0))
+        if slot == 'base':
+            a = np.asarray(Image.open(f).convert('RGB')).astype(np.float64) / 255.0
+            a = np.clip(_resize(heal_tile(a, 0, periodic=True), SCIFI_SIZE), 0.0, 1.0)
+            mean = a.reshape(-1, 3).mean(0)
+            ideal = a * (0.5 / np.maximum(mean, 1e-3))
+            k = min(1.0, 1.0 / max(np.percentile(ideal.reshape(-1, 3), 99.9, axis=0).max(), 1e-3))
+            m = np.clip(ideal * k, 0.0, 1.0)
+            # (the preset colour: what this map at a 0.5 mean under the material's own mean colour would give)
+            want = _srgb_lin(mean) * _srgb_lin(ideal).reshape(-1, 3).mean(0)
+            col = _lin_srgb(want / np.maximum(_srgb_lin(m).reshape(-1, 3).mean(0), 1e-6))
+            write('base', ident, m, '.jpg', quality=88)
+            g = lum(m)
+            hp = gblur(g - gblur(g, 24.0), 1.2)
+            write('base', ident + '_height', 0.5 + (norm(hp) - 0.5) * SCIFI_HEIGHT.get(ident, 1.0), '.jpg')
+            out.setdefault(ident, {})['color'] = tuple(round(float(x), 3) for x in col)
+            out[ident]['k'] = round(k, 2)
+            after = max(seam(lum(m)))
+        else:
+            a = np.asarray(Image.open(f).convert('L')).astype(np.float64) / 255.0
+            a = np.clip(_resize(heal_tile(a, 0, periodic=True), SCIFI_SIZE), 0.0, 1.0)
+            mean = float(a.mean())
+            write('rough', ident, np.clip(a - mean + 0.5, 0.0, 1.0), '.jpg', quality=85)
+            out.setdefault(ident, {})['rough'] = round(mean, 2)
+            out[ident]['contrast'] = round(float(np.percentile(a, 95) - np.percentile(a, 5)), 2)
+            after = max(seam(a))
+        print(f'{slot}/{ident}: seam {before:.1f} -> {after:.2f}')
+    for ident in SCIFI.values():
+        print(ident, out.get(ident))
+    return out
+
 if __name__ == '__main__':
     if sys.argv[1] == '--one':
         one(sys.argv[2], sys.argv[3], sys.argv[4])
+    elif sys.argv[1] == '--scifi':
+        scifi(sys.argv[2])
     elif sys.argv[1] == '--creature':
         creature(sys.argv[2], int(sys.argv[3]) if len(sys.argv) > 3 else 160)
     else:

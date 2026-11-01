@@ -44,7 +44,7 @@ check('No Mech material yet: ◀ [preset] ▶ on the scene\'s preset, Apply Mech
       and 'HDRI' not in heads(its) and h > 0, [i.label for i in its if i.kind in {'tbtn', 'shead'}])
 tiles0 = [i for i in its if i.kind == 'mtile']
 check('... and the presets as sphere icons (user: "메테리얼 창도 아이콘으로 보이게 해 줄래? 구 형태로"): 34 tiles, a click '
-      'applies that preset', len(tiles0) == len(ms.PRESETS) and all(t.action[:2] == ('op', 'mch.mech_shader_apply')
+      'applies that preset (55 with the sci-fi pack)', len(tiles0) == len(ms.PRESETS) and all(t.action[:2] == ('op', 'mch.mech_shader_apply')
                                                                    for t in tiles0), len(tiles0))
 check('... every preset has its sphere icon file (mech_icons/mat_<ID>.png)',
       all(t.icon.startswith('file:') and os.path.isfile(t.icon[5:]) for t in tiles0),
@@ -69,7 +69,7 @@ check('... Glass 0.6: IOR shows', by_prop(its, 'ior', 'mini'))
 
 tiles = [i for i in its if i.kind == 'mtile']
 on = [t.label for t in tiles if t.on]
-check('Presets as sphere icons: a grid of 34, the one in use blue (Steel)', len(tiles) == len(ms.PRESETS)
+check('Presets as sphere icons: a grid of all of them, the one in use blue (Steel)', len(tiles) == len(ms.PRESETS)
       and on == ['Steel'] and heads(its)['PRESETS'].on, on)
 cols = sorted({round(t.x) for t in tiles})
 check('... 4 per row, square balls with the name under them', len(cols) == 4 and all(t.h > t.w for t in tiles))

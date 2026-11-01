@@ -23,8 +23,9 @@ missing = [(s, k) for s in ms.MAP_KEYS for k, _l in ms.MAPS[s][3] if ms.map_path
 missing += [('rust', k + '_mask') for k, _l in ms.MAPS['rust'][3] if ms.map_path('rust', k + '_mask') is None]
 missing += [('base', k + '_height') for k, _l in ms.MAPS['base'][3] if ms.map_path('base', k + '_height') is None]
 check('Ten maps per slot (Base + its height map, Roughness, Chips, Scratches, Rust colour + mask, Dirt, Snow, Emission, Weave), all '
-      'on disk - Weave eleven (0.24.95 + the user\'s Burlap photo)',
-      all(len(ms.MAPS[s][3]) == (11 if s == 'weave' else 10) for s in ms.MAP_KEYS) and not missing, missing)
+      'on disk - Weave eleven (0.24.95 + the user\'s Burlap photo), Base and Roughness thirty (+ the user\'s sci-fi pack)',
+      all(len(ms.MAPS[s][3]) == {'weave': 11, 'base': 30, 'rough': 30}.get(s, 10) for s in ms.MAP_KEYS)
+      and not missing, missing)
 seam = []
 for slot, ident in (('rough', 'SMUDGE'), ('base', 'MOTTLED'), ('dirt', 'MUD'), ('snow', 'PATCHY'), ('chip', 'BIG')):
     img = bpy.data.images.load(ms.map_path(slot, ident))
@@ -115,10 +116,10 @@ bpy.ops.mch.mech_shader_step(prop='scratch_map', step=1)
 check('Step the Scratches map: the next map is on the node at once', st.scratch_map == 'LONG'
       and nodes['mch:img:scratch'].image.name.startswith('LONG') and before.startswith('FINE'), (before,))
 seen = set()
-for _i in range(10):
+for _i in range(len(ms.MAPS['rough'][3])):
     bpy.ops.mch.mech_shader_step(prop='rough_map', step=1)
     seen.add(nodes['mch:img:rough'].image.name)
-check('... all ten Roughness maps in turn, back to the first', len(seen) == 10 and st.rough_map == 'SMUDGE', seen)
+check('... all thirty Roughness maps in turn, back to the first', len(seen) == 30 and st.rough_map == 'SMUDGE', seen)
 bpy.ops.mch.mech_shader_step(prop='rust_map', step=-1)
 check('... the Rust map brings its own mask', nodes['mch:img:rust_mask'].image.name.startswith(st.rust_map + '_mask'))
 names = []
