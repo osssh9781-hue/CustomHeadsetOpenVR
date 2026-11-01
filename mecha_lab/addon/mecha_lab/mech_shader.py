@@ -93,6 +93,7 @@ BASE = dict(base_color=(0.77, 0.78, 0.78), metallic=1.0, roughness=0.35, rough_a
             # 0.24.95 (user: "스크래치 색깔 조절도 넣어 주라"): the scratches' own colour, Tint 0 = as before (the metal
             # underneath, a little brighter)
             scratch_color=(0.85, 0.85, 0.86), scratch_tint=0.0,
+            dust_color=(0.6, 0.57, 0.52),        # (0.24.95 user: "더스트 색깔 조정도" - the old fixed dust colour)
             base_map='MOTTLED', rough_map='SMUDGE', chip_map='FLAKES', scratch_map='FINE', rust_map='PATCHES',
             dirt_map='GRIME', snow_map='POWDER', emit_map='EDGES', weave_map='CANVAS')
 
@@ -433,7 +434,7 @@ def build(mat):
                                  'chip_follow', 'chip_reach', 'chip_soft', 'chip_breakup', 'edge_mat', 'edge_metal',
                                  'edge_rough', 'edge_polish', 'scratch_tint')}
     c = {k: b.rgb(k) for k in ('base_color', 'paint_color', 'rust_color', 'dirt_color', 'emit_color',
-                               'primer_color', 'edge_color', 'scratch_color')}
+                               'primer_color', 'edge_color', 'scratch_color', 'dust_color')}
     w = {k: b.value('emit_w_' + k) for k in ('const', 'edge', 'cav', 'scratch', 'pattern')}
     # edges / crevices: the mesh's convexity (mch_curv) + Cycles' Bevel normal
     att = b.node('ShaderNodeAttribute', 'mch:curv')
@@ -535,7 +536,7 @@ def build(mat):
     streak_col = b.mixc(b.math('MULTIPLY', v['rust'], 1.5), b.vmath('SCALE', c['dirt_color'], fac=4.0),
                         b.mixc(1.0, _lin((0.5, 0.24, 0.1)) + (1.0,), c['rust_color'], 'MULTIPLY'))
     col = b.mixc(b.math('MULTIPLY', streak, 0.6), col, b.mixc(1.0, col, streak_col, 'MULTIPLY'))
-    col = b.mixc(dust, col, _lin((0.6, 0.57, 0.52)) + (1.0,))
+    col = b.mixc(dust, col, c['dust_color'])
     col = b.mixc(snow, col, (0.88, 0.9, 0.94, 1.0))
     b.link(col, bsdf.inputs['Base Color'])
     keep = b.math('MULTIPLY', b.math('SUBTRACT', 1.0, b.math('ADD', paint, primer), clamp=True),
@@ -884,6 +885,7 @@ class MCH_PG_MechShader(bpy.types.PropertyGroup):
     aniso: _slider('Brushed', 0.0, desc='Anisotropic highlight of bare metal, stretched across the brush lines '
                                         '(Cycles)')
     dust: _slider('Dust', 0.0, desc='Fine dust settled on what faces up')
+    dust_color: _color('Dust Color', BASE['dust_color'])
     streaks: _slider('Grime Streaks', 0.0, desc='Dirt / rust run down the walls (rust tints them)')
     primer: _slider('Primer', 0.0, desc='A band of primer between the paint and the metal at the chips (its width)')
     primer_color: _color('Primer Color', BASE['primer_color'])
@@ -1424,7 +1426,7 @@ def draw(layout, context):
               'edge_metal', 'edge_rough', 'edge_polish'), 'h_chip'),
             ('scratch', 'scratches', ('scratch_color', 'scratch_tint'), (), 'h_scratch'),
             ('rust', 'rust', ('rust_scratch', 'rust_color'), (), 'h_rust'),
-            ('dirt', 'dirt', ('dirt_color',), ('dirt_top', 'dirt_low', 'dust', 'streaks'), 'h_dirt'),
+            ('dirt', 'dirt', ('dirt_color',), ('dirt_top', 'dirt_low', 'dust', 'dust_color', 'streaks'), 'h_dirt'),
             ('snow', 'snow', (), ('snow_soft',), 'h_snow'),
             ('emit', 'emission', ('emit_color',), (), None), ('weave', 'cloth', (), (), 'h_weave')):
         sub = box.column(align=True)
@@ -1439,7 +1441,7 @@ def draw(layout, context):
             sub.prop(st, e, slider=not e.endswith('color'))
         sub.prop(st, amount, slider=True)
         for e in after:
-            sub.prop(st, e, slider=True)
+            sub.prop(st, e, slider=not e.endswith('color'))
         _map_row(sub, st, slot)
         if slot == 'chip':
             sub.prop(st, 'edge_map')

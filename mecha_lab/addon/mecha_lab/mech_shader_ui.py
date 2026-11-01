@@ -32,7 +32,7 @@ LAYERS = (
     ('scratch', 'Scratches', ('scratches',), ('scratch_color', 'scratch_tint'), 'scratches', (), 'h_scratch'),
     ('rust', 'Rust', ('rust', 'rust_scratch'), ('rust_color',), 'rust', ('rust_scratch',), 'h_rust'),
     ('dirt', 'Dirt', ('dirt', 'dirt_top', 'dirt_low', 'dust', 'streaks'), ('dirt_color',), 'dirt',
-     ('dirt_top', 'dirt_low', 'dust', 'streaks'), 'h_dirt'),
+     ('dirt_top', 'dirt_low', 'dust', 'dust_color', 'streaks'), 'h_dirt'),
     ('snow', 'Snow', ('snow',), (), 'snow', ('snow_soft',), 'h_snow'),
     ('emit', 'Glow', ('emission',), ('emit_color',), 'emission', (), None),
     ('weave', 'Weave', ('cloth',), (), 'cloth', (), 'h_weave'),

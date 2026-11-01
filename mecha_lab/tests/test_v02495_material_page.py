@@ -176,6 +176,9 @@ its, _h = page()
 check('A click on DIRT opens it: In Crevices / On Top / From Below / Dust / Grime Streaks bars, its colour, map',
       all(by_prop(its, p, 'mini') for p in ('dirt', 'dirt_top', 'dirt_low', 'dust', 'streaks'))
       and by_prop(its, 'dirt_color', 'swatch') and by_prop(its, 'dirt_map', 'drop'))
+check('... and the dust its own colour (user: "더스트 색깔 조정도"): a Dust Color swatch, written into the material',
+      by_prop(its, 'dust_color', 'swatch') and abs(tuple(mat.node_tree.nodes['mch:dust_color'].outputs[0]
+                                                         .default_value)[0] - st.dust_color[0]) < 1e-6)
 st.dirt = 0.0
 st.dirt_top = 0.0
 its, _h = page()
