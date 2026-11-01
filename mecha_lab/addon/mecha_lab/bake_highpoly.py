@@ -783,12 +783,49 @@ def _cut_first(me):
 STRAY_TOL = 0.01      # a test Divide's edge point this far (x the part's size) off the part: that edge is creased
 
 
+def _folded_points(me, limit=100.0):
+    """Per point of mesh ``me``: on a face that folds over a neighbour (more than ``limit`` degrees across an edge
+    that is not creased)."""
+    from . import edge_memory as em
+    from . import mesh_io as mio
+    out = np.zeros(len(me.vertices), bool)
+    if not len(me.polygons):
+        return out
+    e_s, f_s, st, en = em._edge_faces(me)
+    s2 = st[(en - st) == 2]
+    if not len(s2):
+        return out
+    n = np.empty(len(me.polygons) * 3)
+    me.polygons.foreach_get('normal', n)
+    n = n.reshape(-1, 3)
+    cosl = math.cos(math.radians(limit))
+    bad = np.einsum('ij,ij->i', n[f_s[s2]], n[f_s[s2 + 1]]) < cosl
+    a = me.attributes.get('crease_edge')
+    if a is not None and a.domain == 'EDGE':
+        cr = np.zeros(len(me.edges), np.float32)
+        a.data.foreach_get('value', cr)
+        bad &= cr[e_s[s2]] < 0.5
+    if not bad.any():
+        return out
+    faces = np.zeros(len(me.polygons), bool)
+    faces[f_s[s2[bad]]] = True
+    faces[f_s[s2[bad] + 1]] = True
+    start, tot = mio.read_face_starts(me)
+    cv = mio.read_corner_verts(me)
+    out[cv[np.repeat(faces, tot)]] = True
+    return out
+
+
 def _crease_strays(me, tol=STRAY_TOL, rounds=2):
     """0.24.95 (combo fuzz: 37 of 978 parts strayed 3 - 8 %) a soft edge whose Catmull-Clark edge point leaves the
     part - the short miter edge where two long, thin rows of an Edge Finish band meet at a corner (1.5 x 0.01): its
     edge point is the mean of its ends and the two rows' face points, 0.7 and 1.5 away along the rows, and landed
-    0.12 inside the hole.  One test level of the subdivision finds them (an edge point far from its edge's middle
-    AND far from the part); they are creased, and the corners again (``_crease_corners``).  Returns how many."""
+    0.12 inside the hole.  One test level of the subdivision finds them (an edge point far from its edge's middle);
+    they are creased, and the corners again (``_crease_corners``).  Returns how many.
+    0.24.95 (bevel fuzz) or folds the test level over: at the bottom rim of a polygon hole the band's rows lie almost
+    flat, the miter's edge point slid 0.1 ALONG the part (the miter 0.006 long) - it stayed on the part, and the
+    rows folded over each other in the plane (half the folded area of 50 bevelled parts).  (Not every such point: a
+    triangulated bevel's short sides drift as far and fold nothing - creased, its rows could not round.)"""
     from mathutils import Vector
     from mathutils.bvhtree import BVHTree
     from . import mesh_io as mio
@@ -822,6 +859,7 @@ def _crease_strays(me, tol=STRAY_TOL, rounds=2):
             out = ev_ob.to_mesh()
             try:
                 P = mio.read_co(out) if len(out.vertices) >= nv + ne else None
+                folded = _folded_points(out) if P is not None else None
             finally:
                 ev_ob.to_mesh_clear()
         finally:
@@ -835,7 +873,7 @@ def _crease_strays(me, tol=STRAY_TOL, rounds=2):
         cand = np.flatnonzero((cr < 0.5) & (drift > tol * size) & (drift > 2.0 * elen))   # (an edge point well past
         # its own edge's length from it: a big face's edge points drift by half the face, and the BVH would look at
         # thousands of them - 7 s on a 20k-face part)
-        far = [int(e) for e in cand if bvh.find_nearest(Vector(ep[e]))[3] > tol * size]
+        far = [int(e) for e in cand if folded[nv + e] or bvh.find_nearest(Vector(ep[e]))[3] > tol * size]
         if not far:
             break
         cr[far] = 1.0

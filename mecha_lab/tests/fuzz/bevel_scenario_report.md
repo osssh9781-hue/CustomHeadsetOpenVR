@@ -1,0 +1,660 @@
+# Fuzz report: 50 scenarios x 5 steps (seeds 1..50)
+
+{'OK': 50} in 324 s, largest Blender process 2599 MB
+
+## BAD results (the mesh after a step)
+
+- seed 1: BAD 1 tangled: MCH_Base 3 new faces cross themselves after Base Mesh subtract poly BEVEL HEIGHT h 0.50 from SIDE on MCH_Base
+- seed 1: BAD divide fold: MCH_Base Bake HP Divide folds over at 64 soft edges
+- seed 1: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 5 soft edges
+- seed 1: BAD divide flip: MCH_Base Bake HP Divide turned 2 faces against the part
+- seed 1: BAD divide fold: MCH_Base_Split Bake HP Divide folds over at 66 soft edges
+- seed 1: BAD zbrush fold: MCH_Base_Split ZBrush-style Divide folds over at 3 soft edges
+- seed 1: BAD divide flip: MCH_Base_Split Bake HP Divide turned 101 faces against the part
+- seed 2: BAD divide fold: MCH_Base Bake HP Divide folds over at 70 soft edges
+- seed 2: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 130 soft edges
+- seed 2: BAD divide flip: MCH_Base Bake HP Divide turned 137 faces against the part
+- seed 2: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 140 faces against the part
+- seed 2: BAD divide fold: MCH_Base_Split Bake HP Divide folds over at 4 soft edges
+- seed 3: BAD 1 tangled: MCH_Base 1 new faces cross themselves after Split poly from TOP on MCH_Base
+- seed 3: BAD 3 tangled: MCH_Base 1 new faces cross themselves after Base Mesh subtract circle BEVEL THROUGH h 1.83 from SIDE on MCH_Base
+- seed 3: BAD 4 tangled: MCH_Base_Split 8 new faces cross themselves after Base Mesh subtract poly BEVEL HEIGHT h 0.96 from FRONT on MCH_Base_Split
+- seed 3: BAD 5 warped: MCH_Base_Split 1 new faces bent more than 1 % of its size after Base Mesh subtract rect BEVEL HEIGHT h 1.57 from FRONT on MCH_Base_Split
+- seed 3: BAD 5 tangled: MCH_Base_Split 18 new faces cross themselves after Base Mesh subtract rect BEVEL HEIGHT h 1.57 from FRONT on MCH_Base_Split
+- seed 3: BAD divide fold: MCH_Base Bake HP Divide folds over at 206 soft edges
+- seed 3: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 67 soft edges
+- seed 3: BAD divide flip: MCH_Base Bake HP Divide turned 28 faces against the part
+- seed 3: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 2 faces against the part
+- seed 3: BAD divide fold: MCH_Base_Split Bake HP Divide folds over at 220 soft edges
+- seed 3: BAD zbrush fold: MCH_Base_Split ZBrush-style Divide folds over at 263 soft edges
+- seed 3: BAD divide flip: MCH_Base_Split Bake HP Divide turned 29 faces against the part
+- seed 3: BAD zbrush flip: MCH_Base_Split ZBrush-style Divide turned 110 faces against the part
+- seed 4: BAD 5 tangled: MCH_Base_Split 2 new faces cross themselves after Cut rect BEVEL pocket 0.19 from TOP on MCH_Base_Split
+- seed 4: BAD divide fold: MCH_Base Bake HP Divide folds over at 111 soft edges
+- seed 4: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 34 soft edges
+- seed 4: BAD divide flip: MCH_Base Bake HP Divide turned 634 faces against the part
+- seed 4: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 25 faces against the part
+- seed 4: BAD divide fold: MCH_Base_Split Bake HP Divide folds over at 252 soft edges
+- seed 4: BAD zbrush fold: MCH_Base_Split ZBrush-style Divide folds over at 28 soft edges
+- seed 4: BAD divide flip: MCH_Base_Split Bake HP Divide turned 13 faces against the part
+- seed 4: BAD zbrush flip: MCH_Base_Split ZBrush-style Divide turned 1 faces against the part
+- seed 5: BAD 3 tangled: MCH_Base 8 new faces cross themselves after Base Mesh subtract circle BEVEL THROUGH h 1.03 from TOP on MCH_Base
+- seed 5: BAD 4 tangled: MCH_Base 3 new faces cross themselves after Split rect from TOP on MCH_Base
+- seed 5: BAD 4 tangled: MCH_Base_Split 3 new faces cross themselves after Split rect from TOP on MCH_Base
+- seed 5: BAD 5 tangled: MCH_Base 17 new faces cross themselves after Cut circle NONE pocket 0.18 from TOP on MCH_Base
+- seed 5: BAD divide fold: MCH_Base Bake HP Divide folds over at 423 soft edges
+- seed 5: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 379 soft edges
+- seed 5: BAD divide flip: MCH_Base Bake HP Divide turned 14 faces against the part
+- seed 5: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 7 faces against the part
+- seed 5: BAD divide fold: MCH_Base_Split Bake HP Divide folds over at 330 soft edges
+- seed 5: BAD zbrush fold: MCH_Base_Split ZBrush-style Divide folds over at 182 soft edges
+- seed 5: BAD divide flip: MCH_Base_Split Bake HP Divide turned 25 faces against the part
+- seed 5: BAD zbrush flip: MCH_Base_Split ZBrush-style Divide turned 9 faces against the part
+- seed 5: BAD zbrush: MCH_Base_Split ZBrush-style Divide strays 3.1 % of its size from the part
+- seed 6: BAD 1 tangled: MCH_Base 6 new faces cross themselves after Base Mesh subtract rect BEVEL THROUGH h 0.56 from TOP on MCH_Base
+- seed 6: BAD 2 tangled: MCH_Base 7 new faces cross themselves after Cut line BEVEL from FRONT on MCH_Base
+- seed 6: BAD 3 tangled: MCH_Base 11 new faces cross themselves after Base Mesh subtract line BEVEL THROUGH h 0.66 from TOP on MCH_Base
+- seed 6: BAD 4 warped: MCH_Base 1 new faces bent more than 1 % of its size after Cut circle BEVEL from SIDE on MCH_Base
+- seed 6: BAD 4 tangled: MCH_Base 301 new faces cross themselves after Cut circle BEVEL from SIDE on MCH_Base
+- seed 6: BAD divide fold: MCH_Base Bake HP Divide folds over at 1368 soft edges
+- seed 6: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 5983 soft edges
+- seed 6: BAD divide flip: MCH_Base Bake HP Divide turned 21352 faces against the part
+- seed 6: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 328 faces against the part
+- seed 7: BAD 2 tangled: MCH_Base 2 new faces cross themselves after Base Mesh subtract rect BEVEL HEIGHT h 0.74 from TOP on MCH_Base
+- seed 7: BAD 3 tangled: MCH_Base 5 new faces cross themselves after Base Mesh subtract circle BEVEL CUT h 0.36 from TOP on MCH_Base
+- seed 7: BAD 4 tangled: MCH_Base 2 new faces cross themselves after Cut rect GN pocket 0.08 from TOP on MCH_Base
+- seed 7: BAD divide fold: MCH_Base Bake HP Divide folds over at 342 soft edges
+- seed 7: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 260 soft edges
+- seed 7: BAD divide flip: MCH_Base Bake HP Divide turned 12 faces against the part
+- seed 7: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 10 faces against the part
+- seed 8: BAD 5 tangled: MCH_Base 1 new faces cross themselves after Cut line BEVEL pocket 0.09 from TOP on MCH_Base
+- seed 8: BAD divide fold: MCH_Base Bake HP Divide folds over at 70 soft edges
+- seed 8: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 21 soft edges
+- seed 8: BAD divide flip: MCH_Base Bake HP Divide turned 46 faces against the part
+- seed 8: BAD zbrush: MCH_Base ZBrush-style Divide strays 6.3 % of its size from the part
+- seed 9: BAD 4 tangled: MCH_Base 1 new faces cross themselves after Base Mesh subtract circle BEVEL HEIGHT h 0.52 from TOP on MCH_Base
+- seed 9: BAD divide fold: MCH_Base Bake HP Divide folds over at 55 soft edges
+- seed 9: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 29 soft edges
+- seed 9: BAD divide flip: MCH_Base Bake HP Divide turned 3 faces against the part
+- seed 9: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 1 faces against the part
+- seed 9: BAD divide fold: MCH_Base_Split Bake HP Divide folds over at 53 soft edges
+- seed 9: BAD zbrush fold: MCH_Base_Split ZBrush-style Divide folds over at 43 soft edges
+- seed 9: BAD divide flip: MCH_Base_Split Bake HP Divide turned 83 faces against the part
+- seed 9: BAD zbrush flip: MCH_Base_Split ZBrush-style Divide turned 16 faces against the part
+- seed 10: BAD 1 tangled: MCH_Base 1 new faces cross themselves after Base Mesh subtract circle BEVEL THROUGH h 0.54 from TOP on MCH_Base
+- seed 10: BAD 4 tangled: MCH_Base 44 new faces cross themselves after Cut poly BEVEL from SIDE on MCH_Base
+- seed 10: BAD divide fold: MCH_Base Bake HP Divide folds over at 285 soft edges
+- seed 10: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 1086 soft edges
+- seed 10: BAD divide flip: MCH_Base Bake HP Divide turned 3 faces against the part
+- seed 10: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 22 faces against the part
+- seed 11: BAD 3 tangled: MCH_Base 1 new faces cross themselves after Split circle from TOP on MCH_Base
+- seed 11: BAD 3 tangled: MCH_Base_Split 1 new faces cross themselves after Split circle from TOP on MCH_Base
+- seed 11: BAD 5 tangled: MCH_Base_Split_Split 1 new faces cross themselves after Split poly from TOP on MCH_Base_Split
+- seed 11: BAD divide fold: MCH_Base Bake HP Divide folds over at 35 soft edges
+- seed 11: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 35 soft edges
+- seed 11: BAD divide fold: MCH_Base_Split Bake HP Divide folds over at 4 soft edges
+- seed 11: BAD zbrush fold: MCH_Base_Split ZBrush-style Divide folds over at 6 soft edges
+- seed 11: BAD zbrush flip: MCH_Base_Split ZBrush-style Divide turned 2 faces against the part
+- seed 11: BAD divide fold: MCH_Base_Split_Split Bake HP Divide folds over at 16 soft edges
+- seed 11: BAD zbrush fold: MCH_Base_Split_Split ZBrush-style Divide folds over at 3 soft edges
+- seed 12: BAD divide fold: MCH_Base_Split Bake HP Divide folds over at 55 soft edges
+- seed 12: BAD zbrush fold: MCH_Base_Split ZBrush-style Divide folds over at 15 soft edges
+- seed 12: BAD divide flip: MCH_Base_Split Bake HP Divide turned 64 faces against the part
+- seed 12: BAD zbrush flip: MCH_Base_Split ZBrush-style Divide turned 2 faces against the part
+- seed 13: BAD 3 tangled: MCH_Base_Split 4 new faces cross themselves after Base Mesh subtract poly BEVEL HEIGHT h 0.44 from TOP on MCH_Base_Split
+- seed 13: BAD 4 tangled: MCH_Base 2 new faces cross themselves after Base Mesh subtract circle BEVEL THROUGH h 0.70 from FRONT on MCH_Base
+- seed 13: BAD divide fold: MCH_Base Bake HP Divide folds over at 59 soft edges
+- seed 13: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 74 soft edges
+- seed 13: BAD divide flip: MCH_Base Bake HP Divide turned 8 faces against the part
+- seed 13: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 9 faces against the part
+- seed 13: BAD divide fold: MCH_Base_Split Bake HP Divide folds over at 234 soft edges
+- seed 13: BAD zbrush fold: MCH_Base_Split ZBrush-style Divide folds over at 93 soft edges
+- seed 13: BAD divide flip: MCH_Base_Split Bake HP Divide turned 6 faces against the part
+- seed 13: BAD zbrush flip: MCH_Base_Split ZBrush-style Divide turned 8 faces against the part
+- seed 14: BAD 1 tangled: MCH_Base 2 new faces cross themselves after Base Mesh subtract poly BEVEL THROUGH h 0.74 from TOP on MCH_Base
+- seed 14: BAD 4 tangled: MCH_Base 4 new faces cross themselves after Base Mesh subtract line BEVEL THROUGH h 0.83 from FRONT on MCH_Base
+- seed 14: BAD divide fold: MCH_Base Bake HP Divide folds over at 317 soft edges
+- seed 14: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 84 soft edges
+- seed 14: BAD divide flip: MCH_Base Bake HP Divide turned 9 faces against the part
+- seed 14: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 2 faces against the part
+- seed 15: BAD divide fold: MCH_Base_Split Bake HP Divide folds over at 21 soft edges
+- seed 15: BAD zbrush fold: MCH_Base_Split ZBrush-style Divide folds over at 10 soft edges
+- seed 16: BAD 1 tangled: MCH_Base 3 new faces cross themselves after Base Mesh subtract circle BEVEL THROUGH h 0.55 from TOP on MCH_Base
+- seed 16: BAD 2 tangled: MCH_Base 7 new faces cross themselves after Cut circle NONE pocket 0.27 from TOP on MCH_Base
+- seed 16: BAD 3 tangled: MCH_Base 11 new faces cross themselves after Cut line GN from FRONT on MCH_Base
+- seed 16: BAD divide fold: MCH_Base Bake HP Divide folds over at 127 soft edges
+- seed 16: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 192 soft edges
+- seed 16: BAD divide flip: MCH_Base Bake HP Divide turned 1 faces against the part
+- seed 16: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 16 faces against the part
+- seed 17: BAD divide fold: MCH_Base Bake HP Divide folds over at 48 soft edges
+- seed 17: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 30 soft edges
+- seed 17: BAD divide flip: MCH_Base Bake HP Divide turned 7 faces against the part
+- seed 17: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 5 faces against the part
+- seed 18: BAD divide fold: MCH_Base Bake HP Divide folds over at 40 soft edges
+- seed 18: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 156 soft edges
+- seed 18: BAD divide flip: MCH_Base Bake HP Divide turned 102 faces against the part
+- seed 18: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 151 faces against the part
+- seed 18: BAD divide fold: MCH_Base_Split Bake HP Divide folds over at 157 soft edges
+- seed 18: BAD zbrush fold: MCH_Base_Split ZBrush-style Divide folds over at 44 soft edges
+- seed 18: BAD divide fold: MCH_Base_Split_Split Bake HP Divide folds over at 54 soft edges
+- seed 18: BAD zbrush fold: MCH_Base_Split_Split ZBrush-style Divide folds over at 86 soft edges
+- seed 18: BAD divide flip: MCH_Base_Split_Split Bake HP Divide turned 145 faces against the part
+- seed 18: BAD zbrush flip: MCH_Base_Split_Split ZBrush-style Divide turned 16 faces against the part
+- seed 19: BAD divide fold: MCH_Base Bake HP Divide folds over at 172 soft edges
+- seed 19: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 42 soft edges
+- seed 19: BAD divide flip: MCH_Base Bake HP Divide turned 97 faces against the part
+- seed 19: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 36 faces against the part
+- seed 19: BAD divide fold: MCH_Base_Split Bake HP Divide folds over at 8 soft edges
+- seed 19: BAD zbrush fold: MCH_Base_Split ZBrush-style Divide folds over at 6 soft edges
+- seed 19: BAD divide flip: MCH_Base_Split Bake HP Divide turned 2 faces against the part
+- seed 19: BAD zbrush: MCH_Base_Split ZBrush-style Divide strays 3.3 % of its size from the part
+- seed 20: BAD 2 tangled: MCH_Base 2 new faces cross themselves after Cut rect BEVEL from TOP on MCH_Base
+- seed 20: BAD 3 tangled: MCH_Base 5 new faces cross themselves after Base Mesh subtract circle BEVEL HEIGHT h 1.42 from FRONT on MCH_Base
+- seed 20: BAD 4 tangled: MCH_Base 3 new faces cross themselves after Cut poly BEVEL from TOP on MCH_Base
+- seed 20: BAD divide fold: MCH_Base Bake HP Divide folds over at 397 soft edges
+- seed 20: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 518 soft edges
+- seed 20: BAD divide flip: MCH_Base Bake HP Divide turned 14 faces against the part
+- seed 20: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 29 faces against the part
+- seed 20: BAD zbrush: MCH_Base ZBrush-style Divide strays 5.4 % of its size from the part
+- seed 21: BAD 1 tangled: MCH_Base 3 new faces cross themselves after Base Mesh subtract circle BEVEL HEIGHT h 1.88 from TOP on MCH_Base
+- seed 21: BAD 2 tangled: MCH_Base 1 new faces cross themselves after Base Mesh subtract circle BEVEL THROUGH h 1.62 from SIDE on MCH_Base
+- seed 21: BAD 5 tangled: MCH_Base 1 new faces cross themselves after Base Mesh subtract circle BEVEL CUT h 2.45 from TOP on MCH_Base
+- seed 21: BAD divide fold: MCH_Base Bake HP Divide folds over at 48 soft edges
+- seed 21: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 29 soft edges
+- seed 22: BAD divide fold: MCH_Base Bake HP Divide folds over at 18 soft edges
+- seed 22: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 3 soft edges
+- seed 22: BAD divide flip: MCH_Base Bake HP Divide turned 6 faces against the part
+- seed 22: BAD divide fold: MCH_Base_Split Bake HP Divide folds over at 154 soft edges
+- seed 22: BAD zbrush fold: MCH_Base_Split ZBrush-style Divide folds over at 58 soft edges
+- seed 22: BAD zbrush flip: MCH_Base_Split ZBrush-style Divide turned 2 faces against the part
+- seed 23: BAD 3 tangled: MCH_Base 1 new faces cross themselves after Cut poly BEVEL from TOP on MCH_Base
+- seed 23: BAD 5 tangled: MCH_Base 2 new faces cross themselves after Base Mesh subtract line BEVEL CUT h 0.52 from TOP on MCH_Base
+- seed 23: BAD divide fold: MCH_Base Bake HP Divide folds over at 581 soft edges
+- seed 23: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 399 soft edges
+- seed 23: BAD divide flip: MCH_Base Bake HP Divide turned 16 faces against the part
+- seed 23: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 27 faces against the part
+- seed 24: BAD 5 tangled: MCH_Base 3 new faces cross themselves after Cut circle GN from SIDE on MCH_Base
+- seed 24: BAD divide fold: MCH_Base Bake HP Divide folds over at 132 soft edges
+- seed 24: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 115 soft edges
+- seed 24: BAD divide flip: MCH_Base Bake HP Divide turned 21 faces against the part
+- seed 24: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 11 faces against the part
+- seed 25: BAD divide fold: MCH_Base Bake HP Divide folds over at 147 soft edges
+- seed 25: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 75 soft edges
+- seed 25: BAD divide flip: MCH_Base Bake HP Divide turned 4 faces against the part
+- seed 25: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 6 faces against the part
+- seed 26: BAD divide fold: MCH_Base Bake HP Divide folds over at 46 soft edges
+- seed 26: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 18 soft edges
+- seed 26: BAD divide flip: MCH_Base Bake HP Divide turned 4 faces against the part
+- seed 26: BAD divide fold: MCH_Base_Split.001 Bake HP Divide folds over at 16 soft edges
+- seed 26: BAD zbrush fold: MCH_Base_Split.001 ZBrush-style Divide folds over at 46 soft edges
+- seed 26: BAD divide flip: MCH_Base_Split.001 Bake HP Divide turned 21 faces against the part
+- seed 26: BAD zbrush flip: MCH_Base_Split.001 ZBrush-style Divide turned 12 faces against the part
+- seed 26: BAD divide fold: MCH_Base_Split.001_Split Bake HP Divide folds over at 5 soft edges
+- seed 26: BAD zbrush fold: MCH_Base_Split.001_Split ZBrush-style Divide folds over at 6 soft edges
+- seed 26: BAD divide flip: MCH_Base_Split.001_Split Bake HP Divide turned 8 faces against the part
+- seed 26: BAD zbrush flip: MCH_Base_Split.001_Split ZBrush-style Divide turned 4 faces against the part
+- seed 27: BAD divide fold: MCH_Base Bake HP Divide folds over at 144 soft edges
+- seed 27: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 197 soft edges
+- seed 27: BAD divide flip: MCH_Base Bake HP Divide turned 40 faces against the part
+- seed 27: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 45 faces against the part
+- seed 27: BAD divide fold: MCH_Base_Split Bake HP Divide folds over at 60 soft edges
+- seed 27: BAD zbrush fold: MCH_Base_Split ZBrush-style Divide folds over at 145 soft edges
+- seed 27: BAD divide flip: MCH_Base_Split Bake HP Divide turned 43 faces against the part
+- seed 27: BAD zbrush flip: MCH_Base_Split ZBrush-style Divide turned 70 faces against the part
+- seed 27: BAD zbrush fold: MCH_Base_Split_Split ZBrush-style Divide folds over at 3 soft edges
+- seed 28: BAD divide fold: MCH_Base Bake HP Divide folds over at 84 soft edges
+- seed 28: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 59 soft edges
+- seed 28: BAD divide flip: MCH_Base Bake HP Divide turned 6 faces against the part
+- seed 28: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 14 faces against the part
+- seed 28: BAD divide fold: MCH_Base_Split Bake HP Divide folds over at 80 soft edges
+- seed 28: BAD zbrush fold: MCH_Base_Split ZBrush-style Divide folds over at 84 soft edges
+- seed 28: BAD divide flip: MCH_Base_Split Bake HP Divide turned 39 faces against the part
+- seed 28: BAD zbrush flip: MCH_Base_Split ZBrush-style Divide turned 24 faces against the part
+- seed 29: BAD 5 tangled: MCH_Base 2 new faces cross themselves after Cut poly GN from TOP on MCH_Base
+- seed 29: BAD divide fold: MCH_Base Bake HP Divide folds over at 457 soft edges
+- seed 29: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 387 soft edges
+- seed 29: BAD divide flip: MCH_Base Bake HP Divide turned 59 faces against the part
+- seed 29: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 60 faces against the part
+- seed 29: BAD zbrush: MCH_Base ZBrush-style Divide strays 3.9 % of its size from the part
+- seed 30: BAD 1 tangled: MCH_Base 1 new faces cross themselves after Cut line BEVEL pocket 0.15 from TOP on MCH_Base
+- seed 30: BAD 3 tangled: MCH_Base 3 new faces cross themselves after Base Mesh subtract poly BEVEL THROUGH h 0.71 from SIDE on MCH_Base
+- seed 30: BAD divide fold: MCH_Base Bake HP Divide folds over at 66 soft edges
+- seed 30: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 70 soft edges
+- seed 30: BAD divide flip: MCH_Base Bake HP Divide turned 3 faces against the part
+- seed 30: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 1 faces against the part
+- seed 31: BAD 2 tangled: MCH_Base 5 new faces cross themselves after Cut line BEVEL from TOP on MCH_Base
+- seed 31: BAD 5 tangled: MCH_Base 3 new faces cross themselves after Base Mesh subtract circle BEVEL THROUGH h 0.66 from TOP on MCH_Base
+- seed 31: BAD divide fold: MCH_Base Bake HP Divide folds over at 90 soft edges
+- seed 31: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 90 soft edges
+- seed 31: BAD divide flip: MCH_Base Bake HP Divide turned 5 faces against the part
+- seed 31: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 7 faces against the part
+- seed 32: BAD 5 tangled: MCH_Base 3 new faces cross themselves after Base Mesh subtract line BEVEL HEIGHT h 0.51 from FRONT on MCH_Base
+- seed 32: BAD divide fold: MCH_Base Bake HP Divide folds over at 129 soft edges
+- seed 32: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 253 soft edges
+- seed 32: BAD divide flip: MCH_Base Bake HP Divide turned 6 faces against the part
+- seed 32: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 57 faces against the part
+- seed 32: BAD divide: MCH_Base strays 3.1 % of its size from the part
+- seed 32: BAD zbrush: MCH_Base ZBrush-style Divide strays 3.6 % of its size from the part
+- seed 33: BAD 2 tangled: MCH_Base 1 new faces cross themselves after Cut circle BEVEL from FRONT on MCH_Base
+- seed 33: BAD 3 tangled: MCH_Base 8 new faces cross themselves after Base Mesh subtract circle BEVEL HEIGHT h 1.33 from FRONT on MCH_Base
+- seed 33: BAD 4 tangled: MCH_Base 1 new faces cross themselves after Cut poly BEVEL from TOP on MCH_Base
+- seed 33: BAD 5 tangled: MCH_Base 4 new faces cross themselves after Cut poly GN from SIDE on MCH_Base
+- seed 33: BAD divide fold: MCH_Base Bake HP Divide folds over at 298 soft edges
+- seed 33: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 498 soft edges
+- seed 33: BAD divide flip: MCH_Base Bake HP Divide turned 4 faces against the part
+- seed 33: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 53 faces against the part
+- seed 34: BAD 4 tangled: MCH_Base_Split 1 new faces cross themselves after Cut poly BEVEL from FRONT on MCH_Base_Split
+- seed 34: BAD divide fold: MCH_Base Bake HP Divide folds over at 10 soft edges
+- seed 34: BAD divide flip: MCH_Base Bake HP Divide turned 1 faces against the part
+- seed 34: BAD divide fold: MCH_Base_Split Bake HP Divide folds over at 469 soft edges
+- seed 34: BAD zbrush fold: MCH_Base_Split ZBrush-style Divide folds over at 53 soft edges
+- seed 34: BAD divide flip: MCH_Base_Split Bake HP Divide turned 50 faces against the part
+- seed 34: BAD zbrush flip: MCH_Base_Split ZBrush-style Divide turned 1 faces against the part
+- seed 35: BAD 3 tangled: MCH_Base 2 new faces cross themselves after Cut line BEVEL pocket 0.05 from TOP on MCH_Base
+- seed 35: BAD divide fold: MCH_Base Bake HP Divide folds over at 609 soft edges
+- seed 35: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 429 soft edges
+- seed 35: BAD divide flip: MCH_Base Bake HP Divide turned 13 faces against the part
+- seed 35: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 124 faces against the part
+- seed 35: BAD zbrush: MCH_Base ZBrush-style Divide strays 4.0 % of its size from the part
+- seed 36: BAD divide fold: MCH_Base Bake HP Divide folds over at 100 soft edges
+- seed 36: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 131 soft edges
+- seed 36: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 12 faces against the part
+- seed 36: BAD divide fold: MCH_Base_Split Bake HP Divide folds over at 72 soft edges
+- seed 36: BAD zbrush fold: MCH_Base_Split ZBrush-style Divide folds over at 35 soft edges
+- seed 36: BAD divide flip: MCH_Base_Split Bake HP Divide turned 9 faces against the part
+- seed 36: BAD zbrush flip: MCH_Base_Split ZBrush-style Divide turned 4 faces against the part
+- seed 37: BAD divide fold: MCH_Base Bake HP Divide folds over at 10 soft edges
+- seed 38: BAD divide fold: MCH_Base Bake HP Divide folds over at 63 soft edges
+- seed 38: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 114 soft edges
+- seed 38: BAD divide flip: MCH_Base Bake HP Divide turned 7 faces against the part
+- seed 38: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 10 faces against the part
+- seed 39: BAD 1 tangled: MCH_Base 4 new faces cross themselves after Base Mesh subtract circle BEVEL HEIGHT h 1.28 from FRONT on MCH_Base
+- seed 39: BAD 2 tangled: MCH_Base 4 new faces cross themselves after Cut rect BEVEL pocket 0.15 from FRONT on MCH_Base
+- seed 39: BAD 5 tangled: MCH_Base 4 new faces cross themselves after Split circle from TOP on MCH_Base
+- seed 39: BAD divide fold: MCH_Base Bake HP Divide folds over at 126 soft edges
+- seed 39: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 55 soft edges
+- seed 39: BAD divide flip: MCH_Base Bake HP Divide turned 1 faces against the part
+- seed 39: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 2 faces against the part
+- seed 40: BAD divide fold: MCH_Base_Split Bake HP Divide folds over at 16 soft edges
+- seed 40: BAD zbrush fold: MCH_Base_Split ZBrush-style Divide folds over at 21 soft edges
+- seed 40: BAD divide flip: MCH_Base_Split Bake HP Divide turned 28 faces against the part
+- seed 40: BAD zbrush flip: MCH_Base_Split ZBrush-style Divide turned 22 faces against the part
+- seed 41: BAD divide fold: MCH_Base Bake HP Divide folds over at 146 soft edges
+- seed 41: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 58 soft edges
+- seed 41: BAD divide flip: MCH_Base Bake HP Divide turned 4 faces against the part
+- seed 41: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 1 faces against the part
+- seed 41: BAD divide fold: MCH_Base_Split Bake HP Divide folds over at 641 soft edges
+- seed 41: BAD zbrush fold: MCH_Base_Split ZBrush-style Divide folds over at 371 soft edges
+- seed 41: BAD divide flip: MCH_Base_Split Bake HP Divide turned 300 faces against the part
+- seed 41: BAD zbrush flip: MCH_Base_Split ZBrush-style Divide turned 92 faces against the part
+- seed 42: BAD 2 tangled: MCH_Base 2 new faces cross themselves after Cut line GN from TOP on MCH_Base
+- seed 42: BAD 3 tangled: MCH_Base 1 new faces cross themselves after Cut circle BEVEL from TOP on MCH_Base
+- seed 42: BAD 5 tangled: MCH_Base 10 new faces cross themselves after Base Mesh subtract circle BEVEL THROUGH h 1.07 from TOP on MCH_Base
+- seed 42: BAD divide fold: MCH_Base Bake HP Divide folds over at 152 soft edges
+- seed 42: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 73 soft edges
+- seed 42: BAD divide flip: MCH_Base Bake HP Divide turned 35 faces against the part
+- seed 42: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 1 faces against the part
+- seed 43: BAD 5 tangled: MCH_Base_Split 2 new faces cross themselves after Base Mesh subtract poly BEVEL HEIGHT h 0.20 from FRONT on MCH_Base_Split
+- seed 43: BAD divide fold: MCH_Base Bake HP Divide folds over at 155 soft edges
+- seed 43: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 124 soft edges
+- seed 43: BAD divide flip: MCH_Base Bake HP Divide turned 9 faces against the part
+- seed 43: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 1 faces against the part
+- seed 43: BAD divide fold: MCH_Base_Split Bake HP Divide folds over at 66 soft edges
+- seed 43: BAD zbrush fold: MCH_Base_Split ZBrush-style Divide folds over at 21 soft edges
+- seed 43: BAD divide flip: MCH_Base_Split Bake HP Divide turned 2 faces against the part
+- seed 44: BAD 1 tangled: MCH_Base 3 new faces cross themselves after Base Mesh subtract circle BEVEL THROUGH h 0.15 from TOP on MCH_Base
+- seed 44: BAD 2 warped: MCH_Base 1 new faces bent more than 1 % of its size after Cut rect BEVEL pocket 0.39 from TOP on MCH_Base
+- seed 44: BAD 2 tangled: MCH_Base 124 new faces cross themselves after Cut rect BEVEL pocket 0.39 from TOP on MCH_Base
+- seed 44: BAD divide fold: MCH_Base Bake HP Divide folds over at 470 soft edges
+- seed 44: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 1782 soft edges
+- seed 44: BAD divide flip: MCH_Base Bake HP Divide turned 6721 faces against the part
+- seed 44: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 23 faces against the part
+- seed 44: BAD zbrush: MCH_Base ZBrush-style Divide strays 6.6 % of its size from the part
+- seed 45: BAD 3 tangled: MCH_Base 2 new faces cross themselves after Cut line BEVEL from SIDE on MCH_Base
+- seed 45: BAD divide fold: MCH_Base Bake HP Divide folds over at 127 soft edges
+- seed 45: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 178 soft edges
+- seed 45: BAD divide flip: MCH_Base Bake HP Divide turned 14 faces against the part
+- seed 45: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 21 faces against the part
+- seed 46: BAD 3 warped: MCH_Base 1 new faces bent more than 1 % of its size after Cut rect GN pocket 0.11 from TOP on MCH_Base
+- seed 46: BAD 3 tangled: MCH_Base 2 new faces cross themselves after Cut rect GN pocket 0.11 from TOP on MCH_Base
+- seed 46: BAD 4 tangled: MCH_Base 1 new faces cross themselves after Base Mesh subtract rect BEVEL HEIGHT h 0.47 from SIDE on MCH_Base
+- seed 46: BAD divide fold: MCH_Base Bake HP Divide folds over at 213 soft edges
+- seed 46: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 135 soft edges
+- seed 46: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 9 faces against the part
+- seed 47: BAD 2 tangled: MCH_Base 2 new faces cross themselves after Base Mesh subtract circle BEVEL THROUGH h 0.55 from TOP on MCH_Base
+- seed 47: BAD 4 tangled: MCH_Base 2 new faces cross themselves after Cut line BEVEL from TOP on MCH_Base
+- seed 47: BAD divide fold: MCH_Base Bake HP Divide folds over at 185 soft edges
+- seed 47: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 138 soft edges
+- seed 47: BAD divide flip: MCH_Base Bake HP Divide turned 2 faces against the part
+- seed 47: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 1 faces against the part
+- seed 48: BAD 4 tangled: MCH_Base 1 new faces cross themselves after Base Mesh subtract line BEVEL HEIGHT h 0.63 from SIDE on MCH_Base
+- seed 48: BAD divide fold: MCH_Base Bake HP Divide folds over at 154 soft edges
+- seed 48: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 53 soft edges
+- seed 48: BAD divide flip: MCH_Base Bake HP Divide turned 32 faces against the part
+- seed 48: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 9 faces against the part
+- seed 48: BAD zbrush: MCH_Base ZBrush-style Divide strays 3.5 % of its size from the part
+- seed 49: BAD 3 tangled: MCH_Base 1 new faces cross themselves after Cut rect BEVEL from TOP on MCH_Base
+- seed 49: BAD divide fold: MCH_Base Bake HP Divide folds over at 85 soft edges
+- seed 49: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 86 soft edges
+- seed 49: BAD divide flip: MCH_Base Bake HP Divide turned 17 faces against the part
+- seed 49: BAD zbrush flip: MCH_Base ZBrush-style Divide turned 19 faces against the part
+- seed 50: BAD 1 tangled: MCH_Base 1 new faces cross themselves after Base Mesh subtract rect BEVEL HEIGHT h 1.19 from TOP on MCH_Base
+- seed 50: BAD 4 tangled: MCH_Base 1 new faces cross themselves after Base Mesh subtract rect BEVEL HEIGHT h 2.64 from SIDE on MCH_Base
+- seed 50: BAD divide fold: MCH_Base Bake HP Divide folds over at 99 soft edges
+- seed 50: BAD zbrush fold: MCH_Base ZBrush-style Divide folds over at 31 soft edges
+
+## Python errors inside steps (Blender lived)
+
+- 6 x flip: MCH_Base ZBrush-style Divide turned 1 faces against the part
+- 4 x flip: MCH_Base Bake HP Divide turned 4 faces against the part
+- 3 x flip: MCH_Base ZBrush-style Divide turned 2 faces against the part
+- 3 x flip: MCH_Base Bake HP Divide turned 14 faces against the part
+- 3 x flip: MCH_Base Bake HP Divide turned 3 faces against the part
+- 3 x flip: MCH_Base_Split ZBrush-style Divide turned 2 faces against the part
+- 3 x flip: MCH_Base ZBrush-style Divide turned 9 faces against the part
+- 3 x flip: MCH_Base Bake HP Divide turned 1 faces against the part
+- 3 x flip: MCH_Base Bake HP Divide turned 6 faces against the part
+- 2 x flip: MCH_Base Bake HP Divide turned 2 faces against the part
+- 2 x fold: MCH_Base_Split Bake HP Divide folds over at 66 soft edges
+- 2 x fold: MCH_Base Bake HP Divide folds over at 70 soft edges
+- 2 x fold: MCH_Base_Split Bake HP Divide folds over at 4 soft edges
+- 2 x flip: MCH_Base_Split ZBrush-style Divide turned 1 faces against the part
+- 2 x flip: MCH_Base ZBrush-style Divide turned 7 faces against the part
+- 2 x flip: MCH_Base ZBrush-style Divide turned 10 faces against the part
+- 2 x fold: MCH_Base ZBrush-style Divide folds over at 29 soft edges
+- 2 x fold: MCH_Base_Split ZBrush-style Divide folds over at 6 soft edges
+- 2 x fold: MCH_Base_Split_Split ZBrush-style Divide folds over at 3 soft edges
+- 2 x flip: MCH_Base Bake HP Divide turned 9 faces against the part
+- 2 x fold: MCH_Base Bake HP Divide folds over at 127 soft edges
+- 2 x fold: MCH_Base Bake HP Divide folds over at 48 soft edges
+- 2 x flip: MCH_Base Bake HP Divide turned 7 faces against the part
+- 2 x flip: MCH_Base_Split Bake HP Divide turned 2 faces against the part
+- 2 x tangled: MCH_Base 1 new faces cross themselves after Cut poly BEVEL from TOP on MCH_Base
+- 2 x fold: MCH_Base Bake HP Divide folds over at 10 soft edges
+- 2 x fold: MCH_Base_Split ZBrush-style Divide folds over at 21 soft edges
+- 1 x tangled: MCH_Base 3 new faces cross themselves after Base Mesh subtract poly BEVEL HEIGHT h 0.50 fr
+- 1 x fold: MCH_Base Bake HP Divide folds over at 64 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 5 soft edges
+- 1 x fold: MCH_Base_Split ZBrush-style Divide folds over at 3 soft edges
+- 1 x flip: MCH_Base_Split Bake HP Divide turned 101 faces against the part
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 130 soft edges
+- 1 x flip: MCH_Base Bake HP Divide turned 137 faces against the part
+- 1 x flip: MCH_Base ZBrush-style Divide turned 140 faces against the part
+- 1 x tangled: MCH_Base 1 new faces cross themselves after Split poly from TOP on MCH_Base
+- 1 x tangled: MCH_Base 1 new faces cross themselves after Base Mesh subtract circle BEVEL THROUGH h 1.83
+- 1 x tangled: MCH_Base_Split 8 new faces cross themselves after Base Mesh subtract poly BEVEL HEIGHT h 0
+- 1 x warped: MCH_Base_Split 1 new faces bent more than 1 % of its size after Base Mesh subtract rect BE
+- 1 x tangled: MCH_Base_Split 18 new faces cross themselves after Base Mesh subtract rect BEVEL HEIGHT h 
+- 1 x fold: MCH_Base Bake HP Divide folds over at 206 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 67 soft edges
+- 1 x flip: MCH_Base Bake HP Divide turned 28 faces against the part
+- 1 x fold: MCH_Base_Split Bake HP Divide folds over at 220 soft edges
+- 1 x fold: MCH_Base_Split ZBrush-style Divide folds over at 263 soft edges
+- 1 x flip: MCH_Base_Split Bake HP Divide turned 29 faces against the part
+- 1 x flip: MCH_Base_Split ZBrush-style Divide turned 110 faces against the part
+- 1 x tangled: MCH_Base_Split 2 new faces cross themselves after Cut rect BEVEL pocket 0.19 from TOP on M
+- 1 x fold: MCH_Base Bake HP Divide folds over at 111 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 34 soft edges
+- 1 x flip: MCH_Base Bake HP Divide turned 634 faces against the part
+- 1 x flip: MCH_Base ZBrush-style Divide turned 25 faces against the part
+- 1 x fold: MCH_Base_Split Bake HP Divide folds over at 252 soft edges
+- 1 x fold: MCH_Base_Split ZBrush-style Divide folds over at 28 soft edges
+- 1 x flip: MCH_Base_Split Bake HP Divide turned 13 faces against the part
+- 1 x tangled: MCH_Base 8 new faces cross themselves after Base Mesh subtract circle BEVEL THROUGH h 1.03
+- 1 x tangled: MCH_Base 3 new faces cross themselves after Split rect from TOP on MCH_Base
+- 1 x tangled: MCH_Base_Split 3 new faces cross themselves after Split rect from TOP on MCH_Base
+- 1 x tangled: MCH_Base 17 new faces cross themselves after Cut circle NONE pocket 0.18 from TOP on MCH_B
+- 1 x fold: MCH_Base Bake HP Divide folds over at 423 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 379 soft edges
+- 1 x fold: MCH_Base_Split Bake HP Divide folds over at 330 soft edges
+- 1 x fold: MCH_Base_Split ZBrush-style Divide folds over at 182 soft edges
+- 1 x flip: MCH_Base_Split Bake HP Divide turned 25 faces against the part
+- 1 x flip: MCH_Base_Split ZBrush-style Divide turned 9 faces against the part
+- 1 x zbrush: MCH_Base_Split ZBrush-style Divide strays 3.1 % of its size from the part
+- 1 x tangled: MCH_Base 6 new faces cross themselves after Base Mesh subtract rect BEVEL THROUGH h 0.56 f
+- 1 x tangled: MCH_Base 7 new faces cross themselves after Cut line BEVEL from FRONT on MCH_Base
+- 1 x tangled: MCH_Base 11 new faces cross themselves after Base Mesh subtract line BEVEL THROUGH h 0.66 
+- 1 x warped: MCH_Base 1 new faces bent more than 1 % of its size after Cut circle BEVEL from SIDE on MC
+- 1 x tangled: MCH_Base 301 new faces cross themselves after Cut circle BEVEL from SIDE on MCH_Base
+- 1 x fold: MCH_Base Bake HP Divide folds over at 1368 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 5983 soft edges
+- 1 x flip: MCH_Base Bake HP Divide turned 21352 faces against the part
+- 1 x flip: MCH_Base ZBrush-style Divide turned 328 faces against the part
+- 1 x tangled: MCH_Base 2 new faces cross themselves after Base Mesh subtract rect BEVEL HEIGHT h 0.74 fr
+- 1 x tangled: MCH_Base 5 new faces cross themselves after Base Mesh subtract circle BEVEL CUT h 0.36 fro
+- 1 x tangled: MCH_Base 2 new faces cross themselves after Cut rect GN pocket 0.08 from TOP on MCH_Base
+- 1 x fold: MCH_Base Bake HP Divide folds over at 342 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 260 soft edges
+- 1 x flip: MCH_Base Bake HP Divide turned 12 faces against the part
+- 1 x tangled: MCH_Base 1 new faces cross themselves after Cut line BEVEL pocket 0.09 from TOP on MCH_Bas
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 21 soft edges
+- 1 x flip: MCH_Base Bake HP Divide turned 46 faces against the part
+- 1 x zbrush: MCH_Base ZBrush-style Divide strays 6.3 % of its size from the part
+- 1 x tangled: MCH_Base 1 new faces cross themselves after Base Mesh subtract circle BEVEL HEIGHT h 0.52 
+- 1 x fold: MCH_Base Bake HP Divide folds over at 55 soft edges
+- 1 x fold: MCH_Base_Split Bake HP Divide folds over at 53 soft edges
+- 1 x fold: MCH_Base_Split ZBrush-style Divide folds over at 43 soft edges
+- 1 x flip: MCH_Base_Split Bake HP Divide turned 83 faces against the part
+- 1 x flip: MCH_Base_Split ZBrush-style Divide turned 16 faces against the part
+- 1 x tangled: MCH_Base 1 new faces cross themselves after Base Mesh subtract circle BEVEL THROUGH h 0.54
+- 1 x tangled: MCH_Base 44 new faces cross themselves after Cut poly BEVEL from SIDE on MCH_Base
+- 1 x fold: MCH_Base Bake HP Divide folds over at 285 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 1086 soft edges
+- 1 x flip: MCH_Base ZBrush-style Divide turned 22 faces against the part
+- 1 x tangled: MCH_Base 1 new faces cross themselves after Split circle from TOP on MCH_Base
+- 1 x tangled: MCH_Base_Split 1 new faces cross themselves after Split circle from TOP on MCH_Base
+- 1 x tangled: MCH_Base_Split_Split 1 new faces cross themselves after Split poly from TOP on MCH_Base_Sp
+- 1 x fold: MCH_Base Bake HP Divide folds over at 35 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 35 soft edges
+- 1 x fold: MCH_Base_Split_Split Bake HP Divide folds over at 16 soft edges
+- 1 x fold: MCH_Base_Split Bake HP Divide folds over at 55 soft edges
+- 1 x fold: MCH_Base_Split ZBrush-style Divide folds over at 15 soft edges
+- 1 x flip: MCH_Base_Split Bake HP Divide turned 64 faces against the part
+- 1 x tangled: MCH_Base_Split 4 new faces cross themselves after Base Mesh subtract poly BEVEL HEIGHT h 0
+- 1 x tangled: MCH_Base 2 new faces cross themselves after Base Mesh subtract circle BEVEL THROUGH h 0.70
+- 1 x fold: MCH_Base Bake HP Divide folds over at 59 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 74 soft edges
+- 1 x flip: MCH_Base Bake HP Divide turned 8 faces against the part
+- 1 x fold: MCH_Base_Split Bake HP Divide folds over at 234 soft edges
+- 1 x fold: MCH_Base_Split ZBrush-style Divide folds over at 93 soft edges
+- 1 x flip: MCH_Base_Split Bake HP Divide turned 6 faces against the part
+- 1 x flip: MCH_Base_Split ZBrush-style Divide turned 8 faces against the part
+- 1 x tangled: MCH_Base 2 new faces cross themselves after Base Mesh subtract poly BEVEL THROUGH h 0.74 f
+- 1 x tangled: MCH_Base 4 new faces cross themselves after Base Mesh subtract line BEVEL THROUGH h 0.83 f
+- 1 x fold: MCH_Base Bake HP Divide folds over at 317 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 84 soft edges
+- 1 x fold: MCH_Base_Split Bake HP Divide folds over at 21 soft edges
+- 1 x fold: MCH_Base_Split ZBrush-style Divide folds over at 10 soft edges
+- 1 x tangled: MCH_Base 3 new faces cross themselves after Base Mesh subtract circle BEVEL THROUGH h 0.55
+- 1 x tangled: MCH_Base 7 new faces cross themselves after Cut circle NONE pocket 0.27 from TOP on MCH_Ba
+- 1 x tangled: MCH_Base 11 new faces cross themselves after Cut line GN from FRONT on MCH_Base
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 192 soft edges
+- 1 x flip: MCH_Base ZBrush-style Divide turned 16 faces against the part
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 30 soft edges
+- 1 x flip: MCH_Base ZBrush-style Divide turned 5 faces against the part
+- 1 x fold: MCH_Base Bake HP Divide folds over at 40 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 156 soft edges
+- 1 x flip: MCH_Base Bake HP Divide turned 102 faces against the part
+- 1 x flip: MCH_Base ZBrush-style Divide turned 151 faces against the part
+- 1 x fold: MCH_Base_Split Bake HP Divide folds over at 157 soft edges
+- 1 x fold: MCH_Base_Split ZBrush-style Divide folds over at 44 soft edges
+- 1 x fold: MCH_Base_Split_Split Bake HP Divide folds over at 54 soft edges
+- 1 x fold: MCH_Base_Split_Split ZBrush-style Divide folds over at 86 soft edges
+- 1 x flip: MCH_Base_Split_Split Bake HP Divide turned 145 faces against the part
+- 1 x flip: MCH_Base_Split_Split ZBrush-style Divide turned 16 faces against the part
+- 1 x fold: MCH_Base Bake HP Divide folds over at 172 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 42 soft edges
+- 1 x flip: MCH_Base Bake HP Divide turned 97 faces against the part
+- 1 x flip: MCH_Base ZBrush-style Divide turned 36 faces against the part
+- 1 x fold: MCH_Base_Split Bake HP Divide folds over at 8 soft edges
+- 1 x zbrush: MCH_Base_Split ZBrush-style Divide strays 3.3 % of its size from the part
+- 1 x tangled: MCH_Base 2 new faces cross themselves after Cut rect BEVEL from TOP on MCH_Base
+- 1 x tangled: MCH_Base 5 new faces cross themselves after Base Mesh subtract circle BEVEL HEIGHT h 1.42 
+- 1 x tangled: MCH_Base 3 new faces cross themselves after Cut poly BEVEL from TOP on MCH_Base
+- 1 x fold: MCH_Base Bake HP Divide folds over at 397 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 518 soft edges
+- 1 x flip: MCH_Base ZBrush-style Divide turned 29 faces against the part
+- 1 x zbrush: MCH_Base ZBrush-style Divide strays 5.4 % of its size from the part
+- 1 x tangled: MCH_Base 3 new faces cross themselves after Base Mesh subtract circle BEVEL HEIGHT h 1.88 
+- 1 x tangled: MCH_Base 1 new faces cross themselves after Base Mesh subtract circle BEVEL THROUGH h 1.62
+- 1 x tangled: MCH_Base 1 new faces cross themselves after Base Mesh subtract circle BEVEL CUT h 2.45 fro
+- 1 x fold: MCH_Base Bake HP Divide folds over at 18 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 3 soft edges
+- 1 x fold: MCH_Base_Split Bake HP Divide folds over at 154 soft edges
+- 1 x fold: MCH_Base_Split ZBrush-style Divide folds over at 58 soft edges
+- 1 x tangled: MCH_Base 2 new faces cross themselves after Base Mesh subtract line BEVEL CUT h 0.52 from 
+- 1 x fold: MCH_Base Bake HP Divide folds over at 581 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 399 soft edges
+- 1 x flip: MCH_Base Bake HP Divide turned 16 faces against the part
+- 1 x flip: MCH_Base ZBrush-style Divide turned 27 faces against the part
+- 1 x tangled: MCH_Base 3 new faces cross themselves after Cut circle GN from SIDE on MCH_Base
+- 1 x fold: MCH_Base Bake HP Divide folds over at 132 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 115 soft edges
+- 1 x flip: MCH_Base Bake HP Divide turned 21 faces against the part
+- 1 x flip: MCH_Base ZBrush-style Divide turned 11 faces against the part
+- 1 x fold: MCH_Base Bake HP Divide folds over at 147 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 75 soft edges
+- 1 x flip: MCH_Base ZBrush-style Divide turned 6 faces against the part
+- 1 x fold: MCH_Base Bake HP Divide folds over at 46 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 18 soft edges
+- 1 x fold: MCH_Base_Split.001 Bake HP Divide folds over at 16 soft edges
+- 1 x fold: MCH_Base_Split.001 ZBrush-style Divide folds over at 46 soft edges
+- 1 x flip: MCH_Base_Split.001 Bake HP Divide turned 21 faces against the part
+- 1 x flip: MCH_Base_Split.001 ZBrush-style Divide turned 12 faces against the part
+- 1 x fold: MCH_Base_Split.001_Split Bake HP Divide folds over at 5 soft edges
+- 1 x fold: MCH_Base_Split.001_Split ZBrush-style Divide folds over at 6 soft edges
+- 1 x flip: MCH_Base_Split.001_Split Bake HP Divide turned 8 faces against the part
+- 1 x flip: MCH_Base_Split.001_Split ZBrush-style Divide turned 4 faces against the part
+- 1 x fold: MCH_Base Bake HP Divide folds over at 144 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 197 soft edges
+- 1 x flip: MCH_Base Bake HP Divide turned 40 faces against the part
+- 1 x flip: MCH_Base ZBrush-style Divide turned 45 faces against the part
+- 1 x fold: MCH_Base_Split Bake HP Divide folds over at 60 soft edges
+- 1 x fold: MCH_Base_Split ZBrush-style Divide folds over at 145 soft edges
+- 1 x flip: MCH_Base_Split Bake HP Divide turned 43 faces against the part
+- 1 x flip: MCH_Base_Split ZBrush-style Divide turned 70 faces against the part
+- 1 x fold: MCH_Base Bake HP Divide folds over at 84 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 59 soft edges
+- 1 x flip: MCH_Base ZBrush-style Divide turned 14 faces against the part
+- 1 x fold: MCH_Base_Split Bake HP Divide folds over at 80 soft edges
+- 1 x fold: MCH_Base_Split ZBrush-style Divide folds over at 84 soft edges
+- 1 x flip: MCH_Base_Split Bake HP Divide turned 39 faces against the part
+- 1 x flip: MCH_Base_Split ZBrush-style Divide turned 24 faces against the part
+- 1 x tangled: MCH_Base 2 new faces cross themselves after Cut poly GN from TOP on MCH_Base
+- 1 x fold: MCH_Base Bake HP Divide folds over at 457 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 387 soft edges
+- 1 x flip: MCH_Base Bake HP Divide turned 59 faces against the part
+- 1 x flip: MCH_Base ZBrush-style Divide turned 60 faces against the part
+- 1 x zbrush: MCH_Base ZBrush-style Divide strays 3.9 % of its size from the part
+- 1 x tangled: MCH_Base 1 new faces cross themselves after Cut line BEVEL pocket 0.15 from TOP on MCH_Bas
+- 1 x tangled: MCH_Base 3 new faces cross themselves after Base Mesh subtract poly BEVEL THROUGH h 0.71 f
+- 1 x fold: MCH_Base Bake HP Divide folds over at 66 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 70 soft edges
+- 1 x tangled: MCH_Base 5 new faces cross themselves after Cut line BEVEL from TOP on MCH_Base
+- 1 x tangled: MCH_Base 3 new faces cross themselves after Base Mesh subtract circle BEVEL THROUGH h 0.66
+- 1 x fold: MCH_Base Bake HP Divide folds over at 90 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 90 soft edges
+- 1 x flip: MCH_Base Bake HP Divide turned 5 faces against the part
+- 1 x tangled: MCH_Base 3 new faces cross themselves after Base Mesh subtract line BEVEL HEIGHT h 0.51 fr
+- 1 x fold: MCH_Base Bake HP Divide folds over at 129 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 253 soft edges
+- 1 x flip: MCH_Base ZBrush-style Divide turned 57 faces against the part
+- 1 x divide: MCH_Base strays 3.1 % of its size from the part
+- 1 x zbrush: MCH_Base ZBrush-style Divide strays 3.6 % of its size from the part
+- 1 x tangled: MCH_Base 1 new faces cross themselves after Cut circle BEVEL from FRONT on MCH_Base
+- 1 x tangled: MCH_Base 8 new faces cross themselves after Base Mesh subtract circle BEVEL HEIGHT h 1.33 
+- 1 x tangled: MCH_Base 4 new faces cross themselves after Cut poly GN from SIDE on MCH_Base
+- 1 x fold: MCH_Base Bake HP Divide folds over at 298 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 498 soft edges
+- 1 x flip: MCH_Base ZBrush-style Divide turned 53 faces against the part
+- 1 x tangled: MCH_Base_Split 1 new faces cross themselves after Cut poly BEVEL from FRONT on MCH_Base_Sp
+- 1 x fold: MCH_Base_Split Bake HP Divide folds over at 469 soft edges
+- 1 x fold: MCH_Base_Split ZBrush-style Divide folds over at 53 soft edges
+- 1 x flip: MCH_Base_Split Bake HP Divide turned 50 faces against the part
+- 1 x tangled: MCH_Base 2 new faces cross themselves after Cut line BEVEL pocket 0.05 from TOP on MCH_Bas
+- 1 x fold: MCH_Base Bake HP Divide folds over at 609 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 429 soft edges
+- 1 x flip: MCH_Base Bake HP Divide turned 13 faces against the part
+- 1 x flip: MCH_Base ZBrush-style Divide turned 124 faces against the part
+- 1 x zbrush: MCH_Base ZBrush-style Divide strays 4.0 % of its size from the part
+- 1 x fold: MCH_Base Bake HP Divide folds over at 100 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 131 soft edges
+- 1 x flip: MCH_Base ZBrush-style Divide turned 12 faces against the part
+- 1 x fold: MCH_Base_Split Bake HP Divide folds over at 72 soft edges
+- 1 x fold: MCH_Base_Split ZBrush-style Divide folds over at 35 soft edges
+- 1 x flip: MCH_Base_Split Bake HP Divide turned 9 faces against the part
+- 1 x flip: MCH_Base_Split ZBrush-style Divide turned 4 faces against the part
+- 1 x fold: MCH_Base Bake HP Divide folds over at 63 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 114 soft edges
+- 1 x tangled: MCH_Base 4 new faces cross themselves after Base Mesh subtract circle BEVEL HEIGHT h 1.28 
+- 1 x tangled: MCH_Base 4 new faces cross themselves after Cut rect BEVEL pocket 0.15 from FRONT on MCH_B
+- 1 x tangled: MCH_Base 4 new faces cross themselves after Split circle from TOP on MCH_Base
+- 1 x fold: MCH_Base Bake HP Divide folds over at 126 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 55 soft edges
+- 1 x fold: MCH_Base_Split Bake HP Divide folds over at 16 soft edges
+- 1 x flip: MCH_Base_Split Bake HP Divide turned 28 faces against the part
+- 1 x flip: MCH_Base_Split ZBrush-style Divide turned 22 faces against the part
+- 1 x fold: MCH_Base Bake HP Divide folds over at 146 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 58 soft edges
+- 1 x fold: MCH_Base_Split Bake HP Divide folds over at 641 soft edges
+- 1 x fold: MCH_Base_Split ZBrush-style Divide folds over at 371 soft edges
+- 1 x flip: MCH_Base_Split Bake HP Divide turned 300 faces against the part
+- 1 x flip: MCH_Base_Split ZBrush-style Divide turned 92 faces against the part
+- 1 x tangled: MCH_Base 2 new faces cross themselves after Cut line GN from TOP on MCH_Base
+- 1 x tangled: MCH_Base 1 new faces cross themselves after Cut circle BEVEL from TOP on MCH_Base
+- 1 x tangled: MCH_Base 10 new faces cross themselves after Base Mesh subtract circle BEVEL THROUGH h 1.0
+- 1 x fold: MCH_Base Bake HP Divide folds over at 152 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 73 soft edges
+- 1 x flip: MCH_Base Bake HP Divide turned 35 faces against the part
+- 1 x tangled: MCH_Base_Split 2 new faces cross themselves after Base Mesh subtract poly BEVEL HEIGHT h 0
+- 1 x fold: MCH_Base Bake HP Divide folds over at 155 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 124 soft edges
+- 1 x tangled: MCH_Base 3 new faces cross themselves after Base Mesh subtract circle BEVEL THROUGH h 0.15
+- 1 x warped: MCH_Base 1 new faces bent more than 1 % of its size after Cut rect BEVEL pocket 0.39 from 
+- 1 x tangled: MCH_Base 124 new faces cross themselves after Cut rect BEVEL pocket 0.39 from TOP on MCH_B
+- 1 x fold: MCH_Base Bake HP Divide folds over at 470 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 1782 soft edges
+- 1 x flip: MCH_Base Bake HP Divide turned 6721 faces against the part
+- 1 x flip: MCH_Base ZBrush-style Divide turned 23 faces against the part
+- 1 x zbrush: MCH_Base ZBrush-style Divide strays 6.6 % of its size from the part
+- 1 x tangled: MCH_Base 2 new faces cross themselves after Cut line BEVEL from SIDE on MCH_Base
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 178 soft edges
+- 1 x flip: MCH_Base ZBrush-style Divide turned 21 faces against the part
+- 1 x warped: MCH_Base 1 new faces bent more than 1 % of its size after Cut rect GN pocket 0.11 from TOP
+- 1 x tangled: MCH_Base 2 new faces cross themselves after Cut rect GN pocket 0.11 from TOP on MCH_Base
+- 1 x tangled: MCH_Base 1 new faces cross themselves after Base Mesh subtract rect BEVEL HEIGHT h 0.47 fr
+- 1 x fold: MCH_Base Bake HP Divide folds over at 213 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 135 soft edges
+- 1 x tangled: MCH_Base 2 new faces cross themselves after Base Mesh subtract circle BEVEL THROUGH h 0.55
+- 1 x tangled: MCH_Base 2 new faces cross themselves after Cut line BEVEL from TOP on MCH_Base
+- 1 x fold: MCH_Base Bake HP Divide folds over at 185 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 138 soft edges
+- 1 x tangled: MCH_Base 1 new faces cross themselves after Base Mesh subtract line BEVEL HEIGHT h 0.63 fr
+- 1 x fold: MCH_Base Bake HP Divide folds over at 154 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 53 soft edges
+- 1 x flip: MCH_Base Bake HP Divide turned 32 faces against the part
+- 1 x zbrush: MCH_Base ZBrush-style Divide strays 3.5 % of its size from the part
+- 1 x tangled: MCH_Base 1 new faces cross themselves after Cut rect BEVEL from TOP on MCH_Base
+- 1 x fold: MCH_Base Bake HP Divide folds over at 85 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 86 soft edges
+- 1 x flip: MCH_Base Bake HP Divide turned 17 faces against the part
+- 1 x flip: MCH_Base ZBrush-style Divide turned 19 faces against the part
+- 1 x tangled: MCH_Base 1 new faces cross themselves after Base Mesh subtract rect BEVEL HEIGHT h 1.19 fr
+- 1 x tangled: MCH_Base 1 new faces cross themselves after Base Mesh subtract rect BEVEL HEIGHT h 2.64 fr
+- 1 x fold: MCH_Base Bake HP Divide folds over at 99 soft edges
+- 1 x fold: MCH_Base ZBrush-style Divide folds over at 31 soft edges
+
+## Refusals / slow steps (the tool said no, or took over 20 s)
+
+- seed 8: FAIL 3 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/279 vertices of MCH_Base | shape px (539,431)-(574,470) in ? |
+- seed 11: FAIL 1 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/288 vertices of MCH_Base | shape px (546,283)-(604,341) in ? |
+- seed 18: FAIL 5 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 29: FAIL 1 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/504 vertices of MCH_Base | shape px (570,473)-(594,486) in ? |
+- seed 36: FAIL 3 refused: The result would delete the whole object; nothing was changed. [MCH_Base_Split: Cut, solvers tried: MANIFOLD, EXACT] [shape covers 33/122 ve
+- seed 36: FAIL 4 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 37: FAIL 3 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/20 vertices of MCH_Base_Split | shape px (467,336)-(495,
+- seed 38: FAIL 1 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/36 vertices of MCH_Base | shape px (387,388)-(402,419) in ? | 
+- seed 44: FAIL 3 refused: Boolean failed safely, mesh unchanged. MANIFOLD: the shape did not intersect the mesh; EXACT: result has 1543 non-manifold edges
+- seed 44: FAIL 4 refused: Boolean failed safely, mesh unchanged. MANIFOLD: the shape did not intersect the mesh; EXACT: result has 1733 non-manifold edges
+- seed 44: FAIL 5 refused: Boolean failed safely, mesh unchanged. MANIFOLD: the shape did not intersect the mesh; EXACT: result has 1543 non-manifold edges
+- seed 45: FAIL 1 refused: Aim the shape at the mesh surface (Depth mode = From Surface).

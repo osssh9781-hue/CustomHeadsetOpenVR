@@ -870,6 +870,117 @@ def boolean_result(context, target, cutter, operation, solver='AUTO',
     return got
 
 
+def _cross2(a, b, c):
+    return (b[..., 0] - a[..., 0]) * (c[..., 1] - a[..., 1]) - (b[..., 1] - a[..., 1]) * (c[..., 0] - a[..., 0])
+
+
+def tangled_faces(me, faces=None):
+    """0.24.95 (bevel fuzz: 664 faces in 50 bevelled parts) the faces of mesh ``me`` whose outline crosses itself in
+    the face's own plane - where an Edge Finish band ran into a crease of the part, Blender's bevel folded a lip of
+    the face 0.001 back over it, and Divide turned the face over there.  ``faces``: a bool mask of the faces to look
+    at (all when None).  Returns {face: [(i, j) the crossing sides, by corner]}."""
+    from . import mesh_io as mio
+    nf = len(me.polygons)
+    if nf == 0:
+        return {}
+    start, tot = mio.read_face_starts(me)
+    look = tot >= 4 if faces is None else (tot >= 4) & np.asarray(faces, bool)
+    if not look.any():
+        return {}
+    co = mio.read_co(me)
+    cv = mio.read_corner_verts(me)
+    nrm = np.empty(nf * 3)
+    me.polygons.foreach_get('normal', nrm)
+    nrm = nrm.reshape(-1, 3)
+    out = {}
+    q4 = np.flatnonzero(look & (tot == 4))
+    if len(q4):                                  # quads at once: a bow-tie crosses 0-1 with 2-3 or 1-2 with 3-0
+        p = co[cv[start[q4][:, None] + np.arange(4)]]
+        n = nrm[q4]
+        u = np.cross(n, np.where(np.abs(n[:, :1]) < 0.9, [[1.0, 0, 0]], [[0, 1.0, 0]]))
+        u /= np.maximum(np.linalg.norm(u, axis=1), 1e-30)[:, None]
+        w = np.cross(n, u)
+        q = np.stack([np.einsum('fkj,fj->fk', p, u), np.einsum('fkj,fj->fk', p, w)], 2)
+        for i, j in ((0, 2), (1, 3)):
+            a1, a2, b1, b2 = q[:, i], q[:, (i + 1) % 4], q[:, j], q[:, (j + 1) % 4]
+            hit = ((_cross2(a1, a2, b1) * _cross2(a1, a2, b2) < 0)
+                   & (_cross2(b1, b2, a1) * _cross2(b1, b2, a2) < 0))
+            for f in q4[hit].tolist():
+                out.setdefault(f, []).append((i, j))
+    for f in np.flatnonzero(look & (tot > 4)).tolist():
+        m = int(tot[f])
+        p = co[cv[start[f]:start[f] + m]]
+        n = nrm[f]
+        u = np.cross(n, (1.0, 0, 0) if abs(n[0]) < 0.9 else (0, 1.0, 0))
+        u /= np.linalg.norm(u) or 1.0
+        q = np.stack([p @ u, p @ np.cross(n, u)], 1)
+        a, b = q, np.roll(q, -1, 0)
+        i, j = np.triu_indices(m, 2)
+        keep = ~((i == 0) & (j == m - 1))
+        i, j = i[keep], j[keep]
+        hit = ((_cross2(a[i], b[i], a[j]) * _cross2(a[i], b[i], b[j]) < 0)
+               & (_cross2(a[j], b[j], a[i]) * _cross2(a[j], b[j], b[i]) < 0))
+        if hit.any():
+            out[f] = list(zip(i[hit].tolist(), j[hit].tolist()))
+    return out
+
+
+def untangle(me, limit, faces=None, rounds=4):
+    """0.24.95 the faces whose outline crosses itself (``tangled_faces``) put right: the shortest side next to each
+    crossing - the lip's own side, 0.001 against the band's 0.04 - is collapsed when it is shorter than ``limit``
+    (its two points meet in its middle), and the faces are looked at again (``rounds`` times).  Kept only when no
+    edge is left open or shared by three faces that was not before.  Returns how many sides were collapsed."""
+    if limit <= 0.0 or not len(me.polygons):
+        return 0
+    found = tangled_faces(me, faces)
+    if not found:
+        return 0
+    bad0 = _bad_edges_mesh(me)
+    bm = bmesh.new()
+    done = 0
+    try:
+        bm.from_mesh(me)
+        for _r in range(rounds):
+            bm.faces.ensure_lookup_table()
+            pick = {}
+            for f, pairs in found.items():
+                if f >= len(bm.faces):
+                    continue
+                face = bm.faces[f]
+                loops = face.loops[:]
+                m = len(loops)
+                near = {(k + d) % m for i, j in pairs for k in (i, j) for d in (-1, 0, 1)}
+                e = min((loops[k].edge for k in near), key=lambda x: x.calc_length())
+                if e.calc_length() < limit:
+                    pick[e.index] = e
+            if not pick:
+                break
+            bmesh.ops.collapse(bm, edges=list(pick.values()), uvs=False)
+            done += len(pick)
+            tmp = bpy.data.meshes.new('.mch_untangle')
+            try:
+                bm.to_mesh(tmp)
+                found = tangled_faces(tmp)
+            finally:
+                bpy.data.meshes.remove(tmp)
+            if not found:
+                break
+        if not done:
+            return 0
+        tmp = bpy.data.meshes.new('.mch_untangle')
+        try:
+            bm.to_mesh(tmp)
+            if _bad_edges_mesh(tmp) > bad0:
+                return 0
+        finally:
+            bpy.data.meshes.remove(tmp)
+        bm.to_mesh(me)
+        me.update()
+        return done
+    finally:
+        bm.free()
+
+
 WARP_TOL = 0.005          # a face bent more than this share of the part off its own plane is cut into triangles
 
 
@@ -2006,6 +2117,7 @@ def _face_flag_layer(bm):
 
 
 FINISH_NOTES = []   # B10: per-operation notes about widths Blender had to limit
+FIN_EXACT = '.mch_fin_exact'   # face INT: the faces Blender's bevel made in an Edge Finish (read by edge_memory)
 FINISH_MIN_SHARE = 0.05   # 0.24.95 a finish clamped below this share of its width is skipped (see _finish_new_edges)
 
 
@@ -2315,12 +2427,45 @@ def _finish_new_edges(mesh, mode='NONE', width=0.01, segments=3, profile=0.5, cl
         if crisp:
             crisp_shading(bm, res.get('faces', []), mode == 'BEVEL' and segments > 1)
         bm.normal_update()
+        # 0.24.95 (bevel fuzz) the band the bevel made, exactly: Edge Memory's band by geometry took a slightly bent
+        # cylinder facet whose triangles moved by a millionth of the part for band, and marked the 5-degree edges
+        # between the facets - Divide then turned hundreds of faces over at the crossing of two bevelled cuts
+        bm.faces.index_update()
+        band_ix = [f.index for f in res.get('faces', []) if f.is_valid]
+        lay = bm.faces.layers.int.get(FIN_EXACT) or bm.faces.layers.int.new(FIN_EXACT)
+        bm.faces.ensure_lookup_table()
+        for i in band_ix:
+            bm.faces[i][lay] = 1
         bm.to_mesh(mesh)
+        try:                                        # 0.24.95 (bevel fuzz) a lip the bevel folded back over a face
+            _untangle_band(mesh, band_ix, width)
+        except Exception as ex:                     # (a tidy-up: never fail a cut over it)
+            print('Mecha: untangle:', ex)
         if crisp:
             drop_custom_normals(mesh)
         return len(edges)
     finally:
         bm.free()
+
+
+def _untangle_band(mesh, band_ix, width):
+    """0.24.95 (bevel fuzz: a circle cut through a Chamfer's crease - the band crossed the crease 0.001 off the hole's
+    wall and the bevel folded that wall's end back over itself; Divide turned it over) the faces of the band and the
+    faces touching it that cross themselves are put right (``untangle``): sides shorter than a quarter of the width
+    (and 0.2 % of the part) next to a crossing collapsed."""
+    if not band_ix or not len(mesh.polygons):
+        return 0
+    from . import mesh_io as mio
+    start, tot = mio.read_face_starts(mesh)
+    cv = mio.read_corner_verts(mesh)
+    fid = np.repeat(np.arange(len(tot)), tot)
+    ix = np.asarray(band_ix, np.int64)
+    ix = ix[ix < len(tot)]
+    near_v = np.zeros(len(mesh.vertices), bool)
+    near_v[cv[np.isin(fid, ix)]] = True
+    faces = np.zeros(len(tot), bool)
+    faces[fid[near_v[cv]]] = True
+    return untangle(mesh, min(0.25 * width, 2e-3 * mesh_size(mesh)), faces=faces)
 
 
 def flat_cut_faces(mesh):
@@ -2357,7 +2502,7 @@ def remove_cutter_attribute(mesh, old_co=None, old_ev=None, old_sharp=None):
         edge_memory.mark_cut_borders(mesh, CUTTER_ATTR, old_co=old_co, old_ev=old_ev, old_sharp=old_sharp)
     except Exception as ex:                                   # memory is a bonus: never fail a cut over it
         print('Mecha: edge memory:', ex)
-    for name in (CUTTER_ATTR, '.mch_fin_band'):              # (0.24.95 + the Edge Finish band flag)
+    for name in (CUTTER_ATTR, '.mch_fin_band', FIN_EXACT):   # (0.24.95 + the Edge Finish band flags)
         for _ in range(8):
             attr = mesh.attributes.get(name)
             if attr is None:

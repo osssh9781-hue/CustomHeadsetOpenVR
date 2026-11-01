@@ -645,6 +645,7 @@ def _gn_on(cut, side=None):
 def _gn_finish(cut, me, scale):
     from . import rim_sweep
     from . import edge_memory
+    rim_sweep.LAST.pop('skipped', None)          # 0.24.95 (the cut's message reads it: never an older cut's reason)
     width = cut.gn_width / scale
     return _finish_guarded(me, lambda: edge_memory.finish_marks(
         me, lambda: rim_sweep.finish(me, cut.gn_finish, width, ts.res_n(cut.gn_segments)), width),
@@ -964,8 +965,9 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
             if junk:
                 suffix += f' | {junk} paper-thin shard(s) dropped'
         elif _gn_on(cut):
+            from . import rim_sweep                    # 0.24.95 (bevel fuzz seed 6) a skipped sweep says why
             suffix = (f' | GN {cut.gn_finish.title()}: {sum(edge_counts)} border edges' if sum(edge_counts)
-                      else ' | WARNING: GN Edge found no new border edges')
+                      else ' | WARNING: ' + (rim_sweep.LAST.get('skipped') or 'GN Edge found no new border edges'))
         elif cut.edge_finish != 'NONE' and cut.finish_width > 0:
             if not edge_counts:
                 suffix = ' | Edge Finish skipped (uncapped or Live cut)'

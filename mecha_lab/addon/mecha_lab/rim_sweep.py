@@ -525,6 +525,8 @@ def band_cross_count(band, stop=None):
 
 
 DENSE = 5000                 # band faces: a tangled band past this is given up (its Exact self-union ran 35 s / 457 s)
+SURE_MAX = 8000              # 0.24.95 part + band faces: past this the slow, sure sweep (Exact) is not tried - the
+                             # bevel fuzz: 17k faces, 172 s and 10.9 GB (13.6 GB once: Blender died)
 TANGLED = 4                  # band crossings per rim edge: past this the band is swept at half the width
 
 
@@ -607,6 +609,7 @@ def _skip(mesh, why):
 def finish(mesh, mode='CHAMFER', width=0.01, segments=3):
     """Chamfer / bevel the cut's rim on ``mesh`` (object space) with the Geometry Nodes sweep.  Returns the
     number of rim edges finished (0 = nothing done, the mesh unchanged)."""
+    LAST.pop('skipped', None)                    # 0.24.95 (the cut's message reads it: never an older cut's reason)
     if mode not in {'CHAMFER', 'BEVEL'} or width <= 0 or mesh.attributes.get(cg.CUTTER_ATTR) is None:
         return 0
     if cg.multi_edge_count(mesh):               # 0.24.83 the GN sweep took Blender down (segfault) on a part with an
@@ -650,8 +653,8 @@ def finish(mesh, mode='CHAMFER', width=0.01, segments=3):
                                f'({band_faces:,}-face band crossing itself) - Fix Mesh / DynaMesh it, or a narrower width')
     else:                                      # 0.24.77 an open / broken part: no Self Intersection on the part
         res = _sweep(mesh, n, 'open')
-        if not _fair(res, mesh, count):        # worse than it was: the old way too, the better of the two kept
-            alt = _sweep(mesh, n, fast=False)
+        if not _fair(res, mesh, count) and len(mesh.polygons) <= SURE_MAX:   # worse than it was: the old way too,
+            alt = _sweep(mesh, n, fast=False)                              # the better of the two kept
             if _open_edges(alt) < _open_edges(res):
                 res, alt = alt, res
             bpy.data.meshes.remove(alt)
@@ -662,6 +665,10 @@ def finish(mesh, mode='CHAMFER', width=0.01, segments=3):
             if tangled:                        # 0.24.91 ... not on a tangled band (35 s to 7 min, and no better)
                 return _skip(mesh, 'Edge Finish skipped: the swept band did not come out clean on a jagged rim '
                                    f'({len(mesh.polygons):,} faces) - Fix Mesh / DynaMesh it, or a narrower width')
+            if len(mesh.polygons) + band_faces > SURE_MAX:   # 0.24.95 ... nor on a big part (minutes, gigabytes)
+                return _skip(mesh, 'Edge Finish skipped: the quick sweep did not come out clean and the sure way '
+                                   f'would take minutes on {len(mesh.polygons):,} faces - a narrower width, or '
+                                   'Fix Mesh / DynaMesh it')
             res = _sweep(mesh, n, fast=False)
     try:
         if len(res.polygons) == 0:

@@ -386,6 +386,16 @@ def finish_band(me, snap, width):
     q = size * 1e-6
     new_pt = ~np.isin(_pos_keys(co, q), _pos_keys(old_co, q))
     _restore_lines(me, old_seg, co, new_pt, q, size, old_co, old_ev)
+    exact = me.attributes.get('.mch_fin_exact')
+    if exact is not None and exact.domain == 'FACE' and len(exact.data) == nf:
+        # 0.24.95 the finisher said which faces it made (Blender's bevel): no guessing by geometry
+        vals = np.zeros(nf, np.int32)
+        exact.data.foreach_get('value', vals)
+        me.attributes.remove(exact)
+        band = vals > 0
+        return _write_band(me, band) if band.any() else 0
+    if exact is not None:
+        me.attributes.remove(exact)
     cv = mio.read_corner_verts(me)
     start, tot = mio.read_face_starts(me)
     cand = np.flatnonzero(np.add.reduceat(new_pt[cv].astype(np.int32), start) > 0)
@@ -411,16 +421,38 @@ def finish_band(me, snap, width):
     finally:
         bm.free()
     tol = max(2e-6 * size, 1e-4 * width)
+    # 0.24.95 (bevel fuzz) ... or near it (a twentieth of the finish width) and facing the same way (4 degrees): a
+    # slightly bent cylinder facet the sweep re-cut moved by a millionth of the part and was taken for band, its
+    # 5-degree edges to the next facets marked - Divide turned hundreds of faces over.  A band's first row leans 7.5
+    # degrees or more (a 6-segment round), so it stays band.
+    near = max(tol, 0.05 * width)
+    lean = math.cos(math.radians(4.0))
+    fno = np.empty(nf * 3)
+    me.polygons.foreach_get('normal', fno)
+    fno = fno.reshape(-1, 3)
     on = np.zeros(nf, bool)
     for t, c in zip(tp[ti], tc):
         if on[t]:
             continue
         hit = bvh.find_nearest(Vector(c))
-        if hit[3] is not None and hit[3] <= tol:
+        if hit[3] is None:
+            continue
+        if hit[3] <= tol or (hit[3] <= near and float(np.dot(fno[t], hit[1])) > lean):
             on[t] = True
     band = is_cand & ~on
+    # 0.24.95 (bevel fuzz) a sliver the sweep left along the seam of two cylinder facets is no band: its two long
+    # sides are that seam, and marking them put a crease on a 5-degree edge of a round wall (Divide folded there)
+    area = np.empty(nf)
+    me.polygons.foreach_get('area', area)
+    band &= area > 1e-4 * width * width
     if not band.any():
         return 0
+    return _write_band(me, band)
+
+
+def _write_band(me, band):
+    """The band flag (``FIN_BAND``, added to one already there) and the marks on its borders.  Returns its size."""
+    nf = len(me.polygons)
     a = me.attributes.get(FIN_BAND)
     if a is not None and a.domain == 'FACE' and len(a.data) == nf:
         had = np.zeros(nf, bool)
