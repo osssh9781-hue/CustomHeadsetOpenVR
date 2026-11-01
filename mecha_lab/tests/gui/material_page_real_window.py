@@ -165,7 +165,7 @@ def flow():
     yield 2.5
     log('real click ▶: preset', before, '->', st.preset)
     # a real click on a sphere icon (0.24.95 user: "메테리얼 창도 아이콘으로 보이게 해 줄래? 구 형태로")
-    tile = find(lambda i: i.kind == 'mtile' and i.label == 'Battle Worn')
+    tile = yield from scrolled_to(lambda i: i.kind == 'mtile' and i.label == 'Battle Worn')
     log('Battle Worn ball at', click(tile))
     yield 0.4
     xdo('click', 1)
@@ -173,6 +173,7 @@ def flow():
     log('real click on the Battle Worn ball: preset', st.preset)
     st.preset = 'CHIPPED'                                  # (back: the shots below on Chipped Paint)
     yield 3.0
+    scroll(-5000)
     xdo('mousemove', 300, 1200)
     yield 1.0
     shot('1b_presets_grid.png')
