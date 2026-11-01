@@ -26,6 +26,8 @@ from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
 SHEET_CAP = 0.5            # a boundary cap bigger than this share of the mesh's area is a sheet's outline, not a hole
+CAP_BEND = 0.25            # 0.24.95 a cap whose corners stand off its own plane more than this x its width: not kept
+CAP_OVERLAP = 1.1          # 0.24.95 ... or whose triangles cover this much more than the opening (it doubles back)
 THICK_VOXELS = 3.0         # the voxel must fit this many times into the thinnest wall
 SHEET_VOXELS = 3.0         # an open sheet gets this many voxels of thickness
 MIN_PART = 0.02            # loose parts under this share of the faces are dropped after the remesh
@@ -130,6 +132,65 @@ def cap_voxel(me, voxel):
     return voxel, t
 
 
+def thicken(bm, t):
+    """0.24.95 an open sheet made a closed slab ``t`` thick: a copy moved ``t`` back along the point normals, joined to
+    the sheet along its open edges.  Blender's solidify makes a corner thicker by 1 / cos of its angle, and at a fold
+    (a crumpled cloth turning back on itself) that factor blew a point 10 voxels out - a spike after the remesh.
+    Here no point moves more than ``t``."""
+    bm.normal_update()
+    faces = list(bm.faces)
+    border = [e for e in bm.edges if len(e.link_faces) == 1]
+    old = set(bm.verts)
+    res = bmesh.ops.duplicate(bm, geom=faces)
+    vmap = {a: b for a, b in res['vert_map'].items() if a in old and b not in old}
+    for a, b in vmap.items():
+        n = a.normal
+        b.co = a.co - (n.normalized() if n.length > 1e-12 else n) * t
+    bmesh.ops.reverse_faces(bm, faces=[f for f in res['geom'] if isinstance(f, bmesh.types.BMFace)])
+    for e in border:
+        a, b = e.verts
+        if a not in vmap or b not in vmap:
+            continue
+        forward = any(lp.vert is a and lp.link_loop_next.vert is b for lp in e.link_faces[0].loops)
+        quad = (b, a, vmap[a], vmap[b]) if forward else (a, b, vmap[b], vmap[a])
+        try:
+            bm.faces.new(quad)
+        except ValueError:                       # (that side face is there already)
+            pass
+    return len(vmap)
+
+
+def folded_cap(face):
+    """0.24.95 (user: "다이나메쉬 하면 가끔 뾰족하게 메쉬가 튀어") a hole cap that cannot lie flat: Blender fills a face in
+    its own plane, so the cap of a bent or folded opening (a crumpled cloth's outline, a twisted cut) became
+    triangles folding back over each other and out through the part - the voxel remesh turned them into spikes
+    (a crumpled cloth: 1,867 points up to 12 voxels off it).  Such an opening is left open instead (the sheet gets
+    its thickness).  True when the cap's corners stand off its plane more than CAP_BEND x its width, or its
+    outline doubles back over itself - its triangles then cover more than the opening (the cloth: 2.23 against
+    1.34) - or turn against it."""
+    from mathutils.geometry import tessellate_polygon
+    co = [v.co.copy() for v in face.verts]
+    if len(co) < 4:
+        return False
+    face.normal_update()
+    n = face.normal
+    if n.length < 0.5:
+        return True
+    c = sum(co, Vector()) / len(co)
+    width = 2.0 * max((p - c).length for p in co)
+    if width <= 0.0:
+        return False
+    if max(abs((p - c).dot(n)) for p in co) > CAP_BEND * width:
+        return True
+    cover = 0.0
+    for a, b, d in tessellate_polygon([co]):
+        t = (co[b] - co[a]).cross(co[d] - co[a])
+        if t.length > 1e-12 * width * width and t.dot(n) < 0.0:
+            return True
+        cover += t.length / 2.0
+    return cover > CAP_OVERLAP * face.calc_area()
+
+
 def prepare(me, voxel):
     """The mesh made remesh-safe in place: doubles merged, normals consistent, small holes filled, an open sheet
     solidified, loose bits dropped.  Returns dict of what was done."""
@@ -145,6 +206,7 @@ def prepare(me, voxel):
         done['loose'] = len(loose_v) + len(loose_e)
         if loose_e:
             bmesh.ops.delete(bm, geom=loose_e, context='EDGES')
+        loose_v = [v for v in loose_v if v.is_valid]     # 0.24.95 (deleting the loose edges took their points)
         if loose_v:
             bmesh.ops.delete(bm, geom=loose_v, context='VERTS')
         before = sum(1 for e in bm.edges if len(e.link_faces) == 2 and _edge_dir(e.link_faces[0], e) == _edge_dir(e.link_faces[1], e))
@@ -155,13 +217,14 @@ def prepare(me, voxel):
             area = sum(f.calc_area() for f in bm.faces)
             res = bmesh.ops.holes_fill(bm, edges=open_edges, sides=0)       # every boundary loop capped ...
             caps = res.get('faces', [])
-            sheet = [f for f in caps if f.is_valid and f.calc_area() > area * SHEET_CAP]   # ... a cap as big as the
-            if sheet:                                                        # mesh itself is a sheet's outline
+            sheet = [f for f in caps if f.is_valid and (f.calc_area() > area * SHEET_CAP    # ... a cap as big as the
+                                                        or folded_cap(f))]                    # mesh itself is a sheet's
+            if sheet:                                                        # outline; 0.24.95 or one that folds
                 bmesh.ops.delete(bm, geom=sheet, context='FACES_ONLY')
             done['holes'] = len(caps) - len(sheet)
             bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
             if any(len(e.link_faces) == 1 for e in bm.edges):      # still open: a sheet - give it a thickness
-                bmesh.ops.solidify(bm, geom=bm.faces[:] + bm.edges[:] + bm.verts[:], thickness=voxel * SHEET_VOXELS)
+                thicken(bm, voxel * SHEET_VOXELS)
                 bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
                 done['solidified'] = True
         bm.to_mesh(me)
