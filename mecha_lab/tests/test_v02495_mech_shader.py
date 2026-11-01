@@ -170,6 +170,34 @@ check('A Mech material from before (node layout 3): made anew at the next change
       mat['mch_mech'] == ms.VERSION and mat.node_tree.nodes.get('mch:tangent') is not None)
 nodes = mat.node_tree.nodes
 
+# ---- 0.24.95 (user: "베이스 컬러, 러프니스, 메탈릭, 유리 재질, 알파 다 만질 수 있게"; "스노우가 너무 칼같이 떨어지는 거
+# 같고, 흙도 안에 낀 거 / 바깥에 위에 묻은 거 / 아래 묻은 거 슬라이드로")
+st.preset = 'GLASS'
+bs = mat.node_tree.nodes['mch:bsdf']
+check('Glass: see-through (Transmission wired, IOR 1.5), metallic 0, EEVEE refraction on the material',
+      bs.inputs['Transmission Weight'].is_linked and bs.inputs['IOR'].is_linked and st.glass == 1.0
+      and st.metallic == 0.0 and getattr(mat, 'use_raytrace_refraction', True))
+st.preset = 'HOLO'
+check('Hologram: Alpha 0.35 (wired), the material blends (EEVEE: smooth see-through)', bs.inputs['Alpha'].is_linked
+      and abs(st.alpha - 0.35) < 1e-6 and mat.surface_render_method == 'BLENDED')
+st.preset = 'STEEL'
+check('... a plain preset: solid again (no refraction, dithered)', st.glass == 0.0 and st.alpha == 1.0
+      and not getattr(mat, 'use_raytrace_refraction', False) and mat.surface_render_method == 'DITHERED')
+st.glass, st.ior, st.alpha = 0.6, 1.33, 0.8
+nd = mat.node_tree.nodes
+check('... Glass / IOR / Alpha sliders in the nodes at once', abs(nd['mch:glass'].outputs[0].default_value - 0.6) < 1e-6
+      and abs(nd['mch:ior'].outputs[0].default_value - 1.33) < 1e-6
+      and abs(nd['mch:alpha'].outputs[0].default_value - 0.8) < 1e-6)
+st.snow_soft, st.dirt_top, st.dirt_low, st.dirt = 0.45, 0.3, 0.4, 0.2
+check('Snow Softness and the three dirts (in crevices / on top / from below) in the nodes',
+      abs(nd['mch:snow_soft'].outputs[0].default_value - 0.45) < 1e-6
+      and abs(nd['mch:dirt_top'].outputs[0].default_value - 0.3) < 1e-6
+      and abs(nd['mch:dirt_low'].outputs[0].default_value - 0.4) < 1e-6
+      and abs(nd['mch:dirt'].outputs[0].default_value - 0.2) < 1e-6)
+check('... Muddy Paint: mud low, on top and in the crevices', spec['MUDDY']['dirt_low'] > 0.5
+      and spec['MUDDY']['dirt_top'] > 0 and spec['MUDDY']['dirt'] > 0)
+st.preset = 'CLOTH'
+
 # ---- no Mech material yet: stepping the preset applies it
 bpy.ops.mesh.primitive_uv_sphere_add(location=(4, 0, 0))
 sp = C.active_object
@@ -196,6 +224,36 @@ check('... Strength / Rotation move it at once', abs(w.node_tree.nodes['mch:bg']
 bpy.ops.mch.mech_hdri(action='SET', step=1)
 check('... the arrow steps to the next HDRI', sc.mch_mech_hdri == 'forest.exr'
       and w.node_tree.nodes['mch:env'].image.filepath.endswith('forest.exr') and sc.world == w)
+# 0.24.95 (user: "hdri 파일은 다운받아서 폴더에 넣어 놓고 그거 연결해서 불러오게, 블러를 넣어 주는 거야"): a folder of
+# the user's own, blur behind the model
+import shutil
+import tempfile
+from mecha_lab import workspace_ui
+mine = tempfile.mkdtemp(prefix='mch_hdri_')
+shutil.copy(os.path.join(ms.hdri_dir(), 'sunset.exr'), os.path.join(mine, 'my_sky.exr'))
+real_pref = workspace_ui.pref
+workspace_ui.pref = lambda name, default=True: mine if name == 'hdri_folder' else real_pref(name, default)
+try:
+    ids = [i[0] for i in ms._hdri_items(None, C)]
+    check('HDRI Folder (Preferences, also in the HDRI box): its files listed first (*), the built-in ones after',
+          ids[0] == 'U:my_sky.exr' and 'courtyard.exr' in ids, ids[:3])
+    sc.mch_mech_hdri = 'U:my_sky.exr'
+    r = bpy.ops.mch.mech_hdri(action='SET')
+    env = sc.world.node_tree.nodes['mch:env']
+    check('... Set HDRI on one: the scene\'s world shows that file', r == {'FINISHED'}
+          and os.path.normcase(bpy.path.abspath(env.image.filepath)) == os.path.normcase(os.path.join(mine, 'my_sky.exr')))
+    nt = sc.world.node_tree
+    sc.mch_mech_hdri_blur = 0.6
+    eb = nt.nodes['mch:env_blur']
+    check('Background Blur: the camera sees a blurred copy (smaller, kept in the file), the lighting the sharp HDRI',
+          eb.image is not None and eb.image.name == ms.BLUR_IMAGE and eb.image.size[0] < env.image.size[0]
+          and nt.nodes['mch:blur_on'].outputs[0].default_value == 1.0 and eb.image.packed_file is not None,
+          (eb.image and tuple(eb.image.size), tuple(env.image.size)))
+    sc.mch_mech_hdri_blur = 0.0
+    check('... Blur 0: the sharp HDRI behind the model again', nt.nodes['mch:blur_on'].outputs[0].default_value == 0.0)
+finally:
+    workspace_ui.pref = real_pref
+    shutil.rmtree(mine, ignore_errors=True)
 bpy.ops.mch.mech_hdri(action='OFF')
 check('Off: the world the scene had is back', sc.world == old)
 
@@ -215,6 +273,6 @@ check('Panel: the preset, every map with its slider and Height, Clear Coat, AO, 
        'weave_map', 'edge_wear', 'scratches', 'rust', 'rust_scratch', 'dirt', 'snow', 'emission', 'cloth',
        'roughness', 'map_scale', 'bump', 'h_base', 'h_scratch', 'h_chip', 'h_rust', 'h_dirt', 'h_snow', 'h_weave',
        'coat', 'ao', 'aniso', 'dust', 'streaks', 'variation', 'primer', 'primer_color', 'paint_pattern',
-       'dirt_low', 'mch_mech_hdri', 'mch_mech_hdri_strength',
+       'dirt_low', 'glass', 'alpha', 'snow_soft', 'dirt_top', 'mch_mech_hdri_blur', 'mch_mech_hdri', 'mch_mech_hdri_strength',
        'mch_mech_hdri_rot'} <= props, sorted(props))
 summary()

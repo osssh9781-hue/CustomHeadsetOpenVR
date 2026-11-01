@@ -38,7 +38,7 @@ check('mark_generated hooked into every part-making tool (13 modules)',
                       'flower_plate.py', 'mech_ridge.py', 'plate_detail.py', 'scale_brush.py', 'screw_stamp.py', 'surface_draw.py',
                       'surface_lasso.py'}, hooked)
 check('boolean_result flags any cutter (0.24.95: in the Boolean it wraps, which also carries the part\'s marks over)',
-      'flag_cutter(cutter)' in inspect.getsource(cg._boolean_result_any)
+      'flag_cutter(cutter)' in inspect.getsource(cg._boolean_result_any_)       # (the Boolean behind the mirror-wall wrapper)
       and 'carry_marks' in inspect.getsource(cg.boolean_result))
 from mecha_lab import actions_menu as am, highpoly as hp
 from mecha_lab.mecha_menu import Item

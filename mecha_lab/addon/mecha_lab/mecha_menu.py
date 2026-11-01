@@ -37,7 +37,8 @@ ACTIONS = (            # (section, [(label, glyph or png stem, operator, props, 
                  ('Delete', 'delete', 'object.delete', {'use_global': False}, 'sel', False),
                  ('Origin', 'origin', 'mch.object_tidy', {'action': 'ORIGIN_GEOMETRY'}, 'mesh', False),
                  ('Reset Axis', 'axes', 'mch.object_tidy', {'action': 'RESET_AXIS'}, 'mesh', False),
-                 ('Flip', 'flip', 'mch.flip_object', {'axis': 'X'}, 'mesh', False)]),     # 0.24.95 left / right
+                 ('Flip', 'flip', 'mch.flip_object', {'axis': 'X'}, 'mesh', False),     # 0.24.95 left / right
+                 ('Fix Holes', 'fixholes', 'mch.fix_mesh', {}, 'mesh', False)]),   # 0.24.95 Fix Mesh, mirror holes too
     ('Shading', [('Flat', 'shade_flat', 'object.shade_flat', {}, 'mesh', False),
                  ('Auto Smooth', 'shade_auto', 'object.shade_auto_smooth', {}, 'mesh', False),
                  ('Smooth', 'shade_smooth', 'object.shade_smooth', {}, 'mesh', False)]),

@@ -29,7 +29,7 @@ from bpy.props import EnumProperty, FloatProperty, FloatVectorProperty, PointerP
 
 KEY = 'mch_mech'                    # the material's settings (PropertyGroup on bpy.types.Material)
 CURV = 'mch_curv'
-VERSION = 5                          # (the node tree's layout: an older one is made anew)
+VERSION = 6                          # (the node tree's layout: an older one is made anew)
 MAP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mech_maps')
 
 # slot -> (label, tiles per unit (x Map Scale), colour map (sRGB) or data, [(id, label)])
@@ -83,7 +83,8 @@ BASE = dict(base_color=(0.77, 0.78, 0.78), metallic=1.0, roughness=0.35, rough_a
             emission=0.0, emit_color=(0.1, 0.7, 1.0), cloth=0.0, bump=1.0, coat=0.0, ao=0.5,
             h_base=0.3, h_scratch=0.6, h_chip=0.5, h_rust=0.6, h_dirt=0.4, h_snow=0.7, h_weave=0.7,
             aniso=0.0, dust=0.0, streaks=0.0, variation=0.3, primer=0.0, primer_color=(0.52, 0.52, 0.5),
-            paint_pattern=0.35, dirt_low=0.0, map_scale=1.0,
+            paint_pattern=0.35, dirt_low=0.0, map_scale=1.0, glass=0.0, ior=1.5, alpha=1.0, snow_soft=0.25,
+            dirt_top=0.0,
             base_map='MOTTLED', rough_map='SMUDGE', chip_map='FLAKES', scratch_map='FINE', rust_map='PATCHES',
             dirt_map='GRIME', snow_map='POWDER', emit_map='EDGES', weave_map='CANVAS')
 
@@ -140,13 +141,13 @@ PRESETS = [
                                     rust_scratch=0.85, scratch_map='FINE', rust_map='SPOTS')),
     ('RUSTED', 'Rusted Steel', _m(h_rust=0.9, bump=1.3, base_color=(0.5, 0.5, 0.5), roughness=0.6, rust=0.7,
                                   rust_map='HEAVY', dirt=0.3, streaks=0.5)),
-    ('DIRTY', 'Dirty Metal', _m(dirt_low=0.4, h_dirt=0.5, roughness=0.45, dirt=0.55, dirt_map='GRIME', scratches=0.2,
-                                streaks=0.45, dust=0.35)),
-    ('MUDDY', 'Muddy Paint', _m(dirt_low=0.9, h_dirt=0.9, bump=1.2, dust=0.25, paint=1.0,
-                                paint_color=(0.35, 0.38, 0.28), edge_wear=0.2, dirt=0.75, dirt_map='MUD')),
-    ('SNOWY', 'Snowy Metal', _m(h_snow=0.9, paint=1.0, paint_color=(0.18, 0.2, 0.24), edge_wear=0.15, snow=0.45,
-                                snow_map='PATCHY')),
-    ('BATTLE', 'Battle Worn', _m(primer=0.6, primer_color=(0.45, 0.18, 0.1), dirt_low=0.5, bump=1.2, paint=1.0,
+    ('DIRTY', 'Dirty Metal', _m(dirt_top=0.2, dirt_low=0.3, h_dirt=0.5, roughness=0.45, dirt=0.55, dirt_map='GRIME',
+                                scratches=0.2, streaks=0.45, dust=0.35)),
+    ('MUDDY', 'Muddy Paint', _m(dirt_top=0.35, dirt_low=0.85, h_dirt=0.9, bump=1.2, dust=0.25, paint=1.0,
+                                paint_color=(0.35, 0.38, 0.28), edge_wear=0.2, dirt=0.5, dirt_map='MUD')),
+    ('SNOWY', 'Snowy Metal', _m(snow_soft=0.3, h_snow=0.9, paint=1.0, paint_color=(0.18, 0.2, 0.24), edge_wear=0.15,
+                                snow=0.45, snow_map='PATCHY')),
+    ('BATTLE', 'Battle Worn', _m(primer=0.6, primer_color=(0.45, 0.18, 0.1), dirt_low=0.45, bump=1.2, paint=1.0,
                                  paint_color=(0.42, 0.45, 0.4), edge_wear=0.4, scratches=0.45, rust=0.25,
                                  rust_scratch=0.6, dirt=0.4, chip_map='BIG', streaks=0.35, dust=0.25)),
     ('EMISSIVE', 'Emissive Panel', _m(coat=0.2, paint=1.0, paint_color=(0.08, 0.09, 0.1), emission=6.0,
@@ -155,6 +156,15 @@ PRESETS = [
                                       emit_color=(0.2, 1.0, 0.4), emit_map='CIRCUIT')),
     ('GLOW_SCRATCH', 'Glowing Scratches', _m(paint=1.0, paint_color=(0.1, 0.1, 0.11), scratches=0.5, emission=8.0,
                                              emit_color=(1.0, 0.35, 0.05), emit_map='SCRATCH')),
+    ('GLASS', 'Clear Glass', _m(base_color=(0.97, 0.98, 0.98), metallic=0.0, roughness=0.02, rough_amount=0.05,
+                                glass=1.0, ior=1.5, h_base=0.0, variation=0.0, base_map='FLAT', rough_map='CLEAN')),
+    ('GLASS_FROSTED', 'Frosted Glass', _m(base_color=(0.95, 0.96, 0.97), metallic=0.0, roughness=0.35, rough_amount=0.3,
+                                          glass=1.0, ior=1.5, h_base=0.1, variation=0.0, base_map='FLAT',
+                                          rough_map='FINE')),
+    ('VISOR', 'Tinted Visor', _m(base_color=(0.3, 0.55, 0.7), metallic=0.0, roughness=0.04, rough_amount=0.1, glass=1.0,
+                                 ior=1.52, coat=1.0, h_base=0.0, variation=0.0, base_map='FLAT', rough_map='FINGER')),
+    ('HOLO', 'Hologram', _m(base_color=(0.1, 0.3, 0.4), metallic=0.0, roughness=0.2, alpha=0.35, emission=3.0,
+                            emit_color=(0.2, 0.85, 1.0), emit_map='GRID', h_base=0.0, variation=0.0, base_map='FLAT')),
     ('CLOTH', 'Cloth Canvas', _m(h_weave=0.9, base_color=(0.36, 0.33, 0.24), metallic=0.0, roughness=0.8,
                                  rough_amount=0.2, cloth=1.0, base_map='FLAT', weave_map='CANVAS')),
     ('CLOTH_DENIM', 'Cloth Denim', _m(h_weave=0.9, base_color=(0.12, 0.17, 0.3), metallic=0.0, roughness=0.75,
@@ -293,6 +303,12 @@ class Builder:
         self.link(vector, nd.inputs['Vector'])
         return nd
 
+    def threshold_s(self, v, amount, soft):
+        """``threshold`` with the softness a socket (a slider)."""
+        v = self.math('MULTIPLY', v, self.math('SUBTRACT', 1.0 - 1e-3, soft), clamp=True)
+        top = self.math('SUBTRACT', 1.0, amount)
+        return self.maprange(v, self.math('SUBTRACT', top, soft), top)
+
     def threshold(self, v, amount, soft):
         """Nothing (amount 0) .. everything (amount 1): ``v`` (0..1) cut at 1 - amount, ``soft`` wide.  ``v`` is
         squeezed under 1 - soft first, so amount 0 really is none."""
@@ -335,7 +351,7 @@ def build(mat):
                                  'scratches', 'rust', 'rust_scratch', 'dirt', 'snow', 'emission', 'cloth', 'bump',
                                  'edge_width', 'coat', 'ao', 'h_base', 'h_scratch', 'h_chip', 'h_rust', 'h_dirt',
                                  'h_snow', 'h_weave', 'aniso', 'dust', 'streaks', 'variation', 'primer',
-                                 'paint_pattern', 'dirt_low')}
+                                 'paint_pattern', 'dirt_low', 'glass', 'ior', 'alpha', 'snow_soft', 'dirt_top')}
     c = {k: b.rgb(k) for k in ('base_color', 'paint_color', 'rust_color', 'dirt_color', 'emit_color',
                                'primer_color')}
     w = {k: b.value('emit_w_' + k) for k in ('const', 'edge', 'cav', 'scratch', 'pattern')}
@@ -383,11 +399,18 @@ def build(mat):
     gz = b.node('ShaderNodeSeparateXYZ')
     b.link(tc.outputs['Generated'], gz.inputs['Vector'])
     low = b.maprange(gz.outputs['Z'], 0.6, 0.0)                       # (the part's bottom 1 .. 60 % up 0)
-    dirt_in = b.math('ADD', b.math('ADD', b.math('MULTIPLY', cav, 0.55), b.math('MULTIPLY', img['dirt'], 0.6)),
-                     b.math('MULTIPLY', low, b.math('MULTIPLY', v['dirt_low'], 0.8)), clamp=True)
-    dirt = b.math('MULTIPLY', b.threshold(dirt_in, v['dirt'], 0.12), 0.92)
-    snow = b.threshold(b.math('ADD', b.math('MULTIPLY', nz, 0.8), b.math('MULTIPLY', img['snow'], 0.3), clamp=True),
-                       b.math('MULTIPLY', v['snow'], 1.1), 0.06)
+    # dirt, three ways (0.24.95 user: "흙도 안에 낀 거, 바깥에 위에 묻은 거, 아래 묻은 거 슬라이드로"): in the crevices,
+    # on what faces up, low on the part (splashed up from the ground) - each its own amount, the dirt map breaks all up
+    d_cav = b.threshold(b.math('ADD', b.math('MULTIPLY', cav, 0.7), b.math('MULTIPLY', img['dirt'], 0.45),
+                               clamp=True), v['dirt'], 0.15)
+    d_top = b.threshold(b.math('ADD', b.math('MULTIPLY', b.math('MAXIMUM', nz, 0.0), 0.65),
+                               b.math('MULTIPLY', img['dirt'], 0.5), clamp=True), v['dirt_top'], 0.2)
+    d_low = b.threshold(b.math('ADD', b.math('MULTIPLY', low, 0.75), b.math('MULTIPLY', img['dirt'], 0.45),
+                               clamp=True), v['dirt_low'], 0.2)
+    dirt = b.math('MULTIPLY', b.math('MAXIMUM', b.math('MAXIMUM', d_cav, d_top), d_low), 0.92)
+    # snow: its edge as soft as the slider says (0.24.95 user: "스노우가 너무 칼같이 떨어지는 거 같고")
+    snow = b.threshold_s(b.math('ADD', b.math('MULTIPLY', nz, 0.8), b.math('MULTIPLY', img['snow'], 0.3), clamp=True),
+                         b.math('MULTIPLY', v['snow'], 1.1), v['snow_soft'])
     side = b.math('SUBTRACT', 1.0, b.math('ABSOLUTE', nz))                # (walls 1, floors / tops 0)
     streak = b.threshold(b.math('MULTIPLY', b.math('ADD', b.math('MULTIPLY', img['streak'], 0.85),
                                                    b.math('MULTIPLY', cav, 0.3)), side, clamp=True),
@@ -491,6 +514,14 @@ def build(mat):
                 b.math('ADD', b.math('MULTIPLY', w['cav'], cav),
                        b.math('ADD', b.math('MULTIPLY', w['scratch'], scratch),
                               b.math('MULTIPLY', w['pattern'], img['emit']))), clamp=True)
+    # glass and alpha (0.24.95 user: "유리 재질, 알파 이런 거 다 만질 수 있게"): see-through where nothing covers it
+    cover = b.math('MAXIMUM', b.math('MAXIMUM', paint, rust), b.math('MAXIMUM', dirt, snow))
+    b.link(b.math('MULTIPLY', v['glass'], b.math('SUBTRACT', 1.0, cover), clamp=True),
+           bsdf.inputs['Transmission Weight'])
+    b.link(v['ior'], bsdf.inputs['IOR'])
+    a_cov = b.math('MAXIMUM', b.math('MAXIMUM', rust, dirt), snow)
+    b.link(b.math('ADD', v['alpha'], b.math('MULTIPLY', b.math('SUBTRACT', 1.0, v['alpha']), a_cov), clamp=True),
+           bsdf.inputs['Alpha'])
     b.link(c['emit_color'], bsdf.inputs['Emission Color'])
     b.link(b.math('MULTIPLY', em, v['emission']), bsdf.inputs['Emission Strength'])
     mat['mch_mech'] = VERSION
@@ -543,9 +574,26 @@ def sync(mat):
         nd = nodes.get('mch:img:' + name)
         if nd is not None and nd.image is None:
             nd.image = map_image(slot, ident, data=True)
+    _see_through(mat, st)
     src = EMIT_SOURCE.get(st.emit_map, (0, 0, 0, 0, 1))
     for k, val in zip(('const', 'edge', 'cav', 'scratch', 'pattern'), src):
         setv('emit_w_' + k, float(val))
+
+
+def _see_through(mat, st):
+    """EEVEE: a glassy Mech material refracts (its Raytrace Refraction on), a see-through one blends smoothly; off
+    again when not (only on the Mech material itself - the scene's settings are not touched)."""
+    glassy = st.glass > 0.0
+    try:
+        for name in ('use_raytrace_refraction', 'use_screen_refraction'):
+            if hasattr(mat, name) and getattr(mat, name) != glassy:
+                setattr(mat, name, glassy)
+        if hasattr(mat, 'surface_render_method'):
+            want = 'BLENDED' if (st.alpha < 1.0 and not glassy) else 'DITHERED'
+            if mat.surface_render_method != want:
+                mat.surface_render_method = want
+    except (AttributeError, TypeError):
+        pass
 
 
 def apply_preset(mat, ident):
@@ -683,9 +731,11 @@ class MCH_PG_MechShader(bpy.types.PropertyGroup):
     rust: _slider('Rust', 0.0, desc='Rust in the crevices (and the Rust map)')
     rust_scratch: _slider('Rust in Scratches', 0.0, desc='Rust showing in the scratches and chips')
     rust_color: _color('Rust Tint', BASE['rust_color'])
-    dirt: _slider('Dirt', 0.0)
+    dirt: _slider('Dirt in Crevices', 0.0, desc='Dirt packed into the crevices, grooves and inner corners')
+    dirt_top: _slider('Dirt on Top', 0.0, desc='Dirt / mud lying on what faces up')
     dirt_color: _color('Dirt Color', BASE['dirt_color'])
     snow: _slider('Snow', 0.0, desc='Snow on what faces up')
+    snow_soft: _slider('Snow Softness', 0.25, 0.01, 0.6, desc='How softly the snow thins out at its edges')
     emission: _slider('Emission', 0.0, 0.0, 50.0, desc='Glow strength')
     emit_color: _color('Emission Color', BASE['emit_color'])
     cloth: _slider('Cloth', 0.0, desc='Fabric: weave relief + sheen, never metallic')
@@ -705,7 +755,11 @@ class MCH_PG_MechShader(bpy.types.PropertyGroup):
     primer: _slider('Primer', 0.0, desc='A band of primer between the paint and the metal at the chips (its width)')
     primer_color: _color('Primer Color', BASE['primer_color'])
     paint_pattern: _slider('Paint Pattern', 0.35, desc='How much the Base map shows in the paint (camo: 1)')
-    dirt_low: _slider('From Below', 0.0, desc='Dirt gathered low on the part, as if splashed up from the ground')
+    dirt_low: _slider('Dirt from Below', 0.0, desc='Dirt low on the part, splashed up from the ground')
+    glass: _slider('Glass', 0.0, desc='See-through (transmission): glass, clear plastic, visors - Metallic 0. '
+                                      'EEVEE: the material\'s refraction is turned on with it')
+    ior: _slider('IOR', 1.5, 1.0, 3.0, desc='Index of refraction (glass 1.5, water 1.33, diamond 2.4)')
+    alpha: _slider('Alpha', 1.0, desc='Opacity: 1 solid, 0 invisible (holograms, decals)')
     variation: _slider('Variation', 0.3, desc='The surface a little uneven in colour, as nothing real is one colour')
     coat: _slider('Clear Coat', 0.0, desc='A glossy coat over the surface (lacquered paint, carbon), broken by '
                                           'scratches, rust, dirt, snow')
@@ -858,11 +912,25 @@ def _views(context):
 # -----------------------------------------------------------------------------
 
 WORLD = 'MCH HDRI'
+USER = 'U:'                 # the HDRI list: 'U:<file>' a file in the user's HDRI folder, '<file>' a built-in one
+HDRI_EXT = ('.exr', '.hdr', '.jpg', '.jpeg', '.png', '.tif', '.tiff')
+BLUR_IMAGE = 'MCH HDRI blur'
 _HDRI_ITEMS = []
+_HDRI_KEPT = []             # (old item lists: Blender may still hold their strings)
+_HDRI_KEY = [None]
 
 
 def hdri_dir():
     return bpy.utils.system_resource('DATAFILES', path=os.path.join('studiolights', 'world')) or ''
+
+
+def user_hdri_dir():
+    """The user's HDRI folder (add-on preferences, HDRI Folder; 0.24.95 user: "hdri 파일은 다운받아서 폴더에 넣어
+    놓고 그거 연결해서 불러오게") - '' when not set or missing."""
+    from .workspace_ui import pref
+    d = pref('hdri_folder', '') or ''
+    d = bpy.path.abspath(d) if d else ''
+    return d if d and os.path.isdir(d) else ''
 
 
 def hdri_files():
@@ -872,12 +940,42 @@ def hdri_files():
         return []
 
 
+def user_hdri_files():
+    d = user_hdri_dir()
+    try:
+        return sorted(f for f in os.listdir(d) if f.lower().endswith(HDRI_EXT)) if d else []
+    except OSError:
+        return []
+
+
+def hdri_path(ident):
+    """The file of HDRI list entry ``ident``."""
+    if ident.startswith(USER):
+        d = user_hdri_dir()
+        return os.path.join(d, ident[len(USER):]) if d else ''
+    return os.path.join(hdri_dir(), ident)
+
+
 def _hdri_items(self, context):
-    if not _HDRI_ITEMS:                                   # (kept: Blender needs the strings to stay alive)
-        _HDRI_ITEMS.extend((f, os.path.splitext(f)[0].title(), f'Blender\'s built-in HDRI {f}')
-                           for f in hdri_files())
+    import zlib
+    d = user_hdri_dir()
+    try:
+        stamp = (d, os.stat(d).st_mtime) if d else ('', 0.0)
+    except OSError:
+        stamp = (d, 0.0)
+    if _HDRI_KEY[0] != stamp or not _HDRI_ITEMS:
+        if _HDRI_ITEMS:
+            _HDRI_KEPT.append(list(_HDRI_ITEMS))
+        _HDRI_ITEMS.clear()
+        num = lambda ident: zlib.crc32(ident.encode()) & 0x7fffffff          # (stable: files come and go)
+        for f in user_hdri_files():
+            ident = USER + f
+            _HDRI_ITEMS.append((ident, '* ' + os.path.splitext(f)[0], os.path.join(d, f), 'FILE_IMAGE', num(ident)))
+        for f in hdri_files():
+            _HDRI_ITEMS.append((f, os.path.splitext(f)[0].title(), f'Blender\'s built-in HDRI {f}', 'WORLD', num(f)))
         if not _HDRI_ITEMS:
-            _HDRI_ITEMS.append(('NONE', 'None', 'No built-in HDRI found'))
+            _HDRI_ITEMS.append(('NONE', 'None', 'No HDRI found', 'ERROR', 0))
+        _HDRI_KEY[0] = stamp
     return _HDRI_ITEMS
 
 
@@ -887,8 +985,52 @@ def hdri_world(scene):
     return w if w is not None and w.get('mch_hdri') else None
 
 
+def _blurred(src, amount, key):
+    """A blurred copy of HDRI ``src`` for what the camera sees (0.24.95 user: "hdri 에 블러"): made small first by
+    Blender (a big HDRI is not read whole), blurred round the panorama, kept in the .blend (packed)."""
+    import numpy as np
+    w0, h0 = src.size
+    if not w0 or not h0:
+        return None
+    W = max(64, int(1024 * (1.0 - 0.7 * amount)))
+    H = max(32, W // 2)
+    tmp = src.copy()
+    try:
+        tmp.scale(W, H)
+        px = np.empty(W * H * 4, np.float32)
+        tmp.pixels.foreach_get(px)
+    finally:
+        bpy.data.images.remove(tmp)
+    a = px.reshape(H, W, 4)
+    if not src.is_float:                              # (an 8-bit panorama: sRGB to scene linear)
+        rgb = a[..., :3]
+        a[..., :3] = np.where(rgb <= 0.04045, rgb / 12.92, ((rgb + 0.055) / 1.055) ** 2.4)
+    sigma = amount * W / 20.0
+    if sigma > 0.3:
+        fy = np.fft.fftfreq(H)[:, None]
+        fx = np.fft.fftfreq(W)[None, :]
+        g = np.exp(-2.0 * (np.pi * sigma) ** 2 * (fx ** 2 + (2.0 * fy) ** 2))
+        for c in range(3):
+            a[..., c] = np.maximum(np.real(np.fft.ifft2(np.fft.fft2(a[..., c]) * g)), 0.0)
+    img = bpy.data.images.get(BLUR_IMAGE)
+    if img is not None and (tuple(img.size) != (W, H) or not img.is_float):
+        bpy.data.images.remove(img)
+        img = None
+    if img is None:
+        img = bpy.data.images.new(BLUR_IMAGE, W, H, alpha=False, float_buffer=True)
+    img.pixels.foreach_set(a.ravel())
+    img['mch_blur_key'] = key
+    try:
+        img.file_format = 'OPEN_EXR'
+        img.pack()
+    except (RuntimeError, TypeError, AttributeError):
+        pass
+    return img
+
+
 def hdri_sync(scene):
-    """The HDRI world's image / strength / rotation from the scene's settings.  Returns the world or None."""
+    """The HDRI world's image / strength / rotation / background blur from the scene's settings.  Returns the world
+    or None."""
     w = hdri_world(scene)
     if w is None:
         return None
@@ -896,22 +1038,69 @@ def hdri_sync(scene):
     env, bg, mp = nt.nodes.get('mch:env'), nt.nodes.get('mch:bg'), nt.nodes.get('mch:map')
     if env is None or bg is None or mp is None:
         return None
-    path = os.path.join(hdri_dir(), scene.mch_mech_hdri)
-    if os.path.isfile(path) and (env.image is None or os.path.normcase(bpy.path.abspath(env.image.filepath))
-                                 != os.path.normcase(path)):
+    path = hdri_path(scene.mch_mech_hdri)
+    if path and os.path.isfile(path) and (env.image is None or os.path.normcase(bpy.path.abspath(env.image.filepath))
+                                          != os.path.normcase(path)):
         env.image = bpy.data.images.load(path, check_existing=True)
     bg.inputs['Strength'].default_value = scene.mch_mech_hdri_strength
     mp.inputs['Rotation'].default_value[2] = scene.mch_mech_hdri_rot
     w.cycles_visibility.camera = scene.mch_mech_hdri_show
+    eb, on = nt.nodes.get('mch:env_blur'), nt.nodes.get('mch:blur_on')
+    if eb is not None and on is not None:
+        blur = float(scene.mch_mech_hdri_blur)
+        on.outputs[0].default_value = 1.0 if blur > 0.0 and env.image is not None else 0.0
+        if blur > 0.0 and env.image is not None:
+            key = f'{env.image.name}|{blur:.3f}'
+            if eb.image is None or eb.image.get('mch_blur_key') != key:
+                eb.image = _blurred(env.image, blur, key)
     return w
+
+
+def _world_nodes(w):
+    """The HDRI world's nodes: the HDRI lights the scene, the camera sees it - or its blurred copy."""
+    w.use_nodes = True
+    nt = w.node_tree
+    nt.nodes.clear()
+    tc = nt.nodes.new('ShaderNodeTexCoord')
+    mp = nt.nodes.new('ShaderNodeMapping')
+    mp.name = 'mch:map'
+    env = nt.nodes.new('ShaderNodeTexEnvironment')
+    env.name = 'mch:env'
+    eb = nt.nodes.new('ShaderNodeTexEnvironment')
+    eb.name = 'mch:env_blur'
+    lp = nt.nodes.new('ShaderNodeLightPath')
+    on = nt.nodes.new('ShaderNodeValue')
+    on.name = 'mch:blur_on'
+    on.outputs[0].default_value = 0.0
+    fac = nt.nodes.new('ShaderNodeMath')
+    fac.operation = 'MULTIPLY'
+    mix = nt.nodes.new('ShaderNodeMix')
+    mix.data_type = 'RGBA'
+    mix.name = 'mch:blur_mix'
+    bg = nt.nodes.new('ShaderNodeBackground')
+    bg.name = 'mch:bg'
+    out = nt.nodes.new('ShaderNodeOutputWorld')
+    for i, n in enumerate((tc, mp, env, eb, lp, on, fac, mix, bg, out)):
+        n.location = (-1500 + 200 * i, -120 * (i % 2))
+    sock = {x.identifier: x for x in mix.inputs}
+    nt.links.new(tc.outputs['Generated'], mp.inputs['Vector'])
+    nt.links.new(mp.outputs['Vector'], env.inputs['Vector'])
+    nt.links.new(mp.outputs['Vector'], eb.inputs['Vector'])
+    nt.links.new(lp.outputs['Is Camera Ray'], fac.inputs[0])
+    nt.links.new(on.outputs[0], fac.inputs[1])
+    nt.links.new(fac.outputs[0], sock['Factor_Float'])
+    nt.links.new(env.outputs['Color'], sock['A_Color'])
+    nt.links.new(eb.outputs['Color'], sock['B_Color'])
+    nt.links.new(next(o for o in mix.outputs if o.identifier == 'Result_Color'), bg.inputs['Color'])
+    nt.links.new(bg.outputs['Background'], out.inputs['Surface'])
 
 
 def set_hdri(context):
     """The scene's world becomes the HDRI (the one it had is remembered for Off); Material Preview shows it."""
     sc = context.scene
-    path = os.path.join(hdri_dir(), sc.mch_mech_hdri)
-    if not os.path.isfile(path):
-        raise FileNotFoundError(path)
+    path = hdri_path(sc.mch_mech_hdri)
+    if not path or not os.path.isfile(path):
+        raise FileNotFoundError(path or sc.mch_mech_hdri)
     w = hdri_world(sc)
     if w is None:
         w = bpy.data.worlds.get(WORLD)
@@ -919,24 +1108,10 @@ def set_hdri(context):
             w = bpy.data.worlds.new(WORLD)
         w['mch_hdri'] = 1
         w['mch_prev_world'] = sc.world.name if sc.world is not None else ''
-        w.use_nodes = True
-        nt = w.node_tree
-        nt.nodes.clear()
-        tc = nt.nodes.new('ShaderNodeTexCoord')
-        mp = nt.nodes.new('ShaderNodeMapping')
-        mp.name = 'mch:map'
-        env = nt.nodes.new('ShaderNodeTexEnvironment')
-        env.name = 'mch:env'
-        bg = nt.nodes.new('ShaderNodeBackground')
-        bg.name = 'mch:bg'
-        out = nt.nodes.new('ShaderNodeOutputWorld')
-        for i, n in enumerate((tc, mp, env, bg, out)):
-            n.location = (-900 + 250 * i, 0)
-        nt.links.new(tc.outputs['Generated'], mp.inputs['Vector'])
-        nt.links.new(mp.outputs['Vector'], env.inputs['Vector'])
-        nt.links.new(env.outputs['Color'], bg.inputs['Color'])
-        nt.links.new(bg.outputs['Background'], out.inputs['Surface'])
+        _world_nodes(w)
         sc.world = w
+    elif w.node_tree is None or w.node_tree.nodes.get('mch:env_blur') is None:
+        _world_nodes(w)                               # (an HDRI world from before the blur: its nodes anew)
     hdri_sync(sc)
     for sp in _views(context):
         if sp.shading.type == 'SOLID':
@@ -1031,26 +1206,36 @@ def draw(layout, context):
     right.prop, right.step = 'preset', 1
     r.prop(st, 'preset', text='')
     box.label(text=mat.name)
-    col = box.column(align=True)
+    col = box.column(align=True)                     # (the surface itself: 0.24.95 user: "베이스 컬러, 러프니스, 메탈릭,
+    col.label(text='Surface', icon='SHADING_RENDERED')                                     # 유리 재질, 알파 다 만질 수 있게")
     col.prop(st, 'base_color')
     col.prop(st, 'metallic', slider=True)
     col.prop(st, 'roughness', slider=True)
+    col.prop(st, 'glass', slider=True)
+    if st.glass > 0.0:
+        col.prop(st, 'ior', slider=True)
+    col.prop(st, 'alpha', slider=True)
     col.prop(st, 'coat', slider=True)
     col.prop(st, 'aniso', slider=True)
+    col = box.column(align=True)
     _map_row(col, st, 'base')
     col.prop(st, 'h_base', slider=True)
     col.prop(st, 'variation', slider=True)
-    for slot, amount, extra, height in (
-            ('rough', 'rough_amount', (), None),
+    for slot, amount, extra, after, height in (
+            ('rough', 'rough_amount', (), (), None),
             ('chip', 'edge_wear', ('paint', 'paint_color', 'paint_rough', 'paint_pattern', 'primer', 'primer_color'),
-             'h_chip'),
-            ('scratch', 'scratches', (), 'h_scratch'), ('rust', 'rust', ('rust_scratch', 'rust_color'), 'h_rust'),
-            ('dirt', 'dirt', ('dirt_color', 'dirt_low', 'dust', 'streaks'), 'h_dirt'), ('snow', 'snow', (), 'h_snow'),
-            ('emit', 'emission', ('emit_color',), None), ('weave', 'cloth', (), 'h_weave')):
+             (), 'h_chip'),
+            ('scratch', 'scratches', (), (), 'h_scratch'),
+            ('rust', 'rust', ('rust_scratch', 'rust_color'), (), 'h_rust'),
+            ('dirt', 'dirt', ('dirt_color',), ('dirt_top', 'dirt_low', 'dust', 'streaks'), 'h_dirt'),
+            ('snow', 'snow', (), ('snow_soft',), 'h_snow'),
+            ('emit', 'emission', ('emit_color',), (), None), ('weave', 'cloth', (), (), 'h_weave')):
         sub = box.column(align=True)
         for e in extra:
             sub.prop(st, e, slider=not e.endswith('color'))
         sub.prop(st, amount, slider=True)
+        for e in after:
+            sub.prop(st, e, slider=True)
         _map_row(sub, st, slot)
         if height:
             sub.prop(st, height, slider=True)
@@ -1076,9 +1261,14 @@ def draw_hdri(layout, context):
     b = r.operator('mch.mech_hdri', text='', icon='TRIA_RIGHT')
     b.action, b.step = 'SET', 1
     r.prop(sc, 'mch_mech_hdri', text='')
+    from .workspace_ui import prefs
+    pr = prefs()
+    if pr is not None:
+        box.prop(pr, 'hdri_folder', text='Folder')
     col = box.column(align=True)
     col.prop(sc, 'mch_mech_hdri_strength')
     col.prop(sc, 'mch_mech_hdri_rot')
+    col.prop(sc, 'mch_mech_hdri_blur', slider=True)
     col.prop(sc, 'mch_mech_hdri_show')
     r = box.row(align=True)
     r.operator('mch.mech_hdri', text='Set HDRI', icon='WORLD').action = 'SET'
@@ -1105,7 +1295,7 @@ class MCH_PT_mech_shader(bpy.types.Panel):
 CLASSES = (MCH_PG_MechShader, MCH_OT_mech_shader_apply, MCH_OT_mech_shader_step, MCH_OT_mech_shader_edges,
            MCH_OT_mech_hdri, MCH_PT_mech_shader)
 SCENE_PROPS = ('mch_mech_preset', 'mch_mech_hdri', 'mch_mech_hdri_strength', 'mch_mech_hdri_rot',
-               'mch_mech_hdri_show')
+               'mch_mech_hdri_show', 'mch_mech_hdri_blur')
 
 
 def register():
@@ -1120,6 +1310,9 @@ def register():
     T.mch_mech_hdri_strength = FloatProperty(name='Strength', default=1.0, min=0.0, soft_max=5.0,
                                              update=_hdri_update)
     T.mch_mech_hdri_rot = FloatProperty(name='Rotation', subtype='ANGLE', default=0.0, update=_hdri_update)
+    T.mch_mech_hdri_blur = FloatProperty(name='Background Blur', default=0.0, min=0.0, max=1.0, subtype='FACTOR',
+                                         update=_hdri_update,
+                                         description='The HDRI behind the model blurred (the lighting stays sharp)')
     T.mch_mech_hdri_show = bpy.props.BoolProperty(name='Show Background (Cycles)', default=True,
                                                   update=_hdri_update,
                                                   description='Cycles: the camera sees the HDRI behind the model')

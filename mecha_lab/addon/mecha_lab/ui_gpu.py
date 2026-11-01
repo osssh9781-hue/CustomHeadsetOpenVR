@@ -355,6 +355,10 @@ def glyph(name, x, y, size, color=TEXT, width=2.0):
             lines([(P(t, .15), P(t, .85)), (P(.15, t), P(.85, t))], color, width * 0.6)
     elif name in {'X', 'Y', 'Z'}:
         text(cx, cy, name, s * .55, color, 'CENTER')
+    elif name == 'fixholes':                     # 0.24.95 Fix Holes: a surface with a hole, a patch over it
+        polyline([P(.12, .18), P(.88, .18), P(.88, .82), P(.12, .82)], color, width, True)
+        polyline([P(.36, .36), P(.64, .36), P(.64, .64), P(.36, .64)], color, width * 0.7, True)
+        lines([(P(.36, .36), P(.64, .64)), (P(.64, .36), P(.36, .64))], color, width * 0.5)
     elif name == 'flip':                         # 0.24.95 Flip left / right: a shape and its mirror image across a line
         lines([(P(.50, .12), P(.50, .88))], color, width * 0.6)
         polyline([P(.42, .22), P(.12, .50), P(.42, .78)], color, width, True)

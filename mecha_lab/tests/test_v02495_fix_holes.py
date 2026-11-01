@@ -140,4 +140,7 @@ chk2 = zs.run(C, 'CHECK_MESH')
 check('ZBrush shelf: Check Mesh counts the holes as seen (before: open edges were not counted - "clean"), Fix Mesh '
       'closes them, still in Sculpt Mode', 'open edges (holes)' in chk and fix.startswith('Fix Mesh:')
       and chk2 == 'Check Mesh: clean' and C.mode == 'SCULPT', (chk, fix, chk2))
+from mecha_lab import mecha_menu
+check('Mecha Lab: Fix Holes in the Mecha Menu\'s Actions (Fix Mesh, the mirror\'s holes too)',
+      any(lab == 'Fix Holes' and op == 'mch.fix_mesh' for _s, btns in mecha_menu.ACTIONS for lab, _i, op, *_r in btns))
 summary()
