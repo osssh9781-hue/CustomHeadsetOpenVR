@@ -124,4 +124,70 @@ except RuntimeError as ex:
     got = str(ex)
 check('Bake High Poly on it: refused ("nothing to bake"), no 0-face high poly', 'nothing to bake' in got, got)
 check('Box Hide all-hidden check: an evaluated mesh with 0 faces counts as all hidden', bh._all_hidden(C, ob))
+# ---- 6. Split round one whole loose piece (user: "가운데를 잘라 놓은 메쉬가 양옆에 있으면 그거 분리하려고 스플릿
+# 하는데 그게 에러 뜨면 어떡해?"): the shape drawn round the left piece and into the gap crosses none of its faces
+from mathutils import Quaternion
+from mecha_lab import cut_engine as ce
+TOP = cg.OrthoProjector(Quaternion(), center=Vector((0, 0, 0)), pixels_per_unit=100.0)
+
+
+def P(x, y):
+    return (500 + x * 100.0, 500 + y * 100.0)
+
+
+def two_pieces():
+    fresh()
+    sc = C.scene
+    sc.mch_settings.auto_apply = True
+    sc.mch_cut.targets = 'ACTIVE'
+    sc.mch_cut.edge_finish, sc.mch_cut.gn_finish, sc.mch_cut.depth_mode = 'NONE', 'NONE', 'THROUGH'
+    me = bpy.data.meshes.new('Part')
+    b = bmesh.new()
+    bmesh.ops.create_cube(b, size=1.0)
+    for v in b.verts:
+        v.co = Vector((v.co.x * 3, v.co.y * 1.2, v.co.z * 0.6))
+    b.to_mesh(me)
+    b.free()
+    ob = bpy.data.objects.new('Part', me)
+    sc.collection.objects.link(ob)
+    em.mark_generated(me)
+    for o in C.selected_objects:
+        o.select_set(False)
+    C.view_layer.objects.active = ob
+    ob.select_set(True)
+    ce.perform_closed(C, 'CUT', [ob], [ce.rect_loop(P(-0.3, -1.0), P(0.3, 1.0))], TOP)      # the middle cut away
+    return ob
+
+
+def xs(o):
+    x = [(o.matrix_world @ v.co).x for v in o.data.vertices]
+    return round(min(x), 3), round(max(x), 3)
+
+
+ob = two_pieces()
+check('(setup) the middle cut away: two loose pieces x -1.5..-0.3 and 0.3..1.5', len(ob.data.polygons) == 12
+      and xs(ob) == (-1.5, 1.5), (len(ob.data.polygons), xs(ob)))
+try:
+    msg = ce.perform_closed(C, 'SPLIT', [ob], [ce.rect_loop(P(-1.8, -0.9), P(-0.1, 0.9))], TOP)
+except cg.CutError as ex:
+    msg = 'REFUSED ' + str(ex)
+piece = bpy.data.objects.get('Part_Split')
+check('Split drawn round the whole left piece (into the gap): the left piece becomes Part_Split, the right one stays '
+      '(before: "The shape does not intersect")', piece is not None and xs(piece) == (-1.5, -0.3)
+      and xs(ob) == (0.3, 1.5) and len(piece.data.polygons) == 6 and len(ob.data.polygons) == 6,
+      (msg[:90], xs(ob), xs(piece) if piece else None))
+ob = two_pieces()
+try:
+    msg = ce.perform_closed(C, 'CUT', [ob], [ce.rect_loop(P(-1.8, -0.9), P(-0.1, 0.9))], TOP)
+except cg.CutError as ex:
+    msg = 'REFUSED ' + str(ex)
+check('Cut drawn the same way: the left piece is deleted, the right one stays (before: "would delete the whole '
+      'object")', xs(ob) == (0.3, 1.5) and len(ob.data.polygons) == 6, (msg[:90], xs(ob)))
+ob = two_pieces()
+try:
+    msg = ce.perform_closed(C, 'SPLIT', [ob], [ce.rect_loop(P(-1.8, -0.9), P(1.8, 0.9))], TOP)
+except cg.CutError as ex:
+    msg = 'REFUSED ' + str(ex)
+check('Split round both pieces: refused, "covers the whole" (nothing changed)', msg.startswith('REFUSED')
+      and 'covers the whole' in msg and len(ob.data.polygons) == 12, msg[:120])
 summary()

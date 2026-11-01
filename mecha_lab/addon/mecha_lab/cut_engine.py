@@ -729,8 +729,8 @@ def _boolean_checked(context, cut, t, cutter, op, groups, projector, near, far, 
         inside, total, facts = cut_diagnosis(t, groups, projector, near, far, invert)
         if op == 'DIFFERENCE' and total and inside == total:   # 0.24.95 first: the part wholly inside the shape
             # (no face crossed - the quick test said "does not intersect" while every point was covered; combo fuzz)
-            msg = (f'The drawn shape covers the whole of "{t.name}", so cutting would delete all of it; '
-                   f'nothing was changed. Draw over only part of the object. [{facts}]')
+            msg = (f'The drawn shape covers the whole of "{t.name}" (a Cut would delete all of it, a Split would leave '
+                   f'nothing behind); nothing was changed. Draw over only part of the object. [{facts}]')
         elif op == 'INTERSECT' and total and inside == total:   # (a Split / Keep inside over the whole part)
             msg = (f'The drawn shape covers the whole of "{t.name}" - there is nothing to split off; nothing was '
                    f'changed. Draw over only part of the object. [{facts}]')

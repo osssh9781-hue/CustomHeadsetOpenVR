@@ -775,6 +775,16 @@ def _boolean_local(context, target, cutter, operation, solver, hole_tolerant, al
     target.data = sub
     try:
         me, used = _boolean_result(context, target, cutter, operation, solver, hole_tolerant, allow_empty)
+    except CutError as ex:
+        # 0.24.95 (user: "가운데를 잘라 놓은 메쉬가 양옆에 있으면 그거 분리하려고 스플릿 하는데 에러 뜨면?"): the shape
+        # drawn round one whole loose piece (into the gap beside it) crosses none of its faces - the Intersect came
+        # back unchanged ("does not intersect", handled in _boolean_result) and the Difference empty ("would delete
+        # the whole object") although the other pieces stay.  Every piece it reached lies inside the shape: they go
+        if operation != 'DIFFERENCE' or 'whole object' not in str(ex) or not _inside_cutter(context, target, sub,
+                                                                                            cutter):
+            raise
+        me, used = full.copy(), 'INSIDE'
+        me.clear_geometry()
     finally:
         target.data = full
         bpy.data.meshes.remove(sub)
@@ -793,6 +803,23 @@ def _boolean_local(context, target, cutter, operation, solver, hole_tolerant, al
 
 
 LAST_BOOLEAN = {}
+
+
+def _inside_cutter(context, target, mesh, cutter, samples=24):
+    """0.24.95 every sampled point of ``mesh`` (``target``'s mesh data, or a part of it) lies inside the closed
+    ``cutter`` (rays, ``_inside``).  A point on the cutter's surface is not inside: then the Boolean decides."""
+    from mathutils.bvhtree import BVHTree
+    n = len(mesh.vertices)
+    if not n or cutter.type != 'MESH':
+        return False
+    try:
+        bvh = BVHTree.FromObject(cutter, context.evaluated_depsgraph_get())
+    except (RuntimeError, ValueError, ReferenceError):
+        return False
+    m = cutter.matrix_world.inverted() @ target.matrix_world
+    size = max(cutter.dimensions) or 1.0
+    step = max(1, n // samples)
+    return all(_inside(bvh, m @ mesh.vertices[i].co, size) for i in range(0, n, step))
 
 
 def _boolean_region(context, target, cutter, operation, solver, hipoly):
@@ -960,7 +987,9 @@ def _boolean_result(context, target, cutter, operation, solver='AUTO',
         attr = me.attributes.get(CUTTER_ATTR)
         cutter_faces = attr is not None and _any_true(attr)
         unchanged = not cutter_faces and (len(me.vertices), len(me.polygons)) == src_counts
-        if unchanged:
+        if unchanged and operation == 'INTERSECT' and _inside_cutter(context, target, target.data, cutter):
+            return me, name          # 0.24.95 the mesh lies wholly inside the shape: all of it is kept (a Split
+        if unchanged:                # round one loose piece - see _boolean_local)
             bpy.data.meshes.remove(me)
             problems.append(f'{name}: the shape did not intersect the mesh')
             continue
