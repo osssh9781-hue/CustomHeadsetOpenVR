@@ -134,7 +134,8 @@ def _heal_band(a, a_hp, src, src_hp, valid, centre, half, overlap, step, used, k
     goes, not where an earlier patch came from) that best meets what is already there (``*_hp``: the map with its fine
     detail doubled) - the map either side of the band, the patch above (and below, for the last one: the band wraps) -
     found at half size, then to the pixel; its brightness eased to its surroundings (a smooth correction from the
-    overlaps - None: as much as it takes; a number: from the differences smaller than that, at most that); joined along the cheapest cut through each overlap.
+    overlaps - None: as much as it takes; a number: from the differences smaller than that, at most that); joined
+    along the cheapest cut through each overlap.
     ``span`` (first row, rows): only those rows, the rows just before and after them kept (they meet the patches);
     None: the whole band round (the last patch meets the first).  ``a`` / ``a_hp`` are changed in place."""
     n0, n1 = a.shape
