@@ -7,8 +7,12 @@ settings were only in a Blender sidebar panel (Mecha Lab tab).  They are drawn h
 * preset / maps / HDRI: ◀ [list v] ▶ - the arrows step, the list opens the choices
 * numbers -> bars (drag, click = type, Ctrl+click = default), colours -> a swatch (click = colour picker)
 * Surface (base colour, metallic, roughness, glass, IOR, alpha, clear coat, brushed), the base / roughness maps,
-  each layer (paint & wear, scratches, rust, dirt, snow, glow, weave) in its own section - a layer in use starts
-  open, its amount in the section's title - then Detail and the HDRI (folder, blur ...)
+  each layer (paint, edge wear, scratches, rust, dirt, snow, glow, weave) in its own section - a layer in use starts
+  open, its amount in the section's title - then Height & Detail
+* Edge Wear (user: "엣지 까지는 옵션은 좀 더 편하게 많이 - 엣지 텍스처랑 색깔, 까지는 마스크, 러프니스, 프리셋으로도
+  많이"): its own presets (◀ [preset] ▶, 24), the mask (map, follow edges, reach, softness, breakup, scale), what
+  shows at the chips (edge material: colour, texture, metallic, roughness, polish), the primer, the depth
+* the HDRI is a page of its own (user: "재질이랑 hdri는 분리해야지"): the tabs Tool | Material | HDRI
 
 The Blender sidebar panel stays (the drawn panel hides while the sidebar is open, as for the tools)."""
 from __future__ import annotations
@@ -22,8 +26,6 @@ from . import side_panel as sp
 PAGE = 'MATERIAL'
 # (slot, section title, what makes it "in use", rows before the amount, the amount, rows after, its height)
 LAYERS = (
-    ('chip', 'Paint & Wear', ('paint', 'edge_wear', 'primer'),
-     ('paint', 'paint_color', 'paint_rough', 'paint_pattern', 'primer', 'primer_color'), 'edge_wear', (), 'h_chip'),
     ('scratch', 'Scratches', ('scratches',), (), 'scratches', (), 'h_scratch'),
     ('rust', 'Rust', ('rust', 'rust_scratch'), ('rust_color',), 'rust', ('rust_scratch',), 'h_rust'),
     ('dirt', 'Dirt', ('dirt', 'dirt_top', 'dirt_low', 'dust', 'streaks'), ('dirt_color',), 'dirt',
@@ -34,6 +36,9 @@ LAYERS = (
 )
 SURFACE = ('base_color', 'metallic', 'roughness', 'glass', 'ior', 'alpha', 'coat', 'aniso')
 DETAIL = ('bump', 'ao', 'map_scale', 'edge_width')
+PAINT = ('paint', 'paint_color', 'paint_rough', 'paint_pattern')
+MASK = ('chip_follow', 'chip_reach', 'chip_soft', 'chip_breakup', 'chip_scale')
+BARE = ('edge_mat', 'edge_color', 'edge_metal', 'edge_rough', 'edge_polish')
 _IN_USE = {}             # (material, preset) -> the layers in use when it was first shown: they start open
 
 
@@ -124,7 +129,12 @@ def in_use(mat, st):
     if key not in _IN_USE:
         if len(_IN_USE) > 200:
             _IN_USE.clear()
-        _IN_USE[key] = frozenset(slot for slot, _t, used, *_r in LAYERS if any(getattr(st, p) > 0.0 for p in used))
+        used = {slot for slot, _t, which, *_r in LAYERS if any(getattr(st, p) > 0.0 for p in which)}
+        if st.paint > 0.0:
+            used.add('paint')
+        if st.edge_wear > 0.0 or st.primer > 0.0:
+            used.add('chip')
+        _IN_USE[key] = frozenset(used)
     return _IN_USE[key]
 
 
@@ -151,7 +161,6 @@ def content(context, x, width, k):
         elif other is not None:
             b.note(('note', f'"{other.name}" is not a Mech material - Apply makes one', False, None, None, None,
                     True), x, width)
-        hdri(b, context, x, width)
         return b.out, -b.y
     st = getattr(mat, ms.KEY)
     _preset_stepper(b, st, 'preset', x, width)
@@ -176,6 +185,34 @@ def content(context, x, width, k):
     section(b, 'maps', 'Maps', x, width, maps, start_folded=True)
 
     used = in_use(mat, st)
+
+    def paint(sx, sw):
+        for p in PAINT:
+            row(b, sx, sw, [prop_cell(st, p)])
+    section(b, 'paint', 'Paint', x, width, paint, start_folded='paint' not in used, summary=layer_summary(st, ('paint',)))
+
+    def wear(sx, sw):
+        stepper(b, sx, sw, button('◀', 'mch.mech_shader_step', prop='wear_preset', step=-1),
+                _cell('drop', 'Preset', ('menu_enum',), st, 'wear_preset'),
+                button('▶', 'mch.mech_shader_step', prop='wear_preset', step=1))
+        row(b, sx, sw, [prop_cell(st, 'edge_wear', 'Amount')])
+        sub(b, 'Mask - where it chips', sx, sw)
+        _map_stepper(b, st, 'chip', sx, sw, 'Mask')
+        for p in MASK:
+            row(b, sx, sw, [prop_cell(st, p)])
+        sub(b, 'At the chips - the edge', sx, sw)
+        for p in BARE:
+            row(b, sx, sw, [prop_cell(st, p)])
+        stepper(b, sx, sw, button('◀', 'mch.mech_shader_step', prop='edge_map', step=-1),
+                _cell('drop', 'Texture', ('menu_enum',), st, 'edge_map'),
+                button('▶', 'mch.mech_shader_step', prop='edge_map', step=1))
+        sub(b, 'Primer - between paint and metal', sx, sw)
+        row(b, sx, sw, [prop_cell(st, 'primer')])
+        row(b, sx, sw, [prop_cell(st, 'primer_color')])
+        row(b, sx, sw, [number(st, 'h_chip', 'Chip Depth')])
+    section(b, 'chip', 'Edge Wear', x, width, wear, start_folded='chip' not in used,
+            summary=layer_summary(st, ('edge_wear',)))
+
     for slot, title, which, before, amount, after, height in LAYERS:
         def fill(sx, sw, before=before, amount=amount, after=after, height=height, slot=slot):
             for p in before:
@@ -192,19 +229,36 @@ def content(context, x, width, k):
         for p in DETAIL:
             row(b, sx, sw, [prop_cell(st, p)])
     section(b, 'detail', 'Height & Detail', x, width, detail, start_folded=True)
-    hdri(b, context, x, width)
     return b.out, -b.y
 
 
-def hdri(b, context, x, width):
-    from . import mech_shader as ms
-    sc = context.scene
-    on = ms.hdri_world(sc) is not None
+def sub(b, text, x, w):
+    """A small heading inside a section."""
+    b.gap(0.4)
+    b.note(('note', text, False, None, None, None, True), x, w)
 
-    def fill(sx, sw):
-        stepper(b, sx, sw, button('◀', 'mch.mech_hdri', action='SET', step=-1),
-                _cell('drop', '', ('menu_enum',), sc, 'mch_mech_hdri'),
-                button('▶', 'mch.mech_hdri', action='SET', step=1))
+
+# --- the HDRI page (0.24.95 user: "재질이랑 hdri는 분리해야지") ------------------------------------------------------
+
+def hdri_content(context, x, width, k):
+    """(items, content height) - the HDRI page: the scene's lighting, apart from the material."""
+    from . import mech_shader as ms
+    b = sp.Builder('HDRI', x, width, k)
+    sc = context.scene
+    w = ms.hdri_world(sc)
+    if w is not None:
+        name = dict((i[0], i[1]) for i in ms._hdri_items(None, context)).get(sc.mch_mech_hdri, sc.mch_mech_hdri)
+        status = f'On: {name}  (the scene\'s world)'
+    else:
+        status = 'Off - the scene\'s own world.  Set HDRI puts it on'
+    b.note(('note', status, False, None, None, None, True), x, width)
+    stepper(b, x, width, button('◀', 'mch.mech_hdri', action='SET', step=-1),
+            _cell('drop', '', ('menu_enum',), sc, 'mch_mech_hdri'),
+            button('▶', 'mch.mech_hdri', action='SET', step=1))
+    row(b, x, width, [button('Set HDRI', 'mch.mech_hdri', action='SET'),
+                      button('Off', 'mch.mech_hdri', action='OFF')])
+
+    def folder(sx, sw):
         d = ms.user_hdri_dir()
         if d:
             n = len(ms.user_hdri_files())
@@ -213,13 +267,18 @@ def hdri(b, context, x, width):
             text = 'Folder: none - Blender\'s own HDRIs'
         b.note(('note', text, False, None, None, None, True), sx, sw)
         row(b, sx, sw, [button('Choose Folder…', 'mch.mech_hdri_folder')])
-        for p, label in (('mch_mech_hdri_strength', None), ('mch_mech_hdri_rot', None),
-                         ('mch_mech_hdri_blur', 'Background Blur')):
-            row(b, sx, sw, [number(sc, p, label)])
-        row(b, sx, sw, [prop_cell(sc, 'mch_mech_hdri_show', 'Show Background')])
-        row(b, sx, sw, [button('Set HDRI', 'mch.mech_hdri', action='SET'),
-                        button('Off', 'mch.mech_hdri', action='OFF')])
-    section(b, 'hdri', 'HDRI', x, width, fill, summary='on' if on else '')
+    section(b, 'folder', 'My HDRIs', x, width, folder)
+
+    def light(sx, sw):
+        for p in ('mch_mech_hdri_strength', 'mch_mech_hdri_rot'):
+            row(b, sx, sw, [number(sc, p)])
+    section(b, 'light', 'Light', x, width, light)
+
+    def background(sx, sw):
+        row(b, sx, sw, [number(sc, 'mch_mech_hdri_blur', 'Blur')])
+        row(b, sx, sw, [prop_cell(sc, 'mch_mech_hdri_show', 'Show (Cycles)')])
+    section(b, 'background', 'Background', x, width, background)
+    return b.out, -b.y
 
 
 # --- the folder ----------------------------------------------------------------------------------------------------

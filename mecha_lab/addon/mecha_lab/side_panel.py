@@ -22,7 +22,8 @@ ROW = 28.0
 GAP = 6.0
 PAD = 12.0
 HEAD = 40.0
-TABS = 34.0              # 0.24.95 the Tool | Material tabs under the title
+TABS = 34.0              # 0.24.95 the Tool | Material | HDRI tabs under the title
+PAGES = {'MATERIAL': ('Material', 'material'), 'HDRI': ('HDRI', 'hdri')}    # page -> (title, icon)
 SECTION = 26.0
 NOTE = 17.0
 TOP_MARGIN = 150.0          # below the navigation gizmo
@@ -397,8 +398,8 @@ def _trees(context, tool):
 
 
 def page(context):
-    """0.24.95 What the panel shows: 'TOOL' (the tool's settings) or 'MATERIAL' (Mech Shader + HDRI,
-    ``mech_shader_ui``) - the two tabs at its top."""
+    """0.24.95 What the panel shows: 'TOOL' (the tool's settings), 'MATERIAL' (Mech Shader) or 'HDRI' (the
+    scene's HDRI) - ``mech_shader_ui``; the three tabs at its top."""
     return getattr(context.window_manager, 'mch_side_page', 'TOOL')
 
 
@@ -407,6 +408,9 @@ def content(context, tool, x, width, k):
     if page(context) == 'MATERIAL':
         from . import mech_shader_ui
         return mech_shader_ui.content(context, x, width, k)
+    if page(context) == 'HDRI':
+        from . import mech_shader_ui
+        return mech_shader_ui.hdri_content(context, x, width, k)
     b = Builder(tool, x, width, k)
     tree, lt = _trees(context, tool)
     if tree is not None:
@@ -442,7 +446,7 @@ def on(context):
     from . import bottom_bar, ui_tool_settings as uts
     try:
         return (pref('side_panel', True) and bottom_bar.ui_active(context) and not sidebar_open(context)
-                and (ts.effective_tool(context) in uts.DRAWERS or page(context) == 'MATERIAL'))
+                and (ts.effective_tool(context) in uts.DRAWERS or page(context) in PAGES))
     except (AttributeError, KeyError, TypeError, ReferenceError):
         return False
 
@@ -480,10 +484,11 @@ def layout(context, region_w, region_h, k=1.0):
     from . import ui_tool_settings as uts
     tool = ts.effective_tool(context)
     t = ts.TOOL_BY_ID.get(tool)
-    mat_page = page(context) == 'MATERIAL'
+    pg = page(context)
+    mat_page = pg in PAGES
     if t is None and not mat_page:
         return {'items': [], 'clip': None, 'content': 0.0, 'view': 0.0}
-    name, icon = ('Material', 'material') if mat_page else (t[1], 'png:' + t[3])
+    name, icon = PAGES[pg] if mat_page else (t[1], 'png:' + t[3])
     x0, top, w = frame(region_w, region_h, k, context)
     if minimised(context):                       # a small tab: the tool icon, click = open again
         mw = MIN_W * k
@@ -508,14 +513,13 @@ def layout(context, region_w, region_h, k=1.0):
                     HEAD * k - 6 * k, name.upper(), icon, False, True, None))
     out.append(Item('pbtn', x0 + w - PAD * k - 26 * k, top - PAD * k - 30 * k, 26 * k, 26 * k, '–', '', False, True,
                     ('minimise',)))
-    # 0.24.95 the two pages: the tool's settings | Material (Mech Shader + HDRI)
-    tw = (w - 2 * PAD * k - GAP * k) / 2
+    # 0.24.95 the pages: the tool's settings | Material (Mech Shader) | HDRI (user: "재질이랑 hdri는 분리해야지")
+    tabs = [(t[1] if t is not None else 'Tool', 'TOOL')] + [(PAGES[p][0], p) for p in PAGES]
+    tw = (w - 2 * PAD * k - (len(tabs) - 1) * GAP * k) / len(tabs)
     ty = top - PAD * k - HEAD * k - (TABS - 6) * k
-    has_tool = t is not None and tool in uts.DRAWERS
-    out.append(Item('ptab', x0 + PAD * k, ty, tw, (TABS - 8) * k, t[1] if t is not None else 'Tool', '',
-                    not mat_page, has_tool or mat_page, ('page', 'TOOL')))
-    out.append(Item('ptab', x0 + PAD * k + tw + GAP * k, ty, tw, (TABS - 8) * k, 'Material', '', mat_page, True,
-                    ('page', 'MATERIAL')))
+    for i, (label, p) in enumerate(tabs):
+        out.append(Item('ptab', x0 + PAD * k + i * (tw + GAP * k), ty, tw, (TABS - 8) * k, label, '', pg == p,
+                        True, ('page', p)))
     y_top = top - PAD * k - head
     cy, ch = y_top - view, view
     for it in rows:                              # only whole rows inside the window (no half-drawn rows)

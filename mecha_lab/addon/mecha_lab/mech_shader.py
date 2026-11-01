@@ -29,7 +29,7 @@ from bpy.props import EnumProperty, FloatProperty, FloatVectorProperty, PointerP
 
 KEY = 'mch_mech'                    # the material's settings (PropertyGroup on bpy.types.Material)
 CURV = 'mch_curv'
-VERSION = 6                          # (the node tree's layout: an older one is made anew)
+VERSION = 7                          # (the node tree's layout: an older one is made anew)
 MAP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mech_maps')
 
 # slot -> (label, tiles per unit (x Map Scale), colour map (sRGB) or data, [(id, label)])
@@ -85,6 +85,11 @@ BASE = dict(base_color=(0.77, 0.78, 0.78), metallic=1.0, roughness=0.35, rough_a
             aniso=0.0, dust=0.0, streaks=0.0, variation=0.3, primer=0.0, primer_color=(0.52, 0.52, 0.5),
             paint_pattern=0.35, dirt_low=0.0, map_scale=1.0, glass=0.0, ior=1.5, alpha=1.0, snow_soft=0.25,
             dirt_top=0.0,
+            # 0.24.95 edge wear options (user: "엣지 까지는 옵션은 좀 더 편하게 많이 - 엣지 텍스처랑 색깔, 까지는 마스크,
+            # 러프니스"): the defaults are the old fixed values, so every material looks as before
+            chip_follow=0.65, chip_reach=0.0, chip_soft=0.04, chip_breakup=0.0, chip_scale=1.0,
+            edge_mat=0.0, edge_color=(0.75, 0.75, 0.76), edge_metal=1.0, edge_rough=0.3, edge_polish=1.0,
+            edge_map='FLAT',
             base_map='MOTTLED', rough_map='SMUDGE', chip_map='FLAKES', scratch_map='FINE', rust_map='PATCHES',
             dirt_map='GRIME', snow_map='POWDER', emit_map='EDGES', weave_map='CANVAS')
 
@@ -178,6 +183,72 @@ PRESETS = [
                               base_map='MOTTLED', weave_map='LEATHER')),
 ]
 PRESET_IDS = tuple(p[0] for p in PRESETS)
+
+# 0.24.95 Edge Wear presets: only the edge wear's own settings (the mask, what shows at the chips, the primer, its
+# depth) - put on top of any material.  'PRESET' gives back the material preset's own.
+WEAR_KEYS = ('edge_wear', 'chip_map', 'chip_follow', 'chip_reach', 'chip_soft', 'chip_breakup', 'chip_scale',
+             'edge_mat', 'edge_color', 'edge_metal', 'edge_rough', 'edge_map', 'edge_polish', 'primer',
+             'primer_color', 'h_chip')
+_W0 = dict(edge_wear=0.3, chip_map='FLAKES', chip_follow=0.65, chip_reach=0.0, chip_soft=0.04, chip_breakup=0.0,
+           chip_scale=1.0, edge_mat=0.0, edge_color=(0.75, 0.75, 0.76), edge_metal=1.0, edge_rough=0.3,
+           edge_map='FLAT', edge_polish=1.0, primer=0.0, primer_color=(0.52, 0.52, 0.5), h_chip=0.5)
+
+
+def _w(**kw):
+    d = dict(_W0)
+    d.update(kw)
+    return {k: (_lin(v) if k.endswith('color') else v) for k, v in d.items()}
+
+
+WEAR_PRESETS = [
+    ('NONE', 'No Wear', _w(edge_wear=0.0, h_chip=0.0)),
+    ('SCUFF', 'Light Scuffs', _w(edge_wear=0.15, chip_map='SCUFF', chip_follow=0.8, chip_soft=0.12, h_chip=0.2,
+                                 edge_polish=1.5)),
+    ('RUBBED', 'Rubbed Edges', _w(edge_wear=0.3, chip_map='SOFT', chip_follow=0.95, chip_soft=0.3, edge_polish=2.0,
+                                  h_chip=0.1)),
+    ('POLISHED', 'Polished Bare Edges', _w(edge_wear=0.35, chip_map='SOFT', chip_follow=0.9, chip_soft=0.15,
+                                           edge_mat=1.0, edge_color=(0.9, 0.9, 0.9), edge_rough=0.15,
+                                           edge_map='BRUSHED', edge_polish=2.0, h_chip=0.3)),
+    ('CHIPPED', 'Chipped Paint', _w(edge_wear=0.35, chip_map='FLAKES', primer=0.5, h_chip=0.7)),
+    ('FLAKES', 'Paint Flakes', _w(edge_wear=0.4, chip_map='FLAKES', chip_follow=0.55, chip_soft=0.015,
+                                  chip_breakup=0.5, h_chip=0.8)),
+    ('HEAVY', 'Heavy Chips', _w(edge_wear=0.55, chip_map='BIG', chip_reach=0.5, chip_breakup=0.3, primer=0.3,
+                                h_chip=0.9)),
+    ('BATTLE', 'Battle Damage', _w(edge_wear=0.5, chip_map='BIG', chip_reach=0.35, chip_breakup=0.6, primer=0.6,
+                                   primer_color=(0.45, 0.18, 0.1), edge_mat=0.6, edge_color=(0.45, 0.45, 0.47),
+                                   edge_rough=0.45, edge_map='CAST', h_chip=0.9)),
+    ('PRIMER_GREY', 'Grey Primer Showing', _w(edge_wear=0.3, primer=0.8, primer_color=(0.55, 0.55, 0.53))),
+    ('PRIMER_RED', 'Red Oxide Primer', _w(edge_wear=0.3, primer=0.8, primer_color=(0.45, 0.18, 0.1))),
+    ('PRIMER_ZINC', 'Zinc Chromate Primer', _w(edge_wear=0.3, primer=0.8, primer_color=(0.6, 0.62, 0.28))),
+    ('PEELING', 'Peeling Paint', _w(edge_wear=0.45, chip_map='PEEL', chip_follow=0.35, chip_soft=0.02, h_chip=0.8)),
+    ('CRACKED', 'Cracked Paint', _w(edge_wear=0.35, chip_map='CRACKED', chip_follow=0.3, chip_soft=0.02,
+                                    h_chip=0.6)),
+    ('DOTS', 'Pitted Dots', _w(edge_wear=0.3, chip_map='DOTS', chip_follow=0.5, chip_scale=1.5)),
+    ('BLOTCH', 'Blotchy Wear', _w(edge_wear=0.35, chip_map='BLOTCH', chip_follow=0.45, chip_soft=0.1)),
+    ('SANDBLAST', 'Sand Blasted', _w(edge_wear=0.35, chip_map='GRAIN', chip_soft=0.2, chip_scale=2.0, edge_mat=1.0,
+                                     edge_color=(0.62, 0.62, 0.6), edge_rough=0.7, edge_map='CAST',
+                                     edge_polish=0.0)),
+    ('BRASS', 'Brass Underneath', _w(edge_wear=0.35, edge_mat=1.0, edge_color=(0.96, 0.88, 0.62), edge_rough=0.3,
+                                     edge_map='MOTTLED')),
+    ('COPPER', 'Copper Underneath', _w(edge_wear=0.35, edge_mat=1.0, edge_color=(0.88, 0.58, 0.44),
+                                       edge_rough=0.35, edge_map='MOTTLED')),
+    ('DARK_STEEL', 'Dark Steel Underneath', _w(edge_wear=0.35, edge_mat=1.0, edge_color=(0.45, 0.46, 0.48),
+                                               edge_rough=0.4, edge_map='FORGED')),
+    ('ALUMINIUM', 'Bright Aluminium Edges', _w(edge_wear=0.3, chip_map='SCUFF', edge_mat=1.0,
+                                               edge_color=(0.91, 0.92, 0.92), edge_rough=0.25, edge_map='BRUSHED',
+                                               edge_polish=1.5)),
+    ('HEAT', 'Heat-Tinted Edges', _w(edge_wear=0.35, edge_mat=1.0, edge_color=(0.8, 0.7, 0.6), edge_rough=0.35,
+                                     edge_map='HEAT')),
+    ('RUSTY', 'Rusty Edges', _w(edge_wear=0.35, chip_breakup=0.5, edge_mat=1.0, edge_color=(0.45, 0.22, 0.1),
+                                edge_metal=0.0, edge_rough=0.85, edge_map='CAST', h_chip=0.6)),
+    ('PLASTIC', 'Plastic Stress Whitening', _w(edge_wear=0.25, chip_map='SOFT', chip_follow=0.95, chip_soft=0.25,
+                                               edge_mat=1.0, edge_color=(0.8, 0.8, 0.78), edge_metal=0.0,
+                                               edge_rough=0.6, edge_polish=0.0, h_chip=0.0)),
+    ('CARBON', 'Carbon Showing', _w(edge_wear=0.3, edge_mat=1.0, edge_color=(0.12, 0.12, 0.13), edge_metal=0.0,
+                                    edge_rough=0.3, edge_map='CARBON')),
+]
+WEAR_ITEMS = [('PRESET', 'As the Material Preset', 'The edge wear the material preset has')] + \
+    [(k, n, n) for k, n, _s in WEAR_PRESETS]
 SLIDERS = tuple(k for k in BASE if not k.endswith('_map'))
 MAP_PROPS = {k: k + '_map' for k in MAP_KEYS}
 _SYNCING = [False]
@@ -332,9 +403,12 @@ def build(mat):
     b.link(bsdf.outputs['BSDF'], out.inputs['Surface'])
     tc = b.node('ShaderNodeTexCoord')
     gscale = b.value('map_scale', 1.0)
+    cscale = b.value('chip_scale', 1.0)                 # (0.24.95 the chip mask's own size)
     maps = {}
     for slot in MAP_KEYS:
         sc = b.math('MULTIPLY', gscale, MAPS[slot][1])
+        if slot == 'chip':
+            sc = b.math('MULTIPLY', sc, cscale)
         sc.node.name = 'mch:scale:' + slot
         vec = b.vmath('SCALE', tc.outputs['Object'], fac=sc)
         maps[slot] = b.image(slot, vec)
@@ -342,6 +416,7 @@ def build(mat):
             maps['rust_mask'] = b.image('rust_mask', vec)
         if slot == 'base':
             maps['base_h'] = b.image('base_h', vec)
+            maps['edge_tex'] = b.image('edge_tex', vec)        # (0.24.95 the bare edge's own texture: a Base map)
     for name, (slot, _ident, tiles) in FIXED.items():         # (dust, grime streaks, colour variation: one map each)
         sc = b.math('MULTIPLY', gscale, tiles)
         sc.node.name = 'mch:scale:' + name
@@ -351,9 +426,11 @@ def build(mat):
                                  'scratches', 'rust', 'rust_scratch', 'dirt', 'snow', 'emission', 'cloth', 'bump',
                                  'edge_width', 'coat', 'ao', 'h_base', 'h_scratch', 'h_chip', 'h_rust', 'h_dirt',
                                  'h_snow', 'h_weave', 'aniso', 'dust', 'streaks', 'variation', 'primer',
-                                 'paint_pattern', 'dirt_low', 'glass', 'ior', 'alpha', 'snow_soft', 'dirt_top')}
+                                 'paint_pattern', 'dirt_low', 'glass', 'ior', 'alpha', 'snow_soft', 'dirt_top',
+                                 'chip_follow', 'chip_reach', 'chip_soft', 'chip_breakup', 'edge_mat', 'edge_metal',
+                                 'edge_rough', 'edge_polish')}
     c = {k: b.rgb(k) for k in ('base_color', 'paint_color', 'rust_color', 'dirt_color', 'emit_color',
-                               'primer_color')}
+                               'primer_color', 'edge_color')}
     w = {k: b.value('emit_w_' + k) for k in ('const', 'edge', 'cav', 'scratch', 'pattern')}
     # edges / crevices: the mesh's convexity (mch_curv) + Cycles' Bevel normal
     att = b.node('ShaderNodeAttribute', 'mch:curv')
@@ -377,14 +454,20 @@ def build(mat):
     b.link(geo.outputs['Normal'], up.inputs['Vector'])
     nz = up.outputs['Z']
     # masks
-    chip_in = b.math('ADD', b.math('MULTIPLY', edge, 0.65), b.math('MULTIPLY', img['chip'], 0.35), clamp=True)
-    chip = b.threshold(chip_in, v['edge_wear'], 0.04)
+    # (0.24.95 the chip mask's shape: Follow Edges - the edges vs the Chips map, Reach - how far in from the edges,
+    #  Breakup - ragged borders, Softness - flaked (hard) .. rubbed (soft); the defaults are the old fixed 0.65 / 0.04)
+    edge_r = b.math('MULTIPLY', edge, b.math('ADD', 1.0, b.math('MULTIPLY', v['chip_reach'], 3.0)), clamp=True)
+    chip_in = b.math('ADD', b.math('MULTIPLY', edge_r, v['chip_follow']),
+                     b.math('MULTIPLY', img['chip'], b.math('SUBTRACT', 1.0, v['chip_follow'])))
+    chip_in = b.math('ADD', chip_in, b.math('MULTIPLY', b.math('SUBTRACT', img['dust'], 0.5),
+                                            b.math('MULTIPLY', v['chip_breakup'], 0.8)), clamp=True)
+    chip = b.threshold_s(chip_in, v['edge_wear'], v['chip_soft'])
     scratch = b.threshold(img['scratch'], b.math('MULTIPLY', v['scratches'], 0.75), 0.05)
     bare = b.math('MAXIMUM', chip, scratch)
     # (real chipped paint: paint, then a band of primer, then the metal - the primer chip is the wider one)
     wider = b.math('ADD', b.math('MULTIPLY', v['edge_wear'], b.math('ADD', 1.0, b.math('MULTIPLY', v['primer'], 0.6))),
                    b.math('MULTIPLY', v['primer'], 0.08))
-    wide = b.threshold(chip_in, b.math('MINIMUM', wider, 1.0), 0.04)
+    wide = b.threshold_s(chip_in, b.math('MINIMUM', wider, 1.0), v['chip_soft'])
     primer = b.math('MULTIPLY', b.math('MULTIPLY', v['paint'], b.math('SUBTRACT', wide, chip, clamp=True)),
                     b.math('SUBTRACT', 1.0, scratch), clamp=True)
     paint = b.math('MULTIPLY', v['paint'], b.math('SUBTRACT', 1.0, b.math('MAXIMUM', bare, wide)), clamp=True)
@@ -430,13 +513,18 @@ def build(mat):
                       b.mixc(weave, b.mixc(0.5, base_col, (0.0, 0.0, 0.0, 1.0)), base_col))
     paint_col = b.mixc(v['paint_pattern'], c['paint_color'],
                        b.vmath('SCALE', b.mixc(1.0, c['paint_color'], img['base'], 'MULTIPLY'), fac=2.0))
-    col = b.mixc(paint, b.mixc(primer, base_col, c['primer_color']), paint_col)
+    # (0.24.95 what shows at the chips: the material underneath (Edge Material 0) .. the Edge Color x its texture,
+    #  Edge Metallic / Roughness (1))
+    emask = b.math('MULTIPLY', chip, v['edge_mat'])
+    edge_col = b.vmath('SCALE', b.mixc(1.0, c['edge_color'], img['edge_tex'], 'MULTIPLY'), fac=2.0)
+    under = b.mixc(emask, base_col, edge_col)
+    col = b.mixc(paint, b.mixc(primer, under, c['primer_color']), paint_col)
     rust_col = b.mixc(1.0, img['rust'], c['rust_color'], 'MULTIPLY')
     col = b.mixc(rust, col, rust_col)
     col = b.mixc(dirt, col, b.mixc(0.5, c['dirt_color'], b.mixc(1.0, c['dirt_color'], img['dirt'], 'MULTIPLY')))
     # (worn edges of bare metal polished a little brighter; the whole surface a little uneven - nothing is one colour)
-    col = b.mixc(b.math('MULTIPLY', worn, b.math('MULTIPLY', v['metallic'], 0.35)), col,
-                 b.vmath('SCALE', col, fac=1.35))
+    col = b.mixc(b.math('MULTIPLY', worn, b.math('MULTIPLY', v['metallic'], b.math('MULTIPLY', v['edge_polish'], 0.35))),
+                 col, b.vmath('SCALE', col, fac=1.35))
     col = b.vmath('SCALE', col, fac=b.math('ADD', 1.0, b.math('MULTIPLY', b.math('SUBTRACT', img['vary'], 0.5),
                                                               b.math('MULTIPLY', v['variation'], 1.2))))
     streak_col = b.mixc(b.math('MULTIPLY', v['rust'], 1.5), b.vmath('SCALE', c['dirt_color'], fac=4.0),
@@ -449,15 +537,18 @@ def build(mat):
                   b.math('MULTIPLY', b.math('SUBTRACT', 1.0, rust),
                          b.math('MULTIPLY', b.math('SUBTRACT', 1.0, dirt), b.math('SUBTRACT', 1.0, snow))))
     keep = b.math('MULTIPLY', keep, b.math('SUBTRACT', 1.0, b.math('MAXIMUM', dust, b.math('MULTIPLY', streak, 0.5))))
-    b.link(b.math('MULTIPLY', b.math('MULTIPLY', v['metallic'], keep), b.math('SUBTRACT', 1.0, cloth)),
+    metal = b.mixf(emask, v['metallic'], v['edge_metal'])
+    b.link(b.math('MULTIPLY', b.math('MULTIPLY', metal, keep), b.math('SUBTRACT', 1.0, cloth)),
            bsdf.inputs['Metallic'])
     # roughness: the base + its map, the paint's own, rougher scratches, rust / dirt / snow, cloth
     var = b.math('MULTIPLY', v['rough_amount'], b.math('SUBTRACT', img['rough'], 0.5))
     r = b.math('ADD', v['roughness'], var, clamp=True)
+    r = b.mixf(emask, r, b.math('ADD', v['edge_rough'], b.math('MULTIPLY', var, 0.5), clamp=True))
     r = b.mixf(paint, r, b.math('ADD', v['paint_rough'], b.math('MULTIPLY', var, 0.5), clamp=True))
     r = b.mixf(primer, r, 0.72)
     r = b.math('ADD', r, b.math('MULTIPLY', scratch, 0.18), clamp=True)
-    r = b.math('SUBTRACT', r, b.math('MULTIPLY', worn, 0.2), clamp=True)          # (rubbed edges: polished)
+    r = b.math('SUBTRACT', r, b.math('MULTIPLY', worn, b.math('MULTIPLY', v['edge_polish'], 0.2)),
+               clamp=True)                                                       # (rubbed edges: polished)
     r = b.mixf(rust, r, b.math('ADD', 0.72, b.math('MULTIPLY', img['rust_mask'], 0.25)))
     r = b.mixf(dirt, r, 0.93)
     r = b.mixf(b.math('MULTIPLY', streak, 0.6), r, 0.8)
@@ -551,6 +642,11 @@ def sync(mat):
         setv(k, tuple(val) if k.endswith('color') else float(val))
     setv('map_scale', float(st.map_scale))
     setv('edge_width', float(st.edge_width))
+    nd = nodes.get('mch:img:edge_tex')                        # (0.24.95 the bare edge's texture: a Base map)
+    if nd is not None:
+        img = map_image('base', st.edge_map)
+        if nd.image != img:
+            nd.image = img
     for slot in MAP_KEYS:
         ident = getattr(st, MAP_PROPS[slot])
         nd = nodes.get('mch:img:' + slot)
@@ -608,6 +704,29 @@ def apply_preset(mat, ident):
             setattr(st, k, val)
         if st.preset != ident:
             st.preset = ident
+        if st.wear_preset != 'PRESET':                 # (the edge wear is the material preset's own again)
+            st.wear_preset = 'PRESET'
+    finally:
+        _SYNCING[0] = False
+    sync(mat)
+    return True
+
+
+def apply_wear(mat, ident):
+    """0.24.95 An Edge Wear preset: only the edge wear's settings (WEAR_KEYS) - 'PRESET' = the material preset's."""
+    st = getattr(mat, KEY)
+    if ident == 'PRESET':
+        spec = next((p[2] for p in PRESETS if p[0] == st.preset), BASE)
+    else:
+        spec = next((p[2] for p in WEAR_PRESETS if p[0] == ident), None)
+        if spec is None:
+            return False
+    _SYNCING[0] = True
+    try:
+        for k in WEAR_KEYS:
+            setattr(st, k, spec.get(k, BASE[k]))
+        if st.wear_preset != ident:
+            st.wear_preset = ident
     finally:
         _SYNCING[0] = False
     sync(mat)
@@ -703,6 +822,12 @@ def _preset_update(self, context):
     apply_preset(self.id_data, self.preset)
 
 
+def _wear_update(self, context):
+    if _SYNCING[0]:
+        return
+    apply_wear(self.id_data, self.wear_preset)
+
+
 def _map_items(slot):
     return [(k, label, f'{MAPS[slot][0]} map: {label}') for k, label in MAPS[slot][3]]
 
@@ -775,6 +900,24 @@ class MCH_PG_MechShader(bpy.types.PropertyGroup):
     snow_map: EnumProperty(name='Snow Map', items=_map_items('snow'), default='POWDER', update=_update)
     emit_map: EnumProperty(name='Emission Map', items=_map_items('emit'), default='EDGES', update=_update)
     weave_map: EnumProperty(name='Weave Map', items=_map_items('weave'), default='CANVAS', update=_update)
+    # 0.24.95 edge wear options (user: "엣지 까지는 옵션은 좀 더 편하게 많이 - 엣지 텍스처랑 색깔, 까지는 마스크, 러프니스,
+    # 프리셋으로도 많이")
+    wear_preset: EnumProperty(name='Edge Wear Preset', items=WEAR_ITEMS, default='PRESET', update=_wear_update,
+                              description='Edge wear only (the mask, what shows at the chips, the primer) - put on '
+                                          'top of this material')
+    chip_follow: _slider('Follow Edges', 0.65, desc='Chips only along the edges (1) .. wherever the Mask map says (0)')
+    chip_reach: _slider('Reach', 0.0, desc='How far in from the edges the chips reach')
+    chip_soft: _slider('Softness', 0.04, 0.005, 0.5, desc='Chip borders: hard flakes (low) .. soft rubbed wear (high)')
+    chip_breakup: _slider('Breakup', 0.0, desc='Ragged, broken-up chip borders')
+    chip_scale: _slider('Mask Scale', 1.0, 0.1, 10.0, desc='The mask map repeated more (bigger = smaller chips)')
+    edge_mat: _slider('Edge Material', 0.0, desc='What shows at the chips: 0 the material underneath, 1 the Edge '
+                                                 'Color / Texture / Metallic / Roughness below')
+    edge_color: _color('Edge Color', BASE['edge_color'])
+    edge_metal: _slider('Edge Metallic', 1.0)
+    edge_rough: _slider('Edge Roughness', 0.3)
+    edge_polish: _slider('Edge Polish', 1.0, 0.0, 3.0, desc='Bare edges rubbed brighter and smoother')
+    edge_map: EnumProperty(name='Edge Texture', items=_map_items('base'), default='FLAT', update=_update,
+                           description='The bare edge\'s texture (a Base map)')
 
 
 def active_mech(context):
@@ -1224,19 +1367,29 @@ def draw(layout, context):
     for slot, amount, extra, after, height in (
             ('rough', 'rough_amount', (), (), None),
             ('chip', 'edge_wear', ('paint', 'paint_color', 'paint_rough', 'paint_pattern', 'primer', 'primer_color'),
-             (), 'h_chip'),
+             ('chip_follow', 'chip_reach', 'chip_soft', 'chip_breakup', 'chip_scale', 'edge_mat', 'edge_color',
+              'edge_metal', 'edge_rough', 'edge_polish'), 'h_chip'),
             ('scratch', 'scratches', (), (), 'h_scratch'),
             ('rust', 'rust', ('rust_scratch', 'rust_color'), (), 'h_rust'),
             ('dirt', 'dirt', ('dirt_color',), ('dirt_top', 'dirt_low', 'dust', 'streaks'), 'h_dirt'),
             ('snow', 'snow', (), ('snow_soft',), 'h_snow'),
             ('emit', 'emission', ('emit_color',), (), None), ('weave', 'cloth', (), (), 'h_weave')):
         sub = box.column(align=True)
+        if slot == 'chip':                            # 0.24.95 Edge Wear presets
+            rw = sub.row(align=True)
+            a = rw.operator('mch.mech_shader_step', text='', icon='TRIA_LEFT')
+            a.prop, a.step = 'wear_preset', -1
+            nx = rw.operator('mch.mech_shader_step', text='', icon='TRIA_RIGHT')
+            nx.prop, nx.step = 'wear_preset', 1
+            rw.prop(st, 'wear_preset', text='')
         for e in extra:
             sub.prop(st, e, slider=not e.endswith('color'))
         sub.prop(st, amount, slider=True)
         for e in after:
             sub.prop(st, e, slider=True)
         _map_row(sub, st, slot)
+        if slot == 'chip':
+            sub.prop(st, 'edge_map')
         if height:
             sub.prop(st, height, slider=True)
     col = box.column(align=True)

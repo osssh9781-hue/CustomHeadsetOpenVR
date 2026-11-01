@@ -580,12 +580,13 @@ class MCH_PT_ui_value(bpy.types.Panel):
 
 
 class MCH_OT_side_page(bpy.types.Operator):
-    """Show the tool's settings or the material (Mech Shader + HDRI) in the Mecha Lab side panel"""
+    """Show the tool's settings, the material (Mech Shader) or the HDRI in the Mecha Lab side panel"""
     bl_idname = 'mch.side_page'
     bl_label = 'Side Panel Page'
     bl_options = {'INTERNAL'}
     page: bpy.props.EnumProperty(items=[('TOOL', 'Tool', 'The tool\'s settings'),
-                                        ('MATERIAL', 'Material', 'Mech Shader + HDRI')], default='MATERIAL')
+                                        ('MATERIAL', 'Material', 'Mech Shader'),
+                                        ('HDRI', 'HDRI', 'The scene\'s HDRI lighting')], default='MATERIAL')
 
     def execute(self, context):
         from . import side_panel
@@ -599,13 +600,13 @@ class MCH_OT_side_page(bpy.types.Operator):
             for a in w.screen.areas:
                 if a.type == 'VIEW_3D':
                     a.tag_redraw()
-        if self.page == 'MATERIAL' and getattr(context, 'area', None) is not None and not side_panel.on(context):
+        if self.page != 'TOOL' and getattr(context, 'area', None) is not None and not side_panel.on(context):
             from .workspace_ui import pref
             why = ('the sidebar (N) is open - it has the same (Mecha Lab tab, Mech Shader)'
                    if side_panel.sidebar_open(context) else
                    'the side panel is off (Preferences, Side Panel) - the sidebar (N) has it'
                    if not pref('side_panel', True) else 'the sidebar (N) has it (Mecha Lab tab, Mech Shader)')
-            self.report({'INFO'}, 'Material: ' + why)
+            self.report({'INFO'}, self.page.title() + ': ' + why)
         return {'FINISHED'}
 
 
@@ -740,8 +741,8 @@ def register():
     wmt.mch_ui_hover = FloatVectorProperty(size=2, default=(-1.0, -1.0), options={'SKIP_SAVE'})
     wmt.mch_side_scroll = FloatProperty(default=0.0, min=0.0, options={'SKIP_SAVE'})
     wmt.mch_side_min = BoolProperty(default=False, options={'SKIP_SAVE'})
-    wmt.mch_side_page = bpy.props.EnumProperty(items=[('TOOL', 'Tool', ''), ('MATERIAL', 'Material', '')],
-                                               default='TOOL', options={'SKIP_SAVE'})
+    wmt.mch_side_page = bpy.props.EnumProperty(items=[('TOOL', 'Tool', ''), ('MATERIAL', 'Material', ''),
+                                                      ('HDRI', 'HDRI', '')], default='TOOL', options={'SKIP_SAVE'})
     for c in CLASSES:
         bpy.utils.register_class(c)
     from . import layers_panel, tool_presets, zb_sculpt, zb_ui

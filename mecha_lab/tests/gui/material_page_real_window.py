@@ -205,12 +205,35 @@ def flow():
     scroll(top_of_rows() - (dirt2.y + dirt2.h) if dirt2 else 0)
     yield 1.5
     shot('3_dirt_open.png')
-    # scroll to the end: the HDRI section
-    scroll(5000)
+    # the Edge Wear section (open on Chipped Paint): a real click on ▶ of its presets
+    scroll(-5000)
+    yield 0.5
+    wnext = yield from scrolled_to(lambda i: i.kind == 'tbtn' and i.label == '▶' and i.action
+                                   and i.action[2].get('prop') == 'wear_preset')
+    w0 = st.wear_preset
+    log('wear ▶ at', click(wnext))
+    yield 0.4
+    xdo('click', 1)
+    yield 2.0
+    log('real click wear ▶:', w0, '->', st.wear_preset, 'edge_wear', round(st.edge_wear, 2))
+    st.wear_preset = 'BRASS'
+    yield 2.0
+    head = find(lambda i: i.kind == 'shead' and i.label.startswith('EDGE WEAR'))
+    scroll(top_of_rows() - (head.y + head.h) if head else 0)
+    xdo('mousemove', 300, 1200)
+    yield 3.0
+    shot('4_edge_wear.png')
+    # the HDRI tab: a real click - the HDRI page apart from the material
+    tab = find(lambda i: i.kind == 'ptab' and i.label == 'HDRI')
+    log('HDRI tab at', click(tab))
+    yield 0.4
+    xdo('click', 1)
+    yield 2.0
+    log('real click HDRI tab: page', sp.page(C), 'rows',
+        sorted({i.prop for i in panel_items() if getattr(i, 'prop', '').startswith('mch_mech')}))
+    xdo('mousemove', 300, 1200)
     yield 1.5
-    log('HDRI rows', sorted({i.prop for i in panel_items() if getattr(i, 'prop', '').startswith('mch_mech_hdri')}),
-        [i.label for i in panel_items() if i.kind == 'pnote' and i.label.startswith('Folder')])
-    shot('4_hdri_section.png')
+    shot('5_hdri_page.png')
     log('DONE')
     bpy.ops.wm.quit_blender()
 

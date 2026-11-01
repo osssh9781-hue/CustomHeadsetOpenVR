@@ -359,6 +359,13 @@ def glyph(name, x, y, size, color=TEXT, width=2.0):
         polyline(circle_pts(cx, cy, s * .34), color, width)
         polyline(circle_pts(cx - s * .12, cy + s * .12, s * .07, 12), color, width * 0.8)   # the highlight
         polyline(circle_pts(cx + s * .05, cy - s * .05, s * .22, 16, 285.0, 375.0), color, width * 0.6)   # its shade
+    elif name == 'hdri':                         # 0.24.95 HDRI: a globe (the world round the model)
+        polyline(circle_pts(cx, cy, s * .34), color, width)
+        polyline([(cx - s * .34, cy), (cx + s * .34, cy)], color, width * 0.6)
+        pts = [(cx + s * .14 * math.cos(math.radians(a)), cy + s * .34 * math.sin(math.radians(a)))
+               for a in range(-90, 91, 15)]
+        polyline(pts, color, width * 0.6)
+        polyline([(2 * cx - px, py) for px, py in pts], color, width * 0.6)
     elif name == 'fixholes':                     # 0.24.95 Fix Holes: a surface with a hole, a patch over it
         polyline([P(.12, .18), P(.88, .18), P(.88, .82), P(.12, .82)], color, width, True)
         polyline([P(.36, .36), P(.64, .36), P(.64, .64), P(.36, .64)], color, width * 0.7, True)
