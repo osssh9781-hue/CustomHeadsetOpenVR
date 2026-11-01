@@ -817,6 +817,49 @@ def _region_ok(faces, up):
     return True
 
 
+BAND_LAYER = '.mch_pband'      # face: a row of a Bevel / Chamfer profile (until the part is marked)
+ROW_LAYER = '.mch_prow'        # edge: between two rows of one profile, along the outline (a round's row edge)
+
+
+def _flag_rows(bm, h, turn=math.radians(30.0)):
+    """0.24.95 (user's bevel.fbx: "베벨로 된 거 디바이드 하면 옆면이 떠") the profile's edges between two of its rows
+    flagged while the rings are still level (before Bend): 1 = a ROW (both ends at one height: it runs along the
+    outline - one round, soft); between rings it is a MITER: 2 where the outline turns more than ``turn`` there (a
+    sharp corner: the round swept round it has a sharp seam from the wall's corner up to the cap's - one line all
+    the way, else the line stopped half way up and Divide folded the corner), 3 where it turns less (a curved
+    outline: soft, like the wall's own edges there)."""
+    band = bm.faces.layers.int.get(BAND_LAYER)
+    if band is None:
+        return
+    row = bm.edges.layers.int.get(ROW_LAYER) or bm.edges.layers.int.new(ROW_LAYER)
+    band = bm.faces.layers.int.get(BAND_LAYER)            # (looked up again: a new layer moves the data)
+    eps = max(1e-6, 1e-5 * h)
+    inside = []
+    for e in bm.edges:
+        lf = e.link_faces
+        if len(lf) == 2 and lf[0][band] and lf[1][band]:
+            if abs(e.verts[0].co.z - e.verts[1].co.z) <= eps:
+                e[row] = 1
+            else:
+                inside.append(e)
+
+    def ring_turn(v):
+        # (the ring's own edges at v: level, on a band face - its rows, or its borders with the cap / the wall: a
+        # 1-segment Chamfer has no rows)
+        rs = [e for e in v.link_edges if abs(e.verts[0].co.z - e.verts[1].co.z) <= eps
+              and any(f[band] for f in e.link_faces)]
+        if len(rs) != 2:
+            return 0.0
+        a = rs[0].other_vert(v).co - v.co
+        b = rs[1].other_vert(v).co - v.co
+        a.z = b.z = 0.0
+        if a.length <= 0.0 or b.length <= 0.0:
+            return 0.0
+        return math.pi - a.angle(b)
+    for e in inside:
+        e[row] = 2 if max(ring_turn(e.verts[0]), ring_turn(e.verts[1])) > turn else 3
+
+
 def _profile_one(bm, faces, width, drop, segs, round_, up):
     """0.23.17 Bevel / Chamfer by insets: the rim drops by ``drop`` and the profile runs ``width`` across the
     flat side (the old bevel could not be wider than the thickness).  Returns False if the insets overlap."""
@@ -848,6 +891,10 @@ def _profile_one(bm, faces, width, drop, segs, round_, up):
             continue
         res = bmesh.ops.inset_region(bm, faces=region, thickness=dx, depth=dz, use_even_offset=True,
                                      use_boundary=True, use_relative_offset=False)
+        band = bm.faces.layers.int.get(BAND_LAYER)  # (made by _profile_rims before the copies: a new layer here
+        if band is not None:                        # would drop every face reference held)
+            for f in res.get('faces', []):          # 0.24.95 the profile's rows (Edge Memory: borders hard, rows soft)
+                f[band] = 1
         if not _region_ok(region, up):
             return False
         # an inset wider than the shape folds over itself: the slope faces flip or points leave the outline
@@ -878,6 +925,8 @@ def _profile_rims(bm, p, flip=False):
     notes = []
     h = p.height
     eps = max(h * 1e-4, 1e-7)
+    if jobs and bm.faces.layers.int.get(BAND_LAYER) is None:
+        bm.faces.layers.int.new(BAND_LAYER)           # 0.24.95 the rows the insets make get flagged (_flag_rows)
     for name, up, (width, segs) in jobs:
         if width <= 0:
             continue
@@ -921,6 +970,7 @@ def build_bmesh(groups, p, flip=False):
         if p.profile in {'BEVEL', 'CHAMFER'}:
             bm, notes = _profile_rims(bm, p, flip)
             LAST_NOTES.extend(notes)
+            _flag_rows(bm, p.height)
         embed = getattr(p, 'embed', 0.0) if p.profile not in PUFF_BUILT else 0.0   # centred on the plane
         if embed > 0:
             # Stick to Surface: the bottom reaches into the surface (no gap on curves)
@@ -1619,6 +1669,8 @@ def _perform_cutter(context, groups, frame, p, projector, screen_groups, targets
             bmesh.ops.reverse_faces(bm, faces=bm.faces[:])
         me = bpy.data.meshes.new('MCH_BaseCutter')
         bm.to_mesh(me)
+        from . import edge_memory as _em
+        _em.drop_profile_flags(me)                 # (a cutter: its profile rows are not a part's)
     finally:
         bm.free()
     cutter = cg.link_temp_object(context, me)

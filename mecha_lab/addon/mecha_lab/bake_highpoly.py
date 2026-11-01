@@ -77,6 +77,8 @@ def hard_mask(me, angle=math.radians(30.0), memory=True, specks=True):
             deg = np.bincount(ev[ang].ravel(), minlength=len(me.vertices))
             lone = (deg[ev[ang, 0]] == 1) & (deg[ev[ang, 1]] == 1)
             ang = ang[~lone]
+        if memory:                                                 # 0.24.95 a tool's own round rows stay soft
+            ang = ang[~em.soft(me)[ang]]                           # past the angle (a Base Mesh Bevel profile)
         hard[ang] = True
     if memory:
         hard |= em.marked(me)

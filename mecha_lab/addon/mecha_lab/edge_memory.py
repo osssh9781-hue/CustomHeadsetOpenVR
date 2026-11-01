@@ -671,15 +671,80 @@ def geometry_mask(me, angle=GEN_ANGLE, specks=True):
     return out
 
 
+SOFT = '.mch_soft'                # edge BOOLEAN: a tool's own row of a round - never a line, whatever its angle
+PROFILE_FLAGS = ('.mch_pband', '.mch_prow')   # (base_mesh: profile rows, read by mark_generated, then dropped)
+
+
+def drop_profile_flags(me):
+    for name in PROFILE_FLAGS:
+        a = me.attributes.get(name)
+        if a is not None:
+            me.attributes.remove(a)
+
+
+def soft(me):
+    """bool per edge: the rows a tool built as one round (``SOFT``) - Bake High Poly / Hard Edges leave them soft
+    even past the angle (a 2-segment Bevel's 45-degree row)."""
+    out = np.zeros(len(me.edges), bool)
+    a = me.attributes.get(SOFT)
+    if a is not None and a.domain == 'EDGE' and len(a.data) == len(out):
+        a.data.foreach_get('value', out)
+    return out
+
+
+def _profile_mask(me, m):
+    """0.24.95 (user's bevel.fbx: a Base Mesh with a Bevel profile, Divided - its sides lifted off and the round
+    folded) a Base Mesh profile's own rule: its rows meet the cap and the wall at 45 / n degrees (a 2-segment round:
+    22.5) and each other at 90 / n (45) - by angle alone the BORDERS were soft and the middle ROW a line, so Divide
+    rounded the flat sides into the bevel and folded it at the row.  Now: the band's borders are lines, its rows
+    along the outline soft (``SOFT``), a miter climbing ring to ring at an outline corner by the angle.  ``m`` (the
+    angle mask) is changed in place; returns the soft mask, or None (no profile flags)."""
+    fa_attr = me.attributes.get(PROFILE_FLAGS[0])
+    if fa_attr is None or fa_attr.domain != 'FACE' or len(fa_attr.data) != len(me.polygons):
+        return None
+    band = np.zeros(len(me.polygons), np.int32)
+    fa_attr.data.foreach_get('value', band)
+    band = band > 0
+    kind = np.zeros(len(me.edges), np.int32)
+    ra = me.attributes.get(PROFILE_FLAGS[1])
+    if ra is not None and ra.domain == 'EDGE' and len(ra.data) == len(kind):
+        ra.data.foreach_get('value', kind)
+    e_sorted, f_sorted, starts, ends = _edge_faces(me)
+    s2 = starts[(ends - starts) == 2]
+    ea, fa, fb = e_sorted[s2], f_sorted[s2], f_sorted[s2 + 1]
+    m[ea[band[fa] != band[fb]]] = True                # the band's borders with the cap and the wall
+    inner = ea[band[fa] & band[fb]]
+    k = kind[inner]
+    m[inner[k == 2]] = True                           # a miter at a sharp outline corner: one line, wall to cap
+    soft_e = inner[(k == 1) | (k == 3)]               # its rows (one round) and the miters of a curved outline
+    m[soft_e] = False
+    s = np.zeros(len(me.edges), bool)
+    s[soft_e] = True
+    return s
+
+
 def mark_generated(me, angle=GEN_ANGLE):
     """The marks of a part a tool just built or rebuilt (plates, Base Mesh, ridges, screws, molding, patches):
     its rim (boundary) and its own creases - exact here, because the geometry is the tool's clean output.  Replaces
-    the old marks (a rebuild makes new geometry).  Returns the number marked."""
+    the old marks (a rebuild makes new geometry).  Returns the number marked.  0.24.95 a Base Mesh profile's rows
+    (``_profile_mask``): borders marked, rows soft."""
     try:
         m = geometry_mask(me, angle)
+        sm = _profile_mask(me, m)
     except Exception as ex:
         print('Mecha: edge memory (generated):', ex)
         return 0
+    finally:
+        drop_profile_flags(me)
+    a = me.attributes.get(SOFT)
+    if sm is not None and sm.any():
+        if a is None or a.domain != 'EDGE':
+            if a is not None:
+                me.attributes.remove(a)
+            a = me.attributes.new(SOFT, 'BOOLEAN', 'EDGE')
+        a.data.foreach_set('value', sm)
+    elif a is not None:
+        me.attributes.remove(a)                       # (a rebuild without a round: no soft rows left over)
     if not m.any():
         clear(me)
         return 0
