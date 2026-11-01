@@ -533,6 +533,61 @@ def transfer_segments(seg, size, new_me, tol=TRANSFER_TOL):
     return mark_edges(new_me, idx)
 
 
+def mark_on_lines(me, seg, tol, pairs=None, cos_min=0.9):
+    """0.24.95 Mark the edges of ``me`` that lie ON the lines ``seg`` (n, 2, 3): both ends and the middle within
+    ``tol`` of a line, running along it (|cos| >= ``cos_min``).  ``pairs`` (k, 2): only those point pairs are looked
+    at (a remesh's own hard edges).  Exact where ``transfer`` is near: for a mesh made to follow the lines (a Quad
+    Remesh with them as fixed lines).  Returns the number marked."""
+    from mathutils import Vector
+    from mathutils.bvhtree import BVHTree
+    from . import mesh_io as mio
+    seg = np.asarray(seg, np.float64).reshape(-1, 2, 3)
+    if not len(seg) or not len(me.edges) or tol <= 0:
+        return 0
+    ev = mio.read_edge_verts(me)
+    co = mio.read_co(me)
+    if pairs is not None:
+        pairs = np.asarray(pairs, np.int64).reshape(-1, 2)
+        if not len(pairs):
+            return 0
+        nv = max(len(co), 1)
+        want = np.sort(pairs.min(1) * nv + pairs.max(1))
+        key = ev.min(1) * nv + ev.max(1)
+        at = np.clip(np.searchsorted(want, key), 0, len(want) - 1)
+        cand = np.flatnonzero(want[at] == key)
+    else:
+        cand = np.arange(len(ev))
+    if not len(cand):
+        return 0
+    verts, polys = [], []
+    for i, (a, b) in enumerate(seg):
+        d = b - a
+        side = np.cross(d, [0.0, 0.0, 1.0]) if abs(d[2]) < 0.9 * (np.linalg.norm(d) or 1.0) else np.cross(d, [1.0, 0, 0])
+        n = np.linalg.norm(side)
+        side = side / n * 1e-3 * tol if n > 0 else np.array([0.0, 0.0, 1e-3 * tol])
+        verts += [Vector(a), Vector(b), Vector(b + side)]
+        polys.append((3 * i, 3 * i + 1, 3 * i + 2))
+    tree = BVHTree.FromPolygons(verts, polys, all_triangles=True)
+    sd = seg[:, 1] - seg[:, 0]
+    sl = np.linalg.norm(sd, axis=1)
+    hit = []
+    for e in cand.tolist():
+        a, b = co[ev[e, 0]], co[ev[e, 1]]
+        d = b - a
+        ln = float(np.linalg.norm(d))
+        if ln <= 0:
+            continue
+        m = tree.find_nearest(Vector((a + b) / 2), tol)
+        if m[0] is None or tree.find_nearest(Vector(a), tol)[0] is None or tree.find_nearest(Vector(b), tol)[0] is None:
+            continue
+        k = m[2]
+        if sl[k] > 0 and abs(float(np.dot(d, sd[k]))) / (ln * sl[k]) >= cos_min:
+            hit.append(e)
+    if not hit:
+        return 0
+    return mark_edges(me, np.array(hit, np.int64))
+
+
 def describe(me):
     n = count(me)
     return f'{n:,} remembered edge{"s" * (n != 1)}' if n else 'no remembered edges'

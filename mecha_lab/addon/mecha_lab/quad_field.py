@@ -299,7 +299,7 @@ def is_cut_mesh(me, target):
     return 0 < nt <= GUIDE_RATIO * max(int(target), 1)
 
 
-def remesh_cut(me, target, all_quads=False, crease_deg=30.0, nthreads=None):
+def remesh_cut(me, target, all_quads=False, crease_deg=30.0, nthreads=None, extra=None):
     """Quad Remesh of a low-poly part (see ``is_cut_mesh``).  Returns (points, faces, polygon under each face,
     part's point nearest each point, stats with 'tries' = how much finer it had to go, 'open' = sides left open)."""
     area = sum(p.area for p in me.polygons)
@@ -308,7 +308,7 @@ def remesh_cut(me, target, all_quads=False, crease_deg=30.0, nthreads=None):
         h = math.sqrt(2.0 * area / max(1, 6 * target * k))
         V, T, tpoly, near = even_triangles(me, h)
         P, Fq, tsrc, psrc, st = remesh_arrays(V, T, target * k, all_quads=all_quads, crease_deg=crease_deg,
-                                              nthreads=nthreads, guide=True)
+                                              nthreads=nthreads, guide=True, extra=extra)
         bad = len(holes(P, open_edges(Fq), border_tree(me, 0.25 * h), 0.5 * h))   # (an open plate's border stays)
         if best is not None and bad >= best[0]:
             break                                    # 0.24.76 finer did not help: no use going finer still
@@ -487,7 +487,7 @@ def level_iters(wanted, got):
     return out
 
 
-def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None, seed=0, guide='auto'):
+def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None, seed=0, guide='auto', extra=None):
     """Quad remesh triangles T over points V to about ``target`` faces.
 
     guide: 'auto' - a coarse input (a decimated part: at most GUIDE_RATIO triangles per wanted face) is followed edge
@@ -512,6 +512,10 @@ def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None,
     if guide == 'auto':
         guide = len(T) <= GUIDE_RATIO * max(int(target), 1)
     segs = hard_segments(V, T, crease_deg) if guide else np.zeros((0, 2, 3), np.float32)
+    if guide and extra is not None and len(extra):
+        # 0.24.95 the part's remembered lines (Edge Memory) are fixed lines too, whatever their angle: an Edge
+        # Finish band's 15-degree borders, a chamfer's rows - the angle test alone let the quads run across them
+        segs = np.concatenate([segs, np.asarray(extra, np.float32).reshape(-1, 2, 3)])
     counts = [int(n_ext * m) for m in LEVELS]
     counts = [c for k, c in enumerate(counts) if k == 0 or c >= 100]
     # the fine level needs small, even triangles: subdivide a coarse mesh first, then sample it evenly
@@ -587,6 +591,19 @@ def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None,
     return P, Fq, tsrc[fsrc], vsrc[psrc], stats
 
 
+MEMO_SHARE = 0.5               # a mesh with more than this share of its edges remembered: the marks are smeared
+
+
+def remembered_lines(me):
+    """0.24.95 the part's Edge Memory lines as segments (n, 2, 3) for the remesh to follow, or None (no memory, or
+    marks smeared over most of a dense mesh by an old remesh)."""
+    from . import edge_memory as em
+    m = em.marked(me)
+    if not m.any() or (len(me.edges) > 5000 and m.mean() > MEMO_SHARE):
+        return None
+    return em.lines(me, m).astype(np.float32)
+
+
 def remesh_object(ob, target, all_quads=False, crease_deg=30.0, nthreads=None):
     """Quad remesh mesh object ``ob`` (Object Mode) to about ``target`` polygons.  Returns a message."""
     me = ob.data
@@ -628,15 +645,16 @@ def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nth
     me.loop_triangles.foreach_get('polygon_index', tpoly)
     cut = is_cut_mesh(me, target)
     asked, got_note = target, ''
+    memo = remembered_lines(me)                            # 0.24.95 Edge Memory: fixed lines + marked again after
 
     def one(target, all_q):
         if cut:
             # 0.24.75 a low-poly part (Cut / Base Mesh / decimated): even triangles, its own edges as fixed lines
             P, Fq, fpoly, pvert, st = remesh_cut(me, target, all_quads=all_q, crease_deg=crease_deg,
-                                                 nthreads=nthreads)
+                                                 nthreads=nthreads, extra=memo)
         else:
             P, Fq, tsrc, psrc, st = remesh_arrays(V, T.reshape(-1, 3), target, all_quads=all_q,
-                                                  crease_deg=crease_deg, nthreads=nthreads)
+                                                  crease_deg=crease_deg, nthreads=nthreads, extra=memo)
             fpoly, pvert = tpoly[tsrc], psrc
         return P, Fq, fpoly, pvert, st
     try:
@@ -683,6 +701,12 @@ def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nth
         fd._write_attrs(new, attrs, pvert, fpoly, None)
         from . import hard_edges
         hard_edges.mark_pairs(new, st['hard'], crease=True)
+        if memo is not None and st.get('guide'):
+            # 0.24.95 the quads' hard edges that run ON a remembered line are remembered again (exactly: the edge's
+            # ends and middle within 0.15 of a quad of the line, along it) - not "near it", which marked 47 %
+            # stray edges round an Edge Finish band and missed 40 % of its lines
+            from . import edge_memory as em
+            em.mark_on_lines(new, memo, 0.15 * st['scale'], pairs=st['hard'])   # (the engine's own tolerance)
         new.update()
         if drop_twins(new):                                # 0.24.77 (attributes / hard edges kept by BMesh)
             sizes = np.array([len(p.vertices) for p in new.polygons])

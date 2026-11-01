@@ -368,7 +368,12 @@ def decimate_object(ob, keep_percent, even=False, quads=False, keep_mask=False, 
         new.update()
         from . import core_geometry as cg
         tidy = cg.tidy_result(new, shards=False, slivers=False)   # 0.24.83 folded fins (back to back) removed
-        kept = em.transfer_segments(seg, size0, new) if seg is not None else 0
+        kept = 0
+        if seg is not None:
+            # 0.24.95 the engine kept the remembered sides: the result's edges ON those lines are remembered again
+            # (exactly - the "near the line" transfer also marked the diagonals beside them: 16 - 24 % strays on cut
+            # parts); "near" only when nothing lies on them
+            kept = em.mark_on_lines(new, seg, 1e-3 * size0) or em.transfer_segments(seg, size0, new)
     except Exception:
         bpy.data.meshes.remove(new)                  # the SubTool keeps its mesh
         raise
