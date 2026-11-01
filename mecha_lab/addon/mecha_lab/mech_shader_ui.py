@@ -202,9 +202,12 @@ def content(context, x, width, k):
         return b.out, -b.y
     st = getattr(mat, ms.KEY)
     _preset_stepper(b, st, 'preset', x, width)
-    b.note(('note', mat.name + (f'   ({mat.users} users)' if mat.users > 1 else ''), False, None, None, None, True),
-           x, width)
-    row(b, x, width, [button('New Copy', 'mch.mech_shader_apply', preset=st.preset),
+    n_parts = len(ms.users_of(mat))
+    b.note(('note', mat.name + (f'   - shared by {n_parts} parts' if n_parts > 1 else '   - this part only'), False,
+            None, None, None, True), x, width)
+    # 0.24.95 (user: "메테리얼 링크 끊는 버튼도 만들어 줄래?") Unlink: the selected parts get their own copy
+    row(b, x, width, [_cell('tbtn', 'Unlink', ('op', 'mch.mech_shader_unlink', {}), active=n_parts > 1),
+                      button('New Copy', 'mch.mech_shader_apply', preset=st.preset),
                       button('Edges', 'mch.mech_shader_edges')])
     names = {kk: n for kk, n, _s in ms.PRESETS}
 

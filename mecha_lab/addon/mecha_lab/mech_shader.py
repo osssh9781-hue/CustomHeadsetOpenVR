@@ -1013,6 +1013,51 @@ class MCH_OT_mech_shader_step(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def users_of(mat):
+    """The objects whose material slots hold ``mat``."""
+    return [o for o in bpy.data.objects if any(sl.material == mat for sl in getattr(o, 'material_slots', ()))]
+
+
+def unlink(context, objs, mat):
+    """0.24.95 (user: "메테리얼 링크 끊는 버튼") ``objs`` get their own copy of ``mat`` (its settings as they are);
+    the other parts keep ``mat``.  One copy shared by ``objs``.  A mesh shared with other objects (a linked copy)
+    gets the copy on the object's slot, so the others stay.  Returns (the copy or None, parts moved, parts left)."""
+    objs = [o for o in objs if o is not None and any(sl.material == mat for sl in o.material_slots)]
+    others = [o for o in users_of(mat) if o not in objs]
+    if not objs or not others:
+        return None, len(objs), len(others)
+    new = mat.copy()
+    for ob in objs:
+        shared = ob.data is not None and ob.data.users > 1 and any(o.data == ob.data for o in others)
+        for sl in ob.material_slots:
+            if sl.material != mat:
+                continue
+            if shared:
+                sl.link = 'OBJECT'
+            sl.material = new
+    return new, len(objs), len(others)
+
+
+class MCH_OT_mech_shader_unlink(bpy.types.Operator):
+    """The selected parts get their own copy of this material (its settings as they are) - changing it no longer
+    changes the other parts that had the same material"""
+    bl_idname = 'mch.mech_shader_unlink'
+    bl_label = 'Unlink Material'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        mat = active_mech(context)
+        if mat is None:
+            self.report({'WARNING'}, 'Unlink: the active part has no Mech material')
+            return {'CANCELLED'}
+        new, moved, left = unlink(context, _targets(context), mat)
+        if new is None:
+            self.report({'INFO'}, f'Unlink: "{mat.name}" is used by the selected part(s) only - already its own')
+            return {'CANCELLED'}
+        self.report({'INFO'}, f'Unlink: {moved} part(s) now use "{new.name}", {left} keep "{mat.name}"')
+        return {'FINISHED'}
+
+
 class MCH_OT_mech_shader_edges(bpy.types.Operator):
     """Measure the edges and crevices again (after the mesh changed): edge wear, rust and dirt follow them"""
     bl_idname = 'mch.mech_shader_edges'
@@ -1398,6 +1443,7 @@ def draw(layout, context):
     col.prop(st, 'map_scale')
     col.prop(st, 'edge_width')
     r = box.row(align=True)
+    r.operator('mch.mech_shader_unlink', text='Unlink', icon='UNLINKED')    # 0.24.95 its own copy
     r.operator('mch.mech_shader_edges', icon='MOD_EDGESPLIT')
     r.operator('mch.mech_shader_apply', text='New Copy', icon='DUPLICATE').preset = st.preset
     draw_hdri(layout, context)
@@ -1446,7 +1492,7 @@ class MCH_PT_mech_shader(bpy.types.Panel):
 
 
 CLASSES = (MCH_PG_MechShader, MCH_OT_mech_shader_apply, MCH_OT_mech_shader_step, MCH_OT_mech_shader_edges,
-           MCH_OT_mech_hdri, MCH_PT_mech_shader)
+           MCH_OT_mech_shader_unlink, MCH_OT_mech_hdri, MCH_PT_mech_shader)
 SCENE_PROPS = ('mch_mech_preset', 'mch_mech_hdri', 'mch_mech_hdri_strength', 'mch_mech_hdri_rot',
                'mch_mech_hdri_show', 'mch_mech_hdri_blur')
 
