@@ -483,6 +483,11 @@ def _icon(icon, x, y, size, color, alpha=1.0, mono=False):
         G.glyph(icon, x, y, size, color, max(1.5, size / 14.0))
 
 
+def _icon_ok(icon, x, y, size):
+    """A 'file:' picture drawn (False when the file is missing)."""
+    return icon.startswith('file:') and G.image(icon[5:], x, y, size)
+
+
 HOVER = (1.0, 1.0, 1.0, 0.08)
 DARK_ICON = (0.08, 0.08, 0.09, 1.0)
 RULE = (1.0, 1.0, 1.0, 0.10)
@@ -604,7 +609,7 @@ def draw(items, hover, S, context):
 
 
 NEW_KINDS = {'sbtn', 'arow', 'ibtn', 'mini', 'drop', 'switch', 'tbtn', 'pnote', 'sbg', 'shead', 'phead', 'pbtn', 'pmin',
-             'sbar', 'vrule', 'glabel', 'lrow', 'lfold', 'swatch', 'ptab'}
+             'sbar', 'vrule', 'glabel', 'lrow', 'lfold', 'swatch', 'ptab', 'mtile'}
 BTN_BG = (0.17, 0.175, 0.19, 1.0)
 BTN_HOT = (0.24, 0.245, 0.27, 1.0)
 FILL = (0.22, 0.38, 0.72, 1.0)        # the Quick HUD's bar blue
@@ -674,6 +679,20 @@ def _draw_new(it, hot, S, white, dim):
             G.text(x + (w - 14 * S) / 2, y + h / 2, G.fit(val, 12 * S, w - 30 * S), 12 * S, white, 'CENTER')
         G.text(x + w - 12 * S, y + h / 2, 'v', 10 * S, G.TEXT_DIM, 'RIGHT')
         return None
+    if k == 'mtile':                      # 0.24.95 a Mech Shader preset: its sphere icon, the name under it
+        if it.on:
+            G.rounded_rect(x, y, w, h, 9 * S, G.ACCENT)
+        elif hot:
+            G.rounded_rect(x, y, w, h, 9 * S, HOVER)
+        band = 14 * S
+        ic = min(w - 6 * S, h - band - 3 * S)
+        ix, iy = x + (w - ic) / 2, y + band + (h - band - ic) / 2
+        if not (it.icon and _icon_ok(it.icon, ix, iy, ic)):          # (no icon file: a plain ball)
+            G.rounded_rect(ix + ic * 0.1, iy + ic * 0.1, ic * 0.8, ic * 0.8, ic * 0.4, (0.45, 0.46, 0.5, 1.0))
+        size = 9.5 * S
+        label = G.fit(it.label, size, w - 4 * S)
+        G.text(x + w / 2, y + band * 0.5, label, size, white, 'CENTER')
+        return (it, 'ABOVE') if hot and label != it.label else None
     if k == 'ptab':                       # 0.24.95 side panel page tab (the tool | Material): a pill, blue = shown
         G.rounded_rect(x, y, w, h, h / 2, G.ACCENT if it.on else (BTN_HOT if hot else BTN_BG))
         G.text(x + w / 2, y + h / 2, G.fit(it.label, 12 * S, w - 12 * S), 12 * S, white if it.enabled or it.on

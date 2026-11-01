@@ -164,10 +164,20 @@ def flow():
     xdo('click', 1)
     yield 2.5
     log('real click ▶: preset', before, '->', st.preset)
+    # a real click on a sphere icon (0.24.95 user: "메테리얼 창도 아이콘으로 보이게 해 줄래? 구 형태로")
+    tile = find(lambda i: i.kind == 'mtile' and i.label == 'Battle Worn')
+    log('Battle Worn ball at', click(tile))
+    yield 0.4
+    xdo('click', 1)
+    yield 2.5
+    log('real click on the Battle Worn ball: preset', st.preset)
     st.preset = 'CHIPPED'                                  # (back: the shots below on Chipped Paint)
     yield 3.0
+    xdo('mousemove', 300, 1200)
+    yield 1.0
+    shot('1b_presets_grid.png')
     # a real drag on Roughness
-    rough = find(lambda i: i.kind == 'mini' and i.prop == 'roughness')
+    rough = yield from scrolled_to(lambda i: i.kind == 'mini' and i.prop == 'roughness')
     r0 = st.roughness
     x, y = click(rough)
     yield 0.4
@@ -180,7 +190,7 @@ def flow():
     yield 1.5
     log('real drag Roughness:', round(r0, 3), '->', round(st.roughness, 3))
     # the Base Color swatch: a real click opens the colour picker
-    swatch = find(lambda i: i.kind == 'swatch' and i.prop == 'base_color')
+    swatch = yield from scrolled_to(lambda i: i.kind == 'swatch' and i.prop == 'base_color')
     log('swatch at', click(swatch))
     yield 0.4
     xdo('click', 1)
@@ -223,6 +233,23 @@ def flow():
     xdo('mousemove', 300, 1200)
     yield 3.0
     shot('4_edge_wear.png')
+    # the Edge Wear Presets balls: open the section (a real click on its title), a real click on a ball
+    wh = yield from scrolled_to(lambda i: i.kind == 'shead' and i.label.startswith('EDGE WEAR PRESETS'))
+    click(wh)
+    yield 0.4
+    xdo('click', 1)
+    yield 1.5
+    wball = yield from scrolled_to(lambda i: i.kind == 'mtile' and i.label == 'Rusty Edges')
+    log('Rusty Edges ball at', click(wball))
+    yield 0.4
+    xdo('click', 1)
+    yield 2.0
+    log('real click on the Rusty Edges ball: wear preset', st.wear_preset)
+    head = find(lambda i: i.kind == 'shead' and i.label.startswith('EDGE WEAR PRESETS'))
+    scroll(top_of_rows() - (head.y + head.h) if head else 0)
+    xdo('mousemove', 300, 1200)
+    yield 3.0
+    shot('4b_wear_grid.png')
     # the HDRI tab: a real click - the HDRI page apart from the material
     tab = find(lambda i: i.kind == 'ptab' and i.label == 'HDRI')
     log('HDRI tab at', click(tab))

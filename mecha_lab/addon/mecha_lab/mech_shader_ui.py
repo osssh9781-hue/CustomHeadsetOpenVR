@@ -13,6 +13,9 @@ settings were only in a Blender sidebar panel (Mecha Lab tab).  They are drawn h
   많이"): its own presets (◀ [preset] ▶, 24), the mask (map, follow edges, reach, softness, breakup, scale), what
   shows at the chips (edge material: colour, texture, metallic, roughness, polish), the primer, the depth
 * the HDRI is a page of its own (user: "재질이랑 hdri는 분리해야지"): the tabs Tool | Material | HDRI
+* the presets as sphere icons (user: "메테리얼 창도 아이콘으로 보이게 해 줄래? 구 형태로"): a grid of shader balls
+  (``mech_icons/mat_<ID>.png``, ``wear_<ID>.png`` - made by ``tools_dev/make_mech_preset_icons.py``), click = that
+  preset; the one in use is blue
 
 The Blender sidebar panel stays (the drawn panel hides while the sidebar is open, as for the tools)."""
 from __future__ import annotations
@@ -40,6 +43,35 @@ PAINT = ('paint', 'paint_color', 'paint_rough', 'paint_pattern')
 MASK = ('chip_follow', 'chip_reach', 'chip_soft', 'chip_breakup', 'chip_scale')
 BARE = ('edge_mat', 'edge_color', 'edge_metal', 'edge_rough', 'edge_polish')
 _IN_USE = {}             # (material, preset) -> the layers in use when it was first shown: they start open
+ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mech_icons')
+GRID_COLS = 4
+
+
+_ICONS = {}
+
+
+def icon(kind, ident):
+    """'file:<png>' of a preset's sphere icon ('mat' / 'wear'), '' when it is missing (a plain ball is drawn).
+    Looked up once (the panel is rebuilt many times a second while the mouse moves)."""
+    key = (kind, ident)
+    if key not in _ICONS:
+        p = os.path.join(ICON_DIR, f'{kind}_{ident}.png')
+        _ICONS[key] = 'file:' + p if os.path.isfile(p) else ''
+    return _ICONS[key]
+
+
+def grid(b, x, w, tiles, cols=GRID_COLS):
+    """Sphere tiles in rows of ``cols``: tiles = [(label, icon, on, action, data, prop)]."""
+    k = b.k
+    gap = 5 * k
+    tw = (w - (cols - 1) * gap) / cols
+    th = tw + 15 * k
+    for i, (label, ic, on, action, data, prop) in enumerate(tiles):
+        c = i % cols
+        if c == 0:
+            b.y -= th + (gap if i else 0)
+        b.out.append(b.Item('mtile', x + c * (tw + gap), b.y, tw, th, label, ic, on, True, action, data, prop))
+    b.y -= sp.GAP * k
 
 
 def _cell(kind, label, action, data=None, prop=None, on=False, active=True):
@@ -155,6 +187,12 @@ def content(context, x, width, k):
     if mat is None:
         _preset_stepper(b, sc, 'mch_mech_preset', x, width)
         row(b, x, width, [button('Apply Mech Shader', 'mch.mech_shader_apply', preset='')])
+
+        def presets0(sx, sw):
+            grid(b, sx, sw, [(n, icon('mat', kk), sc.mch_mech_preset == kk, ('op', 'mch.mech_shader_apply',
+                                                                          {'preset': kk}), None, None)
+                             for kk, n, _s in ms.PRESETS])
+        section(b, 'presets', 'Presets', x, width, presets0)
         other = getattr(ob, 'active_material', None) if ob is not None else None
         if ob is None or ob.type != 'MESH':
             b.note(('note', 'Select meshes, then Apply', False, None, None, None, True), x, width)
@@ -168,6 +206,11 @@ def content(context, x, width, k):
            x, width)
     row(b, x, width, [button('New Copy', 'mch.mech_shader_apply', preset=st.preset),
                       button('Edges', 'mch.mech_shader_edges')])
+    names = {kk: n for kk, n, _s in ms.PRESETS}
+
+    def presets(sx, sw):
+        grid(b, sx, sw, [(n, icon('mat', kk), st.preset == kk, ('enum', kk), st, 'preset') for kk, n, _s in ms.PRESETS])
+    section(b, 'presets', 'Presets', x, width, presets, summary=names.get(st.preset, ''))
 
     def surface(sx, sw):
         for p in SURFACE:
@@ -212,6 +255,13 @@ def content(context, x, width, k):
         row(b, sx, sw, [number(st, 'h_chip', 'Chip Depth')])
     section(b, 'chip', 'Edge Wear', x, width, wear, start_folded='chip' not in used,
             summary=layer_summary(st, ('edge_wear',)))
+    wnames = {i.identifier: i.name for i in st.bl_rna.properties['wear_preset'].enum_items}
+
+    def wear_presets(sx, sw):
+        grid(b, sx, sw, [(wnames[kk] if kk != 'PRESET' else 'As Material', icon('wear', kk), st.wear_preset == kk,
+                          ('enum', kk), st, 'wear_preset') for kk in wnames])
+    section(b, 'wear_presets', 'Edge Wear Presets', x, width, wear_presets, start_folded=True,
+            summary=wnames.get(st.wear_preset, '') if st.wear_preset != 'PRESET' else '')
 
     for slot, title, which, before, amount, after, height in LAYERS:
         def fill(sx, sw, before=before, amount=amount, after=after, height=height, slot=slot):

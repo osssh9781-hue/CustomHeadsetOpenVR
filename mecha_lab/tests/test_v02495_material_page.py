@@ -42,6 +42,13 @@ its, h = page()
 check('No Mech material yet: ◀ [preset] ▶ on the scene\'s preset, Apply Mech Shader (the HDRI on its own page)',
       by_prop(its, 'mch_mech_preset', 'drop') and any(i.kind == 'tbtn' and i.label == 'Apply Mech Shader' for i in its)
       and 'HDRI' not in heads(its) and h > 0, [i.label for i in its if i.kind in {'tbtn', 'shead'}])
+tiles0 = [i for i in its if i.kind == 'mtile']
+check('... and the presets as sphere icons (user: "메테리얼 창도 아이콘으로 보이게 해 줄래? 구 형태로"): 34 tiles, a click '
+      'applies that preset', len(tiles0) == len(ms.PRESETS) and all(t.action[:2] == ('op', 'mch.mech_shader_apply')
+                                                                   for t in tiles0), len(tiles0))
+check('... every preset has its sphere icon file (mech_icons/mat_<ID>.png)',
+      all(t.icon.startswith('file:') and os.path.isfile(t.icon[5:]) for t in tiles0),
+      [t.label for t in tiles0 if not t.icon])
 apply_btn = next(i for i in its if i.kind == 'tbtn' and i.label == 'Apply Mech Shader')
 ui_bars.run(C, apply_btn)
 mat = ms.active_mech(C)
@@ -60,6 +67,17 @@ st.glass = 0.6
 its, _h = page()
 check('... Glass 0.6: IOR shows', by_prop(its, 'ior', 'mini'))
 
+tiles = [i for i in its if i.kind == 'mtile']
+on = [t.label for t in tiles if t.on]
+check('Presets as sphere icons: a grid of 34, the one in use blue (Steel)', len(tiles) == len(ms.PRESETS)
+      and on == ['Steel'] and heads(its)['PRESETS'].on, on)
+cols = sorted({round(t.x) for t in tiles})
+check('... 4 per row, square balls with the name under them', len(cols) == 4 and all(t.h > t.w for t in tiles))
+rust = next(t for t in tiles if t.label == 'Rusted Steel')
+ui_bars.run(C, rust)
+check('... a click on a ball: that preset (Rusted Steel)', st.preset == 'RUSTED' and st.rust > 0.5, st.preset)
+st.preset = 'STEEL'
+its, _h = page()
 before = st.preset
 nxt = next(i for i in its if i.kind == 'tbtn' and i.label == '▶' and i.action[1] == 'mch.mech_shader_step'
            and i.action[2].get('prop') == 'preset')
@@ -105,7 +123,17 @@ after = {k: (tuple(getattr(st, k)) if k.endswith('color') else getattr(st, k)) f
 check('▶ on the wear preset: the next one (No Wear) - only the edge wear changes, the rest of the material stays',
       st.wear_preset == 'NONE' and st.edge_wear == 0.0 and after == others and st.preset == 'CHIPPED',
       (st.wear_preset, [k for k in others if others[k] != after[k]]))
-st.wear_preset = 'BRASS'
+its, _h = page()
+wh = heads(its)['EDGE WEAR PRESETS']
+check('Edge Wear Presets: their own section (folded at first)', not wh.on and not [
+    i for i in its if i.kind == 'mtile' and i.prop == 'wear_preset'])
+ui_bars.run(C, wh)
+its, _h = page()
+wt = [i for i in its if i.kind == 'mtile' and i.prop == 'wear_preset']
+check('... opened: 25 sphere icons (each wear preset on Chipped Paint + "As Material"), icon files there',
+      len(wt) == 25 and all(t.icon.startswith('file:') and os.path.isfile(t.icon[5:]) for t in wt), len(wt))
+ui_bars.run(C, next(t for t in wt if t.label == 'Brass Underneath'))
+check('... a click: that wear preset', st.wear_preset == 'BRASS' and st.edge_mat == 1.0)
 nodes = mat.node_tree.nodes
 col = tuple(nodes['mch:edge_color'].outputs[0].default_value)[:3]
 check('Brass Underneath: Edge Material 1, the edge colour brass (written into the material), its texture Mottled',
