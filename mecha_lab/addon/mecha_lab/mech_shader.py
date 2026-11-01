@@ -28,6 +28,7 @@ from bpy.props import EnumProperty, FloatProperty, FloatVectorProperty, PointerP
 
 KEY = 'mch_mech'                    # the material's settings (PropertyGroup on bpy.types.Material)
 CURV = 'mch_curv'
+VERSION = 3                          # (the node tree's layout: an older one is made anew)
 MAP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mech_maps')
 
 # slot -> (label, tiles per unit (x Map Scale), colour map (sRGB) or data, [(id, label)])
@@ -75,7 +76,8 @@ EMIT_SOURCE = {'FULL': (1, 0, 0, 0, 0), 'EDGES': (0, 1, 0, 0, 0), 'CREVICES': (0
 BASE = dict(base_color=(0.55, 0.56, 0.58), metallic=1.0, roughness=0.35, rough_amount=0.35, paint=0.0,
             paint_color=(0.55, 0.06, 0.04), paint_rough=0.45, edge_wear=0.0, scratches=0.0, rust=0.0,
             rust_scratch=0.0, rust_color=(1.0, 1.0, 1.0), dirt=0.0, dirt_color=(0.16, 0.12, 0.08), snow=0.0,
-            emission=0.0, emit_color=(0.1, 0.7, 1.0), cloth=0.0, bump=0.3,
+            emission=0.0, emit_color=(0.1, 0.7, 1.0), cloth=0.0, bump=1.0, coat=0.0, ao=0.5,
+            h_base=0.3, h_scratch=0.6, h_chip=0.5, h_rust=0.6, h_dirt=0.4, h_snow=0.7, h_weave=0.7,
             base_map='MOTTLED', rough_map='SMUDGE', chip_map='FLAKES', scratch_map='FINE', rust_map='PATCHES',
             dirt_map='GRIME', snow_map='POWDER', emit_map='EDGES', weave_map='CANVAS')
 
@@ -95,60 +97,65 @@ def _m(**kw):
 
 
 PRESETS = [
-    ('PLASTIC', 'Glossy Plastic', _m(base_color=(0.85, 0.85, 0.82), metallic=0.0, roughness=0.25, rough_amount=0.15,
-                                     base_map='FLAT', rough_map='FINE')),
-    ('PLASTIC_MATTE', 'Matte Plastic', _m(base_color=(0.12, 0.13, 0.14), metallic=0.0, roughness=0.6,
+    ('PLASTIC', 'Glossy Plastic', _m(coat=0.3, h_base=0.15, base_color=(0.85, 0.85, 0.82), metallic=0.0, roughness=0.25,
+                                     rough_amount=0.15, base_map='FLAT', rough_map='FINE')),
+    ('PLASTIC_MATTE', 'Matte Plastic', _m(h_base=0.3, base_color=(0.12, 0.13, 0.14), metallic=0.0, roughness=0.6,
                                           rough_amount=0.25, base_map='FLAT', rough_map='GRUNGE')),
-    ('RUBBER', 'Rubber', _m(base_color=(0.04, 0.04, 0.045), metallic=0.0, roughness=0.85, rough_amount=0.2,
+    ('RUBBER', 'Rubber', _m(h_base=0.4, base_color=(0.04, 0.04, 0.045), metallic=0.0, roughness=0.85, rough_amount=0.2,
                             base_map='FLAT', rough_map='FINE')),
-    ('STEEL', 'Steel', _m(base_color=(0.56, 0.57, 0.58), roughness=0.3, base_map='MOTTLED', rough_map='SMUDGE')),
-    ('BRUSHED', 'Brushed Aluminium', _m(base_color=(0.78, 0.79, 0.8), roughness=0.28, rough_amount=0.45,
+    ('STEEL', 'Steel', _m(h_base=0.25, base_color=(0.56, 0.57, 0.58), roughness=0.3, base_map='MOTTLED',
+                          rough_map='SMUDGE')),
+    ('BRUSHED', 'Brushed Aluminium', _m(h_base=0.5, base_color=(0.78, 0.79, 0.8), roughness=0.28, rough_amount=0.45,
                                         base_map='BRUSHED', rough_map='BRUSHED')),
-    ('GUNMETAL', 'Gunmetal', _m(base_color=(0.16, 0.17, 0.18), roughness=0.38, base_map='MOTTLED',
-                                rough_map='FINGER')),
-    ('CAST', 'Cast Iron', _m(base_color=(0.3, 0.3, 0.31), roughness=0.65, rough_amount=0.45, base_map='CAST',
-                             rough_map='GRUNGE', bump=0.5)),
-    ('FORGED', 'Forged Steel', _m(base_color=(0.45, 0.46, 0.47), roughness=0.4, base_map='FORGED',
-                                  rough_map='WORN', bump=0.5)),
-    ('HEAT', 'Exhaust Metal', _m(base_color=(0.6, 0.58, 0.56), roughness=0.35, base_map='HEAT', rough_map='SMUDGE')),
-    ('BRASS', 'Brass', _m(base_color=(0.78, 0.6, 0.28), roughness=0.3, base_map='MOTTLED', rough_map='SMUDGE')),
-    ('COPPER', 'Copper Patina', _m(base_color=(0.85, 0.45, 0.3), roughness=0.35, base_map='PATINA',
+    ('GUNMETAL', 'Gunmetal', _m(h_base=0.2, coat=0.15, base_color=(0.16, 0.17, 0.18), roughness=0.38,
+                                base_map='MOTTLED', rough_map='FINGER')),
+    ('CAST', 'Cast Iron', _m(h_base=0.9, bump=1.2, base_color=(0.3, 0.3, 0.31), roughness=0.65, rough_amount=0.45,
+                             base_map='CAST', rough_map='GRUNGE')),
+    ('FORGED', 'Forged Steel', _m(h_base=1.0, bump=1.2, base_color=(0.45, 0.46, 0.47), roughness=0.4, base_map='FORGED',
+                                  rough_map='WORN')),
+    ('HEAT', 'Exhaust Metal', _m(h_base=0.2, base_color=(0.6, 0.58, 0.56), roughness=0.35, base_map='HEAT',
+                                 rough_map='SMUDGE')),
+    ('BRASS', 'Brass', _m(h_base=0.3, base_color=(0.78, 0.6, 0.28), roughness=0.3, base_map='MOTTLED',
+                          rough_map='SMUDGE')),
+    ('COPPER', 'Copper Patina', _m(h_base=0.6, base_color=(0.85, 0.45, 0.3), roughness=0.35, base_map='PATINA',
                                    rough_map='PATCHY')),
-    ('CARBON', 'Carbon Fibre', _m(base_color=(0.3, 0.3, 0.32), metallic=0.0, roughness=0.2, base_map='CARBON',
-                                  rough_map='CLEAN')),
-    ('PAINTED', 'Painted Metal', _m(paint=1.0, paint_color=(0.62, 0.62, 0.6), paint_rough=0.42, base_map='PEEL',
-                                    rough_map='FINE')),
-    ('CAMO', 'Camo Paint', _m(paint=1.0, paint_color=(0.36, 0.4, 0.26), paint_rough=0.6, base_map='CAMO',
+    ('CARBON', 'Carbon Fibre', _m(coat=1.0, h_base=0.5, base_color=(0.3, 0.3, 0.32), metallic=0.0, roughness=0.2,
+                                  base_map='CARBON', rough_map='CLEAN')),
+    ('PAINTED', 'Painted Metal', _m(coat=0.35, h_base=0.25, paint=1.0, paint_color=(0.62, 0.62, 0.6), paint_rough=0.42,
+                                    base_map='PEEL', rough_map='FINE')),
+    ('CAMO', 'Camo Paint', _m(h_base=0.2, paint=1.0, paint_color=(0.36, 0.4, 0.26), paint_rough=0.6, base_map='CAMO',
                               rough_map='GRUNGE', edge_wear=0.15)),
-    ('CHIPPED', 'Chipped Paint', _m(paint=1.0, paint_color=(0.75, 0.55, 0.08), edge_wear=0.35, chip_map='FLAKES',
-                                    scratches=0.15)),
-    ('SCRATCHED', 'Scratched Metal', _m(roughness=0.32, scratches=0.6, scratch_map='RANDOM', rough_map='SMUDGE')),
-    ('RUSTY', 'Rusty Scratches', _m(paint=1.0, paint_color=(0.2, 0.28, 0.2), edge_wear=0.25, scratches=0.55,
+    ('CHIPPED', 'Chipped Paint', _m(coat=0.2, h_chip=0.7, paint=1.0, paint_color=(0.75, 0.55, 0.08), edge_wear=0.35,
+                                    chip_map='FLAKES', scratches=0.15)),
+    ('SCRATCHED', 'Scratched Metal', _m(h_scratch=0.7, roughness=0.32, scratches=0.6, scratch_map='RANDOM',
+                                        rough_map='SMUDGE')),
+    ('RUSTY', 'Rusty Scratches', _m(h_rust=0.7, paint=1.0, paint_color=(0.2, 0.28, 0.2), edge_wear=0.25, scratches=0.55,
                                     rust=0.15, rust_scratch=0.85, scratch_map='FINE', rust_map='SPOTS')),
-    ('RUSTED', 'Rusted Steel', _m(roughness=0.5, rust=0.6, rust_map='HEAVY', dirt=0.2, bump=0.5)),
-    ('DIRTY', 'Dirty Metal', _m(roughness=0.45, dirt=0.55, dirt_map='GRIME', scratches=0.2)),
-    ('MUDDY', 'Muddy Paint', _m(paint=1.0, paint_color=(0.35, 0.38, 0.28), edge_wear=0.2, dirt=0.75, dirt_map='MUD',
-                                bump=0.45)),
-    ('SNOWY', 'Snowy Metal', _m(paint=1.0, paint_color=(0.18, 0.2, 0.24), edge_wear=0.15, snow=0.55,
+    ('RUSTED', 'Rusted Steel', _m(h_rust=0.9, bump=1.3, roughness=0.5, rust=0.6, rust_map='HEAVY', dirt=0.2)),
+    ('DIRTY', 'Dirty Metal', _m(h_dirt=0.5, roughness=0.45, dirt=0.55, dirt_map='GRIME', scratches=0.2)),
+    ('MUDDY', 'Muddy Paint', _m(h_dirt=0.9, bump=1.2, paint=1.0, paint_color=(0.35, 0.38, 0.28), edge_wear=0.2,
+                                dirt=0.75, dirt_map='MUD')),
+    ('SNOWY', 'Snowy Metal', _m(h_snow=0.9, paint=1.0, paint_color=(0.18, 0.2, 0.24), edge_wear=0.15, snow=0.55,
                                 snow_map='PATCHY')),
-    ('BATTLE', 'Battle Worn', _m(paint=1.0, paint_color=(0.42, 0.45, 0.4), edge_wear=0.4, scratches=0.45, rust=0.25,
-                                 rust_scratch=0.6, dirt=0.4, chip_map='BIG', bump=0.45)),
-    ('EMISSIVE', 'Emissive Panel', _m(paint=1.0, paint_color=(0.08, 0.09, 0.1), emission=6.0,
+    ('BATTLE', 'Battle Worn', _m(bump=1.2, paint=1.0, paint_color=(0.42, 0.45, 0.4), edge_wear=0.4, scratches=0.45,
+                                 rust=0.25, rust_scratch=0.6, dirt=0.4, chip_map='BIG')),
+    ('EMISSIVE', 'Emissive Panel', _m(coat=0.2, paint=1.0, paint_color=(0.08, 0.09, 0.1), emission=6.0,
                                       emit_color=(0.1, 0.75, 1.0), emit_map='CREVICES')),
-    ('CIRCUIT', 'Glowing Circuit', _m(paint=1.0, paint_color=(0.05, 0.06, 0.07), emission=5.0,
+    ('CIRCUIT', 'Glowing Circuit', _m(coat=0.3, paint=1.0, paint_color=(0.05, 0.06, 0.07), emission=5.0,
                                       emit_color=(0.2, 1.0, 0.4), emit_map='CIRCUIT')),
     ('GLOW_SCRATCH', 'Glowing Scratches', _m(paint=1.0, paint_color=(0.1, 0.1, 0.11), scratches=0.5, emission=8.0,
                                              emit_color=(1.0, 0.35, 0.05), emit_map='SCRATCH')),
-    ('CLOTH', 'Cloth Canvas', _m(base_color=(0.36, 0.33, 0.24), metallic=0.0, roughness=0.8, rough_amount=0.2,
-                                 cloth=1.0, base_map='FLAT', weave_map='CANVAS', bump=0.4)),
-    ('CLOTH_DENIM', 'Cloth Denim', _m(base_color=(0.12, 0.17, 0.3), metallic=0.0, roughness=0.75, cloth=1.0,
-                                      base_map='MOTTLED', weave_map='DENIM', bump=0.4)),
-    ('CLOTH_NYLON', 'Cloth Nylon', _m(base_color=(0.08, 0.09, 0.1), metallic=0.0, roughness=0.55, cloth=1.0,
-                                      base_map='FLAT', weave_map='RIPSTOP', bump=0.3)),
-    ('CLOTH_PADDED', 'Cloth Padded', _m(base_color=(0.25, 0.28, 0.2), metallic=0.0, roughness=0.75, cloth=1.0,
-                                        base_map='FLAT', weave_map='QUILT', bump=0.6, dirt=0.25, dirt_map='DUST')),
-    ('LEATHER', 'Leather', _m(base_color=(0.22, 0.12, 0.07), metallic=0.0, roughness=0.55, cloth=0.6,
-                              base_map='MOTTLED', weave_map='LEATHER', bump=0.5)),
+    ('CLOTH', 'Cloth Canvas', _m(h_weave=0.9, base_color=(0.36, 0.33, 0.24), metallic=0.0, roughness=0.8,
+                                 rough_amount=0.2, cloth=1.0, base_map='FLAT', weave_map='CANVAS')),
+    ('CLOTH_DENIM', 'Cloth Denim', _m(h_weave=0.9, base_color=(0.12, 0.17, 0.3), metallic=0.0, roughness=0.75,
+                                      cloth=1.0, base_map='MOTTLED', weave_map='DENIM')),
+    ('CLOTH_NYLON', 'Cloth Nylon', _m(h_weave=0.7, base_color=(0.08, 0.09, 0.1), metallic=0.0, roughness=0.55,
+                                      cloth=1.0, base_map='FLAT', weave_map='RIPSTOP')),
+    ('CLOTH_PADDED', 'Cloth Padded', _m(h_weave=1.0, bump=1.5, base_color=(0.25, 0.28, 0.2), metallic=0.0,
+                                        roughness=0.75, cloth=1.0, base_map='FLAT', weave_map='QUILT', dirt=0.25,
+                                        dirt_map='DUST')),
+    ('LEATHER', 'Leather', _m(h_weave=0.8, base_color=(0.22, 0.12, 0.07), metallic=0.0, roughness=0.55, cloth=0.6,
+                              base_map='MOTTLED', weave_map='LEATHER')),
 ]
 PRESET_IDS = tuple(p[0] for p in PRESETS)
 SLIDERS = tuple(k for k in BASE if not k.endswith('_map'))
@@ -165,13 +172,13 @@ def map_path(slot, ident):
     return None
 
 
-def map_image(slot, ident, mask=False):
+def map_image(slot, ident, mask=False, data=False):
     """The map as a Blender image (loaded once, shared), colour space set: data maps Non-Color."""
     p = map_path(slot, ident + ('_mask' if mask else ''))
     if p is None:
         return None
     img = bpy.data.images.load(p, check_existing=True)
-    want = 'sRGB' if (MAPS[slot][2] and not mask) else 'Non-Color'
+    want = 'sRGB' if (MAPS[slot][2] and not mask and not data) else 'Non-Color'
     try:
         if img.colorspace_settings.name != want:
             img.colorspace_settings.name = want
@@ -307,10 +314,13 @@ def build(mat):
         maps[slot] = b.image(slot, vec)
         if slot == 'rust':
             maps['rust_mask'] = b.image('rust_mask', vec)
+        if slot == 'base':
+            maps['base_h'] = b.image('base_h', vec)
     img = {k: nd.outputs['Color'] for k, nd in maps.items()}
     v = {k: b.value(k) for k in ('metallic', 'roughness', 'rough_amount', 'paint', 'paint_rough', 'edge_wear',
                                  'scratches', 'rust', 'rust_scratch', 'dirt', 'snow', 'emission', 'cloth', 'bump',
-                                 'edge_width')}
+                                 'edge_width', 'coat', 'ao', 'h_base', 'h_scratch', 'h_chip', 'h_rust', 'h_dirt',
+                                 'h_snow', 'h_weave')}
     c = {k: b.rgb(k) for k in ('base_color', 'paint_color', 'rust_color', 'dirt_color', 'emit_color')}
     w = {k: b.value('emit_w_' + k) for k in ('const', 'edge', 'cav', 'scratch', 'pattern')}
     # edges / crevices: the mesh's convexity (mch_curv) + Cycles' Bevel normal
@@ -326,6 +336,11 @@ def build(mat):
                                                                   geo.outputs['Normal'])), 12.0, clamp=True)
     edge = b.math('MAXIMUM', b.math('MULTIPLY', curv, 1.0, clamp=True), bev_edge)
     cav = b.math('MULTIPLY', curv, -1.0, clamp=True)
+    aon = b.node('ShaderNodeAmbientOcclusion', 'mch:ao_node')
+    aon.samples = 16
+    aon.inputs['Distance'].default_value = 0.15
+    occl = b.maprange(aon.outputs['AO'], 0.95, 0.35)                      # (open 0 .. tucked in 1)
+    cav = b.math('MAXIMUM', cav, b.math('MULTIPLY', occl, v['ao']))
     up = b.node('ShaderNodeSeparateXYZ')
     b.link(geo.outputs['Normal'], up.inputs['Vector'])
     nz = up.outputs['Z']
@@ -378,17 +393,29 @@ def build(mat):
     b.link(r, bsdf.inputs['Roughness'])
     b.put(bsdf.inputs['Sheen Weight'], b.math('MULTIPLY', cloth, 0.45))
     bsdf.inputs['Sheen Roughness'].default_value = 0.5
+    unbroken = b.math('MULTIPLY', b.math('SUBTRACT', 1.0, scratch),
+                      b.math('MULTIPLY', b.math('SUBTRACT', 1.0, rust),
+                             b.math('MULTIPLY', b.math('SUBTRACT', 1.0, dirt), b.math('SUBTRACT', 1.0, snow))))
+    b.link(b.math('MULTIPLY', v['coat'], unbroken), bsdf.inputs['Coat Weight'])
+    b.link(b.math('ADD', 0.04, b.math('MULTIPLY', var, 0.3), clamp=True), bsdf.inputs['Coat Roughness'])
     # relief: scratches / chips cut in, rust / snow / weave stand out, the roughness map a little
-    h = b.math('MULTIPLY', scratch, -0.6)
-    h = b.math('ADD', h, b.math('MULTIPLY', b.math('MULTIPLY', chip, v['paint']), -0.45))
-    h = b.math('ADD', h, b.math('MULTIPLY', rust, b.math('MULTIPLY', img['rust_mask'], 0.5)))
-    h = b.math('ADD', h, b.math('MULTIPLY', snow, 0.7))
-    h = b.math('ADD', h, b.math('MULTIPLY', b.math('MULTIPLY', cloth, weave), 0.6))
-    h = b.math('ADD', h, b.math('MULTIPLY', var, 0.15))
+    # relief: every layer its own height (the Base map's height map, scratches / chips cut in, rust / dirt / snow /
+    # weave stand out), all x Height
+    h = b.math('MULTIPLY', b.math('SUBTRACT', img['base_h'], 0.5), v['h_base'])
+    h = b.math('ADD', h, b.math('MULTIPLY', scratch, b.math('MULTIPLY', v['h_scratch'], -1.0)))
+    h = b.math('ADD', h, b.math('MULTIPLY', b.math('MULTIPLY', chip, b.math('ADD', 0.3, b.math('MULTIPLY', v['paint'],
+                                                                                            0.7))),
+                                b.math('MULTIPLY', v['h_chip'], -1.0)))
+    h = b.math('ADD', h, b.math('MULTIPLY', b.math('MULTIPLY', rust, b.math('ADD', img['rust_mask'], 0.2)),
+                                v['h_rust']))
+    h = b.math('ADD', h, b.math('MULTIPLY', b.math('MULTIPLY', dirt, b.math('ADD', img['dirt'], 0.3)), v['h_dirt']))
+    h = b.math('ADD', h, b.math('MULTIPLY', b.math('MULTIPLY', snow, b.math('ADD', b.math('MULTIPLY', img['snow'], 0.5),
+                                                                        0.6)), v['h_snow']))
+    h = b.math('ADD', h, b.math('MULTIPLY', b.math('MULTIPLY', cloth, weave), v['h_weave']))
     bump = b.node('ShaderNodeBump', 'mch:bumpnode')
-    b.put(bump.inputs['Strength'], v['bump'])
-    bump.inputs['Distance'].default_value = 0.01
-    b.link(h, bump.inputs['Height'])
+    b.put(bump.inputs['Strength'], b.math('MINIMUM', v['bump'], 1.0))
+    bump.inputs['Distance'].default_value = 0.004
+    b.link(b.math('MULTIPLY', h, b.math('MAXIMUM', v['bump'], 1.0)), bump.inputs['Height'])
     b.link(bump.outputs['Normal'], bsdf.inputs['Normal'])
     # emission: the map's mask (constant / edges / crevices / scratches / its own image)
     em = b.math('ADD', b.math('ADD', w['const'], b.math('MULTIPLY', w['edge'], edge)),
@@ -397,7 +424,7 @@ def build(mat):
                               b.math('MULTIPLY', w['pattern'], img['emit']))), clamp=True)
     b.link(c['emit_color'], bsdf.inputs['Emission Color'])
     b.link(b.math('MULTIPLY', em, v['emission']), bsdf.inputs['Emission Strength'])
-    mat['mch_mech'] = 2
+    mat['mch_mech'] = VERSION
     return mat
 
 
@@ -410,7 +437,7 @@ def sync(mat):
     """The material's settings written into its nodes (a slider moved / a map stepped: at once)."""
     if not is_mech(mat):
         return
-    if mat.node_tree.nodes.get('mch:img:base') is None:          # (an older Mech Shader: made anew)
+    if mat.get('mch_mech', 0) < VERSION:                          # (an older Mech Shader: made anew)
         build(mat)
     st = getattr(mat, KEY)
     nodes = mat.node_tree.nodes
@@ -431,6 +458,12 @@ def sync(mat):
             img = map_image(slot, ident)
             if nd.image != img:
                 nd.image = img
+        if slot == 'base':
+            nd = nodes.get('mch:img:base_h')
+            if nd is not None:
+                img = map_image('base', ident + '_height', data=True)
+                if nd.image != img:
+                    nd.image = img
         if slot == 'rust':
             nd = nodes.get('mch:img:rust_mask')
             if nd is not None:
@@ -566,7 +599,18 @@ class MCH_PG_MechShader(bpy.types.PropertyGroup):
     emission: _slider('Emission', 0.0, 0.0, 50.0, desc='Glow strength')
     emit_color: _color('Emission Color', BASE['emit_color'])
     cloth: _slider('Cloth', 0.0, desc='Fabric: weave relief + sheen, never metallic')
-    bump: _slider('Relief', 0.3, desc='Bump strength of scratches, chips, rust, snow, weave')
+    bump: _slider('Height', 1.0, 0.0, 4.0, desc='All the bump at once (the layers\' heights below x this)')
+    h_base: _slider('Base Height', 0.3, desc='Bump of the Base map\'s own height map (pits, dents, brush lines, '
+                                            'orange peel, carbon weave)')
+    h_scratch: _slider('Scratch Depth', 0.6, desc='How deep the scratches cut in')
+    h_chip: _slider('Chip Depth', 0.5, desc='The paint\'s thickness at the chipped edges')
+    h_rust: _slider('Rust Height', 0.6, desc='How much the rust flakes stand out')
+    h_dirt: _slider('Dirt Height', 0.4, desc='How thick the dirt / mud is caked on')
+    h_snow: _slider('Snow Height', 0.7, desc='How thick the snow lies')
+    h_weave: _slider('Weave Height', 0.7, desc='Relief of the cloth weave')
+    coat: _slider('Clear Coat', 0.0, desc='A glossy coat over the surface (lacquered paint, carbon), broken by '
+                                          'scratches, rust, dirt, snow')
+    ao: _slider('Crevice AO', 0.5, desc='Crevices found by ambient occlusion too (dirt / rust gather there)')
     map_scale: _slider('Map Scale', 1.0, 0.05, 20.0, desc='Every map repeated more (bigger number = finer)')
     edge_width: _slider('Edge Width (Cycles)', 0.02, 0.0, 0.5, desc='Cycles: how wide the Bevel finds edges')
     base_map: EnumProperty(name='Base Map', items=_map_items('base'), default='MOTTLED', update=_update)
@@ -696,11 +740,153 @@ class MCH_OT_mech_shader_edges(bpy.types.Operator):
 
 def _look(context):
     """The viewport in Material Preview (the shader shows) - only when it is in Solid."""
-    for area in getattr(context.screen, 'areas', []) if context.screen else []:
+    for sp in _views(context):
+        if sp.shading.type == 'SOLID':
+            sp.shading.type = 'MATERIAL'
+
+
+def _views(context):
+    screen = getattr(context, 'screen', None)
+    for area in screen.areas if screen else []:
         if area.type == 'VIEW_3D':
             for sp in area.spaces:
-                if sp.type == 'VIEW_3D' and sp.shading.type == 'SOLID':
-                    sp.shading.type = 'MATERIAL'
+                if sp.type == 'VIEW_3D':
+                    yield sp
+
+
+# -----------------------------------------------------------------------------
+# HDRI: one of Blender's own studio-light worlds (datafiles/studiolights/world/*.exr) as the scene's world
+# -----------------------------------------------------------------------------
+
+WORLD = 'MCH HDRI'
+_HDRI_ITEMS = []
+
+
+def hdri_dir():
+    return bpy.utils.system_resource('DATAFILES', path=os.path.join('studiolights', 'world')) or ''
+
+
+def hdri_files():
+    try:
+        return sorted(f for f in os.listdir(hdri_dir()) if f.lower().endswith(('.exr', '.hdr')))
+    except OSError:
+        return []
+
+
+def _hdri_items(self, context):
+    if not _HDRI_ITEMS:                                   # (kept: Blender needs the strings to stay alive)
+        _HDRI_ITEMS.extend((f, os.path.splitext(f)[0].title(), f'Blender\'s built-in HDRI {f}')
+                           for f in hdri_files())
+        if not _HDRI_ITEMS:
+            _HDRI_ITEMS.append(('NONE', 'None', 'No built-in HDRI found'))
+    return _HDRI_ITEMS
+
+
+def hdri_world(scene):
+    """The scene's world when it is the Mech Shader HDRI, else None."""
+    w = scene.world
+    return w if w is not None and w.get('mch_hdri') else None
+
+
+def hdri_sync(scene):
+    """The HDRI world's image / strength / rotation from the scene's settings.  Returns the world or None."""
+    w = hdri_world(scene)
+    if w is None:
+        return None
+    nt = w.node_tree
+    env, bg, mp = nt.nodes.get('mch:env'), nt.nodes.get('mch:bg'), nt.nodes.get('mch:map')
+    if env is None or bg is None or mp is None:
+        return None
+    path = os.path.join(hdri_dir(), scene.mch_mech_hdri)
+    if os.path.isfile(path) and (env.image is None or os.path.normcase(bpy.path.abspath(env.image.filepath))
+                                 != os.path.normcase(path)):
+        env.image = bpy.data.images.load(path, check_existing=True)
+    bg.inputs['Strength'].default_value = scene.mch_mech_hdri_strength
+    mp.inputs['Rotation'].default_value[2] = scene.mch_mech_hdri_rot
+    w.cycles_visibility.camera = scene.mch_mech_hdri_show
+    return w
+
+
+def set_hdri(context):
+    """The scene's world becomes the HDRI (the one it had is remembered for Off); Material Preview shows it."""
+    sc = context.scene
+    path = os.path.join(hdri_dir(), sc.mch_mech_hdri)
+    if not os.path.isfile(path):
+        raise FileNotFoundError(path)
+    w = hdri_world(sc)
+    if w is None:
+        w = bpy.data.worlds.get(WORLD)
+        if w is None or not w.get('mch_hdri'):
+            w = bpy.data.worlds.new(WORLD)
+        w['mch_hdri'] = 1
+        w['mch_prev_world'] = sc.world.name if sc.world is not None else ''
+        w.use_nodes = True
+        nt = w.node_tree
+        nt.nodes.clear()
+        tc = nt.nodes.new('ShaderNodeTexCoord')
+        mp = nt.nodes.new('ShaderNodeMapping')
+        mp.name = 'mch:map'
+        env = nt.nodes.new('ShaderNodeTexEnvironment')
+        env.name = 'mch:env'
+        bg = nt.nodes.new('ShaderNodeBackground')
+        bg.name = 'mch:bg'
+        out = nt.nodes.new('ShaderNodeOutputWorld')
+        for i, n in enumerate((tc, mp, env, bg, out)):
+            n.location = (-900 + 250 * i, 0)
+        nt.links.new(tc.outputs['Generated'], mp.inputs['Vector'])
+        nt.links.new(mp.outputs['Vector'], env.inputs['Vector'])
+        nt.links.new(env.outputs['Color'], bg.inputs['Color'])
+        nt.links.new(bg.outputs['Background'], out.inputs['Surface'])
+        sc.world = w
+    hdri_sync(sc)
+    for sp in _views(context):
+        if sp.shading.type == 'SOLID':
+            sp.shading.type = 'MATERIAL'
+        sp.shading.use_scene_world = True
+    return w
+
+
+def hdri_off(context):
+    """The world the scene had before Set HDRI back; Material Preview back on its own studio light."""
+    sc = context.scene
+    w = hdri_world(sc)
+    if w is None:
+        return False
+    sc.world = bpy.data.worlds.get(w.get('mch_prev_world', '')) or None
+    for sp in _views(context):
+        sp.shading.use_scene_world = False
+    return True
+
+
+def _hdri_update(self, context):
+    hdri_sync(context.scene)
+
+
+class MCH_OT_mech_hdri(bpy.types.Operator):
+    """Light the scene with one of Blender's built-in HDRIs (the scene's world becomes it; Off gives the old one
+back).  The arrows step to the next HDRI"""
+    bl_idname = 'mch.mech_hdri'
+    bl_label = 'Set HDRI'
+    bl_options = {'REGISTER', 'UNDO'}
+    action: EnumProperty(items=[('SET', 'Set', ''), ('OFF', 'Off', '')], default='SET')
+    step: bpy.props.IntProperty(default=0)
+
+    def execute(self, context):
+        sc = context.scene
+        if self.action == 'OFF':
+            if not hdri_off(context):
+                self.report({'INFO'}, 'HDRI: the scene\'s world is not the Mech Shader HDRI')
+            return {'FINISHED'}
+        if self.step:
+            ids = [i[0] for i in _hdri_items(None, context)]
+            cur = sc.mch_mech_hdri
+            sc.mch_mech_hdri = ids[((ids.index(cur) if cur in ids else 0) + self.step) % len(ids)]
+        try:
+            set_hdri(context)
+        except FileNotFoundError as ex:
+            self.report({'WARNING'}, f'HDRI: not found ({ex})')
+            return {'CANCELLED'}
+        return {'FINISHED'}
 
 
 def _row(layout, data, prop, label=None, map_slot=None):
@@ -750,24 +936,51 @@ def draw(layout, context):
     col.prop(st, 'base_color')
     col.prop(st, 'metallic', slider=True)
     col.prop(st, 'roughness', slider=True)
+    col.prop(st, 'coat', slider=True)
     _map_row(col, st, 'base')
-    for slot, amount, extra in (('rough', 'rough_amount', ()), ('chip', 'edge_wear', ('paint', 'paint_color',
-                                                                                       'paint_rough')),
-                                ('scratch', 'scratches', ()), ('rust', 'rust', ('rust_scratch', 'rust_color')),
-                                ('dirt', 'dirt', ('dirt_color',)), ('snow', 'snow', ()),
-                                ('emit', 'emission', ('emit_color',)), ('weave', 'cloth', ())):
+    col.prop(st, 'h_base', slider=True)
+    for slot, amount, extra, height in (
+            ('rough', 'rough_amount', (), None),
+            ('chip', 'edge_wear', ('paint', 'paint_color', 'paint_rough'), 'h_chip'),
+            ('scratch', 'scratches', (), 'h_scratch'), ('rust', 'rust', ('rust_scratch', 'rust_color'), 'h_rust'),
+            ('dirt', 'dirt', ('dirt_color',), 'h_dirt'), ('snow', 'snow', (), 'h_snow'),
+            ('emit', 'emission', ('emit_color',), None), ('weave', 'cloth', (), 'h_weave')):
         sub = box.column(align=True)
         for e in extra:
             sub.prop(st, e, slider=not e.endswith('color'))
         sub.prop(st, amount, slider=True)
         _map_row(sub, st, slot)
+        if height:
+            sub.prop(st, height, slider=True)
     col = box.column(align=True)
     col.prop(st, 'bump', slider=True)
+    col.prop(st, 'ao', slider=True)
     col.prop(st, 'map_scale')
     col.prop(st, 'edge_width')
     r = box.row(align=True)
     r.operator('mch.mech_shader_edges', icon='MOD_EDGESPLIT')
     r.operator('mch.mech_shader_apply', text='New Copy', icon='DUPLICATE').preset = st.preset
+    draw_hdri(layout, context)
+
+
+def draw_hdri(layout, context):
+    sc = context.scene
+    box = layout.box()
+    on = hdri_world(sc) is not None
+    box.label(text='HDRI' + (' (on)' if on else ''), icon='WORLD')
+    r = box.row(align=True)
+    a = r.operator('mch.mech_hdri', text='', icon='TRIA_LEFT')
+    a.action, a.step = 'SET', -1
+    b = r.operator('mch.mech_hdri', text='', icon='TRIA_RIGHT')
+    b.action, b.step = 'SET', 1
+    r.prop(sc, 'mch_mech_hdri', text='')
+    col = box.column(align=True)
+    col.prop(sc, 'mch_mech_hdri_strength')
+    col.prop(sc, 'mch_mech_hdri_rot')
+    col.prop(sc, 'mch_mech_hdri_show')
+    r = box.row(align=True)
+    r.operator('mch.mech_hdri', text='Set HDRI', icon='WORLD').action = 'SET'
+    r.operator('mch.mech_hdri', text='Off', icon='X').action = 'OFF'
 
 
 class MCH_PT_mech_shader(bpy.types.Panel):
@@ -788,19 +1001,30 @@ class MCH_PT_mech_shader(bpy.types.Panel):
 
 
 CLASSES = (MCH_PG_MechShader, MCH_OT_mech_shader_apply, MCH_OT_mech_shader_step, MCH_OT_mech_shader_edges,
-           MCH_PT_mech_shader)
+           MCH_OT_mech_hdri, MCH_PT_mech_shader)
+SCENE_PROPS = ('mch_mech_preset', 'mch_mech_hdri', 'mch_mech_hdri_strength', 'mch_mech_hdri_rot',
+               'mch_mech_hdri_show')
 
 
 def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Material.mch_mech = PointerProperty(type=MCH_PG_MechShader)
-    bpy.types.Scene.mch_mech_preset = EnumProperty(name='Mech Shader Preset',
-                                                   items=[(k, n, n) for k, n, _s in PRESETS], default='STEEL')
+    T = bpy.types.Scene
+    T.mch_mech_preset = EnumProperty(name='Mech Shader Preset', items=[(k, n, n) for k, n, _s in PRESETS],
+                                     default='STEEL')
+    T.mch_mech_hdri = EnumProperty(name='HDRI', items=_hdri_items, update=_hdri_update,
+                                   description='Blender\'s built-in HDRIs (Set HDRI makes it the scene\'s world)')
+    T.mch_mech_hdri_strength = FloatProperty(name='Strength', default=1.0, min=0.0, soft_max=5.0,
+                                             update=_hdri_update)
+    T.mch_mech_hdri_rot = FloatProperty(name='Rotation', subtype='ANGLE', default=0.0, update=_hdri_update)
+    T.mch_mech_hdri_show = bpy.props.BoolProperty(name='Show Background (Cycles)', default=True,
+                                                  update=_hdri_update,
+                                                  description='Cycles: the camera sees the HDRI behind the model')
 
 
 def unregister():
-    for attr, owner in (('mch_mech', bpy.types.Material), ('mch_mech_preset', bpy.types.Scene)):
+    for attr, owner in [('mch_mech', bpy.types.Material)] + [(p, bpy.types.Scene) for p in SCENE_PROPS]:
         try:
             delattr(owner, attr)
         except AttributeError:

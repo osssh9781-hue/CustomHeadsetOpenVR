@@ -193,28 +193,36 @@ def roughness():
 def base():
     s = 'base'
     save_rgb(s, 'FLAT', tint(spectral(20, 2.5, fmax=5), (0.48, 0.48, 0.48), (0.52, 0.52, 0.52)))
+    save_gray(s, 'FLAT_height', 0.5 + (spectral(200, 1.0, fmin=20) - 0.5) * 0.15)   # (a fine surface grain)
     m = warp(spectral(21, 2.6, fmax=10), 40, 22)
     save_rgb(s, 'MOTTLED', tint(m, (0.42, 0.42, 0.43), (0.58, 0.58, 0.57)))
+    save_gray(s, 'MOTTLED_height', 0.5 + (m - 0.5) * 0.25 + (spectral(201, 1.0, fmin=20) - 0.5) * 0.2)
     b = spectral(22, 1.1, fmin=3, aniso=(1.0, 45.0))
     save_rgb(s, 'BRUSHED', tint(b, (0.4, 0.4, 0.41), (0.6, 0.6, 0.6)))
+    save_gray(s, 'BRUSHED_height', spectral(202, 0.8, fmin=6, aniso=(1.0, 45.0)))   # (the brush grooves)
     f1, _ = worley(900, 23)
     pits = np.exp(-(f1 / np.random.default_rng(23).uniform(1.0, 2.5)) ** 2)
     grain = spectral(24, 0.8, fmin=30)
     save_rgb(s, 'CAST', tint(np.clip(0.55 + (grain - 0.5) * 0.35 - pits * 0.45, 0, 1), (0.3, 0.3, 0.3),
                              (0.62, 0.62, 0.62)))
+    save_gray(s, 'CAST_height', np.clip(0.6 + (grain - 0.5) * 0.5 - pits * 0.6, 0, 1))   # (sand-cast grain, pits)
     f1, f2 = worley(60, 25)
     dents = norm(f1 / (f1 + f2 + 1e-9))
     save_rgb(s, 'FORGED', tint(dents * 0.7 + spectral(26, 2.0) * 0.3, (0.4, 0.4, 0.41), (0.6, 0.6, 0.6)))
+    save_gray(s, 'FORGED_height', 1.0 - norm(f1 / (f1 + f2 + 1e-9)) ** 0.7)   # (hammer dents: deep in the middle)
     h = warp(spectral(27, 2.8, fmax=8), 60, 28)
     heat = np.stack([0.5 + 0.07 * np.sin(h * 5.0), 0.49 + 0.04 * np.sin(h * 5.0 + 2.0),
                      0.5 + 0.09 * np.sin(h * 5.0 + 4.0)], -1)
     save_rgb(s, 'HEAT', heat)
+    save_gray(s, 'HEAT_height', 0.5 + (spectral(203, 1.0, fmin=20) - 0.5) * 0.2)
     p = soft(warp(spectral(29, 2.5, fmax=10), 40, 30), 0.45, 0.75)
     pat = tint(spectral(31, 1.5), (0.46, 0.47, 0.47), (0.54, 0.54, 0.53)) * (1 - p[..., None]) + \
         tint(spectral(32, 2.0), (0.32, 0.52, 0.46), (0.42, 0.62, 0.55)) * p[..., None]
     save_rgb(s, 'PATINA', pat)
+    save_gray(s, 'PATINA_height', 0.4 + p * 0.35 + (spectral(204, 1.2, fmin=10) - 0.5) * 0.3)   # (crusty patina)
     op = blur(spectral(33, 0.5, fmin=40), 1.2)
     save_rgb(s, 'PEEL', tint(norm(op), (0.46, 0.46, 0.46), (0.54, 0.54, 0.54)))
+    save_gray(s, 'PEEL_height', norm(blur(spectral(205, 0.6, fmin=25), 2.0)))   # (orange peel: soft dimples)
     # carbon fibre: 2x2 twill of tows, 16 per tile
     t = 16
     u = (XX / N * t) % 1.0
@@ -224,10 +232,12 @@ def base():
     tow = np.where(over == 0, np.sin(math.pi * v) ** 0.5, np.sin(math.pi * u) ** 0.5)
     save_rgb(s, 'CARBON', tint(tow * 0.85 + spectral(34, 0.6, fmin=60) * 0.15, (0.12, 0.12, 0.13),
                               (0.5, 0.5, 0.52)))
+    save_gray(s, 'CARBON_height', tow)                                     # (the tows' rounded backs)
     c1 = soft(warp(spectral(35, 3.0, fmax=6), 50, 36), 0.45, 0.5)
     c2 = soft(warp(spectral(37, 3.0, fmax=8), 50, 38), 0.55, 0.6)
     camo = 0.62 - c1 * 0.18 - c2 * 0.16
     save_rgb(s, 'CAMO', tint(camo, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0)))
+    save_gray(s, 'CAMO_height', 0.5 + (c1 + c2) * 0.08 + (spectral(206, 0.8, fmin=25) - 0.5) * 0.2)   # (paint edges)
 
 
 def chips():

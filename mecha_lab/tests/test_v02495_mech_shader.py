@@ -1,7 +1,10 @@
 """0.24.95 Mech Shader (user: "메카닉 쉐이더 프리셋 - 플라스틱, 쇠, 페인트, 까진 페인트, 흙, 눈, 기스, 녹, 에미션, 천 - 슬라이더로,
 러프니스 같은 맵은 각자 프리셋 10개 정도, 넘기면 바로바로 바뀌게"; "프로시저럴 말고 러프니스 맵이랑 베이스 맵 직접 만들어서"):
 a material of layers whose patterns are texture maps made for it (mech_maps/, 10 per slot, seamless, box-projected),
-material presets that set every slider and map, and steps that swap a map / preset at once."""
+material presets that set every slider and map, and steps that swap a map / preset at once.
+Then (user: "범프맵 연결해서 하이트 조절하게 해 주고 좀 더 리얼하게 해 줘, 그리고 HDRI도 깔아서"): every Base map has a
+height map of its own, each layer a Height slider (scratch depth, chip depth, rust / dirt / snow thickness, weave
+relief) into one Bump node, a Clear Coat, AO crevices, and one of Blender's built-in HDRIs as the scene's world."""
 import os
 
 import numpy as np
@@ -18,7 +21,8 @@ C = bpy.context
 # ---- the maps: ten per slot, every one on disk, seamless
 missing = [(s, k) for s in ms.MAP_KEYS for k, _l in ms.MAPS[s][3] if ms.map_path(s, k) is None]
 missing += [('rust', k + '_mask') for k, _l in ms.MAPS['rust'][3] if ms.map_path('rust', k + '_mask') is None]
-check('Ten maps per slot (Base, Roughness, Chips, Scratches, Rust colour + mask, Dirt, Snow, Emission, Weave), all '
+missing += [('base', k + '_height') for k, _l in ms.MAPS['base'][3] if ms.map_path('base', k + '_height') is None]
+check('Ten maps per slot (Base + its height map, Roughness, Chips, Scratches, Rust colour + mask, Dirt, Snow, Emission, Weave), all '
       'on disk', all(len(ms.MAPS[s][3]) == 10 for s in ms.MAP_KEYS) and not missing, missing)
 seam = []
 for slot, ident in (('rough', 'SMUDGE'), ('base', 'MOTTLED'), ('dirt', 'MUD'), ('snow', 'PATCHY'), ('chip', 'BIG')):
@@ -56,6 +60,16 @@ check('... every slot\'s map on its image node (box projection: no UVs needed), 
       all(nodes['mch:img:' + s].image is not None and nodes['mch:img:' + s].projection == 'BOX'
           for s in ms.MAP_KEYS) and nodes['mch:img:rough'].image.colorspace_settings.name == 'Non-Color'
       and nodes['mch:img:base'].image.colorspace_settings.name == 'sRGB')
+check('... the Base map\'s height map on its own node (Non-Color)', nodes['mch:img:base_h'].image is not None
+      and nodes['mch:img:base_h'].image.name.startswith(st.base_map + '_height')
+      and nodes['mch:img:base_h'].image.colorspace_settings.name == 'Non-Color')
+bump = next(n for n in nodes if n.bl_idname == 'ShaderNodeBump')
+check('... one Bump node into the BSDF\'s Normal, its Height fed (the layers\' heights)',
+      bump.inputs['Height'].is_linked and nodes['mch:bsdf'].inputs['Normal'].links
+      and nodes['mch:bsdf'].inputs['Normal'].links[0].from_node == bump)
+check('... Clear Coat and AO crevices wired', nodes['mch:bsdf'].inputs['Coat Weight'].is_linked
+      and nodes['mch:ao_node'].bl_idname == 'ShaderNodeAmbientOcclusion'
+      and nodes['mch:ao'].bl_idname == 'ShaderNodeValue' and nodes['mch:ao_node'].outputs['AO'].is_linked)
 check('... the sliders in the nodes (Paint 1, Edge Wear 0.35)', abs(nodes['mch:paint'].outputs[0].default_value - 1.0)
       < 1e-6 and abs(nodes['mch:edge_wear'].outputs[0].default_value - 0.35) < 1e-6)
 
@@ -91,6 +105,13 @@ check('Cloth Canvas: cloth on (weave + sheen), not metallic', st.cloth == 1.0 an
       and nodes['mch:img:weave'].image.name.startswith('CANVAS'))
 st.roughness = 0.9
 check('A slider moved: in the node at once', abs(nodes['mch:roughness'].outputs[0].default_value - 0.9) < 1e-6)
+st.h_weave, st.bump, st.coat = 0.33, 2.5, 0.8
+check('... the Height sliders too (Weave Height, Height, Clear Coat)',
+      abs(nodes['mch:h_weave'].outputs[0].default_value - 0.33) < 1e-6
+      and abs(nodes['mch:bump'].outputs[0].default_value - 2.5) < 1e-6
+      and abs(nodes['mch:coat'].outputs[0].default_value - 0.8) < 1e-6)
+st.base_map = 'CAST'
+check('... a Base map step brings its own height map', nodes['mch:img:base_h'].image.name.startswith('CAST_height'))
 check('Preset colours picked on screen are stored linear (Steel\'s 0.56 grey -> about 0.27)',
       abs(dict((p[0], p[2]) for p in ms.PRESETS)['STEEL']['base_color'][0] - 0.274) < 0.01)
 
@@ -99,6 +120,29 @@ bpy.ops.mesh.primitive_uv_sphere_add(location=(4, 0, 0))
 sp = C.active_object
 bpy.ops.mch.mech_shader_step(prop='preset', step=1)
 check('A mesh without one: stepping the preset puts a Mech material on it', ms.is_mech(sp.active_material))
+
+# ---- the HDRI: Blender's own, the scene's world only when asked, Off gives the old one back
+sc = C.scene
+old = bpy.data.worlds.new('my world')
+sc.world = old
+files = ms.hdri_files()
+check('Blender\'s built-in HDRIs found (city, courtyard, forest, interior, night, studio, sunrise, sunset)',
+      len(files) >= 8 and 'courtyard.exr' in files, files)
+sc.mch_mech_hdri = 'courtyard.exr'
+check('... picking one does not change the scene\'s world by itself', sc.world == old)
+r = bpy.ops.mch.mech_hdri(action='SET')
+w = sc.world
+env = w.node_tree.nodes['mch:env']
+check('Set HDRI: the scene\'s world is the HDRI (Environment Texture of courtyard.exr)', r == {'FINISHED'}
+      and ms.hdri_world(sc) == w and env.image is not None and env.image.filepath.endswith('courtyard.exr'))
+sc.mch_mech_hdri_strength, sc.mch_mech_hdri_rot = 2.0, 1.0
+check('... Strength / Rotation move it at once', abs(w.node_tree.nodes['mch:bg'].inputs['Strength'].default_value - 2)
+      < 1e-6 and abs(w.node_tree.nodes['mch:map'].inputs['Rotation'].default_value[2] - 1.0) < 1e-6)
+bpy.ops.mch.mech_hdri(action='SET', step=1)
+check('... the arrow steps to the next HDRI', sc.mch_mech_hdri == 'forest.exr'
+      and w.node_tree.nodes['mch:env'].image.filepath.endswith('forest.exr') and sc.world == w)
+bpy.ops.mch.mech_hdri(action='OFF')
+check('Off: the world the scene had is back', sc.world == old)
 
 # ---- the panel
 root = capture(lambda layout, context: ms.draw(layout, context), C)
@@ -111,8 +155,9 @@ def walk(n):
 
 
 props = {n.prop for n in walk(root) if n.kind == 'prop'}
-check('Panel: the preset and every map with its slider (and Map Scale, Relief)',
+check('Panel: the preset, every map with its slider and Height, Clear Coat, AO, Map Scale and the HDRI',
       {'preset', 'base_map', 'rough_map', 'chip_map', 'scratch_map', 'rust_map', 'dirt_map', 'snow_map', 'emit_map',
        'weave_map', 'edge_wear', 'scratches', 'rust', 'rust_scratch', 'dirt', 'snow', 'emission', 'cloth',
-       'roughness', 'map_scale', 'bump'} <= props, sorted(props))
+       'roughness', 'map_scale', 'bump', 'h_base', 'h_scratch', 'h_chip', 'h_rust', 'h_dirt', 'h_snow', 'h_weave',
+       'coat', 'ao', 'mch_mech_hdri', 'mch_mech_hdri_strength', 'mch_mech_hdri_rot'} <= props, sorted(props))
 summary()
