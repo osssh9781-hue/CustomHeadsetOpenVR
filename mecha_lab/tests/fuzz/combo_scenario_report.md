@@ -1,120 +1,1190 @@
-# Fuzz report: 100 scenarios x 14 steps (seeds 1..100)
+# Fuzz report: 978 scenarios x 14 steps (seeds 123..1100)
 
-{'OK': 100} in 333 s, largest Blender process 900 MB
+{'OK': 978} in 3612 s, largest Blender process 2951 MB
+
+## BAD results (the mesh after a step)
+
+- seed 133: BAD divide: MCH_Base_Split strays 3.1 % of its size from the part
+- seed 134: BAD divide: MCH_Base strays 3.0 % of its size from the part
+- seed 155: BAD 13 warped: MCH_Base_Split 1 new faces bent more than 1 % of its size after Box Hide poly from SIDE on MCH_Base_Split, then split_off
+- seed 170: BAD 13 warped: Part_Split_Hidden 1 new faces bent more than 1 % of its size after Box Hide circle from BOTTOM on Part_Split_Hidden, then restore
+- seed 199: BAD divide: Part strays 3.8 % of its size from the part
+- seed 226: BAD 5 open: MCH_Base 0 open / 1 3-face edges after Box Hide circle from SIDE on MCH_Base, then apply
+- seed 226: BAD 6 crease: MCH_Base 14 new hard edges without a crease after Split line from BOTTOM on MCH_Base (14 in all)
+- seed 251: BAD divide: MCH_Base_Split strays 3.6 % of its size from the part
+- seed 268: BAD divide: MCH_Base strays 3.3 % of its size from the part
+- seed 311: BAD divide: Part strays 3.6 % of its size from the part
+- seed 317: BAD divide: MCH_Base strays 3.4 % of its size from the part
+- seed 352: BAD divide: Part_Split_Split strays 4.5 % of its size from the part
+- seed 383: BAD divide: MCH_Base_Split.002 strays 3.2 % of its size from the part
+- seed 404: BAD 13 warped: Part_Split 1 new faces bent more than 1 % of its size after Box Hide circle from BOTTOM on Part_Split, then split_off
+- seed 466: BAD divide: Part strays 7.5 % of its size from the part
+- seed 496: BAD divide: MCH_Base_Split strays 3.7 % of its size from the part
+- seed 498: BAD divide: MCH_Base strays 4.7 % of its size from the part
+- seed 505: BAD divide: Part_Split.001 strays 4.0 % of its size from the part
+- seed 539: BAD divide: Part_Hidden.002 strays 7.1 % of its size from the part
+- seed 552: BAD 12 crease: Part 13 new hard edges without a crease after Base Mesh subtract poly BEVEL CUT h 0.17 from TOP on Part (13 in all)
+- seed 571: BAD divide: Part strays 5.6 % of its size from the part
+- seed 579: BAD divide: Part_Hidden_Split strays 4.1 % of its size from the part
+- seed 662: BAD 13 warped: Part_Hidden 1 new faces bent more than 1 % of its size after Cut rect BEVEL from FRONT on Part_Hidden
+- seed 667: BAD divide: Part_Hidden strays 3.5 % of its size from the part
+- seed 707: BAD divide: Part_Hidden strays 8.1 % of its size from the part
+- seed 741: BAD divide: Part strays 3.7 % of its size from the part
+- seed 757: BAD divide: MCH_Base_Hidden.002 strays 3.7 % of its size from the part
+- seed 771: BAD divide: MCH_Base_Split_Split strays 3.7 % of its size from the part
+- seed 781: BAD divide: Part strays 4.0 % of its size from the part
+- seed 793: BAD 8 warped: MCH_Base_Split 1 new faces bent more than 1 % of its size after Box Hide circle from FRONT on MCH_Base_Split, then apply
+- seed 825: BAD divide: Part strays 3.2 % of its size from the part
+- seed 831: BAD divide: Part strays 5.2 % of its size from the part
+- seed 835: BAD divide: MCH_Base strays 3.8 % of its size from the part
+- seed 869: BAD divide: MCH_Base strays 3.1 % of its size from the part
+- seed 873: BAD divide: Part_Hidden strays 5.3 % of its size from the part
+- seed 877: BAD divide: Part_Hidden strays 3.3 % of its size from the part
+- seed 895: BAD 10 open: Part 90 open / 0 3-face edges after Cut circle BEVEL from BOTTOM on Part
+- seed 897: BAD divide: Part strays 4.1 % of its size from the part
+- seed 907: BAD divide: MCH_Base strays 3.0 % of its size from the part
+- seed 956: BAD 9 warped: MCH_Base 2 new faces bent more than 1 % of its size after Box Hide circle from FRONT on MCH_Base, then split_off
+- seed 963: BAD divide: MCH_Base_Split.001 strays 3.4 % of its size from the part
+- seed 980: BAD divide: MCH_Base strays 3.3 % of its size from the part
+- seed 984: BAD divide: Part strays 4.0 % of its size from the part
+- seed 1012: BAD divide: Part strays 3.1 % of its size from the part
+- seed 1016: BAD divide: Part_Split.001 strays 3.2 % of its size from the part
+- seed 1037: BAD divide: Part strays 7.2 % of its size from the part
+- seed 1057: BAD divide: MCH_Base strays 3.6 % of its size from the part
+- seed 1066: BAD 10 warped: MCH_Base 1 new faces bent more than 1 % of its size after Box Hide circle from TOP on MCH_Base, then restore
 
 ## Python errors inside steps (Blender lived)
 
+- 2 x divide: MCH_Base strays 3.0 % of its size from the part
+- 2 x divide: MCH_Base strays 3.3 % of its size from the part
+- 2 x divide: Part strays 4.0 % of its size from the part
+- 1 x divide: MCH_Base_Split strays 3.1 % of its size from the part
+- 1 x warped: MCH_Base_Split 1 new faces bent more than 1 % of its size after Box Hide poly from SIDE on
+- 1 x warped: Part_Split_Hidden 1 new faces bent more than 1 % of its size after Box Hide circle from BO
+- 1 x divide: Part strays 3.8 % of its size from the part
+- 1 x open: MCH_Base 0 open / 1 3-face edges after Box Hide circle from SIDE on MCH_Base, then apply
+- 1 x crease: MCH_Base 14 new hard edges without a crease after Split line from BOTTOM on MCH_Base (14 i
+- 1 x divide: MCH_Base_Split strays 3.6 % of its size from the part
+- 1 x divide: Part strays 3.6 % of its size from the part
+- 1 x divide: MCH_Base strays 3.4 % of its size from the part
+- 1 x divide: Part_Split_Split strays 4.5 % of its size from the part
+- 1 x divide: MCH_Base_Split.002 strays 3.2 % of its size from the part
+- 1 x warped: Part_Split 1 new faces bent more than 1 % of its size after Box Hide circle from BOTTOM on
+- 1 x divide: Part strays 7.5 % of its size from the part
+- 1 x divide: MCH_Base_Split strays 3.7 % of its size from the part
+- 1 x divide: MCH_Base strays 4.7 % of its size from the part
+- 1 x divide: Part_Split.001 strays 4.0 % of its size from the part
+- 1 x divide: Part_Hidden.002 strays 7.1 % of its size from the part
+- 1 x crease: Part 13 new hard edges without a crease after Base Mesh subtract poly BEVEL CUT h 0.17 fro
+- 1 x divide: Part strays 5.6 % of its size from the part
+- 1 x divide: Part_Hidden_Split strays 4.1 % of its size from the part
+- 1 x warped: Part_Hidden 1 new faces bent more than 1 % of its size after Cut rect BEVEL from FRONT on 
+- 1 x divide: Part_Hidden strays 3.5 % of its size from the part
+- 1 x divide: Part_Hidden strays 8.1 % of its size from the part
+- 1 x divide: Part strays 3.7 % of its size from the part
+- 1 x divide: MCH_Base_Hidden.002 strays 3.7 % of its size from the part
+- 1 x divide: MCH_Base_Split_Split strays 3.7 % of its size from the part
+- 1 x warped: MCH_Base_Split 1 new faces bent more than 1 % of its size after Box Hide circle from FRONT
+- 1 x divide: Part strays 3.2 % of its size from the part
+- 1 x divide: Part strays 5.2 % of its size from the part
+- 1 x divide: MCH_Base strays 3.8 % of its size from the part
+- 1 x divide: MCH_Base strays 3.1 % of its size from the part
+- 1 x divide: Part_Hidden strays 5.3 % of its size from the part
+- 1 x divide: Part_Hidden strays 3.3 % of its size from the part
+- 1 x open: Part 90 open / 0 3-face edges after Cut circle BEVEL from BOTTOM on Part
+- 1 x divide: Part strays 4.1 % of its size from the part
+- 1 x warped: MCH_Base 2 new faces bent more than 1 % of its size after Box Hide circle from FRONT on MC
+- 1 x divide: MCH_Base_Split.001 strays 3.4 % of its size from the part
+- 1 x divide: Part strays 3.1 % of its size from the part
+- 1 x divide: Part_Split.001 strays 3.2 % of its size from the part
+- 1 x divide: Part strays 7.2 % of its size from the part
+- 1 x divide: MCH_Base strays 3.6 % of its size from the part
+- 1 x warped: MCH_Base 1 new faces bent more than 1 % of its size after Box Hide circle from TOP on MCH_
 
 ## Refusals / slow steps (the tool said no, or took over 20 s)
 
-- seed 1: FAIL 5 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 2: FAIL 4 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/846 vertices of Part_Split | shape px (533,493)-(550,509) in
-- seed 2: FAIL 11 refused: The result would delete the whole object; nothing was changed. [Part_Hidden_Hidden: Keep inside (Alt invert or Split inner part) - the shape
-- seed 6: FAIL 4 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/428 vertices of MCH_Base | shape px (410,470)-(431,505) in ? |
-- seed 6: FAIL 8 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/211 vertices of MCH_Base | shape px (533,491)-(554,512) in ? |
-- seed 6: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
-- seed 7: FAIL 12 refused: The shape does not intersect "Part_Hidden_Split"; nothing was changed. [shape covers 36/36 vertices of Part_Hidden_Split | shape px (404,483
-- seed 9: FAIL 6 refused: The result would delete the whole object; nothing was changed. [MCH_Base_Hidden: Keep inside (Alt invert or Split inner part) - the shape ma
-- seed 9: FAIL 10 refused: The drawn shape is too small or has zero area.
-- seed 9: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
-- seed 10: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 10: FAIL 14 refused: The shape does not intersect "MCH_Base_Split.001"; nothing was changed. [shape covers 0/526 vertices of MCH_Base_Split.001 | shape px (519,5
-- seed 11: FAIL 14 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 12: FAIL 8 refused: The drawn shape covers the whole of "MCH_Base_Split_Hidden", so cutting would delete all of it; nothing was changed. Draw over only part of 
-- seed 12: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 12: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 12: FAIL 13 refused: The drawn shape covers the whole of "MCH_Base_Split_Hidden", so cutting would delete all of it; nothing was changed. Draw over only part of 
-- seed 12: FAIL 14 refused: The drawn shape covers the whole of "MCH_Base_Split_Hidden", so cutting would delete all of it; nothing was changed. Draw over only part of 
-- seed 13: FAIL 12 refused: Box Hide: all of "Part_Hidden_Split_Split" is hidden - applying would leave an empty object (Show All, or delete the part)
-- seed 13: FAIL divide Part_Hidden_Split_Split refused: nothing to bake: the part's modifiers (a Box Hide ...) leave no faces
-- seed 14: FAIL 9 refused: The shape does not intersect "Part_Split.001"; nothing was changed. [shape covers 0/404 vertices of Part_Split.001 | shape px (624,329)-(649
-- seed 14: FAIL 12 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/559 vertices of Part_Split | shape px (532,494)-(553,509) in
-- seed 14: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 17: FAIL 7 refused: The result would delete the whole object; nothing was changed. [MCH_Base_Hidden: Keep inside (Alt invert or Split inner part) - the shape ma
-- seed 17: FAIL 14 refused: The drawn shape covers the whole of "MCH_Base_Split_Split", so cutting would delete all of it; nothing was changed. Draw over only part of t
-- seed 18: FAIL 4 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/106 vertices of Part_Split | shape px (538,550)-(571,591) in
-- seed 18: FAIL 13 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/280 vertices of Part_Split | shape px (485,545)-(495,555) in
-- seed 23: FAIL 8 refused: The shape does not intersect "Part_Hidden.001_Split_Split"; nothing was changed. [shape covers 30/30 vertices of Part_Hidden.001_Split_Split
-- seed 23: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
-- seed 25: FAIL 3 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
-- seed 26: FAIL 6 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
-- seed 27: FAIL 11 refused: Box Hide: all of "MCH_Base_Split_Split" is hidden - applying would leave an empty object (Show All, or delete the part)
-- seed 27: FAIL 12 refused: "MCH_Base_Split_Split" has no faces to work on (a Box Hide may hide all of it - Show All first).
-- seed 27: FAIL divide MCH_Base_Split_Split refused: nothing to bake: the part's modifiers (a Box Hide ...) leave no faces
-- seed 29: FAIL 8 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 29: FAIL 14 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/367 vertices of MCH_Base_Split | shape px (538,508)-(549
-- seed 32: FAIL 7 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 33: FAIL 6 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 35: FAIL 9 refused: The drawn shape is too small or has zero area.
-- seed 35: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 36: FAIL 7 refused: The drawn shape covers the whole of "Part_Split", so cutting would delete all of it; nothing was changed. Draw over only part of the object.
-- seed 36: FAIL 14 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 37: FAIL 12 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 38: FAIL 14 refused: The drawn shape covers the whole of "MCH_Base_Hidden_Split.001", so cutting would delete all of it; nothing was changed. Draw over only part
-- seed 39: FAIL 3 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/806 vertices of Part | shape px (473,475)-(496,495) in ? | ORTHO |
-- seed 40: FAIL 14 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 43: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 43: FAIL 11 refused: The drawn shape covers the whole of "Part_Split_Split", so cutting would delete all of it; nothing was changed. Draw over only part of the o
-- seed 44: FAIL 12 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/1317 vertices of MCH_Base | shape px (447,531)-(500,591) in ? 
-- seed 45: FAIL 1 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 47: FAIL 3 refused: The shape does not intersect the mesh; nothing was changed.
-- seed 47: FAIL 4 refused: The drawn shape is too small or has zero area.
-- seed 47: FAIL 14 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/144 vertices of Part_Hidden | shape px (445,485)-(458,502) 
-- seed 48: FAIL 11 refused: The drawn shape covers the whole of "MCH_Base_Hidden_Split", so cutting would delete all of it; nothing was changed. Draw over only part of 
-- seed 48: FAIL 14 refused: The drawn shape is too small or has zero area.
-- seed 49: FAIL 6 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 49: FAIL 8 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 49: FAIL 9 refused: The drawn shape covers the whole of "Part_Hidden_Hidden_Hidden", so cutting would delete all of it; nothing was changed. Draw over only part
-- seed 49: FAIL 10 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/934 vertices of Part_Hidden | shape px (405,480)-(434,493) 
-- seed 49: FAIL 11 refused: Box Hide: all of "Part_Hidden_Hidden_Hidden" is hidden - applying would leave an empty object (Show All, or delete the part)
-- seed 49: FAIL divide Part_Hidden_Hidden_Hidden refused: nothing to bake: the part's modifiers (a Box Hide ...) leave no faces
-- seed 50: FAIL 7 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/22 vertices of MCH_Base_Split | shape px (451,546)-(482,
-- seed 51: FAIL 3 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 52: FAIL 6 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/184 vertices of Part_Split | shape px (432,548)-(492,608) in
-- seed 53: FAIL 2 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 55: FAIL 10 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/2404 vertices of Part_Split | shape px (473,509)-(541,534) i
-- seed 56: FAIL 3 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
-- seed 59: FAIL 1 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/8 vertices of Part | shape px (558,553)-(594,568) in ? | ORTHO | A
-- seed 61: FAIL 9 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
-- seed 63: FAIL 2 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/261 vertices of MCH_Base | shape px (424,420)-(439,439) in ? |
-- seed 63: FAIL 3 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 64: FAIL 5 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/838 vertices of MCH_Base | shape px (301,445)-(391,516) in ? |
-- seed 64: FAIL 7 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/160 vertices of MCH_Base_Split | shape px (411,494)-(430
-- seed 64: FAIL 9 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 64: FAIL 10 refused: The shape does not intersect "MCH_Base_Hidden"; nothing was changed. [shape covers 0/553 vertices of MCH_Base_Hidden | shape px (474,481)-(4
-- seed 64: FAIL 12 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 66: FAIL 5 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 68: FAIL 9 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/410 vertices of MCH_Base_Split | shape px (482,411)-(509
-- seed 69: FAIL 6 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/282 vertices of Part_Split | shape px (399,531)-(466,598) in
-- seed 72: FAIL 11 refused: The shape does not intersect the mesh; nothing was changed.
-- seed 72: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
-- seed 73: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 74: FAIL 3 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/232 vertices of MCH_Base | shape px (574,427)-(668,489) in ? |
-- seed 74: FAIL 9 refused: The drawn shape is too small or has zero area.
-- seed 74: FAIL 14 refused: The drawn shape covers the whole of "MCH_Base_Split_Split", so cutting would delete all of it; nothing was changed. Draw over only part of t
-- seed 75: FAIL 3 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/188 vertices of MCH_Base | shape px (464,471)-(532,486) in ? |
-- seed 75: FAIL 10 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
-- seed 75: FAIL 12 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 77: FAIL 12 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/970 vertices of Part | shape px (578,428)-(596,446) in ? | ORTHO |
-- seed 78: FAIL 8 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 80: FAIL 11 refused: The drawn shape is too small or has zero area.
-- seed 81: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 83: FAIL 8 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 83: FAIL 13 refused: The drawn shape covers the whole of "MCH_Base_Split_Hidden", so cutting would delete all of it; nothing was changed. Draw over only part of 
-- seed 85: FAIL 7 refused: The shape does not intersect "Part_Split_Split"; nothing was changed. [shape covers 0/352 vertices of Part_Split_Split | shape px (452,497)-
-- seed 87: FAIL 3 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 87: FAIL 9 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 88: FAIL 5 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
-- seed 88: FAIL 6 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
-- seed 88: FAIL 10 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
-- seed 88: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
-- seed 88: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
-- seed 92: FAIL 12 refused: The shape does not intersect the mesh; nothing was changed.
-- seed 93: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 96: FAIL 6 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/1202 vertices of Part | shape px (555,381)-(606,454) in ? | ORTHO 
-- seed 96: FAIL 9 refused: The result would delete the whole object; nothing was changed. [Part_Hidden: Keep inside (Alt invert or Split inner part) - the shape may no
-- seed 97: FAIL 12 refused: The outline is not on a mesh: draw over the surface you want the plate on.
-- seed 98: FAIL 6 refused: The drawn shape is too small or has zero area.
-- seed 98: FAIL 13 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/289 vertices of Part_Hidden | shape px (419,478)-(447,497) 
-- seed 99: FAIL 4 refused: The drawn shape is too small or has zero area.
-- seed 99: FAIL 7 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 123: FAIL 14 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 124: FAIL 9 refused: The drawn shape is too small or has zero area.
+- seed 124: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 126: FAIL 5 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/896 vertices of MCH_Base | shape px (524,599)-(542,624) in ? |
+- seed 126: FAIL 7 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 126: FAIL 10 refused: The result would delete the whole object; nothing was changed. [MCH_Base_Hidden_Hidden: Keep inside (Alt invert or Split inner part) - the s
+- seed 126: FAIL 13 refused: The shape does not intersect "MCH_Base_Hidden"; nothing was changed. [shape covers 0/316 vertices of MCH_Base_Hidden | shape px (526,496)-(5
+- seed 128: FAIL 8 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/268 vertices of Part_Split | shape px (506,459)-(540,492) in
+- seed 129: FAIL 6 refused: The drawn shape covers the whole of "MCH_Base_Split_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing was c
+- seed 129: FAIL 7 refused: The drawn shape covers the whole of "MCH_Base_Split_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing was c
+- seed 129: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 130: FAIL 6 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/1538 vertices of MCH_Base | shape px (546,522)-(565,541) in ? 
+- seed 132: FAIL 1 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 132: FAIL 4 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 132: FAIL 14 refused: The shape does not intersect "MCH_Base_Split_Split_Split"; nothing was changed. [shape covers 0/444 vertices of MCH_Base_Split_Split_Split |
+- seed 133: FAIL 5 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 133: FAIL 9 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/178 vertices of MCH_Base_Split | shape px (475,542)-(498
+- seed 136: FAIL 4 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/410 vertices of MCH_Base | shape px (586,325)-(618,436) in ? |
+- seed 137: FAIL 7 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 139: FAIL 3 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 140: FAIL 14 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 141: FAIL 5 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 141: FAIL 7 refused: The drawn shape covers the whole of "MCH_Base_Split_Hidden" (a Cut would delete all of it, a Split would leave nothing behind); nothing was 
+- seed 141: FAIL 13 refused: The shape does not intersect "MCH_Base_Split.001"; nothing was changed. [shape covers 0/778 vertices of MCH_Base_Split.001 | shape px (509,4
+- seed 142: FAIL 5 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/333 vertices of MCH_Base | shape px (563,553)-(583,571) in ? |
+- seed 142: FAIL 7 refused: The shape does not intersect "MCH_Base_Hidden"; nothing was changed. [shape covers 0/354 vertices of MCH_Base_Hidden | shape px (559,559)-(5
+- seed 142: FAIL 8 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 142: FAIL 11 refused: The result would delete the whole object; nothing was changed. [MCH_Base_Hidden_Hidden: Keep inside (Alt invert or Split inner part) - the s
+- seed 147: FAIL 5 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/108 vertices of MCH_Base | shape px (399,524)-(494,537) in ? |
+- seed 147: FAIL 11 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/142 vertices of MCH_Base_Split | shape px (587,534)-(595
+- seed 147: FAIL 14 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 148: SLOW 6 35.7 s: Cut circle CHAMFER from SIDE on MCH_Base
+- seed 148: FAIL 11 refused: The drawn shape is too small or has zero area.
+- seed 149: FAIL 10 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 150: FAIL 3 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 151: FAIL 5 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 151: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 151: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 151: FAIL 12 refused: Box Hide: all of "MCH_Base_Split_Split" is hidden - nothing would be left to split it off from (Show All, or keep it as it is)
+- seed 151: FAIL divide MCH_Base_Split_Split refused: nothing to bake: the part's modifiers (a Box Hide ...) leave no faces
+- seed 152: FAIL 6 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 157: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 157: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 161: FAIL 14 refused: The drawn shape is too small or has zero area.
+- seed 162: FAIL 11 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 162: FAIL 12 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 162: FAIL 14 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/324 vertices of Part_Split | shape px (554,513)-(568,544) in
+- seed 164: FAIL 7 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 167: FAIL 7 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 167: FAIL 8 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/492 vertices of Part | shape px (496,514)-(522,540) in ? | ORTHO |
+- seed 167: FAIL 12 refused: Box Hide: all of "Part_Hidden_Split_Split" is hidden - nothing would be left to split it off from (Show All, or keep it as it is)
+- seed 167: FAIL 14 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 167: FAIL divide Part_Hidden_Split_Split refused: nothing to bake: the part's modifiers (a Box Hide ...) leave no faces
+- seed 168: FAIL 7 refused: The drawn shape is too small or has zero area.
+- seed 168: FAIL 13 refused: The shape does not intersect "Part_Split.001"; nothing was changed. [shape covers 0/819 vertices of Part_Split.001 | shape px (435,488)-(494
+- seed 168: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 171: FAIL 4 refused: The shape does not intersect "MCH_Base_Hidden"; nothing was changed. [shape covers 0/270 vertices of MCH_Base_Hidden | shape px (483,493)-(4
+- seed 172: FAIL 5 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 172: FAIL 11 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 175: FAIL 6 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/285 vertices of MCH_Base_Split | shape px (573,416)-(582
+- seed 177: FAIL 11 refused: The shape does not intersect "Part_Split_Split"; nothing was changed. [shape covers 0/496 vertices of Part_Split_Split | shape px (460,465)-
+- seed 178: FAIL 10 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/3693 vertices of Part | shape px (651,405)-(722,598) in ? | ORTHO 
+- seed 182: FAIL 2 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 182: FAIL 9 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/506 vertices of MCH_Base_Split | shape px (481,506)-(497
+- seed 182: FAIL 14 refused: The drawn shape covers the whole of "MCH_Base_Split_Hidden_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothin
+- seed 184: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 184: FAIL 12 refused: The result would delete the whole object; nothing was changed. [Part_Split_Hidden: Keep inside (Alt invert or Split inner part) - the shape 
+- seed 185: FAIL 12 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/1075 vertices of Part_Split | shape px (515,501)-(527,514) i
+- seed 186: FAIL 9 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/26 vertices of Part_Hidden | shape px (624,580)-(638,594) i
+- seed 186: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 189: FAIL 12 refused: The drawn shape covers the whole of "MCH_Base_Hidden" (a Cut would delete all of it, a Split would leave nothing behind); nothing was change
+- seed 191: FAIL 10 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/221 vertices of MCH_Base | shape px (353,400)-(462,572) in ? |
+- seed 192: FAIL 5 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/330 vertices of Part | shape px (354,426)-(387,455) in ? | ORTHO |
+- seed 192: FAIL 9 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/89 vertices of Part_Hidden | shape px (369,509)-(380,518) i
+- seed 192: FAIL 10 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/89 vertices of Part_Hidden | shape px (385,513)-(400,528) i
+- seed 199: FAIL 14 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 200: FAIL 5 refused: The drawn shape is too small or has zero area.
+- seed 200: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 201: FAIL 8 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/144 vertices of Part_Hidden | shape px (368,550)-(396,562) 
+- seed 203: FAIL 5 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 204: FAIL 4 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/280 vertices of MCH_Base_Split | shape px (478,559)-(502
+- seed 206: FAIL 14 refused: The drawn shape covers the whole of "Part_Split_Hidden_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing wa
+- seed 207: FAIL 4 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/341 vertices of MCH_Base | shape px (555,400)-(596,522) in ? |
+- seed 208: FAIL 8 refused: The result would delete the whole object; nothing was changed. [Part_Hidden: Keep inside (Alt invert or Split inner part) - the shape may no
+- seed 208: FAIL 13 refused: Box Hide: all of "Part_Split" is hidden - nothing would be left to split it off from (Show All, or keep it as it is)
+- seed 208: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 208: FAIL divide Part_Split refused: nothing to bake: the part's modifiers (a Box Hide ...) leave no faces
+- seed 209: FAIL 3 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/222 vertices of MCH_Base | shape px (586,350)-(635,493) in ? |
+- seed 209: FAIL 6 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/1129 vertices of MCH_Base | shape px (527,388)-(598,460) in ? 
+- seed 209: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 209: FAIL 14 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/42 vertices of MCH_Base_Split | shape px (416,518)-(448,
+- seed 210: FAIL 10 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/1406 vertices of MCH_Base_Split | shape px (477,510)-(49
+- seed 212: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 213: FAIL 3 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 215: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 215: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 215: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 217: FAIL 11 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 219: FAIL 6 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/200 vertices of Part_Hidden | shape px (415,487)-(434,505) 
+- seed 219: FAIL 14 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/208 vertices of Part_Hidden | shape px (418,551)-(429,562) 
+- seed 220: FAIL 11 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 225: FAIL 6 refused: The drawn shape covers the whole of "Part_Hidden_Hidden" (a Cut would delete all of it, a Split would leave nothing behind); nothing was cha
+- seed 225: FAIL 10 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 225: FAIL 14 refused: The drawn shape is too small or has zero area.
+- seed 226: FAIL 4 refused: Boolean failed safely, mesh unchanged. MANIFOLD: result has 1 non-manifold edges; EXACT: result has 604 non-manifold edges
+- seed 226: FAIL 6 refused: Boolean failed safely, mesh unchanged. MANIFOLD: the shape did not intersect the mesh; EXACT: result has 265 non-manifold edges
+- seed 226: FAIL 11 refused: Boolean failed safely, mesh unchanged. MANIFOLD: the shape did not intersect the mesh; EXACT: result has 241 non-manifold edges
+- seed 226: FAIL 12 refused: Box Hide: all of "MCH_Base" is hidden - nothing would be left to split it off from (Show All, or keep it as it is)
+- seed 226: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 226: FAIL divide MCH_Base refused: nothing to bake: the part's modifiers (a Box Hide ...) leave no faces
+- seed 229: FAIL 14 refused: The shape does not intersect "MCH_Base_Hidden"; nothing was changed. [shape covers 0/205 vertices of MCH_Base_Hidden | shape px (508,535)-(5
+- seed 230: FAIL 11 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/1430 vertices of Part_Split | shape px (488,378)-(518,407) i
+- seed 233: FAIL 10 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 234: FAIL 5 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 234: FAIL 10 refused: The drawn shape covers the whole of "Part_Split_Hidden" (a Cut would delete all of it, a Split would leave nothing behind); nothing was chan
+- seed 235: FAIL 13 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 237: FAIL 7 refused: The shape does not intersect "MCH_Base_Hidden"; nothing was changed. [shape covers 0/304 vertices of MCH_Base_Hidden | shape px (415,484)-(4
+- seed 237: FAIL 9 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 239: FAIL 6 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 239: FAIL 7 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/830 vertices of Part | shape px (497,496)-(515,515) in ? | ORTHO |
+- seed 240: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 240: FAIL 13 refused: "MCH_Base_Split" has no faces to work on (a Box Hide may hide all of it - Show All first).
+- seed 240: FAIL 14 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/409 vertices of MCH_Base | shape px (484,523)-(498,541) in ? |
+- seed 240: FAIL divide MCH_Base_Split refused: nothing to bake: the part's modifiers (a Box Hide ...) leave no faces
+- seed 241: FAIL 5 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 242: FAIL 9 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 242: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 244: FAIL 5 refused: The result would delete the whole object; nothing was changed. [MCH_Base_Hidden: Keep inside (Alt invert or Split inner part) - the shape ma
+- seed 244: FAIL 7 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 246: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 247: FAIL 5 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 247: FAIL 7 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 247: FAIL 8 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 250: FAIL 6 refused: The shape does not intersect "MCH_Base_Split_Hidden_Split"; nothing was changed. [shape covers 0/151 vertices of MCH_Base_Split_Hidden_Split
+- seed 251: FAIL 13 refused: The drawn shape is too small or has zero area.
+- seed 251: FAIL 14 refused: The drawn shape covers the whole of "MCH_Base_Split_Hidden.001" (a Cut would delete all of it, a Split would leave nothing behind); nothing 
+- seed 252: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 253: FAIL 5 refused: The shape does not intersect "MCH_Base_Hidden"; nothing was changed. [shape covers 0/234 vertices of MCH_Base_Hidden | shape px (536,491)-(5
+- seed 253: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 255: FAIL 5 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/809 vertices of Part | shape px (512,559)-(542,587) in ? | ORTHO |
+- seed 255: FAIL 10 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 257: FAIL 10 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 258: FAIL 3 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 258: FAIL 10 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/793 vertices of Part | shape px (567,443)-(595,459) in ? | ORTHO |
+- seed 259: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 261: FAIL 4 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/503 vertices of MCH_Base | shape px (557,526)-(619,579) in ? |
+- seed 263: FAIL 1 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/15 vertices of MCH_Base | shape px (588,534)-(631,577) in ? | 
+- seed 264: FAIL 3 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/232 vertices of MCH_Base | shape px (561,493)-(586,519) in ? |
+- seed 264: FAIL 4 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/232 vertices of MCH_Base | shape px (541,553)-(559,572) in ? |
+- seed 265: FAIL 3 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/179 vertices of MCH_Base | shape px (570,401)-(609,440) in ? |
+- seed 266: FAIL 7 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/571 vertices of Part_Hidden | shape px (426,463)-(441,478) 
+- seed 266: FAIL 13 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/608 vertices of Part_Hidden | shape px (424,537)-(438,553) 
+- seed 267: FAIL 12 refused: The shape does not intersect "Part_Split.001"; nothing was changed. [shape covers 0/705 vertices of Part_Split.001 | shape px (437,454)-(541
+- seed 268: FAIL 3 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/511 vertices of MCH_Base | shape px (541,543)-(576,579) in ? |
+- seed 268: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 269: FAIL 6 refused: The drawn shape is too small or has zero area.
+- seed 269: FAIL 8 refused: Box Hide: all of "Part_Hidden_Split_Hidden" is hidden - applying would leave an empty object (Show All, or delete the part)
+- seed 270: FAIL 5 refused: The drawn shape is too small or has zero area.
+- seed 270: FAIL 7 refused: The result would delete the whole object; nothing was changed. [Part_Hidden.001: Keep inside (Alt invert or Split inner part) - the shape ma
+- seed 271: FAIL 6 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/2182 vertices of MCH_Base | shape px (411,408)-(463,455) in ? 
+- seed 271: FAIL 8 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 272: FAIL 7 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 272: FAIL 10 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 272: FAIL 12 refused: The shape does not intersect "MCH_Base_Hidden"; nothing was changed. [shape covers 0/195 vertices of MCH_Base_Hidden | shape px (408,499)-(4
+- seed 274: FAIL 2 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/16 vertices of Part_Split | shape px (665,584)-(701,615) in 
+- seed 276: FAIL 9 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 276: FAIL 14 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 277: FAIL 8 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 277: FAIL 10 refused: The drawn shape is too small or has zero area.
+- seed 277: FAIL 13 refused: The drawn shape is too small or has zero area.
+- seed 278: FAIL 14 refused: The drawn shape is too small or has zero area.
+- seed 281: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 284: FAIL 9 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 284: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 286: FAIL 4 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 286: FAIL 6 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 286: FAIL 10 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 286: FAIL 12 refused: The shape does not intersect "MCH_Base_Hidden"; nothing was changed. [shape covers 0/553 vertices of MCH_Base_Hidden | shape px (454,466)-(4
+- seed 286: FAIL 14 refused: The drawn shape covers the whole of "MCH_Base_Hidden_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing was 
+- seed 287: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 288: FAIL 3 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/176 vertices of Part | shape px (316,516)-(374,581) in ? | ORTHO |
+- seed 288: FAIL 9 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/90 vertices of Part_Hidden | shape px (433,544)-(452,563) i
+- seed 288: FAIL 12 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/266 vertices of Part_Hidden | shape px (436,465)-(451,480) 
+- seed 290: FAIL 9 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 293: FAIL 7 refused: The shape does not intersect "MCH_Base_Hidden_Hidden"; nothing was changed. [shape covers 0/98 vertices of MCH_Base_Hidden_Hidden | shape px
+- seed 293: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 293: FAIL 14 refused: The shape does not intersect "MCH_Base_Hidden_Hidden"; nothing was changed. [shape covers 0/134 vertices of MCH_Base_Hidden_Hidden | shape p
+- seed 294: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 296: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 296: FAIL 11 refused: The drawn shape covers the whole of "Part_Hidden_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing was chan
+- seed 297: FAIL 8 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 299: FAIL 1 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 299: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 300: FAIL 5 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/358 vertices of MCH_Base | shape px (624,463)-(702,523) in ? |
+- seed 300: FAIL 7 refused: The result would delete the whole object; nothing was changed. [MCH_Base_Split_Hidden: Keep inside (Alt invert or Split inner part) - the sh
+- seed 300: FAIL 10 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/142 vertices of MCH_Base_Split | shape px (569,391)-(596
+- seed 301: FAIL 1 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/54 vertices of MCH_Base | shape px (471,402)-(640,466) in ? | 
+- seed 303: FAIL 2 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/122 vertices of Part | shape px (495,592)-(649,649) in ? | ORTHO |
+- seed 303: FAIL 14 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 305: FAIL 8 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/439 vertices of Part_Split | shape px (426,608)-(430,615) in
+- seed 305: FAIL 9 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/439 vertices of Part_Split | shape px (552,502)-(556,508) in
+- seed 306: FAIL 3 refused: The result would delete the whole object; nothing was changed. [MCH_Base_Hidden_Hidden: Keep inside (Alt invert or Split inner part) - the s
+- seed 306: FAIL 12 refused: The shape does not intersect "MCH_Base_Hidden"; nothing was changed. [shape covers 0/240 vertices of MCH_Base_Hidden | shape px (537,424)-(5
+- seed 306: FAIL 14 refused: The drawn shape covers the whole of "MCH_Base_Hidden_Hidden_Hidden" (a Cut would delete all of it, a Split would leave nothing behind); noth
+- seed 307: FAIL 7 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/1081 vertices of MCH_Base | shape px (406,383)-(508,412) in ? 
+- seed 308: FAIL 9 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 309: FAIL 5 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 309: FAIL 9 refused: The drawn shape covers the whole of "Part_Split_Hidden" (a Cut would delete all of it, a Split would leave nothing behind); nothing was chan
+- seed 309: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 310: FAIL 11 refused: The drawn shape covers the whole of "MCH_Base_Split" - there is nothing to split off; nothing was changed. Draw over only part of the object
+- seed 310: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 311: FAIL 5 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 312: FAIL 7 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 313: FAIL 7 refused: The result would delete the whole object; nothing was changed. [MCH_Base_Hidden: Keep inside (Alt invert or Split inner part) - the shape ma
+- seed 314: FAIL 9 refused: The drawn shape is too small or has zero area.
+- seed 314: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 315: FAIL 2 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/93 vertices of MCH_Base | shape px (542,458)-(600,627) in ? | 
+- seed 315: FAIL 8 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 315: FAIL 12 refused: The drawn shape covers the whole of "MCH_Base_Split_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing was c
+- seed 315: FAIL 14 refused: Box Hide: all of "MCH_Base_Split_Split.001" is hidden - nothing would be left to split it off from (Show All, or keep it as it is)
+- seed 315: FAIL divide MCH_Base_Split_Split.001 refused: nothing to bake: the part's modifiers (a Box Hide ...) leave no faces
+- seed 316: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 317: FAIL 2 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/12 vertices of MCH_Base_Split | shape px (499,514)-(512,
+- seed 318: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 319: FAIL 1 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 322: FAIL 2 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/396 vertices of MCH_Base | shape px (451,398)-(539,434) in ? |
+- seed 322: FAIL 7 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/395 vertices of MCH_Base | shape px (449,493)-(474,519) in ? |
+- seed 322: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 322: FAIL 14 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 325: FAIL 8 refused: Box Hide: all of "MCH_Base_Split_Hidden" is hidden - applying would leave an empty object (Show All, or delete the part)
+- seed 325: FAIL 9 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/97 vertices of MCH_Base | shape px (608,469)-(661,482) in ? | 
+- seed 325: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 325: FAIL divide MCH_Base_Split_Hidden refused: nothing to bake: the part's modifiers (a Box Hide ...) leave no faces
+- seed 326: FAIL 7 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/2370 vertices of Part | shape px (436,421)-(465,444) in ? | ORTHO 
+- seed 327: FAIL 3 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/64 vertices of Part_Split | shape px (441,497)-(478,537) in 
+- seed 328: FAIL 9 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 331: FAIL 3 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 331: FAIL 6 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/650 vertices of Part_Hidden | shape px (587,409)-(643,465) 
+- seed 332: FAIL 14 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/2328 vertices of Part | shape px (493,665)-(604,686) in ? | ORTHO 
+- seed 333: FAIL 6 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 333: FAIL 8 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 333: FAIL 9 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 333: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 333: FAIL 13 refused: The drawn shape is too small or has zero area.
+- seed 335: FAIL 3 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 335: FAIL 8 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 336: FAIL 9 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/891 vertices of Part | shape px (357,509)-(386,538) in ? | ORTHO |
+- seed 340: FAIL 4 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/26 vertices of MCH_Base_Split | shape px (515,419)-(556,
+- seed 340: FAIL 6 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 340: FAIL 14 refused: The drawn shape is too small or has zero area.
+- seed 341: FAIL 7 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 341: FAIL 12 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/812 vertices of MCH_Base | shape px (333,498)-(501,558) in ? |
+- seed 342: FAIL 14 refused: The drawn shape is too small or has zero area.
+- seed 343: FAIL 5 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/1646 vertices of Part_Hidden | shape px (489,536)-(505,548)
+- seed 343: FAIL 9 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 346: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 347: FAIL 3 refused: The drawn shape is too small or has zero area.
+- seed 347: FAIL 5 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 348: FAIL 8 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 348: FAIL 9 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 349: FAIL 3 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 351: FAIL 1 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 352: FAIL 11 refused: The drawn shape is too small or has zero area.
+- seed 354: FAIL 2 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 354: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 354: FAIL 14 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 355: FAIL 1 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/8 vertices of Part | shape px (576,477)-(617,498) in ? | ORTHO | A
+- seed 355: FAIL 10 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/163 vertices of Part | shape px (365,443)-(498,538) in ? | ORTHO |
+- seed 355: FAIL 14 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/163 vertices of Part | shape px (456,484)-(493,521) in ? | ORTHO |
+- seed 356: FAIL 6 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 356: FAIL 7 refused: The shape does not intersect "Part_Split.001"; nothing was changed. [shape covers 0/362 vertices of Part_Split.001 | shape px (515,456)-(521
+- seed 357: FAIL 12 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/128 vertices of Part_Hidden | shape px (516,496)-(552,521) 
+- seed 358: FAIL 4 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 364: FAIL 7 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 368: FAIL 2 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/229 vertices of MCH_Base | shape px (416,303)-(484,359) in ? |
+- seed 369: FAIL 1 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/8 vertices of Part | shape px (237,487)-(321,621) in ? | ORTHO | A
+- seed 369: FAIL 12 refused: The drawn shape covers the whole of "Part_Split_Hidden" (a Cut would delete all of it, a Split would leave nothing behind); nothing was chan
+- seed 371: FAIL 7 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 371: FAIL 9 refused: The drawn shape is too small or has zero area.
+- seed 373: FAIL 8 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 375: FAIL 8 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/725 vertices of Part | shape px (482,483)-(503,524) in ? | ORTHO |
+- seed 377: FAIL 3 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/278 vertices of Part | shape px (538,302)-(632,358) in ? | ORTHO |
+- seed 378: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 379: FAIL 2 refused: The drawn shape is too small or has zero area.
+- seed 380: FAIL 1 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/8 vertices of Part | shape px (605,546)-(622,581) in ? | ORTHO | A
+- seed 384: FAIL 5 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 386: FAIL 5 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 386: FAIL 12 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/610 vertices of MCH_Base | shape px (611,514)-(635,549) in ? |
+- seed 387: FAIL 7 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/1323 vertices of MCH_Base | shape px (566,407)-(607,449) in ? 
+- seed 387: FAIL 9 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 388: FAIL 14 refused: The drawn shape is too small or has zero area.
+- seed 390: FAIL 6 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 390: FAIL 12 refused: The drawn shape is too small or has zero area.
+- seed 391: FAIL 10 refused: The shape does not intersect "MCH_Base_Hidden_Split"; nothing was changed. [shape covers 0/97 vertices of MCH_Base_Hidden_Split | shape px (
+- seed 391: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 391: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 392: FAIL 14 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 393: FAIL 11 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 395: FAIL 6 refused: The drawn shape is too small or has zero area.
+- seed 396: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 397: FAIL 12 refused: The drawn shape covers the whole of "Part_Hidden_Hidden" - there is nothing to split off; nothing was changed. Draw over only part of the ob
+- seed 398: FAIL 8 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 399: FAIL 2 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 402: FAIL 1 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 402: FAIL 14 refused: The drawn shape covers the whole of "MCH_Base_Split_Hidden_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothin
+- seed 403: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 404: FAIL 5 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/418 vertices of Part_Split | shape px (395,488)-(427,520) in
+- seed 404: FAIL 7 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/426 vertices of Part_Split | shape px (387,503)-(430,512) in
+- seed 404: FAIL 10 refused: The result would delete the whole object; nothing was changed. [Part_Split_Hidden: Keep inside (Alt invert or Split inner part) - the shape 
+- seed 405: FAIL 5 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/750 vertices of Part | shape px (420,632)-(456,661) in ? | ORTHO |
+- seed 405: FAIL 10 refused: The drawn shape is too small or has zero area.
+- seed 406: FAIL 1 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/15 vertices of MCH_Base | shape px (442,432)-(478,459) in ? | 
+- seed 406: FAIL 3 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/242 vertices of MCH_Base | shape px (542,530)-(575,562) in ? |
+- seed 406: FAIL 9 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 407: FAIL 1 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/8 vertices of Part | shape px (649,478)-(674,572) in ? | ORTHO | A
+- seed 407: FAIL 13 refused: The drawn shape covers the whole of "Part_Split_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing was chang
+- seed 408: FAIL 2 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 409: FAIL 2 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 409: FAIL 3 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/190 vertices of MCH_Base | shape px (525,398)-(570,425) in ? |
+- seed 409: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 409: FAIL 12 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/1211 vertices of MCH_Base | shape px (530,538)-(547,556) in ? 
+- seed 409: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 410: FAIL 4 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/168 vertices of Part | shape px (552,379)-(601,402) in ? | ORTHO |
+- seed 413: FAIL 8 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 413: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 416: FAIL 1 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 416: FAIL 9 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/269 vertices of Part_Split | shape px (615,522)-(627,533) in
+- seed 417: FAIL 4 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 417: FAIL 11 refused: The drawn shape covers the whole of "MCH_Base_Split_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing was c
+- seed 417: FAIL 13 refused: The drawn shape is too small or has zero area.
+- seed 418: FAIL 12 refused: The drawn shape is too small or has zero area.
+- seed 418: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 421: FAIL 7 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 423: FAIL 2 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/16 vertices of Part | shape px (488,550)-(524,586) in ? | ORTHO | 
+- seed 425: FAIL 4 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/392 vertices of MCH_Base | shape px (548,417)-(566,434) in ? |
+- seed 426: FAIL 9 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/478 vertices of Part_Hidden | shape px (502,457)-(508,471) 
+- seed 428: FAIL 1 refused: The drawn shape is too small or has zero area.
+- seed 428: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 429: FAIL 10 refused: The drawn shape is too small or has zero area.
+- seed 432: FAIL 12 refused: The drawn shape is too small or has zero area.
+- seed 433: FAIL 3 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 433: FAIL 7 refused: The drawn shape is too small or has zero area.
+- seed 435: FAIL 4 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/376 vertices of Part_Hidden | shape px (475,529)-(502,603) 
+- seed 435: FAIL 6 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/981 vertices of Part | shape px (485,333)-(537,351) in ? | ORTHO |
+- seed 435: FAIL 8 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 436: FAIL 3 refused: Boolean failed safely, mesh unchanged. MANIFOLD: the shape did not intersect the mesh; EXACT: result has 1672 non-manifold edges
+- seed 436: FAIL 4 refused: Boolean failed safely, mesh unchanged. MANIFOLD: the shape did not intersect the mesh; EXACT: result has 326 non-manifold edges
+- seed 436: FAIL 5 refused: Box Hide: all of "MCH_Base" is hidden - nothing would be left to split it off from (Show All, or keep it as it is)
+- seed 436: FAIL 6 refused: "MCH_Base" has no faces to work on (a Box Hide may hide all of it - Show All first).
+- seed 436: FAIL 7 refused: Boolean failed safely, mesh unchanged. MANIFOLD: the shape did not intersect the mesh; EXACT: result has 1562 non-manifold edges
+- seed 436: FAIL 8 refused: Boolean failed safely, mesh unchanged. MANIFOLD: the shape did not intersect the mesh; EXACT: result has 1946 non-manifold edges
+- seed 436: FAIL 9 refused: "MCH_Base" has no faces to work on (a Box Hide may hide all of it - Show All first).
+- seed 436: FAIL 10 refused: Box Hide: all of "MCH_Base" is hidden - applying would leave an empty object (Show All, or delete the part)
+- seed 436: FAIL 11 refused: "MCH_Base" has no faces to work on (a Box Hide may hide all of it - Show All first).
+- seed 436: FAIL 12 refused: "MCH_Base" has no faces to work on (a Box Hide may hide all of it - Show All first).
+- seed 436: FAIL 13 refused: Box Hide: all of "MCH_Base" is hidden - nothing would be left to split it off from (Show All, or keep it as it is)
+- seed 436: FAIL 14 refused: Boolean failed safely, mesh unchanged. MANIFOLD: the shape did not intersect the mesh; EXACT: result has 148 non-manifold edges
+- seed 436: FAIL divide MCH_Base refused: nothing to bake: the part's modifiers (a Box Hide ...) leave no faces
+- seed 440: FAIL 4 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/136 vertices of Part | shape px (522,506)-(554,538) in ? | ORTHO |
+- seed 440: FAIL 13 refused: The drawn shape covers the whole of "Part_Split.001_Hidden" (a Cut would delete all of it, a Split would leave nothing behind); nothing was 
+- seed 441: FAIL 4 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/8 vertices of Part_Hidden | shape px (618,399)-(642,403) in
+- seed 444: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 445: FAIL 5 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 447: FAIL 12 refused: The drawn shape covers the whole of "MCH_Base_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing was changed
+- seed 447: FAIL 13 refused: The drawn shape is too small or has zero area.
+- seed 448: FAIL 2 refused: The drawn shape is too small or has zero area.
+- seed 448: FAIL 6 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 450: FAIL 5 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 450: FAIL 9 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/487 vertices of Part | shape px (386,580)-(466,649) in ? | ORTHO |
+- seed 452: FAIL 8 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/290 vertices of Part | shape px (591,552)-(687,672) in ? | ORTHO |
+- seed 452: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 453: FAIL 11 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/2215 vertices of Part | shape px (519,447)-(596,524) in ? | ORTHO 
+- seed 453: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 454: FAIL 6 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 456: FAIL 4 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 456: FAIL 5 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 457: FAIL 2 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 457: FAIL 5 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 457: FAIL 10 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/340 vertices of Part_Split | shape px (507,537)-(517,547) in
+- seed 457: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 458: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 459: FAIL 4 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 461: FAIL 8 refused: The shape does not intersect "Part_Hidden_Split"; nothing was changed. [shape covers 0/579 vertices of Part_Hidden_Split | shape px (525,535
+- seed 462: FAIL 9 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 462: FAIL 12 refused: The drawn shape is too small or has zero area.
+- seed 463: FAIL 10 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/231 vertices of Part_Split | shape px (548,596)-(554,615) in
+- seed 463: FAIL 12 refused: The shape does not intersect "Part_Split_Split"; nothing was changed. [shape covers 0/901 vertices of Part_Split_Split | shape px (507,459)-
+- seed 464: FAIL 6 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 464: FAIL 8 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 464: FAIL 9 refused: The drawn shape covers the whole of "Part_Split_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing was chang
+- seed 466: FAIL 4 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 466: FAIL 8 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/258 vertices of Part_Hidden | shape px (431,393)-(483,415) 
+- seed 467: FAIL 6 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 467: FAIL 7 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/891 vertices of Part | shape px (542,398)-(611,419) in ? | ORTHO |
+- seed 468: FAIL 3 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/102 vertices of Part | shape px (484,550)-(510,584) in ? | ORTHO |
+- seed 468: FAIL 5 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 470: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 471: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 472: FAIL 13 refused: The drawn shape covers the whole of "Part_Split_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing was chang
+- seed 473: FAIL 13 refused: The drawn shape is too small or has zero area.
+- seed 473: FAIL 14 refused: The drawn shape covers the whole of "Part_Hidden_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing was chan
+- seed 474: FAIL 6 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/773 vertices of Part_Split | shape px (503,513)-(517,580) in
+- seed 475: FAIL 12 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 476: FAIL 3 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 476: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 477: FAIL 12 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 478: FAIL 3 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 478: FAIL 8 refused: The drawn shape is too small or has zero area.
+- seed 480: FAIL 13 refused: The drawn shape covers the whole of "MCH_Base_Split_Hidden" (a Cut would delete all of it, a Split would leave nothing behind); nothing was 
+- seed 480: FAIL 14 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 481: FAIL 4 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 482: FAIL 7 refused: The shape does not intersect "MCH_Base_Hidden"; nothing was changed. [shape covers 0/109 vertices of MCH_Base_Hidden | shape px (465,408)-(4
+- seed 483: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 483: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 485: FAIL 4 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 485: FAIL 7 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/581 vertices of Part | shape px (461,593)-(562,604) in ? | ORTHO |
+- seed 485: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 485: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 487: FAIL 1 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/18 vertices of MCH_Base | shape px (567,375)-(631,432) in ? | 
+- seed 488: FAIL 9 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 489: FAIL 14 refused: The drawn shape is too small or has zero area.
+- seed 490: FAIL 7 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/1895 vertices of MCH_Base | shape px (342,630)-(454,674) in ? 
+- seed 490: FAIL 8 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 490: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 492: FAIL 2 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/26 vertices of MCH_Base | shape px (445,611)-(460,630) in ? | 
+- seed 492: FAIL 7 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 493: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 494: FAIL 7 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 494: FAIL 9 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/821 vertices of MCH_Base | shape px (591,424)-(607,446) in ? |
+- seed 494: FAIL 10 refused: Boolean failed safely, mesh unchanged. MANIFOLD: the shape did not intersect the mesh; EXACT: result has 3 non-manifold edges
+- seed 494: FAIL 11 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 494: FAIL 13 refused: Box Hide: all of "MCH_Base_Hidden_Split" is hidden - applying would leave an empty object (Show All, or delete the part)
+- seed 494: FAIL 14 refused: The drawn shape covers the whole of "MCH_Base_Hidden_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing was 
+- seed 494: FAIL divide MCH_Base_Hidden_Split refused: nothing to bake: the part's modifiers (a Box Hide ...) leave no faces
+- seed 497: FAIL 8 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/406 vertices of Part | shape px (540,410)-(588,521) in ? | ORTHO |
+- seed 498: FAIL 2 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 498: FAIL 5 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/678 vertices of MCH_Base_Split | shape px (532,425)-(559
+- seed 499: FAIL 11 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/2736 vertices of Part | shape px (506,561)-(550,601) in ? | ORTHO 
+- seed 502: FAIL 7 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/287 vertices of MCH_Base | shape px (423,512)-(649,710) in ? |
+- seed 503: FAIL 11 refused: Box Hide: all of "Part_Hidden_Hidden_Split" is hidden - applying would leave an empty object (Show All, or delete the part)
+- seed 503: FAIL 12 refused: The drawn shape is too small or has zero area.
+- seed 503: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 503: FAIL divide Part_Hidden_Hidden_Split refused: nothing to bake: the part's modifiers (a Box Hide ...) leave no faces
+- seed 504: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 504: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 504: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 506: FAIL 1 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/15 vertices of MCH_Base | shape px (382,534)-(455,621) in ? | 
+- seed 506: FAIL 14 refused: The result would delete the whole object; nothing was changed. [MCH_Base_Hidden: Keep inside (Alt invert or Split inner part) - the shape ma
+- seed 507: FAIL 12 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 508: FAIL 2 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/342 vertices of MCH_Base | shape px (584,550)-(618,584) in ? |
+- seed 508: FAIL 12 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 508: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 509: FAIL 3 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 509: FAIL 5 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 509: FAIL 9 refused: The drawn shape covers the whole of "MCH_Base_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing was changed
+- seed 509: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 509: FAIL 12 refused: The outline crosses itself. Draw a simpler outline (or use Brush Stroke, which trims the closing overlap).
+- seed 509: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 510: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 511: FAIL 2 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/136 vertices of Part | shape px (628,530)-(663,567) in ? | ORTHO |
+- seed 512: FAIL 8 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 516: FAIL 14 refused: Boolean failed safely, mesh unchanged. MANIFOLD: the shape did not intersect the mesh; EXACT: result has 4 non-manifold edges
+- seed 518: FAIL 7 refused: The drawn shape is too small or has zero area.
+- seed 518: FAIL 10 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 519: FAIL 3 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/575 vertices of MCH_Base | shape px (370,349)-(399,518) in ? |
+- seed 521: FAIL 2 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/16 vertices of Part | shape px (417,505)-(429,516) in ? | ORTHO | 
+- seed 522: FAIL 1 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 522: FAIL 3 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 522: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 526: FAIL 2 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/17 vertices of Part | shape px (528,427)-(568,448) in ? | ORTHO | 
+- seed 527: FAIL 5 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 527: FAIL 9 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 528: FAIL 5 refused: The drawn shape is too small or has zero area.
+- seed 528: FAIL 10 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 529: FAIL 12 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/1680 vertices of Part | shape px (641,509)-(750,611) in ? | ORTHO 
+- seed 530: FAIL 8 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 530: FAIL 11 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 532: FAIL 8 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 533: FAIL 1 refused: The result would delete the whole object; nothing was changed. [MCH_Base_Hidden: Keep inside (Alt invert or Split inner part) - the shape ma
+- seed 537: FAIL 4 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 537: FAIL 6 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/26 vertices of MCH_Base | shape px (451,516)-(497,561) in ? | 
+- seed 537: FAIL 13 refused: The drawn shape covers the whole of "MCH_Base_Hidden" (a Cut would delete all of it, a Split would leave nothing behind); nothing was change
+- seed 539: FAIL 2 refused: The drawn shape is too small or has zero area.
+- seed 539: FAIL 6 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/416 vertices of Part_Hidden | shape px (463,443)-(490,474) 
+- seed 539: FAIL 12 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 539: FAIL 13 refused: The shape does not intersect "Part_Hidden.001"; nothing was changed. [shape covers 0/1443 vertices of Part_Hidden.001 | shape px (414,550)-(
+- seed 540: FAIL 4 refused: The drawn shape is too small or has zero area.
+- seed 541: FAIL 9 refused: The drawn shape is too small or has zero area.
+- seed 542: FAIL 12 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/1023 vertices of MCH_Base | shape px (391,418)-(457,551) in ? 
+- seed 543: FAIL 9 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 544: FAIL 5 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 544: FAIL 6 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 545: FAIL 6 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 550: FAIL 7 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/908 vertices of MCH_Base | shape px (314,361)-(365,513) in ? |
+- seed 550: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 553: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 554: FAIL 10 refused: The shape does not intersect "MCH_Base_Hidden"; nothing was changed. [shape covers 0/265 vertices of MCH_Base_Hidden | shape px (403,542)-(4
+- seed 554: FAIL 12 refused: The drawn shape covers the whole of "MCH_Base_Hidden_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing was 
+- seed 556: FAIL 10 refused: Box Hide: all of "MCH_Base_Hidden_Split" is hidden - nothing would be left to split it off from (Show All, or keep it as it is)
+- seed 556: FAIL 11 refused: Box Hide: all of "MCH_Base_Hidden_Split" is hidden - applying would leave an empty object (Show All, or delete the part)
+- seed 556: FAIL 13 refused: The drawn shape covers the whole of "MCH_Base_Hidden_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing was 
+- seed 556: FAIL 14 refused: Box Hide: all of "MCH_Base_Hidden_Split" is hidden - applying would leave an empty object (Show All, or delete the part)
+- seed 557: FAIL 2 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 557: FAIL 6 refused: The drawn shape is too small or has zero area.
+- seed 558: FAIL 9 refused: The result would delete the whole object; nothing was changed. [MCH_Base_Hidden_Hidden: Keep inside (Alt invert or Split inner part) - the s
+- seed 559: FAIL 2 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 561: FAIL 7 refused: The drawn shape is too small or has zero area.
+- seed 562: FAIL 11 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/8 vertices of Part_Hidden | shape px (379,464)-(406,473) in
+- seed 563: FAIL 10 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/386 vertices of MCH_Base_Split | shape px (538,452)-(558
+- seed 565: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 566: FAIL 1 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 566: FAIL 5 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 567: FAIL 13 refused: Boolean failed safely, mesh unchanged. MANIFOLD: the shape did not intersect the mesh; EXACT: result has 3 non-manifold edges
+- seed 569: FAIL 12 refused: The drawn shape is too small or has zero area.
+- seed 570: FAIL 8 refused: The drawn shape covers the whole of "Part_Split_Hidden" (a Cut would delete all of it, a Split would leave nothing behind); nothing was chan
+- seed 572: FAIL 3 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 573: FAIL 12 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 574: FAIL 13 refused: The drawn shape is too small or has zero area.
+- seed 578: FAIL 7 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 580: FAIL 12 refused: The drawn shape covers the whole of "MCH_Base_Hidden_Hidden" (a Cut would delete all of it, a Split would leave nothing behind); nothing was
+- seed 580: FAIL 13 refused: The drawn shape covers the whole of "MCH_Base_Hidden_Hidden" (a Cut would delete all of it, a Split would leave nothing behind); nothing was
+- seed 581: FAIL 3 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/1440 vertices of Part | shape px (393,416)-(409,443) in ? | ORTHO 
+- seed 583: FAIL 1 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/10 vertices of MCH_Base | shape px (561,565)-(593,597) in ? | 
+- seed 583: FAIL 14 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 584: FAIL 14 refused: The shape does not intersect "MCH_Base_Hidden"; nothing was changed. [shape covers 0/461 vertices of MCH_Base_Hidden | shape px (480,525)-(4
+- seed 585: FAIL 10 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/1158 vertices of Part | shape px (590,377)-(614,443) in ? | ORTHO 
+- seed 586: FAIL 5 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/540 vertices of Part_Hidden | shape px (496,559)-(520,583) 
+- seed 586: FAIL 8 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 586: FAIL 10 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/1635 vertices of Part | shape px (309,289)-(351,406) in ? | ORTHO 
+- seed 587: FAIL 6 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 588: FAIL 12 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 590: FAIL 14 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 591: FAIL 4 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/1657 vertices of MCH_Base | shape px (433,617)-(513,644) in ? 
+- seed 591: FAIL 13 refused: The drawn shape covers the whole of "MCH_Base_Hidden" (a Cut would delete all of it, a Split would leave nothing behind); nothing was change
+- seed 592: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 593: FAIL 11 refused: The drawn shape is too small or has zero area.
+- seed 594: FAIL 5 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 595: FAIL 10 refused: The result would delete the whole object; nothing was changed. [Part_Hidden: Keep inside (Alt invert or Split inner part) - the shape may no
+- seed 596: FAIL 9 refused: The shape does not intersect "MCH_Base_Hidden"; nothing was changed. [shape covers 0/362 vertices of MCH_Base_Hidden | shape px (519,498)-(5
+- seed 597: FAIL 7 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 597: FAIL 12 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/549 vertices of Part_Hidden | shape px (372,529)-(381,539) 
+- seed 599: FAIL 11 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 601: FAIL 7 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 602: FAIL 8 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 602: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 603: FAIL 14 refused: Box Hide: all of "Part_Split_Hidden" is hidden - applying would leave an empty object (Show All, or delete the part)
+- seed 603: FAIL divide Part_Split_Hidden refused: nothing to bake: the part's modifiers (a Box Hide ...) leave no faces
+- seed 605: FAIL 6 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 605: FAIL 7 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/162 vertices of Part | shape px (466,546)-(533,613) in ? | ORTHO |
+- seed 606: FAIL 12 refused: The drawn shape covers the whole of "Part_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing was changed. Dr
+- seed 607: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 608: FAIL 2 refused: The result would delete the whole object; nothing was changed. [Part_Hidden_Hidden: Keep inside (Alt invert or Split inner part) - the shape
+- seed 608: FAIL 14 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 613: FAIL 14 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 614: FAIL 8 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/8 vertices of Part_Split | shape px (462,439)-(471,470) in ?
+- seed 615: FAIL 3 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 617: FAIL 4 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 620: FAIL 9 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 621: FAIL 14 refused: The drawn shape covers the whole of "Part_Split.001_Hidden" (a Cut would delete all of it, a Split would leave nothing behind); nothing was 
+- seed 625: FAIL 12 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 626: FAIL 7 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 626: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 626: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 628: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 628: FAIL 14 refused: The drawn shape is too small or has zero area.
+- seed 629: FAIL 8 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 629: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 630: FAIL 14 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/1255 vertices of MCH_Base_Split | shape px (488,475)-(51
+- seed 632: FAIL 8 refused: The shape does not intersect "Part_Hidden_Split"; nothing was changed. [shape covers 0/110 vertices of Part_Hidden_Split | shape px (419,544
+- seed 632: FAIL 12 refused: The shape does not intersect "Part_Hidden_Split"; nothing was changed. [shape covers 0/302 vertices of Part_Hidden_Split | shape px (413,450
+- seed 633: FAIL 8 refused: The drawn shape covers the whole of "Part_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing was changed. Dr
+- seed 634: FAIL 2 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 635: FAIL 4 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/224 vertices of Part | shape px (357,451)-(438,533) in ? | ORTHO |
+- seed 636: FAIL 3 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 637: FAIL 4 refused: The shape does not intersect "MCH_Base_Hidden"; nothing was changed. [shape covers 0/8 vertices of MCH_Base_Hidden | shape px (435,430)-(452
+- seed 637: FAIL 9 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 637: FAIL 10 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 638: FAIL 3 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 638: FAIL 6 refused: The result would delete the whole object; nothing was changed. [Part_Hidden: Keep inside (Alt invert or Split inner part) - the shape may no
+- seed 639: FAIL 6 refused: The drawn shape is too small or has zero area.
+- seed 639: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 640: FAIL 8 refused: The drawn shape is too small or has zero area.
+- seed 641: FAIL 4 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/58 vertices of MCH_Base | shape px (560,374)-(591,405) in ? | 
+- seed 643: FAIL 7 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 645: FAIL 11 refused: The shape does not intersect "Part_Split.001_Split"; nothing was changed. [shape covers 0/12 vertices of Part_Split.001_Split | shape px (47
+- seed 647: FAIL 8 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 647: FAIL 9 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 650: FAIL 8 refused: The drawn shape covers the whole of "Part_Split_Hidden" (a Cut would delete all of it, a Split would leave nothing behind); nothing was chan
+- seed 650: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 652: FAIL 13 refused: The shape does not intersect "Part_Split.001"; nothing was changed. [shape covers 0/78 vertices of Part_Split.001 | shape px (462,516)-(483,
+- seed 653: FAIL 9 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 653: FAIL 13 refused: The drawn shape covers the whole of "MCH_Base_Split_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing was c
+- seed 654: FAIL 4 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 655: FAIL 13 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/771 vertices of Part_Hidden | shape px (485,491)-(498,498) 
+- seed 656: FAIL 4 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/200 vertices of MCH_Base_Split | shape px (525,606)-(536
+- seed 657: FAIL 5 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 657: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 657: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 659: FAIL 3 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/246 vertices of Part_Hidden | shape px (481,526)-(492,536) 
+- seed 659: FAIL 5 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/246 vertices of Part_Hidden | shape px (497,450)-(507,460) 
+- seed 659: FAIL 10 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/314 vertices of Part_Hidden | shape px (480,459)-(490,469) 
+- seed 663: FAIL 1 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/18 vertices of MCH_Base | shape px (601,454)-(644,540) in ? | 
+- seed 663: FAIL 3 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 664: FAIL 3 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/1088 vertices of MCH_Base_Split | shape px (472,504)-(48
+- seed 664: FAIL 9 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 664: FAIL 10 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/253 vertices of MCH_Base | shape px (480,490)-(513,518) in ? |
+- seed 664: FAIL 11 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 664: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 665: FAIL 5 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 666: FAIL 2 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 667: FAIL 5 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/944 vertices of Part | shape px (560,424)-(596,452) in ? | ORTHO |
+- seed 670: FAIL 6 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/231 vertices of MCH_Base | shape px (448,546)-(474,575) in ? |
+- seed 672: FAIL 12 refused: The drawn shape is too small or has zero area.
+- seed 672: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 673: FAIL 10 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 674: FAIL 3 refused: The shape does not intersect "MCH_Base_Hidden"; nothing was changed. [shape covers 0/50 vertices of MCH_Base_Hidden | shape px (548,422)-(56
+- seed 675: FAIL 2 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/414 vertices of Part | shape px (373,347)-(578,391) in ? | ORTHO |
+- seed 676: FAIL 7 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/1735 vertices of Part | shape px (487,328)-(508,371) in ? | ORTHO 
+- seed 676: FAIL 14 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/3178 vertices of Part | shape px (585,419)-(634,439) in ? | ORTHO 
+- seed 677: FAIL 4 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/408 vertices of Part | shape px (468,532)-(508,570) in ? | ORTHO |
+- seed 677: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 680: FAIL 5 refused: The drawn shape is too small or has zero area.
+- seed 680: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 681: FAIL 5 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 681: FAIL 11 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 682: FAIL 7 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 682: FAIL 8 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/2790 vertices of MCH_Base | shape px (437,396)-(465,424) in ? 
+- seed 682: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 682: FAIL 14 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 683: FAIL 4 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/368 vertices of MCH_Base | shape px (378,399)-(464,432) in ? |
+- seed 683: FAIL 9 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 684: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 685: FAIL 12 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 686: FAIL 1 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 686: FAIL 5 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 687: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 689: FAIL 4 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 689: FAIL 7 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/680 vertices of MCH_Base | shape px (418,659)-(488,684) in ? |
+- seed 691: FAIL 12 refused: The shape does not intersect "Part_Split.001"; nothing was changed. [shape covers 0/452 vertices of Part_Split.001 | shape px (487,503)-(499
+- seed 691: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 693: FAIL 8 refused: The result would delete the whole object; nothing was changed. [MCH_Base_Hidden_Hidden: Keep inside (Alt invert or Split inner part) - the s
+- seed 695: FAIL 5 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 695: FAIL 9 refused: The drawn shape is too small or has zero area.
+- seed 699: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 699: FAIL 14 refused: The drawn shape is too small or has zero area.
+- seed 700: FAIL 1 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/8 vertices of Part | shape px (473,627)-(596,687) in ? | ORTHO | A
+- seed 701: FAIL 4 refused: The drawn shape is too small or has zero area.
+- seed 701: FAIL 11 refused: The drawn shape is too small or has zero area.
+- seed 701: FAIL 14 refused: The shape does not intersect "Part_Split.001"; nothing was changed. [shape covers 0/106 vertices of Part_Split.001 | shape px (486,527)-(490
+- seed 702: FAIL 6 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/128 vertices of Part_Split | shape px (491,414)-(504,427) in
+- seed 702: FAIL 9 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 703: FAIL 6 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 705: FAIL 9 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/1073 vertices of Part | shape px (483,450)-(512,479) in ? | ORTHO 
+- seed 705: FAIL 14 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/1223 vertices of Part | shape px (554,504)-(564,515) in ? | ORTHO 
+- seed 706: FAIL 2 refused: The result would delete the whole object; nothing was changed. [MCH_Base_Hidden: Keep inside (Alt invert or Split inner part) - the shape ma
+- seed 706: FAIL 7 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/554 vertices of MCH_Base | shape px (513,498)-(524,508) in ? |
+- seed 706: FAIL 10 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/1005 vertices of MCH_Base | shape px (551,504)-(613,563) in ? 
+- seed 709: FAIL 10 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/424 vertices of MCH_Base | shape px (439,569)-(442,574) in ? |
+- seed 710: FAIL 3 refused: The drawn shape is too small or has zero area.
+- seed 710: FAIL 6 refused: The drawn shape covers the whole of "MCH_Base_Hidden_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing was 
+- seed 710: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 710: FAIL 14 refused: The shape does not intersect "MCH_Base_Hidden.001"; nothing was changed. [shape covers 0/166 vertices of MCH_Base_Hidden.001 | shape px (487
+- seed 712: FAIL 7 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 713: FAIL 13 refused: The drawn shape is too small or has zero area.
+- seed 714: FAIL 9 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 716: FAIL 14 refused: Boolean failed safely, mesh unchanged. MANIFOLD: result has 1 non-manifold edges; EXACT: result has 17 non-manifold edges
+- seed 717: FAIL 7 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 717: FAIL 10 refused: The drawn shape is too small or has zero area.
+- seed 717: FAIL 13 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/242 vertices of Part_Hidden | shape px (463,348)-(494,380) 
+- seed 720: FAIL 9 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 721: FAIL 10 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 722: FAIL 14 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/2687 vertices of MCH_Base | shape px (494,552)-(528,566) in ? 
+- seed 724: FAIL 6 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/178 vertices of Part | shape px (668,422)-(723,546) in ? | ORTHO |
+- seed 724: FAIL 13 refused: The drawn shape covers the whole of "Part_Hidden_Split.001" (a Cut would delete all of it, a Split would leave nothing behind); nothing was 
+- seed 725: FAIL 10 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/286 vertices of Part_Hidden | shape px (527,522)-(539,534) 
+- seed 729: FAIL 2 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 729: FAIL 13 refused: The drawn shape is too small or has zero area.
+- seed 730: FAIL 7 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 731: FAIL 5 refused: Box Hide: all of "Part_Hidden_Hidden" is hidden - applying would leave an empty object (Show All, or delete the part)
+- seed 731: FAIL 6 refused: "Part_Hidden_Hidden" has no faces to work on (a Box Hide may hide all of it - Show All first).
+- seed 731: FAIL 8 refused: "Part_Hidden_Hidden" has no faces to work on (a Box Hide may hide all of it - Show All first).
+- seed 731: FAIL 9 refused: The drawn shape is too small or has zero area.
+- seed 731: FAIL divide Part_Hidden_Hidden refused: nothing to bake: the part's modifiers (a Box Hide ...) leave no faces
+- seed 731: FAIL divide Part_Hidden_Hidden_Split.001 refused: nothing to bake: the part's modifiers (a Box Hide ...) leave no faces
+- seed 732: FAIL 1 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/8 vertices of Part | shape px (563,259)-(707,289) in ? | ORTHO | A
+- seed 732: FAIL 14 refused: The shape does not intersect "Part_Split.001"; nothing was changed. [shape covers 0/561 vertices of Part_Split.001 | shape px (344,522)-(455
+- seed 733: FAIL 1 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/36 vertices of MCH_Base | shape px (588,544)-(648,599) in ? | 
+- seed 733: FAIL 5 refused: The drawn shape covers the whole of "MCH_Base_Hidden_Hidden" (a Cut would delete all of it, a Split would leave nothing behind); nothing was
+- seed 733: FAIL 10 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 733: FAIL 11 refused: The drawn shape covers the whole of "MCH_Base_Hidden_Hidden" (a Cut would delete all of it, a Split would leave nothing behind); nothing was
+- seed 734: FAIL 11 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 735: FAIL 1 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 735: FAIL 14 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 736: FAIL 9 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 737: FAIL 7 refused: The result would delete the whole object; nothing was changed. [Part_Split_Hidden_Hidden_Hidden: Keep inside (Alt invert or Split inner part
+- seed 738: FAIL 12 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 739: FAIL 6 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 739: FAIL 7 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/2626 vertices of Part | shape px (529,377)-(598,400) in ? | ORTHO 
+- seed 739: FAIL 11 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 739: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 740: FAIL 7 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/325 vertices of MCH_Base | shape px (478,549)-(527,599) in ? |
+- seed 740: FAIL 10 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 740: FAIL 11 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/371 vertices of MCH_Base | shape px (430,421)-(466,443) in ? |
+- seed 740: FAIL 13 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/573 vertices of MCH_Base_Split | shape px (474,510)-(484
+- seed 740: FAIL 14 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 741: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 742: FAIL 4 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 742: FAIL 13 refused: Boolean failed safely, mesh unchanged. MANIFOLD: result has 1 non-manifold edges; EXACT: result has 544 non-manifold edges
+- seed 743: FAIL 8 refused: Boolean failed safely, mesh unchanged. MANIFOLD: the shape did not intersect the mesh; EXACT: result has 3 non-manifold edges
+- seed 743: FAIL 10 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 745: FAIL 12 refused: The shape does not intersect "Part_Hidden_Split"; nothing was changed. [shape covers 0/126 vertices of Part_Hidden_Split | shape px (520,580
+- seed 746: FAIL 3 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 746: FAIL 4 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/426 vertices of MCH_Base | shape px (361,330)-(448,507) in ? |
+- seed 747: FAIL 4 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/492 vertices of Part | shape px (582,568)-(626,592) in ? | ORTHO |
+- seed 749: FAIL 5 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/377 vertices of MCH_Base | shape px (558,404)-(590,437) in ? |
+- seed 750: FAIL 1 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/8 vertices of Part | shape px (383,741)-(602,760) in ? | ORTHO | A
+- seed 750: FAIL 6 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 750: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 751: FAIL 6 refused: The result would delete the whole object; nothing was changed. [MCH_Base_Hidden: Keep inside (Alt invert or Split inner part) - the shape ma
+- seed 752: FAIL 11 refused: The drawn shape is too small or has zero area.
+- seed 753: FAIL 6 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/1171 vertices of Part | shape px (558,514)-(613,568) in ? | ORTHO 
+- seed 753: FAIL 14 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/1010 vertices of Part | shape px (526,557)-(613,643) in ? | ORTHO 
+- seed 755: FAIL 12 refused: Box Hide: all of "MCH_Base_Split_Split" is hidden - applying would leave an empty object (Show All, or delete the part)
+- seed 755: FAIL divide MCH_Base_Split_Split refused: nothing to bake: the part's modifiers (a Box Hide ...) leave no faces
+- seed 756: FAIL 6 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/1080 vertices of MCH_Base | shape px (540,541)-(582,583) in ? 
+- seed 758: FAIL 4 refused: The drawn shape is too small or has zero area.
+- seed 758: FAIL 5 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 759: FAIL 12 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 761: FAIL 4 refused: The shape does not intersect "Part_Hidden.001"; nothing was changed. [shape covers 0/94 vertices of Part_Hidden.001 | shape px (548,416)-(55
+- seed 762: FAIL 7 refused: The drawn shape covers the whole of "Part_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing was changed. Dr
+- seed 762: FAIL 12 refused: The drawn shape covers the whole of "Part_Hidden" (a Cut would delete all of it, a Split would leave nothing behind); nothing was changed. D
+- seed 765: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 766: FAIL 1 refused: The drawn shape is too small or has zero area.
+- seed 766: FAIL 13 refused: The drawn shape covers the whole of "Part_Hidden" (a Cut would delete all of it, a Split would leave nothing behind); nothing was changed. D
+- seed 767: FAIL 13 refused: The drawn shape is too small or has zero area.
+- seed 767: FAIL 14 refused: Box Hide: all of "Part_Split_Split" is hidden - nothing would be left to split it off from (Show All, or keep it as it is)
+- seed 767: FAIL divide Part_Split_Split refused: nothing to bake: the part's modifiers (a Box Hide ...) leave no faces
+- seed 768: FAIL 6 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/374 vertices of Part | shape px (373,468)-(384,497) in ? | ORTHO |
+- seed 768: FAIL 7 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 768: FAIL 8 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/86 vertices of Part_Hidden | shape px (539,528)-(550,539) i
+- seed 770: FAIL 6 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 772: FAIL 5 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/410 vertices of Part | shape px (489,526)-(559,596) in ? | ORTHO |
+- seed 773: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 774: FAIL 12 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 776: FAIL 11 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/2932 vertices of MCH_Base | shape px (478,620)-(530,667) in ? 
+- seed 777: FAIL 7 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/2792 vertices of Part_Split | shape px (503,497)-(553,546) i
+- seed 781: FAIL 7 refused: The result would delete the whole object; nothing was changed. [Part_Hidden: Keep inside (Alt invert or Split inner part) - the shape may no
+- seed 783: FAIL 7 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/347 vertices of MCH_Base | shape px (557,369)-(608,420) in ? |
+- seed 784: FAIL 4 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 784: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 787: FAIL 9 refused: The drawn shape is too small or has zero area.
+- seed 788: FAIL 11 refused: The shape does not intersect "MCH_Base_Split_Hidden"; nothing was changed. [shape covers 0/145 vertices of MCH_Base_Split_Hidden | shape px 
+- seed 788: FAIL 14 refused: The drawn shape is too small or has zero area.
+- seed 789: FAIL 9 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 789: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 790: FAIL 8 refused: The drawn shape is too small or has zero area.
+- seed 790: FAIL 11 refused: The drawn shape covers the whole of "Part_Split_Hidden" (a Cut would delete all of it, a Split would leave nothing behind); nothing was chan
+- seed 791: FAIL 8 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/1910 vertices of Part | shape px (421,546)-(442,564) in ? | ORTHO 
+- seed 792: FAIL 2 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/149 vertices of MCH_Base | shape px (451,479)-(484,511) in ? |
+- seed 792: FAIL 7 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/16 vertices of MCH_Base_Split | shape px (464,571)-(495,
+- seed 793: FAIL 2 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/50 vertices of MCH_Base | shape px (354,320)-(517,376) in ? | 
+- seed 795: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 798: FAIL 2 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/704 vertices of MCH_Base_Split | shape px (507,441)-(530
+- seed 798: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 798: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 799: FAIL 14 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/406 vertices of Part | shape px (533,528)-(572,561) in ? | ORTHO |
+- seed 800: FAIL 1 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/45 vertices of MCH_Base | shape px (549,457)-(561,469) in ? | 
+- seed 800: FAIL 3 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 800: FAIL 7 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 800: FAIL 8 refused: The shape does not intersect "MCH_Base_Hidden"; nothing was changed. [shape covers 0/428 vertices of MCH_Base_Hidden | shape px (484,484)-(4
+- seed 800: FAIL 11 refused: The drawn shape is too small or has zero area.
+- seed 803: FAIL 13 refused: Box Hide: all of "Part_Split.001_Split" is hidden - nothing would be left to split it off from (Show All, or keep it as it is)
+- seed 803: FAIL divide Part_Split.001_Split refused: nothing to bake: the part's modifiers (a Box Hide ...) leave no faces
+- seed 804: FAIL 8 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/280 vertices of MCH_Base | shape px (534,414)-(581,462) in ? |
+- seed 805: FAIL 9 refused: The drawn shape covers the whole of "MCH_Base_Hidden_Split.001" (a Cut would delete all of it, a Split would leave nothing behind); nothing 
+- seed 805: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 805: FAIL 14 refused: The drawn shape is too small or has zero area.
+- seed 806: FAIL 10 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 807: FAIL 10 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 808: FAIL 14 refused: The shape does not intersect "Part_Split_Hidden"; nothing was changed. [shape covers 0/411 vertices of Part_Split_Hidden | shape px (564,555
+- seed 809: FAIL 7 refused: The drawn shape covers the whole of "Part_Split_Hidden_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing wa
+- seed 809: FAIL 8 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 809: FAIL 9 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 810: FAIL 5 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/107 vertices of MCH_Base_Split | shape px (510,555)-(539
+- seed 813: FAIL 14 refused: The drawn shape is too small or has zero area.
+- seed 814: FAIL 5 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/202 vertices of MCH_Base_Split | shape px (493,442)-(507
+- seed 817: FAIL 13 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 817: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 819: FAIL 7 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/232 vertices of Part_Split | shape px (383,531)-(392,541) in
+- seed 819: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 819: FAIL 14 refused: The drawn shape is too small or has zero area.
+- seed 820: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 822: FAIL 2 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/893 vertices of Part | shape px (271,463)-(295,510) in ? | ORTHO |
+- seed 822: FAIL 8 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/360 vertices of Part_Split | shape px (373,496)-(376,500) in
+- seed 824: FAIL 2 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 825: FAIL 6 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 828: FAIL 2 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 831: FAIL 1 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/8 vertices of Part | shape px (323,586)-(369,649) in ? | ORTHO | A
+- seed 831: FAIL 13 refused: The shape does not intersect "Part_Hidden_Split.002"; nothing was changed. [shape covers 0/181 vertices of Part_Hidden_Split.002 | shape px 
+- seed 833: FAIL 6 refused: The drawn shape is too small or has zero area.
+- seed 834: FAIL 5 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 834: FAIL 9 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/612 vertices of Part_Split | shape px (530,538)-(609,556) in
+- seed 834: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 834: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 835: FAIL 1 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/24 vertices of MCH_Base | shape px (399,480)-(432,549) in ? | 
+- seed 836: FAIL 5 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/1776 vertices of MCH_Base | shape px (586,443)-(612,563) in ? 
+- seed 836: FAIL 11 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/2385 vertices of MCH_Base | shape px (421,489)-(454,529) in ? 
+- seed 838: FAIL 6 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/445 vertices of MCH_Base | shape px (375,484)-(409,579) in ? |
+- seed 838: FAIL 13 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/1328 vertices of MCH_Base | shape px (591,545)-(632,603) in ? 
+- seed 839: FAIL 7 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/458 vertices of MCH_Base | shape px (430,533)-(496,555) in ? |
+- seed 839: FAIL 9 refused: The shape does not intersect "MCH_Base_Split.001"; nothing was changed. [shape covers 0/358 vertices of MCH_Base_Split.001 | shape px (547,4
+- seed 841: FAIL 4 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/92 vertices of MCH_Base | shape px (277,595)-(413,653) in ? | 
+- seed 842: FAIL 1 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/8 vertices of Part | shape px (404,561)-(412,570) in ? | ORTHO | A
+- seed 843: FAIL 3 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/184 vertices of MCH_Base | shape px (585,480)-(601,520) in ? |
+- seed 843: FAIL 5 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/329 vertices of MCH_Base | shape px (483,478)-(507,502) in ? |
+- seed 843: FAIL 9 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 844: FAIL 5 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 844: FAIL 6 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 844: FAIL 13 refused: The shape does not intersect "MCH_Base_Hidden"; nothing was changed. [shape covers 0/717 vertices of MCH_Base_Hidden | shape px (470,571)-(4
+- seed 848: FAIL 2 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/1549 vertices of MCH_Base_Split | shape px (442,474)-(51
+- seed 849: FAIL 3 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/396 vertices of Part | shape px (529,646)-(587,684) in ? | ORTHO |
+- seed 850: FAIL 3 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/38 vertices of MCH_Base | shape px (507,488)-(538,498) in ? | 
+- seed 850: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 850: FAIL 14 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 852: FAIL 4 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/886 vertices of MCH_Base | shape px (587,484)-(613,497) in ? |
+- seed 852: FAIL 7 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 853: FAIL 6 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/1080 vertices of MCH_Base | shape px (532,366)-(570,395) in ? 
+- seed 853: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 857: FAIL 12 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 860: FAIL 7 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/573 vertices of Part | shape px (503,434)-(540,470) in ? | ORTHO |
+- seed 861: FAIL 2 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/20 vertices of MCH_Base | shape px (603,422)-(669,488) in ? | 
+- seed 861: FAIL 7 refused: The drawn shape is too small or has zero area.
+- seed 862: FAIL 8 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 865: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 867: FAIL 8 refused: The drawn shape is too small or has zero area.
+- seed 870: FAIL 2 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/85 vertices of Part_Split | shape px (545,529)-(558,542) in 
+- seed 870: FAIL 5 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/342 vertices of Part | shape px (628,419)-(654,535) in ? | ORTHO |
+- seed 874: FAIL 3 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/65 vertices of MCH_Base_Split | shape px (411,494)-(464,
+- seed 874: FAIL 12 refused: The drawn shape covers the whole of "MCH_Base_Split_Hidden" (a Cut would delete all of it, a Split would leave nothing behind); nothing was 
+- seed 875: FAIL 5 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 876: FAIL 5 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 877: FAIL 7 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 877: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 878: FAIL 6 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 879: FAIL 7 refused: The drawn shape is too small or has zero area.
+- seed 879: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 881: FAIL 6 refused: The drawn shape is too small or has zero area.
+- seed 881: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 881: FAIL 11 refused: The drawn shape is too small or has zero area.
+- seed 881: FAIL 14 refused: The drawn shape is too small or has zero area.
+- seed 884: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 885: FAIL 6 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 886: FAIL 2 refused: The drawn shape is too small or has zero area.
+- seed 886: FAIL 5 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 886: FAIL 8 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/1314 vertices of Part_Split | shape px (423,355)-(472,488) i
+- seed 888: FAIL 4 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 890: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 890: FAIL 14 refused: Boolean failed safely, mesh unchanged. MANIFOLD: the shape did not intersect the mesh; EXACT: result has 4 non-manifold edges
+- seed 891: FAIL 3 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 891: FAIL 6 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 892: FAIL 5 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/56 vertices of Part_Split | shape px (434,566)-(444,576) in 
+- seed 895: FAIL 9 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 897: FAIL 7 refused: The drawn shape is too small or has zero area.
+- seed 898: FAIL 4 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/16 vertices of MCH_Base_Split | shape px (573,435)-(590,
+- seed 898: FAIL 10 refused: The drawn shape is too small or has zero area.
+- seed 898: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 900: FAIL 11 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 900: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 901: FAIL 13 refused: The drawn shape covers the whole of "MCH_Base_Hidden_Split.002_Hidden.001" (a Cut would delete all of it, a Split would leave nothing behind
+- seed 902: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 903: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 904: FAIL 11 refused: The drawn shape is too small or has zero area.
+- seed 905: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 907: FAIL 8 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 907: FAIL 14 refused: The drawn shape covers the whole of "MCH_Base_Split_Split_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing
+- seed 909: FAIL 5 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 910: FAIL 10 refused: The shape does not intersect "MCH_Base_Hidden"; nothing was changed. [shape covers 0/950 vertices of MCH_Base_Hidden | shape px (444,515)-(4
+- seed 910: FAIL 11 refused: The shape does not intersect "MCH_Base_Hidden"; nothing was changed. [shape covers 0/950 vertices of MCH_Base_Hidden | shape px (531,504)-(5
+- seed 911: FAIL 8 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 911: FAIL 10 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/701 vertices of MCH_Base | shape px (539,349)-(603,396) in ? |
+- seed 912: FAIL 1 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/54 vertices of MCH_Base | shape px (465,585)-(581,622) in ? | 
+- seed 913: FAIL 11 refused: The drawn shape is too small or has zero area.
+- seed 913: FAIL 12 refused: The drawn shape is too small or has zero area.
+- seed 914: FAIL 14 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 915: FAIL 6 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/2846 vertices of Part | shape px (431,397)-(463,429) in ? | ORTHO 
+- seed 915: FAIL 13 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/2231 vertices of Part | shape px (456,412)-(491,445) in ? | ORTHO 
+- seed 916: FAIL 2 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 916: FAIL 9 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/596 vertices of MCH_Base | shape px (393,578)-(421,606) in ? |
+- seed 919: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 919: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 919: FAIL 14 refused: The drawn shape is too small or has zero area.
+- seed 920: FAIL 3 refused: Boolean failed safely, mesh unchanged. MANIFOLD: the shape did not intersect the mesh; EXACT: empty result
+- seed 920: FAIL 13 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/510 vertices of MCH_Base_Split | shape px (543,516)-(553
+- seed 922: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 923: FAIL 7 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 923: FAIL 11 refused: The drawn shape is too small or has zero area.
+- seed 924: FAIL 7 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/881 vertices of MCH_Base | shape px (445,496)-(466,536) in ? |
+- seed 925: FAIL 13 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/561 vertices of Part_Hidden | shape px (417,503)-(432,519) 
+- seed 927: FAIL 3 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/145 vertices of Part | shape px (401,443)-(415,469) in ? | ORTHO |
+- seed 927: FAIL 9 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/73 vertices of Part_Hidden | shape px (531,448)-(541,458) i
+- seed 930: FAIL 6 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 930: FAIL 12 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/250 vertices of MCH_Base | shape px (596,425)-(618,497) in ? |
+- seed 932: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 934: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 935: FAIL 8 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/772 vertices of MCH_Base | shape px (411,612)-(536,710) in ? |
+- seed 936: FAIL 14 refused: The drawn shape is too small or has zero area.
+- seed 937: FAIL 6 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/162 vertices of MCH_Base_Split | shape px (480,433)-(492
+- seed 938: FAIL 2 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/156 vertices of MCH_Base | shape px (470,585)-(491,610) in ? |
+- seed 938: FAIL 8 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 939: FAIL 8 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/2429 vertices of Part | shape px (596,426)-(634,460) in ? | ORTHO 
+- seed 940: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 941: FAIL 8 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/149 vertices of Part_Hidden | shape px (574,475)-(593,494) 
+- seed 943: FAIL 1 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/10 vertices of MCH_Base | shape px (579,435)-(623,479) in ? | 
+- seed 946: FAIL 5 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 947: FAIL 6 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/350 vertices of Part | shape px (424,232)-(480,273) in ? | ORTHO |
+- seed 947: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 948: FAIL 4 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 949: FAIL 14 refused: The drawn shape is too small or has zero area.
+- seed 950: FAIL 10 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/2648 vertices of Part | shape px (590,441)-(646,521) in ? | ORTHO 
+- seed 953: FAIL 2 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 953: FAIL 10 refused: The shape does not intersect "Part_Hidden"; nothing was changed. [shape covers 0/253 vertices of Part_Hidden | shape px (384,516)-(458,573) 
+- seed 953: FAIL 11 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/1671 vertices of Part | shape px (558,514)-(583,538) in ? | ORTHO 
+- seed 953: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 953: FAIL 14 refused: The drawn shape is too small or has zero area.
+- seed 954: FAIL 7 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 955: FAIL 10 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/85 vertices of MCH_Base_Split | shape px (502,516)-(512,
+- seed 955: FAIL 12 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 955: FAIL 14 refused: Box Hide: all of "MCH_Base_Split" is hidden - applying would leave an empty object (Show All, or delete the part)
+- seed 955: FAIL divide MCH_Base_Split refused: nothing to bake: the part's modifiers (a Box Hide ...) leave no faces
+- seed 956: FAIL 3 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 957: FAIL 10 refused: The drawn shape is too small or has zero area.
+- seed 957: FAIL 13 refused: The shape does not intersect "MCH_Base_Hidden_Hidden"; nothing was changed. [shape covers 0/194 vertices of MCH_Base_Hidden_Hidden | shape p
+- seed 958: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 959: FAIL 1 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 959: FAIL 6 refused: The shape does not intersect "MCH_Base_Split.001"; nothing was changed. [shape covers 0/130 vertices of MCH_Base_Split.001 | shape px (551,4
+- seed 959: FAIL 12 refused: The shape does not intersect "MCH_Base_Split.001"; nothing was changed. [shape covers 0/366 vertices of MCH_Base_Split.001 | shape px (543,4
+- seed 959: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 961: FAIL 3 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 961: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 963: FAIL 1 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 964: FAIL 11 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 964: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 964: FAIL 13 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/943 vertices of MCH_Base_Split | shape px (578,422)-(585
+- seed 965: FAIL 14 refused: The shape does not intersect "Part_Split_Split"; nothing was changed. [shape covers 0/1027 vertices of Part_Split_Split | shape px (388,473)
+- seed 967: FAIL 5 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 969: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 971: FAIL 6 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 972: FAIL 3 refused: The shape does not intersect "Part_Split_Split"; nothing was changed. [shape covers 0/431 vertices of Part_Split_Split | shape px (495,417)-
+- seed 973: FAIL 8 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/668 vertices of Part_Split | shape px (590,523)-(617,561) in
+- seed 973: FAIL 13 refused: The drawn shape covers the whole of "Part_Split_Hidden" (a Cut would delete all of it, a Split would leave nothing behind); nothing was chan
+- seed 974: FAIL 7 refused: The result would delete the whole object; nothing was changed. [Part_Hidden_Hidden: Keep inside (Alt invert or Split inner part) - the shape
+- seed 975: FAIL 6 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/394 vertices of MCH_Base | shape px (573,532)-(663,605) in ? |
+- seed 975: FAIL 14 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/1125 vertices of MCH_Base | shape px (449,484)-(500,536) in ? 
+- seed 979: FAIL 8 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 979: FAIL 14 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 980: FAIL 7 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/247 vertices of MCH_Base | shape px (449,381)-(537,429) in ? |
+- seed 980: FAIL 9 refused: The shape does not intersect "MCH_Base_Split.001"; nothing was changed. [shape covers 0/28 vertices of MCH_Base_Split.001 | shape px (530,47
+- seed 982: FAIL 3 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 982: FAIL 4 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 983: FAIL 4 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 985: FAIL 12 refused: The result would delete the whole object; nothing was changed. [Part_Split_Split_Hidden: Keep inside (Alt invert or Split inner part) - the 
+- seed 986: FAIL 13 refused: The drawn shape covers the whole of "Part_Hidden" (a Cut would delete all of it, a Split would leave nothing behind); nothing was changed. D
+- seed 987: FAIL 1 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 987: FAIL 6 refused: The shape does not intersect "MCH_Base_Split_Split"; nothing was changed. [shape covers 0/36 vertices of MCH_Base_Split_Split | shape px (53
+- seed 988: FAIL 6 refused: The drawn shape is too small or has zero area.
+- seed 988: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 988: FAIL 14 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 989: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 990: FAIL 4 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/236 vertices of MCH_Base_Split | shape px (563,384)-(643
+- seed 990: FAIL 6 refused: The result would delete the whole object; nothing was changed. [MCH_Base_Hidden: Keep inside (Alt invert or Split inner part) - the shape ma
+- seed 990: FAIL 8 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/92 vertices of MCH_Base_Split | shape px (512,459)-(576,
+- seed 993: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 994: FAIL 4 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/1281 vertices of Part_Split | shape px (490,513)-(633,657) i
+- seed 994: FAIL 7 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/1373 vertices of Part_Split | shape px (423,580)-(431,588) i
+- seed 995: FAIL 4 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/1344 vertices of Part | shape px (710,535)-(764,617) in ? | ORTHO 
+- seed 995: FAIL 10 refused: The result would delete the whole object; nothing was changed. [Part_Split_Hidden.001: Keep inside (Alt invert or Split inner part) - the sh
+- seed 996: FAIL 6 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 996: FAIL 7 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 996: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 997: FAIL 8 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 997: FAIL 11 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 997: FAIL 12 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 997: FAIL 13 refused: The drawn shape is too small or has zero area.
+- seed 1000: FAIL 1 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 1001: FAIL 7 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 1002: FAIL 8 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/33 vertices of MCH_Base_Split | shape px (473,451)-(483,
+- seed 1003: FAIL 4 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/570 vertices of MCH_Base | shape px (599,457)-(627,526) in ? |
+- seed 1004: FAIL 3 refused: The shape does not intersect "MCH_Base_Hidden"; nothing was changed. [shape covers 0/72 vertices of MCH_Base_Hidden | shape px (495,428)-(50
+- seed 1004: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 1004: FAIL 13 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 1004: FAIL 14 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 1005: FAIL 3 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 1005: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 1006: FAIL 7 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 1008: FAIL 1 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 1008: FAIL 8 refused: Box Hide: all of "MCH_Base_Split_Split" is hidden - nothing would be left to split it off from (Show All, or keep it as it is)
+- seed 1008: FAIL 11 refused: Box Hide: all of "MCH_Base_Split_Split" is hidden - nothing would be left to split it off from (Show All, or keep it as it is)
+- seed 1008: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 1009: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 1010: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 1011: FAIL 2 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/22 vertices of Part | shape px (388,475)-(407,482) in ? | ORTHO | 
+- seed 1014: FAIL 2 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/129 vertices of MCH_Base | shape px (397,318)-(475,443) in ? |
+- seed 1014: FAIL 7 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/1918 vertices of MCH_Base | shape px (423,567)-(485,629) in ? 
+- seed 1014: FAIL 13 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 1015: FAIL 12 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/3411 vertices of Part | shape px (368,599)-(518,654) in ? | ORTHO 
+- seed 1019: FAIL 6 refused: The drawn shape is too small or has zero area.
+- seed 1019: FAIL 13 refused: The drawn shape covers the whole of "Part_Hidden_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing was chan
+- seed 1023: FAIL 6 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 1025: FAIL 7 refused: The result would delete the whole object; nothing was changed. [Part_Hidden.001: Keep inside (Alt invert or Split inner part) - the shape ma
+- seed 1026: FAIL 9 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/39 vertices of Part_Split | shape px (523,446)-(541,473) in 
+- seed 1026: FAIL 10 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/39 vertices of Part_Split | shape px (549,465)-(560,476) in 
+- seed 1027: FAIL 1 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 1027: FAIL 11 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 1028: FAIL 8 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 1029: FAIL 2 refused: The result would delete the whole object; nothing was changed. [MCH_Base_Hidden: Keep inside (Alt invert or Split inner part) - the shape ma
+- seed 1029: FAIL 4 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/128 vertices of MCH_Base_Split | shape px (585,520)-(595
+- seed 1029: FAIL 11 refused: Box Hide: all of "MCH_Base_Split.001_Split" is hidden - nothing would be left to split it off from (Show All, or keep it as it is)
+- seed 1029: FAIL divide MCH_Base_Split.001_Split refused: nothing to bake: the part's modifiers (a Box Hide ...) leave no faces
+- seed 1031: FAIL 13 refused: Box Hide: all of "MCH_Base_Split_Split" is hidden - applying would leave an empty object (Show All, or delete the part)
+- seed 1031: FAIL 14 refused: The drawn shape is too small or has zero area.
+- seed 1031: FAIL divide MCH_Base_Split_Split refused: nothing to bake: the part's modifiers (a Box Hide ...) leave no faces
+- seed 1032: FAIL 8 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 1034: FAIL 7 refused: The shape does not intersect "Part_Split.001"; nothing was changed. [shape covers 0/35 vertices of Part_Split.001 | shape px (416,525)-(461,
+- seed 1035: FAIL 9 refused: The drawn shape is too small or has zero area.
+- seed 1035: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 1037: FAIL 9 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/564 vertices of Part | shape px (346,430)-(380,510) in ? | ORTHO |
+- seed 1040: FAIL 9 refused: The drawn shape is too small or has zero area.
+- seed 1048: FAIL 6 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 1048: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 1049: FAIL 6 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 1050: FAIL 8 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 1050: FAIL 9 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/326 vertices of Part | shape px (488,460)-(583,568) in ? | ORTHO |
+- seed 1054: FAIL 6 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 1055: FAIL 7 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 1056: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 1057: FAIL 3 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/66 vertices of MCH_Base | shape px (480,469)-(547,536) in ? | 
+- seed 1057: FAIL 4 refused: The drawn shape is too small or has zero area.
+- seed 1057: FAIL 8 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 1057: FAIL 11 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/1560 vertices of MCH_Base | shape px (448,472)-(552,517) in ? 
+- seed 1059: FAIL 8 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 1060: FAIL 1 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 1061: FAIL 4 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/337 vertices of MCH_Base | shape px (470,526)-(492,544) in ? |
+- seed 1063: FAIL 2 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 1064: FAIL 14 refused: Box Hide: all of "Part_Hidden_Hidden" is hidden - nothing would be left to split it off from (Show All, or keep it as it is)
+- seed 1064: FAIL divide Part_Hidden_Hidden refused: nothing to bake: the part's modifiers (a Box Hide ...) leave no faces
+- seed 1065: FAIL 9 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 1066: FAIL 14 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/2158 vertices of MCH_Base | shape px (301,457)-(399,580) in ? 
+- seed 1067: FAIL 11 refused: The shape does not intersect "Part_Split_Hidden"; nothing was changed. [shape covers 0/1103 vertices of Part_Split_Hidden | shape px (457,50
+- seed 1067: FAIL 13 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 1068: FAIL 6 refused: The drawn shape covers the whole of "MCH_Base_Hidden_Hidden_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothi
+- seed 1068: FAIL 9 refused: The result would delete the whole object; nothing was changed. [MCH_Base_Hidden.002: Keep inside (Alt invert or Split inner part) - the shap
+- seed 1070: FAIL 5 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/296 vertices of Part | shape px (586,340)-(626,395) in ? | ORTHO |
+- seed 1070: FAIL 13 refused: The shape does not intersect the mesh; nothing was changed.
+- seed 1073: FAIL 4 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 1074: FAIL 8 refused: The drawn shape is too small or has zero area.
+- seed 1075: FAIL 11 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/682 vertices of MCH_Base | shape px (403,426)-(425,448) in ? |
+- seed 1075: FAIL 13 refused: The result would delete the whole object; nothing was changed. [MCH_Base_Hidden: Keep inside (Alt invert or Split inner part) - the shape ma
+- seed 1077: FAIL 11 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 1077: FAIL 12 refused: The shape does not intersect "Part_Split.001"; nothing was changed. [shape covers 0/222 vertices of Part_Split.001 | shape px (514,515)-(545
+- seed 1079: FAIL 12 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 1080: FAIL 11 refused: The shape does not intersect "MCH_Base_Hidden"; nothing was changed. [shape covers 0/396 vertices of MCH_Base_Hidden | shape px (535,465)-(5
+- seed 1081: FAIL 3 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 1083: FAIL 13 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/1481 vertices of Part_Split | shape px (517,460)-(534,483) i
+- seed 1085: FAIL 3 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/170 vertices of MCH_Base | shape px (579,547)-(583,550) in ? |
+- seed 1086: FAIL 3 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 1086: FAIL 10 refused: The shape does not intersect "MCH_Base_Split"; nothing was changed. [shape covers 0/380 vertices of MCH_Base_Split | shape px (489,465)-(500
+- seed 1087: FAIL 7 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 1087: FAIL 9 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 1087: FAIL 14 refused: The shape does not intersect "Part_Hidden_Split"; nothing was changed. [shape covers 0/377 vertices of Part_Hidden_Split | shape px (436,419
+- seed 1088: FAIL 2 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 1088: FAIL 5 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 1090: FAIL 4 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/48 vertices of MCH_Base | shape px (533,568)-(583,618) in ? | 
+- seed 1090: FAIL 7 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 1091: FAIL 14 refused: The drawn shape covers the whole of "Part_Split_Split" (a Cut would delete all of it, a Split would leave nothing behind); nothing was chang
+- seed 1093: FAIL 2 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 1093: FAIL 4 refused: The shape does not intersect "Part"; nothing was changed. [shape covers 0/49 vertices of Part | shape px (383,519)-(428,534) in ? | ORTHO | 
+- seed 1093: FAIL 7 refused: The result would delete the whole object; nothing was changed. [Part_Hidden_Hidden: Keep inside (Alt invert or Split inner part) - the shape
+- seed 1094: FAIL 5 refused: The shape does not intersect "MCH_Base"; nothing was changed. [shape covers 0/736 vertices of MCH_Base | shape px (412,509)-(428,554) in ? |
+- seed 1094: FAIL 6 refused: The result would delete the whole object; nothing was changed. [MCH_Base_Hidden: Keep inside (Alt invert or Split inner part) - the shape ma
+- seed 1094: FAIL 10 refused: The outline is not on a mesh: draw over the surface you want the plate on.
+- seed 1096: FAIL 4 refused: The shape does not intersect "MCH_Base_Split.001"; nothing was changed. [shape covers 0/8 vertices of MCH_Base_Split.001 | shape px (473,496
+- seed 1096: FAIL 6 refused: The drawn shape is too small or has zero area.
+- seed 1096: FAIL 8 refused: Aim the shape at the mesh surface (Depth mode = From Surface).
+- seed 1096: FAIL 12 refused: The shape does not intersect "MCH_Base_Split_Hidden"; nothing was changed. [shape covers 0/206 vertices of MCH_Base_Split_Hidden | shape px 
+- seed 1100: FAIL 13 refused: The shape does not intersect "Part_Split"; nothing was changed. [shape covers 0/160 vertices of Part_Split | shape px (350,474)-(368,500) in

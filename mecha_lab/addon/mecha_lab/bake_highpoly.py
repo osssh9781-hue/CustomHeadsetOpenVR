@@ -778,6 +778,71 @@ def _cut_first(me):
     return np.flatnonzero(bad)
 
 
+STRAY_TOL = 0.01      # a test Divide's edge point this far (x the part's size) off the part: that edge is creased
+
+
+def _crease_strays(me, tol=STRAY_TOL, rounds=2):
+    """0.24.95 (combo fuzz: 37 of 978 parts strayed 3 - 8 %) a soft edge whose Catmull-Clark edge point leaves the
+    part - the short miter edge where two long, thin rows of an Edge Finish band meet at a corner (1.5 x 0.01): its
+    edge point is the mean of its ends and the two rows' face points, 0.7 and 1.5 away along the rows, and landed
+    0.12 inside the hole.  One test level of the subdivision finds them (an edge point far from its edge's middle
+    AND far from the part); they are creased, and the corners again (``_crease_corners``).  Returns how many."""
+    from mathutils import Vector
+    from mathutils.bvhtree import BVHTree
+    from . import mesh_io as mio
+    a = me.attributes.get('crease_edge')
+    nv, ne = len(me.vertices), len(me.edges)
+    size = _mesh_size(me)
+    if a is None or not nv or not ne or size <= 0.0:
+        return 0
+    co = mio.read_co(me)
+    ev = mio.read_edge_verts(me)
+    mid = (co[ev[:, 0]] + co[ev[:, 1]]) / 2.0
+    elen = np.linalg.norm(co[ev[:, 0]] - co[ev[:, 1]], axis=1)
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        bvh = BVHTree.FromBMesh(bm)
+    finally:
+        bm.free()
+    total = 0
+    for _round in range(rounds):
+        cr = np.zeros(ne, np.float32)
+        a.data.foreach_get('value', cr)
+        tmp = bpy.data.objects.new('.mch_bk_test', me)
+        bpy.context.scene.collection.objects.link(tmp)
+        try:
+            m = tmp.modifiers.new('test', 'SUBSURF')
+            m.levels = m.render_levels = 1
+            m.use_creases = True
+            m.use_limit_surface = True
+            ev_ob = tmp.evaluated_get(bpy.context.evaluated_depsgraph_get())
+            out = ev_ob.to_mesh()
+            try:
+                P = mio.read_co(out) if len(out.vertices) >= nv + ne else None
+            finally:
+                ev_ob.to_mesh_clear()
+        finally:
+            bpy.data.objects.remove(tmp, do_unlink=True)
+        if P is None:
+            return total
+        ep = P[nv:nv + ne]
+        drift = np.linalg.norm(ep - mid, axis=1)
+        if np.median(drift) > np.median(elen):       # (the edge points are not in edge order: no test)
+            return total
+        cand = np.flatnonzero((cr < 0.5) & (drift > tol * size) & (drift > 2.0 * elen))   # (an edge point well past
+        # its own edge's length from it: a big face's edge points drift by half the face, and the BVH would look at
+        # thousands of them - 7 s on a 20k-face part)
+        far = [int(e) for e in cand if bvh.find_nearest(Vector(ep[e]))[3] > tol * size]
+        if not far:
+            break
+        cr[far] = 1.0
+        a.data.foreach_set('value', cr)
+        _crease_corners(me, cr > 0.5)
+        total += len(far)
+    return total
+
+
 def _subd_round(me, hard, levels):
     """0.24.95 ``me`` (in place) through ``levels`` of Catmull-Clark with ``hard`` creased (1.0) and every other edge
     smooth, on the limit surface; Sharp = the creased edges of the result.  Returns the number of creased edges."""
@@ -806,6 +871,7 @@ def _subd_round(me, hard, levels):
             bm.to_mesh(me)
     finally:
         bm.free()
+    _crease_strays(me)
     tmp = bpy.data.objects.new('.mch_bk_subd', me)
     bpy.context.scene.collection.objects.link(tmp)
     try:

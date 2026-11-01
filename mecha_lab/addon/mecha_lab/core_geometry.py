@@ -904,13 +904,68 @@ def split_warped(me, size=None, tol=WARP_TOL):
     try:
         bm.from_mesh(me)
         bm.faces.ensure_lookup_table()
-        bmesh.ops.triangulate(bm, faces=[bm.faces[i] for i in bent.tolist()], quad_method='BEAUTY',
-                              ngon_method='BEAUTY')
+        # one face at a time, filled by hand (Blender's polygon fill) with no diagonal on a pair of its corners
+        # that an edge outside it already joins - (combo fuzz seed 895) a triangle took such an edge as its
+        # diagonal and gave it a third face, and the hole shutting then deleted 64 faces round it; (seed 662) two
+        # bent faces sharing two corners would both have made the same diagonal.  The edges are looked at again
+        # for every face, so the diagonals of the faces filled before count too
+        from mathutils.geometry import tessellate_polygon
+        todo = [bm.faces[i] for i in bent.tolist()]
+        def bad(b):                                  # (open / 3-face edges, and faces wound against each other)
+            n = 0
+            for e in b.edges:
+                if len(e.link_faces) != 2:
+                    n += 1
+                elif e.link_loops[0].vert == e.link_loops[1].vert:
+                    n += 1
+            return n
+        bad0 = bad(bm)
+        done = 0
+        for f in todo:
+            if not f.is_valid:
+                continue
+            vs = list(f.verts)
+            n = len(vs)
+            fe = set(f.edges)
+            taken = {frozenset((v, e.other_vert(v))) for v in vs for e in v.link_edges if e not in fe}
+            try:
+                tris = tessellate_polygon([[v.co.copy() for v in vs]])
+            except (ValueError, TypeError):
+                continue
+            diag = {frozenset((vs[a], vs[b])) for t in tris for a, b in ((t[0], t[1]), (t[1], t[2]), (t[2], t[0]))
+                    if (a - b) % n not in (1, n - 1)}
+            if len(tris) != n - 2 or diag & taken:
+                continue                             # (its fill would reuse an edge: left as it is)
+            made = []
+            # the fill's winding, turned to the face's as a whole (its area vector against the face's own, round its
+            # corners in order): per triangle, a strongly bent face had some turned and some not - faces wound
+            # against each other, and every later Boolean on the part failed (a stress test)
+            own = sum(((vs[k].co - vs[0].co).cross(vs[k + 1].co - vs[0].co) for k in range(1, n - 1)), Vector())
+            fill = sum(((vs[t[1]].co - vs[t[0]].co).cross(vs[t[2]].co - vs[t[0]].co) for t in tris), Vector())
+            flip = fill.dot(own) < 0
+            try:
+                for t in tris:
+                    tv = [vs[k] for k in t]
+                    if flip:
+                        tv.reverse()
+                    made.append(bm.faces.new(tv, f))
+            except ValueError:
+                for g in made:
+                    bm.faces.remove(g)
+                continue
+            bm.faces.remove(f)
+            done += 1
+        bad1 = bad(bm)
+        import os
+        if os.environ.get('MECH_WARP_DEBUG'):
+            print(f'[warp] bent {len(todo)} done {done} bad {bad0} -> {bad1}', flush=True)
+        if not done or bad1 > bad0:
+            return 0                                 # (never trade a bent face for an open / 3-face / flipped edge)
         bm.to_mesh(me)
     finally:
         bm.free()
     me.update()
-    return int(len(bent))
+    return done
 
 
 def _boolean_result_any(context, target, cutter, operation, solver='AUTO',
@@ -2292,14 +2347,14 @@ def flat_cut_faces(mesh):
     return len(cut)
 
 
-def remove_cutter_attribute(mesh, old_co=None, old_ev=None):
+def remove_cutter_attribute(mesh, old_co=None, old_ev=None, old_sharp=None):
     """Every copy of the cutter flag goes (0.24.42: a Geometry Nodes result can carry it twice, on faces and on
     points - a copy left behind made the NEXT cut finish this cut's border again).  0.24.95 right before it goes,
     the flag becomes Edge Memory marks (the cut's outline + the cutter's own creases: edge_memory; ``old_co`` = the
     part's points before the cut, when known; ``old_ev`` its edges' point pairs)."""
     try:
         from . import edge_memory
-        edge_memory.mark_cut_borders(mesh, CUTTER_ATTR, old_co=old_co, old_ev=old_ev)
+        edge_memory.mark_cut_borders(mesh, CUTTER_ATTR, old_co=old_co, old_ev=old_ev, old_sharp=old_sharp)
     except Exception as ex:                                   # memory is a bonus: never fail a cut over it
         print('Mecha: edge memory:', ex)
     for name in (CUTTER_ATTR, '.mch_fin_band'):              # (0.24.95 + the Edge Finish band flag)
@@ -2325,6 +2380,8 @@ def commit_mesh(target, new_mesh, shared_policy='SINGLE'):
     from . import mesh_io                              # 0.24.95 the part's points before the cut: the marks find the
     old_co = mesh_io.read_co(me) if len(me.vertices) else None   # rim of the cut by its new points too
     old_ev = mesh_io.read_edge_verts(me) if len(me.edges) else None  # (+ the old points the Boolean joined anew)
+    from . import edge_memory as _em                                 # (+ the old edges the cut turned sharp)
+    old_sharp = _em.sharp_pairs(me) if len(me.polygons) else None
     bm = bmesh.new()
     try:
         bm.from_mesh(new_mesh)
@@ -2337,7 +2394,7 @@ def commit_mesh(target, new_mesh, shared_policy='SINGLE'):
             me[key] = new_mesh[key]                          # it: the part's old count made the jump look like a
     for mat in list(new_mesh.materials)[len(me.materials):]:  # remesh smearing the marks, and they were all wiped
         me.materials.append(mat)
-    remove_cutter_attribute(me, old_co, old_ev)
+    remove_cutter_attribute(me, old_co, old_ev, old_sharp)
     me.update()
     return info
 

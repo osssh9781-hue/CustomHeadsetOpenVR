@@ -441,6 +441,10 @@ def apply(context, ob):
     old_co = mesh_io.read_co(ob.data) if len(ob.data.vertices) else None   # (the part's points before: the hole's
     old_ev = mesh_io.read_edge_verts(ob.data) if len(ob.data.edges) else None
     edge_memory.keep_marks(ob.data, _apply)      # 0.24.95 (the part's earlier marks along what the Boolean rebuilt)
+    try:                                         # 0.24.95 (combo fuzz: 6 of 978 parts) a face the hiding Boolean bent
+        cg.split_warped(ob.data)                 # off its plane: cut into triangles, as after a Cut
+    except (RuntimeError, ValueError, AttributeError) as ex:
+        print('Mecha: warped faces:', ex)
     cg.remove_cutter_attribute(ob.data, old_co, old_ev)  # 0.24.95 -> Edge Memory marks on the hole's edges (rim by its new points too)
     if vol is not None and not _sharers(vol, ob):
         cg.remove_object_and_mesh(vol)
@@ -479,7 +483,9 @@ def split_off(context, ob):
             me.materials.append(m)
     piece.data = me
     me.name = piece.name
-    cg.remove_cutter_attribute(me)        # 0.24.95 -> Edge Memory marks on the piece's cut edges
+    from . import mesh_io                 # 0.24.95 -> Edge Memory marks on the piece's cut edges (the part's points and
+    cg.remove_cutter_attribute(me, mesh_io.read_co(old) if len(old.vertices) else None,       # edges before: its rim
+                               mesh_io.read_edge_verts(old) if len(old.edges) else None)     # + old points joined anew)
     if old.users == 0:
         bpy.data.meshes.remove(old)
     set_cap(ob, True)                     # the rest is closed too, like Split

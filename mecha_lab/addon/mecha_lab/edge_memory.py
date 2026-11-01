@@ -143,7 +143,30 @@ def _edge_faces(me):
     return e_sorted, f_sorted, starts, ends
 
 
-def mark_cut_borders(me, cutter_attr='mch_cutter_face', inner_angle=INNER_ANGLE, old_co=None, old_ev=None):
+def sharp_pairs(me, angle=None):
+    """0.24.95 the point pairs (``_pair_keys`` of ``_pos_keys``, sorted) of the edges of ``me`` sharper than a miter
+    (``FIN_MITER``) - what ``mark_cut_borders`` compares with (``old_sharp``).  None for a dense mesh (the per-edge
+    angles on 200k+ faces cost more than they are worth on every cut)."""
+    from . import mesh_io as mio
+    nf = len(me.polygons)
+    if nf == 0 or nf > 200_000:
+        return None
+    e_sorted, f_sorted, starts, ends = _edge_faces(me)
+    s2 = starts[(ends - starts) == 2]
+    nrm = np.empty(nf * 3, np.float32)
+    me.polygons.foreach_get('normal', nrm)
+    nrm = nrm.reshape(-1, 3)
+    d = np.einsum('ij,ij->i', nrm[f_sorted[s2]], nrm[f_sorted[s2 + 1]])
+    ea = e_sorted[s2][d < math.cos(FIN_MITER if angle is None else angle)]
+    co = mio.read_co(me)
+    q = (float(np.linalg.norm(np.ptp(co, axis=0))) or 1.0) * 1e-6
+    k = _pos_keys(co, q)
+    ev = mio.read_edge_verts(me)[ea]
+    return np.sort(_pair_keys(k[ev[:, 0]], k[ev[:, 1]]))
+
+
+def mark_cut_borders(me, cutter_attr='mch_cutter_face', inner_angle=INNER_ANGLE, old_co=None, old_ev=None,
+                     old_sharp=None):
     """The cutter flag (faces) turned into edge marks: cutter / original borders + the cutter's own creases.
     ``old_co`` (0.24.95): the part's points before the cut - every edge sharper than a miter with a point the cut
     made is a line too (a random-holes stress test: the cutter flag can be lost whole - an Edge Finish, a
@@ -151,7 +174,10 @@ def mark_cut_borders(me, cutter_attr='mch_cutter_face', inner_angle=INNER_ANGLE,
     marked now (0 when there is nothing to go by, or nothing was cut).
     ``old_ev`` (0.24.95, the old edges' point pairs): an edge sharper than a miter between two OLD points that was
     not an edge before is a line too - the Boolean rebuilt the faces round the cut and joined old points anew
-    (a combination fuzz: a pocket next to a saw-toothed carve rim left 16 such corners without a crease)."""
+    (a combination fuzz: a pocket next to a saw-toothed carve rim left 16 such corners without a crease).
+    ``old_sharp`` (``sharp_pairs`` of the part before): an OLD edge that was not sharper than a miter and is now -
+    the cut took the face beside it away (a hole's rim under a cap a Base Mesh subtract opened: 13 rims unmarked).
+    One that was sharp before keeps its state (a cube's own rims stay as they were)."""
     from . import mesh_io as mio
     attr = me.attributes.get(cutter_attr)
     nf = len(me.polygons)
@@ -218,7 +244,15 @@ def mark_cut_borders(me, cutter_attr='mch_cutter_face', inner_angle=INNER_ANGLE,
             op = np.sort(_pair_keys(ok[old_ev[:, 0]], ok[old_ev[:, 1]]))
             cp = _pair_keys(nk[ev[cand, 0]], nk[ev[cand, 1]])
             at = np.clip(np.searchsorted(op, cp), 0, len(op) - 1)
-            hard[cand[op[at] != cp]] = True
+            joined = op[at] != cp
+            if old_sharp is not None:
+                old_sharp = np.asarray(old_sharp)
+                if len(old_sharp):
+                    bt = np.clip(np.searchsorted(old_sharp, cp), 0, len(old_sharp) - 1)
+                    joined |= old_sharp[bt] != cp            # (an old edge that has turned sharp now)
+                else:
+                    joined[:] = True
+            hard[cand[joined]] = True
     idx = ea[hard]
     if not len(idx):
         return 0
@@ -264,6 +298,22 @@ def _pair_keys(ka, kb):
     return np.minimum(ka, kb) * 1000003 + np.maximum(ka, kb)
 
 
+def _thin_tree(seg, eps):
+    """A BVH of the lines ``seg`` (n, 2, 3) as thin triangles ``eps`` wide - "the nearest point on any line".
+    0.24.95 built in numpy (a Python loop with np.cross per line cost 18 s of a 28-cut stress test)."""
+    from mathutils.bvhtree import BVHTree
+    seg = np.asarray(seg, np.float64).reshape(-1, 2, 3)
+    d = seg[:, 1] - seg[:, 0]
+    dn = np.linalg.norm(d, axis=1)
+    ref = np.where((np.abs(d[:, 2]) < 0.9 * dn)[:, None], np.array([0.0, 0.0, 1.0]), np.array([1.0, 0.0, 0.0]))
+    side = np.cross(d, ref)
+    n = np.linalg.norm(side, axis=1)
+    side = np.where((n > 0)[:, None], side / np.maximum(n, 1e-300)[:, None] * eps, np.array([0.0, 0.0, eps]))
+    verts = np.empty((len(seg) * 3, 3))
+    verts[0::3], verts[1::3], verts[2::3] = seg[:, 0], seg[:, 1], seg[:, 1] + side
+    return BVHTree.FromPolygons(verts.tolist(), np.arange(len(verts)).reshape(-1, 3).tolist(), all_triangles=True)
+
+
 def _restore_lines(me, seg, co, new_pt, q, size, old_co=None, old_ev=None):
     """A step that rebuilds faces (the finish round its band, the result tidy dissolving the slivers it leaves)
     brings their edges back without the marks they had - the part's own corner next to a groove's end lost its
@@ -298,15 +348,7 @@ def _restore_lines(me, seg, co, new_pt, q, size, old_co=None, old_ev=None):
         seg = seg[near]
         cand = cand if len(seg) else cand[:0]
     if len(cand):
-        verts, polys = [], []
-        for i, (a, b) in enumerate(seg):              # (thin triangles: "nearest point on a marked line")
-            d = b - a
-            side = np.cross(d, (0.0, 0.0, 1.0) if abs(d[2]) < 0.9 * np.linalg.norm(d) else (1.0, 0.0, 0.0))
-            n = np.linalg.norm(side)
-            side = side / n * 1e-7 * size if n > 0 else np.array([0.0, 0.0, 1e-7 * size])
-            verts += [Vector(a), Vector(b), Vector(b + side)]
-            polys.append((3 * i, 3 * i + 1, 3 * i + 2))
-        tree = BVHTree.FromPolygons(verts, polys, all_triangles=True)
+        tree = _thin_tree(seg, 1e-7 * size)           # (thin triangles: "nearest point on a marked line")
         for ei in cand:
             a, b = co[ev[ei, 0]], co[ev[ei, 1]]
             d = b - a
@@ -490,16 +532,7 @@ def transfer_segments(seg, size, new_me, tol=TRANSFER_TOL):
         return 0
     tol = tol * size
     # the old marked lines as thin triangles so a BVH can answer "nearest point on any marked line"
-    verts, polys = [], []
-    up = np.array([0.0, 0.0, 1e-5 * size])
-    for i, (a, b) in enumerate(seg):
-        d = b - a
-        side = np.cross(d, up if abs(d[2]) < 0.9 * np.linalg.norm(d) else np.array([1e-5 * size, 0, 0]))
-        n = np.linalg.norm(side)
-        side = side / n * 1e-6 * size if n > 0 else up
-        verts += [Vector(a), Vector(b), Vector(b + side)]
-        polys.append((3 * i, 3 * i + 1, 3 * i + 2))
-    tree = BVHTree.FromPolygons(verts, polys, all_triangles=True)
+    tree = _thin_tree(seg, 1e-6 * size)
     nco = mio.read_co(new_me)
     nev = mio.read_edge_verts(new_me)
     near = np.zeros(len(nco), bool)
@@ -559,15 +592,7 @@ def mark_on_lines(me, seg, tol, pairs=None, cos_min=0.9):
         cand = np.arange(len(ev))
     if not len(cand):
         return 0
-    verts, polys = [], []
-    for i, (a, b) in enumerate(seg):
-        d = b - a
-        side = np.cross(d, [0.0, 0.0, 1.0]) if abs(d[2]) < 0.9 * (np.linalg.norm(d) or 1.0) else np.cross(d, [1.0, 0, 0])
-        n = np.linalg.norm(side)
-        side = side / n * 1e-3 * tol if n > 0 else np.array([0.0, 0.0, 1e-3 * tol])
-        verts += [Vector(a), Vector(b), Vector(b + side)]
-        polys.append((3 * i, 3 * i + 1, 3 * i + 2))
-    tree = BVHTree.FromPolygons(verts, polys, all_triangles=True)
+    tree = _thin_tree(seg, 1e-3 * tol)
     sd = seg[:, 1] - seg[:, 0]
     sl = np.linalg.norm(sd, axis=1)
     hit = []

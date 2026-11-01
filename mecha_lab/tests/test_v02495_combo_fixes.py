@@ -190,4 +190,20 @@ except cg.CutError as ex:
     msg = 'REFUSED ' + str(ex)
 check('Split round both pieces: refused, "covers the whole" (nothing changed)', msg.startswith('REFUSED')
       and 'covers the whole' in msg and len(ob.data.polygons) == 12, msg[:120])
+# ---- 7. seeds of the 1,000-part combination fuzz that went wrong, run again (each in its own Blender process):
+# 466 (Divide 7.5 %: a band's miter edge point), 662 (5 bent faces), 895 (90 open edges after a fill reused an edge),
+# 552 (13 old rims turned sharp, unmarked), 155 (a face bent by Box Hide Split Off)
+import os
+import subprocess
+import sys
+FUZZ = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fuzz', 'combo_scenario.py')
+for seed in (466, 662, 895, 552, 155):
+    out = subprocess.run([sys.executable, FUZZ, str(seed), '14'], capture_output=True, text=True, timeout=600).stdout
+    bad = [line for line in out.splitlines() if line.startswith(('BAD', 'ERROR'))]
+    res = [line for line in out.splitlines() if line.startswith('RESULT')]
+    worst = None
+    if seed == 895:                  # (the bug was 90 open edges; two of its bent faces stay bent - filling them would
+        bad = [line for line in bad if ' open:' in line or 'ERROR' in line]   # reuse an outside edge)
+    check(f'combination fuzz seed {seed}: no broken / bent / unmarked result, Divide within 3 % '
+          f'({res[0].split(":", 1)[1].strip() if res else "no result"})', not bad and 'DONE' in out, bad[:3])
 summary()
