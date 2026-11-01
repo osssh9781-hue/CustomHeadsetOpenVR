@@ -153,6 +153,14 @@ check('Metals at measured reflectance: Steel about 0.56, Aluminium about 0.91 (l
       and spec['BRASS']['base_color'][2] < spec['BRASS']['base_color'][0] * 0.6
       and spec['COPPER']['base_color'][0] > spec['COPPER']['base_color'][1] > spec['COPPER']['base_color'][2],
       [tuple(round(x, 2) for x in spec[k]['base_color']) for k in ('STEEL', 'BRUSHED', 'BRASS', 'COPPER')])
+check('Chipped paint in layers: paint, a primer band, then metal (Chipped / Battle Worn); Camo shows its pattern in '
+      'the paint; Muddy gathers its mud low', spec['CHIPPED']['primer'] > 0 and spec['BATTLE']['primer'] > 0
+      and spec['CAMO']['paint_pattern'] == 1.0 and spec['MUDDY']['dirt_low'] > 0.5)
+st.preset = 'CARBON'
+check('Carbon Fibre: its weave finer (Map Scale 2); the next preset puts Map Scale back',
+      st.map_scale == 2.0 and abs(mat.node_tree.nodes['mch:map_scale'].outputs[0].default_value - 2.0) < 1e-6)
+st.preset = 'PAINTED'
+check('... (Painted Metal: Map Scale 1)', st.map_scale == 1.0)
 check('... Brushed Aluminium brushed, Dirty Metal dusty and streaked', spec['BRUSHED']['aniso'] > 0.5
       and spec['DIRTY']['dust'] > 0 and spec['DIRTY']['streaks'] > 0)
 mat['mch_mech'] = 3
@@ -206,6 +214,7 @@ check('Panel: the preset, every map with its slider and Height, Clear Coat, AO, 
       {'preset', 'base_map', 'rough_map', 'chip_map', 'scratch_map', 'rust_map', 'dirt_map', 'snow_map', 'emit_map',
        'weave_map', 'edge_wear', 'scratches', 'rust', 'rust_scratch', 'dirt', 'snow', 'emission', 'cloth',
        'roughness', 'map_scale', 'bump', 'h_base', 'h_scratch', 'h_chip', 'h_rust', 'h_dirt', 'h_snow', 'h_weave',
-       'coat', 'ao', 'aniso', 'dust', 'streaks', 'variation', 'mch_mech_hdri', 'mch_mech_hdri_strength',
+       'coat', 'ao', 'aniso', 'dust', 'streaks', 'variation', 'primer', 'primer_color', 'paint_pattern',
+       'dirt_low', 'mch_mech_hdri', 'mch_mech_hdri_strength',
        'mch_mech_hdri_rot'} <= props, sorted(props))
 summary()

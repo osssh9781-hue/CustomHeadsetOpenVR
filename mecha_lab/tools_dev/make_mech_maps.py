@@ -3,6 +3,9 @@ roughness, base colour, chips, scratches, rust (colour + mask), dirt, snow, emis
 
     python3 tools_dev/make_mech_maps.py            (numpy + Pillow)
 
+Since the photo pack (``tools_dev/import_photo_maps.py``) most maps in the add-on are photos; this makes the set the
+pack overlays - run it, then the import again, or only the import.
+
 Every map tiles (spectral noise is periodic, Voronoi points and scratch lines wrap round the edges), so the shader can
 repeat it over a part with box projection - no UVs needed.  The same seed makes the same maps."""
 import math
@@ -208,11 +211,11 @@ def base():
     save_gray(s, 'CAST_height', np.clip(0.6 + (grain - 0.5) * 0.5 - pits * 0.6, 0, 1))   # (sand-cast grain, pits)
     f1, f2 = worley(60, 25)
     dents = norm(f1 / (f1 + f2 + 1e-9))
-    save_rgb(s, 'FORGED', tint(dents * 0.7 + spectral(26, 2.0) * 0.3, (0.4, 0.4, 0.41), (0.6, 0.6, 0.6)))
+    save_rgb(s, 'FORGED', tint(dents * 0.7 + spectral(26, 2.0) * 0.3, (0.45, 0.45, 0.455), (0.55, 0.55, 0.55)))
     save_gray(s, 'FORGED_height', 1.0 - norm(f1 / (f1 + f2 + 1e-9)) ** 0.7)   # (hammer dents: deep in the middle)
     h = warp(spectral(27, 2.8, fmax=8), 60, 28)
-    heat = np.stack([0.5 + 0.07 * np.sin(h * 5.0), 0.49 + 0.04 * np.sin(h * 5.0 + 2.0),
-                     0.5 + 0.09 * np.sin(h * 5.0 + 4.0)], -1)
+    heat = np.stack([0.5 + 0.035 * np.sin(h * 5.0), 0.495 + 0.02 * np.sin(h * 5.0 + 2.0),
+                     0.5 + 0.045 * np.sin(h * 5.0 + 4.0)], -1)                  # (a faint tint, not an oil slick)
     save_rgb(s, 'HEAT', heat)
     save_gray(s, 'HEAT_height', 0.5 + (spectral(203, 1.0, fmin=20) - 0.5) * 0.2)
     p = soft(warp(spectral(29, 2.5, fmax=10), 40, 30), 0.45, 0.75)
