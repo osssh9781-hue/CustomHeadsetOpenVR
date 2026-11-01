@@ -1079,8 +1079,84 @@ def split_warped(me, size=None, tol=WARP_TOL):
     return done
 
 
+MIRROR_CLEAR = 2.0          # a cut wall this many x the Mirror's bisect / merge distance from its plane is moved past it
+
+
+def cutter_past_mirror(target, cutter):
+    """0.24.95 (user: "컷 하다가 가끔 메쉬가 빵꾸 나는데 미러 때문인가?") A part with a live Mirror: a cut wall that
+    ends ON the mirror plane or within the Mirror's Bisect distance of it (0.001 by default) - a cut drawn from the
+    centre line - has its points thrown away by the Bisect, and the mirrored part shows a hole there (the base mesh
+    is whole).  Such a wall is moved just past the plane, so the cut crosses it - the Bisect then cuts the cut
+    cleanly, as for any cut across the centre (the copy shows the same cut up to the centre).  Walls clear of the
+    plane, and cutters that straddle it, are left alone.  Returns a new mesh for the cutter, or None."""
+    import numpy as np
+    if cutter is None or cutter.type != 'MESH' or not len(cutter.data.vertices):
+        return None
+    planes = []
+    for m in target.modifiers:
+        if m.type != 'MIRROR' or not m.show_viewport:
+            continue
+        frame = m.mirror_object.matrix_world if m.mirror_object is not None else target.matrix_world
+        for i in range(3):
+            if not m.use_axis[i]:
+                continue
+            th = max(m.bisect_threshold if m.use_bisect_axis[i] else 0.0,
+                     m.merge_threshold if m.use_mirror_merge else 0.0)
+            if th > 0.0:
+                planes.append((frame, i, th))
+    if not planes:
+        return None
+    me = cutter.data
+    co = np.empty(len(me.vertices) * 3)
+    me.vertices.foreach_get('co', co)
+    cm = np.array(cutter.matrix_world)
+    world = co.reshape(-1, 3) @ cm[:3, :3].T + cm[:3, 3]
+    t_scale = float(np.mean([abs(s) for s in target.matrix_world.to_scale()])) or 1.0
+    moved = False
+    for frame, i, th in planes:
+        fm = np.array(frame)
+        fi = np.linalg.inv(fm)
+        loc = world @ fi[:3, :3].T + fi[:3, 3]
+        tol = MIRROR_CLEAR * th * t_scale / max(float(np.linalg.norm(fm[:3, i])), 1e-12)
+        d = loc[:, i]
+        side = d.mean()
+        if abs(side) <= tol:                         # (straddles the plane: a cut across the centre, fine as it is)
+            continue
+        near = np.abs(d) < tol
+        if not near.any():
+            continue
+        loc[near, i] = -np.sign(side) * tol
+        world = loc @ fm[:3, :3].T + fm[:3, 3]
+        moved = True
+    if not moved:
+        return None
+    ci = np.linalg.inv(cm)
+    local = world @ ci[:3, :3].T + ci[:3, 3]
+    new = me.copy()
+    new.vertices.foreach_set('co', local.ravel())
+    new.update()
+    return new
+
+
 def _boolean_result_any(context, target, cutter, operation, solver='AUTO',
                         hole_tolerant=False, allow_empty=False, hipoly=True):
+    """Run the Boolean with validation + solver fallback. Returns (mesh, solver).  0.24.95 a cut wall on / at the
+    target's mirror plane moved just past it first (``cutter_past_mirror``: else the Mirror's Bisect left a hole)."""
+    past = cutter_past_mirror(target, cutter) if cutter is not None else None
+    if past is None:
+        return _boolean_result_any_(context, target, cutter, operation, solver, hole_tolerant, allow_empty, hipoly)
+    old = cutter.data
+    cutter.data = past
+    try:
+        return _boolean_result_any_(context, target, cutter, operation, solver, hole_tolerant, allow_empty, hipoly)
+    finally:
+        cutter.data = old
+        if past.users == 0:
+            bpy.data.meshes.remove(past)
+
+
+def _boolean_result_any_(context, target, cutter, operation, solver='AUTO',
+                         hole_tolerant=False, allow_empty=False, hipoly=True):
     """Run the Boolean with validation + solver fallback. Returns (mesh, solver).
     0.24.58 only on the loose parts the cutter reaches (``_boolean_local``).  0.24.86 a dense part: only the faces
     round the cutter (``_boolean_region``; ``hipoly`` = the cut setting High Poly)."""
