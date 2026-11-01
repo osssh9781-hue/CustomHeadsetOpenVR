@@ -116,7 +116,7 @@ def run_one(context, ob, zb, action):
         from . import mesh_fix
         if ob.data.shape_keys is not None:
             raise RuntimeError('remove the shape keys first')
-        return mesh_fix.report(mesh_fix.fix_mesh(ob.data))
+        return mesh_fix.report(mesh_fix.fix_part(context, ob))    # 0.24.95 a live Mirror's holes too
     raise RuntimeError(f'unknown action {action}')
 
 
@@ -183,7 +183,7 @@ def draw(layout, context):
     r = box.row(align=True)
     op(r, 'DynaMesh', 'DYNAMESH')
     r.prop(zb, 'points', text='Points')
-    box.row(align=True).operator('mch.mesh_tool', text='Fix Mesh (weld cracks, slivers, inside walls, small holes)',
+    box.row(align=True).operator('mch.mesh_tool', text='Fix Mesh (cracks, slivers, inside walls, holes, mirror holes)',
                                  icon='TOOL_SETTINGS').action = 'FIX_MESH'
     from . import refix
     refix.draw_row(box, zb)                          # 0.24.84 Re-Fix

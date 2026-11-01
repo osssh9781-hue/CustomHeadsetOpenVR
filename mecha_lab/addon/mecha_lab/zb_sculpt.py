@@ -2301,21 +2301,29 @@ def run(context, action):
             _mode(context, 'SCULPT')
         return msg
     if action in {'CHECK_MESH', 'FIX_MESH'}:
+        # 0.24.95 (user: "이미 빵꾸가 난 건 어떻게 고쳐?") the holes counted too - with a live Mirror, as they are seen -
+        # and Fix Mesh is the full repair (mesh_fix.fix_part: welds, slivers, inside walls, holes, the Mirror's holes)
         import bmesh
-
-        def check(bm):
-            loose = [v for v in bm.verts if not v.link_faces]
-            bad = [e for e in bm.edges if not e.is_manifold and not e.is_boundary]
+        from . import mesh_fix
+        _mode(context, 'OBJECT')
+        try:
             if action == 'FIX_MESH':
-                bmesh.ops.delete(bm, geom=loose, context='VERTS')
-                bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-6)
-                bmesh.ops.dissolve_degenerate(bm, edges=bm.edges, dist=1e-7)
-                bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-            return len(loose), len(bad)
-        loose, bad = _bm_edit(context, ob, check)
-        if action == 'CHECK_MESH':
-            return f'Check Mesh: {loose} loose points, {bad} bad edges' if loose or bad else 'Check Mesh: clean'
-        return 'Fix Mesh: done'
+                if ob.data.shape_keys is not None:
+                    raise RuntimeError('remove the shape keys first')
+                return mesh_fix.report(mesh_fix.fix_part(context, ob))
+            bm = bmesh.new()
+            bm.from_mesh(ob.data)
+            loose = sum(1 for v in bm.verts if not v.link_faces)
+            bad = sum(1 for e in bm.edges if not e.is_manifold and not e.is_boundary)
+            holes = sum(1 for e in bm.edges if e.is_boundary)
+            bm.free()
+            if mesh_fix.mirror_planes(ob):
+                holes = mesh_fix.seen_open_edges(context, ob)             # (the half part's own side is the mirror's)
+            parts = [f'{n} {w}' for n, w in ((loose, 'loose points'), (bad, 'bad edges'), (holes, 'open edges (holes)'))
+                     if n]
+            return 'Check Mesh: ' + ', '.join(parts) + ' - Fix Mesh' if parts else 'Check Mesh: clean'
+        finally:
+            _mode(context, 'SCULPT')
     if action == 'POLYMESH3D':
         _mode(context, 'OBJECT')
         for mod in list(ob.modifiers):

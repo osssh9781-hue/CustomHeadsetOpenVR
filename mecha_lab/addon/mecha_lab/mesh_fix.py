@@ -172,13 +172,14 @@ def _crack(lp):
     return rim > 0.0 and _loop_area(lp) <= CRACK_AREA * rim * rim
 
 
-def _fill(bm, size, fill, border=None):
+def _fill(bm, size, fill, border=None, keep=None):
     """Fill holes: 'ALL', 'SMALL' (few sides or a short rim) or 'CRACKS' (a short rim, or a hole the repair made
-    itself: an open part's own border - ``border`` - is never capped, however few sides it has)."""
+    itself: an open part's own border - ``border`` - is never capped, however few sides it has).  ``keep(loop)``
+    (0.24.95): a hole it says yes to stays open (a half part's open side on its live Mirror's plane)."""
     filled = 0
     tol = size * WELD * 10.0
     for _r in range(3):
-        loops = _hole_loops(bm)
+        loops = [lp for lp in _hole_loops(bm) if keep is None or not keep(lp)]
         todo = [lp for lp in loops if fill == 'ALL' or (fill == 'SMALL' and len(lp) <= HOLE_SIDES)
                 or sum(e.calc_length() for e in lp) <= HOLE_RIM * size or _crack(lp)
                 or (fill == 'CRACKS' and not _on_border(lp, border, tol))]
@@ -194,6 +195,9 @@ def _fill(bm, size, fill, border=None):
                                      angle_shape_threshold=math.radians(60))
         flaps = list({f for e in bm.edges if e.is_boundary for f in e.link_faces
                       if sum(1 for g in f.edges if g.is_boundary) >= 2})
+        if keep is not None and flaps:               # (not the faces along a kept open side)
+            kept = {e for lp in _hole_loops(bm) if keep(lp) for e in lp}
+            flaps = [f for f in flaps if not any(e in kept for e in f.edges)]
         if not flaps:
             break
         bmesh.ops.delete(bm, geom=flaps, context='FACES_ONLY')
@@ -201,7 +205,7 @@ def _fill(bm, size, fill, border=None):
     return filled
 
 
-def fix_bm(bm, all_holes=False, fill='SMALL'):
+def fix_bm(bm, all_holes=False, fill='SMALL', keep=None):
     """Repair ``bm`` in place (``fill``: which holes are filled, see ``_fill``; ``all_holes`` = 'ALL').  Returns
     stats."""
     if all_holes:
@@ -258,7 +262,7 @@ def fix_bm(bm, all_holes=False, fill='SMALL'):
             bmesh.ops.delete(bm, geom=multi, context='FACES_ONLY')
             _drop_loose(bm)
             st['fins'] += len(multi)
-        st['filled'] += _fill(bm, size, fill, border)
+        st['filled'] += _fill(bm, size, fill, border, keep)
         if not multi:
             break
     # a fill that lay over a face next to it (an edge with 4 faces, two of them on top of each other): the smallest
@@ -271,7 +275,7 @@ def fix_bm(bm, all_holes=False, fill='SMALL'):
         bmesh.ops.delete(bm, geom=list(extra), context='FACES_ONLY')
         _drop_loose(bm)
         st['fins'] += len(extra)
-        st['filled'] += _fill(bm, size, fill, border)
+        st['filled'] += _fill(bm, size, fill, border, keep)
     # 6. normals
     if bm.faces:
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
@@ -304,7 +308,7 @@ def auto_fix(context, targets, what='Cut'):
             me = t.data
             if t.type != 'MESH' or me is None or me.library or not needs_fix(me):
                 continue
-            st = fix_mesh(me)
+            st = fix_mesh(me, keep=_on_mirror(t))      # (0.24.95 a half part's open side on its mirror plane: left)
             before = st.get('open_before', 0) + st.get('multi_before', 0)
             after = st.get('open_after', 0) + st.get('multi_after', 0)
             if changed(st) or after < before:
@@ -326,16 +330,206 @@ def changed(st):
     return any(st.get(k) for k in ('welded', 'slivers', 'repeated', 'walls', 'fins', 'filled'))
 
 
-def fix_mesh(me, all_holes=False, fill='SMALL'):
+def fix_mesh(me, all_holes=False, fill='SMALL', keep=None):
     """Repair mesh data ``me`` in place (materials / smooth flags kept on the faces that stay).  Returns stats."""
     bm = bmesh.new()
     try:
         bm.from_mesh(me)
-        st = fix_bm(bm, all_holes, fill)
+        st = fix_bm(bm, all_holes, fill, keep)
         bm.to_mesh(me)
     finally:
         bm.free()
     me.update()
+    return st
+
+
+# --- 0.24.95 holes the live Mirror makes (user: "이미 빵꾸가 난 건 어떻게 고쳐? 고치는 기능도 만들어 줘") ---------
+# A cut wall left on / within the Bisect distance of the mirror plane (cut before the fix in core_geometry, or
+# moved there since): the base mesh is whole - plain Fix Mesh found nothing - but the Bisect throws the wall's points
+# away and what is seen has a hole.  Such faces are moved just past the plane, to the side the Bisect cuts off, so
+# the cut crosses the centre and the mirrored part closes.
+
+MIRROR_CLEAR = 2.0          # (as core_geometry.MIRROR_CLEAR: 2 x the bisect / merge distance)
+
+
+def mirror_planes(ob):
+    """[(frame matrix, axis, distance, kept side, bisect)] of the live Mirror planes of ``ob``: distance = the
+    larger of its Bisect and Merge distances, kept side +1 (the Bisect keeps the plus side) or -1 (Flip)."""
+    out = []
+    for m in getattr(ob, 'modifiers', ()):
+        if m.type != 'MIRROR' or not m.show_viewport:
+            continue
+        frame = (m.mirror_object.matrix_world if m.mirror_object is not None else ob.matrix_world).copy()
+        for i in range(3):
+            if not m.use_axis[i]:
+                continue
+            th = max(m.bisect_threshold if m.use_bisect_axis[i] else 0.0,
+                     m.merge_threshold if m.use_mirror_merge else 0.0)
+            out.append((frame, i, th, -1.0 if m.use_bisect_flip_axis[i] else 1.0, bool(m.use_bisect_axis[i])))
+    return out
+
+
+def _plane_coords(ob, co, frame, axis):
+    """Distance of points ``co`` (N x 3, the mesh's own space) from the plane, in the plane frame's units, and the
+    band width that counts as 'on' it."""
+    import numpy as np
+    M = np.array(ob.matrix_world)
+    F = np.array(frame)
+    T = np.linalg.inv(F) @ M
+    loc = co @ T[:3, :3].T + T[:3, 3]
+    return loc, T
+
+
+def seen_open_edges(context, ob):
+    """Broken edges of what is seen (the part's modifiers applied - its live Mirror): open, loose or shared by 3+
+    faces (the Bisect's leftovers are all three)."""
+    from . import mesh_io as mio
+    ob.data.update_tag()
+    ob.update_tag()
+    try:
+        context.view_layer.update()                  # (the mesh just changed: the mirror evaluated anew)
+    except (AttributeError, RuntimeError):
+        pass
+    ev = ob.evaluated_get(context.evaluated_depsgraph_get())
+    me = bpy.data.meshes.new_from_object(ev)
+    try:
+        return int((mio.edge_face_counts(me) != 2).sum()) if len(me.polygons) else 0
+    finally:
+        bpy.data.meshes.remove(me)
+
+
+def _mesh_arrays(me):
+    import numpy as np
+    co = np.empty(len(me.vertices) * 3)
+    me.vertices.foreach_get('co', co)
+    ls = np.empty(len(me.polygons), np.int64)
+    me.polygons.foreach_get('loop_start', ls)
+    lt = np.empty(len(me.polygons), np.int64)
+    me.polygons.foreach_get('loop_total', lt)
+    lv = np.empty(len(me.loops), np.int64)
+    me.loops.foreach_get('vertex_index', lv)
+    return co.reshape(-1, 3), ls, lt, lv
+
+
+def mirror_walls_fix(ob):
+    """Faces of ``ob``'s mesh lying on / at a Bisect mirror plane (every point within 2 x its Bisect / Merge
+    distance) moved just past it, to the side the Bisect cuts off.  The faces reaching into that band from further
+    out are cut into triangles first (a Boolean's n-gon round the cut folded over itself once its points near the
+    plane moved, and the Bisect left loose edges of it).  Returns the number of points moved."""
+    import numpy as np
+    planes = [p for p in mirror_planes(ob) if p[4] and p[2] > 0.0]
+    me = ob.data
+    if not planes or not len(me.polygons):
+        return 0
+    t_scale = float(np.mean([abs(s) for s in ob.matrix_world.to_scale()])) or 1.0
+
+    def tol_of(frame, i, th):
+        return MIRROR_CLEAR * th * t_scale / max(float(np.linalg.norm(np.array(frame)[:3, i])), 1e-12)
+    # 1. faces reaching into a band from outside (n-gons, quads) cut into triangles
+    co, ls, lt, lv = _mesh_arrays(me)
+    span = np.zeros(len(ls), bool)
+    for frame, i, th, _k, _b in planes:
+        loc, _T = _plane_coords(ob, co, frame, i)
+        band = np.abs(loc[:, i]) < tol_of(frame, i, th)
+        some = np.logical_or.reduceat(band[lv], ls)
+        every = np.logical_and.reduceat(band[lv], ls)
+        span |= some & ~every & (lt > 3)
+    if span.any():
+        bm = bmesh.new()
+        try:
+            bm.from_mesh(me)
+            bm.faces.ensure_lookup_table()
+            bmesh.ops.triangulate(bm, faces=[bm.faces[k] for k in np.nonzero(span)[0]], quad_method='BEAUTY',
+                                  ngon_method='BEAUTY')
+            bm.to_mesh(me)
+        finally:
+            bm.free()
+        me.update()
+        co, ls, lt, lv = _mesh_arrays(me)
+    # 2. the faces in a band moved past the plane
+    n = len(co)
+    moved = np.zeros(n, bool)
+    for frame, i, th, kept, _b in planes:
+        loc, T = _plane_coords(ob, co, frame, i)
+        tol = tol_of(frame, i, th)
+        band = np.abs(loc[:, i]) < tol
+        on = np.logical_and.reduceat(band[lv], ls)          # (faces with every point in the band)
+        verts = np.unique(lv[np.repeat(on, lt)])
+        if not len(verts):
+            continue
+        loc[verts, i] = -kept * tol
+        here = np.zeros(n, bool)
+        here[verts] = True
+        for _r in range(4):         # a point on the plane with no face left on the kept side goes too (else the
+            cen = np.add.reduceat(loc[lv, i], ls) / lt      # Bisect keeps its edges as loose lines)
+            kept_face = cen * kept > 0.25 * tol
+            has = np.zeros(n, bool)
+            np.logical_or.at(has, lv, np.repeat(kept_face, lt))
+            more = band & ~here & ~has
+            if not more.any():
+                break
+            loc[more, i] = -kept * tol
+            here |= more
+        Ti = np.linalg.inv(T)
+        co = loc @ Ti[:3, :3].T + Ti[:3, 3]
+        moved |= here
+    if not moved.any():
+        return 0
+    me.vertices.foreach_set('co', co.ravel())
+    me.update()
+    return int(moved.sum())
+
+
+def _on_mirror(ob):
+    """``keep(loop)`` for Fix Mesh: an open side lying on a live Mirror plane is the half part's - the mirror closes
+    it - and is not filled.  None without a mirror."""
+    import numpy as np
+    planes = mirror_planes(ob)
+    if not planes:
+        return None
+    t_scale = float(np.mean([abs(s) for s in ob.matrix_world.to_scale()])) or 1.0
+
+    def keep(lp):
+        co = np.array([v.co[:] for e in lp for v in e.verts])
+        for frame, i, th, _k, _b in planes:
+            loc, _T = _plane_coords(ob, co, frame, i)
+            tol = max(MIRROR_CLEAR * max(th, 1e-5) * t_scale / max(float(np.linalg.norm(np.array(frame)[:3, i])),
+                                                                   1e-12), 1e-6)
+            if (np.abs(loc[:, i]) < tol).all():
+                return True
+        return False
+    return keep
+
+
+def fix_part(context, ob, all_holes=False):
+    """Fix Mesh for one part, its live Mirror's holes too: the faces on the mirror plane moved past it (kept only
+    when fewer holes are seen after), then the usual repair - an open side on the mirror plane left open.  Returns
+    stats (``seen_before`` / ``seen_after`` / ``mirror_moved`` with a mirror)."""
+    me = ob.data
+    st_m = {}
+    if mirror_planes(ob):
+        seen0 = seen_open_edges(context, ob)
+        moved = 0
+        if seen0:
+            backup = me.copy()
+            try:
+                moved = mirror_walls_fix(ob)
+                if moved and seen_open_edges(context, ob) >= seen0:      # (no better: as it was)
+                    bm = bmesh.new()
+                    try:
+                        bm.from_mesh(backup)
+                        bm.to_mesh(me)
+                    finally:
+                        bm.free()
+                    me.update()
+                    moved = 0
+            finally:
+                bpy.data.meshes.remove(backup)
+        st_m = {'seen_before': seen0, 'mirror_moved': moved}
+    st = fix_mesh(me, all_holes, keep=_on_mirror(ob))
+    st.update(st_m)
+    if st_m:
+        st['seen_after'] = seen_open_edges(context, ob)
     return st
 
 
@@ -345,6 +539,13 @@ def report(st):
                       ('walls', 'inside wall faces'), ('fins', 'faces at 3+-face edges'), ('filled', 'holes filled')):
         if st.get(key):
             done.append(f'{st[key]:,} {word}')
+    if 'seen_before' in st:                          # 0.24.95 a live Mirror: what is seen counts (the half part's
+        if st.get('mirror_moved'):                   # open side on the plane is the mirror's to close)
+            done.insert(0, f'{st["mirror_moved"]:,} points moved off the mirror plane')
+        left = st['seen_after']
+        head = (f'Fix Mesh: {st["seen_before"]:,} open edges seen (with the mirror) -> {left:,}'
+                + (' (closed)' if not left else ' (a bigger hole: Close All Holes)'))
+        return head + (' | ' + ', '.join(done) if done else ' | nothing to fix')
     left = st['open_after'] + st['multi_after']
     head = (f'Fix Mesh: {st["open_before"] + st["multi_before"]:,} broken edges -> {left:,}'
             + (' (closed)' if not left else ' (a bigger hole: Close All Holes)'))
@@ -353,7 +554,8 @@ def report(st):
 
 class MCH_OT_fix_mesh(bpy.types.Operator):
     """Repair the selected meshes like ZBrush's Fix Mesh: weld cracks, remove slivers, repeated faces and inside
-    walls, fill small holes, make normals consistent (Quad Remesh / Make Quad need a closed solid)"""
+    walls, fill small holes, make normals consistent (Quad Remesh / Make Quad need a closed solid); a part with a live
+    Mirror: the holes it shows at the centre closed too"""
     bl_idname = 'mch.fix_mesh'
     bl_label = 'Fix Mesh'
     bl_options = {'REGISTER', 'UNDO'}
@@ -374,8 +576,9 @@ class MCH_OT_fix_mesh(bpy.types.Operator):
             if ob.data.shape_keys is not None:
                 msgs.append(f'{ob.name}: has shape keys (skipped)')
                 continue
-            st = fix_mesh(ob.data, self.all_holes)
-            msgs.append(report(st) if len(obs) == 1 else f'{ob.name}: {st["open_after"] + st["multi_after"]} left')
+            st = fix_part(context, ob, self.all_holes)
+            left = st['seen_after'] if 'seen_after' in st else st['open_after'] + st['multi_after']
+            msgs.append(report(st) if len(obs) == 1 else f'{ob.name}: {left} left')
         self.report({'INFO'}, '; '.join(msgs)[:400])
         return {'FINISHED'}
 
