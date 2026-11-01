@@ -750,6 +750,43 @@ def apply_wear(mat, ident):
 WEAR_WIDTH = 0.025          # a rounding this tight (x the mesh's size) counts as a full edge / crevice
 
 
+SCALE_ALPHA = 0.3          # (a point standing out by 0.3 x the smoothing radius from its smoothed place: a full edge)
+SCALE_PASSES = 40          # (the most smoothing passes: very dense meshes get a narrower band, still full strength)
+
+
+def _scale_convexity(co, nrm, ev, ln, reach):
+    """0.24.95 Each point's convexity at the wear width: the points smoothed (diffused over about ``reach``), then
+    how far each stands out of its smoothed place along its normal (+ out: an edge, - in: a crevice), over that
+    radius.  A sharp edge reads full across a band the wear width wide however dense the mesh; bumps much smaller
+    than the wear width (skin, pores) are smoothed away and read little; a gentle dome reads little.  None when the
+    mesh's edges are about the wear width or longer (nothing to smooth: the per-edge measure is enough)."""
+    nv = len(co)
+    if nv < 3 or not len(ln):
+        return None
+    L = float(np.median(ln))
+    passes = int(min(SCALE_PASSES, round((reach / max(L, 1e-12)) ** 2)))
+    if passes < 2:
+        return None
+    a, b = ev[:, 0], ev[:, 1]
+    w = np.exp(-(ln / reach) ** 2)                    # (a long edge passes nothing on)
+    wn = np.bincount(a, w, nv) + np.bincount(b, w, nv)
+    P = co.copy()
+    for _ in range(passes):
+        s = np.empty_like(P)
+        for c in range(3):
+            s[:, c] = np.bincount(a, w * P[b, c], nv) + np.bincount(b, w * P[a, c], nv)
+        P = (P + s) / (1.0 + wn)[:, None]
+    radius = L * np.sqrt(passes)
+    d = np.einsum('ij,ij->i', co - P, nrm)
+    k = np.clip(d / (SCALE_ALPHA * radius), -1.0, 1.0)
+    # (a point with an edge longer than the wear width: its value is spread over that long edge by the shader - faded
+    #  by wear width / its longest edge, so a coarse face next to a bevel does not read as edge far into the face)
+    longest = np.zeros(nv)
+    np.maximum.at(longest, a, ln)
+    np.maximum.at(longest, b, ln)
+    return k * np.clip(reach / np.maximum(longest, 1e-12), 0.0, 1.0)
+
+
 SHARP_SIN = 0.34            # an edge leaving a point's tangent plane by more than ~20 degrees: a hard corner
 
 
@@ -803,6 +840,12 @@ def store_curvature(me, smooth=4, width=WEAR_WIDTH):
         np.add.at(s, ev2[:, 0], w * k[ev2[:, 1]])
         np.add.at(s, ev2[:, 1], w * k[ev2[:, 0]])
         k = (k + s) / (1.0 + wn)
+    # 0.24.95 on a dense mesh a sharp edge is one row of points: averaged with the flat on either side it read only
+    # ~0.46 of an edge (a DynaMesh cube's edges 0.13).  The convexity at the wear width (below) holds it; the stronger
+    # of the two is kept, so a coarse part (edges longer than the wear width: no smoothing there) reads as before
+    ks = _scale_convexity(co, nrm, ev2, ln, reach)
+    if ks is not None:
+        k = np.where(np.abs(ks) > np.abs(k), ks, k)
     k = k.astype(np.float32)
     att = me.attributes.get(CURV)
     if att is not None and (att.domain != 'POINT' or att.data_type != 'FLOAT'):

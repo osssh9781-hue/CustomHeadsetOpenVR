@@ -29,8 +29,6 @@ SPP = 48
 GROOVE_HALF, GROOVE_DEPTH, GROOVE_LIP = 0.07, 0.08, 0.035   # (wider than the edge measure (2.5 % of the size): its lips read as edges)
 RINGS = (0.3, -0.4)                       # grooves round the ball (height)
 MERIDIANS = (20.0, 110.0, 200.0, 290.0)   # grooves from top to bottom (degrees round z)
-SPREAD = 3                                # (rings: about the wear width (2.5 % of the size) on this ball)
-EDGE_SMOOTH = 0                           # (store_curvature smoothing for the ball - the add-on's default is 4: on this dense ball it thins a groove lip to 0.46 of a full edge)
 
 
 def _groove(off):
@@ -63,30 +61,10 @@ def ball():
 
 
 def edges(me):
-    """The ball's edges / crevices (``mch_curv``) at full strength across the wear width: measured unsmoothed, then
-    spread SPREAD rings (an edge by max, a crevice by min, the stronger kept) - the add-on's default 4 averaging
-    passes thin a sharp lip of this dense ball to 0.46 of a full edge (KNOWN_LIMITATIONS 0.24.95); spread, the icons
-    show the edge wear as on a bevelled part."""
-    import numpy as np
+    """The ball's edges / crevices: the add-on's own measure (0.24.95: it holds a sharp edge on a dense mesh - before,
+    this ball's groove lips read 0.24 of an edge, so the icons were made with a spread of their own)."""
     from mecha_lab import mech_shader as ms
-    ms.store_curvature(me, smooth=EDGE_SMOOTH)
-    att = me.attributes[ms.CURV]
-    k = np.empty(len(me.vertices), np.float32)
-    att.data.foreach_get('value', k)
-    ev = np.empty(len(me.edges) * 2, np.int64)
-    me.edges.foreach_get('vertices', ev)
-    a, b = ev[0::2], ev[1::2]
-    pos, neg = np.maximum(k, 0.0), np.minimum(k, 0.0)
-    for _ in range(SPREAD):
-        p2, n2 = pos.copy(), neg.copy()
-        np.maximum.at(p2, a, pos[b])
-        np.maximum.at(p2, b, pos[a])
-        np.minimum.at(n2, a, neg[b])
-        np.minimum.at(n2, b, neg[a])
-        pos, neg = p2, n2
-    k = np.where(pos >= -neg, pos, neg).astype(np.float32)
-    att.data.foreach_set('value', k)
-    me.update()
+    ms.store_curvature(me)
 
 
 def scene_setup():
