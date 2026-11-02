@@ -250,6 +250,9 @@ def export_copy(context, ob, apply_modifiers, split_ngons=True):
                 bm.to_mesh(me)
         finally:
             bm.free()
+    act = ob.data.color_attributes.active_color_name        # (0.24.95 the active colour layer - a Bake to Polypaint -
+    if act and me.color_attributes.get(act) is not None:    #  is the one the OBJ carries as vertex colours)
+        me.color_attributes.active_color_name = act
     tmp = bpy.data.objects.new(ob.name + '_ZB', me)
     tmp.matrix_world = ob.matrix_world.copy()
     context.scene.collection.objects.link(tmp)
@@ -406,6 +409,7 @@ def send_objects(context, objects, settings):
                 bpy.ops.wm.obj_export(filepath=str(path), export_selected_objects=True,
                                       apply_modifiers=False, export_materials=groups > 0,
                                       export_material_groups=groups > 0,
+                                      export_colors=bool(len(tmp.data.color_attributes)),   # (0.24.95 polypaint)
                                       export_uv=True, export_normals=True, export_triangulated_mesh=False,
                                       forward_axis=settings.forward_axis, up_axis=settings.up_axis,
                                       global_scale=settings.scale)

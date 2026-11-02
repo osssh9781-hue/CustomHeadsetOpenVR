@@ -15,6 +15,7 @@
 - **Zones**(Mech 탭의 Zones): 부품 위에 라쏘를 그려 그 영역만 다른 색 · 재질로. **Paint Zone** - 메시는 그대로, 영역만 다른 페인트(색 · 거칠기 · 메탈릭); **Split Zone** - 라쏘 선대로 엣지를 넣고 안쪽 면에 자기 Mech 재질(어떤 프리셋이든). 드래그 = 자유 곡선, 클릭 = 꼭짓점(Enter 로 닫기). 까짐 · 긁힘 · 때 · 녹은 기본으로 부품과 같고, Paint Zone 의 **Own Wear** / Split Zone 의 **Same Wear as the Part** 스위치로 따로 줄 수 있음. 경계에는 범프 선(**Line Height** + 솟은 선 / − 홈, **Line Width**).
 - **My Materials**(Mech · Creature 탭): 이미 만든 재질(직접 노드로 만든 것도)을 통째로 이름 붙여 저장(Save Material...) - 공 그림이 생기고, 공을 누르면 선택한 부품에 그 재질 복사본. 모든 .blend 에서 씀(블렌더 설정 폴더에 저장).
 - **크리쳐 무늬(Creature 탭의 Zones)**: 크리쳐 위에 라쏘로 그린 영역만 다른 색 · 색 텍스처 · 거칠기. 외곽은 **Hard / Airbrush**(밖으로 부드럽게) / **Texture**(밖으로 울퉁불퉁), 폭은 Edge Width. 진흙 · 피 같은 상태는 그 위로.
+- **Bake to Polypaint**(Mech · Creature 탭 맨 아래 Bake): 재질 색(낡음 · 무늬 · 상태 다 포함)을 점마다 한 색으로 "Baked Color" 층에 구움 - ZBrush 폴리페인트용. Show Polypaint 로 확인. 메시가 촘촘할수록 고움.
 - **구멍 난 부품 고치기**: 미러를 켠 부품에서 가운데에 맞춰 그린 컷이 미러 결과에 구멍을 내던 것 - 이제 컷할 때 자동으로 막히고, 이미 구멍이 난 부품은 **Fix Mesh**(Mecha Lab 탭 Mesh Tools · ZBrush 셸프 · Quad Remesh 상자)를 누르면 미러 결과 기준으로 닫힙니다. ZBrush 셸프 Check Mesh 가 구멍 수를 보여 줍니다. 미러를 Apply 한 뒤의 구멍도 Fix Mesh 가 채웁니다.
 - **DynaMesh 가시 없음**: 휘거나 접힌 구멍(구겨진 천 테두리 등)은 뚜껑을 덮지 않고 두께를 줘서 리메시하므로 뾰족하게 튀는 곳이 생기지 않습니다.
 - **Armor Plate 프로필**: 방금 그린 판(Apply 전)은 Mech Ridge 를 포함해 어떤 프로필로든 바로 바뀝니다(패널 버튼 · HUD ◀ ▶). **알파 이미지 하나 불러오기**: ZBrush 탭 왼쪽 선반 Alpha 칸 → 고르기 창의 **File...**(폴더 전체는 Folder...).

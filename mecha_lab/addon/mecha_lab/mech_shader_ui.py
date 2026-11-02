@@ -313,7 +313,27 @@ def content(context, x, width, k):
         for p in DETAIL:
             row(b, sx, sw, [prop_cell(st, p)])
     section(b, 'detail', 'Height & Detail', x, width, detail, start_folded=True)
+    bake_section(b, x, width, context)
     return b.out, -b.y
+
+
+def bake_section(b, x, width, context):
+    """0.24.95 Bake to Polypaint (user: "폴리페인트로 구워 줘"): the material's colour into one colour per point."""
+    from . import bake_material as bk
+    ob = getattr(context, 'active_object', None)
+    me = ob.data if ob is not None and ob.type == 'MESH' else None
+    lay = me.color_attributes.get(bk.LAYER) if me is not None else None
+
+    def fill(sx, sw):
+        b.note(('note', 'The colour (wear, zones, markings, conditions) into polypaint: one colour per point',
+                False, None, None, None, True), sx, sw)
+        row(b, sx, sw, [button('Bake to Polypaint', 'mch.bake_polypaint'),
+                        _cell('tbtn', 'Show Polypaint', ('op', 'mch.show_polypaint', {}), on=bk.showing(context))])
+        if me is not None:
+            b.note(('note', f'{len(me.vertices):,} points - denser = finer' + (f'   (baked: "{bk.LAYER}")' if lay
+                                                                               else ''), False, None, None, None,
+                    True), sx, sw)
+    section(b, 'bake_pp', 'Bake', x, width, fill, start_folded=lay is None, summary='polypaint' if lay else '')
 
 
 def zones_section(b, x, width, context, mat):
@@ -732,6 +752,7 @@ def creature_content(b, x, width, mat):
         for p in ('bump', 'map_scale', 'seed', 'size'):
             row(b, sx, sw, [prop_cell(st, p)])
     section(b, 'cr_detail', 'Height & Detail', x, width, detail, start_folded=True)
+    bake_section(b, x, width, bpy.context)
 
 
 def sub(b, text, x, w):
