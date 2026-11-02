@@ -609,6 +609,64 @@ def check_target(ob):
         raise CutError(f'"{ob.name}" has shape keys. Apply or remove them before cutting.')
     if ob.hide_viewport:
         raise CutError(f'"{ob.name}" is disabled in viewports.')
+    unmirror(ob)
+
+
+# 0.24.95 (user: "이거 왜 컷이든 불린이든 아무것도 안 되냐?" - an FBX part with scale (-1, -0.99, -0.03)): a part whose
+# transform mirrors it (an odd number of negative scales) is inside out to the Boolean - Manifold added the shape
+# instead of taking it away, Exact gave nothing.  ``unmirror`` makes the same part un-mirrored: its mesh mirrored in its
+# own X (the faces turned back the right way) and its transform mirrored back - every point, every normal where it was.
+FLIP_X = Matrix.Diagonal((-1.0, 1.0, 1.0, 1.0))
+UNMIRROR_SAFE = {'MIRROR', 'BEVEL', 'WEIGHTED_NORMAL', 'SUBSURF', 'TRIANGULATE', 'SOLIDIFY', 'EDGE_SPLIT', 'SMOOTH',
+                 'CORRECTIVE_SMOOTH', 'LAPLACIANSMOOTH', 'DECIMATE', 'REMESH', 'WELD', 'BOOLEAN'}
+
+
+def mirrored(ob):
+    """``ob``'s transform mirrors it (its matrix turns the mesh inside out)."""
+    try:
+        return ob is not None and ob.matrix_world.to_3x3().determinant() < 0.0
+    except (AttributeError, ReferenceError):
+        return False
+
+
+def unmirror(ob):
+    """The mirrored part ``ob`` made the same part, un-mirrored (see above).  True when it was; False when it was not
+    mirrored.  Refuses (CutError) a mesh shared with other objects or a modifier that depends on the part's own axes
+    (Array, a Geometry Nodes set-up ...) - Apply Scale is the way then."""
+    if ob is None or ob.type != 'MESH' or not mirrored(ob):
+        return False
+    me = ob.data
+    bad = [m.name for m in ob.modifiers if m.type not in UNMIRROR_SAFE and not (
+        m.type == 'NODES' and m.node_group is not None and m.node_group.name.startswith('MCH'))]
+    if bad or me.users > 1:
+        why = f'its modifiers {", ".join(bad)} depend on its axes' if bad else 'its mesh is shared with other objects'
+        raise CutError(f'"{ob.name}" is mirrored (a negative scale) and cannot be cut like that - {why}. '
+                       'Apply its scale first (Ctrl+A > Scale).')
+    nrm = None
+    if me.has_custom_normals:                         # (the shading: kept per corner, in the part's space)
+        nrm = np.empty(len(me.loops) * 3, np.float32)
+        me.corner_normals.foreach_get('vector', nrm)
+        nrm = nrm.reshape(-1, 3)
+    me.transform(FLIP_X)
+    me.flip_normals()
+    if nrm is not None:
+        start = np.empty(len(me.polygons), np.int64)
+        tot = np.empty(len(me.polygons), np.int64)
+        me.polygons.foreach_get('loop_start', start)
+        me.polygons.foreach_get('loop_total', tot)
+        order = np.empty(len(me.loops), np.int64)       # (flip_normals turned each face's corners round: corner 0
+        for s0, t0 in zip(start.tolist(), tot.tolist()):   # stays, the rest reversed)
+            order[s0] = s0
+            if t0 > 1:
+                order[s0 + 1:s0 + t0] = np.arange(s0 + t0 - 1, s0, -1)
+        new = nrm[order] * np.array([-1.0, 1.0, 1.0], np.float32)
+        me.normals_split_custom_set(new.tolist())
+    ob.matrix_world = ob.matrix_world @ FLIP_X        # (the world matrix itself: read back at once - the basis alone
+    #                                                    left it stale until the next update, and a second look undid it)
+    for ch in [o for o in bpy.data.objects if o.parent == ob]:     # (its children stay where they are; looked up
+        ch.matrix_parent_inverse = FLIP_X @ ch.matrix_parent_inverse   # directly - ``children`` can be stale)
+    me.update()
+    return True
 
 
 def evaluate_boolean(context, target, cutter, operation, solver='EXACT',
@@ -1141,7 +1199,15 @@ def cutter_past_mirror(target, cutter):
 def _boolean_result_any(context, target, cutter, operation, solver='AUTO',
                         hole_tolerant=False, allow_empty=False, hipoly=True):
     """Run the Boolean with validation + solver fallback. Returns (mesh, solver).  0.24.95 a cut wall on / at the
-    target's mirror plane moved just past it first (``cutter_past_mirror``: else the Mirror's Bisect left a hole)."""
+    target's mirror plane moved just past it first (``cutter_past_mirror``: else the Mirror's Bisect left a hole).
+    0.24.95 a mirrored target (or shape) un-mirrored first (``unmirror``: else inside out to the Boolean)."""
+    if getattr(target, 'type', '') == 'MESH':
+        unmirror(target)
+    if getattr(cutter, 'type', '') == 'MESH' and mirrored(cutter):
+        try:
+            unmirror(cutter)
+        except CutError:
+            pass
     past = cutter_past_mirror(target, cutter) if cutter is not None else None
     if past is None:
         return _boolean_result_any_(context, target, cutter, operation, solver, hole_tolerant, allow_empty, hipoly)
@@ -2690,15 +2756,33 @@ def apply_single_modifier(context, ob, mod, shared_policy='SINGLE'):
         except (ImportError, AttributeError, ReferenceError, RuntimeError):
             pass
     saved = [(m, m.show_viewport) for m in ob.modifiers]
-    try:
-        for m, _ in saved:
-            m.show_viewport = (m == mod)
-        dg = context.evaluated_depsgraph_get()
-        me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), preserve_all_data_layers=True,
-                                             depsgraph=dg)
-    finally:
-        for m, show in saved:
-            m.show_viewport = show
+
+    def evaluate():
+        try:
+            for m, _ in saved:
+                m.show_viewport = (m == mod)
+            dg = context.evaluated_depsgraph_get()
+            return bpy.data.meshes.new_from_object(ob.evaluated_get(dg), preserve_all_data_layers=True,
+                                                   depsgraph=dg)
+        finally:
+            for m, show in saved:
+                m.show_viewport = show
+    me = evaluate()
+    if mod.type == 'BOOLEAN' and not len(me.polygons) and len(ob.data.polygons):
+        # 0.24.95 (user: "컷이든 불린이든 아무것도 안 되냐?") a Boolean that leaves nothing of the part - Exact on a part
+        # with overlapping shells inside it gave an empty mesh and the part was gone: the other solver tried, else refused
+        other = 'MANIFOLD' if mod.solver != 'MANIFOLD' else 'EXACT'
+        if other in {i.identifier for i in mod.bl_rna.properties['solver'].enum_items}:
+            bpy.data.meshes.remove(me)
+            old_solver = mod.solver
+            mod.solver = other
+            me = evaluate()
+            if not len(me.polygons):
+                mod.solver = old_solver
+        if not len(me.polygons):
+            bpy.data.meshes.remove(me)
+            raise CutError(f'The Boolean would leave nothing of "{ob.name}" - nothing was changed (if the shape '
+                           'covers it all, that is right; else Fix Mesh it first)')
     try:
         info = commit_mesh(ob, me, shared_policy)
     finally:

@@ -129,9 +129,14 @@ def safe_apply(context, ob, mod):
 
 
 def boolean_modifier(target, cutter, operation):
+    """0.24.95 the Manifold solver when the target and the cutter are both closed (as the Cut tools: Exact gave an
+    empty result on a part with overlapping shells inside it - the user's FBX), else Exact."""
     mod = target.modifiers.new('MCH_' + operation, 'BOOLEAN')
     mod.operation = operation
-    mod.solver = 'EXACT'
+    closed = all(o is not None and o.type == 'MESH' and core_geometry.non_manifold_edge_count(o.data) == 0
+                 for o in (target, cutter))
+    mod.solver = 'MANIFOLD' if closed and 'MANIFOLD' in {i.identifier for i in
+                                                         mod.bl_rna.properties['solver'].enum_items} else 'EXACT'
     mod.object = cutter
     return mod
 
@@ -1136,9 +1141,19 @@ class MCH_OT_boolean(bpy.types.Operator):
         cutter_name = cutter.name
         done, failed = [], []
         from . import core_geometry as _cg
+        try:                                              # 0.24.95 a mirrored (negative scale) cutter / target: inside
+            _cg.unmirror(cutter)                          # out to the Boolean - made un-mirrored first (the same shape)
+        except _cg.CutError as ex:
+            self.report({'WARNING'}, str(ex))
+            return {'CANCELLED'}
         for target in targets:
             station_primitive.freeze(target)              # parameters would overwrite the result
             _cg.ensure_real_mesh(context, target)        # live primitives: bake before the Boolean
+            try:
+                _cg.unmirror(target)
+            except _cg.CutError as ex:
+                failed.append(f'{target.name} ({str(ex)[:120]})')
+                continue
             mod = boolean_modifier(target, cutter, self.operation)
             if s.auto_apply:
                 try:
