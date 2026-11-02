@@ -52,6 +52,7 @@ SDF_R = 96.0                      # (the distance field's reach, mask pixels: 0 
 SDF_R2 = 480.0                    # (0.24.95 a second, coarse field in the picture's green: wide boundary lines - user:
 #                                    "라인 범프 두께랑 깊이 훨씬 더 두껍게"; ``reach2``, 0 = a picture without it)
 LINE_REF = 0.6                    # (a line wider than this (% of the part) gets as much deeper: it keeps its steepness)
+ZONE_ID = 'mch_zone_id'           # (a part's number: its zones show on it only, not on other parts sharing the material)
 SYM_KEY = 'mch_zone_sym'          # (the part's Mirror the zones' mirror copies were made for - see ``mirror_maps``)
 CREATURE_PALETTE = ((0.06, 0.05, 0.04), (0.75, 0.68, 0.55), (0.45, 0.08, 0.05), (0.12, 0.2, 0.08), (0.85, 0.55, 0.1),
                     (0.2, 0.25, 0.4))
@@ -376,6 +377,22 @@ def current(mat):
     return False
 
 
+def part_id(ob):
+    """The number of the part a zone is on (the custom property ZONE_ID, given the first time - unique in the file):
+    the zone's nodes paint only the object with that number.  0: none (no part)."""
+    if ob is None or ob.type != 'MESH':
+        return 0
+    try:
+        pid = int(ob.get(ZONE_ID, 0))
+    except (TypeError, ValueError):
+        pid = 0
+    taken = [o for o in bpy.data.objects if o != ob and int(o.get(ZONE_ID, 0) or 0) == pid] if pid else []
+    if pid <= 0 or any(o.type == 'MESH' and o.data != ob.data for o in taken):   # (none yet, or a copy's number)
+        pid = 1 + max((int(o.get(ZONE_ID, 0) or 0) for o in bpy.data.objects), default=0)
+        ob[ZONE_ID] = pid
+    return pid
+
+
 def _affine(b, vec, M, name):
     """``M`` @ ``vec`` (a 4 x 4 affine matrix) as nodes - its rows ``name``0..2 (d: the dot, a: the offset), so
     ``_set_affine`` can change it in place."""
@@ -583,6 +600,7 @@ def relink(mat):
     nrm.name = PREFIX + 'nrm'
     nrm.vector_type, nrm.convert_from, nrm.convert_to = 'NORMAL', 'WORLD', 'OBJECT'
     b.link(geo.outputs['Normal'], nrm.inputs['Vector'])
+    shared_all = {}
     for i, z in enumerate(live):
         tag = f'{PREFIX}{i}:'
         tc = b.node('ShaderNodeTexCoord')
@@ -613,6 +631,23 @@ def relink(mat):
                               thr, shared)
             m = mv if m is None else b.math('MAXIMUM', m, mv)
             prof = pv if prof is None else b.math('MAXIMUM', prof, pv)
+        # (0.24.95 user: "셀렉트 모드로 했는데 다른 영역도 칠해져" - the material shared by other parts: the zone only on its
+        #  own part - the part's number (its custom property ZONE_ID, read by an Object attribute) must match)
+        pid = part_id(z.projector.parent)
+        if pid:
+            if 'pid' not in shared_all:
+                at = b.node('ShaderNodeAttribute')
+                at.name = PREFIX + 'pid'
+                at.attribute_type = 'OBJECT'
+                at.attribute_name = ZONE_ID
+                shared_all['pid'] = at.outputs['Fac']
+            same = b.node('ShaderNodeMath')
+            same.operation = 'COMPARE'
+            b.link(shared_all['pid'], same.inputs[0])
+            same.inputs[1].default_value = float(pid)
+            same.inputs[2].default_value = 0.5
+            m = b.math('MULTIPLY', m, same.outputs[0])
+            prof = b.math('MULTIPLY', prof, same.outputs[0])
         # (the boundary line: a smooth ridge across the outline, Line Width wide, x Line Height)
         ln = b.math('MULTIPLY', prof, b.math('MULTIPLY', lh, LINE_GAIN))
         line_t = ln if line_t is None else b.math('ADD', line_t, ln)

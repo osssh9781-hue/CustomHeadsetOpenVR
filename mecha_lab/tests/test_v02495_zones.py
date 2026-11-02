@@ -116,7 +116,7 @@ check('... linked into the Mech Shader (the hubs fed by the zone\'s nodes)',
 img = render(front)
 mid, side = img[30, 30], img[30, 11]
 check('Rendered from the front: the zone\'s orange in the middle, the part\'s grey beside it',
-      mid[0] > mid[2] * 2.5 and mid[0] > 0.2 and abs(side[0] - side[2]) < 0.08,
+      mid[0] > mid[2] * 2.2 and mid[0] > 0.2 and abs(side[0] - side[2]) < 0.08,   # (0.24.95 the zone covers the base map: 2.5)
       (np.round(mid, 3).tolist(), np.round(side, 3).tolist()))
 back = camera((0.0, 6.0, 0.0), (math.radians(90), 0.0, math.radians(180)))
 img = render(back)

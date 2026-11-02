@@ -6,7 +6,8 @@ still showed the weave):
   through (0 covered .. 1 as before)
 * rendered (Carbon Fibre, a yellow zone): inside the zone even (the weave gone); Base Texture 1 - the weave back;
   outside the zone the carbon as it was
-* the Mech page: the zone's Base Texture row; a Mech material made before: made anew (version 14)"""
+* the Mech page: the zone's Base Texture row; a Mech material made before: made anew (version 14)
+* (user: "셀렉트 모드로 했는데 다른 영역도 칠해져") another part sharing the material, inside the lasso: not painted"""
 import math
 import os
 import tempfile
@@ -97,6 +98,48 @@ check('Rendered (Carbon Fibre, a yellow zone): inside the zone even - the weave 
       [round(float(v), 4) for v in (inside_c.std(), inside_t.std(), out_c.std(), out_t.std())])
 check('... the zone still its yellow (red / green over blue)', covered[PX // 2, int(to_px((0.4, -1, 0))[0] * PX / RW)][0]
       > covered[PX // 2, int(to_px((0.4, -1, 0))[0] * PX / RW)][2] * 2)
+# another part sharing the material, right beside the zone's, inside the same lasso (user: "셀렉트 모드로 했는데 다른 영역도
+# 칠해져")
+bpy.ops.mesh.primitive_cube_add(size=1.0, location=(1.6, -0.5, 0.0))
+other = C.active_object
+other.data.materials.append(mat)
+cd3 = bpy.data.cameras.new('Wide')
+cam3 = bpy.data.objects.new('Wide', cd3)
+sc.collection.objects.link(cam3)
+cam3.location, cam3.rotation_euler = (0.8, -8.0, 0.0), (math.radians(90), 0.0, 0.0)
+C.view_layer.update()
+vm3 = cam3.matrix_world.inverted()
+wm3 = cam3.calc_matrix_camera(C.evaluated_depsgraph_get(), x=RW, y=RH)
+
+
+def px3(co):
+    v = wm3 @ vm3 @ Vector((*co, 1.0))
+    return ((v.x / v.w * 0.5 + 0.5) * RW, (v.y / v.w * 0.5 + 0.5) * RH)
+
+
+lasso_wide = [px3(c) for c in ((0.2, -1, -0.4), (2.3, -1, -0.4), (2.3, -1, 0.4), (0.2, -1, 0.4))]
+for o in C.selected_objects:
+    o.select_set(False)
+part.select_set(True)
+C.view_layer.objects.active = part
+z2 = zn.add_paint_zone(C, part, lasso_wide, vm3, wm3, True, RW, RH, color=(0.05, 0.2, 0.8))
+z2.line_height = 0.0
+sc.camera = cam3
+img = render()
+sc.camera = cam
+
+
+def at3(co):
+    x, y = px3(co)
+    return img[int(y * PX / RH), int(x * PX / RW)]
+
+
+col_part, col_other = at3((0.6, -1.0, 0.0)), at3((1.6, -1.0, 0.0))
+check('Another part sharing the material, inside the same lasso: the zone paints its own part only (each part a number '
+      '- the zone\'s nodes check it)', col_part[2] > col_part[0] * 2 and not col_other[2] > col_other[0] * 1.5
+      and int(part.get(zn.ZONE_ID, 0)) > 0 and int(other.get(zn.ZONE_ID, 0) or 0) != int(part[zn.ZONE_ID]),
+      (np.round(col_part, 3).tolist(), np.round(col_other, 3).tolist()))
+zn.remove_zone(mat, len(mat.mch_zones) - 1)
 for o in C.selected_objects:
     o.select_set(False)
 part.select_set(True)
