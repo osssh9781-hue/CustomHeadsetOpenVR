@@ -198,6 +198,10 @@ def content(context, x, width, k):
     b = sp.Builder(PAGE, x, width, k)
     sc = context.scene
     ob = getattr(context, 'active_object', None)
+    from . import decals as dc
+    if dc.is_decal(ob):                              # (0.24.95 a decal's own page)
+        decal_content(b, x, width, ob)
+        return b.out, -b.y
     emat = cs.active_eye(context)
     if emat is not None:                             # (0.24.95 an eye's own page)
         eye_content(b, x, width, emat)
@@ -217,6 +221,7 @@ def content(context, x, width, k):
                              for kk, n, _s in ms.PRESETS])
         section(b, 'presets', 'Presets', x, width, presets0)
         creature_apply_section(b, x, width, sc, start_folded=False)
+        decals_section(b, x, width)
         other = getattr(ob, 'active_material', None) if ob is not None else None
         if ob is None or ob.type != 'MESH':
             b.note(('note', 'Select meshes, then Apply', False, None, None, None, True), x, width)
@@ -307,6 +312,7 @@ def content(context, x, width, k):
         for p in DETAIL:
             row(b, sx, sw, [prop_cell(st, p)])
     section(b, 'detail', 'Height & Detail', x, width, detail, start_folded=True)
+    decals_section(b, x, width)
     creature_apply_section(b, x, width, sc, start_folded=True)
     return b.out, -b.y
 
@@ -334,6 +340,48 @@ def parts_grid(b, sx, sw):
     from . import creature_shader as cs
     grid(b, sx, sw, [(n, icon('cpart', kk), False, ('op', 'mch.creature_part', {'part': kk}), None, None)
                      for kk, n in cs.PARTS])
+
+
+def decals_section(b, x, width, start_folded=True):
+    """0.24.95 Decals (user picked "데칼 - 번호, 경고 줄무늬, 로고"): a ball per decal - click it, then click a part."""
+    from . import decals as dc
+
+    def fill(sx, sw):
+        b.note(('note', 'Click a decal, then click a part (Esc: cancel)', False, None, None, None, True), sx, sw)
+        row(b, sx, sw, [button('Text Decal...', 'mch.decal_text')])
+        grid(b, sx, sw, [(lab, icon('decal', kk), False, ('op', 'mch.decal_place', {'decal': kk}), None, None)
+                         for kk, (lab, *_r) in dc.DECALS.items()])
+    section(b, 'decals', 'Decals', x, width, fill, start_folded=start_folded)
+
+
+def decal_content(b, x, width, ob):
+    """0.24.95 The Material page of a decal: its colours, its damage (user: "데칼에 데미지 들어간 것도 쉐이더로,
+    조절할 수 있게"), size / lift, Mirror / Apply / Delete."""
+    from . import decals as dc
+    st = getattr(ob, dc.KEY)
+    what = f'Text "{st.text}"' if st.kind == dc.TEXT else dc.DECALS.get(st.kind, ('Decal',))[0]
+    on = ob.parent.name if ob.parent is not None else '-'
+    b.note(('note', f'Decal: {what}   on {on}', False, None, None, None, True), x, width)
+    row(b, x, width, [button('Mirror X', 'mch.decal_mirror'), button('Apply', 'mch.decal_apply'),
+                      button('Delete', 'mch.decal_delete')])
+
+    def look(sx, sw):
+        for p in ('color1', 'color2', 'opacity', 'roughness', 'metallic'):
+            row(b, sx, sw, [prop_cell(st, p)])
+    section(b, 'decal_look', 'Look', x, width, look)
+
+    def damage(sx, sw):
+        for p in ('wear', 'peel', 'scratches', 'dirt', 'fade', 'damage_scale', 'seed'):
+            row(b, sx, sw, [prop_cell(st, p)])
+    used = max(st.wear, st.peel, st.scratches, st.dirt, st.fade)
+    section(b, 'decal_damage', 'Damage', x, width, damage, summary=_pct(used) if used > 0 else '')
+
+    def place(sx, sw):
+        for p in ('size', 'offset'):
+            row(b, sx, sw, [prop_cell(st, p)])
+        b.note(('note', 'G / R / S move it over the surface (it wraps on)', False, None, None, None, True), sx, sw)
+    section(b, 'decal_place', 'Size & Place', x, width, place)
+    decals_section(b, x, width)
 
 
 def eye_content(b, x, width, mat):
@@ -501,6 +549,7 @@ def creature_content(b, x, width, mat):
         for p in ('bump', 'map_scale', 'seed', 'size'):
             row(b, sx, sw, [prop_cell(st, p)])
     section(b, 'cr_detail', 'Height & Detail', x, width, detail, start_folded=True)
+    decals_section(b, x, width)
     row(b, x, width, [button('Switch to Mech Shader', 'mch.mech_shader_apply', preset='')])
 
 
