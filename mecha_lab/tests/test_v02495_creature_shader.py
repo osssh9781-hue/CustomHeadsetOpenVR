@@ -47,7 +47,7 @@ missing = [(slot, k) for slot, items in cs.CMAPS.items() for k, _n in items if c
 check('Every creature map on disk: skin 12, mottle 8, organic 8, colour textures 20',
       [len(cs.CMAPS[s]) for s in ('skin', 'mottle', 'organic', 'color')] == [12, 8, 8, 20] and not missing, missing)
 check('14 Skin Types, 12 Conditions; a Condition sets only the layers on top, a Skin Type everything else',
-      len(cs.SKINS) == 14 and len(cs.CONDITIONS) == 12 and not set(cs.SKIN_KEYS) & set(cs.COND_KEYS)
+      len([k for k in cs.SKIN_IDS if k not in cs.PART_SKINS]) == 14 and len(cs.CONDITIONS) == 12 and not set(cs.SKIN_KEYS) & set(cs.COND_KEYS)
       and 'polypaint' not in cs.SKIN_KEYS and 'size' not in cs.SKIN_KEYS)
 
 # ---- on a mesh without polypaint

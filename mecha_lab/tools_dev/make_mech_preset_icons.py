@@ -148,7 +148,7 @@ def main():
             return
     scene_setup()
     C = bpy.context
-    if which in {'cskin', 'ccond', 'creature'}:
+    if which in {'cskin', 'ccond', 'cpart', 'ceye', 'creature'}:
         creature_icons(which, only)
         print('ICONS DONE', flush=True)
         return
@@ -188,21 +188,37 @@ def creature_icons(which, only):
     ob = creature_ball()
     C.view_layer.objects.active = ob
     ob.select_set(True)
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=96, ring_count=48, radius=1.0)
+    eye = C.active_object
+    bpy.ops.object.shade_smooth()
+    eye.rotation_euler = (math.radians(-12), 0.0, 0.0)         # (looking up a little: at the camera)
+    eye.hide_render = True
+    C.view_layer.objects.active = ob
     jobs = []
     if which in {'cskin', 'creature'}:
-        jobs += [('cskin', k, 'CLEAN') for k, _n, _s in cs.SKINS]
+        jobs += [('cskin', k, 'CLEAN') for k, _n, _s in cs.SKINS if k not in cs.PART_SKINS]
+    if which in {'cpart', 'creature'}:
+        jobs += [('cpart', k, 'CLEAN') for k, _n in cs.PARTS]
+    if which in {'ceye', 'creature'}:
+        jobs += [('ceye', k, None) for k, _n, _s in cs.EYES]
     if which in {'ccond', 'creature'}:
         jobs += [('ccond', 'HIDE', k) for k, _n, _s in cs.CONDITIONS]
     for kind, skin, cond in jobs:
-        ident = skin if kind == 'cskin' else cond
+        ident = skin if kind in {'cskin', 'cpart', 'ceye'} else cond
         if only and ident not in only:
             continue
         t0 = time.time()
         old = ob.active_material
-        mat = cs.new_material(skin, cond)
-        mat.mch_creature.size = 1.0
-        ms.assign(C, [ob], mat, edges=False)
-        edges(ob.data)
+        if kind == 'ceye' or (kind == 'cpart' and skin == 'EYE'):        # (an eye: a plain sphere looking at -y)
+            eye.hide_render, ob.hide_render = False, True
+            mat = cs.new_eye(skin if kind == 'ceye' else 'HUMAN')
+            ms.assign(C, [eye], mat, edges=False)
+        else:
+            eye.hide_render, ob.hide_render = True, False
+            mat = cs.new_material(skin, cond)
+            mat.mch_creature.size = 1.0
+            ms.assign(C, [ob], mat, edges=False)
+            edges(ob.data)
         if old is not None and old.users == 0:
             bpy.data.materials.remove(old)
         bpy.context.scene.cycles.samples = SPP * 2

@@ -198,6 +198,10 @@ def content(context, x, width, k):
     b = sp.Builder(PAGE, x, width, k)
     sc = context.scene
     ob = getattr(context, 'active_object', None)
+    emat = cs.active_eye(context)
+    if emat is not None:                             # (0.24.95 an eye's own page)
+        eye_content(b, x, width, emat)
+        return b.out, -b.y
     cmat = cs.active_creature(context)
     if cmat is not None:                             # (0.24.95 the Creature Shader's own page)
         creature_content(b, x, width, cmat)
@@ -317,8 +321,51 @@ def creature_apply_section(b, x, width, sc, start_folded):
         b.note(('note', 'Polypaint is the colour; mud, dust, SSS ... come from the shape', False, None, None, None,
                 True), sx, sw)
         grid(b, sx, sw, [(n, icon('cskin', kk), sc.mch_creature_skin == kk,
-                          ('op', 'mch.creature_apply', {'skin': kk}), None, None) for kk, n, _s in cs.SKINS])
+                          ('op', 'mch.creature_apply', {'skin': kk}), None, None)
+                         for kk, n, _s in cs.SKINS if kk not in cs.PART_SKINS])
+        sub(b, 'Parts - eyes, teeth, gums, claws', sx, sw)
+        parts_grid(b, sx, sw)
     section(b, 'cr_apply', 'Creature Shader', x, width, fill, start_folded=start_folded)
+
+
+def parts_grid(b, sx, sw):
+    """0.24.95 Creature parts (user picked "눈 · 이빨 · 잇몸 · 혀 · 발톱"): a click puts that part's material on the
+    selected meshes (an eye: its own eye material - the eye a separate object)."""
+    from . import creature_shader as cs
+    grid(b, sx, sw, [(n, icon('cpart', kk), False, ('op', 'mch.creature_part', {'part': kk}), None, None)
+                     for kk, n in cs.PARTS])
+
+
+def eye_content(b, x, width, mat):
+    """0.24.95 The Material page of an eye material (iris, pupil, white, cornea)."""
+    from . import creature_shader as cs
+    from . import mech_shader as ms
+    st = getattr(mat, cs.EYE_KEY)
+    _cstep(b, st, 'eye_type', x, width)
+    n_parts = len(ms.users_of(mat))
+    b.note(('note', mat.name + (f'   - shared by {n_parts} parts' if n_parts > 1 else '   - this part only'), False,
+            None, None, None, True), x, width)
+    row(b, x, width, [_cell('tbtn', 'Unlink', ('op', 'mch.mech_shader_unlink', {}), active=n_parts > 1),
+                      button('New Copy', 'mch.creature_part', part='EYE', eye=st.eye_type)])
+    names = {kk: n for kk, n, _s in cs.EYES}
+
+    def eyes(sx, sw):
+        grid(b, sx, sw, [(n, icon('ceye', kk), st.eye_type == kk, ('enum', kk), st, 'eye_type')
+                         for kk, n, _s in cs.EYES])
+    section(b, 'eye_presets', 'Eyes', x, width, eyes, summary=names.get(st.eye_type, ''))
+
+    def iris(sx, sw):
+        for p in ('front', 'iris_size', 'pupil_size', 'pupil_shape', 'iris_color1', 'iris_color2', 'iris_detail',
+                  'limbal', 'limbal_color', 'pupil_color'):
+            row(b, sx, sw, [prop_cell(st, p)])
+    section(b, 'eye_iris', 'Iris & Pupil', x, width, iris)
+
+    def white(sx, sw):
+        for p in ('sclera_color', 'veins', 'wet', 'glow', 'glow_color'):
+            row(b, sx, sw, [prop_cell(st, p)])
+    section(b, 'eye_white', 'White, Cornea & Glow', x, width, white)
+    b.note(('note', 'The eye is its own object (its box is the eyeball); Looks Along: the axis it looks along',
+            False, None, None, None, True), x, width)
 
 
 def my_presets_section(b, x, width, kind):
@@ -388,8 +435,14 @@ def creature_content(b, x, width, mat):
 
     def skin_grid(sx, sw):
         grid(b, sx, sw, [(n, icon('cskin', kk), st.skin_type == kk, ('enum', kk), st, 'skin_type')
-                         for kk, n, _s in cs.SKINS])
+                         for kk, n, _s in cs.SKINS if kk not in cs.PART_SKINS])
     section(b, 'cr_skins', 'Skin Types', x, width, skin_grid, summary=skins.get(st.skin_type, ''))
+
+    def part_grid(sx, sw):
+        b.note(('note', 'A new material of that part on the selected meshes', False, None, None, None, True), sx, sw)
+        parts_grid(b, sx, sw)
+    section(b, 'cr_parts', 'Parts', x, width, part_grid, start_folded=st.skin_type not in cs.PART_SKINS,
+            summary=skins.get(st.skin_type, '') if st.skin_type in cs.PART_SKINS else '')
 
     def cond_grid(sx, sw):
         _cstep(b, st, 'condition', sx, sw, 'Condition')

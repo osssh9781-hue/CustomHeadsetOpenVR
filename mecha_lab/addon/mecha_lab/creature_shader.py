@@ -188,6 +188,25 @@ CONDITIONS = [
     ('SOOTY', 'Sooty / Burnt', _c(soot=0.55)),
     ('MOSSY', 'Moss / Algae', _c(moss=0.5, h_moss=0.6, wet=0.15, moss_tex='GREEN_MOSS')),
 ]
+# 0.24.95 creature parts (user picked "이빨 · 잇몸 · 혀 · 발톱"): Creature Shader presets too, shown under Parts (after
+# the 14 skin types - saved files keep theirs); the eye is a material of its own (``build_eye``)
+SKINS += [
+    ('TEETH', 'Teeth / Enamel', _c(base_color=(0.88, 0.84, 0.72), roughness=0.28, coat=0.3, sss=0.25,
+                                   sss_color=(1.0, 0.85, 0.6), sss_radius=0.01, sss_thin=1.5, skin_map='HORN',
+                                   detail_map='PORES', h_skin=0.1, h_detail=0.03, cav_dark=0.5,
+                                   cav_color=(0.5, 0.35, 0.2), ridge_light=0.15, ridge_gloss=0.2, rough_var=0.15)),
+    ('GUMS', 'Gums / Tongue', _c(base_color=(0.65, 0.25, 0.25), roughness=0.25, coat=0.6, sss=0.6,
+                                 sss_color=(1.0, 0.3, 0.25), sss_radius=0.02, skin_map='PORES', skin_scale=4.0,
+                                 h_skin=0.2, detail_map='WRINKLES', h_detail=0.1, cav_dark=0.4,
+                                 cav_color=(0.45, 0.12, 0.12), mottle=0.2, mottle_map='VEINS',
+                                 mottle_color=(0.5, 0.15, 0.18))),
+    ('CLAW', 'Claw / Nail', _c(base_color=(0.25, 0.2, 0.15), roughness=0.35, coat=0.25, ridge_gloss=0.3,
+                               skin_map='HORN', detail_map='PORES', h_skin=0.4, h_detail=0.03, cav_dark=0.6,
+                               sss=0.05, sss_color=(1.0, 0.7, 0.4), ridge_light=0.25,
+                               ridge_color=(0.75, 0.68, 0.55))),
+]
+PART_SKINS = ('TEETH', 'GUMS', 'CLAW')
+PARTS = [('EYE', 'Eye'), ('TEETH', 'Teeth / Enamel'), ('GUMS', 'Gums / Tongue'), ('CLAW', 'Claw / Nail')]
 SKIN_IDS = tuple(s[0] for s in SKINS)
 COND_IDS = tuple(s[0] for s in CONDITIONS)
 _SYNCING = [False]
@@ -714,6 +733,12 @@ class MCH_OT_creature_step(bpy.types.Operator):
     step: bpy.props.IntProperty(default=1)
 
     def execute(self, context):
+        eye = active_eye(context)
+        if eye is not None:                          # (0.24.95 the eye's own lists)
+            st = getattr(eye, EYE_KEY)
+            items = [i.identifier for i in st.bl_rna.properties[self.prop].enum_items]
+            setattr(st, self.prop, items[(items.index(getattr(st, self.prop)) + self.step) % len(items)])
+            return {'FINISHED'}
         mat = active_creature(context)
         if mat is None:
             if self.prop != 'skin_type':
@@ -729,19 +754,257 @@ class MCH_OT_creature_step(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_PG_CreatureShader, MCH_OT_creature_apply, MCH_OT_creature_step)
+# -----------------------------------------------------------------------------
+# 0.24.95 the eye (a separate eye object): sclera, iris, pupil, a wet cornea
+# -----------------------------------------------------------------------------
+
+EYE_KEY = 'mch_eye'
+EYE_VERSION = 1
+AXES = {'-Y': ((0, -1, 0), (1, 0, 0), (0, 0, 1)), '+Y': ((0, 1, 0), (-1, 0, 0), (0, 0, 1)),
+        '-X': ((-1, 0, 0), (0, -1, 0), (0, 0, 1)), '+X': ((1, 0, 0), (0, 1, 0), (0, 0, 1)),
+        '+Z': ((0, 0, 1), (1, 0, 0), (0, 1, 0)), '-Z': ((0, 0, -1), (1, 0, 0), (0, -1, 0))}
+PUPILS = {'ROUND': (1.0, 1.0), 'SLIT': (0.22, 1.0), 'HORIZONTAL': (1.0, 0.32)}
+EYE_BASE = dict(iris_size=0.42, pupil_size=0.38, pupil_shape='ROUND', iris_color1=(0.55, 0.35, 0.12),
+                iris_color2=(0.25, 0.15, 0.06), limbal=0.6, limbal_color=(0.05, 0.04, 0.03), iris_detail=0.5,
+                pupil_color=(0.01, 0.01, 0.01), sclera_color=(0.9, 0.87, 0.82), veins=0.15, glow=0.0,
+                glow_color=(1.0, 0.3, 0.05), wet=1.0)
+EYE_SLIDERS = tuple(k for k in EYE_BASE if k != 'pupil_shape')
+
+
+def _e(**kw):
+    d = dict(EYE_BASE)
+    d.update(kw)
+    return {k: (_lin(v) if k.endswith(('color', 'color1', 'color2')) else v) for k, v in d.items()}
+
+
+EYES = [
+    ('HUMAN', 'Human Brown', _e()),
+    ('BLUE', 'Human Blue', _e(iris_color1=(0.45, 0.62, 0.78), iris_color2=(0.12, 0.22, 0.38))),
+    ('REPTILE', 'Reptile', _e(pupil_shape='SLIT', iris_size=0.85, pupil_size=0.55, iris_color1=(0.78, 0.72, 0.18),
+                              iris_color2=(0.3, 0.38, 0.05), limbal=0.3, iris_detail=0.8)),
+    ('CAT', 'Cat / Beast', _e(pupil_shape='SLIT', iris_size=0.78, pupil_size=0.5, iris_color1=(0.98, 0.65, 0.12),
+                              iris_color2=(0.6, 0.28, 0.04), limbal=0.5)),
+    ('GOAT', 'Goat / Demon', _e(pupil_shape='HORIZONTAL', iris_size=0.8, pupil_size=0.55,
+                                iris_color1=(0.88, 0.72, 0.2), iris_color2=(0.5, 0.35, 0.08), limbal=0.4)),
+    ('GLOW', 'Glowing', _e(iris_color1=(1.0, 0.25, 0.05), iris_color2=(0.4, 0.03, 0.01), glow=4.0, limbal=0.8,
+                           sclera_color=(0.12, 0.08, 0.07))),
+    ('MILKY', 'Undead / Blind', _e(iris_color1=(0.78, 0.8, 0.8), iris_color2=(0.62, 0.64, 0.66), pupil_size=0.0,
+                                   limbal=0.15, iris_detail=0.2, veins=0.45, sclera_color=(0.82, 0.78, 0.68))),
+]
+EYE_IDS = tuple(e[0] for e in EYES)
+
+
+def build_eye(mat):
+    """The eye's node tree.  The eye's own box (Generated coordinates, -1..1 from its centre - its origin and size do
+    not matter, it must be a separate object): its Front axis looks out; the iris round it, the pupil in the iris
+    (round / slit / horizontal), the limbal ring at its edge, fibres; veins on the white; a clear wet coat."""
+    mat.use_nodes = True
+    nt = mat.node_tree
+    nt.nodes.clear()
+    b = ms.Builder(nt)
+    out = b.node('ShaderNodeOutputMaterial')
+    bsdf = b.node('ShaderNodeBsdfPrincipled', 'mch:bsdf')
+    b.link(bsdf.outputs['BSDF'], out.inputs['Surface'])
+    tc = b.node('ShaderNodeTexCoord')
+    v = {k: b.value(k) for k in EYE_SLIDERS if not k.endswith(('color', 'color1', 'color2'))}
+    c = {k: b.rgb(k) for k in EYE_SLIDERS if k.endswith(('color', 'color1', 'color2'))}
+    ax = {k: b.node('ShaderNodeCombineXYZ', 'mch:axis_' + k) for k in ('f', 'u', 'v')}
+    shape = {k: b.value('pupil_' + k, 1.0) for k in ('ax', 'ay')}
+    p = b.vmath('SCALE', b.vmath('SUBTRACT', tc.outputs['Generated'], (0.5, 0.5, 0.5)), fac=2.0)
+    pn = b.vmath('NORMALIZE', p)
+    cos = b.vmath('DOT_PRODUCT', pn, ax['f'].outputs['Vector'])
+    u = b.vmath('DOT_PRODUCT', pn, ax['u'].outputs['Vector'])
+    w = b.vmath('DOT_PRODUCT', pn, ax['v'].outputs['Vector'])
+    r = b.math('SQRT', b.math('ADD', b.math('MULTIPLY', u, u), b.math('MULTIPLY', w, w)))
+    front = b.math('GREATER_THAN', cos, 0.0)
+    iris = b.math('MULTIPLY', front, b.maprange(r, v['iris_size'], b.math('SUBTRACT', v['iris_size'], 0.02)))
+    pw = b.math('MAXIMUM', b.math('MULTIPLY', v['pupil_size'], v['iris_size']), 1e-4)
+    eu = b.math('DIVIDE', u, b.math('MULTIPLY', pw, shape['ax']))
+    ev = b.math('DIVIDE', w, b.math('MULTIPLY', pw, shape['ay']))
+    e = b.math('SQRT', b.math('ADD', b.math('MULTIPLY', eu, eu), b.math('MULTIPLY', ev, ev)))
+    pupil = b.math('MULTIPLY', b.math('MULTIPLY', front, b.maprange(e, 1.0, 0.85)),
+                   b.math('GREATER_THAN', v['pupil_size'], 0.001))
+    t = b.math('DIVIDE', r, b.math('MAXIMUM', v['iris_size'], 1e-4))          # (0 centre .. 1 the iris edge)
+    ring = b.maprange(t, 0.72, 1.0)
+    noise = b.node('ShaderNodeTexNoise', 'mch:fibres')
+    noise.inputs['Scale'].default_value = 1.0
+    noise.inputs['Detail'].default_value = 6.0
+    fib = b.node('ShaderNodeCombineXYZ')
+    b.link(b.math('MULTIPLY', b.math('ARCTAN2', w, u), 9.0), fib.inputs[0])
+    b.link(b.math('MULTIPLY', t, 2.5), fib.inputs[1])
+    b.link(fib.outputs['Vector'], noise.inputs['Vector'])
+    streak = b.math('ADD', 0.7, b.math('MULTIPLY', b.math('SUBTRACT', noise.outputs['Fac'], 0.5),
+                                       b.math('MULTIPLY', v['iris_detail'], 1.6)))
+    icol = b.vmath('SCALE', b.mixc(t, c['iris_color1'], c['iris_color2']), fac=streak)
+    icol = b.mixc(b.math('MULTIPLY', ring, v['limbal']), icol, c['limbal_color'])
+    veins = b.image('veins', b.vmath('SCALE', tc.outputs['Object'], fac=3.0))
+    vm = b.threshold(b.math('MULTIPLY', veins.outputs['Color'], b.math('SUBTRACT', 1.0, b.math('MAXIMUM', cos, 0.0))),
+                     v['veins'], 0.1)
+    scl = b.mixc(b.math('MULTIPLY', vm, 0.8), c['sclera_color'], (0.55, 0.06, 0.05, 1.0))
+    col = b.mixc(iris, scl, icol)
+    col = b.mixc(pupil, col, c['pupil_color'])
+    b.link(col, bsdf.inputs['Base Color'])
+    b.link(b.mixf(iris, 0.3, 0.45), bsdf.inputs['Roughness'])
+    b.link(v['wet'], bsdf.inputs['Coat Weight'])
+    bsdf.inputs['Coat Roughness'].default_value = 0.02
+    bsdf.inputs['Coat IOR'].default_value = 1.376
+    b.link(b.math('MULTIPLY', b.math('SUBTRACT', 1.0, iris), 0.15), bsdf.inputs['Subsurface Weight'])
+    bsdf.inputs['Subsurface Scale'].default_value = 0.01
+    b.link(c['glow_color'], bsdf.inputs['Emission Color'])
+    b.link(b.math('MULTIPLY', b.math('MULTIPLY', iris, b.math('SUBTRACT', 1.0, pupil)), v['glow']),
+           bsdf.inputs['Emission Strength'])
+    mat[EYE_KEY] = EYE_VERSION
+    return mat
+
+
+def is_eye(mat):
+    return mat is not None and bool(mat.get(EYE_KEY)) and mat.node_tree is not None \
+        and mat.node_tree.nodes.get('mch:bsdf') is not None
+
+
+def sync_eye(mat):
+    if not is_eye(mat):
+        return
+    if mat.get(EYE_KEY, 0) < EYE_VERSION:
+        build_eye(mat)
+    st = getattr(mat, EYE_KEY)
+    nodes = mat.node_tree.nodes
+    for k in EYE_SLIDERS:
+        nd = nodes.get('mch:' + k)
+        if nd is not None:
+            val = getattr(st, k)
+            nd.outputs[0].default_value = (*val, 1.0) if k.endswith(('color', 'color1', 'color2')) else float(val)
+    for name, vec in zip(('f', 'u', 'v'), AXES[st.front]):
+        nd = nodes.get('mch:axis_' + name)
+        if nd is not None:
+            for i in range(3):
+                nd.inputs[i].default_value = vec[i]
+    for name, val in zip(('ax', 'ay'), PUPILS[st.pupil_shape]):
+        nd = nodes.get('mch:pupil_' + name)
+        if nd is not None:
+            nd.outputs[0].default_value = val
+    nd = nodes.get('mch:img:veins')
+    if nd is not None and nd.image is None:
+        nd.image = cmap_image('mottle', 'VEINS')
+
+
+def apply_eye(mat, ident):
+    spec = next((e[2] for e in EYES if e[0] == ident), None)
+    if spec is None:
+        return False
+    st = getattr(mat, EYE_KEY)
+    _SYNCING[0] = True
+    try:
+        for k, val in spec.items():
+            setattr(st, k, val)
+        if st.eye_type != ident:
+            st.eye_type = ident
+    finally:
+        _SYNCING[0] = False
+    sync_eye(mat)
+    return True
+
+
+def _eye_update(self, context):
+    if not _SYNCING[0]:
+        sync_eye(self.id_data)
+
+
+def _eye_type_update(self, context):
+    if not _SYNCING[0]:
+        apply_eye(self.id_data, self.eye_type)
+
+
+def _ecolor(name, key):
+    return FloatVectorProperty(name=name, subtype='COLOR', size=3, min=0.0, max=1.0, default=_lin(EYE_BASE[key]),
+                               update=_eye_update)
+
+
+def _es(name, key, lo=0.0, hi=1.0, desc=''):
+    return FloatProperty(name=name, default=EYE_BASE[key], min=lo, max=hi, update=_eye_update, description=desc)
+
+
+class MCH_PG_CreatureEye(bpy.types.PropertyGroup):
+    eye_type: EnumProperty(name='Eye', items=[(k, n, n) for k, n, _s in EYES], default='HUMAN',
+                           update=_eye_type_update)
+    front: EnumProperty(name='Looks Along', items=[(k, k, f'The eye looks along its object\'s {k} axis')
+                                                   for k in AXES], default='-Y', update=_eye_update)
+    iris_size: _es('Iris Size', 'iris_size', 0.02, 1.0)
+    pupil_size: _es('Pupil Size', 'pupil_size', 0.0, 1.0, 'Of the iris (0: no pupil - blind)')
+    pupil_shape: EnumProperty(name='Pupil', items=[('ROUND', 'Round', 'People, most mammals'),
+                                                   ('SLIT', 'Slit', 'Cats, reptiles, crocodiles'),
+                                                   ('HORIZONTAL', 'Horizontal', 'Goats, sheep, octopus')],
+                              default='ROUND', update=_eye_update)
+    iris_color1: _ecolor('Iris Inner', 'iris_color1')
+    iris_color2: _ecolor('Iris Outer', 'iris_color2')
+    iris_detail: _es('Iris Fibres', 'iris_detail')
+    limbal: _es('Limbal Ring', 'limbal', desc='The dark ring round the iris')
+    limbal_color: _ecolor('Ring Color', 'limbal_color')
+    pupil_color: _ecolor('Pupil Color', 'pupil_color')
+    sclera_color: _ecolor('White', 'sclera_color')
+    veins: _es('Veins', 'veins', desc='Blood vessels on the white')
+    glow: _es('Glow', 'glow', 0.0, 50.0, 'The iris glowing (monster eyes)')
+    glow_color: _ecolor('Glow Color', 'glow_color')
+    wet: _es('Wet Cornea', 'wet', desc='The clear glossy layer over the eye')
+
+
+def active_eye(context):
+    ob = getattr(context, 'active_object', None)
+    mat = getattr(ob, 'active_material', None) if ob is not None else None
+    return mat if is_eye(mat) else None
+
+
+def new_eye(ident='HUMAN', name=None):
+    label = dict((k, n) for k, n, _s in EYES).get(ident, ident)
+    mat = bpy.data.materials.new(name or 'Eye ' + label)
+    build_eye(mat)
+    apply_eye(mat, ident)
+    return mat
+
+
+class MCH_OT_creature_part(bpy.types.Operator):
+    """A creature part's material on the selected meshes: an Eye (its own material - a separate eye object), Teeth,
+    Gums / Tongue or a Claw (Creature Shader presets)"""
+    bl_idname = 'mch.creature_part'
+    bl_label = 'Creature Part Material'
+    bl_options = {'REGISTER', 'UNDO'}
+    part: StringProperty(default='EYE')
+    eye: StringProperty(default='')
+
+    def execute(self, context):
+        obs = ms._targets(context)
+        if not obs:
+            self.report({'WARNING'}, 'Creature part: select a mesh')
+            return {'CANCELLED'}
+        if self.part == 'EYE':
+            cur = active_eye(context)
+            mat = new_eye(self.eye or (getattr(cur, EYE_KEY).eye_type if cur is not None else 'HUMAN'))
+            n = ms.assign(context, obs, mat, edges=False)
+        else:
+            mat = new_material(self.part, 'CLEAN')
+            getattr(mat, KEY).size = body_size(obs)
+            n = ms.assign(context, obs, mat)
+        ms._look(context)
+        self.report({'INFO'}, f'"{mat.name}" on {n} mesh(es)')
+        return {'FINISHED'}
+
+
+CLASSES = (MCH_PG_CreatureShader, MCH_PG_CreatureEye, MCH_OT_creature_apply, MCH_OT_creature_step,
+           MCH_OT_creature_part)
 
 
 def register():
     for cl in CLASSES:
         bpy.utils.register_class(cl)
     bpy.types.Material.mch_creature = PointerProperty(type=MCH_PG_CreatureShader)
+    bpy.types.Material.mch_eye = PointerProperty(type=MCH_PG_CreatureEye)
     bpy.types.Scene.mch_creature_skin = EnumProperty(name='Creature Skin Type', items=[(k, n, n) for k, n, _s in SKINS],
                                                      default='HUMAN')
 
 
 def unregister():
-    for attr, owner in (('mch_creature', bpy.types.Material), ('mch_creature_skin', bpy.types.Scene)):
+    for attr, owner in (('mch_creature', bpy.types.Material), ('mch_eye', bpy.types.Material),
+                        ('mch_creature_skin', bpy.types.Scene)):
         try:
             delattr(owner, attr)
         except AttributeError:
