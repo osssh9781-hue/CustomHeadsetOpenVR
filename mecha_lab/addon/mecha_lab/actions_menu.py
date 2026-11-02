@@ -94,6 +94,7 @@ def draw_actions(layout, context):
     _btn(g, 'mch.object_tidy', 'PIVOT_MEDIAN', bool(meshes), action='ORIGIN_GEOMETRY')
     _btn(g, 'mch.object_tidy', 'ORIENTATION_GLOBAL', bool(meshes), action='RESET_AXIS')
     _btn(g, 'object.shade_auto_smooth', 'MOD_SMOOTH', bool(meshes))
+    _btn(g, 'mch.clean_materials', 'MATERIAL', bool(meshes))      # 0.24.95 the leftover material slots
 
     _header(col, 'Resolution')
     g = _grid(col)
@@ -387,7 +388,96 @@ class MCH_OT_flip_object(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_OT_actions_mirror, MCH_OT_actions_apply_modifiers, MCH_PT_actions_popup, MCH_OT_actions_menu, MCH_OT_flip_object)
+def clean_materials(ob, mode='ONE'):
+    """0.24.95 (user: "재질이 중복이 있어서 하얀색으로 안 칠해지는 거 매번 지워 주는 거 귀찮으니까 클린 버튼") the part's
+    material slots tidied - a cut / Boolean brings the cutter's materials along, re-applying a material adds slots, and
+    the faces left on them never take the new material.  ``mode`` 'ONE': every face on the material of the active slot
+    (the one just applied; else the first), the other slots gone - the part's Split Zone materials kept with their
+    faces; 'UNUSED': only empty slots, slots no face uses and a material in two slots (merged) go.  Returns how many
+    slots went."""
+    import numpy as np
+    if ob is None or ob.type != 'MESH':
+        return 0
+    me = ob.data
+    mats = [sl.material for sl in ob.material_slots]
+    if not mats:
+        return 0
+    nf = len(me.polygons)
+    idx = np.zeros(nf, np.int32)
+    if nf:
+        me.polygons.foreach_get('material_index', idx)
+    idx = np.clip(idx, 0, len(mats) - 1)
+    if mode == 'UNUSED':
+        used = set(idx.tolist())
+        keep = []
+        for i, m in enumerate(mats):
+            if i in used and m is not None and m not in keep:
+                keep.append(m)
+        remap = [keep.index(m) if m in keep else 0 for m in mats]
+    else:
+        a = ob.active_material_index
+        main = mats[a] if 0 <= a < len(mats) and mats[a] is not None else next((m for m in mats if m is not None), None)
+        keep = [main] if main is not None else []
+        for m in mats:                     # (a Split Zone of the main material: made on purpose - stays)
+            if m is not None and main is not None and getattr(m, 'mch_zone_parent', None) == main and m not in keep:
+                keep.append(m)
+        remap = [keep.index(m) if m in keep else 0 for m in mats]
+    gone = len(mats) - len(keep)
+    if gone <= 0 and all(sl.link == 'DATA' for sl in ob.material_slots):
+        return 0
+    new_idx = np.asarray(remap, np.int32)[idx] if nf else idx
+    me.materials.clear()
+    for m in keep:
+        me.materials.append(m)
+    for sl in ob.material_slots:
+        sl.link = 'DATA'
+    if nf:
+        me.polygons.foreach_set('material_index', new_idx)
+    me.update()
+    ob.active_material_index = 0
+    return max(0, gone)
+
+
+class MCH_OT_clean_materials(bpy.types.Operator):
+    """Clean Materials: on every selected part, every face on the material of its active slot (the one just applied)
+    and the other slots removed - the leftover materials a cut or Boolean brought along go (a part's Split Zone
+    materials stay)"""
+    bl_idname = 'mch.clean_materials'
+    bl_label = 'Clean Materials'
+    bl_options = {'REGISTER', 'UNDO'}
+    mode: bpy.props.EnumProperty(name='Clean', items=[
+        ('ONE', 'One Material', 'Every face on the material of the active slot, the other slots removed (Split Zone '
+                                'materials stay)'),
+        ('UNUSED', 'Unused Only', 'Only empty slots, slots no face uses and a material in two slots go')],
+        default='ONE')
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode in {'OBJECT', 'SCULPT'} and any(o.type == 'MESH' for o in context.selected_objects)
+
+    def execute(self, context):
+        sculpt = context.mode == 'SCULPT'
+        if sculpt:
+            bpy.ops.object.mode_set(mode='OBJECT')
+        done, gone, seen = 0, 0, set()
+        try:
+            for ob in [o for o in context.selected_objects if o.type == 'MESH']:
+                if ob.data.name in seen:                     # (a mesh shared by linked copies: once)
+                    continue
+                seen.add(ob.data.name)
+                n = clean_materials(ob, self.mode)
+                done += 1 if n else 0
+                gone += n
+        finally:
+            if sculpt:
+                bpy.ops.object.mode_set(mode='SCULPT')
+        self.report({'INFO'}, f'Clean Materials: {gone} slot(s) removed on {done} part(s)' if gone else
+                    'Clean Materials: nothing to clean')
+        return {'FINISHED'}
+
+
+CLASSES = (MCH_OT_actions_mirror, MCH_OT_actions_apply_modifiers, MCH_PT_actions_popup, MCH_OT_actions_menu, MCH_OT_flip_object,
+           MCH_OT_clean_materials)
 _keymaps = []
 
 

@@ -814,6 +814,7 @@ def popup(context, region_w, region_h, k, Item):
     zbs = getattr(context.scene, 'mch_zb', None)                      # 0.24.95 Bake HP Copy on / off at the cursor
     acts.append(('HP Copy ' + ('On' if zbs is None or zbs.bk_copy else 'Off'), ('op', 'mch.bake_copy_toggle', {})))
     acts.append(('Flip', ('op', 'mch.flip_object', {'axis': 'X'})))   # 0.24.95 left / right (user: "우클릭 팝업에 뒤집기")
+    acts.append(('Clean Materials', ('op', 'mch.clean_materials', {})))   # 0.24.95 the leftover material slots
     aw = (iw - (len(acts) - 1) * GAP * k) / len(acts)
     for i, (lab, action) in enumerate(acts):
         out.append(Item('tbtn', x0 + PAD * k + i * (aw + GAP * k), y, aw, ROW * k, lab, '', False, True, action))

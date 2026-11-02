@@ -50,7 +50,10 @@ ACTIONS = (            # (section, [(label, glyph or png stem, operator, props, 
                     ('HP Keep', 'bakehp', 'mch.mesh_tool', {'action': 'BAKE_HP_KEEP'}, 'active', True),    # 0.24.95
                     ('HP Round', 'bakehp', 'mch.mesh_tool', {'action': 'BAKE_HP_ROUND'}, 'active', True),
                     ('HP Divide', 'bakehp', 'mch.mesh_tool', {'action': 'BAKE_HP_DIVIDE'}, 'active', True),
-                    ('HP Copy', 'duplicate', 'mch.bake_copy_toggle', {}, '', False)]),     # 0.24.95 on = lit
+                    ('HP Copy', 'duplicate', 'mch.bake_copy_toggle', {}, '', False),     # 0.24.95 on = lit
+                    # 0.24.95 (user: "중복 재질 지우는 클린 버튼 우클릭 팝업에, 선택한 거 한 번에") - a free slot here:
+                    # the card no taller (it just fits a 1080 screen)
+                    ('Clean Materials', 'material', 'mch.clean_materials', {}, 'mesh', False)]),
     ('Symmetry', [('Mirror X', 'X', 'mch.actions_mirror', {'axis': 0}, 'active', False),
                   ('Mirror Y', 'Y', 'mch.actions_mirror', {'axis': 1}, 'active', False),
                   ('Mirror Z', 'Z', 'mch.actions_mirror', {'axis': 2}, 'active', False),
