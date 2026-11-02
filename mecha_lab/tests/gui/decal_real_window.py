@@ -179,6 +179,26 @@ def flow():
     log('page with the decal selected: heads', [i.label.split('   ')[0] for i in panel_items() if i.kind == 'shead'],
         'props', sorted({getattr(i, 'prop', '') for i in panel_items()} - {''})[:12])
     shot('3_placed.png')
+    # 0.24.95 (user: "데칼은 회전도 넣어 줘") a real drag on its Rotation bar
+    bar = yield from scrolled_to(lambda i: getattr(i, 'prop', '') == 'rotation')
+    bx, by = hover(bar)
+    m0 = d.matrix_world.to_3x3().col[0].copy() if d else None
+    yield 0.3
+    xdo('mousedown', 1)
+    yield 0.2
+    for dx in range(0, 91, 10):
+        xdo('mousemove', bx + dx, by)
+        yield 0.05
+    xdo('mouseup', 1)
+    yield 1.0
+    if d is not None:
+        import math as _m
+        m1 = d.matrix_world.to_3x3().col[0]
+        log('Rotation bar dragged: rotation', round(_m.degrees(d.mch_decal.rotation), 1), 'deg; its width axis turned',
+            round(_m.degrees(m0.angle(m1)), 1), 'deg; still on the part', d.parent.name if d.parent else None)
+    xdo('mousemove', 300, 1200)
+    yield 15.0
+    shot('3b_rotated.png')
     # the Creature tab (the part selected: its material is a Mech one - a note + the skin types)
     w, a, r = view3d()
     with C.temp_override(window=w, area=a, region=r):

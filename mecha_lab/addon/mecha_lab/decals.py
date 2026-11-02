@@ -319,6 +319,12 @@ def sync(ob):
         sw.offset = st.offset * st.height
     if tuple(ob.scale) != (st.size,) * 3:
         ob.scale = (st.size,) * 3
+    # (0.24.95 user: "데칼은 회전도 넣어 줘") Rotation: turned round its own normal (its local Z) by what the slider
+    # moved since last time - a turn made by hand (R) is kept, the wrap still projects along the normal
+    done = float(ob.get('mch_rot_applied', 0.0))
+    if abs(st.rotation - done) > 1e-7:
+        ob.matrix_basis = ob.matrix_basis @ Matrix.Rotation(st.rotation - done, 4, 'Z')
+        ob['mch_rot_applied'] = float(st.rotation)
 
 
 def _update(self, context):
@@ -355,6 +361,8 @@ class MCH_PG_Decal(bpy.types.PropertyGroup):
     damage_scale: _s('Damage Scale', 1.0, 0.1, 10.0, 'The damage pattern smaller (bigger number)')
     seed: _s('Seed', 0.0, 0.0, 100.0, 'Another damage pattern')
     size: _s('Size', 1.0, 0.05, 20.0, 'The decal bigger / smaller')
+    rotation: FloatProperty(name='Rotation', default=0.0, min=-math.pi, max=math.pi, subtype='ANGLE', update=_update,
+                            description='Turn the decal round its own normal (it stays wrapped on the surface)')
     offset: _s('Lift', 0.004, 0.0, 0.1, 'How far above the surface (x the decal\'s height) - more if it flickers')
 
 

@@ -554,7 +554,7 @@ def decal_content(b, x, width, ob):
     section(b, 'decal_damage', 'Damage', x, width, damage, summary=_pct(used) if used > 0 else '')
 
     def place(sx, sw):
-        for p in ('size', 'offset'):
+        for p in ('size', 'rotation', 'offset'):
             row(b, sx, sw, [prop_cell(st, p)])
         b.note(('note', 'G / R / S move it over the surface (it wraps on)', False, None, None, None, True), sx, sw)
     section(b, 'decal_place', 'Size & Place', x, width, place)

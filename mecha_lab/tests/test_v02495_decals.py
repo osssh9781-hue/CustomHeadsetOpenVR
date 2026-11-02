@@ -7,7 +7,8 @@
 * the Material page: a Decals section (a ball each, Text Decal...), a decal's own page
 * 0.24.95 (user: "추가 데칼이야! 이거도 추가해 줘 / 이건 데칼 탭으로 가자!"): the user's 30 Sci-Fi decals in full colour
   (their own colours, sRGB; Tint, Hue / Saturation / Value), the Decals page of its own (the library + the selected
-  decal's settings); the Mech page with a decal selected points to it"""
+  decal's settings); the Mech page with a decal selected points to it
+* Rotation (user: "데칼은 회전도 넣어 줘"): round its own normal, still wrapped"""
 import math
 import os
 
@@ -96,6 +97,23 @@ check('... the damage from the Mech Shader\'s own maps (chips, scratches, grime)
 st.size = 2.0
 check('Size: the decal twice as big', tuple(round(s, 4) for s in dec.scale) == (2.0, 2.0, 2.0))
 st.size = 1.0
+# 0.24.95 (user: "데칼은 회전도 넣어 줘") Rotation: round its own normal, where it is, still wrapped
+C.view_layer.update()
+m0 = dec.matrix_world.copy()
+st.rotation = math.radians(90)
+C.view_layer.update()
+m1 = dec.matrix_world
+check('Rotation 90 deg: turned round its own normal (its width now along its old height), the same place and normal',
+      (m1.to_3x3().col[0].normalized() - m0.to_3x3().col[1].normalized()).length < 1e-4
+      and (m1.translation - m0.translation).length < 1e-6
+      and (m1.to_3x3().col[2].normalized() - m0.to_3x3().col[2].normalized()).length < 1e-4)
+rad_r = np.linalg.norm(evaluated_co(dec), axis=1)
+check('... still wrapped on the ball (every point on the surface)', np.abs(rad_r - (1.0 + lift)).max() < 0.004)
+st.rotation = 0.0
+C.view_layer.update()
+check('... back to 0: as it was', (dec.matrix_world.to_3x3().col[0] - m0.to_3x3().col[0]).length < 1e-4)
+its, _h = page()
+check('... the Rotation slider on its page (Size & Place)', any(getattr(i, 'prop', '') == 'rotation' for i in its))
 
 # ---- text decal
 bpy.ops.mesh.primitive_cube_add(size=2.0, location=(0, 6, 0))
