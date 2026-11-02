@@ -57,6 +57,35 @@ DECALS = {
     'CORNERS': ('Corner Brackets', 1.0, (0.92, 0.92, 0.9), (0.05, 0.05, 0.05)),
     'CIRCLE_NUM': ('Unit Circle', 1.0, (0.92, 0.92, 0.9), (0.05, 0.05, 0.05)),
 }
+# 0.24.95 (user: "너도 좀 더 바코드 같은 데칼 종류 더 만들어 줘") the Tech Marks - two-tone too (tools_dev/make_decals.py TECH)
+_W, _K, _Y, _R = (0.92, 0.92, 0.9), (0.05, 0.05, 0.05), (0.95, 0.75, 0.05), (0.85, 0.1, 0.08)
+TECH_MARKS = {
+    'BARCODE_TALL': ('Barcode Label', 1.25, _K, _W),
+    'BARCODE_STRIP': ('Barcode Strip', 4.0, _W, _K),
+    'QR': ('QR Code', 1.0, _K, _W),
+    'DATAMATRIX': ('Data Matrix', 1.0, _K, _W),
+    'SERIAL_TAG': ('Serial Tag', 2.4, _W, (0.12, 0.12, 0.13)),
+    'LOT_LABEL': ('Lot Label', 1.6, _K, _W),
+    'RULER': ('Ruler', 6.0, _W, _K),
+    'TICK_RING': ('Tick Ring', 1.0, _W, _K),
+    'GAUGE': ('Gauge', 1.4, _W, _K),
+    'TARGET': ('Reg. Target', 1.0, _W, _K),
+    'TECH_TEXT': ('Tech Text', 3.2, _W, _K),
+    'WARN_LABEL': ('Warning Label', 3.2, _Y, _K),
+    'KEEP_CLEAR': ('Keep Clear', 2.5, _W, _K),
+    'NUMBER': ('Stencil 07', 1.1, _W, _K),
+    'HEXGRID': ('Hex Grid', 1.6, _W, _K),
+    'DASHES': ('Dash Line', 8.0, _W, _K),
+    'PINSTRIPE': ('Pinstripes', 8.0, _R, _W),
+    'CHECKER': ('Checker Band', 6.0, _W, _K),
+    'CIRCUIT': ('Circuit', 1.6, _W, _K),
+    'POWER_CELL': ('Power Cell', 2.0, _W, _K),
+    'ARROW_ROW': ('Arrow Row', 4.0, _Y, _K),
+    'AXIS': ('Axis Mark', 1.0, _W, _R),
+    'PANEL_ID': ('Panel ID', 1.5, _K, _W),
+    'PERFORATION': ('Perforation', 2.0, _W, _K),
+}
+DECALS.update(TECH_MARKS)
 TEXT_COLORS = ((0.92, 0.92, 0.9), (0.05, 0.05, 0.05))
 VALUES = ('opacity', 'roughness', 'metallic', 'wear', 'peel', 'scratches', 'dirt', 'fade', 'damage_scale', 'seed',
           'hue', 'sat', 'val')

@@ -399,8 +399,8 @@ def parts_grid(b, sx, sw):
 
 def decal_library(b, x, width, start_folded=False):
     """0.24.95 The decal library (user picked "데칼 - 번호, 경고 줄무늬, 로고"; "추가 데칼이야! 이거도 추가해 줘"): a ball per
-    decal - click it, then click a part.  Sci-Fi Signs (the user's 30, their own colours), Two-Tone (24, any two
-    colours), Text."""
+    decal - click it, then click a part.  Sci-Fi Signs (the user's 30, their own colours), Tech Marks (24 barcodes,
+    codes, labels ...), Two-Tone (24 signs, any two colours), Text."""
     from . import decals as dc
     sfx = '_open' if not start_folded else ''            # (opened on the library page, folded under a decal's own)
     b.note(('note', 'Click a decal, then click a part (Esc: cancel)', False, None, None, None, True), x, width)
@@ -412,11 +412,20 @@ def decal_library(b, x, width, start_folded=False):
     section(b, 'decals_scifi' + sfx, 'Sci-Fi Signs', x, width, scifi, start_folded=start_folded,
             summary=str(len(dc.COLOR_DECALS)))
 
+    def tech(sx, sw):                              # (0.24.95 user: "바코드 같은 데칼 종류 더 만들어 줘")
+        b.note(('note', 'Barcodes, codes, labels, rulers ... two colours of your choice', False, None, None, None,
+                True), sx, sw)
+        grid(b, sx, sw, [(lab, icon('decal', kk), False, ('op', 'mch.decal_place', {'decal': kk}), None, None)
+                         for kk, (lab, *_r) in dc.TECH_MARKS.items()])
+    section(b, 'decals_tech' + sfx, 'Tech Marks', x, width, tech, start_folded=start_folded,
+            summary=str(len(dc.TECH_MARKS)))
+    signs = {kk: v for kk, v in dc.DECALS.items() if kk not in dc.TECH_MARKS}
+
     def two(sx, sw):
         b.note(('note', 'Two colours of your choice (Color 1 / Color 2)', False, None, None, None, True), sx, sw)
         grid(b, sx, sw, [(lab, icon('decal', kk), False, ('op', 'mch.decal_place', {'decal': kk}), None, None)
-                         for kk, (lab, *_r) in dc.DECALS.items()])
-    section(b, 'decals' + sfx, 'Two-Tone', x, width, two, start_folded=start_folded, summary=str(len(dc.DECALS)))
+                         for kk, (lab, *_r) in signs.items()])
+    section(b, 'decals' + sfx, 'Two-Tone', x, width, two, start_folded=start_folded, summary=str(len(signs)))
 
 
 def decal_content(b, x, width, ob):

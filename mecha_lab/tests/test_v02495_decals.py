@@ -44,8 +44,10 @@ def evaluated_co(ob):
 icons = os.path.join(os.path.dirname(dc.__file__), 'mech_icons')
 missing = [k for k in dc.DECALS if not os.path.isfile(os.path.join(dc.DIR, k + '.png'))
            or not os.path.isfile(os.path.join(icons, f'decal_{k}.png'))]
-check('24 decals on disk (picture + ball icon) and the letter atlas for Text decals',
-      len(dc.DECALS) == 24 and not missing and os.path.isfile(os.path.join(dc.DIR, 'glyphs.png'))
+check('48 two-tone decals on disk (24 signs + 24 Tech Marks - barcodes, QR, labels, ruler ...; picture + ball icon) '
+      'and the letter atlas for Text decals', len(dc.DECALS) == 48 and len(dc.TECH_MARKS) == 24
+      and {'BARCODE_TALL', 'QR', 'DATAMATRIX', 'SERIAL_TAG', 'RULER', 'GAUGE'} <= set(dc.TECH_MARKS)
+      and not missing and os.path.isfile(os.path.join(dc.DIR, 'glyphs.png'))
       and len(dc.glyphs()['glyphs']) >= 40, missing)
 
 # ---- on a curved part: it wraps onto the surface
@@ -124,6 +126,16 @@ check('Apply: a plain mesh where it was wrapped (no modifiers, the same points)'
       and not dec.modifiers and len(dec.data.vertices) == n_before
       and np.abs(np.linalg.norm(evaluated_co(dec), axis=1) - (1.0 + lift)).max() < 0.004)
 
+# ---- a Tech Mark (two-tone): a QR code on the box
+r = bpy.ops.mch.decal_place(decal='QR', target='Box', location=(0.5, 5, 0.5), normal=(0, -1, 0))
+qd = C.active_object
+qn = qd.active_material.node_tree.nodes
+check('A Tech Mark (QR Code) placed: two-tone (its picture Non-Color, the switch off), its colours black on white',
+      r == {'FINISHED'} and qd.mch_decal.kind == 'QR' and qn['mch:img:decal'].image.colorspace_settings.name ==
+      'Non-Color' and qn['mch:full'].outputs[0].default_value == 0.0 and qd.mch_decal.color1[0] < 0.1
+      and qd.mch_decal.color2[0] > 0.7)
+bpy.ops.mch.decal_delete()
+
 # ---- a full-colour Sci-Fi decal (the user's pack)
 check('30 Sci-Fi decals (the user\'s pack, full colour): picture + ball icon each, sizes from the pictures (Hazard '
       'Stripe long and thin)', len(dc.COLOR_DECALS) == 30 and all(
@@ -174,6 +186,7 @@ check('A decal\'s page: Look (Color 1 / 2, opacity, roughness, metallic), Damage
       and {'Mirror X', 'Apply', 'Delete'} <= {i.label for i in its if i.kind == 'tbtn'})
 folded = [h for h, i in heads(its).items() if h in ('SCI-FI SIGNS', 'TWO-TONE') and not i.on]
 check('... and the library under it, folded', sorted(folded) == ['SCI-FI SIGNS', 'TWO-TONE'], folded)
+check('... Tech Marks folded too', not heads(its)['TECH MARKS'].on)
 mits, _h = mu.content(C, 0.0, 276.0, 1.0)
 go = next((i for i in mits if i.kind == 'tbtn' and i.action[:2] == ('op', 'mch.side_page')), None)
 check('The Mech page with a decal selected: says its settings are on the Decals page, a button to it (no decal '
@@ -186,8 +199,9 @@ bpy.ops.mesh.primitive_cone_add(location=(0, -8, 0))
 its, _h = page()
 hd = heads(its)
 dtiles = [i for i in its if i.kind == 'mtile' and i.action[:2] == ('op', 'mch.decal_place')]
-check('The Decals page with a part selected: the library open - Sci-Fi Signs (30) and Two-Tone (24), a ball each '
-      'with its icon, + Text Decal...', hd['SCI-FI SIGNS'].on and hd['TWO-TONE'].on and len(dtiles) == 54
+check('The Decals page with a part selected: the library open - Sci-Fi Signs (30), Tech Marks (24), Two-Tone (24), '
+      'a ball each with its icon, + Text Decal...', hd['SCI-FI SIGNS'].on and hd['TECH MARKS'].on
+      and hd['TWO-TONE'].on and len(dtiles) == 78
       and all(t.icon.startswith('file:') and os.path.isfile(t.icon[5:]) for t in dtiles)
       and any(i.kind == 'tbtn' and i.label == 'Text Decal...' for i in its))
 mits, _h = mu.content(C, 0.0, 276.0, 1.0)
