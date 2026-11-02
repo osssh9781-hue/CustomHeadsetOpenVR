@@ -278,4 +278,40 @@ check('Remove Line: the Split Zone\'s line gone from both materials and its proj
       r == {'FINISHED'} and proj_name not in bpy.data.objects
       and not any(zz.projector is not None and zz.projector.name == proj_name for zz in zmat.mch_zones)
       and part.material_slots[1].material == zmat)
+
+
+# a material made by an earlier build (user: "근데 페인트 존이 안 먹혀" - its tree had no zone hubs)
+def older(m, key, ver):
+    m[key] = ver
+    for nd in [n for n in m.node_tree.nodes if n.name.startswith('mch:zone_')]:
+        m.node_tree.nodes.remove(nd)
+
+
+square = [to_px(vm, wm, c) for c in ((-0.4, -1.0, -0.4), (0.4, -1.0, -0.4), (0.4, -1.0, 0.4), (-0.4, -1.0, 0.4))]
+bpy.ops.mesh.primitive_cube_add(size=2.0, location=(0, 0, 0))
+old_part = C.active_object
+bpy.ops.mch.mech_shader_apply(preset='STEEL')
+om = old_part.active_material
+om.mch_mech.edge_wear = 0.37
+older(om, 'mch_mech', 8)
+oz = zn.add_paint_zone(C, old_part, square, vm, wm, True, RW, RH, color=(0.3, 0.35, 0.1))
+hub = om.node_tree.nodes.get('mch:zone_mask')
+check('A Mech material made by an earlier build (version 8, no zone hubs): a Paint Zone makes its tree anew - the '
+      'zone linked in, its settings kept (Edge Wear 0.37)', om.get('mch_mech') == ms.VERSION and hub is not None
+      and hub.inputs[0].is_linked and abs(om.mch_mech.edge_wear - 0.37) < 1e-6 and len(om.mch_zones) == 1)
+older(om, 'mch_mech', 8)                    # (a zone already on such a material, saved by the earlier build)
+oz.roughness = 0.6
+hub = om.node_tree.nodes.get('mch:zone_mask')
+check('... a zone already on such a material: any of its sliders makes the tree anew, the zone linked in',
+      om.get('mch_mech') == ms.VERSION and hub is not None and hub.inputs[0].is_linked)
+from mecha_lab import creature_shader as cs
+bpy.ops.mesh.primitive_cube_add(size=2.0, location=(0, 0, 0))
+old_body = C.active_object
+bpy.ops.mch.creature_apply(skin='HUMAN', condition='CLEAN')
+ocm = old_body.active_material
+older(ocm, cs.KEY, 2)
+zn.add_paint_zone(C, old_body, square, vm, wm, True, RW, RH)
+hub = ocm.node_tree.nodes.get('mch:zone_mask')
+check('... a Creature material made by an earlier build (version 2): the same, the marking linked in',
+      ocm.get(cs.KEY) == cs.VERSION and hub is not None and hub.inputs[0].is_linked)
 summary()

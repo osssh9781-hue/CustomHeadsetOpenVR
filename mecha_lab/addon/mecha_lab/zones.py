@@ -289,10 +289,26 @@ def _clear_nodes(nt):
         nt.nodes.remove(nd)
 
 
+def current(mat):
+    """An older Mech / Creature tree (made before the zones' hubs - a file from an earlier version) made anew first,
+    its settings kept (the shader's own sync does it; the new tree links the zones itself).  Returns True when it
+    did.  (User: "근데 페인트 존이 안 먹혀" - a zone on such a material had nothing to link into.)"""
+    if ms.is_mech(mat) and mat.get('mch_mech', 0) < ms.VERSION:
+        ms.sync(mat)
+        return True
+    cs = _cs()
+    if cs.is_creature(mat) and mat.get(cs.KEY, 0) < cs.VERSION:
+        cs.sync(mat)
+        return True
+    return False
+
+
 def relink(mat):
     """The zone nodes made anew in ``mat`` (after its Mech Shader tree was made, or a zone added / removed) and linked
     into the Mech Shader's zone hubs."""
     if not zoned(mat):
+        return
+    if current(mat):                            # (made anew: the zones are linked already)
         return
     nt = mat.node_tree
     _clear_nodes(nt)
@@ -498,6 +514,8 @@ def sync(mat):
     """A zone's sliders into its nodes (no re-making)."""
     zs = zones_of(mat)
     if not zs or not zoned(mat):
+        return
+    if current(mat):                            # (an older tree: made anew, the zones linked with it)
         return
     nodes = mat.node_tree.nodes
     live = [z for z in zs if z.projector is not None and z.mask is not None]
