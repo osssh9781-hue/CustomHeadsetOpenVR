@@ -120,9 +120,10 @@ lrows = [i for i in lay if i.kind == 'lrow']
 names = [i.label for i in lrows]
 check('Layers panel on the left: groups first with their parts under them, then the loose parts',
       lay[0].x < 40 and names[:3] == ['Arm_L', 'Hand_L', 'Shoulder_L'] and {'Torso', 'Backpack'} <= set(names), names)
-check('... repetition helpers are not listed, the group says it mirrors',
+check('... repetition helpers are not listed, the group says it mirrors (0.24.95 its Mirror button lit)',
       not any(groups.CARRIER_KEY in bpy.data.objects[n] for n in names)
-      and next(i for i in lrows if i.label == 'Arm_L').data['badge'] == 'Mirror')
+      and any(i.kind == 'pmin' and i.icon == 'flip' and i.on and abs(i.y - next(r for r in lrows if r.label ==
+                                                                                 'Arm_L').y) < 3 for i in lay))
 check('... the selected part on blue', next(i for i in lrows if i.label == 'Torso').on)
 indent = {i.label: i.x for i in lrows}
 check('... parts of a group indented', indent['Hand_L'] > indent['Arm_L'])

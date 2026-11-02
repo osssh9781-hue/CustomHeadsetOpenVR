@@ -14,7 +14,9 @@ Export and the ZBrush Bridge under them - drawn in the Mecha look like the side 
 
 A click on a row selects the part (Shift: add / remove), on a group row the group handle; the eye hides / shows
 (a group: all its parts); [>] works inside the group (Enter / Exit, as in the Mecha Menu).  Groups fold with the
-arrow.  The wheel scrolls a long list.  Export and the Bridge start folded; they share one set of options (the
+arrow.  0.24.95 the scene's collections are folder rows too (their collections, groups and parts under them; the eye
+hides the collection, a click selects its parts); group and collection rows have Origin and Mirror (a collection
+is made a group in place for them); a second click on a row soon after the first renames it.  The wheel scrolls a long list.  Export and the Bridge start folded; they share one set of options (the
 ZBrush settings), so "Send to ZBrush" and "Export" write the same mesh.
 """
 from __future__ import annotations
@@ -61,29 +63,68 @@ def _in_group(ob):
     return any(c.get(groups.GROUP_KEY) for c in ob.users_collection)
 
 
+def _user_coll(c):
+    """A collection of the user's (not a Mecha resource; a group's own collection shows as its group)."""
+    from . import groups
+    return not c.name.startswith('MCH') and not c.get(groups.GROUP_KEY)
+
+
+def layer_coll(context, coll):
+    """The view layer's entry for ``coll`` (its hide / exclude), or None."""
+    def walk(lc):
+        if lc.collection == coll:
+            return lc
+        for ch in lc.children:
+            r = walk(ch)
+            if r is not None:
+                return r
+        return None
+    return walk(context.view_layer.layer_collection)
+
+
 def tree(context):
-    """[(object, depth, is_group, folded)] top to bottom: groups (their parts under them) then loose parts."""
+    """[(item, depth, is_group, folded, kind)] top to bottom.  0.24.95 (user: "콜렉션도 레이어에 나오게") the scene's
+    collections as folders (kind 'COLL': their collections, groups and parts under them), groups ('GROUP': their parts
+    under them) and parts ('OBJ') - collections first, then groups, then parts."""
     from . import groups, side_panel
     out = []
 
     def add(ob, depth):
         is_g = groups.is_group(ob)
         fold = is_g and side_panel.folded(TOOL, 'grp:' + ob.name)
-        out.append((ob, depth, is_g, fold))
+        out.append((ob, depth, is_g, fold, 'GROUP' if is_g else 'OBJ'))
         if is_g and not fold:
             coll = groups.collection_of(ob)
+            if coll is not None:
+                sub_colls(coll, depth + 1)          # (a collection made a group: its own collections under it)
             kids = [o for o in (coll.objects if coll is not None else []) if o is not ob and listed(o)]
             for o in sorted(kids, key=lambda o: (not groups.is_group(o), o.name.lower())):
                 add(o, depth + 1)
-    top = [o for o in context.scene.objects if listed(o) and not _in_group(o)]
-    for o in sorted(top, key=lambda o: (not groups.is_group(o), o.name.lower())):
-        add(o, 0)
+
+    def sub_colls(c, depth):
+        for ch in sorted(c.children, key=lambda x: x.name.lower()):
+            if not _user_coll(ch):
+                continue
+            fold = side_panel.folded(TOOL, 'coll:' + ch.name)
+            out.append((ch, depth, False, fold, 'COLL'))
+            if not fold:
+                add_coll(ch, depth + 1)
+
+    def add_coll(c, depth):
+        sub_colls(c, depth)
+        objs = [o for o in c.objects if listed(o) and not _in_group(o)]
+        for o in sorted(objs, key=lambda o: (not groups.is_group(o), o.name.lower())):
+            add(o, depth)
+    add_coll(context.scene.collection, 0)
     return out
 
 
 def _hidden(context, ob):
     from . import groups
     try:
+        if isinstance(ob, bpy.types.Collection):
+            lc = layer_coll(context, ob)
+            return lc is None or lc.exclude or lc.hide_viewport
         if groups.is_group(ob):
             parts = [o for o in groups.members(ob) if o.type != 'EMPTY'] or [ob]
             return all(o.hide_get() for o in parts)
@@ -94,6 +135,8 @@ def _hidden(context, ob):
 
 def _icon(ob):
     from . import groups
+    if isinstance(ob, bpy.types.Collection):
+        return 'folder'
     if groups.is_group(ob):
         return 'group'
     return 'curve' if ob.type in {'CURVE', 'SURFACE'} else 'cube'
@@ -233,38 +276,49 @@ def content(context, x, width, k):
         y -= 17 * k
         out.append(Item('pnote', x, y, width, 17 * k, 'No parts yet', '', False, True))
     rh = ROW * k
-    for ob, depth, is_g, fold in rows:
+    bw = 24 * k
+
+    def small(right, label, icon, on, action):
+        out.append(Item('pmin', right - bw, y + 1 * k, bw, rh - 2 * k, label, icon, on, True, action, 'RIGHT'))
+        return right - bw - 2 * k
+    for ob, depth, is_g, fold, kind in rows:
         y -= rh
         ix = x + depth * INDENT * k
         hidden = _hidden(context, ob)
-        if is_g:
+        is_c = kind == 'COLL'
+        if is_g or is_c:
             out.append(Item('lfold', ix, y, 16 * k, rh, '', '', not fold, True,
-                            ('fold', f'{TOOL}:grp:{ob.name}', False)))
+                            ('fold', f'{TOOL}:{"coll" if is_c else "grp"}:{ob.name}', False)))
         right = x + width
-        out.append(Item('pmin', right - 24 * k, y + 1 * k, 24 * k, rh - 2 * k, 'Hide' if not hidden else 'Show',
-                        'eye_off' if hidden else 'eye', False, True, ('op', 'mch.layer_eye', {'name': ob.name}),
-                        'RIGHT'))
-        right -= 26 * k
+        right = small(right, 'Hide' if not hidden else 'Show', 'eye_off' if hidden else 'eye', False,
+                      ('op', 'mch.layer_eye', {'name': ob.name, 'coll': is_c}))
         badge = ''
         if is_g:
-            out.append(Item('pmin', right - 24 * k, y + 1 * k, 24 * k, rh - 2 * k,
-                            'Exit' if inside == ob else 'Work inside', 'exit' if inside == ob else 'enter', False,
-                            True, ('op', 'mch.group_pick', {'name': ob.name, 'enter': inside != ob}), 'RIGHT'))
-            right -= 26 * k
+            right = small(right, 'Exit' if inside == ob else 'Work inside', 'exit' if inside == ob else 'enter',
+                          False, ('op', 'mch.group_pick', {'name': ob.name, 'enter': inside != ob}))
             box_off = bool(ob.get(groups.BOX_HIDDEN_KEY))        # 0.24.84 the group's box lines: on / off
-            out.append(Item('pmin', right - 24 * k, y + 1 * k, 24 * k, rh - 2 * k,
-                            'Box lines off' if box_off else 'Box lines on', 'card', not box_off, True,
-                            ('op', 'mch.group_box_eye', {'name': ob.name}), 'RIGHT'))
-            right -= 26 * k
+            right = small(right, 'Box lines off' if box_off else 'Box lines on', 'card', not box_off,
+                          ('op', 'mch.group_box_eye', {'name': ob.name}))
             mode = groups.repeat_mode(ob)
-            badge = '' if mode == 'OFF' else mode.title()
-        try:
-            sel = ob.select_get()
-        except RuntimeError:
-            sel = False
+            badge = '' if mode in {'OFF', 'MIRROR'} else mode.title()     # (0.24.95 Mirror: its button lit)
+        if is_g or is_c:                    # (0.24.95 user: "콜렉션도 오리진 투 오브젝트랑 미러 되게")
+            mir = is_g and groups.repeat_mode(ob) == 'MIRROR'
+            right = small(right, 'Mirror off' if mir else 'Mirror (a live copy)', 'flip', mir,
+                          ('op', 'mch.layer_group_op', {'name': ob.name, 'coll': is_c, 'action': 'MIRROR'}))
+            right = small(right, 'Origin to its middle', 'origin', False,
+                          ('op', 'mch.layer_group_op', {'name': ob.name, 'coll': is_c, 'action': 'ORIGIN'}))
+        if is_c:
+            n = sum(1 for o in ob.all_objects if listed(o))
+            sel = n > 0 and all(o.select_get() for o in ob.all_objects if listed(o) and
+                                o.name in context.view_layer.objects)
+        else:
+            try:
+                sel = ob.select_get()
+            except RuntimeError:
+                sel = False
         lx = ix + 18 * k
         out.append(Item('lrow', lx, y, right - lx - 2 * k, rh, ob.name, _icon(ob), sel, True,
-                        ('op', 'mch.layer_pick', {'name': ob.name}),
+                        ('op', 'mch.layer_pick', {'name': ob.name, 'coll': is_c}),
                         {'hidden': hidden, 'badge': badge, 'active': ob == active}))
         y -= 2 * k
     y -= GAP * k
@@ -365,21 +419,61 @@ def over(context, x, y):
 
 # --- operators ------------------------------------------------------------------------------------------------
 
+_LAST_CLICK = {'key': None, 'time': 0.0}
+DOUBLE = 0.4                    # s: a second click on the same row this soon = rename
+
+
+def double_click(key, now=None):
+    """True when this click on row ``key`` is the second one on it within ``DOUBLE`` s (the third starts over)."""
+    import time
+    now = time.monotonic() if now is None else now
+    twice = _LAST_CLICK['key'] == key and now - _LAST_CLICK['time'] < DOUBLE
+    _LAST_CLICK.update(key=None if twice else key, time=now)
+    return twice
+
+
 class MCH_OT_layer_pick(bpy.types.Operator):
-    """Select this part (Shift: add / remove); a group row selects the group"""
+    """Select this part (Shift: add / remove); a group row selects the group, a collection row every part in it.
+    Click twice: rename"""
     bl_idname = 'mch.layer_pick'
     bl_label = 'Pick Layer'
     bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
     name: StringProperty()
+    coll: BoolProperty(default=False, options={'SKIP_SAVE'})
     extend: BoolProperty(default=False, options={'SKIP_SAVE'})
 
     def invoke(self, context, event):
         self.extend = bool(event.shift)
+        twice = double_click(('C:' if self.coll else 'O:') + self.name) and not self.extend
+        if twice and not bpy.app.background:   # (0.24.95 user: "레이어 이름도 바꿀 수 있게")
+            bpy.ops.mch.layer_rename('INVOKE_DEFAULT', name=self.name, coll=self.coll)
+            return {'CANCELLED'}                # (the dialog's own OK makes the undo step)
         return self.execute(context)
 
     def execute(self, context):
+        if context.mode != 'OBJECT':
+            return {'CANCELLED'}
+        if self.coll:
+            c = bpy.data.collections.get(self.name)
+            if c is None:
+                return {'CANCELLED'}
+            obs = [o for o in c.all_objects if listed(o) and o.name in context.view_layer.objects]
+            if not obs:
+                return {'CANCELLED'}
+            try:
+                if not self.extend:
+                    for o in context.selected_objects:
+                        o.select_set(False)
+                for o in obs:
+                    if o.hide_get():
+                        o.hide_set(False)
+                    o.select_set(True)
+                context.view_layer.objects.active = obs[0]
+            except RuntimeError:
+                return {'CANCELLED'}
+            return {'FINISHED'}
         ob = bpy.data.objects.get(self.name)
-        if ob is None or context.mode != 'OBJECT' or ob.name not in context.view_layer.objects:
+        if ob is None or ob.name not in context.view_layer.objects:
             return {'CANCELLED'}
         try:
             if ob.hide_get():
@@ -398,14 +492,26 @@ class MCH_OT_layer_pick(bpy.types.Operator):
 
 
 class MCH_OT_layer_eye(bpy.types.Operator):
-    """Hide / show this part (a group: all its parts)"""
+    """Hide / show this part (a group: all its parts; a collection: the collection)"""
     bl_idname = 'mch.layer_eye'
     bl_label = 'Hide / Show Layer'
     bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
     name: StringProperty()
+    coll: BoolProperty(default=False, options={'SKIP_SAVE'})
 
     def execute(self, context):
         from . import groups
+        if self.coll:
+            c = bpy.data.collections.get(self.name)
+            lc = layer_coll(context, c) if c is not None else None
+            if lc is None:
+                return {'CANCELLED'}
+            if lc.exclude:
+                lc.exclude = False
+                lc.hide_viewport = False
+            else:
+                lc.hide_viewport = not lc.hide_viewport
+            return {'FINISHED'}
         ob = bpy.data.objects.get(self.name)
         if ob is None or ob.name not in context.view_layer.objects:
             return {'CANCELLED'}
@@ -420,7 +526,87 @@ class MCH_OT_layer_eye(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_OT_layer_pick, MCH_OT_layer_eye)
+class MCH_OT_layer_rename(bpy.types.Operator):
+    """Rename this part, group or collection (in the Layers panel: click its row twice)"""
+    bl_idname = 'mch.layer_rename'
+    bl_label = 'Rename'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    name: StringProperty(options={'SKIP_SAVE'})
+    coll: BoolProperty(default=False, options={'SKIP_SAVE'})
+    new_name: StringProperty(name='Name', options={'SKIP_SAVE'})
+
+    def invoke(self, context, event):
+        self.new_name = self.name
+        return context.window_manager.invoke_props_dialog(self, width=320)
+
+    def draw(self, context):
+        col = self.layout.column()
+        col.activate_init = True                # (typing goes straight into the name, as Blender's F2)
+        col.prop(self, 'new_name', text='')
+
+    def execute(self, context):
+        from . import groups, side_panel
+        new = self.new_name.strip()
+        if not new:
+            return {'CANCELLED'}
+        if self.coll:
+            c = bpy.data.collections.get(self.name)
+            if c is None:
+                return {'CANCELLED'}
+            c.name = new
+            got = c.name
+        else:
+            ob = bpy.data.objects.get(self.name)
+            if ob is None:
+                return {'CANCELLED'}
+            if groups.is_group(ob):
+                got = groups.rename(context, ob, new)
+            else:
+                ob.name = new
+                got = ob.name
+        side_panel.dirty()
+        self.report({'INFO'}, f'Renamed: {self.name} -> {got}')
+        return {'FINISHED'}
+
+
+class MCH_OT_layer_group_op(bpy.types.Operator):
+    """A collection or a group as one piece (0.24.95): Origin - its origin to the middle of its parts; Mirror - a live
+    mirrored copy of it all (across X at the world centre unless set otherwise in Groups; again: off).  A collection
+    is made a group in place the first time (a handle at its middle; its parts stay in it - Ungroup takes the handle
+    away, the collection stays)"""
+    bl_idname = 'mch.layer_group_op'
+    bl_label = 'Collection / Group'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    name: StringProperty()
+    coll: BoolProperty(default=False, options={'SKIP_SAVE'})
+    action: StringProperty(default='ORIGIN', options={'SKIP_SAVE'})
+
+    def execute(self, context):
+        from . import groups, side_panel
+        if context.mode != 'OBJECT':
+            self.report({'WARNING'}, 'Object Mode first')
+            return {'CANCELLED'}
+        if self.coll:
+            c = bpy.data.collections.get(self.name)
+            g = groups.adopt(context, c) if c is not None else None
+        else:
+            g = bpy.data.objects.get(self.name)
+        if not groups.is_group(g):
+            self.report({'WARNING'}, f'{self.name}: no parts to work on')
+            return {'CANCELLED'}
+        if self.action == 'MIRROR':
+            on = groups.repeat_mode(g) != 'MIRROR'
+            groups.set_repeat(context, g, mode='MIRROR' if on else 'OFF')       # (its axes: X unless set)
+            msg = f'{g.name}: Mirror ' + ('on' if on else 'off')
+        else:
+            groups.recenter(context, g)
+            msg = f'{g.name}: origin to the middle of its parts'
+        side_panel.dirty()
+        self.report({'INFO'}, msg)
+        return {'FINISHED'}
+
+
+CLASSES = (MCH_OT_layer_pick, MCH_OT_layer_eye, MCH_OT_layer_rename, MCH_OT_layer_group_op)
 
 
 def register():

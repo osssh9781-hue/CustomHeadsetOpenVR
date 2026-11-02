@@ -371,6 +371,9 @@ def glyph(name, x, y, size, color=TEXT, width=2.0):
             lines([(P(.10, .50), P(.62, .50)), (P(.50, .62), P(.62, .50)), (P(.50, .38), P(.62, .50))], color, width)
         else:
             lines([(P(.62, .50), P(.10, .50)), (P(.22, .62), P(.10, .50)), (P(.22, .38), P(.10, .50))], color, width)
+    elif name == 'folder':                       # 0.24.95 a collection in the Layers panel: a folder
+        polyline([P(.10, .22), P(.90, .22), P(.90, .70), P(.48, .70), P(.40, .80), P(.10, .80)], color, width, True)
+        lines([(P(.10, .62), P(.90, .62))], color, width)
     elif name == 'cube':                         # 0.24.59 a part in the Layers panel
         polyline([P(.50, .88), P(.86, .70), P(.86, .30), P(.50, .12), P(.14, .30), P(.14, .70)], color, width, True)
         lines([(P(.14, .70), P(.50, .52)), (P(.86, .70), P(.50, .52)), (P(.50, .52), P(.50, .12))], color, width)

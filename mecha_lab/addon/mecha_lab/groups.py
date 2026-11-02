@@ -27,6 +27,8 @@ CARRIER_KEY = 'mch_group_carrier'        # on the repetition object: the handle'
 LINKED_KEY = 'mch_linked'                # 0.24.85 on a part: it shares its mesh with a linked group copy (edits
 BOX_HIDDEN_KEY = 'mch_box_hidden'        #   on one show on all); on a handle: its box lines are off
 SCOPE_KEY = 'mch_scope'                  # on the scene: the handle of the group we are in
+ADOPTED_KEY = 'mch_group_adopted'        # 0.24.95 on a collection: the user's own, made a group in place (Ungroup
+#                                          keeps it; its parts never moved collection)
 SAVED_KEY = 'mch_scope_saved'            # on other objects while in a group: [hide_select, display_type]
 MOD_NAME = 'MCH_GroupRepeat'
 TREE_PREFIX = 'MCH Group Repeat | '
@@ -172,6 +174,76 @@ def create(context, objs, name='Group'):
     return g
 
 
+def parent_collection(context, coll):
+    """The collection ``coll`` sits in (the scene's own collection at the top)."""
+    def walk(c):
+        for ch in c.children:
+            if ch == coll:
+                return c
+            r = walk(ch)
+            if r is not None:
+                return r
+        return None
+    return walk(context.scene.collection) or context.scene.collection
+
+
+def adopt(context, coll):
+    """0.24.95 (user: "콜렉션도 오리진 이랑 미러 되게") the user's collection made a group in place: a handle at the
+    middle of its parts (in the collection's parent), its top parts parented to it - the parts stay in the collection.
+    Then Origin / Mirror / Enter work on it as on any group.  Returns the handle (the one it has if it is a group)."""
+    if coll is None:
+        return None
+    g = bpy.data.objects.get(coll.get(GROUP_KEY, '') or '')
+    if is_group(g) and collection_of(g) == coll:
+        return g
+    objs = [o for o in coll.all_objects if CARRIER_KEY not in o and not is_group(o)]
+    if not objs:
+        return None
+    parent_coll = parent_collection(context, coll)
+    centre, size = _world_box(objs)
+    g = bpy.data.objects.new(coll.name, None)
+    handle_look(g, size)
+    g.show_in_front = True
+    parent_coll.objects.link(g)
+    g.matrix_world = Matrix.Translation(centre)
+    g[GROUP_KEY] = coll.name
+    coll[GROUP_KEY] = g.name
+    coll[ADOPTED_KEY] = True
+    inside = set(coll.all_objects)              # (its sub-collections' parts too: they move with the handle)
+    for o in coll.all_objects:
+        if CARRIER_KEY in o or o == g:
+            continue
+        if o.parent is None or o.parent not in inside:
+            mw = o.matrix_world.copy()
+            o.parent = g
+            o.matrix_world = mw
+    adopt_pivots(context, g)
+    return g
+
+
+def rename(context, g, new):
+    """0.24.95 (user: "레이어 이름도 바꿀 수 있게") a group renamed: its handle, its collection (unless it is the
+    user's own collection made a group - that keeps the name given here too), its repetition.  Returns the name."""
+    old = g.name
+    coll = collection_of(g)
+    g.name = new
+    name = g.name
+    if coll is not None:
+        coll.name = name
+        g[GROUP_KEY] = coll.name
+        coll[GROUP_KEY] = name
+    for o in bpy.data.objects:
+        if o.get(CARRIER_KEY) == old:
+            o[CARRIER_KEY] = name
+            o.name = name + ' Repetition'
+    tree = bpy.data.node_groups.get(TREE_PREFIX + old)
+    if tree is not None:
+        tree.name = TREE_PREFIX + name
+    if context.scene.get(SCOPE_KEY) == old:
+        context.scene[SCOPE_KEY] = name
+    return name
+
+
 def handle_look(g, size):
     """0.24.58 The handle: a small cross at the centre (still a click target) - the group's outline is a box drawn
     tight round its parts (``_draw_boxes``) instead of a cube as big as the longest side."""
@@ -263,6 +335,21 @@ def ungroup(context, g):
     coll = collection_of(g)
     home = next(iter(g.users_collection), context.scene.collection)
     n = 0
+    if coll is not None and coll.get(ADOPTED_KEY):      # (0.24.95 the user's own collection: it stays, as it was)
+        for o in list(coll.all_objects):
+            if o.parent == g:
+                mw = o.matrix_world.copy()
+                o.parent = g.parent
+                o.matrix_world = mw
+                n += 1
+        for k in (GROUP_KEY, ADOPTED_KEY):
+            if k in coll:
+                del coll[k]
+        if context.scene.get(SCOPE_KEY) == g.name:
+            exit_scope(context)
+        _release_pivots(g)
+        bpy.data.objects.remove(g, do_unlink=True)
+        return n
     for o in list(coll.objects) if coll else []:
         try:
             old = [bpy.data.collections.get(c) or (context.scene.collection if c == context.scene.collection.name
@@ -376,17 +463,23 @@ def recenter(context, g):
     if box is None:
         return None
     centre = (box[0] + box[1]) / 2
+    handle_to(context, g, centre)
+    handle_look(g, box[1] - box[0])
+    return centre
+
+
+def handle_to(context, g, loc):
+    """The handle moved to ``loc`` (world), its parts staying where they are (0.24.95 also Origin to 3D Cursor)."""
     kids = [(o, o.matrix_world.copy()) for o in g.children]
     mw = g.matrix_world.copy()
-    mw.translation = centre
+    mw.translation = Vector(loc)
     g.matrix_world = mw
     context.view_layer.update()
     for o, m in kids:
         o.matrix_world = m
-    handle_look(g, box[1] - box[0])
     if repeat_mode(g) != 'OFF':
         set_repeat(context, g)
-    return centre
+    return g.matrix_world.translation.copy()
 
 
 def merge(context, g):

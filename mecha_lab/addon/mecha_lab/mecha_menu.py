@@ -788,7 +788,10 @@ def _draw_new(it, hot, S, white, dim):
         if hot:
             G.rounded_rect(x, y, w, h, 10 * S, HOVER)
         ic = min(w, h) * 0.75
-        _icon(it.icon, x + (w - ic) / 2, y + (h - ic) / 2, ic, white)
+        col = white
+        if it.on and it.icon == 'flip':   # (0.24.95 a group's / collection's Mirror on: orange, as its badge was)
+            col = (1.0, 0.62, 0.16, dim)
+        _icon(it.icon, x + (w - ic) / 2, y + (h - ic) / 2, ic, col)
         return (it, it.data if it.data in {'RIGHT', 'ABOVE'} else 'LEFT') if hot else None
     if k == 'lrow':                       # 0.24.59 a part / group in the Layers panel
         d = it.data if isinstance(it.data, dict) else {}

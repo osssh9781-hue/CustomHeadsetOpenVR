@@ -1,0 +1,19 @@
+rows [('Robot', 0, 'COLL'), ('Arms', 1, 'COLL'), ('Arm_L', 2, 'OBJ'), ('Arm_R', 2, 'OBJ'), ('Torso', 1, 'OBJ'), ('Rock', 0, 'OBJ')]
+Robot row True buttons ['Hide all group box lines', 'Hide', 'Mirror (a live copy)', 'Origin to its middle', 'Hide', 'Mirror (a live copy)', 'Origin to its middle', 'Hide', 'Hide', 'Hide', 'Hide']
+shot 1_layers_collections.png True
+Mirror button Mirror (a live copy)
+after Mirror click: handle True mode MIRROR carrier True rows [('Robot', 0, 'GROUP'), ('Arms', 1, 'COLL'), ('Arm_L', 2, 'OBJ'), ('Arm_R', 2, 'OBJ'), ('Torso', 1, 'OBJ'), ('Rock', 0, 'OBJ')]
+shot 2_robot_mirror.png True
+handle moved away to (4.0, -2.0, 1.0)
+after Origin click: handle at (1.925, 0.0, 0.15) box middle (1.925, 0.0, 0.15) parts kept True
+Arms eye button Hide
+after eye click 1 Arms hidden True Arm_L shown False
+shot 3_arms_hidden.png True
+Arms eye button Show
+after eye click 2 Arms hidden False Arm_L shown True
+shot 4_rename_box.png True
+shot 4b_typed.png True
+after typing + Enter once: Chest False
+after double click + typing: Chest True Torso False rows [('Robot', 0, 'GROUP'), ('Arms', 1, 'COLL'), ('Arm_L', 2, 'OBJ'), ('Arm_R', 2, 'OBJ'), ('Chest', 1, 'OBJ'), ('Rock', 0, 'OBJ')]
+shot 5_renamed.png True
+DONE

@@ -422,12 +422,15 @@ class MCH_GGT_tool_active(bpy.types.GizmoGroup):
 
 TIDY = (('RESET_AXIS', 'ORIENTATION_GLOBAL', 'Reset Axis',
          'Local axes back to the world axes, the shape stays where it is (applies the rotation)'),
-        ('ORIGIN_GEOMETRY', 'PIVOT_MEDIAN', 'Origin to Geometry', 'Origin to the middle of the mesh'),
-        ('ORIGIN_CURSOR', 'PIVOT_CURSOR', 'Origin to 3D Cursor', 'Origin to the 3D cursor'),
+        ('ORIGIN_GEOMETRY', 'PIVOT_MEDIAN', 'Origin to Geometry',
+         'Origin to the middle of the mesh (a group handle: to the middle of all its parts)'),
+        ('ORIGIN_CURSOR', 'PIVOT_CURSOR', 'Origin to 3D Cursor',
+         'Origin to the 3D cursor (a group handle: moves there, its parts stay)'),
         ('SYMMETRY', 'ARROW_LEFTRIGHT', 'Symmetry',
          'Make the mesh symmetric: lean the mouse toward the side to copy to, Enter applies'),
         ('MIRROR', 'MOD_MIRROR', 'Mirror',
-         'Live Mirror modifier on the selected meshes (stays live; Apply / Remove in the popup next to it)'))
+         'Live Mirror modifier on the selected meshes (stays live; Apply / Remove in the popup next to it); '
+         'only group handles selected: the group\'s live mirrored copy on / off'))
 
 
 def _unlive(ob):
@@ -450,6 +453,36 @@ def _unlive(ob):
     return done
 
 
+def tidy_groups(context, action, report):
+    """0.24.95 (user: "콜렉션도 오리진 투 오브젝트랑 미러 되게") a selected group handle - a group, or a
+    collection made one in the Layers panel - as one piece: Origin to Geometry = the handle to the middle of its
+    parts, Origin to 3D Cursor = the handle to the cursor (the parts stay put), Mirror = its live mirrored copy
+    on / off.  Selected parts go on as before.  Returns (result or None to go on, the handles done)."""
+    from . import groups
+    hs = [o for o in context.selected_editable_objects if groups.is_group(o)]
+    if not hs or action in {'RESET_AXIS', 'SYMMETRY'}:
+        return None, []
+    parts = any(o.type in {'MESH', 'CURVE'} for o in context.selected_editable_objects)
+    if action == 'MIRROR':
+        if parts:                                  # (parts picked too: the parts' own Mirror, as before)
+            return None, []
+        on = any(groups.repeat_mode(g) != 'MIRROR' for g in hs)
+        for g in hs:
+            groups.set_repeat(context, g, mode='MIRROR' if on else 'OFF')
+        report({'INFO'}, f'Mirror {"on" if on else "off"}: {", ".join(g.name for g in hs)}')
+        return {'FINISHED'}, hs
+    for g in hs:
+        if action == 'ORIGIN_GEOMETRY':
+            groups.recenter(context, g)
+        else:
+            groups.handle_to(context, g, context.scene.cursor.location)
+    if parts:
+        return None, hs
+    label = next(l for a, _i, l, _d in TIDY if a == action)
+    report({'INFO'}, f'{label}: {", ".join(g.name for g in hs)} (as one piece)')
+    return {'FINISHED'}, hs
+
+
 class MCH_OT_object_tidy(bpy.types.Operator):
     """Reset Axis / Origin to Geometry / Origin to 3D Cursor for the selected objects"""
     bl_idname = 'mch.object_tidy'
@@ -466,6 +499,9 @@ class MCH_OT_object_tidy(bpy.types.Operator):
         return context.mode == 'OBJECT' and bool(context.selected_editable_objects)
 
     def execute(self, context):
+        done, handles = tidy_groups(context, self.action, self.report)
+        if done is not None:
+            return done
         if self.action in {'SYMMETRY', 'MIRROR'}:
             # Symmetry: live while you lean, Enter applies; Mirror (0.23.2): the result stays a live Mirror.
             # 0.24.14 one entry with Alt+X: collection instances too, a plain message for anything else
@@ -485,6 +521,8 @@ class MCH_OT_object_tidy(bpy.types.Operator):
                 bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
         label = next(l for a, _i, l, _d in TIDY if a == self.action)
         extra = f' (live shape frozen: {", ".join(frozen)})' if frozen else ''
+        if handles:
+            extra += f'; {len(handles)} group(s) as one piece'
         self.report({'INFO'}, f'{label}: {len(obs)} object(s){extra}')
         return {'FINISHED'}
 
