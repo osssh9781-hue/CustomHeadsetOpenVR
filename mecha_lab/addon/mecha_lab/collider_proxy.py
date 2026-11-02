@@ -27,14 +27,50 @@ def collection(context, create=True):
         context.scene.collection.children.link(coll)
         coll.hide_render = True
         coll.hide_select = True
-        coll.hide_viewport = True
+        coll.hide_viewport = not wanted(context.scene)    # (0.24.95 as Show Proxies says - it was always hidden)
     return coll
+
+
+def wanted(scene):
+    """Show Proxies (the Cloth Drape setting) on?"""
+    st = getattr(scene, 'mch_cdrape', None) if scene is not None else None
+    return bool(getattr(st, 'show_proxy', False))
+
+
+def _layer_coll(view_layer, coll):
+    stack = [view_layer.layer_collection]
+    while stack:
+        lc = stack.pop()
+        if lc.collection == coll:
+            return lc
+        stack.extend(lc.children)
+    return None
 
 
 def set_visible(context, on):
     coll = collection(context, create=False)
     if coll is not None:
         coll.hide_viewport = not on
+        if on:                                   # (hidden with the Outliner's eye too: shown)
+            lc = _layer_coll(context.view_layer, coll)
+            if lc is not None and lc.hide_viewport:
+                lc.hide_viewport = False
+
+
+def sync(scene=None):
+    """0.24.95 (user: "쇼 프록시가 안 꺼져") the proxies shown exactly when Show Proxies is on.  Ctrl+Z brought back the
+    proxies' visibility of an earlier step while the setting itself stays as it is (settings survive Ctrl+Z,
+    ``undo_keep``): the switch said off, the proxies showed, and a click on it only turned it 'on'.  Run after every
+    undo / redo and when a file is opened.  True when it changed something."""
+    scene = scene if scene is not None else getattr(bpy.context, 'scene', None)
+    coll = bpy.data.collections.get(COLL)
+    if coll is None or scene is None:
+        return False
+    hide = not wanted(scene)
+    if coll.hide_viewport != hide:
+        coll.hide_viewport = hide
+        return True
+    return False
 
 
 def is_proxy(ob):

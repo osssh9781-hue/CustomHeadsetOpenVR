@@ -2659,13 +2659,32 @@ CLASSES = (MCH_PG_ClothDrape, MCH_OT_cdrape_sim, MCH_OT_cdrape_mesh, MCH_OT_cdra
            MCH_OT_cdrape_control)
 
 
+@bpy.app.handlers.persistent
+def _sync_proxies_on_load(_dummy=None):
+    from . import collider_proxy
+    try:
+        collider_proxy.sync(bpy.context.scene)
+    except (ReferenceError, AttributeError, RuntimeError):
+        pass
+
+
 def register():
+    from . import collider_proxy, undo_keep
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Scene.mch_cdrape = bpy.props.PointerProperty(type=MCH_PG_ClothDrape)
+    if collider_proxy.sync not in undo_keep.AFTER_RESTORE:     # (0.24.95 Show Proxies after Ctrl+Z)
+        undo_keep.AFTER_RESTORE.append(collider_proxy.sync)
+    if _sync_proxies_on_load not in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(_sync_proxies_on_load)
 
 
 def unregister():
+    from . import collider_proxy, undo_keep
+    if collider_proxy.sync in undo_keep.AFTER_RESTORE:
+        undo_keep.AFTER_RESTORE.remove(collider_proxy.sync)
+    for h in [h for h in bpy.app.handlers.load_post if getattr(h, '__name__', '') == '_sync_proxies_on_load']:
+        bpy.app.handlers.load_post.remove(h)
     SIM.clear()
     if hasattr(bpy.types.Scene, 'mch_cdrape'):
         del bpy.types.Scene.mch_cdrape

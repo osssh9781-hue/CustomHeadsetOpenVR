@@ -611,6 +611,7 @@ def _on_undo_post(scene, *_args):
     try:
         from . import undo_keep
         undo_keep.restore(scene)
+        undo_keep.after_restore(scene)
     except (ReferenceError, AttributeError, ImportError, RuntimeError):
         pass
 

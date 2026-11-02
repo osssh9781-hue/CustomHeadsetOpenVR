@@ -130,6 +130,17 @@ def _find_texture(key):
     return None
 
 
+AFTER_RESTORE = []          # 0.24.95 fn(scene) run after every undo / redo: data that mirrors a setting follows it
+
+
+def after_restore(scene):
+    for fn in list(AFTER_RESTORE):
+        try:
+            fn(scene)
+        except (ReferenceError, AttributeError, RuntimeError, TypeError):
+            pass
+
+
 def restore(scene):
     """Put the settings back as they were just before Ctrl+Z / Ctrl+Shift+Z; the names of what changed."""
     if scene is None or _SNAP.get('scene') != scene.name:
