@@ -24,7 +24,7 @@ from bpy.props import EnumProperty, FloatProperty, FloatVectorProperty, PointerP
 from . import mech_shader as ms
 
 KEY = 'mch_creature'
-VERSION = 2                      # (2: Belly, Seed)
+VERSION = 3                      # (2: Belly, Seed; 3: the lasso Zones' hubs)
 CMAP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'creature_maps')
 # the user's creature maps (greyscale, seamless): slot -> [(id, label)]
 CMAPS = {
@@ -376,6 +376,20 @@ def build(mat):
     col = b.mixc(mottle, col, c['mottle_color'])
     col = b.vmath('SCALE', col, fac=b.math('ADD', 1.0, b.math('MULTIPLY', b.math('SUBTRACT', img['vary'], 0.5),
                                                               v['variation'])))
+    # (0.24.95 lasso Zones - zones.py; user: "크리쳐도 이 라쏘 영역으로 재질 다르게": markings painted from a view - the
+    #  zone's colour over the skin's, under the crevices / ridges, scars and every condition)
+    zm = b.node('ShaderNodeMath', 'mch:zone_mask')
+    zm.operation, zm.use_clamp = 'ADD', True
+    zm.inputs[0].default_value = zm.inputs[1].default_value = 0.0
+    zr = b.node('ShaderNodeMath', 'mch:zone_rough')
+    zr.operation, zr.use_clamp = 'ADD', True
+    zr.inputs[0].default_value = zr.inputs[1].default_value = 0.0
+    zc = b.node('ShaderNodeMix', 'mch:zone_color')
+    zc.data_type = 'RGBA'
+    zsock = {sk.identifier: sk for sk in zc.inputs}
+    zsock['Factor_Float'].default_value = 0.0
+    zsock['A_Color'].default_value = (1.0, 1.0, 1.0, 1.0)
+    col = b.mixc(zm.outputs[0], col, next(sk for sk in zc.outputs if sk.identifier == 'Result_Color'))
     # (weathered: faded on the ridges, darker in the crevices)
     cav_k = b.math('MULTIPLY', cav, b.math('ADD', v['cav_dark'], b.math('MULTIPLY', v['fade'], 0.4)), clamp=True)
     col = b.mixc(cav_k, col, b.mixc(1.0, col, c['cav_color'], 'MULTIPLY'))
@@ -408,6 +422,7 @@ def build(mat):
     # ---- roughness
     r = b.math('ADD', v['roughness'], b.math('MULTIPLY', v['rough_var'], b.math('SUBTRACT', img['skin'], 0.5)),
                clamp=True)
+    r = b.mixf(zm.outputs[0], r, zr.outputs[0])                                          # (a zone's own roughness)
     r = b.math('SUBTRACT', r, b.math('MULTIPLY', ridge, v['ridge_gloss']), clamp=True)   # (horn: polished bumps)
     r = b.mixf(rot, r, 0.3)
     r = b.mixf(bdry, r, 0.55)
@@ -459,6 +474,11 @@ def build(mat):
     b.link(c['glow_color'], bsdf.inputs['Emission Color'])
     b.link(b.math('MULTIPLY', glow, v['glow_power']), bsdf.inputs['Emission Strength'])
     mat[KEY] = VERSION
+    try:                                    # (0.24.95 its lasso Zones back on the new tree)
+        from . import zones
+        zones.relink(mat)
+    except (ImportError, AttributeError):
+        pass
     return mat
 
 

@@ -18,6 +18,11 @@ picked both ways):
   size).  The mask picture is a signed distance field (how far each pixel is from the lasso outline, inside +), so the
   line sits exactly on the boundary at any width; a Split Zone has it on both sides of the cut (a line-only zone in
   the part's material and in the zone's, kept in step)
+* 0.24.95 Creatures too (user: "크리쳐도 이 라쏘 영역으로 재질 다르게 - 크리쳐 버전은 외곽에 에어브러시 버전, 텍스쳐 버전"):
+  a Paint Zone on a Creature Shader material - markings: its colour (or one of the creature colour textures, tinted)
+  and roughness over the skin's, under the crevices, scars and conditions.  Its **Edge**: Hard, **Airbrush** (a soft
+  sprayed fade out past the lasso, Edge Width far) or **Texture** (the outline pushed out by an organic pattern, 0 ..
+  Edge Width, Edge Scale) - what was drawn stays painted; the Mech zones have the same Edge choice
 
 The lasso (``MCH_OT_zone_lasso``): drag = freehand; clicks = a straight-edged polygon (Enter / Space / double-click
 closes it); Esc / right click cancels."""
@@ -36,7 +41,10 @@ from . import mech_shader as ms
 PREFIX = 'mchz:'
 MASK_MAX = 1024
 LINE_GAIN = 3.0                   # (Line Height 1 = 3 x the Mech bump's unit: a line reads at its narrow width)
-SDF_R = 48.0                      # (the distance field's reach, mask pixels: 0 / 1 in the picture = 48 px out / in)
+SDF_R = 96.0                      # (the distance field's reach, mask pixels: 0 / 1 in the picture = 96 px out / in;
+#                                    a zone keeps the reach its picture was made with: ``reach``)
+CREATURE_PALETTE = ((0.06, 0.05, 0.04), (0.75, 0.68, 0.55), (0.45, 0.08, 0.05), (0.12, 0.2, 0.08), (0.85, 0.55, 0.1),
+                    (0.2, 0.25, 0.4))
 PALETTE = ((0.75, 0.42, 0.02), (0.06, 0.06, 0.07), (0.05, 0.16, 0.45), (0.6, 0.04, 0.03), (0.75, 0.75, 0.72),
            (0.12, 0.25, 0.08))
 
@@ -88,6 +96,16 @@ def signed_distance(pts, w, h, reach=SDF_R):
     return np.where(inside, d, -d)
 
 
+def _cs():
+    from . import creature_shader as cs
+    return cs
+
+
+def zoned(mat):
+    """A material the zones work on: a Mech Shader or a Creature Shader one."""
+    return ms.is_mech(mat) or _cs().is_creature(mat)
+
+
 def mask_image(name, pts, rw, rh):
     """A packed grey image of the lasso over the whole view (``rw`` x ``rh`` pixels), at most MASK_MAX on its long
     side: a signed distance field, 0.5 on the outline, + SDF_R pixels inside = 1, outside = 0.  Image row 0 is the
@@ -115,6 +133,28 @@ def mask_image(name, pts, rw, rh):
 def _update(self, context):
     mat = self.id_data
     sync(mat)
+
+
+_TEX = []
+
+
+def _tex_items():
+    if not _TEX:
+        _TEX[:] = [('FLAT', 'Flat', 'Its colour only')] + [(k, n, '') for k, n in _cs().CMAPS['color']]
+    return _TEX
+
+
+def _tex_enum(self, context):
+    return _tex_items()
+
+
+def _tex_update(self, context):
+    """A texture picked: the colour to grey (the texture as it is) the first time; its nodes made anew."""
+    mat = self.id_data
+    if self.tex != 'FLAT' and self.get('mch_tex_tinted') is None:
+        self['mch_tex_tinted'] = 1
+        self.color = (0.5, 0.5, 0.5)
+    relink(mat)
 
 
 def _line_update(self, context):
@@ -223,6 +263,19 @@ class MCH_PG_Zone(bpy.types.PropertyGroup):
                                'groove, 0 none')
     line_width: FloatProperty(name='Line Width', default=0.6, min=0.05, max=5.0, update=_line_update,
                               description='How wide the boundary line is (% of the part\'s size)')
+    edge: EnumProperty(name='Edge', items=[('HARD', 'Hard', 'A clean outline'),
+                                           ('AIRBRUSH', 'Airbrush', 'A soft sprayed fade across the outline'),
+                                           ('TEXTURE', 'Texture', 'The outline broken up by an organic pattern')],
+                       default='HARD', update=_update, description='How the zone\'s outline looks')
+    edge_width: FloatProperty(name='Edge Width', default=3.0, min=0.1, max=30.0, update=_update,
+                              description='How far the soft / broken-up edge reaches out past the lasso (% of the '
+                              'part\'s size); what was drawn stays painted')
+    edge_scale: FloatProperty(name='Edge Scale', default=1.0, min=0.1, max=10.0, update=_update,
+                              description='The pattern breaking up the outline: bigger = finer')
+    tex: EnumProperty(name='Texture', items=_tex_enum, update=_tex_update,
+                      description='A creature colour texture for the zone (tinted by Color: grey = as it is)')
+    tex_scale: FloatProperty(name='Texture Scale', default=1.0, min=0.05, max=20.0, update=_update)
+    reach: FloatProperty(default=48.0)                        # (its distance field's reach, mask pixels)
     size: FloatProperty(default=1.0)                          # (the part's size when drawn, world)
     px_per_unit: FloatProperty(default=100.0)                 # (mask pixels per world unit at the part's depth)
 
@@ -239,13 +292,13 @@ def _clear_nodes(nt):
 def relink(mat):
     """The zone nodes made anew in ``mat`` (after its Mech Shader tree was made, or a zone added / removed) and linked
     into the Mech Shader's zone hubs."""
-    if not ms.is_mech(mat):
+    if not zoned(mat):
         return
     nt = mat.node_tree
     _clear_nodes(nt)
     zs = zones_of(mat)
     hub = {k: nt.nodes.get('mch:zone_' + k) for k in ('mask', 'cover', 'rough', 'metal', 'color')}
-    if any(v is None for v in hub.values()):
+    if hub['mask'] is None or hub['color'] is None:     # (cover / metal: the Mech Shader's only)
         return
     live = [z for z in zs if z.projector is not None and z.mask is not None] if zs else []
     hub['own'] = nt.nodes.get('mch:zone_own')
@@ -299,9 +352,9 @@ def relink(mat):
         tex.extension = 'CLIP'
         tex.interpolation = 'Linear'
         b.link(uv.outputs['Vector'], tex.inputs['Vector'])
-        # (the distance field: mask pixels from the outline, + inside; the mask = 1 px soft at the outline)
-        sd = b.math('MULTIPLY', b.math('SUBTRACT', tex.outputs['Color'], 0.5), 2.0 * SDF_R)
-        m = b.math('ADD', sd, 0.5, clamp=True)
+        # (the distance field: mask pixels from the outline, + inside)
+        sd = b.math('MULTIPLY', b.math('SUBTRACT', tex.outputs['Color'], 0.5), 2.0 * z.reach)
+        m = _edge(b, z, sd, tco.outputs['Object'], tag)
         # (in front of the view, only as deep as the part was)
         sep = b.node('ShaderNodeSeparateXYZ')
         b.link(q, sep.inputs['Vector'])
@@ -339,6 +392,15 @@ def relink(mat):
         col = b.node('ShaderNodeRGB')
         col.name = tag + 'color'
         col.outputs[0].default_value = (*z.color, 1.0)
+        zcol = col.outputs[0]
+        if z.tex != 'FLAT':                     # (a creature colour texture, tinted by Color: grey = as it is)
+            timg = b.node('ShaderNodeTexImage')
+            timg.name = tag + 'tex'
+            timg.image = _cs().cmap_image('color', z.tex)
+            tsc = b.value(f'z{i}_tsc', _tex_tiles(z))
+            tsc.node.name = tag + 'tsc'
+            b.link(b.vmath('SCALE', tco.outputs['Object'], fac=tsc), timg.inputs['Vector'])
+            zcol = b.vmath('SCALE', b.mixc(1.0, timg.outputs['Color'], col.outputs[0], 'MULTIPLY'), fac=2.0)
         vals = {}
         for k, val in (('rough', z.roughness), ('metal', z.metallic), ('cover', z.cover)):
             vals[k] = b.value(f'z{i}_{k}', val)
@@ -351,11 +413,11 @@ def relink(mat):
             wv[k] = b.value(f'z{i}_w_{k}', getattr(z, k))
             wv[k].node.name = tag + 'w_' + k
         if mask_t is None:
-            mask_t, col_t = m, col.outputs[0]
+            mask_t, col_t = m, zcol
             rough_t, metal_t, cover_t = vals['rough'], vals['metal'], vals['cover']
             own_t, wear_t = om, dict(wv)
         else:                                   # (a later zone over the earlier ones)
-            col_t = b.mixc(m, col_t, col.outputs[0])
+            col_t = b.mixc(m, col_t, zcol)
             rough_t = b.mixf(m, rough_t, vals['rough'])
             metal_t = b.mixf(m, metal_t, vals['metal'])
             cover_t = b.mixf(m, cover_t, vals['cover'])
@@ -370,15 +432,61 @@ def relink(mat):
     if mask_t is None:                          # (only lines: nothing painted)
         return
     nt.links.new(mask_t, hub['mask'].inputs[0])
-    nt.links.new(cover_t, hub['cover'].inputs[0])
-    nt.links.new(rough_t, hub['rough'].inputs[0])
-    nt.links.new(metal_t, hub['metal'].inputs[0])
+    for k, sock in (('cover', cover_t), ('rough', rough_t), ('metal', metal_t)):
+        if hub[k] is not None:
+            nt.links.new(sock, hub[k].inputs[0])
     nt.links.new(col_t, csock)
     if hub['own'] is not None:
         nt.links.new(own_t, hub['own'].inputs[0])
         for k in ms.ZONE_WEAR:
             if hub['w_' + k] is not None:
                 nt.links.new(wear_t[k], hub['w_' + k].inputs[0])
+
+
+def _edge_width_w(z):
+    """The soft / broken-up outline's width, world."""
+    return max(1e-5, z.edge_width / 100.0 * z.size)
+
+
+def _edge_scale(z):
+    """The pattern breaking up the outline: its scale on the part's own coordinates."""
+    return 6.0 * z.edge_scale / max(z.size, 1e-4)
+
+
+def _tex_tiles(z):
+    """A zone's colour texture: tiles per unit (a creature 2 units tall: 0.5 x 2 / size, x Texture Scale)."""
+    return 0.5 * 2.0 / max(z.size, 1e-4) * z.tex_scale
+
+
+def _edge(b, z, sd, pos, tag):
+    """The zone's mask from its distance field ``sd`` (mask pixels, + inside).  What was drawn stays painted; the
+    edge grows outwards from the lasso: Hard (1 px soft), Airbrush (a smooth fade over Edge Width, as a spray past a
+    stencil), Texture (the outline pushed out by an organic pattern, 0 .. Edge Width, a little soft)."""
+    if z.edge == 'HARD':
+        return b.math('ADD', sd, 0.5, clamp=True)
+    sdw = b.math('DIVIDE', sd, max(z.px_per_unit, 1e-6))            # (world units from the outline)
+    ew = b.value(f'{tag}ew', _edge_width_w(z))
+    ew.node.name = tag + 'ew'
+    if z.edge == 'AIRBRUSH':
+        mr = b.maprange(sdw, b.math('MULTIPLY', ew, -1.0), 0.0, 0.0, 1.0)
+        mr.node.interpolation_type = 'SMOOTHSTEP'
+        return mr
+    if z.edge == 'TEXTURE':
+        nz = b.node('ShaderNodeTexNoise')
+        nz.name = tag + 'noise'
+        nz.inputs['Detail'].default_value = 8.0
+        nz.inputs['Roughness'].default_value = 0.65
+        nz.inputs['Distortion'].default_value = 0.35
+        esc = b.value(f'{tag}esc', _edge_scale(z))
+        esc.node.name = tag + 'esc'
+        b.link(b.vmath('SCALE', pos, fac=esc), nz.inputs['Vector'])
+        nz.inputs['Scale'].default_value = 1.0
+        reach = b.maprange(nz.outputs['Fac'], 0.36, 0.64, 0.0, 1.0)   # (the noise, mostly near 0.5: stretched)
+        sdw = b.math('ADD', sdw, b.math('MULTIPLY', reach, ew))          # (the outline pushed out 0 .. Edge Width)
+    soft = b.math('MULTIPLY', ew, 0.06)
+    mr = b.maprange(sdw, b.math('MULTIPLY', soft, -1.0), soft, 0.0, 1.0)
+    mr.node.interpolation_type = 'SMOOTHSTEP'
+    return mr
 
 
 def _half_width_px(z):
@@ -389,7 +497,7 @@ def _half_width_px(z):
 def sync(mat):
     """A zone's sliders into its nodes (no re-making)."""
     zs = zones_of(mat)
-    if not zs or not ms.is_mech(mat):
+    if not zs or not zoned(mat):
         return
     nodes = mat.node_tree.nodes
     live = [z for z in zs if z.projector is not None and z.mask is not None]
@@ -398,8 +506,15 @@ def sync(mat):
         return
     for i, z in enumerate(live):
         tag = f'{PREFIX}{i}:'
-        for k, val in (('lw', _half_width_px(z)), ('lh', z.line_height), ('through', 1.0 if z.through else 0.0)):
-            nodes[tag + k].outputs[0].default_value = val
+        if (nodes.get(tag + 'ew') is None) != (z.edge == 'HARD') or (nodes.get(tag + 'tex') is None) != \
+                (z.tex == 'FLAT') or (nodes.get(tag + 'esc') is None) != (z.edge != 'TEXTURE'):
+            relink(mat)                         # (the Edge / Texture choice changed: its nodes made anew)
+            return
+        for k, val in (('lw', _half_width_px(z)), ('lh', z.line_height), ('through', 1.0 if z.through else 0.0),
+                       ('ew', _edge_width_w(z)), ('esc', _edge_scale(z)), ('tsc', _tex_tiles(z))):
+            nd = nodes.get(tag + k)
+            if nd is not None:
+                nd.outputs[0].default_value = val
         if z.kind == 'LINE':
             continue
         nodes[tag + 'color'].outputs[0].default_value = (*z.color, 1.0)
@@ -462,6 +577,7 @@ def _fill_zone(z, ob, proj, img, view_matrix, window_matrix, persp):
     z.look = tuple((to_part.to_3x3() @ Vector((0.0, 0.0, -1.0))).normalized())
     z.near, z.far = _depth_range(ob, view_matrix)
     z.size = max(ob.dimensions) or 1.0
+    z.reach = SDF_R
     z.px_per_unit = _px_per_unit(ob, view_matrix, window_matrix, img.size[1])
 
 
@@ -469,18 +585,25 @@ def add_paint_zone(context, ob, pts, view_matrix, window_matrix, persp, rw, rh, 
     """A Paint Zone on ``ob``'s Mech material from the lasso ``pts`` (region pixels) drawn in that view.  Returns the
     zone."""
     mat = ob.active_material
-    if not ms.is_mech(mat):
-        raise RuntimeError('the part has no Mech Shader material - apply one first')
+    if not zoned(mat):
+        raise RuntimeError('the part has no Mech / Creature Shader material - apply one first')
     if len(pts) < 3:
         raise RuntimeError('the lasso needs at least 3 points')
     zs = zones_of(mat)
     n = len(zs) + 1
+    creature = _cs().is_creature(mat)
     img = mask_image(f'.MCH Zone {mat.name} {n}', pts, rw, rh)
     proj = _projector(context, ob, f'Zone {n} ({ob.name})', view_matrix)
     z = zs.add()
     z.name = f'Zone {n}'
     _fill_zone(z, ob, proj, img, view_matrix, window_matrix, persp)
-    z.color = color or PALETTE[(n - 1) % len(PALETTE)]
+    if creature:                                # (a creature's markings: a soft airbrushed edge, its own gloss)
+        z.color = color or CREATURE_PALETTE[(n - 1) % len(CREATURE_PALETTE)]
+        z.edge = 'AIRBRUSH'
+        z.roughness = getattr(mat, _cs().KEY).roughness
+        z.line_height = 0.0
+    else:
+        z.color = color or PALETTE[(n - 1) % len(PALETTE)]
     relink(mat)
     proj.hide_set(True)
     return z
@@ -798,11 +921,14 @@ class MCH_OT_zone_lasso(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         ob = context.active_object
-        return ob is not None and ob.type == 'MESH' and ms.is_mech(ob.active_material)
+        return ob is not None and ob.type == 'MESH' and zoned(ob.active_material)
 
     def invoke(self, context, event):
         if context.area is None or context.area.type != 'VIEW_3D':
             self.report({'WARNING'}, 'Zone: use it in the 3D view')
+            return {'CANCELLED'}
+        if self.mode == 'SPLIT' and not ms.is_mech(context.active_object.active_material):
+            self.report({'WARNING'}, 'Split Zone: Mech Shader parts only (a creature: Paint Zone)')
             return {'CANCELLED'}
         if context.mode != 'OBJECT':
             bpy.ops.object.mode_set(mode='OBJECT')
@@ -905,8 +1031,9 @@ class MCH_OT_zone_remove(bpy.types.Operator):
     index: IntProperty(default=0)
 
     def execute(self, context):
-        mat = ms.active_mech(context)
-        return {'FINISHED'} if mat is not None and remove_zone(mat, self.index) else {'CANCELLED'}
+        ob = context.active_object
+        mat = getattr(ob, 'active_material', None) if ob is not None else None
+        return {'FINISHED'} if zoned(mat) and remove_zone(mat, self.index) else {'CANCELLED'}
 
 
 class MCH_OT_zone_slot(bpy.types.Operator):

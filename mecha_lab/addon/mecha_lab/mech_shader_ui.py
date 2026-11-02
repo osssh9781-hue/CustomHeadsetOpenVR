@@ -325,10 +325,27 @@ def zones_section(b, x, width, context, mat):
     ob = getattr(context, 'active_object', None)
     zs = zn.zones_of(mat)
     slots = [sl for sl in getattr(ob, 'material_slots', ())] if ob is not None else []
+    creature = not ms.is_mech(mat)
 
     def fill(sx, sw):
         b.note(('note', 'Draw on the part: drag a lasso, or click its corners (Enter: done)', False, None, None, None,
                 True), sx, sw)
+        if creature:                                # (0.24.95 a creature's markings: Paint Zones)
+            row(b, sx, sw, [button('Paint Zone', 'mch.zone_lasso', mode='PAINT')])
+            sub(b, 'Markings: its colour / texture over the skin, the edge airbrushed or textured', sx, sw)
+            for i, z in enumerate(zs or ()):
+                sub(b, f'{z.name} - marking', sx, sw)
+                for p in ('color', 'tex'):
+                    row(b, sx, sw, [prop_cell(z, p)])
+                if z.tex != 'FLAT':
+                    row(b, sx, sw, [prop_cell(z, 'tex_scale')])
+                for p in ('roughness', 'opacity', 'edge', 'edge_width'):
+                    row(b, sx, sw, [prop_cell(z, p)])
+                if z.edge == 'TEXTURE':
+                    row(b, sx, sw, [prop_cell(z, 'edge_scale')])
+                row(b, sx, sw, [prop_cell(z, 'through', 'Through - the back faces too'),
+                                _cell('tbtn', 'Delete', ('op', 'mch.zone_remove', {'index': i}))])
+            return
         row(b, sx, sw, [button('Paint Zone', 'mch.zone_lasso', mode='PAINT'),
                         button('Split Zone', 'mch.zone_lasso', mode='SPLIT')])
         sub(b, 'Paint: its own paint, the mesh as it is.  Split: new edges, its own material', sx, sw)
@@ -340,8 +357,12 @@ def zones_section(b, x, width, context, mat):
                 row(b, sx, sw, [_cell('tbtn', 'Remove Line', ('op', 'mch.zone_remove', {'index': i}))])
                 continue
             sub(b, f'{z.name} - paint', sx, sw)
-            for p in ('color', 'roughness', 'metallic', 'cover', 'opacity', 'line_height', 'line_width'):
+            for p in ('color', 'roughness', 'metallic', 'cover', 'opacity', 'line_height', 'line_width', 'edge'):
                 row(b, sx, sw, [prop_cell(z, p)])
+            if z.edge != 'HARD':
+                row(b, sx, sw, [prop_cell(z, 'edge_width')])
+            if z.edge == 'TEXTURE':
+                row(b, sx, sw, [prop_cell(z, 'edge_scale')])
             row(b, sx, sw, [prop_cell(z, 'own_wear', 'Own Wear - chips, scratches, dirt, rust')])
             if z.own_wear:
                 for p in ms.ZONE_WEAR:
@@ -661,6 +682,7 @@ def creature_content(b, x, width, mat):
     section(b, 'cr_conds', 'Conditions', x, width, cond_grid,
             summary=conds.get(st.condition, '') + ('  +' if st.cond_stack else ''))
     my_presets_section(b, x, width, 'creature')
+    zones_section(b, x, width, bpy.context, mat)
 
     def colour(sx, sw):
         row(b, sx, sw, [prop_cell(st, 'polypaint')])
