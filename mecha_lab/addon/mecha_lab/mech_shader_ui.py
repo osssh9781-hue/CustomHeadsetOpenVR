@@ -220,6 +220,7 @@ def content(context, x, width, k):
                                                                           {'preset': kk}), None, None)
                              for kk, n, _s in ms.PRESETS])
         section(b, 'presets', 'Presets', x, width, presets0)
+        my_materials_section(b, x, width)
         other = getattr(ob, 'active_material', None) if ob is not None else None
         if ob is None or ob.type != 'MESH':
             b.note(('note', 'Select meshes, then Apply', False, None, None, None, True), x, width)
@@ -241,6 +242,7 @@ def content(context, x, width, k):
     def presets(sx, sw):
         grid(b, sx, sw, [(n, icon('mat', kk), st.preset == kk, ('enum', kk), st, 'preset') for kk, n, _s in ms.PRESETS])
     section(b, 'presets', 'Presets', x, width, presets, summary=names.get(st.preset, ''))
+    my_materials_section(b, x, width)
     my_presets_section(b, x, width, 'mech')
     zones_section(b, x, width, context, mat)
 
@@ -399,6 +401,7 @@ def creature_page(context, x, width, k):
     if mech is not None:
         elsewhere(b, x, width, f'"{mech.name}" is a Mech material - its settings are on the Mech page', 'MATERIAL')
     creature_apply_section(b, x, width, sc, start_folded=False)
+    my_materials_section(b, x, width)
     if ob is None or ob.type != 'MESH':
         b.note(('note', 'Select meshes, then click a skin type or a part', False, None, None, None, True), x, width)
     return b.out, -b.y
@@ -548,6 +551,31 @@ def eye_content(b, x, width, mat):
             False, None, None, None, True), x, width)
 
 
+def my_materials_section(b, x, width):
+    """0.24.95 My Materials (user: "기존에 만들어 놓은 재질도 프리셋으로 등록 가능하게"): any material saved whole (yours
+    too), a ball each with its picture - a click puts a copy on the selected parts."""
+    from . import my_materials as mm
+    ns = mm.names()
+
+    def fill(sx, sw):
+        b.note(('note', 'Any material saved whole (yours too) - a ball: on the selected parts', False, None, None,
+                None, True), sx, sw)
+        row(b, sx, sw, [button('Save Material...', 'mch.my_material_save'),
+                        _cell('tbtn', 'Delete...', ('op', 'mch.my_material_delete', {}), active=bool(ns))])
+        if ns:
+            tiles = []
+            for n in ns:
+                p = mm.icon_path(n)
+                tiles.append((n, 'file:' + p if p else '', False, ('op', 'mch.my_material_apply', {'name': n}), None,
+                              None))
+            grid(b, sx, sw, tiles)
+        else:
+            b.note(('note', 'None yet - Save Material keeps any material of this file', False, None, None, None,
+                    True), sx, sw)
+    section(b, 'my_materials', 'My Materials', x, width, fill, start_folded=not ns,
+            summary=str(len(ns)) if ns else '')
+
+
 def my_presets_section(b, x, width, kind):
     """0.24.95 My Presets: this material's settings saved under a name (for every .blend), a ball each."""
     from . import my_presets as mp
@@ -617,6 +645,7 @@ def creature_content(b, x, width, mat):
         grid(b, sx, sw, [(n, icon('cskin', kk), st.skin_type == kk, ('enum', kk), st, 'skin_type')
                          for kk, n, _s in cs.SKINS if kk not in cs.PART_SKINS])
     section(b, 'cr_skins', 'Skin Types', x, width, skin_grid, summary=skins.get(st.skin_type, ''))
+    my_materials_section(b, x, width)
 
     def part_grid(sx, sw):
         b.note(('note', 'A new material of that part on the selected meshes', False, None, None, None, True), sx, sw)
