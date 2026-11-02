@@ -386,6 +386,7 @@ def zones_section(b, x, width, context, mat):
                     row(b, sx, sw, [prop_cell(z, p)])
                 if z.edge == 'TEXTURE':
                     row(b, sx, sw, [prop_cell(z, 'edge_scale')])
+                row(b, sx, sw, [prop_cell(z, 'invert', 'Invert - outside the lasso')])
                 row(b, sx, sw, [prop_cell(z, 'through', 'Through - the back faces too'),
                                 _cell('tbtn', 'Delete', ('op', 'mch.zone_remove', {'index': i}))])
             return
@@ -396,7 +397,13 @@ def zones_section(b, x, width, context, mat):
                 sub(b, f'{z.name} - the boundary line', sx, sw)
                 for p in ('line_height', 'line_width'):
                     row(b, sx, sw, [prop_cell(z, p)])
-                row(b, sx, sw, [_cell('tbtn', 'Remove Line', ('op', 'mch.zone_remove', {'index': i}))])
+                zmat = mat if getattr(mat, 'mch_zone_parent', None) is not None else zn.split_partner(ob, mat, z)
+                cells = [_cell('tbtn', 'Remove Line', ('op', 'mch.zone_remove', {'index': i}))]
+                if zmat is not None:                # (0.24.95 user: "스플릿 페인트 반전은 못 해?")
+                    cells.insert(0, _cell('tbtn', 'Invert (inside / outside)',
+                                          ('op', 'mch.zone_split_invert', {'material': zmat.name}),
+                                          on=bool(zmat.get('mch_zone_inverted', False))))
+                row(b, sx, sw, cells)
                 continue
             sub(b, f'{z.name} - paint', sx, sw)
             for p in ('color', 'tex'):              # (0.24.95 a base colour texture of its own, tinted by Color)
@@ -414,6 +421,7 @@ def zones_section(b, x, width, context, mat):
             if z.own_wear:
                 for p in ms.ZONE_WEAR:
                     row(b, sx, sw, [prop_cell(z, p)])
+            row(b, sx, sw, [prop_cell(z, 'invert', 'Invert - paint outside the lasso')])
             row(b, sx, sw, [prop_cell(z, 'through', 'Through - the back faces too'),
                             _cell('tbtn', 'Delete', ('op', 'mch.zone_remove', {'index': i}))])
         parent = getattr(mat, 'mch_zone_parent', None)

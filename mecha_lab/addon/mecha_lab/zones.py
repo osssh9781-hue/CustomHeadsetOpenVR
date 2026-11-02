@@ -316,6 +316,9 @@ class MCH_PG_Zone(bpy.types.PropertyGroup):
     opacity: FloatProperty(name='Opacity', default=1.0, min=0.0, max=1.0, update=_update)
     through: BoolProperty(name='Through', default=False, update=_update,
                           description='Paint the faces turned away from the view too (off: only what faced it)')
+    invert: BoolProperty(name='Invert', default=False, update=_update,   # (0.24.95 user: "스플릿 페인트 반전은 못 해?")
+                         description='Paint everything outside the lasso instead of inside it (the boundary line '
+                                     'stays where it is)')
     own_wear: BoolProperty(name='Own Wear', default=False, update=_own_update,
                            description='Its own chips, scratches, dirt and rust inside the zone (off: the part\'s)')
     edge_wear: FloatProperty(name='Edge Wear', default=0.0, min=0.0, max=1.0, update=_update)
@@ -757,6 +760,12 @@ def relink(mat):
                         cover = mj if cover is None else b.math('MAXIMUM', cover, mj)
                 pv = b.math('MULTIPLY', pv, b.math('SUBTRACT', 1.0, cover, clamp=True))
             prof = pv if prof is None else b.math('MAXIMUM', prof, pv)
+        # (0.24.95 user: "스플릿 페인트 반전은 못 해?" - Invert: outside the lasso painted instead (|m - inv|); before the
+        #  part's own gate below, so other parts sharing the material stay unpainted)
+        if z.kind != 'LINE':
+            inv = b.value(f'z{i}_inv', 1.0 if z.invert else 0.0)
+            inv.node.name = tag + 'inv'
+            m = b.math('ABSOLUTE', b.math('SUBTRACT', m, inv))
         # (0.24.95 user: "셀렉트 모드로 했는데 다른 영역도 칠해져" - the material shared by other parts: the zone only on its
         #  own part - the part's number (its custom property ZONE_ID, read by an Object attribute) must match)
         pid = part_id(z.projector.parent)
@@ -946,6 +955,10 @@ def sync(mat):
                 nd.outputs[0].default_value = val
         if z.kind == 'LINE':
             continue
+        if nodes.get(tag + 'inv') is None:      # (0.24.95 a zone linked before Invert: made anew with it)
+            relink(mat)
+            return
+        nodes[tag + 'inv'].outputs[0].default_value = 1.0 if z.invert else 0.0
         nodes[tag + 'color'].outputs[0].default_value = (*z.color, 1.0)
         for k, val in (('rough', z.roughness), ('metal', z.metallic), ('cover', z.cover), ('opacity', z.opacity),
                        ('own', 1.0 if z.own_wear else 0.0), ('bthru', z.base_through)) \
@@ -1362,6 +1375,63 @@ def split_zone(context, ob, pts, view_matrix, window_matrix, persp, rw, rh, pres
     return zmat, len(inside)
 
 
+def split_partner(ob, mat, line_zone):
+    """The Split Zone material on ``ob`` whose boundary line is ``line_zone`` of the part's material ``mat``."""
+    for sl in getattr(ob, 'material_slots', ()):
+        m = sl.material
+        if m is not None and getattr(m, 'mch_zone_parent', None) == mat and \
+                any(z.kind == 'LINE' and z.name == line_zone.name for z in zones_of(m) or ()):
+            return m
+    return None
+
+
+def invert_split(ob, zmat):
+    """0.24.95 (user: "스플릿 페인트 반전은 못 해?") a Split Zone turned inside out: the faces that had the zone's
+    material get the part's, the part's faces get the zone's (other zones' faces untouched; the cut, the boundary
+    line stay).  Returns (faces now the part's, faces now the zone's)."""
+    parent = getattr(zmat, 'mch_zone_parent', None)
+    me = ob.data if ob is not None else None
+    if parent is None or me is None or not hasattr(me, 'polygons'):
+        raise RuntimeError('not a Split Zone material on this part')
+    mats = list(me.materials)
+    zi = [i for i, m in enumerate(mats) if m == zmat]
+    pi = [i for i, m in enumerate(mats) if m == parent]
+    if not zi or not pi:
+        raise RuntimeError(f'"{zmat.name}" and "{parent.name}" are not both on {ob.name}')
+    if ob.mode != 'OBJECT':
+        bpy.ops.object.mode_set(mode='OBJECT')
+    idx = np.empty(len(me.polygons), np.int32)
+    me.polygons.foreach_get('material_index', idx)
+    was_zone = np.isin(idx, zi)
+    was_part = np.isin(idx, pi)
+    idx[was_zone] = pi[0]
+    idx[was_part] = zi[0]
+    me.polygons.foreach_set('material_index', idx)
+    me.update()
+    zmat['mch_zone_inverted'] = not bool(zmat.get('mch_zone_inverted', False))
+    return int(was_zone.sum()), int(was_part.sum())
+
+
+class MCH_OT_zone_split_invert(bpy.types.Operator):
+    """Turn this Split Zone inside out: the faces inside the lasso get the part's material, the faces outside the
+    zone's (the cut and the boundary line stay)"""
+    bl_idname = 'mch.zone_split_invert'
+    bl_label = 'Invert Split Zone'
+    bl_options = {'REGISTER', 'UNDO'}
+    material: StringProperty()
+
+    def execute(self, context):
+        ob = context.active_object
+        zmat = bpy.data.materials.get(self.material)
+        try:
+            back, out = invert_split(ob, zmat)
+        except (RuntimeError, AttributeError, TypeError) as ex:
+            self.report({'WARNING'}, f'Invert: {ex}')
+            return {'CANCELLED'}
+        self.report({'INFO'}, f'{zmat.name}: inverted ({out} faces now the zone, {back} back to the part)')
+        return {'FINISHED'}
+
+
 # -----------------------------------------------------------------------------
 # the Lasso Zone tool: the shared lasso (cut_engine) - every shape, Corners, Line, Sketch, Slow Line, Surface
 # -----------------------------------------------------------------------------
@@ -1668,7 +1738,8 @@ class MCH_OT_zone_slot(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_PG_Zone, MCH_OT_zone_lasso, MCH_OT_zone_tool, MCH_OT_zone_remove, MCH_OT_zone_slot)
+CLASSES = (MCH_PG_Zone, MCH_OT_zone_lasso, MCH_OT_zone_tool, MCH_OT_zone_remove, MCH_OT_zone_slot,
+           MCH_OT_zone_split_invert)
 
 
 _WATCHING = [False]
