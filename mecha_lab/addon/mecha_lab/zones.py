@@ -668,6 +668,8 @@ class MCH_OT_zone_lasso(bpy.types.Operator):
                     self.state = 'PRESSED'
                 return {'RUNNING_MODAL'}
             if event.value == 'RELEASE':
+                if self.press is None:                  # (the release of the click that started it: not a corner)
+                    return {'RUNNING_MODAL'}
                 if self.state == 'DRAG':
                     if len(self.pts) >= 3:
                         return self._commit(context)
