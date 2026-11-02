@@ -48,7 +48,9 @@ CMAPS = {
 # 0.24.95 (user: "베이스 컬러 쓰는 것들은 휴 · 세츄레이션 · 벨류로 조절하면 좋을 것 같으니까 슬라이드도"): the layers whose
 # colour can be a colour texture ('<layer>_tex': Flat = the colour swatch) and has Hue / Saturation / Value
 TEX_LAYERS = ('base', 'mud', 'dust', 'blood', 'blood_dry', 'slime', 'moss')
-TEX_TILES = {'base': 0.5, 'mud': 0.5, 'dust': 0.8, 'blood': 0.6, 'blood_dry': 0.6, 'slime': 0.6, 'moss': 0.6}
+# (tiles per unit on a creature 2 units tall; x the layer's own Scale.  0.24.95 user: "이끼 크기가 너무 커" - the moss
+#  photo's sprigs were as big as a leg at 0.6: 3.0)
+TEX_TILES = {'base': 0.5, 'mud': 0.5, 'dust': 0.8, 'blood': 0.6, 'blood_dry': 0.6, 'slime': 0.6, 'moss': 3.0}
 # the image nodes: name -> (creature map 'c' / Mech Shader map 'm', slot, id (None: from a setting), tiles per unit)
 IMAGES = {
     'skin': ('c', 'skin', None, 0.5), 'detail': ('c', 'skin', None, 1.5), 'mottle': ('c', 'mottle', None, 0.35),
@@ -82,11 +84,11 @@ BASE = dict(
     scars=0.0, scar_color=(0.72, 0.5, 0.45), fade=0.0,
     skin_map='PORES', detail_map='WRINKLES', mottle_map='BLOTCH')
 for _k in TEX_LAYERS:
-    BASE.update({_k + '_tex': 'FLAT', _k + '_hue': 0.0, _k + '_sat': 1.0, _k + '_val': 1.0})
+    BASE.update({_k + '_tex': 'FLAT', _k + '_hue': 0.0, _k + '_sat': 1.0, _k + '_val': 1.0, _k + '_scale': 1.0})
 COND_KEYS = ('mud', 'mud_top', 'mud_low', 'mud_color', 'mud_wet', 'mud_cake', 'h_mud', 'dust', 'dust_color', 'soot',
              'soot_color', 'snow', 'frost', 'moss', 'moss_color', 'h_moss', 'blood', 'blood_color', 'blood_dry',
              'blood_dry_color', 'slime', 'slime_color', 'wet', 'scars', 'scar_color', 'fade') + tuple(
-    k + sfx for k in TEX_LAYERS if k != 'base' for sfx in ('_tex', '_hue', '_sat', '_val'))
+    k + sfx for k in TEX_LAYERS if k != 'base' for sfx in ('_tex', '_hue', '_sat', '_val', '_scale'))
 SKIN_KEYS = tuple(k for k in BASE if k not in COND_KEYS and k not in ('polypaint', 'map_scale', 'bump', 'size'))
 SLIDERS = tuple(k for k in BASE if not k.endswith(('_map', '_tex')))
 
@@ -234,6 +236,8 @@ def build(mat):
             sc = b.math('MULTIPLY', sc, v['skin_scale'])
         elif name == 'mottle':
             sc = b.math('MULTIPLY', sc, v['mottle_scale'])
+        elif name.startswith('tex_'):                # (a colour texture: its layer's own Scale)
+            sc = b.math('MULTIPLY', sc, v[name[4:] + '_scale'])
         sc.node.name = 'mch:scale:' + name
         img[name] = b.image(name, b.vmath('SCALE', tc.outputs['Object'], fac=sc)).outputs['Color']
 
@@ -584,6 +588,9 @@ class MCH_PG_CreatureShader(bpy.types.PropertyGroup):
                                                      description=f'{_n}: 0 grey .. 1 as it is .. 2 stronger')
         __annotations__[_k + '_val'] = FloatProperty(name='Value', default=1.0, min=0.0, max=2.0, update=_update,
                                                      description=f'{_n}: darker .. 1 as it is .. brighter')
+        __annotations__[_k + '_scale'] = FloatProperty(name='Texture Scale', default=1.0, min=0.05, max=20.0,
+                                                       update=_update,
+                                                       description=f'{_n}: the texture repeated more (bigger = finer)')
     del _k, _n
     detail_map: EnumProperty(name='Detail Map', items=_maps('skin'), default=BASE['detail_map'], update=_update)
     mottle_map: EnumProperty(name='Mottle Map', items=_maps('mottle'), default=BASE['mottle_map'], update=_update)

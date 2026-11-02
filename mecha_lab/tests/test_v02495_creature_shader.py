@@ -104,6 +104,13 @@ check('A colour texture for the skin (Scaly Keratin) and its Hue / Saturation / 
 check('... every colour layer has them (skin, mud, dust, blood, dried blood, slime, moss)',
       all(nodes.get('mch:hsv:' + k) is not None and nodes.get('mch:img:tex_' + k) is not None for k in cs.TEX_LAYERS)
       and all(hasattr(st, k + sfx) for k in cs.TEX_LAYERS for sfx in ('_tex', '_hue', '_sat', '_val')))
+sc_node = nodes['mch:scale:tex_moss']
+st.moss_scale = 2.0
+check('... and a Texture Scale each (user: "이끼 크기가 너무 커"): the moss texture finer by default (3 x the mud\'s '
+      'tiles per unit), its Scale multiplies it', cs.TEX_TILES['moss'] >= 3 * cs.TEX_TILES['mud']
+      and all(hasattr(st, k + '_scale') for k in cs.TEX_LAYERS) and sc_node.inputs[1].is_linked
+      and nodes['mch:moss_scale'].outputs[0].default_value == 2.0)
+st.moss_scale = 1.0
 st.base_tex = 'FLAT'
 check('... Flat: back to the colour swatch', nodes['mch:use_base'].outputs[0].default_value == 0.0
       and nodes['mch:img:tex_base'].image is None)
@@ -161,7 +168,7 @@ st.mud = 0.4
 its, h = page()
 props = {getattr(i, 'prop', '') for i in its}
 check('... a layer in use opens with its texture + Hue / Saturation / Value (Mud 0.4)',
-      {'mud', 'mud_tex', 'mud_color', 'mud_hue', 'mud_sat', 'mud_val', 'mud_cake'} <= props)
+      {'mud', 'mud_tex', 'mud_color', 'mud_hue', 'mud_sat', 'mud_val', 'mud_scale', 'mud_cake'} <= props)
 cube_ob = bpy.data.objects.new('Plain', bpy.data.meshes.new('plain'))
 C.scene.collection.objects.link(cube_ob)
 bpy.ops.mesh.primitive_cube_add(location=(0, -8, 0))

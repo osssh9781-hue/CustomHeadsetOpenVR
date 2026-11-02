@@ -327,12 +327,13 @@ def _cstep(b, st, prop, x, w, label=''):
 
 
 def _colour_rows(b, st, layer, flat, sx, sw):
-    """A layer's colour: its texture (◀ [Flat / a texture] ▶), its swatch, Hue / Saturation / Value."""
+    """A layer's colour: its texture (◀ [Flat / a texture] ▶), its swatch, Hue / Saturation / Value, its size."""
     _cstep(b, st, layer + '_tex', sx, sw, 'Texture')
     if flat:
         row(b, sx, sw, [prop_cell(st, flat)])
     row(b, sx, sw, [number(st, layer + '_hue', 'Hue'), number(st, layer + '_sat', 'Sat'),
                     number(st, layer + '_val', 'Val')])
+    row(b, sx, sw, [number(st, layer + '_scale', 'Texture Scale')])     # (0.24.95 user: "이끼 크기가 너무 커")
 
 
 # (section key, title, the amounts that make it "in use", its rows: a property, ('tex', layer, swatch) or ('sub', text))
