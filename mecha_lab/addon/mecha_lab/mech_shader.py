@@ -1360,6 +1360,21 @@ def hdri_dir():
     return bpy.utils.system_resource('DATAFILES', path=os.path.join('studiolights', 'world')) or ''
 
 
+# 0.24.95 the add-on's own sci-fi HDRIs (user: "HDRI 도 만들어 줘 빨리! 배경보다도 라이팅"): lighting set-ups for
+# hard-surface work made by tools_dev/make_scifi_hdris.py - 'M:<file>' in the HDRI list
+MECHA = 'M:'
+MECHA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'hdris')
+MECHA_HDRIS = (('scifi_studio', 'Sci-Fi Studio'), ('hangar_bay', 'Hangar Bay'), ('ship_corridor', 'Ship Corridor'),
+               ('neon_lab', 'Neon Lab'), ('orbital_window', 'Orbital Window'), ('red_alert', 'Red Alert'),
+               ('reactor_core', 'Reactor Core'), ('landing_pad', 'Landing Pad'))
+MECHA_GROUP = 'Sci-Fi Lighting'
+
+
+def mecha_hdri_files():
+    """[(file, name)] of the add-on's own HDRIs that are there."""
+    return [(k + '.exr', n) for k, n in MECHA_HDRIS if os.path.isfile(os.path.join(MECHA_DIR, k + '.exr'))]
+
+
 def user_hdri_dir():
     """The user's HDRI folder (add-on preferences, HDRI Folder; 0.24.95 user: "hdri 파일은 다운받아서 폴더에 넣어
     놓고 그거 연결해서 불러오게") - '' when not set or missing."""
@@ -1576,6 +1591,8 @@ def hdri_path(ident):
     if ident.startswith(USER):
         d = user_hdri_dir()
         return os.path.normpath(os.path.join(d, *ident[len(USER):].split('/'))) if d else ''
+    if ident.startswith(MECHA):
+        return os.path.join(MECHA_DIR, ident[len(MECHA):])
     return os.path.join(hdri_dir(), ident)
 
 
@@ -1598,6 +1615,9 @@ def _hdri_items(self, context):
             ident = USER + f
             label = '* ' + ' / '.join(os.path.splitext(f)[0].split('/'))
             _HDRI_ITEMS.append((ident, label, hdri_path(ident), 'FILE_IMAGE', num(ident)))
+        for f, name in mecha_hdri_files():    # (0.24.95 the add-on's own sci-fi lighting, before Blender's)
+            ident = MECHA + f
+            _HDRI_ITEMS.append((ident, name, f'Mecha Lab sci-fi lighting: {name}', 'LIGHT', num(ident)))
         for f in builtin:
             _HDRI_ITEMS.append((f, os.path.splitext(f)[0].title(), f'Blender\'s built-in HDRI {f}', 'WORLD', num(f)))
         if not _HDRI_ITEMS:
@@ -1650,6 +1670,9 @@ def _thumb_out(path):
 def hdri_icon(ident):
     """'file:<png>' of an HDRI's preview - Blender's own come with the add-on, the user's are made once (in a second
     Blender, off the window); '' until it is there."""
+    if ident.startswith(MECHA):                       # (0.24.95 made with them: tools_dev/make_scifi_hdris.py)
+        p = os.path.join(ICON_DIR, 'hdri_mch_' + os.path.splitext(ident[len(MECHA):])[0] + '.png')
+        return 'file:' + p if os.path.isfile(p) else ''
     if not ident.startswith(USER):
         p = os.path.join(ICON_DIR, 'hdri_' + os.path.splitext(ident)[0] + '.png')
         if os.path.isfile(p):

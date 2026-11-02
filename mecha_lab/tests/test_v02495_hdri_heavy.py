@@ -79,8 +79,9 @@ try:
     its, _h = mu.hdri_content(C, 0.0, 276.0, 1.0)
     tiles = [i.label for i in its if i.kind == 'htile']
     btns = {i.label: i for i in its if i.kind == 'tbtn'}
-    check('40 HDRIs: 6 previews on a page - the page with the HDRI in use (B\'s b03: page 3 of 7), ◀ Page 3 / 7 ▶',
-          tiles == [f'b{i:02d}' for i in range(6)] and 'Page 3 / 7' in btns and '◀' in btns and '▶' in btns,
+    check('48 HDRIs (+ 8 sci-fi lighting): 6 previews on a page - the page with the HDRI in use (B\'s b03: page 3 '
+          'of 8), ◀ Page 3 / 8 ▶',
+          tiles == [f'b{i:02d}' for i in range(6)] and 'Page 3 / 8' in btns and '◀' in btns and '▶' in btns,
           (tiles, [k for k in btns if 'Page' in k]))
     check('... only those 6 previews asked for, and the next page\'s 6 (ready when it is turned)',
           sorted(os.path.basename(s) for s, _o in ms._THUMB_QUEUE) == [f'b{i:02d}.hdr' for i in range(12)],
@@ -94,24 +95,24 @@ try:
     ui_bars.run(C, pager(its, 1))
     its, _h = mu.hdri_content(C, 0.0, 276.0, 1.0)
     tiles = [i.label for i in its if i.kind == 'htile']
-    check('... ▶: the next 6 (b06 .. b11), Page 4 / 7, the HDRI in use not changed; the page after that asked for '
+    check('... ▶: the next 6 (b06 .. b11), Page 4 / 8, the HDRI in use not changed; the page after that asked for '
           '(folder C)', tiles == [f'b{i:02d}' for i in range(6, 12)] and sc.mch_mech_hdri == 'U:B/b03.hdr'
-          and any(i.label == 'Page 4 / 7' for i in its) and any(s_.endswith('broken.exr') for s_, _o in ms._THUMB_QUEUE),
+          and any(i.label == 'Page 4 / 8' for i in its) and any(s_.endswith('broken.exr') for s_, _o in ms._THUMB_QUEUE),
           tiles)
-    for _k in range(4):
+    for _k in range(5):                                  # (0.24.95 + the 8 sci-fi lighting HDRIs: 8 pages)
         ui_bars.run(C, pager(mu.hdri_content(C, 0.0, 276.0, 1.0)[0], 1))
     its, _h = mu.hdri_content(C, 0.0, 276.0, 1.0)
     first = [i.label for i in its if i.kind == 'htile']
-    check('... ▶ on the last page: back to the first', any(i.label == 'Page 1 / 7' for i in its)
+    check('... ▶ on the last page: back to the first', any(i.label == 'Page 1 / 8' for i in its)
           and first == [f'a{i:02d}' for i in range(6)], first)
     ui_bars.run(C, pager(its, 0))
     its, _h = mu.hdri_content(C, 0.0, 276.0, 1.0)
     check('... the page number clicked: back to the page with the HDRI in use',
-          any(i.label == 'Page 3 / 7' for i in its) and any(i.kind == 'htile' and i.on for i in its))
+          any(i.label == 'Page 3 / 8' for i in its) and any(i.kind == 'htile' and i.on for i in its))
     sc.mch_mech_hdri = 'U:C/c03.hdr'
     its, _h = mu.hdri_content(C, 0.0, 276.0, 1.0)
     check('... another HDRI picked (the arrows above, the list): the page follows it',
-          any(i.label == 'Page 5 / 7' for i in its) and any(i.kind == 'htile' and i.on and i.label == 'c03' for i in its))
+          any(i.label == 'Page 5 / 8' for i in its) and any(i.kind == 'htile' and i.on and i.label == 'c03' for i in its))
     sc.mch_mech_hdri = 'U:B/b03.hdr'
     its, _h = mu.hdri_content(C, 0.0, 276.0, 1.0)
 

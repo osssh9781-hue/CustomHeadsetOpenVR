@@ -907,7 +907,8 @@ def hdri_content(context, x, width, k):
         for ident, n, *_r in ms._hdri_items(None, context):
             if ident == 'NONE':
                 continue
-            g = (ms.hdri_group(ident) or 'My HDRIs') if ident.startswith(ms.USER) else 'Blender'
+            g = (ms.hdri_group(ident) or 'My HDRIs') if ident.startswith(ms.USER) else \
+                ms.MECHA_GROUP if ident.startswith(ms.MECHA) else 'Blender'
             entries.append((n.split(' / ')[-1] if ident.startswith(ms.USER) else n, ident, g))
             counts[g] = counts.get(g, 0) + 1
         cur = sc.mch_mech_hdri

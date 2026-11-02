@@ -144,7 +144,7 @@ try:
     btns = {i.label: i for i in its if i.kind == 'tbtn'}
     check('... the HDRI page: a heading per folder over its previews, the folder line counts them; Remove (the one '
           'picked) and Remove All', any(h.startswith('Outdoor / Sunny') for h in heads)
-          and any(h.startswith('Studio  (3)') for h in heads) and any(h.startswith('Blender') for h in heads)
+          and any(h.startswith('Studio  (3)') for h in heads) and any(h.startswith('Sci-Fi Lighting  (8)') for h in heads)
           and '2 folders inside' in notes and 'Remove softbox' in btns and 'Remove All' in btns, (heads, list(btns)))
     # Remove: the picked one out of the list, the next one picked, the file kept
     sc.mch_mech_hdri = 'U:Studio/softbox.exr'

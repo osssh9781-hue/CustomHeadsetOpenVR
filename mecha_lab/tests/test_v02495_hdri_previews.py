@@ -18,15 +18,22 @@ ob = cube('Part')
 ob.select_set(True)
 C.view_layer.objects.active = ob
 
+S.mch_mech_hdri = ms.MECHA + 'scifi_studio.exr'
 its, _h = mu.hdri_content(C, 0.0, 276.0, 1.0)
 tiles = [i for i in its if i.kind == 'htile']
 built = [f for f in ms.hdri_files()]
-check('HDRI page: previews of the HDRIs (Blender\'s own: 8) - 6 on a page (0.24.95 "6 개씩만, 넘기면 되잖아"), two per '
-      'row, 2 : 1 panoramas, ◀ Page 1 / 2 ▶',
-      len(built) == 8 and len(tiles) == 6 and len({round(t.x) for t in tiles}) == 2 and all(t.w > t.h for t in tiles)
-      and any(i.kind == 'tbtn' and i.label == 'Page 1 / 2' for i in its), (len(tiles), len(built)))
-check('... Blender\'s own previews come with the add-on (no waiting)',
+check('HDRI page: previews of the HDRIs (the add-on\'s sci-fi lighting: 8, Blender\'s own: 8) - 6 on a page (0.24.95 '
+      '"6 개씩만, 넘기면 되잖아"), two per row, 2 : 1 panoramas, ◀ Page 1 / 3 ▶',
+      len(built) == 8 and len(ms.mecha_hdri_files()) == 8 and len(tiles) == 6
+      and len({round(t.x) for t in tiles}) == 2 and all(t.w > t.h for t in tiles)
+      and [t.label for t in tiles] == [n for _k, n in ms.MECHA_HDRIS[:6]]
+      and any(i.kind == 'tbtn' and i.label == 'Page 1 / 3' for i in its), (len(tiles), len(built)))
+check('... their previews come with the add-on (no waiting)',
       all(t.icon.startswith('file:') and os.path.isfile(t.icon[5:]) for t in tiles))
+S.mch_mech_hdri = 'courtyard.exr'                       # (the page follows the HDRI in use: Blender's)
+tiles = [i for i in mu.hdri_content(C, 0.0, 276.0, 1.0)[0] if i.kind == 'htile']
+check('... Blender\'s own previews too', all(t.icon.startswith('file:') and os.path.isfile(t.icon[5:]) for t in tiles)
+      and any('forest' in t.label.lower() for t in tiles), [t.label for t in tiles])
 forest = next(t for t in tiles if 'forest' in t.label.lower())
 ui_bars.run(C, forest)
 check('A click on a preview: that HDRI, and on (the scene\'s world)', S.mch_mech_hdri == 'forest.exr'
@@ -65,6 +72,7 @@ try:
           'sky blue', ok and size == (256, 128) and top[2] > top[0]
           and os.path.dirname(icon[5:]) == ms.thumb_dir() and sorted(os.listdir(d)) == ['my_sky.hdr'],
           (icon, size))
+    S.mch_mech_hdri = 'U:my_sky.hdr'                    # (its page: the first)
     its, _h = mu.hdri_content(C, 0.0, 276.0, 1.0)
     mine = [t for t in its if t.kind == 'htile' and t.label.startswith('*')]
     check('... the user\'s HDRI first in the previews (marked *), with its picture', mine and mine[0].icon == icon
