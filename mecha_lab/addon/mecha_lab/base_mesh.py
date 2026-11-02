@@ -1506,11 +1506,20 @@ def _create_live_base(context, groups, frame, defaults, embed=0.0):
     return f'Base Mesh created: {ob.name} ({name}, {len(me.vertices)} verts, closed solid){notes}'
 
 
+def _respect_targets(context, found):
+    """0.24.95 (user: "베이스 메시 컷을 셀렉트로 하는데 왜 다 잘려?") only the meshes the Targets setting (T) lets a
+    tool use: Selected - the selected ones (and what a selected live part was drawn on), Active - the active one."""
+    names = target_rules.allowed(context)
+    if names is None:
+        return list(found)
+    return [o for o in found if target_rules.ok(context, o, names)]
+
+
 def _cutter_targets(context, projector, screen_groups, targets):
     if targets:
         return [t for t in targets if t.type == 'MESH']
-    sel = [o for o in context.selected_objects if o.type == 'MESH' and not
-           (getattr(o, 'mch_base', None) and o.mch_base.live)]
+    sel = _respect_targets(context, [o for o in context.selected_objects if o.type == 'MESH' and not
+                                     (getattr(o, 'mch_base', None) and o.mch_base.live)])
     if sel:
         return sel
     outer = screen_groups[0][0]
@@ -1521,8 +1530,8 @@ def _cutter_targets(context, projector, screen_groups, targets):
 def _sketch_cutter_targets(context, groups, frame):
     """Selected meshes, else the mesh under the sketch (ray from in front of
     the plane, against its normal)."""
-    sel = [o for o in context.selected_objects if o.type == 'MESH' and not
-           (getattr(o, 'mch_base', None) and o.mch_base.live)]
+    sel = _respect_targets(context, [o for o in context.selected_objects if o.type == 'MESH' and not
+                                     (getattr(o, 'mch_base', None) and o.mch_base.live)])
     if sel:
         return sel
     dg = context.evaluated_depsgraph_get()
@@ -1622,8 +1631,11 @@ def cut_like_cut_tool(context, loops, projector, targets=None):
     """0.24.5 Alt in Base Mesh works like the Cut tool (its depth mode, depth, edge finish and solver): the
     old profile cutter was Height deep and went through thin plates."""
     from . import cut_engine as ce
-    if not targets:
-        targets = ce.auto_targets(context.view_layer, projector, loops)
+    if not targets:                  # (0.24.95 only what the Targets setting lets it cut - it cut every mesh under
+        targets = _respect_targets(context, ce.auto_targets(context.view_layer, projector, loops))   # the shape)
+        if not targets and target_rules.mode(context) != 'AUTO':
+            what = 'the active mesh' if target_rules.mode(context) == 'ACTIVE' else 'a selected mesh'
+            raise cg.CutError(f'Alt Base Mesh (Like Cut): the shape is not over {what} (Targets) - nothing was cut.')
     if not targets:
         raise cg.CutError('Alt Base Mesh cuts like the Cut tool: draw over a mesh.')
     return ce.perform_closed(context, 'CUT', targets, loops, projector, False)
