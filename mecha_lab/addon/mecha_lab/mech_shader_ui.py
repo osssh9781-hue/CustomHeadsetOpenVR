@@ -788,19 +788,37 @@ def sub(b, text, x, w):
     b.note(('note', text, False, None, None, None, True), x, w)
 
 
-HDRI_OPEN_ALL = 24                # (HDRIs: more than this in more than one folder - the folders start closed)
+HDRI_PAGE = 6                     # (HDRI previews on a page - user: "6 개씩만 불러오면 안 돼? 넘기면 되잖아")
+_HPAGE = {'page': 0, 'cur': None, 'pages': 1, 'ids': []}
 
 
-def fold_head(b, key, text, x, w, start_folded=False):
-    """0.24.95 A heading inside a section that folds what is under it (clicked).  True when open."""
-    k = b.k
-    is_folded = sp.folded(PAGE, key, start_folded)
-    b.gap(0.3)
-    h = sp.SECTION * k * 0.85
-    b.y -= h
-    b.out.append(b.Item('shead', x, b.y, w, h, text, '', not is_folded, True, ('fold', f'{PAGE}:{key}', start_folded)))
-    b.gap(0.3)
-    return not is_folded
+def hdri_page(cur, ids):
+    """(page, pages) of the HDRI previews: the page turned with ◀ ▶; when the HDRI in use changes (a click, the
+    arrows above, a file opened) the page with it."""
+    pages = max(1, -(-len(ids) // HDRI_PAGE))
+    if cur != _HPAGE['cur']:
+        _HPAGE['cur'] = cur
+        _HPAGE['page'] = ids.index(cur) // HDRI_PAGE if cur in ids else 0
+    _HPAGE['page'] = min(max(_HPAGE['page'], 0), pages - 1)
+    _HPAGE['pages'], _HPAGE['ids'] = pages, ids
+    return _HPAGE['page'], pages
+
+
+class MCH_OT_mech_hdri_page(bpy.types.Operator):
+    """Turn the page of HDRI previews (6 on a page; the page number: back to the HDRI in use)"""
+    bl_idname = 'mch.mech_hdri_page'
+    bl_label = 'HDRI Previews Page'
+    bl_options = {'INTERNAL'}
+    step: bpy.props.IntProperty(default=1)
+
+    def execute(self, context):
+        pages = max(1, _HPAGE['pages'])
+        if self.step == 0:
+            cur, ids = context.scene.mch_mech_hdri, _HPAGE['ids']
+            _HPAGE['page'] = ids.index(cur) // HDRI_PAGE if cur in ids else 0
+        else:
+            _HPAGE['page'] = (_HPAGE['page'] + self.step) % pages
+        return {'FINISHED'}
 
 
 # --- the HDRI page (0.24.95 user: "재질이랑 hdri는 분리해야지") ------------------------------------------------------
@@ -824,27 +842,39 @@ def hdri_content(context, x, width, k):
                       button('Off', 'mch.mech_hdri', action='OFF')])
 
     def previews(sx, sw):                        # (0.24.95 user: "hdri 도 미리 보기 넣어 줘") click = that HDRI, on
-        groups = {}                              # (0.24.95 the folders inside the HDRI folder: a heading each)
+        # (0.24.95 user: "hdri 뭉탱이로 불러왔더니 캐무거워 - 6 개씩만 불러오면 안 돼? 넘기면 되잖아": a page of 6 at a
+        #  time, ◀ ▶ to turn; only those 6 are drawn and their previews made - and the next 6, ready)
+        entries, counts = [], {}
         for ident, n, *_r in ms._hdri_items(None, context):
             if ident == 'NONE':
                 continue
             g = (ms.hdri_group(ident) or 'My HDRIs') if ident.startswith(ms.USER) else 'Blender'
-            groups.setdefault(g, []).append((n.split(' / ')[-1] if ident.startswith(ms.USER) else n, ident))
-        # (0.24.95 user: "hdri 뭉탱이로 불러왔더니 캐무거워": many HDRIs - each folder folds, closed to start but the
-        #  current HDRI's; only an open folder's previews are drawn and made)
-        many = sum(len(m) for m in groups.values()) > HDRI_OPEN_ALL and len(groups) > 1
+            entries.append((n.split(' / ')[-1] if ident.startswith(ms.USER) else n, ident, g))
+            counts[g] = counts.get(g, 0) + 1
         cur = sc.mch_mech_hdri
-        cur_g = (ms.hdri_group(cur) or 'My HDRIs') if cur.startswith(ms.USER) else 'Blender'
+        page, pages = hdri_page(cur, [e[1] for e in entries])
         left = ms.thumbs_pending()
         if left:
             b.note(('note', f'Making previews in the background: {left} left (Blender keeps working)', False, None,
                     None, None, True), sx, sw)
-        for g, members in groups.items():
-            if len(groups) > 1 and not fold_head(b, 'hdri_g:' + g, g.replace('/', ' / ') + f'  ({len(members)})',
-                                                 sx, sw, many and g != cur_g):
-                continue
-            hgrid(b, sx, sw, [(n, ms.hdri_icon(ident), cur == ident,
-                               ('op', 'mch.mech_hdri', {'action': 'SET', 'ident': ident})) for n, ident in members])
+        if pages > 1:
+            stepper(b, sx, sw, button('◀', 'mch.mech_hdri_page', step=-1),
+                    _cell('tbtn', f'Page {page + 1} / {pages}', ('op', 'mch.mech_hdri_page', {'step': 0})),
+                    button('▶', 'mch.mech_hdri_page', step=1))
+        shown = entries[page * HDRI_PAGE:(page + 1) * HDRI_PAGE]
+        run, last = [], None
+        for n, ident, g in shown + [(None, None, None)]:
+            if g != last and run:                # (a heading where the folder changes on the page)
+                if len(counts) > 1:
+                    sub(b, last.replace('/', ' / ') + f'  ({counts[last]})', sx, sw)
+                hgrid(b, sx, sw, [(rn, ms.hdri_icon(ri), cur == ri,
+                                   ('op', 'mch.mech_hdri', {'action': 'SET', 'ident': ri})) for rn, ri in run])
+                run = []
+            if ident is not None:
+                run.append((n, ident))
+            last = g
+        for _n, ident, _g in entries[(page + 1) * HDRI_PAGE:(page + 2) * HDRI_PAGE]:
+            ms.hdri_icon(ident)                  # (the next page's previews made meanwhile: turning is quick)
     section(b, 'hdri_previews', 'HDRIs', x, width, previews)
 
     def folder(sx, sw):
@@ -949,7 +979,7 @@ class MCH_OT_mech_hdri_remove(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_OT_mech_hdri_folder, MCH_OT_mech_hdri_remove)
+CLASSES = (MCH_OT_mech_hdri_folder, MCH_OT_mech_hdri_remove, MCH_OT_mech_hdri_page)
 
 
 def register():

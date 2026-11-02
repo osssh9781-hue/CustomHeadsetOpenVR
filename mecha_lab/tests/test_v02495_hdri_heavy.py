@@ -3,8 +3,8 @@
 * the previews are made in a second Blender (``hdri_thumbs.py``): this Blender reads no HDRI for them; a file it
   cannot read gets a mark and is not tried again; the HDRI page says how many are left while it works
 * the folder tree is walked again only when a folder changed (its change time), not every 2 s
-* many HDRIs in several folders: each folder folds, closed to start but the current HDRI's - only an open folder's
-  previews are drawn and asked for; a click on the folder's heading opens it
+* (user: "6 개씩만 불러오면 안 돼? 넘기면 되잖아") 6 previews on a page, ◀ Page n / m ▶: only the page's previews are
+  drawn and asked for (and the next page's, ready); the page follows the HDRI in use; the page number = back to it
 * the HDRI picked before is let go when another is picked (its pixels freed); an image the user had in the file stays
 * the panel's pictures are read without making a Blender image (each one made and removed was a change to the file's
   data: the 3D view started its drawing again - Material Preview re-rendered - once per preview arriving)
@@ -72,26 +72,48 @@ try:
           walks[0] == 2 and 'C/c99.hdr' in listed, walks[0])
     ms._scan_user_hdris = real_scan
 
-    # the HDRI page: many HDRIs in folders - closed to start but the current one's
+    # the HDRI page: 6 previews on a page, turned with ◀ ▶ (user: "6 개씩만 불러오면 안 돼? 넘기면 되잖아")
     sc.mch_mech_hdri = 'U:B/b03.hdr'
     bpy.ops.mch.mech_hdri(action='SET')
     ms._THUMB_QUEUE.clear()
     its, _h = mu.hdri_content(C, 0.0, 276.0, 1.0)
-    heads = {i.label.split('  (')[0]: i for i in its if i.kind == 'shead' and '  (' in i.label}
-    tiles = [i for i in its if i.kind == 'htile']
-    check('Many HDRIs in folders: a heading per folder (A, B, C, Blender) with its count; only B (the current HDRI\'s) '
-          'open - its 12 previews drawn, the other folders closed',
-          {'A', 'B', 'C', 'Blender'} <= set(heads) and heads['B'].on and not heads['A'].on and not heads['C'].on
-          and not heads['Blender'].on and len(tiles) == 12 and heads['A'].label.endswith('(12)'),
-          ({k: v.on for k, v in heads.items()}, len(tiles)))
-    check('... only the open folder\'s previews asked for', sorted(os.path.basename(s) for s, _o in ms._THUMB_QUEUE)
-          == [f'b{i:02d}.hdr' for i in range(12)], len(ms._THUMB_QUEUE))
-    ui_bars.run(C, heads['C'])
+    tiles = [i.label for i in its if i.kind == 'htile']
+    btns = {i.label: i for i in its if i.kind == 'tbtn'}
+    check('40 HDRIs: 6 previews on a page - the page with the HDRI in use (B\'s b03: page 3 of 7), ◀ Page 3 / 7 ▶',
+          tiles == [f'b{i:02d}' for i in range(6)] and 'Page 3 / 7' in btns and '◀' in btns and '▶' in btns,
+          (tiles, [k for k in btns if 'Page' in k]))
+    check('... only those 6 previews asked for, and the next page\'s 6 (ready when it is turned)',
+          sorted(os.path.basename(s) for s, _o in ms._THUMB_QUEUE) == [f'b{i:02d}.hdr' for i in range(12)],
+          len(ms._THUMB_QUEUE))
+    heads = [i.label for i in its if i.kind == 'pnote' and i.label.split('  (')[0] in ('A', 'B', 'C', 'Blender')]
+    check('... the folder over its previews, with how many it has', heads == ['B  (12)'], heads)
+
+    def pager(items, step):
+        return next(i for i in items if i.kind == 'tbtn' and i.action[:2] == ('op', 'mch.mech_hdri_page')
+                    and i.action[2].get('step') == step)
+    ui_bars.run(C, pager(its, 1))
     its, _h = mu.hdri_content(C, 0.0, 276.0, 1.0)
-    heads2 = {i.label.split('  (')[0]: i for i in its if i.kind == 'shead' and '  (' in i.label}
-    check('... a click on C\'s heading: C open too (its 8 previews), asked for', heads2['C'].on
-          and len([i for i in its if i.kind == 'htile']) == 12 + 8
-          and any(s.endswith('c99.hdr') for s, _o in ms._THUMB_QUEUE))
+    tiles = [i.label for i in its if i.kind == 'htile']
+    check('... ▶: the next 6 (b06 .. b11), Page 4 / 7, the HDRI in use not changed; the page after that asked for '
+          '(folder C)', tiles == [f'b{i:02d}' for i in range(6, 12)] and sc.mch_mech_hdri == 'U:B/b03.hdr'
+          and any(i.label == 'Page 4 / 7' for i in its) and any(s_.endswith('broken.exr') for s_, _o in ms._THUMB_QUEUE),
+          tiles)
+    for _k in range(4):
+        ui_bars.run(C, pager(mu.hdri_content(C, 0.0, 276.0, 1.0)[0], 1))
+    its, _h = mu.hdri_content(C, 0.0, 276.0, 1.0)
+    first = [i.label for i in its if i.kind == 'htile']
+    check('... ▶ on the last page: back to the first', any(i.label == 'Page 1 / 7' for i in its)
+          and first == [f'a{i:02d}' for i in range(6)], first)
+    ui_bars.run(C, pager(its, 0))
+    its, _h = mu.hdri_content(C, 0.0, 276.0, 1.0)
+    check('... the page number clicked: back to the page with the HDRI in use',
+          any(i.label == 'Page 3 / 7' for i in its) and any(i.kind == 'htile' and i.on for i in its))
+    sc.mch_mech_hdri = 'U:C/c03.hdr'
+    its, _h = mu.hdri_content(C, 0.0, 276.0, 1.0)
+    check('... another HDRI picked (the arrows above, the list): the page follows it',
+          any(i.label == 'Page 5 / 7' for i in its) and any(i.kind == 'htile' and i.on and i.label == 'c03' for i in its))
+    sc.mch_mech_hdri = 'U:B/b03.hdr'
+    its, _h = mu.hdri_content(C, 0.0, 276.0, 1.0)
 
     # the previews made in a second Blender
     os.environ['MECH_BG_FORCE'] = '1'
@@ -123,7 +145,7 @@ try:
         t = bpy.data.images.load(shown[0][5:])
         size = tuple(t.size)
         bpy.data.images.remove(t)
-    check('... done: every preview of the open folders there (256 x 128), none made in this Blender, the queue empty',
+    check('... done: every preview asked for there (256 x 128), none made in this Blender, the queue empty',
           ok and size == (256, 128) and inline[0] == 0 and not ms._THUMB_JOB and not ms._THUMB_QUEUE
           and ms.thumbs_pending() == 0, (ok, size, inline[0]))
     broken = os.path.join(mine, 'C', 'broken.exr')

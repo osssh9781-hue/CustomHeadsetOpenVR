@@ -1,0 +1,24 @@
+swatch True
+shot 1_picker_popup.png True
+picker: H S V 0.031 0.689 0.798 colour [0.6, 0.1, 0.05]
+eyedropper invoked {'RUNNING_MODAL'}
+shot 2_before_pick.png True
+picked: swatch (display) [0.247, 0.796, 0.38] screen pixel there srgb(65,202,97)
+PICK_OK True
+shot 3_after_pick.png True
+HDRI page: ['Page 4 / 5'] previews ['City', 'Courtyard', 'Forest', 'Interior']
+shot 4_hdri_page.png True
+IDLE 3 s: ticks 122 longest 58 ms
+ONE REDRAW: longest 215 ms
+after ◀: ['Page 3 / 5'] ['c_0', 'c_1', 'c_2', 'c_3']
+NEW (second Blender): 6 previews in 8.2 s, the window's longest stop 306 ms (timer every 20 ms: 293 ticks); previews shown 4/4
+NEW stops over 100 ms [109, 234, 287, 278, 306, 273, 236, 294]
+NEW 3D view drawn at [0.28, 0.57, 2.56, 3.8, 4.97, 5.75, 6.99, 8.16] ; a preview arrived (redraw asked) at [2.36, 3.56, 4.77, 5.57, 6.78, 7.99, 7.99] ; data changes [] ; pictures loaded by the panel at [2.54, 3.79, 4.96, 5.74]
+AFTER (3 s of nothing): ticks 144 longest 23 ms; 3D view drawn [] ; worker gone True
+shot 5_hdri_page_c.png True
+OLD (in this Blender): 6 previews in 6.1 s, the window's longest stop 940 ms (timer every 20 ms: 9 ticks)
+OLD stops over 100 ms [105, 234, 218, 197, 895, 940, 897, 886, 822]
+clicked b_1 -> HDRI U:B/b_1.exr HDRI images in memory ['b_1.exr']
+clicked b_2 -> HDRI U:B/b_2.exr HDRI images in memory ['b_2.exr']
+shot 6_hdri_picked.png True
+DONE

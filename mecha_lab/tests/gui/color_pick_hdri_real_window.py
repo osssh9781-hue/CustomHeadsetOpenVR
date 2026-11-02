@@ -4,10 +4,11 @@
 * MECHA LAB screen, a cube with Mech Painted, the Mech page: a REAL click (xdotool) on the Base Color swatch - the popup
   (shot); then the eyedropper (mch.color_eyedrop) and a REAL click on the viewport's plain green background - the
   swatch takes that green (compared with the screen picture's own pixel)
-* a folder (made here, in OUT) of three folders x 6 links to one 8k EXR: the HDRI page - the folders closed; a REAL
-  click on folder NEW's heading opens it, its previews made by a second Blender while a 20 ms timer measures how long
-  the window stops; then folder OLD the old way (made here, one per tick) - the same measure; REAL clicks on two
-  previews: the HDRI picked before let go (one HDRI image in memory)
+* a folder (made here, in OUT) of three folders A B C x 6 links to one 8k EXR (+ Blender's 8: 26, 5 pages of 6): the
+  HDRI page shows the page of the HDRI in use; a REAL click on the page's ◀ turns to folder C's 6 - their previews
+  made by a second Blender while a 20 ms timer measures how long the window stops; ◀ again (folder B) the old way
+  (made here, one per tick) - the same measure; REAL clicks on two previews: the HDRI picked before let go (one HDRI
+  image in memory)
     blender --window-geometry 0 0 W H --python this.py -- OUT BIG_EXR"""
 import os
 import subprocess
@@ -91,7 +92,7 @@ C = bpy.context
 S = C.scene
 
 HD = os.path.join(OUT, 'hdris')
-for g in ('NEW', 'OLD', 'MORE'):
+for g in ('A', 'B', 'C'):
     os.makedirs(os.path.join(HD, g), exist_ok=True)
     for i in range(6):
         p = os.path.join(HD, g, f'{g.lower()}_{i}.exr')
@@ -272,22 +273,26 @@ def flow():
         #                                        the add-on's own stops measured)
     yield 3.0
     its = panel_items()
-    heads = {i.label.split('  (')[0]: i.on for i in its if i.kind == 'shead' and '  (' in i.label}
-    log('HDRI page folders (open?)', heads, 'tiles', len([i for i in its if i.kind == 'htile']))
-    shot('4_hdri_folders_closed.png')
-    head = yield from scrolled_to(lambda i: i.kind == 'shead' and i.label.startswith('NEW  ('))
-    click(head)
-    yield 1.0
+    log('HDRI page:', [i.label for i in its if i.kind == 'tbtn' and i.label.startswith('Page ')],
+        'previews', [i.label for i in its if i.kind == 'htile'])
+    shot('4_hdri_page.png')
+
+    def pager(step):
+        return next((i for i in panel_items() if i.kind == 'tbtn' and i.action[:2] == ('op', 'mch.mech_hdri_page')
+                     and i.action[2].get('step') == step), None)
+    w, a, r = view3d()
     measure(True)                                  # (a baseline: 3 s of nothing)
     yield 3.0
     measure(False)
     log('IDLE 3 s: ticks', len(GAPS), 'longest', round(max(GAPS) * 1000) if GAPS else None, 'ms')
-    w, a, r = view3d()
     measure(True)                                  # (one redraw of the 3D view, asked for)
     a.tag_redraw()
     yield 1.5
     measure(False)
     log('ONE REDRAW: longest', round(max(GAPS) * 1000) if GAPS else None, 'ms')
+    # ---- ◀ (a real click): folder C's page, made by the second Blender
+    click(pager(-1))
+    yield 0.3
     measure(True)
     t0 = time.perf_counter()
     xdo('click', 1)
@@ -300,8 +305,10 @@ def flow():
     took = time.perf_counter() - t0
     measure(False)
     new_gap = max(GAPS) if GAPS else -1.0
-    tiles = [i for i in panel_items() if i.kind == 'htile' and i.label.startswith('new_')]
+    its = panel_items()
+    tiles = [i for i in its if i.kind == 'htile']
     made = sum(1 for i in tiles if i.icon.startswith('file:'))
+    log('after ◀:', [i.label for i in its if i.kind == 'tbtn' and i.label.startswith('Page ')], [i.label for i in tiles])
     log(f'NEW (second Blender): 6 previews in {took:.1f} s, the window\'s longest stop {new_gap * 1000:.0f} ms '
         f'(timer every 20 ms: {len(GAPS)} ticks); previews shown {made}/{len(tiles)}')
     log('NEW stops over 100 ms', [round(g * 1000) for g in GAPS if g > 0.1])
@@ -312,11 +319,10 @@ def flow():
     measure(False)
     log('AFTER (3 s of nothing): ticks', len(GAPS), 'longest', round(max(GAPS) * 1000) if GAPS else None,
         'ms; 3D view drawn', DRAWS, '; worker gone', not ms._THUMB_JOB)
-    shot('5_hdri_new_previews.png')
-    # ---- the old way (made here, one per tick) on folder OLD
+    shot('5_hdri_page_c.png')
+    # ---- ◀ again: folder B's page the old way (made here, one per tick)
     ms.thumbs_in_background = lambda: False
-    head = yield from scrolled_to(lambda i: i.kind == 'shead' and i.label.startswith('OLD  ('))
-    click(head)
+    click(pager(-1))
     yield 0.3
     measure(True)
     t0 = time.perf_counter()
@@ -334,7 +340,7 @@ def flow():
         f'(timer every 20 ms: {len(GAPS)} ticks)')
     log('OLD stops over 100 ms', [round(g * 1000) for g in GAPS if g > 0.1])
     # ---- two previews clicked: the HDRI before let go
-    for name in ('new_1', 'new_2'):
+    for name in ('b_1', 'b_2'):
         t = yield from scrolled_to(lambda i, n=name: i.kind == 'htile' and i.label == n)
         click(t)
         yield 0.3

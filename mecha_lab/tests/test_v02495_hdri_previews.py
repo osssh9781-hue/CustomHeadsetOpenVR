@@ -21,9 +21,10 @@ C.view_layer.objects.active = ob
 its, _h = mu.hdri_content(C, 0.0, 276.0, 1.0)
 tiles = [i for i in its if i.kind == 'htile']
 built = [f for f in ms.hdri_files()]
-check('HDRI page: a preview of each HDRI (Blender\'s own: 8), two per row, 2 : 1 panoramas',
-      len(tiles) == len(built) == 8 and len({round(t.x) for t in tiles}) == 2 and all(t.w > t.h for t in tiles),
-      (len(tiles), len(built)))
+check('HDRI page: previews of the HDRIs (Blender\'s own: 8) - 6 on a page (0.24.95 "6 개씩만, 넘기면 되잖아"), two per '
+      'row, 2 : 1 panoramas, ◀ Page 1 / 2 ▶',
+      len(built) == 8 and len(tiles) == 6 and len({round(t.x) for t in tiles}) == 2 and all(t.w > t.h for t in tiles)
+      and any(i.kind == 'tbtn' and i.label == 'Page 1 / 2' for i in its), (len(tiles), len(built)))
 check('... Blender\'s own previews come with the add-on (no waiting)',
       all(t.icon.startswith('file:') and os.path.isfile(t.icon[5:]) for t in tiles))
 forest = next(t for t in tiles if 'forest' in t.label.lower())
