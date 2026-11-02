@@ -64,4 +64,19 @@ C = bpy.context
 check('A file opened with the proxies showing but the switch off: hidden as the switch says',
       not cd.settings(C).show_proxy and drawn() == [False], (cd.settings(C).show_proxy, drawn()))
 check('Unchanged files untouched: sync with nothing to do changes nothing', cpx.sync(C.scene) is False)
+
+# the drawn panel's button (user's screenshot: Proxy off, Show Proxies on - the button could not be clicked)
+from mecha_lab import side_panel as sp, ui_bars  # noqa: E402
+st = cd.settings(C)
+st.show_proxy = True
+st.use_proxy = False
+its = sp.content(C, 'CDRAPE', 0.0, 300.0, 1.0)[0]
+btn = next((i for i in its if getattr(i, 'prop', '') == 'show_proxy'), None)
+check('With Proxy off, the panel\'s Show Proxies button can still be clicked (it was greyed out with Proxy and did '
+      'nothing)', btn is not None and btn.clickable() and drawn() == [True], btn and (btn.enabled, drawn()))
+ui_bars.run(C, btn)
+check('... one click: off, the proxies hidden', not st.show_proxy and drawn() == [False], (st.show_proxy, drawn()))
+faces = next((i for i in its if getattr(i, 'prop', '') == 'proxy_faces'), None)
+check('... Faces still greyed out with Proxy off (it only matters with Proxy on)', faces is not None
+      and not faces.enabled)
 summary()

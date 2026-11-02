@@ -2629,7 +2629,9 @@ def draw(layout, context):
     rr = r.row(align=True)
     rr.active = st.use_proxy
     rr.prop(st, 'proxy_faces', text='Faces')
-    rr.prop(st, 'show_proxy', text='', icon='HIDE_OFF' if st.show_proxy else 'HIDE_ON', toggle=True)
+    # (0.24.95 user: "쇼 프록시가 안 꺼져" - it sat in the row greyed out with Proxy off, and the drawn panel does not
+    # click a greyed-out button: proxies made earlier stayed on screen with no way to hide them)
+    r.prop(st, 'show_proxy', text='', icon='HIDE_OFF' if st.show_proxy else 'HIDE_ON', toggle=True)
     col.prop(st, 'spacing', slider=True, text='Cloth Detail (less = finer)')
     if sim_active() and SIM.get('source') not in {'AREA', 'MASK', 'CAPE', 'NECK'} and SIM.get('spacing') is not None and abs(float(st.spacing) - SIM['spacing']) > 1e-6:
         box.label(text='Cloth Detail changes the NEXT lasso (this cloth keeps its mesh)', icon='INFO')
