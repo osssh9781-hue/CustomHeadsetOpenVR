@@ -25,12 +25,17 @@ import os
 
 import bpy
 import numpy as np
-from bpy.props import EnumProperty, FloatProperty, FloatVectorProperty, PointerProperty, StringProperty
+from bpy.props import EnumProperty, FloatProperty, FloatVectorProperty, IntProperty, PointerProperty, StringProperty
 
 KEY = 'mch_mech'                    # the material's settings (PropertyGroup on bpy.types.Material)
 CURV = 'mch_curv'
-VERSION = 12                         # (the node tree's layout: an older one is made anew; 9: the lasso Zones' hubs,
-#                                      10: a zone's own wear, 11: its boundary line in the bump, 12: Base Color HSV)
+VERSION = 13                         # (the node tree's layout: an older one is made anew; 9: the lasso Zones' hubs,
+#                                      10: a zone's own wear, 11: its boundary line in the bump, 12: Base Color HSV,
+#                                      13: the shading Bevel)
+# 0.24.95 (user: "메테리얼 탭에 베벨도 - 조금 베벨, 중간 베벨, 많이 베벨 프리셋 + 세부 조정 슬라이더") the edges rounded
+# in the shading (Cycles' Bevel node into the normal - the mesh stays sharp): (id, label, radius m, samples)
+BEVEL_PRESETS = (('OFF', 'Off', 0.0, 8), ('SMALL', 'Small', 0.004, 8), ('MEDIUM', 'Medium', 0.012, 8),
+                 ('LARGE', 'Large', 0.03, 12))
 MAP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mech_maps')
 
 # slot -> (label, tiles per unit (x Map Scale), colour map (sRGB) or data, [(id, label)])
@@ -709,6 +714,10 @@ def build(mat):
     bump.inputs['Distance'].default_value = 0.004
     b.link(b.math('MULTIPLY', h, b.math('MAXIMUM', v['bump'], 1.0)), bump.inputs['Height'])
     b.link(bump.outputs['Normal'], bsdf.inputs['Normal'])
+    # (0.24.95 the shading Bevel: rounded edges under the bump - linked in by ``_bevel`` only while its radius > 0)
+    bevl = b.node('ShaderNodeBevel', 'mch:bevel_look')
+    bevl.samples = 8
+    bevl.inputs['Radius'].default_value = 0.0
     # emission: the map's mask (constant / edges / crevices / scratches / its own image)
     em = b.math('ADD', b.math('ADD', w['const'], b.math('MULTIPLY', w['edge'], edge)),
                 b.math('ADD', b.math('MULTIPLY', w['cav'], cav),
@@ -785,6 +794,7 @@ def sync(mat):
         if nd is not None and nd.image is None:
             nd.image = map_image(slot, ident, data=True)
     _see_through(mat, st)
+    _bevel(mat, st)
     src = EMIT_SOURCE.get(st.emit_map, (0, 0, 0, 0, 1))
     for k, val in zip(('const', 'edge', 'cav', 'scratch', 'pattern'), src):
         setv('emit_w_' + k, float(val))
@@ -793,6 +803,34 @@ def sync(mat):
         zones.follow(mat)
     except (ImportError, AttributeError):
         pass
+
+
+def _bevel(mat, st):
+    """The shading Bevel: its radius / samples; its normal into the bump's while the radius is above 0 (off: not
+    linked - no cost in Cycles)."""
+    nt = mat.node_tree
+    bev, bump = nt.nodes.get('mch:bevel_look'), nt.nodes.get('mch:bumpnode')
+    if bev is None or bump is None:
+        return
+    bev.inputs['Radius'].default_value = st.bevel_radius
+    if bev.samples != st.bevel_samples:
+        bev.samples = st.bevel_samples
+    sock = bump.inputs['Normal']
+    on = st.bevel_radius > 0.0
+    linked = sock.is_linked and sock.links[0].from_node == bev
+    if on and not linked:
+        nt.links.new(bev.outputs['Normal'], sock)
+    elif not on and sock.is_linked:
+        for lk in list(sock.links):
+            nt.links.remove(lk)
+
+
+def bevel_preset(st):
+    """The Bevel preset the settings are (or 'CUSTOM')."""
+    for ident, _n, r, smp in BEVEL_PRESETS:
+        if abs(st.bevel_radius - r) < 1e-6 and (ident == 'OFF' or st.bevel_samples == smp):
+            return ident
+    return 'CUSTOM'
 
 
 def _see_through(mat, st):
@@ -1063,6 +1101,12 @@ class MCH_PG_MechShader(bpy.types.PropertyGroup):
     ao: _slider('Crevice AO', 0.5, desc='Crevices found by ambient occlusion too (dirt / rust gather there)')
     map_scale: _slider('Map Scale', 1.0, 0.05, 20.0, desc='Every map repeated more (bigger number = finer)')
     edge_width: _slider('Edge Width (Cycles)', 0.02, 0.0, 0.5, desc='Cycles: how wide the Bevel finds edges')
+    bevel_radius: FloatProperty(name='Bevel Radius', default=0.0, min=0.0, soft_max=0.1, max=1.0, unit='LENGTH',
+                                precision=4, update=_update,
+                                description='Cycles: the edges rounded in the shading this wide (the mesh stays sharp; '
+                                            '0 off).  Material Preview (EEVEE) shows the edges sharp')
+    bevel_samples: IntProperty(name='Bevel Samples', default=8, min=2, max=32, update=_update,
+                               description='Cycles: how smooth the rounding is (more: smoother, slower)')
     base_map: EnumProperty(name='Base Map', items=_map_items('base'), default='MOTTLED', update=_update)
     rough_map: EnumProperty(name='Roughness Map', items=_map_items('rough'), default='SMUDGE', update=_update)
     chip_map: EnumProperty(name='Chips Map', items=_map_items('chip'), default='FLAKES', update=_update)
@@ -1228,6 +1272,27 @@ class MCH_OT_mech_shader_unlink(bpy.types.Operator):
             self.report({'INFO'}, f'Unlink: "{mat.name}" is used by the selected part(s) only - already its own')
             return {'CANCELLED'}
         self.report({'INFO'}, f'Unlink: {moved} part(s) now use "{new.name}", {left} keep "{mat.name}"')
+        return {'FINISHED'}
+
+
+class MCH_OT_mech_bevel(bpy.types.Operator):
+    """Round the edges in the shading (Cycles' Bevel): Off / Small / Medium / Large - then the Radius and Samples
+    sliders fine-tune it.  Material Preview (EEVEE) shows the edges sharp"""
+    bl_idname = 'mch.mech_bevel'
+    bl_label = 'Shading Bevel'
+    bl_options = {'REGISTER', 'UNDO'}
+    preset: EnumProperty(items=[(k, n, '') for k, n, _r, _s in BEVEL_PRESETS], default='MEDIUM')
+
+    @classmethod
+    def poll(cls, context):
+        return active_mech(context) is not None
+
+    def execute(self, context):
+        st = getattr(active_mech(context), KEY)
+        _k, name, radius, samples = next(p for p in BEVEL_PRESETS if p[0] == self.preset)
+        st.bevel_samples = samples
+        st.bevel_radius = radius
+        self.report({'INFO'}, f'Bevel: {name}' + (f' ({radius * 1000:.0f} mm)' if radius else ''))
         return {'FINISHED'}
 
 
@@ -1865,6 +1930,12 @@ def draw(layout, context):
         r.prop(st, p_, text=t_, slider=True)
     col.prop(st, 'metallic', slider=True)
     col.prop(st, 'roughness', slider=True)
+    r = col.row(align=True)                          # (0.24.95 the shading Bevel - Cycles)
+    for k_, n_, _r, _s in BEVEL_PRESETS:
+        r.operator('mch.mech_bevel', text=n_, depress=bevel_preset(st) == k_).preset = k_
+    r = col.row(align=True)
+    r.prop(st, 'bevel_radius', text='Bevel')
+    r.prop(st, 'bevel_samples', text='Samples')
     col.prop(st, 'glass', slider=True)
     if st.glass > 0.0:
         col.prop(st, 'ior', slider=True)
@@ -1959,7 +2030,7 @@ class MCH_PT_mech_shader(bpy.types.Panel):
         draw(self.layout, context)
 
 
-CLASSES = (MCH_PG_MechShader, MCH_OT_mech_shader_apply, MCH_OT_mech_shader_step, MCH_OT_mech_shader_edges,
+CLASSES = (MCH_PG_MechShader, MCH_OT_mech_shader_apply, MCH_OT_mech_shader_step, MCH_OT_mech_bevel, MCH_OT_mech_shader_edges,
            MCH_OT_mech_shader_unlink, MCH_OT_mech_hdri, MCH_PT_mech_shader)
 SCENE_PROPS = ('mch_mech_preset', 'mch_mech_hdri', 'mch_mech_hdri_strength', 'mch_mech_hdri_rot',
                'mch_mech_hdri_show', 'mch_mech_hdri_blur', 'mch_mech_hdri_bg_color')

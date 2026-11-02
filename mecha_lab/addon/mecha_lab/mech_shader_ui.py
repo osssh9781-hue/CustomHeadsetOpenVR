@@ -256,6 +256,19 @@ def content(context, x, width, k):
                                 number(st, 'base_val', 'Val')])
     section(b, 'surface', 'Surface', x, width, surface)
 
+    def bevel(sx, sw):                           # (0.24.95 user: "베벨 - 조금 · 중간 · 많이 프리셋, 세부 조정 슬라이더")
+        b.note(('note', 'Edges rounded in the shading (the mesh stays sharp) - Cycles; Material Preview shows them '
+                'sharp', False, None, None, None, True), sx, sw)
+        cur = ms.bevel_preset(st)
+        row(b, sx, sw, [_cell('tbtn', n, ('op', 'mch.mech_bevel', {'preset': kk}), on=cur == kk)
+                        for kk, n, _r, _s in ms.BEVEL_PRESETS])
+        row(b, sx, sw, [number(st, 'bevel_radius', 'Radius')])
+        row(b, sx, sw, [number(st, 'bevel_samples', 'Samples')])
+    bev_names = {kk: n for kk, n, _r, _s in ms.BEVEL_PRESETS}
+    section(b, 'bevel', 'Bevel', x, width, bevel, start_folded=st.bevel_radius <= 0.0,
+            summary=('' if st.bevel_radius <= 0.0 else
+                     f'{bev_names.get(ms.bevel_preset(st), "Custom")} {st.bevel_radius * 1000:.0f} mm'))
+
     def maps(sx, sw):
         _map_stepper(b, st, 'base', sx, sw, 'Base')
         row(b, sx, sw, [number(st, 'h_base', 'Height')])
