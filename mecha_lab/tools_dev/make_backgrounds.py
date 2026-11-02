@@ -1,7 +1,8 @@
 """Make the HDRI page's built-in background pictures (0.24.95 user: "hdri 배경 컬러 말고 내가 원하는 배경 이미지를
 넣을 수 있게 - 너가 기본으로 몇 장 넣어 줘, 세로 가로", "배경은 스튜디오 이미지처럼 해 줘"): 8 studio backdrops (paper
 sweeps white .. black, warm, cool, a painted canvas), each landscape (1920 x 1080) and portrait (1080 x 1920),
-made here from scratch (numpy; no photos) into addon/mecha_lab/backgrounds/<look>_<land|port>.jpg.
+made here from scratch (numpy; no photos) into addon/mecha_lab/backgrounds/<look>_<land|port>.jpg; (0.24.95) 10 more colours, then 30 more: paper colours,
+light effects (blinds, dappled light, halo, spotlight, bokeh, beam, gels, split tone, gradient) and textures.
     python -I tools_dev/make_backgrounds.py      (a python with bpy: the JPEGs are written by Blender)"""
 import os
 import sys
@@ -108,17 +109,172 @@ LOOKS = (
                                           vig=1.0)),
     ('gels', 'Colour Gels', lambda w, h: gels(w, h)),
     ('canvas_brown', 'Brown Canvas', lambda w, h: canvas(w, h, (0.2, 0.15, 0.1), (0.32, 0.25, 0.16))),
+    # (0.24.95 user: "HDRI 픽쳐 배경 30 개만 더 만들어 줘": 15 more paper colours, 15 light effects and textures)
+    ('coral', 'Coral', lambda w, h: sweep(w, h, (0.78, 0.38, 0.3), (0.84, 0.44, 0.36), spot=0.2, vig=0.7)),
+    ('lavender', 'Lavender', lambda w, h: sweep(w, h, (0.56, 0.5, 0.72), (0.62, 0.56, 0.78), spot=0.2, vig=0.7)),
+    ('sky_blue', 'Sky Blue', lambda w, h: sweep(w, h, (0.4, 0.6, 0.82), (0.46, 0.66, 0.86), spot=0.2, vig=0.7)),
+    ('lemon', 'Lemon', lambda w, h: sweep(w, h, (0.86, 0.78, 0.3), (0.9, 0.83, 0.38), spot=0.15, top_dark=0.2,
+                                          vig=0.6)),
+    ('forest', 'Forest Green', lambda w, h: sweep(w, h, (0.06, 0.17, 0.09), (0.08, 0.21, 0.11), spot=0.8, vig=1.0)),
+    ('plum', 'Plum', lambda w, h: sweep(w, h, (0.26, 0.08, 0.22), (0.31, 0.1, 0.27), spot=0.7, vig=1.0)),
+    ('rust', 'Rust Orange', lambda w, h: sweep(w, h, (0.5, 0.19, 0.06), (0.56, 0.23, 0.08), spot=0.4, vig=0.9)),
+    ('ice', 'Ice Blue', lambda w, h: sweep(w, h, (0.72, 0.8, 0.86), (0.78, 0.85, 0.9), spot=0.12, top_dark=0.2,
+                                          vig=0.6)),
+    ('cream', 'Cream', lambda w, h: sweep(w, h, (0.84, 0.8, 0.7), (0.9, 0.86, 0.76), spot=0.12, top_dark=0.2,
+                                          vig=0.55)),
+    ('blush', 'Blush Pink', lambda w, h: sweep(w, h, (0.84, 0.64, 0.64), (0.9, 0.7, 0.7), spot=0.12, top_dark=0.2,
+                                               vig=0.6)),
+    ('mustard', 'Mustard', lambda w, h: sweep(w, h, (0.66, 0.47, 0.1), (0.72, 0.53, 0.13), spot=0.3, vig=0.85)),
+    ('sage', 'Sage', lambda w, h: sweep(w, h, (0.48, 0.55, 0.44), (0.54, 0.6, 0.5), spot=0.2, vig=0.7)),
+    ('midnight', 'Midnight', lambda w, h: sweep(w, h, (0.05, 0.04, 0.12), (0.07, 0.055, 0.15), spot=1.0, vig=1.0)),
+    ('warm_grey', 'Warm Grey', lambda w, h: sweep(w, h, (0.4, 0.37, 0.33), (0.46, 0.43, 0.39), spot=0.3, vig=0.85)),
+    ('crimson', 'Crimson', lambda w, h: sweep(w, h, (0.42, 0.03, 0.05), (0.48, 0.05, 0.07), spot=0.7, vig=1.0)),
+    ('blinds', 'Window Blinds', lambda w, h: blinds(w, h)),
+    ('dappled', 'Dappled Light', lambda w, h: dappled(w, h)),
+    ('split_tone', 'Warm / Cool Split', lambda w, h: split_tone(w, h)),
+    ('halo', 'Halo Ring', lambda w, h: halo(w, h)),
+    ('spotlight', 'Hard Spotlight', lambda w, h: spotlight(w, h)),
+    ('bokeh', 'Bokeh Lights', lambda w, h: bokeh(w, h)),
+    ('beam', 'Light Beam', lambda w, h: beam(w, h)),
+    ('gels_red_cyan', 'Gels Red / Cyan', lambda w, h: gels(w, h, (0.6, 0.05, 0.06), (0.03, 0.38, 0.42))),
+    ('gels_purple_orange', 'Gels Purple / Orange', lambda w, h: gels(w, h, (0.32, 0.08, 0.5), (0.6, 0.3, 0.05))),
+    ('sunset_gradient', 'Sunset Gradient', lambda w, h: sunset_gradient(w, h)),
+    ('canvas_blue', 'Blue Canvas', lambda w, h: canvas(w, h, (0.08, 0.14, 0.24), (0.18, 0.26, 0.36))),
+    ('canvas_grey', 'Grey Canvas', lambda w, h: canvas(w, h, (0.22, 0.23, 0.2), (0.34, 0.34, 0.3))),
+    ('concrete', 'Concrete', lambda w, h: concrete(w, h)),
+    ('infinity_white', 'Infinity White', lambda w, h: infinity_white(w, h)),
+    ('kraft', 'Kraft Paper', lambda w, h: kraft(w, h)),
 )
 
 
-def gels(w, h):
-    """A dark sweep lit by two coloured gels - warm orange from the left, teal from the right."""
+def gels(w, h, left=(0.55, 0.22, 0.06), right=(0.04, 0.3, 0.36)):
+    """A dark sweep lit by two coloured gels - (by default) warm orange from the left, teal from the right."""
     base = sweep(w, h, (0.035, 0.035, 0.04), (0.05, 0.05, 0.055), spot=0.4, vig=1.0)
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
     u, t = (xx - w / 2) / h, yy / (h - 1)
-    warm = np.exp(-(((u + 0.45) / 0.45) ** 2 + ((t - 0.45) / 0.45) ** 2))[..., None] * np.array([0.55, 0.22, 0.06])
-    cool = np.exp(-(((u - 0.45) / 0.45) ** 2 + ((t - 0.45) / 0.45) ** 2))[..., None] * np.array([0.04, 0.3, 0.36])
+    warm = np.exp(-(((u + 0.45) / 0.45) ** 2 + ((t - 0.45) / 0.45) ** 2))[..., None] * np.array(left)
+    cool = np.exp(-(((u - 0.45) / 0.45) ** 2 + ((t - 0.45) / 0.45) ** 2))[..., None] * np.array(right)
     return base + warm + cool
+
+
+# --- 0.24.95 (user: "HDRI 픽쳐 배경 30 개만 더 만들어 줘") the light-effect and texture backdrops ------------------
+
+def _ut(w, h):
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    return (xx - w / 2) / h, yy / (h - 1)                    # (across in heights, 0 top .. 1 bottom)
+
+
+def blinds(w, h):
+    """Late light through window blinds: soft slanted bright bars on a warm grey wall, fading out at the edges."""
+    col = sweep(w, h, (0.36, 0.34, 0.31), (0.42, 0.4, 0.37), spot=0.1, vig=0.8)
+    u, t = _ut(w, h)
+    a = np.radians(-28)
+    s = (u * np.cos(a) + t * np.sin(a)) / 0.085
+    f = s - np.floor(s)
+    bars = _smooth((0.5 - np.abs(f - 0.5) - 0.16) / 0.12)
+    patch = np.exp(-(((u + 0.1) / 0.5) ** 2 + ((t - 0.42) / 0.3) ** 2))
+    return col * (1.0 + 0.95 * (_blur(bars * patch, 3))[..., None] * np.array([1.0, 0.86, 0.66]))
+
+
+def dappled(w, h):
+    """Sun through leaves: round soft spots of warm light (the gaps between leaves act as pinholes) on a sage-grey
+    wall, thick in the middle, thinning out."""
+    col = sweep(w, h, (0.3, 0.33, 0.28), (0.36, 0.38, 0.33), spot=0.1, vig=0.8)
+    u, t = _ut(w, h)
+    rng = np.random.default_rng(5)
+    light = np.zeros((h, w), np.float32)
+    for _k in range(260):
+        cu, ct = rng.normal(0.0, 0.32), rng.normal(0.42, 0.22)
+        rad = rng.uniform(0.008, 0.03)
+        light = np.maximum(light, np.exp(-(((u - cu) / (rad * 1.3)) ** 2 + ((t - ct) / rad) ** 2)) *
+                           rng.uniform(0.5, 1.0))
+    return col * (1.0 + 1.1 * light[..., None] * np.array([1.0, 0.9, 0.62]))
+
+
+def split_tone(w, h):
+    """A grey sweep washed warm from the left and cool from the right, meeting softly behind the subject."""
+    col = sweep(w, h, (0.32, 0.32, 0.32), (0.38, 0.38, 0.38), spot=0.3, vig=0.9)
+    u, _t = _ut(w, h)
+    k = _smooth(u / (w / h) + 0.5)[..., None]
+    return col * (np.array([1.35, 1.0, 0.7]) * (1 - k) + np.array([0.7, 0.95, 1.35]) * k)
+
+
+def halo(w, h):
+    """A ring light behind the subject on a near-black wall: a bright thin ring with a soft glow."""
+    col = sweep(w, h, (0.02, 0.02, 0.025), (0.03, 0.03, 0.035), spot=0.0, vig=1.0)
+    u, t = _ut(w, h)
+    r = np.sqrt(u ** 2 + (t - 0.44) ** 2)
+    ring = np.exp(-((r - 0.27) / 0.012) ** 2) * 0.9 + np.exp(-((r - 0.27) / 0.07) ** 2) * 0.12
+    return col + ring[..., None] * np.array([0.95, 0.97, 1.0])
+
+
+def spotlight(w, h):
+    """A spotlight pool on a black sweep - theatre-like: bright in the middle, a soft rim, a pool on the floor."""
+    col = sweep(w, h, (0.012, 0.012, 0.014), (0.02, 0.02, 0.022), spot=0.0, vig=1.0)
+    u, t = _ut(w, h)
+    r = np.sqrt((u / 0.3) ** 2 + ((t - 0.46) / 0.34) ** 2)
+    pool = (1 - _smooth((r - 0.8) / 0.25)) * (0.75 - 0.45 * r * r)
+    floor = np.exp(-((u / 0.42) ** 2 + ((t - 0.9) / 0.07) ** 2)) * 0.25
+    return col + np.clip(pool + floor, 0, None)[..., None] * np.array([0.95, 0.92, 0.85])
+
+
+def bokeh(w, h):
+    """Out-of-focus lights behind the subject: soft coloured discs on a dark blue-grey."""
+    col = sweep(w, h, (0.03, 0.035, 0.05), (0.04, 0.045, 0.06), spot=0.3, vig=1.0)
+    u, t = _ut(w, h)
+    rng = np.random.default_rng(21)
+    hues = ((1.0, 0.65, 0.25), (1.0, 0.85, 0.5), (0.4, 0.7, 1.0), (1.0, 0.4, 0.5), (0.6, 1.0, 0.8))
+    for _k in range(46):
+        cu, ct = rng.uniform(-0.5 * w / h, 0.5 * w / h), rng.uniform(0.0, 1.0)
+        rad = rng.uniform(0.02, 0.07)
+        d = np.sqrt((u - cu) ** 2 + (t - ct) ** 2)
+        disc = 1 - _smooth((d - rad * 0.85) / (rad * 0.15))
+        col = col + (disc * rng.uniform(0.06, 0.2))[..., None] * np.array(hues[_k % len(hues)])
+    return col
+
+
+def beam(w, h):
+    """A shaft of light falling from the top left through haze onto a dark blue set."""
+    col = sweep(w, h, (0.03, 0.045, 0.07), (0.045, 0.06, 0.085), spot=0.3, vig=1.0)
+    u, t = _ut(w, h)
+    c = -0.35 + t * 0.55
+    wdt = 0.06 + t * 0.16
+    shaft = np.exp(-((u - c) / wdt) ** 2) * (0.35 + 0.65 * (1 - t))
+    haze = 0.7 + 0.6 * _noise(w, h, 6, 3)
+    return col + (shaft * haze * 0.5)[..., None] * np.array([0.75, 0.88, 1.0])
+
+
+def sunset_gradient(w, h):
+    """A studio gradient backdrop: violet at the top fading to warm orange at the floor."""
+    col = sweep(w, h, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), spot=0.25, top_dark=0.0, vig=0.7)
+    _u, t = _ut(w, h)
+    k = _smooth(t / 0.9)[..., None]
+    return col * (np.array([0.42, 0.2, 0.62]) * (1 - k) + np.array([1.5, 0.75, 0.32]) * k)
+
+
+def concrete(w, h):
+    """A bare concrete wall and floor: grey, mottled, a few darker stains."""
+    col = sweep(w, h, (0.36, 0.36, 0.35), (0.3, 0.3, 0.29), spot=0.2, vig=0.8, paper=0.0)
+    fine = _noise(w, h, 140, 2)
+    mid = _noise(w, h, 20, 3)
+    stain = _smooth((_noise(w, h, 5, 2) - 0.6) / 0.15)
+    return col * (0.82 + 0.22 * fine + 0.12 * mid - 0.18 * stain)[..., None]
+
+
+def infinity_white(w, h):
+    """A white infinity cove: almost no horizon, a soft shadow pool on the floor."""
+    col = sweep(w, h, (0.93, 0.93, 0.935), (0.97, 0.97, 0.975), spot=0.05, top_dark=0.08, vig=0.25)
+    u, t = _ut(w, h)
+    shade = np.exp(-((u / 0.35) ** 2 + ((t - 0.86) / 0.07) ** 2)) * 0.1
+    return col * (1 - shade)[..., None]
+
+
+def kraft(w, h):
+    """Brown kraft paper: warm, fibrous, lit softly from the top."""
+    col = sweep(w, h, (0.5, 0.37, 0.23), (0.55, 0.41, 0.26), spot=0.2, vig=0.8, paper=0.0)
+    fib = _noise(w, h, 260, 2)
+    blot = _noise(w, h, 9, 3)
+    return col * (0.86 + 0.16 * fib + 0.1 * blot)[..., None]
 
 
 def canvas(w, h, c1=(0.22, 0.25, 0.27), c2=(0.33, 0.3, 0.26)):
@@ -155,10 +311,17 @@ def write(path, rgb):
 
 
 def main():
+    """Every look not made yet (``--force``: all of them again; names after ``--``: only those)."""
     os.makedirs(OUT, exist_ok=True)
+    args = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
+    force = '--force' in sys.argv
     for key, _name, fn in LOOKS:
+        if args and key not in args:
+            continue
         for tag, (w, h) in (('land', (1920, 1080)), ('port', (1080, 1920))):
             p = os.path.join(OUT, f'{key}_{tag}.jpg')
+            if os.path.isfile(p) and not force and not args:
+                continue
             write(p, fn(w, h))
             print(p, os.path.getsize(p))
 

@@ -1,7 +1,7 @@
 """0.24.95 A picture behind the model (user: "hdri 배경 컬러 말고 내가 원하는 배경 이미지를 넣을 수 있게 해 줄래? 너가 기본으로
 몇 장 넣어 줘 세로 가로 그 이후에는 내가 폴더로 불러올게", "배경은 스튜디오 이미지처럼 해 줘"):
 
-* 18 studio backdrops come with the add-on, each wide (16 : 9) and tall (9 : 16); the user's folder (and the folders in
+* 48 studio backdrops come with the add-on, each wide (16 : 9) and tall (9 : 16); the user's folder (and the folders in
   it) after them
 * a preview clicked: that picture behind the model - the HDRI background hidden, the HDRI world on; rendered (Cycles
   and EEVEE): Fill - the frame covered (a red | blue picture: red left, blue right); Fit - a tall picture whole in the
@@ -28,10 +28,11 @@ sc = C.scene
 built = bd.builtin_files()
 ents = bd.entries()
 asp = [round(bd.aspect(bd.path(bd.BUILTIN + f)), 2) for f in built]
-check('18 studio backdrops come with the add-on (8, then 10 more: "프리셋 한 열 장만 더"), each wide (16:9) and tall '
-      '(9:16), named', len(built) == 36 and asp.count(1.78) == 18 and asp.count(0.56) == 18
+check('48 studio backdrops come with the add-on (8, then 10 more: "프리셋 한 열 장만 더", then 30 more: "30 개만 더"), each '
+      'wide (16:9) and tall (9:16), named', len(built) == 96 and asp.count(1.78) == 48 and asp.count(0.56) == 48
       and ('B:white_sweep_land.jpg', 'Studio White') in ents and ('B:canvas_port.jpg', 'Canvas - Tall') in ents
-      and ('B:gels_land.jpg', 'Colour Gels') in ents and ('B:canvas_brown_port.jpg', 'Brown Canvas - Tall') in ents,
+      and ('B:gels_land.jpg', 'Colour Gels') in ents and ('B:canvas_brown_port.jpg', 'Brown Canvas - Tall') in ents
+      and ('B:blinds_land.jpg', 'Window Blinds') in ents and ('B:kraft_port.jpg', 'Kraft Paper - Tall') in ents,
       (len(built), asp[:4]))
 
 # the user's folder: a red | blue picture (2 : 1) in a folder inside, a tall one red over blue
@@ -68,7 +69,7 @@ workspace_ui.pref = lambda name, default=True: mine if name == 'bg_folder' else 
 bd.rescan()
 ids = [e[0] for e in bd.entries()]
 check('... your folder after them (the folders inside it too)', ids[-2:] == ['U:tall.png', 'U:Sub/redblue.png']
-      and len(ids) == 38, ids[-3:])
+      and len(ids) == 98, ids[-3:])
 
 # the scene: a grey ball, a camera, 16 : 9
 bpy.ops.mesh.primitive_uv_sphere_add(radius=0.6)
@@ -192,9 +193,9 @@ check('An HDRI world made before (no picture nodes): made anew, the picture in i
 its, _h = mu.hdri_content(C, 0.0, 276.0, 1.0)
 btns = {i.label: i for i in its if i.kind == 'tbtn'}
 tiles = [i for i in its if i.kind == 'btile']
-check('The HDRI page, Background: Colour | Picture, Fill | Fit, previews 6 on a page (38: 7 pages), Choose Folder',
+check('The HDRI page, Background: Colour | Picture, Fill | Fit, previews 6 on a page (98: 17 pages), Choose Folder',
       {'Colour', 'Picture', 'Fill', 'Fit', 'Choose Folder…'} <= set(btns) and btns['Picture'].on
-      and len(tiles) == 2 and any(t.on for t in tiles) and any(i.label == 'Page 7 / 7' for i in its),
+      and len(tiles) == 2 and any(t.on for t in tiles) and any(i.label == 'Page 17 / 17' for i in its),
       (sorted(btns)[:12], len(tiles)))
 check('... a tall picture\'s tile knows it is tall (fitted in, not stretched)',
       any(t.label == 'tall' and abs(t.data - 0.5) < 0.01 for t in tiles))

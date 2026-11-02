@@ -24,7 +24,16 @@ LOOKS = (('white_sweep', 'Studio White'), ('light_grey', 'Light Grey'), ('mid_gr
          ('charcoal', 'Charcoal'), ('black_key', 'Black'), ('warm_paper', 'Warm Paper'), ('cool_blue', 'Cool Blue'),
          ('canvas', 'Canvas'), ('olive', 'Olive'), ('teal', 'Teal'), ('navy', 'Navy'), ('burgundy', 'Burgundy'),
          ('sand', 'Sand'), ('mint', 'Mint'), ('peach', 'Peach'), ('slate', 'Slate'), ('gels', 'Colour Gels'),
-         ('canvas_brown', 'Brown Canvas'))
+         ('canvas_brown', 'Brown Canvas'),
+         # (0.24.95 user: "HDRI 픽쳐 배경 30 개만 더 만들어 줘": 15 paper colours, 15 light effects and textures)
+         ('coral', 'Coral'), ('lavender', 'Lavender'), ('sky_blue', 'Sky Blue'), ('lemon', 'Lemon'),
+         ('forest', 'Forest Green'), ('plum', 'Plum'), ('rust', 'Rust Orange'), ('ice', 'Ice Blue'), ('cream', 'Cream'),
+         ('blush', 'Blush Pink'), ('mustard', 'Mustard'), ('sage', 'Sage'), ('midnight', 'Midnight'),
+         ('warm_grey', 'Warm Grey'), ('crimson', 'Crimson'), ('blinds', 'Window Blinds'), ('dappled', 'Dappled Light'),
+         ('split_tone', 'Warm / Cool'), ('halo', 'Halo Ring'), ('spotlight', 'Spotlight'), ('bokeh', 'Bokeh'),
+         ('beam', 'Light Beam'), ('gels_red_cyan', 'Gels Red / Cyan'), ('gels_purple_orange', 'Gels Purple / Orange'),
+         ('sunset_gradient', 'Sunset Gradient'), ('canvas_blue', 'Blue Canvas'), ('canvas_grey', 'Grey Canvas'),
+         ('concrete', 'Concrete'), ('infinity_white', 'Infinity White'), ('kraft', 'Kraft Paper'))
 PAGE = 6
 SCAN_EVERY = 3.0
 SCAN_MAX = 3000
