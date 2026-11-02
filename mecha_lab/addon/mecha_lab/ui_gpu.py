@@ -359,6 +359,15 @@ def glyph(name, x, y, size, color=TEXT, width=2.0):
         polyline(circle_pts(cx, cy, s * .34), color, width)
         polyline(circle_pts(cx - s * .12, cy + s * .12, s * .07, 12), color, width * 0.8)   # the highlight
         polyline(circle_pts(cx + s * .05, cy - s * .05, s * .22, 16, 285.0, 375.0), color, width * 0.6)   # its shade
+    elif name == 'creature':                     # 0.24.95 Creature page: a reptile eye (an almond, a slit pupil)
+        polyline([P(.08, .50), P(.28, .70), P(.50, .78), P(.72, .70), P(.92, .50), P(.72, .30), P(.50, .22),
+                  P(.28, .30)], color, width, True)
+        polyline(circle_pts(cx, cy, s * .20, 16), color, width * 0.8)
+        polyline([P(.50, .66), P(.54, .50), P(.50, .34), P(.46, .50)], color, width * 0.8, True)
+    elif name == 'decal':                        # 0.24.95 Decals page: a sticker, its corner peeling
+        polyline([P(.15, .15), P(.85, .15), P(.85, .62), P(.62, .85), P(.15, .85)], color, width, True)
+        polyline([P(.85, .62), P(.64, .64), P(.62, .85)], color, width * 0.8)
+        lines([(P(.28, .30), P(.58, .60)), (P(.40, .28), P(.70, .30))], color, width * 0.6)
     elif name == 'hdri':                         # 0.24.95 HDRI: a globe (the world round the model)
         polyline(circle_pts(cx, cy, s * .34), color, width)
         polyline([(cx - s * .34, cy), (cx + s * .34, cy)], color, width * 0.6)

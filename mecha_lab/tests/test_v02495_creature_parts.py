@@ -22,7 +22,7 @@ OLD = ['HUMAN', 'REPTILE', 'SNAKE', 'AMPHIBIAN', 'HIDE', 'DRAGON', 'CHITIN', 'ME
 
 
 def page():
-    return mu.content(C, 0.0, 276.0, 1.0)
+    return mu.creature_page(C, 0.0, 276.0, 1.0)              # (0.24.95 the Creature page of its own)
 
 
 def heads(its):
@@ -84,6 +84,6 @@ check('The eye\'s own page: Eyes (7 balls with icons), Iris & Pupil, White / Cor
       <= props)
 bpy.ops.mesh.primitive_cube_add(location=(0, -6, 0))
 its, _h = page()
-check('No material: the Creature Shader section has the Parts too (4 balls)',
+check('No material: the Creature page has the Parts too (4 balls)',
       len([i for i in its if i.kind == 'mtile' and i.action[:2] == ('op', 'mch.creature_part')]) == 4)
 summary()

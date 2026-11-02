@@ -39,7 +39,7 @@ def monkey(name, size=2.0):
 
 
 def page():
-    return mu.content(C, 0.0, 276.0, 1.0)
+    return mu.creature_page(C, 0.0, 276.0, 1.0)              # (0.24.95 the Creature page of its own)
 
 
 # ---- the maps
@@ -176,8 +176,12 @@ plain = C.active_object
 select(plain)
 its, h = page()
 ctiles = [i for i in its if i.kind == 'mtile' and i.action[:2] == ('op', 'mch.creature_apply')]
-check('No material: the Mech presets and a Creature Shader section (14 skin-type balls - a click applies one)',
-      len(ctiles) == 14 and any(i.kind == 'shead' and i.label.startswith('CREATURE SHADER') for i in its))
+check('No material, the Creature page: Skin Types (14 balls - a click applies one) and Parts',
+      len(ctiles) == 14 and any(i.kind == 'shead' and i.label.startswith('SKIN TYPES') for i in its)
+      and any(i.kind == 'shead' and i.label.startswith('PARTS') for i in its))
+mits, _h = mu.content(C, 0.0, 276.0, 1.0)
+check('... and the Mech page no creature balls any more (user: "메테리얼도 크리쳐랑 메카닉이랑 좀 분리해 줘")',
+      not any(i.kind == 'mtile' and i.action[:2] == ('op', 'mch.creature_apply') for i in mits))
 
 # ---- unlink works for a creature material
 a = monkey('A')

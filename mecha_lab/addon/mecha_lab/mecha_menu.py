@@ -712,9 +712,9 @@ def _draw_new(it, hot, S, white, dim):
         label = G.fit(it.label, size, w - 6 * S)
         G.text(x + w / 2, y + band * 0.5, label, size, white, 'CENTER')
         return (it, 'ABOVE') if hot and label != it.label else None
-    if k == 'ptab':                       # 0.24.95 side panel page tab (the tool | Material): a pill, blue = shown
+    if k == 'ptab':                       # 0.24.95 side panel page tab (Tool | Mech | Creature | Decals | HDRI): a pill
         G.rounded_rect(x, y, w, h, h / 2, G.ACCENT if it.on else (BTN_HOT if hot else BTN_BG))
-        G.text(x + w / 2, y + h / 2, G.fit(it.label, 12 * S, w - 12 * S), 12 * S, white if it.enabled or it.on
+        G.text(x + w / 2, y + h / 2, G.fit(it.label, 11 * S, w - 6 * S), 11 * S, white if it.enabled or it.on
                else G.TEXT_DIM, 'CENTER')
         return None
     if k == 'swatch':                     # 0.24.95 a colour: its name ... the colour (click = colour picker)

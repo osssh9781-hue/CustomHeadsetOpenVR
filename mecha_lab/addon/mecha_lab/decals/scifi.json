@@ -1,0 +1,122 @@
+{
+ "SF_HIGH_VOLTAGE": [
+  "High Voltage",
+  1.1315
+ ],
+ "SF_RADIATION": [
+  "Radiation",
+  1.0031
+ ],
+ "SF_BIOHAZARD": [
+  "Biohazard",
+  0.91
+ ],
+ "SF_LASER": [
+  "Laser",
+  1.1597
+ ],
+ "SF_CRUSH_HAZARD": [
+  "Crush Hazard",
+  1.1506
+ ],
+ "SF_HOT_SURFACE": [
+  "Hot Surface",
+  1.1812
+ ],
+ "SF_HIGH_PRESSURE": [
+  "High Pressure",
+  0.9961
+ ],
+ "SF_ISOLATION_SWITCH": [
+  "Isolation Switch",
+  1.0373
+ ],
+ "SF_ROTOR": [
+  "Rotor",
+  0.9969
+ ],
+ "SF_CRYOGENIC": [
+  "Cryogenic",
+  0.8818
+ ],
+ "SF_AIRLOCK": [
+  "Airlock",
+  1.0357
+ ],
+ "SF_EMERGENCY_RELEASE": [
+  "Emergency Release",
+  1.0664
+ ],
+ "SF_LIFT_POINT": [
+  "Lift Point",
+  0.8927
+ ],
+ "SF_CENTER_OF_MASS": [
+  "Center of Mass",
+  0.9957
+ ],
+ "SF_ALIGNMENT": [
+  "Alignment",
+  1.0758
+ ],
+ "SF_DIRECTION_ARROWS": [
+  "Direction Arrows",
+  3.2872
+ ],
+ "SF_HAZARD_STRIPE": [
+  "Hazard Stripe",
+  6.6234
+ ],
+ "SF_LANDING_CLEARANCE": [
+  "Landing Clearance",
+  1.056
+ ],
+ "SF_NO_ENTRY": [
+  "No Entry",
+  0.9959
+ ],
+ "SF_PINCH_POINT": [
+  "Pinch Point",
+  1.1581
+ ],
+ "SF_MAGNETIC_FIELD": [
+  "Magnetic Field",
+  1.3087
+ ],
+ "SF_GROUND": [
+  "Ground",
+  0.9977
+ ],
+ "SF_FLUID_PORT": [
+  "Fluid Port",
+  1.0011
+ ],
+ "SF_FLAMMABLE": [
+  "Flammable",
+  1.002
+ ],
+ "SF_OXYGEN_PORT": [
+  "Oxygen Port",
+  0.9315
+ ],
+ "SF_VACUUM": [
+  "Vacuum",
+  1.0022
+ ],
+ "SF_MECHANICAL_LOCK": [
+  "Mechanical Lock",
+  0.9956
+ ],
+ "SF_ROBOTIC_ARM": [
+  "Robotic Arm",
+  1.0078
+ ],
+ "SF_POWER_CORE": [
+  "Power Core",
+  0.9924
+ ],
+ "SF_HULL_EMBLEM": [
+  "Hull Emblem",
+  0.8781
+ ]
+}

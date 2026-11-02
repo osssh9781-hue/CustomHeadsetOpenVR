@@ -580,12 +580,15 @@ class MCH_PT_ui_value(bpy.types.Panel):
 
 
 class MCH_OT_side_page(bpy.types.Operator):
-    """Show the tool's settings, the material (Mech Shader) or the HDRI in the Mecha Lab side panel"""
+    """Show the tool's settings, the Mech Shader, the Creature Shader, the decals or the HDRI in the Mecha Lab side
+    panel"""
     bl_idname = 'mch.side_page'
     bl_label = 'Side Panel Page'
     bl_options = {'INTERNAL'}
     page: bpy.props.EnumProperty(items=[('TOOL', 'Tool', 'The tool\'s settings'),
-                                        ('MATERIAL', 'Material', 'Mech Shader'),
+                                        ('MATERIAL', 'Mech', 'The Mech Shader'),
+                                        ('CREATURE', 'Creature', 'The Creature Shader (skins, parts, eyes)'),
+                                        ('DECALS', 'Decals', 'Decals: place them, their look and damage'),
                                         ('HDRI', 'HDRI', 'The scene\'s HDRI lighting')], default='MATERIAL')
 
     def execute(self, context):
@@ -741,7 +744,8 @@ def register():
     wmt.mch_ui_hover = FloatVectorProperty(size=2, default=(-1.0, -1.0), options={'SKIP_SAVE'})
     wmt.mch_side_scroll = FloatProperty(default=0.0, min=0.0, options={'SKIP_SAVE'})
     wmt.mch_side_min = BoolProperty(default=False, options={'SKIP_SAVE'})
-    wmt.mch_side_page = bpy.props.EnumProperty(items=[('TOOL', 'Tool', ''), ('MATERIAL', 'Material', ''),
+    wmt.mch_side_page = bpy.props.EnumProperty(items=[('TOOL', 'Tool', ''), ('MATERIAL', 'Mech', ''),
+                                                      ('CREATURE', 'Creature', ''), ('DECALS', 'Decals', ''),
                                                       ('HDRI', 'HDRI', '')], default='TOOL', options={'SKIP_SAVE'})
     for c in CLASSES:
         bpy.utils.register_class(c)

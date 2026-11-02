@@ -58,7 +58,7 @@ st.condition = 'BLOODY'
 st.condition = 'MUD_CAKED'
 check('Stack off: a Condition replaces the one there (as before)', st.blood == 0.0 and st.mud > 0.5)
 check('... the Material page: a "Stack - add on top" switch in Conditions',
-      any(getattr(i, 'prop', '') == 'cond_stack' for i in mu.content(C, 0.0, 276.0, 1.0)[0]))
+      any(getattr(i, 'prop', '') == 'cond_stack' for i in mu.creature_page(C, 0.0, 276.0, 1.0)[0]))
 
 # ---- stronger conditions
 spec = dict((k, s) for k, _n, s in cs.CONDITIONS)
@@ -79,7 +79,7 @@ check('Seed: every map moved (a vector added to the object coordinates before th
       and all(n.inputs['Vector'].is_linked for n in nodes if n.type == 'TEX_IMAGE'))
 st.skin_type = 'HUMAN'
 check('... a Skin Type keeps the Seed (it is this creature\'s, not the look)', st.seed == 7.0)
-its, _h = mu.content(C, 0.0, 276.0, 1.0)
+its, _h = mu.creature_page(C, 0.0, 276.0, 1.0)
 props = {getattr(i, 'prop', '') for i in its}
 check('... on the page: Belly + its colour (Color), Seed (Height & Detail)', {'belly', 'belly_color'} <= props)
 
@@ -101,7 +101,7 @@ check('... applied on another creature: its settings (mud 0.42, hue 0.12, Human 
       r == {'FINISHED'} and abs(ost.mud - 0.42) < 1e-6 and abs(ost.base_hue - 0.12) < 1e-6
       and ost.skin_type == 'HUMAN' and abs(ost.size - max(other.dimensions) / 2) < 1e-4
       and abs(other.active_material.node_tree.nodes['mch:mud'].outputs[0].default_value - 0.42) < 1e-6)
-its, _h = mu.content(C, 0.0, 276.0, 1.0)
+its, _h = mu.creature_page(C, 0.0, 276.0, 1.0)
 tiles = [i for i in its if i.kind == 'mtile' and i.action[:2] == ('op', 'mch.my_preset_apply')]
 check('... a ball for it in My Presets', [t.label for t in tiles] == ['Swamp Lizard'])
 # a mech one, kept apart

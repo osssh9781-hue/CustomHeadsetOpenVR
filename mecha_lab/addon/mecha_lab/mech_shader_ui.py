@@ -13,6 +13,10 @@ settings were only in a Blender sidebar panel (Mecha Lab tab).  They are drawn h
   많이"): its own presets (◀ [preset] ▶, 24), the mask (map, follow edges, reach, softness, breakup, scale), what
   shows at the chips (edge material: colour, texture, metallic, roughness, polish), the primer, the depth
 * the HDRI is a page of its own (user: "재질이랑 hdri는 분리해야지"): the tabs Tool | Material | HDRI
+* 0.24.95 (user: "이건 데칼 탭으로 가자! 메테리얼도 크리쳐랑 메카닉이랑 좀 분리해 줘") the tabs Tool | Mech | Creature |
+  Decals | HDRI: the Mech page only the Mech Shader, the Creature page the Creature Shader (skins, parts, the eye), the
+  Decals page the decal library (Sci-Fi full-colour + two-tone + text) and the selected decal's settings; a page shown
+  with the other kind selected says so and has a button to its page
 * the presets as sphere icons (user: "메테리얼 창도 아이콘으로 보이게 해 줄래? 구 형태로"): a grid of shader balls
   (``mech_icons/mat_<ID>.png``, ``wear_<ID>.png`` - made by ``tools_dev/make_mech_preset_icons.py``), click = that
   preset; the one in use is blue
@@ -199,19 +203,15 @@ def content(context, x, width, k):
     sc = context.scene
     ob = getattr(context, 'active_object', None)
     from . import decals as dc
-    if dc.is_decal(ob):                              # (0.24.95 a decal's own page)
-        decal_content(b, x, width, ob)
-        return b.out, -b.y
-    emat = cs.active_eye(context)
-    if emat is not None:                             # (0.24.95 an eye's own page)
-        eye_content(b, x, width, emat)
-        return b.out, -b.y
-    cmat = cs.active_creature(context)
-    if cmat is not None:                             # (0.24.95 the Creature Shader's own page)
-        creature_content(b, x, width, cmat)
+    if dc.is_decal(ob):                              # (0.24.95 a decal: its settings are on the Decals page)
+        elsewhere(b, x, width, f'"{ob.name}" is a decal - its settings are on the Decals page', 'DECALS')
         return b.out, -b.y
     mat = ms.active_mech(context)
     if mat is None:
+        other = cs.active_eye(context) or cs.active_creature(context)
+        if other is not None:                        # (0.24.95 a Creature material: its own page; Apply = Mech)
+            elsewhere(b, x, width, f'"{other.name}" is a Creature material - its settings are on the Creature page',
+                      'CREATURE')
         _preset_stepper(b, sc, 'mch_mech_preset', x, width)
         row(b, x, width, [button('Apply Mech Shader', 'mch.mech_shader_apply', preset='')])
 
@@ -220,12 +220,10 @@ def content(context, x, width, k):
                                                                           {'preset': kk}), None, None)
                              for kk, n, _s in ms.PRESETS])
         section(b, 'presets', 'Presets', x, width, presets0)
-        creature_apply_section(b, x, width, sc, start_folded=False)
-        decals_section(b, x, width)
         other = getattr(ob, 'active_material', None) if ob is not None else None
         if ob is None or ob.type != 'MESH':
             b.note(('note', 'Select meshes, then Apply', False, None, None, None, True), x, width)
-        elif other is not None:
+        elif other is not None and not (cs.is_creature(other) or cs.is_eye(other)):
             b.note(('note', f'"{other.name}" is not a Mech material - Apply makes one', False, None, None, None,
                     True), x, width)
         return b.out, -b.y
@@ -312,15 +310,68 @@ def content(context, x, width, k):
         for p in DETAIL:
             row(b, sx, sw, [prop_cell(st, p)])
     section(b, 'detail', 'Height & Detail', x, width, detail, start_folded=True)
-    decals_section(b, x, width)
-    creature_apply_section(b, x, width, sc, start_folded=True)
+    return b.out, -b.y
+
+
+PAGE_NAMES = {'MATERIAL': 'Mech', 'CREATURE': 'Creature', 'DECALS': 'Decals', 'HDRI': 'HDRI'}
+
+
+def elsewhere(b, x, width, text, page):
+    """0.24.95 What is selected belongs on another page: a line saying so + a button to that page."""
+    b.note(('note', text, True, None, None, None, True), x, width)
+    row(b, x, width, [button(f'Open the {PAGE_NAMES[page]} Page', 'mch.side_page', page=page)])
+    b.gap(0.6)
+
+
+def creature_page(context, x, width, k):
+    """0.24.95 (items, content height) - the Creature page (user: "메테리얼도 크리쳐랑 메카닉이랑 좀 분리해 줘"): the
+    Creature Shader material's own settings, the eye's, or (none of them selected) the skin types and parts to put on
+    the selected meshes."""
+    from . import creature_shader as cs
+    from . import decals as dc
+    from . import mech_shader as ms
+    b = sp.Builder(PAGE, x, width, k)
+    sc = context.scene
+    ob = getattr(context, 'active_object', None)
+    if dc.is_decal(ob):
+        elsewhere(b, x, width, f'"{ob.name}" is a decal - its settings are on the Decals page', 'DECALS')
+        return b.out, -b.y
+    emat = cs.active_eye(context)
+    if emat is not None:                             # (an eye's own page)
+        eye_content(b, x, width, emat)
+        return b.out, -b.y
+    cmat = cs.active_creature(context)
+    if cmat is not None:
+        creature_content(b, x, width, cmat)
+        return b.out, -b.y
+    mech = ms.active_mech(context)
+    if mech is not None:
+        elsewhere(b, x, width, f'"{mech.name}" is a Mech material - its settings are on the Mech page', 'MATERIAL')
+    creature_apply_section(b, x, width, sc, start_folded=False)
+    if ob is None or ob.type != 'MESH':
+        b.note(('note', 'Select meshes, then click a skin type or a part', False, None, None, None, True), x, width)
+    return b.out, -b.y
+
+
+def decal_page(context, x, width, k):
+    """0.24.95 (items, content height) - the Decals page (user: "이건 데칼 탭으로 가자!"): the selected decal's settings
+    (look, damage, size), then the library - Sci-Fi Signs (full colour), Two-Tone, Text."""
+    from . import decals as dc
+    b = sp.Builder(PAGE, x, width, k)
+    ob = getattr(context, 'active_object', None)
+    if dc.is_decal(ob):
+        decal_content(b, x, width, ob)
+        decal_library(b, x, width, start_folded=True)
+    else:
+        decal_library(b, x, width, start_folded=False)
     return b.out, -b.y
 
 
 # --- the Creature Shader (0.24.95 user: "크리쳐 전용으로" - polypaint as the colour, layers from the shape) ------------
 
 def creature_apply_section(b, x, width, sc, start_folded):
-    """The Creature Shader's skin types as balls: a click puts a new Creature material on the selected meshes."""
+    """The Creature Shader's skin types as balls: a click puts a new Creature material on the selected meshes; the
+    parts (eye, teeth, gums, claw) the same."""
     from . import creature_shader as cs
 
     def fill(sx, sw):
@@ -329,9 +380,13 @@ def creature_apply_section(b, x, width, sc, start_folded):
         grid(b, sx, sw, [(n, icon('cskin', kk), sc.mch_creature_skin == kk,
                           ('op', 'mch.creature_apply', {'skin': kk}), None, None)
                          for kk, n, _s in cs.SKINS if kk not in cs.PART_SKINS])
-        sub(b, 'Parts - eyes, teeth, gums, claws', sx, sw)
+    section(b, 'cr_apply', 'Skin Types', x, width, fill, start_folded=start_folded)
+
+    def parts(sx, sw):
+        b.note(('note', 'Eyes, teeth, gums, claws - a material of that part on the selected meshes', False, None,
+                None, None, True), sx, sw)
         parts_grid(b, sx, sw)
-    section(b, 'cr_apply', 'Creature Shader', x, width, fill, start_folded=start_folded)
+    section(b, 'cr_apply_parts', 'Parts', x, width, parts, start_folded=start_folded)
 
 
 def parts_grid(b, sx, sw):
@@ -342,16 +397,26 @@ def parts_grid(b, sx, sw):
                      for kk, n in cs.PARTS])
 
 
-def decals_section(b, x, width, start_folded=True):
-    """0.24.95 Decals (user picked "데칼 - 번호, 경고 줄무늬, 로고"): a ball per decal - click it, then click a part."""
+def decal_library(b, x, width, start_folded=False):
+    """0.24.95 The decal library (user picked "데칼 - 번호, 경고 줄무늬, 로고"; "추가 데칼이야! 이거도 추가해 줘"): a ball per
+    decal - click it, then click a part.  Sci-Fi Signs (the user's 30, their own colours), Two-Tone (24, any two
+    colours), Text."""
     from . import decals as dc
+    sfx = '_open' if not start_folded else ''            # (opened on the library page, folded under a decal's own)
+    b.note(('note', 'Click a decal, then click a part (Esc: cancel)', False, None, None, None, True), x, width)
+    row(b, x, width, [button('Text Decal...', 'mch.decal_text')])
 
-    def fill(sx, sw):
-        b.note(('note', 'Click a decal, then click a part (Esc: cancel)', False, None, None, None, True), sx, sw)
-        row(b, sx, sw, [button('Text Decal...', 'mch.decal_text')])
+    def scifi(sx, sw):
+        grid(b, sx, sw, [(lab, icon('decal', kk), False, ('op', 'mch.decal_place', {'decal': kk}), None, None)
+                         for kk, (lab, _r) in dc.COLOR_DECALS.items()])
+    section(b, 'decals_scifi' + sfx, 'Sci-Fi Signs', x, width, scifi, start_folded=start_folded,
+            summary=str(len(dc.COLOR_DECALS)))
+
+    def two(sx, sw):
+        b.note(('note', 'Two colours of your choice (Color 1 / Color 2)', False, None, None, None, True), sx, sw)
         grid(b, sx, sw, [(lab, icon('decal', kk), False, ('op', 'mch.decal_place', {'decal': kk}), None, None)
                          for kk, (lab, *_r) in dc.DECALS.items()])
-    section(b, 'decals', 'Decals', x, width, fill, start_folded=start_folded)
+    section(b, 'decals' + sfx, 'Two-Tone', x, width, two, start_folded=start_folded, summary=str(len(dc.DECALS)))
 
 
 def decal_content(b, x, width, ob):
@@ -359,14 +424,22 @@ def decal_content(b, x, width, ob):
     조절할 수 있게"), size / lift, Mirror / Apply / Delete."""
     from . import decals as dc
     st = getattr(ob, dc.KEY)
-    what = f'Text "{st.text}"' if st.kind == dc.TEXT else dc.DECALS.get(st.kind, ('Decal',))[0]
+    what = f'Text "{st.text}"' if st.kind == dc.TEXT else dc.label_of(st.kind)
     on = ob.parent.name if ob.parent is not None else '-'
     b.note(('note', f'Decal: {what}   on {on}', False, None, None, None, True), x, width)
     row(b, x, width, [button('Mirror X', 'mch.decal_mirror'), button('Apply', 'mch.decal_apply'),
                       button('Delete', 'mch.decal_delete')])
 
+    full = dc.is_full(st.kind)
+
     def look(sx, sw):
-        for p in ('color1', 'color2', 'opacity', 'roughness', 'metallic'):
+        if full:                                   # (its own colours: a tint, Hue / Saturation / Value)
+            row(b, sx, sw, [prop_cell(st, 'tint')])
+            row(b, sx, sw, [number(st, 'hue', 'Hue'), number(st, 'sat', 'Sat'), number(st, 'val', 'Val')])
+        else:
+            row(b, sx, sw, [prop_cell(st, 'color1')])
+            row(b, sx, sw, [prop_cell(st, 'color2')])
+        for p in ('opacity', 'roughness', 'metallic'):
             row(b, sx, sw, [prop_cell(st, p)])
     section(b, 'decal_look', 'Look', x, width, look)
 
@@ -381,7 +454,6 @@ def decal_content(b, x, width, ob):
             row(b, sx, sw, [prop_cell(st, p)])
         b.note(('note', 'G / R / S move it over the surface (it wraps on)', False, None, None, None, True), sx, sw)
     section(b, 'decal_place', 'Size & Place', x, width, place)
-    decals_section(b, x, width)
 
 
 def eye_content(b, x, width, mat):
@@ -549,8 +621,6 @@ def creature_content(b, x, width, mat):
         for p in ('bump', 'map_scale', 'seed', 'size'):
             row(b, sx, sw, [prop_cell(st, p)])
     section(b, 'cr_detail', 'Height & Detail', x, width, detail, start_folded=True)
-    decals_section(b, x, width)
-    row(b, x, width, [button('Switch to Mech Shader', 'mch.mech_shader_apply', preset='')])
 
 
 def sub(b, text, x, w):

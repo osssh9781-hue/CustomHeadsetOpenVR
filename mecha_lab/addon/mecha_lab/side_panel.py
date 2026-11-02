@@ -23,7 +23,10 @@ GAP = 6.0
 PAD = 12.0
 HEAD = 40.0
 TABS = 34.0              # 0.24.95 the Tool | Material | HDRI tabs under the title
-PAGES = {'MATERIAL': ('Material', 'material'), 'HDRI': ('HDRI', 'hdri')}    # page -> (title, icon)
+# page -> (title, icon); 0.24.95 (user: "이건 데칼 탭으로 가자! 메테리얼도 크리쳐랑 메카닉이랑 좀 분리해 줘") the Material
+# page split: Mech (the Mech Shader - still 'MATERIAL'), Creature (the Creature Shader, eyes), Decals
+PAGES = {'MATERIAL': ('Mech', 'material'), 'CREATURE': ('Creature', 'creature'), 'DECALS': ('Decals', 'decal'),
+         'HDRI': ('HDRI', 'hdri')}
 SECTION = 26.0
 NOTE = 17.0
 TOP_MARGIN = 150.0          # below the navigation gizmo
@@ -398,8 +401,8 @@ def _trees(context, tool):
 
 
 def page(context):
-    """0.24.95 What the panel shows: 'TOOL' (the tool's settings), 'MATERIAL' (Mech Shader) or 'HDRI' (the
-    scene's HDRI) - ``mech_shader_ui``; the three tabs at its top."""
+    """0.24.95 What the panel shows: 'TOOL' (the tool's settings), 'MATERIAL' (the Mech Shader), 'CREATURE' (the
+    Creature Shader), 'DECALS' (the decals) or 'HDRI' (the scene's HDRI) - ``mech_shader_ui``; the tabs at its top."""
     return getattr(context.window_manager, 'mch_side_page', 'TOOL')
 
 
@@ -411,6 +414,12 @@ def content(context, tool, x, width, k):
     if page(context) == 'HDRI':
         from . import mech_shader_ui
         return mech_shader_ui.hdri_content(context, x, width, k)
+    if page(context) == 'CREATURE':
+        from . import mech_shader_ui
+        return mech_shader_ui.creature_page(context, x, width, k)
+    if page(context) == 'DECALS':
+        from . import mech_shader_ui
+        return mech_shader_ui.decal_page(context, x, width, k)
     b = Builder(tool, x, width, k)
     tree, lt = _trees(context, tool)
     if tree is not None:
@@ -514,12 +523,18 @@ def layout(context, region_w, region_h, k=1.0):
     out.append(Item('pbtn', x0 + w - PAD * k - 26 * k, top - PAD * k - 30 * k, 26 * k, 26 * k, '–', '', False, True,
                     ('minimise',)))
     # 0.24.95 the pages: the tool's settings | Material (Mech Shader) | HDRI (user: "재질이랑 hdri는 분리해야지")
-    tabs = [(t[1] if t is not None else 'Tool', 'TOOL')] + [(PAGES[p][0], p) for p in PAGES]
-    tw = (w - 2 * PAD * k - (len(tabs) - 1) * GAP * k) / len(tabs)
+    # 0.24.95 five tabs (Tool | Mech | Creature | Decals | HDRI): each as wide as its name needs (the tool's own name
+    # is in the title above when its page is shown)
+    tabs = [('Tool', 'TOOL')] + [(PAGES[p][0], p) for p in PAGES]
+    gap = 4 * k
+    room = w - 2 * PAD * k - (len(tabs) - 1) * gap
+    weights = [len(label) + 3.0 for label, _p in tabs]
+    tx = x0 + PAD * k
     ty = top - PAD * k - HEAD * k - (TABS - 6) * k
-    for i, (label, p) in enumerate(tabs):
-        out.append(Item('ptab', x0 + PAD * k + i * (tw + GAP * k), ty, tw, (TABS - 8) * k, label, '', pg == p,
-                        True, ('page', p)))
+    for (label, p), wt in zip(tabs, weights):
+        tw = room * wt / sum(weights)
+        out.append(Item('ptab', tx, ty, tw, (TABS - 8) * k, label, '', pg == p, True, ('page', p)))
+        tx += tw + gap
     y_top = top - PAD * k - head
     cy, ch = y_top - view, view
     for it in rows:                              # only whole rows inside the window (no half-drawn rows)

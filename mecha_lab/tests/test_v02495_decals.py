@@ -4,7 +4,10 @@
 * 24 two-tone decals (white = Color 1, black = Color 2) + Text decals (a letter atlas)
 * a decal wraps onto the part's surface (Shrinkwrap along its normal) and is parented to it; Mirror X, Apply, Delete
 * damage in its shader: Wear (chips), Edge Peel, Scratches, Dirt, Fade, Damage Scale, Seed - all sliders
-* the Material page: a Decals section (a ball each, Text Decal...), a decal's own page"""
+* the Material page: a Decals section (a ball each, Text Decal...), a decal's own page
+* 0.24.95 (user: "추가 데칼이야! 이거도 추가해 줘 / 이건 데칼 탭으로 가자!"): the user's 30 Sci-Fi decals in full colour
+  (their own colours, sRGB; Tint, Hue / Saturation / Value), the Decals page of its own (the library + the selected
+  decal's settings); the Mech page with a decal selected points to it"""
 import math
 import os
 
@@ -20,7 +23,7 @@ C = bpy.context
 
 
 def page():
-    return mu.content(C, 0.0, 276.0, 1.0)
+    return mu.decal_page(C, 0.0, 276.0, 1.0)                 # (0.24.95 the Decals page of its own)
 
 
 def heads(its):
@@ -121,7 +124,47 @@ check('Apply: a plain mesh where it was wrapped (no modifiers, the same points)'
       and not dec.modifiers and len(dec.data.vertices) == n_before
       and np.abs(np.linalg.norm(evaluated_co(dec), axis=1) - (1.0 + lift)).max() < 0.004)
 
+# ---- a full-colour Sci-Fi decal (the user's pack)
+check('30 Sci-Fi decals (the user\'s pack, full colour): picture + ball icon each, sizes from the pictures (Hazard '
+      'Stripe long and thin)', len(dc.COLOR_DECALS) == 30 and all(
+          dc.image_path(kk).endswith('.webp') and os.path.isfile(os.path.join(icons, f'decal_{kk}.png'))
+          for kk in dc.COLOR_DECALS) and dc.COLOR_DECALS['SF_HAZARD_STRIPE'][1] > 5.0
+      and abs(dc.COLOR_DECALS['SF_RADIATION'][1] - 1.0) < 0.05)
+r = bpy.ops.mch.decal_place(decal='SF_HAZARD_STRIPE', target='Box', location=(0, 5, -0.4), normal=(0, -1, 0))
+sdec = C.active_object
+sst = sdec.mch_decal
+snodes = sdec.active_material.node_tree.nodes
+img = snodes['mch:img:decal'].image
+sco = evaluated_co(sdec)
+check('Place the Hazard Stripe: its own colours (the picture sRGB, with its alpha, the full-colour switch on), the '
+      'plane as long as the picture', r == {'FINISHED'} and sst.kind == 'SF_HAZARD_STRIPE'
+      and img.colorspace_settings.name == 'sRGB' and img.channels == 4 and img.file_format == 'WEBP'
+      and snodes['mch:full'].outputs[0].default_value == 1.0
+      and abs((sco[:, 0].max() - sco[:, 0].min()) / sst.height - dc.COLOR_DECALS['SF_HAZARD_STRIPE'][1]) < 0.1,
+      (img.colorspace_settings.name, round(float(sco[:, 0].max() - sco[:, 0].min()), 3), round(sst.height, 3)))
+check('... the two-tone ones stay a mask (their picture Non-Color, the switch off)',
+      nodes['mch:full'].outputs[0].default_value == 0.0 if 'mch:full' in nodes else True)
+sst.hue, sst.sat, sst.val = 0.3, 0.5, 1.4
+sst.tint = (1.0, 0.5, 0.5)
+hsv = snodes['mch:hsv']
+check('... Hue / Saturation / Value and Tint on the shader at once', hsv.inputs['Hue'].is_linked
+      and abs(snodes['mch:hue'].outputs[0].default_value - 0.3) < 1e-6
+      and abs(snodes['mch:sat'].outputs[0].default_value - 0.5) < 1e-6
+      and abs(snodes['mch:val'].outputs[0].default_value - 1.4) < 1e-6
+      and abs(snodes['mch:tint'].outputs[0].default_value[1] - 0.5) < 1e-6)
+its, _h = page()
+props = {getattr(i, 'prop', '') for i in its}
+check('... its page: Tint + Hue / Sat / Val (no Color 1 / 2), the damage the same',
+      {'tint', 'hue', 'sat', 'val', 'wear', 'peel'} <= props and not {'color1', 'color2'} & props)
+sst.wear = 0.5
+check('... damage on it too (Wear cuts its alpha)', abs(snodes['mch:wear'].outputs[0].default_value - 0.5) < 1e-6)
+bpy.ops.mch.decal_delete()
+
 # ---- the page
+for o in C.selected_objects:
+    o.select_set(False)
+dec.select_set(True)
+C.view_layer.objects.active = dec
 its, _h = page()
 props = {getattr(i, 'prop', '') for i in its}
 check('A decal\'s page: Look (Color 1 / 2, opacity, roughness, metallic), Damage (wear, edge peel, scratches, dirt, '
@@ -129,16 +172,32 @@ check('A decal\'s page: Look (Color 1 / 2, opacity, roughness, metallic), Damage
       {'LOOK', 'DAMAGE', 'SIZE & PLACE'} <= set(heads(its))
       and {'color1', 'color2', 'wear', 'peel', 'scratches', 'dirt', 'fade', 'damage_scale', 'seed', 'size'} <= props
       and {'Mirror X', 'Apply', 'Delete'} <= {i.label for i in its if i.kind == 'tbtn'})
+folded = [h for h, i in heads(its).items() if h in ('SCI-FI SIGNS', 'TWO-TONE') and not i.on]
+check('... and the library under it, folded', sorted(folded) == ['SCI-FI SIGNS', 'TWO-TONE'], folded)
+mits, _h = mu.content(C, 0.0, 276.0, 1.0)
+go = next((i for i in mits if i.kind == 'tbtn' and i.action[:2] == ('op', 'mch.side_page')), None)
+check('The Mech page with a decal selected: says its settings are on the Decals page, a button to it (no decal '
+      'rows there)', go is not None and go.action[2] == {'page': 'DECALS'} and not any(
+          getattr(i, 'prop', '') in ('wear', 'peel') for i in mits))
+from mecha_lab import side_panel as sp, ui_bars  # noqa: E402
+ui_bars.run(C, go)
+check('... a click on it shows the Decals page', sp.page(C) == 'DECALS')
 bpy.ops.mesh.primitive_cone_add(location=(0, -8, 0))
 its, _h = page()
-from mecha_lab import side_panel as sp  # noqa: E402
-folded_first = not heads(its)['DECALS'].on
-sp.toggle_fold('MATERIAL:decals', True)                  # (a click on its title)
-its, _h = page()
+hd = heads(its)
 dtiles = [i for i in its if i.kind == 'mtile' and i.action[:2] == ('op', 'mch.decal_place')]
-check('Other parts: a Decals section (starts folded) - opened, a ball each (24, its icon) + Text Decal...',
-      folded_first and len(dtiles) == 24 and all(t.icon.startswith('file:') for t in dtiles)
+check('The Decals page with a part selected: the library open - Sci-Fi Signs (30) and Two-Tone (24), a ball each '
+      'with its icon, + Text Decal...', hd['SCI-FI SIGNS'].on and hd['TWO-TONE'].on and len(dtiles) == 54
+      and all(t.icon.startswith('file:') and os.path.isfile(t.icon[5:]) for t in dtiles)
       and any(i.kind == 'tbtn' and i.label == 'Text Decal...' for i in its))
+mits, _h = mu.content(C, 0.0, 276.0, 1.0)
+cits, _h = mu.creature_page(C, 0.0, 276.0, 1.0)
+check('... the Mech and Creature pages no decal balls any more',
+      not any(i.kind == 'mtile' and i.action[:2] == ('op', 'mch.decal_place') for i in mits + cits))
+tabs = [i for i in sp.items(C, 1200, 900, 1.0) if i.kind == 'ptab']
+check('Tabs: Tool | Mech | Creature | Decals | HDRI (each wide enough for its name)',
+      [t.label for t in tabs] == ['Tool', 'Mech', 'Creature', 'Decals', 'HDRI']
+      and all(t.w > 6.5 * len(t.label) + 6 for t in tabs), [(t.label, round(t.w)) for t in tabs])
 for o in C.selected_objects:
     o.select_set(False)
 tdec.select_set(True)

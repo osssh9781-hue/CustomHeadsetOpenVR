@@ -1,7 +1,9 @@
-"""Real window: Decals (0.24.95 user: "데칼 - 번호, 경고 줄무늬, 로고를 표면에 붙이는 기능").  MECHA LAB screen, a part with
-the Mech Shader, the Material page of the drawn side panel: REAL mouse clicks (xdotool) - the DECALS title (opens it),
-the Hazard Stripes ball, then a click on the part (the decal lands where clicked, wrapped on); the Warning ball then
-Esc (cancelled: no decal); a shot of each.
+"""Real window: Decals (0.24.95 user: "데칼 - 번호, 경고 줄무늬, 로고를 표면에 붙이는 기능"; "추가 데칼이야! 이거도 추가해
+줘 / 이건 데칼 탭으로 가자! 메테리얼도 크리쳐랑 메카닉이랑 좀 분리해 줘").  MECHA LAB screen, a part with the Mech
+Shader, the drawn side panel on the Mech page: REAL mouse clicks (xdotool) - the Decals tab, the Sci-Fi Radiation ball,
+then a click on the part (the decal lands where clicked, wrapped on; its settings on the Decals page); the Creature tab
+(skin types, a note that the part's material is a Mech one); the Decals tab, the two-tone Warning ball then Esc
+(cancelled: no decal); a shot of each.
     blender --window-geometry 0 0 W H --python this.py -- OUT"""
 import os
 import subprocess
@@ -131,14 +133,20 @@ def flow():
     with C.temp_override(window=w, area=a, region=r):
         log('panel on', sp.on(C), 'page', sp.page(C), 'sidebar', a.spaces.active.show_region_ui,
             'heads', [i.label.split('   ')[0] for i in panel_items() if i.kind == 'shead'])
-    # the DECALS title: a real click opens it
-    head = yield from scrolled_to(lambda i: i.kind == 'shead' and i.label.startswith('DECALS'))
-    log('DECALS title at', hover(head), 'open before', head.on)
+    log('tabs', [(i.label, i.on) for i in panel_items() if i.kind == 'ptab'])
+    shot('0_mech_page.png')
+    # the Decals tab: a real click shows the Decals page
+    tab = find(lambda i: i.kind == 'ptab' and i.label == 'Decals')
+    log('Decals tab at', hover(tab))
     yield 0.4
     xdo('click', 1)
     yield 1.5
-    tile = yield from scrolled_to(lambda i: i.kind == 'mtile' and i.label == 'Hazard Stripes')
-    log('Hazard ball at', hover(tile))
+    log('page after the click', sp.page(C), 'heads', [i.label.split('   ')[0] for i in panel_items()
+                                                      if i.kind == 'shead'])
+    shot('1_decals_page.png')
+    tile = yield from scrolled_to(lambda i: i.kind == 'mtile' and i.action[:2] == ('op', 'mch.decal_place')
+                                  and i.action[2].get('decal') == 'SF_RADIATION')
+    log('Sci-Fi Radiation ball at', hover(tile))
     yield 0.4
     xdo('click', 1)
     yield 1.0
@@ -153,7 +161,7 @@ def flow():
     x, y = to_x(w, r, p2.x, p2.y)
     xdo('mousemove', x, y)
     yield 0.5
-    shot('1_placing.png')
+    shot('2_placing.png')
     xdo('click', 1)
     yield 2.0
     decs = decal_objects()
@@ -161,13 +169,40 @@ def flow():
     log('real click on the part: decals', len(decs), 'parent', d.parent.name if d and d.parent else None,
         'at', tuple(round(v, 3) for v in d.matrix_world.translation) if d else None,
         'facing', tuple(round(v, 3) for v in d.matrix_world.to_3x3().col[2]) if d else None)
+    if d is not None:
+        log('its look: kind', d.mch_decal.kind, 'picture', d.active_material.node_tree.nodes['mch:img:decal'].image.name,
+            d.active_material.node_tree.nodes['mch:img:decal'].image.colorspace_settings.name)
+    with C.temp_override(window=w, area=a, region=r):
+        sp.scroll_by(C, r.width, r.height, ui_factor(C, r), -100000)
     xdo('mousemove', 300, 1200)
     yield 25.0
-    shot('2_placed.png')
-    # Esc cancels: the Warning ball, then Esc - no new decal
+    log('page with the decal selected: heads', [i.label.split('   ')[0] for i in panel_items() if i.kind == 'shead'],
+        'props', sorted({getattr(i, 'prop', '') for i in panel_items()} - {''})[:12])
+    shot('3_placed.png')
+    # the Creature tab (the part selected: its material is a Mech one - a note + the skin types)
     w, a, r = view3d()
     with C.temp_override(window=w, area=a, region=r):
+        for o in C.selected_objects:
+            o.select_set(False)
+        bpy.data.objects['Part'].select_set(True)
         bpy.context.view_layer.objects.active = bpy.data.objects['Part']
+    yield 1.0
+    tab = find(lambda i: i.kind == 'ptab' and i.label == 'Creature')
+    hover(tab)
+    yield 0.4
+    xdo('click', 1)
+    yield 1.5
+    log('Creature tab: page', sp.page(C), 'heads', [i.label.split('   ')[0] for i in panel_items()
+                                                    if i.kind == 'shead'],
+        'notes', [i.label for i in panel_items() if i.kind == 'pnote'][:2])
+    xdo('mousemove', 300, 1200)
+    yield 2.0
+    shot('4_creature_page.png')
+    # Esc cancels: the Decals tab, the two-tone Warning ball, then Esc - no new decal
+    tab = find(lambda i: i.kind == 'ptab' and i.label == 'Decals')
+    hover(tab)
+    yield 0.4
+    xdo('click', 1)
     yield 1.0
     tile = yield from scrolled_to(lambda i: i.kind == 'mtile' and i.label == 'Warning')
     hover(tile)

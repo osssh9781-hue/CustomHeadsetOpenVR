@@ -10,7 +10,10 @@
   with the part); G / R / S move it over the surface.  Mirror X (across the part), Apply (a plain mesh), Delete
 * damage in the decal's shader, all sliders: Wear (chips, the Mech Shader's chip map), Edge Peel (the decal's border
   goes first), Scratches (the scratch map cuts lines through it), Dirt (grime over it), Fade (sun-bleached); Damage
-  Scale and Seed - where the decal is gone the part shows through"""
+  Scale and Seed - where the decal is gone the part shows through
+* 0.24.95 (user: "추가 데칼이야! 이거도 추가해 줘") 30 full-colour Sci-Fi decals (``decals/SF_*.png`` + ``scifi.json``, from
+  the user's pack by ``tools_dev/import_scifi_decals.py``): their own colours (sRGB) with Hue / Saturation / Value and
+  a Tint; the same damage sliders"""
 from __future__ import annotations
 
 import json
@@ -55,19 +58,59 @@ DECALS = {
     'CIRCLE_NUM': ('Unit Circle', 1.0, (0.92, 0.92, 0.9), (0.05, 0.05, 0.05)),
 }
 TEXT_COLORS = ((0.92, 0.92, 0.9), (0.05, 0.05, 0.05))
-VALUES = ('opacity', 'roughness', 'metallic', 'wear', 'peel', 'scratches', 'dirt', 'fade', 'damage_scale', 'seed')
+VALUES = ('opacity', 'roughness', 'metallic', 'wear', 'peel', 'scratches', 'dirt', 'fade', 'damage_scale', 'seed',
+          'hue', 'sat', 'val')
 FRAME_UV = 'mch_frame'            # (0..1 across the whole decal: the border for Edge Peel, also for text decals)
 _GLYPHS = [None]
 
 
-def decal_image(ident):
+def _load_colour():
+    """0.24.95 the full-colour Sci-Fi decals: id -> (label, width : height), in the pack's order."""
+    try:
+        with open(os.path.join(DIR, 'scifi.json'), encoding='utf-8') as f:
+            return {k: (v[0], float(v[1])) for k, v in json.load(f).items()}
+    except (OSError, ValueError, KeyError, IndexError):
+        return {}
+
+
+COLOR_DECALS = _load_colour()
+
+
+def known(ident):
+    return ident == TEXT or ident in DECALS or ident in COLOR_DECALS
+
+
+def is_full(ident):
+    """A full-colour decal (its picture's own colours), not a two-tone mask."""
+    return ident in COLOR_DECALS
+
+
+def label_of(ident):
+    return (COLOR_DECALS.get(ident) or DECALS.get(ident) or ('Decal',))[0]
+
+
+def ratio_of(ident):
+    return (COLOR_DECALS.get(ident) or DECALS.get(ident) or ('', 1.0))[1]
+
+
+def image_path(ident):
+    """The decal's picture: ``<id>.png`` (two-tone, the letters) or ``<id>.webp`` (0.24.95 the Sci-Fi ones)."""
     name = 'glyphs' if ident == TEXT else ident
-    p = os.path.join(DIR, name + '.png')
-    if not os.path.isfile(p):
+    for ext in ('.png', '.webp'):
+        p = os.path.join(DIR, name + ext)
+        if os.path.isfile(p):
+            return p
+    return ''
+
+
+def decal_image(ident):
+    p = image_path(ident)
+    if not p:
         return None
     img = bpy.data.images.load(p, check_existing=True)
     try:
-        img.colorspace_settings.name = 'Non-Color'            # (a mask: white = Color 1, black = Color 2)
+        # (a two-tone mask: white = Color 1, black = Color 2 - data; a full-colour decal: its colours, sRGB)
+        img.colorspace_settings.name = 'sRGB' if is_full(ident) else 'Non-Color'
         img.alpha_mode = 'STRAIGHT'
     except (TypeError, AttributeError):
         pass
@@ -130,7 +173,7 @@ def decal_mesh(name, ident, text, h):
                       frame, 3, 3)
             x += wd * h
     else:
-        ratio = DECALS[ident][1]
+        ratio = ratio_of(ident)
         w = h * ratio
         nx = max(6, round(10 * ratio))
         _grid(bm, uv, fr, (-w / 2, -h / 2, w / 2, h / 2), (0.0, 0.0, 1.0, 1.0), (-w / 2, -h / 2, w / 2, h / 2),
@@ -154,8 +197,8 @@ def build_material(mat, img, h):
     out = b.node('ShaderNodeOutputMaterial')
     bsdf = b.node('ShaderNodeBsdfPrincipled', 'mch:bsdf')
     b.link(bsdf.outputs['BSDF'], out.inputs['Surface'])
-    v = {k: b.value(k) for k in VALUES}
-    c = {k: b.rgb(k) for k in ('color1', 'color2')}
+    v = {k: b.value(k) for k in VALUES + ('full',)}
+    c = {k: b.rgb(k) for k in ('color1', 'color2', 'tint')}
     uvn = b.node('ShaderNodeUVMap')
     uvn.uv_map = 'UVMap'
     frn = b.node('ShaderNodeUVMap')
@@ -199,6 +242,14 @@ def build_material(mat, img, h):
                    b.math('SUBTRACT', 1.0, gone), clamp=True)
     b.link(alpha, bsdf.inputs['Alpha'])
     col = b.mixc(mask, c['color2'], c['color1'])
+    # (0.24.95 a full-colour decal: the picture's own colours x Tint; then Hue / Saturation / Value for either kind)
+    col = b.mixc(v['full'], col, b.mixc(1.0, mask, c['tint'], 'MULTIPLY'))
+    hsv = b.node('ShaderNodeHueSaturation', 'mch:hsv')
+    b.link(v['hue'], hsv.inputs['Hue'])
+    b.link(v['sat'], hsv.inputs['Saturation'])
+    b.link(v['val'], hsv.inputs['Value'])
+    b.link(col, hsv.inputs['Color'])
+    col = hsv.outputs['Color']
     bw = b.node('ShaderNodeRGBToBW')
     b.link(col, bw.inputs['Color'])
     col = b.mixc(v['fade'], col, b.mixc(0.5, bw.outputs['Val'], (0.86, 0.85, 0.82, 1.0)))     # (sun-bleached)
@@ -227,7 +278,10 @@ def sync(ob):
             nd = nodes.get('mch:' + k)
             if nd is not None:
                 nd.outputs[0].default_value = float(getattr(st, k))
-        for k in ('color1', 'color2'):
+        nd = nodes.get('mch:full')
+        if nd is not None:
+            nd.outputs[0].default_value = 1.0 if is_full(st.kind) else 0.0
+        for k in ('color1', 'color2', 'tint'):
             nd = nodes.get('mch:' + k)
             if nd is not None:
                 nd.outputs[0].default_value = (*getattr(st, k), 1.0)
@@ -255,6 +309,12 @@ class MCH_PG_Decal(bpy.types.PropertyGroup):
                                 update=_update, description='The white of the decal picture')
     color2: FloatVectorProperty(name='Color 2', subtype='COLOR', size=3, min=0.0, max=1.0, default=(0.0, 0.0, 0.0),
                                 update=_update, description='The black of the decal picture')
+    tint: FloatVectorProperty(name='Tint', subtype='COLOR', size=3, min=0.0, max=1.0, default=(1.0, 1.0, 1.0),
+                              update=_update, description='A full-colour decal\'s colours multiplied by this (white: as '
+                              'drawn)')
+    hue: _s('Hue', 0.5, desc='Turn the colours round the colour wheel (0.5: as they are)')
+    sat: _s('Saturation', 1.0, 0.0, 2.0, 'Less / more colour (1: as they are)')
+    val: _s('Value', 1.0, 0.0, 2.0, 'Darker / brighter (1: as they are)')
     opacity: _s('Opacity', 1.0)
     roughness: _s('Roughness', 0.45)
     metallic: _s('Metallic', 0.0)
@@ -278,7 +338,7 @@ def place(context, target, location, normal, ident, text='', right=None):
     way its width runs (default: across the view / world X).  Returns the decal object."""
     size = max(target.dimensions) or 1.0
     h = size * (0.07 if ident == TEXT else 0.16)
-    label = f'Text "{text}"' if ident == TEXT else DECALS[ident][0]
+    label = f'Text "{text}"' if ident == TEXT else label_of(ident)
     me = decal_mesh('Decal ' + label, ident, text, h)
     ob = bpy.data.objects.new('Decal ' + label, me)
     cols = target.users_collection or (context.scene.collection,)
@@ -308,8 +368,9 @@ def place(context, target, location, normal, ident, text='', right=None):
     ob.visible_shadow = False
     st = getattr(ob, KEY)
     st.is_decal, st.kind, st.text, st.height = True, ident, text, h
-    c1, c2 = TEXT_COLORS if ident == TEXT else DECALS[ident][2:4]
-    st.color1, st.color2 = ms._lin(c1), ms._lin(c2)
+    if ident in DECALS or ident == TEXT:
+        c1, c2 = TEXT_COLORS if ident == TEXT else DECALS[ident][2:4]
+        st.color1, st.color2 = ms._lin(c1), ms._lin(c2)
     sync(ob)
     for o in context.selected_objects:
         o.select_set(False)
@@ -348,7 +409,7 @@ class MCH_OT_decal_place(bpy.types.Operator):
 
     def execute(self, context):
         target = bpy.data.objects.get(self.target)
-        if target is None or target.type != 'MESH' or (self._ident() != TEXT and self.decal not in DECALS):
+        if target is None or target.type != 'MESH' or not known(self._ident()):
             self.report({'WARNING'}, 'Decal: no part to put it on')
             return {'CANCELLED'}
         ob = place(context, target, self.location, self.normal, self._ident(), self.text)
@@ -360,7 +421,9 @@ class MCH_OT_decal_place(bpy.types.Operator):
             self.report({'WARNING'}, 'Decal: use it in the 3D view')
             return {'CANCELLED'}
         context.window.cursor_modal_set('CROSSHAIR')
-        what = f'"{self.text}"' if self.text else DECALS.get(self.decal, ('Decal',))[0]
+        if not known(self._ident()):
+            return {'CANCELLED'}
+        what = f'"{self.text}"' if self.text else label_of(self.decal)
         context.area.header_text_set(f'Decal {what}: click a part to place it   (Esc / right click: cancel)')
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
