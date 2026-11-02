@@ -571,8 +571,8 @@ class MCH_PT_ui_value(bpy.types.Panel):
             rna = data.bl_rna.properties.get(prop)
             if rna is not None and rna.subtype in {'COLOR', 'COLOR_GAMMA'}:     # 0.24.95 a swatch: the picker
                 self.layout.label(text=rna.name)
-                self.layout.template_color_picker(data, prop, value_slider=True)
-                self.layout.prop(data, prop, text='')
+                from . import color_pick                # (the wheel, Hue / Saturation / Value, Pick - the eyedropper)
+                color_pick.draw(self.layout, data, prop)
                 return
             self.layout.prop(data, prop)
         except (TypeError, ReferenceError):
