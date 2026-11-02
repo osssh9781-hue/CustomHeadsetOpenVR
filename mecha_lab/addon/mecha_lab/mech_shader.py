@@ -1995,7 +1995,33 @@ def _world_nodes(w):
     nt.links.new(bmap.outputs['Vector'], btex.inputs['Vector'])
     sa = {x.identifier: x for x in bal.inputs}
     nt.links.new(btex.outputs['Alpha'], sa['Factor_Float'])
-    nt.links.new(btex.outputs['Color'], sa['B_Color'])
+    # (0.24.95 user: "사진에 컬러램프 기능 넣어 주라 - 대비랑 색 같은 거 내가 조절"): Brightness / Contrast, then
+    # (Colour Ramp on) the picture's light and dark mapped to the ramp's colours
+    bbc = nt.nodes.new('ShaderNodeBrightContrast')
+    bbc.name = 'mch:bgimg_bc'
+    bbw = nt.nodes.new('ShaderNodeRGBToBW')
+    bbw.name = 'mch:bgimg_bw'
+    bramp = nt.nodes.new('ShaderNodeValToRGB')
+    bramp.name = 'mch:bgimg_ramp'
+    els = bramp.color_ramp.elements
+    els[0].position, els[0].color = 0.0, (0.02, 0.022, 0.028, 1.0)
+    els[1].position, els[1].color = 1.0, (0.92, 0.92, 0.92, 1.0)
+    bron = nt.nodes.new('ShaderNodeValue')
+    bron.name = 'mch:bgimg_ramp_on'
+    bron.outputs[0].default_value = 0.0
+    brm = nt.nodes.new('ShaderNodeMix')
+    brm.data_type = 'RGBA'
+    brm.name = 'mch:bgimg_rampmix'
+    for i, n in enumerate((bbc, bbw, bramp, bron, brm)):
+        n.location = (-300 + 200 * i, -680)
+    nt.links.new(btex.outputs['Color'], bbc.inputs['Color'])
+    nt.links.new(bbc.outputs['Color'], bbw.inputs['Color'])
+    nt.links.new(bbw.outputs['Val'], bramp.inputs['Fac'])
+    sr = {x.identifier: x for x in brm.inputs}
+    nt.links.new(bron.outputs[0], sr['Factor_Float'])
+    nt.links.new(bbc.outputs['Color'], sr['A_Color'])
+    nt.links.new(bramp.outputs['Color'], sr['B_Color'])
+    nt.links.new(next(o for o in brm.outputs if o.identifier == 'Result_Color'), sa['B_Color'])
     sp_ = {x.identifier: x for x in bpick.inputs}
     nt.links.new(bon.outputs[0], sp_['Factor_Float'])
     nt.links.new(next(o for o in bal.outputs if o.identifier == 'Result_Color'), sp_['B_Color'])
@@ -2004,7 +2030,8 @@ def _world_nodes(w):
 
 WORLD_NODES = ('mch:map', 'mch:env', 'mch:env_blur', 'mch:blur_on', 'mch:blur_mix', 'mch:bg', 'mch:bg_color',
                'mch:bg_hide', 'mch:bg_mix', 'mch:bgimg_map', 'mch:bgimg', 'mch:bgimg_alpha', 'mch:bgimg_on',
-               'mch:bgimg_pick')
+               'mch:bgimg_pick', 'mch:bgimg_bc', 'mch:bgimg_bw', 'mch:bgimg_ramp', 'mch:bgimg_ramp_on',
+               'mch:bgimg_rampmix')
 
 
 def _world_current(w):
@@ -2040,6 +2067,12 @@ def _backdrop_sync(scene, nt):
         bmap.inputs['Scale'].default_value = (sx, sy, 1.0)
         bmap.inputs['Location'].default_value = (0.5 - 0.5 * sx, 0.5 - 0.5 * sy, 0.0)
         bon.outputs[0].default_value = 1.0
+        bbc, bron = nt.nodes.get('mch:bgimg_bc'), nt.nodes.get('mch:bgimg_ramp_on')
+        if bbc is not None:
+            bbc.inputs['Bright'].default_value = float(getattr(scene, 'mch_mech_hdri_bg_bright', 0.0))
+            bbc.inputs['Contrast'].default_value = float(getattr(scene, 'mch_mech_hdri_bg_contrast', 0.0))
+        if bron is not None:
+            bron.outputs[0].default_value = 1.0 if getattr(scene, 'mch_mech_hdri_bg_ramp', False) else 0.0
     else:
         bon.outputs[0].default_value = 0.0
 
@@ -2249,6 +2282,13 @@ def draw_hdri(layout, context):
         col.prop(sc, 'mch_mech_hdri_bg_mode', expand=True)
         if sc.mch_mech_hdri_bg_mode == 'IMAGE':
             col.prop(sc, 'mch_mech_hdri_bg_fit', expand=True)
+            col.prop(sc, 'mch_mech_hdri_bg_bright')
+            col.prop(sc, 'mch_mech_hdri_bg_contrast')
+            col.prop(sc, 'mch_mech_hdri_bg_ramp')
+            w_ = hdri_world(sc)
+            rn = w_.node_tree.nodes.get('mch:bgimg_ramp') if w_ is not None and w_.node_tree else None
+            if sc.mch_mech_hdri_bg_ramp and rn is not None:
+                col.template_color_ramp(rn, 'color_ramp', expand=True)
         col.prop(sc, 'mch_mech_hdri_bg_color')
     r = box.row(align=True)
     r.operator('mch.mech_hdri', text='Set HDRI', icon='WORLD').action = 'SET'

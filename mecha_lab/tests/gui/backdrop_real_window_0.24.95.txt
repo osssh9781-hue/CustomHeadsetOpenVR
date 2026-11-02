@@ -4,4 +4,10 @@ clicked Grey Spot -> mode IMAGE picture B:mid_grey_spot_land.jpg fit FILL tiles 
 shot 2_Grey_Spot.png True
 clicked Warm Paper - Tall -> mode IMAGE picture B:warm_paper_port.jpg fit FIT tiles on ['Warm Paper - Tall']
 shot 2_Warm_Paper_-_Tall.png True
+Colour Ramp True ramp node True
+panel has Dark True
+panel has Light True
+panel has Edit Ramp… True
+shot 3_ramp_on.png True
+shot 4_edit_ramp_popup.png True
 DONE

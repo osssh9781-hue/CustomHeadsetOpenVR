@@ -1,6 +1,7 @@
 """Real window (0.24.95 user: "배경 이미지를 넣을 수 있게 - 기본으로 몇 장, 세로 가로", "배경은 스튜디오 이미지처럼"):
 MECHA LAB screen, a ball with Mech Painted, the HDRI on, the HDRI page: Show the HDRI off (a REAL click on its switch),
-Picture (a REAL click), then REAL clicks on two studio backdrop previews (a wide one, a tall one with Fit); the 3D view
+Picture (a REAL click), then REAL clicks on two studio backdrop previews (a wide one, a tall one with Fit); the Colour
+Ramp switch (a REAL click; its ends set navy .. orange) and Edit Ramp… (a REAL click: Blender's ramp popup); the 3D view
 in Material Preview looking through the camera - a shot after each.
     blender --window-geometry 0 0 W H --python this.py -- OUT"""
 import os
@@ -246,6 +247,31 @@ def flow():
         log('clicked', name, '-> mode', S.mch_mech_hdri_bg_mode, 'picture', S.mch_mech_hdri_bg_image, 'fit',
             S.mch_mech_hdri_bg_fit, 'tiles on', [i.label for i in panel_items() if i.kind == 'btile' and i.on])
         shot(f'2_{name.replace(" ", "_")}.png')
+    # ---- the Colour Ramp (user: "사진에 컬러램프 기능 넣어 주라"): a real click on its switch, the ramp's ends set
+    ramp_sw = yield from scrolled_to(lambda i: getattr(i, 'prop', '') == 'mch_mech_hdri_bg_ramp')
+    click(ramp_sw)
+    yield 0.3
+    xdo('click', 1)
+    yield 2.0
+    from mecha_lab import backdrops as bd
+    rn = bd.ramp_node(S)
+    log('Colour Ramp', S.mch_mech_hdri_bg_ramp, 'ramp node', rn is not None)
+    if rn is not None:
+        rn.color_ramp.elements[0].color = (0.01, 0.02, 0.08, 1.0)
+        rn.color_ramp.elements[1].color = (1.0, 0.55, 0.2, 1.0)
+    for lab in ('Dark', 'Light', 'Edit Ramp…'):
+        log('panel has', lab, any(i.label == lab for i in panel_items()))
+    xdo('mousemove', 900, 800)
+    yield 25.0
+    shot('3_ramp_on.png')
+    er = yield from scrolled_to(lambda i: i.kind == 'tbtn' and i.label == 'Edit Ramp…')
+    click(er)
+    yield 0.3
+    xdo('click', 1)
+    yield 3.0
+    shot('4_edit_ramp_popup.png')
+    xdo('key', 'Escape')
+    yield 1.0
     log('DONE')
     bpy.ops.wm.quit_blender()
 

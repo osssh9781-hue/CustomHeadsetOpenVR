@@ -1,13 +1,15 @@
 """0.24.95 A picture behind the model (user: "hdri 배경 컬러 말고 내가 원하는 배경 이미지를 넣을 수 있게 해 줄래? 너가 기본으로
 몇 장 넣어 줘 세로 가로 그 이후에는 내가 폴더로 불러올게", "배경은 스튜디오 이미지처럼 해 줘"):
 
-* 8 studio backdrops come with the add-on, each wide (16 : 9) and tall (9 : 16); the user's folder (and the folders in
+* 18 studio backdrops come with the add-on, each wide (16 : 9) and tall (9 : 16); the user's folder (and the folders in
   it) after them
 * a preview clicked: that picture behind the model - the HDRI background hidden, the HDRI world on; rendered (Cycles
   and EEVEE): Fill - the frame covered (a red | blue picture: red left, blue right); Fit - a tall picture whole in the
   middle, the Colour round it; the model as lit as with a plain colour (the HDRI lights it)
 * Colour: the colour again; an HDRI world from before (no picture nodes): made anew
-* the HDRI page, Background: Colour | Picture, Fill | Fit, previews 6 on a page (◀ Page n / m ▶), Choose Folder…"""
+* the HDRI page, Background: Colour | Picture, Fill | Fit, previews 6 on a page (◀ Page n / m ▶), Choose Folder…
+* (user: "사진에 컬러램프 기능 넣어 주라 - 대비랑 색 같은 거 내가 조절", "프리셋 한 열 장만 더") Brightness, Contrast and a
+  Colour Ramp on the picture (rendered); 10 more studio backdrops"""
 import math
 import os
 import tempfile
@@ -26,9 +28,10 @@ sc = C.scene
 built = bd.builtin_files()
 ents = bd.entries()
 asp = [round(bd.aspect(bd.path(bd.BUILTIN + f)), 2) for f in built]
-check('8 studio backdrops come with the add-on, each wide (16:9) and tall (9:16), named',
-      len(built) == 16 and asp.count(1.78) == 8 and asp.count(0.56) == 8
-      and ('B:white_sweep_land.jpg', 'Studio White') in ents and ('B:canvas_port.jpg', 'Canvas - Tall') in ents,
+check('18 studio backdrops come with the add-on (8, then 10 more: "프리셋 한 열 장만 더"), each wide (16:9) and tall '
+      '(9:16), named', len(built) == 36 and asp.count(1.78) == 18 and asp.count(0.56) == 18
+      and ('B:white_sweep_land.jpg', 'Studio White') in ents and ('B:canvas_port.jpg', 'Canvas - Tall') in ents
+      and ('B:gels_land.jpg', 'Colour Gels') in ents and ('B:canvas_brown_port.jpg', 'Brown Canvas - Tall') in ents,
       (len(built), asp[:4]))
 
 # the user's folder: a red | blue picture (2 : 1) in a folder inside, a tall one red over blue
@@ -65,7 +68,7 @@ workspace_ui.pref = lambda name, default=True: mine if name == 'bg_folder' else 
 bd.rescan()
 ids = [e[0] for e in bd.entries()]
 check('... your folder after them (the folders inside it too)', ids[-2:] == ['U:tall.png', 'U:Sub/redblue.png']
-      and len(ids) == 18, ids[-3:])
+      and len(ids) == 38, ids[-3:])
 
 # the scene: a grey ball, a camera, 16 : 9
 bpy.ops.mesh.primitive_uv_sphere_add(radius=0.6)
@@ -146,6 +149,38 @@ a = render()
 check('... EEVEE too (Material Preview\'s engine): red at the left, blue at the right',
       is_red(a[45, 4]) and is_blue(a[45, 155]), (np.round(a[45, 4], 2).tolist(), np.round(a[45, 155], 2).tolist()))
 sc.render.engine = 'CYCLES'
+# (user: "사진에 컬러램프 기능 넣어 주라 - 대비랑 색 같은 거 내가 조절")
+sc.mch_mech_hdri_bg_bright = 0.5
+a = render()
+check('Brightness +0.5: the picture lighter (the red side: green and blue come up too)',
+      a[45, 4][0] > 0.9 and a[45, 4][1] > 0.4, np.round(a[45, 4], 2).tolist())
+sc.mch_mech_hdri_bg_bright = 0.0
+sc.mch_mech_hdri_bg_contrast = -1.0
+a = render()
+L, R = a[45, 4], a[45, 155]
+check('Contrast -1: flat - both sides the same grey', np.allclose(L, R, atol=0.03) and abs(L[0] - L[2]) < 0.03,
+      (np.round(L, 2).tolist(), np.round(R, 2).tolist()))
+sc.mch_mech_hdri_bg_contrast = 0.0
+sc.mch_mech_hdri_bg_ramp = True
+rn = bd.ramp_node(sc)
+rn.color_ramp.elements[0].color = (0.0, 0.0, 0.0, 1.0)              # (dark: black)
+rn.color_ramp.elements[1].color = (1.0, 0.8, 0.0, 1.0)              # (light: yellow)
+a = render()
+L, R = a[45, 4], a[45, 155]
+check('Colour Ramp on (dark black .. light yellow): the picture in the ramp\'s colours - no blue left, the red side '
+      '(lighter) more yellow than the blue side', L[2] < 0.1 and R[2] < 0.1 and L[0] > R[0] > 0.05 and L[1] > R[1]
+      and L[0] > 0.2, (np.round(L, 2).tolist(), np.round(R, 2).tolist()))
+r = bpy.ops.mch.mech_bg_ramp('INVOKE_DEFAULT')
+import inspect
+check('... Edit Ramp…: Blender\'s own ramp editor in a popup (add stops, colours, positions)',
+      r == {'FINISHED'} and 'template_color_ramp' in inspect.getsource(bd.MCH_OT_mech_bg_ramp.draw))
+its, _h = mu.hdri_content(C, 0.0, 276.0, 1.0)
+cells = {getattr(i, 'prop', ''): i for i in its}
+labels = [i.label for i in its]
+check('... the HDRI page: Brightness, Contrast, Colour Ramp, the Dark / Light swatches (the ramp\'s ends), Edit Ramp…',
+      {'mch_mech_hdri_bg_bright', 'mch_mech_hdri_bg_contrast', 'mch_mech_hdri_bg_ramp'} <= set(cells)
+      and 'Dark' in labels and 'Light' in labels and 'Edit Ramp…' in labels)
+sc.mch_mech_hdri_bg_ramp = False
 # an HDRI world from before
 nt.nodes.remove(nt.nodes['mch:bgimg_pick'])
 ms.hdri_sync(sc)
@@ -157,9 +192,9 @@ check('An HDRI world made before (no picture nodes): made anew, the picture in i
 its, _h = mu.hdri_content(C, 0.0, 276.0, 1.0)
 btns = {i.label: i for i in its if i.kind == 'tbtn'}
 tiles = [i for i in its if i.kind == 'btile']
-check('The HDRI page, Background: Colour | Picture, Fill | Fit, previews 6 on a page (18: 3 pages), Choose Folder',
+check('The HDRI page, Background: Colour | Picture, Fill | Fit, previews 6 on a page (38: 7 pages), Choose Folder',
       {'Colour', 'Picture', 'Fill', 'Fit', 'Choose Folder…'} <= set(btns) and btns['Picture'].on
-      and len(tiles) == 6 and any(t.on for t in tiles) and any(i.label == 'Page 3 / 3' for i in its),
+      and len(tiles) == 2 and any(t.on for t in tiles) and any(i.label == 'Page 7 / 7' for i in its),
       (sorted(btns)[:12], len(tiles)))
 check('... a tall picture\'s tile knows it is tall (fitted in, not stretched)',
       any(t.label == 'tall' and abs(t.data - 0.5) < 0.01 for t in tiles))

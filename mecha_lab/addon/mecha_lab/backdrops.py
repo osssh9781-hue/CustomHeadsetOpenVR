@@ -14,7 +14,7 @@ import os
 import time
 
 import bpy
-from bpy.props import EnumProperty, IntProperty, StringProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BUILTIN_DIR = os.path.join(HERE, 'backgrounds')
@@ -22,7 +22,9 @@ BUILTIN, USER = 'B:', 'U:'
 EXT = ('.jpg', '.jpeg', '.png', '.tif', '.tiff', '.webp', '.bmp', '.exr', '.hdr', '.tga')
 LOOKS = (('white_sweep', 'Studio White'), ('light_grey', 'Light Grey'), ('mid_grey_spot', 'Grey Spot'),
          ('charcoal', 'Charcoal'), ('black_key', 'Black'), ('warm_paper', 'Warm Paper'), ('cool_blue', 'Cool Blue'),
-         ('canvas', 'Canvas'))
+         ('canvas', 'Canvas'), ('olive', 'Olive'), ('teal', 'Teal'), ('navy', 'Navy'), ('burgundy', 'Burgundy'),
+         ('sand', 'Sand'), ('mint', 'Mint'), ('peach', 'Peach'), ('slate', 'Slate'), ('gels', 'Colour Gels'),
+         ('canvas_brown', 'Brown Canvas'))
 PAGE = 6
 SCAN_EVERY = 3.0
 SCAN_MAX = 3000
@@ -170,6 +172,41 @@ class MCH_OT_mech_bg_image(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def ramp_node(scene):
+    """The picture's Colour Ramp node (the HDRI world's), or None."""
+    from . import mech_shader as ms
+    w = ms.hdri_world(scene)
+    nt = w.node_tree if w is not None else None
+    return nt.nodes.get('mch:bgimg_ramp') if nt is not None else None
+
+
+class MCH_OT_mech_bg_ramp(bpy.types.Operator):
+    """Edit the picture's Colour Ramp - its colours and where they sit (add stops for more colours): the picture's dark
+    parts take the left colour, its light parts the right one"""
+    bl_idname = 'mch.mech_bg_ramp'
+    bl_label = 'Background Colour Ramp'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def invoke(self, context, event):
+        if ramp_node(context.scene) is None:
+            self.report({'WARNING'}, 'Colour Ramp: put a background picture on first (HDRI page, Background)')
+            return {'CANCELLED'}
+        if bpy.app.background:
+            return self.execute(context)
+        return context.window_manager.invoke_popup(self, width=340)
+
+    def draw(self, context):
+        lay = self.layout
+        lay.label(text='Background picture - Colour Ramp')
+        node = ramp_node(context.scene)
+        if node is not None:
+            lay.template_color_ramp(node, 'color_ramp', expand=True)
+        lay.label(text='Left: the picture\'s dark parts   Right: its light parts')
+
+    def execute(self, context):
+        return {'FINISHED'}
+
+
 class MCH_OT_mech_bg_folder(bpy.types.Operator):
     """Choose the folder you keep your background pictures in (.jpg / .png / .tif / .exr ...; the folders inside it
     too): they come after the add-on's studio backdrops (nothing in the folder is changed)"""
@@ -219,8 +256,9 @@ class MCH_OT_mech_bg_page(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_OT_mech_bg_image, MCH_OT_mech_bg_folder, MCH_OT_mech_bg_page)
-SCENE_PROPS = ('mch_mech_hdri_bg_mode', 'mch_mech_hdri_bg_image', 'mch_mech_hdri_bg_fit')
+CLASSES = (MCH_OT_mech_bg_image, MCH_OT_mech_bg_folder, MCH_OT_mech_bg_page, MCH_OT_mech_bg_ramp)
+SCENE_PROPS = ('mch_mech_hdri_bg_mode', 'mch_mech_hdri_bg_image', 'mch_mech_hdri_bg_fit', 'mch_mech_hdri_bg_bright',
+               'mch_mech_hdri_bg_contrast', 'mch_mech_hdri_bg_ramp')
 
 
 def register():
@@ -238,6 +276,15 @@ def register():
         name='Fit', items=[('FILL', 'Fill', 'The frame covered (the picture\'s edges cut off)'),
                            ('FIT', 'Fit', 'The whole picture (the Colour round it)')],
         default='FILL', update=_update)
+    # (0.24.95 user: "사진에 컬러램프 기능 넣어 주라 - 대비랑 색 같은 거 내가 조절")
+    T.mch_mech_hdri_bg_bright = FloatProperty(name='Brightness', default=0.0, soft_min=-1.0, soft_max=1.0,
+                                              update=_update, description='The background picture lighter / darker')
+    T.mch_mech_hdri_bg_contrast = FloatProperty(name='Contrast', default=0.0, soft_min=-1.0, soft_max=1.0,
+                                                update=_update, description='The background picture\'s contrast '
+                                                '(-1: flat grey, 0: as it is, 1: twice as much)')
+    T.mch_mech_hdri_bg_ramp = BoolProperty(name='Colour Ramp', default=False, update=_update,
+                                           description='The picture\'s dark and light parts take the ramp\'s colours '
+                                           '(Dark / Light, Edit Ramp… for more stops)')
 
 
 def unregister():

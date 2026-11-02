@@ -93,14 +93,39 @@ LOOKS = (
     ('cool_blue', 'Cool Blue-Grey', lambda w, h: sweep(w, h, (0.27, 0.32, 0.38), (0.32, 0.37, 0.43), spot=0.45,
                                                        vig=0.9)),
     ('canvas', 'Painted Canvas', lambda w, h: canvas(w, h)),
+    # (0.24.95 user: "프리셋 한 열 장만 더 넣어 줘")
+    ('olive', 'Olive Paper', lambda w, h: sweep(w, h, (0.3, 0.32, 0.21), (0.36, 0.38, 0.26), spot=0.3)),
+    ('teal', 'Deep Teal', lambda w, h: sweep(w, h, (0.05, 0.17, 0.19), (0.07, 0.22, 0.24), spot=0.75, vig=1.0)),
+    ('navy', 'Navy', lambda w, h: sweep(w, h, (0.045, 0.06, 0.13), (0.06, 0.08, 0.17), spot=0.9, vig=1.0)),
+    ('burgundy', 'Burgundy', lambda w, h: sweep(w, h, (0.2, 0.045, 0.06), (0.25, 0.065, 0.08), spot=0.8, vig=1.0)),
+    ('sand', 'Sand', lambda w, h: sweep(w, h, (0.76, 0.7, 0.58), (0.83, 0.77, 0.65), spot=0.12, top_dark=0.2,
+                                        vig=0.6)),
+    ('mint', 'Pastel Mint', lambda w, h: sweep(w, h, (0.6, 0.76, 0.7), (0.68, 0.82, 0.76), spot=0.14, top_dark=0.2,
+                                               vig=0.6)),
+    ('peach', 'Pastel Peach', lambda w, h: sweep(w, h, (0.88, 0.68, 0.6), (0.93, 0.75, 0.67), spot=0.12,
+                                                 top_dark=0.2, vig=0.6)),
+    ('slate', 'Slate', lambda w, h: sweep(w, h, (0.13, 0.16, 0.2), (0.16, 0.19, 0.24), spot=1.0, spot_size=0.26,
+                                          vig=1.0)),
+    ('gels', 'Colour Gels', lambda w, h: gels(w, h)),
+    ('canvas_brown', 'Brown Canvas', lambda w, h: canvas(w, h, (0.2, 0.15, 0.1), (0.32, 0.25, 0.16))),
 )
 
 
-def canvas(w, h):
-    """A hand-painted portrait backdrop: mottled blue-grey and brown, lighter behind the subject."""
+def gels(w, h):
+    """A dark sweep lit by two coloured gels - warm orange from the left, teal from the right."""
+    base = sweep(w, h, (0.035, 0.035, 0.04), (0.05, 0.05, 0.055), spot=0.4, vig=1.0)
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    u, t = (xx - w / 2) / h, yy / (h - 1)
+    warm = np.exp(-(((u + 0.45) / 0.45) ** 2 + ((t - 0.45) / 0.45) ** 2))[..., None] * np.array([0.55, 0.22, 0.06])
+    cool = np.exp(-(((u - 0.45) / 0.45) ** 2 + ((t - 0.45) / 0.45) ** 2))[..., None] * np.array([0.04, 0.3, 0.36])
+    return base + warm + cool
+
+
+def canvas(w, h, c1=(0.22, 0.25, 0.27), c2=(0.33, 0.3, 0.26)):
+    """A hand-painted portrait backdrop: mottled (blue-grey and brown), lighter behind the subject."""
     lo = _noise(w, h, 3, 4)[..., None]
     mid = _noise(w, h, 9, 3)[..., None]
-    c1, c2 = np.array([0.22, 0.25, 0.27]), np.array([0.33, 0.3, 0.26])
+    c1, c2 = np.array(c1), np.array(c2)
     col = c1 * (1 - lo) + c2 * lo
     col = col * (0.82 + 0.36 * mid)
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)

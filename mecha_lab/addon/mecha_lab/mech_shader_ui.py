@@ -985,6 +985,16 @@ def hdri_content(context, x, width, k):
             row(b, sx, sw, [_cell('tbtn', 'Fill', ('op', 'mch.mech_bg_mode', {'fit': 'FILL'}), on=fit == 'FILL'),
                             _cell('tbtn', 'Fit', ('op', 'mch.mech_bg_mode', {'fit': 'FIT'}), on=fit == 'FIT')])
             row(b, sx, sw, [prop_cell(sc, 'mch_mech_hdri_bg_color', 'Colour round it' if fit == 'FIT' else 'Colour')])
+            # (0.24.95 user: "사진에 컬러램프 기능 - 대비랑 색 같은 거 내가 조절")
+            row(b, sx, sw, [number(sc, 'mch_mech_hdri_bg_bright', 'Brightness')])
+            row(b, sx, sw, [number(sc, 'mch_mech_hdri_bg_contrast', 'Contrast')])
+            row(b, sx, sw, [prop_cell(sc, 'mch_mech_hdri_bg_ramp', 'Colour Ramp')])
+            from . import backdrops as bd_
+            rn = bd_.ramp_node(sc)
+            if sc.mch_mech_hdri_bg_ramp and rn is not None:
+                els = rn.color_ramp.elements
+                row(b, sx, sw, [swatch(els[0], 'color', 'Dark'), swatch(els[len(els) - 1], 'color', 'Light')])
+                row(b, sx, sw, [button('Edit Ramp…', 'mch.mech_bg_ramp')])
             backdrop_previews(b, sc, sx, sw)
         else:
             row(b, sx, sw, [prop_cell(sc, 'mch_mech_hdri_bg_color', 'Colour')])
