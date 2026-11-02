@@ -169,6 +169,37 @@ check('Ungroup on a collection made a group: the handle gone, the collection and
       and all((o.matrix_world.translation - before[o.name]).length < 1e-5 for o in (torso, arm_r))
       and rows()[0] == ('Mech', 0, 'COLL'), rows())
 
+# speed (user: "레이어는 왜 이렇게 느려?"): Blender's users_collection walks every collection for one object - it was
+# asked once per part (twice for a part in a collection row) on every rebuild of the panel
+import time  # noqa: E402
+me = bpy.data.meshes.new('many')
+for i in range(12):
+    c = bpy.data.collections.new(f'Many{i:02d}')
+    sc.collection.children.link(c)
+    for j in range(40):
+        c.objects.link(bpy.data.objects.new(f'M{i:02d}_{j:02d}', me))
+C.view_layer.update()
+calls = [0]
+real_uc = bpy.types.Object.users_collection
+
+
+def counted(self):
+    calls[0] += 1
+    return real_uc.fget(self)
+
+
+bpy.types.Object.users_collection = property(counted)
+try:
+    t0 = time.perf_counter()
+    its_many, _h = lp.content(C, 0.0, 270.0, 1.0)
+    took = time.perf_counter() - t0
+finally:
+    bpy.types.Object.users_collection = real_uc
+same = all((o.name in lp.scan(C)['listed']) == lp.listed(o) for o in C.view_layer.objects)
+check('480 more parts in 12 collections: the panel rebuilt without asking each part for its collections (one walk of '
+      'the collections instead), the same parts listed as before', calls[0] == 0 and same
+      and sum(1 for i in its_many if i.kind == 'lrow') >= 480 + 12, (calls[0], round(took * 1000, 1), same))
+
 empty = bpy.data.collections.new('Empty')
 sc.collection.children.link(empty)
 r = bpy.ops.mch.layer_group_op(name='Empty', coll=True, action='ORIGIN')

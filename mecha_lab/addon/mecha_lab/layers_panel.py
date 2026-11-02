@@ -44,8 +44,10 @@ SHOWN_TYPES = {'MESH', 'CURVE', 'SURFACE', 'META', 'FONT', 'EMPTY'}
 
 # --- what is listed -------------------------------------------------------------------------------------------
 
-def listed(ob):
-    """A part the user made - not a cutter, a repetition helper or a hidden Mecha resource."""
+def listed(ob, owners=None):
+    """A part the user made - not a cutter, a repetition helper or a hidden Mecha resource.  ``owners``: the
+    collections each object is in (``scan``) - else Blender's ``users_collection``, which walks every collection
+    in the file for one object (0.24.95 user: "레이어는 왜 이렇게 느려?" - that, once per part per redraw)."""
     from . import groups
     if ob is None or ob.type not in SHOWN_TYPES:
         return False
@@ -53,14 +55,34 @@ def listed(ob):
         return False
     if groups.CARRIER_KEY in ob or ob.hide_viewport:
         return False
-    if any(c.name.startswith('MCH') for c in ob.users_collection):
+    colls = owners.get(ob.name, ()) if owners is not None else ob.users_collection
+    if any(c.name.startswith('MCH') for c in colls):
         return False
     return not (ob.display_type in {'WIRE', 'BOUNDS'} and ob.hide_render)
 
 
-def _in_group(ob):
+def _in_group(ob, owners=None):
     from . import groups
-    return any(c.get(groups.GROUP_KEY) for c in ob.users_collection)
+    colls = owners.get(ob.name, ()) if owners is not None else ob.users_collection
+    return any(c.get(groups.GROUP_KEY) for c in colls)
+
+
+def scan(context):
+    """0.24.95 one walk of the scene's collections: {'owners': object name -> its collections, 'listed': the names
+    of the listed parts in the view layer} - what ``listed`` / ``_in_group`` asked Blender object by object."""
+    owners = {}
+    seen = set()
+    stack = [context.scene.collection]
+    while stack:
+        c = stack.pop()
+        if c.as_pointer() in seen:              # (a collection linked in two places: once)
+            continue
+        seen.add(c.as_pointer())
+        for o in c.objects:
+            owners.setdefault(o.name, []).append(c)
+        stack.extend(c.children)
+    names = {o.name for o in context.view_layer.objects if listed(o, owners)}
+    return {'owners': owners, 'listed': names}
 
 
 def _user_coll(c):
@@ -82,11 +104,15 @@ def layer_coll(context, coll):
     return walk(context.view_layer.layer_collection)
 
 
-def tree(context):
+def tree(context, sc=None):
     """[(item, depth, is_group, folded, kind)] top to bottom.  0.24.95 (user: "콜렉션도 레이어에 나오게") the scene's
     collections as folders (kind 'COLL': their collections, groups and parts under them), groups ('GROUP': their parts
-    under them) and parts ('OBJ') - collections first, then groups, then parts."""
+    under them) and parts ('OBJ') - collections first, then groups, then parts.  ``sc``: ``scan`` (made here if not
+    given)."""
     from . import groups, side_panel
+    sc = sc if sc is not None else scan(context)
+    shown = sc['listed']
+    owners = sc['owners']
     out = []
 
     def add(ob, depth):
@@ -97,7 +123,7 @@ def tree(context):
             coll = groups.collection_of(ob)
             if coll is not None:
                 sub_colls(coll, depth + 1)          # (a collection made a group: its own collections under it)
-            kids = [o for o in (coll.objects if coll is not None else []) if o is not ob and listed(o)]
+            kids = [o for o in (coll.objects if coll is not None else []) if o is not ob and o.name in shown]
             for o in sorted(kids, key=lambda o: (not groups.is_group(o), o.name.lower())):
                 add(o, depth + 1)
 
@@ -112,7 +138,7 @@ def tree(context):
 
     def add_coll(c, depth):
         sub_colls(c, depth)
-        objs = [o for o in c.objects if listed(o) and not _in_group(o)]
+        objs = [o for o in c.objects if o.name in shown and not _in_group(o, owners)]
         for o in sorted(objs, key=lambda o: (not groups.is_group(o), o.name.lower())):
             add(o, depth)
     add_coll(context.scene.collection, 0)
@@ -269,7 +295,8 @@ def content(context, x, width, k):
         y -= 4 * k
     except (ImportError, AttributeError, RuntimeError, ReferenceError):
         pass
-    rows = tree(context)
+    sc = scan(context)
+    rows = tree(context, sc)
     active = getattr(context, 'active_object', None)
     inside = groups.scope(context)
     if not rows:
@@ -308,9 +335,8 @@ def content(context, x, width, k):
             right = small(right, 'Origin to its middle', 'origin', False,
                           ('op', 'mch.layer_group_op', {'name': ob.name, 'coll': is_c, 'action': 'ORIGIN'}))
         if is_c:
-            n = sum(1 for o in ob.all_objects if listed(o))
-            sel = n > 0 and all(o.select_get() for o in ob.all_objects if listed(o) and
-                                o.name in context.view_layer.objects)
+            parts = [o for o in ob.all_objects if o.name in sc['listed']]
+            sel = bool(parts) and all(o.select_get() for o in parts)
         else:
             try:
                 sel = ob.select_get()
@@ -457,7 +483,8 @@ class MCH_OT_layer_pick(bpy.types.Operator):
             c = bpy.data.collections.get(self.name)
             if c is None:
                 return {'CANCELLED'}
-            obs = [o for o in c.all_objects if listed(o) and o.name in context.view_layer.objects]
+            shown = scan(context)['listed']
+            obs = [o for o in c.all_objects if o.name in shown]
             if not obs:
                 return {'CANCELLED'}
             try:

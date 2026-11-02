@@ -538,8 +538,9 @@ def subtool_list(context, region_w, k, Item, top, floor):
             y -= 16 * k
             out.append(Item('pnote', ix, y, iw, 16 * k, t, '', False, True))
         y -= GAP * k
+    shown = layers_panel.scan(context)['listed']          # (0.24.95 one walk, not users_collection per part)
     meshes = [o for o in sorted(context.view_layer.objects, key=lambda o: o.name.lower())
-              if o.type == 'MESH' and layers_panel.listed(o)]
+              if o.type == 'MESH' and o.name in shown]
     room = int(max(1, (y - floor - 5 * (ROW + GAP) * k - 30 * k) // ((26 + 2) * k)))
     for ob in meshes[:room]:
         y -= 26 * k
