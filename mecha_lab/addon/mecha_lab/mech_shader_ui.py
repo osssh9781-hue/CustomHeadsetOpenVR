@@ -821,6 +821,65 @@ class MCH_OT_mech_hdri_page(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def bgrid(b, x, w, tiles, cols=3):
+    """0.24.95 Background pictures, square tiles in rows of ``cols`` (the picture fitted in, wide or tall):
+    tiles = [(label, icon, on, action, aspect)]."""
+    k = b.k
+    gap = 5 * k
+    tw = (w - (cols - 1) * gap) / cols
+    th = tw * 0.8 + 15 * k
+    for i, (label, ic, on, action, asp) in enumerate(tiles):
+        c = i % cols
+        if c == 0:
+            b.y -= th + (gap if i else 0)
+        b.out.append(b.Item('btile', x + c * (tw + gap), b.y, tw, th, label, ic, on, True, action, asp))
+    b.y -= sp.GAP * k
+
+
+def backdrop_previews(b, sc, sx, sw, faint=False):
+    """0.24.95 The studio backdrops and the user's pictures, 6 on a page; a click = that picture behind the model."""
+    from . import backdrops as bd, mech_shader as ms_
+    ents = bd.entries()
+    if not ents:
+        return
+    cur = getattr(sc, 'mch_mech_hdri_bg_image', '')
+    on_img = not sc.mch_mech_hdri_show and getattr(sc, 'mch_mech_hdri_bg_mode', 'COLOR') == 'IMAGE'
+    page, pages = bd.page_of(cur, [e[0] for e in ents])
+    if pages > 1:
+        stepper(b, sx, sw, button('◀', 'mch.mech_bg_page', step=-1),
+                _cell('tbtn', f'Page {page + 1} / {pages}', ('op', 'mch.mech_bg_page', {'step': 0})),
+                button('▶', 'mch.mech_bg_page', step=1))
+    tiles = []
+    for ident, label in ents[page * bd.PAGE:(page + 1) * bd.PAGE]:
+        p = bd.path(ident)
+        ic = ('file:' + p) if ident.startswith(bd.BUILTIN) else (ms_.picture_icon(p) if p else '')   # (yours: a
+        tiles.append((label, ic, on_img and cur == ident,                                           #  small copy)
+                      ('op', 'mch.mech_bg_image', {'ident': ident}), bd.aspect(p)))
+    bgrid(b, sx, sw, tiles)
+    d = bd.folder()
+    n = len(bd.user_files()) if d else 0
+    b.note(('note', (f'My pictures: {os.path.basename(os.path.normpath(d))} ({n})' if d else
+                     'My pictures: none - the studio backdrops'), False, None, None, None, True), sx, sw)
+    row(b, sx, sw, [button('Choose Folder…', 'mch.mech_bg_folder')])
+
+
+class MCH_OT_mech_bg_mode(bpy.types.Operator):
+    """Behind the model: a colour or a picture; Fill (the frame covered) or Fit (the whole picture)"""
+    bl_idname = 'mch.mech_bg_mode'
+    bl_label = 'Background'
+    bl_options = {'REGISTER', 'UNDO'}
+    mode: bpy.props.StringProperty(default='', options={'SKIP_SAVE'})
+    fit: bpy.props.StringProperty(default='', options={'SKIP_SAVE'})
+
+    def execute(self, context):
+        sc = context.scene
+        if self.mode in {'COLOR', 'IMAGE'}:
+            sc.mch_mech_hdri_bg_mode = self.mode
+        if self.fit in {'FILL', 'FIT'}:
+            sc.mch_mech_hdri_bg_fit = self.fit
+        return {'FINISHED'}
+
+
 # --- the HDRI page (0.24.95 user: "재질이랑 hdri는 분리해야지") ------------------------------------------------------
 
 def hdri_content(context, x, width, k):
@@ -912,7 +971,22 @@ def hdri_content(context, x, width, k):
     def background(sx, sw):
         row(b, sx, sw, [number(sc, 'mch_mech_hdri_blur', 'Blur')])
         row(b, sx, sw, [prop_cell(sc, 'mch_mech_hdri_show', 'Show the HDRI')])
-        if not sc.mch_mech_hdri_show:            # (0.24.95 hidden: a background colour of its own)
+        if sc.mch_mech_hdri_show:
+            b.note(('note', 'Off: a colour or a picture behind the model (the HDRI still lights it)', False, None,
+                    None, None, True), sx, sw)
+            backdrop_previews(b, sc, sx, sw, faint=True)
+            return
+        # (0.24.95 hidden: a background colour of its own, or a picture - user: "배경 이미지를 넣을 수 있게")
+        mode = getattr(sc, 'mch_mech_hdri_bg_mode', 'COLOR')
+        row(b, sx, sw, [_cell('tbtn', 'Colour', ('op', 'mch.mech_bg_mode', {'mode': 'COLOR'}), on=mode == 'COLOR'),
+                        _cell('tbtn', 'Picture', ('op', 'mch.mech_bg_mode', {'mode': 'IMAGE'}), on=mode == 'IMAGE')])
+        if mode == 'IMAGE':
+            fit = sc.mch_mech_hdri_bg_fit
+            row(b, sx, sw, [_cell('tbtn', 'Fill', ('op', 'mch.mech_bg_mode', {'fit': 'FILL'}), on=fit == 'FILL'),
+                            _cell('tbtn', 'Fit', ('op', 'mch.mech_bg_mode', {'fit': 'FIT'}), on=fit == 'FIT')])
+            row(b, sx, sw, [prop_cell(sc, 'mch_mech_hdri_bg_color', 'Colour round it' if fit == 'FIT' else 'Colour')])
+            backdrop_previews(b, sc, sx, sw)
+        else:
             row(b, sx, sw, [prop_cell(sc, 'mch_mech_hdri_bg_color', 'Colour')])
     section(b, 'background', 'Background', x, width, background)
     return b.out, -b.y
@@ -979,7 +1053,7 @@ class MCH_OT_mech_hdri_remove(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_OT_mech_hdri_folder, MCH_OT_mech_hdri_remove, MCH_OT_mech_hdri_page)
+CLASSES = (MCH_OT_mech_hdri_folder, MCH_OT_mech_hdri_remove, MCH_OT_mech_hdri_page, MCH_OT_mech_bg_mode)
 
 
 def register():

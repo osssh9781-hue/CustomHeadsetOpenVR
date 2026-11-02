@@ -2445,6 +2445,9 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
                                   description='0.24.95 also list .jpg / .png / .tif pictures that are not 2:1 '
                                               'panoramas (off: only .hdr / .exr and 2:1 panoramas - the previews '
                                               'and photos kept next to HDRIs stay out)')
+    bg_folder: StringProperty(name='Background Folder', subtype='DIR_PATH', default='',
+                              description='0.24.95 Your background pictures (the folders inside it too): the HDRI page, '
+                              'Background - Picture, after the studio backdrops')
     auto_fix_mesh: BoolProperty(name='Auto Fix Mesh before Cut', default=True,
                                 description='A part that is not one clean solid (open sides, edges shared by 3+ faces) is '
                                             'repaired by itself before Cut / Split / Box Hide / Boolean - the Boolean failed '
@@ -2518,6 +2521,7 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
         box.row().prop(self, 'alpha_overlay')
         box.row().prop(self, 'auto_fix_mesh')
         box.row().prop(self, 'hdri_folder')
+        box.row().prop(self, 'bg_folder')
         box.row().prop(self, 'toolbar_size', expand=True)
         draw_icon_sizes(box, self)
         row = box.row()

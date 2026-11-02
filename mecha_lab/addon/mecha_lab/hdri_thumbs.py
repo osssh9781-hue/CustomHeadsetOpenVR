@@ -29,12 +29,13 @@ def make_thumb(src_path, out_path, size=THUMB):
     finally:
         bpy.data.images.remove(img)
     a = px.reshape(H, W, 4)[..., :3].astype(np.float64)
-    if not is_float:
-        a = np.where(a <= 0.04045, a / 12.92, ((a + 0.055) / 1.055) ** 2.4)
-    lum = a @ np.array([0.2126, 0.7152, 0.0722])
-    a = a * min(max(0.35 / max(float(lum.mean()), 1e-5), 0.05), 50.0)
-    a = np.clip(a / (1.0 + a) * 1.3, 0.0, 1.0)
-    a = np.where(a <= 0.0031308, a * 12.92, 1.055 * a ** (1 / 2.4) - 0.055)
+    if is_float:                                  # (an HDR: its brightness set by its mean, tone mapped, sRGB)
+        lum = a @ np.array([0.2126, 0.7152, 0.0722])
+        a = a * min(max(0.35 / max(float(lum.mean()), 1e-5), 0.05), 50.0)
+        a = np.clip(a / (1.0 + a) * 1.3, 0.0, 1.0)
+        a = np.where(a <= 0.0031308, a * 12.92, 1.055 * a ** (1 / 2.4) - 0.055)
+    else:                                         # (0.24.95 a photo / a backdrop: as it is - its own colours)
+        a = np.clip(a, 0.0, 1.0)
     tmp = out_path[:-4] + '.part.png' if out_path.lower().endswith('.png') else out_path + '.part.png'
     out = bpy.data.images.new('mch_hdri_thumb', W, H, alpha=False)
     try:

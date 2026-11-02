@@ -1654,7 +1654,11 @@ def hdri_icon(ident):
         p = os.path.join(ICON_DIR, 'hdri_' + os.path.splitext(ident)[0] + '.png')
         if os.path.isfile(p):
             return 'file:' + p
-    path = hdri_path(ident)
+    return picture_icon(hdri_path(ident))
+
+
+def picture_icon(path):
+    """'file:<png>' of a small preview of picture ``path`` (made once in a second Blender, kept); '' until then."""
     out = _thumb_out(path)
     if out is None:
         return ''
@@ -1881,7 +1885,7 @@ def hdri_sync(scene):
     if w is None:
         return None
     nt = w.node_tree
-    if nt is None or nt.nodes.get('mch:bg_mix') is None:      # (an HDRI world made before the background colour)
+    if not _world_current(w):                   # (an HDRI world made before the colour / the picture)
         _world_nodes(w)
         nt = w.node_tree
     env, bg, mp = nt.nodes.get('mch:env'), nt.nodes.get('mch:bg'), nt.nodes.get('mch:map')
@@ -1902,6 +1906,7 @@ def hdri_sync(scene):
     w.cycles_visibility.camera = True          # (hidden: the camera sees the Background Colour - below)
     nt.nodes['mch:bg_hide'].outputs[0].default_value = 0.0 if scene.mch_mech_hdri_show else 1.0
     nt.nodes['mch:bg_color'].inputs['Color'].default_value = (*scene.mch_mech_hdri_bg_color, 1.0)
+    _backdrop_sync(scene, nt)
     eb, on = nt.nodes.get('mch:env_blur'), nt.nodes.get('mch:blur_on')
     if eb is not None and on is not None:
         blur = float(scene.mch_mech_hdri_blur)
@@ -1966,6 +1971,77 @@ def _world_nodes(w):
     nt.links.new(bg.outputs['Background'], smix.inputs[1])
     nt.links.new(bgc.outputs['Background'], smix.inputs[2])
     nt.links.new(smix.outputs['Shader'], out.inputs['Surface'])
+    # 0.24.95 (user: "배경 컬러 말고 내가 원하는 배경 이미지를 넣을 수 있게") the background hidden: a picture behind the
+    # model - the frame's window coordinates, fitted (``backdrops.fit_scale``), the Colour round it (its alpha 0)
+    bmap = nt.nodes.new('ShaderNodeMapping')
+    bmap.name = 'mch:bgimg_map'
+    bmap.vector_type = 'POINT'
+    btex = nt.nodes.new('ShaderNodeTexImage')
+    btex.name = 'mch:bgimg'
+    btex.extension = 'CLIP'
+    btex.interpolation = 'Linear'
+    bal = nt.nodes.new('ShaderNodeMix')
+    bal.data_type = 'RGBA'
+    bal.name = 'mch:bgimg_alpha'
+    bon = nt.nodes.new('ShaderNodeValue')
+    bon.name = 'mch:bgimg_on'
+    bon.outputs[0].default_value = 0.0
+    bpick = nt.nodes.new('ShaderNodeMix')
+    bpick.data_type = 'RGBA'
+    bpick.name = 'mch:bgimg_pick'
+    for i, n in enumerate((bmap, btex, bal, bon, bpick)):
+        n.location = (-300 + 200 * i, -420)
+    nt.links.new(tc.outputs['Window'], bmap.inputs['Vector'])
+    nt.links.new(bmap.outputs['Vector'], btex.inputs['Vector'])
+    sa = {x.identifier: x for x in bal.inputs}
+    nt.links.new(btex.outputs['Alpha'], sa['Factor_Float'])
+    nt.links.new(btex.outputs['Color'], sa['B_Color'])
+    sp_ = {x.identifier: x for x in bpick.inputs}
+    nt.links.new(bon.outputs[0], sp_['Factor_Float'])
+    nt.links.new(next(o for o in bal.outputs if o.identifier == 'Result_Color'), sp_['B_Color'])
+    nt.links.new(next(o for o in bpick.outputs if o.identifier == 'Result_Color'), bgc.inputs['Color'])
+
+
+WORLD_NODES = ('mch:map', 'mch:env', 'mch:env_blur', 'mch:blur_on', 'mch:blur_mix', 'mch:bg', 'mch:bg_color',
+               'mch:bg_hide', 'mch:bg_mix', 'mch:bgimg_map', 'mch:bgimg', 'mch:bgimg_alpha', 'mch:bgimg_on',
+               'mch:bgimg_pick')
+
+
+def _world_current(w):
+    """The HDRI world has every node this version uses (else it is made anew)."""
+    nt = w.node_tree
+    return nt is not None and all(nt.nodes.get(n) is not None for n in WORLD_NODES)
+
+
+def _backdrop_sync(scene, nt):
+    """The picture behind the model (when the HDRI background is hidden and Background is Picture)."""
+    from . import backdrops
+    bmap, btex, bon = nt.nodes.get('mch:bgimg_map'), nt.nodes.get('mch:bgimg'), nt.nodes.get('mch:bgimg_on')
+    bal, bpick = nt.nodes.get('mch:bgimg_alpha'), nt.nodes.get('mch:bgimg_pick')
+    if None in (bmap, btex, bon, bal, bpick):
+        return
+    col = (*scene.mch_mech_hdri_bg_color, 1.0)
+    {x.identifier: x for x in bal.inputs}['A_Color'].default_value = col
+    {x.identifier: x for x in bpick.inputs}['A_Color'].default_value = col
+    want = getattr(scene, 'mch_mech_hdri_bg_mode', 'COLOR') == 'IMAGE'
+    path = backdrops.path(getattr(scene, 'mch_mech_hdri_bg_image', '')) if want else ''
+    if path and os.path.isfile(path):
+        old = btex.image
+        if old is None or os.path.normcase(bpy.path.abspath(old.filepath)) != os.path.normcase(path):
+            known = {i.name for i in bpy.data.images}
+            img = bpy.data.images.load(path, check_existing=True)
+            if img.name not in known:
+                img['mch_hdri_own'] = True       # (loaded here: let go again when another is picked)
+            btex.image = img
+            _let_go(old)
+        img = btex.image
+        ia = (img.size[0] / img.size[1]) if img.size[0] and img.size[1] else backdrops.aspect(path)
+        sx, sy = backdrops.fit_scale(backdrops.frame_aspect(scene), ia, scene.mch_mech_hdri_bg_fit)
+        bmap.inputs['Scale'].default_value = (sx, sy, 1.0)
+        bmap.inputs['Location'].default_value = (0.5 - 0.5 * sx, 0.5 - 0.5 * sy, 0.0)
+        bon.outputs[0].default_value = 1.0
+    else:
+        bon.outputs[0].default_value = 0.0
 
 
 def set_hdri(context):
@@ -1983,8 +2059,7 @@ def set_hdri(context):
         w['mch_prev_world'] = sc.world.name if sc.world is not None else ''
         _world_nodes(w)
         sc.world = w
-    elif w.node_tree is None or w.node_tree.nodes.get('mch:env_blur') is None or \
-            w.node_tree.nodes.get('mch:bg_mix') is None:
+    elif not _world_current(w):
         _world_nodes(w)                               # (an HDRI world from before the blur / colour: its nodes anew)
     hdri_sync(sc)
     for sp in _views(context):
@@ -2171,6 +2246,9 @@ def draw_hdri(layout, context):
     col.prop(sc, 'mch_mech_hdri_blur', slider=True)
     col.prop(sc, 'mch_mech_hdri_show')
     if not sc.mch_mech_hdri_show:
+        col.prop(sc, 'mch_mech_hdri_bg_mode', expand=True)
+        if sc.mch_mech_hdri_bg_mode == 'IMAGE':
+            col.prop(sc, 'mch_mech_hdri_bg_fit', expand=True)
         col.prop(sc, 'mch_mech_hdri_bg_color')
     r = box.row(align=True)
     r.operator('mch.mech_hdri', text='Set HDRI', icon='WORLD').action = 'SET'
@@ -2205,6 +2283,8 @@ def register():
         bpy.utils.register_class(c)
     from . import mech_shader_ui                      # 0.24.95 the Material page of the Mecha Lab side panel
     mech_shader_ui.register()
+    from . import backdrops                           # 0.24.95 a picture behind the model
+    backdrops.register()
     bpy.types.Material.mch_mech = PointerProperty(type=MCH_PG_MechShader)
     T = bpy.types.Scene
     T.mch_mech_preset = EnumProperty(name='Mech Shader Preset', items=[(k, n, n) for k, n, _s in PRESETS],
@@ -2227,7 +2307,8 @@ def register():
 
 
 def unregister():
-    from . import mech_shader_ui
+    from . import backdrops, mech_shader_ui
+    backdrops.unregister()
     mech_shader_ui.unregister()
     for attr, owner in [('mch_mech', bpy.types.Material)] + [(p, bpy.types.Scene) for p in SCENE_PROPS]:
         try:

@@ -609,7 +609,7 @@ def draw(items, hover, S, context):
 
 
 NEW_KINDS = {'sbtn', 'arow', 'ibtn', 'mini', 'drop', 'switch', 'tbtn', 'pnote', 'sbg', 'shead', 'phead', 'pbtn', 'pmin',
-             'sbar', 'vrule', 'glabel', 'lrow', 'lfold', 'swatch', 'ptab', 'mtile', 'htile'}
+             'sbar', 'vrule', 'glabel', 'lrow', 'lfold', 'swatch', 'ptab', 'mtile', 'htile', 'btile'}
 BTN_BG = (0.17, 0.175, 0.19, 1.0)
 BTN_HOT = (0.24, 0.245, 0.27, 1.0)
 FILL = (0.22, 0.38, 0.72, 1.0)        # the Quick HUD's bar blue
@@ -709,6 +709,24 @@ def _draw_new(it, hot, S, white, dim):
             G.rounded_rect(ix, iy, iw, ih, 4 * S, (0.3, 0.31, 0.34, 1.0))
             G.text(ix + iw / 2, iy + ih / 2, '...', 11 * S, G.TEXT_DIM, 'CENTER')
         size = 10 * S
+        label = G.fit(it.label, size, w - 6 * S)
+        G.text(x + w / 2, y + band * 0.5, label, size, white, 'CENTER')
+        return (it, 'ABOVE') if hot and label != it.label else None
+    if k == 'btile':                      # 0.24.95 a background picture: fitted in (wide or tall), the name under it
+        if it.on:
+            G.rounded_rect(x, y, w, h, 8 * S, G.ACCENT)
+        elif hot:
+            G.rounded_rect(x, y, w, h, 8 * S, HOVER)
+        band = 14 * S
+        aw, ah = w - 8 * S, h - band - 6 * S
+        asp = float(it.data) if isinstance(it.data, (int, float)) and it.data > 0 else 16 / 9
+        iw, ih = (aw, aw / asp) if aw / asp <= ah else (ah * asp, ah)
+        ix, iy = x + (w - iw) / 2, y + band + (h - band - ih) / 2
+        drawn = it.icon.startswith('file:') and G.image_quad(it.icon[5:], ((ix, iy), (ix + iw, iy), (ix + iw, iy + ih),
+                                                                           (ix, iy + ih)))
+        if not drawn:
+            G.rounded_rect(ix, iy, iw, ih, 4 * S, (0.3, 0.31, 0.34, 1.0))
+        size = 9.5 * S
         label = G.fit(it.label, size, w - 6 * S)
         G.text(x + w / 2, y + band * 0.5, label, size, white, 'CENTER')
         return (it, 'ABOVE') if hot and label != it.label else None
