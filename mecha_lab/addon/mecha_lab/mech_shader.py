@@ -1588,12 +1588,17 @@ def _hdri_items(self, context):
         if _HDRI_ITEMS:
             _HDRI_KEPT.append(list(_HDRI_ITEMS))
         _HDRI_ITEMS.clear()
-        num = lambda ident: zlib.crc32(ident.encode()) & 0x7fffffff          # (stable: files come and go)
+        builtin = hdri_files()
+
+        def num(ident):                       # (stable: files come and go; Blender's first HDRI is 0 - a scene that
+            if builtin and ident == builtin[0]:   # never picked one shows it, not a blank list and a warning per look)
+                return 0
+            return (zlib.crc32(ident.encode()) & 0x7fffffff) or 1
         for f in files:                       # (in the folders inside it too: '* Folder / Name')
             ident = USER + f
             label = '* ' + ' / '.join(os.path.splitext(f)[0].split('/'))
             _HDRI_ITEMS.append((ident, label, hdri_path(ident), 'FILE_IMAGE', num(ident)))
-        for f in hdri_files():
+        for f in builtin:
             _HDRI_ITEMS.append((f, os.path.splitext(f)[0].title(), f'Blender\'s built-in HDRI {f}', 'WORLD', num(f)))
         if not _HDRI_ITEMS:
             _HDRI_ITEMS.append(('NONE', 'None', 'No HDRI found', 'ERROR', 0))
@@ -1684,8 +1689,11 @@ def _worker_cmd(list_path):
     script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'hdri_thumbs.py')
     binary = bpy.app.binary_path
     if binary and os.path.basename(binary).lower().startswith('blender'):
-        return [binary, '-b', '--factory-startup', '--python', script, '--', list_path]
+        return [binary, '-b', '--factory-startup', '--threads', str(THUMB_THREADS), '--python', script, '--', list_path]
     return [sys.executable, script, list_path]
+
+
+THUMB_THREADS = 1                 # (the preview worker: one core - the rest left to the window)
 
 
 def thumbs_in_background():

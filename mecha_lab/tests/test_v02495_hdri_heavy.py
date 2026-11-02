@@ -5,7 +5,10 @@
 * the folder tree is walked again only when a folder changed (its change time), not every 2 s
 * many HDRIs in several folders: each folder folds, closed to start but the current HDRI's - only an open folder's
   previews are drawn and asked for; a click on the folder's heading opens it
-* the HDRI picked before is let go when another is picked (its pixels freed); an image the user had in the file stays"""
+* the HDRI picked before is let go when another is picked (its pixels freed); an image the user had in the file stays
+* the panel's pictures are read without making a Blender image (each one made and removed was a change to the file's
+  data: the 3D view started its drawing again - Material Preview re-rendered - once per preview arriving)
+* a scene that never picked an HDRI shows Blender's first one in the list (it was blank, a warning per look)"""
 import os
 import shutil
 import tempfile
@@ -150,4 +153,34 @@ finally:
     workspace_ui.pref = real_pref
     ms.cancel_thumbs()
     ms.rescan()
+
+# the panel's pictures read without a Blender image (adding / removing one restarts the 3D view's drawing)
+from mecha_lab import ui_gpu  # noqa: E402
+p = os.path.join(tempfile.mkdtemp(), 'icon.png')
+img = bpy.data.images.new('icon', 6, 4, alpha=True)
+px = np.zeros((4, 6, 4), np.float32)
+px[..., 3] = 1.0
+px[0, 0] = (1.0, 0.0, 0.0, 1.0)
+px[3, 5] = (0.0, 0.0, 1.0, 0.5)
+img.pixels.foreach_set(px.ravel())
+img.filepath_raw = p
+img.file_format = 'PNG'
+img.save()
+bpy.data.images.remove(img)
+n_img = len(bpy.data.images)
+w, h, a, is_float = ui_gpu._pixels(p)
+ref = bpy.data.images.load(p)
+r = np.empty(len(ref.pixels), np.float32)
+ref.pixels.foreach_get(r)
+bpy.data.images.remove(ref)
+check('The panel\'s pictures (previews, icons): read without a Blender image (the file\'s data untouched - the 3D view '
+      'not started again), the same pixels as Blender\'s image, bottom row first',
+      len(bpy.data.images) == n_img and (w, h) == (6, 4) and not is_float and np.allclose(a, r, atol=1 / 255)
+      and np.allclose(a.reshape(4, 6, 4)[0, 0], (1, 0, 0, 1)))
+fresh()
+mecha_lab.register()
+ms.rescan()
+sc = bpy.context.scene
+check('A scene that never picked an HDRI: the list shows Blender\'s first one (not a blank)',
+      sc.mch_mech_hdri == ms.hdri_files()[0], sc.mch_mech_hdri)
 summary()

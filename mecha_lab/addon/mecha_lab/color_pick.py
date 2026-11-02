@@ -4,8 +4,9 @@
 * Hue / Saturation / Value bars under the colour wheel - they read and write the swatch's colour (the colour as it is
   shown: a linear colour is turned to display values first, so Value moves the way the eye expects)
 * Pick (the eyedropper): click anywhere in the Blender window - a 3D view, an image, a reference picture - and the
-  swatch takes the colour seen there (the area under the mouse is captured once and read; Esc / right click cancels).
-  It is the colour on the screen, lit and shaded, as any eyedropper sees it.
+  swatch takes the colour seen there (the clicked editor's picture read where it is drawn, 3 x 3 pixels; where that
+  cannot be read, the area captured to a picture; Esc / right click cancels).  It is the colour on the screen, lit
+  and shaded, as any eyedropper sees it.
 """
 from __future__ import annotations
 
@@ -126,6 +127,57 @@ def _area_at(screen, mx, my):
     return None
 
 
+def _region_at(area, mx, my):
+    for r in area.regions:
+        if r.type == 'WINDOW' and r.x <= mx < r.x + r.width and r.y <= my < r.y + r.height:
+            return r
+    return None
+
+
+_SPACES = {'VIEW_3D': 'SpaceView3D', 'IMAGE_EDITOR': 'SpaceImageEditor', 'NODE_EDITOR': 'SpaceNodeEditor',
+           'SEQUENCE_EDITOR': 'SpaceSequenceEditor', 'CLIP_EDITOR': 'SpaceClipEditor',
+           'PROPERTIES': 'SpaceProperties', 'OUTLINER': 'SpaceOutliner', 'TEXT_EDITOR': 'SpaceTextEditor',
+           'GRAPH_EDITOR': 'SpaceGraphEditor', 'DOPESHEET_EDITOR': 'SpaceDopeSheetEditor',
+           'NLA_EDITOR': 'SpaceNLA', 'FILE_BROWSER': 'SpaceFileBrowser', 'CONSOLE': 'SpaceConsole',
+           'INFO': 'SpaceInfo', 'SPREADSHEET': 'SpaceSpreadsheet'}
+
+
+def _read_cb(want, lx, ly, out):
+    """(a draw callback of the clicked editor) the mean colour round (lx, ly) of the region as it is drawn - read from
+    its own picture (display values), once."""
+    if 'rgb' in out:
+        return
+    reg = bpy.context.region
+    if reg is None or reg.as_pointer() != want:
+        return
+    try:
+        import gpu
+        fb = gpu.state.active_framebuffer_get()
+        vx, vy, vw, vh = gpu.state.viewport_get()
+        x0, y0 = int(min(max(lx - 1, 0), vw - 3)), int(min(max(ly - 1, 0), vh - 3))
+        buf = fb.read_color(vx + x0, vy + y0, 3, 3, 4, 0, 'FLOAT')
+        px = [p for row in buf.to_list() for p in row]
+        out['rgb'] = tuple(min(max(sum(p[c] for p in px) / len(px), 0.0), 1.0) for c in range(3))
+    except Exception as ex:                       # (no picture to read: the screenshot instead)
+        out['err'] = repr(ex)
+
+
+def _screenshot_read(context, win, area, mx, my):
+    """The other way: the area captured to a picture and read (where an editor's picture cannot be read)."""
+    path = os.path.join(tempfile.mkdtemp(prefix='mch_pick_'), 'area.png')
+    region = next((r for r in area.regions if r.type == 'WINDOW'), None)
+    try:
+        with context.temp_override(window=win, area=area, region=region):
+            bpy.ops.screen.screenshot_area(filepath=path, check_existing=False)
+        return sample(path, mx - area.x, my - area.y)
+    finally:
+        try:
+            os.remove(path)
+            os.rmdir(os.path.dirname(path))
+        except OSError:
+            pass
+
+
 class MCH_OT_color_eyedrop(bpy.types.Operator):
     """Pick a colour from the screen: click anywhere (a 3D view, an image ...) - the swatch takes the colour seen there.
     Esc / right click: cancel"""
@@ -138,6 +190,8 @@ class MCH_OT_color_eyedrop(bpy.types.Operator):
         if self.data is None or context.window is None or bpy.app.background:      # (no screen to pick from)
             self.report({'WARNING'}, 'Pick: open a colour swatch first')
             return {'CANCELLED'}
+        self._handle = self._timer = None
+        self._out = {}
         context.window.cursor_modal_set('EYEDROPPER')
         context.window_manager.modal_handler_add(self)
         try:
@@ -152,42 +206,75 @@ class MCH_OT_color_eyedrop(bpy.types.Operator):
             context.workspace.status_text_set(None)
         except (AttributeError, TypeError):
             pass
+        if self._handle is not None:
+            try:
+                getattr(bpy.types, self._space).draw_handler_remove(self._handle, 'WINDOW')
+            except (ValueError, AttributeError):
+                pass
+            self._handle = None
+        if self._timer is not None:
+            context.window_manager.event_timer_remove(self._timer)
+            self._timer = None
+
+    def _apply(self, context, rgb):
+        try:
+            set_display_colour(self.data, self.prop, rgb)
+        except (ReferenceError, AttributeError, TypeError) as ex:
+            self.report({'WARNING'}, f'Pick: {ex}')
+            return {'CANCELLED'}
+        for a in context.window.screen.areas:
+            a.tag_redraw()
+        self.report({'INFO'}, 'Picked ' + ' '.join(f'{v:.2f}' for v in rgb))
+        return {'FINISHED'}
 
     def modal(self, context, event):
+        if self._timer is not None:                        # (waiting for the clicked editor to be drawn once)
+            if event.type != 'TIMER':
+                return {'RUNNING_MODAL'}
+            import time
+            if 'rgb' in self._out:
+                rgb = self._out['rgb']
+                self._end(context)
+                return self._apply(context, rgb)
+            if 'err' not in self._out and time.monotonic() - self._t0 < 0.6:
+                return {'RUNNING_MODAL'}
+            self._end(context)
+            return self._fallback(context)
         if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
             self._end(context)
             return {'CANCELLED'}
         if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
-            self._end(context)
+            import time
             win = context.window
-            area = _area_at(win.screen, event.mouse_x, event.mouse_y)
+            mx, my = event.mouse_x, event.mouse_y
+            area = _area_at(win.screen, mx, my)
             if area is None:
+                self._end(context)
                 return {'CANCELLED'}
-            path = os.path.join(tempfile.mkdtemp(prefix='mch_pick_'), 'area.png')
-            region = next((r for r in area.regions if r.type == 'WINDOW'), None)
-            try:
-                with context.temp_override(window=win, area=area, region=region):
-                    bpy.ops.screen.screenshot_area(filepath=path, check_existing=False)
-                rgb = sample(path, event.mouse_x - area.x, event.mouse_y - area.y)
-            except (RuntimeError, OSError, TypeError) as ex:
-                self.report({'WARNING'}, f'Pick: {ex}')
-                return {'CANCELLED'}
-            finally:
-                try:
-                    os.remove(path)
-                    os.rmdir(os.path.dirname(path))
-                except OSError:
-                    pass
-            try:
-                set_display_colour(self.data, self.prop, rgb)
-            except (ReferenceError, AttributeError, TypeError) as ex:
-                self.report({'WARNING'}, f'Pick: {ex}')
-                return {'CANCELLED'}
-            for a in win.screen.areas:
-                a.tag_redraw()
-            self.report({'INFO'}, 'Picked ' + ' '.join(f'{v:.2f}' for v in rgb))
-            return {'FINISHED'}
+            self._win, self._area, self._mx, self._my = win, area, mx, my
+            region = _region_at(area, mx, my)
+            space = _SPACES.get(area.type)
+            if region is None or space is None or not hasattr(bpy.types, space):
+                self._end(context)
+                return self._fallback(context)
+            # (0.24.95 the picture of the clicked editor read where it is drawn - no file; Blender's screen capture
+            #  reads nothing on some systems)
+            self._space = space
+            self._handle = getattr(bpy.types, space).draw_handler_add(
+                _read_cb, (region.as_pointer(), mx - region.x, my - region.y, self._out), 'WINDOW', 'POST_PIXEL')
+            self._timer = context.window_manager.event_timer_add(0.02, window=win)
+            self._t0 = time.monotonic()
+            area.tag_redraw()
+            return {'RUNNING_MODAL'}
         return {'RUNNING_MODAL'}
+
+    def _fallback(self, context):
+        try:
+            rgb = _screenshot_read(context, self._win, self._area, self._mx, self._my)
+        except (RuntimeError, OSError, TypeError, AttributeError) as ex:
+            self.report({'WARNING'}, f'Pick: {ex}')
+            return {'CANCELLED'}
+        return self._apply(context, rgb)
 
 
 CLASSES = (MCH_OT_color_eyedrop,)

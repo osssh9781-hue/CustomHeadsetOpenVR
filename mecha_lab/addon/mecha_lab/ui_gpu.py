@@ -153,6 +153,52 @@ def wrap2(s, size, width):
     return [fit(first, size, width), fit(rest, size, width)] if rest else [fit(first, size, width)]
 
 
+def _pixels(path, thumb=0):
+    """(width, height, RGBA floats bottom row first, float picture?) of a picture file.  0.24.95 read without a
+    Blender image where Blender can (5.x ``imbuf`` buffers): adding and removing an image is a change to the file's
+    data - the 3D view starts its drawing again (Material Preview / Rendered re-render, Solid re-smooths), once per
+    picture the panel loads (user: "hdri 뭉탱이로 불러왔더니 캐무거워" - every HDRI preview arriving did it).
+    ``thumb``: scaled down to that many pixels first."""
+    import numpy as np
+    try:
+        import imbuf
+        if hasattr(imbuf.types.ImBuf, 'with_buffer'):
+            ib = imbuf.load(path)
+            try:
+                w, h = ib.size
+                if thumb and max(w, h) > thumb:
+                    ib.resize((thumb, thumb))
+                    w, h = ib.size
+                with ib.with_buffer() as buf:
+                    a = np.array(buf, copy=True)
+                is_float = ib.buffer_type == 'FLOAT'
+            finally:
+                ib.free()
+            a = a.reshape(h, w, -1).astype(np.float32)
+            if not is_float:
+                a /= 255.0
+            if a.shape[2] < 4:                       # (grey / RGB: made RGBA)
+                rgb = np.repeat(a[..., :1], 3, axis=2) if a.shape[2] < 3 else a[..., :3]
+                a = np.concatenate([rgb, np.ones((h, w, 1), np.float32)], axis=2)
+            return w, h, np.ascontiguousarray(a[..., :4]).reshape(-1), is_float
+    except Exception:                                # (an older Blender, a picture imbuf cannot read: below)
+        pass
+    img = bpy.data.images.load(path, check_existing=False)
+    try:
+        w, h = img.size
+        if thumb and max(w, h) > thumb:
+            img.scale(thumb, thumb)
+            w, h = img.size
+        px = np.empty(w * h * 4, dtype=np.float32)
+        img.pixels.foreach_get(px)
+        return w, h, px, img.is_float
+    finally:
+        try:
+            bpy.data.images.remove(img)              # nothing stays in the user's file
+        except (ReferenceError, RuntimeError):
+            pass
+
+
 def _texture(path, mono=False, thumb=0):
     """GPU texture of a PNG; ``mono``: only its bright strokes, as white (Modeler's white line icons; the
     dark tile the Mecha icons are drawn on disappears), tinted by the draw colour.  ``thumb``: scaled down to
@@ -162,18 +208,11 @@ def _texture(path, mono=False, thumb=0):
         return _TEX[key]
     tex = None
     if path and os.path.isfile(path):
-        img = None
         try:
             import gpu
             import numpy as np
-            img = bpy.data.images.load(path, check_existing=False)
-            w, h = img.size
-            if thumb and max(w, h) > thumb:
-                img.scale(thumb, thumb)
-                w, h = img.size
-            px = np.empty(w * h * 4, dtype=np.float32)
-            img.pixels.foreach_get(px)
-            if img.is_float:                     # 0.24.60 a float image (EXR MatCap) is linear: shown as sRGB
+            w, h, px, is_float = _pixels(path, thumb)
+            if is_float:                             # 0.24.60 a float image (EXR MatCap) is linear: shown as sRGB
                 px = px.reshape(-1, 4)
                 c = np.clip(px[:, :3], 0.0, 1.0)
                 px[:, :3] = np.where(c <= 0.0031308, c * 12.92, 1.055 * np.power(c, 1 / 2.4) - 0.055)
@@ -187,12 +226,6 @@ def _texture(path, mono=False, thumb=0):
             tex = gpu.types.GPUTexture((w, h), format='RGBA16F', data=gpu.types.Buffer('FLOAT', w * h * 4, px))
         except Exception:
             tex = None
-        finally:
-            if img is not None:
-                try:
-                    bpy.data.images.remove(img)          # nothing stays in the user's file
-                except (ReferenceError, RuntimeError):
-                    pass
     _TEX[key] = tex
     return tex
 

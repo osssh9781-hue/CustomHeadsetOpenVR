@@ -145,8 +145,10 @@ check('Quick HUD and key legend paint dark rounded cards with the size factor',
       'G.rounded_rect' in inspect.getsource(qh._draw_labels) and 'ui_factor' in inspect.getsource(qh._draw_labels)
       and 'G.rounded_rect' in inspect.getsource(mecha_lab.key_legend._draw))
 check('Text fits its button (shortened with …)', G.fit('A very long tool name indeed', 10, 40).endswith('…'))
-check('Icons are read into GPU textures and the temporary image is removed (nothing left in the file)',
-      'bpy.data.images.remove' in inspect.getsource(G._texture) and not bpy.data.images)
+check('Icons are read into GPU textures without a Blender image (0.24.95 imbuf; older Blender: the temporary image '
+      'is removed) - nothing left in the file',
+      'imbuf' in inspect.getsource(G._pixels) and 'bpy.data.images.remove' in inspect.getsource(G._pixels)
+      and '_pixels(' in inspect.getsource(G._texture) and not bpy.data.images)
 
 # paint once with recording stand-ins (no GPU without a window): catches mistakes in the drawing code
 CALLS = []
