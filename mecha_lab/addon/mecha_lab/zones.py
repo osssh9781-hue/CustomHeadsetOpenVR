@@ -732,6 +732,7 @@ def relink(mat):
         thr.node.name = tag + 'through'
         shared = {}
         m = prof = None
+        looks = []
         # 0.24.95 (user: "왜 미러가 안 돼?") the drawn zone, then a copy for each reflection of the part's live Mirror
         for k, (S, Tq) in enumerate([(None, None)] + mirror_maps(z)):
             if S is None:
@@ -744,6 +745,17 @@ def relink(mat):
             mv, pv = _look_up(b, z, vt, q, pos, tco.outputs['Object'], nrm.outputs['Vector'], eye, look, lw, lsel,
                               thr, shared)
             m = mv if m is None else b.math('MAXIMUM', m, mv)
+            looks.append((mv, pv))
+        # (0.24.95 user: "미러 하면 반대쪽 스트로크 자국이 남아": a zone over the mirror line overlaps its copy - each
+        #  one's outline groove ran on inside the other; a copy's line only where no other copy covers: the line on
+        #  the edge of them all)
+        for k, (mv, pv) in enumerate(looks):
+            if len(looks) > 1 and z.kind != 'LINE':
+                cover = None
+                for j, (mj, _pj) in enumerate(looks):
+                    if j != k:
+                        cover = mj if cover is None else b.math('MAXIMUM', cover, mj)
+                pv = b.math('MULTIPLY', pv, b.math('SUBTRACT', 1.0, cover, clamp=True))
             prof = pv if prof is None else b.math('MAXIMUM', prof, pv)
         # (0.24.95 user: "셀렉트 모드로 했는데 다른 영역도 칠해져" - the material shared by other parts: the zone only on its
         #  own part - the part's number (its custom property ZONE_ID, read by an Object attribute) must match)

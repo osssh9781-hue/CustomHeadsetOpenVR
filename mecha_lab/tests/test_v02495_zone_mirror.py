@@ -7,6 +7,7 @@
 * a Split Zone drawn over the mirrored half: the faces it mirrors get the zone's material (the Mirror shows them there)
 * (user: "미러 하고 어플라이 하면 적용이 안 됐어") the Mirror applied - by Mecha Lab or by Blender itself: the zone's
   copy stays on the mirrored half (now the part's own mesh); Mirror turned off: gone (above)
+* (user: "미러 하면 반대쪽 스트로크 자국이 남아") a zone over the mirror line: no outline groove inside the overlap
 * Through (the top bar): a Paint Zone on the back faces too (rendered from behind; off: not); a Split Zone: the back
   faces too
 * the line: Line Width up to 40 % (bar 15), Line Height up to +-10 (bar +-3); a wider line as much deeper (its
@@ -188,6 +189,54 @@ check('... applied by Blender itself (the modifier panel): the copy kept too (th
       sy.mirror_mod(pb) is None and len(zn.mirror_maps(zb)) == 1 and blue(LB) and blue(RB),
       (np.round(LB, 2).tolist(), np.round(RB, 2).tolist()))
 bpy.data.objects.remove(pb)
+C.view_layer.update()
+
+# ---- a zone over the mirror line (user: "미러 하면 반대쪽 스트로크 자국이 남아"): the zone and its copy overlap - the
+#      outline groove only on the edge of both, not running on inside (a seam down the middle)
+bpy.ops.mesh.primitive_uv_sphere_add(segments=48, ring_count=32, radius=1.0, location=(0.0, 0.0, -10.0))
+helm = C.active_object
+helm.scale = (0.8, 1.0, 1.15)
+bpy.ops.object.transform_apply(scale=True)
+bpy.ops.object.shade_smooth()
+bpy.ops.mch.mech_shader_apply(preset='PAINTED')
+hst = helm.active_material.mch_mech
+hst.edge_wear = hst.scratches = hst.dirt = hst.rust = 0.0
+hst.paint_color = (0.1, 0.1, 0.1)
+sy.set_mode(C, helm, 'MIRROR')
+C.view_layer.update()
+cd_ = bpy.data.cameras.new('Draw')
+draw = bpy.data.objects.new('Draw', cd_)
+S.collection.objects.link(draw)
+draw.location = (4.0 * math.sin(math.radians(35)), -4.0 * math.cos(math.radians(35)), -9.4)
+draw.rotation_euler = (Vector((0, 0, -9.8)) - draw.location).to_track_quat('-Z', 'Y').to_euler()
+C.view_layer.update()
+vmD, wmD = draw.matrix_world.inverted(), draw.calc_matrix_camera(C.evaluated_depsgraph_get(), x=RW, y=RH)
+visor = [to_px(vmD, wmD, (x_, y_, z_ - 10.0)) for x_, y_, z_ in
+         ((-0.05, -1.0, 0.05), (0.55, -0.8, 0.0), (0.7, -0.6, -0.35), (0.3, -0.9, -0.45), (-0.05, -1.0, -0.3))]
+zh = zn.add_paint_zone(C, helm, visor, vmD, wmD, True, RW, RH, color=(0.9, 0.6, 0.05))
+zh.line_height, zh.line_width = -1.0, 0.6
+cdf = bpy.data.cameras.new('Front')
+cdf.type = 'ORTHO'
+cdf.ortho_scale = 2.8
+front_cam = bpy.data.objects.new('Front', cdf)
+S.collection.objects.link(front_cam)
+front_cam.location, front_cam.rotation_euler = (0.0, -6.0, -10.0), (math.radians(90), 0.0, 0.0)
+keep_cam = S.camera
+S.camera = front_cam
+S.cycles.samples = 16
+a = render()
+S.camera = keep_cam
+S.cycles.samples = 8
+g = a.mean(axis=2)
+rz = lambda zz: int(PX / 2 + zz * PX / 2.8)                     # (a height on the part -> its row, bottom row first)
+cx = lambda xx: int(PX / 2 + xx * PX / 2.8)
+band = slice(rz(-0.24), rz(-0.04))
+mid_std = float(g[band, cx(-0.08):cx(0.08)].std())               # (in the zone, on the mirror line)
+off_std = float(g[band, cx(-0.5):cx(-0.34)].std())               # (in the zone, off it)
+check('A zone drawn over the mirror line: one even zone across the middle - no outline groove left inside it '
+      '(the brightness there as even as elsewhere in the zone)', mid_std < 1.5 * off_std + 0.004,
+      (round(mid_std, 4), round(off_std, 4)))
+bpy.data.objects.remove(helm)
 C.view_layer.update()
 
 # ---- Through
