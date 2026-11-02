@@ -139,7 +139,7 @@ try:
     ms._SCAN['time'] = 0.0                     # (as SCAN_EVERY seconds later)
     check('... a file added to a folder inside: listed', 'U:Studio/ring.exr' in [i[0] for i in ms._hdri_items(None, C)])
     its, _h = mu.hdri_content(C, 0.0, 276.0, 1.0)
-    heads = [i.label for i in its if i.kind == 'pnote']
+    heads = [i.label for i in its if i.kind in ('pnote', 'shead')]          # (0.24.95 folder headings fold: 'shead')
     notes = ' '.join(heads)
     btns = {i.label: i for i in its if i.kind == 'tbtn'}
     check('... the HDRI page: a heading per folder over its previews, the folder line counts them; Remove (the one '

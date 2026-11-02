@@ -788,6 +788,21 @@ def sub(b, text, x, w):
     b.note(('note', text, False, None, None, None, True), x, w)
 
 
+HDRI_OPEN_ALL = 24                # (HDRIs: more than this in more than one folder - the folders start closed)
+
+
+def fold_head(b, key, text, x, w, start_folded=False):
+    """0.24.95 A heading inside a section that folds what is under it (clicked).  True when open."""
+    k = b.k
+    is_folded = sp.folded(PAGE, key, start_folded)
+    b.gap(0.3)
+    h = sp.SECTION * k * 0.85
+    b.y -= h
+    b.out.append(b.Item('shead', x, b.y, w, h, text, '', not is_folded, True, ('fold', f'{PAGE}:{key}', start_folded)))
+    b.gap(0.3)
+    return not is_folded
+
+
 # --- the HDRI page (0.24.95 user: "재질이랑 hdri는 분리해야지") ------------------------------------------------------
 
 def hdri_content(context, x, width, k):
@@ -815,10 +830,20 @@ def hdri_content(context, x, width, k):
                 continue
             g = (ms.hdri_group(ident) or 'My HDRIs') if ident.startswith(ms.USER) else 'Blender'
             groups.setdefault(g, []).append((n.split(' / ')[-1] if ident.startswith(ms.USER) else n, ident))
+        # (0.24.95 user: "hdri 뭉탱이로 불러왔더니 캐무거워": many HDRIs - each folder folds, closed to start but the
+        #  current HDRI's; only an open folder's previews are drawn and made)
+        many = sum(len(m) for m in groups.values()) > HDRI_OPEN_ALL and len(groups) > 1
+        cur = sc.mch_mech_hdri
+        cur_g = (ms.hdri_group(cur) or 'My HDRIs') if cur.startswith(ms.USER) else 'Blender'
+        left = ms.thumbs_pending()
+        if left:
+            b.note(('note', f'Making previews in the background: {left} left (Blender keeps working)', False, None,
+                    None, None, True), sx, sw)
         for g, members in groups.items():
-            if len(groups) > 1:
-                sub(b, g.replace('/', ' / ') + f'  ({len(members)})', sx, sw)
-            hgrid(b, sx, sw, [(n, ms.hdri_icon(ident), sc.mch_mech_hdri == ident,
+            if len(groups) > 1 and not fold_head(b, 'hdri_g:' + g, g.replace('/', ' / ') + f'  ({len(members)})',
+                                                 sx, sw, many and g != cur_g):
+                continue
+            hgrid(b, sx, sw, [(n, ms.hdri_icon(ident), cur == ident,
                                ('op', 'mch.mech_hdri', {'action': 'SET', 'ident': ident})) for n, ident in members])
     section(b, 'hdri_previews', 'HDRIs', x, width, previews)
 

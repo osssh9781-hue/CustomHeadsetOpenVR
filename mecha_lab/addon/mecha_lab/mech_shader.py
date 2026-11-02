@@ -1376,8 +1376,10 @@ def hdri_files():
         return []
 
 
-_SCAN = {'dir': None, 'time': 0.0, 'files': [], 'sig': None}
-SCAN_EVERY = 2.0              # (seconds: the folder is looked through again at most this often - the list is asked a lot)
+_SCAN = {'dir': None, 'time': 0.0, 'files': [], 'sig': None, 'full': 0.0}
+SCAN_EVERY = 2.0              # (seconds: the folders' change times are looked at at most this often - the list is asked a lot)
+SCAN_FULL = 30.0              # (seconds: the whole tree walked again at most this often when no folder says it changed -
+#                                a disk whose change times are coarse)
 SCAN_MAX = 5000               # (files at most)
 
 
@@ -1475,18 +1477,36 @@ def user_hdri_files():
     now = time.monotonic()
     if _SCAN['dir'] == d and now - _SCAN['time'] < SCAN_EVERY:
         return _SCAN['files']
+    if _SCAN['dir'] == d and _SCAN['sig'] is not None and now - _SCAN['full'] < SCAN_FULL and _unchanged(_SCAN['sig']):
+        _SCAN['time'] = now                   # (0.24.95 "캐무거워": no folder changed - not walked again; a big tree of
+        return _SCAN['files']                 #  HDRIs was listed whole every 2 s)
     try:
         files, sig = _scan_user_hdris(d)
     except OSError:
         files, sig = [], None
     hidden = hidden_hdris()
     files = [f for f in files if f not in hidden]
-    _SCAN.update(dir=d, time=now, files=files, sig=sig)
+    if files == _SCAN['files'] and _SCAN['dir'] == d:
+        files = _SCAN['files']                # (the same list: the HDRI list is not made again)
+    _SCAN.update(dir=d, time=now, files=files, sig=sig, full=now)
     return files
+
+
+def _unchanged(sig):
+    """The folders of the last walk still have the change times they had (a file or folder added / removed changes
+    its folder's)."""
+    for root, mt in sig:
+        try:
+            if os.stat(root).st_mtime != mt:
+                return False
+        except OSError:
+            return False
+    return True
 
 
 def rescan():
     _SCAN['time'] = 0.0
+    _SCAN['sig'] = None
     _HDRI_KEY[0] = None
 
 
@@ -1582,89 +1602,70 @@ def _hdri_items(self, context):
 
 
 # --- HDRI previews (0.24.95 user: "hdri 도 미리 보기 넣어 줘") ----------------------------------------------------
+# (0.24.95 user: "hdri 뭉탱이로 불러왔더니 캐무거워": a preview is made in a second Blender (``hdri_thumbs.py``) - the
+#  window's Blender never reads a whole HDRI for it - and kept in the add-on's own folder for the next session; only
+#  the previews of the folders open on the HDRI page are asked for)
 HDRI_THUMB = (256, 128)
 ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mech_icons')
-_THUMB_QUEUE = []
+_THUMB_QUEUE = []                 # [(source, out)] waiting
 _THUMB_FAILED = set()
+_THUMB_JOB = {}                   # the worker running: proc, outs, seen, list, log
 
 
 def make_hdri_thumb(src_path, out_path, size=HDRI_THUMB):
     """A small picture of HDRI ``src_path`` (the whole panorama, PNG): made small by Blender, its brightness set
     by its mean (a dark night HDRI still shows), tone mapped, sRGB."""
-    import numpy as np
-    W, H = size
-    img = bpy.data.images.load(src_path, check_existing=False)
-    try:
-        if not img.size[0] or not img.size[1]:
-            raise RuntimeError(f'cannot read {src_path}')
-        is_float = img.is_float
-        img.scale(W, H)
-        px = np.empty(W * H * 4, np.float32)
-        img.pixels.foreach_get(px)
-    finally:
-        bpy.data.images.remove(img)
-    a = px.reshape(H, W, 4)[..., :3].astype(np.float64)
-    if not is_float:
-        a = np.where(a <= 0.04045, a / 12.92, ((a + 0.055) / 1.055) ** 2.4)
-    lum = a @ np.array([0.2126, 0.7152, 0.0722])
-    a = a * min(max(0.35 / max(float(lum.mean()), 1e-5), 0.05), 50.0)
-    a = np.clip(a / (1.0 + a) * 1.3, 0.0, 1.0)
-    a = np.where(a <= 0.0031308, a * 12.92, 1.055 * a ** (1 / 2.4) - 0.055)
-    out = bpy.data.images.new('mch_hdri_thumb', W, H, alpha=False)
-    try:
-        rgba = np.concatenate([a, np.ones((H, W, 1))], -1).astype(np.float32)
-        out.pixels.foreach_set(rgba.ravel())
-        out.filepath_raw = out_path
-        out.file_format = 'PNG'
-        out.save()
-    finally:
-        bpy.data.images.remove(out)
-    return out_path
+    from . import hdri_thumbs
+    return hdri_thumbs.make_thumb(src_path, out_path, size)
 
 
 def thumb_dir():
-    """Where the previews of the user's HDRIs are kept: Blender's temporary folder (gone when Blender closes - the
-    user's HDRI folder and Blender's settings are not touched)."""
+    """Where the previews of the user's HDRIs are kept: the add-on's own folder (Blender's extension user folder -
+    kept for the next session; the user's HDRI folder and Blender's settings are not touched), else Blender's
+    temporary folder."""
     import tempfile
-    d = os.path.join(bpy.app.tempdir or tempfile.gettempdir(), 'mch_hdri_thumbs')
-    os.makedirs(d, exist_ok=True)
+    try:
+        d = bpy.utils.extension_path_user(__package__, path='hdri_thumbs', create=True)
+    except (AttributeError, ValueError, TypeError, OSError, RuntimeError):
+        d = os.path.join(bpy.app.tempdir or tempfile.gettempdir(), 'mch_hdri_thumbs')
+        os.makedirs(d, exist_ok=True)
     return d
 
 
-def hdri_icon(ident):
-    """'file:<png>' of an HDRI's preview - Blender's own come with the add-on, the user's are made once (one at a
-    time, off the draw); '' until it is there."""
+def _thumb_out(path):
     import zlib
+    try:
+        info = os.stat(path)
+    except OSError:
+        return None
+    key = zlib.crc32(f'{path}|{info.st_mtime}|{info.st_size}'.encode()) & 0xffffffff
+    return os.path.join(thumb_dir(), f'{key:08x}.png')
+
+
+def hdri_icon(ident):
+    """'file:<png>' of an HDRI's preview - Blender's own come with the add-on, the user's are made once (in a second
+    Blender, off the window); '' until it is there."""
     if not ident.startswith(USER):
         p = os.path.join(ICON_DIR, 'hdri_' + os.path.splitext(ident)[0] + '.png')
         if os.path.isfile(p):
             return 'file:' + p
     path = hdri_path(ident)
-    try:
-        info = os.stat(path)
-    except OSError:
+    out = _thumb_out(path)
+    if out is None:
         return ''
-    key = zlib.crc32(f'{path}|{info.st_mtime}|{info.st_size}'.encode()) & 0xffffffff
-    out = os.path.join(thumb_dir(), f'{key:08x}.png')
     if os.path.isfile(out):
         return 'file:' + out
-    if path not in _THUMB_FAILED and all(q[0] != path for q in _THUMB_QUEUE):
+    if path in _THUMB_FAILED or os.path.isfile(out + '.fail'):
+        _THUMB_FAILED.add(path)
+        return ''
+    if all(q[0] != path for q in _THUMB_QUEUE) and out not in _THUMB_JOB.get('outs', ()):
         _THUMB_QUEUE.append((path, out))
         if not bpy.app.timers.is_registered(_thumb_tick):
             bpy.app.timers.register(_thumb_tick, first_interval=0.1)
     return ''
 
 
-def _thumb_tick():
-    """One preview per tick (a big HDRI takes a moment to read), then the panel redrawn."""
-    if not _THUMB_QUEUE:
-        return None
-    src, out = _THUMB_QUEUE.pop(0)
-    try:
-        make_hdri_thumb(src, out)
-    except (RuntimeError, OSError, ValueError, MemoryError) as ex:
-        print('Mech Shader: no HDRI preview for', src, ex)
-        _THUMB_FAILED.add(src)
+def _redraw():
     try:
         from . import ui_bars
         ui_bars.bump()
@@ -1674,7 +1675,146 @@ def _thumb_tick():
                     a.tag_redraw()
     except (AttributeError, ReferenceError, ImportError):
         pass
+
+
+def _worker_cmd(list_path):
+    """A second Blender in background mode (no user settings: factory start-up), or this python with the bpy
+    module."""
+    import sys
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'hdri_thumbs.py')
+    binary = bpy.app.binary_path
+    if binary and os.path.basename(binary).lower().startswith('blender'):
+        return [binary, '-b', '--factory-startup', '--python', script, '--', list_path]
+    return [sys.executable, script, list_path]
+
+
+def thumbs_in_background():
+    """Previews made in a second Blender: with a window (headless Blender makes them itself, one per tick, unless
+    MECH_BG_FORCE asks for the worker - the tests)."""
+    import sys
+    if bpy.app.background and not os.environ.get('MECH_BG_FORCE'):
+        return False
+    return bool(bpy.app.binary_path) or bool(getattr(sys, 'executable', ''))
+
+
+def _start_worker(jobs):
+    import json
+    import subprocess
+    import tempfile
+    d = tempfile.mkdtemp(prefix='mch_thumbs_')
+    lst = os.path.join(d, 'list.json')
+    with open(lst, 'w', encoding='utf-8') as f:
+        json.dump(jobs, f)
+    log = open(os.path.join(d, 'log.txt'), 'w')
+    kw = {}
+    if os.name == 'nt':                        # (no console window, below the window's Blender)
+        kw['creationflags'] = getattr(subprocess, 'CREATE_NO_WINDOW', 0) | getattr(
+            subprocess, 'BELOW_NORMAL_PRIORITY_CLASS', 0)
+    try:
+        proc = subprocess.Popen(_worker_cmd(lst), stdout=log, stderr=subprocess.STDOUT, cwd=d, **kw)
+    except OSError as ex:
+        log.close()
+        print('Mech Shader: could not start the HDRI preview worker', ex)
+        return False
+    _THUMB_JOB.clear()
+    _THUMB_JOB.update(proc=proc, outs=[o for _s, o in jobs], srcs=[s for s, _o in jobs], seen=set(), dir=d, log=log)
+    return True
+
+
+def _end_worker():
+    j = dict(_THUMB_JOB)
+    _THUMB_JOB.clear()
+    try:
+        j['log'].close()
+    except (KeyError, OSError, ValueError):
+        pass
+    if j.get('outs'):
+        # (a worker that stopped half-way - a file that crashed it: that one marked, not tried again)
+        for src, out in zip(j['srcs'], j['outs']):
+            if not os.path.isfile(out) and not os.path.isfile(out + '.fail'):
+                if j['proc'].returncode not in (0, None):
+                    _THUMB_FAILED.add(src)
+                    try:
+                        with open(out + '.fail', 'w', encoding='utf-8') as f:
+                            f.write(f'{src}\nthe preview worker stopped on it\n')
+                    except OSError:
+                        pass
+                break
+    for f in ('list.json', 'log.txt'):
+        try:
+            os.remove(os.path.join(j.get('dir', ''), f))
+        except OSError:
+            pass
+    try:
+        os.rmdir(j.get('dir', ''))
+    except OSError:
+        pass
+
+
+def cancel_thumbs():
+    """Stop making previews (the worker killed, the queue emptied)."""
+    _THUMB_QUEUE.clear()
+    p = _THUMB_JOB.get('proc')
+    if p is not None and p.poll() is None:
+        try:
+            p.kill()
+            p.wait(timeout=5)
+        except Exception:
+            pass
+    if _THUMB_JOB:
+        _THUMB_JOB['outs'] = []
+        _end_worker()
+
+
+def thumbs_pending():
+    """How many previews are still being made."""
+    n = len(_THUMB_QUEUE)
+    if _THUMB_JOB:
+        n += sum(1 for o in _THUMB_JOB['outs'] if o not in _THUMB_JOB['seen'])
+    return n
+
+
+def _thumb_tick():
+    """The worker watched (new previews: the panel redrawn); when it is done, the next batch.  Headless, or no
+    worker: one preview per tick here (a big HDRI takes a moment to read)."""
+    if _THUMB_JOB:
+        new = [o for o in _THUMB_JOB['outs'] if o not in _THUMB_JOB['seen']
+               and (os.path.isfile(o) or os.path.isfile(o + '.fail'))]
+        if new:
+            _THUMB_JOB['seen'].update(new)
+            _redraw()
+        if _THUMB_JOB['proc'].poll() is None:
+            return 0.4
+        _end_worker()
+        _redraw()
+    if not _THUMB_QUEUE:
+        return None
+    jobs = [(s, o) for s, o in _THUMB_QUEUE if not os.path.isfile(o) and s not in _THUMB_FAILED]
+    _THUMB_QUEUE.clear()
+    if not jobs:
+        return None
+    if thumbs_in_background() and _start_worker(jobs):
+        return 0.4
+    src, out = jobs[0]
+    _THUMB_QUEUE.extend(jobs[1:])
+    try:
+        make_hdri_thumb(src, out)
+    except (RuntimeError, OSError, ValueError, MemoryError) as ex:
+        print('Mech Shader: no HDRI preview for', src, ex)
+        _THUMB_FAILED.add(src)
+    _redraw()
     return 0.05 if _THUMB_QUEUE else None
+
+
+def _let_go(img):
+    """0.24.95 ("캐무거워"): an HDRI the page loaded and nothing uses any more - removed, its pixels freed (each HDRI
+    looked at stayed in memory until the file was saved and opened again; a 16k one is over a gigabyte).  Images
+    the user had in the file before are never removed."""
+    try:
+        if img is not None and img.get('mch_hdri_own') and img.users == 0:
+            bpy.data.images.remove(img)
+    except (ReferenceError, RuntimeError):
+        pass
 
 
 def hdri_world(scene):
@@ -1742,7 +1882,13 @@ def hdri_sync(scene):
     path = hdri_path(scene.mch_mech_hdri)
     if path and os.path.isfile(path) and (env.image is None or os.path.normcase(bpy.path.abspath(env.image.filepath))
                                           != os.path.normcase(path)):
-        env.image = bpy.data.images.load(path, check_existing=True)
+        old = env.image
+        known = {i.name for i in bpy.data.images}
+        img = bpy.data.images.load(path, check_existing=True)
+        if img.name not in known:
+            img['mch_hdri_own'] = True        # (loaded by the HDRI page: let go again when another is picked)
+        env.image = img
+        _let_go(old)
     bg.inputs['Strength'].default_value = scene.mch_mech_hdri_strength
     mp.inputs['Rotation'].default_value[2] = scene.mch_mech_hdri_rot
     w.cycles_visibility.camera = True          # (hidden: the camera sees the Background Colour - below)
