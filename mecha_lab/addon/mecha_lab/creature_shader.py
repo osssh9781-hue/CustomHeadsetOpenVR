@@ -24,7 +24,7 @@ from bpy.props import EnumProperty, FloatProperty, FloatVectorProperty, PointerP
 from . import mech_shader as ms
 
 KEY = 'mch_creature'
-VERSION = 1
+VERSION = 2                      # (2: Belly, Seed)
 CMAP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'creature_maps')
 # the user's creature maps (greyscale, seamless): slot -> [(id, label)]
 CMAPS = {
@@ -75,6 +75,7 @@ BASE = dict(
     cav_dark=0.4, cav_color=(0.45, 0.25, 0.22), ridge_light=0.15, ridge_color=(0.86, 0.8, 0.7), ao=0.6,
     variation=0.25, mottle=0.0, mottle_color=(0.3, 0.22, 0.16), mottle_scale=1.0,
     skin_scale=1.0, h_skin=0.5, h_detail=0.15, bump=1.0, map_scale=1.0, low_reach=0.35, size=1.0,
+    belly=0.0, belly_color=(0.78, 0.7, 0.52), seed=0.0,
     rot=0.0, rot_color=(0.2, 0.22, 0.1), glow=0.0, glow_color=(1.0, 0.35, 0.05), glow_power=5.0,
     # conditions
     mud=0.0, mud_top=0.0, mud_low=0.0, mud_color=(0.22, 0.17, 0.11), mud_wet=0.3, mud_cake=0.0, h_mud=0.6,
@@ -87,9 +88,24 @@ for _k in TEX_LAYERS:
     BASE.update({_k + '_tex': 'FLAT', _k + '_hue': 0.0, _k + '_sat': 1.0, _k + '_val': 1.0, _k + '_scale': 1.0})
 COND_KEYS = ('mud', 'mud_top', 'mud_low', 'mud_color', 'mud_wet', 'mud_cake', 'h_mud', 'dust', 'dust_color', 'soot',
              'soot_color', 'snow', 'frost', 'moss', 'moss_color', 'h_moss', 'blood', 'blood_color', 'blood_dry',
-             'blood_dry_color', 'slime', 'slime_color', 'wet', 'scars', 'scar_color', 'fade') + tuple(
+             'blood_dry_color', 'slime', 'slime_color', 'wet', 'scars', 'scar_color', 'fade', 'low_reach') + tuple(
     k + sfx for k in TEX_LAYERS if k != 'base' for sfx in ('_tex', '_hue', '_sat', '_val', '_scale'))
-SKIN_KEYS = tuple(k for k in BASE if k not in COND_KEYS and k not in ('polypaint', 'map_scale', 'bump', 'size'))
+SKIN_KEYS = tuple(k for k in BASE if k not in COND_KEYS and k not in ('polypaint', 'map_scale', 'bump', 'size',
+                                                                          'seed'))
+# 0.24.95 Stack (a Condition added on top of the one there): the amounts take the larger, a layer's colour / texture /
+# settings come along only when the added Condition uses that layer
+AMOUNTS = ('mud', 'mud_top', 'mud_low', 'dust', 'soot', 'snow', 'frost', 'moss', 'blood', 'blood_dry', 'slime', 'wet',
+           'scars', 'fade')
+
+
+def _owner(k):
+    for prefix, owners in (('blood_dry', ('blood_dry',)), ('blood', ('blood',)), ('mud', ('mud', 'mud_top', 'mud_low')),
+                           ('h_mud', ('mud', 'mud_top', 'mud_low')), ('low_reach', ('mud_low', 'moss')),
+                           ('dust', ('dust',)), ('soot', ('soot',)), ('moss', ('moss',)), ('h_moss', ('moss',)),
+                           ('slime', ('slime',)), ('scar', ('scars',))):
+        if k.startswith(prefix):
+            return owners
+    return ()
 SLIDERS = tuple(k for k in BASE if not k.endswith(('_map', '_tex')))
 
 
@@ -105,21 +121,24 @@ SKINS = [
                                sss_radius=0.02, skin_map='PORES', detail_map='WRINKLES', skin_scale=3.0, h_skin=0.25,
                                h_detail=0.15, cav_dark=0.25, cav_color=(0.6, 0.3, 0.28), ridge_light=0.1, coat=0.05,
                                mottle=0.15, mottle_map='FRECKLES', mottle_color=(0.55, 0.35, 0.25))),
-    ('REPTILE', 'Reptile Dry', _c(base_color=(0.45, 0.48, 0.32), roughness=0.7, rough_var=0.4, sss=0.05,
+    ('REPTILE', 'Reptile Dry', _c(base_color=(0.45, 0.48, 0.32), roughness=0.7, rough_var=0.4, sss=0.05, belly=0.35,
                                   skin_map='SCALES_S', detail_map='PORES', h_skin=0.7, cav_dark=0.6, ridge_light=0.35,
                                   ridge_color=(0.85, 0.82, 0.65), mottle=0.3, mottle_map='BLOTCH',
                                   mottle_color=(0.3, 0.32, 0.2))),
     ('SNAKE', 'Snake Glossy', _c(base_color=(0.5, 0.45, 0.3), roughness=0.25, coat=0.4, sss=0.05, skin_map='SNAKE',
+                                 belly=0.3,
                                  detail_map='PORES', h_skin=0.6, h_detail=0.05, cav_dark=0.5, ridge_light=0.2,
                                  mottle=0.45, mottle_map='SPOTS', mottle_color=(0.18, 0.14, 0.08), irid=0.15)),
-    ('AMPHIBIAN', 'Amphibian Wet', _c(base_color=(0.42, 0.55, 0.25), roughness=0.12, coat=0.8, sss=0.45,
+    ('AMPHIBIAN', 'Amphibian Wet', _c(base_color=(0.42, 0.55, 0.25), roughness=0.12, coat=0.8, sss=0.45, belly=0.4,
+                                      belly_color=(0.8, 0.76, 0.5),
                                       sss_color=(0.9, 0.8, 0.4), sss_radius=0.03, skin_map='WARTS', h_skin=0.55,
                                       h_detail=0.05, mottle=0.4, mottle_map='MARBLE', mottle_color=(0.2, 0.25, 0.1),
                                       cav_dark=0.3)),
     ('HIDE', 'Thick Hide', _c(base_color=(0.42, 0.4, 0.38), roughness=0.85, sss=0.0, skin_map='HIDE',
                               detail_map='WRINKLES', h_skin=0.9, h_detail=0.3, cav_dark=0.7, ridge_light=0.25,
                               skin_scale=0.6, ridge_color=(0.75, 0.72, 0.66))),
-    ('DRAGON', 'Dragon Scales', _c(base_color=(0.35, 0.12, 0.08), roughness=0.4, coat=0.35, sss=0.05,
+    ('DRAGON', 'Dragon Scales', _c(base_color=(0.35, 0.12, 0.08), roughness=0.4, coat=0.35, sss=0.05, belly=0.3,
+                                   belly_color=(0.7, 0.5, 0.3),
                                    skin_map='SCALES_L', detail_map='PORES', h_skin=0.8, cav_dark=0.65, ridge_light=0.45,
                                    ridge_color=(0.9, 0.7, 0.4), ridge_gloss=0.2, irid=0.1)),
     ('CHITIN', 'Insect Chitin', _c(base_color=(0.15, 0.12, 0.08), roughness=0.2, coat=0.7, irid=0.7, sss=0.0,
@@ -133,6 +152,7 @@ SKINS = [
                                   glow=0.25, glow_color=(0.3, 1.0, 0.6), glow_power=3.0, mottle=0.3,
                                   mottle_map='VEINS', mottle_color=(0.2, 0.35, 0.3), cav_dark=0.35)),
     ('SHARK', 'Shark / Fish', _c(base_color=(0.45, 0.5, 0.55), roughness=0.45, rough_var=0.2, coat=0.2, sss=0.1,
+                                 belly=0.55, belly_color=(0.86, 0.86, 0.83),
                                  skin_map='DENTICLES', skin_scale=2.0, h_skin=0.3, h_detail=0.05, irid=0.1,
                                  cav_dark=0.3)),
     ('RUBBER', 'Smooth Rubber', _c(base_color=(0.45, 0.5, 0.55), roughness=0.2, coat=0.6, sss=0.3,
@@ -152,13 +172,13 @@ SKINS = [
 # B. Conditions: what is on it (only COND_KEYS)
 CONDITIONS = [
     ('CLEAN', 'Clean', _c()),
-    ('DUSTY', 'Dusty', _c(dust=0.45, dust_tex='PALE_DUST')),
-    ('SWAMP', 'Swamp Feet', _c(mud_low=0.55, mud=0.25, mud_wet=0.8, mud_color=(0.16, 0.13, 0.08), h_mud=0.5,
-                               moss=0.1, mud_tex='WET_MUD', moss_tex='ALGAE_FILM')),
+    ('DUSTY', 'Dusty', _c(dust=0.7, fade=0.1, dust_tex='PALE_DUST')),
+    ('SWAMP', 'Swamp Feet', _c(mud_low=0.85, low_reach=0.5, mud=0.35, mud_wet=0.8, mud_color=(0.16, 0.13, 0.08),
+                               h_mud=0.5, wet=0.25, moss=0.2, mud_tex='WET_MUD', moss_tex='ALGAE_FILM')),
     ('MUD_CAKED', 'Mud Caked', _c(mud=0.55, mud_top=0.35, mud_low=0.6, mud_cake=0.3, mud_wet=0.2,
                                   mud_color=(0.3, 0.24, 0.17), h_mud=0.9, mud_tex='CRACKED_MUD')),
     ('RAIN', 'Rain Wet', _c(wet=0.75)),
-    ('SLIMY', 'Slimy', _c(slime=0.55, slime_tex='GREEN_SLIME')),
+    ('SLIMY', 'Slimy', _c(slime=0.75, wet=0.35, slime_tex='GREEN_SLIME')),
     ('BLOODY', 'Bloody', _c(blood=0.35, blood_dry=0.4, scars=0.4, blood_tex='FRESH_BLOOD',
                             blood_dry_tex='DRIED_BLOOD')),
     ('DESERT', 'Desert Dry', _c(dust=0.35, dust_color=(0.75, 0.65, 0.5), fade=0.4, mud=0.2, mud_cake=0.3, mud_wet=0.0,
@@ -230,6 +250,11 @@ def build(mat):
     # (everything measured on a creature 2 units tall: Size = the creature's size / 2, set when the shader is put on -
     #  the maps as many times across a body of any size, the SSS / thin / crevice distances with it)
     unit = b.math('DIVIDE', v['map_scale'], b.math('MAXIMUM', v['size'], 1e-4))
+    # (0.24.95 Seed: every map moved - the same preset, a different creature)
+    off = b.node('ShaderNodeCombineXYZ', 'mch:seed_offset')
+    for i, f in enumerate((17.31, -9.73, 5.17)):
+        b.link(b.math('MULTIPLY', v['seed'], f), off.inputs[i])
+    obj = b.vmath('ADD', tc.outputs['Object'], off.outputs['Vector'])
     for name, (_src, _slot, _id, tiles) in IMAGES.items():
         sc = b.math('MULTIPLY', unit, tiles)
         if name in ('skin', 'detail'):
@@ -239,7 +264,7 @@ def build(mat):
         elif name.startswith('tex_'):                # (a colour texture: its layer's own Scale)
             sc = b.math('MULTIPLY', sc, v[name[4:] + '_scale'])
         sc.node.name = 'mch:scale:' + name
-        img[name] = b.image(name, b.vmath('SCALE', tc.outputs['Object'], fac=sc)).outputs['Color']
+        img[name] = b.image(name, b.vmath('SCALE', obj, fac=sc)).outputs['Color']
 
     def painted(layer):                              # (a hand-painted mask: 0 where none is painted / no attribute)
         nd = b.node('ShaderNodeAttribute', 'mch:mask:' + layer)
@@ -325,6 +350,10 @@ def build(mat):
     pp = b.node('ShaderNodeVertexColor', 'mch:pp_attr')                # ('' = the mesh's default colour attribute)
     col = b.mixc(v['polypaint'], b.mixc(use['base'], c['base_color'], img['tex_base']), pp.outputs['Color'])
     col = hsv(col, 'base')                                   # (the polypaint too: one place to shift the whole colour)
+    # (0.24.95 Belly: the underside lighter, as most animals - only where there is no polypaint)
+    belly = b.math('MULTIPLY', b.maprange(nz, 0.15, -0.55),
+                   b.math('MULTIPLY', v['belly'], b.math('SUBTRACT', 1.0, v['polypaint'])))
+    col = b.mixc(belly, col, c['belly_color'])
     col = b.mixc(mottle, col, c['mottle_color'])
     col = b.vmath('SCALE', col, fac=b.math('ADD', 1.0, b.math('MULTIPLY', b.math('SUBTRACT', img['vary'], 0.5),
                                                               v['variation'])))
@@ -467,11 +496,27 @@ def apply_skin(mat, ident):
     return True
 
 
-def apply_condition(mat, ident):
-    """A Condition: only the layers on top (mud, dust, blood ...) - the skin stays."""
+def apply_condition(mat, ident, stack=None):
+    """A Condition: only the layers on top (mud, dust, blood ...) - the skin stays.  ``stack`` (default: the material's
+    Stack switch): added on top of what is there - the amounts the larger, a layer's colour / texture / settings only
+    from a Condition that uses that layer (Clean still clears)."""
     spec = next((s[2] for s in CONDITIONS if s[0] == ident), None)
     if spec is None:
         return False
+    st = getattr(mat, KEY)
+    if stack is None:
+        stack = st.cond_stack
+    if stack and ident != 'CLEAN':
+        merged = {}
+        for k in COND_KEYS:
+            cur = getattr(st, k)
+            if k in AMOUNTS:
+                merged[k] = max(float(cur), spec[k])
+            elif any(spec[a] > 0.0 for a in _owner(k)):
+                merged[k] = spec[k]
+            else:
+                merged[k] = tuple(cur) if k.endswith('color') else cur
+        spec = merged
     _apply(mat, spec, COND_KEYS, 'condition', ident)
     return True
 
@@ -513,6 +558,12 @@ class MCH_PG_CreatureShader(bpy.types.PropertyGroup):
                             update=_skin_update, description='What the skin is (everything but the conditions)')
     condition: EnumProperty(name='Condition', items=[(k, n, n) for k, n, _s in CONDITIONS], default='CLEAN',
                             update=_cond_update, description='What is on the skin (mud, dust, blood ...)')
+    cond_stack: bpy.props.BoolProperty(name='Stack Conditions', default=False,
+                                       description='A Condition is added on top of the one there (mud + blood ...) '
+                                                   'instead of replacing it - Clean clears')
+    belly: _s('Belly', 'belly', desc='The underside lighter, as most animals (only where there is no polypaint)')
+    belly_color: _color('Belly Color', 'belly_color')
+    seed: _s('Seed', 'seed', 0.0, 1000.0, 'Every map moved: the same preset, a different creature')
     polypaint: _s('Polypaint', 'polypaint', desc='The mesh\'s polypaint (colour attribute - ZBrush polypaint comes in '
                                                 'with the FBX / OBJ) as the colour: 1, the Base Color: 0')
     base_color: _color('Base Color', 'base_color', 'The colour where there is no polypaint')

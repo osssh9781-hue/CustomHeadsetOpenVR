@@ -234,6 +234,7 @@ def content(context, x, width, k):
     def presets(sx, sw):
         grid(b, sx, sw, [(n, icon('mat', kk), st.preset == kk, ('enum', kk), st, 'preset') for kk, n, _s in ms.PRESETS])
     section(b, 'presets', 'Presets', x, width, presets, summary=names.get(st.preset, ''))
+    my_presets_section(b, x, width, 'mech')
 
     def surface(sx, sw):
         for p in SURFACE:
@@ -320,6 +321,23 @@ def creature_apply_section(b, x, width, sc, start_folded):
     section(b, 'cr_apply', 'Creature Shader', x, width, fill, start_folded=start_folded)
 
 
+def my_presets_section(b, x, width, kind):
+    """0.24.95 My Presets: this material's settings saved under a name (for every .blend), a ball each."""
+    from . import my_presets as mp
+    ns = mp.names(kind)
+
+    def fill(sx, sw):
+        row(b, sx, sw, [button('Save Current...', 'mch.my_preset_save'),
+                        _cell('tbtn', 'Delete...', ('op', 'mch.my_preset_delete', {}), active=bool(ns))])
+        if ns:
+            grid(b, sx, sw, [(n, '', False, ('op', 'mch.my_preset_apply', {'name': n}), None, None) for n in ns])
+        else:
+            b.note(('note', 'None yet - Save Current keeps these settings under a name', False, None, None, None,
+                    True), sx, sw)
+    section(b, 'my_presets_' + kind, 'My Presets', x, width, fill, start_folded=not ns,
+            summary=str(len(ns)) if ns else '')
+
+
 def _cstep(b, st, prop, x, w, label=''):
     stepper(b, x, w, button('◀', 'mch.creature_step', prop=prop, step=-1),
             _cell('drop', label, ('menu_enum',), st, prop),
@@ -375,14 +393,20 @@ def creature_content(b, x, width, mat):
 
     def cond_grid(sx, sw):
         _cstep(b, st, 'condition', sx, sw, 'Condition')
+        row(b, sx, sw, [prop_cell(st, 'cond_stack', 'Stack - add on top')])
         grid(b, sx, sw, [(n, icon('ccond', kk), st.condition == kk, ('enum', kk), st, 'condition')
                          for kk, n, _s in cs.CONDITIONS])
-    section(b, 'cr_conds', 'Conditions', x, width, cond_grid, summary=conds.get(st.condition, ''))
+    section(b, 'cr_conds', 'Conditions', x, width, cond_grid,
+            summary=conds.get(st.condition, '') + ('  +' if st.cond_stack else ''))
+    my_presets_section(b, x, width, 'creature')
 
     def colour(sx, sw):
         row(b, sx, sw, [prop_cell(st, 'polypaint')])
         sub(b, 'Where there is no polypaint', sx, sw)
         _colour_rows(b, st, 'base', 'base_color', sx, sw)
+        sub(b, 'Belly - the underside lighter (no polypaint)', sx, sw)
+        row(b, sx, sw, [prop_cell(st, 'belly')])
+        row(b, sx, sw, [prop_cell(st, 'belly_color')])
         sub(b, 'Mottle - a second colour', sx, sw)
         _cstep(b, st, 'mottle_map', sx, sw, 'Pattern')
         for p in ('mottle', 'mottle_color', 'mottle_scale', 'variation'):
@@ -421,7 +445,7 @@ def creature_content(b, x, width, mat):
         section(b, key, title, x, width, fill, start_folded=not on, summary=layer_summary(st, which))
 
     def detail(sx, sw):
-        for p in ('bump', 'map_scale', 'size'):
+        for p in ('bump', 'map_scale', 'seed', 'size'):
             row(b, sx, sw, [prop_cell(st, p)])
     section(b, 'cr_detail', 'Height & Detail', x, width, detail, start_folded=True)
     row(b, x, width, [button('Switch to Mech Shader', 'mch.mech_shader_apply', preset='')])
