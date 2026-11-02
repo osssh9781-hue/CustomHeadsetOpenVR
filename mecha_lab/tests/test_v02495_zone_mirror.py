@@ -5,6 +5,8 @@
 * a part with a live Mirror (Mecha Lab's symmetry, X across the world): a Paint Zone drawn on one half shows on the
   mirrored half too (rendered); the part moved: the copy follows; Mirror X + Y: 3 copies; Mirror off: none
 * a Split Zone drawn over the mirrored half: the faces it mirrors get the zone's material (the Mirror shows them there)
+* (user: "미러 하고 어플라이 하면 적용이 안 됐어") the Mirror applied - by Mecha Lab or by Blender itself: the zone's
+  copy stays on the mirrored half (now the part's own mesh); Mirror turned off: gone (above)
 * Through (the top bar): a Paint Zone on the back faces too (rendered from behind; off: not); a Split Zone: the back
   faces too
 * the line: Line Width up to 40 % (bar 15), Line Height up to +-10 (bar +-3); a wider line as much deeper (its
@@ -137,6 +139,55 @@ check('A Split Zone drawn over the mirrored half: the faces it mirrors (on the r
       (n, [tuple(round(v, 2) for v in c) for c in cent[:3]]))
 part.active_material_index = 0
 sy.set_mode(C, part, 'OFF')
+C.view_layer.update()
+
+# ---- the Mirror applied (user: "미러 하고 어플라이 하면 적용이 안 됐어"): the mirrored half is the part's own mesh
+#      now - the zone's copy stays on it
+camA, vmA, wmA = camera((0.0, -9.0, -5.0), (math.radians(90), 0.0, 0.0))
+
+
+def mirror_part(name):
+    bpy.ops.mesh.primitive_cube_add(size=2.0, location=(-1.5, 0.0, -5.0))
+    p_ = C.active_object
+    p_.name = name
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.subdivide(number_cuts=15)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.ops.mch.mech_shader_apply(preset='PAINTED')
+    st_ = p_.active_material.mch_mech
+    st_.edge_wear = st_.scratches = st_.dirt = st_.rust = 0.0
+    st_.paint_color = (0.6, 0.6, 0.6)
+    sy.set_mode(C, p_, 'MIRROR')
+    no_bisect(p_)
+    C.view_layer.update()
+    ring_ = [to_px(vmA, wmA, (-1.5 + 0.5 * math.cos(t), -1.0, -5.0 + 0.5 * math.sin(t))) for t in
+             [k * 2 * math.pi / 40 for k in range(40)]]
+    z_ = zn.add_paint_zone(C, p_, ring_, vmA, wmA, True, RW, RH, color=(0.05, 0.15, 0.7))
+    z_.line_height = 0.0
+    return p_, z_
+
+
+pa, za = mirror_part('Applied')
+nv = len(pa.data.vertices)
+sy.apply(C, pa)
+C.view_layer.update()
+a = render()
+LA, RA = at(a, vmA, wmA, (-1.5, -1, -5)), at(a, vmA, wmA, (1.5, -1, -5))
+check('Mirror applied (Mecha Lab\'s Apply - the symmetry card, Apply Modifiers): no Mirror left, the mirrored half '
+      'the part\'s own mesh - the zone\'s copy kept there (rendered blue on both halves)',
+      sy.mirror_mod(pa) is None and len(pa.data.vertices) > nv and len(zn.mirror_maps(za)) == 1
+      and blue(LA) and blue(RA), (np.round(LA, 2).tolist(), np.round(RA, 2).tolist()))
+bpy.data.objects.remove(pa)
+pb, zb = mirror_part('Native')
+with C.temp_override(active_object=pb, object=pb, selected_objects=[pb]):
+    bpy.ops.object.modifier_apply(modifier=sy.mirror_mod(pb).name)
+C.view_layer.update()
+a = render()
+LB, RB = at(a, vmA, wmA, (-1.5, -1, -5)), at(a, vmA, wmA, (1.5, -1, -5))
+check('... applied by Blender itself (the modifier panel): the copy kept too (the modifier gone, the points doubled)',
+      sy.mirror_mod(pb) is None and len(zn.mirror_maps(zb)) == 1 and blue(LB) and blue(RB),
+      (np.round(LB, 2).tolist(), np.round(RB, 2).tolist()))
+bpy.data.objects.remove(pb)
 C.view_layer.update()
 
 # ---- Through

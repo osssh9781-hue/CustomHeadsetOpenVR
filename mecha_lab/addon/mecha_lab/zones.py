@@ -479,16 +479,14 @@ def _look_up(b, z, vt, q, pos, P, nrm, eye, look, lw, lsel, thr, shared):
     return b.math('MULTIPLY', m, gate), b.math('MULTIPLY', prof, gate)
 
 
-def _mirror_axes(ob):
-    """The part's live Mirror (Mecha Lab's symmetry): (its reflections in the part's own space - every combination
-    of its axes -, a key for them).  None / '' without one."""
-    try:
-        from . import symmetry
-        mod = symmetry.mirror_mod(ob)
-    except (ImportError, AttributeError, ReferenceError):
-        return [], ''
-    if mod is None or not mod.show_viewport or not any(mod.use_axis):
-        return [], ''
+BAKED = 'mch_baked_sym'             # (a zone's mirror copies kept after its part's Mirror was applied - see ``bake_mirrors``)
+SEEN = 'mch_sym_seen'               # (the live Mirror a zone's copies were last made for, and the part's point count)
+
+
+def _reflections(ob, mod):
+    """The reflections (the part's own space - every combination of the mirror's axes) of mirror modifier ``mod``."""
+    if mod is None or not any(mod.use_axis):
+        return []
     axes = [a for a in range(3) if mod.use_axis[a]]
     piv = Matrix.Identity(4)
     if mod.mirror_object is not None:                   # (the mirror's planes: the mirror object's, else the part's)
@@ -500,22 +498,100 @@ def _mirror_axes(ob):
             if n >> j & 1:
                 flip[a] = -1.0
         out.append(piv @ Matrix.Diagonal((*flip, 1.0)) @ piv.inverted_safe())
-    key = ';'.join(','.join(f'{v:.5f}' for r in M for v in r) for M in out)
-    return out, key
+    return out
+
+
+def _key(mats):
+    return ';'.join(','.join(f'{v:.5f}' for r in M for v in r) for M in mats)
+
+
+def _parse(key):
+    out = []
+    for part in (key or '').split(';'):
+        try:
+            v = [float(x) for x in part.split(',')]
+        except ValueError:
+            continue
+        if len(v) == 16:
+            out.append(Matrix([v[0:4], v[4:8], v[8:12], v[12:16]]))
+    return out
+
+
+def _mirror_axes(ob):
+    """The part's live Mirror (Mecha Lab's symmetry): (its reflections in the part's own space - every combination
+    of its axes -, a key for them).  None / '' without one."""
+    try:
+        from . import symmetry
+        mod = symmetry.mirror_mod(ob)
+    except (ImportError, AttributeError, ReferenceError):
+        return [], ''
+    if mod is None or not mod.show_viewport or not any(mod.use_axis):
+        return [], ''
+    out = _reflections(ob, mod)
+    return out, _key(out)
+
+
+def _merged(live, baked):
+    """The live reflections and the kept ones, each once."""
+    out, keys = [], set()
+    for M in list(live) + list(baked):
+        k = _key([M])
+        if k not in keys:
+            keys.add(k)
+            out.append(M)
+    return out
 
 
 def mirror_maps(z):
     """[(S, Tq)] for each mirror copy of zone ``z``: S the reflection (the part's space), Tq the part's space -> the
-    projector's.  The part = the projector's parent."""
+    projector's.  The part = the projector's parent.  The live Mirror's copies and those kept from an applied one."""
     proj = z.projector
     ob = proj.parent if proj is not None else None
     if ob is None or ob.type != 'MESH':
         return []
-    refl, _key = _mirror_axes(ob)
+    live, _key_ = _mirror_axes(ob)
+    refl = _merged(live, _parse(z.get(BAKED, '')))
     if not refl:
         return []
     Tq = proj.matrix_world.inverted_safe() @ ob.matrix_world
     return [(S, Tq) for S in refl]
+
+
+def bake_mirrors(ob, mod=None):
+    """0.24.95 (user: "미러 하고 어플라이 하면 적용이 안 됐어") The part's Mirror is about to be applied: its zones keep
+    their mirror copies (the mirrored half is the part's own mesh now; without this the copies went with the
+    modifier).  ``mod``: the mirror modifier applied (default: the part's Mirror).  Returns the zones kept."""
+    if ob is None or ob.type != 'MESH':
+        return 0
+    if mod is None:
+        try:
+            from . import symmetry
+            mod = symmetry.mirror_mod(ob)
+        except (ImportError, AttributeError):
+            mod = None
+    refl = _reflections(ob, mod) if mod is not None and mod.type == 'MIRROR' else []
+    if not refl:
+        return 0
+    n = 0
+    for sl in ob.material_slots:
+        for z in zones_of(sl.material) or ():
+            proj = z.projector
+            if proj is None or proj.parent != ob:
+                continue
+            z[BAKED] = _key(_merged(_parse(z.get(BAKED, '')), refl))
+            n += 1
+    return n
+
+
+def after_apply(ob):
+    """The zones of ``ob``'s materials follow (after a modifier was applied)."""
+    for sl in getattr(ob, 'material_slots', ()):
+        m = sl.material
+        if m is not None and zones_of(m):
+            try:
+                update_mirrors(m)
+            except (ReferenceError, AttributeError, RuntimeError):
+                pass
 
 
 def _mirror_eye(z, S):
@@ -526,13 +602,42 @@ def _mirror_eye(z, S):
 
 
 def sym_key(mat):
-    """What the zones' mirror copies of ``mat`` were made for: per zone its part's Mirror (axes, planes)."""
+    """What the zones' mirror copies of ``mat`` were made for: per zone its part's Mirror (axes, planes) and the
+    copies kept from an applied one."""
     keys = []
     for z in zones_of(mat) or ():
         proj = z.projector
         ob = proj.parent if proj is not None else None
-        keys.append(_mirror_axes(ob)[1] if ob is not None and ob.type == 'MESH' else '')
+        live = _mirror_axes(ob)[1] if ob is not None and ob.type == 'MESH' else ''
+        keys.append(live + '#' + z.get(BAKED, ''))
     return '|'.join(keys)
+
+
+def _applied_elsewhere(z):
+    """The part's Mirror gone - applied by Blender itself (not through Mecha Lab, which keeps the copies first): the
+    modifier removed (not switched off) and the part's points grown by half or more since the copies were made for
+    it.  Then its copies are kept as an applied Mirror's."""
+    proj = z.projector
+    ob = proj.parent if proj is not None else None
+    seen = z.get(SEEN, '')
+    if ob is None or ob.type != 'MESH' or not seen or '@' not in seen:
+        return
+    key, nv = seen.rsplit('@', 1)
+    if not key or any(m.type == 'MIRROR' for m in ob.modifiers):
+        return
+    try:
+        if len(ob.data.vertices) >= 1.5 * int(nv):
+            z[BAKED] = _key(_merged(_parse(z.get(BAKED, '')), _parse(key)))
+    except (ValueError, ReferenceError):
+        pass
+
+
+def _note_seen(mat):
+    for z in zones_of(mat) or ():
+        proj = z.projector
+        ob = proj.parent if proj is not None else None
+        if ob is not None and ob.type == 'MESH':
+            z[SEEN] = _mirror_axes(ob)[1] + '@' + str(len(ob.data.vertices))
 
 
 def update_mirrors(mat):
@@ -540,6 +645,8 @@ def update_mirrors(mat):
     zones' mirror copies follow - their matrices in place, made anew when their number changed."""
     if not zoned(mat) or not zones_of(mat):
         return False
+    for z in zones_of(mat):
+        _applied_elsewhere(z)
     key = sym_key(mat)
     if mat.get(SYM_KEY, '') == key:
         return False
@@ -550,6 +657,7 @@ def update_mirrors(mat):
         maps = mirror_maps(z)
         if nodes.get(f'{tag}v{len(maps)}:mask') is None and maps or nodes.get(f'{tag}v{len(maps) + 1}:mask'):
             relink(mat)                             # (more / fewer copies: made anew)
+            _note_seen(mat)
             return True
         for k, (S, Tq) in enumerate(maps, start=1):
             vt = f'{tag}v{k}:'
@@ -561,6 +669,7 @@ def update_mirrors(mat):
             elif nodes.get(vt + 'look') is not None:
                 nodes[vt + 'look'].inputs[1].default_value = look
     mat[SYM_KEY] = key
+    _note_seen(mat)
     return True
 
 
@@ -591,6 +700,7 @@ def relink(mat):
     for lk in list(csock.links):
         nt.links.remove(lk)
     mat[SYM_KEY] = sym_key(mat)                 # (the mirror copies made below are for the parts' Mirror as it is)
+    _note_seen(mat)
     if not live:
         return
     before = {nd.as_pointer() for nd in nt.nodes}

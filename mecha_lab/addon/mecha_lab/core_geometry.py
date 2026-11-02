@@ -2683,6 +2683,12 @@ def apply_single_modifier(context, ob, mod, shared_policy='SINGLE'):
     if mod is None:
         raise CutError('Modifier not found.')
     name = mod.name
+    if mod.type == 'MIRROR':                    # 0.24.95 the part's zones keep their mirror copies (zones.bake_mirrors)
+        try:
+            from . import zones
+            zones.bake_mirrors(ob, mod)
+        except (ImportError, AttributeError, ReferenceError, RuntimeError):
+            pass
     saved = [(m, m.show_viewport) for m in ob.modifiers]
     try:
         for m, _ in saved:
@@ -2700,4 +2706,9 @@ def apply_single_modifier(context, ob, mod, shared_policy='SINGLE'):
     m = ob.modifiers.get(name)
     if m is not None:
         ob.modifiers.remove(m)
+    try:
+        from . import zones
+        zones.after_apply(ob)
+    except (ImportError, AttributeError, ReferenceError, RuntimeError):
+        pass
     return info
