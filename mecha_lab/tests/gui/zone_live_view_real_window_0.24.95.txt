@@ -1,0 +1,7 @@
+Real window, Blender 5.2.3 (Xvfb, software OpenGL), Material Preview, Titanium Cermet cube, a yellow Paint Zone added.
+Screen pixel inside the zone (sRGB):
+  before the fix (no Mirror):   after the zone 114,113,113 (no zone)   after undo + redo 199,177,113 (zone)
+  fix (object told it changed): after the zone 199,177,113 (zone)      after undo + redo 199,177,113
+  fix, Mirror on (no Bisect):   drawn half 200,178,114, mirrored half 199,177,113 - both at once
+The part's number (custom property mch_zone_id, read by the zone's Object attribute) set from Python did not reach the
+3D view's copy of the object until an undo / redo; zones.part_id now tags the object (refresh OBJECT) when it sets it.

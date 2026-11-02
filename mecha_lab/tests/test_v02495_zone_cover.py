@@ -7,7 +7,8 @@ still showed the weave):
 * rendered (Carbon Fibre, a yellow zone): inside the zone even (the weave gone); Base Texture 1 - the weave back;
   outside the zone the carbon as it was
 * the Mech page: the zone's Base Texture row; a Mech material made before: made anew (version 14)
-* (user: "셀렉트 모드로 했는데 다른 영역도 칠해져") another part sharing the material, inside the lasso: not painted"""
+* (user: "셀렉트 모드로 했는데 다른 영역도 칠해져") another part sharing the material, inside the lasso: not painted
+* (user: "뒤로 갔다 앞으로 다시 가면 생겨") a part numbered the first time is told it changed (the 3D view reads it)"""
 import math
 import os
 import tempfile
@@ -139,6 +140,25 @@ check('Another part sharing the material, inside the same lasso: the zone paints
       '- the zone\'s nodes check it)', col_part[2] > col_part[0] * 2 and not col_other[2] > col_other[0] * 1.5
       and int(part.get(zn.ZONE_ID, 0)) > 0 and int(other.get(zn.ZONE_ID, 0) or 0) != int(part[zn.ZONE_ID]),
       (np.round(col_part, 3).tolist(), np.round(col_other, 3).tolist()))
+# (user: "또 안 돼 - 뒤로 갔다 앞으로 다시 가면 생겨": the part's number, set the first time a zone goes on it, did not
+#  reach the 3D view's copy of the part - nothing painted until an undo / redo)
+bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0.0, 3.0, 0.0))
+fresh_part = C.active_object
+fresh_part.data.materials.append(mat)
+C.view_layer.update()
+seen = []
+
+
+def _seen(scene, dg):
+    seen.extend(u.id.name for u in dg.updates if isinstance(u.id, bpy.types.Object) and u.is_updated_transform)
+
+
+bpy.app.handlers.depsgraph_update_post.append(_seen)
+pid = zn.part_id(fresh_part)
+C.view_layer.update()
+bpy.app.handlers.depsgraph_update_post.remove(_seen)
+check('A part numbered the first time (its zones\' nodes check the number): the part told it changed, so the 3D view '
+      'reads the number at once (it showed only after an undo / redo)', pid > 0 and fresh_part.name in seen, seen)
 zn.remove_zone(mat, len(mat.mch_zones) - 1)
 for o in C.selected_objects:
     o.select_set(False)

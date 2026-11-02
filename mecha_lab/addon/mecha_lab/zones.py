@@ -390,6 +390,10 @@ def part_id(ob):
     if pid <= 0 or any(o.type == 'MESH' and o.data != ob.data for o in taken):   # (none yet, or a copy's number)
         pid = 1 + max((int(o.get(ZONE_ID, 0) or 0) for o in bpy.data.objects), default=0)
         ob[ZONE_ID] = pid
+        # (0.24.95 user: "또 안 돼 - 뒤로 갔다 앞으로 다시 가면 생겨": a custom property set from here does not reach
+        #  the 3D view's copy of the object - the zone's nodes saw 0, nothing painted until an undo / redo; the
+        #  object told it changed: the view reads the number again)
+        ob.update_tag(refresh={'OBJECT'})
     return pid
 
 
