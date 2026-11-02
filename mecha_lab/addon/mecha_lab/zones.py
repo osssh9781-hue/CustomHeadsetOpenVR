@@ -344,6 +344,9 @@ class MCH_PG_Zone(bpy.types.PropertyGroup):
     tex: EnumProperty(name='Texture', items=_tex_enum, update=_tex_update,
                       description='A creature colour texture for the zone (tinted by Color: grey = as it is)')
     tex_scale: FloatProperty(name='Texture Scale', default=1.0, min=0.05, max=20.0, update=_update)
+    base_through: FloatProperty(name='Base Texture', default=0.0, min=0.0, max=1.0, update=_update,
+                                description='How much of the material\'s own texture (its pattern, relief and '
+                                            'roughness map) shows through the zone\'s paint - 0: covered')
     reach: FloatProperty(default=48.0)                        # (its distance field's reach, mask pixels)
     reach2: FloatProperty(default=0.0)                        # (its coarse field's (green), 0: none - an older picture)
     size: FloatProperty(default=1.0)                          # (the part's size when drawn, world)
@@ -556,6 +559,7 @@ def relink(mat):
     live = [z for z in zs if z.projector is not None and z.mask is not None] if zs else []
     hub['own'] = nt.nodes.get('mch:zone_own')
     hub['height'] = nt.nodes.get('mch:zone_height')
+    hub['hide'] = nt.nodes.get('mch:zone_hide')         # (0.24.95 the Mech Shader's: its texture under the paint)
     for k in ms.ZONE_WEAR:
         hub['w_' + k] = nt.nodes.get('mch:zone_w_' + k)
     for k, nd in hub.items():
@@ -636,6 +640,12 @@ def relink(mat):
         ow = b.value(f'z{i}_own', 1.0 if z.own_wear else 0.0)
         ow.node.name = tag + 'own'
         om = b.math('MULTIPLY', m, ow)
+        # (0.24.95 user: "기존에 있던 텍스처가 안 사라져" - the paint covers the material's own texture; Base Texture lets
+        #  it through)
+        bt = b.value(f'z{i}_bthru', z.base_through)
+        bt.node.name = tag + 'bthru'
+        hd = b.math('MULTIPLY', b.math('MULTIPLY', m, vals['cover']), b.math('SUBTRACT', 1.0, bt))
+        hide_t = hd if mask_t is None else b.math('MAXIMUM', hide_t, hd)
         wv = {}
         for k in ms.ZONE_WEAR:
             wv[k] = b.value(f'z{i}_w_{k}', getattr(z, k))
@@ -664,6 +674,8 @@ def relink(mat):
         if hub[k] is not None:
             nt.links.new(sock, hub[k].inputs[0])
     nt.links.new(col_t, csock)
+    if hub['hide'] is not None:
+        nt.links.new(hide_t, hub['hide'].inputs[0])
     if hub['own'] is not None:
         nt.links.new(own_t, hub['own'].inputs[0])
         for k in ms.ZONE_WEAR:
@@ -775,7 +787,7 @@ def sync(mat):
             continue
         nodes[tag + 'color'].outputs[0].default_value = (*z.color, 1.0)
         for k, val in (('rough', z.roughness), ('metal', z.metallic), ('cover', z.cover), ('opacity', z.opacity),
-                       ('own', 1.0 if z.own_wear else 0.0)) \
+                       ('own', 1.0 if z.own_wear else 0.0), ('bthru', z.base_through)) \
                 + tuple(('w_' + k, getattr(z, k)) for k in ms.ZONE_WEAR):
             nodes[tag + k].outputs[0].default_value = val
 

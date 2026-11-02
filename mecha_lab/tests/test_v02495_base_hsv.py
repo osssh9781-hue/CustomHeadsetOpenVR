@@ -67,7 +67,7 @@ check('Base Color Hue / Saturation / Value: three sliders (Hue -0.5 .. 0.5, Satu
       'Hue / Saturation node after the base colour and its map', nd is not None and nd.inputs['Hue'].is_linked
       and rna['base_hue'].hard_min == -0.5 and rna['base_hue'].hard_max == 0.5 and rna['base_sat'].hard_max == 2.0
       and rna['base_val'].hard_max == 2.0 and (st.base_hue, st.base_sat, st.base_val) == (0.0, 1.0, 1.0)
-      and ms.VERSION == 12)
+      and ms.VERSION >= 12)
 red = colour()
 st.base_sat = 0.0
 grey = colour()

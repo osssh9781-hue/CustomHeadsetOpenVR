@@ -29,9 +29,9 @@ from bpy.props import EnumProperty, FloatProperty, FloatVectorProperty, IntPrope
 
 KEY = 'mch_mech'                    # the material's settings (PropertyGroup on bpy.types.Material)
 CURV = 'mch_curv'
-VERSION = 13                         # (the node tree's layout: an older one is made anew; 9: the lasso Zones' hubs,
+VERSION = 14                         # (the node tree's layout: an older one is made anew; 9: the lasso Zones' hubs,
 #                                      10: a zone's own wear, 11: its boundary line in the bump, 12: Base Color HSV,
-#                                      13: the shading Bevel)
+#                                      13: the shading Bevel, 14: a zone's paint covers the base texture)
 # 0.24.95 (user: "메테리얼 탭에 베벨도 - 조금 베벨, 중간 베벨, 많이 베벨 프리셋 + 세부 조정 슬라이더") the edges rounded
 # in the shading (Cycles' Bevel node into the normal - the mesh stays sharp): (id, label, radius m, samples)
 BEVEL_PRESETS = (('OFF', 'Off', 0.0, 8), ('SMALL', 'Small', 0.004, 8), ('MEDIUM', 'Medium', 0.012, 8),
@@ -510,6 +510,14 @@ def build(mat):
         nd.inputs[0].default_value = 0.0
         nd.inputs[1].default_value = 0.0
         zh[k] = nd.outputs[0]
+    # (0.24.95 user: "기존에 있던 텍스처가 안 사라져" - a zone's paint covers the material's own texture: its pattern in
+    #  the paint, its relief, its roughness map - 1 where covered; the zone's Base Texture slider lets it through)
+    nd = b.node('ShaderNodeMath', 'mch:zone_hide')
+    nd.operation = 'ADD'
+    nd.use_clamp = True
+    nd.inputs[0].default_value = nd.inputs[1].default_value = 0.0
+    zh['hide'] = nd.outputs[0]
+    keep_tex = b.math('SUBTRACT', 1.0, zh['hide'])
     zc = b.node('ShaderNodeMix', 'mch:zone_color')
     zc.data_type = 'RGBA'
     zsock = {sk.identifier: sk for sk in zc.inputs}
@@ -618,7 +626,7 @@ def build(mat):
                       b.mixc(0.4, base_col, (1.0, 1.0, 1.0, 1.0)))
     base_col = b.mixc(b.math('MULTIPLY', cloth, 0.45), base_col,
                       b.mixc(weave, b.mixc(0.5, base_col, (0.0, 0.0, 0.0, 1.0)), base_col))
-    paint_col = b.mixc(v['paint_pattern'], c['paint_color'],
+    paint_col = b.mixc(b.math('MULTIPLY', v['paint_pattern'], keep_tex), c['paint_color'],
                        b.vmath('SCALE', b.mixc(1.0, c['paint_color'], img['base'], 'MULTIPLY'), fac=2.0))
     # (0.24.95 what shows at the chips: the material underneath (Edge Material 0) .. the Edge Color x its texture,
     #  Edge Metallic / Roughness (1))
@@ -654,7 +662,8 @@ def build(mat):
     var = b.math('MULTIPLY', v['rough_amount'], b.math('SUBTRACT', img['rough'], 0.5))
     r = b.math('ADD', v['roughness'], var, clamp=True)
     r = b.mixf(emask, r, b.math('ADD', v['edge_rough'], b.math('MULTIPLY', var, 0.5), clamp=True))
-    r = b.mixf(paint, r, b.math('ADD', v['paint_rough'], b.math('MULTIPLY', var, 0.5), clamp=True))
+    r = b.mixf(paint, r, b.math('ADD', v['paint_rough'], b.math('MULTIPLY', b.math('MULTIPLY', var, 0.5), keep_tex),
+                                clamp=True))
     r = b.mixf(primer, r, 0.72)
     r = b.math('ADD', r, b.math('MULTIPLY', scratch, 0.18), clamp=True)
     r = b.math('SUBTRACT', r, b.math('MULTIPLY', worn, b.math('MULTIPLY', v['edge_polish'], 0.2)),
@@ -692,7 +701,7 @@ def build(mat):
     # relief: scratches / chips cut in, rust / snow / weave stand out, the roughness map a little
     # relief: every layer its own height (the Base map's height map, scratches / chips cut in, rust / dirt / snow /
     # weave stand out), all x Height
-    h = b.math('MULTIPLY', b.math('SUBTRACT', img['base_h'], 0.5), v['h_base'])
+    h = b.math('MULTIPLY', b.math('MULTIPLY', b.math('SUBTRACT', img['base_h'], 0.5), v['h_base']), keep_tex)
     h = b.math('ADD', h, b.math('MULTIPLY', scratch, b.math('MULTIPLY', v['h_scratch'], -1.0)))
     h = b.math('ADD', h, b.math('MULTIPLY', b.math('MULTIPLY', chip, b.math('ADD', 0.3, b.math('MULTIPLY', v['paint'],
                                                                                             0.7))),
@@ -703,7 +712,8 @@ def build(mat):
     h = b.math('ADD', h, b.math('MULTIPLY', b.math('MULTIPLY', snow, b.math('ADD', b.math('MULTIPLY', img['snow'], 0.5),
                                                                         0.6)), v['h_snow']))
     h = b.math('ADD', h, b.math('MULTIPLY', primer, b.math('MULTIPLY', v['h_chip'], -0.5)))
-    h = b.math('ADD', h, b.math('MULTIPLY', b.math('MULTIPLY', cloth, weave), v['h_weave']))
+    h = b.math('ADD', h, b.math('MULTIPLY', b.math('MULTIPLY', b.math('MULTIPLY', cloth, weave), v['h_weave']),
+                                keep_tex))
     h = b.math('ADD', h, b.math('MULTIPLY', dust, b.math('MULTIPLY', img['dust'], 0.25)))
     zh_h = b.node('ShaderNodeMath', 'mch:zone_height')        # (0.24.95 the zones' boundary lines: raised / engraved)
     zh_h.operation = 'ADD'

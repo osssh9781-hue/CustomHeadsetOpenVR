@@ -403,6 +403,7 @@ def zones_section(b, x, width, context, mat):
                 row(b, sx, sw, [prop_cell(z, p)])
             if z.tex != 'FLAT':
                 row(b, sx, sw, [prop_cell(z, 'tex_scale')])
+            row(b, sx, sw, [prop_cell(z, 'base_through')])  # (0.24.95 the material's own texture under it: 0 covered)
             for p in ('roughness', 'metallic', 'cover', 'opacity', 'line_height', 'line_width', 'edge'):
                 row(b, sx, sw, [prop_cell(z, p)])
             if z.edge != 'HARD':

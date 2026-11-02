@@ -35,7 +35,7 @@ nt = mat.node_tree
 bev, bump = nt.nodes.get('mch:bevel_look'), nt.nodes.get('mch:bumpnode')
 check('A Bevel node for the shading (apart from the one that finds the edges for the wear), not linked while off',
       bev is not None and bev.type == 'BEVEL' and not bump.inputs['Normal'].is_linked and ms.bevel_preset(st) == 'OFF'
-      and ms.VERSION == 13)
+      and ms.VERSION >= 13)
 r = bpy.ops.mch.mech_bevel(preset='LARGE')
 check('Large: its radius / samples, its normal into the bump\'s (under the bump: the wear and bumps still on top)',
       r == {'FINISHED'} and abs(st.bevel_radius - 0.03) < 1e-6 and st.bevel_samples == 12 and bev.samples == 12
