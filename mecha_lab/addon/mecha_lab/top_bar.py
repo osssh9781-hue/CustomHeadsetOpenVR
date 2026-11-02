@@ -50,6 +50,8 @@ def groups(context, tool):
                                     width=ICON) for sid, label, _d, stem, _f in ts.SHAPES]))
     if tool in ts.SHAPE_TOOLS:
         out += lasso_groups(brush, tool)
+    if tool == 'ZONE' and hasattr(scene, 'mch_zone_kind'):        # 0.24.95 Lasso Zone: what it makes
+        out.append(('Zone', _enum_segs(scene, 'mch_zone_kind', (('PAINT', 'Paint'), ('SPLIT', 'Split')))))
     if tool in RES_TOOLS and hasattr(scene, 'mch_settings'):       # 0.24.95 one Resolution for all made / cut shapes
         out.append(('Resolution', [_mini('Res', scene.mch_settings, 'geo_res', 120),
                                    _cell('seg', 'Apply to Parts', action=('op', 'mch.apply_resolution', {}))]))
@@ -78,13 +80,13 @@ def groups(context, tool):
                 line.append(_cell('drop', '', action=('menu_enum',), data=bd, prop='attach_curve', width=104))
         out.append(('Line', line))
     extra = []
-    if tool in {'CUT', 'SPLIT', 'PLATE', 'WRINKLE', 'CDRAPE'}:
+    if tool in {'CUT', 'SPLIT', 'PLATE', 'WRINKLE', 'CDRAPE', 'ZONE'}:
         extra.append(_seg('Surface', brush, 'surface_mode'))
         if brush.surface_mode and tool in {'CUT', 'SPLIT'}:
             extra.append(_cell('mini', 'Gap', action=('number',), data=brush, prop='surface_gap', width=110))
-    if tool in {'PLATE', 'WRINKLE', 'CPLATE'}:
+    if tool in {'PLATE', 'WRINKLE', 'CPLATE', 'ZONE'}:       # (0.24.95 Lasso Zone: the back faces too)
         extra.append(_seg('Through', brush, 'through_mode'))
-        if brush.through_mode and tool != 'CPLATE':
+        if brush.through_mode and tool not in {'CPLATE', 'ZONE'}:
             extra.append(_cell('mini', 'Crease', action=('number',), data=brush, prop='through_crease', width=120))
     if tool == 'WRINKLE' and hasattr(scene, 'mch_wrinkle'):
         ws = scene.mch_wrinkle

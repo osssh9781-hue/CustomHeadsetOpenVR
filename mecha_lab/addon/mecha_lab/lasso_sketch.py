@@ -25,7 +25,7 @@ from . import core_geometry as cg
 from . import tool_state as ts
 
 KEY = 'mch_lasso_sketch'          # Scene ID prop (JSON) - Ctrl+Z steps back through it
-MODES = {'CUT', 'SPLIT', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'HIDE'}   # 0.24.1 + Plate Detail 1 / 2, Box Hide; 0.24.95 Cloth Drape
+MODES = {'CUT', 'SPLIT', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'HIDE'}   # 0.24.1 + Plate Detail 1 / 2, Box Hide; 0.24.95 Cloth Drape
 
 
 def is_on(context):
@@ -159,6 +159,9 @@ def commit(context, alt=False):
     elif mode == 'CDRAPE':
         from . import cloth_drape          # 0.24.95 Cloth Drape sketch: the combined outline is the cloth region
         msg = cloth_drape.perform(context, loops, proj)
+    elif mode == 'ZONE':
+        from . import zones                # 0.24.95 Lasso Zone sketch: the combined outline (islands, holes) is the zone
+        msg = zones.perform(context, loops, proj)
     elif mode in {'DETAIL', 'DETAIL2', 'DETAIL3'} and alt:
         from . import live_subtract        # 0.24.26 Alt+Enter: take the sketch out (live detail or engrave)
         msg = live_subtract.perform(context, 'DETAIL', loops, proj, tool=mode)

@@ -31,6 +31,8 @@ EXTRA = {
     'CPATH': ['Tab (dragging)   Extend: brush area / whole section', 'B (dragging)   Back Mask: the far side stays put'],
     'SMOVE': ['Drag from the part   the whole part follows the way (stretches, bends)'],
     'CDRAPE': ['Lasso on a mesh   a loose cloth over that region', 'Space   drape / pause,  Enter   keep the cloth,  Esc   drop it'],
+    'ZONE': ['Lasso on a Mech / Creature part   a zone (top bar: Paint / Split)',
+             'Sketch: Enter   make the zone,  Esc   back to Select'],
     'WLINES': ['Drag   a wrinkle line,  drag a point   move it', 'Shift + click   add a point,  Ctrl + click   remove it,  X   remove the line',
                'Space   simulate / pause,  Enter   keep,  Esc   back'],
 }

@@ -27,8 +27,8 @@ from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 from . import target_rules
 
-MODES = {'CUT', 'SPLIT', 'PLATE', 'WRINKLE', 'CDRAPE'}
-PATCH_MODES = {'PLATE', 'WRINKLE', 'CDRAPE'}        # 0.22.2: Armor Plate / Cloth Plate from a surface outline; 0.24.95 Cloth Drape
+MODES = {'CUT', 'SPLIT', 'PLATE', 'WRINKLE', 'CDRAPE', 'ZONE'}
+PATCH_MODES = {'PLATE', 'WRINKLE', 'CDRAPE', 'ZONE'}        # 0.22.2: Armor Plate / Cloth Plate from a surface outline; 0.24.95 Cloth Drape
 HIT_PX = 12.0
 _draw_ops = []
 
@@ -463,6 +463,9 @@ class SurfaceLogic:
             elif self.mode == 'CDRAPE':            # 0.24.95 Cloth Drape from an outline drawn on the surface
                 from . import cloth_drape
                 msg = cloth_drape.perform(context, [loop], view)
+            elif self.mode == 'ZONE':              # 0.24.95 Lasso Zone from an outline drawn on the surface
+                from . import zones
+                msg = zones.perform(context, [loop], view)
             else:
                 from . import cloth_wrinkle
                 msg = cloth_wrinkle.perform_wrinkle(context, [loop], view)

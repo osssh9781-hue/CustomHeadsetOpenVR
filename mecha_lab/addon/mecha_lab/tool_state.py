@@ -109,6 +109,9 @@ TOOLS = (
     ('CDRAPE', 'Cloth Drape', 'Draw a lasso on a mesh: a loose cloth laid over that region drops onto it (its rim sewn '
      'on, the body under it the collider); Space drapes, Enter keeps the cloth object, Esc drops it', 'cloth_drape',
      'MOD_CLOTH', 'mecha.cloth_drape', 'OK'),
+    ('ZONE', 'Lasso Zone', 'Draw a zone on a Mech / Creature part (any shape, Corners, Line, Sketch, Slow Line, '
+     'Surface - like Cut): Paint - its own paint, projected; Split - edges cut along it, a material of its own. '
+     'From the Mech / Creature page (Zones)', 'mask', 'MOD_MASK', 'mecha.lasso_zone', 'OK'),
     ('WLINES', 'Wrinkle Lines', 'Draw guide lines on a mesh, Space: a short cloth simulation folds the surface '
      'along them (fabric presets, wrinkle size, shrink, gravity, silhouette keep); Enter keeps, Esc goes back',
      'wrinkle_lines', 'MOD_CLOTH', 'mecha.wrinkle_lines', 'OK'),
@@ -157,6 +160,7 @@ TOOL_BY_ID = {t[0]: t for t in TOOLS}
 # tool list, Space / V menus, toolbar and hotkeys.  Its code, operators and
 # all saved mask data (face attributes, vertex groups) are kept untouched.
 HIDDEN_TOOLS = {'MASK', 'DRAW'}     # 0.23.2: the old Mesh Curve (DRAW) is replaced by the Tube tool
+HIDDEN_TOOLS |= {'ZONE'}           # 0.24.95 Lasso Zone: from the Mech / Creature page's Zones (Paint Zone / Split Zone)
 # 0.24.31: the new cloth tools (Clothing / Hood / Scarf, and the Edit Mode Quad Cloth panel) are still being tuned:
 # hidden from every menu and the toolbar.  Their code and saved live objects are kept; True brings them back.
 EXPERIMENTAL_CLOTH = False
@@ -167,7 +171,7 @@ VISIBLE_TOOLS = tuple(t for t in TOOLS if t[0] not in HIDDEN_TOOLS)
 # V quick menu (docs/02): the six core tools (+ Armor Plate since 0.19).
 QUICK_TOOLS = ('CUT', 'BOOLEAN', 'BASE', 'SUBD', 'SPLIT', 'RADIAL', 'PLATE')   # 0.19: + Armor Plate
 NATIVE_TO_TOOL = {t[5]: t[0] for t in TOOLS if t[5]}
-SHAPE_TOOLS = {'CUT', 'SPLIT', 'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'HIDE', 'DETAIL', 'DETAIL2',
+SHAPE_TOOLS = {'CUT', 'SPLIT', 'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'HIDE', 'DETAIL', 'DETAIL2',
                'DETAIL3', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW'}
 
 # 0.24.55 the tool list by job (about 10 groups instead of one long list); a tool not listed goes to Other
@@ -205,7 +209,7 @@ _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRA
                  'REMESH': 12, 'SPLIT': 13, 'POSE': 14, 'BASE': 15, 'LOFT': 16, 'ZBRUSH': 17, 'SUBD': 18, 'PRIMITIVE': 19,
                  'EXTRACT': 20, 'MOLDING': 21, 'HOLLOW': 22, 'ALONG': 23, 'CABLE': 24, 'PLATE': 25, 'WRINKLE': 26, 'TUBE': 27,
                  'HIDE': 28, 'DETAIL': 29, 'DETAIL2': 30, 'SCREW': 31, 'DETAIL3': 32, 'TUBE_SAME': 33,
-                 'CBASE': 34, 'CPLATE': 35, 'BELT': 36, 'SPIKE': 37, 'SCALES': 38, 'FLOWER': 39, 'SCURVE': 40, 'SBRUSH': 41, 'BRIDGE': 42, 'CAPE': 43, 'HAIR': 44, 'GARMENT': 45, 'HOOD': 46, 'SCARF': 47, 'CMOVE': 48, 'CPATH': 50, 'PERF': 51, 'SDRAW': 52, 'SCAPE': 53, 'RSYM': 55, 'SMOVE': 56, 'WLINES': 57, 'CDRAPE': 58}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
+                 'CBASE': 34, 'CPLATE': 35, 'BELT': 36, 'SPIKE': 37, 'SCALES': 38, 'FLOWER': 39, 'SCURVE': 40, 'SBRUSH': 41, 'BRIDGE': 42, 'CAPE': 43, 'HAIR': 44, 'GARMENT': 45, 'HOOD': 46, 'SCARF': 47, 'CMOVE': 48, 'CPATH': 50, 'PERF': 51, 'SDRAW': 52, 'SCAPE': 53, 'RSYM': 55, 'SMOVE': 56, 'WLINES': 57, 'CDRAPE': 58, 'ZONE': 59}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
 TOOL_ENUM_ITEMS = [(t[0], t[1], t[2], t[4], _ENUM_NUMBERS[t[0]]) for t in TOOLS]
 
 SHAPES = (

@@ -336,6 +336,13 @@ def bake_section(b, x, width, context):
     section(b, 'bake_pp', 'Bake', x, width, fill, start_folded=lay is None, summary='polypaint' if lay else '')
 
 
+def _zone_button(text, kind, context):
+    """0.24.95 (user: "라쏘도 컷이나 이런 거처럼 위에 막대에 옵션 다 넣어 줘 - 스케치랑 라인 이런 거 다") Paint Zone /
+    Split Zone: the Lasso Zone tool (the shared lasso of the top bar), lit while it draws that kind."""
+    from . import zones as zn
+    return _cell('tbtn', text, ('op', 'mch.zone_tool', {'kind': kind}), on=zn.tool_on(context, kind))
+
+
 def zones_section(b, x, width, context, mat):
     """0.24.95 Lasso Zones (user: "메카닉 할 때 내가 라쏘로 그은 영역 색이랑 재질 다르게"): Paint Zone (its own paint,
     projected - the mesh as it is) / Split Zone (edges cut along it, a material of its own); the zones' sliders; the
@@ -348,10 +355,10 @@ def zones_section(b, x, width, context, mat):
     creature = not ms.is_mech(mat)
 
     def fill(sx, sw):
-        b.note(('note', 'Draw on the part: drag a lasso, or click its corners (Enter: done)', False, None, None, None,
-                True), sx, sw)
+        b.note(('note', 'Draw on the part with the top bar\'s lasso (shapes, Corners, Line, Sketch, Slow Line, '
+                'Surface - like Cut); Esc: back to Select', False, None, None, None, True), sx, sw)
         if creature:                                # (0.24.95 a creature's markings: Paint Zones)
-            row(b, sx, sw, [button('Paint Zone', 'mch.zone_lasso', mode='PAINT')])
+            row(b, sx, sw, [_zone_button('Paint Zone', 'PAINT', context)])
             sub(b, 'Markings: its colour / texture over the skin, the edge airbrushed or textured', sx, sw)
             for i, z in enumerate(zs or ()):
                 sub(b, f'{z.name} - marking', sx, sw)
@@ -366,8 +373,7 @@ def zones_section(b, x, width, context, mat):
                 row(b, sx, sw, [prop_cell(z, 'through', 'Through - the back faces too'),
                                 _cell('tbtn', 'Delete', ('op', 'mch.zone_remove', {'index': i}))])
             return
-        row(b, sx, sw, [button('Paint Zone', 'mch.zone_lasso', mode='PAINT'),
-                        button('Split Zone', 'mch.zone_lasso', mode='SPLIT')])
+        row(b, sx, sw, [_zone_button('Paint Zone', 'PAINT', context), _zone_button('Split Zone', 'SPLIT', context)])
         sub(b, 'Paint: its own paint, the mesh as it is.  Split: new edges, its own material', sx, sw)
         for i, z in enumerate(zs or ()):
             if z.kind == 'LINE':                    # (a Split Zone's boundary line - in both its materials)
@@ -377,7 +383,11 @@ def zones_section(b, x, width, context, mat):
                 row(b, sx, sw, [_cell('tbtn', 'Remove Line', ('op', 'mch.zone_remove', {'index': i}))])
                 continue
             sub(b, f'{z.name} - paint', sx, sw)
-            for p in ('color', 'roughness', 'metallic', 'cover', 'opacity', 'line_height', 'line_width', 'edge'):
+            for p in ('color', 'tex'):              # (0.24.95 a base colour texture of its own, tinted by Color)
+                row(b, sx, sw, [prop_cell(z, p)])
+            if z.tex != 'FLAT':
+                row(b, sx, sw, [prop_cell(z, 'tex_scale')])
+            for p in ('roughness', 'metallic', 'cover', 'opacity', 'line_height', 'line_width', 'edge'):
                 row(b, sx, sw, [prop_cell(z, p)])
             if z.edge != 'HARD':
                 row(b, sx, sw, [prop_cell(z, 'edge_width')])

@@ -430,7 +430,7 @@ check('The modal takes the left mouse for the grab and the status line says so',
 # ---- 0.24.95 Surface mode (user: "그냥 표면에 그리는 모드도 만들어 주라"): points clicked ON the body, orbit between
 S.mch_brush.surface_mode = True
 check('Cloth Drape is a Surface Lasso tool (the Surface button shows for it)', sl.enabled(C, 'CDRAPE') and 'CDRAPE' in sl.PATCH_MODES
-      and "'CDRAPE'}:\n        sk.prop(brush, 'surface_mode'" in inspect.getsource(wsui))
+      and "'CDRAPE', 'ZONE'}:\n        sk.prop(brush, 'surface_mode'" in inspect.getsource(wsui))   # (0.24.95 + Lasso Zone)
 FRONT = cg.OrthoProjector(Quaternion((1, 0, 0), math.radians(90)))                      # looking along +Y at the sphere
 SIDE = cg.OrthoProjector(Quaternion((0, 0, 1), math.radians(90)) @ Quaternion((1, 0, 0), math.radians(90)))
 VIEW = [FRONT]
