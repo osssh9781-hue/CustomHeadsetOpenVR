@@ -1,7 +1,7 @@
 """Real window: the Lasso Zone tool (0.24.95 user: "라쏘도 컷이나 이런 거처럼 위에 막대에 옵션 다 넣어 줘 - 스케치랑
 라인 이런 거 다").  MECHA LAB screen, a part with Mech Steel (an FBX given after OUT, else a cube), the Mech page: REAL
 mouse (xdotool) - Paint Zone (the button), then from the TOP BAR: Rectangle + Round corners (a dragged rectangle);
-Lasso + Line (clicked points + Enter: a stripe); Sketch + Circle (a circle, Alt + a smaller one, Enter: a ring);
+Lasso + Line (a dragged line: a stripe); Sketch + Circle (a circle, Alt + a smaller one, Enter: a ring);
 then a thicker line (Width 4 %, Height -1.5) and Mirror X (the zones on the other side too); Split + Through +
 Ellipse (a Split Zone, the back faces too); Esc (back to Select); a shot after each, wireframe on.
     blender --window-geometry 0 0 W H --python this.py -- OUT [FBX]"""
@@ -243,7 +243,7 @@ def flow():
     a0, a1 = on_part(0.12), on_part(0.3)
     yield from drag((a0[0], a0[1] - 25), (a1[0], a1[1] + 25))
     log('rectangle dragged: zones', zones())
-    # ---- Lasso + Line: clicked points across the right side + Enter
+    # ---- Lasso + Line: a line dragged across the right side
     bar_click('Lasso')
     yield 0.6
     bar_click('Sharp')
@@ -251,15 +251,9 @@ def flow():
     bar_click('Line')
     yield 0.6
     log('shape', S.mch_brush.shape, 'Line', S.mch_brush.line_mode, 'width', round(S.mch_brush.line_width, 3))
-    for fx in (0.62, 0.75, 0.88):
-        X, Y = to_x(w, r, *on_part(fx))
-        xdo('mousemove', X, Y)
-        yield 0.3
-        xdo('click', 1)
-        yield 0.4
-    xdo('key', 'Return')
-    yield 1.5
-    log('line clicked + Enter: zones', zones())
+    p0, p1 = on_part(0.62), on_part(0.9)                # (Line: the lasso is drawn holding the button, release applies)
+    yield from drag(p0, p1, steps=16)
+    log('line dragged: zones', zones())
     bar_click('Line')
     yield 0.6
     # ---- Sketch + Circle: a circle, Alt + a smaller one inside, Enter -> a ring
@@ -317,8 +311,9 @@ def flow():
     yield 2.0
     log('ellipse dragged (Split, Through): faces', nf, '->', len(part.data.polygons), 'materials',
         [sl.material.name for sl in part.material_slots if sl.material])
-    # ---- Esc: back to Select
-    xdo('mousemove', 300, 1200)
+    # ---- Esc (the mouse in the viewport, below the part): back to Select
+    X, Y = to_x(w, r, *on_part(0.5))
+    xdo('mousemove', X, Y + 260)
     yield 0.3
     xdo('key', 'Escape')
     yield 1.0

@@ -1285,37 +1285,80 @@ def hdri_files():
         return []
 
 
+_SCAN = {'dir': None, 'time': 0.0, 'files': [], 'sig': None}
+SCAN_EVERY = 2.0              # (seconds: the folder is looked through again at most this often - the list is asked a lot)
+SCAN_MAX = 5000               # (files at most)
+
+
+def _scan_user_hdris(d):
+    """Every HDRI in ``d`` and the folders inside it, any depth (0.24.95 user: "폴더 안에 다 분류가 되어 있는데 일일이
+    클릭하기 귀찮아서 그 폴더 안에 있는 거 감지해서 들어가게"): paths relative to ``d`` ('/' between folders), folder
+    by folder; hidden folders (a name starting with .) left out.  Returns (files, the folders' change times)."""
+    out, sig = [], []
+    for root, dirs, files in os.walk(d):
+        dirs[:] = sorted(x for x in dirs if not x.startswith('.'))
+        try:
+            sig.append((root, os.stat(root).st_mtime))
+        except OSError:
+            pass
+        rel = os.path.relpath(root, d)
+        rel = '' if rel == '.' else rel.replace(os.sep, '/') + '/'
+        for f in sorted(files):
+            if f.lower().endswith(HDRI_EXT) and not f.startswith('.'):
+                out.append(rel + f)
+                if len(out) >= SCAN_MAX:
+                    return out, tuple(sig)
+    return out, tuple(sig)
+
+
 def user_hdri_files():
+    """The user's HDRIs: paths relative to the HDRI folder - the folders inside it too (looked through again when
+    one of them changed, at most every SCAN_EVERY seconds)."""
+    import time
     d = user_hdri_dir()
-    try:
-        return sorted(f for f in os.listdir(d) if f.lower().endswith(HDRI_EXT)) if d else []
-    except OSError:
+    if not d:
         return []
+    now = time.monotonic()
+    if _SCAN['dir'] == d and now - _SCAN['time'] < SCAN_EVERY:
+        return _SCAN['files']
+    try:
+        files, sig = _scan_user_hdris(d)
+    except OSError:
+        files, sig = [], None
+    _SCAN.update(dir=d, time=now, files=files, sig=sig)
+    return files
+
+
+def hdri_group(ident):
+    """The folder (inside the user's HDRI folder) an HDRI list entry is in: '' at its top or a built-in one."""
+    if not ident.startswith(USER):
+        return ''
+    rel = ident[len(USER):]
+    return rel.rsplit('/', 1)[0] if '/' in rel else ''
 
 
 def hdri_path(ident):
     """The file of HDRI list entry ``ident``."""
     if ident.startswith(USER):
         d = user_hdri_dir()
-        return os.path.join(d, ident[len(USER):]) if d else ''
+        return os.path.normpath(os.path.join(d, *ident[len(USER):].split('/'))) if d else ''
     return os.path.join(hdri_dir(), ident)
 
 
 def _hdri_items(self, context):
     import zlib
     d = user_hdri_dir()
-    try:
-        stamp = (d, os.stat(d).st_mtime) if d else ('', 0.0)
-    except OSError:
-        stamp = (d, 0.0)
+    files = user_hdri_files()
+    stamp = (d, tuple(files))
     if _HDRI_KEY[0] != stamp or not _HDRI_ITEMS:
         if _HDRI_ITEMS:
             _HDRI_KEPT.append(list(_HDRI_ITEMS))
         _HDRI_ITEMS.clear()
         num = lambda ident: zlib.crc32(ident.encode()) & 0x7fffffff          # (stable: files come and go)
-        for f in user_hdri_files():
+        for f in files:                       # (in the folders inside it too: '* Folder / Name')
             ident = USER + f
-            _HDRI_ITEMS.append((ident, '* ' + os.path.splitext(f)[0], os.path.join(d, f), 'FILE_IMAGE', num(ident)))
+            label = '* ' + ' / '.join(os.path.splitext(f)[0].split('/'))
+            _HDRI_ITEMS.append((ident, label, hdri_path(ident), 'FILE_IMAGE', num(ident)))
         for f in hdri_files():
             _HDRI_ITEMS.append((f, os.path.splitext(f)[0].title(), f'Blender\'s built-in HDRI {f}', 'WORLD', num(f)))
         if not _HDRI_ITEMS:
@@ -1476,6 +1519,9 @@ def hdri_sync(scene):
     if w is None:
         return None
     nt = w.node_tree
+    if nt is None or nt.nodes.get('mch:bg_mix') is None:      # (an HDRI world made before the background colour)
+        _world_nodes(w)
+        nt = w.node_tree
     env, bg, mp = nt.nodes.get('mch:env'), nt.nodes.get('mch:bg'), nt.nodes.get('mch:map')
     if env is None or bg is None or mp is None:
         return None
@@ -1485,7 +1531,9 @@ def hdri_sync(scene):
         env.image = bpy.data.images.load(path, check_existing=True)
     bg.inputs['Strength'].default_value = scene.mch_mech_hdri_strength
     mp.inputs['Rotation'].default_value[2] = scene.mch_mech_hdri_rot
-    w.cycles_visibility.camera = scene.mch_mech_hdri_show
+    w.cycles_visibility.camera = True          # (hidden: the camera sees the Background Colour - below)
+    nt.nodes['mch:bg_hide'].outputs[0].default_value = 0.0 if scene.mch_mech_hdri_show else 1.0
+    nt.nodes['mch:bg_color'].inputs['Color'].default_value = (*scene.mch_mech_hdri_bg_color, 1.0)
     eb, on = nt.nodes.get('mch:env_blur'), nt.nodes.get('mch:blur_on')
     if eb is not None and on is not None:
         blur = float(scene.mch_mech_hdri_blur)
@@ -1520,8 +1568,19 @@ def _world_nodes(w):
     mix.name = 'mch:blur_mix'
     bg = nt.nodes.new('ShaderNodeBackground')
     bg.name = 'mch:bg'
+    # 0.24.95 (user: "hdri 에서 배경 안 보이게 할 때 내가 원하는 배경 색깔 선택하게") the background hidden: the camera
+    # sees a colour of its own (Background Colour), the HDRI still lights the scene
+    bgc = nt.nodes.new('ShaderNodeBackground')
+    bgc.name = 'mch:bg_color'
+    hide = nt.nodes.new('ShaderNodeValue')
+    hide.name = 'mch:bg_hide'
+    hide.outputs[0].default_value = 0.0
+    hfac = nt.nodes.new('ShaderNodeMath')
+    hfac.operation = 'MULTIPLY'
+    smix = nt.nodes.new('ShaderNodeMixShader')
+    smix.name = 'mch:bg_mix'
     out = nt.nodes.new('ShaderNodeOutputWorld')
-    for i, n in enumerate((tc, mp, env, eb, lp, on, fac, mix, bg, out)):
+    for i, n in enumerate((tc, mp, env, eb, lp, on, fac, mix, bg, bgc, hide, hfac, smix, out)):
         n.location = (-1500 + 200 * i, -120 * (i % 2))
     sock = {x.identifier: x for x in mix.inputs}
     nt.links.new(tc.outputs['Generated'], mp.inputs['Vector'])
@@ -1533,7 +1592,12 @@ def _world_nodes(w):
     nt.links.new(env.outputs['Color'], sock['A_Color'])
     nt.links.new(eb.outputs['Color'], sock['B_Color'])
     nt.links.new(next(o for o in mix.outputs if o.identifier == 'Result_Color'), bg.inputs['Color'])
-    nt.links.new(bg.outputs['Background'], out.inputs['Surface'])
+    nt.links.new(lp.outputs['Is Camera Ray'], hfac.inputs[0])
+    nt.links.new(hide.outputs[0], hfac.inputs[1])
+    nt.links.new(hfac.outputs[0], smix.inputs[0])
+    nt.links.new(bg.outputs['Background'], smix.inputs[1])
+    nt.links.new(bgc.outputs['Background'], smix.inputs[2])
+    nt.links.new(smix.outputs['Shader'], out.inputs['Surface'])
 
 
 def set_hdri(context):
@@ -1551,8 +1615,9 @@ def set_hdri(context):
         w['mch_prev_world'] = sc.world.name if sc.world is not None else ''
         _world_nodes(w)
         sc.world = w
-    elif w.node_tree is None or w.node_tree.nodes.get('mch:env_blur') is None:
-        _world_nodes(w)                               # (an HDRI world from before the blur: its nodes anew)
+    elif w.node_tree is None or w.node_tree.nodes.get('mch:env_blur') is None or \
+            w.node_tree.nodes.get('mch:bg_mix') is None:
+        _world_nodes(w)                               # (an HDRI world from before the blur / colour: its nodes anew)
     hdri_sync(sc)
     for sp in _views(context):
         if sp.shading.type == 'SOLID':
@@ -1728,6 +1793,8 @@ def draw_hdri(layout, context):
     col.prop(sc, 'mch_mech_hdri_rot')
     col.prop(sc, 'mch_mech_hdri_blur', slider=True)
     col.prop(sc, 'mch_mech_hdri_show')
+    if not sc.mch_mech_hdri_show:
+        col.prop(sc, 'mch_mech_hdri_bg_color')
     r = box.row(align=True)
     r.operator('mch.mech_hdri', text='Set HDRI', icon='WORLD').action = 'SET'
     r.operator('mch.mech_hdri', text='Off', icon='X').action = 'OFF'
@@ -1753,7 +1820,7 @@ class MCH_PT_mech_shader(bpy.types.Panel):
 CLASSES = (MCH_PG_MechShader, MCH_OT_mech_shader_apply, MCH_OT_mech_shader_step, MCH_OT_mech_shader_edges,
            MCH_OT_mech_shader_unlink, MCH_OT_mech_hdri, MCH_PT_mech_shader)
 SCENE_PROPS = ('mch_mech_preset', 'mch_mech_hdri', 'mch_mech_hdri_strength', 'mch_mech_hdri_rot',
-               'mch_mech_hdri_show', 'mch_mech_hdri_blur')
+               'mch_mech_hdri_show', 'mch_mech_hdri_blur', 'mch_mech_hdri_bg_color')
 
 
 def register():
@@ -1773,9 +1840,13 @@ def register():
     T.mch_mech_hdri_blur = FloatProperty(name='Background Blur', default=0.0, min=0.0, max=1.0, subtype='FACTOR',
                                          update=_hdri_update,
                                          description='The HDRI behind the model blurred (the lighting stays sharp)')
-    T.mch_mech_hdri_show = bpy.props.BoolProperty(name='Show Background (Cycles)', default=True,
+    T.mch_mech_hdri_show = bpy.props.BoolProperty(name='Show Background', default=True,
                                                   update=_hdri_update,
-                                                  description='Cycles: the camera sees the HDRI behind the model')
+                                                  description='The camera sees the HDRI behind the model (off: the '
+                                                  'Background Colour instead - the HDRI still lights the model)')
+    T.mch_mech_hdri_bg_color = bpy.props.FloatVectorProperty(
+        name='Background Colour', subtype='COLOR', size=3, min=0.0, max=1.0, default=(0.18, 0.18, 0.2),
+        update=_hdri_update, description='What the camera sees behind the model when the HDRI background is hidden')
 
 
 def unregister():

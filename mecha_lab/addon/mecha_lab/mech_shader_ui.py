@@ -792,16 +792,26 @@ def hdri_content(context, x, width, k):
                       button('Off', 'mch.mech_hdri', action='OFF')])
 
     def previews(sx, sw):                        # (0.24.95 user: "hdri 도 미리 보기 넣어 줘") click = that HDRI, on
-        hgrid(b, sx, sw, [(n, ms.hdri_icon(ident), sc.mch_mech_hdri == ident,
-                           ('op', 'mch.mech_hdri', {'action': 'SET', 'ident': ident}))
-                          for ident, n, *_r in ms._hdri_items(None, context) if ident != 'NONE'])
+        groups = {}                              # (0.24.95 the folders inside the HDRI folder: a heading each)
+        for ident, n, *_r in ms._hdri_items(None, context):
+            if ident == 'NONE':
+                continue
+            g = (ms.hdri_group(ident) or 'My HDRIs') if ident.startswith(ms.USER) else 'Blender'
+            groups.setdefault(g, []).append((n.split(' / ')[-1] if ident.startswith(ms.USER) else n, ident))
+        for g, members in groups.items():
+            if len(groups) > 1:
+                sub(b, g.replace('/', ' / ') + f'  ({len(members)})', sx, sw)
+            hgrid(b, sx, sw, [(n, ms.hdri_icon(ident), sc.mch_mech_hdri == ident,
+                               ('op', 'mch.mech_hdri', {'action': 'SET', 'ident': ident})) for n, ident in members])
     section(b, 'hdri_previews', 'HDRIs', x, width, previews)
 
     def folder(sx, sw):
         d = ms.user_hdri_dir()
         if d:
-            n = len(ms.user_hdri_files())
-            text = f'Folder: {os.path.basename(os.path.normpath(d))}  ({n} HDRI{"s" if n != 1 else ""}, * in the list)'
+            files = ms.user_hdri_files()
+            n, k = len(files), len({f.rsplit('/', 1)[0] for f in files if '/' in f})
+            text = (f'Folder: {os.path.basename(os.path.normpath(d))}  ({n} HDRI{"s" if n != 1 else ""}'
+                    + (f' in it and {k} folder{"s" if k != 1 else ""} inside' if k else '') + ', * in the list)')
         else:
             text = 'Folder: none - Blender\'s own HDRIs'
         b.note(('note', text, False, None, None, None, True), sx, sw)
@@ -815,7 +825,9 @@ def hdri_content(context, x, width, k):
 
     def background(sx, sw):
         row(b, sx, sw, [number(sc, 'mch_mech_hdri_blur', 'Blur')])
-        row(b, sx, sw, [prop_cell(sc, 'mch_mech_hdri_show', 'Show (Cycles)')])
+        row(b, sx, sw, [prop_cell(sc, 'mch_mech_hdri_show', 'Show the HDRI')])
+        if not sc.mch_mech_hdri_show:            # (0.24.95 hidden: a background colour of its own)
+            row(b, sx, sw, [prop_cell(sc, 'mch_mech_hdri_bg_color', 'Colour')])
     section(b, 'background', 'Background', x, width, background)
     return b.out, -b.y
 
