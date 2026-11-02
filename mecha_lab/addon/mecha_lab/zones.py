@@ -9,6 +9,10 @@ picked both ways):
 * **Split Zone** (a material of its own): edges cut into the mesh along the lasso (projected from the view), the faces
   inside get a second Mech material (a copy to change freely - any preset) - its own material slot, the boundary
   exact, a material ID for a game engine.
+* the wear (user: "엣지 까짐이랑 긁힘 때 녹은 분리된 색이랑 다르게 넣고 싶은데 - 똑같이 넣는 거랑 다르게 넣는 거 옵션으로"):
+  the same as the part's by default; a Paint Zone's **Own Wear** gives it its own Edge Wear, Scratches, Dirt (crevices,
+  top, low) and Rust (starting from the part's); a Split Zone's material has **Same Wear as the part** - on: its chips,
+  scratches, dirt, rust follow the part's material as it changes; off: set on its own
 
 The lasso (``MCH_OT_zone_lasso``): drag = freehand; clicks = a straight-edged polygon (Enter / Space / double-click
 closes it); Esc / right click cancels."""
@@ -84,6 +88,55 @@ def _update(self, context):
     sync(mat)
 
 
+def _own_update(self, context):
+    """Own Wear turned on: it starts from the part's own amounts."""
+    mat = self.id_data
+    if self.own_wear and ms.is_mech(mat):
+        st = getattr(mat, ms.KEY)
+        for k in ms.ZONE_WEAR:
+            setattr(self, k, getattr(st, k))
+    sync(mat)
+
+
+# the Split Zone material's "Same Wear": what it takes from the part's material
+FOLLOW = ('edge_wear', 'scratches', 'rust', 'rust_scratch', 'dirt', 'dirt_top', 'dirt_low', 'dust', 'streaks',
+          'primer', 'chip_follow', 'chip_reach', 'chip_soft', 'chip_breakup', 'chip_scale', 'chip_map', 'scratch_map',
+          'rust_map', 'dirt_map', 'scratch_color', 'scratch_tint', 'rust_color', 'dirt_color', 'dust_color',
+          'primer_color', 'edge_mat', 'edge_color', 'edge_metal', 'edge_rough', 'edge_polish', 'edge_map', 'h_scratch',
+          'h_chip', 'h_rust', 'h_dirt')
+
+
+def _copy_wear(src, dst):
+    for k in FOLLOW:
+        a = getattr(src, k)
+        b = getattr(dst, k)
+        same = tuple(a) == tuple(b) if hasattr(a, '__len__') and not isinstance(a, str) else a == b
+        if not same:
+            setattr(dst, k, a)
+
+
+def follow(mat):
+    """Same Wear: ``mat``'s wear copied to its Split Zone materials that follow it, and - when ``mat`` is such a zone
+    itself (a preset put on it, a slider moved) - the part's wear back on it.  Only what differs."""
+    if not ms.is_mech(mat):
+        return
+    parent = getattr(mat, 'mch_zone_parent', None)
+    if getattr(mat, 'mch_zone_follow', False) and ms.is_mech(parent) and parent is not mat:
+        _copy_wear(getattr(parent, ms.KEY), getattr(mat, ms.KEY))
+    src = getattr(mat, ms.KEY)
+    for m in bpy.data.materials:
+        if m is mat or getattr(m, 'mch_zone_parent', None) != mat or not getattr(m, 'mch_zone_follow', False) \
+                or not ms.is_mech(m):
+            continue
+        _copy_wear(src, getattr(m, ms.KEY))
+
+
+def _follow_update(self, context):
+    parent = getattr(self, 'mch_zone_parent', None)
+    if self.mch_zone_follow and parent is not None:
+        follow(parent)
+
+
 class MCH_PG_Zone(bpy.types.PropertyGroup):
     name: StringProperty(default='Zone')
     projector: PointerProperty(type=bpy.types.Object)
@@ -104,6 +157,14 @@ class MCH_PG_Zone(bpy.types.PropertyGroup):
     opacity: FloatProperty(name='Opacity', default=1.0, min=0.0, max=1.0, update=_update)
     through: BoolProperty(name='Through', default=False, update=_update,
                           description='Paint the faces turned away from the view too (off: only what faced it)')
+    own_wear: BoolProperty(name='Own Wear', default=False, update=_own_update,
+                           description='Its own chips, scratches, dirt and rust inside the zone (off: the part\'s)')
+    edge_wear: FloatProperty(name='Edge Wear', default=0.0, min=0.0, max=1.0, update=_update)
+    scratches: FloatProperty(name='Scratches', default=0.0, min=0.0, max=1.0, update=_update)
+    dirt: FloatProperty(name='Dirt in Crevices', default=0.0, min=0.0, max=1.0, update=_update)
+    dirt_top: FloatProperty(name='Dirt on Top', default=0.0, min=0.0, max=1.0, update=_update)
+    dirt_low: FloatProperty(name='Dirt from Below', default=0.0, min=0.0, max=1.0, update=_update)
+    rust: FloatProperty(name='Rust', default=0.0, min=0.0, max=1.0, update=_update)
 
 
 def zones_of(mat):
@@ -127,9 +188,13 @@ def relink(mat):
     if any(v is None for v in hub.values()):
         return
     live = [z for z in zs if z.projector is not None and z.mask is not None] if zs else []
-    for k in ('mask', 'cover', 'rough', 'metal'):
-        for lk in list(hub[k].inputs[0].links):
-            nt.links.remove(lk)
+    hub['own'] = nt.nodes.get('mch:zone_own')
+    for k in ms.ZONE_WEAR:
+        hub['w_' + k] = nt.nodes.get('mch:zone_w_' + k)
+    for k, nd in hub.items():
+        if k != 'color' and nd is not None:
+            for lk in list(nd.inputs[0].links):
+                nt.links.remove(lk)
     csock = {sk.identifier: sk for sk in hub['color'].inputs}['A_Color']
     for lk in list(csock.links):
         nt.links.remove(lk)
@@ -204,15 +269,25 @@ def relink(mat):
         for k, val in (('rough', z.roughness), ('metal', z.metallic), ('cover', z.cover)):
             vals[k] = b.value(f'z{i}_{k}', val)
             vals[k].node.name = tag + k
+        ow = b.value(f'z{i}_own', 1.0 if z.own_wear else 0.0)
+        ow.node.name = tag + 'own'
+        om = b.math('MULTIPLY', m, ow)
+        wv = {}
+        for k in ms.ZONE_WEAR:
+            wv[k] = b.value(f'z{i}_w_{k}', getattr(z, k))
+            wv[k].node.name = tag + 'w_' + k
         if mask_t is None:
             mask_t, col_t = m, col.outputs[0]
             rough_t, metal_t, cover_t = vals['rough'], vals['metal'], vals['cover']
+            own_t, wear_t = om, dict(wv)
         else:                                   # (a later zone over the earlier ones)
             col_t = b.mixc(m, col_t, col.outputs[0])
             rough_t = b.mixf(m, rough_t, vals['rough'])
             metal_t = b.mixf(m, metal_t, vals['metal'])
             cover_t = b.mixf(m, cover_t, vals['cover'])
             mask_t = b.math('MAXIMUM', mask_t, m)
+            wear_t = {k: b.mixf(om, wear_t[k], wv[k]) for k in ms.ZONE_WEAR}
+            own_t = b.math('MAXIMUM', own_t, om)
     for nd in nt.nodes:                         # (only what was made here is the zones': named so it can go again)
         if nd.as_pointer() not in before and not nd.name.startswith(PREFIX):
             nd.name = PREFIX + nd.name
@@ -221,6 +296,11 @@ def relink(mat):
     nt.links.new(rough_t, hub['rough'].inputs[0])
     nt.links.new(metal_t, hub['metal'].inputs[0])
     nt.links.new(col_t, csock)
+    if hub['own'] is not None:
+        nt.links.new(own_t, hub['own'].inputs[0])
+        for k in ms.ZONE_WEAR:
+            if hub['w_' + k] is not None:
+                nt.links.new(wear_t[k], hub['w_' + k].inputs[0])
 
 
 def sync(mat):
@@ -237,7 +317,8 @@ def sync(mat):
         tag = f'{PREFIX}{i}:'
         nodes[tag + 'color'].outputs[0].default_value = (*z.color, 1.0)
         for k, val in (('rough', z.roughness), ('metal', z.metallic), ('cover', z.cover), ('opacity', z.opacity),
-                       ('through', 1.0 if z.through else 0.0)):
+                       ('through', 1.0 if z.through else 0.0), ('own', 1.0 if z.own_wear else 0.0)) \
+                + tuple(('w_' + k, getattr(z, k)) for k in ms.ZONE_WEAR):
             nodes[tag + k].outputs[0].default_value = val
 
 
@@ -528,6 +609,8 @@ def split_zone(context, ob, pts, view_matrix, window_matrix, persp, rw, rh, pres
         else:                                       # (a painted zone of the part's own material: a colour to start)
             st.paint = max(st.paint, 1.0)
             st.paint_color = PALETTE[0]
+        zmat.mch_zone_parent = mat
+        zmat.mch_zone_follow = True             # (the same wear as the part's to start - a switch on its page)
         me.materials.append(zmat)
         slot = len(me.materials) - 1
         for f in inside:
@@ -720,11 +803,16 @@ def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Material.mch_zones = CollectionProperty(type=MCH_PG_Zone)
+    bpy.types.Material.mch_zone_parent = PointerProperty(type=bpy.types.Material)
+    bpy.types.Material.mch_zone_follow = BoolProperty(
+        name='Same Wear as the Part', default=False, update=_follow_update,
+        description='This Split Zone\'s chips, scratches, dirt and rust follow the part\'s material (off: its own)')
 
 
 def unregister():
-    if hasattr(bpy.types.Material, 'mch_zones'):
-        del bpy.types.Material.mch_zones
+    for attr in ('mch_zones', 'mch_zone_parent', 'mch_zone_follow'):
+        if hasattr(bpy.types.Material, attr):
+            delattr(bpy.types.Material, attr)
     for c in reversed(CLASSES):
         try:
             bpy.utils.unregister_class(c)

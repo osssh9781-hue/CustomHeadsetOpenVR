@@ -29,7 +29,8 @@ from bpy.props import EnumProperty, FloatProperty, FloatVectorProperty, PointerP
 
 KEY = 'mch_mech'                    # the material's settings (PropertyGroup on bpy.types.Material)
 CURV = 'mch_curv'
-VERSION = 9                          # (the node tree's layout: an older one is made anew; 9: the lasso Zones' hubs)
+VERSION = 10                         # (the node tree's layout: an older one is made anew; 9: the lasso Zones' hubs,
+#                                      10: a zone's own wear)
 MAP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mech_maps')
 
 # slot -> (label, tiles per unit (x Map Scale), colour map (sRGB) or data, [(id, label)])
@@ -449,6 +450,9 @@ class Builder:
 # the material
 # -----------------------------------------------------------------------------
 
+ZONE_WEAR = ('edge_wear', 'scratches', 'dirt', 'dirt_top', 'dirt_low', 'rust')     # (a Paint Zone's Own Wear)
+
+
 def build(mat):
     """The Mech Shader node tree in ``mat`` (made anew)."""
     mat.use_nodes = True
@@ -506,6 +510,17 @@ def build(mat):
     zsock['Factor_Float'].default_value = 0.0
     zsock['A_Color'].default_value = (1.0, 1.0, 1.0, 1.0)
     zcol = next(sk for sk in zc.outputs if sk.identifier == 'Result_Color')
+    # (a zone with Own Wear: its own chips / scratches / dirt / rust amounts inside it - "똑같이 넣는 거랑 다르게 넣는
+    #  거 옵션으로")
+    own = b.node('ShaderNodeMath', 'mch:zone_own')
+    own.operation = 'ADD'
+    own.use_clamp = True
+    own.inputs[0].default_value = own.inputs[1].default_value = 0.0
+    for k in ZONE_WEAR:
+        nd = b.node('ShaderNodeMath', 'mch:zone_w_' + k)
+        nd.operation = 'ADD'
+        nd.inputs[0].default_value = nd.inputs[1].default_value = 0.0
+        v[k] = b.mixf(own.outputs[0], v[k], nd.outputs[0])
     v['paint'] = b.mixf(zh['mask'], v['paint'], zh['cover'])
     v['paint_rough'] = b.mixf(zh['mask'], v['paint_rough'], zh['rough'])
     c['paint_color'] = b.mixc(zh['mask'], c['paint_color'], zcol)
@@ -759,6 +774,11 @@ def sync(mat):
     src = EMIT_SOURCE.get(st.emit_map, (0, 0, 0, 0, 1))
     for k, val in zip(('const', 'edge', 'cav', 'scratch', 'pattern'), src):
         setv('emit_w_' + k, float(val))
+    try:                                    # (0.24.95 Split Zones with "Same Wear": they follow this material)
+        from . import zones
+        zones.follow(mat)
+    except (ImportError, AttributeError):
+        pass
 
 
 def _see_through(mat, st):

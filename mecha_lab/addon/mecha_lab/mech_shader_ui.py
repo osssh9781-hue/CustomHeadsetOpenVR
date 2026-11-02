@@ -318,6 +318,7 @@ def zones_section(b, x, width, context, mat):
     """0.24.95 Lasso Zones (user: "메카닉 할 때 내가 라쏘로 그은 영역 색이랑 재질 다르게"): Paint Zone (its own paint,
     projected - the mesh as it is) / Split Zone (edges cut along it, a material of its own); the zones' sliders; the
     part's materials (slots) to switch between."""
+    from . import mech_shader as ms
     from . import zones as zn
     ob = getattr(context, 'active_object', None)
     zs = zn.zones_of(mat)
@@ -333,8 +334,19 @@ def zones_section(b, x, width, context, mat):
             sub(b, f'{z.name} - paint', sx, sw)
             for p in ('color', 'roughness', 'metallic', 'cover', 'opacity'):
                 row(b, sx, sw, [prop_cell(z, p)])
+            row(b, sx, sw, [prop_cell(z, 'own_wear', 'Own Wear - chips, scratches, dirt, rust')])
+            if z.own_wear:
+                for p in ms.ZONE_WEAR:
+                    row(b, sx, sw, [prop_cell(z, p)])
             row(b, sx, sw, [prop_cell(z, 'through', 'Through - the back faces too'),
                             _cell('tbtn', 'Delete', ('op', 'mch.zone_remove', {'index': i}))])
+        parent = getattr(mat, 'mch_zone_parent', None)
+        if parent is not None:                      # (a Split Zone's own material)
+            sub(b, f'A Split Zone of "{parent.name}"', sx, sw)
+            row(b, sx, sw, [prop_cell(mat, 'mch_zone_follow', 'Same Wear as the Part')])
+            if mat.mch_zone_follow:
+                b.note(('note', 'Chips, scratches, dirt, rust: the part\'s (off: set them here)', False, None, None,
+                        None, True), sx, sw)
         if len(slots) > 1:
             sub(b, 'This part\'s materials (Split Zones) - click one to change it', sx, sw)
             for i, sl in enumerate(slots):

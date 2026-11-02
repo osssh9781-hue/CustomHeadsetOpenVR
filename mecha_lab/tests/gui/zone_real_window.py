@@ -144,8 +144,8 @@ def flow():
     def scr(co):
         p = view3d_utils.location_3d_to_region_2d(r, rv3d, co)
         return to_x(w, r, p.x, p.y)
-    # a lasso dragged round the middle of the +X face (the face toward the view)
-    ring = [scr((1.0, -0.45 + 0.5 * math.cos(t), 0.0 + 0.45 * math.sin(t))) for t in
+    # a lasso dragged over the +X face's top edge (the side and the top both seen: the edge inside the zone)
+    ring = [scr((1.0, -0.2 + 0.6 * math.cos(t), 0.75 + 0.45 * math.sin(t))) for t in
             [k * 2 * math.pi / 24 for k in range(25)]]
     xdo('mousemove', *ring[0])
     yield 0.3
@@ -159,6 +159,20 @@ def flow():
     mat = part.active_material
     log('dragged lasso: zones', len(mat.mch_zones), 'projector', mat.mch_zones[0].projector.name if len(mat.mch_zones)
         else None, 'mask', mat.mch_zones[0].mask.size[:] if len(mat.mch_zones) else None)
+    # Own Wear: a real click on its switch, then the zone's own chips + rust (the part clean)
+    with C.temp_override(window=w, area=a, region=r):
+        part.active_material.mch_mech.edge_wear = 0.0
+        part.active_material.mch_mech.rust = 0.0
+    sw = yield from scrolled_to(lambda i: getattr(i, 'prop', '') == 'own_wear')
+    hover(sw)
+    yield 0.4
+    xdo('click', 1)
+    yield 1.0
+    z = mat.mch_zones[0]
+    log('Own Wear switch clicked:', z.own_wear, 'its sliders on the page',
+        sorted({getattr(i, 'prop', '') for i in panel_items()} & {'edge_wear', 'scratches', 'rust', 'dirt'}))
+    with C.temp_override(window=w, area=a, region=r):
+        z.edge_wear, z.rust, z.scratches = 0.9, 0.45, 0.5
     xdo('mousemove', 300, 1200)
     yield 25.0
     shot('1_paint_zone.png')
@@ -181,6 +195,18 @@ def flow():
     log('clicked lasso + Enter: faces', nf, '->', len(me.polygons), 'slots', len(part.material_slots),
         'zone faces', len(inside), 'area', round(sum(p.area for p in inside), 3),
         'their height', sorted({round(p.center.z, 3) for p in inside}))
+    # Same Wear as the Part: on for the new Split Zone - a real click turns it off, then its own dirt on top
+    zm = part.active_material
+    sw = yield from scrolled_to(lambda i: getattr(i, 'prop', '') == 'mch_zone_follow')
+    log('Split Zone material', zm.name, 'Same Wear', zm.mch_zone_follow, 'switch at', hover(sw))
+    yield 0.4
+    xdo('click', 1)
+    yield 1.0
+    with C.temp_override(window=w, area=a, region=r):
+        zm.mch_mech.dirt_top = 1.0
+        zm.mch_mech.edge_wear = 0.6
+    log('... after the click: Same Wear', zm.mch_zone_follow, 'zone dirt on top', zm.mch_mech.dirt_top,
+        'part dirt on top', mat.mch_mech.dirt_top)
     xdo('mousemove', 300, 1200)
     yield 25.0
     shot('2_split_zone.png')

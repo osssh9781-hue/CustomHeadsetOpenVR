@@ -5,7 +5,10 @@
   the back; it moves with the part; sliders at once; it survives the Mech tree being made anew; Delete
 * Split Zone: edges cut along the lasso (the mesh stays one piece, closed), the faces inside - only on the side seen -
   get a second Mech material of their own (a lasso inside one big face, and one over a corner)
-* the Mech page: a Zones section (Paint Zone / Split Zone, each zone's sliders, the part's materials to switch)"""
+* the Mech page: a Zones section (Paint Zone / Split Zone, each zone's sliders, the part's materials to switch)
+* the wear (user: "엣지 까짐이랑 긁힘 때 녹은 분리된 색이랑 다르게 - 똑같이 넣는 거랑 다르게 넣는 거 옵션으로"): a Paint
+  Zone's Own Wear (its own Edge Wear / Scratches / Dirt / Rust - rendered: its own rust inside only); a Split Zone's
+  Same Wear as the Part (follows the part's material, off: its own)"""
 import math
 
 import numpy as np
@@ -85,8 +88,8 @@ vm, wm = view_of(front)
 square = [to_px(vm, wm, c) for c in ((-0.5, -1.0, -0.5), (0.5, -1.0, -0.5), (0.5, -1.0, 0.5), (-0.5, -1.0, 0.5))]
 
 # ---- Paint Zone
-check('The Mech Shader has the zone hubs (mask, cover, rough, metal, colour) and is version 9',
-      ms.VERSION == 9 and all(mat.node_tree.nodes.get('mch:zone_' + k) is not None
+check('The Mech Shader has the zone hubs (mask, cover, rough, metal, colour; own wear) and is version 10',
+      ms.VERSION == 10 and mat.node_tree.nodes.get('mch:zone_own') is not None and all(mat.node_tree.nodes.get('mch:zone_' + k) is not None
                               for k in ('mask', 'cover', 'rough', 'metal', 'color')))
 own = sorted(n.name for n in mat.node_tree.nodes)
 z = zn.add_paint_zone(C, part, square, vm, wm, True, RW, RH, color=(0.8, 0.35, 0.0))
@@ -134,6 +137,24 @@ ms.build(mat)
 ms.sync(mat)
 check('The Mech tree made anew (a new version / Reset): the zone is linked back in',
       mat.node_tree.nodes['mch:zone_mask'].inputs[0].is_linked and mat.node_tree.nodes.get('mchz:0:mask') is not None)
+# ---- the wear: the part's (default) or the zone's own
+st.rust = 0.0
+z.own_wear = True
+check('Own Wear on: the zone starts from the part\'s amounts (Rust 0), on in its nodes, the hubs linked',
+      z.rust == 0.0 and mat.node_tree.nodes['mchz:0:own'].outputs[0].default_value == 1.0
+      and mat.node_tree.nodes['mch:zone_own'].inputs[0].is_linked
+      and mat.node_tree.nodes['mch:zone_w_rust'].inputs[0].is_linked)
+img0 = render(front)
+z.rust = 1.0
+img1 = render(front)
+dm, ds = float(np.abs(img1[30, 30] - img0[30, 30]).sum()), float(np.abs(img1[30, 11] - img0[30, 11]).sum())
+check('... the zone\'s own Rust 1.0: rendered rusty in the zone, beside it (the part, Rust 0) as before',
+      dm > 0.08 and ds < 0.03, (round(dm, 3), round(ds, 3)))
+z.own_wear = False
+img2 = render(front)
+check('... Own Wear off: the part\'s again (no rust in the zone)', float(np.abs(img2[30, 30] - img0[30, 30]).sum())
+      < 0.03, np.round(img2[30, 30], 3).tolist())
+z.own_wear = True
 bpy.ops.object.select_all(action='DESELECT')
 part.select_set(True)
 C.view_layer.objects.active = part
@@ -142,7 +163,8 @@ props = {getattr(i, 'prop', '') for i in its if getattr(i, 'data', None) is not 
 heads = {i.label.split('   ')[0]: i for i in its if i.kind == 'shead'}
 check('The Mech page: Zones (open) - Paint Zone / Split Zone, the zone\'s colour, roughness, metallic, paint, '
       'opacity, Through, Delete', 'ZONES' in heads and heads['ZONES'].on
-      and {'color', 'roughness', 'metallic', 'cover', 'opacity', 'through'} <= props
+      and {'color', 'roughness', 'metallic', 'cover', 'opacity', 'through', 'own_wear', 'edge_wear', 'scratches',
+           'dirt', 'dirt_top', 'dirt_low', 'rust'} <= props
       and {'Paint Zone', 'Split Zone', 'Delete'} <= {i.label for i in its if i.kind == 'tbtn'})
 r = bpy.ops.mch.zone_remove(index=0)
 check('Delete: the zone, its projector and its picture gone, the hubs empty, the Mech Shader\'s own nodes all there',
@@ -173,6 +195,22 @@ check('... the zone\'s material: a Mech copy of the part\'s, its own slot (activ
 zmat.mch_mech.preset = 'GUNMETAL'
 check('... any preset on it, the part\'s own material left as it was', zmat.mch_mech.preset == 'GUNMETAL'
       and mat.mch_mech.preset == 'PAINTED')
+check('Same Wear as the Part (on for a new Split Zone): its wear the part\'s, even after its own preset',
+      zmat.mch_zone_follow and zmat.mch_zone_parent == mat
+      and all(getattr(zmat.mch_mech, k) == getattr(mat.mch_mech, k) for k in ('edge_wear', 'dirt', 'rust', 'chip_map')))
+mat.mch_mech.edge_wear = 0.55
+check('... the part\'s Edge Wear 0.55 -> the zone\'s too', abs(zmat.mch_mech.edge_wear - 0.55) < 1e-6)
+zmat.mch_zone_follow = False
+mat.mch_mech.dirt = 0.7
+zmat.mch_mech.dirt = 0.1
+check('... off: its own (the part\'s Dirt 0.7, the zone\'s 0.1)', abs(zmat.mch_mech.dirt - 0.1) < 1e-6
+      and abs(mat.mch_mech.dirt - 0.7) < 1e-6)
+zmat.mch_zone_follow = True
+check('... on again: the part\'s again (Dirt 0.7)', abs(zmat.mch_mech.dirt - 0.7) < 1e-6)
+part.active_material_index = 1
+its, _h = mu.content(C, 0.0, 276.0, 1.0)
+check('... the zone material\'s page: the "Same Wear as the Part" switch',
+      any(getattr(i, 'prop', '') == 'mch_zone_follow' for i in its))
 its, _h = mu.content(C, 0.0, 276.0, 1.0)
 slot_btns = [i for i in its if i.kind == 'tbtn' and i.action[:2] == ('op', 'mch.zone_slot')]
 check('... the Mech page lists the part\'s 2 materials (the zone\'s on), a click switches',
