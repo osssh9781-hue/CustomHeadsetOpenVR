@@ -42,7 +42,7 @@ its, h = page()
 check('No Mech material yet: ◀ [preset] ▶ on the scene\'s preset, Apply Mech Shader (the HDRI on its own page)',
       by_prop(its, 'mch_mech_preset', 'drop') and any(i.kind == 'tbtn' and i.label == 'Apply Mech Shader' for i in its)
       and 'HDRI' not in heads(its) and h > 0, [i.label for i in its if i.kind in {'tbtn', 'shead'}])
-tiles0 = [i for i in its if i.kind == 'mtile']
+tiles0 = [i for i in its if i.kind == 'mtile' and i.action[:2] == ('op', 'mch.mech_shader_apply')]   # (+ the Creature Shader's)
 check('... and the presets as sphere icons (user: "메테리얼 창도 아이콘으로 보이게 해 줄래? 구 형태로"): 34 tiles, a click '
       'applies that preset (55 with the sci-fi pack)', len(tiles0) == len(ms.PRESETS) and all(t.action[:2] == ('op', 'mch.mech_shader_apply')
                                                                    for t in tiles0), len(tiles0))

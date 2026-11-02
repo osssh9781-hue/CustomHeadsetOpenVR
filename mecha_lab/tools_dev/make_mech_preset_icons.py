@@ -8,7 +8,10 @@ bottoms) show too - lit by the interior HDRI (as the lookdev sheet), Cycles, 128
     addon/mecha_lab/mech_icons/hdri_<name>.png       previews of Blender's own HDRIs (256 x 128; the user's
                                                      HDRIs get theirs in Blender, ``mech_shader.hdri_icon``)
 
-    <python with bpy> tools_dev/make_mech_preset_icons.py [mat|wear|hdri|all] [PRESET ...]
+    addon/mecha_lab/mech_icons/cskin_<TYPE>.png     0.24.95 the Creature Shader's skin types and conditions (on a
+    addon/mecha_lab/mech_icons/ccond_<COND>.png     lumpy, folded ball; the conditions on Thick Hide)
+
+    <python with bpy> tools_dev/make_mech_preset_icons.py [mat|wear|hdri|cskin|ccond|creature|all] [PRESET ...]
 """
 import math
 import os
@@ -56,6 +59,28 @@ def ball():
     for p in me.polygons:
         p.use_smooth = True
     ob = bpy.data.objects.new('ball', me)
+    bpy.context.scene.collection.objects.link(ob)
+    return ob
+
+
+def creature_ball():
+    """0.24.95 A creature-ish ball: lumpy, a fold round it (a crevice), a bulge below - for the Creature Shader's
+    crevices / ridges, what faces up and what is low."""
+    from mathutils import noise
+    me = bpy.data.meshes.new('cball')
+    bm = bmesh.new()
+    bmesh.ops.create_icosphere(bm, subdivisions=7, radius=1.0)
+    for v in bm.verts:
+        p = v.co.copy()
+        d = 0.06 * noise.noise(p * 2.5) + 0.025 * noise.noise(p * 6.0)
+        d -= 0.08 * math.exp(-((p.z - 0.15) / 0.05) ** 2)
+        d += 0.05 * math.exp(-((p.z + 0.4) / 0.12) ** 2)
+        v.co = p * (1.0 + d)
+    bm.to_mesh(me)
+    bm.free()
+    for poly in me.polygons:
+        poly.use_smooth = True
+    ob = bpy.data.objects.new('cball', me)
     bpy.context.scene.collection.objects.link(ob)
     return ob
 
@@ -122,8 +147,12 @@ def main():
             print('ICONS DONE', flush=True)
             return
     scene_setup()
-    ob = ball()
     C = bpy.context
+    if which in {'cskin', 'ccond', 'creature'}:
+        creature_icons(which, only)
+        print('ICONS DONE', flush=True)
+        return
+    ob = ball()
     C.view_layer.objects.active = ob
     ob.select_set(True)
     jobs = []
@@ -151,6 +180,34 @@ def main():
         render(path)
         print(f'ICON {kind} {ident} {time.time() - t0:.1f} s', flush=True)
     print('ICONS DONE', flush=True)
+
+
+def creature_icons(which, only):
+    from mecha_lab import creature_shader as cs, mech_shader as ms
+    C = bpy.context
+    ob = creature_ball()
+    C.view_layer.objects.active = ob
+    ob.select_set(True)
+    jobs = []
+    if which in {'cskin', 'creature'}:
+        jobs += [('cskin', k, 'CLEAN') for k, _n, _s in cs.SKINS]
+    if which in {'ccond', 'creature'}:
+        jobs += [('ccond', 'HIDE', k) for k, _n, _s in cs.CONDITIONS]
+    for kind, skin, cond in jobs:
+        ident = skin if kind == 'cskin' else cond
+        if only and ident not in only:
+            continue
+        t0 = time.time()
+        old = ob.active_material
+        mat = cs.new_material(skin, cond)
+        mat.mch_creature.size = 1.0
+        ms.assign(C, [ob], mat, edges=False)
+        edges(ob.data)
+        if old is not None and old.users == 0:
+            bpy.data.materials.remove(old)
+        bpy.context.scene.cycles.samples = SPP * 2
+        render(os.path.join(OUT, f'{kind}_{ident}.png'))
+        print(f'ICON {kind} {ident} {time.time() - t0:.1f} s', flush=True)
 
 
 if __name__ == '__main__':

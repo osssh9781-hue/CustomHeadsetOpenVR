@@ -562,9 +562,32 @@ def scifi(src):
         print(ident, out.get(ident))
     return out
 
+
+def creature_color(src, size=1024):
+    """0.24.95 The user's "Creature_BaseColor_20" pack (colour textures for the Creature Shader's layers - muds, dusts,
+    bloods, slimes, moss, skins: base/base_creature_<nn>_<name>.jpg, 1254 px, sRGB, "seamless not verified") into
+    ``creature_maps/color/<NAME>.jpg``: seamless (``heal_tile``, slow shading made to meet first), ``size`` px, the
+    colour as it is (they are the layer's own colour; the shader's Hue / Saturation / Value adjust it).
+        python3 tools_dev/import_photo_maps.py --creature-color <pack folder>"""
+    d = os.path.join(CREATURE_OUT, 'color')
+    os.makedirs(d, exist_ok=True)
+    done = 0
+    for f in sorted(glob.glob(os.path.join(src, 'base', 'base_creature_*.jpg'))):
+        ident = os.path.splitext(os.path.basename(f))[0].split('_', 3)[3].upper()
+        a = np.asarray(Image.open(f).convert('RGB')).astype(np.float64) / 255.0
+        before = max(seam(lum(a)[1:-1, 1:-1]))
+        a = np.clip(_resize(heal_tile(a, 0, periodic=True), size), 0.0, 1.0)
+        Image.fromarray(np.clip(np.round(a * 255.0), 0, 255).astype(np.uint8)).save(
+            os.path.join(d, ident + '.jpg'), quality=88, optimize=True)
+        done += 1
+        print(f'color/{ident}: seam {before:.1f} -> {max(seam(lum(a))):.2f}, mean {a.reshape(-1, 3).mean(0).round(2)}')
+    print(f'{done} colour maps into {d}')
+
 if __name__ == '__main__':
     if sys.argv[1] == '--one':
         one(sys.argv[2], sys.argv[3], sys.argv[4])
+    elif sys.argv[1] == '--creature-color':
+        creature_color(sys.argv[2])
     elif sys.argv[1] == '--scifi':
         scifi(sys.argv[2])
     elif sys.argv[1] == '--creature':

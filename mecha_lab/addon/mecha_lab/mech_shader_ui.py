@@ -194,9 +194,14 @@ def layer_summary(st, used):
 def content(context, x, width, k):
     """(items, content height) - the Material page's rows, y measured down from 0 (as ``side_panel.content``)."""
     from . import mech_shader as ms
+    from . import creature_shader as cs
     b = sp.Builder(PAGE, x, width, k)
     sc = context.scene
     ob = getattr(context, 'active_object', None)
+    cmat = cs.active_creature(context)
+    if cmat is not None:                             # (0.24.95 the Creature Shader's own page)
+        creature_content(b, x, width, cmat)
+        return b.out, -b.y
     mat = ms.active_mech(context)
     if mat is None:
         _preset_stepper(b, sc, 'mch_mech_preset', x, width)
@@ -207,6 +212,7 @@ def content(context, x, width, k):
                                                                           {'preset': kk}), None, None)
                              for kk, n, _s in ms.PRESETS])
         section(b, 'presets', 'Presets', x, width, presets0)
+        creature_apply_section(b, x, width, sc, start_folded=False)
         other = getattr(ob, 'active_material', None) if ob is not None else None
         if ob is None or ob.type != 'MESH':
             b.note(('note', 'Select meshes, then Apply', False, None, None, None, True), x, width)
@@ -296,7 +302,128 @@ def content(context, x, width, k):
         for p in DETAIL:
             row(b, sx, sw, [prop_cell(st, p)])
     section(b, 'detail', 'Height & Detail', x, width, detail, start_folded=True)
+    creature_apply_section(b, x, width, sc, start_folded=True)
     return b.out, -b.y
+
+
+# --- the Creature Shader (0.24.95 user: "크리쳐 전용으로" - polypaint as the colour, layers from the shape) ------------
+
+def creature_apply_section(b, x, width, sc, start_folded):
+    """The Creature Shader's skin types as balls: a click puts a new Creature material on the selected meshes."""
+    from . import creature_shader as cs
+
+    def fill(sx, sw):
+        b.note(('note', 'Polypaint is the colour; mud, dust, SSS ... come from the shape', False, None, None, None,
+                True), sx, sw)
+        grid(b, sx, sw, [(n, icon('cskin', kk), sc.mch_creature_skin == kk,
+                          ('op', 'mch.creature_apply', {'skin': kk}), None, None) for kk, n, _s in cs.SKINS])
+    section(b, 'cr_apply', 'Creature Shader', x, width, fill, start_folded=start_folded)
+
+
+def _cstep(b, st, prop, x, w, label=''):
+    stepper(b, x, w, button('◀', 'mch.creature_step', prop=prop, step=-1),
+            _cell('drop', label, ('menu_enum',), st, prop),
+            button('▶', 'mch.creature_step', prop=prop, step=1))
+
+
+def _colour_rows(b, st, layer, flat, sx, sw):
+    """A layer's colour: its texture (◀ [Flat / a texture] ▶), its swatch, Hue / Saturation / Value."""
+    _cstep(b, st, layer + '_tex', sx, sw, 'Texture')
+    if flat:
+        row(b, sx, sw, [prop_cell(st, flat)])
+    row(b, sx, sw, [number(st, layer + '_hue', 'Hue'), number(st, layer + '_sat', 'Sat'),
+                    number(st, layer + '_val', 'Val')])
+
+
+# (section key, title, the amounts that make it "in use", its rows: a property, ('tex', layer, swatch) or ('sub', text))
+CREATURE_LAYERS = (
+    ('cr_mud', 'Mud', ('mud', 'mud_top', 'mud_low'),
+     ('mud', 'mud_top', 'mud_low', 'low_reach', ('tex', 'mud', 'mud_color'), 'mud_wet', 'mud_cake', 'h_mud')),
+    ('cr_dust', 'Dust', ('dust',), ('dust', ('tex', 'dust', 'dust_color'))),
+    ('cr_blood', 'Blood', ('blood', 'blood_dry', 'scars'),
+     ('blood', ('tex', 'blood', 'blood_color'), ('sub', 'Dried blood - in the crevices'), 'blood_dry',
+      ('tex', 'blood_dry', 'blood_dry_color'), ('sub', 'Scars'), 'scars', 'scar_color')),
+    ('cr_slime', 'Slime & Wet', ('slime', 'wet'), ('slime', ('tex', 'slime', 'slime_color'), 'wet')),
+    ('cr_moss', 'Moss', ('moss',), ('moss', ('tex', 'moss', 'moss_color'), 'h_moss')),
+    ('cr_snow', 'Snow & Frost', ('snow', 'frost'), ('snow', 'frost')),
+    ('cr_soot', 'Soot', ('soot',), ('soot', 'soot_color')),
+    ('cr_rot', 'Rot & Weathering', ('rot', 'fade'), ('rot', 'rot_color', 'fade')),
+    ('cr_glow', 'Glow', ('glow',), ('glow', 'glow_color', 'glow_power')),
+)
+
+
+def creature_content(b, x, width, mat):
+    """The Material page of a Creature Shader material."""
+    from . import creature_shader as cs
+    from . import mech_shader as ms
+    st = getattr(mat, cs.KEY)
+    _cstep(b, st, 'skin_type', x, width)
+    n_parts = len(ms.users_of(mat))
+    b.note(('note', mat.name + (f'   - shared by {n_parts} parts' if n_parts > 1 else '   - this part only'), False,
+            None, None, None, True), x, width)
+    row(b, x, width, [_cell('tbtn', 'Unlink', ('op', 'mch.mech_shader_unlink', {}), active=n_parts > 1),
+                      button('New Copy', 'mch.creature_apply', skin=st.skin_type, condition=st.condition),
+                      button('Edges', 'mch.mech_shader_edges')])
+    skins = {kk: n for kk, n, _s in cs.SKINS}
+    conds = {kk: n for kk, n, _s in cs.CONDITIONS}
+
+    def skin_grid(sx, sw):
+        grid(b, sx, sw, [(n, icon('cskin', kk), st.skin_type == kk, ('enum', kk), st, 'skin_type')
+                         for kk, n, _s in cs.SKINS])
+    section(b, 'cr_skins', 'Skin Types', x, width, skin_grid, summary=skins.get(st.skin_type, ''))
+
+    def cond_grid(sx, sw):
+        _cstep(b, st, 'condition', sx, sw, 'Condition')
+        grid(b, sx, sw, [(n, icon('ccond', kk), st.condition == kk, ('enum', kk), st, 'condition')
+                         for kk, n, _s in cs.CONDITIONS])
+    section(b, 'cr_conds', 'Conditions', x, width, cond_grid, summary=conds.get(st.condition, ''))
+
+    def colour(sx, sw):
+        row(b, sx, sw, [prop_cell(st, 'polypaint')])
+        sub(b, 'Where there is no polypaint', sx, sw)
+        _colour_rows(b, st, 'base', 'base_color', sx, sw)
+        sub(b, 'Mottle - a second colour', sx, sw)
+        _cstep(b, st, 'mottle_map', sx, sw, 'Pattern')
+        for p in ('mottle', 'mottle_color', 'mottle_scale', 'variation'):
+            row(b, sx, sw, [prop_cell(st, p)])
+    section(b, 'cr_color', 'Color', x, width, colour)
+
+    def skin(sx, sw):
+        _cstep(b, st, 'skin_map', sx, sw, 'Relief')
+        row(b, sx, sw, [number(st, 'h_skin', 'Height')])
+        _cstep(b, st, 'detail_map', sx, sw, 'Detail')
+        row(b, sx, sw, [number(st, 'h_detail', 'Height')])
+        for p in ('skin_scale', 'roughness', 'rough_var', 'ridge_gloss', 'coat', 'irid'):
+            row(b, sx, sw, [prop_cell(st, p)])
+    section(b, 'cr_skin', 'Skin', x, width, skin)
+
+    def sss(sx, sw):
+        for p in ('sss', 'sss_color', 'sss_radius', 'sss_thin', 'thick'):
+            row(b, sx, sw, [prop_cell(st, p)])
+    section(b, 'cr_sss', 'SSS', x, width, sss, start_folded=st.sss <= 0.0, summary=layer_summary(st, ('sss',)))
+
+    def shape(sx, sw):
+        for p in ('cav_dark', 'cav_color', 'ridge_light', 'ridge_color', 'ao'):
+            row(b, sx, sw, [prop_cell(st, p)])
+    section(b, 'cr_shape', 'Crevices & Ridges', x, width, shape, start_folded=True)
+
+    for key, title, which, rows in CREATURE_LAYERS:
+        def fill(sx, sw, rows=rows):
+            for r in rows:
+                if isinstance(r, tuple) and r[0] == 'tex':
+                    _colour_rows(b, st, r[1], r[2], sx, sw)
+                elif isinstance(r, tuple):
+                    sub(b, r[1], sx, sw)
+                else:
+                    row(b, sx, sw, [prop_cell(st, r)])
+        on = any(getattr(st, p) > 0.0 for p in which)
+        section(b, key, title, x, width, fill, start_folded=not on, summary=layer_summary(st, which))
+
+    def detail(sx, sw):
+        for p in ('bump', 'map_scale', 'size'):
+            row(b, sx, sw, [prop_cell(st, p)])
+    section(b, 'cr_detail', 'Height & Detail', x, width, detail, start_folded=True)
+    row(b, x, width, [button('Switch to Mech Shader', 'mch.mech_shader_apply', preset='')])
 
 
 def sub(b, text, x, w):

@@ -1152,9 +1152,10 @@ class MCH_OT_mech_shader_unlink(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        mat = active_mech(context)
+        from . import creature_shader as cs
+        mat = active_mech(context) or cs.active_creature(context)          # (0.24.95 a Creature material too)
         if mat is None:
-            self.report({'WARNING'}, 'Unlink: the active part has no Mech material')
+            self.report({'WARNING'}, 'Unlink: the active part has no Mech / Creature material')
             return {'CANCELLED'}
         new, moved, left = unlink(context, _targets(context), mat)
         if new is None:
