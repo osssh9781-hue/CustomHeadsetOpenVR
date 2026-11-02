@@ -1,0 +1,194 @@
+"""0.24.95 Lasso Zones on Mech parts (user: "메카닉 할 때 내가 라쏘로 그은 영역 색이랑 재질 다르게 할 수 있나?" -> both ways):
+
+* Paint Zone: the lasso projected from the view onto the part (a hidden projector parented to it); inside, the paint is
+  the zone's (colour, roughness, metallic, coverage) - rendered: the zone's colour inside, the part's outside, not on
+  the back; it moves with the part; sliders at once; it survives the Mech tree being made anew; Delete
+* Split Zone: edges cut along the lasso (the mesh stays one piece, closed), the faces inside - only on the side seen -
+  get a second Mech material of their own (a lasso inside one big face, and one over a corner)
+* the Mech page: a Zones section (Paint Zone / Split Zone, each zone's sliders, the part's materials to switch)"""
+import math
+
+import numpy as np
+from _harness import bpy, check, fresh, summary
+from mathutils import Vector
+
+import mecha_lab
+from mecha_lab import mech_shader as ms, mech_shader_ui as mu, zones as zn
+
+mecha_lab.register()
+fresh()
+C = bpy.context
+S = C.scene
+RW = RH = 1000
+
+
+def camera(loc, rot):
+    cd = bpy.data.cameras.new('Cam')
+    cam = bpy.data.objects.new('Cam', cd)
+    S.collection.objects.link(cam)
+    cam.location = loc
+    cam.rotation_euler = rot
+    S.camera = cam
+    C.view_layer.update()
+    return cam
+
+
+def view_of(cam):
+    dg = C.evaluated_depsgraph_get()
+    return cam.matrix_world.inverted(), cam.calc_matrix_camera(dg, x=RW, y=RH)
+
+
+def to_px(vm, wm, co):
+    v = wm @ vm @ Vector((*co, 1.0))
+    return ((v.x / v.w * 0.5 + 0.5) * RW, (v.y / v.w * 0.5 + 0.5) * RH)
+
+
+def render(cam, px=60):
+    S.camera = cam
+    S.render.engine = 'CYCLES'
+    S.cycles.samples = 4
+    S.cycles.use_denoising = False
+    S.render.resolution_x = S.render.resolution_y = px
+    S.render.resolution_percentage = 100
+    S.render.film_transparent = False
+    import os
+    import tempfile
+    path = os.path.join(tempfile.mkdtemp(), 'z.png')
+    S.render.filepath = path
+    bpy.ops.render.render(write_still=True)
+    img = bpy.data.images.load(path)
+    a = np.array(img.pixels[:]).reshape(px, px, 4)[..., :3]
+    bpy.data.images.remove(img)
+    return a
+
+
+def world():
+    w = bpy.data.worlds.new('W')
+    w.use_nodes = True
+    w.node_tree.nodes['Background'].inputs['Strength'].default_value = 1.0
+    w.node_tree.nodes['Background'].inputs['Color'].default_value = (0.8, 0.8, 0.8, 1.0)
+    S.world = w
+
+
+world()
+bpy.ops.mesh.primitive_cube_add(size=2.0)
+part = C.active_object
+part.name = 'Part'
+bpy.ops.mch.mech_shader_apply(preset='PAINTED')
+mat = part.active_material
+st = mat.mch_mech
+st.edge_wear = 0.0
+st.scratches = st.dirt = st.rust = 0.0
+st.paint_color = (0.6, 0.6, 0.6)
+front = camera((0.0, -6.0, 0.0), (math.radians(90), 0.0, 0.0))
+vm, wm = view_of(front)
+square = [to_px(vm, wm, c) for c in ((-0.5, -1.0, -0.5), (0.5, -1.0, -0.5), (0.5, -1.0, 0.5), (-0.5, -1.0, 0.5))]
+
+# ---- Paint Zone
+check('The Mech Shader has the zone hubs (mask, cover, rough, metal, colour) and is version 9',
+      ms.VERSION == 9 and all(mat.node_tree.nodes.get('mch:zone_' + k) is not None
+                              for k in ('mask', 'cover', 'rough', 'metal', 'color')))
+own = sorted(n.name for n in mat.node_tree.nodes)
+z = zn.add_paint_zone(C, part, square, vm, wm, True, RW, RH, color=(0.8, 0.35, 0.0))
+proj = z.projector
+check('Paint Zone: a projector parented to the part (hidden, no render), a packed mask picture of the lasso',
+      proj is not None and proj.parent == part and proj.hide_get() and proj.hide_render and z.mask.packed_file
+      is not None and z.mask.size[0] == 1000 and z.mask.size[1] == 1000)
+mpx = np.array(z.mask.pixels[:]).reshape(1000, 1000, 4)[..., 0]
+cx, cy = int(sum(p[0] for p in square) / 4), int(sum(p[1] for p in square) / 4)
+check('... the mask: the lasso filled (its middle 1, outside 0, its area as the square\'s)',
+      mpx[cy, cx] > 0.99 and mpx[5, 5] < 0.01 and abs(mpx.sum() - abs((square[1][0] - square[0][0])
+                                                                      * (square[2][1] - square[1][1]))) < 2500,
+      (round(float(mpx.sum())), round((square[1][0] - square[0][0]) * (square[2][1] - square[1][1]))))
+nodes = mat.node_tree.nodes
+check('... linked into the Mech Shader (the hubs fed by the zone\'s nodes)',
+      nodes['mch:zone_mask'].inputs[0].is_linked and nodes['mch:zone_color'].inputs[6].is_linked
+      or any(sk.is_linked for sk in nodes['mch:zone_color'].inputs))
+img = render(front)
+mid, side = img[30, 30], img[30, 11]
+check('Rendered from the front: the zone\'s orange in the middle, the part\'s grey beside it',
+      mid[0] > mid[2] * 2.5 and mid[0] > 0.2 and abs(side[0] - side[2]) < 0.08,
+      (np.round(mid, 3).tolist(), np.round(side, 3).tolist()))
+back = camera((0.0, 6.0, 0.0), (math.radians(90), 0.0, math.radians(180)))
+img = render(back)
+check('... from the back: grey (only the faces that faced the view are painted)',
+      abs(img[30, 30][0] - img[30, 30][2]) < 0.08, np.round(img[30, 30], 3).tolist())
+z.through = True
+img = render(back)
+check('... Through on: the back painted too', img[30, 30][0] > img[30, 30][2] * 2.0,
+      np.round(img[30, 30], 3).tolist())
+z.through = False
+z.color = (0.05, 0.2, 0.8)
+check('Sliders at once (Color -> the zone\'s RGB node)',
+      abs(nodes['mchz:0:color'].outputs[0].default_value[2] - 0.8) < 1e-6)
+part.location.x = 3.0
+front.location.x = 3.0
+C.view_layer.update()
+img = render(front)
+check('The part moved (and the camera with it): the zone moved with it (blue in the middle)',
+      img[30, 30][2] > img[30, 30][0] * 2.0, np.round(img[30, 30], 3).tolist())
+part.location.x = 0.0
+front.location.x = 0.0
+C.view_layer.update()
+ms.build(mat)
+ms.sync(mat)
+check('The Mech tree made anew (a new version / Reset): the zone is linked back in',
+      mat.node_tree.nodes['mch:zone_mask'].inputs[0].is_linked and mat.node_tree.nodes.get('mchz:0:mask') is not None)
+bpy.ops.object.select_all(action='DESELECT')
+part.select_set(True)
+C.view_layer.objects.active = part
+its, _h = mu.content(C, 0.0, 276.0, 1.0)
+props = {getattr(i, 'prop', '') for i in its if getattr(i, 'data', None) is not None}
+heads = {i.label.split('   ')[0]: i for i in its if i.kind == 'shead'}
+check('The Mech page: Zones (open) - Paint Zone / Split Zone, the zone\'s colour, roughness, metallic, paint, '
+      'opacity, Through, Delete', 'ZONES' in heads and heads['ZONES'].on
+      and {'color', 'roughness', 'metallic', 'cover', 'opacity', 'through'} <= props
+      and {'Paint Zone', 'Split Zone', 'Delete'} <= {i.label for i in its if i.kind == 'tbtn'})
+r = bpy.ops.mch.zone_remove(index=0)
+check('Delete: the zone, its projector and its picture gone, the hubs empty, the Mech Shader\'s own nodes all there',
+      r == {'FINISHED'} and len(mat.mch_zones) == 0 and 'Zone 1 (Part)' not in bpy.data.objects
+      and not mat.node_tree.nodes['mch:zone_mask'].inputs[0].is_linked
+      and len(mat.node_tree.nodes) == len(own), (len(mat.node_tree.nodes), len(own)))
+
+# ---- Split Zone
+me = part.data
+nf = len(me.polygons)
+zmat, n = zn.split_zone(C, part, square, vm, wm, True, RW, RH)
+area = sum(p.area for p in me.polygons if p.material_index == 1)
+ys = [p.center.y for p in me.polygons if p.material_index == 1]
+check('Split Zone (a lasso inside the one big front face): new edges along it, the square inside its own material '
+      '(area 1.0, all on the front)', n >= 1 and abs(area - 1.0) < 0.02 and all(abs(y + 1.0) < 1e-4 for y in ys)
+      and len(me.polygons) > nf, (n, round(area, 4), len(me.polygons)))
+ec = np.zeros(len(me.edges), int)
+for p in me.polygons:
+    for k in p.edge_keys:
+        pass
+from collections import Counter  # noqa: E402
+cnt = Counter(k for p in me.polygons for k in p.edge_keys)
+check('... the mesh still one closed piece (every edge between two faces), the back untouched (4 points at y = +1)',
+      all(v == 2 for v in cnt.values()) and sum(1 for v in me.vertices if abs(v.co.y - 1.0) < 1e-5) == 4)
+check('... the zone\'s material: a Mech copy of the part\'s, its own slot (active - its settings on the Mech page), '
+      'painted', ms.is_mech(zmat) and zmat != mat and part.material_slots[1].material == zmat
+      and part.active_material_index == 1 and zmat.mch_mech.paint >= 1.0)
+zmat.mch_mech.preset = 'GUNMETAL'
+check('... any preset on it, the part\'s own material left as it was', zmat.mch_mech.preset == 'GUNMETAL'
+      and mat.mch_mech.preset == 'PAINTED')
+its, _h = mu.content(C, 0.0, 276.0, 1.0)
+slot_btns = [i for i in its if i.kind == 'tbtn' and i.action[:2] == ('op', 'mch.zone_slot')]
+check('... the Mech page lists the part\'s 2 materials (the zone\'s on), a click switches',
+      len(slot_btns) == 2 and slot_btns[1].on and not slot_btns[0].on)
+bpy.ops.mch.zone_slot(index=0)
+check('... (the part\'s own again)', ms.active_mech(C) == mat)
+# a lasso over the front-top corner: the faces it covers on the side seen
+top = camera((0.0, -6.0, 4.0), (math.radians(55), 0.0, 0.0))
+vm2, wm2 = view_of(top)
+corner = [to_px(vm2, wm2, c) for c in ((0.6, -1.0, 0.3), (0.95, -1.0, 0.3), (0.95, -0.4, 1.0), (0.6, -0.4, 1.0))]
+part.active_material_index = 0
+zmat2, n2 = zn.split_zone(C, part, corner, vm2, wm2, True, RW, RH)
+f2 = [p for p in me.polygons if p.material_index == 2]
+cnt = Counter(k for p in me.polygons for k in p.edge_keys)
+check('A lasso over the front-top edge (seen from above): the faces on both the front and the top inside it, the '
+      'mesh still closed', n2 >= 2 and any(abs(p.center.y + 1.0) < 1e-4 for p in f2)
+      and any(abs(p.center.z - 1.0) < 1e-4 for p in f2) and all(v == 2 for v in cnt.values()),
+      (n2, [tuple(round(c, 2) for c in p.center) for p in f2][:6]))
+summary()

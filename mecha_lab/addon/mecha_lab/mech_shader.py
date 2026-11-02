@@ -29,7 +29,7 @@ from bpy.props import EnumProperty, FloatProperty, FloatVectorProperty, PointerP
 
 KEY = 'mch_mech'                    # the material's settings (PropertyGroup on bpy.types.Material)
 CURV = 'mch_curv'
-VERSION = 8                          # (the node tree's layout: an older one is made anew)
+VERSION = 9                          # (the node tree's layout: an older one is made anew; 9: the lasso Zones' hubs)
 MAP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mech_maps')
 
 # slot -> (label, tiles per unit (x Map Scale), colour map (sRGB) or data, [(id, label)])
@@ -489,6 +489,26 @@ def build(mat):
     c = {k: b.rgb(k) for k in ('base_color', 'paint_color', 'rust_color', 'dirt_color', 'emit_color',
                                'primer_color', 'edge_color', 'scratch_color', 'dust_color')}
     w = {k: b.value('emit_w_' + k) for k in ('const', 'edge', 'cav', 'scratch', 'pattern')}
+    # 0.24.95 lasso Zones (``zones.py``; user: "메카닉 할 때 내가 라쏘로 그은 영역 색이랑 재질 다르게"): hubs the zones'
+    # projected masks / colours link into.  Inside a zone the paint is the zone's - its colour, roughness, metallic and
+    # coverage - so the chips, primer, scratches, dirt, rust still go over it as over any paint
+    zh = {}
+    for k in ('mask', 'cover', 'rough', 'metal'):
+        nd = b.node('ShaderNodeMath', 'mch:zone_' + k)
+        nd.operation = 'ADD'
+        nd.use_clamp = True
+        nd.inputs[0].default_value = 0.0
+        nd.inputs[1].default_value = 0.0
+        zh[k] = nd.outputs[0]
+    zc = b.node('ShaderNodeMix', 'mch:zone_color')
+    zc.data_type = 'RGBA'
+    zsock = {sk.identifier: sk for sk in zc.inputs}
+    zsock['Factor_Float'].default_value = 0.0
+    zsock['A_Color'].default_value = (1.0, 1.0, 1.0, 1.0)
+    zcol = next(sk for sk in zc.outputs if sk.identifier == 'Result_Color')
+    v['paint'] = b.mixf(zh['mask'], v['paint'], zh['cover'])
+    v['paint_rough'] = b.mixf(zh['mask'], v['paint_rough'], zh['rough'])
+    c['paint_color'] = b.mixc(zh['mask'], c['paint_color'], zcol)
     # edges / crevices: the mesh's convexity (mch_curv) + Cycles' Bevel normal
     att = b.node('ShaderNodeAttribute', 'mch:curv')
     att.attribute_type = 'GEOMETRY'
@@ -597,8 +617,9 @@ def build(mat):
                          b.math('MULTIPLY', b.math('SUBTRACT', 1.0, dirt), b.math('SUBTRACT', 1.0, snow))))
     keep = b.math('MULTIPLY', keep, b.math('SUBTRACT', 1.0, b.math('MAXIMUM', dust, b.math('MULTIPLY', streak, 0.5))))
     metal = b.mixf(emask, v['metallic'], v['edge_metal'])
-    b.link(b.math('MULTIPLY', b.math('MULTIPLY', metal, keep), b.math('SUBTRACT', 1.0, cloth)),
-           bsdf.inputs['Metallic'])
+    b.link(b.math('ADD', b.math('MULTIPLY', b.math('MULTIPLY', metal, keep), b.math('SUBTRACT', 1.0, cloth)),
+                  b.math('MULTIPLY', b.math('MULTIPLY', paint, zh['mask']), zh['metal']), clamp=True),
+           bsdf.inputs['Metallic'])                                       # (+ a zone's metallic paint)
     # roughness: the base + its map, the paint's own, rougher scratches, rust / dirt / snow, cloth
     var = b.math('MULTIPLY', v['rough_amount'], b.math('SUBTRACT', img['rough'], 0.5))
     r = b.math('ADD', v['roughness'], var, clamp=True)
@@ -675,6 +696,11 @@ def build(mat):
     b.link(c['emit_color'], bsdf.inputs['Emission Color'])
     b.link(b.math('MULTIPLY', em, v['emission']), bsdf.inputs['Emission Strength'])
     mat['mch_mech'] = VERSION
+    try:                                    # (0.24.95 its lasso Zones back on the new tree)
+        from . import zones
+        zones.relink(mat)
+    except (ImportError, AttributeError):
+        pass
     return mat
 
 

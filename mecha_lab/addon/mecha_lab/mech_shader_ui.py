@@ -242,6 +242,7 @@ def content(context, x, width, k):
         grid(b, sx, sw, [(n, icon('mat', kk), st.preset == kk, ('enum', kk), st, 'preset') for kk, n, _s in ms.PRESETS])
     section(b, 'presets', 'Presets', x, width, presets, summary=names.get(st.preset, ''))
     my_presets_section(b, x, width, 'mech')
+    zones_section(b, x, width, context, mat)
 
     def surface(sx, sw):
         for p in SURFACE:
@@ -311,6 +312,38 @@ def content(context, x, width, k):
             row(b, sx, sw, [prop_cell(st, p)])
     section(b, 'detail', 'Height & Detail', x, width, detail, start_folded=True)
     return b.out, -b.y
+
+
+def zones_section(b, x, width, context, mat):
+    """0.24.95 Lasso Zones (user: "메카닉 할 때 내가 라쏘로 그은 영역 색이랑 재질 다르게"): Paint Zone (its own paint,
+    projected - the mesh as it is) / Split Zone (edges cut along it, a material of its own); the zones' sliders; the
+    part's materials (slots) to switch between."""
+    from . import zones as zn
+    ob = getattr(context, 'active_object', None)
+    zs = zn.zones_of(mat)
+    slots = [sl for sl in getattr(ob, 'material_slots', ())] if ob is not None else []
+
+    def fill(sx, sw):
+        b.note(('note', 'Draw on the part: drag a lasso, or click its corners (Enter: done)', False, None, None, None,
+                True), sx, sw)
+        row(b, sx, sw, [button('Paint Zone', 'mch.zone_lasso', mode='PAINT'),
+                        button('Split Zone', 'mch.zone_lasso', mode='SPLIT')])
+        sub(b, 'Paint: its own paint, the mesh as it is.  Split: new edges, its own material', sx, sw)
+        for i, z in enumerate(zs or ()):
+            sub(b, f'{z.name} - paint', sx, sw)
+            for p in ('color', 'roughness', 'metallic', 'cover', 'opacity'):
+                row(b, sx, sw, [prop_cell(z, p)])
+            row(b, sx, sw, [prop_cell(z, 'through', 'Through - the back faces too'),
+                            _cell('tbtn', 'Delete', ('op', 'mch.zone_remove', {'index': i}))])
+        if len(slots) > 1:
+            sub(b, 'This part\'s materials (Split Zones) - click one to change it', sx, sw)
+            for i, sl in enumerate(slots):
+                name = sl.material.name if sl.material is not None else '(empty)'
+                row(b, sx, sw, [_cell('tbtn', name, ('op', 'mch.zone_slot', {'index': i}),
+                                      on=i == ob.active_material_index)])
+    n = len(zs or ())
+    section(b, 'zones', 'Zones', x, width, fill, start_folded=not n and len(slots) < 2,
+            summary=(f'{n} paint' if n else '') + (f'  {len(slots)} materials' if len(slots) > 1 else ''))
 
 
 PAGE_NAMES = {'MATERIAL': 'Mech', 'CREATURE': 'Creature', 'DECALS': 'Decals', 'HDRI': 'HDRI'}
