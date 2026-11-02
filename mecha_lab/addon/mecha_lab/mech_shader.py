@@ -29,8 +29,8 @@ from bpy.props import EnumProperty, FloatProperty, FloatVectorProperty, PointerP
 
 KEY = 'mch_mech'                    # the material's settings (PropertyGroup on bpy.types.Material)
 CURV = 'mch_curv'
-VERSION = 10                         # (the node tree's layout: an older one is made anew; 9: the lasso Zones' hubs,
-#                                      10: a zone's own wear)
+VERSION = 11                         # (the node tree's layout: an older one is made anew; 9: the lasso Zones' hubs,
+#                                      10: a zone's own wear, 11: its boundary line in the bump)
 MAP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mech_maps')
 
 # slot -> (label, tiles per unit (x Map Scale), colour map (sRGB) or data, [(id, label)])
@@ -690,6 +690,10 @@ def build(mat):
     h = b.math('ADD', h, b.math('MULTIPLY', primer, b.math('MULTIPLY', v['h_chip'], -0.5)))
     h = b.math('ADD', h, b.math('MULTIPLY', b.math('MULTIPLY', cloth, weave), v['h_weave']))
     h = b.math('ADD', h, b.math('MULTIPLY', dust, b.math('MULTIPLY', img['dust'], 0.25)))
+    zh_h = b.node('ShaderNodeMath', 'mch:zone_height')        # (0.24.95 the zones' boundary lines: raised / engraved)
+    zh_h.operation = 'ADD'
+    zh_h.inputs[0].default_value = zh_h.inputs[1].default_value = 0.0
+    h = b.math('ADD', h, zh_h.outputs[0])
     bump = b.node('ShaderNodeBump', 'mch:bumpnode')
     b.put(bump.inputs['Strength'], b.math('MINIMUM', v['bump'], 1.0))
     bump.inputs['Distance'].default_value = 0.004

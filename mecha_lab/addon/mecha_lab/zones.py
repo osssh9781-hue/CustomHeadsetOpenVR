@@ -13,6 +13,11 @@ picked both ways):
   the same as the part's by default; a Paint Zone's **Own Wear** gives it its own Edge Wear, Scratches, Dirt (crevices,
   top, low) and Rust (starting from the part's); a Split Zone's material has **Same Wear as the part** - on: its chips,
   scratches, dirt, rust follow the part's material as it changes; off: set on its own
+* the boundary line (user: "컬러 다르게 한 경계에 라인으로 경계 범프 생기게, 헤이트값 조절 가능하게"): along the zone's
+  edge a line in the bump - Line Height (+ raised ridge, - engraved groove, 0 none) and Line Width (% of the part's
+  size).  The mask picture is a signed distance field (how far each pixel is from the lasso outline, inside +), so the
+  line sits exactly on the boundary at any width; a Split Zone has it on both sides of the cut (a line-only zone in
+  the part's material and in the zone's, kept in step)
 
 The lasso (``MCH_OT_zone_lasso``): drag = freehand; clicks = a straight-edged polygon (Enter / Space / double-click
 closes it); Esc / right click cancels."""
@@ -30,6 +35,8 @@ from . import mech_shader as ms
 
 PREFIX = 'mchz:'
 MASK_MAX = 1024
+LINE_GAIN = 3.0                   # (Line Height 1 = 3 x the Mech bump's unit: a line reads at its narrow width)
+SDF_R = 48.0                      # (the distance field's reach, mask pixels: 0 / 1 in the picture = 48 px out / in)
 PALETTE = ((0.75, 0.42, 0.02), (0.06, 0.06, 0.07), (0.05, 0.16, 0.45), (0.6, 0.04, 0.03), (0.75, 0.75, 0.72),
            (0.12, 0.25, 0.08))
 
@@ -61,13 +68,35 @@ def fill_polygon(pts, w, h, ss=2):
     return out.reshape(h, ss, w, ss).mean(axis=(1, 3))
 
 
+def signed_distance(pts, w, h, reach=SDF_R):
+    """(h, w) float32: each pixel's distance to the polygon's outline (pixels), + inside, - outside, cut at
+    +-``reach`` (only the band round the outline is measured)."""
+    inside = fill_polygon(pts, w, h) >= 0.5
+    d = np.full((h, w), reach, np.float32)
+    p = np.asarray(pts, np.float64)
+    for (ax, ay), (bx, by) in zip(p, np.roll(p, -1, axis=0)):
+        x0, x1 = int(max(0, math.floor(min(ax, bx) - reach))), int(min(w, math.ceil(max(ax, bx) + reach) + 1))
+        y0, y1 = int(max(0, math.floor(min(ay, by) - reach))), int(min(h, math.ceil(max(ay, by) + reach) + 1))
+        if x1 <= x0 or y1 <= y0:
+            continue
+        X, Y = np.meshgrid(np.arange(x0, x1) + 0.5, np.arange(y0, y1) + 0.5)
+        ex, ey = bx - ax, by - ay
+        ll = ex * ex + ey * ey
+        t = np.clip(((X - ax) * ex + (Y - ay) * ey) / ll, 0.0, 1.0) if ll > 0 else np.zeros_like(X)
+        dd = np.hypot(X - (ax + t * ex), Y - (ay + t * ey)).astype(np.float32)
+        np.minimum(d[y0:y1, x0:x1], dd, out=d[y0:y1, x0:x1])
+    return np.where(inside, d, -d)
+
+
 def mask_image(name, pts, rw, rh):
     """A packed grey image of the lasso over the whole view (``rw`` x ``rh`` pixels), at most MASK_MAX on its long
-    side.  Image row 0 is the bottom (Blender's)."""
+    side: a signed distance field, 0.5 on the outline, + SDF_R pixels inside = 1, outside = 0.  Image row 0 is the
+    bottom (Blender's)."""
     s = min(1.0, MASK_MAX / float(max(rw, rh)))
     w, h = max(8, int(round(rw * s))), max(8, int(round(rh * s)))
     sx, sy = w / float(rw), h / float(rh)
-    a = fill_polygon([(x * sx, y * sy) for x, y in pts], w, h)
+    sd = signed_distance([(x * sx, y * sy) for x, y in pts], w, h)
+    a = np.clip(0.5 + sd / (2.0 * SDF_R), 0.0, 1.0)
     img = bpy.data.images.new(name, w, h, alpha=False, float_buffer=False)
     img.colorspace_settings.name = 'Non-Color'          # (before the pixels: changing it re-makes a new image's buffer)
     px = np.empty((h, w, 4), np.float32)
@@ -86,6 +115,28 @@ def mask_image(name, pts, rw, rh):
 def _update(self, context):
     mat = self.id_data
     sync(mat)
+
+
+def _line_update(self, context):
+    """A boundary line's sliders - and its twin's (a Split Zone's line lives in the part's material and the zone's)."""
+    sync(self.id_data)
+    for m, z in twins(self):
+        if abs(z.line_height - self.line_height) > 1e-7:
+            z.line_height = self.line_height
+        if abs(z.line_width - self.line_width) > 1e-7:
+            z.line_width = self.line_width
+
+
+def twins(zone):
+    """The other zones that share ``zone``'s projector: [(material, zone)]."""
+    out = []
+    if zone.projector is None:
+        return out
+    for m in bpy.data.materials:
+        for z in getattr(m, 'mch_zones', ()):
+            if z.projector == zone.projector and z.as_pointer() != zone.as_pointer():
+                out.append((m, z))
+    return out
 
 
 def _own_update(self, context):
@@ -165,6 +216,15 @@ class MCH_PG_Zone(bpy.types.PropertyGroup):
     dirt_top: FloatProperty(name='Dirt on Top', default=0.0, min=0.0, max=1.0, update=_update)
     dirt_low: FloatProperty(name='Dirt from Below', default=0.0, min=0.0, max=1.0, update=_update)
     rust: FloatProperty(name='Rust', default=0.0, min=0.0, max=1.0, update=_update)
+    kind: EnumProperty(items=[('PAINT', 'Paint', 'A Paint Zone'), ('LINE', 'Line', 'Only a boundary line (a Split Zone)')],
+                       default='PAINT')
+    line_height: FloatProperty(name='Line Height', default=-0.35, min=-1.0, max=1.0, update=_line_update,
+                               description='A line along the boundary in the bump: + a raised ridge, - an engraved '
+                               'groove, 0 none')
+    line_width: FloatProperty(name='Line Width', default=0.6, min=0.05, max=5.0, update=_line_update,
+                              description='How wide the boundary line is (% of the part\'s size)')
+    size: FloatProperty(default=1.0)                          # (the part's size when drawn, world)
+    px_per_unit: FloatProperty(default=100.0)                 # (mask pixels per world unit at the part's depth)
 
 
 def zones_of(mat):
@@ -189,6 +249,7 @@ def relink(mat):
         return
     live = [z for z in zs if z.projector is not None and z.mask is not None] if zs else []
     hub['own'] = nt.nodes.get('mch:zone_own')
+    hub['height'] = nt.nodes.get('mch:zone_height')
     for k in ms.ZONE_WEAR:
         hub['w_' + k] = nt.nodes.get('mch:zone_w_' + k)
     for k, nd in hub.items():
@@ -202,7 +263,7 @@ def relink(mat):
         return
     before = {nd.as_pointer() for nd in nt.nodes}
     b = ms.Builder(nt)
-    mask_t = col_t = rough_t = metal_t = cover_t = None
+    mask_t = col_t = rough_t = metal_t = cover_t = line_t = None
     geo = b.node('ShaderNodeNewGeometry')
     geo.name = PREFIX + 'geo'
     tco = b.node('ShaderNodeTexCoord')
@@ -238,13 +299,14 @@ def relink(mat):
         tex.extension = 'CLIP'
         tex.interpolation = 'Linear'
         b.link(uv.outputs['Vector'], tex.inputs['Vector'])
-        m = tex.outputs['Color']
+        # (the distance field: mask pixels from the outline, + inside; the mask = 1 px soft at the outline)
+        sd = b.math('MULTIPLY', b.math('SUBTRACT', tex.outputs['Color'], 0.5), 2.0 * SDF_R)
+        m = b.math('ADD', sd, 0.5, clamp=True)
         # (in front of the view, only as deep as the part was)
         sep = b.node('ShaderNodeSeparateXYZ')
         b.link(q, sep.inputs['Vector'])
         depth = b.math('MULTIPLY', sep.outputs['Z'], -1.0)
-        m = b.math('MULTIPLY', m, b.math('MULTIPLY', b.math('GREATER_THAN', depth, z.near),
-                                         b.math('LESS_THAN', depth, z.far)))
+        gate = b.math('MULTIPLY', b.math('GREATER_THAN', depth, z.near), b.math('LESS_THAN', depth, z.far))
         # (facing the view when it was drawn - the part's own space: the zone moves with the part)
         pos = tco.outputs['Object']
         ray = b.vmath('SUBTRACT', pos, tuple(z.eye)) if z.persp else None
@@ -258,7 +320,19 @@ def relink(mat):
         facing = b.math('LESS_THAN', fd.outputs['Value'], 0.0)
         thr = b.value(f'z{i}_through', 1.0 if z.through else 0.0)
         thr.node.name = tag + 'through'
-        m = b.math('MULTIPLY', m, b.math('MAXIMUM', facing, thr))
+        gate = b.math('MULTIPLY', gate, b.math('MAXIMUM', facing, thr))
+        # (the boundary line: a smooth ridge across the outline, Line Width wide, x Line Height)
+        lw = b.value(f'z{i}_lw', _half_width_px(z))
+        lw.node.name = tag + 'lw'
+        lh = b.value(f'z{i}_lh', z.line_height)
+        lh.node.name = tag + 'lh'
+        prof = b.maprange(b.math('ABSOLUTE', sd), 0.0, lw, 1.0, 0.0)
+        prof.node.interpolation_type = 'SMOOTHSTEP'
+        ln = b.math('MULTIPLY', b.math('MULTIPLY', prof, gate), b.math('MULTIPLY', lh, LINE_GAIN))
+        line_t = ln if line_t is None else b.math('ADD', line_t, ln)
+        if z.kind == 'LINE':
+            continue
+        m = b.math('MULTIPLY', m, gate)
         op = b.value(f'z{i}_opacity', z.opacity)
         op.node.name = tag + 'opacity'
         m = b.math('MULTIPLY', m, op, clamp=True)
@@ -291,6 +365,10 @@ def relink(mat):
     for nd in nt.nodes:                         # (only what was made here is the zones': named so it can go again)
         if nd.as_pointer() not in before and not nd.name.startswith(PREFIX):
             nd.name = PREFIX + nd.name
+    if line_t is not None and hub['height'] is not None:
+        nt.links.new(line_t, hub['height'].inputs[0])
+    if mask_t is None:                          # (only lines: nothing painted)
+        return
     nt.links.new(mask_t, hub['mask'].inputs[0])
     nt.links.new(cover_t, hub['cover'].inputs[0])
     nt.links.new(rough_t, hub['rough'].inputs[0])
@@ -301,6 +379,11 @@ def relink(mat):
         for k in ms.ZONE_WEAR:
             if hub['w_' + k] is not None:
                 nt.links.new(wear_t[k], hub['w_' + k].inputs[0])
+
+
+def _half_width_px(z):
+    """Half the Line Width in mask pixels (at the part's depth when the zone was drawn)."""
+    return max(0.5, z.line_width / 100.0 * z.size * z.px_per_unit / 2.0)
 
 
 def sync(mat):
@@ -315,9 +398,13 @@ def sync(mat):
         return
     for i, z in enumerate(live):
         tag = f'{PREFIX}{i}:'
+        for k, val in (('lw', _half_width_px(z)), ('lh', z.line_height), ('through', 1.0 if z.through else 0.0)):
+            nodes[tag + k].outputs[0].default_value = val
+        if z.kind == 'LINE':
+            continue
         nodes[tag + 'color'].outputs[0].default_value = (*z.color, 1.0)
         for k, val in (('rough', z.roughness), ('metal', z.metallic), ('cover', z.cover), ('opacity', z.opacity),
-                       ('through', 1.0 if z.through else 0.0), ('own', 1.0 if z.own_wear else 0.0)) \
+                       ('own', 1.0 if z.own_wear else 0.0)) \
                 + tuple(('w_' + k, getattr(z, k)) for k in ms.ZONE_WEAR):
             nodes[tag + k].outputs[0].default_value = val
 
@@ -338,6 +425,46 @@ def _depth_range(ob, view_matrix):
     return max(0.0, min(zs) - pad), max(zs) + pad
 
 
+def _px_per_unit(ob, view_matrix, window_matrix, mask_h):
+    """Mask pixels per world unit at the part's middle (seen from that view)."""
+    c = ob.matrix_world @ (sum((Vector(v) for v in ob.bound_box), Vector()) / 8.0)
+    vc = view_matrix @ c
+    pts = []
+    for dy in (0.0, 1.0):
+        v = window_matrix @ Vector((vc.x, vc.y + dy, vc.z, 1.0))
+        pts.append(v.y / v.w if abs(v.w) > 1e-12 else 0.0)
+    return abs(pts[1] - pts[0]) * 0.5 * mask_h
+
+
+def _projector(context, ob, name, view_matrix):
+    proj = bpy.data.objects.new(name, None)
+    proj.empty_display_type = 'PLAIN_AXES'
+    proj.empty_display_size = 0.01
+    cols = ob.users_collection or (context.scene.collection,)
+    cols[0].objects.link(proj)
+    proj.matrix_world = view_matrix.inverted()
+    proj.parent = ob
+    proj.matrix_parent_inverse = ob.matrix_world.inverted()
+    proj.hide_select = True
+    proj.hide_render = True
+    proj['mch_zone'] = 1
+    return proj
+
+
+def _fill_zone(z, ob, proj, img, view_matrix, window_matrix, persp):
+    """A zone's projector, mask and view (shared by a Paint Zone and a Split Zone's line)."""
+    z.projector = proj
+    z.mask = img
+    z.win = [window_matrix[r][c] for r in range(4) for c in range(4)]
+    z.persp = persp
+    to_part = ob.matrix_world.inverted() @ view_matrix.inverted()
+    z.eye = tuple(to_part.translation)
+    z.look = tuple((to_part.to_3x3() @ Vector((0.0, 0.0, -1.0))).normalized())
+    z.near, z.far = _depth_range(ob, view_matrix)
+    z.size = max(ob.dimensions) or 1.0
+    z.px_per_unit = _px_per_unit(ob, view_matrix, window_matrix, img.size[1])
+
+
 def add_paint_zone(context, ob, pts, view_matrix, window_matrix, persp, rw, rh, color=None):
     """A Paint Zone on ``ob``'s Mech material from the lasso ``pts`` (region pixels) drawn in that view.  Returns the
     zone."""
@@ -349,27 +476,10 @@ def add_paint_zone(context, ob, pts, view_matrix, window_matrix, persp, rw, rh, 
     zs = zones_of(mat)
     n = len(zs) + 1
     img = mask_image(f'.MCH Zone {mat.name} {n}', pts, rw, rh)
-    proj = bpy.data.objects.new(f'Zone {n} ({ob.name})', None)
-    proj.empty_display_type = 'PLAIN_AXES'
-    proj.empty_display_size = 0.01
-    cols = ob.users_collection or (context.scene.collection,)
-    cols[0].objects.link(proj)
-    proj.matrix_world = view_matrix.inverted()
-    proj.parent = ob
-    proj.matrix_parent_inverse = ob.matrix_world.inverted()
-    proj.hide_select = True
-    proj.hide_render = True
-    proj['mch_zone'] = 1
+    proj = _projector(context, ob, f'Zone {n} ({ob.name})', view_matrix)
     z = zs.add()
     z.name = f'Zone {n}'
-    z.projector = proj
-    z.mask = img
-    z.win = [window_matrix[r][c] for r in range(4) for c in range(4)]
-    z.persp = persp
-    to_part = ob.matrix_world.inverted() @ view_matrix.inverted()
-    z.eye = tuple(to_part.translation)
-    z.look = tuple((to_part.to_3x3() @ Vector((0.0, 0.0, -1.0))).normalized())
-    z.near, z.far = _depth_range(ob, view_matrix)
+    _fill_zone(z, ob, proj, img, view_matrix, window_matrix, persp)
     z.color = color or PALETTE[(n - 1) % len(PALETTE)]
     relink(mat)
     proj.hide_set(True)
@@ -377,12 +487,19 @@ def add_paint_zone(context, ob, pts, view_matrix, window_matrix, persp, rw, rh, 
 
 
 def remove_zone(mat, index):
+    """Remove a zone (a Split Zone's line: from both materials)."""
     zs = zones_of(mat)
     if zs is None or not (0 <= index < len(zs)):
         return False
     z = zs[index]
     proj, img = z.projector, z.mask
+    others = [(m, [i for i, oz in enumerate(m.mch_zones) if oz.projector == proj])
+              for m, _z in twins(z)] if proj is not None else []
     zs.remove(index)
+    for m, idx in others:
+        for i in sorted(set(idx), reverse=True):
+            m.mch_zones.remove(i)
+        relink(m)
     if proj is not None:
         bpy.data.objects.remove(proj)
     if img is not None and img.users == 0:
@@ -624,7 +741,18 @@ def split_zone(context, ob, pts, view_matrix, window_matrix, persp, rw, rh, pres
         ms.store_curvature(me)
     except (AttributeError, RuntimeError, ValueError):
         pass
+    # the boundary line on both sides of the cut: a line-only zone in the part's material and in the zone's
+    n = sum(1 for m in me.materials if m is not None and getattr(m, 'mch_zone_parent', None) == mat)
+    img = mask_image(f'.MCH Zone {zmat.name} line', pts, rw, rh)
+    proj = _projector(context, ob, f'Split Zone {n} ({ob.name})', view_matrix)
+    for m in (mat, zmat):
+        z = zones_of(m).add()
+        z.name = f'Split Zone {n}'
+        z.kind = 'LINE'
+        _fill_zone(z, ob, proj, img, view_matrix, window_matrix, persp)
+    relink(mat)
     relink(zmat)
+    proj.hide_set(True)
     ms.sync(zmat)
     ob.active_material_index = slot
     return zmat, len(inside)

@@ -331,8 +331,14 @@ def zones_section(b, x, width, context, mat):
                         button('Split Zone', 'mch.zone_lasso', mode='SPLIT')])
         sub(b, 'Paint: its own paint, the mesh as it is.  Split: new edges, its own material', sx, sw)
         for i, z in enumerate(zs or ()):
+            if z.kind == 'LINE':                    # (a Split Zone's boundary line - in both its materials)
+                sub(b, f'{z.name} - the boundary line', sx, sw)
+                for p in ('line_height', 'line_width'):
+                    row(b, sx, sw, [prop_cell(z, p)])
+                row(b, sx, sw, [_cell('tbtn', 'Remove Line', ('op', 'mch.zone_remove', {'index': i}))])
+                continue
             sub(b, f'{z.name} - paint', sx, sw)
-            for p in ('color', 'roughness', 'metallic', 'cover', 'opacity'):
+            for p in ('color', 'roughness', 'metallic', 'cover', 'opacity', 'line_height', 'line_width'):
                 row(b, sx, sw, [prop_cell(z, p)])
             row(b, sx, sw, [prop_cell(z, 'own_wear', 'Own Wear - chips, scratches, dirt, rust')])
             if z.own_wear:
@@ -355,7 +361,7 @@ def zones_section(b, x, width, context, mat):
                                       on=i == ob.active_material_index)])
     n = len(zs or ())
     section(b, 'zones', 'Zones', x, width, fill, start_folded=not n and len(slots) < 2,
-            summary=(f'{n} paint' if n else '') + (f'  {len(slots)} materials' if len(slots) > 1 else ''))
+            summary=(f'{n} zones' if n else '') + (f'  {len(slots)} materials' if len(slots) > 1 else ''))
 
 
 PAGE_NAMES = {'MATERIAL': 'Mech', 'CREATURE': 'Creature', 'DECALS': 'Decals', 'HDRI': 'HDRI'}

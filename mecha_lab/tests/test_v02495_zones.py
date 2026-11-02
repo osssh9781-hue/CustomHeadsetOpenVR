@@ -8,7 +8,10 @@
 * the Mech page: a Zones section (Paint Zone / Split Zone, each zone's sliders, the part's materials to switch)
 * the wear (user: "엣지 까짐이랑 긁힘 때 녹은 분리된 색이랑 다르게 - 똑같이 넣는 거랑 다르게 넣는 거 옵션으로"): a Paint
   Zone's Own Wear (its own Edge Wear / Scratches / Dirt / Rust - rendered: its own rust inside only); a Split Zone's
-  Same Wear as the Part (follows the part's material, off: its own)"""
+  Same Wear as the Part (follows the part's material, off: its own)
+* the boundary line (user: "컬러 다르게 한 경계에 라인으로 경계 범프, 헤이트값 조절 가능하게"): the mask a signed distance
+  field (0.5 on the outline); Line Height / Line Width into the bump - rendered with a side light: the boundary
+  changes, the middle does not; a Split Zone's line in both materials, kept in step, removed together"""
 import math
 
 import numpy as np
@@ -88,8 +91,9 @@ vm, wm = view_of(front)
 square = [to_px(vm, wm, c) for c in ((-0.5, -1.0, -0.5), (0.5, -1.0, -0.5), (0.5, -1.0, 0.5), (-0.5, -1.0, 0.5))]
 
 # ---- Paint Zone
-check('The Mech Shader has the zone hubs (mask, cover, rough, metal, colour; own wear) and is version 10',
-      ms.VERSION == 10 and mat.node_tree.nodes.get('mch:zone_own') is not None and all(mat.node_tree.nodes.get('mch:zone_' + k) is not None
+check('The Mech Shader has the zone hubs (mask, cover, rough, metal, colour; own wear; height) and is version 11',
+      ms.VERSION == 11 and mat.node_tree.nodes.get('mch:zone_own') is not None
+      and mat.node_tree.nodes.get('mch:zone_height') is not None and all(mat.node_tree.nodes.get('mch:zone_' + k) is not None
                               for k in ('mask', 'cover', 'rough', 'metal', 'color')))
 own = sorted(n.name for n in mat.node_tree.nodes)
 z = zn.add_paint_zone(C, part, square, vm, wm, True, RW, RH, color=(0.8, 0.35, 0.0))
@@ -99,10 +103,12 @@ check('Paint Zone: a projector parented to the part (hidden, no render), a packe
       is not None and z.mask.size[0] == 1000 and z.mask.size[1] == 1000)
 mpx = np.array(z.mask.pixels[:]).reshape(1000, 1000, 4)[..., 0]
 cx, cy = int(sum(p[0] for p in square) / 4), int(sum(p[1] for p in square) / 4)
-check('... the mask: the lasso filled (its middle 1, outside 0, its area as the square\'s)',
-      mpx[cy, cx] > 0.99 and mpx[5, 5] < 0.01 and abs(mpx.sum() - abs((square[1][0] - square[0][0])
-                                                                      * (square[2][1] - square[1][1]))) < 2500,
-      (round(float(mpx.sum())), round((square[1][0] - square[0][0]) * (square[2][1] - square[1][1]))))
+ins = mpx > 0.5
+edge_v = mpx[cy, int(round(square[0][0]))]
+check('... the mask: a distance field of the lasso - 1 deep inside, 0 outside, 0.5 on the outline, the inside as big '
+      'as the square', mpx[cy, cx] > 0.99 and mpx[5, 5] < 0.01 and abs(edge_v - 0.5) < 0.03
+      and abs(ins.sum() - (square[1][0] - square[0][0]) * (square[2][1] - square[1][1])) < 2500,
+      (round(float(edge_v), 3), int(ins.sum())))
 nodes = mat.node_tree.nodes
 check('... linked into the Mech Shader (the hubs fed by the zone\'s nodes)',
       nodes['mch:zone_mask'].inputs[0].is_linked and nodes['mch:zone_color'].inputs[6].is_linked
@@ -137,6 +143,31 @@ ms.build(mat)
 ms.sync(mat)
 check('The Mech tree made anew (a new version / Reset): the zone is linked back in',
       mat.node_tree.nodes['mch:zone_mask'].inputs[0].is_linked and mat.node_tree.nodes.get('mchz:0:mask') is not None)
+# ---- the boundary line: Line Height / Line Width in the bump
+check('A Paint Zone has a boundary line from the start (Line Height -0.35: a groove), linked into the bump',
+      abs(z.line_height + 0.35) < 1e-6 and mat.node_tree.nodes['mch:zone_height'].inputs[0].is_linked
+      and abs(mat.node_tree.nodes['mchz:0:lh'].outputs[0].default_value + 0.35) < 1e-6)
+sun = bpy.data.objects.new('Sun', bpy.data.lights.new('Sun', 'SUN'))
+sun.data.energy = 4.0
+sun.rotation_euler = (math.radians(70), 0.0, math.radians(-70))
+S.collection.objects.link(sun)
+z.color = tuple(st.paint_color)
+z.line_width = 6.0
+z.line_height = 0.0
+la = render(front, 120)
+z.line_height = -1.0
+lb = render(front, 120)
+bx = int(round(square[0][0] * 120 / RW))
+d_edge = max(float(np.abs(lb[60, x] - la[60, x]).sum()) for x in range(bx - 2, bx + 3))
+d_mid = float(np.abs(lb[60, 60] - la[60, 60]).sum())
+check('... rendered (a side light): Line Height -1 changes the boundary, not the middle (Line Width 6 %)',
+      d_edge > 0.05 and d_mid < 0.01, (round(d_edge, 3), round(d_mid, 4)))
+z.line_height = 0.0
+check('... Line Height 0: no line (its node 0)', mat.node_tree.nodes['mchz:0:lh'].outputs[0].default_value == 0.0)
+z.line_width, z.line_height = 0.6, -0.35
+bpy.data.objects.remove(sun)
+z.color = (0.05, 0.2, 0.8)
+
 # ---- the wear: the part's (default) or the zone's own
 st.rust = 0.0
 z.own_wear = True
@@ -164,7 +195,7 @@ heads = {i.label.split('   ')[0]: i for i in its if i.kind == 'shead'}
 check('The Mech page: Zones (open) - Paint Zone / Split Zone, the zone\'s colour, roughness, metallic, paint, '
       'opacity, Through, Delete', 'ZONES' in heads and heads['ZONES'].on
       and {'color', 'roughness', 'metallic', 'cover', 'opacity', 'through', 'own_wear', 'edge_wear', 'scratches',
-           'dirt', 'dirt_top', 'dirt_low', 'rust'} <= props
+           'dirt', 'dirt_top', 'dirt_low', 'rust', 'line_height', 'line_width'} <= props
       and {'Paint Zone', 'Split Zone', 'Delete'} <= {i.label for i in its if i.kind == 'tbtn'})
 r = bpy.ops.mch.zone_remove(index=0)
 check('Delete: the zone, its projector and its picture gone, the hubs empty, the Mech Shader\'s own nodes all there',
@@ -189,6 +220,16 @@ from collections import Counter  # noqa: E402
 cnt = Counter(k for p in me.polygons for k in p.edge_keys)
 check('... the mesh still one closed piece (every edge between two faces), the back untouched (4 points at y = +1)',
       all(v == 2 for v in cnt.values()) and sum(1 for v in me.vertices if abs(v.co.y - 1.0) < 1e-5) == 4)
+lz = [zz for zz in mat.mch_zones if zz.kind == 'LINE']
+tz = [zz for zz in zmat.mch_zones if zz.kind == 'LINE']
+check('... its boundary line on both sides: a line-only zone in the part\'s material and in the zone\'s (one '
+      'projector), both in the bump', len(lz) == 1 and len(tz) == 1 and lz[0].projector == tz[0].projector
+      and mat.node_tree.nodes['mch:zone_height'].inputs[0].is_linked
+      and zmat.node_tree.nodes['mch:zone_height'].inputs[0].is_linked
+      and not mat.node_tree.nodes['mch:zone_mask'].inputs[0].is_linked)
+lz[0].line_height = 0.6
+check('... kept in step (Line Height 0.6 on the part\'s -> the zone\'s too)', abs(tz[0].line_height - 0.6) < 1e-6
+      and abs(zmat.node_tree.nodes['mchz:0:lh'].outputs[0].default_value - 0.6) < 1e-6)
 check('... the zone\'s material: a Mech copy of the part\'s, its own slot (active - its settings on the Mech page), '
       'painted', ms.is_mech(zmat) and zmat != mat and part.material_slots[1].material == zmat
       and part.active_material_index == 1 and zmat.mch_mech.paint >= 1.0)
@@ -229,4 +270,12 @@ check('A lasso over the front-top edge (seen from above): the faces on both the 
       'mesh still closed', n2 >= 2 and any(abs(p.center.y + 1.0) < 1e-4 for p in f2)
       and any(abs(p.center.z - 1.0) < 1e-4 for p in f2) and all(v == 2 for v in cnt.values()),
       (n2, [tuple(round(c, 2) for c in p.center) for p in f2][:6]))
+proj_name = lz[0].projector.name
+part.active_material_index = 0
+idx = next(i for i, zz in enumerate(mat.mch_zones) if zz.projector is not None and zz.projector.name == proj_name)
+r = bpy.ops.mch.zone_remove(index=idx)
+check('Remove Line: the Split Zone\'s line gone from both materials and its projector (the split itself stays)',
+      r == {'FINISHED'} and proj_name not in bpy.data.objects
+      and not any(zz.projector is not None and zz.projector.name == proj_name for zz in zmat.mch_zones)
+      and part.material_slots[1].material == zmat)
 summary()

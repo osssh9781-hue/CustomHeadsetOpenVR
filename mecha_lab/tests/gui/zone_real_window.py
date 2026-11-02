@@ -173,6 +173,21 @@ def flow():
         sorted({getattr(i, 'prop', '') for i in panel_items()} & {'edge_wear', 'scratches', 'rust', 'dirt'}))
     with C.temp_override(window=w, area=a, region=r):
         z.edge_wear, z.rust, z.scratches = 0.9, 0.45, 0.5
+    # the boundary line: a real drag on its Line Height bar (to the right: a raised ridge)
+    bar = yield from scrolled_to(lambda i: getattr(i, 'prop', '') == 'line_height')
+    bx, by = hover(bar)
+    before = z.line_height
+    yield 0.3
+    xdo('mousedown', 1)
+    yield 0.2
+    for dx in range(0, 121, 12):
+        xdo('mousemove', bx + dx, by)
+        yield 0.05
+    xdo('mouseup', 1)
+    yield 1.0
+    log('Line Height bar dragged right:', round(before, 3), '->', round(z.line_height, 3), 'its node',
+        round(mat.node_tree.nodes['mchz:0:lh'].outputs[0].default_value, 3))
+    shot('1b_line_slider.png')
     xdo('mousemove', 300, 1200)
     yield 25.0
     shot('1_paint_zone.png')
