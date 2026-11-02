@@ -1318,8 +1318,8 @@ def draw(layout, context):
 def tool_on(context, kind_=None):
     """The Lasso Zone tool in use (drawing ``kind_`` zones, when given)."""
     from . import tool_state as ts
-    try:
-        on = ts.effective_tool(context) == 'ZONE'
+    try:                                        # (its own Blender tool active: after Esc - Select - not lit)
+        on = ts.native_tool_id(context) == ts.TOOL_BY_ID['ZONE'][5]
     except (AttributeError, KeyError, TypeError):
         return False
     return on and (kind_ is None or kind(context) == kind_)

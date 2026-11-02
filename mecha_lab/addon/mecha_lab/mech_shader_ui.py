@@ -816,6 +816,20 @@ def hdri_content(context, x, width, k):
             text = 'Folder: none - Blender\'s own HDRIs'
         b.note(('note', text, False, None, None, None, True), sx, sw)
         row(b, sx, sw, [button('Choose Folder…', 'mch.mech_hdri_folder')])
+        # 0.24.95 (user: "이상한 거 다 들어왔어 - 한 번에 지우는 버튼이랑 그냥 지우는 버튼") out of the list - files kept
+        if d and ms.user_hdri_files():
+            cur = sc.mch_mech_hdri
+            row(b, sx, sw, [_cell('tbtn', 'Remove' + (' ' + os.path.splitext(cur[len(ms.USER):])[0].split('/')[-1]
+                                                       if cur.startswith(ms.USER) else ''),
+                                  ('op', 'mch.mech_hdri_remove', {'what': 'ONE'}), active=cur.startswith(ms.USER)),
+                            button('Remove All', 'mch.mech_hdri_remove', what='ALL')])
+        n_hidden = len(ms.hidden_hdris()) if d else 0
+        if n_hidden:
+            row(b, sx, sw, [button(f'Bring Back {n_hidden} Removed', 'mch.mech_hdri_remove', what='RESTORE')])
+        from .workspace_ui import prefs
+        pr = prefs()
+        if d and pr is not None and hasattr(pr, 'bl_rna'):
+            row(b, sx, sw, [prop_cell(pr, 'hdri_all_images', 'All Pictures (not only panoramas)')])
     section(b, 'folder', 'My HDRIs', x, width, folder)
 
     def light(sx, sw):
@@ -863,7 +877,37 @@ class MCH_OT_mech_hdri_folder(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_OT_mech_hdri_folder,)
+class MCH_OT_mech_hdri_remove(bpy.types.Operator):
+    """Take HDRIs of your folder out of the list - the files themselves are not touched.  Remove: the one picked;
+    Remove All: every one (the folder let go - Choose Folder brings them back); Bring Back: the removed ones"""
+    bl_idname = 'mch.mech_hdri_remove'
+    bl_label = 'Remove HDRI from the List'
+    bl_options = {'INTERNAL'}
+    what: bpy.props.EnumProperty(items=[('ONE', 'Remove', ''), ('ALL', 'Remove All', ''),
+                                        ('RESTORE', 'Bring Back', '')], default='ONE')
+
+    def execute(self, context):
+        from . import mech_shader as ms
+        try:
+            if self.what == 'ONE':
+                name = ms.remove_hdri(context, context.scene.mch_mech_hdri)
+                msg = f'"{name}" out of the HDRI list (the file is kept)'
+            elif self.what == 'ALL':
+                n = ms.remove_all_hdris(context)
+                msg = f'{n} HDRI{"s" if n != 1 else ""} of your folder out of the list (the files are kept; Choose ' \
+                      'Folder brings them back)'
+            else:
+                n = ms.restore_hdris()
+                msg = f'{n} removed HDRI{"s" if n != 1 else ""} back in the list'
+        except RuntimeError as ex:
+            self.report({'WARNING'}, f'HDRI: {ex}')
+            return {'CANCELLED'}
+        sp.dirty()
+        self.report({'INFO'}, msg)
+        return {'FINISHED'}
+
+
+CLASSES = (MCH_OT_mech_hdri_folder, MCH_OT_mech_hdri_remove)
 
 
 def register():

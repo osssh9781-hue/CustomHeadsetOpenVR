@@ -2331,6 +2331,12 @@ def build_label():
         return f'Mecha Lab {ver} (source checkout, no build stamp)'
 
 
+
+def _hdri_rescan(self, context):
+    """0.24.95 All Pictures switched: the HDRI folder looked through again."""
+    from . import mech_shader
+    mech_shader.rescan()
+
 class MCH_AddonPreferences(bpy.types.AddonPreferences):
     bl_idname = ADDON_ID
 
@@ -2431,6 +2437,14 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
                                 description='0.24.95 a folder of your own HDRIs (.hdr / .exr / .jpg / .png): they '
                                             'show in the Mech Shader HDRI list (marked *) next to Blender\'s built-in '
                                             'ones')
+    hdri_hidden: StringProperty(name='Removed HDRIs', default='', options={'HIDDEN'},
+                                description='0.24.95 the HDRIs of your folder taken out of the list (Remove), one '
+                                            'per line - the files themselves are not touched')
+    hdri_all_images: BoolProperty(name='All Pictures in the HDRI Folder', default=False,
+                                  update=_hdri_rescan,
+                                  description='0.24.95 also list .jpg / .png / .tif pictures that are not 2:1 '
+                                              'panoramas (off: only .hdr / .exr and 2:1 panoramas - the previews '
+                                              'and photos kept next to HDRIs stay out)')
     auto_fix_mesh: BoolProperty(name='Auto Fix Mesh before Cut', default=True,
                                 description='A part that is not one clean solid (open sides, edges shared by 3+ faces) is '
                                             'repaired by itself before Cut / Split / Box Hide / Boolean - the Boolean failed '

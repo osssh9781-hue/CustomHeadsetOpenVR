@@ -274,7 +274,8 @@ def effective_tool(context):
             return chosen
         return native
     chosen = settings.mch_active_tool if settings else 'CUT'
-    return 'CUT' if chosen in HIDDEN_TOOLS else chosen
+    # (a hidden tool chosen: Cut - but the Lasso Zone stays itself after Esc, as the other drawing tools do)
+    return 'CUT' if chosen in HIDDEN_TOOLS - {'ZONE'} else chosen
 
 
 def sidebar_select(context):

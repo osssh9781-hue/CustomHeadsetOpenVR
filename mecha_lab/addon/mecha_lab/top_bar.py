@@ -34,7 +34,7 @@ def _seg(label, data, prop, on=None):
     return _cell('seg', label, bool(getattr(data, prop)) if on is None else on, ('bool',), data, prop)
 
 
-RES_TOOLS = ts.SHAPE_TOOLS | {'SCREW', 'PERF', 'SUBD'}
+RES_TOOLS = (ts.SHAPE_TOOLS - {'ZONE'}) | {'SCREW', 'PERF', 'SUBD'}     # (0.24.95 a zone makes no geometry to resolve)
 
 
 def groups(context, tool):

@@ -1290,11 +1290,74 @@ SCAN_EVERY = 2.0              # (seconds: the folder is looked through again at 
 SCAN_MAX = 5000               # (files at most)
 
 
+def _pic_size(path):
+    """(width, height) of a .png / .jpg / .tif from its header (nothing loaded), None when it cannot tell."""
+    import struct
+    try:
+        with open(path, 'rb') as f:
+            head = f.read(26)
+            if head[:8] == b'\x89PNG\r\n\x1a\n':
+                return struct.unpack('>II', head[16:24])
+            if head[:2] == b'\xff\xd8':
+                f.seek(2)
+                while True:
+                    m = f.read(2)
+                    if len(m) < 2 or m[0] != 0xFF:
+                        return None
+                    if m[1] in (0xD8, 0x01) or 0xD0 <= m[1] <= 0xD7:
+                        continue
+                    ln = struct.unpack('>H', f.read(2))[0]
+                    if m[1] in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF):
+                        h, w = struct.unpack('>xHH', f.read(5))
+                        return w, h
+                    f.seek(ln - 2, 1)
+            if head[:4] in (b'II*\x00', b'MM\x00*'):
+                e = '<' if head[:2] == b'II' else '>'
+                f.seek(struct.unpack(e + 'I', head[4:8])[0])
+                n = struct.unpack(e + 'H', f.read(2))[0]
+                dims = {}
+                for _i in range(n):
+                    tag, typ, _cnt, val = struct.unpack(e + 'HHI4s', f.read(12))
+                    if tag in (256, 257):
+                        dims[tag] = struct.unpack(e + ('H' if typ == 3 else 'I'), val[:2 if typ == 3 else 4])[0]
+                if 256 in dims and 257 in dims:
+                    return dims[256], dims[257]
+    except (OSError, struct.error):
+        return None
+    return None
+
+
+_PANO = {}
+
+
+def _is_panorama(path):
+    """An HDRI file (.hdr / .exr), or a picture shaped like a panorama (2:1, at least 512 wide) - the previews and
+    photos kept next to HDRIs are not (0.24.95 user: "hdri 폴더에 이미지들까지 다 불러와져서 이상한 거 다 들어왔어")."""
+    if path.lower().endswith(('.hdr', '.exr')):
+        return True
+    try:
+        key = (path, os.stat(path).st_mtime)
+    except OSError:
+        return False
+    if key not in _PANO:
+        wh = _pic_size(path)
+        _PANO[key] = bool(wh) and wh[0] >= 512 and abs(wh[0] - 2 * wh[1]) <= max(2, wh[0] // 100)
+    return _PANO[key]
+
+
+def hidden_hdris():
+    """The user's HDRIs taken out of the list (Remove): their paths in the folder."""
+    from .workspace_ui import pref
+    return {ln for ln in (pref('hdri_hidden', '') or '').split('\n') if ln}
+
+
 def _scan_user_hdris(d):
     """Every HDRI in ``d`` and the folders inside it, any depth (0.24.95 user: "폴더 안에 다 분류가 되어 있는데 일일이
     클릭하기 귀찮아서 그 폴더 안에 있는 거 감지해서 들어가게"): paths relative to ``d`` ('/' between folders), folder
     by folder; hidden folders (a name starting with .) left out.  Returns (files, the folders' change times)."""
+    from .workspace_ui import pref
     out, sig = [], []
+    all_pics = bool(pref('hdri_all_images', False))
     for root, dirs, files in os.walk(d):
         dirs[:] = sorted(x for x in dirs if not x.startswith('.'))
         try:
@@ -1304,7 +1367,7 @@ def _scan_user_hdris(d):
         rel = os.path.relpath(root, d)
         rel = '' if rel == '.' else rel.replace(os.sep, '/') + '/'
         for f in sorted(files):
-            if f.lower().endswith(HDRI_EXT) and not f.startswith('.'):
+            if f.lower().endswith(HDRI_EXT) and not f.startswith('.') and (all_pics or _is_panorama(os.path.join(root, f))):
                 out.append(rel + f)
                 if len(out) >= SCAN_MAX:
                     return out, tuple(sig)
@@ -1325,8 +1388,68 @@ def user_hdri_files():
         files, sig = _scan_user_hdris(d)
     except OSError:
         files, sig = [], None
+    hidden = hidden_hdris()
+    files = [f for f in files if f not in hidden]
     _SCAN.update(dir=d, time=now, files=files, sig=sig)
     return files
+
+
+def rescan():
+    _SCAN['time'] = 0.0
+    _HDRI_KEY[0] = None
+
+
+def _set_hidden(names):
+    from .workspace_ui import prefs
+    pr = prefs()
+    if pr is None:
+        raise RuntimeError('the Mecha Lab preferences are not available')
+    pr.hdri_hidden = '\n'.join(sorted(names))
+    rescan()
+
+
+def remove_hdri(context, ident):
+    """Take one of the user's HDRIs out of the list (its file is not touched); the list moves on to the next one.
+    Returns its name."""
+    if not ident.startswith(USER):
+        raise RuntimeError('only your own HDRIs (*) can be removed from the list - Blender\'s built-in ones stay')
+    ids = [i[0] for i in _hdri_items(None, context)]
+    nxt = None
+    if ident in ids:
+        k = ids.index(ident)
+        rest = ids[k + 1:] + ids[:k][::-1]
+        nxt = next((i for i in rest if i != ident), None)
+    _set_hidden(hidden_hdris() | {ident[len(USER):]})
+    sc = context.scene
+    if sc.mch_mech_hdri == ident or sc.mch_mech_hdri not in [i[0] for i in _hdri_items(None, context)]:
+        new = [i[0] for i in _hdri_items(None, context)]
+        sc.mch_mech_hdri = nxt if nxt in new else new[0]
+    return ident[len(USER):]
+
+
+def remove_all_hdris(context):
+    """Every HDRI of the user's folder out of the list: the folder is let go (Choose Folder again brings them
+    back); no file is touched.  Returns how many went."""
+    from .workspace_ui import prefs
+    n = len(user_hdri_files())
+    pr = prefs()
+    if pr is None:
+        raise RuntimeError('the Mecha Lab preferences are not available')
+    pr.hdri_folder = ''
+    pr.hdri_hidden = ''
+    rescan()
+    sc = context.scene
+    ids = [i[0] for i in _hdri_items(None, context)]
+    if sc.mch_mech_hdri not in ids:
+        sc.mch_mech_hdri = ids[0]
+    return n
+
+
+def restore_hdris():
+    """The removed HDRIs back in the list."""
+    n = len(hidden_hdris())
+    _set_hidden(set())
+    return n
 
 
 def hdri_group(ident):

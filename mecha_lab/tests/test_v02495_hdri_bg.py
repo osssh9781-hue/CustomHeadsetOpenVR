@@ -7,7 +7,10 @@
 * an HDRI world made before (no colour nodes): made anew the next time a setting changes
 * the user's HDRI folder: the HDRIs in the folders inside it too (any depth; hidden folders left out), listed
   '* Folder / Name', Set HDRI loads that file; a file added to a folder inside: listed; the HDRI page: a heading per
-  folder over its previews, the folder line counts the folders"""
+  folder over its previews, the folder line counts the folders
+* (user: "이미지들까지 다 불러와져서 이상한 거 다 들어왔어 - 한 번에 지우는 버튼이랑 그냥 지우는 버튼") pictures that are
+  not panoramas left out (All Pictures: in); Remove (the picked one, out of the list - the file kept), Bring Back,
+  Remove All (the folder let go - every file kept)"""
 import os
 import shutil
 import tempfile
@@ -36,6 +39,7 @@ sc.render.engine = 'CYCLES'
 sc.cycles.samples = 8
 sc.cycles.use_denoising = False
 sc.render.resolution_x = sc.render.resolution_y = PX
+sc.view_settings.view_transform = 'Standard'          # (the colours as they are, no tone mapping)
 
 
 def render():
@@ -85,18 +89,42 @@ check('An HDRI world made before (no colour nodes): made anew the next time a se
       and w.node_tree.nodes['mch:bg_hide'].outputs[0].default_value == 1.0)
 sc.mch_mech_hdri_show = True
 
-# ---- the user's HDRI folder, sorted into folders
+# ---- the user's HDRI folder, sorted into folders (+ pictures that are not HDRIs, kept next to them)
+import types
 mine = tempfile.mkdtemp(prefix='mch_hdri_')
 src = os.path.join(ms.hdri_dir(), 'sunset.exr')
 for rel in ('top.exr', 'Outdoor/Sunny/beach.exr', 'Studio/softbox.exr', '.cache/skip.exr'):
     os.makedirs(os.path.dirname(os.path.join(mine, rel)), exist_ok=True)
     shutil.copy(src, os.path.join(mine, rel))
-real_pref = workspace_ui.pref
-workspace_ui.pref = lambda name, default=True: mine if name == 'hdri_folder' else real_pref(name, default)
+
+
+def picture(rel, w, h, fmt):
+    img = bpy.data.images.new('pic', w, h)
+    img.filepath_raw = os.path.join(mine, rel)
+    img.file_format = fmt
+    img.save()
+    bpy.data.images.remove(img)
+
+
+picture('Outdoor/Sunny/preview.jpg', 320, 200, 'JPEG')          # (a preview next to the HDRI: not one)
+picture('Studio/thumb.png', 256, 256, 'PNG')
+picture('Studio/pano.png', 1024, 512, 'PNG')                     # (a 2:1 panorama: an HDRI)
+PR = types.SimpleNamespace(hdri_folder=mine, hdri_hidden='', hdri_all_images=False)
+real_pref, real_prefs = workspace_ui.pref, workspace_ui.prefs
+workspace_ui.pref = lambda name, default=True: getattr(PR, name) if hasattr(PR, name) else real_pref(name, default)
+workspace_ui.prefs = lambda: PR
+ms.rescan()
 try:
     files = ms.user_hdri_files()
-    check('My HDRIs: the folders inside the HDRI folder too, any depth; hidden folders left out',
-          files == ['top.exr', 'Outdoor/Sunny/beach.exr', 'Studio/softbox.exr'], files)
+    check('My HDRIs: the folders inside the HDRI folder too, any depth; hidden folders left out; pictures that are '
+          'not panoramas (a preview, a thumbnail) left out, a 2:1 panorama in',
+          files == ['top.exr', 'Outdoor/Sunny/beach.exr', 'Studio/pano.png', 'Studio/softbox.exr'], files)
+    PR.hdri_all_images = True
+    ms.rescan()
+    check('... All Pictures on: the other pictures listed too',
+          {'Outdoor/Sunny/preview.jpg', 'Studio/thumb.png'} <= set(ms.user_hdri_files()))
+    PR.hdri_all_images = False
+    ms.rescan()
     items = {i[0]: i[1] for i in ms._hdri_items(None, C)}
     check('... listed "* Folder / Name" (first), the built-in ones after',
           items.get('U:Outdoor/Sunny/beach.exr') == '* Outdoor / Sunny / beach' and items.get('U:top.exr') == '* top'
@@ -113,11 +141,38 @@ try:
     its, _h = mu.hdri_content(C, 0.0, 276.0, 1.0)
     heads = [i.label for i in its if i.kind == 'pnote']
     notes = ' '.join(heads)
-    check('... the HDRI page: a heading per folder over its previews, the folder line counts them',
-          any(h.startswith('Outdoor / Sunny') for h in heads) and any(h.startswith('Studio  (2)') for h in heads)
-          and any(h.startswith('Blender') for h in heads) and '2 folders inside' in notes, (heads, notes[:160]))
+    btns = {i.label: i for i in its if i.kind == 'tbtn'}
+    check('... the HDRI page: a heading per folder over its previews, the folder line counts them; Remove (the one '
+          'picked) and Remove All', any(h.startswith('Outdoor / Sunny') for h in heads)
+          and any(h.startswith('Studio  (3)') for h in heads) and any(h.startswith('Blender') for h in heads)
+          and '2 folders inside' in notes and 'Remove softbox' in btns and 'Remove All' in btns, (heads, list(btns)))
+    # Remove: the picked one out of the list, the next one picked, the file kept
+    sc.mch_mech_hdri = 'U:Studio/softbox.exr'
+    r = bpy.ops.mch.mech_hdri_remove(what='ONE')
+    ids = [i[0] for i in ms._hdri_items(None, C)]
+    check('Remove: the picked HDRI out of the list (its file kept), the list on the next one',
+          r == {'FINISHED'} and 'U:Studio/softbox.exr' not in ids and sc.mch_mech_hdri in ids
+          and sc.mch_mech_hdri != 'U:Studio/softbox.exr' and PR.hdri_hidden == 'Studio/softbox.exr'
+          and os.path.isfile(os.path.join(mine, 'Studio', 'softbox.exr')), (sc.mch_mech_hdri, PR.hdri_hidden))
+    sc.mch_mech_hdri = 'courtyard.exr'
+    r = bpy.ops.mch.mech_hdri_remove(what='ONE')
+    check('... a built-in HDRI: not removed (a warning)', r == {'CANCELLED'} and 'courtyard.exr' in
+          [i[0] for i in ms._hdri_items(None, C)])
+    its, _h = mu.hdri_content(C, 0.0, 276.0, 1.0)
+    check('... "Bring Back 1 Removed" on the page', any(i.label == 'Bring Back 1 Removed' for i in its))
+    r = bpy.ops.mch.mech_hdri_remove(what='RESTORE')
+    check('... Bring Back: it is in the list again', r == {'FINISHED'} and PR.hdri_hidden == ''
+          and 'U:Studio/softbox.exr' in [i[0] for i in ms._hdri_items(None, C)])
+    sc.mch_mech_hdri = 'U:top.exr'
+    r = bpy.ops.mch.mech_hdri_remove(what='ALL')
+    ids = [i[0] for i in ms._hdri_items(None, C)]
+    check('Remove All: none of the folder\'s in the list (the folder let go), the built-in ones stay, every file kept',
+          r == {'FINISHED'} and PR.hdri_folder == '' and not any(i.startswith(ms.USER) for i in ids)
+          and 'courtyard.exr' in ids and sc.mch_mech_hdri in ids
+          and os.path.isfile(os.path.join(mine, 'top.exr')) and os.path.isfile(os.path.join(mine, 'Studio', 'pano.png')))
 finally:
-    workspace_ui.pref = real_pref
+    workspace_ui.pref, workspace_ui.prefs = real_pref, real_prefs
     shutil.rmtree(mine, ignore_errors=True)
+    ms.rescan()
 bpy.ops.mch.mech_hdri(action='OFF')
 summary()

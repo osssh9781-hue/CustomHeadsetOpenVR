@@ -34,7 +34,7 @@ groups = dict(top_bar.groups(C, 'BASE'))
 groups_cut = dict(top_bar.groups(C, 'CUT'))
 check('Top bar: a "Resolution" group (Res) for Base Mesh and Cut (every lasso tool + Screw / Perforate / SubD)',
       'Resolution' in groups and 'Resolution' in groups_cut and {'SCREW', 'PERF'} <= top_bar.RES_TOOLS
-      and ts.SHAPE_TOOLS <= top_bar.RES_TOOLS, list(groups))
+      and ts.SHAPE_TOOLS - {'ZONE'} <= top_bar.RES_TOOLS and 'ZONE' not in top_bar.RES_TOOLS, list(groups))   # (0.24.95 Lasso Zone: no geometry)
 check('Side panel: the shape box shows "Resolution (all tools)"', "'geo_res'" in inspect.getsource(uts.draw_shape_options))
 
 
