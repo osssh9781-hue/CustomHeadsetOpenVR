@@ -251,6 +251,9 @@ def content(context, x, width, k):
             if p == 'ior' and st.glass <= 0.0:
                 continue
             row(b, sx, sw, [prop_cell(st, p)])
+            if p == 'base_color':               # (0.24.95 Hue / Saturation / Value of the base colour + its map)
+                row(b, sx, sw, [number(st, 'base_hue', 'Hue'), number(st, 'base_sat', 'Sat'),
+                                number(st, 'base_val', 'Val')])
     section(b, 'surface', 'Surface', x, width, surface)
 
     def maps(sx, sw):

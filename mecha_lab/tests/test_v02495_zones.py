@@ -92,7 +92,7 @@ square = [to_px(vm, wm, c) for c in ((-0.5, -1.0, -0.5), (0.5, -1.0, -0.5), (0.5
 
 # ---- Paint Zone
 check('The Mech Shader has the zone hubs (mask, cover, rough, metal, colour; own wear; height) and is version 11',
-      ms.VERSION == 11 and mat.node_tree.nodes.get('mch:zone_own') is not None
+      ms.VERSION >= 11 and mat.node_tree.nodes.get('mch:zone_own') is not None
       and mat.node_tree.nodes.get('mch:zone_height') is not None and all(mat.node_tree.nodes.get('mch:zone_' + k) is not None
                               for k in ('mask', 'cover', 'rough', 'metal', 'color')))
 own = sorted(n.name for n in mat.node_tree.nodes)

@@ -29,8 +29,8 @@ from bpy.props import EnumProperty, FloatProperty, FloatVectorProperty, PointerP
 
 KEY = 'mch_mech'                    # the material's settings (PropertyGroup on bpy.types.Material)
 CURV = 'mch_curv'
-VERSION = 11                         # (the node tree's layout: an older one is made anew; 9: the lasso Zones' hubs,
-#                                      10: a zone's own wear, 11: its boundary line in the bump)
+VERSION = 12                         # (the node tree's layout: an older one is made anew; 9: the lasso Zones' hubs,
+#                                      10: a zone's own wear, 11: its boundary line in the bump, 12: Base Color HSV)
 MAP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mech_maps')
 
 # slot -> (label, tiles per unit (x Map Scale), colour map (sRGB) or data, [(id, label)])
@@ -87,7 +87,7 @@ EMIT_SOURCE = {'FULL': (1, 0, 0, 0, 0), 'EDGES': (0, 1, 0, 0, 0), 'CREVICES': (0
                'SCRATCH': (0, 0, 0, 1, 0)}
 
 # ---- material presets: every slider + the maps
-BASE = dict(base_color=(0.77, 0.78, 0.78), metallic=1.0, roughness=0.35, rough_amount=0.35, paint=0.0,
+BASE = dict(base_color=(0.77, 0.78, 0.78), base_hue=0.0, base_sat=1.0, base_val=1.0, metallic=1.0, roughness=0.35, rough_amount=0.35, paint=0.0,
             paint_color=(0.55, 0.06, 0.04), paint_rough=0.45, edge_wear=0.0, scratches=0.0, rust=0.0,
             rust_scratch=0.0, rust_color=(1.0, 1.0, 1.0), dirt=0.0, dirt_color=(0.16, 0.12, 0.08), snow=0.0,
             emission=0.0, emit_color=(0.1, 0.7, 1.0), cloth=0.0, bump=1.0, coat=0.0, ao=0.5,
@@ -483,7 +483,8 @@ def build(mat):
         sc.node.name = 'mch:scale:' + name
         maps[name] = b.image(name, b.vmath('SCALE', tc.outputs['Object'], fac=sc))
     img = {k: nd.outputs['Color'] for k, nd in maps.items()}
-    v = {k: b.value(k) for k in ('metallic', 'roughness', 'rough_amount', 'paint', 'paint_rough', 'edge_wear',
+    v = {k: b.value(k) for k in ('base_hue', 'base_sat', 'base_val', 'metallic', 'roughness', 'rough_amount', 'paint',
+                                 'paint_rough', 'edge_wear',
                                  'scratches', 'rust', 'rust_scratch', 'dirt', 'snow', 'emission', 'cloth', 'bump',
                                  'edge_width', 'coat', 'ao', 'h_base', 'h_scratch', 'h_chip', 'h_rust', 'h_dirt',
                                  'h_snow', 'h_weave', 'aniso', 'dust', 'streaks', 'variation', 'primer',
@@ -599,6 +600,15 @@ def build(mat):
     weave = img['weave']
     # colour: base x its map (the map is about 0.5 grey: x2), scratches bright, paint, rust, dirt, snow
     base_col = b.vmath('SCALE', b.mixc(1.0, c['base_color'], img['base'], 'MULTIPLY'), fac=2.0)
+    # 0.24.95 (user: "베이스 컬러 컬러 조절 탭에 휴 · 새츄레이션 · 밸류 조절도") Hue / Saturation / Value of the base
+    # colour with its Base map (Hue 0, Saturation 1, Value 1: as it was)
+    hsv = b.node('ShaderNodeHueSaturation', 'mch:hsv:base')
+    b.link(b.math('ADD', v['base_hue'], 0.5), hsv.inputs['Hue'])
+    b.link(v['base_sat'], hsv.inputs['Saturation'])
+    b.link(v['base_val'], hsv.inputs['Value'])
+    hsv.inputs['Fac'].default_value = 1.0
+    b.link(base_col, hsv.inputs['Color'])
+    base_col = hsv.outputs['Color']
     base_col = b.mixc(b.math('MULTIPLY', scratch, v['metallic']), base_col,
                       b.mixc(0.4, base_col, (1.0, 1.0, 1.0, 1.0)))
     base_col = b.mixc(b.math('MULTIPLY', cloth, 0.45), base_col,
@@ -997,6 +1007,12 @@ class MCH_PG_MechShader(bpy.types.PropertyGroup):
     preset: EnumProperty(name='Preset', items=[(k, n, n) for k, n, _s in PRESETS], default='STEEL',
                          update=_preset_update)
     base_color: _color('Base Color', BASE['base_color'])
+    base_hue: FloatProperty(name='Hue', default=0.0, min=-0.5, max=0.5, update=_update,
+                            description='Base Color (with its Base map): shift the hue')
+    base_sat: FloatProperty(name='Saturation', default=1.0, min=0.0, max=2.0, update=_update,
+                            description='Base Color (with its Base map): 0 grey, 1 as it is, 2 twice as strong')
+    base_val: FloatProperty(name='Value', default=1.0, min=0.0, max=2.0, update=_update,
+                            description='Base Color (with its Base map): darker / brighter')
     metallic: _slider('Metallic', 1.0, desc='0 = plastic / paint underneath, 1 = metal')
     roughness: _slider('Roughness', 0.35)
     rough_amount: _slider('Roughness Map', 0.25, desc='How much the roughness map varies the roughness')
@@ -1844,6 +1860,9 @@ def draw(layout, context):
     col = box.column(align=True)                     # (the surface itself: 0.24.95 user: "베이스 컬러, 러프니스, 메탈릭,
     col.label(text='Surface', icon='SHADING_RENDERED')                                     # 유리 재질, 알파 다 만질 수 있게")
     col.prop(st, 'base_color')
+    r = col.row(align=True)
+    for p_, t_ in (('base_hue', 'Hue'), ('base_sat', 'Sat'), ('base_val', 'Val')):
+        r.prop(st, p_, text=t_, slider=True)
     col.prop(st, 'metallic', slider=True)
     col.prop(st, 'roughness', slider=True)
     col.prop(st, 'glass', slider=True)
