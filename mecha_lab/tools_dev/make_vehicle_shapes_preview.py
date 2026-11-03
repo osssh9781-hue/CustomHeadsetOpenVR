@@ -1,6 +1,6 @@
-"""0.24.95 A look at the Shapes page's vehicle shapes: Polygon Car (Lamborghini-like wedges), Curved Car
-(Porsche-like), Curved Jet / Tank, their plates, then a Curved Car with four Variations - real edges drawn on each
-(the same set-up as ``make_random_shapes_preview``).
+"""0.24.95 A look at the Shapes page's vehicle parts: Car parts (Lamborghini-like, polygon), Car parts (Porsche-like,
+curved), Tank parts (polygon and cast), kinked plates, then a kinked skirt with four Variations - real edges drawn on
+each (the same set-up as ``make_random_shapes_preview``).
 
     <python with bpy> tools_dev/make_vehicle_shapes_preview.py <out.jpg> [tile px] [samples]
 """
@@ -33,23 +33,40 @@ def main():
     tmp = os.path.splitext(out)[0] + '_tiles'
     os.makedirs(tmp, exist_ok=True)
     jobs = []
-    for sd in range(1, 6):
-        jobs.append(('Car (polygon, wedge)', rs.poly_params(random.Random(900 + sd), 'CAR', 2, 0.3, 0.3, True)))
-    for sd in range(1, 6):
-        jobs.append(('Car (curved)', rs.curve_params(random.Random(910 + sd), 'CAR', 2, True)))
-    for sd in range(1, 4):
-        jobs.append(('Jet (curved)', rs.curve_params(random.Random(920 + sd), 'JET', 2, True)))
-    for sd in range(1, 3):
-        jobs.append(('Tank turret (curved)', rs.curve_params(random.Random(930 + sd), 'TANK', 2, True)))
-    for sd in range(1, 3):
-        jobs.append(('Car panel (polygon)', rs.poly_params(random.Random(940 + sd), 'CAR', 2, 0.3, 0.3, False,
-                                                           plate=0.04)))
-    jobs.append(('Car skin plate (curved)', rs.curve_params(random.Random(951), 'CAR', 2, True, 0.04)))
-    jobs.append(('Jet skin plate (curved)', rs.curve_params(random.Random(952), 'JET', 2, True, 0.04)))
-    jobs.append(('Tank skin plate (curved)', rs.curve_params(random.Random(953), 'TANK', 2, True, 0.04)))
-    p = rs.curve_params(random.Random(912), 'CAR', 2, True)
-    jobs.append(('Curved car: the one you like', p))
-    vr = random.Random(912 * 13)
+
+    def part_of(p):
+        d = p.get('d') if isinstance(p.get('d'), dict) else {}
+        return p.get('part') or d.get('part')
+
+    def pick(fam, kind, plate, want, base, sym=True):
+        """parameters of the next seeds from ``base`` whose part is ``want`` (in order)"""
+        out, sd = [], base
+        for w in want:
+            while True:
+                sd += 1
+                rng = random.Random(sd)
+                p = (rs.poly_params(rng, kind, 2, 0.3, 0.3, sym, plate=plate) if fam == 'POLY'
+                     else rs.curve_params(rng, kind, 2, True, plate))
+                if part_of(p) == w:
+                    out.append(p)
+                    break
+        return out
+    for p in pick('POLY', 'CAR', 0.0, ['scoop', 'spoiler', 'lamp', 'scoop', 'spoiler'], 1000):
+        jobs.append((f"Car {part_of(p)} (wedge)", p))
+    for p in pick('POLY', 'CAR', 0.04, ['door', 'fender', 'fender', 'fin', 'door'], 1100):
+        jobs.append((f"Car {part_of(p)} plate (wedge)", p))
+    for p in pick('CURVE', 'CAR', 0.0, ['lamp', 'mirror', 'bumper'], 1200) + \
+            pick('CURVE', 'CAR', 0.04, ['fender', 'hood'], 1300):
+        jobs.append((f"Car {part_of(p)} (curved)", p))
+    for p in pick('POLY', 'TANK', 0.0, ['era', 'cheek', 'mantlet', 'box'], 1400) + \
+            pick('POLY', 'TANK', 0.04, ['skirt'], 1500):
+        jobs.append((f"Tank {part_of(p)}", p))
+    for p in pick('POLY', 'TANK', 0.04, ['skirt', 'guard'], 1600) + pick('CURVE', 'TANK', 0.0, ['mantlet', 'cupola'], 1700) + \
+            pick('CURVE', 'TANK', 0.04, ['guard'], 1800):
+        jobs.append((f"Tank {part_of(p)}" + (' (cast)' if p['family'] == 'CURVE' else ''), p))
+    p = pick('POLY', 'TANK', 0.04, ['skirt'], 1900)[0]
+    jobs.append(('Tank skirt: the one you like', p))
+    vr = random.Random(1913)
     for v in range(4):
         jobs.append((f'... variation {v + 1} (Amount 0.4)', rs.vary(p, 0.4, vr)))
     tiles = []

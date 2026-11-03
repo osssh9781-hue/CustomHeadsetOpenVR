@@ -43,10 +43,11 @@ KINDS = (('MIX', 'Mix', 'Any of the kinds'),
          ('SHARD', 'Shard', 'Uneven sides, cut at angles'),
          ('JET', 'Jet', 'Aircraft-like, one angle repeated: a chined fuselage / nose (solid), a swept wing or fin with '
                         'knife edges (plate)'),
-         ('TANK', 'Tank', 'Armour-like, one slope repeated: a wedge turret / a hull with glacis plates (solid), an '
-                          'armour skirt with a bevelled rim (plate)'),
-         ('CAR', 'Car', 'A wedge sports car (Lamborghini-like, one angle repeated): a low wedge body (solid), a '
-                        'pointed panel with a sharp crease (plate)'))
+         ('TANK', 'Tank', 'Tank parts, one slope repeated: a reactive-armour block, a turret cheek wedge, a gun '
+                          'mantlet, a stowage box (solid); a side skirt, a track guard (plate)'),
+         ('CAR', 'Car', 'Sports-car parts (Lamborghini-like, one angle repeated): a side air scoop, a rear wing, a '
+                        'headlight housing (solid); a creased door panel, a fender with a hexagonal wheel arch, a '
+                        'splitter fin (plate)'))
 KIND_IDS = tuple(k[0] for k in KINDS[1:])
 MIX_WEIGHTS = {'BLOCK': 3, 'PRISM': 2, 'WEDGE': 2, 'STEP': 2, 'SHARD': 2, 'JET': 2, 'TANK': 2, 'CAR': 2}
 CURVE_KINDS = (('MIX', 'Mix', 'Any of the curved kinds'),
@@ -56,9 +57,10 @@ CURVE_KINDS = (('MIX', 'Mix', 'Any of the curved kinds'),
                ('DOMECUT', 'Dome Cut', 'A round mass with flat faces cut into it, folded lines where two meet'),
                ('TORSO', 'Torso', 'A chest / a body: wide at the top, the chest bulging forward, a flat back'),
                ('JET', 'Jet', 'A blended fuselage: soft chines, a canopy rise, a pointed nose (a plate: its skin)'),
-               ('TANK', 'Tank', 'A cast turret: a wide low dome, the front pushed forward (a plate: its skin)'),
-               ('CAR', 'Car', 'A curved sports car (Porsche-like): wide rear hips, a low nose, a fastback roof, a flat '
-                              'floor (a plate: its hood / roof / fender skin)'))
+               ('TANK', 'Tank', 'Cast tank parts: a rounded mantlet, a cupola (solid); a cast armour skin, a curved '
+                                'track guard (plate)'),
+               ('CAR', 'Car', 'Sports-car parts (Porsche-like): a round headlight pod, a wing mirror, a front bumper '
+                              '(solid); a fender with a round wheel arch, a hood (plate)'))
 CURVE_IDS = tuple(k[0] for k in CURVE_KINDS[1:])
 CURVE_MIX = {'POD': 3, 'SHELL': 2, 'CAPSULE': 2, 'DOMECUT': 3, 'TORSO': 3, 'JET': 2, 'TANK': 2, 'CAR': 2}
 LEN_M = Matrix(((-1, 0, 0, 0), (0, 0, 1, 0), (0, 1, 0, 0), (0, 0, 0, 1)))   # a body built along Z lying along Y
@@ -485,7 +487,8 @@ def poly_params(rng, kind='MIX', slices=2, chamfer=0.3, taper=0.3, sym=False, ma
     if taper > 0 and kind in {'BLOCK', 'PRISM', 'SHARD'} and rng.random() < 0.55:
         tp = 1.0 - taper * rng.uniform(0.3, 0.8)
     n_sl = rng.randint(1 if kind == 'SHARD' else 0, slices) if slices > 0 else 0
-    return {'family': 'POLY', 'kind': kind, 'sym': bool(sym),
+    kinks = _rand_kinks(rng, rng.randint(1, 2)) if kind in {'BLOCK', 'PRISM', 'SHARD'} and rng.random() < 0.5 else []
+    return {'family': 'POLY', 'kind': kind, 'sym': bool(sym), 'kinks': kinks,
             'outline': [[round(x, 6), round(y, 6)] for x, y in _clean(pts)],
             'depth': round(depth, 6), 'taper': round(tp, 6), 'side': side,
             'slices': [_rand_plane(rng, sym) for _ in range(n_sl)],
@@ -500,12 +503,18 @@ def _poly_plate_params(rng, kind, slices, chamfer, sym, max_sides, plate):
            'SHARD': outline_shard}.get(kind, lambda r: outline_prism(r, max_sides))(rng)
     tp = 1.0 - rng.uniform(0.03, 0.12) if rng.random() < 0.6 else 1.0     # (a slanted rim: a bevelled armour edge)
     n_sl = rng.randint(1, max(1, slices + 1)) if slices > 0 else 0
+    folds = _plate_folds(rng, sym)
+    kinks = _rand_kinks(rng, rng.randint(1, 3)) if kind != 'STEP' else []
+    if sym and any(f[1] == 0 for f in folds):            # (a ridge down the middle: the top edge peaked on it)
+        mid = _top_middle(_clean(pts))
+        if mid is not None and rng.random() < 0.7:
+            kinks = [[round(mid, 6), round(rng.uniform(0.015, 0.035), 6), 0.0]] + kinks
     return {'family': 'POLY', 'kind': kind, 'sym': bool(sym), 'plate': round(plate, 6),
             'outline': [[round(x, 6), round(y, 6)] for x, y in _clean(pts)],
             'depth': round(plate * rng.uniform(0.85, 1.15), 6), 'taper': round(tp, 6), 'side': False,
             'slices': [_plate_trim(rng, sym) for _ in range(n_sl)],
             'chamfer': [rng.randrange(1, 2 ** 31 - 1), round(chamfer if rng.random() < 0.7 else 0.0, 6)],
-            'folds': _plate_folds(rng, sym)}
+            'folds': folds, 'kinks': kinks}
 
 
 FOLD_STYLES = {'wrap': 3, 'ridge': 2, 'ridge_wrap': 2, 'lips': 2}
@@ -586,6 +595,194 @@ def _split_twisted(bm, tol=1e-5):
     bm.verts.layers.int.remove(lay)
 
 
+# --- kinked outlines (0.24.95 user: "지금 빨간 선처럼 일자인데, 내가 그린 노란 선처럼 꺾이는 부분도 랜덤으로") ----------
+
+def _perimeter(pts):
+    n = len(pts)
+    lens = [(Vector(pts[(i + 1) % n]) - Vector(pts[i])).length for i in range(n)]
+    return lens, sum(lens)
+
+
+def _kink_once(pts, s, h, w, a):
+    """One kink at perimeter position ``s`` (0 - 1): ``w`` 0 - a point ``h`` out (+) or in (-) of the edge (a V);
+    ``w`` > 0 - a flat step that wide, its flanks at the shape's angle ``a`` (a bump or a notch).  ``h`` / ``w``:
+    fractions of the perimeter.  None when it does not fit the edge or the outline would cross itself."""
+    lens, per = _perimeter(pts)
+    pos = (s % 1.0) * per
+    i = 0
+    while i < len(lens) - 1 and pos > lens[i]:
+        pos -= lens[i]
+        i += 1
+    L = lens[i]
+    if L < 1e-6:
+        return None
+    t, H, W = pos / L, h * per, w * per
+    A, B = Vector(pts[i]), Vector(pts[(i + 1) % len(pts)])
+    d = B - A
+    nrm = Vector((d.y, -d.x)).normalized()               # (outward: the outline is counter-clockwise)
+    if W <= 0:
+        if not (0.2 <= t <= 0.8) or abs(H) > 0.3 * L:
+            return None
+        add = [(t, H)]
+    else:
+        e = abs(H) / math.tan(max(math.radians(20), min(math.radians(70), a)))
+        ts = (t - (W / 2 + e) / L, t - W / 2 / L, t + W / 2 / L, t + (W / 2 + e) / L)
+        if ts[0] < 0.08 or ts[3] > 0.92:
+            return None
+        add = list(zip(ts, (0.0, H, H, 0.0)))
+    new = pts[:i + 1] + [tuple(A + d * tt + nrm * hh) for tt, hh in add] + pts[i + 1:]
+    new = _clean(new)
+    return new if len(new) >= 3 and _simple(new) else None
+
+
+def _outline_kink(pts, kinks, a_deg=40.0):
+    """The outline with its kinks, one after another (a kink that does not fit: left out)."""
+    pts = _ccw([tuple(q) for q in pts])
+    for s, h, w in kinks or ():
+        new = _kink_once(pts, s, h, w, math.radians(a_deg))
+        if new is not None:
+            pts = new
+    return pts
+
+
+def _rand_kinks(rng, n):
+    out = []
+    for _i in range(n):
+        h = rng.uniform(0.012, 0.04) * (1 if rng.random() < 0.65 else -1)
+        out.append([round(rng.random(), 6), round(h, 6), round(0.0 if rng.random() < 0.4 else rng.uniform(0.02, 0.08), 6)])
+    return out
+
+
+def _top_middle(pts):
+    """The perimeter position (0 - 1) where the outline's top edge crosses X = 0 (None if none does)."""
+    pts = _ccw([tuple(q) for q in pts])
+    lens, per = _perimeter(pts)
+    best, acc = None, 0.0
+    for i, L in enumerate(lens):
+        A, B = pts[i], pts[(i + 1) % len(pts)]
+        if (A[0] - 0.0) * (B[0] - 0.0) < 0:
+            t = A[0] / (A[0] - B[0])
+            y = A[1] + (B[1] - A[1]) * t
+            if best is None or y > best[0]:
+                best = (y, (acc + t * L) / per)
+        acc += L
+    return None if best is None else best[1]
+
+
+# --- vehicle parts: Car (Lamborghini-like wedges / Porsche-like curves), Tank (0.24.95 user: "차체를 만드는 게 아니라
+#     차의 외관의 파츠, 탱크도 그렇고") ------------------------------------------------------------------------------
+
+FACE_M = Matrix(((1, 0, 0, 0), (0, 0, 1, 0), (0, -1, 0, 0), (0, 0, 0, 1)))   # an outline's +Z face to the front (+Y)
+
+
+def _part_params(rng, kind, a, plate, sym):
+    """Polygon Car / Tank parts: an outline (``pts``) pushed ``depth`` (along Z, or across X for a side outline,
+    ``mode`` 'side'), its top ``tp`` smaller; cuts / rim / folds / kinks from the shape's angle ``a``."""
+    U = rng.uniform
+    t = math.radians(a)
+    p = {'family': 'POLY', 'kind': kind, 'sym': True}
+    if kind == 'CAR' and plate <= 0:
+        part = rng.choice(('scoop', 'spoiler', 'lamp'))
+        if part == 'scoop':                              # a side air intake: a wedge seen from the side, its mouth cut
+            H = U(0.28, 0.42)
+            pts = [(0, 0), (1, 0), (1, H * U(0.45, 0.7)), (U(0.25, 0.45), H), (0, H * U(0.75, 0.95))]
+            d = dict(mode='side', pts=pts, depth=U(0.3, 0.5), cuts=[['cheek', U(0.05, 0.12)], ['canopy', U(0.1, 0.22)]],
+                     kinks=_rand_kinks(rng, rng.randint(0, 1)))
+        elif part == 'spoiler':                          # a rear wing: a thin blade, long across, its tips cut
+            th = U(0.08, 0.14)
+            pts = [(0, 0), (1, th * 0.25), (1, th * 0.6), (U(0.25, 0.4), th), (0, th * 0.55)]
+            d = dict(mode='side', pts=pts, depth=U(3.0, 5.0), cuts=[['cheek', U(0.02, 0.06)]])
+        else:                                            # a headlight housing: a pointed hexagon, a Y notch, a bevel
+            h = U(0.3, 0.45)
+            e = min(0.3, (h / 2) / math.tan(t))
+            pts = [(-0.5 + e, -h / 2), (0.5 - e, -h / 2), (0.5, 0.0), (0.5 - e, h / 2), (-0.5 + e, h / 2), (-0.5, 0.0)]
+            d = dict(mode='xy', face=True, pts=pts, depth=U(0.12, 0.22), tp=U(0.65, 0.85),
+                     kinks=[[U(0.55, 0.7), -U(0.02, 0.04), U(0.02, 0.05)]])
+            p['sym'] = False
+    elif kind == 'CAR':
+        part = rng.choice(('door', 'fender', 'fender', 'fin'))
+        p['sym'] = False
+        if part == 'door':                               # a long pointed panel, a sharp crease along it
+            h = U(0.25, 0.42)
+            e = min(0.3, (h / 2) / math.tan(t))
+            pts = [(-0.5 + e, -h / 2), (0.5 - e, -h / 2), (0.5, 0.0), (0.5 - e, h / 2), (-0.5 + e, h / 2), (-0.5, 0.0)]
+            p['folds'] = [[0.0, U(-0.3, 0.3), math.radians(U(12, 28))]]
+            kinks = _rand_kinks(rng, rng.randint(1, 3))
+        elif part == 'fender':                           # a panel with a hexagonal wheel arch in its bottom edge
+            h, r = U(0.38, 0.55), U(0.2, 0.27)
+            ad, ac = U(0.45, 0.7) * h, U(-0.15, 0.15)
+            rf = r - ad / math.tan(t)
+            rf = max(0.25 * r, rf)
+            c = U(0.04, 0.1)
+            pts = [(-0.5, -h / 2), (ac - r, -h / 2), (ac - rf, -h / 2 + ad), (ac + rf, -h / 2 + ad), (ac + r, -h / 2),
+                   (0.5, -h / 2), (0.5, h / 2 - c), (0.5 - c, h / 2), (-0.5, h / 2)]
+            p['folds'] = [[0.0, U(-0.7, -0.4), math.radians(U(10, 25))]]
+            kinks = _rand_kinks(rng, rng.randint(0, 2))
+        else:                                            # a splitter / diffuser fin, swept at the shape's angle
+            h = U(0.25, 0.5)
+            pts = [(-0.5, 0.0), (0.5, 0.0), (0.5 - h / math.tan(t), h), (-0.5 + U(0.0, 0.3), h)]
+            kinks = _rand_kinks(rng, rng.randint(0, 1))
+        d = dict(mode='xy', pts=pts, depth=plate, kinks=kinks, rim=plate * U(0.3, 0.6))
+    elif plate <= 0:                                     # Tank parts, solid
+        part = rng.choice(('era', 'cheek', 'mantlet', 'box'))
+        if part == 'era':                                # a reactive-armour block: its face sloped
+            W = U(0.45, 0.7)
+            d = dict(mode='xy', pts=_rect(W, 1.0), depth=U(0.15, 0.28), cuts=[['canopy', U(0.15, 0.3)]],
+                     rim=U(0.006, 0.014), kinks=_rand_kinks(rng, rng.randint(0, 1)))
+        elif part == 'cheek':                            # a turret cheek module: an arrowhead, its top sloped
+            W, fw = U(0.5, 0.8), U(0.05, 0.25)
+            wd = min(0.45, (W / 2 - fw * W / 2) * math.tan(math.radians(90 - a)))
+            pts = [(-W / 2, -0.5), (W / 2, -0.5), (W / 2, 0.5 - wd), (fw * W / 2, 0.5), (-fw * W / 2, 0.5),
+                   (-W / 2, 0.5 - wd)]
+            d = dict(mode='xy', pts=pts, depth=U(0.15, 0.25), tp=U(0.8, 0.92), cuts=[['canopy', U(0.15, 0.3)]],
+                     rim=U(0.006, 0.014))
+        elif part == 'mantlet':                          # a gun mantlet: a wide hexagon, its sides sloped back
+            h = U(0.35, 0.55)
+            e = min(0.3, (h / 2) / math.tan(t))
+            pts = [(-0.5 + e, -h / 2), (0.5 - e, -h / 2), (0.5, 0.0), (0.5 - e, h / 2), (-0.5 + e, h / 2), (-0.5, 0.0)]
+            d = dict(mode='xy', face=True, pts=pts, depth=U(0.25, 0.45), tp=U(0.6, 0.8), rim=U(0.004, 0.01))
+        else:                                            # a stowage box: a lid edge chamfered
+            d = dict(mode='xy', pts=_rect(U(0.35, 0.6), 1.0), depth=U(0.25, 0.45), rim=U(0.015, 0.03),
+                     kinks=_rand_kinks(rng, rng.randint(0, 1)))
+    else:                                                # Tank parts, plates
+        part = rng.choice(('skirt', 'skirt', 'guard'))
+        p['sym'] = False
+        if part == 'skirt':                              # a side skirt: its corners at the shape's angle, a kinked edge
+            h = U(0.28, 0.6)
+            c1, c2, sl = U(0.1, 0.3) * h, U(0.0, 0.08) * h, rng.choice((0.0, U(0.05, 0.2))) * h
+            pts = [(-0.5 + c1 / math.tan(t), -h / 2), (0.5 - c2, -h / 2 + sl), (0.5, -h / 2 + sl + c2), (0.5, h / 2 - c2),
+                   (0.5 - c2, h / 2), (-0.5 + c2, h / 2), (-0.5, h / 2 - c2), (-0.5, -h / 2 + c1)]
+            kinks = _rand_kinks(rng, rng.randint(1, 3))
+            style = rng.choice(('lip', 'ridge', 'ridge', 'none'))
+            if style == 'lip':
+                p['folds'] = [[0.0, -U(0.55, 0.8), math.radians(U(15, 35))]]
+            elif style == 'ridge':                       # (a V down the middle, the top edge peaked on it)
+                p['folds'] = [[math.pi / 2, 0.0, math.radians(U(12, 28))]]
+                mid = _top_middle(_clean(pts))
+                if mid is not None:
+                    kinks = [[mid, U(0.015, 0.035), 0.0]] + kinks
+        else:                                            # a track guard: long, narrow, its ends bent back
+            pts = _rect(1.0, U(0.15, 0.3))
+            p['folds'] = [[math.pi / 2, U(0.6, 0.85), math.radians(U(20, 40))],
+                          [math.pi / 2, -U(0.6, 0.85), math.radians(U(15, 35))]]
+            kinks = _rand_kinks(rng, rng.randint(0, 1))
+        d = dict(mode='xy', pts=pts, depth=plate, kinks=kinks, rim=plate * U(0.3, 0.7))
+    d.update(a=a, form='part', part=part, pts=[[round(x, 6), round(y, 6)] for x, y in _clean(d['pts'])])
+    p['d'] = d
+    if plate > 0:
+        p['plate'] = round(plate, 6)
+    return _rounded(p)
+
+
+def _part(bm, d, level):
+    pts = _outline_kink(d['pts'], d.get('kinks') if level < 2 else None, d['a'])
+    _prism(bm, pts, d['depth'], d.get('tp', 1.0))
+    if d.get('mode') == 'side':
+        bmesh.ops.transform(bm, matrix=SIDE_M, verts=list(bm.verts))
+    if d.get('face'):
+        bmesh.ops.transform(bm, matrix=FACE_M, verts=list(bm.verts))
+
+
 # --- Jet / Tank: designed shapes - one angle repeated (0.24.95 user: "좀 더 리얼한 메카에 쓸 수 있도록 예쁘고 정교한 형태,
 #     제트기나 탱크에 가까운 형태로") -------------------------------------------------------------------------------------
 #
@@ -601,7 +798,7 @@ def _design_plane(name, a):
     n = {'canopy': (0.0, s, c), 'chin': (0.0, s, -c), 'cheek': (c, s, 0.0), 'cheek_low': (c, s, -1.0),
          'tail': (0.0, -s, c), 'tail_low': (0.0, -s, -c), 'shoulder': (c, 0.0, s),
          'glacis_up': (0.0, math.sin(a / 2), math.cos(a / 2)), 'glacis_low': (0.0, s, -c),
-         'rear': (0.0, -s, c), 'sponson': (s, 0.0, c), 'sill': (c, 0.0, -s)}[name]
+         'rear': (0.0, -s, c), 'sponson': (s, 0.0, c)}[name]
     v = Vector(n).normalized()
     return [v.x, v.y, v.z]
 
@@ -625,31 +822,8 @@ def design_params(rng, kind, plate=0.0, sym=True, chamfer=0.3):
                   'swept': (U(30, 40), U(18, 30)), 'cropped': (U(40, 52), U(0, 10))}[style]
         d = dict(a=le, form='wing', S=U(0.7, 1.3), le=le, te=te, t=plate, kn=U(0.05, 0.1), style=style)
         p['sym'] = bool(sym)
-    elif kind == 'CAR' and plate <= 0:                   # a wedge sports car, seen from the side
-        d = dict(a=a, form='car', W=U(0.4, 0.52), H=U(0.24, 0.3), hn=U(0.05, 0.09), hc=U(0.13, 0.18),
-                 ht=U(0.15, 0.22), roof=U(0.1, 0.22), rpos=U(0.33, 0.45), ws=a * U(0.5, 0.65))
-        d['cuts'] = [['cheek', U(0.05, 0.11)], ['shoulder', U(0.08, 0.16)], ['sill', U(0.04, 0.08)]] + \
-            ([['tail', U(0.03, 0.07)]] if rng.random() < 0.5 else [])
-    elif kind == 'CAR':                                  # a pointed panel, a sharp crease along it
-        d = dict(a=a, form='panel', L=1.0, h=U(0.22, 0.42), t=plate, sq=rng.random() < 0.35, rim=plate * U(0.3, 0.6))
-        p['sym'] = False
-        p['folds'] = [[0.0, U(-0.3, 0.3), math.radians(U(12, 28))]]
-    elif plate <= 0:                                     # a turret or a hull, plates at one slope
-        if rng.random() < 0.55:
-            d = dict(a=a, form='turret', L=1.0, W=U(0.6, 0.85), H=U(0.2, 0.32), fw=U(0.08, 0.3), rc=U(0.0, 0.18),
-                     tp=U(0.82, 0.94), rim=U(0.006, 0.015))
-            names = ['canopy'] + rng.sample(['rear', 'shoulder', 'cheek_low'], rng.randint(0, 2))
-            d['cuts'] = [[nm, U(0.08, 0.18) if nm == 'canopy' else U(0.05, 0.12)] for nm in names]
-        else:
-            d = dict(a=a, form='hull', L=1.0, W=U(0.5, 0.68), H=U(0.18, 0.28), rim=U(0.004, 0.012))
-            d['cuts'] = [['glacis_up', U(0.18, 0.32)], ['glacis_low', U(0.12, 0.22)], ['rear', U(0.05, 0.12)]] + \
-                ([['sponson', U(0.04, 0.09)]] if rng.random() < 0.6 else [])
-    else:                                                # an armour plate / a skirt, bevelled rim
-        d = dict(a=a, form='armor', L=1.0, h=U(0.28, 0.6), t=plate, c1=U(0.1, 0.3), c2=U(0.0, 0.08),
-                 slant=rng.choice((0.0, U(0.05, 0.2))), rim=plate * U(0.4, 0.8))
-        p['sym'] = False
-        if rng.random() < 0.5:                           # (its top edge bent back)
-            p['folds'] = [[0.0, -U(0.55, 0.8), math.radians(U(15, 35))]]
+    else:
+        return _part_params(rng, kind, a, plate, sym)
     p['d'] = d
     if plate > 0:
         p['plate'] = round(plate, 6)
@@ -697,57 +871,13 @@ def _wing(bm, d, level):
     return bm
 
 
-def _tank_solid(bm, d):
-    W, L, H = d['W'], d['L'], d['H']
-    if d['form'] == 'turret':                            # an arrowhead in plan: the wedge at the shape's angle
-        fw, rc = d['fw'] * W / 2, d['rc'] * W / 2
-        wd = min(0.45 * L, (W / 2 - fw) * math.tan(math.radians(90 - d['a'])))
-        pts = [(-W / 2 + rc, -L / 2), (W / 2 - rc, -L / 2), (W / 2, -L / 2 + rc), (W / 2, L / 2 - wd), (fw, L / 2),
-               (-fw, L / 2), (-W / 2, L / 2 - wd), (-W / 2, -L / 2 + rc)]
-        _prism(bm, _clean(pts), H, d['tp'])
-    else:
-        _prism(bm, _rect(W, L), H, 1.0)
-
-
-def _armor(bm, d):
-    """An armour plate / skirt: long, its lower front corner cut at the shape's angle, small 45 degree corners, the
-    bottom edge slanted now and then."""
-    L, h, a = d['L'], d['h'], math.radians(d['a'])
-    c1 = d['c1'] * h
-    c2 = d['c2'] * h
-    sl = d['slant'] * h
-    pts = [(-L / 2 + c1 / math.tan(a), -h / 2), (L / 2 - c2, -h / 2 + sl), (L / 2, -h / 2 + sl + c2), (L / 2, h / 2 - c2),
-           (L / 2 - c2, h / 2), (-L / 2 + c2, h / 2), (-L / 2, h / 2 - c2), (-L / 2, -h / 2 + c1)]
-    _prism(bm, _clean(pts), d['t'], 1.0)
-
-
-def _car_body(bm, d):
-    """A low wedge: the side outline (the nose at +Y) - a hood rising gently to the cowl, a windshield laid back at
-    the shape's angle, a short roof, the engine deck down to a chopped tail - pushed across X (``W`` wide)."""
-    H = d['H']
-    yr0 = d['rpos'] - d['roof'] / 2                     # (the roof, from the rear: 0 = the tail, 1 = the nose)
-    yr1 = d['rpos'] + d['roof'] / 2
-    yc = min(0.85, yr1 + (H - d['hc']) / math.tan(math.radians(max(12.0, d['ws']))))
-    pts = [(0.0, 0.0), (1.0, 0.0), (1.0, d['hn']), (yc, d['hc']), (yr1, H), (yr0, H), (0.0, d['ht'])]
-    _prism(bm, _clean(pts), d['W'], 1.0)
-    bmesh.ops.transform(bm, matrix=SIDE_M, verts=list(bm.verts))
-
-
-def _panel(bm, d):
-    """A long pointed panel: its ends cut at the shape's angle (one end square now and then)."""
-    L, h = d['L'], d['h']
-    e = min(0.3 * L, (h / 2) / math.tan(math.radians(d['a'])))
-    pts = [(-L / 2 + e, -h / 2), (L / 2 - e, -h / 2), (L / 2, 0.0), (L / 2 - e, h / 2), (-L / 2 + e, h / 2)]
-    pts += [(-L / 2, h / 2), (-L / 2, -h / 2)] if d.get('sq') else [(-L / 2, 0.0)]
-    _prism(bm, _clean(_ccw(pts)), d['t'], 1.0)
-
-
-def _rim_chamfer(bm, w):
-    """The edges round the top face (+Z) chamfered ``w`` wide - a machined rim."""
+def _rim_chamfer(bm, w, axis=(0.0, 0.0, 1.0)):
+    """The edges round the face looking along ``axis`` (+Z) chamfered ``w`` wide - a machined rim."""
     if w <= 0:
         return
     bm.normal_update()
-    top = [f for f in bm.faces if f.normal.z > 0.999]
+    ax = Vector(axis)
+    top = [f for f in bm.faces if f.normal.dot(ax) > 0.999]
     edges = list({e for f in top for e in f.edges})
     if edges:
         bmesh.ops.bevel(bm, geom=edges, offset=w, offset_type='OFFSET', segments=1, profile=0.5, affect='EDGES',
@@ -764,19 +894,13 @@ def build_design(p, level=0):
         _jet_body(bm, d)
     elif form == 'wing':
         bm = _wing(bm, d, level) or bm
-    elif form in {'turret', 'hull'}:
-        _tank_solid(bm, d)
-    elif form == 'car':
-        _car_body(bm, d)
-    elif form == 'panel':
-        _panel(bm, d)
     else:
-        _armor(bm, d)
+        _part(bm, d, level)
     if level < 2:
         for name, frac in d.get('cuts', ()):
             bm = _cut(bm, _design_plane(name, a) + [frac], 0.5)
     if level < 1:
-        _rim_chamfer(bm, d.get('rim', 0.0))
+        _rim_chamfer(bm, d.get('rim', 0.0), (0.0, 1.0, 0.0) if d.get('face') else (0.0, 0.0, 1.0))
     folds = p.get('folds') or ()
     if folds:
         for ang, frac, theta in sorted(folds, key=lambda f: -abs(f[1])):
@@ -791,6 +915,11 @@ def build_design(p, level=0):
 
 def _vary_design(q, a, rng):
     d = q['d']
+    if 'pts' in d:
+        d['pts'] = _vary_outline(rng, d['pts'], 'PART', a * 0.6)
+    if d.get('kinks'):
+        d['kinks'] = [[k[0] + rng.uniform(-0.02, 0.02) * a, k[1] * (1 + rng.uniform(-0.25, 0.25) * a),
+                       k[2] * (1 + rng.uniform(-0.25, 0.25) * a)] for k in d['kinks']]
     for k, v in list(d.items()):
         if k in {'a', 'le', 'te'}:
             d[k] = v + rng.uniform(-4.0, 4.0) * a
@@ -812,7 +941,8 @@ def build_poly(p, level=0):
     if p.get('kind') in DESIGN_KINDS and 'd' in p:
         return build_design(p, level)
     bm = bmesh.new()
-    _prism(bm, [tuple(q) for q in p['outline']], p['depth'], p['taper'])
+    pts = _outline_kink(p['outline'], p.get('kinks') if level < 2 else None, 40.0)
+    _prism(bm, pts, p['depth'], p['taper'])
     if p.get('side'):                                    # the outline seen from the side: X across it
         bmesh.ops.transform(bm, matrix=SIDE_M, verts=list(bm.verts))
     if level < 2:
@@ -980,16 +1110,48 @@ def plate_patch(bm, p, segs):
     m = len(sel[0])
     half = max(2, min(m // 2 - 2, int(round(m * pl['span'] / 2))))
     idx = [i % m for i in range(-half, half + 1)]        # (the front point in the middle: symmetric)
-    grid = [[bm.verts.new(r[i]) for i in idx] for r in sel]
+    P = [[Vector(r[i]) for i in idx] for r in sel]
+    grid = [[bm.verts.new(q) for q in row] for row in P]
     for a, b in zip(grid, grid[1:]):
-        for i in range(len(idx) - 1):
+        for i in range(len(grid[0]) - 1):
             bm.faces.new((a[i], a[i + 1], b[i + 1], b[i]))
     bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
-    if sum(f.normal.y for f in bm.faces) < 0:            # (the outside facing the front)
+    mid = sel[len(sel) // 2]
+    axis_pt = sum((Vector(q) for q in mid), Vector()) / len(mid)
+    if sum((f.calc_center_median() - axis_pt).dot(f.normal) for f in bm.faces) < 0:   # (the outside facing out)
         bmesh.ops.reverse_faces(bm, faces=list(bm.faces))
     co = [v.co for v in bm.verts]
     size = max(max(c[i] for c in co) - min(c[i] for c in co) for i in range(3))
     bmesh.ops.solidify(bm, geom=list(bm.faces), thickness=pl['thk'] * size)
+
+
+def fender(bm, p, segs):
+    """A fender skin: ``L`` 1 along Y, ``H`` up; bulging out (+X) over the wheel (``hip`` - most at the middle of its
+    length and a little below its middle height), its top rolling in (``roll``), a round arch out of its bottom edge
+    (``arch``: middle ``u``, half width ``r`` along, height ``h`` up); ``thk`` thick inward."""
+    f = p['fender']
+    H, ar = f['H'], f['arch']
+    nu, nv = max(24, segs), max(10, segs // 3)
+
+    def x_of(u, v):
+        return f['hip'] * math.sin(math.pi * u) * max(0.0, 1.0 - ((v - 0.4) / 0.75) ** 2) - f['roll'] * max(0.0, v - 0.5) ** 2 * 4
+    grid = []
+    for i in range(nu):
+        u = i / (nu - 1)
+        du = (u - ar['u']) / ar['r']
+        v0 = ar['h'] * math.sqrt(1.0 - du * du) if abs(du) < 1.0 else 0.0
+        row = []
+        for j in range(nv):
+            v = v0 + (1.0 - v0) * j / (nv - 1)
+            row.append(bm.verts.new((x_of(u, v), u - 0.5, v * H)))
+        grid.append(row)
+    for a, b in zip(grid, grid[1:]):
+        for j in range(nv - 1):
+            bm.faces.new((a[j], a[j + 1], b[j + 1], b[j]))
+    bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+    if sum(fc.normal.x for fc in bm.faces) < 0:          # (the outside: +X)
+        bmesh.ops.reverse_faces(bm, faces=list(bm.faces))
+    bmesh.ops.solidify(bm, geom=list(bm.faces), thickness=f['thk'])
 
 
 def shell(bm, p, segs):
@@ -1091,17 +1253,6 @@ def curve_params(rng, kind='MIX', cuts=2, sym=True, plate=0.0):
                  y=[0.0, U(-0.1, 0.1), U(-0.05, 0.1), 0.0],
                  c0=U(0.08, 0.3), cf0=rng.choice((0.0, U(0.4, 0.8))), c1=U(0.1, 0.3), cf1=rng.choice((0.0, U(0.4, 0.8))))
         n_c = rng.randint(0, min(2, cuts)) if cuts else 0
-    elif kind == 'CAR':                                  # a curved sports car along its length (rear 0 .. nose 1)
-        rp = U(0.38, 0.5)                                # (where the roof is: 0 the tail, 1 the nose)
-        p.update(n=rng.choice((6, 8)), round=U(0.5, 0.85), bulge=U(0.08, 0.2), front='SIDE', back=U(0.45, 0.65),
-                 W=U(0.42, 0.5), D=U(0.16, 0.2), L=1.0, axis='Y', floor=True, rows=30, sh=U(0.05, 0.25),
-                 tw=U(0.55, 0.75),
-                 w=[U(0.84, 0.9), U(0.98, 1.06), U(0.86, 0.92), U(0.84, 0.9), U(0.92, 0.99), U(0.72, 0.82)],
-                 d=[U(0.85, 0.95), U(0.95, 1.05), U(0.95, 1.0), U(0.9, 0.98), U(0.8, 0.9), U(0.55, 0.7)],
-                 cab=[U(0.2, 0.35), U(0.45, 0.8) if rp < 0.44 else U(0.35, 0.5), U(1.7, 2.3), U(1.2, 1.7),
-                      U(0.25, 0.4), U(0.12, 0.25)],
-                 y=[0.0] * 6, c0=U(0.03, 0.07), cf0=U(0.45, 0.7), c1=U(0.06, 0.12), cf1=U(0.25, 0.5))
-        n_c = rng.randint(0, 1) if cuts else 0
     elif kind == 'JET':                                  # a blended fuselage (tail 0 .. nose 1): soft side chines
         p.update(n=4, round=U(0.3, 0.6), bulge=U(0.15, 0.3), front='VERTEX', back=U(0.6, 0.85),
                  W=U(0.3, 0.45), D=U(0.2, 0.3), L=1.0, axis='Y', floor=False, rows=24, sh=U(0.3, 0.5),
@@ -1111,12 +1262,8 @@ def curve_params(rng, kind='MIX', cuts=2, sym=True, plate=0.0):
                  y=[0.0, 0.0, U(0.05, 0.15), U(0.0, 0.08), U(-0.15, -0.05)],
                  c0=U(0.02, 0.05), cf0=U(0.55, 0.75), c1=U(0.15, 0.28), cf1=0.0)
         n_c = rng.randint(0, 1) if cuts else 0
-    elif kind == 'TANK':                                 # a cast turret: a wide low dome, the front pushed forward
-        p.update(n=8, round=U(0.6, 0.9), bulge=U(0.1, 0.25), front='SIDE', back=U(0.8, 1.0), W=1.0,
-                 D=U(0.85, 1.1), L=U(0.3, 0.45), w=[1.0, U(0.95, 1.0), U(0.85, 0.95), U(0.6, 0.75)],
-                 d=[1.0, U(0.95, 1.0), U(0.85, 0.95), U(0.6, 0.75)], y=[U(0.04, 0.1), U(0.06, 0.12), U(0.04, 0.08), 0.0],
-                 c0=0.0, cf0=0.9, c1=U(0.4, 0.6), cf1=U(0.25, 0.5))
-        n_c = rng.randint(0, 1) if cuts else 0
+    elif kind in {'CAR', 'TANK'}:                        # vehicle parts (0.24.95 user: "차의 외관의 파츠, 탱크도 그렇고")
+        return _curve_part_params(rng, kind, cuts, sym, plate)
     else:                                                # DOMECUT: a round mass, faces cut in, ridges where two meet
         p.update(n=rng.choice((5, 6, 7, 8)), round=U(0.15, 0.5), bulge=U(0.1, 0.3),
                  front='VERTEX' if rng.random() < 0.7 else 'SIDE', back=U(0.8, 1.0), W=1.0, D=U(0.95, 1.2),
@@ -1138,6 +1285,90 @@ def curve_params(rng, kind='MIX', cuts=2, sym=True, plate=0.0):
     return _rounded(p)
 
 
+def _porsche_body(rng):
+    """A curved sports car along its length (rear 0 .. nose 1) - the body the Car plates are taken from."""
+    U = rng.uniform
+    rp = U(0.38, 0.5)
+    return dict(n=rng.choice((6, 8)), round=U(0.5, 0.85), bulge=U(0.08, 0.2), front='SIDE', back=U(0.45, 0.65),
+                W=U(0.42, 0.5), D=U(0.16, 0.2), L=1.0, axis='Y', floor=True, rows=30, sh=U(0.05, 0.25), tw=U(0.55, 0.75),
+                w=[U(0.84, 0.9), U(0.98, 1.06), U(0.86, 0.92), U(0.84, 0.9), U(0.92, 0.99), U(0.72, 0.82)],
+                d=[U(0.85, 0.95), U(0.95, 1.05), U(0.95, 1.0), U(0.9, 0.98), U(0.8, 0.9), U(0.55, 0.7)],
+                cab=[U(0.2, 0.35), U(0.45, 0.8) if rp < 0.44 else U(0.35, 0.5), U(1.7, 2.3), U(1.2, 1.7), U(0.25, 0.4),
+                     U(0.12, 0.25)],
+                y=[0.0] * 6, c0=U(0.03, 0.07), cf0=U(0.45, 0.7), c1=U(0.06, 0.12), cf1=U(0.25, 0.5))
+
+
+def _curve_part_params(rng, kind, cuts, sym, plate):
+    """Curved Car (Porsche-like) / Tank (cast) parts - each a body of the Curved machinery (``part`` names it)."""
+    U = rng.uniform
+    p = {'family': 'CURVE', 'kind': kind, 'sym': bool(sym)}
+    n_c = 0
+    if kind == 'CAR' and plate > 0:
+        part = rng.choice(('fender', 'fender', 'hood'))
+        p.update(_porsche_body(rng))
+        if part == 'fender':                             # the side skin over a wheel (its hip), a round arch out of it
+            p = {'family': 'CURVE', 'kind': kind, 'sym': False, 'part': part,
+                 'fender': {'H': U(0.32, 0.5), 'hip': U(0.08, 0.16), 'roll': U(0.05, 0.14), 'thk': plate,
+                            'arch': {'u': U(0.4, 0.6), 'r': U(0.26, 0.36), 'h': U(0.45, 0.7)}}}
+            p['cuts'] = [_curve_cut(rng, 'SHELL', False) for _ in range(rng.randint(0, 1))]
+            return _rounded(p)
+        else:                                            # the hood: the top skin over the front
+            p['plate'] = {'thk': plate, 'span': U(0.3, 0.45), 't0': U(0.55, 0.65), 't1': U(0.88, 0.97)}
+        n_t = rng.randint(0, 1)
+        p['cuts'] = [_curve_cut(rng, 'SHELL', p['sym']) for _ in range(n_t)]
+        p['part'] = part
+        return _rounded(p)
+    if kind == 'CAR':
+        part = rng.choice(('lamp', 'mirror', 'bumper'))
+        if part == 'lamp':                               # a round headlight pod: a flat lens at its front
+            p.update(n=24, round=0.0, bulge=0.0, front='SIDE', back=1.0, W=U(0.55, 0.75), D=U(0.5, 0.7), L=1.0,
+                     axis='Y', rows=14, w=[U(0.7, 0.85), U(0.92, 1.0), 1.0, U(0.9, 1.0)],
+                     d=[U(0.7, 0.85), U(0.92, 1.0), 1.0, U(0.9, 1.0)], y=[0.0] * 4,
+                     c0=U(0.25, 0.4), cf0=0.0, c1=U(0.03, 0.07), cf1=U(0.65, 0.85))
+        elif part == 'mirror':                           # a wing mirror: a teardrop, its glass face flat at the back
+            n = rng.choice((8, 24))
+            p.update(n=n, round=U(0.5, 0.9) if n < 16 else 0.0, bulge=0.1, front='SIDE', back=U(0.7, 1.0), W=1.0,
+                     D=U(0.5, 0.7), L=U(0.6, 0.9), axis='Y', rows=14,
+                     w=[U(0.85, 0.95), 1.0, U(0.85, 0.95), U(0.4, 0.6)], d=[U(0.85, 0.95), 1.0, U(0.8, 0.9), U(0.4, 0.6)],
+                     y=[0.0] * 4, c0=U(0.03, 0.06), cf0=U(0.75, 0.9), c1=U(0.25, 0.4), cf1=0.0)
+        else:                                            # a front bumper: wide, rounded, a flat back
+            p.update(n=8, round=U(0.6, 0.85), bulge=U(0.1, 0.2), front='SIDE', back=U(0.2, 0.4), W=1.0,
+                     D=U(0.3, 0.45), L=U(0.25, 0.4), w=[0.92, 1.0, 1.0, 0.92], d=[0.85, 1.0, 1.0, 0.85],
+                     y=[0.0, 0.06, 0.06, 0.0], c0=U(0.1, 0.2), cf0=U(0.4, 0.7), c1=U(0.15, 0.3), cf1=U(0.4, 0.7))
+            n_c = rng.randint(0, min(1, cuts))
+    elif plate > 0:                                      # Tank plates
+        part = rng.choice(('shell', 'guard'))
+        if part == 'guard':                              # a curved track guard: a band of an arc, long
+            p.update(band=True, R=U(0.8, 1.6), thk=plate, A=[U(30, 50), U(35, 60), U(30, 50)], L=1.0,
+                     bend=U(0.05, 0.25), plate=round(plate, 6))
+            p['cuts'] = [_curve_cut(rng, 'SHELL', sym) for _ in range(rng.randint(0, 2))]
+            p['part'] = part
+            return _rounded(p)
+        p.update(n=8, round=U(0.6, 0.9), bulge=U(0.1, 0.25), front='SIDE', back=U(0.8, 1.0), W=1.0,
+                 D=U(0.85, 1.1), L=U(0.3, 0.45), w=[1.0, U(0.95, 1.0), U(0.85, 0.95), U(0.6, 0.75)],
+                 d=[1.0, U(0.95, 1.0), U(0.85, 0.95), U(0.6, 0.75)], y=[U(0.04, 0.1), U(0.06, 0.12), U(0.04, 0.08), 0.0],
+                 c0=0.0, cf0=0.9, c1=U(0.4, 0.6), cf1=U(0.25, 0.5))
+        p['plate'] = {'thk': plate, 'span': U(0.25, 0.5), 't0': U(0.05, 0.3), 't1': U(0.7, 0.97)}
+        p['cuts'] = [_curve_cut(rng, 'SHELL', sym) for _ in range(rng.randint(1, 2))]
+        p['part'] = part
+        return _rounded(p)
+    else:                                                # Tank parts, solid
+        part = rng.choice(('mantlet', 'cupola'))
+        if part == 'mantlet':                            # a cast mantlet: rounded, a flat back, the front forward
+            p.update(n=rng.choice((6, 8)), round=U(0.4, 0.7), bulge=U(0.1, 0.25), front='SIDE', back=U(0.3, 0.5),
+                     W=1.0, D=U(0.45, 0.7), L=U(0.4, 0.6), w=[0.9, 1.0, 1.0, 0.9], d=[0.8, 1.0, 1.0, 0.8],
+                     y=[0.0, 0.1, 0.1, 0.0], c0=U(0.1, 0.2), cf0=0.6, c1=U(0.1, 0.2), cf1=0.6)
+            n_c = rng.randint(0, min(1, cuts))
+        else:                                            # a cupola: a low dome, a flat top, vision blocks cut in
+            p.update(n=rng.choice((8, 10, 12)), round=U(0.5, 0.8), bulge=0.1, front='SIDE', back=1.0, W=1.0,
+                     D=U(0.9, 1.0), L=U(0.35, 0.5), w=[1.0, 1.0, 0.95, 0.8], d=[1.0, 1.0, 0.95, 0.8], y=[0.0] * 4,
+                     c0=0.0, cf0=0.9, c1=U(0.3, 0.5), cf1=U(0.35, 0.55))
+            n_c = rng.randint(1, max(1, cuts + 1))
+    p['cuts'] = [_curve_cut(rng, 'TANK' if kind == 'TANK' else 'CAR', sym) for _ in range(n_c)]
+    p['part'] = part
+    return _rounded(p)
+
+
 def _rounded(p):
     """(the numbers kept short in the JSON)"""
     def r(v):
@@ -1155,8 +1386,10 @@ def build_curve(p, segs=32, level=0):
     """The solid of Curved parameters ``p``; ``level`` 2 and up: without its cuts."""
     bm = bmesh.new()
     plate = isinstance(p.get('plate'), dict)
-    if p['kind'] == 'SHELL':
+    if p['kind'] == 'SHELL' or p.get('band'):
         shell(bm, p, segs)
+    elif p.get('fender'):
+        fender(bm, p, segs)
     elif plate:
         plate_patch(bm, p, segs)
     else:
@@ -1166,7 +1399,7 @@ def build_curve(p, segs=32, level=0):
             if plate and p.get('sym'):                   # (a plate is built symmetric: its trims cut in pairs)
                 bm = _cut_pair(bm, pl, 0.6)
             else:
-                bm = _cut(bm, pl, 0.6 if p['kind'] == 'SHELL' or plate else 0.55)
+                bm = _cut(bm, pl, 0.6 if p['kind'] == 'SHELL' or p.get('band') or p.get('fender') or plate else 0.55)
     if p.get('sym') and not plate:
         symmetrize(bm)
     _split_bent(bm)
@@ -1247,9 +1480,19 @@ def vary(p, amount, rng):
     a = max(0.0, min(1.0, amount))
     q = json.loads(json.dumps(p))
     sym = bool(q.get('sym'))
+    if q.get('family') == 'CURVE' and q.get('fender'):
+        fd = q['fender']
+        for k in ('H', 'hip', 'roll'):
+            fd[k] = _jit(rng, fd[k], 0.25, a, 0.01, 1.0)
+        ar = fd['arch']
+        ar['u'] = max(0.3, min(0.7, ar['u'] + rng.uniform(-0.06, 0.06) * a))
+        ar['r'] = max(0.15, min(0.42, ar['r'] * (1 + rng.uniform(-0.2, 0.2) * a)))
+        ar['h'] = max(0.25, min(0.8, ar['h'] * (1 + rng.uniform(-0.2, 0.2) * a)))
+        q['cuts'] = [_vary_plane(rng, pl, a, False) for pl in q.get('cuts', ())]
+        return _rounded(q)
     if q.get('family') == 'CURVE':
-        if q['kind'] == 'SHELL':
-            q['R'] = _jit(rng, q['R'], 0.3, a, 0.2, 1.5)
+        if q['kind'] == 'SHELL' or q.get('band'):
+            q['R'] = _jit(rng, q['R'], 0.3, a, 0.2, 2.0)
             q['thk'] = _jit(rng, q['thk'], 0.3, a, 0.005 if q.get('plate') else 0.02, 0.2)
             q['A'] = [_jit(rng, v, 0.25, a, 25.0, 175.0) for v in q['A']]
             q['L'] = _jit(rng, q['L'], 0.25, a, 0.3, 2.0)
@@ -1293,6 +1536,9 @@ def vary(p, amount, rng):
     if q['taper'] < 1.0:
         q['taper'] = max(0.3, min(1.0, q['taper'] + rng.uniform(-0.15, 0.15) * a))
     q['slices'] = [_vary_plane(rng, pl, a, sym) for pl in q.get('slices', ())]
+    if q.get('kinks'):
+        q['kinks'] = [[k[0] + rng.uniform(-0.02, 0.02) * a, k[1] * (1 + rng.uniform(-0.25, 0.25) * a),
+                       k[2] * (1 + rng.uniform(-0.25, 0.25) * a)] for k in q['kinks']]
     ch = q.get('chamfer') or [1, 0.0]
     q['chamfer'] = [ch[0], max(0.0, min(1.0, ch[1] * (1 + rng.uniform(-0.3, 0.3) * a)))]
     if q.get('folds'):
