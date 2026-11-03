@@ -17,6 +17,8 @@
   the middle or its top / bottom edge bent; each part flat, the fold lines mitred); a Curved plate is the front of the body - curved both ways as
   the body is - made thick inward, its outline trimmed
 * **Symmetric** (each family): the left half the mirror of the right (a shape built on its centre line)
+* **Real Parts** (user: "실제로 내가 말한 차랑 비행기 탱크를 자료 서치해서 부품을 그대로"): exterior parts after real
+  vehicles - Lambo, 911, F-22, Tank (``ref_parts``) - a vehicle, a part, Summon Part
 * **Variations**: the selected shape you like -> several close relatives next to it, a little different each
   (Amount: how much); pick one of those and vary again.  **Reroll**: the selected shapes a new form each
 
@@ -65,7 +67,8 @@ CURVE_IDS = tuple(k[0] for k in CURVE_KINDS[1:])
 CURVE_MIX = {'POD': 3, 'SHELL': 2, 'CAPSULE': 2, 'DOMECUT': 3, 'TORSO': 3, 'JET': 2, 'TANK': 2, 'CAR': 2}
 LEN_M = Matrix(((-1, 0, 0, 0), (0, 0, 1, 0), (0, 1, 0, 0), (0, 0, 0, 1)))   # a body built along Z lying along Y
 FORMS = (('SOLID', 'Solid', 'A solid mass'), ('PLATE', 'Plate', 'A thin plate of that shape (Thickness)'))
-FAMILIES = (('POLY', 'Polygon', 'Flat faces only'), ('CURVE', 'Curved', 'Surfaces curved both ways'))
+FAMILIES = (('POLY', 'Polygon', 'Flat faces only'), ('CURVE', 'Curved', 'Surfaces curved both ways'),
+            ('REF', 'Real Parts', 'Exterior parts after real vehicles (Lambo, 911, F-22, tank)'))
 TAG = 'mch_rshape'                    # on the object: its parameters (JSON) - what Variations / Reroll read
 NAME = 'MCH_Shape'
 LAST = {'level': 0}                  # (0: the shape as its parameters say; 1 - 3: without chamfers / cuts - tests)
@@ -1411,8 +1414,17 @@ def build_curve(p, segs=32, level=0):
 def build(p, segs=32, size=1.0):
     """(bm, kind) of the shape of parameters ``p``, its longest side ``size``: as they say, else without chamfers,
     else without cuts, else the plain body - the first one that is a clean solid (``LAST['level']``)."""
-    curved = p.get('family') == 'CURVE'
+    ref = p.get('family') == 'REF'
+    curved = p.get('family') == 'CURVE' or bool(ref and p.get('curved'))
     for level in range(4):
+        if ref:                                          # (a real part: without its pockets, then its cuts / folds)
+            from . import ref_parts
+            bm = ref_parts.build(p, segs, level)
+            if _valid(bm, curved):
+                break
+            if level < 3:
+                bm.free()
+            continue
         if curved and level == 1:                        # (no chamfers on a curved shape)
             continue
         bm = build_curve(p, segs, level) if curved else build_poly(p, level)
@@ -1478,6 +1490,9 @@ def vary(p, amount, rng):
     """Parameters close to ``p``: each number moved a little (``amount`` 0 - 1: how much), the kind, the number of
     sides and of cuts kept."""
     a = max(0.0, min(1.0, amount))
+    if p.get('family') == 'REF':                         # (a real part: its numbers moved, the part kept)
+        from . import ref_parts
+        return ref_parts.vary(p, a, rng)
     q = json.loads(json.dumps(p))
     sym = bool(q.get('sym'))
     if q.get('family') == 'CURVE' and q.get('fender'):
@@ -1554,6 +1569,9 @@ def new_params(rng, family, st, plate=None):
     """Random parameters of ``family`` with the Shapes page's settings ``st`` (None: the defaults); ``plate``: the
     thickness of a plate (None: the page's Solid / Plate choice)."""
     g = (lambda n, d: getattr(st, n, d)) if st is not None else (lambda n, d: d)
+    if family == 'REF':                                  # (a real part: its panels as thick as Thickness)
+        from . import ref_parts
+        return ref_parts.ref_params(rng, g('ref_vehicle', 'LAMBO'), g('ref_part', 'ANY'), g('plate_thk', 0.05))
     if plate is None:
         plate = g('plate_thk', 0.05) if g('form', 'SOLID') == 'PLATE' else 0.0
     if family == 'CURVE':
@@ -1576,7 +1594,7 @@ def new_mesh(p, segs=32, size=1.0, name=NAME):
         bm.to_mesh(me)
     finally:
         bm.free()
-    me.polygons.foreach_set('use_smooth', [p.get('family') == 'CURVE'] * len(me.polygons))
+    me.polygons.foreach_set('use_smooth', [p.get('family') == 'CURVE' or bool(p.get('curved'))] * len(me.polygons))
     try:
         from . import edge_memory
         edge_memory.mark_generated(me)               # (its own lines, like every part a tool makes: Sharp + crease)
@@ -1594,7 +1612,7 @@ def params_of(ob):
         p = json.loads(ob[TAG])
     except (KeyError, TypeError, ValueError):
         return None
-    return p if isinstance(p, dict) and p.get('family') in {'POLY', 'CURVE'} else None
+    return p if isinstance(p, dict) and p.get('family') in {'POLY', 'CURVE', 'REF'} else None
 
 
 def _store(ob, p):
@@ -1661,6 +1679,23 @@ def _select_only(context, obs):
 
 # --- settings + operators --------------------------------------------------------------------------------------------
 
+def _ref_vehicle_items(_self, _context):
+    from . import ref_parts
+    return ref_parts.VEHICLES                            # (module constants: Blender keeps no copy of them)
+
+
+def _ref_part_items(self, _context):
+    from . import ref_parts
+    return ref_parts.PART_ITEMS.get(getattr(self, 'ref_vehicle', 'LAMBO'), ref_parts.PART_ITEMS['LAMBO'])
+
+
+def _ref_vehicle_set(self, _context):
+    try:
+        self.ref_part = 'ANY'                            # (another vehicle: any of its parts until one is picked)
+    except TypeError:
+        pass
+
+
 class MCH_PG_RandomShape(bpy.types.PropertyGroup):
     size: bpy.props.FloatProperty(name='Size', description='The longest side of a new shape', default=1.0, min=0.01,
                                   soft_max=10.0, subtype='DISTANCE', unit='LENGTH')
@@ -1688,6 +1723,11 @@ class MCH_PG_RandomShape(bpy.types.PropertyGroup):
                                       default=2, min=0, max=4)
     segments: bpy.props.IntProperty(name='Smooth', description='Points round a section (more = rounder, heavier)',
                                     default=32, min=12, max=96)
+    # Real Parts
+    ref_vehicle: bpy.props.EnumProperty(name='Vehicle', items=_ref_vehicle_items,
+                                        description='The real vehicle the parts come from', update=_ref_vehicle_set)
+    ref_part: bpy.props.EnumProperty(name='Part', items=_ref_part_items,
+                                     description='Which part of the vehicle (Any: one of them at random)')
     # Variations
     var_amount: bpy.props.FloatProperty(name='Amount', description='How different the variations are', default=0.4,
                                         min=0.02, max=1.0, subtype='FACTOR')
@@ -1729,6 +1769,12 @@ class MCH_OT_random_shape_add(bpy.types.Operator):
             made.append(ob)
         _select_only(context, made)
         names = dict((k[0], k[1]) for k in KINDS + CURVE_KINDS)
+        if self.family == 'REF':
+            from . import ref_parts
+            kinds = sorted({ref_parts.label(params_of(o)['kind'], params_of(o)['part']) for o in made})
+            self.report({'INFO'}, f'{len(made)} real part{"s" if len(made) > 1 else ""}: {", ".join(kinds)}'
+                                  f' (seed {self.seed})')
+            return {'FINISHED'}
         kinds = sorted({names.get(params_of(o)['kind'], '?') for o in made})
         fam = ('curved' if self.family == 'CURVE' else 'polygon') + (' plate' if st.form == 'PLATE' else '')
         self.report({'INFO'}, f'{len(made)} random {fam} shape{"s" if len(made) > 1 else ""}: {", ".join(kinds)}'
@@ -1810,7 +1856,15 @@ class MCH_OT_random_shape_reroll(bpy.types.Operator):
                 continue                                 # (a linked copy: its twin would change too)
             old_p = params_of(ob) or {}
             fam = old_p.get('family', 'POLY')
-            p = new_params(random.Random(_seed(self.seed, i)), fam, st, plate=plate_of(old_p))   # (a plate stays one)
+            if fam == 'REF':                             # (a real part: another of its vehicle - the page's part
+                from . import ref_parts                  #  when the page shows that vehicle)
+                veh = old_p.get('kind', 'LAMBO')
+                p = ref_parts.ref_params(random.Random(_seed(self.seed, i)), veh,
+                                         st.ref_part if st.ref_vehicle == veh else 'ANY',
+                                         old_p.get('d', {}).get('thk', st.plate_thk))
+            else:
+                p = new_params(random.Random(_seed(self.seed, i)), fam, st, plate=plate_of(old_p))   # (a plate
+                #                                                                                     stays one)
             me, _kind = new_mesh(p, st.segments, _local_size(old) or st.size, old.name)
             for m in old.materials:
                 me.materials.append(m)
@@ -1856,6 +1910,24 @@ class MCH_OT_random_shape_kind(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_random_shape_ref(bpy.types.Operator):
+    """Which real vehicle / part the next Summon Part makes"""
+    bl_idname = 'mch.random_shape_ref'
+    bl_label = 'Real Part'
+    bl_options = {'INTERNAL'}
+    vehicle: bpy.props.StringProperty(default='')
+    part: bpy.props.StringProperty(default='')
+
+    def execute(self, context):
+        from . import ref_parts
+        st = _settings(context)
+        if self.vehicle in ref_parts.PART_IDS and self.vehicle != st.ref_vehicle:
+            st.ref_vehicle = self.vehicle
+        if self.part and (self.part == 'ANY' or self.part in ref_parts.PART_IDS.get(st.ref_vehicle, ())):
+            st.ref_part = self.part
+        return {'FINISHED'}
+
+
 # --- the Shapes page (drawn side panel) and the sidebar panel --------------------------------------------------------
 
 def page(context, x, width, k):
@@ -1897,6 +1969,20 @@ def page(context, x, width, k):
         mu.row(b, sx, sw, [mu._cell('tbtn', 'Summon Curved', ('op', 'mch.random_shape_add', {'family': 'CURVE'}),
                                     active=obj_mode)])
     mu.section(b, 'rs_curve', 'Curved', x, width, curve)
+
+    def real(sx, sw):                                    # (0.24.95 user: "실제로 내가 말한 차랑 비행기 탱크를 자료
+        from . import ref_parts                          #  서치해서 부품을 그대로 만들어볼래?")
+        mu.row(b, sx, sw, [mu._cell('tbtn', label, ('op', 'mch.random_shape_ref', {'vehicle': ident}),
+                                    on=st.ref_vehicle == ident) for ident, label, _d in ref_parts.VEHICLES])
+        cells = [mu._cell('tbtn', label, ('op', 'mch.random_shape_ref', {'part': ident}), on=st.ref_part == ident)
+                 for ident, label, _d in ref_parts.PART_ITEMS[st.ref_vehicle]]
+        for i in range(0, len(cells), 3):
+            mu.row(b, sx, sw, cells[i:i + 3])
+        mu.row(b, sx, sw, [mu.number(st, 'plate_thk', 'Panel Thickness')])
+        mu.row(b, sx, sw, [mu.number(st, 'segments', 'Smooth')])
+        mu.row(b, sx, sw, [mu._cell('tbtn', 'Summon Part', ('op', 'mch.random_shape_add', {'family': 'REF'}),
+                                    active=obj_mode)])
+    mu.section(b, 'rs_real', 'Real Parts', x, width, real)
 
     def variations(sx, sw):
         act = getattr(context, 'active_object', None)
@@ -1940,6 +2026,13 @@ def draw(layout, context):
     c.prop(st, 'segments')
     box.operator('mch.random_shape_add', text='Summon Curved', icon='MESH_UVSPHERE').family = 'CURVE'
     box = layout.box()
+    box.label(text='Real Parts')
+    c = box.column(align=True)
+    c.prop(st, 'ref_vehicle', text='')
+    c.prop(st, 'ref_part', text='')
+    c.prop(st, 'plate_thk', text='Panel Thickness')
+    box.operator('mch.random_shape_add', text='Summon Part', icon='AUTO').family = 'REF'
+    box = layout.box()
     box.label(text='Variations')
     c = box.column(align=True)
     c.prop(st, 'var_amount')
@@ -1966,7 +2059,7 @@ class MCH_PT_random_shapes(bpy.types.Panel):
 
 
 CLASSES = (MCH_PG_RandomShape, MCH_OT_random_shape_add, MCH_OT_random_shape_vary, MCH_OT_random_shape_reroll,
-           MCH_OT_random_shape_form, MCH_OT_random_shape_kind, MCH_PT_random_shapes)
+           MCH_OT_random_shape_form, MCH_OT_random_shape_kind, MCH_OT_random_shape_ref, MCH_PT_random_shapes)
 
 
 def register():
