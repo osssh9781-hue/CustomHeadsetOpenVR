@@ -404,6 +404,9 @@ def glyph(name, x, y, size, color=TEXT, width=2.0):
         polyline([P(.15, .15), P(.85, .15), P(.85, .62), P(.62, .85), P(.15, .85)], color, width, True)
         polyline([P(.85, .62), P(.64, .64), P(.62, .85)], color, width * 0.8)
         lines([(P(.28, .30), P(.58, .60)), (P(.40, .28), P(.70, .30))], color, width * 0.6)
+    elif name == 'shapes':                       # 0.24.95 Shapes: a block with a corner cut + a round one beside it
+        polyline([P(.10, .18), P(.52, .18), P(.52, .52), P(.36, .68), P(.10, .68)], color, width, True)
+        polyline(circle_pts(cx + s * .18, cy + s * .14, s * .2, 16), color, width * 0.8)
     elif name == 'hdri':                         # 0.24.95 HDRI: a globe (the world round the model)
         polyline(circle_pts(cx, cy, s * .34), color, width)
         polyline([(cx - s * .34, cy), (cx + s * .34, cy)], color, width * 0.6)

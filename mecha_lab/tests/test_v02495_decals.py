@@ -227,8 +227,8 @@ cits, _h = mu.creature_page(C, 0.0, 276.0, 1.0)
 check('... the Mech and Creature pages no decal balls any more',
       not any(i.kind == 'mtile' and i.action[:2] == ('op', 'mch.decal_place') for i in mits + cits))
 tabs = [i for i in sp.items(C, 1200, 900, 1.0) if i.kind == 'ptab']
-check('Tabs: Tool | Mech | Creature | Decals | HDRI (each wide enough for its name)',
-      [t.label for t in tabs] == ['Tool', 'Mech', 'Creature', 'Decals', 'HDRI']
+check('Tabs: Tool | Mech | Creature | Decals | HDRI | Shapes (each wide enough for its name)',
+      [t.label for t in tabs] == ['Tool', 'Mech', 'Creature', 'Decals', 'HDRI', 'Shapes']
       and all(t.w > 6.5 * len(t.label) + 6 for t in tabs), [(t.label, round(t.w)) for t in tabs])
 for o in C.selected_objects:
     o.select_set(False)

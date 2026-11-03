@@ -26,7 +26,7 @@ TABS = 34.0              # 0.24.95 the Tool | Material | HDRI tabs under the tit
 # page -> (title, icon); 0.24.95 (user: "이건 데칼 탭으로 가자! 메테리얼도 크리쳐랑 메카닉이랑 좀 분리해 줘") the Material
 # page split: Mech (the Mech Shader - still 'MATERIAL'), Creature (the Creature Shader, eyes), Decals
 PAGES = {'MATERIAL': ('Mech', 'material'), 'CREATURE': ('Creature', 'creature'), 'DECALS': ('Decals', 'decal'),
-         'HDRI': ('HDRI', 'hdri')}
+         'HDRI': ('HDRI', 'hdri'), 'SHAPES': ('Shapes', 'shapes')}   # 0.24.95 Shapes: random base shapes
 SECTION = 26.0
 NOTE = 17.0
 TOP_MARGIN = 150.0          # below the navigation gizmo
@@ -402,7 +402,8 @@ def _trees(context, tool):
 
 def page(context):
     """0.24.95 What the panel shows: 'TOOL' (the tool's settings), 'MATERIAL' (the Mech Shader), 'CREATURE' (the
-    Creature Shader), 'DECALS' (the decals) or 'HDRI' (the scene's HDRI) - ``mech_shader_ui``; the tabs at its top."""
+    Creature Shader), 'DECALS' (the decals), 'HDRI' (the scene's HDRI) - ``mech_shader_ui`` - or 'SHAPES' (random
+    base shapes - ``random_shapes``); the tabs at its top."""
     return getattr(context.window_manager, 'mch_side_page', 'TOOL')
 
 
@@ -420,6 +421,9 @@ def content(context, tool, x, width, k):
     if page(context) == 'DECALS':
         from . import mech_shader_ui
         return mech_shader_ui.decal_page(context, x, width, k)
+    if page(context) == 'SHAPES':
+        from . import random_shapes
+        return random_shapes.page(context, x, width, k)
     b = Builder(tool, x, width, k)
     tree, lt = _trees(context, tool)
     if tree is not None:
@@ -525,10 +529,11 @@ def layout(context, region_w, region_h, k=1.0):
     # 0.24.95 the pages: the tool's settings | Material (Mech Shader) | HDRI (user: "재질이랑 hdri는 분리해야지")
     # 0.24.95 five tabs (Tool | Mech | Creature | Decals | HDRI): each as wide as its name needs (the tool's own name
     # is in the title above when its page is shown)
+    # 0.24.95 six with Shapes: a narrower gap, each as wide as its name needs plus a little
     tabs = [('Tool', 'TOOL')] + [(PAGES[p][0], p) for p in PAGES]
-    gap = 4 * k
+    gap = 3 * k
     room = w - 2 * PAD * k - (len(tabs) - 1) * gap
-    weights = [len(label) + 3.0 for label, _p in tabs]
+    weights = [len(label) + 1.5 for label, _p in tabs]
     tx = x0 + PAD * k
     ty = top - PAD * k - HEAD * k - (TABS - 6) * k
     for (label, p), wt in zip(tabs, weights):

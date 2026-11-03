@@ -580,8 +580,8 @@ class MCH_PT_ui_value(bpy.types.Panel):
 
 
 class MCH_OT_side_page(bpy.types.Operator):
-    """Show the tool's settings, the Mech Shader, the Creature Shader, the decals or the HDRI in the Mecha Lab side
-    panel"""
+    """Show the tool's settings, the Mech Shader, the Creature Shader, the decals, the HDRI or the random base shapes
+    in the Mecha Lab side panel"""
     bl_idname = 'mch.side_page'
     bl_label = 'Side Panel Page'
     bl_options = {'INTERNAL'}
@@ -589,7 +589,9 @@ class MCH_OT_side_page(bpy.types.Operator):
                                         ('MATERIAL', 'Mech', 'The Mech Shader'),
                                         ('CREATURE', 'Creature', 'The Creature Shader (skins, parts, eyes)'),
                                         ('DECALS', 'Decals', 'Decals: place them, their look and damage'),
-                                        ('HDRI', 'HDRI', 'The scene\'s HDRI lighting')], default='MATERIAL')
+                                        ('HDRI', 'HDRI', 'The scene\'s HDRI lighting'),
+                                        ('SHAPES', 'Shapes', 'Random base shapes: Polygon, Curved, variations')],
+                                 default='MATERIAL')
 
     def execute(self, context):
         from . import side_panel
@@ -746,7 +748,8 @@ def register():
     wmt.mch_side_min = BoolProperty(default=False, options={'SKIP_SAVE'})
     wmt.mch_side_page = bpy.props.EnumProperty(items=[('TOOL', 'Tool', ''), ('MATERIAL', 'Mech', ''),
                                                       ('CREATURE', 'Creature', ''), ('DECALS', 'Decals', ''),
-                                                      ('HDRI', 'HDRI', '')], default='TOOL', options={'SKIP_SAVE'})
+                                                      ('HDRI', 'HDRI', ''), ('SHAPES', 'Shapes', '')],
+                                                default='TOOL', options={'SKIP_SAVE'})
     for c in CLASSES:
         bpy.utils.register_class(c)
     from . import layers_panel, tool_presets, zb_sculpt, zb_ui
