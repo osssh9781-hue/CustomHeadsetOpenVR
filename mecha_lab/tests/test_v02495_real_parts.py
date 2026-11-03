@@ -118,6 +118,16 @@ check('Tank side skirt: long and low (the M1\'s 7.6 x 0.9 m), its top flange ben
                                                                                          + c[:, 2].min() * 0.7][:, 0]),
       [round(d, 3) for d in dims])
 
+# 0.24.95 (user: "아머드 코어 스타일 에셋도 50 개 만들어 줘")
+ac = rp.PART_IDS['ARMORED']
+groups = {k[0] for k in ac}
+check('AC Style: 50 parts - heads, cores, arms, legs, reverse joint, quad / tank, boosters, weapons, back units, '
+      'armour - each with its thumbnail', len(ac) == 50 and groups == {'H', 'C', 'A', 'L', 'R', 'Q', 'T', 'B', 'W', 'U', 'M'}
+      and all(rs.shape_icon(f'ref_ARMORED_{k}').startswith('file:') for k in ac), (len(ac), sorted(groups)))
+mp = made[('ARMORED', 'W_MISSILE')]
+check('... the missile pod: six tubes pushed into its front (the grid of recesses), still one clean solid',
+      solid(mp) and len(mp.data.polygons) >= 5 + 6 * 5, len(mp.data.polygons))
+
 # the same seed / another seed
 clear()
 bpy.ops.mch.random_shape_ref(vehicle='P911')
