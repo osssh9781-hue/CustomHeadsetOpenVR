@@ -225,8 +225,7 @@ def content(context, x, width, k):
         if ob is None or ob.type != 'MESH':
             b.note(('note', 'Select meshes, then Apply', False, None, None, None, True), x, width)
         elif other is not None and not (cs.is_creature(other) or cs.is_eye(other)):
-            b.note(('note', f'"{other.name}" is not a Mech material - Apply makes one', False, None, None, None,
-                    True), x, width)
+            over_mine(b, x, width, other, 'MECH')
         return b.out, -b.y
     st = getattr(mat, ms.KEY)
     _preset_stepper(b, st, 'preset', x, width)
@@ -237,6 +236,8 @@ def content(context, x, width, k):
     row(b, x, width, [_cell('tbtn', 'Unlink', ('op', 'mch.mech_shader_unlink', {}), active=n_parts > 1),
                       button('New Copy', 'mch.mech_shader_apply', preset=st.preset),
                       button('Edges', 'mch.mech_shader_edges')])
+    over = over_note(b, x, width, mat, 'Your material is the coat: Edge Wear / Scratches cut through it to the '
+                                       'Surface (the metal under it); rust, dirt, dust, snow on top')
     names = {kk: n for kk, n, _s in ms.PRESETS}
 
     def presets(sx, sw):
@@ -254,7 +255,7 @@ def content(context, x, width, k):
             if p == 'base_color':               # (0.24.95 Hue / Saturation / Value of the base colour + its map)
                 row(b, sx, sw, [number(st, 'base_hue', 'Hue'), number(st, 'base_sat', 'Sat'),
                                 number(st, 'base_val', 'Val')])
-    section(b, 'surface', 'Surface', x, width, surface)
+    section(b, 'surface', 'Surface - under your material' if over else 'Surface', x, width, surface)
 
     def bevel(sx, sw):                           # (0.24.95 user: "베벨 - 조금 · 중간 · 많이 프리셋, 세부 조정 슬라이더")
         b.note(('note', 'Edges rounded in the shading (the mesh stays sharp) - Cycles; Material Preview shows them '
@@ -282,7 +283,9 @@ def content(context, x, width, k):
     def paint(sx, sw):
         for p in PAINT:
             row(b, sx, sw, [prop_cell(st, p)])
-    section(b, 'paint', 'Paint', x, width, paint, start_folded='paint' not in used, summary=layer_summary(st, ('paint',)))
+    if not over:                                 # (over the user's material: their material is the paint)
+        section(b, 'paint', 'Paint', x, width, paint, start_folded='paint' not in used,
+                summary=layer_summary(st, ('paint',)))
 
     def wear(sx, sw):
         stepper(b, sx, sw, button('◀', 'mch.mech_shader_step', prop='wear_preset', step=-1),
@@ -325,12 +328,49 @@ def content(context, x, width, k):
                 row(b, sx, sw, [number(st, height, 'Height')])
         section(b, slot, title, x, width, fill, start_folded=slot not in used, summary=layer_summary(st, which))
 
-    def detail(sx, sw):
-        for p in DETAIL:
-            row(b, sx, sw, [prop_cell(st, p)])
-    section(b, 'detail', 'Height & Detail', x, width, detail, start_folded=True)
     bake_section(b, x, width, context)
+
+    def overall(sx, sw):                         # (0.24.95 user: "가장 밑에 전체 헤이트랑 전체 스케일 조정하는 칸에도
+        for p in DETAIL:                         #  언링크 버튼")
+            row(b, sx, sw, [prop_cell(st, p)])
+        project_rows(b, sx, sw, sc)
+        unlink_row(b, sx, sw, n_parts, button('New Copy', 'mch.mech_shader_apply', preset=st.preset))
+    section(b, 'overall', 'Overall - Height & Scale', x, width, overall)
     return b.out, -b.y
+
+
+def project_rows(b, x, w, sc):
+    """0.24.95 (user: "한 프로젝트 할 때는 전부 비슷한 스케일일 거 아니야 - 전체적으로 조정"): the whole file's map size
+    (every Mech / Creature material) and Follow Object Scale."""
+    sub(b, 'The whole project - every Mech / Creature material', x, w)
+    row(b, x, w, [number(sc, 'mch_map_scale', 'Project Scale')])
+    row(b, x, w, [prop_cell(sc, 'mch_obj_scale', 'Follow Object Scale')])
+
+
+def unlink_row(b, x, w, n_parts, *more):
+    """Unlink (the selected parts their own copy of the material) + more buttons on one row."""
+    row(b, x, w, [_cell('tbtn', 'Unlink', ('op', 'mch.mech_shader_unlink', {}), active=n_parts > 1)] + list(more))
+
+
+def over_mine(b, x, width, other, kind):
+    """0.24.95 The active part has a material of the user's own: ours can go over it (user: "내가 이미 만들어 놓은
+    메테리얼에 우리가 만든 메테리얼 연결해서 그 위에 우리가 만든 재질 얹어서")."""
+    what = 'chips, scratches, rust, dirt, snow' if kind == 'MECH' else 'mud, dust, blood, slime, snow'
+    b.note(('note', f'"{other.name}" is your own material - lay ours over it ({what} on top; yours stays as it is)',
+            False, None, None, None, True), x, width)
+    row(b, x, width, [button('Layer Over My Material', 'mch.material_over', kind=kind, preset='')])
+
+
+def over_note(b, x, width, mat, text):
+    """Over the user's material: a line saying so + Back to Mine.  True when it is."""
+    from . import material_overlay as mo
+    if not mo.is_over(mat):
+        return False
+    src = mo.source_of(mat)
+    b.note(('note', f'Over "{mat.get(mo.SRC, "?")}"' + ('' if src else ' (gone)') + f' - {text}', True, None, None,
+            None, True), x, width)
+    row(b, x, width, [_cell('tbtn', 'Back to Mine', ('op', 'mch.material_over_back', {}), active=src is not None)])
+    return True
 
 
 def bake_section(b, x, width, context):
@@ -476,6 +516,10 @@ def creature_page(context, x, width, k):
     mech = ms.active_mech(context)
     if mech is not None:
         elsewhere(b, x, width, f'"{mech.name}" is a Mech material - its settings are on the Mech page', 'MATERIAL')
+    from . import material_overlay as mo
+    own = mo.user_material(context)
+    if own is not None:
+        over_mine(b, x, width, own, 'CREATURE')
     creature_apply_section(b, x, width, sc, start_folded=False)
     my_materials_section(b, x, width)
     if ob is None or ob.type != 'MESH':
@@ -714,6 +758,7 @@ def creature_content(b, x, width, mat):
     row(b, x, width, [_cell('tbtn', 'Unlink', ('op', 'mch.mech_shader_unlink', {}), active=n_parts > 1),
                       button('New Copy', 'mch.creature_apply', skin=st.skin_type, condition=st.condition),
                       button('Edges', 'mch.mech_shader_edges')])
+    over_note(b, x, width, mat, 'your material is the skin: the conditions (mud, dust, blood ...) on top')
     skins = {kk: n for kk, n, _s in cs.SKINS}
     conds = {kk: n for kk, n, _s in cs.CONDITIONS}
 
@@ -783,11 +828,15 @@ def creature_content(b, x, width, mat):
         on = any(getattr(st, p) > 0.0 for p in which)
         section(b, key, title, x, width, fill, start_folded=not on, summary=layer_summary(st, which))
 
-    def detail(sx, sw):
-        for p in ('bump', 'map_scale', 'seed', 'size'):
-            row(b, sx, sw, [prop_cell(st, p)])
-    section(b, 'cr_detail', 'Height & Detail', x, width, detail, start_folded=True)
     bake_section(b, x, width, bpy.context)
+
+    def overall(sx, sw):                         # (0.24.95 user: "크리쳐 메테리얼에도 가장 밑에다가 전체 조정")
+        for p in ('bump', 'map_scale', 'ao', 'seed', 'size'):
+            row(b, sx, sw, [prop_cell(st, p)])
+        project_rows(b, sx, sw, bpy.context.scene)
+        unlink_row(b, sx, sw, n_parts, button('New Copy', 'mch.creature_apply', skin=st.skin_type,
+                                              condition=st.condition))
+    section(b, 'cr_overall', 'Overall - Height & Scale', x, width, overall)
 
 
 def sub(b, text, x, w):

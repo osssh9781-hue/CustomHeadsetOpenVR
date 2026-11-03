@@ -156,7 +156,7 @@ tiles = [i for i in its if i.kind == 'mtile']
 check('Material page of a Creature material: its own sections (skin types, conditions, colour, skin, SSS, crevices, '
       'the layers)', {'SKIN TYPES', 'CONDITIONS', 'COLOR', 'SKIN', 'SSS', 'CREVICES & RIDGES', 'MUD', 'DUST', 'BLOOD',
                       'SLIME & WET', 'MOSS', 'SNOW & FROST', 'SOOT', 'ROT & WEATHERING', 'GLOW',
-                      'HEIGHT & DETAIL'} <= heads, sorted(heads))
+                      'OVERALL - HEIGHT & SCALE'} <= heads, sorted(heads))
 check('... the skin types and conditions as balls (26), each with its icon file, the one in use blue',
       len(tiles) == 26 and all(t.icon.startswith('file:') and os.path.isfile(t.icon[5:]) for t in tiles)
       and sorted(t.label for t in tiles if t.on) == sorted(['Dragon Scales', 'Clean']),

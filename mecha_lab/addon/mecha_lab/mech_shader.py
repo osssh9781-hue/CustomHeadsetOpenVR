@@ -29,9 +29,10 @@ from bpy.props import EnumProperty, FloatProperty, FloatVectorProperty, IntPrope
 
 KEY = 'mch_mech'                    # the material's settings (PropertyGroup on bpy.types.Material)
 CURV = 'mch_curv'
-VERSION = 14                         # (the node tree's layout: an older one is made anew; 9: the lasso Zones' hubs,
+VERSION = 15                         # (the node tree's layout: an older one is made anew; 9: the lasso Zones' hubs,
 #                                      10: a zone's own wear, 11: its boundary line in the bump, 12: Base Color HSV,
-#                                      13: the shading Bevel, 14: a zone's paint covers the base texture)
+#                                      13: the shading Bevel, 14: a zone's paint covers the base texture, 15: the
+#                                      Project Scale + Follow Object Scale)
 # 0.24.95 (user: "메테리얼 탭에 베벨도 - 조금 베벨, 중간 베벨, 많이 베벨 프리셋 + 세부 조정 슬라이더") the edges rounded
 # in the shading (Cycles' Bevel node into the normal - the mesh stays sharp): (id, label, radius m, samples)
 BEVEL_PRESETS = (('OFF', 'Off', 0.0, 8), ('SMALL', 'Small', 0.004, 8), ('MEDIUM', 'Medium', 0.012, 8),
@@ -346,13 +347,14 @@ def map_image(slot, ident, mask=False, data=False):
 # -----------------------------------------------------------------------------
 
 class Builder:
-    def __init__(self, nt):
+    def __init__(self, nt, origin=(0.0, 0.0)):
         self.nt = nt
         self.n = 0
+        self.ox, self.oy = origin                    # (0.24.95 over the user's material: ours right of theirs)
 
     def node(self, kind, name=None):
         nd = self.nt.nodes.new(kind)
-        nd.location = (200 * (self.n % 12), -160 * (self.n // 12))
+        nd.location = (self.ox + 200 * (self.n % 12), self.oy - 160 * (self.n // 12))
         self.n += 1
         if name:
             nd.name = nd.label = name
@@ -451,6 +453,47 @@ class Builder:
         return self.maprange(v, self.math('SUBTRACT', top, soft), top)
 
 
+def scaled_object(b, tc):
+    """0.24.95 (user: "매번 오브젝트마다 스케일 지정하는 게 좀 그런데 - 오브젝트 스케일 쓰면 가능할 것 같은데") the
+    Object coordinates x the object's own scale on each axis (Follow Object Scale, on): a part scaled up shows its maps
+    as big as one not scaled - the maps' size the same over the whole project; they still stick to the part when it
+    moves / turns.  ``mch:obj_scale`` 0: the plain Object coordinates (as before)."""
+    comb = b.node('ShaderNodeCombineXYZ', 'mch:obj_axes')
+    for i, ax in enumerate(((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))):
+        t = b.node('ShaderNodeVectorTransform')
+        t.vector_type, t.convert_from, t.convert_to = 'VECTOR', 'OBJECT', 'WORLD'
+        t.inputs['Vector'].default_value = ax
+        b.link(b.vmath('LENGTH', t.outputs['Vector']), comb.inputs[i])
+    on = b.value('obj_scale', 1.0)
+    s = b.vmath('ADD', b.vmath('SCALE', b.vmath('SUBTRACT', comb.outputs['Vector'], (1.0, 1.0, 1.0)), fac=on),
+                (1.0, 1.0, 1.0))
+    return b.vmath('MULTIPLY', tc.outputs['Object'], s)
+
+
+def project_values(mat, scene=None):
+    """The scene's Project Scale / Follow Object Scale into the material's nodes (Mech or Creature)."""
+    sc = scene or getattr(bpy.context, 'scene', None)
+    nodes = mat.node_tree.nodes if mat is not None and mat.node_tree is not None else None
+    if nodes is None:
+        return
+    for name, val in (('project_scale', float(getattr(sc, 'mch_map_scale', 1.0))),
+                      ('obj_scale', 1.0 if getattr(sc, 'mch_obj_scale', True) else 0.0)):
+        nd = nodes.get('mch:' + name)
+        if nd is not None and nd.outputs[0].default_value != val:
+            nd.outputs[0].default_value = val
+
+
+def _project_update(self, context):
+    """Project Scale / Follow Object Scale changed: every Mech / Creature material in the file follows (an older
+    one made anew first)."""
+    from . import creature_shader as cs
+    for m in bpy.data.materials:
+        if is_mech(m):
+            sync(m)
+        elif cs.is_creature(m):
+            cs.sync(m)
+
+
 # -----------------------------------------------------------------------------
 # the material
 # -----------------------------------------------------------------------------
@@ -459,16 +502,21 @@ ZONE_WEAR = ('edge_wear', 'scratches', 'dirt', 'dirt_top', 'dirt_low', 'rust')  
 
 
 def build(mat):
-    """The Mech Shader node tree in ``mat`` (made anew)."""
+    """The Mech Shader node tree in ``mat`` (made anew).  0.24.95 over the user's own material
+    (``material_overlay``): their nodes stay, their surface is the coat - chips / scratches through it to the
+    Surface (the metal under it), primer round the chips, rust / dirt / dust / streaks / snow / a Zone's paint on
+    top."""
+    from . import material_overlay as mo
     mat.use_nodes = True
     nt = mat.node_tree
-    nt.nodes.clear()
-    b = Builder(nt)
+    over = mo.clear_ours(mat)
+    b = Builder(nt, mo.origin(mat) if over else (0.0, 0.0))
     out = b.node('ShaderNodeOutputMaterial')
     bsdf = b.node('ShaderNodeBsdfPrincipled', 'mch:bsdf')
     b.link(bsdf.outputs['BSDF'], out.inputs['Surface'])
     tc = b.node('ShaderNodeTexCoord')
-    gscale = b.value('map_scale', 1.0)
+    ocoord = scaled_object(b, tc)                       # (0.24.95 Follow Object Scale)
+    gscale = b.math('MULTIPLY', b.value('map_scale', 1.0), b.value('project_scale', 1.0))   # (x the Project Scale)
     cscale = b.value('chip_scale', 1.0)                 # (0.24.95 the chip mask's own size)
     maps = {}
     for slot in MAP_KEYS:
@@ -476,7 +524,7 @@ def build(mat):
         if slot == 'chip':
             sc = b.math('MULTIPLY', sc, cscale)
         sc.node.name = 'mch:scale:' + slot
-        vec = b.vmath('SCALE', tc.outputs['Object'], fac=sc)
+        vec = b.vmath('SCALE', ocoord, fac=sc)
         maps[slot] = b.image(slot, vec)
         if slot == 'rust':
             maps['rust_mask'] = b.image('rust_mask', vec)
@@ -486,7 +534,7 @@ def build(mat):
     for name, (slot, _ident, tiles) in FIXED.items():         # (dust, grime streaks, colour variation: one map each)
         sc = b.math('MULTIPLY', gscale, tiles)
         sc.node.name = 'mch:scale:' + name
-        maps[name] = b.image(name, b.vmath('SCALE', tc.outputs['Object'], fac=sc))
+        maps[name] = b.image(name, b.vmath('SCALE', ocoord, fac=sc))
     img = {k: nd.outputs['Color'] for k, nd in maps.items()}
     v = {k: b.value(k) for k in ('base_hue', 'base_sat', 'base_val', 'metallic', 'roughness', 'rough_amount', 'paint',
                                  'paint_rough', 'edge_wear',
@@ -536,6 +584,9 @@ def build(mat):
         nd.inputs[0].default_value = nd.inputs[1].default_value = 0.0
         v[k] = b.mixf(own.outputs[0], v[k], nd.outputs[0])
     v['paint'] = b.mixf(zh['mask'], v['paint'], zh['cover'])
+    # (over the user's material: their surface is a coat of paint everywhere - the chips / primer / scratches cut it)
+    v['over'] = b.value('over', 1.0 if over else 0.0)
+    v['paint'] = b.math('MAXIMUM', v['paint'], v['over'])
     v['paint_rough'] = b.mixf(zh['mask'], v['paint_rough'], zh['rough'])
     c['paint_color'] = b.mixc(zh['mask'], c['paint_color'], zcol)
     # edges / crevices: the mesh's convexity (mch_curv) + Cycles' Bevel normal
@@ -743,6 +794,10 @@ def build(mat):
            bsdf.inputs['Alpha'])
     b.link(c['emit_color'], bsdf.inputs['Emission Color'])
     b.link(b.math('MULTIPLY', em, v['emission']), bsdf.inputs['Emission Strength'])
+    if over:                                # (their surface where their coat is still on and nothing covers it)
+        vis = b.math('MULTIPLY', paint, mo.keep_not(b, zh['mask'], rust, dirt, snow, dust, (streak, 0.6)))
+        vis.node.name = 'mch:over_vis'
+        mo.finish(b, mat, out, bsdf, vis, c['emit_color'], b.math('MULTIPLY', em, v['emission']))
     mat['mch_mech'] = VERSION
     try:                                    # (0.24.95 its lasso Zones back on the new tree)
         from . import zones
@@ -805,6 +860,7 @@ def sync(mat):
             nd.image = map_image(slot, ident, data=True)
     _see_through(mat, st)
     _bevel(mat, st)
+    project_values(mat)
     src = EMIT_SOURCE.get(st.emit_map, (0, 0, 0, 0, 1))
     for k, val in zip(('const', 'edge', 'cav', 'scratch', 'pattern'), src):
         setv('emit_w_' + k, float(val))
@@ -2207,6 +2263,10 @@ def draw(layout, context):
         right.prop, right.step = 'preset', 1
         r.prop(sc, 'mch_mech_preset', text='')
         box.operator('mch.mech_shader_apply', icon='CHECKMARK').preset = ''
+        from . import material_overlay as mo
+        if mo.user_material(context) is not None:        # (0.24.95 ours over the user's own material)
+            op = box.operator('mch.material_over', icon='NODE_MATERIAL')
+            op.kind, op.preset = 'MECH', ''
         box.label(text='Select meshes, then Apply (or step the preset)')
         return
     st = getattr(mat, KEY)
@@ -2338,7 +2398,7 @@ class MCH_PT_mech_shader(bpy.types.Panel):
 CLASSES = (MCH_PG_MechShader, MCH_OT_mech_shader_apply, MCH_OT_mech_shader_step, MCH_OT_mech_bevel, MCH_OT_mech_shader_edges,
            MCH_OT_mech_shader_unlink, MCH_OT_mech_hdri, MCH_PT_mech_shader)
 SCENE_PROPS = ('mch_mech_preset', 'mch_mech_hdri', 'mch_mech_hdri_strength', 'mch_mech_hdri_rot',
-               'mch_mech_hdri_show', 'mch_mech_hdri_blur', 'mch_mech_hdri_bg_color')
+               'mch_mech_hdri_show', 'mch_mech_hdri_blur', 'mch_mech_hdri_bg_color', 'mch_map_scale', 'mch_obj_scale')
 
 
 def register():
@@ -2352,6 +2412,13 @@ def register():
     T = bpy.types.Scene
     T.mch_mech_preset = EnumProperty(name='Mech Shader Preset', items=[(k, n, n) for k, n, _s in PRESETS],
                                      default='STEEL')
+    # 0.24.95 (user: "한 프로젝트 할 때는 전부 비슷한 스케일일 거 아니야 - 그거 전체적으로 조정 못 해?")
+    T.mch_map_scale = FloatProperty(name='Project Scale', default=1.0, min=0.05, max=20.0, update=_project_update,
+                                    description='Every Mech / Creature material\'s maps in this file at once (x each '
+                                    'material\'s own Map Scale; bigger = finer)')
+    T.mch_obj_scale = bpy.props.BoolProperty(name='Follow Object Scale', default=True, update=_project_update,
+                                             description='A part scaled up (its object scale) shows its maps as big '
+                                             'as one not scaled - one map size over the whole project')
     T.mch_mech_hdri = EnumProperty(name='HDRI', items=_hdri_items, update=_hdri_update,
                                    description='Blender\'s built-in HDRIs (Set HDRI makes it the scene\'s world)')
     T.mch_mech_hdri_strength = FloatProperty(name='Strength', default=1.0, min=0.0, soft_max=5.0,

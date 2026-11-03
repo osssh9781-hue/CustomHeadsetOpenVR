@@ -75,8 +75,8 @@ def render():
     return a
 
 
-check('The Creature Shader has the zone hubs (mask, colour, roughness) and is version 3',
-      cs.VERSION == 3 and all(mat.node_tree.nodes.get('mch:zone_' + k) is not None for k in ('mask', 'color', 'rough')))
+check('The Creature Shader has the zone hubs (mask, colour, roughness) and is version 3 or later (4: the Project Scale)',
+      cs.VERSION >= 3 and all(mat.node_tree.nodes.get('mch:zone_' + k) is not None for k in ('mask', 'color', 'rough')))
 base = render()
 z = zn.add_paint_zone(C, body, circle, vm, wm, True, RW, RH, color=(0.05, 0.04, 0.03))
 check('A Paint Zone on the creature: a marking - Airbrush edge, its roughness the skin\'s, linked into the hubs',

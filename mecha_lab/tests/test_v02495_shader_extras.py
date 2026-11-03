@@ -81,7 +81,7 @@ st.skin_type = 'HUMAN'
 check('... a Skin Type keeps the Seed (it is this creature\'s, not the look)', st.seed == 7.0)
 its, _h = mu.creature_page(C, 0.0, 276.0, 1.0)
 props = {getattr(i, 'prop', '') for i in its}
-check('... on the page: Belly + its colour (Color), Seed (Height & Detail)', {'belly', 'belly_color'} <= props)
+check('... on the page: Belly + its colour (Color), Seed (Overall)', {'belly', 'belly_color', 'seed'} <= props)
 
 # ---- My Presets
 check('My Presets: nothing saved yet - no file written, the section says how',

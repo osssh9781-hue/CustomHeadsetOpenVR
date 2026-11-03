@@ -181,9 +181,9 @@ its, _h = sp.content(C, None, 0.0, 276.0, 1.0)
 labels = [i.label for i in its if i.kind == 'tbtn']
 heads = [i.label for i in its if i.kind == 'shead']
 tank = next((i for i in its if i.kind == 'tbtn' and i.label == 'Tank' and i.action[1] == 'mch.random_shape_ref'), None)
-check('The page: Real Parts (Lambo 911 F-22 Tank, the vehicle in use lit; its parts and Any; Panel Thickness; '
+check('The page: Real Parts (Lambo 911 Jet Tank, the vehicle in use lit; its parts and Any; Panel Thickness; '
       'Summon Part)', any(h.startswith('REAL PARTS') for h in heads)
-      and all(n in labels for n in ('Lambo', '911', 'F-22', 'Tank', 'Any', 'Turret', 'Side Skirt', 'Road Wheel',
+      and all(n in labels for n in ('Lambo', '911', 'Jet', 'Tank', 'Any', 'Turret', 'Side Skirt', 'Road Wheel',
                                     'Summon Part')) and tank is not None and tank.on
       and any(getattr(i, 'prop', '') == 'plate_thk' for i in its), (labels, heads))
 bpy.ops.mch.random_shape_ref(vehicle='LAMBO')

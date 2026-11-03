@@ -35,8 +35,8 @@ from . import random_shapes as rs
 VEHICLES = (('LAMBO', 'Lambo', 'Wedge supercar parts after the Lamborghini Aventador / Countach: flat faces, one '
                                'angle repeated'),
             ('P911', '911', 'Round sports-car parts after the Porsche 911: curved skins, round lamps'),
-            ('F22', 'F-22', 'Stealth-fighter parts after the F-22 Raptor: 42-degree edges, knife edges, a bubble '
-                            'canopy'),
+            ('F22', 'Jet', 'Fighter-jet parts after the F-22 Raptor (42-degree edges, knife edges, a bubble '
+                           'canopy) and the front sections of many jets'),
             ('MBT', 'Tank', 'Tank parts after the M1 Abrams (flat armour) and the T-72 (cast, round)'))
 PARTS = {
     'LAMBO': (('INTAKE', 'Side Intake', 'The air intake behind the door: a wedge, its mouth facing forward-out'),
@@ -55,7 +55,16 @@ PARTS = {
             ('FIN', 'Tail Fin', 'A vertical tail canted 28 degrees out'),
             ('NOZZLE', 'Nozzle', 'A 2D nozzle: its flaps closing in, the exhaust a deep box'),
             ('CANOPY', 'Canopy', 'The bubble canopy: a pointed front, long behind'),
-            ('NOSE', 'Nose', 'The chined nose: a sharp chine all round, a rounded top')),
+            ('NOSE', 'Nose', 'The chined nose: a sharp chine all round, a rounded top'),
+            # 0.24.95 (user: "제트기 앞부분 느낌도 만들어 줘, 다양한 제트기 앞부분"): nose + cockpit, cut behind it
+            ('FRONT_F22', 'F-22 Front', 'F-22: a diamond nose of straight chines, a long bubble canopy'),
+            ('FRONT_F16', 'F-16 Front', 'F-16: a round ogive nose, a tall bubble canopy far forward'),
+            ('FRONT_F35', 'F-35 Front', 'F-35: soft chines, a wide flat nose, a framed canopy'),
+            ('FRONT_SU27', 'Su-27 Front', 'Su-27: a round nose drooping down, the canopy a hump on a long spine'),
+            ('FRONT_F15', 'F-15 Front', 'F-15: a squarish round nose, a high canopy'),
+            ('FRONT_SR71', 'SR-71 Front', 'SR-71: a long pointed nose, wide flat chines, a low canopy'),
+            ('FRONT_MIG21', 'MiG-21 Front', 'MiG-21: the intake in the nose, its shock cone, a canopy hump'),
+            ('FRONT_F117', 'F-117 Front', 'F-117: a faceted pyramid nose, a faceted canopy (flat faces)')),
     'MBT': (('TURRET', 'Turret', 'An angular turret: cheeks angled back, the mantlet recess, the sides leaning in'),
             ('SKIRT', 'Side Skirt', 'Its front edge slanted for the idler, the top flange bent in'),
             ('MANTLET', 'Mantlet', 'A gun mantlet: a slab, its top and bottom sloped'),
@@ -66,7 +75,30 @@ PARTS = {
 PART_IDS = {v: tuple(p[0] for p in PARTS[v]) for v in PARTS}
 PART_ITEMS = {v: (('ANY', 'Any', 'Any part of this vehicle'),) + PARTS[v] for v in PARTS}
 CURVED = {('P911', 'FENDER_F'), ('P911', 'FENDER_R'), ('P911', 'DUCKTAIL'), ('P911', 'LAMP'), ('P911', 'MIRROR'),
-          ('F22', 'CANOPY'), ('F22', 'NOSE'), ('MBT', 'CAST'), ('MBT', 'WHEEL')}
+          ('F22', 'CANOPY'), ('F22', 'NOSE'), ('MBT', 'CAST'), ('MBT', 'WHEEL')} | \
+    {('F22', 'FRONT_' + k) for k in ('F22', 'F16', 'F35', 'SU27', 'F15', 'SR71', 'MIG21')}
+# 0.24.95 jet front sections (nose tip u = 0 .. the cut behind the cockpit u = 1, length 1): half width W, top Ht /
+# bottom Hb above / below the chine line; the section grows as 1 - (1 - u)^kw (kw 1: straight chines - a diamond in
+# plan; 2: an ogive); the top z = Ht (1 - (x / w)^p)^(1 / rt) (rt 1: a sharp chine, 2 with p 2: round), the bottom the
+# same with q / rb; the canopy a bump c0 (starts) - c1 (peak) - c2 (the spine behind it, sp of its height), ch high, cw
+# of W wide; droop: the tip that much (x W) low; MiG: the intake lip (lip x W), the duct (duct deep), the shock cone
+FRONTS = {
+    'F22': dict(W=0.16, Ht=0.1, Hb=0.07, kw=1.0, kh=1.6, p=1.6, rt=1.0, q=1.2, rb=1.0, c0=0.25, c1=0.55, c2=1.1,
+                ch=0.75, cw=0.42, sp=0.45, droop=0.0),
+    'F16': dict(W=0.1, Ht=0.09, Hb=0.1, kw=2.2, kh=2.2, p=2.0, rt=2.0, q=2.0, rb=2.0, c0=0.3, c1=0.55, c2=1.2,
+                ch=1.0, cw=0.55, sp=0.5, droop=0.0),
+    'F35': dict(W=0.17, Ht=0.1, Hb=0.09, kw=1.4, kh=1.8, p=1.8, rt=1.3, q=1.4, rb=1.2, c0=0.3, c1=0.6, c2=1.15,
+                ch=0.6, cw=0.4, sp=0.55, droop=0.0),
+    'SU27': dict(W=0.11, Ht=0.1, Hb=0.1, kw=2.0, kh=2.0, p=2.0, rt=2.0, q=2.0, rb=2.0, c0=0.42, c1=0.62, c2=1.3,
+                 ch=1.0, cw=0.5, sp=0.6, droop=0.5),
+    'F15': dict(W=0.13, Ht=0.09, Hb=0.1, kw=1.8, kh=1.7, p=3.0, rt=2.0, q=3.0, rb=2.0, c0=0.38, c1=0.6, c2=1.2,
+                ch=0.95, cw=0.55, sp=0.5, droop=0.15),
+    'SR71': dict(W=0.2, Ht=0.08, Hb=0.05, kw=1.0, kh=1.3, p=0.55, rt=1.0, q=0.7, rb=1.0, c0=0.55, c1=0.72, c2=1.0,
+                 ch=0.25, cw=0.3, sp=0.4, droop=0.0),
+    'MIG21': dict(W=0.11, Ht=0.11, Hb=0.11, kw=1.6, kh=1.6, p=2.0, rt=2.0, q=2.0, rb=2.0, c0=0.45, c1=0.65, c2=1.25,
+                  ch=0.7, cw=0.45, sp=0.55, droop=0.0, lip=0.62, duct=0.12, cone=0.38, cone_out=0.05),
+    'F117': dict(W=0.17, Ht=0.1, Hb=0.06, tip=0.3, mid=0.38, can=1.3, ridge=0.72),
+}
 SIDE_PLATE_M = Matrix(((0, 0, -1, 0), (-1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 0, 1)))   # a side panel (outline x rearward,
 #                                                         y up, its outer face -Z) -> outer face +X, forward +Y, up +Z
 
@@ -121,6 +153,8 @@ def _defaults(vehicle, part):
             return dict(Lc=1.0, w=[0.10, 0.15, 0.17, 0.16, 0.10], h=[0.07, 0.15, 0.21, 0.19, 0.11], e=2.4)
         if part == 'NOSE':
             return dict(Ln=1.0, W=0.21, Ht=0.15, Hb=0.10, p=1.7, q=1.25, droop=0.03)
+        if part.startswith('FRONT_'):
+            return {k: float(v) for k, v in FRONTS[part[6:]].items()}
     if vehicle == 'MBT':
         if part == 'TURRET':
             return dict(Lt=1.0, Wt=0.62, Ht=0.2, cheek=0.6, mw=0.075, mr=0.1, rear=0.24, lean=0.9, roof=0.1)
@@ -534,6 +568,12 @@ def _f22(bm, part, d, level, segs):
             bmesh.ops.rotate(bm, cent=(0, 0, 0), matrix=Matrix.Rotation(math.radians(_clamp(d['cant'], 0, 45)), 3, 'Y'),
                              verts=list(bm.verts))
         return bm
+    if part == 'FRONT_F117':
+        _faceted_front(bm, d)
+        return bm
+    if part.startswith('FRONT_'):
+        _jet_front(bm, part[6:], d, segs)
+        return bm
     if part == 'NOZZLE':                                 # side outline: the flaps closing in; the exhaust a deep box
         Ln, Wn, Hf, Hr = d['Ln'], d['Wn'], d['Hf'], d['Hr']
         mid = _clamp(d['mid'], 0.3, 0.75)
@@ -586,6 +626,94 @@ def _f22(bm, part, d, level, segs):
         rings.append([bm.verts.new((x, y, z + dz)) for x, z in ring])
     rs._loft(bm, rings)
     return bm
+
+
+def _front_ring(w, ht, hb, d, cwid, bump, k=10, kc=6):
+    """A front section's ring (x, z), 4k points from the top middle round: the top over the chine (the canopy's
+    edge a point of it - the crease it makes runs clean), the bottom back to the middle."""
+    p, rt, q, rb = max(0.3, d['p']), max(0.5, d['rt']), max(0.3, d['q']), max(0.5, d['rb'])
+    cwid = min(cwid, 0.9 * w)
+    xs = [cwid * math.sin(0.5 * math.pi * j / kc) for j in range(kc + 1)]
+    xs += [cwid + (w - cwid) * math.sin(0.5 * math.pi * j / (k - kc)) for j in range(1, k - kc + 1)]
+    right = []
+    for x in xs:
+        z = ht * max(0.0, 1.0 - (x / w) ** p) ** (1.0 / rt)
+        if bump > 0.0 and x < cwid:
+            z += bump * math.sqrt(max(0.0, 1.0 - (x / cwid) ** 2))
+        right.append((x, z))
+    for j in range(k - 1, -1, -1):
+        x = w * math.sin(0.5 * math.pi * j / k)
+        right.append((x, -hb * max(0.0, 1.0 - (x / w) ** q) ** (1.0 / rb)))
+    return right + [(-x, z) for x, z in reversed(right[1:-1])]
+
+
+def _jet_front(bm, style, d, segs):
+    """A jet's front section along Y (the nose tip at +Y, cut flat behind the cockpit at Y = 0): rings of the
+    section, the canopy a bump on top; MiG-21: the intake in the nose (the lip, the duct back in, the shock cone)."""
+    W, Ht, Hb = d['W'], d['Ht'], d['Hb']
+    c0 = _clamp(d['c0'], 0.05, 0.85)
+    c1 = max(c0 + 0.05, d['c1'])
+    c2 = max(c1 + 0.05, d['c2'])
+    sp = _clamp(d['sp'], 0.0, 1.0)
+    mig = style == 'MIG21'
+    lip = _clamp(d.get('lip', 0.0), 0.3, 0.9) if mig else 0.0
+    k = max(8, segs // 4)
+    kc = max(3, int(k * 0.6))
+    rows = max(22, segs // 2 + 6)
+    rings = []
+
+    def canopy(u):
+        if u <= c0:
+            return 0.0
+        if u <= c1:
+            return math.sin(0.5 * math.pi * (u - c0) / (c1 - c0)) ** 2
+        t = min(1.0, (u - c1) / (c2 - c1))
+        return 1.0 - (1.0 - sp) * t * t * (3.0 - 2.0 * t)
+    for i in range(rows):
+        u = (1.0 - i / (rows - 1)) ** 1.3                   # (rear u 1 .. the tip u 0: rows closer at the tip)
+        y = 1.0 - u
+        g = 1.0 - (1.0 - u) ** max(0.5, d['kw'])
+        gh = 1.0 - (1.0 - u) ** max(0.5, d['kh'])
+        if mig:
+            g, gh = lip + (1.0 - lip) * g, lip + (1.0 - lip) * gh
+        if g < 1e-4:
+            rings.append([bm.verts.new((0.0, y, -d['droop'] * W))])
+            continue
+        dz = -d['droop'] * W * (1.0 - u) ** 2
+        ring = _front_ring(W * g, Ht * gh, Hb * gh, d, d['cw'] * W, d['ch'] * Ht * canopy(u), k, kc)
+        rings.append([bm.verts.new((x, y, z + dz)) for x, z in ring])
+    if mig:                                          # (the lip, the duct, the shock cone coming out of it)
+        rd = lip * W * 0.82
+        dep, cone, out = _clamp(d['duct'], 0.04, 0.3), _clamp(d['cone'], 0.15, 0.7) * W, _clamp(d['cone_out'], 0.0, 0.15)
+        cone = min(cone, rd * 0.8)
+        rnd = dict(p=2.0, rt=2.0, q=2.0, rb=2.0)
+        for y, r in ((1.0, rd), (1.0 - dep, rd), (1.0 - dep, cone), (1.0 - dep + (dep + out) * 0.55, cone * 0.55)):
+            rings.append([bm.verts.new((x, y, z)) for x, z in _front_ring(r, r, r, rnd, r * 0.5, 0.0, k, kc)])
+        rings.append([bm.verts.new((0.0, 1.0 + out, 0.0))])
+    rs._loft(bm, rings)
+
+
+def _faceted_front(bm, d):
+    """F-117: a faceted pyramid nose (a ridge down the top, sharp chines, a flat bottom) and a faceted canopy - flat
+    faces only (a facet that would bend: two triangles)."""
+    W, Ht, Hb = d['W'], d['Ht'], d['Hb']
+    rg = _clamp(d['ridge'], 0.4, 0.95)
+
+    def sec(w, ht, hb):
+        right = [(0.0, ht), (0.5 * w, rg * ht), (w, 0.0), (0.6 * w, -hb), (0.0, -hb)]
+        return right + [(-x, z) for x, z in reversed(right[1:-1])]
+    tip = _clamp(d['tip'], 0.15, 0.5)
+    mid = _clamp(d['mid'], 0.2, 0.6)
+    can = _clamp(d['can'], 1.0, 1.8)
+    st = [(0.0, 1.0, 1.0, 1.0), (0.38, 0.72, can, 0.8), (1.0 - tip, mid, mid * 0.9, mid * 1.2)]
+    rings = [[bm.verts.new((x, y, z)) for x, z in sec(W * wf, Ht * hf, Hb * bf)] for y, wf, hf, bf in st]
+    rings.append([bm.verts.new((0.0, 1.0, -0.3 * Hb))])
+    rs._loft(bm, rings)
+    bm.normal_update()
+    bent = [f for f in bm.faces if len(f.verts) > 3
+            and any(abs((v.co - f.calc_center_median()).dot(f.normal)) > 1e-6 for v in f.verts)]
+    if bent:
+        bmesh.ops.triangulate(bm, faces=bent, quad_method='BEAUTY', ngon_method='BEAUTY')
 
 
 # --- Tank ------------------------------------------------------------------------------------------------------------

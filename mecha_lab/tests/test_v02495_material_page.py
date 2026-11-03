@@ -87,9 +87,10 @@ check('◀ [preset] ▶: ▶ steps the material to the next preset', st.preset !
 st.preset = 'CHIPPED'
 its, _h = page()
 hd = heads(its)
-check('Sections: Surface, Maps, Paint, Edge Wear, Scratches, Rust, Dirt, Snow, Glow, Weave, Height & Detail - no HDRI '
-      '(its own page)', all(t in hd for t in ('SURFACE', 'MAPS', 'PAINT', 'EDGE WEAR', 'SCRATCHES', 'RUST', 'DIRT',
-                                               'SNOW', 'GLOW', 'WEAVE', 'HEIGHT & DETAIL')) and 'HDRI' not in hd,
+check('Sections: Surface, Maps, Paint, Edge Wear, Scratches, Rust, Dirt, Snow, Glow, Weave, Overall (Height & Scale '
+      '- 0.24.95 at the bottom, with Unlink) - no HDRI (its own page)',
+      all(t in hd for t in ('SURFACE', 'MAPS', 'PAINT', 'EDGE WEAR', 'SCRATCHES', 'RUST', 'DIRT', 'SNOW', 'GLOW',
+                            'WEAVE', 'OVERALL - HEIGHT & SCALE')) and 'HDRI' not in hd,
       sorted(hd))
 used = mu.in_use(mat, st)
 check('Chipped Paint: the layers in use start open (Paint, Edge Wear), the others folded (Snow, Glow, Weave)',

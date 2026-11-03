@@ -24,7 +24,7 @@ from bpy.props import EnumProperty, FloatProperty, FloatVectorProperty, PointerP
 from . import mech_shader as ms
 
 KEY = 'mch_creature'
-VERSION = 3                      # (2: Belly, Seed; 3: the lasso Zones' hubs)
+VERSION = 4                      # (2: Belly, Seed; 3: the lasso Zones' hubs; 4: Project Scale, Follow Object Scale)
 CMAP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'creature_maps')
 # the user's creature maps (greyscale, seamless): slot -> [(id, label)]
 CMAPS = {
@@ -250,11 +250,13 @@ def _image_for(st, name):
 # -----------------------------------------------------------------------------
 
 def build(mat):
-    """The Creature Shader node tree in ``mat`` (made anew)."""
+    """The Creature Shader node tree in ``mat`` (made anew).  0.24.95 over the user's own material
+    (``material_overlay``): their nodes stay, their surface is the skin - the conditions on top."""
+    from . import material_overlay as mo
     mat.use_nodes = True
     nt = mat.node_tree
-    nt.nodes.clear()
-    b = ms.Builder(nt)
+    over = mo.clear_ours(mat)
+    b = ms.Builder(nt, mo.origin(mat) if over else (0.0, 0.0))
     out = b.node('ShaderNodeOutputMaterial')
     bsdf = b.node('ShaderNodeBsdfPrincipled', 'mch:bsdf')
     b.link(bsdf.outputs['BSDF'], out.inputs['Surface'])
@@ -269,11 +271,12 @@ def build(mat):
     # (everything measured on a creature 2 units tall: Size = the creature's size / 2, set when the shader is put on -
     #  the maps as many times across a body of any size, the SSS / thin / crevice distances with it)
     unit = b.math('DIVIDE', v['map_scale'], b.math('MAXIMUM', v['size'], 1e-4))
+    unit = b.math('MULTIPLY', unit, b.value('project_scale', 1.0))       # (0.24.95 x the Project Scale)
     # (0.24.95 Seed: every map moved - the same preset, a different creature)
     off = b.node('ShaderNodeCombineXYZ', 'mch:seed_offset')
     for i, f in enumerate((17.31, -9.73, 5.17)):
         b.link(b.math('MULTIPLY', v['seed'], f), off.inputs[i])
-    obj = b.vmath('ADD', tc.outputs['Object'], off.outputs['Vector'])
+    obj = b.vmath('ADD', ms.scaled_object(b, tc), off.outputs['Vector'])      # (0.24.95 Follow Object Scale)
     for name, (_src, _slot, _id, tiles) in IMAGES.items():
         sc = b.math('MULTIPLY', unit, tiles)
         if name in ('skin', 'detail'):
@@ -473,6 +476,11 @@ def build(mat):
     b.link(bump.outputs['Normal'], bsdf.inputs['Normal'])
     b.link(c['glow_color'], bsdf.inputs['Emission Color'])
     b.link(b.math('MULTIPLY', glow, v['glow_power']), bsdf.inputs['Emission Strength'])
+    if over:                                # (their skin where no condition / zone covers it)
+        vis = mo.keep_not(b, zm.outputs[0], mud, blood, (slime, 0.75), (soot, 0.92), (dust, 0.85), (frost, 0.8),
+                          snow, moss, bdry, rot, scars)
+        vis.node.name = 'mch:over_vis'
+        mo.finish(b, mat, out, bsdf, vis, c['glow_color'], b.math('MULTIPLY', glow, v['glow_power']))
     mat[KEY] = VERSION
     try:                                    # (0.24.95 its lasso Zones back on the new tree)
         from . import zones
@@ -511,6 +519,7 @@ def sync(mat):
             im = _image_for(st, name)
             if nd.image != im:
                 nd.image = im
+    ms.project_values(mat)
 
 
 def _apply(mat, spec, keys, prop, ident):
