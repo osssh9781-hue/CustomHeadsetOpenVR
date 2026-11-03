@@ -2356,6 +2356,8 @@ def page(context, x, width, k):
         mu.row(b, sx, sw, [mu._cell('tbtn', 'Summon Part', ('op', 'mch.random_shape_add', {'family': 'REF'}),
                                     active=obj_mode)])
     mu.section(b, 'rs_real', 'Real Parts', x, width, real)
+    from . import tire_gen                               # (0.24.95 user: "타이어 만드는 제너레이터도")
+    tire_gen.page_section(b, context, x, width)
 
     def variations(sx, sw):
         act = getattr(context, 'active_object', None)
@@ -2405,6 +2407,8 @@ def draw(layout, context):
     c.prop(st, 'ref_part', text='')
     c.prop(st, 'plate_thk', text='Panel Thickness')
     box.operator('mch.random_shape_add', text='Summon Part', icon='AUTO').family = 'REF'
+    from . import tire_gen
+    tire_gen.draw(layout, context)
     box = layout.box()
     box.label(text='Variations')
     c = box.column(align=True)

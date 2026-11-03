@@ -19,7 +19,7 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                creature_plate, belt_maker, creature_spike, creature_scales, flower_plate,
                surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, bg_jobs, quad_remesh, mesh_fix, tool_recent, actions_menu, key_legend, quick_hud, mecha_menu, symmetry, groups, ui_bars, safety_save, lasso_memory, armor_shell, paint_lab, bake_maps, res_parts, final_export, mech_shader,
                creature_shader, my_presets, decals, zones, my_materials, bake_material, color_pick,
-               random_shapes, material_overlay)
+               random_shapes, material_overlay, tire_gen)
 import os
 import re
 from pathlib import Path
@@ -2114,6 +2114,7 @@ def _register():
     color_pick.register()                              # 0.24.95 the swatch picker's Hue / Sat / Value, Pick
     random_shapes.register()                           # 0.24.95 the Shapes page: random base shapes, variations
     material_overlay.register()                        # 0.24.95 Over My Material (ours laid over the user's own)
+    tire_gen.register()                                # 0.24.95 Tire & Wheel: summon, draw, repeat round the axle
     live_queue.register()
     lasso_sketch.register()
     cloth_wrinkle.register()
@@ -2229,6 +2230,7 @@ def _unregister_steps():
         ('cloth_wrinkle', cloth_wrinkle.unregister),
         ('lasso_sketch', lasso_sketch.unregister),
         ('live_queue', live_queue.unregister),
+        ('tire_gen', tire_gen.unregister),
         ('material_overlay', material_overlay.unregister),
         ('random_shapes', random_shapes.unregister),
         ('color_pick', color_pick.unregister),
