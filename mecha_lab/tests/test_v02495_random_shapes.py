@@ -9,6 +9,8 @@
 * Reroll: a new form where the shape is (place, size, materials kept)
 * Plate (user: "덩어리지만 약간 판떼기 버전도 - 두께가 얇은 판떼기"): thin plates of both families - a Polygon plate as
   thick as Thickness facing the front, a Curved plate curved both ways; Variations / Reroll keep a plate a plate
+* a Polygon plate is bent (user: "판도 꺾여 있어야지"): its sides wrapped back, a V down the middle, its top / bottom
+  edge bent - each part flat, the fold lines mitred
 * Curved: Torso, flat-topped Pods (a rounded rim round a flat face), chisel cuts mirrored into a ridge
 * the tab and the page; a Cut on a Curved shape works; 400 random shapes all clean"""
 import random
@@ -44,6 +46,13 @@ def mirrored(ob, nd=4):
 def longest(ob):
     co = np.array([v.co[:] for v in ob.data.vertices])
     return float((co.max(0) - co.min(0)).max())
+
+
+def face_flat(ob, f):
+    """the polygon's corners on its plane within FLAT_TOL of the shape's size"""
+    co = np.array([ob.data.vertices[i].co[:] for i in f.vertices])
+    n = np.array(f.normal[:])
+    return float(np.abs((co - co.mean(0)) @ n).max()) <= rs.FLAT_TOL * longest(ob)
 
 
 def shapes():
@@ -183,13 +192,15 @@ S.cursor.location = (0.0, 0.0, 0.0)
 st.form, st.plate_thk, st.size, st.count, st.kind, st.poly_sym = 'PLATE', 0.04, 2.0, 1, 'BLOCK', False
 r = bpy.ops.mch.random_shape_add(family='POLY', seed=6)
 pp = C.active_object
-co = np.array([v.co[:] for v in pp.data.vertices])
-ext = co.max(0) - co.min(0)
-check('Plate (Polygon): a thin panel facing the front - its depth (Y) about Thickness x its size, flat faces, a '
+bm = bmesh.new()
+bm.from_mesh(pp.data)
+thick = bm.calc_volume() / (sum(f.calc_area() for f in bm.faces) / 2)
+bm.free()
+check('Plate (Polygon): a thin panel - as thick as Thickness x its size (volume / half its area), flat faces, a '
       'clean closed solid, "plate" in its parameters',
-      r == {'FINISHED'} and solid(pp) and ext[1] < 0.06 * ext.max() and ext[0] > 0.3 * ext.max()
-      and ext[2] > 0.3 * ext.max() and rs.plate_of(rs.params_of(pp)) == 0.04
-      and not any(p.use_smooth for p in pp.data.polygons), [round(e, 3) for e in ext])
+      r == {'FINISHED'} and solid(pp) and 0.02 * longest(pp) < thick < 0.055 * longest(pp)
+      and rs.plate_of(rs.params_of(pp)) == 0.04 and not any(p.use_smooth for p in pp.data.polygons)
+      and all(face_flat(pp, f) for f in pp.data.polygons), (round(thick, 4), round(longest(pp), 3)))
 st.curve_kind, st.curve_sym = 'POD', True
 r = bpy.ops.mch.random_shape_add(family='CURVE', seed=6)
 cp = C.active_object
@@ -212,6 +223,41 @@ vplates = list(C.selected_objects)
 check('... its Variations plates too (whatever the page says now), each clean',
       len(vplates) == st.var_count and all(isinstance(rs.params_of(v).get('plate'), dict) and solid(v)
                                            for v in vplates))
+
+import math  # noqa: E402
+
+
+def bends(ob):
+    """the angles (degrees) between the plate's big faces facing the same way, the largest"""
+    big = sorted(ob.data.polygons, key=lambda f: -f.area)[:6]
+    return max([math.degrees(a.normal.angle(b.normal)) for a in big for b in big
+                if a.index != b.index and a.normal.dot(b.normal) > 0] or [0.0])
+
+
+folded = flat = 0
+st.form = 'PLATE'
+for sd in range(1, 13):
+    st.poly_sym = sd % 2 == 0
+    bpy.ops.mch.random_shape_add(family='POLY', seed=100 + sd)
+    o = C.active_object
+    pf = rs.params_of(o)
+    if pf['folds'] and solid(o) and bends(o) > 5 and all(face_flat(o, f) for f in o.data.polygons):
+        folded += 1
+    flat += bends(o) < 3
+    bpy.data.objects.remove(o)
+check('Polygon plates bent (wrapped sides, a V ridge, bent lips): 12 summoned - each with folds, its parts at an '
+      'angle, every face flat (a twisted rim strip: triangles), a clean closed solid', folded == 12 and flat == 0,
+      (folded, flat))
+st.poly_sym = True
+bpy.ops.mch.random_shape_add(family='POLY', seed=7)
+sp_ = C.active_object
+check('... a symmetric one: bent the same both sides', mirrored(sp_, 3) and bends(sp_) > 5 and solid(sp_))
+st.var_amount = 0.4
+bpy.ops.mch.random_shape_vary(seed=8)
+check('... its Variations bent too (each its folds a little moved)',
+      all(rs.params_of(v)['folds'] and bends(v) > 5 and solid(v) for v in C.selected_objects)
+      and any(rs.params_of(v)['folds'] != rs.params_of(sp_)['folds'] for v in C.selected_objects))
+st.form, st.poly_sym = 'SOLID', False
 for o in C.selected_objects:
     o.select_set(False)
 pp.select_set(True)

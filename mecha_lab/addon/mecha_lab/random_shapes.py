@@ -13,7 +13,8 @@
   cuts often a chisel to one side of the front - mirrored: a ridge down the middle; Flat Cuts, Smooth
 * **Solid / Plate** (user: "덩어리지만 약간 판떼기 버전도 - 두께가 얇은 판떼기"): Plate makes thin plates of both
   families (Thickness, of the plate's size): a Polygon plate is the outline as a panel facing the front, its rim
-  slanted now and then, its edges trimmed at angles; a Curved plate is the front of the body - curved both ways as
+  slanted now and then, its edges trimmed at angles, bent (user: "판도 꺾여 있어야지": its sides wrapped back, a V down
+  the middle or its top / bottom edge bent; each part flat, the fold lines mitred); a Curved plate is the front of the body - curved both ways as
   the body is - made thick inward, its outline trimmed
 * **Symmetric** (each family): the left half the mirror of the right (a shape built on its centre line)
 * **Variations**: the selected shape you like -> several close relatives next to it, a little different each
@@ -312,6 +313,7 @@ def _chamfer(bm, seed, amount):
     if amount <= 0:
         return
     rng = random.Random(seed)
+    bm.normal_update()
     edges = [e for e in bm.edges if len(e.link_faces) == 2 and e.is_convex
              and e.calc_face_angle(0.0) > math.radians(40)
              and all(o.is_convex for v in e.verts for o in v.link_edges)]   # (outer corners only: a chamfer
@@ -331,6 +333,7 @@ def symmetrize(bm):
     """The left half (-X) made the mirror of the right one: cut at X = 0, the right half kept, mirrored, welded; a
     face split by the centre line one face again where its two halves are flat together.  (A face across the line is
     cut in triangles first - a concave face with a corner on the line lost itself in the cut - and joined again.)"""
+    bm.normal_update()                                   # (after a transform: the faces' normals as they are now)
     lay = bm.faces.layers.int.new('_mch_of')
     for i, f in enumerate(bm.faces):
         f[lay] = i + 1
@@ -357,6 +360,7 @@ def symmetrize(bm):
             v.co.x = -v.co.x
         bmesh.ops.reverse_faces(bm, faces=nf)
         bmesh.ops.remove_doubles(bm, verts=[v for v in bm.verts if v.co.x == 0.0], dist=1e-6)
+        bm.normal_update()
         flat = math.radians(0.1)
         joins = [e for e in bm.edges if len(e.link_faces) == 2 and e.link_faces[0][lay] == e.link_faces[1][lay]
                  and e.calc_face_angle(1.0) < flat]
@@ -367,6 +371,7 @@ def symmetrize(bm):
 
 def _split_bent(bm, tol=1e-4):
     """A face of more than four corners that is not flat (a cut through the bent strips of a round) made triangles."""
+    bm.normal_update()
     bent = []
     for f in bm.faces:
         if len(f.verts) > 4:
@@ -483,7 +488,86 @@ def _poly_plate_params(rng, kind, slices, chamfer, sym, max_sides, plate):
             'outline': [[round(x, 6), round(y, 6)] for x, y in _clean(pts)],
             'depth': round(plate * rng.uniform(0.85, 1.15), 6), 'taper': round(tp, 6), 'side': False,
             'slices': [_plate_trim(rng, sym) for _ in range(n_sl)],
-            'chamfer': [rng.randrange(1, 2 ** 31 - 1), round(chamfer if rng.random() < 0.7 else 0.0, 6)]}
+            'chamfer': [rng.randrange(1, 2 ** 31 - 1), round(chamfer if rng.random() < 0.7 else 0.0, 6)],
+            'folds': _plate_folds(rng, sym)}
+
+
+FOLD_STYLES = {'wrap': 3, 'ridge': 2, 'ridge_wrap': 2, 'lips': 2}
+
+
+def _plate_folds(rng, sym):
+    """Where a plate is bent (user: "판도 꺾여 있어야지"): [direction of the line (radians), where across (-1 .. 1 of
+    the plate's half width across the line; the part beyond it bends), angle (radians; + back, - forward)].  Wrap:
+    the sides bent back (a plate round a body), ridge: a V down the middle, lips: the top / bottom edge bent; the
+    lines of one plate parallel (no two cross in it)."""
+    U = rng.uniform
+    style = rng.choices(list(FOLD_STYLES), weights=list(FOLD_STYLES.values()))[0]
+    up = math.pi / 2
+    tilt = 0.0 if sym else U(-0.3, 0.3)
+    out = []
+    if style in {'wrap', 'ridge_wrap'}:
+        a = U(0.3, 0.6)
+        out.append([up + tilt, a, math.radians(U(15, 45))])
+        if rng.random() < 0.35 and a < 0.55:             # (a second bend further out)
+            out.append([up + tilt, U(a + 0.15, 0.9), math.radians(U(10, 30))])
+        if not sym and rng.random() < 0.6:               # (the other side too)
+            out.append([up + tilt, -U(0.3, 0.6), math.radians(U(15, 45))])
+    if style in {'ridge', 'ridge_wrap'}:
+        out.append([up + tilt, 0.0, math.radians(U(8, 22) * (1 if sym else 2))])
+    if style == 'lips':
+        for side in rng.sample((1, -1), rng.randint(1, 2)):
+            out.append([0.0, side * U(0.4, 0.75), math.radians(U(20, 50) * (1 if rng.random() < 0.75 else -1))])
+    return [[round(v, 6) for v in f] for f in out]
+
+
+def _fold(bm, ang, frac, theta):
+    """Bend the plate (lying in XY, its middle at Z = 0) along a line: direction ``ang``, ``frac`` of the half
+    width across it from the middle; the part beyond the line turns ``theta`` about it (toward +Z: the back once the
+    plate stands).  The points on the line go to the mitre (half way between the two sides' planes): each side stays
+    flat."""
+    d = Vector((math.cos(ang), math.sin(ang), 0.0))
+    u = Vector((d.y, -d.x, 0.0))                         # (a line up the plate: its far side +X - the half kept
+    vals = [v.co.dot(u) for v in bm.verts]               #  when the plate is made symmetric)
+    lo, hi = min(vals), max(vals)
+    pos = (lo + hi) / 2 + frac * (hi - lo) / 2
+    if frac < 0:                                         # (the far side: away from the middle)
+        u, pos = -u, -pos
+    if not any(v.co.dot(u) > pos + 1e-4 for v in bm.verts) or abs(theta) < 1e-4:
+        return
+    P = u * pos
+    bmesh.ops.bisect_plane(bm, geom=list(bm.verts) + list(bm.edges) + list(bm.faces), dist=1e-6, plane_co=P,
+                           plane_no=u)
+    R = Matrix.Rotation(theta, 3, u.cross(Vector((0.0, 0.0, 1.0))))   # (about u x Z: u turns toward +Z)
+    t2 = math.tan(theta / 2)
+    lay = bm.verts.layers.int.get(CREASE) or bm.verts.layers.int.new(CREASE)
+    for v in bm.verts:
+        s = v.co.dot(u) - pos
+        if s > 1e-6:
+            v.co = P + R @ (v.co - P)
+        elif s > -1e-6:
+            v.co = v.co - u * (v.co.z * t2)
+            v[lay] = 1
+
+
+CREASE = '_mch_crease'                # (bmesh vertex flag: a point a fold moved onto its mitre)
+
+
+def _split_twisted(bm, tol=1e-5):
+    """A face of four corners or more on a fold line that the bend twisted (a thin rim, a chamfer across the line)
+    made triangles; the faces away from the fold lines left as they are."""
+    lay = bm.verts.layers.int.get(CREASE)
+    if lay is None:
+        return
+    bm.normal_update()                                   # (moved points: the faces' normals as they are now)
+    bent = []
+    for f in bm.faces:
+        if len(f.verts) > 3 and any(v[lay] for v in f.verts):
+            n, c = f.normal, f.calc_center_median()
+            if any(abs((v.co - c).dot(n)) > tol for v in f.verts):
+                bent.append(f)
+    if bent:
+        bmesh.ops.triangulate(bm, faces=bent, quad_method='BEAUTY', ngon_method='BEAUTY')
+    bm.verts.layers.int.remove(lay)
 
 
 def build_poly(p, level=0):
@@ -498,6 +582,11 @@ def build_poly(p, level=0):
     ch = p.get('chamfer') or (0, 0.0)
     if level < 1 and ch[1] > 0:
         _chamfer(bm, int(ch[0]), float(ch[1]))
+    folds = p.get('folds') or ()
+    if folds:                                            # (outermost first: an inner bend carries the outer ones)
+        for ang, frac, theta in sorted(folds, key=lambda f: -abs(f[1])):
+            _fold(bm, ang, frac, theta)
+        _split_twisted(bm)
     if p.get('plate'):                                   # (a plate stands facing the front)
         bmesh.ops.transform(bm, matrix=PLATE_M, verts=list(bm.verts))
     if p.get('sym'):
@@ -803,9 +892,9 @@ def build(p, segs=32, size=1.0):
         if curved and level == 1:                        # (no chamfers on a curved shape)
             continue
         bm = build_curve(p, segs, level) if curved else build_poly(p, level)
-        if level == 3 and p.get('sym'):                  # (the plain body, not mirrored: always clean)
+        if level == 3 and (p.get('sym') or p.get('folds')):   # (the plain body, not mirrored, flat: always clean)
             bm.free()
-            q = dict(p, sym=False)
+            q = dict(p, sym=False, folds=[])
             bm = build_curve(q, segs, 2) if curved else build_poly(q, 2)
         if _valid(bm, curved):
             break
@@ -905,6 +994,10 @@ def vary(p, amount, rng):
     q['slices'] = [_vary_plane(rng, pl, a, sym) for pl in q.get('slices', ())]
     ch = q.get('chamfer') or [1, 0.0]
     q['chamfer'] = [ch[0], max(0.0, min(1.0, ch[1] * (1 + rng.uniform(-0.3, 0.3) * a)))]
+    if q.get('folds'):
+        q['folds'] = [[f[0], (0.0 if f[1] == 0 else math.copysign(max(0.15, min(0.92, abs(f[1]) + rng.uniform(-0.08, 0.08)
+                                                                                        * a)), f[1])),
+                       f[2] * (1 + rng.uniform(-0.25, 0.25) * a)] for f in q['folds']]
     return _rounded(q)
 
 

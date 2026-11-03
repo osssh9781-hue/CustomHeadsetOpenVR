@@ -125,18 +125,19 @@ def main():
     for i, kind in enumerate(rs.KIND_IDS):               # Polygon, solid
         p = rs.poly_params(random.Random(100 + i * 7), kind, 2, 0.4, 0.3, i % 2 == 1)
         jobs.append((f'Polygon: {names[kind]}', p))
-    for i, kind in enumerate(rs.KIND_IDS):               # Polygon, plate
-        p = rs.poly_params(random.Random(200 + i * 7), kind, 2, 0.4, 0.3, i % 2 == 0, plate=0.05)
-        jobs.append((f'Polygon plate: {names[kind]}', p))
-    for kind, seeds in (('POD', (3, 4, 9)), ('TORSO', (2, 5, 8)), ('DOMECUT', (2, 5)), ('CAPSULE', (7,)),
-                        ('SHELL', (1,))):
-        for sd in seeds:
-            jobs.append((f'Curved: {names[kind]}', rs.curve_params(random.Random(sd), kind, 2, True)))
+    for sym, base in ((False, 300), (True, 400)):        # Polygon plates, bent
+        for i, kind in enumerate(rs.KIND_IDS):
+            p = rs.poly_params(random.Random(base + i * 7), kind, 2, 0.4, 0.3, sym, plate=0.05)
+            styles = '+'.join(sorted({'ridge' if f[1] == 0 else 'lip' if abs(f[0]) < 0.1 else 'wrap'
+                                      for f in p.get('folds', ())})) or 'flat'
+            jobs.append((f'Plate {names[kind]}' + (' sym' if sym else '') + f': {styles}', p))
+    for kind, sd in (('POD', 3), ('TORSO', 5), ('DOMECUT', 2), ('CAPSULE', 7), ('SHELL', 1)):
+        jobs.append((f'Curved: {names[kind]}', rs.curve_params(random.Random(sd), kind, 2, True)))
     for kind, sd in (('POD', 21), ('TORSO', 22), ('DOMECUT', 23), ('CAPSULE', 24), ('SHELL', 25)):
         jobs.append((f'Curved plate: {names[kind]}', rs.curve_params(random.Random(sd), kind, 2, True, 0.05)))
-    p = rs.curve_params(random.Random(31), 'TORSO', 2, True)
-    jobs.append(('Torso: the one you like', p))
-    vr = random.Random(31 * 13)
+    p = rs.poly_params(random.Random(407), 'BLOCK', 2, 0.4, 0.3, True, plate=0.05)
+    jobs.append(('Bent plate: the one you like', p))
+    vr = random.Random(407 * 13)
     for v in range(4):
         jobs.append((f'... variation {v + 1} (Amount 0.4)', rs.vary(p, 0.4, vr)))
     tiles = []
