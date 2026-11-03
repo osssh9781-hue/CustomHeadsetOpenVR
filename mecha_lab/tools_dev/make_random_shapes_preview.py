@@ -34,7 +34,7 @@ def add_wire(ob, rad, mat):
     bpy.context.scene.collection.objects.link(w)
     m = w.modifiers.new('wire', 'WIREFRAME')
     m.thickness = rad * 0.007
-    m.use_even_offset = True
+    m.use_even_offset = False                          # (even thickness spikes at knife-sharp corners)
     m.use_replace = True
     w.material_slots[0].link = 'OBJECT'
     w.material_slots[0].material = mat

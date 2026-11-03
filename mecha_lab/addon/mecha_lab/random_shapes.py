@@ -40,9 +40,13 @@ KINDS = (('MIX', 'Mix', 'Any of the kinds'),
          ('PRISM', 'Prism', 'A prism of 3 to 10 sides'),
          ('WEDGE', 'Wedge', 'A ramp / a slope seen from the side'),
          ('STEP', 'Step', 'L, T, U, stairs or a notch'),
-         ('SHARD', 'Shard', 'Uneven sides, cut at angles'))
+         ('SHARD', 'Shard', 'Uneven sides, cut at angles'),
+         ('JET', 'Jet', 'Aircraft-like, one angle repeated: a chined fuselage / nose (solid), a swept wing or fin with '
+                        'knife edges (plate)'),
+         ('TANK', 'Tank', 'Armour-like, one slope repeated: a wedge turret / a hull with glacis plates (solid), an '
+                          'armour skirt with a bevelled rim (plate)'))
 KIND_IDS = tuple(k[0] for k in KINDS[1:])
-MIX_WEIGHTS = {'BLOCK': 3, 'PRISM': 2, 'WEDGE': 2, 'STEP': 2, 'SHARD': 2}
+MIX_WEIGHTS = {'BLOCK': 3, 'PRISM': 2, 'WEDGE': 2, 'STEP': 2, 'SHARD': 2, 'JET': 2, 'TANK': 2}
 CURVE_KINDS = (('MIX', 'Mix', 'Any of the curved kinds'),
                ('POD', 'Pod', 'A cockpit / a torso: a bulging body of 4 - 8 sides, its face cut flat'),
                ('SHELL', 'Shell', 'A curved armour plate with a thickness: a chest, a shoulder, a shin plate'),
@@ -216,12 +220,12 @@ def _simple(pts):
 
 # --- the solid -------------------------------------------------------------------------------------------------------
 
-def _prism(bm, pts, depth, taper=1.0):
-    """The outline in XY (centred) pushed up along Z by ``depth``; the top ``taper`` times as big (round the centre:
-    each side stays flat)."""
+def _prism(bm, pts, depth, taper=1.0, center=True):
+    """The outline in XY (centred, unless not ``center``) pushed up along Z by ``depth``; the top ``taper`` times as
+    big (round the centre: each side stays flat)."""
     pts = _ccw(pts)
-    cx = sum(p[0] for p in pts) / len(pts)
-    cy = sum(p[1] for p in pts) / len(pts)
+    cx = sum(p[0] for p in pts) / len(pts) if center else 0.0
+    cy = sum(p[1] for p in pts) / len(pts) if center else 0.0
     lo = [bm.verts.new((x - cx, y - cy, -depth / 2)) for x, y in pts]
     hi = [bm.verts.new(((x - cx) * taper, (y - cy) * taper, depth / 2)) for x, y in pts]
     n = len(pts)
@@ -447,6 +451,11 @@ def _plate_trim(rng, sym, frac=(0.06, 0.22)):
 def poly_params(rng, kind='MIX', slices=2, chamfer=0.3, taper=0.3, sym=False, max_sides=10, plate=0.0):
     """Random Polygon parameters; ``plate`` > 0: a plate that thick (of a shape 1 across) - the outline as a thin
     panel facing the front, its rim slanted now and then, its edges trimmed at angles."""
+    if kind not in KIND_IDS:
+        ks = list(MIX_WEIGHTS)
+        kind = rng.choices(ks, weights=[MIX_WEIGHTS[k] for k in ks])[0]
+    if kind in DESIGN_KINDS:
+        return design_params(rng, kind, plate, sym, chamfer)
     if plate > 0:
         return _poly_plate_params(rng, kind, slices, chamfer, sym, max_sides, plate)
     if kind not in KIND_IDS:
@@ -570,8 +579,197 @@ def _split_twisted(bm, tol=1e-5):
     bm.verts.layers.int.remove(lay)
 
 
+# --- Jet / Tank: designed shapes - one angle repeated (0.24.95 user: "좀 더 리얼한 메카에 쓸 수 있도록 예쁘고 정교한 형태,
+#     제트기나 탱크에 가까운 형태로") -------------------------------------------------------------------------------------
+#
+# What makes a jet or a tank look made, not random: few angles, repeated (a stealth jet's edges parallel, a tank's
+# plates all at one slope).  Each shape here has its angle ``a``: every slope, sweep and cut comes from it.
+
+DESIGN_KINDS = {'JET', 'TANK'}
+
+
+def _design_plane(name, a):
+    """The normal of a designed cut (``a`` in radians): its slope from the shape's one angle."""
+    s, c = math.sin(a), math.cos(a)
+    n = {'canopy': (0.0, s, c), 'chin': (0.0, s, -c), 'cheek': (c, s, 0.0), 'cheek_low': (c, s, -1.0),
+         'tail': (0.0, -s, c), 'tail_low': (0.0, -s, -c), 'shoulder': (c, 0.0, s),
+         'glacis_up': (0.0, math.sin(a / 2), math.cos(a / 2)), 'glacis_low': (0.0, s, -c),
+         'rear': (0.0, -s, c), 'sponson': (s, 0.0, c)}[name]
+    v = Vector(n).normalized()
+    return [v.x, v.y, v.z]
+
+
+def design_params(rng, kind, plate=0.0, sym=True, chamfer=0.3):
+    """Random Jet / Tank parameters: ``d`` holds the shape's numbers (its angle ``a`` in degrees) - the cuts by name,
+    their normals from ``a`` when built (a variation keeps them aligned)."""
+    U = rng.uniform
+    a = rng.choice((30.0, 35.0, 40.0, 45.0, 50.0)) + U(-2.0, 2.0)
+    p = {'family': 'POLY', 'kind': kind, 'sym': True, 'chamfer': [rng.randrange(1, 2 ** 31 - 1), 0.0]}
+    if kind == 'JET' and plate <= 0:                     # a chined fuselage / nose
+        d = dict(a=a, form='body', L=1.0, W=U(0.32, 0.6), H=U(0.18, 0.32), hb=U(0.35, 0.55), zc=U(-0.05, 0.25),
+                 bw=U(0.35, 0.7), tw=rng.choice((0.0, U(0.15, 0.45))),
+                 st=[[0.0, U(0.75, 0.95), 0.0], [U(0.25, 0.45), 1.0, 0.0], [U(0.6, 0.75), U(0.65, 0.85), U(-0.1, 0.05)],
+                     [1.0, U(0.12, 0.3), U(-0.25, 0.0)]])
+        names = rng.sample(['canopy', 'chin', 'cheek', 'cheek_low', 'tail'], rng.randint(1, 3))
+        d['cuts'] = [[nm, U(0.06, 0.16)] for nm in names]
+    elif kind == 'JET':                                  # a swept wing / a fin, knife edges
+        style = rng.choice(('delta', 'trapezoid', 'swept', 'cropped'))
+        le, te = {'delta': (U(50, 62), U(-3, 3)), 'trapezoid': (U(35, 45), U(-18, 0)),
+                  'swept': (U(30, 40), U(18, 30)), 'cropped': (U(40, 52), U(0, 10))}[style]
+        d = dict(a=le, form='wing', S=U(0.7, 1.3), le=le, te=te, t=plate, kn=U(0.05, 0.1), style=style)
+        p['sym'] = bool(sym)
+    elif plate <= 0:                                     # a turret or a hull, plates at one slope
+        if rng.random() < 0.55:
+            d = dict(a=a, form='turret', L=1.0, W=U(0.6, 0.85), H=U(0.2, 0.32), fw=U(0.08, 0.3), rc=U(0.0, 0.18),
+                     tp=U(0.82, 0.94), rim=U(0.006, 0.015))
+            names = ['canopy'] + rng.sample(['rear', 'shoulder', 'cheek_low'], rng.randint(0, 2))
+            d['cuts'] = [[nm, U(0.08, 0.18) if nm == 'canopy' else U(0.05, 0.12)] for nm in names]
+        else:
+            d = dict(a=a, form='hull', L=1.0, W=U(0.5, 0.68), H=U(0.18, 0.28), rim=U(0.004, 0.012))
+            d['cuts'] = [['glacis_up', U(0.18, 0.32)], ['glacis_low', U(0.12, 0.22)], ['rear', U(0.05, 0.12)]] + \
+                ([['sponson', U(0.04, 0.09)]] if rng.random() < 0.6 else [])
+    else:                                                # an armour plate / a skirt, bevelled rim
+        d = dict(a=a, form='armor', L=1.0, h=U(0.28, 0.6), t=plate, c1=U(0.1, 0.3), c2=U(0.0, 0.08),
+                 slant=rng.choice((0.0, U(0.05, 0.2))), rim=plate * U(0.4, 0.8))
+        p['sym'] = False
+        if rng.random() < 0.5:                           # (its top edge bent back)
+            p['folds'] = [[0.0, -U(0.55, 0.8), math.radians(U(15, 35))]]
+    p['d'] = d
+    if plate > 0:
+        p['plate'] = round(plate, 6)
+    return _rounded(p)
+
+
+def _jet_body(bm, d):
+    """A chined fuselage along Y (the nose at +Y): a hexagon section (the chine sharp at the sides, a flat bottom,
+    a deck or a ridge on top), scaled at stations - the same shape each time (homothetic), so every facet is flat."""
+    W, H, L = d['W'], d['H'], d['L']
+    hb, ht = d['hb'] * H, (1 - d['hb']) * H
+    zc = -hb + (d['zc'] + 0.5) * 0.5 * H
+    cw, bw, tw = W / 2, d['bw'] * W / 2, d['tw'] * W / 2
+    sec = [(-bw, -hb), (bw, -hb), (cw, zc)] + ([(tw, ht), (-tw, ht)] if tw > 0.01 else [(0.0, ht)]) + [(-cw, zc)]
+    rings = []
+    for yf, s, dz in d['st']:
+        y = -L / 2 + yf * L
+        rings.append([bm.verts.new((x * s, y, z * s + dz * H)) for x, z in sec])
+    _loft(bm, rings)
+
+
+def _wing(bm, d, level):
+    """A swept plate in XY (root at X = 0, the leading edge at +Y), ``t`` thick; its leading / trailing / tip edges
+    cut to knife edges on both faces (each cut through the edge's middle, ``kn`` in on the face)."""
+    Cr, S = 1.0, d['S']
+    tl, tt = math.tan(math.radians(d['le'])), math.tan(math.radians(d['te']))
+    if Cr - S * (tl - tt) < 0.15 * Cr and tl - tt > 1e-6:
+        S = (0.85 * Cr) / (tl - tt)
+    yl, yt = Cr / 2 - S * tl, -Cr / 2 - S * tt
+    pts = [(0.0, -Cr / 2), (S, yt), (S, yl), (0.0, Cr / 2)]
+    t = d['t']
+    _prism(bm, pts, t, 1.0, center=False)
+    if level >= 2:
+        return
+    edges = [((0.0, Cr / 2), (S, yl), d['kn']), ((0.0, -Cr / 2), (S, yt), d['kn'] * 0.6), ((S, yt), (S, yl), d['kn'] * 0.4)]
+    for (x0, y0), (x1, y1), kn in edges:
+        e = Vector((x1 - x0, y1 - y0, 0.0))
+        m = Vector((e.y, -e.x, 0.0)).normalized()
+        if m.dot(Vector((x0 - S / 2, y0, 0.0))) < 0:     # (outward: away from the plate's middle)
+            m = -m
+        e0 = Vector((x0, y0, 0.0))
+        for zs in (1, -1):
+            n = (m * (t / 2) + Vector((0.0, 0.0, zs * kn))).normalized()
+            bm = _cut(bm, [n.x, n.y, n.z, 0.0], 0.3, n.dot(e0))
+    return bm
+
+
+def _tank_solid(bm, d):
+    W, L, H = d['W'], d['L'], d['H']
+    if d['form'] == 'turret':                            # an arrowhead in plan: the wedge at the shape's angle
+        fw, rc = d['fw'] * W / 2, d['rc'] * W / 2
+        wd = min(0.45 * L, (W / 2 - fw) * math.tan(math.radians(90 - d['a'])))
+        pts = [(-W / 2 + rc, -L / 2), (W / 2 - rc, -L / 2), (W / 2, -L / 2 + rc), (W / 2, L / 2 - wd), (fw, L / 2),
+               (-fw, L / 2), (-W / 2, L / 2 - wd), (-W / 2, -L / 2 + rc)]
+        _prism(bm, _clean(pts), H, d['tp'])
+    else:
+        _prism(bm, _rect(W, L), H, 1.0)
+
+
+def _armor(bm, d):
+    """An armour plate / skirt: long, its lower front corner cut at the shape's angle, small 45 degree corners, the
+    bottom edge slanted now and then."""
+    L, h, a = d['L'], d['h'], math.radians(d['a'])
+    c1 = d['c1'] * h
+    c2 = d['c2'] * h
+    sl = d['slant'] * h
+    pts = [(-L / 2 + c1 / math.tan(a), -h / 2), (L / 2 - c2, -h / 2 + sl), (L / 2, -h / 2 + sl + c2), (L / 2, h / 2 - c2),
+           (L / 2 - c2, h / 2), (-L / 2 + c2, h / 2), (-L / 2, h / 2 - c2), (-L / 2, -h / 2 + c1)]
+    _prism(bm, _clean(pts), d['t'], 1.0)
+
+
+def _rim_chamfer(bm, w):
+    """The edges round the top face (+Z) chamfered ``w`` wide - a machined rim."""
+    if w <= 0:
+        return
+    bm.normal_update()
+    top = [f for f in bm.faces if f.normal.z > 0.999]
+    edges = list({e for f in top for e in f.edges})
+    if edges:
+        bmesh.ops.bevel(bm, geom=edges, offset=w, offset_type='OFFSET', segments=1, profile=0.5, affect='EDGES',
+                        clamp_overlap=True)
+
+
+def build_design(p, level=0):
+    """The solid of Jet / Tank parameters ``p``; ``level`` 1: without its rim chamfer, 2: without its cuts."""
+    d = p['d']
+    a = math.radians(d['a'])
+    bm = bmesh.new()
+    form = d['form']
+    if form == 'body':
+        _jet_body(bm, d)
+    elif form == 'wing':
+        bm = _wing(bm, d, level) or bm
+    elif form in {'turret', 'hull'}:
+        _tank_solid(bm, d)
+    else:
+        _armor(bm, d)
+    if level < 2:
+        for name, frac in d.get('cuts', ()):
+            bm = _cut(bm, _design_plane(name, a) + [frac], 0.5)
+    if level < 1:
+        _rim_chamfer(bm, d.get('rim', 0.0))
+    folds = p.get('folds') or ()
+    if folds:
+        for ang, frac, theta in sorted(folds, key=lambda f: -abs(f[1])):
+            _fold(bm, ang, frac, theta)
+        _split_twisted(bm)
+    if p.get('plate'):
+        bmesh.ops.transform(bm, matrix=PLATE_M, verts=list(bm.verts))
+    if p.get('sym'):
+        symmetrize(bm)
+    return bm
+
+
+def _vary_design(q, a, rng):
+    d = q['d']
+    for k, v in list(d.items()):
+        if k in {'a', 'le', 'te'}:
+            d[k] = v + rng.uniform(-4.0, 4.0) * a
+        elif k in {'t', 'L'}:
+            continue
+        elif isinstance(v, float):
+            d[k] = max(0.0, v * (1 + rng.uniform(-0.15, 0.15) * a))
+    if d.get('form') == 'wing':
+        d['a'] = d['le']
+    if 'st' in d:
+        d['st'] = [[st[0], max(0.05, st[1] * (1 + rng.uniform(-0.12, 0.12) * a)), st[2] + rng.uniform(-0.04, 0.04) * a]
+                   for st in d['st']]
+    if 'cuts' in d:
+        d['cuts'] = [[nm, max(0.02, min(0.4, fr + rng.uniform(-0.04, 0.04) * a))] for nm, fr in d['cuts']]
+
+
 def build_poly(p, level=0):
     """The solid of Polygon parameters ``p``; ``level`` 1: without its chamfers, 2: without its slices too."""
+    if p.get('kind') in DESIGN_KINDS and 'd' in p:
+        return build_design(p, level)
     bm = bmesh.new()
     _prism(bm, [tuple(q) for q in p['outline']], p['depth'], p['taper'])
     if p.get('side'):                                    # the outline seen from the side: X across it
@@ -986,6 +1184,12 @@ def vary(p, amount, rng):
                 pl['t0'] = max(0.0, min(0.45, pl['t0'] + rng.uniform(-0.06, 0.06) * a))
                 pl['t1'] = max(0.55, min(1.0, pl['t1'] + rng.uniform(-0.06, 0.06) * a))
         q['cuts'] = [_vary_plane(rng, pl, a, sym) for pl in q.get('cuts', ())]
+        return _rounded(q)
+    if q.get('kind') in DESIGN_KINDS and 'd' in q:
+        _vary_design(q, a, rng)
+        if q.get('folds'):
+            q['folds'] = [[f[0], math.copysign(max(0.15, min(0.92, abs(f[1]) + rng.uniform(-0.08, 0.08) * a)), f[1]),
+                           f[2] * (1 + rng.uniform(-0.25, 0.25) * a)] for f in q['folds']]
         return _rounded(q)
     q['outline'] = _vary_outline(rng, q['outline'], q['kind'], a)
     q['depth'] = _jit(rng, q['depth'], 0.2, a, 0.1, 2.0)
