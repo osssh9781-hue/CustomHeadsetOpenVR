@@ -160,11 +160,21 @@ check('Reroll of a real part: another part of its own vehicle (F-22 kept, the pa
 
 # 0.24.95 thumbnails (user: "썸네일 - 그거 선택하고 변경 가능하게") and the last Summon live
 q0 = rs.params_of(vs[0])
-bpy.ops.mch.random_shape_ref(vehicle='MBT')
-bpy.ops.mch.random_shape_ref(part='TURRET')
-check('A part thumbnail clicked with a real part selected (not the last Summon): it becomes that part, where it was',
-      rs.params_of(vs[0])['kind'] == 'MBT' and rs.params_of(vs[0])['part'] == 'TURRET' and solid(vs[0]),
+loc0 = vs[0].location.copy()
+st.ref_vehicle, st.ref_part = 'MBT', 'TURRET'
+n = rs._reroll(C, [vs[0]], 77, follow_page=True)
+check('A selected real part clicked while placing a thumbnail (the swap): it becomes that part - the page\'s vehicle '
+      'and part - where it was', n == 1 and rs.params_of(vs[0])['kind'] == 'MBT'
+      and rs.params_of(vs[0])['part'] == 'TURRET' and solid(vs[0]) and (vs[0].location - loc0).length < 1e-9,
       (q0['kind'], rs.params_of(vs[0])['part']))
+from mathutils import Vector  # noqa: E402
+pt, nrm = Vector((1.0, 2.0, 0.5)), Vector((0.0, -0.6, 0.8)).normalized()
+rs.place_pose(vs[0], pt, nrm, 0.3)
+C.view_layer.update()
+lowest = min(((vs[0].matrix_world @ v.co) - pt).dot(nrm) for v in vs[0].data.vertices)
+up = (vs[0].matrix_world.to_3x3() @ Vector((0.0, 0.0, 1.0))).normalized()
+check('Placing like an asset: the part stands on the surface point - its up along the surface normal, its lowest '
+      'point on the surface', abs(lowest) < 1e-5 and (up - nrm).length < 1e-5, (round(lowest, 6), tuple(up)))
 clear()
 st.count = 2
 bpy.ops.mch.random_shape_add(family='REF', seed=4)

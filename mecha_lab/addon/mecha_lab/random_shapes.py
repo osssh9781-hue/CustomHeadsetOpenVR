@@ -1750,6 +1750,10 @@ def _live_put(ob, p, segs, size):
     _store(ob, p)
 
 
+def _min_z(me):
+    return min((v.co.z for v in me.vertices), default=0.0)
+
+
 def _live_run():
     sc = bpy.data.scenes.get(LIVE.get('scene', ''))
     if sc is None:
@@ -1758,7 +1762,8 @@ def _live_run():
     vl = sc.view_layers.get(LIVE.get('view_layer', '')) or sc.view_layers[0]
     st = sc.mch_rshape
     vary_mode = LIVE['mode'] == 'vary'
-    want = st.var_count if vary_mode else st.count
+    fixed = bool(LIVE.get('fixed'))                  # (placed on a surface: as many as were put, each where it sits)
+    want = st.var_count if vary_mode else (len(LIVE['objs']) if fixed else st.count)
     entries, spots = list(LIVE['objs']), list(LIVE['spots'])
     obs = [_live_obj(e, vl) for e in entries]
     if not any(obs):
@@ -1804,8 +1809,11 @@ def _live_run():
             _store(ob, p)
             ob.select_set(True, view_layer=vl)
         else:
+            low = _min_z(ob.data)
             _live_put(ob, p, st.segments, size)
-            if not vary_mode and i < len(spots) and (ob.location - Vector(spots[i])).length < 1e-6:
+            if fixed:                                # (its bottom kept on the surface it was put on)
+                ob.location = ob.location + ob.matrix_world.to_3x3() @ Vector((0.0, 0.0, low - _min_z(ob.data)))
+            elif not vary_mode and i < len(spots) and (ob.location - Vector(spots[i])).length < 1e-6:
                 ob.location = new_spots[i]           # (not moved since: to the row's new place)
         spots.append(tuple(ob.location)) if i >= len(spots) else None
         out_entries.append((ob.name, ob.data.name, len(ob.data.vertices)))
@@ -2092,8 +2100,7 @@ class MCH_OT_random_shape_form(bpy.types.Operator):
 
 
 class MCH_OT_random_shape_kind(bpy.types.Operator):
-    """What the next random shapes of this family are (Summon, Reroll) - and the selected shapes of the family become
-    it (the last Summon's change at once)"""
+    """What the next random shapes of this family are (Summon, Reroll; the last Summon's change at once)"""
     bl_idname = 'mch.random_shape_kind'
     bl_label = 'Random Shape Kind'
     bl_options = {'INTERNAL'}
@@ -2107,13 +2114,174 @@ class MCH_OT_random_shape_kind(bpy.types.Operator):
                 st.curve_kind = self.kind
         elif self.kind in {k[0] for k in KINDS}:
             st.kind = self.kind
-        _tile_to_selected(context, self.family)
         return {'FINISHED'}
 
 
+def place_ray(context, coord, skip=None):
+    """(point, normal, object) under region point ``coord``: the first mesh surface the view ray meets (``skip``
+    looked through), else the floor through the 3D cursor (object None)."""
+    from bpy_extras import view3d_utils
+    region, rv3d = context.region, context.region_data
+    origin = view3d_utils.region_2d_to_origin_3d(region, rv3d, coord)
+    direction = view3d_utils.region_2d_to_vector_3d(region, rv3d, coord).normalized()
+    dg = context.evaluated_depsgraph_get()
+    o = origin.copy()
+    for _n in range(8):
+        hit, loc, nrm, _i, obj, _m = context.scene.ray_cast(dg, o, direction)
+        if not hit:
+            break
+        ob = obj.original if obj is not None else None
+        if skip is not None and ob is not None and ob.name == skip:
+            o = loc + direction * 1e-4
+            continue
+        return loc, nrm.normalized(), ob
+    cz = context.scene.cursor.location.z
+    if abs(direction.z) > 1e-6:
+        t = (cz - origin.z) / direction.z
+        if t > 0:
+            return origin + direction * t, Vector((0.0, 0.0, 1.0)), None
+    return context.scene.cursor.location.copy(), Vector((0.0, 0.0, 1.0)), None
+
+
+def place_pose(ob, point, normal, spin=0.0):
+    """``ob`` standing on ``point``: its up (local Z) along ``normal``, turned ``spin`` about it, its lowest point on
+    the surface."""
+    R = normal.to_track_quat('Z', 'Y').to_matrix() @ Matrix.Rotation(spin, 3, 'Z')
+    ob.matrix_world = Matrix.Translation(point - R @ Vector((0.0, 0.0, _min_z(ob.data)))) @ R.to_4x4()
+
+
+class MCH_OT_random_shape_place(bpy.types.Operator):
+    """Place this shape like an asset (0.24.95 user: "썸네일 클릭하고 원하는 메쉬 근처에 클릭하면 거기에 붙는 게 좋겠어 -
+    에셋 라이브러리처럼"): it follows the mouse, sitting on the surface under it; click = put it there (Shift+click:
+    put it and place one more), R = turn it, a click on a selected random shape = that one becomes this kind,
+    Esc / right click = cancel.  The Summon buttons still make shapes at the 3D cursor"""
+    bl_idname = 'mch.random_shape_place'
+    bl_label = 'Place Random Shape'
+    bl_options = {'REGISTER', 'UNDO'}
+    family: bpy.props.EnumProperty(items=FAMILIES, default='POLY')
+    kind: bpy.props.StringProperty(default='')
+    vehicle: bpy.props.StringProperty(default='')
+    part: bpy.props.StringProperty(default='')
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and context.area is not None and context.area.type == 'VIEW_3D' \
+            and context.region is not None and context.region.type == 'WINDOW'
+
+    def _settings_to_page(self, context):
+        st = _settings(context)
+        LIVE.clear()                                 # (what was summoned before stays as it is)
+        if self.family == 'REF':
+            from . import ref_parts
+            if self.vehicle in ref_parts.PART_IDS and st.ref_vehicle != self.vehicle:
+                st.ref_vehicle = self.vehicle
+            if self.part and (self.part == 'ANY' or self.part in ref_parts.PART_IDS.get(st.ref_vehicle, ())):
+                st.ref_part = self.part
+        elif self.family == 'CURVE' and self.kind in {k[0] for k in CURVE_KINDS}:
+            st.curve_kind = self.kind
+        elif self.family == 'POLY' and self.kind in {k[0] for k in KINDS}:
+            st.kind = self.kind
+
+    def _new_preview(self, context):
+        st = _settings(context)
+        self.seed = _new_seed()
+        p = new_params(random.Random(self.seed), self.family, st)
+        me, _kind = new_mesh(p, st.segments, st.size)
+        ob = bpy.data.objects.new(NAME, me)
+        _link_like(context, ob)
+        _store(ob, p)
+        self.ob_name = ob.name
+        return ob
+
+    def invoke(self, context, event):
+        self._settings_to_page(context)
+        self.spin = 0.0
+        self.placed = []
+        self.last = None
+        ob = self._new_preview(context)
+        self._move(context, event, ob)
+        context.window_manager.modal_handler_add(self)
+        try:
+            context.workspace.status_text_set('Place: click on a mesh = put it there  ·  Shift+click = one more  ·  '
+                                              'R = turn  ·  click a selected shape = it becomes this  ·  Esc = cancel')
+        except (AttributeError, RuntimeError):
+            pass
+        return {'RUNNING_MODAL'}
+
+    def _move(self, context, event, ob):
+        point, normal, hit = place_ray(context, (event.mouse_region_x, event.mouse_region_y), self.ob_name)
+        self.last = (point, normal, hit)
+        place_pose(ob, point, normal, self.spin)
+        context.area.tag_redraw()
+
+    def _end(self, context, keep):
+        try:
+            context.workspace.status_text_set(None)
+        except (AttributeError, RuntimeError):
+            pass
+        ob = bpy.data.objects.get(self.ob_name or '')
+        if not keep and ob is not None:
+            me = ob.data
+            bpy.data.objects.remove(ob)
+            if me is not None and me.users == 0:
+                bpy.data.meshes.remove(me)
+        if self.placed:
+            obs = [o for o in (bpy.data.objects.get(n) for n in self.placed) if o is not None]
+            _select_only(context, obs[-1:])
+            if obs:                                  # (the last one put follows the page live, where it sits)
+                _live_mark(context, 'summon', obs[-1:], family=self.family, seed=self.seeds[-1],
+                           base=obs[-1].location.copy(), fixed=True)
+        context.area.tag_redraw()
+
+    def modal(self, context, event):
+        ob = bpy.data.objects.get(self.ob_name or '')
+        if ob is None:
+            self._end(context, False)
+            return {'CANCELLED'}
+        if event.type in {'MIDDLEMOUSE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'TRACKPADPAN', 'TRACKPADZOOM',
+                          'NDOF_MOTION'} or event.type.startswith('NUMPAD'):
+            return {'PASS_THROUGH'}                  # (the view still moves while placing)
+        if event.type == 'MOUSEMOVE':
+            self._move(context, event, ob)
+            return {'RUNNING_MODAL'}
+        if event.type == 'R' and event.value == 'PRESS':
+            self.spin += math.radians(15.0)
+            place_pose(ob, self.last[0], self.last[1], self.spin)
+            context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+        if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
+            self._end(context, False)
+            return {'FINISHED'} if self.placed else {'CANCELLED'}
+        if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+            try:
+                from . import ui_bars
+                on_ui = ui_bars.hit(context, event.mouse_region_x, event.mouse_region_y)[0]
+            except (ImportError, AttributeError, KeyError, TypeError):
+                on_ui = False
+            if on_ui:                                # (a click on the panel: placing ends, the click goes on)
+                self._end(context, False)
+                return {'CANCELLED', 'PASS_THROUGH'} if not self.placed else {'FINISHED', 'PASS_THROUGH'}
+            hit = self.last[2] if self.last else None
+            if hit is not None and is_shape(hit) and hit.select_get() and \
+                    (params_of(hit) or {}).get('family') == self.family:
+                self._end(context, False)            # (a selected shape clicked: it becomes this kind / part)
+                _reroll(context, [hit], self.seed, follow_page=True)
+                _select_only(context, [hit])
+                return {'FINISHED'}
+            self.placed.append(ob.name)
+            self.seeds = getattr(self, 'seeds', []) + [self.seed]
+            if event.shift:                          # (put it - and one more to place)
+                ob = self._new_preview(context)
+                self._move(context, event, ob)
+                return {'RUNNING_MODAL'}
+            self.ob_name = None
+            self._end(context, True)
+            return {'FINISHED'}
+        return {'RUNNING_MODAL'} if event.type in {'LEFTMOUSE', 'R', 'ESC', 'RIGHTMOUSE'} else {'PASS_THROUGH'}
+
+
 class MCH_OT_random_shape_ref(bpy.types.Operator):
-    """Which real vehicle / part the next Summon Part makes - and the selected real parts become it (the last
-    Summon's change at once)"""
+    """Which real vehicle / part the next Summon Part makes (the last Summon's change at once)"""
     bl_idname = 'mch.random_shape_ref'
     bl_label = 'Real Part'
     bl_options = {'INTERNAL'}
@@ -2127,7 +2295,6 @@ class MCH_OT_random_shape_ref(bpy.types.Operator):
             st.ref_vehicle = self.vehicle
         if self.part and (self.part == 'ANY' or self.part in ref_parts.PART_IDS.get(st.ref_vehicle, ())):
             st.ref_part = self.part
-        _tile_to_selected(context, 'REF')
         return {'FINISHED'}
 
 
@@ -2140,8 +2307,8 @@ def page(context, x, width, k):
     b = sp.Builder('SHAPES', x, width, k)
     st = _settings(context)
     obj_mode = context.mode == 'OBJECT'
-    b.note(('note', 'Summon: a new base shape at the 3D cursor - a thumbnail picks its kind, the selected shapes '
-            'become it; the last Summon follows every setting live' if obj_mode else
+    b.note(('note', 'A thumbnail: place it like an asset - click on a mesh to put it there (a selected shape '
+            'clicked becomes it); Summon: at the 3D cursor; the last one follows every setting live' if obj_mode else
             'Object Mode only (leave Edit / Sculpt first)', False, None, None, None, True), x, width)
     mu.row(b, x, width, [mu.number(st, 'size', 'Size'), mu.number(st, 'count', 'Count')])
     mu.row(b, x, width, [mu._cell('tbtn', label, ('op', 'mch.random_shape_form', {'form': ident}), on=st.form == ident)
@@ -2152,7 +2319,7 @@ def page(context, x, width, k):
     def kinds(sx, sw, family, items, cur):         # (0.24.95 thumbnails: a click = that kind, the selected change)
         tag = 'poly' if family == 'POLY' else 'curve'
         mu.grid(b, sx, sw, [(label, shape_icon(f'{tag}_{ident}'), cur == ident,
-                             ('op', 'mch.random_shape_kind', {'family': family, 'kind': ident}), None, None)
+                             ('op', 'mch.random_shape_place', {'family': family, 'kind': ident}), None, None)
                             for ident, label, _d in items])
 
     def poly(sx, sw):
@@ -2181,7 +2348,8 @@ def page(context, x, width, k):
         for i in range(0, len(vcells), 3):               # (Lambo 911 Jet | Tank Heavy Mech Car Bot)
             mu.row(b, sx, sw, vcells[i:i + 3])
         mu.grid(b, sx, sw, [(label, shape_icon(f'ref_{st.ref_vehicle}_{ident}'), st.ref_part == ident,
-                             ('op', 'mch.random_shape_ref', {'part': ident}), None, None)
+                             ('op', 'mch.random_shape_place', {'family': 'REF', 'vehicle': st.ref_vehicle,
+                                                               'part': ident}), None, None)
                             for ident, label, _d in ref_parts.PART_ITEMS[st.ref_vehicle]])
         mu.row(b, sx, sw, [mu.number(st, 'plate_thk', 'Panel Thickness')])
         mu.row(b, sx, sw, [mu.number(st, 'segments', 'Smooth')])
@@ -2264,7 +2432,8 @@ class MCH_PT_random_shapes(bpy.types.Panel):
 
 
 CLASSES = (MCH_PG_RandomShape, MCH_OT_random_shape_add, MCH_OT_random_shape_vary, MCH_OT_random_shape_reroll,
-           MCH_OT_random_shape_form, MCH_OT_random_shape_kind, MCH_OT_random_shape_ref, MCH_PT_random_shapes)
+           MCH_OT_random_shape_form, MCH_OT_random_shape_kind, MCH_OT_random_shape_ref, MCH_OT_random_shape_place,
+           MCH_PT_random_shapes)
 
 
 def register():

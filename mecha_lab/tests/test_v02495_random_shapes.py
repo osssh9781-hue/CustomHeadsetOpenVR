@@ -173,8 +173,8 @@ check('The Shapes page: Solid | Plate, Polygon (Mix Block Prism Wedge Step Shard
       and vary_btn is not None and vary_btn.enabled and any(n.startswith('Reroll Selected') for n in labels),
       (labels, heads))
 pod_btn = next(i for i in its if i.kind == 'mtile' and i.label == 'Pod')
-check('... the kinds as thumbnails (each its picture), the one in use lit (blue)', pod_btn.on
-      and pod_btn.action[:2] == ('op', 'mch.random_shape_kind') and pod_btn.icon.startswith('file:'))
+check('... the kinds as thumbnails (each its picture), the one in use lit (blue); a click places it like an asset',
+      pod_btn.on and pod_btn.action[:2] == ('op', 'mch.random_shape_place') and pod_btn.icon.startswith('file:'))
 r = bpy.ops.mch.side_page(page='SHAPES')
 tabs = [i for i in sp.items(C, 1200, 900, 1.0) if i.kind == 'ptab']
 check('... its tab (Shapes) beside Mech / Creature / Decals / HDRI, lit when shown',
