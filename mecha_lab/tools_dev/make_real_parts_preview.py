@@ -30,14 +30,18 @@ PART_VIEW = {('LAMBO', 'DOOR'): 'SIDE', ('LAMBO', 'FENDER'): 'SIDE', ('LAMBO', '
              ('HMECH', 'SHOULDER'): 'SIDE', ('HMECH', 'HIP'): 'SIDE', ('HMECH', 'VENT'): 'FRONT',
              ('CARBOT', 'SHOULDER'): 'SIDE', ('CARBOT', 'DOOR_WING'): 'SIDE', ('CARBOT', 'WHEEL'): 'SIDE',
              ('CARBOT', 'SHIN'): 'SIDE', ('CARBOT', 'FOREARM'): 'SIDE'}
-PART_VIEW.update({('ARMORED', k): 'SIDE' for k in ('H_CREST', 'C_HATCH', 'A_UPPER', 'A_FORE_L', 'A_FORE_H',
-                                                   'A_SHOULDER', 'A_ELBOW', 'L_THIGH', 'L_KNEE', 'L_SHIN', 'L_FOOT',
-                                                   'L_ANKLE', 'R_THIGH', 'R_SHIN', 'R_FOOT',
+PART_VIEW.update({('ARMORED', k): 'SIDE' for k in ('H_CREST', 'C_HATCH', 'A_FORE_H', 'A_SHOULDER', 'A_ELBOW',
+                                                   'L_KNEE', 'L_SHIN', 'L_FOOT', 'L_ANKLE', 'R_THIGH', 'R_SHIN',
                                                    'Q_LEG', 'T_TREAD', 'W_RIFLE', 'W_SHOTGUN', 'W_GATLING',
                                                    'W_BAZOOKA', 'W_GRENADE', 'W_BLADE', 'W_PILE', 'W_SNIPER',
-                                                   'U_CANNON')})
+                                                   'U_CANNON', 'A_UPPER_S', 'A_FORE_B', 'A_GAUNT', 'A_PAULD_S',
+                                                   'L_THIGH_P', 'L_KNEE_S', 'L_SHIN_B', 'L_FOOT_S', 'R_THIGH_P',
+                                                   'R_SHIN_B', 'R_TALON', 'Q_LEG_S', 'A_PAULD_B', 'A_FORE_S',
+                                                   'L_THIGH_H', 'L_SHIN_H', 'L_FOOT_C', 'R_SHIN_L')})
 PART_VIEW.update({('ARMORED', k): 'REAR' for k in ('B_BACK', 'B_NOZZLE', 'B_SIDE', 'B_OVERED')})
 PART_VIEW.update({('ARMORED', 'B_WING'): 'TOP'})
+PART_VIEW.update({('JOINT', k): 'SIDE' for k in ('J_TONGUE', 'J_KNUCKLE', 'J_LINK', 'J_ELBOW_H', 'J_KNEE_H',
+                                                 'J_BRACKET')})
 
 
 def frame(cam, lab, ob, text, view):

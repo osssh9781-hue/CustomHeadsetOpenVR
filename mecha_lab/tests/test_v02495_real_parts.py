@@ -121,25 +121,44 @@ check('Tank side skirt: long and low (the M1\'s 7.6 x 0.9 m), its top flange ben
 # 0.24.95 (user: "아머드 코어 스타일 에셋도 50 개 만들어 줘")
 ac = rp.PART_IDS['ARMORED']
 groups = {k[0] for k in ac}
-check('AC Style: 50 parts - heads, cores, arms, legs, reverse joint, quad / tank, boosters, weapons, back units, '
-      'armour - each with its thumbnail', len(ac) == 50 and groups == {'H', 'C', 'A', 'L', 'R', 'Q', 'T', 'B', 'W', 'U', 'M'}
+check('AC Style: 70 parts - heads, cores, arms, legs, reverse joint, quad / tank, boosters, weapons, back units, '
+      'armour (50), the first limbs kept + their silhouette set + 7 more (user: "아까 만든 것도 버리지 말고 넣어 주고 '
+      '새로 또 만들어 줘") - each with its thumbnail',
+      len(ac) == 70 and groups == {'H', 'C', 'A', 'L', 'R', 'Q', 'T', 'B', 'W', 'U', 'M'}
+      and {'A_UPPER', 'L_SHIN', 'L_SHIN_B', 'A_PAULD_S', 'A_HAND_O', 'L_FOOT_C'} <= set(ac)
       and all(rs.shape_icon(f'ref_ARMORED_{k}').startswith('file:') for k in ac), (len(ac), sorted(groups)))
 mp = made[('ARMORED', 'W_MISSILE')]
 check('... the missile pod: six tubes pushed into its front (the grid of recesses), still one clean solid',
       solid(mp) and len(mp.data.polygons) >= 5 + 6 * 5, len(mp.data.polygons))
 # (user: "아머드 코어는 이런 실루엣이야 팔다리 쪽 봐 봐")
-sh = co(made[('ARMORED', 'L_SHIN')])
+sh = co(made[('ARMORED', 'L_SHIN_B')])
 ext = sh.max(0) - sh.min(0)
 top, back = sh[sh[:, 2].argmax()], sh[sh[:, 1].argmin()]
 check('... the AC shin: long and slim (3x as tall as wide), its highest point the knee jutting in front, its '
       'rearmost the calf blade up its back half', ext[2] >= 3.0 * ext[0] and top[1] > sh[:, 1].mean()
       and back[2] > sh[:, 2].min() + 0.4 * ext[2], [round(float(x), 3) for x in (*ext, top[1], back[2])])
-pa = co(made[('ARMORED', 'A_SHOULDER')])
-th = made[('ARMORED', 'L_THIGH')]
+pa = co(made[('ARMORED', 'A_PAULD_S')])
+th = made[('ARMORED', 'L_THIGH_P')]
 under = [f for f in th.data.polygons if f.normal.x < -0.9 and f.center.x > 0.0]
 check('... the pauldron sweeps up and back (its highest point behind its middle); the thigh\'s outer armour plate '
       'stands over it on a neck (the plate\'s rim faces back toward the leg: a shadow under it)',
       pa[pa[:, 2].argmax()][1] < (pa[:, 1].max() + pa[:, 1].min()) / 2 and len(under) >= 3, len(under))
+
+# 0.24.95 (user: "메카닉 관절 부분도 한 30 개 만들어 줘")
+jt = rp.PART_IDS['JOINT']
+turned = [k for k in jt if ('JOINT', k) in rp.CURVED]
+check('Joints: 30 mechanical joints (16 turned - drums, ball joints, pistons, rams, rollers ...; 14 angular - forks, '
+      'hinges, links, housings, brackets, gear ...), each with its thumbnail, each a clean solid (above)',
+      len(jt) == 30 and len(turned) == 16 and all(rs.shape_icon(f'ref_JOINT_{k}').startswith('file:') for k in jt)
+      and not [b for b in bad if b[0] == 'JOINT'], (len(jt), len(turned)))
+cl = made[('JOINT', 'J_CLEVIS')]
+cv = co(cl)
+mid = [f.center.z for f in cl.data.polygons if abs(f.center.x) < 0.05 * longest(cl)]
+floor = [f for f in cl.data.polygons if abs(f.center.x) < 0.05 * longest(cl) and f.normal.z > 0.99]
+check('... the clevis fork: two lugs with the gap between them open to the top (a floor between them, nothing at '
+      'its middle up high), the left lug the mirror of the right',
+      mirrored(cl) and floor and max(mid) < cv[:, 2].min() + 0.5 * np.ptp(cv[:, 2]),
+      round(float(max(mid) - cv[:, 2].min()), 3) if mid else None)
 
 # the same seed / another seed
 clear()

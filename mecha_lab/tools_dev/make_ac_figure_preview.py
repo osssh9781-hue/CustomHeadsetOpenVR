@@ -1,6 +1,6 @@
 """0.24.95 AC Style parts put together as one standing machine (user: "아머드 코어는 이런 실루엣이야
-팔다리 쪽 봐 봐"): feet, ankles, shins (knee point, calf blade), thighs, hip skirts, a core, a head,
-swept pauldrons, upper arms, elbow joints, gauntlets, fists - each part as a summon makes it, the left
+팔다리 쪽 봐 봐"): feet, ankles, shins (knee point, calf blade), knee drums, thighs, hip skirts, a core, a head,
+swept pauldrons, upper arms, elbow joints, gauntlets, open hands - each part as a summon makes it, the left
 side the right one mirrored - seen from the front, the side and the back, their real edges drawn on
 them (Cycles, the Mech Shader's lookdev HDRI).
 
@@ -23,18 +23,19 @@ import mecha_lab  # noqa: E402
 # (part, size (its longest side), the point of its box (0 - 1 each axis) put at ``at``, tilt round X in degrees);
 # x > 0: a pair (the left one mirrored)
 LAYOUT = [
-    ('L_FOOT', 0.95, (0.5, 0.42, 0.0), (0.4, 0.06, 0.0), 0),
+    ('L_FOOT_S', 0.95, (0.5, 0.42, 0.0), (0.4, 0.06, 0.0), 0),
     ('L_ANKLE', 0.2, (0.5, 0.5, 0.5), (0.4, 0.0, 0.22), 0),
-    ('L_SHIN', 1.6, (0.5, 0.5, 0.0), (0.4, 0.0, 0.17), -10),
-    ('L_THIGH', 1.15, (0.5, 0.5, 0.0), (0.36, 0.24, 1.7), 12),
-    ('L_SKIRT', 0.55, (0.5, 0.5, 0.5), (0.47, 0.0, 2.72), 0),
+    ('L_SHIN_B', 1.6, (0.5, 0.5, 0.0), (0.4, 0.0, 0.17), -10),
+    ('J_DRUM', 0.3, (0.5, 0.5, 0.5), (0.38, 0.22, 1.74), 0),
+    ('L_THIGH_P', 1.15, (0.5, 0.5, 0.0), (0.36, 0.24, 1.7), 12),
+    ('L_SKIRT_P', 0.55, (0.5, 0.5, 0.5), (0.47, 0.0, 2.72), 0),
     ('C_MID', 1.1, (0.5, 0.5, 0.0), (0.0, 0.0, 2.86), 0),
     ('H_SENSOR', 0.34, (0.5, 0.5, 0.0), (0.0, 0.08, 3.86), 0),
-    ('A_SHOULDER', 0.88, (0.0, 0.55, 0.0), (0.56, -0.02, 3.52), 0),
-    ('A_UPPER', 0.82, (0.5, 0.5, 1.0), (0.88, -0.02, 3.6), 0),
+    ('A_PAULD_S', 0.88, (0.0, 0.55, 0.0), (0.56, -0.02, 3.52), 0),
+    ('A_UPPER_S', 0.82, (0.5, 0.5, 1.0), (0.88, -0.02, 3.6), 0),
     ('A_ELBOW', 0.22, (0.5, 0.5, 0.5), (0.88, -0.02, 2.76), 0),
-    ('A_FORE_H', 1.0, (0.5, 0.5, 1.0), (0.9, 0.02, 2.84), -6),
-    ('A_HAND', 0.26, (0.5, 0.5, 1.0), (0.9, 0.12, 1.86), 0),
+    ('A_GAUNT', 1.0, (0.5, 0.5, 1.0), (0.9, 0.02, 2.84), -6),
+    ('A_HAND_O', 0.3, (0.5, 0.5, 1.0), (0.9, 0.12, 1.86), 0),
 ]
 VIEWS = (('front', (0.75, 1.0, 0.22)), ('side', (1.0, 0.1, 0.1)), ('back', (-0.7, -1.0, 0.3)))
 
@@ -51,10 +52,10 @@ def main():
     bpy.data.objects.remove(lab)
     body = base.flat_material('body', (0.42, 0.46, 0.52))
     dark = base.flat_material('edges', (0.02, 0.02, 0.025), 0.8)
-    ids = rp.PART_IDS['ARMORED']
     obs = []
     for name, size, anchor, at, tilt in LAYOUT:
-        p = rp.ref_params(random.Random(1000 + ids.index(name)), 'ARMORED', name, 0.05)
+        veh = 'JOINT' if name.startswith('J_') else 'ARMORED'      # (a knee drum from the Joints)
+        p = rp.ref_params(random.Random(1000 + rp.PART_IDS[veh].index(name)), veh, name, 0.05)
         for side in ((1, -1) if at[0] else (1,)):
             me, _k = rs.new_mesh(p, 32, size)
             me.materials.append(body)

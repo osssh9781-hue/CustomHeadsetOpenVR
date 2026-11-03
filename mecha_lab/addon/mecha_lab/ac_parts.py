@@ -100,19 +100,67 @@ PARTS = (
     ('C_BACK', 'Core Back Plate', 'A back plate wrapping round, its sides bent', False,
      [('plate', H([(0, 0.8), (0.3, 0.78), (0.42, 0.5), (0.38, 0.1), (0.2, 0), (0, 0)]),
        [(PI2, 0.6, math.radians(25))]), ('mirror',)]),
-    # ---- arms (hanging: the shoulder / elbow end up; long, slim, tapering - an outer armour plate laid on)
-    ('A_UPPER', 'Upper Arm', 'A slim upper arm, a shoulder cap jutting back, an outer plate laid on', False,
+    # ---- arms
+    ('A_UPPER', 'Upper Arm', 'A chamfered square upper arm, its shoulder end cut, a panel', False,
+     [('loftz', _SQ, [(0.0, 1.0), (0.8, 0.85)]), ('cut', (0.6, 0, 0.8), 0.1), ('pocket', (1, 0, 0), 0.25, 0.03)]),
+    ('A_FORE_L', 'Light Forearm', 'A slim hexagonal forearm, a panel on top', False,
+     [('loft', _ring(6, 0.14, 0.12), [(-0.45, 1.0), (0.45, 0.75)]), ('cut', (0, 0.6, 0.8), 0.08),
+      ('pocket', (0, 0, 1), 0.3, 0.03)]),
+    ('A_FORE_H', 'Heavy Forearm', 'A heavy forearm with an armour hump', False,
+     [('side', [(0.45, 0.05), (-0.45, 0), (-0.45, 0.3), (-0.1, 0.38), (0.35, 0.3), (0.48, 0.18)], 0.36),
+      ('cutpair', (0.7, 0, 0.7), 0.12), ('cut', (0, 0.8, -0.6), 0.08), ('pocket', (0, 0, 1), 0.25, 0.03)]),
+    ('A_SHOULDER', 'Angular Pauldron', 'An angular shoulder block, its outer top cut', False,
+     [('side', [(0.35, 0), (0.38, 0.22), (0.2, 0.36), (-0.2, 0.36), (-0.38, 0.2), (-0.36, 0)], 0.4),
+      ('cut', (0.7, 0, 0.7), 0.2), ('cut', (0.7, 0.5, 0.5), 0.12)]),
+    ('A_ELBOW', 'Elbow Joint', 'A joint drum turned round X', True,
+     [('lathe', [(0, 0.15), (0.13, 0.15), (0.17, 0.11), (0.17, -0.11), (0.13, -0.15), (0, -0.15)], 'X')]),
+    ('A_HAND', 'Fist Block', 'A fist: a block, its knuckles grooved', False,
+     [('front', H([(0, 0.22), (0.14, 0.22), (0.16, 0.1), (0.12, 0), (0, 0)]), 0.24), ('cut', (0, 0.7, 0.7), 0.15),
+      ('grid', (0, 1, 0), 4, 1, 0.15, 0.02)]),
+    # ---- legs (biped)
+    ('L_THIGH', 'Thigh', 'A tapered hexagonal thigh, the knee and hip cut', False,
+     [('loftz', _ring(6, 0.18, 0.15), [(0.0, 0.75), (1.0, 1.0)]), ('cut', (0, 0.75, -0.66), 0.14),
+      ('cut', (0.6, 0, 0.8), 0.12), ('pocket', (0, 1, 0), 0.2, 0.03)]),
+    ('L_KNEE', 'Knee Guard', 'A knee guard: a pointed block', False,
+     [('side', [(0.12, 0), (0.18, 0.2), (0.1, 0.42), (-0.05, 0.45), (-0.1, 0.2), (-0.08, 0)], 0.3),
+      ('cutpair', (0.7, 0.7, 0), 0.12), ('cut', (0, 0.6, 0.8), 0.08)]),
+    ('L_SHIN', 'Shin', 'A long angular shin, a panel down its front', False,
+     [('side', [(0.16, 0), (0.2, 0.6), (0.12, 1.0), (-0.14, 1.0), (-0.2, 0.5), (-0.12, 0)], 0.3),
+      ('cutpair', (0.7, 0.6, 0), 0.1), ('pocket', (0, 1, 0), 0.2, 0.03)]),
+    ('L_FOOT', 'Foot', 'A biped foot: the toe sloped, its corners cut', False,
+     [('side', [(-0.4, 0), (0.55, 0), (0.6, 0.1), (0.2, 0.25), (-0.25, 0.3), (-0.45, 0.18)], 0.38),
+      ('cutpair', (0.6, 0.8, 0), 0.12), ('cutpair', (0.6, -0.8, 0), 0.06)]),
+    ('L_SKIRT', 'Hip Skirt', 'A hip skirt plate wrapping round', False,
+     [('plate', H([(0, 0.45), (0.3, 0.42), (0.35, 0.05), (0, 0)]), [(PI2, 0.65, math.radians(28))]), ('mirror',)]),
+    ('L_ANKLE', 'Ankle Joint', 'A joint drum with a hub', True,
+     [('lathe', [(0, 0.12), (0.08, 0.12), (0.1, 0.09), (0.16, 0.07), (0.16, -0.07), (0.1, -0.09), (0.08, -0.12),
+                 (0, -0.12)], 'X')]),
+    # ---- reverse joint
+    ('R_THIGH', 'RJ Thigh', 'A reverse-joint thigh: a strut leaning forward', False,
+     [('side', [(0.1, 0), (0.3, 0.05), (0.05, 0.9), (-0.15, 0.85)], 0.3), ('cutpair', (0.7, 0, 0.7), 0.1)]),
+    ('R_SHIN', 'RJ Shin', 'A reverse-joint shin: a strut leaning back', False,
+     [('side', [(-0.1, 0), (0.1, 0), (-0.25, 0.95), (-0.45, 0.9)], 0.26), ('cutpair', (0.7, 0.7, 0), 0.1)]),
+    ('R_FOOT', 'RJ Foot', 'A reverse-joint foot: a long pointed toe', False,
+     [('plan', H([(0, 0.5), (0.08, 0.5), (0.22, 0.2), (0.2, -0.2), (0, -0.25)]), 0.12, 0.85),
+      ('cut', (0, 0.6, 0.8), 0.2)]),
+    # ---- quad / tank
+    ('Q_LEG', 'Quad Leg', 'A tetrapod leg strut', False,
+     [('side', [(0, 0), (0.12, 0.05), (0.6, 0.55), (0.55, 0.65), (-0.05, 0.15)], 0.22),
+      ('cutpair', (0.7, 0, 0.7), 0.12)]),
+    # ---- the silhouette set (user: "아머드 코어는 이런 실루엣이야 팔다리 쪽 봐 봐"): long, slim, tapering limbs, plates
+    #      over a frame - arms hanging (shoulder / elbow end up), legs standing (hip / knee end up)
+    ('A_UPPER_S', 'Armored Upper Arm', 'A slim upper arm, a shoulder cap jutting back, an outer plate laid on', False,
      [('xs', [(0.07, 0.0), (-0.07, 0.0), (-0.09, 0.6), (-0.17, 0.8), (-0.09, 0.95), (0.09, 0.95), (0.13, 0.76),
               (0.09, 0.58)],
        [(-0.08, 0.0), (0.08, 0.0), (0.11, 0.6), (0.1, 0.95), (-0.09, 0.95), (-0.1, 0.6)], None),
       ('armor', (1, 0, 0), (1, 0.5, 0.62), 0.6, 0.025, 1.08, 0.03), ('slot', (0, 1, 0), None, (0, 0, 1), 0.3, 0.05,
        0.015)]),
-    ('A_FORE_L', 'Blade Forearm', 'A slim forearm tapering to the wrist, a blade swept back off its outside', False,
+    ('A_FORE_B', 'Blade Forearm', 'A slim forearm tapering to the wrist, a blade swept back off its outside', False,
      [('xs', [(0.05, 0.0), (-0.05, 0.0), (-0.1, 0.65), (-0.2, 1.02), (0.06, 0.98), (0.11, 0.62)],
        [(-0.06, 0.0), (0.06, 0.0), (0.11, 0.65), (0.1, 0.98), (-0.09, 0.98), (-0.1, 0.65)], None),
       ('spike', (1, 0, 0), (1, 0.4, 0.72), 0.16, 0.22, (0.0, -0.1, 0.12)),
       ('slot', (0, 1, 0), None, (0, 0, 1), 0.55, 0.05, 0.012)]),
-    ('A_FORE_H', 'Heavy Gauntlet', 'A long boxy forearm: an elbow spur up the back, a narrow wrist, a gauntlet plate',
+    ('A_GAUNT', 'Heavy Gauntlet', 'A long boxy forearm: an elbow spur up the back, a narrow wrist, a gauntlet plate',
      False,
      [('xs', [(0.06, 0.0), (-0.05, 0.0), (-0.16, 0.45), (-0.17, 0.84), (-0.34, 1.12), (-0.08, 0.98), (0.11, 0.98),
               (0.19, 0.78), (0.16, 0.36)],
@@ -120,30 +168,24 @@ PARTS = (
       ('armor', (1, 0, 0), (1, 0.5, 0.6), 0.6, 0.03, 1.1, 0.035), ('slot', (0, 1, 0), None, (0, 0, 1), 0.66, 0.05,
        0.015),
       ('grid', (0, -1, 0), 1, 3, 0.3, 0.012)]),
-    ('A_SHOULDER', 'Swept Pauldron', 'A big angular shoulder sweeping up and back to a blade point, an outer plate',
+    ('A_PAULD_S', 'Swept Pauldron', 'A big angular shoulder sweeping up and back to a blade point, an outer plate',
      False,
      [('xs', [(0.3, 0.0), (0.36, 0.2), (0.22, 0.36), (-0.05, 0.46), (-0.5, 0.72), (-0.38, 0.44), (-0.26, 0.05)],
        [(-0.16, 0.0), (0.24, 0.0), (0.3, 0.18), (0.08, 0.72), (-0.02, 0.72), (-0.16, 0.42)], None),
       ('armor', (1, 0, 0.3), (1, 0.55, 0.35), 0.6, 0.03, 1.1, 0.035),
       ('slot', (0, 0.3, 1), None, (0, 1, 0), 0.6, 0.05, 0.02)]),
-    ('A_ELBOW', 'Elbow Joint', 'A joint drum turned round X', True,
-     [('lathe', [(0, 0.15), (0.13, 0.15), (0.17, 0.11), (0.17, -0.11), (0.13, -0.15), (0, -0.15)], 'X')]),
-    ('A_HAND', 'Fist Block', 'A fist: a block, its knuckles grooved', False,
-     [('front', H([(0, 0.22), (0.14, 0.22), (0.16, 0.1), (0.12, 0), (0, 0)]), 0.24), ('cut', (0, 0.7, 0.7), 0.15),
-      ('grid', (0, 1, 0), 4, 1, 0.15, 0.02)]),
-    # ---- legs (biped; standing: the hip / knee end up)
-    ('L_THIGH', 'Thigh', 'A thigh: hip wide, its front plate coming down to a point over the knee, an outer plate',
+    ('L_THIGH_P', 'Plated Thigh', 'A thigh: hip wide, its front plate coming down to a point over the knee, an outer plate',
      False,
      [('xs', [(-0.12, 1.0), (0.12, 1.0), (0.16, 0.8), (0.22, 0.35), (0.38, 0.0), (0.14, 0.06), (-0.08, 0.0),
               (-0.16, 0.3), (-0.15, 0.8)],
        [(-0.1, 0.0), (0.1, 0.0), (0.17, 0.72), (0.16, 1.0), (-0.16, 1.0), (-0.17, 0.72)], None),
       ('armor', (1, 0, 0), (1, 0.45, 0.6), 0.6, 0.025, 1.1, 0.03), ('slot', (0, 1, 0), None, (0, 0, 1), 0.62, 0.05,
        0.015)]),
-    ('L_KNEE', 'Knee Spike', 'A knee guard jutting forward and up to a point', False,
+    ('L_KNEE_S', 'Knee Spike', 'A knee guard jutting forward and up to a point', False,
      [('xs', [(-0.08, 0.0), (0.1, 0.0), (0.24, 0.16), (0.4, 0.5), (0.14, 0.34), (-0.06, 0.3)],
        [(-0.14, 0.0), (0.14, 0.0), (0.12, 0.25), (0.02, 0.5), (-0.02, 0.5), (-0.12, 0.25)], None),
       ('slot', (0, 1, 0.3), None, (0, 0, 1), 0.4, 0.08, 0.015)]),
-    ('L_SHIN', 'Shin', 'A long shin narrowing to the ankle: a knee point jutting up at its top, a calf blade swept '
+    ('L_SHIN_B', 'Bladed Shin', 'A long shin narrowing to the ankle: a knee point jutting up at its top, a calf blade swept '
      'back, a shin plate', False,
      [('xs', [(0.05, 0.0), (0.1, 0.35), (0.17, 0.75), (0.3, 1.08), (0.12, 0.98), (-0.08, 1.0), (-0.2, 0.8),
               (-0.16, 0.45), (-0.05, 0.0)],
@@ -153,41 +195,78 @@ PARTS = (
       ('armor', (0, 1, 0), (0.5, 1, 0.45), 0.6, 0.025, 1.08, 0.03), ('slot', (0, 1, 0), None, (0, 0, 1), 0.72, 0.04,
        0.015),
       ('slot', (1, 0, 0), None, (0, 0, 1), 0.45, 0.04, 0.012)]),
-    ('L_FOOT', 'Foot', 'A long low foot: a pointed toe, a heel spur', False,
+    ('L_FOOT_S', 'Spurred Foot', 'A long low foot: a pointed toe, a heel spur', False,
      [('xs', [(-0.3, 0.0), (-0.44, 0.06), (-0.26, 0.15), (-0.08, 0.26), (0.08, 0.26), (0.34, 0.11), (0.62, 0.03),
               (0.56, 0.0)],
        [(-0.17, 0.0), (0.17, 0.0), (0.17, 0.06), (0.08, 0.27), (-0.08, 0.27), (-0.17, 0.06)],
        [(0, 0.64), (0.1, 0.46), (0.17, 0.05), (0.15, -0.42), (0, -0.47), (-0.15, -0.42), (-0.17, 0.05),
         (-0.1, 0.46)]),
       ('slot', (0, 0.5, 1), None, (0, 1, 0), 0.5, 0.05, 0.012)]),
-    ('L_SKIRT', 'Hip Skirt', 'A hip skirt plate wrapping round, its bottom pointed', False,
+    ('L_SKIRT_P', 'Pointed Hip Skirt', 'A hip skirt plate wrapping round, its bottom pointed', False,
      [('plate', H([(0, 0.45), (0.3, 0.42), (0.36, 0.12), (0.1, -0.14), (0, -0.1)]),
        [(PI2, 0.65, math.radians(28))]), ('mirror',)]),
-    ('L_ANKLE', 'Ankle Joint', 'A joint drum with a hub', True,
-     [('lathe', [(0, 0.12), (0.08, 0.12), (0.1, 0.09), (0.16, 0.07), (0.16, -0.07), (0.1, -0.09), (0.08, -0.12),
-                 (0, -0.12)], 'X')]),
-    # ---- reverse joint (digitigrade: the thigh leans forward, the shin back, a long talon foot)
-    ('R_THIGH', 'RJ Thigh', 'A reverse-joint thigh leaning forward to a pointed knee, an outer plate', False,
+    ('R_THIGH_P', 'RJ Plated Thigh', 'A reverse-joint thigh leaning forward to a pointed knee, an outer plate', False,
      [('xs', [(-0.12, 0.95), (0.08, 1.0), (0.22, 0.62), (0.44, 0.08), (0.3, 0.0), (0.12, 0.14), (-0.13, 0.74)],
        [(-0.1, 0.0), (0.1, 0.0), (0.17, 0.75), (0.15, 1.0), (-0.15, 1.0), (-0.17, 0.75)], None),
       ('armor', (1, 0, 0), (1, 0.5, 0.6), 0.6, 0.025, 1.1, 0.03), ('slot', (0, 1, 0.4), None, (0, 0, 1), 0.5, 0.05,
        0.015)]),
-    ('R_SHIN', 'RJ Shin', 'A long thin reverse-joint shin leaning back, a calf blade swept back at its top', False,
+    ('R_SHIN_B', 'RJ Bladed Shin', 'A long thin reverse-joint shin leaning back, a calf blade swept back at its top', False,
      [('xs', [(-0.1, 1.0), (0.08, 1.0), (0.15, 0.88), (0.02, 0.72), (-0.26, 0.06), (-0.34, 0.0), (-0.4, 0.06),
               (-0.16, 0.7), (-0.14, 0.92)],
        [(-0.05, 0.0), (0.05, 0.0), (0.13, 0.8), (0.12, 1.0), (-0.12, 1.0), (-0.13, 0.8)], None),
       ('spike', (0, -1, 0.2), (0.5, 0.3, 0.88), 0.2, 0.25, (0.0, -0.06, 0.08)),
       ('slot', (0, 0.4, -1), None, (0, 0, 1), 0.5, 0.05, 0.012)]),
-    ('R_FOOT', 'RJ Talon Foot', 'A long talon foot: a sharp toe, a heel spur', False,
+    ('R_TALON', 'RJ Talon Foot', 'A long talon foot: a sharp toe, a heel spur', False,
      [('xs', [(-0.26, 0.0), (-0.4, 0.1), (-0.16, 0.12), (-0.05, 0.22), (0.08, 0.2), (0.62, 0.02), (0.55, 0.0)],
        [(-0.14, 0.0), (0.14, 0.0), (0.14, 0.04), (0.06, 0.23), (-0.06, 0.23), (-0.14, 0.04)],
        [(0, 0.66), (0.07, 0.5), (0.14, 0.0), (0.1, -0.38), (0, -0.42), (-0.1, -0.38), (-0.14, 0.0), (-0.07, 0.5)]),
       ('slot', (0, 0.3, 1), None, (0, 1, 0), 0.45, 0.05, 0.012)]),
-    # ---- quad / tank
-    ('Q_LEG', 'Quad Leg', 'A tetrapod leg strut leaning out, its knee a spike up', False,
+    ('Q_LEG_S', 'Quad Spike Leg', 'A tetrapod leg strut leaning out, its knee a spike up', False,
      [('xs', [(0.0, 0.0), (0.12, 0.03), (0.52, 0.58), (0.66, 0.86), (0.44, 0.68), (-0.03, 0.14)],
        [(-0.06, 0.0), (0.06, 0.0), (0.14, 0.55), (0.1, 0.86), (-0.1, 0.86), (-0.14, 0.55)], None),
       ('slot', (0, -0.8, 0.6), None, (0, 1, 1), 0.5, 0.05, 0.012)]),
+    ('A_PAULD_B', 'Block Pauldron', 'A boxy layered shoulder: a plate on top, a plate on its outside', False,
+     [('xs', [(0.28, 0.0), (0.32, 0.3), (0.2, 0.42), (-0.24, 0.44), (-0.3, 0.3), (-0.26, 0.0)],
+       [(-0.16, 0.0), (0.28, 0.0), (0.32, 0.34), (0.18, 0.44), (-0.16, 0.44)], None),
+      ('armor', (0, 0, 1), (0.5, 0.5, 1.0), 0.6, 0.03, 1.08, 0.035),
+      ('armor', (1, 0, 0), (1, 0.5, 0.4), 0.6, 0.03, 1.1, 0.035), ('slot', (0, 1, 0), None, (0, 0, 1), 0.4, 0.06, 0.02)]),
+    ('A_FORE_S', 'Shield Forearm', 'A slim forearm, a big shield plate overhanging its outside', False,
+     [('xs', [(0.05, 0.0), (-0.05, 0.0), (-0.11, 0.6), (-0.13, 0.98), (0.08, 0.98), (0.12, 0.6)],
+       [(-0.06, 0.0), (0.06, 0.0), (0.1, 0.6), (0.09, 0.98), (-0.09, 0.98), (-0.1, 0.6)], None),
+      ('armor', (1, 0, 0), (1, 0.5, 0.6), 0.45, 0.04, 1.35, 0.03), ('slot', (0, 1, 0), None, (0, 0, 1), 0.3, 0.05,
+                                                                       0.012)]),
+    ('L_THIGH_H', 'Heavy Thigh', 'A heavy thigh flaring outward at the hip, a big outer plate', False,
+     [('xs', [(-0.14, 1.0), (0.14, 1.0), (0.2, 0.75), (0.22, 0.3), (0.32, 0.04), (0.1, 0.0), (-0.12, 0.02),
+              (-0.2, 0.35), (-0.18, 0.78)],
+       [(-0.12, 0.0), (0.12, 0.0), (0.27, 0.8), (0.22, 1.0), (-0.18, 1.0), (-0.19, 0.7)], None),
+      ('armor', (1, 0, 0.3), (1, 0.5, 0.65), 0.6, 0.03, 1.12, 0.04), ('slot', (0, 1, 0), None, (0, 0, 1), 0.5, 0.05,
+                                                                         0.015),
+      ('grid', (0, -1, 0), 1, 2, 0.3, 0.015)]),
+    ('L_SHIN_H', 'Heavy Shin', 'A heavy shin: a big calf bulge, plates on its front and outside, vents behind', False,
+     [('xs', [(0.06, 0.0), (0.12, 0.3), (0.2, 0.78), (0.24, 0.95), (0.1, 1.0), (-0.14, 1.0), (-0.3, 0.8),
+              (-0.28, 0.5), (-0.1, 0.0)],
+       [(-0.07, 0.0), (0.07, 0.0), (0.17, 0.7), (0.15, 1.0), (-0.15, 1.0), (-0.17, 0.7)], None),
+      ('armor', (0, 1, 0), (0.5, 1, 0.5), 0.6, 0.025, 1.08, 0.03),
+      ('armor', (1, 0, 0), (1, 0.4, 0.7), 0.55, 0.025, 1.08, 0.03), ('grid', (0, -1, 0.3), 1, 3, 0.3, 0.015),
+      ('slot', (0, 1, 0), None, (0, 0, 1), 0.8, 0.04, 0.015)]),
+    ('L_FOOT_C', 'Clawed Foot', 'A foot: three claws out of its front, a heel spur', False,
+     [('xs', [(-0.28, 0.0), (-0.32, 0.12), (-0.1, 0.26), (0.1, 0.26), (0.36, 0.14), (0.46, 0.1), (0.46, 0.0)],
+       [(-0.19, 0.0), (0.19, 0.0), (0.19, 0.08), (0.09, 0.27), (-0.09, 0.27), (-0.19, 0.08)],
+       [(-0.15, 0.46), (0.15, 0.46), (0.19, 0.3), (0.19, 0.05), (0.15, -0.3), (0, -0.33), (-0.15, -0.3),
+        (-0.19, 0.05), (-0.19, 0.3)]),
+      ('spike', (0, -1, 0), (0.5, 0, 0.3), 0.14, 0.3, (0.0, 0.0, -0.03)),
+      ('grid', (0, 1, 0), 3, 1, 0.14, -0.9)]),
+    ('R_SHIN_L', 'RJ Long Shin', 'A very long thin reverse-joint shin: a calf blade up top, a spur at its heel', False,
+     [('xs', [(-0.1, 1.0), (0.07, 1.0), (0.13, 0.9), (0.0, 0.76), (-0.3, 0.05), (-0.38, 0.0), (-0.44, 0.05),
+              (-0.15, 0.74), (-0.13, 0.93)],
+       [(-0.04, 0.0), (0.04, 0.0), (0.11, 0.82), (0.1, 1.0), (-0.1, 1.0), (-0.11, 0.82)], None),
+      ('spike', (0, -1, 0.2), (0.5, 0.3, 0.9), 0.18, 0.25, (0.0, -0.05, 0.08)),
+      ('spike', (-0.6, -1, 0), (0.5, 0, 0.06), 0.1, 0.3, (0.0, -0.03, -0.02))]),
+    ('A_HAND_O', 'Open Hand', 'A palm, four finger grooves, a thumb', False,
+     [('front', H([(0, 0.24), (0.13, 0.24), (0.15, 0.12), (0.12, 0.0), (0, 0.0)]), 0.12),
+      ('cut', (0, 0.6, 0.8), 0.1), ('grid', (0, 0, -1), 4, 1, 0.16, -0.45),
+      ('spike', (-1, 0, 0), (0, 0.5, 0.65), 0.14, 0.45, (0.0, 0.04, -0.02))]),
+    # ---- tank
     ('T_TREAD', 'Tread Unit', 'A track unit: round ends, a panel on its side', False,
      [('side', _stadium(1.2, 0.35), 0.3), ('pocket', (1, 0, 0), 0.2, 0.03)]),
     ('T_HULL', 'Tank Hull Armor', 'A tank-leg hull: upper and lower front sloped', False,
@@ -271,7 +350,8 @@ def _size(bm):
 
 
 def _grid(bm, direction, n1, n2, frac, depth):
-    """The face looking along ``direction`` split into ``n1`` x ``n2`` cells (cuts across it), each pushed in."""
+    """The face looking along ``direction`` split into ``n1`` x ``n2`` cells (cuts across it), each pushed in
+    (``depth`` < 0: each pushed out - fingers, studs)."""
     from . import ref_parts as rp
     f = rp._best_face(bm, direction, 0.9)
     if f is None:
@@ -305,7 +385,7 @@ def _grid(bm, direction, n1, n2, frac, depth):
     if not cs:
         return
     w = min((hi - lo) / max(1, c) for lo, hi, c in ((box[0], box[1], n1), (box[2], box[3], n2)))
-    bmesh.ops.inset_individual(bm, faces=cs, thickness=frac * w, depth=-abs(depth), use_even_offset=True)
+    bmesh.ops.inset_individual(bm, faces=cs, thickness=frac * w, depth=-depth, use_even_offset=True)   # (< 0: out)
 
 
 def _hull(pts):
@@ -486,12 +566,13 @@ def _slot(bm, f, across, at, width, depth):
     bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
 
 
-def build(bm, part, d, level, segs):
-    """The solid of AC part ``part`` with its numbers ``d`` (``level`` 1: no pockets, 2: no cuts / folds either)."""
+def build(bm, part, d, level, segs, specs=None):
+    """The solid of AC part ``part`` with its numbers ``d`` (``level`` 1: no pockets, 2: no cuts / folds either);
+    ``specs``: another set of recipes read with the same kit (the Joints)."""
     from . import random_shapes as rs
     from . import ref_parts as rp
     sx, sy, sz = d['sx'], d['sy'], d['sz']
-    for op in SPECS[part]:
+    for op in (specs or SPECS)[part]:
         k = op[0]
         if k == 'side':
             rp._side_solid(bm, [(y * sy, z * sz) for y, z in op[1]], op[2] * sx, -op[2] * sx / 2)

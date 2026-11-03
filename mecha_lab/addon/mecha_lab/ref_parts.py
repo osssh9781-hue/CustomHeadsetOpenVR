@@ -46,7 +46,10 @@ VEHICLES = (('LAMBO', 'Lambo', 'Wedge supercar parts after the Lamborghini Avent
                                   'windows, wheel arches, door wings, wheels'),
             # 0.24.95 (user: "아머드 코어 스타일 에셋도 50 개 만들어 줘") - ``ac_parts``
             ('ARMORED', 'AC Style', 'Modular mech parts in the style of Armored Core (none of its machines copied): '
-                                    'heads, cores, arms, legs, boosters, weapons, back units'))
+                                    'heads, cores, arms, legs, boosters, weapons, back units'),
+            # 0.24.95 (user: "메카닉 관절 부분도 한 30 개 만들어 줘") - ``joint_parts``
+            ('JOINT', 'Joints', 'Mechanical joints: drums, ball joints, pistons, rams, hubs, forks, hinges, links, '
+                                'housings, brackets, bellows, gears'))
 PARTS = {
     'LAMBO': (('INTAKE', 'Side Intake', 'The air intake behind the door: a wedge, its mouth facing forward-out'),
               ('DOOR', 'Door', 'The door skin: its long diagonal crease, the window sill bent in'),
@@ -102,13 +105,16 @@ PARTS = {
                ('FOOT', 'Bumper Foot', 'A front bumper as the foot: a chin spoiler, the lights recessed')),
 }
 from . import ac_parts as _ac  # noqa: E402
+from . import joint_parts as _jp  # noqa: E402
 PARTS['ARMORED'] = tuple((p[0], p[1], p[2]) for p in _ac.PARTS)
+PARTS['JOINT'] = tuple((p[0], p[1], p[2]) for p in _jp.PARTS)
 PART_IDS = {v: tuple(p[0] for p in PARTS[v]) for v in PARTS}
 PART_ITEMS = {v: (('ANY', 'Any', 'Any part of this vehicle'),) + PARTS[v] for v in PARTS}
 CURVED = {('P911', 'FENDER_F'), ('P911', 'FENDER_R'), ('P911', 'DUCKTAIL'), ('P911', 'LAMP'), ('P911', 'MIRROR'),
           ('F22', 'CANOPY'), ('F22', 'NOSE'), ('MBT', 'CAST'), ('MBT', 'WHEEL')} | \
     {('F22', 'FRONT_' + k) for k in ('F22', 'F16', 'F35', 'SU27', 'F15', 'SR71', 'MIG21')} | \
-    {('HMECH', 'CHEST_ROUND'), ('HMECH', 'PAULDRON'), ('CARBOT', 'WHEEL')} | {('ARMORED', k) for k in _ac.CURVED}
+    {('HMECH', 'CHEST_ROUND'), ('HMECH', 'PAULDRON'), ('CARBOT', 'WHEEL')} | {('ARMORED', k) for k in _ac.CURVED} | \
+    {('JOINT', k) for k in _jp.CURVED}
 # 0.24.95 jet front sections (nose tip u = 0 .. the cut behind the cockpit u = 1, length 1): half width W, top Ht /
 # bottom Hb above / below the chine line; the section grows as 1 - (1 - u)^kw (kw 1: straight chines - a diamond in
 # plan; 2: an ogive); the top z = Ht (1 - (x / w)^p)^(1 / rt) (rt 1: a sharp chine, 2 with p 2: round), the bottom the
@@ -224,6 +230,8 @@ def _defaults(vehicle, part):
                 'FOOT': dict(W=0.6, H=0.3, L=0.8, chin=0.15, lights=0.2)}[part]
     if vehicle == 'ARMORED':
         return _ac.defaults(part)
+    if vehicle == 'JOINT':
+        return _jp.defaults(part)
     raise KeyError((vehicle, part))
 
 
@@ -1097,6 +1105,8 @@ def build(p, segs=32, level=0):
         bm = _carbot(bm, part, d, level, segs)
     elif v == 'ARMORED':
         bm = _ac.build(bm, part, d, level, segs)
+    elif v == 'JOINT':
+        bm = _jp.build(bm, part, d, level, segs)
     else:
         bm = _mbt(bm, part, d, level, segs)
     if p.get('curved'):
