@@ -127,6 +127,19 @@ check('AC Style: 50 parts - heads, cores, arms, legs, reverse joint, quad / tank
 mp = made[('ARMORED', 'W_MISSILE')]
 check('... the missile pod: six tubes pushed into its front (the grid of recesses), still one clean solid',
       solid(mp) and len(mp.data.polygons) >= 5 + 6 * 5, len(mp.data.polygons))
+# (user: "아머드 코어는 이런 실루엣이야 팔다리 쪽 봐 봐")
+sh = co(made[('ARMORED', 'L_SHIN')])
+ext = sh.max(0) - sh.min(0)
+top, back = sh[sh[:, 2].argmax()], sh[sh[:, 1].argmin()]
+check('... the AC shin: long and slim (3x as tall as wide), its highest point the knee jutting in front, its '
+      'rearmost the calf blade up its back half', ext[2] >= 3.0 * ext[0] and top[1] > sh[:, 1].mean()
+      and back[2] > sh[:, 2].min() + 0.4 * ext[2], [round(float(x), 3) for x in (*ext, top[1], back[2])])
+pa = co(made[('ARMORED', 'A_SHOULDER')])
+th = made[('ARMORED', 'L_THIGH')]
+under = [f for f in th.data.polygons if f.normal.x < -0.9 and f.center.x > 0.0]
+check('... the pauldron sweeps up and back (its highest point behind its middle); the thigh\'s outer armour plate '
+      'stands over it on a neck (the plate\'s rim faces back toward the leg: a shadow under it)',
+      pa[pa[:, 2].argmax()][1] < (pa[:, 1].max() + pa[:, 1].min()) / 2 and len(under) >= 3, len(under))
 
 # the same seed / another seed
 clear()

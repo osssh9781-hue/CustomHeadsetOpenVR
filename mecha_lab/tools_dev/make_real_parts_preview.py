@@ -30,8 +30,9 @@ PART_VIEW = {('LAMBO', 'DOOR'): 'SIDE', ('LAMBO', 'FENDER'): 'SIDE', ('LAMBO', '
              ('HMECH', 'SHOULDER'): 'SIDE', ('HMECH', 'HIP'): 'SIDE', ('HMECH', 'VENT'): 'FRONT',
              ('CARBOT', 'SHOULDER'): 'SIDE', ('CARBOT', 'DOOR_WING'): 'SIDE', ('CARBOT', 'WHEEL'): 'SIDE',
              ('CARBOT', 'SHIN'): 'SIDE', ('CARBOT', 'FOREARM'): 'SIDE'}
-PART_VIEW.update({('ARMORED', k): 'SIDE' for k in ('H_CREST', 'C_HATCH', 'A_FORE_H', 'A_SHOULDER', 'A_ELBOW',
-                                                   'L_KNEE', 'L_SHIN', 'L_FOOT', 'L_ANKLE', 'R_THIGH', 'R_SHIN',
+PART_VIEW.update({('ARMORED', k): 'SIDE' for k in ('H_CREST', 'C_HATCH', 'A_UPPER', 'A_FORE_L', 'A_FORE_H',
+                                                   'A_SHOULDER', 'A_ELBOW', 'L_THIGH', 'L_KNEE', 'L_SHIN', 'L_FOOT',
+                                                   'L_ANKLE', 'R_THIGH', 'R_SHIN', 'R_FOOT',
                                                    'Q_LEG', 'T_TREAD', 'W_RIFLE', 'W_SHOTGUN', 'W_GATLING',
                                                    'W_BAZOOKA', 'W_GRENADE', 'W_BLADE', 'W_PILE', 'W_SNIPER',
                                                    'U_CANNON')})
