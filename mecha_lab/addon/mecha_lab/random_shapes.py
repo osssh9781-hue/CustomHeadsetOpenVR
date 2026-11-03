@@ -44,17 +44,24 @@ KINDS = (('MIX', 'Mix', 'Any of the kinds'),
          ('JET', 'Jet', 'Aircraft-like, one angle repeated: a chined fuselage / nose (solid), a swept wing or fin with '
                         'knife edges (plate)'),
          ('TANK', 'Tank', 'Armour-like, one slope repeated: a wedge turret / a hull with glacis plates (solid), an '
-                          'armour skirt with a bevelled rim (plate)'))
+                          'armour skirt with a bevelled rim (plate)'),
+         ('CAR', 'Car', 'A wedge sports car (Lamborghini-like, one angle repeated): a low wedge body (solid), a '
+                        'pointed panel with a sharp crease (plate)'))
 KIND_IDS = tuple(k[0] for k in KINDS[1:])
-MIX_WEIGHTS = {'BLOCK': 3, 'PRISM': 2, 'WEDGE': 2, 'STEP': 2, 'SHARD': 2, 'JET': 2, 'TANK': 2}
+MIX_WEIGHTS = {'BLOCK': 3, 'PRISM': 2, 'WEDGE': 2, 'STEP': 2, 'SHARD': 2, 'JET': 2, 'TANK': 2, 'CAR': 2}
 CURVE_KINDS = (('MIX', 'Mix', 'Any of the curved kinds'),
                ('POD', 'Pod', 'A cockpit / a torso: a bulging body of 4 - 8 sides, its face cut flat'),
                ('SHELL', 'Shell', 'A curved armour plate with a thickness: a chest, a shoulder, a shin plate'),
                ('CAPSULE', 'Capsule', 'A limb segment: an egg, a tapered capsule'),
                ('DOMECUT', 'Dome Cut', 'A round mass with flat faces cut into it, folded lines where two meet'),
-               ('TORSO', 'Torso', 'A chest / a body: wide at the top, the chest bulging forward, a flat back'))
+               ('TORSO', 'Torso', 'A chest / a body: wide at the top, the chest bulging forward, a flat back'),
+               ('JET', 'Jet', 'A blended fuselage: soft chines, a canopy rise, a pointed nose (a plate: its skin)'),
+               ('TANK', 'Tank', 'A cast turret: a wide low dome, the front pushed forward (a plate: its skin)'),
+               ('CAR', 'Car', 'A curved sports car (Porsche-like): wide rear hips, a low nose, a fastback roof, a flat '
+                              'floor (a plate: its hood / roof / fender skin)'))
 CURVE_IDS = tuple(k[0] for k in CURVE_KINDS[1:])
-CURVE_MIX = {'POD': 3, 'SHELL': 2, 'CAPSULE': 2, 'DOMECUT': 3, 'TORSO': 3}
+CURVE_MIX = {'POD': 3, 'SHELL': 2, 'CAPSULE': 2, 'DOMECUT': 3, 'TORSO': 3, 'JET': 2, 'TANK': 2, 'CAR': 2}
+LEN_M = Matrix(((-1, 0, 0, 0), (0, 0, 1, 0), (0, 1, 0, 0), (0, 0, 0, 1)))   # a body built along Z lying along Y
 FORMS = (('SOLID', 'Solid', 'A solid mass'), ('PLATE', 'Plate', 'A thin plate of that shape (Thickness)'))
 FAMILIES = (('POLY', 'Polygon', 'Flat faces only'), ('CURVE', 'Curved', 'Surfaces curved both ways'))
 TAG = 'mch_rshape'                    # on the object: its parameters (JSON) - what Variations / Reroll read
@@ -585,7 +592,7 @@ def _split_twisted(bm, tol=1e-5):
 # What makes a jet or a tank look made, not random: few angles, repeated (a stealth jet's edges parallel, a tank's
 # plates all at one slope).  Each shape here has its angle ``a``: every slope, sweep and cut comes from it.
 
-DESIGN_KINDS = {'JET', 'TANK'}
+DESIGN_KINDS = {'JET', 'TANK', 'CAR'}
 
 
 def _design_plane(name, a):
@@ -594,7 +601,7 @@ def _design_plane(name, a):
     n = {'canopy': (0.0, s, c), 'chin': (0.0, s, -c), 'cheek': (c, s, 0.0), 'cheek_low': (c, s, -1.0),
          'tail': (0.0, -s, c), 'tail_low': (0.0, -s, -c), 'shoulder': (c, 0.0, s),
          'glacis_up': (0.0, math.sin(a / 2), math.cos(a / 2)), 'glacis_low': (0.0, s, -c),
-         'rear': (0.0, -s, c), 'sponson': (s, 0.0, c)}[name]
+         'rear': (0.0, -s, c), 'sponson': (s, 0.0, c), 'sill': (c, 0.0, -s)}[name]
     v = Vector(n).normalized()
     return [v.x, v.y, v.z]
 
@@ -618,6 +625,15 @@ def design_params(rng, kind, plate=0.0, sym=True, chamfer=0.3):
                   'swept': (U(30, 40), U(18, 30)), 'cropped': (U(40, 52), U(0, 10))}[style]
         d = dict(a=le, form='wing', S=U(0.7, 1.3), le=le, te=te, t=plate, kn=U(0.05, 0.1), style=style)
         p['sym'] = bool(sym)
+    elif kind == 'CAR' and plate <= 0:                   # a wedge sports car, seen from the side
+        d = dict(a=a, form='car', W=U(0.4, 0.52), H=U(0.24, 0.3), hn=U(0.05, 0.09), hc=U(0.13, 0.18),
+                 ht=U(0.15, 0.22), roof=U(0.1, 0.22), rpos=U(0.33, 0.45), ws=a * U(0.5, 0.65))
+        d['cuts'] = [['cheek', U(0.05, 0.11)], ['shoulder', U(0.08, 0.16)], ['sill', U(0.04, 0.08)]] + \
+            ([['tail', U(0.03, 0.07)]] if rng.random() < 0.5 else [])
+    elif kind == 'CAR':                                  # a pointed panel, a sharp crease along it
+        d = dict(a=a, form='panel', L=1.0, h=U(0.22, 0.42), t=plate, sq=rng.random() < 0.35, rim=plate * U(0.3, 0.6))
+        p['sym'] = False
+        p['folds'] = [[0.0, U(-0.3, 0.3), math.radians(U(12, 28))]]
     elif plate <= 0:                                     # a turret or a hull, plates at one slope
         if rng.random() < 0.55:
             d = dict(a=a, form='turret', L=1.0, W=U(0.6, 0.85), H=U(0.2, 0.32), fw=U(0.08, 0.3), rc=U(0.0, 0.18),
@@ -705,6 +721,27 @@ def _armor(bm, d):
     _prism(bm, _clean(pts), d['t'], 1.0)
 
 
+def _car_body(bm, d):
+    """A low wedge: the side outline (the nose at +Y) - a hood rising gently to the cowl, a windshield laid back at
+    the shape's angle, a short roof, the engine deck down to a chopped tail - pushed across X (``W`` wide)."""
+    H = d['H']
+    yr0 = d['rpos'] - d['roof'] / 2                     # (the roof, from the rear: 0 = the tail, 1 = the nose)
+    yr1 = d['rpos'] + d['roof'] / 2
+    yc = min(0.85, yr1 + (H - d['hc']) / math.tan(math.radians(max(12.0, d['ws']))))
+    pts = [(0.0, 0.0), (1.0, 0.0), (1.0, d['hn']), (yc, d['hc']), (yr1, H), (yr0, H), (0.0, d['ht'])]
+    _prism(bm, _clean(pts), d['W'], 1.0)
+    bmesh.ops.transform(bm, matrix=SIDE_M, verts=list(bm.verts))
+
+
+def _panel(bm, d):
+    """A long pointed panel: its ends cut at the shape's angle (one end square now and then)."""
+    L, h = d['L'], d['h']
+    e = min(0.3 * L, (h / 2) / math.tan(math.radians(d['a'])))
+    pts = [(-L / 2 + e, -h / 2), (L / 2 - e, -h / 2), (L / 2, 0.0), (L / 2 - e, h / 2), (-L / 2 + e, h / 2)]
+    pts += [(-L / 2, h / 2), (-L / 2, -h / 2)] if d.get('sq') else [(-L / 2, 0.0)]
+    _prism(bm, _clean(_ccw(pts)), d['t'], 1.0)
+
+
 def _rim_chamfer(bm, w):
     """The edges round the top face (+Z) chamfered ``w`` wide - a machined rim."""
     if w <= 0:
@@ -729,6 +766,10 @@ def build_design(p, level=0):
         bm = _wing(bm, d, level) or bm
     elif form in {'turret', 'hull'}:
         _tank_solid(bm, d)
+    elif form == 'car':
+        _car_body(bm, d)
+    elif form == 'panel':
+        _panel(bm, d)
     else:
         _armor(bm, d)
     if level < 2:
@@ -846,7 +887,7 @@ def _spline(vals, t):
                   + (-p0 + 3 * p1 - 3 * p2 + p3) * u * u * u)
 
 
-def _rows(c0, c1, f0=0.0, f1=0.0):
+def _rows(c0, c1, f0=0.0, f1=0.0, nrows=None):
     """(t, scale) along a body of round ends ``c0`` (bottom) / ``c1`` (top) - a quarter of an oval each, a step of
     15 degrees at most (the round stays smooth: under the Edge Memory's 30 degrees); an end closes in a point, or
     (``f0`` / ``f1`` > 0) on a flat face that much of the section across - a rounded rim round a flat top."""
@@ -860,7 +901,7 @@ def _rows(c0, c1, f0=0.0, f1=0.0):
     if c0 > 0.01:
         rows += [(c0 * (1 - math.cos(math.pi / 2 * i / k)), f0 + (1 - f0) * math.sin(math.pi / 2 * i / k))
                  for i in range(k)]
-    nb = max(2, int(round((1 - c0 - c1) * CUT_ROWS)))
+    nb = max(2, int(round((1 - c0 - c1) * (nrows or CUT_ROWS))))
     rows += [(c0 + (1 - c0 - c1) * i / nb, 1.0) for i in range(nb + 1)]
     if c1 > 0.01:
         rows += [(1 - c1 + c1 * math.sin(math.pi / 2 * i / k), f1 + (1 - f1) * math.cos(math.pi / 2 * i / k))
@@ -896,12 +937,31 @@ def body_rings(p, segs):
     sec = section(p['n'], p['round'], p['bulge'], p['front'], segs, p.get('back', 1.0))
     W, D, L = p['W'], p['D'], p['L']
     out = []
-    for t, sc in _rows(p['c0'], p['c1'], p.get('cf0', 0.0), p.get('cf1', 0.0)):
+    back = p.get('back', 1.0)
+    for t, sc in _rows(p['c0'], p['c1'], p.get('cf0', 0.0), p.get('cf1', 0.0), p.get('rows')):
         w = max(0.05, _spline(p['w'], t)) * sc * W / 2
         dd = max(0.05, _spline(p['d'], t)) * sc * D / 2
         yo = _spline(p['y'], t) * D / 2
+        if p.get('floor'):                               # (a flat floor: the bottom held where it is)
+            yo += back * (dd - D / 2)
         z = t * L
-        out.append((t, sc, [(0.0, yo, z)] if sc < 1e-6 else [(x * w, y * dd + yo, z) for x, y in sec]))
+        if sc < 1e-6:
+            out.append((t, sc, [(0.0, yo, z)]))
+            continue
+        if p.get('cab'):                                 # a cabin / canopy over the shoulder line: its own height
+            sh = p.get('sh', 0.15)                       # (along the length) and narrower toward its top
+            ch = max(0.05, _spline(p['cab'], t))
+            tw = p.get('tw', 0.7)
+            ring = []
+            for x, y in sec:
+                if y <= sh:
+                    ring.append((x * w, y * dd + yo, z))
+                else:
+                    f = min(1.0, (y - sh) / (1.0 - sh))
+                    ring.append((x * w * (1.0 - (1.0 - tw) * f), (sh + (y - sh) * ch) * dd + yo, z))
+            out.append((t, sc, ring))
+            continue
+        out.append((t, sc, [(x * w, y * dd + yo, z) for x, y in sec]))
     return out
 
 
@@ -956,7 +1016,8 @@ def shell(bm, p, segs):
 
 CUT_WEIGHTS = {                       # visor, chisel, cheek, chin, top, back, shoulder
     'POD': (4, 3, 2, 2, 1, 1, 0), 'DOMECUT': (3, 4, 3, 2, 0, 1, 0), 'TORSO': (1, 4, 1, 2, 0, 1, 3),
-    'CAPSULE': (1, 1, 3, 1, 1, 2, 0)}
+    'CAPSULE': (1, 1, 3, 1, 1, 2, 0), 'CAR': (0, 0, 1, 2, 0, 0, 0), 'JET': (0, 0, 1, 2, 0, 0, 0),
+    'TANK': (3, 0, 1, 0, 0, 1, 0)}
 
 
 def _curve_cut(rng, kind, sym):
@@ -1030,6 +1091,32 @@ def curve_params(rng, kind='MIX', cuts=2, sym=True, plate=0.0):
                  y=[0.0, U(-0.1, 0.1), U(-0.05, 0.1), 0.0],
                  c0=U(0.08, 0.3), cf0=rng.choice((0.0, U(0.4, 0.8))), c1=U(0.1, 0.3), cf1=rng.choice((0.0, U(0.4, 0.8))))
         n_c = rng.randint(0, min(2, cuts)) if cuts else 0
+    elif kind == 'CAR':                                  # a curved sports car along its length (rear 0 .. nose 1)
+        rp = U(0.38, 0.5)                                # (where the roof is: 0 the tail, 1 the nose)
+        p.update(n=rng.choice((6, 8)), round=U(0.5, 0.85), bulge=U(0.08, 0.2), front='SIDE', back=U(0.45, 0.65),
+                 W=U(0.42, 0.5), D=U(0.16, 0.2), L=1.0, axis='Y', floor=True, rows=30, sh=U(0.05, 0.25),
+                 tw=U(0.55, 0.75),
+                 w=[U(0.84, 0.9), U(0.98, 1.06), U(0.86, 0.92), U(0.84, 0.9), U(0.92, 0.99), U(0.72, 0.82)],
+                 d=[U(0.85, 0.95), U(0.95, 1.05), U(0.95, 1.0), U(0.9, 0.98), U(0.8, 0.9), U(0.55, 0.7)],
+                 cab=[U(0.2, 0.35), U(0.45, 0.8) if rp < 0.44 else U(0.35, 0.5), U(1.7, 2.3), U(1.2, 1.7),
+                      U(0.25, 0.4), U(0.12, 0.25)],
+                 y=[0.0] * 6, c0=U(0.03, 0.07), cf0=U(0.45, 0.7), c1=U(0.06, 0.12), cf1=U(0.25, 0.5))
+        n_c = rng.randint(0, 1) if cuts else 0
+    elif kind == 'JET':                                  # a blended fuselage (tail 0 .. nose 1): soft side chines
+        p.update(n=4, round=U(0.3, 0.6), bulge=U(0.15, 0.3), front='VERTEX', back=U(0.6, 0.85),
+                 W=U(0.3, 0.45), D=U(0.2, 0.3), L=1.0, axis='Y', floor=False, rows=24, sh=U(0.3, 0.5),
+                 tw=U(0.4, 0.6), cab=[1.0, U(1.0, 1.1), U(1.5, 2.0), U(1.3, 1.7), U(0.8, 1.0)],
+                 w=[U(0.75, 0.9), U(0.95, 1.05), U(0.9, 1.0), U(0.65, 0.8), U(0.35, 0.5)],
+                 d=[U(0.6, 0.75), U(0.85, 0.95), U(0.95, 1.05), U(0.7, 0.85), U(0.4, 0.55)],
+                 y=[0.0, 0.0, U(0.05, 0.15), U(0.0, 0.08), U(-0.15, -0.05)],
+                 c0=U(0.02, 0.05), cf0=U(0.55, 0.75), c1=U(0.15, 0.28), cf1=0.0)
+        n_c = rng.randint(0, 1) if cuts else 0
+    elif kind == 'TANK':                                 # a cast turret: a wide low dome, the front pushed forward
+        p.update(n=8, round=U(0.6, 0.9), bulge=U(0.1, 0.25), front='SIDE', back=U(0.8, 1.0), W=1.0,
+                 D=U(0.85, 1.1), L=U(0.3, 0.45), w=[1.0, U(0.95, 1.0), U(0.85, 0.95), U(0.6, 0.75)],
+                 d=[1.0, U(0.95, 1.0), U(0.85, 0.95), U(0.6, 0.75)], y=[U(0.04, 0.1), U(0.06, 0.12), U(0.04, 0.08), 0.0],
+                 c0=0.0, cf0=0.9, c1=U(0.4, 0.6), cf1=U(0.25, 0.5))
+        n_c = rng.randint(0, 1) if cuts else 0
     else:                                                # DOMECUT: a round mass, faces cut in, ridges where two meet
         p.update(n=rng.choice((5, 6, 7, 8)), round=U(0.15, 0.5), bulge=U(0.1, 0.3),
                  front='VERTEX' if rng.random() < 0.7 else 'SIDE', back=U(0.8, 1.0), W=1.0, D=U(0.95, 1.2),
@@ -1038,6 +1125,10 @@ def curve_params(rng, kind='MIX', cuts=2, sym=True, plate=0.0):
                  y=[U(0.0, 0.08), U(0.0, 0.08), 0.0, U(-0.08, 0.0)],
                  c0=rng.choice((0.0, U(0.03, 0.1))), cf0=0.85, c1=U(0.4, 0.65), cf1=U(0.0, 0.25))
         n_c = rng.randint(3, cuts + 2) if cuts else 0
+    if plate > 0 and kind in {'JET', 'CAR'}:             # (a plate of a vehicle: its top skin - hood, roof, fender)
+        p['plate'] = {'thk': round(plate, 6), 'span': U(0.2, 0.42), 't0': U(0.05, 0.45), 't1': U(0.6, 0.97)}
+        p['cuts'] = [_curve_cut(rng, 'SHELL', sym) for _ in range(rng.randint(0, 2))]
+        return _rounded(p)
     if plate > 0:                                        # (a plate: the front of the body, its own trims)
         p['plate'] = {'thk': round(plate, 6), 'span': U(0.25, 0.5), 't0': U(0.05, 0.3), 't1': U(0.7, 0.97)}
         n_t = rng.randint(1, cuts + 1) if cuts else 0
@@ -1079,6 +1170,8 @@ def build_curve(p, segs=32, level=0):
     if p.get('sym') and not plate:
         symmetrize(bm)
     _split_bent(bm)
+    if p.get('axis') == 'Y':                             # (a vehicle: built along Z, lying along Y, its top up)
+        bmesh.ops.transform(bm, matrix=LEN_M, verts=list(bm.verts))
     return bm
 
 
@@ -1166,8 +1259,12 @@ def vary(p, amount, rng):
             q['bulge'] = max(0.0, min(0.45, q['bulge'] + rng.uniform(-0.1, 0.1) * a))
             for k in ('W', 'D', 'L'):
                 q[k] = _jit(rng, q[k], 0.2, a, 0.2, 3.0)
-            for k in ('w', 'd'):
-                q[k] = [max(0.2, v + rng.uniform(-0.12, 0.12) * a) for v in q[k]]
+            for k in ('w', 'd', 'cab'):
+                if k in q:
+                    q[k] = [max(0.2 if k != 'cab' else 0.08, v + rng.uniform(-0.12, 0.12) * a) for v in q[k]]
+            for k in ('sh', 'tw'):
+                if k in q:
+                    q[k] = max(0.02, min(0.9, q[k] + rng.uniform(-0.05, 0.05) * a))
             q['y'] = [v + rng.uniform(-0.05, 0.05) * a for v in q['y']]
             for k in ('c0', 'c1'):
                 if q[k] > 0:
