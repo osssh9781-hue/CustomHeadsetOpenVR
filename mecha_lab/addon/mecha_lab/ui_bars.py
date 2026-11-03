@@ -463,9 +463,29 @@ def _cards(items):
     return groups
 
 
+_DRAWN = {}             # region -> (width, height, time, items): what that region shows now (its last draw)
+DRAWN_KEEP = 30.0       # s: a click goes to what is on the screen - the last draw of its region - this long
+
+
+def drawn_items(context):
+    """0.24.95 (user: "지금 hdri 고를 때 하나 밑에 칸으로 밀려서 선택돼") the items as the region last DREW them: a
+    click hits what the eye sees, even when the layout moved since (a line came or went - "making previews ...", a
+    page, a scroll) and the screen is not drawn again yet; none drawn (or the region resized): built now."""
+    region = getattr(context, 'region', None)
+    try:
+        d = _DRAWN.get(region.as_pointer()) if region is not None else None
+    except (AttributeError, ReferenceError):
+        d = None
+    import time
+    if d and d[0] == region.width and d[1] == region.height and time.monotonic() - d[2] < DRAWN_KEEP:
+        return d[3]
+    return all_items(context)
+
+
 def hit(context, x, y):
-    """(inside a bar / strip / card / panel?, the clickable item under the mouse or None)."""
-    items = all_items(context)
+    """(inside a bar / strip / card / panel?, the clickable item under the mouse or None) - on what the region shows
+    (its last draw)."""
+    items = drawn_items(context)
     inside = False
     for card, its in reversed(_cards(items)):          # the last drawn is on top
         if not card.hit(x, y):
@@ -651,6 +671,12 @@ def _draw():
             return
         from .mecha_menu import draw              # 0.24.58 stays on while the Mecha Menu is open (it draws on top)
         items = all_items(context)
+        try:                                      # (0.24.95 what is drawn: what a click hits - ``drawn_items``)
+            import time
+            r = context.region
+            _DRAWN[r.as_pointer()] = (r.width, r.height, time.monotonic(), items)
+        except (AttributeError, ReferenceError):
+            pass
         if items:
             from .ui_gpu import ui_factor
             from . import mecha_menu, ui_gpu, zb_sculpt

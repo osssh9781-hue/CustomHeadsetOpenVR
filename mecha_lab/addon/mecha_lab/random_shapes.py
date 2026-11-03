@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import random
 
 import bmesh
@@ -1679,6 +1680,180 @@ def _select_only(context, obs):
 
 # --- settings + operators --------------------------------------------------------------------------------------------
 
+# --- live: the last Summon / Variations follow the page while they stay selected (0.24.95 user: "이거 쉐입 실시간으로
+#     바뀌어야지") ----------------------------------------------------------------------------------------------------
+# Like Blender's Adjust Last Operation, on the page itself: a setting changed (kind, Size, Count, Thickness, Slices,
+# Chamfer, Symmetric, the vehicle / part, Amount, How Many ...) and the shapes the last Summon (or Variations) made are
+# made again from the same seed with it - each object kept (place, turn, materials), a missing one added, a spare one
+# taken away.  A shape deselected, edited (its mesh not the one made) or deleted is left as it is from then on.
+
+LIVE = {}                     # mode ('summon' / 'vary'), family, seed, scene, view_layer, objs [(name, mesh, verts)],
+#                               spots, base / src params, size
+_PENDING = [False]
+LIVE_PROPS = {
+    'POLY': {'size', 'count', 'form', 'plate_thk', 'kind', 'poly_sym', 'slices', 'chamfer', 'taper'},
+    'CURVE': {'size', 'count', 'form', 'plate_thk', 'curve_kind', 'curve_sym', 'curve_cuts', 'segments'},
+    'REF': {'size', 'count', 'plate_thk', 'segments', 'ref_vehicle', 'ref_part'},
+    'VARY': {'var_amount', 'var_count', 'segments'},
+}
+
+
+def _live_mark(context, mode, objs, **kw):
+    """Remember what a Summon / Variations just made (for the live settings)."""
+    LIVE.clear()
+    LIVE.update(mode=mode, scene=context.scene.name, view_layer=context.view_layer.name,
+                objs=[(o.name, o.data.name, len(o.data.vertices)) for o in objs],
+                spots=[tuple(o.location) for o in objs], **kw)
+
+
+def _live_hook(prop):
+    def update(self, _context):
+        if not LIVE or _PENDING[0]:
+            return
+        key = 'VARY' if LIVE.get('mode') == 'vary' else LIVE.get('family', 'POLY')
+        if prop in LIVE_PROPS.get(key, ()):
+            _PENDING[0] = True                        # (a slider dragged: one rebuild per moment, not per step)
+            bpy.app.timers.register(_live_apply, first_interval=0.03)
+    return update
+
+
+def _live_apply():
+    _PENDING[0] = False
+    try:
+        _live_run()
+    except (ReferenceError, RuntimeError, KeyError, AttributeError, ValueError) as ex:
+        print('Mecha: live shape update:', ex)
+    return None
+
+
+def _live_obj(entry, vl):
+    """The live object of ``entry`` while it is as it was made and selected - else None."""
+    ob = bpy.data.objects.get(entry[0])
+    if ob is None or ob.type != 'MESH' or ob.data is None or ob.data.name != entry[1] \
+            or len(ob.data.vertices) != entry[2]:
+        return None
+    try:
+        return ob if ob.select_get(view_layer=vl) else None
+    except (RuntimeError, ReferenceError):
+        return None
+
+
+def _live_put(ob, p, segs, size):
+    """``ob`` the shape of ``p`` now (a new mesh; its materials kept)."""
+    old = ob.data
+    me, _kind = new_mesh(p, segs, size, old.name)
+    for m in old.materials:
+        me.materials.append(m)
+    ob.data = me
+    if old.users == 0:
+        bpy.data.meshes.remove(old)
+    _store(ob, p)
+
+
+def _live_run():
+    sc = bpy.data.scenes.get(LIVE.get('scene', ''))
+    if sc is None:
+        LIVE.clear()
+        return
+    vl = sc.view_layers.get(LIVE.get('view_layer', '')) or sc.view_layers[0]
+    st = sc.mch_rshape
+    vary_mode = LIVE['mode'] == 'vary'
+    want = st.var_count if vary_mode else st.count
+    entries, spots = list(LIVE['objs']), list(LIVE['spots'])
+    obs = [_live_obj(e, vl) for e in entries]
+    if not any(obs):
+        LIVE.clear()
+        return
+    first = next(o for o in obs if o is not None)
+    colls = list(first.users_collection) or [sc.collection]
+    size = LIVE['size'] if vary_mode else st.size
+    if vary_mode:
+        src = LIVE['src']
+        rng = random.Random(LIVE['seed'])
+        gap = LIVE['gap']
+    else:
+        gap = st.size * 1.6
+        new_spots = [LIVE['base'] + off for off in layout_spots(want, gap)]
+    out_entries, out_spots = [], []
+    for i in range(want):
+        if vary_mode:
+            for _t in range(6):                      # (as Variations makes them: the same draws, in order)
+                q = vary(src, st.var_amount, rng)
+                bm, _k = build(q, st.segments, size)
+                bm.free()
+                if LAST['level'] == 0:
+                    break
+            p = q
+        else:
+            p = new_params(random.Random(_seed(LIVE['seed'], i)), LIVE['family'], st)
+        ob = obs[i] if i < len(obs) else None
+        if i < len(entries) and ob is None:          # (left as it is: deselected / edited / deleted)
+            out_entries.append(entries[i])
+            out_spots.append(spots[i])
+            continue
+        if ob is None:                               # (one more: a new object where the row goes on)
+            me, _kind = new_mesh(p, st.segments, size)
+            for m in first.data.materials:
+                me.materials.append(m)
+            ob = bpy.data.objects.new(NAME, me)
+            for c in colls:
+                c.objects.link(ob)
+            ob.matrix_world = first.matrix_world.copy()
+            ob.location = (Vector(spots[-1]) + Vector((gap, 0.0, 0.0)) if vary_mode or not spots
+                           else new_spots[i])
+            _store(ob, p)
+            ob.select_set(True, view_layer=vl)
+        else:
+            _live_put(ob, p, st.segments, size)
+            if not vary_mode and i < len(spots) and (ob.location - Vector(spots[i])).length < 1e-6:
+                ob.location = new_spots[i]           # (not moved since: to the row's new place)
+        spots.append(tuple(ob.location)) if i >= len(spots) else None
+        out_entries.append((ob.name, ob.data.name, len(ob.data.vertices)))
+        out_spots.append(tuple(ob.location))
+    for e, ob in zip(entries[want:], obs[want:]):     # (fewer now: the spare ones taken away)
+        if ob is not None:
+            me = ob.data
+            bpy.data.objects.remove(ob)
+            if me is not None and me.users == 0:
+                bpy.data.meshes.remove(me)
+        else:
+            out_entries.append(e)
+            out_spots.append(spots[entries.index(e)])
+    LIVE['objs'], LIVE['spots'] = out_entries, out_spots
+    try:
+        from . import ui_bars
+        ui_bars.bump()
+        for w in bpy.context.window_manager.windows:
+            for a in w.screen.areas:
+                if a.type == 'VIEW_3D':
+                    a.tag_redraw()
+    except (AttributeError, ReferenceError, ImportError):
+        pass
+
+
+ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'shape_icons')
+
+
+def shape_icon(name):
+    """'file:<png>' of a thumbnail (``tools_dev/make_shape_icons.py``) - '' when there is none (a plain ball)."""
+    p = os.path.join(ICON_DIR, name + '.png')
+    return 'file:' + p if os.path.isfile(p) else ''
+
+
+def _tile_to_selected(context, family):
+    """0.24.95 (user: "썸네일 - 그거 선택하고 변경 가능하게") a thumbnail clicked: the selected shapes of its family
+    become that kind / part (place, turn, size, materials kept) - unless they are the last Summon's, which follow the
+    page live anyway.  How many changed."""
+    if context.mode != 'OBJECT':
+        return 0
+    obs = [o for o in context.selected_objects if is_shape(o) and (params_of(o) or {}).get('family') == family]
+    live = {e[0] for e in LIVE.get('objs', ())} if LIVE.get('mode') == 'summon' and LIVE.get('family') == family \
+        else set()
+    if not obs or any(o.name in live for o in obs):
+        return 0
+    return _reroll(context, obs, _new_seed(), follow_page=True)
+
+
 def _ref_vehicle_items(_self, _context):
     from . import ref_parts
     return ref_parts.VEHICLES                            # (module constants: Blender keeps no copy of them)
@@ -1689,50 +1864,66 @@ def _ref_part_items(self, _context):
     return ref_parts.PART_ITEMS.get(getattr(self, 'ref_vehicle', 'LAMBO'), ref_parts.PART_ITEMS['LAMBO'])
 
 
-def _ref_vehicle_set(self, _context):
+def _ref_vehicle_set(self, context):
     try:
         self.ref_part = 'ANY'                            # (another vehicle: any of its parts until one is picked)
     except TypeError:
         pass
+    _live_hook('ref_vehicle')(self, context)
 
 
 class MCH_PG_RandomShape(bpy.types.PropertyGroup):
     size: bpy.props.FloatProperty(name='Size', description='The longest side of a new shape', default=1.0, min=0.01,
-                                  soft_max=10.0, subtype='DISTANCE', unit='LENGTH')
+                                  soft_max=10.0, subtype='DISTANCE', unit='LENGTH',
+        update=_live_hook('size'))
     count: bpy.props.IntProperty(name='Count', description='How many shapes a Summon makes (in rows, to pick from)',
-                                 default=1, min=1, max=25)
+                                 default=1, min=1, max=25,
+        update=_live_hook('count'))
     form: bpy.props.EnumProperty(name='Form', items=FORMS, default='SOLID',
-                                 description='A solid mass, or a thin plate of that shape (both families)')
+                                 description='A solid mass, or a thin plate of that shape (both families)',
+        update=_live_hook('form'))
     plate_thk: bpy.props.FloatProperty(name='Thickness', description='How thick a plate is (of its size)',
-                                       default=0.05, min=0.005, max=0.3, subtype='FACTOR')
+                                       default=0.05, min=0.005, max=0.3, subtype='FACTOR',
+        update=_live_hook('plate_thk'))
     # Polygon
-    kind: bpy.props.EnumProperty(name='Polygon Kind', items=KINDS, default='MIX')
+    kind: bpy.props.EnumProperty(name='Polygon Kind', items=KINDS, default='MIX',
+        update=_live_hook('kind'))
     poly_sym: bpy.props.BoolProperty(name='Symmetric', description='The left half the mirror of the right',
-                                     default=False)
+                                     default=False,
+        update=_live_hook('poly_sym'))
     slices: bpy.props.IntProperty(name='Slices', description='Up to this many flat cuts at an angle', default=2,
-                                  min=0, max=4)
+                                  min=0, max=4,
+        update=_live_hook('slices'))
     chamfer: bpy.props.FloatProperty(name='Chamfer', description='Some edges cut flat: how wide', default=0.3,
-                                     min=0.0, max=1.0, subtype='FACTOR')
+                                     min=0.0, max=1.0, subtype='FACTOR',
+        update=_live_hook('chamfer'))
     taper: bpy.props.FloatProperty(name='Taper', description='The top smaller than the bottom (now and then)',
-                                   default=0.3, min=0.0, max=1.0, subtype='FACTOR')
+                                   default=0.3, min=0.0, max=1.0, subtype='FACTOR',
+        update=_live_hook('taper'))
     # Curved
-    curve_kind: bpy.props.EnumProperty(name='Curved Kind', items=CURVE_KINDS, default='MIX')
+    curve_kind: bpy.props.EnumProperty(name='Curved Kind', items=CURVE_KINDS, default='MIX',
+        update=_live_hook('curve_kind'))
     curve_sym: bpy.props.BoolProperty(name='Symmetric', description='The left half the mirror of the right',
-                                      default=True)
+                                      default=True,
+        update=_live_hook('curve_sym'))
     curve_cuts: bpy.props.IntProperty(name='Flat Cuts', description='Up to this many flat faces cut into it',
-                                      default=2, min=0, max=4)
+                                      default=2, min=0, max=4,
+        update=_live_hook('curve_cuts'))
     segments: bpy.props.IntProperty(name='Smooth', description='Points round a section (more = rounder, heavier)',
-                                    default=32, min=12, max=96)
+                                    default=32, min=12, max=96,
+        update=_live_hook('segments'))
     # Real Parts
     ref_vehicle: bpy.props.EnumProperty(name='Vehicle', items=_ref_vehicle_items,
                                         description='The real vehicle the parts come from', update=_ref_vehicle_set)
-    ref_part: bpy.props.EnumProperty(name='Part', items=_ref_part_items,
+    ref_part: bpy.props.EnumProperty(name='Part', items=_ref_part_items, update=_live_hook('ref_part'),
                                      description='Which part of the vehicle (Any: one of them at random)')
     # Variations
     var_amount: bpy.props.FloatProperty(name='Amount', description='How different the variations are', default=0.4,
-                                        min=0.02, max=1.0, subtype='FACTOR')
+                                        min=0.02, max=1.0, subtype='FACTOR',
+        update=_live_hook('var_amount'))
     var_count: bpy.props.IntProperty(name='How Many', description='How many variations at a time', default=4, min=1,
-                                     max=12)
+                                     max=12,
+        update=_live_hook('var_count'))
 
 
 def _settings(context):
@@ -1768,6 +1959,7 @@ class MCH_OT_random_shape_add(bpy.types.Operator):
             _store(ob, p)
             made.append(ob)
         _select_only(context, made)
+        _live_mark(context, 'summon', made, family=self.family, seed=self.seed, base=base.copy())
         names = dict((k[0], k[1]) for k in KINDS + CURVE_KINDS)
         if self.family == 'REF':
             from . import ref_parts
@@ -1826,6 +2018,7 @@ class MCH_OT_random_shape_vary(bpy.types.Operator):
             _store(ob, q)
             made.append(ob)
         _select_only(context, made)
+        _live_mark(context, 'vary', made, seed=self.seed, src=p, size=size, gap=gap)
         self.report({'INFO'}, f'{len(made)} variation{"s" if len(made) > 1 else ""} of {src.name} '
                               f'(Amount {round(st.var_amount * 100)} %, seed {self.seed})')
         return {'FINISHED'}
@@ -1845,39 +2038,45 @@ class MCH_OT_random_shape_reroll(bpy.types.Operator):
         return context.mode == 'OBJECT' and any(is_shape(o) for o in context.selected_objects)
 
     def execute(self, context):
-        st = _settings(context)
         if self.seed == 0:
             self.seed = _new_seed()
-        obs = [o for o in context.selected_objects if is_shape(o)]
-        n = 0
-        for i, ob in enumerate(obs):
-            old = ob.data
-            if old.users > 1:
-                continue                                 # (a linked copy: its twin would change too)
-            old_p = params_of(ob) or {}
-            fam = old_p.get('family', 'POLY')
-            if fam == 'REF':                             # (a real part: another of its vehicle - the page's part
-                from . import ref_parts                  #  when the page shows that vehicle)
-                veh = old_p.get('kind', 'LAMBO')
-                p = ref_parts.ref_params(random.Random(_seed(self.seed, i)), veh,
-                                         st.ref_part if st.ref_vehicle == veh else 'ANY',
-                                         old_p.get('d', {}).get('thk', st.plate_thk))
-            else:
-                p = new_params(random.Random(_seed(self.seed, i)), fam, st, plate=plate_of(old_p))   # (a plate
-                #                                                                                     stays one)
-            me, _kind = new_mesh(p, st.segments, _local_size(old) or st.size, old.name)
-            for m in old.materials:
-                me.materials.append(m)
-            ob.data = me
-            if old.users == 0:
-                bpy.data.meshes.remove(old)
-            _store(ob, p)
-            n += 1
+        n = _reroll(context, [o for o in context.selected_objects if is_shape(o)], self.seed)
         if not n:
             self.report({'WARNING'}, 'Nothing rerolled (select a random shape; one shared by linked copies is left)')
             return {'CANCELLED'}
         self.report({'INFO'}, f'Rerolled {n} shape{"s" if n > 1 else ""} (seed {self.seed})')
         return {'FINISHED'}
+
+
+def _reroll(context, obs, seed, follow_page=False):
+    """The shapes ``obs`` a new form each from the page's settings, of their own family (a real part: of its vehicle -
+    ``follow_page``: of the page's vehicle), as big as they were, where they are.  How many."""
+    st = _settings(context)
+    n = 0
+    for i, ob in enumerate(obs):
+        old = ob.data
+        if old.users > 1:
+            continue                                 # (a linked copy: its twin would change too)
+        old_p = params_of(ob) or {}
+        fam = old_p.get('family', 'POLY')
+        if fam == 'REF':                             # (a real part: another of its vehicle - the page's part
+            from . import ref_parts                  #  when the page shows that vehicle)
+            veh = st.ref_vehicle if follow_page else old_p.get('kind', 'LAMBO')
+            p = ref_parts.ref_params(random.Random(_seed(seed, i)), veh,
+                                     st.ref_part if st.ref_vehicle == veh else 'ANY',
+                                     old_p.get('d', {}).get('thk', st.plate_thk))
+        else:
+            p = new_params(random.Random(_seed(seed, i)), fam, st, plate=plate_of(old_p))   # (a plate
+            #                                                                                     stays one)
+        me, _kind = new_mesh(p, st.segments, _local_size(old) or st.size, old.name)
+        for m in old.materials:
+            me.materials.append(m)
+        ob.data = me
+        if old.users == 0:
+            bpy.data.meshes.remove(old)
+        _store(ob, p)
+        n += 1
+    return n
 
 
 class MCH_OT_random_shape_form(bpy.types.Operator):
@@ -1893,7 +2092,8 @@ class MCH_OT_random_shape_form(bpy.types.Operator):
 
 
 class MCH_OT_random_shape_kind(bpy.types.Operator):
-    """What the next random shapes of this family are (Summon, Reroll)"""
+    """What the next random shapes of this family are (Summon, Reroll) - and the selected shapes of the family become
+    it (the last Summon's change at once)"""
     bl_idname = 'mch.random_shape_kind'
     bl_label = 'Random Shape Kind'
     bl_options = {'INTERNAL'}
@@ -1907,11 +2107,13 @@ class MCH_OT_random_shape_kind(bpy.types.Operator):
                 st.curve_kind = self.kind
         elif self.kind in {k[0] for k in KINDS}:
             st.kind = self.kind
+        _tile_to_selected(context, self.family)
         return {'FINISHED'}
 
 
 class MCH_OT_random_shape_ref(bpy.types.Operator):
-    """Which real vehicle / part the next Summon Part makes"""
+    """Which real vehicle / part the next Summon Part makes - and the selected real parts become it (the last
+    Summon's change at once)"""
     bl_idname = 'mch.random_shape_ref'
     bl_label = 'Real Part'
     bl_options = {'INTERNAL'}
@@ -1925,6 +2127,7 @@ class MCH_OT_random_shape_ref(bpy.types.Operator):
             st.ref_vehicle = self.vehicle
         if self.part and (self.part == 'ANY' or self.part in ref_parts.PART_IDS.get(st.ref_vehicle, ())):
             st.ref_part = self.part
+        _tile_to_selected(context, 'REF')
         return {'FINISHED'}
 
 
@@ -1937,7 +2140,8 @@ def page(context, x, width, k):
     b = sp.Builder('SHAPES', x, width, k)
     st = _settings(context)
     obj_mode = context.mode == 'OBJECT'
-    b.note(('note', 'A click: a new base shape of a random form at the 3D cursor' if obj_mode else
+    b.note(('note', 'Summon: a new base shape at the 3D cursor - a thumbnail picks its kind, the selected shapes '
+            'become it; the last Summon follows every setting live' if obj_mode else
             'Object Mode only (leave Edit / Sculpt first)', False, None, None, None, True), x, width)
     mu.row(b, x, width, [mu.number(st, 'size', 'Size'), mu.number(st, 'count', 'Count')])
     mu.row(b, x, width, [mu._cell('tbtn', label, ('op', 'mch.random_shape_form', {'form': ident}), on=st.form == ident)
@@ -1945,11 +2149,11 @@ def page(context, x, width, k):
     if st.form == 'PLATE':
         mu.row(b, x, width, [mu.number(st, 'plate_thk', 'Thickness')])
 
-    def kinds(sx, sw, family, items, cur):
-        cells = [mu._cell('tbtn', label, ('op', 'mch.random_shape_kind', {'family': family, 'kind': ident}),
-                          on=cur == ident) for ident, label, _d in items]
-        for i in range(0, len(cells), 3):
-            mu.row(b, sx, sw, cells[i:i + 3])
+    def kinds(sx, sw, family, items, cur):         # (0.24.95 thumbnails: a click = that kind, the selected change)
+        tag = 'poly' if family == 'POLY' else 'curve'
+        mu.grid(b, sx, sw, [(label, shape_icon(f'{tag}_{ident}'), cur == ident,
+                             ('op', 'mch.random_shape_kind', {'family': family, 'kind': ident}), None, None)
+                            for ident, label, _d in items])
 
     def poly(sx, sw):
         kinds(sx, sw, 'POLY', KINDS, st.kind)
@@ -1972,12 +2176,13 @@ def page(context, x, width, k):
 
     def real(sx, sw):                                    # (0.24.95 user: "실제로 내가 말한 차랑 비행기 탱크를 자료
         from . import ref_parts                          #  서치해서 부품을 그대로 만들어볼래?")
-        mu.row(b, sx, sw, [mu._cell('tbtn', label, ('op', 'mch.random_shape_ref', {'vehicle': ident}),
-                                    on=st.ref_vehicle == ident) for ident, label, _d in ref_parts.VEHICLES])
-        cells = [mu._cell('tbtn', label, ('op', 'mch.random_shape_ref', {'part': ident}), on=st.ref_part == ident)
-                 for ident, label, _d in ref_parts.PART_ITEMS[st.ref_vehicle]]
-        for i in range(0, len(cells), 3):
-            mu.row(b, sx, sw, cells[i:i + 3])
+        vcells = [mu._cell('tbtn', label, ('op', 'mch.random_shape_ref', {'vehicle': ident}),
+                           on=st.ref_vehicle == ident) for ident, label, _d in ref_parts.VEHICLES]
+        for i in range(0, len(vcells), 3):               # (Lambo 911 Jet | Tank Heavy Mech Car Bot)
+            mu.row(b, sx, sw, vcells[i:i + 3])
+        mu.grid(b, sx, sw, [(label, shape_icon(f'ref_{st.ref_vehicle}_{ident}'), st.ref_part == ident,
+                             ('op', 'mch.random_shape_ref', {'part': ident}), None, None)
+                            for ident, label, _d in ref_parts.PART_ITEMS[st.ref_vehicle]])
         mu.row(b, sx, sw, [mu.number(st, 'plate_thk', 'Panel Thickness')])
         mu.row(b, sx, sw, [mu.number(st, 'segments', 'Smooth')])
         mu.row(b, sx, sw, [mu._cell('tbtn', 'Summon Part', ('op', 'mch.random_shape_add', {'family': 'REF'}),

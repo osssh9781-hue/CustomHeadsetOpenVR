@@ -144,6 +144,56 @@ LOOKS = (
     ('concrete', 'Concrete', lambda w, h: concrete(w, h)),
     ('infinity_white', 'Infinity White', lambda w, h: infinity_white(w, h)),
     ('kraft', 'Kraft Paper', lambda w, h: kraft(w, h)),
+    # (0.24.95 user: "hdri 이미지 뒤에 연기 있는 버전도 만들어 줘 - 한 20 개"): smoke behind the subject
+    ('smoke_black', 'Smoke Black', lambda w, h: smoke(w, h, seed=1)),
+    ('smoke_floor', 'Ground Fog', lambda w, h: smoke(w, h, where='floor', glow=0.35, light=(0.0, 0.9), seed=2)),
+    ('smoke_blue', 'Smoke Blue', lambda w, h: smoke(w, h, wall=(0.01, 0.015, 0.035), col=(0.3, 0.45, 0.75),
+                                                  light_col=(0.35, 0.6, 1.0), glow=0.9, seed=3)),
+    ('smoke_red', 'Smoke Red', lambda w, h: smoke(w, h, wall=(0.035, 0.008, 0.008), col=(0.8, 0.16, 0.1),
+                                                light_col=(1.0, 0.2, 0.12), glow=1.3, opacity=0.95, seed=21)),
+    ('smoke_fire', 'Smoke Fire', lambda w, h: smoke(w, h, wall=(0.025, 0.012, 0.006), col=(0.45, 0.32, 0.25),
+                                                  light_col=(1.0, 0.45, 0.12), light=(0.0, 1.05), glow=1.2,
+                                                  embers=160, seed=5)),
+    ('smoke_teal', 'Smoke Teal', lambda w, h: smoke(w, h, wall=(0.005, 0.025, 0.028), col=(0.2, 0.55, 0.55),
+                                                  light_col=(0.2, 0.95, 0.9), glow=0.8, seed=6)),
+    ('smoke_purple', 'Smoke Purple', lambda w, h: smoke(w, h, wall=(0.018, 0.006, 0.03), col=(0.45, 0.25, 0.7),
+                                                      light_col=(0.7, 0.35, 1.0), glow=0.9, seed=7)),
+    ('smoke_toxic', 'Smoke Toxic', lambda w, h: smoke(w, h, wall=(0.01, 0.02, 0.006), col=(0.4, 0.6, 0.18),
+                                                    light_col=(0.55, 1.0, 0.2), glow=0.8, where='floor', seed=8)),
+    ('smoke_red_blue', 'Smoke Red / Blue', lambda w, h: smoke(w, h, wall=(0.012, 0.01, 0.02), col=(0.4, 0.35, 0.45),
+                                                             lights=(((-0.45, 0.55), (1.0, 0.15, 0.1)),
+                                                                     ((0.45, 0.55), (0.15, 0.4, 1.0))),
+                                                             glow=1.0, seed=9)),
+    ('smoke_spot', 'Smoke Spotlight', lambda w, h: smoke(w, h, wall=(0.01, 0.01, 0.012), col=(0.5, 0.5, 0.52),
+                                                        glow=0.25, beam=(0.0, 0.1), where='full', seed=10)),
+    ('smoke_backlight', 'Smoke Backlight', lambda w, h: smoke(w, h, wall=(0.008, 0.008, 0.01), col=(0.55, 0.56, 0.6),
+                                                             light=(0.0, 0.5), glow=1.6, seed=11)),
+    ('smoke_white', 'Smoke White Studio', lambda w, h: smoke(w, h, wall=(0.36, 0.36, 0.38), floor=(0.44, 0.44, 0.46),
+                                                            col=(1.6, 1.6, 1.65), glow=0.3, opacity=0.9, seed=12)),
+    ('smoke_sunset', 'Smoke Sunset Haze', lambda w, h: smoke(w, h, wall=(0.18, 0.07, 0.06), floor=(0.3, 0.13, 0.07),
+                                                            col=(0.95, 0.55, 0.3), light_col=(1.0, 0.6, 0.25),
+                                                            light=(0.0, 0.75), glow=0.9, seed=13)),
+    ('smoke_steam', 'Steam', lambda w, h: smoke(w, h, wall=(0.04, 0.045, 0.05), col=(1.2, 1.25, 1.3),
+                                               light_col=(0.75, 0.85, 1.0), where='rise', glow=0.8, opacity=0.95,
+                                               seed=14)),
+    ('smoke_ash', 'Smoke Ash', lambda w, h: smoke(w, h, wall=(0.04, 0.038, 0.036), col=(0.42, 0.4, 0.38),
+                                                 glow=0.35, where='full', ash=900, seed=15)),
+    ('smoke_gold', 'Smoke Gold', lambda w, h: smoke(w, h, wall=(0.02, 0.014, 0.006), col=(0.75, 0.58, 0.3),
+                                                  light_col=(1.0, 0.78, 0.35), glow=1.1, seed=16)),
+    ('smoke_cyan_magenta', 'Smoke Cyan / Magenta', lambda w, h: smoke(w, h, wall=(0.012, 0.008, 0.02),
+                                                                     col=(0.4, 0.35, 0.5),
+                                                                     lights=(((-0.4, 0.5), (0.1, 0.9, 1.0)),
+                                                                             ((0.4, 0.5), (1.0, 0.15, 0.8))),
+                                                                     glow=1.0, seed=17)),
+    ('smoke_storm', 'Smoke Storm', lambda w, h: smoke(w, h, wall=(0.03, 0.035, 0.045), col=(0.3, 0.33, 0.38),
+                                                    light_col=(0.6, 0.7, 0.9), light=(0.25, 0.25), glow=0.5,
+                                                    where='full', opacity=0.95, seed=18)),
+    ('smoke_side', 'Smoke Side Light', lambda w, h: smoke(w, h, wall=(0.01, 0.01, 0.012), col=(0.6, 0.6, 0.62),
+                                                         light_col=(1.0, 0.92, 0.8), light=(-0.75, 0.45), glow=1.2,
+                                                         where='left', seed=19)),
+    ('smoke_rays', 'Smoke God Rays', lambda w, h: smoke(w, h, wall=(0.015, 0.018, 0.025), col=(0.45, 0.48, 0.55),
+                                                       light_col=(0.85, 0.9, 1.0), glow=0.3, rays=5, where='full',
+                                                       seed=20)),
 )
 
 
@@ -289,6 +339,107 @@ def canvas(w, h, c1=(0.22, 0.25, 0.27), c2=(0.33, 0.3, 0.26)):
     col = col * (1.0 + 0.55 * np.exp(-((u / 0.42) ** 2 + ((t - 0.45) / 0.34) ** 2)))[..., None]
     r2 = (u / max(0.5, w / h * 0.5)) ** 2 + ((t - 0.5) / 0.5) ** 2
     return col * (1.0 - 0.38 * _smooth(r2 / 1.5))[..., None]
+
+
+# --- smoke (0.24.95 user: "hdri 이미지 뒤에 연기 있는 버전도 - 한 20 개") ----------------------------------------------
+
+_LAT = np.random.default_rng(99).random((256, 256)).astype(np.float32)
+
+
+def _vn(x, y):
+    """Value noise at any points (x, y), 0 .. 1 (a 256 lattice, smooth steps)."""
+    x0, y0 = np.floor(x).astype(np.int64), np.floor(y).astype(np.int64)
+    fx, fy = x - x0, y - y0
+    fx, fy = fx * fx * (3 - 2 * fx), fy * fy * (3 - 2 * fy)
+    x0, y0 = x0 & 255, y0 & 255
+    x1, y1 = (x0 + 1) & 255, (y0 + 1) & 255
+    a, b, c, d = _LAT[y0, x0], _LAT[y0, x1], _LAT[y1, x0], _LAT[y1, x1]
+    return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy
+
+
+def _fbm(x, y, octaves=5, seed=0):
+    s, amp, tot = 0.0, 1.0, 0.0
+    for o in range(octaves):
+        f = 2.0 ** o
+        s = s + amp * _vn(x * f + seed * 17.3 + o * 7.1, y * f + seed * 31.7 + o * 3.3)
+        tot += amp
+        amp *= 0.5
+    return s / tot
+
+
+def smoke(w, h, wall=(0.012, 0.012, 0.014), floor=None, col=(0.62, 0.63, 0.66), light=(0.0, 0.62),
+          light_col=(1.0, 1.0, 1.0), glow=0.6, lights=None, where='center', opacity=0.85, embers=0, ash=0,
+          beam=None, rays=0, seed=1):
+    """Smoke behind the subject on a dark sweep: billows of domain-warped noise (rising, thinner up high), lit from
+    behind by a light (or two coloured ones) - the smoke glows round it; ``where``: centre / floor (ground fog) /
+    rise (plumes from the floor) / left / full; embers (sparks), ash (specks), a spotlight beam or god rays
+    through it."""
+    floor = floor or tuple(v * 1.25 for v in wall)
+    base = sweep(w, h, wall, floor, spot=0.4, vig=1.0)
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    u, t = (xx - w / 2) / h, yy / (h - 1)                          # (u across in heights, t 0 top .. 1 bottom)
+    px, py = u * 2.6 + seed * 3.1, t * 2.0 + seed * 1.7
+    q1 = _fbm(px, py, 4, seed)
+    q2 = _fbm(px + 5.2, py + 1.3, 4, seed + 1)
+    r = _fbm(px + 3.0 * q1, py + 3.0 * q2 - t * 0.8, 6, seed + 2)   # (warped: wisps, curling)
+    wisp = 1.0 - np.abs(2.0 * _fbm(px * 2.0 + 2.0 * q2, py * 2.0 + 2.0 * q1, 5, seed + 3) - 1.0)
+    dens = np.clip((r - 0.38) / 0.32, 0.0, 1.0)
+    dens = dens * (0.65 + 0.35 * wisp)
+    if where == 'floor':
+        env = _smooth((t - 0.5) / 0.35) * (0.55 + 0.45 * q1)
+    elif where == 'rise':
+        env = _smooth((t - 0.15) / 0.75) * np.exp(-(((u - 0.35 * np.sin(t * 5.0 + seed)) / (0.25 + 0.35 * t)) ** 2))
+        env = np.maximum(env, 0.6 * _smooth((t - 0.2) / 0.7) * np.exp(-(((u + 0.45) / (0.2 + 0.3 * t)) ** 2)))
+    elif where == 'left':
+        env = _smooth((-u + 0.35) / 0.7) * (0.45 + 0.55 * _smooth((t - 0.1) / 0.6))
+    elif where == 'full':
+        env = 0.55 + 0.45 * _smooth((t - 0.1) / 0.8)
+    else:                                                          # (centre: behind the subject, thinner up high)
+        env = np.exp(-((u / 0.62) ** 2)) * (0.3 + 0.7 * _smooth((t - 0.12) / 0.72))
+    a = np.clip(dens * env * opacity, 0.0, 1.0)[..., None]
+    lights = lights or ((light, light_col),)
+    illum = np.zeros((h, w, 3), np.float32)
+    bloom = np.zeros((h, w, 3), np.float32)
+    for (lx, ly), lc in lights:
+        d2 = ((u - lx) / 0.42) ** 2 + ((t - ly) / 0.36) ** 2
+        g = np.exp(-d2)[..., None]
+        illum += g * np.array(lc, np.float32) * glow
+        bloom += np.exp(-d2 * 2.5)[..., None] * np.array(lc, np.float32) * glow * 0.18
+    shade = (0.45 + 0.55 * r)[..., None]                          # (thick parts lighter, thin ones see-through)
+    sc = np.array(col, np.float32) * shade * 0.55 + illum * (0.35 + 0.65 * shade)
+    out = (base + bloom) * (1 - a) + sc * a
+    if beam is not None:                                           # (a spotlight from above through the smoke)
+        bx, by = beam
+        cx = bx + (t - by) * 0.0
+        wdt = 0.05 + (t - by).clip(0) * 0.28
+        shaft = np.exp(-(((u - cx) / wdt) ** 2)) * _smooth((t - by) / 0.1) * (1.0 - 0.4 * t)
+        out = out + (shaft * (0.25 + 0.9 * dens * env))[..., None] * np.array([0.95, 0.93, 0.88]) * 0.8
+        pool = np.exp(-((u / 0.38) ** 2 + ((t - 0.92) / 0.06) ** 2)) * 0.35
+        out = out + pool[..., None] * np.array([0.95, 0.93, 0.88])
+    if rays:                                                       # (god rays: shafts from the top through it)
+        rng = np.random.default_rng(seed)
+        for _k in range(rays):
+            x0, ang = rng.uniform(-0.6, 0.6), rng.uniform(-0.35, 0.35)
+            wdt = rng.uniform(0.025, 0.07) * (1 + t)
+            shaft = np.exp(-(((u - x0 - ang * t) / wdt) ** 2)) * (1.0 - 0.6 * t)
+            out = out + (shaft * (0.15 + 0.7 * dens * env) * rng.uniform(0.25, 0.45))[..., None] * \
+                np.array(light_col, np.float32)
+    if embers:                                                     # (sparks rising from below)
+        rng = np.random.default_rng(seed + 40)
+        sp = np.zeros((h, w), np.float32)
+        ys = (h * (1.0 - rng.random(embers) ** 1.8)).astype(int).clip(0, h - 1)
+        xs = rng.integers(0, w, embers)
+        sp[ys, xs] = rng.uniform(1.5, 6.0, embers)
+        sp = _blur(sp[..., None], max(1, int(h / 700)))[..., 0] * 3.0
+        out = out + sp[..., None] * np.array([1.0, 0.55, 0.15])
+    if ash:                                                        # (specks of ash in the air)
+        rng = np.random.default_rng(seed + 50)
+        sp = np.zeros((h, w), np.float32)
+        ys, xs = rng.integers(0, h, ash), rng.integers(0, w, ash)
+        sp[ys, xs] = rng.uniform(0.3, 1.0, ash)
+        sp = _blur(sp[..., None], 1)[..., 0]
+        out = out * (1.0 - 0.6 * sp.clip(0, 1))[..., None]
+    return out
 
 
 def write(path, rgb):

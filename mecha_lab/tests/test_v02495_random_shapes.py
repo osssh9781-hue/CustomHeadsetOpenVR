@@ -162,7 +162,7 @@ check('Reroll: a new form where it was (place, size, materials, its family kept)
 # the page
 C.window_manager.mch_side_page = 'SHAPES'
 its, _h = sp.content(C, None, 0.0, 276.0, 1.0)
-labels = [i.label for i in its if i.kind == 'tbtn']
+labels = [i.label for i in its if i.kind in {'tbtn', 'mtile'}]       # (0.24.95 the kinds as thumbnails)
 heads = [i.label for i in its if i.kind == 'shead']
 vary_btn = next((i for i in its if i.kind == 'tbtn' and i.label == 'Variations'), None)
 check('The Shapes page: Solid | Plate, Polygon (Mix Block Prism Wedge Step Shard, Summon Polygon), Curved (Mix Pod '
@@ -172,8 +172,9 @@ check('The Shapes page: Solid | Plate, Polygon (Mix Block Prism Wedge Step Shard
       and any(h.startswith('POLYGON') for h in heads) and any(h.startswith('CURVED') for h in heads)
       and vary_btn is not None and vary_btn.enabled and any(n.startswith('Reroll Selected') for n in labels),
       (labels, heads))
-pod_btn = next(i for i in its if i.kind == 'tbtn' and i.label == 'Pod')
-check('... the kind in use lit (blue)', pod_btn.on and pod_btn.action[:2] == ('op', 'mch.random_shape_kind'))
+pod_btn = next(i for i in its if i.kind == 'mtile' and i.label == 'Pod')
+check('... the kinds as thumbnails (each its picture), the one in use lit (blue)', pod_btn.on
+      and pod_btn.action[:2] == ('op', 'mch.random_shape_kind') and pod_btn.icon.startswith('file:'))
 r = bpy.ops.mch.side_page(page='SHAPES')
 tabs = [i for i in sp.items(C, 1200, 900, 1.0) if i.kind == 'ptab']
 check('... its tab (Shapes) beside Mech / Creature / Decals / HDRI, lit when shown',
@@ -326,4 +327,41 @@ for fam in ('POLY', 'CURVE'):
             bm.free()
 check('400 random shapes (both families, solid and plate, every kind, the most slices / cuts / chamfer / taper, '
       'symmetric or not): every one a clean closed solid', not bad, bad[:5])
+# 0.24.95 live (user: "이거 쉐입 실시간으로 바뀌어야지"): the last Summon follows the page while selected
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+st.form, st.count, st.kind, st.size = 'SOLID', 2, 'BLOCK', 1.0
+bpy.ops.mch.random_shape_add(family='POLY', seed=12)
+lv = sorted(C.selected_objects, key=lambda o: o.location.x)
+lmat = bpy.data.materials.new('live')
+lv[0].data.materials.append(lmat)
+lv[0].location.z = 2.0
+
+
+def apply_live():
+    if rs._PENDING[0]:
+        rs._live_apply()
+
+
+st.kind = 'WEDGE'
+apply_live()
+check('Live: the kind changed on the page - the last Summon\'s shapes become it at once (the objects kept: their '
+      'place, a material put on)', all(rs.params_of(o)['kind'] == 'WEDGE' for o in lv) and solid(lv[0])
+      and lv[0].data.materials[:] == [lmat] and lv[0].location.z == 2.0, [rs.params_of(o)['kind'] for o in lv])
+st.size = 2.0
+apply_live()
+check('... Size: as big at once', all(abs(longest(o) - 2.0) < 1e-4 for o in lv), [round(longest(o), 3) for o in lv])
+st.count = 3
+apply_live()
+three = [o for o in S.objects if rs.is_shape(o)]
+st.count = 1
+apply_live()
+check('... Count 3: one more next to them; Count 1: the spare ones taken away',
+      len(three) == 3 and len([o for o in S.objects if rs.is_shape(o)]) == 1)
+keep = [o for o in S.objects if rs.is_shape(o)][0]
+keep.select_set(False)
+st.kind = 'PRISM'
+apply_live()
+check('... deselected: left as it is (the next setting does not touch it)', rs.params_of(keep)['kind'] == 'WEDGE')
+st.kind, st.size, st.count = 'MIX', 1.0, 1
 summary()

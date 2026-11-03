@@ -37,7 +37,13 @@ VEHICLES = (('LAMBO', 'Lambo', 'Wedge supercar parts after the Lamborghini Avent
             ('P911', '911', 'Round sports-car parts after the Porsche 911: curved skins, round lamps'),
             ('F22', 'Jet', 'Fighter-jet parts after the F-22 Raptor (42-degree edges, knife edges, a bubble '
                            'canopy) and the front sections of many jets'),
-            ('MBT', 'Tank', 'Tank parts after the M1 Abrams (flat armour) and the T-72 (cast, round)'))
+            ('MBT', 'Tank', 'Tank parts after the M1 Abrams (flat armour) and the T-72 (cast, round)'),
+            # 0.24.95 (user: "쉐입 더 만들어 줄래? 퍼시픽 림이랑 트랜스포머 같은 쉐입"): robot parts in those styles -
+            # base shapes of the kind, no character of either copied
+            ('HMECH', 'Heavy Mech', 'Big industrial mech parts in the style of Pacific Rim\'s Jaegers: layered armour, '
+                                    'heavy shoulders, vents, a visor slit'),
+            ('CARBOT', 'Car Bot', 'Robot parts made of car parts, in the style of the Transformers: a car front chest, '
+                                  'windows, wheel arches, door wings, wheels'))
 PARTS = {
     'LAMBO': (('INTAKE', 'Side Intake', 'The air intake behind the door: a wedge, its mouth facing forward-out'),
               ('DOOR', 'Door', 'The door skin: its long diagonal crease, the window sill bent in'),
@@ -71,12 +77,33 @@ PARTS = {
             ('GLACIS', 'Hull Front', 'Upper glacis long and shallow, the lower glacis, sponsons over the tracks'),
             ('CAST', 'Cast Turret', 'A low cast dome, its front thicker'),
             ('WHEEL', 'Road Wheel', 'Tyre, dished disc, hub')),
+    'HMECH': (('CHEST', 'Chest', 'A broad armoured chest: a keel down the middle, vent panels each side, a bay'),
+              ('CHEST_ROUND', 'Round Chest', 'A rounded heavy chest, its front plate cut flat'),
+              ('SHOULDER', 'Shoulder', 'A stepped pauldron: tiers of armour over the shoulder'),
+              ('PAULDRON', 'Round Pauldron', 'A curved shoulder shell'),
+              ('HEAD', 'Head', 'A small armoured head: brow and chin sloped, a visor slit'),
+              ('FOREARM', 'Forearm', 'A heavy octagonal forearm, a panel on top'),
+              ('THIGH', 'Thigh', 'A tapered hexagonal thigh, the knee cap cut'),
+              ('FOOT', 'Foot', 'A big foot: the toe sloped, the heel cut'),
+              ('VENT', 'Vent Block', 'Slanted louvres: a heat vent'),
+              ('HIP', 'Hip Plate', 'A hip armour plate bent round the leg')),
+    'CARBOT': (('CHEST', 'Car Chest', 'A car front as the chest: windscreen halves as windows, a grille, the hood'),
+               ('SHOULDER', 'Fender Shoulder', 'A shoulder of a car fender: a wheel arch out of it'),
+               ('DOOR_WING', 'Door Wing', 'A car door as a back wing: the window bent in and recessed'),
+               ('FOREARM', 'Bumper Arm', 'A forearm of a bumper: a grille on its side'),
+               ('HEAD', 'Head', 'A helmet head: a crest, two fins, a mouth plate'),
+               ('SHIN', 'Wheel Shin', 'A shin with a wheel arch at its back'),
+               ('HOOD', 'Hood Plate', 'A car hood as a chest plate: a crease down the middle, the sides bent back'),
+               ('WHEEL', 'Wheel', 'A car wheel: tyre, rim, the dish'),
+               ('BACKPACK', 'Trunk Pack', 'A car rear as a backpack: the tail lights recessed'),
+               ('FOOT', 'Bumper Foot', 'A front bumper as the foot: a chin spoiler, the lights recessed')),
 }
 PART_IDS = {v: tuple(p[0] for p in PARTS[v]) for v in PARTS}
 PART_ITEMS = {v: (('ANY', 'Any', 'Any part of this vehicle'),) + PARTS[v] for v in PARTS}
 CURVED = {('P911', 'FENDER_F'), ('P911', 'FENDER_R'), ('P911', 'DUCKTAIL'), ('P911', 'LAMP'), ('P911', 'MIRROR'),
           ('F22', 'CANOPY'), ('F22', 'NOSE'), ('MBT', 'CAST'), ('MBT', 'WHEEL')} | \
-    {('F22', 'FRONT_' + k) for k in ('F22', 'F16', 'F35', 'SU27', 'F15', 'SR71', 'MIG21')}
+    {('F22', 'FRONT_' + k) for k in ('F22', 'F16', 'F35', 'SU27', 'F15', 'SR71', 'MIG21')} | \
+    {('HMECH', 'CHEST_ROUND'), ('HMECH', 'PAULDRON'), ('CARBOT', 'WHEEL')}
 # 0.24.95 jet front sections (nose tip u = 0 .. the cut behind the cockpit u = 1, length 1): half width W, top Ht /
 # bottom Hb above / below the chine line; the section grows as 1 - (1 - u)^kw (kw 1: straight chines - a diamond in
 # plan; 2: an ogive); the top z = Ht (1 - (x / w)^p)^(1 / rt) (rt 1: a sharp chine, 2 with p 2: round), the bottom the
@@ -168,6 +195,28 @@ def _defaults(vehicle, part):
             return dict(Wc=1.0, Dc=1.12, Hc=0.38, w=[1.0, 0.97, 0.85, 0.6], fwd=0.07, top=0.35, cut=0.06)
         if part == 'WHEEL':
             return dict(R=1.0, Wt=0.22, rim=0.86, dish=0.78, hub=0.3, cap=0.13, depth=0.06)
+    if vehicle == 'HMECH':
+        return {'CHEST': dict(W=1.0, H=0.75, D=0.55, keel=25.0, keel_f=0.2, top=0.12, bot=0.1, vent=0.18, bay=0.2),
+                'CHEST_ROUND': dict(W=1.0, D=0.68, L=1.0, waist=0.6, chest=1.0, fwd=0.15, cut=0.07),
+                'SHOULDER': dict(L=1.0, H=0.82, Wd=0.55, step=0.1, top=0.18, side=0.12),
+                'PAULDRON': dict(R=0.45, thk=0.07, A=[110.0, 150.0, 110.0], L=0.9, bend=0.25),
+                'HEAD': dict(W=0.42, L=0.62, H=0.3, lean=0.88, brow=0.16, chin=0.2, visor=0.22),
+                'FOREARM': dict(rx=0.2, rz=0.18, L=1.0, tp=0.78, elbow=0.12, wrist=0.06, panel=0.2),
+                'THIGH': dict(rx=0.24, ry=0.2, L=1.0, tp=0.72, knee=0.14, hip=0.12, panel=0.2),
+                'FOOT': dict(L=1.05, H=0.32, W=0.42, toe=0.1, heel=0.06),
+                'VENT': dict(L=0.3, H=1.0, W=0.8, n=5.0, fin=0.18),
+                'HIP': dict(W=0.6, H=0.7, wrap=30.0, lip=25.0)}[part]
+    if vehicle == 'CARBOT':
+        return {'CHEST': dict(W=1.0, H=0.7, D=0.5, win=0.22, hood=0.08, glass=0.15, grille=0.18),
+                'SHOULDER': dict(L=0.75, H=0.55, Wd=0.4, r=0.24, top=0.15, front=0.1),
+                'DOOR_WING': dict(L=1.0, H=0.9, belt=0.56, bend=14.0, glass=0.12),
+                'FOREARM': dict(W=0.36, H=0.3, L=0.9, wrist=0.1, elbow=0.12, grille=0.18),
+                'HEAD': dict(W=0.4, H=0.42, D=0.3, mouth=0.18, brow=0.08, fin=0.9),
+                'SHIN': dict(L=0.45, H=1.0, W=0.36, r=0.25, knee=0.1, panel=0.18),
+                'HOOD': dict(W=1.0, H=0.7, top=0.8, ridge=14.0, wrap=30.0),
+                'WHEEL': dict(R=1.0, Wt=0.2, rim=0.66, dish=0.55, hub=0.16),
+                'BACKPACK': dict(W=0.9, H=0.55, D=0.4, slope=0.3, lights=0.2),
+                'FOOT': dict(W=0.6, H=0.3, L=0.8, chin=0.15, lights=0.2)}[part]
     raise KeyError((vehicle, part))
 
 
@@ -782,6 +831,246 @@ def _mbt(bm, part, d, level, segs):
     return bm
 
 
+# --- robots: Heavy Mech / Car Bot (0.24.95 user: "퍼시픽 림이랑 트랜스포머 같은 쉐입") --------------------------------
+
+def _inset_push(bm, f, frac, depth):
+    """Face ``f`` inset by ``frac`` of its width (2 area / perimeter) and pushed ``depth`` into the part: a panel, a
+    window, a grille recess."""
+    if f is None:
+        return
+    f.normal_update()
+    n = f.normal.copy()
+    w = 2.0 * f.calc_area() / max(1e-9, f.calc_perimeter())
+    bmesh.ops.inset_region(bm, faces=[f], thickness=frac * w, depth=0.0, use_even_offset=True)
+    bmesh.ops.translate(bm, vec=-n * depth, verts=list(f.verts))
+
+
+def _ring_loft(bm, rings_xyz):
+    rs._loft(bm, [[bm.verts.new(c) for c in ring] for ring in rings_xyz])
+
+
+def _arc(cx, cz, r, a0, a1, n):
+    return [(cx + r * math.cos(a0 + (a1 - a0) * i / n), cz + r * math.sin(a0 + (a1 - a0) * i / n)) for i in range(n + 1)]
+
+
+def _hmech(bm, part, d, level, segs):
+    if part == 'CHEST':                                  # front view pushed back; a keel, vent panels, a bay
+        hw, H, D = d['W'] / 2, d['H'], d['D']
+        right = [(0.0, H), (0.64 * hw, H), (hw, 0.73 * H), (hw, 0.4 * H), (0.72 * hw, 0.07 * H), (0.36 * hw, 0.0),
+                 (0.0, 0.0)]
+        _front_solid(bm, _mirror_half(right), D, D / 2)
+        if level < 2:
+            a = math.radians(_clamp(d['keel'], 10, 45))
+            bm = rs._cut_pair(bm, [math.sin(a), math.cos(a), 0.0, _clamp(d['keel_f'], 0.08, 0.35)], 0.4)
+            bm = rs._cut(bm, [0.0, 0.6, 0.8, _clamp(d['top'], 0.04, 0.25)], 0.4)
+            bm = rs._cut(bm, [0.0, 0.7, -0.7, _clamp(d['bot'], 0.04, 0.25)], 0.4)
+            if level < 1:
+                for sx in (1.0, -1.0):
+                    _inset_push(bm, _best_face(bm, (sx * math.sin(a), math.cos(a), 0.0), 0.9), d['vent'], 0.05 * D)
+                _inset_push(bm, _best_face(bm, (0.0, 1.0, 0.0), 0.98), d['bay'], 0.07 * D)
+        return bm
+    if part == 'CHEST_ROUND':                            # the Curved body (a torso), its front plate cut flat
+        q = dict(n=6, round=0.25, bulge=0.15, front='VERTEX', back=0.6, W=d['W'], D=d['D'], L=d['L'],
+                 w=[d['waist'], 0.75, d['chest'], 0.92], d=[0.7, 0.82, 1.0, 0.78], y=[0.0, 0.05, d['fwd'], 0.04],
+                 c0=0.05, cf0=0.8, c1=0.18, cf1=0.5)
+        rs.body(bm, q, segs)
+        if level < 2:
+            bm = rs._cut(bm, [0.0, 1.0, 0.3, _clamp(d['cut'], 0.02, 0.15)], 0.6)
+        return bm
+    if part == 'SHOULDER':                               # a stepped side profile (tiers) pushed out (+X)
+        L, H, st = d['L'], d['H'], _clamp(d['step'], 0.03, 0.2)
+        front = [(0.45 * L, 0.0), (0.47 * L, 0.3 * H), (0.47 * L - st * L, 0.34 * H), (0.38 * L, 0.52 * H),
+                 (0.38 * L - st * L, 0.56 * H), (0.27 * L, 0.74 * H), (0.27 * L - st * L, 0.77 * H), (0.0, 0.84 * H)]
+        pts = front + [(-y, z) for y, z in reversed(front[:-1])]
+        _side_solid(bm, rs._clean(pts), d['Wd'])
+        if level < 2:
+            bm = rs._cut(bm, [0.75, 0.0, 0.66, _clamp(d['top'], 0.05, 0.3)], 0.4)
+            for sy in (1.0, -1.0):
+                bm = rs._cut(bm, [0.6, 0.8 * sy, 0.0, _clamp(d['side'], 0.03, 0.25)], 0.4)
+        return bm
+    if part == 'PAULDRON':                               # a curved shell (the Curved Shell)
+        q = dict(R=d['R'], thk=d['thk'], A=d['A'], L=d['L'], bend=_clamp(d['bend'], 0.0, 0.6))
+        rs.shell(bm, q, segs)
+        return bm
+    if part == 'HEAD':                                   # plan pushed up; brow / chin sloped, a visor slit between
+        hw, L, H = d['W'] / 2, d['L'], d['H']
+        right = [(0.0, 0.5 * L), (0.45 * hw, 0.5 * L), (hw, 0.15 * L), (hw, -0.35 * L), (0.6 * hw, -0.5 * L),
+                 (0.0, -0.5 * L)]
+        _plan_solid(bm, _mirror_half(right), H, _clamp(d['lean'], 0.7, 1.0))
+        if level < 2:
+            bm = rs._cut(bm, [0.0, 0.55, 0.83, _clamp(d['brow'], 0.05, 0.3)], 0.4)
+            bm = rs._cut(bm, [0.0, 0.6, -0.8, _clamp(d['chin'], 0.05, 0.3)], 0.4)
+            if level < 1:
+                _inset_push(bm, _best_face(bm, (0.0, 1.0, 0.0), 0.95), d['visor'], 0.06 * L)
+        return bm
+    if part in {'FOREARM', 'THIGH'}:                     # a tapered octagon / hexagon (homothetic: flat faces)
+        fore = part == 'FOREARM'
+        k = 8 if fore else 6
+        a0 = math.pi / 8 if fore else 0.0
+        r1, r2, L, tp = (d['rx'], d['rz'] if fore else d['ry'], d['L'], _clamp(d['tp'], 0.5, 1.0))
+
+        def ring(s, t):
+            pts = [(r1 * s * math.cos(a0 + 2 * math.pi * i / k), r2 * s * math.sin(a0 + 2 * math.pi * i / k))
+                   for i in range(k)]
+            if fore:                                     # (along Y: the wrist at +Y)
+                return [(x, t, z) for x, z in pts]
+            return [(x, y, t) for x, y in pts]           # (along Z: the knee at the bottom)
+        _ring_loft(bm, [ring(1.0, -L / 2), ring(tp, L / 2)] if fore else [ring(tp, 0.0), ring(1.0, L)])
+        if level < 2:
+            if fore:
+                bm = rs._cut(bm, [0.0, -0.8, 0.6, _clamp(d['elbow'], 0.04, 0.3)], 0.4)
+                bm = rs._cut(bm, [0.0, 0.5, 0.86, _clamp(d['wrist'], 0.02, 0.2)], 0.4)
+            else:
+                bm = rs._cut(bm, [0.0, 0.75, -0.66, _clamp(d['knee'], 0.04, 0.3)], 0.4)
+                bm = rs._cut(bm, [0.6, 0.0, 0.8, _clamp(d['hip'], 0.04, 0.3)], 0.4)
+            if level < 1:
+                _inset_push(bm, _best_face(bm, (0.0, 0.0, 1.0) if fore else (0.0, 1.0, 0.0), 0.97), d['panel'],
+                            0.12 * r2)
+        return bm
+    if part == 'FOOT':                                   # side outline pushed across, the toe corners cut
+        L, H, W = d['L'], d['H'], d['W']
+        pts = [(-0.45 * L, 0.0), (0.52 * L, 0.0), (0.55 * L, 0.25 * H), (0.12 * L, 0.88 * H), (-0.22 * L, H),
+               (-0.48 * L, 0.62 * H)]
+        _side_solid(bm, pts, W, -W / 2)
+        if level < 2:
+            bm = rs._cut_pair(bm, [0.6, 0.8, 0.0, _clamp(d['toe'], 0.03, 0.25)], 0.4)
+            bm = rs._cut_pair(bm, [0.6, -0.8, 0.0, _clamp(d['heel'], 0.02, 0.2)], 0.4)
+        return bm
+    if part == 'VENT':                                   # slanted louvres: a sawtooth side outline pushed across
+        L, H, W, fin = d['L'], d['H'], d['W'], d['fin']
+        n = int(_clamp(round(d['n']), 3, 8))
+        hh = H / n
+        pts = [(-L, H), (-L, 0.0)]
+        for i in range(n):
+            z = i * hh
+            pts += [(0.0, z), (fin, z + 0.7 * hh), (0.25 * fin, z + 0.7 * hh)]
+        pts.append((0.0, H))
+        _side_solid(bm, rs._clean(pts), W, -W / 2)
+        return bm
+    # HIP: a hip armour plate (a panel facing out +X, its front and back bent round the leg)
+    W, H = d['W'], d['H']
+    pts = [(-0.5 * W, 0.0), (0.42 * W, 0.0), (0.5 * W, 0.25 * H), (0.42 * W, H), (-0.36 * W, H), (-0.5 * W, 0.7 * H)]
+    folds = [((0.25 * W, -1.0), (0.25 * W, 2.0), math.radians(_clamp(d['wrap'], 5, 50)), True),      # (both sides
+             ((-0.3 * W, -1.0), (-0.3 * W, 2.0), math.radians(_clamp(d['lip'], 5, 45)), False)]   #  wrap round)
+    _side_panel(bm, pts, _panel_t(d, W, H), folds, level)
+    return bm
+
+
+def _carbot(bm, part, d, level, segs):
+    if part == 'CHEST':                                  # a car front: windscreen halves (windows), a grille, the hood
+        hw, H, D = d['W'] / 2, d['H'], d['D']
+        right = [(0.0, H), (0.84 * hw, H), (hw, 0.72 * H), (0.96 * hw, 0.2 * H), (0.6 * hw, 0.0), (0.0, 0.0)]
+        _front_solid(bm, _mirror_half(right), D, D / 2)
+        if level < 2:
+            nw = Vector((0.35, 0.72, 0.6)).normalized()
+            bm = rs._cut_pair(bm, [nw.x, nw.y, nw.z, _clamp(d['win'], 0.08, 0.35)], 0.4)
+            bm = rs._cut(bm, [0.0, 0.45, 0.89, _clamp(d['hood'], 0.03, 0.2)], 0.4)
+            if level < 1:
+                for sx in (1.0, -1.0):
+                    _inset_push(bm, _best_face(bm, (sx * nw.x, nw.y, nw.z), 0.95), d['glass'], 0.04 * D)
+                _inset_push(bm, _best_face(bm, (0.0, 1.0, 0.0), 0.98), d['grille'], 0.05 * D)
+        return bm
+    if part == 'SHOULDER':                               # a fender: a wheel arch out of the side outline, pushed out
+        L, H, r = d['L'], d['H'], _clamp(d['r'], 0.12, 0.3)
+        r = min(r, 0.42 * L, 0.7 * H)
+        pts = [(-0.5 * L, 0.0)] + _arc(0.02 * L, 0.0, r, math.pi, 0.0, 10) + \
+              [(0.5 * L, 0.0), (0.5 * L, 0.68 * H), (0.32 * L, H), (-0.4 * L, H), (-0.5 * L, 0.82 * H)]
+        _side_solid(bm, rs._clean(pts), d['Wd'])
+        if level < 2:
+            bm = rs._cut(bm, [0.7, 0.0, 0.7, _clamp(d['top'], 0.05, 0.3)], 0.4)
+            bm = rs._cut(bm, [0.6, 0.8, 0.0, _clamp(d['front'], 0.03, 0.25)], 0.4)
+        return bm
+    if part == 'DOOR_WING':                              # a door: the window above the belt line bent in, recessed
+        L, H = d['L'], d['H']
+        b = _clamp(d['belt'], 0.35, 0.75) * H
+        pts = [(0.5 * L, 0.0), (-0.5 * L, 0.02 * H), (-0.5 * L, b), (-0.22 * L, H), (0.36 * L, H), (0.53 * L, b)]
+        t = _panel_t(d, L, H)
+        _side_panel(bm, pts, t, [((0.8 * L, b + 0.01 * H), (-0.8 * L, b + 0.01 * H),
+                                  math.radians(_clamp(d['bend'], 4, 35)), False)], level)
+        if level < 1:
+            bm.normal_update()
+            win = max((f for f in bm.faces if f.normal.x > 0.5), key=lambda f: f.normal.z, default=None)
+            _inset_push(bm, win, d['glass'], 0.45 * t)
+        return bm
+    if part == 'FOREARM':                                # a bumper block along Y, a grille on its outer side
+        hw, H, L = d['W'] / 2, d['H'], d['L']
+        _front_solid(bm, [(-hw, 0.0), (hw, 0.0), (hw, 0.8 * H), (0.7 * hw, H), (-0.7 * hw, H), (-hw, 0.8 * H)], L,
+                     L / 2)
+        if level < 2:
+            bm = rs._cut(bm, [0.0, 0.7, -0.7, _clamp(d['wrist'], 0.03, 0.25)], 0.4)
+            bm = rs._cut(bm, [0.0, -0.6, 0.8, _clamp(d['elbow'], 0.03, 0.25)], 0.4)
+            if level < 1:
+                _inset_push(bm, _best_face(bm, (1.0, 0.0, 0.0), 0.98), d['grille'], 0.12 * hw)
+        return bm
+    if part == 'HEAD':                                   # a front outline with a crest and two fins, pushed back
+        s, H = d['W'] / 0.4, d['H']
+        fin = _clamp(d['fin'], 0.7, 1.0)
+        right = [(0.0, H), (0.06 * s, H), (0.09 * s, 0.72 * H), (0.17 * s, 0.68 * H), (0.23 * s, fin * H),
+                 (0.24 * s, 0.65 * H), (0.2 * s, 0.25 * H), (0.12 * s, 0.0), (0.0, 0.0)]
+        _front_solid(bm, _mirror_half(right), d['D'], d['D'] / 2)
+        if level < 2:
+            bm = rs._cut(bm, [0.0, 0.7, -0.7, _clamp(d['mouth'], 0.05, 0.3)], 0.4)
+            bm = rs._cut(bm, [0.0, 0.6, 0.8, _clamp(d['brow'], 0.02, 0.2)], 0.4)
+        return bm
+    if part == 'SHIN':                                   # a tall block, a wheel arch at the back of its foot end
+        L, H, r = d['L'], d['H'], _clamp(d['r'], 0.12, 0.35)
+        r = min(r, 0.8 * L)
+        arc = _arc(-0.5 * L, 0.0, r, 0.5 * math.pi, 0.0, 8)        # (from the back wall down to the bottom)
+        pts = [(-0.5 * L + r, 0.0), (0.5 * L, 0.0), (0.55 * L, 0.75 * H), (0.35 * L, H), (-0.42 * L, H),
+               (-0.5 * L, 0.6 * H)] + arc[:-1]
+        _side_solid(bm, rs._clean(pts), d['W'], -d['W'] / 2)
+        if level < 2:
+            bm = rs._cut(bm, [0.0, 0.7, 0.7, _clamp(d['knee'], 0.03, 0.25)], 0.4)
+            if level < 1:
+                _inset_push(bm, _best_face(bm, (0.0, 1.0, -0.05), 0.9), d['panel'], 0.08 * L)
+        return bm
+    if part == 'HOOD':                                   # a hood plate facing the front: a centre crease, sides bent
+        W, H = d['W'], d['H']
+        tw = _clamp(d['top'], 0.5, 1.0) * W
+        pts = [(-W / 2, 0.0), (W / 2, 0.0), (tw / 2, H), (-tw / 2, H)]
+        t = _panel_t(d, W, H)
+        rs._prism(bm, pts, t, 1.0, center=False)
+        if level < 2:
+            rs._fold(bm, math.pi / 2, 0.72, math.radians(_clamp(d['wrap'], 5, 50)))
+            rs._fold(bm, math.pi / 2, 0.0, math.radians(_clamp(d['ridge'], 3, 30)))
+            rs._split_twisted(bm)
+        bmesh.ops.transform(bm, matrix=rs.PLATE_M, verts=list(bm.verts))
+        rs.symmetrize(bm)
+        return bm
+    if part == 'WHEEL':                                  # a car wheel round X (its face +X): tyre, rim, the dish
+        R, hw = d['R'], d['Wt'] / 2
+        rim, dish, hub = (_clamp(d['rim'], 0.5, 0.8) * R, _clamp(d['dish'], 0.3, 0.75) * R, _clamp(d['hub'], 0.08, 0.3) * R)
+        dish = min(dish, rim - 0.05 * R)
+        hub = min(hub, dish - 0.05 * R)
+        prof = [(0.0, 0.25 * hw), (hub, 0.25 * hw), (hub * 1.3, 0.1 * hw), (dish, 0.0), (rim * 0.94, 0.3 * hw),
+                (rim, 0.4 * hw), (rim * 1.06, 0.45 * hw), (0.88 * R, 0.5 * hw), (0.97 * R, 0.4 * hw), (R, 0.2 * hw),
+                (R, -0.2 * hw), (0.97 * R, -0.4 * hw), (0.88 * R, -0.5 * hw), (rim * 1.06, -0.45 * hw),
+                (rim, -0.4 * hw), (0.45 * R, -0.25 * hw), (0.0, -0.25 * hw)]
+        _lathe(bm, prof, segs, 'X')
+        return bm
+    if part == 'BACKPACK':                               # a car's rear: a block, its top sloped, the tail lights in
+        hw, H, D = d['W'] / 2, d['H'], d['D']
+        _front_solid(bm, _mirror_half([(0.0, H), (0.86 * hw, H), (hw, 0.8 * H), (hw, 0.0), (0.0, 0.0)]), D, D / 2)
+        if level < 2:
+            bm = rs._cut(bm, [0.0, 0.5, 0.86, _clamp(d['slope'], 0.05, 0.45)], 0.4)
+            bm = rs._cut_pair(bm, [0.7, 0.7, 0.0, 0.06], 0.4)
+            if level < 1:
+                for sx in (1.0, -1.0):
+                    _inset_push(bm, _best_face(bm, (sx * 0.7, 0.7, 0.0), 0.95), d['lights'], 0.08 * D)
+        return bm
+    # FOOT: a front bumper - a block, a chin spoiler under its front, the lights in its corners
+    hw, H, L = d['W'] / 2, d['H'], d['L']
+    pts = [(-0.5 * L, 0.0), (0.42 * L, 0.0), (0.5 * L, 0.12 * H), (0.48 * L, 0.7 * H), (0.3 * L, H), (-0.45 * L, H)]
+    _side_solid(bm, pts, 2 * hw, -hw)
+    if level < 2:
+        bm = rs._cut_pair(bm, [0.65, 0.75, 0.0, _clamp(d['lights'], 0.04, 0.3) * 0.5], 0.4)
+        bm = rs._cut(bm, [0.0, 0.8, -0.6, _clamp(d['chin'], 0.03, 0.25)], 0.4)
+        if level < 1:
+            for sx in (1.0, -1.0):
+                _inset_push(bm, _best_face(bm, (sx * 0.65, 0.75, 0.0), 0.95), 0.2, 0.05 * L)
+    return bm
+
+
 # --- building --------------------------------------------------------------------------------------------------------
 
 def build(p, segs=32, level=0):
@@ -795,6 +1084,10 @@ def build(p, segs=32, level=0):
         bm = _p911(bm, part, d, level, segs)
     elif v == 'F22':
         bm = _f22(bm, part, d, level, segs)
+    elif v == 'HMECH':
+        bm = _hmech(bm, part, d, level, segs)
+    elif v == 'CARBOT':
+        bm = _carbot(bm, part, d, level, segs)
     else:
         bm = _mbt(bm, part, d, level, segs)
     if p.get('curved'):

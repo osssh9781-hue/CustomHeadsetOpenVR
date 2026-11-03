@@ -33,7 +33,15 @@ LOOKS = (('white_sweep', 'Studio White'), ('light_grey', 'Light Grey'), ('mid_gr
          ('split_tone', 'Warm / Cool'), ('halo', 'Halo Ring'), ('spotlight', 'Spotlight'), ('bokeh', 'Bokeh'),
          ('beam', 'Light Beam'), ('gels_red_cyan', 'Gels Red / Cyan'), ('gels_purple_orange', 'Gels Purple / Orange'),
          ('sunset_gradient', 'Sunset Gradient'), ('canvas_blue', 'Blue Canvas'), ('canvas_grey', 'Grey Canvas'),
-         ('concrete', 'Concrete'), ('infinity_white', 'Infinity White'), ('kraft', 'Kraft Paper'))
+         ('concrete', 'Concrete'), ('infinity_white', 'Infinity White'), ('kraft', 'Kraft Paper'),
+         # (0.24.95 user: "hdri 이미지 뒤에 연기 있는 버전도 만들어 줘 - 한 20 개": smoke behind the subject)
+         ('smoke_black', 'Smoke Black'), ('smoke_floor', 'Ground Fog'), ('smoke_blue', 'Smoke Blue'),
+         ('smoke_red', 'Smoke Red'), ('smoke_fire', 'Smoke Fire'), ('smoke_teal', 'Smoke Teal'),
+         ('smoke_purple', 'Smoke Purple'), ('smoke_toxic', 'Smoke Toxic'), ('smoke_red_blue', 'Smoke Red / Blue'),
+         ('smoke_spot', 'Smoke Spotlight'), ('smoke_backlight', 'Smoke Backlight'),
+         ('smoke_white', 'Smoke White Studio'), ('smoke_sunset', 'Smoke Sunset Haze'), ('smoke_steam', 'Steam'),
+         ('smoke_ash', 'Smoke Ash'), ('smoke_gold', 'Smoke Gold'), ('smoke_cyan_magenta', 'Smoke Cyan / Magenta'),
+         ('smoke_storm', 'Smoke Storm'), ('smoke_side', 'Smoke Side Light'), ('smoke_rays', 'Smoke God Rays'))
 PAGE = 6
 SCAN_EVERY = 3.0
 SCAN_MAX = 3000

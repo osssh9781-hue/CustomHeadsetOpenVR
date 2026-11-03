@@ -148,7 +148,7 @@ check('Variations of a real part: four relatives, each the same vehicle and part
       'materials', r == {'FINISHED'} and len(vs) == 4 and all(q['kind'] == 'F22' and q['part'] == 'INTAKE' for q in ps)
       and all(solid(o) for o in vs) and all(q['d'] != rs.params_of(src)['d'] for q in ps)
       and all(o.data.materials[:] == [mat] for o in vs), [q['part'] for q in ps])
-bpy.ops.mch.random_shape_ref(vehicle='LAMBO')
+st.ref_vehicle = 'LAMBO'                              # (the page shows another vehicle - set, not clicked)
 for o in C.selected_objects:
     o.select_set(False)
 vs[0].select_set(True)
@@ -157,6 +157,26 @@ r = bpy.ops.mch.random_shape_reroll(seed=8)
 q = rs.params_of(vs[0])
 check('Reroll of a real part: another part of its own vehicle (F-22 kept, the page showing Lambo), clean',
       r == {'FINISHED'} and q['family'] == 'REF' and q['kind'] == 'F22' and solid(vs[0]), (q['kind'], q['part']))
+
+# 0.24.95 thumbnails (user: "썸네일 - 그거 선택하고 변경 가능하게") and the last Summon live
+q0 = rs.params_of(vs[0])
+bpy.ops.mch.random_shape_ref(vehicle='MBT')
+bpy.ops.mch.random_shape_ref(part='TURRET')
+check('A part thumbnail clicked with a real part selected (not the last Summon): it becomes that part, where it was',
+      rs.params_of(vs[0])['kind'] == 'MBT' and rs.params_of(vs[0])['part'] == 'TURRET' and solid(vs[0]),
+      (q0['kind'], rs.params_of(vs[0])['part']))
+clear()
+st.count = 2
+bpy.ops.mch.random_shape_add(family='REF', seed=4)
+live = list(C.selected_objects)
+bpy.ops.mch.random_shape_ref(part='SKIRT')
+rs._live_apply() if rs._PENDING[0] else None
+st.count = 3
+rs._live_apply() if rs._PENDING[0] else None
+check('The last Summon live: another part clicked - both become it at once; Count 3 - one more next to them',
+      all(rs.params_of(o)['part'] == 'SKIRT' for o in live) and len(C.selected_objects) == 3
+      and all(solid(o) for o in C.selected_objects), [rs.params_of(o)['part'] for o in C.selected_objects])
+st.count = 1
 
 # a panel as thick as Thickness
 clear()
@@ -178,7 +198,7 @@ check('A panel (the skirt) as thick as Thickness: twice the Thickness, twice as 
 C.window_manager.mch_side_page = 'SHAPES'
 bpy.ops.mch.random_shape_ref(vehicle='MBT')
 its, _h = sp.content(C, None, 0.0, 276.0, 1.0)
-labels = [i.label for i in its if i.kind == 'tbtn']
+labels = [i.label for i in its if i.kind in {'tbtn', 'mtile'}]        # (0.24.95 parts as thumbnails)
 heads = [i.label for i in its if i.kind == 'shead']
 tank = next((i for i in its if i.kind == 'tbtn' and i.label == 'Tank' and i.action[1] == 'mch.random_shape_ref'), None)
 check('The page: Real Parts (Lambo 911 Jet Tank, the vehicle in use lit; its parts and Any; Panel Thickness; '

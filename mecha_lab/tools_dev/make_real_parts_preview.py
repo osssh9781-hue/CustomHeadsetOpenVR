@@ -3,7 +3,7 @@
 edges drawn on it (a Wireframe modifier copy), its name under it, seen from the side that shows it best (Cycles, the
 Mech Shader's lookdev HDRI).  Writes a contact sheet.
 
-    <python with bpy> tools_dev/make_real_parts_preview.py <out.jpg> [tile px] [samples] [seed]
+    <python with bpy> tools_dev/make_real_parts_preview.py <out.jpg> [tile px] [samples] [seed] [vehicles ...]
 """
 import os
 import random
@@ -26,7 +26,10 @@ PART_VIEW = {('LAMBO', 'DOOR'): 'SIDE', ('LAMBO', 'FENDER'): 'SIDE', ('LAMBO', '
              ('P911', 'FENDER_F'): 'SIDE', ('P911', 'FENDER_R'): 'SIDE', ('P911', 'DUCKTAIL'): 'REAR',
              ('P911', 'MIRROR'): 'REAR', ('F22', 'WING'): 'TOP', ('F22', 'STAB'): 'TOP', ('F22', 'FIN'): 'FIN',
              ('F22', 'NOZZLE'): 'REAR', ('F22', 'CANOPY'): 'SIDE', ('F22', 'NOSE'): 'FRONT',
-             ('MBT', 'SKIRT'): 'SIDE', ('MBT', 'WHEEL'): 'SIDE', ('MBT', 'TURRET'): 'FRONT'}
+             ('MBT', 'SKIRT'): 'SIDE', ('MBT', 'WHEEL'): 'SIDE', ('MBT', 'TURRET'): 'FRONT',
+             ('HMECH', 'SHOULDER'): 'SIDE', ('HMECH', 'HIP'): 'SIDE', ('HMECH', 'VENT'): 'FRONT',
+             ('CARBOT', 'SHOULDER'): 'SIDE', ('CARBOT', 'DOOR_WING'): 'SIDE', ('CARBOT', 'WHEEL'): 'SIDE',
+             ('CARBOT', 'SHIN'): 'SIDE', ('CARBOT', 'FOREARM'): 'SIDE'}
 
 
 def frame(cam, lab, ob, text, view):
@@ -57,7 +60,10 @@ def main():
     tmp = os.path.splitext(out)[0] + '_tiles'
     os.makedirs(tmp, exist_ok=True)
     jobs = []
+    only = [a for a in args[4:]]                        # (vehicles to show: all when none named)
     for i, v in enumerate(rp.PART_IDS):
+        if only and v not in only:
+            continue
         for j, part in enumerate(rp.PART_IDS[v]):
             jobs.append((rp.label(v, part), rp.ref_params(random.Random(seed * 1000 + i * 50 + j), v, part, 0.05),
                          PART_VIEW.get((v, part), 'FRONT')))
