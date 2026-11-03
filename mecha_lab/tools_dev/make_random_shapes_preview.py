@@ -1,5 +1,5 @@
-"""0.24.95 A look at the Shapes page's random base shapes: Polygon shapes of every kind, Curved shapes of every kind,
-then two shapes with four Variations each - each tile one shape, its real edges drawn on it (a Wireframe modifier
+"""0.24.95 A look at the Shapes page's random base shapes: Polygon shapes of every kind (solid, then plates), Curved
+shapes of every kind (solid, then plates), then a shape with four Variations - each tile one shape, its real edges drawn on it (a Wireframe modifier
 copy: the quads and n-gons as they are), its name under it
 (Cycles, the Mech Shader's lookdev HDRI).  Writes a contact sheet.
 
@@ -122,19 +122,23 @@ def main():
     os.makedirs(tmp, exist_ok=True)
     names = dict((k[0], k[1]) for k in rs.KINDS + rs.CURVE_KINDS)
     jobs = []                                            # (label, parameters)
-    for i, kind in enumerate(rs.KIND_IDS):
-        for j, sym in enumerate((False, True)):
-            p = rs.poly_params(random.Random(100 + i * 7 + j), kind, 2, 0.4, 0.3, sym)
-            jobs.append((f'Polygon: {names[kind]}' + (' (sym)' if sym else ''), p))
-    for kind, seeds in (('POD', (3, 4, 9)), ('DOMECUT', (2, 5, 8)), ('SHELL', (1, 6)), ('CAPSULE', (2, 7))):
-        for s in seeds:
-            jobs.append((f'Curved: {names[kind]}', rs.curve_params(random.Random(s), kind, 2, True)))
-    for kind, s in (('POD', 11), ('DOMECUT', 12)):
-        p = rs.curve_params(random.Random(s), kind, 2, True)
-        jobs.append((f'{names[kind]}: the one you like', p))
-        vr = random.Random(s * 13)
-        for v in range(4):
-            jobs.append((f'... variation {v + 1}', rs.vary(p, 0.3, vr)))
+    for i, kind in enumerate(rs.KIND_IDS):               # Polygon, solid
+        p = rs.poly_params(random.Random(100 + i * 7), kind, 2, 0.4, 0.3, i % 2 == 1)
+        jobs.append((f'Polygon: {names[kind]}', p))
+    for i, kind in enumerate(rs.KIND_IDS):               # Polygon, plate
+        p = rs.poly_params(random.Random(200 + i * 7), kind, 2, 0.4, 0.3, i % 2 == 0, plate=0.05)
+        jobs.append((f'Polygon plate: {names[kind]}', p))
+    for kind, seeds in (('POD', (3, 4, 9)), ('TORSO', (2, 5, 8)), ('DOMECUT', (2, 5)), ('CAPSULE', (7,)),
+                        ('SHELL', (1,))):
+        for sd in seeds:
+            jobs.append((f'Curved: {names[kind]}', rs.curve_params(random.Random(sd), kind, 2, True)))
+    for kind, sd in (('POD', 21), ('TORSO', 22), ('DOMECUT', 23), ('CAPSULE', 24), ('SHELL', 25)):
+        jobs.append((f'Curved plate: {names[kind]}', rs.curve_params(random.Random(sd), kind, 2, True, 0.05)))
+    p = rs.curve_params(random.Random(31), 'TORSO', 2, True)
+    jobs.append(('Torso: the one you like', p))
+    vr = random.Random(31 * 13)
+    for v in range(4):
+        jobs.append((f'... variation {v + 1} (Amount 0.4)', rs.vary(p, 0.4, vr)))
     tiles = []
     for n, (label, p) in enumerate(jobs):
         t0 = time.time()

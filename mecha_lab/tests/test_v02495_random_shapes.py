@@ -7,6 +7,9 @@
 * the same seed: the same shapes (F9)
 * Variations: close relatives of the selected shape next to it (same kind, a little different), again from one of them
 * Reroll: a new form where the shape is (place, size, materials kept)
+* Plate (user: "덩어리지만 약간 판떼기 버전도 - 두께가 얇은 판떼기"): thin plates of both families - a Polygon plate as
+  thick as Thickness facing the front, a Curved plate curved both ways; Variations / Reroll keep a plate a plate
+* Curved: Torso, flat-topped Pods (a rounded rim round a flat face), chisel cuts mirrored into a ridge
 * the tab and the page; a Cut on a Curved shape works; 400 random shapes all clean"""
 import random
 
@@ -33,8 +36,8 @@ def solid(ob):
     return ok
 
 
-def mirrored(ob):
-    co = {tuple(round(c, 4) for c in v.co) for v in ob.data.vertices}
+def mirrored(ob, nd=4):
+    co = {tuple(round(c, nd) for c in v.co) for v in ob.data.vertices}
     return all((-x, y, z) in co for x, y, z in co)
 
 
@@ -153,10 +156,10 @@ its, _h = sp.content(C, None, 0.0, 276.0, 1.0)
 labels = [i.label for i in its if i.kind == 'tbtn']
 heads = [i.label for i in its if i.kind == 'shead']
 vary_btn = next((i for i in its if i.kind == 'tbtn' and i.label == 'Variations'), None)
-check('The Shapes page: Polygon (Mix Block Prism Wedge Step Shard, Summon Polygon), Curved (Mix Pod Shell Capsule '
-      'Dome Cut, Summon Curved), Variations (on: a random shape is selected), Reroll',
-      all(n in labels for n in ('Block', 'Prism', 'Wedge', 'Step', 'Shard', 'Pod', 'Shell', 'Capsule', 'Dome Cut',
-                                'Summon Polygon', 'Summon Curved'))
+check('The Shapes page: Solid | Plate, Polygon (Mix Block Prism Wedge Step Shard, Summon Polygon), Curved (Mix Pod '
+      'Shell Capsule Dome Cut Torso, Summon Curved), Variations (on: a random shape is selected), Reroll',
+      all(n in labels for n in ('Solid', 'Plate', 'Block', 'Prism', 'Wedge', 'Step', 'Shard', 'Pod', 'Shell', 'Capsule',
+                                'Dome Cut', 'Torso', 'Summon Polygon', 'Summon Curved'))
       and any(h.startswith('POLYGON') for h in heads) and any(h.startswith('CURVED') for h in heads)
       and vary_btn is not None and vary_btn.enabled and any(n.startswith('Reroll Selected') for n in labels),
       (labels, heads))
@@ -166,6 +169,77 @@ r = bpy.ops.mch.side_page(page='SHAPES')
 tabs = [i for i in sp.items(C, 1200, 900, 1.0) if i.kind == 'ptab']
 check('... its tab (Shapes) beside Mech / Creature / Decals / HDRI, lit when shown',
       r == {'FINISHED'} and any(t.label == 'Shapes' and t.on for t in tabs), [(t.label, t.on) for t in tabs])
+
+st.form = 'PLATE'
+its, _h = sp.content(C, None, 0.0, 276.0, 1.0)
+check('... Plate on: lit, its Thickness bar shown', any(i.kind == 'tbtn' and i.label == 'Plate' and i.on for i in its)
+      and any(getattr(i, 'prop', '') == 'plate_thk' for i in its))
+st.form = 'SOLID'
+
+# plates
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+S.cursor.location = (0.0, 0.0, 0.0)
+st.form, st.plate_thk, st.size, st.count, st.kind, st.poly_sym = 'PLATE', 0.04, 2.0, 1, 'BLOCK', False
+r = bpy.ops.mch.random_shape_add(family='POLY', seed=6)
+pp = C.active_object
+co = np.array([v.co[:] for v in pp.data.vertices])
+ext = co.max(0) - co.min(0)
+check('Plate (Polygon): a thin panel facing the front - its depth (Y) about Thickness x its size, flat faces, a '
+      'clean closed solid, "plate" in its parameters',
+      r == {'FINISHED'} and solid(pp) and ext[1] < 0.06 * ext.max() and ext[0] > 0.3 * ext.max()
+      and ext[2] > 0.3 * ext.max() and rs.plate_of(rs.params_of(pp)) == 0.04
+      and not any(p.use_smooth for p in pp.data.polygons), [round(e, 3) for e in ext])
+st.curve_kind, st.curve_sym = 'POD', True
+r = bpy.ops.mch.random_shape_add(family='CURVE', seed=6)
+cp = C.active_object
+bm = bmesh.new()
+bm.from_mesh(cp.data)
+vol = bm.calc_volume()
+area = sum(f.calc_area() for f in bm.faces)
+bm.free()
+check('Plate (Curved Pod): the front of the body as a thin curved plate - a clean closed solid, symmetric, smooth, '
+      'thin (volume / half its area: about its thickness, a few % of its size)',
+      r == {'FINISHED'} and solid(cp) and mirrored(cp, 3) and all(p.use_smooth for p in cp.data.polygons)
+      and 0 < vol / (area / 2) < 0.08 * longest(cp), (round(vol / (area / 2), 4), round(longest(cp), 3)))
+for o in C.selected_objects:
+    o.select_set(False)
+cp.select_set(True)
+C.view_layer.objects.active = cp
+st.form = 'SOLID'
+bpy.ops.mch.random_shape_vary(seed=2)
+vplates = list(C.selected_objects)
+check('... its Variations plates too (whatever the page says now), each clean',
+      len(vplates) == st.var_count and all(isinstance(rs.params_of(v).get('plate'), dict) and solid(v)
+                                           for v in vplates))
+for o in C.selected_objects:
+    o.select_set(False)
+pp.select_set(True)
+C.view_layer.objects.active = pp
+bpy.ops.mch.random_shape_reroll(seed=5)
+check('... Reroll keeps a plate a plate (as thick)', rs.plate_of(rs.params_of(pp)) == 0.04 and solid(pp))
+
+# Curved: the new look
+tops = []
+for seed in range(1, 21):
+    p = rs.curve_params(random.Random(seed), 'POD', 2, True)
+    rows = [sc for _t, sc, _r in rs.body_rings(p, 32)]
+    tops.append(min(rows[0], rows[-1]))
+check('Curved Pod: a rounded box - its ends a rounded rim round a flat face (not closing to a point like an egg)',
+      min(tops) > 0.3, [round(t, 2) for t in tops[:6]])
+st.form, st.curve_kind = 'SOLID', 'TORSO'
+bpy.ops.mch.random_shape_add(family='CURVE', seed=4)
+tor = C.active_object
+pt = rs.params_of(tor)
+check('Curved Torso: wider at the top than the waist, the chest forward, a flat back; a clean symmetric solid',
+      pt['kind'] == 'TORSO' and pt['w'][2] > pt['w'][0] and pt['y'][2] > 0.05 and pt['back'] < 0.85
+      and solid(tor) and mirrored(tor))
+chisel = 0
+for seed in range(1, 41):
+    p = rs.curve_params(random.Random(seed), 'DOMECUT', 3, True)
+    chisel += any(c[0] > 0.2 and c[1] > 0.5 for c in p['cuts'])
+check('... chisel cuts (to one side of the front, mirrored: a ridge down the middle) in many Dome Cuts',
+      chisel >= 15, chisel)
 
 # a Cut on a curved shape
 for o in list(bpy.data.objects):
@@ -195,14 +269,15 @@ check('A Cut through a Curved shape (Capsule): the hole taken away, the shape st
 # many
 bad = []
 for fam in ('POLY', 'CURVE'):
-    for seed in range(1, 201):
-        rng = random.Random(seed)
-        p = (rs.poly_params(rng, 'MIX', 4, 1.0, 1.0, seed % 2 == 0) if fam == 'POLY'
-             else rs.curve_params(rng, 'MIX', 4, seed % 2 == 0))
-        bm, _k = rs.build(p, 32, 1.0)
-        if not (rs._closed(bm) and rs._islands(bm) == 1 and bm.calc_volume(signed=True) > 0):
-            bad.append((fam, seed))
-        bm.free()
-check('400 random shapes (both families, every kind, the most slices / cuts / chamfer / taper, symmetric or not): '
-      'every one a clean closed solid', not bad, bad[:5])
+    for plate in (0.0, 0.05):
+        for seed in range(1, 101):
+            rng = random.Random(seed)
+            p = (rs.poly_params(rng, 'MIX', 4, 1.0, 1.0, seed % 2 == 0, plate=plate) if fam == 'POLY'
+                 else rs.curve_params(rng, 'MIX', 4, seed % 2 == 0, plate))
+            bm, _k = rs.build(p, 32, 1.0)
+            if not (rs._closed(bm) and rs._islands(bm) == 1 and bm.calc_volume(signed=True) > 0):
+                bad.append((fam, plate, seed))
+            bm.free()
+check('400 random shapes (both families, solid and plate, every kind, the most slices / cuts / chamfer / taper, '
+      'symmetric or not): every one a clean closed solid', not bad, bad[:5])
 summary()

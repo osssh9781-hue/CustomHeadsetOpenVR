@@ -6,10 +6,15 @@
 * **Summon Polygon** - flat faces only: **Block** (a box, corners cut), **Prism** (3 - 10 sides), **Wedge** (a slope
   seen from the side), **Step** (L, T, U, stairs, a notch), **Shard** (uneven sides); Slices (flat cuts at an angle),
   Chamfer (edges cut flat), Taper (the top smaller)
-* **Summon Curved** - surfaces curved both ways, a section of 4 - 8 sides (rounded, its sides bulging) or round:
-  **Pod** (a cockpit / torso: bulging, its face cut flat), **Shell** (a curved armour plate with a thickness - chest,
-  shoulder, shin), **Capsule** (a limb segment: an egg, a tapered capsule), **Dome Cut** (a round mass with flat faces
-  cut into it and folded lines where two meet); Flat Cuts, Smooth (segments round)
+* **Summon Curved** - surfaces curved both ways, a section of 4 - 8 sides (rounded, its sides bulging, the back
+  flatter) or round: **Pod** (a cockpit: a rounded box - a rounded rim round a flat top - its face cut flat),
+  **Torso** (a chest: wide at the top, the chest bulging forward), **Shell** (a curved armour plate with a thickness -
+  chest, shoulder, shin), **Capsule** (a limb segment), **Dome Cut** (a round mass with flat faces cut into it); the
+  cuts often a chisel to one side of the front - mirrored: a ridge down the middle; Flat Cuts, Smooth
+* **Solid / Plate** (user: "덩어리지만 약간 판떼기 버전도 - 두께가 얇은 판떼기"): Plate makes thin plates of both
+  families (Thickness, of the plate's size): a Polygon plate is the outline as a panel facing the front, its rim
+  slanted now and then, its edges trimmed at angles; a Curved plate is the front of the body - curved both ways as
+  the body is - made thick inward, its outline trimmed
 * **Symmetric** (each family): the left half the mirror of the right (a shape built on its centre line)
 * **Variations**: the selected shape you like -> several close relatives next to it, a little different each
   (Amount: how much); pick one of those and vary again.  **Reroll**: the selected shapes a new form each
@@ -41,14 +46,17 @@ CURVE_KINDS = (('MIX', 'Mix', 'Any of the curved kinds'),
                ('POD', 'Pod', 'A cockpit / a torso: a bulging body of 4 - 8 sides, its face cut flat'),
                ('SHELL', 'Shell', 'A curved armour plate with a thickness: a chest, a shoulder, a shin plate'),
                ('CAPSULE', 'Capsule', 'A limb segment: an egg, a tapered capsule'),
-               ('DOMECUT', 'Dome Cut', 'A round mass with flat faces cut into it, folded lines where two meet'))
+               ('DOMECUT', 'Dome Cut', 'A round mass with flat faces cut into it, folded lines where two meet'),
+               ('TORSO', 'Torso', 'A chest / a body: wide at the top, the chest bulging forward, a flat back'))
 CURVE_IDS = tuple(k[0] for k in CURVE_KINDS[1:])
-CURVE_MIX = {'POD': 3, 'SHELL': 2, 'CAPSULE': 2, 'DOMECUT': 3}
+CURVE_MIX = {'POD': 3, 'SHELL': 2, 'CAPSULE': 2, 'DOMECUT': 3, 'TORSO': 3}
+FORMS = (('SOLID', 'Solid', 'A solid mass'), ('PLATE', 'Plate', 'A thin plate of that shape (Thickness)'))
 FAMILIES = (('POLY', 'Polygon', 'Flat faces only'), ('CURVE', 'Curved', 'Surfaces curved both ways'))
 TAG = 'mch_rshape'                    # on the object: its parameters (JSON) - what Variations / Reroll read
 NAME = 'MCH_Shape'
 LAST = {'level': 0}                  # (0: the shape as its parameters say; 1 - 3: without chamfers / cuts - tests)
 SIDE_M = Matrix(((0, 0, 1, 0), (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 0, 1)))   # outline x -> Y, y -> Z, depth -> X
+PLATE_M = Matrix(((1, 0, 0, 0), (0, 0, -1, 0), (0, 1, 0, 0), (0, 0, 0, 1)))  # a plate: facing the front (+Y)
 CUT_ROWS = 12                        # (rows along a curved body, its round ends apart)
 
 
@@ -246,30 +254,57 @@ def _islands(bm):
     return n
 
 
-def _cut(bm, plane, keep_min=0.5):
+def _cut(bm, plane, keep_min=0.5, off=None):
     """One flat cut: the plane ``plane`` = (nx, ny, nz, frac) takes ``frac`` of the solid's extent along its normal
     away, the hole closed with one flat face.  Returns the new solid (``bm`` freed), or ``bm`` itself when the cut
-    would leave less than ``keep_min`` of it or two pieces."""
+    would leave less than ``keep_min`` of it or two pieces.  ``off``: the plane's place along its normal (given)."""
     n = Vector(plane[:3])
     if n.length < 1e-6:
         return bm
     n.normalize()
     vol0 = bm.calc_volume()
     work = bm.copy()
-    d = [v.co.dot(n) for v in work.verts]
-    lo, hi = min(d), max(d)
-    off = hi - (hi - lo) * float(plane[3])
+    if off is None:
+        d = [v.co.dot(n) for v in work.verts]
+        lo, hi = min(d), max(d)
+        off = hi - (hi - lo) * float(plane[3])
     geom = list(work.verts) + list(work.edges) + list(work.faces)
     bmesh.ops.bisect_plane(work, geom=geom, dist=1e-6, plane_co=n * off, plane_no=n, clear_outer=True)
     open_e = [e for e in work.edges if len(e.link_faces) < 2]
     if open_e:
         bmesh.ops.holes_fill(work, edges=open_e, sides=0)
-        bmesh.ops.remove_doubles(work, verts=list(work.verts), dist=1e-6)
+        bmesh.ops.remove_doubles(work, verts=list(work.verts), dist=1e-5)
         if _closed(work) and _islands(work) == 1 and work.calc_volume() > keep_min * vol0:
             bm.free()
             return work
     work.free()
     return bm
+
+
+def _cut_pair(bm, plane, keep_min=0.5):
+    """A cut and its mirror image across X = 0, at the same place - both or neither (a shape symmetric already stays
+    so)."""
+    n = Vector(plane[:3])
+    if n.length < 1e-6:
+        return bm
+    n.normalize()
+    d = [v.co.dot(n) for v in bm.verts]
+    lo, hi = min(d), max(d)
+    off = hi - (hi - lo) * float(plane[3])
+    if abs(n.x) <= 1e-6:
+        return _cut(bm, plane, keep_min, off)
+    vol0 = bm.calc_volume()
+    work = bm.copy()
+    one = _cut(work, plane, keep_min, off)
+    if one is work:
+        work.free()
+        return bm
+    two = _cut(one, [-plane[0], plane[1], plane[2], plane[3]], keep_min, off)
+    if two is one or two.calc_volume() < keep_min * vol0:
+        two.free()
+        return bm
+    bm.free()
+    return two
 
 
 def _chamfer(bm, seed, amount):
@@ -360,7 +395,10 @@ FLAT_TOL = 2e-3                     # (of a shape 1 across: a chamfer's face may
 def _valid(bm, curved):
     if not bm.verts:
         return False
+    bmesh.ops.dissolve_degenerate(bm, dist=1e-5, edges=list(bm.edges))     # (a speck of a face a cut left)
     bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+    if bm.calc_volume(signed=True) < 0:                  # (a thin plate: the guess of its outside can go wrong)
+        bmesh.ops.reverse_faces(bm, faces=list(bm.faces))
     return (_closed(bm) and _islands(bm) == 1 and _planar_ok(bm, FLAT_TOL, quads=not curved)
             and bm.calc_volume(signed=True) > 1e-6)
 
@@ -390,7 +428,22 @@ def _rand_plane(rng, sym, frac=(0.1, 0.32), zlo=-0.3):
     return [round(n.x, 6), round(n.y, 6), round(n.z, 6), round(rng.uniform(*frac), 6)]
 
 
-def poly_params(rng, kind='MIX', slices=2, chamfer=0.3, taper=0.3, sym=False, max_sides=10):
+def _plate_trim(rng, sym, frac=(0.06, 0.22)):
+    """A cut across a plate's edge (its normal along the plate, a little tilted): a corner or a side trimmed at an
+    angle - the plate's outline."""
+    a = rng.uniform(0, 2 * math.pi)
+    n = Vector((math.cos(a), math.sin(a), rng.uniform(-0.25, 0.25)))
+    if sym:
+        n.x = abs(n.x)
+    n.normalize()
+    return [round(n.x, 6), round(n.y, 6), round(n.z, 6), round(rng.uniform(*frac), 6)]
+
+
+def poly_params(rng, kind='MIX', slices=2, chamfer=0.3, taper=0.3, sym=False, max_sides=10, plate=0.0):
+    """Random Polygon parameters; ``plate`` > 0: a plate that thick (of a shape 1 across) - the outline as a thin
+    panel facing the front, its rim slanted now and then, its edges trimmed at angles."""
+    if plate > 0:
+        return _poly_plate_params(rng, kind, slices, chamfer, sym, max_sides, plate)
     if kind not in KIND_IDS:
         ks = list(MIX_WEIGHTS)
         kind = rng.choices(ks, weights=[MIX_WEIGHTS[k] for k in ks])[0]
@@ -418,6 +471,21 @@ def poly_params(rng, kind='MIX', slices=2, chamfer=0.3, taper=0.3, sym=False, ma
             'chamfer': [rng.randrange(1, 2 ** 31 - 1), round(chamfer if rng.random() < 0.8 else 0.0, 6)]}
 
 
+def _poly_plate_params(rng, kind, slices, chamfer, sym, max_sides, plate):
+    if kind not in KIND_IDS:
+        ks = list(MIX_WEIGHTS)
+        kind = rng.choices(ks, weights=[MIX_WEIGHTS[k] for k in ks])[0]
+    pts = {'BLOCK': outline_block, 'WEDGE': outline_wedge, 'STEP': outline_step,
+           'SHARD': outline_shard}.get(kind, lambda r: outline_prism(r, max_sides))(rng)
+    tp = 1.0 - rng.uniform(0.03, 0.12) if rng.random() < 0.6 else 1.0     # (a slanted rim: a bevelled armour edge)
+    n_sl = rng.randint(1, max(1, slices + 1)) if slices > 0 else 0
+    return {'family': 'POLY', 'kind': kind, 'sym': bool(sym), 'plate': round(plate, 6),
+            'outline': [[round(x, 6), round(y, 6)] for x, y in _clean(pts)],
+            'depth': round(plate * rng.uniform(0.85, 1.15), 6), 'taper': round(tp, 6), 'side': False,
+            'slices': [_plate_trim(rng, sym) for _ in range(n_sl)],
+            'chamfer': [rng.randrange(1, 2 ** 31 - 1), round(chamfer if rng.random() < 0.7 else 0.0, 6)]}
+
+
 def build_poly(p, level=0):
     """The solid of Polygon parameters ``p``; ``level`` 1: without its chamfers, 2: without its slices too."""
     bm = bmesh.new()
@@ -430,6 +498,8 @@ def build_poly(p, level=0):
     ch = p.get('chamfer') or (0, 0.0)
     if level < 1 and ch[1] > 0:
         _chamfer(bm, int(ch[0]), float(ch[1]))
+    if p.get('plate'):                                   # (a plate stands facing the front)
+        bmesh.ops.transform(bm, matrix=PLATE_M, verts=list(bm.verts))
     if p.get('sym'):
         symmetrize(bm)
     return bm
@@ -437,10 +507,11 @@ def build_poly(p, level=0):
 
 # --- Curved: a section of 4 - 8 sides, rounded, its sides bulging ---------------------------------------------------
 
-def section(n, rnd, bulge, front, segs):
+def section(n, rnd, bulge, front, segs, back=1.0):
     """The cross-section: a polygon of ``n`` sides (a corner or a side to the front, +Y), its corners rounded
     (``rnd`` 0 - 1: 1 round all along), its sides bulging out (``bulge``); symmetric about X = 0 with a point on it at
-    the front and at the back (the first point: the front); in a box of -1 .. 1.  ``n`` of 16 and more: round."""
+    the front and at the back (the first point: the front); in a box of -1 .. 1, the back half ``back`` times as
+    deep (under 1: a flatter back - a cockpit / a chest on its frame).  ``n`` of 16 and more: round."""
     n = max(3, int(n))
     step = 2 * math.pi / n
     a0 = math.pi / 2 if front == 'VERTEX' else math.pi / 2 - step / 2
@@ -468,8 +539,12 @@ def section(n, rnd, bulge, front, segs):
     ys = [p.y for p in pts]
     xm = max(abs(x) for x in xs) or 1.0
     yc, yh = (max(ys) + min(ys)) / 2, ((max(ys) - min(ys)) / 2) or 1.0
-    out = [(0.0 if abs(p.x) < 1e-9 else p.x / xm, (p.y - yc) / yh) for p in pts]
-    first = max(range(len(out)), key=lambda i: (out[i][0] == 0.0, out[i][1]))
+    out = [[p.x / xm, (p.y - yc) / yh] for p in pts]
+    for sign in (1, -1):                                 # (the front and the back point: exactly on the centre line)
+        i = min((i for i in range(len(out)) if out[i][1] * sign > 0), key=lambda i: abs(out[i][0]))
+        out[i][0] = 0.0
+    out = [(x, y if y >= 0 else y * back) for x, y in out]
+    first = max((i for i in range(len(out)) if out[i][0] == 0.0), key=lambda i: out[i][1])
     return out[first:] + out[:first]
 
 
@@ -484,21 +559,25 @@ def _spline(vals, t):
                   + (-p0 + 3 * p1 - 3 * p2 + p3) * u * u * u)
 
 
-def _rows(c0, c1):
+def _rows(c0, c1, f0=0.0, f1=0.0):
     """(t, scale) along a body of round ends ``c0`` (bottom) / ``c1`` (top) - a quarter of an oval each, a step of
-    15 degrees at most (the round stays smooth: under the Edge Memory's 30 degrees)."""
+    15 degrees at most (the round stays smooth: under the Edge Memory's 30 degrees); an end closes in a point, or
+    (``f0`` / ``f1`` > 0) on a flat face that much of the section across - a rounded rim round a flat top."""
     c0, c1 = max(0.0, c0), max(0.0, c1)
+    f0, f1 = max(0.0, min(0.95, f0)), max(0.0, min(0.95, f1))
     if c0 + c1 > 0.9:
         k = 0.9 / (c0 + c1)
         c0, c1 = c0 * k, c1 * k
     rows = []
     k = 6
     if c0 > 0.01:
-        rows += [(c0 * (1 - math.cos(math.pi / 2 * i / k)), math.sin(math.pi / 2 * i / k)) for i in range(k)]
+        rows += [(c0 * (1 - math.cos(math.pi / 2 * i / k)), f0 + (1 - f0) * math.sin(math.pi / 2 * i / k))
+                 for i in range(k)]
     nb = max(2, int(round((1 - c0 - c1) * CUT_ROWS)))
     rows += [(c0 + (1 - c0 - c1) * i / nb, 1.0) for i in range(nb + 1)]
     if c1 > 0.01:
-        rows += [(1 - c1 + c1 * math.sin(math.pi / 2 * i / k), math.cos(math.pi / 2 * i / k)) for i in range(1, k + 1)]
+        rows += [(1 - c1 + c1 * math.sin(math.pi / 2 * i / k), f1 + (1 - f1) * math.cos(math.pi / 2 * i / k))
+                 for i in range(1, k + 1)]
     return rows
 
 
@@ -523,22 +602,47 @@ def _loft(bm, rings):
         bm.faces.new(list(reversed(rings[-1])))
 
 
-def body(bm, p, segs):
-    """A body along Z: the section scaled by the width / depth profiles, moved forward by the ``y`` profile, its ends
-    round (``c0`` / ``c1``) or flat."""
-    sec = section(p['n'], p['round'], p['bulge'], p['front'], segs)
+def body_rings(p, segs):
+    """[(t, scale, ring)] of a body along Z: the section scaled by the width / depth profiles, moved forward by the ``y``
+    profile, its ends round (``c0`` / ``c1``: to a point, or to a flat face ``cf0`` / ``cf1`` across) or flat; a ring
+    of one point where an end closes."""
+    sec = section(p['n'], p['round'], p['bulge'], p['front'], segs, p.get('back', 1.0))
     W, D, L = p['W'], p['D'], p['L']
-    rings = []
-    for t, sc in _rows(p['c0'], p['c1']):
+    out = []
+    for t, sc in _rows(p['c0'], p['c1'], p.get('cf0', 0.0), p.get('cf1', 0.0)):
         w = max(0.05, _spline(p['w'], t)) * sc * W / 2
         dd = max(0.05, _spline(p['d'], t)) * sc * D / 2
         yo = _spline(p['y'], t) * D / 2
         z = t * L
-        if sc < 1e-6:
-            rings.append([bm.verts.new((0.0, yo, z))])
-        else:
-            rings.append([bm.verts.new((x * w, y * dd + yo, z)) for x, y in sec])
-    _loft(bm, rings)
+        out.append((t, sc, [(0.0, yo, z)] if sc < 1e-6 else [(x * w, y * dd + yo, z) for x, y in sec]))
+    return out
+
+
+def body(bm, p, segs):
+    _loft(bm, [[bm.verts.new(c) for c in ring] for _t, _sc, ring in body_rings(p, segs)])
+
+
+def plate_patch(bm, p, segs):
+    """A curved plate: the front of the body (``plate['span']`` of the way round, rows ``t0`` .. ``t1``) - curved
+    as the body is, both ways - made ``plate['thk']`` thick inward (of the patch's size)."""
+    pl = p['plate']
+    rings = [(t, r) for t, sc, r in body_rings(p, segs) if sc >= 0.5]   # (not where a round end closes in)
+    sel = [r for t, r in rings if pl['t0'] - 1e-9 <= t <= pl['t1'] + 1e-9]
+    if len(sel) < 3:
+        sel = [r for _t, r in rings]
+    m = len(sel[0])
+    half = max(2, min(m // 2 - 2, int(round(m * pl['span'] / 2))))
+    idx = [i % m for i in range(-half, half + 1)]        # (the front point in the middle: symmetric)
+    grid = [[bm.verts.new(r[i]) for i in idx] for r in sel]
+    for a, b in zip(grid, grid[1:]):
+        for i in range(len(idx) - 1):
+            bm.faces.new((a[i], a[i + 1], b[i + 1], b[i]))
+    bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+    if sum(f.normal.y for f in bm.faces) < 0:            # (the outside facing the front)
+        bmesh.ops.reverse_faces(bm, faces=list(bm.faces))
+    co = [v.co for v in bm.verts]
+    size = max(max(c[i] for c in co) - min(c[i] for c in co) for i in range(3))
+    bmesh.ops.solidify(bm, geom=list(bm.faces), thickness=pl['thk'] * size)
 
 
 def shell(bm, p, segs):
@@ -563,18 +667,27 @@ def shell(bm, p, segs):
     _loft(bm, rings)
 
 
+CUT_WEIGHTS = {                       # visor, chisel, cheek, chin, top, back, shoulder
+    'POD': (4, 3, 2, 2, 1, 1, 0), 'DOMECUT': (3, 4, 3, 2, 0, 1, 0), 'TORSO': (1, 4, 1, 2, 0, 1, 3),
+    'CAPSULE': (1, 1, 3, 1, 1, 2, 0)}
+
+
 def _curve_cut(rng, kind, sym):
-    """A flat cut for a curved body of ``kind``: the face (visor), a cheek, the chin, the top, the back; a Shell's
-    corners."""
+    """A flat cut for a curved body of ``kind``: the face (visor), a chisel (to one side of the front - mirrored:
+    a ridge down the middle), a cheek, the chin, the top, the back, a shoulder; a Shell's corners."""
     U = rng.uniform
-    deep = 1.6 if kind == 'DOMECUT' else 1.0
+    deep = 1.5 if kind == 'DOMECUT' else 1.0
     if kind == 'SHELL':
         n = (U(0.3, 1.0), U(-0.25, 0.25), U(0.3, 1.0) * rng.choice((-1, 1)))
         fr = U(0.05, 0.2)
     else:
-        c = rng.choices(('visor', 'cheek', 'chin', 'top', 'back'),
-                        weights=(4, 3, 2, 1, 1) if kind != 'CAPSULE' else (1, 3, 1, 1, 2))[0]
-        if c == 'visor':
+        c = rng.choices(('visor', 'chisel', 'cheek', 'chin', 'top', 'back', 'shoulder'),
+                        weights=CUT_WEIGHTS.get(kind, CUT_WEIGHTS['POD']))[0]
+        if c == 'chisel':
+            n, fr = (U(0.3, 0.7), 1.0, U(-0.3, 0.5)), U(0.08, 0.17) * deep
+        elif c == 'shoulder':
+            n, fr = (U(0.4, 0.9), U(-0.2, 0.3), 1.0), U(0.06, 0.15)
+        elif c == 'visor':
             n, fr = (0.0, 1.0, U(-0.3, 0.9)), U(0.07, 0.18) * deep
         elif c == 'cheek':
             n, fr = (U(0.6, 1.0), U(0.2, 0.8), U(-0.4, 0.4)), U(0.05, 0.13) * deep
@@ -589,42 +702,60 @@ def _curve_cut(rng, kind, sym):
     return [round(v.x, 6), round(v.y, 6), round(v.z, 6), round(fr, 6)]
 
 
-def curve_params(rng, kind='MIX', cuts=2, sym=True):
+def curve_params(rng, kind='MIX', cuts=2, sym=True, plate=0.0):
+    """Random Curved parameters; ``plate`` > 0: a plate that thick (of the plate's size) - the front of the body,
+    curved as it is, its outline trimmed at angles."""
     if kind not in CURVE_IDS:
         ks = list(CURVE_MIX)
         kind = rng.choices(ks, weights=[CURVE_MIX[k] for k in ks])[0]
     U = rng.uniform
     p = {'family': 'CURVE', 'kind': kind, 'sym': bool(sym)}
     if kind == 'SHELL':
-        p.update(R=U(0.35, 0.9), thk=U(0.05, 0.12), A=[U(60, 120), U(90, 150), U(60, 120)], L=U(0.6, 1.2),
-                 bend=U(0.0, 0.35))
+        p.update(R=U(0.35, 0.9), thk=plate if plate > 0 else U(0.05, 0.12),
+                 A=[U(60, 120), U(90, 150), U(60, 120)], L=U(0.6, 1.2), bend=U(0.0, 0.35))
+        if plate > 0:
+            p['plate'] = round(plate, 6)
         n_c = rng.randint(0, cuts) if cuts else 0
-    else:
-        if kind == 'POD':
-            p.update(n=rng.choice((4, 5, 6, 6, 7, 8)), round=U(0.0, 0.4), bulge=U(0.08, 0.3),
-                     front=rng.choice(('VERTEX', 'SIDE')), W=1.0, D=U(0.6, 1.0), L=U(0.6, 1.1),
-                     w=[U(0.6, 0.95), U(0.9, 1.05), U(0.85, 1.0), U(0.55, 0.9)],
-                     d=[U(0.6, 0.9), U(0.9, 1.05), U(0.85, 1.0), U(0.5, 0.85)],
-                     y=[0.0, U(0.0, 0.15), U(0.0, 0.12), U(-0.1, 0.05)],
-                     c0=rng.choice((0.0, U(0.05, 0.2))), c1=U(0.15, 0.45))
-            n_c = rng.randint(1, cuts) if cuts else 0
-        elif kind == 'CAPSULE':
-            n = rng.choice((5, 6, 8, 24))
-            p.update(n=n, round=U(0.2, 0.8) if n < 16 else 0.0, bulge=U(0.0, 0.2), front=rng.choice(('VERTEX', 'SIDE')),
-                     W=U(0.4, 0.7), D=U(0.4, 0.7), L=1.0,
-                     w=[U(0.5, 0.8), U(0.85, 1.0), U(0.75, 0.95), U(0.45, 0.7)],
-                     d=[U(0.5, 0.8), U(0.85, 1.0), U(0.75, 0.95), U(0.45, 0.7)],
-                     y=[0.0, U(-0.1, 0.1), U(-0.05, 0.1), 0.0],
-                     c0=rng.choice((0.0, U(0.08, 0.3))), c1=U(0.1, 0.3))
-            n_c = rng.randint(0, min(1, cuts)) if cuts else 0
-        else:                                            # DOMECUT
-            p.update(n=rng.choice((5, 6, 7, 8, 10)), round=U(0.15, 0.7), bulge=U(0.1, 0.35),
-                     front='VERTEX' if rng.random() < 0.7 else 'SIDE', W=1.0, D=U(0.9, 1.2), L=U(0.75, 1.0),
-                     w=[U(0.8, 0.95), U(0.95, 1.05), U(0.9, 1.0), U(0.6, 0.85)],
-                     d=[U(0.8, 0.95), U(0.95, 1.05), U(0.9, 1.0), U(0.6, 0.85)],
-                     y=[U(0.0, 0.1), U(0.0, 0.1), 0.0, U(-0.1, 0.0)],
-                     c0=rng.choice((0.0, U(0.03, 0.1))), c1=U(0.4, 0.7))
-            n_c = rng.randint(2, max(2, cuts + 1)) if cuts else 0
+        p['cuts'] = [_curve_cut(rng, kind, sym) for _ in range(n_c)]
+        return _rounded(p)
+    if kind == 'POD':                                    # a cockpit: a rounded box, its face cut flat, a flat back
+        p.update(n=rng.choice((4, 5, 6, 6, 8)), round=U(0.0, 0.35), bulge=U(0.05, 0.25),
+                 front=rng.choice(('VERTEX', 'SIDE')), back=U(0.55, 0.9), W=1.0, D=U(0.7, 1.1), L=U(0.6, 1.0),
+                 w=[U(0.75, 0.95), U(0.95, 1.05), U(0.9, 1.0), U(0.7, 0.9)],
+                 d=[U(0.7, 0.9), U(0.95, 1.05), U(0.9, 1.0), U(0.65, 0.85)],
+                 y=[U(-0.1, 0.0), U(0.0, 0.12), U(0.0, 0.1), U(-0.05, 0.05)],
+                 c0=U(0.05, 0.15), cf0=U(0.6, 0.9), c1=U(0.12, 0.3), cf1=U(0.35, 0.75))
+        n_c = rng.randint(2, cuts + 1) if cuts else 0
+    elif kind == 'TORSO':                                # a chest: wide shoulders, the chest forward, a flat back
+        p.update(n=rng.choice((5, 6, 6, 8)), round=U(0.05, 0.3), bulge=U(0.08, 0.25),
+                 front='VERTEX' if rng.random() < 0.6 else 'SIDE', back=U(0.5, 0.8), W=1.0, D=U(0.55, 0.8),
+                 L=U(0.8, 1.2), w=[U(0.5, 0.7), U(0.65, 0.85), U(0.95, 1.05), U(0.85, 1.0)],
+                 d=[U(0.6, 0.8), U(0.75, 0.9), U(0.95, 1.05), U(0.7, 0.85)],
+                 y=[0.0, U(0.02, 0.08), U(0.1, 0.2), U(0.0, 0.08)],
+                 c0=U(0.0, 0.1), cf0=U(0.6, 0.9), c1=U(0.1, 0.25), cf1=U(0.3, 0.7))
+        n_c = rng.randint(1, cuts + 1) if cuts else 0
+    elif kind == 'CAPSULE':                              # a limb segment
+        n = rng.choice((5, 6, 8, 24))
+        p.update(n=n, round=U(0.15, 0.6) if n < 16 else 0.0, bulge=U(0.0, 0.2), front=rng.choice(('VERTEX', 'SIDE')),
+                 back=U(0.75, 1.0), W=U(0.4, 0.7), D=U(0.4, 0.7), L=1.0,
+                 w=[U(0.5, 0.8), U(0.85, 1.0), U(0.75, 0.95), U(0.45, 0.7)],
+                 d=[U(0.5, 0.8), U(0.85, 1.0), U(0.75, 0.95), U(0.45, 0.7)],
+                 y=[0.0, U(-0.1, 0.1), U(-0.05, 0.1), 0.0],
+                 c0=U(0.08, 0.3), cf0=rng.choice((0.0, U(0.4, 0.8))), c1=U(0.1, 0.3), cf1=rng.choice((0.0, U(0.4, 0.8))))
+        n_c = rng.randint(0, min(2, cuts)) if cuts else 0
+    else:                                                # DOMECUT: a round mass, faces cut in, ridges where two meet
+        p.update(n=rng.choice((5, 6, 7, 8)), round=U(0.15, 0.5), bulge=U(0.1, 0.3),
+                 front='VERTEX' if rng.random() < 0.7 else 'SIDE', back=U(0.8, 1.0), W=1.0, D=U(0.95, 1.2),
+                 L=U(0.75, 1.0), w=[U(0.85, 0.95), U(0.95, 1.05), U(0.9, 1.0), U(0.6, 0.8)],
+                 d=[U(0.85, 0.95), U(0.95, 1.05), U(0.9, 1.0), U(0.6, 0.8)],
+                 y=[U(0.0, 0.08), U(0.0, 0.08), 0.0, U(-0.08, 0.0)],
+                 c0=rng.choice((0.0, U(0.03, 0.1))), cf0=0.85, c1=U(0.4, 0.65), cf1=U(0.0, 0.25))
+        n_c = rng.randint(3, cuts + 2) if cuts else 0
+    if plate > 0:                                        # (a plate: the front of the body, its own trims)
+        p['plate'] = {'thk': round(plate, 6), 'span': U(0.25, 0.5), 't0': U(0.05, 0.3), 't1': U(0.7, 0.97)}
+        n_t = rng.randint(1, cuts + 1) if cuts else 0
+        p['cuts'] = [_curve_cut(rng, 'SHELL', sym) for _ in range(n_t)]
+        return _rounded(p)
     p['cuts'] = [_curve_cut(rng, kind, sym) for _ in range(n_c)]
     return _rounded(p)
 
@@ -636,6 +767,8 @@ def _rounded(p):
             return round(v, 6)
         if isinstance(v, list):
             return [r(x) for x in v]
+        if isinstance(v, dict):
+            return {k: r(x) for k, x in v.items()}
         return v
     return {k: r(v) for k, v in p.items()}
 
@@ -643,14 +776,20 @@ def _rounded(p):
 def build_curve(p, segs=32, level=0):
     """The solid of Curved parameters ``p``; ``level`` 2 and up: without its cuts."""
     bm = bmesh.new()
+    plate = isinstance(p.get('plate'), dict)
     if p['kind'] == 'SHELL':
         shell(bm, p, segs)
+    elif plate:
+        plate_patch(bm, p, segs)
     else:
         body(bm, p, segs)
     if level < 2:
         for pl in p.get('cuts', ()):
-            bm = _cut(bm, pl, 0.6 if p['kind'] == 'SHELL' else 0.55)
-    if p.get('sym'):
+            if plate and p.get('sym'):                   # (a plate is built symmetric: its trims cut in pairs)
+                bm = _cut_pair(bm, pl, 0.6)
+            else:
+                bm = _cut(bm, pl, 0.6 if p['kind'] == 'SHELL' or plate else 0.55)
+    if p.get('sym') and not plate:
         symmetrize(bm)
     _split_bent(bm)
     return bm
@@ -731,7 +870,7 @@ def vary(p, amount, rng):
     if q.get('family') == 'CURVE':
         if q['kind'] == 'SHELL':
             q['R'] = _jit(rng, q['R'], 0.3, a, 0.2, 1.5)
-            q['thk'] = _jit(rng, q['thk'], 0.3, a, 0.02, 0.2)
+            q['thk'] = _jit(rng, q['thk'], 0.3, a, 0.005 if q.get('plate') else 0.02, 0.2)
             q['A'] = [_jit(rng, v, 0.25, a, 25.0, 175.0) for v in q['A']]
             q['L'] = _jit(rng, q['L'], 0.25, a, 0.3, 2.0)
             q['bend'] = max(0.0, min(0.6, q['bend'] + rng.uniform(-0.12, 0.12) * a))
@@ -746,6 +885,17 @@ def vary(p, amount, rng):
             for k in ('c0', 'c1'):
                 if q[k] > 0:
                     q[k] = max(0.02, min(0.7, q[k] + rng.uniform(-0.08, 0.08) * a))
+            for k in ('cf0', 'cf1'):
+                if q.get(k, 0.0) > 0:
+                    q[k] = max(0.05, min(0.95, q[k] + rng.uniform(-0.1, 0.1) * a))
+            if 'back' in q:
+                q['back'] = max(0.4, min(1.0, q['back'] + rng.uniform(-0.1, 0.1) * a))
+            pl = q.get('plate')
+            if isinstance(pl, dict):
+                pl['thk'] = _jit(rng, pl['thk'], 0.25, a, 0.005, 0.3)
+                pl['span'] = max(0.15, min(0.6, pl['span'] + rng.uniform(-0.08, 0.08) * a))
+                pl['t0'] = max(0.0, min(0.45, pl['t0'] + rng.uniform(-0.06, 0.06) * a))
+                pl['t1'] = max(0.55, min(1.0, pl['t1'] + rng.uniform(-0.06, 0.06) * a))
         q['cuts'] = [_vary_plane(rng, pl, a, sym) for pl in q.get('cuts', ())]
         return _rounded(q)
     q['outline'] = _vary_outline(rng, q['outline'], q['kind'], a)
@@ -760,12 +910,22 @@ def vary(p, amount, rng):
 
 # --- objects ---------------------------------------------------------------------------------------------------------
 
-def new_params(rng, family, st):
-    """Random parameters of ``family`` with the Shapes page's settings ``st`` (None: the defaults)."""
+def new_params(rng, family, st, plate=None):
+    """Random parameters of ``family`` with the Shapes page's settings ``st`` (None: the defaults); ``plate``: the
+    thickness of a plate (None: the page's Solid / Plate choice)."""
     g = (lambda n, d: getattr(st, n, d)) if st is not None else (lambda n, d: d)
+    if plate is None:
+        plate = g('plate_thk', 0.05) if g('form', 'SOLID') == 'PLATE' else 0.0
     if family == 'CURVE':
-        return curve_params(rng, g('curve_kind', 'MIX'), g('curve_cuts', 2), g('curve_sym', True))
-    return poly_params(rng, g('kind', 'MIX'), g('slices', 2), g('chamfer', 0.3), g('taper', 0.3), g('poly_sym', False))
+        return curve_params(rng, g('curve_kind', 'MIX'), g('curve_cuts', 2), g('curve_sym', True), plate)
+    return poly_params(rng, g('kind', 'MIX'), g('slices', 2), g('chamfer', 0.3), g('taper', 0.3), g('poly_sym', False),
+                       plate=plate)
+
+
+def plate_of(p):
+    """The plate thickness of parameters ``p`` (0: a solid)."""
+    pl = (p or {}).get('plate', 0.0)
+    return float(pl['thk'] if isinstance(pl, dict) else pl or 0.0)
 
 
 def new_mesh(p, segs=32, size=1.0, name=NAME):
@@ -866,6 +1026,10 @@ class MCH_PG_RandomShape(bpy.types.PropertyGroup):
                                   soft_max=10.0, subtype='DISTANCE', unit='LENGTH')
     count: bpy.props.IntProperty(name='Count', description='How many shapes a Summon makes (in rows, to pick from)',
                                  default=1, min=1, max=25)
+    form: bpy.props.EnumProperty(name='Form', items=FORMS, default='SOLID',
+                                 description='A solid mass, or a thin plate of that shape (both families)')
+    plate_thk: bpy.props.FloatProperty(name='Thickness', description='How thick a plate is (of its size)',
+                                       default=0.05, min=0.005, max=0.3, subtype='FACTOR')
     # Polygon
     kind: bpy.props.EnumProperty(name='Polygon Kind', items=KINDS, default='MIX')
     poly_sym: bpy.props.BoolProperty(name='Symmetric', description='The left half the mirror of the right',
@@ -885,7 +1049,7 @@ class MCH_PG_RandomShape(bpy.types.PropertyGroup):
     segments: bpy.props.IntProperty(name='Smooth', description='Points round a section (more = rounder, heavier)',
                                     default=32, min=12, max=96)
     # Variations
-    var_amount: bpy.props.FloatProperty(name='Amount', description='How different the variations are', default=0.3,
+    var_amount: bpy.props.FloatProperty(name='Amount', description='How different the variations are', default=0.4,
                                         min=0.02, max=1.0, subtype='FACTOR')
     var_count: bpy.props.IntProperty(name='How Many', description='How many variations at a time', default=4, min=1,
                                      max=12)
@@ -926,7 +1090,7 @@ class MCH_OT_random_shape_add(bpy.types.Operator):
         _select_only(context, made)
         names = dict((k[0], k[1]) for k in KINDS + CURVE_KINDS)
         kinds = sorted({names.get(params_of(o)['kind'], '?') for o in made})
-        fam = 'curved' if self.family == 'CURVE' else 'polygon'
+        fam = ('curved' if self.family == 'CURVE' else 'polygon') + (' plate' if st.form == 'PLATE' else '')
         self.report({'INFO'}, f'{len(made)} random {fam} shape{"s" if len(made) > 1 else ""}: {", ".join(kinds)}'
                               f' (seed {self.seed})')
         return {'FINISHED'}
@@ -1004,8 +1168,9 @@ class MCH_OT_random_shape_reroll(bpy.types.Operator):
             old = ob.data
             if old.users > 1:
                 continue                                 # (a linked copy: its twin would change too)
-            fam = (params_of(ob) or {}).get('family', 'POLY')
-            p = new_params(random.Random(_seed(self.seed, i)), fam, st)
+            old_p = params_of(ob) or {}
+            fam = old_p.get('family', 'POLY')
+            p = new_params(random.Random(_seed(self.seed, i)), fam, st, plate=plate_of(old_p))   # (a plate stays one)
             me, _kind = new_mesh(p, st.segments, _local_size(old) or st.size, old.name)
             for m in old.materials:
                 me.materials.append(m)
@@ -1018,6 +1183,18 @@ class MCH_OT_random_shape_reroll(bpy.types.Operator):
             self.report({'WARNING'}, 'Nothing rerolled (select a random shape; one shared by linked copies is left)')
             return {'CANCELLED'}
         self.report({'INFO'}, f'Rerolled {n} shape{"s" if n > 1 else ""} (seed {self.seed})')
+        return {'FINISHED'}
+
+
+class MCH_OT_random_shape_form(bpy.types.Operator):
+    """Summon solid masses or thin plates (both families)"""
+    bl_idname = 'mch.random_shape_form'
+    bl_label = 'Random Shape Form'
+    bl_options = {'INTERNAL'}
+    form: bpy.props.EnumProperty(items=FORMS, default='SOLID')
+
+    def execute(self, context):
+        _settings(context).form = self.form
         return {'FINISHED'}
 
 
@@ -1051,6 +1228,10 @@ def page(context, x, width, k):
     b.note(('note', 'A click: a new base shape of a random form at the 3D cursor' if obj_mode else
             'Object Mode only (leave Edit / Sculpt first)', False, None, None, None, True), x, width)
     mu.row(b, x, width, [mu.number(st, 'size', 'Size'), mu.number(st, 'count', 'Count')])
+    mu.row(b, x, width, [mu._cell('tbtn', label, ('op', 'mch.random_shape_form', {'form': ident}), on=st.form == ident)
+                         for ident, label, _d in FORMS])          # (0.24.95 user: "판떼기 버전도" - both families)
+    if st.form == 'PLATE':
+        mu.row(b, x, width, [mu.number(st, 'plate_thk', 'Thickness')])
 
     def kinds(sx, sw, family, items, cur):
         cells = [mu._cell('tbtn', label, ('op', 'mch.random_shape_kind', {'family': family, 'kind': ident}),
@@ -1097,6 +1278,10 @@ def draw(layout, context):
     col = layout.column(align=True)
     col.prop(st, 'size')
     col.prop(st, 'count')
+    r = layout.row(align=True)
+    r.prop(st, 'form', expand=True)
+    if st.form == 'PLATE':
+        layout.prop(st, 'plate_thk')
     box = layout.box()
     box.label(text='Polygon')
     c = box.column(align=True)
@@ -1141,7 +1326,7 @@ class MCH_PT_random_shapes(bpy.types.Panel):
 
 
 CLASSES = (MCH_PG_RandomShape, MCH_OT_random_shape_add, MCH_OT_random_shape_vary, MCH_OT_random_shape_reroll,
-           MCH_OT_random_shape_kind, MCH_PT_random_shapes)
+           MCH_OT_random_shape_form, MCH_OT_random_shape_kind, MCH_PT_random_shapes)
 
 
 def register():
