@@ -329,21 +329,32 @@ def _cut_pair(bm, plane, keep_min=0.5):
     return two
 
 
+CH_MAX = 0.144                 # (the widest chamfer: 0.12 of the size at Chamfer 1, the seed's x 1.2)
+
+
 def _chamfer(bm, seed, amount):
     """Some edges cut flat (one segment) - which ones: ``seed``."""
     if amount <= 0:
         return
     rng = random.Random(seed)
     bm.normal_update()
+    bm.edges.index_update()
+    frac = rng.uniform(0.15, 0.45)
+    key = [rng.random() for _e in bm.edges]              # (each edge its own draw: a pick that does not reshuffle
+    #                                                       when a slider changes which edges can be cut)
     edges = [e for e in bm.edges if len(e.link_faces) == 2 and e.is_convex
              and e.calc_face_angle(0.0) > math.radians(40)
              and all(o.is_convex for v in e.verts for o in v.link_edges)]   # (outer corners only: a chamfer
     #                                                                          meeting an inner corner bends faces)
     if not edges:
         return
-    pick = rng.sample(edges, max(1, int(len(edges) * rng.uniform(0.15, 0.45))))
-    shortest = min(e.calc_length() for e in bm.edges)
-    w = min(0.06 * amount * rng.uniform(0.6, 1.2), shortest * 0.3)
+    # 0.24.95 (user: "왜 챔퍼랑 테이퍼는 실시간 변환이 안 돼?") as wide as the slider says: the edges with room for the
+    # widest chamfer along their neighbours first (the bevel's clamp, on one cramped edge, held them all thin)
+    roomy = [e for e in edges if min((o.calc_length() for v in e.verts for o in v.link_edges if o is not e),
+                                     default=0.0) >= 1.5 * CH_MAX]
+    edges = roomy or edges
+    pick = [e for e in edges if key[e.index] < frac] or [min(edges, key=lambda e: key[e.index])]
+    w = CH_MAX / 1.2 * amount * rng.uniform(0.8, 1.2)
     if w <= 1e-3:
         return
     bmesh.ops.bevel(bm, geom=pick, offset=w, offset_type='OFFSET', segments=1, profile=0.5, affect='EDGES',
@@ -491,16 +502,17 @@ def poly_params(rng, kind='MIX', slices=2, chamfer=0.3, taper=0.3, sym=False, ma
         side = rng.random() < 0.5
     else:
         pts, depth = outline_shard(rng), rng.uniform(0.3, 0.9)
-    tp = 1.0
-    if taper > 0 and kind in {'BLOCK', 'PRISM', 'SHARD'} and rng.random() < 0.55:
-        tp = 1.0 - taper * rng.uniform(0.3, 0.8)
+    # 0.24.95 (user: "왜 챔퍼랑 테이퍼는 실시간 변환이 안 돼?") every kind tapers by the slider (it was Block / Prism /
+    # Shard now and then only), its random share drawn whatever the slider says - the rest of the shape stays
+    f_t = rng.uniform(0.6, 0.9)
+    tp = max(0.15, 1.0 - taper * f_t) if taper > 0 else 1.0
     n_sl = rng.randint(1 if kind == 'SHARD' else 0, slices) if slices > 0 else 0
     kinks = _rand_kinks(rng, rng.randint(1, 2)) if kind in {'BLOCK', 'PRISM', 'SHARD'} and rng.random() < 0.5 else []
     return {'family': 'POLY', 'kind': kind, 'sym': bool(sym), 'kinks': kinks,
             'outline': [[round(x, 6), round(y, 6)] for x, y in _clean(pts)],
             'depth': round(depth, 6), 'taper': round(tp, 6), 'side': side,
             'slices': [_rand_plane(rng, sym) for _ in range(n_sl)],
-            'chamfer': [rng.randrange(1, 2 ** 31 - 1), round(chamfer if rng.random() < 0.8 else 0.0, 6)]}
+            'chamfer': [rng.randrange(1, 2 ** 31 - 1), round(chamfer, 6)]}   # (always: it was none on 1 in 5)
 
 
 def _poly_plate_params(rng, kind, slices, chamfer, sym, max_sides, plate):
@@ -521,7 +533,7 @@ def _poly_plate_params(rng, kind, slices, chamfer, sym, max_sides, plate):
             'outline': [[round(x, 6), round(y, 6)] for x, y in _clean(pts)],
             'depth': round(plate * rng.uniform(0.85, 1.15), 6), 'taper': round(tp, 6), 'side': False,
             'slices': [_plate_trim(rng, sym) for _ in range(n_sl)],
-            'chamfer': [rng.randrange(1, 2 ** 31 - 1), round(chamfer if rng.random() < 0.7 else 0.0, 6)],
+            'chamfer': [rng.randrange(1, 2 ** 31 - 1), round(chamfer, 6)],   # (always: it was none on 3 in 10)
             'folds': folds, 'kinks': kinks}
 
 
@@ -944,8 +956,9 @@ def _vary_design(q, a, rng):
         d['cuts'] = [[nm, max(0.02, min(0.4, fr + rng.uniform(-0.04, 0.04) * a))] for nm, fr in d['cuts']]
 
 
-def build_poly(p, level=0):
-    """The solid of Polygon parameters ``p``; ``level`` 1: without its chamfers, 2: without its slices too."""
+def build_poly(p, level=0, chamfer=False):
+    """The solid of Polygon parameters ``p``; ``level`` 1: without its chamfers, 2: without its slices too
+    (``chamfer``: the chamfers kept at any level)."""
     if p.get('kind') in DESIGN_KINDS and 'd' in p:
         return build_design(p, level)
     bm = bmesh.new()
@@ -957,7 +970,7 @@ def build_poly(p, level=0):
         for pl in p.get('slices', ()):
             bm = _cut(bm, pl, 0.5)
     ch = p.get('chamfer') or (0, 0.0)
-    if level < 1 and ch[1] > 0:
+    if (level < 1 or chamfer) and ch[1] > 0:
         _chamfer(bm, int(ch[0]), float(ch[1]))
     folds = p.get('folds') or ()
     if folds:                                            # (outermost first: an inner bend carries the outer ones)
@@ -1416,6 +1429,22 @@ def build_curve(p, segs=32, level=0):
     return bm
 
 
+def _has_chamfer(p):
+    return (p.get('chamfer') or (0, 0.0))[1] > 0 and not (p.get('kind') in DESIGN_KINDS and 'd' in p)
+
+
+def _chamfered(p, level):
+    """(0.24.95 user: "왜 챔퍼랑 테이퍼는 실시간 변환이 안 돼?") The Polygon solid at ``level`` with its chamfers: as
+    wide as the slider says, else narrower, else other edges cut (the next seeds) - None when none is clean."""
+    ch = p.get('chamfer')
+    for k, f in ((0, 1.0), (0, 0.6), (0, 0.35), (1, 1.0), (1, 0.5), (2, 1.0), (2, 0.5), (3, 0.5)):
+        bm = build_poly(dict(p, chamfer=[int(ch[0]) + k, ch[1] * f]), level, chamfer=True)
+        if _valid(bm, False):
+            return bm
+        bm.free()
+    return None
+
+
 def build(p, segs=32, size=1.0):
     """(bm, kind) of the shape of parameters ``p``, its longest side ``size``: as they say, else without chamfers,
     else without cuts, else the plain body - the first one that is a clean solid (``LAST['level']``)."""
@@ -1432,6 +1461,12 @@ def build(p, segs=32, size=1.0):
             continue
         if curved and level == 1:                        # (no chamfers on a curved shape)
             continue
+        if level in (0, 2) and not curved and _has_chamfer(p):
+            bm = _chamfered(p, level)                    # (0.24.95 with its chamfer: also without the slices -
+            if bm is not None:                           #  the slider up must not take the chamfer away)
+                break
+            if level == 0:
+                continue
         bm = build_curve(p, segs, level) if curved else build_poly(p, level)
         if level == 3 and (p.get('sym') or p.get('folds')):   # (the plain body, not mirrored, flat: always clean)
             bm.free()

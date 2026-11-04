@@ -358,11 +358,44 @@ st.count = 1
 apply_live()
 check('... Count 3: one more next to them; Count 1: the spare ones taken away',
       len(three) == 3 and len([o for o in S.objects if rs.is_shape(o)]) == 1)
-keep = [o for o in S.objects if rs.is_shape(o)][0]
+# 0.24.95 (user: "왜 챔퍼랑 테이퍼는 실시간 변환이 안 돼?") - every kind tapers, the chamfer always there and as wide
+# as the slider says
+bad_t, bad_c, bad_w = [], [], []
+for kind in ('BLOCK', 'PRISM', 'WEDGE', 'STEP', 'SHARD'):
+    st.kind, st.chamfer, st.taper = kind, 0.3, 0.1
+    apply_live()
+    ob = next(o for o in S.objects if rs.is_shape(o))
+    v0 = sorted(tuple(round(c, 4) for c in v.co) for v in ob.data.vertices)
+    st.taper = 0.9
+    apply_live()
+    v1 = sorted(tuple(round(c, 4) for c in v.co) for v in ob.data.vertices)
+    if v0 == v1 or not solid(ob):
+        bad_t.append(kind)
+    st.taper, st.chamfer = 0.3, 0.0
+    apply_live()
+    f0 = len(ob.data.polygons)
+    st.chamfer = 0.8
+    apply_live()
+    if len(ob.data.polygons) <= f0 or not solid(ob):
+        bad_c.append(kind)
+    v2 = sorted(tuple(round(c, 4) for c in v.co) for v in ob.data.vertices)
+    st.chamfer = 0.4
+    apply_live()
+    v3 = sorted(tuple(round(c, 4) for c in v.co) for v in ob.data.vertices)
+    if v2 == v3 or not solid(ob):
+        bad_w.append(kind)
+check('Live: Taper 0.1 -> 0.9 changes the last Summon at once for every kind (Block Prism Wedge Step Shard - it was '
+      'Block / Prism / Shard now and then only), still a clean solid', not bad_t, bad_t)
+check('... Chamfer 0 -> 0.8: edges cut flat at once (more faces) for every kind, still a clean solid', not bad_c, bad_c)
+check('... Chamfer 0.8 -> 0.4: the cuts narrower at once for every kind (it stopped growing past a thin cap), '
+      'still a clean solid', not bad_w, bad_w)
+st.chamfer, st.taper = 0.3, 0.3
+keep = next(o for o in S.objects if rs.is_shape(o))
+was = rs.params_of(keep)['kind']
 keep.select_set(False)
-st.kind = 'PRISM'
+st.kind = 'PRISM' if was != 'PRISM' else 'BLOCK'
 apply_live()
-check('... deselected: left as it is (the next setting does not touch it)', rs.params_of(keep)['kind'] == 'WEDGE')
+check('... deselected: left as it is (the next setting does not touch it)', rs.params_of(keep)['kind'] == was)
 st.kind, st.size, st.count = 'MIX', 1.0, 1
 
 # 0.24.95 (user: "왜 실시간 변환이 안돼?", "기존처럼 쓰리디 커서에 소환되게 하는 버튼도") a thumbnail's click
