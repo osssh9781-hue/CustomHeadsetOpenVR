@@ -1,0 +1,12 @@
+Real window, Blender 5.2.3 (Xvfb 1920x1080, software OpenGL), MECHA LAB screen, a group 'Arm' (a cube, a cylinder).
+A REAL mouse click on the Layers panel's 'Work Scene' button; Bring Back pressed from the work window.
+
+main Scene windows 1 Work Scene button True
+shot 1_group_in_main.png True
+after the REAL click: windows 2 scenes shown ['Scene', 'Work - Arm'] work scene objects ['Arm', 'Cube', 'Cylinder'] main objects ['Arm (Work)'] instance Arm
+shot 2_work_window_opened.png True
+the instance in the main scene shows the edit: vertex z 0.1
+Bring Back from the work window: {'FINISHED'}
+after Bring Back: windows 1 scenes shown ['Scene'] Work - Arm left False group in main True parts in main True instances left []
+shot 3_brought_back.png True
+DONE

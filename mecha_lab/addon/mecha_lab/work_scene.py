@@ -102,8 +102,8 @@ def _show(context, scene, new_window):
         return False
     if new_window:
         before = set(context.window_manager.windows[:])
-        try:
-            bpy.ops.wm.window_new()
+        try:                                               # (a MAIN window: a child window - "New Window" - always
+            bpy.ops.wm.window_new_main()                   #  shows its parent's scene, so both would switch)
         except RuntimeError:
             pass
         made = [w for w in context.window_manager.windows if w not in before]
