@@ -115,4 +115,80 @@ me2 = p.data.copy()
 me2.vertices[0].co.x = 0.0006
 check('... a part with no live Mirror: nothing moved', cg.mirror_seam_clear(p, me2, None) == 0
       and abs(me2.vertices[0].co.x - 0.0006) < 1e-9)
+
+# 0.24.95 (user: "미러 안 했는데도 스플릿이 깨져", their part open in many places): a part with a big hole Fix Mesh
+# leaves (an open bottom) - the Split / Cut came out with no cut walls (the piece just the surface inside the outline,
+# the part open there too).  Now the Boolean sees the hole shut (temporary faces, taken out again): the walls are there,
+# and the results are open only where the part was (the bottom plane)
+
+
+def open_box(bm):
+    bmesh.ops.create_cube(bm, size=1.0)
+    for v in bm.verts:
+        v.co.x *= 1.6
+        v.co.y *= 1.2
+    bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=4, use_grid_fill=True)
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.calc_center_median().z < -0.2], context='FACES')
+
+
+def off_plane(me, z):
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    n = sum(1 for e in bm.edges if not e.is_manifold and e.calc_length() > 1e-5
+            and not all(abs(v.co.z - z) < 1e-4 for v in e.verts))
+    bm.free()
+    return n
+
+
+rows = []
+from _harness import mesh_obj
+for mode, kw in (('SPLIT', {}), ('SPLIT', {'depth_mode': 'SURFACE', 'depth': 0.2}), ('CUT', {})):
+    for c in ((0.6, 0.3, 0.5), (0.0, 0.2, 0.5)):
+        fresh()
+        C.scene.mch_settings.auto_apply = True
+        for k, v in kw.items():
+            setattr(C.scene.mch_cut, k, v)
+        p = mesh_obj('P', open_box)
+        rim_z = min(v.co.z for v in p.data.vertices)
+        msg = ce.perform_closed(C, mode, [p], [square(ANG, c, 0.3)], ANG)
+        piece = bpy.data.objects.get('P_Split')
+        rows.append((mode, c, off_plane(p.data, rim_z), off_plane(piece.data, rim_z) if piece else None,
+                     'mch_temp_cap' in p.data.attributes or bool(piece and 'mch_temp_cap' in piece.data.attributes),
+                     len([m for m in bpy.data.meshes if m.name.endswith('_mch_cap')]), msg[:20]))
+check('A part open at the bottom (a big hole Fix Mesh leaves): Split (Through / From Surface) and Cut have their cut '
+      'walls - open edges only on the bottom plane where it was open; the piece kept; no temporary faces left',
+      all(r[2] == 0 and (r[0] == 'CUT' or r[3] == 0) and not r[4] and r[5] == 0 for r in rows)
+      and all(r[3] is not None for r in rows if r[0] == 'SPLIT'), rows)
+
+# ... but an open SHEET (a flat plate, a bowl, a cloth) is cut as the sheet it is - no temporary cap (it would add walls
+# across it): a hole over 40 % of its surface (a bowl: 50 %), or no volume shut in
+
+
+def plate(bm):
+    bmesh.ops.create_grid(bm, x_segments=6, y_segments=6, size=1.0)
+
+
+def bowl(bm):
+    bmesh.ops.create_uvsphere(bm, u_segments=16, v_segments=8, radius=1.0)
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.z > 0.01], context='VERTS')
+
+
+fresh()
+caps = {}
+for name, b in (('open box', open_box), ('plate', plate), ('bowl', bowl)):
+    ob = mesh_obj(name, b)
+    got = ce._temp_capped(ob)
+    caps[name] = got is not None
+    if got is not None:
+        bpy.data.meshes.remove(got)
+fresh()
+C.scene.mch_settings.auto_apply = True
+p = mesh_obj('P', plate)
+f0 = len(p.data.polygons)
+msg = ce.perform_closed(C, 'CUT', [p], [square(TOP, (0.2, 0.1, 0), 0.3)], TOP)
+zs = {round(v.co.z, 6) for v in p.data.vertices}
+check('... an open sheet is not capped (a flat plate, a bowl - the box with a hole is); a plate cut Through gets a '
+      'hole and stays a flat sheet (no walls)',
+      caps == {'open box': True, 'plate': False, 'bowl': False} and zs == {0.0} and 'Cut: P' in msg
+      and 'mch_temp_cap' not in p.data.attributes, (caps, f0, len(p.data.polygons), sorted(zs)[:4], msg[:30]))
 summary()

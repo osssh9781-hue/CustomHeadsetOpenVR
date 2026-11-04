@@ -177,6 +177,8 @@ NATIVE_TO_TOOL = {t[5]: t[0] for t in TOOLS if t[5]}
 SHAPE_TOOLS = {'CUT', 'SPLIT', 'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'HIDE', 'DETAIL', 'DETAIL2',
                'DETAIL3', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW'}
 
+DRAW_TOOLS = SHAPE_TOOLS | {'PRESS'}      # 0.24.95 + Press Cut (Shift + draw its stamp): the lasso settings it keeps
+
 # 0.24.55 the tool list by job (about 10 groups instead of one long list); a tool not listed goes to Other
 TOOL_GROUPS = (
     ('Block-out', ('BASE', 'CBASE', 'SUBD', 'PRIMITIVE')),
@@ -441,10 +443,13 @@ class MCH_PG_Cut(bpy.types.PropertyGroup):
         default='THROUGH', update=_live_cut_update)
     depth: FloatProperty(name='Cut Depth', default=0.1, min=0.00001, soft_max=10.0, precision=4,
                          unit='LENGTH', update=_ramp_refresh_update)
-    depth_follow: BoolProperty(name='Follow Surface', default=False, update=_live_cut_update,
-                               description='From Surface: as deep below the surface everywhere under the shape, however '
-                                           'the part is turned to the view (off: a flat pocket across the view - '
-                                           'seen at an angle the near side is left standing as a lip)')
+    depth_floor: EnumProperty(name='Floor', default='FLAT', update=_live_cut_update, items=[
+        ('FOLLOW', 'Follow', 'As deep below the surface everywhere under the shape, however the part is turned to the view'),
+        ('LEVEL', 'Level', 'A flat floor at the depth below the point you press: everything higher under the shape - '
+                           'a raised face beside it - is cleared down to it'),
+        ('FLAT', 'Flat', 'A flat floor across the view from the point you press; higher faces under the shape are left '
+                         'standing (seen at an angle: a lip of the near side)')],
+                              description='From Surface: how deep the pocket floor is under the shape')
     targets: EnumProperty(name='Targets', items=[
         ('AUTO', 'Auto Target', 'Every mesh the drawn shape covers, whatever is selected: keep the tool and cut the '
                                 'next part directly (T toggles)'),

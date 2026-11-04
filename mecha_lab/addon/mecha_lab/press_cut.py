@@ -23,6 +23,7 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
 
 from . import core_geometry as cg
+from . import lasso_sketch
 
 TICK = 0.05                    # (seconds between depth steps while held)
 STEP_MIN = 0.002               # (a new cut only when the depth grew by this x the part's size)
@@ -61,10 +62,15 @@ class MCH_PG_Press(bpy.types.PropertyGroup):
                         description='Stamp radius on screen ([ / ] change it)')
     rotation: FloatProperty(name='Rotation', default=0.0, subtype='ANGLE', update=_redraw, step=10,
                             description='Stamp turn (R + mouse: turn it, Shift + R: 0)')
-    follow_surface: BoolProperty(name='Follow Surface', default=True,
-                                 description='As deep below the surface everywhere under the stamp, however the part '
-                                             'is turned to the view (off: a flat cut across the view - seen at an '
-                                             'angle it leaves a lip of the near side standing)')
+    dot_size: FloatProperty(name='Dot Size', default=1.0, min=0.3, max=4.0, precision=2, update=_redraw,
+                            description='How big the dots are that show where the stamp touches a part')
+    floor_mode: EnumProperty(name='Floor', default='FOLLOW', items=[
+        ('FOLLOW', 'Follow', 'As deep below the surface everywhere under the shape, however the part is turned to the view'),
+        ('LEVEL', 'Level', 'A flat floor at the depth below the point you press: everything higher under the shape - '
+                           'a raised face beside it - is cleared down to it'),
+        ('FLAT', 'Flat', 'A flat floor across the view from the point you press; higher faces under the shape are left '
+                         'standing (seen at an angle: a lip of the near side)')],
+                             description='How deep the pressed floor is under the stamp')
     curve_x: FloatProperty(name='Curve Left-Right', default=0.0, min=-1.0, max=1.0, precision=2, update=_redraw,
                            description='The stamp bent left-right like a round stamp: + the middle goes in first and '
                                        'deepest (a round trough), - the sides first (the middle stays raised); 1 = a '
@@ -109,29 +115,42 @@ def use_drawn(context, pts):
     """0.24.95 (user: "여기 왜 라쏘 툴이 없어? 그릴 수가 없는데") An outline drawn with Shift + drag (region px) becomes the
     stamp, at the size it was drawn and unturned; Save Shape can keep it (it is the last drawn outline).  Returns
     (True, '') or (False, why)."""
+    return use_loops(context, [pts])
+
+
+def use_loops(context, loops):
+    """0.24.95 (user: "원래 쓰던 라쏘랑 스케치 다 넣어 줘") The outline(s) drawn in Press Cut - with any of the shared
+    shapes (Lasso, Curve Lasso, Rectangle, Circle, Ellipse, Free Draw) or a Sketch's combined outline (islands and
+    holes, Enter) - become the stamp, at the size drawn and unturned.  Returns (True, '') or (False, why)."""
     from . import cut_presets
-    lp = [(float(x), float(y)) for x, y in pts]
-    if len(lp) >= 2 and math.dist(lp[0], lp[-1]) < 1e-6:
-        lp = lp[:-1]
-    lp = cg.simplify_open(lp + [lp[0]], 1.5)[:-1] if len(lp) >= 3 else lp
-    if len(lp) < 3:
+    clean = []
+    for pts in loops:
+        lp = [(float(x), float(y)) for x, y in pts]
+        if len(lp) >= 2 and math.dist(lp[0], lp[-1]) < 1e-6:
+            lp = lp[:-1]
+        lp = cg.simplify_open(lp + [lp[0]], 1.5)[:-1] if len(lp) >= 3 else lp
+        if len(lp) >= 3:
+            clean.append(lp)
+    if not clean:
         return False, 'Draw a bigger outline (Shift + drag round it)'
-    if len(lp) >= 4 and cg.find_intersections([lp]):
+    if cg.find_intersections([lp for lp in clean if len(lp) >= 4]):
         return False, 'The outline crosses itself - draw it again without crossing'
-    area = 0.5 * abs(sum(lp[i][0] * lp[(i + 1) % len(lp)][1] - lp[(i + 1) % len(lp)][0] * lp[i][1]
-                         for i in range(len(lp))))
-    if area < 40.0:
+
+    def area(lp):
+        return 0.5 * abs(sum(lp[i][0] * lp[(i + 1) % len(lp)][1] - lp[(i + 1) % len(lp)][0] * lp[i][1]
+                             for i in range(len(lp))))
+    if max(area(lp) for lp in clean) < 40.0:
         return False, 'Draw a bigger outline (Shift + drag round it)'
     try:
-        DRAWN[0] = cut_presets.normalize_loops([lp])
+        DRAWN[0] = cut_presets.normalize_loops(clean)
     except cg.CutError as ex:
         return False, str(ex)
-    xs, ys = [p[0] for p in lp], [p[1] for p in lp]
+    xs, ys = [p[0] for lp in clean for p in lp], [p[1] for lp in clean for p in lp]
     st = context.scene.mch_press
     st.size = max(4.0, max(max(xs) - min(xs), max(ys) - min(ys)) / 2.0)
     st.rotation = 0.0
     st.drawn = True
-    cut_presets.remember([lp])
+    cut_presets.remember(clean)
     return True, ''
 
 
@@ -163,17 +182,21 @@ class SurfaceFloor:
     * Follow Surface: as deep below the surface under each point as the depth (the pocket follows a slanted or
       curved surface - a flat cut seen at an angle left a lip of the near side standing and missed the far side);
       the near cap moves in front of all the surface under the shape.
+    * Level (user: "내가 선택한 면보다 옆에 면이 높이 있으면 거기는 그냥 내가 선택한 위치까지 지워 버리는 버튼"): a flat floor
+      at the depth below the point pressed, the near cap in front of all the surface - a raised face beside it under
+      the shape is cleared down to that floor.
     * Curve Left-Right / Up-Down: the stamp's face bent into a circular arc (+ the middle deepest, - the sides).
     Never above the surface (a press not yet that deep cuts nothing there).  Points off the parts take the depth of
     the nearest point that is on them."""
 
     def __init__(self, context, targets, projector, loops, spacing, follow=True, curve=(0.0, 0.0), center=None,
-                 angle=0.0, depth=0.1):
+                 angle=0.0, depth=0.1, level=False):
         self.targets = [t for t in targets if t is not None]
         self.projector = projector
         self.vd = projector.view_dir
         self.spacing = max(2.0, float(spacing))
-        self.follow = bool(follow)
+        self.follow = bool(follow) and not level
+        self.level = bool(level)
         self.curve = (float(curve[0]), float(curve[1]))
         self.depth = float(depth)
         self.cache = {}
@@ -207,6 +230,9 @@ class SurfaceFloor:
             if t is not None:
                 self.known.append((q[0], q[1], t))
         self.t_min = min((k[2] for k in self.known), default=None)
+        self.t_ref = self._ray_t(self.center)      # (Level: the surface at the point pressed - else the nearest)
+        if self.t_ref is None and self.known:
+            self.t_ref = min(self.known, key=lambda q: (q[0] - self.center[0]) ** 2 + (q[1] - self.center[1]) ** 2)[2]
         self.px_world = self._px_world()
         c, s = math.cos(self.angle), math.sin(self.angle)
         cx, cy = self.center
@@ -304,6 +330,10 @@ class SurfaceFloor:
         """How far along the view the cutter's far cap at screen ``xy`` lies from the far plane through ``far_co``."""
         t_far = far_co.dot(self.vd)
         above = max(1e-4, self.depth * 0.05)
+        if self.level and self.t_ref is not None:        # (Level: flat at the depth below the point pressed)
+            base = self.t_ref + self.depth - t_far
+            low = ((self.t_min if self.t_min is not None else self.t_ref) - 0.5 * above) - t_far
+            return max(base + self.curve_off(xy), low)
         tx = self.t(xy) if self.follow else None
         if tx is None:                                   # (flat: the far plane is the depth below the middle)
             base, low = 0.0, -(self.depth + 0.5 * above)
@@ -312,7 +342,7 @@ class SurfaceFloor:
         return max(base + self.curve_off(xy), low)
 
     def near_shift(self, near_co):
-        if not self.follow or self.t_min is None:
+        if not (self.follow or self.level) or self.t_min is None:
             return 0.0
         margin = max(1e-4, self.depth * 0.05)
         return max(0.0, near_co.dot(self.vd) - (self.t_min - margin))
@@ -322,7 +352,7 @@ class Press:
     """One press on one part: the part as it was (kept), cut again From Surface at each new depth."""
 
     def __init__(self, context, target, loops, projector, result='CUT', center=None, angle=0.0, curve=(0.0, 0.0),
-                 spacing=6.0, follow=False):
+                 spacing=6.0, follow=False, level=False):
         from . import ramp_edit
         old = ramp_edit.live_target(context, ramp_edit.ALL_KINDS)
         if old is not None:                      # (an earlier live cut stays as it is: the Cut Depth set while
@@ -330,10 +360,11 @@ class Press:
         self.target = target
         self.curve = (float(curve[0]), float(curve[1]))
         self.curved = abs(self.curve[0]) > 1e-4 or abs(self.curve[1]) > 1e-4
-        self.follow = bool(follow)
+        self.follow = bool(follow) and not level
+        self.level = bool(level)
         self.spacing = max(2.0, float(spacing))
         lps = [[tuple(p) for p in lp] for lp in loops]
-        shaped = self.curved or self.follow
+        shaped = self.curved or self.follow or self.level
         self.projector = projector
         pts = [p for lp in lps for p in lp]
         self.center = center or (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))
@@ -342,7 +373,7 @@ class Press:
         self.sfloor = None
         if shaped:
             self.sfloor = SurfaceFloor(context, [target], projector, lps, self.spacing, follow=self.follow,
-                                       curve=self.curve, center=self.center, angle=self.angle)
+                                       curve=self.curve, center=self.center, angle=self.angle, level=self.level)
             if not self.sfloor.planar:           # (a bent stamp / a curved surface: the outline follows it too)
                 self.loops = [resample(lp, self.spacing) for lp in lps]
         self.px_world = self.sfloor.px_world if self.sfloor is not None else 0.0
@@ -434,7 +465,7 @@ def press_target(context, projector, xy, loops=None):
         act = context.view_layer.objects.active
         if act is None or act.type != 'MESH':
             return None
-        probe = [xy] + [p for lp in (loops or []) for p in lp]
+        probe = [xy] + (ce._loop_samples(loops, step=10.0, grid=11) if loops else [])
         return act if any(ce.surface_hit(context, [act], projector, q) is not None for q in probe) else None
     picked = ce.pick_mesh_under(context, projector, xy)
     if picked is not None and ce._auto_candidate(picked) and (mode != 'SELECTED' or picked.select_get()):
@@ -445,7 +476,8 @@ def press_target(context, projector, xy, loops=None):
              if mode != 'SELECTED' or o.select_get()]
     if not cands:
         return None
-    probe = [p for lp in loops for p in lp][::2] or [xy]
+    probe = ce._loop_samples(loops, step=10.0, grid=11) or [xy]   # (along the outline and inside it: every 2nd
+    #                                    corner alone missed a square whose corners were all off the part - nothing cut)
 
     def covered(ob):
         return sum(1 for q in probe if ce.surface_hit(context, [ob], projector, q) is not None)
@@ -488,27 +520,61 @@ def contact_points(context, loops_px, center_px, offset=(0.0, 0.0), step=8.0):
     return dots, contact
 
 
+def dot_sizes(context):
+    """(outline dot, contact dot ring, contact dot core) in px: 0.24.95 (user: "메쉬 위에 뜨는 점이 너무 작은데") about
+    twice the first ones, times the Dot Size setting and Blender's UI scale."""
+    try:
+        k = float(context.scene.mch_press.dot_size)
+    except AttributeError:
+        k = 1.0
+    try:
+        ui = float(context.preferences.system.ui_scale)
+    except AttributeError:
+        ui = 1.0
+    k *= ui if ui > 0.0 else 1.0                  # (no window: Blender reads 0 - the plain size then)
+    return 8.0 * k, 18.0 * k, 11.0 * k
+
+
+def _dot_shader():
+    import gpu
+    for name in ('POINT_UNIFORM_COLOR', 'UNIFORM_COLOR'):    # (round points where Blender has the shader)
+        try:
+            return gpu.shader.from_builtin(name)
+        except (ValueError, TypeError):
+            continue
+    return None
+
+
 def draw_contact(context, loops_px, center_px, offset=(0.0, 0.0)):
     """The contact dots of a stamp preview (small ones on the outline over a mesh, a bigger one where it presses)."""
     try:
         import gpu
         from gpu_extras.batch import batch_for_shader
-        dots, contact = contact_points(context, loops_px, center_px, offset)
+        small, ring, core = dot_sizes(context)
+        dots, contact = contact_points(context, loops_px, center_px, offset, step=max(8.0, small * 1.6))
         if not dots and contact is None:
             return
-        sh = gpu.shader.from_builtin('UNIFORM_COLOR')
+        sh = _dot_shader()
+        if sh is None:
+            return
         gpu.state.blend_set('ALPHA')
-        gpu.state.point_size_set(4.0)
         sh.bind()
         if dots:
-            sh.uniform_float('color', (0.55, 1.0, 0.75, 0.9))
+            gpu.state.point_size_set(small + 2.0)                 # (a dark rim: seen on light and dark parts)
+            sh.uniform_float('color', (0.05, 0.12, 0.08, 0.85))
+            batch_for_shader(sh, 'POINTS', {'pos': dots}).draw(sh)
+            gpu.state.point_size_set(small)
+            sh.uniform_float('color', (0.45, 1.0, 0.65, 1.0))
             batch_for_shader(sh, 'POINTS', {'pos': dots}).draw(sh)
         if contact is not None:
-            gpu.state.point_size_set(9.0)
-            sh.uniform_float('color', (1.0, 1.0, 1.0, 0.95))
+            gpu.state.point_size_set(ring + 2.0)
+            sh.uniform_float('color', (0.05, 0.12, 0.08, 0.85))
             batch_for_shader(sh, 'POINTS', {'pos': [contact]}).draw(sh)
-            gpu.state.point_size_set(5.0)
-            sh.uniform_float('color', (0.2, 0.85, 0.5, 1.0))
+            gpu.state.point_size_set(ring)
+            sh.uniform_float('color', (1.0, 1.0, 1.0, 1.0))
+            batch_for_shader(sh, 'POINTS', {'pos': [contact]}).draw(sh)
+            gpu.state.point_size_set(core)
+            sh.uniform_float('color', (0.15, 0.85, 0.45, 1.0))
             batch_for_shader(sh, 'POINTS', {'pos': [contact]}).draw(sh)
         gpu.state.point_size_set(1.0)
         gpu.state.blend_set('NONE')
@@ -599,7 +665,7 @@ class MCH_OT_press_cut(bpy.types.Operator):
             pass
         self.press = Press(context, target, loops, projector, st.result, center=xy, angle=st.rotation,
                            curve=(st.curve_x, st.curve_y), spacing=max(3.0, st.size / 10.0),
-                           follow=st.follow_surface)
+                           follow=st.floor_mode == 'FOLLOW', level=st.floor_mode == 'LEVEL')
         self.press_st = st
         self.region = region
         self.anchor = xy
@@ -912,14 +978,20 @@ def draw(layout, context):
         row.label(text='Using the shape you drew', icon='GREASEPENCIL')
         row.prop(st, 'drawn', text='', icon='X', emboss=False)
     else:
-        col.label(text='Shift + drag: draw your own stamp', icon='GREASEPENCIL')
+        col.label(text='Shift + draw: draw your own stamp', icon='GREASEPENCIL')
+    brush = getattr(context.scene, 'mch_brush', None)
+    if brush is not None:                    # (0.24.95 the shared shapes and the Sketch draw the stamp)
+        row = col.row(align=True)
+        row.prop(brush, 'shape', text='Draw With')
+        row.prop(brush, 'sketch_first', text='Sketch', toggle=True)
     col.prop(st, 'size')
     col.prop(st, 'rotation')
     col = layout.column(align=True)
     col.label(text='Curve (a round stamp)')
     col.prop(st, 'curve_x', text='Left-Right', slider=True)
     col.prop(st, 'curve_y', text='Up-Down', slider=True)
-    layout.prop(st, 'follow_surface')
+    layout.row(align=True).prop(st, 'floor_mode', expand=True)
+    layout.prop(st, 'dot_size', slider=True)
     col = layout.column(align=True)
     col.label(text='Hold = deeper')
     col.prop(st, 'start')
@@ -936,11 +1008,16 @@ def draw(layout, context):
 TOOL_KEYMAP = (
     ('mch.quick_hud_press', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'any': True}, None),
     ('mch.press_cut', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, None),
-    ('mch.press_draw', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'shift': True}, None),   # (draw your own stamp)
+    # (0.24.95 Shift + draw: the stamp drawn with the shared shapes - Lasso, Curve Lasso, Rectangle, Circle, Ellipse,
+    #  Free Draw - or into a Sketch; Shift + Alt: subtract from the Sketch)
+    ('mch.cut_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'shift': True}, {'properties': [('mode', 'PRESS')]}),
+    ('mch.cut_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'shift': True, 'alt': True},
+     {'properties': [('mode', 'PRESS')]}),
     ('mch.press_adjust', {'type': 'LEFT_BRACKET', 'value': 'PRESS'}, {'properties': [('size', 1 / 1.15)]}),
     ('mch.press_adjust', {'type': 'RIGHT_BRACKET', 'value': 'PRESS'}, {'properties': [('size', 1.15)]}),
     ('mch.stamp_turn', {'type': 'R', 'value': 'PRESS'}, None),           # (R + mouse: turn, fine)
     ('mch.stamp_turn', {'type': 'R', 'value': 'PRESS', 'shift': True}, {'properties': [('reset', True)]}),
+) + lasso_sketch.KEYMAP + (          # (Sketch: Enter = the stamp, Backspace = the last outline, Esc = clear)
     ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),
     ('mch.brush_resize', {'type': 'F', 'value': 'PRESS'}, None),        # (F + mouse = stamp size)
 )

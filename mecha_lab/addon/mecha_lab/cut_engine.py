@@ -451,16 +451,36 @@ def _loops_centroid(loops):
     return (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))
 
 
+def shape_hit(context, targets, projector, loops):
+    """The surface under a drawn shape for From Surface: under its middle, else (0.24.95, user: "부품 밖에서 잘리는 거
+    될 때도 있고 안 될 때도 있어, 중앙까지는 걸쳐야 돼") the point of the shape nearest its middle that is on a part -
+    its outline points, then samples along the outline and inside it.  Only the middle and the outline's corners were
+    tried: a stamp whose middle and corners were all off the part (a square over its edge) found no surface and cut
+    nothing.  None: the shape covers no part."""
+    c = _loops_centroid(loops)
+    hit = surface_hit(context, targets, projector, c)
+    if hit is not None:
+        return hit
+    seen = set()
+    probe = []
+    for q in [tuple(p) for p in loops[0]] + _loop_samples(loops, step=8.0, grid=15):
+        key = (round(q[0], 2), round(q[1], 2))
+        if key not in seen:
+            seen.add(key)
+            probe.append(q)
+    probe.sort(key=lambda q: (q[0] - c[0]) ** 2 + (q[1] - c[1]) ** 2)
+    for q in probe:
+        hit = surface_hit(context, targets, projector, q)
+        if hit is not None:
+            return hit
+    return None
+
+
 def _planes(context, targets, projector, loops):
     cut = context.scene.mch_cut
     hit = None
     if cut.depth_mode == 'SURFACE':
-        hit = surface_hit(context, targets, projector, _loops_centroid(loops))
-        if hit is None:
-            for p in loops[0]:
-                hit = surface_hit(context, targets, projector, p)
-                if hit is not None:
-                    break
+        hit = shape_hit(context, targets, projector, loops)
     return cg.depth_planes(projector, cg.object_world_bounds(targets), cut.depth_mode, hit, cut.depth)
 
 
@@ -470,12 +490,7 @@ def own_pocket(context, t, groups, projector, cut):
     overlap)' - a plate above the body was never cut, a Box Hide 'did nothing'.  None = no surface of ``t`` under
     the shape (the centre and the outline points miss it)."""
     loops = [g[0] for g in groups]
-    hit = surface_hit(context, [t], projector, _loops_centroid(loops))
-    if hit is None:
-        for p in loops[0]:
-            hit = surface_hit(context, [t], projector, p)
-            if hit is not None:
-                break
+    hit = shape_hit(context, [t], projector, loops)
     if hit is None:
         return None
     return cg.depth_planes(projector, cg.object_world_bounds([t]), 'SURFACE', hit, cut.depth)
@@ -722,8 +737,113 @@ def cut_diagnosis(target, groups, projector, near, far, invert):
                            f'{"Alt/invert ON" if invert else "Alt/invert off"} | Mecha Lab {_addon_version()}')
 
 
+TEMP_CAP = 'mch_temp_cap'
+
+
+def _temp_capped(t):
+    """0.24.95 (user: "미러 안 했는데도 스플릿이 깨져", their part open in places) A copy of an open part's mesh with
+    its open sides shut by temporary faces (flagged ``TEMP_CAP``), for the Boolean only: an open part - a big hole
+    Fix Mesh leaves (it shuts small ones only), Auto Fix off - gave a Split / Cut with no cut walls (the piece the
+    surface inside the outline, the part open there too).  None: the part is closed, has a live Mirror (its open
+    side on the plane is meant), or the sides could not be shut."""
+    me = t.data
+    try:
+        if not len(me.polygons) or not cg.non_manifold_edge_count(me) or cg._mirror_planes(t):
+            return None
+    except (AttributeError, ReferenceError):
+        return None
+    import bmesh
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        rim = [e for e in bm.edges if e.is_boundary]
+        if not rim or any(len(e.link_faces) > 2 for e in bm.edges):
+            return None
+        layer = bm.faces.layers.int.new(TEMP_CAP)
+        before = set(bm.faces)
+        bmesh.ops.holes_fill(bm, edges=rim, sides=0)
+        new = [f for f in bm.faces if f not in before]
+        if not new:
+            return None
+        # (only a solid with holes: an open sheet - a flat plate, a cloth, a bowl - is cut as the sheet it is; its
+        #  "cap" would add walls across it.  A hole over 40 % of the rest of the surface (a bowl: 50 %), or no
+        #  volume shut in, is a sheet)
+        cap_area = sum(f.calc_area() for f in new)
+        own_area = sum(f.calc_area() for f in before)
+        if cap_area > 0.4 * own_area:
+            return None
+        bmesh.ops.triangulate(bm, faces=new, quad_method='BEAUTY', ngon_method='BEAUTY')
+        for f in bm.faces:
+            if f not in before:
+                f[layer] = 1
+        if any(e.is_boundary for e in bm.edges):
+            return None
+        xs, ys, zs = ([v.co[i] for v in bm.verts] for i in range(3))
+        box = max(max(xs) - min(xs), 1e-9) * max(max(ys) - min(ys), 1e-9) * max(max(zs) - min(zs), 1e-9)
+        if bm.calc_volume(signed=True) < 0.02 * box:
+            return None
+        cap = me.copy()
+        cap.name = me.name + '_mch_cap'
+        bm.to_mesh(cap)
+        return cap
+    except (RuntimeError, ValueError):
+        return None
+    finally:
+        bm.free()
+
+
+def _drop_temp_caps(me):
+    """The temporary faces of ``_temp_capped`` out of a Boolean result (the part's open sides open again); the flag
+    goes too.  Returns how many faces went."""
+    attr = me.attributes.get(TEMP_CAP)
+    if attr is None:
+        return 0
+    import bmesh
+    import numpy as np
+    vals = np.zeros(len(attr.data), np.int32)
+    attr.data.foreach_get('value', vals)
+    n = 0
+    if vals.any():
+        bm = bmesh.new()
+        try:
+            bm.from_mesh(me)
+            layer = bm.faces.layers.int.get(TEMP_CAP)
+            doomed = [f for f in bm.faces if f[layer]]
+            n = len(doomed)
+            bmesh.ops.delete(bm, geom=doomed, context='FACES')
+            loose = [v for v in bm.verts if not v.link_faces]
+            if loose:
+                bmesh.ops.delete(bm, geom=loose, context='VERTS')
+            bm.to_mesh(me)
+        finally:
+            bm.free()
+    attr = me.attributes.get(TEMP_CAP)
+    if attr is not None:
+        me.attributes.remove(attr)
+    return n
+
+
 def _boolean_checked(context, cut, t, cutter, op, groups, projector, near, far, invert):
-    """boolean_result + a precise explanation when the result would be empty."""
+    """boolean_result + a precise explanation when the result would be empty.  0.24.95 an open part is cut with its
+    open sides shut for the Boolean (``_temp_capped``) and opened again in the result."""
+    cap = _temp_capped(t)
+    if cap is not None:
+        full = t.data
+        t.data = cap
+        try:
+            got = _boolean_checked_(context, cut, t, cutter, op, groups, projector, near, far, invert)
+        except cg.CutError:
+            got = None                       # (the part as it is: the old way, with its own explanation)
+        finally:
+            t.data = full
+            bpy.data.meshes.remove(cap)
+        if got is not None:
+            _drop_temp_caps(got[0])
+            return got
+    return _boolean_checked_(context, cut, t, cutter, op, groups, projector, near, far, invert)
+
+
+def _boolean_checked_(context, cut, t, cutter, op, groups, projector, near, far, invert):
     try:
         return cg.boolean_result(context, t, cutter, op, cut.solver, cut.hole_tolerant, hipoly=getattr(cut, 'hipoly', True))
     except cg.CutError as ex:
@@ -804,12 +924,14 @@ def cut_ramp(context, targets, loops, projector, edge=None, live=True):
 
 @_with_finish_notes
 def perform_closed(context, mode, targets, loops, projector, invert=False):
-    """Cut / Split all targets with closed screen loops. Returns a report string.  0.24.95 From Surface + Follow
-    Surface: the pocket follows the surface under the shape (``press_cut.SurfaceFloor`` as the cutter's far cap)."""
+    """Cut / Split all targets with closed screen loops. Returns a report string.  0.24.95 From Surface, Floor Follow:
+    the pocket follows the surface under the shape; Floor Level: flat at the point drawn round, everything higher
+    under the shape cleared down to it (``press_cut.SurfaceFloor`` as the cutter's far / near caps)."""
     from . import core_geometry as _cg, cut_presets
     cut_presets.remember(loops)
     cut = context.scene.mch_cut
-    follow = (mode in {'CUT', 'SPLIT'} and cut.depth_mode == 'SURFACE' and getattr(cut, 'depth_follow', False)
+    floor_mode = getattr(cut, 'depth_floor', 'FLAT')
+    follow = (mode in {'CUT', 'SPLIT'} and cut.depth_mode == 'SURFACE' and floor_mode in {'FOLLOW', 'LEVEL'}
               and _cg.FLOOR[0] is None and not (mode == 'CUT' and getattr(cut, 'gn_ramp', False)))
     if not follow:
         return _perform_closed_base(context, mode, targets, loops, projector, invert)
@@ -817,7 +939,8 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
     pts = [p for lp in loops for p in lp]
     span = max(max(p[0] for p in pts) - min(p[0] for p in pts), max(p[1] for p in pts) - min(p[1] for p in pts))
     step = max(6.0, span / 40.0)
-    sf = press_cut.SurfaceFloor(context, targets, projector, loops, step, follow=True, depth=cut.depth)
+    sf = press_cut.SurfaceFloor(context, targets, projector, loops, step, follow=floor_mode == 'FOLLOW',
+                                depth=cut.depth, level=floor_mode == 'LEVEL')
     if not sf.planar:                             # (one flat face: the outline as drawn, a flat far cap)
         loops = [press_cut.resample(lp, step) for lp in loops]
     _cg.FLOOR[0] = sf
@@ -896,6 +1019,9 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
                 c = cg.link_temp_object(context, cg.build_cutter_mesh(groups, projector, *planes, 'MCH_CutterMesh'))
                 own[t.name] = (radial_sym.replicate_cutter(context, [t], c), planes)
     results, pieces, temp = [], [], []
+    # 0.24.95 a part open before the cut (``_temp_capped``) stays open where it was: its results are judged as open
+    # shells (an open piece of it is a piece, not "a boolean that broke")
+    was_open = {t.name for t in targets if len(t.data.polygons) and cg.non_manifold_edge_count(t.data)}
     solvers = []
     t_start = time.perf_counter()
     edge_counts = []
@@ -963,9 +1089,9 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
                 n = cg.self_overlaps(t.data)                  # 0.24.83 a closed part whose cut came out broken: why
                 if n > 0:
                     crossing.append(f'{t.name} crosses itself in {n:,} places (sculpted through its other side)')
-            if mode == 'SPLIT' and cg.is_junk(me, cg.mesh_size(t.data), not capped):
+            if mode == 'SPLIT' and cg.is_junk(me, cg.mesh_size(t.data), not capped or t.name in was_open):
                 # nothing worth keeping stays on the part's side: the piece becomes the part instead
-                swap = next((j for j, (pt, pm) in enumerate(pieces) if pt == t and not cg.is_junk(pm, cg.mesh_size(t.data), not capped)), None)
+                swap = next((j for j, (pt, pm) in enumerate(pieces) if pt == t and not cg.is_junk(pm, cg.mesh_size(t.data), not capped or t.name in was_open)), None)
                 if swap is not None:
                     results[k] = (t, pieces[swap][1])
                     pieces[swap] = (t, me)
@@ -974,7 +1100,7 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
         new_pieces = []
         for t, me in pieces:
             temp.remove(me)
-            if cg.is_junk(me, cg.mesh_size(t.data), not capped):   # (a paper-thin shard of the gap: not a part)
+            if cg.is_junk(me, cg.mesh_size(t.data), not capped or t.name in was_open):   # (a paper-thin shard of the gap)
                 junk += 1
                 bpy.data.meshes.remove(me)
                 continue
@@ -1624,7 +1750,7 @@ class StrokeLogic:
 
     def _needs_target(self):
         return self.mode not in {'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'ZONE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE',
-                                 'FLOWER', 'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW'}
+                                 'FLOWER', 'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW', 'PRESS'}
 
     def _tangents(self, pts=None):
         pts = self.pts if pts is None else pts
@@ -1723,6 +1849,8 @@ class StrokeLogic:
         scene = context.scene
         self.brush = scene.mch_brush
         self.shape = self.brush_shape = self.brush.shape
+        if self.mode == 'PRESS' and self.shape == 'CUSTOM':
+            self.shape = 'STROKE'     # 0.24.95 Press Cut draws its stamp: a PNG stamp is no drawing - Free Draw
         if self.shape in {'LASSO', 'CURVE_LASSO'} and self._line_mode():
             self.shape = 'STROKE'     # 0.24.20 a line: draw while holding LMB, releasing applies (every tool)
         xy, inside = self._region_xy(event)
@@ -1776,7 +1904,7 @@ class StrokeLogic:
         self.rounds = []            # Curve Lasso corner rounding per point (0 = straight)
         self.alt_latch = bool(event.alt)
         self.alt_held = bool(event.alt)
-        self.shift_held = bool(event.shift)
+        self.shift_held = bool(event.shift) and self.mode != 'PRESS'   # (Press Cut: Shift only starts the drawing)
         self.ctrl_held = bool(event.ctrl)
         self.line_open = bool(self.brush.line_open)
         self.mouse = xy
@@ -2016,6 +2144,15 @@ class StrokeLogic:
     def _execute_closed(self, context):
         from . import lasso_sketch
         sketching = lasso_sketch.enabled(context, self.mode)
+        if self.mode == 'PRESS':                 # 0.24.95 Press Cut: the drawing is the stamp (or goes into a sketch)
+            from . import press_cut
+            loops = self._current_loops(self.ctrl_held, self.shift_held)
+            if sketching:
+                return lasso_sketch.add(context, 'PRESS', loops, self.projector, subtract=self.inverted())
+            ok, why = press_cut.use_loops(context, loops)
+            if not ok:
+                raise cg.CutError(why)
+            return 'Press Cut: the drawn outline is the stamp - press on a part (Save Shape keeps it)'
         targets = [] if sketching else self._targets()
         if getattr(self, 'auto_target', False) and not sketching:
             if not targets:
@@ -2624,6 +2761,7 @@ class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
     mode: EnumProperty(name='Mode', items=[
         ('CUT', 'Cut', 'Remove the inside (Alt: keep inside)'),
         ('SPLIT', 'Split', 'Split into two parts'),
+        ('PRESS', 'Press Cut', 'Draw the Press Cut stamp with the shared shapes (Shift + draw in Press Cut)'),
         ('MASK', 'Mask', 'Add face mask (Alt: erase)'),
         ('BASE', 'Base Mesh', 'Create a new solid from the drawn outline'),
         ('PLATE', 'Armor Plate', 'New armour plate on the mesh under the outline'),

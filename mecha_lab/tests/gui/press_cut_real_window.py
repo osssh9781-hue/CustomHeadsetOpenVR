@@ -102,9 +102,10 @@ def flow():
         rv = sp.region_3d
         bpy.ops.view3d.view_axis(type='TOP')
         rv.view_perspective = 'ORTHO'
-        rv.view_location = (0.0, -1.2, 0.0)
-        rv.view_distance = 11.0
-        for name, x, y in (('A', -2.6, 0.0), ('B', 0.0, 0.0), ('C', 2.6, 0.0), ('D', -1.4, -2.7), ('E', 1.4, -2.7)):
+        rv.view_location = (0.0, -0.5, 0.0)
+        rv.view_distance = 13.0
+        for name, x, y in (('A', -2.6, 0.0), ('B', 0.0, 0.0), ('C', 2.6, 0.0), ('D', -1.4, -2.7), ('E', 1.4, -2.7),
+                           ('F', 0.0, 2.6)):
             bpy.ops.mesh.primitive_cube_add(size=2.0, location=(x, y, 0.0))
             C.active_object.name = name
             boxes[name] = C.active_object
@@ -244,6 +245,7 @@ def flow():
     log('OFF-EDGE Round Panel, its middle off E\'s side (about 1 s): volume', v0, '->', round(volume(boxes['E']), 4))
     # 0.24.95 (user: "여기 왜 라쏘 툴이 없어? 그릴 수가 없는데" -> "그렇게 하자") Shift + drag: draw your own stamp
     from mecha_lab import press_cut as pcm
+    S.mch_brush.shape = 'STROKE'                    # (0.24.95 Shift + draw uses the shape picked: Free Draw here)
     house = [(-0.85, -0.85), (-0.35, -0.85), (-0.35, -0.55), (-0.6, -0.3), (-0.85, -0.55), (-0.85, -0.85)]
     path = []
     for (x0, y0), (x1, y1) in zip(house, house[1:]):
@@ -273,6 +275,86 @@ def flow():
     xdo('mouseup', 1)
     yield 1.5
     log('DRAW pressed with the drawn house on B (about 1.2 s): volume', v0, '->', round(volume(boxes['B']), 4))
+    # 0.24.95 (user: "원래 쓰던 라쏘랑 스케치 다 넣어 줘") Shift + draw with the shared shapes and the Sketch
+
+    def shift_drag(p0, p1, alt=False, steps=10):
+        xdo('mousemove', *p0)
+        yield 0.3
+        xdo('keydown', 'shift')
+        if alt:
+            xdo('keydown', 'alt')
+        yield 0.2
+        xdo('mousedown', 1)
+        yield 0.15
+        for k in range(1, steps + 1):
+            xdo('mousemove', int(p0[0] + (p1[0] - p0[0]) * k / steps), int(p0[1] + (p1[1] - p0[1]) * k / steps))
+            yield 0.03
+        if alt:
+            xdo('keyup', 'alt')
+        xdo('keyup', 'shift')
+        yield 0.15
+        xdo('mouseup', 1)
+        yield 0.6
+    S.mch_brush.shape = 'RECT'
+    yield from shift_drag(screen_of((-3.3, -0.6, 1.0)), screen_of((-1.9, 0.4, 1.0)))
+    rect_px = (abs(screen_of((-1.9, 0, 1))[0] - screen_of((-3.3, 0, 1))[0]),
+               abs(screen_of((0, 0.4, 1))[1] - screen_of((0, -0.6, 1))[1]))
+    log('SHAPES Rectangle (Shift + drag 1.4 x 1.0 m on screen):', 'drawn', S.mch_press.drawn, 'corners',
+        len(pcm.DRAWN[0][0]) if pcm.DRAWN[0] else None, 'size px', round(S.mch_press.size, 1), 'expected about',
+        round(max(rect_px) / 2, 1))
+    S.mch_brush.shape = 'LASSO'
+    S.mch_press.drawn = False
+    yield 0.3
+    tri = [screen_of(c) for c in ((1.9, -0.7, 1.0), (3.3, -0.7, 1.0), (2.6, 0.7, 1.0))]
+    xdo('mousemove', *tri[0])
+    yield 0.3
+    xdo('keydown', 'shift')
+    yield 0.15
+    xdo('click', 1)
+    yield 0.2
+    xdo('keyup', 'shift')
+    yield 0.3
+    xdo('mousemove', *tri[1])
+    yield 0.3
+    xdo('click', 1)
+    yield 0.4
+    xdo('mousemove', *tri[2])
+    yield 0.3
+    xdo('click', '--repeat', '2', '--delay', '70', 1)
+    yield 0.8
+    log('SHAPES Lasso (Shift + click, click, double-click: a triangle):', 'drawn', S.mch_press.drawn, 'corners',
+        len(pcm.DRAWN[0][0]) if (S.mch_press.drawn and pcm.DRAWN[0]) else None)
+    S.mch_brush.shape = 'RECT'
+    S.mch_brush.sketch_first = True
+    S.mch_press.drawn = False
+    yield 0.3
+    yield from shift_drag(screen_of((1.9, -0.7, 1.0)), screen_of((3.3, 0.7, 1.0)))
+    yield from shift_drag(screen_of((2.3, -0.3, 1.0)), screen_of((2.9, 0.3, 1.0)), alt=True)
+    from mecha_lab import lasso_sketch as lsk
+    d = lsk.data(S)
+    shot('6b_sketch_before_enter.png')
+    log('SKETCH Shift + drag a square, Shift + Alt + drag a smaller one inside:', 'items',
+        [i['op'] for i in d['items']] if d else None)
+    xdo('mousemove', *screen_of((2.6, -1.0, 1.0)))
+    yield 0.3
+    xdo('key', 'Return')
+    yield 0.8
+    log('SKETCH Enter: drawn', S.mch_press.drawn, 'outlines', len(pcm.DRAWN[0]) if pcm.DRAWN[0] else None,
+        'sketch left', lsk.data(S) is not None)
+    S.mch_brush.sketch_first = False
+    S.mch_press.result = 'CUT'
+    v0 = round(volume(boxes['F']), 4)
+    xdo('mousemove', *screen_of((0.0, 2.6, 1.0)))
+    yield 0.8
+    shot('6c_sketched_ring_stamp_over_F.png')
+    xdo('mousedown', 1)
+    yield 1.2
+    xdo('mouseup', 1)
+    yield 1.5
+    mid_top = boxes['F'].ray_cast((0.0, 0.0, 5.0), (0, 0, -1))
+    ring_top = boxes['F'].ray_cast((0.5, 0.0, 5.0), (0, 0, -1))
+    log('SKETCH stamp pressed on F (about 1.2 s): volume', v0, '->', round(volume(boxes['F']), 4), '| top z middle',
+        round(mid_top[1].z, 3) if mid_top[0] else None, 'ring', round(ring_top[1].z, 3) if ring_top[0] else None)
     # 0.24.95 (user: "지금 내가 메쉬에 닿아 있는 부분을 조그만한 점으로 표시해 주면 작업할 때 편하겠는데") contact dots
     S.mch_press.drawn = False
     S.mch_press.shape = 'MCH_BUILTIN_M_CHAMFER_PANEL'

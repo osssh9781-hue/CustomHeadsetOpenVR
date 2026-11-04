@@ -200,7 +200,8 @@ lip = {}
 for follow in (False, True):
     fresh()
     C.scene.mch_settings.auto_apply = True
-    C.scene.mch_cut.depth_mode, C.scene.mch_cut.depth, C.scene.mch_cut.depth_follow = 'SURFACE', 0.3, follow
+    C.scene.mch_cut.depth_mode, C.scene.mch_cut.depth = 'SURFACE', 0.3
+    C.scene.mch_cut.depth_floor = 'FOLLOW' if follow else 'FLAT'
     p = cube('P', size=2.0)
     c = TILT.to_screen(Vector((0, 0, 1)))
     sq = [(c[0] - 60, c[1] - 60), (c[0] + 60, c[1] - 60), (c[0] + 60, c[1] + 60), (c[0] - 60, c[1] + 60)]
@@ -223,7 +224,7 @@ for q in pc.stamp_loops(C, c, C.scene.mch_press)[0][::3]:   # (sample points jus
     ok, loc, _n, _f = p.ray_cast(o, d)
     inside += bool(ok and abs(loc.z - 1.0) < 1e-4)
 check('Press Cut, Follow Surface (on by default): seen at an angle, no lip inside the stamp, a closed solid',
-      C.scene.mch_press.follow_surface and inside == 0 and non_manifold(p) == 0, (inside, non_manifold(p)))
+      C.scene.mch_press.floor_mode == 'FOLLOW' and inside == 0 and non_manifold(p) == 0, (inside, non_manifold(p)))
 
 # 0.24.95 (user: "이렇게는 또 안 잘려" - the stamp's middle just off a part's side)
 FRONT = cg.OrthoProjector(Quaternion((0.7071068, 0.7071068, 0, 0)), pixels_per_unit=100.0)
@@ -242,6 +243,102 @@ far = pc.press_target(C, FRONT, FRONT.to_screen(Vector((4.0, -1.0, 0.0))),
 check('The stamp\'s middle off the part\'s side, the stamp over it: the part is pressed and cut; nowhere near a part: '
       'nothing', under is None and t == p and ok and 8.0 - vol(p) > 0.01 and non_manifold(p) == 0 and far is None,
       (under, t and t.name, ok, round(8.0 - vol(p), 4), far))
+
+
+# 0.24.95 (user: "부품 밖에서 잘리는 거 될 때도 있고 안 될 때도 있어, 중앙까지는 걸쳐야 돼") a square stamp over a bar's
+# end: its middle and all four corners off the bar, only its side over it - the surface was looked for under the middle
+# and the corners only: none found, nothing cut
+
+
+def bar():
+    ob = cube('B', size=1.0)
+    for v in ob.data.vertices:                     # x -1 .. 0.1, y -0.2 .. 0.2, top z 0.5
+        v.co.x = -1.0 if v.co.x < 0 else 0.1
+        v.co.y *= 0.4
+    ob.data.update()
+    C.view_layer.update()
+    return ob
+
+
+def square_px(proj, c, r):
+    cx, cy = proj.to_screen(Vector(c))
+    r *= 100
+    return [(cx - r, cy - r), (cx + r, cy - r), (cx + r, cy + r), (cx - r, cy + r)]
+
+
+offs = []
+for mode in ('FLAT', 'FOLLOW', 'LEVEL'):
+    fresh()
+    C.scene.mch_settings.auto_apply = True
+    b = bar()
+    v0 = vol(b)
+    sq = square_px(TOP, (0.4, 0.0, 0.5), 0.4)
+    xy = TOP.to_screen(Vector((0.4, 0.0, 0.5)))
+    hits = [ce.surface_hit(C, [b], TOP, q) is not None for q in sq + [xy]]
+    t = pc.press_target(C, TOP, xy, [sq])
+    pr = pc.Press(C, b, [sq], TOP, 'CUT', center=xy, spacing=6.0, follow=mode == 'FOLLOW', level=mode == 'LEVEL')
+    ok = pr.cut_to(C, 0.2)
+    pr.finish(C)
+    offs.append((mode, any(hits), t and t.name, ok, round(v0 - vol(b), 4), non_manifold(b)))
+fresh()
+C.scene.mch_settings.auto_apply = True
+C.scene.mch_cut.depth_mode, C.scene.mch_cut.depth = 'SURFACE', 0.2
+b = bar()
+v0 = vol(b)
+msg = ce.perform_closed(C, 'CUT', [b], [square_px(TOP, (0.4, 0.0, 0.5), 0.4)], TOP)
+offs.append(('Cut tool', round(v0 - vol(b), 4), non_manifold(b), msg[:12]))
+check('A square stamp over a bar\'s end, its middle and all 4 corners off the bar: Press (Flat / Follow / Level) and '
+      'the Cut tool From Surface find the bar under its side and cut it (0.1 x 0.4 x 0.2 = 0.008), a closed solid',
+      all(not o[1] and o[2] == 'B' and o[3] and abs(o[4] - 0.008) < 1e-3 and o[5] == 0 for o in offs[:3])
+      and abs(offs[3][1] - 0.008) < 1e-3 and offs[3][2] == 0, offs)
+
+# 0.24.95 Level (user: "팔로우 서페이스 말고 내가 선택한 면보다 옆에 면이 높이 있으면 거기는 그냥 내가 선택한 위치까지 걍
+# 지워 버리는 버튼"): a step - the left half 1 m high, the right half 0.5 m; pressed on the low face beside the step
+
+
+def step_block():
+    def build(bm):
+        prof = [(-1, -1), (1, -1), (1, 0.5), (0, 0.5), (0, 1), (-1, 1)]       # (x, z)
+        a = [bm.verts.new((x, -1, z)) for x, z in prof]
+        c = [bm.verts.new((x, 1, z)) for x, z in prof]
+        bm.faces.new(a)
+        bm.faces.new(list(reversed(c)))
+        for i in range(len(prof)):
+            j = (i + 1) % len(prof)
+            bm.faces.new((a[i], a[j], c[j], c[i]))
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    from _harness import mesh_obj
+    return mesh_obj('S', build)
+
+
+def top_z(ob, x):
+    o, d = TOP.ray(TOP.to_screen(Vector((x, 0.0, 0.0))))
+    ok, loc, _n, _f = ob.ray_cast(o, d)
+    return round(loc.z, 3) if ok else None
+
+
+lv = {}
+for mode in ('FLAT', 'FOLLOW', 'LEVEL'):
+    fresh()
+    C.scene.mch_settings.auto_apply = True
+    s_ = step_block()
+    sq = square_px(TOP, (0.3, 0.0, 0.5), 0.5)          # (x -0.2 .. 0.8: over the step, pressed on the low side)
+    xy = TOP.to_screen(Vector((0.3, 0.0, 0.5)))
+    pr = pc.Press(C, s_, [sq], TOP, 'CUT', center=xy, spacing=6.0, follow=mode == 'FOLLOW', level=mode == 'LEVEL')
+    ok = pr.cut_to(C, 0.2)
+    pr.finish(C)
+    lv[mode] = (ok, top_z(s_, -0.1), top_z(s_, 0.5), top_z(s_, -0.6), non_manifold(s_))
+check('Level: pressed on the low face beside a step - the raised face under the stamp cleared down to the same floor '
+      '(0.5 - 0.2 = 0.3) as the low face; Follow: 0.2 below each face (0.8 / 0.3); Flat: the raised face left '
+      'standing (1.0); outside the stamp nothing changes; closed solids',
+      lv['LEVEL'][:4] == (True, 0.3, 0.3, 1.0) and lv['FOLLOW'][:4] == (True, 0.8, 0.3, 1.0)
+      and lv['FLAT'][:4] == (True, 1.0, 0.3, 1.0) and all(v[4] == 0 for v in lv.values()), lv)
+st = C.scene.mch_press
+check('... the Floor choice: Follow (default) / Level / Flat in Press Cut, the same with Flat the default in the '
+      'Cut tool (From Surface)', [i.identifier for i in st.bl_rna.properties['floor_mode'].enum_items] ==
+      ['FOLLOW', 'LEVEL', 'FLAT'] and st.floor_mode == 'FOLLOW' and C.scene.mch_cut.depth_floor == 'FLAT'
+      and [i.identifier for i in C.scene.mch_cut.bl_rna.properties['depth_floor'].enum_items] ==
+      ['FOLLOW', 'LEVEL', 'FLAT'])
 
 
 
@@ -296,9 +393,88 @@ ok2, why2 = pc.use_drawn(C, bow)
 tiny = pc.use_drawn(C, [(cx, cy), (cx + 2, cy), (cx + 2, cy + 2)])
 check('... an outline that crosses itself, or a tiny scribble: refused with a reason (the stamp stays)',
       not ok2 and 'crosses' in why2 and not tiny[0] and not st.drawn, (why2, tiny))
-press_keys2 = [(k[0], k[1]['type'], k[1].get('shift', False)) for k in pc.TOOL_KEYMAP]
-check('... Shift + LMB in the Press Cut tool is the drawing (LMB alone still presses)',
-      ('mch.press_draw', 'LEFTMOUSE', True) in press_keys2 and ('mch.press_cut', 'LEFTMOUSE', False) in press_keys2)
+press_keys2 = [(k[0], k[1]['type'], k[1].get('shift', False), k[1].get('alt', False),
+               dict((k[2] or {}).get('properties', [])).get('mode')) for k in pc.TOOL_KEYMAP]
+names = [k[0] for k in pc.TOOL_KEYMAP]
+check('... Shift + LMB in the Press Cut tool is the drawing - the shared shape stroke (Lasso, Curve Lasso, Rectangle, '
+      'Circle, Ellipse, Free Draw), Shift + Alt for a Sketch\'s subtract; LMB alone still presses; the Sketch keys '
+      '(Enter / Backspace / Esc) before Esc = leave the tool',
+      ('mch.cut_stroke', 'LEFTMOUSE', True, False, 'PRESS') in press_keys2
+      and ('mch.cut_stroke', 'LEFTMOUSE', True, True, 'PRESS') in press_keys2
+      and ('mch.press_cut', 'LEFTMOUSE', False, False, None) in press_keys2
+      and 'PRESS' in [i.identifier for i in bpy.ops.mch.cut_stroke.get_rna_type().properties['mode'].enum_items]
+      and 'mch.lasso_sketch_key' in names and names.index('mch.lasso_sketch_clear') < names.index('mch.exit_tool'),
+      press_keys2)
+
+# 0.24.95 (user: "원래 쓰던 라쏘랑 스케치 다 넣어 줘") the stamp drawn as several outlines - a Sketch's islands and holes
+from mecha_lab import lasso_sketch, top_bar
+fresh()
+C.scene.mch_settings.auto_apply = True
+st = C.scene.mch_press
+cx, cy = TOP.to_screen(Vector((0, 0, 1)))
+ring_out = [(cx - 60, cy - 60), (cx + 60, cy - 60), (cx + 60, cy + 60), (cx - 60, cy + 60)]
+ring_in = [(cx - 25, cy - 25), (cx + 25, cy - 25), (cx + 25, cy + 25), (cx - 25, cy + 25)]
+ok3, why3 = pc.use_loops(C, [ring_out, list(reversed(ring_in))])
+loops3 = pc.stamp_loops(C, (cx, cy), st)
+p = cube('P', size=2.0)
+pr = pc.Press(C, p, loops3, TOP, 'CUT', center=(cx, cy), spacing=6.0)
+pr.cut_to(C, 0.3)
+pr.finish(C)
+
+
+def top_hit(x, y):
+    o, d = TOP.ray(TOP.to_screen(Vector((x, y, 0))))
+    ok, loc, _n, _f = p.ray_cast(o, d)
+    return round(loc.z, 3) if ok else None
+
+
+check('use_loops: an outline with a hole is the stamp (2 outlines, 120 px wide = Size 60); pressed: a ring-shaped '
+      'pocket - the middle stays standing, a closed solid',
+      ok3 and st.drawn and len(loops3) == 2 and abs(st.size - 60.0) < 1e-6 and top_hit(0, 0) == 1.0
+      and top_hit(0.42, 0) == 0.7 and top_hit(0.8, 0) == 1.0 and non_manifold(p) == 0,
+      (why3, len(loops3), st.size, top_hit(0, 0), top_hit(0.42, 0), top_hit(0.8, 0)))
+
+fresh()
+C.scene.mch_brush.sketch_first = True
+st = C.scene.mch_press
+m1 = lasso_sketch.add(C, 'PRESS', [ring_out], TOP)
+m2 = lasso_sketch.add(C, 'PRESS', [ring_in], TOP, subtract=True)
+m3 = lasso_sketch.commit(C)
+loops4 = pc.stamp_loops(C, (cx, cy), st)
+check('Press Cut Sketch: Shift + draw adds, Shift + Alt + draw subtracts, Enter makes the combined outline (a square '
+      'with a square hole) the stamp; the sketch is cleared',
+      lasso_sketch.enabled(C, 'PRESS') and 'Enter: the stamp' in m1 and st.drawn and len(loops4) == 2
+      and lasso_sketch.data(C.scene) is None and 'stamp' in m3, (m1[:60], m3, len(loops4)))
+
+ws = C.window_manager
+import types
+ctx_tool = types.SimpleNamespace(scene=C.scene, workspace=C.workspace)
+groups3 = None
+try:
+    orig = top_bar.ts.effective_tool
+    top_bar.ts.effective_tool = lambda _c: 'PRESS'
+    import mecha_lab.mecha_menu as mm
+    groups3 = dict((g[0], g[1]) for g in top_bar.groups(C, 'PRESS'))
+finally:
+    top_bar.ts.effective_tool = orig
+labels = [c['label'] for c in groups3.get('Shift+Draw', [])]
+drawc = [c['label'] for c in groups3.get('Draw', [])]
+check('... the top bar in Press Cut: the shapes to draw with (Lasso, Curve Lasso, Rectangle, Circle, Ellipse, Free '
+      'Draw - no PNG stamp) and Sketch; Press Cut keeps its own lasso settings (like the other drawing tools)',
+      labels == ['Lasso', 'Curve Lasso', 'Rectangle', 'Circle', 'Ellipse', 'Free Draw'] and 'Sketch' in drawc
+      and 'PRESS' in ts.DRAW_TOOLS, (labels, drawc))
+
+
+
+# 0.24.95 (user: "메쉬 위에 뜨는 점이 너무 작은데") bigger contact dots, a Dot Size setting
+st = C.scene.mch_press
+base = pc.dot_sizes(C)
+st.dot_size = 2.0
+big = pc.dot_sizes(C)
+st.dot_size = 1.0
+check('Contact dots: about twice the first ones (outline 8 px, the press point 18 px at UI scale 1), the Dot Size '
+      'setting scales them (never 0 - no window reads UI scale 0)', base[0] >= 8.0 - 1e-6 and base[1] >= 16.0
+      and abs(big[0] - 2 * base[0]) < 1e-6, (base, big))
 
 
 # 0.24.95 (user: "스탬프 돌리는 것도 로테이션 각도가 좀 더 섬세하게") R + mouse turns the stamp finely

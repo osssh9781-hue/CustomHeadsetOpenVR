@@ -91,18 +91,18 @@ def sync(context=None):
     if last is None:                          # first look (a file opened, the add-on started)
         owner = scene.get(OWNER, '')
         if owner and owner != tool:           # the brush is still the tool's it was saved with
-            if owner in ts.SHAPE_TOOLS:
+            if owner in ts.DRAW_TOOLS:
                 st[owner] = values(brush)
-        elif tool in ts.SHAPE_TOOLS:          # ... the tool in use (or nothing saved yet)
+        elif tool in ts.DRAW_TOOLS:          # ... the tool in use (or nothing saved yet)
             st[tool] = values(brush)
             return False
-        if tool in ts.SHAPE_TOOLS and tool in st:
+        if tool in ts.DRAW_TOOLS and tool in st:
             apply(brush, st[tool])
             return True
         return False
-    if last in ts.SHAPE_TOOLS:
+    if last in ts.DRAW_TOOLS:
         st[last] = values(brush)
-    if tool in ts.SHAPE_TOOLS and tool in st:
+    if tool in ts.DRAW_TOOLS and tool in st:
         apply(brush, st[tool])
         return True
     return False
@@ -138,7 +138,7 @@ def _on_save_pre(*_args):
         brush = getattr(scene, 'mch_brush', None)
         st = store(scene)
         last = _LAST.get(key)
-        if brush is not None and last in ts.SHAPE_TOOLS:
+        if brush is not None and last in ts.DRAW_TOOLS:
             st[last] = values(brush)
         try:
             scene[KEY] = json.dumps(st)

@@ -25,7 +25,8 @@ from . import core_geometry as cg
 from . import tool_state as ts
 
 KEY = 'mch_lasso_sketch'          # Scene ID prop (JSON) - Ctrl+Z steps back through it
-MODES = {'CUT', 'SPLIT', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'HIDE'}   # 0.24.1 + Plate Detail 1 / 2, Box Hide; 0.24.95 Cloth Drape
+MODES = {'CUT', 'SPLIT', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'HIDE',
+         'PRESS'}   # 0.24.1 + Plate Detail 1 / 2, Box Hide; 0.24.95 Cloth Drape, Press Cut (the sketch = the stamp)
 
 
 def is_on(context):
@@ -112,6 +113,9 @@ def add(context, mode, loops, projector, subtract=False):
     scene[KEY] = json.dumps(d)
     pieces = bm_.sketch_regions(d['items'])
     name = ts.TOOL_BY_ID[mode][1]
+    if mode == 'PRESS':
+        return (f'{name} sketch: {"subtracted" if subtract else "added"} ({len(pieces)} piece(s)) | Enter: the stamp, '
+                f'Shift+Alt+draw: subtract, Backspace: last, Esc: clear')
     return (f'{name} sketch: {"subtracted" if subtract else "added"} ({len(pieces)} piece(s)) | '
             f'Enter: {"hide" if mode == "HIDE" else "apply"}, Alt+Enter: '
             f'{"keep inside" if mode == "CUT" else "show again" if mode == "HIDE" else "apply"}, '
@@ -144,6 +148,13 @@ def commit(context, alt=False):
     if not loops:
         raise cg.CutError('The sketch is empty (everything was subtracted). Esc clears it.')
     mode = d['mode']
+    if mode == 'PRESS':
+        from . import press_cut               # 0.24.95 Press Cut: the combined outline (islands, holes) is the stamp
+        ok, why = press_cut.use_loops(context, loops)
+        if not ok:
+            raise cg.CutError(why)
+        clear(scene)
+        return 'Press Cut: the sketch is the stamp - press on a part (Save Shape keeps it)'
     if mode == 'PLATE':
         from . import armor_plate as ap
         msg = ap.perform_plate(context, loops, proj)
