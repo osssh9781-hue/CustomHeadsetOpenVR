@@ -2740,6 +2740,9 @@ def draw_stamp_cursor(context, xy):
     """Idle PNG stamp preview at the cursor (WorkSpaceTool.draw_cursor):
     the exact outline a click would cut, with the current size / rotation."""
     try:
+        from . import press_cut
+        if press_cut.TURNING[0]:                 # 0.24.95 (R: the stamp is turned at its own place)
+            return
         b = context.scene.mch_brush
         if b.shape != 'CUSTOM':
             return

@@ -10,7 +10,8 @@ Save Shape: the last closed outline drawn with Cut / Split (lasso, sketch, recta
 for the session (``cut_presets.remember``); Save Shape writes it as a cut shape (``cut_presets.save_loops``) - it is
 then in the shape list of Press Cut and of the Cut / Split Custom stamp, in every file.
 
-[ / ] or F + mouse: stamp size, R / Shift + R turn it 15 degrees.
+[ / ] or F + mouse: stamp size.  R + mouse left / right: turn it (0.4 degree a pixel, Shift fine, Ctrl 5 degree
+steps; click keeps, Esc puts it back), Shift + R: back to 0 degrees.
 """
 from __future__ import annotations
 
@@ -46,8 +47,8 @@ class MCH_PG_Press(bpy.types.PropertyGroup):
                         description='The stamp: a saved lasso, a built-in shape or an imported PNG')
     size: FloatProperty(name='Size', default=60.0, min=4.0, max=2000.0, subtype='PIXEL', update=_redraw,
                         description='Stamp radius on screen ([ / ] change it)')
-    rotation: FloatProperty(name='Rotation', default=0.0, subtype='ANGLE', update=_redraw,
-                            description='Stamp turn (R / Shift + R: 15 degrees)')
+    rotation: FloatProperty(name='Rotation', default=0.0, subtype='ANGLE', update=_redraw, step=10,
+                            description='Stamp turn (R + mouse: turn it, Shift + R: 0)')
     start: FloatProperty(name='Start', default=0.01, min=0.0005, max=1.0, subtype='FACTOR', precision=3,
                          description='Depth at the press, of the part\'s size (a quick tap)')
     speed: FloatProperty(name='Speed', default=0.12, min=0.005, soft_max=1.0, max=5.0, precision=3,
@@ -177,6 +178,8 @@ def press_target(context, projector, xy):
 
 def draw_cursor(context, xy):
     """Idle stamp preview at the cursor (WorkSpaceTool.draw_cursor, window px)."""
+    if TURNING[0]:
+        return
     try:
         import gpu
         from . import cut_engine as ce
@@ -317,6 +320,132 @@ class MCH_OT_press_adjust(bpy.types.Operator):
         return {'FINISHED'}
 
 
+TURN_PX = 0.4                  # (degrees per pixel the mouse moves while turning the stamp)
+TURN_FINE = 0.08               # (with Shift)
+TURN_SNAP = 5.0                # (with Ctrl: 5 degree steps)
+TURNING = [False]              # (the idle stamp previews stay hidden while it is turned at its own place)
+
+
+def turn_target(context):
+    """(owner, property, size px, shape stem) of the stamp R turns: Press Cut's, or the Cut / Split Custom stamp;
+    None for anything else (Blender's own R then)."""
+    from . import tool_state as ts
+    scene = context.scene
+    if ts.effective_tool(context) == 'PRESS' and hasattr(scene, 'mch_press'):
+        st = scene.mch_press
+        return st, 'rotation', st.size, st.shape
+    b = getattr(scene, 'mch_brush', None)
+    if b is not None and b.shape == 'CUSTOM':
+        return b, 'custom_rotation', b.custom_size, scene.mch_png_preset
+    return None
+
+
+def turn_angle(start, dx, ctrl=False, shift=False):
+    """The stamp's turn after the mouse moved ``dx`` px from where R was pressed (radians, -180 .. 180 degrees):
+    0.4 degree a pixel, Shift 0.08 (fine), Ctrl in 5 degree steps."""
+    a = math.degrees(start) + dx * (TURN_FINE if shift else TURN_PX)
+    if ctrl:
+        a = round(a / TURN_SNAP) * TURN_SNAP
+    a = (a + 180.0) % 360.0 - 180.0
+    return math.radians(a)
+
+
+def _draw_turn(op):
+    try:
+        import blf
+        import gpu
+        from . import cut_engine as ce
+        if bpy.context.region != op.region:
+            return
+        ang = getattr(op.owner, op.prop)
+        sh = ce._shader()
+        gpu.state.blend_set('ALPHA')
+        cx, cy = op.center
+        if op.norm:
+            for lp in ce.custom_loops(op.norm, op.center, op.size, ang):
+                ce._draw_lines(sh, lp, (1.0, 0.85, 0.3, 1.0), closed=True, width=2.0)
+        r = op.size * 1.15
+        ce._draw_lines(sh, [(cx, cy), (cx + r * math.cos(ang), cy + r * math.sin(ang))], (0.45, 0.8, 1.0, 1.0),
+                       width=1.5)
+        gpu.state.blend_set('NONE')
+        blf.size(0, 15)
+        blf.color(0, 1.0, 0.92, 0.6, 1.0)
+        blf.position(0, cx + op.size + 14, cy + 6, 0)
+        blf.draw(0, f'{math.degrees(ang):.1f}\u00b0')
+        blf.size(0, 12)
+        blf.color(0, 0.85, 0.87, 0.9, 1.0)
+        blf.position(0, cx + op.size + 14, cy - 14, 0)
+        blf.draw(0, 'move: turn   Ctrl: 5\u00b0 steps   Shift: fine   click / R: keep   Esc: back')
+    except Exception:
+        pass
+
+
+class MCH_OT_stamp_turn(bpy.types.Operator):
+    """R: turn the stamp with the mouse - left / right, 0.4 degree a pixel (Shift: fine, Ctrl: 5 degree steps);
+    click / Enter / R keeps, Esc / right click puts it back.  Shift + R: back to 0 degrees"""
+    bl_idname = 'mch.stamp_turn'
+    bl_label = 'Turn Stamp'
+    bl_options = {'INTERNAL'}
+
+    reset: BoolProperty(default=False)
+
+    @classmethod
+    def poll(cls, context):
+        return turn_target(context) is not None
+
+    def invoke(self, context, event):
+        owner, prop, size, stem = turn_target(context)
+        if self.reset:
+            setattr(owner, prop, 0.0)
+            if context.area:
+                context.area.tag_redraw()
+            self.report({'INFO'}, 'Stamp turn 0\u00b0')
+            return {'FINISHED'}
+        if context.region is None or context.region.type != 'WINDOW':
+            return {'CANCELLED'}
+        from . import cut_presets
+        self.owner, self.prop, self.size = owner, prop, size
+        self.start = getattr(owner, prop)
+        self.x0 = event.mouse_x
+        self.center = (float(event.mouse_region_x), float(event.mouse_region_y))
+        self.region = context.region
+        try:
+            self.norm = cut_presets.load_loops(stem)
+        except (cg.CutError, ValueError, OSError):
+            self.norm = None
+        TURNING[0] = True
+        self.handle = bpy.types.SpaceView3D.draw_handler_add(_draw_turn, (self,), 'WINDOW', 'POST_PIXEL')
+        context.window_manager.modal_handler_add(self)
+        self.region.tag_redraw()
+        return {'RUNNING_MODAL'}
+
+    def _end(self):
+        TURNING[0] = False
+        try:
+            bpy.types.SpaceView3D.draw_handler_remove(self.handle, 'WINDOW')
+        except (ValueError, RuntimeError):
+            pass
+        self.region.tag_redraw()
+
+    def modal(self, context, event):
+        et, ev = event.type, event.value
+        if et == 'MOUSEMOVE':
+            setattr(self.owner, self.prop, turn_angle(self.start, event.mouse_x - self.x0, event.ctrl, event.shift))
+            self.region.tag_redraw()
+            return {'RUNNING_MODAL'}
+        if getattr(event, 'is_repeat', False):
+            return {'RUNNING_MODAL'}
+        if ev == 'PRESS' and et in {'LEFTMOUSE', 'RET', 'NUMPAD_ENTER', 'SPACE', 'R'}:
+            self._end()
+            self.report({'INFO'}, f'Stamp turn {math.degrees(getattr(self.owner, self.prop)):.1f}\u00b0')
+            return {'FINISHED'}
+        if ev == 'PRESS' and et in {'RIGHTMOUSE', 'ESC'}:
+            setattr(self.owner, self.prop, self.start)
+            self._end()
+            return {'CANCELLED'}
+        return {'RUNNING_MODAL'}
+
+
 class MCH_OT_save_cut_shape(bpy.types.Operator):
     """Save the last outline you drew (Cut / Split / any lasso: lasso, sketch, rectangle ...) as a cut shape - for
     Press Cut and the Cut / Split Custom stamp, in every file"""
@@ -377,7 +506,8 @@ def draw(layout, context):
     row.enabled = cut_presets.LAST_LOOPS[0] is not None
     row.operator('mch.save_cut_shape', text='Save Last Outline as Shape', icon='FILE_TICK')
     layout.label(text='Press on a part and hold: deeper the longer you hold', icon='INFO')
-    layout.label(text='Release: keep  |  Esc / RMB: back  |  [ ] size  |  R turn')
+    layout.label(text='Release: keep  |  Esc / RMB: back  |  [ ] / F size')
+    layout.label(text='R + mouse: turn (Shift fine, Ctrl 5\u00b0)  |  Shift+R: 0\u00b0')
 
 
 TOOL_KEYMAP = (
@@ -385,13 +515,13 @@ TOOL_KEYMAP = (
     ('mch.press_cut', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, None),
     ('mch.press_adjust', {'type': 'LEFT_BRACKET', 'value': 'PRESS'}, {'properties': [('size', 1 / 1.15)]}),
     ('mch.press_adjust', {'type': 'RIGHT_BRACKET', 'value': 'PRESS'}, {'properties': [('size', 1.15)]}),
-    ('mch.press_adjust', {'type': 'R', 'value': 'PRESS'}, {'properties': [('turn', 15.0)]}),
-    ('mch.press_adjust', {'type': 'R', 'value': 'PRESS', 'shift': True}, {'properties': [('turn', -15.0)]}),
+    ('mch.stamp_turn', {'type': 'R', 'value': 'PRESS'}, None),           # (R + mouse: turn, fine)
+    ('mch.stamp_turn', {'type': 'R', 'value': 'PRESS', 'shift': True}, {'properties': [('reset', True)]}),
     ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),
     ('mch.brush_resize', {'type': 'F', 'value': 'PRESS'}, None),        # (F + mouse = stamp size)
 )
 
-CLASSES = (MCH_PG_Press, MCH_OT_press_cut, MCH_OT_press_adjust, MCH_OT_save_cut_shape)
+CLASSES = (MCH_PG_Press, MCH_OT_press_cut, MCH_OT_press_adjust, MCH_OT_stamp_turn, MCH_OT_save_cut_shape)
 
 
 def register():

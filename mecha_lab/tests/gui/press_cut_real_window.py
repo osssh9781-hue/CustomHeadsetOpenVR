@@ -1,7 +1,8 @@
 """Real window: Press Cut (0.24.95 user: "내가 정한 라쏘 모양을 저장해 놓으면 그걸로 잘리는데 약간 밀리면서 잘리는 거지 - 오래
 누르면 더 잘리고 조금 누르면 조금만 잘리는"): MECHA LAB screen, three 2 m boxes seen from the top, the Press Cut tool;
 REAL mouse (xdotool): the stamp over box A (preview shot), a short press on A, a long press on B (a shot while held),
-a press on C cancelled with Esc while held, then Split on C; the pocket depth / removed volume of each, shots.
+a press on C cancelled with Esc while held, then Split on C; the pocket depth / removed volume of each; R + mouse
+turns the stamp finely (Ctrl: 5 degree steps, Shift+R: 0); shots.
     blender --window-geometry 0 0 W H --python this.py -- OUT"""
 import os
 import subprocess
@@ -162,6 +163,35 @@ def flow():
     pieces = [o for o in S.objects if o.name.startswith('C_Split')]
     log('SPLIT press on C (about 1.2 s): pieces', [(o.name, round(volume(o), 4)) for o in pieces],
         'C now', pocket(boxes['C']))
+    # 0.24.95 (user: "스탬프 돌리는 것도 로테이션 각도가 좀 더 섬세하게") R + mouse: a fine turn
+    import math
+    S.mch_press.rotation = 0.0
+    xdo('mousemove', *screen_of((0.0, -2.2, 1.0)))
+    yield 0.6
+    xdo('key', 'r')
+    yield 0.4
+    xdo('mousemove_relative', '--', 25, 0)
+    yield 0.6
+    shot('3_turning.png')
+    xdo('click', 1)
+    yield 0.5
+    t1 = math.degrees(S.mch_press.rotation)
+    xdo('key', 'r')
+    yield 0.4
+    xdo('keydown', 'ctrl')
+    yield 0.2
+    xdo('mousemove_relative', '--', 31, 0)
+    yield 0.5
+    xdo('keyup', 'ctrl')
+    yield 0.2
+    xdo('click', 1)
+    yield 0.5
+    t2 = math.degrees(S.mch_press.rotation)
+    xdo('key', 'shift+r')
+    yield 0.5
+    t3 = math.degrees(S.mch_press.rotation)
+    log('TURN R + 25 px:', round(t1, 2), 'deg | then R + Ctrl + 31 px:', round(t2, 2), 'deg (5 degree steps) | Shift+R:',
+        round(t3, 2), 'deg')
     w, a, r = view3d()
     with C.temp_override(window=w, area=a, region=r):
         for o in pieces:
@@ -173,7 +203,7 @@ def flow():
         rv.view_distance = 10.0
     xdo('mousemove', 960, 1060)
     yield 1.5
-    shot('3_result.png')
+    shot('4_result.png')
     log('DONE short', a_after[0], 'long', b_after[0], 'longer is deeper', b_after[0] > a_after[0] > 0.0)
     bpy.ops.wm.quit_blender()
 

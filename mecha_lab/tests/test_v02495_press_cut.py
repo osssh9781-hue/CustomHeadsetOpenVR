@@ -10,6 +10,8 @@
 * Save Shape: the last outline drawn (Cut / Split) kept; saved: normalized, in the Press shape list, usable;
   Press Cut's own stamp is not "the last outline"
 """
+import math
+
 from _harness import bmesh, bpy, check, cube, fresh, non_manifold, summary
 from mathutils import Quaternion, Vector
 
@@ -138,4 +140,28 @@ check('... and pressed with it: the pocket has the saved outline (as wide as the
       pr.depth > 0 and sx and abs((sx[-1] - sx[0]) - 2 * st.size / 100.0) < 0.02, (round(pr.depth, 4), sx[:1], sx[-1:]))
 check('... Press Cut\'s own stamp is not "the last outline" (it stays the drawn one)',
       cut_presets.LAST_LOOPS[0] is kept)
+
+# 0.24.95 (user: "스탬프 돌리는 것도 로테이션 각도가 좀 더 섬세하게") R + mouse turns the stamp finely
+ta = pc.turn_angle
+deg = math.degrees
+check('Stamp turn (R + mouse): 0.4 degree a pixel (25 px = 10 degrees), Shift fine (25 px = 2 degrees), Ctrl in 5 degree '
+      'steps, kept in -180 .. 180 (it was 15 degree steps only)',
+      abs(deg(ta(0.0, 25)) - 10.0) < 1e-6 and abs(deg(ta(0.0, 25, shift=True)) - 2.0) < 1e-6
+      and abs(deg(ta(0.0, 31, ctrl=True)) - 10.0) < 1e-6 and abs(deg(ta(0.0, 3)) - 1.2) < 1e-6
+      and abs(deg(ta(math.radians(170), 50)) + 170.0) < 1e-6,
+      [round(deg(x), 3) for x in (ta(0.0, 25), ta(0.0, 25, shift=True), ta(0.0, 31, ctrl=True), ta(0.0, 3),
+                                  ta(math.radians(170), 50))])
+press_keys = [(k[0], k[1]['type'], k[1].get('shift', False)) for k in pc.TOOL_KEYMAP]
+from mecha_lab import workspace_ui as wu  # noqa: E402
+cut_keys = [(k[0], k[1]['type'], k[1].get('shift', False)) for k in wu._tool_keymap('CUT')]
+check('... R / Shift + R (turn / back to 0) in Press Cut and in the Cut tool (Custom stamp)',
+      ('mch.stamp_turn', 'R', False) in press_keys and ('mch.stamp_turn', 'R', True) in press_keys
+      and ('mch.stamp_turn', 'R', False) in cut_keys and ('mch.stamp_turn', 'R', True) in cut_keys)
+C.scene.mch_brush.shape = 'LASSO'
+tgt_lasso = pc.turn_target(C)
+C.scene.mch_brush.shape = 'CUSTOM'
+tgt_custom = pc.turn_target(C)
+check('... R turns only a stamp (a lasso shape leaves R to Blender); the Custom stamp of Cut / Split turns its own '
+      'rotation', tgt_lasso is None and tgt_custom is not None and tgt_custom[1] == 'custom_rotation')
+C.scene.mch_brush.shape = 'LASSO'
 summary()

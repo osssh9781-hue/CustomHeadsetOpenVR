@@ -594,9 +594,10 @@ def _tool_keymap(mode):
     ) if mode in {'BASE', 'CBASE'} else ()) + (_lasso_sketch_keys() if mode in lasso_sketch_modes() else ()) + (
         # Esc with no stroke pending: back to Blender's Select Box tool.
         ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),
-        # B06: R / Shift+R rotate a PNG stamp (poll fails for other shapes -> Blender's R).
-        ('mch.stamp_rotate', {'type': 'R', 'value': 'PRESS'}, {'properties': [('sign', 1)]}),
-        ('mch.stamp_rotate', {'type': 'R', 'value': 'PRESS', 'shift': True}, {'properties': [('sign', -1)]}),
+        # B06: R turns a PNG stamp (poll fails for other shapes -> Blender's R).  0.24.95 (user: "스탬프 돌리는 것도
+        # 로테이션 각도가 좀 더 섬세하게") R + mouse turns it finely (it was 15 degree steps), Shift + R: 0 degrees
+        ('mch.stamp_turn', {'type': 'R', 'value': 'PRESS'}, None),
+        ('mch.stamp_turn', {'type': 'R', 'value': 'PRESS', 'shift': True}, {'properties': [('reset', True)]}),
         # 0.24.21 [ / ] = Line Width (the band in Line mode), like a brush size
         ('mch.line_width_step', {'type': 'LEFT_BRACKET', 'value': 'PRESS'}, {'properties': [('factor', 1.0 / 1.15)]}),
         ('mch.line_width_step', {'type': 'RIGHT_BRACKET', 'value': 'PRESS'}, {'properties': [('factor', 1.15)]}),
