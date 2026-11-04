@@ -1,6 +1,6 @@
 """Real window: the Shapes page's thumbnails (0.24.95 user: "쉐입 페이지에서 썸네일도 보여 주라, 그거 선택하고 변경 가능하게",
 "쉐입 실시간으로 바뀌어야지"): MECHA LAB screen, the Shapes page, Real Parts (Car Bot); Summon Part; REAL mouse
-(xdotool) - a click on another part's thumbnail: the summoned part becomes it at once; shots.
+(xdotool) - a click on another part's thumbnail (placing starts), a click on the selected summoned part: it becomes that part; shots.
     blender --window-geometry 0 0 W H --python this.py -- OUT"""
 import math
 import os
@@ -124,17 +124,29 @@ def flow():
     from mecha_lab import random_shapes as rs
     ob = C.active_object
     log('summoned', rs.params_of(ob)['part'])
-    tile = yield from scrolled_to(lambda i: i.kind == 'mtile' and i.action[1] == 'mch.random_shape_ref'
+    tile = yield from scrolled_to(lambda i: i.kind == 'mtile' and i.action[1] == 'mch.random_shape_place'
                                   and i.action[2].get('part') == 'HEAD')
     log('Head thumbnail at', hover(tile), 'picture', tile.icon[:5])
     shot('1_page.png')
     yield 0.4
+    xdo('click', 1)                                 # (0.24.95: the thumbnail starts placing - "에셋 라이브러리처럼")
+    yield 1.5
+    log('after the thumbnail click: placing', any(o.name != ob.name and rs.is_shape(o) for o in S.objects),
+        'the summoned part still', rs.params_of(ob)['part'])
+    from bpy_extras.view3d_utils import location_3d_to_region_2d
+    w, a, r = view3d()
+    p2 = location_3d_to_region_2d(r, a.spaces.active.region_3d, ob.matrix_world.translation)
+    x, y = to_x(w, r, p2.x, p2.y)
+    xdo('mousemove', x, y)                          # (over the selected Chest: a click there = it becomes a Head)
+    yield 1.0
+    shot('2_placing_over_chest.png')
     xdo('click', 1)
     yield 2.0
-    log('after the click: the summoned part is now', rs.params_of(ob)['part'], '(live)')
+    log('after a click on the selected Chest: it is now', rs.params_of(ob)['part'],
+        '- shapes in the scene', sum(1 for o in S.objects if rs.is_shape(o)))
     xdo('mousemove', 300, 1200)
     yield 2.0
-    shot('2_changed.png')
+    shot('3_changed.png')
     log('DONE')
     bpy.ops.wm.quit_blender()
 

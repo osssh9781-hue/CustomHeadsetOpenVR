@@ -1,0 +1,11 @@
+Real window, Blender 5.2.3 (Xvfb 1920x1080, software OpenGL), MECHA LAB screen, Shapes page, Real Parts > Car Bot, Summon Part (Car Chest).
+REAL mouse: a click on the Head thumbnail (placing starts), a click on the selected Car Chest (it becomes the Head).
+
+summoned CHEST
+Head thumbnail at (1372, 596) picture file:
+shot 1_page.png True
+after the thumbnail click: placing True the summoned part still CHEST
+shot 2_placing_over_chest.png True
+after a click on the selected Chest: it is now HEAD - shapes in the scene 1
+shot 3_changed.png True
+DONE
