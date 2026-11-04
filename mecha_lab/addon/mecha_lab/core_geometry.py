@@ -438,11 +438,75 @@ def depth_planes(projector, bounds_points, mode='THROUGH', hit=None, depth=0.1,
     return near, far
 
 
+FLOOR = [None]       # 0.24.95 (fn(screen xy) -> depth offset along the view, grid px): a curved far cap (Press Cut)
+
+
+def _curved_cap(loops, projector, far_co, vd, floor, spacing):
+    """0.24.95 The far cap of a cutter as a curved surface: the outline plus a grid of points inside it (holes left
+    out), triangulated (constrained Delaunay), each point on the far plane moved ``floor(xy)`` along the view.
+    Returns ([('wall', outline index) | ('new', point)], triangles)."""
+    from mathutils.geometry import delaunay_2d_cdt
+    pts = [(float(x), float(y)) for lp in loops for x, y in lp]
+    edges, rings, k = [], [], 0
+    for lp in loops:
+        n = len(lp)
+        edges += [(k + i, k + (i + 1) % n) for i in range(n)]
+        rings.append(list(range(k, k + n)))
+        k += n
+    P = np.array(pts)
+    A = np.array([P[a] for a, _b in edges])
+    B = np.array([P[b] for _a, b in edges])
+
+    def inside(q):
+        q = np.atleast_2d(q)
+        x, y = q[:, 0:1], q[:, 1:2]
+        cross = (A[:, 1] > y) != (B[:, 1] > y)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            xi = A[:, 0] + (y - A[:, 1]) * (B[:, 0] - A[:, 0]) / (B[:, 1] - A[:, 1])
+        return (np.count_nonzero(cross & (x < xi), axis=1) % 2) == 1
+
+    lo, hi = P.min(0), P.max(0)
+    gx = np.arange(lo[0] + spacing / 2, hi[0], spacing)
+    gy = np.arange(lo[1] + spacing / 2, hi[1], spacing)
+    if len(gx) and len(gy):
+        G = np.array(np.meshgrid(gx, gy)).reshape(2, -1).T
+        G = G[inside(G)]
+        if len(G):                                       # (not hard against the outline: no slivers)
+            d = B - A
+            ll = np.maximum((d * d).sum(1), 1e-12)
+            t = np.clip(((G[:, None, :] - A[None]) * d[None]).sum(2) / ll[None], 0.0, 1.0)
+            near = A[None] + t[..., None] * d[None]
+            dist = np.sqrt(((G[:, None, :] - near) ** 2).sum(2)).min(1)
+            G = G[dist > 0.35 * spacing]
+            pts += [tuple(map(float, g)) for g in G]
+    # the outline and its holes as face constraints: a triangle is kept when it lies in the outline and in no hole
+    # (by the triangulation's own bookkeeping - a centre-point test lost the slivers along straight resampled sides)
+    out = delaunay_2d_cdt([Vector(p) for p in pts], edges, rings, 0, 1e-6)
+    coords, tris, orig, orig_faces = out[0], out[2], out[3], out[5]
+    holes = set(range(1, len(rings)))
+    keep = [f for i, f in enumerate(tris) if len(f) == 3 and 0 in orig_faces[i] and not (holes & set(orig_faces[i]))]
+    n_out = len(P)
+    # each output point: ('wall', index of the outline point) - the walls' own far point, welded exactly - or
+    # ('new', its place on the curved far cap)
+    where = []
+    for i, c in enumerate(coords):
+        src = [j for j in orig[i] if j < n_out] if i < len(orig) else []
+        if src:
+            where.append(('wall', src[0]))
+        else:
+            o, dr = projector.ray((c.x, c.y))
+            p, _t = _plane_hit(o, dr, far_co, vd)
+            where.append(('new', p + vd * floor((c.x, c.y))))
+    return where, keep
+
+
 def build_cutter_mesh(groups, projector, near_co, far_co, name='MCH_Cutter'):
-    """Build a closed, outward-facing frustum prism mesh from grouped screen loops."""
+    """Build a closed, outward-facing frustum prism mesh from grouped screen loops.  0.24.95 ``FLOOR`` set (Press
+    Cut's curve): the far cap is a curved surface instead of the flat far plane."""
     vd = projector.view_dir
     verts = []
     faces = []
+    floor = FLOOR[0]
     for outer, holes in groups:
         loops = [outer] + list(holes)
         flat = [p for lp in loops for p in lp]
@@ -457,7 +521,7 @@ def build_cutter_mesh(groups, projector, near_co, far_co, name='MCH_Cutter'):
             if projector.is_perspective and (t_near < 0 or t_far <= t_near):
                 raise CutError('Shape projects behind the view; zoom out or use orthographic view.')
             near_pts.append(p_near)
-            far_pts.append(p_far)
+            far_pts.append(p_far + vd * floor[0](xy) if floor is not None else p_far)
         verts.extend(near_pts)
         verts.extend(far_pts)
         tris = tessellate_polygon([[(x, y, 0.0) for x, y in lp] for lp in loops])
@@ -465,7 +529,18 @@ def build_cutter_mesh(groups, projector, near_co, far_co, name='MCH_Cutter'):
             raise CutError('Shape could not be triangulated.')
         for a, b, c in tris:
             faces.append((base + a, base + b, base + c))
-            faces.append((base + count + c, base + count + b, base + count + a))
+            if floor is None:
+                faces.append((base + count + c, base + count + b, base + count + a))
+        if floor is not None:                            # (the curved far cap, on the walls' own far points)
+            where, cap_tris = _curved_cap(loops, projector, far_co, vd, floor[0], floor[1])
+            index = []
+            for kind, val in where:
+                if kind == 'wall':
+                    index.append(base + count + val)
+                else:
+                    index.append(len(verts))
+                    verts.append(val)
+            faces.extend((index[c], index[b], index[a]) for a, b, c in cap_tris)
         offset = 0
         for lp in loops:
             n = len(lp)

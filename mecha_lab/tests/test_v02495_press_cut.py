@@ -53,7 +53,7 @@ check('Depth = (Start + Speed x seconds) x the part\'s size, up to Max',
       and abs(dmax - size * st.max_depth) < 1e-9, [round(x, 4) for x in (d0, d1, d2, dmax)])
 
 
-def held(seconds, result='CUT', shape=None):
+def held(seconds, result='CUT', shape=None, curve=(0.0, 0.0)):
     """A press held ``seconds`` on a 2 m box, its steps as the tool runs them (one per tick when it grew enough)."""
     fresh()
     if shape:
@@ -63,7 +63,8 @@ def held(seconds, result='CUT', shape=None):
     p = cube('P', size=2.0)
     v0 = vol(p)
     ps = C.scene.mch_press
-    pr = pc.Press(C, p, pc.stamp_loops(C, TOP.to_screen(Vector((0, 0, 1))), ps), TOP, result)
+    xy = TOP.to_screen(Vector((0, 0, 1)))
+    pr = pc.Press(C, p, pc.stamp_loops(C, xy, ps), TOP, result, center=xy, curve=curve, spacing=6.0)
     pr.cut_to(C, pc.depth_at(ps, pr.size, 0.0))
     t = 0.0
     while t < seconds:
@@ -144,6 +145,39 @@ check('... and pressed with it: the pocket has the saved outline (as wide as the
       st.shape == stem and pr.depth > 0 and sx and abs((sx[-1] - sx[0]) - 2 * st.size / 100.0) < 0.02, (round(pr.depth, 4), sx[:1], sx[-1:]))
 check('... Press Cut\'s own stamp is not "the last outline" (it stays the drawn one)',
       cut_presets.LAST_LOOPS[0] is kept)
+
+
+def floor_depth(p, x, y, r=0.05):
+    """The pocket's depth below the top at (x, y) (its points within ``r``), None where nothing was cut."""
+    zs = [v.co.z for v in p.data.vertices if -0.999 < v.co.z < 0.999 and abs(v.co.x - x) < r and abs(v.co.y - y) < r]
+    return round(1.0 - min(zs), 3) if zs else None
+
+
+# 0.24.95 (user: "곡률은 이 스탬프가 결국 평면일 텐데 그걸 좌우로 동그랗게 커브를 주는 거지 - 위아래 좌우로 나누면 좋을 듯")
+res = {}
+for name, curve, secs in (('lr', (0.5, 0.0), 1.2), ('ud', (0.0, 0.5), 1.2), ('both', (0.5, 0.5), 1.2),
+                          ('neg', (-0.5, 0.0), 1.2), ('tap', (0.5, 0.0), 0.0)):
+    p, pr, v0 = held(secs, curve=curve)
+    res[name] = (round(pr.depth, 3), floor_depth(p, 0, 0), floor_depth(p, 0.4, 0), floor_depth(p, 0, 0.3),
+                 non_manifold(p), round(v0 - vol(p), 4))
+d = res['lr'][0]
+check('Curve Left-Right +0.5: a round trough - the middle as deep as the press, shallower toward the left / right '
+      'sides, the same up-down; a closed solid',
+      abs(res['lr'][1] - d) < 0.01 and res['lr'][2] < d - 0.05 and abs(res['lr'][3] - d) < 0.01 and res['lr'][4] == 0,
+      res['lr'])
+check('Curve Up-Down +0.5: shallower toward the top / bottom only', abs(res['ud'][1] - d) < 0.01
+      and abs(res['ud'][2] - d) < 0.01 and res['ud'][3] < d - 0.03 and res['ud'][4] == 0, res['ud'])
+check('Both: a bowl (shallower every way), less taken away than either', res['both'][2] < d - 0.05
+      and res['both'][3] < d - 0.03 and res['both'][5] < min(res['lr'][5], res['ud'][5]) and res['both'][4] == 0,
+      res['both'])
+check('Curve -0.5: the sides go in deepest, the middle stays raised (nothing cut there at this depth)',
+      (res['neg'][1] is None or res['neg'][1] < d - 0.1) and res['neg'][2] is not None and res['neg'][4] == 0,
+      res['neg'])
+check('A quick tap with a round stamp: only the middle dips in (the sides not yet reached)',
+      res['tap'][1] is not None and res['tap'][2] is None and res['tap'][4] == 0, res['tap'])
+check('Flat stamp (no curve): the cutter as before (no grid in the floor)', pc.Press.floor.__doc__ is not None
+      and held(0.5)[1].floor(0.1) is None)
+
 
 # 0.24.95 (user: "스탬프 돌리는 것도 로테이션 각도가 좀 더 섬세하게") R + mouse turns the stamp finely
 ta = pc.turn_angle

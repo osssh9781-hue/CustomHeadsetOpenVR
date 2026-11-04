@@ -102,10 +102,10 @@ def flow():
         rv = sp.region_3d
         bpy.ops.view3d.view_axis(type='TOP')
         rv.view_perspective = 'ORTHO'
-        rv.view_location = (0.0, 0.0, 0.0)
-        rv.view_distance = 9.0
-        for name, x in (('A', -2.6), ('B', 0.0), ('C', 2.6)):
-            bpy.ops.mesh.primitive_cube_add(size=2.0, location=(x, 0.0, 0.0))
+        rv.view_location = (0.0, -1.2, 0.0)
+        rv.view_distance = 11.0
+        for name, x, y in (('A', -2.6, 0.0), ('B', 0.0, 0.0), ('C', 2.6, 0.0), ('D', -1.4, -2.7), ('E', 1.4, -2.7)):
+            bpy.ops.mesh.primitive_cube_add(size=2.0, location=(x, y, 0.0))
             C.active_object.name = name
             boxes[name] = C.active_object
         bpy.ops.object.select_all(action='DESELECT')
@@ -192,6 +192,35 @@ def flow():
     t3 = math.degrees(S.mch_press.rotation)
     log('TURN R + 25 px:', round(t1, 2), 'deg | then R + Ctrl + 31 px:', round(t2, 2), 'deg (5 degree steps) | Shift+R:',
         round(t3, 2), 'deg')
+    # 0.24.95 (user: "곡률은 이 스탬프가 결국 평면일 텐데 그걸 좌우로 동그랗게 커브를 주는 거지 - 위아래 좌우로 나누면")
+    S.mch_press.result = 'CUT'
+    S.mch_press.curve_x, S.mch_press.curve_y = 0.6, 0.0
+    xdo('mousemove', *screen_of((-1.4, -2.7, 1.0)))
+    yield 0.8
+    shot('4_curved_stamp_over_D.png')
+    xdo('mousedown', 1)
+    yield 1.6
+    xdo('mouseup', 1)
+    yield 1.5
+
+    def fl(ob, x, y):
+        zs = [(ob.matrix_world @ v.co).z for v in ob.data.vertices
+              if -0.999 < (ob.matrix_world @ v.co).z < 0.999
+              and abs((ob.matrix_world @ v.co).x - x) < 0.06 and abs((ob.matrix_world @ v.co).y - y) < 0.06]
+        return round(1.0 - min(zs), 3) if zs else None
+    log('CURVE Left-Right 0.6 on D (about 1.6 s): depth middle', fl(boxes['D'], -1.4, -2.7), 'left/right side',
+        fl(boxes['D'], -1.4 + 0.35, -2.7), 'up/down side', fl(boxes['D'], -1.4, -2.7 + 0.3), 'points',
+        len(boxes['D'].data.vertices))
+    S.mch_press.curve_x, S.mch_press.curve_y = 0.5, 0.5
+    xdo('mousemove', *screen_of((1.4, -2.7, 1.0)))
+    yield 0.8
+    xdo('mousedown', 1)
+    yield 1.6
+    xdo('mouseup', 1)
+    yield 1.5
+    log('CURVE both 0.5 on E (about 1.6 s): depth middle', fl(boxes['E'], 1.4, -2.7), 'left/right side',
+        fl(boxes['E'], 1.4 + 0.35, -2.7), 'up/down side', fl(boxes['E'], 1.4, -2.7 + 0.3))
+    S.mch_press.curve_x = S.mch_press.curve_y = 0.0
     w, a, r = view3d()
     with C.temp_override(window=w, area=a, region=r):
         for o in pieces:
@@ -199,11 +228,12 @@ def flow():
         rv = a.spaces.active.region_3d
         rv.view_perspective = 'PERSP'
         from mathutils import Euler
-        rv.view_rotation = Euler((1.05, 0.0, 0.5)).to_quaternion()
-        rv.view_distance = 10.0
+        rv.view_rotation = Euler((1.0, 0.0, 0.45)).to_quaternion()
+        rv.view_location = (0.0, -1.3, 0.0)
+        rv.view_distance = 12.0
     xdo('mousemove', 960, 1060)
     yield 1.5
-    shot('4_result.png')
+    shot('5_result.png')
     log('DONE short', a_after[0], 'long', b_after[0], 'longer is deeper', b_after[0] > a_after[0] > 0.0)
     bpy.ops.wm.quit_blender()
 

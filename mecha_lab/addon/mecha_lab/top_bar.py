@@ -100,6 +100,8 @@ def groups(context, tool):
         out.append(('Press', _enum_segs(pr, 'result', (('CUT', 'Cut'), ('SPLIT', 'Split'))) + [
             _cell('drop', '', action=('menu_enum',), data=pr, prop='shape', width=150),
             _cell('mini', 'Size', action=('number',), data=pr, prop='size', width=110),
+            _cell('mini', 'Curve LR', action=('number',), data=pr, prop='curve_x', width=130),
+            _cell('mini', 'Curve UD', action=('number',), data=pr, prop='curve_y', width=130),
             _cell('mini', 'Start', action=('number',), data=pr, prop='start', width=110),
             _cell('mini', 'Speed', action=('number',), data=pr, prop='speed', width=120),
             _cell('mini', 'Max', action=('number',), data=pr, prop='max_depth', width=100)]))

@@ -49,6 +49,12 @@ class MCH_PG_Press(bpy.types.PropertyGroup):
                         description='Stamp radius on screen ([ / ] change it)')
     rotation: FloatProperty(name='Rotation', default=0.0, subtype='ANGLE', update=_redraw, step=10,
                             description='Stamp turn (R + mouse: turn it, Shift + R: 0)')
+    curve_x: FloatProperty(name='Curve Left-Right', default=0.0, min=-1.0, max=1.0, precision=2, update=_redraw,
+                           description='The stamp bent left-right like a round stamp: + the middle goes in first and '
+                                       'deepest (a round trough), - the sides first (the middle stays raised); 1 = a '
+                                       'half circle across the stamp')
+    curve_y: FloatProperty(name='Curve Up-Down', default=0.0, min=-1.0, max=1.0, precision=2, update=_redraw,
+                           description='The stamp bent up-down (both: a bowl, or a saddle with opposite signs)')
     start: FloatProperty(name='Start', default=0.01, min=0.0005, max=1.0, subtype='FACTOR', precision=3,
                          description='Depth at the press, of the part\'s size (a quick tap)')
     speed: FloatProperty(name='Speed', default=0.12, min=0.005, soft_max=1.0, max=5.0, precision=3,
@@ -83,17 +89,48 @@ def stamp_loops(context, center, st=None):
     return ce.custom_loops(norm, center, st.size, st.rotation)
 
 
+def resample(loop, step):
+    """A closed loop with no side longer than ``step`` px (a curved stamp bends along every side)."""
+    out = []
+    n = len(loop)
+    for i in range(n):
+        a, b = loop[i], loop[(i + 1) % n]
+        k = max(1, int(math.ceil(math.dist(a, b) / max(step, 1e-6))))
+        out += [(a[0] + (b[0] - a[0]) * j / k, a[1] + (b[1] - a[1]) * j / k) for j in range(k)]
+    return out
+
+
+def arc_drop(s, w, h):
+    """How far a circular arc across a stamp ``2 w`` wide with ``h`` sag (all world) lies below its middle at ``s``
+    (-1 .. 1 across): 0 in the middle, ``h`` at the sides."""
+    h = abs(h)
+    if h < 1e-12 or w < 1e-12:
+        return 0.0
+    x = min(abs(s), 1.0) * w
+    r = (w * w + h * h) / (2.0 * h)
+    return h - (math.sqrt(max(r * r - x * x, 0.0)) - (r - h))
+
+
 class Press:
     """One press on one part: the part as it was (kept), cut again From Surface at each new depth."""
 
-    def __init__(self, context, target, loops, projector, result='CUT'):
+    def __init__(self, context, target, loops, projector, result='CUT', center=None, angle=0.0, curve=(0.0, 0.0),
+                 spacing=6.0):
         from . import ramp_edit
         old = ramp_edit.live_target(context, ramp_edit.ALL_KINDS)
         if old is not None:                      # (an earlier live cut stays as it is: the Cut Depth set while
             ramp_edit.finish(old)                #  pressing must not cut it again)
         self.target = target
-        self.loops = [[tuple(p) for p in lp] for lp in loops]
+        self.curve = (float(curve[0]), float(curve[1]))
+        self.curved = abs(self.curve[0]) > 1e-4 or abs(self.curve[1]) > 1e-4
+        self.spacing = max(2.0, float(spacing))
+        lps = [[tuple(p) for p in lp] for lp in loops]
+        self.loops = [resample(lp, self.spacing) for lp in lps] if self.curved else lps
         self.projector = projector
+        pts = [p for lp in lps for p in lp]
+        self.center = center or (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))
+        self.angle = float(angle)
+        self.px_world = self._px_world(context, target, projector) if self.curved else 0.0
         self.result = result
         self.size = part_size(target)
         self.backup = target.data.copy()
@@ -103,6 +140,52 @@ class Press:
         self.depth = 0.0
         self.pieces = []
         self.message = ''
+
+    def _px_world(self, context, target, projector):
+        """World size of one screen pixel at the part's surface under the stamp's middle."""
+        from . import cut_engine as ce
+        hit = ce.surface_hit(context, [target], projector, self.center)
+        vd = projector.view_dir
+        if hit is None:
+            hit = target.matrix_world.translation.copy()
+        try:
+            o0, d0 = projector.ray(self.center)
+            o1, d1 = projector.ray((self.center[0] + 1.0, self.center[1]))
+            p0, _t = cg._plane_hit(o0, d0, hit, vd)
+            p1, _t = cg._plane_hit(o1, d1, hit, vd)
+            return max((p1 - p0).length, 1e-9)
+        except cg.CutError:
+            return 0.0
+
+    def floor(self, depth):
+        """(fn(screen xy) -> how far above the deepest point the stamp's face is there, grid px) for the cutter's
+        curved far cap at ``depth`` - None for a flat stamp.  + curve: the middle deepest (a round stamp pressed in),
+        - curve: the sides deepest; never above the surface (a press not yet that deep cuts nothing there)."""
+        if not self.curved or self.px_world <= 0.0:
+            return None
+        c, s = math.cos(self.angle), math.sin(self.angle)
+        cx, cy = self.center
+        uv = [((x - cx) * c + (y - cy) * s, -(x - cx) * s + (y - cy) * c) for lp in self.loops for x, y in lp]
+        u0, u1 = min(p[0] for p in uv), max(p[0] for p in uv)
+        v0, v1 = min(p[1] for p in uv), max(p[1] for p in uv)
+        uc, vc = (u0 + u1) / 2, (v0 + v1) / 2
+        wu, wv = max((u1 - u0) / 2, 1e-6), max((v1 - v0) / 2, 1e-6)
+        k = self.px_world
+        hx, hy = self.curve[0] * wu * k, self.curve[1] * wv * k
+        above = max(1e-4, depth * 0.05)
+        lowest = -(depth + 0.5 * above)               # (the face up to just above the surface, never past it)
+
+        def fn(xy):
+            u = (xy[0] - cx) * c + (xy[1] - cy) * s
+            v = -(xy[0] - cx) * s + (xy[1] - cy) * c
+            off = 0.0
+            for val, mid, half, h in ((u, uc, wu, hx), (v, vc, wv, hy)):
+                if abs(h) < 1e-12:
+                    continue
+                d = arc_drop((val - mid) / half, half * k, h)
+                off += -d if h > 0 else -(abs(h) - d)
+            return max(off, lowest)
+        return fn, self.spacing
 
     def _restore(self):
         from . import ramp_edit
@@ -126,16 +209,20 @@ class Press:
         before = set(bpy.data.objects.keys())
         cut.depth_mode, cut.depth = 'SURFACE', max(depth, 1e-5)
         cut_presets.QUIET[0] = True              # (the stamp is not "the last drawn outline")
+        cg.FLOOR[0] = self.floor(depth)          # (a curved stamp: its face bent)
         try:
             self.message = ce.perform_closed(context, self.result, [self.target], self.loops, self.projector)
         except (cg.CutError, RuntimeError) as ex:
             self.message = str(ex)
+            cg.FLOOR[0] = None
+            cut_presets.QUIET[0] = False
             self._restore()
             if prev > 0.0 and depth != prev:
                 self.cut_to(context, prev)
             return False
         finally:
             cut_presets.QUIET[0] = False
+            cg.FLOOR[0] = None
         self.pieces = [o.name for o in bpy.data.objects if o.name not in before]
         self.depth = depth
         return True
@@ -190,6 +277,13 @@ def draw_cursor(context, xy):
         col = (1.0, 0.62, 0.25, 1.0) if st.result == 'CUT' else (0.45, 1.0, 0.35, 1.0)
         for lp in loops:
             ce._draw_lines(sh, lp, col, closed=True, width=1.5)
+        cx, cy = float(xy[0]), float(xy[1])
+        c, s = math.cos(st.rotation), math.sin(st.rotation)
+        for amt, (ax, ay) in ((st.curve_x, (c, s)), (st.curve_y, (-s, c))):
+            if abs(amt) > 1e-4:                  # (a bent stamp: the line it bends across, dashed by its sign)
+                r = st.size * (0.9 if amt > 0 else 0.6)
+                ce._draw_lines(sh, [(cx - ax * r, cy - ay * r), (cx + ax * r, cy + ay * r)],
+                               (0.45, 0.85, 1.0, 0.9), width=1.0 + 2.0 * abs(amt))
         gpu.state.blend_set('NONE')
     except Exception:          # never break viewport drawing
         pass
@@ -248,7 +342,8 @@ class MCH_OT_press_cut(bpy.types.Operator):
             safety_save.checkpoint('Mecha Press Cut')
         except Exception:
             pass
-        self.press = Press(context, target, loops, projector, st.result)
+        self.press = Press(context, target, loops, projector, st.result, center=xy, angle=st.rotation,
+                           curve=(st.curve_x, st.curve_y), spacing=max(3.0, st.size / 10.0))
         self.press_st = st
         self.region = region
         self.anchor = xy
@@ -497,6 +592,10 @@ def draw(layout, context):
     col.template_icon_view(st, 'shape', show_labels=True, scale=5.0, scale_popup=4.0)
     col.prop(st, 'size')
     col.prop(st, 'rotation')
+    col = layout.column(align=True)
+    col.label(text='Curve (a round stamp)')
+    col.prop(st, 'curve_x', text='Left-Right', slider=True)
+    col.prop(st, 'curve_y', text='Up-Down', slider=True)
     col = layout.column(align=True)
     col.label(text='Hold = deeper')
     col.prop(st, 'start')
