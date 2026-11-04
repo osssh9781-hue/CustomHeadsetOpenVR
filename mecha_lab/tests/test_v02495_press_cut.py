@@ -259,6 +259,48 @@ check('50 mech form-blocking stamps: each pressed into a box cuts it, a closed s
                                                               for i in icons), bad)
 
 
+
+# 0.24.95 (user: "여기 왜 라쏘 툴이 없어? 그릴 수가 없는데" -> "그렇게 하자") Shift + drag draws your own stamp
+fresh()
+C.scene.mch_settings.auto_apply = True
+p = cube('P', size=2.0)
+cx, cy = TOP.to_screen(Vector((0, 0, 1)))
+house = []                                         # (a freehand house outline, as the mouse moves: many points)
+for a, b in (((-50, -40), (50, -40)), ((50, -40), (50, 20)), ((50, 20), (0, 60)), ((0, 60), (-50, 20)),
+             ((-50, 20), (-50, -40))):
+    for k in range(12):
+        house.append((cx + a[0] + (b[0] - a[0]) * k / 12, cy + a[1] + (b[1] - a[1]) * k / 12))
+cut_presets.LAST_LOOPS[0] = None
+ok, why = pc.use_drawn(C, house)
+st = C.scene.mch_press
+lp = pc.stamp_loops(C, (cx, cy), st)[0]
+xs, ys = [q[0] for q in lp], [q[1] for q in lp]
+check('Shift + drag: the drawn outline is the stamp at once - its shape (simplified to its corners), the size it was '
+      'drawn, unturned; it is the last outline (Save Shape keeps it)',
+      ok and st.drawn and abs((max(xs) - min(xs)) - 100) < 1.5 and abs((max(ys) - min(ys)) - 100) < 1.5
+      and 5 <= len(lp) <= 8 and st.rotation == 0.0 and cut_presets.LAST_LOOPS[0] is not None,
+      (ok, why, len(lp), round(max(xs) - min(xs), 1), round(max(ys) - min(ys), 1)))
+pr = pc.Press(C, p, pc.stamp_loops(C, (cx, cy), st), TOP, 'CUT', center=(cx, cy), spacing=6.0, follow=True)
+pr.cut_to(C, 0.3)
+pr.finish(C)
+roof = [v for v in p.data.vertices if abs(v.co.z - 0.7) < 1e-3 and v.co.y > 0.3]
+check('... pressed (the stamp centred on the mouse: the house 1 m tall, its roof point 0.5 up): the pocket has the '
+      'house outline, a closed solid',
+      non_manifold(p) == 0 and any(abs(v.co.x) < 0.02 and abs(v.co.y - 0.5) < 0.02 for v in roof),
+      [(round(v.co.x, 3), round(v.co.y, 3)) for v in roof][:6])
+st.shape = 'MCH_BUILTIN_M_OCTAGON'
+check('... picking a shape from the list: the drawn one gives way to it', not st.drawn
+      and len(pc.stamp_loops(C, (cx, cy), st)[0]) == 8)
+bow = [(cx - 50, cy - 50), (cx + 50, cy + 50), (cx + 50, cy - 50), (cx - 50, cy + 50)]
+ok2, why2 = pc.use_drawn(C, bow)
+tiny = pc.use_drawn(C, [(cx, cy), (cx + 2, cy), (cx + 2, cy + 2)])
+check('... an outline that crosses itself, or a tiny scribble: refused with a reason (the stamp stays)',
+      not ok2 and 'crosses' in why2 and not tiny[0] and not st.drawn, (why2, tiny))
+press_keys2 = [(k[0], k[1]['type'], k[1].get('shift', False)) for k in pc.TOOL_KEYMAP]
+check('... Shift + LMB in the Press Cut tool is the drawing (LMB alone still presses)',
+      ('mch.press_draw', 'LEFTMOUSE', True) in press_keys2 and ('mch.press_cut', 'LEFTMOUSE', False) in press_keys2)
+
+
 # 0.24.95 (user: "스탬프 돌리는 것도 로테이션 각도가 좀 더 섬세하게") R + mouse turns the stamp finely
 ta = pc.turn_angle
 deg = math.degrees

@@ -98,7 +98,8 @@ def groups(context, tool):
     if tool == 'PRESS' and hasattr(scene, 'mch_press'):          # 0.24.95 Press Cut: the stamp and how it presses
         pr = scene.mch_press
         out.append(('Press', _enum_segs(pr, 'result', (('CUT', 'Cut'), ('SPLIT', 'Split'))) + [
-            _cell('drop', '', action=('menu_enum',), data=pr, prop='shape', width=150),
+            (_cell('seg', 'Drawn', True, ('enum', False), pr, 'drawn') if pr.drawn else
+             _cell('drop', '', action=('menu_enum',), data=pr, prop='shape', width=150)),
             _cell('mini', 'Size', action=('number',), data=pr, prop='size', width=110),
             _seg('Follow Surface', pr, 'follow_surface'),
             _cell('mini', 'Curve LR', action=('number',), data=pr, prop='curve_x', width=130),

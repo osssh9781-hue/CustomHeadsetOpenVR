@@ -1,20 +1,28 @@
 Real window, Blender 5.2.3 (Xvfb 1920x1080, software OpenGL), MECHA LAB screen, five 2 m boxes seen from the top,
-the Press Cut tool (Pentagon stamp, Size 45 px, Start 0.01, Speed 0.12). REAL mouse (xdotool): a short press on A,
-a long press on B (a shot while held), a press on C cancelled with Esc while held, Result Split on C, R + mouse
-(25 px), R + Ctrl + mouse (31 px), Shift + R; then Curve Left-Right 0.6 held on D, Curve both 0.5 held on E.
+the Press Cut tool. REAL mouse (xdotool): short / long press, Esc while holding, Split, R + mouse turn (Ctrl steps,
+Shift+R), Curve Left-Right on D and both on E, the Corner Chamfer stamp on A's corner, Round Panel with its middle
+off E's side, Shift + drag drawing a house stamp then pressing it on B, the contact dots of a stamp half off E.
 
 tool MCH_BUILTIN_PENTAGON start 0.009999999776482582 speed 0.11999999731779099
 before {'A': (0.0, 8.0), 'B': (0.0, 8.0), 'C': (0.0, 8.0), 'D': (0.0, 8.0), 'E': (0.0, 8.0)}
 shot 1_stamp_over_A.png True
 SHORT press on A (about 0.15 s): pocket depth 0.02 volume 8.0 -> 7.9861
 shot 2_holding_B.png True
-LONG press on B (about 2 s): pocket depth 0.5411 volume 8.0 -> 7.6233
+LONG press on B (about 2 s): pocket depth 0.5795 volume 8.0 -> 7.5965
 Esc while holding on C: pocket depth 0.0 volume 8.0 -> 8.0 - backup meshes left []
-SPLIT press on C (about 1.2 s): pieces [('C_Split', 0.2482)] C now (0.3565, 7.7518)
+SPLIT press on C (about 1.2 s): pieces [('C_Split', 0.2477)] C now (0.3558, 7.7523)
 shot 3_turning.png True
 TURN R + 25 px: 10.0 deg | then R + Ctrl + 31 px: 20.0 deg (5 degree steps) | Shift+R: 0.0 deg
 shot 4_curved_stamp_over_D.png True
-CURVE Left-Right 0.6 on D (about 1.6 s): depth middle 0.323 left/right side 0.218 up/down side 0.323 points 384
-CURVE both 0.5 on E (about 1.6 s): depth middle 0.383 left/right side 0.289 up/down side 0.326
-shot 5_result.png True
-DONE short 0.02 long 0.5411 longer is deeper True
+CURVE Left-Right 0.6 on D (about 1.6 s): depth middle 0.34 left/right side 0.235 up/down side 0.34 points 384
+CURVE both 0.5 on E (about 1.6 s): depth middle 0.378 left/right side 0.284 up/down side 0.321
+shot 5_corner_stamp_over_A.png True
+MECH Corner Chamfer on A's corner (about 1.4 s): volume 7.9861 -> 7.904
+OFF-EDGE Round Panel, its middle off E's side (about 1 s): volume 7.8077 -> 7.769
+DRAW Shift + drag (a house on B): the drawn stamp is used True - its corners 5 - size px 24.0
+shot 6_drawn_stamp_over_B.png True
+DRAW pressed with the drawn house on B (about 1.2 s): volume 7.5965 -> 7.5414
+DOTS outline points over a mesh / all, contact point: {'over D': (36, 36, True), 'half off E': (16, 36, True), 'off all': (0, 36, False)}
+shot 7_contact_dots_half_off_E.png True
+shot 8_result.png True
+DONE short 0.02 long 0.5795 longer is deeper True

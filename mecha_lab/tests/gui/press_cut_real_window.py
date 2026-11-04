@@ -242,6 +242,57 @@ def flow():
     xdo('mouseup', 1)
     yield 1.5
     log('OFF-EDGE Round Panel, its middle off E\'s side (about 1 s): volume', v0, '->', round(volume(boxes['E']), 4))
+    # 0.24.95 (user: "여기 왜 라쏘 툴이 없어? 그릴 수가 없는데" -> "그렇게 하자") Shift + drag: draw your own stamp
+    from mecha_lab import press_cut as pcm
+    house = [(-0.85, -0.85), (-0.35, -0.85), (-0.35, -0.55), (-0.6, -0.3), (-0.85, -0.55), (-0.85, -0.85)]
+    path = []
+    for (x0, y0), (x1, y1) in zip(house, house[1:]):
+        for k in range(8):
+            path.append(screen_of((x0 + (x1 - x0) * k / 8, y0 + (y1 - y0) * k / 8, 1.0)))
+    xdo('mousemove', *path[0])
+    yield 0.5
+    xdo('keydown', 'shift')
+    yield 0.2
+    xdo('mousedown', 1)
+    yield 0.2
+    for q in path[1:]:
+        xdo('mousemove', *q)
+        yield 0.03
+    xdo('mouseup', 1)
+    yield 0.3
+    xdo('keyup', 'shift')
+    yield 0.6
+    log('DRAW Shift + drag (a house on B): the drawn stamp is used', S.mch_press.drawn, '- its corners',
+        len(pcm.DRAWN[0][0]) if pcm.DRAWN[0] else None, '- size px', round(S.mch_press.size, 1))
+    v0 = round(volume(boxes['B']), 4)
+    xdo('mousemove', *screen_of((-0.6, -0.575, 1.0)))
+    yield 0.8
+    shot('6_drawn_stamp_over_B.png')
+    xdo('mousedown', 1)
+    yield 1.2
+    xdo('mouseup', 1)
+    yield 1.5
+    log('DRAW pressed with the drawn house on B (about 1.2 s): volume', v0, '->', round(volume(boxes['B']), 4))
+    # 0.24.95 (user: "지금 내가 메쉬에 닿아 있는 부분을 조그만한 점으로 표시해 주면 작업할 때 편하겠는데") contact dots
+    S.mch_press.drawn = False
+    S.mch_press.shape = 'MCH_BUILTIN_M_CHAMFER_PANEL'
+    S.mch_press.size = 45.0
+    w, a, r = view3d()
+    res = {}
+    with C.temp_override(window=w, area=a, region=r):
+        from bpy_extras.view3d_utils import location_3d_to_region_2d as l2r
+        rv = a.spaces.active.region_3d
+        for name, co in (('over D', (-1.4, -2.7 - 0.5, 1.0)), ('half off E', (1.4 + 1.1, -2.7, 1.0)),
+                         ('off all', (5.5, -2.7, 1.0))):
+            p2 = l2r(r, rv, co)
+            lps = pcm.stamp_loops(C, (p2.x, p2.y), S.mch_press)
+            dots, contact = pcm.contact_points(C, lps, (p2.x, p2.y))
+            total = sum(len(pcm.resample(lp, 8.0)) for lp in lps)
+            res[name] = (len(dots), total, contact is not None)
+    log('DOTS outline points over a mesh / all, contact point:', res)
+    xdo('mousemove', *screen_of((1.4 + 1.1, -2.7, 1.0)))
+    yield 1.0
+    shot('7_contact_dots_half_off_E.png')
     w, a, r = view3d()
     with C.temp_override(window=w, area=a, region=r):
         for o in pieces:
@@ -254,7 +305,7 @@ def flow():
         rv.view_distance = 12.0
     xdo('mousemove', 960, 1060)
     yield 1.5
-    shot('6_result.png')
+    shot('8_result.png')
     log('DONE short', a_after[0], 'long', b_after[0], 'longer is deeper', b_after[0] > a_after[0] > 0.0)
     bpy.ops.wm.quit_blender()
 

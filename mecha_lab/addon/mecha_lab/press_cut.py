@@ -10,6 +10,7 @@ Save Shape: the last closed outline drawn with Cut / Split (lasso, sketch, recta
 for the session (``cut_presets.remember``); Save Shape writes it as a cut shape (``cut_presets.save_loops``) - it is
 then in the shape list of Press Cut and of the Cut / Split Custom stamp, in every file.
 
+Shift + drag: draw your own stamp outline (it is the stamp at once; Save Shape keeps it).
 [ / ] or F + mouse: stamp size.  R + mouse left / right: turn it (0.4 degree a pixel, Shift fine, Ctrl 5 degree
 steps; click keeps, Esc puts it back), Shift + R: back to 0 degrees.
 """
@@ -39,12 +40,23 @@ def _redraw(self, context):
                 a.tag_redraw()
 
 
+def _shape_picked(self, context):
+    if getattr(self, 'drawn', False):
+        self.drawn = False                       # (a shape picked from the list: the drawn one gives way)
+    _redraw(self, context)
+
+
+DRAWN = [None]                 # 0.24.95 the outline drawn with Shift + drag (normalized loops) - this session only
+
+
 class MCH_PG_Press(bpy.types.PropertyGroup):
     result: EnumProperty(name='Result', items=[
         ('CUT', 'Cut', 'The shape pressed into the part: a pocket'),
         ('SPLIT', 'Split', 'The pressed-in plug becomes its own part')], default='CUT')
-    shape: EnumProperty(name='Shape', items=_shape_items, update=_redraw,
+    shape: EnumProperty(name='Shape', items=_shape_items, update=_shape_picked,
                         description='The stamp: a saved lasso, a built-in shape or an imported PNG')
+    drawn: BoolProperty(name='Drawn Shape', default=False, update=_redraw,
+                        description='The stamp is the outline you drew with Shift + drag (Save Shape keeps it)')
     size: FloatProperty(name='Size', default=60.0, min=4.0, max=2000.0, subtype='PIXEL', update=_redraw,
                         description='Stamp radius on screen ([ / ] change it)')
     rotation: FloatProperty(name='Rotation', default=0.0, subtype='ANGLE', update=_redraw, step=10,
@@ -89,8 +101,38 @@ def stamp_loops(context, center, st=None):
     """The stamp's outline(s) in region px at ``center`` (the shape at its size and turn)."""
     from . import cut_engine as ce, cut_presets
     st = st or context.scene.mch_press
-    norm = cut_presets.load_loops(st.shape)
+    norm = DRAWN[0] if (getattr(st, 'drawn', False) and DRAWN[0]) else cut_presets.load_loops(st.shape)
     return ce.custom_loops(norm, center, st.size, st.rotation)
+
+
+def use_drawn(context, pts):
+    """0.24.95 (user: "여기 왜 라쏘 툴이 없어? 그릴 수가 없는데") An outline drawn with Shift + drag (region px) becomes the
+    stamp, at the size it was drawn and unturned; Save Shape can keep it (it is the last drawn outline).  Returns
+    (True, '') or (False, why)."""
+    from . import cut_presets
+    lp = [(float(x), float(y)) for x, y in pts]
+    if len(lp) >= 2 and math.dist(lp[0], lp[-1]) < 1e-6:
+        lp = lp[:-1]
+    lp = cg.simplify_open(lp + [lp[0]], 1.5)[:-1] if len(lp) >= 3 else lp
+    if len(lp) < 3:
+        return False, 'Draw a bigger outline (Shift + drag round it)'
+    if len(lp) >= 4 and cg.find_intersections([lp]):
+        return False, 'The outline crosses itself - draw it again without crossing'
+    area = 0.5 * abs(sum(lp[i][0] * lp[(i + 1) % len(lp)][1] - lp[(i + 1) % len(lp)][0] * lp[i][1]
+                         for i in range(len(lp))))
+    if area < 40.0:
+        return False, 'Draw a bigger outline (Shift + drag round it)'
+    try:
+        DRAWN[0] = cut_presets.normalize_loops([lp])
+    except cg.CutError as ex:
+        return False, str(ex)
+    xs, ys = [p[0] for p in lp], [p[1] for p in lp]
+    st = context.scene.mch_press
+    st.size = max(4.0, max(max(xs) - min(xs), max(ys) - min(ys)) / 2.0)
+    st.rotation = 0.0
+    st.drawn = True
+    cut_presets.remember([lp])
+    return True, ''
 
 
 def resample(loop, step):
@@ -413,6 +455,67 @@ def press_target(context, projector, xy, loops=None):
 
 # --- drawing --------------------------------------------------------------------------------------------------------
 
+def contact_points(context, loops_px, center_px, offset=(0.0, 0.0), step=8.0):
+    """0.24.95 (user: "지금 내가 메쉬에 닿아 있는 부분을 조그만한 점으로 표시해 주면 작업할 때 편하겠는데") Where a stamp at
+    ``loops_px`` touches a mesh: (points along the outline that are over a mesh, the contact point - the middle when
+    it is over one, else the first covered outline point - or None).  Points in the loops' own pixel space;
+    ``offset`` turns them into the region's pixels for the rays (a tool cursor draws in window pixels)."""
+    region = getattr(context, 'region', None)
+    rv3d = getattr(context, 'region_data', None)
+    if region is None or rv3d is None or region.type != 'WINDOW':
+        return [], None
+    from bpy_extras import view3d_utils
+    from . import target_rules
+    try:
+        dg = context.evaluated_depsgraph_get()
+    except (AttributeError, RuntimeError):
+        return [], None
+
+    def over(q):
+        rq = (q[0] - offset[0], q[1] - offset[1])
+        if not (0 <= rq[0] < region.width and 0 <= rq[1] < region.height):
+            return False
+        o = view3d_utils.region_2d_to_origin_3d(region, rv3d, rq)
+        d = view3d_utils.region_2d_to_vector_3d(region, rv3d, rq)
+        hit, _loc, _n, _i, ob, _m = target_rules.scene_ray(context, dg, o, d)
+        return bool(hit and ob is not None and ob.type == 'MESH')
+    dots = []
+    for lp in loops_px:
+        for q in resample(lp, step):
+            if over(q):
+                dots.append(q)
+    contact = center_px if over(center_px) else (dots[0] if dots else None)
+    return dots, contact
+
+
+def draw_contact(context, loops_px, center_px, offset=(0.0, 0.0)):
+    """The contact dots of a stamp preview (small ones on the outline over a mesh, a bigger one where it presses)."""
+    try:
+        import gpu
+        from gpu_extras.batch import batch_for_shader
+        dots, contact = contact_points(context, loops_px, center_px, offset)
+        if not dots and contact is None:
+            return
+        sh = gpu.shader.from_builtin('UNIFORM_COLOR')
+        gpu.state.blend_set('ALPHA')
+        gpu.state.point_size_set(4.0)
+        sh.bind()
+        if dots:
+            sh.uniform_float('color', (0.55, 1.0, 0.75, 0.9))
+            batch_for_shader(sh, 'POINTS', {'pos': dots}).draw(sh)
+        if contact is not None:
+            gpu.state.point_size_set(9.0)
+            sh.uniform_float('color', (1.0, 1.0, 1.0, 0.95))
+            batch_for_shader(sh, 'POINTS', {'pos': [contact]}).draw(sh)
+            gpu.state.point_size_set(5.0)
+            sh.uniform_float('color', (0.2, 0.85, 0.5, 1.0))
+            batch_for_shader(sh, 'POINTS', {'pos': [contact]}).draw(sh)
+        gpu.state.point_size_set(1.0)
+        gpu.state.blend_set('NONE')
+    except Exception:          # never break viewport drawing
+        pass
+
+
 def draw_cursor(context, xy):
     """Idle stamp preview at the cursor (WorkSpaceTool.draw_cursor, window px)."""
     if TURNING[0]:
@@ -428,6 +531,8 @@ def draw_cursor(context, xy):
         for lp in loops:
             ce._draw_lines(sh, lp, col, closed=True, width=1.5)
         cx, cy = float(xy[0]), float(xy[1])
+        reg = getattr(context, 'region', None)
+        draw_contact(context, loops, (cx, cy), (reg.x, reg.y) if reg is not None else (0.0, 0.0))
         c, s = math.cos(st.rotation), math.sin(st.rotation)
         for amt, (ax, ay) in ((st.curve_x, (c, s)), (st.curve_y, (-s, c))):
             if abs(amt) > 1e-4:                  # (a bent stamp: the line it bends across, dashed by its sign)
@@ -692,6 +797,67 @@ class MCH_OT_stamp_turn(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
 
+def _draw_outline(op):
+    try:
+        import gpu
+        from . import cut_engine as ce
+        if bpy.context.region != op.region or len(op.pts) < 2:
+            return
+        sh = ce._shader()
+        gpu.state.blend_set('ALPHA')
+        ce._draw_lines(sh, op.pts, (1.0, 0.85, 0.3, 1.0), closed=False, width=2.0)
+        ce._draw_lines(sh, [op.pts[-1], op.pts[0]], (1.0, 0.85, 0.3, 0.35), closed=False, width=1.0)
+        gpu.state.blend_set('NONE')
+    except Exception:
+        pass
+
+
+class MCH_OT_press_draw(bpy.types.Operator):
+    """Shift + drag: draw your own stamp outline - let go and it is the stamp (Save Shape keeps it)"""
+    bl_idname = 'mch.press_draw'
+    bl_label = 'Draw Stamp'
+    bl_options = {'INTERNAL'}
+
+    def invoke(self, context, event):
+        if context.region is None or context.region.type != 'WINDOW':
+            return {'PASS_THROUGH'}
+        self.region = context.region
+        self.pts = [(float(event.mouse_region_x), float(event.mouse_region_y))]
+        TURNING[0] = True                        # (the idle stamp preview hidden while drawing)
+        self.handle = bpy.types.SpaceView3D.draw_handler_add(_draw_outline, (self,), 'WINDOW', 'POST_PIXEL')
+        context.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+
+    def _end(self):
+        TURNING[0] = False
+        try:
+            bpy.types.SpaceView3D.draw_handler_remove(self.handle, 'WINDOW')
+        except (ValueError, RuntimeError):
+            pass
+        self.region.tag_redraw()
+
+    def modal(self, context, event):
+        et, ev = event.type, event.value
+        if et in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE'}:
+            q = (float(event.mouse_region_x), float(event.mouse_region_y))
+            if math.dist(q, self.pts[-1]) >= 3.0:
+                self.pts.append(q)
+                self.region.tag_redraw()
+            return {'RUNNING_MODAL'}
+        if et == 'LEFTMOUSE' and ev == 'RELEASE':
+            self._end()
+            ok, why = use_drawn(context, self.pts)
+            if not ok:
+                self.report({'WARNING'}, why)
+                return {'CANCELLED'}
+            self.report({'INFO'}, 'Drawn stamp ready - press on a part (Save Shape keeps it)')
+            return {'FINISHED'}
+        if ev == 'PRESS' and et in {'ESC', 'RIGHTMOUSE'}:
+            self._end()
+            return {'CANCELLED'}
+        return {'RUNNING_MODAL'}
+
+
 class MCH_OT_save_cut_shape(bpy.types.Operator):
     """Save the last outline you drew (Cut / Split / any lasso: lasso, sketch, rectangle ...) as a cut shape - for
     Press Cut and the Cut / Split Custom stamp, in every file"""
@@ -741,6 +907,12 @@ def draw(layout, context):
     col = layout.column(align=True)
     col.row(align=True).prop(st, 'result', expand=True)
     col.template_icon_view(st, 'shape', show_labels=True, scale=4.0, scale_popup=3.0)   # (light: 64 px pictures)
+    if st.drawn and DRAWN[0]:
+        row = col.row(align=True)
+        row.label(text='Using the shape you drew', icon='GREASEPENCIL')
+        row.prop(st, 'drawn', text='', icon='X', emboss=False)
+    else:
+        col.label(text='Shift + drag: draw your own stamp', icon='GREASEPENCIL')
     col.prop(st, 'size')
     col.prop(st, 'rotation')
     col = layout.column(align=True)
@@ -755,7 +927,7 @@ def draw(layout, context):
     col.prop(st, 'max_depth')
     row = layout.row(align=True)
     row.enabled = cut_presets.LAST_LOOPS[0] is not None
-    row.operator('mch.save_cut_shape', text='Save Last Outline as Shape', icon='FILE_TICK')
+    row.operator('mch.save_cut_shape', text='Save Shape (the outline you drew last)', icon='FILE_TICK')
     layout.label(text='Press on a part and hold: deeper the longer you hold', icon='INFO')
     layout.label(text='Release: keep  |  Esc / RMB: back  |  [ ] / F size')
     layout.label(text='R + mouse: turn (Shift fine, Ctrl 5\u00b0)  |  Shift+R: 0\u00b0')
@@ -764,6 +936,7 @@ def draw(layout, context):
 TOOL_KEYMAP = (
     ('mch.quick_hud_press', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'any': True}, None),
     ('mch.press_cut', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, None),
+    ('mch.press_draw', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'shift': True}, None),   # (draw your own stamp)
     ('mch.press_adjust', {'type': 'LEFT_BRACKET', 'value': 'PRESS'}, {'properties': [('size', 1 / 1.15)]}),
     ('mch.press_adjust', {'type': 'RIGHT_BRACKET', 'value': 'PRESS'}, {'properties': [('size', 1.15)]}),
     ('mch.stamp_turn', {'type': 'R', 'value': 'PRESS'}, None),           # (R + mouse: turn, fine)
@@ -772,7 +945,8 @@ TOOL_KEYMAP = (
     ('mch.brush_resize', {'type': 'F', 'value': 'PRESS'}, None),        # (F + mouse = stamp size)
 )
 
-CLASSES = (MCH_PG_Press, MCH_OT_press_cut, MCH_OT_press_adjust, MCH_OT_stamp_turn, MCH_OT_save_cut_shape)
+CLASSES = (MCH_PG_Press, MCH_OT_press_cut, MCH_OT_press_adjust, MCH_OT_stamp_turn, MCH_OT_press_draw,
+           MCH_OT_save_cut_shape)
 
 
 def register():

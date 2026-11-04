@@ -2777,9 +2777,12 @@ def draw_stamp_cursor(context, xy):
         p = stamp_cursor_point(xy)
         sh = _shader()
         gpu.state.blend_set('ALPHA')
-        for lp in custom_loops(loops, p, b.custom_size, b.custom_rotation):
+        lps = custom_loops(loops, p, b.custom_size, b.custom_rotation)
+        for lp in lps:
             _draw_lines(sh, lp, _COLORS['CUT'], closed=True, width=1.5)
         gpu.state.blend_set('NONE')
+        reg = getattr(context, 'region', None)           # 0.24.95 where the stamp touches a mesh: small dots
+        press_cut.draw_contact(context, lps, p, (reg.x, reg.y) if reg is not None else (0.0, 0.0))
     except Exception:      # never break viewport drawing
         pass
 
