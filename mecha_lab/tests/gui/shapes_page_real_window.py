@@ -1,6 +1,7 @@
 """Real window: the Shapes page's thumbnails (0.24.95 user: "쉐입 페이지에서 썸네일도 보여 주라, 그거 선택하고 변경 가능하게",
 "쉐입 실시간으로 바뀌어야지"): MECHA LAB screen, the Shapes page, Real Parts (Car Bot); Summon Part; REAL mouse
-(xdotool) - a click on another part's thumbnail (placing starts), a click on the selected summoned part: it becomes that part; shots.
+(xdotool) - a click on another part's thumbnail (placing starts), a click on the selected summoned part: it becomes that part;
+Thumbnail Click 3D Cursor (a click) - one click on a thumbnail: the selected part becomes it at once; shots.
     blender --window-geometry 0 0 W H --python this.py -- OUT"""
 import math
 import os
@@ -147,6 +148,28 @@ def flow():
     xdo('mousemove', 300, 1200)
     yield 2.0
     shot('3_changed.png')
+    # 0.24.95 (user: "왜 실시간 변환이 안돼?") Thumbnail Click: 3D Cursor - a REAL click on it, then on a thumbnail
+    btn = yield from scrolled_to(lambda i: i.kind == 'tbtn' and i.label == '3D Cursor')
+    if btn is None:
+        scroll(-4000)
+        yield 0.5
+        btn = yield from scrolled_to(lambda i: i.kind == 'tbtn' and i.label == '3D Cursor')
+    hover(btn)
+    yield 0.4
+    xdo('click', 1)
+    yield 1.0
+    log('Thumbnail Click now', S.mch_rshape.thumb_mode)
+    tile = yield from scrolled_to(lambda i: i.kind == 'mtile' and i.action[1] == 'mch.random_shape_pick'
+                                  and i.action[2].get('part') == 'SHIN')
+    hover(tile)
+    yield 0.4
+    xdo('click', 1)
+    yield 1.5
+    log('after ONE click on the Wheel Shin thumbnail (3D Cursor): the selected part is now', rs.params_of(ob)['part'],
+        '- shapes in the scene', sum(1 for o in S.objects if rs.is_shape(o)))
+    xdo('mousemove', 300, 1200)
+    yield 1.5
+    shot('4_cursor_mode_changed.png')
     log('DONE')
     bpy.ops.wm.quit_blender()
 

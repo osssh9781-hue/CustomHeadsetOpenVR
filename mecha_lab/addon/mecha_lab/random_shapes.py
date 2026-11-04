@@ -67,6 +67,10 @@ CURVE_KINDS = (('MIX', 'Mix', 'Any of the curved kinds'),
 CURVE_IDS = tuple(k[0] for k in CURVE_KINDS[1:])
 CURVE_MIX = {'POD': 3, 'SHELL': 2, 'CAPSULE': 2, 'DOMECUT': 3, 'TORSO': 3, 'JET': 2, 'TANK': 2, 'CAR': 2}
 LEN_M = Matrix(((-1, 0, 0, 0), (0, 0, 1, 0), (0, 1, 0, 0), (0, 0, 0, 1)))   # a body built along Z lying along Y
+THUMB_MODES = (('PLACE', 'Place on Mesh', 'A thumbnail follows the mouse: click on a mesh to put it there (like an '
+                          'asset); click a selected shape to make it this one'),
+               ('CURSOR', '3D Cursor', 'A thumbnail changes the selected shape(s) made here at once (the last Summon '
+                           'live); nothing selected: a new one at the 3D cursor'))
 FORMS = (('SOLID', 'Solid', 'A solid mass'), ('PLATE', 'Plate', 'A thin plate of that shape (Thickness)'))
 FAMILIES = (('POLY', 'Polygon', 'Flat faces only'), ('CURVE', 'Curved', 'Surfaces curved both ways'),
             ('REF', 'Real Parts', 'Exterior parts after real vehicles (Lambo, 911, F-22, tank)'))
@@ -1925,6 +1929,9 @@ class MCH_PG_RandomShape(bpy.types.PropertyGroup):
                                         description='The real vehicle the parts come from', update=_ref_vehicle_set)
     ref_part: bpy.props.EnumProperty(name='Part', items=_ref_part_items, update=_live_hook('ref_part'),
                                      description='Which part of the vehicle (Any: one of them at random)')
+    # 0.24.95 (user: "왜 실시간 변환이 안돼?", "기존처럼 쓰리디 커서에 소환되게 하는 버튼도") what a thumbnail click does
+    thumb_mode: bpy.props.EnumProperty(name='Thumbnail Click', items=THUMB_MODES, default='PLACE',
+                                       description='What a click on a thumbnail does')
     # Variations
     var_amount: bpy.props.FloatProperty(name='Amount', description='How different the variations are', default=0.4,
                                         min=0.02, max=1.0, subtype='FACTOR',
@@ -2056,9 +2063,10 @@ class MCH_OT_random_shape_reroll(bpy.types.Operator):
         return {'FINISHED'}
 
 
-def _reroll(context, obs, seed, follow_page=False):
+def _reroll(context, obs, seed, follow_page=False, family=None):
     """The shapes ``obs`` a new form each from the page's settings, of their own family (a real part: of its vehicle -
-    ``follow_page``: of the page's vehicle), as big as they were, where they are.  How many."""
+    ``follow_page``: of the page's vehicle; ``family``: of that family instead), as big as they were, where they are.
+    How many."""
     st = _settings(context)
     n = 0
     for i, ob in enumerate(obs):
@@ -2066,7 +2074,10 @@ def _reroll(context, obs, seed, follow_page=False):
         if old.users > 1:
             continue                                 # (a linked copy: its twin would change too)
         old_p = params_of(ob) or {}
-        fam = old_p.get('family', 'POLY')
+        fam = family or old_p.get('family', 'POLY')
+        changed = family is not None and family != old_p.get('family')
+        if changed:
+            old_p = {'family': family}               # (another family: none of its own numbers carried over)
         if fam == 'REF':                             # (a real part: another of its vehicle - the page's part
             from . import ref_parts                  #  when the page shows that vehicle)
             veh = st.ref_vehicle if follow_page else old_p.get('kind', 'LAMBO')
@@ -2074,8 +2085,8 @@ def _reroll(context, obs, seed, follow_page=False):
                                      st.ref_part if st.ref_vehicle == veh else 'ANY',
                                      old_p.get('d', {}).get('thk', st.plate_thk))
         else:
-            p = new_params(random.Random(_seed(seed, i)), fam, st, plate=plate_of(old_p))   # (a plate
-            #                                                                                     stays one)
+            p = new_params(random.Random(_seed(seed, i)), fam, st,
+                           plate=None if changed else plate_of(old_p))   # (a plate stays one)
         me, _kind = new_mesh(p, st.segments, _local_size(old) or st.size, old.name)
         for m in old.materials:
             me.materials.append(m)
@@ -2298,6 +2309,68 @@ class MCH_OT_random_shape_ref(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_random_shape_thumb(bpy.types.Operator):
+    """What a click on a thumbnail does: Place on Mesh (like an asset) or 3D Cursor (the selected shape changes at
+    once; nothing selected: a new one at the 3D cursor)"""
+    bl_idname = 'mch.random_shape_thumb'
+    bl_label = 'Thumbnail Click'
+    bl_options = {'INTERNAL'}
+    mode: bpy.props.EnumProperty(items=THUMB_MODES, default='PLACE')
+
+    def execute(self, context):
+        _settings(context).thumb_mode = self.mode
+        return {'FINISHED'}
+
+
+class MCH_OT_random_shape_pick(bpy.types.Operator):
+    """3D Cursor mode (0.24.95 user: "왜 실시간 변환이 안돼?", "기존처럼 쓰리디 커서에 소환되게"): this kind / part at
+    once - the selected shapes made here become it (the last Summon follows live); nothing selected: a new one at
+    the 3D cursor"""
+    bl_idname = 'mch.random_shape_pick'
+    bl_label = 'Random Shape Pick'
+    bl_options = {'REGISTER', 'UNDO'}
+    family: bpy.props.EnumProperty(items=FAMILIES, default='POLY')
+    kind: bpy.props.StringProperty(default='')
+    vehicle: bpy.props.StringProperty(default='')
+    part: bpy.props.StringProperty(default='')
+
+    def execute(self, context):
+        st = _settings(context)
+        sel = [o for o in context.selected_objects if is_shape(o)] if context.mode == 'OBJECT' else []
+        vl = context.view_layer
+        live = set()                                    # (the last Summon's, selected and as made: they follow
+        if LIVE and LIVE.get('mode') == 'summon' and LIVE.get('family') == self.family:   # the setting live)
+            for e in LIVE.get('objs', []):
+                ob = _live_obj(e, vl)
+                if ob is not None:
+                    live.add(ob.name)
+        if self.family == 'REF':                        # (the page's setting - not clearing what is live)
+            from . import ref_parts
+            if self.vehicle in ref_parts.PART_IDS and st.ref_vehicle != self.vehicle:
+                st.ref_vehicle = self.vehicle
+            if self.part and (self.part == 'ANY' or self.part in ref_parts.PART_IDS.get(st.ref_vehicle, ())):
+                st.ref_part = self.part
+        elif self.family == 'CURVE' and self.kind in {k[0] for k in CURVE_KINDS}:
+            st.curve_kind = self.kind
+        elif self.family == 'POLY' and self.kind in {k[0] for k in KINDS}:
+            st.kind = self.kind
+        if live:                                        # (the change shows now, not after the live timer)
+            if bpy.app.timers.is_registered(_live_apply):
+                bpy.app.timers.unregister(_live_apply)
+            _live_apply()
+        others = [o for o in sel if o.name not in live]
+        if others:
+            n = _reroll(context, others, _new_seed(), follow_page=True, family=self.family)
+            self.report({'INFO'}, f'{n + len(live)} selected shape(s) changed')
+            return {'FINISHED'}
+        if live:
+            self.report({'INFO'}, f'{len(live)} shape(s) changed')
+            return {'FINISHED'}
+        if context.mode != 'OBJECT':
+            return {'CANCELLED'}
+        return bpy.ops.mch.random_shape_add(family=self.family)
+
+
 # --- the Shapes page (drawn side panel) and the sidebar panel --------------------------------------------------------
 
 def page(context, x, width, k):
@@ -2307,9 +2380,16 @@ def page(context, x, width, k):
     b = sp.Builder('SHAPES', x, width, k)
     st = _settings(context)
     obj_mode = context.mode == 'OBJECT'
-    b.note(('note', 'A thumbnail: place it like an asset - click on a mesh to put it there (a selected shape '
-            'clicked becomes it); Summon: at the 3D cursor; the last one follows every setting live' if obj_mode else
-            'Object Mode only (leave Edit / Sculpt first)', False, None, None, None, True), x, width)
+    place = st.thumb_mode == 'PLACE'
+    b.note(('note', ('A thumbnail: place it like an asset - click on a mesh to put it there (a selected shape '
+             'clicked becomes it)' if place else 'A thumbnail: the selected shape becomes it at once (nothing '
+             'selected: a new one at the 3D cursor)') + '; Summon: at the 3D cursor; the last one follows every '
+            'setting live' if obj_mode else 'Object Mode only (leave Edit / Sculpt first)',
+            False, None, None, None, True), x, width)
+    # 0.24.95 (user: "왜 실시간 변환이 안돼?", "기존처럼 쓰리디 커서에 소환되게 하는 버튼도") a thumbnail's click
+    mu.row(b, x, width, [mu._cell('tbtn', label, ('op', 'mch.random_shape_thumb', {'mode': ident}),
+                                  on=st.thumb_mode == ident) for ident, label, _d in THUMB_MODES])
+    thumb_op = 'mch.random_shape_place' if place else 'mch.random_shape_pick'
     mu.row(b, x, width, [mu.number(st, 'size', 'Size'), mu.number(st, 'count', 'Count')])
     mu.row(b, x, width, [mu._cell('tbtn', label, ('op', 'mch.random_shape_form', {'form': ident}), on=st.form == ident)
                          for ident, label, _d in FORMS])          # (0.24.95 user: "판떼기 버전도" - both families)
@@ -2319,7 +2399,7 @@ def page(context, x, width, k):
     def kinds(sx, sw, family, items, cur):         # (0.24.95 thumbnails: a click = that kind, the selected change)
         tag = 'poly' if family == 'POLY' else 'curve'
         mu.grid(b, sx, sw, [(label, shape_icon(f'{tag}_{ident}'), cur == ident,
-                             ('op', 'mch.random_shape_place', {'family': family, 'kind': ident}), None, None)
+                             ('op', thumb_op, {'family': family, 'kind': ident}), None, None)
                             for ident, label, _d in items])
 
     def poly(sx, sw):
@@ -2347,14 +2427,13 @@ def page(context, x, width, k):
                            on=st.ref_vehicle == ident) for ident, label, _d in ref_parts.VEHICLES]
         for i in range(0, len(vcells), 3):               # (Lambo 911 Jet | Tank Heavy Mech Car Bot)
             mu.row(b, sx, sw, vcells[i:i + 3])
-        mu.grid(b, sx, sw, [(label, shape_icon(f'ref_{st.ref_vehicle}_{ident}'), st.ref_part == ident,
-                             ('op', 'mch.random_shape_place', {'family': 'REF', 'vehicle': st.ref_vehicle,
-                                                               'part': ident}), None, None)
-                            for ident, label, _d in ref_parts.PART_ITEMS[st.ref_vehicle]])
-        mu.row(b, sx, sw, [mu.number(st, 'plate_thk', 'Panel Thickness')])
-        mu.row(b, sx, sw, [mu.number(st, 'segments', 'Smooth')])
         mu.row(b, sx, sw, [mu._cell('tbtn', 'Summon Part', ('op', 'mch.random_shape_add', {'family': 'REF'}),
-                                    active=obj_mode)])
+                                    active=obj_mode)])   # (above the thumbnails: AC Style has 70 of them)
+        mu.row(b, sx, sw, [mu.number(st, 'plate_thk', 'Panel Thickness'), mu.number(st, 'segments', 'Smooth')])
+        mu.grid(b, sx, sw, [(label, shape_icon(f'ref_{st.ref_vehicle}_{ident}'), st.ref_part == ident,
+                             ('op', thumb_op, {'family': 'REF', 'vehicle': st.ref_vehicle, 'part': ident}),
+                             None, None)
+                            for ident, label, _d in ref_parts.PART_ITEMS[st.ref_vehicle]])
     mu.section(b, 'rs_real', 'Real Parts', x, width, real)
     from . import tire_gen                               # (0.24.95 user: "타이어 만드는 제너레이터도")
     tire_gen.page_section(b, context, x, width)
@@ -2379,6 +2458,7 @@ def draw(layout, context):
     col = layout.column(align=True)
     col.prop(st, 'size')
     col.prop(st, 'count')
+    layout.prop(st, 'thumb_mode', expand=True)
     r = layout.row(align=True)
     r.prop(st, 'form', expand=True)
     if st.form == 'PLATE':
@@ -2437,7 +2517,7 @@ class MCH_PT_random_shapes(bpy.types.Panel):
 
 CLASSES = (MCH_PG_RandomShape, MCH_OT_random_shape_add, MCH_OT_random_shape_vary, MCH_OT_random_shape_reroll,
            MCH_OT_random_shape_form, MCH_OT_random_shape_kind, MCH_OT_random_shape_ref, MCH_OT_random_shape_place,
-           MCH_PT_random_shapes)
+           MCH_OT_random_shape_pick, MCH_OT_random_shape_thumb, MCH_PT_random_shapes)
 
 
 def register():

@@ -5,7 +5,8 @@
   closed surface; the sliders change the selected tire at once; presets
 * Summon Wheel (the tire selected): fits its rim hole, put in it (a child of it); Barrel = an open rim + a hub, Disc
 * Array Around: a piece drawn on the tread repeated round the axle - Count copies spread all round, the piece where
-  it was drawn; an edit of the piece shows on every copy; Count live; Mirror Across; the tire moved / turned: they go
+  it was drawn; an edit of the piece shows on every copy; Count live; Mirror Across + Stagger (the other half turned
+  round the axle: left / right alternating, live, its faces the right way out); the tire moved / turned: they go
   with it, still round the axle; a spoke on the wheel the same; Apply (real mesh), Remove
 * the Shapes page: the Tire & Wheel section"""
 import math
@@ -111,6 +112,48 @@ st.mirror = True
 pts = ev_co(piece)
 check('... Mirror Across: the other half too (its mirror image across the middle of the tire)', len(pts) == 24 * 8
       and abs(pts[:, 0].min() + pts[:, 0].max()) < 1e-3, round(float(pts[:, 0].min() + pts[:, 0].max()), 5))
+
+
+def offsets():
+    """(the mirrored blocks' turn from the nearest drawn block, in degrees; faces pointing out on every block)"""
+    dg = C.evaluated_depsgraph_get()
+    e = piece.evaluated_get(dg)
+    me = e.to_mesh()
+    mw = piece.matrix_world
+    vs = np.array([(mw @ v.co)[:] for v in me.vertices])
+    blocks = vs.reshape(-1, 8, 3)
+    cen = blocks.mean(1)
+    ang = np.degrees(np.arctan2(cen[:, 2], cen[:, 1])) % 360
+    right, left = ang[cen[:, 0] > 0], ang[cen[:, 0] < 0]
+    off = [min(((x - y) % 360, (y - x) % 360) for y in right)[0] for x in left]
+    out = 0
+    for f in me.polygons:
+        b = f.vertices[0] // 8
+        n = (mw.to_3x3() @ f.normal).normalized()
+        c = mw @ f.center
+        out += n.dot(c - Vector(cen[b])) > 0
+    ok = out == len(me.polygons)
+    e.to_mesh_clear()
+    return off, ok
+
+
+off, ok = offsets()
+check('... Stagger 0.5 (default): the other half turned half a step - left and right alternating (15 degrees on at '
+      'Count 12), its faces pointing out (not inside out)', len(off) == 12 and all(abs(o - 15.0) < 0.05 for o in off)
+      and ok, (sorted({round(o, 2) for o in off}), ok))
+st.stagger = 0.0
+off0, ok0 = offsets()
+st.stagger = 0.2
+off2, ok2 = offsets()
+check('... the Stagger slider, live: 0 side by side (0 degrees), 0.2 a little on (6 degrees)',
+      all(abs(o) < 0.05 for o in off0) and all(abs(o - 6.0) < 0.05 for o in off2) and ok0 and ok2,
+      (sorted({round(o, 2) for o in off0}), sorted({round(o, 2) for o in off2})))
+st.stagger = 0.5
+st.count = 16
+offc, _ok = offsets()
+check('... Count 16 with the Stagger 0.5: still half a step (11.25 degrees)', all(abs(o - 11.25) < 0.05 for o in offc),
+      sorted({round(o, 2) for o in offc}))
+st.count = 12
 st.mirror = False
 tire.location = (1.0, 2.0, 0.5)
 tire.rotation_euler = (0.0, 0.0, math.radians(30))
@@ -142,10 +185,13 @@ check('A spoke drawn on the wheel, Array Around (5): five spokes round the wheel
 bpy.ops.object.select_all(action='DESELECT')
 piece.select_set(True)
 C.view_layer.objects.active = piece
+st.mirror = True                                  # (with the other half, staggered)
 r = bpy.ops.mch.tire_array_apply()
-check('Apply: the copies real mesh (no modifier, the step empty gone)', r == {'FINISHED'}
-      and len(piece.data.vertices) == 12 * 8 and not piece.modifiers and not piece.get(tg.ARR)
-      and not [o for o in piece.children if o.get(tg.STEP)])
+check('Apply: the copies real mesh - both halves (no modifier, the step and mirror empties, the node tree gone)',
+      r == {'FINISHED'} and len(piece.data.vertices) == 24 * 8 and not piece.modifiers and not piece.get(tg.ARR)
+      and not [o for o in piece.children if o.get(tg.STEP) or o.get(tg.MIRROR_KEY)]
+      and not [g for g in bpy.data.node_groups if g.name.startswith('MCH Tire Mirror')])
+st.mirror = False
 bpy.ops.object.select_all(action='DESELECT')
 spoke.select_set(True)
 C.view_layer.objects.active = spoke

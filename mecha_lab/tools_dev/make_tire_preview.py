@@ -1,6 +1,6 @@
 """0.24.95 A look at Tire & Wheel (user: "타이어 만드는 제너레이터도 만들어 줘 - 내가 디자인할 수 있게"): four tires made
 the way the user would - Summon Tire (a preset), Summon Wheel (Barrel or Disc), one tread block / one spoke drawn
-on it, Array Around (Count, Mirror Across) - then applied, their real edges drawn on them (Cycles, the Mech Shader's
+on it, Array Around (Count, Mirror Across, Stagger: the other half turned - left / right alternating) - then applied, their real edges drawn on them (Cycles, the Mech Shader's
 lookdev HDRI).  Writes a contact sheet; the tile under each: its preset, tread count, spokes.
 
     <python with bpy> tools_dev/make_tire_preview.py <out.jpg> [tile px] [samples]
@@ -20,12 +20,12 @@ import make_random_shapes_preview as base  # noqa: E402
 import mecha_lab  # noqa: E402
 
 # (preset, wheel style, tread outline [(x across, t round)] of the tire's width / diameter, block height, count,
-#  mirror, spokes (0: none), spoke width)
+#  mirror, spokes (0: none), spoke width, stagger)
 DEMOS = [
-    ('CAR', 'BARREL', [(0.06, -0.035), (0.42, -0.02), (0.42, 0.02), (0.06, 0.035)], 0.03, 28, True, 5, 0.09),
-    ('OFFROAD', 'DISC', [(0.0, -0.05), (0.45, -0.07), (0.48, 0.05), (0.08, 0.06)], 0.07, 14, True, 0, 0.0),
-    ('MECH', 'BARREL', [(0.0, 0.0), (0.46, -0.08), (0.46, -0.03), (0.0, 0.05)], 0.06, 18, True, 6, 0.12),
-    ('MOTO', 'BARREL', [(0.05, -0.03), (0.3, -0.07), (0.34, -0.05), (0.08, 0.0)], 0.02, 24, True, 3, 0.1),
+    ('CAR', 'BARREL', [(0.06, -0.035), (0.42, -0.02), (0.42, 0.02), (0.06, 0.035)], 0.03, 28, True, 5, 0.09, 0.0),
+    ('OFFROAD', 'DISC', [(0.0, -0.05), (0.45, -0.07), (0.48, 0.05), (0.08, 0.06)], 0.07, 14, True, 0, 0.0, 0.5),
+    ('MECH', 'BARREL', [(0.0, 0.0), (0.46, -0.08), (0.46, -0.03), (0.0, 0.05)], 0.06, 18, True, 6, 0.12, 0.5),
+    ('MOTO', 'BARREL', [(0.05, -0.03), (0.3, -0.07), (0.34, -0.05), (0.08, 0.0)], 0.02, 24, True, 3, 0.1, 0.3),
 ]
 
 
@@ -83,7 +83,7 @@ def main():
     os.makedirs(tmp, exist_ok=True)
     tiles = []
     st = C.scene.mch_tire
-    for n, (preset, style, outline, h, count, mirror, spokes, sw) in enumerate(DEMOS):
+    for n, (preset, style, outline, h, count, mirror, spokes, sw, stagger) in enumerate(DEMOS):
         for o in list(bpy.data.objects):
             if o.type in {'MESH', 'EMPTY'}:
                 bpy.data.objects.remove(o)
@@ -103,7 +103,7 @@ def main():
         blk.select_set(True)
         tire.select_set(True)
         C.view_layer.objects.active = tire
-        st.count, st.mirror = count, mirror
+        st.count, st.mirror, st.stagger = count, mirror, stagger
         bpy.ops.mch.tire_array()
         tg.apply_round(C, blk)
         made.append(blk)
@@ -132,7 +132,8 @@ def main():
         cam.location = d * (R * 12 + 2)
         cam.rotation_euler = (-d).to_track_quat('-Z', 'Y').to_euler()
         cam.data.ortho_scale = R * 2.9
-        label = f'{tg.PRESETS[preset][0]} - tread x{count}{" mirrored" if mirror else ""}' + \
+        label = f'{tg.PRESETS[preset][0]} - tread x{count}' + \
+                (f', mirrored, stagger {stagger:g}' if mirror else '') + \
                 (f', {spokes} spokes' if spokes else ', disc wheel')
         lab.data.body = label
         lab.data.size = R * 0.15

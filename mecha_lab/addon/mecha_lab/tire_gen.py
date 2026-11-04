@@ -9,8 +9,9 @@ The design is the user's - the add-on gives the base and the repeat:
 * **Summon Wheel** - the rim for it, the same way: sized to the selected tire (its rim hole) and put in it (a child of
   it) - a Barrel (an open rim + a hub: draw a spoke from the hub to the rim) or a Disc (a dished face to draw on).
 * **Array Around** - a piece drawn on the tire (a tread block) or on the wheel (a spoke), repeated round the axle:
-  an Array modifier on the piece itself, so the copies follow every edit of it (Edit Mode) at once; Count and Mirror
-  Across (the other half of the tread, across the middle) change it live.  Apply makes the copies real mesh, Remove
+  an Array modifier on the piece itself, so the copies follow every edit of it (Edit Mode) at once; Count, Mirror
+  Across (the other half of the tread, across the middle) and Stagger (that half turned round the axle: 0 side by
+  side, 0.5 in between - left and right alternating) change it live.  Apply makes the copies real mesh, Remove
   takes the repeat away (the piece stays).
 
 The piece's origin goes to the axle (its look stays), it becomes a child of the tire / wheel (moving the tire moves
@@ -27,6 +28,7 @@ from mathutils import Matrix, Vector
 TAG = 'mch_tire'                   # on a summoned object: 'TIRE' / 'WHEEL'
 PARAMS = 'mch_tire_p'              # its numbers (JSON)
 ARR = 'mch_tire_array'             # on a piece: the tire / wheel it is repeated round (its name)
+STAGGER = 'mch_tire_stagger'       # on a piece: its mirrored half's turn, of a step
 MOD_ARRAY = 'MCH Tire Array'
 MOD_MIRROR = 'MCH Tire Mirror'
 STEP = 'MCH_TireStep'
@@ -247,15 +249,96 @@ def set_origin(piece, c):
     return True
 
 
-def set_mirror(piece, target, on):
+MIRROR_KEY = 'mch_tire_mirror'      # on the empty under a piece: where its mirrored half goes (mirror + stagger turn)
+
+
+def _mirror_empty(piece):
+    return next((c for c in piece.children if c.get(MIRROR_KEY)), None)
+
+
+def _mirror_matrix(piece, target, count, stagger):
+    """The mirrored half in the piece's own space: across the tire's middle (the plane square to the axle), then
+    turned round the axle by ``stagger`` of a step - A^-1 Rot Refl A (its origin on the axle)."""
+    _c, a = axle(target)
+    A = piece.matrix_world.to_3x3()
+    try:
+        Ai = A.inverted()
+    except ValueError:
+        return Matrix.Identity(4)
+    refl = Matrix.Identity(3) - 2.0 * Matrix([[a.x * a.x, a.x * a.y, a.x * a.z], [a.y * a.x, a.y * a.y, a.y * a.z],
+                                              [a.z * a.x, a.z * a.y, a.z * a.z]])
+    rot = Matrix.Rotation(2 * math.pi / max(1, int(count)) * stagger, 3, a)
+    return (Ai @ rot @ refl @ A).to_4x4()
+
+
+def _mirror_group(piece, em):
+    """A small node tree for this piece: its mesh + the mesh moved by the empty (mirrored, turned), faces flipped."""
+    name = f'MCH Tire Mirror | {piece.name}'
+    ng = bpy.data.node_groups.get(name)
+    if ng is None:
+        ng = bpy.data.node_groups.new(name, 'GeometryNodeTree')
+        ng.interface.new_socket('Geometry', in_out='INPUT', socket_type='NodeSocketGeometry')
+        ng.interface.new_socket('Geometry', in_out='OUTPUT', socket_type='NodeSocketGeometry')
+        n, L = ng.nodes, ng.links
+        gi, go = n.new('NodeGroupInput'), n.new('NodeGroupOutput')
+        oi = n.new('GeometryNodeObjectInfo')
+        oi.name = 'mirror'
+        oi.transform_space = 'RELATIVE'
+        tr = n.new('GeometryNodeTransform')
+        tr.inputs['Mode'].default_value = 'Matrix'
+        ff = n.new('GeometryNodeFlipFaces')                # (a mirror turns faces inside out: back the right way)
+        jg = n.new('GeometryNodeJoinGeometry')
+        L.new(gi.outputs[0], tr.inputs['Geometry'])
+        L.new(oi.outputs['Transform'], tr.inputs['Transform'])
+        L.new(tr.outputs['Geometry'], ff.inputs['Mesh'])
+        L.new(gi.outputs[0], jg.inputs['Geometry'])
+        L.new(ff.outputs['Mesh'], jg.inputs['Geometry'])
+        L.new(jg.outputs['Geometry'], go.inputs[0])
+        for i, nd in enumerate((gi, oi, tr, ff, jg, go)):
+            nd.location = (i * 200.0, 0.0)
+    ng.nodes['mirror'].inputs['Object'].default_value = em
+    return ng
+
+
+def set_mirror(piece, target, on, stagger=0.5, count=None):
+    """The other half of the tread too: the piece mirrored across the middle of the tire, turned ``stagger`` of a
+    step round the axle (0: side by side, 0.5: in between - alternating) - a Geometry Nodes modifier before the
+    Array (0.24.95 user: "왼쪽 오른쪽 약간 번갈아 가면서 - 로테이트시키는 조절 슬라이더")."""
     m = piece.modifiers.get(MOD_MIRROR)
-    if on and m is None:
-        m = piece.modifiers.new(MOD_MIRROR, 'MIRROR')
-        m.use_axis = (True, False, False)
-        m.mirror_object = target
+    if m is not None and m.type != 'NODES':                # (the first version's plain Mirror: replaced)
+        piece.modifiers.remove(m)
+        m = None
+    em = _mirror_empty(piece)
+    arr = piece.modifiers.get(MOD_ARRAY)
+    count = count if count is not None else (arr.count if arr is not None else 1)
+    if not on:
+        if m is not None:
+            ng = m.node_group
+            piece.modifiers.remove(m)
+            if ng is not None and ng.users == 0:
+                bpy.data.node_groups.remove(ng)
+        if em is not None:
+            bpy.data.objects.remove(em)
+        return
+    if em is None:
+        em = bpy.data.objects.new('MCH_TireMirror', None)
+        em[MIRROR_KEY] = 1
+        em.empty_display_size = 0.05
+        for col in piece.users_collection:
+            col.objects.link(em)
+        em.parent = piece
+        em.hide_select = True
+        try:
+            em.hide_set(True)
+        except RuntimeError:
+            pass
+    em.matrix_parent_inverse = Matrix.Identity(4)
+    em.matrix_basis = _mirror_matrix(piece, target, count, stagger)
+    if m is None:
+        m = piece.modifiers.new(MOD_MIRROR, 'NODES')
+        m.node_group = _mirror_group(piece, em)
         m.show_in_editmode = True
         m.show_on_cage = False
-        arr = piece.modifiers.get(MOD_ARRAY)
         if arr is not None:                                # (mirrored first, then the pair goes round)
             mods = list(piece.modifiers)
             ia, im = mods.index(arr), mods.index(m)
@@ -264,8 +347,6 @@ def set_mirror(piece, target, on):
             except (AttributeError, TypeError):
                 with bpy.context.temp_override(object=piece):
                     bpy.ops.object.modifier_move_to_index(modifier=m.name, index=ia)
-    elif not on and m is not None:
-        piece.modifiers.remove(m)
 
 
 def set_count(piece, target, count):
@@ -276,12 +357,24 @@ def set_count(piece, target, count):
     arr.count = max(1, int(count))
     em.matrix_parent_inverse = Matrix.Identity(4)
     em.matrix_basis = _step_matrix(piece, target, count)
+    me = _mirror_empty(piece)
+    if me is not None:                                     # (the stagger is a part of a step: it follows the Count)
+        me.matrix_basis = _mirror_matrix(piece, target, count, float(piece.get(STAGGER, 0.5)))
 
 
-def array_round(context, piece, target, count, mirror):
+def set_stagger(piece, target, stagger):
+    piece[STAGGER] = float(stagger)
+    me = _mirror_empty(piece)
+    arr = piece.modifiers.get(MOD_ARRAY)
+    if me is not None and arr is not None:
+        me.matrix_basis = _mirror_matrix(piece, target, arr.count, stagger)
+
+
+def array_round(context, piece, target, count, mirror, stagger=0.5):
     """The piece repeated round the target's axle (live: an Array modifier on it, a step empty under it)."""
+    piece[STAGGER] = float(stagger)
     if piece.get(ARR) and piece.modifiers.get(MOD_ARRAY) is not None and _step_empty(piece) is not None:
-        set_mirror(piece, target, mirror)
+        set_mirror(piece, target, mirror, stagger, count)
         set_count(piece, target, count)
         return
     c, _a = axle(target)
@@ -314,7 +407,19 @@ def array_round(context, piece, target, count, mirror):
     arr.show_in_editmode = True
     arr.show_on_cage = False
     piece[ARR] = target.name
-    set_mirror(piece, target, mirror)
+    set_mirror(piece, target, mirror, stagger, count)
+
+
+def _drop_helpers(piece):
+    for em in (_step_empty(piece), _mirror_empty(piece)):
+        if em is not None:
+            bpy.data.objects.remove(em)
+    ng = bpy.data.node_groups.get(f'MCH Tire Mirror | {piece.name}')
+    if ng is not None and ng.users == 0:
+        bpy.data.node_groups.remove(ng)
+    for k in (ARR, STAGGER):
+        if k in piece.keys():
+            del piece[k]
 
 
 def remove_round(piece):
@@ -322,11 +427,7 @@ def remove_round(piece):
         m = piece.modifiers.get(name)
         if m is not None:
             piece.modifiers.remove(m)
-    em = _step_empty(piece)
-    if em is not None:
-        bpy.data.objects.remove(em)
-    if ARR in piece.keys():
-        del piece[ARR]
+    _drop_helpers(piece)
 
 
 def apply_round(context, piece):
@@ -340,11 +441,7 @@ def apply_round(context, piece):
     me.name = old.name
     if old.users == 0:
         bpy.data.meshes.remove(old)
-    em = _step_empty(piece)
-    if em is not None:
-        bpy.data.objects.remove(em)
-    if ARR in piece.keys():
-        del piece[ARR]
+    _drop_helpers(piece)
 
 
 def arrayed(context):
@@ -397,7 +494,15 @@ def _mirror_update(self, context):
     for pc in arrayed(context):
         t = _target_of(context, pc)
         if t is not None:
-            set_mirror(pc, t, self.mirror)
+            pc[STAGGER] = float(self.stagger)
+            set_mirror(pc, t, self.mirror, self.stagger)
+
+
+def _stagger_update(self, context):
+    for pc in arrayed(context):
+        t = _target_of(context, pc)
+        if t is not None:
+            set_stagger(pc, t, self.stagger)
 
 
 class MCH_PG_Tire(bpy.types.PropertyGroup):
@@ -421,6 +526,10 @@ class MCH_PG_Tire(bpy.types.PropertyGroup):
                                  description='How many times round the axle')
     mirror: bpy.props.BoolProperty(name='Mirror Across', default=False, update=_mirror_update,
                                    description='Its mirror image across the middle of the tire too')
+    stagger: bpy.props.FloatProperty(name='Stagger', default=0.5, min=0.0, max=1.0, subtype='FACTOR',
+                                     update=_stagger_update,
+                                     description='Mirror Across: the other half turned round the axle by this much '
+                                                 'of a step - 0 side by side, 0.5 in between (left / right alternating)')
 
 
 # --- operators ----------------------------------------------------------------------------------------------------
@@ -476,7 +585,7 @@ class MCH_OT_tire_array(bpy.types.Operator):
             return {'CANCELLED'}
         st = _st(context)
         for pc in pieces:
-            array_round(context, pc, target, st.count, st.mirror)
+            array_round(context, pc, target, st.count, st.mirror, st.stagger)
         context.view_layer.objects.active = pieces[0]
         self.report({'INFO'}, f'{len(pieces)} piece(s) x {st.count} round "{target.name}"')
         return {'FINISHED'}
@@ -539,6 +648,7 @@ def page_section(b, context, x, width):
                 'Draw a piece on the tire or wheel (a tread block, a spoke), select it, then Array Around',
                 False, None, None, None, True), sx, sw)
         mu.row(b, sx, sw, [mu.number(st, 'count', 'Count'), mu.prop_cell(st, 'mirror', 'Mirror Across')])
+        mu.row(b, sx, sw, [mu.number(st, 'stagger', 'Stagger (left / right)')])
         mu.row(b, sx, sw, [mu._cell('tbtn', 'Array Around', ('op', 'mch.tire_array', {}), active=obj_mode)])
         mu.row(b, sx, sw, [mu._cell('tbtn', 'Apply', ('op', 'mch.tire_array_apply', {}), active=n > 0),
                            mu._cell('tbtn', 'Remove', ('op', 'mch.tire_array_remove', {}), active=n > 0)])
@@ -563,6 +673,7 @@ def draw(layout, context):
     c = box.column(align=True)
     c.prop(st, 'count')
     c.prop(st, 'mirror')
+    c.prop(st, 'stagger')
     box.operator('mch.tire_array', icon='MOD_ARRAY')
     r = box.row(align=True)
     r.operator('mch.tire_array_apply', text='Apply')

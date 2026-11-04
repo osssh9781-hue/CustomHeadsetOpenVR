@@ -364,4 +364,43 @@ st.kind = 'PRISM'
 apply_live()
 check('... deselected: left as it is (the next setting does not touch it)', rs.params_of(keep)['kind'] == 'WEDGE')
 st.kind, st.size, st.count = 'MIX', 1.0, 1
+
+# 0.24.95 (user: "왜 실시간 변환이 안돼?", "기존처럼 쓰리디 커서에 소환되게 하는 버튼도") a thumbnail's click
+its, _h = sp.content(C, None, 0.0, 276.0, 1.0)
+modes = [i for i in its if i.kind == 'tbtn' and i.action[1:2] == ('mch.random_shape_thumb',)]
+check('Thumbnail Click: Place on Mesh (lit, the default) | 3D Cursor', [i.label for i in modes] == ['Place on Mesh',
+      '3D Cursor'] and modes[0].on and not modes[1].on, [(i.label, i.on) for i in modes])
+bpy.ops.mch.random_shape_thumb(mode='CURSOR')
+its, _h = sp.content(C, None, 0.0, 276.0, 1.0)
+tiles = [i for i in its if i.kind == 'mtile']
+check('... 3D Cursor: every thumbnail a pick (not a placing)', tiles and all(i.action[1] == 'mch.random_shape_pick'
+      for i in tiles), {i.action[1] for i in tiles})
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+S.cursor.location = (0.0, 0.0, 0.0)
+bpy.ops.mch.random_shape_add(family='POLY', seed=3)
+last = C.active_object
+last.location.x = 1.5
+r = bpy.ops.mch.random_shape_pick(family='POLY', kind='STEP')
+check('... a thumbnail clicked (3D Cursor): the selected last Summon becomes it AT ONCE (live - the same object, '
+      'where it was)', r == {'FINISHED'} and rs.params_of(last)['kind'] == 'STEP' and last.location.x == 1.5
+      and len(shapes()) == 1, rs.params_of(last)['kind'])
+r = bpy.ops.mch.random_shape_pick(family='CURVE', kind='POD')
+check('... a thumbnail of the other family: the selected shape becomes a Curved Pod at once (kept where it was)',
+      r == {'FINISHED'} and rs.params_of(last)['family'] == 'CURVE' and rs.params_of(last)['kind'] == 'POD'
+      and last.location.x == 1.5 and solid(last), rs.params_of(last).get('kind'))
+bpy.ops.object.select_all(action='DESELECT')
+S.cursor.location = (-2.0, 0.0, 0.0)
+r = bpy.ops.mch.random_shape_pick(family='POLY', kind='PRISM')
+new = [o for o in shapes() if o != last]
+check('... nothing selected: a new one of that kind at the 3D cursor', r == {'FINISHED'} and len(new) == 1
+      and rs.params_of(new[0])['kind'] == 'PRISM' and abs(new[0].location.x + 2.0) < 1e-6)
+C.window_manager.mch_side_page = 'SHAPES'
+bpy.ops.mch.random_shape_ref(vehicle='ARMORED')
+its, _h = sp.content(C, None, 0.0, 276.0, 1.0)
+summon = next(i for i in its if i.kind == 'tbtn' and i.label == 'Summon Part')
+ref_tiles = [i for i in its if i.kind == 'mtile' and i.action[2].get('family') == 'REF']
+check('... Real Parts: Summon Part above the thumbnails (AC Style: 70 of them - the button no longer at their end)',
+      ref_tiles and summon.y > max(i.y for i in ref_tiles), (round(summon.y), round(max(i.y for i in ref_tiles))))
+bpy.ops.mch.random_shape_thumb(mode='PLACE')
 summary()
