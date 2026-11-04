@@ -1007,6 +1007,8 @@ def draw_list(layout, context):
     """0.24.55 the group list (sidebar): pick, enter, what repeats."""
     rows = all_groups(context)
     inside = scope(context)
+    from . import work_scene                                             # 0.24.95 a clean scene for one group
+    work_scene.draw(layout, context)
     if not rows:
         layout.label(text='No groups yet (Mecha Menu > Groups > Group)', icon='INFO')
         return

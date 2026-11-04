@@ -66,7 +66,10 @@ ACTIONS = (            # (section, [(label, glyph or png stem, operator, props, 
                 ('Merge', 'merge', 'mch.group_action', {'action': 'MERGE'}, 'group', False),
                 ('Enter Group', 'enter', 'mch.group_action', {'action': '@SCOPE'}, 'group_or_scope', False),
                 ('Select Group', 'select_group', 'mch.group_action', {'action': 'SELECT'}, 'group', False),
-                ('Group Origin', 'origin', 'mch.group_action', {'action': 'ORIGIN'}, 'group', False)]),
+                ('Group Origin', 'origin', 'mch.group_action', {'action': 'ORIGIN'}, 'group', False),
+                # 0.24.95 (user: "그렇게 버튼 만들어 줘") a clean scene for one group, a live instance where it was
+                ('Work Scene', 'isolate', 'mch.work_scene', {'action': 'SEND'}, 'sel_or_work', False),
+                ('Bring Back', 'exit', 'mch.work_scene', {'action': 'BACK'}, 'work', False)]),
     ('Repetition', [('Repeat Mirror', 'X', 'mch.group_repeat', {'mode': 'MIRROR'}, 'group', False),
                     ('Repeat Radial', 'radial', 'mch.group_repeat', {'mode': 'RADIAL'}, 'group', False),
                     ('Repeat Kaleido', 'kaleido', 'mch.group_repeat', {'mode': 'KALEIDO'}, 'group', False),
@@ -110,6 +113,9 @@ def _needs_ok(context, needs):
         return any(o.type == 'MESH' for o in sel)
     if needs == 'active':
         return ob is not None and ob.type == 'MESH'
+    if needs in {'work', 'sel_or_work'}:                # 0.24.95 Work Scene
+        from . import work_scene
+        return work_scene.current(context) is not None or (needs == 'sel_or_work' and bool(sel))
     if needs in {'group', 'group_or_scope'}:
         from . import groups
         return groups.group_of(ob) is not None or (needs == 'group_or_scope' and groups.scope(context) is not None)

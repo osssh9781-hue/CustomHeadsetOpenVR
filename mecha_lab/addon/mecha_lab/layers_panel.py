@@ -286,6 +286,17 @@ def content(context, x, width, k):
     for i, (label, action, ok) in enumerate(cells):
         out.append(Item('tbtn', x + i * (cw + GAP * k), y, cw, ROW * k, label, '', False, ok, action))
     y -= GAP * k
+    try:                                     # 0.24.95 Work Scene (user: "그렇게 버튼 만들어 줘") - a second row
+        from . import work_scene
+        cells2 = work_scene.toolbar_cells(context)
+    except (ImportError, AttributeError, ReferenceError):
+        cells2 = []
+    if cells2:
+        cw2 = (width - GAP * k * (len(cells2) - 1)) / len(cells2)
+        y -= ROW * k
+        for i, (label, action, ok) in enumerate(cells2):
+            out.append(Item('tbtn', x + i * (cw2 + GAP * k), y, cw2, ROW * k, label, '', False, ok, action))
+        y -= GAP * k
     try:                                     # 0.24.59 ZBrush's Active / Total Points Count
         from . import point_counts
         act, tot = point_counts(context)
