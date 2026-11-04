@@ -221,6 +221,27 @@ def flow():
     log('CURVE both 0.5 on E (about 1.6 s): depth middle', fl(boxes['E'], 1.4, -2.7), 'left/right side',
         fl(boxes['E'], 1.4 + 0.35, -2.7), 'up/down side', fl(boxes['E'], 1.4, -2.7 + 0.3))
     S.mch_press.curve_x = S.mch_press.curve_y = 0.0
+    # 0.24.95 the 50 mech form-blocking stamps: Corner Chamfer pressed on A's corner; the stamp's middle off E's side
+    S.mch_press.shape = 'MCH_BUILTIN_M_CORNER_CHAMFER'
+    S.mch_press.size = 40.0
+    v0 = round(volume(boxes['A']), 4)
+    xdo('mousemove', *screen_of((-2.6 + 0.8, 0.8, 1.0)))
+    yield 0.8
+    shot('5_corner_stamp_over_A.png')
+    xdo('mousedown', 1)
+    yield 1.4
+    xdo('mouseup', 1)
+    yield 1.5
+    log('MECH Corner Chamfer on A\'s corner (about 1.4 s): volume', v0, '->', round(volume(boxes['A']), 4))
+    S.mch_press.shape = 'MCH_BUILTIN_M_ROUND_PANEL'
+    v0 = round(volume(boxes['E']), 4)
+    xdo('mousemove', *screen_of((1.4 + 1.15, -2.7, 1.0)))   # (its middle just off E's right side)
+    yield 0.8
+    xdo('mousedown', 1)
+    yield 1.0
+    xdo('mouseup', 1)
+    yield 1.5
+    log('OFF-EDGE Round Panel, its middle off E\'s side (about 1 s): volume', v0, '->', round(volume(boxes['E']), 4))
     w, a, r = view3d()
     with C.temp_override(window=w, area=a, region=r):
         for o in pieces:
@@ -233,7 +254,7 @@ def flow():
         rv.view_distance = 12.0
     xdo('mousemove', 960, 1060)
     yield 1.5
-    shot('5_result.png')
+    shot('6_result.png')
     log('DONE short', a_after[0], 'long', b_after[0], 'longer is deeper', b_after[0] > a_after[0] > 0.0)
     bpy.ops.wm.quit_blender()
 

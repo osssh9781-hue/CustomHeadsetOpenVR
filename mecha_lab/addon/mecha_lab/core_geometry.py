@@ -534,11 +534,12 @@ def build_cutter_mesh(groups, projector, near_co, far_co, name='MCH_Cutter'):
         tris = tessellate_polygon([[(x, y, 0.0) for x, y in lp] for lp in loops])
         if not tris:
             raise CutError('Shape could not be triangulated.')
+        flat_cap = floor is None or getattr(floor, 'planar', False)
         for a, b, c in tris:
             faces.append((base + a, base + b, base + c))
-            if floor is None:
+            if flat_cap:                                 # (a flat far cap - also a pocket in one flat face, tilted)
                 faces.append((base + count + c, base + count + b, base + count + a))
-        if floor is not None:                            # (the curved far cap, on the walls' own far points)
+        if not flat_cap:                                 # (the curved far cap, on the walls' own far points)
             where, cap_tris = _curved_cap(loops, projector, far_co, vd, lambda q: floor.offset(q, far_co),
                                           floor.spacing)
             index = []

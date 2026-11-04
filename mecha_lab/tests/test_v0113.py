@@ -19,10 +19,11 @@ TOP = cg.OrthoProjector(Quaternion())
 # --- built-in stamp shapes ---------------------------------------------------
 names = [b[0] for b in cut_presets.builtin_shapes()]
 # 0.24.20 + seven scale outlines (Creature Plate Scale: the first point is the root)
-check('built-in shapes shipped (six + seven scales)', names == ['MCH_BUILTIN_' + n for n in (
-    'PENTAGON', 'TRAPEZOID', 'PILLS3', 'TRIANGLE', 'NOTCH_ROUND', 'NOTCH_POLY', 'SCALE_A', 'SCALE_B', 'SCALE_C',
-    'SCALE_D', 'SCALE_E', 'SCALE_F', 'SCALE_G')],
-      names)
+check('built-in shapes shipped (six + seven scales first, in their places; 0.24.95 + 50 mech form-blocking shapes)',
+      names[:13] == ['MCH_BUILTIN_' + n for n in (
+          'PENTAGON', 'TRAPEZOID', 'PILLS3', 'TRIANGLE', 'NOTCH_ROUND', 'NOTCH_POLY', 'SCALE_A', 'SCALE_B', 'SCALE_C',
+          'SCALE_D', 'SCALE_E', 'SCALE_F', 'SCALE_G')]
+      and len(names) == 63 and all(n.startswith('MCH_BUILTIN_M_') for n in names[13:]), names)
 items = [i[0] for i in cut_presets.preset_items(None, C)]
 check('built-in shapes first in the PNG / stamp list', items[:len(names)] == names, items)
 check('each built-in shape has a palette icon', all(cut_presets.preset_icon(n) or bpy.app.background for n in names))

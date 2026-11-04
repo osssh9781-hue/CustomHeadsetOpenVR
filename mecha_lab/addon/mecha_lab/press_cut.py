@@ -141,14 +141,24 @@ class SurfaceFloor:
         xs, ys = [p[0] for p in pts], [p[1] for p in pts]
         samples = list(pts)
         step = self.spacing * 2.0
-        x = min(xs)
-        while x <= max(xs):                      # (a coarse grid over the shape's box: the nearest surface, the
-            y = min(ys)                          #  depth for points off the parts)
-            while y <= max(ys):
-                samples.append((x, y))
+        edges = [(lp[i], lp[(i + 1) % len(lp)]) for lp in loops for i in range(len(lp))]
+
+        def inside(q):                           # (even-odd: holes stay out)
+            n = 0
+            for (x0, y0), (x1, y1) in edges:
+                if (y0 > q[1]) != (y1 > q[1]) and q[0] < x0 + (q[1] - y0) * (x1 - x0) / (y1 - y0):
+                    n += 1
+            return n % 2 == 1
+        x = min(xs) + step / 2
+        while x < max(xs):                       # (a coarse grid inside the shape: the nearest surface, the
+            y = min(ys) + step / 2               #  depth for points off the parts, flat or not)
+            while y < max(ys):
+                if inside((x, y)):
+                    samples.append((x, y))
                 y += step
             x += step
-        samples.append(self.center)
+        if inside(self.center):
+            samples.append(self.center)
         self.known = []
         for q in samples:
             t = self._ray_t(q)
@@ -163,6 +173,25 @@ class SurfaceFloor:
         v0, v1 = min(p[1] for p in uv), max(p[1] for p in uv)
         self.uc, self.vc = (u0 + u1) / 2, (v0 + v1) / 2
         self.wu, self.wv = max((u1 - u0) / 2, 1e-6), max((v1 - v0) / 2, 1e-6)
+        self.planar = self._planar()
+
+    def _planar(self):
+        """The surface under the shape is one flat face and the stamp is not bent: the far cap is flat too (no grid,
+        no extra points - a pocket in a flat face seen at an angle keeps clean big faces)."""
+        if abs(self.curve[0]) > 1e-4 or abs(self.curve[1]) > 1e-4:
+            return False
+        if not self.follow:
+            return True
+        k = self.known
+        if len(k) < 3:
+            return True
+        import numpy as np
+        A = np.array([(x, y, 1.0) for x, y, _t in k])
+        b = np.array([t for _x, _y, t in k])
+        coef, *_ = np.linalg.lstsq(A, b, rcond=None)
+        span = max(abs(b.max() - b.min()), 1e-9)
+        return float(np.abs(A @ coef - b).max()) <= max(1e-4, 2e-3 * span)   # (the screen rays are float32: a flat
+        #                                                                       face reads a hair off a plane)
 
     def _ray_t(self, xy):
         """How far along the view the first surface of the parts under screen ``xy`` lies (None: none there)."""
@@ -263,13 +292,17 @@ class Press:
         self.spacing = max(2.0, float(spacing))
         lps = [[tuple(p) for p in lp] for lp in loops]
         shaped = self.curved or self.follow
-        self.loops = [resample(lp, self.spacing) for lp in lps] if shaped else lps
         self.projector = projector
         pts = [p for lp in lps for p in lp]
         self.center = center or (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))
         self.angle = float(angle)
-        self.sfloor = SurfaceFloor(context, [target], projector, self.loops, self.spacing, follow=self.follow,
-                                   curve=self.curve, center=self.center, angle=self.angle) if shaped else None
+        self.loops = lps
+        self.sfloor = None
+        if shaped:
+            self.sfloor = SurfaceFloor(context, [target], projector, lps, self.spacing, follow=self.follow,
+                                       curve=self.curve, center=self.center, angle=self.angle)
+            if not self.sfloor.planar:           # (a bent stamp / a curved surface: the outline follows it too)
+                self.loops = [resample(lp, self.spacing) for lp in lps]
         self.px_world = self.sfloor.px_world if self.sfloor is not None else 0.0
         self.result = result
         self.size = part_size(target)
@@ -707,7 +740,7 @@ def draw(layout, context):
     st = context.scene.mch_press
     col = layout.column(align=True)
     col.row(align=True).prop(st, 'result', expand=True)
-    col.template_icon_view(st, 'shape', show_labels=True, scale=5.0, scale_popup=4.0)
+    col.template_icon_view(st, 'shape', show_labels=True, scale=4.0, scale_popup=3.0)   # (light: 64 px pictures)
     col.prop(st, 'size')
     col.prop(st, 'rotation')
     col = layout.column(align=True)

@@ -817,8 +817,10 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
     pts = [p for lp in loops for p in lp]
     span = max(max(p[0] for p in pts) - min(p[0] for p in pts), max(p[1] for p in pts) - min(p[1] for p in pts))
     step = max(6.0, span / 40.0)
-    loops = [press_cut.resample(lp, step) for lp in loops]
-    _cg.FLOOR[0] = press_cut.SurfaceFloor(context, targets, projector, loops, step, follow=True, depth=cut.depth)
+    sf = press_cut.SurfaceFloor(context, targets, projector, loops, step, follow=True, depth=cut.depth)
+    if not sf.planar:                             # (one flat face: the outline as drawn, a flat far cap)
+        loops = [press_cut.resample(lp, step) for lp in loops]
+    _cg.FLOOR[0] = sf
     try:
         return _perform_closed_base(context, mode, targets, loops, projector, invert)
     finally:

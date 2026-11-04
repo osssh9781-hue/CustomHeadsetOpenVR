@@ -244,6 +244,21 @@ check('The stamp\'s middle off the part\'s side, the stamp over it: the part is 
       (under, t and t.name, ok, round(8.0 - vol(p), 4), far))
 
 
+
+# 0.24.95 (user: "메카닉에 쓸 수 있는 스탬프도 50종 - 썸네일도 보이게 그치만 가볍게", "형태 잡기용이야")
+mech = [b[0] for b in cut_presets.builtin_shapes() if b[0].startswith('MCH_BUILTIN_M_')]
+bad = []
+for stem in mech:
+    p, pr, v0 = held(0.3, shape=stem)
+    if not (pr.depth > 0 and v0 - vol(p) > 1e-4 and non_manifold(p) == 0):
+        bad.append((stem[14:], round(v0 - vol(p), 5), non_manifold(p), pr.message[:40]))
+import os  # noqa: E402
+icons = [os.path.join(os.path.dirname(pc.__file__), 'icons', 'shape_' + st[12:].lower() + '.png') for st in mech]
+check('50 mech form-blocking stamps: each pressed into a box cuts it, a closed solid; each with a light picture '
+      '(64 px, a few kB)', len(mech) == 50 and not bad and all(os.path.isfile(i) and os.path.getsize(i) < 6000
+                                                              for i in icons), bad)
+
+
 # 0.24.95 (user: "스탬프 돌리는 것도 로테이션 각도가 좀 더 섬세하게") R + mouse turns the stamp finely
 ta = pc.turn_angle
 deg = math.degrees

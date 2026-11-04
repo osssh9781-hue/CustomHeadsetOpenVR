@@ -688,14 +688,15 @@ class MCH_OT_pick_stamp_shape(bpy.types.Operator):
         return {'FINISHED'}
 
 
-def draw_builtin_row(layout):
-    """One row of built-in shape buttons (icons) for the shape palette."""
-    row = layout.row(align=True)
+def draw_builtin_row(layout, columns=9):
+    """The built-in shape buttons (small icons) for the shape palette - 0.24.95 a grid (63 shapes: the 50 mech
+    form-blocking shapes too), not one long row."""
+    grid = layout.grid_flow(row_major=True, columns=columns, even_columns=True, even_rows=True, align=True)
     for stem, name, _loops in builtin_shapes():
         iid = preset_icon(stem)
         kw = {'icon_value': iid} if iid else {'icon': 'MESH_PLANE'}
-        row.operator('mch.pick_stamp_shape', text='', **kw).stem = stem
-    return row
+        grid.operator('mch.pick_stamp_shape', text='', **kw).stem = stem
+    return grid
 
 
 CLASSES = (MCH_OT_import_cut_png, MCH_OT_delete_cut_preset, MCH_OT_stamp_png_cut, MCH_OT_pick_stamp_shape)

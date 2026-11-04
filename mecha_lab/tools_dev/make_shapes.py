@@ -30,6 +30,31 @@ SHAPES = [
     ('SCALE_G', 'Scale G (leaf)'),
 ]
 
+# 0.24.95 (user: "메카닉에 쓸 수 있는 스탬프도 50종 - 썸네일도 보이게 그치만 가볍게", "알파나 디테일용이 아니라 형태 잡기용이야")
+# shapes that block out a part's form with Cut / Split / Press Cut: corner and edge cutters, panel / armour outlines,
+# bold silhouettes - no holes, no fine detail.  Appended after the first 13 (their list places are kept).
+MECH = [
+    ('M_CORNER_CHAMFER', 'Corner Chamfer'), ('M_CORNER_CHAMFER30', 'Corner Chamfer 30'),
+    ('M_CORNER_STEPS', 'Corner Steps'), ('M_CORNER_DOUBLE', 'Corner Double Chamfer'),
+    ('M_CORNER_FILLET', 'Corner Fillet'),
+    ('M_V_NOTCH', 'V Notch'), ('M_U_SLOT', 'U Slot'), ('M_SQUARE_NOTCH', 'Square Notch'),
+    ('M_DOVETAIL', 'Dovetail'), ('M_WIDE_NOTCH', 'Wide Notch'), ('M_STEP_NOTCH', 'Step Notch'),
+    ('M_SAW_EDGE', 'Saw Edge'), ('M_SCALLOP_EDGE', 'Scallop Edge'), ('M_CRENEL_EDGE', 'Crenel Edge'),
+    ('M_WAVE_EDGE', 'Wave Edge'),
+    ('M_CHAMFER_PANEL', 'Chamfer Panel'), ('M_TWO_CORNER_PANEL', 'Two-Corner Panel'),
+    ('M_ROUND_PANEL', 'Round Panel'), ('M_LONG_HEX', 'Long Hex'), ('M_OCTAGON', 'Octagon'),
+    ('M_DIAMOND', 'Diamond'), ('M_KITE', 'Kite'), ('M_TALL_TRAPEZOID', 'Tall Trapezoid'),
+    ('M_PARALLELOGRAM', 'Parallelogram'), ('M_ARROWHEAD', 'Arrowhead'), ('M_CHEVRON', 'Chevron'),
+    ('M_WEDGE', 'Wedge'), ('M_SHIELD', 'Shield'), ('M_SHOULDER', 'Shoulder Pad'), ('M_KNEE', 'Knee Plate'),
+    ('M_VISOR', 'Visor Slit'), ('M_CHEST', 'Chest Plate'), ('M_BLADE', 'Blade'), ('M_FIN', 'Fin'),
+    ('M_TAPER_BAR', 'Taper Bar'), ('M_CRESCENT', 'Crescent'), ('M_HALF_DISC', 'Half Disc'),
+    ('M_QUARTER_DISC', 'Quarter Disc'), ('M_ARC_BAND', 'Arc Band'), ('M_L_BLOCK', 'L Block'),
+    ('M_T_BLOCK', 'T Block'), ('M_CROSS', 'Cross'), ('M_Z_STEP', 'Z Step'), ('M_STEP_PYRAMID', 'Step Pyramid'),
+    ('M_Y_FORK', 'Y Fork'), ('M_SLASH_BAND', 'Slash Band'), ('M_THREE_PRONGS', 'Three Prongs'),
+    ('M_HOOK', 'Hook'), ('M_ANGLE_CUTOFF', 'Angle Cutoff'), ('M_ARCH', 'Arch'),
+]
+SHAPES = SHAPES + MECH
+
 # 0.24.20 scale outlines traced from the user's sketch (px, y down).  The FIRST point is the root (the green mark):
 # Creature Plate Scale is thick there and lifts on the far side.
 SCALE_SKETCH = {
@@ -112,6 +137,112 @@ def pills3():
     return [capsule((i - 1) * gap, 0.0, tilt, half, rad) for i in range(3)]
 
 
+def arc(cx, cy, r, a0, a1, n=12, ry=None):
+    """Points on a circle (ellipse with ``ry``) from angle a0 to a1 (degrees), both ends included."""
+    ry = r if ry is None else ry
+    return [(cx + r * math.cos(math.radians(a0 + (a1 - a0) * i / n)),
+             cy + ry * math.sin(math.radians(a0 + (a1 - a0) * i / n))) for i in range(n + 1)]
+
+
+def round_rect(w, h, r, n=5):
+    pts = []
+    for cx, cy, a0 in ((w - r, -h + r, -90), (w - r, h - r, 0), (-w + r, h - r, 90), (-w + r, -h + r, 180)):
+        pts += arc(cx, cy, r, a0, a0 + 90, n)
+    return pts
+
+
+def chamfer_rect(w, h, c):
+    return [(-w + c, -h), (w - c, -h), (w, -h + c), (w, h - c), (w - c, h), (-w + c, h), (-w, h - c), (-w, -h + c)]
+
+
+def crescent():
+    a = 50.0
+    p1 = (0.5 * math.cos(math.radians(a)), 0.5 * math.sin(math.radians(a)))
+    apex = -0.2
+    cx = (p1[0] ** 2 + p1[1] ** 2 - apex ** 2) / (2 * (p1[0] - apex))
+    r = cx - apex
+    t = math.degrees(math.atan2(p1[1], p1[0] - cx))
+    outer = arc(0, 0, 0.5, a, 360 - a, 24)
+    inner = arc(cx, cy := 0.0, r, -t, -360 + t, 24)[1:-1]
+    return outer + inner
+
+
+def mech_shapes():
+    """The 50 form-blocking shapes (any size: normalized afterwards)."""
+    wave = [(-0.6, 0.3), (0.6, 0.3)] + [(0.6 - 1.2 * i / 24, -0.15 * math.sin(math.pi * 3 * i / 24)) for i in range(25)]
+    scallop = [(-0.6, 0.3), (0.6, 0.3), (0.6, 0.0)]
+    for c in (0.4, 0.0, -0.4):
+        scallop += arc(c, 0.0, 0.2, 0, -180, 10)[1:]
+    return {
+        'M_CORNER_CHAMFER': [(0, 0), (1, 0), (0, 1)],
+        'M_CORNER_CHAMFER30': [(0, 0), (1, 0), (0, 0.577)],
+        'M_CORNER_STEPS': [(0, 0), (1, 0), (1, 0.33), (0.67, 0.33), (0.67, 0.67), (0.33, 0.67), (0.33, 1), (0, 1)],
+        'M_CORNER_DOUBLE': [(0, 0), (1, 0), (0.85, 0.5), (0.5, 0.85), (0, 1)],
+        'M_CORNER_FILLET': [(0, 0)] + arc(1, 1, 1, 270, 180, 16),
+        'M_V_NOTCH': [(-0.5, 0.5), (0, -0.4), (0.5, 0.5)][::-1],
+        'M_U_SLOT': [(-0.25, 0.5), (-0.25, 0.0)] + arc(0, 0, 0.25, 180, 360, 12)[1:-1] + [(0.25, 0.0), (0.25, 0.5)],
+        'M_SQUARE_NOTCH': [(-0.3, -0.3), (0.3, -0.3), (0.3, 0.5), (-0.3, 0.5)],
+        'M_DOVETAIL': [(-0.35, -0.3), (0.35, -0.3), (0.2, 0.5), (-0.2, 0.5)],
+        'M_WIDE_NOTCH': [(-0.2, -0.3), (0.2, -0.3), (0.45, 0.5), (-0.45, 0.5)],
+        'M_STEP_NOTCH': [(-0.25, -0.1), (0.25, -0.1), (0.25, 0.2), (0.5, 0.2), (0.5, 0.5), (-0.5, 0.5), (-0.5, 0.2),
+                         (-0.25, 0.2)],
+        'M_SAW_EDGE': [(-0.6, 0.0), (-0.4, -0.3), (-0.2, 0.0), (0.0, -0.3), (0.2, 0.0), (0.4, -0.3), (0.6, 0.0),
+                       (0.6, 0.3), (-0.6, 0.3)],
+        'M_SCALLOP_EDGE': scallop[::-1],
+        'M_CRENEL_EDGE': [(-0.6, -0.3), (-0.4, -0.3), (-0.4, 0.0), (-0.1, 0.0), (-0.1, -0.3), (0.1, -0.3), (0.1, 0.0),
+                          (0.4, 0.0), (0.4, -0.3), (0.6, -0.3), (0.6, 0.3), (-0.6, 0.3)],
+        'M_WAVE_EDGE': wave[::-1],
+        'M_CHAMFER_PANEL': chamfer_rect(0.5, 0.3, 0.12),
+        'M_TWO_CORNER_PANEL': [(-0.3, -0.3), (0.5, -0.3), (0.5, 0.1), (0.3, 0.3), (-0.5, 0.3), (-0.5, -0.1)],
+        'M_ROUND_PANEL': round_rect(0.5, 0.3, 0.14),
+        'M_LONG_HEX': [(-0.5, 0), (-0.3, -0.25), (0.3, -0.25), (0.5, 0), (0.3, 0.25), (-0.3, 0.25)],
+        'M_OCTAGON': regular(8, 0.5, start=math.pi / 8),
+        'M_DIAMOND': [(0, -0.5), (0.35, 0), (0, 0.5), (-0.35, 0)],
+        'M_KITE': [(0, -0.5), (0.3, 0.15), (0, 0.5), (-0.3, 0.15)],
+        'M_TALL_TRAPEZOID': [(-0.3, -0.5), (0.3, -0.5), (0.18, 0.5), (-0.18, 0.5)],
+        'M_PARALLELOGRAM': [(-0.5, -0.2), (0.25, -0.2), (0.5, 0.2), (-0.25, 0.2)],
+        'M_ARROWHEAD': [(0, 0.5), (-0.45, -0.35), (0, -0.1), (0.45, -0.35)],
+        'M_CHEVRON': [(0, -0.3), (0.5, 0.3), (0.3, 0.3), (0, 0.0), (-0.3, 0.3), (-0.5, 0.3)],
+        'M_WEDGE': [(-0.5, -0.08), (0.5, 0.0), (-0.5, 0.08)],
+        'M_SHIELD': [(0, -0.5), (0.4, 0.0), (0.4, 0.5), (-0.4, 0.5), (-0.4, 0.0)],
+        'M_SHOULDER': arc(0, 0, 0.5, 0, 180, 16, ry=0.35) + [(-0.4, -0.2), (0.4, -0.2)],
+        'M_KNEE': [(0, -0.5), (0.35, 0.0), (0.3, 0.5), (-0.3, 0.5), (-0.35, 0.0)],
+        'M_VISOR': [(-0.42, -0.08), (0.42, -0.08), (0.5, 0.05), (0.38, 0.12), (-0.38, 0.12), (-0.5, 0.05)],
+        'M_CHEST': [(-0.4, -0.3), (0.4, -0.3), (0.5, 0.2), (0.25, 0.35), (0.1, 0.35), (0, 0.25), (-0.1, 0.35),
+                    (-0.25, 0.35), (-0.5, 0.2)],
+        'M_BLADE': [(-0.5, -0.1), (0.2, -0.05), (0.5, 0.15), (0.1, 0.05), (-0.5, 0.05)],
+        'M_FIN': [(-0.5, -0.25), (0.2, -0.25), (0.5, 0.25), (0.0, 0.25)],
+        'M_TAPER_BAR': [(-0.5, -0.12), (0.5, -0.06), (0.5, 0.06), (-0.5, 0.12)],
+        'M_CRESCENT': crescent(),
+        'M_HALF_DISC': arc(0, 0, 0.5, 0, 180, 16),
+        'M_QUARTER_DISC': [(0, 0)] + arc(0, 0, 1, 0, 90, 12),
+        'M_ARC_BAND': arc(0, 0, 0.5, 30, 150, 14) + arc(0, 0, 0.3, 150, 30, 14),
+        'M_L_BLOCK': [(0, 0), (1, 0), (1, 0.35), (0.35, 0.35), (0.35, 1), (0, 1)],
+        'M_T_BLOCK': [(-0.15, -0.5), (0.15, -0.5), (0.15, 0.2), (0.5, 0.2), (0.5, 0.5), (-0.5, 0.5), (-0.5, 0.2),
+                      (-0.15, 0.2)],
+        'M_CROSS': [(-0.15, -0.5), (0.15, -0.5), (0.15, -0.15), (0.5, -0.15), (0.5, 0.15), (0.15, 0.15), (0.15, 0.5),
+                    (-0.15, 0.5), (-0.15, 0.15), (-0.5, 0.15), (-0.5, -0.15), (-0.15, -0.15)],
+        'M_Z_STEP': [(-0.5, -0.3), (0.1, -0.3), (0.1, 0.0), (0.5, 0.0), (0.5, 0.3), (-0.1, 0.3), (-0.1, 0.0),
+                     (-0.5, 0.0)],
+        'M_STEP_PYRAMID': [(-0.5, -0.3), (0.5, -0.3), (0.5, -0.1), (0.3, -0.1), (0.3, 0.1), (0.1, 0.1), (0.1, 0.3),
+                           (-0.1, 0.3), (-0.1, 0.1), (-0.3, 0.1), (-0.3, -0.1), (-0.5, -0.1)],
+        'M_Y_FORK': [(-0.12, -0.5), (0.12, -0.5), (0.12, 0.0), (0.45, 0.4), (0.3, 0.5), (0, 0.15), (-0.3, 0.5),
+                     (-0.45, 0.4), (-0.12, 0.0)],
+        'M_SLASH_BAND': [(-0.5, -0.5), (-0.25, -0.5), (0.5, 0.5), (0.25, 0.5)],
+        'M_THREE_PRONGS': [(-0.45, -0.5), (0.45, -0.5), (0.45, 0.5), (0.3, 0.5), (0.3, 0.0), (0.075, 0.0),
+                           (0.075, 0.5), (-0.075, 0.5), (-0.075, 0.0), (-0.3, 0.0), (-0.3, 0.5), (-0.45, 0.5)],
+        'M_HOOK': [(0.1, -0.25), (0.05, -0.32), (-0.12, -0.32), (-0.2, -0.25), (-0.2, -0.05), (-0.4, -0.05),
+                   (-0.4, -0.3), (-0.25, -0.5), (0.15, -0.5), (0.3, -0.3), (0.3, 0.5), (0.1, 0.5)],
+        'M_ANGLE_CUTOFF': [(-0.5, -0.5), (0.5, -0.5), (0.5, 0.5), (-0.5, -0.1)],
+        'M_ARCH': [(-0.3, -0.5), (0.3, -0.5), (0.3, 0.1)] + arc(0, 0.1, 0.3, 0, 180, 12)[1:-1] + [(-0.3, 0.1)],
+    }
+
+
+def ccw(lp):
+    a = sum(lp[i][0] * lp[(i + 1) % len(lp)][1] - lp[(i + 1) % len(lp)][0] * lp[i][1] for i in range(len(lp)))
+    return lp if a > 0 else lp[::-1]
+
+
 def build_json():
     data = {
         'PENTAGON': [regular(5, 0.5)],
@@ -122,6 +253,7 @@ def build_json():
         'NOTCH_POLY': notch_poly(),
     }
     data.update({k: [[(x, -y) for x, y in v]] for k, v in SCALE_SKETCH.items()})
+    data.update({k: [ccw(v)] for k, v in mech_shapes().items()})
     out = {'schema': 1, 'shapes': [{'stem': s, 'name': n, 'loops': normalize(data[s])} for s, n in SHAPES]}
     OUT_JSON.parent.mkdir(parents=True, exist_ok=True)
     OUT_JSON.write_text(json.dumps(out, separators=(',', ':')), encoding='utf-8')
@@ -129,19 +261,19 @@ def build_json():
 
 
 def build_icons():
+    """0.24.95 light thumbnails (user: "썸네일도 보이게 그치만 가볍게"): a soft pale silhouette on clear, 64 px."""
     from PIL import Image, ImageDraw
-    S, OUT = 512, 128
+    S, OUT = 256, 64
     d = json.loads(OUT_JSON.read_text(encoding='utf-8'))
     for sh in d['shapes']:
         img = Image.new('RGBA', (S, S), (0, 0, 0, 0))
         dr = ImageDraw.Draw(img)
-        dr.rounded_rectangle((8, 8, S - 8, S - 8), radius=72, fill=(38, 41, 48, 255))
         for lp in sh['loops']:
-            pts = [(S / 2 + x * S * 0.78, S / 2 - y * S * 0.78) for x, y in lp]
-            dr.polygon(pts, fill=(255, 158, 40, 110))
-            dr.line(pts + [pts[0]], fill=(255, 158, 40, 255), width=18, joint='curve')
+            pts = [(S / 2 + x * S * 0.8, S / 2 - y * S * 0.8) for x, y in lp]
+            dr.polygon(pts, fill=(206, 212, 222, 150))
+            dr.line(pts + [pts[0]], fill=(236, 240, 246, 235), width=7, joint='curve')
         path = ADDON / 'icons' / f'shape_{sh["stem"].lower()}.png'
-        img.resize((OUT, OUT), Image.LANCZOS).save(path)
+        img.resize((OUT, OUT), Image.LANCZOS).save(path, optimize=True)
         print('icon', path.name)
 
 
