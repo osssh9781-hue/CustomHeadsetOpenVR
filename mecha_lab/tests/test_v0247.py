@@ -135,7 +135,8 @@ if kc is not None:
         tkm = kc.keymaps.get(name)
         check('tool keymap rebuilt from the current bindings (no old wheel item)', tkm is not None and not any(
             it.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'} for it in tkm.keymap_items) and any(
-            it.idname == 'mch.stamp_rotate' for it in tkm.keymap_items), tkm and [(i.idname, i.type) for i in tkm.keymap_items])
+            it.idname == 'mch.stamp_turn' for it in tkm.keymap_items), tkm and [(i.idname, i.type) for i in tkm.keymap_items])
+        # (0.24.95 R turns the stamp with the mouse: mch.stamp_turn took over from the 15 degree mch.stamp_rotate)
 
 mecha_lab.unregister()
 sys.exit(1 if summary() else 0)

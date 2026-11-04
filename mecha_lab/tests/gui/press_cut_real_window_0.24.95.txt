@@ -1,14 +1,17 @@
 Real window, Blender 5.2.3 (Xvfb 1920x1080, software OpenGL), MECHA LAB screen, three 2 m boxes seen from the top,
 the Press Cut tool (Pentagon stamp, Size 45 px, Start 0.01, Speed 0.12). REAL mouse (xdotool): a short press on A,
-a long press on B (a shot while held), a press on C cancelled with Esc while held, then Result Split on C.
+a long press on B (a shot while held), a press on C cancelled with Esc while held, Result Split on C, then R + mouse
+(25 px), R + Ctrl + mouse (31 px), Shift + R.
 
 tool MCH_BUILTIN_PENTAGON start 0.009999999776482582 speed 0.11999999731779099
 before {'A': (0.0, 8.0), 'B': (0.0, 8.0), 'C': (0.0, 8.0)}
 shot 1_stamp_over_A.png True
 SHORT press on A (about 0.15 s): pocket depth 0.02 volume 8.0 -> 7.9907
 shot 2_holding_B.png True
-LONG press on B (about 2 s): pocket depth 0.5634 volume 8.0 -> 7.7374
+LONG press on B (about 2 s): pocket depth 0.5467 volume 8.0 -> 7.7452
 Esc while holding on C: pocket depth 0.0 volume 8.0 -> 8.0 - backup meshes left []
-SPLIT press on C (about 1.2 s): pieces [('C_Split', 0.153)] C now (0.3282, 7.847)
-shot 3_result.png True
-DONE short 0.02 long 0.5634 longer is deeper True
+SPLIT press on C (about 1.2 s): pieces [('C_Split', 0.1524)] C now (0.3269, 7.8476)
+shot 3_turning.png True
+TURN R + 25 px: 10.0 deg | then R + Ctrl + 31 px: 20.0 deg (5 degree steps) | Shift+R: 0.0 deg
+shot 4_result.png True
+DONE short 0.02 long 0.5467 longer is deeper True

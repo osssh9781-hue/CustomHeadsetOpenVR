@@ -45,7 +45,7 @@ check('Press Cut: a tool (after Split in the Cut group), its own settings, an ic
       and (cg.__file__ and __import__('os').path.isfile(
           __import__('os').path.join(__import__('os').path.dirname(pc.__file__), 'icons', 'press_cut.png'))))
 
-st = C.scene.mch_press
+st = C.scene.mch_press                      # (read again after every fresh(): a new file frees the old scene)
 size = 2.0
 d0, d1, d2, dmax = (pc.depth_at(st, size, t) for t in (0.0, 1.0, 2.0, 100.0))
 check('Depth = (Start + Speed x seconds) x the part\'s size, up to Max',
@@ -53,19 +53,22 @@ check('Depth = (Start + Speed x seconds) x the part\'s size, up to Max',
       and abs(dmax - size * st.max_depth) < 1e-9, [round(x, 4) for x in (d0, d1, d2, dmax)])
 
 
-def held(seconds, result='CUT'):
+def held(seconds, result='CUT', shape=None):
     """A press held ``seconds`` on a 2 m box, its steps as the tool runs them (one per tick when it grew enough)."""
     fresh()
+    if shape:
+        C.scene.mch_press.shape = shape
     C.scene.mch_settings.auto_apply = True
     C.scene.mch_cut.depth_mode, C.scene.mch_cut.depth = 'THROUGH', 0.1
     p = cube('P', size=2.0)
     v0 = vol(p)
-    pr = pc.Press(C, p, pc.stamp_loops(C, TOP.to_screen(Vector((0, 0, 1))), st), TOP, result)
-    pr.cut_to(C, pc.depth_at(st, pr.size, 0.0))
+    ps = C.scene.mch_press
+    pr = pc.Press(C, p, pc.stamp_loops(C, TOP.to_screen(Vector((0, 0, 1))), ps), TOP, result)
+    pr.cut_to(C, pc.depth_at(ps, pr.size, 0.0))
     t = 0.0
     while t < seconds:
         t += pc.TICK
-        d = pc.depth_at(st, pr.size, t)
+        d = pc.depth_at(ps, pr.size, t)
         if d - pr.depth >= pc.STEP_MIN * pr.size:
             pr.cut_to(C, d)
     pr.finish(C)
@@ -81,14 +84,14 @@ check('Held 0 / 0.5 / 1.5 s: cut deeper the longer it is held (the pocket as dee
       'a closed solid; the Cut settings back as they were (Through All)',
       runs[0][1] < runs[1][1] < runs[2][1] and runs[0][3] < runs[1][3] < runs[2][3]
       and all(abs(r[1] - r[2]) < 2e-3 and r[4] == 0 and r[5] == 'THROUGH' for r in runs)
-      and abs(runs[2][1] - pc.depth_at(st, 2.0, 1.5)) < 0.05, runs)
+      and abs(runs[2][1] - pc.depth_at(C.scene.mch_press, 2.0, 1.5)) < 0.05, runs)
 check('... the kept copy of the part gone afterwards', not [m for m in bpy.data.meshes
                                                             if m.name.startswith('MCH_PressBackup')])
 
 fresh()
 p = cube('P', size=2.0)
 n0 = len(p.data.vertices)
-pr = pc.Press(C, p, pc.stamp_loops(C, TOP.to_screen(Vector((0, 0, 1))), st), TOP, 'CUT')
+pr = pc.Press(C, p, pc.stamp_loops(C, TOP.to_screen(Vector((0, 0, 1))), C.scene.mch_press), TOP, 'CUT')
 pr.cut_to(C, 0.3)
 cut_once = len(p.data.vertices)
 pr.cancel(C)
@@ -128,16 +131,17 @@ check('Save Shape: a Cut drawn with a lasso is kept as the last outline', kept i
 stem = cut_presets.save_loops('House Notch', kept)
 lp = cut_presets.load_loops(stem)
 xs, ys = [q[0] for q in lp[0]], [q[1] for q in lp[0]]
+st = C.scene.mch_press
 items = [i[0] for i in pc._shape_items(st, C)]
 check('... saved: normalized (centred, the long side 1, its proportions kept), in the Press Cut shape list',
       abs(min(xs) + 0.5) < 1e-6 and abs(max(xs) - 0.5) < 1e-6 and abs((max(ys) - min(ys)) - 70 / 120) < 1e-4
       and stem in items, (round(min(xs), 3), round(max(xs), 3), round(max(ys) - min(ys), 4)))
-st.shape = stem
-p, pr, v0 = held(0.5)
+p, pr, v0 = held(0.5, shape=stem)
+st = C.scene.mch_press
 sx = sorted({round((p.matrix_world @ v.co).x, 3) for v in p.data.vertices if pocket_depth(p) and
              abs((p.matrix_world @ v.co).z - (1 - pr.depth)) < 1e-3})
 check('... and pressed with it: the pocket has the saved outline (as wide as the stamp: 2 x Size px)',
-      pr.depth > 0 and sx and abs((sx[-1] - sx[0]) - 2 * st.size / 100.0) < 0.02, (round(pr.depth, 4), sx[:1], sx[-1:]))
+      st.shape == stem and pr.depth > 0 and sx and abs((sx[-1] - sx[0]) - 2 * st.size / 100.0) < 0.02, (round(pr.depth, 4), sx[:1], sx[-1:]))
 check('... Press Cut\'s own stamp is not "the last outline" (it stays the drawn one)',
       cut_presets.LAST_LOOPS[0] is kept)
 
