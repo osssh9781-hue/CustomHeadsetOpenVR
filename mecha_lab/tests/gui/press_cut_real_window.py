@@ -136,7 +136,20 @@ def flow():
     xdo('mousedown', 1)                              # a long press
     yield 1.0
     shot('2_holding_B.png')
-    yield 1.0
+    from mecha_lab import press_cut as pc0
+    log('RED while holding B (triangles, depth, deepest):', pc0.LAST_RED[0])
+    w2, a2, r2 = view3d()                             # (the red pocket seen at an angle, still holding)
+    rv2 = a2.spaces.active.region_3d
+    keep = (rv2.view_rotation.copy(), rv2.view_location.copy(), rv2.view_distance, rv2.view_perspective)
+    from mathutils import Euler as _E
+    rv2.view_perspective = 'PERSP'
+    rv2.view_rotation = _E((0.75, 0.0, 0.55)).to_quaternion()
+    rv2.view_location = (0.0, 0.0, 0.6)
+    rv2.view_distance = 4.5
+    yield 0.5
+    shot('2b_holding_B_angle.png')
+    rv2.view_rotation, rv2.view_location, rv2.view_distance, rv2.view_perspective = keep
+    yield 0.5
     xdo('mouseup', 1)
     yield 1.5
     b_after = pocket(boxes['B'])

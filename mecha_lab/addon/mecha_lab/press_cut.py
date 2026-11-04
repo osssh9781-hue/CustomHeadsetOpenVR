@@ -47,6 +47,7 @@ def _shape_picked(self, context):
     _redraw(self, context)
 
 
+LAST_RED = [None]              # 0.24.95 (triangles, press depth, deepest) of the red pocket shown last
 DRAWN = [None]                 # 0.24.95 the outline drawn with Shift + drag (normalized loops) - this session only
 
 
@@ -258,8 +259,9 @@ class SurfaceFloor:
         b = np.array([t for _x, _y, t in k])
         coef, *_ = np.linalg.lstsq(A, b, rcond=None)
         span = max(abs(b.max() - b.min()), 1e-9)
-        return float(np.abs(A @ coef - b).max()) <= max(1e-4, 2e-3 * span)   # (the screen rays are float32: a flat
-        #                                                                       face reads a hair off a plane)
+        # (the screen rays are float32 from far behind the view: a flat face reads up to ~2e-4 off a plane - 0.24.95
+        #  a flat top seen from straight above came out "curved" and got a grid floor; half a millimetre is flat)
+        return float(np.abs(A @ coef - b).max()) <= max(5e-4, 2e-3 * span)
 
     def _ray_t(self, xy):
         """How far along the view the first surface of the parts under screen ``xy`` lies (None: none there)."""
@@ -386,6 +388,71 @@ class Press:
         self.depth = 0.0
         self.pieces = []
         self.message = ''
+        self._bvh = None
+
+    def _old_surface(self):
+        """The part's surface as it was (world space): how deep a point of the cut lies under it."""
+        if self._bvh is None:
+            import numpy as np
+            from mathutils.bvhtree import BVHTree
+            me = self.backup
+            co = np.empty(len(me.vertices) * 3)
+            me.vertices.foreach_get('co', co)
+            mw = np.array(self.target.matrix_world)
+            co = co.reshape(-1, 3) @ mw[:3, :3].T + mw[:3, 3]
+            self._bvh = BVHTree.FromPolygons([tuple(v) for v in co], [tuple(p.vertices) for p in me.polygons])
+        return self._bvh
+
+    def pocket(self):
+        """0.24.95 (user: "깊이 들어갈 때 메쉬 쪽에 붉은색으로 얼마나 들어가고 있는지 보이게 해 줘") The faces the press
+        made on the part - its pocket's walls and floor - as triangles (world space, a hair towards the view) with a
+        colour per corner: light red at the surface to deep red at the bottom (how far below the part as it was, over
+        the press depth).  Returns (positions, colours, deepest)."""
+        import numpy as np
+        from mathutils import Vector
+        me = self.target.data
+        if self.depth <= 0.0 or self.backup is None or not len(me.polygons):
+            return [], [], 0.0
+        bvh = self._old_surface()
+        mw = np.array(self.target.matrix_world)
+        co = np.empty(len(me.vertices) * 3)
+        me.vertices.foreach_get('co', co)
+        co = co.reshape(-1, 3) @ mw[:3, :3].T + mw[:3, 3]
+        me.calc_loop_triangles()
+        tv = np.empty(len(me.loop_triangles) * 3, np.int32)
+        me.loop_triangles.foreach_get('vertices', tv)
+        tv = tv.reshape(-1, 3)
+        cen = co[tv].mean(axis=1)
+        idx = np.arange(len(tv))
+        xy = _screen_np(self.projector, cen)         # (only round the stamp: its screen box and a margin)
+        if xy is not None:
+            pts = [p for lp in self.loops for p in lp]
+            x0, x1 = min(p[0] for p in pts), max(p[0] for p in pts)
+            y0, y1 = min(p[1] for p in pts), max(p[1] for p in pts)
+            m = 0.15 * max(x1 - x0, y1 - y0) + 4.0
+            idx = np.nonzero((xy[:, 0] >= x0 - m) & (xy[:, 0] <= x1 + m) & (xy[:, 1] >= y0 - m)
+                             & (xy[:, 1] <= y1 + m))[0]
+        tol = max(1e-7, min(1e-4 * self.size, 0.05 * self.depth))
+        shift = -np.array(self.projector.view_dir) * (1e-3 * self.size)
+        under = {}
+
+        def below(i):
+            d = under.get(i)
+            if d is None:
+                hit = bvh.find_nearest(Vector(co[i]))
+                d = hit[3] if hit[0] is not None else 0.0
+                under[i] = d
+            return d
+        pos, col = [], []
+        for t in idx:
+            hit = bvh.find_nearest(Vector(cen[t]))
+            if hit[0] is None or hit[3] <= tol:
+                continue                               # (a face of the part as it was)
+            for i in tv[t]:
+                k = min(1.0, below(int(i)) / self.depth)
+                pos.append(tuple(float(v) for v in co[i] + shift))
+                col.append((1.0 - 0.1 * k, 0.5 * (1.0 - k), 0.4 * (1.0 - k), 0.35 + 0.45 * k))
+        return pos, col, float(max(under.values(), default=0.0))
 
     def floor(self, depth):
         """The cutter's far cap at ``depth`` (``core_geometry.FLOOR``): None for a flat stamp on a flat cut."""
@@ -610,6 +677,48 @@ def draw_cursor(context, xy):
         pass
 
 
+def _screen_np(projector, pts):
+    """Region px of world points ``pts`` (N x 3) for a view projector or a test projector; None if unknown."""
+    import numpy as np
+    try:
+        if hasattr(projector, 'ppu') and hasattr(projector, '_axes'):
+            right, up = projector._axes()
+            d = pts - np.array(projector.center)
+            return np.stack([projector.size[0] / 2 + d @ np.array(right) * projector.ppu,
+                             projector.size[1] / 2 + d @ np.array(up) * projector.ppu], 1)
+        rv3d, region = getattr(projector, 'rv3d', None), getattr(projector, 'region', None)
+        if rv3d is None or region is None:
+            return None
+        h = np.c_[pts, np.ones(len(pts))] @ np.array(rv3d.perspective_matrix).T
+        w = h[:, 3:4].copy()
+        w[np.abs(w) < 1e-9] = 1e-9
+        ndc = h[:, :2] / w
+        return np.stack([(ndc[:, 0] + 1.0) * 0.5 * region.width, (ndc[:, 1] + 1.0) * 0.5 * region.height], 1)
+    except Exception:
+        return None
+
+
+def _draw_pocket(op):
+    """0.24.95 While pressing: the pocket on the part in red, deeper = darker (``Press.pocket``)."""
+    try:
+        if bpy.context.region != op.region or not op.red[0]:
+            return
+        import gpu
+        from gpu_extras.batch import batch_for_shader
+        if op.red_batch is None:
+            op.red_sh = gpu.shader.from_builtin('SMOOTH_COLOR')
+            op.red_batch = batch_for_shader(op.red_sh, 'TRIS', {'pos': op.red[0], 'color': op.red[1]})
+        gpu.state.blend_set('ALPHA')
+        gpu.state.depth_test_set('LESS_EQUAL')
+        gpu.state.depth_mask_set(False)
+        op.red_batch.draw(op.red_sh)
+        gpu.state.depth_mask_set(True)
+        gpu.state.depth_test_set('NONE')
+        gpu.state.blend_set('NONE')
+    except Exception:
+        pass
+
+
 def _draw_holding(op):
     try:
         import blf
@@ -676,21 +785,36 @@ class MCH_OT_press_cut(bpy.types.Operator):
             self.report({'WARNING'}, msg[:200] or 'Nothing was cut')
             return {'CANCELLED'}
         self.full = False
+        self.red, self.red_batch, self.red_sh = ([], [], 0.0), None, None
+        self._update_red()
         self.handle = bpy.types.SpaceView3D.draw_handler_add(_draw_holding, (self,), 'WINDOW', 'POST_PIXEL')
+        self.handle_red = bpy.types.SpaceView3D.draw_handler_add(_draw_pocket, (self,), 'WINDOW', 'POST_VIEW')
         self.timer = context.window_manager.event_timer_add(TICK, window=context.window)
         context.window_manager.modal_handler_add(self)
         region.tag_redraw()
         return {'RUNNING_MODAL'}
+
+    def _update_red(self):
+        """The red pocket of the press as it is now (never stops the press)."""
+        try:
+            self.red = self.press.pocket()
+        except Exception as ex:
+            print('[Mecha Lab] press pocket:', ex)
+            self.red = ([], [], 0.0)
+        self.red_batch = None
+        LAST_RED[0] = (len(self.red[0]) // 3, self.press.depth, self.red[2])
 
     def _end(self, context):
         try:
             context.window_manager.event_timer_remove(self.timer)
         except (ValueError, RuntimeError, ReferenceError):
             pass
-        try:
-            bpy.types.SpaceView3D.draw_handler_remove(self.handle, 'WINDOW')
-        except (ValueError, RuntimeError):
-            pass
+        for h in (self.handle, getattr(self, 'handle_red', None)):
+            try:
+                if h is not None:
+                    bpy.types.SpaceView3D.draw_handler_remove(h, 'WINDOW')
+            except (ValueError, RuntimeError):
+                pass
         self.region.tag_redraw()
 
     def modal(self, context, event):
@@ -703,6 +827,7 @@ class MCH_OT_press_cut(bpy.types.Operator):
             if d - self.press.depth >= STEP_MIN * self.press.size or self.full:
                 if not self.press.cut_to(context, d):
                     self.full = True              # (it does not go deeper cleanly: stays where it was)
+                self._update_red()
                 self.region.tag_redraw()
             return {'RUNNING_MODAL'}
         if et == 'LEFTMOUSE' and ev == 'RELEASE':

@@ -406,6 +406,50 @@ check('... Shift + LMB in the Press Cut tool is the drawing - the shared shape s
       and 'mch.lasso_sketch_key' in names and names.index('mch.lasso_sketch_clear') < names.index('mch.exit_tool'),
       press_keys2)
 
+# 0.24.95 (user: "깊이 들어갈 때 메쉬 쪽에 붉은색으로 얼마나 들어가고 있는지 보이게 해 줘") while holding: the pocket's
+# walls and floor in red, deeper = darker
+reds = {}
+for result in ('CUT', 'SPLIT'):
+    fresh()
+    C.scene.mch_settings.auto_apply = True
+    p = cube('P', size=2.0)
+    xy = TOP.to_screen(Vector((0, 0, 1)))
+    lps = pc.stamp_loops(C, xy, C.scene.mch_press)
+    pr = pc.Press(C, p, lps, TOP, result, center=xy, spacing=6.0)
+    empty = pr.pocket()
+    pr.cut_to(C, 0.3)
+    pos, col, deep = pr.pocket()
+    r_px = max(math.dist(q, xy) for lp in lps for q in lp) / 100.0
+    zs = [q[2] for q in pos]
+    inside = all(math.hypot(q[0], q[1]) <= r_px + 1e-3 for q in pos)
+    floor_a = [c[3] for q, c in zip(pos, col) if abs(q[2] - (1.0 - 0.3)) < 0.01]
+    rim_a = [c[3] for q, c in zip(pos, col) if abs(q[2] - 1.0) < 0.01]
+    reds[result] = (len(pos), round(min(zs), 3), round(max(zs), 3), inside, round(deep, 3),
+                    round(min(floor_a), 2) if floor_a else None, round(max(rim_a), 2) if rim_a else None,
+                    empty[0] == [])
+    pr.finish(C)
+check('While pressing (Cut and Split): the pocket\'s walls and floor as red triangles, only inside the stamp, from the '
+      'surface (z 1) down to the press depth (0.3); the floor darkest (alpha 0.8), the rim lightest (0.35); nothing '
+      'before the first cut',
+      all(v[0] > 0 and abs(v[1] - 0.7) < 0.01 and v[2] <= 1.002 and v[3] and abs(v[4] - 0.3) < 0.01
+          and v[5] is not None and v[5] >= 0.79 and v[6] is not None and v[6] <= 0.36 and v[7] for v in reds.values()),
+      reds)
+
+# ... and a flat face seen from straight above stays flat for Follow (float32 rays read it up to 2e-4 off a plane: it
+# was taken for curved and got a grid floor of ~550 faces)
+fresh()
+C.scene.mch_settings.auto_apply = True
+p = cube('P', size=2.0)
+C.scene.mch_press.size = 45.0
+xy = TOP.to_screen(Vector((0, 0, 1)))
+pr = pc.Press(C, p, pc.stamp_loops(C, xy, C.scene.mch_press), TOP, 'CUT', center=xy, spacing=4.5, follow=True)
+pr.cut_to(C, 0.226)
+nf = len(p.data.polygons)
+planar = pr.sfloor.planar
+pr.finish(C)
+check('Follow on a flat face seen from straight above: a flat floor (the cut as clean as Flat), a closed solid',
+      planar and nf < 40 and non_manifold(p) == 0, (planar, nf))
+
 # 0.24.95 (user: "원래 쓰던 라쏘랑 스케치 다 넣어 줘") the stamp drawn as several outlines - a Sketch's islands and holes
 from mecha_lab import lasso_sketch, top_bar
 fresh()
