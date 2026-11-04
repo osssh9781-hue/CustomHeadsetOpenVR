@@ -805,6 +805,8 @@ def cut_ramp(context, targets, loops, projector, edge=None, live=True):
 @_with_finish_notes
 def perform_closed(context, mode, targets, loops, projector, invert=False):
     """Cut / Split all targets with closed screen loops. Returns a report string."""
+    from . import cut_presets                     # 0.24.95 the last drawn outline (Save Shape)
+    cut_presets.remember(loops)
     scene = context.scene
     cut = scene.mch_cut
     auto_apply = scene.mch_settings.auto_apply if hasattr(scene, 'mch_settings') else True
@@ -2176,6 +2178,12 @@ class StrokeLogic:
                 rec = last_op.capture(self, context)
         except Exception:
             rec = None
+        try:                                   # 0.24.95 any lasso tool's outline: Save Shape can keep it
+            if getattr(fn, '__name__', '') == '_execute_closed':
+                from . import cut_presets
+                cut_presets.remember(self._current_loops(self.ctrl_held, self.shift_held))
+        except Exception:
+            pass
         before = set(bpy.data.objects.keys()) if rec is not None else None
         from . import toast                    # 0.24.82 what went wrong, drawn in the viewport for a moment
         try:

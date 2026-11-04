@@ -95,6 +95,18 @@ def groups(context, tool):
             extra.append(_cell('drop', '', action=('menu_enum',), data=ws, prop='sim_preset', width=110))
     if extra:
         out.append(('', extra))
+    if tool == 'PRESS' and hasattr(scene, 'mch_press'):          # 0.24.95 Press Cut: the stamp and how it presses
+        pr = scene.mch_press
+        out.append(('Press', _enum_segs(pr, 'result', (('CUT', 'Cut'), ('SPLIT', 'Split'))) + [
+            _cell('drop', '', action=('menu_enum',), data=pr, prop='shape', width=150),
+            _cell('mini', 'Size', action=('number',), data=pr, prop='size', width=110),
+            _cell('mini', 'Start', action=('number',), data=pr, prop='start', width=110),
+            _cell('mini', 'Speed', action=('number',), data=pr, prop='speed', width=120),
+            _cell('mini', 'Max', action=('number',), data=pr, prop='max_depth', width=100)]))
+    if tool in {'CUT', 'SPLIT', 'PRESS'}:                          # 0.24.95 the last drawn outline -> a shape
+        from . import cut_presets
+        if cut_presets.LAST_LOOPS[0] is not None:
+            out.append(('', [_cell('seg', 'Save Shape', action=('op', 'mch.save_cut_shape', {}))]))
     cut = getattr(scene, 'mch_cut', None)
     if cut is not None and drawing:
         out.append(('Target', [_cell('seg', label, cut.targets == ident, ('enum', ident), cut, 'targets')

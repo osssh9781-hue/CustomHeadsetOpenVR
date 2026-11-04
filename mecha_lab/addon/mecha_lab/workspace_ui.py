@@ -24,6 +24,7 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
 
 from . import primitive_place
+from . import press_cut
 from . import screw_stamp
 from . import wrinkle_lines
 from . import tool_state as ts
@@ -645,6 +646,24 @@ class MCH_TOOL_split(bpy.types.WorkSpaceTool):
         cut_engine.draw_stamp_cursor(context, xy)
 
 
+class MCH_TOOL_press_cut(bpy.types.WorkSpaceTool):
+    bl_space_type = 'VIEW_3D'
+    bl_context_mode = 'OBJECT'
+    bl_idname = 'mecha.press_cut'
+    bl_label = 'Mecha Press Cut'
+    bl_description = ('A saved shape as a stamp: press on a part and hold - deeper the longer you hold.\n'
+                      'Release: keep, Esc / RMB while holding: put back, [ ] size, R turn')
+    bl_icon = 'ops.generic.cursor'
+    bl_widget = None
+    bl_keymap = press_cut.TOOL_KEYMAP
+
+    def draw_settings(context, layout, tool):
+        _draw_tool_settings(context, layout, tool)
+
+    def draw_cursor(context, tool, xy):
+        press_cut.draw_cursor(context, xy)
+
+
 class MCH_TOOL_box_hide(bpy.types.WorkSpaceTool):
     bl_space_type = 'VIEW_3D'
     bl_context_mode = 'OBJECT'
@@ -1080,7 +1099,7 @@ class MCH_TOOL_primitive(bpy.types.WorkSpaceTool):
         _draw_tool_settings(context, layout, tool)
 
 
-NATIVE_TOOLS = (MCH_TOOL_cut, MCH_TOOL_split, MCH_TOOL_base_mesh, MCH_TOOL_primitive, MCH_TOOL_armor_plate,
+NATIVE_TOOLS = (MCH_TOOL_cut, MCH_TOOL_split, MCH_TOOL_press_cut, MCH_TOOL_base_mesh, MCH_TOOL_primitive, MCH_TOOL_armor_plate,
                 MCH_TOOL_cloth_wrinkle, MCH_TOOL_box_hide, MCH_TOOL_plate_detail, MCH_TOOL_plate_detail2, MCH_TOOL_plate_detail3,
                 MCH_TOOL_screw_stamp, MCH_TOOL_cloth_drape, MCH_TOOL_lasso_zone, MCH_TOOL_wrinkle_lines, MCH_TOOL_creature_base, MCH_TOOL_creature_plate,
                 MCH_TOOL_belt_maker, MCH_TOOL_creature_spike, MCH_TOOL_creature_scales,
@@ -1127,6 +1146,7 @@ def register_native_tools():
     bpy.utils.register_tool(MCH_TOOL_armor_plate, after={MCH_TOOL_primitive.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_cloth_wrinkle, after={MCH_TOOL_armor_plate.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_box_hide, after={MCH_TOOL_split.bl_idname}, group=False)
+    bpy.utils.register_tool(MCH_TOOL_press_cut, after={MCH_TOOL_split.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_plate_detail, after={MCH_TOOL_armor_plate.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_plate_detail2, after={MCH_TOOL_plate_detail.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_plate_detail3, after={MCH_TOOL_plate_detail2.bl_idname}, group=False)

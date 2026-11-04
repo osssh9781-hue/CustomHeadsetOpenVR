@@ -4,7 +4,8 @@ What "brush size" is depends on the tool:
 
 * Line Width (the band of Line mode, Surface Draw, Belt, Surface Curve ...) - Surface Draw also scales the kept
   Width / Height of the next stroke.
-* PNG stamp shape: Stamp Radius.  Mask Brush stroke: Mask Brush Radius.  Screw Stamp: Size.
+* PNG stamp shape: Stamp Radius.  Mask Brush stroke: Mask Brush Radius.  Screw Stamp: Size.  Press Cut: Stamp
+  Size.
 
 Click / Enter / F again = keep, right click / Esc = back.  ``targets`` and ``scale`` are plain (tested headless).
 """
@@ -27,6 +28,8 @@ def targets(context):
     tool = ts.effective_tool(context)
     if tool == 'SCREW':
         return [(scene.mch_screw, 'radius', 'WORLD', False)], 'Screw Size'
+    if tool == 'PRESS' and hasattr(scene, 'mch_press'):       # 0.24.95 Press Cut: the stamp's size
+        return [(scene.mch_press, 'size', 'PX', False)], 'Stamp Size'
     if brush.shape == 'CUSTOM':
         return [(brush, 'custom_size', 'PX', False)], 'Stamp Radius'
     if tool == 'MASK' and brush.shape == 'STROKE':

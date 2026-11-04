@@ -296,6 +296,101 @@ def import_png(filepath, name, mode='LUMINANCE', threshold=0.5, invert=False,
     return out
 
 
+LAST_LOOPS = [None]            # 0.24.95 the last closed outline drawn (region px loops) - Save Shape keeps it
+QUIET = [False]                # (Press Cut's own stamp is not "drawn")
+
+
+def remember(loops):
+    """0.24.95 a closed outline was just drawn (Cut / Split / a lasso tool): kept for Save Shape (the session only)."""
+    if QUIET[0]:
+        return
+    try:
+        lps = [[(float(p[0]), float(p[1])) for p in lp] for lp in (loops or []) if len(lp) >= 3]
+    except (TypeError, ValueError, IndexError):
+        return
+    if lps:
+        LAST_LOOPS[0] = lps
+
+
+def normalize_loops(loops):
+    """Loops of any size / place -> centred on their box, the longer side 1 (they span -0.5 .. 0.5: the cut shape
+    format ``custom_loops`` scales)."""
+    pts = [p for lp in loops for p in lp]
+    if len(pts) < 3:
+        raise cg.CutError('The outline is too small to save.')
+    xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+    w, h = max(xs) - min(xs), max(ys) - min(ys)
+    span = max(w, h)
+    if span < 1e-9:
+        raise cg.CutError('The outline is too small to save.')
+    cx, cy = (max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2
+    out = []
+    for lp in loops:
+        q = [((x - cx) / span, (y - cy) / span) for x, y in lp]
+        clean = [q[0]]
+        for p in q[1:]:                                  # (no repeated point)
+            if math.dist(p, clean[-1]) > 1e-6:
+                clean.append(p)
+        if len(clean) > 3 and math.dist(clean[0], clean[-1]) <= 1e-6:
+            clean.pop()
+        if len(clean) >= 3:
+            out.append([[round(x, 6), round(y, 6)] for x, y in clean])
+    if not out:
+        raise cg.CutError('The outline is too small to save.')
+    return out
+
+
+def _raster(loops, px=128):
+    """A picture of normalized loops (even-odd fill: holes stay open), light on clear."""
+    import numpy as np
+    g = (np.arange(px) + 0.5) / px * 1.1 - 0.55
+    X, Y = np.meshgrid(g, g)
+    inside = np.zeros((px, px), bool)
+    for lp in loops:
+        a = np.array(lp, float)
+        b = np.roll(a, -1, axis=0)
+        for (x0, y0), (x1, y1) in zip(a, b):
+            cross = (y0 > Y) != (y1 > Y)
+            with np.errstate(divide='ignore', invalid='ignore'):
+                xi = x0 + (Y - y0) * (x1 - x0) / (y1 - y0)
+            inside ^= cross & (X < xi)
+    rgba = np.zeros((px, px, 4), np.float32)
+    rgba[inside] = (0.86, 0.88, 0.92, 1.0)
+    return rgba
+
+
+def save_loops(name, loops, refresh=True):
+    """0.24.95 Save Shape: drawn outline loops (any size, region px) -> a cut shape in the user's shape folder (the
+    loops normalized + a small picture); returns its stem (the Press Cut / Custom stamp list key)."""
+    norm = normalize_loops(loops)
+    if sum(len(lp) for lp in norm) > MAX_POINTS:
+        raise cg.CutError(f'The outline has more than {MAX_POINTS} points.')
+    folder = preset_folder()
+    basename = re.sub(r'[^A-Za-z0-9_-]+', '_', name).strip('_')[:50] or 'Shape'
+    stem = basename + '_' + uuid.uuid4().hex[:16]
+    src = folder / (stem + '.png')
+    px = 128
+    img = bpy.data.images.new('MCH_ShapeThumb', px, px, alpha=True)
+    try:
+        img.pixels.foreach_set(_raster(norm, px).ravel())
+        img.file_format = 'PNG'
+        img.filepath_raw = str(src)
+        img.save()
+    finally:
+        bpy.data.images.remove(img, do_unlink=True)
+    record = {'schema': SCHEMA, 'name': name, 'source': src.name, 'mode': 'LASSO', 'drawn': True,
+              'loops': norm}
+    out = folder / (stem + '.json')
+    try:
+        out.write_text(json.dumps(record, separators=(',', ':')), encoding='utf-8')
+    except Exception:
+        src.unlink(missing_ok=True)
+        raise
+    if refresh:
+        _refresh_previews()
+    return stem
+
+
 THUMB_PX = 192
 
 

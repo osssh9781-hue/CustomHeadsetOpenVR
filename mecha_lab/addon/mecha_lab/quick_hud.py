@@ -72,6 +72,8 @@ SPEC = {
     'DETAIL3': [(_detail, 'profile'), (_detail, 'height'), (_detail, 'lift')],
     'SDRAW': [(_sdraw, 'profile'), (_sdraw, 'width'), (_sdraw, 'height'), (_sdraw, 'edge')],
     'SCREW': [(_screw, 'kind'), (_screw, 'radius'), (_screw, 'height')],
+    'PRESS': [(_scene('mch_press'), 'result'), (_scene('mch_press'), 'speed'), (_scene('mch_press'), 'start'),
+              (_scene('mch_press'), 'size')],
     'CMOVE': [(_scene('mch_concept'), 'radius_px'), (_scene('mch_concept'), 'strength'),
               (_scene('mch_concept'), 'falloff')],
     'CPATH': [(_scene('mch_concept'), 'path_method'), (_scene('mch_concept'), 'path_area'),

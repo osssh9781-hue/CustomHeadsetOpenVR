@@ -1,0 +1,410 @@
+"""0.24.95 Press Cut (user: "내가 정한 라쏘 모양을 저장해 놓으면 그걸로 잘리는데 약간 밀리면서 잘리는 거지 - 내가 오래
+누르면 더 잘리고 조금 누르면 조금만 잘리는"): a saved shape (a lasso you drew and saved, a built-in one or an imported
+PNG) follows the mouse like a stamp; press on a part and hold - it is cut From Surface, deeper the longer you hold
+(Start + Speed x seconds, of the part's size, up to Max); let go and it stays; Esc / right click while holding puts the
+part back.  Result Cut (a pocket) or Split (the pressed-in plug becomes its own part).  The Cut tool's settings still
+apply (Edge Finish / GN Edge, Split sides, the live Mirror ...): each step is a plain ``perform_closed`` on the part
+as it was at the press (kept), so the pressed cut is exactly the cut a From Surface lasso of that depth makes.
+
+Save Shape: the last closed outline drawn with Cut / Split (lasso, sketch, rectangle ...) or any lasso tool is kept
+for the session (``cut_presets.remember``); Save Shape writes it as a cut shape (``cut_presets.save_loops``) - it is
+then in the shape list of Press Cut and of the Cut / Split Custom stamp, in every file.
+
+[ / ] or F + mouse: stamp size, R / Shift + R turn it 15 degrees.
+"""
+from __future__ import annotations
+
+import math
+import time
+
+import bpy
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
+
+from . import core_geometry as cg
+
+TICK = 0.05                    # (seconds between depth steps while held)
+STEP_MIN = 0.002               # (a new cut only when the depth grew by this x the part's size)
+
+
+def _shape_items(self, context):
+    from . import cut_presets
+    return cut_presets.preset_items(self, context)
+
+
+def _redraw(self, context):
+    for w in getattr(context.window_manager, 'windows', ()):
+        for a in w.screen.areas:
+            if a.type == 'VIEW_3D':
+                a.tag_redraw()
+
+
+class MCH_PG_Press(bpy.types.PropertyGroup):
+    result: EnumProperty(name='Result', items=[
+        ('CUT', 'Cut', 'The shape pressed into the part: a pocket'),
+        ('SPLIT', 'Split', 'The pressed-in plug becomes its own part')], default='CUT')
+    shape: EnumProperty(name='Shape', items=_shape_items, update=_redraw,
+                        description='The stamp: a saved lasso, a built-in shape or an imported PNG')
+    size: FloatProperty(name='Size', default=60.0, min=4.0, max=2000.0, subtype='PIXEL', update=_redraw,
+                        description='Stamp radius on screen ([ / ] change it)')
+    rotation: FloatProperty(name='Rotation', default=0.0, subtype='ANGLE', update=_redraw,
+                            description='Stamp turn (R / Shift + R: 15 degrees)')
+    start: FloatProperty(name='Start', default=0.01, min=0.0005, max=1.0, subtype='FACTOR', precision=3,
+                         description='Depth at the press, of the part\'s size (a quick tap)')
+    speed: FloatProperty(name='Speed', default=0.12, min=0.005, soft_max=1.0, max=5.0, precision=3,
+                         description='Depth added per second held, of the part\'s size')
+    max_depth: FloatProperty(name='Max', default=1.0, min=0.01, max=2.0, subtype='FACTOR', precision=2,
+                             description='The deepest it goes, of the part\'s size (1 = through a part as thick '
+                                         'as it is long)')
+    shape_name: StringProperty(name='Name', default='My Shape')
+
+
+# --- the pressed cut ------------------------------------------------------------------------------------------------
+
+def part_size(ob):
+    pts = cg.object_world_bounds([ob])
+    if not pts:
+        return 1.0
+    lo = [min(p[i] for p in pts) for i in range(3)]
+    hi = [max(p[i] for p in pts) for i in range(3)]
+    return max(max(hi[i] - lo[i] for i in range(3)), 1e-6)
+
+
+def depth_at(st, size, seconds):
+    """The depth after holding ``seconds``: (Start + Speed x seconds) x the part's size, up to Max."""
+    return size * min(st.max_depth, st.start + st.speed * max(0.0, seconds))
+
+
+def stamp_loops(context, center, st=None):
+    """The stamp's outline(s) in region px at ``center`` (the shape at its size and turn)."""
+    from . import cut_engine as ce, cut_presets
+    st = st or context.scene.mch_press
+    norm = cut_presets.load_loops(st.shape)
+    return ce.custom_loops(norm, center, st.size, st.rotation)
+
+
+class Press:
+    """One press on one part: the part as it was (kept), cut again From Surface at each new depth."""
+
+    def __init__(self, context, target, loops, projector, result='CUT'):
+        from . import ramp_edit
+        old = ramp_edit.live_target(context, ramp_edit.ALL_KINDS)
+        if old is not None:                      # (an earlier live cut stays as it is: the Cut Depth set while
+            ramp_edit.finish(old)                #  pressing must not cut it again)
+        self.target = target
+        self.loops = [[tuple(p) for p in lp] for lp in loops]
+        self.projector = projector
+        self.result = result
+        self.size = part_size(target)
+        self.backup = target.data.copy()
+        self.backup.name = 'MCH_PressBackup_' + target.name
+        cut = context.scene.mch_cut
+        self.saved = (cut.depth_mode, cut.depth)
+        self.depth = 0.0
+        self.pieces = []
+        self.message = ''
+
+    def _restore(self):
+        from . import ramp_edit
+        for name in self.pieces:
+            ob = bpy.data.objects.get(name)
+            if ob is not None:
+                me = ob.data
+                bpy.data.objects.remove(ob)
+                if me is not None and me.users == 0:
+                    bpy.data.meshes.remove(me)
+        self.pieces = []
+        ramp_edit._copy_into(self.backup, self.target.data)
+
+    def cut_to(self, context, depth):
+        """The part as it was, cut From Surface ``depth`` deep.  A depth that does not cut cleanly keeps the last
+        one that did; returns False then."""
+        from . import cut_engine as ce, cut_presets
+        cut = context.scene.mch_cut
+        prev = self.depth
+        self._restore()
+        before = set(bpy.data.objects.keys())
+        cut.depth_mode, cut.depth = 'SURFACE', max(depth, 1e-5)
+        cut_presets.QUIET[0] = True              # (the stamp is not "the last drawn outline")
+        try:
+            self.message = ce.perform_closed(context, self.result, [self.target], self.loops, self.projector)
+        except (cg.CutError, RuntimeError) as ex:
+            self.message = str(ex)
+            self._restore()
+            if prev > 0.0 and depth != prev:
+                self.cut_to(context, prev)
+            return False
+        finally:
+            cut_presets.QUIET[0] = False
+        self.pieces = [o.name for o in bpy.data.objects if o.name not in before]
+        self.depth = depth
+        return True
+
+    def _settings_back(self, context):
+        cut = context.scene.mch_cut
+        if (cut.depth_mode, cut.depth) != self.saved:
+            cut.depth_mode, cut.depth = self.saved
+
+    def finish(self, context):
+        self._settings_back(context)
+        if self.backup is not None and self.backup.users == 0:
+            bpy.data.meshes.remove(self.backup)
+        self.backup = None
+
+    def cancel(self, context):
+        if self.backup is not None:
+            self._restore()
+        self.finish(context)
+
+
+def press_target(context, projector, xy):
+    """The part under ``xy`` - the nearest mesh the mouse is on (Target Auto), only a selected one (Selected) or only
+    the active one (Active) - or None."""
+    from . import cut_engine as ce
+    mode = getattr(context.scene.mch_cut, 'targets', 'AUTO')
+    if mode == 'ACTIVE':
+        act = context.view_layer.objects.active
+        ok = act is not None and act.type == 'MESH' and ce.surface_hit(context, [act], projector, xy) is not None
+        return act if ok else None
+    picked = ce.pick_mesh_under(context, projector, xy)
+    if picked is None or not ce._auto_candidate(picked):
+        return None
+    if mode == 'SELECTED' and not picked.select_get():
+        return None
+    return picked
+
+
+# --- drawing --------------------------------------------------------------------------------------------------------
+
+def draw_cursor(context, xy):
+    """Idle stamp preview at the cursor (WorkSpaceTool.draw_cursor, window px)."""
+    try:
+        import gpu
+        from . import cut_engine as ce
+        st = context.scene.mch_press
+        loops = stamp_loops(context, (float(xy[0]), float(xy[1])), st)
+        sh = ce._shader()
+        gpu.state.blend_set('ALPHA')
+        col = (1.0, 0.62, 0.25, 1.0) if st.result == 'CUT' else (0.45, 1.0, 0.35, 1.0)
+        for lp in loops:
+            ce._draw_lines(sh, lp, col, closed=True, width=1.5)
+        gpu.state.blend_set('NONE')
+    except Exception:          # never break viewport drawing
+        pass
+
+
+def _draw_holding(op):
+    try:
+        import blf
+        import gpu
+        from . import cut_engine as ce
+        if bpy.context.region != op.region:
+            return
+        sh = ce._shader()
+        gpu.state.blend_set('ALPHA')
+        for lp in op.press.loops:
+            ce._draw_lines(sh, lp, (1.0, 0.85, 0.3, 1.0), closed=True, width=2.5)
+        gpu.state.blend_set('NONE')
+        x, y = op.anchor
+        blf.size(0, 15)
+        blf.color(0, 1.0, 0.92, 0.6, 1.0)
+        blf.position(0, x + op.press_st.size * 0.8 + 10, y, 0)
+        unit = bpy.context.scene.unit_settings.scale_length or 1.0
+        blf.draw(0, f'{op.press.result.title()} {op.press.depth * unit * 100:.1f} cm  (hold: deeper, release: keep, '
+                    'Esc: back)')
+    except Exception:
+        pass
+
+
+# --- operators ------------------------------------------------------------------------------------------------------
+
+class MCH_OT_press_cut(bpy.types.Operator):
+    """Press and hold on a part: the shape is cut in, deeper the longer you hold; let go to keep it"""
+    bl_idname = 'mch.press_cut'
+    bl_label = 'Press Cut'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def invoke(self, context, event):
+        region, rv3d = context.region, getattr(context, 'region_data', None)
+        if region is None or rv3d is None or region.type != 'WINDOW':
+            return {'PASS_THROUGH'}
+        from . import cut_engine as ce
+        st = context.scene.mch_press
+        xy = (float(event.mouse_region_x), float(event.mouse_region_y))
+        projector = ce.make_projector(region, rv3d)
+        target = press_target(context, projector, xy)
+        if target is None:
+            self.report({'WARNING'}, 'Press on a part')
+            return {'CANCELLED'}
+        try:
+            loops = stamp_loops(context, xy, st)
+        except (cg.CutError, ValueError, OSError) as ex:
+            self.report({'WARNING'}, str(ex))
+            return {'CANCELLED'}
+        try:
+            from . import safety_save
+            safety_save.checkpoint('Mecha Press Cut')
+        except Exception:
+            pass
+        self.press = Press(context, target, loops, projector, st.result)
+        self.press_st = st
+        self.region = region
+        self.anchor = xy
+        self.t0 = time.perf_counter()
+        if not self.press.cut_to(context, depth_at(st, self.press.size, 0.0)):
+            msg = self.press.message
+            self.press.cancel(context)
+            self.report({'WARNING'}, msg[:200] or 'Nothing was cut')
+            return {'CANCELLED'}
+        self.full = False
+        self.handle = bpy.types.SpaceView3D.draw_handler_add(_draw_holding, (self,), 'WINDOW', 'POST_PIXEL')
+        self.timer = context.window_manager.event_timer_add(TICK, window=context.window)
+        context.window_manager.modal_handler_add(self)
+        region.tag_redraw()
+        return {'RUNNING_MODAL'}
+
+    def _end(self, context):
+        try:
+            context.window_manager.event_timer_remove(self.timer)
+        except (ValueError, RuntimeError, ReferenceError):
+            pass
+        try:
+            bpy.types.SpaceView3D.draw_handler_remove(self.handle, 'WINDOW')
+        except (ValueError, RuntimeError):
+            pass
+        self.region.tag_redraw()
+
+    def modal(self, context, event):
+        et, ev = event.type, event.value
+        if et == 'TIMER' and not self.full:
+            st = self.press_st
+            d = depth_at(st, self.press.size, time.perf_counter() - self.t0)
+            if d >= self.press.size * st.max_depth - 1e-9:
+                self.full = True
+            if d - self.press.depth >= STEP_MIN * self.press.size or self.full:
+                if not self.press.cut_to(context, d):
+                    self.full = True              # (it does not go deeper cleanly: stays where it was)
+                self.region.tag_redraw()
+            return {'RUNNING_MODAL'}
+        if et == 'LEFTMOUSE' and ev == 'RELEASE':
+            self._end(context)
+            msg = self.press.message
+            depth = self.press.depth
+            self.press.finish(context)
+            self.report({'INFO'}, f'Press {self.press.result.title()}: {depth:.4f} deep | {msg[:160]}')
+            return {'FINISHED'}
+        if (et == 'ESC' and ev == 'PRESS') or (et == 'RIGHTMOUSE' and ev == 'PRESS'):
+            self._end(context)
+            self.press.cancel(context)
+            self.report({'INFO'}, 'Press Cut: put back')
+            return {'CANCELLED'}
+        return {'RUNNING_MODAL'}
+
+
+class MCH_OT_press_adjust(bpy.types.Operator):
+    """Press Cut stamp: size ([ / ]) or turn (R / Shift + R)"""
+    bl_idname = 'mch.press_adjust'
+    bl_label = 'Press Stamp Size / Turn'
+    bl_options = {'INTERNAL'}
+
+    size: FloatProperty(default=1.0)
+    turn: FloatProperty(default=0.0)
+
+    def execute(self, context):
+        st = context.scene.mch_press
+        st.size = max(4.0, min(2000.0, st.size * self.size))
+        a = st.rotation + math.radians(self.turn)
+        st.rotation = math.atan2(math.sin(a), math.cos(a))
+        return {'FINISHED'}
+
+
+class MCH_OT_save_cut_shape(bpy.types.Operator):
+    """Save the last outline you drew (Cut / Split / any lasso: lasso, sketch, rectangle ...) as a cut shape - for
+    Press Cut and the Cut / Split Custom stamp, in every file"""
+    bl_idname = 'mch.save_cut_shape'
+    bl_label = 'Save Shape'
+    bl_options = {'REGISTER'}
+
+    name: StringProperty(name='Name', default='')
+    use: BoolProperty(name='Use It', default=True, description='Make it the Press Cut shape at once')
+
+    @classmethod
+    def poll(cls, context):
+        from . import cut_presets
+        return cut_presets.LAST_LOOPS[0] is not None
+
+    def invoke(self, context, event):
+        from . import cut_presets
+        if not self.name:
+            self.name = f'My Shape {len(cut_presets.list_presets()) + 1}'
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        from . import cut_presets
+        loops = cut_presets.LAST_LOOPS[0]
+        if not loops:
+            self.report({'WARNING'}, 'Draw an outline first (Cut / Split / a lasso)')
+            return {'CANCELLED'}
+        try:
+            name = self.name or f'My Shape {len(cut_presets.list_presets()) + 1}'
+            stem = cut_presets.save_loops(name, loops)
+        except (cg.CutError, OSError, ValueError) as ex:
+            self.report({'WARNING'}, str(ex))
+            return {'CANCELLED'}
+        if self.use:
+            try:
+                context.scene.mch_press.shape = stem
+            except TypeError:
+                pass
+        self.report({'INFO'}, f'Saved shape "{name}"')
+        return {'FINISHED'}
+
+
+def draw(layout, context):
+    """The tool's settings (Sidebar > Mecha Lab)."""
+    from . import cut_presets
+    st = context.scene.mch_press
+    col = layout.column(align=True)
+    col.row(align=True).prop(st, 'result', expand=True)
+    col.template_icon_view(st, 'shape', show_labels=True, scale=5.0, scale_popup=4.0)
+    col.prop(st, 'size')
+    col.prop(st, 'rotation')
+    col = layout.column(align=True)
+    col.label(text='Hold = deeper')
+    col.prop(st, 'start')
+    col.prop(st, 'speed')
+    col.prop(st, 'max_depth')
+    row = layout.row(align=True)
+    row.enabled = cut_presets.LAST_LOOPS[0] is not None
+    row.operator('mch.save_cut_shape', text='Save Last Outline as Shape', icon='FILE_TICK')
+    layout.label(text='Press on a part and hold: deeper the longer you hold', icon='INFO')
+    layout.label(text='Release: keep  |  Esc / RMB: back  |  [ ] size  |  R turn')
+
+
+TOOL_KEYMAP = (
+    ('mch.quick_hud_press', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'any': True}, None),
+    ('mch.press_cut', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, None),
+    ('mch.press_adjust', {'type': 'LEFT_BRACKET', 'value': 'PRESS'}, {'properties': [('size', 1 / 1.15)]}),
+    ('mch.press_adjust', {'type': 'RIGHT_BRACKET', 'value': 'PRESS'}, {'properties': [('size', 1.15)]}),
+    ('mch.press_adjust', {'type': 'R', 'value': 'PRESS'}, {'properties': [('turn', 15.0)]}),
+    ('mch.press_adjust', {'type': 'R', 'value': 'PRESS', 'shift': True}, {'properties': [('turn', -15.0)]}),
+    ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),
+    ('mch.brush_resize', {'type': 'F', 'value': 'PRESS'}, None),        # (F + mouse = stamp size)
+)
+
+CLASSES = (MCH_PG_Press, MCH_OT_press_cut, MCH_OT_press_adjust, MCH_OT_save_cut_shape)
+
+
+def register():
+    for c in CLASSES:
+        bpy.utils.register_class(c)
+    bpy.types.Scene.mch_press = bpy.props.PointerProperty(type=MCH_PG_Press)
+
+
+def unregister():
+    if hasattr(bpy.types.Scene, 'mch_press'):
+        del bpy.types.Scene.mch_press
+    for c in reversed(CLASSES):
+        try:
+            bpy.utils.unregister_class(c)
+        except RuntimeError:
+            pass

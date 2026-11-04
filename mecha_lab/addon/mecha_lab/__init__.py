@@ -19,7 +19,7 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                creature_plate, belt_maker, creature_spike, creature_scales, flower_plate,
                surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, bg_jobs, quad_remesh, mesh_fix, tool_recent, actions_menu, key_legend, quick_hud, mecha_menu, symmetry, groups, ui_bars, safety_save, lasso_memory, armor_shell, paint_lab, bake_maps, res_parts, final_export, mech_shader,
                creature_shader, my_presets, decals, zones, my_materials, bake_material, color_pick,
-               random_shapes, material_overlay, tire_gen, work_scene)
+               random_shapes, material_overlay, tire_gen, work_scene, press_cut)
 import os
 import re
 from pathlib import Path
@@ -2130,6 +2130,7 @@ def _register():
     box_hide.register()
     plate_detail.register()
     screw_stamp.register()
+    press_cut.register()
     wrinkle_lines.register()
     cloth_drape.register()
     lowpoly.register()
@@ -2217,6 +2218,7 @@ def _unregister_steps():
         ('lowpoly', lowpoly.unregister),
         ('cloth_drape', cloth_drape.unregister),
         ('wrinkle_lines', wrinkle_lines.unregister),
+        ('press_cut', press_cut.unregister),
         ('screw_stamp', screw_stamp.unregister),
         ('plate_detail', plate_detail.unregister),
         ('box_hide', box_hide.unregister),
