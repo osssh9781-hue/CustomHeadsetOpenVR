@@ -100,6 +100,7 @@ def groups(context, tool):
         out.append(('Press', _enum_segs(pr, 'result', (('CUT', 'Cut'), ('SPLIT', 'Split'))) + [
             _cell('drop', '', action=('menu_enum',), data=pr, prop='shape', width=150),
             _cell('mini', 'Size', action=('number',), data=pr, prop='size', width=110),
+            _seg('Follow Surface', pr, 'follow_surface'),
             _cell('mini', 'Curve LR', action=('number',), data=pr, prop='curve_x', width=130),
             _cell('mini', 'Curve UD', action=('number',), data=pr, prop='curve_y', width=130),
             _cell('mini', 'Start', action=('number',), data=pr, prop='start', width=110),
@@ -119,6 +120,8 @@ def groups(context, tool):
                  for ident, label in (('THROUGH', 'Through All'), ('SURFACE', 'From Surface'))]
         if cut.depth_mode == 'SURFACE':
             depth.append(_cell('mini', 'Depth', action=('number',), data=cut, prop='depth', width=130))
+            if tool in {'CUT', 'SPLIT'}:                   # 0.24.95 the pocket follows the surface (no lip)
+                depth.append(_seg('Follow Surface', cut, 'depth_follow'))
         out.append(('Depth', depth))
         st = getattr(scene, 'mch_settings', None)
         if st is not None and tool != 'HIDE':

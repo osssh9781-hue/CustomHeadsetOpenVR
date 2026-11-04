@@ -438,7 +438,9 @@ def depth_planes(projector, bounds_points, mode='THROUGH', hit=None, depth=0.1,
     return near, far
 
 
-FLOOR = [None]       # 0.24.95 (fn(screen xy) -> depth offset along the view, grid px): a curved far cap (Press Cut)
+FLOOR = [None]       # 0.24.95 an object with offset(screen xy, far plane point) -> depth offset along the view,
+                     # spacing (grid px) and near_shift(near plane point): a curved far cap (Press Cut curve,
+                     # Follow Surface)
 
 
 def _curved_cap(loops, projector, far_co, vd, floor, spacing):
@@ -507,6 +509,11 @@ def build_cutter_mesh(groups, projector, near_co, far_co, name='MCH_Cutter'):
     verts = []
     faces = []
     floor = FLOOR[0]
+    if floor is not None:                                # (Follow Surface: the near cap in front of all the surface)
+        shift = max(0.0, float(floor.near_shift(near_co)))
+        if projector.is_perspective:
+            shift = min(shift, max(0.0, (near_co - projector.eye).dot(vd) - 1e-4))
+        near_co = near_co - vd * shift
     for outer, holes in groups:
         loops = [outer] + list(holes)
         flat = [p for lp in loops for p in lp]
@@ -521,7 +528,7 @@ def build_cutter_mesh(groups, projector, near_co, far_co, name='MCH_Cutter'):
             if projector.is_perspective and (t_near < 0 or t_far <= t_near):
                 raise CutError('Shape projects behind the view; zoom out or use orthographic view.')
             near_pts.append(p_near)
-            far_pts.append(p_far + vd * floor[0](xy) if floor is not None else p_far)
+            far_pts.append(p_far + vd * floor.offset(xy, far_co) if floor is not None else p_far)
         verts.extend(near_pts)
         verts.extend(far_pts)
         tris = tessellate_polygon([[(x, y, 0.0) for x, y in lp] for lp in loops])
@@ -532,7 +539,8 @@ def build_cutter_mesh(groups, projector, near_co, far_co, name='MCH_Cutter'):
             if floor is None:
                 faces.append((base + count + c, base + count + b, base + count + a))
         if floor is not None:                            # (the curved far cap, on the walls' own far points)
-            where, cap_tris = _curved_cap(loops, projector, far_co, vd, floor[0], floor[1])
+            where, cap_tris = _curved_cap(loops, projector, far_co, vd, lambda q: floor.offset(q, far_co),
+                                          floor.spacing)
             index = []
             for kind, val in where:
                 if kind == 'wall':

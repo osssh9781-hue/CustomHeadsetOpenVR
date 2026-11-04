@@ -179,6 +179,71 @@ check('Flat stamp (no curve): the cutter as before (no grid in the floor)', pc.P
       and held(0.5)[1].floor(0.1) is None)
 
 
+
+# 0.24.95 (user's screenshot: a From Surface cut seen at an angle left the near side standing as a lip) Follow Surface
+from mathutils import Euler  # noqa: E402
+TILT = cg.OrthoProjector(Euler((math.radians(50), 0, 0)).to_quaternion(), pixels_per_unit=100.0)
+
+
+def standing(p, c, half=50, step=10):
+    """How many sample rays inside the square round screen ``c`` still meet the untouched top face first."""
+    n = 0
+    for j in range(-half, half + 1, step):
+        for i in range(-half, half + 1, step):
+            o, d = TILT.ray((c[0] + i, c[1] + j))
+            ok, loc, _n, _f = p.ray_cast(o, d)
+            n += bool(ok and abs(loc.z - 1.0) < 1e-4)
+    return n
+
+
+lip = {}
+for follow in (False, True):
+    fresh()
+    C.scene.mch_settings.auto_apply = True
+    C.scene.mch_cut.depth_mode, C.scene.mch_cut.depth, C.scene.mch_cut.depth_follow = 'SURFACE', 0.3, follow
+    p = cube('P', size=2.0)
+    c = TILT.to_screen(Vector((0, 0, 1)))
+    sq = [(c[0] - 60, c[1] - 60), (c[0] + 60, c[1] - 60), (c[0] + 60, c[1] + 60), (c[0] - 60, c[1] + 60)]
+    ce.perform_closed(C, 'CUT', [p], [sq], TILT)
+    lip[follow] = (standing(p, c), non_manifold(p), round(8.0 - vol(p), 4))
+check('Cut From Surface seen at an angle: the near side stands as a lip (as before); Follow Surface on: the whole '
+      'shape cut as deep below the surface everywhere (no lip), a closed solid',
+      lip[False][0] > 30 and lip[True][0] == 0 and lip[True][1] == 0 and lip[True][2] > lip[False][2], lip)
+fresh()
+C.scene.mch_settings.auto_apply = True
+p = cube('P', size=2.0)
+c = TILT.to_screen(Vector((0, 0, 1)))
+pr = pc.Press(C, p, pc.stamp_loops(C, c, C.scene.mch_press), TILT, 'CUT', center=c, spacing=6.0, follow=True)
+pr.cut_to(C, 0.3)
+pr.finish(C)
+inside = 0
+for q in pc.stamp_loops(C, c, C.scene.mch_press)[0][::3]:   # (sample points just inside the stamp's outline)
+    qx, qy = c[0] + (q[0] - c[0]) * 0.8, c[1] + (q[1] - c[1]) * 0.8
+    o, d = TILT.ray((qx, qy))
+    ok, loc, _n, _f = p.ray_cast(o, d)
+    inside += bool(ok and abs(loc.z - 1.0) < 1e-4)
+check('Press Cut, Follow Surface (on by default): seen at an angle, no lip inside the stamp, a closed solid',
+      C.scene.mch_press.follow_surface and inside == 0 and non_manifold(p) == 0, (inside, non_manifold(p)))
+
+# 0.24.95 (user: "이렇게는 또 안 잘려" - the stamp's middle just off a part's side)
+FRONT = cg.OrthoProjector(Quaternion((0.7071068, 0.7071068, 0, 0)), pixels_per_unit=100.0)
+fresh()
+C.scene.mch_settings.auto_apply = True
+p = cube('P', size=2.0)
+xy = FRONT.to_screen(Vector((1.25, -1.0, 0.0)))
+loops = pc.stamp_loops(C, xy, C.scene.mch_press)
+under = pc.press_target(C, FRONT, xy)
+t = pc.press_target(C, FRONT, xy, loops)
+pr = pc.Press(C, p, loops, FRONT, 'CUT', center=xy, spacing=6.0, follow=True)
+ok = pr.cut_to(C, 0.3)
+pr.finish(C)
+far = pc.press_target(C, FRONT, FRONT.to_screen(Vector((4.0, -1.0, 0.0))),
+                      pc.stamp_loops(C, FRONT.to_screen(Vector((4.0, -1.0, 0.0))), C.scene.mch_press))
+check('The stamp\'s middle off the part\'s side, the stamp over it: the part is pressed and cut; nowhere near a part: '
+      'nothing', under is None and t == p and ok and 8.0 - vol(p) > 0.01 and non_manifold(p) == 0 and far is None,
+      (under, t and t.name, ok, round(8.0 - vol(p), 4), far))
+
+
 # 0.24.95 (user: "스탬프 돌리는 것도 로테이션 각도가 좀 더 섬세하게") R + mouse turns the stamp finely
 ta = pc.turn_angle
 deg = math.degrees

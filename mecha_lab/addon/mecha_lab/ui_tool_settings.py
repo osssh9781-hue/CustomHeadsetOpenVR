@@ -202,6 +202,7 @@ def draw_cut(layout, context, mode='CUT'):
     col.prop(cut, 'depth_mode', expand=True)
     if cut.depth_mode == 'SURFACE':
         col.prop(cut, 'depth')
+        col.prop(cut, 'depth_follow')                     # 0.24.95 the pocket follows the surface (no lip)
     col.prop(cut, 'targets', expand=True)
     col.prop(s, 'auto_apply', text='Auto Apply (OFF = live, editable cutter)')
     if mode == 'SPLIT':

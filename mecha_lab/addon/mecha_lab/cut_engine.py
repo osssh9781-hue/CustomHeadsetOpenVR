@@ -804,9 +804,28 @@ def cut_ramp(context, targets, loops, projector, edge=None, live=True):
 
 @_with_finish_notes
 def perform_closed(context, mode, targets, loops, projector, invert=False):
-    """Cut / Split all targets with closed screen loops. Returns a report string."""
-    from . import cut_presets                     # 0.24.95 the last drawn outline (Save Shape)
+    """Cut / Split all targets with closed screen loops. Returns a report string.  0.24.95 From Surface + Follow
+    Surface: the pocket follows the surface under the shape (``press_cut.SurfaceFloor`` as the cutter's far cap)."""
+    from . import core_geometry as _cg, cut_presets
     cut_presets.remember(loops)
+    cut = context.scene.mch_cut
+    follow = (mode in {'CUT', 'SPLIT'} and cut.depth_mode == 'SURFACE' and getattr(cut, 'depth_follow', False)
+              and _cg.FLOOR[0] is None and not (mode == 'CUT' and getattr(cut, 'gn_ramp', False)))
+    if not follow:
+        return _perform_closed_base(context, mode, targets, loops, projector, invert)
+    from . import press_cut
+    pts = [p for lp in loops for p in lp]
+    span = max(max(p[0] for p in pts) - min(p[0] for p in pts), max(p[1] for p in pts) - min(p[1] for p in pts))
+    step = max(6.0, span / 40.0)
+    loops = [press_cut.resample(lp, step) for lp in loops]
+    _cg.FLOOR[0] = press_cut.SurfaceFloor(context, targets, projector, loops, step, follow=True, depth=cut.depth)
+    try:
+        return _perform_closed_base(context, mode, targets, loops, projector, invert)
+    finally:
+        _cg.FLOOR[0] = None
+
+
+def _perform_closed_base(context, mode, targets, loops, projector, invert=False):
     scene = context.scene
     cut = scene.mch_cut
     auto_apply = scene.mch_settings.auto_apply if hasattr(scene, 'mch_settings') else True

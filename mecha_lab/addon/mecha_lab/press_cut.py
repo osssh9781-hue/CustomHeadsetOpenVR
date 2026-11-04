@@ -49,6 +49,10 @@ class MCH_PG_Press(bpy.types.PropertyGroup):
                         description='Stamp radius on screen ([ / ] change it)')
     rotation: FloatProperty(name='Rotation', default=0.0, subtype='ANGLE', update=_redraw, step=10,
                             description='Stamp turn (R + mouse: turn it, Shift + R: 0)')
+    follow_surface: BoolProperty(name='Follow Surface', default=True,
+                                 description='As deep below the surface everywhere under the stamp, however the part '
+                                             'is turned to the view (off: a flat cut across the view - seen at an '
+                                             'angle it leaves a lip of the near side standing)')
     curve_x: FloatProperty(name='Curve Left-Right', default=0.0, min=-1.0, max=1.0, precision=2, update=_redraw,
                            description='The stamp bent left-right like a round stamp: + the middle goes in first and '
                                        'deepest (a round trough), - the sides first (the middle stays raised); 1 = a '
@@ -111,11 +115,143 @@ def arc_drop(s, w, h):
     return h - (math.sqrt(max(r * r - x * x, 0.0)) - (r - h))
 
 
+class SurfaceFloor:
+    """0.24.95 The far cap of a From Surface cutter, point by point (``core_geometry.FLOOR``):
+
+    * Follow Surface: as deep below the surface under each point as the depth (the pocket follows a slanted or
+      curved surface - a flat cut seen at an angle left a lip of the near side standing and missed the far side);
+      the near cap moves in front of all the surface under the shape.
+    * Curve Left-Right / Up-Down: the stamp's face bent into a circular arc (+ the middle deepest, - the sides).
+    Never above the surface (a press not yet that deep cuts nothing there).  Points off the parts take the depth of
+    the nearest point that is on them."""
+
+    def __init__(self, context, targets, projector, loops, spacing, follow=True, curve=(0.0, 0.0), center=None,
+                 angle=0.0, depth=0.1):
+        self.targets = [t for t in targets if t is not None]
+        self.projector = projector
+        self.vd = projector.view_dir
+        self.spacing = max(2.0, float(spacing))
+        self.follow = bool(follow)
+        self.curve = (float(curve[0]), float(curve[1]))
+        self.depth = float(depth)
+        self.cache = {}
+        pts = [p for lp in loops for p in lp]
+        self.center = center or (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))
+        self.angle = float(angle)
+        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+        samples = list(pts)
+        step = self.spacing * 2.0
+        x = min(xs)
+        while x <= max(xs):                      # (a coarse grid over the shape's box: the nearest surface, the
+            y = min(ys)                          #  depth for points off the parts)
+            while y <= max(ys):
+                samples.append((x, y))
+                y += step
+            x += step
+        samples.append(self.center)
+        self.known = []
+        for q in samples:
+            t = self._ray_t(q)
+            if t is not None:
+                self.known.append((q[0], q[1], t))
+        self.t_min = min((k[2] for k in self.known), default=None)
+        self.px_world = self._px_world()
+        c, s = math.cos(self.angle), math.sin(self.angle)
+        cx, cy = self.center
+        uv = [((x - cx) * c + (y - cy) * s, -(x - cx) * s + (y - cy) * c) for x, y in pts]
+        u0, u1 = min(p[0] for p in uv), max(p[0] for p in uv)
+        v0, v1 = min(p[1] for p in uv), max(p[1] for p in uv)
+        self.uc, self.vc = (u0 + u1) / 2, (v0 + v1) / 2
+        self.wu, self.wv = max((u1 - u0) / 2, 1e-6), max((v1 - v0) / 2, 1e-6)
+
+    def _ray_t(self, xy):
+        """How far along the view the first surface of the parts under screen ``xy`` lies (None: none there)."""
+        try:
+            o, d = self.projector.ray(xy)
+        except Exception:
+            return None
+        best = None
+        for ob in self.targets:
+            try:
+                mw = ob.matrix_world
+                inv = mw.inverted_safe()
+                ok, loc, _n, _i = ob.ray_cast(inv @ o, (inv.to_3x3() @ d).normalized())
+            except (RuntimeError, ReferenceError):
+                continue
+            if ok:
+                t = (mw @ loc).dot(self.vd)
+                best = t if best is None else min(best, t)
+        return best
+
+    def t(self, xy):
+        key = (round(float(xy[0]), 3), round(float(xy[1]), 3))
+        got = self.cache.get(key)
+        if got is None:
+            got = self._ray_t(xy)
+            if got is None:                      # (off the parts: the nearest point that is on them)
+                if not self.known:
+                    return None
+                got = min(self.known, key=lambda k: (k[0] - xy[0]) ** 2 + (k[1] - xy[1]) ** 2)[2]
+            self.cache[key] = got
+        return got
+
+    def _px_world(self):
+        """World size of one screen pixel at the surface under the stamp (its middle, else the nearest hit)."""
+        if not self.known:
+            return 0.0
+        k = min(self.known, key=lambda q: (q[0] - self.center[0]) ** 2 + (q[1] - self.center[1]) ** 2)
+        try:
+            o0, d0 = self.projector.ray(self.center)
+            o1, d1 = self.projector.ray((self.center[0] + 1.0, self.center[1]))
+            plane = o0 + d0 * 0.0
+            plane = plane + self.vd * (k[2] - plane.dot(self.vd))
+            p0, _t = cg._plane_hit(o0, d0, plane, self.vd)
+            p1, _t = cg._plane_hit(o1, d1, plane, self.vd)
+            return max((p1 - p0).length, 1e-9)
+        except cg.CutError:
+            return 0.0
+
+    def curve_off(self, xy):
+        """The curve's drop below the deepest point at ``xy`` (<= 0)."""
+        if (abs(self.curve[0]) < 1e-4 and abs(self.curve[1]) < 1e-4) or self.px_world <= 0.0:
+            return 0.0
+        c, s = math.cos(self.angle), math.sin(self.angle)
+        cx, cy = self.center
+        u = (xy[0] - cx) * c + (xy[1] - cy) * s
+        v = -(xy[0] - cx) * s + (xy[1] - cy) * c
+        k = self.px_world
+        off = 0.0
+        for val, mid, half, amt in ((u, self.uc, self.wu, self.curve[0]), (v, self.vc, self.wv, self.curve[1])):
+            h = amt * half * k
+            if abs(h) < 1e-12:
+                continue
+            d = arc_drop((val - mid) / half, half * k, h)
+            off += -d if h > 0 else -(abs(h) - d)
+        return off
+
+    def offset(self, xy, far_co):
+        """How far along the view the cutter's far cap at screen ``xy`` lies from the far plane through ``far_co``."""
+        t_far = far_co.dot(self.vd)
+        above = max(1e-4, self.depth * 0.05)
+        tx = self.t(xy) if self.follow else None
+        if tx is None:                                   # (flat: the far plane is the depth below the middle)
+            base, low = 0.0, -(self.depth + 0.5 * above)
+        else:
+            base, low = tx + self.depth - t_far, tx - 0.5 * above - t_far
+        return max(base + self.curve_off(xy), low)
+
+    def near_shift(self, near_co):
+        if not self.follow or self.t_min is None:
+            return 0.0
+        margin = max(1e-4, self.depth * 0.05)
+        return max(0.0, near_co.dot(self.vd) - (self.t_min - margin))
+
+
 class Press:
     """One press on one part: the part as it was (kept), cut again From Surface at each new depth."""
 
     def __init__(self, context, target, loops, projector, result='CUT', center=None, angle=0.0, curve=(0.0, 0.0),
-                 spacing=6.0):
+                 spacing=6.0, follow=False):
         from . import ramp_edit
         old = ramp_edit.live_target(context, ramp_edit.ALL_KINDS)
         if old is not None:                      # (an earlier live cut stays as it is: the Cut Depth set while
@@ -123,14 +259,18 @@ class Press:
         self.target = target
         self.curve = (float(curve[0]), float(curve[1]))
         self.curved = abs(self.curve[0]) > 1e-4 or abs(self.curve[1]) > 1e-4
+        self.follow = bool(follow)
         self.spacing = max(2.0, float(spacing))
         lps = [[tuple(p) for p in lp] for lp in loops]
-        self.loops = [resample(lp, self.spacing) for lp in lps] if self.curved else lps
+        shaped = self.curved or self.follow
+        self.loops = [resample(lp, self.spacing) for lp in lps] if shaped else lps
         self.projector = projector
         pts = [p for lp in lps for p in lp]
         self.center = center or (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))
         self.angle = float(angle)
-        self.px_world = self._px_world(context, target, projector) if self.curved else 0.0
+        self.sfloor = SurfaceFloor(context, [target], projector, self.loops, self.spacing, follow=self.follow,
+                                   curve=self.curve, center=self.center, angle=self.angle) if shaped else None
+        self.px_world = self.sfloor.px_world if self.sfloor is not None else 0.0
         self.result = result
         self.size = part_size(target)
         self.backup = target.data.copy()
@@ -141,51 +281,12 @@ class Press:
         self.pieces = []
         self.message = ''
 
-    def _px_world(self, context, target, projector):
-        """World size of one screen pixel at the part's surface under the stamp's middle."""
-        from . import cut_engine as ce
-        hit = ce.surface_hit(context, [target], projector, self.center)
-        vd = projector.view_dir
-        if hit is None:
-            hit = target.matrix_world.translation.copy()
-        try:
-            o0, d0 = projector.ray(self.center)
-            o1, d1 = projector.ray((self.center[0] + 1.0, self.center[1]))
-            p0, _t = cg._plane_hit(o0, d0, hit, vd)
-            p1, _t = cg._plane_hit(o1, d1, hit, vd)
-            return max((p1 - p0).length, 1e-9)
-        except cg.CutError:
-            return 0.0
-
     def floor(self, depth):
-        """(fn(screen xy) -> how far above the deepest point the stamp's face is there, grid px) for the cutter's
-        curved far cap at ``depth`` - None for a flat stamp.  + curve: the middle deepest (a round stamp pressed in),
-        - curve: the sides deepest; never above the surface (a press not yet that deep cuts nothing there)."""
-        if not self.curved or self.px_world <= 0.0:
+        """The cutter's far cap at ``depth`` (``core_geometry.FLOOR``): None for a flat stamp on a flat cut."""
+        if self.sfloor is None:
             return None
-        c, s = math.cos(self.angle), math.sin(self.angle)
-        cx, cy = self.center
-        uv = [((x - cx) * c + (y - cy) * s, -(x - cx) * s + (y - cy) * c) for lp in self.loops for x, y in lp]
-        u0, u1 = min(p[0] for p in uv), max(p[0] for p in uv)
-        v0, v1 = min(p[1] for p in uv), max(p[1] for p in uv)
-        uc, vc = (u0 + u1) / 2, (v0 + v1) / 2
-        wu, wv = max((u1 - u0) / 2, 1e-6), max((v1 - v0) / 2, 1e-6)
-        k = self.px_world
-        hx, hy = self.curve[0] * wu * k, self.curve[1] * wv * k
-        above = max(1e-4, depth * 0.05)
-        lowest = -(depth + 0.5 * above)               # (the face up to just above the surface, never past it)
-
-        def fn(xy):
-            u = (xy[0] - cx) * c + (xy[1] - cy) * s
-            v = -(xy[0] - cx) * s + (xy[1] - cy) * c
-            off = 0.0
-            for val, mid, half, h in ((u, uc, wu, hx), (v, vc, wv, hy)):
-                if abs(h) < 1e-12:
-                    continue
-                d = arc_drop((val - mid) / half, half * k, h)
-                off += -d if h > 0 else -(abs(h) - d)
-            return max(off, lowest)
-        return fn, self.spacing
+        self.sfloor.depth = float(depth)
+        return self.sfloor
 
     def _restore(self):
         from . import ramp_edit
@@ -198,6 +299,10 @@ class Press:
                     bpy.data.meshes.remove(me)
         self.pieces = []
         ramp_edit._copy_into(self.backup, self.target.data)
+        try:
+            bpy.context.view_layer.update()      # (the surface the Follow Surface ray casts see: the part as it was)
+        except (AttributeError, RuntimeError):
+            pass
 
     def cut_to(self, context, depth):
         """The part as it was, cut From Surface ``depth`` deep.  A depth that does not cut cleanly keeps the last
@@ -244,21 +349,33 @@ class Press:
         self.finish(context)
 
 
-def press_target(context, projector, xy):
+def press_target(context, projector, xy, loops=None):
     """The part under ``xy`` - the nearest mesh the mouse is on (Target Auto), only a selected one (Selected) or only
-    the active one (Active) - or None."""
+    the active one (Active) - or, 0.24.95 (user: "이렇게는 또 안 잘려" - the stamp's middle just off a part's side),
+    the part the stamp ``loops`` cover most; None when it covers none."""
     from . import cut_engine as ce
     mode = getattr(context.scene.mch_cut, 'targets', 'AUTO')
     if mode == 'ACTIVE':
         act = context.view_layer.objects.active
-        ok = act is not None and act.type == 'MESH' and ce.surface_hit(context, [act], projector, xy) is not None
-        return act if ok else None
+        if act is None or act.type != 'MESH':
+            return None
+        probe = [xy] + [p for lp in (loops or []) for p in lp]
+        return act if any(ce.surface_hit(context, [act], projector, q) is not None for q in probe) else None
     picked = ce.pick_mesh_under(context, projector, xy)
-    if picked is None or not ce._auto_candidate(picked):
+    if picked is not None and ce._auto_candidate(picked) and (mode != 'SELECTED' or picked.select_get()):
+        return picked
+    if not loops:
         return None
-    if mode == 'SELECTED' and not picked.select_get():
+    cands = [o for o in ce.auto_targets(context.view_layer, projector, loops)
+             if mode != 'SELECTED' or o.select_get()]
+    if not cands:
         return None
-    return picked
+    probe = [p for lp in loops for p in lp][::2] or [xy]
+
+    def covered(ob):
+        return sum(1 for q in probe if ce.surface_hit(context, [ob], projector, q) is not None)
+    best = max(cands, key=covered)
+    return best if covered(best) else None
 
 
 # --- drawing --------------------------------------------------------------------------------------------------------
@@ -328,14 +445,14 @@ class MCH_OT_press_cut(bpy.types.Operator):
         st = context.scene.mch_press
         xy = (float(event.mouse_region_x), float(event.mouse_region_y))
         projector = ce.make_projector(region, rv3d)
-        target = press_target(context, projector, xy)
-        if target is None:
-            self.report({'WARNING'}, 'Press on a part')
-            return {'CANCELLED'}
         try:
             loops = stamp_loops(context, xy, st)
         except (cg.CutError, ValueError, OSError) as ex:
             self.report({'WARNING'}, str(ex))
+            return {'CANCELLED'}
+        target = press_target(context, projector, xy, loops)
+        if target is None:
+            self.report({'WARNING'}, 'Press on a part (the stamp is not over one)')
             return {'CANCELLED'}
         try:
             from . import safety_save
@@ -343,7 +460,8 @@ class MCH_OT_press_cut(bpy.types.Operator):
         except Exception:
             pass
         self.press = Press(context, target, loops, projector, st.result, center=xy, angle=st.rotation,
-                           curve=(st.curve_x, st.curve_y), spacing=max(3.0, st.size / 10.0))
+                           curve=(st.curve_x, st.curve_y), spacing=max(3.0, st.size / 10.0),
+                           follow=st.follow_surface)
         self.press_st = st
         self.region = region
         self.anchor = xy
@@ -596,6 +714,7 @@ def draw(layout, context):
     col.label(text='Curve (a round stamp)')
     col.prop(st, 'curve_x', text='Left-Right', slider=True)
     col.prop(st, 'curve_y', text='Up-Down', slider=True)
+    layout.prop(st, 'follow_surface')
     col = layout.column(align=True)
     col.label(text='Hold = deeper')
     col.prop(st, 'start')

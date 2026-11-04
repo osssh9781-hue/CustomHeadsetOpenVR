@@ -441,6 +441,10 @@ class MCH_PG_Cut(bpy.types.PropertyGroup):
         default='THROUGH', update=_live_cut_update)
     depth: FloatProperty(name='Cut Depth', default=0.1, min=0.00001, soft_max=10.0, precision=4,
                          unit='LENGTH', update=_ramp_refresh_update)
+    depth_follow: BoolProperty(name='Follow Surface', default=False, update=_live_cut_update,
+                               description='From Surface: as deep below the surface everywhere under the shape, however '
+                                           'the part is turned to the view (off: a flat pocket across the view - '
+                                           'seen at an angle the near side is left standing as a lip)')
     targets: EnumProperty(name='Targets', items=[
         ('AUTO', 'Auto Target', 'Every mesh the drawn shape covers, whatever is selected: keep the tool and cut the '
                                 'next part directly (T toggles)'),
