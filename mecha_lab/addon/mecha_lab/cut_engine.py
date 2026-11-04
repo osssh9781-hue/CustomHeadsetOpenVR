@@ -512,6 +512,7 @@ def _commit_result(target, me, policy):
     as Decimate does) instead of the bmesh round trip of ``commit_mesh`` (0.7 s on 1.3M faces, 1.9 s on 2.1M).
     Only for a single-user mesh without shape keys; the swap is one undo step like the copy was."""
     import os
+    cg.mirror_seam_clear(target, me, target.data)  # 0.24.95 no cut point a hair off a live Mirror's plane
     if os.environ.get('MECH_REGION_FAST'):
         from . import region_cut as rc
         old = target.data
@@ -526,6 +527,7 @@ def _commit_result(target, me, policy):
 
 def _make_piece(target, mesh, suffix='_Split', old=None):
     """``old`` (0.24.95): the part's (points, edges) before the cut - for the piece's Edge Memory marks."""
+    cg.mirror_seam_clear(target, mesh, old[0] if old else None)   # 0.24.95 (its own Mirror is the part's)
     piece = target.copy()
     piece.data = mesh
     mesh.name = target.data.name + suffix
@@ -1162,7 +1164,7 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
             from . import mesh_io as mio                 # 0.24.95 (the pieces' Edge Memory: the part before the cut)
             olds = {t.name: (mio.read_co(t.data), mio.read_edge_verts(t.data)) for t, _me in pieces
                     if len(t.data.vertices)}
-            infos = [cg.commit_mesh(t, me, cut.shared_mesh) for t, me in results]
+            infos = [_commit_result(t, me, cut.shared_mesh) for t, me in results]
             for t, me in pieces:
                 temp.remove(me)
                 cg.tidy_result(me, cg.mesh_size(t.data), before=t.data, warped=True)

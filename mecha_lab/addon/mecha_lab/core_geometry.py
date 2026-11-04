@@ -1150,18 +1150,7 @@ def cutter_past_mirror(target, cutter):
     import numpy as np
     if cutter is None or cutter.type != 'MESH' or not len(cutter.data.vertices):
         return None
-    planes = []
-    for m in target.modifiers:
-        if m.type != 'MIRROR' or not m.show_viewport:
-            continue
-        frame = m.mirror_object.matrix_world if m.mirror_object is not None else target.matrix_world
-        for i in range(3):
-            if not m.use_axis[i]:
-                continue
-            th = max(m.bisect_threshold if m.use_bisect_axis[i] else 0.0,
-                     m.merge_threshold if m.use_mirror_merge else 0.0)
-            if th > 0.0:
-                planes.append((frame, i, th))
+    planes = _mirror_planes(target)
     if not planes:
         return None
     me = cutter.data
@@ -1194,6 +1183,88 @@ def cutter_past_mirror(target, cutter):
     new.vertices.foreach_set('co', local.ravel())
     new.update()
     return new
+
+
+def _mirror_planes(target):
+    """(frame matrix, axis, distance) of each plane a live Mirror of ``target`` bisects / merges at."""
+    planes = []
+    for m in getattr(target, 'modifiers', ()):
+        if m.type != 'MIRROR' or not m.show_viewport:
+            continue
+        frame = m.mirror_object.matrix_world if m.mirror_object is not None else target.matrix_world
+        for i in range(3):
+            if not m.use_axis[i]:
+                continue
+            th = max(m.bisect_threshold if m.use_bisect_axis[i] else 0.0,
+                     m.merge_threshold if m.use_mirror_merge else 0.0)
+            if th > 0.0:
+                planes.append((frame, i, th))
+    return planes
+
+
+def mirror_seam_clear(target, me, old_co=None):
+    """0.24.95 (user: "스플릿만 하면 메쉬가 구멍 나") A cut result of a part with a live Mirror: points the cut made
+    a hair off the mirror plane - inside the Mirror's Bisect / Merge distance (0.001) but not on it - are moved out
+    to twice that distance on their own side.  Such a point (a cut wall crossing the plane at a slant, a chamfer
+    beside a centre cut) was half kept by the Bisect and welded to its own reflection by the Merge: the base mesh
+    closed, the mirrored part open (1 - 60 open edges, Split pieces most).  Points on the plane stay on it, and the
+    part's own points (``old_co``: its points before the cut, local, or its mesh before the cut; None: every point
+    is new) are never moved - a seam the user's Merge welds stays welded.  Returns how many points moved."""
+    import numpy as np
+    planes = _mirror_planes(target)
+    n = len(me.vertices)
+    if not planes or not n:
+        return 0
+    co = np.empty(n * 3)
+    me.vertices.foreach_get('co', co)
+    co = co.reshape(-1, 3)
+    mw = np.array(target.matrix_world)
+    t_scale = float(np.mean([abs(s) for s in target.matrix_world.to_scale()])) or 1.0
+    frames = []
+    for frame, i, th in planes:
+        fm = np.array(frame)
+        to_frame = np.linalg.inv(fm) @ mw                # (local -> the mirror's frame)
+        tol = MIRROR_CLEAR * th * t_scale / max(float(np.linalg.norm(fm[:3, i])), 1e-12)
+        frames.append((to_frame, i, tol))
+
+    def band_of(pts):
+        out = np.zeros(len(pts), bool)
+        for to_frame, i, tol in frames:
+            d = pts @ to_frame[i, :3] + to_frame[i, 3]
+            out |= (np.abs(d) > 0.01 * tol) & (np.abs(d) < tol)
+        return out
+    cand = np.flatnonzero(band_of(co))
+    if not len(cand):
+        return 0
+    if isinstance(old_co, bpy.types.Mesh):               # (the part's mesh before the cut)
+        m0 = old_co
+        old_co = np.empty(len(m0.vertices) * 3)
+        m0.vertices.foreach_get('co', old_co)
+    if old_co is not None and len(old_co):               # (the part's own points near the plane: left as they are)
+        old = np.asarray(old_co, float).reshape(-1, 3)
+        old = old[band_of(old)]
+        if len(old):
+            from mathutils import kdtree
+            kd = kdtree.KDTree(len(old))
+            for k, p in enumerate(old):
+                kd.insert(p, k)
+            kd.balance()
+            cand = np.array([j for j in cand if kd.find(co[j])[2] > 1e-7], int)
+    if not len(cand):
+        return 0
+    pts = co[cand]
+    for to_frame, i, tol in frames:
+        loc = pts @ to_frame[:3, :3].T + to_frame[:3, 3]
+        d = loc[:, i]
+        band = (np.abs(d) > 0.01 * tol) & (np.abs(d) < tol)
+        if band.any():                                   # (out, not onto the plane: snapping them onto it
+            loc[band, i] = np.sign(d[band]) * tol        #  measured worse - 39 / 640 open, pushing out 2)
+            back = np.linalg.inv(to_frame)
+            pts = loc @ back[:3, :3].T + back[:3, 3]
+    co[cand] = pts
+    me.vertices.foreach_set('co', co.ravel())
+    me.update()
+    return len(cand)
 
 
 def _boolean_result_any(context, target, cutter, operation, solver='AUTO',
