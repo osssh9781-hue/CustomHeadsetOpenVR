@@ -217,11 +217,22 @@ def build(context, mx, my, region_w, region_h, S=1.0):
         y -= 8 * S
         brush = context.scene.mch_brush
         if stamps:
+            # 0.24.95 (user: "우클릭 패널에 스탬프에도 방금 만든 알파 다 넣어 줘") every stamp: the 13 shapes, the 50 mech
+            # form-blocking ones and the imported ones (it had the imported ones only, 16 of them), small tiles; in
+            # Press Cut a tile is the Press stamp
             from . import cut_presets
             current = getattr(context.scene, 'mch_png_preset', '')
-            for stem, name in cut_presets.list_presets()[:16]:
-                tiles.append((name, 'file:' + _stamp_path(stem), ('shape', 'CUSTOM', stem),
-                              brush.shape == 'CUSTOM' and current == stem))
+            press = getattr(context.scene, 'mch_press', None) if active == 'PRESS' else None
+            stems = [(stem, name) for stem, name, _l in cut_presets.builtin_shapes()] + cut_presets.list_presets()
+            for stem, name in stems:
+                if press is not None:
+                    tiles.append((name, 'file:' + _stamp_path(stem), ('op', 'mch.press_pick_shape', {'stem': stem}, False),
+                                  press.shape == stem and not press.drawn))
+                else:
+                    tiles.append((name, 'file:' + _stamp_path(stem), ('shape', 'CUSTOM', stem),
+                                  brush.shape == 'CUSTOM' and current == stem))
+            cols = 8
+            tile = (inner - (cols - 1) * 4 * S) / cols
             if not tiles:
                 y -= 24 * S
                 mid.append(Item('note', px0, y, inner, 24 * S, 'No stamps yet - import a PNG shape'))
@@ -236,13 +247,14 @@ def build(context, mx, my, region_w, region_h, S=1.0):
         y -= 6 * S
         for pid, label, _d, stem, _icon in base_mesh.profiles_for(context, live):
             tiles.append((label, 'png:' + stem, ('op', 'mch.set_profile', {'profile': pid}, False), p.profile == pid))
+    gap = 4 * S if cols > 4 else 10 * S
     for n, (label, icon, action, on) in enumerate(tiles):
         c, r = n % cols, n // cols
-        mid.append(Item('tile', px0 + c * (tile + 10 * S), y - (r + 1) * tile - r * 10 * S, tile, tile,
+        mid.append(Item('tile', px0 + c * (tile + gap), y - (r + 1) * tile - r * gap, tile, tile,
                         label, icon, on, True, action))
     if tiles:
         rows = (len(tiles) + cols - 1) // cols
-        y -= rows * tile + (rows - 1) * 10 * S
+        y -= rows * tile + (rows - 1) * gap
     if kind == 'PROFILE':
         # 0.24.53 the lasso shapes too (the 0.24.49 popup had them under the profiles; the menu had lost them)
         brush = context.scene.mch_brush

@@ -435,6 +435,18 @@ check('While pressing (Cut and Split): the pocket\'s walls and floor as red tria
           and v[5] is not None and v[5] >= 0.79 and v[6] is not None and v[6] <= 0.36 and v[7] for v in reds.values()),
       reds)
 
+# ... and a depth gauge beside the stamp (user: a red line drawn down the stamp's right side): as tall as the stamp,
+# the top = the surface, the bottom = Max, red down to the depth pressed
+sq = [(400.0, 300.0), (500.0, 300.0), (500.0, 420.0), (400.0, 420.0)]
+g0, g1, g2 = (pc.depth_gauge([sq], d, 0.8) for d in (0.0, 0.4, 0.8))
+g9 = pc.depth_gauge([sq], 2.0, 0.8)
+gs = pc.depth_gauge([[(400.0, 300.0), (420.0, 300.0), (420.0, 310.0)]], 0.2, 0.8)
+check('Depth gauge: right of the stamp, from its top (the surface) to its bottom (Max); 0 / half / Max deep = the top '
+      '/ the middle / the bottom (deeper than Max stays at the bottom); a small stamp still gets a 60 px gauge',
+      g0['x'] > 500 and (g0['top'], g0['bottom']) == (420.0, 300.0) and g0['level'] == 420.0
+      and abs(g1['level'] - 360.0) < 1e-9 and g2['level'] == 300.0 and g9['level'] == 300.0
+      and abs(gs['top'] - gs['bottom'] - 60.0) < 1e-9, (g0, g1['level'], g2['level'], gs))
+
 # ... and a flat face seen from straight above stays flat for Follow (float32 rays read it up to 2e-4 off a plane: it
 # was taken for curved and got a grid floor of ~550 faces)
 fresh()

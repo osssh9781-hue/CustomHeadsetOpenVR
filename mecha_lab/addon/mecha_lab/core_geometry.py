@@ -443,7 +443,7 @@ FLOOR = [None]       # 0.24.95 an object with offset(screen xy, far plane point)
                      # Follow Surface)
 
 
-def _curved_cap(loops, projector, far_co, vd, floor, spacing):
+def _curved_cap(loops, projector, far_co, vd, floor, spacing, folds=None):
     """0.24.95 The far cap of a cutter as a curved surface: the outline plus a grid of points inside it (holes left
     out), triangulated (constrained Delaunay), each point on the far plane moved ``floor(xy)`` along the view.
     Returns ([('wall', outline index) | ('new', point)], triangles)."""
@@ -468,8 +468,17 @@ def _curved_cap(loops, projector, far_co, vd, floor, spacing):
         return (np.count_nonzero(cross & (x < xi), axis=1) % 2) == 1
 
     lo, hi = P.min(0), P.max(0)
-    gx = np.arange(lo[0] + spacing / 2, hi[0], spacing)
-    gy = np.arange(lo[1] + spacing / 2, hi[1], spacing)
+    if folds:
+        # 0.24.95 a part of flat faces (``press_cut.SurfaceFloor.fold``): its fold lines as lines of the cap - flat
+        # between them, no grid (a crisp floor, few faces)
+        for a, b in folds:
+            i = len(pts)
+            pts += [(float(a[0]), float(a[1])), (float(b[0]), float(b[1]))]
+            edges.append((i, i + 1))
+        gx = gy = ()
+    else:
+        gx = np.arange(lo[0] + spacing / 2, hi[0], spacing)
+        gy = np.arange(lo[1] + spacing / 2, hi[1], spacing)
     if len(gx) and len(gy):
         G = np.array(np.meshgrid(gx, gy)).reshape(2, -1).T
         G = G[inside(G)]
@@ -541,7 +550,7 @@ def build_cutter_mesh(groups, projector, near_co, far_co, name='MCH_Cutter'):
                 faces.append((base + count + c, base + count + b, base + count + a))
         if not flat_cap:                                 # (the curved far cap, on the walls' own far points)
             where, cap_tris = _curved_cap(loops, projector, far_co, vd, lambda q: floor.offset(q, far_co),
-                                          floor.spacing)
+                                          floor.spacing, folds=getattr(floor, 'folds', None))
             index = []
             for kind, val in where:
                 if kind == 'wall':

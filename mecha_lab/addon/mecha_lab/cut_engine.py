@@ -942,7 +942,8 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
     sf = press_cut.SurfaceFloor(context, targets, projector, loops, step, follow=floor_mode == 'FOLLOW',
                                 depth=cut.depth, level=floor_mode == 'LEVEL')
     if not sf.planar:                             # (one flat face: the outline as drawn, a flat far cap)
-        loops = [press_cut.resample(lp, step) for lp in loops]
+        folded = sf.fold(loops)                   # (0.24.95 flat faces: the floor folded along the part's creases)
+        loops = folded if folded is not None else [press_cut.resample(lp, step) for lp in loops]
     _cg.FLOOR[0] = sf
     try:
         return _perform_closed_base(context, mode, targets, loops, projector, invert)

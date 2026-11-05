@@ -105,7 +105,8 @@ def groups(context, tool):
         out.append(('Floor', _enum_segs(pr, 'floor_mode', (('FOLLOW', 'Follow'), ('LEVEL', 'Level'), ('FLAT', 'Flat')))))
         out.append(('Press', _enum_segs(pr, 'result', (('CUT', 'Cut'), ('SPLIT', 'Split'))) + [
             (_cell('seg', 'Drawn', True, ('enum', False), pr, 'drawn') if pr.drawn else
-             _cell('drop', '', action=('menu_enum',), data=pr, prop='shape', width=150)),
+             _cell('seg', pc_shape_name(pr) + '  \u25be', False, ('op', 'mch.press_shape_grid', {}), width=170)),
+                                                       # (0.24.95 the stamps as pictures, not a list of names)
             _cell('mini', 'Size', action=('number',), data=pr, prop='size', width=110),
             _cell('mini', 'Dots', action=('number',), data=pr, prop='dot_size', width=100),
             _cell('mini', 'Curve LR', action=('number',), data=pr, prop='curve_x', width=130),
@@ -139,6 +140,14 @@ def groups(context, tool):
     locked = bool(context.workspace and context.workspace.get(_ORTHO_LOCK_KEY, False))
     out.append(('', [_cell('seg', 'Ortho', locked, ('op', 'mch.ortho_lock', {}))]))
     return out
+
+
+def pc_shape_name(pr):
+    from . import press_cut
+    try:
+        return press_cut.shape_name(pr)
+    except Exception:
+        return 'Stamp'
 
 
 def _mini(label, data, prop, width=130):

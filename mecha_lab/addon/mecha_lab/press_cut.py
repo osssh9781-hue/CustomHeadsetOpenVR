@@ -231,6 +231,13 @@ class SurfaceFloor:
             if t is not None:
                 self.known.append((q[0], q[1], t))
         self.t_min = min((k[2] for k in self.known), default=None)
+        self.loops_px = [[tuple(p) for p in lp] for lp in loops]
+        self.folds = None
+        self.under = self._under(self.loops_px)
+        t_v = self._nearest_vertex(self.under, self.loops_px)
+        if t_v is not None:                          # (0.24.95 user: "레벨로 해도 잔메쉬가 남아" - a corner's tip between
+            self.t_min = t_v if self.t_min is None else min(self.t_min, t_v)   # the samples stayed in front of the
+        #                                                                       near cap: the part's points count too)
         self.t_ref = self._ray_t(self.center)      # (Level: the surface at the point pressed - else the nearest)
         if self.t_ref is None and self.known:
             self.t_ref = min(self.known, key=lambda q: (q[0] - self.center[0]) ** 2 + (q[1] - self.center[1]) ** 2)[2]
@@ -243,6 +250,171 @@ class SurfaceFloor:
         self.uc, self.vc = (u0 + u1) / 2, (v0 + v1) / 2
         self.wu, self.wv = max((u1 - u0) / 2, 1e-6), max((v1 - v0) / 2, 1e-6)
         self.planar = self._planar()
+
+    def _under(self, loops, margin=2.0):
+        """The parts' triangles round the stamp (world space, evaluated): [(points, region px, triangles, normals)];
+        None if the view cannot be mapped."""
+        import numpy as np
+        pts = [p for lp in loops for p in lp]
+        x0, x1 = min(p[0] for p in pts) - margin, max(p[0] for p in pts) + margin
+        y0, y1 = min(p[1] for p in pts) - margin, max(p[1] for p in pts) + margin
+        try:
+            dg = bpy.context.evaluated_depsgraph_get()
+        except (AttributeError, RuntimeError):
+            dg = None
+        out = []
+        for ob in self.targets:
+            try:
+                ev = ob.evaluated_get(dg) if dg is not None else ob
+                me = ev.to_mesh()
+            except (RuntimeError, ReferenceError, AttributeError):
+                continue
+            try:
+                co = np.empty(len(me.vertices) * 3)
+                me.vertices.foreach_get('co', co)
+                me.calc_loop_triangles()
+                tv = np.empty(len(me.loop_triangles) * 3, np.int32)
+                me.loop_triangles.foreach_get('vertices', tv)
+            finally:
+                ev.to_mesh_clear()
+            mw = np.array(ob.matrix_world)
+            co = co.reshape(-1, 3) @ mw[:3, :3].T + mw[:3, 3]
+            tv = tv.reshape(-1, 3)
+            xy = _screen_np(self.projector, co)
+            if xy is None:
+                return None
+            if not len(tv):
+                continue
+            txy = xy[tv]
+            keep = ((txy[:, :, 0].max(1) >= x0) & (txy[:, :, 0].min(1) <= x1) & (txy[:, :, 1].max(1) >= y0)
+                    & (txy[:, :, 1].min(1) <= y1))
+            tv = tv[keep]
+            nrm = np.cross(co[tv[:, 1]] - co[tv[:, 0]], co[tv[:, 2]] - co[tv[:, 0]])
+            ln = np.linalg.norm(nrm, axis=1)
+            ok = ln > 1e-12
+            out.append((co, xy, tv[ok], nrm[ok] / ln[ok, None]))
+        return out
+
+    @staticmethod
+    def _inside_np(q, loops):
+        """Even-odd: which region px points ``q`` (N x 2) lie inside ``loops``."""
+        import numpy as np
+        A = np.array([lp[i] for lp in loops for i in range(len(lp))], float)
+        B = np.array([lp[(i + 1) % len(lp)] for lp in loops for i in range(len(lp))], float)
+        x, y = q[:, 0:1], q[:, 1:2]
+        cross = (A[:, 1] > y) != (B[:, 1] > y)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            xi = A[:, 0] + (y - A[:, 1]) * (B[:, 0] - A[:, 0]) / (B[:, 1] - A[:, 1])
+        return (np.count_nonzero(cross & (x < xi), axis=1) % 2) == 1
+
+    def _nearest_vertex(self, under, loops):
+        """How far along the view the nearest point of the parts inside the stamp lies (None: none)."""
+        import numpy as np
+        if not under:
+            return None
+        vd = np.array(self.vd)
+        best = None
+        for co, xy, tv, _n in under:
+            used = np.unique(tv)
+            if not len(used):
+                continue
+            ins = used[self._inside_np(xy[used], loops)]
+            if len(ins):
+                t = float((co[ins] @ vd).min())
+                best = t if best is None else min(best, t)
+        return best
+
+    def fold(self, loops, max_tris=1500, angle=1.0):
+        """0.24.95 (user: "엣지 감지하는 기능 - 크리즈 감지되니까 그거 이용해서 꺾이는 판을 계산해서 바닥 메쉬를 딱 떨어지게
+        하고 면 수도 줄이는 거") Follow over a part made of flat faces: the floor folds exactly where the part does - the
+        part's own fold lines (edges between faces more than ``angle`` degrees apart, its silhouette and open sides)
+        under the stamp, in region px, go into the far cap as lines (``core_geometry._curved_cap``), and where they
+        cross the outline a point goes into the outline (the walls bend there too).  Between the lines the floor is
+        flat: no grid - a crisp floor with few faces (a grid's points cut across a crease: a saw-toothed floor, the
+        corner of a box uncut in places).  Returns the outline with the crossings, or None (a dense / sculpted
+        surface, a bent stamp: the grid as before)."""
+        import numpy as np
+        if abs(self.curve[0]) > 1e-4 or abs(self.curve[1]) > 1e-4 or not self.under:
+            return None
+        if sum(len(u[2]) for u in self.under) > max_tris:
+            return None
+        vd = np.array(self.vd)
+        cos_t = math.cos(math.radians(angle))
+        segs = []
+        for co, xy, tv, nrm in self.under:
+            front = (nrm @ vd) < 0.0
+            emap = {}
+            for k, (a, b, c) in enumerate(tv):
+                for e0, e1 in ((a, b), (b, c), (c, a)):
+                    emap.setdefault((min(e0, e1), max(e0, e1)), []).append(k)
+            for (a, b), ks in emap.items():
+                f = [bool(front[k]) for k in ks]
+                if not any(f):
+                    continue
+                if len(ks) == 2 and all(f) and float(nrm[ks[0]] @ nrm[ks[1]]) > cos_t:
+                    continue                             # (flat across it: no fold)
+                pa, pb = tuple(map(float, xy[a])), tuple(map(float, xy[b]))
+                ln = math.dist(pa, pb)
+                if ln > 1e-6:
+                    # (each side of the line its own copy, a hair off it: a step seen from above - its wall edge-on,
+                    #  the high and the low edge on one line - gets both depths, not one smeared across)
+                    nx, ny = -(pb[1] - pa[1]) / ln * 0.6, (pb[0] - pa[0]) / ln * 0.6
+                    segs.append(((pa[0] + nx, pa[1] + ny), (pb[0] + nx, pb[1] + ny)))
+                    segs.append(((pa[0] - nx, pa[1] - ny), (pb[0] - nx, pb[1] - ny)))
+        if not segs:
+            return None
+        return self._insert_folds(loops, segs)
+
+    def _insert_folds(self, loops, segs, snap=0.75):
+        """The fold lines clipped to the stamp (``self.folds``), and the outline with a point where each crosses it."""
+        def cross(p, q, r, s):
+            d = (q[0] - p[0]) * (s[1] - r[1]) - (q[1] - p[1]) * (s[0] - r[0])
+            if abs(d) < 1e-12:
+                return None
+            t = ((r[0] - p[0]) * (s[1] - r[1]) - (r[1] - p[1]) * (s[0] - r[0])) / d
+            u = ((r[0] - p[0]) * (q[1] - p[1]) - (r[1] - p[1]) * (q[0] - p[0])) / d
+            return (t, u) if -1e-9 <= t <= 1 + 1e-9 and -1e-9 <= u <= 1 + 1e-9 else None
+        adds = {}                                        # (loop, edge) -> [(t, point)]
+        inner = []
+        for a, b in segs:
+            cuts = [0.0, 1.0]
+            for li, lp in enumerate(loops):
+                n = len(lp)
+                for i in range(n):
+                    p, q = lp[i], lp[(i + 1) % n]
+                    hit = cross(p, q, a, b)
+                    if hit is None:
+                        continue
+                    t, u = hit
+                    x = (p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t)
+                    if math.dist(x, p) <= snap:          # (at a corner of the outline: that corner)
+                        x = p
+                    elif math.dist(x, q) <= snap:
+                        x = q
+                    else:
+                        adds.setdefault((li, i), []).append((t, x))
+                    cuts.append(u)
+            cuts = sorted(set(cuts))
+            for u0, u1 in zip(cuts, cuts[1:]):
+                if u1 - u0 < 1e-9:
+                    continue
+                m = (a[0] + (b[0] - a[0]) * (u0 + u1) / 2, a[1] + (b[1] - a[1]) * (u0 + u1) / 2)
+                if cg.point_in_loops(m, loops):
+                    inner.append(((a[0] + (b[0] - a[0]) * u0, a[1] + (b[1] - a[1]) * u0),
+                                  (a[0] + (b[0] - a[0]) * u1, a[1] + (b[1] - a[1]) * u1)))
+        out = []
+        for li, lp in enumerate(loops):
+            new = []
+            for i, p in enumerate(lp):
+                new.append(tuple(p))
+                last = tuple(p)
+                for _t, x in sorted(adds.get((li, i), [])):
+                    if math.dist(x, last) > 1e-6:
+                        new.append(x)
+                        last = x
+            out.append(new)
+        self.folds = inner
+        return out
 
     def _planar(self):
         """The surface under the shape is one flat face and the stamp is not bent: the far cap is flat too (no grid,
@@ -377,7 +549,8 @@ class Press:
             self.sfloor = SurfaceFloor(context, [target], projector, lps, self.spacing, follow=self.follow,
                                        curve=self.curve, center=self.center, angle=self.angle, level=self.level)
             if not self.sfloor.planar:           # (a bent stamp / a curved surface: the outline follows it too)
-                self.loops = [resample(lp, self.spacing) for lp in lps]
+                folded = self.sfloor.fold(lps)   # (0.24.95 a part of flat faces: folded along its own creases)
+                self.loops = folded if folded is not None else [resample(lp, self.spacing) for lp in lps]
         self.px_world = self.sfloor.px_world if self.sfloor is not None else 0.0
         self.result = result
         self.size = part_size(target)
@@ -719,6 +892,29 @@ def _draw_pocket(op):
         pass
 
 
+def depth_gauge(loops, depth, max_depth, ui=1.0):
+    """0.24.95 (user: a red line drawn down the stamp's right side - "여기 부분에도 선으로 저렇게 표시해 줄 수 있어?") The
+    depth gauge beside the stamp while pressing (region px): a track as tall as the stamp (top = the surface, bottom =
+    Max), filled red from the top down to the depth pressed, a tick there.  -> dict(x, top, bottom, level, frac)."""
+    pts = [p for lp in loops for p in lp]
+    x = max(p[0] for p in pts) + 16.0 * ui
+    top, bottom = max(p[1] for p in pts), min(p[1] for p in pts)
+    if top - bottom < 60.0 * ui:                       # (a small stamp: the gauge still readable)
+        mid = (top + bottom) / 2.0
+        top, bottom = mid + 30.0 * ui, mid - 30.0 * ui
+    frac = max(0.0, min(1.0, depth / max_depth)) if max_depth > 0.0 else 0.0
+    return dict(x=x, top=top, bottom=bottom, level=top - frac * (top - bottom), frac=frac)
+
+
+def _rect(sh, x0, y0, x1, y1, color):
+    import gpu
+    from gpu_extras.batch import batch_for_shader
+    sh.bind()
+    sh.uniform_float('color', color)
+    batch_for_shader(sh, 'TRIS', {'pos': [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]},
+                     indices=[(0, 1, 2), (0, 2, 3)]).draw(sh)
+
+
 def _draw_holding(op):
     try:
         import blf
@@ -730,11 +926,19 @@ def _draw_holding(op):
         gpu.state.blend_set('ALPHA')
         for lp in op.press.loops:
             ce._draw_lines(sh, lp, (1.0, 0.85, 0.3, 1.0), closed=True, width=2.5)
+        ui = float(bpy.context.preferences.system.ui_scale) or 1.0
+        g = depth_gauge(op.press.loops, op.press.depth, op.press.size * op.press_st.max_depth, ui)
+        x, half = g['x'], 2.0 * ui
+        _rect(sh, x - 1.5 * ui, g['bottom'], x + 1.5 * ui, g['top'], (0.0, 0.0, 0.0, 0.45))     # (the track)
+        _rect(sh, x - half - 1.0, g['level'] - 1.0, x + half + 1.0, g['top'] + 1.0, (0.0, 0.0, 0.0, 0.6))
+        _rect(sh, x - half, g['level'], x + half, g['top'], (0.95, 0.12, 0.1, 0.95))               # (pressed so far)
+        for yy, w in ((g['top'], 6.0), (g['bottom'], 6.0)):                                          # (surface / Max)
+            _rect(sh, x - w * ui, yy - 1.0, x + w * ui, yy + 1.0, (1.0, 1.0, 1.0, 0.7))
+        _rect(sh, x - 9.0 * ui, g['level'] - 1.5 * ui, x + 9.0 * ui, g['level'] + 1.5 * ui, (1.0, 0.2, 0.15, 1.0))
         gpu.state.blend_set('NONE')
-        x, y = op.anchor
         blf.size(0, 15)
         blf.color(0, 1.0, 0.92, 0.6, 1.0)
-        blf.position(0, x + op.press_st.size * 0.8 + 10, y, 0)
+        blf.position(0, x + 14.0 * ui, g['level'] - 5.0 * ui, 0)
         unit = bpy.context.scene.unit_settings.scale_length or 1.0
         blf.draw(0, f'{op.press.result.title()} {op.press.depth * unit * 100:.1f} cm  (hold: deeper, release: keep, '
                     'Esc: back)')
@@ -1049,6 +1253,70 @@ class MCH_OT_press_draw(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
 
+def shape_name(st):
+    """The display name of the stamp picked (built-in or imported)."""
+    from . import cut_presets
+    for item in cut_presets.preset_items(st, bpy.context):
+        if item[0] == st.shape:
+            return item[1]
+    return st.shape
+
+
+class MCH_OT_press_pick_shape(bpy.types.Operator):
+    """Use this shape as the Press Cut stamp"""
+    bl_idname = 'mch.press_pick_shape'
+    bl_label = 'Press Cut Stamp'
+    bl_options = {'INTERNAL'}
+
+    stem: StringProperty()
+
+    @classmethod
+    def description(cls, context, properties):
+        from . import cut_presets
+        for item in cut_presets.preset_items(context.scene.mch_press, context):
+            if item[0] == properties.stem:
+                return item[1]
+        return cls.__doc__
+
+    def execute(self, context):
+        try:
+            context.scene.mch_press.shape = self.stem          # (the drawn stamp gives way: _shape_picked)
+        except TypeError:
+            self.report({'WARNING'}, 'Shape not available')
+            return {'CANCELLED'}
+        return {'FINISHED'}
+
+
+class MCH_OT_press_shape_grid(bpy.types.Operator):
+    """0.24.95 (user: "여기 썸네일 만들어 주기로 한 건 어디 갔어?") The stamps as a grid of pictures (the top bar's stamp
+    button): the 13 shapes, the 50 mech form-blocking stamps and the imported ones"""
+    bl_idname = 'mch.press_shape_grid'
+    bl_label = 'Press Cut Stamps'
+    bl_options = {'INTERNAL'}
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_popup(self, width=760)
+
+    def execute(self, context):
+        return {'FINISHED'}
+
+    def draw(self, context):
+        from . import cut_presets
+        st = context.scene.mch_press
+        layout = self.layout
+        layout.label(text='Stamp  (Shift + draw: your own)', icon='IMAGE_DATA')
+        grid = layout.grid_flow(row_major=True, columns=10, even_columns=True, even_rows=True, align=False)
+        for stem, name, _desc, icon, _i in cut_presets.preset_items(st, context):
+            if stem == 'NONE':
+                continue
+            col = grid.column(align=True)
+            if icon:
+                col.template_icon(icon_value=icon, scale=2.6)
+            op = col.operator('mch.press_pick_shape', text=name.split(' (')[0][:12],
+                              depress=(stem == st.shape and not st.drawn))
+            op.stem = stem
+
+
 class MCH_OT_save_cut_shape(bpy.types.Operator):
     """Save the last outline you drew (Cut / Split / any lasso: lasso, sketch, rectangle ...) as a cut shape - for
     Press Cut and the Cut / Split Custom stamp, in every file"""
@@ -1148,7 +1416,7 @@ TOOL_KEYMAP = (
 )
 
 CLASSES = (MCH_PG_Press, MCH_OT_press_cut, MCH_OT_press_adjust, MCH_OT_stamp_turn, MCH_OT_press_draw,
-           MCH_OT_save_cut_shape)
+           MCH_OT_save_cut_shape, MCH_OT_press_pick_shape, MCH_OT_press_shape_grid)
 
 
 def register():
