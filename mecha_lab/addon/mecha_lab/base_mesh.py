@@ -66,7 +66,10 @@ SIDE_ITEMS = [
 FLIP_SIDES = {'TOP': 'BOTTOM', 'BOTTOM': 'TOP', 'BOTH': 'BOTH', 'NONE': 'NONE'}
 SETTING_KEYS = ('height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 'resolution', 'offset',
                 'bottom_too', 'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link', 'puff',
-                'outline_smooth', 'edge_round', 'peak', 'attach_curve')
+                'outline_smooth', 'edge_round', 'peak', 'attach_curve', 'profile_sweep', 'section_width',
+                'section_rotation', 'section_twist', 'section_taper')
+SWEEP_KEY = 'mch_base_line_sweep'  # 0.24.103 serialized path + alpha loops for live rebuild
+DEPTH_KEY = 'mch_base_depth_guide'   # side-view polyline reshapes the base depth, kept live
 ATTACH_KEY = 'mch_base_attach'          # 0.24.57 Line: the ends stuck to the meshes where the line began / ended
 MAX_DOME_POINTS = 12000
 MAX_PUFF_POINTS = 60000
@@ -75,7 +78,8 @@ PUFF_RINGS = (0.12, 0.3, 0.55, 0.85)      # rows just inside the outline (in poi
 
 CARRY_KEYS = ('profile', 'height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 'resolution', 'offset',
               'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link', 'puff', 'outline_smooth',
-              'edge_round')
+              'edge_round', 'profile_sweep', 'section_width', 'section_rotation', 'section_twist',
+              'section_taper')
 
 
 def _rebuild_now(name):
@@ -163,6 +167,25 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
                          description='Draw = add to an orange sketch, Alt+draw = subtract from it; '
                                      'Enter makes the mesh (Alt+Enter cuts it into the mesh below). '
                                      'Off: every outline becomes a mesh at once (Alt+draw = cutter)')
+    # 0.24.103 Cross-section sweep for Base Mesh Line and Unified Press Alt+Draw.
+    # OFF is intentionally backward-compatible with the existing band / profile engine.
+    profile_sweep: EnumProperty(name='Line Cross Section', items=(
+        ('OFF', 'Normal Line', 'Use the usual Base Mesh line / silhouette'),
+        ('CIRCLE', 'Circle', 'Sweep a circular cross section along the drawn line'),
+        ('SQUARE', 'Square', 'Sweep a square cross section along the drawn line'),
+        ('ALPHA', 'Press Cut Shape', 'Sweep the selected saved Press Cut stamp outline as a cross section')),
+        default='OFF', update=_rebuild_update)
+    section_width: FloatProperty(name='Section Width', default=0.2, min=0.001, soft_max=10.0,
+                                 unit='LENGTH', precision=4, update=_rebuild_update)
+    section_rotation: FloatProperty(name='Section Rotation', default=0.0, min=-math.pi*2,
+                                    max=math.pi*2, subtype='ANGLE', update=_rebuild_update)
+    section_twist: FloatProperty(name='Twist Along Line', default=0.0, min=-math.pi*8,
+                                 max=math.pi*8, subtype='ANGLE', update=_rebuild_update)
+    section_taper: FloatProperty(name='End Taper', default=0.0, min=0.0, max=0.95,
+                                 subtype='FACTOR', update=_rebuild_update,
+                                 description='Shrink the cross-section at the start and end of the path')
+    depth_mode: BoolProperty(name='Depth Guide Mode', default=False,
+                             description='Draw front silhouette first, then draw a side-view depth guide on its live mesh')
     line_attach: BoolProperty(name='Attach Ends', default=False,
                               description='Line mode: the start of the line sticks to the mesh where you began drawing, '
                                           'the end to the mesh where you let go (the line runs between them in 3D)')
@@ -1147,6 +1170,330 @@ def _made_res(text):
         return 1.0
 
 
+
+
+def _depth_at(points, u):
+    if not points:
+        return 0.0
+    if u <= points[0][0]: return points[0][1]
+    for a, b in zip(points, points[1:]):
+        if u <= b[0]:
+            t = (u-a[0])/max(b[0]-a[0],1e-9)
+            return a[1]*(1.0-t)+b[1]*t
+    return points[-1][1]
+
+
+def _depth_profile_mesh(me, data):
+    """Translate each cross-section along local Z without changing front silhouette.
+    The guide is measured in the original mesh's local plane. No topology change.
+    """
+    try:
+        axis = int(data['axis'])
+        points = sorted([(float(u),float(z)) for u,z in data['points']], key=lambda q:q[0])
+        if len(points) < 2 or axis not in (0,1): return
+    except (TypeError,ValueError,KeyError,IndexError):
+        return
+    # Clean out overlapping control points for a single-valued depth function.
+    spaced = [points[0]]
+    for pt in points[1:]:
+        if pt[0] - spaced[-1][0] > 1e-6:
+            spaced.append(pt)
+        else:
+            spaced[-1]=pt
+    if len(spaced)<2: return
+    for v in me.vertices:
+        v.co.z += _depth_at(spaced, v.co[axis])
+
+
+class MCH_OT_depth_side_guide(bpy.types.Operator):
+    bl_idname = 'mch.depth_side_guide'
+    bl_label = 'Draw Side Depth Guide'
+    bl_description = 'From the side of an active LIVE Base Mesh, draw a freehand depth profile across its face'
+    bl_options = {'REGISTER','UNDO','BLOCKING'}
+
+    @classmethod
+    def poll(cls, context):
+        ob=context.active_object
+        return context.mode == 'OBJECT' and context.area is not None and context.area.type == 'VIEW_3D' \
+            and ob is not None and ob.type == 'MESH' and getattr(ob.mch_base,'live',False) \
+            and bool(ob.mch_base.outline)
+
+    def invoke(self, context, event):
+        ob=context.active_object
+        self.target_name=ob.name
+        view=context.space_data.region_3d
+        direction=(view.view_rotation @ Vector((0,0,-1))).normalized()
+        mw=ob.matrix_world.to_3x3()
+        ax=(mw @ Vector((1,0,0))).normalized()
+        ay=(mw @ Vector((0,1,0))).normalized()
+        az=(mw @ Vector((0,0,1))).normalized()
+        if abs(direction.dot(az)) > .6:
+            self.report({'WARNING'},'Rotate to a SIDE view of the Base Mesh (not front view)')
+            return {'CANCELLED'}
+        # A side view is aligned roughly with one axis of the front drawing plane.
+        # The other, visible axis indexes the cross-sections of the depth guide.
+        self.axis = 1 if abs(direction.dot(ax))>=abs(direction.dot(ay)) else 0
+        self.plane_normal = ax if self.axis==1 else ay
+        if abs(direction.dot(self.plane_normal)) < .15:
+            self.report({'WARNING'},'Choose a side view approximately along the mesh local X or Y axis')
+            return {'CANCELLED'}
+        self.pts=[]; self.state='WAIT'
+        self.winregion=next((r for r in context.area.regions if r.type=='WINDOW'),None)
+        if self.winregion is None: return {'CANCELLED'}
+        self.handler=bpy.types.SpaceView3D.draw_handler_add(self._draw,(), 'WINDOW','POST_PIXEL')
+        context.area.header_text_set('Depth Guide: drag side profile (visible axis vs depth)  |  Esc cancel')
+        context.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+
+    def _stop(self,context):
+        if getattr(self,'handler',None) is not None:
+            bpy.types.SpaceView3D.draw_handler_remove(self.handler,'WINDOW');self.handler=None
+        if context.area and context.area.type=='VIEW_3D':
+            context.area.header_text_set(None);context.area.tag_redraw()
+
+    def _draw(self):
+        if len(self.pts)<2: return
+        import gpu
+        from gpu_extras.batch import batch_for_shader
+        sh=gpu.shader.from_builtin('UNIFORM_COLOR')
+        sh.bind();sh.uniform_float('color',(0.15,0.84,1.0,0.95))
+        gpu.state.blend_set('ALPHA')
+        gpu.state.line_width_set(3.0)
+        batch_for_shader(sh,'LINE_STRIP',{'pos':self.pts}).draw(sh)
+        gpu.state.line_width_set(1.0);gpu.state.blend_set('NONE')
+
+    def modal(self,context,event):
+        if event.type in {'ESC','RIGHTMOUSE'} and event.value=='PRESS':
+            self._stop(context);return {'CANCELLED'}
+        xy=(event.mouse_x-self.winregion.x, event.mouse_y-self.winregion.y)
+        if self.state=='WAIT' and event.type=='LEFTMOUSE' and event.value=='PRESS':
+            if not (0<=xy[0]<self.winregion.width and 0<=xy[1]<self.winregion.height):
+                return {'RUNNING_MODAL'}
+            self.pts=[xy];self.state='DRAW'
+            return {'RUNNING_MODAL'}
+        if self.state=='DRAW' and event.type=='MOUSEMOVE':
+            if math.dist(xy,self.pts[-1])>=3:
+                self.pts.append(xy)
+                context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+        if self.state=='DRAW' and event.type=='LEFTMOUSE' and event.value=='RELEASE':
+            self._stop(context)
+            if len(self.pts)<3 or math.dist(self.pts[0],self.pts[-1])<7:
+                self.report({'WARNING'},'Draw a longer depth profile')
+                return {'CANCELLED'}
+            ob=bpy.data.objects.get(self.target_name)
+            if ob is None or not ob.mch_base.live: return {'CANCELLED'}
+            from bpy_extras.view3d_utils import region_2d_to_origin_3d,region_2d_to_vector_3d
+            inv=ob.matrix_world.inverted_safe()
+            pivot=ob.matrix_world.translation.copy()
+            points=[]
+            for q in self.pts:
+                ro=region_2d_to_origin_3d(self.winregion,context.space_data.region_3d,q)
+                rd=region_2d_to_vector_3d(self.winregion,context.space_data.region_3d,q)
+                denom=rd.dot(self.plane_normal)
+                if abs(denom)<1e-8: continue
+                w=ro+rd*((pivot-ro).dot(self.plane_normal)/denom)
+                local=inv @ w
+                points.append((local[self.axis],local.z))
+            if len(points)<2:
+                self.report({'WARNING'},'Could not project depth guide onto side plane')
+                return {'CANCELLED'}
+            ob[DEPTH_KEY]=json.dumps({'axis':self.axis,'points':points})
+            rebuild(ob)
+            self.report({'INFO'},'Depth guide saved; edit live height/bevel as before. Draw again to replace guide.')
+            return {'FINISHED'}
+        return {'RUNNING_MODAL'}
+
+    def cancel(self,context): self._stop(context)
+
+
+class MCH_OT_depth_side_clear(bpy.types.Operator):
+    bl_idname='mch.depth_side_clear'
+    bl_label='Clear Side Depth Guide'
+    bl_options={'REGISTER','UNDO'}
+    @classmethod
+    def poll(cls,context):
+        ob=context.active_object
+        return ob is not None and bool(ob.get(DEPTH_KEY)) and bool(getattr(ob.mch_base,'live',False))
+    def execute(self,context):
+        ob=context.active_object
+        del ob[DEPTH_KEY]
+        rebuild(ob)
+        return {'FINISHED'}
+
+# ----------------------------------------------------------------------------
+# 0.24.103 Open-stroke section sweep (Circle / Square / saved Press Cut shape).
+# Kept separate from build_bmesh: ordinary Base Mesh outlines remain unchanged.
+# ----------------------------------------------------------------------------
+
+
+def _section_loops(context, style):
+    """Return a snapshot of the selected cross section in normalized XY units."""
+    if style == 'CIRCLE':
+        return [[(math.cos(i * math.tau / 32) * 0.5, math.sin(i * math.tau / 32) * 0.5)
+                 for i in range(32)]], 'Circle'
+    if style == 'SQUARE':
+        return [[(-0.5, -0.5), (0.5, -0.5), (0.5, 0.5), (-0.5, 0.5)]], 'Square'
+    if style != 'ALPHA':
+        raise cg.CutError('Select Circle, Square or a saved Press Cut shape for a line sweep.')
+    from . import cut_presets, press_cut
+    # Honor the exact active Press Cut stamp, including an unsaved Shift-drawn shape.
+    # This is a snapshot, so later selecting another stamp won't alter old meshes.
+    press = context.scene.mch_press
+    if getattr(press, 'drawn', False) and press_cut.DRAWN[0]:
+        return [[(float(x), float(y)) for x, y in lp] for lp in press_cut.DRAWN[0]], 'Drawn Press Shape'
+    stem = getattr(press, 'shape', 'NONE')
+    if not stem or stem == 'NONE':
+        raise cg.CutError('Select a Press Cut stamp before Alt + drawing.')
+    loops = cut_presets.load_loops(stem)
+    if not loops:
+        raise cg.CutError('The selected Press Cut shape has no closed contour.')
+    return [[(float(x), float(y)) for x, y in loop] for loop in loops], stem
+
+
+def _resample_section_path(points, width, max_points=192):
+    """Arc-length resampling: stable tangents and bounded vertex counts."""
+    from bisect import bisect_right
+    clean = []
+    for q in points:
+        p = (float(q[0]), float(q[1]))
+        if not clean or math.dist(p, clean[-1]) > 1e-6:
+            clean.append(p)
+    if len(clean) < 2:
+        raise cg.CutError('Draw a longer line to sweep the section.')
+    cumulative = [0.0]
+    for a, b in zip(clean, clean[1:]):
+        cumulative.append(cumulative[-1] + math.dist(a, b))
+    total = cumulative[-1]
+    if total < 1e-5:
+        raise cg.CutError('The line is too short for a swept cross section.')
+    n = max(2, min(max_points, max(len(clean), int(math.ceil(total / max(width * 0.45, 0.002))) + 1)))
+    sampled = []
+    for i in range(n):
+        d = total * i / (n-1)
+        j = min(len(clean)-2, max(0, bisect_right(cumulative, d)-1))
+        a, b = clean[j], clean[j+1]
+        t = (d-cumulative[j]) / max(1e-12, cumulative[j+1]-cumulative[j])
+        sampled.append((a[0]+t*(b[0]-a[0]), a[1]+t*(b[1]-a[1])))
+    return sampled
+
+
+def _build_sweep_bmesh(data, p):
+    """Watertight sections swept along a plane-local centreline; includes holes.
+
+    Alpha shapes are a VECTOR outline, not brightness displacement. Each ring
+    lies in the plane perpendicular to the path tangent, and remains editable.
+    """
+    path = [tuple(q) for q in data['path']]
+    loops = [[(float(q[0]), float(q[1])) for q in lp] for lp in data['loops']]
+    if not loops or sum(map(len, loops)) < 3:
+        raise cg.CutError('The selected cross-section shape is empty.')
+    total_points = sum(map(len, loops))
+    if total_points > 1800:
+        raise cg.CutError('Saved shape is too detailed (max 1800 outline points); simplify the contour first.')
+    groups = cg.organize_loops(loops)
+    if not groups:
+        raise cg.CutError('Saved cross-section contains no closed area.')
+    stations = _resample_section_path(path, p.section_width,
+                                       max_points=min(192, max(12, 125000 // total_points)))
+    tangents = []
+    for i in range(len(stations)):
+        a, b = (stations[0], stations[1]) if i == 0 else (stations[-2], stations[-1]) if i == len(stations)-1 \
+               else (stations[i-1], stations[i+1])
+        d = Vector((b[0]-a[0], b[1]-a[1]))
+        if d.length < 1e-8:
+            raise cg.CutError('Overlapping drawing points; redraw the path.')
+        d.normalize()
+        tangents.append((-d.y, d.x))
+    width, height = max(1e-5, p.section_width), max(1e-5, p.height)
+    base_angle, twist, taper = p.section_rotation, p.section_twist, p.section_taper
+    bm = bmesh.new()
+    try:
+        for outer, holes in groups:
+            section_loops = [outer] + list(holes)
+            flat = [q for lp in section_loops for q in lp]
+            edges = []
+            off = 0
+            for lp in section_loops:
+                edges += [(off+i, off+(i+1)%len(lp)) for i in range(len(lp))]
+                off += len(lp)
+            cap_faces = _triangulate(flat, len(flat), section_loops, edges)
+            all_rings = []
+            for i, ((px, py), (nx, ny)) in enumerate(zip(stations, tangents)):
+                t = i / (len(stations)-1)
+                scale = max(0.05, 1.0 - taper*(abs(2*t-1)**2))
+                angle = base_angle + twist*t
+                ca, sa = math.cos(angle), math.sin(angle)
+                ring = []
+                for u, v in flat:
+                    u, v = (u*ca-v*sa)*scale, (u*sa+v*ca)*scale
+                    ring.append(bm.verts.new((px+nx*u*width, py+ny*u*width,
+                                              p.offset+v*height)))
+                all_rings.append(ring)
+            for a, b, c in cap_faces:
+                # Profile +U points left across the path, +V points up.
+                # A CCW cap faces forward; reverse the leading cap only.
+                a, b, c = _orient_ccw((a,b,c), flat)
+                bm.faces.new((all_rings[0][c], all_rings[0][b], all_rings[0][a]))
+                bm.faces.new((all_rings[-1][a], all_rings[-1][b], all_rings[-1][c]))
+            for ring0, ring1 in zip(all_rings, all_rings[1:]):
+                for a, b in edges:
+                    bm.faces.new((ring0[a], ring0[b], ring1[b], ring1[a]))
+        if not bm.faces:
+            raise cg.CutError('The Alpha sweep generated no faces.')
+        bm.normal_update()
+        return bm
+    except Exception:
+        bm.free()
+        raise
+
+
+def _create_section_sweep(context, loops, projector, path, defaults):
+    """One shared implementation for Base Mesh Line and Unified Press Alt+Draw."""
+    section, name = _section_loops(context, defaults.profile_sweep)
+    groups, frame, _screen, _embed = _local_groups(context, loops, projector)
+    inv = frame.inverted_safe()
+    origin, normal = frame.translation, Vector((frame[0][2], frame[1][2], frame[2][2]))
+    local_path = []
+    for q in path:
+        w = _plane_point(projector, q, origin, normal)
+        l = inv @ w
+        local_path.append((float(l.x), float(l.y)))
+    # Snapshot vector loops: rebuilding still works if the saved Press Cut shape is renamed/deleted.
+    sweep = {'path': local_path, 'loops': section, 'section_name': name}
+    msg = _create_live_base(context, groups, frame, defaults, embed=0.0, sweep_data=sweep)
+    return msg + f' | Sweep section: {name}'
+
+
+class MCH_OT_base_section_use_alpha(bpy.types.Operator):
+    """Apply the currently selected saved Press Cut shape to an existing LIVE swept Base Mesh."""
+    bl_idname = 'mch.base_section_use_alpha'
+    bl_label = 'Use Selected Press Cut Shape in Live Line'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        ob = active_live_base(context)
+        return ob is not None and SWEEP_KEY in ob
+
+    def execute(self, context):
+        ob = active_live_base(context)
+        try:
+            loops, name = _section_loops(context, 'ALPHA')
+            data = json.loads(ob[SWEEP_KEY])
+            data['loops'], data['section_name'] = loops, name
+            # Update after validation, never destroy the prior sweep on error.
+            _build_sweep_bmesh(data, ob.mch_base).free()
+            ob[SWEEP_KEY] = json.dumps(data)
+            ob.mch_base.profile_sweep = 'ALPHA'
+            rebuild(ob)
+            self.report({'INFO'}, 'Live section updated from selected Press Cut shape')
+            return {'FINISHED'}
+        except (cg.CutError, ValueError, KeyError) as ex:
+            self.report({'WARNING'}, str(ex))
+            return {'CANCELLED'}
+
+
 def rebuild(ob):
     """Regenerate a live Base Mesh object from its stored outline + settings.  At another Resolution than the
     outline was drawn at, its curved runs are resampled to match (0.24.95: a part made at 100 %, rebuilt at 200 %
@@ -1155,7 +1502,14 @@ def rebuild(ob):
     f = ts.res_scale() / _made_res(ob.mch_base.outline)
     if abs(f - 1.0) > 1e-6:
         groups = [(cg.reres_loop(o, f), [cg.reres_loop(h, f) for h in hs]) for o, hs in groups]
-    bm = build_bmesh(groups, ob.mch_base)
+    sweep = json.loads(ob[SWEEP_KEY]) if ob.get(SWEEP_KEY) and ob.mch_base.profile_sweep != 'OFF' else None
+    if sweep is not None and ob.mch_base.profile_sweep in {'CIRCLE', 'SQUARE'}:
+        # Live Circle/Square selectors must use their current section, not the
+        # previous Alpha snapshot. Saved Press shapes intentionally stay snapshotted
+        # until 'Use Selected Press Shape' is pressed, preserving reproducibility.
+        sweep['loops'], _label = _section_loops(None, ob.mch_base.profile_sweep)
+    bm = (_build_sweep_bmesh(sweep, ob.mch_base) if sweep is not None
+          else build_bmesh(groups, ob.mch_base))
     try:
         bm.to_mesh(ob.data)
         from . import edge_memory as _em; _em.mark_generated(ob.data)   # 0.24.95 Edge Memory: the part's own lines
@@ -1166,6 +1520,10 @@ def rebuild(ob):
             attach_bend(ob.data, json.loads(ob[ATTACH_KEY]), ob.mch_base.attach_curve)
         except (TypeError, ValueError, KeyError):
             pass
+    if ob.get(DEPTH_KEY):
+        try:
+            _depth_profile_mesh(ob.data, json.loads(ob[DEPTH_KEY]))
+        except (ValueError,TypeError,KeyError): pass
     ob.data.update()
     ob['mch_base_notes'] = '; '.join(LAST_NOTES)      # 0.23.17 shown in the LIVE panel (e.g. width limited)
 
@@ -1392,11 +1750,21 @@ def _local_groups(context, loops, projector, allow_invert=True):
     return groups, frame, screen_groups, embed
 
 
-def perform_base(context, loops, projector, cutter=False, targets=None, attach=None):
-    """Create the new solid (or, ``cutter=True`` = Alt, cut it into the
-    mesh below).  Returns a report string; raises CutError (scene untouched)."""
+def perform_base(context, loops, projector, cutter=False, targets=None, attach=None, path=None,
+                 sweep_style=None):
+    """Create a solid or cutter, optionally forcing a section for a single draw.
+
+    Press Cut Alt+drag uses sweep_style='ALPHA' so its CURRENT selected stamp
+    is the section without changing the regular Base Mesh section setting.
+    """
     defaults = scene_defaults(context)
+    if sweep_style is not None:
+        if sweep_style not in {'CIRCLE', 'SQUARE', 'ALPHA'}:
+            raise cg.CutError('Invalid line section style.')
+        defaults = _WithSectionStyle(defaults, sweep_style)
     creature = defaults.profile in CREATURE_PROFILES
+    if not cutter and path is not None and not creature and defaults.profile_sweep != 'OFF':
+        return _create_section_sweep(context, loops, projector, path, defaults)
     if cutter and not creature and getattr(defaults, 'alt_mode', 'HEIGHT') == 'CUT':
         return cut_like_cut_tool(context, loops, projector, targets)
     if cutter and not creature and defaults.profile in SURFACE_CARVE:
@@ -1456,6 +1824,17 @@ def scene_defaults(context):
     return p
 
 
+class _WithSectionStyle:
+    """Settings view for a single Alt+draw. Does NOT mutate scene settings."""
+
+    def __init__(self, base, style):
+        self._base = base
+        self.profile_sweep = style
+
+    def __getattr__(self, name):
+        return getattr(self._base, name)
+
+
 class _WithEmbed:
     """Settings view: ``defaults`` with this shape's own embed."""
 
@@ -1467,9 +1846,10 @@ class _WithEmbed:
         return getattr(self._base, name)
 
 
-def _create_live_base(context, groups, frame, defaults, embed=0.0):
+def _create_live_base(context, groups, frame, defaults, embed=0.0, sweep_data=None):
     """New live Base Mesh object from plane-local ``groups`` at ``frame``."""
-    bm = build_bmesh(groups, _WithEmbed(defaults, embed))
+    bm = (_build_sweep_bmesh(sweep_data, defaults) if sweep_data is not None
+          else build_bmesh(groups, _WithEmbed(defaults, embed)))
     me = bpy.data.meshes.new('MCH_BaseMesh')
     try:
         bm.to_mesh(me)
@@ -1491,7 +1871,9 @@ def _create_live_base(context, groups, frame, defaults, embed=0.0):
     if defaults.profile in CREATURE_PROFILES and defaults.peak <= 0 and LAST_NATURAL:
         live.peak = LAST_NATURAL[0]            # 0.24.20 the Height slider starts at the real height
     live.outline = json.dumps({'groups': [{'outer': g[0], 'holes': g[1]} for g in groups],
-                               'res': ts.res_scale()})                  # (0.24.95 drawn at this Resolution)
+                               'res': ts.res_scale()})
+    if sweep_data is not None:
+        ob[SWEEP_KEY] = json.dumps(sweep_data, separators=(',', ':'))                  # (0.24.95 drawn at this Resolution)
     live.live = True
     session = list(context.scene.get(SESSION_KEY, []))
     session.append(ob.name)
@@ -1501,7 +1883,8 @@ def _create_live_base(context, groups, frame, defaults, embed=0.0):
         o.select_set(False)
     ob.select_set(True)
     context.view_layer.objects.active = ob
-    name = dict((p[0], p[1]) for p in PROFILES)[defaults.profile]
+    name = ('Line ' + defaults.profile_sweep.title() if sweep_data is not None
+            else dict((p[0], p[1]) for p in PROFILES)[defaults.profile])
     notes = (' | ' + '; '.join(LAST_NOTES)) if LAST_NOTES else ''
     return f'Base Mesh created: {ob.name} ({name}, {len(me.vertices)} verts, closed solid){notes}'
 
@@ -2238,7 +2621,8 @@ class MCH_OT_base_freeze(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_PG_BaseMesh, MCH_OT_set_profile, MCH_OT_base_freeze, MCH_OT_base_sketch_commit,
+CLASSES = (MCH_PG_BaseMesh, MCH_OT_set_profile, MCH_OT_base_section_use_alpha, MCH_OT_base_freeze,
+           MCH_OT_depth_side_guide, MCH_OT_depth_side_clear, MCH_OT_base_sketch_commit,
            MCH_OT_base_sketch_key, MCH_OT_base_sketch_clear, MCH_OT_base_sketch_undo)
 
 

@@ -28,7 +28,7 @@ EXTRA = {
     'CBASE': ['Enter   make the sketch,  Alt+Enter   cut it in'],
     'CUT': ['T   targets: auto / selected'],
     'SPLIT': ['T   targets: auto / selected'],
-    'PRESS': ['Hold LMB on a part   deeper the longer you hold,  release   keep', 'Shift + draw   your own stamp - Lasso / Rectangle / Circle / Free Draw ... (top bar), Sketch: Enter = the stamp', 'Esc / RMB (holding)   put it back,  [ ] / F   stamp size',
+    'PRESS': ['Alt + hold LMB   grow a separate mesh outward from the surface', 'Hold LMB on a part   deeper the longer you hold,  release   keep', 'Shift + draw   your own stamp - Lasso / Rectangle / Circle / Free Draw ... (top bar), Sketch: Enter = the stamp', 'Esc / RMB (holding)   put it back,  [ ] / F   stamp size',
               'R + mouse   turn (Shift fine, Ctrl 5\u00b0),  Shift+R   0\u00b0'],
     'CPATH': ['Tab (dragging)   Extend: brush area / whole section', 'B (dragging)   Back Mask: the far side stays put'],
     'SMOVE': ['Drag from the part   the whole part follows the way (stretches, bends)'],

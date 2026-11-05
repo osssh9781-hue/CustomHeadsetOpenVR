@@ -657,6 +657,15 @@ def gn_set(mod, ident, value):
         mod[ident] = value
 
 
+def gn_prop(layout, mod, ident, **kwargs):
+    """Draw the actual modifier input RNA in 5.2/5.3; keep legacy UI support."""
+    props = getattr(mod, 'properties', None)
+    if props is not None and hasattr(props, 'inputs'):
+        layout.prop(getattr(props.inputs, ident), 'value', **kwargs)
+    else:
+        layout.prop(mod, f'["{ident}"]', **kwargs)
+
+
 def non_manifold_edge_count(mesh):
     """Edges not shared by exactly two faces (BMesh's is_manifold).  0.24.73 counted from the face corners with numpy
     (a BMesh copy + a Python loop over every edge was ~0.5 s of a 4.5 s Cut on 390k faces)."""

@@ -111,8 +111,9 @@ def info(data, prop):
     if prop.startswith('["'):
         key = prop[2:-2]
         try:
-            v = data[key]
-        except (KeyError, TypeError):
+            from . import ui_values
+            v = ui_values.get(data, prop)
+        except (KeyError, TypeError, AttributeError):
             return None
         t = 'BOOLEAN' if isinstance(v, bool) else 'INT' if isinstance(v, int) else \
             'FLOAT' if isinstance(v, float) else 'OTHER'
@@ -160,7 +161,8 @@ def _cells(node, tool):
         elif typ == 'ENUM':
             out.append(('drop', label, False, ('menu_enum',), node.data, node.prop, active))
         elif typ == 'BOOLEAN' and not is_array:
-            on = bool(node.data[node.prop[2:-2]] if node.prop.startswith('["') else getattr(node.data, node.prop))
+            from . import ui_values
+            on = bool(ui_values.get(node.data, node.prop))
             as_button = node.opts.get('toggle') not in (-1, False, 0) or node.opts.get('icon', 'NONE') != 'NONE'
             out.append(('seg' if as_button else 'switch', label or name, on, ('bool',), node.data, node.prop, active))
         elif typ in {'INT', 'FLOAT'} and not is_array:

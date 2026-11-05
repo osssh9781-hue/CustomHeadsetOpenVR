@@ -19,6 +19,8 @@ import math
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, FloatVectorProperty, IntProperty, PointerProperty
 from mathutils import Matrix, Vector
+from mathutils.geometry import interpolate_bezier
+import time
 
 MOD_DEFORM = 'MCH_AlongCurve'
 MOD_ARRAY = 'MCH_CurveArray'
@@ -171,6 +173,337 @@ class MCH_OT_curve_deform(bpy.types.Operator):
         self.report({'INFO'}, f'{len(meshes)} mesh(es) follow "{curve.name}"')
         return {'FINISHED'}
 
+
+
+# =============================================================================
+# Draw Group Array (v0.24.102)
+# =============================================================================
+# Each instance has a handle plus linked object data copies of the source group's
+# geometry.  A group is NOT joined into one mesh, and the source remains untouched.
+# The generated root objects are tagged so changing Count replaces only generated
+# instances. Curve editing also refreshes the array via depsgraph callback.
+_DRAW_BUSY = False
+_DRAW_LAST = {}
+_DRAW_SIG = {}
+DRAW_TAG = 'mch_draw_array_owner'
+
+
+def _draw_array_update(self, context):
+    ob = self.id_data
+    if isinstance(ob, bpy.types.Object) and self.active:
+        sync_draw_array(ob)
+
+
+class MCH_PG_DrawGroupArray(bpy.types.PropertyGroup):
+    active: BoolProperty(default=False, options={'HIDDEN'})
+    source: PointerProperty(name='Source Group', type=bpy.types.Object)
+    path: PointerProperty(name='Drawn Path', type=bpy.types.Object)
+    count: IntProperty(name='Copies', default=8, min=1, max=200, update=_draw_array_update,
+                       description='How many complete linked copies of the group to place on the path')
+    scale: FloatProperty(name='Scale', default=1.0, min=0.005, max=20.0, update=_draw_array_update)
+    follow: BoolProperty(name='Follow Path', default=True, update=_draw_array_update)
+    roll: FloatProperty(name='Roll', default=0.0, subtype='ANGLE', update=_draw_array_update)
+    offset: FloatProperty(name='Start', default=0.0, min=0, max=0.95, subtype='FACTOR', update=_draw_array_update)
+    end: FloatProperty(name='End', default=1.0, min=0.05, max=1.0, subtype='FACTOR', update=_draw_array_update)
+
+
+def _draw_curve_samples(ob):
+    if ob is None or ob.type != 'CURVE':
+        return []
+    samples = []
+    mw = ob.matrix_world
+    for spline in ob.data.splines:
+        pts = []
+        if spline.type == 'BEZIER':
+            b = spline.bezier_points
+            for i in range(len(b)-1 + (1 if spline.use_cyclic_u else 0)):
+                a, z = b[i], b[(i+1)%len(b)]
+                part = interpolate_bezier(a.co, a.handle_right, z.handle_left, z.co, 12)
+                pts.extend(part if not pts else part[1:])
+        else:
+            pts = [Vector(q.co[:3]) for q in spline.points]
+        if len(pts) < 2:
+            continue
+        world = [mw @ x for x in pts]
+        if samples:
+            # Only use the first curve spline; disjoint spline jumps are not a connected path.
+            break
+        samples = world
+    return samples
+
+
+def _at_draw_path(points, fraction):
+    if len(points) < 2:
+        return None, None
+    steps = [(points[i+1]-points[i]).length for i in range(len(points)-1)]
+    total = sum(steps)
+    if total < 1e-7:
+        return points[0].copy(), Vector((1, 0, 0))
+    d = max(0., min(1., fraction))*total
+    for i, step in enumerate(steps):
+        if d <= step or i == len(steps)-1:
+            tang = (points[i+1]-points[i]).normalized() if step > 1e-7 else Vector((1,0,0))
+            return points[i].lerp(points[i+1], min(1.,d/max(step,1e-8))), tang
+        d -= step
+    return points[-1], (points[-1]-points[-2]).normalized()
+
+
+def _group_geometry(group):
+    from . import groups
+    if group is None or not groups.is_group(group):
+        return []
+    return [o for o in groups.members(group) if o.type in {'MESH','CURVE','SURFACE','FONT'}
+            and not o.get(DRAW_TAG) and not o.hide_get()]
+
+
+def _remove_draw_copies(ctrl):
+    for ob in list(bpy.data.objects):
+        if ob.get(DRAW_TAG) == ctrl.name:
+            bpy.data.objects.remove(ob, do_unlink=True)
+
+
+def sync_draw_array(ctrl):
+    global _DRAW_BUSY
+    if _DRAW_BUSY or ctrl is None or ctrl.name not in bpy.data.objects:
+        return
+    p = ctrl.mch_draw_array
+    if not p.active or p.source is None or p.path is None:
+        return
+    from . import groups
+    if not groups.is_group(p.source):
+        return
+    points = _draw_curve_samples(p.path)
+    if len(points) < 2:
+        return
+    sources = _group_geometry(p.source)
+    if not sources:
+        return
+    _DRAW_BUSY = True
+    try:
+        _remove_draw_copies(ctrl)
+        base = p.source.matrix_world.inverted_safe()
+        collection = ctrl.users_collection[0] if ctrl.users_collection else bpy.context.scene.collection
+        bound = max(0., min(1., p.end))
+        begin = min(p.offset, bound)
+        n = max(1, p.count)
+        for i in range(n):
+            t = begin + (bound - begin)*(i/(n-1) if n > 1 else 0.)
+            pos, tang = _at_draw_path(points, t)
+            if pos is None:
+                continue
+            rot = tang.to_track_quat('X','Z').to_matrix().to_4x4() if p.follow else Matrix.Identity(4)
+            if abs(p.roll) > 1e-7:
+                rot = rot @ Matrix.Rotation(p.roll,4,'X')
+            world = Matrix.Translation(pos) @ rot @ Matrix.Diagonal((p.scale,p.scale,p.scale,1.0))
+            root = bpy.data.objects.new(f'{p.source.name}_DA_{i+1:02}', None)
+            root.empty_display_type = 'PLAIN_AXES'
+            root.empty_display_size = 0.06
+            root[DRAW_TAG] = ctrl.name
+            collection.objects.link(root)
+            root.matrix_world = world
+            for src in sources:
+                # Local coordinate relative to the group root, preserving each
+                # nested object/mesh transform without moving the source.
+                local = base @ src.matrix_world
+                copy = src.copy()
+                if src.data is not None:
+                    copy.data = src.data  # linked geometry, not a huge mesh duplication
+                copy.name = f'{src.name}_DA_{i+1:02}'
+                copy[DRAW_TAG] = ctrl.name
+                collection.objects.link(copy)
+                copy.parent = root
+                copy.matrix_world = world @ local
+                copy.hide_set(False)
+    finally:
+        _DRAW_BUSY = False
+
+
+def _draw_depsgraph(scene, depsgraph):
+    if _DRAW_BUSY:
+        return
+    changed = {getattr(update.id, 'original', update.id) for update in depsgraph.updates
+               if isinstance(getattr(update.id, 'original', update.id), bpy.types.Object) and
+               getattr(update, 'is_updated_geometry', False)}
+    if not changed:
+        return
+    now = time.monotonic()
+    for ctrl in [o for o in scene.objects if getattr(getattr(o,'mch_draw_array',None),'active',False)]:
+        p = ctrl.mch_draw_array
+        if p.path not in changed:
+            continue
+        if now - _DRAW_LAST.get(ctrl.name, 0.0) < 0.18:
+            continue
+        _DRAW_LAST[ctrl.name] = now
+        sync_draw_array(ctrl)
+
+
+def _draw_path_signature(curve):
+    if curve is None or curve.type != 'CURVE': return None
+    try:
+        points = _draw_curve_samples(curve)
+        return (len(points), tuple(round(float(v), 4) for point in points for v in point))
+    except (AttributeError, ReferenceError):
+        return None
+
+
+def _draw_array_timer():
+    # App timer instead of mutating objects inside depsgraph_update_post.
+    # This is safe when a live curve finishes its Edit Mode changes.
+    try:
+        scene = bpy.context.scene
+        if scene is None: return .6
+        for ctrl in list(scene.objects):
+            prop = getattr(ctrl,'mch_draw_array',None)
+            if prop is None or not prop.active or prop.path is None: continue
+            signature = _draw_path_signature(prop.path)
+            if signature is None: continue
+            previous = _DRAW_SIG.get(ctrl.name)
+            if previous is None:
+                _DRAW_SIG[ctrl.name] = signature
+            elif previous != signature and bpy.context.mode == 'OBJECT':
+                sync_draw_array(ctrl)
+                _DRAW_SIG[ctrl.name] = signature
+    except (ReferenceError, RuntimeError, AttributeError):
+        pass
+    return .6
+
+
+class MCH_OT_draw_group_array(bpy.types.Operator):
+    bl_idname = 'mch.draw_group_array'
+    bl_label = 'Draw Group Array'
+    bl_description = 'Select a Mecha group, then draw a freehand curve in the viewport; count stays live'
+    bl_options = {'REGISTER','UNDO','BLOCKING'}
+
+    @classmethod
+    def poll(cls, context):
+        from . import groups
+        return context.mode == 'OBJECT' and context.area is not None and context.area.type == 'VIEW_3D' and \
+            groups.group_of(context.active_object) is not None
+
+    def invoke(self, context, event):
+        from . import groups
+        g = groups.group_of(context.active_object)
+        if g is None or not _group_geometry(g):
+            self.report({'WARNING'}, 'Choose a group containing meshes/curves')
+            return {'CANCELLED'}
+        self.source_name = g.name
+        self.pts = []
+        self.state = 'WAIT'
+        self.winregion = next((r for r in context.area.regions if r.type == 'WINDOW'), None)
+        if self.winregion is None:
+            return {'CANCELLED'}
+        self._handle = bpy.types.SpaceView3D.draw_handler_add(self._draw, (), 'WINDOW', 'POST_PIXEL')
+        context.window_manager.modal_handler_add(self)
+        context.area.header_text_set('Draw Group Array: click and drag in viewport  |  Esc cancel')
+        return {'RUNNING_MODAL'}
+
+    def _stop(self, context):
+        if getattr(self,'_handle',None) is not None:
+            bpy.types.SpaceView3D.draw_handler_remove(self._handle,'WINDOW')
+            self._handle = None
+        if context.area and context.area.type == 'VIEW_3D':
+            context.area.header_text_set(None)
+            context.area.tag_redraw()
+
+    def _draw(self):
+        if len(self.pts) < 2:
+            return
+        import gpu
+        from gpu_extras.batch import batch_for_shader
+        shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+        shader.bind()
+        shader.uniform_float('color',(1.0,0.52,0.14,1.0))
+        gpu.state.blend_set('ALPHA')
+        gpu.state.line_width_set(3)
+        batch_for_shader(shader,'LINE_STRIP',{'pos': self.pts}).draw(shader)
+        gpu.state.line_width_set(1)
+        gpu.state.blend_set('NONE')
+
+    def modal(self, context, event):
+        if event.type in {'ESC','RIGHTMOUSE'} and event.value == 'PRESS':
+            self._stop(context)
+            return {'CANCELLED'}
+        xy = (float(event.mouse_x-self.winregion.x), float(event.mouse_y-self.winregion.y))
+        if event.type == 'LEFTMOUSE' and event.value == 'PRESS' and self.state == 'WAIT':
+            if not (0 <= xy[0] < self.winregion.width and 0 <= xy[1] < self.winregion.height):
+                return {'RUNNING_MODAL'}
+            self.state = 'DRAW'
+            self.pts = [xy]
+            return {'RUNNING_MODAL'}
+        if self.state == 'DRAW' and event.type == 'MOUSEMOVE':
+            if math.dist(xy,self.pts[-1]) >= 3.0:
+                self.pts.append(xy)
+                context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+        if self.state == 'DRAW' and event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+            self._stop(context)
+            if len(self.pts) < 2 or math.dist(self.pts[0],self.pts[-1]) < 6.0:
+                self.report({'WARNING'},'Draw a longer line')
+                return {'CANCELLED'}
+            from bpy_extras.view3d_utils import region_2d_to_origin_3d, region_2d_to_vector_3d
+            source = bpy.data.objects.get(self.source_name)
+            if source is None:
+                return {'CANCELLED'}
+            pivot = source.matrix_world.translation.copy()
+            view = (context.space_data.region_3d.view_rotation @ Vector((0,0,-1))).normalized()
+            world_pts=[]
+            for xy in self.pts:
+                start = region_2d_to_origin_3d(self.winregion,context.space_data.region_3d,xy)
+                direction = region_2d_to_vector_3d(self.winregion,context.space_data.region_3d,xy)
+                denom = direction.dot(view)
+                if abs(denom) < 1e-7:
+                    continue
+                world_pts.append(start + direction*((pivot-start).dot(view)/denom))
+            if len(world_pts) < 2:
+                return {'CANCELLED'}
+            cu=bpy.data.curves.new('MCH_DrawArray_Path','CURVE')
+            cu.dimensions='3D';cu.resolution_u=16
+            sp=cu.splines.new('POLY');sp.points.add(len(world_pts)-1)
+            for i,pos in enumerate(world_pts):
+                sp.points[i].co=(*pos,1.0)
+            curve=bpy.data.objects.new('MCH_DrawArray_Path',cu)
+            curve['mch_path'] = True  # prevent Group Scope auto-adoption of the array guide
+            ctrl=bpy.data.objects.new(source.name + '_DrawArray', None)
+            ctrl.empty_display_type='CUBE';ctrl.empty_display_size=0.18
+            coll=context.collection or context.scene.collection
+            coll.objects.link(curve);coll.objects.link(ctrl)
+            ctrl.location=world_pts[0]
+            p=ctrl.mch_draw_array
+            p.active=False
+            p.source=source; p.path=curve
+            p.active=True
+            sync_draw_array(ctrl)
+            _DRAW_SIG[ctrl.name] = _draw_path_signature(curve)
+            for ob in context.selected_objects: ob.select_set(False)
+            ctrl.select_set(True)
+            context.view_layer.objects.active=ctrl
+            context.scene.mch_draw_array_last = ctrl
+            self.report({'INFO'},'Draw Array created. Change Copies slider in Curve Array panel; edit path to reshape.')
+            return {'FINISHED'}
+        return {'RUNNING_MODAL'}
+
+    def cancel(self, context):
+        self._stop(context)
+
+
+class MCH_OT_draw_group_remove(bpy.types.Operator):
+    bl_idname = 'mch.draw_group_remove'
+    bl_label = 'Remove Draw Array'
+    bl_options = {'REGISTER','UNDO'}
+    def execute(self, context):
+        ob = context.active_object
+        if ob is None or not getattr(ob.mch_draw_array,'active',False):
+            ob = getattr(context.scene, 'mch_draw_array_last', None)
+        if ob is None or ob.name not in bpy.data.objects or not getattr(ob.mch_draw_array,'active',False):
+            return {'CANCELLED'}
+        path=ob.mch_draw_array.path
+        _remove_draw_copies(ob)
+        _DRAW_SIG.pop(ob.name, None)
+        bpy.data.objects.remove(ob,do_unlink=True)
+        if path is not None and path.name in bpy.data.objects:
+            bpy.data.objects.remove(path,do_unlink=True)
+        context.scene.mch_draw_array_last = None
+        return {'FINISHED'}
 
 # =============================================================================
 # Curve Array
@@ -439,6 +772,27 @@ def draw(layout, context):
     row.scale_y = 1.4
     row.operator('mch.curve_deform', icon='MOD_CURVE')
     row.operator('mch.curve_array', icon='MOD_ARRAY')
+    group_array = context.active_object if context.active_object is not None and getattr(context.active_object.mch_draw_array, 'active', False) else None
+    if group_array is None:
+        group_array = getattr(context.scene, 'mch_draw_array_last', None)
+    if group_array is not None and group_array.name not in bpy.data.objects:
+        group_array = None
+    box = layout.box()
+    box.label(text='DRAW GROUP ARRAY', icon='OUTLINER_COLLECTION')
+    box.operator('mch.draw_group_array', text='Draw Array from Selected Group', icon='GREASEPENCIL')
+    if group_array is not None and group_array.mch_draw_array.active:
+        gp = group_array.mch_draw_array
+        box.label(text='Source: ' + (gp.source.name if gp.source else 'Missing'))
+        box.prop(gp, 'count', slider=True)
+        box.prop(gp, 'scale')
+        row2 = box.row(align=True)
+        row2.prop(gp, 'offset', slider=True)
+        row2.prop(gp, 'end', slider=True)
+        row2 = box.row(align=True)
+        row2.prop(gp, 'follow')
+        row2.prop(gp, 'roll')
+        box.prop(gp, 'path')
+        box.operator('mch.draw_group_remove', text='Remove Draw Array', icon='X')
     layout.label(text='Select mesh(es) + optional curve (else a new curve)', icon='INFO')
     if ob is not None and ob.mch_deform_curve.active:
         p = ob.mch_deform_curve
@@ -482,8 +836,9 @@ def draw_array_settings(box, p, title):
     box.row(align=True).prop(p, 'align_axis', expand=True)
 
 
-CLASSES = (MCH_PG_CurvePlace, MCH_PG_CurveDeform, MCH_PG_CurveArray, MCH_OT_curve_deform, MCH_OT_curve_array,
-           MCH_OT_along_finish)
+CLASSES = (MCH_PG_CurvePlace, MCH_PG_CurveDeform, MCH_PG_CurveArray, MCH_PG_DrawGroupArray,
+           MCH_OT_curve_deform, MCH_OT_curve_array, MCH_OT_along_finish, MCH_OT_draw_group_array,
+           MCH_OT_draw_group_remove)
 
 
 def register():
@@ -496,10 +851,17 @@ def register():
     bpy.types.Object.mch_curve_array = PointerProperty(type=MCH_PG_CurveArray)
     bpy.types.Scene.mch_curve_array = PointerProperty(type=MCH_PG_CurveArray)
     bpy.types.Scene.mch_curve_last = PointerProperty(type=bpy.types.Object)
+    bpy.types.Scene.mch_draw_array_last = PointerProperty(type=bpy.types.Object)
+    bpy.types.Object.mch_draw_array = PointerProperty(type=MCH_PG_DrawGroupArray)
+    if not bpy.app.timers.is_registered(_draw_array_timer):
+        bpy.app.timers.register(_draw_array_timer, first_interval=0.6, persistent=True)
 
 
 def unregister():
-    for owner, name in ((bpy.types.Scene, 'mch_curve_last'), (bpy.types.Scene, 'mch_curve_array'),
+    if bpy.app.timers.is_registered(_draw_array_timer):
+        bpy.app.timers.unregister(_draw_array_timer)
+    for owner, name in ((bpy.types.Object, 'mch_draw_array'), (bpy.types.Scene, 'mch_draw_array_last'),
+                        (bpy.types.Scene, 'mch_curve_last'), (bpy.types.Scene, 'mch_curve_array'),
                         (bpy.types.Object, 'mch_curve_array'), (bpy.types.Scene, 'mch_deform_curve'),
                         (bpy.types.Object, 'mch_deform_curve'), (bpy.types.Scene, 'mch_place'),
                         (bpy.types.Object, 'mch_place')):
