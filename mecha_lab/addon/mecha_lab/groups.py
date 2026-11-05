@@ -252,19 +252,25 @@ def rename(context, g, new):
     return name
 
 
-def handle_look(g, size):
-    """0.24.58 The handle: a small cross at the centre (still a click target) - the group's outline is a box drawn
-    tight round its parts (``_draw_boxes``) instead of a cube as big as the longest side."""
+HANDLE_SIZE = 0.002        # 0.24.107 the handle Empty is not shown (user: "Empty / group box hidden"); the group shows
+#                            as a green outline round its parts when selected (group_outline.py)
+
+
+def handle_look(g, size=None):
+    """0.24.58 The handle: a small cross at the centre - 0.24.107 so small it is not seen; clicking any of the
+    group's parts picks the group, and the selected group shows a green outline (``group_outline``)."""
     g.empty_display_type = 'PLAIN_AXES'
-    g.empty_display_size = max(0.05, max(size) * 0.2)
+    g.empty_display_size = HANDLE_SIZE
 
 
 def tidy_handles(scene=None):
-    """Groups made before 0.24.58 (a big cube) get the small handle."""
-    for g in [o for o in bpy.data.objects if is_group(o) and o.empty_display_type == 'CUBE']:
-        parts = [o for o in members(g) if o.type == 'MESH']
-        if parts:
-            handle_look(g, _world_box(parts)[1])
+    """Groups made before 0.24.58 (a big cube) or 0.24.107 (a visible cross) get the hidden handle."""
+    for g in [o for o in bpy.data.objects if is_group(o) and o.library is None and
+              (o.empty_display_type != 'PLAIN_AXES' or o.empty_display_size > HANDLE_SIZE * 1.5)]:
+        try:
+            handle_look(g)
+        except (AttributeError, RuntimeError):
+            pass
 
 
 def group_box(g):
@@ -329,9 +335,63 @@ _box_handle = None
 
 @bpy.app.handlers.persistent
 def _on_load(_dummy=None):
+    """After a file opens: small handles, the auto-add watcher starts from the file's objects (none of them is
+    "new"), a scope whose group is gone is undone, and the watcher / click keys run (0.24.107: their timers were
+    dropped when Blender started with a file, so group clicks never worked in that session)."""
     try:
         tidy_handles()
     except (AttributeError, ReferenceError, RuntimeError):
+        pass
+    _seen_scene_objects.clear()
+    _pending.clear()
+    _reseed_all()
+    try:
+        ctx = bpy.context
+        if getattr(ctx, 'scene', None) is not None:
+            ensure_scope(ctx, leftovers=True)
+    except (AttributeError, ReferenceError, RuntimeError):
+        pass
+    _start_timers()
+    return None
+
+
+@bpy.app.handlers.persistent
+def _on_undo(_dummy=None):
+    """Undo / redo: the restored objects are not new parts; a scope left half-way by the step is set right."""
+    _pending.clear()
+    _reseed_all()
+    try:
+        ctx = bpy.context
+        if getattr(ctx, 'scene', None) is not None:
+            ensure_scope(ctx, leftovers=True)
+    except (AttributeError, ReferenceError, RuntimeError):
+        pass
+
+
+@bpy.app.handlers.persistent
+def _on_import(_dummy=None):
+    """Append / Link: what came in is not a new part made inside the group."""
+    _pending.clear()
+    _reseed_all()
+
+
+def _tidy_later():
+    try:
+        tidy_handles()
+    except (AttributeError, ReferenceError, RuntimeError):
+        pass
+    return None
+
+
+def _start_timers():
+    if not _auto_timer_live:
+        return
+    try:
+        if not bpy.app.timers.is_registered(_auto_group_tick):
+            bpy.app.timers.register(_auto_group_tick, first_interval=0.45, persistent=True)
+        if not _group_keymaps and not bpy.app.background and not bpy.app.timers.is_registered(_register_group_keymaps):
+            bpy.app.timers.register(_register_group_keymaps, first_interval=0.2, persistent=True)
+    except (AttributeError, RuntimeError, ValueError):
         pass
 
 
@@ -435,6 +495,7 @@ def duplicate(context, g, linked=False, _made=None):
                     pivot not in children and pivot not in made and pivot not in helpers:
                 helpers.append(pivot)
     children.extend(helpers)
+    helper_set = set(helpers)
     for o in children:
         if is_group(o):
             sub = duplicate(context, o, linked, made)
@@ -449,6 +510,11 @@ def duplicate(context, g, linked=False, _made=None):
             for c in list(sub.users_collection):
                 c.objects.unlink(sub)
             new_coll.objects.link(sub)
+            car = carrier_of(sub)              # 0.24.107 its repetition object moves along (it stayed in the
+            if car is not None:                #  original group, which then showed the copy's copies too)
+                for c in list(car.users_collection):
+                    c.objects.unlink(car)
+                new_coll.objects.link(car)
             made[o] = sub
             continue
         c = o.copy()
@@ -457,7 +523,13 @@ def duplicate(context, g, linked=False, _made=None):
         elif o.data is not None:                       # 0.24.84 linked: both keep the one mesh - a Cut / Decimate /
             o[LINKED_KEY] = c[LINKED_KEY] = 1          # Re-Fix on either changes it for all (commit_mesh, swap_mesh)
         c.animation_data_clear() if c.animation_data else None
-        new_coll.objects.link(c)
+        if o in helper_set:            # 0.24.107 a symmetry centre: next to the original's (not into the group)
+            homes = [new_coll if col == coll else col for col in o.users_collection] or [context.scene.collection]
+            for col in homes:
+                if c.name not in col.objects:
+                    col.objects.link(c)
+        else:
+            new_coll.objects.link(c)
         made[o] = c
     if root_call:
         # Restore each source's world transform after replacing old parent links.
@@ -465,6 +537,10 @@ def duplicate(context, g, linked=False, _made=None):
             if source.parent in made:
                 world = source.matrix_world.copy()
                 copied.parent = made[source.parent]
+                copied.matrix_world = world
+            elif source in helper_set and source.parent is None:
+                world = source.matrix_world.copy()     # 0.24.107 a world centre's copy follows the new group
+                copied.parent = h
                 copied.matrix_world = world
         for source, copied in made.items():
             if copied.type not in {'MESH', 'CURVE'}:
@@ -567,9 +643,34 @@ def _parents_of(g):
     return list(reversed(chain))
 
 
+def _hide(o, state, view_layer=None):
+    """``o.hide_set`` that never raises (0.24.107: an object outside the view layer - in an excluded collection -
+    raised RuntimeError there and left the scene stuck half inside a group)."""
+    try:
+        if view_layer is not None:
+            o.hide_set(bool(state), view_layer=view_layer)
+        else:
+            o.hide_set(bool(state))
+        return True
+    except (RuntimeError, ReferenceError, TypeError):
+        return False
+
+
+def _hidden(o):
+    try:
+        return bool(o.hide_get())
+    except (RuntimeError, ReferenceError):
+        return False
+
+
 def _restore_scope_objects(context):
-    for o in context.scene.objects:
-        saved = o.get(SAVED_KEY)
+    """Every object the scope changed gets its pick flag, display and hidden state back.  0.24.107: per object,
+    nothing can stop the loop half way (a linked object, one outside the view layer)."""
+    for o in list(context.scene.objects):
+        try:
+            saved = o.get(SAVED_KEY)
+        except (ReferenceError, TypeError):
+            continue
         if saved is None:
             continue
         try:
@@ -578,10 +679,13 @@ def _restore_scope_objects(context):
             o.hide_select = bool(hs)
             o.display_type = str(dt)
             if len(entry) >= 3:
-                o.hide_set(bool(entry[2]))
-        except (TypeError, IndexError, ValueError):
+                _hide(o, entry[2], context.view_layer)
+        except (TypeError, IndexError, ValueError, AttributeError, RuntimeError):
             pass
-        del o[SAVED_KEY]
+        try:
+            del o[SAVED_KEY]
+        except (KeyError, TypeError, AttributeError, RuntimeError):
+            pass
 
 
 def _show_scope(context, g):
@@ -589,15 +693,19 @@ def _show_scope(context, g):
     _restore_scope_objects(context)
     inside = set(members(g)) | {g}
     view_mode = getattr(context.scene, 'mch_group_scope_display', 'WIRE')
+    vl = context.view_layer
     for o in context.scene.objects:
-        if o in inside or CARRIER_KEY in o:
+        if o in inside or CARRIER_KEY in o or o.library is not None:
             continue
-        o[SAVED_KEY] = json.dumps([bool(o.hide_select), o.display_type, bool(o.hide_get())])
-        o.hide_select = True
-        if view_mode == 'HIDDEN':
-            o.hide_set(True)
-        elif view_mode == 'WIRE' and o.type in {'MESH', 'CURVE', 'SURFACE', 'FONT'}:
-            o.display_type = 'WIRE'
+        try:
+            o[SAVED_KEY] = json.dumps([bool(o.hide_select), o.display_type, _hidden(o)])
+            o.hide_select = True
+            if view_mode == 'HIDDEN':
+                _hide(o, True, vl)
+            elif view_mode == 'WIRE' and o.type in {'MESH', 'CURVE', 'SURFACE', 'FONT'}:
+                o.display_type = 'WIRE'
+        except (AttributeError, RuntimeError, TypeError):
+            continue
     # Do not select *all* meshes: that makes moving one part move everything.
     for o in list(context.selected_objects):
         o.select_set(False)
@@ -625,7 +733,7 @@ def enter_scope(context, g):
     return True
 
 
-def clear_scope(context):
+def clear_scope(context, select=True):
     """Leave every scope level and restore the original display and pick flags."""
     scene = context.scene
     path = scope_path(context)
@@ -635,9 +743,37 @@ def clear_scope(context):
         if key in scene:
             del scene[key]
     g = bpy.data.objects.get(path[0] if path else was) if (path or was) else None
-    if is_group(g):
-        select_group(context, g)
+    if select and is_group(g):
+        try:
+            select_group(context, g)
+        except (RuntimeError, ReferenceError):
+            pass
     return bool(path or was)
+
+
+def ensure_scope(context, leftovers=False):
+    """0.24.107 The saved scope must make sense: its group still exists and its path ends at it (a deleted or
+    renamed handle, a file from another version) - otherwise everything is restored instead of staying ghosted and
+    unpickable.  ``leftovers``: also give objects back their look when no scope is set but some still carry the
+    saved state (after an undo / a file load).  Returns the current scope handle or None."""
+    scene = context.scene
+    if scene is None:
+        return None
+    name = scene.get(SCOPE_KEY)
+    if name:
+        g = bpy.data.objects.get(name)
+        path = scope_path(context)
+        if not is_group(g) or not path or path[-1] != name:
+            if is_group(g):                   # the path lost a step: rebuild it from the parents
+                full = [o.name for o in _parents_of(g)]
+                scene[SCOPE_PATH_KEY] = json.dumps(full)
+                return g
+            clear_scope(context, select=False)
+            return None
+        return g
+    if leftovers and any(SAVED_KEY in o for o in scene.objects):
+        _restore_scope_objects(context)
+    return None
 
 
 def exit_scope(context):
@@ -683,9 +819,10 @@ def _focus_group(ob, current):
 def _pick_visible_mesh(context, event):
     """Ray-cast the geometry under this click: never require the group Empty.
 
-    In Blender a CLICK/D​OUBLE_CLICK keymap may run before or after native
+    In Blender a CLICK/DOUBLE_CLICK keymap may run before or after native
     selection, so context.active_object can still belong to the previous click.
     Ray casting makes the first click deterministic.
+    0.24.107: helpers (cutters, previews, wire / bounds guides) are stepped past like unpickable parts.
     """
     try:
         from bpy_extras import view3d_utils
@@ -698,14 +835,15 @@ def _pick_visible_mesh(context, event):
         direction = view3d_utils.region_2d_to_vector_3d(region, rv3d, xy)
         dg = context.evaluated_depsgraph_get()
         # A non-selectable overlay may be intersected first: step past it.
-        for _ in range(16):
+        for _ in range(24):
             hit, location, _normal, _index, evaluated, _matrix = context.scene.ray_cast(
                 dg, origin, direction)
             if not hit or evaluated is None:
                 return None
             ob = getattr(evaluated, 'original', None) or bpy.data.objects.get(evaluated.name)
             if ob is not None and ob.type in {'MESH', 'CURVE', 'SURFACE', 'FONT'} and \
-                    not ob.hide_select and not ob.hide_get() and ob.visible_get(view_layer=context.view_layer):
+                    not ob.hide_select and not _hidden(ob) and ob.visible_get(view_layer=context.view_layer) \
+                    and not _is_helper(ob):
                 return ob
             origin = location + direction * 0.001
     except (AttributeError, ReferenceError, RuntimeError, TypeError, ValueError):
@@ -713,11 +851,32 @@ def _pick_visible_mesh(context, event):
     return None
 
 
+_last_click = {'t': -10.0, 'hit': None, 'xy': (0, 0)}
+DOUBLE_GAP = 0.6           # seconds: a double-click counts only on what the first click of the pair hit
+DOUBLE_SLOP = 12           # pixels
+
+
+def _same_pair(hit, xy):
+    import time
+    last = _last_click
+    if time.monotonic() - last['t'] > DOUBLE_GAP:
+        return False
+    if abs(xy[0] - last['xy'][0]) > DOUBLE_SLOP or abs(xy[1] - last['xy'][1]) > DOUBLE_SLOP:
+        return False
+    return last['hit'] == (hit.name if hit is not None else None)
+
+
+def _note_click(hit, xy):
+    import time
+    _last_click.update(t=time.monotonic(), hit=hit.name if hit is not None else None, xy=tuple(xy))
+
+
 class MCH_OT_group_view_pick(bpy.types.Operator):
-    """In Mecha Select mode: click a part to select its group, double-click to edit inside"""
+    """In Mecha Select mode: click a part to select its group, double-click to edit inside, double-click empty
+    space to step out of the group"""
     bl_idname = 'mch.group_view_pick'
     bl_label = 'Group Focus (Viewport)'
-    bl_options = {'INTERNAL'}
+    bl_options = {'INTERNAL', 'UNDO'}
     enter: bpy.props.BoolProperty(default=False, options={'SKIP_SAVE'})
 
     @classmethod
@@ -741,15 +900,23 @@ class MCH_OT_group_view_pick(bpy.types.Operator):
                 return {'PASS_THROUGH'}
         except (AttributeError, RuntimeError, TypeError, ImportError):
             pass
+        xy = (event.mouse_region_x, event.mouse_region_y)
         hit = _pick_visible_mesh(context, event)
+        current = ensure_scope(context)
+        if not self.enter:
+            _note_click(hit, xy)
         if hit is None:
-            return {'PASS_THROUGH'}  # Blender handles clicking empty space / unrelated parts.
-        current = scope(context)
+            if self.enter and current is not None and _same_pair(None, xy):
+                exit_scope(context)          # double-click on empty space: one level out
+                _note_click(None, (-9999, -9999))
+                return {'FINISHED'}
+            return {'PASS_THROUGH'}  # Blender handles clicking empty space (a single click deselects).
         focus = _focus_group(hit, current)
         if self.enter:
-            if focus is None:
+            if focus is None or not _same_pair(hit, xy):
                 return {'PASS_THROUGH'}  # A direct part inside Scope edits like a normal object.
             if enter_scope(context, focus):
+                _note_click(None, (-9999, -9999))
                 return {'FINISHED'}
             return {'PASS_THROUGH'}
         if focus is None:
@@ -769,14 +936,49 @@ class MCH_OT_group_view_pick(bpy.types.Operator):
 # --- automatic membership of new meshes created during a scope -------------------------------
 # Polling only handles NEW objects; existing models, imported resources and other groups
 # are never silently reparented. This avoids updating Blender data inside a depsgraph handler.
-_seen_scene_objects = {}
+# 0.24.107: objects are known by ``session_uid`` (it stays the same over undo / redo, a pointer does not) per scene
+# name; a new object joins only once it has stayed still for one tick with no modal operator running (Shift+A then G
+# no longer gets its parent changed half way through the move), and never a helper (cutter, preview, wire / bounds
+# display, unpickable, linked) or an object brought in by Append / Link.
+_seen_scene_objects = {}      # scene name -> {uid}
+_pending = {}                 # scene name -> {uid: signature or None}
 _auto_timer_live = False
 _group_keymaps = []
+_IDLE_MODALS = set()          # modal operators that run all the time and do not mean "the user is busy"
+
+
+def _uid(o):
+    try:
+        return o.session_uid
+    except (AttributeError, ReferenceError):
+        return o.as_pointer()
 
 
 def _remember_scene(scene):
     if scene is not None:
-        _seen_scene_objects[scene.as_pointer()] = {o.as_pointer() for o in scene.objects}
+        _seen_scene_objects[scene.name] = {_uid(o) for o in scene.objects}
+        _pending.pop(scene.name, None)
+
+
+def _reseed_all():
+    try:
+        for sc in bpy.data.scenes:
+            _remember_scene(sc)
+    except (AttributeError, ReferenceError, RuntimeError):
+        pass
+
+
+def _is_helper(o):
+    """Cutters, previews, carriers, wire / bounds guides: never group members, never click targets."""
+    try:
+        if o.get(CARRIER_KEY) or o.get('mch_cut_carrier') or o.get('mch_preview_source') or o.get('mch_array_copy') \
+                or o.get('mch_path') or o.get('mch_profile_file') or o.get('mch_perf_cutter'):
+            return True
+        if o.display_type in {'WIRE', 'BOUNDS'}:
+            return True
+        return o.name.startswith(('MCH_Cutter', 'MCH_GapIn', 'MCH_GapOut', 'MCH_Preview'))
+    except (AttributeError, ReferenceError, TypeError):
+        return True
 
 
 def _auto_candidate(o, g):
@@ -784,10 +986,12 @@ def _auto_candidate(o, g):
         return False
     if is_group(o) or CARRIER_KEY in o or group_of(o) is not None:
         return False
-    if o.hide_viewport or o.hide_render or o.hide_get():
-        return False
-    if o.get('mch_path') or o.get('mch_profile_file'):
-        return False  # construction paths and shared profile library resources
+    if o.library is not None or o.override_library is not None or (o.data is not None and o.data.library is not None):
+        return False  # linked from another file
+    if o.hide_viewport or o.hide_render or _hidden(o) or o.hide_select or SAVED_KEY in o:
+        return False  # hidden, or a ghosted outside part
+    if _is_helper(o):
+        return False  # construction paths, cutters, previews, profile library resources
     destination = collection_of(g)
     if any(c.get(GROUP_KEY) for c in o.users_collection if c != destination):
         return False  # already housed in another group (including duplicates)
@@ -814,32 +1018,80 @@ def put_in_scope(context, o, g=None):
     return True
 
 
+def _busy(ctx):
+    """A modal operator is running somewhere (a move after Shift+A, a tool drawing): new objects wait."""
+    try:
+        for w in ctx.window_manager.windows:
+            for op in getattr(w, 'modal_operators', ()):
+                if op.bl_idname not in _IDLE_MODALS:
+                    return True
+    except (AttributeError, ReferenceError, RuntimeError, TypeError):
+        return False
+    return False
+
+
+def _signature(o):
+    try:
+        return (tuple(round(v, 6) for row in o.matrix_world for v in row), o.parent, o.data)
+    except (AttributeError, ReferenceError):
+        return None
+
+
+def auto_group_step(ctx):
+    """One pass of the auto-add watcher (the timer calls it; tests call it directly).  Returns the objects added."""
+    scene = ctx.scene
+    if scene is None:
+        return []
+    key = scene.name
+    if scene.get(SCOPE_KEY):
+        ensure_scope(ctx)
+    objs = {_uid(o): o for o in scene.objects}
+    old = _seen_scene_objects.get(key)
+    _seen_scene_objects[key] = set(objs)
+    pend = _pending.setdefault(key, {})
+    if old is None:
+        pend.clear()
+        return []
+    for u in [u for u in pend if u not in objs]:
+        del pend[u]
+    g = scope(ctx)
+    if not (is_group(g) and collection_of(g) is not None and ctx.mode == 'OBJECT'
+            and getattr(scene, 'mch_group_auto_add', True)):
+        pend.clear()
+        return []
+    for u in objs.keys() - old:
+        pend[u] = None
+    if not pend:
+        return []
+    if _busy(ctx):
+        for u in pend:
+            pend[u] = None           # still being made / moved: wait for one quiet tick after it ends
+        return []
+    added = []
+    for u, sig in list(pend.items()):
+        o = objs[u]
+        now = _signature(o)
+        if sig is None or sig != now:
+            pend[u] = now            # first quiet look, or it moved: look again next tick
+            continue
+        del pend[u]
+        try:
+            if put_in_scope(ctx, o, g):
+                added.append(o)
+        except (ReferenceError, RuntimeError, ValueError, TypeError):
+            pass
+    return added
+
+
 def _auto_group_tick():
     if not _auto_timer_live:
         return None
     try:
         ctx = bpy.context
-        scene = ctx.scene
-        if scene is None:
-            return 1.0
-        key = scene.as_pointer()
-        current = {ob.as_pointer(): ob for ob in scene.objects}
-        old = _seen_scene_objects.get(key)
-        _seen_scene_objects[key] = set(current)
-        if old is not None and ctx.mode == 'OBJECT' and getattr(scene, 'mch_group_auto_add', True):
-            g = scope(ctx)
-            if is_group(g) and collection_of(g) is not None:
-                for ptr in current.keys() - old:
-                    ob = current[ptr]
-                    try:
-                        put_in_scope(ctx, ob, g)
-                    except (ReferenceError, RuntimeError, ValueError):
-                        pass
+        auto_group_step(ctx)
         return 0.3 if scope(ctx) is not None else 1.0
     except (AttributeError, ReferenceError, RuntimeError):
         return 0.7
-
-
 
 
 # --- repetition ----------------------------------------------------------------------------------------------
@@ -1287,6 +1539,30 @@ class MCH_OT_group_rename(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def _scope_to_reach(context, g):
+    """0.24.107 Selecting a group from the Layers panel leaves only as many scope levels as needed to pick it (it
+    left them all): a group inside the current scope is picked in place."""
+    path = scope_path(context)
+    if not path:
+        return
+    chain = [o.name for o in _parents_of(g)]
+    keep = []
+    for name in path:
+        if name in chain and name != g.name:
+            keep.append(name)
+        else:
+            break
+    if keep == path:
+        return
+    if not keep:
+        clear_scope(context, select=False)
+        return
+    top = bpy.data.objects.get(keep[-1])
+    _show_scope(context, top)
+    context.scene[SCOPE_KEY] = top.name
+    context.scene[SCOPE_PATH_KEY] = json.dumps(keep)
+
+
 class MCH_OT_group_pick(bpy.types.Operator):
     """Select this group (its Repetition card shows); with Enter: work inside it"""
     bl_idname = 'mch.group_pick'
@@ -1299,13 +1575,16 @@ class MCH_OT_group_pick(bpy.types.Operator):
         g = bpy.data.objects.get(self.name)
         if not is_group(g) or context.mode != 'OBJECT':
             return {'CANCELLED'}
+        current = ensure_scope(context)
         if self.enter:
-            if scope(context) == g:
+            if current == g:
                 exit_scope(context)
             else:
                 enter_scope(context, g)
+        elif current == g:
+            exit_scope(context)          # 0.24.107 the row's Exit: one level out (it left every level)
         else:
-            clear_scope(context)
+            _scope_to_reach(context, g)
             select_group(context, g)
         return {'FINISHED'}
 
@@ -1463,18 +1742,26 @@ def register():
         default='WIRE', update=_scope_display_update)
     _auto_timer_live = True
     _seen_scene_objects.clear()
+    _pending.clear()
     # Blender intentionally restricts bpy.data while an add-on is registering.
     # _auto_group_tick seeds the scene snapshot on its first tick, after registration.
-    if not bpy.app.timers.is_registered(_auto_group_tick):
-        bpy.app.timers.register(_auto_group_tick, first_interval=0.45)
-    # Keymap access is likewise deferred until bpy.context is fully available.
-    if not bpy.app.timers.is_registered(_register_group_keymaps):
-        bpy.app.timers.register(_register_group_keymaps, first_interval=0.2)
-    if _on_load not in bpy.app.handlers.load_post:
-        bpy.app.handlers.load_post.append(_on_load)
+    # 0.24.107: persistent timers (a plain timer is dropped when a file loads - Blender started with a .blend had no
+    # group clicks and no auto-add); the keymap timer also stays until it got the add-on keyconfig.
+    _start_timers()
+    for hl, fn in ((bpy.app.handlers.load_post, _on_load), (bpy.app.handlers.undo_post, _on_undo),
+                   (bpy.app.handlers.redo_post, _on_undo),
+                   (getattr(bpy.app.handlers, 'blend_import_post', None), _on_import)):
+        if hl is not None and fn not in hl:
+            hl.append(fn)
     if not bpy.app.background and _box_handle is None:
         _box_handle = bpy.types.SpaceView3D.draw_handler_add(_draw_boxes, (), 'WINDOW', 'POST_VIEW')
-        bpy.app.timers.register(_on_load, first_interval=0.5)
+        if not bpy.app.timers.is_registered(_tidy_later):
+            bpy.app.timers.register(_tidy_later, first_interval=0.5)
+    try:
+        from . import group_outline
+        group_outline.register()
+    except ImportError:
+        pass
 
 
 def unregister():
@@ -1484,6 +1771,7 @@ def unregister():
         if bpy.app.timers.is_registered(timer):
             bpy.app.timers.unregister(timer)
     _seen_scene_objects.clear()
+    _pending.clear()
     for km, kmi in _group_keymaps:
         try:
             km.keymap_items.remove(kmi)
@@ -1499,8 +1787,18 @@ def unregister():
         except (ValueError, RuntimeError):
             pass
         _box_handle = None
-    if _on_load in bpy.app.handlers.load_post:
-        bpy.app.handlers.load_post.remove(_on_load)
+    for hl, fn in ((bpy.app.handlers.load_post, _on_load), (bpy.app.handlers.undo_post, _on_undo),
+                   (bpy.app.handlers.redo_post, _on_undo),
+                   (getattr(bpy.app.handlers, 'blend_import_post', None), _on_import)):
+        if hl is not None and fn in hl:
+            hl.remove(fn)
+    if bpy.app.timers.is_registered(_tidy_later):
+        bpy.app.timers.unregister(_tidy_later)
+    try:
+        from . import group_outline
+        group_outline.unregister()
+    except ImportError:
+        pass
     for c in reversed(CLASSES):
         try:
             bpy.utils.unregister_class(c)

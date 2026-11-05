@@ -1,4 +1,5 @@
-"""0.24.87 Every group's box lines off at once: Scene.mch_settings.group_boxes (default on), the Layers panel head
+"""0.24.87 Every group's box lines off at once: Scene.mch_settings.group_boxes (0.24.107 default off: the selected
+group shows a green outline instead - user: "no group box"), the Layers panel head
 button / Groups card toggle (mch.group_boxes_all), the viewport drawing guard (groups.boxes_on)."""
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -10,8 +11,10 @@ mecha_lab.register()
 C = bpy.context
 S = C.scene
 
-check('Scene setting Group Box Lines exists and is on by default', S.mch_settings.group_boxes is True)
-check('drawing guard: on', groups.boxes_on(C))
+check('Scene setting Group Box Lines exists and is off by default (0.24.107)', S.mch_settings.group_boxes is False)
+check('drawing guard: off by default', not groups.boxes_on(C))
+S.mch_settings.group_boxes = True
+check('drawing guard: on when turned on', groups.boxes_on(C))
 a, b = cube('A', loc=(0, 0, 0)), cube('B', loc=(3, 0, 0))
 for o in (a, b): o.select_set(True)
 C.view_layer.objects.active = a

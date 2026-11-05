@@ -742,7 +742,7 @@ class GrowPress:
 
     Sample the source once. Only vertex positions change on timer ticks, so height
     depends on elapsed time rather than repeated Boolean operations or frame rate.
-    Growth is opposite the view direction; a flat base penetrates the source.
+    Growth is opposite the view direction; the base follows the surface, sunk just into it (0.24.107).
     """
     def __init__(self, context, target, loops, projector, result='GROW', center=None,
                  angle=0.0, curve=(0.0, 0.0), spacing=6.0, **_unused):
@@ -841,7 +841,9 @@ class GrowPress:
         for n in self.groups:
             pts = self.points[start:start + n]
             curves = self.curves[start:start + n]
-            coords.extend(tuple(p + vd * (self.base_t - p.dot(vd))) for p in pts)
+            # 0.24.107 the bottom follows the surface, sunk ``embed`` into it (one flat base at the deepest sampled
+            # point came out of the back of a thin or slanted part)
+            coords.extend(tuple(p + vd * self.embed) for p in pts)
             coords.extend(tuple(p - vd * max(depth + c, 1e-7)) for p, c in zip(pts, curves))
             start += n
         return coords
@@ -854,7 +856,7 @@ class GrowPress:
             self.object.data.vertices.foreach_set('co', [v for p in coords for v in p])
             self.object.data.update()
             self.depth = depth
-            self.message = 'Separate mesh, flat base penetrating the source'
+            self.message = 'Separate mesh, its base sunk just into the surface'
             return True
         except (cg.CutError, RuntimeError, ValueError) as ex:
             self.message = str(ex)
@@ -864,11 +866,13 @@ class GrowPress:
         return [], [], 0.0
 
     def finish(self, context):
+        """0.24.107 the selection stays as it was (selecting the grown mesh made the next Press with Target
+        Active / Selected cut the grown mesh instead of the part)."""
         if self.object is not None:
-            for ob in context.selected_objects:
-                ob.select_set(False)
-            self.object.select_set(True)
-            context.view_layer.objects.active = self.object
+            try:
+                self.object.select_set(False)
+            except RuntimeError:
+                pass
 
     def cancel(self, context):
         if self.object is not None:
@@ -945,23 +949,28 @@ def contact_points(context, loops_px, center_px, offset=(0.0, 0.0), step=8.0):
 
 
 def dot_sizes(context):
-    """Small screen-pixel diameters, bounded even with extreme UI scaling."""
+    """(outline dot, contact dot ring, contact dot core) in px: 0.24.95 (user: "메쉬 위에 뜨는 점이 너무 작은데") about
+    twice the first ones, times the Dot Size setting and Blender's UI scale.  0.24.107: back to those sizes
+    (v0.24.106 had clamped them to 3 / 7 px, and Dot Size stopped doing anything above ~1.7)."""
     try:
         k = float(context.scene.mch_press.dot_size)
-        ui = float(context.preferences.system.ui_scale)
-        k *= ui if ui > 0.0 else 1.0
     except (AttributeError, TypeError, ValueError):
         k = 1.0
-    if not math.isfinite(k):
+    try:
+        ui = float(context.preferences.system.ui_scale)
+    except (AttributeError, TypeError, ValueError):
+        ui = 1.0
+    k *= ui if ui > 0.0 else 1.0                  # (no window: Blender reads 0 - the plain size then)
+    if not math.isfinite(k) or k <= 0.0:
         k = 1.0
-    k = max(0.3, min(k, 2.0))
-    return max(2.0, min(3.0 * k, 5.0)), max(4.0, min(7.0 * k, 12.0)), max(2.0, min(4.0 * k, 7.0))
+    k = min(k, 12.0)                               # (a broken preference must not draw screen-sized discs)
+    return 8.0 * k, 18.0 * k, 11.0 * k
 
 
 def _dot_triangles(points, diameter):
     """Pixel-space discs; do not rely on backend-specific point sprite sizing."""
-    radius = max(0.5, min(float(diameter), 16.0) * 0.5)
-    segments = 16
+    radius = max(0.5, min(float(diameter), 200.0) * 0.5)
+    segments = 20
     circle = [(math.cos(i * math.tau / segments) * radius,
                math.sin(i * math.tau / segments) * radius) for i in range(segments)]
     vertices = []
@@ -1241,7 +1250,11 @@ class MCH_OT_press_cut(bpy.types.Operator):
 # Do not merge the geometry engines: the gesture gateway uses the existing
 # Press/GrowPress, Cut and Base Mesh implementations.
 UNIFIED_DRAG_PX = 12.0
-UNIFIED_HOLD_SEC = 0.18
+UNIFIED_HOLD_SEC = 0.25
+# 0.24.107 a slow start of a drawn line became a Press (12 px in 0.18 s is fast): a press that has only just begun
+# turns back into the line when the pointer then travels this far from where it went down.
+UNIFIED_LATE_DRAG_PX = 18.0
+UNIFIED_LATE_DRAG_SEC = 0.9
 
 
 def _draw_unified_path(op):
@@ -1389,6 +1402,33 @@ class MCH_OT_press_unified(bpy.types.Operator):
         self.region.tag_redraw()
         return True
 
+    def _press_to_draw(self, context, xy):
+        """0.24.107 The pointer moved on soon after a press began: it was a slowly started line.  The press is put
+        back (the part as it was) and the line goes on from where the button went down."""
+        press = getattr(self, 'press', None)
+        if press is not None:
+            try:
+                press.cancel(context)
+            except (ReferenceError, RuntimeError, AttributeError):
+                pass
+        self.press = None
+        if getattr(self, 'timer', None) is not None:
+            try:
+                context.window_manager.event_timer_remove(self.timer)
+            except (ValueError, RuntimeError, ReferenceError, TypeError):
+                pass
+        self.timer = None
+        for name in ('handle', 'handle_red'):
+            h = getattr(self, name, None)
+            if h is not None:
+                try:
+                    bpy.types.SpaceView3D.draw_handler_remove(h, 'WINDOW')
+                except (ValueError, RuntimeError, ReferenceError):
+                    pass
+            setattr(self, name, None)
+        self.state = 'WAIT'
+        self._begin_draw(context, xy)
+
     def _finish_draw(self, context, xy):
         from . import cut_engine as ce, lasso_line, base_mesh, safety_save
         if math.dist(xy, self.pts[-1]) >= 0.5:
@@ -1401,6 +1441,15 @@ class MCH_OT_press_unified(bpy.types.Operator):
         if len(pts) < 2 or math.dist(pts[0], pts[-1]) < 3.0 and len(pts) <= 2:
             self.report({'WARNING'}, 'Draw a longer line')
             return {'CANCELLED'}
+        try:                                   # 0.24.107 the Line tool's own stroke smoothing / simplify
+            brush = context.scene.mch_brush
+            from . import tool_state as _ts
+            sm = ce.smooth_open(pts, getattr(brush, 'stroke_smooth', 0))
+            sm = cg.simplify_open(sm, getattr(brush, 'stroke_simplify', 0.0) / _ts.res_scale())
+            if len(sm) >= 2:
+                pts = sm
+        except Exception:
+            pass
         try:
             brush = context.scene.mch_brush
             # The same Line Width / Taper / Caps settings as the native Line tool.
@@ -1418,10 +1467,13 @@ class MCH_OT_press_unified(bpy.types.Operator):
                     path = ce.smooth_open(pts, 6) if getattr(st, 'attach_curve', '') == 'SMOOTH' and len(pts) > 2 else pts
                     attach = (path, ce.surface_point(context, self.projector, path[0]),
                               ce.surface_point(context, self.projector, path[-1]))
-                safety_save.checkpoint('Mecha Base Mesh Line from Press Shape')
+                try:
+                    safety_save.checkpoint('Mecha Base Mesh Line from Press Shape')
+                except Exception:
+                    pass
                 msg = base_mesh.perform_base(context, loops, self.projector,
                                              cutter=False, attach=attach, path=pts,
-                                             sweep_style='ALPHA')
+                                             sweep_style='ALPHA', section_width=brush.line_width)
                 # Keep the original Base Mesh post-create radial symmetry behaviour.
                 try:
                     from . import radial_sym
@@ -1436,8 +1488,12 @@ class MCH_OT_press_unified(bpy.types.Operator):
                     targets = ce.gather_targets(context, self.projector, pts[0], 'CUT')
                 if not targets:
                     raise cg.CutError('Line Cut: no mesh in the line / selection')
-                safety_save.checkpoint('Mecha Line Cut')
-                msg = ce.perform_closed(context, 'CUT', targets, loops, self.projector, False)
+                try:
+                    safety_save.checkpoint('Mecha Line Cut')
+                except Exception:
+                    pass
+                mode = 'SPLIT' if getattr(context.scene.mch_press, 'result', 'CUT') == 'SPLIT' else 'CUT'
+                msg = ce.perform_closed(context, mode, targets, loops, self.projector, False)   # (0.24.107 Split too)
             self.report({'INFO'}, msg or ('Base Mesh Line' if self.alt_draw else 'Line Cut'))
             return {'FINISHED'}
         except cg.CutError as ex:
@@ -1451,6 +1507,12 @@ class MCH_OT_press_unified(bpy.types.Operator):
 
     def modal(self, context, event):
         if self.state == 'PRESS':
+            if event.type in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE'} and \
+                    time.perf_counter() - self.down_time < UNIFIED_LATE_DRAG_SEC:
+                xy = (float(event.mouse_region_x), float(event.mouse_region_y))
+                if math.dist(self.anchor, xy) >= UNIFIED_LATE_DRAG_PX:
+                    self._press_to_draw(context, xy)
+                    return {'RUNNING_MODAL'}
             # Preserve timer-based growth, release, Esc/RMB undo semantics verbatim.
             outcome = MCH_OT_press_cut.modal(self, context, event)
             if 'FINISHED' in outcome or 'CANCELLED' in outcome:

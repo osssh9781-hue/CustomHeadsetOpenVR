@@ -1,5 +1,6 @@
 """0.24.95 Edge Memory + Bake High Poly: the version, the modules and the places they are wired in."""
 import inspect
+import os
 
 from _harness import bpy, check, fresh, summary
 
@@ -9,7 +10,8 @@ from mecha_lab import hard_edges as he, mesh_tools as mt, zb_sculpt as zs, zb_ui
 
 mecha_lab.register()
 fresh()
-check('Version 0.24.95', mecha_lab.bl_info['version'] == (0, 24, 95))
+check('Version 0.24.95 or later (0.24.107: bl_info and the manifest agree)', mecha_lab.bl_info['version'] >= (0, 24, 95)
+      and '"%d.%d.%d"' % mecha_lab.bl_info['version'] in open(os.path.join(os.path.dirname(mecha_lab.__file__), 'blender_manifest.toml')).read())
 check('Edge Memory: one mark name shared by every reader (internal: a voxel remesh does not smear it)', em.ATTR == '.mch_hard')
 check('remove_cutter_attribute (every cut-type tool\'s last step) turns the cutter flag into Edge Memory marks',
       'edge_memory.mark_cut_borders' in inspect.getsource(cg.remove_cutter_attribute))

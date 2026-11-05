@@ -398,10 +398,12 @@ press_keys2 = [(k[0], k[1]['type'], k[1].get('shift', False), k[1].get('alt', Fa
 names = [k[0] for k in pc.TOOL_KEYMAP]
 check('... Shift + LMB in the Press Cut tool is the drawing - the shared shape stroke (Lasso, Curve Lasso, Rectangle, '
       'Circle, Ellipse, Free Draw), Shift + Alt for a Sketch\'s subtract; LMB alone still presses; the Sketch keys '
-      '(Enter / Backspace / Esc) before Esc = leave the tool',
+      '(Enter / Backspace / Esc) before Esc = leave the tool (0.24.100: LMB = the unified press: hold presses, '
+      'a drag is a Line Cut; Alt+LMB: Grow / Base Mesh line)',
       ('mch.cut_stroke', 'LEFTMOUSE', True, False, 'PRESS') in press_keys2
       and ('mch.cut_stroke', 'LEFTMOUSE', True, True, 'PRESS') in press_keys2
-      and ('mch.press_cut', 'LEFTMOUSE', False, False, None) in press_keys2
+      and ('mch.press_unified', 'LEFTMOUSE', False, False, None) in press_keys2
+      and ('mch.press_unified', 'LEFTMOUSE', False, True, None) in press_keys2
       and 'PRESS' in [i.identifier for i in bpy.ops.mch.cut_stroke.get_rna_type().properties['mode'].enum_items]
       and 'mch.lasso_sketch_key' in names and names.index('mch.lasso_sketch_clear') < names.index('mch.exit_tool'),
       press_keys2)

@@ -37,14 +37,22 @@ def _ui(data, key):
 
 def get(data, prop):
     if is_id(prop):
-        return cg.gn_get(data, _key(prop)) if getattr(data, 'type', None) == 'NODES' else data[_key(prop)]
+        if getattr(data, 'type', None) == 'NODES':
+            try:
+                return cg.gn_get(data, _key(prop))
+            except (AttributeError, KeyError, TypeError):
+                pass               # 0.24.107 an input not in the 5.2 inputs list: the old id-property way
+        return data[_key(prop)]
     return getattr(data, prop)
 
 
 def set(data, prop, value):      # noqa: A001 - the module's verb
     if is_id(prop):
         if getattr(data, 'type', None) == 'NODES':
-            cg.gn_set(data, _key(prop), value)
+            try:
+                cg.gn_set(data, _key(prop), value)
+            except (AttributeError, KeyError, TypeError):
+                data[_key(prop)] = value
         else:
             data[_key(prop)] = value
         owner = getattr(data, 'id_data', None)

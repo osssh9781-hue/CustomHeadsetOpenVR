@@ -843,9 +843,12 @@ def mirror_targets_kind(context):
     """'MESH' (selected meshes), 'INSTANCE' (selected collection instances, no mesh) or None."""
     sel = context.selected_objects
     from . import groups
-    if any(groups.is_group(o) for o in sel):
+    handles = [o for o in sel if groups.is_group(o)]
+    inside = {m for g in handles for m in groups.members(g)}
+    loose = [o for o in sel if o.type == 'MESH' and o.library is None and o not in inside]
+    if handles and not loose:
         return 'GROUP'
-    if any(o.type == 'MESH' and o.library is None for o in sel):
+    if loose:                 # 0.24.107 meshes picked with a group: the mesh mirror (the group mirror ignored them)
         return 'MESH'
     if any(is_collection_instance(o) for o in sel):
         return 'INSTANCE'
@@ -867,6 +870,9 @@ def start_mirror(context, keep_live, report):
             return bpy.ops.mch.group_mirror_lean('INVOKE_DEFAULT', keep_live=keep_live)
         if kind == 'INSTANCE':
             return bpy.ops.mch.instance_mirror_lean('INVOKE_DEFAULT')
+        from . import groups
+        if any(groups.is_group(o) for o in context.selected_objects):
+            report({'INFO'}, 'Mirror: the selected meshes are mirrored; a group mirrors when it is selected alone')
         return bpy.ops.mch.mirror_lean('INVOKE_DEFAULT', keep_live=keep_live)
     except RuntimeError as ex:
         report({'WARNING'}, 'Mirror: ' + str(ex).splitlines()[0])
@@ -890,7 +896,7 @@ def start_lean_mirror(context):
         if region is None:
             continue
         with context.temp_override(window=win, screen=screen, area=area, region=region):
-            if any(groups.is_group(o) for o in context.selected_objects):
+            if mirror_targets_kind(context) == 'GROUP':
                 return bpy.ops.mch.group_mirror_lean('INVOKE_DEFAULT') == {'RUNNING_MODAL'}
             return bpy.ops.mch.mirror_lean('INVOKE_DEFAULT') == {'RUNNING_MODAL'}
     return False

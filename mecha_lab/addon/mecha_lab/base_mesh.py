@@ -78,8 +78,9 @@ PUFF_RINGS = (0.12, 0.3, 0.55, 0.85)      # rows just inside the outline (in poi
 
 CARRY_KEYS = ('profile', 'height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 'resolution', 'offset',
               'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link', 'puff', 'outline_smooth',
-              'edge_round', 'profile_sweep', 'section_width', 'section_rotation', 'section_twist',
-              'section_taper')
+              'edge_round', 'section_rotation', 'section_twist', 'section_taper')
+# 0.24.107 'profile_sweep' / 'section_width' are not carried: a Press Cut Alt+draw part (always a shape sweep) had
+# every later plain Base Mesh line turned into a shape sweep once one of its sliders was touched.
 
 
 def _rebuild_now(name):
@@ -1201,8 +1202,15 @@ def _depth_profile_mesh(me, data):
         else:
             spaced[-1]=pt
     if len(spaced)<2: return
+    # 0.24.107 relative: the guide's shape bends the part, its height does not move it (a guide drawn above the
+    # part lifted the whole mesh by that height) - measured from the guide's mean height along its length.
+    span = spaced[-1][0] - spaced[0][0]
+    if span > 1e-9:
+        base = sum((b[0] - a[0]) * (a[1] + b[1]) * 0.5 for a, b in zip(spaced, spaced[1:])) / span
+    else:
+        base = sum(q[1] for q in spaced) / len(spaced)
     for v in me.vertices:
-        v.co.z += _depth_at(spaced, v.co[axis])
+        v.co.z += _depth_at(spaced, v.co[axis]) - base
 
 
 class MCH_OT_depth_side_guide(bpy.types.Operator):
@@ -1448,10 +1456,42 @@ def _build_sweep_bmesh(data, p):
         raise
 
 
-def _create_section_sweep(context, loops, projector, path, defaults):
+def _area2(loop):
+    return sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(loop, loop[1:] + loop[:1]))
+
+
+def _hull(points):
+    """Convex hull (counter-clockwise) of 2D points, or None for fewer than 3 distinct points."""
+    pts = sorted({(round(float(q[0]), 3), round(float(q[1]), 3)) for q in points})
+    if len(pts) < 3:
+        return None
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+    lower, upper = [], []
+    for q in pts:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], q) <= 0:
+            lower.pop()
+        lower.append(q)
+    for q in reversed(pts):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], q) <= 0:
+            upper.pop()
+        upper.append(q)
+    hull = lower[:-1] + upper[:-1]
+    return hull if len(hull) >= 3 else None
+
+
+def _create_section_sweep(context, loops, projector, path, defaults, attach=None):
     """One shared implementation for Base Mesh Line and Unified Press Alt+Draw."""
     section, name = _section_loops(context, defaults.profile_sweep)
-    groups, frame, _screen, _embed = _local_groups(context, loops, projector)
+    # 0.24.107 the frame comes from the path's hull (always a simple outline): the drawn band itself crosses
+    # itself on a tight or looping line and the sweep failed with "crosses itself" before it was built.
+    frame_loop = _hull(path) if path is not None else None
+    if frame_loop is None or len(frame_loop) < 3 or abs(_area2(frame_loop)) < 4.0:
+        frame_loop = loops[0] if loops else None
+    if frame_loop is None:
+        raise cg.CutError('Draw a longer line to sweep the section.')
+    groups, frame, _screen, _embed = _local_groups(context, [frame_loop], projector)
     inv = frame.inverted_safe()
     origin, normal = frame.translation, Vector((frame[0][2], frame[1][2], frame[2][2]))
     local_path = []
@@ -1462,6 +1502,10 @@ def _create_section_sweep(context, loops, projector, path, defaults):
     # Snapshot vector loops: rebuilding still works if the saved Press Cut shape is renamed/deleted.
     sweep = {'path': local_path, 'loops': section, 'section_name': name}
     msg = _create_live_base(context, groups, frame, defaults, embed=0.0, sweep_data=sweep)
+    ob = getattr(context, 'active_object', None) if attach is not None else None
+    if ob is not None and getattr(ob, 'mch_base', None) is not None and ob.mch_base.live:
+        set_attach(ob, frame, projector, *attach)          # 0.24.107 Attach Ends for a swept line too
+        msg += f' | Attach Ends: {sum(1 for h in attach[1:] if h is not None)} of 2 on a mesh'
     return msg + f' | Sweep section: {name}'
 
 
@@ -1751,7 +1795,7 @@ def _local_groups(context, loops, projector, allow_invert=True):
 
 
 def perform_base(context, loops, projector, cutter=False, targets=None, attach=None, path=None,
-                 sweep_style=None):
+                 sweep_style=None, section_width=None):
     """Create a solid or cutter, optionally forcing a section for a single draw.
 
     Press Cut Alt+drag uses sweep_style='ALPHA' so its CURRENT selected stamp
@@ -1761,10 +1805,10 @@ def perform_base(context, loops, projector, cutter=False, targets=None, attach=N
     if sweep_style is not None:
         if sweep_style not in {'CIRCLE', 'SQUARE', 'ALPHA'}:
             raise cg.CutError('Invalid line section style.')
-        defaults = _WithSectionStyle(defaults, sweep_style)
+        defaults = _WithSectionStyle(defaults, sweep_style, section_width)
     creature = defaults.profile in CREATURE_PROFILES
     if not cutter and path is not None and not creature and defaults.profile_sweep != 'OFF':
-        return _create_section_sweep(context, loops, projector, path, defaults)
+        return _create_section_sweep(context, loops, projector, path, defaults, attach)
     if cutter and not creature and getattr(defaults, 'alt_mode', 'HEIGHT') == 'CUT':
         return cut_like_cut_tool(context, loops, projector, targets)
     if cutter and not creature and defaults.profile in SURFACE_CARVE:
@@ -1827,9 +1871,11 @@ def scene_defaults(context):
 class _WithSectionStyle:
     """Settings view for a single Alt+draw. Does NOT mutate scene settings."""
 
-    def __init__(self, base, style):
+    def __init__(self, base, style, width=None):
         self._base = base
         self.profile_sweep = style
+        if width is not None:          # 0.24.107 the drawn line's own width (what the preview band showed)
+            self.section_width = max(0.001, float(width))
 
     def __getattr__(self, name):
         return getattr(self._base, name)

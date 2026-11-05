@@ -20,7 +20,6 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, FloatVectorProperty, IntProperty, PointerProperty
 from mathutils import Matrix, Vector
 from mathutils.geometry import interpolate_bezier
-import time
 
 MOD_DEFORM = 'MCH_AlongCurve'
 MOD_ARRAY = 'MCH_CurveArray'
@@ -183,15 +182,33 @@ class MCH_OT_curve_deform(bpy.types.Operator):
 # The generated root objects are tagged so changing Count replaces only generated
 # instances. Curve editing also refreshes the array via depsgraph callback.
 _DRAW_BUSY = False
-_DRAW_LAST = {}
-_DRAW_SIG = {}
 DRAW_TAG = 'mch_draw_array_owner'
 
 
+DRAW_BUILT_KEY = 'mch_da_built'     # 0.24.107 signature of what the copies were last built from
+DRAW_COLL_KEY = 'mch_da_coll'       # the copies' own collection
+DRAW_MAX_OBJECTS = 4000             # copies x group parts: more is refused (Blender slows to a crawl / can crash)
+
+
 def _draw_array_update(self, context):
+    """0.24.107 a slider only asks for a rebuild: the copies are made again a moment later from a timer (making up
+    to 200 x the group's parts inside the slider's update - the way Blender used to crash - is gone)."""
     ob = self.id_data
     if isinstance(ob, bpy.types.Object) and self.active:
-        sync_draw_array(ob)
+        request_draw_rebuild()
+
+
+def request_draw_rebuild():
+    try:
+        if not bpy.app.timers.is_registered(_draw_array_kick):
+            bpy.app.timers.register(_draw_array_kick, first_interval=0.15)
+    except (AttributeError, RuntimeError, ValueError):
+        pass
+
+
+def _draw_array_kick():
+    _draw_array_pass()
+    return None
 
 
 class MCH_PG_DrawGroupArray(bpy.types.PropertyGroup):
@@ -260,6 +277,36 @@ def _remove_draw_copies(ctrl):
     for ob in list(bpy.data.objects):
         if ob.get(DRAW_TAG) == ctrl.name:
             bpy.data.objects.remove(ob, do_unlink=True)
+    coll = bpy.data.collections.get(ctrl.get(DRAW_COLL_KEY, '')) if ctrl.get(DRAW_COLL_KEY) else None
+    if coll is not None and not coll.objects and not coll.children:
+        bpy.data.collections.remove(coll)
+    if DRAW_COLL_KEY in ctrl:
+        del ctrl[DRAW_COLL_KEY]
+
+
+def _draw_collection(ctrl):
+    """The copies' own collection, next to the control object (they no longer fill the user's collection)."""
+    name = ctrl.get(DRAW_COLL_KEY)
+    coll = bpy.data.collections.get(name) if name else None
+    if coll is None:
+        home = ctrl.users_collection[0] if ctrl.users_collection else bpy.context.scene.collection
+        coll = bpy.data.collections.new(ctrl.name + ' Copies')
+        home.children.link(coll)
+        coll['mch_draw_array_coll'] = ctrl.name
+        ctrl[DRAW_COLL_KEY] = coll.name
+    return coll
+
+
+def draw_signature(ctrl):
+    """What the copies depend on: the settings, the path's shape, the group's parts and where they sit."""
+    p = ctrl.mch_draw_array
+    if not p.active or p.source is None or p.path is None:
+        return None
+    sources = _group_geometry(p.source)
+    base = p.source.matrix_world.inverted_safe()
+    parts = tuple((o.name, tuple(round(v, 4) for row in (base @ o.matrix_world) for v in row)) for o in sources)
+    return repr((p.count, round(p.scale, 5), p.follow, round(p.roll, 5), round(p.offset, 5), round(p.end, 5),
+                 p.source.name, _draw_path_signature(p.path), parts))
 
 
 def sync_draw_array(ctrl):
@@ -280,12 +327,18 @@ def sync_draw_array(ctrl):
         return
     _DRAW_BUSY = True
     try:
+        sig = draw_signature(ctrl)
         _remove_draw_copies(ctrl)
         base = p.source.matrix_world.inverted_safe()
-        collection = ctrl.users_collection[0] if ctrl.users_collection else bpy.context.scene.collection
+        collection = _draw_collection(ctrl)
         bound = max(0., min(1., p.end))
         begin = min(p.offset, bound)
         n = max(1, p.count)
+        if n * (len(sources) + 1) > DRAW_MAX_OBJECTS:
+            n = max(1, DRAW_MAX_OBJECTS // (len(sources) + 1))
+            ctrl['mch_da_note'] = f'Limited to {n} copies ({len(sources)} parts each, {DRAW_MAX_OBJECTS} objects max)'
+        elif 'mch_da_note' in ctrl:
+            del ctrl['mch_da_note']
         for i in range(n):
             t = begin + (bound - begin)*(i/(n-1) if n > 1 else 0.)
             pos, tang = _at_draw_path(points, t)
@@ -313,28 +366,14 @@ def sync_draw_array(ctrl):
                 collection.objects.link(copy)
                 copy.parent = root
                 copy.matrix_world = world @ local
-                copy.hide_set(False)
+                try:
+                    copy.hide_set(False)
+                except RuntimeError:
+                    pass
+        if sig is not None:
+            ctrl[DRAW_BUILT_KEY] = sig
     finally:
         _DRAW_BUSY = False
-
-
-def _draw_depsgraph(scene, depsgraph):
-    if _DRAW_BUSY:
-        return
-    changed = {getattr(update.id, 'original', update.id) for update in depsgraph.updates
-               if isinstance(getattr(update.id, 'original', update.id), bpy.types.Object) and
-               getattr(update, 'is_updated_geometry', False)}
-    if not changed:
-        return
-    now = time.monotonic()
-    for ctrl in [o for o in scene.objects if getattr(getattr(o,'mch_draw_array',None),'active',False)]:
-        p = ctrl.mch_draw_array
-        if p.path not in changed:
-            continue
-        if now - _DRAW_LAST.get(ctrl.name, 0.0) < 0.18:
-            continue
-        _DRAW_LAST[ctrl.name] = now
-        sync_draw_array(ctrl)
 
 
 def _draw_path_signature(curve):
@@ -346,25 +385,33 @@ def _draw_path_signature(curve):
         return None
 
 
-def _draw_array_timer():
-    # App timer instead of mutating objects inside depsgraph_update_post.
-    # This is safe when a live curve finishes its Edit Mode changes.
+def _draw_array_pass():
+    """Rebuild every Draw Array whose settings, path or group changed since its copies were made (also after an
+    undo step brought back settings the copies do not match).  Only in Object Mode with no modal operator running."""
     try:
-        scene = bpy.context.scene
-        if scene is None: return .6
+        ctx = bpy.context
+        scene = ctx.scene
+        if scene is None or ctx.mode != 'OBJECT':
+            return
+        try:
+            if any(w.modal_operators for w in ctx.window_manager.windows):
+                return               # (a slider drag / a move in progress: the next tick)
+        except AttributeError:
+            pass
         for ctrl in list(scene.objects):
-            prop = getattr(ctrl,'mch_draw_array',None)
-            if prop is None or not prop.active or prop.path is None: continue
-            signature = _draw_path_signature(prop.path)
-            if signature is None: continue
-            previous = _DRAW_SIG.get(ctrl.name)
-            if previous is None:
-                _DRAW_SIG[ctrl.name] = signature
-            elif previous != signature and bpy.context.mode == 'OBJECT':
+            prop = getattr(ctrl, 'mch_draw_array', None)
+            if prop is None or not prop.active or prop.path is None:
+                continue
+            sig = draw_signature(ctrl)
+            if sig is not None and ctrl.get(DRAW_BUILT_KEY) != sig:
                 sync_draw_array(ctrl)
-                _DRAW_SIG[ctrl.name] = signature
     except (ReferenceError, RuntimeError, AttributeError):
         pass
+
+
+def _draw_array_timer():
+    # App timer instead of mutating objects inside a property update or depsgraph_update_post.
+    _draw_array_pass()
     return .6
 
 
@@ -473,7 +520,6 @@ class MCH_OT_draw_group_array(bpy.types.Operator):
             p.source=source; p.path=curve
             p.active=True
             sync_draw_array(ctrl)
-            _DRAW_SIG[ctrl.name] = _draw_path_signature(curve)
             for ob in context.selected_objects: ob.select_set(False)
             ctrl.select_set(True)
             context.view_layer.objects.active=ctrl
@@ -498,7 +544,6 @@ class MCH_OT_draw_group_remove(bpy.types.Operator):
             return {'CANCELLED'}
         path=ob.mch_draw_array.path
         _remove_draw_copies(ob)
-        _DRAW_SIG.pop(ob.name, None)
         bpy.data.objects.remove(ob,do_unlink=True)
         if path is not None and path.name in bpy.data.objects:
             bpy.data.objects.remove(path,do_unlink=True)
@@ -858,8 +903,9 @@ def register():
 
 
 def unregister():
-    if bpy.app.timers.is_registered(_draw_array_timer):
-        bpy.app.timers.unregister(_draw_array_timer)
+    for t in (_draw_array_timer, _draw_array_kick):
+        if bpy.app.timers.is_registered(t):
+            bpy.app.timers.unregister(t)
     for owner, name in ((bpy.types.Object, 'mch_draw_array'), (bpy.types.Scene, 'mch_draw_array_last'),
                         (bpy.types.Scene, 'mch_curve_last'), (bpy.types.Scene, 'mch_curve_array'),
                         (bpy.types.Object, 'mch_curve_array'), (bpy.types.Scene, 'mch_deform_curve'),
