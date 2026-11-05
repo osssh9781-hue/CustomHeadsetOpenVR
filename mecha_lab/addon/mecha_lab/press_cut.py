@@ -10,6 +10,7 @@ Save Shape: the last closed outline drawn with Cut / Split (lasso, sketch, recta
 for the session (``cut_presets.remember``); Save Shape writes it as a cut shape (``cut_presets.save_loops``) - it is
 then in the shape list of Press Cut and of the Cut / Split Custom stamp, in every file.
 
+Alt + LMB: grow a separate surface-following mesh outward; its base overlaps the source.
 Shift + drag: draw your own stamp outline (it is the stamp at once; Save Shape keeps it).
 [ / ] or F + mouse: stamp size.  R + mouse left / right: turn it (0.4 degree a pixel, Shift fine, Ctrl 5 degree
 steps; click keeps, Esc puts it back), Shift + R: back to 0 degrees.
@@ -78,6 +79,22 @@ class MCH_PG_Press(bpy.types.PropertyGroup):
                                        'half circle across the stamp')
     curve_y: FloatProperty(name='Curve Up-Down', default=0.0, min=-1.0, max=1.0, precision=2, update=_redraw,
                            description='The stamp bent up-down (both: a bowl, or a saddle with opposite signs)')
+    tilt_x: FloatProperty(name='Tilt Left / Right', default=0.0, subtype='ANGLE',
+                          min=-math.radians(65.0), max=math.radians(65.0), update=_redraw,
+                          description='Slope the stamp floor left/right in screen-space, distinct from Curve')
+    tilt_y: FloatProperty(name='Tilt Up / Down', default=0.0, subtype='ANGLE',
+                          min=-math.radians(65.0), max=math.radians(65.0), update=_redraw,
+                          description='Slope the stamp floor up/down in screen-space')
+    stamp_edge: EnumProperty(name='Stamp Edge', items=[
+        ('INHERIT', 'Cut Settings', 'Use the regular Cut Edge Finish settings'),
+        ('NONE', 'Sharp', 'No bevel on new stamp cut edges'),
+        ('CHAMFER', 'Chamfer', 'One flat bevel on the new stamp cut border'),
+        ('BEVEL', 'Bevel', 'Round the new stamp cut border')], default='INHERIT')
+    stamp_edge_width: FloatProperty(name='Edge Width', default=0.01, min=0.0,
+                                   soft_max=0.5, precision=4, unit='LENGTH',
+                                   description='Width of bevel/chamfer on new stamp cut edges, in world units')
+    stamp_edge_segments: bpy.props.IntProperty(name='Bevel Segments', default=3, min=1, max=16,
+                                                description='Number of segments for round bevel (chamfer uses one)')
     start: FloatProperty(name='Start', default=0.01, min=0.0005, max=1.0, subtype='FACTOR', precision=3,
                          description='Depth at the press, of the part\'s size (a quick tap)')
     speed: FloatProperty(name='Speed', default=0.12, min=0.005, soft_max=1.0, max=5.0, precision=3,
@@ -191,7 +208,7 @@ class SurfaceFloor:
     the nearest point that is on them."""
 
     def __init__(self, context, targets, projector, loops, spacing, follow=True, curve=(0.0, 0.0), center=None,
-                 angle=0.0, depth=0.1, level=False):
+                 angle=0.0, depth=0.1, level=False, tilt=(0.0, 0.0)):
         self.targets = [t for t in targets if t is not None]
         self.projector = projector
         self.vd = projector.view_dir
@@ -199,6 +216,7 @@ class SurfaceFloor:
         self.follow = bool(follow) and not level
         self.level = bool(level)
         self.curve = (float(curve[0]), float(curve[1]))
+        self.tilt = (float(tilt[0]), float(tilt[1]))
         self.depth = float(depth)
         self.cache = {}
         pts = [p for lp in loops for p in lp]
@@ -247,7 +265,8 @@ class SurfaceFloor:
     def _planar(self):
         """The surface under the shape is one flat face and the stamp is not bent: the far cap is flat too (no grid,
         no extra points - a pocket in a flat face seen at an angle keeps clean big faces)."""
-        if abs(self.curve[0]) > 1e-4 or abs(self.curve[1]) > 1e-4:
+        if (abs(self.curve[0]) > 1e-4 or abs(self.curve[1]) > 1e-4 or
+                abs(self.tilt[0]) > 1e-5 or abs(self.tilt[1]) > 1e-5):
             return False
         if not self.follow:
             return True
@@ -328,6 +347,16 @@ class SurfaceFloor:
             off += -d if h > 0 else -(abs(h) - d)
         return off
 
+    def tilt_off(self, xy):
+        """Planar sloped stamp floor, in world units. Rotation follows the visible stamp."""
+        if self.px_world <= 0.0 or (abs(self.tilt[0]) < 1e-6 and abs(self.tilt[1]) < 1e-6):
+            return 0.0
+        c, s = math.cos(self.angle), math.sin(self.angle)
+        dx, dy = xy[0] - self.center[0], xy[1] - self.center[1]
+        u, v = dx * c + dy * s, -dx * s + dy * c
+        return self.px_world * (math.tan(self.tilt[0]) * (u - self.uc) +
+                                math.tan(self.tilt[1]) * (v - self.vc))
+
     def offset(self, xy, far_co):
         """How far along the view the cutter's far cap at screen ``xy`` lies from the far plane through ``far_co``."""
         t_far = far_co.dot(self.vd)
@@ -335,13 +364,13 @@ class SurfaceFloor:
         if self.level and self.t_ref is not None:        # (Level: flat at the depth below the point pressed)
             base = self.t_ref + self.depth - t_far
             low = ((self.t_min if self.t_min is not None else self.t_ref) - 0.5 * above) - t_far
-            return max(base + self.curve_off(xy), low)
+            return max(base + self.curve_off(xy) + self.tilt_off(xy), low)
         tx = self.t(xy) if self.follow else None
         if tx is None:                                   # (flat: the far plane is the depth below the middle)
             base, low = 0.0, -(self.depth + 0.5 * above)
         else:
             base, low = tx + self.depth - t_far, tx - 0.5 * above - t_far
-        return max(base + self.curve_off(xy), low)
+        return max(base + self.curve_off(xy) + self.tilt_off(xy), low)
 
     def near_shift(self, near_co):
         if not (self.follow or self.level) or self.t_min is None:
@@ -354,14 +383,16 @@ class Press:
     """One press on one part: the part as it was (kept), cut again From Surface at each new depth."""
 
     def __init__(self, context, target, loops, projector, result='CUT', center=None, angle=0.0, curve=(0.0, 0.0),
-                 spacing=6.0, follow=False, level=False):
+                 spacing=6.0, follow=False, level=False, tilt=(0.0, 0.0)):
         from . import ramp_edit
         old = ramp_edit.live_target(context, ramp_edit.ALL_KINDS)
         if old is not None:                      # (an earlier live cut stays as it is: the Cut Depth set while
             ramp_edit.finish(old)                #  pressing must not cut it again)
         self.target = target
         self.curve = (float(curve[0]), float(curve[1]))
-        self.curved = abs(self.curve[0]) > 1e-4 or abs(self.curve[1]) > 1e-4
+        self.tilt = tuple(float(x) for x in tilt)
+        self.curved = (abs(self.curve[0]) > 1e-4 or abs(self.curve[1]) > 1e-4 or
+                       abs(self.tilt[0]) > 1e-5 or abs(self.tilt[1]) > 1e-5)
         self.follow = bool(follow) and not level
         self.level = bool(level)
         self.spacing = max(2.0, float(spacing))
@@ -375,7 +406,7 @@ class Press:
         self.sfloor = None
         if shaped:
             self.sfloor = SurfaceFloor(context, [target], projector, lps, self.spacing, follow=self.follow,
-                                       curve=self.curve, center=self.center, angle=self.angle, level=self.level)
+                                       curve=self.curve, center=self.center, angle=self.angle, level=self.level, tilt=self.tilt)
             if not self.sfloor.planar:           # (a bent stamp / a curved surface: the outline follows it too)
                 self.loops = [resample(lp, self.spacing) for lp in lps]
         self.px_world = self.sfloor.px_world if self.sfloor is not None else 0.0
@@ -487,7 +518,16 @@ class Press:
         before = set(bpy.data.objects.keys())
         cut.depth_mode, cut.depth = 'SURFACE', max(depth, 1e-5)
         cut_presets.QUIET[0] = True              # (the stamp is not "the last drawn outline")
-        cg.FLOOR[0] = self.floor(depth)          # (a curved stamp: its face bent)
+        # Only the new press-created rim is chamfered/bevelled by the existing guarded Cut engine.
+        # Restore global Cut settings after each depth tick; other tools must never inherit this preset.
+        edge_before = (cut.edge_finish, cut.finish_width, cut.finish_segments, cut.gn_finish)
+        st = context.scene.mch_press
+        if st.stamp_edge != 'INHERIT':
+            cut.gn_finish = 'NONE'
+            cut.edge_finish = st.stamp_edge
+            cut.finish_width = st.stamp_edge_width
+            cut.finish_segments = 1 if st.stamp_edge == 'CHAMFER' else st.stamp_edge_segments
+        cg.FLOOR[0] = self.floor(depth)
         try:
             self.message = ce.perform_closed(context, self.result, [self.target], self.loops, self.projector)
         except (cg.CutError, RuntimeError) as ex:
@@ -501,6 +541,8 @@ class Press:
         finally:
             cut_presets.QUIET[0] = False
             cg.FLOOR[0] = None
+            if st.stamp_edge != 'INHERIT':
+                cut.edge_finish, cut.finish_width, cut.finish_segments, cut.gn_finish = edge_before
         self.pieces = [o.name for o in bpy.data.objects if o.name not in before]
         self.depth = depth
         return True
@@ -520,6 +562,148 @@ class Press:
         if self.backup is not None:
             self._restore()
         self.finish(context)
+
+
+class GrowPress:
+    """Alt press: a separate closed stamp, embedded in the untouched source surface.
+
+    Sample the source once. Only vertex positions change on timer ticks, so height
+    depends on elapsed time rather than repeated Boolean operations or frame rate.
+    Growth is opposite the view direction; a flat base penetrates the source.
+    """
+    def __init__(self, context, target, loops, projector, result='GROW', center=None,
+                 angle=0.0, curve=(0.0, 0.0), spacing=6.0, **_unused):
+        self.target = target
+        self.result = 'GROW'
+        self.size = part_size(target)
+        self.depth = 0.0
+        self.message = ''
+        self.object = None
+        self.projector = projector
+        self.loops = [resample(lp, spacing) for lp in loops]
+        self.surface = SurfaceFloor(context, [target], projector, self.loops, spacing,
+                                    follow=True, curve=curve, center=center, angle=angle)
+        self.embed = max(self.size * 0.01, 1e-6)
+        self.points, self.curves, self.faces = [], [], []
+
+    def _build(self, context):
+        import bmesh
+        from mathutils import Vector
+        sf, vd = self.surface, self.projector.view_dir
+        if not sf.known:
+            raise cg.CutError('No surface beneath the stamp')
+        for outer, holes in cg.prepare_loops(self.loops):
+            rings = [outer] + list(holes)
+            flat = [q for ring in rings for q in ring]
+            plane = vd * sf.t_ref
+            points = []
+            curves = [sf.curve_off(q) for q in flat]
+            for q in flat:
+                o, d = self.projector.ray(q)
+                hit, _ = cg._plane_hit(o, d, plane, vd)
+                points.append(hit + vd * (sf.t(q) - sf.t_ref))
+            extra_curves = []
+
+            def offset(q):
+                extra_curves.append(sf.curve_off(q))
+                return sf.t(q) - sf.t_ref
+
+            where, tris = cg._curved_cap(rings, self.projector, plane, vd, offset, sf.spacing)
+            indices = []
+            extra = iter(extra_curves)
+            for kind, val in where:
+                if kind == 'wall':
+                    indices.append(val)
+                else:
+                    indices.append(len(points))
+                    points.append(val)
+                    curves.append(next(extra))
+            n, base = len(points), len(self.points) * 2
+            # Store paired caps in the final vertex buffer: bottom, then top.
+            self.faces.extend(tuple(base + indices[i] for i in reversed(t)) for t in tris)
+            self.faces.extend(tuple(base + n + indices[i] for i in t) for t in tris)
+            k = 0
+            for ring in rings:
+                for i in range(len(ring)):
+                    a, b = base + k + i, base + k + (i + 1) % len(ring)
+                    self.faces.append((a, b, b + n, a + n))
+                k += len(ring)
+            self.points.extend(points)
+            self.curves.extend(curves)
+            if not hasattr(self, 'groups'):
+                self.groups = []
+            self.groups.append(n)
+        # One flat base behind every sampled point, rather than a thin skin
+        # following the source. Keep it fixed while only the exposed cap grows.
+        self.base_t = max(p.dot(vd) for p in self.points) + self.embed
+        me = bpy.data.meshes.new('MCH_PressGrow')
+        try:
+            me.from_pydata(self._coordinates(max(self.size * 0.0005, 1e-6)), [], self.faces)
+            me.update()
+            bm = bmesh.new()
+            try:
+                bm.from_mesh(me)
+                if not bm.faces or any(not e.is_manifold for e in bm.edges):
+                    raise cg.CutError('Grow stamp is not watertight; try a cleaner outline')
+                bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+                bm.to_mesh(me)
+            finally:
+                bm.free()
+            for mat in self.target.data.materials:
+                me.materials.append(mat)
+            self.object = bpy.data.objects.new('MCH_PressGrow', me)
+            collection = next(iter(self.target.users_collection), context.collection)
+            collection.objects.link(self.object)
+        except Exception:
+            if self.object is not None:
+                bpy.data.objects.remove(self.object, do_unlink=True)
+                self.object = None
+            if me.users == 0:
+                bpy.data.meshes.remove(me)
+            raise
+
+    def _coordinates(self, depth):
+        vd = self.projector.view_dir
+        coords, start = [], 0
+        for n in self.groups:
+            pts = self.points[start:start + n]
+            curves = self.curves[start:start + n]
+            coords.extend(tuple(p + vd * (self.base_t - p.dot(vd))) for p in pts)
+            coords.extend(tuple(p - vd * max(depth + c, 1e-7)) for p, c in zip(pts, curves))
+            start += n
+        return coords
+
+    def cut_to(self, context, depth):
+        try:
+            if self.object is None:
+                self._build(context)
+            coords = self._coordinates(depth)
+            self.object.data.vertices.foreach_set('co', [v for p in coords for v in p])
+            self.object.data.update()
+            self.depth = depth
+            self.message = 'Separate mesh, flat base penetrating the source'
+            return True
+        except (cg.CutError, RuntimeError, ValueError) as ex:
+            self.message = str(ex)
+            return False
+
+    def pocket(self):
+        return [], [], 0.0
+
+    def finish(self, context):
+        if self.object is not None:
+            for ob in context.selected_objects:
+                ob.select_set(False)
+            self.object.select_set(True)
+            context.view_layer.objects.active = self.object
+
+    def cancel(self, context):
+        if self.object is not None:
+            me = self.object.data
+            bpy.data.objects.remove(self.object, do_unlink=True)
+            if me.users == 0:
+                bpy.data.meshes.remove(me)
+            self.object = None
 
 
 def press_target(context, projector, xy, loops=None):
@@ -588,65 +772,63 @@ def contact_points(context, loops_px, center_px, offset=(0.0, 0.0), step=8.0):
 
 
 def dot_sizes(context):
-    """(outline dot, contact dot ring, contact dot core) in px: 0.24.95 (user: "메쉬 위에 뜨는 점이 너무 작은데") about
-    twice the first ones, times the Dot Size setting and Blender's UI scale."""
+    """Small screen-pixel diameters, bounded even with extreme UI scaling."""
     try:
         k = float(context.scene.mch_press.dot_size)
-    except AttributeError:
-        k = 1.0
-    try:
         ui = float(context.preferences.system.ui_scale)
-    except AttributeError:
-        ui = 1.0
-    k *= ui if ui > 0.0 else 1.0                  # (no window: Blender reads 0 - the plain size then)
-    return 8.0 * k, 18.0 * k, 11.0 * k
+        k *= ui if ui > 0.0 else 1.0
+    except (AttributeError, TypeError, ValueError):
+        k = 1.0
+    if not math.isfinite(k):
+        k = 1.0
+    k = max(0.3, min(k, 2.0))
+    return max(2.0, min(3.0 * k, 5.0)), max(4.0, min(7.0 * k, 12.0)), max(2.0, min(4.0 * k, 7.0))
 
 
-def _dot_shader():
-    import gpu
-    for name in ('POINT_UNIFORM_COLOR', 'UNIFORM_COLOR'):    # (round points where Blender has the shader)
-        try:
-            return gpu.shader.from_builtin(name)
-        except (ValueError, TypeError):
-            continue
-    return None
+def _dot_triangles(points, diameter):
+    """Pixel-space discs; do not rely on backend-specific point sprite sizing."""
+    radius = max(0.5, min(float(diameter), 16.0) * 0.5)
+    segments = 16
+    circle = [(math.cos(i * math.tau / segments) * radius,
+               math.sin(i * math.tau / segments) * radius) for i in range(segments)]
+    vertices = []
+    for point in points:
+        x, y = float(point[0]), float(point[1])
+        for i in range(segments):
+            a, b = circle[i], circle[(i + 1) % segments]
+            vertices.extend(((x, y), (x + a[0], y + a[1]), (x + b[0], y + b[1])))
+    return vertices
 
 
 def draw_contact(context, loops_px, center_px, offset=(0.0, 0.0)):
-    """The contact dots of a stamp preview (small ones on the outline over a mesh, a bigger one where it presses)."""
+    """Contact markers drawn as fixed pixel-size discs, including on Blender 5.3."""
+    import gpu
+    from gpu_extras.batch import batch_for_shader
+    old_blend = gpu.state.blend_get()
     try:
-        import gpu
-        from gpu_extras.batch import batch_for_shader
         small, ring, core = dot_sizes(context)
         dots, contact = contact_points(context, loops_px, center_px, offset, step=max(8.0, small * 1.6))
         if not dots and contact is None:
             return
-        sh = _dot_shader()
-        if sh is None:
-            return
+        sh = gpu.shader.from_builtin('UNIFORM_COLOR')
         gpu.state.blend_set('ALPHA')
         sh.bind()
+
+        def discs(points, diameter, color):
+            sh.uniform_float('color', color)
+            batch_for_shader(sh, 'TRIS', {'pos': _dot_triangles(points, diameter)}).draw(sh)
+
         if dots:
-            gpu.state.point_size_set(small + 2.0)                 # (a dark rim: seen on light and dark parts)
-            sh.uniform_float('color', (0.05, 0.12, 0.08, 0.85))
-            batch_for_shader(sh, 'POINTS', {'pos': dots}).draw(sh)
-            gpu.state.point_size_set(small)
-            sh.uniform_float('color', (0.45, 1.0, 0.65, 1.0))
-            batch_for_shader(sh, 'POINTS', {'pos': dots}).draw(sh)
+            discs(dots, small + 2.0, (0.05, 0.12, 0.08, 0.85))
+            discs(dots, small, (0.45, 1.0, 0.65, 1.0))
         if contact is not None:
-            gpu.state.point_size_set(ring + 2.0)
-            sh.uniform_float('color', (0.05, 0.12, 0.08, 0.85))
-            batch_for_shader(sh, 'POINTS', {'pos': [contact]}).draw(sh)
-            gpu.state.point_size_set(ring)
-            sh.uniform_float('color', (1.0, 1.0, 1.0, 1.0))
-            batch_for_shader(sh, 'POINTS', {'pos': [contact]}).draw(sh)
-            gpu.state.point_size_set(core)
-            sh.uniform_float('color', (0.15, 0.85, 0.45, 1.0))
-            batch_for_shader(sh, 'POINTS', {'pos': [contact]}).draw(sh)
-        gpu.state.point_size_set(1.0)
-        gpu.state.blend_set('NONE')
-    except Exception:          # never break viewport drawing
+            discs([contact], ring + 2.0, (0.05, 0.12, 0.08, 0.85))
+            discs([contact], ring, (1.0, 1.0, 1.0, 1.0))
+            discs([contact], core, (0.15, 0.85, 0.45, 1.0))
+    except Exception:
         pass
+    finally:
+        gpu.state.blend_set(old_blend)
 
 
 def draw_cursor(context, xy):
@@ -736,7 +918,7 @@ def _draw_holding(op):
         blf.color(0, 1.0, 0.92, 0.6, 1.0)
         blf.position(0, x + op.press_st.size * 0.8 + 10, y, 0)
         unit = bpy.context.scene.unit_settings.scale_length or 1.0
-        blf.draw(0, f'{op.press.result.title()} {op.press.depth * unit * 100:.1f} cm  (hold: deeper, release: keep, '
+        blf.draw(0, f'{op.press.result.title()} {op.press.depth * unit * 100:.1f} cm  (hold: grow/deepen, release: keep, '
                     'Esc: back)')
     except Exception:
         pass
@@ -772,9 +954,11 @@ class MCH_OT_press_cut(bpy.types.Operator):
             safety_save.checkpoint('Mecha Press Cut')
         except Exception:
             pass
-        self.press = Press(context, target, loops, projector, st.result, center=xy, angle=st.rotation,
+        press_type = GrowPress if event.alt else Press
+        self.press = press_type(context, target, loops, projector, st.result, center=xy, angle=st.rotation,
                            curve=(st.curve_x, st.curve_y), spacing=max(3.0, st.size / 10.0),
-                           follow=st.floor_mode == 'FOLLOW', level=st.floor_mode == 'LEVEL')
+                           follow=st.floor_mode == 'FOLLOW', level=st.floor_mode == 'LEVEL',
+                           tilt=(st.tilt_x, st.tilt_y))
         self.press_st = st
         self.region = region
         self.anchor = xy
@@ -831,6 +1015,10 @@ class MCH_OT_press_cut(bpy.types.Operator):
                 self.region.tag_redraw()
             return {'RUNNING_MODAL'}
         if et == 'LEFTMOUSE' and ev == 'RELEASE':
+            # Include the interval since the last timer tick (also short taps).
+            if self.press.result == 'GROW' and not self.full:
+                self.press.cut_to(context, depth_at(self.press_st, self.press.size,
+                                                   time.perf_counter() - self.t0))
             self._end(context)
             msg = self.press.message
             depth = self.press.depth
@@ -843,6 +1031,271 @@ class MCH_OT_press_cut(bpy.types.Operator):
             self.report({'INFO'}, 'Press Cut: put back')
             return {'CANCELLED'}
         return {'RUNNING_MODAL'}
+
+
+# 0.24.100 Unified Press / Line: one tool, four gestures.
+# Do not merge the geometry engines: the gesture gateway uses the existing
+# Press/GrowPress, Cut and Base Mesh implementations.
+UNIFIED_DRAG_PX = 12.0
+UNIFIED_HOLD_SEC = 0.18
+
+
+def _draw_unified_path(op):
+    """Only an OPEN stroke is shown. Never make a closed lasso preview."""
+    try:
+        from . import cut_engine as ce
+        import gpu
+        if bpy.context.region != op.region or len(op.pts) < 2:
+            return
+        sh = ce._shader()
+        gpu.state.blend_set('ALPHA')
+        color = (0.3, 0.85, 1.0, 1.0) if op.alt_draw else (1.0, 0.76, 0.24, 1.0)
+        ce._draw_lines(sh, op.pts, color, closed=False, width=2.5)
+        gpu.state.blend_set('NONE')
+    except Exception:
+        pass
+
+
+class MCH_OT_press_unified(bpy.types.Operator):
+    """Drag = Line Cut; Alt+drag = Base Mesh Line; hold = Press; Alt+hold = Grow"""
+    bl_idname = 'mch.press_unified'
+    bl_label = 'Press / Line / Base Mesh'
+    bl_description = ('Draw: Line Cut | Alt+draw: Base Mesh Line | Hold: Press Cut | '
+                      'Alt+hold: Grow | Shift+draw: custom stamp')
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and context.area is not None and context.area.type == 'VIEW_3D'
+
+    def invoke(self, context, event):
+        region = context.region
+        if region is None or region.type != 'WINDOW':
+            return {'PASS_THROUGH'}
+        rv3d = getattr(context, 'region_data', None)
+        if rv3d is None:
+            return {'PASS_THROUGH'}
+        from . import cut_engine as ce
+        self.region = region
+        self.projector = ce.make_projector(region, rv3d)
+        self.anchor = (float(event.mouse_region_x), float(event.mouse_region_y))
+        self.pts = [self.anchor]
+        self.alt_draw = bool(event.alt)  # latch the gesture at mouse-down
+        self.state = 'WAIT'
+        self.down_time = time.perf_counter()
+        self.handle = None
+        self.handle_red = None
+        self.timer = context.window_manager.event_timer_add(0.04, window=context.window)
+        context.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+
+    def _update_red(self):
+        return MCH_OT_press_cut._update_red(self)
+
+    def _end(self, context):
+        # The original Press modal calls self._end() on release and Esc.
+        return MCH_OT_press_cut._end(self, context)
+
+    def _cleanup(self, context):
+        TURNING[0] = False
+        if getattr(self, 'timer', None) is not None:
+            try:
+                context.window_manager.event_timer_remove(self.timer)
+            except (ValueError, RuntimeError, ReferenceError):
+                pass
+            self.timer = None
+        for name in ('handle', 'handle_red'):
+            h = getattr(self, name, None)
+            if h is not None:
+                try:
+                    bpy.types.SpaceView3D.draw_handler_remove(h, 'WINDOW')
+                except (ValueError, RuntimeError, ReferenceError):
+                    pass
+                setattr(self, name, None)
+        try:
+            self.region.tag_redraw()
+        except ReferenceError:
+            pass
+
+    def _begin_draw(self, context, xy):
+        self.state = 'DRAW'
+        self.pts.append(xy)
+        TURNING[0] = True
+        self.handle = bpy.types.SpaceView3D.draw_handler_add(
+            _draw_unified_path, (self,), 'WINDOW', 'POST_PIXEL')
+        # No timer needed when dragging. We only need MOUSEMOVE / RELEASE.
+        if self.timer is not None:
+            context.window_manager.event_timer_remove(self.timer)
+            self.timer = None
+        self.region.tag_redraw()
+
+    def _begin_press(self, context):
+        """Begin the EXISTING Press / Grow engine at the captured pointer position.
+
+        No nested bpy.ops invocation or artificial mouse event is needed.
+        """
+        from . import cut_engine as ce
+        st = context.scene.mch_press
+        xy = self.anchor
+        try:
+            loops = stamp_loops(context, xy, st)
+        except (cg.CutError, ValueError, OSError) as ex:
+            self.report({'WARNING'}, str(ex))
+            return False
+        target = press_target(context, self.projector, xy, loops)
+        if target is None:
+            self.report({'WARNING'}, 'Press on a part (the stamp is not over one)')
+            return False
+        try:
+            from . import safety_save
+            safety_save.checkpoint('Mecha Unified Press')
+        except Exception:
+            pass
+        typ = GrowPress if self.alt_draw else Press
+        try:
+            self.press = typ(context, target, loops, self.projector, st.result,
+                             center=xy, angle=st.rotation, curve=(st.curve_x, st.curve_y),
+                             spacing=max(3.0, st.size / 10.0),
+                             follow=st.floor_mode == 'FOLLOW', level=st.floor_mode == 'LEVEL',
+                           tilt=(st.tilt_x, st.tilt_y))
+            elapsed = max(0.0, time.perf_counter() - self.down_time)
+            if not self.press.cut_to(context, depth_at(st, self.press.size, elapsed)):
+                msg = self.press.message
+                self.press.cancel(context)
+                self.report({'WARNING'}, msg[:200] or 'Nothing was cut')
+                return False
+        except Exception as ex:
+            if getattr(self, 'press', None) is not None:
+                try:
+                    self.press.cancel(context)
+                except Exception:
+                    pass
+            self.report({'ERROR'}, f'Unified Press failed: {ex}')
+            return False
+        self.press_st = st
+        self.t0 = self.down_time
+        self.full = False
+        self.red, self.red_batch, self.red_sh = ([], [], 0.0), None, None
+        MCH_OT_press_cut._update_red(self)
+        self.handle = bpy.types.SpaceView3D.draw_handler_add(
+            _draw_holding, (self,), 'WINDOW', 'POST_PIXEL')
+        self.handle_red = bpy.types.SpaceView3D.draw_handler_add(
+            _draw_pocket, (self,), 'WINDOW', 'POST_VIEW')
+        self.state = 'PRESS'
+        self.region.tag_redraw()
+        return True
+
+    def _finish_draw(self, context, xy):
+        from . import cut_engine as ce, lasso_line, base_mesh, safety_save
+        if math.dist(xy, self.pts[-1]) >= 0.5:
+            self.pts.append(xy)
+        pts = [self.pts[0]]
+        for p in self.pts[1:]:
+            if math.dist(p, pts[-1]) >= 0.6:
+                pts.append(p)
+        self._cleanup(context)
+        if len(pts) < 2 or math.dist(pts[0], pts[-1]) < 3.0 and len(pts) <= 2:
+            self.report({'WARNING'}, 'Draw a longer line')
+            return {'CANCELLED'}
+        try:
+            brush = context.scene.mch_brush
+            # The same Line Width / Taper / Caps settings as the native Line tool.
+            band = lasso_line.line_loop(context, self.projector, pts, brush)
+            if len(band) < 3:
+                raise cg.CutError('Could not form a band from this line')
+            loops = [band]
+            if self.alt_draw:
+                # Press Cut Alt+draw ALWAYS uses the active stamp as the line's
+                # cross-section. No separate Base Mesh Section toggle required.
+                # The scene's Base Mesh options stay independent.
+                st = base_mesh.scene_defaults(context)
+                attach = None
+                if getattr(st, 'line_attach', False):
+                    path = ce.smooth_open(pts, 6) if getattr(st, 'attach_curve', '') == 'SMOOTH' and len(pts) > 2 else pts
+                    attach = (path, ce.surface_point(context, self.projector, path[0]),
+                              ce.surface_point(context, self.projector, path[-1]))
+                safety_save.checkpoint('Mecha Base Mesh Line from Press Shape')
+                msg = base_mesh.perform_base(context, loops, self.projector,
+                                             cutter=False, attach=attach, path=pts,
+                                             sweep_style='ALPHA')
+                # Keep the original Base Mesh post-create radial symmetry behaviour.
+                try:
+                    from . import radial_sym
+                    msg = (msg or '') + radial_sym.after_create(context, 'BASE')
+                except (AttributeError, ImportError, RuntimeError, ReferenceError):
+                    pass
+            else:
+                cut = context.scene.mch_cut
+                if cut.targets == 'AUTO':
+                    targets = ce.auto_targets(context.view_layer, self.projector, loops)
+                else:
+                    targets = ce.gather_targets(context, self.projector, pts[0], 'CUT')
+                if not targets:
+                    raise cg.CutError('Line Cut: no mesh in the line / selection')
+                safety_save.checkpoint('Mecha Line Cut')
+                msg = ce.perform_closed(context, 'CUT', targets, loops, self.projector, False)
+            self.report({'INFO'}, msg or ('Base Mesh Line' if self.alt_draw else 'Line Cut'))
+            return {'FINISHED'}
+        except cg.CutError as ex:
+            self.report({'WARNING'}, str(ex))
+            return {'CANCELLED'}
+        except Exception as ex:
+            import traceback
+            traceback.print_exc()
+            self.report({'ERROR'}, f'Unified draw failed: {ex}')
+            return {'CANCELLED'}
+
+    def modal(self, context, event):
+        if self.state == 'PRESS':
+            # Preserve timer-based growth, release, Esc/RMB undo semantics verbatim.
+            outcome = MCH_OT_press_cut.modal(self, context, event)
+            if 'FINISHED' in outcome or 'CANCELLED' in outcome:
+                self.state = 'DONE'
+            return outcome
+        et, ev = event.type, event.value
+        if ev == 'PRESS' and et in {'ESC', 'RIGHTMOUSE'}:
+            self._cleanup(context)
+            return {'CANCELLED'}
+        if et in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE'}:
+            xy = (float(event.mouse_region_x), float(event.mouse_region_y))
+            if self.state == 'WAIT':
+                if math.dist(self.anchor, xy) >= UNIFIED_DRAG_PX:
+                    self._begin_draw(context, xy)
+            elif self.state == 'DRAW' and math.dist(xy, self.pts[-1]) >= 2.0:
+                self.pts.append(xy)
+                self.region.tag_redraw()
+            return {'RUNNING_MODAL'}
+        if et == 'TIMER' and self.state == 'WAIT':
+            if time.perf_counter() - self.down_time >= UNIFIED_HOLD_SEC:
+                if not self._begin_press(context):
+                    self._cleanup(context)
+                    return {'CANCELLED'}
+            return {'RUNNING_MODAL'}
+        if et == 'LEFTMOUSE' and ev == 'RELEASE':
+            xy = (float(event.mouse_region_x), float(event.mouse_region_y))
+            # Some tablets coalesce all movement into the release event.
+            if self.state == 'WAIT' and math.dist(xy, self.anchor) >= UNIFIED_DRAG_PX:
+                self._begin_draw(context, xy)
+            if self.state == 'DRAW':
+                xy = (float(event.mouse_region_x), float(event.mouse_region_y))
+                return self._finish_draw(context, xy)
+            # Quick tap (< hold threshold): still make an ordinary shallow press.
+            if not self._begin_press(context):
+                self._cleanup(context)
+                return {'CANCELLED'}
+            outcome = MCH_OT_press_cut.modal(self, context, event)
+            if 'FINISHED' in outcome or 'CANCELLED' in outcome:
+                self.state = 'DONE'
+            return outcome
+        return {'RUNNING_MODAL'}
+
+    def cancel(self, context):
+        if self.state == 'PRESS':
+            try:
+                self.press.cancel(context)
+            except (ReferenceError, RuntimeError):
+                pass
+        self._cleanup(context)
 
 
 class MCH_OT_press_adjust(bpy.types.Operator):
@@ -1111,28 +1564,60 @@ def draw(layout, context):
         row.prop(brush, 'sketch_first', text='Sketch', toggle=True)
     col.prop(st, 'size')
     col.prop(st, 'rotation')
+    # 0.24.104 Press Cut Alt+drag directly sweeps the current stamp. Base Mesh
+    # tool's standalone section choices remain independent and unchanged.
+    base = context.scene.mch_base
+    section = layout.box()
+    section.label(text='Alt + Draw: Current Stamp Section', icon='CURVE_PATH')
+    section.label(text='Uses the selected Press Cut shape automatically')
+    section.prop(base, 'section_width')
+    section.prop(base, 'height', text='Section Height')
+    section.prop(base, 'section_rotation')
+    section.prop(base, 'section_twist')
+    section.prop(base, 'section_taper', slider=True)
     col = layout.column(align=True)
     col.label(text='Curve (a round stamp)')
     col.prop(st, 'curve_x', text='Left-Right', slider=True)
     col.prop(st, 'curve_y', text='Up-Down', slider=True)
+    slope = layout.column(align=True)
+    slope.label(text='Stamp Floor Tilt (not Curve)')
+    slope.prop(st, 'tilt_x', text='Left / Right', slider=True)
+    slope.prop(st, 'tilt_y', text='Up / Down', slider=True)
+    edge = layout.box()
+    edge.label(text='Stamp Cut Edge (new rim only)', icon='MOD_BEVEL')
+    edge.prop(st, 'stamp_edge', text='Finish')
+    if st.stamp_edge in {'BEVEL', 'CHAMFER'}:
+        edge.prop(st, 'stamp_edge_width', text='Width')
+        if st.stamp_edge == 'BEVEL':
+            edge.prop(st, 'stamp_edge_segments', text='Segments')
     layout.row(align=True).prop(st, 'floor_mode', expand=True)
     layout.prop(st, 'dot_size', slider=True)
     col = layout.column(align=True)
-    col.label(text='Hold = deeper')
+    col.label(text='Hold = Press  |  Alt + hold = Grow')
     col.prop(st, 'start')
     col.prop(st, 'speed')
     col.prop(st, 'max_depth')
     row = layout.row(align=True)
     row.enabled = cut_presets.LAST_LOOPS[0] is not None
     row.operator('mch.save_cut_shape', text='Save Shape (the outline you drew last)', icon='FILE_TICK')
+    layout.label(text='Drag: Line Cut  |  Alt + drag: Base Mesh Line', icon='INFO')
+    if brush is not None:
+        lc = layout.column(align=True)
+        lc.prop(brush, 'line_width', text='Draw Line Width')
+        lc.prop(brush, 'line_caps', text='Line Ends')
+        lc.prop(brush, 'line_taper_on', text='Taper Line')
+        if brush.line_taper_on:
+            lc.prop(brush, 'line_taper', text='Taper Amount')
     layout.label(text='Press on a part and hold: deeper the longer you hold', icon='INFO')
+    layout.label(text='Alt + hold: grow a separate mesh from the surface', icon='INFO')
     layout.label(text='Release: keep  |  Esc / RMB: back  |  [ ] / F size')
     layout.label(text='R + mouse: turn (Shift fine, Ctrl 5\u00b0)  |  Shift+R: 0\u00b0')
 
 
 TOOL_KEYMAP = (
     ('mch.quick_hud_press', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'any': True}, None),
-    ('mch.press_cut', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, None),
+    ('mch.press_unified', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, None),
+    ('mch.press_unified', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'alt': True}, None),
     # (0.24.95 Shift + draw: the stamp drawn with the shared shapes - Lasso, Curve Lasso, Rectangle, Circle, Ellipse,
     #  Free Draw - or into a Sketch; Shift + Alt: subtract from the Sketch)
     ('mch.cut_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'shift': True}, {'properties': [('mode', 'PRESS')]}),
@@ -1147,7 +1632,7 @@ TOOL_KEYMAP = (
     ('mch.brush_resize', {'type': 'F', 'value': 'PRESS'}, None),        # (F + mouse = stamp size)
 )
 
-CLASSES = (MCH_PG_Press, MCH_OT_press_cut, MCH_OT_press_adjust, MCH_OT_stamp_turn, MCH_OT_press_draw,
+CLASSES = (MCH_PG_Press, MCH_OT_press_cut, MCH_OT_press_unified, MCH_OT_press_adjust, MCH_OT_stamp_turn, MCH_OT_press_draw,
            MCH_OT_save_cut_shape)
 
 

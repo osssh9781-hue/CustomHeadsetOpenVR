@@ -726,9 +726,125 @@ class MCH_OT_instance_mirror_lean(InstanceMirrorLogic, LeanModal, bpy.types.Oper
         return context.mode == 'OBJECT' and any(is_collection_instance(o) for o in context.selected_objects)
 
 
+class GroupMirrorLogic(MirrorLeanLogic):
+    """Lean mirror for whole Mecha groups (one collection repeat, not one modifier per member)."""
+
+    def start(self, context, region, projector, mouse_xy):
+        from . import groups
+        selected = [ob for ob in context.selected_objects if groups.is_group(ob)]
+        selected_set = set(selected)
+        selected = [ob for ob in selected if not any(ancestor in selected_set
+                    for ancestor in groups._parents_of(ob)[:-1])]
+        if not selected:
+            return False
+        if any(groups.repeat_mode(ob) == 'GRID' for ob in selected):
+            self.report({'WARNING'}, 'Disable Grid repetition before using Alt+X group mirror')
+            return False
+        self.p = context.scene.mch_mirror
+        self.region, self.projector = region, projector
+        self.center = (region.width / 2.0, region.height * 0.18)
+        self.target_names = [ob.name for ob in selected]
+        self.snaps = {ob.name: {key: (ob[key] if key in ob else None) for key in groups.REP_KEYS}
+                      for ob in selected}
+        self.axes = [bool(v) for v in groups.repeat_axes(selected[0])] if \
+            groups.repeat_mode(selected[0]) in {'MIRROR', 'KALEIDO'} else [self.p.x, self.p.y, self.p.z]
+        self.flips = [self.p.flip_x, self.p.flip_y, self.p.flip_z]
+        self.locked = [False, False, False]
+        if not any(self.axes):
+            self.axes[0] = True
+        self.current = None
+        self.pivot_name, self.pivot_center = None, None
+        self.mouse = mouse_xy
+        self._apply_live(context.scene)
+        return True
+
+    def point_at(self, scene, xy):
+        return False  # Group repetitions use their selected group/scene mirror origin.
+
+    def frame(self, scene):
+        from . import groups
+        handles = self._targets()
+        g = handles[0]
+        if self.p.space == 'LOCAL':
+            basis = g.matrix_world.to_3x3().normalized()
+            origin = g.matrix_world.translation.copy()
+            axes = [(basis @ Vector(e)).normalized() for e in ((1, 0, 0), (0, 1, 0), (0, 0, 1))]
+        else:
+            origin = Vector(scene.cursor.location) if self.p.center == 'CURSOR' else Vector((0, 0, 0))
+            axes = [Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))]
+        return origin, axes, max(0.2, max(groups.group_size(g)))
+
+    def _apply_live(self, scene):
+        from . import groups
+        center = 'GROUP' if self.p.space == 'LOCAL' else ('CURSOR' if self.p.center == 'CURSOR' else 'WORLD')
+        for g in self._targets():
+            old = self.snaps[g.name].get('mch_rep_mode')
+            mode = 'KALEIDO' if old in {'RADIAL', 'KALEIDO'} else 'MIRROR'
+            groups.set_repeat(bpy.context, g, mode=mode, axes=self.axes, center=center)
+
+    def restore_all(self):
+        from . import groups
+        for name, snap in self.snaps.items():
+            g = bpy.data.objects.get(name)
+            if not groups.is_group(g):
+                continue
+            groups.set_repeat(bpy.context, g, mode='OFF')
+            for key, value in snap.items():
+                if value is None:
+                    if key in g:
+                        del g[key]
+                else:
+                    g[key] = value
+            if groups.repeat_mode(g) != 'OFF':
+                groups.set_repeat(bpy.context, g)
+
+    def handle(self, context, event):
+        if event.type == 'B' and event.value == 'PRESS':
+            return 'RUN'  # Group repetitions cannot bisect original meshes.
+        return super().handle(context, event)
+
+    def describe(self):
+        return 'Group ' + ' '.join(a for i, a in enumerate('XYZ') if self.axes[i])
+
+    def finish_live(self, scene):
+        self.store_settings()
+        return f'Live group mirror: {", ".join(self.target_names)} (' + self.describe() + ')'
+
+    def finish_apply(self, context):
+        from . import groups
+        self.store_settings()
+        n = sum(groups.make_real(context, g) for g in self._targets())
+        return f'Applied {n} group mirror object(s)'
+
+    def _status(self, context, clear=False):
+        try:
+            context.workspace.status_text_set(None if clear else
+                'Group Mirror: lean for X/Y/Z | X Y Z: toggle axes | Click: keep live | '
+                'Esc: restore previous group repetition | Enter: ' +
+                ('keep live' if self.keep_live else 'Apply'))
+        except (AttributeError, ReferenceError):
+            pass
+
+
+class MCH_OT_group_mirror_lean(GroupMirrorLogic, LeanModal, bpy.types.Operator):
+    bl_idname = 'mch.group_mirror_lean'
+    bl_label = 'Mirror Group (lean)'
+    bl_description = 'Mirror the selected Mecha group(s) non-destructively with the group repetition engine'
+    bl_options = {'REGISTER', 'UNDO', 'BLOCKING'}
+    keep_live: bpy.props.BoolProperty(default=True, options={'SKIP_SAVE', 'HIDDEN'})
+
+    @classmethod
+    def poll(cls, context):
+        from . import groups
+        return context.mode == 'OBJECT' and any(groups.is_group(o) for o in context.selected_objects)
+
+
 def mirror_targets_kind(context):
     """'MESH' (selected meshes), 'INSTANCE' (selected collection instances, no mesh) or None."""
     sel = context.selected_objects
+    from . import groups
+    if any(groups.is_group(o) for o in sel):
+        return 'GROUP'
     if any(o.type == 'MESH' and o.library is None for o in sel):
         return 'MESH'
     if any(is_collection_instance(o) for o in sel):
@@ -747,6 +863,8 @@ def start_mirror(context, keep_live, report):
                (f' (selected: {", ".join(others)} - convert it to a mesh first)' if others else ''))
         return {'CANCELLED'}
     try:
+        if kind == 'GROUP':
+            return bpy.ops.mch.group_mirror_lean('INVOKE_DEFAULT', keep_live=keep_live)
         if kind == 'INSTANCE':
             return bpy.ops.mch.instance_mirror_lean('INVOKE_DEFAULT')
         return bpy.ops.mch.mirror_lean('INVOKE_DEFAULT', keep_live=keep_live)
@@ -758,8 +876,9 @@ def start_mirror(context, keep_live, report):
 def start_lean_mirror(context):
     """Picking the Mirror tool: start the lean mirror in the biggest 3D View
     (the tool list may be another editor).  Returns True when started."""
+    from . import groups
     if not getattr(context.scene.mch_mirror, 'auto_start', True) or context.mode != 'OBJECT' or \
-            not any(o.type == 'MESH' for o in context.selected_objects):
+            not any(o.type == 'MESH' or groups.is_group(o) for o in context.selected_objects):
         return False
     win = context.window
     screen = win.screen if win is not None else None
@@ -771,6 +890,8 @@ def start_lean_mirror(context):
         if region is None:
             continue
         with context.temp_override(window=win, screen=screen, area=area, region=region):
+            if any(groups.is_group(o) for o in context.selected_objects):
+                return bpy.ops.mch.group_mirror_lean('INVOKE_DEFAULT') == {'RUNNING_MODAL'}
             return bpy.ops.mch.mirror_lean('INVOKE_DEFAULT') == {'RUNNING_MODAL'}
     return False
 
@@ -990,7 +1111,11 @@ class MCH_PT_mirror(bpy.types.Panel):
             row.prop(p, 'flip_z', text='Z', toggle=True)
         r = layout.row()
         r.scale_y = 1.5
-        r.operator('mch.mirror_lean', text='MIRROR: LEAN MOUSE TO SIDE', icon='MOUSE_MOVE')
+        from . import groups
+        if groups.is_group(context.active_object):
+            r.operator('mch.group_mirror_lean', text='MIRROR GROUP: LEAN MOUSE', icon='MOUSE_MOVE')
+        else:
+            r.operator('mch.mirror_lean', text='MIRROR: LEAN MOUSE TO SIDE', icon='MOUSE_MOVE')
         layout.prop(p, 'auto_start')
         col = layout.column(align=True)
         col.prop(p, 'bisect')
@@ -1028,7 +1153,7 @@ class MCH_PT_mirror(bpy.types.Panel):
 CLASSES = (
     MCH_PG_Mirror,
     MCH_OT_mesh_mirror, MCH_OT_mesh_mirror_apply, MCH_OT_mesh_mirror_remove, MCH_OT_mirror_lean,
-    MCH_OT_instance_mirror_lean,
+    MCH_OT_instance_mirror_lean, MCH_OT_group_mirror_lean,
     MCH_OT_collection_mirror, MCH_OT_collection_mirror_remove,
     MCH_PT_mirror,
 )

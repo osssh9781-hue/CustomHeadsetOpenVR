@@ -729,6 +729,39 @@ def draw_base(layout, context):
     col.prop(p, 'offset')
     if ob is not None and p.embed > 0:
         col.prop(p, 'embed')
+    # 0.24.103: line-swept custom Alpha profile is shared with Press Cut Alt+Draw.
+    if not creature:
+        section = target.box()
+        section.label(text='Line Section (shares Press Cut stamps)', icon='CURVE_PATH')
+        section.prop(p, 'profile_sweep', text='Section')
+        if p.profile_sweep != 'OFF':
+            section.prop(p, 'section_width')
+            section.prop(p, 'section_rotation')
+            section.prop(p, 'section_twist')
+            section.prop(p, 'section_taper', slider=True)
+            if p.profile_sweep == 'ALPHA':
+                section.template_icon_view(context.scene.mch_press, 'shape', show_labels=True, scale=4.0)
+                row = section.row(align=True)
+                row.operator('mch.import_cut_png', text='Import PNG / JPG', icon='IMPORT')
+                if ob is not None and ob.get(base_mesh.SWEEP_KEY):
+                    row.operator('mch.base_section_use_alpha', text='Use Press Shape', icon='FILE_REFRESH')
+                    try:
+                        import json
+                        name = json.loads(ob[base_mesh.SWEEP_KEY]).get('section_name', '')
+                        if name:
+                            section.label(text='Live section: ' + name[:50], icon='INFO')
+                    except (ValueError, KeyError):
+                        pass
+            section.label(text='Draw Line: sweep selected Press Cut shape (skips Sketch First)')
+    # 0.24.102 Side Depth Guide: from front silhouette to side profile.
+    depthrow = target.box()
+    depthrow.prop(context.scene.mch_base, 'depth_mode', text='Depth Guide Mode')
+    if context.scene.mch_base.depth_mode:
+        depthrow.label(text='Draw base in front view; turn to side view')
+        if ob is not None:
+            depthrow.operator('mch.depth_side_guide', text='Draw Side Guide', icon='GREASEPENCIL')
+            if ob.get('mch_base_depth_guide'):
+                depthrow.operator('mch.depth_side_clear', text='Clear Guide', icon='X')
     if ob is not None:                      # 0.24.20 bend the made shape (up / down, sideways)
         col = target.column(align=True)
         col.label(text='Bend', icon='MOD_SIMPLEDEFORM')

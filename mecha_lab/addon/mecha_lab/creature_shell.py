@@ -539,7 +539,7 @@ def draw(layout, context):
     for name, *_r in INPUTS:
         if name in {'Up', 'U', 'V', 'Seed'} or name.startswith('Lift ') and len(name) == 6:
             continue
-        c.prop(mod, f'["{_ident(name)}"]', text=name)
+        cg.gn_prop(c, mod, _ident(name), text=name)
     box.operator('mch.shell_option', text='Remove Shell', icon='X').option = 'REMOVE'
 
 

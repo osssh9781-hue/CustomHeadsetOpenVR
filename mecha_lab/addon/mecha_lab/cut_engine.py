@@ -2275,14 +2275,16 @@ class StrokeLogic:
                 msg = box_hide.perform(context, targets, loops, self.projector, restore=self.inverted())
             elif self.mode in {'BASE', 'CBASE'}:
                 from . import base_mesh
-                if getattr(base_mesh.scene_defaults(context), 'sketch', False):
-                    # 0.14.1 Sketch First: add to / (Alt) subtract from the orange sketch
+                base_st = base_mesh.scene_defaults(context)
+                section_path = (self._line_path() if self._line_mode() and not self.inverted()
+                                and self.mode == 'BASE' and base_st.profile_sweep != 'OFF' else None)
+                if getattr(base_st, 'sketch', False) and section_path is None:
+                    # Section sweep makes a 3D object immediately, even when Sketch First is enabled.
                     msg = base_mesh.sketch_add(context, loops, self.projector, subtract=self.inverted())
                 else:
-                    # Alt: the drawn solid cuts into the mesh (flipped bevel sides)
                     attach, alt_loops = (None, None) if self.inverted() else self._line_attach(context, base_mesh)
                     msg = base_mesh.perform_base(context, alt_loops or loops, self.projector, cutter=self.inverted(),
-                                                 attach=attach)
+                                                 attach=attach, path=section_path)
             else:
                 live = self._live_cut(context, targets)
                 from . import ramp_edit

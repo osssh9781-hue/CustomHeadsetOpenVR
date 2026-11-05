@@ -651,9 +651,9 @@ class MCH_TOOL_press_cut(bpy.types.WorkSpaceTool):
     bl_space_type = 'VIEW_3D'
     bl_context_mode = 'OBJECT'
     bl_idname = 'mecha.press_cut'
-    bl_label = 'Mecha Press Cut'
-    bl_description = ('A saved shape as a stamp: press on a part and hold - deeper the longer you hold.\n'
-                      'Release: keep, Esc / RMB while holding: put back, [ ] size, R turn')
+    bl_label = 'Mecha Press / Line'
+    bl_description = ('Drag: Line Cut | Alt+drag: Base Mesh Line | Hold: Press Cut | Alt+hold: Grow.\n'
+                      'Shift+drag: custom stamp | Esc / RMB: cancel | [ ] size, R turn')
     bl_icon = 'ops.generic.cursor'
     bl_widget = None
     bl_keymap = press_cut.TOOL_KEYMAP

@@ -3,7 +3,7 @@ property (``data.prop``) or a Geometry Nodes input on a modifier (``data['Socket
 as the sidebar panels do)."""
 from __future__ import annotations
 
-from . import quick_hud
+from . import quick_hud, core_geometry as cg
 
 
 def is_id(prop):
@@ -15,6 +15,20 @@ def _key(prop):
 
 
 def _ui(data, key):
+    # GN input UI metadata lives on the group interface in Blender 5.2+.
+    if getattr(data, 'type', None) == 'NODES' and getattr(data, 'properties', None) is not None:
+        group = getattr(data, 'node_group', None)
+        interface = getattr(group, 'interface', None)
+        for item in getattr(interface, 'items_tree', ()):
+            if (getattr(item, 'item_type', None) == 'SOCKET'
+                    and getattr(item, 'in_out', None) == 'INPUT'
+                    and getattr(item, 'identifier', None) == key):
+                result = {}
+                for source, dest in (('default_value', 'default'), ('min_value', 'min'),
+                                     ('max_value', 'max')):
+                    if hasattr(item, source):
+                        result[dest] = getattr(item, source)
+                return result
     try:
         return data.id_properties_ui(key).as_dict()
     except (AttributeError, TypeError, KeyError):
@@ -22,12 +36,17 @@ def _ui(data, key):
 
 
 def get(data, prop):
-    return data[_key(prop)] if is_id(prop) else getattr(data, prop)
+    if is_id(prop):
+        return cg.gn_get(data, _key(prop)) if getattr(data, 'type', None) == 'NODES' else data[_key(prop)]
+    return getattr(data, prop)
 
 
 def set(data, prop, value):      # noqa: A001 - the module's verb
     if is_id(prop):
-        data[_key(prop)] = value
+        if getattr(data, 'type', None) == 'NODES':
+            cg.gn_set(data, _key(prop), value)
+        else:
+            data[_key(prop)] = value
         owner = getattr(data, 'id_data', None)
         if owner is not None:
             owner.update_tag()
