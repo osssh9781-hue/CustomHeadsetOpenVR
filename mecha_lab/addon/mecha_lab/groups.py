@@ -857,10 +857,13 @@ DOUBLE_SLOP = 12           # pixels
 
 
 def _same_pair(hit, xy):
+    """The double-click's first click hit the same part (or empty space) as this one.  When this operator did not see
+    the first click at all (another handler took it, e.g. a press that started a tiny drag), Blender's own
+    double-click test stands: it already needs both presses at the same spot, quickly."""
     import time
     last = _last_click
     if time.monotonic() - last['t'] > DOUBLE_GAP:
-        return False
+        return True
     if abs(xy[0] - last['xy'][0]) > DOUBLE_SLOP or abs(xy[1] - last['xy'][1]) > DOUBLE_SLOP:
         return False
     return last['hit'] == (hit.name if hit is not None else None)

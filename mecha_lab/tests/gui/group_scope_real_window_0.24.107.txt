@@ -1,0 +1,49 @@
+keymap items for the group click: [('Object Mode', 'LEFTMOUSE', 'CLICK'), ('Object Mode', 'LEFTMOUSE', 'DOUBLE_CLICK')] | auto-add timer: True | handle size 0.0020000000949949026 | group boxes on False
+modal operators running at rest: []
+   pick op: enter=False at (621,789) -> {'FINISHED'} | last {'t': 2851.431277526, 'hit': 'A', 'xy': (621, 789)}
+[click A] selected ['G'] | active G | scope None path [] | outlined ['A', 'B', 'C', 'D'] | outline shader failed False error ''
+shot 1_click_A_group_selected.png True
+   pick op: enter=False at (621,789) -> {'FINISHED'} | last {'t': 2854.53500276, 'hit': 'A', 'xy': (621, 789)}
+   pick op: enter=True at (621,789) -> {'FINISHED'} | last {'t': 2854.538013032, 'hit': None, 'xy': (-9999, -9999)}
+[double-click A] selected [] | active None | scope G path ['G'] | outlined [] | outline shader failed False error ''
+shot 2_inside_G.png True
+   pick op: enter=False at (1024,789) -> {'FINISHED'} | last {'t': 2856.812230345, 'hit': 'C', 'xy': (1024, 789)}
+[inside G, click C] selected ['H'] | active H | scope G path ['G'] | outlined ['C', 'D'] | outline shader failed False error ''
+shot 3_inside_G_H_selected.png True
+   pick op: enter=False at (1024,789) -> {'FINISHED'} | last {'t': 2859.788417467, 'hit': 'C', 'xy': (1024, 789)}
+   pick op: enter=True at (1024,789) -> {'FINISHED'} | last {'t': 2859.791308574, 'hit': None, 'xy': (-9999, -9999)}
+[double-click C] selected [] | active None | scope H path ['G', 'H'] | outlined [] | outline shader failed False error ''
+   pick op: enter=False at (823,789) -> {'PASS_THROUGH'} | last {'t': 2862.44385262, 'hit': None, 'xy': (823, 789)}
+[inside H, click B (outside H: ghosted, not picked)] selected [] | active None | scope H path ['G', 'H'] | outlined [] | outline shader failed False error ''
+   pick op: enter=True at (722,973) -> {'FINISHED'} | last {'t': 2864.20130952, 'hit': None, 'xy': (-9999, -9999)}
+[double-click empty (H -> G)] selected ['H'] | active H | scope G path ['G'] | outlined ['C', 'D'] | outline shader failed False error ''
+[single click empty (stays in G)] selected [] | active H | scope G path ['G'] | outlined [] | outline shader failed False error ''
+   pick op: enter=True at (722,973) -> {'FINISHED'} | last {'t': 2869.798848986, 'hit': None, 'xy': (-9999, -9999)}
+[double-click empty again (out)] selected ['G'] | active G | scope None path [] | outlined ['A', 'B', 'C', 'D'] | outline shader failed False error ''
+   pick op: enter=False at (823,789) -> {'FINISHED'} | last {'t': 2872.771199166, 'hit': 'B', 'xy': (823, 789)}
+   pick op: enter=True at (823,789) -> {'FINISHED'} | last {'t': 2872.774019856, 'hit': None, 'xy': (-9999, -9999)}
+[double-click B (into G)] selected [] | active None | scope G path ['G'] | outlined [] | outline shader failed False error ''
+AUTO-ADD: a box made inside G then moved at once: parent while moving None | after G | where (1.31, 2.6, 0.0)
+   pick op: enter=False at (621,789) -> {'FINISHED'} | last {'t': 2880.748588434, 'hit': 'A', 'xy': (621, 789)}
+[Ctrl+Z after moving A inside G] selected ['Cube'] | active Cube | scope G path ['G'] | outlined [] | outline shader failed False error ''
+after opening the file again: auto-add timer True | keymap items 2
+[opened again] selected ['Cube'] | active Cube | scope G path ['G'] | outlined [] | outline shader failed False error ''
+   pick op: enter=False at (1226,789) -> {'FINISHED'} | last {'t': 2889.553430778, 'hit': 'D', 'xy': (1226, 789)}
+[opened again, click D] selected ['G'] | active G | scope None path [] | outlined ['A', 'B', 'C', 'D'] | outline shader failed False error ''
+shot 4_reopened_click_D.png True
+shot 5_press_contact_dots.png True
+dot sizes px (outline, contact ring, core): (8.333333015441895, 18.749999284744263, 11.458332896232605)
+shot 6_press_shape_grid.png True
+PASS click selects the group
+PASS double-click enters
+PASS inside, click on a nested part picks the nested group
+PASS double-click enters nested
+PASS outside part not picked inside H
+PASS double-click empty: one level out
+PASS single click empty stays
+PASS double-click empty again: out
+PASS auto-add waits for the move
+PASS Ctrl+Z keeps the scope
+PASS scope back after reopening
+PASS click works after reopening
+RESULT 12 / 12

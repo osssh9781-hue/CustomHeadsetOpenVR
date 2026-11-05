@@ -221,6 +221,11 @@ r = dbl(None)
 check('... again: out of G', r == {'FINISHED'} and groups.scope(C) is None and G.select_get())
 r = dbl(None)
 check('... outside any scope it does nothing', r == {'PASS_THROUGH'})
+groups.enter_scope(C, G)
+groups._last_click.update(t=-100.0, hit='A', xy=(5, 5))     # the first click went to another handler (unseen)
+r = click(None, True, (300, 300))
+check('a double-click whose first click this operator never saw: Blender\'s own same-spot test stands (exits)',
+      r == {'FINISHED'} and groups.scope(C) is None)
 check('the click operator makes an undo step (Ctrl+Z no longer drops you out of the scope silently)',
       'UNDO' in groups.MCH_OT_group_view_pick.bl_options)
 

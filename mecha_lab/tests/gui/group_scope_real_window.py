@@ -30,6 +30,18 @@ def log(*a):
 mecha_lab.register()
 from mecha_lab import groups, group_outline, bottom_bar  # noqa: E402
 
+_orig_invoke = groups.MCH_OT_group_view_pick.invoke
+
+
+def _logged_invoke(self, context, event):          # (diagnostics: every call of the click operator)
+    r = _orig_invoke(self, context, event)
+    log(f'   pick op: enter={self.enter} at ({event.mouse_region_x},{event.mouse_region_y}) -> {r} | last '
+        f'{groups._last_click}')
+    return r
+
+
+groups.MCH_OT_group_view_pick.invoke = _logged_invoke
+
 
 def C():
     return bpy.context
@@ -86,6 +98,7 @@ def select_mode():
 
 def dbl(xy):
     xdo('mousemove', *xy)
+    yield 0.35                        # (the pointer settles first, as a hand does)
     xdo('click', '--repeat', 2, '--delay', 90, 1)
 
 
@@ -141,7 +154,7 @@ def flow():
     s1 = state('click A')
     shot('1_click_A_group_selected.png')
     yield 0.8                                       # (a pause: the next two clicks are a new double-click)
-    dbl(screen_of((-3.3, 0.0, 0.8)))
+    yield from dbl(screen_of((-3.3, 0.0, 0.8)))
     yield 1.2
     s2 = state('double-click A')
     shot('2_inside_G.png')
@@ -153,7 +166,7 @@ def flow():
     s3 = state('inside G, click C')
     shot('3_inside_G_H_selected.png')
     yield 0.8
-    dbl(screen_of((1.1, 0.0, 0.8)))
+    yield from dbl(screen_of((1.1, 0.0, 0.8)))
     yield 1.2
     s4 = state('double-click C')
     yield 0.8
@@ -163,21 +176,21 @@ def flow():
     yield 0.8
     s4b = state('inside H, click B (outside H: ghosted, not picked)')
     yield 0.8
-    dbl(screen_of((0.0, 3.0, 0.0)))                   # empty space
+    yield from dbl(screen_of((-2.2, 2.0, 0.0)))                  # empty space
     yield 1.2
     s5 = state('double-click empty (H -> G)')
     yield 0.8
-    xdo('mousemove', *screen_of((5.5, 3.0, 0.0)))
+    xdo('mousemove', *screen_of((-1.0, 2.4, 0.0)))
     yield 0.3
     xdo('click', 1)
     yield 0.8
     s5b = state('single click empty (stays in G)')
     yield 0.8
-    dbl(screen_of((0.0, 3.0, 0.0)))
+    yield from dbl(screen_of((-2.2, 2.0, 0.0)))
     yield 1.2
     s6 = state('double-click empty again (out)')
     yield 0.8
-    dbl(screen_of((-1.1, 0.0, 0.8)))                  # into G again for the auto-add part
+    yield from dbl(screen_of((-1.1, 0.0, 0.8)))                  # into G again for the auto-add part
     yield 1.2
     state('double-click B (into G)')
     w, a, r = view3d()
