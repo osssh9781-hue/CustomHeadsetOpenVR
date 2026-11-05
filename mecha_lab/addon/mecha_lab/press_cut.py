@@ -95,6 +95,19 @@ class MCH_PG_Press(bpy.types.PropertyGroup):
                                    description='Width of bevel/chamfer on new stamp cut edges, in world units')
     stamp_edge_segments: bpy.props.IntProperty(name='Bevel Segments', default=3, min=1, max=16,
                                                 description='Number of segments for round bevel (chamfer uses one)')
+    # 0.24.108 (user: "프레스컷에도 뺄 때 챔퍼랑 베벨 그리고 원형도 넣어 줄래?") Alt + hold (Grow): the top edge
+    grow_edge: EnumProperty(name='Grow Edge', default='SHARP', update=_redraw, items=[
+        ('SHARP', 'Sharp', 'The part that grows out keeps a sharp top rim'),
+        ('CHAMFER', 'Chamfer', 'One flat cut along the top rim'),
+        ('BEVEL', 'Bevel', 'A rounded top rim'),
+        ('ROUND', 'Round', 'A dome: the whole top rises round from the rim to the middle')],
+        description='Alt + hold (Grow): the top edge of the part that grows out')
+    grow_edge_size: FloatProperty(name='Edge Size', default=0.35, min=0.02, max=0.9, subtype='FACTOR', precision=2,
+                                  update=_redraw,
+                                  description='Chamfer / Bevel size, of the grown height (it grows with it; never '
+                                              'more than about half the stamp\'s width)')
+    grow_edge_segments: bpy.props.IntProperty(name='Bevel Segments', default=4, min=2, max=16, update=_redraw,
+                                               description='How round the Bevel is (segments across the rounded rim)')
     start: FloatProperty(name='Start', default=0.01, min=0.0005, max=1.0, subtype='FACTOR', precision=3,
                          description='Depth at the press, of the part\'s size (a quick tap)')
     speed: FloatProperty(name='Speed', default=0.12, min=0.005, soft_max=1.0, max=5.0, precision=3,
@@ -737,6 +750,39 @@ class Press:
         self.finish(context)
 
 
+def dome_height(t):
+    """0.24.108 Round: the dome's height (0..1) at ``t`` = distance from the rim / the largest such distance - a
+    quarter circle: steep at the rim, flat on top."""
+    t = min(max(float(t), 0.0), 1.0)
+    return math.sqrt(max(0.0, 1.0 - (1.0 - t) ** 2))
+
+
+def _rim_distance(qs, rings):
+    """(t per point = distance to the nearest outline segment / the largest of them, that largest distance in px)."""
+    import numpy as np
+    if not qs:
+        return [], 0.0
+    P = np.asarray(qs, np.float64)
+    best = np.full(len(P), np.inf)
+    for ring in rings:
+        A = np.asarray(ring, np.float64)
+        if len(A) < 2:
+            continue
+        B = np.roll(A, -1, axis=0)
+        AB = B - A
+        L2 = np.maximum((AB ** 2).sum(1), 1e-12)
+        for s0 in range(0, len(A), 256):                 # (chunks: points x segments stays small)
+            a, ab, l2 = A[s0:s0 + 256], AB[s0:s0 + 256], L2[s0:s0 + 256]
+            AP = P[:, None, :] - a[None, :, :]
+            tt = np.clip((AP * ab[None]).sum(2) / l2[None], 0.0, 1.0)
+            d = np.sqrt(((AP - tt[..., None] * ab[None]) ** 2).sum(2)).min(1)
+            best = np.minimum(best, d)
+    r = float(best.max()) if len(best) else 0.0
+    if not math.isfinite(r) or r <= 1e-9:
+        return [0.0] * len(qs), 0.0
+    return list(best / r), r
+
+
 class GrowPress:
     """Alt press: a separate closed stamp, embedded in the untouched source surface.
 
@@ -745,9 +791,16 @@ class GrowPress:
     Growth is opposite the view direction; the base follows the surface, sunk just into it (0.24.107).
     """
     def __init__(self, context, target, loops, projector, result='GROW', center=None,
-                 angle=0.0, curve=(0.0, 0.0), spacing=6.0, **_unused):
+                 angle=0.0, curve=(0.0, 0.0), spacing=6.0, edge=None, edge_size=None, edge_segments=None, **_unused):
         self.target = target
         self.result = 'GROW'
+        st = getattr(context.scene, 'mch_press', None)
+        self.edge = edge or getattr(st, 'grow_edge', 'SHARP')
+        self.edge_size = float(edge_size if edge_size is not None else getattr(st, 'grow_edge_size', 0.35))
+        self.edge_segments = int(edge_segments if edge_segments is not None else getattr(st, 'grow_edge_segments', 4))
+        self.qs, self.dome_t, self.rim_rings, self.rim_curve, self.faces_final = [], [], [], [], []
+        self.rim_d, self.ring_counts = [], []      # per point: world distance to the outline; per group: ring points
+        self.inradius = 0.0          # world: the smallest stamp group's inner radius (the bevel never goes past it)
         self.size = part_size(target)
         self.depth = 0.0
         self.message = ''
@@ -775,15 +828,18 @@ class GrowPress:
                 o, d = self.projector.ray(q)
                 hit, _ = cg._plane_hit(o, d, plane, vd)
                 points.append(hit + vd * (sf.t(q) - sf.t_ref))
-            extra_curves = []
+            extra_curves, extra_qs = [], []
 
             def offset(q):
                 extra_curves.append(sf.curve_off(q))
+                extra_qs.append((float(q[0]), float(q[1])))
                 return sf.t(q) - sf.t_ref
 
             where, tris = cg._curved_cap(rings, self.projector, plane, vd, offset, sf.spacing)
             indices = []
             extra = iter(extra_curves)
+            extra_q = iter(extra_qs)
+            qs = [(float(q[0]), float(q[1])) for q in flat]
             for kind, val in where:
                 if kind == 'wall':
                     indices.append(val)
@@ -791,7 +847,21 @@ class GrowPress:
                     indices.append(len(points))
                     points.append(val)
                     curves.append(next(extra))
+                    qs.append(next(extra_q, qs[-1]))
             n, base = len(points), len(self.points) * 2
+            t, r_px = _rim_distance(qs, rings)
+            self.dome_t.extend(t)
+            self.rim_d.extend(ti * r_px * sf.px_world for ti in t)
+            self.ring_counts.append(len(flat))
+            self.qs.extend(qs)
+            if r_px > 0.0 and sf.px_world > 0.0:
+                w = r_px * sf.px_world
+                self.inradius = w if self.inradius <= 0.0 else min(self.inradius, w)
+            k = 0
+            for ring in rings:
+                self.rim_rings.append([base + n + k + i for i in range(len(ring))])
+                self.rim_curve.extend(curves[k:k + len(ring)])
+                k += len(ring)
             # Store paired caps in the final vertex buffer: bottom, then top.
             self.faces.extend(tuple(base + indices[i] for i in reversed(t)) for t in tris)
             self.faces.extend(tuple(base + n + indices[i] for i in t) for t in tris)
@@ -822,6 +892,9 @@ class GrowPress:
                 bm.to_mesh(me)
             finally:
                 bm.free()
+            self.faces_final = [tuple(p.vertices) for p in me.polygons]
+            if self.edge == 'ROUND':
+                me.shade_smooth()
             for mat in self.target.data.materials:
                 me.materials.append(mat)
             self.object = bpy.data.objects.new('MCH_PressGrow', me)
@@ -844,7 +917,12 @@ class GrowPress:
             # 0.24.107 the bottom follows the surface, sunk ``embed`` into it (one flat base at the deepest sampled
             # point came out of the back of a thin or slanted part)
             coords.extend(tuple(p + vd * self.embed) for p in pts)
-            coords.extend(tuple(p - vd * max(depth + c, 1e-7)) for p, c in zip(pts, curves))
+            if self.edge == 'ROUND' and len(self.dome_t) >= start + n:
+                ts_ = self.dome_t[start:start + n]       # 0.24.108 Round: a dome, 0 at the rim, full at the middle
+                coords.extend(tuple(p - vd * max(depth * dome_height(t) + c, 1e-7))
+                              for p, c, t in zip(pts, curves, ts_))
+            else:
+                coords.extend(tuple(p - vd * max(depth + c, 1e-7)) for p, c in zip(pts, curves))
             start += n
         return coords
 
@@ -853,14 +931,71 @@ class GrowPress:
             if self.object is None:
                 self._build(context)
             coords = self._coordinates(depth)
-            self.object.data.vertices.foreach_set('co', [v for p in coords for v in p])
-            self.object.data.update()
+            if self.edge in {'CHAMFER', 'BEVEL'}:
+                self._write_beveled(coords, depth)
+            else:
+                self.object.data.vertices.foreach_set('co', [v for p in coords for v in p])
+                self.object.data.update()
             self.depth = depth
-            self.message = 'Separate mesh, its base sunk just into the surface'
+            self.message = 'Separate mesh, its base sunk just into the surface' + (
+                '' if self.edge == 'SHARP' else f' | top edge: {self.edge.title()}')
             return True
         except (cg.CutError, RuntimeError, ValueError) as ex:
             self.message = str(ex)
             return False
+
+    def bevel_offset(self, depth):
+        """0.24.108 Chamfer / Bevel width (world): Edge Size x the rim's height, at most ~half the stamp's width."""
+        rim_h = min((depth + c for c in self.rim_curve), default=depth)
+        off = self.edge_size * max(rim_h, 0.0)
+        if self.inradius > 0.0:
+            off = min(off, 0.45 * self.inradius)
+        return off
+
+    def _write_beveled(self, coords, depth):
+        """The grown solid rebuilt with its top rim(s) chamfered / bevelled (the rim changes with the height, so the
+        bevel is made again each step - a few hundred points, quick)."""
+        import bmesh
+        me = self.object.data
+        off = self.bevel_offset(depth)
+        bm = bmesh.new()
+        try:
+            vs = [bm.verts.new(c) for c in coords]
+            for f in self.faces_final:
+                try:
+                    bm.faces.new([vs[i] for i in f])
+                except ValueError:
+                    pass
+            if off > 1e-7:
+                # (the top's inner points closer to the rim than the bevel would stop it short - Blender keeps a bevel
+                #  from running over its neighbours: they go first, the top stays one face there)
+                near, start, pstart = [], 0, 0
+                for n, rc in zip(self.groups, self.ring_counts):
+                    for j in range(rc, n):
+                        if pstart + j < len(self.rim_d) and self.rim_d[pstart + j] < off * 1.6:
+                            near.append(vs[start + n + j])
+                    start += 2 * n
+                    pstart += n
+                if near:
+                    bmesh.ops.dissolve_verts(bm, verts=near, use_face_split=False, use_boundary_tear=False)
+                edges = []
+                for ring in self.rim_rings:
+                    for i in range(len(ring)):
+                        e = bm.edges.get((vs[ring[i]], vs[ring[(i + 1) % len(ring)]]))
+                        if e is not None:
+                            edges.append(e)
+                if edges:
+                    segs = 1 if self.edge == 'CHAMFER' else max(2, self.edge_segments)
+                    res = bmesh.ops.bevel(bm, geom=edges, offset=off, offset_type='OFFSET', segments=segs,
+                                          profile=0.5, affect='EDGES', clamp_overlap=True)
+                    if self.edge == 'BEVEL':
+                        for f in res.get('faces', []):
+                            f.smooth = True
+            bm.normal_update()
+            bm.to_mesh(me)
+        finally:
+            bm.free()
+        me.update()
 
     def pocket(self):
         return [], [], 0.0
@@ -1920,6 +2055,13 @@ def draw(layout, context):
         edge.prop(st, 'stamp_edge_width', text='Width')
         if st.stamp_edge == 'BEVEL':
             edge.prop(st, 'stamp_edge_segments', text='Segments')
+    grow = layout.box()                         # 0.24.108 Alt + hold (Grow): the top edge
+    grow.label(text='Alt + Hold: Grow Edge', icon='MOD_BEVEL')
+    grow.row(align=True).prop(st, 'grow_edge', expand=True)
+    if st.grow_edge in {'CHAMFER', 'BEVEL'}:
+        grow.prop(st, 'grow_edge_size', slider=True)
+        if st.grow_edge == 'BEVEL':
+            grow.prop(st, 'grow_edge_segments')
     layout.row(align=True).prop(st, 'floor_mode', expand=True)
     layout.prop(st, 'dot_size', slider=True)
     col = layout.column(align=True)

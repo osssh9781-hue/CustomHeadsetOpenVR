@@ -1,5 +1,22 @@
 # CHANGELOG
 
+## 0.24.108 — Press Cut Alt + 누르기(Grow) 윗모서리: Sharp · Chamfer · Bevel · Round(돔) (2026-11-05)
+
+- (사용자: "프레스컷에도 뺄 때 챔퍼랑 베벨 그리고 원형도 넣어 줄래?") Alt + 누르기로 자라 나오는 부품의 윗모서리를 고릅니다.
+  위쪽 막대 **Alt Grow**: Sharp / Chamfer / Bevel / Round, Chamfer · Bevel 이면 **Edge**(크기), Bevel 이면 **Segs**(둥근 단계).
+  옆 패널에도 "Alt + Hold: Grow Edge" 상자.
+  - **Chamfer**: 윗테두리를 한 번 깎은 45° 면. **Bevel**: 둥근 테두리(단계 수 2 ~ 16, 부드러운 셰이딩).
+    크기 = Edge × 자란 높이라서 오래 누를수록 같이 커지고, 도장 폭의 절반쯤을 넘지 않습니다. 누르는 동안 매 단계 다시 깎아서
+    보이는 그대로 남습니다.
+  - **Round**: 돔 — 테두리에서 0, 가운데에서 최대 높이(테두리까지의 거리로 정한 1/4 원 단면). 부드러운 셰이딩.
+- 테스트(Blender 5.2.3 에서 실행): test_v02521_grow_edge 13/13 — 네 가지 모두 닫힌 솔리드, Chamfer 안쪽으로 들어간 폭 ≈ Edge ×
+  높이, 45° 면, Bevel 단계 면, Round 는 가운데가 가장 높고 테두리는 표면 높이, 구를 비스듬히 본 상태 + 오목한 / 뾰족한 도장에서도
+  닫힌 솔리드, 큰 Edge 는 도장 폭의 절반에서 멈춤. Press · 위쪽 막대 · 그룹 테스트 13 파일 모두 통과.
+- 실제 창(xdotool 진짜 마우스 + Alt 키, `tests/gui/grow_edge_real_window.py`): 상자 넷에 Sharp / Chamfer / Bevel / Round 로
+  Alt + 1.6 초 누르기 → 넷 다 자라 나오고 닫힌 솔리드, 선택은 그대로. 화면: `dist/grow_edges_0.24.108.png`(와이어 켬).
+- 남은 것: 자란 부품은 여전히 원래 메쉬와 **따로**입니다(합치려면 Boolean Union / Smart Fuse). 원래 메쉬와 만나는 아래쪽
+  경계는 각진 그대로입니다(필렛 없음). Blender 5.3 Beta 는 확인하지 못했습니다.
+
 ## 0.24.107 — ChatGPT v0.24.106 합침 · 그룹 Scope 고침 · 초록 그룹 외곽선 · Press / Base Mesh / Draw Array 고침 (2026-11-05)
 
 ChatGPT 와 고친 v0.24.106(그룹 Scope, 그룹 미러 / 복제, Press 하나로 합친 도구)을 기준으로 0.24.95 이후 작업(깊이 눈금,

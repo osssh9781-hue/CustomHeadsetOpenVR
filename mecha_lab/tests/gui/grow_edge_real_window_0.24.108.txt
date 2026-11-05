@@ -1,0 +1,7 @@
+GROW SHARP: MCH_PressGrow faces 1476 closed True height 0.435 smooth 0 | selected []
+GROW CHAMFER: MCH_PressGrow.001 faces 968 closed True height 0.392 smooth 0 | selected []
+GROW BEVEL: MCH_PressGrow.002 faces 1214 closed True height 0.478 smooth 360 | selected []
+GROW ROUND: MCH_PressGrow.003 faces 1476 closed True height 0.450 smooth 1476 | selected []
+shot 1_grown_top.png True
+shot 2_grown_slant_wire.png True
+RESULT all four grown and closed {'SHARP': 1, 'CHAMFER': 1, 'BEVEL': 1, 'ROUND': 1}

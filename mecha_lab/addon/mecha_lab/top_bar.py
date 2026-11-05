@@ -114,6 +114,14 @@ def groups(context, tool):
             _cell('mini', 'Start', action=('number',), data=pr, prop='start', width=110),
             _cell('mini', 'Speed', action=('number',), data=pr, prop='speed', width=120),
             _cell('mini', 'Max', action=('number',), data=pr, prop='max_depth', width=100)]))
+        # 0.24.108 (user: "뺄 때 챔퍼랑 베벨 그리고 원형도") Alt + hold Grow: the top edge of what grows out
+        grow = _enum_segs(pr, 'grow_edge', (('SHARP', 'Sharp'), ('CHAMFER', 'Chamfer'), ('BEVEL', 'Bevel'),
+                                            ('ROUND', 'Round')))
+        if pr.grow_edge in {'CHAMFER', 'BEVEL'}:
+            grow.append(_cell('mini', 'Edge', action=('number',), data=pr, prop='grow_edge_size', width=110))
+        if pr.grow_edge == 'BEVEL':
+            grow.append(_cell('mini', 'Segs', action=('number',), data=pr, prop='grow_edge_segments', width=100))
+        out.append(('Alt Grow', grow))
     if tool in {'CUT', 'SPLIT', 'PRESS'}:                          # 0.24.95 the last drawn outline -> a shape
         from . import cut_presets
         if cut_presets.LAST_LOOPS[0] is not None:
