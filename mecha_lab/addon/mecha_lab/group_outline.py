@@ -298,7 +298,7 @@ def _draw_edges(off, region):
     from gpu_extras.batch import batch_for_shader
     sh = _state['shader']
     if _state['quad'] is None:
-        _state['quad'] = batch_for_shader(sh, 'TRI_FAN', {'pos': ((-1, -1), (1, -1), (1, 1), (-1, 1))})
+        _state['quad'] = batch_for_shader(sh, 'TRIS', {'pos': ((-1, -1), (1, -1), (1, 1), (-1, -1), (1, 1), (-1, 1))})
     gpu.state.blend_set('ALPHA')
     sh.bind()
     sh.uniform_sampler('mask', off.texture_color)
