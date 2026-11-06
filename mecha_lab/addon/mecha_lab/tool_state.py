@@ -391,6 +391,11 @@ class MCH_PG_Brush(bpy.types.PropertyGroup):
                               precision=4, description='Width of the band drawn in Line mode')   # 0.24.59 soft 0.5 -> 2
     line_caps: EnumProperty(name='Line Ends', items=[('ROUND', 'Round', 'Round line ends'),
                                                      ('FLAT', 'Flat', 'Square line ends')], default='ROUND')
+    # 0.24.108 (user: "선이 둘러싼 전체 영역을 하나의 도형으로") the region the line encloses becomes the shape
+    line_area: BoolProperty(name='Area', default=False,
+                            description='Line mode: when the line closes on itself or crosses itself, the whole '
+                                        'region it encloses is the shape (off: the line stays a band - a closed '
+                                        'stroke is a ring).  With the Sketch: the region all the strokes enclose')
     # 0.24.21 like a pen: the line thins to a point at both ends (Taper) and / or follows the tablet pressure
     line_taper_on: BoolProperty(name='Taper', default=False,
                                 description='Line mode: the band thins to a point toward both ends (amount next to it)')

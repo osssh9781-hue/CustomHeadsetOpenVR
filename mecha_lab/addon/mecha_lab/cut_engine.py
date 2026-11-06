@@ -1731,8 +1731,7 @@ class StrokeLogic:
             raw = list(self.pts if pts is None else pts)
             prs = list(getattr(self, 'pressures', []))
             prof = lasso_line.pressure_profile(raw[:len(prs)], prs[:len(raw)])
-        loop = lasso_line.line_loop(bpy.context, self.projector, self._line_path(pts), self.brush, prof)
-        return [loop] if len(loop) >= 3 else []
+        return lasso_line.line_loops(bpy.context, self.projector, self._line_path(pts), self.brush, prof)
 
     def preview_closed(self):
         if self._line_mode():

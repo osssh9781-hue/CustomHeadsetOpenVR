@@ -72,6 +72,7 @@ def groups(context, tool):
         if brush.line_taper_on:
             line.append(_cell('mini', 'Taper', action=('number',), data=brush, prop='line_taper', width=120))
         line.append(_seg('Pressure', brush, 'line_pressure'))
+        line.append(_seg('Area', brush, 'line_area'))          # 0.24.108 the enclosed region as the shape
         if tool in {'BASE', 'CBASE'}:
             from . import base_mesh
             bd = base_mesh.scene_defaults(context)

@@ -2272,12 +2272,29 @@ def _drop_collinear(lp, eps=1e-10):
     return out if len(out) >= 3 else lp
 
 
-def sketch_regions(items):
-    """Combined sketch as Base Mesh groups [(outer CCW, [holes CW])]."""
+def sketch_regions(items, fill=False):
+    """Combined sketch as Base Mesh groups [(outer CCW, [holes CW])].  0.24.108 ``fill``: the added strokes' union
+    with its holes filled (Line mode Area: the region the lines enclose), the subtracted ones still taken away."""
+    if fill:
+        items = sketch_filled_items(items)
     verts, tris = sketch_triangles(items)
     if not tris:
         return []
     return cg.organize_loops(_boundary_loops(verts, tris))
+
+
+def sketch_filled_items(items):
+    """The sketch's items with every ADD stroke replaced by one ADD of their union without holes (SUB items kept,
+    after it)."""
+    adds = [it for it in items if it.get('op') == 'ADD']
+    subs = [it for it in items if it.get('op') != 'ADD']
+    if not adds:
+        return list(items)
+    verts, tris = sketch_triangles(adds)
+    if not tris:
+        return list(items)
+    filled = [[[list(q) for q in outer], []] for outer, _holes in cg.organize_loops(_boundary_loops(verts, tris))]
+    return [{'op': 'ADD', 'groups': filled}] + subs
 
 
 def sketch_add(context, loops, projector, subtract=False):

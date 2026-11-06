@@ -1,0 +1,7 @@
+A closed stroke, Area off: removed 0.208 (ring = 0.211, disc = 0.573) closed True | objects 3
+B closed stroke, Area on: removed 0.558 (disc = 0.573) closed True
+shot 1_top_A_ring_B_disc.png True
+shot 2_sketch_four_lines.png True
+C sketch of four lines, Area on, Enter: removed 0.731 (square = 0.730, frame only = 0.269) closed True
+shot 3_slant_wire.png True
+RESULT ring / disc / square as expected 0.208 0.558 0.731

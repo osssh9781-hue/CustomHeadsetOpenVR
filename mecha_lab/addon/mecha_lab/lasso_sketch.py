@@ -122,14 +122,23 @@ def add(context, mode, loops, projector, subtract=False):
             f'Backspace: last, Esc: clear')
 
 
-def screen_loops(d):
+def fill_on(context, mode=None):
+    """0.24.108 Line mode with Area: the sketch's strokes enclose the shape (their union with the holes filled)."""
+    from . import lasso_line
+    brush = getattr(getattr(context, 'scene', None), 'mch_brush', None)
+    if brush is None or not getattr(brush, 'line_mode', False) or not getattr(brush, 'line_area', False):
+        return False
+    return mode is None or mode in lasso_line.MODES
+
+
+def screen_loops(d, fill=False):
     """The combined sketch as screen loops in the first view, + that view."""
     from . import armor_plate as ap
     from . import base_mesh as bm_
     proj = ap.thaw_projector(d['proj'])
     frame = _frame(d)
     loops = []
-    for outer, holes in bm_.sketch_regions(d['items']):
+    for outer, holes in bm_.sketch_regions(d['items'], fill=fill):
         for lp in [outer] + list(holes):
             pts = [proj.to_screen(frame @ Vector((q[0], q[1], 0.0))) for q in lp]
             if any(p is None for p in pts):
@@ -144,7 +153,7 @@ def commit(context, alt=False):
     d = data(scene)
     if d is None:
         raise cg.CutError('No sketch: draw with the Sketch button on first.')
-    loops, proj = screen_loops(d)
+    loops, proj = screen_loops(d, fill=fill_on(context, d.get('mode')))
     if not loops:
         raise cg.CutError('The sketch is empty (everything was subtracted). Esc clears it.')
     mode = d['mode']
@@ -220,15 +229,17 @@ _handle = None
 
 def _draw_data(scene):
     text = scene.get(KEY)
+    d = data(scene)
+    fill = d is not None and fill_on(bpy.context, d.get('mode'))
+    key = (text, fill)
     hit = _CACHE.get('v')
-    if hit is not None and hit[0] == text:
+    if hit is not None and hit[0] == key:
         return hit[1]
     from . import base_mesh as bm_
-    d = data(scene)
     out = None
     if d is not None:
         frame = _frame(d)
-        verts, tris = bm_.sketch_triangles(d['items'])
+        verts, tris = bm_.sketch_triangles(bm_.sketch_filled_items(d['items']) if fill else d['items'])
         world = [tuple(frame @ Vector((v[0], v[1], 0.0))) for v in verts]
         lines = []
         for lp in (bm_._boundary_loops(verts, tris) if tris else []):
@@ -236,7 +247,7 @@ def _draw_data(scene):
             for i in range(len(pts)):
                 lines += [pts[i], pts[(i + 1) % len(pts)]]
         out = (d['mode'], world, tris, lines)
-    _CACHE['v'] = (text, out)
+    _CACHE['v'] = (key, out)
     return out
 
 

@@ -21,7 +21,8 @@ OWNER = 'mch_tool_lasso_owner'      # the tool the brush held the settings of wh
 PROPS = ('shape', 'circle_segments', 'curve_resolution', 'curve_smoothness', 'outline_corner', 'outline_radius',
          'outline_segments', 'stroke_smooth', 'stroke_spacing', 'stroke_simplify', 'mask_brush_radius',
          'custom_size', 'custom_rotation', 'custom_drag_rotate', 'line_open', 'line_mode', 'line_width', 'line_caps',
-         'line_taper_on', 'line_taper', 'line_pressure', 'stab_enable', 'stab_strength', 'stab_radius', 'stab_guide')
+         'line_taper_on', 'line_taper', 'line_pressure', 'line_area', 'stab_enable', 'stab_strength', 'stab_radius',
+         'stab_guide')
 TICK = 0.2
 
 _STORE = {}         # scene name -> {tool: {prop: value}}  (names: an undo can give the scene a new address)

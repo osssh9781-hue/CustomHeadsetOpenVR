@@ -1609,10 +1609,9 @@ class MCH_OT_press_unified(bpy.types.Operator):
         try:
             brush = context.scene.mch_brush
             # The same Line Width / Taper / Caps settings as the native Line tool.
-            band = lasso_line.line_loop(context, self.projector, pts, brush)
-            if len(band) < 3:
+            loops = lasso_line.line_loops(context, self.projector, pts, brush)   # (0.24.108 a crossing / closed line too)
+            if not loops:
                 raise cg.CutError('Could not form a band from this line')
-            loops = [band]
             if self.alt_draw:
                 # Press Cut Alt+draw ALWAYS uses the active stamp as the line's
                 # cross-section. No separate Base Mesh Section toggle required.
