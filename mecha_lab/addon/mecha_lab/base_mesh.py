@@ -1416,6 +1416,7 @@ def _build_sweep_bmesh(data, p):
     width, height = max(1e-5, p.section_width), max(1e-5, p.height)
     base_angle, twist, taper = p.section_rotation, p.section_twist, p.section_taper
     rest = bool(data.get('rest'))
+    bottom = data.get('bottom')        # 0.24.109 a cutter: the section's lowest point at this local z (into the part)
     bm = bmesh.new()
     try:
         for outer, holes in groups:
@@ -1438,6 +1439,8 @@ def _build_sweep_bmesh(data, p):
                 # 0.24.108 rest: the section's lowest point just under the surface (Press Cut draws the stamp
                 # standing on the part; a centred section was half buried)
                 dz = (-min(v for _u, v in uv) - 0.02) * height if rest else 0.0
+                if bottom is not None:
+                    dz = float(bottom) - p.offset - min(v for _u, v in uv) * height
                 for u, v in uv:
                     ring.append(bm.verts.new((px+nx*u*width, py+ny*u*width,
                                               p.offset+v*height+dz)))
@@ -1485,24 +1488,159 @@ def _hull(points):
     return hull if len(hull) >= 3 else None
 
 
-def _create_section_sweep(context, loops, projector, path, defaults, attach=None):
-    """One shared implementation for Base Mesh Line and Unified Press Alt+Draw."""
-    section, name = _section_loops(context, defaults.profile_sweep)
-    # 0.24.107 the frame comes from the path's hull (always a simple outline): the drawn band itself crosses
-    # itself on a tight or looping line and the sweep failed with "crosses itself" before it was built.
+def sweep_frame(context, loops, projector, path):
+    """The plane a drawn line is swept in - (outline groups, frame, the path in the frame's 2D) - for a screen
+    ``path`` and its band ``loops``.  0.24.107 the frame comes from the path's hull (always a simple outline):
+    the drawn band itself crosses itself on a tight or looping line and the sweep failed with "crosses itself"
+    before it was built."""
     frame_loop = _hull(path) if path is not None else None
     if frame_loop is None or len(frame_loop) < 3 or abs(_area2(frame_loop)) < 4.0:
         frame_loop = loops[0] if loops else None
     if frame_loop is None:
         raise cg.CutError('Draw a longer line to sweep the section.')
     groups, frame, _screen, _embed = _local_groups(context, [frame_loop], projector)
+    return groups, frame, plane_path(frame, projector, path)
+
+
+def plane_path(frame, projector, path):
+    """Screen points ``path`` projected onto the plane of ``frame`` (its local XY), as 2D points."""
     inv = frame.inverted_safe()
     origin, normal = frame.translation, Vector((frame[0][2], frame[1][2], frame[2][2]))
-    local_path = []
+    out = []
     for q in path:
-        w = _plane_point(projector, q, origin, normal)
-        l = inv @ w
-        local_path.append((float(l.x), float(l.y)))
+        l = inv @ _plane_point(projector, q, origin, normal)
+        out.append((float(l.x), float(l.y)))
+    return out
+
+
+def envelope_section(loops, top, columns=96):
+    """0.24.109 (user: "컷도 당연히 스탬프 단면으로 잘려야지") The section a stamp leaves when it is pressed in and
+    dragged along: the stamp's lower outline, and straight walls up from its widest points to ``top`` (what the
+    stamp's silhouette sweeps through on its way down; a hole in the stamp is passed through, so it is filled).
+    ``loops`` are the stamp's loops (normalized, already turned); one counter-clockwise loop comes back."""
+    pts = [q for lp in loops for q in lp]
+    if len(pts) < 3:
+        raise cg.CutError('The stamp has no outline')
+    xs = sorted({round(float(q[0]), 6) for q in pts})
+    lo, hi = xs[0], xs[-1]
+    if hi - lo < 1e-9:
+        raise cg.CutError('The stamp is too thin to sweep')
+    sample = set(xs)
+    for i in range(columns + 1):
+        sample.add(round(lo + (hi - lo) * i / columns, 6))
+    edges = []
+    for lp in loops:
+        for a, b in zip(lp, lp[1:] + lp[:1]):
+            edges.append((float(a[0]), float(a[1]), float(b[0]), float(b[1])))
+    chain = []
+    for x in sorted(sample):
+        best = None
+        for ax, ay, bx, by in edges:
+            if (ax <= x <= bx) or (bx <= x <= ax):
+                if abs(bx - ax) < 1e-12:
+                    y = min(ay, by)
+                else:
+                    y = ay + (by - ay) * (x - ax) / (bx - ax)
+                best = y if best is None else min(best, y)
+        if best is not None:
+            chain.append((x, best))
+    if len(chain) < 2:
+        raise cg.CutError('The stamp has no outline')
+    top = max(float(top), max(float(q[1]) for q in pts) + 1e-3)
+    out = chain + [(chain[-1][0], top), (chain[0][0], top)]
+    # drop points on a straight run (the columns across a flat bottom)
+    kept = [out[0]]
+    for a, b, c in zip(out, out[1:], out[2:] + out[:1]):
+        if abs((b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0])) > 1e-9 * max(1.0, abs(hi - lo)):
+            kept.append(b)
+    kept = [q for i, q in enumerate(kept) if i == 0 or math.dist(q, kept[i - 1]) > 1e-9]
+    if _area2(kept) < 0:
+        kept.reverse()
+    return kept
+
+
+class _SweepCutterSettings:
+    """Settings view for a swept cutter: the section's size and turn, nothing else of the Base Mesh."""
+
+    def __init__(self, width, height, rotation=0.0):
+        self.section_width = max(1e-5, float(width))
+        self.height = max(1e-5, float(height))
+        self.offset = 0.0
+        self.section_rotation = float(rotation)
+        self.section_twist = 0.0
+        self.section_taper = 0.0
+
+
+def sweep_cutter_mesh(frame, local_path, section, width, height, bottom, rotation=0.0):
+    """0.24.109 The swept cutter as a mesh: ``section`` (normalized loops) swept along ``local_path`` in the plane of
+    ``frame``, its lowest point at local z ``bottom`` (negative = into the part the plane sits on)."""
+    data = {'path': [list(q) for q in local_path], 'loops': [[list(q) for q in lp] for lp in section],
+            'bottom': float(bottom)}
+    bm = _build_sweep_bmesh(data, _SweepCutterSettings(width, height, rotation))
+    try:
+        me = bpy.data.meshes.new('MCH_LineCutter')
+        bm.to_mesh(me)
+        from . import edge_memory as _em
+        _em.drop_profile_flags(me)
+    finally:
+        bm.free()
+    return me
+
+
+def sweep_cut(context, frame, local_path, section, width, height, bottom, targets, mode='CUT', rotation=0.0):
+    """0.24.109 Press Cut Alt + drag: the stamp's section swept along the drawn line and taken out of ``targets``
+    (``mode`` CUT), or the swept piece kept as its own part (SPLIT).  Returns the report line."""
+    from . import cut_engine as ce
+    targets = [t for t in targets if t is not None and t.type == 'MESH']
+    if not targets:
+        raise cg.CutError('Line Cut: no mesh in the line / selection')
+    me = sweep_cutter_mesh(frame, local_path, section, width, height, bottom, rotation)
+    cutter = cg.link_temp_object(context, me)
+    cutter.matrix_world = frame
+    cut = context.scene.mch_cut
+    done, failed, temp, pieces = [], [], [], []
+    try:
+        results = []
+        for t in targets:
+            try:
+                cg.check_target(t)
+                if mode == 'SPLIT':
+                    inner, _s = cg.boolean_result(context, t, cutter, 'INTERSECT', cut.solver, cut.hole_tolerant)
+                    temp.append(inner)
+                res, _solver = cg.boolean_result(context, t, cutter, 'DIFFERENCE', cut.solver, cut.hole_tolerant)
+                temp.append(res)
+                results.append((t, res))
+                if mode == 'SPLIT':
+                    pieces.append((t, inner))
+            except (cg.CutError, RuntimeError) as ex:
+                if len(targets) == 1:
+                    raise
+                failed.append(f'{t.name} ({str(ex).splitlines()[0][:60]})')
+        if not results:
+            raise cg.CutError('The line does not reach any target; nothing was changed.')
+        for t, res in results:
+            cg.commit_mesh(t, res, cut.shared_mesh)
+            done.append(t.name)
+        for t, inner in pieces:
+            if len(inner.polygons):
+                ce._make_piece(t, inner)
+                temp.remove(inner)
+    finally:
+        for m in temp:
+            if m.users == 0:
+                bpy.data.meshes.remove(m)
+        cg.remove_object_and_mesh(cutter)
+    msg = f'{"Line Split" if mode == "SPLIT" else "Line Cut"} ({len(local_path)} points, the stamp as its section) on ' \
+          + ', '.join(done)
+    if failed:
+        msg += ' | FAILED, unchanged: ' + '; '.join(failed)
+    return msg
+
+
+def _create_section_sweep(context, loops, projector, path, defaults, attach=None):
+    """One shared implementation for Base Mesh Line and Unified Press Alt+Draw."""
+    section, name = _section_loops(context, defaults.profile_sweep)
+    groups, frame, local_path = sweep_frame(context, loops, projector, path)
     # Snapshot vector loops: rebuilding still works if the saved Press Cut shape is renamed/deleted.
     sweep = {'path': local_path, 'loops': section, 'section_name': name,
              'rest': bool(getattr(defaults, 'section_rest', False))}
@@ -1512,6 +1650,97 @@ def _create_section_sweep(context, loops, projector, path, defaults, attach=None
         set_attach(ob, frame, projector, *attach)          # 0.24.107 Attach Ends for a swept line too
         msg += f' | Attach Ends: {sum(1 for h in attach[1:] if h is not None)} of 2 on a mesh'
     return msg + f' | Sweep section: {name}'
+
+
+def sweep_ends(ob):
+    """0.24.109 The two ends (world) of a live swept line - [start, end] - or None when ``ob`` is not one."""
+    if ob is None or not ob.get(SWEEP_KEY) or getattr(ob, 'mch_base', None) is None or not ob.mch_base.live:
+        return None
+    try:
+        path = json.loads(ob[SWEEP_KEY])['path']
+    except (TypeError, ValueError, KeyError):
+        return None
+    if len(path) < 2:
+        return None
+    mw = ob.matrix_world
+    return [mw @ Vector((float(q[0]), float(q[1]), 0.0)) for q in (path[0], path[-1])]
+
+
+def join_path(old, new, fade, tail=0.0):
+    """0.24.109 ``new`` (plane 2D) joined onto the end of ``old``: its first point is moved onto old's last point and
+    that shift fades out over the first ``fade`` of its length, so the drawn shape is kept.  Returns (the last
+    ``tail`` length of ``old`` ending at its end point, the joined new points without the coincident first one)."""
+    if len(new) < 2 or not old:
+        raise cg.CutError('Draw a longer line')
+    joint = old[-1]
+    ox, oy = joint[0] - new[0][0], joint[1] - new[0][1]
+    fade = max(float(fade), 1e-6)
+    run, out = 0.0, []
+    for k, q in enumerate(new):
+        if k:
+            run += math.dist(new[k - 1], q)
+        f = max(0.0, 1.0 - run / fade)
+        out.append((q[0] + ox * f, q[1] + oy * f))
+    added = [q for q in out[1:] if math.dist(q, joint) > 1e-6]
+    if not added:
+        raise cg.CutError('Draw a longer line')
+    keep = [joint]
+    run = 0.0
+    for a, b in zip(old[-2::-1], old[::-1]):                # back from the end until ``tail`` is covered
+        run += math.dist(a, b)
+        keep.insert(0, a)
+        if run >= tail:
+            break
+    return keep, added
+
+
+def extend_sweep(ob, projector, pts, at_end=True, end_hit=None):
+    """0.24.109 (user: "한번 긋고 뷰포트 돌려서 처음 그었던 선 끝난 부분에 이어서 그릴 수 있게") The screen stroke ``pts``
+    continued onto the live swept line ``ob``.  The view may have turned since the first stroke: the new points are
+    projected onto the FIRST stroke's plane (the object's own frame) and joined to the path's end (or its start when
+    ``at_end`` is False) - one object, the section as it was, pointing the way the first stroke did.  The stroke's
+    first point lands exactly on the old end; the small gap the pointer left is faded out over the first two
+    section widths.  Returns (points added, degrees the view is turned from the first stroke)."""
+    data = json.loads(ob[SWEEP_KEY])
+    frame = ob.matrix_world
+    inv = frame.inverted_safe()
+    origin, normal = frame.translation, Vector((frame[0][2], frame[1][2], frame[2][2])).normalized()
+    facing = abs(Vector(projector.view_dir).normalized().dot(normal))
+    if facing < 0.12:                                     # the first plane seen edge-on: nothing sensible lands on it
+        raise cg.CutError('Turn the view to face the first line to continue it')
+    local = []
+    for q in pts:
+        w = _plane_point(projector, q, origin, normal)
+        l = inv @ w
+        local.append((float(l.x), float(l.y)))
+    path = [tuple(q) for q in data['path']]
+    if not at_end:                                        # (the stroke starts at the line's start: it is put in front)
+        path.reverse()
+    if len(local) < 2:
+        raise cg.CutError('Draw a longer line')
+    _tail, new = join_path(path, local, fade=2.0 * float(ob.mch_base.section_width))
+    path = path + new
+    if not at_end:
+        path.reverse()
+    probe = dict(data)
+    probe['path'] = path
+    _build_sweep_bmesh(probe, ob.mch_base).free()        # validate first: never lose the line that was there
+    data['path'] = path
+    ob[SWEEP_KEY] = json.dumps(data, separators=(',', ':'))
+    hull = _hull(path)                                    # the stored outline follows the whole line
+    if hull is not None and abs(_area2(hull)) >= 4.0 * 1e-6:
+        ob.mch_base.outline = json.dumps({'groups': [{'outer': hull, 'holes': []}], 'res': ts.res_scale()})
+    if ob.get(ATTACH_KEY):                                # Attach Ends: the bend runs along the whole line now
+        try:
+            att = json.loads(ob[ATTACH_KEY])
+            att['path'] = [[q[0], q[1]] for q in path]
+            if end_hit is not None:
+                att['z1' if at_end else 'z0'] = (inv @ Vector(end_hit)).z
+            ob[ATTACH_KEY] = json.dumps(att)
+        except (TypeError, ValueError, KeyError):
+            pass
+    rebuild(ob)
+    return len(new), math.degrees(math.acos(min(1.0, facing)))
 
 
 class MCH_OT_base_section_use_alpha(bpy.types.Operator):
@@ -1800,7 +2029,8 @@ def _local_groups(context, loops, projector, allow_invert=True):
 
 
 def perform_base(context, loops, projector, cutter=False, targets=None, attach=None, path=None,
-                 sweep_style=None, section_width=None, section_height=None, section_rest=False):
+                 sweep_style=None, section_width=None, section_height=None, section_rest=False,
+                 section_rotation=None):
     """Create a solid or cutter, optionally forcing a section for a single draw.
 
     Press Cut Alt+drag uses sweep_style='ALPHA' so its CURRENT selected stamp
@@ -1810,7 +2040,8 @@ def perform_base(context, loops, projector, cutter=False, targets=None, attach=N
     if sweep_style is not None:
         if sweep_style not in {'CIRCLE', 'SQUARE', 'ALPHA'}:
             raise cg.CutError('Invalid line section style.')
-        defaults = _WithSectionStyle(defaults, sweep_style, section_width, section_height, section_rest)
+        defaults = _WithSectionStyle(defaults, sweep_style, section_width, section_height, section_rest,
+                                     section_rotation)
     creature = defaults.profile in CREATURE_PROFILES
     if not cutter and path is not None and not creature and defaults.profile_sweep != 'OFF':
         return _create_section_sweep(context, loops, projector, path, defaults, attach)
@@ -1876,7 +2107,7 @@ def scene_defaults(context):
 class _WithSectionStyle:
     """Settings view for a single Alt+draw. Does NOT mutate scene settings."""
 
-    def __init__(self, base, style, width=None, height=None, rest=False):
+    def __init__(self, base, style, width=None, height=None, rest=False, rotation=None):
         self._base = base
         self.profile_sweep = style
         if width is not None:          # 0.24.107 the drawn line's own width (what the preview band showed)
@@ -1884,6 +2115,8 @@ class _WithSectionStyle:
         if height is not None:         # 0.24.108 Press Cut: the section as tall as the stamp (the stamp itself)
             self.height = max(0.001, float(height))
         self.section_rest = bool(rest) # 0.24.108 the section rests on the surface (not half sunk)
+        if rotation is not None:       # 0.24.109 (user: "스탬프를 로테이션으로 돌리면 ... 앵글도 돌아가야지") the stamp's turn
+            self.section_rotation = float(rotation)
 
     def __getattr__(self, name):
         return getattr(self._base, name)

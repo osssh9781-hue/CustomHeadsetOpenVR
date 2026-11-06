@@ -119,6 +119,9 @@ check('... standing on the surface (its lowest point just under the top face, no
       round(zlo - 1.0, 3) if ok else None)
 check('... the Base Mesh defaults are untouched by it', C.scene.mch_base.profile_sweep == 'OFF')
 
+for o in list(bpy.data.objects):          # (0.24.109 the cut's depth starts at the first surface it meets: not the line's top)
+    if o != p:
+        bpy.data.objects.remove(o)
 op3 = Shim()
 op3.reports = []
 op3.state, op3.down_time, op3.anchor = 'DRAW', time.perf_counter(), tuple(xy0)
@@ -141,9 +144,11 @@ v0 = vol(p)
 st.result = 'CUT'
 r = op3._finish_draw(C, op3.pts[-1])
 removed = v0 - vol(p)
-exp = (span * 1.2 + math.pi * (span / 2) ** 2) * 0.3
-check('Alt + drag: a Line Cut as wide as the stamp (groove volume = width x length + round ends, x depth)',
-      r == {'FINISHED'} and abs(removed - exp) < exp * 0.12, (round(removed, 3), round(exp, 3)))
+# 0.24.109 (user) the Line Cut is the stamp's section swept along the line, pressed in Max x the part's size: Max 1.0 on
+# a 2 m part = through - a slot as wide as the stamp with flat ends (0.8 x 1.2 x 2), not the Cut tool's 0.3 band
+exp = span * 1.2 * 2.0
+check('Alt + drag: a Line Cut = the stamp swept along the line, Max x part size deep (1.0 x 2 m: through, flat ends)',
+      r == {'FINISHED'} and abs(removed - exp) < exp * 0.08, (round(removed, 3), round(exp, 3)))
 check('gestures in the operator: plain = make_mesh (Base line / Grow), Alt = cut (Line Cut / Press)',
       'self.make_mesh = not bool(event.alt)' in open(pc.__file__).read()
       and 'typ = GrowPress if self.make_mesh else Press' in open(pc.__file__).read())

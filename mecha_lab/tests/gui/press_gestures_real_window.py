@@ -1,4 +1,4 @@
-"""Real window (0.24.108): the four Press Cut gestures with the REAL mouse and Alt key (user: "그냥 그릴 때는 베이스
+"""Real window (0.24.108 / 0.24.109): the four Press Cut gestures with the REAL mouse and Alt key (user: "그냥 그릴 때는 베이스
 메쉬 라인, Alt 는 컷 라인, 그냥 꾹 누르면 메쉬가 나오고, Alt + 꾹은 잘려야"), octagon stamp, size 40 px:
   A: plain drag      -> a Base Mesh line whose section is the stamp (as wide / tall as the stamp on screen)
   B: Alt + drag      -> a Line Cut groove as wide as the stamp
@@ -86,6 +86,18 @@ def bbox(ob):
     return [(min(q[i] for q in pts), max(q[i] for q in pts)) for i in range(3)]
 
 
+def area_below(loop, v_s):
+    out = []
+    for a, b in zip(loop, loop[1:] + loop[:1]):
+        ina, inb = a[1] <= v_s, b[1] <= v_s
+        if ina:
+            out.append(a)
+        if ina != inb:
+            t = (v_s - a[1]) / (b[1] - a[1])
+            out.append((a[0] + t * (b[0] - a[0]), v_s))
+    return abs(mecha_lab.core_geometry.signed_area(out)) if len(out) >= 3 else 0.0
+
+
 def drag(points, alt=False):
     xdo('mousemove', *points[0])
     yield 0.25
@@ -156,6 +168,7 @@ def flow():
         S.mch_press.size = 40.0
         S.mch_press.shape = 'MCH_BUILTIN_M_OCTAGON'
         S.mch_press.result = 'CUT'
+        S.mch_press.max_depth = 0.15          # 0.24.109 the Line Cut is Max x the part's size deep: 0.3 m of a 2 m box
         S.mch_press.grow_edge, S.mch_press.grow_top = 'SHARP', 'FLAT'
         bpy.ops.mch.set_tool(tool='PRESS')
     yield 2.0
@@ -183,9 +196,12 @@ def flow():
     before = set(bpy.data.objects.keys())
     yield from drag([screen_of((-1.1 - 0.6 + 1.2 * k / 12, 0.0, 1.0)) for k in range(13)], alt=True)
     removed = v0['B'] - volume(boxes['B'])
-    exp = (span * 1.2 + math.pi * (span / 2) ** 2) * 0.3
-    log(f'B Alt + drag: removed {removed:.3f} (stamp-wide groove = {exp:.3f}) new objects {len(set(bpy.data.objects.keys()) - before)}')
-    res['B Alt + drag = Line Cut as wide as the stamp'] = abs(removed - exp) < exp * 0.15 and not (set(bpy.data.objects.keys()) - before)
+    # 0.24.109 the Line Cut is the stamp's section pressed in 0.3 and swept along the 1.2 m line (flat ends)
+    sec, _bottom = mecha_lab.press_cut.line_cut_section(C, S.mch_press, 0.3, span)
+    v_min = min(y for _x, y in sec[0])
+    exp = area_below(sec[0], v_min + 0.3 / span) * span * span * 1.2
+    log(f'B Alt + drag: removed {removed:.3f} (the stamp\'s section x 1.2 m = {exp:.3f}) new objects {len(set(bpy.data.objects.keys()) - before)}')
+    res['B Alt + drag = Line Cut with the stamp\'s section, Max deep'] = abs(removed - exp) < exp * 0.15 and not (set(bpy.data.objects.keys()) - before)
     # C: plain hold -> Grow
     before = set(bpy.data.objects.keys())
     yield from hold(screen_of((1.1, 0.0, 1.0)), 1.4)

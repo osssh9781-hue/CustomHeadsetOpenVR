@@ -22,7 +22,7 @@ import time
 
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 from . import core_geometry as cg
 from . import lasso_sketch
@@ -1283,6 +1283,14 @@ def draw_cursor(context, xy):
         cx, cy = float(xy[0]), float(xy[1])
         reg = getattr(context, 'region', None)
         draw_contact(context, loops, (cx, cy), (reg.x, reg.y) if reg is not None else (0.0, 0.0))
+        try:                                   # 0.24.109 the ends a new stroke can go on from
+            rv3d = getattr(context, 'region_data', None)
+            if reg is not None and rv3d is not None:
+                marks = continue_ends(context, ce.make_projector(reg, rv3d))
+                if marks:
+                    _draw_end_marks(context, sh, marks, 0.5 * continue_radius(st))
+        except Exception:
+            pass
         c, s = math.cos(st.rotation), math.sin(st.rotation)
         for amt, (ax, ay) in ((st.curve_x, (c, s)), (st.curve_y, (-s, c))):
             if abs(amt) > 1e-4:                  # (a bent stamp: the line it bends across, dashed by its sign)
@@ -1509,6 +1517,120 @@ UNIFIED_LATE_DRAG_PX = 18.0
 UNIFIED_LATE_DRAG_SEC = 0.9
 
 
+# --- 0.24.109 going on with a line after the view turned ---------------------------------------------------------------
+# (user: "한번 긋고 내가 뷰포트 돌려서 처음 그었던 선 끝난 부분에 이어서 그릴 수 있게" / "뷰포트 방향으로 인식하면 굳이 3D 경로까지
+#  안 가도") A stroke that starts on the end of the last line goes on from it IN THE FIRST STROKE'S PLANE: the new
+# points are projected onto that plane, so the section stays the one the first stroke had.  'base': the live swept
+# Base Mesh line the tool made last (its name); 'cut': the last Line Cut - its plane (16 floats), the path in that
+# plane, its section and size (a continued cut has the same groove).
+CONTINUE = {'base': None, 'cut': None}
+
+
+def continue_radius(st):
+    """How close (px) to a line's end a stroke must start to go on from it: most of the stamp's half-width."""
+    return max(16.0, 0.75 * float(st.size))
+
+
+def _cut_frame(data):
+    m = Matrix.Identity(4)
+    vals = data['frame']
+    for r in range(4):
+        for c in range(4):
+            m[r][c] = float(vals[r * 4 + c])
+    return m
+
+
+def _flat_frame(m):
+    return [float(m[r][c]) for r in range(4) for c in range(4)]
+
+
+def _ends_screen(projector, ends):
+    sc = _screen_np(projector, [list(e) for e in ends])
+    return None if sc is None else [(float(q[0]), float(q[1])) for q in sc]
+
+
+def continue_ends(context, projector):
+    """The points a new stroke can go on from: [(screen xy, world, swept line object or None for a Line Cut, at_end)]
+    - the two ends of the live swept line (the active one and the one made last) and of the last Line Cut."""
+    from . import base_mesh
+    out = []
+    cands = []
+    try:
+        ob = base_mesh.active_live_base(context)
+        if ob is not None and ob.get(base_mesh.SWEEP_KEY):
+            cands.append(ob)
+    except (AttributeError, ReferenceError):
+        pass
+    name = CONTINUE['base']
+    ob2 = bpy.data.objects.get(name) if name else None
+    if ob2 is None and name:
+        CONTINUE['base'] = None
+    if ob2 is not None and ob2 not in cands:
+        cands.append(ob2)
+    for ob in cands:
+        ends = base_mesh.sweep_ends(ob)
+        if ends is None:
+            continue
+        sc = _ends_screen(projector, ends)
+        if sc is None:
+            continue
+        for k, (w, q) in enumerate(zip(ends, sc)):
+            out.append((q, w, ob, k == 1))
+    cut = CONTINUE['cut']
+    if cut and len(cut.get('path', ())) >= 2:
+        frame = _cut_frame(cut)
+        path = cut['path']
+        ends = [frame @ Vector((float(path[0][0]), float(path[0][1]), 0.0)),
+                frame @ Vector((float(path[-1][0]), float(path[-1][1]), 0.0))]
+        sc = _ends_screen(projector, ends)
+        if sc is not None:
+            for k, (w, q) in enumerate(zip(ends, sc)):
+                out.append((q, w, None, k == 1))
+    return out
+
+
+def nearest_end(context, projector, xy, radius, kind):
+    """The end (see ``continue_ends``) of ``kind`` ('base' / 'cut') within ``radius`` px of ``xy``, nearest first."""
+    best = None
+    for item in continue_ends(context, projector):
+        if (item[2] is not None) != (kind == 'base'):
+            continue
+        d = math.dist(item[0], xy)
+        if d <= radius and (best is None or d < best[0]):
+            best = (d, item)
+    return best[1] if best else None
+
+
+def _draw_end_marks(context, sh, marks, size):
+    """Rings at the ends a stroke can go on from (cyan = Base Mesh line, orange = Line Cut)."""
+    from . import cut_engine as ce
+    for q, _w, ob, _end in marks:
+        col = (0.3, 0.85, 1.0, 0.9) if ob is not None else (1.0, 0.62, 0.25, 0.9)
+        for r in (size, size * 0.3):
+            ring = [(q[0] + r * math.cos(math.tau * i / 24), q[1] + r * math.sin(math.tau * i / 24)) for i in range(24)]
+            ce._draw_lines(sh, ring, col, closed=True, width=1.5)
+
+
+def _rotated(loops, angle):
+    c, s_ = math.cos(angle), math.sin(angle)
+    return [[(x * c - y * s_, x * s_ + y * c) for x, y in lp] for lp in loops]
+
+
+def line_cut_section(context, st, depth, span, eps=0.0):
+    """0.24.109 The Line Cut's section: the stamp (turned as set) pressed in ``depth`` (world) and dragged along -
+    its lower outline with straight walls up past the surface (``base_mesh.envelope_section``).  ``span`` is the
+    stamp's longer side in world units (the section's height); ``eps`` a hair more depth (a cut through a part ends
+    exactly on its far face otherwise).  Returns (section loops, bottom z of the section)."""
+    from . import base_mesh
+    norm, _name = base_mesh._section_loops(context, 'ALPHA')
+    turned = _rotated(norm, float(st.rotation))
+    v_min = min(y for lp in turned for _x, y in lp)
+    v_max = max(y for lp in turned for _x, y in lp)
+    d = float(depth) + float(eps)
+    top = max(v_max + 0.05, v_min + (d + 0.04 * span) / max(span, 1e-9))
+    return [base_mesh.envelope_section(turned, top)], -d
+
+
 def _draw_unified_path(op):
     """Only an OPEN stroke is shown. Never make a closed lasso preview."""
     try:
@@ -1527,6 +1649,12 @@ def _draw_unified_path(op):
                 ce._draw_lines(sh, outline, (color[0], color[1], color[2], 0.55), closed=True, width=1.5)
         except Exception:
             pass
+        end = getattr(op, 'cont_end', None)
+        if end is not None:                    # 0.24.109 the stroke goes on from this end of the last line
+            r = 0.5 * continue_radius(bpy.context.scene.mch_press)
+            for rr in (r, r * 0.3):
+                ring = [(end[0] + rr * math.cos(math.tau * i / 24), end[1] + rr * math.sin(math.tau * i / 24)) for i in range(24)]
+                ce._draw_lines(sh, ring, color, closed=True, width=2.0)
         gpu.state.blend_set('NONE')
     except Exception:
         pass
@@ -1559,6 +1687,7 @@ class MCH_OT_press_unified(bpy.types.Operator):
         self.pts = [self.anchor]
         self.make_mesh = not bool(event.alt)   # 0.24.108 (user) plain = Base Mesh line / Grow, Alt = Line Cut / Press
         self.state = 'WAIT'
+        self.cont_end = None
         self.down_time = time.perf_counter()
         self.handle = None
         self.handle_red = None
@@ -1598,6 +1727,12 @@ class MCH_OT_press_unified(bpy.types.Operator):
         self.state = 'DRAW'
         self.pts.append(xy)
         TURNING[0] = True
+        try:                                   # 0.24.109 a stroke that starts on the end of the last line goes on from it
+            hit = nearest_end(context, self.projector, self.anchor, continue_radius(context.scene.mch_press),
+                              'base' if self.make_mesh else 'cut')
+            self.cont_end = hit[0] if hit is not None else None
+        except Exception:
+            self.cont_end = None
         self.handle = bpy.types.SpaceView3D.draw_handler_add(
             _draw_unified_path, (self,), 'WINDOW', 'POST_PIXEL')
         # No timer needed when dragging. We only need MOUSEMOVE / RELEASE.
@@ -1723,44 +1858,99 @@ class MCH_OT_press_unified(bpy.types.Operator):
             loops = lasso_line.line_loops(context, self.projector, pts, brush, width_px=stamp_px)
             if not loops:
                 raise cg.CutError('Could not form a band from this line')
+            # 0.24.109 a stroke that starts on the end of the last line goes on from it (in the first stroke's plane)
+            hit = nearest_end(context, self.projector, pts[0], continue_radius(pr), 'base' if self.make_mesh else 'cut')
             if self.make_mesh:
-                # Press Cut Alt+draw ALWAYS uses the active stamp as the line's
-                # cross-section. No separate Base Mesh Section toggle required.
-                # The scene's Base Mesh options stay independent.
-                st = base_mesh.scene_defaults(context)
-                attach = None
-                if getattr(st, 'line_attach', False):
-                    path = ce.smooth_open(pts, 6) if getattr(st, 'attach_curve', '') == 'SMOOTH' and len(pts) > 2 else pts
-                    attach = (path, ce.surface_point(context, self.projector, path[0]),
-                              ce.surface_point(context, self.projector, path[-1]))
-                try:
-                    safety_save.checkpoint('Mecha Base Mesh Line from Press Shape')
-                except Exception:
-                    pass
-                msg = base_mesh.perform_base(context, loops, self.projector,
-                                             cutter=False, attach=attach, path=pts,
-                                             sweep_style='ALPHA', section_width=span, section_height=span,
-                                             section_rest=True)
-                # Keep the original Base Mesh post-create radial symmetry behaviour.
-                try:
-                    from . import radial_sym
-                    msg = (msg or '') + radial_sym.after_create(context, 'BASE')
-                except (AttributeError, ImportError, RuntimeError, ReferenceError):
-                    pass
+                # Press Cut plain draw ALWAYS uses the active stamp as the line's cross-section (turned as the stamp
+                # is).  The scene's Base Mesh options stay independent.
+                if hit is not None:
+                    ob, at_end = hit[2], hit[3]
+                    try:
+                        safety_save.checkpoint('Mecha Base Mesh Line continued')
+                    except Exception:
+                        pass
+                    n, turned = base_mesh.extend_sweep(ob, self.projector, pts, at_end,
+                                                       end_hit=ce.surface_point(context, self.projector, pts[-1]))
+                    for o in context.selected_objects:
+                        o.select_set(False)
+                    ob.select_set(True)
+                    context.view_layer.objects.active = ob
+                    msg = f'Base Mesh Line continued: {ob.name} (+{n} points' + \
+                          (f', the view turned {turned:.0f} deg from the first stroke' if turned >= 5.0 else '') + ')'
+                else:
+                    st = base_mesh.scene_defaults(context)
+                    attach = None
+                    if getattr(st, 'line_attach', False):
+                        path = ce.smooth_open(pts, 6) if getattr(st, 'attach_curve', '') == 'SMOOTH' and len(pts) > 2 else pts
+                        attach = (path, ce.surface_point(context, self.projector, path[0]),
+                                  ce.surface_point(context, self.projector, path[-1]))
+                    try:
+                        safety_save.checkpoint('Mecha Base Mesh Line from Press Shape')
+                    except Exception:
+                        pass
+                    msg = base_mesh.perform_base(context, loops, self.projector,
+                                                 cutter=False, attach=attach, path=pts,
+                                                 sweep_style='ALPHA', section_width=span, section_height=span,
+                                                 section_rest=True, section_rotation=float(pr.rotation))
+                    # Keep the original Base Mesh post-create radial symmetry behaviour.
+                    try:
+                        from . import radial_sym
+                        msg = (msg or '') + radial_sym.after_create(context, 'BASE')
+                    except (AttributeError, ImportError, RuntimeError, ReferenceError):
+                        pass
+                ob = context.active_object
+                CONTINUE['base'] = ob.name if ob is not None and ob.get(base_mesh.SWEEP_KEY) else None
             else:
+                # 0.24.109 (user: "컷도 당연히 스탬프 단면으로 잘려야지" / "맥스 조절해서 얕게 만들어도 왜 다 뚫려") the Line Cut
+                # is the stamp's section swept along the line, pressed in Max x the part's size (not the Cut tool's depth)
                 cut = context.scene.mch_cut
                 if cut.targets == 'AUTO':
                     targets = ce.auto_targets(context.view_layer, self.projector, loops)
                 else:
                     targets = ce.gather_targets(context, self.projector, pts[0], 'CUT')
+                prev = CONTINUE['cut'] if hit is not None else None
+                if not targets and prev is not None:
+                    targets = [o for o in (bpy.data.objects.get(n) for n in prev.get('targets', ())) if o is not None]
                 if not targets:
                     raise cg.CutError('Line Cut: no mesh in the line / selection')
+                mode = 'SPLIT' if getattr(pr, 'result', 'CUT') == 'SPLIT' else 'CUT'
+                if prev is not None:
+                    frame = _cut_frame(prev)
+                    normal = Vector((frame[0][2], frame[1][2], frame[2][2])).normalized()
+                    facing = abs(Vector(self.projector.view_dir).normalized().dot(normal))
+                    if facing < 0.12:
+                        raise cg.CutError('Turn the view to face the first line to continue it')
+                    at_end = hit[3]
+                    old = [tuple(q) for q in prev['path']]
+                    width, height, bottom = float(prev['width']), float(prev['height']), float(prev['bottom'])
+                    section = [[tuple(q) for q in lp] for lp in prev['section']]
+                    new_local = base_mesh.plane_path(frame, self.projector, pts)
+                    if not at_end:
+                        old.reverse()
+                    tail, new_pts = base_mesh.join_path(old, new_local, fade=2.0 * width, tail=width)
+                    local_path = tail + new_pts            # (the old line's last bit again: the corner is filled)
+                    full = old + new_pts
+                    if not at_end:
+                        full.reverse()
+                    turned = math.degrees(math.acos(min(1.0, facing)))
+                else:
+                    size = max(part_size(t) for t in targets)
+                    depth = size * float(pr.max_depth)
+                    section, bottom = line_cut_section(context, pr, depth, span, eps=0.003 * size)
+                    width = height = span
+                    _groups, frame, local_path = base_mesh.sweep_frame(context, loops, self.projector, pts)
+                    full, turned = local_path, 0.0
                 try:
                     safety_save.checkpoint('Mecha Line Cut')
                 except Exception:
                     pass
-                mode = 'SPLIT' if getattr(context.scene.mch_press, 'result', 'CUT') == 'SPLIT' else 'CUT'
-                msg = ce.perform_closed(context, mode, targets, loops, self.projector, False)   # (0.24.107 Split too)
+                msg = base_mesh.sweep_cut(context, frame, local_path, section, width, height, bottom, targets, mode)
+                if prev is not None:
+                    msg = 'Line Cut continued: ' + msg + \
+                          (f' | the view turned {turned:.0f} deg from the first stroke' if turned >= 5.0 else '')
+                CONTINUE['cut'] = {'frame': _flat_frame(frame), 'path': [list(q) for q in full],
+                                   'section': [[list(q) for q in lp] for lp in section], 'width': width,
+                                   'height': height, 'bottom': bottom, 'targets': [t.name for t in targets]}
             self.report({'INFO'}, msg or ('Base Mesh Line' if self.make_mesh else 'Line Cut'))
             return {'FINISHED'}
         except cg.CutError as ex:
@@ -2205,7 +2395,8 @@ def draw(layout, context):
     row = layout.row(align=True)
     row.enabled = cut_presets.LAST_LOOPS[0] is not None
     row.operator('mch.save_cut_shape', text='Save Shape (the outline you drew last)', icon='FILE_TICK')
-    layout.label(text='Drag: Base Mesh Line  |  Alt + drag: Line Cut', icon='INFO')
+    layout.label(text='Drag: Base Mesh Line  |  Alt + drag: Line Cut (the stamp as its section, Max deep)', icon='INFO')
+    layout.label(text='Start on a line\'s end mark: it goes on from there (turn the view first if you like)', icon='BLANK1')
     if brush is not None:
         lc = layout.column(align=True)
         lc.prop(brush, 'line_width', text='Draw Line Width')
