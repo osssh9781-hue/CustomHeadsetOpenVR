@@ -1415,6 +1415,7 @@ def _build_sweep_bmesh(data, p):
         tangents.append((-d.y, d.x))
     width, height = max(1e-5, p.section_width), max(1e-5, p.height)
     base_angle, twist, taper = p.section_rotation, p.section_twist, p.section_taper
+    rest = bool(data.get('rest'))
     bm = bmesh.new()
     try:
         for outer, holes in groups:
@@ -1433,10 +1434,13 @@ def _build_sweep_bmesh(data, p):
                 angle = base_angle + twist*t
                 ca, sa = math.cos(angle), math.sin(angle)
                 ring = []
-                for u, v in flat:
-                    u, v = (u*ca-v*sa)*scale, (u*sa+v*ca)*scale
+                uv = [((u*ca-v*sa)*scale, (u*sa+v*ca)*scale) for u, v in flat]
+                # 0.24.108 rest: the section's lowest point just under the surface (Press Cut draws the stamp
+                # standing on the part; a centred section was half buried)
+                dz = (-min(v for _u, v in uv) - 0.02) * height if rest else 0.0
+                for u, v in uv:
                     ring.append(bm.verts.new((px+nx*u*width, py+ny*u*width,
-                                              p.offset+v*height)))
+                                              p.offset+v*height+dz)))
                 all_rings.append(ring)
             for a, b, c in cap_faces:
                 # Profile +U points left across the path, +V points up.
@@ -1500,7 +1504,8 @@ def _create_section_sweep(context, loops, projector, path, defaults, attach=None
         l = inv @ w
         local_path.append((float(l.x), float(l.y)))
     # Snapshot vector loops: rebuilding still works if the saved Press Cut shape is renamed/deleted.
-    sweep = {'path': local_path, 'loops': section, 'section_name': name}
+    sweep = {'path': local_path, 'loops': section, 'section_name': name,
+             'rest': bool(getattr(defaults, 'section_rest', False))}
     msg = _create_live_base(context, groups, frame, defaults, embed=0.0, sweep_data=sweep)
     ob = getattr(context, 'active_object', None) if attach is not None else None
     if ob is not None and getattr(ob, 'mch_base', None) is not None and ob.mch_base.live:
@@ -1795,7 +1800,7 @@ def _local_groups(context, loops, projector, allow_invert=True):
 
 
 def perform_base(context, loops, projector, cutter=False, targets=None, attach=None, path=None,
-                 sweep_style=None, section_width=None):
+                 sweep_style=None, section_width=None, section_height=None, section_rest=False):
     """Create a solid or cutter, optionally forcing a section for a single draw.
 
     Press Cut Alt+drag uses sweep_style='ALPHA' so its CURRENT selected stamp
@@ -1805,7 +1810,7 @@ def perform_base(context, loops, projector, cutter=False, targets=None, attach=N
     if sweep_style is not None:
         if sweep_style not in {'CIRCLE', 'SQUARE', 'ALPHA'}:
             raise cg.CutError('Invalid line section style.')
-        defaults = _WithSectionStyle(defaults, sweep_style, section_width)
+        defaults = _WithSectionStyle(defaults, sweep_style, section_width, section_height, section_rest)
     creature = defaults.profile in CREATURE_PROFILES
     if not cutter and path is not None and not creature and defaults.profile_sweep != 'OFF':
         return _create_section_sweep(context, loops, projector, path, defaults, attach)
@@ -1871,11 +1876,14 @@ def scene_defaults(context):
 class _WithSectionStyle:
     """Settings view for a single Alt+draw. Does NOT mutate scene settings."""
 
-    def __init__(self, base, style, width=None):
+    def __init__(self, base, style, width=None, height=None, rest=False):
         self._base = base
         self.profile_sweep = style
         if width is not None:          # 0.24.107 the drawn line's own width (what the preview band showed)
             self.section_width = max(0.001, float(width))
+        if height is not None:         # 0.24.108 Press Cut: the section as tall as the stamp (the stamp itself)
+            self.height = max(0.001, float(height))
+        self.section_rest = bool(rest) # 0.24.108 the section rests on the surface (not half sunk)
 
     def __getattr__(self, name):
         return getattr(self._base, name)

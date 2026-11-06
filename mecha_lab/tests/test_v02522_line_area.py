@@ -162,7 +162,7 @@ brush.line_mode, brush.line_area = False, False
 src_ce = open(ce.__file__).read()
 check('wired: the stroke engine and the Press Line Cut use line_loops; the top bar has the Area button',
       'lasso_line.line_loops(bpy.context, self.projector, self._line_path(pts), self.brush, prof)' in src_ce
-      and 'lasso_line.line_loops(context, self.projector, pts, brush)' in open(pc.__file__).read()
+      and 'lasso_line.line_loops(context, self.projector, pts, brush, width_px=stamp_px)' in open(pc.__file__).read()
       and "_seg('Area', brush, 'line_area')" in open(top_bar.__file__).read()
       and 'fill=fill_on(context, d.get(\'mode\'))' in open(ls.__file__).read())
 summary()

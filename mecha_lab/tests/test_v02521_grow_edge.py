@@ -152,7 +152,7 @@ try:
     groups = top_bar.groups(C, 'PRESS') if hasattr(top_bar, 'groups') else None
 except Exception:      # noqa
     groups = None
-check('top bar: an "Alt Grow" group with Sharp / Chamfer / Bevel / Round, Edge size and Segs',
-      "out.append(('Alt Grow', grow))" in src and "'grow_edge_size'" in src and "'grow_edge_segments'" in src)
-check('sidebar: the Grow Edge box', "Alt + Hold: Grow Edge" in open(pc.__file__).read())
+check('top bar: a "Grow" group with Sharp / Chamfer / Bevel / Round, Edge size and Segs',
+      "out.append(('Grow', grow))" in src and "'grow_edge_size'" in src and "'grow_edge_segments'" in src)
+check('sidebar: the Grow Edge box', "Hold: Grow Edge" in open(pc.__file__).read())
 summary()

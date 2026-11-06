@@ -1,0 +1,32 @@
+tool MCH_BUILTIN_PENTAGON start 0.009999999776482582 speed 0.11999999731779099
+before {'A': (0.0, 8.0), 'B': (0.0, 8.0), 'C': (0.0, 8.0), 'D': (0.0, 8.0), 'E': (0.0, 8.0), 'F': (0.0, 8.0)}
+shot 1_stamp_over_A.png True
+SHORT press on A (about 0.15 s): pocket depth 0.0373 volume 8.0 -> 7.9797
+shot 2_holding_B.png True
+RED while holding B (triangles, depth, deepest): (13, 0.19397108526439888, 0.1939697265625)
+shot 2b_holding_B_angle.png True
+LONG press on B (about 2 s): pocket depth 0.6373 volume 8.0 -> 7.6519
+Esc while holding on C: pocket depth 0.0 volume 8.0 -> 8.0 - backup meshes left []
+SPLIT press on C (about 1.2 s): pieces [('C_Split', 0.1489)] C now (0.2726, 7.8511)
+shot 3_turning.png True
+TURN R + 25 px: 10.0 deg | then R + Ctrl + 31 px: 20.0 deg (5 degree steps) | Shift+R: 0.0 deg
+shot 4_curved_stamp_over_D.png True
+CURVE Left-Right 0.6 on D (about 1.6 s): depth middle 0.284 left/right side 0.155 up/down side 0.284 points 384
+CURVE both 0.5 on E (about 1.6 s): depth middle 0.38 left/right side 0.297 up/down side 0.306
+shot 5_corner_stamp_over_A.png True
+MECH Corner Chamfer on A's corner (about 1.4 s): volume 7.9797 -> 7.9006
+OFF-EDGE Round Panel, its middle off E's side (about 1 s): volume 7.8416 -> 7.8197
+DRAW Shift + drag (a house on B): the drawn stamp is used True - its corners 7 - size px 25.8
+shot 6_drawn_stamp_over_B.png True
+DRAW pressed with the drawn house on B (about 1.2 s): volume 7.6519 -> 7.6132
+SHAPES Rectangle (Shift + drag 1.4 x 1.0 m on screen): drawn True corners 4 size px 69.0 expected about 69.0
+SHAPES Lasso (Shift + click, click, double-click: a triangle): drawn True corners 3
+shot 6b_sketch_before_enter.png True
+SKETCH Shift + drag a square, Shift + Alt + drag a smaller one inside: items ['ADD', 'SUB']
+SKETCH Enter: drawn True outlines 2 sketch left False
+shot 6c_sketched_ring_stamp_over_F.png True
+SKETCH stamp pressed on F (about 1.2 s): volume 8.0 -> 7.7091 | top z middle 1.0 ring 0.818
+DOTS outline points over a mesh / all, contact point: {'over D': (36, 36, True), 'half off E': (16, 36, True), 'off all': (0, 36, False)}
+shot 7_contact_dots_half_off_E.png True
+shot 8_result.png True
+DONE short 0.0373 long 0.6373 longer is deeper True

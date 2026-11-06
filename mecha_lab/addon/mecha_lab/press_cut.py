@@ -10,7 +10,7 @@ Save Shape: the last closed outline drawn with Cut / Split (lasso, sketch, recta
 for the session (``cut_presets.remember``); Save Shape writes it as a cut shape (``cut_presets.save_loops``) - it is
 then in the shape list of Press Cut and of the Cut / Split Custom stamp, in every file.
 
-Alt + LMB: grow a separate surface-following mesh outward; its base overlaps the source.
+Hold LMB: grow a separate surface-following mesh outward (Alt + hold: press the stamp in - a cut).
 Shift + drag: draw your own stamp outline (it is the stamp at once; Save Shape keeps it).
 [ / ] or F + mouse: stamp size.  R + mouse left / right: turn it (0.4 degree a pixel, Shift fine, Ctrl 5 degree
 steps; click keeps, Esc puts it back), Shift + R: back to 0 degrees.
@@ -101,7 +101,7 @@ class MCH_PG_Press(bpy.types.PropertyGroup):
         ('CHAMFER', 'Chamfer', 'One flat cut along the top rim'),
         ('BEVEL', 'Bevel', 'A rounded top rim'),
         ('ROUND', 'Round', 'A dome: the whole top rises round from the rim to the middle')],
-        description='Alt + hold (Grow): the top edge of the part that grows out')
+        description='Hold (Grow): the top edge of the part that grows out')
     grow_edge_size: FloatProperty(name='Edge Size', default=0.35, min=0.02, max=0.9, subtype='FACTOR', precision=2,
                                   update=_redraw,
                                   description='Chamfer / Bevel size, of the grown height (it grows with it; never '
@@ -113,7 +113,7 @@ class MCH_PG_Press(bpy.types.PropertyGroup):
         ('FLAT', 'Flat', 'The outer face is flat (facing the view), resting on the highest point of the surface under '
                          'the stamp - bumps in the surface never show on it; the walls reach down to the surface'),
         ('FOLLOW', 'Follow', 'The outer face follows the surface under the stamp (its bumps and curve included)')],
-        description='Alt + hold (Grow): the shape of the outer face')
+        description='Hold (Grow): the shape of the outer face')
     start: FloatProperty(name='Start', default=0.01, min=0.0005, max=1.0, subtype='FACTOR', precision=3,
                          description='Depth at the press, of the part\'s size (a quick tap)')
     speed: FloatProperty(name='Speed', default=0.12, min=0.005, soft_max=1.0, max=5.0, precision=3,
@@ -1422,19 +1422,27 @@ def _draw_unified_path(op):
             return
         sh = ce._shader()
         gpu.state.blend_set('ALPHA')
-        color = (0.3, 0.85, 1.0, 1.0) if op.alt_draw else (1.0, 0.76, 0.24, 1.0)
+        color = (0.3, 0.85, 1.0, 1.0) if op.make_mesh else (1.0, 0.76, 0.24, 1.0)
         ce._draw_lines(sh, op.pts, color, closed=False, width=2.5)
+        try:                                   # 0.24.108 the band as wide as the stamp: what the line will be
+            from . import lasso_line
+            outline = lasso_line.band(op.pts, max(2.0, 2.0 * float(bpy.context.scene.mch_press.size)), 'ROUND')
+            if len(outline) >= 3:
+                ce._draw_lines(sh, outline, (color[0], color[1], color[2], 0.55), closed=True, width=1.5)
+        except Exception:
+            pass
         gpu.state.blend_set('NONE')
     except Exception:
         pass
 
 
 class MCH_OT_press_unified(bpy.types.Operator):
-    """Drag = Line Cut; Alt+drag = Base Mesh Line; hold = Press; Alt+hold = Grow"""
+    """Drag = Base Mesh Line; Alt+drag = Line Cut; hold = Grow (a mesh out of the surface); Alt+hold = Press Cut.
+    (0.24.108 user: "그냥 그릴 때는 베이스 메쉬 라인, Alt 는 컷 라인, 그냥 꾹 누르면 메쉬가 나오고, Alt + 꾹은 잘려야")"""
     bl_idname = 'mch.press_unified'
     bl_label = 'Press / Line / Base Mesh'
-    bl_description = ('Draw: Line Cut | Alt+draw: Base Mesh Line | Hold: Press Cut | '
-                      'Alt+hold: Grow | Shift+draw: custom stamp')
+    bl_description = ('Draw: Base Mesh Line | Alt+draw: Line Cut | Hold: Grow (a mesh out) | '
+                      'Alt+hold: Press Cut | Shift+draw: custom stamp')
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -1453,7 +1461,7 @@ class MCH_OT_press_unified(bpy.types.Operator):
         self.projector = ce.make_projector(region, rv3d)
         self.anchor = (float(event.mouse_region_x), float(event.mouse_region_y))
         self.pts = [self.anchor]
-        self.alt_draw = bool(event.alt)  # latch the gesture at mouse-down
+        self.make_mesh = not bool(event.alt)   # 0.24.108 (user) plain = Base Mesh line / Grow, Alt = Line Cut / Press
         self.state = 'WAIT'
         self.down_time = time.perf_counter()
         self.handle = None
@@ -1524,7 +1532,7 @@ class MCH_OT_press_unified(bpy.types.Operator):
             safety_save.checkpoint('Mecha Unified Press')
         except Exception:
             pass
-        typ = GrowPress if self.alt_draw else Press
+        typ = GrowPress if self.make_mesh else Press
         try:
             self.press = typ(context, target, loops, self.projector, st.result,
                              center=xy, angle=st.rotation, curve=(st.curve_x, st.curve_y),
@@ -1608,11 +1616,16 @@ class MCH_OT_press_unified(bpy.types.Operator):
             pass
         try:
             brush = context.scene.mch_brush
-            # The same Line Width / Taper / Caps settings as the native Line tool.
-            loops = lasso_line.line_loops(context, self.projector, pts, brush)   # (0.24.108 a crossing / closed line too)
+            # 0.24.108 (user: "내가 정한 브러시 스탬프랑 단면이 똑같아야지") the line is as wide as the stamp on screen
+            # ([ ] / F), and the Base Mesh line's section IS the stamp: as wide and as tall as it shows
+            pr = context.scene.mch_press
+            stamp_px = max(2.0, 2.0 * float(pr.size))                 # (the stamp's longer side, px)
+            ppu = lasso_line.pixels_per_unit(context, self.projector, pts[0])
+            span = stamp_px / max(ppu, 1e-6)                          # ... in world units
+            loops = lasso_line.line_loops(context, self.projector, pts, brush, width_px=stamp_px)
             if not loops:
                 raise cg.CutError('Could not form a band from this line')
-            if self.alt_draw:
+            if self.make_mesh:
                 # Press Cut Alt+draw ALWAYS uses the active stamp as the line's
                 # cross-section. No separate Base Mesh Section toggle required.
                 # The scene's Base Mesh options stay independent.
@@ -1628,7 +1641,8 @@ class MCH_OT_press_unified(bpy.types.Operator):
                     pass
                 msg = base_mesh.perform_base(context, loops, self.projector,
                                              cutter=False, attach=attach, path=pts,
-                                             sweep_style='ALPHA', section_width=brush.line_width)
+                                             sweep_style='ALPHA', section_width=span, section_height=span,
+                                             section_rest=True)
                 # Keep the original Base Mesh post-create radial symmetry behaviour.
                 try:
                     from . import radial_sym
@@ -1649,7 +1663,7 @@ class MCH_OT_press_unified(bpy.types.Operator):
                     pass
                 mode = 'SPLIT' if getattr(context.scene.mch_press, 'result', 'CUT') == 'SPLIT' else 'CUT'
                 msg = ce.perform_closed(context, mode, targets, loops, self.projector, False)   # (0.24.107 Split too)
-            self.report({'INFO'}, msg or ('Base Mesh Line' if self.alt_draw else 'Line Cut'))
+            self.report({'INFO'}, msg or ('Base Mesh Line' if self.make_mesh else 'Line Cut'))
             return {'FINISHED'}
         except cg.CutError as ex:
             self.report({'WARNING'}, str(ex))
@@ -2053,7 +2067,7 @@ def draw(layout, context):
     # tool's standalone section choices remain independent and unchanged.
     base = context.scene.mch_base
     section = layout.box()
-    section.label(text='Alt + Draw: Current Stamp Section', icon='CURVE_PATH')
+    section.label(text='Draw: Base Mesh Line (the stamp as its section)', icon='CURVE_PATH')
     section.label(text='Uses the selected Press Cut shape automatically')
     section.prop(base, 'section_width')
     section.prop(base, 'height', text='Section Height')
@@ -2076,7 +2090,7 @@ def draw(layout, context):
         if st.stamp_edge == 'BEVEL':
             edge.prop(st, 'stamp_edge_segments', text='Segments')
     grow = layout.box()                         # 0.24.108 Alt + hold (Grow): the top edge
-    grow.label(text='Alt + Hold: Grow Edge', icon='MOD_BEVEL')
+    grow.label(text='Hold: Grow Edge', icon='MOD_BEVEL')
     grow.row(align=True).prop(st, 'grow_top', expand=True)
     grow.row(align=True).prop(st, 'grow_edge', expand=True)
     if st.grow_edge in {'CHAMFER', 'BEVEL'}:
@@ -2086,14 +2100,14 @@ def draw(layout, context):
     layout.row(align=True).prop(st, 'floor_mode', expand=True)
     layout.prop(st, 'dot_size', slider=True)
     col = layout.column(align=True)
-    col.label(text='Hold = Press  |  Alt + hold = Grow')
+    col.label(text='Hold = Grow (a mesh out)  |  Alt + hold = Press Cut')
     col.prop(st, 'start')
     col.prop(st, 'speed')
     col.prop(st, 'max_depth')
     row = layout.row(align=True)
     row.enabled = cut_presets.LAST_LOOPS[0] is not None
     row.operator('mch.save_cut_shape', text='Save Shape (the outline you drew last)', icon='FILE_TICK')
-    layout.label(text='Drag: Line Cut  |  Alt + drag: Base Mesh Line', icon='INFO')
+    layout.label(text='Drag: Base Mesh Line  |  Alt + drag: Line Cut', icon='INFO')
     if brush is not None:
         lc = layout.column(align=True)
         lc.prop(brush, 'line_width', text='Draw Line Width')
@@ -2102,7 +2116,7 @@ def draw(layout, context):
         if brush.line_taper_on:
             lc.prop(brush, 'line_taper', text='Taper Amount')
     layout.label(text='Press on a part and hold: deeper the longer you hold', icon='INFO')
-    layout.label(text='Alt + hold: grow a separate mesh from the surface', icon='INFO')
+    layout.label(text='Hold: grow a separate mesh from the surface  |  Alt + hold: press in', icon='INFO')
     layout.label(text='Release: keep  |  Esc / RMB: back  |  [ ] / F size')
     layout.label(text='R + mouse: turn (Shift fine, Ctrl 5\u00b0)  |  Shift+R: 0\u00b0')
 

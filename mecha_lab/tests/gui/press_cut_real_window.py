@@ -123,9 +123,11 @@ def flow():
     xdo('mousemove', *xy)
     yield 1.0
     shot('1_stamp_over_A.png')
+    xdo('keydown', 'alt')                        # (0.24.108 Alt + hold = Press Cut)
     xdo('mousedown', 1)                              # a short press
     yield 0.15
     xdo('mouseup', 1)
+    xdo('keyup', 'alt')
     yield 1.5
     a_after = pocket(boxes['A'])
     log('SHORT press on A (about 0.15 s): pocket depth', a_after[0], 'volume', before['A'][1], '->', a_after[1])
@@ -133,6 +135,7 @@ def flow():
     xy = screen_of((0.0, 0.0, 1.0))
     xdo('mousemove', *xy)
     yield 0.6
+    xdo('keydown', 'alt')                        # (0.24.108 Alt + hold = Press Cut)
     xdo('mousedown', 1)                              # a long press
     yield 1.0
     shot('2_holding_B.png')
@@ -151,6 +154,7 @@ def flow():
     rv2.view_rotation, rv2.view_location, rv2.view_distance, rv2.view_perspective = keep
     yield 0.5
     xdo('mouseup', 1)
+    xdo('keyup', 'alt')
     yield 1.5
     b_after = pocket(boxes['B'])
     log('LONG press on B (about 2 s): pocket depth', b_after[0], 'volume', before['B'][1], '->', b_after[1])
@@ -158,11 +162,13 @@ def flow():
     xy = screen_of((2.6, 0.0, 1.0))
     xdo('mousemove', *xy)
     yield 0.6
+    xdo('keydown', 'alt')                        # (0.24.108 Alt + hold = Press Cut)
     xdo('mousedown', 1)                              # pressed, then Esc while held
     yield 0.8
     xdo('key', 'Escape')
     yield 0.4
     xdo('mouseup', 1)
+    xdo('keyup', 'alt')
     yield 1.0
     c_after = pocket(boxes['C'])
     log('Esc while holding on C: pocket depth', c_after[0], 'volume', before['C'][1], '->', c_after[1],
@@ -170,9 +176,11 @@ def flow():
 
     S.mch_press.result = 'SPLIT'
     yield 0.5
+    xdo('keydown', 'alt')                        # (0.24.108 Alt + hold = Press Cut)
     xdo('mousedown', 1)
     yield 1.2
     xdo('mouseup', 1)
+    xdo('keyup', 'alt')
     yield 1.5
     pieces = [o for o in S.objects if o.name.startswith('C_Split')]
     log('SPLIT press on C (about 1.2 s): pieces', [(o.name, round(volume(o), 4)) for o in pieces],
@@ -212,9 +220,11 @@ def flow():
     xdo('mousemove', *screen_of((-1.4, -2.7, 1.0)))
     yield 0.8
     shot('4_curved_stamp_over_D.png')
+    xdo('keydown', 'alt')                        # (0.24.108 Alt + hold = Press Cut)
     xdo('mousedown', 1)
     yield 1.6
     xdo('mouseup', 1)
+    xdo('keyup', 'alt')
     yield 1.5
 
     def fl(ob, x, y):
@@ -228,9 +238,11 @@ def flow():
     S.mch_press.curve_x, S.mch_press.curve_y = 0.5, 0.5
     xdo('mousemove', *screen_of((1.4, -2.7, 1.0)))
     yield 0.8
+    xdo('keydown', 'alt')                        # (0.24.108 Alt + hold = Press Cut)
     xdo('mousedown', 1)
     yield 1.6
     xdo('mouseup', 1)
+    xdo('keyup', 'alt')
     yield 1.5
     log('CURVE both 0.5 on E (about 1.6 s): depth middle', fl(boxes['E'], 1.4, -2.7), 'left/right side',
         fl(boxes['E'], 1.4 + 0.35, -2.7), 'up/down side', fl(boxes['E'], 1.4, -2.7 + 0.3))
@@ -242,18 +254,22 @@ def flow():
     xdo('mousemove', *screen_of((-2.6 + 0.8, 0.8, 1.0)))
     yield 0.8
     shot('5_corner_stamp_over_A.png')
+    xdo('keydown', 'alt')                        # (0.24.108 Alt + hold = Press Cut)
     xdo('mousedown', 1)
     yield 1.4
     xdo('mouseup', 1)
+    xdo('keyup', 'alt')
     yield 1.5
     log('MECH Corner Chamfer on A\'s corner (about 1.4 s): volume', v0, '->', round(volume(boxes['A']), 4))
     S.mch_press.shape = 'MCH_BUILTIN_M_ROUND_PANEL'
     v0 = round(volume(boxes['E']), 4)
     xdo('mousemove', *screen_of((1.4 + 1.15, -2.7, 1.0)))   # (its middle just off E's right side)
     yield 0.8
+    xdo('keydown', 'alt')                        # (0.24.108 Alt + hold = Press Cut)
     xdo('mousedown', 1)
     yield 1.0
     xdo('mouseup', 1)
+    xdo('keyup', 'alt')
     yield 1.5
     log('OFF-EDGE Round Panel, its middle off E\'s side (about 1 s): volume', v0, '->', round(volume(boxes['E']), 4))
     # 0.24.95 (user: "여기 왜 라쏘 툴이 없어? 그릴 수가 없는데" -> "그렇게 하자") Shift + drag: draw your own stamp
@@ -283,9 +299,11 @@ def flow():
     xdo('mousemove', *screen_of((-0.6, -0.575, 1.0)))
     yield 0.8
     shot('6_drawn_stamp_over_B.png')
+    xdo('keydown', 'alt')                        # (0.24.108 Alt + hold = Press Cut)
     xdo('mousedown', 1)
     yield 1.2
     xdo('mouseup', 1)
+    xdo('keyup', 'alt')
     yield 1.5
     log('DRAW pressed with the drawn house on B (about 1.2 s): volume', v0, '->', round(volume(boxes['B']), 4))
     # 0.24.95 (user: "원래 쓰던 라쏘랑 스케치 다 넣어 줘") Shift + draw with the shared shapes and the Sketch
@@ -360,9 +378,11 @@ def flow():
     xdo('mousemove', *screen_of((0.0, 2.6, 1.0)))
     yield 0.8
     shot('6c_sketched_ring_stamp_over_F.png')
+    xdo('keydown', 'alt')                        # (0.24.108 Alt + hold = Press Cut)
     xdo('mousedown', 1)
     yield 1.2
     xdo('mouseup', 1)
+    xdo('keyup', 'alt')
     yield 1.5
     mid_top = boxes['F'].ray_cast((0.0, 0.0, 5.0), (0, 0, -1))
     ring_top = boxes['F'].ray_cast((0.5, 0.0, 5.0), (0, 0, -1))

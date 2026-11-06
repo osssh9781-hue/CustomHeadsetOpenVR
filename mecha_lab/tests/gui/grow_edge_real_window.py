@@ -110,13 +110,9 @@ def flow():
         before = set(bpy.data.objects.keys())
         xdo('mousemove', *screen_of((box.location.x, 0.0, 1.0)))
         yield 0.6
-        xdo('keydown', 'alt')
-        yield 0.15
-        xdo('mousedown', 1)
+        xdo('mousedown', 1)                 # (0.24.108: a plain hold grows; Alt + hold presses in)
         yield 1.6
         xdo('mouseup', 1)
-        yield 0.15
-        xdo('keyup', 'alt')
         yield 1.2
         new = [bpy.data.objects[n] for n in set(bpy.data.objects.keys()) - before]
         grown = [o for o in new if o.type == 'MESH']

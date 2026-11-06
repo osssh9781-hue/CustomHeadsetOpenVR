@@ -265,15 +265,19 @@ def crosses(loop):
     return len(loop) >= 4 and bool(cg.find_intersections([loop]))
 
 
-def line_loops(context, projector, path, brush, pressure=None):
+def line_loops(context, projector, path, brush, pressure=None, width_px=None):
     """0.24.108 The band(s) handed to a tool for an open path in Line mode.  A stroke that does not meet itself:
     the one band outline.  One that crosses or closes on itself: the exact union - with its holes as holes (a closed
-    stroke = a ring), or, with the brush's Area on, filled (the whole region the line encloses is the shape)."""
+    stroke = a ring), or, with the brush's Area on, filled (the whole region the line encloses is the shape).
+    ``width_px``: the band's width on screen instead of the brush's Line Width (Press Cut: the stamp's width)."""
     if len(path) < 2:
         return []
-    ppu = pixels_per_unit(context, projector, path[0])
     from . import tool_state as ts
-    width = max(1.0, brush.line_width * ppu)
+    if width_px is not None:
+        width = max(1.0, float(width_px))
+    else:
+        ppu = pixels_per_unit(context, projector, path[0])
+        width = max(1.0, brush.line_width * ppu)
     taper = getattr(brush, 'line_taper', 0.0) if getattr(brush, 'line_taper_on', False) else 0.0
     prof = pressure if getattr(brush, 'line_pressure', False) else None
     loop = band(path, width, brush.line_caps, cap_segments=ts.res_n(8, 2), taper=taper, pressure=prof)

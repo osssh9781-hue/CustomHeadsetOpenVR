@@ -71,7 +71,7 @@ for n in ('modal', '_press_to_draw', '_begin_draw', '_finish_draw', '_cleanup', 
 op = Shim()
 op.reports = []
 op.state, op.down_time, op.anchor, op.pts = 'PRESS', time.perf_counter(), tuple(xy), [tuple(xy)]
-op.press, op.region, op.projector, op.alt_draw = press, Region(), TOP, False
+op.press, op.region, op.projector, op.make_mesh = press, Region(), TOP, False   # (Alt held: the Line Cut)
 op.timer = op.handle = op.handle_red = None
 r = op.modal(C, Ev('MOUSEMOVE', 'NOTHING', xy[0] + 40, xy[1]))
 check('a press moved on 40 px within the first moment turns into the drawn line', r == {'RUNNING_MODAL'} and op.state == 'DRAW')
@@ -85,6 +85,69 @@ r = op.modal(C, Ev('LEFTMOUSE', 'RELEASE', xy[0] + 160, xy[1] + 45))
 check('... let go: the line is cut, as a Split when the press result is Split (v0.24.106 always Cut)',
       r == {'FINISHED'} and len(bpy.data.objects) > n_obj, (r, op.reports[-1:] if op.reports else None))
 st.result = 'CUT'
+# 0.24.108 (user) gestures: plain drag = Base Mesh line whose section IS the stamp (as wide / tall as it shows on
+# screen, resting on the surface); Alt + drag = Line Cut as wide as the stamp; plain hold = Grow; Alt + hold = Press
+fresh()
+C = bpy.context
+st = C.scene.mch_press
+st.shape, st.size = 'MCH_BUILTIN_M_OCTAGON', 40.0
+p = cube('P', size=2.0)
+C.scene.mch_settings.auto_apply = True
+op2 = Shim()
+op2.reports = []
+xy0 = TOP.to_screen(Vector((-0.6, 0.0, 1.0)))
+op2.state, op2.down_time, op2.anchor = 'DRAW', time.perf_counter(), tuple(xy0)
+op2.pts = [tuple(TOP.to_screen(Vector((-0.6 + 1.2 * k / 12, 0.0, 1.0)))) for k in range(13)]
+op2.press, op2.region, op2.projector, op2.make_mesh = None, Region(), TOP, True
+op2.timer = op2.handle = op2.handle_red = None
+before = set(bpy.data.objects.keys())
+r = op2._finish_draw(C, op2.pts[-1])
+new = [bpy.data.objects[n] for n in set(bpy.data.objects.keys()) - before]
+span = 2 * 40.0 / 100.0                                       # the stamp's longer side in world units
+ok = r == {'FINISHED'} and len(new) == 1
+if ok:
+    ob = new[0]
+    pts3 = [ob.matrix_world @ Vector(c) for c in ob.bound_box]
+    wy = max(q.y for q in pts3) - min(q.y for q in pts3)
+    hz = max(q.z for q in pts3) - min(q.z for q in pts3)
+    zlo = min(q.z for q in pts3)
+check('plain drag: a Base Mesh line whose section is the stamp - as wide as the stamp on screen', ok and abs(wy - span) < span * 0.08,
+      (r, len(new), round(wy, 3) if ok else None, span))
+check('... and as tall as it (the stamp itself, not squashed to the Base height)', ok and abs(hz - span) < span * 0.12,
+      round(hz, 3) if ok else None)
+check('... standing on the surface (its lowest point just under the top face, not half buried)', ok and -0.03 < zlo - 1.0 < 0.005,
+      round(zlo - 1.0, 3) if ok else None)
+check('... the Base Mesh defaults are untouched by it', C.scene.mch_base.profile_sweep == 'OFF')
+
+op3 = Shim()
+op3.reports = []
+op3.state, op3.down_time, op3.anchor = 'DRAW', time.perf_counter(), tuple(xy0)
+op3.pts = list(op2.pts)
+op3.press, op3.region, op3.projector, op3.make_mesh = None, Region(), TOP, False
+op3.timer = op3.handle = op3.handle_red = None
+C.scene.mch_cut.depth_mode, C.scene.mch_cut.depth, C.scene.mch_cut.depth_floor = 'SURFACE', 0.3, 'FLAT'
+import bmesh as _bm
+
+
+def vol(ob):
+    bm = _bm.new()
+    bm.from_mesh(ob.data)
+    v = bm.calc_volume()
+    bm.free()
+    return v
+
+
+v0 = vol(p)
+st.result = 'CUT'
+r = op3._finish_draw(C, op3.pts[-1])
+removed = v0 - vol(p)
+exp = (span * 1.2 + math.pi * (span / 2) ** 2) * 0.3
+check('Alt + drag: a Line Cut as wide as the stamp (groove volume = width x length + round ends, x depth)',
+      r == {'FINISHED'} and abs(removed - exp) < exp * 0.12, (round(removed, 3), round(exp, 3)))
+check('gestures in the operator: plain = make_mesh (Base line / Grow), Alt = cut (Line Cut / Press)',
+      'self.make_mesh = not bool(event.alt)' in open(pc.__file__).read()
+      and 'typ = GrowPress if self.make_mesh else Press' in open(pc.__file__).read())
+
 check('a press held still is not turned into a line (late-drag window and distance)',
       pc.UNIFIED_LATE_DRAG_PX >= pc.UNIFIED_DRAG_PX and 0.3 <= pc.UNIFIED_LATE_DRAG_SEC <= 1.5
       and pc.UNIFIED_HOLD_SEC >= 0.2)
