@@ -946,7 +946,13 @@ def perform_closed(context, mode, targets, loops, projector, invert=False):
         loops = folded if folded is not None else [press_cut.resample(lp, step) for lp in loops]
     _cg.FLOOR[0] = sf
     try:
-        return _perform_closed_base(context, mode, targets, loops, projector, invert)
+        try:
+            return _perform_closed_base(context, mode, targets, loops, projector, invert)
+        except _cg.CutError as ex:
+            if not getattr(sf, 'folds', None) or 'watertight' not in str(ex):
+                raise
+            sf.folds = None                           # 0.24.108 the folded floor did not close: the grid floor instead
+            return _perform_closed_base(context, mode, targets, loops, projector, invert)
     finally:
         _cg.FLOOR[0] = None
 

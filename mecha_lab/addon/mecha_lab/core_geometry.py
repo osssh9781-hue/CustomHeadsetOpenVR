@@ -511,6 +511,36 @@ def _curved_cap(loops, projector, far_co, vd, floor, spacing, folds=None):
     return where, keep
 
 
+def cap_triangles(loops):
+    """Triangles of a cap over ``loops`` (outer first, then holes), as indices into the loops' points laid flat.
+    0.24.108: Blender's constrained Delaunay with the outline as the face constraint - ``tessellate_polygon`` folded
+    over itself on an outline with close, nearly collinear points (the Follow floor's fold crossings): one cap edge
+    got four faces and the cutter was "not watertight".  Falls back to ``tessellate_polygon``."""
+    try:
+        from mathutils.geometry import delaunay_2d_cdt
+        pts, rings, k = [], [], 0
+        for lp in loops:
+            n = len(lp)
+            pts += [Vector((float(p[0]), float(p[1]))) for p in lp]
+            idx = list(range(k, k + n))
+            if signed_area(lp) < 0:                    # (the CDT wants every face counter-clockwise; a hole is known
+                idx.reverse()                          #  by being the 2nd.. face, not by its turn)
+            rings.append(idx)
+            k += n
+        out = delaunay_2d_cdt(pts, [], rings, 0, 1e-6)
+        coords, tris, orig, orig_faces = out[0], out[2], out[3], out[5]
+        if len(coords) != len(pts) or any(len(o) != 1 or o[0] != i for i, o in enumerate(orig)):
+            raise ValueError('merged points')          # (coincident points: the cap would not match the walls)
+        holes = set(range(1, len(rings)))
+        keep = [tuple(f) for i, f in enumerate(tris) if len(f) == 3 and 0 in orig_faces[i]
+                and not (holes & set(orig_faces[i]))]
+        if keep:
+            return keep
+    except (ValueError, TypeError, RuntimeError, ImportError):
+        pass
+    return [tuple(t) for t in tessellate_polygon([[(x, y, 0.0) for x, y in lp] for lp in loops])]
+
+
 def build_cutter_mesh(groups, projector, near_co, far_co, name='MCH_Cutter'):
     """Build a closed, outward-facing frustum prism mesh from grouped screen loops.  0.24.95 ``FLOOR`` set (Press
     Cut's curve): the far cap is a curved surface instead of the flat far plane."""
@@ -540,7 +570,7 @@ def build_cutter_mesh(groups, projector, near_co, far_co, name='MCH_Cutter'):
             far_pts.append(p_far + vd * floor.offset(xy, far_co) if floor is not None else p_far)
         verts.extend(near_pts)
         verts.extend(far_pts)
-        tris = tessellate_polygon([[(x, y, 0.0) for x, y in lp] for lp in loops])
+        tris = cap_triangles(loops)
         if not tris:
             raise CutError('Shape could not be triangulated.')
         flat_cap = floor is None or getattr(floor, 'planar', False)

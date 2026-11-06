@@ -22,6 +22,7 @@ import time
 
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
+from mathutils import Vector
 
 from . import core_geometry as cg
 from . import lasso_sketch
@@ -138,6 +139,15 @@ def part_size(ob):
 def depth_at(st, size, seconds):
     """The depth after holding ``seconds``: (Start + Speed x seconds) x the part's size, up to Max."""
     return size * min(st.max_depth, st.start + st.speed * max(0.0, seconds))
+
+
+GROW_TAP = 0.25            # 0.24.108 a tap with Grow: the mesh comes out this much of the stamp's width at once
+
+
+def press_depth(press, st, seconds):
+    """The depth / height for this press after ``seconds``: Grow has its own (a tap is already visible)."""
+    fn = getattr(press, 'depth_for', None)
+    return fn(st, seconds) if fn is not None else depth_at(st, press.size, seconds)
 
 
 def stamp_loops(context, center, st=None):
@@ -403,7 +413,10 @@ class SurfaceFloor:
         return self._insert_folds(loops, segs)
 
     def _insert_folds(self, loops, segs, snap=0.75):
-        """The fold lines clipped to the stamp (``self.folds``), and the outline with a point where each crosses it."""
+        """The fold lines clipped to the stamp (``self.folds``), and the outline with a point where each crosses it.
+        0.24.108: a fold piece ends EXACTLY on an outline point (the corner it was snapped to, or the crossing point
+        that goes into the outline) - a piece ending on an outline edge between two points made a T-junction: the
+        far cap had a vertex there and the wall had not, and the cutter was "not watertight" on any creased part."""
         def cross(p, q, r, s):
             d = (q[0] - p[0]) * (s[1] - r[1]) - (q[1] - p[1]) * (s[0] - r[0])
             if abs(d) < 1e-12:
@@ -411,34 +424,68 @@ class SurfaceFloor:
             t = ((r[0] - p[0]) * (s[1] - r[1]) - (r[1] - p[1]) * (s[0] - r[0])) / d
             u = ((r[0] - p[0]) * (q[1] - p[1]) - (r[1] - p[1]) * (q[0] - p[0])) / d
             return (t, u) if -1e-9 <= t <= 1 + 1e-9 and -1e-9 <= u <= 1 + 1e-9 else None
-        adds = {}                                        # (loop, edge) -> [(t, point)]
-        inner = []
-        for a, b in segs:
-            cuts = [0.0, 1.0]
+
+        def nearest_edge(x):
+            best = (1e18, None, None, None)
             for li, lp in enumerate(loops):
                 n = len(lp)
                 for i in range(n):
                     p, q = lp[i], lp[(i + 1) % n]
-                    hit = cross(p, q, a, b)
+                    dx, dy = q[0] - p[0], q[1] - p[1]
+                    l2 = dx * dx + dy * dy or 1e-12
+                    t = max(0.0, min(1.0, ((x[0] - p[0]) * dx + (x[1] - p[1]) * dy) / l2))
+                    d = math.dist(x, (p[0] + t * dx, p[1] + t * dy))
+                    if d < best[0]:
+                        best = (d, li, i, t)
+            return best
+
+        adds = {}                                        # (loop, edge) -> [(t, point)]
+
+        def on_outline(li, i, t):
+            """The outline point a fold end lands on: the edge's corner within ``snap``, else a new point on it."""
+            lp = loops[li]
+            p, q = lp[i], lp[(i + 1) % len(lp)]
+            x = (p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t)
+            if math.dist(x, p) <= snap:
+                return tuple(p)
+            if math.dist(x, q) <= snap:
+                return tuple(q)
+            for _t, y in adds.get((li, i), []):
+                if math.dist(x, y) <= snap:              # (another fold already put a point here: share it)
+                    return y
+            adds.setdefault((li, i), []).append((t, x))
+            return x
+        inner = []
+        for a, b in segs:
+            cuts = [(0.0, tuple(a)), (1.0, tuple(b))]
+            for li, lp in enumerate(loops):
+                n = len(lp)
+                for i in range(n):
+                    hit = cross(lp[i], lp[(i + 1) % n], a, b)
                     if hit is None:
                         continue
                     t, u = hit
-                    x = (p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t)
-                    if math.dist(x, p) <= snap:          # (at a corner of the outline: that corner)
-                        x = p
-                    elif math.dist(x, q) <= snap:
-                        x = q
-                    else:
-                        adds.setdefault((li, i), []).append((t, x))
-                    cuts.append(u)
-            cuts = sorted(set(cuts))
-            for u0, u1 in zip(cuts, cuts[1:]):
-                if u1 - u0 < 1e-9:
+                    cuts.append((u, on_outline(li, i, t)))
+            cuts.sort(key=lambda c: c[0])
+            for (u0, x0), (u1, x1) in zip(cuts, cuts[1:]):
+                if u1 - u0 < 1e-9 or math.dist(x0, x1) < 0.25:
                     continue
-                m = (a[0] + (b[0] - a[0]) * (u0 + u1) / 2, a[1] + (b[1] - a[1]) * (u0 + u1) / 2)
+                m = ((x0[0] + x1[0]) / 2, (x0[1] + x1[1]) / 2)
                 if cg.point_in_loops(m, loops):
-                    inner.append(((a[0] + (b[0] - a[0]) * u0, a[1] + (b[1] - a[1]) * u0),
-                                  (a[0] + (b[0] - a[0]) * u1, a[1] + (b[1] - a[1]) * u1)))
+                    inner.append([x0, x1])
+        # a piece's own end (the crease's end) lying on the outline without crossing it: onto an outline point too
+        for piece in inner:
+            for k in (0, 1):
+                d, li, i, t = nearest_edge(piece[k])
+                if li is None or d >= 0.3:
+                    continue
+                lp = loops[li]
+                if math.dist(piece[k], lp[i]) < 1e-9 or math.dist(piece[k], lp[(i + 1) % len(lp)]) < 1e-9:
+                    continue
+                if any(math.dist(piece[k], y) < 1e-9 for _t, y in adds.get((li, i), [])):
+                    continue
+                piece[k] = on_outline(li, i, t)
+        inner = [(tuple(p0), tuple(p1)) for p0, p1 in inner if math.dist(p0, p1) >= 0.25]
         out = []
         for li, lp in enumerate(loops):
             new = []
@@ -727,6 +774,11 @@ class Press:
             cg.FLOOR[0] = None
             cut_presets.QUIET[0] = False
             self._restore()
+            if st.stamp_edge != 'INHERIT':
+                cut.edge_finish, cut.finish_width, cut.finish_segments, cut.gn_finish = edge_before
+            if self.sfloor is not None and getattr(self.sfloor, 'folds', None) and 'watertight' in str(ex):
+                self.sfloor.folds = None             # 0.24.108 the folded floor did not close: the grid floor instead
+                return self.cut_to(context, depth)
             if prev > 0.0 and depth != prev:
                 self.cut_to(context, prev)
             return False
@@ -800,6 +852,7 @@ class GrowPress:
                  angle=0.0, curve=(0.0, 0.0), spacing=6.0, edge=None, edge_size=None, edge_segments=None, **_unused):
         self.target = target
         self.result = 'GROW'
+        self.free = target is None               # 0.24.108 nothing under the stamp: a mesh on the cursor's plane
         st = getattr(context.scene, 'mch_press', None)
         self.edge = edge or getattr(st, 'grow_edge', 'SHARP')
         self.edge_size = float(edge_size if edge_size is not None else getattr(st, 'grow_edge_size', 0.35))
@@ -809,45 +862,86 @@ class GrowPress:
         self.top = getattr(st, 'grow_top', 'FLAT')
         self.rise = []               # per point: how far along the view the surface lies behind the reference plane
         self.inradius = 0.0          # world: the smallest stamp group's inner radius (the bevel never goes past it)
-        self.size = part_size(target)
         self.depth = 0.0
         self.message = ''
         self.object = None
         self.projector = projector
         self.loops = [resample(lp, spacing) for lp in loops]
-        self.surface = SurfaceFloor(context, [target], projector, self.loops, spacing,
-                                    follow=True, curve=curve, center=center, angle=angle)
+        if self.free:
+            self.surface = None
+            self.plane = Vector(context.scene.cursor.location)
+            self.px_world = self._free_px_world(center or self.loops[0][0])
+        else:
+            self.surface = SurfaceFloor(context, [target], projector, self.loops, spacing,
+                                        follow=True, curve=curve, center=center, angle=angle)
+            self.px_world = self.surface.px_world
+        pts = [q for lp in self.loops for q in lp]
+        span_px = max(max(q[0] for q in pts) - min(q[0] for q in pts), max(q[1] for q in pts) - min(q[1] for q in pts))
+        self.span = max(span_px * self.px_world, 1e-6)          # the stamp's longer side in world units
+        self.size = part_size(target) if not self.free else self.span
         self.embed = max(self.size * 0.01, 1e-6)
         self.points, self.curves, self.faces = [], [], []
+
+    def depth_for(self, st, seconds):
+        """0.24.108 Grow: a tap already brings the stamp out GROW_TAP of its width; holding adds Speed x seconds x
+        the part's size, up to Max (Start is the cut's gentle first depth - too little to see on a grown part)."""
+        return min(self.size * st.max_depth, GROW_TAP * self.span + st.speed * max(0.0, seconds) * self.size)
+
+    def _free_px_world(self, xy):
+        """World size of one screen pixel on the cursor's plane facing the view."""
+        vd = self.projector.view_dir
+        try:
+            o0, d0 = self.projector.ray(xy)
+            o1, d1 = self.projector.ray((xy[0] + 1.0, xy[1]))
+            p0, _t = cg._plane_hit(o0, d0, self.plane, vd)
+            p1, _t = cg._plane_hit(o1, d1, self.plane, vd)
+            return max((p1 - p0).length, 1e-9)
+        except cg.CutError:
+            return 0.01
 
     def _build(self, context):
         import bmesh
         from mathutils import Vector
         sf, vd = self.surface, self.projector.view_dir
-        if not sf.known:
+        if sf is not None and not sf.known:
             raise cg.CutError('No surface beneath the stamp')
         for outer, holes in cg.prepare_loops(self.loops):
             rings = [outer] + list(holes)
             flat = [q for ring in rings for q in ring]
-            plane = vd * sf.t_ref
-            points, rises = [], []
-            curves = [sf.curve_off(q) for q in flat]
-            for q in flat:
-                o, d = self.projector.ray(q)
-                hit, _ = cg._plane_hit(o, d, plane, vd)
-                rise = sf.t(q) - sf.t_ref
-                points.append(hit + vd * rise)
-                rises.append(rise)
-            extra_curves, extra_qs = [], []
+            if sf is None:                               # 0.24.108 free: the cursor's plane, a flat cap
+                from mathutils.geometry import tessellate_polygon
+                points, rises = [], []
+                curves = [0.0] * len(flat)
+                for q in flat:
+                    o, d = self.projector.ray(q)
+                    hit, _ = cg._plane_hit(o, d, self.plane, vd)
+                    points.append(hit)
+                    rises.append(0.0)
+                where = [('wall', i) for i in range(len(flat))]
+                tris = tessellate_polygon([[(x, y, 0.0) for x, y in ring] for ring in rings])
+                if not tris:
+                    raise cg.CutError('The stamp could not be triangulated')
+                extra_curves, extra_qs = [], []
+            else:
+                plane = vd * sf.t_ref
+                points, rises = [], []
+                curves = [sf.curve_off(q) for q in flat]
+                for q in flat:
+                    o, d = self.projector.ray(q)
+                    hit, _ = cg._plane_hit(o, d, plane, vd)
+                    rise = sf.t(q) - sf.t_ref
+                    points.append(hit + vd * rise)
+                    rises.append(rise)
+                extra_curves, extra_qs = [], []
 
-            def offset(q):
-                extra_curves.append(sf.curve_off(q))
-                extra_qs.append((float(q[0]), float(q[1])))
-                r_ = sf.t(q) - sf.t_ref
-                rises.append(r_)
-                return r_
+                def offset(q):
+                    extra_curves.append(sf.curve_off(q))
+                    extra_qs.append((float(q[0]), float(q[1])))
+                    r_ = sf.t(q) - sf.t_ref
+                    rises.append(r_)
+                    return r_
 
-            where, tris = cg._curved_cap(rings, self.projector, plane, vd, offset, sf.spacing)
+                where, tris = cg._curved_cap(rings, self.projector, plane, vd, offset, sf.spacing)
             indices = []
             extra = iter(extra_curves)
             extra_q = iter(extra_qs)
@@ -863,11 +957,11 @@ class GrowPress:
             n, base = len(points), len(self.points) * 2
             t, r_px = _rim_distance(qs, rings)
             self.dome_t.extend(t)
-            self.rim_d.extend(ti * r_px * sf.px_world for ti in t)
+            self.rim_d.extend(ti * r_px * self.px_world for ti in t)
             self.ring_counts.append(len(flat))
             self.qs.extend(qs)
-            if r_px > 0.0 and sf.px_world > 0.0:
-                w = r_px * sf.px_world
+            if r_px > 0.0 and self.px_world > 0.0:
+                w = r_px * self.px_world
                 self.inradius = w if self.inradius <= 0.0 else min(self.inradius, w)
             k = 0
             for ring in rings:
@@ -908,10 +1002,12 @@ class GrowPress:
             self.faces_final = [tuple(p.vertices) for p in me.polygons]
             if self.edge == 'ROUND':
                 me.shade_smooth()
-            for mat in self.target.data.materials:
-                me.materials.append(mat)
+            if self.target is not None:
+                for mat in self.target.data.materials:
+                    me.materials.append(mat)
             self.object = bpy.data.objects.new('MCH_PressGrow', me)
-            collection = next(iter(self.target.users_collection), context.collection)
+            collection = next(iter(self.target.users_collection), context.collection) if self.target is not None \
+                else context.collection
             collection.objects.link(self.object)
         except Exception:
             if self.object is not None:
@@ -958,7 +1054,8 @@ class GrowPress:
                 self.object.data.vertices.foreach_set('co', [v for p in coords for v in p])
                 self.object.data.update()
             self.depth = depth
-            self.message = 'Separate mesh, its base sunk just into the surface' + (
+            self.message = ('Separate mesh on the 3D cursor plane (nothing under the stamp)' if self.free else
+                            'Separate mesh, its base sunk just into the surface') + (
                 '' if self.edge == 'SHARP' else f' | top edge: {self.edge.title()}')
             return True
         except (cg.CutError, RuntimeError, ValueError) as ex:
@@ -1374,7 +1471,7 @@ class MCH_OT_press_cut(bpy.types.Operator):
         et, ev = event.type, event.value
         if et == 'TIMER' and not self.full:
             st = self.press_st
-            d = depth_at(st, self.press.size, time.perf_counter() - self.t0)
+            d = press_depth(self.press, st, time.perf_counter() - self.t0)
             if d >= self.press.size * st.max_depth - 1e-9:
                 self.full = True
             if d - self.press.depth >= STEP_MIN * self.press.size or self.full:
@@ -1386,8 +1483,7 @@ class MCH_OT_press_cut(bpy.types.Operator):
         if et == 'LEFTMOUSE' and ev == 'RELEASE':
             # Include the interval since the last timer tick (also short taps).
             if self.press.result == 'GROW' and not self.full:
-                self.press.cut_to(context, depth_at(self.press_st, self.press.size,
-                                                   time.perf_counter() - self.t0))
+                self.press.cut_to(context, press_depth(self.press, self.press_st, time.perf_counter() - self.t0))
             self._end(context)
             msg = self.press.message
             depth = self.press.depth
@@ -1524,9 +1620,11 @@ class MCH_OT_press_unified(bpy.types.Operator):
             self.report({'WARNING'}, str(ex))
             return False
         target = press_target(context, self.projector, xy, loops)
-        if target is None:
+        if target is None and not self.make_mesh:
             self.report({'WARNING'}, 'Press on a part (the stamp is not over one)')
             return False
+        # (0.24.108 user: "그냥 그로우 할 때 뷰포트에 클릭해도 그냥 나오게" - Grow with nothing under the stamp: the stamp
+        #  comes out as a mesh on the 3D cursor's plane facing the view)
         try:
             from . import safety_save
             safety_save.checkpoint('Mecha Unified Press')
@@ -1540,7 +1638,7 @@ class MCH_OT_press_unified(bpy.types.Operator):
                              follow=st.floor_mode == 'FOLLOW', level=st.floor_mode == 'LEVEL',
                            tilt=(st.tilt_x, st.tilt_y))
             elapsed = max(0.0, time.perf_counter() - self.down_time)
-            if not self.press.cut_to(context, depth_at(st, self.press.size, elapsed)):
+            if not self.press.cut_to(context, press_depth(self.press, st, elapsed)):
                 msg = self.press.message
                 self.press.cancel(context)
                 self.report({'WARNING'}, msg[:200] or 'Nothing was cut')

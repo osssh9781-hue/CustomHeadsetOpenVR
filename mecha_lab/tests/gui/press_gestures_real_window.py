@@ -198,6 +198,22 @@ def flow():
     removed = v0['D'] - volume(boxes['D'])
     log(f'D Alt + hold: removed {removed:.3f} new objects {len(set(bpy.data.objects.keys()) - before)} closed {closed(boxes["D"])}')
     res['D Alt + hold = the stamp pressed in'] = removed > 0.02 and not (set(bpy.data.objects.keys()) - before)
+    # E: a plain CLICK on empty viewport space -> the stamp comes out as a mesh (0.24.108 user: "뷰포트에 클릭해도")
+    before = set(bpy.data.objects.keys())
+    C.scene.cursor.location = (0.0, 0.0, 0.0)
+    xdo('mousemove', *screen_of((0.0, -3.2, 0.0)))
+    yield 0.4
+    xdo('click', 1)
+    yield 1.5
+    free = [bpy.data.objects[n] for n in set(bpy.data.objects.keys()) - before if bpy.data.objects[n].type == 'MESH']
+    if free:
+        bb = bbox(free[0])
+        log(f'E plain click on empty space: {free[0].name} height {bb[2][1] - bb[2][0]:.3f} (a tap = {0.25 * span:.3f}) '
+            f'centre y {(bb[1][0] + bb[1][1]) / 2:.3f} (mouse at -3.2) closed {closed(free[0])}')
+        res['E plain click on empty space = the stamp comes out as a mesh'] = closed(free[0]) and abs((bb[2][1] - bb[2][0]) - 0.25 * span) < 0.05
+    else:
+        log('E plain click on empty space: nothing made')
+        res['E plain click on empty space = the stamp comes out as a mesh'] = False
     w, a, r = view3d()
     with C.temp_override(window=w, area=a, region=r):
         bpy.ops.wm.tool_set_by_id(name='builtin.select_box')
@@ -209,8 +225,8 @@ def flow():
         from mathutils import Euler
         rv.view_perspective = 'PERSP'
         rv.view_rotation = Euler((1.0, 0.0, 0.0)).to_quaternion()
-        rv.view_location = (0.0, 0.3, 0.7)
-        rv.view_distance = 8.0
+        rv.view_location = (0.0, -0.6, 0.5)
+        rv.view_distance = 9.0
     xdo('mousemove', 960, 1560)
     yield 1.5
     shot('1_gestures_slant_wire.png')

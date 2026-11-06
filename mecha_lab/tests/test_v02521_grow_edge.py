@@ -119,6 +119,7 @@ def grow_on(ob, top, edge='SHARP'):
     ok = g.cut_to(C, H)
     co = [g.object.matrix_world @ v.co for v in g.object.data.vertices]
     n = len(co) // 2
+    grow_on.last = g
     return ok, g.object, [v.z for v in co[:n]], [v.z for v in co[n:]]
 
 
@@ -129,8 +130,8 @@ spread_flat = max(top_fl) - min(top_fl)
 check('Top Follow on a bumpy surface (+-0.08): the outer face copies the bumps (that was the only way before)',
       ok and 0.1 < spread_follow < 0.2, round(spread_follow, 3))
 check('Top Flat (default): the outer face is one flat plane, resting on the highest bump + the height, a closed solid',
-      ok2 and spread_flat < 1e-4 and abs(min(top_fl) - (max(bottom2) + H)) < 0.02 and non_manifold(ob2) == 0,
-      (round(spread_flat, 4), round(min(top_fl) - max(bottom2), 3)))
+      ok2 and spread_flat < 1e-4 and abs(min(top_fl) - (max(bottom2) + H + grow_on.last.embed)) < 0.005
+      and non_manifold(ob2) == 0, (round(spread_flat, 4), round(min(top_fl) - max(bottom2), 3), round(grow_on.last.embed, 4)))
 check('... the default is Flat', C.scene.mch_press.bl_rna.properties['grow_top'].default == 'FLAT')
 ok3, ob3, _b, top_r = grow_on(bumpy(0.08), 'FLAT', 'ROUND')
 check('... Flat + Round: a dome of the full height on that plane, closed', ok3 and non_manifold(ob3) == 0

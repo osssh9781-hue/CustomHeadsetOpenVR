@@ -2,10 +2,12 @@ px per unit 91.0 -> the stamp spans 0.879 m
 A plain drag: new MCH_Base width 0.873 height 0.873 bottom z 0.983 (stamp span 0.879) | box changed False
 B Alt + drag: removed 0.485 (stamp-wide groove = 0.499) new objects 0
 C plain hold: grown ['MCH_PressGrow'] box changed False
-D Alt + hold: removed 0.224 new objects 0 closed True
+D Alt + hold: removed 0.230 new objects 0 closed True
+E plain click on empty space: MCH_PressGrow.001 height 0.227 (a tap = 0.220) centre y -3.202 (mouse at -3.2) closed True
 shot 1_gestures_slant_wire.png True
 PASS A plain drag = Base Mesh line the size of the stamp
 PASS B Alt + drag = Line Cut as wide as the stamp
 PASS C plain hold = a mesh grows out
 PASS D Alt + hold = the stamp pressed in
-RESULT 4 / 4
+PASS E plain click on empty space = the stamp comes out as a mesh
+RESULT 5 / 5
