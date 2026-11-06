@@ -14,6 +14,8 @@ from mathutils import Euler, Quaternion, Vector
 import mecha_lab
 from mecha_lab import core_geometry as cg, press_cut as pc, top_bar
 
+src = open(top_bar.__file__).read()
+
 fresh()
 mecha_lab.register()
 C = bpy.context
@@ -87,6 +89,54 @@ g, ob, co, ok = grow('BEVEL', size=0.9, segs=3)
 check('a very big bevel is held to about half the stamp\'s width (no folded top)', ok and non_manifold(ob) == 0
       and g.bevel_offset(H) <= 0.45 * g.inradius + 1e-6 and g.inradius > 0.3, (round(g.bevel_offset(H), 3), round(g.inradius, 3)))
 
+# 0.24.108 (user: "튀어 나올 때 바깥면 안 찌그러져?") Top: Flat - the outer face does not copy the surface's bumps
+import random
+
+
+def bumpy(amp, seed=1):
+    """2 m box, its top face subdivided 40 x 40 and displaced by +-amp (a rough sculpted surface)."""
+    fresh()
+    bpy.ops.mesh.primitive_cube_add(size=2.0)
+    ob = C.active_object
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    top = [f for f in bm.faces if f.normal.z > 0.9]
+    bmesh.ops.subdivide_edges(bm, edges=list({e for f in top for e in f.edges}), cuts=40, use_grid_fill=True)
+    random.seed(seed)
+    for v in bm.verts:
+        if v.co.z > 0.99 and abs(v.co.x) < 0.99 and abs(v.co.y) < 0.99:
+            v.co.z += random.uniform(-amp, amp)
+    bm.to_mesh(ob.data)
+    bm.free()
+    return ob
+
+
+def grow_on(ob, top, edge='SHARP'):
+    st = C.scene.mch_press
+    st.shape, st.size, st.grow_edge, st.grow_top = 'MCH_BUILTIN_M_OCTAGON', 50.0, edge, top
+    xy = TOP.to_screen(Vector((0, 0, 1)))
+    g = pc.GrowPress(C, ob, pc.stamp_loops(C, xy, st), TOP, center=xy, spacing=6.0)
+    ok = g.cut_to(C, H)
+    co = [g.object.matrix_world @ v.co for v in g.object.data.vertices]
+    n = len(co) // 2
+    return ok, g.object, [v.z for v in co[:n]], [v.z for v in co[n:]]
+
+
+ok, ob, bottom, top_f = grow_on(bumpy(0.08), 'FOLLOW')
+spread_follow = max(top_f) - min(top_f)
+ok2, ob2, bottom2, top_fl = grow_on(bumpy(0.08), 'FLAT')
+spread_flat = max(top_fl) - min(top_fl)
+check('Top Follow on a bumpy surface (+-0.08): the outer face copies the bumps (that was the only way before)',
+      ok and 0.1 < spread_follow < 0.2, round(spread_follow, 3))
+check('Top Flat (default): the outer face is one flat plane, resting on the highest bump + the height, a closed solid',
+      ok2 and spread_flat < 1e-4 and abs(min(top_fl) - (max(bottom2) + H)) < 0.02 and non_manifold(ob2) == 0,
+      (round(spread_flat, 4), round(min(top_fl) - max(bottom2), 3)))
+check('... the default is Flat', C.scene.mch_press.bl_rna.properties['grow_top'].default == 'FLAT')
+ok3, ob3, _b, top_r = grow_on(bumpy(0.08), 'FLAT', 'ROUND')
+check('... Flat + Round: a dome of the full height on that plane, closed', ok3 and non_manifold(ob3) == 0
+      and abs((max(top_r) - min(top_r)) - H) < 0.02, round(max(top_r) - min(top_r), 3))
+check('top bar: Flat / Follow next to the edge kinds', "_enum_segs(pr, 'grow_top', (('FLAT', 'Flat'), ('FOLLOW', 'Follow')))" in src)
+
 TILT = cg.OrthoProjector(Euler((math.radians(35), 0, 0)).to_quaternion(), pixels_per_unit=100.0)
 res = {}
 for edge in ('SHARP', 'CHAMFER', 'BEVEL', 'ROUND'):
@@ -102,7 +152,6 @@ try:
     groups = top_bar.groups(C, 'PRESS') if hasattr(top_bar, 'groups') else None
 except Exception:      # noqa
     groups = None
-src = open(top_bar.__file__).read()
 check('top bar: an "Alt Grow" group with Sharp / Chamfer / Bevel / Round, Edge size and Segs',
       "out.append(('Alt Grow', grow))" in src and "'grow_edge_size'" in src and "'grow_edge_segments'" in src)
 check('sidebar: the Grow Edge box', "Alt + Hold: Grow Edge" in open(pc.__file__).read())

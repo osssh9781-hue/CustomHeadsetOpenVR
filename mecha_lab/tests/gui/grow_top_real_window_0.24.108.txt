@@ -1,0 +1,6 @@
+GROW top=FOLLOW edge=SHARP: MCH_PressGrow closed True outer face z 1.378..1.528 (spread 0.150)
+GROW top=FOLLOW edge=ROUND: MCH_PressGrow.001 closed True outer face z 0.939..1.520 (spread 0.580)
+GROW top=FLAT edge=SHARP: MCH_PressGrow.002 closed True outer face z 1.561..1.561 (spread 0.000)
+GROW top=FLAT edge=ROUND: MCH_PressGrow.003 closed True outer face z 1.077..1.566 (spread 0.489)
+shot 1_bumpy_follow_vs_flat.png True
+RESULT all four grown and closed

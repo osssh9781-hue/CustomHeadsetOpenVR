@@ -14,8 +14,15 @@
   닫힌 솔리드, 큰 Edge 는 도장 폭의 절반에서 멈춤. Press · 위쪽 막대 · 그룹 테스트 13 파일 모두 통과.
 - 실제 창(xdotool 진짜 마우스 + Alt 키, `tests/gui/grow_edge_real_window.py`): 상자 넷에 Sharp / Chamfer / Bevel / Round 로
   Alt + 1.6 초 누르기 → 넷 다 자라 나오고 닫힌 솔리드, 선택은 그대로. 화면: `dist/grow_edges_0.24.108.png`(와이어 켬).
+- (사용자: "튀어 나올 때 바깥면 안 찌그러져?") 재 보니 윗면이 표면의 굴곡을 90 % 그대로 복사했습니다(±0.08 굴곡 → 윗면
+  높낮이 0.146). **Top: Flat / Follow** 를 넣고 **Flat 을 기본**으로: 윗면이 도장 아래 표면의 가장 높은 점 + 높이에 놓인 한 평면
+  (뷰를 향함)이고, 옆벽만 울퉁불퉁한 표면까지 내려갑니다(굴곡 ±0.08 에서 윗면 높낮이 0.000). Round 의 돔도 그 평면 위에 섭니다.
+  Follow 는 전처럼 표면을 따라갑니다(매끈하게 굽은 표면용). 테스트 18/18. 실제 창(`tests/gui/grow_top_real_window.py`):
+  울퉁불퉁한 상자 넷에 Follow / Flat × Sharp / Round, 넷 다 닫힌 솔리드, Flat 윗면 높낮이 0.000.
+  화면: `dist/grow_top_flat_0.24.108.png`(와이어 켬).
 - 남은 것: 자란 부품은 여전히 원래 메쉬와 **따로**입니다(합치려면 Boolean Union / Smart Fuse). 원래 메쉬와 만나는 아래쪽
-  경계는 각진 그대로입니다(필렛 없음). Blender 5.3 Beta 는 확인하지 못했습니다.
+  경계는 각진 그대로입니다(필렛 없음). Flat 윗면은 뷰에 수직이라 비스듬히 보고 뽑으면 윗면도 비스듬합니다. Blender 5.3 Beta 는
+  확인하지 못했습니다.
 
 ## 0.24.107 — ChatGPT v0.24.106 합침 · 그룹 Scope 고침 · 초록 그룹 외곽선 · Press / Base Mesh / Draw Array 고침 (2026-11-05)
 

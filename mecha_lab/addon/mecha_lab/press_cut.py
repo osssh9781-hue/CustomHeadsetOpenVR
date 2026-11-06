@@ -108,6 +108,12 @@ class MCH_PG_Press(bpy.types.PropertyGroup):
                                               'more than about half the stamp\'s width)')
     grow_edge_segments: bpy.props.IntProperty(name='Bevel Segments', default=4, min=2, max=16, update=_redraw,
                                                description='How round the Bevel is (segments across the rounded rim)')
+    # 0.24.108 (user: "튀어 나올 때 바깥면 안 찌그러져?") the outer face copied every bump of the surface under it
+    grow_top: EnumProperty(name='Grow Top', default='FLAT', update=_redraw, items=[
+        ('FLAT', 'Flat', 'The outer face is flat (facing the view), resting on the highest point of the surface under '
+                         'the stamp - bumps in the surface never show on it; the walls reach down to the surface'),
+        ('FOLLOW', 'Follow', 'The outer face follows the surface under the stamp (its bumps and curve included)')],
+        description='Alt + hold (Grow): the shape of the outer face')
     start: FloatProperty(name='Start', default=0.01, min=0.0005, max=1.0, subtype='FACTOR', precision=3,
                          description='Depth at the press, of the part\'s size (a quick tap)')
     speed: FloatProperty(name='Speed', default=0.12, min=0.005, soft_max=1.0, max=5.0, precision=3,
@@ -800,6 +806,8 @@ class GrowPress:
         self.edge_segments = int(edge_segments if edge_segments is not None else getattr(st, 'grow_edge_segments', 4))
         self.qs, self.dome_t, self.rim_rings, self.rim_curve, self.faces_final = [], [], [], [], []
         self.rim_d, self.ring_counts = [], []      # per point: world distance to the outline; per group: ring points
+        self.top = getattr(st, 'grow_top', 'FLAT')
+        self.rise = []               # per point: how far along the view the surface lies behind the reference plane
         self.inradius = 0.0          # world: the smallest stamp group's inner radius (the bevel never goes past it)
         self.size = part_size(target)
         self.depth = 0.0
@@ -822,18 +830,22 @@ class GrowPress:
             rings = [outer] + list(holes)
             flat = [q for ring in rings for q in ring]
             plane = vd * sf.t_ref
-            points = []
+            points, rises = [], []
             curves = [sf.curve_off(q) for q in flat]
             for q in flat:
                 o, d = self.projector.ray(q)
                 hit, _ = cg._plane_hit(o, d, plane, vd)
-                points.append(hit + vd * (sf.t(q) - sf.t_ref))
+                rise = sf.t(q) - sf.t_ref
+                points.append(hit + vd * rise)
+                rises.append(rise)
             extra_curves, extra_qs = [], []
 
             def offset(q):
                 extra_curves.append(sf.curve_off(q))
                 extra_qs.append((float(q[0]), float(q[1])))
-                return sf.t(q) - sf.t_ref
+                r_ = sf.t(q) - sf.t_ref
+                rises.append(r_)
+                return r_
 
             where, tris = cg._curved_cap(rings, self.projector, plane, vd, offset, sf.spacing)
             indices = []
@@ -873,6 +885,7 @@ class GrowPress:
                 k += len(ring)
             self.points.extend(points)
             self.curves.extend(curves)
+            self.rise.extend(rises[:len(points)] + [0.0] * max(0, len(points) - len(rises)))
             if not hasattr(self, 'groups'):
                 self.groups = []
             self.groups.append(n)
@@ -917,12 +930,20 @@ class GrowPress:
             # 0.24.107 the bottom follows the surface, sunk ``embed`` into it (one flat base at the deepest sampled
             # point came out of the back of a thin or slanted part)
             coords.extend(tuple(p + vd * self.embed) for p in pts)
+            if self.top == 'FLAT' and len(self.rise) >= start + n:
+                # 0.24.108 Flat: the outer face on one plane facing the view, resting on the nearest (highest) point
+                # of the surface under the stamp - a bumpy surface no longer shows on it
+                rs = self.rise[start:start + n]
+                r_min = min(rs)
+                lift = [r - r_min for r in rs]
+            else:
+                lift = [0.0] * n
             if self.edge == 'ROUND' and len(self.dome_t) >= start + n:
                 ts_ = self.dome_t[start:start + n]       # 0.24.108 Round: a dome, 0 at the rim, full at the middle
-                coords.extend(tuple(p - vd * max(depth * dome_height(t) + c, 1e-7))
-                              for p, c, t in zip(pts, curves, ts_))
+                coords.extend(tuple(p - vd * max(depth * dome_height(t) + c + lf, 1e-7))
+                              for p, c, t, lf in zip(pts, curves, ts_, lift))
             else:
-                coords.extend(tuple(p - vd * max(depth + c, 1e-7)) for p, c in zip(pts, curves))
+                coords.extend(tuple(p - vd * max(depth + c + lf, 1e-7)) for p, c, lf in zip(pts, curves, lift))
             start += n
         return coords
 
@@ -2057,6 +2078,7 @@ def draw(layout, context):
             edge.prop(st, 'stamp_edge_segments', text='Segments')
     grow = layout.box()                         # 0.24.108 Alt + hold (Grow): the top edge
     grow.label(text='Alt + Hold: Grow Edge', icon='MOD_BEVEL')
+    grow.row(align=True).prop(st, 'grow_top', expand=True)
     grow.row(align=True).prop(st, 'grow_edge', expand=True)
     if st.grow_edge in {'CHAMFER', 'BEVEL'}:
         grow.prop(st, 'grow_edge_size', slider=True)
