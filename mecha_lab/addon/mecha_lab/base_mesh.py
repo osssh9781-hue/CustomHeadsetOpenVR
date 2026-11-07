@@ -1364,7 +1364,7 @@ def _resample_section_path(points, width, max_points=192):
     from bisect import bisect_right
     clean = []
     for q in points:
-        p = (float(q[0]), float(q[1]))
+        p = tuple(float(c) for c in q)
         if not clean or math.dist(p, clean[-1]) > 1e-6:
             clean.append(p)
     if len(clean) < 2:
@@ -1382,8 +1382,32 @@ def _resample_section_path(points, width, max_points=192):
         j = min(len(clean)-2, max(0, bisect_right(cumulative, d)-1))
         a, b = clean[j], clean[j+1]
         t = (d-cumulative[j]) / max(1e-12, cumulative[j+1]-cumulative[j])
-        sampled.append((a[0]+t*(b[0]-a[0]), a[1]+t*(b[1]-a[1])))
+        sampled.append(tuple(a[k] + t * (b[k] - a[k]) for k in range(len(a))))   # (0.24.110 2D or 3D points)
     return sampled
+
+
+def sweep_frames(stations):
+    """0.24.110 (U, V) per station of a 3D polyline: T the tangent (central difference), V the section's up - the
+    plane normal (local z) at the start, carried along with the least twist (parallel transport: a bent bar does
+    not spin) - and U = V x T across the line.  For a flat line this is exactly the old in-plane frame."""
+    out = []
+    n = len(stations)
+    V = Vector((0.0, 0.0, 1.0))
+    for i in range(n):
+        a, b = (stations[0], stations[1]) if i == 0 else (stations[-2], stations[-1]) if i == n - 1 \
+               else (stations[i - 1], stations[i + 1])
+        T = Vector(b) - Vector(a)
+        if T.length < 1e-8:
+            raise cg.CutError('Overlapping drawing points; redraw the path.')
+        T.normalize()
+        Vn = V - T * V.dot(T)
+        if Vn.length < 1e-6:                               # the line heads straight along the old up: pick any up
+            Vn = Vector((1.0, 0.0, 0.0)) if abs(T.x) < 0.9 else Vector((0.0, 1.0, 0.0))
+            Vn = Vn - T * Vn.dot(T)
+        V = Vn.normalized()
+        U = V.cross(T).normalized()
+        out.append((U, V))
+    return out
 
 
 def _build_sweep_bmesh(data, p):
@@ -1392,7 +1416,11 @@ def _build_sweep_bmesh(data, p):
     Alpha shapes are a VECTOR outline, not brightness displacement. Each ring
     lies in the plane perpendicular to the path tangent, and remains editable.
     """
-    path = [tuple(q) for q in data['path']]
+    # 0.24.110 (user: "여기 안 돼" - a continued line must be able to leave the first plane) the centreline is 3D
+    # (``path3``, object local) when the line was continued out of its plane; a flat line keeps its 2D ``path``
+    path = [tuple(float(c) for c in q) for q in (data.get('path3') or data['path'])]
+    if path and len(path[0]) == 2:
+        path = [(q[0], q[1], 0.0) for q in path]
     loops = [[(float(q[0]), float(q[1])) for q in lp] for lp in data['loops']]
     if not loops or sum(map(len, loops)) < 3:
         raise cg.CutError('The selected cross-section shape is empty.')
@@ -1404,15 +1432,8 @@ def _build_sweep_bmesh(data, p):
         raise cg.CutError('Saved cross-section contains no closed area.')
     stations = _resample_section_path(path, p.section_width,
                                        max_points=min(192, max(12, 125000 // total_points)))
-    tangents = []
-    for i in range(len(stations)):
-        a, b = (stations[0], stations[1]) if i == 0 else (stations[-2], stations[-1]) if i == len(stations)-1 \
-               else (stations[i-1], stations[i+1])
-        d = Vector((b[0]-a[0], b[1]-a[1]))
-        if d.length < 1e-8:
-            raise cg.CutError('Overlapping drawing points; redraw the path.')
-        d.normalize()
-        tangents.append((-d.y, d.x))
+    frames = sweep_frames(stations)          # (U across, V up) per station: V starts as the plane's normal and is
+    #                                          carried along the line with the least twist (a flat line: U in-plane, V = z)
     width, height = max(1e-5, p.section_width), max(1e-5, p.height)
     base_angle, twist, taper = p.section_rotation, p.section_twist, p.section_taper
     rest = bool(data.get('rest'))
@@ -1429,7 +1450,8 @@ def _build_sweep_bmesh(data, p):
                 off += len(lp)
             cap_faces = _triangulate(flat, len(flat), section_loops, edges)
             all_rings = []
-            for i, ((px, py), (nx, ny)) in enumerate(zip(stations, tangents)):
+            for i, (st_, (U, V)) in enumerate(zip(stations, frames)):
+                P = Vector(st_)
                 t = i / (len(stations)-1)
                 scale = max(0.05, 1.0 - taper*(abs(2*t-1)**2))
                 angle = base_angle + twist*t
@@ -1442,8 +1464,7 @@ def _build_sweep_bmesh(data, p):
                 if bottom is not None:
                     dz = float(bottom) - p.offset - min(v for _u, v in uv) * height
                 for u, v in uv:
-                    ring.append(bm.verts.new((px+nx*u*width, py+ny*u*width,
-                                              p.offset+v*height+dz)))
+                    ring.append(bm.verts.new(P + U * (u * width) + V * (p.offset + v * height + dz)))
                 all_rings.append(ring)
             for a, b, c in cap_faces:
                 # Profile +U points left across the path, +V points up.
@@ -1574,8 +1595,10 @@ class _SweepCutterSettings:
 def sweep_cutter_mesh(frame, local_path, section, width, height, bottom, rotation=0.0):
     """0.24.109 The swept cutter as a mesh: ``section`` (normalized loops) swept along ``local_path`` in the plane of
     ``frame``, its lowest point at local z ``bottom`` (negative = into the part the plane sits on)."""
-    data = {'path': [list(q) for q in local_path], 'loops': [[list(q) for q in lp] for lp in section],
-            'bottom': float(bottom)}
+    data = {'path': [[float(q[0]), float(q[1])] for q in local_path],
+            'loops': [[list(q) for q in lp] for lp in section], 'bottom': float(bottom)}
+    if any(len(q) > 2 and abs(float(q[2])) > 1e-9 for q in local_path):     # 0.24.110 a groove that leaves its plane
+        data['path3'] = [list(_xyz(q)) for q in local_path]
     bm = _build_sweep_bmesh(data, _SweepCutterSettings(width, height, rotation))
     try:
         me = bpy.data.meshes.new('MCH_LineCutter')
@@ -1657,13 +1680,43 @@ def sweep_ends(ob):
     if ob is None or not ob.get(SWEEP_KEY) or getattr(ob, 'mch_base', None) is None or not ob.mch_base.live:
         return None
     try:
-        path = json.loads(ob[SWEEP_KEY])['path']
+        data = json.loads(ob[SWEEP_KEY])
+        path = data.get('path3') or data['path']
     except (TypeError, ValueError, KeyError):
         return None
     if len(path) < 2:
         return None
     mw = ob.matrix_world
-    return [mw @ Vector((float(q[0]), float(q[1]), 0.0)) for q in (path[0], path[-1])]
+    return [mw @ Vector(_xyz(q)) for q in (path[0], path[-1])]
+
+
+def _xyz(q):
+    return (float(q[0]), float(q[1]), float(q[2]) if len(q) > 2 else 0.0)
+
+
+CONTINUE_SAME_PLANE_DEG = 20.0    # the view turned less than this since the first stroke: the line stays in its plane
+
+
+def continue_plane_path(frame, projector, pts, end_local):
+    """0.24.110 Where a continued stroke goes: screen points ``pts`` projected onto the plane through the old end point
+    that faces the CURRENT view - the user turned the view to head off in a new direction (their "여기 안 돼") - or,
+    when the view turned less than ``CONTINUE_SAME_PLANE_DEG`` from the line's own plane, onto that plane (a small
+    orbit to see better keeps a flat line flat).  Returns (3D points in the frame's local space, degrees the view is
+    turned from the first plane, True when the piece leaves the plane)."""
+    inv = frame.inverted_safe()
+    n_first = Vector((frame[0][2], frame[1][2], frame[2][2])).normalized()
+    n_view = -Vector(projector.view_dir).normalized()
+    turned = math.degrees(math.acos(max(-1.0, min(1.0, abs(n_view.dot(n_first))))))
+    end_world = frame @ Vector(_xyz(end_local))
+    if turned < CONTINUE_SAME_PLANE_DEG:
+        normal, leaves = n_first, False
+    else:
+        normal, leaves = n_view, True
+    out = []
+    for q in pts:
+        l = inv @ _plane_point(projector, q, end_world, normal)
+        out.append((float(l.x), float(l.y), float(l.z) if leaves else 0.0))
+    return out, turned, leaves
 
 
 def join_path(old, new, fade, tail=0.0):
@@ -1673,14 +1726,14 @@ def join_path(old, new, fade, tail=0.0):
     if len(new) < 2 or not old:
         raise cg.CutError('Draw a longer line')
     joint = old[-1]
-    ox, oy = joint[0] - new[0][0], joint[1] - new[0][1]
+    shift = [joint[k] - new[0][k] for k in range(len(joint))]
     fade = max(float(fade), 1e-6)
     run, out = 0.0, []
     for k, q in enumerate(new):
         if k:
             run += math.dist(new[k - 1], q)
         f = max(0.0, 1.0 - run / fade)
-        out.append((q[0] + ox * f, q[1] + oy * f))
+        out.append(tuple(q[c] + shift[c] * f for c in range(len(joint))))
     added = [q for q in out[1:] if math.dist(q, joint) > 1e-6]
     if not added:
         raise cg.CutError('Draw a longer line')
@@ -1700,47 +1753,53 @@ def extend_sweep(ob, projector, pts, at_end=True, end_hit=None):
     projected onto the FIRST stroke's plane (the object's own frame) and joined to the path's end (or its start when
     ``at_end`` is False) - one object, the section as it was, pointing the way the first stroke did.  The stroke's
     first point lands exactly on the old end; the small gap the pointer left is faded out over the first two
-    section widths.  Returns (points added, degrees the view is turned from the first stroke)."""
+    section widths.  Returns (points added, degrees the view is turned from the first stroke, left the plane)."""
     data = json.loads(ob[SWEEP_KEY])
     frame = ob.matrix_world
     inv = frame.inverted_safe()
-    origin, normal = frame.translation, Vector((frame[0][2], frame[1][2], frame[2][2])).normalized()
-    facing = abs(Vector(projector.view_dir).normalized().dot(normal))
-    if facing < 0.12:                                     # the first plane seen edge-on: nothing sensible lands on it
-        raise cg.CutError('Turn the view to face the first line to continue it')
-    local = []
-    for q in pts:
-        w = _plane_point(projector, q, origin, normal)
-        l = inv @ w
-        local.append((float(l.x), float(l.y)))
-    path = [tuple(q) for q in data['path']]
+    path = [_xyz(q) for q in (data.get('path3') or data['path'])]
     if not at_end:                                        # (the stroke starts at the line's start: it is put in front)
         path.reverse()
-    if len(local) < 2:
+    if len(pts) < 2:
         raise cg.CutError('Draw a longer line')
+    # 0.24.110 the new piece lies in the plane of the CURRENT view through the old end (the line can leave its first
+    # plane); a view turned less than 20 deg keeps the first plane
+    local, turned, leaves = continue_plane_path(frame, projector, pts, path[-1])
     _tail, new = join_path(path, local, fade=2.0 * float(ob.mch_base.section_width))
     path = path + new
     if not at_end:
         path.reverse()
+    flat = all(abs(q[2]) < 1e-6 for q in path)
     probe = dict(data)
-    probe['path'] = path
+    probe['path'] = [(q[0], q[1]) for q in path]
+    if flat:
+        probe.pop('path3', None)
+    else:
+        probe['path3'] = path
     _build_sweep_bmesh(probe, ob.mch_base).free()        # validate first: never lose the line that was there
-    data['path'] = path
+    data['path'] = probe['path']
+    if flat:
+        data.pop('path3', None)
+    else:
+        data['path3'] = path
     ob[SWEEP_KEY] = json.dumps(data, separators=(',', ':'))
-    hull = _hull(path)                                    # the stored outline follows the whole line
+    hull = _hull(data['path'])                            # the stored outline follows the whole line (its plane view)
     if hull is not None and abs(_area2(hull)) >= 4.0 * 1e-6:
         ob.mch_base.outline = json.dumps({'groups': [{'outer': hull, 'holes': []}], 'res': ts.res_scale()})
     if ob.get(ATTACH_KEY):                                # Attach Ends: the bend runs along the whole line now
-        try:
-            att = json.loads(ob[ATTACH_KEY])
-            att['path'] = [[q[0], q[1]] for q in path]
-            if end_hit is not None:
-                att['z1' if at_end else 'z0'] = (inv @ Vector(end_hit)).z
-            ob[ATTACH_KEY] = json.dumps(att)
-        except (TypeError, ValueError, KeyError):
-            pass
+        if not flat:                                      # (... but not along a line that left its plane)
+            del ob[ATTACH_KEY]
+        else:
+            try:
+                att = json.loads(ob[ATTACH_KEY])
+                att['path'] = [[q[0], q[1]] for q in data['path']]
+                if end_hit is not None:
+                    att['z1' if at_end else 'z0'] = (inv @ Vector(end_hit)).z
+                ob[ATTACH_KEY] = json.dumps(att)
+            except (TypeError, ValueError, KeyError):
+                pass
     rebuild(ob)
-    return len(new), math.degrees(math.acos(min(1.0, facing)))
+    return len(new), turned, leaves
 
 
 class MCH_OT_base_section_use_alpha(bpy.types.Operator):

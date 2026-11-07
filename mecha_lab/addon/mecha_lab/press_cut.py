@@ -1580,8 +1580,7 @@ def continue_ends(context, projector):
     if cut and len(cut.get('path', ())) >= 2:
         frame = _cut_frame(cut)
         path = cut['path']
-        ends = [frame @ Vector((float(path[0][0]), float(path[0][1]), 0.0)),
-                frame @ Vector((float(path[-1][0]), float(path[-1][1]), 0.0))]
+        ends = [frame @ Vector(base_mesh._xyz(path[0])), frame @ Vector(base_mesh._xyz(path[-1]))]
         sc = _ends_screen(projector, ends)
         if sc is not None:
             for k, (w, q) in enumerate(zip(ends, sc)):
@@ -1869,14 +1868,15 @@ class MCH_OT_press_unified(bpy.types.Operator):
                         safety_save.checkpoint('Mecha Base Mesh Line continued')
                     except Exception:
                         pass
-                    n, turned = base_mesh.extend_sweep(ob, self.projector, pts, at_end,
-                                                       end_hit=ce.surface_point(context, self.projector, pts[-1]))
+                    n, turned, leaves = base_mesh.extend_sweep(ob, self.projector, pts, at_end,
+                                                               end_hit=ce.surface_point(context, self.projector, pts[-1]))
                     for o in context.selected_objects:
                         o.select_set(False)
                     ob.select_set(True)
                     context.view_layer.objects.active = ob
                     msg = f'Base Mesh Line continued: {ob.name} (+{n} points' + \
-                          (f', the view turned {turned:.0f} deg from the first stroke' if turned >= 5.0 else '') + ')'
+                          (f', bent {turned:.0f} deg out of its plane (the view you drew in)' if leaves else
+                           f', the view turned {turned:.0f} deg: kept in its plane' if turned >= 5.0 else '') + ')'
                 else:
                     st = base_mesh.scene_defaults(context)
                     attach = None
@@ -1916,30 +1916,27 @@ class MCH_OT_press_unified(bpy.types.Operator):
                 mode = 'SPLIT' if getattr(pr, 'result', 'CUT') == 'SPLIT' else 'CUT'
                 if prev is not None:
                     frame = _cut_frame(prev)
-                    normal = Vector((frame[0][2], frame[1][2], frame[2][2])).normalized()
-                    facing = abs(Vector(self.projector.view_dir).normalized().dot(normal))
-                    if facing < 0.12:
-                        raise cg.CutError('Turn the view to face the first line to continue it')
                     at_end = hit[3]
-                    old = [tuple(q) for q in prev['path']]
+                    old = [base_mesh._xyz(q) for q in prev['path']]
                     width, height, bottom = float(prev['width']), float(prev['height']), float(prev['bottom'])
                     section = [[tuple(q) for q in lp] for lp in prev['section']]
-                    new_local = base_mesh.plane_path(frame, self.projector, pts)
                     if not at_end:
                         old.reverse()
+                    # 0.24.110 the new piece lies in the CURRENT view's plane through the groove's end (it can leave the
+                    # first plane); a view turned less than 20 deg keeps the first plane
+                    new_local, turned, leaves = base_mesh.continue_plane_path(frame, self.projector, pts, old[-1])
                     tail, new_pts = base_mesh.join_path(old, new_local, fade=2.0 * width, tail=width)
                     local_path = tail + new_pts            # (the old line's last bit again: the corner is filled)
                     full = old + new_pts
                     if not at_end:
                         full.reverse()
-                    turned = math.degrees(math.acos(min(1.0, facing)))
                 else:
                     size = max(part_size(t) for t in targets)
                     depth = size * float(pr.max_depth)
                     section, bottom = line_cut_section(context, pr, depth, span, eps=0.003 * size)
                     width = height = span
                     _groups, frame, local_path = base_mesh.sweep_frame(context, loops, self.projector, pts)
-                    full, turned = local_path, 0.0
+                    full, turned, leaves = local_path, 0.0, False
                 try:
                     safety_save.checkpoint('Mecha Line Cut')
                 except Exception:
@@ -1947,7 +1944,8 @@ class MCH_OT_press_unified(bpy.types.Operator):
                 msg = base_mesh.sweep_cut(context, frame, local_path, section, width, height, bottom, targets, mode)
                 if prev is not None:
                     msg = 'Line Cut continued: ' + msg + \
-                          (f' | the view turned {turned:.0f} deg from the first stroke' if turned >= 5.0 else '')
+                          (f' | bent {turned:.0f} deg out of its plane (the view you drew in)' if leaves else
+                           f' | the view turned {turned:.0f} deg: kept in its plane' if turned >= 5.0 else '')
                 CONTINUE['cut'] = {'frame': _flat_frame(frame), 'path': [list(q) for q in full],
                                    'section': [[list(q) for q in lp] for lp in section], 'width': width,
                                    'height': height, 'bottom': bottom, 'targets': [t.name for t in targets]}

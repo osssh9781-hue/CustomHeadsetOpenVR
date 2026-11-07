@@ -1,6 +1,8 @@
-"""Real window (0.24.109): going on with a Press Cut line after the view turned, with the REAL mouse and Alt key.
-  Box A: plain drag (top view) -> orbit the view -> plain drag from the line's end: ONE object, the path longer
-  Box B: Alt + drag (Line Cut, Max 0.15) -> orbit -> Alt + drag from the groove's end: the groove goes on
+"""Real window (0.24.109 / 0.24.110): going on with a Press Cut line after the view turned, with the REAL mouse and Alt.
+  Box A: plain drag (top view) -> orbit 17 deg -> plain drag from the line's end: ONE object, kept in its plane
+  Z (empty space, left): a line in the top view -> FRONT view: drag DOWN from its end -> RIGHT view: drag sideways:
+     the line bends out of its plane twice (0.24.110 user's "여기 안 돼"), one object
+  Box B: Alt + drag (Line Cut, Max 0.15) -> orbit 17 deg -> Alt + drag from the groove's end: the groove goes on
   Box C: the stamp turned 90 deg (a pentagon): a Base Mesh line and a Line Cut with the turned section
 A slanted view with the wireframe on at the end.
     blender --window-geometry 0 0 W H --python this.py -- OUT"""
@@ -153,7 +155,7 @@ def flow():
     line = new[0] if new else None
     n_path0 = len(json.loads(line[base_mesh.SWEEP_KEY])['path']) if line is not None and line.get(base_mesh.SWEEP_KEY) else 0
     log(f'A1 plain drag: {[o.name for o in new]} path points {n_path0} remembered {pc.CONTINUE["base"]}')
-    orbit((1.0, 0.0, 0.35), (-2.2, -0.2, 0.6), 9.0)             # the user turns the view
+    orbit((0.3, 0.0, 0.0), (-2.2, -0.2, 0.6), 9.0)              # the user turns the view a little (17 deg)
     yield 1.5
     ends = base_mesh.sweep_ends(line) if line is not None else None
     n_obj = len(bpy.data.objects)
@@ -169,11 +171,47 @@ def flow():
         zs = [(line.matrix_world @ v.co).z for v in line.data.vertices]
         log(f'A2 continued (view turned): objects {len(bpy.data.objects) - n_obj:+d} path points {n_path0} -> {n_path1} '
             f'end {tuple(round(c, 2) for c in ends1[1])} z {min(zs):.2f}..{max(zs):.2f} closed {closed(line)}')
-        res['A line continued after the view turned: one object, the path longer, still on the first plane'] = \
+        res['A line continued after a 17 deg turn: one object, the path longer, kept in its plane'] = \
             len(bpy.data.objects) == n_obj and n_path1 > n_path0 and closed(line) and min(zs) > 0.9 and max(zs) < 1.95
     else:
         log('A2: no line to continue')
-        res['A line continued after the view turned: one object, the path longer, still on the first plane'] = False
+        res['A line continued after a 17 deg turn: one object, the path longer, kept in its plane'] = False
+    # --- Z: on empty space, the line leaves its plane - top view, then DOWN from the front, then sideways from the right
+    orbit((0.0, 0.0, 0.0), (-5.2, 0.0, 0.0), 14.0)
+    yield 1.2
+    before = set(bpy.data.objects.keys())
+    yield from drag([screen_of((-5.9 + 0.8 * k / 8, 0.4, 0.0)) for k in range(9)])
+    new = [bpy.data.objects[n] for n in set(bpy.data.objects.keys()) - before if bpy.data.objects[n].type == 'MESH']
+    zig = new[0] if new else None
+    log(f'Z1 top view, empty space: {[o.name for o in new]}')
+    n_obj = len(bpy.data.objects)
+    ok_z = False
+    if zig is not None:
+        orbit((math.pi / 2, 0.0, 0.0), (-5.2, 0.0, -0.4), 9.0)   # from the front
+        yield 1.5
+        e = base_mesh.sweep_ends(zig)[1]
+        s0 = screen_of(e)
+        pts = [screen_of((e.x, e.y, e.z - 0.9 * k / 9)) for k in range(10)]
+        pts[0] = (s0[0] + 2, s0[1] + 2)
+        yield from drag(pts)
+        d1 = json.loads(zig[base_mesh.SWEEP_KEY])
+        e1 = base_mesh.sweep_ends(zig)[1]
+        log(f'Z2 front view, down from the end: path3 {"path3" in d1} end {tuple(round(c, 2) for c in e1)} closed {closed(zig)} '
+            f'objects {len(bpy.data.objects) - n_obj:+d}')
+        orbit((math.pi / 2, 0.0, math.pi / 2), (-5.2, 0.0, -0.4), 9.0)   # from the right (+x)
+        yield 1.5
+        s1 = screen_of(e1)
+        pts = [screen_of((e1.x, e1.y - 0.9 * k / 9, e1.z)) for k in range(10)]
+        pts[0] = (s1[0] - 2, s1[1] + 2)
+        yield from drag(pts)
+        d2 = json.loads(zig[base_mesh.SWEEP_KEY])
+        e2 = base_mesh.sweep_ends(zig)[1]
+        co = [zig.matrix_world @ v.co for v in zig.data.vertices]
+        log(f'Z3 right view, sideways from the end: path3 points {len(d2.get("path3", []))} end {tuple(round(c, 2) for c in e2)} '
+            f'closed {closed(zig)} objects {len(bpy.data.objects) - n_obj:+d} z {min(v.z for v in co):.2f}..{max(v.z for v in co):.2f}')
+        ok_z = ('path3' in d1 and len(d2.get('path3', [])) > len(d1['path3']) and closed(zig)
+                and len(bpy.data.objects) == n_obj and e1.z < e.z - 0.6 and e2.y < e1.y - 0.6)
+    res['Z a line bent out of its plane twice (down from the front view, sideways from the right): one closed object'] = ok_z
     # --- B: a Line Cut, the view orbited, the groove continued ------------------------------------------------------
     orbit((0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 14.0)
     yield 1.2
@@ -184,7 +222,7 @@ def flow():
     cutd = pc.CONTINUE['cut']
     log(f'B1 Alt + drag: removed {vb0 - vb1:.3f} new objects {len(set(bpy.data.objects.keys()) - before)} '
         f'remembered cut {cutd is not None and len(cutd["path"])}')
-    orbit((1.0, 0.0, -0.3), (-1.0, 0.2, 0.6), 9.0)
+    orbit((0.3, 0.0, 0.0), (-1.0, 0.2, 0.6), 9.0)                 # (17 deg: the groove stays in its plane)
     yield 1.5
     if cutd:
         fr = pc._cut_frame(cutd)
@@ -236,8 +274,8 @@ def flow():
         from mathutils import Euler
         rv.view_perspective = 'PERSP'
         rv.view_rotation = Euler((1.05, 0.0, 0.25)).to_quaternion()
-        rv.view_location = (-1.1, -0.3, 0.6)
-        rv.view_distance = 8.5
+        rv.view_location = (-2.3, -0.3, 0.3)
+        rv.view_distance = 10.5
     xdo('mousemove', 960, 1560)
     yield 1.5
     shot('1_line_continue_slant_wire.png')

@@ -1,0 +1,14 @@
+A1 plain drag: ['MCH_Base'] path points 2 remembered MCH_Base
+A2 continued (view turned): objects +0 path points 2 -> 8 end (-2.4, 0.28, 1.0) z 0.98..1.77 closed True
+Z1 top view, empty space: ['MCH_Base.001']
+Z2 front view, down from the end: path3 True end (-5.11, 0.39, -0.9) closed True objects +0
+Z3 right view, sideways from the end: path3 points 6 end (-5.11, -0.51, -0.9) closed True objects +0 z -1.29..0.77
+B1 Alt + drag: removed 0.149 new objects 0 remembered cut 2
+B2 Alt + drag from the groove's end (view turned): removed 0.194 more, path points 2 -> 8 new objects 0 closed True
+C turned stamp: line MCH_Base.002 width 0.747 height 0.785 | cut removed 0.224 closed True
+shot 1_line_continue_slant_wire.png True
+PASS A line continued after a 17 deg turn: one object, the path longer, kept in its plane
+PASS Z a line bent out of its plane twice (down from the front view, sideways from the right): one closed object
+PASS B Line Cut continued after the view turned: more taken out, the box still closed, no new object
+PASS C the stamp turned 90 deg: the line's section taller than wide (a pentagon on its side), the cut made
+RESULT 4 / 4
