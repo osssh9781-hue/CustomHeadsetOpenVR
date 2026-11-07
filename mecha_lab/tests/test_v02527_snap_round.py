@@ -217,6 +217,27 @@ check('... Round on the loop: closed, rounded all round', non_manifold(ob) == 0 
 r5, op = stroke(TOP, [(-0.6, 0.0 + 0.3 * k / 3, 1.0) for k in range(4)])
 check('... a closed loop has no end rings: a stroke there is a new line', r5 == {'FINISHED'} and len(bpy.data.objects) == n_before + 1)
 
+# --- 0.24.115 the seam of a hand-drawn loop: an overshoot past the start, a mouse-down hook, a start behind the end
+st, p = setup('SHARP')
+hook = [(-0.57, -0.6, 1.0), (-0.6, -0.6, 1.0)]                                      # the first stroke begins with a 3 cm hook back
+r, op = stroke(TOP, hook + [(-0.6 + 1.2 * k / 6, -0.6, 1.0) for k in range(1, 7)])
+ob = C.active_object
+stroke(TOP, [(0.55, -0.6, 1.0)] + [(0.6, -0.6 + 1.2 * k / 6, 1.0) for k in range(7)])      # starts a little behind the end
+stroke(TOP, [(0.6 - 1.2 * k / 6, 0.6, 1.0) for k in range(7)])
+r4, op = stroke(TOP, [(-0.6, 0.6 - 1.2 * k / 6, 1.0) for k in range(7)] + [(-0.6, -0.75, 1.0), (-0.6, -0.9, 1.0)])   # runs on past the start
+data = json.loads(ob[base_mesh.SWEEP_KEY])
+co = [ob.matrix_world @ v.co for v in ob.data.vertices]
+check('a loop closed by a stroke that runs on past the start, with a hook at the very first point and a start behind an end: '
+      'closed, no wedge (every vertex within the square + half a width)', r4 == {'FINISHED'} and data.get('closed') is True
+      and non_manifold(ob) == 0 and max(max(abs(v.x), abs(v.y)) for v in co) < 0.6 + 0.4 + 0.06
+      and max(abs(v.x) + abs(v.y) for v in co) < 2.0 + 0.06, (r4, data.get('closed'), round(max(max(abs(v.x), abs(v.y)) for v in co), 3) if co else None,
+                                                             round(max(abs(v.x) + abs(v.y) for v in co), 3) if co else None,
+                                                             tuple(round(c, 3) for c in max(co, key=lambda v: max(abs(v.x), abs(v.y)))) if co else None))
+spiky = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.97, 0.02, 0.0), (1.0, 1.0, 0.0)]
+check('drop_spikes: a 3 cm hook at a bend is dropped (the bend is one clean corner), a real corner stays',
+      len(base_mesh.drop_spikes(spiky, 0.4)) == 3 and len(base_mesh.drop_spikes([(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0)], 0.4)) == 3)
+check('... the mitre cap is 120 deg (a sharper bend is not stretched further)', base_mesh.MITER_MAX_DEG == 120.0)
+
 # --- move_end --------------------------------------------------------------------------------------------------------
 st, p = setup('SHARP')
 r, op = stroke(TOP, [(-1.0 + 1.0 * k / 5, -0.5, 1.0) for k in range(6)])

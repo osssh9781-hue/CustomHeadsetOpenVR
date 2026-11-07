@@ -1412,7 +1412,9 @@ def _resample_section_path(points, width, max_points=192):
     return sampled
 
 
-MITER_MAX_DEG = 150.0      # a bend sharper than this is mitred as if it were 150 deg (the tip would run away)
+MITER_MAX_DEG = 120.0      # a bend sharper than this is mitred as if it were 120 deg (the tip would run away)
+SPIKE_TURN_DEG = 100.0     # 0.24.115 a turn sharper than this on a leg shorter than half the width is a spike (a
+SPIKE_LEG_W = 0.5          # mouse-down hook, an overshoot at a joint): dropped, not mitred into a wedge
 CORNER_TURN_DEG = 30.0     # 0.24.114 a run of turns adding up to this ...
 CORNER_RUN_W = 0.5         # ... within this many section widths of line is one hand-drawn corner
 SNAP_TURN_DEG = (0.0, 45.0, 90.0, 135.0)   # 0.24.114 (user: "90 도랑 45 도도 약간 걸리게") a continued stroke's bend snaps ...
@@ -1448,6 +1450,28 @@ def simplify3(path, tol):
             stack.append((i, bi))
             stack.append((bi, j))
     return [tuple(q) for q, k in zip(pts, keep) if k]
+
+
+def drop_spikes(path, width, turn_deg=SPIKE_TURN_DEG, leg_w=SPIKE_LEG_W):
+    """0.24.115 A vertex where the line turns back sharper than ``turn_deg`` with a leg shorter than ``leg_w`` x the
+    width on at least one side is a spike (the hook a mouse-down leaves, a stroke run on past a joint): it is dropped
+    - repeated until none is left.  Pure."""
+    pts = [Vector(_xyz(q)) for q in path]
+    changed = True
+    while changed and len(pts) > 2:
+        changed = False
+        for i in range(1, len(pts) - 1):
+            a, b = pts[i] - pts[i - 1], pts[i + 1] - pts[i]
+            la, lb = a.length, b.length
+            if la < 1e-9 or lb < 1e-9:
+                del pts[i]
+                changed = True
+                break
+            if math.degrees(a.angle(b)) > turn_deg and min(la, lb) < leg_w * width:
+                del pts[i]
+                changed = True
+                break
+    return [tuple(q) for q in pts]
 
 
 def nearest_attrs(stations, points, attrs):
@@ -1509,7 +1533,10 @@ def tighten_corners(path, width):
             a0, a1 = (pts[i - 2], pts[i - 1]) if i >= 2 else (pts[i - 1], pts[i])          # the legs' own lines
             b0, b1 = (pts[j + 1], pts[j + 2]) if j + 2 < n else (pts[j], pts[j + 1])
             P = _lines_meet(a0, a1, b0, b1)
-            out.append(P if P is not None else pts[(i + j) // 2])
+            mid = pts[(i + j) // 2]
+            if P is None or (P - mid).length > 2.0 * max(float(width), 1e-6):   # (near-parallel legs: no sane corner)
+                P = mid
+            out.append(P)
             i = j + 1
             continue
         out.append(pts[i])
@@ -1685,6 +1712,7 @@ def _build_sweep_bmesh(data, p):
     if len(path) > 3:                                      # 0.24.114 a hand-drawn (smoothed) corner = one corner
         path = tighten_corners(path, w_)                   # (on the dense stroke: the legs' lines are true)
         path = simplify3(path, 0.05 * w_)                  # then straight runs = single segments
+        path = drop_spikes(path, w_)                       # 0.24.115 hooks / overshoots at joints are no corners
     if round_on:                                           # 0.24.112 Round corners: the bends become arcs
         # 0.24.114 a part always rounds (a short leg: a smaller arc, the inner side creased by the clamp below);
         # a cutter keeps the minimum radius (a creased inner side is no shape for a Boolean)
@@ -2102,6 +2130,12 @@ def join_path(old, new, fade, tail=0.0):
     if len(new) < 2 or not old:
         raise cg.CutError('Draw a longer line')
     joint = old[-1]
+    # 0.24.115 the stroke begins at its point nearest the joint: a hand starts a little behind the end and comes
+    # back over it, and that doubled-back bit made a hairpin (a wedge) at the joint
+    look = min(len(new) - 1, 24)
+    k0 = min(range(look + 1), key=lambda i: math.dist(new[i], joint))
+    if k0 > 0 and k0 < len(new) - 1:
+        new = new[k0:]
     shift = [joint[k] - new[0][k] for k in range(len(joint))]
     fade = max(float(fade), 1e-6)
     run, out = 0.0, []
@@ -2157,9 +2191,34 @@ def extend_sweep(ob, projector, pts, at_end=True, end_hit=None, close_px=None):
     # the loop closes - the end is pulled onto the start and the sweep runs round without caps
     closing = False
     if close_px is not None and len(path) >= 2 and len(new) >= 1:
-        try:
-            other_px = projector.to_screen(frame @ Vector(path[0]))
-            closing = math.dist((float(other_px[0]), float(other_px[1])), (float(pts[-1][0]), float(pts[-1][1]))) <= close_px
+        try:                                               # the stroke's tail passes within the ring of the start?
+            start = Vector(path[0])
+            other_px = projector.to_screen(frame @ start)
+            other_px = (float(other_px[0]), float(other_px[1]))
+            chain = [Vector(path[-1])] + [Vector(q) for q in new]
+            k_first = max(0, len(chain) - 25)
+            best = None                                    # (screen distance, segment index into chain, point)
+            for k in range(k_first, len(chain)):
+                a = chain[k]
+                cands = [a]
+                if k + 1 < len(chain):                     # the nearest point on the segment too (a straight stroke
+                    b = chain[k + 1]                       # has no vertex near the start)
+                    d = b - a
+                    if d.length_squared > 1e-12:
+                        t = max(0.0, min(1.0, (start - a).dot(d) / d.length_squared))
+                        cands.append(a + d * t)
+                for q in cands:
+                    sp = projector.to_screen(frame @ q)
+                    dist = math.dist(other_px, (float(sp[0]), float(sp[1])))
+                    if best is None or dist < best[0]:
+                        best = (dist, k, q)
+            if best is not None and best[0] <= close_px + 1e-6:
+                closing = True
+                # 0.24.115 the stroke ends at its point nearest the start (a hand runs on past it): the rest is dropped
+                k, q = best[1], best[2]
+                new = [tuple(v) for v in chain[1:k + 1]] + ([tuple(q)] if (Vector(q) - chain[k]).length > 1e-9 else [])
+                if not new:
+                    new = [tuple(q)]
         except (AttributeError, TypeError, ValueError):
             closing = False
     if closing:
