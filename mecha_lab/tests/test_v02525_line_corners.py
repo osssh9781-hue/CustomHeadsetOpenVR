@@ -46,7 +46,7 @@ check('... a 3D bend (x then up z) arcs in its own plane', len(f4) >= 6 and all(
 
 # --- sweep_frames: the mitre ----------------------------------------------------------------------------------------
 fr = base_mesh.sweep_frames(L)
-U1, V1, M1, k1 = fr[1]
+U1, V1, M1, k1, _R1 = fr[1]
 check('sweep_frames: at the bend T is the bisector, the ring is stretched sqrt(2) along M (in the turn plane, across), straight runs k = 1',
       abs(k1 - 2 ** 0.5) < 1e-6 and M1 is not None and abs(abs(M1.dot(U1)) - 1.0) < 1e-6 and fr[0][3] == 1.0 and fr[0][2] is None
       and fr[2][2] is None, (round(k1, 4), tuple(round(c, 3) for c in M1) if M1 else None))
@@ -142,7 +142,8 @@ co_small = [tuple(v.co) for v in ob.data.vertices]
 check('... the radius slider: a smaller radius (0.6 x) rebuilds closed with a tighter bend (different mesh)',
       non_manifold(ob) == 0 and len(co_small) > n_sharp and co_small != co_big)
 ob.mch_base.corner_radius = 0.3
-check('... under the minimum (half the section): the bend falls back to the mitre rather than folding', len(ob.data.vertices) == n_sharp)
+check('... under half the section (0.3 x): 0.24.114 it still rounds - the inner side creased, closed', non_manifold(ob) == 0
+      and len(ob.data.vertices) > n_sharp)
 ob.mch_base.corner_radius = r0
 mode = line_hud.toggle_corner(ob)
 check('... toggle again -> Sharp, back to the mitred mesh', mode == 'SHARP' and len(ob.data.vertices) == n_sharp)

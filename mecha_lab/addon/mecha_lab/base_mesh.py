@@ -1413,6 +1413,146 @@ def _resample_section_path(points, width, max_points=192):
 
 
 MITER_MAX_DEG = 150.0      # a bend sharper than this is mitred as if it were 150 deg (the tip would run away)
+CORNER_TURN_DEG = 30.0     # 0.24.114 a run of turns adding up to this ...
+CORNER_RUN_W = 0.5         # ... within this many section widths of line is one hand-drawn corner
+SNAP_TURN_DEG = (0.0, 45.0, 90.0, 135.0)   # 0.24.114 (user: "90 도랑 45 도도 약간 걸리게") a continued stroke's bend snaps ...
+SNAP_TOL_DEG = 5.0                          # ... to these when within this
+
+
+def simplify3(path, tol):
+    """0.24.114 Douglas-Peucker on a 3D polyline: straight runs drawn as many close points become single segments
+    (so a bend's legs are real segments for the fillet / mitre); a curve keeps every point that leaves the chord by
+    more than ``tol``.  Pure; the ends stay."""
+    pts = [Vector(_xyz(q)) for q in path]
+    n = len(pts)
+    if n < 3 or tol <= 0.0:
+        return [tuple(q) for q in pts]
+    keep = [False] * n
+    keep[0] = keep[-1] = True
+    stack = [(0, n - 1)]
+    while stack:
+        i, j = stack.pop()
+        if j <= i + 1:
+            continue
+        a, b = pts[i], pts[j]
+        d = b - a
+        L = d.length
+        best, bi = -1.0, -1
+        for k in range(i + 1, j):
+            w = pts[k] - a
+            dist = (w - d * (w.dot(d) / (L * L))).length if L > 1e-12 else w.length
+            if dist > best:
+                best, bi = dist, k
+        if best > tol:
+            keep[bi] = True
+            stack.append((i, bi))
+            stack.append((bi, j))
+    return [tuple(q) for q, k in zip(pts, keep) if k]
+
+
+def nearest_attrs(stations, points, attrs):
+    """For each station the attribute of the nearest of the original ``points`` (the piece a station belongs to)."""
+    src = [Vector(_xyz(q)) for q in points]
+    out = []
+    for st_ in stations:
+        P = Vector(st_)
+        k = min(range(len(src)), key=lambda i: (src[i] - P).length_squared)
+        out.append(attrs[k])
+    return out
+
+
+def _lines_meet(a0, a1, b0, b1):
+    """The point where the line through a0 -> a1 meets the line through b0 -> b1 (3D: the middle of their closest
+    approach); None when they are parallel."""
+    da, db = a1 - a0, b1 - b0
+    if da.length < 1e-9 or db.length < 1e-9:
+        return None
+    da, db = da.normalized(), db.normalized()
+    w = b0 - a0
+    bb = da.dot(db)
+    den = 1.0 - bb * bb
+    if den < 1e-6:
+        return None
+    s = (w.dot(da) - bb * w.dot(db)) / den
+    t = (bb * w.dot(da) - w.dot(db)) / den
+    return (a0 + da * s + b0 + db * t) * 0.5
+
+
+def tighten_corners(path, width):
+    """0.24.114 Hand-drawn corners become one crisp corner point.  A stroke's corner is smoothed over a few close
+    points (Free Draw Smoothing); a run of turning points whose turn adds up to ``CORNER_TURN_DEG`` within
+    ``CORNER_RUN_W`` x the section width is replaced by the point where the two legs' lines meet, so Sharp mitres it
+    and Round rounds it as one bend.  Gentle curves (the same turn over a longer run) stay as drawn.  Pure."""
+    pts = [Vector(_xyz(q)) for q in path]
+    n = len(pts)
+    if n < 4:
+        return [tuple(q) for q in pts]
+    turns = [0.0] * n
+    for i in range(1, n - 1):
+        a, b = pts[i] - pts[i - 1], pts[i + 1] - pts[i]
+        if a.length > 1e-9 and b.length > 1e-9:
+            turns[i] = math.degrees(a.angle(b))
+    limit = CORNER_RUN_W * max(float(width), 1e-6)
+    out = [pts[0]]
+    i = 1
+    while i < n - 1:
+        if turns[i] < 3.0:
+            out.append(pts[i])
+            i += 1
+            continue
+        j, total, length = i, turns[i], 0.0
+        while j + 1 < n - 1 and turns[j + 1] >= 3.0 and length + (pts[j + 1] - pts[j]).length <= limit:
+            length += (pts[j + 1] - pts[j]).length
+            j += 1
+            total += turns[j]
+        if j > i and total >= CORNER_TURN_DEG:
+            a0, a1 = (pts[i - 2], pts[i - 1]) if i >= 2 else (pts[i - 1], pts[i])          # the legs' own lines
+            b0, b1 = (pts[j + 1], pts[j + 2]) if j + 2 < n else (pts[j], pts[j + 1])
+            P = _lines_meet(a0, a1, b0, b1)
+            out.append(P if P is not None else pts[(i + j) // 2])
+            i = j + 1
+            continue
+        out.append(pts[i])
+        i += 1
+    out.append(pts[-1])
+    clean = [out[0]]
+    for q in out[1:]:
+        if (q - clean[-1]).length > 1e-7:
+            clean.append(q)
+    return [tuple(q) for q in clean]
+
+
+def snap_turn(prev_dir, pts, normal, tol=SNAP_TOL_DEG):
+    """0.24.114 A continued stroke that heads off within ``tol`` degrees of 0 / 45 / 90 / 135 from the previous leg
+    (measured in the new piece's plane, normal ``normal``) is turned about its start onto exactly that angle - a
+    light catch, like the lasso's straight angles.  Returns (points, the angle it snapped to or None)."""
+    if len(pts) < 2:
+        return pts, None
+    nrm = Vector(normal)
+    if nrm.length < 1e-9:
+        return pts, None
+    nrm.normalize()
+    d0 = Vector(prev_dir)
+    d0 -= nrm * d0.dot(nrm)
+    if d0.length < 1e-6:
+        return pts, None
+    d0.normalize()
+    P0 = Vector(_xyz(pts[0]))
+    chord = Vector(_xyz(pts[-1])) - P0
+    chord -= nrm * chord.dot(nrm)
+    if chord.length < 1e-6:
+        return pts, None
+    c = chord.normalized()
+    ang = math.degrees(math.atan2(d0.cross(c).dot(nrm), d0.dot(c)))
+    best = None
+    for t in SNAP_TURN_DEG:
+        for target in (t, -t):
+            if abs(ang - target) <= tol and (best is None or abs(ang - target) < abs(ang - best)):
+                best = target
+    if best is None or abs(best - ang) < 1e-6:
+        return pts, best
+    rot = Matrix.Rotation(math.radians(best - ang), 4, nrm)
+    return [tuple(P0 + rot @ (Vector(_xyz(q)) - P0)) for q in pts], best
 
 
 def fillet_path(path, radius, min_turn_deg=12.0, max_turn_deg=170.0, step_deg=15.0, min_radius=0.0):
@@ -1465,27 +1605,30 @@ def fillet_path(path, radius, min_turn_deg=12.0, max_turn_deg=170.0, step_deg=15
     return [tuple(q) for q in clean]
 
 
-def sweep_frames(stations):
-    """0.24.110 (U, V, M, k) per station of a 3D polyline: T the tangent (the bisector of the legs meeting there),
+def sweep_frames(stations, ups=None, closed=False):
+    """0.24.110 (U, V, M, k, R) per station of a 3D polyline: T the tangent (the bisector of the legs meeting there),
     V the section's up - the plane normal (local z) at the start, carried along with the least twist (parallel
     transport: a bent bar does not spin) - and U = V x T across the line.  0.24.112 M, k: the mitre at a bend - the
     ring is stretched by k = 1 / cos(turn / 2) along M (in the plane of the turn, square to T), so two straight
-    tubes meet in a clean crease; on a straight run k = 1."""
+    tubes meet in a clean crease; on a straight run k = 1.  0.24.114 R: the local bend radius at the station
+    (None on a straight run) - Round clamps the inner side of a tight bend to it."""
     out = []
     n = len(stations)
     V = Vector((0.0, 0.0, 1.0))
     for i in range(n):
-        a = (Vector(stations[i]) - Vector(stations[i - 1])) if i > 0 else None
-        b = (Vector(stations[i + 1]) - Vector(stations[i])) if i < n - 1 else None
+        # 0.24.114 a closed loop: the neighbours wrap round (the seam is a bend like any other, no caps)
+        a = (Vector(stations[i]) - Vector(stations[i - 1])) if (i > 0 or closed) else None
+        b = (Vector(stations[(i + 1) % n]) - Vector(stations[i])) if (i < n - 1 or closed) else None
         if a is not None and a.length < 1e-8 or b is not None and b.length < 1e-8:
             raise cg.CutError('Overlapping drawing points; redraw the path.')
-        M, k = None, 1.0
+        M, k, R_in = None, 1.0, None
         if a is None:
             T = b.normalized()
         elif b is None:
             T = a.normalized()
         else:
-            a, b = a.normalized(), b.normalized()
+            la, lb = a.length, b.length
+            a, b = a / la, b / lb
             T = a + b
             if T.length < 1e-6:                            # a hairpin: carry on along the incoming leg
                 T = a.copy()
@@ -1493,17 +1636,23 @@ def sweep_frames(stations):
                 T.normalize()
                 theta = math.acos(max(-1.0, min(1.0, a.dot(b))))
                 if theta > 1e-4:
+                    R_in = 0.5 * (la + lb) / (2.0 * math.sin(min(theta, math.pi - 1e-3) / 2.0))   # the local bend radius
                     theta = min(theta, math.radians(MITER_MAX_DEG))
                     k = 1.0 / math.cos(theta / 2.0)
                     M = (b - a)
                     M = M.normalized() if M.length > 1e-9 else None
-        Vn = V - T * V.dot(T)
+        # 0.24.114 each piece's up is the normal of the view it was drawn in (the stamp stands toward that viewer,
+        # like a fresh stroke); without one (old data) the up is carried along with the least twist
+        want = Vector(ups[i]) if ups is not None else V
+        Vn = want - T * want.dot(T)
+        if Vn.length < 1e-6:
+            Vn = V - T * V.dot(T)
         if Vn.length < 1e-6:                               # the line heads straight along the old up: pick any up
             Vn = Vector((1.0, 0.0, 0.0)) if abs(T.x) < 0.9 else Vector((0.0, 1.0, 0.0))
             Vn = Vn - T * Vn.dot(T)
         V = Vn.normalized()
         U = V.cross(T).normalized()
-        out.append((U, V, M, k))
+        out.append((U, V, M, k, R_in))
     return out
 
 
@@ -1518,9 +1667,33 @@ def _build_sweep_bmesh(data, p):
     path = [tuple(float(c) for c in q) for q in (data.get('path3') or data['path'])]
     if path and len(path[0]) == 2:
         path = [(q[0], q[1], 0.0) for q in path]
-    if getattr(p, 'line_corner', 'SHARP') == 'ROUND':      # 0.24.112 Round corners: the bends become arcs
-        path = fillet_path(path, float(getattr(p, 'corner_radius', 1.0)) * max(1e-5, float(p.section_width)),
-                           min_radius=0.55 * float(p.section_width))
+    closed = bool(data.get('closed')) and len(path) >= 3   # 0.24.114 a loop: the end joined back onto the start
+    orig = list(path)
+    ups = [tuple(u) for u in data['up3']] if data.get('up3') and len(data['up3']) == len(path) else None
+    if ups is not None:                                    # at a joint the up is the mean of the two pieces' ups
+        for j in data.get('joints', ()):
+            if 0 < j < len(ups) - 1 or (closed and 0 <= j < len(ups)):
+                a_, b_ = Vector(ups[j - 1]), Vector(ups[(j + 1) % len(ups)])
+                m_ = a_ + b_
+                if m_.length > 1e-6:
+                    ups[j] = tuple(m_.normalized())
+    round_on = getattr(p, 'line_corner', 'SHARP') == 'ROUND'
+    cutter = bool(getattr(p, 'is_cutter', False))
+    w_ = float(p.section_width)
+    if closed:                                             # the seam vertex is an inner vertex for the corner passes
+        path = [path[-1]] + path + [path[0]]
+    if len(path) > 3:                                      # 0.24.114 a hand-drawn (smoothed) corner = one corner
+        path = tighten_corners(path, w_)                   # (on the dense stroke: the legs' lines are true)
+        path = simplify3(path, 0.05 * w_)                  # then straight runs = single segments
+    if round_on:                                           # 0.24.112 Round corners: the bends become arcs
+        # 0.24.114 a part always rounds (a short leg: a smaller arc, the inner side creased by the clamp below);
+        # a cutter keeps the minimum radius (a creased inner side is no shape for a Boolean)
+        path = fillet_path(path, float(getattr(p, 'corner_radius', 1.0)) * max(1e-5, w_),
+                           min_radius=0.55 * w_ if cutter else 0.0)
+    if closed:
+        path = path[1:-1]
+        if len(path) < 3:
+            raise cg.CutError('The loop is too short to sweep.')
     loops = [[(float(q[0]), float(q[1])) for q in lp] for lp in data['loops']]
     if not loops or sum(map(len, loops)) < 3:
         raise cg.CutError('The selected cross-section shape is empty.')
@@ -1530,10 +1703,13 @@ def _build_sweep_bmesh(data, p):
     groups = cg.organize_loops(loops)
     if not groups:
         raise cg.CutError('Saved cross-section contains no closed area.')
-    stations = _resample_section_path(path, p.section_width,
+    stations = _resample_section_path(path + ([path[0]] if closed else []), p.section_width,
                                        max_points=min(192, max(12, 125000 // total_points)))
-    frames = sweep_frames(stations)          # (U across, V up) per station: V starts as the plane's normal and is
-    #                                          carried along the line with the least twist (a flat line: U in-plane, V = z)
+    if closed:
+        stations = stations[:-1]
+    st_ups = nearest_attrs(stations, orig, ups) if ups is not None else None
+    frames = sweep_frames(stations, st_ups, closed)   # (U across, V up) per station: V = each piece's drawing-view
+    #                                                   normal (old data: carried along with the least twist)
     width, height = max(1e-5, p.section_width), max(1e-5, p.height)
     base_angle, twist, taper = p.section_rotation, p.section_twist, p.section_taper
     rest = bool(data.get('rest'))
@@ -1550,7 +1726,7 @@ def _build_sweep_bmesh(data, p):
                 off += len(lp)
             cap_faces = _triangulate(flat, len(flat), section_loops, edges)
             all_rings = []
-            for i, (st_, (U, V, M, kk)) in enumerate(zip(stations, frames)):
+            for i, (st_, (U, V, M, kk, R_in)) in enumerate(zip(stations, frames)):
                 P = Vector(st_)
                 t = i / (len(stations)-1)
                 scale = max(0.05, 1.0 - taper*(abs(2*t-1)**2))
@@ -1567,15 +1743,23 @@ def _build_sweep_bmesh(data, p):
                     off = U * (u * width) + V * (p.offset + v * height + dz)
                     if M is not None:                      # the mitre: stretched across the bend
                         off += M * (off.dot(M) * (kk - 1.0))
+                        if round_on and not cutter and R_in is not None:
+                            # 0.24.114 a bend tighter than the section is thick: the inner side cannot go past
+                            # the bend's centre - it creases there (a bent bar), the outer side stays round
+                            s_in = off.dot(M)
+                            lim = 0.98 * R_in
+                            if s_in > lim:
+                                off += M * (lim - s_in)
                     ring.append(bm.verts.new(P + off))
                 all_rings.append(ring)
-            for a, b, c in cap_faces:
-                # Profile +U points left across the path, +V points up.
-                # A CCW cap faces forward; reverse the leading cap only.
-                a, b, c = _orient_ccw((a,b,c), flat)
-                bm.faces.new((all_rings[0][c], all_rings[0][b], all_rings[0][a]))
-                bm.faces.new((all_rings[-1][a], all_rings[-1][b], all_rings[-1][c]))
-            for ring0, ring1 in zip(all_rings, all_rings[1:]):
+            if not closed:
+                for a, b, c in cap_faces:
+                    # Profile +U points left across the path, +V points up.
+                    # A CCW cap faces forward; reverse the leading cap only.
+                    a, b, c = _orient_ccw((a,b,c), flat)
+                    bm.faces.new((all_rings[0][c], all_rings[0][b], all_rings[0][a]))
+                    bm.faces.new((all_rings[-1][a], all_rings[-1][b], all_rings[-1][c]))
+            for ring0, ring1 in zip(all_rings, all_rings[1:] + ([all_rings[0]] if closed else [])):
                 for a, b in edges:
                     bm.faces.new((ring0[a], ring0[b], ring1[b], ring1[a]))
         if not bm.faces:
@@ -1695,6 +1879,7 @@ class _SweepCutterSettings:
         self.section_taper = 0.0
         self.line_corner = corner                  # 0.24.112 the groove's bends: Sharp (mitre) / Round
         self.corner_radius = float(corner_radius)
+        self.is_cutter = True                      # 0.24.114 (Round keeps its minimum radius: no creased inner side)
 
 
 def sweep_cutter_mesh(frame, local_path, section, width, height, bottom, rotation=0.0, corner='SHARP',
@@ -1791,10 +1976,93 @@ def sweep_ends(ob):
         path = data.get('path3') or data['path']
     except (TypeError, ValueError, KeyError):
         return None
-    if len(path) < 2:
+    if len(path) < 2 or data.get('closed'):               # (0.24.114 a closed loop has no ends to go on from)
         return None
     mw = ob.matrix_world
     return [mw @ Vector(_xyz(q)) for q in (path[0], path[-1])]
+
+
+def sweep_anchor(ob):
+    """0.24.114 Where the Line HUD sits: the line's end, or the seam of a closed loop (world), or None."""
+    try:
+        data = json.loads(ob[SWEEP_KEY])
+        path = data.get('path3') or data['path']
+    except (TypeError, ValueError, KeyError, AttributeError):
+        return None
+    if not path:
+        return None
+    return ob.matrix_world @ Vector(_xyz(path[0] if data.get('closed') else path[-1]))
+
+
+def _sweep_lists(data):
+    """(path3, ups, joints) of the stored sweep as lists (old data: flat, up = z, no joints)."""
+    path = [_xyz(q) for q in (data.get('path3') or data['path'])]
+    ups = [tuple(u) for u in data['up3']] if data.get('up3') and len(data['up3']) == len(path) else \
+        [(0.0, 0.0, 1.0)] * len(path)
+    joints = [int(j) for j in data.get('joints', ()) if 0 < int(j) < len(path)]
+    return path, ups, joints
+
+
+def _store_sweep(data, path, ups, joints, closed=None):
+    flat = all(abs(q[2]) < 1e-6 for q in path)
+    data['path'] = [(q[0], q[1]) for q in path]
+    if flat:
+        data.pop('path3', None)
+    else:
+        data['path3'] = [list(q) for q in path]
+    if all(abs(u[0]) < 1e-9 and abs(u[1]) < 1e-9 and u[2] > 0 for u in ups):
+        data.pop('up3', None)
+    else:
+        data['up3'] = [list(u) for u in ups]
+    data['joints'] = sorted(set(joints))
+    if closed is not None:
+        data['closed'] = bool(closed)
+    return flat
+
+
+def move_end(ob, at_end, new_world):
+    """0.24.114 (user: "파란색 동그라미 살아 있으면 잡고 이동 가능하게") The line's end dragged to ``new_world``: the last
+    piece (from its joint on; a single piece: the whole line) is turned and stretched about that joint so its end
+    follows - the pieces before it do not move.  Returns False when there is nothing to move."""
+    data = json.loads(ob[SWEEP_KEY])
+    if data.get('closed'):
+        return False
+    path, ups, joints = _sweep_lists(data)
+    if len(path) < 2:
+        return False
+    if not at_end:
+        n = len(path)
+        path.reverse()
+        ups.reverse()
+        joints = [n - 1 - j for j in joints]
+    j0 = max(joints) if joints else 0
+    J = Vector(path[j0])
+    E = Vector(path[-1])
+    inv = ob.matrix_world.inverted_safe()
+    E2 = inv @ Vector(new_world)
+    v0, v1 = E - J, E2 - J
+    if v0.length < 1e-6 or v1.length < 1e-6:
+        return False
+    s = v1.length / v0.length
+    axis = v0.cross(v1)
+    rot = Matrix.Rotation(v0.angle(v1), 3, axis) if axis.length > 1e-9 else Matrix.Identity(3)
+    for k in range(j0 + 1, len(path)):
+        path[k] = tuple(J + rot @ ((Vector(path[k]) - J) * s))
+        ups[k] = tuple((rot @ Vector(ups[k])).normalized())
+    if not at_end:
+        n = len(path)
+        path.reverse()
+        ups.reverse()
+        joints = [n - 1 - j for j in joints]
+    probe = dict(data)
+    _store_sweep(probe, path, ups, joints)
+    _build_sweep_bmesh(probe, ob.mch_base).free()        # validate first
+    _store_sweep(data, path, ups, joints)
+    ob[SWEEP_KEY] = json.dumps(data, separators=(',', ':'))
+    if ob.get(ATTACH_KEY) and data.get('path3'):
+        del ob[ATTACH_KEY]
+    rebuild(ob)
+    return True
 
 
 def _xyz(q):
@@ -1855,41 +2123,72 @@ def join_path(old, new, fade, tail=0.0):
     return keep, added
 
 
-def extend_sweep(ob, projector, pts, at_end=True, end_hit=None):
+def extend_sweep(ob, projector, pts, at_end=True, end_hit=None, close_px=None):
     """0.24.109 (user: "한번 긋고 뷰포트 돌려서 처음 그었던 선 끝난 부분에 이어서 그릴 수 있게") The screen stroke ``pts``
     continued onto the live swept line ``ob``.  The view may have turned since the first stroke: the new points are
     projected onto the FIRST stroke's plane (the object's own frame) and joined to the path's end (or its start when
     ``at_end`` is False) - one object, the section as it was, pointing the way the first stroke did.  The stroke's
     first point lands exactly on the old end; the small gap the pointer left is faded out over the first two
-    section widths.  Returns (points added, degrees the view is turned from the first stroke, left the plane)."""
+    section widths.  Returns (points added, degrees the view is turned from the first stroke, left the plane, the
+    angle the bend snapped to or None, True when the stroke closed the line into a loop)."""
     data = json.loads(ob[SWEEP_KEY])
+    if data.get('closed'):
+        raise cg.CutError('This line is a closed loop: nothing to go on from')
     frame = ob.matrix_world
     inv = frame.inverted_safe()
-    path = [_xyz(q) for q in (data.get('path3') or data['path'])]
+    path, ups, joints = _sweep_lists(data)
+    n0 = len(path)
     if not at_end:                                        # (the stroke starts at the line's start: it is put in front)
         path.reverse()
+        ups.reverse()
+        joints = [n0 - 1 - j for j in joints]
     if len(pts) < 2:
         raise cg.CutError('Draw a longer line')
     # 0.24.110 the new piece lies in the plane of the CURRENT view through the old end (the line can leave its first
-    # plane); a view turned less than 20 deg keeps the first plane
+    # plane)
     local, turned, leaves = continue_plane_path(frame, projector, pts, path[-1])
-    _tail, new = join_path(path, local, fade=2.0 * float(ob.mch_base.section_width))
+    n_loc = (frame.inverted_safe().to_3x3() @ (-Vector(projector.view_dir))).normalized() if leaves else Vector((0.0, 0.0, 1.0))
+    snapped = None
+    if len(path) >= 2:                                    # 0.24.114 the bend catches at 0 / 45 / 90 / 135 deg
+        local, snapped = snap_turn(Vector(path[-1]) - Vector(path[-2]), local, n_loc)
+    width = float(ob.mch_base.section_width)
+    _tail, new = join_path(path, local, fade=2.0 * width)
+    # 0.24.114 (user: "동그라미 저 부분 시작해서 반대편 동그라미로 가면 붙게") the stroke ends on the line's OTHER end:
+    # the loop closes - the end is pulled onto the start and the sweep runs round without caps
+    closing = False
+    if close_px is not None and len(path) >= 2 and len(new) >= 1:
+        try:
+            other_px = projector.to_screen(frame @ Vector(path[0]))
+            closing = math.dist((float(other_px[0]), float(other_px[1])), (float(pts[-1][0]), float(pts[-1][1]))) <= close_px
+        except (AttributeError, TypeError, ValueError):
+            closing = False
+    if closing:
+        # the far end faded onto the start (the mirror of join_path's start fade)
+        shift = [path[0][c] - new[-1][c] for c in range(3)]
+        run, fade = 0.0, max(2.0 * width, 1e-6)
+        out = []
+        for k in range(len(new) - 1, -1, -1):
+            if k < len(new) - 1:
+                run += math.dist(new[k + 1], new[k])
+            f = max(0.0, 1.0 - run / fade)
+            out.append(tuple(new[k][c] + shift[c] * f for c in range(3)))
+        new = list(reversed(out))
+        if math.dist(new[-1], path[0]) < 1e-6:
+            new = new[:-1]                                  # (a straight closing leg: the seam edge is implicit)
+    joints = joints + [len(path) - 1]
     path = path + new
+    ups = ups + [tuple(n_loc)] * len(new)
+    if closing:
+        joints = joints + [0]
     if not at_end:
+        n1 = len(path)
         path.reverse()
-    flat = all(abs(q[2]) < 1e-6 for q in path)
+        ups.reverse()
+        joints = [n1 - 1 - j for j in joints]
     probe = dict(data)
-    probe['path'] = [(q[0], q[1]) for q in path]
-    if flat:
-        probe.pop('path3', None)
-    else:
-        probe['path3'] = path
+    flat = _store_sweep(probe, path, ups, joints, closed=closing or None)
     _build_sweep_bmesh(probe, ob.mch_base).free()        # validate first: never lose the line that was there
-    data['path'] = probe['path']
-    if flat:
-        data.pop('path3', None)
-    else:
-        data['path3'] = path
+    _store_sweep(data, path, ups, joints, closed=closing or None)
     ob[SWEEP_KEY] = json.dumps(data, separators=(',', ':'))
     hull = _hull(data['path'])                            # the stored outline follows the whole line (its plane view)
     if hull is not None and abs(_area2(hull)) >= 4.0 * 1e-6:
@@ -1900,7 +2199,7 @@ def extend_sweep(ob, projector, pts, at_end=True, end_hit=None):
     # the piece already there keeps its bend and the new piece rides at the old end's depth (re-bending the whole
     # line from the new end moved the first piece)
     rebuild(ob)
-    return len(new), turned, leaves
+    return len(new), turned, leaves, snapped, closing
 
 
 class MCH_OT_base_section_use_alpha(bpy.types.Operator):

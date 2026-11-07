@@ -1868,15 +1868,17 @@ class MCH_OT_press_unified(bpy.types.Operator):
                         safety_save.checkpoint('Mecha Base Mesh Line continued')
                     except Exception:
                         pass
-                    n, turned, leaves = base_mesh.extend_sweep(ob, self.projector, pts, at_end,
-                                                               end_hit=ce.surface_point(context, self.projector, pts[-1]))
+                    n, turned, leaves, snapped, closed = base_mesh.extend_sweep(
+                        ob, self.projector, pts, at_end, end_hit=ce.surface_point(context, self.projector, pts[-1]),
+                        close_px=continue_radius(pr))
                     for o in context.selected_objects:
                         o.select_set(False)
                     ob.select_set(True)
                     context.view_layer.objects.active = ob
                     msg = f'Base Mesh Line continued: {ob.name} (+{n} points' + \
                           (f', in the view you drew in: {turned:.0f} deg from the first piece' if leaves and turned >= 5.0
-                           else '') + ')'
+                           else '') + (f', bend snapped to {abs(snapped):.0f} deg' if snapped is not None else '') + \
+                          (', CLOSED into a loop' if closed else '') + ')'
                 else:
                     st = base_mesh.scene_defaults(context)
                     attach = None
@@ -1900,6 +1902,10 @@ class MCH_OT_press_unified(bpy.types.Operator):
                         pass
                 ob = context.active_object
                 CONTINUE['base'] = ob.name if ob is not None and ob.get(base_mesh.SWEEP_KEY) else None
+                try:                                   # 0.24.114 Move mode ends with a new stroke (the end rings go on again)
+                    context.window_manager.mch_line_move = False
+                except (AttributeError, TypeError):
+                    pass
             else:
                 # 0.24.109 (user: "컷도 당연히 스탬프 단면으로 잘려야지" / "맥스 조절해서 얕게 만들어도 왜 다 뚫려") the Line Cut
                 # is the stamp's section swept along the line, pressed in Max x the part's size (not the Cut tool's depth)
@@ -1925,6 +1931,11 @@ class MCH_OT_press_unified(bpy.types.Operator):
                     # 0.24.110 the new piece lies in the CURRENT view's plane through the groove's end (it can leave the
                     # first plane); a view turned less than 20 deg keeps the first plane
                     new_local, turned, leaves = base_mesh.continue_plane_path(frame, self.projector, pts, old[-1])
+                    snapped = None
+                    if len(old) >= 2:                      # 0.24.114 the bend catches at 0 / 45 / 90 / 135 deg
+                        n_loc = (frame.inverted_safe().to_3x3() @ (-Vector(self.projector.view_dir))).normalized() \
+                            if leaves else Vector((0.0, 0.0, 1.0))
+                        new_local, snapped = base_mesh.snap_turn(Vector(old[-1]) - Vector(old[-2]), new_local, n_loc)
                     corner = getattr(context.scene.mch_base, 'line_corner', 'SHARP')
                     tail, new_pts = base_mesh.join_path(old, new_local, fade=2.0 * width,
                                                         tail=width * (2.5 if corner == 'ROUND' else 1.0))
@@ -1938,7 +1949,7 @@ class MCH_OT_press_unified(bpy.types.Operator):
                     section, bottom = line_cut_section(context, pr, depth, span, eps=0.003 * size)
                     width = height = span
                     _groups, frame, local_path = base_mesh.sweep_frame(context, loops, self.projector, pts)
-                    full, turned, leaves = local_path, 0.0, False
+                    full, turned, leaves, snapped = local_path, 0.0, False, None
                 try:
                     safety_save.checkpoint('Mecha Line Cut')
                 except Exception:
@@ -1950,7 +1961,7 @@ class MCH_OT_press_unified(bpy.types.Operator):
                 if prev is not None:
                     msg = 'Line Cut continued: ' + msg + \
                           (f' | in the view you drew in: {turned:.0f} deg from the first piece' if leaves and turned >= 5.0
-                           else '')
+                           else '') + (f' | bend snapped to {abs(snapped):.0f} deg' if snapped is not None else '')
                 CONTINUE['cut'] = {'frame': _flat_frame(frame), 'path': [list(q) for q in full],
                                    'section': [[list(q) for q in lp] for lp in section], 'width': width,
                                    'height': height, 'bottom': bottom, 'targets': [t.name for t in targets]}
@@ -2357,9 +2368,20 @@ def draw(layout, context):
     # 0.24.104 Press Cut Alt+drag directly sweeps the current stamp. Base Mesh
     # tool's standalone section choices remain independent and unchanged.
     base = context.scene.mch_base
+    live = None
+    try:                                   # 0.24.114 a made line that is active: these sliders edit IT, live
+        from . import line_hud
+        live = line_hud.hud_target(context)
+    except Exception:
+        live = None
+    if live is not None:
+        base = live.mch_base
     section = layout.box()
     section.label(text='Draw: Base Mesh Line (the stamp as its section)', icon='CURVE_PATH')
-    section.label(text='Uses the selected Press Cut shape automatically')
+    if live is not None:
+        section.label(text=f'Editing the made line: {live.name} (live)', icon='DOT')
+    else:
+        section.label(text='Uses the selected Press Cut shape automatically')
     section.prop(base, 'section_width')
     section.prop(base, 'height', text='Section Height')
     section.prop(base, 'section_rotation')

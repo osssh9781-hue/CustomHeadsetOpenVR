@@ -13,7 +13,7 @@ from __future__ import annotations
 import math
 
 import bpy
-from bpy.props import StringProperty
+from bpy.props import BoolProperty
 from mathutils import Matrix, Vector
 
 from . import base_mesh
@@ -68,23 +68,43 @@ def hud_layout(end_px, region_w, region_h, btn=BTN, gap=GAP, round_on=False):
     x0 = max(btn, min(x0, region_w - total_w))
     rows = 2 if round_on else 1
     y0 = max(gap + SLIDER_H * rows, min(y0, region_h - btn))
-    lay = {'corner': (x0, y0), 'thick': (x0 + btn / 2 + gap + SLIDER_W / 2, y0)}
+    lay = {'corner': (x0, y0), 'thick': (x0 + btn / 2 + gap + SLIDER_W / 2, y0),
+           'move': (x0, y0 - btn - gap)}                   # 0.24.114 Move: drag the end rings
     if round_on:
         lay['radius'] = (lay['thick'][0], y0 - SLIDER_H - gap)
     return lay
 
 
 def line_end_px(context, ob):
-    """Region px of the line's end (the far end of its path), or None when off screen."""
+    """Region px of the line's end (the seam of a closed loop), or None when off screen."""
     from bpy_extras import view3d_utils
     region, rv3d = context.region, context.region_data
     if region is None or rv3d is None:
         return None
-    ends = base_mesh.sweep_ends(ob)
-    if not ends:
+    anchor = base_mesh.sweep_anchor(ob)
+    if anchor is None:
         return None
-    p = view3d_utils.location_3d_to_region_2d(region, rv3d, ends[1])
+    p = view3d_utils.location_3d_to_region_2d(region, rv3d, anchor)
     return None if p is None else (float(p.x), float(p.y))
+
+
+def end_handles_px(context, ob):
+    """Region px of the two ends (for the Move handles): [(xy, at_end)], none for a closed loop."""
+    from bpy_extras import view3d_utils
+    region, rv3d = context.region, context.region_data
+    ends = base_mesh.sweep_ends(ob) if region is not None and rv3d is not None else None
+    if not ends:
+        return []
+    out = []
+    for k, w in enumerate(ends):
+        p = view3d_utils.location_3d_to_region_2d(region, rv3d, w)
+        if p is not None:
+            out.append(((float(p.x), float(p.y)), k == 1))
+    return out
+
+
+def move_on(context):
+    return bool(getattr(context.window_manager, 'mch_line_move', False))
 
 
 def layout_for(context, ob):
@@ -106,6 +126,14 @@ def thickness(ob):
     return float(ob.mch_base.section_width)
 
 
+def continue_radius_px(context):
+    try:
+        from . import press_cut
+        return press_cut.continue_radius(context.scene.mch_press) * context.preferences.system.ui_scale
+    except Exception:
+        return 24.0
+
+
 def set_thickness(ob, width, init=None):
     """The section's size: width ``width``, and the height scaled by the same factor (the stamp in proportion).
     ``init`` = (width, height) the drag started from (so a long drag does not drift)."""
@@ -121,6 +149,22 @@ def toggle_corner(ob):
     p = ob.mch_base
     p.line_corner = 'ROUND' if p.line_corner == 'SHARP' else 'SHARP'
     return p.line_corner
+
+
+class MCH_OT_line_move_toggle(bpy.types.Operator):
+    """Line HUD Move: on, the line's end rings can be dragged (the last piece turns and stretches about its joint);
+    off, a stroke from an end ring goes on with the line"""
+    bl_idname = 'mch.line_move_toggle'
+    bl_label = 'Line Move Mode'
+    bl_options = {'INTERNAL'}
+
+    def execute(self, context):
+        wm = context.window_manager
+        wm.mch_line_move = not wm.mch_line_move
+        self.report({'INFO'}, 'Move: drag an end ring' if wm.mch_line_move else 'Move off: a stroke from an end goes on')
+        for a in context.screen.areas if context.screen else ():
+            a.tag_redraw()
+        return {'FINISHED'}
 
 
 class MCH_OT_line_corner_toggle(bpy.types.Operator):
@@ -210,6 +254,90 @@ class MCH_GT_line_slider(bpy.types.Gizmo):
                     set_thickness(ob, self.init_w, (self.init_w, self.init_h))
 
 
+class MCH_GT_line_end(bpy.types.Gizmo):
+    """0.24.114 An end ring you can drag (Move on): the end follows the mouse in the piece's plane."""
+    bl_idname = 'MCH_GT_line_end'
+    __slots__ = ('shape', 'at_end', 'plane_co', 'plane_no', 'moved', 'start_world')
+
+    def setup(self):
+        if not hasattr(self, 'shape'):
+            ring = []
+            for i in range(24):
+                a0, a1 = math.tau * i / 24, math.tau * (i + 1) / 24
+                ring += [(math.cos(a0), math.sin(a0), 0.0), (math.cos(a1), math.sin(a1), 0.0), (0.0, 0.0, 0.0)]
+            self.shape = self.new_custom_shape('TRIS', ring)
+        if not hasattr(self, 'at_end'):
+            self.at_end = True
+
+    def draw(self, context):
+        self.draw_custom_shape(self.shape)
+
+    def test_select(self, context, location):
+        m = self.matrix_basis
+        return 0 if math.dist((location[0], location[1]), (m[0][3], m[1][3])) <= abs(m[0][0]) else -1
+
+    def _hit(self, context, event):
+        from bpy_extras import view3d_utils
+        from mathutils.geometry import intersect_line_plane
+        region, rv3d = context.region, context.region_data
+        xy = (event.mouse_region_x, event.mouse_region_y)
+        o = view3d_utils.region_2d_to_origin_3d(region, rv3d, xy)
+        d = view3d_utils.region_2d_to_vector_3d(region, rv3d, xy)
+        return intersect_line_plane(o, o + d * 1000.0, self.plane_co, self.plane_no)
+
+    def invoke(self, context, event):
+        ob = hud_target(context)
+        ends = base_mesh.sweep_ends(ob) if ob is not None else None
+        if not ends:
+            return {'CANCELLED'}
+        self.start_world = ends[1 if self.at_end else 0].copy()
+        self.plane_co = self.start_world.copy()
+        # the piece's plane: its drawing-view up (local) carried to world; a flat line: the frame's normal
+        try:
+            import json
+            data = json.loads(ob[base_mesh.SWEEP_KEY])
+            ups = data.get('up3')
+            up = Vector(ups[-1 if self.at_end else 0]) if ups else Vector((0.0, 0.0, 1.0))
+        except (TypeError, ValueError, KeyError, IndexError):
+            up = Vector((0.0, 0.0, 1.0))
+        self.plane_no = (ob.matrix_world.to_3x3() @ up).normalized()
+        self.moved = False
+        return {'RUNNING_MODAL'}
+
+    def modal(self, context, event, tweak):
+        ob = hud_target(context)
+        if ob is None:
+            return {'CANCELLED'}
+        hit = self._hit(context, event)
+        if hit is None:
+            return {'RUNNING_MODAL'}
+        try:
+            if base_mesh.move_end(ob, self.at_end, hit):
+                self.moved = True
+        except Exception as ex:               # a drag must never fail loudly: the line stays where it was
+            if context.area:
+                context.area.header_text_set(f'Move: {ex}')
+            return {'RUNNING_MODAL'}
+        if context.area:
+            context.area.header_text_set('Move the line\'s end  (Esc = back)')
+        return {'RUNNING_MODAL'}
+
+    def exit(self, context, cancel):
+        if context.area:
+            context.area.header_text_set(None)
+        ob = hud_target(context)
+        if cancel and self.moved and ob is not None:
+            try:
+                base_mesh.move_end(ob, self.at_end, self.start_world)
+            except Exception:
+                pass
+        elif self.moved:
+            try:
+                bpy.ops.ed.undo_push(message='Move Line End')
+            except Exception:
+                pass
+
+
 class MCH_GGT_line_hud(bpy.types.GizmoGroup):
     bl_idname = 'MCH_GGT_line_hud'
     bl_label = 'Line HUD'
@@ -232,6 +360,24 @@ class MCH_GGT_line_hud(bpy.types.GizmoGroup):
         gz.color_highlight = (0.32, 0.35, 0.41)
         gz.alpha_highlight = 1.0
         self.items['corner'] = gz
+        gz = self.gizmos.new('GIZMO_GT_button_2d')
+        gz.icon = 'ORIENTATION_GLOBAL'
+        gz.draw_options = {'BACKDROP', 'OUTLINE'}
+        gz.target_set_operator('mch.line_move_toggle')
+        gz.color = BASE_COL
+        gz.alpha = 0.92
+        gz.color_highlight = (0.32, 0.35, 0.41)
+        gz.alpha_highlight = 1.0
+        self.items['move'] = gz
+        for key, at_end in (('end_start', False), ('end_end', True)):
+            gz = self.gizmos.new(MCH_GT_line_end.bl_idname)
+            gz.at_end = at_end
+            gz.color = (0.3, 0.85, 1.0)
+            gz.alpha = 0.35
+            gz.color_highlight = (1.0, 0.75, 0.2)
+            gz.alpha_highlight = 0.7
+            gz.use_draw_scale = False
+            self.items[key] = gz
         for kind in ('thick', 'radius'):
             gz = self.gizmos.new(MCH_GT_line_slider.bl_idname)
             gz.kind = kind
@@ -252,10 +398,26 @@ class MCH_GGT_line_hud(bpy.types.GizmoGroup):
         except (ImportError, AttributeError):
             f = 1.0
         round_on = ob is not None and ob.mch_base.line_corner == 'ROUND'
+        mv = move_on(context)
+        handles = {('end_end' if at_end else 'end_start'): xy for xy, at_end in end_handles_px(context, ob)} \
+            if ob is not None and mv else {}
         for name, gz in self.items.items():
+            if name in ('end_start', 'end_end'):
+                pos = handles.get(name)
+                gz.hide = pos is None
+                if not gz.hide:
+                    r = 0.5 * continue_radius_px(context)
+                    gz.matrix_basis = Matrix.Translation((pos[0], pos[1], 0.0)) @ Matrix.Diagonal((r, r, 1.0, 1.0))
+                continue
             pos = lay.get(name)
             gz.hide = pos is None
             if gz.hide:
+                continue
+            if name == 'move':
+                gz.color = ACCENT if mv else BASE_COL
+                gz.scale_basis = BTN / 2.0 * f
+                gz.matrix_basis[0][3] = pos[0]
+                gz.matrix_basis[1][3] = pos[1]
                 continue
             if name == 'corner':
                 gz.icon = 'SPHERECURVE' if round_on else 'SHARPCURVE'
@@ -288,6 +450,12 @@ def _draw_labels():
         blf.color(font, *(ROUND_COL if round_on else (0.85, 0.87, 0.9)), 1.0)
         blf.position(font, x - BTN * 0.55 * ui, y + BTN * 0.75 * ui, 0)
         blf.draw(font, 'Round' if round_on else 'Sharp')
+        if 'move' in lay:
+            x, y = lay['move']
+            mv = move_on(context)
+            blf.color(font, *(ACCENT if mv else (0.85, 0.87, 0.9)), 1.0)
+            blf.position(font, x + BTN * 0.7 * ui, y - 4 * ui, 0)
+            blf.draw(font, 'Move: drag an end ring' if mv else 'Move')
         blf.color(font, 1.0, 1.0, 1.0, 1.0)
         x, y = lay['thick']
         text = f'Thickness  {p.section_width:.3f}'
@@ -304,7 +472,7 @@ def _draw_labels():
         pass
 
 
-CLASSES = (MCH_OT_line_corner_toggle, MCH_GT_line_slider, MCH_GGT_line_hud)
+CLASSES = (MCH_OT_line_corner_toggle, MCH_OT_line_move_toggle, MCH_GT_line_slider, MCH_GT_line_end, MCH_GGT_line_hud)
 _label_handle = None
 
 
@@ -312,6 +480,10 @@ def register():
     global _label_handle
     for c in CLASSES:
         bpy.utils.register_class(c)
+    if not hasattr(bpy.types.WindowManager, 'mch_line_move'):
+        bpy.types.WindowManager.mch_line_move = BoolProperty(
+            name='Line Move', default=False,
+            description='Line HUD: drag the end rings of the made line (off: a stroke from an end goes on with it)')
     if not bpy.app.background and _label_handle is None:
         _label_handle = bpy.types.SpaceView3D.draw_handler_add(_draw_labels, (), 'WINDOW', 'POST_PIXEL')
 
@@ -328,4 +500,9 @@ def unregister():
         try:
             bpy.utils.unregister_class(c)
         except RuntimeError:
+            pass
+    if hasattr(bpy.types.WindowManager, 'mch_line_move'):
+        try:
+            del bpy.types.WindowManager.mch_line_move
+        except (AttributeError, RuntimeError):
             pass

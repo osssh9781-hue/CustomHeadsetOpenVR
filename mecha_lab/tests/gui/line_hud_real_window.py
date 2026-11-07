@@ -1,6 +1,7 @@
-"""Real window (0.24.112): the Line HUD with the REAL mouse - a Press line drawn as an L on a box, then the floating
-dot next to its end is CLICKED (Sharp -> Round), the Thickness slider is DRAGGED (thicker), the Radius slider dragged;
-a slanted view with the wireframe on and the HUD showing at the end.
+"""Real window (0.24.112 / 0.24.114): the Line HUD with the REAL mouse - a Press line drawn as an L on a box, then the
+floating dot next to its end is CLICKED (Sharp -> Round), the Thickness slider is DRAGGED (thicker), the Radius slider
+dragged; 0.24.114: Move is clicked and the END RING dragged (the last leg swings), and on a second box a square is drawn
+as four strokes, the last finishing on the start ring: a CLOSED loop.  A slanted view with the wireframe on at the end.
     blender --window-geometry 0 0 W H --python this.py -- OUT"""
 import json
 import os
@@ -133,6 +134,8 @@ def flow():
         sp.show_region_ui = False
         bpy.ops.mesh.primitive_cube_add(size=2.0, location=(0.0, 0.0, 0.0))
         C.active_object.name = 'Box'
+        bpy.ops.mesh.primitive_cube_add(size=2.0, location=(2.6, 0.0, 0.0))
+        C.active_object.name = 'Box2'
         bpy.ops.object.select_all(action='DESELECT')
         S.mch_settings.auto_apply = True
         S.mch_press.size = 36.0
@@ -142,7 +145,7 @@ def flow():
         S.mch_base.line_corner = 'SHARP'
         S.mch_base.corner_radius = 1.0
         bpy.ops.mch.set_tool(tool='PRESS')
-    orbit((0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 7.0)
+    orbit((0.0, 0.0, 0.0), (1.3, 0.0, 0.0), 8.0)
     yield 2.0
     res = {}
     # the L: along x, then on from the end along +y
@@ -206,10 +209,69 @@ def flow():
             res['radius drag: smaller bend radius, live'] = line.mch_base.corner_radius < r0 - 0.2 and closed(line)
         else:
             res['radius drag: smaller bend radius, live'] = False
-    orbit((1.0, 0.0, 0.35), (0.0, 0.0, 0.6), 5.5, persp=True)
+        # 4. Move: click the Move button, drag the END ring 0.5 m to the right -> the last leg swings about the bend
+        pos = hud_positions(line)
+        xdo('mousemove', *pos['move'])
+        yield 0.5
+        xdo('click', 1)
+        yield 1.0
+        e_before = base_mesh.sweep_ends(line)[1].copy()
+        def leg_box(ob):                                        # the first leg's extents (Round re-spaces its rings)
+            co = [ob.matrix_world @ v.co for v in ob.data.vertices if (ob.matrix_world @ v.co).y < -0.5 and (ob.matrix_world @ v.co).x < -0.1]
+            return tuple(round(f(c[i] for c in co), 2) for i in (1, 2) for f in (min, max)) if co else None   # (y, z: the tube)
+        first_before = leg_box(line)
+        s_end = screen_of(e_before)
+        s_to = screen_of((e_before.x + 0.5, e_before.y - 0.2, e_before.z))
+        xdo('mousemove', *s_end)
+        yield 0.5
+        xdo('mousedown', 1)
+        yield 0.1
+        for k in range(1, 9):
+            xdo('mousemove', int(s_end[0] + (s_to[0] - s_end[0]) * k / 8), int(s_end[1] + (s_to[1] - s_end[1]) * k / 8))
+            yield 0.08
+        xdo('mouseup', 1)
+        yield 1.5
+        e_after = base_mesh.sweep_ends(line)[1]
+        first_after = leg_box(line)
+        log(f'Move: end {tuple(round(c, 2) for c in e_before)} -> {tuple(round(c, 2) for c in e_after)} first leg unchanged {first_before == first_after} '
+            f'closed {closed(line)} move flag {C.window_manager.mch_line_move}')
+        res['Move: the end ring dragged, the last leg swings, the first leg stays'] = (e_after - e_before).length > 0.3 \
+            and first_before == first_after and closed(line)
+        pos = hud_positions(line)                               # (the HUD moved with the end)
+        xdo('mousemove', *pos['move'])
+        yield 0.4
+        xdo('click', 1)                                         # Move off again
+        yield 0.8
+        log(f'Move off: flag {C.window_manager.mch_line_move}')
+    # 5. a closed loop on Box2: four strokes, the last ending on the start ring
+    before = set(bpy.data.objects.keys())
+    yield from drag([screen_of((2.0 + 1.2 * k / 6, -0.6, 1.0)) for k in range(7)])
+    new = [bpy.data.objects[n] for n in set(bpy.data.objects.keys()) - before if bpy.data.objects[n].type == 'MESH']
+    loop = new[0] if new else None
+    if loop is not None:
+        for pts_w in ([(3.2, -0.6 + 1.2 * k / 6, 1.0) for k in range(7)], [(3.2 - 1.2 * k / 6, 0.6, 1.0) for k in range(7)],
+                      [(2.0, 0.6 - 1.2 * k / 6, 1.0) for k in range(7)]):
+            e = base_mesh.sweep_ends(loop)
+            if not e:
+                break
+            s0 = screen_of(e[1])
+            pts = [screen_of(q) for q in pts_w]
+            pts[0] = (s0[0] + 2, s0[1] + 2)
+            yield from drag(pts)
+        d_ = json.loads(loop[base_mesh.SWEEP_KEY])
+        log(f'loop: closed {d_.get("closed")} path points {len(d_["path"])} closed mesh {closed(loop)} faces {len(loop.data.polygons)}')
+        res['a square drawn as four strokes, the last ending on the start ring: a closed loop'] = bool(d_.get('closed')) and closed(loop)
+    else:
+        res['a square drawn as four strokes, the last ending on the start ring: a closed loop'] = False
+    orbit((1.0, 0.0, 0.35), (1.3, 0.0, 0.6), 7.0, persp=True)
     w, a, r = view3d()
     with C.temp_override(window=w, area=a, region=r):
         bpy.ops.wm.tool_set_by_id(name='builtin.select_box')     # (the HUD stays with the select tool; no key legend)
+        if line is not None:
+            for o in C.selected_objects:
+                o.select_set(False)
+            line.select_set(True)
+            C.view_layer.objects.active = line
         C.window_manager.mch_layers_min = True
         C.window_manager.mch_side_min = True
         a.spaces.active.overlay.show_wireframes = True

@@ -16,6 +16,19 @@ from __future__ import annotations
 import bpy
 
 GREEN = (0.22, 1.0, 0.36, 1.0)
+BLUE = (0.3, 0.62, 1.0, 1.0)      # 0.24.114 (user: "그룹을 그룹으로 만든 거는 파란색으로") a group that holds groups
+
+
+def outline_colour(context):
+    """Green for a group of parts; blue when a selected group holds other groups (a group of groups)."""
+    from . import groups
+    try:
+        for g in outline_groups(context):
+            if any(groups.is_group(o) for o in groups.members(g)):
+                return BLUE
+    except (AttributeError, ReferenceError, RuntimeError):
+        pass
+    return GREEN
 WIDTH = 3                   # outline thickness in pixels at UI scale 1
 MAX_PARTS = 4000            # a guard for huge groups (the outline is a hint, not worth stalling the viewport)
 
@@ -293,7 +306,7 @@ def _draw_mask(context, objs, region, rv3d, dg):
     return off
 
 
-def _draw_edges(off, region):
+def _draw_edges(off, region, colour=GREEN):
     import gpu
     from gpu_extras.batch import batch_for_shader
     sh = _state['shader']
@@ -303,13 +316,13 @@ def _draw_edges(off, region):
     sh.bind()
     sh.uniform_sampler('mask', off.texture_color)
     sh.uniform_float('texel', (1.0 / region.width, 1.0 / region.height))
-    sh.uniform_float('color', GREEN)
+    sh.uniform_float('color', colour)
     sh.uniform_int('radius', max(1, int(round(WIDTH * _ui_scale()))))
     _state['quad'].draw(sh)
     gpu.state.blend_set('NONE')
 
 
-def _draw_lines(context, objs, region, rv3d, dg):
+def _draw_lines(context, objs, region, rv3d, dg, colour=GREEN):
     """Fallback: the silhouette edges as 2D lines."""
     import gpu
     import numpy as np
@@ -340,7 +353,7 @@ def _draw_lines(context, objs, region, rv3d, dg):
     sh.bind()
     sh.uniform_float('viewportSize', (region.width, region.height))
     sh.uniform_float('lineWidth', max(1.0, WIDTH * _ui_scale() * 0.8))
-    sh.uniform_float('color', GREEN)
+    sh.uniform_float('color', colour)
     batch_for_shader(sh, 'LINES', {'pos': [tuple(v) + (0.0,) for v in xy]}).draw(sh)
     gpu.state.blend_set('NONE')
 
@@ -359,9 +372,9 @@ def _draw():
         dg = context.evaluated_depsgraph_get()
         if _edge_shader() is not None:
             off = _draw_mask(context, objs, region, rv3d, dg)
-            _draw_edges(off, region)
+            _draw_edges(off, region, outline_colour(context))
         else:
-            _draw_lines(context, objs, region, rv3d, dg)
+            _draw_lines(context, objs, region, rv3d, dg, outline_colour(context))
     except Exception as ex:      # never break viewport drawing
         _state['error'] = str(ex).splitlines()[0] if str(ex) else type(ex).__name__
 
