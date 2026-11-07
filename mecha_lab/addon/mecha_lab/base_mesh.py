@@ -1894,18 +1894,11 @@ def extend_sweep(ob, projector, pts, at_end=True, end_hit=None):
     hull = _hull(data['path'])                            # the stored outline follows the whole line (its plane view)
     if hull is not None and abs(_area2(hull)) >= 4.0 * 1e-6:
         ob.mch_base.outline = json.dumps({'groups': [{'outer': hull, 'holes': []}], 'res': ts.res_scale()})
-    if ob.get(ATTACH_KEY):                                # Attach Ends: the bend runs along the whole line now
-        if not flat:                                      # (... but not along a line that left its plane)
-            del ob[ATTACH_KEY]
-        else:
-            try:
-                att = json.loads(ob[ATTACH_KEY])
-                att['path'] = [[q[0], q[1]] for q in data['path']]
-                if end_hit is not None:
-                    att['z1' if at_end else 'z0'] = (inv @ Vector(end_hit)).z
-                ob[ATTACH_KEY] = json.dumps(att)
-            except (TypeError, ValueError, KeyError):
-                pass
+    if ob.get(ATTACH_KEY) and not flat:                   # Attach Ends: not along a line that left its plane
+        del ob[ATTACH_KEY]
+    # 0.24.113 (user: "처음 그은 메쉬의 위치가 두 번째 거 그으면 바뀌어") with Attach Ends the bend data stays as it was:
+    # the piece already there keeps its bend and the new piece rides at the old end's depth (re-bending the whole
+    # line from the new end moved the first piece)
     rebuild(ob)
     return len(new), turned, leaves
 
