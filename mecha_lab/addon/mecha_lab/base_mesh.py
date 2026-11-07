@@ -194,13 +194,14 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
                                  update=_rebuild_update,
                                  description='Round corners: the bend radius as a multiple of the section width (less '
                                              'where a leg of the line is too short)')
-    # 0.24.118 (user's joint pictures) how the section turns from one drawn piece to the next
+    # 0.24.118 (user's joint pictures) how the section turns from one drawn piece to the next; 0.24.119 (user: "일단
+    # 밴드로") Bend is the default - a flat stamp bends like a strip instead of twisting
     line_up: EnumProperty(name='Section Turns', items=(
-        ('VIEW', 'Each View', 'Every piece stands toward the view it was drawn in; between two pieces drawn from '
-                              'different views the section twists smoothly across the bend'),
         ('BEND', 'Bend', 'The section is carried round every bend like a bent bar (no twist); a piece drawn from '
-                         'another view keeps the first piece\'s orientation')),
-        default='VIEW', update=_rebuild_update)
+                         'another view keeps the first piece\'s orientation'),
+        ('VIEW', 'Each View', 'Every piece stands toward the view it was drawn in; between two pieces drawn from '
+                              'different views the section twists smoothly across the bend')),
+        default='BEND', update=_rebuild_update)
     depth_mode: BoolProperty(name='Depth Guide Mode', default=False,
                              description='Draw front silhouette first, then draw a side-view depth guide on its live mesh')
     line_attach: BoolProperty(name='Attach Ends', default=False,

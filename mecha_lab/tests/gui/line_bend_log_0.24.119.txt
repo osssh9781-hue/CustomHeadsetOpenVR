@@ -1,0 +1,42 @@
+default Section: BEND
+A Each View + Round TOP: region 254 140 1848 1433 px/unit 107.0 active None hud {}
+  drag (429, 744) -> (643, 744) move False under ((175, 716), [('over_ui', False), ('sym', False), ('quick', None)])
+  [   8.08] MCH_OT_press_unified.invoke at region (175, 715) alt=False -> {'RUNNING_MODAL'}
+  [   8.08] MCH_OT_press_unified._begin_draw -> None
+  [   9.64] MCH_OT_press_unified._finish_draw -> {'FINISHED'}
+A Each View + Round FRONT: end (-5.0, -0.01, 0.0) screen (643, 658) hud {'corner': (437, 826), 'thick': (509, 826), 'move': (437, 791), 'section': (437, 755), 'radius': (509, 799)} move False
+  drag (645, 660) -> (643, 850) move False under ((391, 800), [('over_ui', False), ('sym', False), ('quick', None)])
+  [  13.47] MCH_OT_press_unified.invoke at region (391, 799) alt=False -> {'RUNNING_MODAL'}
+  [  13.47] MCH_OT_press_unified._begin_draw -> None
+  [  15.22] MCH_OT_press_unified._finish_draw -> {'FINISHED'}
+A Each View + Round: MCH_Base path 4 rings 24 max ring turn 22.4 deg closed True corner ROUND up VIEW
+B Bend + Round TOP: region 254 140 1848 1433 px/unit 107.0 active MCH_Base hud {'corner': (439, 739), 'thick': (511, 739), 'move': (439, 703), 'section': (439, 668), 'radius': (511, 712)}
+  drag (932, 744) -> (1146, 744) move False under ((678, 716), [('over_ui', False), ('sym', False), ('quick', None)])
+  [  19.16] MCH_OT_press_unified.invoke at region (678, 715) alt=False -> {'RUNNING_MODAL'}
+  [  19.16] MCH_OT_press_unified._begin_draw -> None
+  [  20.63] MCH_OT_press_unified._finish_draw -> {'FINISHED'}
+B Bend + Round FRONT: end (-0.3, -0.01, 0.0) screen (1146, 658) hud {'corner': (940, 826), 'thick': (1012, 826), 'move': (940, 791), 'section': (940, 755), 'radius': (1012, 799)} move False
+  drag (1148, 660) -> (1146, 850) move False under ((894, 800), [('over_ui', False), ('sym', False), ('quick', None)])
+  [  24.53] MCH_OT_press_unified.invoke at region (894, 799) alt=False -> {'RUNNING_MODAL'}
+  [  24.53] MCH_OT_press_unified._begin_draw -> None
+  [  26.03] MCH_OT_press_unified._finish_draw -> {'FINISHED'}
+B Bend + Round: MCH_Base.001 path 4 rings 24 max ring turn 0.0 deg closed True corner ROUND up BEND
+C Each View + Sharp TOP: region 254 140 1848 1433 px/unit 107.0 active MCH_Base.001 hud {'corner': (942, 739), 'thick': (1014, 739), 'move': (942, 703), 'section': (942, 668), 'radius': (1014, 712)}
+  drag (1435, 744) -> (1649, 744) move False under ((1181, 716), [('over_ui', False), ('sym', False), ('quick', None)])
+  [  29.79] MCH_OT_press_unified.invoke at region (1181, 715) alt=False -> {'RUNNING_MODAL'}
+  [  29.79] MCH_OT_press_unified._begin_draw -> None
+  [  31.28] MCH_OT_press_unified._finish_draw -> {'FINISHED'}
+C Each View + Sharp FRONT: end (4.4, -0.01, 0.0) screen (1649, 658) hud {'corner': (1443, 826), 'thick': (1515, 826), 'move': (1443, 791), 'section': (1443, 755)} move False
+  drag (1651, 660) -> (1649, 850) move False under ((1397, 800), [('over_ui', False), ('sym', False), ('quick', None)])
+  [  35.22] MCH_OT_press_unified.invoke at region (1397, 799) alt=False -> {'RUNNING_MODAL'}
+  [  35.22] MCH_OT_press_unified._begin_draw -> None
+  [  36.79] MCH_OT_press_unified._finish_draw -> {'FINISHED'}
+C Each View + Sharp: MCH_Base.002 path 4 rings 12 max ring turn 54.7 deg closed True corner SHARP up VIEW
+D Section dot click on C at region (1445, 562): up BEND rings 12 max ring turn 0.0 deg closed True
+shot 1_bends_three_ways.png True
+PASS default Section is Bend
+PASS A Each View + Round
+PASS B Bend + Round
+PASS C Each View + Sharp
+PASS D Section dot: Each View -> Bend (no twist)
+RESULT 5 / 5

@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 0.24.119 — Section 기본값 Bend · 라인 HUD 에 Section 점 (2026-11-07)
+
+- (사용자: "일단 밴드로 ㄱㄱ") **Section 의 기본값이 Bend** 입니다. 납작한 도장으로 뷰를 바꿔 이어 그어도 단면이 비틀리지 않고
+  띠를 접듯 굽습니다. Each View 는 그대로 선택지로 남아 있습니다(옆 패널 "Section" 줄, Base Mesh Line Section 상자).
+- (사용자: "섹션 토글 넣어줘") 라인 HUD 에 **Section 점**을 넣었습니다 — Move 점 아래 세 번째 점. 클릭할 때마다 Bend ↔ Each View
+  로 바뀌고 라이브 선이 바로 다시 만들어집니다(초록 = Bend, 회색 = Each View; 옆에 "Section: Bend / Each View" 글자). 점 세로
+  줄(코너 · Move · Section)이 화면 아래 끝에서도 잘리지 않게 HUD 배치를 조정했습니다. 키 안내와 옆 패널 힌트에 추가.
+- 테스트(Blender 5.2.3 에서 실행): test_v02527 45/45(기본값 Bend, HUD Section 토글이 Bend → Each View → Bend 로 다시 만듦,
+  배치 · 아이콘 존재), test_v02525 28/28(배치 · 아래 끝 클램프), test_v02524 26/26 · test_v02526 6/6 · test_v02520 30/30.
+- 실제 창(Blender 5.2.3, 진짜 마우스, `tests/gui/line_bend_real_window.py`, 로그 `tests/gui/line_bend_log_0.24.119.txt`, 그림
+  `dist/line_bend_0.24.119.png`): 기본값 Bend 확인 + A Each View + Round · B Bend + Round · C Each View + Sharp 세 선 이어 그리기,
+  그리고 **D: C 의 HUD Section 점을 실제로 클릭** → C 가 Bend 로 바뀌고 링 사이 비틀림 54.7° → 0°, 닫힌 솔리드 — 5/5.
+  라인 HUD 실창(`line_hud_real_window.py`: 점 클릭 · 두께 · 반지름 · Move · 고리 닫기) 6/6 그대로.
+
 ## 0.24.118 — 조각 사이 단면 비틀림을 꺾임 구간에 나눔 · Each View / Bend 선택 (2026-11-07)
 
 - (사용자 그림: 두꺼운 납작 단면의 가로 조각 + 옆 뷰에서 그은 세로 조각, 이음새가 찢어짐) 원인: 조각마다 "그린 뷰를 향하는

@@ -1,7 +1,8 @@
-"""Real window (0.24.118): how a bend between two pieces drawn from different views looks, with the REAL mouse.
+"""Real window (0.24.118 / 0.24.119): how a bend between two pieces drawn from different views looks, with the REAL mouse.
 A wide flat stamp (1 x 0.3), three lines on empty space, each: a stroke in the TOP view, then the view turned to the
 FRONT and a stroke DOWN from the end:
   A  Each View + Round (radius 1 x)    B  Bend + Round    C  Each View + Sharp
+then (0.24.119) D: a click on C's HUD Section dot turns it to Bend; the Bend default is checked.
 A slanted view with the wireframe on at the end.
     blender --window-geometry 0 0 W H --python this.py -- OUT"""
 import json
@@ -211,6 +212,9 @@ def flow():
         bpy.ops.mch.set_tool(tool='PRESS')
     res = {}
     lines = {}
+    dflt = S.mch_base.bl_rna.properties['line_up'].default
+    log('default Section:', dflt)
+    res['default Section is Bend'] = dflt == 'BEND'
     for name, x0, corner, up in (('A Each View + Round', -7.0, 'ROUND', 'VIEW'), ('B Bend + Round', -2.3, 'ROUND', 'BEND'),
                                  ('C Each View + Sharp', 2.4, 'SHARP', 'VIEW')):
         with C.temp_override(window=w, area=a, region=r):
@@ -243,6 +247,23 @@ def flow():
             f'corner {line.mch_base.line_corner} up {line.mch_base.line_up}')
         res[name] = closed(line) and len(d.get('path3', d['path'])) >= 3 and worst < (35.0 if up == 'VIEW' and corner == 'ROUND' else 95.0)
         lines[name] = line
+    line = lines.get('C Each View + Sharp')
+    if line is not None:                                        # D (0.24.119): C's HUD Section dot - Each View -> Bend
+        w, a, r = view3d()
+        pos = hud_px(line)
+        if 'section' in pos:
+            sx, sy = pos['section']
+            xdo('mousemove', r.x + sx, w.height - (r.y + sy))
+            yield 0.4
+            xdo('click', 1)
+            yield 1.8
+            worst, nr = ring_turns(line)
+            log(f'D Section dot click on C at region {pos["section"]}: up {line.mch_base.line_up} rings {nr} '
+                f'max ring turn {worst:.1f} deg closed {closed(line)}')
+            res['D Section dot: Each View -> Bend (no twist)'] = line.mch_base.line_up == 'BEND' and worst < 5.0 and closed(line)
+        else:
+            log('D: the HUD has no section slot', pos)
+            res['D Section dot: Each View -> Bend (no twist)'] = False
     orbit((1.05, 0.0, 0.5), (-1.3, 0.0, -0.7), 10.5, persp=True)
     w, a, r = view3d()
     with C.temp_override(window=w, area=a, region=r):

@@ -22,6 +22,7 @@ from . import tool_state as ts
 ACCENT = (1.0, 0.62, 0.16)
 BASE_COL = (0.17, 0.19, 0.23)
 ROUND_COL = (0.3, 0.75, 1.0)
+BEND_COL = (0.45, 0.85, 0.5)       # 0.24.119 the Section dot when the section bends (the default)
 BTN = 26.0                 # the corner dot, px at UI scale 1
 SLIDER_W, SLIDER_H = 96.0, 18.0
 GAP = 8.0
@@ -57,7 +58,7 @@ def hud_target(context):
 
 def hud_layout(end_px, region_w, region_h, btn=BTN, gap=GAP, round_on=False):
     """Pure: where the dot and the sliders go (region px, centres) for a line whose end shows at ``end_px``: to the
-    right of the end, kept inside the region.  Keys: 'corner', 'thick' and - Round only - 'radius'."""
+    right of the end, kept inside the region.  Keys: 'corner', 'thick', 'move', 'section' and - Round only - 'radius'."""
     if end_px is None:
         return {}
     x, y = float(end_px[0]), float(end_px[1])
@@ -67,9 +68,11 @@ def hud_layout(end_px, region_w, region_h, btn=BTN, gap=GAP, round_on=False):
         x0 = x - btn * 1.8 - total_w + btn
     x0 = max(btn, min(x0, region_w - total_w))
     rows = 2 if round_on else 1
-    y0 = max(gap + SLIDER_H * rows, min(y0, region_h - btn))
+    # the column under the dot: Move, then Section (0.24.119) - the whole column kept inside the region
+    y0 = max(gap + SLIDER_H * rows, 2 * (btn + gap) + btn / 2 + gap, min(y0, region_h - btn))
     lay = {'corner': (x0, y0), 'thick': (x0 + btn / 2 + gap + SLIDER_W / 2, y0),
-           'move': (x0, y0 - btn - gap)}                   # 0.24.114 Move: drag the end rings
+           'move': (x0, y0 - btn - gap),                   # 0.24.114 Move: drag the end rings
+           'section': (x0, y0 - 2 * (btn + gap))}          # 0.24.119 Section: Bend / Each View
     if round_on:
         lay['radius'] = (lay['thick'][0], y0 - SLIDER_H - gap)
     return lay
@@ -168,6 +171,13 @@ def toggle_corner(ob):
     return p.line_corner
 
 
+def toggle_section(ob):
+    """0.24.119 (user: "섹션 토글 넣어줘") Bend <-> Each View on a made line (it rebuilds live)."""
+    p = ob.mch_base
+    p.line_up = 'VIEW' if p.line_up == 'BEND' else 'BEND'
+    return p.line_up
+
+
 class MCH_OT_line_move_toggle(bpy.types.Operator):
     """Line HUD Move: on, the line's end rings can be dragged (the last piece turns and stretches about its joint);
     off, a stroke from an end ring goes on with the line"""
@@ -181,6 +191,26 @@ class MCH_OT_line_move_toggle(bpy.types.Operator):
         self.report({'INFO'}, 'Move: drag an end ring' if wm.mch_line_move else 'Move off: a stroke from an end goes on')
         for a in context.screen.areas if context.screen else ():
             a.tag_redraw()
+        return {'FINISHED'}
+
+
+class MCH_OT_line_section_toggle(bpy.types.Operator):
+    """Line HUD Section: how the section turns between the pieces of this line - Bend (carried round every bend like
+    a bent bar, no twist) or Each View (every piece faces the view it was drawn in)"""
+    bl_idname = 'mch.line_section_toggle'
+    bl_label = 'Line Section: Bend / Each View'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return hud_target(context) is not None
+
+    def execute(self, context):
+        ob = hud_target(context)
+        if ob is None:
+            return {'CANCELLED'}
+        mode = toggle_section(ob)
+        self.report({'INFO'}, f'{ob.name}: section {"Bend" if mode == "BEND" else "Each View"}')
         return {'FINISHED'}
 
 
@@ -398,6 +428,15 @@ class MCH_GGT_line_hud(bpy.types.GizmoGroup):
         gz.color_highlight = (0.32, 0.35, 0.41)
         gz.alpha_highlight = 1.0
         self.items['move'] = gz
+        gz = self.gizmos.new('GIZMO_GT_button_2d')             # 0.24.119 Section: Bend / Each View
+        gz.icon = 'MOD_SIMPLEDEFORM'
+        gz.draw_options = {'BACKDROP', 'OUTLINE'}
+        gz.target_set_operator('mch.line_section_toggle')
+        gz.color = BEND_COL
+        gz.alpha = 0.92
+        gz.color_highlight = (0.32, 0.35, 0.41)
+        gz.alpha_highlight = 1.0
+        self.items['section'] = gz
         for key, at_end in (('end_start', False), ('end_end', True)):
             gz = self.gizmos.new(MCH_GT_line_end.bl_idname)
             gz.at_end = at_end
@@ -467,6 +506,14 @@ class MCH_GGT_line_hud(bpy.types.GizmoGroup):
                 gz.matrix_basis[0][3] = pos[0]
                 gz.matrix_basis[1][3] = pos[1]
                 continue
+            if name == 'section':
+                bend = ob is not None and ob.mch_base.line_up == 'BEND'
+                gz.icon = 'MOD_SIMPLEDEFORM' if bend else 'VIEW_PERSPECTIVE'
+                gz.color = BEND_COL if bend else BASE_COL
+                gz.scale_basis = BTN / 2.0 * f
+                gz.matrix_basis[0][3] = pos[0]
+                gz.matrix_basis[1][3] = pos[1]
+                continue
             if name == 'corner':
                 gz.icon = 'SPHERECURVE' if round_on else 'SHARPCURVE'
                 gz.color = ROUND_COL if round_on else BASE_COL
@@ -504,6 +551,12 @@ def _draw_labels():
             blf.color(font, *(ACCENT if mv else (0.85, 0.87, 0.9)), 1.0)
             blf.position(font, x + BTN * 0.7 * ui, y - 4 * ui, 0)
             blf.draw(font, 'Move: drag an end or joint ring' if mv else 'Move')
+        if 'section' in lay:                                   # 0.24.119
+            x, y = lay['section']
+            bend = p.line_up == 'BEND'
+            blf.color(font, *(BEND_COL if bend else (0.85, 0.87, 0.9)), 1.0)
+            blf.position(font, x + BTN * 0.7 * ui, y - 4 * ui, 0)
+            blf.draw(font, 'Section: Bend' if bend else 'Section: Each View')
         blf.color(font, 1.0, 1.0, 1.0, 1.0)
         x, y = lay['thick']
         text = f'Thickness  {p.section_width:.3f}'
@@ -520,7 +573,8 @@ def _draw_labels():
         pass
 
 
-CLASSES = (MCH_OT_line_corner_toggle, MCH_OT_line_move_toggle, MCH_GT_line_slider, MCH_GT_line_end, MCH_GGT_line_hud)
+CLASSES = (MCH_OT_line_corner_toggle, MCH_OT_line_move_toggle, MCH_OT_line_section_toggle, MCH_GT_line_slider, MCH_GT_line_end,
+           MCH_GGT_line_hud)
 _label_handle = None
 
 

@@ -176,6 +176,7 @@ from mathutils import Euler
 FRONT = cg.OrthoProjector(Euler((math.pi / 2, 0.0, 0.0)).to_quaternion(), pixels_per_unit=100.0)
 pc_ = pc
 st, p = setup('SHARP')
+C.scene.mch_base.line_up = 'VIEW'                                                   # (0.24.119: Bend is the default)
 C.scene.mch_press.drawn = True
 pc_.DRAWN[0] = [[(-0.5, -0.15), (0.5, -0.15), (0.5, 0.15), (-0.5, 0.15)]]        # a flat 1 x 0.3 stamp: wide, thin
 r, op = stroke(TOP, [(-1.0 + 1.0 * k / 5, 0.0, 1.0) for k in range(6)])
@@ -356,10 +357,20 @@ down = [v for v in co if v.z < 0.3]
 check('... Bend: the section is carried round the bend (the down piece as wide along y as the first piece), no twist at all',
       ring_turns(ob) < 20.0 and down and (max(v.y for v in down) - min(v.y for v in down)) > 0.75 and non_manifold(ob) == 0,
       (round(ring_turns(ob), 1), round(max(v.y for v in down) - min(v.y for v in down), 3) if down else None))
+from mecha_lab import line_hud
+mode = line_hud.toggle_section(ob)
+check('0.24.119 the HUD Section dot (toggle_section) flips Bend -> Each View and the line rebuilds with the twist back, closed',
+      mode == 'VIEW' and ob.mch_base.line_up == 'VIEW' and ring_turns(ob) > 5.0 and non_manifold(ob) == 0, round(ring_turns(ob), 1))
+check('... and back to Bend (no twist)', line_hud.toggle_section(ob) == 'BEND' and ring_turns(ob) < 20.0 and non_manifold(ob) == 0)
 C.scene.mch_press.drawn = False
 C.scene.mch_base.line_up = 'VIEW'
-check('settings: line_up exists (Each View default), copied to live parts and carried back',
-      C.scene.mch_base.bl_rna.properties['line_up'].default == 'VIEW' and 'line_up' in base_mesh.SETTING_KEYS and 'line_up' in base_mesh.CARRY_KEYS)
+check('settings: line_up exists (Bend default since 0.24.119), copied to live parts and carried back',
+      C.scene.mch_base.bl_rna.properties['line_up'].default == 'BEND' and 'line_up' in base_mesh.SETTING_KEYS and 'line_up' in base_mesh.CARRY_KEYS)
+lay_ = line_hud.hud_layout((500.0, 500.0), 1000.0, 1000.0)
+icons = {e.identifier for e in bpy.types.UILayout.bl_rna.functions['label'].parameters['icon'].enum_items}
+check('0.24.119 the Line HUD has a Section dot: the toggle operator, the layout slot under Move, its icons exist',
+      hasattr(bpy.ops.mch, 'line_section_toggle') and 'section' in lay_ and lay_['section'][1] < lay_['move'][1]
+      and 'MCH_OT_line_section_toggle' in str(line_hud.CLASSES) and {'MOD_SIMPLEDEFORM', 'VIEW_PERSPECTIVE'} <= icons, lay_.get('section'))
 
 from mecha_lab import group_outline, line_hud
 check('the Line HUD has Move: the toggle operator, the end-ring gizmo, the layout slot; the window flag',

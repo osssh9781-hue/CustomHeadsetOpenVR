@@ -189,6 +189,9 @@ C.scene.mch_base.line_corner = 'SHARP'
 lay = line_hud.hud_layout((500.0, 500.0), 1000.0, 1000.0)
 check('hud_layout: the dot right of the line\'s end, the thickness slider right of the dot; no radius slider when Sharp',
       lay['corner'][0] > 500 + line_hud.BTN and lay['thick'][0] > lay['corner'][0] + line_hud.BTN and 'radius' not in lay, lay)
+lay_b = line_hud.hud_layout((500.0, 5.0), 1000.0, 1000.0)
+check('0.24.119 hud_layout: the Section dot under Move; near the bottom edge the whole column stays inside the region',
+      lay['section'][1] < lay['move'][1] < lay['corner'][1] and lay_b['section'][1] >= line_hud.BTN / 2, (lay['section'], lay_b['section']))
 lay_r = line_hud.hud_layout((500.0, 500.0), 1000.0, 1000.0, round_on=True)
 check('... Round: the radius slider under the thickness one', 'radius' in lay_r and lay_r['radius'][1] < lay_r['thick'][1]
       and abs(lay_r['radius'][0] - lay_r['thick'][0]) < 1e-9)
