@@ -743,6 +743,9 @@ def draw_base(layout, context):
             row.prop(p, 'line_corner', expand=True)
             if p.line_corner == 'ROUND':
                 section.prop(p, 'corner_radius', slider=True)
+            row = section.row(align=True)
+            row.label(text='Section')
+            row.prop(p, 'line_up', expand=True)
             if p.profile_sweep == 'ALPHA':
                 section.template_icon_view(context.scene.mch_press, 'shape', show_labels=True, scale=4.0)
                 row = section.row(align=True)

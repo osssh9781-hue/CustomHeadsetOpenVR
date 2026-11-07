@@ -2391,6 +2391,9 @@ def draw(layout, context):
     row.prop(base, 'line_corner', expand=True)
     if base.line_corner == 'ROUND':
         section.prop(base, 'corner_radius', slider=True)
+    row = section.row(align=True)                 # 0.24.118 the section between pieces: Each View / Bend
+    row.label(text='Section')
+    row.prop(base, 'line_up', expand=True)
     section.label(text='(the dot next to a made line toggles this; its sliders set thickness)', icon='BLANK1')
     col = layout.column(align=True)
     col.label(text='Curve (a round stamp)')

@@ -67,7 +67,7 @@ FLIP_SIDES = {'TOP': 'BOTTOM', 'BOTTOM': 'TOP', 'BOTH': 'BOTH', 'NONE': 'NONE'}
 SETTING_KEYS = ('height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 'resolution', 'offset',
                 'bottom_too', 'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link', 'puff',
                 'outline_smooth', 'edge_round', 'peak', 'attach_curve', 'profile_sweep', 'section_width',
-                'section_rotation', 'section_twist', 'section_taper', 'line_corner', 'corner_radius')
+                'section_rotation', 'section_twist', 'section_taper', 'line_corner', 'corner_radius', 'line_up')
 SWEEP_KEY = 'mch_base_line_sweep'  # 0.24.103 serialized path + alpha loops for live rebuild
 DEPTH_KEY = 'mch_base_depth_guide'   # side-view polyline reshapes the base depth, kept live
 ATTACH_KEY = 'mch_base_attach'          # 0.24.57 Line: the ends stuck to the meshes where the line began / ended
@@ -78,7 +78,7 @@ PUFF_RINGS = (0.12, 0.3, 0.55, 0.85)      # rows just inside the outline (in poi
 
 CARRY_KEYS = ('profile', 'height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 'resolution', 'offset',
               'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link', 'puff', 'outline_smooth',
-              'edge_round', 'section_rotation', 'section_twist', 'section_taper', 'line_corner', 'corner_radius')
+              'edge_round', 'section_rotation', 'section_twist', 'section_taper', 'line_corner', 'corner_radius', 'line_up')
 # 0.24.107 'profile_sweep' / 'section_width' are not carried: a Press Cut Alt+draw part (always a shape sweep) had
 # every later plain Base Mesh line turned into a shape sweep once one of its sliders was touched.
 
@@ -194,6 +194,13 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
                                  update=_rebuild_update,
                                  description='Round corners: the bend radius as a multiple of the section width (less '
                                              'where a leg of the line is too short)')
+    # 0.24.118 (user's joint pictures) how the section turns from one drawn piece to the next
+    line_up: EnumProperty(name='Section Turns', items=(
+        ('VIEW', 'Each View', 'Every piece stands toward the view it was drawn in; between two pieces drawn from '
+                              'different views the section twists smoothly across the bend'),
+        ('BEND', 'Bend', 'The section is carried round every bend like a bent bar (no twist); a piece drawn from '
+                         'another view keeps the first piece\'s orientation')),
+        default='VIEW', update=_rebuild_update)
     depth_mode: BoolProperty(name='Depth Guide Mode', default=False,
                              description='Draw front silhouette first, then draw a side-view depth guide on its live mesh')
     line_attach: BoolProperty(name='Attach Ends', default=False,
@@ -1485,6 +1492,52 @@ def nearest_attrs(stations, points, attrs):
     return out
 
 
+def blend_ups(stations, orig, ups, joints, width, closed=False):
+    """0.24.118 The section's up per station when the pieces were drawn from different views: each piece keeps its
+    own up, and across a joint the up turns smoothly (a normalized blend) over one section width on each side of
+    the joint - instead of all at the joint ring, which tore a thick section apart.  Pure."""
+    n = len(stations)
+    if n == 0:
+        return []
+    base = nearest_attrs(stations, orig, ups)
+    if not joints:
+        return base
+    cum = [0.0]
+    for a, b in zip(stations, stations[1:]):
+        cum.append(cum[-1] + math.dist(a, b))
+    total = cum[-1] + (math.dist(stations[-1], stations[0]) if closed else 0.0)
+    L = max(float(width), 1e-6)
+    src = [Vector(_xyz(q)) for q in orig]
+    out = [Vector(u) for u in base]
+    m = len(orig)
+    for j in joints:
+        if not (0 <= j < m):
+            continue
+        before = Vector(ups[j - 1]) if j > 0 else (Vector(ups[m - 1]) if closed else None)
+        after = Vector(ups[j + 1]) if j + 1 < m else (Vector(ups[0]) if closed else None)
+        if before is None or after is None or (before - after).length < 1e-6:
+            continue
+        if before.dot(after) < 0.0:                        # (the continuity flip in sweep_frames handles a reversal)
+            after = -after
+        Pj = src[j]
+        k = min(range(n), key=lambda i: (Vector(stations[i]) - Pj).length_squared)
+        sj = cum[k]
+        for i in range(n):
+            d = cum[i] - sj
+            if closed and total > 0:
+                if d > total / 2:
+                    d -= total
+                elif d < -total / 2:
+                    d += total
+            if -L < d < L:
+                t = (d + L) / (2.0 * L)
+                t = t * t * (3.0 - 2.0 * t)                    # eased
+                v = before * (1.0 - t) + after * t
+                if v.length > 1e-6:
+                    out[i] = v.normalized()
+    return [tuple(v) for v in out]
+
+
 def _lines_meet(a0, a1, b0, b1):
     """The point where the line through a0 -> a1 meets the line through b0 -> b1 (3D: the middle of their closest
     approach); None when they are parallel."""
@@ -1582,7 +1635,7 @@ def snap_turn(prev_dir, pts, normal, tol=SNAP_TOL_DEG):
     return [tuple(P0 + rot @ (Vector(_xyz(q)) - P0)) for q in pts], best
 
 
-def fillet_path(path, radius, min_turn_deg=12.0, max_turn_deg=170.0, step_deg=15.0, min_radius=0.0):
+def fillet_path(path, radius, min_turn_deg=12.0, max_turn_deg=170.0, step_deg=7.5, min_radius=0.0):
     """0.24.112 Round corners: every bend of the 3D polyline ``path`` sharper than ``min_turn_deg`` is replaced by a
     circular arc tangent to both legs, of ``radius`` - less where a leg is short (each arc takes at most 45 % of the
     shorter leg), but never under ``min_radius`` (the inner side of a swept bend folds over itself below half the
@@ -1713,12 +1766,24 @@ def _build_sweep_bmesh(data, p):
     round_on = getattr(p, 'line_corner', 'SHARP') == 'ROUND'
     cutter = bool(getattr(p, 'is_cutter', False))
     w_ = float(p.section_width)
+    off = 0
     if closed:                                             # the seam vertex is an inner vertex for the corner passes
         path = [path[-1]] + path + [path[0]]
-    if len(path) > 3:                                      # 0.24.114 a hand-drawn (smoothed) corner = one corner
-        path = tighten_corners(path, w_)                   # (on the dense stroke: the legs' lines are true)
-        path = simplify3(path, 0.05 * w_)                  # then straight runs = single segments
-        path = drop_spikes(path, w_)                       # 0.24.115 hooks / overshoots at joints are no corners
+        off = 1
+    if len(path) > 3:
+        # 0.24.114 a hand-drawn (smoothed) corner = one corner (on the dense stroke: the legs' lines are true), then
+        # straight runs = single segments.  0.24.118 piece by piece (split at the joints, which stay put): a piece
+        # drawn later never changes how an earlier piece was simplified
+        cuts = sorted({int(j) + off for j in data.get('joints', ()) if 0 < int(j) + off < len(path) - 1})
+        bounds = [0] + cuts + [len(path) - 1]
+        out = []
+        for a_, b_ in zip(bounds, bounds[1:]):
+            piece = path[a_:b_ + 1]
+            if len(piece) > 3:
+                piece = tighten_corners(piece, w_)
+                piece = simplify3(piece, 0.05 * w_)
+            out += piece if not out else piece[1:]
+        path = drop_spikes(out, w_)                        # 0.24.115 hooks / overshoots at joints are no corners
     if round_on:                                           # 0.24.112 Round corners: the bends become arcs
         # 0.24.114 a part always rounds (a short leg: a smaller arc, the inner side creased by the clamp below);
         # a cutter keeps the minimum radius (a creased inner side is no shape for a Boolean)
@@ -1741,9 +1806,11 @@ def _build_sweep_bmesh(data, p):
                                        max_points=min(192, max(12, 125000 // total_points)))
     if closed:
         stations = stations[:-1]
-    st_ups = nearest_attrs(stations, orig, ups) if ups is not None else None
-    frames = sweep_frames(stations, st_ups, closed)   # (U across, V up) per station: V = each piece's drawing-view
-    #                                                   normal (old data: carried along with the least twist)
+    # (U across, V up) per station: Each View = every piece's drawing-view normal, blended across the joints;
+    # Bend (or old data) = carried along with the least twist like a bent bar
+    bend = getattr(p, 'line_up', 'VIEW') == 'BEND'
+    st_ups = blend_ups(stations, orig, ups, data.get('joints', ()), w_, closed) if (ups is not None and not bend) else None
+    frames = sweep_frames(stations, st_ups, closed)
     width, height = max(1e-5, p.section_width), max(1e-5, p.height)
     base_angle, twist, taper = p.section_rotation, p.section_twist, p.section_taper
     rest = bool(data.get('rest'))
@@ -1793,9 +1860,26 @@ def _build_sweep_bmesh(data, p):
                     a, b, c = _orient_ccw((a,b,c), flat)
                     bm.faces.new((all_rings[0][c], all_rings[0][b], all_rings[0][a]))
                     bm.faces.new((all_rings[-1][a], all_rings[-1][b], all_rings[-1][c]))
-            for ring0, ring1 in zip(all_rings, all_rings[1:] + ([all_rings[0]] if closed else [])):
+            # 0.24.118 (user: "꺾이는 모양이 예뻐야") the walls round a bend are shaded smooth along the bend, the
+            # section's own outline edges stay sharp: a clean elbow, crisp profile
+            n_st = len(stations)
+            bend_at = []
+            for i in range(n_st):
+                a_ = (Vector(stations[i]) - Vector(stations[i - 1])) if (i > 0 or closed) else None
+                b_ = (Vector(stations[(i + 1) % n_st]) - Vector(stations[i])) if (i < n_st - 1 or closed) else None
+                bend_at.append(math.degrees(a_.angle(b_)) if a_ is not None and b_ is not None and a_.length > 1e-9
+                               and b_.length > 1e-9 else 0.0)
+            pairs = list(zip(all_rings, all_rings[1:] + ([all_rings[0]] if closed else [])))
+            for i, (ring0, ring1) in enumerate(pairs):
+                in_bend = bend_at[i] > 2.0 or bend_at[(i + 1) % n_st] > 2.0
                 for a, b in edges:
-                    bm.faces.new((ring0[a], ring0[b], ring1[b], ring1[a]))
+                    f = bm.faces.new((ring0[a], ring0[b], ring1[b], ring1[a]))
+                    if in_bend:
+                        f.smooth = True
+                        for e in f.edges:                  # the longitudinal edges (ring to ring) stay sharp
+                            v0, v1 = e.verts
+                            if (v0 in ring0 and v1 in ring1) or (v0 in ring1 and v1 in ring0):
+                                e.smooth = False
         if not bm.faces:
             raise cg.CutError('The Alpha sweep generated no faces.')
         bm.normal_update()

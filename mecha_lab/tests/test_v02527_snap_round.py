@@ -323,6 +323,44 @@ check('... its top-right corner dragged out to (0.9, 0.9): there, the other thre
       ok and (0.9, 0.9, 1.0) in js2 and {(-0.6, -0.6, 1.0), (0.6, -0.6, 1.0), (-0.6, 0.6, 1.0)} <= js2
       and json.loads(ob[base_mesh.SWEEP_KEY]).get('closed') is True and non_manifold(ob) == 0, sorted(js2))
 
+# --- 0.24.118 a thick flat section across a joint between two views: the twist is spread, not torn -----------------
+def ring_turns(ob):
+    """The largest turn (deg) of the ring's width direction between consecutive rings."""
+    d_ = json.loads(ob[base_mesh.SWEEP_KEY])
+    nn = len(d_['loops'][0])
+    co = [v.co.copy() for v in ob.data.vertices]
+    rings = [co[i:i + nn] for i in range(0, len(co) - len(co) % nn, nn)]
+    worst = 0.0
+    for r0, r1 in zip(rings, rings[1:]):
+        a = (r0[1] - r0[0]).normalized()
+        b = (r1[1] - r1[0]).normalized()
+        worst = max(worst, math.degrees(a.angle(b)) if a.length and b.length else 0.0)
+    return worst
+
+
+FRONT2 = cg.OrthoProjector(Euler((math.pi / 2, 0.0, 0.0)).to_quaternion(), pixels_per_unit=100.0)
+st, p = setup('ROUND')
+C.scene.mch_press.drawn = True
+pc.DRAWN[0] = [[(-0.5, -0.15), (0.5, -0.15), (0.5, 0.15), (-0.5, 0.15)]]        # a flat 1 x 0.3 stamp
+C.scene.mch_base.line_up = 'VIEW'
+r, op = stroke(TOP, [(-1.6 + 1.6 * k / 8, 0.0, 1.0) for k in range(9)])
+ob = C.active_object
+r2, op = stroke(FRONT2, [(0.0, 0.0, 1.0 - 0.2 * k) for k in range(9)])            # down, drawn from the front
+worst = ring_turns(ob)
+check('Each View, a flat stamp, top piece then a piece drawn from the front: the 90 deg twist is spread over the bend '
+      '(no ring turns more than 30 deg from the one before), closed', r2 == {'FINISHED'} and worst < 30.0 and non_manifold(ob) == 0,
+      (round(worst, 1), non_manifold(ob)))
+ob.mch_base.line_up = 'BEND'
+co = [ob.matrix_world @ v.co for v in ob.data.vertices]
+down = [v for v in co if v.z < 0.3]
+check('... Bend: the section is carried round the bend (the down piece as wide along y as the first piece), no twist at all',
+      ring_turns(ob) < 20.0 and down and (max(v.y for v in down) - min(v.y for v in down)) > 0.75 and non_manifold(ob) == 0,
+      (round(ring_turns(ob), 1), round(max(v.y for v in down) - min(v.y for v in down), 3) if down else None))
+C.scene.mch_press.drawn = False
+C.scene.mch_base.line_up = 'VIEW'
+check('settings: line_up exists (Each View default), copied to live parts and carried back',
+      C.scene.mch_base.bl_rna.properties['line_up'].default == 'VIEW' and 'line_up' in base_mesh.SETTING_KEYS and 'line_up' in base_mesh.CARRY_KEYS)
+
 from mecha_lab import group_outline, line_hud
 check('the Line HUD has Move: the toggle operator, the end-ring gizmo, the layout slot; the window flag',
       hasattr(bpy.ops.mch, 'line_move_toggle') and line_hud.MCH_GT_line_end.bl_idname == 'MCH_GT_line_end'
@@ -334,7 +372,7 @@ src_b, src_p = open(base_mesh.__file__).read(), open(pc.__file__).read()
 check('the Press sidebar edits the active made line (live) instead of the defaults', "live = line_hud.hud_target(context)" in src_p
       and 'Editing the made line' in src_p)
 check('wired: tighten before the sweep, Round without the minimum on parts, the clamp, the snap in both continuations',
-      'path = tighten_corners(path, w_)' in src_b and "min_radius=0.55 * w_ if cutter else 0.0" in src_b
+      'piece = tighten_corners(piece, w_)' in src_b and "min_radius=0.55 * w_ if cutter else 0.0" in src_b
       and 'off += M * (lim - s_in)' in src_b and src_b.count('snap_turn(') >= 2 and 'base_mesh.snap_turn(Vector(old[-1]) - Vector(old[-2]), new_local, n_loc)' in src_p
       and base_mesh.SNAP_TOL_DEG == 5.0 and base_mesh.SNAP_TURN_DEG == (0.0, 45.0, 90.0, 135.0))
 summary()

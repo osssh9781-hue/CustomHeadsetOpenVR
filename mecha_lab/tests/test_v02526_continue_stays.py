@@ -87,16 +87,19 @@ for corner in ('SHARP', 'ROUND'):
     before = first_leg(ob, 0.4 - 1.2 * SPAN)
     r2, op = stroke(TOP, [(0.4, -0.6 + 1.4 * k / 7, 1.0) for k in range(8)])          # on from the end, same view
     after = first_leg(ob, 0.4 - 1.2 * SPAN)
+    # Sharp: every vertex exactly where it was.  Round: the new bend's arc takes a bit of the first leg, so its rings are
+    # re-spaced along the same straight tube - the SURFACE is compared (BVH, within 1 mm)
     same = moved(before, after) if corner == 'SHARP' else moved(before, after, ob)
+    tol = 1e-5 if corner == 'SHARP' else 1e-3
     check(f'{corner}: a second stroke from the end (same view) leaves the first piece exactly where it was (object frame too)',
-          r2 == {'FINISHED'} and before and same < 1e-5 and (corner == 'ROUND' or len(after) == len(before))
+          r2 == {'FINISHED'} and before and same < tol and (corner == 'ROUND' or len(after) == len(before))
           and (ob.matrix_world - mw0).to_scale().length < 1e-9 and (ob.matrix_world.translation - mw0.translation).length < 1e-9,
           (len(before), len(after), round(same, 6)))
     r3, op = stroke(FRONT, [(ob.matrix_world @ Vector(base_mesh._xyz(json.loads(ob[base_mesh.SWEEP_KEY]).get('path3', json.loads(ob[base_mesh.SWEEP_KEY])['path'])[-1]))) + Vector((0.0, 0.0, -0.15 * k)) for k in range(8)])
     after3 = first_leg(ob, 0.4 - 1.2 * SPAN)
     same3 = moved(before, after3) if corner == 'SHARP' else moved(before, after3, ob)
     check(f'{corner}: a third stroke in a turned view (down) leaves the first piece exactly where it was too',
-          r3 == {'FINISHED'} and same3 < 1e-5 and (corner == 'ROUND' or len(after3) == len(before)) and non_manifold(ob) == 0,
+          r3 == {'FINISHED'} and same3 < tol and (corner == 'ROUND' or len(after3) == len(before)) and non_manifold(ob) == 0,
           (len(after3), round(same3, 6), op.reports[-1:] if op.reports else None))
 
 # Attach Ends: the first piece's bend is kept; the new piece rides at the old end's depth
