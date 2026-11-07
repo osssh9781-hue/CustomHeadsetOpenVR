@@ -255,7 +255,7 @@ class MCH_GT_line_slider(bpy.types.Gizmo):
 
 
 class MCH_GT_line_end(bpy.types.Gizmo):
-    """0.24.114 An end ring you can drag (Move on): the end follows the mouse in the piece's plane."""
+    """0.24.114 An end ring you can drag (Move on): the end follows the mouse in the plane of the view you drag in."""
     bl_idname = 'MCH_GT_line_end'
     __slots__ = ('shape', 'at_end', 'plane_co', 'plane_no', 'moved', 'start_world')
 
@@ -292,15 +292,10 @@ class MCH_GT_line_end(bpy.types.Gizmo):
             return {'CANCELLED'}
         self.start_world = ends[1 if self.at_end else 0].copy()
         self.plane_co = self.start_world.copy()
-        # the piece's plane: its drawing-view up (local) carried to world; a flat line: the frame's normal
-        try:
-            import json
-            data = json.loads(ob[base_mesh.SWEEP_KEY])
-            ups = data.get('up3')
-            up = Vector(ups[-1 if self.at_end else 0]) if ups else Vector((0.0, 0.0, 1.0))
-        except (TypeError, ValueError, KeyError, IndexError):
-            up = Vector((0.0, 0.0, 1.0))
-        self.plane_no = (ob.matrix_world.to_3x3() @ up).normalized()
+        # 0.24.116 (user: "무브가 위아래로는 왜 안 돼?") the end moves in the plane of the CURRENT view through it - up /
+        # down on screen is up / down in the world from where you look (the piece's own plane held it flat before)
+        rv3d = context.region_data
+        self.plane_no = (rv3d.view_rotation @ Vector((0.0, 0.0, 1.0))).normalized() if rv3d is not None else Vector((0.0, 0.0, 1.0))
         self.moved = False
         return {'RUNNING_MODAL'}
 
@@ -319,7 +314,7 @@ class MCH_GT_line_end(bpy.types.Gizmo):
                 context.area.header_text_set(f'Move: {ex}')
             return {'RUNNING_MODAL'}
         if context.area:
-            context.area.header_text_set('Move the line\'s end  (Esc = back)')
+            context.area.header_text_set('Move the line\'s end in this view\'s plane - turn the view to move it another way  (Esc = back)')
         return {'RUNNING_MODAL'}
 
     def exit(self, context, cancel):

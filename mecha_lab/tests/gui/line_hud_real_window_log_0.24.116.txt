@@ -1,0 +1,17 @@
+L line: MCH_Base path points 4 corners SHARP width 0.449 closed True
+HUD at (window px): {'corner': (1101, 609), 'thick': (1173, 609), 'move': (1101, 644)}
+after the dot click: corners ROUND verts 120 -> 136 closed True
+after the thickness drag: width 0.449 -> 0.626 height 0.626 closed True
+after the radius drag: radius 1.00 -> 0.52 closed True
+Move: end (0.51, 0.69, 1.0) -> (1.01, 0.48, 1.0) first leg unchanged True closed True move flag True
+Move off: flag False
+loop: closed True path points 7 closed mesh True faces 336
+HUD at the end (select tool): {'corner': (1208, 607), 'thick': (1280, 607), 'move': (1208, 642), 'radius': (1280, 634)}
+shot 1_line_hud_round_thick.png True
+PASS L line
+PASS dot click: Sharp -> Round, the line rebuilt
+PASS thickness drag: the line thicker, live
+PASS radius drag: smaller bend radius, live
+PASS Move: the end ring dragged, the last leg swings, the first leg stays
+PASS a square drawn as four strokes, the last ending on the start ring: a closed loop
+RESULT 6 / 6
