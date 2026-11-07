@@ -1677,9 +1677,15 @@ def sweep_frames(stations, ups=None, closed=False):
         if Vn.length < 1e-6:                               # the line heads straight along the old up: pick any up
             Vn = Vector((1.0, 0.0, 0.0)) if abs(T.x) < 0.9 else Vector((0.0, 1.0, 0.0))
             Vn = Vn - T * Vn.dot(T)
-        V = Vn.normalized()
+        Vn.normalize()
+        if i > 0 and Vn.dot(V) < 0.0:                      # 0.24.117 (user: "만나는 부분이 꼬여") a piece drawn from the
+            Vn = -Vn                                       # other side of the plane: its up is turned, not the ring order
+        V = Vn
         U = V.cross(T).normalized()
         out.append((U, V, M, k, R_in))
+    if closed and n > 1 and out[-1][1].dot(out[0][1]) < 0.0:
+        # an odd number of flips round the loop cannot be made continuous from the ups: carry the up round instead
+        return sweep_frames(stations, None, closed) if ups is not None else out
     return out
 
 
@@ -2048,6 +2054,100 @@ def _store_sweep(data, path, ups, joints, closed=None):
     return flat
 
 
+def sweep_joints(ob):
+    """0.24.117 The joints a line's pieces meet at - [(path index, world point)] - without the two open ends (a
+    closed loop's seam counts); [] when ``ob`` is not a swept line."""
+    if ob is None or not ob.get(SWEEP_KEY):
+        return []
+    try:
+        data = json.loads(ob[SWEEP_KEY])
+    except (TypeError, ValueError):
+        return []
+    path, _ups, joints = _sweep_lists(data)
+    closed = bool(data.get('closed'))
+    idx = sorted(set(j for j in joints if (0 < j < len(path) - 1) or closed))
+    if closed and 0 not in idx and len(path) >= 3:
+        idx = [0] + idx
+    mw = ob.matrix_world
+    return [(j, mw @ Vector(path[j])) for j in idx if 0 <= j < len(path)]
+
+
+def _refit_piece(path, ups, lo, hi, pivot_at_lo):
+    """The piece path[lo..hi] turned and stretched about one end so the OTHER end lands where path[hi] / path[lo]
+    already is (both already set): helper of move_joint.  Pivot at lo: the free end is hi."""
+    piv, free = (lo, hi) if pivot_at_lo else (hi, lo)
+    return piv, free
+
+
+def move_joint(ob, index, new_world):
+    """0.24.117 (user: "중간에 만나는 부분 ... 동그라미 남겨 놓고 무브할 때 쓰게") A joint dragged to ``new_world``: the
+    piece before it is turned and stretched about ITS far joint and the piece after about its far joint, so both
+    meet at the new place; the rest of the line stays.  A closed loop's seam is a joint too.  False if nothing moved."""
+    data = json.loads(ob[SWEEP_KEY])
+    path, ups, joints = _sweep_lists(data)
+    n = len(path)
+    closed = bool(data.get('closed'))
+    if n < 3 or not (0 <= index < n):
+        return False
+    inv = ob.matrix_world.inverted_safe()
+    target = inv @ Vector(new_world)
+    anchors = sorted(set([0, n - 1] + [j for j in joints if 0 <= j < n] + ([0] if closed else [])))
+    if index not in anchors:
+        anchors = sorted(anchors + [index])
+    k = anchors.index(index)
+    if closed:
+        prev_j = anchors[k - 1] if k > 0 else anchors[-1]
+        next_j = anchors[k + 1] if k + 1 < len(anchors) else anchors[0]
+    else:
+        if k == 0 or k == len(anchors) - 1:
+            return move_end(ob, index == n - 1, new_world)
+        prev_j, next_j = anchors[k - 1], anchors[k + 1]
+    P = Vector(path[index])
+
+    def span(a, b):                                        # indices from a to b going forward (round the loop if closed)
+        if a <= b:
+            return list(range(a, b + 1))
+        return list(range(a, n)) + list(range(0, b + 1))
+
+    def refit(idxs, pivot_i, free_i):
+        J = Vector(path[pivot_i])
+        v0, v1 = P - J, target - J
+        if v0.length < 1e-9 or v1.length < 1e-9:
+            return False
+        sc = v1.length / v0.length
+        axis = v0.cross(v1)
+        rot = Matrix.Rotation(v0.angle(v1), 3, axis) if axis.length > 1e-9 else Matrix.Identity(3)
+        for i in idxs:
+            if i == pivot_i:
+                continue
+            path[i] = tuple(J + rot @ ((Vector(path[i]) - J) * sc))
+            ups[i] = tuple((rot @ Vector(ups[i])).normalized())
+        return True
+
+    before = span(prev_j, index)
+    after = span(index, next_j)
+    if prev_j == index or next_j == index:
+        return False
+    ok_a = refit([i for i in before if i != index], prev_j, index) if len(before) > 1 else False
+    # the joint itself: set once
+    if len(after) > 1:
+        ok_b = refit([i for i in after if i != index], next_j, index)
+    else:
+        ok_b = False
+    path[index] = tuple(target)
+    if not (ok_a or ok_b):
+        return False
+    probe = dict(data)
+    _store_sweep(probe, path, ups, joints, closed=closed)
+    _build_sweep_bmesh(probe, ob.mch_base).free()        # validate first
+    _store_sweep(data, path, ups, joints, closed=closed)
+    ob[SWEEP_KEY] = json.dumps(data, separators=(',', ':'))
+    if ob.get(ATTACH_KEY) and data.get('path3'):
+        del ob[ATTACH_KEY]
+    rebuild(ob)
+    return True
+
+
 def move_end(ob, at_end, new_world):
     """0.24.114 (user: "파란색 동그라미 살아 있으면 잡고 이동 가능하게") The line's end dragged to ``new_world``: the last
     piece (from its joint on; a single piece: the whole line) is turned and stretched about that joint so its end
@@ -2235,6 +2335,8 @@ def extend_sweep(ob, projector, pts, at_end=True, end_hit=None, close_px=None):
         if math.dist(new[-1], path[0]) < 1e-6:
             new = new[:-1]                                  # (a straight closing leg: the seam edge is implicit)
     joints = joints + [len(path) - 1]
+    if ups and Vector(ups[-1]).dot(n_loc) < 0.0:          # 0.24.117 drawn from the other side: the up stays on the
+        n_loc = -n_loc                                     # previous piece's side (no flipped ring at the joint)
     path = path + new
     ups = ups + [tuple(n_loc)] * len(new)
     if closing:

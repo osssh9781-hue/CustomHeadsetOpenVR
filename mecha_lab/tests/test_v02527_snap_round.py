@@ -255,6 +255,74 @@ ok2 = base_mesh.move_end(ob, False, Vector((-1.2, -0.9, 1.0)))
 ends2 = base_mesh.sweep_ends(ob)
 check('... the START ring dragged: the first piece swings about ITS joint (the bend), the far end stays', ok2
       and (ends2[0] - Vector((-1.2, -0.9, 1.0))).length < 1e-5 and (ends2[1] - ends[1]).length < 1e-9 and non_manifold(ob) == 0)
+# --- 0.24.117 the seam must not twist when a piece is drawn from the other side; joints are Move handles ------------
+BELOW = cg.OrthoProjector(Euler((math.pi, 0.0, 0.0)).to_quaternion(), pixels_per_unit=100.0)
+
+
+def twist(ob):
+    """Consecutive rings (last -> first too) whose vertex k is nearer the OPPOSITE vertex of the next ring: a flip."""
+    d_ = json.loads(ob[base_mesh.SWEEP_KEY])
+    nn = len(d_['loops'][0])
+    co = [v.co.copy() for v in ob.data.vertices]
+    rings = [co[i:i + nn] for i in range(0, len(co) - len(co) % nn, nn)]
+    bad = 0
+    for r0, r1 in zip(rings, rings[1:] + ([rings[0]] if d_.get('closed') else [])):
+        same = sum(math.dist(r0[k], r1[k]) for k in range(nn))
+        opp = sum(math.dist(r0[k], r1[(k + nn // 2) % nn]) for k in range(nn))
+        if opp < same:
+            bad += 1
+    return bad
+
+
+def half(proj, r_, a0, a1, m=14):
+    return [(r_ * math.cos(a0 + (a1 - a0) * k / m), r_ * math.sin(a0 + (a1 - a0) * k / m), 1.0) for k in range(m + 1)]
+
+
+st, p = setup('SHARP')
+stroke(TOP, half(TOP, 0.7, math.pi, 2 * math.pi))
+ob = C.active_object
+r2, op = stroke(BELOW, half(BELOW, 0.7, 0.0, math.pi))              # the other half drawn looking from BELOW the plane
+d = json.loads(ob[base_mesh.SWEEP_KEY])
+check('a two-stroke loop whose second half is drawn from the other side of the plane: closed, NO twisted ring (the up keeps '
+      'the first piece\'s side)', r2 == {'FINISHED'} and d.get('closed') is True and twist(ob) == 0 and non_manifold(ob) == 0,
+      (r2, d.get('closed'), twist(ob), sorted({tuple(round(c, 1) for c in u) for u in d.get('up3', [])})))
+st, p = setup('SHARP')
+stroke(TOP, half(TOP, 0.7, math.pi, 2 * math.pi))
+ob = C.active_object
+stroke(TOP, half(TOP, 0.7, 0.0, math.pi))
+check('... and the plain two-stroke loop (both from the top) has none either', twist(ob) == 0 and json.loads(ob[base_mesh.SWEEP_KEY]).get('closed') is True)
+
+# move_joint: an open L, the middle joint dragged - both legs re-aim, the far ends stay
+st, p = setup('SHARP')
+stroke(TOP, [(-1.0 + 1.0 * k / 5, -0.5, 1.0) for k in range(6)])
+ob = C.active_object
+stroke(TOP, [(0.0, -0.5 + 1.0 * k / 5, 1.0) for k in range(6)])
+js = base_mesh.sweep_joints(ob)
+check('sweep_joints: an L of two strokes has one joint, at the corner', len(js) == 1 and (js[0][1] - Vector((0.0, -0.5, 1.0))).length < 1e-5,
+      [(j, tuple(round(c, 3) for c in w)) for j, w in js])
+ok = base_mesh.move_joint(ob, js[0][0], Vector((0.3, -0.2, 1.0)))
+ends = base_mesh.sweep_ends(ob)
+js2 = base_mesh.sweep_joints(ob)
+check('move_joint: the corner dragged to (0.3, -0.2): it lands there, both far ends stay, closed', ok
+      and (js2[0][1] - Vector((0.3, -0.2, 1.0))).length < 1e-5 and (ends[0] - Vector((-1.0, -0.5, 1.0))).length < 1e-5
+      and (ends[1] - Vector((0.0, 0.5, 1.0))).length < 1e-5 and non_manifold(ob) == 0,
+      ([tuple(round(c, 3) for c in e) for e in ends], [tuple(round(c, 3) for c in w) for _j, w in js2]))
+# a closed square: one corner dragged, the other three stay
+st, p = setup('SHARP')
+stroke(TOP, [(-0.6 + 1.2 * k / 6, -0.6, 1.0) for k in range(7)])
+ob = C.active_object
+stroke(TOP, [(0.6, -0.6 + 1.2 * k / 6, 1.0) for k in range(7)])
+stroke(TOP, [(0.6 - 1.2 * k / 6, 0.6, 1.0) for k in range(7)])
+stroke(TOP, [(-0.6, 0.6 - 1.2 * k / 6, 1.0) for k in range(7)])
+js = base_mesh.sweep_joints(ob)
+corner = next((j for j, w in js if (w - Vector((0.6, 0.6, 1.0))).length < 1e-4), None)
+check('a closed square has four joints (the seam too)', len(js) == 4 and corner is not None, [tuple(round(c, 2) for c in w) for _j, w in js])
+ok = base_mesh.move_joint(ob, corner, Vector((0.9, 0.9, 1.0))) if corner is not None else False
+js2 = {tuple(round(c, 3) for c in w) for _j, w in base_mesh.sweep_joints(ob)}
+check('... its top-right corner dragged out to (0.9, 0.9): there, the other three corners where they were, still a closed loop',
+      ok and (0.9, 0.9, 1.0) in js2 and {(-0.6, -0.6, 1.0), (0.6, -0.6, 1.0), (-0.6, 0.6, 1.0)} <= js2
+      and json.loads(ob[base_mesh.SWEEP_KEY]).get('closed') is True and non_manifold(ob) == 0, sorted(js2))
+
 from mecha_lab import group_outline, line_hud
 check('the Line HUD has Move: the toggle operator, the end-ring gizmo, the layout slot; the window flag',
       hasattr(bpy.ops.mch, 'line_move_toggle') and line_hud.MCH_GT_line_end.bl_idname == 'MCH_GT_line_end'

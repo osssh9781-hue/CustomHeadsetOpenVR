@@ -103,6 +103,23 @@ def end_handles_px(context, ob):
     return out
 
 
+MAX_JOINT_HANDLES = 24
+
+
+def joint_handles_px(context, ob):
+    """0.24.117 Region px of the joints the pieces meet at (a closed loop's seam too): [(xy, path index)]."""
+    from bpy_extras import view3d_utils
+    region, rv3d = context.region, context.region_data
+    if region is None or rv3d is None:
+        return []
+    out = []
+    for j, w in base_mesh.sweep_joints(ob)[:MAX_JOINT_HANDLES]:
+        p = view3d_utils.location_3d_to_region_2d(region, rv3d, w)
+        if p is not None:
+            out.append(((float(p.x), float(p.y)), j))
+    return out
+
+
 def move_on(context):
     return bool(getattr(context.window_manager, 'mch_line_move', False))
 
@@ -257,7 +274,7 @@ class MCH_GT_line_slider(bpy.types.Gizmo):
 class MCH_GT_line_end(bpy.types.Gizmo):
     """0.24.114 An end ring you can drag (Move on): the end follows the mouse in the plane of the view you drag in."""
     bl_idname = 'MCH_GT_line_end'
-    __slots__ = ('shape', 'at_end', 'plane_co', 'plane_no', 'moved', 'start_world')
+    __slots__ = ('shape', 'at_end', 'joint', 'plane_co', 'plane_no', 'moved', 'start_world')
 
     def setup(self):
         if not hasattr(self, 'shape'):
@@ -268,6 +285,8 @@ class MCH_GT_line_end(bpy.types.Gizmo):
             self.shape = self.new_custom_shape('TRIS', ring)
         if not hasattr(self, 'at_end'):
             self.at_end = True
+        if not hasattr(self, 'joint'):
+            self.joint = -1                                # >= 0: this handle is the joint at that path index
 
     def draw(self, context):
         self.draw_custom_shape(self.shape)
@@ -275,6 +294,20 @@ class MCH_GT_line_end(bpy.types.Gizmo):
     def test_select(self, context, location):
         m = self.matrix_basis
         return 0 if math.dist((location[0], location[1]), (m[0][3], m[1][3])) <= abs(m[0][0]) else -1
+
+    def _anchor(self, ob):
+        if self.joint >= 0:
+            for j, w in base_mesh.sweep_joints(ob):
+                if j == self.joint:
+                    return w.copy()
+            return None
+        ends = base_mesh.sweep_ends(ob)
+        return ends[1 if self.at_end else 0].copy() if ends else None
+
+    def _apply(self, ob, where):
+        if self.joint >= 0:
+            return base_mesh.move_joint(ob, self.joint, where)
+        return base_mesh.move_end(ob, self.at_end, where)
 
     def _hit(self, context, event):
         from bpy_extras import view3d_utils
@@ -287,10 +320,10 @@ class MCH_GT_line_end(bpy.types.Gizmo):
 
     def invoke(self, context, event):
         ob = hud_target(context)
-        ends = base_mesh.sweep_ends(ob) if ob is not None else None
-        if not ends:
+        anchor = self._anchor(ob) if ob is not None else None
+        if anchor is None:
             return {'CANCELLED'}
-        self.start_world = ends[1 if self.at_end else 0].copy()
+        self.start_world = anchor
         self.plane_co = self.start_world.copy()
         # 0.24.116 (user: "무브가 위아래로는 왜 안 돼?") the end moves in the plane of the CURRENT view through it - up /
         # down on screen is up / down in the world from where you look (the piece's own plane held it flat before)
@@ -307,14 +340,15 @@ class MCH_GT_line_end(bpy.types.Gizmo):
         if hit is None:
             return {'RUNNING_MODAL'}
         try:
-            if base_mesh.move_end(ob, self.at_end, hit):
+            if self._apply(ob, hit):
                 self.moved = True
         except Exception as ex:               # a drag must never fail loudly: the line stays where it was
             if context.area:
                 context.area.header_text_set(f'Move: {ex}')
             return {'RUNNING_MODAL'}
         if context.area:
-            context.area.header_text_set('Move the line\'s end in this view\'s plane - turn the view to move it another way  (Esc = back)')
+            context.area.header_text_set(('Move the joint' if self.joint >= 0 else 'Move the line\'s end')
+                                         + ' in this view\'s plane - turn the view to move it another way  (Esc = back)')
         return {'RUNNING_MODAL'}
 
     def exit(self, context, cancel):
@@ -323,7 +357,7 @@ class MCH_GT_line_end(bpy.types.Gizmo):
         ob = hud_target(context)
         if cancel and self.moved and ob is not None:
             try:
-                base_mesh.move_end(ob, self.at_end, self.start_world)
+                self._apply(ob, self.start_world)
             except Exception:
                 pass
         elif self.moved:
@@ -373,6 +407,15 @@ class MCH_GGT_line_hud(bpy.types.GizmoGroup):
             gz.alpha_highlight = 0.7
             gz.use_draw_scale = False
             self.items[key] = gz
+        for k in range(MAX_JOINT_HANDLES):                 # 0.24.117 the joints between pieces (hidden until used)
+            gz = self.gizmos.new(MCH_GT_line_end.bl_idname)
+            gz.joint = 0
+            gz.color = (0.55, 0.9, 1.0)
+            gz.alpha = 0.3
+            gz.color_highlight = (1.0, 0.75, 0.2)
+            gz.alpha_highlight = 0.7
+            gz.use_draw_scale = False
+            self.items[f'joint_{k}'] = gz
         for kind in ('thick', 'radius'):
             gz = self.gizmos.new(MCH_GT_line_slider.bl_idname)
             gz.kind = kind
@@ -396,12 +439,22 @@ class MCH_GGT_line_hud(bpy.types.GizmoGroup):
         mv = move_on(context)
         handles = {('end_end' if at_end else 'end_start'): xy for xy, at_end in end_handles_px(context, ob)} \
             if ob is not None and mv else {}
+        joints = joint_handles_px(context, ob) if ob is not None and mv else []
         for name, gz in self.items.items():
             if name in ('end_start', 'end_end'):
                 pos = handles.get(name)
                 gz.hide = pos is None
                 if not gz.hide:
                     r = 0.5 * continue_radius_px(context)
+                    gz.matrix_basis = Matrix.Translation((pos[0], pos[1], 0.0)) @ Matrix.Diagonal((r, r, 1.0, 1.0))
+                continue
+            if name.startswith('joint_'):
+                k = int(name[6:])
+                gz.hide = k >= len(joints)
+                if not gz.hide:
+                    pos, j = joints[k]
+                    gz.joint = j
+                    r = 0.4 * continue_radius_px(context)
                     gz.matrix_basis = Matrix.Translation((pos[0], pos[1], 0.0)) @ Matrix.Diagonal((r, r, 1.0, 1.0))
                 continue
             pos = lay.get(name)
@@ -450,7 +503,7 @@ def _draw_labels():
             mv = move_on(context)
             blf.color(font, *(ACCENT if mv else (0.85, 0.87, 0.9)), 1.0)
             blf.position(font, x + BTN * 0.7 * ui, y - 4 * ui, 0)
-            blf.draw(font, 'Move: drag an end ring' if mv else 'Move')
+            blf.draw(font, 'Move: drag an end or joint ring' if mv else 'Move')
         blf.color(font, 1.0, 1.0, 1.0, 1.0)
         x, y = lay['thick']
         text = f'Thickness  {p.section_width:.3f}'
