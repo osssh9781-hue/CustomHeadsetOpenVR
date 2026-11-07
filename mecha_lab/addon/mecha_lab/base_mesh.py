@@ -67,7 +67,7 @@ FLIP_SIDES = {'TOP': 'BOTTOM', 'BOTTOM': 'TOP', 'BOTH': 'BOTH', 'NONE': 'NONE'}
 SETTING_KEYS = ('height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 'resolution', 'offset',
                 'bottom_too', 'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link', 'puff',
                 'outline_smooth', 'edge_round', 'peak', 'attach_curve', 'profile_sweep', 'section_width',
-                'section_rotation', 'section_twist', 'section_taper')
+                'section_rotation', 'section_twist', 'section_taper', 'line_corner', 'corner_radius')
 SWEEP_KEY = 'mch_base_line_sweep'  # 0.24.103 serialized path + alpha loops for live rebuild
 DEPTH_KEY = 'mch_base_depth_guide'   # side-view polyline reshapes the base depth, kept live
 ATTACH_KEY = 'mch_base_attach'          # 0.24.57 Line: the ends stuck to the meshes where the line began / ended
@@ -78,7 +78,7 @@ PUFF_RINGS = (0.12, 0.3, 0.55, 0.85)      # rows just inside the outline (in poi
 
 CARRY_KEYS = ('profile', 'height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 'resolution', 'offset',
               'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link', 'puff', 'outline_smooth',
-              'edge_round', 'section_rotation', 'section_twist', 'section_taper')
+              'edge_round', 'section_rotation', 'section_twist', 'section_taper', 'line_corner', 'corner_radius')
 # 0.24.107 'profile_sweep' / 'section_width' are not carried: a Press Cut Alt+draw part (always a shape sweep) had
 # every later plain Base Mesh line turned into a shape sweep once one of its sliders was touched.
 
@@ -185,6 +185,15 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
     section_taper: FloatProperty(name='End Taper', default=0.0, min=0.0, max=0.95,
                                  subtype='FACTOR', update=_rebuild_update,
                                  description='Shrink the cross-section at the start and end of the path')
+    # 0.24.112 (user: "꺾이는 부분이 완전 꺾이는 거랑 라운드로 꺾이는 거 옵션으로") the bends of a swept line
+    line_corner: EnumProperty(name='Corners', items=(
+        ('SHARP', 'Sharp', 'A crisp mitred corner at every bend of the line'),
+        ('ROUND', 'Round', 'Every bend is rounded: an arc of Corner Radius x the section width')),
+        default='SHARP', update=_rebuild_update)
+    corner_radius: FloatProperty(name='Corner Radius', default=1.0, min=0.1, soft_max=4.0, max=20.0, precision=2,
+                                 update=_rebuild_update,
+                                 description='Round corners: the bend radius as a multiple of the section width (less '
+                                             'where a leg of the line is too short)')
     depth_mode: BoolProperty(name='Depth Guide Mode', default=False,
                              description='Draw front silhouette first, then draw a side-view depth guide on its live mesh')
     line_attach: BoolProperty(name='Attach Ends', default=False,
@@ -1375,7 +1384,24 @@ def _resample_section_path(points, width, max_points=192):
     total = cumulative[-1]
     if total < 1e-5:
         raise cg.CutError('The line is too short for a swept cross section.')
-    n = max(2, min(max_points, max(len(clean), int(math.ceil(total / max(width * 0.45, 0.002))) + 1)))
+    step = max(width * 0.45, 0.002)
+    if len(clean) <= max_points:
+        # 0.24.112 the line's own points stay stations (a bend is a real corner - mitred or rounded - not smeared
+        # over two samples); even samples are added inside each leg, within the point budget
+        want = [int(math.dist(a, b) / step) for a, b in zip(clean, clean[1:])]
+        budget = max_points - len(clean)
+        if sum(want) > budget:
+            f = budget / float(sum(want))
+            want = [int(w * f) for w in want]
+        sampled = []
+        for (a, b), m in zip(zip(clean, clean[1:]), want):
+            sampled.append(a)
+            for k in range(1, m + 1):
+                t = k / (m + 1)
+                sampled.append(tuple(a[c] + t * (b[c] - a[c]) for c in range(len(a))))
+        sampled.append(clean[-1])
+        return sampled
+    n = max(2, min(max_points, max(len(clean), int(math.ceil(total / step)) + 1)))
     sampled = []
     for i in range(n):
         d = total * i / (n-1)
@@ -1386,27 +1412,98 @@ def _resample_section_path(points, width, max_points=192):
     return sampled
 
 
+MITER_MAX_DEG = 150.0      # a bend sharper than this is mitred as if it were 150 deg (the tip would run away)
+
+
+def fillet_path(path, radius, min_turn_deg=12.0, max_turn_deg=170.0, step_deg=15.0, min_radius=0.0):
+    """0.24.112 Round corners: every bend of the 3D polyline ``path`` sharper than ``min_turn_deg`` is replaced by a
+    circular arc tangent to both legs, of ``radius`` - less where a leg is short (each arc takes at most 45 % of the
+    shorter leg), but never under ``min_radius`` (the inner side of a swept bend folds over itself below half the
+    section width): a bend that cannot take that radius stays a sharp corner.  Pure; returns the new point list."""
+    pts = [Vector(_xyz(q)) for q in path]
+    if len(pts) < 3 or radius <= 0.0:
+        return [tuple(q) for q in pts]
+    out = [pts[0]]
+    for i in range(1, len(pts) - 1):
+        P = pts[i]
+        a, b = P - pts[i - 1], pts[i + 1] - P
+        la, lb = a.length, b.length
+        if la < 1e-9 or lb < 1e-9:
+            continue
+        a, b = a / la, b / lb
+        theta = math.acos(max(-1.0, min(1.0, a.dot(b))))
+        if math.degrees(theta) < min_turn_deg or math.degrees(theta) > max_turn_deg:
+            out.append(P)
+            continue
+        tan_h = math.tan(theta / 2.0)
+        t = radius * tan_h
+        t_max = 0.45 * min(la, lb)
+        r = radius
+        if t > t_max:
+            t, r = t_max, t_max / tan_h
+        if r < min_radius - 1e-9:                      # the legs are too short for a bend this section can take
+            out.append(P)
+            continue
+        n = b - a
+        if n.length < 1e-9:
+            out.append(P)
+            continue
+        n.normalize()
+        C = P + n * (r / math.cos(theta / 2.0))
+        u1, u2 = (P - a * t) - C, (P + b * t) - C
+        steps = max(2, int(math.ceil(math.degrees(theta) / step_deg)))
+        sin_t = math.sin(theta)
+        for k in range(steps + 1):
+            s_ = k / steps
+            q = u1.lerp(u2, s_) if sin_t < 1e-9 else (u1 * math.sin((1.0 - s_) * theta) + u2 * math.sin(s_ * theta)) / sin_t
+            out.append(C + q)
+    out.append(pts[-1])
+    clean = [out[0]]
+    for q in out[1:]:
+        if (q - clean[-1]).length > 1e-7:
+            clean.append(q)
+    return [tuple(q) for q in clean]
+
+
 def sweep_frames(stations):
-    """0.24.110 (U, V) per station of a 3D polyline: T the tangent (central difference), V the section's up - the
-    plane normal (local z) at the start, carried along with the least twist (parallel transport: a bent bar does
-    not spin) - and U = V x T across the line.  For a flat line this is exactly the old in-plane frame."""
+    """0.24.110 (U, V, M, k) per station of a 3D polyline: T the tangent (the bisector of the legs meeting there),
+    V the section's up - the plane normal (local z) at the start, carried along with the least twist (parallel
+    transport: a bent bar does not spin) - and U = V x T across the line.  0.24.112 M, k: the mitre at a bend - the
+    ring is stretched by k = 1 / cos(turn / 2) along M (in the plane of the turn, square to T), so two straight
+    tubes meet in a clean crease; on a straight run k = 1."""
     out = []
     n = len(stations)
     V = Vector((0.0, 0.0, 1.0))
     for i in range(n):
-        a, b = (stations[0], stations[1]) if i == 0 else (stations[-2], stations[-1]) if i == n - 1 \
-               else (stations[i - 1], stations[i + 1])
-        T = Vector(b) - Vector(a)
-        if T.length < 1e-8:
+        a = (Vector(stations[i]) - Vector(stations[i - 1])) if i > 0 else None
+        b = (Vector(stations[i + 1]) - Vector(stations[i])) if i < n - 1 else None
+        if a is not None and a.length < 1e-8 or b is not None and b.length < 1e-8:
             raise cg.CutError('Overlapping drawing points; redraw the path.')
-        T.normalize()
+        M, k = None, 1.0
+        if a is None:
+            T = b.normalized()
+        elif b is None:
+            T = a.normalized()
+        else:
+            a, b = a.normalized(), b.normalized()
+            T = a + b
+            if T.length < 1e-6:                            # a hairpin: carry on along the incoming leg
+                T = a.copy()
+            else:
+                T.normalize()
+                theta = math.acos(max(-1.0, min(1.0, a.dot(b))))
+                if theta > 1e-4:
+                    theta = min(theta, math.radians(MITER_MAX_DEG))
+                    k = 1.0 / math.cos(theta / 2.0)
+                    M = (b - a)
+                    M = M.normalized() if M.length > 1e-9 else None
         Vn = V - T * V.dot(T)
         if Vn.length < 1e-6:                               # the line heads straight along the old up: pick any up
             Vn = Vector((1.0, 0.0, 0.0)) if abs(T.x) < 0.9 else Vector((0.0, 1.0, 0.0))
             Vn = Vn - T * Vn.dot(T)
         V = Vn.normalized()
         U = V.cross(T).normalized()
-        out.append((U, V))
+        out.append((U, V, M, k))
     return out
 
 
@@ -1421,6 +1518,9 @@ def _build_sweep_bmesh(data, p):
     path = [tuple(float(c) for c in q) for q in (data.get('path3') or data['path'])]
     if path and len(path[0]) == 2:
         path = [(q[0], q[1], 0.0) for q in path]
+    if getattr(p, 'line_corner', 'SHARP') == 'ROUND':      # 0.24.112 Round corners: the bends become arcs
+        path = fillet_path(path, float(getattr(p, 'corner_radius', 1.0)) * max(1e-5, float(p.section_width)),
+                           min_radius=0.55 * float(p.section_width))
     loops = [[(float(q[0]), float(q[1])) for q in lp] for lp in data['loops']]
     if not loops or sum(map(len, loops)) < 3:
         raise cg.CutError('The selected cross-section shape is empty.')
@@ -1450,7 +1550,7 @@ def _build_sweep_bmesh(data, p):
                 off += len(lp)
             cap_faces = _triangulate(flat, len(flat), section_loops, edges)
             all_rings = []
-            for i, (st_, (U, V)) in enumerate(zip(stations, frames)):
+            for i, (st_, (U, V, M, kk)) in enumerate(zip(stations, frames)):
                 P = Vector(st_)
                 t = i / (len(stations)-1)
                 scale = max(0.05, 1.0 - taper*(abs(2*t-1)**2))
@@ -1464,7 +1564,10 @@ def _build_sweep_bmesh(data, p):
                 if bottom is not None:
                     dz = float(bottom) - p.offset - min(v for _u, v in uv) * height
                 for u, v in uv:
-                    ring.append(bm.verts.new(P + U * (u * width) + V * (p.offset + v * height + dz)))
+                    off = U * (u * width) + V * (p.offset + v * height + dz)
+                    if M is not None:                      # the mitre: stretched across the bend
+                        off += M * (off.dot(M) * (kk - 1.0))
+                    ring.append(bm.verts.new(P + off))
                 all_rings.append(ring)
             for a, b, c in cap_faces:
                 # Profile +U points left across the path, +V points up.
@@ -1583,23 +1686,26 @@ def envelope_section(loops, top, columns=96):
 class _SweepCutterSettings:
     """Settings view for a swept cutter: the section's size and turn, nothing else of the Base Mesh."""
 
-    def __init__(self, width, height, rotation=0.0):
+    def __init__(self, width, height, rotation=0.0, corner='SHARP', corner_radius=1.0):
         self.section_width = max(1e-5, float(width))
         self.height = max(1e-5, float(height))
         self.offset = 0.0
         self.section_rotation = float(rotation)
         self.section_twist = 0.0
         self.section_taper = 0.0
+        self.line_corner = corner                  # 0.24.112 the groove's bends: Sharp (mitre) / Round
+        self.corner_radius = float(corner_radius)
 
 
-def sweep_cutter_mesh(frame, local_path, section, width, height, bottom, rotation=0.0):
+def sweep_cutter_mesh(frame, local_path, section, width, height, bottom, rotation=0.0, corner='SHARP',
+                      corner_radius=1.0):
     """0.24.109 The swept cutter as a mesh: ``section`` (normalized loops) swept along ``local_path`` in the plane of
     ``frame``, its lowest point at local z ``bottom`` (negative = into the part the plane sits on)."""
     data = {'path': [[float(q[0]), float(q[1])] for q in local_path],
             'loops': [[list(q) for q in lp] for lp in section], 'bottom': float(bottom)}
     if any(len(q) > 2 and abs(float(q[2])) > 1e-9 for q in local_path):     # 0.24.110 a groove that leaves its plane
         data['path3'] = [list(_xyz(q)) for q in local_path]
-    bm = _build_sweep_bmesh(data, _SweepCutterSettings(width, height, rotation))
+    bm = _build_sweep_bmesh(data, _SweepCutterSettings(width, height, rotation, corner, corner_radius))
     try:
         me = bpy.data.meshes.new('MCH_LineCutter')
         bm.to_mesh(me)
@@ -1610,14 +1716,15 @@ def sweep_cutter_mesh(frame, local_path, section, width, height, bottom, rotatio
     return me
 
 
-def sweep_cut(context, frame, local_path, section, width, height, bottom, targets, mode='CUT', rotation=0.0):
+def sweep_cut(context, frame, local_path, section, width, height, bottom, targets, mode='CUT', rotation=0.0,
+              corner='SHARP', corner_radius=1.0):
     """0.24.109 Press Cut Alt + drag: the stamp's section swept along the drawn line and taken out of ``targets``
     (``mode`` CUT), or the swept piece kept as its own part (SPLIT).  Returns the report line."""
     from . import cut_engine as ce
     targets = [t for t in targets if t is not None and t.type == 'MESH']
     if not targets:
         raise cg.CutError('Line Cut: no mesh in the line / selection')
-    me = sweep_cutter_mesh(frame, local_path, section, width, height, bottom, rotation)
+    me = sweep_cutter_mesh(frame, local_path, section, width, height, bottom, rotation, corner, corner_radius)
     cutter = cg.link_temp_object(context, me)
     cutter.matrix_world = frame
     cut = context.scene.mch_cut

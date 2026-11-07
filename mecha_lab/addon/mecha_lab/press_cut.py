@@ -1925,7 +1925,9 @@ class MCH_OT_press_unified(bpy.types.Operator):
                     # 0.24.110 the new piece lies in the CURRENT view's plane through the groove's end (it can leave the
                     # first plane); a view turned less than 20 deg keeps the first plane
                     new_local, turned, leaves = base_mesh.continue_plane_path(frame, self.projector, pts, old[-1])
-                    tail, new_pts = base_mesh.join_path(old, new_local, fade=2.0 * width, tail=width)
+                    corner = getattr(context.scene.mch_base, 'line_corner', 'SHARP')
+                    tail, new_pts = base_mesh.join_path(old, new_local, fade=2.0 * width,
+                                                        tail=width * (2.5 if corner == 'ROUND' else 1.0))
                     local_path = tail + new_pts            # (the old line's last bit again: the corner is filled)
                     full = old + new_pts
                     if not at_end:
@@ -1941,7 +1943,10 @@ class MCH_OT_press_unified(bpy.types.Operator):
                     safety_save.checkpoint('Mecha Line Cut')
                 except Exception:
                     pass
-                msg = base_mesh.sweep_cut(context, frame, local_path, section, width, height, bottom, targets, mode)
+                bsd = context.scene.mch_base
+                msg = base_mesh.sweep_cut(context, frame, local_path, section, width, height, bottom, targets, mode,
+                                          corner=getattr(bsd, 'line_corner', 'SHARP'),
+                                          corner_radius=float(getattr(bsd, 'corner_radius', 1.0)))
                 if prev is not None:
                     msg = 'Line Cut continued: ' + msg + \
                           (f' | in the view you drew in: {turned:.0f} deg from the first piece' if leaves and turned >= 5.0
@@ -2360,6 +2365,11 @@ def draw(layout, context):
     section.prop(base, 'section_rotation')
     section.prop(base, 'section_twist')
     section.prop(base, 'section_taper', slider=True)
+    row = section.row(align=True)                 # 0.24.112 the bends: Sharp (mitre) / Round (+ radius)
+    row.prop(base, 'line_corner', expand=True)
+    if base.line_corner == 'ROUND':
+        section.prop(base, 'corner_radius', slider=True)
+    section.label(text='(the dot next to a made line toggles this; its sliders set thickness)', icon='BLANK1')
     col = layout.column(align=True)
     col.label(text='Curve (a round stamp)')
     col.prop(st, 'curve_x', text='Left-Right', slider=True)

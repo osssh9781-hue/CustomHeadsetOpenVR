@@ -1,0 +1,12 @@
+L line: MCH_Base path points 4 corners SHARP width 0.393 closed True
+HUD at (window px): {'corner': (1319, 593), 'thick': (1391, 593)}
+after the dot click: corners ROUND verts 144 -> 144 closed True
+after the thickness drag: width 0.393 -> 0.548 height 0.548 closed True
+after the radius drag: radius 1.00 -> 0.52 closed True
+HUD at the end (select tool): {'corner': (1387, 585), 'thick': (1458, 585), 'radius': (1458, 612)}
+shot 1_line_hud_round_thick.png True
+PASS L line
+PASS dot click: Sharp -> Round, the line rebuilt
+PASS thickness drag: the line thicker, live
+PASS radius drag: smaller bend radius, live
+RESULT 4 / 4

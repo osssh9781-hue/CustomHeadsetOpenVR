@@ -299,7 +299,7 @@ src_b = open(base_mesh.__file__).read()
 check('wired: the unified draw snaps to an end, extends the sweep / continues the cut, draws the end markers, turns the section',
       "hit = nearest_end(context, self.projector, pts[0], continue_radius(pr), 'base' if self.make_mesh else 'cut')" in src
       and 'base_mesh.extend_sweep(ob, self.projector, pts, at_end,' in src
-      and 'base_mesh.sweep_cut(context, frame, local_path, section, width, height, bottom, targets, mode)' in src
+      and 'base_mesh.sweep_cut(context, frame, local_path, section, width, height, bottom, targets, mode,' in src
       and '_draw_end_marks(context, sh, marks, 0.5 * continue_radius(st))' in src
       and 'section_rest=True, section_rotation=float(pr.rotation))' in src
       and 'def envelope_section(' in src_b and "bottom = data.get('bottom')" in src_b

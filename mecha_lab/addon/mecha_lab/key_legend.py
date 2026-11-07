@@ -29,7 +29,7 @@ EXTRA = {
     'CUT': ['T   targets: auto / selected'],
     'SPLIT': ['T   targets: auto / selected'],
     'PRESS': ['Hold LMB on a part   a mesh grows out of the surface - taller the longer you hold,  release   keep',
-              'Alt + hold LMB   press the stamp in (a cut) - deeper the longer you hold', 'Drag   Base Mesh line, the stamp as its section (as wide as the stamp),  Alt + drag   Line Cut - the stamp as its section, Max deep', 'Start a drag on a line\'s end mark   it goes on from there (turn the view between strokes if you like)', 'Shift + draw   your own stamp - Lasso / Rectangle / Circle / Free Draw ... (top bar), Sketch: Enter = the stamp', 'Esc / RMB (holding)   put it back,  [ ] / F   stamp size',
+              'Alt + hold LMB   press the stamp in (a cut) - deeper the longer you hold', 'Drag   Base Mesh line, the stamp as its section (as wide as the stamp),  Alt + drag   Line Cut - the stamp as its section, Max deep', 'Start a drag on a line\'s end mark   it goes on from there (turn the view between strokes if you like)', 'Dot beside a made line   Sharp / Round corners,  its sliders   thickness, corner radius (live)', 'Shift + draw   your own stamp - Lasso / Rectangle / Circle / Free Draw ... (top bar), Sketch: Enter = the stamp', 'Esc / RMB (holding)   put it back,  [ ] / F   stamp size',
               'R + mouse   turn (Shift fine, Ctrl 5\u00b0),  Shift+R   0\u00b0'],
     'CPATH': ['Tab (dragging)   Extend: brush area / whole section', 'B (dragging)   Back Mask: the far side stays put'],
     'SMOVE': ['Drag from the part   the whole part follows the way (stretches, bends)'],

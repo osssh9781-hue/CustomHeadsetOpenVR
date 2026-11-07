@@ -739,6 +739,10 @@ def draw_base(layout, context):
             section.prop(p, 'section_rotation')
             section.prop(p, 'section_twist')
             section.prop(p, 'section_taper', slider=True)
+            row = section.row(align=True)         # 0.24.112 the bends: Sharp (mitre) / Round (+ radius)
+            row.prop(p, 'line_corner', expand=True)
+            if p.line_corner == 'ROUND':
+                section.prop(p, 'corner_radius', slider=True)
             if p.profile_sweep == 'ALPHA':
                 section.template_icon_view(context.scene.mch_press, 'shape', show_labels=True, scale=4.0)
                 row = section.row(align=True)
