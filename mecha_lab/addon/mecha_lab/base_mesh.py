@@ -1694,15 +1694,16 @@ def _xyz(q):
     return (float(q[0]), float(q[1]), float(q[2]) if len(q) > 2 else 0.0)
 
 
-CONTINUE_SAME_PLANE_DEG = 20.0    # the view turned less than this since the first stroke: the line stays in its plane
+CONTINUE_SAME_PLANE_DEG = 0.0     # 0.24.111 (user: "그 메쉬 위치랑 뷰포트 방향으로 그어지면 ... 복잡하지 않게") no exception:
+#                                   a continued stroke always lies in the view it is drawn in (0.24.110 kept the first
+#                                   plane under 20 deg; set this above 0 to have that back)
 
 
 def continue_plane_path(frame, projector, pts, end_local):
     """0.24.110 Where a continued stroke goes: screen points ``pts`` projected onto the plane through the old end point
-    that faces the CURRENT view - the user turned the view to head off in a new direction (their "여기 안 돼") - or,
-    when the view turned less than ``CONTINUE_SAME_PLANE_DEG`` from the line's own plane, onto that plane (a small
-    orbit to see better keeps a flat line flat).  Returns (3D points in the frame's local space, degrees the view is
-    turned from the first plane, True when the piece leaves the plane)."""
+    that faces the CURRENT view - the line's end position, the viewport's direction (the user turned the view to head
+    off in a new direction: "여기 안 돼").  Returns (3D points in the frame's local space, degrees the view is turned
+    from the first plane, True when the piece is laid in the view's plane rather than the first one)."""
     inv = frame.inverted_safe()
     n_first = Vector((frame[0][2], frame[1][2], frame[2][2])).normalized()
     n_view = -Vector(projector.view_dir).normalized()

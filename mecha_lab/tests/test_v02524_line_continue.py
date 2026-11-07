@@ -2,8 +2,8 @@
 - "한번 긋고 뷰포트 돌려서 처음 그었던 선 끝난 부분에 이어서 그릴 수 있게": a stroke that starts on the end of the last Base Mesh
   line / Line Cut goes on from it - one object, the same section, from either end
 - 0.24.110 (user's picture "여기 안 돼": the line must be able to leave its plane) the new piece lies in the plane of the
-  CURRENT view through the old end - a 3D centreline with a twist-free section; a view turned under 20 deg keeps the
-  first plane (a small orbit to see better keeps a flat line flat)
+  CURRENT view through the old end - a 3D centreline with a twist-free section; 0.24.111 (user: "그 메쉬 위치랑 뷰포트
+  방향으로") always, no "under 20 deg keeps the first plane" exception
 - "컷도 당연히 스탬프 단면으로 잘려야지! 왜 원으로 잘려" / "맥스 조절해서 얕게 만들어도 왜 다 뚫려": the Alt + drag Line Cut is
   the stamp's section swept along the line, pressed in Max x the part's size (not the Cut tool's depth / a round band)
 - "스탬프를 로테이션으로 돌리면 베이스 라인으로 나오는 메쉬 앵글도 돌아가야지! 컷도 마찬가지고": the stamp's turn turns the section
@@ -22,7 +22,7 @@ fresh()
 mecha_lab.register()
 C = bpy.context
 TOP = cg.OrthoProjector(Quaternion(), pixels_per_unit=100.0)
-TILT = cg.OrthoProjector(Euler((0.17, 0.0, 0.0)).to_quaternion(), pixels_per_unit=100.0)    # turned 10 deg: stays in the plane
+TILT = cg.OrthoProjector(Euler((0.17, 0.0, 0.0)).to_quaternion(), pixels_per_unit=100.0)    # turned 10 deg
 TILT34 = cg.OrthoProjector(Euler((0.6, 0.0, 0.0)).to_quaternion(), pixels_per_unit=100.0)   # turned 34 deg: the view's plane
 FRONT = cg.OrthoProjector(Euler((math.pi / 2, 0.0, 0.0)).to_quaternion(), pixels_per_unit=100.0)  # from the front (y): top edge-on
 SPAN = 2 * 40.0 / 100.0                                       # the stamp's longer side in world units (size 40 px)
@@ -154,12 +154,11 @@ bb = bbox(ob)
 check('a stroke from the end with the view turned 10 deg: the SAME object goes on (no new object), the path longer',
       r == {'FINISHED'} and len(bpy.data.objects) == n_obj and len(path1) > len(path0) and non_manifold(ob) == 0,
       (r, len(bpy.data.objects) - n_obj, len(path0), len(path1), op.reports[-1:] if op.reports else None))
-check('... under 20 deg the new part stays in the FIRST stroke\'s plane (z = 1, flat), joined at the old end',
+check('... laid in the 10 deg view\'s plane through the old end (a stroke drawn along the top stays on it), joined there',
       (ends1[0] - Vector((-0.8, 0, 1))).length < 0.05 and (ends1[1] - Vector((0.82, 0.01, 1.0))).length < 0.05
-      and bb[2][0] > 0.9 and bb[2][1] < 1.0 + SPAN + 0.05 and bb[0][1] > 0.75
-      and 'path3' not in json.loads(ob[base_mesh.SWEEP_KEY]),
+      and bb[2][0] > 0.9 and bb[2][1] < 1.0 + SPAN + 0.05 and bb[0][1] > 0.75,
       ([tuple(round(c, 2) for c in e) for e in ends1], [tuple(round(c, 2) for c in b) for b in bb]))
-check('... the report says so', op.reports and 'continued' in op.reports[-1][1] and 'turned 10 deg: kept in its plane' in op.reports[-1][1],
+check('... the report says so', op.reports and 'continued' in op.reports[-1][1] and 'in the view you drew in: 10 deg' in op.reports[-1][1],
       op.reports[-1:] if op.reports else None)
 r, op = stroke(TILT, [(-0.8 - 0.6 * k / 6, 0.01, 1.0) for k in range(7)], True)
 ends2 = base_mesh.sweep_ends(ob)
@@ -186,7 +185,7 @@ check('the view turned 90 deg (front), a stroke down from the end: the line BEND
 check('... the section does not twist round the bend: the down piece is as wide across (y) as the flat piece',
       co and abs((max(v.y for v in co if v.z < end2.z - 0.3) - min(v.y for v in co if v.z < end2.z - 0.3)) - SPAN) < 0.05,
       round(max(v.y for v in co if v.z < end2.z - 0.3) - min(v.y for v in co if v.z < end2.z - 0.3), 3) if co else None)
-check('... the report says it bent out of its plane', op.reports and 'bent 90 deg out of its plane' in op.reports[-1][1],
+check('... the report says it was laid in the view drawn in', op.reports and 'in the view you drew in: 90 deg' in op.reports[-1][1],
       op.reports[-1:] if op.reports else None)
 r, op = stroke(TILT34, [(ends3[1].x + 0.5 * k / 5, ends3[1].y + 0.01, ends3[1].z) for k in range(6)], True)
 d3 = json.loads(ob2[base_mesh.SWEEP_KEY])
@@ -263,7 +262,7 @@ check('an Alt stroke from the cut\'s end with the view turned 10 deg: the groove
       r == {'FINISHED'} and abs((v1 - v2) - exp * 0.8 / 1.2) < exp * 0.8 / 1.2 * 0.12 and len(cutd['path']) > n_path
       and (e1 - Vector((0.82, 0.01, 1.0))).length < 0.05 and len(bpy.data.objects) == 1 and non_manifold(q) == 0,
       (round(v1 - v2, 3), round(exp * 0.8 / 1.2, 3), len(cutd['path']), op.reports[-1:] if op.reports else None))
-check('... the report says so', op.reports and 'Line Cut continued' in op.reports[-1][1] and 'kept in its plane' in op.reports[-1][1])
+check('... the report says so', op.reports and 'Line Cut continued' in op.reports[-1][1] and 'in the view you drew in: 10 deg' in op.reports[-1][1])
 probe = (0.82 + 0.12, 0.01 + 0.12, 0.95)               # in the outer corner's wedge (past the flat end cap), 5 cm down
 wedge_before = inside(q, probe)
 r, op = stroke(TILT, [(0.82, 0.01 - 0.7 * k / 7, 1.0) for k in range(8)], False)
@@ -282,7 +281,7 @@ v2 = vol(q)
 cutd = pc.CONTINUE['cut']
 check('a Line Cut continued DOWN from its end in the front view: the swept stamp goes down into the part (3D path), still closed',
       r == {'FINISHED'} and v1 - v2 > 0.02 and non_manifold(q) == 0 and len(cutd['path'][-1]) == 3
-      and cutd['path'][-1][2] < -0.4 and 'bent 90 deg out of its plane' in op.reports[-1][1],
+      and cutd['path'][-1][2] < -0.4 and 'in the view you drew in: 90 deg' in op.reports[-1][1],
       (round(v1 - v2, 3), cutd['path'][-1] if cutd else None, op.reports[-1:] if op.reports else None))
 
 st, q = setup('SPLIT')
@@ -305,5 +304,5 @@ check('wired: the unified draw snaps to an end, extends the sweep / continues th
       and 'section_rest=True, section_rotation=float(pr.rotation))' in src
       and 'def envelope_section(' in src_b and "bottom = data.get('bottom')" in src_b
       and 'base_mesh.continue_plane_path(frame, self.projector, pts, old[-1])' in src
-      and 'frames = sweep_frames(stations)' in src_b and base_mesh.CONTINUE_SAME_PLANE_DEG == 20.0)
+      and 'frames = sweep_frames(stations)' in src_b and base_mesh.CONTINUE_SAME_PLANE_DEG == 0.0)
 summary()

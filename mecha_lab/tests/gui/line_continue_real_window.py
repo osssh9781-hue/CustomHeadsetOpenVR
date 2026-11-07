@@ -1,5 +1,5 @@
 """Real window (0.24.109 / 0.24.110): going on with a Press Cut line after the view turned, with the REAL mouse and Alt.
-  Box A: plain drag (top view) -> orbit 17 deg -> plain drag from the line's end: ONE object, kept in its plane
+  Box A: plain drag (top view) -> orbit 17 deg -> plain drag from the line's end: ONE object, laid in that view
   Z (empty space, left): a line in the top view -> FRONT view: drag DOWN from its end -> RIGHT view: drag sideways:
      the line bends out of its plane twice (0.24.110 user's "여기 안 돼"), one object
   Box B: Alt + drag (Line Cut, Max 0.15) -> orbit 17 deg -> Alt + drag from the groove's end: the groove goes on
@@ -171,11 +171,11 @@ def flow():
         zs = [(line.matrix_world @ v.co).z for v in line.data.vertices]
         log(f'A2 continued (view turned): objects {len(bpy.data.objects) - n_obj:+d} path points {n_path0} -> {n_path1} '
             f'end {tuple(round(c, 2) for c in ends1[1])} z {min(zs):.2f}..{max(zs):.2f} closed {closed(line)}')
-        res['A line continued after a 17 deg turn: one object, the path longer, kept in its plane'] = \
-            len(bpy.data.objects) == n_obj and n_path1 > n_path0 and closed(line) and min(zs) > 0.9 and max(zs) < 1.95
+        res['A line continued after a 17 deg turn: one object, the path longer, closed'] = \
+            len(bpy.data.objects) == n_obj and n_path1 > n_path0 and closed(line)
     else:
         log('A2: no line to continue')
-        res['A line continued after a 17 deg turn: one object, the path longer, kept in its plane'] = False
+        res['A line continued after a 17 deg turn: one object, the path longer, closed'] = False
     # --- Z: on empty space, the line leaves its plane - top view, then DOWN from the front, then sideways from the right
     orbit((0.0, 0.0, 0.0), (-5.2, 0.0, 0.0), 14.0)
     yield 1.2
@@ -222,7 +222,7 @@ def flow():
     cutd = pc.CONTINUE['cut']
     log(f'B1 Alt + drag: removed {vb0 - vb1:.3f} new objects {len(set(bpy.data.objects.keys()) - before)} '
         f'remembered cut {cutd is not None and len(cutd["path"])}')
-    orbit((0.3, 0.0, 0.0), (-1.0, 0.2, 0.6), 9.0)                 # (17 deg: the groove stays in its plane)
+    orbit((0.3, 0.0, 0.0), (-1.0, 0.2, 0.6), 9.0)                 # (17 deg)
     yield 1.5
     if cutd:
         fr = pc._cut_frame(cutd)

@@ -1875,8 +1875,8 @@ class MCH_OT_press_unified(bpy.types.Operator):
                     ob.select_set(True)
                     context.view_layer.objects.active = ob
                     msg = f'Base Mesh Line continued: {ob.name} (+{n} points' + \
-                          (f', bent {turned:.0f} deg out of its plane (the view you drew in)' if leaves else
-                           f', the view turned {turned:.0f} deg: kept in its plane' if turned >= 5.0 else '') + ')'
+                          (f', in the view you drew in: {turned:.0f} deg from the first piece' if leaves and turned >= 5.0
+                           else '') + ')'
                 else:
                     st = base_mesh.scene_defaults(context)
                     attach = None
@@ -1944,8 +1944,8 @@ class MCH_OT_press_unified(bpy.types.Operator):
                 msg = base_mesh.sweep_cut(context, frame, local_path, section, width, height, bottom, targets, mode)
                 if prev is not None:
                     msg = 'Line Cut continued: ' + msg + \
-                          (f' | bent {turned:.0f} deg out of its plane (the view you drew in)' if leaves else
-                           f' | the view turned {turned:.0f} deg: kept in its plane' if turned >= 5.0 else '')
+                          (f' | in the view you drew in: {turned:.0f} deg from the first piece' if leaves and turned >= 5.0
+                           else '')
                 CONTINUE['cut'] = {'frame': _flat_frame(frame), 'path': [list(q) for q in full],
                                    'section': [[list(q) for q in lp] for lp in section], 'width': width,
                                    'height': height, 'bottom': bottom, 'targets': [t.name for t in targets]}
