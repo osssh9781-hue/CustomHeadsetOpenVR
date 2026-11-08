@@ -1,0 +1,20 @@
+L line: MCH_Base path points 4 corners SHARP width 0.449 closed True
+HUD at (window px): {'corner': (1101, 609), 'thick': (1173, 609), 'move': (1101, 644), 'section': (1101, 679)}
+after the dot click: corners ROUND verts 120 -> 224 closed True
+after the thickness drag: width 0.449 -> 0.626 height 0.626 closed True
+after the radius drag: radius 1.00 -> 0.52 closed True
+Move: end (0.51, 0.69, 1.0) -> (1.01, 0.48, 1.0) first leg unchanged True closed True move flag True
+Move off: flag False
+loop: closed True path points 7 closed mesh True faces 560
+joint rings (Move False): 4 shown of 4 joints [(2.0, -0.61, 1.0), (3.2, -0.61, 1.0), (3.21, 0.6, 1.0), (2.0, 0.6, 1.0)]
+joint drag (Move off): (3.2, -0.61, 1.0) -> (3.58, -0.74, 1.0) others still True closed True mesh closed True
+HUD at the end (select tool, MCH_Base.001): {'corner': (1321, 740), 'thick': (1393, 740), 'move': (1321, 776), 'section': (1321, 811), 'radius': (1393, 768)}
+shot 1_line_hud_round_thick.png True
+PASS L line
+PASS dot click: Sharp -> Round, the line rebuilt
+PASS thickness drag: the line thicker, live
+PASS radius drag: smaller bend radius, live
+PASS Move: the end ring dragged, the last leg swings, the first leg stays
+PASS a square drawn as four strokes, the last ending on the start ring: a closed loop
+PASS 0.24.120 a joint ring dragged with Move OFF: that corner moves, the other three stay, the loop stays closed
+RESULT 7 / 7

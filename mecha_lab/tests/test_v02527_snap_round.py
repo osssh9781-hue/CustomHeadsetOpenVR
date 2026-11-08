@@ -218,6 +218,32 @@ check('... Round on the loop: closed, rounded all round', non_manifold(ob) == 0 
 r5, op = stroke(TOP, [(-0.6, 0.0 + 0.3 * k / 3, 1.0) for k in range(4)])
 check('... a closed loop has no end rings: a stroke there is a new line', r5 == {'FINISHED'} and len(bpy.data.objects) == n_before + 1)
 
+# --- 0.24.120 (user: "이어진 모든 점에 남아있어야 돼") the joint rings: one at every place strokes met, the seam too ----
+from mecha_lab import line_hud as _lh
+check('0.24.120 the HUD shows the joint rings with Move OFF as well (rings_shown), the end rings with Move',
+      _lh.rings_shown(False) == (False, True) and _lh.rings_shown(True) == (True, True)
+      and 'joint_handles_px(context, ob) if ob is not None and joints_on else []' in open(_lh.__file__).read())
+js = base_mesh.sweep_joints(ob)
+check('... the four-stroke loop has four joint rings: the three meeting points and the seam where the end met the start',
+      len(js) == 4 and 0 in [j for j, _w in js]
+      and sorted(round(w.x, 1) for _j, w in js) == [-0.6, -0.6, 0.6, 0.6] and sorted(round(w.y, 1) for _j, w in js) == [-0.6, -0.6, 0.6, 0.6],
+      [(j, tuple(round(c, 2) for c in w)) for j, w in js])
+ob.mch_base.line_corner = 'SHARP'
+check('... and they are still there after a rebuild (Sharp again) - the ring positions are the stored joints', len(base_mesh.sweep_joints(ob)) == 4)
+st, p = setup('SHARP')
+r, op = stroke(TOP, [(-0.9 + 0.6 * k / 6, -0.3, 1.0) for k in range(7)])            # a straight line ...
+ob3 = C.active_object
+stroke(TOP, [(-0.3 + 0.6 * k / 6, -0.3, 1.0) for k in range(7)])                     # ... carried straight on (snap 0)
+stroke(TOP, [(0.3, -0.3 + 0.6 * k / 6, 1.0) for k in range(7)])                      # ... then up
+js3 = base_mesh.sweep_joints(ob3)
+check('... an open three-stroke line keeps BOTH joint rings, the straight (0 deg) join included - not only the bend',
+      len(js3) == 2 and sorted(round(w.x, 1) for _j, w in js3) == [-0.3, 0.3] and base_mesh.sweep_ends(ob3) is not None,
+      [(j, tuple(round(c, 2) for c in w)) for j, w in js3])
+moved = base_mesh.move_joint(ob3, js3[0][0], js3[0][1] + Vector((0.0, 0.2, 0.0)))
+check('... a joint ring dragged (no Move mode needed for joints): the joint moves, the other stays, the mesh closed',
+      moved and abs(base_mesh.sweep_joints(ob3)[0][1].y - (-0.1)) < 0.02 and abs(base_mesh.sweep_joints(ob3)[1][1].y - (-0.3)) < 0.02
+      and non_manifold(ob3) == 0, [tuple(round(c, 2) for c in w) for _j, w in base_mesh.sweep_joints(ob3)])
+
 # --- 0.24.115 the seam of a hand-drawn loop: an overshoot past the start, a mouse-down hook, a start behind the end
 st, p = setup('SHARP')
 hook = [(-0.57, -0.6, 1.0), (-0.6, -0.6, 1.0)]                                      # the first stroke begins with a 3 cm hook back

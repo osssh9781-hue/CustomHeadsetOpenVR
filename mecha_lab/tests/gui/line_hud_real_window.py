@@ -261,24 +261,54 @@ def flow():
         d_ = json.loads(loop[base_mesh.SWEEP_KEY])
         log(f'loop: closed {d_.get("closed")} path points {len(d_["path"])} closed mesh {closed(loop)} faces {len(loop.data.polygons)}')
         res['a square drawn as four strokes, the last ending on the start ring: a closed loop'] = bool(d_.get('closed')) and closed(loop)
+        # 6. (0.24.120) the blue joint rings stay with Move OFF - drag the bottom-right one with the real mouse
+        w, a, r = view3d()
+        with C.temp_override(window=w, area=a, region=r, region_data=a.spaces.active.region_3d):
+            jpx = line_hud.joint_handles_px(C, loop)
+        js = base_mesh.sweep_joints(loop)
+        log(f'joint rings (Move {C.window_manager.mch_line_move}): {len(jpx)} shown of {len(js)} joints '
+            f'{[tuple(round(c, 2) for c in wpt) for _j, wpt in js]}')
+        pick = None
+        for (xy, j) in jpx:
+            wpt = next((wp for jj, wp in js if jj == j), None)
+            if wpt is not None and wpt.x > 2.8 and wpt.y < -0.3:
+                pick = (xy, j, wpt.copy())
+        if pick is not None and not C.window_manager.mch_line_move:
+            (jx, jy), j_idx, j_before = pick
+            others_before = [wp.copy() for jj, wp in js if jj != j_idx]
+            x0, y0 = win_of_region_px((jx, jy))
+            yield from drag([(x0, y0), (x0 + 12, y0 + 4), (x0 + 24, y0 + 8), (x0 + 36, y0 + 12), (x0 + 48, y0 + 16), (x0 + 60, y0 + 20)])
+            js2 = base_mesh.sweep_joints(loop)
+            j_after = next((wp for jj, wp in js2 if jj == j_idx), None)
+            others_after = [wp for jj, wp in js2 if jj != j_idx]
+            still = len(others_after) == len(others_before) and all((a_ - b_).length < 0.01 for a_, b_ in zip(others_after, others_before))
+            d2 = json.loads(loop[base_mesh.SWEEP_KEY])
+            log(f'joint drag (Move off): {tuple(round(c, 2) for c in j_before)} -> '
+                f'{tuple(round(c, 2) for c in j_after) if j_after else None} others still {still} closed {d2.get("closed")} mesh closed {closed(loop)}')
+            res['0.24.120 a joint ring dragged with Move OFF: that corner moves, the other three stay, the loop stays closed'] = \
+                j_after is not None and (j_after - j_before).length > 0.25 and still and bool(d2.get('closed')) and closed(loop)
+        else:
+            log('no bottom-right joint ring found / Move on', pick, C.window_manager.mch_line_move)
+            res['0.24.120 a joint ring dragged with Move OFF: that corner moves, the other three stay, the loop stays closed'] = False
     else:
         res['a square drawn as four strokes, the last ending on the start ring: a closed loop'] = False
     orbit((1.0, 0.0, 0.35), (1.3, 0.0, 0.6), 7.0, persp=True)
     w, a, r = view3d()
     with C.temp_override(window=w, area=a, region=r):
         bpy.ops.wm.tool_set_by_id(name='builtin.select_box')     # (the HUD stays with the select tool; no key legend)
-        if line is not None:
+        show = loop if loop is not None else line                  # 0.24.120 the loop: its HUD + the four joint rings
+        if show is not None:
             for o in C.selected_objects:
                 o.select_set(False)
-            line.select_set(True)
-            C.view_layer.objects.active = line
+            show.select_set(True)
+            C.view_layer.objects.active = show
         C.window_manager.mch_layers_min = True
         C.window_manager.mch_side_min = True
         a.spaces.active.overlay.show_wireframes = True
     xdo('mousemove', 300, 700)
     yield 1.5
-    pos = hud_positions(line) if line is not None else {}
-    log(f'HUD at the end (select tool): {pos}')
+    pos = hud_positions(show) if show is not None else {}
+    log(f'HUD at the end (select tool, {show.name if show is not None else None}): {pos}')
     shot('1_line_hud_round_thick.png')
     for k, v in res.items():
         log(('PASS ' if v else 'FAIL ') + k)

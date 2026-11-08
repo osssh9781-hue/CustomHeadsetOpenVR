@@ -127,6 +127,13 @@ def move_on(context):
     return bool(getattr(context.window_manager, 'mch_line_move', False))
 
 
+def rings_shown(move):
+    """0.24.120 (user: "이어진 모든 점에 남아있어야 돼 - 합쳐진 곳은 왜 없어져?") Which rings the HUD shows: (the two ends,
+    the joints).  The joint rings - every place two strokes met and a closed loop's seam - STAY until Enter and can be
+    dragged any time; the end rings come with Move (a stroke from an end goes on with the line otherwise)."""
+    return bool(move), True
+
+
 def layout_for(context, ob):
     """The HUD layout (region px) for ``ob`` in this region now."""
     end = line_end_px(context, ob)
@@ -180,7 +187,8 @@ def toggle_section(ob):
 
 class MCH_OT_line_move_toggle(bpy.types.Operator):
     """Line HUD Move: on, the line's end rings can be dragged (the last piece turns and stretches about its joint);
-    off, a stroke from an end ring goes on with the line"""
+    off, a stroke from an end ring goes on with the line.  The blue joint rings (where strokes met) stay either way
+    and can always be dragged"""
     bl_idname = 'mch.line_move_toggle'
     bl_label = 'Line Move Mode'
     bl_options = {'INTERNAL'}
@@ -188,7 +196,8 @@ class MCH_OT_line_move_toggle(bpy.types.Operator):
     def execute(self, context):
         wm = context.window_manager
         wm.mch_line_move = not wm.mch_line_move
-        self.report({'INFO'}, 'Move: drag an end ring' if wm.mch_line_move else 'Move off: a stroke from an end goes on')
+        self.report({'INFO'}, 'Move: drag an end ring (the joint rings drag any time)' if wm.mch_line_move
+                    else 'Move off: a stroke from an end goes on - the blue joint rings stay and still drag')
         for a in context.screen.areas if context.screen else ():
             a.tag_redraw()
         return {'FINISHED'}
@@ -302,16 +311,20 @@ class MCH_GT_line_slider(bpy.types.Gizmo):
 
 
 class MCH_GT_line_end(bpy.types.Gizmo):
-    """0.24.114 An end ring you can drag (Move on): the end follows the mouse in the plane of the view you drag in."""
+    """0.24.114 An end ring (Move on) or - 0.24.120 - a joint ring (always there) you can drag: the point follows the
+    mouse in the plane of the view you drag in."""
     bl_idname = 'MCH_GT_line_end'
     __slots__ = ('shape', 'at_end', 'joint', 'plane_co', 'plane_no', 'moved', 'start_world')
 
     def setup(self):
         if not hasattr(self, 'shape'):
-            ring = []
+            ring = []                                      # 0.24.120 drawn as a ring (the blue circles), hit as a disc
+            r_in = 0.62
             for i in range(24):
                 a0, a1 = math.tau * i / 24, math.tau * (i + 1) / 24
-                ring += [(math.cos(a0), math.sin(a0), 0.0), (math.cos(a1), math.sin(a1), 0.0), (0.0, 0.0, 0.0)]
+                o0, o1 = (math.cos(a0), math.sin(a0), 0.0), (math.cos(a1), math.sin(a1), 0.0)
+                i0, i1 = (r_in * math.cos(a0), r_in * math.sin(a0), 0.0), (r_in * math.cos(a1), r_in * math.sin(a1), 0.0)
+                ring += [o0, o1, i1, o0, i1, i0]
             self.shape = self.new_custom_shape('TRIS', ring)
         if not hasattr(self, 'at_end'):
             self.at_end = True
@@ -476,9 +489,10 @@ class MCH_GGT_line_hud(bpy.types.GizmoGroup):
             f = 1.0
         round_on = ob is not None and ob.mch_base.line_corner == 'ROUND'
         mv = move_on(context)
+        ends_on, joints_on = rings_shown(mv)
         handles = {('end_end' if at_end else 'end_start'): xy for xy, at_end in end_handles_px(context, ob)} \
-            if ob is not None and mv else {}
-        joints = joint_handles_px(context, ob) if ob is not None and mv else []
+            if ob is not None and ends_on else {}
+        joints = joint_handles_px(context, ob) if ob is not None and joints_on else []   # 0.24.120 always
         for name, gz in self.items.items():
             if name in ('end_start', 'end_end'):
                 pos = handles.get(name)
