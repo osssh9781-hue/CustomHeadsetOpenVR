@@ -10,6 +10,7 @@ goes on from) and follows it.  Everything it sets is the live object's own setti
 values and Ctrl+Z steps back.  ``hud_layout`` is pure and tested headless; the gizmos need a real viewport."""
 from __future__ import annotations
 
+import json
 import math
 
 import bpy
@@ -23,9 +24,11 @@ ACCENT = (1.0, 0.62, 0.16)
 BASE_COL = (0.17, 0.19, 0.23)
 ROUND_COL = (0.3, 0.75, 1.0)
 BEND_COL = (0.45, 0.85, 0.5)       # 0.24.119 the Section dot when the section bends (the default)
+ENDS_COL = (0.9, 0.72, 0.4)        # 0.24.121 the Ends dot when the ends are rounded
 BTN = 26.0                 # the corner dot, px at UI scale 1
 SLIDER_W, SLIDER_H = 96.0, 18.0
 GAP = 8.0
+LABEL_W = 42.0              # 0.24.121 room for the short dot labels (Move / Pick) between the dots and the sliders
 THICK_PX = 160.0           # thickness slider: pixels for x2
 RADIUS_PX = 60.0           # radius slider: pixels per 1.0 x width
 HUD_TOOLS = {'PRESS', 'BASE'}
@@ -58,23 +61,27 @@ def hud_target(context):
 
 def hud_layout(end_px, region_w, region_h, btn=BTN, gap=GAP, round_on=False):
     """Pure: where the dot and the sliders go (region px, centres) for a line whose end shows at ``end_px``: to the
-    right of the end, kept inside the region.  Keys: 'corner', 'thick', 'move', 'section' and - Round only - 'radius'."""
+    right of the end, kept inside the region.  Keys: 'corner', 'thick', 'move', 'pick', 'section', 'ends', 'detail'
+    and - Round only - 'radius'."""
     if end_px is None:
         return {}
     x, y = float(end_px[0]), float(end_px[1])
     x0, y0 = x + btn * 1.8, y + btn * 0.9
-    total_w = btn + gap + SLIDER_W
+    total_w = btn + gap + LABEL_W + SLIDER_W
     if x0 + total_w > region_w - gap:                      # no room on the right: put it on the left
         x0 = x - btn * 1.8 - total_w + btn
     x0 = max(btn, min(x0, region_w - total_w))
     rows = 2 if round_on else 1
-    # the column under the dot: Move, then Section (0.24.119) - the whole column kept inside the region
-    y0 = max(gap + SLIDER_H * rows, 2 * (btn + gap) + btn / 2 + gap, min(y0, region_h - btn))
-    lay = {'corner': (x0, y0), 'thick': (x0 + btn / 2 + gap + SLIDER_W / 2, y0),
-           'move': (x0, y0 - btn - gap),                   # 0.24.114 Move: drag the end rings
-           'section': (x0, y0 - 2 * (btn + gap))}          # 0.24.119 Section: Bend / Each View
+    # the column under the dot: Move, Pick, Section, Ends (0.24.114 / 0.24.119 / 0.24.121) - kept inside the region
+    y0 = max(gap + SLIDER_H * rows, 4 * (btn + gap) + btn / 2 + gap, min(y0, region_h - btn))
+    lay = {'corner': (x0, y0), 'thick': (x0 + btn / 2 + gap + LABEL_W + SLIDER_W / 2, y0),
+           'move': (x0, y0 - (btn + gap)),                 # 0.24.114 Move: drag the end rings
+           'pick': (x0, y0 - 2 * (btn + gap)),             # 0.24.121 Pick: grab the line anywhere (a new joint)
+           'section': (x0, y0 - 3 * (btn + gap)),          # 0.24.119 Section: Bend / Each View
+           'ends': (x0, y0 - 4 * (btn + gap))}             # 0.24.121 Ends: Flat / Round
+    lay['detail'] = (lay['thick'][0], y0 - 2 * (btn + gap))      # 0.24.121 rings along the line
     if round_on:
-        lay['radius'] = (lay['thick'][0], y0 - SLIDER_H - gap)
+        lay['radius'] = (lay['thick'][0], y0 - (btn + gap))
     return lay
 
 
@@ -125,6 +132,10 @@ def joint_handles_px(context, ob):
 
 def move_on(context):
     return bool(getattr(context.window_manager, 'mch_line_move', False))
+
+
+def pick_on(context):
+    return bool(getattr(context.window_manager, 'mch_line_pick', False))
 
 
 def rings_shown(move):
@@ -178,6 +189,13 @@ def toggle_corner(ob):
     return p.line_corner
 
 
+def toggle_ends(ob):
+    """0.24.121 (user: "끝부분 마감을 평평하게 하는 거랑 둥글게 하는 거") Flat <-> Round ends on a made line."""
+    p = ob.mch_base
+    p.line_end = 'ROUND' if p.line_end == 'FLAT' else 'FLAT'
+    return p.line_end
+
+
 def toggle_section(ob):
     """0.24.119 (user: "섹션 토글 넣어줘") Bend <-> Each View on a made line (it rebuilds live)."""
     p = ob.mch_base
@@ -196,10 +214,55 @@ class MCH_OT_line_move_toggle(bpy.types.Operator):
     def execute(self, context):
         wm = context.window_manager
         wm.mch_line_move = not wm.mch_line_move
+        if wm.mch_line_move:
+            wm.mch_line_pick = False
         self.report({'INFO'}, 'Move: drag an end ring (the joint rings drag any time)' if wm.mch_line_move
                     else 'Move off: a stroke from an end goes on - the blue joint rings stay and still drag')
+        if context.area:
+            context.area.header_text_set('Move: drag an end ring or a joint ring in this view\'s plane' if wm.mch_line_move else None)
         for a in context.screen.areas if context.screen else ():
             a.tag_redraw()
+        return {'FINISHED'}
+
+
+class MCH_OT_line_pick_toggle(bpy.types.Operator):
+    """Line HUD Pick: on, press on the line ANYWHERE and that spot becomes a joint (a blue ring) that follows the
+    mouse; off again, the new joints stay and drag like the others"""
+    bl_idname = 'mch.line_pick_toggle'
+    bl_label = 'Line Pick Mode'
+    bl_options = {'INTERNAL'}
+
+    def execute(self, context):
+        wm = context.window_manager
+        wm.mch_line_pick = not wm.mch_line_pick
+        if wm.mch_line_pick:
+            wm.mch_line_move = False
+        self.report({'INFO'}, 'Pick: press on the line anywhere and drag' if wm.mch_line_pick
+                    else 'Pick off: the new joints stay as blue rings')
+        if context.area:
+            context.area.header_text_set('Pick: press on the line anywhere and drag - that spot becomes a blue joint ring'
+                                         if wm.mch_line_pick else None)
+        for a in context.screen.areas if context.screen else ():
+            a.tag_redraw()
+        return {'FINISHED'}
+
+
+class MCH_OT_line_end_toggle(bpy.types.Operator):
+    """Line HUD Ends: how the line's two ends are closed - Flat (a flat face) or Round (a dome)"""
+    bl_idname = 'mch.line_end_toggle'
+    bl_label = 'Line Ends: Flat / Round'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return hud_target(context) is not None
+
+    def execute(self, context):
+        ob = hud_target(context)
+        if ob is None:
+            return {'CANCELLED'}
+        mode = toggle_ends(ob)
+        self.report({'INFO'}, f'{ob.name}: {"Round" if mode == "ROUND" else "Flat"} ends')
         return {'FINISHED'}
 
 
@@ -251,7 +314,7 @@ _RECT = ((-1.0, -1.0, 0.0), (1.0, -1.0, 0.0), (1.0, 1.0, 0.0), (-1.0, -1.0, 0.0)
 
 class MCH_GT_line_slider(bpy.types.Gizmo):
     bl_idname = 'MCH_GT_line_slider'
-    __slots__ = ('shape', 'kind', 'init_x', 'init_w', 'init_h', 'init_r')
+    __slots__ = ('shape', 'kind', 'init_x', 'init_w', 'init_h', 'init_r', 'init_d')
 
     def setup(self):
         if not hasattr(self, 'shape'):
@@ -275,6 +338,7 @@ class MCH_GT_line_slider(bpy.types.Gizmo):
         self.init_x = event.mouse_region_x
         self.init_w, self.init_h = float(ob.mch_base.section_width), float(ob.mch_base.height)
         self.init_r = float(ob.mch_base.corner_radius)
+        self.init_d = float(getattr(ob.mch_base, 'line_detail', 1.0))
         return {'RUNNING_MODAL'}
 
     def modal(self, context, event, tweak):
@@ -289,6 +353,11 @@ class MCH_GT_line_slider(bpy.types.Gizmo):
             if abs(r - ob.mch_base.corner_radius) > 1e-6:
                 ob.mch_base.corner_radius = r
             text = f'Corner Radius: {r:.2f} x width'
+        elif self.kind == 'detail':                        # 0.24.121 rings along the line
+            dv = max(0.25, min(8.0, self.init_d * (2.0 ** (dx / THICK_PX))))
+            if abs(dv - ob.mch_base.line_detail) > 1e-6:
+                ob.mch_base.line_detail = dv
+            text = f'Detail: {dv:.2f} x  (rings along the line)'
         else:
             w = max(0.001, self.init_w * (2.0 ** (dx / THICK_PX)))
             if abs(w - ob.mch_base.section_width) > 1e-7:
@@ -306,6 +375,8 @@ class MCH_GT_line_slider(bpy.types.Gizmo):
             if ob is not None:
                 if self.kind == 'radius':
                     ob.mch_base.corner_radius = self.init_r
+                elif self.kind == 'detail':
+                    ob.mch_base.line_detail = self.init_d
                 else:
                     set_thickness(ob, self.init_w, (self.init_w, self.init_h))
 
@@ -410,6 +481,104 @@ class MCH_GT_line_end(bpy.types.Gizmo):
                 pass
 
 
+def path_hit(context, ob, location):
+    """0.24.121 The point of the line's own path nearest to region px ``location``: (world point, px distance), or
+    None.  The stored path (a closed loop's seam included), projected to the region."""
+    from bpy_extras import view3d_utils
+    region, rv3d = context.region, context.region_data
+    if region is None or rv3d is None:
+        return None
+    try:
+        data = json.loads(ob[base_mesh.SWEEP_KEY])
+    except (KeyError, TypeError, ValueError):
+        return None
+    path, _ups, _joints = base_mesh._sweep_lists(data)
+    if len(path) < 2:
+        return None
+    if data.get('closed'):
+        path = path + [path[0]]
+    mw = ob.matrix_world
+    world = [mw @ Vector(q) for q in path]
+    px = [view3d_utils.location_3d_to_region_2d(region, rv3d, w) for w in world]
+    best = None
+    lx, ly = float(location[0]), float(location[1])
+    for i in range(len(px) - 1):
+        a, b = px[i], px[i + 1]
+        if a is None or b is None:
+            continue
+        dx, dy = b.x - a.x, b.y - a.y
+        l2 = dx * dx + dy * dy
+        t = 0.0 if l2 < 1e-9 else max(0.0, min(1.0, ((lx - a.x) * dx + (ly - a.y) * dy) / l2))
+        d = math.hypot(a.x + dx * t - lx, a.y + dy * t - ly)
+        if best is None or d < best[0]:
+            best = (d, i, t)
+    if best is None:
+        return None
+    d, i, t = best
+    return world[i].lerp(world[i + 1], t), d
+
+
+class MCH_GT_line_path(bpy.types.Gizmo):
+    """0.24.121 (user: "내가 픽하는 부분 잡고 움직일 수 있게") Pick on: the whole line is a handle.  Press on it anywhere
+    and that spot becomes a joint (a blue ring) that follows the mouse in the view's plane; let go and it stays.
+    (Its own Gizmo class - a registered Gizmo must not inherit another registered one, that broke the parent - the
+    drag itself is the end ring's code, shared as plain functions.)"""
+    bl_idname = 'MCH_GT_line_path'
+    __slots__ = ('at_end', 'joint', 'plane_co', 'plane_no', 'moved', 'start_world', 'hit_world')
+    _anchor = MCH_GT_line_end._anchor
+    _apply = MCH_GT_line_end._apply
+    _hit = MCH_GT_line_end._hit
+    modal = MCH_GT_line_end.modal
+    exit = MCH_GT_line_end.exit
+
+    def setup(self):
+        if not hasattr(self, 'at_end'):
+            self.at_end = True
+        if not hasattr(self, 'joint'):
+            self.joint = -1
+        if not hasattr(self, 'hit_world'):
+            self.hit_world = None
+
+    def draw(self, context):
+        pass
+
+    def test_select(self, context, location):
+        ob = hud_target(context)
+        if ob is None or not pick_on(context):
+            return -1
+        hit = path_hit(context, ob, location)
+        crp = continue_radius_px(context)
+        if hit is None or hit[1] > 0.5 * crp:
+            return -1
+        for xy, _j in joint_handles_px(context, ob):          # the rings themselves come first
+            if math.dist(xy, (location[0], location[1])) <= 0.4 * crp:
+                return -1
+        if move_on(context):
+            for xy, _e in end_handles_px(context, ob):
+                if math.dist(xy, (location[0], location[1])) <= 0.5 * crp:
+                    return -1
+        self.hit_world = hit[0]
+        return 0
+
+    def invoke(self, context, event):
+        ob = hud_target(context)
+        if ob is None or self.hit_world is None:
+            return {'CANCELLED'}
+        try:
+            got = base_mesh.insert_joint(ob, self.hit_world)
+        except Exception:
+            got = None
+        if got is None:
+            return {'CANCELLED'}
+        idx, is_end = got
+        if is_end:
+            self.joint = -1
+            self.at_end = idx != 0
+        else:
+            self.joint = idx
+        return MCH_GT_line_end.invoke(self, context, event)
+
+
 class MCH_GGT_line_hud(bpy.types.GizmoGroup):
     bl_idname = 'MCH_GGT_line_hud'
     bl_label = 'Line HUD'
@@ -450,6 +619,16 @@ class MCH_GGT_line_hud(bpy.types.GizmoGroup):
         gz.color_highlight = (0.32, 0.35, 0.41)
         gz.alpha_highlight = 1.0
         self.items['section'] = gz
+        for key, icon, op in (('pick', 'PIVOT_CURSOR', 'mch.line_pick_toggle'), ('ends', 'MESH_CYLINDER', 'mch.line_end_toggle')):
+            gz = self.gizmos.new('GIZMO_GT_button_2d')         # 0.24.121 Pick / Ends
+            gz.icon = icon
+            gz.draw_options = {'BACKDROP', 'OUTLINE'}
+            gz.target_set_operator(op)
+            gz.color = BASE_COL
+            gz.alpha = 0.92
+            gz.color_highlight = (0.32, 0.35, 0.41)
+            gz.alpha_highlight = 1.0
+            self.items[key] = gz
         for key, at_end in (('end_start', False), ('end_end', True)):
             gz = self.gizmos.new(MCH_GT_line_end.bl_idname)
             gz.at_end = at_end
@@ -468,7 +647,7 @@ class MCH_GGT_line_hud(bpy.types.GizmoGroup):
             gz.alpha_highlight = 0.7
             gz.use_draw_scale = False
             self.items[f'joint_{k}'] = gz
-        for kind in ('thick', 'radius'):
+        for kind in ('thick', 'radius', 'detail'):
             gz = self.gizmos.new(MCH_GT_line_slider.bl_idname)
             gz.kind = kind
             gz.color = (0.24, 0.27, 0.32)
@@ -477,6 +656,10 @@ class MCH_GGT_line_hud(bpy.types.GizmoGroup):
             gz.alpha_highlight = 1.0
             gz.use_draw_scale = False
             self.items[kind] = gz
+        gz = self.gizmos.new(MCH_GT_line_path.bl_idname)       # 0.24.121 Pick: the line itself (made last: rings first)
+        gz.use_draw_scale = False
+        gz.alpha = 0.0
+        self.items['path'] = gz
 
     def draw_prepare(self, context):
         ob = hud_target(context)
@@ -493,7 +676,11 @@ class MCH_GGT_line_hud(bpy.types.GizmoGroup):
         handles = {('end_end' if at_end else 'end_start'): xy for xy, at_end in end_handles_px(context, ob)} \
             if ob is not None and ends_on else {}
         joints = joint_handles_px(context, ob) if ob is not None and joints_on else []   # 0.24.120 always
+        pk = pick_on(context)
         for name, gz in self.items.items():
+            if name == 'path':
+                gz.hide = not (ob is not None and pk)
+                continue
             if name in ('end_start', 'end_end'):
                 pos = handles.get(name)
                 gz.hide = pos is None
@@ -516,6 +703,20 @@ class MCH_GGT_line_hud(bpy.types.GizmoGroup):
                 continue
             if name == 'move':
                 gz.color = ACCENT if mv else BASE_COL
+                gz.scale_basis = BTN / 2.0 * f
+                gz.matrix_basis[0][3] = pos[0]
+                gz.matrix_basis[1][3] = pos[1]
+                continue
+            if name == 'pick':
+                gz.color = ACCENT if pk else BASE_COL
+                gz.scale_basis = BTN / 2.0 * f
+                gz.matrix_basis[0][3] = pos[0]
+                gz.matrix_basis[1][3] = pos[1]
+                continue
+            if name == 'ends':
+                rnd = ob is not None and getattr(ob.mch_base, 'line_end', 'FLAT') == 'ROUND'
+                gz.icon = 'MESH_CAPSULE' if rnd else 'MESH_CYLINDER'
+                gz.color = ENDS_COL if rnd else BASE_COL
                 gz.scale_basis = BTN / 2.0 * f
                 gz.matrix_basis[0][3] = pos[0]
                 gz.matrix_basis[1][3] = pos[1]
@@ -564,13 +765,48 @@ def _draw_labels():
             mv = move_on(context)
             blf.color(font, *(ACCENT if mv else (0.85, 0.87, 0.9)), 1.0)
             blf.position(font, x + BTN * 0.7 * ui, y - 4 * ui, 0)
-            blf.draw(font, 'Move: drag an end or joint ring' if mv else 'Move')
+            blf.draw(font, 'Move')
         if 'section' in lay:                                   # 0.24.119
             x, y = lay['section']
             bend = p.line_up == 'BEND'
             blf.color(font, *(BEND_COL if bend else (0.85, 0.87, 0.9)), 1.0)
             blf.position(font, x + BTN * 0.7 * ui, y - 4 * ui, 0)
             blf.draw(font, 'Section: Bend' if bend else 'Section: Each View')
+        pk = pick_on(context)
+        if 'pick' in lay:                                      # 0.24.121
+            x, y = lay['pick']
+            blf.color(font, *(ACCENT if pk else (0.85, 0.87, 0.9)), 1.0)
+            blf.position(font, x + BTN * 0.7 * ui, y - 4 * ui, 0)
+            blf.draw(font, 'Pick')
+        if 'ends' in lay:
+            x, y = lay['ends']
+            rnd = getattr(p, 'line_end', 'FLAT') == 'ROUND'
+            blf.color(font, *(ENDS_COL if rnd else (0.85, 0.87, 0.9)), 1.0)
+            blf.position(font, x + BTN * 0.7 * ui, y - 4 * ui, 0)
+            blf.draw(font, 'Ends: Round' if rnd else 'Ends: Flat')
+        if 'detail' in lay:
+            blf.color(font, 1.0, 1.0, 1.0, 1.0)
+            x, y = lay['detail']
+            text = f'Detail  {getattr(p, "line_detail", 1.0):.2f} x'
+            w, _h = blf.dimensions(font, text)
+            blf.position(font, x - w / 2, y - 4 * ui, 0)
+            blf.draw(font, text)
+        if pk:                                                 # the path you can grab, over the line
+            try:
+                import gpu
+                from bpy_extras import view3d_utils
+                from . import cut_engine as ce
+                data = json.loads(ob[base_mesh.SWEEP_KEY])
+                path, _u, _j = base_mesh._sweep_lists(data)
+                mw, region, rv3d = ob.matrix_world, context.region, context.region_data
+                pts = [view3d_utils.location_3d_to_region_2d(region, rv3d, mw @ Vector(q)) for q in path]
+                pts = [(float(q.x), float(q.y)) for q in pts if q is not None]
+                if len(pts) >= 2:
+                    gpu.state.blend_set('ALPHA')
+                    ce._draw_lines(ce._shader(), pts, (0.55, 0.9, 1.0, 0.75), closed=bool(data.get('closed')), width=1.5)
+                    gpu.state.blend_set('NONE')
+            except Exception:
+                pass
         blf.color(font, 1.0, 1.0, 1.0, 1.0)
         x, y = lay['thick']
         text = f'Thickness  {p.section_width:.3f}'
@@ -587,8 +823,8 @@ def _draw_labels():
         pass
 
 
-CLASSES = (MCH_OT_line_corner_toggle, MCH_OT_line_move_toggle, MCH_OT_line_section_toggle, MCH_GT_line_slider, MCH_GT_line_end,
-           MCH_GGT_line_hud)
+CLASSES = (MCH_OT_line_corner_toggle, MCH_OT_line_move_toggle, MCH_OT_line_section_toggle, MCH_OT_line_pick_toggle,
+           MCH_OT_line_end_toggle, MCH_GT_line_slider, MCH_GT_line_end, MCH_GT_line_path, MCH_GGT_line_hud)
 _label_handle = None
 
 
@@ -600,6 +836,10 @@ def register():
         bpy.types.WindowManager.mch_line_move = BoolProperty(
             name='Line Move', default=False,
             description='Line HUD: drag the end rings of the made line (off: a stroke from an end goes on with it)')
+    if not hasattr(bpy.types.WindowManager, 'mch_line_pick'):      # 0.24.121
+        bpy.types.WindowManager.mch_line_pick = BoolProperty(
+            name='Line Pick', default=False, options={'SKIP_SAVE'},
+            description='Line HUD Pick: press on the line anywhere and drag - that spot becomes a joint')
     if not bpy.app.background and _label_handle is None:
         _label_handle = bpy.types.SpaceView3D.draw_handler_add(_draw_labels, (), 'WINDOW', 'POST_PIXEL')
 
@@ -620,5 +860,10 @@ def unregister():
     if hasattr(bpy.types.WindowManager, 'mch_line_move'):
         try:
             del bpy.types.WindowManager.mch_line_move
+        except (AttributeError, RuntimeError):
+            pass
+    if hasattr(bpy.types.WindowManager, 'mch_line_pick'):
+        try:
+            del bpy.types.WindowManager.mch_line_pick
         except (AttributeError, RuntimeError):
             pass

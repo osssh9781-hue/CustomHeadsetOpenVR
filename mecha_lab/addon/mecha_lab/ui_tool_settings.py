@@ -746,6 +746,10 @@ def draw_base(layout, context):
             row = section.row(align=True)
             row.label(text='Section')
             row.prop(p, 'line_up', expand=True)
+            section.prop(p, 'line_detail', slider=True)          # 0.24.121
+            row = section.row(align=True)
+            row.label(text='Ends')
+            row.prop(p, 'line_end', expand=True)
             if p.profile_sweep == 'ALPHA':
                 section.template_icon_view(context.scene.mch_press, 'shape', show_labels=True, scale=4.0)
                 row = section.row(align=True)

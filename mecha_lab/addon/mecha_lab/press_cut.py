@@ -1904,6 +1904,7 @@ class MCH_OT_press_unified(bpy.types.Operator):
                 CONTINUE['base'] = ob.name if ob is not None and ob.get(base_mesh.SWEEP_KEY) else None
                 try:                                   # 0.24.114 Move mode ends with a new stroke (the end rings go on again)
                     context.window_manager.mch_line_move = False
+                    context.window_manager.mch_line_pick = False       # 0.24.121 Pick too
                 except (AttributeError, TypeError):
                     pass
             else:
@@ -2072,6 +2073,15 @@ def turn_target(context):
     return None
 
 
+def turn_loops(owner, stem):
+    """0.24.121 (user: "라쏘로 커스텀 스탬프 찍은 다음에 로테이션 하면 기존 스탬프로 돌아가") The outline the R turn
+    shows turning: the stamp drawn with Shift + drag while that is the stamp, else the saved / built-in shape."""
+    from . import cut_presets
+    if getattr(owner, 'drawn', False) and DRAWN[0]:
+        return DRAWN[0]
+    return cut_presets.load_loops(stem)
+
+
 def turn_angle(start, dx, ctrl=False, shift=False):
     """The stamp's turn after the mouse moved ``dx`` px from where R was pressed (radians, -180 .. 180 degrees):
     0.4 degree a pixel, Shift 0.08 (fine), Ctrl in 5 degree steps."""
@@ -2142,7 +2152,7 @@ class MCH_OT_stamp_turn(bpy.types.Operator):
         self.center = (float(event.mouse_region_x), float(event.mouse_region_y))
         self.region = context.region
         try:
-            self.norm = cut_presets.load_loops(stem)
+            self.norm = turn_loops(owner, stem)
         except (cg.CutError, ValueError, OSError):
             self.norm = None
         TURNING[0] = True
@@ -2394,7 +2404,11 @@ def draw(layout, context):
     row = section.row(align=True)                 # 0.24.118 the section between pieces: Each View / Bend
     row.label(text='Section')
     row.prop(base, 'line_up', expand=True)
-    section.label(text='(the dots next to a made line toggle corners and Section; its sliders set thickness)', icon='BLANK1')
+    section.prop(base, 'line_detail', slider=True)      # 0.24.121 rings along the line
+    row = section.row(align=True)                 # 0.24.121 the ends: Flat / Round
+    row.label(text='Ends')
+    row.prop(base, 'line_end', expand=True)
+    section.label(text='(dots beside a made line: corners, Move, Pick, Section, Ends; sliders: thickness, radius, detail)', icon='BLANK1')
     col = layout.column(align=True)
     col.label(text='Curve (a round stamp)')
     col.prop(st, 'curve_x', text='Left-Right', slider=True)

@@ -1,0 +1,15 @@
+1 pentagon L: MCH_Base path 8 rings 17 folds 0 closed True width 0.628 corner SHARP up BEND
+2 line MCH_Base.001 hud {'corner': (1346, 526), 'thick': (1462, 526), 'move': (1346, 490), 'pick': (1346, 455), 'section': (1346, 420), 'ends': (1346, 384), 'detail': (1462, 455)} pick flag False
+   Pick flag after the dot: True
+   after the Pick drag: path [(-2.0, 0.0), (-0.0, 0.84), (2.0, 0.0)] joints [1] rings 1 closed True
+   Pick off: flag False joint rings 1
+   joint ring dragged after Pick off: (0.5, -0.16, 0.0) -> (1.15, -0.17, 0.0) closed True
+   Ends dot: ROUND verts 136 -> 186 closed True
+   Detail slider: 1.00 -> 1.58, verts 186 -> 290 closed True
+shot 1_pentagon_l_pick_ends.png True
+PASS 1 pentagon L: two clean mitres, no notch (no ring folded back), closed
+PASS 2a Pick: pressed on the middle of the line and dragged - a new joint there, the line bent into a V, closed
+PASS 2b Pick off: the new ring stays and drags again (Move off)
+PASS 2c Ends dot: Flat -> Round, domes on both ends, closed
+PASS 2d Detail slider: more rings along the line, live
+RESULT 5 / 5

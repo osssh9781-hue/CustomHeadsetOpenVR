@@ -67,7 +67,8 @@ FLIP_SIDES = {'TOP': 'BOTTOM', 'BOTTOM': 'TOP', 'BOTH': 'BOTH', 'NONE': 'NONE'}
 SETTING_KEYS = ('height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 'resolution', 'offset',
                 'bottom_too', 'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link', 'puff',
                 'outline_smooth', 'edge_round', 'peak', 'attach_curve', 'profile_sweep', 'section_width',
-                'section_rotation', 'section_twist', 'section_taper', 'line_corner', 'corner_radius', 'line_up')
+                'section_rotation', 'section_twist', 'section_taper', 'line_corner', 'corner_radius', 'line_up',
+                'line_detail', 'line_end')
 SWEEP_KEY = 'mch_base_line_sweep'  # 0.24.103 serialized path + alpha loops for live rebuild
 DEPTH_KEY = 'mch_base_depth_guide'   # side-view polyline reshapes the base depth, kept live
 ATTACH_KEY = 'mch_base_attach'          # 0.24.57 Line: the ends stuck to the meshes where the line began / ended
@@ -78,7 +79,8 @@ PUFF_RINGS = (0.12, 0.3, 0.55, 0.85)      # rows just inside the outline (in poi
 
 CARRY_KEYS = ('profile', 'height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 'resolution', 'offset',
               'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link', 'puff', 'outline_smooth',
-              'edge_round', 'section_rotation', 'section_twist', 'section_taper', 'line_corner', 'corner_radius', 'line_up')
+              'edge_round', 'section_rotation', 'section_twist', 'section_taper', 'line_corner', 'corner_radius', 'line_up',
+              'line_detail', 'line_end')
 # 0.24.107 'profile_sweep' / 'section_width' are not carried: a Press Cut Alt+draw part (always a shape sweep) had
 # every later plain Base Mesh line turned into a shape sweep once one of its sliders was touched.
 
@@ -182,9 +184,10 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
                                     max=math.pi*2, subtype='ANGLE', update=_rebuild_update)
     section_twist: FloatProperty(name='Twist Along Line', default=0.0, min=-math.pi*8,
                                  max=math.pi*8, subtype='ANGLE', update=_rebuild_update)
-    section_taper: FloatProperty(name='End Taper', default=0.0, min=0.0, max=0.95,
+    section_taper: FloatProperty(name='End Taper', default=0.0, min=-1.0, max=0.95,
                                  subtype='FACTOR', update=_rebuild_update,
-                                 description='Shrink the cross-section at the start and end of the path')
+                                 description='Shrink the cross-section toward the start and end of the path; 0.24.121 '
+                                             'below 0 the ends grow instead (only the ends - the middle keeps its size)')
     # 0.24.112 (user: "꺾이는 부분이 완전 꺾이는 거랑 라운드로 꺾이는 거 옵션으로") the bends of a swept line
     line_corner: EnumProperty(name='Corners', items=(
         ('SHARP', 'Sharp', 'A crisp mitred corner at every bend of the line'),
@@ -202,6 +205,15 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
         ('VIEW', 'Each View', 'Every piece stands toward the view it was drawn in; between two pieces drawn from '
                               'different views the section twists smoothly across the bend')),
         default='BEND', update=_rebuild_update)
+    # 0.24.121 (user: "곡면이니까 면 늘리는 것도", "끝 마감 평평 / 둥글게")
+    line_detail: FloatProperty(name='Detail', default=1.0, min=0.25, soft_max=4.0, max=8.0, precision=2,
+                               update=_rebuild_update,
+                               description='Rings along the line: 1 = one every half section width; more for a smoother '
+                                           'curve (a thick line is coarse otherwise) and finer rounded ends')
+    line_end: EnumProperty(name='Ends', items=(
+        ('FLAT', 'Flat', 'A flat face closes each end of the line'),
+        ('ROUND', 'Round', 'Each end is rounded off: a dome half the section\'s size, past the end of the stroke')),
+        default='FLAT', update=_rebuild_update)
     depth_mode: BoolProperty(name='Depth Guide Mode', default=False,
                              description='Draw front silhouette first, then draw a side-view depth guide on its live mesh')
     line_attach: BoolProperty(name='Attach Ends', default=False,
@@ -1376,8 +1388,9 @@ def _section_loops(context, style):
     return [[(float(x), float(y)) for x, y in loop] for loop in loops], stem
 
 
-def _resample_section_path(points, width, max_points=192):
-    """Arc-length resampling: stable tangents and bounded vertex counts."""
+def _resample_section_path(points, width, max_points=192, detail=1.0):
+    """Arc-length resampling: stable tangents and bounded vertex counts.  0.24.121 ``detail`` = rings per half
+    width (1 = one every 0.45 width, as before)."""
     from bisect import bisect_right
     clean = []
     for q in points:
@@ -1392,7 +1405,7 @@ def _resample_section_path(points, width, max_points=192):
     total = cumulative[-1]
     if total < 1e-5:
         raise cg.CutError('The line is too short for a swept cross section.')
-    step = max(width * 0.45, 0.002)
+    step = max(width * 0.45 / max(float(detail), 0.05), 0.002)
     if len(clean) <= max_points:
         # 0.24.112 the line's own points stay stations (a bend is a real corner - mitred or rounded - not smeared
         # over two samples); even samples are added inside each leg, within the point budget
@@ -1737,10 +1750,139 @@ def sweep_frames(stations, ups=None, closed=False):
         V = Vn
         U = V.cross(T).normalized()
         out.append((U, V, M, k, R_in))
-    if closed and n > 1 and out[-1][1].dot(out[0][1]) < 0.0:
+    if closed and n > 1 and out[-1][1].dot(out[0][1]) < 0.0 and ups is not None:
         # an odd number of flips round the loop cannot be made continuous from the ups: carry the up round instead
-        return sweep_frames(stations, None, closed) if ups is not None else out
+        return sweep_frames(stations, None, closed)
+    if closed and ups is None and n > 2:
+        # 0.24.121 (user: "끝부분 다시 만나면 이렇게 돼") an up carried round a loop that is not flat comes back turned
+        # (the transport's holonomy) and the seam faces twisted by that much.  The frames are carried round again
+        # with a small extra twist per length, found by iteration, so the last ring meets the first one square - the
+        # same tiny twist everywhere instead of all of it at the seam
+        T_all = [U.cross(V) for (U, V, _M, _k, _R) in out]
+        seg = [math.dist(stations[i], stations[(i + 1) % n]) for i in range(n)]      # seg[n - 1] closes the loop
+        L = max(sum(seg), 1e-9)
+        V_first = out[0][1]
+
+        def carry(tau):
+            V = V_first.copy()
+            res = [(out[0][0], V)]
+            for i in range(1, n):
+                T = T_all[i]
+                Vn = V - T * V.dot(T)
+                if Vn.length < 1e-9:
+                    Vn = V.copy()
+                Vn.normalize()
+                a = tau * seg[i - 1]
+                Vn = (Vn * math.cos(a) + T.cross(Vn) * math.sin(a)).normalized()
+                res.append((Vn.cross(T).normalized(), Vn))
+                V = Vn
+            T0 = T_all[0]
+            Vt = V - T0 * V.dot(T0)
+            if Vt.length < 1e-9:
+                return res, 0.0
+            Vt.normalize()
+            a = tau * seg[n - 1]
+            Vt = (Vt * math.cos(a) + T0.cross(Vt) * math.sin(a)).normalized()
+            return res, math.atan2(Vt.cross(V_first).dot(T0), Vt.dot(V_first))
+
+        # the twist rate that closes the seam - the root NEAREST zero (round sharp corners the carry is far from
+        # linear in tau and a far root would twist the whole tube): walk out from 0 in quarter steps of the linear
+        # guess until the mismatch changes sign, then bisect; failing that keep the best seen
+        res0, phi0 = carry(0.0)
+        best = (abs(phi0), 0.0, res0)
+        if abs(phi0) >= math.radians(0.2):
+            d = phi0 / L
+            lim = math.pi / L
+            lo_t, lo_p = 0.0, phi0
+            hi = None
+            for k in range(1, 17):
+                t_ = max(-lim, min(lim, d * k / 4.0))
+                res, phi = carry(t_)
+                if abs(phi) < best[0]:
+                    best = (abs(phi), t_, res)
+                if (phi > 0) != (phi0 > 0) or abs(phi) < 1e-9:
+                    hi = (t_, phi)
+                    break
+                lo_t, lo_p = t_, phi
+                if abs(t_) >= lim:
+                    break
+            if hi is not None:
+                a_t, b_t = lo_t, hi[0]
+                for _b in range(14):
+                    m_t = 0.5 * (a_t + b_t)
+                    res, phi = carry(m_t)
+                    if abs(phi) < best[0]:
+                        best = (abs(phi), m_t, res)
+                    if abs(phi) < math.radians(0.2):
+                        break
+                    if (phi > 0) == (lo_p > 0):
+                        a_t = m_t
+                    else:
+                        b_t = m_t
+        # a loop of a few very sharp corners may have no small solution: a big uniform twist is worse to look at
+        # than the one twisted seam, so only a modest correction is taken
+        res = best[2] if abs(best[1]) * L <= 1.5 * abs(phi0) + math.radians(10.0) else res0
+        out = [(u, v, M, k, R) for (u, v), (_U, _V, M, k, R) in zip(res, out)]
     return out
+
+
+def mitre_clearance(stations, frames, loops, p, rest, bottom, closed, keep_pts):
+    """0.24.121 The stations that lie inside a neighbouring mitre's inner reach (see _build_sweep_bmesh): at a bend
+    of ``turn`` the ring stretched across it reaches (the section's extent toward the bend's inside) x tan(turn / 2)
+    back along the leg before and on along the leg after; a station nearer than that would fold through it.
+    Ends, the points in ``keep_pts`` (joints) and other real corners (over 45 deg) are never dropped."""
+    n = len(stations)
+    if n < 3:
+        return set()
+    width, height = max(1e-5, p.section_width), max(1e-5, p.height)
+    flat = [q for lp in loops for q in lp]
+    base_angle, twist, taper = p.section_rotation, p.section_twist, p.section_taper
+
+    def offsets(i):
+        t = i / max(1, n - 1)
+        scale = max(0.05, 1.0 - taper * (abs(2 * t - 1) ** 2))
+        ca, sa = math.cos(base_angle + twist * t), math.sin(base_angle + twist * t)
+        uv = [((u * ca - v * sa) * scale, (u * sa + v * ca) * scale) for u, v in flat]
+        dz = (-min(v for _u, v in uv) - 0.02) * height if rest else 0.0
+        if bottom is not None:
+            dz = float(bottom) - p.offset - min(v for _u, v in uv) * height
+        return [(u * width, p.offset + v * height + dz) for u, v in uv]
+
+    def turn(i):
+        a = (Vector(stations[i]) - Vector(stations[i - 1])) if (i > 0 or closed) else None
+        b = (Vector(stations[(i + 1) % n]) - Vector(stations[i])) if (i < n - 1 or closed) else None
+        if a is None or b is None or a.length < 1e-9 or b.length < 1e-9:
+            return 0.0
+        return a.angle(b)
+
+    turns = [turn(i) for i in range(n)]
+    drop = set()
+    for i in range(n):
+        if turns[i] <= math.radians(8.0) or frames[i][2] is None:
+            continue
+        U, V, M = frames[i][0], frames[i][1], frames[i][2]
+        mu, mv = M.dot(U), M.dot(V)
+        s_in = max(ou * mu + ov * mv for ou, ov in offsets(i))
+        theta = min(turns[i], math.radians(MITER_MAX_DEG))
+        reach = max(0.0, s_in) * math.tan(theta / 2.0) * 1.05 + 0.02 * width
+        for step in (-1, 1):                               # back along the leg before / on along the leg after
+            run, j = 0.0, i
+            while True:
+                nj = j + step
+                if closed:
+                    nj %= n
+                elif nj < 0 or nj >= n:
+                    break
+                if nj == i:
+                    break
+                run += math.dist(stations[j], stations[nj])
+                if run >= reach:
+                    break
+                if (not closed and nj in (0, n - 1)) or tuple(stations[nj]) in keep_pts or turns[nj] > math.radians(45.0):
+                    break
+                drop.add(nj)
+                j = nj
+    return drop
 
 
 def _build_sweep_bmesh(data, p):
@@ -1803,8 +1945,10 @@ def _build_sweep_bmesh(data, p):
     groups = cg.organize_loops(loops)
     if not groups:
         raise cg.CutError('Saved cross-section contains no closed area.')
+    detail = float(getattr(p, 'line_detail', 1.0))
     stations = _resample_section_path(path + ([path[0]] if closed else []), p.section_width,
-                                       max_points=min(192, max(12, 125000 // total_points)))
+                                       max_points=min(int(192 * max(1.0, detail)), max(12, 125000 // total_points)),
+                                       detail=detail)
     if closed:
         stations = stations[:-1]
     # (U across, V up) per station: Each View = every piece's drawing-view normal, blended across the joints;
@@ -1816,6 +1960,43 @@ def _build_sweep_bmesh(data, p):
     base_angle, twist, taper = p.section_rotation, p.section_twist, p.section_taper
     rest = bool(data.get('rest'))
     bottom = data.get('bottom')        # 0.24.109 a cutter: the section's lowest point at this local z (into the part)
+    # 0.24.121 (user's pentagon L: "이렇게 잘려 왜 그럴까?") a Sharp mitre ring reaches back along BOTH legs on the
+    # bend's inner side by (the section's extent toward the inside) x tan(turn / 2).  A station closer to the corner
+    # than that - an evenly added sample, or a small kink a hand left - folds its ring through the mitre and the wall
+    # shows a notch.  Such stations are dropped (never an end, a joint or another real corner).
+    keep_pts = {tuple(orig[0]), tuple(orig[-1])} | {tuple(orig[int(j)]) for j in data.get('joints', ()) if 0 <= int(j) < len(orig)}
+    for _pass in range(3):
+        drop = mitre_clearance(stations, frames, loops, p, rest, bottom, closed, keep_pts)
+        if not drop:
+            break
+        stations = [s_ for i_, s_ in enumerate(stations) if i_ not in drop]
+        if st_ups is not None:
+            st_ups = [u_ for i_, u_ in enumerate(st_ups) if i_ not in drop]
+        frames = sweep_frames(stations, st_ups, closed)
+    # 0.24.121 the rings to make: (point, U, V, M, k, R, t along the line, cap scale) - the stations, and with Round
+    # ends a dome past each end: rings shrunk by cos(a) at sin(a) x half the section's size out along the end tangent,
+    # ending on a single pole vertex (a capsule end; a cutter keeps flat ends)
+    n_st = len(stations)
+    specs = [(Vector(st_), U, V, M, kk, R_in, i / max(1, n_st - 1), 1.0)
+             for i, (st_, (U, V, M, kk, R_in)) in enumerate(zip(stations, frames))]
+    round_ends = (not closed) and getattr(p, 'line_end', 'FLAT') == 'ROUND' and bottom is None and n_st >= 2
+    if round_ends:
+        flat_all = [q for lp in loops for q in lp]
+        ca0, sa0 = math.cos(base_angle), math.sin(base_angle)
+        uv0 = [(u * ca0 - v * sa0, u * sa0 + v * ca0) for u, v in flat_all]
+        ext_u = (max(u for u, _v in uv0) - min(u for u, _v in uv0)) * width
+        ext_v = (max(v for _u, v in uv0) - min(v for _u, v in uv0)) * height
+        L_d = 0.5 * max(ext_u, ext_v, 1e-5)
+        dome_n = max(2, int(round(4 * max(0.5, min(detail, 4.0)))))
+        for end in (0, 1):
+            P, U, V, _M, _kk, _R, t, _cs = specs[0] if end == 0 else specs[-1]
+            T = U.cross(V)
+            d_ = -T if end == 0 else T
+            extra = []
+            for k in range(1, dome_n + 1):
+                a = (math.pi / 2) * k / dome_n
+                extra.append((P + d_ * (L_d * math.sin(a)), U, V, None, 1.0, None, t, math.cos(a) if k < dome_n else 0.0))
+            specs = (list(reversed(extra)) + specs) if end == 0 else (specs + extra)
     bm = bmesh.new()
     try:
         for outer, holes in groups:
@@ -1828,9 +2009,7 @@ def _build_sweep_bmesh(data, p):
                 off += len(lp)
             cap_faces = _triangulate(flat, len(flat), section_loops, edges)
             all_rings = []
-            for i, (st_, (U, V, M, kk, R_in)) in enumerate(zip(stations, frames)):
-                P = Vector(st_)
-                t = i / (len(stations)-1)
+            for (P, U, V, M, kk, R_in, t, cs) in specs:
                 scale = max(0.05, 1.0 - taper*(abs(2*t-1)**2))
                 angle = base_angle + twist*t
                 ca, sa = math.cos(angle), math.sin(angle)
@@ -1841,8 +2020,16 @@ def _build_sweep_bmesh(data, p):
                 dz = (-min(v for _u, v in uv) - 0.02) * height if rest else 0.0
                 if bottom is not None:
                     dz = float(bottom) - p.offset - min(v for _u, v in uv) * height
+                if cs < 1.0:                                   # 0.24.121 a rounded end: the ring shrunk about its middle
+                    us, vs = [u for u, _v in uv], [v for _u, v in uv]
+                    cen = U * ((max(us) + min(us)) / 2 * width) + V * (p.offset + (max(vs) + min(vs)) / 2 * height + dz)
+                    if cs <= 1e-6:                             # the pole: one vertex
+                        all_rings.append(bm.verts.new(P + cen))
+                        continue
                 for u, v in uv:
                     off = U * (u * width) + V * (p.offset + v * height + dz)
+                    if cs < 1.0:
+                        off = cen + (off - cen) * cs
                     if M is not None:                      # the mitre: stretched across the bend
                         off += M * (off.dot(M) * (kk - 1.0))
                         if round_on and not cutter and R_in is not None:
@@ -1854,7 +2041,7 @@ def _build_sweep_bmesh(data, p):
                                 off += M * (lim - s_in)
                     ring.append(bm.verts.new(P + off))
                 all_rings.append(ring)
-            if not closed:
+            if not closed and not round_ends:
                 for a, b, c in cap_faces:
                     # Profile +U points left across the path, +V points up.
                     # A CCW cap faces forward; reverse the leading cap only.
@@ -1863,18 +2050,30 @@ def _build_sweep_bmesh(data, p):
                     bm.faces.new((all_rings[-1][a], all_rings[-1][b], all_rings[-1][c]))
             # 0.24.118 (user: "꺾이는 모양이 예뻐야") the walls round a bend are shaded smooth along the bend, the
             # section's own outline edges stay sharp: a clean elbow, crisp profile
-            n_st = len(stations)
+            n_st = len(specs)
+            pts_ = [sp[0] for sp in specs]
             bend_at = []
             for i in range(n_st):
-                a_ = (Vector(stations[i]) - Vector(stations[i - 1])) if (i > 0 or closed) else None
-                b_ = (Vector(stations[(i + 1) % n_st]) - Vector(stations[i])) if (i < n_st - 1 or closed) else None
+                a_ = (pts_[i] - pts_[i - 1]) if (i > 0 or closed) else None
+                b_ = (pts_[(i + 1) % n_st] - pts_[i]) if (i < n_st - 1 or closed) else None
                 bend_at.append(math.degrees(a_.angle(b_)) if a_ is not None and b_ is not None and a_.length > 1e-9
                                and b_.length > 1e-9 else 0.0)
+            dome_at = [sp[7] < 1.0 for sp in specs]
             pairs = list(zip(all_rings, all_rings[1:] + ([all_rings[0]] if closed else [])))
             for i, (ring0, ring1) in enumerate(pairs):
+                in_dome = dome_at[i] or dome_at[(i + 1) % n_st]
+                if in_dome and not (isinstance(ring0, list) and isinstance(ring1, list)):
+                    pole = ring1 if not isinstance(ring1, list) else ring0          # a fan onto the pole vertex
+                    for a, b in edges:
+                        f = bm.faces.new((ring0[a], ring0[b], pole) if isinstance(ring0, list) else (pole, ring1[b], ring1[a]))
+                        f.smooth = True
+                    continue
                 in_bend = bend_at[i] > 2.0 or bend_at[(i + 1) % n_st] > 2.0
                 for a, b in edges:
                     f = bm.faces.new((ring0[a], ring0[b], ring1[b], ring1[a]))
+                    if in_dome:
+                        f.smooth = True
+                        continue
                     if in_bend:
                         f.smooth = True
                         for e in f.edges:                  # the longitudinal edges (ring to ring) stay sharp
@@ -2233,6 +2432,59 @@ def move_joint(ob, index, new_world):
     return True
 
 
+def insert_joint(ob, world_pt):
+    """0.24.121 (user: "내가 픽하는 부분 잡고 움직일 수 있게") A new joint on the line where ``world_pt`` is nearest -
+    on the segment there (an existing point when within 2 % of the segment of one).  It shows as a blue ring and is
+    dragged like any joint; it stays when Pick is turned off.  Returns (path index, is an open end), or None."""
+    data = json.loads(ob[SWEEP_KEY])
+    path, ups, joints = _sweep_lists(data)
+    n = len(path)
+    if n < 2:
+        return None
+    closed = bool(data.get('closed'))
+    inv = ob.matrix_world.inverted_safe()
+    q = inv @ Vector(world_pt)
+    best = None
+    for i in list(range(n - 1)) + ([n - 1] if closed else []):
+        a, b = Vector(path[i]), Vector(path[(i + 1) % n])
+        d = b - a
+        if d.length_squared < 1e-12:
+            continue
+        t = max(0.0, min(1.0, (q - a).dot(d) / d.length_squared))
+        pnt = a + d * t
+        dist = (pnt - q).length
+        if best is None or dist < best[0]:
+            best = (dist, i, t, pnt)
+    if best is None:
+        return None
+    _d, i, t, pnt = best
+    if t < 0.02:
+        idx = i
+    elif t > 0.98:
+        idx = (i + 1) % n
+    else:
+        idx = i + 1
+        ua, ub = Vector(ups[i]), Vector(ups[(i + 1) % n])
+        u = ua * (1.0 - t) + ub * t
+        u = u.normalized() if u.length > 1e-9 else ua
+        path.insert(idx, tuple(pnt))
+        ups.insert(idx, tuple(u))
+        joints = [j + 1 if j >= idx else j for j in joints]
+        n += 1
+    is_end = (not closed) and idx in (0, n - 1)
+    if not is_end and idx != 0 and idx not in joints:
+        joints.append(idx)
+    probe = dict(data)
+    _store_sweep(probe, path, ups, joints, closed=closed)
+    _build_sweep_bmesh(probe, ob.mch_base).free()        # validate first
+    _store_sweep(data, path, ups, joints, closed=closed)
+    ob[SWEEP_KEY] = json.dumps(data, separators=(',', ':'))
+    if ob.get(ATTACH_KEY) and data.get('path3'):
+        del ob[ATTACH_KEY]
+    rebuild(ob)
+    return idx, is_end
+
+
 def move_end(ob, at_end, new_world):
     """0.24.114 (user: "파란색 동그라미 살아 있으면 잡고 이동 가능하게") The line's end dragged to ``new_world``: the last
     piece (from its joint on; a single piece: the whole line) is turned and stretched about that joint so its end
@@ -2407,16 +2659,29 @@ def extend_sweep(ob, projector, pts, at_end=True, end_hit=None, close_px=None):
         except (AttributeError, TypeError, ValueError):
             closing = False
     if closing:
-        # the far end faded onto the start (the mirror of join_path's start fade)
-        shift = [path[0][c] - new[-1][c] for c in range(3)]
-        run, fade = 0.0, max(2.0 * width, 1e-6)
-        out = []
+        # the far end onto the start: the small miss in this stroke's plane fades out over the last two widths (the
+        # mirror of join_path's start fade); 0.24.121 (user: "끝부분 다시 만나면 이렇게 돼") the DEPTH between them -
+        # the start sits off this view's plane when the loop was drawn from several views - is spread evenly along the
+        # whole closing piece, so a straight stroke closes as one straight leg in 3D instead of a hairpin at the end
+        shift = Vector(path[0]) - Vector(new[-1])
+        nrm = Vector(n_loc)
+        depth = nrm * shift.dot(nrm) / nrm.length_squared if nrm.length_squared > 1e-12 else Vector((0.0, 0.0, 0.0))
+        inplane = shift - depth
+        fade = max(2.0 * width, 1e-6)
+        chain = [Vector(path[-1])] + [Vector(q) for q in new]
+        seg = [(chain[k + 1] - chain[k]).length for k in range(len(chain) - 1)]
+        total = max(sum(seg), 1e-9)
+        from_end, run = [0.0] * len(new), 0.0
         for k in range(len(new) - 1, -1, -1):
             if k < len(new) - 1:
-                run += math.dist(new[k + 1], new[k])
-            f = max(0.0, 1.0 - run / fade)
-            out.append(tuple(new[k][c] + shift[c] * f for c in range(3)))
-        new = list(reversed(out))
+                run += seg[k + 1]
+            from_end[k] = run
+        out, s_ = [], 0.0
+        for k, q in enumerate(new):
+            s_ += seg[k]
+            f = max(0.0, 1.0 - from_end[k] / fade)
+            out.append(tuple(Vector(q) + inplane * f + depth * (s_ / total)))
+        new = out
         if math.dist(new[-1], path[0]) < 1e-6:
             new = new[:-1]                                  # (a straight closing leg: the seam edge is implicit)
     joints = joints + [len(path) - 1]
