@@ -1844,6 +1844,9 @@ class StrokeLogic:
             st_ = getattr(context.scene, 'mch_press', None)
             if st_ is None or getattr(st_, 'draw_mode', 'LINE') != 'LASSO':
                 return {'PASS_THROUGH'}
+            from . import press_cut              # 0.24.124 Cut / Split: the Base Mesh lasso; Plate: that plate tool's
+            if press_cut.lasso_stroke_mode(st_) != self.mode:
+                return {'PASS_THROUGH'}
         else:
             try:
                 # ``force``: another Mecha tool starts this stroke on purpose - the active tool need not be this mode's

@@ -31,7 +31,8 @@ EXTRA = {
     'PRESS': ['Hold LMB on a part   a mesh grows out of the surface - taller the longer you hold,  release   keep',
               'Alt + hold LMB   press the stamp in (a cut) - deeper the longer you hold', 'Drag   Base Mesh line, the stamp as its section (as wide as the stamp),  Alt + drag   Line Cut - the stamp as its section, Max deep', 'Start a drag on a line\'s end mark   it goes on from there (turn the view between strokes if you like)', 'Dots beside a made line   Sharp / Round corners,  Move   drag an end ring,  Pick   press on the line anywhere = a new joint,  Section Bend / Each View,  Ends Flat / Round;  sliders   thickness, corner radius, detail (live);  blue joint rings stay until Enter - drag them any time', 'A stroke from one end ring to the other   closes the loop;  a bend near 0 / 45 / 90 / 135 deg catches', 'Shift + draw   your own stamp - Lasso / Rectangle / Circle / Free Draw ... (top bar), Sketch: Enter = the stamp', 'Esc / RMB (holding)   put it back,  [ ] / F   stamp size',
               'Draw: Lasso (top bar)   a drag is the Base Mesh tool\'s lasso - the closed shape becomes a part, Alt as there;  Line   the stamp swept',
-              'R + mouse   turn (Shift fine, Ctrl 5\u00b0),  Shift+R   0\u00b0'],
+              'R + mouse / 3D mouse   turn (Shift fine, Ctrl 5\u00b0),  Shift+R   0\u00b0',
+              'Plate (top bar: Armor / Creature)   press   the stamp as a plate on the part,  Line   the stamp\'s section laid along the surface (a stepped rim),  Lasso   that plate tool\'s lasso'],
     'CPATH': ['Tab (dragging)   Extend: brush area / whole section', 'B (dragging)   Back Mask: the far side stays put'],
     'SMOVE': ['Drag from the part   the whole part follows the way (stretches, bends)'],
     'SMART': ['LMB on a part   hold it (a ring on its origin),  LMB on a surface   its origin goes there - same rotation and size',
@@ -47,7 +48,7 @@ COMMON = [
     'Shift   straight 0/45/90° · square / circle',
     'Ctrl   from the centre',
     'F   brush size     [ ]   line width',
-    'D + drag   Concept Move',
+    'D + drag   Concept Move     E   Smart Move (the part under the mouse / the selected one)',
     'RMB   tools + actions + shapes     RMB×2 / Esc   exit',
     'Q   Select <-> last tool     V   tool pie',
 ]
@@ -81,6 +82,46 @@ def _stroke_tool(context):
     return tid if native.startswith('mecha.') and tid in ts.TOOL_BY_ID else None
 
 
+def folded(context):
+    """0.24.124 (user: "기능 설명은 접을 수 있게") the card folded to its title line (click the title to fold / open)."""
+    return bool(getattr(getattr(context, 'window_manager', None), 'mch_legend_min', False))
+
+
+def toggle(context):
+    wm = context.window_manager
+    wm.mch_legend_min = not bool(getattr(wm, 'mch_legend_min', False))
+    for w in wm.windows:
+        for a in w.screen.areas:
+            if a.type == 'VIEW_3D':
+                a.tag_redraw()
+    return wm.mch_legend_min
+
+
+def title_hit(context, x, y):
+    """Is region point (x, y) on the card's title line (the fold / open button)?"""
+    b = box(context)
+    if b is None:
+        return False
+    x0, y0, w, h, rows, _keyw = b
+    k = _k(context)
+    lh, pad = 20 * k, 12 * k
+    return x0 <= x <= x0 + w and y0 + h - pad - lh - 4 * k <= y <= y0 + h
+
+
+def card_hit(context, x, y):
+    """Is region point (x, y) anywhere on the card?  (a press there is the card's, never a stroke)"""
+    b = box(context)
+    if b is None:
+        return False
+    x0, y0, w, h, _rows, _keyw = b
+    return x0 <= x <= x0 + w and y0 <= y <= y0 + h
+
+
+def _k(context):
+    from . import ui_gpu as G
+    return G.ui_factor(context)
+
+
 def _width(s, size):
     """Text width as drawn (the same font and size the card uses)."""
     import blf
@@ -100,12 +141,18 @@ def box(context, k=None):
     k = G.ui_factor(context) if k is None else k
     rows = lines(tid)
     size, lh, pad = 12 * k, 20 * k, 12 * k
-    keyw = max(_width(t.partition('   ')[0], size) for t in rows[1:]) + 16 * k
-    what_w = max(_width(t.partition('   ')[2], size) for t in rows[1:])
-    # the texts start at the key column, so the card is key column + the widest text (was per row: a short key
-    # with a long text ran out of the card)
-    w = max(keyw + what_w, _width(rows[0], 13 * k), keyw + 120 * k) + 2 * pad
-    h = lh * len(rows) + 2 * pad
+    if folded(context):                              # 0.24.124 only the title line (a small card)
+        rows = rows[:1]
+        keyw = 0.0
+        w = _width(rows[0], 13 * k) + 34 * k + 2 * pad
+        h = lh + 2 * pad
+    else:
+        keyw = max(_width(t.partition('   ')[0], size) for t in rows[1:]) + 16 * k
+        what_w = max(_width(t.partition('   ')[2], size) for t in rows[1:])
+        # the texts start at the key column, so the card is key column + the widest text (was per row: a short key
+        # with a long text ran out of the card)
+        w = max(keyw + what_w, _width(rows[0], 13 * k), keyw + 120 * k) + 2 * pad
+        h = lh * len(rows) + 2 * pad
     left = ui_bars.left_inset(context)
     if region is None:                               # (no viewport region: the old bottom left place)
         x, y = left + 14 * k, 90 * k
@@ -134,10 +181,13 @@ def _draw():
         size, lh, pad = 12 * k, 20 * k, 12 * k
         G.rounded_rect(x - 1, y - 1, w + 2, h + 2, 12 * k, G.card_color(edge=True))
         G.rounded_rect(x, y, w, h, 12 * k, G.card_color())
+        fold = folded(context)
         for i, t in enumerate(rows):
             ty = y + h - pad - lh * (i + 0.5)
             if i == 0:
                 G.text(x + pad, ty, t, 13 * k, G.ORANGE)
+                # the fold / open mark at the right end of the title (click the title line)
+                G.text(x + w - pad - 10 * k, ty, '\u25b8' if fold else '\u25be', 13 * k, G.TEXT_DIM)
                 continue
             key, _sep, what = t.partition('   ')
             alt = key.startswith('Alt')
@@ -149,8 +199,22 @@ def _draw():
     ui_gpu.done()
 
 
+class MCH_OT_legend_fold(bpy.types.Operator):
+    """Fold / open the key legend card (click its title line)"""
+    bl_idname = 'mch.legend_fold'
+    bl_label = 'Fold Key Legend'
+    bl_options = {'INTERNAL'}
+
+    def execute(self, context):
+        toggle(context)
+        return {'FINISHED'}
+
+
 def register():
     global _handle
+    bpy.utils.register_class(MCH_OT_legend_fold)
+    bpy.types.WindowManager.mch_legend_min = bpy.props.BoolProperty(
+        name='Key Legend Folded', default=False, description='The key legend card folded to its title (click the title)')
     if not bpy.app.background and _handle is None:
         _handle = bpy.types.SpaceView3D.draw_handler_add(_draw, (), 'WINDOW', 'POST_PIXEL')
 
@@ -163,3 +227,11 @@ def unregister():
         except (ValueError, RuntimeError):
             pass
         _handle = None
+    try:
+        del bpy.types.WindowManager.mch_legend_min
+    except (AttributeError, RuntimeError):
+        pass
+    try:
+        bpy.utils.unregister_class(MCH_OT_legend_fold)
+    except (RuntimeError, ValueError):
+        pass

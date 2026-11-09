@@ -56,7 +56,13 @@ DRAWN = [None]                 # 0.24.95 the outline drawn with Shift + drag (no
 class MCH_PG_Press(bpy.types.PropertyGroup):
     result: EnumProperty(name='Result', items=[
         ('CUT', 'Cut', 'The shape pressed into the part: a pocket'),
-        ('SPLIT', 'Split', 'The pressed-in plug becomes its own part')], default='CUT')
+        ('SPLIT', 'Split', 'The pressed-in plug becomes its own part'),
+        ('PLATE', 'Armor Plate', '0.24.124 Plate: a press puts the stamp on the part as an Armor Plate; Line: the '
+                                 'stamp\'s section laid along the surface (a stepped rim, a carapace ridge); Lasso: the '
+                                 'Armor Plate tool\'s own lasso'),
+        ('CPLATE', 'Creature Plate', '0.24.124 Plate: a press puts the stamp on the part as a Creature Plate (Puff / '
+                                     'Ridge / Pillow); Line: the stamp\'s section laid along the surface; Lasso: the '
+                                     'Creature Plate tool\'s own lasso')], default='CUT')
     shape: EnumProperty(name='Shape', items=_shape_items, update=_shape_picked,
                         description='The stamp: a saved lasso, a built-in shape or an imported PNG')
     drawn: BoolProperty(name='Drawn Shape', default=False, update=_redraw,
@@ -154,6 +160,98 @@ def press_depth(press, st, seconds):
     """The depth / height for this press after ``seconds``: Grow has its own (a tap is already visible)."""
     fn = getattr(press, 'depth_for', None)
     return fn(st, seconds) if fn is not None else depth_at(st, press.size, seconds)
+
+
+def plate_result(st):
+    """0.24.124 (user: "프레스 컷에 플레이트 버튼 넣어 주라") the Press result is a plate (Armor / Creature)."""
+    return getattr(st, 'result', 'CUT') in {'PLATE', 'CPLATE'}
+
+
+def lasso_stroke_mode(st):
+    """Lasso mode: whose stroke the press is - the Base Mesh tool's (result Cut / Split) or that plate tool's."""
+    r = getattr(st, 'result', 'CUT')
+    return r if r in {'PLATE', 'CPLATE'} else 'BASE'
+
+
+def plate_from_loops(context, result, loops, projector):
+    """0.24.124 the stamp outline(s) (region px) as a plate on the part under them - Armor / Creature Plate, by the
+    same makers the plate tools' lassos use (+ Point Radial Symmetry and the part's Mirror, like a lasso plate)."""
+    if result == 'CPLATE':
+        from . import creature_plate
+        msg = creature_plate.perform(context, loops, projector)
+    else:
+        from . import armor_plate
+        msg = armor_plate.perform_plate(context, loops, projector)
+    try:
+        from . import radial_sym
+        msg = (msg or '') + radial_sym.after_create(context, result)
+    except (ImportError, AttributeError, RuntimeError, ReferenceError):
+        pass
+    try:
+        from . import symmetry
+        msg = (msg or '') + symmetry.follow(context, context.active_object)
+    except (ImportError, AttributeError, RuntimeError, ReferenceError):
+        pass
+    return msg or ('Armor Plate' if result == 'PLATE' else 'Creature Plate')
+
+
+def surface_sweep(context, pr, pts, projector, span):
+    """0.24.124 (user: "라인은 베이스 메쉬처럼 우리가 만든 스탬프로 표면에 그려지면 돼 ... 계단처럼 안으로 한번 들어간 디테일의
+    플레이트") Press + Plate, Line: the stamp's section swept along the drawn line laid ON THE SURFACE of the part under
+    it - every ring stands on the surface normal there and the section rests on the surface (sunk a hair) - a new live
+    swept part that follows the part's curvature: a stepped rim, a carapace ridge, a raised seam.  Returns a report."""
+    from . import base_mesh, cape_gen, surface_draw as sd
+    target = sd.pick_base(context, projector, pts)
+    if target is None:
+        raise cg.CutError('Plate line: draw it over a part')
+    bvh, _lo, _hi = cape_gen._body(context, target)
+    stroke = sd._project_stroke(context, target, pts, projector)
+    step = max(span * 0.3, 1e-4)
+    pts3 = sd._resample(sd._smooth(stroke, 2), step)
+    if len(pts3) < 2:
+        raise cg.CutError('Plate line: draw a longer line')
+    base = [sd._nearest(bvh, Vector(q)) for q in pts3]
+    sink = 0.03 * span                                     # (a hair into the part: no gap on a curved surface)
+    path_w = [Vector(b[0]) - Vector(b[1]).normalized() * sink for b in base]
+    ups_w = [Vector(b[1]).normalized() for b in base]
+    n0 = sum(ups_w, Vector())
+    n0 = n0.normalized() if n0.length > 1e-9 else ups_w[0]
+    t0 = path_w[-1] - path_w[0]
+    t0 = t0 - n0 * t0.dot(n0)
+    if t0.length < 1e-9:
+        t0 = n0.orthogonal()
+    x = t0.normalized()
+    y = n0.cross(x).normalized()
+    z = x.cross(y).normalized()
+    o = path_w[0]
+    frame = Matrix(((x.x, y.x, z.x, o.x), (x.y, y.y, z.y, o.y), (x.z, y.z, z.z, o.z), (0.0, 0.0, 0.0, 1.0)))
+    inv = frame.inverted_safe()
+    rot = inv.to_3x3()
+    local = [inv @ p for p in path_w]
+    ups = [(rot @ n).normalized() for n in ups_w]
+    section, name = base_mesh._section_loops(context, 'ALPHA')
+    defaults = base_mesh._WithSectionStyle(base_mesh.scene_defaults(context), 'ALPHA', span, span, True,
+                                           float(pr.rotation))
+    flat2 = []                                             # the outline the live part keeps: the line, half a section wide
+    for q in local:
+        flat2 += [(q.x + 0.5 * span, q.y + 0.5 * span), (q.x - 0.5 * span, q.y - 0.5 * span),
+                  (q.x + 0.5 * span, q.y - 0.5 * span), (q.x - 0.5 * span, q.y + 0.5 * span)]
+    hull = base_mesh._hull(flat2)
+    if hull is None:
+        raise cg.CutError('Plate line: draw a longer line')
+    sweep = {'path': [(q.x, q.y) for q in local], 'path3': [[q.x, q.y, q.z] for q in local],
+             'up3': [[u.x, u.y, u.z] for u in ups], 'loops': section, 'section_name': name, 'rest': True,
+             'surface': target.name}
+    msg = base_mesh._create_live_base(context, [(hull, [])], frame, defaults, embed=0.0, sweep_data=sweep)
+    ob = context.active_object
+    if ob is not None:
+        ob.name = 'MCH_PlateLine'
+        try:
+            from . import symmetry
+            msg = (msg or '') + symmetry.follow(context, ob, target)
+        except (ImportError, AttributeError, RuntimeError, ReferenceError):
+            pass
+    return f'Plate line on {target.name}: {msg or ""} | {len(local)} points on the surface'
 
 
 def stamp_loops(context, center, st=None):
@@ -1817,6 +1915,31 @@ class MCH_OT_press_unified(bpy.types.Operator):
         self.region.tag_redraw()
         return True
 
+    def _plate_press(self, context):
+        """0.24.124 Plate result: the stamp outline at the press point becomes an Armor / Creature Plate (no hold)."""
+        st = context.scene.mch_press
+        xy = self.anchor
+        self._cleanup(context)
+        self.state = 'DONE'
+        try:
+            loops = stamp_loops(context, xy, st)
+            try:
+                from . import safety_save
+                safety_save.checkpoint('Mecha Press Plate')
+            except Exception:
+                pass
+            msg = plate_from_loops(context, st.result, loops, self.projector)
+        except cg.CutError as ex:
+            self.report({'WARNING'}, str(ex))
+            return {'CANCELLED'}
+        except Exception as ex:
+            import traceback
+            traceback.print_exc()
+            self.report({'ERROR'}, f'Press Plate failed: {ex}')
+            return {'CANCELLED'}
+        self.report({'INFO'}, msg)
+        return {'FINISHED'}
+
     def _press_to_draw(self, context, xy):
         """0.24.107 The pointer moved on soon after a press began: it was a slowly started line.  The press is put
         back (the part as it was) and the line goes on from where the button went down."""
@@ -1878,6 +2001,20 @@ class MCH_OT_press_unified(bpy.types.Operator):
                 raise cg.CutError('Could not form a band from this line')
             # 0.24.109 a stroke that starts on the end of the last line goes on from it (in the first stroke's plane)
             hit = nearest_end(context, self.projector, pts[0], continue_radius(pr), 'base' if self.make_mesh else 'cut')
+            if self.make_mesh and plate_result(pr):    # 0.24.124 Plate: the stamp's section laid along the surface
+                try:
+                    safety_save.checkpoint('Mecha Press Plate Line')
+                except Exception:
+                    pass
+                msg = surface_sweep(context, pr, pts, self.projector, span)
+                CONTINUE['base'] = None
+                try:
+                    context.window_manager.mch_line_move = False
+                    context.window_manager.mch_line_pick = False
+                except (AttributeError, TypeError):
+                    pass
+                self.report({'INFO'}, msg)
+                return {'FINISHED'}
             if self.make_mesh:
                 # Press Cut plain draw ALWAYS uses the active stamp as the line's cross-section (turned as the stamp
                 # is).  The scene's Base Mesh options stay independent.
@@ -2024,6 +2161,8 @@ class MCH_OT_press_unified(bpy.types.Operator):
             return {'RUNNING_MODAL'}
         if et == 'TIMER' and self.state == 'WAIT':
             if time.perf_counter() - self.down_time >= UNIFIED_HOLD_SEC:
+                if self.make_mesh and plate_result(context.scene.mch_press):      # 0.24.124 Plate: the stamp as a plate
+                    return self._plate_press(context)
                 if not self._begin_press(context):
                     self._cleanup(context)
                     return {'CANCELLED'}
@@ -2037,6 +2176,8 @@ class MCH_OT_press_unified(bpy.types.Operator):
                 xy = (float(event.mouse_region_x), float(event.mouse_region_y))
                 return self._finish_draw(context, xy)
             # Quick tap (< hold threshold): still make an ordinary shallow press.
+            if self.make_mesh and plate_result(context.scene.mch_press):          # 0.24.124 Plate: the stamp as a plate
+                return self._plate_press(context)
             if not self._begin_press(context):
                 self._cleanup(context)
                 return {'CANCELLED'}
@@ -2142,8 +2283,8 @@ def _draw_turn(op):
 
 
 class MCH_OT_stamp_turn(bpy.types.Operator):
-    """R: turn the stamp with the mouse - left / right, 0.4 degree a pixel (Shift: fine, Ctrl: 5 degree steps);
-    click / Enter / R keeps, Esc / right click puts it back.  Shift + R: back to 0 degrees"""
+    """R: turn the stamp with the mouse - left / right, 0.4 degree a pixel (Shift: fine, Ctrl: 5 degree steps) - or
+    with the 3D mouse (twist); click / Enter / R keeps, Esc / right click puts it back.  Shift + R: back to 0 degrees"""
     bl_idname = 'mch.stamp_turn'
     bl_label = 'Turn Stamp'
     bl_options = {'INTERNAL'}
@@ -2168,6 +2309,7 @@ class MCH_OT_stamp_turn(bpy.types.Operator):
         self.owner, self.prop, self.size = owner, prop, size
         self.start = getattr(owner, prop)
         self.x0 = event.mouse_x
+        self.ndof_off = 0.0                    # 0.24.124 what the 3D mouse turned so far (R held), on top of the mouse
         self.center = (float(event.mouse_region_x), float(event.mouse_region_y))
         self.region = context.region
         try:
@@ -2190,8 +2332,25 @@ class MCH_OT_stamp_turn(bpy.types.Operator):
 
     def modal(self, context, event):
         et, ev = event.type, event.value
+        if et == 'NDOF_MOTION':
+            # 0.24.124 (user: "스탬프 쓸 때는 R 누르고 하면 돌아가게") R held + the 3D mouse: its twist (or roll) turns the
+            # stamp - the same pace as Smart Move's turn (Speed), Shift fine, Ctrl 5 degree steps; the view stays
+            data = getattr(event, 'ndof_motion', None)
+            if data is not None:
+                from . import smart_move
+                rot = data.rotation
+                comp = rot[1] if abs(rot[1]) >= abs(rot[2]) else rot[2]
+                sm_st = getattr(context.scene, 'mch_smart', None)
+                speed = float(getattr(sm_st, 'speed', 1.0)) * (0.2 if event.shift else 1.0)
+                if getattr(sm_st, 'invert', False):
+                    comp = -comp
+                step = math.copysign(smart_move.turn_angle((0.0, abs(comp), 0.0), getattr(data, 'time_delta', 0.0), speed), comp)
+                self.ndof_off += step
+                setattr(self.owner, self.prop, turn_angle(self.start + self.ndof_off, event.mouse_x - self.x0, event.ctrl, False))
+                self.region.tag_redraw()
+            return {'RUNNING_MODAL'}
         if et == 'MOUSEMOVE':
-            setattr(self.owner, self.prop, turn_angle(self.start, event.mouse_x - self.x0, event.ctrl, event.shift))
+            setattr(self.owner, self.prop, turn_angle(self.start + self.ndof_off, event.mouse_x - self.x0, event.ctrl, event.shift))
             self.region.tag_redraw()
             return {'RUNNING_MODAL'}
         if getattr(event, 'is_repeat', False):
@@ -2379,7 +2538,13 @@ def draw(layout, context):
     from . import cut_presets
     st = context.scene.mch_press
     col = layout.column(align=True)
-    col.row(align=True).prop(st, 'result', expand=True)
+    row = col.row(align=True)
+    row.prop_enum(st, 'result', 'CUT')
+    row.prop_enum(st, 'result', 'SPLIT')
+    row = col.row(align=True)                # 0.24.124 Plate: Armor / Creature (press = the stamp as a plate, Line = the
+    row.label(text='Plate')                  #  stamp's section along the surface, Lasso = that plate tool's lasso)
+    row.prop_enum(st, 'result', 'PLATE', text='Armor')
+    row.prop_enum(st, 'result', 'CPLATE', text='Creature')
     col.template_icon_view(st, 'shape', show_labels=True, scale=4.0, scale_popup=3.0)   # (light: 64 px pictures)
     if st.drawn and DRAWN[0]:
         row = col.row(align=True)
@@ -2485,6 +2650,13 @@ TOOL_KEYMAP = (
     ('mch.cut_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, {'properties': [('mode', 'BASE'), ('press_lasso', True)]}),
     ('mch.cut_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'alt': True},
      {'properties': [('mode', 'BASE'), ('press_lasso', True)]}),
+    # 0.24.124 Plate result + Lasso: the Armor / Creature Plate tool's own lasso (each steps aside unless chosen)
+    ('mch.cut_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, {'properties': [('mode', 'PLATE'), ('press_lasso', True)]}),
+    ('mch.cut_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'alt': True},
+     {'properties': [('mode', 'PLATE'), ('press_lasso', True)]}),
+    ('mch.cut_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, {'properties': [('mode', 'CPLATE'), ('press_lasso', True)]}),
+    ('mch.cut_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'alt': True},
+     {'properties': [('mode', 'CPLATE'), ('press_lasso', True)]}),
     ('mch.press_unified', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, None),
     ('mch.press_unified', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'alt': True}, None),
     # (0.24.95 Shift + draw: the stamp drawn with the shared shapes - Lasso, Curve Lasso, Rectangle, Circle, Ellipse,

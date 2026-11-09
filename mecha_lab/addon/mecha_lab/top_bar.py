@@ -125,6 +125,9 @@ def groups(context, tool):
             _cell('mini', 'Start', action=('number',), data=pr, prop='start', width=110),
             _cell('mini', 'Speed', action=('number',), data=pr, prop='speed', width=120),
             _cell('mini', 'Max', action=('number',), data=pr, prop='max_depth', width=100)]))
+        # 0.24.124 (user: "프레스 컷에 플레이트 버튼 넣어 주라") Plate: press = the stamp as a plate, Line = its section
+        # along the surface, Lasso = that plate tool's lasso
+        out.append(('Plate', _enum_segs(pr, 'result', (('PLATE', 'Armor'), ('CPLATE', 'Creature')))))
         # 0.24.108 (user: "뺄 때 챔퍼랑 베벨 그리고 원형도") hold = Grow: the top edge of what grows out
         grow = _enum_segs(pr, 'grow_top', (('FLAT', 'Flat'), ('FOLLOW', 'Follow'))) + \
             _enum_segs(pr, 'grow_edge', (('SHARP', 'Sharp'), ('CHAMFER', 'Chamfer'), ('BEVEL', 'Bevel'),

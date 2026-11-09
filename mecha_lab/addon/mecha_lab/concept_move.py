@@ -811,12 +811,78 @@ def drop_base(ob):
         del ob[BASE_KEY]
 
 
+def prepare_region(me, centres, reach, max_faces=60000, max_planes=24):
+    """0.24.124 (user: "내가 자른 메쉬를 컨셉 무브로 움직이면 메쉬가 깨지는데") A cut part's big faces (the n-gon round a
+    hole, a flat top) have no points inside them: a pull moved the hole's rim and the face became a fan of long
+    sliver triangles from the rim to the far corners - a pyramid, not a bump.  Before the move the faces the brush
+    can reach are sliced with planes along the object's axes, about a third of the reach apart (as Knife Mesh does
+    to the whole part), so the pull has points to carry the shape and ``generate`` refines a grid, not a fan.  Only
+    faces bigger than the slice step are cut (dense meshes are left alone); the edge marks (crease / sharp) of the
+    split edges are kept by bisect.  Returns the number of planes cut."""
+    if not centres or reach <= 0.0 or len(me.polygons) == 0 or len(me.polygons) > max_faces:
+        return 0
+    step = reach / 3.0
+    lo = Vector([min(c[i] for c in centres) - reach for i in range(3)])
+    hi = Vector([max(c[i] for c in centres) + reach for i in range(3)])
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    try:
+        big = []
+        for f in bm.faces:
+            cs = [v.co for v in f.verts]
+            if all(max(c[i] for c in cs) >= lo[i] and min(c[i] for c in cs) <= hi[i] for i in range(3)) and \
+                    max((e.calc_length() for e in f.edges), default=0.0) > 1.5 * step:
+                big.append(f)
+        if not big:
+            return 0
+        n = 0
+        for axis in range(3):
+            span = hi[axis] - lo[axis]
+            parts = int(min(max_planes, max(1, round(span / step))))
+            for k in range(1, parts):
+                co = Vector((0.0, 0.0, 0.0))
+                co[axis] = lo[axis] + span * k / parts
+                no = Vector((0.0, 0.0, 0.0))
+                no[axis] = 1.0
+                faces = [f for f in big if f.is_valid]
+                if not faces:
+                    break
+                verts = {v for f in faces for v in f.verts}
+                edges = {e for f in faces for e in f.edges}
+                out = bmesh.ops.bisect_plane(bm, geom=list(verts) + list(edges) + faces, plane_co=co, plane_no=no,
+                                             dist=step * 1e-4)
+                n += 1
+                # the pieces of the cut faces are big faces too (for the next planes)
+                big = [g for g in out['geom'] if isinstance(g, bmesh.types.BMFace)] + \
+                      [g for g in out['geom_cut'] if isinstance(g, bmesh.types.BMFace)]
+                big = list({f for f in big if f.is_valid})
+        if n:
+            bm.to_mesh(me)
+            me.update()
+        return n
+    finally:
+        bm.free()
+
+
+def move_centres(mv):
+    """The grab point of a move and its X mirror (object space) - where ``prepare_region`` slices."""
+    c = tuple(float(x) for x in mv['centre'])
+    out = [c]
+    if mv.get('mirror'):
+        out.append((-c[0], c[1], c[2]))
+    return out
+
+
 def apply_moves(ob, moves, generate_mesh=True, auto_apply=True):
     """Do the moves on ob; live objects and editable ones (Auto Apply off) also remember them."""
     if not auto_apply:
         keep_base(ob)
     for mv in moves:
         if generate_mesh:
+            try:                                    # 0.24.124 a cut part's big faces get points to carry the shape
+                prepare_region(ob.data, move_centres(mv), reach(mv))
+            except (RuntimeError, ValueError, KeyError, TypeError):
+                pass
             generate(ob.data, move_field(mv), relax=mv.get('relax', 0))
         else:
             write_coords(ob.data, move_field(mv)(read_coords(ob.data)))
@@ -1393,6 +1459,11 @@ class MCH_OT_concept_path(bpy.types.Operator):
         if self.generate_mesh:
             # 0.24.53 all the steps as one field, one generate: step by step every call split the part again
             # (about 1.5x the points per step - 59 s and 400k points on a 10k plate, open edges)
+            try:                                    # 0.24.124 a cut part's big faces get points to carry the shape
+                cs = [c for mv in moves for c in move_centres(mv)]
+                prepare_region(ob.data, cs, max(reach(mv) for mv in moves))
+            except (RuntimeError, ValueError, KeyError, TypeError):
+                pass
             generate(ob.data, field)
         else:
             write_coords(ob.data, field(read_coords(ob.data)))

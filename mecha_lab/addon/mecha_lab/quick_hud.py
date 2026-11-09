@@ -309,6 +309,15 @@ class MCH_OT_quick_hud_press(bpy.types.Operator):
     bl_options = {'INTERNAL'}
 
     def invoke(self, context, event):
+        try:                                            # 0.24.124 the key legend card: its title folds / opens it
+            from . import key_legend
+            if key_legend.title_hit(context, event.mouse_region_x, event.mouse_region_y):
+                key_legend.toggle(context)
+                return {'FINISHED'}
+            if key_legend.card_hit(context, event.mouse_region_x, event.mouse_region_y):
+                return {'FINISHED'}                     # (a press on the card is the card's, never a stroke)
+        except (AttributeError, KeyError, TypeError, ReferenceError, ImportError):
+            pass
         # 0.24.58 the drawn toolbar / tool strip
         try:
             from . import ui_bars
@@ -588,6 +597,12 @@ def over_ui(context, x, y):
     try:
         from . import ui_bars
         if ui_bars.hit(context, x, y)[0]:
+            return True
+    except (AttributeError, KeyError, TypeError, ReferenceError, ImportError):
+        pass
+    try:
+        from . import key_legend                        # 0.24.124 the key legend card (foldable) too
+        if key_legend.card_hit(context, x, y):
             return True
     except (AttributeError, KeyError, TypeError, ReferenceError, ImportError):
         pass

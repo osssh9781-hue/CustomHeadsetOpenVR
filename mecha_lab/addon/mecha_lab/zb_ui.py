@@ -894,7 +894,7 @@ def corner_box(context, region_w, region_h, k):
     """(x, y, w, h) of the MECHA LAB / ZBRUSH card in the top right corner (left of Blender's navigation gizmo
     and an overlapping sidebar)."""
     from . import ui_bars
-    rows = 2 if getattr(context, 'mode', '') == 'SCULPT' else 3       # 0.24.77 + VIEW Wire | Solo on MECHA LAB
+    rows = 2 if getattr(context, 'mode', '') == 'SCULPT' else 4       # 0.24.77 + VIEW Wire | Solo on MECHA LAB; 0.24.124 + 3D MOUSE
     if zs.style() == 'ZBRUSH':
         rows += 1                                                      # 0.24.79 + NAV ZBrush | Blender
     w, h = CORNER_W * k, rows * ROW * k + (rows - 1) * GAP * k + 2 * PAD * k
@@ -964,6 +964,16 @@ def corner_items(context, region_w, region_h, k=1.0):
                         ('op', 'mch.view_toggle', {'action': 'WIRE'})))
         out.append(Item('seg', x0 + PAD * k + lw + 2 * GAP * k + s2, y, s2, ROW * k, 'Solo', '', zs.solo_on(context),
                         True, ('op', 'mch.view_toggle', {'action': 'SOLO'})))
+        # 0.24.124 (user: "스마트 무브는 모든 툴에") what the 3D mouse drives: the view, or the selected part (Smart Move)
+        y -= ROW * k + GAP * k
+        parts = bool(getattr(context.window_manager, 'mch_ndof_parts', False))
+        lw3 = 62 * k
+        s3 = (w - 2 * PAD * k - lw3 - 2 * GAP * k) / 2
+        out.append(Item('glabel', x0 + PAD * k, y, lw3, ROW * k, '3D MOUSE'))
+        out.append(Item('seg', x0 + PAD * k + lw3 + GAP * k, y, s3, ROW * k, 'View', '', not parts, True,
+                        ('op', 'mch.ndof_parts', {'on': False})))
+        out.append(Item('seg', x0 + PAD * k + lw3 + 2 * GAP * k + s3, y, s3, ROW * k, 'Parts', '', parts, True,
+                        ('op', 'mch.ndof_parts', {'on': True})))
     return out
 
 

@@ -2713,6 +2713,13 @@ def register_keymaps():
     # 0.24.31 hold D + drag = Concept Move in any tool (D alone does nothing in Object Mode; D + drag outside
     # MECHA LAB is still Blender's annotate - the operator's poll)
     _keymaps.append((km, km.keymap_items.new('mch.concept_hold', 'LEFTMOUSE', 'PRESS', key_modifier='D')))
+    # 0.24.124 (user: "스마트 무브는 모든 툴에 넣어줘") E = Smart Move in any tool (MECHA LAB only - the operator checks):
+    # the part under the mouse, else the selected one, is held; the 3D mouse drives the selected part in any tool when
+    # the corner card's 3D MOUSE is on Parts (the operator passes the event on to the view otherwise)
+    item = km.keymap_items.new('mch.smart_move', 'E', 'PRESS')
+    item.properties.from_key = True
+    _keymaps.append((km, item))
+    _keymaps.append((km, km.keymap_items.new('mch.smart_ndof', 'NDOF_MOTION', 'ANY')))
     # 0.24.5 Enter = Apply the live result (tool keymaps, e.g. a pending sketch, come first)
     for key in ('RET', 'NUMPAD_ENTER'):
         _keymaps.append((km, km.keymap_items.new('mch.enter_apply', key, 'PRESS')))

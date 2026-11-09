@@ -1,0 +1,25 @@
+tool mecha.cut CUT
+1 E at (1221, 672) region (967, 788) over UI False under the mouse Part
+   held: ('Part', 'CUT', True) tool now CUT
+   placed at (-0.885, 0.183, -0.0) wanted (-0.8999999761581421, 0.20000000298023224, 0.0) rot same True
+   Return: running False tool CUT
+2 corner card rows ['STYLE', 'NAV', 'VIEW', '3D MOUSE'] Parts item True
+   Parts on True; ndof through the operator: {'FINISHED'} turned 9.00 deg, origin moved 0.00000, active Part
+   View again: True
+3 legend box (79, 367, 802, 308) rows 9
+   folded True (79, 367, 127, 66) rows 1
+4 press PRESS MCH_BUILTIN_M_OCTAGON PLATE LINE
+   plate line MCH_PlateLine: surface Sphere points 18 verts 144 faces 148 non-manifold 0 radius 1.274..1.739 (sphere 1.3)
+   press: ['Sphere_Plate']
+shot 1_press_plate_line.png True
+5 cut box: Cut: CutBox faces 6 -> 35
+   tool mecha.concept_move CMOVE
+   after the drag: invoke 1 apply 1 verts 1103 faces 1445 non-manifold 0 slivers 38 top z 1.270 (was 0.800, faces 35)
+shot 2_concept_move_cut_box.png True
+PASS 1 E in the Cut tool holds the part under the mouse; LMB on the slab puts it there (rotation kept); Return keeps; the Cut tool stays
+PASS 2 corner card 3D MOUSE: Parts (real click) - a 3D-mouse event turns the selected part about its origin in the Cut tool; View again
+PASS 3 the key legend card folds to its title line on a real click (and stays foldable)
+PASS 4a Press + Plate, Line: the stamp's section laid along the sphere (a live swept part standing on the surface)
+PASS 4b Press + Plate, press: the stamp as an Armor Plate on the sphere
+PASS 5 Concept Move on a part cut by the Cut tool: the pull makes a grid bump - refined faces, no fan of slivers, manifold
+RESULT 6 / 6

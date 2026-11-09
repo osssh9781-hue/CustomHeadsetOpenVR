@@ -27,7 +27,7 @@ RING_COL = (1.0, 0.62, 0.15, 0.95)        # the Move family's orange
 HIT_COL = (0.35, 0.8, 1.0, 0.95)
 NAV_TYPES = {'MIDDLEMOUSE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'WHEELINMOUSE', 'WHEELOUTMOUSE', 'TRACKPADPAN',
              'TRACKPADZOOM', 'MOUSEROTATE', 'MOUSESMARTZOOM', 'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE'}
-CONFIRM_TYPES = {'RET', 'NUMPAD_ENTER', 'SPACE', 'RIGHTMOUSE'}
+CONFIRM_TYPES = {'RET', 'NUMPAD_ENTER', 'SPACE', 'RIGHTMOUSE', 'E'}   # (E: the key that started a hold in any tool ends it too)
 ACTIVE = [None]       # the running operator (tests / the real-window check look here)
 _DRAW = [None]
 
@@ -52,7 +52,8 @@ class MCH_PG_Smart(bpy.types.PropertyGroup):
         ('OFF', 'Off', 'The 3D mouse only turns the part'),
         ('NORMAL', 'Normal', 'Pushing / pulling the 3D mouse slides the part along the normal of the surface it was '
                              'last put on (up / down from it)'),
-        ('FREE', 'Free', 'The 3D mouse also slides the part along the axes of the view')), default='OFF', update=_redraw)
+        ('FREE', 'Free', 'The 3D mouse also slides the part along the axes of the view')), default='FREE', update=_redraw)
+    show_help: BoolProperty(name='How to use', default=False, description='Show the short how-to lines')
     push_speed: FloatProperty(name='Push Speed', description='How far a full push moves the part in one second, as '
                               'a share of the view distance', default=0.5, min=0.02, max=5.0)
     lift: FloatProperty(name='Lift', description='The origin is put this far off the surface, along its normal',
@@ -145,6 +146,52 @@ def selectable(ob):
         return False
 
 
+def ndof_apply(ob, data, st, rv3d, last_normal=None):
+    """One 3D-mouse motion event on ``ob``: turned about its ORIGIN (View / World axes, Speed, Invert) and, with Push
+    on, slid - Normal: along ``last_normal`` (the surface it was last put on; none known: as Free), Free: along the view's
+    axes.  Returns (radians turned, world step)."""
+    mode = getattr(st, 'axes', 'VIEW')
+    speed = getattr(st, 'speed', 1.0)
+    invert = getattr(st, 'invert', False)
+    push = getattr(st, 'push', 'FREE')
+    view = rv3d.view_matrix if rv3d is not None else None
+    rot = Vector(data.rotation)
+    dt = float(getattr(data, 'time_delta', 0.0) or 0.0)
+    m = ob.matrix_world
+    ang = 0.0
+    if rot.length > 1e-9:
+        axis = turn_axis(rot, mode, view)
+        ang = turn_angle(rot, dt, speed, invert)
+        m = rotate_about(m, axis, ang, m.translation)
+    step = Vector((0.0, 0.0, 0.0))
+    if push != 'OFF':
+        tr = Vector(data.translation)
+        if tr.length > 1e-9:
+            dtc = min(dt if dt > 0.0 else 1.0 / 60.0, 0.1)
+            dist = (rv3d.view_distance if rv3d is not None else 1.0) * getattr(st, 'push_speed', 0.5) * dtc
+            if push == 'NORMAL' and last_normal is not None:
+                step = Vector(last_normal) * (tr.y * dist)       # pull the cap up = up the normal, push down = down
+            else:
+                step = turn_axis(tr, 'VIEW', view) * dist
+            m = m.copy()
+            m.translation = m.translation + step
+    ob.matrix_world = m
+    return ang, step
+
+
+def ndof_parts_on(context):
+    """0.24.124 the corner card's 3D MOUSE: Parts - the 3D mouse drives the selected part in any tool."""
+    return bool(getattr(context.window_manager, 'mch_ndof_parts', False))
+
+
+def mecha_workspace(context):
+    try:
+        from . import tool_state as ts
+        return ts.is_mecha_workspace(context.workspace)
+    except (AttributeError, ReferenceError, ImportError):
+        return False
+
+
 # ---- the operator -----------------------------------------------------------------------------------------------------
 
 def _draw(op, context):
@@ -199,6 +246,9 @@ class MCH_OT_smart_move(bpy.types.Operator):
     bl_label = 'Smart Move'
     bl_options = {'UNDO'}          # (no REGISTER: a redo would undo the hold and have nothing to redo)
 
+    # 0.24.124 (user: "스마트 무브는 모든 툴에 넣어줘") E in any Mecha tool: the part under the mouse, else the selected one
+    from_key: BoolProperty(default=False, options={'SKIP_SAVE', 'HIDDEN'})
+
     @classmethod
     def poll(cls, context):
         return context.area is not None and context.area.type == 'VIEW_3D' and context.mode == 'OBJECT'
@@ -211,20 +261,35 @@ class MCH_OT_smart_move(bpy.types.Operator):
         self.turned = 0.0
         self.prev_sel = []
         self.prev_active = ''
+        self.tool0 = 'SMART'
+        self.t_start = 0.0
 
     def invoke(self, context, event):
+        import time
         self._setup()
         xy = (event.mouse_region_x, event.mouse_region_y)
+        over = False
         try:
             from . import quick_hud
-            if quick_hud.over_ui(context, *xy):
-                return {'PASS_THROUGH'}
+            over = quick_hud.over_ui(context, *xy)
         except (AttributeError, ImportError, TypeError):
             pass
-        hit = hit_under(context, xy)
-        if hit is None or not selectable(hit[2]):
+        if over and not self.from_key:
+            return {'PASS_THROUGH'}
+        if self.from_key and not mecha_workspace(context):
+            return {'PASS_THROUGH'}             # (E outside MECHA LAB stays Blender's)
+        ob = self._target_for(context, xy, over)
+        if ob is None:
+            if self.from_key:
+                self.report({'INFO'}, 'Smart Move: put the mouse on a part (or select one) and press E')
+                return {'CANCELLED'}
             return {'PASS_THROUGH'}             # empty space / nothing to hold: Blender's click goes on
-        ob = hit[2]
+        try:
+            from . import tool_state as ts
+            self.tool0 = ts.effective_tool(context)
+        except (AttributeError, KeyError, TypeError, ImportError):
+            self.tool0 = 'SMART'
+        self.t_start = time.perf_counter()
         self.ob_name = ob.name
         self.orig = ob.matrix_world.copy()
         try:
@@ -246,6 +311,21 @@ class MCH_OT_smart_move(bpy.types.Operator):
             ACTIVE[0] = None
             return {'CANCELLED'}
         return {'RUNNING_MODAL'}
+
+    def _target_for(self, context, xy, over=False):
+        """The part a press (the Smart Move tool) or E (any tool) holds: the mesh under the mouse; with E and nothing
+        under the mouse (or the mouse on the drawn UI) the selected active part.  None: nothing to hold."""
+        hit = None if over else hit_under(context, xy)
+        ob = hit[2] if hit is not None and selectable(hit[2]) else None
+        if ob is None and self.from_key:
+            try:
+                act = context.view_layer.objects.active
+                if act is not None and act.type in {'MESH', 'CURVE', 'EMPTY', 'FONT', 'SURFACE', 'META'} \
+                        and not act.hide_get() and act.select_get():
+                    ob = act
+            except (AttributeError, RuntimeError, ReferenceError):
+                ob = None
+        return ob
 
     def _hook(self, context):
         if _DRAW[0] is None:
@@ -271,10 +351,12 @@ class MCH_OT_smart_move(bpy.types.Operator):
         st = getattr(context.scene, 'mch_smart', None)
         axes = getattr(st, 'axes', 'VIEW').title()
         try:
+            push = getattr(st, 'push', 'FREE')
             context.area.header_text_set(
                 f'Smart Move  |  {self.ob_name}  |  LMB on a surface: put it there (origin, same rotation)  |  '
-                f'3D mouse: turn about the origin ({axes} axes, speed {getattr(st, "speed", 1.0):.2g})  |  '
-                'Enter / Space / RMB: keep   Esc: put back   MMB / wheel: view')
+                f'3D mouse: turn about the origin ({axes} axes, speed {getattr(st, "speed", 1.0):.2g})'
+                + ('' if push == 'OFF' else f', push: {push.title()}')
+                + '  |  Enter / Space / RMB' + (' / E' if self.from_key else '') + ': keep   Esc: put back   MMB / wheel: view')
         except (AttributeError, RuntimeError):
             pass
 
@@ -318,32 +400,9 @@ class MCH_OT_smart_move(bpy.types.Operator):
         if ob is None or data is None:
             return False
         st = getattr(context.scene, 'mch_smart', None)
-        mode = getattr(st, 'axes', 'VIEW')
-        speed = getattr(st, 'speed', 1.0)
-        invert = getattr(st, 'invert', False)
-        push = getattr(st, 'push', 'OFF')
-        rv3d = getattr(context, 'region_data', None)
-        view = rv3d.view_matrix if rv3d is not None else None
-        rot = Vector(data.rotation)
-        dt = float(getattr(data, 'time_delta', 0.0) or 0.0)
-        m = ob.matrix_world
-        if rot.length > 1e-9:
-            axis = turn_axis(rot, mode, view)
-            ang = turn_angle(rot, dt, speed, invert)
-            m = rotate_about(m, axis, ang, m.translation)
-            self.turned += abs(ang)
-        if push != 'OFF':
-            tr = Vector(data.translation)
-            if tr.length > 1e-9:
-                dtc = min(dt if dt > 0.0 else 1.0 / 60.0, 0.1)
-                dist = (rv3d.view_distance if rv3d is not None else 1.0) * getattr(st, 'push_speed', 0.5) * dtc
-                if push == 'NORMAL' and self.last_hit is not None:
-                    step = self.last_hit[1] * (tr.y * dist)       # pull the cap up = up the normal, push down = down
-                else:
-                    step = turn_axis(tr, 'VIEW', view) * dist
-                m = m.copy()
-                m.translation = m.translation + step
-        ob.matrix_world = m
+        ang, _step = ndof_apply(ob, data, st, getattr(context, 'region_data', None),
+                                self.last_hit[1] if self.last_hit is not None else None)
+        self.turned += abs(ang)
         return True
 
     def modal(self, context, event):
@@ -352,11 +411,17 @@ class MCH_OT_smart_move(bpy.types.Operator):
             return self._finish(context, True)
         try:
             from . import tool_state as ts
-            if ts.effective_tool(context) != 'SMART':      # the tool was changed (strip / pie / key): keep as is
+            if ts.effective_tool(context) != self.tool0:   # the tool was changed (strip / pie / key): keep as is
                 return self._finish(context, True)
         except (AttributeError, KeyError, TypeError, ImportError):
             pass
         et, ev = event.type, event.value
+        if getattr(event, 'is_repeat', False):           # (a held E repeats: not a second press)
+            return {'RUNNING_MODAL'}
+        if et == 'E' and ev == 'PRESS':
+            import time
+            if time.perf_counter() - self.t_start < 0.25:  # (the press that started the hold, seen again)
+                return {'RUNNING_MODAL'}
         if et == 'NDOF_MOTION':
             self._ndof(context, event)
             _redraw(None, context)
@@ -382,6 +447,54 @@ class MCH_OT_smart_move(bpy.types.Operator):
         if et == 'ESC' and ev == 'PRESS':
             return self._finish(context, False)
         return {'PASS_THROUGH'}
+
+
+class MCH_OT_smart_ndof(bpy.types.Operator):
+    """3D mouse on the selected part (the corner card's 3D MOUSE: Parts): it turns about its origin and slides, in any
+    tool; with View (default) the 3D mouse moves the view as always"""
+    bl_idname = 'mch.smart_ndof'
+    bl_label = '3D Mouse: Part'
+    bl_options = {'INTERNAL'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.area is not None and context.area.type == 'VIEW_3D' and context.mode == 'OBJECT'
+
+    def invoke(self, context, event):
+        if not ndof_parts_on(context) or ACTIVE[0] is not None or not mecha_workspace(context):
+            return {'PASS_THROUGH'}
+        data = getattr(event, 'ndof_motion', None)
+        ob = getattr(context.view_layer.objects, 'active', None)
+        try:
+            ok = data is not None and ob is not None and ob.select_get() and not ob.hide_get()
+        except (AttributeError, RuntimeError, ReferenceError):
+            ok = False
+        if not ok:
+            return {'PASS_THROUGH'}
+        st = getattr(context.scene, 'mch_smart', None)
+        ndof_apply(ob, data, st, getattr(context, 'region_data', None))
+        if getattr(data, 'progress', '') == 'FINISHING':          # one undo step per gesture
+            try:
+                bpy.ops.ed.undo_push(message='3D Mouse Move')
+            except (RuntimeError, AttributeError):
+                pass
+        _redraw(None, context)
+        return {'FINISHED'}
+
+
+class MCH_OT_ndof_parts(bpy.types.Operator):
+    """What the 3D mouse drives: the view (as always) or the selected part (turned about its origin, slid), in any tool"""
+    bl_idname = 'mch.ndof_parts'
+    bl_label = '3D Mouse: View / Parts'
+    bl_options = {'INTERNAL'}
+
+    on: BoolProperty(default=True)
+
+    def execute(self, context):
+        context.window_manager.mch_ndof_parts = bool(self.on)
+        self.report({'INFO'}, '3D mouse: ' + ('the selected part (any tool)' if self.on else 'the view'))
+        _redraw(None, context)
+        return {'FINISHED'}
 
 
 # ---- the tool ----------------------------------------------------------------------------------------------------------
@@ -413,10 +526,20 @@ def draw(layout, context):
     if st is None:
         return
     box = layout.box()
-    box.label(text='Smart Move', icon='OBJECT_ORIGIN')
-    col = box.column(align=True)
-    col.label(text='Click a part: hold it.  Click a surface: its origin goes there.')
-    col.label(text='3D mouse: turn about the origin.  Enter / RMB keep, Esc back.')
+    row = box.row(align=True)
+    row.label(text='Smart Move', icon='OBJECT_ORIGIN')
+    row.prop(st, 'show_help', text='', icon='TRIA_DOWN' if st.show_help else 'TRIA_RIGHT', emboss=False)
+    if st.show_help:                               # 0.24.124 (user: "기능 설명은 접을 수 있게") folded by default
+        col = box.column(align=True)
+        col.label(text='Click a part: hold it.  Click a surface: its origin goes there.')
+        col.label(text='3D mouse: turn about the origin.  Enter / RMB keep, Esc back.')
+        col.label(text='E in any tool: hold the part under the mouse (or the selected one).')
+    wm = context.window_manager
+    if hasattr(wm, 'mch_ndof_parts'):
+        row = box.row(align=True)
+        row.label(text='3D Mouse')
+        row.prop(wm, 'mch_ndof_parts', text='View', toggle=True, invert_checkbox=True)
+        row.prop(wm, 'mch_ndof_parts', text='Parts', toggle=True)
     row = box.row(align=True)
     row.label(text='Turn Axes')
     row.prop(st, 'axes', expand=True)
@@ -446,13 +569,16 @@ def top_bar_groups(context, tool):
     return [('Turn', turn), ('Push', push), ('Place', [_mini('Lift', st, 'lift', 140)])]
 
 
-CLASSES = (MCH_PG_Smart, MCH_OT_smart_move)
+CLASSES = (MCH_PG_Smart, MCH_OT_smart_move, MCH_OT_smart_ndof, MCH_OT_ndof_parts)
 
 
 def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Scene.mch_smart = bpy.props.PointerProperty(type=MCH_PG_Smart)
+    bpy.types.WindowManager.mch_ndof_parts = BoolProperty(
+        name='3D Mouse: Parts', default=False, update=_redraw,
+        description='The 3D mouse drives the selected part (turn about its origin, push) in any tool; off = the view')
     try:
         bpy.utils.register_tool(MCH_TOOL_smart_move, after={'mecha.silhouette_move'}, group=False)
     except (ValueError, RuntimeError, KeyError):
@@ -474,10 +600,11 @@ def unregister():
             pass
         _DRAW[0] = None
     ACTIVE[0] = None
-    try:
-        del bpy.types.Scene.mch_smart
-    except (AttributeError, RuntimeError):
-        pass
+    for owner, name in ((bpy.types.Scene, 'mch_smart'), (bpy.types.WindowManager, 'mch_ndof_parts')):
+        try:
+            delattr(owner, name)
+        except (AttributeError, RuntimeError):
+            pass
     for c in reversed(CLASSES):
         try:
             bpy.utils.unregister_class(c)

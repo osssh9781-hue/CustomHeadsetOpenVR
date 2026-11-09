@@ -1913,7 +1913,8 @@ def _build_sweep_bmesh(data, p):
     if closed:                                             # the seam vertex is an inner vertex for the corner passes
         path = [path[-1]] + path + [path[0]]
         off = 1
-    if len(path) > 3:
+    surface = bool(data.get('surface'))                   # 0.24.124 a plate line laid on a part: every point stays
+    if len(path) > 3 and not surface:
         # 0.24.114 a hand-drawn (smoothed) corner = one corner (on the dense stroke: the legs' lines are true), then
         # straight runs = single segments.  0.24.118 piece by piece (split at the joints, which stay put): a piece
         # drawn later never changes how an earlier piece was simplified
@@ -1954,7 +1955,10 @@ def _build_sweep_bmesh(data, p):
     # (U across, V up) per station: Each View = every piece's drawing-view normal, blended across the joints;
     # Bend (or old data) = carried along with the least twist like a bent bar
     bend = getattr(p, 'line_up', 'VIEW') == 'BEND'
-    st_ups = blend_ups(stations, orig, ups, data.get('joints', ()), w_, closed) if (ups is not None and not bend) else None
+    if surface and ups is not None:                        # 0.24.124 every ring stands on the surface normal there
+        st_ups = nearest_attrs(stations, orig, ups)
+    else:
+        st_ups = blend_ups(stations, orig, ups, data.get('joints', ()), w_, closed) if (ups is not None and not bend) else None
     frames = sweep_frames(stations, st_ups, closed)
     width, height = max(1e-5, p.section_width), max(1e-5, p.height)
     base_angle, twist, taper = p.section_rotation, p.section_twist, p.section_taper
@@ -3653,7 +3657,8 @@ def sketch_tool_ok(context):
     if tool == 'BASE':
         return True
     st = getattr(context.scene, 'mch_press', None)
-    return tool == 'PRESS' and st is not None and getattr(st, 'draw_mode', 'LINE') == 'LASSO'
+    return tool == 'PRESS' and st is not None and getattr(st, 'draw_mode', 'LINE') == 'LASSO' \
+        and getattr(st, 'result', 'CUT') not in {'PLATE', 'CPLATE'}          # (0.24.124 a plate lasso: not this sketch)
 
 
 def _sketch_poll(context):
