@@ -136,7 +136,7 @@ def in_select(context):
 # -----------------------------------------------------------------------------
 
 
-PIE_SHARED = {'BASE': ('PLATE',), 'RADIAL': ('TUBE',), 'PRIMITIVE': ('CMOVE', 'CPATH', 'SMOVE')}      # pie slot -> extra tools stacked under it
+PIE_SHARED = {'BASE': ('PLATE',), 'RADIAL': ('TUBE',), 'PRIMITIVE': ('CMOVE', 'CPATH', 'SMOVE', 'SMART')}      # pie slot -> extra tools stacked under it
 
 
 class MCH_MT_tool_pie(bpy.types.Menu):

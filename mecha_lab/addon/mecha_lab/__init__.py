@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 24, 122),
+    "version": (0, 24, 123),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
     "description": "Cut, Split, Base Mesh, Boolean, Face Extract, Armor Sculpt, Molding, Cable, Hollow, curve arrays, Mirror",
@@ -17,7 +17,7 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                cloth_wrinkle, last_used, last_op, live_stack, keymap_check, robot_base, detail_stamp, surface_lasso,
                curve_tube, creature_shell, cloth_sim, box_hide, plate_detail, screw_stamp, wrinkle_lines, cloth_drape, lowpoly, fold_patch,
                creature_plate, belt_maker, creature_spike, creature_scales, flower_plate,
-               surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, bg_jobs, quad_remesh, mesh_fix, tool_recent, actions_menu, key_legend, quick_hud, mecha_menu, symmetry, groups, ui_bars, safety_save, lasso_memory, armor_shell, paint_lab, bake_maps, res_parts, final_export, mech_shader,
+               surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, smart_move, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, bg_jobs, quad_remesh, mesh_fix, tool_recent, actions_menu, key_legend, quick_hud, mecha_menu, symmetry, groups, ui_bars, safety_save, lasso_memory, armor_shell, paint_lab, bake_maps, res_parts, final_export, mech_shader,
                creature_shader, my_presets, decals, zones, my_materials, bake_material, color_pick,
                random_shapes, material_overlay, tire_gen, work_scene, press_cut)
 import os
@@ -2082,6 +2082,7 @@ def _register():
     if tool_state.EXPERIMENTAL_CLOTH:  # 0.24.31: the Edit Mode Quad Cloth panel is hidden with the other new cloth
         quad_cloth.register()
     concept_move.register()
+    smart_move.register()               # 0.24.123 Smart Move (after the Move family's tools)
     perforate.register()
     surface_draw.register()
     radial_sym.register()
@@ -2273,6 +2274,7 @@ def _unregister_steps():
         ('radial_sym', radial_sym.unregister),
         ('surface_draw', surface_draw.unregister),
         ('perforate', perforate.unregister),
+        ('smart_move', smart_move.unregister),
         ('concept_move', concept_move.unregister),
         ('quad_cloth', quad_cloth.unregister),
         ('scarf_gen', scarf_gen.unregister),

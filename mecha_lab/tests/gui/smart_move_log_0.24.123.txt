@@ -1,0 +1,14 @@
+tool mecha.smart_move SMART
+1 held: Part selected True active Part
+2 slab: origin (-1.487, -2.521, -0.0) wanted (-1.5, -2.5, 0.0) rot same True scale (1.0, 1.6, 0.6)
+3 ramp: origin (-2.882, 1.621, 1.53) off the aimed point 0.225; in the ramp's space (0.122, -0.126, 1.0) (top face z 0.5 + lift 0.5) normal (-0.5, 0.0, 0.866) rot same True
+shot 1_smart_move_held.png True
+4 ndof: {'RUNNING_MODAL'} turned 9.00 deg about (-0.305, 0.446, 0.841) (view up (-0.305, 0.446, 0.841)) origin moved 0.00000
+5 Return: running False same True
+   Escape: held again True moved to the slab True back True (-2.8818, 1.6212, 1.5301) (-2.8818, 1.6212, 1.5301) running False
+PASS 1 LMB on the part: it is held (the operator runs on it, the part selected)
+PASS 2 LMB on the slab: the origin is at that point, rotation and size unchanged
+PASS 3 Lift 0.2 + LMB on the ramp: the origin 0.2 off the ramp top along its normal, rotation unchanged
+PASS 4 3D-mouse twist (fake event, the same code path): 9 deg about the view up axis through the ORIGIN, the origin stays
+PASS 5 Return keeps (the hold ends, the part stays); hold again + move + Escape puts it back
+RESULT 5 / 5

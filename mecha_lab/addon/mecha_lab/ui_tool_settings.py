@@ -1083,6 +1083,11 @@ def draw_silhouette_move(layout, context):
     concept_move.draw_path(layout, context, silhouette=True)
 
 
+def draw_smart_move(layout, context):
+    from . import smart_move
+    smart_move.draw(layout, context)
+
+
 def draw_perforate(layout, context):
     from . import perforate
     perforate.draw(layout, context)
@@ -1102,7 +1107,7 @@ DRAWERS = {
     'RSYM': draw_radial_sym,
     'SDRAW': draw_surface_draw,
     'PERF': draw_perforate,
-    'CMOVE': draw_concept_move, 'CPATH': draw_path_move, 'SMOVE': draw_silhouette_move,
+    'CMOVE': draw_concept_move, 'CPATH': draw_path_move, 'SMOVE': draw_silhouette_move, 'SMART': draw_smart_move,
     'CUT': draw_cut, 'SPLIT': draw_split, 'BOOLEAN': draw_boolean, 'FUSE': draw_fuse,
     'MASK': draw_mask, 'DRAW': draw_draw, 'ARRAY': draw_array, 'EDIT': draw_edit,
     'LIBRARY': draw_library, 'REMESH': draw_remesh, 'POSE': draw_pose,

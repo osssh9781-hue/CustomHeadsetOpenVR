@@ -1984,7 +1984,7 @@ class MCH_PT_main(bpy.types.Panel):
         if tool_id in target_rules.PICKING:      # 0.24.34 the Cut panel's Targets row, in every tool
             from . import ui_tool_settings
             ui_tool_settings.draw_targets(layout, context)
-        if tool_id in target_rules.PICKING | target_rules.OWN_ROW - {'CMOVE', 'CPATH', 'SMOVE'}:
+        if tool_id in target_rules.PICKING | target_rules.OWN_ROW - target_rules.MOVE_TOOLS:
             from . import ui_tool_settings              # 0.24.36 Slow Line (Lazy Mouse) on / off, every drawing tool
             ui_tool_settings.draw_slow_line(layout, context)
         drawer = _drawers().get(tool_id)

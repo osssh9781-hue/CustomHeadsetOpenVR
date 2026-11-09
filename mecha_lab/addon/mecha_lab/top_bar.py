@@ -56,7 +56,7 @@ def groups(context, tool):
         out.append(('Resolution', [_mini('Res', scene.mch_settings, 'geo_res', 120),
                                    _cell('seg', 'Apply to Parts', action=('op', 'mch.apply_resolution', {}))]))
     draw = [_cell('seg', label, on, ('mode', key)) for key, label, on in mecha_menu.draw_modes(context)]
-    drawing = tool in target_rules.PICKING | target_rules.OWN_ROW - {'CMOVE', 'CPATH', 'SMOVE'}
+    drawing = tool in target_rules.PICKING | target_rules.OWN_ROW - target_rules.MOVE_TOOLS
     if drawing:
         draw.append(_seg('Slow Line', brush, 'stab_enable'))
         if brush.stab_enable:
@@ -106,7 +106,13 @@ def groups(context, tool):
                         for sid, label, _d, stem, _f in ts.SHAPES if sid != 'CUSTOM']))
         out[1:1] = lasso_groups(brush, tool) if brush.shape != 'CUSTOM' else []
         # 0.24.122 (user: "프레스 컷에 라쏘 모드도") Line = the stamp swept along a drag, Lasso = the Base Mesh tool's lasso
-        out.append(('Draw', _enum_segs(pr, 'draw_mode', (('LINE', 'Line'), ('LASSO', 'Lasso')))))
+        # - at the front of the one Draw group (0.24.123: a second group named Draw hid the first one's Sketch / Slow Line)
+        mode_segs = _enum_segs(pr, 'draw_mode', (('LINE', 'Line'), ('LASSO', 'Lasso')))
+        i_draw = next((i for i, g in enumerate(out) if g[0] == 'Draw'), None)
+        if i_draw is None:
+            out.append(('Draw', mode_segs))
+        else:
+            out[i_draw] = ('Draw', mode_segs + list(out[i_draw][1]))
         out.append(('Floor', _enum_segs(pr, 'floor_mode', (('FOLLOW', 'Follow'), ('LEVEL', 'Level'), ('FLAT', 'Flat')))))
         out.append(('Press', _enum_segs(pr, 'result', (('CUT', 'Cut'), ('SPLIT', 'Split'))) + [
             (_cell('seg', 'Drawn', True, ('enum', False), pr, 'drawn') if pr.drawn else
@@ -150,6 +156,9 @@ def groups(context, tool):
             out.append(('', [_seg('Auto Apply', st, 'auto_apply')]))
     out += edge_groups(context, tool)
     out += concept_groups(context, tool)
+    if tool == 'SMART':                                        # 0.24.123 Smart Move: turn / push / lift
+        from . import smart_move
+        out += smart_move.top_bar_groups(context, tool)
     from .workspace_ui import _ORTHO_LOCK_KEY
     locked = bool(context.workspace and context.workspace.get(_ORTHO_LOCK_KEY, False))
     out.append(('', [_cell('seg', 'Ortho', locked, ('op', 'mch.ortho_lock', {}))]))
