@@ -28,7 +28,7 @@ import traceback
 import bmesh
 import bpy
 import gpu
-from bpy.props import EnumProperty, FloatProperty, IntProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty
 from gpu_extras.batch import batch_for_shader
 from mathutils import Vector
 from mathutils.geometry import tessellate_polygon
@@ -1838,11 +1838,19 @@ class StrokeLogic:
         # point clicks and double-click confirm.)
         # Another Mecha tool was picked but the toolbar kept this drawing tool:
         # do not cut; let the click do normal selection.
-        try:
-            if ts.effective_tool(context) != self.mode:
+        if getattr(self, 'press_lasso', False):
+            # 0.24.122 (user: "프레스 컷에 라쏘 모드 - 베이스 메쉬 기존 라쏘처럼") the Press Cut tool binds this stroke
+            # (mode BASE) ahead of its own press: it runs only while Press Cut is in Draw: Lasso mode
+            st_ = getattr(context.scene, 'mch_press', None)
+            if st_ is None or getattr(st_, 'draw_mode', 'LINE') != 'LASSO':
                 return {'PASS_THROUGH'}
-        except (AttributeError, KeyError, TypeError):
-            pass
+        else:
+            try:
+                # ``force``: another Mecha tool starts this stroke on purpose - the active tool need not be this mode's
+                if not getattr(self, 'force', False) and ts.effective_tool(context) != self.mode:
+                    return {'PASS_THROUGH'}
+            except (AttributeError, KeyError, TypeError):
+                pass
         region = context.region
         if region is None or region.type != 'WINDOW':
             region = next((r for r in context.area.regions if r.type == 'WINDOW'), None)
@@ -2797,6 +2805,11 @@ class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
         ('DETAIL2', 'Plate Detail 2', 'Smooth rise on the surface under the outline'),
         ('DETAIL3', 'Plate Detail 3', 'Flat raised panel (no trim layers) on the surface under the outline')],
         default='CUT')
+    force: BoolProperty(name='Force', default=False, options={'SKIP_SAVE', 'HIDDEN'},
+                        description='Run this mode even though another Mecha tool is active')
+    press_lasso: BoolProperty(name='Press Cut Lasso', default=False, options={'SKIP_SAVE', 'HIDDEN'},
+                              description='Bound in the Press Cut tool: runs only while Press Cut is in Draw: Lasso '
+                                          'mode, else the press falls through to the Press tool')
 
     @classmethod
     def poll(cls, context):

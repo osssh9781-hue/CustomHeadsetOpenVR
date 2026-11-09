@@ -99,10 +99,14 @@ def groups(context, tool):
     if tool == 'PRESS' and hasattr(scene, 'mch_press'):          # 0.24.95 Press Cut: the stamp and how it presses
         pr = scene.mch_press
         # (user: "원래 쓰던 라쏘랑 스케치 다 넣어 줘") Shift + draw: the stamp drawn with the shared shapes
-        out.insert(0, ('Shift+Draw', [_cell('ibtn', label, brush.shape == sid or (sid == 'STROKE' and brush.shape == 'CUSTOM'),
-                                            ('shape', sid), icon='png:' + stem, width=ICON)
-                                      for sid, label, _d, stem, _f in ts.SHAPES if sid != 'CUSTOM']))
+        lasso_on = getattr(pr, 'draw_mode', 'LINE') == 'LASSO'          # 0.24.122 the shapes draw the lasso itself
+        out.insert(0, ('Shape' if lasso_on else 'Shift+Draw',
+                       [_cell('ibtn', label, brush.shape == sid or (sid == 'STROKE' and brush.shape == 'CUSTOM'),
+                              ('shape', sid), icon='png:' + stem, width=ICON)
+                        for sid, label, _d, stem, _f in ts.SHAPES if sid != 'CUSTOM']))
         out[1:1] = lasso_groups(brush, tool) if brush.shape != 'CUSTOM' else []
+        # 0.24.122 (user: "프레스 컷에 라쏘 모드도") Line = the stamp swept along a drag, Lasso = the Base Mesh tool's lasso
+        out.append(('Draw', _enum_segs(pr, 'draw_mode', (('LINE', 'Line'), ('LASSO', 'Lasso')))))
         out.append(('Floor', _enum_segs(pr, 'floor_mode', (('FOLLOW', 'Follow'), ('LEVEL', 'Level'), ('FLAT', 'Flat')))))
         out.append(('Press', _enum_segs(pr, 'result', (('CUT', 'Cut'), ('SPLIT', 'Split'))) + [
             (_cell('seg', 'Drawn', True, ('enum', False), pr, 'drawn') if pr.drawn else

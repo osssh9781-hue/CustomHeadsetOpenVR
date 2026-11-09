@@ -1,5 +1,24 @@
 # CHANGELOG
 
+## 0.24.122 — Press Cut 에 Lasso 모드 (2026-11-09)
+
+- (사용자: "프레스 컷에 라쏘 모드도 만들어 줘 — 걍 베이스 메쉬 기존 라쏘처럼 작동하면 돼") Press 상단 바와 옆 패널에
+  **Draw: Line / Lasso** 전환. **Lasso** 에서는 드래그가 **Base Mesh 도구의 라쏘 그 자체**입니다 — 같은 모양(Lasso · Curve ·
+  Rectangle · Circle · Ellipse · Free Draw · Sketch), 같은 코너 옵션, Alt 도 Base Mesh 와 같이, 결과도 같은 Base Mesh 부품.
+  구현은 Press 의 LMB 가 Base Mesh 도구가 쓰는 `mch.cut_stroke`(mode BASE)를 그대로 시작시키는 것이라 동작이 갈릴 수 없습니다.
+  Lasso 모드에서는 커서도 Base Mesh 도구의 커서로 바뀌고, 상단 바의 모양 줄 이름이 "Shift+Draw" 대신 "Shape" 가 됩니다.
+  Shift + 그리기(스탬프 그리기)는 두 모드 모두 그대로. Line 모드는 바뀐 것이 없습니다.
+- 구현 메모: 처음에는 Press 의 LMB 오퍼레이터 안에서 Base Mesh 스트로크를 중첩 호출했는데, 실창에서 중첩 호출 뒤에 Blender 가
+  넣는 "누른 자리" 이동 이벤트가 첫 실제 이동 뒤에 끼어 자유 곡선 첫머리가 되감겨 "자기 교차" 가 났습니다. 그래서 중첩 호출을
+  버리고 Press 키맵에 `mch.cut_stroke`(mode BASE, `press_lasso`)를 Press 의 LMB **앞에** 직접 묶었습니다 — Lasso 모드가 아니면
+  통과(PASS_THROUGH)해 Press 가 받습니다. Base Mesh 도구와 완전히 같은 이벤트 흐름입니다.
+- 테스트(Blender 5.2.3 에서 실행): 새 test_v02529 9/9(기본값 Line, Lasso 모드에서 Press 누르기 통과, 키맵 순서 · 게이트 · 스케치
+  키 · 커서 · 상단 바 · 옆 패널 · 키 안내), test_v02520 30/30 · test_v02527 50/50.
+- 실제 창(Blender 5.2.3, 진짜 마우스, 새 `tests/gui/press_lasso_real_window.py`, 로그 `tests/gui/press_lasso_log_0.24.122.txt`, 그림
+  `dist/press_lasso_0.24.122.png`): Lasso 모드 + Free Draw 로 빈 곳에 원을 그리고 Enter → Base Mesh 부품(2.32 × 2.32 × 0.2, 50면) ·
+  Lasso 모양으로 네 번 클릭 + 더블클릭 + Enter → 사각 부품(1.5 × 1.4) · 부품 위에 윤곽을 그리고 Alt+Enter → 파임(50 → 77면) ·
+  Line 모드로 돌아와 드래그 → 선 — 4/4.
+
 ## 0.24.121 — 모서리 홈 · 고리 닫힘 · 커스텀 스탬프 회전 · Pick · 끝 마감 · Detail · 엔드 테이퍼 − (2026-11-09)
 
 - (사용자 오각형 그림: "이렇게 잘려 왜 그럴까?") Sharp 꺾임의 마이터 링은 꺾임 **안쪽**으로 (단면이 안쪽으로 뻗은 폭) ×

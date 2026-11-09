@@ -61,6 +61,12 @@ class MCH_PG_Press(bpy.types.PropertyGroup):
                         description='The stamp: a saved lasso, a built-in shape or an imported PNG')
     drawn: BoolProperty(name='Drawn Shape', default=False, update=_redraw,
                         description='The stamp is the outline you drew with Shift + drag (Save Shape keeps it)')
+    # 0.24.122 (user: "프레스 컷에 라쏘 모드도 만들어 줘 - 걍 베이스 메쉬 기존 라쏘처럼 작동하면 돼")
+    draw_mode: EnumProperty(name='Draw', items=(
+        ('LINE', 'Line', 'A drag draws a Base Mesh line with the stamp as its section (Alt: a Line Cut); hold = Grow'),
+        ('LASSO', 'Lasso', 'A drag is the Base Mesh tool\'s own lasso: the closed shape becomes a part, exactly as in '
+                           'the Base Mesh tool (Alt as there); the top bar shapes and corners apply')),
+        default='LINE', update=_redraw)
     size: FloatProperty(name='Size', default=60.0, min=4.0, max=2000.0, subtype='PIXEL', update=_redraw,
                         description='Stamp radius on screen ([ / ] change it)')
     rotation: FloatProperty(name='Rotation', default=0.0, subtype='ANGLE', update=_redraw, step=10,
@@ -1266,6 +1272,11 @@ def draw_contact(context, loops_px, center_px, offset=(0.0, 0.0)):
         gpu.state.blend_set(old_blend)
 
 
+def lasso_mode(st):
+    """0.24.122 Press in Lasso mode: a drag is the Base Mesh tool's lasso stroke."""
+    return getattr(st, 'draw_mode', 'LINE') == 'LASSO'
+
+
 def draw_cursor(context, xy):
     """Idle stamp preview at the cursor (WorkSpaceTool.draw_cursor, window px)."""
     if TURNING[0]:
@@ -1274,6 +1285,9 @@ def draw_cursor(context, xy):
         import gpu
         from . import cut_engine as ce
         st = context.scene.mch_press
+        if lasso_mode(st):                      # 0.24.122 Lasso mode: the Base Mesh tool's cursor, not the stamp
+            ce.draw_stamp_cursor(context, xy)
+            return
         loops = stamp_loops(context, (float(xy[0]), float(xy[1])), st)
         sh = ce._shader()
         gpu.state.blend_set('ALPHA')
@@ -1673,6 +1687,11 @@ class MCH_OT_press_unified(bpy.types.Operator):
         return context.mode == 'OBJECT' and context.area is not None and context.area.type == 'VIEW_3D'
 
     def invoke(self, context, event):
+        st_ = getattr(context.scene, 'mch_press', None)
+        if st_ is not None and lasso_mode(st_) and not event.shift:
+            # 0.24.122 (user: "걍 베이스 메쉬 기존 라쏘처럼 작동하면 돼") Lasso mode: the press belongs to the Base
+            # Mesh tool's stroke, bound ahead of this one in the Press keymap - never a line here
+            return {'PASS_THROUGH'}
         region = context.region
         if region is None or region.type != 'WINDOW':
             return {'PASS_THROUGH'}
@@ -2368,6 +2387,9 @@ def draw(layout, context):
         row.prop(st, 'drawn', text='', icon='X', emboss=False)
     else:
         col.label(text='Shift + draw: draw your own stamp', icon='GREASEPENCIL')
+    row = col.row(align=True)                # 0.24.122 Line (the stamp swept) / Lasso (the Base Mesh tool's lasso)
+    row.label(text='Draw')
+    row.prop(st, 'draw_mode', expand=True)
     brush = getattr(context.scene, 'mch_brush', None)
     if brush is not None:                    # (0.24.95 the shared shapes and the Sketch draw the stamp)
         row = col.row(align=True)
@@ -2459,6 +2481,10 @@ def draw(layout, context):
 
 TOOL_KEYMAP = (
     ('mch.quick_hud_press', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'any': True}, None),
+    # 0.24.122 Draw: Lasso - the press IS the Base Mesh tool's stroke (it steps aside in Line mode)
+    ('mch.cut_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, {'properties': [('mode', 'BASE'), ('press_lasso', True)]}),
+    ('mch.cut_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'alt': True},
+     {'properties': [('mode', 'BASE'), ('press_lasso', True)]}),
     ('mch.press_unified', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, None),
     ('mch.press_unified', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'alt': True}, None),
     # (0.24.95 Shift + draw: the stamp drawn with the shared shapes - Lasso, Curve Lasso, Rectangle, Circle, Ellipse,
@@ -2470,6 +2496,14 @@ TOOL_KEYMAP = (
     ('mch.press_adjust', {'type': 'RIGHT_BRACKET', 'value': 'PRESS'}, {'properties': [('size', 1.15)]}),
     ('mch.stamp_turn', {'type': 'R', 'value': 'PRESS'}, None),           # (R + mouse: turn, fine)
     ('mch.stamp_turn', {'type': 'R', 'value': 'PRESS', 'shift': True}, {'properties': [('reset', True)]}),
+    # 0.24.122 Lasso mode is the Base Mesh tool's lasso, Sketch First included: its keys (they poll on the orange
+    # sketch, so in Line mode they step aside for the stamp sketch's Enter below)
+    ('mch.base_sketch_key', {'type': 'RET', 'value': 'PRESS'}, None),
+    ('mch.base_sketch_key', {'type': 'NUMPAD_ENTER', 'value': 'PRESS'}, None),
+    ('mch.base_sketch_key', {'type': 'RET', 'value': 'PRESS', 'alt': True}, {'properties': [('cutter', True)]}),
+    ('mch.base_sketch_key', {'type': 'NUMPAD_ENTER', 'value': 'PRESS', 'alt': True}, {'properties': [('cutter', True)]}),
+    ('mch.base_sketch_clear', {'type': 'ESC', 'value': 'PRESS'}, None),
+    ('mch.base_sketch_undo', {'type': 'BACK_SPACE', 'value': 'PRESS'}, None),
 ) + lasso_sketch.KEYMAP + (          # (Sketch: Enter = the stamp, Backspace = the last outline, Esc = clear)
     ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),
     ('mch.brush_resize', {'type': 'F', 'value': 'PRESS'}, None),        # (F + mouse = stamp size)

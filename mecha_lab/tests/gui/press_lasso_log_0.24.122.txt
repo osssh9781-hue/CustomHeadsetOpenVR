@@ -1,0 +1,20 @@
+Press draw mode LASSO brush shape STROKE base sketch True profile_sweep OFF line_attach False
+  [stroke pts] n=51 head=[(882, 715), (881, 695), (877, 676), (871, 658), (862, 640)] tail=[(877, 754), (881, 735), (882, 715), (881, 695), (877, 676)] lazy={} smooth=2 simplify=1.0
+  [_execute_closed] mode=BASE shape=STROKE -> Sketch: added (1 added, 0 subtracted, 1 piece(s)) | Enter: make mesh, Alt+Enter: cut into mesh, Esc: clear
+  sketch after the drag: True
+  after drag: sketch data False LAST_LOOPS False objects ['MCH_Base']
+1 lasso -> MCH_Base: verts 96 faces 50 closed True dims (2.32, 2.32, 0.2) line? False
+  [stroke pts] n=4 head=[(1116, 869), (1309, 869), (1309, 1049), (1116, 1049)] tail=[(1116, 869), (1309, 869), (1309, 1049), (1116, 1049)] lazy={} smooth=2 simplify=1.0
+  [_execute_closed] mode=BASE shape=LASSO -> Sketch: added (1 added, 0 subtracted, 1 piece(s)) | Enter: make mesh, Alt+Enter: cut into mesh, Esc: clear
+1b polygon lasso (clicks + double-click) -> MCH_Base.001: faces 6 dims (1.5, 1.4, 0.2) closed True
+  [stroke pts] n=26 head=[(787, 715), (785, 701), (780, 687), (771, 676), (760, 667)] tail=[(771, 754), (780, 743), (785, 729), (787, 715), (785, 701)] lazy={} smooth=2 simplify=1.0
+  [_execute_closed] mode=BASE shape=STROKE -> Sketch: added (1 added, 0 subtracted, 1 piece(s)) | Enter: make mesh, Alt+Enter: cut into mesh, Esc: clear
+2 outline over the part + Alt+Enter: faces 50 -> 77 new objects [] closed True
+  [perform_base] -> Base Mesh created: MCH_Base.002 (Line Alpha, 45 verts, closed solid) | Sweep section: MCH_BUILTIN_PENTAGON
+3 Line mode drag -> MCH_Base.002 line? True
+shot 1_press_lasso.png True
+PASS 1 Lasso mode: a closed lasso on empty space makes a Base Mesh part (not a line), closed
+PASS 1b Lasso shape: four clicks + a double-click make a part, as the Base Mesh tool does
+PASS 2 an outline over the part, Alt+Enter: cut into it (the part changed), as in the Base Mesh tool
+PASS 3 Line mode again: a drag makes a swept line
+RESULT 4 / 4

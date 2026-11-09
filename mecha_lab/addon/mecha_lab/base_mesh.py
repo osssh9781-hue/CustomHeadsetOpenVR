@@ -3645,11 +3645,21 @@ def _draw_sketch():
         pass
 
 
-def _sketch_poll(context):
+def sketch_tool_ok(context):
+    """The Base Mesh sketch keys (Enter / Alt+Enter / Esc / Backspace) work in the Base Mesh tool and - 0.24.122 - in
+    Press Cut's Lasso mode, whose drag is the Base Mesh tool's own lasso (Sketch First included)."""
     from . import tool_state as ts
+    tool = ts.effective_tool(context)
+    if tool == 'BASE':
+        return True
+    st = getattr(context.scene, 'mch_press', None)
+    return tool == 'PRESS' and st is not None and getattr(st, 'draw_mode', 'LINE') == 'LASSO'
+
+
+def _sketch_poll(context):
     try:
         return (context.area is not None and context.area.type == 'VIEW_3D' and
-                ts.effective_tool(context) == 'BASE' and sketch_data(context.scene) is not None)
+                sketch_tool_ok(context) and sketch_data(context.scene) is not None)
     except (AttributeError, KeyError, TypeError):
         return False
 
