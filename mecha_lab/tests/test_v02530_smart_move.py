@@ -42,20 +42,23 @@ st.push = 'OFF'
 tree = pcap.capture(uts.DRAWERS['SMART'], C)
 props = [n.prop for n in pcap.walk(tree) if n.kind == 'prop' and n.prop not in {'show_help', 'mch_ndof_parts', 'turn_single', 'ndof_do', 'show_axes'}
          and not n.prop.startswith('ax_')]
-check('... panel: Turn Axes / Speed / Invert / Push / Lift (Push Speed only with a push; the how-to folded, the 3D Mouse '
-      'View / Parts row)', not tree.opts.get('error') and props == ['axes', 'speed', 'invert', 'push', 'lift']
+check('... panel: Turn Axes / Speed / Push / Lift (Push Speed only with a push; the how-to folded, the 3D Mouse '
+      'View / Parts row; 0.24.127: Invert and the rest moved to the 3D Mouse Settings window)',
+      not tree.opts.get('error') and props == ['axes', 'speed', 'push', 'lift']
       and 'show_help' in [n.prop for n in pcap.walk(tree) if n.kind == 'prop'], (tree.opts.get('error'), props))
 st.push = 'NORMAL'
 tree = pcap.capture(uts.DRAWERS['SMART'], C)
 check('... Push on: the Push Speed row', 'push_speed' in [n.prop for n in pcap.walk(tree) if n.kind == 'prop'])
 groups = sm.top_bar_groups(C, 'SMART')
-check('... top bar: 3D Mouse (Move / Size), Turn (Turntable / View / World / Local, Speed, Invert, One Axis), Push (+ X Y Z, Push Speed), Place (Lift)',
-      [g[0] for g in groups] == ['3D Mouse', 'Turn', 'Push', 'Place'] and [c['label'] for c in groups[1][1]] == ['Turntable', 'View', 'World', 'Local', 'Speed', 'Invert', 'One Axis']
-      and [c['label'] for c in groups[2][1]][3:6] == ['X', 'Y', 'Z'] and [c['label'] for c in groups[0][1]] == ['Move', 'Size']
+check('... top bar: 3D Mouse (Move / Size, Settings...), Turn (Blender / Turntable / View / World / Local, Speed, Invert), Push (Off / Normal / Free, '
+      'Push Speed), Place (Lift) - 0.24.127: X Y Z and One Axis live in the settings window',
+      [g[0] for g in groups] == ['3D Mouse', 'Turn', 'Push', 'Place'] and [c['label'] for c in groups[1][1]] == ['Blender', 'Turntable', 'View', 'World', 'Local', 'Speed', 'Invert']
+      and [c['label'] for c in groups[2][1]][:3] == ['Off', 'Normal', 'Free'] and [c['label'] for c in groups[0][1]] == ['Move', 'Size', 'Settings...']
       and 'Push Speed' in [c['label'] for c in groups[2][1]] and groups[3][1][0]['prop'] == 'lift', groups)
 st.push = 'FREE'
-check('defaults: Turntable axes (0.24.125: "약간 축이 돌아가 있어"), speed 1, no invert, push Free (0.24.124: "밀기도 넣어줘"), lift 0, '
-      'the how-to folded', st.bl_rna.properties['axes'].default == 'TURNTABLE' and st.speed == 1.0 and not st.invert
+check('defaults: Blender axes (0.24.127: "기존 블렌더 화면 이동이랑 똑같이"; 0.24.125 Turntable stays second), speed 1, no invert, '
+      'push Free (0.24.124: "밀기도 넣어줘"), lift 0, the how-to folded',
+      st.bl_rna.properties['axes'].default == 'BLENDER' and st.speed == 1.0 and not st.invert
       and st.bl_rna.properties['push'].default == 'FREE' and st.lift == 0.0 and not st.show_help)
 st.axes = 'VIEW'          # (the checks below drive the View / World mappings explicitly)
 

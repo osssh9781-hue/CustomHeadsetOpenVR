@@ -125,6 +125,11 @@ def _ramp_live_update(self, context):
         pass
 
 
+def _live_changed(self, context):
+    """0.24.127 (defined with the sweep-cut helpers further down; this stub dispatches to it)"""
+    return _live_changed_impl(self, context)
+
+
 class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
     """Scene.mch_base = defaults for new shapes; Object.mch_base = live settings."""
     profile: EnumProperty(name='Profile', items=PROFILE_ITEMS, default='FLAT', update=_rebuild_update)
@@ -288,7 +293,7 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
     bend_axis: FloatProperty(name='Bend Direction', default=0.0, min=math.radians(-90), max=math.radians(90),
                              subtype='ANGLE', update=_rebuild_update,
                              description='Turn the bend direction (0 = along the longest side of the shape)')
-    live: BoolProperty(name='Live', default=False,
+    live: BoolProperty(name='Live', default=False, update=_live_changed,
                        description='Settings rebuild this object (outline stored on the object)')
     outline: StringProperty(default='', options={'HIDDEN'})
     last_error: StringProperty(default='', options={'HIDDEN', 'SKIP_SAVE'})
@@ -2242,9 +2247,12 @@ def sweep_cut(context, frame, local_path, section, width, height, bottom, target
             try:
                 cg.check_target(t)
                 if mode == 'SPLIT':
+                    if is_live_sweep(t):                 # 0.24.127 a split line is no longer rebuilt (two parts now)
+                        t.mch_base.live = False
                     inner, _s = cg.boolean_result(context, t, cutter, 'INTERSECT', cut.solver, cut.hole_tolerant)
                     temp.append(inner)
                 res, _solver = cg.boolean_result(context, t, cutter, 'DIFFERENCE', cut.solver, cut.hole_tolerant)
+                remember_sweep_cut(t, cutter, 'DIFFERENCE')  # 0.24.127 (a live line: the cut stays through rebuilds)
                 temp.append(res)
                 results.append((t, res))
                 if mode == 'SPLIT':
@@ -2746,6 +2754,117 @@ class MCH_OT_base_section_use_alpha(bpy.types.Operator):
             return {'CANCELLED'}
 
 
+SWEEP_CUTS_KEY = 'mch_sweep_cuts'      # 0.24.127 the cuts made on a live swept line (JSON [[cutter mesh name, op], ...])
+
+
+def is_live_sweep(ob):
+    """A live swept line (the Press tool's line / a Base Mesh line) - its mesh is rebuilt from the stored path."""
+    try:
+        return ob is not None and ob.type == 'MESH' and bool(ob.get(SWEEP_KEY)) and getattr(ob, 'mch_base', None) is not None \
+            and ob.mch_base.live
+    except (AttributeError, ReferenceError, RuntimeError):
+        return False
+
+
+def sweep_cuts(ob):
+    """[[cutter mesh name, op], ...] remembered on ``ob``."""
+    try:
+        raw = ob.get(SWEEP_CUTS_KEY)
+        return [list(x) for x in json.loads(raw)] if raw else []
+    except (TypeError, ValueError, AttributeError, ReferenceError):
+        return []
+
+
+def remember_sweep_cut(ob, cutter, op='DIFFERENCE'):
+    """0.24.127 (user: "이거 컷이 안돼" - a cut on a live line vanished at the next rebuild: thickness, Detail, a ring
+    moved, a stroke continued) A cut on a live swept line is remembered - the cutter's mesh, in world space, with the
+    operation - and done again after every rebuild of the line (``rebuild``), so the cut stays while the line is live."""
+    if not is_live_sweep(ob) or cutter is None or op not in {'DIFFERENCE', 'INTERSECT'}:
+        return False
+    try:
+        me = cutter.data.copy()
+        me.transform(cutter.matrix_world)
+        me.name = 'MCH_SweepCut'
+        me.use_fake_user = True                   # (kept through save / reload while the line is live)
+        cuts = sweep_cuts(ob) + [[me.name, op]]
+        ob[SWEEP_CUTS_KEY] = json.dumps(cuts)
+        return True
+    except (AttributeError, RuntimeError, ReferenceError, TypeError):
+        return False
+
+
+def _drop_cut_meshes(names):
+    for name in names:
+        me = bpy.data.meshes.get(name)
+        if me is not None and me.users <= (1 if me.use_fake_user else 0):
+            try:
+                bpy.data.meshes.remove(me)
+            except (RuntimeError, ReferenceError):
+                pass
+
+
+def reset_sweep_cuts(ob, keep):
+    """Back to the remembered cuts ``keep`` (a Press hold cuts again at every depth: only the last one stays)."""
+    try:
+        now = sweep_cuts(ob)
+        kept = {c[0] for c in keep}
+        _drop_cut_meshes([c[0] for c in now if c[0] not in kept])
+        if keep:
+            ob[SWEEP_CUTS_KEY] = json.dumps([list(c) for c in keep])
+        elif SWEEP_CUTS_KEY in ob:
+            del ob[SWEEP_CUTS_KEY]
+    except (AttributeError, ReferenceError, RuntimeError, TypeError):
+        pass
+
+
+def drop_sweep_cuts(ob):
+    """The line is applied (no longer rebuilt): its remembered cutters are not needed any more."""
+    reset_sweep_cuts(ob, [])
+
+
+def _replay_sweep_cuts(ob):
+    """After a rebuild: the remembered cuts again, in order.  One that no longer meets the line (a joint moved far)
+    is skipped.  Returns how many were done."""
+    cuts = sweep_cuts(ob)
+    if not cuts:
+        return 0
+    from . import ramp_edit
+    context = bpy.context
+    done = 0
+    for name, op in cuts:
+        src = bpy.data.meshes.get(name)
+        if src is None:
+            continue
+        tmp = None
+        got = None
+        try:
+            tmp = cg.link_temp_object(context, src.copy(), 'MCH_SweepCut_TEMP')
+            got, _solver = cg.boolean_result(context, ob, tmp, op, 'EXACT', False)
+            if got is not None and len(got.polygons):
+                ramp_edit._copy_into(got, ob.data)
+                done += 1
+        except (cg.CutError, RuntimeError, ReferenceError, TypeError, ValueError) as ex:
+            print('[Mecha Lab] sweep cut not redone:', ex)
+        finally:
+            if got is not None and got.users == 0:
+                try:
+                    bpy.data.meshes.remove(got)
+                except (RuntimeError, ReferenceError):
+                    pass
+            if tmp is not None:
+                cg.remove_object_and_mesh(tmp)
+    if done:
+        ob.data.update()
+    return done
+
+
+def _live_changed_impl(self, context):
+    """0.24.127 a live line applied (live -> off): its remembered cutters go."""
+    ob = self.id_data
+    if isinstance(ob, bpy.types.Object) and not self.live and ob.get(SWEEP_CUTS_KEY):
+        drop_sweep_cuts(ob)
+
+
 def rebuild(ob):
     """Regenerate a live Base Mesh object from its stored outline + settings.  At another Resolution than the
     outline was drawn at, its curved runs are resampled to match (0.24.95: a part made at 100 %, rebuilt at 200 %
@@ -2778,6 +2897,8 @@ def rebuild(ob):
         except (ValueError,TypeError,KeyError): pass
     ob.data.update()
     ob['mch_base_notes'] = '; '.join(LAST_NOTES)      # 0.23.17 shown in the LIVE panel (e.g. width limited)
+    if sweep is not None and ob.get(SWEEP_CUTS_KEY):  # 0.24.127 the cuts made on the line, done again
+        _replay_sweep_cuts(ob)
 
 
 def path_param(path, xy):
@@ -3339,6 +3460,7 @@ def _perform_cutter(context, groups, frame, p, projector, screen_groups, targets
             try:
                 cg.check_target(t)
                 res, _solver = cg.boolean_result(context, t, cutter, 'DIFFERENCE', cut.solver, cut.hole_tolerant)
+                remember_sweep_cut(t, cutter, 'DIFFERENCE')  # 0.24.127 (a live line: the cut stays through rebuilds)
                 temp.append(res)
                 results.append((t, res))
             except (cg.CutError, RuntimeError) as ex:
@@ -3654,7 +3776,7 @@ def sketch_tool_ok(context):
     Press Cut's Lasso mode, whose drag is the Base Mesh tool's own lasso (Sketch First included)."""
     from . import tool_state as ts
     tool = ts.effective_tool(context)
-    if tool == 'BASE':
+    if tool in {'BASE', 'CBASE'}:       # 0.24.127 (user: "왜 크리쳐 베이스가 안 나와?") the Creature Base Mesh sketch too
         return True
     st = getattr(context.scene, 'mch_press', None)
     return tool == 'PRESS' and st is not None and getattr(st, 'draw_mode', 'LINE') == 'LASSO' \

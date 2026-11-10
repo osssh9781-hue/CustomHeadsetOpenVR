@@ -755,6 +755,8 @@ class Press:
         self.px_world = self.sfloor.px_world if self.sfloor is not None else 0.0
         self.result = result
         self.size = part_size(target)
+        from . import base_mesh as _bm
+        self._cuts0 = _bm.sweep_cuts(target)      # 0.24.127 (a live line: each depth cuts again - one memory stays)
         self.backup = target.data.copy()
         self.backup.name = 'MCH_PressBackup_' + target.name
         cut = context.scene.mch_cut
@@ -846,6 +848,11 @@ class Press:
                     bpy.data.meshes.remove(me)
         self.pieces = []
         ramp_edit._copy_into(self.backup, self.target.data)
+        try:
+            from . import base_mesh as _bm
+            _bm.reset_sweep_cuts(self.target, self._cuts0)      # 0.24.127 the memory of the depth just undone goes
+        except (AttributeError, ReferenceError, RuntimeError):
+            pass
         try:
             bpy.context.view_layer.update()      # (the surface the Follow Surface ray casts see: the part as it was)
         except (AttributeError, RuntimeError):

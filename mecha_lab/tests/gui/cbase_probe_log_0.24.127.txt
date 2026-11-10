@@ -1,0 +1,19 @@
+0 strip on False groups [] has Creature Base Mesh False tool mecha.creature_base CBASE
+   visible tools ['CUT', 'SPLIT', 'PRESS', 'HIDE', 'CMOVE', 'CPATH', 'SMOVE', 'SMART', 'PERF', 'SDRAW', 'RSYM', 'BASE', 'CBASE', 'SUBD', 'PLATE', 'CPLATE', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'DETAIL', 'DETAIL2', 'DETAIL3', 'SCREW', 'WRINKLE', 'CDRAPE', 'WLINES', 'PRIMITIVE', 'BOOLEAN', 'FUSE', 'MIRROR', 'ARRAY', 'RADIAL', 'POSE', 'EXTRACT', 'MOLDING', 'HOLLOW', 'ALONG', 'CABLE', 'TUBE', 'TUBE_SAME', 'LOFT', 'ZBRUSH', 'SURFACE', 'LIBRARY', 'REMESH', 'EDIT']
+   grouped Block-out ['Base Mesh', 'Creature Base Mesh', 'SubD Plane', 'Primitive']
+shot 0_strip_cbase.png True
+   base settings: sketch True profile PUFF brush shape LASSO line_open False res 15
+1 after the drag: sketch data False new meshes []
+   -> MCH_Base: verts 2360 faces 4716 closed True dims (2.3, 2.3, 1.82) profile PUFF
+1b polygon lasso -> MCH_Base.001: verts 1882 faces 3760 closed True
+shot 1_cbase_parts.png True
+2 Press (Creature Plate) on MCH_Base at (921, 745) -> new [('MCH_Base_CreaturePlate', 4094)] tool PRESS
+shot 2_press_cplate.png True
+3 ndof_settings invoke -> {'RUNNING_MODAL'}
+shot 3_ndof_settings.png True
+PASS 0 the tool grid lists Creature Base Mesh (Block-out group; the left strip is a preference, off here); the tool is the active one
+PASS 1 Creature Base Mesh: a free-drawn circle on empty space + Enter makes a closed rounded part
+PASS 1b the polygon lasso (clicks + a double-click) + Enter makes a part too
+PASS 2 Press with result Creature Plate: a press on the part makes a plate
+PASS 3 the 3D Mouse Settings window opens (its picture taken)
+5/5 passed

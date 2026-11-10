@@ -1,5 +1,34 @@
 # CHANGELOG
 
+## 0.24.127 — Creature Base Mesh 의 Enter 수정 · 라이브 선의 컷이 사라지던 것 수정 · 3D 마우스 Blender 모드(기본) · 3D Mouse Settings 창 (2026-11-10)
+
+- (사용자: "왜 크리쳐 베이스가 안 나와?") 원인: Creature Base Mesh 는 Base Mesh 와 같은 **Sketch First** 흐름(그린 윤곽이 주황 스케치로
+  쌓이고 Enter 로 메시)인데, Enter / Alt+Enter 키의 도구 검사가 **Base Mesh(0.24.122 부터는 Press 의 Lasso 모드까지)만** 통과시켜서
+  Creature Base Mesh 에서는 스케치가 "2 piece(s)" 까지 쌓여도 Enter 가 아무 일도 하지 않았습니다(헤드리스 테스트는 커밋 함수를 바로 불러
+  잡지 못했고, 실제 창에서 재현). 이제 Creature Base Mesh 에서도 **Enter = Puff / Ridge / Pillow 덩어리, Alt+Enter = 파내기, Esc =
+  스케치 지우기, Backspace = 마지막 조각 취소**. 실제 창(Blender 5.2.3, Xvfb): Free Draw 원 + Enter → 닫힌 Puff 덩어리(4,716 면),
+  다각 라쏘(클릭 + 더블클릭) + Enter → 두 번째 덩어리, Press 의 Creature Plate 누르기도 확인(tests/gui/cbase_probe_real_window.py 5/5).
+- (사용자: S 자 라인 그림 + "이거 컷이 안 돼") 원인: Press 로 그린 선(두께 · 모서리 · Detail 슬라이더가 살아 있는 **라이브 Base Mesh
+  선**)은 설정이 바뀔 때마다 저장된 경로에서 **다시 만들어지는데**, 그때 그 선에 해 둔 컷(Cut 도구 · Press 누르기 · Line Cut)이 함께
+  사라졌습니다. 컷(불리언) 자체는 헤드리스 · 실제 창 모두 정상이었고 다음 재생성에서 없어진 것. 이제 라이브 선에 한 컷은 **컷 기억**
+  (cutter 메시를 월드 좌표로 보관, 선 오브젝트의 `mch_sweep_cuts`)으로 남아, 선이 다시 만들어질 때마다 같은 자리에 다시 적용됩니다
+  (Detail · 두께 · 모서리를 바꿔도 컷 유지). Press 누르기(깊이가 계속 바뀜)는 마지막 깊이 하나만 기억, Esc 취소는 기억 없음. 선을
+  적용(LIVE 끄기)하면 기억과 보관 메시가 지워지고, Split 은 선을 먼저 적용한 뒤 자릅니다.
+- (사용자: "3D 마우스 축 변경하는 거 헷갈리니까 썸네일 넣어서 설정창을 좀 분리해 줘" / "아니면 그냥 기존 블렌더 화면 이동이랑 똑같이
+  맞춰 줘") 회전축에 **Blender** 모드를 추가하고 **기본**으로: Blender 자신의 3D 마우스 뷰 이동 공식(view3d_navigate_ndof) 그대로 —
+  Blender 환경설정의 Orbit / Pan 감도 · Turntable / Trackball · Object / Fly 모드 · Dead Zone · Zoom 반전을 읽어, **뷰가 도는 대로
+  부품이 돕니다**(턴테이블: 기울이기 = 화면 가로축, 비틀기 = 월드 Z, 롤 무시; 트랙볼: 장치 벡터 방향). 밀기도 Blender 의 Pan 과 같은
+  축 · 속도(캡을 누르고 당기면 뷰의 앞뒤). Turntable / View / World / Local 은 그대로 남아 있고 Speed · Invert · 축 표가 같이 적용됩니다.
+- **3D Mouse Settings 창**(옆 패널의 "3D Mouse Settings..." · 상단 바 3D MOUSE 묶음의 Settings...): 3D 마우스가 무엇을(View / Parts) ·
+  무엇을 하는지(Move / Size), 회전축 · Speed · Invert · One Axis, Push · Push Axes X / Y / Z · Push Speed · Lift, Size 축 · Size Speed,
+  그리고 캡 동작 여섯 개의 표(**그림** · Active · Speed · Reverse — 보내 주신 3DxWare Speed 패널과 같은 구성, 그림은 직접 그린 캡
+  아이콘 icons/ndof_*.png). 옆 패널은 Does · Turn Axes · Speed · Push · Push Speed · Lift 만 남겨 가벼워졌고, 상단 바의 X Y Z · One
+  Axis 도 창으로 옮겼습니다.
+- 테스트(Blender 5.2.3): test_v02532 28/28(컷 기억: Cut · Detail 재생성 · Press 3 단계 → 기억 1 · 취소 · 적용 · Split · Line Cut; Blender
+  공식: 턴테이블 · 트랙볼 · Pan · Fly · Dead Zone · ndof_apply; 설정창 · 아이콘 · 패널 · 상단 바; Creature Base Mesh 의 스케치 키와
+  커밋), test_v02530 36/36, test_v02531 48/48, test_v02495_press_cut 39/39, test_v02529 9/9, Creature Base 관련 5 파일 160/160. 실제 창:
+  cbase_probe 5/5, line_cut_probe 4/4. 실제 3D 마우스 느낌(Blender 모드의 부호 포함)은 장치가 없어 여전히 확인하지 못했습니다.
+
 ## 0.24.126 — Smart Move 밀기: 누르기/당기기 = 위아래, X Y Z 토글, 회전 Tilt / Spin / Roll 토글 (2026-11-10)
 
 - (사용자: "안쪽이랑 바깥쪽으로 돌리는 게 안 되네, 오른쪽이랑 옆은 돼" + 3DxWare 의 그 축 설정 그림) 원인: Blender 는 캡을

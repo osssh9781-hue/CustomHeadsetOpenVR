@@ -45,6 +45,8 @@ def _redraw(self, context):
 
 class MCH_PG_Smart(bpy.types.PropertyGroup):
     axes: EnumProperty(name='Turn Axes', items=(
+        ('BLENDER', 'Blender', '0.24.127 exactly like Blender\'s own 3D-mouse view navigation (its Preferences: orbit style, '
+                               'navigation mode, sensitivities, dead zone): the part moves the way the scene moves under the view'),
         ('TURNTABLE', 'Turntable', '0.24.125 like Blender\'s view turning: twist = round the world\'s up (Z, a turntable), '
                                    'tilt = round the screen\'s horizontal, roll = round the view axis'),
         ('VIEW', 'View', 'The 3D mouse turns the part about the axes of the view you look through (tilt = up / down on '
@@ -52,7 +54,7 @@ class MCH_PG_Smart(bpy.types.PropertyGroup):
         ('WORLD', 'World', 'The 3D mouse turns the part about the world axes (twist = round Z up, tilt = round X), '
                            'whatever the view'),
         ('LOCAL', 'Local', '0.24.126 the 3D mouse turns the part about its OWN axes (twist = round its Z, tilt = round its X, '
-                           'roll = round its Y), however it is turned')), default='TURNTABLE', update=_redraw)
+                           'roll = round its Y), however it is turned')), default='BLENDER', update=_redraw)
     speed: FloatProperty(name='Speed', description='How fast the 3D mouse turns the part (1 = about as fast as it '
                          'turns the view)', default=1.0, min=0.05, max=8.0, soft_min=0.2, soft_max=4.0)
     invert: BoolProperty(name='Invert', description='Turn the other way round', default=False)
@@ -260,7 +262,7 @@ def ndof_apply(ob, data, st, rv3d, last_normal=None):
     """One 3D-mouse motion event on ``ob``: turned about its ORIGIN (Turntable / View / World axes, Speed, Invert) and, with Push
     on, slid - Normal: along ``last_normal`` (the surface it was last put on; none known: as Free), Free: along the view's
     axes.  Returns (radians turned, world step)."""
-    mode = getattr(st, 'axes', 'TURNTABLE')
+    mode = getattr(st, 'axes', 'BLENDER')
     speed = getattr(st, 'speed', 1.0)
     invert = getattr(st, 'invert', False)
     push = getattr(st, 'push', 'FREE')
@@ -272,6 +274,23 @@ def ndof_apply(ob, data, st, rv3d, last_normal=None):
     dt = float(getattr(data, 'time_delta', 0.0) or 0.0)
     m = ob.matrix_world
     ang = 0.0
+    if mode == 'BLENDER' and rv3d is not None:          # 0.24.127 exactly Blender's view navigation, on the part
+        b_axis, b_ang, b_step = blender_motion(tr_dev, rot, dt, rv3d)
+        b_ang *= speed * (-1.0 if invert else 1.0)
+        if b_axis is not None and abs(b_ang) > 1e-12:
+            m = rotate_about(m, b_axis, b_ang, m.translation)
+            ang = b_ang
+        step = Vector((0.0, 0.0, 0.0))
+        if push != 'OFF' and b_step.length > 1e-12:
+            step = b_step * speed
+            if push == 'NORMAL' and last_normal is not None:
+                step = Vector(last_normal) * (tr_dev.z * rv3d.view_distance * min(dt if dt > 0.0 else 1.0 / 60.0, 0.1)
+                                              * getattr(st, 'push_speed', 0.5))
+            step = masked(step, getattr(st, 'push_x', True), getattr(st, 'push_y', True), getattr(st, 'push_z', True))
+            m = m.copy()
+            m.translation = m.translation + step
+        ob.matrix_world = m
+        return ang, step
     if rot.length > 1e-9:
         axis = turn_axis(rot, mode, view, m)
         ang = turn_angle(rot, dt, speed, invert)
@@ -330,6 +349,57 @@ def size_apply(ob, data, st):
         return (1.0, 1.0, 1.0)
     ob.matrix_world = m
     return f
+
+
+def blender_ndof_prefs():
+    """0.24.127 Blender's own 3D-mouse preferences (missing in a build without NDOF: Blender's defaults)."""
+    try:
+        inp = bpy.context.preferences.inputs
+    except AttributeError:
+        inp = None
+    g = lambda name, default: getattr(inp, name, default) if inp is not None else default        # noqa: E731
+    return {'orbit': float(g('ndof_orbit_sensitivity', 1.0)), 'pan': float(g('ndof_sensitivity', 1.0)),
+            'method': str(g('ndof_view_rotate_method', 'TURNTABLE')), 'mode': str(g('ndof_navigation_mode', 'OBJECT')),
+            'dead': float(g('ndof_deadzone', 0.0)), 'zoom_invert': bool(g('ndof_zoom_invert', False))}
+
+
+def blender_motion(tr, rot, dt, rv3d, prefs=None):
+    """0.24.127 (user: "그냥 기존 블렌더 화면 이동이랑 똑같이 맞춰줘") What the SCENE visibly does under Blender's own
+    3D-mouse view navigation for one event - from Blender's view3d_navigate_ndof: turntable = tilt round the view's
+    horizontal and twist round the world's up (roll ignored), trackball = round the device vector through the view,
+    angle = time x value x orbit sensitivity; pan = the view's axes x view distance x time x sensitivity, push / pull
+    = towards / away (zoom); the navigation mode's sign (Object: the scene follows the hand).  Returns
+    (world axis or None, radians, world step).  No view: nothing (the callers fall back)."""
+    if rv3d is None:
+        return None, 0.0, Vector((0.0, 0.0, 0.0))
+    pr = prefs or blender_ndof_prefs()
+    sign = -1.0 if pr['mode'] == 'OBJECT' else 1.0
+    dead = pr['dead']
+    tr = Vector(tr)
+    rot = Vector(rot)
+    if dead > 0.0:
+        tr = Vector([0.0 if abs(c) < dead else c for c in tr])
+        rot = Vector([0.0 if abs(c) < dead else c for c in rot])
+    dtc = min(dt if dt > 0.0 else 1.0 / 60.0, 0.1)
+    inv = rv3d.view_matrix.to_3x3().inverted_safe()
+    axis, ang = None, 0.0
+    if pr['method'] == 'TRACKBALL':
+        if rot.length > 1e-9:
+            axis = (inv @ rot).normalized() * sign       # the angle stays positive; the axis carries the sign
+            ang = dtc * rot.length * pr['orbit']
+    else:                                                 # turntable: tilt (x) and twist (y); roll is not used
+        vx = (inv @ Vector((1.0, 0.0, 0.0))).normalized()
+        a_tilt = dtc * rot.x * pr['orbit'] * sign
+        a_spin = dtc * rot.y * pr['orbit'] * sign
+        if abs(a_tilt) > 1e-12 or abs(a_spin) > 1e-12:
+            q = Matrix.Rotation(a_spin, 3, Vector((0.0, 0.0, 1.0))) @ Matrix.Rotation(a_tilt, 3, vx)
+            qq = q.to_quaternion()
+            axis, ang = (Vector(qq.axis).normalized() if qq.angle > 1e-12 else None), qq.angle
+    step = Vector((0.0, 0.0, 0.0))
+    if tr.length > 1e-9:
+        tz = tr.z * (-1.0 if pr['zoom_invert'] else 1.0)
+        step = -sign * (inv @ Vector((tr.x, tr.y, tz))) * (rv3d.view_distance * dtc * pr['pan'])
+    return axis, ang, step
 
 
 def ndof_parts_on(context):
@@ -502,7 +572,7 @@ class MCH_OT_smart_move(bpy.types.Operator):
 
     def _header(self, context):
         st = getattr(context.scene, 'mch_smart', None)
-        axes = getattr(st, 'axes', 'TURNTABLE').title()
+        axes = getattr(st, 'axes', 'BLENDER').title()
         try:
             push = getattr(st, 'push', 'FREE')
             if getattr(st, 'ndof_do', 'MOVE') == 'SIZE':
@@ -652,6 +722,127 @@ class MCH_OT_smart_ndof(bpy.types.Operator):
         return {'FINISHED'}
 
 
+_PREVIEWS = [None]
+
+
+def axis_icon(key):
+    """The icon_value of a cap-motion thumbnail (icons/ndof_<key>.png), 0 when it cannot be loaded."""
+    try:
+        import os
+        import bpy.utils.previews as previews
+        if _PREVIEWS[0] is None:
+            _PREVIEWS[0] = previews.new()
+        pc = _PREVIEWS[0]
+        name = 'ndof_' + key
+        if name not in pc:
+            path = os.path.join(os.path.dirname(__file__), 'icons', name + '.png')
+            if not os.path.isfile(path):
+                return 0
+            pc.load(name, path, 'IMAGE')
+        return pc[name].icon_id                        # 0 in a background Blender (no icon system there)
+    except (ImportError, AttributeError, KeyError, RuntimeError, OSError):
+        return 0
+
+
+def axis_icon_loads(key):
+    """Whether icons/ndof_<key>.png exists and loads as a picture (the icon id itself is 0 in a background Blender)."""
+    try:
+        import os
+        import bpy.utils.previews as previews
+        path = os.path.join(os.path.dirname(__file__), 'icons', 'ndof_' + key + '.png')
+        if not os.path.isfile(path):
+            return False
+        pc = previews.new()
+        try:
+            pc.load('probe', path, 'IMAGE')
+            return tuple(pc['probe'].image_size)[0] > 0
+        finally:
+            previews.remove(pc)
+    except (ImportError, AttributeError, KeyError, RuntimeError, OSError):
+        return False
+
+
+def draw_axes_table(layout, st):
+    """0.24.127 (user: "내가 보낸 이미지랑 똑같은 썸네일 넣어서 설정창을 좀 분리해 줘") the per-motion table like
+    3DxWare's Speed panel: a picture of the cap's motion, Active, Speed, Reverse."""
+    head = layout.row(align=True)
+    head.label(text='')
+    head.label(text='Motion')
+    head.label(text='Active')
+    head.label(text='Speed')
+    head.label(text='Reverse')
+    for key, label, _desc in AXES:
+        row = layout.row(align=True)
+        ic = axis_icon(key)
+        if ic:
+            row.template_icon(icon_value=ic, scale=3.0)
+        else:
+            row.label(text='')
+        row.label(text=label)
+        row.prop(st, f'ax_{key}_on', text='')
+        row.prop(st, f'ax_{key}_speed', text='', slider=True)
+        row.prop(st, f'ax_{key}_rev', text='')
+
+
+class MCH_OT_ndof_settings(bpy.types.Operator):
+    """3D Mouse settings for Smart Move / Smart Size, in their own window: what it does, the turn axes, push, size,
+    and the per-motion table (Active / Speed / Reverse) with pictures like 3DxWare's"""
+    bl_idname = 'mch.ndof_settings'
+    bl_label = '3D Mouse Settings'
+    bl_options = {'INTERNAL'}
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self, width=520)
+
+    def draw(self, context):
+        st = getattr(context.scene, 'mch_smart', None)
+        lay = self.layout
+        if st is None:
+            lay.label(text='No Smart Move settings')
+            return
+        wm = context.window_manager
+        row = lay.row(align=True)
+        row.label(text='3D mouse drives')
+        if hasattr(wm, 'mch_ndof_parts'):
+            row.prop(wm, 'mch_ndof_parts', text='View', toggle=True, invert_checkbox=True)
+            row.prop(wm, 'mch_ndof_parts', text='Parts', toggle=True)
+        row = lay.row(align=True)
+        row.label(text='Does')
+        row.prop(st, 'ndof_do', expand=True)
+        box = lay.box()
+        box.label(text='Move', icon='ORIENTATION_GIMBAL')
+        col = box.column(align=True)
+        col.label(text='Turn Axes  (Blender = exactly like the view\'s own 3D-mouse navigation)')
+        col.row(align=True).prop(st, 'axes', expand=True)
+        row = box.row(align=True)
+        row.prop(st, 'speed')
+        row.prop(st, 'invert', toggle=True)
+        row.prop(st, 'turn_single', toggle=True)
+        row = box.row(align=True)
+        row.label(text='Push')
+        row.prop(st, 'push', expand=True)
+        if st.push != 'OFF':
+            row = box.row(align=True)
+            row.label(text='Push Axes')
+            row.prop(st, 'push_x', toggle=True)
+            row.prop(st, 'push_y', toggle=True)
+            row.prop(st, 'push_z', toggle=True)
+            box.prop(st, 'push_speed')
+        box.prop(st, 'lift')
+        box = lay.box()
+        box.label(text='Size  (Smart Size: push x / y / z = that axis, twist = all; S while holding)', icon='FULLSCREEN_ENTER')
+        row = box.row(align=True)
+        row.label(text='Size Axes')
+        row.prop(st, 'size_space', expand=True)
+        box.prop(st, 'size_speed')
+        box = lay.box()
+        box.label(text='Cap motions  (like 3DxWare\'s Speed panel; Blender\'s own 3D-mouse preferences apply first)', icon='MOUSE_MOVE')
+        draw_axes_table(box, st)
+
+    def execute(self, context):
+        return {'FINISHED'}
+
+
 class MCH_OT_ndof_parts(bpy.types.Operator):
     """What the 3D mouse drives: the view (as always) or the selected part (turned about its origin, slid), in any tool"""
     bl_idname = 'mch.ndof_parts'
@@ -704,6 +895,7 @@ def draw(layout, context):
         col.label(text='Click a part: hold it.  Click a surface: its origin goes there.')
         col.label(text='3D mouse: turn about the origin.  Enter / RMB keep, Esc back.')
         col.label(text='E in any tool: hold the part under the mouse (or the selected one).')
+        col.label(text='S while holding: Smart Size (the 3D mouse scales the part).')
     wm = context.window_manager
     if hasattr(wm, 'mch_ndof_parts'):
         row = box.row(align=True)
@@ -717,41 +909,20 @@ def draw(layout, context):
         row = box.row(align=True)
         row.label(text='Size Axes')
         row.prop(st, 'size_space', expand=True)
-        box.prop(st, 'size_speed')
-    row = box.row(align=True)
+    row = box.row(align=True)                      # 0.24.127 Blender (like the view) is the default
     row.label(text='Turn Axes')
     row.prop(st, 'axes', expand=True)
     row = box.row(align=True)
     row.prop(st, 'speed')
-    row.prop(st, 'invert', toggle=True)
     row = box.row(align=True)
     row.label(text='Push')
     row.prop(st, 'push', expand=True)
     if st.push != 'OFF':
-        row = box.row(align=True)                  # 0.24.126 the world axes a push may move along
-        row.label(text='Push Axes')
-        row.prop(st, 'push_x', toggle=True)
-        row.prop(st, 'push_y', toggle=True)
-        row.prop(st, 'push_z', toggle=True)
         box.prop(st, 'push_speed')
-    box.prop(st, 'turn_single', toggle=True)
     box.prop(st, 'lift')
-    # 0.24.126 (user: 3DxWare's Speed panel) per cap motion: Active | Speed | Reverse, folded
-    sub = box.box()
-    row = sub.row(align=True)
-    row.prop(st, 'show_axes', text='3D Mouse Axes (Active / Speed / Reverse)', icon='TRIA_DOWN' if st.show_axes else 'TRIA_RIGHT', emboss=False)
-    if st.show_axes:
-        head = sub.row(align=True)
-        head.label(text='')
-        head.label(text='Active')
-        head.label(text='Speed')
-        head.label(text='Reverse')
-        for key, label, _desc in AXES:
-            row = sub.row(align=True)
-            row.label(text=label)
-            row.prop(st, f'ax_{key}_on', text='')
-            row.prop(st, f'ax_{key}_speed', text='', slider=True)
-            row.prop(st, f'ax_{key}_rev', text='')
+    # 0.24.127 (user: "설정창을 좀 분리해 줘") everything else - the per-motion table with pictures, push axes, size
+    # speed, invert, one axis - in its own window
+    box.operator('mch.ndof_settings', text='3D Mouse Settings...', icon='PREFERENCES')
 
 
 def top_bar_groups(context, tool):
@@ -760,22 +931,23 @@ def top_bar_groups(context, tool):
     if st is None or tool != 'SMART':
         return []
     from .top_bar import _enum_segs, _mini, _seg
-    turn = _enum_segs(st, 'axes', (('TURNTABLE', 'Turntable'), ('VIEW', 'View'), ('WORLD', 'World'), ('LOCAL', 'Local')))
+    turn = _enum_segs(st, 'axes', (('BLENDER', 'Blender'), ('TURNTABLE', 'Turntable'), ('VIEW', 'View'), ('WORLD', 'World'),
+                                   ('LOCAL', 'Local')))
     turn.append(_mini('Speed', st, 'speed', 130))
     turn.append(_seg('Invert', st, 'invert'))
-    turn.append(_seg('One Axis', st, 'turn_single'))
     push = _enum_segs(st, 'push', (('OFF', 'Off'), ('NORMAL', 'Normal'), ('FREE', 'Free')))
     if st.push != 'OFF':
-        push += [_seg('X', st, 'push_x'), _seg('Y', st, 'push_y'), _seg('Z', st, 'push_z')]
         push.append(_mini('Push Speed', st, 'push_speed', 150))
     size = _enum_segs(st, 'ndof_do', (('MOVE', 'Move'), ('SIZE', 'Size')))       # 0.24.126 Smart Size
     if st.ndof_do == 'SIZE':
         size += _enum_segs(st, 'size_space', (('LOCAL', 'Local'), ('WORLD', 'World')))
         size.append(_mini('Size Speed', st, 'size_speed', 150))
+    from .top_bar import _cell
+    size.append(_cell('seg', 'Settings...', action=('op', 'mch.ndof_settings', {})))   # 0.24.127 the own window
     return [('3D Mouse', size), ('Turn', turn), ('Push', push), ('Place', [_mini('Lift', st, 'lift', 140)])]
 
 
-CLASSES = (MCH_PG_Smart, MCH_OT_smart_move, MCH_OT_smart_ndof, MCH_OT_ndof_parts)
+CLASSES = (MCH_PG_Smart, MCH_OT_smart_move, MCH_OT_smart_ndof, MCH_OT_ndof_parts, MCH_OT_ndof_settings)
 
 
 def register():
@@ -806,6 +978,13 @@ def unregister():
             pass
         _DRAW[0] = None
     ACTIVE[0] = None
+    if _PREVIEWS[0] is not None:
+        try:
+            import bpy.utils.previews as previews
+            previews.remove(_PREVIEWS[0])
+        except (ImportError, RuntimeError, KeyError):
+            pass
+        _PREVIEWS[0] = None
     for owner, name in ((bpy.types.Scene, 'mch_smart'), (bpy.types.WindowManager, 'mch_ndof_parts')):
         try:
             delattr(owner, name)

@@ -1043,6 +1043,8 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
                     op = 'INTERSECT' if invert else 'DIFFERENCE'
                     me, _solver = _boolean_checked(context, cut, t, cutter_t, op, groups, projector, near_t, far_t,
                                                    invert)
+                    from . import base_mesh as _bm              # 0.24.127 a cut on a live line stays through its rebuilds
+                    _bm.remember_sweep_cut(t, cutter_t, op)
                     solvers.append(_solver)
                     temp.append(me)
                     if _gn_on(cut):
@@ -1054,6 +1056,9 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
                             crisp=cut.finish_crisp), t.name))
                     results.append((t, me))
                 else:  # SPLIT
+                    from . import base_mesh as _bm
+                    if _bm.is_live_sweep(t):                    # 0.24.127 a split line is no longer rebuilt (two parts)
+                        t.mch_base.live = False
                     inner, _s1 = _boolean_checked(context, cut, t, cutter_t, 'INTERSECT',
                                                   inner_groups if gap else groups, projector, near_t, far_t, False)
                     temp.append(inner)
