@@ -27,6 +27,7 @@ EXTRA = {
     'BASE': ['Enter   make the sketch,  Alt+Enter   cut it in'],
     'CBASE': ['Enter   make the sketch,  Alt+Enter   cut it in'],
     'CUT': ['T   targets: auto / selected'],
+    'TUBE': ['Shift + click another part (the curve stays orange)   the part is repeated along the curve'],
     'SPLIT': ['T   targets: auto / selected'],
     'PRESS': ['Hold LMB on a part   a mesh grows out of the surface - taller the longer you hold,  release   keep',
               'Alt + hold LMB   press the stamp in (a cut) - deeper the longer you hold', 'Drag   Base Mesh line, the stamp as its section (as wide as the stamp),  Alt + drag   Line Cut - the stamp as its section, Max deep', 'Start a drag on a line\'s end mark   it goes on from there (turn the view between strokes if you like)', 'Dots beside a made line   Sharp / Round corners,  Move   drag an end ring,  Pick   press on the line anywhere = a new joint,  Section Bend / Each View,  Ends Flat / Round;  sliders   thickness, corner radius, detail (live);  blue joint rings stay until Enter - drag them any time', 'A stroke from one end ring to the other   closes the loop;  a bend near 0 / 45 / 90 / 135 deg catches', 'Shift + draw   your own stamp - Lasso / Rectangle / Circle / Free Draw ... (top bar), Sketch: Enter = the stamp', 'Esc / RMB (holding)   put it back,  [ ] / F   stamp size',

@@ -1112,6 +1112,9 @@ class MCH_PG_TubeDefaults(bpy.types.PropertyGroup):
     spline: EnumProperty(name='Curve', items=[('SMOOTH', 'Smooth', ''), ('BSPLINE', 'B-Spline', ''),
                                               ('LINEAR', 'Linear', '')], default='SMOOTH')
     count: IntProperty(name='Count', default=8, min=1, max=500)
+    select_link: BoolProperty(name='Link by Selection', default=True,
+                              description='0.24.128: with a Mesh Curve selected, Shift + click another part (it turns '
+                                          'yellow, the curve orange): the part is repeated along the curve')
 
 
 def start_draw(context, new=True, mode=''):
@@ -1211,6 +1214,11 @@ def draw(layout, context):
     r.scale_y = 1.4
     r.operator('mch.tube_draw', text='Draw New Tube', icon='GREASEPENCIL').new = True
     if not is_tube(ob):
+        if ob is not None and ob.type == 'MESH' and selected_tubes(context):      # 0.24.128 the part is active, a curve orange
+            r = box.row()
+            r.scale_y = 1.3
+            r.operator('mch.tube_link_selected', text=f'Repeat {ob.name} along the curve', icon='MOD_ARRAY')
+        box.prop(st, 'select_link', text='Shift + click a part: repeat it along the curve')
         c = box.column(align=True)
         c.label(text='New tubes start with:')
         c.row(align=True).prop(st, 'mode', expand=True)
@@ -1258,6 +1266,7 @@ def draw(layout, context):
     else:
         c = sub.column(align=True)
         c.prop(tb, 'source', text='Linked Object')
+        c.label(text='(or Shift + click a part: it goes here)', icon='RESTRICT_SELECT_OFF')
         c.row(align=True).prop(tb, 'spacing_mode', expand=True)
         if tb.spacing_mode == 'DISTANCE':
             c.prop(tb, 'spacing')
@@ -1379,6 +1388,142 @@ def _on_depsgraph(scene, depsgraph):
         pass
     finally:
         _busy[0] = False
+
+
+# -----------------------------------------------------------------------------
+# 0.24.128 (user: "다른 오브젝트 클릭해서 ... 노란색 메쉬 커브를 주황색으로 만들면 그 오브젝트를 커브에 연결해서
+# 나열되게 해 줘") Link by selection: a Mesh Curve is selected (yellow); Shift + click another part - the part is the
+# active one now (yellow) and the curve is still selected (orange) - and the part is repeated along the curve.
+# -----------------------------------------------------------------------------
+
+
+_SEL = [None, ()]          # the last seen (active object name, names of the selected live tubes)
+_sel_timer_live = False
+SELECT_TICK = 0.2
+
+
+def can_link_source(tube, src):
+    return (is_tube(tube) and src is not None and src.type == 'MESH' and src is not tube and not is_tube(src)
+            and tube.mch_tube.mode in TUBE_MODES + REPEAT_MODES)
+
+
+def source_extent(src, depsgraph=None):
+    """(the part's reach from its origin, its length along its local Z) in world units - what one copy measures."""
+    verts, _faces = source_mesh(src, depsgraph)
+    if not verts:
+        return 1.0, 1.0
+    sc = max(abs(c) for c in src.matrix_world.to_scale()) or 1.0
+    reach = max(Vector(v).length for v in verts) * sc
+    zs = [v[2] for v in verts]
+    length = (max(zs) - min(zs)) * abs(src.matrix_world.to_scale().z or 1.0)
+    return max(1e-4, reach), max(1e-3, length)
+
+
+def link_source(tube, src, depsgraph=None):
+    """The part becomes the curve's Repeat source (Tube -> Repeat, Line Curve -> Same Size Copies); rebuilt.  A first
+    link starts the copies at the part's REAL size, one after another (Spacing: Distance = the part's length) - the
+    Size / Spacing / Count sliders change it from there; a curve that already repeats keeps its settings."""
+    if not can_link_source(tube, src):
+        return False
+    tb = tube.mch_tube
+    first = tb.mode in TUBE_MODES or tb.source is None
+    live = tb.live
+    tb.live = False                       # (one rebuild at the end, not one per property)
+    try:
+        if tb.mode == 'TUBE':
+            tb.mode = 'REPEAT'
+        elif tb.mode == 'LINE':
+            tb.mode = 'REPEAT_SAME'
+        tb.source = src
+        if first:
+            reach, length = source_extent(src, depsgraph)
+            tb.radius = reach             # (a copy's reach = Radius x Size / the source's reach -> 1 : 1)
+            tb.size = 1.0
+            tb.follow_radius = False
+            tb.taper_start = tb.taper_end = 1.0
+            tb.spacing_mode = 'DISTANCE'
+            tb.spacing = length
+    finally:
+        tb.live = live
+    rebuild(tube, depsgraph)
+    return True
+
+
+def selected_tubes(context):
+    try:
+        return [o for o in context.selected_objects if is_tube(o)]
+    except (AttributeError, ReferenceError, RuntimeError):
+        return []
+
+
+def select_link_step(context):
+    """One look at the selection.  Links when the active object just changed from a live tube (still selected) to a
+    plain mesh part: every selected tube repeats that part.  Returns the tubes linked now."""
+    try:
+        act = context.view_layer.objects.active
+        st = getattr(context.scene, 'mch_tube_defaults', None)
+    except (AttributeError, ReferenceError, RuntimeError):
+        return []
+    prev_act, _prev_tubes = _SEL
+    tubes = selected_tubes(context)
+    names = tuple(o.name for o in tubes)
+    linked = []
+    try:
+        gesture = (act is not None and act.type == 'MESH' and act.select_get() and not is_tube(act)
+                   and prev_act is not None and prev_act != act.name and prev_act in names
+                   and context.mode == 'OBJECT' and not _draw_ops and (st is None or st.select_link))
+    except (AttributeError, ReferenceError, RuntimeError):
+        gesture = False
+    if gesture:
+        for t in tubes:
+            if t.mch_tube.source is act and t.mch_tube.mode in REPEAT_MODES:
+                continue
+            if link_source(t, act):
+                linked.append(t)
+        if linked:
+            try:
+                from . import toast, undo_keep
+                undo_keep.push('Repeat along curve')
+                n = linked[0].mch_tube.count if linked[0].mch_tube.spacing_mode == 'COUNT' else None
+                toast.show(f"{act.name}: repeated along {', '.join(t.name for t in linked)}"
+                           + (f' (Count {n})' if n else ' (Spacing)') + '  -  Ctrl+Z puts it back', 'INFO', 4.0)
+            except (ImportError, AttributeError, RuntimeError):
+                pass
+    _SEL[0], _SEL[1] = (act.name if act is not None else None), names
+    return linked
+
+
+def _select_tick():
+    if not _sel_timer_live:
+        return None
+    try:
+        select_link_step(bpy.context)
+    except (AttributeError, ReferenceError, RuntimeError):
+        pass
+    return SELECT_TICK
+
+
+class MCH_OT_tube_link_selected(bpy.types.Operator):
+    """Repeat the active part along the selected Mesh Curve(s) (what Shift + clicking the part does)"""
+    bl_idname = 'mch.tube_link_selected'
+    bl_label = 'Repeat Along Curve'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        act = context.active_object
+        return (act is not None and act.type == 'MESH' and not is_tube(act)
+                and any(can_link_source(t, act) for t in selected_tubes(context)))
+
+    def execute(self, context):
+        act = context.active_object
+        done = [t.name for t in selected_tubes(context) if link_source(t, act)]
+        if not done:
+            self.report({'WARNING'}, 'Select a Mesh Curve (orange) with the part active (yellow)')
+            return {'CANCELLED'}
+        _SEL[0], _SEL[1] = act.name, tuple(o.name for o in selected_tubes(context))
+        self.report({'INFO'}, f'{act.name}: repeated along ' + ', '.join(done))
+        return {'FINISHED'}
 
 
 # -----------------------------------------------------------------------------
@@ -1780,7 +1925,7 @@ def _draw_bar_labels():
 
 _handle = None
 CLASSES = (MCH_PG_Tube, MCH_PG_TubeDefaults, MCH_OT_tube_draw, MCH_OT_tube_apply, MCH_OT_tube_toggle,
-           MCH_GT_tube_slider, MCH_GGT_tube_points, MCH_GGT_tube_bar, MCH_PT_tube)
+           MCH_OT_tube_link_selected, MCH_GT_tube_slider, MCH_GGT_tube_points, MCH_GGT_tube_bar, MCH_PT_tube)
 
 
 def register():
@@ -1799,10 +1944,21 @@ def register():
     for lst in (bpy.app.handlers.undo_post, bpy.app.handlers.redo_post):
         if _on_undo_post not in lst:
             lst.append(_on_undo_post)
+    global _sel_timer_live
+    _sel_timer_live = True
+    _SEL[0], _SEL[1] = None, ()
+    if not bpy.app.background and not bpy.app.timers.is_registered(_select_tick):
+        bpy.app.timers.register(_select_tick, first_interval=SELECT_TICK, persistent=True)
 
 
 def unregister():
-    global _handle, _bar_label_handle
+    global _handle, _bar_label_handle, _sel_timer_live
+    _sel_timer_live = False
+    if bpy.app.timers.is_registered(_select_tick):
+        try:
+            bpy.app.timers.unregister(_select_tick)
+        except ValueError:
+            pass
     if _on_depsgraph in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph)
     for lst in (bpy.app.handlers.undo_post, bpy.app.handlers.redo_post):

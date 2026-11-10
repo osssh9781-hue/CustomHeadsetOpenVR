@@ -1,5 +1,22 @@
 # CHANGELOG
 
+## 0.24.128 — Mesh Curve: 커브를 선택한 채 다른 부품을 Shift + 클릭하면 그 부품이 커브를 따라 나열 (2026-11-10)
+
+- (사용자: "메쉬 커브로 커브 그으면 그 이후에 다른 오브젝트 클릭해서 ... 노란색 메쉬 커브를 주황색으로 만들면 그 오브젝트를 커브에
+  연결해서 나열되게 해 줘") **Link by Selection**: Mesh Curve 를 그린 뒤(커브가 노란 활성), **Q(Select) → 다른 부품을 Shift + 클릭**
+  하면 부품이 노란(활성)이 되고 커브는 주황(선택)으로 남는데, 그 순간 부품이 그 커브의 **Repeat 소스로 연결**되어 커브를 따라
+  나열됩니다(기존 Repeat 기능 — 소스를 움직이거나 고치면 복제본도 따라감). 선택된 커브가 여럿이면 모두 연결, Line Curve 는 Same Size
+  Copies 로. 토스트 "Part: repeated along Tube ... Ctrl+Z puts it back", Ctrl+Z 한 단계로 되돌림. 커브를 선택하지 않고 그냥 클릭하면
+  (커브가 주황이 아니면) 아무 일도 없고, 커브 → 부품 순서일 때만 걸립니다(부품을 먼저 잡고 커브를 추가 선택하면 안 걸림).
+- 처음 연결될 때 복제본은 **부품의 실제 크기**로, **Spacing: Distance = 부품의 길이**(앞뒤로 이어 붙는 체인)로 시작합니다 — 기존
+  Repeat 는 커브 반지름 크기여서 반지름이 작으면 점처럼 보였음. 그 뒤 Count / Distance · Spacing · Size · Rotate 슬라이더(커브 HUD 바 ·
+  옆 패널)로 조절하고, 이미 Repeat 중인 커브에 다른 부품을 연결하면 그 설정은 그대로 둡니다.
+- 수동 버튼 **Repeat {부품} along the curve**(부품이 활성이고 커브가 선택돼 있을 때 Mesh Curve 패널 맨 위) 와 패널 토글 **Shift + click a
+  part: repeat it along the curve**(끄면 선택으로는 연결 안 함). 키 안내 카드(Mesh Curve)에 한 줄 추가.
+- 테스트(Blender 5.2.3): test_v02533 15/15(제스처 · 순서 · 토글 · 버튼 · 커브 둘 · Line Curve · 실제 크기 · 설정 유지), test_v0230
+  48/48, test_v02410 31/31. 실제 창(tests/gui/tube_select_link_real_window.py 3/3): 네 번 클릭 + Enter 로 커브 → Q → Shift + 클릭 →
+  0.5 m 큐브 13 개가 커브를 따라 이어짐(그림 dist/tube_select_link_0.24.128.png).
+
 ## 0.24.127 — Creature Base Mesh 의 Enter 수정 · 라이브 선의 컷이 사라지던 것 수정 · 3D 마우스 Blender 모드(기본) · 3D Mouse Settings 창 (2026-11-10)
 
 - (사용자: "왜 크리쳐 베이스가 안 나와?") 원인: Creature Base Mesh 는 Base Mesh 와 같은 **Sketch First** 흐름(그린 윤곽이 주황 스케치로

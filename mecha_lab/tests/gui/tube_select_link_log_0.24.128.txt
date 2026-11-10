@@ -1,0 +1,10 @@
+1 tool TUBE draw ops 1
+   tube Tube points 4 sel ('Tube', ['Tube']) draw ops 0
+2 after Q: tool TUBE builtin.select_box sel ('Tube', ['Tube'])
+   after Shift+click: sel ('Part', ['Part', 'Tube']) mode REPEAT source Part verts 104 count 8 spacing DISTANCE 0.5
+shot 2_repeat_along_curve.png True
+3 plain click: sel ('Part', ['Part']) mode TUBE
+PASS 1 Mesh Curve: four clicks + Return make a live tube, the active (yellow) one
+PASS 2 Shift + click the part (part yellow, curve orange): the part is repeated along the curve
+PASS 3 a plain click on the part (the curve not selected) links nothing
+3/3 passed
