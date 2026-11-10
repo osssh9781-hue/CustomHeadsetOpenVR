@@ -451,7 +451,7 @@ def send_objects(context, objects, settings):
                                       apply_modifiers=False, export_materials=groups > 0,
                                       export_material_groups=groups > 0,
                                       export_colors=bool(len(tmp.data.color_attributes)),   # (0.24.95 polypaint)
-                                      export_uv=bool(len(tmp.data.uv_layers)), export_normals=False,
+                                      export_uv=False, export_normals=False,              # (user: UVs are never used)
                                       export_triangulated_mesh=False,
                                       forward_axis=settings.forward_axis, up_axis=settings.up_axis,
                                       global_scale=settings.scale)
@@ -771,7 +771,7 @@ class MCH_OT_export_mesh(bpy.types.Operator):
             path.parent.mkdir(parents=True, exist_ok=True)
             if self.file_format == 'OBJ':
                 bpy.ops.wm.obj_export(filepath=str(path), export_selected_objects=True, apply_modifiers=False,
-                                      export_materials=True, export_uv=True, export_normals=True,
+                                      export_materials=True, export_uv=False, export_normals=True,   # (0.24.131 no UVs: never used)
                                       export_triangulated_mesh=False, global_scale=self.scale,
                                       export_material_groups=grouped > 0)
             else:
