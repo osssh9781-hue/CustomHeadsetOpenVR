@@ -2338,9 +2338,9 @@ class MCH_OT_stamp_turn(bpy.types.Operator):
             data = getattr(event, 'ndof_motion', None)
             if data is not None:
                 from . import smart_move
-                rot = data.rotation
-                comp = rot[1] if abs(rot[1]) >= abs(rot[2]) else rot[2]
                 sm_st = getattr(context.scene, 'mch_smart', None)
+                _tr, rot = smart_move.device_values(data, sm_st) if sm_st is not None else (None, Vector(data.rotation))
+                comp = rot[1] if abs(rot[1]) >= abs(rot[2]) else rot[2]     # (Spin / Roll, with their Active / Speed / Reverse)
                 speed = float(getattr(sm_st, 'speed', 1.0)) * (0.2 if event.shift else 1.0)
                 if getattr(sm_st, 'invert', False):
                     comp = -comp

@@ -14,7 +14,7 @@ import types
 
 from _harness import bpy, check, fresh, summary
 import bmesh  # noqa: E402
-from mathutils import Quaternion, Vector  # noqa: E402
+from mathutils import Euler, Quaternion, Vector  # noqa: E402
 
 import mecha_lab
 from mecha_lab import (base_mesh, concept_move as cm, core_geometry as cg, cut_engine as ce, key_legend as kl,
@@ -40,6 +40,11 @@ class Ctx:
 
 CTX = Ctx()
 TOP = cg.OrthoProjector(Quaternion())
+
+
+def near(a, b, tol=1e-5):
+    return (Vector(a) - Vector(b)).length < tol
+
 
 # --- 1. Smart Move everywhere ------------------------------------------------------------------------------------------
 kc = WM.keyconfigs.addon
@@ -100,6 +105,139 @@ check('ndof_apply (push Free): 9 deg about the origin (device twist = world Z wi
       abs(math.degrees(ang) - 9.0) < 1e-6 and abs(math.degrees(turn.angle) - 9.0) < 0.01 and abs(abs(turn.axis.z) - 1.0) < 1e-4
       and (part.matrix_world.translation - m0.translation - Vector((0.05, 0, 0))).length < 1e-6 and (step - Vector((0.05, 0, 0))).length < 1e-6)
 part.matrix_world = m0
+# 0.24.126 (user: "안쪽이랑 바깥쪽으로 … 안 되네" / "xyz 축에 토글") the push axes under a view looking down 60 deg, turned 35 deg
+Vm = (Euler((math.radians(60), 0.0, math.radians(35))).to_matrix().to_4x4()).inverted()
+right, forward, up = sm.push_axes('TURNTABLE', Vm)
+vz = (Vm.to_3x3().inverted() @ Vector((0, 0, 1))).normalized()
+check('push_axes TURNTABLE: push down / pull up = the WORLD\'s up (it went along the line of sight before), forward / back along '
+      'the ground where the view looks, left / right level - all unit, the first two horizontal',
+      near(up, (0, 0, 1)) and abs(right.z) < 1e-6 and abs(forward.z) < 1e-6 and abs(right.length - 1) < 1e-6
+      and abs(forward.length - 1) < 1e-6 and forward.dot(Vector((-vz.x, -vz.y, 0)).normalized()) > 0.99
+      and abs(right.dot(forward)) < 1e-6, (tuple(right), tuple(forward), tuple(up)))
+r2, f2, u2 = sm.push_axes('VIEW', Vm)
+check('... VIEW: the view\'s own axes (push = towards you, the old way); no view / WORLD: X, Y, Z',
+      near(u2, vz) and 0.3 < u2.z < 0.95 and sm.push_axes('WORLD', Vm) == sm.push_axes('TURNTABLE', None)
+      and near(sm.push_axes('TURNTABLE', None)[1], (0, 1, 0)))
+rv_fake = types.SimpleNamespace(view_matrix=Vm, view_distance=2.0)
+st.axes, st.push, st.push_speed = 'TURNTABLE', 'FREE', 0.5
+d_push = types.SimpleNamespace(rotation=Vector((0, 0, 0)), translation=Vector((0.0, 0.0, 1.0)), time_delta=0.1, progress='IN_PROGRESS')
+t0 = part.matrix_world.translation.copy()
+sm.ndof_apply(part, d_push, st, rv_fake)
+step_up = part.matrix_world.translation - t0
+part.matrix_world = m0
+st.push_z = False
+sm.ndof_apply(part, d_push, st, rv_fake)
+step_none = part.matrix_world.translation - m0.translation
+st.push_z = True
+st.ax_ud_rev = True
+part.matrix_world = m0
+sm.ndof_apply(part, d_push, st, rv_fake)
+step_inv = part.matrix_world.translation - m0.translation
+st.ax_ud_rev = False
+st.ax_ud_speed = 2.0
+part.matrix_world = m0
+sm.ndof_apply(part, d_push, st, rv_fake)
+step_fast = part.matrix_world.translation - m0.translation
+st.ax_ud_speed = 1.0
+st.ax_ud_on = False
+part.matrix_world = m0
+sm.ndof_apply(part, d_push, st, rv_fake)
+step_off = part.matrix_world.translation - m0.translation
+st.ax_ud_on = True
+part.matrix_world = m0
+check('a pull on the cap (z) under that view lifts the part straight up (2 x 0.5 x 0.1 = 0.1); Push Axes Z off: it stays; the axis '
+      'table: Up / Down Reverse = down, Speed 2 = twice, Active off = nothing',
+      near(step_up, (0, 0, 0.1), 1e-6) and step_none.length < 1e-9 and near(step_inv, (0, 0, -0.1), 1e-6)
+      and near(step_fast, (0, 0, 0.2), 1e-6) and step_off.length < 1e-9,
+      (tuple(step_up), tuple(step_none), tuple(step_inv), tuple(step_fast), tuple(step_off)))
+d_turn = types.SimpleNamespace(rotation=Vector((0.25, 0.0, 0.0)), translation=Vector((0, 0, 0)), time_delta=0.1, progress='IN_PROGRESS')
+st.ax_tilt_on = False
+ang0, _s = sm.ndof_apply(part, d_turn, st, rv_fake)
+st.ax_tilt_on = True
+ang1, _s = sm.ndof_apply(part, d_turn, st, rv_fake)
+part.matrix_world = m0
+check('the axis table: Tilt Active off - a tilt of the cap turns nothing; on - 9 deg', abs(ang0) < 1e-9 and abs(math.degrees(ang1) - 9.0) < 1e-6)
+check('the table has the six cap motions x Active / Speed / Reverse, folded by default',
+      [k for k, _l, _d in sm.AXES] == ['lr', 'fb', 'ud', 'tilt', 'spin', 'roll'] and not st.show_axes
+      and all(hasattr(st, f'ax_{k}_{suf}') for k, _l, _d in sm.AXES for suf in ('on', 'speed', 'rev'))
+      and sm.axis_gain(st, 'spin') == 1.0)
+st.axes = 'TURNTABLE'
+# 0.24.126 Smart Size (user: "사이즈 조절도 3D 마우스로 … 로컬이랑 월드 축 선택")
+part.rotation_euler = (0.0, 0.0, math.radians(30))
+part.scale = (1.0, 1.5, 0.6)
+C.view_layer.update()
+mr = part.matrix_world.copy()
+d_x = types.SimpleNamespace(rotation=Vector((0, 0, 0)), translation=Vector((1.0, 0.0, 0.0)), time_delta=0.1, progress='IN_PROGRESS')
+check('size_factors: a full push along x for 0.1 s at Size Speed 1 = x 2^0.1 on X only; a twist = all three; X off = nothing on X',
+      all(abs(a - b) < 1e-9 for a, b in zip(sm.size_factors(d_x, st, 0.1), (2 ** 0.1, 1.0, 1.0)))
+      and all(abs(a - 2 ** 0.05) < 1e-9 for a in sm.size_factors(types.SimpleNamespace(rotation=Vector((0, 0.5, 0)), translation=Vector((0, 0, 0))), st, 0.1)))
+st.push_x = False
+check('... X off', sm.size_factors(d_x, st, 0.1) == (1.0, 1.0, 1.0))
+st.push_x = True
+st.ndof_do, st.size_space = 'SIZE', 'LOCAL'
+sm.size_apply(part, d_x, st)
+ml = part.matrix_world
+check('Smart Size LOCAL on a part turned 30 deg: its own X grows 2^0.1, Y / Z and the rotation stay, the origin stays',
+      abs(ml.to_scale().x - 1.0 * 2 ** 0.1) < 1e-6 and abs(ml.to_scale().y - 1.5) < 1e-6 and abs(ml.to_scale().z - 0.6) < 1e-6
+      and near(ml.translation, mr.translation) and abs(math.degrees(ml.to_euler().z) - 30.0) < 1e-4, (tuple(ml.to_scale()), tuple(ml.to_euler())))
+part.matrix_world = mr
+st.size_space = 'WORLD'
+d_z = types.SimpleNamespace(rotation=Vector((0, 0, 0)), translation=Vector((0.0, 0.0, 1.0)), time_delta=0.1, progress='IN_PROGRESS')
+sm.size_apply(part, d_z, st)
+mw = part.matrix_world
+check('Smart Size WORLD: a pull (z) scales along the world Z about the origin - the part gets 2^0.1 taller, X / Y as they were, origin fixed',
+      abs(mw.to_scale().z - 0.6 * 2 ** 0.1) < 1e-6 and abs(mw.to_scale().x - 1.0) < 1e-6 and abs(mw.to_scale().y - 1.5) < 1e-6
+      and near(mw.translation, mr.translation), tuple(mw.to_scale()))
+part.matrix_world = mr
+ev_x = types.SimpleNamespace(type='NDOF_MOTION', value='NOTHING', ndof_motion=d_x)
+op = Shim()
+op._setup()
+op.ob_name, op.orig = part.name, part.matrix_world.copy()
+op.t_start = 0.0
+op.tool0 = ts.effective_tool(C)
+st.ndof_do, st.size_space = 'MOVE', 'LOCAL'
+r_s = op.modal(C, types.SimpleNamespace(type='S', value='PRESS', mouse_region_x=5, mouse_region_y=5, is_repeat=False, shift=False, alt=False, ctrl=False, ndof_motion=None))
+after_s = st.ndof_do
+op.modal(C, ev_x)
+sized = abs(part.matrix_world.to_scale().x - 2 ** 0.1) < 1e-6 and near(part.matrix_world.translation, mr.translation)
+op.modal(C, types.SimpleNamespace(type='S', value='PRESS', mouse_region_x=5, mouse_region_y=5, is_repeat=False, shift=False, alt=False, ctrl=False, ndof_motion=None))
+check('holding: S switches the 3D mouse to Size (the next event scales, the origin stays), S again back to Move',
+      r_s == {'RUNNING_MODAL'} and after_s == 'SIZE' and sized and st.ndof_do == 'MOVE', (r_s, after_s, tuple(part.matrix_world.to_scale())))
+op.modal(C, types.SimpleNamespace(type='ESC', value='PRESS', mouse_region_x=5, mouse_region_y=5, is_repeat=False, shift=False, alt=False, ctrl=False, ndof_motion=None))
+part.select_set(True)                       # (the shim's Esc restored an empty "selection before the hold")
+C.view_layer.objects.active = part
+part.matrix_world = mr
+st.ndof_do = 'SIZE'
+st.size_space = 'LOCAL'
+WM.mch_ndof_parts = True
+sm.mecha_workspace = lambda c: True
+r_p = sm.MCH_OT_smart_ndof.invoke(Shim(), C, ev_x)
+check('3D MOUSE Parts + Size: the selected part is scaled in any tool', r_p == {'FINISHED'} and abs(part.matrix_world.to_scale().x - 2 ** 0.1) < 1e-6)
+WM.mch_ndof_parts = False
+st.ndof_do = 'MOVE'
+# 0.24.126 Local turn axes + One Axis (user: "로컬 축이나 월드 축에 종속되서 돌려지는 버전")
+part.matrix_world = mr
+R = mr.to_3x3().normalized()
+ax_l = sm.turn_axis((0, 1, 0), 'LOCAL', Vm, mr)
+ax_t = sm.turn_axis((1, 0, 0), 'LOCAL', Vm, mr)
+check('turn_axis LOCAL: a twist turns round the part\'s own Z, a tilt round its own X (the part turned 30 deg)',
+      near(ax_l, R @ Vector((0, 0, 1))) and near(ax_t, R @ Vector((1, 0, 0))) and abs(ax_t.x - math.cos(math.radians(30))) < 1e-6)
+st.axes = 'LOCAL'
+st.turn_single = True
+d_mix = types.SimpleNamespace(rotation=Vector((0.1, 0.25, 0.05)), translation=Vector((0, 0, 0)), time_delta=0.1, progress='IN_PROGRESS')
+ang_m, _s = sm.ndof_apply(part, d_mix, st, rv_fake)
+turn_m = (part.matrix_world.to_3x3() @ mr.to_3x3().inverted()).to_quaternion()
+check('One Axis: of a mixed cap motion only the strongest (the twist) turns - 9 deg about the part\'s own Z, nothing else',
+      abs(math.degrees(ang_m) - 9.0) < 1e-6 and abs(math.degrees(turn_m.angle) - 9.0) < 0.01 and abs(abs(turn_m.axis.dot(R @ Vector((0, 0, 1)))) - 1.0) < 1e-4,
+      (math.degrees(ang_m), math.degrees(turn_m.angle), tuple(turn_m.axis)))
+check('dominant keeps one component', near(sm.dominant((0.1, -0.3, 0.2)), (0.0, -0.3, 0.0)))
+st.turn_single = False
+st.axes = 'TURNTABLE'
+part.matrix_world = m0
+part.rotation_euler = (0, 0, 0)
+part.scale = (1, 1.5, 0.6)
+C.view_layer.update()
+m0 = part.matrix_world.copy()
 ev = types.SimpleNamespace(type='NDOF_MOTION', value='NOTHING', ndof_motion=data)
 WM.mch_ndof_parts = False
 r0 = sm.MCH_OT_smart_ndof.invoke(Shim(), C, ev)

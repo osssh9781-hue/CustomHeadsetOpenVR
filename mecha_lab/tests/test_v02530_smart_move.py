@@ -37,10 +37,11 @@ check('... keymap: HUD dots first, then the hold on LMB press, Esc leaves the to
 check('... key legend says what the clicks, the 3D mouse, Enter and Esc do',
       any('3D mouse' in ln and 'origin' in ln for ln in kl.lines('SMART')) and any('Esc' in ln for ln in kl.lines('SMART')))
 items = [p for _d, p in qh.items(C, 'SMART')]
-check('... Quick HUD: axes, speed, push, lift', items == ['axes', 'speed', 'push', 'lift'], items)
+check('... Quick HUD: Move / Size, axes, speed, push, lift', items == ['ndof_do', 'axes', 'speed', 'push', 'lift'], items)
 st.push = 'OFF'
 tree = pcap.capture(uts.DRAWERS['SMART'], C)
-props = [n.prop for n in pcap.walk(tree) if n.kind == 'prop' and n.prop not in {'show_help', 'mch_ndof_parts'}]
+props = [n.prop for n in pcap.walk(tree) if n.kind == 'prop' and n.prop not in {'show_help', 'mch_ndof_parts', 'turn_single', 'ndof_do', 'show_axes'}
+         and not n.prop.startswith('ax_')]
 check('... panel: Turn Axes / Speed / Invert / Push / Lift (Push Speed only with a push; the how-to folded, the 3D Mouse '
       'View / Parts row)', not tree.opts.get('error') and props == ['axes', 'speed', 'invert', 'push', 'lift']
       and 'show_help' in [n.prop for n in pcap.walk(tree) if n.kind == 'prop'], (tree.opts.get('error'), props))
@@ -48,9 +49,10 @@ st.push = 'NORMAL'
 tree = pcap.capture(uts.DRAWERS['SMART'], C)
 check('... Push on: the Push Speed row', 'push_speed' in [n.prop for n in pcap.walk(tree) if n.kind == 'prop'])
 groups = sm.top_bar_groups(C, 'SMART')
-check('... top bar: Turn (Turntable / View / World, Speed, Invert), Push (+ Push Speed), Place (Lift)',
-      [g[0] for g in groups] == ['Turn', 'Push', 'Place'] and [c['label'] for c in groups[0][1]] == ['Turntable', 'View', 'World', 'Speed', 'Invert']
-      and 'Push Speed' in [c['label'] for c in groups[1][1]] and groups[2][1][0]['prop'] == 'lift', groups)
+check('... top bar: 3D Mouse (Move / Size), Turn (Turntable / View / World / Local, Speed, Invert, One Axis), Push (+ X Y Z, Push Speed), Place (Lift)',
+      [g[0] for g in groups] == ['3D Mouse', 'Turn', 'Push', 'Place'] and [c['label'] for c in groups[1][1]] == ['Turntable', 'View', 'World', 'Local', 'Speed', 'Invert', 'One Axis']
+      and [c['label'] for c in groups[2][1]][3:6] == ['X', 'Y', 'Z'] and [c['label'] for c in groups[0][1]] == ['Move', 'Size']
+      and 'Push Speed' in [c['label'] for c in groups[2][1]] and groups[3][1][0]['prop'] == 'lift', groups)
 st.push = 'FREE'
 check('defaults: Turntable axes (0.24.125: "약간 축이 돌아가 있어"), speed 1, no invert, push Free (0.24.124: "밀기도 넣어줘"), lift 0, '
       'the how-to folded', st.bl_rna.properties['axes'].default == 'TURNTABLE' and st.speed == 1.0 and not st.invert
@@ -196,8 +198,8 @@ try:
     st.speed = 1.0
     st.push = 'NORMAL'
     t0 = part.matrix_world.translation.copy()
-    op.modal(C, Ev('NDOF_MOTION', 'NOTHING', types.SimpleNamespace(rotation=Vector((0, 0, 0)), translation=Vector((0, 1, 0)), time_delta=0.1)))
-    check('... Push: Normal - pulling the cap up slides the part up the last surface normal (push speed x view distance x dt)',
+    op.modal(C, Ev('NDOF_MOTION', 'NOTHING', types.SimpleNamespace(rotation=Vector((0, 0, 0)), translation=Vector((0, 0, 1)), time_delta=0.1)))
+    check('... Push: Normal - pulling the cap up (z, 0.24.126) slides the part up the last surface normal (push speed x view distance x dt)',
           near(part.matrix_world.translation, t0 + Vector((0, 0, 1.0 * 0.5 * 0.1)), 1e-6), tuple(part.matrix_world.translation - t0))
     st.push = 'FREE'
     t0 = part.matrix_world.translation.copy()

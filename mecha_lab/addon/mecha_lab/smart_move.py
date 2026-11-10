@@ -9,7 +9,10 @@ User: "내가 어떤 오브젝트를 클릭해, 그리고 내가 원하는 메�
   * 3D mouse (NDOF) twist  -> the held part turns about its ORIGIN - Turntable (default: twist round the world's up,
                               tilt round the screen's horizontal, like Blender's view), View (a trackball) or World;
                               Speed / Invert in the panel; the view does not move while a part is held
-  * 3D mouse push          -> off by default; "Normal" slides the part along the last surface normal, "Free" in the view
+  * 3D mouse push          -> Free (default): left / right and forward / back along the ground as the view sees it, push
+                              down / pull up = down / up; "Normal" slides along the last surface normal; X / Y / Z toggles
+  * S (holding)            -> Smart Size: the 3D mouse scales the part about its origin instead (push x / y / z = that
+                              axis - Local or World axes - twist = all); S again = move
   * Enter / Space / RMB    -> keep (one undo step for the whole hold),  Esc -> the part goes back where it was
   * MMB / wheel / numpad / trackpad -> the view, as always (passed on)
 
@@ -47,7 +50,9 @@ class MCH_PG_Smart(bpy.types.PropertyGroup):
         ('VIEW', 'View', 'The 3D mouse turns the part about the axes of the view you look through (tilt = up / down on '
                          'screen, twist = round the screen\'s up - tilted with the view, a trackball)'),
         ('WORLD', 'World', 'The 3D mouse turns the part about the world axes (twist = round Z up, tilt = round X), '
-                           'whatever the view')), default='TURNTABLE', update=_redraw)
+                           'whatever the view'),
+        ('LOCAL', 'Local', '0.24.126 the 3D mouse turns the part about its OWN axes (twist = round its Z, tilt = round its X, '
+                           'roll = round its Y), however it is turned')), default='TURNTABLE', update=_redraw)
     speed: FloatProperty(name='Speed', description='How fast the 3D mouse turns the part (1 = about as fast as it '
                          'turns the view)', default=1.0, min=0.05, max=8.0, soft_min=0.2, soft_max=4.0)
     invert: BoolProperty(name='Invert', description='Turn the other way round', default=False)
@@ -61,18 +66,74 @@ class MCH_PG_Smart(bpy.types.PropertyGroup):
                               'a share of the view distance', default=0.5, min=0.02, max=5.0)
     lift: FloatProperty(name='Lift', description='The origin is put this far off the surface, along its normal',
                         default=0.0, soft_min=-1.0, soft_max=1.0, step=1, precision=3, unit='LENGTH')
+    # 0.24.126 (user: "미는 거는 xyz 축에 토글이 좀 되는 건 어때?") which WORLD axes a push may move the part along, and
+    # which cap motions may turn it
+    push_x: BoolProperty(name='X', default=True, description='A push may move the part along the world X axis')
+    push_y: BoolProperty(name='Y', default=True, description='A push may move the part along the world Y axis')
+    push_z: BoolProperty(name='Z', default=True, description='A push may move the part along the world Z axis (up / down)')
+    # 0.24.126 (user: "3D 마우스 인버트 설정은 이 항목 다 넣어줘, 접었다 피면서 볼 수 있게" - 3DxWare's Speed panel) per cap
+    # motion: Active / Speed / Reverse - see AXES below (ax_<key>_on / _speed / _rev), folded under show_axes
+    show_axes: BoolProperty(name='3D Mouse Axes', default=False, description='Show the per-axis Active / Speed / Reverse table')
+    turn_single: BoolProperty(name='One Axis', default=False,
+                              description='0.24.126 only the strongest cap motion (tilt, spin or roll) turns the part: the turn stays '
+                                          'bound to one axis at a time')
+    # 0.24.126 (user: "오브젝트 사이즈 조절도 3D 마우스로 하게 해 주라, 스마트 사이즈로 / 로컬이랑 월드 축 선택") Smart Size
+    ndof_do: EnumProperty(name='3D Mouse', items=(
+        ('MOVE', 'Move', 'The 3D mouse moves and turns the held / selected part (Smart Move)'),
+        ('SIZE', 'Size', 'Smart Size: the 3D mouse scales the part about its origin - push along x / y / z = that axis '
+                         '(Local or World), twist = all axes; S while holding switches')), default='MOVE', update=_redraw)
+    size_space: EnumProperty(name='Size Axes', items=(
+        ('LOCAL', 'Local', 'Scale along the part\'s own axes (exact, whatever its rotation)'),
+        ('WORLD', 'World', 'Scale along the world axes (a turned part: Blender\'s nearest shear-free result)')),
+        default='LOCAL', update=_redraw)
+    size_speed: FloatProperty(name='Size Speed', description='Doublings per second at a full push / twist',
+                              default=1.0, min=0.05, max=8.0, soft_max=4.0)
+
+
+# the six cap motions as Blender hands them over: translation x / y / z = left-right / forward-back / up-down (push, pull),
+# rotation x / y / z = tilt / spin (twist) / roll
+AXES = (('lr', 'Left / Right', 'the cap pushed left / right (a move: sideways; a size: X)'),
+        ('fb', 'Forward / Back', 'the cap pushed forward / back (a move: along the ground; a size: Y)'),
+        ('ud', 'Up / Down', 'the cap pulled up / pushed down (a move: up / down; a size: Z)'),
+        ('tilt', 'Tilt', 'the cap tilted forward / back (a turn round the horizontal)'),
+        ('spin', 'Spin', 'the cap twisted (a turn round the up axis; a size: all axes)'),
+        ('roll', 'Roll', 'the cap rolled sideways (a turn round the view axis)'))
+for _key, _label, _desc in AXES:
+    MCH_PG_Smart.__annotations__[f'ax_{_key}_on'] = BoolProperty(name=_label, default=True, description=f'Active: {_desc}')
+    MCH_PG_Smart.__annotations__[f'ax_{_key}_speed'] = FloatProperty(name='Speed', default=1.0, min=0.0, max=4.0, soft_max=3.0,
+                                                                     description=f'Speed of {_desc}')
+    MCH_PG_Smart.__annotations__[f'ax_{_key}_rev'] = BoolProperty(name='Reverse', default=False, description=f'Reverse: {_desc}')
+
+
+def axis_gain(st, key):
+    """What one cap motion counts for: 0 when switched off, else its Speed, negative when reversed."""
+    if not getattr(st, f'ax_{key}_on', True):
+        return 0.0
+    g = float(getattr(st, f'ax_{key}_speed', 1.0))
+    return -g if getattr(st, f'ax_{key}_rev', False) else g
+
+
+def device_values(data, st):
+    """(translation, rotation) of one 3D-mouse event with the per-axis Active / Speed / Reverse table applied."""
+    t, r = Vector(data.translation), Vector(data.rotation)
+    return (Vector((t.x * axis_gain(st, 'lr'), t.y * axis_gain(st, 'fb'), t.z * axis_gain(st, 'ud'))),
+            Vector((r.x * axis_gain(st, 'tilt'), r.y * axis_gain(st, 'spin'), r.z * axis_gain(st, 'roll'))))
 
 
 # ---- the maths ------------------------------------------------------------------------------------------------------
 
-def turn_axis(rot, mode, view_matrix=None):
+def turn_axis(rot, mode, view_matrix=None, local_matrix=None):
     """The world axis a 3D-mouse rotation vector (view space: X right, Y up, Z towards you) turns about.
     TURNTABLE (0.24.125, user: "약간 축이 돌아가 있어" - the View twist was round the screen's up, tilted with a view that
     looks down): twist = round the world's up (Z), tilt = round the view's horizontal, roll = round the view axis -
     Blender's own turntable view turning.  VIEW: all three through the view's rotation (a trackball).  WORLD: tilt
     forward = round world X, twist = round world Z (up), roll = round world Y - the front view's mapping, whatever the
-    view.  No view: the front view's mapping for every mode."""
+    view.  LOCAL (0.24.126, user: "로컬 축이나 월드 축에 종속되서 돌려지는 버전"): the part's own axes - twist = round its
+    Z, tilt = round its X, roll = round its Y (``local_matrix`` = its rotation).  No view: the front view's mapping."""
     v = Vector(rot)
+    if mode == 'LOCAL' and local_matrix is not None:
+        R = local_matrix.to_3x3().normalized()
+        return R @ Vector((v.x, -v.z, v.y))
     if view_matrix is None:
         return Vector((v.x, -v.z, v.y))
     inv = view_matrix.to_3x3().inverted_safe()
@@ -92,6 +153,42 @@ def turn_angle(rot, dt, speed=1.0, invert=False):
     dt = min(dt, 0.1)
     ang = Vector(rot).length * 2.0 * math.pi * dt * speed
     return -ang if invert else ang
+
+
+def push_axes(mode, view_matrix=None):
+    """0.24.126 (user: "안쪽이랑 바깥쪽으로 … 안 되네") The world directions a 3D-mouse push moves the part along -
+    (right, forward, up) for the device's (x, y, z).  Blender hands the cap's left / right as x, forward / back as y and
+    push-down / pull-up as z.  TURNTABLE / WORLD: right = the view's horizontal, forward = where the view looks, along the
+    ground, up = the world's up - so pushing the cap down / pulling it up moves the part down / up (it moved along the
+    line of sight before: invisible in an orthographic view and nearly so looking down).  VIEW: the view's own axes (push
+    = towards / away from you).  No view: world X, Y, Z."""
+    if view_matrix is None or mode in {'WORLD', 'LOCAL'}:     # (LOCAL: the push is turned into the part's axes by the caller)
+        return Vector((1.0, 0.0, 0.0)), Vector((0.0, 1.0, 0.0)), Vector((0.0, 0.0, 1.0))
+    inv = view_matrix.to_3x3().inverted_safe()
+    vx, vy, vz = inv @ Vector((1.0, 0.0, 0.0)), inv @ Vector((0.0, 1.0, 0.0)), inv @ Vector((0.0, 0.0, 1.0))
+    if mode == 'VIEW':
+        return vx.normalized(), vy.normalized(), vz.normalized()
+    right = Vector((vx.x, vx.y, 0.0))
+    right = right.normalized() if right.length > 1e-6 else vx.normalized()
+    forward = Vector((vy.x, vy.y, 0.0))                   # the screen's up, on the ground: away from you
+    if forward.length < 1e-6:                             # (looking level: the screen's up is the world's up)
+        forward = Vector((-vz.x, -vz.y, 0.0))             # ... then where the view looks
+    forward = forward.normalized() if forward.length > 1e-6 else Vector((0.0, 1.0, 0.0))
+    return right, forward, Vector((0.0, 0.0, 1.0))
+
+
+def dominant(v):
+    """``v`` with only its strongest component kept (One Axis)."""
+    v = Vector(v)
+    i = max(range(3), key=lambda k: abs(v[k]))
+    out = Vector((0.0, 0.0, 0.0))
+    out[i] = v[i]
+    return out
+
+
+def masked(v, x, y, z):
+    """``v`` with the components that are switched off zeroed."""
+    return Vector((v.x if x else 0.0, v.y if y else 0.0, v.z if z else 0.0))
 
 
 def rotate_about(matrix, axis, angle, pivot):
@@ -168,28 +265,71 @@ def ndof_apply(ob, data, st, rv3d, last_normal=None):
     invert = getattr(st, 'invert', False)
     push = getattr(st, 'push', 'FREE')
     view = rv3d.view_matrix if rv3d is not None else None
-    rot = Vector(data.rotation)
+    # 0.24.126 the cap motions that may turn (tilt = x, spin = y, roll = z) and the world axes a push may move along
+    tr_dev, rot = device_values(data, st)                      # (per-axis Active / Speed / Reverse)
+    if getattr(st, 'turn_single', False):
+        rot = dominant(rot)                                   # one axis at a time
     dt = float(getattr(data, 'time_delta', 0.0) or 0.0)
     m = ob.matrix_world
     ang = 0.0
     if rot.length > 1e-9:
-        axis = turn_axis(rot, mode, view)
+        axis = turn_axis(rot, mode, view, m)
         ang = turn_angle(rot, dt, speed, invert)
         m = rotate_about(m, axis, ang, m.translation)
     step = Vector((0.0, 0.0, 0.0))
     if push != 'OFF':
-        tr = Vector(data.translation)
+        tr = tr_dev
         if tr.length > 1e-9:
             dtc = min(dt if dt > 0.0 else 1.0 / 60.0, 0.1)
             dist = (rv3d.view_distance if rv3d is not None else 1.0) * getattr(st, 'push_speed', 0.5) * dtc
             if push == 'NORMAL' and last_normal is not None:
-                step = Vector(last_normal) * (tr.y * dist)       # pull the cap up = up the normal, push down = down
+                step = Vector(last_normal) * (tr.z * dist)       # pull the cap up = off the surface, push down = into it
             else:
-                step = turn_axis(tr, 'VIEW', view) * dist
+                right, forward, up = push_axes(mode, view)
+                step = (right * tr.x + forward * tr.y + up * tr.z) * dist
+                if mode == 'LOCAL':                           # along the part's own axes
+                    step = m.to_3x3().normalized() @ step
+            step = masked(step, getattr(st, 'push_x', True), getattr(st, 'push_y', True), getattr(st, 'push_z', True))
             m = m.copy()
             m.translation = m.translation + step
     ob.matrix_world = m
     return ang, step
+
+
+def scale_about(matrix, factors, space='LOCAL'):
+    """0.24.126 ``matrix`` scaled by ``factors`` (x, y, z) about its own ORIGIN - LOCAL: along the part's axes (exact),
+    WORLD: along the world axes (a turned part ends up as Blender's nearest shear-free decomposition)."""
+    fx, fy, fz = (max(1e-6, float(f)) for f in factors)
+    S = Matrix.Diagonal((fx, fy, fz, 1.0))
+    if space == 'WORLD':
+        o = matrix.translation.copy()
+        return Matrix.Translation(o) @ S @ Matrix.Translation(-o) @ matrix
+    return matrix @ S
+
+
+def size_factors(data, st, dt):
+    """The scale factors one 3D-mouse event asks for: the cap pushed along x / y / z = that axis (the X / Y / Z toggles
+    gate them, the per-axis table reverses / speeds them), a twist = all three; 2 ** (deflection x seconds x Size Speed)."""
+    tr, rot = device_values(data, st)
+    tr = masked(tr, getattr(st, 'push_x', True), getattr(st, 'push_y', True), getattr(st, 'push_z', True))
+    uni = rot.y
+    dtc = min(dt if dt > 0.0 else 1.0 / 60.0, 0.1)
+    k = float(getattr(st, 'size_speed', 1.0)) * dtc
+    u = 2.0 ** (uni * k)
+    return (2.0 ** (tr.x * k) * u, 2.0 ** (tr.y * k) * u, 2.0 ** (tr.z * k) * u)
+
+
+def size_apply(ob, data, st):
+    """Smart Size: one 3D-mouse event scales ``ob`` about its origin (Local / World axes).  Returns the factors."""
+    f = size_factors(data, st, float(getattr(data, 'time_delta', 0.0) or 0.0))
+    if all(abs(v - 1.0) < 1e-12 for v in f):
+        return f
+    m = scale_about(ob.matrix_world, f, getattr(st, 'size_space', 'LOCAL'))
+    sc = m.to_scale()
+    if min(abs(c) for c in sc) < 1e-3:                    # (never collapse a part to nothing)
+        return (1.0, 1.0, 1.0)
+    ob.matrix_world = m
+    return f
 
 
 def ndof_parts_on(context):
@@ -365,10 +505,14 @@ class MCH_OT_smart_move(bpy.types.Operator):
         axes = getattr(st, 'axes', 'TURNTABLE').title()
         try:
             push = getattr(st, 'push', 'FREE')
+            if getattr(st, 'ndof_do', 'MOVE') == 'SIZE':
+                what = (f'3D mouse = SIZE about the origin ({getattr(st, "size_space", "LOCAL").title()} axes: push x / y / z = '
+                        f'that axis, twist = all; S: back to move)')
+            else:
+                what = (f'3D mouse: turn about the origin ({axes} axes, speed {getattr(st, "speed", 1.0):.2g})'
+                        + ('' if push == 'OFF' else f', push: {push.title()}') + '   S: size')
             context.area.header_text_set(
-                f'Smart Move  |  {self.ob_name}  |  LMB on a surface: put it there (origin, same rotation)  |  '
-                f'3D mouse: turn about the origin ({axes} axes, speed {getattr(st, "speed", 1.0):.2g})'
-                + ('' if push == 'OFF' else f', push: {push.title()}')
+                f'Smart Move  |  {self.ob_name}  |  LMB on a surface: put it there (origin, same rotation)  |  ' + what
                 + '  |  Enter / Space / RMB' + (' / E' if self.from_key else '') + ': keep   Esc: put back   MMB / wheel: view')
         except (AttributeError, RuntimeError):
             pass
@@ -413,6 +557,9 @@ class MCH_OT_smart_move(bpy.types.Operator):
         if ob is None or data is None:
             return False
         st = getattr(context.scene, 'mch_smart', None)
+        if getattr(st, 'ndof_do', 'MOVE') == 'SIZE':          # 0.24.126 Smart Size
+            size_apply(ob, data, st)
+            return True
         ang, _step = ndof_apply(ob, data, st, getattr(context, 'region_data', None),
                                 self.last_hit[1] if self.last_hit is not None else None)
         self.turned += abs(ang)
@@ -459,6 +606,13 @@ class MCH_OT_smart_move(bpy.types.Operator):
             return self._finish(context, True)
         if et == 'ESC' and ev == 'PRESS':
             return self._finish(context, False)
+        if et == 'S' and ev == 'PRESS':                     # 0.24.126 Move <-> Size for the 3D mouse (Smart Size)
+            st = getattr(context.scene, 'mch_smart', None)
+            if st is not None:
+                st.ndof_do = 'SIZE' if st.ndof_do == 'MOVE' else 'MOVE'
+                self._header(context)
+                _redraw(None, context)
+            return {'RUNNING_MODAL'}
         return {'PASS_THROUGH'}
 
 
@@ -485,7 +639,10 @@ class MCH_OT_smart_ndof(bpy.types.Operator):
         if not ok:
             return {'PASS_THROUGH'}
         st = getattr(context.scene, 'mch_smart', None)
-        ndof_apply(ob, data, st, getattr(context, 'region_data', None))
+        if getattr(st, 'ndof_do', 'MOVE') == 'SIZE':                # 0.24.126 Smart Size in any tool too
+            size_apply(ob, data, st)
+        else:
+            ndof_apply(ob, data, st, getattr(context, 'region_data', None))
         if getattr(data, 'progress', '') == 'FINISHING':          # one undo step per gesture
             try:
                 bpy.ops.ed.undo_push(message='3D Mouse Move')
@@ -553,6 +710,14 @@ def draw(layout, context):
         row.label(text='3D Mouse')
         row.prop(wm, 'mch_ndof_parts', text='View', toggle=True, invert_checkbox=True)
         row.prop(wm, 'mch_ndof_parts', text='Parts', toggle=True)
+    row = box.row(align=True)                      # 0.24.126 Smart Size: what the 3D mouse does to the part
+    row.label(text='Does')
+    row.prop(st, 'ndof_do', expand=True)
+    if st.ndof_do == 'SIZE':
+        row = box.row(align=True)
+        row.label(text='Size Axes')
+        row.prop(st, 'size_space', expand=True)
+        box.prop(st, 'size_speed')
     row = box.row(align=True)
     row.label(text='Turn Axes')
     row.prop(st, 'axes', expand=True)
@@ -563,8 +728,30 @@ def draw(layout, context):
     row.label(text='Push')
     row.prop(st, 'push', expand=True)
     if st.push != 'OFF':
+        row = box.row(align=True)                  # 0.24.126 the world axes a push may move along
+        row.label(text='Push Axes')
+        row.prop(st, 'push_x', toggle=True)
+        row.prop(st, 'push_y', toggle=True)
+        row.prop(st, 'push_z', toggle=True)
         box.prop(st, 'push_speed')
+    box.prop(st, 'turn_single', toggle=True)
     box.prop(st, 'lift')
+    # 0.24.126 (user: 3DxWare's Speed panel) per cap motion: Active | Speed | Reverse, folded
+    sub = box.box()
+    row = sub.row(align=True)
+    row.prop(st, 'show_axes', text='3D Mouse Axes (Active / Speed / Reverse)', icon='TRIA_DOWN' if st.show_axes else 'TRIA_RIGHT', emboss=False)
+    if st.show_axes:
+        head = sub.row(align=True)
+        head.label(text='')
+        head.label(text='Active')
+        head.label(text='Speed')
+        head.label(text='Reverse')
+        for key, label, _desc in AXES:
+            row = sub.row(align=True)
+            row.label(text=label)
+            row.prop(st, f'ax_{key}_on', text='')
+            row.prop(st, f'ax_{key}_speed', text='', slider=True)
+            row.prop(st, f'ax_{key}_rev', text='')
 
 
 def top_bar_groups(context, tool):
@@ -573,13 +760,19 @@ def top_bar_groups(context, tool):
     if st is None or tool != 'SMART':
         return []
     from .top_bar import _enum_segs, _mini, _seg
-    turn = _enum_segs(st, 'axes', (('TURNTABLE', 'Turntable'), ('VIEW', 'View'), ('WORLD', 'World')))
+    turn = _enum_segs(st, 'axes', (('TURNTABLE', 'Turntable'), ('VIEW', 'View'), ('WORLD', 'World'), ('LOCAL', 'Local')))
     turn.append(_mini('Speed', st, 'speed', 130))
     turn.append(_seg('Invert', st, 'invert'))
+    turn.append(_seg('One Axis', st, 'turn_single'))
     push = _enum_segs(st, 'push', (('OFF', 'Off'), ('NORMAL', 'Normal'), ('FREE', 'Free')))
     if st.push != 'OFF':
+        push += [_seg('X', st, 'push_x'), _seg('Y', st, 'push_y'), _seg('Z', st, 'push_z')]
         push.append(_mini('Push Speed', st, 'push_speed', 150))
-    return [('Turn', turn), ('Push', push), ('Place', [_mini('Lift', st, 'lift', 140)])]
+    size = _enum_segs(st, 'ndof_do', (('MOVE', 'Move'), ('SIZE', 'Size')))       # 0.24.126 Smart Size
+    if st.ndof_do == 'SIZE':
+        size += _enum_segs(st, 'size_space', (('LOCAL', 'Local'), ('WORLD', 'World')))
+        size.append(_mini('Size Speed', st, 'size_speed', 150))
+    return [('3D Mouse', size), ('Turn', turn), ('Push', push), ('Place', [_mini('Lift', st, 'lift', 140)])]
 
 
 CLASSES = (MCH_PG_Smart, MCH_OT_smart_move, MCH_OT_smart_ndof, MCH_OT_ndof_parts)
