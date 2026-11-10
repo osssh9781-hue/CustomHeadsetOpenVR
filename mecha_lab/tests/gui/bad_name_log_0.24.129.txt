@@ -1,0 +1,8 @@
+1 poked: ? offset ok True bad blocks 1
+   after mouse moves: name 라메 bad blocks 0 LAST [('objects', '라메')]
+shot 1_repaired.png True
+2 Armor Plate lasso -> new [('Body_Plate', 126)] tool PLATE
+shot 2_armor_plate.png True
+PASS 1 a CP949 name in the scene + the Layers panel open: the drawn UI repairs it to the Korean word instead of dying
+PASS 2 Armor Plate: a lasso on the body makes a plate (the tool no longer dies)
+2/2 passed

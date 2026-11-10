@@ -1239,8 +1239,9 @@ class MCH_GT_plate_slider(bpy.types.Gizmo):
     def draw(self, context):
         self.draw_custom_shape(self.shape)
 
-    def draw_select(self, context, select_id):
-        self.draw_custom_shape(self.shape, select_id=select_id)
+    def test_select(self, context, location):          # 0.24.129 (Blender 5.2: no draw_select in a 2D gizmo group)
+        from .primitive_hud import rect_hit
+        return rect_hit(self, location)
 
     def invoke(self, context, event):
         self.init_x = event.mouse_region_x

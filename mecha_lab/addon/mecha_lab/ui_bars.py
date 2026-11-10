@@ -351,15 +351,27 @@ def all_items(context):
     from .ui_gpu import ui_factor
     k = ui_factor(context, region)
     try:
+        from . import name_fix
         ob = context.active_object
-        key = (region.width, region.height, round(k, 4), ts.effective_tool(context), ob.name if ob else '',
+        key = (region.width, region.height, round(k, 4), ts.effective_tool(context), name_fix.safe_name(ob) if ob else '',
                ob.mode if ob else '', VERSION[0])
-    except (AttributeError, ReferenceError):
+    except (AttributeError, ReferenceError, ImportError):
         key = None
     now = time.monotonic()
     if key is not None and key == _MEMO['key'] and now - _MEMO['time'] < MEMO_TTL:
         return _MEMO['items']
-    out = _build_all(context, region, k)
+    try:
+        out = _build_all(context, region, k)
+    except UnicodeDecodeError as ex:
+        # 0.24.129 (user: "아머 플레이트 하는데 계속 꺼지냐") a data-block name that is not UTF-8 (a Korean Windows file):
+        # repair the names once and build again; if that fails too, an empty UI beats a dead tool
+        from . import name_fix
+        if not name_fix.on_error(ex):
+            return []
+        try:
+            out = _build_all(context, region, k)
+        except UnicodeDecodeError:
+            return []
     _MEMO.update(key=key, time=now, items=out)
     return out
 

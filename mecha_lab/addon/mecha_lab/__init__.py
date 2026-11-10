@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 24, 128),
+    "version": (0, 24, 129),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
     "description": "Cut, Split, Base Mesh, Boolean, Face Extract, Armor Sculpt, Molding, Cable, Hollow, curve arrays, Mirror",
@@ -19,7 +19,7 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                creature_plate, belt_maker, creature_spike, creature_scales, flower_plate,
                surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, smart_move, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, bg_jobs, quad_remesh, mesh_fix, tool_recent, actions_menu, key_legend, quick_hud, mecha_menu, symmetry, groups, ui_bars, safety_save, lasso_memory, armor_shell, paint_lab, bake_maps, res_parts, final_export, mech_shader,
                creature_shader, my_presets, decals, zones, my_materials, bake_material, color_pick,
-               random_shapes, material_overlay, tire_gen, work_scene, press_cut)
+               random_shapes, material_overlay, tire_gen, work_scene, press_cut, name_fix)
 import os
 import re
 from pathlib import Path
@@ -2148,6 +2148,7 @@ def _register():
     paint_lab.register()                 # 0.24.93 (before ui_bars: the ZBrush screen asks it which screen is up)
     ui_bars.register()
     safety_save.register()
+    name_fix.register()                 # 0.24.129 names that are not UTF-8 (they killed the drawn UI)
     fold_patch.register()
     workspace_ui.register()
     bottom_bar.register()
@@ -2205,6 +2206,7 @@ def _unregister_steps():
         ('bottom_bar', bottom_bar.unregister),
         ('workspace_ui', workspace_ui.unregister),
         ('fold_patch', fold_patch.unregister),
+        ('name_fix', name_fix.unregister),
         ('safety_save', safety_save.unregister),
         ('ui_bars', ui_bars.unregister),
         ('paint_lab', paint_lab.unregister),

@@ -148,6 +148,17 @@ def flow():
             log(('PASS ' if v else 'FAIL ') + k_)
         bpy.ops.wm.quit_blender()
         return
+    # 1b. the bar's Radius slider (a 2D rect gizmo: its hit test is test_select since 0.24.129) - drag it right
+    ui = C.preferences.system.ui_scale
+    pos = ct.tube_bar_layout(r.width / ui, r.height / ui)['slider_radius']
+    sx, sy = int(round(r.x + pos[0] * ui)), int(round(w.height - (r.y + pos[1] * ui)))
+    r0 = tube.mch_tube.radius
+    xdo('mousemove', sx, sy)
+    yield 0.4
+    xdo('mousedown', 1, 'sleep', 0.1, 'mousemove', sx + 30, sy, 'sleep', 0.08, 'mousemove', sx + 60, sy, 'sleep', 0.08, 'mouseup', 1)
+    yield 1.0
+    log('1b radius slider drag at', (sx, sy), 'radius', round(r0, 4), '->', round(tube.mch_tube.radius, 4))
+    res['1b the bar\'s Radius slider takes a drag (the 2D gizmo hit test works in Blender 5.2)'] = tube.mch_tube.radius > r0 * 1.2
     # 2. Q -> Select, Shift + click the part
     focus()
     xdo('key', 'q')

@@ -346,7 +346,8 @@ def content(context, x, width, k):
             right = small(right, 'Origin to its middle', 'origin', False,
                           ('op', 'mch.layer_group_op', {'name': ob.name, 'coll': is_c, 'action': 'ORIGIN'}))
         if is_c:
-            parts = [o for o in ob.all_objects if o.name in sc['listed']]
+            from . import name_fix
+            parts = [o for o in ob.all_objects if name_fix.safe_name(o) in sc['listed']]   # 0.24.129 a name that is not UTF-8
             sel = bool(parts) and all(o.select_get() for o in parts)
         else:
             try:

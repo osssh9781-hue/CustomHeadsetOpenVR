@@ -1368,9 +1368,13 @@ def _on_depsgraph(scene, depsgraph):
     # just removed - an add-on deleting a temporary mesh, or Ctrl+Z - and reading those crashed Blender)
     todo = []
     seen = {}                            # 0.24.73 a source shared by several Repeats is read once per update
+    from . import name_fix
     for ob in repeats:
         src = ob.mch_tube.source
-        key = src.name
+        key = name_fix.safe_name(src, None)
+        if key is None:                   # 0.24.129 a source name that is not UTF-8: repaired, read next time
+            name_fix.on_error()
+            return
         if key not in seen:
             seen[key] = _source_sig(src, depsgraph)
         sig = seen[key]
@@ -1466,11 +1470,15 @@ def select_link_step(context):
         return []
     prev_act, _prev_tubes = _SEL
     tubes = selected_tubes(context)
-    names = tuple(o.name for o in tubes)
+    from . import name_fix
+    if act is not None and name_fix.safe_name(act, None) is None:         # 0.24.129 a name that is not UTF-8
+        name_fix.on_error()
+    names = tuple(name_fix.safe_name(o) for o in tubes)
+    act_name = name_fix.safe_name(act) if act is not None else None
     linked = []
     try:
         gesture = (act is not None and act.type == 'MESH' and act.select_get() and not is_tube(act)
-                   and prev_act is not None and prev_act != act.name and prev_act in names
+                   and prev_act is not None and prev_act != act_name and prev_act in names
                    and context.mode == 'OBJECT' and not _draw_ops and (st is None or st.select_link))
     except (AttributeError, ReferenceError, RuntimeError):
         gesture = False
@@ -1489,7 +1497,7 @@ def select_link_step(context):
                            + (f' (Count {n})' if n else ' (Spacing)') + '  -  Ctrl+Z puts it back', 'INFO', 4.0)
             except (ImportError, AttributeError, RuntimeError):
                 pass
-    _SEL[0], _SEL[1] = (act.name if act is not None else None), names
+    _SEL[0], _SEL[1] = act_name, names
     return linked
 
 
@@ -1498,8 +1506,8 @@ def _select_tick():
         return None
     try:
         select_link_step(bpy.context)
-    except (AttributeError, ReferenceError, RuntimeError):
-        pass
+    except Exception as ex:          # noqa: BLE001 (a timer that raises is unregistered by Blender - never)
+        print('[Mecha Lab] Mesh Curve selection watcher:', repr(ex))
     return SELECT_TICK
 
 
@@ -1780,8 +1788,9 @@ class MCH_GT_tube_slider(bpy.types.Gizmo):
     def draw(self, context):
         self.draw_custom_shape(self.shape)
 
-    def draw_select(self, context, select_id):
-        self.draw_custom_shape(self.shape, select_id=select_id)
+    def test_select(self, context, location):          # 0.24.129 (Blender 5.2: no draw_select in a 2D gizmo group)
+        from .primitive_hud import rect_hit
+        return rect_hit(self, location)
 
     def invoke(self, context, event):
         self.init_x = event.mouse_region_x

@@ -320,6 +320,24 @@ def slider_value(start, dx, step_px=STEP_PX, lo=1, hi=999):
     return int(max(lo, min(hi, round(start + dx / step_px))))
 
 
+def rect_hit(gz, location):
+    """0.24.129 the hit test of a 2D rectangle gizmo (the _RECT shape, +-1, under matrix_basis = centre + half sizes in
+    region pixels): 0 when ``location`` is inside, -1 outside.  Blender 5.2 refuses ``draw_select`` on a gizmo of a 2D
+    gizmo group ("GizmoType ... is for a 3D gizmo-group ... only 'test_select' will be used") - the HUD sliders of the
+    Primitive HUD, the Mesh Curve bar and the Armor Plate HUD failed to set up with it."""
+    try:
+        m = gz.matrix_basis
+        cx, cy = m[0][3], m[1][3]
+        hx, hy = abs(m[0][0]), abs(m[1][1])
+        if getattr(gz, 'use_draw_scale', False):
+            hx *= gz.scale_basis
+            hy *= gz.scale_basis
+        x, y = location[0], location[1]
+        return 0 if (abs(x - cx) <= hx + 1.0 and abs(y - cy) <= hy + 1.0) else -1
+    except (AttributeError, IndexError, TypeError):
+        return -1
+
+
 class MCH_GT_hud_slider(bpy.types.Gizmo):
     bl_idname = 'MCH_GT_hud_slider'
     __slots__ = ('shape', 'init_x', 'init_value')
@@ -331,8 +349,8 @@ class MCH_GT_hud_slider(bpy.types.Gizmo):
     def draw(self, context):
         self.draw_custom_shape(self.shape)
 
-    def draw_select(self, context, select_id):
-        self.draw_custom_shape(self.shape, select_id=select_id)
+    def test_select(self, context, location):
+        return rect_hit(self, location)
 
     def invoke(self, context, event):
         spec = slider_spec(context, *hud_target(context))

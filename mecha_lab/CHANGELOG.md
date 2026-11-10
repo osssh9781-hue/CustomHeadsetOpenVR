@@ -1,5 +1,24 @@
 # CHANGELOG
 
+## 0.24.129 — UTF-8 이 아닌 이름(한글 윈도우 파일) 때문에 도구가 계속 죽던 것 수정 · HUD 슬라이더 기즈모 5.2 오류 수정 (2026-11-10)
+
+- (사용자: "지금 왜 아머 플레이트 하는데 계속 꺼지냐" + 트레이스백 `layers_panel.content ... o.name ...
+  UnicodeDecodeError: 'utf-8' codec can't decode byte 0xb6`) 원인: 씬의 어떤 오브젝트 이름이 **UTF-8 이 아닌 바이트**
+  (0xB6 = CP949, 즉 한글 윈도우 인코딩의 한글 첫 바이트 — 한글 이름이 든 파일을 가져온 오브젝트)로 돼 있어서 파이썬에서 `name` 을
+  읽을 때마다 예외가 났고, 그려진 UI(Layers 패널)는 마우스가 움직일 때마다 이름을 읽기 때문에 **모든 도구 호출이 그 자리에서
+  죽었습니다**(아머 플레이트만의 문제가 아님). 이제 (1) UI 가 이름을 안전하게 읽고, (2) 그런 이름을 만나면 **자동 복구**합니다:
+  ID 구조체에서 원래 바이트를 읽어 CP949 로 풀면 **원래 한글 이름이 그대로 돌아오고**(예: 라메), 아니면 읽을 수 없는 바이트만
+  빼고 이름을 다시 붙입니다(둘 다 안 되면 Object_fixed). 복구는 파일을 열 때 · 애드온이 켜질 때 · UI 가 그 오류를 만난 순간에
+  돌고, 토스트 "N name(s) were not UTF-8 ... repaired: ..." 로 알립니다. 오브젝트 · 메시 · 콜렉션 · 머티리얼 · 이미지 · 커브 등
+  12 종 데이터블록. Mesh Curve 의 선택 감시자 · Repeat 소스 감시자 · 그룹 타이머도 같은 이름에서 죽지 않게 했습니다.
+- Blender 5.2 가 2D 기즈모 그룹의 `draw_select` 를 거부해서("GizmoType ... is for a 3D gizmo-group ... only 'test_select' will
+  be used") **Primitive HUD · Mesh Curve 바 · Armor Plate HUD 의 슬라이더 기즈모가 setup 에서 오류**를 내던 것(이번 세션 실제 창
+  로그에서 발견)을 `test_select`(사각형 적중 검사)로 바꿔 고쳤습니다. 실제 창에서 Mesh Curve 바의 Radius 슬라이더 드래그 확인.
+- 테스트(Blender 5.2.3): test_v02534 14/14(재현: CP949 한글 이름 → UnicodeDecodeError 0xb6; safe_name; 복구 → 한글 복원; UI ·
+  타이머 · 감시자 경로; 오프셋 검증; 기즈모 적중 검사), test_v02533 15/15. 실제 창: tests/gui/bad_name_real_window.py 2/2(깨진
+  이름 + Layers 패널 열림 → 마우스만 움직여도 이름이 "라메"로 복구, 그 뒤 아머 플레이트 라쏘 → 플레이트 생성, 로그에
+  UnicodeDecodeError 0 건), tube_select_link 4/4.
+
 ## 0.24.128 — Mesh Curve: 커브를 선택한 채 다른 부품을 Shift + 클릭하면 그 부품이 커브를 따라 나열 (2026-11-10)
 
 - (사용자: "메쉬 커브로 커브 그으면 그 이후에 다른 오브젝트 클릭해서 ... 노란색 메쉬 커브를 주황색으로 만들면 그 오브젝트를 커브에

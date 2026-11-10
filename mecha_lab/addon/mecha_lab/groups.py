@@ -1095,6 +1095,10 @@ def _auto_group_tick():
         return 0.3 if scope(ctx) is not None else 1.0
     except (AttributeError, ReferenceError, RuntimeError):
         return 0.7
+    except UnicodeDecodeError as ex:          # 0.24.129 a data-block name that is not UTF-8: repair, go on
+        from . import name_fix
+        name_fix.on_error(ex)
+        return 0.7
 
 
 # --- repetition ----------------------------------------------------------------------------------------------
