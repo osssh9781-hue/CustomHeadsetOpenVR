@@ -6,8 +6,9 @@ User: "내가 어떤 오브젝트를 클릭해, 그리고 내가 원하는 메�
   * LMB on a part          -> it is held (selected, a ring on its origin, hints in the header)
   * LMB on a surface       -> the held part's ORIGIN goes to that point (+ Lift along the surface normal); its rotation and
                               size do not change; click again anywhere to move it again
-  * 3D mouse (NDOF) twist  -> the held part turns about its ORIGIN - the axes are those of the view (default) or the
-                              world; Speed / Invert in the panel; the view does not move while a part is held
+  * 3D mouse (NDOF) twist  -> the held part turns about its ORIGIN - Turntable (default: twist round the world's up,
+                              tilt round the screen's horizontal, like Blender's view), View (a trackball) or World;
+                              Speed / Invert in the panel; the view does not move while a part is held
   * 3D mouse push          -> off by default; "Normal" slides the part along the last surface normal, "Free" in the view
   * Enter / Space / RMB    -> keep (one undo step for the whole hold),  Esc -> the part goes back where it was
   * MMB / wheel / numpad / trackpad -> the view, as always (passed on)
@@ -41,10 +42,12 @@ def _redraw(self, context):
 
 class MCH_PG_Smart(bpy.types.PropertyGroup):
     axes: EnumProperty(name='Turn Axes', items=(
+        ('TURNTABLE', 'Turntable', '0.24.125 like Blender\'s view turning: twist = round the world\'s up (Z, a turntable), '
+                                   'tilt = round the screen\'s horizontal, roll = round the view axis'),
         ('VIEW', 'View', 'The 3D mouse turns the part about the axes of the view you look through (tilt = up / down on '
-                         'screen, twist = round the screen)'),
+                         'screen, twist = round the screen\'s up - tilted with the view, a trackball)'),
         ('WORLD', 'World', 'The 3D mouse turns the part about the world axes (twist = round Z up, tilt = round X), '
-                           'whatever the view')), default='VIEW', update=_redraw)
+                           'whatever the view')), default='TURNTABLE', update=_redraw)
     speed: FloatProperty(name='Speed', description='How fast the 3D mouse turns the part (1 = about as fast as it '
                          'turns the view)', default=1.0, min=0.05, max=8.0, soft_min=0.2, soft_max=4.0)
     invert: BoolProperty(name='Invert', description='Turn the other way round', default=False)
@@ -64,11 +67,21 @@ class MCH_PG_Smart(bpy.types.PropertyGroup):
 
 def turn_axis(rot, mode, view_matrix=None):
     """The world axis a 3D-mouse rotation vector (view space: X right, Y up, Z towards you) turns about.
-    VIEW: through the view's rotation (no view: the world, as a front view).  WORLD: tilt forward = round world X,
-    twist = round world Z (up), roll = round world Y - the front view's mapping, whatever the view."""
+    TURNTABLE (0.24.125, user: "약간 축이 돌아가 있어" - the View twist was round the screen's up, tilted with a view that
+    looks down): twist = round the world's up (Z), tilt = round the view's horizontal, roll = round the view axis -
+    Blender's own turntable view turning.  VIEW: all three through the view's rotation (a trackball).  WORLD: tilt
+    forward = round world X, twist = round world Z (up), roll = round world Y - the front view's mapping, whatever the
+    view.  No view: the front view's mapping for every mode."""
     v = Vector(rot)
-    if mode == 'VIEW' and view_matrix is not None:
-        return view_matrix.to_3x3().inverted_safe() @ v
+    if view_matrix is None:
+        return Vector((v.x, -v.z, v.y))
+    inv = view_matrix.to_3x3().inverted_safe()
+    if mode == 'VIEW':
+        return inv @ v
+    if mode == 'TURNTABLE':
+        vx = (inv @ Vector((1.0, 0.0, 0.0))).normalized()
+        vz = (inv @ Vector((0.0, 0.0, 1.0))).normalized()
+        return vx * v.x + Vector((0.0, 0.0, 1.0)) * v.y + vz * v.z
     return Vector((v.x, -v.z, v.y))
 
 
@@ -147,10 +160,10 @@ def selectable(ob):
 
 
 def ndof_apply(ob, data, st, rv3d, last_normal=None):
-    """One 3D-mouse motion event on ``ob``: turned about its ORIGIN (View / World axes, Speed, Invert) and, with Push
+    """One 3D-mouse motion event on ``ob``: turned about its ORIGIN (Turntable / View / World axes, Speed, Invert) and, with Push
     on, slid - Normal: along ``last_normal`` (the surface it was last put on; none known: as Free), Free: along the view's
     axes.  Returns (radians turned, world step)."""
-    mode = getattr(st, 'axes', 'VIEW')
+    mode = getattr(st, 'axes', 'TURNTABLE')
     speed = getattr(st, 'speed', 1.0)
     invert = getattr(st, 'invert', False)
     push = getattr(st, 'push', 'FREE')
@@ -349,7 +362,7 @@ class MCH_OT_smart_move(bpy.types.Operator):
 
     def _header(self, context):
         st = getattr(context.scene, 'mch_smart', None)
-        axes = getattr(st, 'axes', 'VIEW').title()
+        axes = getattr(st, 'axes', 'TURNTABLE').title()
         try:
             push = getattr(st, 'push', 'FREE')
             context.area.header_text_set(
@@ -560,7 +573,7 @@ def top_bar_groups(context, tool):
     if st is None or tool != 'SMART':
         return []
     from .top_bar import _enum_segs, _mini, _seg
-    turn = _enum_segs(st, 'axes', (('VIEW', 'View'), ('WORLD', 'World')))
+    turn = _enum_segs(st, 'axes', (('TURNTABLE', 'Turntable'), ('VIEW', 'View'), ('WORLD', 'World')))
     turn.append(_mini('Speed', st, 'speed', 130))
     turn.append(_seg('Invert', st, 'invert'))
     push = _enum_segs(st, 'push', (('OFF', 'Off'), ('NORMAL', 'Normal'), ('FREE', 'Free')))

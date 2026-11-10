@@ -36,7 +36,7 @@ EXTRA = {
     'CPATH': ['Tab (dragging)   Extend: brush area / whole section', 'B (dragging)   Back Mask: the far side stays put'],
     'SMOVE': ['Drag from the part   the whole part follows the way (stretches, bends)'],
     'SMART': ['LMB on a part   hold it (a ring on its origin),  LMB on a surface   its origin goes there - same rotation and size',
-              '3D mouse   turn it about its origin (View / World axes, Speed, Invert - panel / top bar),  Push: Normal / Free   slide it',
+              '3D mouse   turn it about its origin (Turntable = round the world\'s up like the view / View / World axes, Speed, Invert - panel / top bar),  Push: Normal / Free   slide it',
               'Enter / Space / RMB   keep (one undo step),  Esc   put it back;  MMB / wheel   the view'],
     'CDRAPE': ['Lasso on a mesh   a loose cloth over that region', 'Space   drape / pause,  Enter   keep the cloth,  Esc   drop it'],
     'ZONE': ['Lasso on a Mech / Creature part   a zone (top bar: Paint / Split)',

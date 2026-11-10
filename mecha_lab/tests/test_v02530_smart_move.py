@@ -48,13 +48,14 @@ st.push = 'NORMAL'
 tree = pcap.capture(uts.DRAWERS['SMART'], C)
 check('... Push on: the Push Speed row', 'push_speed' in [n.prop for n in pcap.walk(tree) if n.kind == 'prop'])
 groups = sm.top_bar_groups(C, 'SMART')
-check('... top bar: Turn (View / World, Speed, Invert), Push (+ Push Speed), Place (Lift)',
-      [g[0] for g in groups] == ['Turn', 'Push', 'Place'] and [c['label'] for c in groups[0][1]] == ['View', 'World', 'Speed', 'Invert']
+check('... top bar: Turn (Turntable / View / World, Speed, Invert), Push (+ Push Speed), Place (Lift)',
+      [g[0] for g in groups] == ['Turn', 'Push', 'Place'] and [c['label'] for c in groups[0][1]] == ['Turntable', 'View', 'World', 'Speed', 'Invert']
       and 'Push Speed' in [c['label'] for c in groups[1][1]] and groups[2][1][0]['prop'] == 'lift', groups)
 st.push = 'FREE'
-check('defaults: View axes, speed 1, no invert, push Free (0.24.124: "밀기도 넣어줘"), lift 0, the how-to folded',
-      st.axes == 'VIEW' and st.speed == 1.0 and not st.invert and st.bl_rna.properties['push'].default == 'FREE'
-      and st.lift == 0.0 and not st.show_help)
+check('defaults: Turntable axes (0.24.125: "약간 축이 돌아가 있어"), speed 1, no invert, push Free (0.24.124: "밀기도 넣어줘"), lift 0, '
+      'the how-to folded', st.bl_rna.properties['axes'].default == 'TURNTABLE' and st.speed == 1.0 and not st.invert
+      and st.bl_rna.properties['push'].default == 'FREE' and st.lift == 0.0 and not st.show_help)
+st.axes = 'VIEW'          # (the checks below drive the View / World mappings explicitly)
 
 # --- the maths --------------------------------------------------------------------------------------------------------
 def near(a, b, tol=1e-5):
@@ -68,6 +69,18 @@ R = Euler((0.4, -0.3, 1.1)).to_matrix().to_4x4()
 check('turn_axis VIEW: the device axis through the view (world = view^-1 @ v); no view = the front view',
       near(sm.turn_axis((0.2, 0.7, -0.1), 'VIEW', R), R.to_3x3().inverted() @ Vector((0.2, 0.7, -0.1)))
       and near(sm.turn_axis((0, 1, 0), 'VIEW', None), (0, 0, 1)))
+# a view looking down at 60 deg, turned 35 deg (a turntable view: its horizon level) - Blender's view_matrix = world -> view
+Vm = (Euler((math.radians(60), 0.0, math.radians(35))).to_matrix().to_4x4()).inverted()
+vx = Vm.to_3x3().inverted() @ Vector((1, 0, 0))
+vz = Vm.to_3x3().inverted() @ Vector((0, 0, 1))
+vy = Vm.to_3x3().inverted() @ Vector((0, 1, 0))                   # the screen's up, in the world: tilted with the view
+check('turn_axis TURNTABLE (the default): twist (device y) = round the WORLD up Z whatever the view (the View twist is round '
+      'the screen\'s up, which this view tilts), tilt (device x) = round the view\'s horizontal, roll (device z) = round the view axis',
+      near(sm.turn_axis((0, 1, 0), 'TURNTABLE', Vm), (0, 0, 1)) and abs(vx.z) < 1e-6 and near(sm.turn_axis((1, 0, 0), 'TURNTABLE', Vm), vx)
+      and near(sm.turn_axis((0, 0, 1), 'TURNTABLE', Vm), vz) and 0.3 < vz.z < 0.95
+      and near(sm.turn_axis((0, 1, 0), 'VIEW', Vm), vy) and 0.3 < vy.z < 0.95
+      and near(sm.turn_axis((0, 1, 0), 'TURNTABLE', None), (0, 0, 1)),
+      (tuple(sm.turn_axis((0, 1, 0), 'TURNTABLE', Vm)), tuple(vy), tuple(vz)))
 check('turn_angle: |v| 1.0 = 360 deg, times the time delta (clamped to 0.1 s; 0 = 1/60) and Speed; Invert flips',
       abs(sm.turn_angle((0, 0.25, 0), 0.05) - 0.25 * 2 * math.pi * 0.05) < 1e-9
       and abs(sm.turn_angle((0, 0.25, 0), 1.0) - 0.25 * 2 * math.pi * 0.1) < 1e-9
