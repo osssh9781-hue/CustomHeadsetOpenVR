@@ -865,6 +865,7 @@ def draw_zbrush(layout, context):
     row.prop(s, 'up_axis')
     col.prop(s, 'apply_modifiers')
     col.prop(s, 'split_ngons')
+    col.prop(s, 'send_max_points')                      # 0.24.130 a lighter copy for ZBrush
     col.prop(s, 'keep_backup')
     col.prop(s, 'import_all')
     rows = zbrush_bridge.manifest_rows(s)

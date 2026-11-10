@@ -63,6 +63,11 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
                                             'every polygroup border - the same lines')
     keep_backup: BoolProperty(name='Keep Previous Mesh', default=True,
                               description='Keep the replaced mesh as <name>_preZBrush (fake user)')
+    send_max_points: IntProperty(name='Send: Max Points', default=0, min=0, soft_max=5000000, step=100000,
+                                 description='0.24.130 (user: "ZBrush 에서 불러올 때 너무 오래 걸려") Before sending, a part with '
+                                             'more points than this is Fast Decimated down to about this many (hard edges '
+                                             'kept; the Blender mesh is not changed) - ZBrush imports a lighter OBJ much '
+                                             'faster and DynaMeshes it anyway. 0 = send as is')
     export_format: EnumProperty(name='Format', default='OBJ', items=[      # 0.24.59 the Layers panel's Export
         ('OBJ', 'OBJ', 'Wavefront OBJ (ZBrush, most programs)'), ('FBX', 'FBX', 'Autodesk FBX')])
     export_scope: EnumProperty(name='Export', default='SELECTED', items=[
@@ -388,12 +393,38 @@ def ngon_count(me):
     return sum(1 for p in me.polygons if p.loop_total > 4)
 
 
+SEND_POINTS = [0]          # points written by the last send (the report)
+SEND_NOTES = []            # per-object notes of the last send (decimated to ..., could not ...)
+HEAVY_POINTS = 2000000     # a send above this many points gets a "ZBrush will take a while" warning
+
+
+def lighten_for_send(tmp, limit):
+    """0.24.130 Fast Decimate the temporary export copy down to about ``limit`` points (hard edges kept).  Returns a
+    short note ('' when nothing was done)."""
+    try:
+        from . import fast_decimate as fd
+        if not fd.available():
+            return 'Fast Decimate engine not available - sent as is'
+        n0 = len(tmp.data.vertices)
+        if n0 <= limit:
+            return ''
+        msg = fd.decimate_object(tmp, max(1.0, min(100.0, 100.0 * limit / float(n0))), keep_edges=True)
+        n1 = len(tmp.data.vertices)
+        if n1 >= n0:
+            return f'not decimated ({msg})' if msg else 'not decimated'
+        return f'sent with {n1:,} points (was {n0:,})'
+    except (RuntimeError, ValueError, MemoryError, AttributeError, ImportError) as ex:
+        return f'not decimated ({str(ex).splitlines()[0][:60]})'
+
+
 def send_objects(context, objects, settings):
     folder = exchange_folder(settings)
     data = read_manifest(folder)
     selected = list(context.selected_objects)
     active = context.view_layer.objects.active
     sent = []
+    SEND_POINTS[0] = 0
+    del SEND_NOTES[:]
     try:
         for ob in objects:
             zid = ob.get(ID_KEY) or uuid.uuid4().hex[:12]
@@ -405,12 +436,23 @@ def send_objects(context, objects, settings):
             try:
                 tmp.select_set(True)
                 context.view_layer.objects.active = tmp
+                n_pts = len(tmp.data.vertices)
+                limit = int(getattr(settings, 'send_max_points', 0) or 0)
+                if limit > 0 and n_pts > limit:              # 0.24.130 a lighter copy for ZBrush (the part itself stays)
+                    note = lighten_for_send(tmp, limit)
+                    if note:
+                        SEND_NOTES.append(f'{ob.name}: {note}')
+                    n_pts = len(tmp.data.vertices)
+                SEND_POINTS[0] += n_pts
                 groups = crease_materials(tmp) if getattr(settings, 'crease_groups', True) else 0
+                # 0.24.130 no normals in the file: ZBrush ignores them and the OBJ is about half the size (its import
+                # time is mostly parsing); UVs only when the part has any
                 bpy.ops.wm.obj_export(filepath=str(path), export_selected_objects=True,
                                       apply_modifiers=False, export_materials=groups > 0,
                                       export_material_groups=groups > 0,
                                       export_colors=bool(len(tmp.data.color_attributes)),   # (0.24.95 polypaint)
-                                      export_uv=True, export_normals=True, export_triangulated_mesh=False,
+                                      export_uv=bool(len(tmp.data.uv_layers)), export_normals=False,
+                                      export_triangulated_mesh=False,
                                       forward_axis=settings.forward_axis, up_axis=settings.up_axis,
                                       global_scale=settings.scale)
             finally:
@@ -548,7 +590,15 @@ class MCH_OT_zbrush_send(bpy.types.Operator):
                 subprocess.Popen([exe])
             except OSError as ex:
                 self.report({'WARNING'}, f'Could not launch ZBrush: {ex}')
-        self.report({'INFO'}, f'Sent {len(sent)} object(s) to {folder}')
+        pts = SEND_POINTS[0]
+        msg = f'Sent {len(sent)} object(s), {pts:,} points, to {folder}'
+        if SEND_NOTES:
+            msg += ' | ' + '; '.join(SEND_NOTES[:3])
+        if pts > HEAVY_POINTS and not int(getattr(s, 'send_max_points', 0) or 0):
+            self.report({'WARNING'}, msg + f' | {pts / 1e6:.1f} M points: ZBrush will take a while to import - set '
+                                           f'"Send: Max Points" (or Fast Decimate first)')
+        else:
+            self.report({'INFO'}, msg)
         return {'FINISHED'}
 
 
