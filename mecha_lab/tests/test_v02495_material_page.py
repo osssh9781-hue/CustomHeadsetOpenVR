@@ -191,30 +191,18 @@ from mecha_lab import live_ref  # noqa: E402
 check('A click on a colour swatch: the colour popup edits that colour', live_ref.resolve(ui_bars.EDIT[0]) == st
       and ui_bars.EDIT[1] == 'base_color', ui_bars.EDIT)
 
-# the HDRI page (user: "재질이랑 hdri는 분리해야지")
+# the HDRI page (user: "재질이랑 hdri는 분리해야지") - 0.24.137 the Render page (user: "HDRI 는 다른 애드온 쓸 거라 배경만
+#내가 원하는 색으로 바꿀 수 있게 해 주라, 너가 만든 게 너무 무거워"): no HDRI library, a background colour on any world
 its, _h = mu.hdri_content(C, 0.0, 276.0, 1.0)
-names = {i.prop for i in its if i.data == S}
-check('HDRI page: ◀ [HDRI] ▶, Set / Off, My HDRIs (folder), Light (Strength / Rotation), Background (Blur, Show)',
-      {'mch_mech_hdri', 'mch_mech_hdri_strength', 'mch_mech_hdri_rot', 'mch_mech_hdri_blur',
-       'mch_mech_hdri_show'} <= names and by_prop(its, 'mch_mech_hdri_show', 'switch')
-      and {'Set HDRI', 'Off', 'Choose Folder…'} <= {i.label for i in its if i.kind == 'tbtn'}, sorted(names))
-check('... no folder set: the note says Blender\'s own HDRIs are listed',
-      any(i.kind == 'pnote' and i.label.startswith('Folder: none') for i in its))
-tmp = tempfile.mkdtemp(prefix='mch_hdri_')
-for f in ('studio_a.hdr', 'yard.exr', 'notes.txt'):
-    open(os.path.join(tmp, f), 'wb').close()
-real_pref = workspace_ui.pref
-workspace_ui.pref = lambda name, default=True: tmp if name == 'hdri_folder' else real_pref(name, default)
-try:
-    its, _h = mu.hdri_content(C, 0.0, 276.0, 1.0)
-    note = next(i.label for i in its if i.kind == 'pnote' and i.label.startswith('Folder:'))
-    check('... a folder set: its name and how many HDRIs it has', os.path.basename(tmp) in note and '(2 HDRIs' in note,
-          note)
-finally:
-    workspace_ui.pref = real_pref
-check('... Choose Folder… is an operator with a folder browser (mch.mech_hdri_folder)',
-      hasattr(bpy.types, 'MCH_OT_mech_hdri_folder') and
-      next(i for i in its if i.kind == 'tbtn' and i.label == 'Choose Folder…').action[1] == 'mch.mech_hdri_folder')
+hd = [i.label for i in its if i.kind == 'shead']
+check('Render page (was HDRI): QUICK RENDER, VIEWPORT, BACKGROUND (Background Colour + its colour, Solid View Too); no '
+      'HDRI list, Set HDRI, folder or light rows',
+      any(h.startswith('QUICK RENDER') for h in hd) and any(h.startswith('VIEWPORT') for h in hd)
+      and any(h.startswith('BACKGROUND') for h in hd)
+      and any(i.kind == 'seg' and i.label == 'Background Colour' for i in its)
+      and by_prop(its, 'color', 'swatch') and by_prop(its, 'solid_too', 'switch')
+      and not any(getattr(i, 'prop', '').startswith('mch_mech_hdri') for i in its)
+      and not {'Set HDRI', 'Choose Folder…'} & {i.label for i in its}, hd)
 
 # the panel's pages
 wm = C.window_manager
@@ -227,8 +215,9 @@ check('... the panel\'s content is then the Material page (whatever the tool)',
       any(i.kind == 'shead' and i.label.startswith('SURFACE') for i in its2))
 bpy.ops.mch.side_page(page='HDRI')
 its4, _h = sp.content(C, 'CUT', 0.0, 276.0, 1.0)
-check('... the HDRI page apart from the material (no material rows on it, no HDRI rows on the Material page)',
-      sp.page(C) == 'HDRI' and by_prop(its4, 'mch_mech_hdri', 'drop') and not any(i.data == st for i in its4)
+check('... the Render page apart from the material (no material rows on it, no HDRI rows on the Material page)',
+      sp.page(C) == 'HDRI' and any(i.kind == 'shead' and i.label.startswith('BACKGROUND') for i in its4)
+      and not any(i.data == st for i in its4)
       and not any(getattr(i, 'prop', '').startswith('mch_mech_hdri') for i in its2))
 bpy.ops.mch.side_page(page='TOOL')
 its3, _h = sp.content(C, 'CUT', 0.0, 276.0, 1.0)

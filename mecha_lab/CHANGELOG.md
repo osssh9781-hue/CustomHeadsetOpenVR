@@ -1,5 +1,51 @@
 # CHANGELOG
 
+## 0.24.137 — Render 탭 · Background Colour(다른 HDRI 애드온 위에 배경색만), 무거운 Mecha HDRI 목록 뺌 (2026-11-11)
+
+- (사용자: "HDRI 는 다른 애드온 쓸 거라 배경만 내가 원하는 색으로 바꿀 수 있게 해 주라, 너가 만든 게 너무 무거워")
+- 오른쪽 패널의 **HDRI 탭 → Render 탭**: QUICK RENDER(그대로) · **VIEWPORT**(Fast Viewport · Viewport AA · Light Copies — 0.24.135 /
+  0.24.136) · **BACKGROUND** 세 섹션. 예전 Mecha HDRI 목록 · 미리보기 그림 · 폴더 · 그림 배경 UI 는 뺐습니다(코드와 이미 만든 월드는
+  그대로 — 장면이 아직 Mecha HDRI 월드를 쓰면 BACKGROUND 의 **Mecha HDRI Off (back to your world)** 로 원래 월드로).
+- N 사이드바(Mecha Lab 탭 · Mech Shader 아래)의 HDRI 상자도 같은 **Background** 상자(Background Colour · 색 · Solid View
+  Too)로 바꿈.
+- **Background Colour**(버튼 + 색 칸): 장면의 월드가 무엇이든(다른 애드온의 HDRI 포함) 그 월드에 작은 노드 3 개만 넣습니다 —
+  Light Path(Is Camera Ray)로 **카메라에 보이는 배경만 고른 색**, 부품의 조명 · 반사는 계속 그 월드(HDRI)에서. F12 · Quick Render ·
+  Rendered 뷰포트 모두 같은 월드를 쓰므로 모두 적용. 다시 누르면 노드 3 개를 빼고 월드의 셰이더를 원래대로 연결(그 밖에는 안 건드림).
+  월드가 없으면 하나 만듦. HDRI 애드온이 월드를 다시 만들어 노드가 우회되면 Off 로 보이고, 다시 누르면 다시 적용.
+- **Solid View Too**: 3D 뷰 자체 배경(Solid · Material Preview)도 같은 색으로(원래 설정은 화면에 기록해 두었다가 끌 때 되돌림).
+- 패널 탭 너비를 글자 수가 아니라 **실제 글자 폭**으로: "HDRI" 대신 "Render" 가 들어가자 글자 수로 나누던 너비에서 "Mech" 가 "Me…" 로
+  잘렸음(M 이 넓은 글자). 이제 각 탭이 자기 이름 폭만큼 받고 남는 자리를 똑같이 나눔.
+- 테스트(Blender 5.2.3): 새 test_v02542 10/10(다른 애드온 월드 흉내 — 빨간 Background 1.5: 켜기 → 노드 연결 확인, **실제 Cycles
+  렌더**: 배경 = 파랑, 구는 빨간 월드로 비춰짐; 색 변경; Solid View Too 켜기 / 끄기 → 원래 설정; 끄기 → 노드 3 개 없음, 원래 연결,
+  노드 수 2; 월드가 다시 만들어진 경우 Off → 버튼으로 다시; 월드 없음 → 만듦; Render 탭 세 섹션, HDRI 목록 없음; N 사이드바도
+  Background 상자). 고친 테스트: test_v02495_material_page 43/43(Render 페이지) · test_v02495_mech_shader 46/46(사이드바 Background)
+  · test_v02495_decals 34/34(탭 이름이 잘리지 않음 — 실제 글자 폭으로 검사). 예전 HDRI 테스트 5 개는 tests/retired/(README 에 이유).
+  실제 창 light_copies_real_window 의 4 번: Render 탭 **Background Colour 실제 클릭** → 켜짐, Rendered 화면에서 배경은 고른 파랑,
+  구는 빨간 월드 조명(스크린샷).
+
+## 0.24.136 — Light Copies: 작업하지 않는 무거운 부품은 뷰포트에서 10 % 사본으로 (2026-11-11)
+
+- (사용자: "사본 쓰면 더 빨라?" → "그럼 일단 그렇게 해 보고" — GAMERA 1.9억 삼각형) Render 탭 VIEWPORT 섹션 **Light Copies (parts not
+  worked on)**, **Copy %**(기본 10) · **From**(이 삼각형 수 이상인 부품만, 기본 30만).
+- 부품의 메쉬는 **바꾸지 않습니다**. 무거운 부품마다 Fast Decimate 로 만든 사본(숨은 오브젝트, 어느 씬에도 없음)과 맨 끝에 고정된
+  모디파이어 "MCH Light Copy"(Geometry Nodes: 뷰포트에서만 사본, 렌더에서는 부품 자신 — 모디파이어도 렌더에서 꺼짐; 사본이 없거나
+  비어 있으면 부품 자신 — 사라지지 않음)를 붙입니다. F12 · Quick Render · 렌더 엔진은 항상 원본.
+- 사본은 **뒤에서**(스레드, 코어 하나는 Blender 에 남김) 하나씩 만들어지고 그동안 Blender 는 계속 쓸 수 있습니다. 부품이 원본으로
+  보이는 때: 선택했을 때 · Edit / Sculpt 모드 · 애드온 도구가 모양을 읽은 뒤 3 초 · 사본이 낡았을 때(사본으로 돌아가기 전에 점 · 면 ·
+  좌표 합 · 모디파이어를 비교해, 바뀌었으면 새 사본) · 파일 창이 열려 있을 때(File > Export / Import — Blender 내보내기는 뷰포트
+  결과를 읽음). 빈 곳을 클릭해 선택이 풀리면(Blender 는 그 부품을 '활성'으로 남겨 둠) 3 초 뒤 다시 사본.
+- 애드온이 부품의 모양을 읽어 자르거나 붙이거나 내보내는 곳은 모두 원본을 읽게 했습니다(42 파일 65 곳: Cut · Boolean · 판 ·
+  Extract · Remesh · Decimate · ZBrush 보내기 · Final Export …). Apply Modifiers · 우클릭 메뉴 적용 · 모디파이어 하나 적용은 이
+  모디파이어를 건너뜀, Live Stack 에는 안 보임. Quick Render 의 메모리 계산은 부품 자신의 삼각형 수로.
+- 저장: 파일에는 사본이 꺼진 상태로 저장(애드온 없이 열어도 원본), 저장 뒤 바로 다시 사본. 다시 열면 부품과 비교 후 다시 사본.
+  끄면 모디파이어 · 사본 오브젝트 · 메쉬 · 노드 그룹을 모두 지움. 애드온을 끄면 모든 부품이 원본으로 보임.
+- 측정(실제 창, 부품 15 개 × 131만 = 1,970만 삼각형, 소프트웨어 OpenGL): LC_MEASURE
+- 테스트(Blender 5.2.3): 새 test_v02541 17/17(무거운 부품만 대기열 · Mirror 포함; 뒤에서 사본 ~10 %; 뷰포트는 사본 · Mirror 두 번
+  안 들어감; 모디파이어 맨 끝 · 렌더 꺼짐; Quick Render 메모리 계산은 원본; 선택 → 원본, 선택 해제(활성 그대로) → 사본; full() →
+  원본, 쉬면 사본; Live Stack 에 없음; 직접 적용 거부; Apply Modifiers 는 원본에 적용 · 사본 안 굳음; 고친 부품 → 새 사본; ZBrush
+  내보내기 원본; 파일 창 → 모두 원본; 사본 오브젝트 없음(실행 취소) → 원본, 사라지지 않음; 저장 · 다시 열기; 끄기 → 전부 지움).
+  실제 창 light_copies_real_window: LC_GUI
+
 ## 0.24.135 — Fast Viewport: 무거운 장면의 Solid · Rendered 뷰포트 가볍게 (2026-11-11)
 
 - (사용자: "뷰포트에서도 빨라야 돼" — Rendered 와 Solid 둘 다 느림, 부품을 줄인 사본으로 보여 주는 방식은 원하지 않음) 메쉬는 그대로

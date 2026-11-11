@@ -270,11 +270,13 @@ def walk(n):
 
 
 props = {n.prop for n in walk(root) if n.kind == 'prop'}
-check('Panel: the preset, every map with its slider and Height, Clear Coat, AO, Map Scale and the HDRI',
+check('Panel: the preset, every map with its slider and Height, Clear Coat, AO, Map Scale and (0.24.137) the '
+      'Background box instead of the HDRI',
       {'preset', 'base_map', 'rough_map', 'chip_map', 'scratch_map', 'rust_map', 'dirt_map', 'snow_map', 'emit_map',
        'weave_map', 'edge_wear', 'scratches', 'rust', 'rust_scratch', 'dirt', 'snow', 'emission', 'cloth',
        'roughness', 'map_scale', 'bump', 'h_base', 'h_scratch', 'h_chip', 'h_rust', 'h_dirt', 'h_snow', 'h_weave',
        'coat', 'ao', 'aniso', 'dust', 'streaks', 'variation', 'primer', 'primer_color', 'paint_pattern',
-       'dirt_low', 'glass', 'alpha', 'snow_soft', 'dirt_top', 'mch_mech_hdri_blur', 'mch_mech_hdri', 'mch_mech_hdri_strength',
-       'mch_mech_hdri_rot'} <= props, sorted(props))
+       'dirt_low', 'glass', 'alpha', 'snow_soft', 'dirt_top', 'color', 'solid_too'} <= props
+      and not {'mch_mech_hdri', 'mch_mech_hdri_blur', 'mch_mech_hdri_strength', 'mch_mech_hdri_rot'} & props,
+      sorted(props))
 summary()
