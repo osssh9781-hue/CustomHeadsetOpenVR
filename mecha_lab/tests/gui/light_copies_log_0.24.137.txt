@@ -1,0 +1,19 @@
+scene: 15 parts, 19.6608 M triangles
+1 Solid view change, parts in full: 3.71 s
+   Light Copies cell True (1408, 504, 392, 42) scroll 360.0 region 254 140 1848 1433
+   hit test at its centre: True ('seg', 'Light Copies (parts not worked on)', ('op', 'mch.light_copies', {}))
+shot 0_before_click.png True
+   Light Copies on after the click: True queued ['Part01', 'Part02', 'Part03', 'Part04', 'Part05', 'Part06', 'Part07', 'Part08', 'Part09', 'Part10', 'Part11', 'Part12', 'Part13', 'Part14'] working None
+   copies made in 96 s (15 parts, 3 threads); longest stall of the window meanwhile 4.6 s; parts drawn light: 15
+   status: ['15 part(s) drawn light: 19.7 M > 2.0 M triangles']
+   Solid view change with Light Copies: 0.72 s (was 3.71 s)
+shot 1_light_copies.png True
+2 clicked Part07 selected True shows itself True faces 1310720
+shot 2_selected_full_vs_light_wire.png True
+   clicked empty space: selected False light again True
+4 Background Colour on: True
+shot 3_background_colour_rendered.png True
+PASS 1 a REAL click on Light Copies: 15 copies made in the background (96 s); a Solid view change 3.71 s -> 0.72 s
+PASS 2 a REAL click on a part: it shows itself (1,310,720 faces); a click beside: light again after it rests
+PASS 4 a REAL click on Background Colour: on (the world kept, the colour seen by the camera)
+3/3 passed

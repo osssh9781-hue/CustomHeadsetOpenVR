@@ -1,7 +1,7 @@
 """0.24.136 Light Copies (user: "사본 쓰면 더 빨라?" ... "그럼 일단 그렇게 해 보고" - GAMERA, 192 M triangles).
 
-Measured (real window, 15 parts x 1.3 M triangles, software OpenGL): one Solid view change 2.51 s with the parts,
-0.61 s with 10 % copies (x 4.1; light_copies_real_window).
+Measured (real window, 15 parts x 1.3 M triangles, software OpenGL): one Solid view change 3.71 s with the parts,
+0.72 s with 10 % copies (x 5.2; tests/gui/light_copies_real_window.py).
 
 How it works - the parts' meshes are never changed:
 * every heavy part (at least ``min_tris`` triangles) gets a light copy (Fast Decimate, ``percent`` % of its
