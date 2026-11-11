@@ -16,6 +16,15 @@ rays every time the material is shaded.  So one click renders with:
 * the picture saved next to the .blend (renders/<file>_<time>_<quality>.png) - or Blender's temp folder when the file
   is not saved yet.
 
+0.24.134 (user: "1억 폴리곤이면?" - their scene: 192 M triangles, 64 GB RAM, RTX 5090): memory, not shading, is
+what a very heavy scene runs out of.  Measured (Blender 5.2.3, CPU): Cycles needs about 160 bytes per triangle while it
+renders (5 M - 40 M triangle meshes: 153 - 164), on top of what Blender holds; the time before the first sample grows
+with it (20 M triangles: 4 s on 4 cores).  So the panel shows the triangles that will render and the memory Cycles needs,
+a render that would not fit in the free RAM does not start without a second click, and CPU Only renders on the processor
+(the RAM) when the scene is too big for the graphics card.  (Blender's Persistent Data was measured too and left out: a
+moved light, a material value, a hidden part or another scene camera all reload the whole scene, and it holds the
+memory between renders.)
+
 Nothing in the scene stays changed: every value touched is remembered (by name, see ``live_ref``) and put back when the
 render ends, is cancelled or fails; the temporary camera is removed.  Blender's render window shows the progress and
 Esc stops it."""
@@ -40,8 +49,12 @@ CAM_NAME = 'MCH Quick Render Camera'
 CLAY_NAME = 'MCH Quick Render Clay'
 GPU_KINDS = ('OPTIX', 'CUDA', 'HIP', 'ONEAPI', 'METAL')
 
+BYTES_PER_TRI = 160               # 0.24.134 Cycles' memory per triangle while rendering (measured, see above)
+CONFIRM_SECONDS = 15.0            # a second click within this renders a scene that may not fit
 _JOB = {'active': False}
 LAST = {'seconds': 0.0, 'path': '', 'text': '', 'cancelled': False}
+LOAD = {'key': None, 't': -1e9, 'val': (0, 0, 0)}
+CONFIRM = {'t': -1e9}
 GPU = {'checked': False, 'kind': 'NONE', 'names': []}
 
 
@@ -67,6 +80,10 @@ class MCH_PG_QuickRender(bpy.types.PropertyGroup):
                        description='Save the picture next to the .blend (renders folder) when it is done')
     folder: StringProperty(name='Folder', subtype='DIR_PATH', default='',
                            description='Where pictures are saved (empty: "renders" next to the .blend)')
+    cpu_only: BoolProperty(name='CPU Only', default=False,
+                           description='Render on the processor even when a GPU is set - for a scene too big for the '
+                                       'graphics card\'s memory (Cycles needs about 160 bytes per triangle; the RAM is '
+                                       'usually bigger)')
 
 
 def settings(context):
@@ -137,6 +154,143 @@ def enable_gpu(context=None):
         pass
     gpu_state(context, refresh=True)
     return 'No GPU Cycles can use was found - it renders on the CPU'
+
+
+# ---- memory (0.24.134) ---------------------------------------------------------------------------------------------
+
+def ram_info():
+    """(total, available) bytes of the computer's memory, or (None, None) when it cannot be read (then nothing is
+    checked).  Windows: GlobalMemoryStatusEx; Linux: /proc/meminfo; macOS: the total only."""
+    import sys
+    try:
+        if sys.platform.startswith('win'):
+            import ctypes
+
+            class _MemStat(ctypes.Structure):
+                _fields_ = [('dwLength', ctypes.c_ulong), ('dwMemoryLoad', ctypes.c_ulong),
+                            ('ullTotalPhys', ctypes.c_ulonglong), ('ullAvailPhys', ctypes.c_ulonglong),
+                            ('ullTotalPageFile', ctypes.c_ulonglong), ('ullAvailPageFile', ctypes.c_ulonglong),
+                            ('ullTotalVirtual', ctypes.c_ulonglong), ('ullAvailVirtual', ctypes.c_ulonglong),
+                            ('ullAvailExtendedVirtual', ctypes.c_ulonglong)]
+            m = _MemStat()
+            m.dwLength = ctypes.sizeof(_MemStat)
+            if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m)):
+                return None, None
+            return int(m.ullTotalPhys), int(m.ullAvailPhys)
+        if os.path.isfile('/proc/meminfo'):
+            vals = {}
+            with open('/proc/meminfo') as f:
+                for ln in f:
+                    k, _sep, v = ln.partition(':')
+                    if k in ('MemTotal', 'MemAvailable'):
+                        vals[k] = int(v.split()[0]) * 1024
+            return vals.get('MemTotal'), vals.get('MemAvailable')
+        total = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
+        return int(total), None
+    except (OSError, ValueError, AttributeError, ImportError, TypeError):
+        return None, None
+
+
+def _mesh_tris(me):
+    """Triangles of a mesh without triangulating it: every face of n corners is n - 2 triangles."""
+    try:
+        return max(0, len(me.loops) - 2 * len(me.polygons))
+    except (AttributeError, ReferenceError, RuntimeError):
+        return 0
+
+
+def scene_load(context, st=None, depsgraph=None, cache=True):
+    """(triangles that will render, meshes, bytes Cycles needs for them) - from the evaluated scene, so modifiers
+    (Mirror, Subdivision at its viewport level ...) count; a linked duplicate / instance of the same mesh counts once,
+    as Cycles stores it once.  Follows Selected Only and Hidden Stay Hidden.  Kept for 3 s (the panel asks often)."""
+    scene = context.scene
+    sel = bool(st is not None and st.selected_only)
+    hid = bool(st is None or st.hidden_stay_hidden)
+    key = (scene.name, sel, hid)
+    now = time.monotonic()
+    if cache and LOAD['key'] == key and now - LOAD['t'] < 3.0:
+        return LOAD['val']
+    if depsgraph is None:
+        vl = getattr(context, 'view_layer', None)
+        depsgraph = getattr(vl, 'depsgraph', None) if vl is not None else None
+    tris, seen = 0, set()
+    names = set()
+    if depsgraph is not None:
+        try:
+            for inst in depsgraph.object_instances:
+                ob = inst.object
+                if ob.type != 'MESH':
+                    continue
+                src = (inst.parent if inst.is_instance and inst.parent is not None else ob).original
+                if src is None or src.hide_render or (sel and not src.select_get()):
+                    continue
+                names.add(src.name)
+                me = ob.data
+                k = me.as_pointer() if me is not None else 0
+                if k in seen:
+                    continue
+                seen.add(k)
+                tris += _mesh_tris(me)
+        except (ReferenceError, RuntimeError, AttributeError):
+            pass
+    if not hid:                                  # (hidden in the viewport, rendered anyway: their own meshes)
+        try:
+            for ob in context.view_layer.objects:
+                if ob is None or ob.type != 'MESH' or ob.hide_render or ob.name in names or ob.visible_get():
+                    continue
+                if sel and not ob.select_get():
+                    continue
+                k = ob.data.as_pointer()
+                if k not in seen:
+                    seen.add(k)
+                    tris += _mesh_tris(ob.data)
+        except (ReferenceError, RuntimeError, AttributeError):
+            pass
+    val = (tris, len(seen), tris * BYTES_PER_TRI)
+    LOAD.update(key=key, t=now, val=val)
+    return val
+
+
+def _gb(b):
+    """Bytes as the computer shows memory (GiB, so a 64 GB PC reads 64 GB)."""
+    g = b / 2 ** 30
+    if g < 1.0:
+        return f'{b / 2 ** 20:.0f} MB'
+    return f'{g:.1f} GB' if g < 10 else f'{g:.0f} GB'
+
+
+def _count(n):
+    return f'{n / 1e6:.1f} M' if n >= 1e6 else f'{n / 1e3:.0f} K' if n >= 1e3 else str(int(n))
+
+
+def memory_line(context, st=None):
+    """([two short lines], too big?) for the panel: the triangles; what Cycles needs and the free RAM."""
+    tris, _n, need = scene_load(context, st)
+    total, avail = ram_info()
+    second = f'Cycles needs ~{_gb(need)}'
+    if total:
+        second += f' - free RAM {_gb(avail)} / {_gb(total)}' if avail is not None else f' - RAM {_gb(total)}'
+    return [f'Scene: {_count(tris)} triangles', second], bool(avail is not None and need > 0.9 * avail)
+
+
+def memory_check(context, st):
+    """None when the render fits (or cannot be checked), else (the warning, a short one for the toast).  A second
+    click within CONFIRM_SECONDS renders anyway."""
+    tris, _n, need = scene_load(context, st, depsgraph=context.evaluated_depsgraph_get(), cache=False)
+    _total, avail = ram_info()
+    if avail is None or need <= 0.9 * avail:
+        return None
+    now = time.monotonic()
+    if now - CONFIRM['t'] <= CONFIRM_SECONDS:
+        CONFIRM['t'] = -1e9                          # (rendered anyway: the next one is checked again)
+        return None
+    CONFIRM['t'] = now
+    long = (f'This scene needs about {_gb(need)} for Cycles ({_count(tris)} triangles) but {_gb(avail)} of memory '
+            f'is free - Blender could close.  Close other programs or use Selected Only; click Quick Render again '
+            f'within {CONFIRM_SECONDS:.0f} s to render anyway')
+    short = (f'needs ~{_gb(need)}, {_gb(avail)} RAM free - click again within {CONFIRM_SECONDS:.0f} s to render '
+             f'anyway')
+    return long, short
 
 
 # ---- the temporary changes -----------------------------------------------------------------------------------------
@@ -327,7 +481,7 @@ def prepare(context, st):
     _set(r, 'engine', 'CYCLES')
     _set(r, 'resolution_percentage', q['pct'])
     _set(r, 'use_lock_interface', True)           # (no edits to the heavy scene while Cycles reads it)
-    gpu = gpu_ready(context)
+    gpu = gpu_ready(context) and not st.cpu_only     # (0.24.134 CPU Only: the RAM, for a scene the GPU cannot hold)
     _set(cy, 'device', 'GPU' if gpu else 'CPU')
     _set(cy, 'samples', q['samples'])
     _set(cy, 'use_adaptive_sampling', True)
@@ -503,6 +657,15 @@ class MCH_OT_quick_render(bpy.types.Operator):
         st = settings(context)
         if self.quality in QUALITY:
             st.quality = self.quality
+        warn = memory_check(context, st)
+        if warn:
+            self.report({'WARNING'}, 'Quick Render: ' + warn[0])
+            try:
+                from . import toast
+                toast.show('Quick Render: ' + warn[1], 'WARNING', 8.0)
+            except (ImportError, AttributeError, RuntimeError):
+                pass
+            return None
         try:
             summary = prepare(context, st)
         except RuntimeError as ex:
@@ -584,7 +747,10 @@ class MCH_OT_quick_render_folder(bpy.types.Operator):
 def status_lines(context):
     """Short lines for the panel: the device, the last render."""
     kind, names = gpu_state(context)
-    if kind != 'NONE' and names:
+    st = settings(context)
+    if kind != 'NONE' and names and st is not None and st.cpu_only:
+        dev = 'CPU (CPU Only on - the GPU is not used)'
+    elif kind != 'NONE' and names:
         dev = f'GPU: {names[0]}' + (f' +{len(names) - 1}' if len(names) > 1 else '') + f' ({kind})'
     else:
         dev = 'CPU only - no GPU set for Cycles'

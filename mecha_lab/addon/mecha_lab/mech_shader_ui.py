@@ -948,6 +948,19 @@ def quick_render_section(b, context, x, width):
 
     def fill(sx, sw):
         row(b, sx, sw, [button('Quick Render', 'mch.quick_render'), button('Open Folder', 'mch.quick_render_folder')])
+        # 0.24.134 (user: "1억 폴리곤이면?") what matters for a heavy scene first, without scrolling: the device, the
+        # triangles and the memory Cycles needs against the free RAM, the last render
+        lines = qr.status_lines(context)
+        b.note(('note', lines[0], not qr.gpu_ready(context), None, None, None, True), sx, sw)
+        if not qr.gpu_ready(context):
+            row(b, sx, sw, [button('Use the GPU (Blender Preferences)', 'mch.quick_render_gpu')])
+        else:                                    # a scene too big for the graphics card: the RAM
+            row(b, sx, sw, [prop_cell(st, 'cpu_only', 'CPU Only (scene too big for the GPU)')])
+        mem, big = qr.memory_line(context, st)
+        for ln in mem:
+            b.note(('note', ln, big, None, None, None, True), sx, sw)
+        for ln in lines[1:]:
+            b.note(('note', ln, False, None, None, None, True), sx, sw)
         row(b, sx, sw, [_cell('seg', v['label'], ('enum', key), st, 'quality', on=st.quality == key)
                         for key, v in qr.QUALITY.items()])
         row(b, sx, sw, [_cell('seg', 'This View', ('enum', 'VIEW'), st, 'camera', on=st.camera == 'VIEW'),
@@ -955,12 +968,6 @@ def quick_render_section(b, context, x, width):
         row(b, sx, sw, [prop_cell(st, 'fast_shading', 'Fast Shading'), prop_cell(st, 'clay', 'Clay')])
         row(b, sx, sw, [prop_cell(st, 'selected_only', 'Selected Only'), prop_cell(st, 'transparent', 'Transparent')])
         row(b, sx, sw, [prop_cell(st, 'hidden_stay_hidden', 'Hidden Stay Hidden'), prop_cell(st, 'save', 'Save')])
-        lines = qr.status_lines(context)
-        b.note(('note', lines[0], not qr.gpu_ready(context), None, None, None, True), sx, sw)
-        if not qr.gpu_ready(context):
-            row(b, sx, sw, [button('Use the GPU (Blender Preferences)', 'mch.quick_render_gpu')])
-        for ln in lines[1:]:
-            b.note(('note', ln, False, None, None, None, True), sx, sw)
     q = qr.QUALITY[st.quality]
     section(b, 'quick_render', 'Quick Render (Cycles)', x, width, fill, summary=q['label'])
 

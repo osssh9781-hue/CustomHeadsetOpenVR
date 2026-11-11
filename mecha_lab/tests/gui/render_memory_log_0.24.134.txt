@@ -1,0 +1,13 @@
+1 body triangles (no modifier) 590172 panel memory lines ['Scene: 1.2 M triangles', 'Cycles needs ~180 MB - free RAM 14 GB / 16 GB']
+shot 1_memory_lines.png True
+2 first click: job (False, False, 1) confirm armed True
+shot 2_warning_toast.png True
+   second click: job (True, True)
+   finished after 1.2 s, files ['untitled_20261111-151303_draft.png']
+3 CPU Only cell True
+   cpu_only True device line CPU (CPU Only on - the GPU is not used)
+shot 3_cpu_only.png True
+PASS 1 the panel shows the triangles that will render (the Mirror doubles them) and Cycles' memory vs free RAM
+PASS 2 RAM short: the first click warns and does not render; the second click (within 15 s) renders
+PASS 3 with a GPU set: a real click on CPU Only turns it on, the device line says the GPU is not used
+3/3 passed
