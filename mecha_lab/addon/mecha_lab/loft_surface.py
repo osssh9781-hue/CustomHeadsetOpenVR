@@ -27,6 +27,7 @@ from mathutils import Vector
 from mathutils.geometry import interpolate_bezier
 
 from . import core_geometry as cg
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 THICK_MOD = 'MCH_LoftThickness'
 _building = False
@@ -123,7 +124,7 @@ def curve_polyline(ob, resolution=24):
         pts = [Vector(p.co[:3]) for p in sp.points]
     else:   # NURBS: use Blender's own evaluation
         dg = bpy.context.evaluated_depsgraph_get()
-        ev = ob.evaluated_get(dg)
+        ev = _lc_full(ob, dg)
         me = ev.to_mesh()
         try:
             pts = [v.co.copy() for v in me.vertices]

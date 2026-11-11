@@ -27,6 +27,7 @@ import time
 import bmesh
 import bpy
 import numpy as np
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 COLL = 'BakeHP'
 SRC_KEY = 'mch_bakehp_src'
@@ -855,7 +856,7 @@ def _crease_strays(me, tol=STRAY_TOL, rounds=2):
             m.levels = m.render_levels = 1
             m.use_creases = True
             m.use_limit_surface = True
-            ev_ob = tmp.evaluated_get(bpy.context.evaluated_depsgraph_get())
+            ev_ob = _lc_full(tmp, bpy.context.evaluated_depsgraph_get())
             out = ev_ob.to_mesh()
             try:
                 P = mio.read_co(out) if len(out.vertices) >= nv + ne else None
@@ -920,7 +921,7 @@ def _subd_round(me, hard, levels):
         m.use_creases = True
         m.use_limit_surface = True
         dg = bpy.context.evaluated_depsgraph_get()
-        out = bpy.data.meshes.new_from_object(tmp.evaluated_get(dg), preserve_all_data_layers=True, depsgraph=dg)
+        out = bpy.data.meshes.new_from_object(_lc_full(tmp, dg), preserve_all_data_layers=True, depsgraph=dg)
     finally:
         bpy.data.objects.remove(tmp, do_unlink=True)
     try:
@@ -1002,7 +1003,7 @@ def _reproject(co, src_me, blend):
 def _evaluated_copy(context, ob):
     """The object's mesh with its modifiers applied, as a new Mesh (attributes kept)."""
     dg = context.evaluated_depsgraph_get()
-    ev = ob.evaluated_get(dg)
+    ev = _lc_full(ob, dg)
     me = bpy.data.meshes.new_from_object(ev, preserve_all_data_layers=True, depsgraph=dg)
     me.name = ob.data.name + '_BakeHP'
     return me

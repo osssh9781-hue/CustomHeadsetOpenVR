@@ -537,10 +537,11 @@ def apply_all_modifiers(context, ob):
         return [], ''
     _unlive(ob)                                   # a live Mecha shape would rebuild over the result
     done = []
+    from . import light_copies
     for mod in list(ob.modifiers):
-        if not mod.show_viewport:
-            continue                              # switched off in the viewport: left as it is
-        name = mod.name
+        if not mod.show_viewport or light_copies.is_light_mod(mod):
+            continue                              # switched off in the viewport: left as it is (0.24.136 and never
+        name = mod.name                           #  the light copy)
         try:
             safe_apply(context, ob, mod)
         except RuntimeError as ex:

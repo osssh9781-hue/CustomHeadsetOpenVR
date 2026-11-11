@@ -19,6 +19,7 @@ import bmesh
 from mathutils import Vector
 
 from . import core_geometry as cg
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 MAX_FACES = 250000
 
@@ -187,7 +188,7 @@ def through_panels(bm_world, groups, projector, spacing_px=14.0, crease_deg=50.0
 def target_bmesh(context, target):
     """The evaluated target as a world-space bmesh (caller frees it)."""
     dg = context.evaluated_depsgraph_get()
-    ev = target.evaluated_get(dg)
+    ev = _lc_full(target, dg)
     me = ev.to_mesh()
     bm = bmesh.new()
     try:

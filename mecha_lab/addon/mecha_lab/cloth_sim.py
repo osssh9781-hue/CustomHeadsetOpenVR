@@ -27,6 +27,7 @@ import random
 import bmesh
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 SUFFIX = '_PCloth'
 PIN_GROUP = 'mch_pin'
@@ -277,7 +278,7 @@ def bake(context, objs, frames, colliders=()):
         if dg is None:
             dg = context.evaluated_depsgraph_get()
         for ob in objs:
-            me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), depsgraph=dg)
+            me = bpy.data.meshes.new_from_object(_lc_full(ob, dg), depsgraph=dg)
             old = ob.data
             for m in [m for m in ob.modifiers if m.type == 'CLOTH']:
                 ob.modifiers.remove(m)

@@ -2338,7 +2338,24 @@ def draw(layout, context):
     r.operator('mch.mech_shader_unlink', text='Unlink', icon='UNLINKED')    # 0.24.95 its own copy
     r.operator('mch.mech_shader_edges', icon='MOD_EDGESPLIT')
     r.operator('mch.mech_shader_apply', text='New Copy', icon='DUPLICATE').preset = st.preset
-    draw_hdri(layout, context)
+    draw_background(layout, context)          # 0.24.137 (the HDRI list is gone: the user's own HDRI add-on)
+
+
+def draw_background(layout, context):
+    """0.24.137 the Render tab's Background section in the sidebar: Background Colour on any world."""
+    from . import bg_color
+    sc = context.scene
+    st = bg_color.settings(sc)
+    box = layout.box()
+    on = bg_color.on(sc)
+    box.label(text='Background' + (' (on)' if on else ''), icon='WORLD')
+    r = box.row(align=True)
+    r.operator('mch.bg_color', text='Background Colour', icon='CHECKBOX_HLT' if on else 'CHECKBOX_DEHLT', depress=on)
+    if st is not None:
+        r.prop(st, 'color', text='')
+        box.prop(st, 'solid_too')
+    if hdri_world(sc) is not None:
+        box.operator('mch.mech_hdri', text='Mecha HDRI Off (back to your world)', icon='X').action = 'OFF'
 
 
 def draw_hdri(layout, context):

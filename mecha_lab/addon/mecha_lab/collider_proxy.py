@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import bpy
 import numpy as np
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 COLL = 'MCH Cloth Proxies'
 SRC = 'mch_proxy_src'
@@ -118,7 +119,7 @@ def _evaluated(context, ob):
     if not any(m.show_viewport for m in ob.modifiers):
         return ob.data, False
     dg = context.evaluated_depsgraph_get()
-    me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), depsgraph=dg)
+    me = bpy.data.meshes.new_from_object(_lc_full(ob, dg), depsgraph=dg)
     return me, True
 
 

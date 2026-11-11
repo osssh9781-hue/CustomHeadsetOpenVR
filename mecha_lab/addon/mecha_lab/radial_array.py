@@ -10,6 +10,7 @@ import bpy
 import numpy as np
 from mathutils import Matrix
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 GN_MOD = 'MCH_Radial_Array'
 ROLE = 'MCH_RADIAL'
@@ -573,7 +574,7 @@ class MCH_OT_radial_create(bpy.types.Operator):
         carrier = None
         group = None
         try:
-            mesh = bpy.data.meshes.new_from_object(src.evaluated_get(deps), preserve_all_data_layers=False, depsgraph=deps)
+            mesh = bpy.data.meshes.new_from_object(_lc_full(src, deps), preserve_all_data_layers=False, depsgraph=deps)
             if mesh is None or len(mesh.vertices) == 0:
                 raise ValueError('Source mesh has no vertices')
             mesh.transform(src.matrix_world.to_3x3().to_4x4())

@@ -24,6 +24,7 @@ import math
 import bmesh
 import bpy
 from mathutils import Matrix, Vector
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 TAG = 'mch_tire'                   # on a summoned object: 'TIRE' / 'WHEEL'
 PARAMS = 'mch_tire_p'              # its numbers (JSON)
@@ -433,7 +434,7 @@ def remove_round(piece):
 def apply_round(context, piece):
     """The copies made real mesh (the piece's modifiers baked into it), the repeat taken away."""
     dg = context.evaluated_depsgraph_get()
-    ev = piece.evaluated_get(dg)
+    ev = _lc_full(piece, dg)
     me = bpy.data.meshes.new_from_object(ev, preserve_all_data_layers=True, depsgraph=dg)
     old = piece.data
     piece.modifiers.clear()

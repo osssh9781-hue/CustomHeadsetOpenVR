@@ -2405,6 +2405,9 @@ def run(context, action):
     if action in {'EXPORT_OBJ', 'EXPORT_STL', 'FBX_EXPORT', 'FBX_IMPORT'}:
         _mode(context, 'OBJECT')
         sel = zb.fbx_scope == 'SELECTED'
+        if action != 'FBX_IMPORT':                  # 0.24.136 exported: the parts themselves, not their light copies
+            from . import light_copies
+            light_copies.full_all(list(context.selected_objects) if sel else list(context.visible_objects))
         try:
             if action == 'EXPORT_OBJ':
                 bpy.ops.wm.obj_export('INVOKE_DEFAULT', export_selected_objects=sel)

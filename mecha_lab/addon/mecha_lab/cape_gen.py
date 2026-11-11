@@ -30,6 +30,7 @@ from mathutils.bvhtree import BVHTree
 
 from . import target_rules
 from . import core_geometry as cg
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 SRC_KEY = 'mch_cape_src'
 COLLECTION = 'Capes'
@@ -117,7 +118,7 @@ def columns(loop, n):
 def _body(context, target):
     """World-space BVH of the evaluated body (cached until the body changes)."""
     dg = context.evaluated_depsgraph_get()
-    ev = target.evaluated_get(dg)
+    ev = _lc_full(target, dg)
     me = ev.to_mesh()
     try:
         import numpy as np

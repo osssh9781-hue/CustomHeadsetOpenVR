@@ -33,6 +33,7 @@ from pathlib import Path
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
 from mathutils import Matrix
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 MANIFEST = 'mecha_zbrush_manifest.json'
 ID_KEY = 'mch_zb_id'
@@ -234,7 +235,7 @@ def export_copy(context, ob, apply_modifiers, split_ngons=True):
     fill, quads kept), so ZBrush gets no concave n-gon to fan into slivers.  The caller removes it."""
     import bmesh
     dg = context.evaluated_depsgraph_get()
-    src = ob.evaluated_get(dg) if apply_modifiers else ob
+    src = _lc_full(ob, dg) if apply_modifiers else ob
     me = bpy.data.meshes.new_from_object(src, preserve_all_data_layers=True, depsgraph=dg) if apply_modifiers \
         else ob.data.copy()
     if split_ngons:
@@ -742,7 +743,7 @@ class MCH_OT_export_mesh(bpy.types.Operator):
         try:
             for i, ob in enumerate(obs):
                 if self.split_ngons:
-                    src = ob.evaluated_get(context.evaluated_depsgraph_get()) if self.apply_modifiers else ob
+                    src = _lc_full(ob, context.evaluated_depsgraph_get()) if self.apply_modifiers else ob
                     split += ngon_count(src.data)
                 tmp = export_copy(context, ob, self.apply_modifiers, self.split_ngons and not self.quad_mesh)
                 if quad > 0.0:

@@ -19,6 +19,7 @@ import bpy
 from bpy.props import BoolProperty, IntProperty, StringProperty
 
 from . import tool_state as ts
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 COLL = 'MCH Final High'
 SRC_KEY = 'mch_final_src'
@@ -97,7 +98,7 @@ def high_copy(context, ob, coll):
             except Exception as ex:                    # (it is copied as it is, and the message says so)
                 FAILED.append(f'{ob.name} ({label}): {ex}')
         dg = context.evaluated_depsgraph_get()
-        me = bpy.data.meshes.new_from_object(tmp.evaluated_get(dg), preserve_all_data_layers=True, depsgraph=dg)
+        me = bpy.data.meshes.new_from_object(_lc_full(tmp, dg), preserve_all_data_layers=True, depsgraph=dg)
     finally:
         data = tmp.data
         bpy.data.objects.remove(tmp, do_unlink=True)
@@ -141,6 +142,8 @@ def _export(context, obs, path):
             o.select_set(True)
         context.view_layer.objects.active = obs[0]
         os.makedirs(os.path.dirname(path), exist_ok=True)
+        from . import light_copies
+        light_copies.full_all(obs)                  # 0.24.136 the parts themselves, never their light copies
         bpy.ops.export_scene.fbx(filepath=path, use_selection=True, use_mesh_modifiers=True,
                                  object_types={'MESH', 'OTHER'})
     finally:

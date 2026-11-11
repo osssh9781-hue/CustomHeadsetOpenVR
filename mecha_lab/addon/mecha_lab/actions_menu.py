@@ -250,10 +250,12 @@ class MCH_OT_actions_apply_modifiers(bpy.types.Operator):
         return context.mode == 'OBJECT' and any(o.modifiers for o in _meshes(context))
 
     def execute(self, context):
-        from . import safe_apply
+        from . import safe_apply, light_copies
         done = 0
         for ob in _meshes(context):
             for mod in list(ob.modifiers):
+                if light_copies.is_light_mod(mod):     # 0.24.136 the viewport's light copy is never applied
+                    continue
                 try:
                     safe_apply(context, ob, mod)
                     done += 1

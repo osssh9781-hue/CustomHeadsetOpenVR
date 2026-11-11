@@ -42,6 +42,7 @@ from mathutils import Matrix, Quaternion, Vector
 from . import target_rules
 from . import core_geometry as cg
 from . import tool_state as ts
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 KIND_ITEMS = [
     ('BOX', 'Box', 'Box (X / Y / Z size)'),
@@ -753,7 +754,7 @@ def _world_bounds(ob, depsgraph):
 
 def _bvh_world(ob, depsgraph):
     from mathutils.bvhtree import BVHTree
-    ev = ob.evaluated_get(depsgraph)
+    ev = _lc_full(ob, depsgraph)
     me = ev.to_mesh()
     try:
         mw = ev.matrix_world

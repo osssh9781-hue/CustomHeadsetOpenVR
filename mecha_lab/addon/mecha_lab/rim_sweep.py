@@ -26,6 +26,7 @@ import bpy
 from mathutils import Vector
 
 from . import core_geometry as cg
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 RIM = 'mch_rim'
 POINT = 'mch_rp'
@@ -495,7 +496,7 @@ def _sweep(mesh, n, fast):
         mod.node_group = ensure_group(n, fast)
         dg = bpy.context.evaluated_depsgraph_get()
         dg.update()
-        ev = ob.evaluated_get(dg)
+        ev = _lc_full(ob, dg)
         return bpy.data.meshes.new_from_object(ev, preserve_all_data_layers=True, depsgraph=dg)
     finally:
         bpy.data.objects.remove(ob)

@@ -32,6 +32,7 @@ import bmesh
 import bpy
 from mathutils import Matrix, Vector
 from mathutils.geometry import tessellate_polygon
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 CUTTER_ATTR = 'mch_cutter_face'
 TEMP_MODIFIER = 'MCH_TMP_Boolean'
@@ -816,7 +817,7 @@ def evaluate_boolean(context, target, cutter, operation, solver='EXACT',
         if hasattr(mod, 'use_hole_tolerant'):
             mod.use_hole_tolerant = bool(hole_tolerant and solver == 'EXACT')
         dg = context.evaluated_depsgraph_get()
-        ev = target.evaluated_get(dg)
+        ev = _lc_full(target, dg)
         return bpy.data.meshes.new_from_object(ev, preserve_all_data_layers=True, depsgraph=dg)
     finally:
         if mod is not None:
@@ -1532,7 +1533,7 @@ def ensure_real_mesh(context, ob):
     if ob.type != 'MESH' or len(ob.data.polygons) or not ob.modifiers:
         return False
     dg = context.evaluated_depsgraph_get()
-    me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), preserve_all_data_layers=True, depsgraph=dg)
+    me = bpy.data.meshes.new_from_object(_lc_full(ob, dg), preserve_all_data_layers=True, depsgraph=dg)
     if not me.polygons:
         bpy.data.meshes.remove(me)
         return False
@@ -2951,6 +2952,9 @@ def apply_single_modifier(context, ob, mod, shared_policy='SINGLE'):
         mod = ob.modifiers.get(mod)
     if mod is None:
         raise CutError('Modifier not found.')
+    from . import light_copies
+    if light_copies.is_light_mod(mod):          # 0.24.136 the viewport's light copy is never baked into a part
+        return None
     name = mod.name
     if mod.type == 'MIRROR':                    # 0.24.95 the part's zones keep their mirror copies (zones.bake_mirrors)
         try:
@@ -2965,7 +2969,7 @@ def apply_single_modifier(context, ob, mod, shared_policy='SINGLE'):
             for m, _ in saved:
                 m.show_viewport = (m == mod)
             dg = context.evaluated_depsgraph_get()
-            return bpy.data.meshes.new_from_object(ob.evaluated_get(dg), preserve_all_data_layers=True,
+            return bpy.data.meshes.new_from_object(_lc_full(ob, dg), preserve_all_data_layers=True,
                                                    depsgraph=dg)
         finally:
             for m, show in saved:

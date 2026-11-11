@@ -11,6 +11,7 @@ import math
 
 import bpy
 from bpy.props import FloatProperty, IntProperty
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 SRC_KEY = 'mch_lowpoly_source'
 BEVEL = 'MCH_LP_Bevel'
@@ -202,7 +203,7 @@ def _evaluated_copy(context, ob, mods):
                 setattr(m, k, v)
         dg = context.evaluated_depsgraph_get()
         dg.update()
-        me = bpy.data.meshes.new_from_object(tmp.evaluated_get(dg), preserve_all_data_layers=False, depsgraph=dg)
+        me = bpy.data.meshes.new_from_object(_lc_full(tmp, dg), preserve_all_data_layers=False, depsgraph=dg)
     finally:
         data = tmp.data
         bpy.data.objects.remove(tmp, do_unlink=True)

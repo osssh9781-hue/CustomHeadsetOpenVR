@@ -937,10 +937,10 @@ class MCH_OT_mech_bg_mode(bpy.types.Operator):
         return {'FINISHED'}
 
 
-# --- the HDRI page (0.24.95 user: "재질이랑 hdri는 분리해야지") ------------------------------------------------------
+# --- the Render page (0.24.95 HDRI page; 0.24.137 Render: Quick Render, Viewport, Background) --------------------
 
 def quick_render_section(b, context, x, width):
-    """0.24.133 (user: "렌더링이 빡센데 좀 더 빠르고 편하게", "난 사이클만 써") Quick Render (Cycles) on the HDRI page."""
+    """0.24.133 (user: "렌더링이 빡센데 좀 더 빠르고 편하게", "난 사이클만 써") Quick Render (Cycles) on the Render page."""
     from . import quick_render as qr
     st = qr.settings(context)
     if st is None:
@@ -961,14 +961,6 @@ def quick_render_section(b, context, x, width):
             b.note(('note', ln, big, None, None, None, True), sx, sw)
         for ln in lines[1:]:
             b.note(('note', ln, False, None, None, None, True), sx, sw)
-        # 0.24.135 (user: "뷰포트에서도 빨라야 돼") the viewport: Fast Viewport, Blender's viewport anti-aliasing
-        from . import fast_view
-        row(b, sx, sw, [_cell('seg', 'Fast Viewport (Solid + Rendered)', ('op', 'mch.fast_view', {}),
-                              on=fast_view.on(context.scene))])
-        aa = fast_view.aa_value(context)
-        if aa is not None:
-            row(b, sx, sw, [button('Viewport AA: Single Pass (back to 8)' if aa == fast_view.AA_FAST
-                                   else f'Viewport AA: {fast_view.aa_label(aa)} > Single Pass', 'mch.viewport_aa')])
         row(b, sx, sw, [_cell('seg', v['label'], ('enum', key), st, 'quality', on=st.quality == key)
                         for key, v in qr.QUALITY.items()])
         row(b, sx, sw, [_cell('seg', 'This View', ('enum', 'VIEW'), st, 'camera', on=st.camera == 'VIEW'),
@@ -980,125 +972,60 @@ def quick_render_section(b, context, x, width):
     section(b, 'quick_render', 'Quick Render (Cycles)', x, width, fill, summary=q['label'])
 
 
-def hdri_content(context, x, width, k):
-    """(items, content height) - the HDRI page: the scene's lighting, apart from the material."""
-    from . import mech_shader as ms
-    b = sp.Builder('HDRI', x, width, k)
+def viewport_section(b, context, x, width):
+    """0.24.135 / 0.24.136 (user: "뷰포트에서도 빨라야 돼", "사본 쓰면 더 빨라?" -> "그럼 일단 그렇게 해 보고") the viewport:
+    Fast Viewport, Blender's viewport anti-aliasing, Light Copies."""
+    from . import fast_view, light_copies as lc
     sc = context.scene
-    quick_render_section(b, context, x, width)       # 0.24.133 first: the render itself
-    w = ms.hdri_world(sc)
-    if w is not None:
-        name = dict((i[0], i[1]) for i in ms._hdri_items(None, context)).get(sc.mch_mech_hdri, sc.mch_mech_hdri)
-        status = f'On: {name}  (the scene\'s world)'
-    else:
-        status = 'Off - the scene\'s own world.  Set HDRI puts it on'
-    b.note(('note', status, False, None, None, None, True), x, width)
-    stepper(b, x, width, button('◀', 'mch.mech_hdri', action='SET', step=-1),
-            _cell('drop', '', ('menu_enum',), sc, 'mch_mech_hdri'),
-            button('▶', 'mch.mech_hdri', action='SET', step=1))
-    row(b, x, width, [button('Set HDRI', 'mch.mech_hdri', action='SET'),
-                      button('Off', 'mch.mech_hdri', action='OFF')])
+    lst = lc.settings(context)
 
-    def previews(sx, sw):                        # (0.24.95 user: "hdri 도 미리 보기 넣어 줘") click = that HDRI, on
-        # (0.24.95 user: "hdri 뭉탱이로 불러왔더니 캐무거워 - 6 개씩만 불러오면 안 돼? 넘기면 되잖아": a page of 6 at a
-        #  time, ◀ ▶ to turn; only those 6 are drawn and their previews made - and the next 6, ready)
-        entries, counts = [], {}
-        for ident, n, *_r in ms._hdri_items(None, context):
-            if ident == 'NONE':
-                continue
-            g = (ms.hdri_group(ident) or 'My HDRIs') if ident.startswith(ms.USER) else \
-                ms.MECHA_GROUP if ident.startswith(ms.MECHA) else 'Blender'
-            entries.append((n.split(' / ')[-1] if ident.startswith(ms.USER) else n, ident, g))
-            counts[g] = counts.get(g, 0) + 1
-        cur = sc.mch_mech_hdri
-        page, pages = hdri_page(cur, [e[1] for e in entries])
-        left = ms.thumbs_pending()
-        if left:
-            b.note(('note', f'Making previews in the background: {left} left (Blender keeps working)', False, None,
-                    None, None, True), sx, sw)
-        if pages > 1:
-            stepper(b, sx, sw, button('◀', 'mch.mech_hdri_page', step=-1),
-                    _cell('tbtn', f'Page {page + 1} / {pages}', ('op', 'mch.mech_hdri_page', {'step': 0})),
-                    button('▶', 'mch.mech_hdri_page', step=1))
-        shown = entries[page * HDRI_PAGE:(page + 1) * HDRI_PAGE]
-        run, last = [], None
-        for n, ident, g in shown + [(None, None, None)]:
-            if g != last and run:                # (a heading where the folder changes on the page)
-                if len(counts) > 1:
-                    sub(b, last.replace('/', ' / ') + f'  ({counts[last]})', sx, sw)
-                hgrid(b, sx, sw, [(rn, ms.hdri_icon(ri), cur == ri,
-                                   ('op', 'mch.mech_hdri', {'action': 'SET', 'ident': ri})) for rn, ri in run])
-                run = []
-            if ident is not None:
-                run.append((n, ident))
-            last = g
-        for _n, ident, _g in entries[(page + 1) * HDRI_PAGE:(page + 2) * HDRI_PAGE]:
-            ms.hdri_icon(ident)                  # (the next page's previews made meanwhile: turning is quick)
-    section(b, 'hdri_previews', 'HDRIs', x, width, previews)
-
-    def folder(sx, sw):
-        d = ms.user_hdri_dir()
-        if d:
-            files = ms.user_hdri_files()
-            n, k = len(files), len({f.rsplit('/', 1)[0] for f in files if '/' in f})
-            text = (f'Folder: {os.path.basename(os.path.normpath(d))}  ({n} HDRI{"s" if n != 1 else ""}'
-                    + (f' in it and {k} folder{"s" if k != 1 else ""} inside' if k else '') + ', * in the list)')
-        else:
-            text = 'Folder: none - Blender\'s own HDRIs'
-        b.note(('note', text, False, None, None, None, True), sx, sw)
-        row(b, sx, sw, [button('Choose Folder…', 'mch.mech_hdri_folder')])
-        # 0.24.95 (user: "이상한 거 다 들어왔어 - 한 번에 지우는 버튼이랑 그냥 지우는 버튼") out of the list - files kept
-        if d and ms.user_hdri_files():
-            cur = sc.mch_mech_hdri
-            row(b, sx, sw, [_cell('tbtn', 'Remove' + (' ' + os.path.splitext(cur[len(ms.USER):])[0].split('/')[-1]
-                                                       if cur.startswith(ms.USER) else ''),
-                                  ('op', 'mch.mech_hdri_remove', {'what': 'ONE'}), active=cur.startswith(ms.USER)),
-                            button('Remove All', 'mch.mech_hdri_remove', what='ALL')])
-        n_hidden = len(ms.hidden_hdris()) if d else 0
-        if n_hidden:
-            row(b, sx, sw, [button(f'Bring Back {n_hidden} Removed', 'mch.mech_hdri_remove', what='RESTORE')])
-        from .workspace_ui import prefs
-        pr = prefs()
-        if d and pr is not None and hasattr(pr, 'bl_rna'):
-            row(b, sx, sw, [prop_cell(pr, 'hdri_all_images', 'All Pictures (not only panoramas)')])
-    section(b, 'folder', 'My HDRIs', x, width, folder)
-
-    def light(sx, sw):
-        for p in ('mch_mech_hdri_strength', 'mch_mech_hdri_rot'):
-            row(b, sx, sw, [number(sc, p)])
-    section(b, 'light', 'Light', x, width, light)
-
-    def background(sx, sw):
-        row(b, sx, sw, [number(sc, 'mch_mech_hdri_blur', 'Blur')])
-        row(b, sx, sw, [prop_cell(sc, 'mch_mech_hdri_show', 'Show the HDRI')])
-        if sc.mch_mech_hdri_show:
-            b.note(('note', 'Off: a colour or a picture behind the model (the HDRI still lights it)', False, None,
-                    None, None, True), sx, sw)
-            backdrop_previews(b, sc, sx, sw, faint=True)
+    def fill(sx, sw):
+        row(b, sx, sw, [_cell('seg', 'Fast Viewport (Solid + Rendered)', ('op', 'mch.fast_view', {}),
+                              on=fast_view.on(sc))])
+        aa = fast_view.aa_value(context)
+        if aa is not None:
+            row(b, sx, sw, [button('Viewport AA: Single Pass (back to 8)' if aa == fast_view.AA_FAST
+                                   else f'Viewport AA: {fast_view.aa_label(aa)} > Single Pass', 'mch.viewport_aa')])
+        if lst is None:
             return
-        # (0.24.95 hidden: a background colour of its own, or a picture - user: "배경 이미지를 넣을 수 있게")
-        mode = getattr(sc, 'mch_mech_hdri_bg_mode', 'COLOR')
-        row(b, sx, sw, [_cell('tbtn', 'Colour', ('op', 'mch.mech_bg_mode', {'mode': 'COLOR'}), on=mode == 'COLOR'),
-                        _cell('tbtn', 'Picture', ('op', 'mch.mech_bg_mode', {'mode': 'IMAGE'}), on=mode == 'IMAGE')])
-        if mode == 'IMAGE':
-            fit = sc.mch_mech_hdri_bg_fit
-            row(b, sx, sw, [_cell('tbtn', 'Fill', ('op', 'mch.mech_bg_mode', {'fit': 'FILL'}), on=fit == 'FILL'),
-                            _cell('tbtn', 'Fit', ('op', 'mch.mech_bg_mode', {'fit': 'FIT'}), on=fit == 'FIT')])
-            row(b, sx, sw, [prop_cell(sc, 'mch_mech_hdri_bg_color', 'Colour round it' if fit == 'FIT' else 'Colour')])
-            # (0.24.95 user: "사진에 컬러램프 기능 - 대비랑 색 같은 거 내가 조절")
-            row(b, sx, sw, [number(sc, 'mch_mech_hdri_bg_bright', 'Brightness')])
-            row(b, sx, sw, [number(sc, 'mch_mech_hdri_bg_contrast', 'Contrast')])
-            row(b, sx, sw, [prop_cell(sc, 'mch_mech_hdri_bg_ramp', 'Colour Ramp')])
-            from . import backdrops as bd_
-            rn = bd_.ramp_node(sc)
-            if sc.mch_mech_hdri_bg_ramp and rn is not None:
-                els = rn.color_ramp.elements
-                row(b, sx, sw, [swatch(els[0], 'color', 'Dark'), swatch(els[len(els) - 1], 'color', 'Light')])
-                row(b, sx, sw, [button('Edit Ramp…', 'mch.mech_bg_ramp')])
-            backdrop_previews(b, sc, sx, sw)
-        else:
-            row(b, sx, sw, [prop_cell(sc, 'mch_mech_hdri_bg_color', 'Colour')])
-    section(b, 'background', 'Background', x, width, background)
+        row(b, sx, sw, [_cell('seg', 'Light Copies (parts not worked on)', ('op', 'mch.light_copies', {}),
+                              on=lst.on)])
+        row(b, sx, sw, [number(lst, 'percent', 'Copy %')])
+        row(b, sx, sw, [number(lst, 'min_tris', 'From')])
+        for ln in lc.status(context):
+            b.note(('note', ln, False, None, None, None, True), sx, sw)
+    on = [t for t, v in (('Fast', fast_view.on(sc)), ('Light', lst is not None and lst.on)) if v]
+    section(b, 'viewport', 'Viewport', x, width, fill, summary=' + '.join(on))
+
+
+def background_section(b, context, x, width):
+    """0.24.137 (user: "HDRI 는 다른 애드온 쓸 거라 배경만 내가 원하는 색으로 바꿀 수 있게 해 주라") Background Colour on
+    whatever world the scene has."""
+    from . import bg_color as bgc, mech_shader as ms
+    sc = context.scene
+    st = bgc.settings(sc)
+    if st is None:
+        return
+    on = bgc.on(sc)
+
+    def fill(sx, sw):
+        row(b, sx, sw, [_cell('seg', 'Background Colour', ('op', 'mch.bg_color', {}), on=on),
+                        swatch(st, 'color', 'Colour')])
+        row(b, sx, sw, [prop_cell(st, 'solid_too', 'Solid View Too')])
+        b.note(('note', 'The camera sees the colour; your HDRI still lights the parts', False, None, None, None,
+                True), sx, sw)
+        if ms.hdri_world(sc) is not None:            # (a scene still on the old Mecha HDRI world: back to its own)
+            row(b, sx, sw, [button('Mecha HDRI Off (back to your world)', 'mch.mech_hdri', action='OFF')])
+    section(b, 'background_colour', 'Background', x, width, fill, summary='on' if on else '')
+
+
+def hdri_content(context, x, width, k):
+    """(items, content height) - the Render page (0.24.137, was HDRI: the HDRI library is gone - the user's own HDRI
+    add-on lights the scene): Quick Render, the viewport, the background colour."""
+    b = sp.Builder('HDRI', x, width, k)
+    quick_render_section(b, context, x, width)
+    viewport_section(b, context, x, width)
+    background_section(b, context, x, width)
     return b.out, -b.y
 
 

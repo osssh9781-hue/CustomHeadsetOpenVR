@@ -26,6 +26,7 @@ from bpy.props import StringProperty
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 from . import target_rules
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 MODES = {'CUT', 'SPLIT', 'PLATE', 'WRINKLE', 'CDRAPE', 'ZONE'}
 PATCH_MODES = {'PLATE', 'WRINKLE', 'CDRAPE', 'ZONE'}        # 0.22.2: Armor Plate / Cloth Plate from a surface outline; 0.24.95 Cloth Drape
@@ -208,7 +209,7 @@ def split_along_loop(context, ob, loop_world, normals_world, gap=0.0005, margin=
     try:
         context.view_layer.update()
         dg = context.evaluated_depsgraph_get()
-        new_me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), depsgraph=dg)
+        new_me = bpy.data.meshes.new_from_object(_lc_full(ob, dg), depsgraph=dg)
     finally:
         ob.modifiers.remove(mod)
         bpy.data.objects.remove(cutter)

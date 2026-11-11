@@ -25,6 +25,7 @@ from mathutils.bvhtree import BVHTree
 
 from . import target_rules
 from . import core_geometry as cg
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 SRC_KEY = 'mch_belt_src'
 COLLECTION = 'Belts'
@@ -288,7 +289,7 @@ class _Target:
 
     def __init__(self, context, ob):
         dg = context.evaluated_depsgraph_get()
-        ev = ob.evaluated_get(dg)
+        ev = _lc_full(ob, dg)
         self.mw = ev.matrix_world.copy()
         self.inv = self.mw.inverted_safe()
         self.nrm_m = self.mw.to_3x3().inverted_safe().transposed()

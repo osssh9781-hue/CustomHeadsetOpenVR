@@ -76,7 +76,8 @@ def entries(ob):
     """[(modifier, plain name, shown?)] in stack order (top = applied first), or []."""
     if ob is None or ob.type != 'MESH':
         return []
-    return [(m, label(m), bool(m.show_viewport)) for m in ob.modifiers]
+    from . import light_copies                   # 0.24.136 the viewport's light copy is not a modifier of yours
+    return [(m, label(m), bool(m.show_viewport)) for m in ob.modifiers if not light_copies.is_light_mod(m)]
 
 
 def warnings(ob):

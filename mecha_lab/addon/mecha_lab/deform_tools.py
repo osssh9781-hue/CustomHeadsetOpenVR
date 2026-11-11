@@ -33,6 +33,7 @@ from bpy.props import (BoolProperty, EnumProperty, FloatProperty, FloatVectorPro
 from mathutils import Matrix, Quaternion, Vector
 
 from . import core_geometry as cg
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 # Names kept from v0.9.1 so controllers in saved files keep working.
 MOD_LATTICE = 'MCH_Deform_Lattice'
@@ -1130,7 +1131,7 @@ def _bake_through(context, ob, mod):
             m.show_viewport = False
         dg = context.evaluated_depsgraph_get()
         dg.update()
-        me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), preserve_all_data_layers=True, depsgraph=dg)
+        me = bpy.data.meshes.new_from_object(_lc_full(ob, dg), preserve_all_data_layers=True, depsgraph=dg)
     finally:
         for m, v in later:
             m.show_viewport = v

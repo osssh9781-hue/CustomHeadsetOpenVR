@@ -27,6 +27,7 @@ import bpy
 from bpy.props import BoolProperty, FloatProperty, PointerProperty
 
 from . import core_geometry as cg
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 MOD = 'MCH_ArmorShell'
 GROUP = 'MCH_ArmorShell'
@@ -171,7 +172,7 @@ def is_shell(ob):
 
 def _part_mesh(context, part):
     dg = context.evaluated_depsgraph_get()
-    return bpy.data.meshes.new_from_object(part.evaluated_get(dg), preserve_all_data_layers=False, depsgraph=dg)
+    return bpy.data.meshes.new_from_object(_lc_full(part, dg), preserve_all_data_layers=False, depsgraph=dg)
 
 
 def make(context, part, gap=None, thickness=None, smooth=0.3, detail=0.5):
@@ -230,7 +231,7 @@ def face_count(context, ob):
 def apply(context, ob):
     """The modifier made real: a plain mesh to cut."""
     dg = context.evaluated_depsgraph_get()
-    new = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), depsgraph=dg)
+    new = bpy.data.meshes.new_from_object(_lc_full(ob, dg), depsgraph=dg)
     old = ob.data
     if not len(new.materials):
         for mat in old.materials:

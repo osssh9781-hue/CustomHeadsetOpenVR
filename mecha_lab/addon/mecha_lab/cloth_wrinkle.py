@@ -105,6 +105,7 @@ INPUTS = (('Type', 'NodeSocketInt', 0, 0, 5),
           # 0.23.8 Pinch 2: the small fans on their own slider (Pinch = Pinch 1: the long big folds)
           ('Pinch 2', 'NodeSocketFloat', 0.0, -100.0, 100.0))
 from .cloth_sim import PRESET_ITEMS as _SIM_PRESETS
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 TRIMS = (('NONE', 'No Trim', 'Plain border'),
          ('PIPING', 'Piping', 'Round cord along the border'),
@@ -1534,7 +1535,7 @@ def dense_mesh(context, ob, extra=2, limit=1_500_000):
         return None
     old = int(get_input(ob, 'Detail'))
     dg = context.evaluated_depsgraph_get()
-    base = len(ob.evaluated_get(dg).data.polygons) or 1
+    base = len(_lc_full(ob, dg).data.polygons) or 1
     lv = old
     while lv < min(3, old + extra) and base * 4 ** (lv + 1 - old) <= limit:
         lv += 1
@@ -1542,14 +1543,14 @@ def dense_mesh(context, ob, extra=2, limit=1_500_000):
         set_input(ob, 'Detail', lv)
         dg = context.evaluated_depsgraph_get()
         dg.update()
-        return bpy.data.meshes.new_from_object(ob.evaluated_get(dg), depsgraph=dg)
+        return bpy.data.meshes.new_from_object(_lc_full(ob, dg), depsgraph=dg)
     finally:
         set_input(ob, 'Detail', old)
 
 
 def apply_wrinkle(context, ob):
     dg = context.evaluated_depsgraph_get()
-    me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), depsgraph=dg)
+    me = bpy.data.meshes.new_from_object(_lc_full(ob, dg), depsgraph=dg)
     old = ob.data
     ob.modifiers.clear()
     _remove_helper(ob)

@@ -34,6 +34,7 @@ from mathutils.bvhtree import BVHTree
 from . import armor_plate as ap
 from . import core_geometry as cg
 from . import tool_state as ts
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 SESSION = 'mch_random_session'
 COLL = 'Random Panels'
@@ -214,7 +215,7 @@ def _work_mesh(context, target, faces):
     """World-space bmesh of the candidate faces, subdivided until the faces
     are small enough for the panel size."""
     dg = context.evaluated_depsgraph_get()
-    ev = target.evaluated_get(dg)
+    ev = _lc_full(target, dg)
     me = ev.to_mesh()
     bm = bmesh.new()
     try:

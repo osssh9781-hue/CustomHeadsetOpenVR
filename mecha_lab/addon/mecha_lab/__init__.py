@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 24, 135),
+    "version": (0, 24, 137),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
     "description": "Cut, Split, Base Mesh, Boolean, Face Extract, Armor Sculpt, Molding, Cable, Hollow, curve arrays, Mirror",
@@ -19,7 +19,8 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                creature_plate, belt_maker, creature_spike, creature_scales, flower_plate,
                surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, smart_move, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, bg_jobs, quad_remesh, mesh_fix, tool_recent, actions_menu, key_legend, quick_hud, mecha_menu, symmetry, groups, ui_bars, safety_save, lasso_memory, armor_shell, paint_lab, bake_maps, res_parts, final_export, mech_shader,
                creature_shader, my_presets, decals, zones, my_materials, bake_material, color_pick,
-               random_shapes, material_overlay, tire_gen, work_scene, press_cut, name_fix, quick_render, fast_view)
+               random_shapes, material_overlay, tire_gen, work_scene, press_cut, name_fix, quick_render, fast_view,
+               light_copies, bg_color)
 import os
 import re
 from pathlib import Path
@@ -29,6 +30,7 @@ from bpy_extras import view3d_utils
 from bpy.props import (
     BoolProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty, StringProperty,
 )
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 # -----------------------------------------------------------------------------
 # Storage / shared helpers
@@ -806,7 +808,7 @@ def fuse_validate(context, target):
         for m, _ in saved:
             m.show_viewport = (m == gn)
         dg = context.evaluated_depsgraph_get()
-        ev = target.evaluated_get(dg)
+        ev = _lc_full(target, dg)
         me = ev.to_mesh()
         try:
             if me is None or not me.polygons:
@@ -1776,7 +1778,7 @@ class MCH_OT_save_asset(bpy.types.Operator):
         try:
             if self.kind == 'MESH':
                 deps = context.evaluated_depsgraph_get()
-                mesh = bpy.data.meshes.new_from_object(ob.evaluated_get(deps), preserve_all_data_layers=True, depsgraph=deps)
+                mesh = bpy.data.meshes.new_from_object(_lc_full(ob, deps), preserve_all_data_layers=True, depsgraph=deps)
                 library_write(path, ob, mesh)
             else:
                 curve = ob.data.copy()
@@ -2151,6 +2153,8 @@ def _register():
     name_fix.register()                 # 0.24.129 names that are not UTF-8 (they killed the drawn UI)
     quick_render.register()             # 0.24.133 Quick Render (Cycles)
     fast_view.register()                # 0.24.135 Fast Viewport
+    light_copies.register()             # 0.24.136 Light Copies
+    bg_color.register()                 # 0.24.137 Background Colour
     fold_patch.register()
     workspace_ui.register()
     bottom_bar.register()
@@ -2208,6 +2212,8 @@ def _unregister_steps():
         ('bottom_bar', bottom_bar.unregister),
         ('workspace_ui', workspace_ui.unregister),
         ('fold_patch', fold_patch.unregister),
+        ('bg_color', bg_color.unregister),
+        ('light_copies', light_copies.unregister),
         ('fast_view', fast_view.unregister),
         ('quick_render', quick_render.unregister),
         ('name_fix', name_fix.unregister),

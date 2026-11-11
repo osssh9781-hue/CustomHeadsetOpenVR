@@ -22,6 +22,7 @@ import math
 
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 COLL = 'HighPoly'
 SRC_KEY = 'mch_highpoly_src'
@@ -87,7 +88,7 @@ def creased_subdiv(context, ob, level, angle):
     plate lumpy and moved its crease lines.)"""
     import bmesh
     dg = context.evaluated_depsgraph_get()
-    base = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), depsgraph=dg)
+    base = bpy.data.meshes.new_from_object(_lc_full(ob, dg), depsgraph=dg)
     bm = bmesh.new()
     try:
         bm.from_mesh(base)
@@ -121,7 +122,7 @@ def creased_subdiv(context, ob, level, angle):
     sub.boundary_smooth = 'PRESERVE_CORNERS'
     try:
         dg = context.evaluated_depsgraph_get()
-        dense = bpy.data.meshes.new_from_object(tmp.evaluated_get(dg), depsgraph=dg)
+        dense = bpy.data.meshes.new_from_object(_lc_full(tmp, dg), depsgraph=dg)
     finally:
         bpy.data.objects.remove(tmp)
         if base.users == 0:
@@ -167,7 +168,7 @@ def _make_highpoly(context, ob, st_coll, level, ratio, angle, segments):
         hp[SRC_KEY] = ob.name
         return hp, 0
     dg = context.evaluated_depsgraph_get()
-    base = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), depsgraph=dg)
+    base = bpy.data.meshes.new_from_object(_lc_full(ob, dg), depsgraph=dg)
     level = safe_level(len(base.polygons), level, segments)
     if level < 1:
         n = len(base.polygons)
@@ -192,7 +193,7 @@ def _make_highpoly(context, ob, st_coll, level, ratio, angle, segments):
     sub.quality = 3
     try:
         dg = context.evaluated_depsgraph_get()
-        dense = bpy.data.meshes.new_from_object(hp.evaluated_get(dg), depsgraph=dg)
+        dense = bpy.data.meshes.new_from_object(_lc_full(hp, dg), depsgraph=dg)
     except Exception:                            # (the half-made copy goes; the old one is still there)
         bpy.data.objects.remove(hp)
         if base.users == 0:

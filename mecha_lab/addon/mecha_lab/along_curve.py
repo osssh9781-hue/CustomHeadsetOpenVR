@@ -20,6 +20,7 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, FloatVectorProperty, IntProperty, PointerProperty
 from mathutils import Matrix, Vector
 from mathutils.geometry import interpolate_bezier
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 MOD_DEFORM = 'MCH_AlongCurve'
 MOD_ARRAY = 'MCH_CurveArray'
@@ -777,7 +778,7 @@ class MCH_OT_along_finish(bpy.types.Operator):
             set_realize(ob, True)
             dg = context.evaluated_depsgraph_get()
             dg.update()
-            me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), preserve_all_data_layers=True, depsgraph=dg)
+            me = bpy.data.meshes.new_from_object(_lc_full(ob, dg), preserve_all_data_layers=True, depsgraph=dg)
             mw = ob.matrix_world.copy()
             for m in list(ob.modifiers):
                 if m.name.startswith(('MCH_AlongCurve', 'MCH_CurveArray')):

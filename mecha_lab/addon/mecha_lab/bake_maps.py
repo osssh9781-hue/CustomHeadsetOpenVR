@@ -33,6 +33,7 @@ import time
 import bpy
 import numpy as np
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 MAPS = ('NORMAL', 'AO', 'COLOR')
 SUFFIX = {'NORMAL': 'Normal', 'AO': 'AO', 'COLOR': 'Color'}
@@ -417,7 +418,7 @@ def make_cage(context, low, ext):
     so a sharp low bakes as cleanly as a smooth one."""
     from . import mesh_io as mio
     dg = context.evaluated_depsgraph_get()
-    me = bpy.data.meshes.new_from_object(low.evaluated_get(dg), depsgraph=dg)
+    me = bpy.data.meshes.new_from_object(_lc_full(low, dg), depsgraph=dg)
     me.name = CAGE
     co = mio.read_co(me)
     nrm = np.empty(len(co) * 3, np.float32)

@@ -27,6 +27,7 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
 from mathutils import Matrix, Vector
 from . import target_rules
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 FOLDER = 'details'
 PREVIEW_NAME = 'MCH_DetailPreview'
@@ -73,7 +74,7 @@ def add_preset(context, ob, name=None):
     if path is None:
         raise ValueError('No config folder for presets')
     dg = context.evaluated_depsgraph_get()
-    me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), depsgraph=dg)
+    me = bpy.data.meshes.new_from_object(_lc_full(ob, dg), depsgraph=dg)
     rs = ob.matrix_world.to_3x3().to_4x4()                 # rotation + scale, origin stays the attach point
     me.transform(rs)
     me.name = 'MCH_DETAIL_' + name

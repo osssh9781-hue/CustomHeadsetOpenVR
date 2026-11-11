@@ -18,6 +18,7 @@ import numpy as np
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty
 from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 KIND_ITEMS = [
     ('CLOTH', 'Cloth', 'Simulated cloth: hangs and folds under gravity over the body'),
@@ -72,7 +73,7 @@ def pillow_weight(d, half):
 
 def _world_bvh(context, ob):
     dg = context.evaluated_depsgraph_get()
-    ev = ob.evaluated_get(dg)
+    ev = _lc_full(ob, dg)
     me = ev.to_mesh()
     try:
         verts = [ob.matrix_world @ v.co for v in me.vertices]
@@ -252,7 +253,7 @@ def simulate_cloth(context, ob, body, pins, frames, fabric, distance, slack=0.0,
         for f in range(start, start + frames + 1):
             scene.frame_set(f)
         dg = context.evaluated_depsgraph_get()
-        ev = ob.evaluated_get(dg)
+        ev = _lc_full(ob, dg)
         me = ev.to_mesh()
         try:
             coords = [v.co.copy() for v in me.vertices]
@@ -331,7 +332,7 @@ def simulate_nodes(context, ob, body, pins, frames, distance):
         for f in range(start, start + frames + 1):
             scene.frame_set(f)
         dg = context.evaluated_depsgraph_get()
-        ev = ob.evaluated_get(dg)
+        ev = _lc_full(ob, dg)
         em = ev.to_mesh()
         try:
             coords = [v.co.copy() for v in em.vertices]

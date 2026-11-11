@@ -20,6 +20,7 @@ import math
 import bmesh
 import bpy
 from mathutils import Vector
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 WELD = 1e-4               # points closer than this x the part size are one (only where the surface is broken)
 DEGEN = 1e-6              # faces / edges smaller than this x the part size are dissolved
@@ -390,7 +391,7 @@ def seen_open_edges(context, ob):
         context.view_layer.update()                  # (the mesh just changed: the mirror evaluated anew)
     except (AttributeError, RuntimeError):
         pass
-    ev = ob.evaluated_get(context.evaluated_depsgraph_get())
+    ev = _lc_full(ob, context.evaluated_depsgraph_get())
     me = bpy.data.meshes.new_from_object(ev)
     try:
         return int((mio.edge_face_counts(me) != 2).sum()) if len(me.polygons) else 0

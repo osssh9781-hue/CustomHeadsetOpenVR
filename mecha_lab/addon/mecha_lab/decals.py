@@ -26,6 +26,7 @@ from bpy.props import BoolProperty, FloatProperty, FloatVectorProperty, PointerP
 from mathutils import Matrix, Vector
 
 from . import mech_shader as ms
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'decals')
 KEY = 'mch_decal'
@@ -544,7 +545,7 @@ class MCH_OT_decal_apply(bpy.types.Operator):
         n = 0
         for ob in _decals(context):
             dg = context.evaluated_depsgraph_get()
-            me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg))
+            me = bpy.data.meshes.new_from_object(_lc_full(ob, dg))
             old = ob.data
             ob.modifiers.clear()
             ob.data = me

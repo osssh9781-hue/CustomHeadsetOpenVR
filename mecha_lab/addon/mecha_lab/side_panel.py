@@ -26,7 +26,7 @@ TABS = 34.0              # 0.24.95 the Tool | Material | HDRI tabs under the tit
 # page -> (title, icon); 0.24.95 (user: "이건 데칼 탭으로 가자! 메테리얼도 크리쳐랑 메카닉이랑 좀 분리해 줘") the Material
 # page split: Mech (the Mech Shader - still 'MATERIAL'), Creature (the Creature Shader, eyes), Decals
 PAGES = {'MATERIAL': ('Mech', 'material'), 'CREATURE': ('Creature', 'creature'), 'DECALS': ('Decals', 'decal'),
-         'HDRI': ('HDRI', 'hdri'), 'SHAPES': ('Shapes', 'shapes')}   # 0.24.95 Shapes: random base shapes
+         'HDRI': ('Render', 'hdri'), 'SHAPES': ('Shapes', 'shapes')}   # 0.24.137 HDRI -> Render   # 0.24.95 Shapes: random base shapes
 SECTION = 26.0
 NOTE = 17.0
 TOP_MARGIN = 150.0          # below the navigation gizmo
@@ -449,6 +449,22 @@ def content(context, tool, x, width, k):
 
 # --- where it is -------------------------------------------------------------------------------------------------
 
+TAB_TEXT = 11.0          # the page tabs' font size (mecha_menu draws 'ptab' at 11 * scale)
+
+
+def _text_w(s, size):
+    """Width of ``s`` in the UI font at ``size`` px (an estimate when the font cannot be asked)."""
+    try:
+        import blf
+        blf.size(0, size)
+        wd = blf.dimensions(0, s)[0]
+        if wd > 0:
+            return wd
+    except (ImportError, AttributeError, ValueError):
+        pass
+    return 0.62 * size * len(s)
+
+
 def sidebar_open(context):
     area = getattr(context, 'area', None)
     return area is not None and any(r.type == 'UI' and r.width > 1 for r in area.regions)
@@ -532,14 +548,17 @@ def layout(context, region_w, region_h, k=1.0):
     # 0.24.95 five tabs (Tool | Mech | Creature | Decals | HDRI): each as wide as its name needs (the tool's own name
     # is in the title above when its page is shown)
     # 0.24.95 six with Shapes: a narrower gap, each as wide as its name needs plus a little
+    # 0.24.137 each tab as wide as its name really is in the font ("Mech" is wider than "Tool": with "Render" for
+    # "HDRI" the letter-count share cut it to "Me…"), the spare room shared out evenly
     tabs = [('Tool', 'TOOL')] + [(PAGES[p][0], p) for p in PAGES]
     gap = 3 * k
     room = w - 2 * PAD * k - (len(tabs) - 1) * gap
-    weights = [len(label) + 1.5 for label, _p in tabs]
+    need = [_text_w(label, TAB_TEXT * k) + 8 * k for label, _p in tabs]
+    spare = room - sum(need)
+    widths = [n + spare / len(need) for n in need] if spare >= 0 else [room * n / sum(need) for n in need]
     tx = x0 + PAD * k
     ty = top - PAD * k - HEAD * k - (TABS - 6) * k
-    for (label, p), wt in zip(tabs, weights):
-        tw = room * wt / sum(weights)
+    for (label, p), tw in zip(tabs, widths):
         out.append(Item('ptab', tx, ty, tw, (TABS - 8) * k, label, '', pg == p, True, ('page', p)))
         tx += tw + gap
     y_top = top - PAD * k - head

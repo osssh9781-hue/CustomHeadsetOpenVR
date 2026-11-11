@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 MOD_GN = 'MCH_Primitive_Geometry'
 MOD_BEVEL = 'MCH_Primitive_Bevel'
@@ -359,7 +360,7 @@ class MCH_OT_primitive_apply(bpy.types.Operator):
     def execute(self,context):
         ob=active_primitive(context)
         dg=context.evaluated_depsgraph_get()
-        ob_eval=ob.evaluated_get(dg)
+        ob_eval=_lc_full(ob, dg)
         fresh=bpy.data.meshes.new_from_object(ob_eval,preserve_all_data_layers=True,depsgraph=dg)
         if len(fresh.vertices)==0:
             bpy.data.meshes.remove(fresh)

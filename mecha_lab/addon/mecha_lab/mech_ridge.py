@@ -29,6 +29,7 @@ from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, St
 from mathutils import Matrix, Vector
 
 from . import core_geometry as cg
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 SRC_KEY = 'mch_mridge_src'
 COLLECTION = 'Armor Plates'
@@ -268,7 +269,7 @@ def _boolean_difference(context, bm_a, bm_b):
         if hasattr(mod, 'use_self'):
             mod.use_self = True
         dg = context.evaluated_depsgraph_get()
-        ev = a.evaluated_get(dg)
+        ev = _lc_full(a, dg)
         res = bpy.data.meshes.new_from_object(ev, depsgraph=dg)
     finally:
         cg.remove_object_and_mesh(a)
@@ -305,7 +306,7 @@ def _boolean_difference_each(context, bm_a, cutters):
                 if solver == 'EXACT' and hasattr(mod, 'use_self'):
                     mod.use_self = True
             dg = context.evaluated_depsgraph_get()
-            res = bpy.data.meshes.new_from_object(a.evaluated_get(dg), depsgraph=dg)
+            res = bpy.data.meshes.new_from_object(_lc_full(a, dg), depsgraph=dg)
         except RuntimeError:
             res = None
         finally:

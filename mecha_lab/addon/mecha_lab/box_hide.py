@@ -16,6 +16,7 @@ import bpy
 from mathutils import Matrix, Vector
 
 from . import core_geometry as cg
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 MOD = 'MCH_BoxHide'
 GROUP = 'MCH_BoxHide'
@@ -166,7 +167,7 @@ def _manifold_in(target, mod):
             m.show_viewport = m in before
         dg = bpy.context.evaluated_depsgraph_get()
         dg.update()
-        me = target.evaluated_get(dg).data
+        me = _lc_full(target, dg).data
         return cg.non_manifold_edge_count(me) == 0
     except (RuntimeError, ReferenceError, AttributeError):
         return False
@@ -414,7 +415,7 @@ def _flag_volume(vol):
 def _all_hidden(context, ob):
     """0.24.95 True when the hiding takes the whole part (its evaluated mesh has no face left)."""
     try:
-        ev = ob.evaluated_get(context.evaluated_depsgraph_get())
+        ev = _lc_full(ob, context.evaluated_depsgraph_get())
         return len(ev.data.polygons) == 0
     except (RuntimeError, ReferenceError, AttributeError):
         return False

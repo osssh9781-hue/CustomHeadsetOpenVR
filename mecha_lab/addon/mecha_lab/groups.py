@@ -20,6 +20,7 @@ import math
 
 import bpy
 from mathutils import Matrix, Vector
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 GROUP_KEY = 'mch_group'                  # on the handle: its collection's name
 FROM_KEY = 'mch_group_from'              # on a member: the collections it came from (json)
@@ -602,7 +603,7 @@ def merge(context, g):
     dg = context.evaluated_depsgraph_get()
     for o in meshes:
         if o.modifiers:
-            me = bpy.data.meshes.new_from_object(o.evaluated_get(dg), preserve_all_data_layers=True, depsgraph=dg)
+            me = bpy.data.meshes.new_from_object(_lc_full(o, dg), preserve_all_data_layers=True, depsgraph=dg)
             old = o.data
             o.modifiers.clear()
             o.data = me

@@ -36,6 +36,7 @@ import bmesh
 import bpy
 
 from . import edge_memory as em
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 BEVEL = 'MCH_HE_Bevel'
 SUBSURF = 'MCH_HE_Subdivide'
@@ -471,7 +472,7 @@ def _probe_off(ob, bev):
         m.segments = 1
         m.use_clamp_overlap = False
         dg = bpy.context.evaluated_depsgraph_get()
-        ev = tmp.evaluated_get(dg)
+        ev = _lc_full(tmp, dg)
         out = ev.to_mesh()
         try:
             pts = [v.co.copy() for v in out.vertices]
@@ -530,7 +531,7 @@ def _broken(ob):
     included)."""
     try:
         dg = bpy.context.evaluated_depsgraph_get()
-        me = ob.evaluated_get(dg).data
+        me = _lc_full(ob, dg).data
         if not len(me.polygons):
             return 0, 0, 0, 0
         lv = np.empty(len(me.loops), np.int64)

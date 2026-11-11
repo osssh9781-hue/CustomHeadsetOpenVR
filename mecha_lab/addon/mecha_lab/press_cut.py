@@ -26,6 +26,7 @@ from mathutils import Matrix, Vector
 
 from . import core_geometry as cg
 from . import lasso_sketch
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 TICK = 0.05                    # (seconds between depth steps while held)
 STEP_MIN = 0.002               # (a new cut only when the depth grew by this x the part's size)
@@ -416,7 +417,7 @@ class SurfaceFloor:
         out = []
         for ob in self.targets:
             try:
-                ev = ob.evaluated_get(dg) if dg is not None else ob
+                ev = _lc_full(ob, dg) if dg is not None else ob
                 me = ev.to_mesh()
             except (RuntimeError, ReferenceError, AttributeError):
                 continue

@@ -26,6 +26,7 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty
 from mathutils import Matrix, Vector
 from . import tool_state as _ts
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 COLL = 'Robot Base'
 MOD_BEVEL = 'MCH_RobotBevel'
@@ -1102,7 +1103,7 @@ class MCH_OT_robot_apply(bpy.types.Operator):
         obs = _targets(context)
         dg = context.evaluated_depsgraph_get()
         for o in obs:
-            me = bpy.data.meshes.new_from_object(o.evaluated_get(dg), depsgraph=dg)
+            me = bpy.data.meshes.new_from_object(_lc_full(o, dg), depsgraph=dg)
             old = o.data
             o.modifiers.clear()
             o.data = me

@@ -21,6 +21,7 @@ import bmesh
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty
 from mathutils.bvhtree import BVHTree
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 MOD_OPEN = 'MCH_Hollow_Openings'
 MOD_SHELL = 'MCH_Hollow'
@@ -188,7 +189,7 @@ def self_intersections(context, ob):
     """Problems of the evaluated result: intersecting non-adjacent triangle
     pairs + vertices whose wall is thicker than the room inside."""
     dg = context.evaluated_depsgraph_get()
-    me = ob.evaluated_get(dg).to_mesh()
+    me = _lc_full(ob, dg).to_mesh()
     try:
         bm = bmesh.new()
         bm.from_mesh(me)
@@ -206,7 +207,7 @@ def self_intersections(context, ob):
         bm.free()
         return count + too_thick_vertices(ob)
     finally:
-        ob.evaluated_get(dg).to_mesh_clear()
+        _lc_full(ob, dg).to_mesh_clear()
 
 
 def _targets(context):
@@ -320,7 +321,7 @@ class MCH_OT_hollow_finish(bpy.types.Operator):
                 if k:
                     warn.append(f'{ob.name}: {k} self-intersections (applied anyway, Ctrl+Z to undo)')
                 dg = context.evaluated_depsgraph_get()
-                me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), preserve_all_data_layers=True, depsgraph=dg)
+                me = bpy.data.meshes.new_from_object(_lc_full(ob, dg), preserve_all_data_layers=True, depsgraph=dg)
                 info = cg.commit_mesh(ob, me)
                 bpy.data.meshes.remove(me)
             for name in (MOD_RIM, MOD_SHELL, MOD_OPEN):

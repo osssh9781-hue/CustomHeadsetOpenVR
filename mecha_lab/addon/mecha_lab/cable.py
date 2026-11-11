@@ -25,6 +25,7 @@ from bpy.props import (BoolProperty, EnumProperty, FloatProperty, FloatVectorPro
                        StringProperty)
 from mathutils import Matrix, Vector
 from . import target_rules
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 COLL_CABLE = 'Cable Objects'
 
@@ -409,7 +410,7 @@ def cable_to_mesh(context, ob):
     same name, transform, collections and materials.  The curve object and
     its generated hidden profile curve are removed."""
     dg = context.evaluated_depsgraph_get()
-    me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), preserve_all_data_layers=True, depsgraph=dg)
+    me = bpy.data.meshes.new_from_object(_lc_full(ob, dg), preserve_all_data_layers=True, depsgraph=dg)
     if me is None or not me.polygons:
         if me is not None:
             bpy.data.meshes.remove(me)

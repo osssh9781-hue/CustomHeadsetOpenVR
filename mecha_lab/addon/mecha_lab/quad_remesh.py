@@ -21,6 +21,7 @@ import zlib
 import bmesh
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 SRC_KEY = 'mch_quad_source'
 MISS_KEY = 'mch_quad_miss'
@@ -86,7 +87,7 @@ def _size(me):
 
 def _baked(context, src):
     dg = context.evaluated_depsgraph_get()
-    return bpy.data.meshes.new_from_object(src.evaluated_get(dg), preserve_all_data_layers=False, depsgraph=dg)
+    return bpy.data.meshes.new_from_object(_lc_full(src, dg), preserve_all_data_layers=False, depsgraph=dg)
 
 
 def _marked(me):

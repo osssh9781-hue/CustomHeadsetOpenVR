@@ -41,6 +41,7 @@ from mathutils.geometry import delaunay_2d_cdt
 from . import target_rules
 from . import core_geometry as cg
 from . import tool_state as ts
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 # Profile presets: values are FRACTIONS of the plate size (bounding diagonal)
 # when Auto Size is on; angles in degrees.  Everything not listed is reset.
@@ -269,7 +270,7 @@ def _target_bvh(context, ob):
     short cache per target keyed by a checksum of the points + the matrix: a million-point DynaMesh body took seconds
     on every plate and on every slider step of a live plate."""
     dg = context.evaluated_depsgraph_get()
-    ev = ob.evaluated_get(dg)
+    ev = _lc_full(ob, dg)
     me = ev.to_mesh()
     try:
         mw = ev.matrix_world
@@ -561,7 +562,7 @@ def perform_plate_carve(context, loops, projector, preset=None):
     try:
         dg = context.evaluated_depsgraph_get()
         dg.update()
-        ev = part.evaluated_get(dg)
+        ev = _lc_full(part, dg)
         pm = ev.to_mesh()
         try:
             mw = ev.matrix_world
@@ -573,7 +574,7 @@ def perform_plate_carve(context, loops, projector, preset=None):
         fx._remove_part(part)
     if not faces:
         raise cg.CutError('The plate came out empty; nothing was carved.')
-    tev = target.evaluated_get(context.evaluated_depsgraph_get())
+    tev = _lc_full(target, context.evaluated_depsgraph_get())
     tme = tev.to_mesh()
     try:
         tw = tev.matrix_world
@@ -824,7 +825,7 @@ def dense_plate_mesh(context, ob, spacing=10):
         if not fx.rebuild(tmp):
             return None
         dg = context.evaluated_depsgraph_get()
-        return bpy.data.meshes.new_from_object(tmp.evaluated_get(dg), depsgraph=dg)
+        return bpy.data.meshes.new_from_object(_lc_full(tmp, dg), depsgraph=dg)
     except cg.CutError:
         return None
     finally:
@@ -840,7 +841,7 @@ def apply_plate(ob):
     p = ob.mch_extract
     data = plate_hp_data(ob)
     dg = bpy.context.evaluated_depsgraph_get()
-    me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), depsgraph=dg)
+    me = bpy.data.meshes.new_from_object(_lc_full(ob, dg), depsgraph=dg)
     old, region, surround = ob.data, p.region, p.surround
     ob.modifiers.clear()
     ob.data = me

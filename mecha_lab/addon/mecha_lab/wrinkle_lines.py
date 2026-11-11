@@ -41,6 +41,7 @@ from . import core_geometry as cg
 from . import mesh_io as mio
 from . import surface_lasso as sl
 from . import target_rules
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 PROP = 'mch_wlines'
 HIT_PX = 14.0
@@ -393,7 +394,7 @@ def proxy_mesh(context, ob, target):
         md.ratio = ratio
         md.use_collapse_triangulate = False
         dg = context.evaluated_depsgraph_get()
-        ev = tmp.evaluated_get(dg)
+        ev = _lc_full(tmp, dg)
         pm = ev.to_mesh()
         try:
             pm.update()

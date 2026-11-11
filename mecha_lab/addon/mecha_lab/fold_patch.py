@@ -22,6 +22,7 @@ from bpy.app.handlers import persistent
 from mathutils import Matrix, Vector
 
 from . import core_geometry as cg
+from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
 GROUP = 'MCH_FoldPatch'
 MOD_PREFIX = 'MCH_FoldPatch'
@@ -344,7 +345,7 @@ def _surface_frame(context, target, point):
     """Nearest surface point + normal of the evaluated target (world), and the limb radius behind it."""
     from mathutils.bvhtree import BVHTree
     dg = context.evaluated_depsgraph_get()
-    ev = target.evaluated_get(dg)
+    ev = _lc_full(target, dg)
     bvh = BVHTree.FromObject(ev, dg)
     inv = target.matrix_world.inverted_safe()
     loc, nrm, _i, _d = bvh.find_nearest(inv @ point)
