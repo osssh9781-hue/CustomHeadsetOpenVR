@@ -960,10 +960,15 @@ def corner_items(context, region_w, region_h, k=1.0):
     if not sculpt:                    # 0.24.77 the wireframe (Make Quad / Quad Remesh results show it) and Solo
         y -= ROW * k + GAP * k        # (the ZBRUSH screen has its own PolyF / Solo on the right shelf)
         out.append(Item('glabel', x0 + PAD * k, y, lw, ROW * k, 'VIEW'))
-        out.append(Item('seg', x0 + PAD * k + lw + GAP * k, y, s2, ROW * k, 'Wire', '', zs.wire_on(context), True,
-                        ('op', 'mch.view_toggle', {'action': 'WIRE'})))
-        out.append(Item('seg', x0 + PAD * k + lw + 2 * GAP * k + s2, y, s2, ROW * k, 'Solo', '', zs.solo_on(context),
-                        True, ('op', 'mch.view_toggle', {'action': 'SOLO'})))
+        # 0.24.135 (user: "뷰포트에서도 빨라야 돼") + Fast: the lighter viewport (fast_view)
+        from . import fast_view
+        s3v = (w - 2 * PAD * k - lw - 3 * GAP * k) / 3
+        for i, (label, on, action) in enumerate((
+                ('Wire', zs.wire_on(context), ('op', 'mch.view_toggle', {'action': 'WIRE'})),
+                ('Solo', zs.solo_on(context), ('op', 'mch.view_toggle', {'action': 'SOLO'})),
+                ('Fast', fast_view.on(context.scene), ('op', 'mch.fast_view', {})))):
+            out.append(Item('seg', x0 + PAD * k + lw + (i + 1) * GAP * k + i * s3v, y, s3v, ROW * k, label, '', on,
+                            True, action))
         # 0.24.124 (user: "스마트 무브는 모든 툴에") what the 3D mouse drives: the view, or the selected part (Smart Move)
         y -= ROW * k + GAP * k
         parts = bool(getattr(context.window_manager, 'mch_ndof_parts', False))

@@ -1,0 +1,279 @@
+"""Real window (0.24.135, user: "뷰포트에서도 빨라야 돼"): in the Rendered (Cycles) viewport Cycles reads the scene on
+Blender's main thread - while it does, the window does not answer.  How long the window freezes, per action, with 15
+parts x 1.3 M triangles: entering Rendered, orbiting, moving a part, moving a light, a material value, the viewport
+samples.  A 20 ms timer measures the gaps (the longest gap after each action = the freeze)."""
+import os
+import subprocess
+import sys
+import time
+
+import bpy
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'addon'))
+import mecha_lab  # noqa: E402
+from mecha_lab import quick_render as qr, side_panel as sp, ui_bars  # noqa: E402
+from mecha_lab.ui_gpu import ui_factor  # noqa: E402
+from mathutils import Euler, Vector  # noqa: E402
+
+OUT = sys.argv[-1]
+os.makedirs(OUT, exist_ok=True)
+LOG = open(os.path.join(OUT, 'log.txt'), 'w')
+
+
+def log(*a):
+    s = ' '.join(str(x) for x in a)
+    print(s, flush=True)
+    LOG.write(s + '\n')
+    LOG.flush()
+
+
+mecha_lab.register()
+C = bpy.context
+
+
+def xdo(*args):
+    subprocess.run(['xdotool', *map(str, args)], check=False)
+
+
+def wins():
+    r = subprocess.run(['xdotool', 'search', '--name', 'Blender'], capture_output=True, text=True)
+    return r.stdout.split()
+
+
+def focus(wid=None):
+    for w_ in ([wid] if wid else wins()):
+        subprocess.run(['xdotool', 'windowfocus', '--sync', w_], check=False)
+
+
+def view3d():
+    for w in C.window_manager.windows:
+        for a in w.screen.areas:
+            if a.type == 'VIEW_3D':
+                return w, a, next(r for r in a.regions if r.type == 'WINDOW')
+    return None, None, None
+
+
+def shot(name):
+    path = os.path.join(OUT, name)
+    os.system(f'import -window root "{path}"')
+    log('shot', name, os.path.exists(path))
+    return path
+
+
+def to_x(w, r, x, y):
+    return int(r.x + x), int(w.height - (r.y + y))
+
+
+def panel_items():
+    w, a, r = view3d()
+    with C.temp_override(window=w, area=a, region=r):
+        return sp.items(C, r.width, r.height, ui_factor(C, r))
+
+
+def scroll(dy):
+    w, a, r = view3d()
+    with C.temp_override(window=w, area=a, region=r):
+        sp.scroll_by(C, r.width, r.height, ui_factor(C, r), dy)
+        a.tag_redraw()
+
+
+def press(it):
+    w, a, r = view3d()
+    x, y = to_x(w, r, it.x + it.w / 2, it.y + it.h / 2)
+    xdo('mousemove', x, y)
+    yield 0.4
+    xdo('click', 1)
+    yield 1.0
+
+
+def dock_tile(label):
+    w, a, r = view3d()
+    with C.temp_override(window=w, area=a, region=r):
+        items = ui_bars.drawn_items(C)
+    return next((i for i in items if getattr(i, 'label', '') == label and i.clickable()), None)
+
+
+def settings_snapshot(S, body, box):
+    r_, cy = S.render, S.cycles
+    keys = [(r_, 'engine'), (r_, 'resolution_x'), (r_, 'resolution_y'), (r_, 'resolution_percentage'),
+            (r_, 'film_transparent'), (r_, 'use_lock_interface'), (r_, 'use_border'), (r_, 'pixel_aspect_x'),
+            (r_.image_settings, 'file_format'), (r_.image_settings, 'color_mode'), (cy, 'samples'), (cy, 'max_bounces'),
+            (cy, 'diffuse_bounces'), (cy, 'glossy_bounces'), (cy, 'adaptive_threshold'), (cy, 'use_adaptive_sampling'),
+            (cy, 'use_denoising'), (cy, 'denoising_prefilter'), (cy, 'device'), (cy, 'caustics_reflective'),
+            (cy, 'blur_glossy'), (cy, 'volume_bounces'), (S, 'camera'), (C.view_layer, 'material_override'),
+            (body, 'hide_render'), (box, 'hide_render')]
+    vals = [getattr(o, a) for o, a in keys]
+    shade = []
+    for mat in {m for ob in (body, box) for m in ob.data.materials if m and m.node_tree}:
+        for n in mat.node_tree.nodes:
+            if n.bl_idname in qr.RAY_NODES:
+                shade.append((mat.name, n.name, n.samples))
+            elif n.bl_idname == 'ShaderNodeBsdfPrincipled':
+                shade.append((mat.name, n.name, n.subsurface_method))
+    return [a for _o, a in keys], vals, sorted(shade, key=str)
+
+
+def diff(a, b):
+    return [(k, x, y) for k, x, y in zip(a[0], a[1], b[1]) if x != y] + ([('shaders', a[2], b[2])] if a[2] != b[2] else [])
+
+
+def alpha_bbox(path):
+    import numpy as np
+    img = bpy.data.images.load(path, check_existing=False)
+    w_, h_ = img.size
+    px = np.empty(w_ * h_ * 4, dtype=np.float32)
+    img.pixels.foreach_get(px)
+    al = px.reshape(h_, w_, 4)[:, :, 3]
+    ys, xs = np.nonzero(al > 0.5)
+    bpy.data.images.remove(img)
+    if not len(xs):
+        return (w_, h_), None
+    # (normalised 0..1, y up as Blender's pixels are bottom-up)
+    return (w_, h_), (xs.min() / w_, ys.min() / h_, (xs.max() + 1) / w_, (ys.max() + 1) / h_)
+
+
+def view_bbox(obs):
+    import numpy as np
+    from bpy_extras.view3d_utils import location_3d_to_region_2d
+    w, a, r = view3d()
+    rv = a.spaces.active.region_3d
+    pts = []
+    for ob in obs:
+        me = ob.data
+        co = np.empty(len(me.vertices) * 3)
+        me.vertices.foreach_get('co', co)
+        co = co.reshape(-1, 3)[::7 if len(me.vertices) > 1000 else 1]
+        mw = ob.matrix_world
+        pts += [location_3d_to_region_2d(r, rv, mw @ Vector(p)) for p in co]
+    pts = [p for p in pts if p is not None]
+    xs = [p.x for p in pts]
+    ys = [p.y for p in pts]
+    return (min(xs) / r.width, min(ys) / r.height, max(xs) / r.width, max(ys) / r.height)
+
+
+def wait_render(limit):
+    t0 = time.monotonic()
+    while qr._JOB.get('active') and time.monotonic() - t0 < limit:
+        yield 0.5
+    return time.monotonic() - t0
+
+
+
+
+GAP = {'last': 0.0, 'max': 0.0, 'on': False}
+
+
+def _gap_tick():
+    now = time.perf_counter()
+    if GAP['on']:
+        GAP['max'] = max(GAP['max'], now - GAP['last'])
+    GAP['last'] = now
+    return 0.02
+
+
+def freeze_after(tag, action, settle=12.0):
+    GAP['max'] = 0.0
+    GAP['last'] = time.perf_counter()
+    GAP['on'] = True
+    action()
+    yield settle
+    GAP['on'] = False
+    log(f'{tag}: longest freeze {GAP["max"]:.2f} s')
+    RES[tag] = GAP['max']
+
+
+RES = {}
+
+
+def flow():
+    w, a, r = view3d()
+    focus()
+    xdo('mousemove', 30, 540)
+    yield 0.3
+    xdo('key', 'Escape')
+    yield 0.5
+    with C.temp_override(window=w, area=a, region=r):
+        ws = next((x for x in bpy.data.workspaces if x.name.startswith('MECHA LAB')), None)
+        if ws is None:
+            bpy.ops.mch.workspace_open()
+            ws = next((x for x in bpy.data.workspaces if x.name.startswith('MECHA LAB')), None)
+        w.workspace = ws
+    yield 2.0
+    w, a, r = view3d()
+    S = C.scene
+    sp = a.spaces.active
+    with C.temp_override(window=w, area=a, region=r):
+        for o in list(S.objects):
+            bpy.data.objects.remove(o)
+        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=9, radius=0.45, location=(-2.2, -1.1, 0))
+        src_ob = C.active_object
+        src_me = src_ob.data
+        mat = bpy.data.materials.new('M')
+        mat.use_nodes = True
+        src_me.materials.append(mat)
+        parts = [src_ob]
+        for i in range(1, 15):
+            ob = bpy.data.objects.new(f'Part{i:02d}', src_me.copy())
+            S.collection.objects.link(ob)
+            ob.location = ((i % 5) * 1.1 - 2.2, (i // 5) * 1.1 - 1.1, 0.0)
+            parts.append(ob)
+        bpy.ops.object.light_add(type='AREA', location=(0, -2, 4))
+        light = C.active_object
+        light.data.energy = 800
+        rv = sp.region_3d
+        rv.view_perspective = 'PERSP'
+        rv.view_rotation = Euler((1.0, 0.0, 0.5)).to_quaternion()
+        rv.view_location = (0.0, 0.0, 0.0)
+        rv.view_distance = 9.0
+        for o in S.objects:
+            o.select_set(False)
+        S.render.engine = 'CYCLES'
+        S.cycles.device = 'CPU'
+        S.cycles.preview_samples = 8                # (few samples: the CPU is free again soon)
+        sp.overlay.show_overlays = False
+    C.view_layer.update()
+    dg = C.evaluated_depsgraph_get()
+    tris = sum(len(o.evaluated_get(dg).data.loops) - 2 * len(o.evaluated_get(dg).data.polygons) for o in parts)
+    log('scene', len(parts), 'parts,', f'{tris / 1e6:.1f} M triangles')
+    yield 15.0
+    bpy.app.timers.register(_gap_tick, first_interval=0.02)
+    yield 1.0
+    yield from freeze_after('Solid: a redraw only (baseline)', lambda: a.tag_redraw(), 8.0)
+    yield from freeze_after('enter Rendered', lambda: setattr(sp.shading, 'type', 'RENDERED'), 60.0)
+    yield from freeze_after('Rendered: a redraw only (baseline)', lambda: a.tag_redraw(), 8.0)
+    shot('1_rendered.png')
+    yield from freeze_after('orbit the view', lambda: setattr(rv, 'view_rotation', Euler((1.0, 0.0, 0.7)).to_quaternion()))
+    yield from freeze_after('move a part', lambda: setattr(parts[5], 'location', (parts[5].location.x, parts[5].location.y, 0.3)))
+    yield from freeze_after('move the light', lambda: setattr(light, 'location', (1.0, -2.0, 4.0)))
+    yield from freeze_after('light energy', lambda: setattr(light.data, 'energy', 500.0))
+    bsdf = mat.node_tree.nodes.get('Principled BSDF')
+    yield from freeze_after('material value (roughness)', lambda: setattr(bsdf.inputs['Roughness'], 'default_value', 0.2))
+    yield from freeze_after('viewport samples 8 -> 16', lambda: setattr(S.cycles, 'preview_samples', 16))
+    yield from freeze_after('hide one part', lambda: parts[3].hide_set(True))
+    shot('2_after.png')
+    yield from freeze_after('back to Solid', lambda: setattr(sp.shading, 'type', 'SOLID'), 8.0)
+    log('RESULT ' + ', '.join(f'{k}: {v:.2f} s' for k, v in RES.items()))
+    log('DONE')
+    bpy.ops.wm.quit_blender()
+
+
+gen = None
+
+
+def run():
+    global gen
+    try:
+        if gen is None:
+            gen = flow()
+        return next(gen)
+    except StopIteration:
+        return None
+    except Exception as ex:
+        import traceback
+        traceback.print_exc()
+        log('ERROR', repr(ex))
+        bpy.ops.wm.quit_blender()
+        return None
+
+
+bpy.app.timers.register(run, first_interval=2.0)

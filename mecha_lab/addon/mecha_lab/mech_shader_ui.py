@@ -961,6 +961,14 @@ def quick_render_section(b, context, x, width):
             b.note(('note', ln, big, None, None, None, True), sx, sw)
         for ln in lines[1:]:
             b.note(('note', ln, False, None, None, None, True), sx, sw)
+        # 0.24.135 (user: "뷰포트에서도 빨라야 돼") the viewport: Fast Viewport, Blender's viewport anti-aliasing
+        from . import fast_view
+        row(b, sx, sw, [_cell('seg', 'Fast Viewport (Solid + Rendered)', ('op', 'mch.fast_view', {}),
+                              on=fast_view.on(context.scene))])
+        aa = fast_view.aa_value(context)
+        if aa is not None:
+            row(b, sx, sw, [button('Viewport AA: Single Pass (back to 8)' if aa == fast_view.AA_FAST
+                                   else f'Viewport AA: {fast_view.aa_label(aa)} > Single Pass', 'mch.viewport_aa')])
         row(b, sx, sw, [_cell('seg', v['label'], ('enum', key), st, 'quality', on=st.quality == key)
                         for key, v in qr.QUALITY.items()])
         row(b, sx, sw, [_cell('seg', 'This View', ('enum', 'VIEW'), st, 'camera', on=st.camera == 'VIEW'),

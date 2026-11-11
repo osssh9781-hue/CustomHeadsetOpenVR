@@ -1,0 +1,64 @@
+scene 15 parts, 6.2 M triangles (evaluated)
+shot 0_heavy_scene.png True
+== idle 20 s: wall 19.4 s, redraws 0, add-on own time 0.035 s (0.2 %), per redraw 34.5 ms
+   cum   0.014  own   0.001  calls     96  lasso_memory.py:122 _tick
+   cum   0.014  own   0.002  calls     96  lasso_memory.py:74 sync
+   cum   0.009  own   0.002  calls     49  zb_highpoly.py:230 _tick
+   cum   0.006  own   0.000  calls     96  curve_tube.py:1504 _select_tick
+   cum   0.006  own   0.002  calls     96  lasso_memory.py:32 enabled
+   cum   0.005  own   0.003  calls     96  curve_tube.py:1463 select_link_step
+   cum   0.005  own   0.000  calls     33  along_curve.py:412 _draw_array_timer
+   cum   0.005  own   0.003  calls     33  along_curve.py:388 _draw_array_pass
+   cum   0.004  own   0.000  calls    184  workspace_ui.py:54 pref
+   cum   0.004  own   0.001  calls     96  tool_state.py:268 effective_tool
+   cum   0.004  own   0.004  calls    233  workspace_ui.py:47 prefs
+   cum   0.004  own   0.000  calls     39  safety_save.py:205 _tick
+   cum   0.003  own   0.003  calls     77  armor_shell.py:276 _tick
+   cum   0.003  own   0.000  calls     49  zb_highpoly.py:211 update
+== orbit 25 s: wall 25.1 s, redraws 22, add-on own time 0.331 s (1.3 %), per redraw 15.0 ms
+   cum   1.152  own   0.002  calls     22  ui_bars.py:684 _draw
+   cum   1.055  own   0.015  calls     22  mecha_menu.py:549 draw
+   cum   0.764  own   0.016  calls   5038  ui_gpu.py:112 text
+   cum   0.735  own   0.024  calls   3058  mecha_menu.py:655 _draw_new
+   cum   0.166  own   0.056  calls   1760  ui_gpu.py:62 rounded_rect
+   cum   0.152  own   0.007  calls   2156  mecha_menu.py:508 _icon
+   cum   0.105  own   0.004  calls     22  quick_hud.py:557 _draw_labels
+   cum   0.089  own   0.000  calls     22  ui_bars.py:345 all_items
+   cum   0.088  own   0.001  calls     22  ui_bars.py:430 _build_all
+   cum   0.075  own   0.007  calls    792  ui_gpu.py:289 glyph
+   cum   0.062  own   0.008  calls   1364  ui_gpu.py:255 image
+   cum   0.061  own   0.000  calls     22  workspace_ui.py:2013 draw
+   cum   0.061  own   0.001  calls     22  ui_tool_settings.py:62 draw_shape_options
+   cum   0.058  own   0.008  calls     22  cut_presets.py:691 draw_builtin_row
+== move a part 25 s: wall 25.7 s, redraws 21, add-on own time 0.324 s (1.3 %), per redraw 15.4 ms
+   cum   1.130  own   0.002  calls     21  ui_bars.py:684 _draw
+   cum   1.034  own   0.014  calls     21  mecha_menu.py:549 draw
+   cum   0.744  own   0.016  calls   4809  ui_gpu.py:112 text
+   cum   0.728  own   0.024  calls   2919  mecha_menu.py:655 _draw_new
+   cum   0.162  own   0.056  calls   1701  ui_gpu.py:62 rounded_rect
+   cum   0.152  own   0.007  calls   2058  mecha_menu.py:508 _icon
+   cum   0.102  own   0.004  calls     21  quick_hud.py:557 _draw_labels
+   cum   0.088  own   0.000  calls     21  ui_bars.py:345 all_items
+   cum   0.087  own   0.001  calls     21  ui_bars.py:430 _build_all
+   cum   0.074  own   0.005  calls    756  ui_gpu.py:289 glyph
+   cum   0.063  own   0.008  calls   1302  ui_gpu.py:255 image
+   cum   0.055  own   0.000  calls     21  workspace_ui.py:2013 draw
+   cum   0.055  own   0.001  calls     21  ui_tool_settings.py:62 draw_shape_options
+   cum   0.053  own   0.007  calls     21  cut_presets.py:691 draw_builtin_row
+== 6 clicks on parts: wall 29.0 s, redraws 16, add-on own time 0.252 s (0.9 %), per redraw 15.7 ms
+   cum   0.873  own   0.002  calls     16  ui_bars.py:684 _draw
+   cum   0.800  own   0.011  calls     16  mecha_menu.py:549 draw
+   cum   0.584  own   0.012  calls   3664  ui_gpu.py:112 text
+   cum   0.566  own   0.018  calls   2224  mecha_menu.py:655 _draw_new
+   cum   0.118  own   0.006  calls   1568  mecha_menu.py:508 _icon
+   cum   0.116  own   0.039  calls   1296  ui_gpu.py:62 rounded_rect
+   cum   0.076  own   0.003  calls     16  quick_hud.py:557 _draw_labels
+   cum   0.067  own   0.000  calls     17  ui_bars.py:345 all_items
+   cum   0.066  own   0.001  calls     16  ui_bars.py:430 _build_all
+   cum   0.058  own   0.004  calls    576  ui_gpu.py:289 glyph
+   cum   0.048  own   0.006  calls    992  ui_gpu.py:255 image
+   cum   0.041  own   0.008  calls   1184  ui_gpu.py:82 lines
+   cum   0.036  own   0.004  calls    880  ui_gpu.py:105 polyline
+   cum   0.029  own   0.000  calls     16  layers_panel.py:438 items
+selected after clicks ['Part05']
+DONE

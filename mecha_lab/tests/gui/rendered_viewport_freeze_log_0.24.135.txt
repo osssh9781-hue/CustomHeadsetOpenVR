@@ -1,0 +1,16 @@
+scene 15 parts, 19.7 M triangles
+Solid: a redraw only (baseline): longest freeze 2.72 s
+enter Rendered: longest freeze 0.62 s
+Rendered: a redraw only (baseline): longest freeze 0.21 s
+shot 1_rendered.png True
+orbit the view: longest freeze 0.43 s
+move a part: longest freeze 0.49 s
+move the light: longest freeze 0.46 s
+light energy: longest freeze 0.44 s
+material value (roughness): longest freeze 0.51 s
+viewport samples 8 -> 16: longest freeze 0.02 s
+hide one part: longest freeze 0.49 s
+shot 2_after.png True
+back to Solid: longest freeze 2.74 s
+RESULT Solid: a redraw only (baseline): 2.72 s, enter Rendered: 0.62 s, Rendered: a redraw only (baseline): 0.21 s, orbit the view: 0.43 s, move a part: 0.49 s, move the light: 0.46 s, light energy: 0.44 s, material value (roughness): 0.51 s, viewport samples 8 -> 16: 0.02 s, hide one part: 0.49 s, back to Solid: 2.74 s
+DONE

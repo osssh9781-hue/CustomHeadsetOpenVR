@@ -1,0 +1,21 @@
+scene: 15 parts, 19.6608 M triangles; Wire on all, shadows on
+shot 1_solid_wire_shadows.png True
+1 Solid, Wire on every part + shadows: one redraw 8.03 s
+   Fast segment (1348, 1189)
+   Fast on: True wire False shadows False
+shot 2_solid_fast.png True
+   Solid with Fast: one redraw 0.25 s
+2 one view change: AA 8 Samples -> 8 redraws, busy 21.1 s; Single Pass -> 1 redraw(s), busy 2.7 s
+shot 3_rendered_defaults.png True
+3 Rendered, Blender defaults (1024 samples, full size): 49 redraws, picture done after 27 s
+shot 4_rendered_fast.png True
+   Rendered, Fast (64 samples, denoised, half size): 31 redraws, picture done after 17 s
+shot 5_rendered_fast_solo.png True
+   Rendered, Fast + Solo (1 of 15 parts): 26 redraws, picture done after 15 s
+4 Fast off: True preview samples 1024 pixel size AUTO
+PASS 1 a REAL click on VIEW > Fast: Wire and shadows off; one Solid redraw 8.0 s -> 0.2 s
+PASS 2 viewport AA: one view change = 8 full redraws (8 Samples) vs 1 (Single Pass)
+PASS 3 Rendered: the picture done in 17 s with Fast vs 27 s with the defaults
+PASS 3b Rendered with Solo (one part): the picture done in 15 s (all 15 parts: 17 s)
+PASS 4 a REAL click on Fast again: off, the Cycles viewport settings back (1024, AUTO)
+5/5 passed
