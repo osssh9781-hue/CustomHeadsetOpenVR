@@ -63,7 +63,8 @@ def collection_of(g):
 def members(g):
     """Every object in the group (nested groups included), handles of nested groups too."""
     coll = collection_of(g)
-    return list(coll.all_objects) if coll is not None else []
+    from . import live_ref                 # 0.24.132 not all_objects (a stale runtime cache right after Ctrl+Z)
+    return live_ref.deep_objects(coll) if coll is not None else []
 
 
 def _pivots(context, objs):
@@ -198,7 +199,8 @@ def adopt(context, coll):
     g = bpy.data.objects.get(coll.get(GROUP_KEY, '') or '')
     if is_group(g) and collection_of(g) == coll:
         return g
-    objs = [o for o in coll.all_objects if CARRIER_KEY not in o and not is_group(o)]
+    from . import live_ref
+    objs = [o for o in live_ref.deep_objects(coll) if CARRIER_KEY not in o and not is_group(o)]
     if not objs:
         return None
     parent_coll = parent_collection(context, coll)
@@ -211,8 +213,10 @@ def adopt(context, coll):
     g[GROUP_KEY] = coll.name
     coll[GROUP_KEY] = g.name
     coll[ADOPTED_KEY] = True
-    inside = set(coll.all_objects)              # (its sub-collections' parts too: they move with the handle)
-    for o in coll.all_objects:
+    from . import live_ref
+    deep = live_ref.deep_objects(coll)
+    inside = set(deep)                          # (its sub-collections' parts too: they move with the handle)
+    for o in deep:
         if CARRIER_KEY in o or o == g:
             continue
         if o.parent is None or o.parent not in inside:
@@ -404,7 +408,8 @@ def ungroup(context, g):
     home = next(iter(g.users_collection), context.scene.collection)
     n = 0
     if coll is not None and coll.get(ADOPTED_KEY):      # (0.24.95 the user's own collection: it stays, as it was)
-        for o in list(coll.all_objects):
+        from . import live_ref
+        for o in live_ref.deep_objects(coll):
             if o.parent == g:
                 mw = o.matrix_world.copy()
                 o.parent = g.parent

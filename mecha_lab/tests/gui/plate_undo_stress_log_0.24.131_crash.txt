@@ -1,0 +1,24 @@
+add-on from /tmp/claude-0/-home-user-CustomHeadsetOpenVR/7e2bc25f-fcd2-5c43-817f-f359a797ad9a/scratchpad/old131/mecha_lab/addon/mecha_lab version (0, 24, 131)
+body 151064 verts, mods ['MIRROR'] radial on False
+01 round 1 CPLATE at (1211, 608): objects 2 -> 3, tool CPLATE, radial False, drag+make 10.4s, total 12s
+02 round 2 CPLATE at (1169, 594): objects 3 -> 4, tool CPLATE, radial False, drag+make 8.8s, total 24s
+03 round 3 PLATE at (1084, 575): objects 4 -> 5, tool PLATE, radial False, drag+make 8.7s, total 35s
+04 round 4 CPLATE at (1016, 630): objects 5 -> 6, tool CPLATE, radial False, drag+make 8.5s, total 47s
+   ctrl+z: objects 5
+   ctrl+z: objects 4
+   ctrl+shift+z: objects 5
+05 round 5 CPLATE at (1017, 716): objects 5 -> 6, tool CPLATE, radial False, drag+make 8.5s, total 68s
+   Return (apply)
+06 round 6 PLATE at (1086, 770): objects 6 -> 7, tool PLATE, radial False, drag+make 9.4s, total 81s
+07 round 7 CPLATE at (1228, 555): objects 7 -> 8, tool CPLATE, radial False, drag+make 8.6s, total 92s
+08 round 8 CPLATE at (1170, 541): objects 8 -> 9, tool CPLATE, radial False, drag+make 8.8s, total 103s
+   ctrl+z: objects 8
+Fatal Python error: Segmentation fault
+Stack (most recent call first):
+  File "/tmp/claude-0/-home-user-CustomHeadsetOpenVR/7e2bc25f-fcd2-5c43-817f-f359a797ad9a/scratchpad/old131/mecha_lab/addon/mecha_lab/layers_panel.py", line 350 in content
+  File "/tmp/claude-0/-home-user-CustomHeadsetOpenVR/7e2bc25f-fcd2-5c43-817f-f359a797ad9a/scratchpad/old131/mecha_lab/addon/mecha_lab/layers_panel.py", line 404 in layout
+  File "/tmp/claude-0/-home-user-CustomHeadsetOpenVR/7e2bc25f-fcd2-5c43-817f-f359a797ad9a/scratchpad/old131/mecha_lab/addon/mecha_lab/layers_panel.py", line 438 in items
+  File "/tmp/claude-0/-home-user-CustomHeadsetOpenVR/7e2bc25f-fcd2-5c43-817f-f359a797ad9a/scratchpad/old131/mecha_lab/addon/mecha_lab/ui_bars.py", line 453 in _build_all
+  File "/tmp/claude-0/-home-user-CustomHeadsetOpenVR/7e2bc25f-fcd2-5c43-817f-f359a797ad9a/scratchpad/old131/mecha_lab/addon/mecha_lab/ui_bars.py", line 364 in all_items
+  File "/tmp/claude-0/-home-user-CustomHeadsetOpenVR/7e2bc25f-fcd2-5c43-817f-f359a797ad9a/scratchpad/old131/mecha_lab/addon/mecha_lab/ui_bars.py", line 685 in _draw
+Extension modules: _freestyle, bpy.props, bpy.app.icons, bpy.app.timers, bpy.utils.units, _bpy_path, bpy.types, mathutils.geometry, mathutils.interpolate, mathutils.noise, mathutils, idprop, bmesh.ops, bmesh.utils, bmesh.geometry, bmesh, zstandard.backend_c, _cycles, numpy._core._multiarray_umath, numpy.linalg._umath_linalg, gpu.capabilities, gpu.matrix, gpu.platform, gpu.select, gpu.shader, gpu.state, gpu.texture, gpu.compute, gpu, blf, imbuf (total: 31)

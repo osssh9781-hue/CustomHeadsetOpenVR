@@ -187,7 +187,8 @@ check('... dragging its amounts to 0 does not fold it under the mouse', by_prop(
 
 sw = by_prop(its, 'base_color', 'swatch')[0]
 ui_bars.run(C, sw)
-check('A click on a colour swatch: the colour popup edits that colour', ui_bars.EDIT[0] == st
+from mecha_lab import live_ref  # noqa: E402
+check('A click on a colour swatch: the colour popup edits that colour', live_ref.resolve(ui_bars.EDIT[0]) == st
       and ui_bars.EDIT[1] == 'base_color', ui_bars.EDIT)
 
 # the HDRI page (user: "재질이랑 hdri는 분리해야지")

@@ -36,6 +36,8 @@ def _ui(data, key):
 
 
 def get(data, prop):
+    if data is None:
+        return None
     if is_id(prop):
         if getattr(data, 'type', None) == 'NODES':
             try:
@@ -47,6 +49,8 @@ def get(data, prop):
 
 
 def set(data, prop, value):      # noqa: A001 - the module's verb
+    if data is None:
+        return
     if is_id(prop):
         if getattr(data, 'type', None) == 'NODES':
             try:
@@ -63,6 +67,8 @@ def set(data, prop, value):      # noqa: A001 - the module's verb
 
 
 def kind(data, prop):
+    if data is None:
+        return 'NONE'
     if is_id(prop):
         v = get(data, prop)
         return 'BOOLEAN' if isinstance(v, bool) else 'INT' if isinstance(v, int) else \
@@ -72,6 +78,8 @@ def kind(data, prop):
 
 def text(data, prop, label=None):
     """'Name  value' (name = ``label`` when given)."""
+    if data is None:
+        return label or ''
     if not is_id(prop):
         name, _s, val = quick_hud.value_text(data, prop).partition('  ')
         return f'{label if label else name}  {val}'
@@ -81,6 +89,8 @@ def text(data, prop, label=None):
 
 
 def fraction(data, prop):
+    if data is None:
+        return 0.0
     if not is_id(prop):
         from .mecha_menu import _fraction
         return _fraction(data, prop)
@@ -96,6 +106,8 @@ def fraction(data, prop):
 def drag(data, prop, start, dx, fine=False, width=None):
     """The value after dragging ``dx`` px from ``start`` (the soft range over about 300 px, ints 1 per 8 px).
     0.24.59 ``width`` = the bar's width: its whole range over the bar, so the fill follows the mouse."""
+    if data is None:
+        return start
     if not is_id(prop):
         return quick_hud.drag_value(data, prop, start, dx, fine, px=width)
     ui = _ui(data, _key(prop))
@@ -113,6 +125,8 @@ def drag(data, prop, start, dx, fine=False, width=None):
 
 
 def reset(data, prop):
+    if data is None:
+        return
     if not is_id(prop):
         quick_hud.reset(data, prop)
         return
@@ -122,4 +136,6 @@ def reset(data, prop):
 
 
 def toggle(data, prop):
+    if data is None:
+        return
     set(data, prop, not bool(get(data, prop)))

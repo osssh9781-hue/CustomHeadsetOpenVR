@@ -538,7 +538,7 @@ def run(context, item):
             ui_values.set(item.data, item.prop, a[1])
             _undo(item.label, item.data)
         elif kind == 'menu_enum':
-            EDIT[:] = [item.data, item.prop]
+            EDIT[:] = [item.ref, item.prop]
             bpy.ops.wm.call_menu(name='MCH_MT_ui_choice')
         elif kind == 'op':
             mod, name = a[1].split('.')
@@ -578,7 +578,7 @@ def _undo(what, data=None):
 
 def open_value(context, item):
     """Click (no drag) on a number bar: type the exact value."""
-    EDIT[:] = [item.data, item.prop]
+    EDIT[:] = [item.ref, item.prop]
     if bpy.app.background or getattr(context, 'window', None) is None:    # (no real window: call_panel crashes)
         return
     try:
@@ -597,6 +597,8 @@ class MCH_PT_ui_value(bpy.types.Panel):
 
     def draw(self, context):
         data, prop = EDIT
+        from . import live_ref
+        data = live_ref.resolve(data)          # (0.24.132 a Ref: looked up fresh)
         if data is None:
             return
         try:
@@ -654,6 +656,8 @@ class MCH_MT_ui_choice(bpy.types.Menu):
 
     def draw(self, context):
         data, prop = EDIT
+        from . import live_ref
+        data = live_ref.resolve(data)          # (0.24.132 a Ref: looked up fresh)
         if data is None:
             return
         try:
@@ -778,6 +782,28 @@ def _dirty_handler(*_args):
     side_panel.dirty()
 
 
+def release_refs():
+    """0.24.132 Drop every cached UI item / panel tree / edit target NOW - called right before undo, redo and a file
+    load, while the data they point at is still alive, and after them.  The items hold live_ref.Refs (names), not
+    structs, since 0.24.132; this makes doubly sure nothing cached outlives the data it was built from."""
+    _MEMO.update(key=None, time=0.0, items=[])
+    EDIT[:] = [None, '']
+    try:
+        from . import side_panel
+        side_panel._CACHE.update(key=None, time=0.0, trees=(None, None))
+    except (ImportError, AttributeError):
+        pass
+    VERSION[0] += 1
+
+
+@bpy.app.handlers.persistent
+def _release_handler(*_args):
+    try:
+        release_refs()
+    except Exception as ex:          # noqa: BLE001 (a handler must never raise)
+        print('[Mecha Lab] release_refs:', repr(ex))
+
+
 def register():
     global _handle
     wmt = bpy.types.WindowManager
@@ -805,6 +831,10 @@ def register():
     for hl in (bpy.app.handlers.undo_post, bpy.app.handlers.redo_post, bpy.app.handlers.depsgraph_update_post):
         if _dirty_handler not in hl:
             hl.append(_dirty_handler)
+    for hl in (bpy.app.handlers.undo_pre, bpy.app.handlers.redo_pre, bpy.app.handlers.load_pre,
+               bpy.app.handlers.undo_post, bpy.app.handlers.redo_post, bpy.app.handlers.load_post):
+        if _release_handler not in hl:
+            hl.append(_release_handler)
     if not bpy.app.background and _handle is None:
         _handle = bpy.types.SpaceView3D.draw_handler_add(_draw, (), 'WINDOW', 'POST_PIXEL')
 
@@ -820,6 +850,11 @@ def unregister():
     for hl in (bpy.app.handlers.undo_post, bpy.app.handlers.redo_post, bpy.app.handlers.depsgraph_update_post):
         if _dirty_handler in hl:
             hl.remove(_dirty_handler)
+    for hl in (bpy.app.handlers.undo_pre, bpy.app.handlers.redo_pre, bpy.app.handlers.load_pre,
+               bpy.app.handlers.undo_post, bpy.app.handlers.redo_post, bpy.app.handlers.load_post):
+        while _release_handler in hl:
+            hl.remove(_release_handler)
+    release_refs()
     for km, kmi in _keymaps:
         try:
             km.keymap_items.remove(kmi)

@@ -85,13 +85,14 @@ def _stroke_tool(context):
 
 
 def folded(context):
-    """0.24.124 (user: "기능 설명은 접을 수 있게") the card folded to its title line (click the title to fold / open)."""
-    return bool(getattr(getattr(context, 'window_manager', None), 'mch_legend_min', False))
+    """0.24.124 (user: "기능 설명은 접을 수 있게") the card folded to its title line (click the title to fold / open).
+    0.24.132 folded unless opened."""
+    return bool(getattr(getattr(context, 'window_manager', None), 'mch_legend_min', True))
 
 
 def toggle(context):
     wm = context.window_manager
-    wm.mch_legend_min = not bool(getattr(wm, 'mch_legend_min', False))
+    wm.mch_legend_min = not bool(getattr(wm, 'mch_legend_min', True))
     for w in wm.windows:
         for a in w.screen.areas:
             if a.type == 'VIEW_3D':
@@ -215,8 +216,9 @@ class MCH_OT_legend_fold(bpy.types.Operator):
 def register():
     global _handle
     bpy.utils.register_class(MCH_OT_legend_fold)
+    # 0.24.132 (user: "툴 설명은 디폴트로 접혀 있는 게 좋을 것 같아") folded by default: only the title line, a click opens it
     bpy.types.WindowManager.mch_legend_min = bpy.props.BoolProperty(
-        name='Key Legend Folded', default=False, description='The key legend card folded to its title (click the title)')
+        name='Key Legend Folded', default=True, description='The key legend card folded to its title (click the title)')
     if not bpy.app.background and _handle is None:
         _handle = bpy.types.SpaceView3D.draw_handler_add(_draw, (), 'WINDOW', 'POST_PIXEL')
 

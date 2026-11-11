@@ -10,16 +10,28 @@ from __future__ import annotations
 
 class Node:
     """A container (root / row / column / box / split / grid) or an element (prop / op / label / menu / sep)."""
-    __slots__ = ('kind', 'children', 'attrs', 'data', 'prop', 'opts', 'parent')
+    __slots__ = ('kind', 'children', 'attrs', '_data', 'prop', 'opts', 'parent')
 
     def __init__(self, kind, parent=None, **opts):
         self.kind = kind
         self.children = []
         self.attrs = {}
-        self.data = None
+        self._data = None
         self.prop = ''
         self.opts = opts
         self.parent = parent
+
+    # 0.24.132 the struct a prop row shows is kept as a live_ref.Ref (the side panel caches these trees for half a
+    # second; undo frees what a kept struct points at)
+    @property
+    def data(self):
+        from . import live_ref
+        return live_ref.resolve(self._data)
+
+    @data.setter
+    def data(self, value):
+        from . import live_ref
+        self._data = live_ref.wrap(value)
 
     # the container's own active / enabled / alert, ANDed with its parents'
     def state(self, name, default=True):

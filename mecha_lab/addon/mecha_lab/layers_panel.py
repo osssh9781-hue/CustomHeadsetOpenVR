@@ -347,7 +347,8 @@ def content(context, x, width, k):
                           ('op', 'mch.layer_group_op', {'name': ob.name, 'coll': is_c, 'action': 'ORIGIN'}))
         if is_c:
             from . import name_fix
-            parts = [o for o in ob.all_objects if name_fix.safe_name(o) in sc['listed']]   # 0.24.129 a name that is not UTF-8
+            from . import live_ref               # 0.24.132 not all_objects (its cache can be stale right after Ctrl+Z)
+            parts = [o for o in live_ref.deep_objects(ob) if name_fix.safe_name(o) in sc['listed']]   # 0.24.129 a name that is not UTF-8
             sel = bool(parts) and all(o.select_get() for o in parts)
         else:
             try:
@@ -496,7 +497,8 @@ class MCH_OT_layer_pick(bpy.types.Operator):
             if c is None:
                 return {'CANCELLED'}
             shown = scan(context)['listed']
-            obs = [o for o in c.all_objects if o.name in shown]
+            from . import live_ref
+            obs = [o for o in live_ref.deep_objects(c) if o.name in shown]
             if not obs:
                 return {'CANCELLED'}
             try:

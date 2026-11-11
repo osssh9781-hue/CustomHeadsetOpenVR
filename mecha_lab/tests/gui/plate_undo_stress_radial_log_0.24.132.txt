@@ -1,0 +1,28 @@
+add-on from /home/user/CustomHeadsetOpenVR/mecha_lab/tests/gui/../../addon/mecha_lab version (0, 24, 131)
+body 151064 verts, mods ['ARRAY'] radial on True
+01 round 1 CPLATE at (1211, 608): objects 3 -> 5, tool CPLATE, radial True, drag+make 24.2s, total 27s
+02 round 2 CPLATE at (1169, 594): objects 5 -> 7, tool CPLATE, radial True, drag+make 18.3s, total 51s
+03 round 3 PLATE at (1084, 575): objects 7 -> 9, tool PLATE, radial True, drag+make 18.0s, total 75s
+04 round 4 CPLATE at (1016, 630): objects 9 -> 11, tool CPLATE, radial True, drag+make 18.3s, total 99s
+   ctrl+z: objects 9
+   ctrl+z: objects 7
+   ctrl+shift+z: objects 9
+05 round 5 CPLATE at (1017, 716): objects 9 -> 11, tool CPLATE, radial True, drag+make 18.6s, total 142s
+   Return (apply)
+06 round 6 PLATE at (1086, 770): objects 11 -> 13, tool PLATE, radial True, drag+make 18.6s, total 168s
+07 round 7 CPLATE at (1228, 555): objects 13 -> 15, tool CPLATE, radial True, drag+make 18.5s, total 192s
+08 round 8 CPLATE at (1210, 606): objects 15 -> 17, tool CPLATE, radial True, drag+make 18.7s, total 217s
+   ctrl+z: objects 15
+   ctrl+z: objects 13
+   ctrl+shift+z: objects 15
+09 round 9 PLATE at (1167, 593): objects 15 -> 17, tool PLATE, radial True, drag+make 19.1s, total 261s
+10 round 10 CPLATE at (1082, 575): objects 17 -> 19, tool CPLATE, radial True, drag+make 19.6s, total 287s
+   Return (apply)
+11 round 11 CPLATE at (1016, 631): objects 19 -> 21, tool CPLATE, radial True, drag+make 18.7s, total 313s
+12 round 12 PLATE at (1018, 718): objects 21 -> 23, tool PLATE, radial True, drag+make 19.9s, total 339s
+   ctrl+z: objects 21
+   ctrl+z: objects 19
+   ctrl+shift+z: objects 21
+13 round 13 CPLATE at (1087, 770): objects 21 -> 23, tool CPLATE, radial True, drag+make 20.4s, total 384s
+14 round 14 CPLATE at (1226, 553): objects 23 -> 25, tool CPLATE, radial True, drag+make 21.2s, total 411s
+DONE: 14 strokes, objects 25, meshes 19, 417s

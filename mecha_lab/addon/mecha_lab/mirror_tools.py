@@ -242,7 +242,8 @@ def world_center(ob, matrix=None):
     """Middle of an object's bounds in world space (a collection instance: the middle of its collection)."""
     if ob.type == 'EMPTY' and ob.instance_type == 'COLLECTION' and ob.instance_collection is not None:
         coll = ob.instance_collection
-        pts = [o.matrix_world @ Vector(c) for o in coll.all_objects if o.type == 'MESH' for c in o.bound_box]
+        from . import live_ref
+        pts = [o.matrix_world @ Vector(c) for o in live_ref.deep_objects(coll) if o.type == 'MESH' for c in o.bound_box]
         if not pts:
             return ob.matrix_world.translation.copy()
         return ob.matrix_world @ (sum(pts, Vector()) / len(pts) - Vector(coll.instance_offset))
@@ -324,7 +325,8 @@ class MirrorLeanLogic:
         skip = set(self.target_names)
         for o in obs:                          # an instance's own collection parts are part of the selection
             if o.type == 'EMPTY' and o.instance_collection is not None:
-                skip |= {c.name for c in o.instance_collection.all_objects}
+                from . import live_ref
+                skip |= {c.name for c in live_ref.deep_objects(o.instance_collection)}
         hit = pointed_object(bpy.context, self.projector, xy, skip)
         if hit is None:
             if getattr(self, 'pivot_name', None) is not None:
@@ -638,7 +640,8 @@ def plane_reflections(origin, axes, enabled):
 
 def _instance_size(ob):
     pts = []
-    for o in ob.instance_collection.all_objects:
+    from . import live_ref
+    for o in live_ref.deep_objects(ob.instance_collection):
         if o.type == 'MESH':
             pts += [o.matrix_world @ Vector(c) for c in o.bound_box]
     if not pts:

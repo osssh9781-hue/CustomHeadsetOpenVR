@@ -84,13 +84,29 @@ ACTIONS = (            # (section, [(label, glyph or png stem, operator, props, 
 
 
 class Item:
-    __slots__ = ('kind', 'x', 'y', 'w', 'h', 'label', 'icon', 'on', 'enabled', 'action', 'data', 'prop')
+    __slots__ = ('kind', 'x', 'y', 'w', 'h', 'label', 'icon', 'on', 'enabled', 'action', '_data', 'prop')
 
     def __init__(self, kind, x, y, w, h, label='', icon='', on=False, enabled=True, action=None, data=None,
                  prop=''):
         self.kind, self.x, self.y, self.w, self.h = kind, x, y, w, h
         self.label, self.icon, self.on, self.enabled, self.action = label, icon, on, enabled, action
         self.data, self.prop = data, prop
+
+    # 0.24.132 a bpy struct is kept as a live_ref.Ref (collection, name, path) and looked up again on every read:
+    # an item outlives the event that made it (memo, side panel cache) and undo frees what a kept struct points at
+    @property
+    def data(self):
+        from . import live_ref
+        return live_ref.resolve(self._data)
+
+    @data.setter
+    def data(self, value):
+        from . import live_ref
+        self._data = live_ref.wrap(value)
+
+    @property
+    def ref(self):
+        return self._data
 
     def hit(self, mx, my):
         return self.x <= mx <= self.x + self.w and self.y <= my <= self.y + self.h
@@ -758,8 +774,9 @@ def _draw_new(it, hot, S, white, dim):
         return None
     if k == 'swatch':                     # 0.24.95 a colour: its name ... the colour (click = colour picker)
         try:
-            c = [float(v) for v in getattr(it.data, it.prop)][:3]
-            linear = it.data.bl_rna.properties[it.prop].subtype == 'COLOR'
+            d = it.data                            # (0.24.132 a Ref looked up fresh; None when the block is gone)
+            c = [float(v) for v in getattr(d, it.prop)][:3] if d is not None else [0.5, 0.5, 0.5]
+            linear = d is not None and d.bl_rna.properties[it.prop].subtype == 'COLOR'
         except (AttributeError, KeyError, TypeError, ReferenceError):
             return None
         if linear:                        # (shown as the colour picker shows it)
@@ -947,10 +964,11 @@ class MCH_OT_mecha_menu(bpy.types.Operator):
             if event.type == 'MOUSEMOVE':
                 if abs(x - x0) > 3:
                     moved = True
-                if moved:
-                    v = quick_hud.drag_value(it.data, it.prop, v0, x - x0, fine=event.shift)
-                    if v != getattr(it.data, it.prop):
-                        setattr(it.data, it.prop, v)
+                d = it.data                            # (0.24.132 looked up fresh each event)
+                if moved and d is not None:
+                    v = quick_hud.drag_value(d, it.prop, v0, x - x0, fine=event.shift)
+                    if v != getattr(d, it.prop):
+                        setattr(d, it.prop, v)
                 self.drag = (it, x0, v0, moved)
                 return {'RUNNING_MODAL'}
             if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
@@ -965,7 +983,8 @@ class MCH_OT_mecha_menu(bpy.types.Operator):
                 self._rebuild(context)
                 return {'RUNNING_MODAL'}
             if event.type in {'ESC', 'RIGHTMOUSE'}:
-                setattr(it.data, it.prop, v0)
+                if it.data is not None:
+                    setattr(it.data, it.prop, v0)
                 self.drag = None
             return {'RUNNING_MODAL'}
         if event.type == 'MOUSEMOVE':
@@ -991,7 +1010,7 @@ class MCH_OT_mecha_menu(bpy.types.Operator):
                     return {'CANCELLED'}
                 return {'RUNNING_MODAL'}
             if it.kind == 'slider':
-                self.drag = (it, x, getattr(it.data, it.prop), False)
+                self.drag = (it, x, getattr(it.data, it.prop, 0.0), False)
                 return {'RUNNING_MODAL'}
             try:                                  # 0.24.52 a click never closes it (tools switch in place)
                 r = run(context, it, event.ctrl and not self.hold, True)

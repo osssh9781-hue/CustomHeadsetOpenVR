@@ -1,0 +1,52 @@
+add-on from /home/user/CustomHeadsetOpenVR/mecha_lab/tests/gui/../../addon/mecha_lab version (0, 24, 131)
+body 151064 verts, mods ['MIRROR'] radial on False
+01 round 1 CPLATE at (1211, 608): objects 2 -> 3, tool CPLATE, radial False, drag+make 11.6s, total 13s
+02 round 2 CPLATE at (1169, 594): objects 3 -> 4, tool CPLATE, radial False, drag+make 9.7s, total 26s
+03 round 3 PLATE at (1084, 575): objects 4 -> 5, tool PLATE, radial False, drag+make 9.3s, total 38s
+04 round 4 CPLATE at (1016, 630): objects 5 -> 6, tool CPLATE, radial False, drag+make 9.2s, total 50s
+   ctrl+z: objects 5
+   ctrl+z: objects 4
+   ctrl+shift+z: objects 5
+05 round 5 CPLATE at (1017, 716): objects 5 -> 6, tool CPLATE, radial False, drag+make 9.8s, total 73s
+   Return (apply)
+06 round 6 PLATE at (1086, 770): objects 6 -> 7, tool PLATE, radial False, drag+make 9.9s, total 87s
+07 round 7 CPLATE at (1228, 555): objects 7 -> 8, tool CPLATE, radial False, drag+make 11.1s, total 100s
+08 round 8 CPLATE at (1170, 541): objects 8 -> 9, tool CPLATE, radial False, drag+make 9.6s, total 112s
+   ctrl+z: objects 8
+   ctrl+z: objects 7
+   ctrl+shift+z: objects 8
+09 round 9 PLATE at (1167, 593): objects 8 -> 9, tool PLATE, radial False, drag+make 9.1s, total 135s
+10 round 10 CPLATE at (1082, 575): objects 9 -> 10, tool CPLATE, radial False, drag+make 9.4s, total 147s
+   Return (apply)
+11 round 11 CPLATE at (1016, 631): objects 10 -> 11, tool CPLATE, radial False, drag+make 10.4s, total 161s
+12 round 12 PLATE at (1018, 718): objects 11 -> 12, tool PLATE, radial False, drag+make 9.5s, total 173s
+   ctrl+z: objects 11
+   ctrl+z: objects 10
+   ctrl+shift+z: objects 11
+13 round 13 CPLATE at (1087, 770): objects 11 -> 12, tool CPLATE, radial False, drag+make 9.7s, total 197s
+14 round 14 CPLATE at (1226, 553): objects 12 -> 13, tool CPLATE, radial False, drag+make 9.2s, total 209s
+15 round 15 PLATE at (1168, 540): objects 13 -> 14, tool PLATE, radial False, drag+make 9.1s, total 220s
+   Return (apply)
+16 round 16 CPLATE at (1166, 592): objects 14 -> 15, tool CPLATE, radial False, drag+make 10.3s, total 234s
+   ctrl+z: objects 14
+   ctrl+z: objects 14
+   ctrl+shift+z: objects 14
+17 round 17 CPLATE at (1081, 576): objects 14 -> 15, tool CPLATE, radial False, drag+make 9.5s, total 257s
+18 round 18 PLATE at (1015, 633): objects 15 -> 16, tool PLATE, radial False, drag+make 9.3s, total 269s
+19 round 19 CPLATE at (1019, 719): objects 16 -> 17, tool CPLATE, radial False, drag+make 9.2s, total 281s
+20 round 20 CPLATE at (1089, 770): objects 17 -> 18, tool CPLATE, radial False, drag+make 9.3s, total 293s
+   ctrl+z: objects 17
+   ctrl+z: objects 16
+   ctrl+shift+z: objects 17
+   Return (apply)
+21 round 21 PLATE at (1173, 747): objects 17 -> 18, tool PLATE, radial False, drag+make 10.1s, total 318s
+22 round 22 CPLATE at (1208, 603): objects 18 -> 19, tool CPLATE, radial False, drag+make 9.3s, total 330s
+23 round 23 CPLATE at (1165, 591): objects 19 -> 20, tool CPLATE, radial False, drag+make 9.1s, total 342s
+24 round 24 PLATE at (1079, 576): objects 20 -> 21, tool PLATE, radial False, drag+make 9.2s, total 354s
+   ctrl+z: objects 20
+   ctrl+z: objects 19
+   ctrl+shift+z: objects 20
+25 round 25 CPLATE at (1014, 634): objects 20 -> 21, tool CPLATE, radial False, drag+make 9.4s, total 376s
+   Return (apply)
+26 round 26 CPLATE at (1020, 721): objects 21 -> 22, tool CPLATE, radial False, drag+make 10.6s, total 391s
+DONE: 26 strokes, objects 22, meshes 32, 394s
