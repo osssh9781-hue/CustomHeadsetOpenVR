@@ -1,5 +1,43 @@
 # CHANGELOG
 
+## 0.24.133 — Quick Render (Cycles): 한 번 클릭으로 빠른 렌더, 씬 설정은 그대로 (2026-11-11)
+
+- (사용자: "폴리곤이 높아서 렌더링이 빡센데 좀 더 빠르고 편하게 렌더 못 하나?", "난 사이클만 써") 먼저 무엇이 느린지 쟀습니다
+  (Blender 5.2.3, 이 서버 CPU, GPU 없음):
+  - **폴리곤 수 자체는 거의 비용이 아닙니다**: 240 만 점 메쉬도 Cycles 준비(BVH) 약 1.3 s, 1 샘플 렌더 1.8 s.
+  - 비용은 **샘플 × 픽셀 × 셰이더**입니다. 회색 기본 재질, 1280×720: 256 샘플 68.7 s → 32 샘플 + 적응형 샘플링 + 디노이즈 + 바운스 4
+    16.6 s. Blender 새 씬의 기본값은 4096 샘플 · 바운스 12 입니다.
+  - **크리처 셰이더가 가장 무겁습니다**: 같은 몸체 · 같은 샘플에서 회색 재질의 약 15 배(480×270, 8 샘플: 7.3 s vs 0.5 s). 그중 범프
+    디테일이 약 40 %, AO 노드(16 레이)가 약 20 %. 피부의 랜덤 워크 SSS → Burley + AO 4 레이: 29.0 s → 16.3 s(**−44 %**, 118 만 점
+    몸체, 640×360, 8 샘플).
+- 그래서 **Quick Render** 를 넣었습니다 — 액션 독의 카메라 타일(**Quick Render**) 또는 HDRI 페이지 맨 위 **QUICK RENDER (CYCLES)**:
+  - **Draft / Preview / Final**: Draft = 해상도 50 %, 16 샘플 / Preview = 100 %, 32 샘플 / Final = 100 %, 256 샘플. 모두 적응형
+    샘플링 + OpenImageDenoise(Draft · Preview 는 빠른 프리필터, Final 은 정확), 바운스 3 / 4 / 8, 커스틱 끔.
+  - **This View**(기본): 지금 보고 있는 뷰포트 그대로 찍습니다(임시 카메라, 뷰포트 모양의 화면비, 렌더 후 삭제). 씬 카메라로 보고 있으면
+    그 카메라. **Scene Camera**: 씬 카메라.
+  - **Fast Shading**(기본 켬, Final 에서는 안 씀): 렌더 동안만 AO / Bevel 노드 레이 수를 줄이고(Draft 2, Preview 4) 피부 SSS 를
+    Burley 로. **Clay**: 모든 재질을 회색 하나로(형태만 볼 때 가장 빠름). **Selected Only**, **Transparent**(배경 투명 PNG),
+    **Hidden Stay Hidden**(뷰포트에서 숨긴 것은 렌더에서도 숨김), **Save**.
+  - 렌더는 Blender 의 렌더 창에서 진행되고(작업 중 UI 가 멈추지 않음, Esc 로 중지), 끝나면 PNG 를 `.blend` 옆 `renders` 폴더에
+    `파일이름_날짜-시간_품질.png` 로 저장합니다(저장 안 된 파일은 임시 폴더의 `MechaLab_Renders`; Open Folder 버튼).
+  - **씬의 렌더 설정은 바꾸지 않습니다**: 렌더 동안 바꾼 값(엔진, 해상도, 샘플, 바운스, 디노이저, 출력 형식, 카메라, 재질 노드 값,
+    숨김 …)을 모두 기억했다가 끝나면(완료 · Esc · 오류) 그대로 되돌립니다.
+  - **GPU**: 패널에 Cycles 가 지금 쓰는 장치를 보여 줍니다. GPU 가 Blender 환경 설정에 꺼져 있으면 **Use the GPU (Blender
+    Preferences)** 버튼 — 누를 때만 환경 설정 > 시스템 > Cycles 렌더 장치를 찾은 GPU(OptiX / CUDA / HIP / oneAPI / Metal)로
+    켭니다. GPU 가 있는 PC 에서는 이것이 가장 큰 속도 차이입니다.
+- 측정(이 서버 CPU, 크리처 셰이더 118 만 점 몸체, 씬 해상도 1280×720): Draft **23.9 s**(640×360). Preview 는 48 샘플일 때 259 s
+  였고 Draft 와 Preview 결과가 디노이즈 후 거의 같아 보여 Preview 를 **32 샘플로 낮췄습니다**(32 샘플 시간은 다시 재지 않음).
+  같은 장면을 32 샘플 · 바운스 12 · AO 16 · 랜덤 워크로 렌더하면 386 s.
+- 렌더 뒤 임시 카메라를 지우면 `view_layer.objects` 에 다음 갱신까지 빈(None) 항목이 남는 Blender 동작을 테스트에서 발견해, 지운
+  직후 뷰 레이어를 갱신합니다.
+- 테스트(Blender 5.2.3): test_v02538 21/21(Draft 렌더 · PNG 크기 · 설정 25 개 복원 · AO / SSS 복원 · Preview / Final 값 · Clay ·
+  Selected Only · Transparent · Hidden Stay Hidden · This View 임시 카메라 위치 · 3D 뷰 없음 / 카메라 없음 · Esc 중지 · 뷰포트→카메라
+  계산 · GPU 없음 처리 · 타일 · HDRI 페이지). 실제 창(tests/gui/quick_render_real_window.py, 로그
+  quick_render_log_0.24.133.txt) 8/8: 패널의 Final → Draft 실제 클릭, 독 타일 실제 클릭 → 렌더 창에서 렌더 진행(UI 안 멈춤) →
+  960×744 PNG 저장, 설정 · 셰이더 복원, 임시 카메라 삭제, **사진 속 윤곽 = 뷰포트 윤곽(차이 0.1 % 이내)**, Preview 중 Esc →
+  "Stopped", 저장 없음, 설정 복원. HDRI 페이지 · 액션 독 · 등록을 건드리는 기존 테스트 26 파일 중 25 통과 + test_v02537 17/17
+  (나머지 1 개 test_registration_recovery 의 키맵 중복 검사 4 개는 0.24.132 에서도 똑같이 실패하던 것).
+
 ## 0.24.132 — 플레이트 몇 개 · Ctrl+Z 뒤 Blender 가 꺼지던 것 수정 · 키 안내 카드 기본 접힘 (2026-11-11)
 
 - (사용자: "미러하고 플레이트 한 4 개 하면 꺼져" + 크래시 로그 `EXCEPTION_ACCESS_VIOLATION` … `ui_bars.py line 375 in all_items`,

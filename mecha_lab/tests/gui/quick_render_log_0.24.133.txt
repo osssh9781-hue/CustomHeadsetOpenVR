@@ -1,0 +1,25 @@
+1 body verts 131384 region 1848 x 1433
+shot 1_viewport_wire.png True
+2 panel ['HDRI', '–', 'Tool', 'Mech', 'Creature', 'Decals', 'HDRI', 'Shapes', 'QUICK RENDER (CYCLES)   Preview', 'Quick Render', 'Open Folder', 'Draft', 'Preview', 'Final', 'This View', 'Scene Camera', 'Fast Shading', 'Clay', 'Selected Only', 'Transparent']
+shot 2_hdri_page_section.png True
+   quality after clicking Final: FINAL - after Draft: DRAFT
+3 dock tile (1418.7621052631582, 234.26791979949877, 150.8421052631579, 99.5557894736842)
+   3 s after the click: job active True render job True windows 1 -> 2 camera now MCH Quick Render Camera
+shot 3_rendering.png True
+shot 3b_render_done.png True
+   finished after 2.5 s; LAST 7.8 s - untitled_20261111-131659_draft.png files ['untitled_20261111-131659_draft.png']
+   picture (960, 744) expected (960, 744) alpha bbox (np.float64(0.349), np.float64(0.333), np.float64(0.717), np.float64(0.676)) viewport bbox (0.349, 0.333, 0.716, 0.676)
+4 Preview running True True windows 2
+shot 4_preview_running.png True
+   X windows ['2097154', '2097456']
+   after Esc: 4.5 s; LAST Stopped after 13.3 s files ['untitled_20261111-131659_draft.png']
+shot 4b_after_esc.png True
+PASS 2 the HDRI page opens with QUICK RENDER (CYCLES): Quick Render, Draft / Preview / Final, This View, the device line
+PASS 2b real clicks on Final, then Draft switch the quality
+PASS 3 the dock tile starts the render in the render window (the job runs, the UI is not blocked)
+PASS 3b ... one PNG saved: half the scene's long side, the viewport's shape
+PASS 3c ... every scene setting back (engine, size, 4096 samples, 12 bounces, JPEG, camera, AO rays, random-walk skin)
+PASS 3d ... the temporary camera gone, no empty entry in view_layer.objects, the last line "<s> s - <file>"
+PASS 3e ... framed as in the viewport: the parts' outline in the picture = in the viewport (within 1.5 %)
+PASS 4 Esc in the render window: "Stopped after ...", nothing more saved, every setting back
+8/8 passed

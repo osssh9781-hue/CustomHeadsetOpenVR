@@ -288,6 +288,7 @@ ACTIONS = (('apply_mods', 'stack', 'Apply Modifiers', ('op', 'mch.apply_modifier
            ('origin_cur', 'origin', 'Origin to 3D Cursor', ('op', 'mch.object_tidy', {'action': 'ORIGIN_CURSOR'})),
            ('symmetry', 'X', 'Symmetry', ('op', 'mch.object_tidy', {'action': 'SYMMETRY'})),
            ('mirror', 'png:mirror', 'Mirror', ('op', 'mch.object_tidy', {'action': 'MIRROR'})),
+           ('render', 'camera', 'Quick Render', ('op', 'mch.quick_render', {})),        # 0.24.133 Cycles, fast
            ('search', 'menu', 'Search Tools (Ctrl+F)', ('op', 'mch.tool_search', {})))   # 0.24.65
 
 

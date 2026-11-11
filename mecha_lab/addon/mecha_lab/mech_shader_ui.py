@@ -939,11 +939,38 @@ class MCH_OT_mech_bg_mode(bpy.types.Operator):
 
 # --- the HDRI page (0.24.95 user: "재질이랑 hdri는 분리해야지") ------------------------------------------------------
 
+def quick_render_section(b, context, x, width):
+    """0.24.133 (user: "렌더링이 빡센데 좀 더 빠르고 편하게", "난 사이클만 써") Quick Render (Cycles) on the HDRI page."""
+    from . import quick_render as qr
+    st = qr.settings(context)
+    if st is None:
+        return
+
+    def fill(sx, sw):
+        row(b, sx, sw, [button('Quick Render', 'mch.quick_render'), button('Open Folder', 'mch.quick_render_folder')])
+        row(b, sx, sw, [_cell('seg', v['label'], ('enum', key), st, 'quality', on=st.quality == key)
+                        for key, v in qr.QUALITY.items()])
+        row(b, sx, sw, [_cell('seg', 'This View', ('enum', 'VIEW'), st, 'camera', on=st.camera == 'VIEW'),
+                        _cell('seg', 'Scene Camera', ('enum', 'SCENE'), st, 'camera', on=st.camera == 'SCENE')])
+        row(b, sx, sw, [prop_cell(st, 'fast_shading', 'Fast Shading'), prop_cell(st, 'clay', 'Clay')])
+        row(b, sx, sw, [prop_cell(st, 'selected_only', 'Selected Only'), prop_cell(st, 'transparent', 'Transparent')])
+        row(b, sx, sw, [prop_cell(st, 'hidden_stay_hidden', 'Hidden Stay Hidden'), prop_cell(st, 'save', 'Save')])
+        lines = qr.status_lines(context)
+        b.note(('note', lines[0], not qr.gpu_ready(context), None, None, None, True), sx, sw)
+        if not qr.gpu_ready(context):
+            row(b, sx, sw, [button('Use the GPU (Blender Preferences)', 'mch.quick_render_gpu')])
+        for ln in lines[1:]:
+            b.note(('note', ln, False, None, None, None, True), sx, sw)
+    q = qr.QUALITY[st.quality]
+    section(b, 'quick_render', 'Quick Render (Cycles)', x, width, fill, summary=q['label'])
+
+
 def hdri_content(context, x, width, k):
     """(items, content height) - the HDRI page: the scene's lighting, apart from the material."""
     from . import mech_shader as ms
     b = sp.Builder('HDRI', x, width, k)
     sc = context.scene
+    quick_render_section(b, context, x, width)       # 0.24.133 first: the render itself
     w = ms.hdri_world(sc)
     if w is not None:
         name = dict((i[0], i[1]) for i in ms._hdri_items(None, context)).get(sc.mch_mech_hdri, sc.mch_mech_hdri)

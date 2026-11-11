@@ -414,6 +414,11 @@ def glyph(name, x, y, size, color=TEXT, width=2.0):
                for a in range(-90, 91, 15)]
         polyline(pts, color, width * 0.6)
         polyline([(2 * cx - px, py) for px, py in pts], color, width * 0.6)
+    elif name == 'camera':                       # 0.24.133 Quick Render: a camera body, its lens and the shutter button
+        polyline([P(.12, .26), P(.88, .26), P(.88, .70), P(.66, .70), P(.60, .80), P(.40, .80), P(.34, .70),
+                  P(.12, .70)], color, width, True)
+        polyline(circle_pts(cx, y + s * .48, s * .15), color, width)
+        lines([(P(.74, .60), P(.80, .60))], color, width)
     elif name == 'fixholes':                     # 0.24.95 Fix Holes: a surface with a hole, a patch over it
         polyline([P(.12, .18), P(.88, .18), P(.88, .82), P(.12, .82)], color, width, True)
         polyline([P(.36, .36), P(.64, .36), P(.64, .64), P(.36, .64)], color, width * 0.7, True)
