@@ -144,12 +144,21 @@ def node_group():
     rough_t = math_('ADD', t, math_('MULTIPLY', math_('SUBTRACT', noise.outputs['Fac'], 0.5), 0.08))   # (a hint of clay)
     foot = node('ShaderNodeMapRange', interpolation_type='SMOOTHSTEP', clamp=True)
     L.new(rough_t, foot.inputs['Value']); foot.inputs['From Min'].default_value = 1.0; foot.inputs['From Max'].default_value = 0.6
-    fill = math_('MULTIPLY', math_('MAXIMUM', below.outputs['Value'], 0.0), foot.outputs['Result'])
+    sgn = math_('SIGN', strength)
+    fill = math_('MULTIPLY', math_('MULTIPLY', math_('MAXIMUM', math_('MULTIPLY', below.outputs['Value'], sgn), 0.0), sgn),
+                 foot.outputs['Result'])
     bld_off = vmath('SCALE', pn.outputs['Vector'], scale=fill)
-    pick = node('GeometryNodeIndexSwitch', data_type='VECTOR'); pick.index_switch_items.new(); pick.index_switch_items.new()
+    flat_d = vmath('DOT_PRODUCT', vmath('SUBTRACT', pstat.outputs['Mean'], node('GeometryNodeInputPosition').outputs[0]).outputs['Vector'],
+                   pn.outputs['Vector'])
+    flat_off = vmath('SCALE', pn.outputs['Vector'], scale=math_('MULTIPLY', math_('MULTIPLY', flat_d.outputs['Value'], foot.outputs['Result']),
+                                                                 math_('MINIMUM', math_('ABSOLUTE', strength), 1.0)))
+    pick = node('GeometryNodeIndexSwitch', data_type='VECTOR')
+    for _i in range(3):
+        pick.index_switch_items.new()
     L.new(math_('ROUND', k), pick.inputs['Index'])
     L.new(std_off.outputs['Vector'], pick.inputs[1]); L.new(clay_off.outputs['Vector'], pick.inputs[2]); L.new(mv_off.outputs['Vector'], pick.inputs[3])
     L.new(bld_off.outputs['Vector'], pick.inputs[4])
+    L.new(flat_off.outputs['Vector'], pick.inputs[6])          # (5: Flat; 4: Smooth goes its own way)
     setp = node('GeometryNodeSetPosition')
     L.new(rin.outputs['Geometry'], setp.inputs['Geometry']); L.new(pick.outputs['Output'], setp.inputs['Offset'])
     blur = node('GeometryNodeBlurAttribute', data_type='FLOAT_VECTOR')
@@ -209,6 +218,8 @@ stroke([(0.15 + 0.04 * j, -0.15 + 0.03 * j, 1.0) for j in range(16)], 6, 0.16, 1
 stroke([(0.55, 0.62, 1.0)], 7, 0.3, 1.0, 2, (0.0, 0.0, 0.3))                                            # Move
 stroke([(x, -1.0, 0.2 * math.sin(x * 3)) for x in np.linspace(-0.75, -0.3, 8)], 8, 0.2, 1.0, 4, n=(0, -1, 0))   # Smooth
 stroke([(0.62 + 0.03 * j, -0.05 + 0.05 * j, 1.0) for j in range(6)], 9, 0.2, 1.0, 4)                          # Smooth
+stroke([(0.40 + 0.05 * j, 0.62, 1.12) for j in range(7)], 10, 0.22, 1.0, 5)                                   # Flat (the hill's top)
+stroke([(x, -1.0, -0.55) for x in np.linspace(-0.6, 0.6, 13)], 11, 0.12, -1.0, 3, n=(0, -1, 0))              # Alt Clay Buildup: a trench
 sme = bpy.data.meshes.new('Strokes'); sme.from_pydata(pts, edges, [])
 for name, typ, vals, key in (('stroke', 'INT', sid, 'value'), ('radius', 'FLOAT', rad, 'value'), ('strength', 'FLOAT', strg, 'value'),
                              ('kind', 'INT', kind, 'value'), ('move', 'FLOAT_VECTOR', mv, 'vector'),
@@ -219,7 +230,41 @@ sob = bpy.data.objects.new('Part (sculpt strokes)', sme)
 mod = part.modifiers.new('MCH Sculpt Layer', 'NODES'); mod.node_group = node_group()
 ident = next(it.identifier for it in mod.node_group.interface.items_tree if getattr(it, 'name', '') == 'Strokes' and it.in_out == 'INPUT')
 getattr(mod.properties.inputs, ident).value = sob
+# --- Part B: the Bevel brush on a sharp box -------------------------------------------------------------------------
+meb = bpy.data.meshes.new('PartB'); bmb = bmesh.new(); bmesh.ops.create_cube(bmb, size=2.0); bmb.to_mesh(meb); bmb.free()
+partb = bpy.data.objects.new('PartB', meb); S.collection.objects.link(partb); partb.location = (3.4, 0, 0)
+def bevel_stroke(me_, pts_, width, kind, tol=0.08):
+    """The base edges along a stroke (both ends near the polyline, a hard edge, running along it): marked with the
+    width - its weight on the kind's Bevel modifier."""
+    P = np.array(pts_, float)
+    seg_a, seg_b = P[:-1], P[1:]
+    def dist(x):
+        d = seg_b - seg_a; t = np.clip(((x - seg_a) * d).sum(1) / np.maximum((d * d).sum(1), 1e-12), 0, 1)
+        return np.min(np.linalg.norm(seg_a + d * t[:, None] - x, axis=1))
+    name = 'mch_bevel_' + kind
+    a = me_.attributes.get(name) or me_.attributes.new(name, 'FLOAT', 'EDGE')
+    w = np.zeros(len(me_.edges)); a.data.foreach_get('value', w)
+    n = 0
+    for e in me_.edges:
+        v1, v2 = (np.array(me_.vertices[i].co) for i in e.vertices)
+        if dist(v1) < tol and dist(v2) < tol:
+            w[e.index] = width; n += 1
+    a.data.foreach_set('value', w)
+    return n
+n1 = bevel_stroke(meb, [(-1.0, -1.0, 1.0), (1.0, -1.0, 1.0)], 0.18, 'chamfer')       # the top front edge: chamfer
+n2 = bevel_stroke(meb, [(1.0, -1.0, -1.0), (1.0, -1.0, 1.0)], 0.30, 'round')        # the front right edge: round
+n3 = bevel_stroke(meb, [(1.0, -1.0, 1.0), (1.0, 1.0, 1.0)], 0.10, 'round')          # the top right edge: a thin round
+print('bevel brush: edges marked', n1, n2, n3)
+for kind, segs in (('chamfer', 1), ('round', 5)):
+    bm_ = partb.modifiers.new('MCH Bevel ' + kind.title(), 'BEVEL')
+    w_ = np.zeros(len(meb.edges)); meb.attributes['mch_bevel_' + kind].data.foreach_get('value', w_)
+    wmax = float(w_.max()) or 1.0
+    meb.attributes['mch_bevel_' + kind].data.foreach_set('value', w_ / wmax)    # (the widest stroke = weight 1)
+    bm_.limit_method = 'WEIGHT'; bm_.edge_weight = 'mch_bevel_' + kind; bm_.width = wmax; bm_.segments = segs
+    bm_.harden_normals = False; bm_.profile = 0.5
+partb.data.materials.append(bpy.data.materials.get('Clay') or bpy.data.materials.new('Clay'))
 dg = bpy.context.evaluated_depsgraph_get(); ev = part.evaluated_get(dg)
+print('part B faces', len(partb.evaluated_get(dg).data.polygons), 'base', len(meb.polygons))
 print('evaluated faces', len(ev.data.polygons), 'base still', len(part.data.polygons))
 # render: the shaded part + its wireframe (a copy of the evaluated mesh with a thin dark Wireframe)
 mat = bpy.data.materials.new('Clay'); mat.use_nodes = True
@@ -232,17 +277,24 @@ wmat = bpy.data.materials.new('WireM'); wmat.use_nodes = True
 wmat.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = (0.02, 0.02, 0.03, 1)
 wme.materials.clear(); wme.materials.append(wmat)
 cam_d = bpy.data.cameras.new('C'); cam = bpy.data.objects.new('C', cam_d); S.collection.objects.link(cam); S.camera = cam
-cam.location = (1.2, -3.0, 4.6)
-cam.rotation_euler = (Vector((0, 0, 0.1)) - cam.location).to_track_quat('-Z', 'Y').to_euler()
+cam.location = (4.6, -9.0, 6.4)
+cam.rotation_euler = (Vector((1.7, 0, 0.0)) - cam.location).to_track_quat('-Z', 'Y').to_euler()
+wbm = bpy.data.meshes.new_from_object(partb.evaluated_get(bpy.context.evaluated_depsgraph_get()))
+wob_b = bpy.data.objects.new('WireB', wbm); wob_b.matrix_world = partb.matrix_world; S.collection.objects.link(wob_b)
+wmb = wob_b.modifiers.new('W', 'WIREFRAME'); wmb.thickness = 0.006; wmb.use_replace = True
 for loc, e in (((3, -3, 5), 800), ((-4, -2, 2), 300)):
     ld = bpy.data.lights.new('L', 'AREA'); ld.energy = e; ld.size = 3
     lo = bpy.data.objects.new('L', ld); lo.location = loc; S.collection.objects.link(lo)
     lo.rotation_euler = (Vector((0, 0, 0)) - lo.location).to_track_quat('-Z', 'Y').to_euler()
 w = bpy.data.worlds.new('W'); S.world = w; w.use_nodes = True; w.node_tree.nodes['Background'].inputs['Color'].default_value = (0.05, 0.05, 0.06, 1)
 S.render.engine = 'CYCLES'; S.cycles.samples = 48; S.cycles.device = 'CPU'
-S.render.resolution_x, S.render.resolution_y = 1200, 800
+S.render.resolution_x, S.render.resolution_y = 1600, 800
 for name, wire in (('gn_sculpt_shaded', False), ('gn_sculpt_wire', True)):
     wob.hide_render = not wire
+    wob_b.hide_render = not wire
+    if wire:
+        wbm.materials.clear()
+        wbm.materials.append(wmat)
     S.render.filepath = os.path.join(OUT, name + '.png')
     bpy.ops.render.render(write_still=True)
 print('DONE')
