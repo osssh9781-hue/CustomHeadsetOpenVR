@@ -35,6 +35,12 @@ def _rebuild_now(name):
 
 def _rebuild_update(self, context):
     ob = self.id_data
+    if isinstance(ob, bpy.types.Object) and self.is_part and ob.get('mch_plate_born'):
+        try:                                     # 0.24.145 an Armor Plate: what you change goes on to the next plate
+            from . import armor_plate
+            armor_plate.remember(ob, getattr(context, 'scene', None))
+        except (ImportError, AttributeError, ReferenceError, RuntimeError):
+            pass
     if isinstance(ob, bpy.types.Object) and self.is_part and self.region is not None:
         from . import live_queue                 # 0.24.73 at a steady pace while a slider is dragged (R10)
         name = ob.name

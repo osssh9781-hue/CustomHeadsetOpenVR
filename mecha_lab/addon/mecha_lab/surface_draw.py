@@ -38,7 +38,8 @@ LIVE_KEYS = ('profile', 'width', 'height', 'edge', 'fill_res', 'sink', 'smooth',
              'ends', 'taper')
 ENDS_ITEMS = [('SQUARE', 'Square Ends', 'The band keeps its width to its ends'),
               ('ROUND', 'Round Ends', 'Each end a half circle (seen from above)'),
-              ('POINT', 'Pointed Ends', 'The band thins to a point at both ends (how far in: Taper)')]
+              ('POINT', 'Pointed Ends', 'The band thins to a point at both ends (how far in: Taper; a minus Taper: '
+                                        'the ends flare out)')]
 
 
 # -----------------------------------------------------------------------------
@@ -172,8 +173,9 @@ class MCH_PG_SurfaceDraw(bpy.types.PropertyGroup):
                   description='How far (x the width) the ends slope down to the surface')
     # 0.24.143 the band's outline at its ends (seen from above): Square / Round / Pointed (+ Taper)
     ends: _p(EnumProperty, name='Ends', items=ENDS_ITEMS, default='SQUARE')
-    taper: _p(FloatProperty, name='Taper', default=0.5, min=0.02, max=1.0, subtype='FACTOR',
-              description='Pointed Ends: how much of the band thins toward its ends (1 = over the whole length)')
+    taper: _p(FloatProperty, name='Taper', default=0.5, min=-1.0, max=1.0,
+              description='Pointed Ends: how much of the band thins toward its ends (1 = over the whole length); '
+                          'below 0 (minus taper) the ends flare out instead (-1 = twice as wide there)')
     keep_size: BoolProperty(name='Keep First Size', default=True,
                             description='Every stroke gets the Width and Height of the first one')
     fill: BoolProperty(name='Fill Area', default=False,

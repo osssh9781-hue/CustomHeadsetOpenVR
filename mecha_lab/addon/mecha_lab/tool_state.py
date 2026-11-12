@@ -411,9 +411,10 @@ class MCH_PG_Brush(bpy.types.PropertyGroup):
     # 0.24.21 like a pen: the line thins to a point at both ends (Taper) and / or follows the tablet pressure
     line_taper_on: BoolProperty(name='Taper', default=False,
                                 description='Line mode: the band thins to a point toward both ends (amount next to it)')
-    line_taper: FloatProperty(name='Taper Amount', default=0.5, min=0.0, max=1.0, subtype='FACTOR',
+    line_taper: FloatProperty(name='Taper Amount', default=0.5, min=-1.0, max=1.0,
                               description='How much of the line thins toward the ends (1 = pointed over the whole '
-                                          'length)')
+                                          'length).  Below 0 (minus taper): the ends flare out instead - wider '
+                                          'toward the ends (-1 = twice as wide there)')
     line_pressure: BoolProperty(name='Pressure', default=False,
                                 description='Line mode, Free Draw: the band is as wide as you press the pen '
                                             '(tablet pressure); [ / ] change Line Width')

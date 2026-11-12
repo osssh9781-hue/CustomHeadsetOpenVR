@@ -102,12 +102,15 @@ def _smooth(path, passes=2):
 
 
 def taper_factor(t, taper):
-    """Width factor at ``t`` (0..1 along the line) for Taper: pointed ends, full width in the middle - pure."""
-    if taper <= 1e-6:
+    """Width factor at ``t`` (0..1 along the line) for Taper: pointed ends, full width in the middle; 0.24.145 a
+    minus taper flares the ends instead (1 + |taper| at the very end, smoothly back to 1 in the middle) - pure."""
+    if abs(taper) <= 1e-6:
         return 1.0
-    reach = 0.5 * taper                       # how far in from each end the thinning goes
-    e = min(t, 1.0 - t) / max(reach, 1e-9)
-    return max(0.0, min(1.0, e)) ** 0.6
+    reach = 0.5 * abs(taper)                  # how far in from each end the thinning / flaring goes
+    e = max(0.0, min(1.0, min(t, 1.0 - t) / max(reach, 1e-9)))
+    if taper < 0:
+        return 1.0 + abs(taper) * (1.0 - e) ** 2
+    return e ** 0.6
 
 
 def _profile_at(profile, t):
@@ -157,12 +160,12 @@ def band(path, width_px, cap='ROUND', cap_segments=8, taper=0.0, pressure=None):
     A stroke that crosses itself or closes on itself gives an outline that crosses itself: ``line_loops`` /
     ``band_union`` turn that into clean loops."""
     if cap == 'POINT':                               # (Pointed: round tips, thinned - see ends_of)
-        cap, taper = 'ROUND', max(taper, 0.5)
+        cap, taper = 'ROUND', (taper if abs(taper) > 1e-6 else 0.5)
     path, hw, widths, normals = _prepared(path, width_px, taper, pressure)
     if len(path) < 2:
         return []
     n = len(path)
-    varied = taper > 1e-6 or bool(pressure)
+    varied = abs(taper) > 1e-6 or bool(pressure)
     big = 4.0 * hw * hw                              # (0.24.108 only the offset kinks are spliced away)
     left = [(p[0] + nx * w, p[1] + ny * w) for p, (nx, ny), w in zip(path, normals, widths)]
     right = [(p[0] - nx * w, p[1] - ny * w) for p, (nx, ny), w in zip(path, normals, widths)]
@@ -272,8 +275,8 @@ def ends_of(brush):
     older Taper button still works with Round / Flat)."""
     cap = getattr(brush, 'line_caps', 'ROUND')
     amount = float(getattr(brush, 'line_taper', 0.5))
-    if cap == 'POINT':
-        return 'ROUND', max(amount, 0.05)
+    if cap == 'POINT':                       # (a minus amount: flared ends, see taper_factor)
+        return 'ROUND', (amount if abs(amount) >= 0.05 else 0.05)
     return cap, (amount if getattr(brush, 'line_taper_on', False) else 0.0)
 
 

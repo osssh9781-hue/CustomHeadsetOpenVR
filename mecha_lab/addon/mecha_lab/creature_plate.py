@@ -50,12 +50,33 @@ FEATHER_STYLES = [('VANE', 'Vane', 'A thin blade, knife-thin edges, thicker at t
 LIVE_KEYS = ('profile', 'peak', 'end_peak', 'direction', 'edge_round', 'edge_thickness', 'sink', 'outline_smooth',
              'resolution', 'tip_lift', 'feather_style', 'attach')
 POINT_KEYS = ('outline_smooth', 'resolution', 'profile', 'edge_round', 'feather_style')
-# 0.24.144 (user: "크리쳐 플레이트에서 왜 내가 전에 썼던 값이 적용이 돼서 안 나와?") what the next plate takes from the last one:
-# its STYLE (the last plate you changed); the SIZE values (lengths: they fit one plate, not the next) start Auto on every
-# new plate - one typed with no plate live is used for the next plate once
-STYLE_KEYS = ('profile', 'direction', 'edge_round', 'outline_smooth', 'resolution', 'feather_style', 'attach')
-SIZE_AUTO = {'peak': 0.0, 'end_peak': -1.0, 'tip_lift': -1.0, 'edge_thickness': 0.0, 'sink': 0.0}    # change the point set / shape field
+# 0.24.145 (user: "방금 그리면서 시작 부분이나 리프트 값을 조정했으면 다음 긋는 선은 그 값을 기억해야 될 거 아녀, 그리고 블렌더를
+# 끄고 새 프로젝트를 열면 기본값") every value you change on a plate goes on to the next plate (the scene's settings - a
+# new file starts with the defaults); a value the plate was only given (its Auto height) is not passed on
+BORN_KEY = 'mch_cplate_born'            # on a plate: its values as it was made (what you changed = what differs)    # change the point set / shape field
 _CACHE = {}          # object name -> (key, field data): rays are cast only when the point set changes
+
+
+def _born(ob):
+    try:
+        return json.loads(ob.get(BORN_KEY) or '{}')
+    except (TypeError, ValueError, ReferenceError):
+        return {}
+
+
+def remember(ob, p, st):
+    """The values of live plate ``ob`` that differ from what it was made with go into the next plate's settings
+    ``st`` (what you changed; its own Auto height stays Auto for the next plate)."""
+    born = _born(ob)
+    for k in LIVE_KEYS:
+        try:
+            v = getattr(p, k)
+            if k in born and (abs(v - born[k]) < 1e-9 if isinstance(v, float) else v == born[k]):
+                continue
+            if getattr(st, k) != v:
+                setattr(st, k, v)
+        except (AttributeError, TypeError):
+            pass
 
 
 def _update(self, context):
@@ -68,13 +89,8 @@ def _update(self, context):
     except (cg.CutError, ValueError, RuntimeError) as ex:
         self.last_error = str(ex)
     st = getattr(getattr(context, 'scene', None), 'mch_cplate', None)
-    if st is not None:                     # the next plate starts like this one (its style; sizes stay Auto)
-        for k in STYLE_KEYS:
-            try:
-                if getattr(st, k) != getattr(self, k):
-                    setattr(st, k, getattr(self, k))
-            except (AttributeError, TypeError):
-                pass
+    if st is not None:                     # the next plate starts with what you changed on this one
+        remember(ob, self, st)
 
 
 class MCH_PG_CreaturePlate(bpy.types.PropertyGroup):
@@ -482,11 +498,6 @@ def perform(context, loops, projector):
     p = ob.mch_cplate
     for k in LIVE_KEYS:
         setattr(p, k, getattr(st, k))
-    for k, auto in SIZE_AUTO.items():      # 0.24.144 a size typed for the next plate: used once, then Auto again
-        try:
-            setattr(st, k, auto)
-        except (AttributeError, TypeError):
-            pass
     try:
         natural = rebuild(context, ob)
     except Exception:
@@ -502,6 +513,7 @@ def perform(context, loops, projector):
         p.peak = natural
     if p.end_peak < 0:
         p.end_peak = p.peak * {'SCALE': 0.15, 'FEATHER': 0.5}.get(p.profile, 1.0)     # a scale thins out to its tip
+    ob[BORN_KEY] = json.dumps({k: getattr(p, k) for k in LIVE_KEYS})     # (what it was made with: see remember)
     p.live = True
     for o in context.selected_objects:
         o.select_set(False)
@@ -621,8 +633,7 @@ def draw(layout, context):
     col = layout.column(align=True)
     col.scale_y = 0.8
     for line in ('Draw an outline on a mesh: a rounded plate on it', 'Height 0 = Auto, End Height -1 = same',
-                 'A new plate: the last plate\'s shape; Height / Lift / Thickness / Sink Auto',
-                 '(a size set here with no plate selected: the next plate only)',
+                 'What you change on a plate: the next plate starts with it too',
                  'End Height: the far end lifts (or sinks) like a scale', 'Apply: plain mesh'):
         col.label(text=line)
 

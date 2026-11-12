@@ -869,6 +869,59 @@ def apply_plate(ob):
             bpy.data.meshes.remove(m)
 
 
+# 0.24.145 (user: "아머 플레이트도 저장이 안 돼" - "방금 그리면서 ... 값을 조정했으면 다음 긋는 선은 그 값을 기억해야 될 거 아녀,
+# 블렌더를 끄고 새 프로젝트를 열면 기본값") a value you change on a live plate goes on to the next plate of that profile
+# (kept on the scene: saved with the file, a new file starts with the defaults); what the preset gave it is not
+MEMORY_KEY = 'mch_plate_memory'          # scene: {preset: {setting: value}}
+BORN_KEY = 'mch_plate_born'              # a plate: its settings as it was made
+PRESET_KEY = 'mch_plate_preset'
+
+
+def _settings_of(p):
+    from . import face_extract as fx
+    out = {}
+    for k in fx.SETTING_KEYS:
+        try:
+            v = getattr(p, k)
+        except AttributeError:
+            continue
+        if isinstance(v, (bool, int, float, str)):
+            out[k] = v
+        elif hasattr(v, '__len__') and not isinstance(v, str) and all(isinstance(x, (int, float)) for x in v):
+            out[k] = list(v)
+    return out
+
+
+def plate_memory(scene):
+    try:
+        return json.loads(scene.get(MEMORY_KEY) or '{}')
+    except (TypeError, ValueError, ReferenceError):
+        return {}
+
+
+def remember(ob, scene):
+    """The settings of live plate ``ob`` that differ from what it was made with: kept for the next plate of its
+    profile."""
+    if scene is None or not ob.get(BORN_KEY):
+        return
+    try:
+        born = json.loads(ob[BORN_KEY])
+    except (TypeError, ValueError):
+        return
+    now = _settings_of(ob.mch_extract)
+    mem = plate_memory(scene)
+    slot = mem.setdefault(ob.get(PRESET_KEY, ''), {})
+    changed = False
+    for k, v in now.items():
+        b = born.get(k)
+        same = (abs(v - b) < 1e-9) if isinstance(v, float) and isinstance(b, (int, float)) else v == b
+        if not same and slot.get(k) != v:
+            slot[k] = v
+            changed = True
+    if changed:
+        scene[MEMORY_KEY] = json.dumps(mem)
+
+
 def create_plate(context, target, region, surround, preset, local_size, auto=True, collection='Armor Plates',
                  height_scale=1.0):
     """A live Face Extract part on ``target`` from a region / surround mesh
@@ -892,7 +945,14 @@ def create_plate(context, target, region, surround, preset, local_size, auto=Tru
             setattr(p, k, v)
         except (TypeError, AttributeError):
             pass
+    for k, v in plate_memory(scene).get(preset or '', {}).items():   # 0.24.145 what you changed on the last plate
+        try:
+            setattr(p, k, tuple(v) if isinstance(v, list) else v)
+        except (TypeError, AttributeError, ValueError):
+            pass
     p.resolution = 0                          # the patch is already dense and even
+    part[BORN_KEY] = json.dumps(_settings_of(p))
+    part[PRESET_KEY] = preset or ''
     p.source = target
     p.region = region
     p.surround = surround

@@ -90,4 +90,16 @@ check('a Surface Draw band with Pointed ends: thin at its tips, the full width i
 band.mch_sdraw.ends = 'SQUARE'
 check('... Ends is live: Square - the band rebuilt with full-width ends', band_width_at(band, -2.95) > 0.35,
       round(band_width_at(band, -2.95), 3))
+
+# 0.24.145 (user: "마이너스 테이퍼도 만들어 줘") a minus Taper: the ends flare out instead
+check('Taper Amount goes below 0', br.bl_rna.properties['line_taper'].hard_min <= -1.0 and st.bl_rna.properties['taper'].hard_min <= -1.0)
+check('taper_factor: a minus taper is 1 in the middle, 1 + |taper| at the very ends',
+      ll.taper_factor(0.5, -0.6) == 1.0 and abs(ll.taper_factor(0.0, -0.6) - 1.6) < 1e-9 and 1.0 < ll.taper_factor(0.1, -0.6) < 1.6)
+br.line_caps, br.line_taper = 'POINT', -0.8
+flared = ll.line_loops(C, P, path, br)[0]
+check('a line with Pointed ends and a minus Taper: wider at its ends than in its middle (flared)',
+      width_near(flared, 230) > 1.3 * width_near(flared, 500), (round(width_near(flared, 230)), round(width_near(flared, 500))))
+band.mch_sdraw.ends, band.mch_sdraw.taper = 'POINT', -0.8
+check('Surface Draw: Pointed Ends with a minus Taper - the band\'s ends flare out (live)',
+      band_width_at(band, -2.9) > 1.3 * band_width_at(band, 0.0), (round(band_width_at(band, -2.9), 3), round(band_width_at(band, 0.0), 3)))
 summary()
