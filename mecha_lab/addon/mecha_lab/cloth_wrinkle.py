@@ -2287,6 +2287,9 @@ _label_handle = None
 def _draw_labels():
     try:
         context = bpy.context
+        from .tool_state import hud_labels_ok
+        if not hud_labels_ok(context, {'WRINKLE'}):          # 0.24.146 only with the HUD's buttons
+            return
         ob, lay = _hud_current(context)
         if ob is None or not lay:
             return

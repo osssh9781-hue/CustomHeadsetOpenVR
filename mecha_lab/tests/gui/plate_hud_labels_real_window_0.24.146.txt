@@ -1,0 +1,5 @@
+plate tool words ['+  EXPORT', '+  ZBRUSH BRIDGE', '-  ARMOR PLATE: DRAW ON A MESH', '-  LIVE STACK', '0.000', '100', '120', '3D MOUSE', 'ARMOR PLATE', 'Active', 'Active Points 38   Total Points 1144', 'Alt Carve Depth', 'Apply', 'Apply Modifiers', 'Apply to Parts', 'Armor Plate', 'Armor Plate ON', 'Armor Plates', 'Armor Pl…', 'Assets']
+cut tool words ['+  EXPORT', '+  LASSO', '+  ZBRUSH BRIDGE', '-  ADVANCED', '-  GN EDGE (GEOMETRY NODES)', '-  LIVE STACK', '100', '3D MOUSE', 'Active', 'Active Points 38   Total Points 1144', 'Apply Live Cut', 'Apply Modifiers', 'Apply to Parts', 'Armor Plate', 'Armor Plates', 'Armor Pl…', 'Assets', 'Auto', 'Auto Apply', 'B']
+PASS the Armor Plate tool: its HUD words drawn (Apply / Remove)
+PASS the Cut tool, the plate still selected and live: none of them
+2/2 passed

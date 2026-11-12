@@ -680,6 +680,9 @@ _label_handle = None
 def _draw_labels():
     try:
         context = bpy.context
+        from .tool_state import hud_labels_ok
+        if not hud_labels_ok(context, {'PLATE'}):          # 0.24.146 only with the HUD's buttons
+            return
         data, lay = _current(context)
         if data is None or not lay:
             return

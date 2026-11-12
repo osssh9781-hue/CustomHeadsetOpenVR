@@ -310,6 +310,15 @@ def hud_for(context, tools):
         return True
 
 
+def hud_labels_ok(context, tools):
+    """0.24.146 (user: "이거 글씨 안 뜨게 해 줘" - a plate's HUD names floating in the Cut tool) the words beside a HUD's
+    buttons / sliders only when those are drawn: that tool chosen and the viewport's gizmos on."""
+    if not hud_for(context, tools):
+        return False
+    space = getattr(context, 'space_data', None)
+    return bool(getattr(space, 'show_gizmo', True))
+
+
 DRAFT = [False]          # 0.24.95 live_queue: a slider drag is rebuilding a slow part - the Preview Resolution
 
 
