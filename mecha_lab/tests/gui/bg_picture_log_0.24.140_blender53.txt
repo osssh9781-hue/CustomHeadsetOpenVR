@@ -1,0 +1,15 @@
+shot 1_material_preview_before.png True
+Picture cell True
+after Picture: on True mode IMAGE picture B:white_sweep_land.jpg
+Grey Spot tile True
+after the tile: on True mode IMAGE picture B:mid_grey_spot_land.jpg Material Preview scene world True
+shot 2_material_preview_picture.png True
+after Colour Ramp: on True ramp node True
+shot 2b_colour_ramp.png True
+Rendered: engine CYCLES shading RENDERED redraws in 20 s 14
+shot 3a_rendered_20s.png True
+   redraws in 120 s 18
+shot 3_rendered_picture.png True
+PASS 2 REAL clicks on Picture and on the backdrop Grey Spot: the picture behind the model, Material Preview on the scene's world
+PASS 2b a REAL click on Colour Ramp: on, its node in the world
+2/2 passed

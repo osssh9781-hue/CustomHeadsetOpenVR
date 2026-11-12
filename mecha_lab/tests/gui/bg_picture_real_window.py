@@ -199,6 +199,15 @@ def flow():
     res['2 REAL clicks on Picture and on the backdrop Grey Spot: the picture behind the model, Material Preview on '
         'the scene\'s world'] = bgc.on(S) and st.mode == 'IMAGE' and st.image == 'B:mid_grey_spot_land.jpg' \
         and sp3.shading.use_scene_world
+    # 0.24.140 the Colour Ramp back: a REAL click on its switch
+    it = yield from scrolled_item('Colour Ramp')
+    if it is not None:
+        yield from press(it)
+    yield 8.0
+    rn = bgc.ramp_node(S)
+    log('after Colour Ramp:', 'on', st.ramp, 'ramp node', rn is not None)
+    shot('2b_colour_ramp.png')
+    res['2b a REAL click on Colour Ramp: on, its node in the world'] = bool(st.ramp) and rn is not None
     sp3.shading.type = 'RENDERED'
     n0 = DRAWS['n']
     yield 20.0

@@ -1,5 +1,16 @@
 # KNOWN LIMITATIONS — Mecha Lab 0.18.0
 
+## 0.24.140
+- **DLSS 의 실제 속도 · 화질은 재지 못했습니다** — 이 서버에는 NVIDIA GPU 가 없어 Blender 가 DLSS 를 받아들이는 부분은 테스트에서
+  흉내만 냈습니다. 5090 · 3090 에서 직접 확인해 주세요(드라이버 620 이상, Preferences > System 의 Cycles 장치가 OptiX / CUDA 로
+  그 GPU). DLSS 는 Blender 5.3 에서 뷰포트 전용이라 F12 · Quick Render 에는 쓰이지 않습니다.
+- DLSS 를 켜면 Blender 가 Noise Threshold(적응 샘플링)와 Preview Scrambling 을 쓰지 않습니다(Blender 자체 동작).
+- Blender 5.3 에서는 실제 창 테스트를 가벼운 장면으로만 했습니다(1,970만 삼각형 속도 비교는 5.2.3 에서만).
+- **Blender 5.3 의 QuadriFlow**: 어떤 부품에서는 끝나지 않고, 끝나도 작은 구멍이 남을 수 있습니다(Blender 자체). Make Quad(Flow) ·
+  ZRemesher 는 5.3 에서 시간 제한을 두고 따로 돌리므로 창이 계속 멈추지는 않지만, **기다리는 동안(최대 20 초 + 400 면당 1 초)은 창이
+  응답하지 않습니다**. 5.3 에서는 Make Quad 의 **Patch** 방법이나 Mecha Lab 자체 **Quad Remesh**(QuadriFlow 안 씀)를 권합니다.
+- Mecha Lab 은 계속 5.2.3 을 기준으로 개발 · 테스트하고, 5.3 은 이번처럼 따로 확인합니다.
+
 ## 0.24.139
 - 링크된 컬렉션 인스턴스의 가벼운 세트는 이 파일 안에 만듭니다(사본이 파일에 저장 — 인스턴스로 쓰는 무거운 부품의 약 10 %). 같은
   컬렉션은 인스턴스가 몇 개든 사본 한 벌.

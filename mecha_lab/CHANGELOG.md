@@ -1,5 +1,39 @@
 # CHANGELOG
 
+## 0.24.140 — Blender 5.3 대응: Rendered 뷰포트에 DLSS, 배경 그림 Colour Ramp 다시 (2026-11-12)
+
+- (사용자: "5.3 에서 테스트도 하고 5.3 에는 dlss 디노이즈도 있으니까 그거도 같이 해서 뷰포트 빠르게 렌더링하는 거 찾아 줘")
+  Blender 5.3.0(2026-11-10 공식 출시)의 Cycles 코드에서 확인한 것: **DLSS = NVIDIA DLSS Ray Reconstruction, Rendered 뷰포트
+  전용 디노이저**(F12 최종 렌더의 디노이저 목록에는 없음 — OptiX · OpenImageDenoise 만), **Upscale Mode**(None · Quality ·
+  Balanced(기본) · Performance · Ultra Performance — 뷰포트를 작게 렌더하고 DLSS 가 키움). 조건: NVIDIA GPU(compute
+  capability 7.5 이상 — RTX 20 이후, 5090 · 3090 해당), NVIDIA 드라이버 620 이상, Cycles 장치를 그 GPU 로.
+- **Fast Viewport + DLSS**: Blender 가 DLSS 를 받아들이면(5.3 + 위 조건) Rendered 뷰포트를 **DLSS + Upscale Performance** 로 —
+  Fast Viewport 자체의 '해상도 절반' 대신(둘 다 하면 두 번 줄어 흐려짐). 샘플 64 · 첫 샘플부터 디노이즈는 그대로. 조건이 안 되면
+  (5.2, NVIDIA 아님, 드라이버 낮음) 예전과 똑같음. 끄면 디노이저 · 업스케일 모드 모두 원래대로.
+- Render 탭 VIEWPORT 에 DLSS 줄(5.3 에서만): 켜져 있으면 "Rendered viewport: DLSS (NVIDIA) - Upscale …" + **DLSS Upscale** 고르기,
+  쓸 수 있으면 "DLSS ready", 아니면 무엇이 필요한지.
+- (사용자: "왜 hdri 배경 이미지에 컬러램프 조정하는 거 뺐어?") 0.24.138 에서 미뤘던 배경 그림 **Colour Ramp** 를 다시 넣음 —
+  이제 어떤 월드에서든: Colour Ramp 스위치, **Dark / Light** 색 칸, **Edit Ramp…**(색 단계 추가 팝업). Colour ↔ Picture 를 오가도
+  램프 색은 유지, 예전 HDRI 페이지의 램프 색 · Fit · Brightness · Contrast · Colour Ramp 켬도 한 번 이어받음. N 사이드바에도.
+- 테스트: 새 test_v02545(DLSS) — 5.2.3 7/7(DLSS 설정 없음 · 예전 계획 그대로), **5.3.0 8/8**(DLSS 설정 있음, NVIDIA 없으면 예전
+  계획 + 필요한 것 안내, Blender 가 DLSS 를 받아들인 경우(이 서버엔 NVIDIA 가 없어 그 부분만 대신 흉내) → 디노이저 DLSS ·
+  Upscale Performance · 해상도 절반 안 함, 끄면 원래대로). test_v02543 19/19(5.2.3 · 5.3 둘 다; Colour Ramp 를 빨강으로 →
+  **실제 Cycles 렌더**에서 모델 뒤가 빨강, 색 유지, 예전 설정 이어받기 한 번만).
+- **Blender 5.3 에서 전체 테스트**(293 파일, 이 버전의 DLSS 코드 포함): PASS 6,921 / FAIL 15 — 13 개는 5.2.3 에서도 같은 7 파일
+  (0.24.135 부터), **5.3 에서만 생긴 것 2 파일**:
+  - **Make Quad(Flow)** — Blender 5.3 의 QuadriFlow 가 잘린 부품(1,200 면 목표)에서 **끝나지 않음**(5.2.3 은 1 초; 테스트가 10 분 넘게
+    멈춰 직접 멈춤). 3,000 면에서는 끝나지만 작은 구멍 6 변(5.2.3: 0). → 5.3 부터 Make Quad(Flow) 와 ZBrush ZRemesher 는
+    QuadriFlow 를 **두 번째 Blender 에서 시간 제한**(20 s + 400 면당 1 s)으로 돌림: 끝나지 않으면 멈추고 알림, Make Quad 는 예전처럼
+    Patch 방법으로 대신함(위 부품: 21 s 뒤 1,508 쿼드, 닫힘). 5.2 는 그대로(같은 Blender 안에서). 다시 돌린 test_v02468: 5.2.3
+    25/25, 5.3 23/25(남은 2 개는 5.3 QuadriFlow 의 결과 자체 — 작은 구멍, 얇은 조각에서 다른 결과).
+  - test_v02495_bevel_divide 의 seed 6 — 같은 컷이 실행마다 바로 깨끗하게 나오기도 함(5.2.3 에서도; 예전부터 불안정으로 적어 둔
+    것): 깨끗한 결과도 맞게 받도록 고침, 8/8.
+- 실제 창(**Blender 5.3.0** 프로그램): 배경 그림 · 'Grey Spot' · **Colour Ramp 실제 클릭** 2/2, Light Copies · 부품 클릭 · 배경색
+  (가벼운 시험 장면) — 클릭 모두 동작. 로그 tests/gui/*_0.24.140_blender53*.txt.
+- 바뀐 모듈 관련 79 파일: 5.2.3 PASS 1,715 / FAIL 2, 5.3 PASS 1,714 / FAIL 4 (FAIL 은 0.24.135 부터의 test_v02489 · test_v02490,
+  5.3 에서는 + 위 QuadriFlow 결과 2 개). 5.2.3 전체 293 파일은 0.24.139 때 실행(이번 변경은 5.2 에서 배경 Colour Ramp 말고는 작동하지
+  않는 코드).
+
 ## 0.24.139 — Light Copies: 다른 .blend 에서 링크한 컬렉션 인스턴스도 뷰포트에서 가볍게 (2026-11-12)
 
 - (사용자: "콜렉션 인스턴트로 가져와서 렌더 하는데 그럼 라이트 카피는 의미 없어?" → "다른 블렌더에서 가져왔어" → "그럼 ㄱㄱ")
