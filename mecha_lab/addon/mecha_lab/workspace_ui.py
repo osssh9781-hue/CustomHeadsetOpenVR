@@ -1895,6 +1895,8 @@ class MCH_OT_hotkey(bpy.types.Operator):
         # in the Hotkeys box (D, Shift+S, ...) always works
         plain_s = (getattr(event, 'type', '') == 'S' and not (getattr(event, 'shift', False) or
                    getattr(event, 'ctrl', False) or getattr(event, 'alt', False) or getattr(event, 'oskey', False)))
+        if plain_s and ts.effective_tool(context) == 'GSCULPT':     # 0.24.142 Geo Sculpt: S = Draw Size (ZBrush)
+            return bpy.ops.mch.geo_size('INVOKE_DEFAULT', target='SIZE')
         if self.only_empty and context.selected_objects and plain_s:
             return {'PASS_THROUGH'}
         if self.action == 'MIRROR':

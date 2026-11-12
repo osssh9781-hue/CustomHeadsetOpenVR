@@ -81,6 +81,7 @@ SPEC = {
               (_scene('mch_concept'), 'path_hardness'), (_scene('mch_concept'), 'path_taper')],
     'SMOVE': [(_scene('mch_concept'), 'radius_px'), (_scene('mch_concept'), 'path_hardness'),
               (_scene('mch_concept'), 'path_taper')],
+    'GSCULPT': [(_scene('mch_geo'), 'brush'), (_scene('mch_geo'), 'size_px'), (_scene('mch_geo'), 'intensity')],
     'SMART': [(_scene('mch_smart'), 'ndof_do'), (_scene('mch_smart'), 'axes'), (_scene('mch_smart'), 'speed'),
               (_scene('mch_smart'), 'push'), (_scene('mch_smart'), 'lift')],
     'TUBE': [(_scene('mch_tube_defaults'), 'radius')],

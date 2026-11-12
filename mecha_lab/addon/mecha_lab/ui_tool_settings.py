@@ -1099,12 +1099,18 @@ def draw_surface_draw(layout, context):
     surface_draw.draw(layout, context, 'BAND')
 
 
+def draw_geo_sculpt(layout, context):
+    from . import geo_sculpt
+    geo_sculpt.draw(layout, context)
+
+
 def draw_radial_sym(layout, context):
     from . import radial_sym
     radial_sym.draw(layout, context)
 
 
 DRAWERS = {
+    'GSCULPT': draw_geo_sculpt,
     'RSYM': draw_radial_sym,
     'SDRAW': draw_surface_draw,
     'PERF': draw_perforate,
