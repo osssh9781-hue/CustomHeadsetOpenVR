@@ -13,8 +13,8 @@ How it works (nothing is written into the part until Apply):
     sculpt follows the part - with per point: stroke, radius, strength (Alt: negative), kind, move, normal, fade
   * the part's "MCH Geo Sculpt" Geometry Nodes modifier subdivides only the faces within reach of a stroke (the level
     from Detail, a face budget caps it), then adds the strokes in order (a repeat zone): Standard = a bell along the
-    normal, Clay = a flat-topped band, Clay Buildup = filled up to a plane (Alt: dug down), Flat = pressed to the
-    stroke's plane (Alt: a raised flat pad), Move = the grab point dragged, Smooth = blurred, Edge Line = in the band
+    normal, Clay = a flat-topped band, Clay Buildup = filled up to a plane (Alt: dug down), Flat = cut down to
+    the plane under the brush (along a corner: a flat facet; Alt: a raised flat pad), Move = the grab point dragged, Smooth = blurred, Edge Line = in the band
     along the drawn line each side becomes flat (the straight chord to the band's edge) and the points slide onto the
     line, so the edge is exactly where it was drawn - only as far as it goes, its ends fade (Alt: an inward edge),
     Panel Line = a groove along the line, flat floor and straight walls, crisp the same way (Alt: a raised rib)
@@ -41,7 +41,7 @@ from mathutils.bvhtree import BVHTree
 
 MOD = 'MCH Geo Sculpt'
 GROUP = 'MCH Geo Sculpt'
-GROUP_VERSION = 14
+GROUP_VERSION = 16
 PART_KEY = 'mch_geo_part'           # on the stroke object: the part it belongs to
 CHAMFER_MOD, ROUND_MOD = 'MCH Geo Chamfer', 'MCH Geo Round'
 BEVEL_MODS = {'CHAMFER': CHAMFER_MOD, 'ROUND': ROUND_MOD}
@@ -57,7 +57,8 @@ BRUSHES = (
     ('STANDARD', 'Standard', 'A soft bump along the surface (Alt: a dent)'),
     ('CLAY', 'Clay', 'A flat-topped band of clay (Alt: carved in)'),
     ('BUILDUP', 'Clay Buildup', 'Fills the surface up to a plane over the stroke - strokes build up flat (Alt: dug down)'),
-    ('FLAT', 'Flat', 'Presses the surface to the plane of the stroke (Alt: a flat pad pops out)'),
+    ('FLAT', 'Flat', 'Cuts what stands above the plane under the brush down to it - along a corner: a flat facet '
+                     'across it; over bumps: trimmed (Alt: a flat pad pops out)'),
     ('MOVE', 'Move', 'Grab the surface and drag it'),
     ('SMOOTH', 'Smooth', 'Smooths the surface (Shift with any brush)'),
     ('EDGE', 'Edge Line', 'Draw a line: it becomes a crisp edge exactly where you drew it, only as far as you drew it '
@@ -374,17 +375,32 @@ def _build():
     sgn = math_('SIGN', strength)
     fill = math_('MULTIPLY', math_('MULTIPLY', math_('MAXIMUM', math_('MULTIPLY', below, sgn), 0.0), sgn), foot.outputs['Result'])
     bld_off = vmath('SCALE', pn, scale=fill)
-    # Flat: pressed to the stroke's plane; Alt (strength < 0): the plane lifted by |strength| x radius x 0.35 - every
-    # point in the footprint goes up to it: a flat pad pops out
+    # Flat: one plane per stroke - the mean point and mean normal of the surface under the brush (its whole footprint,
+    # like ZBrush's Flatten / Planar).  What stands above it is cut down to it, nothing is filled: stroked along a
+    # corner it cuts a flat facet across the corner (the footprint's mean lies inside it), over bumps it trims them.
+    # Alt (strength < 0): the plane lifted by |strength| x radius x 0.35 and every point in the footprint goes to it -
+    # a flat pad pops out.
+    in_foot = math_('LESS_THAN', t, 1.0)
+    fp = node('GeometryNodeAttributeStatistic', data_type='FLOAT_VECTOR', domain='POINT')
+    link(cur, fp.inputs['Geometry'])
+    link(in_foot, fp.inputs['Selection'])
+    link(pos(), fp.inputs['Attribute'])
+    fnm = node('GeometryNodeAttributeStatistic', data_type='FLOAT_VECTOR', domain='POINT')
+    link(cur, fnm.inputs['Geometry'])
+    link(in_foot, fnm.inputs['Selection'])
+    link(node('GeometryNodeInputNormal').outputs[0], fnm.inputs['Attribute'])
+    fn = vmath('NORMALIZE', fnm.outputs['Mean'])
+    alt_flat = math_('LESS_THAN', strength, 0.0)
     lift = math_('MULTIPLY', math_('MULTIPLY', math_('MAXIMUM', math_('MULTIPLY', strength, -1.0), 0.0), r), 0.35)
-    flat_plane = vmath('ADD', pmean, vmath('SCALE', pn, scale=lift))
-    flat_d = vmath('DOT_PRODUCT', vmath('SUBTRACT', flat_plane, pos()), pn)
-    flat_k = switch('FLOAT', math_('LESS_THAN', strength, 0.0), k_abs, 1.0)
+    flat_plane = vmath('ADD', fp.outputs['Mean'], vmath('SCALE', fn, scale=lift))
+    flat_d = vmath('DOT_PRODUCT', vmath('SUBTRACT', flat_plane, pos()), fn)
+    flat_move = switch('FLOAT', alt_flat, math_('MINIMUM', flat_d, 0.0), flat_d)        # (cut only / a pad: both ways)
+    flat_k = switch('FLOAT', alt_flat, math_('MINIMUM', math_('MULTIPLY', k_abs, 2.0), 1.0), k_abs)
     flat_foot = node('ShaderNodeMapRange', interpolation_type='SMOOTHSTEP', clamp=True)
     link(t, flat_foot.inputs['Value'])
     flat_foot.inputs['From Min'].default_value = 1.0
-    flat_foot.inputs['From Max'].default_value = 0.6
-    flat_off = vmath('SCALE', pn, scale=math_('MULTIPLY', math_('MULTIPLY', flat_d, flat_foot.outputs['Result']), flat_k))
+    flat_foot.inputs['From Max'].default_value = 0.85
+    flat_off = vmath('SCALE', fn, scale=math_('MULTIPLY', math_('MULTIPLY', flat_move, flat_foot.outputs['Result']), flat_k))
     # Edge Line: L = the nearest point of the line, nL its normal there, fade (0 at the line's ends); h = height over
     # L's tangent plane, s = the distance from the line along it; B = the surface a band's width out on this side.
     # Inside the band each side goes flat (the straight chord L -> B), the line's profile is added (Edge Line: a ridge,
@@ -480,14 +496,19 @@ def _build():
     link(math_('ROUND', k), pick.inputs['Index'])
     for i, off in ((0, std_off), (1, clay_off), (2, mv_off), (3, bld_off), (5, flat_off), (6, edge_off), (7, edge_off)):
         link(off, pick.inputs[i + 1])
-    # an Edge Line's band is flat on each side (chord + ridge / V): its faces are shaded flat, so the edge reads crisp
-    full_t = switch('FLOAT', math_('COMPARE', k, float(KIND['PANEL']), 0.1), EDGE_FULL - 0.03, 0.97)
-    is_line = bool_('AND', math_('GREATER_THAN', k, float(KIND['EDGE']) - 0.5),
-                    bool_('AND', math_('LESS_THAN', t, full_t), math_('GREATER_THAN', fade, 0.999)))
+    # a Flat cut (or pad top) is a plane: the points put on it are flagged and faces all on it are shaded flat, so the
+    # facet reads crisp; a later stroke that moves a point (any other brush) clears its flag
+    is_flat_k = math_('COMPARE', k, float(KIND['FLAT']), 0.1)
+    full_w = math_('GREATER_THAN', flat_foot.outputs['Result'], 0.999)
+    on_plane = bool_('AND', bool_('AND', is_flat_k, full_w),
+                     bool_('OR', alt_flat, math_('LESS_THAN', flat_d, -1e-6)))
+    smooth_k = math_('COMPARE', k, float(KIND['SMOOTH']), 0.1)
+    moved = math_('GREATER_THAN', vmath('LENGTH', pick.outputs['Output']), 1e-7)
+    moved_other = bool_('AND', bool_('NOT', is_flat_k), bool_('OR', moved, smooth_k))
     flag = node('GeometryNodeStoreNamedAttribute', data_type='FLOAT', domain='POINT')
     flag.inputs['Name'].default_value = '.mch_geo_flat'
     link(cur, flag.inputs['Geometry'])
-    link(math_('MAXIMUM', named('.mch_geo_flat'), is_line), flag.inputs['Value'])
+    link(switch('FLOAT', moved_other, math_('MAXIMUM', named('.mch_geo_flat'), on_plane), 0.0), flag.inputs['Value'])
     cur = flag.outputs['Geometry']
     setp = node('GeometryNodeSetPosition')
     link(cur, setp.inputs['Geometry'])
@@ -508,8 +529,11 @@ def _build():
     geo = rout.outputs['Geometry']
     smooth = node('GeometryNodeSetShadeSmooth', domain='FACE')
     link(geo, smooth.inputs['Geometry'])
-    # (no flat-shaded bands: the points crowded on a line's creases make the smooth shading crisp there, and the
-    # bands' small facets showed when they were shaded flat)
+    # (Edge / Panel Line bands are not shaded flat: the points crowded on a line's creases make the smooth shading
+    # crisp there.  A Flat brush's facets are: all their points lie on its plane)
+    flat_face = node('GeometryNodeFieldOnDomain', domain='FACE', data_type='FLOAT')
+    link(named('.mch_geo_flat'), flat_face.inputs[0])
+    link(math_('LESS_THAN', flat_face.outputs[0], 0.999), smooth.inputs['Shade Smooth'])
     sharp = node('GeometryNodeSetShadeSmooth', domain='EDGE')
     link(smooth.outputs['Geometry'], sharp.inputs['Geometry'])
     link(bool_('NOT', named('.mch_geo_hard', 'BOOLEAN')), sharp.inputs['Shade Smooth'])

@@ -139,14 +139,37 @@ check('Clay Buildup: filled up to a plane over the stroke, the next stroke build
       b1 > h0 + 0.05 and abs((b2 - b1) - (b1 - h0)) < 0.02, (b1, b2))
 gs.undo_last(A)
 gs.undo_last(A)
-# Flat: a hill pressed to the stroke's plane;  Flat + Alt: a flat pad pops out
+# Flat (user: "아니 모서리에 그어야지"): one plane per stroke - the mean point / normal of the surface under the brush;
+# what stands above it is cut down to it, nothing is filled.  Over a hill: its top cut flat, the ground beside untouched
 gs.add_stroke(A, 'STANDARD', [(0.0, -0.4, 1.0)], [up], 0.35, 1.4)
 hill = height(A, 0.0, -0.4)
-gs.add_stroke(A, 'FLAT', seg((-0.25, -0.4, 1.08), (0.25, -0.4, 1.08), 8), [up] * 8, 0.3, 1.0)
-pressed = height(A, 0.0, -0.4)
-check('Flat: a hill pressed down to the stroke\'s plane', hill > 1.2 and abs(pressed - 1.08) < 0.02, (hill, pressed))
+side0 = height(A, 0.0, 0.25)
+gs.add_stroke(A, 'FLAT', seg((-0.25, -0.4, hill), (0.25, -0.4, hill), 8), [up] * 8, 0.3, 1.0)
+top = [height(A, x, -0.4) for x in (-0.05, 0.0, 0.05)]
+check('Flat over a hill: its top cut down flat (lower, level), nothing raised (the ground past the brush as it was)',
+      hill > 1.2 and max(top) < hill - 0.03 and max(top) - min(top) < 1e-3 and abs(height(A, 0.0, 0.25) - side0) < 1e-4,
+      (hill, top))
 gs.undo_last(A)
 gs.undo_last(A)
+# along a corner of a sharp box: a flat facet across it (the corner cut off, the faces past the brush untouched)
+Kf = box('FlatCorner', (0, 12, 0), bevel=0)
+gs.add_stroke(Kf, 'FLAT', seg((-0.8, -1.0, 1.0), (0.8, -1.0, 1.0), 12), [(0, -0.7071, 0.7071)] * 12, 0.3, 0.6)
+
+
+def diag(ob, s_):
+    """Where a ray toward the corner (-Y +Z diagonal, offset s_ along the facet) meets the part: its depth."""
+    dg = C.evaluated_depsgraph_get()
+    bvh = BVHTree.FromObject(ob, dg)
+    o = Vector((0.0, -3.0, 3.0)) + Vector((0.0, 1.0, 1.0)).normalized() * s_
+    loc = bvh.ray_cast(o, Vector((0.0, 1.0, -1.0)).normalized())[0]
+    return None if loc is None else (loc - o).length
+
+
+d_mid, d_a, d_b = diag(Kf, 0.0), diag(Kf, 0.06), diag(Kf, -0.06)
+check('Flat along a box corner: the corner cut off (deeper than the sharp edge), the cut a flat facet (level across), '
+      'the faces past the brush untouched', d_mid > math.sqrt(2) * 2 + 0.05 and abs(d_a - d_mid) < 2e-3
+      and abs(d_b - d_mid) < 2e-3 and abs(height(Kf, 0.0, 0.3) - 1.0) < 1e-4 and abs(front(Kf, 0.0, -0.3) - 1.0) < 1e-4,
+      (d_mid - math.sqrt(2) * 2, d_a - d_mid, d_b - d_mid))
 gs.add_stroke(A, 'FLAT', seg((-0.3, 0.3, 1.0), (0.3, 0.3, 1.0), 10), [up] * 10, 0.3, -1.0)
 pad = [height(A, x, 0.3) for x in (-0.2, 0.0, 0.2)]
 check('Flat + Alt: a flat pad pops out (raised, its top level)', min(pad) > h0 + 0.05 and max(pad) - min(pad) < 0.01, pad)
