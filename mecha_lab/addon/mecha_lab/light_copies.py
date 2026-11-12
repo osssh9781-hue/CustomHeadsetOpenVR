@@ -36,6 +36,8 @@ import bpy
 import numpy as np
 from bpy.props import BoolProperty, IntProperty
 
+from . import live_ref
+
 MOD = 'MCH Light Copy'
 GROUP = 'MCH Light Copy'
 PROP = 'mch_light'                # on the part: {"holder": ..., "sig": ..., "full": tris, "copy": tris, "pct": %}
@@ -742,7 +744,7 @@ def _eligible(coll, context):
     if coll.library is not None:
         return True
     names = {o.name for o in context.view_layer.objects if o.library is None}
-    return not any(o.library is None and o.name in names for o in coll.all_objects)
+    return not any(o.library is None and o.name in names for o in live_ref.deep_objects(coll))
 
 
 def _needs_copy(ob, pct, deep):
@@ -771,7 +773,7 @@ def _plan(coll, context, dg, memo, low, pct, deep=False):
     heavy = False
     wait = set()
     deps = []
-    for ob in coll.all_objects:
+    for ob in live_ref.deep_objects(coll):
         if ob.type == 'MESH':
             if _tris(ob, dg) >= low:
                 heavy = True

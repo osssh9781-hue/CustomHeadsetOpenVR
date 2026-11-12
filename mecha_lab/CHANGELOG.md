@@ -26,6 +26,9 @@
   light_instances_real_window: 2/2(Light Copies 실제 클릭 → 15 개 가벼움, 3.12 → 0.65 s;
   인스턴스 실제 클릭 → 링크된 원본, 빈 곳 클릭 → 쉬고 나서 다시 가벼움), 로그
   tests/gui/light_instances_log_0.24.139.txt. 스크린샷: 와이어로 본 원본(선택한 인스턴스)과 사본(옆 인스턴스).
+  전체 293 파일(Blender 5.2.3): PASS 6,925 / FAIL 14 — 13 개는 0.24.135 부터 같은 7 파일(키맵 중복 · 썸네일 크기 ·
+  키 안내 카드 · 액션 카드 · 음수 스케일 미러), 1 개는 이번 것(test_v02537: 새 코드가 Ctrl+Z 뒤 낡을 수 있는
+  Collection.all_objects 를 읽음 → live_ref.deep_objects 로 고친 뒤 17/17). zip 점검 12/12, zip 설치 17/20(같은 키맵 검사).
 
 ## 0.24.138 — 스튜디오 배경 그림 다시: 어떤 월드에서든 모델 뒤에 그림, Material Preview 에서도 보이게 (2026-11-12)
 
