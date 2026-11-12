@@ -232,7 +232,7 @@ def scene_load(context, st=None, depsgraph=None, cache=True):
                 if k in seen:
                     continue
                 seen.add(k)
-                own = light_copies.full_tris(src) if not inst.is_instance else None
+                own = light_copies.full_tris(src) if not inst.is_instance else light_copies.instance_full(ob)
                 tris += own if own is not None else _mesh_tris(me)   # 0.24.136 a part drawn light renders itself
         except (ReferenceError, RuntimeError, AttributeError):
             pass

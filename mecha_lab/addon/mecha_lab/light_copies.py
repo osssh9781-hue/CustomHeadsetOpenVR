@@ -16,6 +16,15 @@ How it works - the parts' meshes are never changed:
 
 Every place in the add-on that reads a part's evaluated mesh to keep or cut it goes through ``full`` (the copy
 never ends up in a mesh); "apply all modifiers" never applies this one; the Live Stack does not list it.
+
+0.24.139 (user: "다른 블렌더에서 가져왔어" - parts linked from other .blend files as collection instances) Linked
+objects cannot carry a modifier, so each instanced collection gets a "light set" in this file: a collection with
+two children - FULL (the linked collection itself, off in viewports) and LIGHT (the heavy objects' copies, the light
+objects themselves, the child collections mirrored with their own switches, nested instances pointing at their own
+light sets; off in renders).  An instance empty points at the light set while it shows light, at its collection
+otherwise (selected, a tool or export touching it, a file browser open, the set not ready).  The library files are
+never touched; one set serves every instance of a collection; the file is saved with the empties on their own
+collections (the sets kept, with a fake user); a library that changed gets new copies when the file is opened.
 """
 from __future__ import annotations
 
@@ -48,6 +57,22 @@ WORK = {'thread': None, 'name': None, 'src': None, 'result': None, 'error': None
 STATE = {'asked': 0, 'made': 0, 'scan': 0.0}
 SAVED = {}                        # save_pre: parts that were light (put back in save_post)
 
+# 0.24.139 linked collection instances
+INST = 'mch_light_inst'           # on an instance empty: the key of its own collection
+SET = 'mch_light_set'             # on a light set collection: the key of the collection it stands for
+ROLE = 'mch_light_role'           # on a light set's children: 'full' / 'light' / 'mirror'
+OF = 'mch_light_of'               # on a copy of a linked object: that object's key
+FULL = 'mch_light_full'           # ... its triangles
+COPY = 'mch_light_copy'           # ... the copy's triangles
+SIG = 'mch_light_sig'             # ... the object's signature when the copy was made
+PCT = 'mch_light_pct'             # ... the Copy % it was made with
+INNER = 'mch_light_inner'         # on a light set's own empty standing for a nested instance
+READY = set()                     # collection keys whose light set is built and current
+PENDING = {}                      # collection key -> object keys still waiting for a copy
+VERIFY = []                       # collection keys to compare with their libraries (after a file is opened)
+HOLD = {}                         # object key -> its copy's name (a cache)
+SAVED_E = {}                      # save_pre: empties that showed their light set
+
 
 # ---- settings -----------------------------------------------------------------------------------------------------
 
@@ -56,6 +81,7 @@ def _upd_pct(self, context):
         for ob in parts(context.scene):
             if _info(ob).get('pct') != self.percent:
                 queue([ob.name])
+        plan_instances(context)
 
 
 def _upd_min(self, context):
@@ -227,11 +253,20 @@ def full(ob, depsgraph=None):
 
 
 def full_all(objects, depsgraph=None):
-    """Every one of ``objects`` as itself (one depsgraph update) - exports."""
+    """Every one of ``objects`` as itself (one depsgraph update) - exports.  Instance empties: their own
+    collection."""
     now = time.monotonic()
     changed = False
     for ob in objects:
         orig = getattr(ob, 'original', None) or ob
+        if orig.get(INST):
+            TOUCH['E' + orig.name] = now
+            own = _find_coll(orig[INST])
+            if own is not None and orig.instance_collection != own:
+                OWN['E' + orig.name] = now
+                orig.instance_collection = own
+                changed = True
+            continue
         mod = _mod(orig)
         if mod is None:
             continue
@@ -371,8 +406,8 @@ def _shared(holder, ob):
     return False
 
 
-def _finish(ob, src, res, pct):
-    """The finished copy onto the part: its copy object (new or refreshed) and its modifier."""
+def _copy_mesh(name, src, res):
+    """The decimation result as a new mesh (attributes, materials and the active UV map carried over)."""
     from . import fast_decimate as fd
     oV, oF, vsrc, fsrc = res
     cvert, tloop = src['cvert'], src['tloop']
@@ -382,7 +417,7 @@ def _finish(ob, src, res, pct):
     src_loop = tloop.reshape(-1, 3)[fsrc]
     keep = cvert[src_loop] == vsrc[oF]
     corner_loop = np.where(keep, src_loop, first_loop[vsrc[oF]]).ravel()
-    new = bpy.data.meshes.new(HOLDER.format(ob.name))
+    new = bpy.data.meshes.new(HOLDER.format(name))
     try:
         fd.build_mesh(new, oV, oF)
         fd._write_attrs(new, src['attrs'], vsrc, src['tpoly'][fsrc], corner_loop)
@@ -394,6 +429,13 @@ def _finish(ob, src, res, pct):
     except Exception:
         bpy.data.meshes.remove(new)
         raise
+    return new
+
+
+def _finish(ob, src, res, pct):
+    """The finished copy onto the part: its copy object (new or refreshed) and its modifier."""
+    oF = res[1]
+    new = _copy_mesh(ob.name, src, res)
     holder = _holder(ob)
     if holder is not None and _shared(holder, ob):
         holder = None
@@ -515,6 +557,7 @@ def _rescan(context):
     for ob in parts(context.scene):
         if ob.name not in names and ob.visible_get():
             _remove_one(ob)
+    plan_instances(context)
 
 
 def _remove_one(ob):
@@ -536,6 +579,9 @@ def _work_step(context):
         th.join()
         name, src, res, err, pct = WORK['name'], WORK['src'], WORK['result'], WORK['error'], WORK.get('pct', 10)
         WORK.update(thread=None, name=None, src=None, result=None, error=None)
+        if name.startswith('L'):                     # 0.24.139 a copy of an object of a linked collection
+            _end_linked(name[1:], src, res, err, pct)
+            return
         ob = bpy.data.objects.get(name)
         if ob is not None and err is None and res is not None:
             try:
@@ -554,6 +600,10 @@ def _work_step(context):
         return
     while QUEUE:
         name = QUEUE.pop(0)
+        if name.startswith('L'):                     # 0.24.139 an object of a linked (instanced) collection
+            if _start_linked(context, name[1:], st):
+                return
+            continue
         ob = bpy.data.objects.get(name)
         if ob is None or ob.type != 'MESH' or ob.mode != 'OBJECT':
             if ob is not None and ob.mode != 'OBJECT':
@@ -570,17 +620,419 @@ def _work_step(context):
         pct = st.percent
         target = max(12, int(round(src['ntris'] * pct / 100.0)))
         WORK.update(name=name, src=src, result=None, error=None, pct=pct)
-        n_threads = _threads()
-
-        def job(src=src, target=target, n_threads=n_threads):
-            try:
-                WORK['result'] = _decimate(src, target, n_threads)
-            except Exception as ex:                  # (reported on the main thread)
-                WORK['error'] = ex
-        th = threading.Thread(target=job, name='MCH light copy', daemon=True)
-        WORK['thread'] = th
-        th.start()
+        _start_thread(src, target)
         return
+
+
+def _start_thread(src, target):
+    n_threads = _threads()
+
+    def job(src=src, target=target, n_threads=n_threads):
+        try:
+            WORK['result'] = _decimate(src, target, n_threads)
+        except Exception as ex:                      # (reported on the main thread)
+            WORK['error'] = ex
+    th = threading.Thread(target=job, name='MCH light copy', daemon=True)
+    WORK['thread'] = th
+    th.start()
+
+
+# ---- linked collection instances (0.24.139) ------------------------------------------------------------------------
+
+def _lib_path(lib):
+    """A library's file as one absolute, normalised path (a saved file keeps it relative: '//parts.blend')."""
+    import os
+    parent = getattr(lib, 'parent', None)
+    try:
+        p = bpy.path.abspath(lib.filepath, library=parent) if parent is not None else bpy.path.abspath(lib.filepath)
+    except (TypeError, ValueError):
+        p = lib.filepath
+    return os.path.normcase(os.path.normpath(p))
+
+
+def _id_key(idb):
+    return json.dumps([idb.name, _lib_path(idb.library) if idb.library is not None else ''])
+
+
+def _find(data, key):
+    try:
+        name, lib = json.loads(key)
+    except (TypeError, ValueError):
+        return None
+    try:
+        if not lib:
+            return data.get((name, None))
+        for L in bpy.data.libraries:
+            if _lib_path(L) == lib:
+                found = data.get((name, L.filepath))
+                if found is not None:
+                    return found
+    except (TypeError, KeyError, ReferenceError):
+        pass
+    return None
+
+
+def _find_coll(key):
+    return _find(bpy.data.collections, key)
+
+
+def _find_obj(key):
+    return _find(bpy.data.objects, key)
+
+
+def _holder_for(okey):
+    """The copy made for the linked object ``okey`` (a local object tagged with its key), or None."""
+    name = HOLD.get(okey)
+    h = bpy.data.objects.get((name, None)) if name else None
+    if h is not None and h.get(OF) == okey:
+        return h
+    HOLD.clear()
+    for o in bpy.data.objects:
+        k = o.get(OF) if o.library is None else None
+        if k:
+            HOLD[k] = o.name
+    name = HOLD.get(okey)
+    return bpy.data.objects.get((name, None)) if name else None
+
+
+def _tris(ob, dg):
+    """Triangles of ``ob`` as it is drawn (its modifiers when it is evaluated, else its mesh)."""
+    try:
+        ev = ob.evaluated_get(dg) if dg is not None else ob
+        me = ev.data if getattr(ev, 'is_evaluated', False) else ob.data
+        return len(me.loops) - 2 * len(me.polygons)
+    except (AttributeError, ReferenceError, RuntimeError):
+        return 0
+
+
+SETS = {}                         # collection key -> its light set's name (a cache)
+
+
+def _set_of(key):
+    """The light set standing for collection ``key``, or None."""
+    name = SETS.get(key)
+    c = bpy.data.collections.get((name, None)) if name else None
+    if c is not None and c.get(SET) == key:
+        return c
+    SETS.clear()
+    for c in bpy.data.collections:
+        if c.library is None and c.get(SET):
+            SETS[c[SET]] = c.name
+    name = SETS.get(key)
+    return bpy.data.collections.get((name, None)) if name else None
+
+
+def _instancers(context):
+    """Instance empties of the view layer (local ones - a linked empty cannot be pointed elsewhere)."""
+    out = []
+    for o in context.view_layer.objects:
+        try:
+            if o.type == 'EMPTY' and o.instance_type == 'COLLECTION' and o.library is None \
+                    and (o.instance_collection is not None or o.get(INST)):
+                out.append(o)
+        except ReferenceError:
+            continue
+    return out
+
+
+def _eligible(coll, context):
+    """A collection drawn through instances: linked, or local with none of its objects in the view layer."""
+    if coll is None or coll.get(SET) or coll.get(ROLE):
+        return False
+    if coll.library is not None:
+        return True
+    names = {o.name for o in context.view_layer.objects if o.library is None}
+    return not any(o.library is None and o.name in names for o in coll.all_objects)
+
+
+def _needs_copy(ob, pct, deep):
+    """No copy yet, made with another Copy %, or (``deep``: after a file is opened) the object changed since."""
+    okey = _id_key(ob)
+    if 'L' + okey in FAILED:
+        return False
+    h = _holder_for(okey)
+    if h is None or h.get(PCT) != pct or h.data is None:
+        return True
+    if not deep:
+        return False
+    try:
+        return h.get(SIG) != signature(ob)
+    except (AttributeError, ReferenceError, RuntimeError):
+        return True
+
+
+def _plan(coll, context, dg, memo, low, pct, deep=False):
+    """Does ``coll`` (its objects, child collections, nested instances) hold a heavy object?  The heavy objects
+    that need a (new) copy are queued and noted as pending for every collection on the way."""
+    key = _id_key(coll)
+    if key in memo:
+        return memo[key]
+    memo[key] = False                                # (a collection instancing itself: no endless loop)
+    heavy = False
+    wait = set()
+    deps = []
+    for ob in coll.all_objects:
+        if ob.type == 'MESH':
+            if _tris(ob, dg) >= low:
+                heavy = True
+                if _needs_copy(ob, pct, deep):
+                    okey = _id_key(ob)
+                    wait.add(okey)
+                    if 'L' + okey not in QUEUE and WORK['name'] != 'L' + okey:
+                        queue(['L' + okey])
+        elif ob.type == 'EMPTY' and ob.instance_type == 'COLLECTION' and ob.instance_collection is not None:
+            if _plan(ob.instance_collection, context, dg, memo, low, pct, deep):
+                heavy = True
+                deps.append(_id_key(ob.instance_collection))
+    memo[key] = heavy
+    if heavy and (wait or key not in READY):        # (a ready set with nothing to wait for: left as it is)
+        PENDING[key] = PENDING.get(key, set()) | wait
+        DEPS[key] = deps
+        if wait:
+            READY.discard(key)
+    return heavy
+
+
+DEPS = {}                         # collection key -> keys of the nested collections its light set stands on
+
+
+def plan_instances(context):
+    """Every instance empty of an eligible collection: marked (its collection's key), its collection planned.
+    Returns (instances, collections) with heavy content."""
+    st = settings(context)
+    low = st.min_tris if st is not None else 300_000
+    pct = st.percent if st is not None else 10
+    dg = context.evaluated_depsgraph_get()
+    memo = {}
+    n_inst, colls = 0, set()
+    for e in _instancers(context):
+        own = _find_coll(e[INST]) if e.get(INST) else e.instance_collection
+        if own is None or not _eligible(own, context):
+            continue
+        if _plan(own, context, dg, memo, low, pct):
+            e[INST] = _id_key(own)
+            n_inst += 1
+            colls.add(_id_key(own))
+        elif e.get(INST):
+            _point(e, own)
+            del e[INST]
+    _try_sets()
+    return n_inst, len(colls)
+
+
+def _start_linked(context, okey, st):
+    """The next linked object's copy started (its geometry read here, decimated in the thread); False: skipped."""
+    ob = _find_obj(okey)
+    if ob is None or ob.type != 'MESH':
+        _drop_pending(okey)
+        return False
+    dg = context.evaluated_depsgraph_get()
+    if not getattr(ob.evaluated_get(dg), 'is_evaluated', False):
+        # (its collection is drawn through its light set: the empties back on their collections first, so the
+        #  object is evaluated with its modifiers)
+        sync_instances(context, time.monotonic(), _browser_open())
+        dg.update()
+    try:
+        src = _source(ob, dg)
+    except (RuntimeError, ReferenceError, AttributeError, ValueError) as ex:
+        print('Mecha Light Copies:', ob.name, ex)
+        FAILED['L' + okey] = True
+        _drop_pending(okey)
+        return False
+    if src['ntris'] < 24:
+        _drop_pending(okey)
+        return False
+    pct = st.percent
+    WORK.update(name='L' + okey, src=src, result=None, error=None, pct=pct)
+    _start_thread(src, max(12, int(round(src['ntris'] * pct / 100.0))))
+    return True
+
+
+def _drop_pending(okey):
+    for k in list(PENDING):
+        PENDING[k].discard(okey)
+    _try_sets()
+
+
+def _end_linked(okey, src, res, err, pct):
+    ob = _find_obj(okey)
+    if ob is not None and err is None and res is not None:
+        try:
+            new = _copy_mesh(ob.name, src, res)
+            h = _holder_for(okey)
+            if h is None:
+                h = bpy.data.objects.new(HOLDER.format(ob.name), new)
+                h[TAG] = True
+                h[OF] = okey
+                h.hide_render = True
+                h.use_fake_user = True                 # (kept while it is in no collection yet)
+                HOLD[okey] = h.name
+            else:
+                old = h.data
+                h.data = new
+                if old is not None and old.users == 0:
+                    bpy.data.meshes.remove(old)
+            h.matrix_world = ob.matrix_world.copy()
+            h[FULL] = int(src['ntris'])
+            h[COPY] = int(len(res[1]))
+            h[SIG] = src['sig']
+            h[PCT] = int(pct)
+            STATE['made'] += 1
+        except Exception as ex:                      # (that object stays itself in the light set)
+            print('Mecha Light Copies:', okey, ex)
+    else:
+        print('Mecha Light Copies:', okey, err)
+        FAILED['L' + okey] = True                    # (shown as itself; not tried again until turned on anew)
+    _drop_pending(okey)
+
+
+def _try_sets():
+    """Every planned collection whose copies are all made (and whose nested sets are built): its light set built."""
+    progress = True
+    while progress:
+        progress = False
+        for key in list(PENDING):
+            if PENDING[key] or any(d in PENDING or d not in READY for d in DEPS.get(key, ())):
+                continue
+            coll = _find_coll(key)
+            del PENDING[key]
+            if coll is not None:
+                _build_set(coll)
+                READY.add(key)
+            progress = True
+
+
+def _clear_light(L):
+    for ch in list(L.children):
+        if ch.get(ROLE) == 'mirror':
+            _clear_light(ch)
+            bpy.data.collections.remove(ch)
+        else:
+            L.children.unlink(ch)
+    for o in list(L.objects):
+        if o.get(INNER):
+            bpy.data.objects.remove(o, do_unlink=True)
+        else:
+            L.objects.unlink(o)
+
+
+def _mirror(src, dst):
+    """``dst`` made like ``src``: heavy objects by their copies, nested instances by empties on their light sets,
+    the rest the objects themselves; child collections mirrored with their own viewport / render switches."""
+    for ob in src.objects:
+        if ob.type == 'MESH':
+            h = _holder_for(_id_key(ob))
+            dst.objects.link(h if h is not None else ob)
+        elif ob.type == 'EMPTY' and ob.instance_type == 'COLLECTION' and ob.instance_collection is not None \
+                and _id_key(ob.instance_collection) in READY and _set_of(_id_key(ob.instance_collection)):
+            e = bpy.data.objects.new(f'{ob.name} (light)', None)
+            e.instance_type = 'COLLECTION'
+            e.instance_collection = _set_of(_id_key(ob.instance_collection))
+            e.matrix_world = ob.matrix_world.copy()
+            e.empty_display_size = ob.empty_display_size
+            e[TAG] = True
+            e[INNER] = True
+            dst.objects.link(e)
+        else:
+            dst.objects.link(ob)
+    for ch in src.children:
+        m = bpy.data.collections.new(f'{ch.name} (light)')
+        m[ROLE] = 'mirror'
+        m.hide_viewport = ch.hide_viewport
+        m.hide_render = ch.hide_render
+        dst.children.link(m)
+        _mirror(ch, m)
+
+
+def _build_set(coll):
+    """The light set of ``coll``: FULL (the collection itself, off in viewports) + LIGHT (the copies, off in
+    renders); built anew over an earlier one (its copies kept)."""
+    key = _id_key(coll)
+    W = _set_of(key)
+    if W is None:
+        W = bpy.data.collections.new(f'{coll.name} (light set)')
+        W[SET] = key
+        W.use_fake_user = True                       # (no empty points at it in a saved file)
+        SETS[key] = W.name
+    H = next((c for c in W.children if c.get(ROLE) == 'full'), None)
+    if H is None:
+        H = bpy.data.collections.new(f'{coll.name} (full)')
+        H[ROLE] = 'full'
+        W.children.link(H)
+    if not any(c == coll for c in H.children):
+        for c in list(H.children):
+            H.children.unlink(c)
+        H.children.link(coll)
+    H.hide_viewport, H.hide_render = True, False
+    L = next((c for c in W.children if c.get(ROLE) == 'light'), None)
+    if L is None:
+        L = bpy.data.collections.new(f'{coll.name} (light)')
+        L[ROLE] = 'light'
+        W.children.link(L)
+    L.hide_viewport, L.hide_render = False, True
+    _clear_light(L)
+    _mirror(coll, L)
+    W.instance_offset = coll.instance_offset
+    return W
+
+
+def _point(e, coll):
+    if coll is not None and e.instance_collection != coll:
+        OWN['E' + e.name] = time.monotonic()
+        e.instance_collection = coll
+
+
+def sync_instances(context, now, browser):
+    """Each marked instance empty on its light set or on its own collection as it should be now."""
+    n = 0
+    for e in _instancers(context):
+        key = e.get(INST)
+        if not key:
+            continue
+        own = _find_coll(key)
+        if own is None:
+            continue
+        W = _set_of(key) if key in READY else None
+        cur = e.instance_collection
+        if cur is not None and cur != own and cur != W and not cur.get(SET):
+            del e[INST]                              # (the user pointed it at another collection: theirs)
+            continue
+        try:
+            sel = e.select_get()
+        except RuntimeError:
+            sel = False
+        want = W is not None and not browser and not sel and now - TOUCH.get('E' + e.name, -1e9) >= REST
+        tgt = W if want else own
+        if cur != tgt:
+            _point(e, tgt)
+            n += 1
+    return n
+
+
+def _verify_step(context):
+    """One collection of an opened file compared with its library: changed objects get new copies."""
+    if not VERIFY:
+        return
+    key = VERIFY.pop(0)
+    coll = _find_coll(key)
+    if coll is None:
+        return
+    st = settings(context)
+    low = st.min_tris if st is not None else 300_000
+    pct = st.percent if st is not None else 10
+    READY.discard(key)
+    _plan(coll, context, context.evaluated_depsgraph_get(), {}, low, pct, deep=True)
+    _try_sets()
+
+
+def instance_full(ob):
+    """The triangles a drawn instance object stands for: a light set's copy counts as its linked object."""
+    o = getattr(ob, 'original', None) or ob
+    try:
+        n = o.get(FULL) if o.library is None and o.get(TAG) else None
+    except ReferenceError:
+        return None
+    return int(n) if isinstance(n, (int, float)) else None
 
 
 # ---- which parts show their copy ----------------------------------------------------------------------------------
@@ -650,7 +1102,7 @@ def sync(context=None):
             OWN[name] = now
             mod.show_viewport = want
             n += 1
-    return n
+    return n + sync_instances(context, now, browser)
 
 
 def _tick():
@@ -663,6 +1115,7 @@ def _tick():
         if now - STATE['scan'] > SCAN_SECONDS:
             STATE['scan'] = now
             _rescan(ctx)
+        _verify_step(ctx)
         _work_step(ctx)
         sync(ctx)
     except Exception as ex:                          # (never let the timer die)
@@ -703,6 +1156,13 @@ def _on_load(_dummy=None):
     SAVED.clear()
     WORK.update(thread=None, name=None, src=None, result=None, error=None)
     STATE.update(asked=0, made=0, scan=0.0)
+    READY.clear()
+    PENDING.clear()
+    DEPS.clear()
+    HOLD.clear()
+    SETS.clear()
+    SAVED_E.clear()
+    VERIFY[:] = [c[SET] for c in bpy.data.collections if c.library is None and c.get(SET)]
     for ob in bpy.data.objects:
         if ob.type == 'MESH' and _mod(ob) is not None:
             DIRTY.add(ob.name)                       # (checked against the parts before they go light again)
@@ -719,6 +1179,14 @@ def _on_save_pre(_dummy=None):
             SAVED[ob.name] = True
             OWN[ob.name] = now
             mod.show_viewport = False
+    SAVED_E.clear()                                  # (0.24.139 instance empties saved on their own collections)
+    for e in bpy.data.objects:
+        key = e.get(INST) if e.type == 'EMPTY' and e.library is None else None
+        if key and e.instance_collection is not None and e.instance_collection.get(SET):
+            own = _find_coll(key)
+            if own is not None:
+                SAVED_E[e.name] = e.instance_collection.name
+                _point(e, own)
 
 
 @bpy.app.handlers.persistent
@@ -731,6 +1199,12 @@ def _on_save_post(_dummy=None):
             OWN[name] = now
             mod.show_viewport = True
     SAVED.clear()
+    for name, wname in list(SAVED_E.items()):
+        e = bpy.data.objects.get((name, None))
+        W = bpy.data.collections.get((wname, None))
+        if e is not None and W is not None:
+            _point(e, W)
+    SAVED_E.clear()
 
 
 HANDLERS = (('depsgraph_update_post', _on_update), ('load_post', _on_load), ('save_pre', _on_save_pre),
@@ -751,9 +1225,12 @@ def turn_on(context):
                                                       and _info(o).get('pct') == st.percent)]
     STATE['asked'], STATE['made'] = 0, 0
     queue([o.name for o in heavy])
+    FAILED.clear()
+    n_inst, n_coll = plan_instances(context)
     STATE['scan'] = time.monotonic()
     _timer_on()
-    return (f'Light Copies on: {len(heavy)} heavy part(s) - copies are made in the background (Blender keeps '
+    more = f', {n_coll} linked collection(s) ({n_inst} instance(s))' if n_inst else ''
+    return (f'Light Copies on: {len(heavy)} heavy part(s){more} - copies are made in the background (Blender keeps '
             'working)')
 
 
@@ -768,6 +1245,19 @@ def turn_off(context):
     WORK.update(thread=None, name=None, src=None, result=None, error=None)
     n = 0
     now = time.monotonic()
+    for e in list(bpy.data.objects):                 # 0.24.139 instance empties back on their own collections
+        key = e.get(INST) if e.type == 'EMPTY' and e.library is None else None
+        if key:
+            _point(e, _find_coll(key))
+            del e[INST]
+            n += 1
+    for c in [c for c in bpy.data.collections if c.library is None and (c.get(SET) or c.get(ROLE))]:
+        bpy.data.collections.remove(c)
+    for d in (READY, HOLD, SETS):
+        d.clear()
+    PENDING.clear()
+    DEPS.clear()
+    VERIFY.clear()
     for ob in list(bpy.data.objects):
         mod = _mod(ob) if ob.type == 'MESH' else None
         if mod is not None:
@@ -810,8 +1300,20 @@ def status(context):
             light += 1
             full_n += int(info.get('full', 0))
             copy_n += int(info.get('copy', 0))
-    lines.append(f'{light} part(s) drawn light: {full_n / 1e6:.1f} M > {copy_n / 1e6:.1f} M triangles' if light
-                 else 'No part drawn light yet (selected or worked-on parts show themselves)')
+    sets = [k for k in READY if _set_of(k) is not None]
+    inst = sum(1 for e in _instancers(context) if e.instance_collection is not None
+               and e.instance_collection.get(SET))
+    hf = hc = 0
+    for o in bpy.data.objects:
+        if o.library is None and o.get(OF) and o.users > 1:
+            hf += int(o.get(FULL, 0))
+            hc += int(o.get(COPY, 0))
+    if light or not inst:
+        lines.append(f'{light} part(s) drawn light: {full_n / 1e6:.1f} M > {copy_n / 1e6:.1f} M triangles' if light
+                     else 'No part drawn light yet (selected or worked-on parts show themselves)')
+    if inst or sets:
+        lines.append(f'{inst} instance(s) of {len(sets)} linked collection(s) drawn light (each object\'s copy: '
+                     f'{hf / 1e6:.1f} M > {hc / 1e6:.1f} M triangles)')
     return lines
 
 
