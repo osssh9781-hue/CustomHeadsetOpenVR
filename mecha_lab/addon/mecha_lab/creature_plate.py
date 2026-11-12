@@ -49,7 +49,12 @@ FEATHER_STYLES = [('VANE', 'Vane', 'A thin blade, knife-thin edges, thicker at t
                   ('SHAFT', 'Shaft', 'A thin vane with a sharp shaft along the middle, like a feather\'s quill')]
 LIVE_KEYS = ('profile', 'peak', 'end_peak', 'direction', 'edge_round', 'edge_thickness', 'sink', 'outline_smooth',
              'resolution', 'tip_lift', 'feather_style', 'attach')
-POINT_KEYS = ('outline_smooth', 'resolution', 'profile', 'edge_round', 'feather_style')    # change the point set / shape field
+POINT_KEYS = ('outline_smooth', 'resolution', 'profile', 'edge_round', 'feather_style')
+# 0.24.144 (user: "크리쳐 플레이트에서 왜 내가 전에 썼던 값이 적용이 돼서 안 나와?") what the next plate takes from the last one:
+# its STYLE (the last plate you changed); the SIZE values (lengths: they fit one plate, not the next) start Auto on every
+# new plate - one typed with no plate live is used for the next plate once
+STYLE_KEYS = ('profile', 'direction', 'edge_round', 'outline_smooth', 'resolution', 'feather_style', 'attach')
+SIZE_AUTO = {'peak': 0.0, 'end_peak': -1.0, 'tip_lift': -1.0, 'edge_thickness': 0.0, 'sink': 0.0}    # change the point set / shape field
 _CACHE = {}          # object name -> (key, field data): rays are cast only when the point set changes
 
 
@@ -63,8 +68,8 @@ def _update(self, context):
     except (cg.CutError, ValueError, RuntimeError) as ex:
         self.last_error = str(ex)
     st = getattr(getattr(context, 'scene', None), 'mch_cplate', None)
-    if st is not None:                     # the next plate starts like this one (heights stay Auto)
-        for k in ('profile', 'direction', 'edge_round', 'edge_thickness', 'sink', 'outline_smooth', 'resolution'):
+    if st is not None:                     # the next plate starts like this one (its style; sizes stay Auto)
+        for k in STYLE_KEYS:
             try:
                 if getattr(st, k) != getattr(self, k):
                     setattr(st, k, getattr(self, k))
@@ -477,6 +482,11 @@ def perform(context, loops, projector):
     p = ob.mch_cplate
     for k in LIVE_KEYS:
         setattr(p, k, getattr(st, k))
+    for k, auto in SIZE_AUTO.items():      # 0.24.144 a size typed for the next plate: used once, then Auto again
+        try:
+            setattr(st, k, auto)
+        except (AttributeError, TypeError):
+            pass
     try:
         natural = rebuild(context, ob)
     except Exception:
@@ -488,9 +498,9 @@ def perform(context, loops, projector):
     cen = sum((v.co for v in me.vertices), Vector()) / max(1, len(me.vertices))
     me.transform(Matrix.Translation(-cen))
     ob.matrix_world = Matrix.Translation(cen)
-    if st.peak <= 0:
+    if p.peak <= 0:                       # (the plate's own copy: the scene's was put back to Auto above)
         p.peak = natural
-    if st.end_peak < 0:
+    if p.end_peak < 0:
         p.end_peak = p.peak * {'SCALE': 0.15, 'FEATHER': 0.5}.get(p.profile, 1.0)     # a scale thins out to its tip
     p.live = True
     for o in context.selected_objects:
@@ -611,6 +621,8 @@ def draw(layout, context):
     col = layout.column(align=True)
     col.scale_y = 0.8
     for line in ('Draw an outline on a mesh: a rounded plate on it', 'Height 0 = Auto, End Height -1 = same',
+                 'A new plate: the last plate\'s shape; Height / Lift / Thickness / Sink Auto',
+                 '(a size set here with no plate selected: the next plate only)',
                  'End Height: the far end lifts (or sinks) like a scale', 'Apply: plain mesh'):
         col.label(text=line)
 

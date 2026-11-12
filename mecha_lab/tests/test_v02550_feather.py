@@ -106,4 +106,40 @@ ratio = {k: (v[1] / v[0]) if v[0] > 1e-6 else 0 for k, v in secs.items()}
 check('cross-sections: Vane round (its quarter almost as high as its middle), Ridge a sharp middle, Shaft a thin vane '
       'with a narrow crest (the lowest quarter)', ratio['VANE'] > ratio['RIDGE'] > ratio['SHAFT'] + 0.1,
       {k: round(v, 3) for k, v in ratio.items()})
+
+# 0.24.144 (user: "크리쳐 플레이트에서 왜 내가 전에 썼던 값이 적용이 돼서 안 나와?") the next plate: the last plate's style, its
+# own sizes (Auto) - a size typed for the next plate is used once
+for o in C.selected_objects:
+    o.select_set(False)
+first = fe                                                   # a live Feather from above
+C.view_layer.objects.active = first
+first.mch_cplate.edge_thickness = 0.2                        # sizes changed on that plate ...
+first.mch_cplate.sink = 0.15
+first.mch_cplate.feather_style = 'SHAFT'                     # ... and its style
+first.mch_cplate.attach = 0.55
+check('changing a live plate: its style goes on to the next plate (Shape, Feather, Attach), its sizes do not',
+      st.profile == 'FEATHER' and st.feather_style == 'SHAFT' and abs(st.attach - 0.55) < 1e-6
+      and st.edge_thickness == 0.0 and st.sink == 0.0, (st.feather_style, st.attach, st.edge_thickness, st.sink))
+st.peak, st.tip_lift = 0.3, 0.2                              # typed with no plate live: for the next plate
+nxt, _vs = plate('FEATHER', 30.0, style='SHAFT', attach=0.55, lift=0.2)
+st.peak = 0.3
+b = lying_cylinder(33.0)
+P2 = cg.OrthoProjector(TOP, center=Vector((0, 33.0, 0)))
+for o in C.selected_objects:
+    o.select_set(False)
+b.select_set(True)
+C.view_layer.objects.active = b
+cpl.perform(C, ll.line_loops(C, P2, [(500 - 80 + 175 * i / 29, 500) for i in range(30)], br), P2)
+used = C.active_object
+for o in C.selected_objects:
+    o.select_set(False)
+b2 = lying_cylinder(36.0)
+P3 = cg.OrthoProjector(TOP, center=Vector((0, 36.0, 0)))
+b2.select_set(True)
+C.view_layer.objects.active = b2
+cpl.perform(C, ll.line_loops(C, P3, [(500 - 80 + 175 * i / 29, 500) for i in range(30)], br), P3)
+after = C.active_object
+check('a Height typed for the next plate: that plate gets it; the plate after it is Auto again (not the old value)',
+      abs(used.mch_cplate.peak - 0.3) < 1e-6 and abs(after.mch_cplate.peak - 0.3) > 1e-3 and st.peak == 0.0
+      and after.mch_cplate.feather_style == 'SHAFT', (used.mch_cplate.peak, after.mch_cplate.peak, st.peak))
 summary()
