@@ -214,6 +214,9 @@ class _Rec:
         self.log.append(('op', idname, text))
         return type('OpProps', (), {})()
 
+    def template_icon(self, icon_value=0, **_kw):
+        self.log.append(('icon', icon_value))
+
     def template_color_ramp(self, data, prop, **_kw):
         self.log.append(('ramp', prop))
 

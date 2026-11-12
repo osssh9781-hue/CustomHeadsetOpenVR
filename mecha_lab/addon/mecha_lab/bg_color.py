@@ -48,6 +48,64 @@ def _upd_mat(self, context):
     update_material_views(context.scene)
 
 
+# ---- 0.24.142 (user: "n 패널 상단에 배경 이미지랑 배경 컬러 설정하는 거 넣어 줘") the picture list for the sidebar ------
+
+_ITEMS = []                        # (kept alive: Blender reads the strings of a dynamic enum later)
+_PREV = {'coll': None}
+
+
+def _pick_items(self, context):
+    from . import backdrops
+    _ITEMS[:] = [(ident, label, '', i) for i, (ident, label) in enumerate(backdrops.entries())] or \
+        [('NONE', 'No pictures', '', 0)]
+    return _ITEMS
+
+
+def _pick_get(self):
+    from . import backdrops
+    scene = self.id_data
+    cur = picture_ident(scene)
+    for i, (ident, _label) in enumerate(backdrops.entries()):
+        if ident == cur:
+            return i
+    return 0
+
+
+def _pick_set(self, value):
+    from . import backdrops
+    ents = backdrops.entries()
+    if not 0 <= value < len(ents):
+        return
+    show_picture(self.id_data, ents[value][0])
+
+
+def show_picture(scene, ident):
+    """Picture ``ident`` behind the model (the background on if it was off)."""
+    st = settings(scene)
+    st.image = ident
+    st.mode = 'IMAGE'
+    if on(scene):
+        set_color(scene)
+    else:
+        apply(scene)
+
+
+def preview_icon(path):
+    """An icon of picture ``path`` for the sidebar (only the pictures shown are loaded), or 0."""
+    if not path or not os.path.isfile(path):
+        return 0
+    try:
+        from bpy.utils import previews as _previews
+        if _PREV['coll'] is None:
+            _PREV['coll'] = _previews.new()
+        coll = _PREV['coll']
+        if path not in coll:
+            coll.load(path, path, 'IMAGE')
+        return coll[path].icon_id
+    except (KeyError, RuntimeError, AttributeError):
+        return 0
+
+
 class MCH_PG_Background(bpy.types.PropertyGroup):
     color: FloatVectorProperty(name='Background', subtype='COLOR', size=3, min=0.0, max=1.0,
                                default=(0.18, 0.18, 0.18), update=_upd_color,
@@ -70,6 +128,8 @@ class MCH_PG_Background(bpy.types.PropertyGroup):
     ramp: BoolProperty(name='Colour Ramp', default=False, update=_upd_color,
                        description='The picture\'s dark and light parts take the ramp\'s colours (Dark / Light, Edit '
                        'Ramp… for more stops)')
+    image_pick: EnumProperty(name='Picture', items=_pick_items, get=_pick_get, set=_pick_set,
+                             description='The picture behind the model: the studio backdrops, then your folder')
     material_too: BoolProperty(name='Material Preview Too', default=True, update=_upd_mat,
                                description='Material Preview shows the scene\'s world (your HDRI and the background) '
                                'instead of Blender\'s own studio light')
@@ -493,6 +553,86 @@ class MCH_OT_bg_ramp(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_bg_picture_step(bpy.types.Operator):
+    """The previous / next background picture (the studio backdrops, then your folder)"""
+    bl_idname = 'mch.bg_picture_step'
+    bl_label = 'Next Background Picture'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    step: bpy.props.IntProperty(default=1, options={'SKIP_SAVE'})
+
+    def execute(self, context):
+        from . import backdrops
+        ents = backdrops.entries()
+        if not ents:
+            return {'CANCELLED'}
+        ids = [e[0] for e in ents]
+        cur = picture_ident(context.scene)
+        i = ids.index(cur) if cur in ids else -self.step
+        show_picture(context.scene, ids[(i + self.step) % len(ids)])
+        try:
+            from . import side_panel
+            side_panel.dirty()
+        except (ImportError, AttributeError):
+            pass
+        return {'FINISHED'}
+
+
+def draw_panel(layout, context):
+    """The background settings (the sidebar's own Background panel, at the top of the Mecha Lab tab)."""
+    from .workspace_ui import isz
+    sc = context.scene
+    st = settings(sc)
+    if st is None:
+        return
+    is_on = on(sc)
+    col = layout.column()
+    r = col.row(align=True)
+    r.operator('mch.bg_color', text='Background Colour', icon='CHECKBOX_HLT' if is_on else 'CHECKBOX_DEHLT',
+               depress=is_on)
+    r.prop(st, 'color', text='')
+    col.row(align=True).prop(st, 'mode', expand=True)
+    if st.mode == 'IMAGE':
+        icon = preview_icon(picture_path(sc))
+        if icon:
+            col.template_icon(icon_value=icon, scale=isz(6.0))
+        r = col.row(align=True)
+        r.operator('mch.bg_picture_step', text='', icon='TRIA_LEFT').step = -1
+        r.prop(st, 'image_pick', text='')
+        r.operator('mch.bg_picture_step', text='', icon='TRIA_RIGHT').step = 1
+        col.operator('mch.mech_bg_folder', text='Choose Folder…', icon='FILE_FOLDER')
+        col.row(align=True).prop(st, 'fit', expand=True)
+        col.prop(st, 'bright')
+        col.prop(st, 'contrast')
+        col.prop(st, 'ramp')
+        rn = ramp_node(sc)
+        if st.ramp and rn is not None:
+            col.template_color_ramp(rn, 'color_ramp', expand=True)
+    col.prop(st, 'material_too')
+    col.prop(st, 'solid_too')
+    try:
+        from .mech_shader import hdri_world
+        if hdri_world(sc) is not None:
+            col.operator('mch.mech_hdri', text='Mecha HDRI Off (back to your world)', icon='X').action = 'OFF'
+    except ImportError:
+        pass
+
+
+class MCH_PT_background(bpy.types.Panel):
+    """0.24.142 The background - colour or picture behind the model - at the top of the sidebar's Mecha Lab tab"""
+    bl_idname = 'MCH_PT_background'
+    bl_label = 'Background'
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'Mecha Lab'
+    bl_order = -100                                  # (before every other Mecha Lab panel)
+
+    def draw_header(self, context):
+        self.layout.label(text='', icon='WORLD')
+
+    def draw(self, context):
+        draw_panel(self.layout, context)
+
+
 class MCH_OT_bg_fit(bpy.types.Operator):
     """The picture: Fill (the frame covered, its edges cut) or Fit (the whole picture, the colour round it)"""
     bl_idname = 'mch.bg_fit'
@@ -526,7 +666,8 @@ class MCH_OT_bg_color(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_PG_Background, MCH_OT_bg_color, MCH_OT_bg_picture, MCH_OT_bg_fit, MCH_OT_bg_ramp)
+CLASSES = (MCH_PG_Background, MCH_OT_bg_color, MCH_OT_bg_picture, MCH_OT_bg_fit, MCH_OT_bg_ramp,
+           MCH_OT_bg_picture_step, MCH_PT_background)
 
 
 def register():
@@ -536,6 +677,13 @@ def register():
 
 
 def unregister():
+    if _PREV['coll'] is not None:
+        try:
+            from bpy.utils import previews as _previews     # (not "import bpy...": that made bpy local here)
+            _previews.remove(_PREV['coll'])
+        except (KeyError, RuntimeError):
+            pass
+        _PREV['coll'] = None
     if hasattr(bpy.types.Scene, 'mch_bg'):
         del bpy.types.Scene.mch_bg
     for c in reversed(CLASSES):

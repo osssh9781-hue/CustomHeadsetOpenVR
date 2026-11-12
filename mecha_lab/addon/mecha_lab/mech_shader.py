@@ -2339,35 +2339,15 @@ def draw(layout, context):
     r.operator('mch.mech_shader_unlink', text='Unlink', icon='UNLINKED')    # 0.24.95 its own copy
     r.operator('mch.mech_shader_edges', icon='MOD_EDGESPLIT')
     r.operator('mch.mech_shader_apply', text='New Copy', icon='DUPLICATE').preset = st.preset
-    draw_background(layout, context)          # 0.24.137 (the HDRI list is gone: the user's own HDRI add-on)
+    # (0.24.137 the HDRI list gone; 0.24.142 the background has its own panel at the top of the tab: bg_color)
 
 
 def draw_background(layout, context):
-    """0.24.137 the Render tab's Background section in the sidebar: Background Colour on any world."""
+    """0.24.137 the background box; 0.24.142 drawn by the sidebar's own Background panel (bg_color.draw_panel)."""
     from . import bg_color
-    sc = context.scene
-    st = bg_color.settings(sc)
     box = layout.box()
-    on = bg_color.on(sc)
-    box.label(text='Background' + (' (on)' if on else ''), icon='WORLD')
-    r = box.row(align=True)
-    r.operator('mch.bg_color', text='Background Colour', icon='CHECKBOX_HLT' if on else 'CHECKBOX_DEHLT', depress=on)
-    if st is not None:
-        r.prop(st, 'color', text='')
-        box.row(align=True).prop(st, 'mode', expand=True)       # 0.24.138 a picture behind the model
-        if st.mode == 'IMAGE':
-            box.row(align=True).prop(st, 'fit', expand=True)
-            box.prop(st, 'bright')
-            box.prop(st, 'contrast')
-            box.prop(st, 'ramp')                                 # 0.24.140 the Colour Ramp back
-            rn = bg_color.ramp_node(sc)
-            if st.ramp and rn is not None:
-                box.template_color_ramp(rn, 'color_ramp', expand=True)
-            box.label(text='Pictures: the Render tab of the Mecha Lab panel')
-        box.prop(st, 'material_too')
-        box.prop(st, 'solid_too')
-    if hdri_world(sc) is not None:
-        box.operator('mch.mech_hdri', text='Mecha HDRI Off (back to your world)', icon='X').action = 'OFF'
+    box.label(text='Background' + (' (on)' if bg_color.on(context.scene) else ''), icon='WORLD')
+    bg_color.draw_panel(box, context)
 
 
 def draw_hdri(layout, context):
