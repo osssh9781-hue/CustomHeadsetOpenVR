@@ -134,6 +134,11 @@ class MCH_OT_mesh_tool(bpy.types.Operator):
 
     @classmethod
     def description(cls, context, props):
+        if props.action == 'DECIMATE':                       # 0.24.143 (the right-click button)
+            zb = getattr(context.scene, 'mch_zb', None)
+            keep = zb.decimate if zb is not None else 20
+            return (f'Decimate the selected meshes: keep {keep}% of their faces (detail stays where the shape needs it) - '
+                    f'the % is Mesh Tools\' Decimate % in the sidebar')
         return f'{ACTIONS.get(props.action, props.action)} on the selected meshes (settings shared with the ZBrush shelf)'
 
     def execute(self, context):

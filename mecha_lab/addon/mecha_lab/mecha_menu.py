@@ -53,7 +53,10 @@ ACTIONS = (            # (section, [(label, glyph or png stem, operator, props, 
                     ('HP Copy', 'duplicate', 'mch.bake_copy_toggle', {}, '', False),     # 0.24.95 on = lit
                     # 0.24.95 (user: "중복 재질 지우는 클린 버튼 우클릭 팝업에, 선택한 거 한 번에") - a free slot here:
                     # the card no taller (it just fits a 1080 screen)
-                    ('Clean Materials', 'material', 'mch.clean_materials', {}, 'mesh', False)]),
+                    ('Clean Materials', 'material', 'mch.clean_materials', {}, 'mesh', False),
+                    # 0.24.143 (user: "우클릭 패널에 데시메이트 버튼도 만들어 줘") the last free slot: Mesh Tools' Decimate
+                    # (Mecha Lab's own engine) on every selected mesh, keeping the Mesh Tools % (Decimate)
+                    ('Decimate', 'decimate', 'mch.mesh_tool', {'action': 'DECIMATE'}, 'mesh', False)]),
     ('Symmetry', [('Mirror X', 'X', 'mch.actions_mirror', {'axis': 0}, 'active', False),
                   ('Mirror Y', 'Y', 'mch.actions_mirror', {'axis': 1}, 'active', False),
                   ('Mirror Z', 'Z', 'mch.actions_mirror', {'axis': 2}, 'active', False),

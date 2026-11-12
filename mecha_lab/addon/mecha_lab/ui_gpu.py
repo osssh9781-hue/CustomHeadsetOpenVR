@@ -385,6 +385,10 @@ def glyph(name, x, y, size, color=TEXT, width=2.0):
     elif name == 'lowpoly':
         polyline([P(.50, .85), P(.85, .25), P(.15, .25)], color, width, True)
         lines([(P(.50, .85), P(.50, .25))], color, width)
+    elif name == 'decimate':                     # 0.24.143 Decimate: fine triangles on the left, one big on the right
+        polyline([P(.12, .2), P(.88, .2), P(.5, .85)], color, width, True)
+        lines([(P(.31, .525), P(.5, .2)), (P(.31, .2), P(.215, .36)), (P(.31, .2), P(.405, .36)),
+               (P(.215, .36), P(.405, .36))], color, width * 0.7)
     elif name == 'bakehp':                       # 0.24.95 Bake High Poly: a dense grid inside a crisp outline
         polyline([P(.15, .15), P(.85, .15), P(.85, .85), P(.15, .85)], color, width, True)
         for t in (.32, .5, .68):
