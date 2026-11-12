@@ -1,5 +1,30 @@
 # CHANGELOG
 
+## 0.24.138 — 스튜디오 배경 그림 다시: 어떤 월드에서든 모델 뒤에 그림, Material Preview 에서도 보이게 (2026-11-12)
+
+- (사용자: "백그라운드 이미지가 안 보여", "뒤에 넣는 스튜디오 이미지들 다 어디 갔어?") 0.24.137 에서 무거운 HDRI 목록을 빼면서 그
+  페이지에 같이 있던 **스튜디오 배경 그림(그림 배경)** 까지 빠졌던 것 — 다시 넣었습니다. 예전에는 Mecha HDRI 월드에서만 됐지만, 이제
+  배경색처럼 **어떤 월드에서든**(다른 애드온의 HDRI 포함) 됩니다: 카메라에 보이는 배경만 그림, 부품의 조명 · 반사는 그 HDRI 그대로.
+- Render 탭 BACKGROUND: **Colour | Picture**. Picture 를 누르면 배경이 켜지고(꺼져 있었으면) 그림으로 — 애드온 기본 스튜디오 배경
+  136 장(68 가지 × 가로 · 세로) + **Choose Folder…** 로 고른 내 그림 폴더, 6 장씩 ◀ Page ▶. 그림을 누르면 바로 그 그림. **Fill**(화면을
+  덮음, 그림 가장자리가 잘림) · **Fit**(그림 전체, 남는 곳은 Colour 색) · **Brightness** · **Contrast**. 예전 HDRI 페이지에서 고른 그림이
+  있으면 그 그림부터. Colour 를 누르면 색으로(그림 노드는 빠지고, 이 기능이 불러온 그림은 메모리에서 내림).
+- **Material Preview Too**(기본 켜짐): Blender 의 Material Preview 는 원래 장면의 월드 대신 Blender 자체 스튜디오 조명을 써서, 배경색 ·
+  배경 그림 · 다른 애드온의 HDRI 가 작업 중에 안 보였습니다(아마 "안 보여" 의 원인). 켜 두면 배경이 켜진 동안 3D 뷰의 Material
+  Preview 가 장면의 월드를 씁니다(뷰의 원래 설정은 기록해 두었다가 배경을 끄면 되돌림). Solid 에서는 Blender 가 그림을 못 보여 줘서
+  Solid View Too 로 **색만** 보입니다.
+- N 사이드바 Background 상자에도 Colour / Picture · Fill / Fit · Brightness · Contrast · Material Preview Too(그림 고르기는 패널의
+  Render 탭).
+- 테스트(Blender 5.2.3): 새 test_v02543 12/12(예전 페이지 그림 이어받기 · 기본 흰 스윕; 그림 클릭 → 켜짐 · 노드 연결 · 다른 월드의
+  셰이더 유지; Material Preview Too; **실제 Cycles 렌더**: 모델 뒤 흰 스윕(밝은 회색), 구는 빨간 월드로 비춰짐; 넓은 화면에 세로 그림 —
+  Fit 은 양옆 Colour 색, Fill 은 가장자리까지 그림; 밝기 · 대비; Colour 로 → 그림 노드 빠짐 · 그림 메모리에서 내림; 패널 Colour |
+  Picture · Fill | Fit · 6 장 · 23 페이지 · Choose Folder…; 끄기 → 노드 모두 빠지고 월드 원래대로 · 뷰 설정 되돌림; 사이드바), test_v02542
+  10/10. 실제 창 bg_picture_real_window 1/1: 다른 HDRI 월드(Blender forest) 위에서 Render 탭 **Picture · 'Grey Spot' 실제 클릭** →
+  Material Preview 에 그림이 모델 뒤에 보이고 조명은 HDRI 그대로(스크린샷, 와이어 켬), Rendered(Cycles)도 같은 그림. 관련 테스트
+  (배경 · 패널 · 재질 · Render 탭 · Light Copies)
+  42 파일 PASS 850 / FAIL 3 — 실패 3 개(test_v02489 · test_v02490 · test_v0142)는 0.24.135 부터 같은 것. 전체 291 파일은
+  이번에 다시 돌리지 않음(마지막 전체 실행은 0.24.137).
+
 ## 0.24.137 — Render 탭 · Background Colour(다른 HDRI 애드온 위에 배경색만), 무거운 Mecha HDRI 목록 뺌 (2026-11-11)
 
 - (사용자: "HDRI 는 다른 애드온 쓸 거라 배경만 내가 원하는 색으로 바꿀 수 있게 해 주라, 너가 만든 게 너무 무거워")

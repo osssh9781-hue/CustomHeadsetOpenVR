@@ -1,5 +1,13 @@
 # KNOWN LIMITATIONS — Mecha Lab 0.18.0
 
+## 0.24.138
+- 배경 그림은 화면(창) 좌표로 깔립니다. F12 · Quick Render 에서는 렌더 프레임에 맞고, 뷰포트(Material Preview · Rendered)에서는 3D 뷰
+  창 전체에 맞춰지므로 카메라 뷰의 프레임과 그림의 자리가 조금 다를 수 있습니다(Fill / Fit 은 렌더 해상도 비율 기준).
+- Solid 모드에서는 Blender 가 월드를 쓰지 않아 그림이 안 보입니다(Solid View Too 로 색만).
+- Material Preview Too 는 배경이 켜질 때 열려 있는 3D 뷰에 적용합니다. 나중에 연 창 · 탭의 뷰는 배경 버튼을 다시 누르거나 뷰의
+  Scene World 를 직접 켜세요.
+- 예전 HDRI 페이지의 Colour Ramp(그림을 두 색으로 바꾸기)는 이번에 다시 넣지 않았습니다.
+
 ## 0.24.137
 - Background Colour 은 장면의 월드에 노드 3 개(Light Path · Background · Mix)를 넣습니다. HDRI 애드온이 월드를 다시 만들면 노드가
   빠지거나 우회되어 Off 로 보이니 버튼을 다시 누르세요. Material Preview(Blender 기본 스튜디오 조명)에는 장면의 월드가 쓰이지 않아
