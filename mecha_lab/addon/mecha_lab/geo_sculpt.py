@@ -41,7 +41,7 @@ from mathutils.bvhtree import BVHTree
 
 MOD = 'MCH Geo Sculpt'
 GROUP = 'MCH Geo Sculpt'
-GROUP_VERSION = 12
+GROUP_VERSION = 14
 PART_KEY = 'mch_geo_part'           # on the stroke object: the part it belongs to
 CHAMFER_MOD, ROUND_MOD = 'MCH Geo Chamfer', 'MCH Geo Round'
 BEVEL_MODS = {'CHAMFER': CHAMFER_MOD, 'ROUND': ROUND_MOD}
@@ -52,6 +52,7 @@ FACE_BUDGET = 400000                # the subdivided region never gets more face
 KIND = {'STANDARD': 0, 'CLAY': 1, 'MOVE': 2, 'BUILDUP': 3, 'SMOOTH': 4, 'FLAT': 5, 'EDGE': 6, 'PANEL': 7}
 LINE_KINDS = ('EDGE', 'PANEL')
 PANEL_FLOOR = 0.35                  # a Panel Line's flat floor: this share of the band's half width
+EDGE_FULL = 0.55                    # an Edge Line is fully flat inside this share of its band, then blends back
 BRUSHES = (
     ('STANDARD', 'Standard', 'A soft bump along the surface (Alt: a dent)'),
     ('CLAY', 'Clay', 'A flat-topped band of clay (Alt: carved in)'),
@@ -438,9 +439,9 @@ def _build():
     # the points slide sideways so they crowd on the crease lines (zero slope there: ZBrush's pinch) - the edge runs
     # along the drawn line itself, not between grid points.  Edge Line: creases at the line and the band's edge;
     # Panel Line: at the groove's floor edge (PANEL_FLOOR x r) and the band's edge.
-    sm = node('ShaderNodeMapRange', interpolation_type='SMOOTHSTEP', clamp=True)
-    link(u, sm.inputs['Value'])
-    edge_s = math_('MULTIPLY', sm.outputs['Result'], r)
+    # (Edge Line: s' = r u^2 (2 - u) - crowded at the line, even again at the band's edge: the edge is the line, the
+    # surface flows back into its own curve outward; Panel Line: crowded at its floor edge and at the shoulder)
+    edge_s = math_('MULTIPLY', math_('MULTIPLY', math_('MULTIPLY', u, u), math_('SUBTRACT', 2.0, u)), r)
     a_ = PANEL_FLOOR
     v_ = math_('MINIMUM', math_('DIVIDE', u, a_), 1.0)
     inner = math_('MULTIPLY', math_('MULTIPLY', r, a_), math_('SUBTRACT', math_('MULTIPLY', v_, 2.0), math_('MULTIPLY', v_, v_)))
@@ -461,7 +462,16 @@ def _build():
     groove = math_('MULTIPLY', math_('MULTIPLY', math_('MULTIPLY', sgn, k_abs2), math_('MULTIPLY', r, -0.5)), wall)
     prof = switch('FLOAT', is_panel, ridge, groove)
     h_new = math_('ADD', math_('MULTIPLY', slope, s_new), prof)
-    h_fin = math_('ADD', h, math_('MULTIPLY', math_('SUBTRACT', h_new, h), fade))
+    # Edge Line: full inside EDGE_FULL of the band, blending back to the surface's own height out to the band's edge
+    # (no seam where the band ends);  Panel Line: full to its shoulder.  (h + slope x the sideways slide: the
+    # surface's height where the point now is)
+    blend_out = node('ShaderNodeMapRange', interpolation_type='SMOOTHSTEP', clamp=True)
+    link(u, blend_out.inputs['Value'])
+    blend_out.inputs['From Min'].default_value = 1.0
+    blend_out.inputs['From Max'].default_value = EDGE_FULL
+    w_in = switch('FLOAT', is_panel, blend_out.outputs['Result'], 1.0)
+    h_here = math_('ADD', h, math_('MULTIPLY', slope, math_('SUBTRACT', s_new, s_len)))
+    h_fin = math_('ADD', h_here, math_('MULTIPLY', math_('SUBTRACT', h_new, h_here), math_('MULTIPLY', fade, w_in)))
     target = vmath('ADD', vmath('ADD', near, vmath('SCALE', nl, scale=h_fin)), vmath('SCALE', sdir, scale=s_new))
     edge_off = vmath('SCALE', vmath('SUBTRACT', target, pos()), scale=inband)
     pick = node('GeometryNodeIndexSwitch', data_type='VECTOR')
@@ -471,8 +481,9 @@ def _build():
     for i, off in ((0, std_off), (1, clay_off), (2, mv_off), (3, bld_off), (5, flat_off), (6, edge_off), (7, edge_off)):
         link(off, pick.inputs[i + 1])
     # an Edge Line's band is flat on each side (chord + ridge / V): its faces are shaded flat, so the edge reads crisp
+    full_t = switch('FLOAT', math_('COMPARE', k, float(KIND['PANEL']), 0.1), EDGE_FULL - 0.03, 0.97)
     is_line = bool_('AND', math_('GREATER_THAN', k, float(KIND['EDGE']) - 0.5),
-                    bool_('AND', math_('LESS_THAN', t, 0.97), math_('GREATER_THAN', fade, 0.9)))
+                    bool_('AND', math_('LESS_THAN', t, full_t), math_('GREATER_THAN', fade, 0.999)))
     flag = node('GeometryNodeStoreNamedAttribute', data_type='FLOAT', domain='POINT')
     flag.inputs['Name'].default_value = '.mch_geo_flat'
     link(cur, flag.inputs['Geometry'])
@@ -497,9 +508,8 @@ def _build():
     geo = rout.outputs['Geometry']
     smooth = node('GeometryNodeSetShadeSmooth', domain='FACE')
     link(geo, smooth.inputs['Geometry'])
-    flat_face = node('GeometryNodeFieldOnDomain', domain='FACE', data_type='FLOAT')
-    link(named('.mch_geo_flat'), flat_face.inputs[0])
-    link(math_('LESS_THAN', flat_face.outputs[0], 0.999), smooth.inputs['Shade Smooth'])
+    # (no flat-shaded bands: the points crowded on a line's creases make the smooth shading crisp there, and the
+    # bands' small facets showed when they were shaded flat)
     sharp = node('GeometryNodeSetShadeSmooth', domain='EDGE')
     link(smooth.outputs['Geometry'], sharp.inputs['Geometry'])
     link(bool_('NOT', named('.mch_geo_hard', 'BOOLEAN')), sharp.inputs['Shade Smooth'])

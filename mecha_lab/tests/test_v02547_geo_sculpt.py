@@ -7,10 +7,10 @@ import math
 import os
 
 import numpy as np
-from mathutils import Vector
-from mathutils.bvhtree import BVHTree
 
 from _harness import bpy, bmesh, check, fresh, summary
+from mathutils import Vector  # noqa: E402
+from mathutils.bvhtree import BVHTree  # noqa: E402
 
 import mecha_lab
 from mecha_lab import geo_sculpt as gs, tool_state as ts, ui_tool_settings as uts, key_legend as kl  # noqa: E402
@@ -193,33 +193,39 @@ def pod_z(x, y):
     return height(P, x, y)
 
 
-z_line0, z_side0, z_end0 = (bvh0.ray_cast(Vector((x, y, 3)), Vector((0, 0, -1)))[0].z
-                            for x, y in ((0.0, -0.45), (0.0, -0.33), (-0.9, -0.45)))
 pts, ns = on_pod(np.linspace(-0.6, 0.6, 40), -0.45)
+# the reference: the same points as a zero-strength Standard stroke (the same region, nothing moved - inside a region a
+# faceted part is smooth like its smooth shading, so the part itself is not the reference there)
+gs.add_stroke(P, 'STANDARD', pts, ns, 0.3, 0.0)
+ref = {xy: pod_z(*xy) for xy in ((0.0, -0.45), (-0.95, -0.45), (-0.9, -0.3))}
+gs.undo_last(P)
 gs.add_stroke(P, 'EDGE', pts, ns, 0.3, 0.6)
-check('Edge Line: the line becomes a ridge edge (up), the flank beside it flattened (under the curve), and nothing past '
-      'the line\'s end (only as far as drawn)',
-      pod_z(0.0, -0.45) > z_line0 + 0.02 and abs(pod_z(-0.9, -0.45) - z_end0) < 1e-3,
-      (pod_z(0.0, -0.45) - z_line0, pod_z(0.0, -0.33) - z_side0, pod_z(-0.9, -0.45) - z_end0))
-# the crease follows the line: across the line the surface slope jumps right at the line (not a grid step away)
-ys = np.linspace(-0.6, -0.3, 61)
-zs = np.array([pod_z(0.0, y) for y in ys])
+got = {xy: pod_z(*xy) for xy in ref}
+check('Edge Line on a curved part: the line becomes a ridge edge (up), nothing past the line\'s end (only as far as drawn)',
+      got[(0.0, -0.45)] > ref[(0.0, -0.45)] + 0.02 and abs(got[(-0.95, -0.45)] - ref[(-0.95, -0.45)]) < 1e-4
+      and abs(got[(-0.9, -0.3)] - ref[(-0.9, -0.3)]) < 1e-4, {k: round(got[k] - ref[k], 5) for k in ref})
+gs.undo_last(P)
+# on a flat face (the box's top: its normal straight up) the crease is measured where it lies
+ys = np.arange(-0.7, -0.1, 0.004)
+gs.add_stroke(A, 'EDGE', seg((-0.6, -0.4, 1.0), (0.6, -0.4, 1.0), 40), [up] * 40, 0.25, 0.6)
+zs = np.array([height(A, 0.0, y) for y in ys])
 slope = np.diff(zs) / np.diff(ys)
-jump = np.abs(np.diff(slope))
-at = ys[1:-1][int(np.argmax(jump))]
-check('Edge Line follows the line: the sharpest bend of the cross-section is on the drawn line (within 0.01)',
-      abs(at - (-0.45)) < 0.01, (round(float(at), 4), round(float(jump.max()), 2)))
-gs.undo_last(P)
-pts, ns = on_pod(np.linspace(-0.6, 0.6, 40), -0.45)
-gs.add_stroke(P, 'PANEL', pts, ns, 0.05, 0.6)
-floor = pod_z(0.0, -0.45)
-check('Panel Line: a groove along the line (down by |k| x r x 0.5), a flat floor, the surface beside the band as it was',
-      abs((z_line0 - floor) - 0.6 * 0.05 * 0.5) < 0.006 and abs(pod_z(0.0, -0.45 + 0.01) - floor) < 0.004
-      and abs(pod_z(0.0, -0.33) - z_side0) < 2e-3, (z_line0 - floor, pod_z(0.0, -0.44) - floor))
-gs.undo_last(P)
-gs.add_stroke(P, 'PANEL', pts, ns, 0.05, -0.6)
-check('Panel Line + Alt: a raised rib instead', pod_z(0.0, -0.45) > z_line0 + 0.01, pod_z(0.0, -0.45) - z_line0)
-gs.undo_last(P)
+at = ys[1:-1][int(np.argmax(np.abs(np.diff(slope))))]
+check('Edge Line follows the line: the sharpest bend of the cross-section is on the drawn line (within 0.006), the '
+      'ridge up 0.6 x 0.25 x 0.3 there, the face past the band and past the line\'s end untouched',
+      abs(at - (-0.4)) < 0.006 and abs(height(A, 0.0, -0.4) - (1.0 + 0.6 * 0.25 * 0.3)) < 0.004
+      and abs(height(A, 0.0, -0.1) - 1.0) < 1e-4 and abs(height(A, -0.9, -0.4) - 1.0) < 1e-4,
+      (round(float(at), 4), height(A, 0.0, -0.4)))
+gs.undo_last(A)
+gs.add_stroke(A, 'PANEL', seg((-0.6, -0.4, 1.0), (0.6, -0.4, 1.0), 40), [up] * 40, 0.06, 0.6)
+floor = [height(A, 0.0, -0.4 + dy) for dy in (-0.012, 0.0, 0.012)]
+check('Panel Line: a groove along the line, 0.6 x 0.06 x 0.5 deep, a flat floor; the face beside it untouched',
+      all(abs(f - (1.0 - 0.6 * 0.06 * 0.5)) < 0.002 for f in floor) and abs(height(A, 0.0, -0.4 + 0.08) - 1.0) < 1e-4,
+      floor)
+gs.undo_last(A)
+gs.add_stroke(A, 'PANEL', seg((-0.6, -0.4, 1.0), (0.6, -0.4, 1.0), 40), [up] * 40, 0.06, -0.6)
+check('Panel Line + Alt: a raised rib instead', height(A, 0.0, -0.4) > 1.0 + 0.01, height(A, 0.0, -0.4))
+gs.undo_last(A)
 check('a line is resampled finely and its ends fade to 0 (it stops where it was drawn)',
       len(gs.resample_line(pts, ns, 0.3 * 0.03)[0]) > 100 and gs.fade_along(pts, 0.3)[0] == 0.0
       and gs.fade_along(pts, 0.3)[len(pts) // 2] == 1.0)
