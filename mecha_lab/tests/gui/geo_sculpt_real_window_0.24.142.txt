@@ -1,4 +1,6 @@
 tool GSCULPT
+shot 0_circle_follows.png True
+circle follows [((783, 804), (783.0, 803.0)), ((1048, 858), (1048.0, 857.0))]
 after a Standard drag [(0, 0.6000000238418579, 7)]
 after Alt and Shift drags [(0, 0.6000000238418579, 7), (0, -0.6000000238418579, 5), (4, 0.6000000238418579, 3)]
 shot 1_strokes_wire.png True
@@ -7,9 +9,10 @@ S: running True size 70 -> 144 strokes 3
 after Ctrl+Z [(0, 0.6000000238418579, 7), (0, -0.6000000238418579, 5)]
 after Flat+Alt, Edge Line, Panel Line [(0, 0.6000000238418579, 7), (0, -0.6000000238418579, 5), (5, -0.6000000238418579, 3), (6, 0.6000000238418579, 147), (7, 0.6000000238418579, 613)]
 shot 3_all_brushes_wire.png True
-apply {'FINISHED'} faces 82948 open edges 0
+apply {'FINISHED'} faces 5923 open edges 0
 shot 4_applied_wire.png True
 PASS 1 the Geo Sculpt tool is the active tool (one tool in the list)
+PASS 0 the brush circle follows the mouse (drawn where the mouse is after each move)
 PASS 1 a REAL drag: one Standard stroke (positive), the region subdivided, the mesh itself untouched
 PASS 2 Alt + drag: a negative stroke (a dent); Shift + drag: Smooth
 PASS 3 S: the Draw Size popup at the cursor; the mouse right = bigger; a click keeps it (no stroke made)
@@ -17,4 +20,4 @@ PASS 3 U: Intensity at the cursor (left = weaker)
 PASS 4 Ctrl+Z: the last stroke back
 PASS 5 Flat + Alt: a raised pad stroke; Edge Line and Panel Line strokes (kinds 6 / 7)
 PASS 6 Apply: baked into the part, the part closed
-8/8 passed
+9/9 passed

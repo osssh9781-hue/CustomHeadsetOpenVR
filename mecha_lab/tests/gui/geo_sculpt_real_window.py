@@ -149,6 +149,22 @@ def flow():
     st.brush = 'STANDARD'
     st.size_px = 70
     st.intensity = 0.6
+    # the brush circle follows the mouse (no button down): two REAL moves, the circle drawn where the mouse is
+    follow = []
+    for p3 in ((-0.5, -0.5, 1.0), (0.5, 0.4, 1.0)):
+        sx, sy = screen_xy(p3)
+        for k_ in range(6):                                  # (a few steps there, like a hand)
+            xdo('mousemove', sx - 30 + k_ * 6, sy)
+            yield 0.1
+        yield 0.6
+        w, a, r = view3d()
+        want = (sx - r.x, (w.height - sy) - r.y)
+        got = gs.HOVER['drawn']
+        follow.append((want, got))
+    shot('0_circle_follows.png')
+    log('circle follows', follow)
+    res['0 the brush circle follows the mouse (drawn where the mouse is after each move)'] = all(
+        g_ is not None and abs(g_[0] - w_[0]) <= 2 and abs(g_[1] - w_[1]) <= 2 for w_, g_ in follow)
     yield from drag([(x, -0.45, 1.0) for x in (-0.6, -0.4, -0.2, 0.0, 0.2, 0.4, 0.6)])
     s1 = strokes(part)
     log('after a Standard drag', s1)
@@ -195,6 +211,7 @@ def flow():
     xdo('key', 'ctrl+z')
     yield 2.0
     part = bpy.data.objects.get('Part')
+    st = gs.settings(C)                  # (undo reloads the scene: the settings looked up again, not the old pointer)
     s3 = strokes(part)
     log('after Ctrl+Z', s3)
     res['4 Ctrl+Z: the last stroke back'] = len(s3) == 2
@@ -215,6 +232,8 @@ def flow():
     yield 2.0
     shot('3_all_brushes_wire.png')
     # Apply (the window's button: the operator)
+    if os.environ.get('MCH_SAVE_BEFORE_APPLY'):
+        bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, 'before_apply.blend'), copy=True)
     with C.temp_override(window=w, area=a, region=r):
         C.view_layer.objects.active = part
         r_ = bpy.ops.mch.geo_apply()

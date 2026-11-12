@@ -41,14 +41,17 @@ from mathutils.bvhtree import BVHTree
 
 MOD = 'MCH Geo Sculpt'
 GROUP = 'MCH Geo Sculpt'
-GROUP_VERSION = 16
+GROUP_VERSION = 21
 PART_KEY = 'mch_geo_part'           # on the stroke object: the part it belongs to
 CHAMFER_MOD, ROUND_MOD = 'MCH Geo Chamfer', 'MCH Geo Round'
 BEVEL_MODS = {'CHAMFER': CHAMFER_MOD, 'ROUND': ROUND_MOD}
 BEVEL_ATTR = {'CHAMFER': 'mch_geo_chamfer', 'ROUND': 'mch_geo_round'}   # (+ '_w': the widths as drawn)
 ROUND_SEGMENTS = 5
 HARD_ANGLE = math.radians(30.0)
-FACE_BUDGET = 400000                # the subdivided region never gets more faces than this
+FACE_BUDGET = 400000                # the refined region stops splitting near this many faces
+CELL = 0.2                          # a stroke's faces: about this share of its radius (x 1 / Resolution)
+SMOOTH_LEVEL = 1                    # the region's one smoothing subdivision (Catmull-Clark inside)
+REGION_ATTR = 'mch_geo_region'      # (on the layer's faces: Apply merges the flat ones back)
 KIND = {'STANDARD': 0, 'CLAY': 1, 'MOVE': 2, 'BUILDUP': 3, 'SMOOTH': 4, 'FLAT': 5, 'EDGE': 6, 'PANEL': 7}
 LINE_KINDS = ('EDGE', 'PANEL')
 PANEL_FLOOR = 0.35                  # a Panel Line's flat floor: this share of the band's half width
@@ -96,6 +99,22 @@ class MCH_PG_GeoSculpt(bpy.types.PropertyGroup):
                          default=60, min=3, max=1200, soft_max=500, subtype='PIXEL', update=_redraw)
     intensity: FloatProperty(name='Intensity', description='How strong a stroke is (U at the cursor)', default=0.5,
                              min=0.01, max=2.0, soft_max=1.0, update=_redraw)
+    resolution: FloatProperty(name='Resolution', description='How fine the mesh under a stroke is made: 1 = faces about '
+                              'a fifth of the brush radius (a big brush: coarse, a thin line: fine); 2 = twice as fine. '
+                              'Only near the strokes - the rest of the part is not split', default=1.0, min=0.1, max=8.0,
+                              soft_min=0.25, soft_max=4.0, update=_res_update)
+
+
+def _res_update(self, context):
+    """Resolution: the active part's layer follows (and redraws - a socket value set from Python does not tag it)."""
+    ob = getattr(context, 'active_object', None)
+    mod = layer(ob) if ob is not None else None
+    if mod is not None and mod.node_group is not None:
+        try:
+            set_input(mod, 'Resolution', self.resolution)
+        except (StopIteration, AttributeError, TypeError):
+            pass
+    _redraw()
 
 
 def settings(context=None):
@@ -124,12 +143,12 @@ def _build():
     io = ng.interface
     io.new_socket('Geometry', in_out='INPUT', socket_type='NodeSocketGeometry')
     io.new_socket('Strokes', in_out='INPUT', socket_type='NodeSocketObject')
-    s = io.new_socket('Detail', in_out='INPUT', socket_type='NodeSocketFloat')
-    s.default_value = 0.02
-    s.min_value = 0.0005
+    s = io.new_socket('Resolution', in_out='INPUT', socket_type='NodeSocketFloat')
+    s.default_value = 1.0
+    s.min_value, s.max_value = 0.1, 8.0
     s = io.new_socket('Max Level', in_out='INPUT', socket_type='NodeSocketInt')
-    s.default_value = 6
-    s.min_value, s.max_value = 0, 8
+    s.default_value = 9
+    s.min_value, s.max_value = 0, 12
     io.new_socket('Geometry', in_out='OUTPUT', socket_type='NodeSocketGeometry')
     N, L = ng.nodes, ng.links
 
@@ -203,7 +222,7 @@ def _build():
     info.transform_space = 'ORIGINAL'
     link(gi.outputs['Strokes'], info.inputs['Object'])
     strokes = info.outputs['Geometry']
-    detail = gi.outputs['Detail']
+    resolution = gi.outputs['Resolution']
     # --- the region: faces with a corner within reach of a stroke ----------------------------------------------------
     rmax = stat(strokes, named('radius'))
     mmax = stat(strokes, vmath('LENGTH', named('move', 'FLOAT_VECTOR')))
@@ -262,21 +281,9 @@ def _build():
     link(keep_p.outputs['Geometry'], sep.inputs['Geometry'])
     link(math_('GREATER_THAN', ring_f.outputs[0], 0.0), sep.inputs['Selection'])
     region, rest = sep.outputs['Selection'], sep.outputs['Inverted']
-    # --- the region subdivided: the level from its longest edge and Detail, capped by Max Level and the face budget ---
-    ev = node('GeometryNodeInputMeshEdgeVertices')
-    emax = node('GeometryNodeAttributeStatistic', data_type='FLOAT', domain='EDGE')
-    link(region, emax.inputs['Geometry'])
-    link(vmath('DISTANCE', ev.outputs['Position 1'], ev.outputs['Position 2']), emax.inputs['Attribute'])
-    lvl = math_('CEIL', math_('LOGARITHM', math_('DIVIDE', emax.outputs['Max'], detail), 2.0))
-    fcount = node('GeometryNodeAttributeDomainSize', component='MESH')
-    link(region, fcount.inputs['Geometry'])
-    budget = math_('FLOOR', math_('LOGARITHM', math_('DIVIDE', float(FACE_BUDGET),
-                                                     math_('MAXIMUM', fcount.outputs['Face Count'], 1.0)), 4.0))
-    lvl = math_('MINIMUM', math_('MINIMUM', math_('MAXIMUM', lvl, 0.0), gi.outputs['Max Level']), math_('MAXIMUM', budget, 0.0))
-    # the region subdivided twice with the same level (the same points): linear (the part's exact shape) and
-    # Catmull-Clark (smooth like the smooth-shaded part - linear showed its facets), its hard edges creased and their
-    # points pinned.  Smooth in the region, ramping to the exact shape across its outermost faces (no stroke reaches
-    # them): no seam against the untouched rest, the rest of the part exactly as it was
+    # --- the region: once subdivided smooth (Catmull-Clark inside, the exact shape at its border), then refined ONLY
+    # near the strokes, each place to its own brush's cell (CELL x its radius / Resolution): a big brush leaves a
+    # coarse mesh, a thin Panel Line makes it fine only along itself; the rest of a big face stays as it was
     bnd = node('GeometryNodeFieldOnDomain', domain='EDGE', data_type='FLOAT')
     link(math_('COMPARE', node('GeometryNodeInputMeshEdgeNeighbors').outputs['Face Count'], 1.0, 0.1), bnd.inputs[0])
     keepb = node('GeometryNodeStoreNamedAttribute', data_type='FLOAT', domain='POINT')
@@ -286,13 +293,13 @@ def _build():
     region = keepb.outputs['Geometry']
     lin = node('GeometryNodeSubdivideMesh')
     link(region, lin.inputs['Mesh'])
-    link(lvl, lin.inputs['Level'])
+    lin.inputs['Level'].default_value = SMOOTH_LEVEL
     eflag = named('.mch_geo_hard', 'BOOLEAN')
     vflag = node('GeometryNodeFieldOnDomain', domain='EDGE', data_type='FLOAT')
     link(eflag, vflag.inputs[0])
     cc = node('GeometryNodeSubdivisionSurface')
     link(region, cc.inputs['Mesh'])
-    link(lvl, cc.inputs['Level'])
+    cc.inputs['Level'].default_value = SMOOTH_LEVEL
     link(eflag, cc.inputs['Edge Crease'])
     link(math_('GREATER_THAN', vflag.outputs[0], 0.0), cc.inputs['Vertex Crease'])
     cc_pos = node('GeometryNodeSampleIndex', data_type='FLOAT_VECTOR', domain='POINT')
@@ -306,11 +313,141 @@ def _build():
     blend = node('GeometryNodeSetPosition')
     link(lin.outputs['Mesh'], blend.inputs['Geometry'])
     link(vmath('SCALE', vmath('SUBTRACT', cc_pos.outputs['Value'], pos()), scale=wsm.outputs['Result']), blend.inputs['Offset'])
-    sub = blend
     keepn = node('GeometryNodeStoreNamedAttribute', data_type='FLOAT_VECTOR', domain='POINT')
     keepn.inputs['Name'].default_value = '.mch_geo_n'
-    link(sub.outputs['Geometry'], keepn.inputs['Geometry'])
+    link(blend.outputs['Geometry'], keepn.inputs['Geometry'])
     link(node('GeometryNodeInputNormal').outputs[0], keepn.inputs['Value'])
+    # 1. the whole region split evenly (one level for all: no T junction) to cells about the smallest brush's reach
+    rmin = stat(strokes, named('radius')).outputs['Min']
+    reach_min = math_('MAXIMUM', math_('MULTIPLY', rmin, 1.2), 1e-6)
+    evA = node('GeometryNodeInputMeshEdgeVertices')
+    emaxA = node('GeometryNodeAttributeStatistic', data_type='FLOAT', domain='EDGE')
+    link(keepn.outputs['Geometry'], emaxA.inputs['Geometry'])
+    link(vmath('DISTANCE', evA.outputs['Position 1'], evA.outputs['Position 2']), emaxA.inputs['Attribute'])
+    fA = node('GeometryNodeAttributeDomainSize', component='MESH')
+    link(keepn.outputs['Geometry'], fA.inputs['Geometry'])
+    l1 = math_('CEIL', math_('LOGARITHM', math_('MAXIMUM', math_('DIVIDE', emaxA.outputs['Max'], reach_min), 1.0), 2.0))
+    cap1 = math_('FLOOR', math_('LOGARITHM', math_('DIVIDE', float(FACE_BUDGET) / 8.0,
+                                                   math_('MAXIMUM', fA.outputs['Face Count'], 1.0)), 4.0))
+    l1 = math_('MINIMUM', math_('MINIMUM', l1, math_('MAXIMUM', cap1, 0.0)), 6.0)
+    pre = node('GeometryNodeSubdivideMesh')
+    link(keepn.outputs['Geometry'], pre.inputs['Mesh'])
+    link(l1, pre.inputs['Level'])
+    g = pre.outputs['Mesh']
+    # 2. the faces a stroke reaches (a corner / the centre within the nearest stroke's radius x 1.2 + its drag, or a
+    #    stroke point on it) and one ring round them: islands.  Each island is split evenly to the finest cell its
+    #    strokes ask for (CELL x radius / Resolution) - inside an island every face the same: no T junction where a
+    #    stroke moves anything; the island's border (the ring's outside) is past every reach
+    ni = node('GeometryNodeSampleNearest', domain='POINT')
+    link(strokes, ni.inputs['Geometry'])
+
+    def at_near(value, typ='FLOAT'):
+        si = node('GeometryNodeSampleIndex', data_type=typ, domain='POINT')
+        link(strokes, si.inputs['Geometry'])
+        link(value, si.inputs['Value'])
+        link(ni.outputs['Index'], si.inputs['Index'])
+        return si.outputs['Value']
+    r_n = at_near(named('radius'))
+    reach_n = math_('ADD', math_('MULTIPLY', r_n, 1.2), vmath('LENGTH', at_near(named('move', 'FLOAT_VECTOR'), 'FLOAT_VECTOR')))
+    within = math_('LESS_THAN', dmin, reach_n)
+    corner2 = node('GeometryNodeFieldOnDomain', domain='POINT', data_type='FLOAT')
+    link(within, corner2.inputs[0])
+    nf2 = node('GeometryNodeSampleNearest', domain='FACE')
+    link(g, nf2.inputs['Geometry'])
+    st_fi2 = node('GeometryNodeStoreNamedAttribute', data_type='INT', domain='POINT')
+    st_fi2.inputs['Name'].default_value = 'fi'
+    link(strokes, st_fi2.inputs['Geometry'])
+    link(nf2.outputs['Index'], st_fi2.inputs['Value'])
+    fi_near2 = node('GeometryNodeSampleNearest', domain='POINT')
+    link(st_fi2.outputs['Geometry'], fi_near2.inputs['Geometry'])
+    fi_val2 = node('GeometryNodeSampleIndex', data_type='INT', domain='POINT')
+    link(st_fi2.outputs['Geometry'], fi_val2.inputs['Geometry'])
+    link(named('fi', 'INT'), fi_val2.inputs['Value'])
+    link(fi_near2.outputs['Index'], fi_val2.inputs['Index'])
+    own2 = node('FunctionNodeCompare', data_type='INT', operation='EQUAL')
+    link(fi_val2.outputs['Value'], own2.inputs['A'])
+    link(node('GeometryNodeInputIndex').outputs[0], own2.inputs['B'])
+    direct = bool_('OR', bool_('OR', math_('GREATER_THAN', corner2.outputs[0], 0.0), within), own2.outputs['Result'])
+    ev2 = node('GeometryNodeInputMeshEdgeVertices')
+    esz = node('GeometryNodeFieldOnDomain', domain='EDGE', data_type='FLOAT')
+    link(vmath('DISTANCE', ev2.outputs['Position 1'], ev2.outputs['Position 2']), esz.inputs[0])
+    size = math_('MULTIPLY', esz.outputs[0], 1.15)          # (a face's mean edge, a little up: about its longest)
+    cell = math_('MAXIMUM', math_('DIVIDE', math_('MULTIPLY', r_n, CELL), resolution), 1e-5)
+    want = math_('CEIL', math_('LOGARITHM', math_('MAXIMUM', math_('DIVIDE', size, cell), 1.0), 2.0))
+    hit = node('GeometryNodeStoreNamedAttribute', data_type='FLOAT', domain='FACE')
+    hit.inputs['Name'].default_value = '.mch_geo_hit'
+    link(g, hit.inputs['Geometry'])
+    link(direct, hit.inputs['Value'])
+    lvw = node('GeometryNodeStoreNamedAttribute', data_type='FLOAT', domain='FACE')
+    lvw.inputs['Name'].default_value = '.mch_geo_lv'
+    link(hit.outputs['Geometry'], lvw.inputs['Geometry'])
+    link(switch('FLOAT', direct, 0.0, want), lvw.inputs['Value'])
+    hitp_f = node('GeometryNodeFieldOnDomain', domain='FACE', data_type='FLOAT')
+    link(named('.mch_geo_hit'), hitp_f.inputs[0])
+    hitp = node('GeometryNodeStoreNamedAttribute', data_type='FLOAT', domain='POINT')
+    hitp.inputs['Name'].default_value = '.mch_geo_hitp'
+    link(lvw.outputs['Geometry'], hitp.inputs['Geometry'])
+    link(hitp_f.outputs[0], hitp.inputs['Value'])
+    nb_f = node('GeometryNodeFieldOnDomain', domain='POINT', data_type='FLOAT')
+    link(named('.mch_geo_hitp'), nb_f.inputs[0])
+    sepI = node('GeometryNodeSeparateGeometry', domain='FACE')
+    link(hitp.outputs['Geometry'], sepI.inputs['Geometry'])
+    link(math_('GREATER_THAN', nb_f.outputs[0], 0.0), sepI.inputs['Selection'])
+    isl = sepI.outputs['Selection']
+    island = node('GeometryNodeInputMeshIsland')
+    fmax = node('GeometryNodeFieldMinAndMax', data_type='FLOAT', domain='FACE')
+    link(named('.mch_geo_lv'), fmax.inputs['Value'])
+    link(island.outputs['Island Index'], fmax.inputs['Group ID'])
+    fI = node('GeometryNodeAttributeDomainSize', component='MESH')
+    link(isl, fI.inputs['Geometry'])
+    cap2 = math_('FLOOR', math_('LOGARITHM', math_('DIVIDE', float(FACE_BUDGET),
+                                                   math_('MAXIMUM', fI.outputs['Face Count'], 1.0)), 4.0))
+    lvI = node('GeometryNodeStoreNamedAttribute', data_type='FLOAT', domain='FACE')
+    lvI.inputs['Name'].default_value = '.mch_geo_lv'
+    link(isl, lvI.inputs['Geometry'])
+    link(math_('MINIMUM', math_('MINIMUM', fmax.outputs['Max'], math_('MAXIMUM', cap2, 0.0)), gi.outputs['Max Level']),
+         lvI.inputs['Value'])
+    zin = node('GeometryNodeRepeatInput')
+    zout = node('GeometryNodeRepeatOutput')
+    zin.pair_with_output(zout)
+    zout.repeat_items.new('INT', 'Pass')
+    link(gi.outputs['Max Level'], zin.inputs['Iterations'])
+    link(lvI.outputs['Geometry'], zin.inputs['Geometry'])
+    zin.inputs['Pass'].default_value = 0
+    more = node('FunctionNodeCompare', data_type='FLOAT', operation='GREATER_THAN')
+    link(named('.mch_geo_lv'), more.inputs['A'])
+    link(zin.outputs['Pass'], more.inputs['B'])
+    sep2 = node('GeometryNodeSeparateGeometry', domain='FACE')
+    link(zin.outputs['Geometry'], sep2.inputs['Geometry'])
+    link(more.outputs['Result'], sep2.inputs['Selection'])
+    split = node('GeometryNodeSubdivideMesh')
+    link(sep2.outputs['Selection'], split.inputs['Mesh'])
+    split.inputs['Level'].default_value = 1
+    join2 = node('GeometryNodeJoinGeometry')
+    link(split.outputs['Mesh'], join2.inputs[0])
+    link(sep2.outputs['Inverted'], join2.inputs[0])
+    weld = node('GeometryNodeMergeByDistance')
+    weld.inputs['Distance'].default_value = 1e-6
+    link(join2.outputs['Geometry'], weld.inputs['Geometry'])
+    link(weld.outputs['Geometry'], zout.inputs['Geometry'])
+    link(math_('ADD', zin.outputs['Pass'], 1.0), zout.inputs['Pass'])
+    joinI = node('GeometryNodeJoinGeometry')
+    link(zout.outputs['Geometry'], joinI.inputs[0])
+    link(sepI.outputs['Inverted'], joinI.inputs[0])
+    weldI = node('GeometryNodeMergeByDistance')
+    weldI.inputs['Distance'].default_value = 1e-6
+    link(joinI.outputs['Geometry'], weldI.inputs['Geometry'])
+    zout_geo = weldI.outputs['Geometry']
+    keep0 = node('GeometryNodeStoreNamedAttribute', data_type='FLOAT_VECTOR', domain='POINT')
+    keep0.inputs['Name'].default_value = '.mch_geo_p0'
+    link(zout_geo, keep0.inputs['Geometry'])
+    link(pos(), keep0.inputs['Value'])
+    region_tag = node('GeometryNodeStoreNamedAttribute', data_type='BOOLEAN', domain='FACE')
+    region_tag.inputs['Name'].default_value = REGION_ATTR
+    link(keep0.outputs['Geometry'], region_tag.inputs['Geometry'])
+    region_tag.inputs['Value'].default_value = True
+    sub = region_tag
+    keepn = sub
     # --- every stroke in turn (a repeat zone) --------------------------------------------------------------------------
     smax = stat(strokes, named('stroke', 'INT'))
     rin = node('GeometryNodeRepeatInput')
@@ -516,7 +653,7 @@ def _build():
     # Smooth: positions blurred (more passes for a bigger brush / finer Detail), mixed in by the bell
     blur = node('GeometryNodeBlurAttribute', data_type='FLOAT_VECTOR')
     link(pos(), blur.inputs['Value'])
-    ratio = math_('DIVIDE', r, detail)
+    ratio = math_('DIVIDE', resolution, CELL)
     link(math_('MINIMUM', math_('MAXIMUM', math_('ROUND', math_('MULTIPLY', math_('MULTIPLY', ratio, ratio), 0.5)), 4.0), 80.0),
          blur.inputs['Iterations'])
     sm_off = vmath('SCALE', vmath('SUBTRACT', blur.outputs['Value'], pos()), scale=math_('MULTIPLY', bell, k_abs))
@@ -550,7 +687,8 @@ def _build():
     link(drop.outputs['Geometry'], drop2.inputs['Geometry'])
     drop2.inputs['Name'].default_value = '.mch_geo_hard'
     last = drop2.outputs['Geometry']
-    for name in ('.mch_geo_flat', '.mch_geo_sel', '.mch_geo_selp', '.mch_geo_b'):
+    for name in ('.mch_geo_flat', '.mch_geo_sel', '.mch_geo_selp', '.mch_geo_b', '.mch_geo_hit', '.mch_geo_hitp', 'fi',
+                 '.mch_geo_lv', '.mch_geo_p0'):
         dr = node('GeometryNodeRemoveAttribute')
         link(last, dr.inputs['Geometry'])
         dr.inputs['Name'].default_value = name
@@ -584,6 +722,10 @@ def set_input(mod, name, value):
         holder.value = value
     else:
         mod[_socket_ident(mod.node_group, name)] = value
+    try:
+        mod.id_data.update_tag()            # (a socket value set from Python does not re-evaluate the part by itself)
+    except (AttributeError, ReferenceError):
+        pass
 
 
 # -----------------------------------------------------------------------------
@@ -611,15 +753,6 @@ def _mean_scale(ob):
     return max((abs(s.x) + abs(s.y) + abs(s.z)) / 3.0, 1e-9)
 
 
-def default_detail(ob):
-    """Detail (local units) for a new layer: the part's size / 160."""
-    try:
-        dims = [d / max(abs(s), 1e-9) for d, s in zip(ob.dimensions, ob.matrix_world.to_scale())]
-    except (AttributeError, TypeError):
-        dims = [1.0]
-    return max(max(dims) / 160.0, 1e-4)
-
-
 def _place_after_bevels(ob):
     mods = list(ob.modifiers)
     names = [m.name for m in mods]
@@ -640,8 +773,10 @@ def ensure_layer(ob):
     if mod is None:
         mod = ob.modifiers.new(MOD, 'NODES')
         mod.node_group = node_group()
-        set_input(mod, 'Detail', default_detail(ob))
         mod.show_in_editmode = False
+        st = settings()
+        if st is not None:
+            set_input(mod, 'Resolution', st.resolution)
     elif mod.node_group is None or mod.node_group.get('mch_ver') != GROUP_VERSION:
         mod.node_group = node_group()
     sob = strokes_of(ob)
@@ -963,6 +1098,9 @@ def has_any(ob):
     return ob is not None and (layer(ob) is not None or any(ob.modifiers.get(n) for n in BEVEL_MODS.values()))
 
 
+WELD_SHARE = 0.005                  # a T junction point this near its coarse edge (share of the edge) is welded on
+
+
 def weld_t_junctions(bm, eps=1e-6):
     """Open edges with another open edge's vertex lying on them (the subdivided region beside the untouched rest)
     are split there and welded: the part is closed again."""
@@ -984,7 +1122,7 @@ def weld_t_junctions(bm, eps=1e-6):
                 continue
             tt = ((co - np.array(a)) @ d) / dd
             near = np.linalg.norm(np.array(a) + np.outer(tt, d) - co, axis=1)
-            idx = np.nonzero((tt > 1e-6) & (tt < 1 - 1e-6) & (near < eps * max(math.sqrt(dd), 1.0) * 1e3))[0]
+            idx = np.nonzero((tt > 1e-6) & (tt < 1 - 1e-6) & (near < max(eps, WELD_SHARE * math.sqrt(dd))))[0]
             if not len(idx):
                 continue
             order = idx[np.argsort(tt[idx])]
@@ -999,8 +1137,34 @@ def weld_t_junctions(bm, eps=1e-6):
                 splits += 1
         if not splits:
             return 0
-        bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=eps * 10)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-6)
     return 1
+
+
+def merge_flat(bm, lay, angle=math.radians(0.05)):
+    """The layer's faces that lie flat together (a box face, a Flat facet - not the curved sculpt) merged back into
+    big faces; hard / sharp edges and materials kept.  Returns the faces removed."""
+    faces = [f for f in bm.faces if f[lay]]
+    if not faces:
+        return 0
+    n0 = len(bm.faces)
+    edges = [e for e in {e for f in faces for e in f.edges}
+             if len(e.link_faces) == 2 and all(g[lay] for g in e.link_faces) and e.smooth]
+    verts = list({v for f in faces for v in f.verts})
+    try:
+        bmesh.ops.dissolve_limit(bm, angle_limit=angle, use_dissolve_boundaries=False, verts=verts, edges=edges,
+                                 delimit={'SHARP', 'MATERIAL'})
+    except (RuntimeError, TypeError, ValueError):
+        return 0
+    return n0 - len(bm.faces)
+
+
+def layer_faces(context, ob):
+    """The part's face count as the layer makes it (what Apply would write)."""
+    try:
+        return len(ob.evaluated_get(context.evaluated_depsgraph_get()).data.polygons)
+    except (AttributeError, ReferenceError, RuntimeError):
+        return 0
 
 
 def apply(context, ob):
@@ -1013,11 +1177,23 @@ def apply(context, ob):
         if mod is not None:
             cg.apply_single_modifier(context, ob, mod)
     me = ob.data
+    tag = me.attributes.get(REGION_ATTR)
+    region = np.zeros(len(me.polygons), bool)
+    if tag is not None and tag.domain == 'FACE' and len(me.polygons):
+        tag.data.foreach_get('value', region)
     bm = bmesh.new()
     bm.from_mesh(me)
+    lay = bm.faces.layers.int.new('_mch_geo_rg')
+    bm.faces.ensure_lookup_table()
+    for f in bm.faces:
+        f[lay] = int(region[f.index])
     weld_t_junctions(bm)
+    merge_flat(bm, lay)
+    bm.faces.layers.int.remove(lay)
     bm.to_mesh(me)
     bm.free()
+    if me.attributes.get(REGION_ATTR) is not None:
+        me.attributes.remove(me.attributes[REGION_ATTR])
     for kd in BEVEL_MODS:
         for name in (BEVEL_ATTR[kd], BEVEL_ATTR[kd] + '_w'):
             a = me.attributes.get(name)
@@ -1183,21 +1359,48 @@ def _circle(cx, cy, r, colour, width=2.0, dashed=False):
         ug.polyline(pts, colour, width, closed=True)
 
 
+HOVER = {'region': None, 'xy': (-1.0, -1.0), 'drawn': None}
+
+
 def draw_cursor():
-    """The brush circle at the mouse while the Geo Sculpt tool is on (its colour = the brush)."""
+    """The brush circle at the mouse while the Geo Sculpt tool is on (its colour = the brush); the mouse position
+    comes from mch.geo_hover (every move, which also redraws the view - the circle follows the mouse)."""
     context = bpy.context
     try:
-        if not tool_active(context) or context.region is None or context.region.type != 'WINDOW':
+        region = context.region
+        if not tool_active(context) or region is None or region.type != 'WINDOW':
             return
         st = settings(context)
         if st is None or MCH_OT_geo_size.RUNNING[0] or MCH_OT_geo_stroke.RUNNING[0]:
             return
-        x, y = _hover(context)
+        if HOVER['region'] == region.as_pointer():
+            x, y = HOVER['xy']
+        else:
+            x, y = _hover(context)
         if x < 0:
             return
         _circle(x, y, st.size_px, BRUSH_COLOUR.get(st.brush, (1, 1, 1, 0.9)), 1.5)
+        HOVER['drawn'] = (x, y)
     except (ReferenceError, AttributeError, RuntimeError):
         pass
+
+
+class MCH_OT_geo_hover(bpy.types.Operator):
+    """(Geo Sculpt) the mouse position for the brush circle; the view redrawn so the circle follows (passes the move
+    on)"""
+    bl_idname = 'mch.geo_hover'
+    bl_label = 'Geo Sculpt Brush Circle'
+    bl_options = {'INTERNAL'}
+
+    def invoke(self, context, event):
+        region = context.region
+        if region is not None and region.type == 'WINDOW':
+            xy = (float(event.mouse_region_x), float(event.mouse_region_y))
+            if HOVER['region'] != region.as_pointer() or abs(xy[0] - HOVER['xy'][0]) + abs(xy[1] - HOVER['xy'][1]) >= 1.0:
+                HOVER['region'] = region.as_pointer()
+                HOVER['xy'] = xy
+                region.tag_redraw()
+        return {'PASS_THROUGH'}
 
 
 def _draw_stroke(op, context):
@@ -1509,6 +1712,7 @@ class MCH_TOOL_geo_sculpt(bpy.types.WorkSpaceTool):
     bl_icon = 'ops.sculpt.draw'
     bl_widget = None
     bl_keymap = (
+        ('mch.geo_hover', {'type': 'MOUSEMOVE', 'value': 'ANY', 'any': True}, None),       # (the circle follows)
         ('mch.geo_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, None),
         ('mch.geo_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'alt': True}, None),
         ('mch.geo_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'shift': True}, None),
@@ -1548,15 +1752,10 @@ def draw(layout, context):
     col.prop(st, 'intensity', text='Intensity  (U)')
     ob = context.active_object
     mod = layer(ob) if ob is not None else None
-    if mod is not None and mod.node_group is not None:
-        try:
-            holder, prop = _input(mod, 'Detail')
-            col.prop(holder, prop, text='Detail')
-        except (StopIteration, AttributeError, TypeError):
-            pass
+    col.prop(st, 'resolution', text='Resolution')
     if ob is not None and has_any(ob):
         col = layout.column(align=True)
-        col.label(text=f'{ob.name}: {stroke_count(ob)} stroke(s)')
+        col.label(text=f'{ob.name}: {stroke_count(ob)} stroke(s), {layer_faces(context, ob):,} faces')
         row = col.row(align=True)
         row.operator('mch.geo_undo_last', text='Undo Last')
         row.operator('mch.geo_clear', text='Clear')
@@ -1566,7 +1765,7 @@ def draw(layout, context):
         col.label(text=line)
 
 
-CLASSES = (MCH_PG_GeoSculpt, MCH_OT_geo_stroke, MCH_OT_geo_size, MCH_OT_geo_brush, MCH_OT_geo_apply, MCH_OT_geo_clear,
+CLASSES = (MCH_PG_GeoSculpt, MCH_OT_geo_hover, MCH_OT_geo_stroke, MCH_OT_geo_size, MCH_OT_geo_brush, MCH_OT_geo_apply, MCH_OT_geo_clear,
            MCH_OT_geo_undo_last)
 
 

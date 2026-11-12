@@ -51,8 +51,6 @@ for a, b, tw, r in (((-0.7, -1, 0.95), (0.7, -1, 0.95), (0, -1, 1), 0.38), ((1, 
 for a, b, tw in (((-0.5, 0.0, 1.2), (0.5, 0.0, 1.2), (0, 0, 1)), ((-0.5, -1.2, 0.0), (0.5, -1.2, 0.0), (0, -1, 0)),
                  ((1.2, -0.5, 0.0), (1.2, 0.5, 0.0), (1, 0, 0))):
     stroke_along(B, a, b, tw, 0.75)
-for o in (A, B):
-    gs.set_input(gs.layer(o), 'Detail', 0.008)
 dg = C.evaluated_depsgraph_get()
 for o in (A, B):
     print(o.name, 'strokes', gs.stroke_count(o), 'faces', len(o.evaluated_get(dg).data.polygons))
@@ -91,4 +89,18 @@ for name, wire in (('flatedge_shaded', False), ('flatedge_wire', True)):
     for wo in wires:
         wo.hide_render = not wire
     S.render.filepath = os.path.join(OUT, name + '.png'); bpy.ops.render.render(write_still=True)
+# after Apply (flat faces merged back): the wire of what is written into the parts
+for o in (A, B):
+    n_live = len(o.evaluated_get(C.evaluated_depsgraph_get()).data.polygons)
+    gs.apply(C, o)
+    print(o.name, 'live faces', n_live, 'after Apply', len(o.data.polygons))
+for wo in wires:
+    bpy.data.objects.remove(wo)
+dg = C.evaluated_depsgraph_get()
+for o in (A0, A, B0, B):
+    wm_ = bpy.data.meshes.new_from_object(o.evaluated_get(dg)); wo = bpy.data.objects.new(o.name + 'W2', wm_)
+    wo.matrix_world = o.matrix_world; S.collection.objects.link(wo)
+    md = wo.modifiers.new('W', 'WIREFRAME'); md.thickness = 0.0025; md.use_replace = True; md.use_even_offset = False
+    wm_.materials.clear(); wm_.materials.append(wmat)
+S.render.filepath = os.path.join(OUT, 'flatedge_applied_wire.png'); bpy.ops.render.render(write_still=True)
 print('DONE')

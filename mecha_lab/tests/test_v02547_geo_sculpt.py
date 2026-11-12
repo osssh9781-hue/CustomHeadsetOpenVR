@@ -283,6 +283,39 @@ gs.add_stroke(K, 'STANDARD', [(0.0, 0.0, 1.0)], [up], 0.3, 1.0)
 gs.clear(K)
 check('Clear: every stroke and bevel off (modifiers, weights, the stroke mesh)', not gs.has_any(K)
       and not any(a.name.startswith('mch_geo') for a in K.data.attributes) and len(K.modifiers) == 0)
+# --- 5b. density (user: "획의 메쉬를 덜 촘촘한 메쉬로 만들면 안 돼?"): only near the strokes, as fine as the brush ------
+def faces_of(ob):
+    return len(ob.evaluated_get(C.evaluated_depsgraph_get()).data.polygons)
+
+
+def bottom_faces(ob):
+    ev = ob.evaluated_get(C.evaluated_depsgraph_get()).data
+    return sum(1 for f in ev.polygons if f.center.z < -0.999)
+
+
+Dn1, Dn2 = box('DensBig', (0, 18, 0), bevel=0), box('DensSmall', (0, 21, 0), bevel=0)
+gs.add_stroke(Dn1, 'STANDARD', seg((-0.5, 0.0, 1.0), (0.5, 0.0, 1.0), 10), [up] * 10, 0.4, 0.6)
+gs.add_stroke(Dn2, 'STANDARD', seg((-0.5, 0.0, 1.0), (0.5, 0.0, 1.0), 10), [up] * 10, 0.1, 0.6)
+check('a stroke on the top of a 6-face box: the far bottom face is not split at all; a big brush leaves far fewer faces '
+      'than a thin one (the mesh as fine as the brush, not the whole face at the finest)',
+      bottom_faces(Dn1) == 1 and bottom_faces(Dn2) == 1 and faces_of(Dn1) * 2 < faces_of(Dn2) and faces_of(Dn1) < 4000,
+      (faces_of(Dn1), faces_of(Dn2)))
+live = faces_of(Dn1)
+C.view_layer.objects.active = Dn1
+gs.settings(C).resolution = 2.0
+check('the window\'s Resolution 2: the active part\'s layer finer at once (more faces)', faces_of(Dn1) > live,
+      (live, faces_of(Dn1)))
+gs.settings(C).resolution = 1.0
+gs.clear(Dn1)
+gs.add_stroke(Dn1, 'FLAT', seg((-0.4, 0.0, 1.0), (0.4, 0.0, 1.0), 10), [up] * 10, 0.3, -1.0)
+live = faces_of(Dn1)
+gs.apply(C, Dn1)
+bm = bmesh.new()
+bm.from_mesh(Dn1.data)
+open_d = sum(1 for e in bm.edges if not e.is_manifold)
+bm.free()
+check('Apply merges what lies flat back into big faces (a Flat pad: its top, the box faces round it), the part closed',
+      len(Dn1.data.polygons) * 4 < live and open_d == 0, (live, len(Dn1.data.polygons), open_d))
 # --- 6. a duplicate gets its own strokes -------------------------------------------------------------------------
 D1 = box('Dup1', (0, 6, 0))
 gs.add_stroke(D1, 'STANDARD', [(0.0, 0.0, 1.0)], [up], 0.3, 1.0)
@@ -297,10 +330,10 @@ check('Shift+D copy: it shares its original\'s strokes until its first stroke, t
 C.view_layer.objects.active = D1
 rec = []
 gs.draw(_Rec(rec), C)
-check('the window: every brush, Draw Size (S), Intensity (U), Detail of the active part, Undo Last / Clear / Apply',
+check('the window: every brush, Draw Size (S), Intensity (U), Resolution of the active part, Undo Last / Clear / Apply',
       [e[1] for e in rec if e[0] == 'enum'] == list(sum(gs.BRUSH_ROWS, ()))
       and ('prop', 'size_px', 'Draw Size  (S)') in rec and ('prop', 'intensity', 'Intensity  (U)') in rec
-      and any(e[0] == 'prop' and e[2] == 'Detail' for e in rec)
+      and any(e[0] == 'prop' and e[2] == 'Resolution' for e in rec)
       and {('op', 'mch.geo_undo_last'), ('op', 'mch.geo_clear'), ('op', 'mch.geo_apply')} <= set(rec), rec)
 op = type('Op', (), {})()
 op.start, op.x0 = (60, 0.5), 100
