@@ -25,8 +25,11 @@ from bpy.props import BoolProperty, EnumProperty, FloatProperty, FloatVectorProp
 
 N_PATH, N_BG, N_MIX = 'MCH BG Path', 'MCH BG Colour', 'MCH BG Mix'
 N_COORD, N_MAP, N_PIC, N_BC, N_ALPHA = 'MCH BG Coord', 'MCH BG Map', 'MCH BG Picture', 'MCH BG Bright', 'MCH BG Alpha'
-NODES = (N_PATH, N_BG, N_MIX, N_COORD, N_MAP, N_PIC, N_BC, N_ALPHA)
-PIC_NODES = (N_COORD, N_MAP, N_PIC, N_BC, N_ALPHA)
+N_BW, N_RAMP, N_RMIX = 'MCH BG Ramp Value', 'MCH BG Ramp', 'MCH BG Ramp Mix'      # 0.24.140 the Colour Ramp back
+PIC_NODES = (N_COORD, N_MAP, N_PIC, N_BC, N_ALPHA, N_BW, N_RAMP, N_RMIX)
+NODES = (N_PATH, N_BG, N_MIX) + PIC_NODES
+STOPS = 'mch_bg_ramp_stops'        # on the settings: the ramp's colours, kept while the picture nodes are out
+DARK, LIGHT = (0.02, 0.022, 0.028, 1.0), (0.92, 0.92, 0.92, 1.0)
 VIEW_KEY = 'mch_bg_view'
 MAT_KEY = 'mch_bg_matview'
 OWN = 'mch_bg_own'                 # on a picture this loaded (let go when another is picked and nothing uses it)
@@ -64,6 +67,9 @@ class MCH_PG_Background(bpy.types.PropertyGroup):
                           description='The picture lighter / darker')
     contrast: FloatProperty(name='Contrast', default=0.0, soft_min=-1.0, soft_max=1.0, update=_upd_color,
                             description='The picture\'s contrast (-1 flat, 0 as it is, 1 twice as much)')
+    ramp: BoolProperty(name='Colour Ramp', default=False, update=_upd_color,
+                       description='The picture\'s dark and light parts take the ramp\'s colours (Dark / Light, Edit '
+                       'Ramp… for more stops)')
     material_too: BoolProperty(name='Material Preview Too', default=True, update=_upd_mat,
                                description='Material Preview shows the scene\'s world (your HDRI and the background) '
                                'instead of Blender\'s own studio light')
@@ -124,6 +130,7 @@ def apply(scene):
     if on(scene):
         set_color(scene)
         return 'Background Colour is on'
+    migrate(scene)
     w = _world(scene)
     nt = w.node_tree
     out = _output(nt)
@@ -169,6 +176,7 @@ def remove(scene):
         linked = out is not None and any(l.from_node == mix for l in out.inputs['Surface'].links)
         pic = nt.nodes.get(N_PIC)
         img = pic.image if pic is not None else None
+        _save_stops(scene, nt)
         for name in NODES:
             n = nt.nodes.get(name)
             if n is not None:
@@ -230,8 +238,81 @@ def _picture_nodes(nt, bg):
     lk.new(mp.outputs['Vector'], pic.inputs['Vector'])
     lk.new(pic.outputs['Color'], bc.inputs['Color'])
     lk.new(pic.outputs['Alpha'], _mix_in(al, 'Factor_Float'))
-    lk.new(bc.outputs['Color'], _mix_in(al, 'B_Color'))
+    # (0.24.95 / 0.24.140 user: "사진에 컬러램프 기능 - 대비랑 색 같은 거 내가 조절", "왜 컬러램프 조정하는 거 뺐어?")
+    bw = nd.new('ShaderNodeRGBToBW')
+    ramp = nd.new('ShaderNodeValToRGB')
+    rmix = nd.new('ShaderNodeMix')
+    rmix.data_type = 'RGBA'
+    for n, name, dx in ((bw, N_BW, -440), (ramp, N_RAMP, -300), (rmix, N_RMIX, -60)):
+        n.name = n.label = name
+        n.location = (x + dx, y - 640)
+    els = ramp.color_ramp.elements
+    els[0].position, els[0].color = 0.0, DARK
+    els[1].position, els[1].color = 1.0, LIGHT
+    lk.new(bc.outputs['Color'], bw.inputs['Color'])
+    lk.new(bw.outputs['Val'], ramp.inputs['Fac'])
+    lk.new(bc.outputs['Color'], _mix_in(rmix, 'A_Color'))
+    lk.new(ramp.outputs['Color'], _mix_in(rmix, 'B_Color'))
+    lk.new(next(o for o in rmix.outputs if o.identifier == 'Result_Color'), _mix_in(al, 'B_Color'))
     lk.new(next(o for o in al.outputs if o.identifier == 'Result_Color'), bg.inputs['Color'])
+
+
+def _save_stops(scene, nt):
+    """The ramp's colours onto the settings (the picture nodes go out: Colour, off)."""
+    st = settings(scene)
+    rn = nt.nodes.get(N_RAMP) if nt is not None else None
+    if st is None or rn is None:
+        return
+    st[STOPS] = json.dumps([[e.position, list(e.color)] for e in rn.color_ramp.elements])
+
+
+def _load_stops(scene, rn):
+    """The ramp's colours from the settings, else from the old HDRI page's ramp (0.24.95 - 0.24.136)."""
+    st = settings(scene)
+    stops = None
+    try:
+        stops = json.loads(st[STOPS]) if st is not None and STOPS in st.keys() else None
+    except (TypeError, ValueError):
+        stops = None
+    if stops is None:
+        try:
+            from . import backdrops
+            old = backdrops.ramp_node(scene)
+            if old is not None:
+                stops = [[e.position, list(e.color)] for e in old.color_ramp.elements]
+        except (ImportError, AttributeError, ReferenceError):
+            stops = None
+    if not stops:
+        return
+    els = rn.color_ramp.elements
+    while len(els) > max(2, len(stops)):
+        els.remove(els[-1])
+    while len(els) < len(stops):
+        els.new(1.0)
+    for e, (pos, col) in zip(els, stops):
+        e.position = pos
+        e.color = col
+
+
+def migrate(scene):
+    """0.24.140 once: the old HDRI page's picture settings (Fit, Brightness, Contrast, Colour Ramp) carried over."""
+    st = settings(scene)
+    if st is None or st.get('mch_migrated'):
+        return
+    st['mch_migrated'] = 1
+    if getattr(scene, 'mch_mech_hdri_bg_mode', 'COLOR') != 'IMAGE':
+        return
+    st.fit = getattr(scene, 'mch_mech_hdri_bg_fit', 'FILL')
+    st.bright = float(getattr(scene, 'mch_mech_hdri_bg_bright', 0.0))
+    st.contrast = float(getattr(scene, 'mch_mech_hdri_bg_contrast', 0.0))
+    st.ramp = bool(getattr(scene, 'mch_mech_hdri_bg_ramp', False))
+
+
+def ramp_node(scene):
+    """The background picture's Colour Ramp node in the scene's world, or None."""
+    w = getattr(scene, 'world', None)
+    nt = getattr(w, 'node_tree', None)
+    return nt.nodes.get(N_RAMP) if nt is not None else None
 
 
 def _picture_sync(scene, nt, bg):
@@ -243,6 +324,7 @@ def _picture_sync(scene, nt, bg):
     pic = nt.nodes.get(N_PIC)
     if not path:
         img = pic.image if pic is not None else None
+        _save_stops(scene, nt)
         for name in PIC_NODES:
             n = nt.nodes.get(name)
             if n is not None:
@@ -255,6 +337,7 @@ def _picture_sync(scene, nt, bg):
             if n is not None:
                 nt.nodes.remove(n)
         _picture_nodes(nt, bg)
+        _load_stops(scene, nt.nodes.get(N_RAMP))
         pic = nt.nodes.get(N_PIC)
     old = pic.image
     if old is None or os.path.normcase(bpy.path.abspath(old.filepath)) != os.path.normcase(path):
@@ -273,6 +356,7 @@ def _picture_sync(scene, nt, bg):
     bc = nt.nodes.get(N_BC)
     bc.inputs['Bright'].default_value = float(st.bright)
     bc.inputs['Contrast'].default_value = float(st.contrast)
+    _mix_in(nt.nodes.get(N_RMIX), 'Factor_Float').default_value = 1.0 if st.ramp else 0.0
     _mix_in(nt.nodes.get(N_ALPHA), 'A_Color').default_value = (*st.color, 1.0)
 
 
@@ -377,6 +461,33 @@ class MCH_OT_bg_picture(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_bg_ramp(bpy.types.Operator):
+    """Edit the background picture's Colour Ramp - its colours and where they sit (add stops for more colours): the
+    picture's dark parts take the left colour, its light parts the right one"""
+    bl_idname = 'mch.bg_ramp'
+    bl_label = 'Background Colour Ramp'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+
+    def invoke(self, context, event):
+        if ramp_node(context.scene) is None:
+            self.report({'WARNING'}, 'Colour Ramp: put a background picture on first (Render tab, Background)')
+            return {'CANCELLED'}
+        if bpy.app.background:
+            return self.execute(context)
+        return context.window_manager.invoke_popup(self, width=340)
+
+    def draw(self, context):
+        lay = self.layout
+        lay.label(text='Background picture - Colour Ramp')
+        node = ramp_node(context.scene)
+        if node is not None:
+            lay.template_color_ramp(node, 'color_ramp', expand=True)
+        lay.label(text='Left: the picture\'s dark parts   Right: its light parts')
+
+    def execute(self, context):
+        return {'FINISHED'}
+
+
 class MCH_OT_bg_fit(bpy.types.Operator):
     """The picture: Fill (the frame covered, its edges cut) or Fit (the whole picture, the colour round it)"""
     bl_idname = 'mch.bg_fit'
@@ -410,7 +521,7 @@ class MCH_OT_bg_color(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_PG_Background, MCH_OT_bg_color, MCH_OT_bg_picture, MCH_OT_bg_fit)
+CLASSES = (MCH_PG_Background, MCH_OT_bg_color, MCH_OT_bg_picture, MCH_OT_bg_fit, MCH_OT_bg_ramp)
 
 
 def register():

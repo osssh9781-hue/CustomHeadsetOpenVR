@@ -986,6 +986,11 @@ def viewport_section(b, context, x, width):
         if aa is not None:
             row(b, sx, sw, [button('Viewport AA: Single Pass (back to 8)' if aa == fast_view.AA_FAST
                                    else f'Viewport AA: {fast_view.aa_label(aa)} > Single Pass', 'mch.viewport_aa')])
+        note = fast_view.dlss_note(context)            # 0.24.140 Blender 5.3's DLSS for the Rendered viewport
+        if note:
+            b.note(('note', note, False, None, None, None, True), sx, sw)
+            if fast_view.dlss_on(sc):
+                row(b, sx, sw, [prop_cell(sc.cycles, 'preview_denoising_upscale_quality', 'DLSS Upscale')])
         if lst is None:
             return
         row(b, sx, sw, [_cell('seg', 'Light Copies (parts not worked on)', ('op', 'mch.light_copies', {}),
@@ -1047,6 +1052,13 @@ def background_section(b, context, x, width):
                             _cell('tbtn', 'Fit', ('op', 'mch.bg_fit', {'fit': 'FIT'}), on=st.fit == 'FIT')])
             row(b, sx, sw, [number(st, 'bright', 'Brightness')])
             row(b, sx, sw, [number(st, 'contrast', 'Contrast')])
+            # 0.24.140 (user: "왜 hdri 배경 이미지에 컬러램프 조정하는 거 뺐어?") the Colour Ramp back
+            row(b, sx, sw, [prop_cell(st, 'ramp', 'Colour Ramp')])
+            rn = bgc.ramp_node(sc)
+            if st.ramp and rn is not None:
+                els = rn.color_ramp.elements
+                row(b, sx, sw, [swatch(els[0], 'color', 'Dark'), swatch(els[len(els) - 1], 'color', 'Light')])
+                row(b, sx, sw, [button('Edit Ramp…', 'mch.bg_ramp')])
             bg_pictures(b, sc, sx, sw)
         row(b, sx, sw, [prop_cell(st, 'material_too', 'Material Preview Too')])
         row(b, sx, sw, [prop_cell(st, 'solid_too', 'Solid View Too')])

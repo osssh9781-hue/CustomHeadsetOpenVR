@@ -116,6 +116,46 @@ ident = tiles[3].action[2]['ident']
 bpy.ops.mch.bg_picture(ident=ident)
 check('a tile\'s action puts its picture behind the model', st.image == ident
       and nt.nodes.get(bgc.N_PIC).image.filepath.endswith(ident[2:]), ident)
+# 0.24.140 (user: "왜 hdri 배경 이미지에 컬러램프 조정하는 거 뺐어?") the Colour Ramp back
+bpy.ops.mch.bg_picture(ident='B:white_sweep_land.jpg')
+st.fit = 'FILL'
+st.ramp = True
+rn = bgc.ramp_node(S)
+els = rn.color_ramp.elements
+els[0].color = (1.0, 0.0, 0.0, 1.0)
+els[-1].color = (1.0, 0.0, 0.0, 1.0)
+rmix = nt.nodes.get(bgc.N_RMIX)
+px = render(64, 64, 'ramp.png')
+corner = px[2, 2]
+check('Colour Ramp on: the picture through the ramp (both ends red here) - a Cycles render shows red behind the sphere',
+      rn is not None and abs(next(i for i in rmix.inputs if i.identifier == 'Factor_Float').default_value - 1.0) < 1e-6
+      and corner[0] > corner[1] + 0.3, corner.round(2).tolist())
+items, _h = msu.hdri_content(C, 0, 300, 1.0)
+labels = {getattr(i, 'label', '') for i in items}
+check('the Render tab: Colour Ramp switch, Dark / Light colours, Edit Ramp…', {'Colour Ramp', 'Dark', 'Light',
+                                                                             'Edit Ramp…'} <= labels)
+check('Edit Ramp… opens (here: no window, finishes)', 'FINISHED' in bpy.ops.mch.bg_ramp('INVOKE_DEFAULT'))
+bpy.ops.mch.bg_picture(mode='COLOR')
+bpy.ops.mch.bg_picture(mode='IMAGE')
+rn = bgc.ramp_node(S)
+check('Colour and back to Picture: the ramp\'s colours kept', rn is not None
+      and tuple(round(v, 3) for v in rn.color_ramp.elements[0].color) == (1.0, 0.0, 0.0, 1.0),
+      tuple(rn.color_ramp.elements[0].color) if rn else None)
+st.ramp = False
+check('Colour Ramp off: the picture as it is', abs(next(i for i in nt.nodes.get(bgc.N_RMIX).inputs
+                                                   if i.identifier == 'Factor_Float').default_value) < 1e-6)
+# the old HDRI page's picture settings carried over once
+S2 = bpy.data.scenes.new('Old')
+S2.mch_mech_hdri_bg_mode, S2.mch_mech_hdri_bg_fit = 'IMAGE', 'FIT'
+S2.mch_mech_hdri_bg_bright, S2.mch_mech_hdri_bg_contrast, S2.mch_mech_hdri_bg_ramp = 0.25, -0.1, True
+bgc.migrate(S2)
+s2 = S2.mch_bg
+check('the old HDRI page\'s Fit, Brightness, Contrast and Colour Ramp carried over (once)',
+      s2.fit == 'FIT' and abs(s2.bright - 0.25) < 1e-6 and abs(s2.contrast + 0.1) < 1e-6 and s2.ramp)
+s2.ramp = False
+bgc.migrate(S2)
+check('... only once (a later change stays)', not s2.ramp)
+bpy.data.scenes.remove(S2)
 # off: the world as it was, the views' own setting back
 msg = bgc.remove(S)
 check('off: every node of ours gone (picture ones too), the world\'s own shader on its output, Material Preview\'s own '
@@ -145,6 +185,9 @@ class _Rec:
     def operator(self, idname, text='', **_kw):
         self.log.append(('op', idname, text))
         return type('OpProps', (), {})()
+
+    def template_color_ramp(self, data, prop, **_kw):
+        self.log.append(('ramp', prop))
 
 
 from mecha_lab import mech_shader as msh  # noqa: E402

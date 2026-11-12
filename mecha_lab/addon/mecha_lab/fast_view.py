@@ -12,6 +12,12 @@ kept on the scene and on the screen (saved with the file), so it can be put back
 
 Blender's viewport anti-aliasing (Preferences > Viewport, default 8 samples: the whole scene is drawn 8 more times
 each time the view stops) is a Blender Preference: only its own button changes it, and says so.
+
+0.24.140 (user: "5.3 에는 dlss 디노이즈도 있으니까 그거도 같이 해서 뷰포트 빠르게") Blender 5.3's viewport denoiser
+"DLSS" (NVIDIA DLSS Ray Reconstruction - the Rendered viewport only, not F12) with its Upscale Mode (the viewport
+rendered smaller and scaled up by DLSS): when Blender takes it (5.3+, an NVIDIA RTX card - compute capability 7.5+ -
+with driver 620+, Cycles set to that GPU), Fast Viewport uses DLSS with Upscale ``DLSS_UPSCALE`` instead of its own
+half resolution (both together would halve twice); else everything as before.
 """
 from __future__ import annotations
 
@@ -29,6 +35,52 @@ CYCLES = (('cycles', 'preview_samples', 64, 'max'),            # (only lowered)
           ('render', 'preview_pixel_size', '2', 'pixels'))
 AA_FAST = 'FXAA'
 AA = {'before': None}
+DLSS_UPSCALE = 'PERFORMANCE'        # (Blender's own default is Balanced; Fast Viewport is about speed)
+DLSS_MODES = ('NONE', 'QUALITY', 'BALANCED', 'PERFORMANCE', 'ULTRA_PERFORMANCE')
+
+
+def dlss_possible(scene):
+    """Does this Blender have the DLSS viewport denoiser at all (5.3+)?"""
+    cy = getattr(scene, 'cycles', None)
+    return cy is not None and hasattr(cy, 'preview_denoising_upscale_quality')
+
+
+def dlss_gpu(context=None):
+    """Cycles' own check: a GPU used for rendering supports DLSS (NVIDIA RTX, driver new enough)."""
+    try:
+        prefs = (context or bpy.context).preferences.addons['cycles'].preferences
+        return bool(prefs.has_dlss_gpu_devices())
+    except (KeyError, AttributeError, RuntimeError):
+        return False
+
+
+def _try_dlss(cy):
+    """The viewport denoiser set to DLSS - True only when Blender took it (its list has DLSS only with an NVIDIA
+    card it can use)."""
+    try:
+        cy.preview_denoiser = 'DLSS'
+        return cy.preview_denoiser == 'DLSS'
+    except (TypeError, ValueError):
+        return False
+
+
+def dlss_on(scene):
+    cy = getattr(scene, 'cycles', None)
+    return bool(cy is not None and getattr(cy, 'preview_denoiser', '') == 'DLSS'
+                and getattr(cy, 'use_preview_denoising', False))
+
+
+def dlss_note(context):
+    """One line for the panel about DLSS (Blender 5.3+ only), or ''."""
+    scene = context.scene
+    if not dlss_possible(scene):
+        return ''
+    if dlss_on(scene):
+        mode = scene.cycles.preview_denoising_upscale_quality.replace('_', ' ').title()
+        return f'Rendered viewport: DLSS (NVIDIA) - Upscale {mode}'
+    if dlss_gpu(context):
+        return 'DLSS ready (NVIDIA): Fast Viewport turns it on for the Rendered viewport'
+    return 'DLSS (Blender 5.3): needs an NVIDIA RTX card, driver 620+, Cycles on that GPU'
 
 
 def on(scene):
@@ -66,7 +118,18 @@ def apply(context):
     if on(scene):
         return 'Fast Viewport is on'
     keep = {'scene': {}, 'wire': []}
-    for group, name, value, how in CYCLES:
+    plan = list(CYCLES)
+    if dlss_possible(scene) and dlss_gpu(context):
+        # (Blender 5.3 DLSS: the denoiser and its upscaling instead of the half resolution - only when Blender takes
+        #  the value; on a card / driver it does not accept, the plan stays as it was)
+        cy = scene.cycles
+        old = cy.preview_denoiser
+        ok = _try_dlss(cy)
+        if ok:
+            keep['scene']['cycles.preview_denoiser'] = [old, 'DLSS']
+            plan = [c for c in plan if c[1] != 'preview_pixel_size']
+            plan.append(('cycles', 'preview_denoising_upscale_quality', DLSS_UPSCALE, 'set'))
+    for group, name, value, how in plan:
         owner = _owner(scene, group)
         if owner is None or not hasattr(owner, name):
             continue

@@ -2358,6 +2358,10 @@ def draw_background(layout, context):
             box.row(align=True).prop(st, 'fit', expand=True)
             box.prop(st, 'bright')
             box.prop(st, 'contrast')
+            box.prop(st, 'ramp')                                 # 0.24.140 the Colour Ramp back
+            rn = bg_color.ramp_node(sc)
+            if st.ramp and rn is not None:
+                box.template_color_ramp(rn, 'color_ramp', expand=True)
             box.label(text='Pictures: the Render tab of the Mecha Lab panel')
         box.prop(st, 'material_too')
         box.prop(st, 'solid_too')
