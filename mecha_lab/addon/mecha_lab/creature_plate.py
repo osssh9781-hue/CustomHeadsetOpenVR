@@ -39,10 +39,17 @@ PROFILE_ITEMS = [
     ('PILLOW', 'Pillow', 'Flat top, only the edge is round', 'MESH_CYLINDER', 2),
     ('SCALE', 'Scale', 'A real scale: thick at the root (where you started drawing), thin toward the tip, '
      'knife-thin edges, the tip lifts off the body', 'SHARPCURVE', 3),
+    # 0.24.143 (user: "스케일 옵션에서 한 가지 추가해서 깃털 버전 ... 처음 부분 위주로 붙고, 그 붙는 길이만 조절 / 그 이후는
+    # 일자로 빠지고 리프트를 조절 / 리지같이 가운데 날카로운 버전이랑 깃털의 깃처럼 잇는 옵션")
+    ('FEATHER', 'Feather', 'Attached to the body along its start only (Attach Length), then straight out as drawn - it '
+     'does not follow the body where it turns away; Lift tilts the free part up.  Vane / Ridge / Shaft', 'FORCE_WIND', 4),
 ]
+FEATHER_STYLES = [('VANE', 'Vane', 'A thin blade, knife-thin edges, thicker at the root'),
+                  ('RIDGE', 'Ridge', 'A sharp ridge along the middle (a diamond cross-section)'),
+                  ('SHAFT', 'Shaft', 'A thin vane with a sharp shaft along the middle, like a feather\'s quill')]
 LIVE_KEYS = ('profile', 'peak', 'end_peak', 'direction', 'edge_round', 'edge_thickness', 'sink', 'outline_smooth',
-             'resolution', 'tip_lift')
-POINT_KEYS = ('outline_smooth', 'resolution', 'profile', 'edge_round')    # change the point set / shape field
+             'resolution', 'tip_lift', 'feather_style', 'attach')
+POINT_KEYS = ('outline_smooth', 'resolution', 'profile', 'edge_round', 'feather_style')    # change the point set / shape field
 _CACHE = {}          # object name -> (key, field data): rays are cast only when the point set changes
 
 
@@ -92,6 +99,10 @@ class MCH_PG_CreaturePlate(bpy.types.PropertyGroup):
                                   description='Round off the corners of the drawn outline')
     resolution: IntProperty(name='Resolution', default=15, min=4, max=96, update=_update,
                             description='Points across the plate (higher = smoother, slower)')
+    feather_style: EnumProperty(name='Feather', items=FEATHER_STYLES, default='VANE', update=_update)
+    attach: FloatProperty(name='Attach Length', default=0.35, min=0.02, max=0.98, subtype='FACTOR', update=_update,
+                          description='Feather: how much of it, from where you started drawing, lies on the body - '
+                                      'the rest goes straight out (Lift tilts it up)')
     puff: FloatProperty(default=1.0, options={'HIDDEN'})
     live: BoolProperty(default=False, options={'HIDDEN'})
     last_error: StringProperty(default='', options={'HIDDEN', 'SKIP_SAVE'})
@@ -248,8 +259,9 @@ def _parts(context, src, p, target, projector):
         raise cg.CutError('The outline is empty.')
     bvh, _wv, _polys = ap._target_bvh(context, target)
     parts = []
+    shape_p = _FeatherShape(p) if p.profile == 'FEATHER' else p
     for outer, holes in groups:
-        boundary, pts, tris, nb, shape, natural_px, _sp = bmm.profile_field(outer, holes, p)
+        boundary, pts, tris, nb, shape, natural_px, _sp = bmm.profile_field(outer, holes, shape_p)
         cos, nrms, _missing = ap.project_patch(pts, projector, bvh)
         nrms = _smooth_normals(nrms, tris)
         # world units per pixel here (median over the triangle edges)
@@ -260,9 +272,87 @@ def _parts(context, src, p, target, projector):
                 ratios.append((cos[a] - cos[b]).length / dp)
         ratios.sort()
         scale = ratios[len(ratios) // 2] if ratios else 1.0
-        parts.append(dict(pts=pts, tris=tris, nb=nb, cos=cos, nrms=nrms, shape=shape, natural=natural_px * scale,
-                          start=tuple(src['loops'][0][0])))
+        part = dict(pts=pts, tris=tris, nb=nb, cos=cos, nrms=nrms, shape=shape, natural=natural_px * scale,
+                    start=tuple(src['loops'][0][0]))
+        if p.profile == 'FEATHER':
+            part['rays'] = [tuple(Vector(v) for v in projector.ray(xy)) for xy in pts]
+        parts.append(part)
     return parts
+
+
+class _FeatherShape:
+    """The settings a Feather's point set is shaped with: a Scale (Vane) or a Ridge (Ridge, Shaft)."""
+
+    def __init__(self, p):
+        self.profile = 'SCALE' if p.feather_style == 'VANE' else 'RIDGE'
+        self.outline_smooth = p.outline_smooth
+        self.edge_round = p.edge_round
+        self.resolution = p.resolution
+
+
+def shaft_shape(shape, ramp, nb, bins=20):
+    """Feather Shaft: a thin vane and a sharp narrow crest along the middle line all the way to the tip - the
+    ridge's height read against the widest of its own cross-section (ramp bins), so a narrowing tip keeps its
+    shaft.  Pure."""
+    top = [0.0] * bins
+    for i in range(nb, len(shape)):
+        b = min(int(ramp[i] * bins), bins - 1)
+        top[b] = max(top[b], shape[i])
+    top = [max(top[max(0, b - 2):b + 3]) for b in range(bins)]
+    for b in range(bins - 2, -1, -1):                   # (toward the tip a bin has few points: its width never
+        top[b] = max(top[b], 0.0)                       # jumps up again - read from the root side, smoothed)
+    top = [sum(top[max(0, b - 1):b + 2]) / len(top[max(0, b - 1):b + 2]) for b in range(bins)]
+    out = []
+    for i, h in enumerate(shape):
+        if i < nb:
+            out.append(0.0)
+            continue
+        dn = min(1.0, h / max(top[min(int(ramp[i] * bins), bins - 1)], 1e-9))
+        out.append(0.22 * dn ** 0.6 + 0.78 * max(0.0, (dn - 0.86) / 0.14) ** 0.8)
+    return out
+
+
+def _smoothstep(a, b, x):
+    t = min(1.0, max(0.0, (x - a) / max(b - a, 1e-9)))
+    return t * t * (3.0 - 2.0 * t)
+
+
+def feather_points(part, p, peak, end_peak, sink):
+    """(top, bottom) world points of a Feather: on the body (as a scale) up to Attach Length from the root, then
+    on the plane the body has there - each point where its view ray meets that plane, so the free part is the
+    drawn shape, straight, not bent down with the body - tilted up by Lift; a thin blade there (half above, half
+    below the plane).  Pure (mathutils only)."""
+    pts, nb, cos, nrms, shape, rays = (part[k] for k in ('pts', 'nb', 'cos', 'nrms', 'shape', 'rays'))
+    ramp = ramp_values(pts, p.direction, part.get('start'))
+    if p.feather_style == 'SHAFT':
+        shape = shaft_shape(shape, ramp, nb)
+    a = min(max(p.attach, 0.02), 0.98)
+    band = [i for i in range(len(pts)) if a - 0.08 <= ramp[i] <= a]
+    if len(band) < 3:
+        band = sorted(range(len(pts)), key=lambda i: abs(ramp[i] - a))[:12]
+    pa = sum((Vector(cos[i]) for i in band), Vector()) / len(band)
+    na = sum((Vector(nrms[i]) for i in band), Vector())
+    na = na.normalized() if na.length > 1e-9 else Vector((0.0, 0.0, 1.0))
+    lift = max(0.0, p.tip_lift)
+    h0, h1 = peak, (end_peak if end_peak >= 0 else peak * 0.5)
+    floor = 0.04 * peak
+    top, bot = [], []
+    for i in range(len(pts)):
+        t = ramp[i]
+        thick = p.edge_thickness * (1.0 - t) + shape[i] * (h0 + (h1 - h0) * t)
+        w = _smoothstep(a - 0.04, a + 0.04, t)
+        o, d = rays[i]
+        den = d.dot(na)
+        if abs(den) < 0.15:                          # (a ray grazing the plane: kept from shooting off)
+            den = math.copysign(0.15, den if den != 0 else 1.0)
+        x = o + d * ((pa - o).dot(na) / den)
+        free = x + na * (lift * max(0.0, t - a) / max(1.0 - a, 1e-6))
+        base = Vector(cos[i]).lerp(free, w)
+        n = Vector(nrms[i]).lerp(na, w).normalized()
+        th = max(thick, floor)                       # the free blade: 60 % above the plane, 40 % below (its
+        top.append(base + n * (thick + (0.6 * th - thick) * w))     # ridge / shaft stands up on the top side)
+        bot.append(base + n * (-sink + (sink - 0.4 * th) * w))
+    return top, bot
 
 
 def build_mesh(parts, p, peak, end_peak, carve=False):
@@ -286,7 +376,11 @@ def build_mesh(parts, p, peak, end_peak, carve=False):
         lift = [lift_tip * t ** 1.6 for t in ramp]               # the far end rises off the body
         # the bottom stays in the surface at the root and comes out to it toward the tip (thin edge there)
         down = [sink * max(0.05, 1.0 - t) if lift_tip > 0 else sink for t in ramp]
-        if carve:
+        if p.profile == 'FEATHER' and not carve and part.get('rays'):
+            tp, bp = feather_points(part, p, peak, end_peak, sink)
+            top = [bm.verts.new(v) for v in tp]
+            bot = [bm.verts.new(v) for v in bp]
+        elif carve:
             top = [bm.verts.new(cos[i] - nrms[i] * (wall[i] + shape[i] * hgt[i])) for i in range(len(pts))]
             bot = [bm.verts.new(cos[i] + nrms[i] * sink) for i in range(len(pts))]
         else:
@@ -338,7 +432,7 @@ def rebuild(context, ob):
         raise cg.CutError('The mesh the plate was drawn on is gone.')
     parts = _field(context, ob, src, p, target, ap.thaw_projector(src['proj']))
     # Pillow's own height is only its round edge: it is already flat (no third of it)
-    natural = max(part['natural'] for part in parts) * {'PILLOW': 1.0, 'SCALE': 0.5}.get(p.profile, AUTO_RATIO)
+    natural = max(part['natural'] for part in parts) * {'PILLOW': 1.0, 'SCALE': 0.5, 'FEATHER': 0.35}.get(p.profile, AUTO_RATIO)
     peak = p.peak if p.peak > 0 else natural
     bm = build_mesh(parts, p, peak, p.end_peak)
     try:
@@ -397,7 +491,7 @@ def perform(context, loops, projector):
     if st.peak <= 0:
         p.peak = natural
     if st.end_peak < 0:
-        p.end_peak = p.peak * (0.15 if p.profile == 'SCALE' else 1.0)     # a scale thins out to its tip
+        p.end_peak = p.peak * {'SCALE': 0.15, 'FEATHER': 0.5}.get(p.profile, 1.0)     # a scale thins out to its tip
     p.live = True
     for o in context.selected_objects:
         o.select_set(False)
@@ -424,7 +518,7 @@ def engrave(context, loops, projector):
     cg.check_target(target)
     src = {'loops': [[[float(x), float(y)] for x, y in lp] for lp in loops], 'through': False}
     parts = _parts(context, src, st, target, projector)
-    natural = max(part['natural'] for part in parts) * {'PILLOW': 1.0, 'SCALE': 0.5}.get(st.profile, AUTO_RATIO)
+    natural = max(part['natural'] for part in parts) * {'PILLOW': 1.0, 'SCALE': 0.5, 'FEATHER': 0.35}.get(st.profile, AUTO_RATIO)
     peak = st.peak if st.peak > 0 else natural
     end_peak = st.end_peak if st.end_peak >= 0 else peak * (0.15 if st.profile == 'SCALE' else 1.0)
     bm = build_mesh(parts, st, peak, end_peak, carve=True)
@@ -497,11 +591,17 @@ def draw(layout, context):
     col.prop(p, 'peak')
     col.prop(p, 'end_peak')
     col.prop(p, 'direction')
+    if p.profile == 'FEATHER':                               # 0.24.143
+        target.row(align=True).prop(p, 'feather_style', expand=True)
+        fc = target.column(align=True)
+        fc.prop(p, 'attach', slider=True)
+        fc.prop(p, 'tip_lift', text='Lift (the free part)')
     col = target.column(align=True)
-    if p.profile in {'RIDGE', 'PILLOW', 'SCALE'}:
+    if p.profile in {'RIDGE', 'PILLOW', 'SCALE', 'FEATHER'}:
         col.prop(p, 'edge_round', slider=True)
     col.prop(p, 'edge_thickness')
-    col.prop(p, 'tip_lift')
+    if p.profile != 'FEATHER':
+        col.prop(p, 'tip_lift')
     col.prop(p, 'sink')
     col = target.column(align=True)
     col.prop(p, 'outline_smooth', slider=True)
