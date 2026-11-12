@@ -1,7 +1,7 @@
 """0.24.86 The background worker: a second Blender (or bpy python) that runs one heavy action on one mesh.
 
     worker <addon parent dir> <job json>
-    job = {"kind": "QUAD_REMESH" | "REFIX", "in": "<.blend with the mesh>", "mesh": "<mesh name>", "out": "<.blend>",
+    job = {"kind": "QUAD_REMESH" | "REFIX" | "PANEL_CLOTH" | "QUADRIFLOW", "in": "<.blend with the mesh>", "mesh": "<mesh name>", "out": "<.blend>",
            "params": {...}}
 
 It loads the mesh, builds an object for it, runs the action exactly as the add-on would, writes the result mesh to
@@ -49,6 +49,9 @@ def main():
             msg = 'Re-Fix: ' + str(ex)
     elif kind == 'PANEL_CLOTH':
         msg = _panel_cloth(bpy.context, ob, extra, p)
+    elif kind == 'QUADRIFLOW':                       # 0.24.140 Blender's QuadriFlow, with a time limit outside
+        bpy.ops.object.quadriflow_remesh(**job.get('params', {}))
+        msg = f'QuadriFlow: {len(ob.data.polygons):,} faces'
     else:
         msg = 'unknown job'
     res = ob.data

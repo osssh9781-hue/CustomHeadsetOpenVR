@@ -2096,10 +2096,16 @@ def run(context, action):
         if multires(ob) is not None:
             return 'ZRemesher: Del Higher / Del Lower first'
         _mode(context, 'OBJECT')
+        params = dict(target_faces=max(100, int(zb.target_polys * 1000)), use_preserve_sharp=zb.keep_creases,
+                      use_preserve_boundary=zb.keep_border, use_mesh_symmetry=bool(zb.sym_x), mode='FACES')
+        from . import bg_jobs, fast_decimate as fd
         try:
-            bpy.ops.object.quadriflow_remesh(target_faces=max(100, int(zb.target_polys * 1000)),
-                                             use_preserve_sharp=zb.keep_creases, use_preserve_boundary=zb.keep_border,
-                                             use_mesh_symmetry=bool(zb.sym_x), mode='FACES')
+            if bg_jobs.guard_quadriflow():         # 0.24.140 Blender 5.3's QuadriFlow: with a time limit
+                new = bg_jobs.run_guarded(ob.data, 'QUADRIFLOW', params,
+                                          timeout=60.0 + params['target_faces'] / 400.0)
+                fd.swap_mesh(ob, new)
+            else:
+                bpy.ops.object.quadriflow_remesh(**params)
         except RuntimeError as ex:
             _mode(context, 'SCULPT')
             return 'ZRemesher: ' + str(ex).splitlines()[0]

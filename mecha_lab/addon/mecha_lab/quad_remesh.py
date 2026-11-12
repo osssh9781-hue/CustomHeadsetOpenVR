@@ -488,25 +488,40 @@ def build_mesh(context, src, st):
         return me, kept, 0.0, '; '.join(notes)
 
 
+FLOW_TIMEOUT = 20.0               # 0.24.140 seconds QuadriFlow may take (plus a second per 400 faces asked) on 5.3+
+
+
 def _flow(context, src, st, me, kept):
     """QuadriFlow on the prepared mesh ``me`` (freed on an error).  Returns (mesh, kept, miss)."""
     src_hard = _hard_list(me)
     area = sum(p.area for p in me.polygons)
-    tmp = bpy.data.objects.new('MCH_Quad_tmp', me)
-    tmp.matrix_world = src.matrix_world.copy()
-    context.scene.collection.objects.link(tmp)
     before = len(me.polygons)
-    try:
-        with context.temp_override(object=tmp, active_object=tmp, selected_objects=[tmp],
-                                   selected_editable_objects=[tmp]):
-            bpy.ops.object.quadriflow_remesh(use_mesh_symmetry=False, use_preserve_sharp=kept > 0,
-                                             use_preserve_boundary=True, preserve_attributes=False,
-                                             smooth_normals=False, mode='FACES', target_faces=st.faces, seed=0)
-    except RuntimeError as ex:
-        bpy.data.objects.remove(tmp, do_unlink=True)
+    params = dict(use_mesh_symmetry=False, use_preserve_sharp=kept > 0, use_preserve_boundary=True,
+                  preserve_attributes=False, smooth_normals=False, mode='FACES', target_faces=st.faces, seed=0)
+    from . import bg_jobs
+    if bg_jobs.guard_quadriflow():
+        # 0.24.140 Blender 5.3's QuadriFlow ran forever on a cut part 5.2.3 remeshes in 1 s: in a second Blender with
+        # a time limit, so the window never stays frozen
+        try:
+            new = bg_jobs.run_guarded(me, 'QUADRIFLOW', params, timeout=FLOW_TIMEOUT + st.faces / 400.0)
+        except RuntimeError as ex:
+            bpy.data.meshes.remove(me)
+            raise RuntimeError('QuadriFlow: ' + str(ex))
         bpy.data.meshes.remove(me)
-        raise RuntimeError('QuadriFlow failed: ' + str(ex).strip())
-    bpy.data.objects.remove(tmp, do_unlink=True)
+        me = new
+    else:
+        tmp = bpy.data.objects.new('MCH_Quad_tmp', me)
+        tmp.matrix_world = src.matrix_world.copy()
+        context.scene.collection.objects.link(tmp)
+        try:
+            with context.temp_override(object=tmp, active_object=tmp, selected_objects=[tmp],
+                                       selected_editable_objects=[tmp]):
+                bpy.ops.object.quadriflow_remesh(**params)
+        except RuntimeError as ex:
+            bpy.data.objects.remove(tmp, do_unlink=True)
+            bpy.data.meshes.remove(me)
+            raise RuntimeError('QuadriFlow failed: ' + str(ex).strip())
+        bpy.data.objects.remove(tmp, do_unlink=True)
     polys = me.polygons
     if not polys or (len(polys) == before and any(len(p.vertices) != 4 for p in polys)):
         bpy.data.meshes.remove(me)

@@ -20,7 +20,7 @@ import bpy
 BG_MIN = 20_000                   # faces: below this the action runs inline (the start-up of a second Blender costs ~2 s)
 JOBS = {}                         # object name -> job dict
 _TIMER_ON = False
-KINDS = {'QUAD_REMESH': 'Quad Remesh', 'REFIX': 'Re-Fix', 'PANEL_CLOTH': 'Panel Cloth'}
+KINDS = {'QUAD_REMESH': 'Quad Remesh', 'REFIX': 'Re-Fix', 'PANEL_CLOTH': 'Panel Cloth', 'QUADRIFLOW': 'QuadriFlow'}
 
 
 def _worker_cmd(job_json):
@@ -80,6 +80,61 @@ def start(context, ob, kind, params, extra=()):
                          mesh=me.name, faces=len(me.polygons), verts=len(me.vertices), message='', done=False)
     _ensure_timer()
     return f'{KINDS.get(kind, kind)} started in the background on {ob.name} ({len(me.polygons):,} faces) - keep working'
+
+
+GUARD_VERSION = (5, 3, 0)          # 0.24.140 Blender 5.3's QuadriFlow can run forever on a part 5.2 remeshes in 1 s
+
+
+def guard_quadriflow():
+    """QuadriFlow goes to a second Blender with a time limit (it cannot be stopped once started in this one)."""
+    return tuple(bpy.app.version) >= GUARD_VERSION and can_run_worker()
+
+
+def can_run_worker():
+    return bool(bpy.app.binary_path) or bool(getattr(sys, 'executable', ''))
+
+
+def run_guarded(me, kind, params, timeout):
+    """0.24.140 ``kind`` on a copy of mesh ``me`` in a second Blender, waited for at most ``timeout`` seconds; the
+    result as a new mesh (``me`` untouched, its materials put on the result).  RuntimeError: it did not finish in
+    time / failed."""
+    d = tempfile.mkdtemp(prefix='mch_guard_')
+    src = os.path.join(d, 'in.blend')
+    out = os.path.join(d, 'out.blend')
+    send = me.copy()                                  # (sent without its materials: none come back twice)
+    send.materials.clear()
+    send.name = 'MCH_GUARD_IN'
+    try:
+        bpy.data.libraries.write(src, {send}, fake_user=True)
+        name = send.name
+    finally:
+        bpy.data.meshes.remove(send)
+    job = {'kind': kind, 'in': src, 'mesh': name, 'out': out, 'params': params, 'extra': []}
+    cmd = _worker_cmd(json.dumps(job))
+    t0 = time.perf_counter()
+    try:
+        res = subprocess.run(cmd, cwd=d, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                             timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f'{KINDS.get(kind, kind)} did not finish in {timeout:.0f} s (Blender '
+                           f'{bpy.app.version_string}) - stopped; try other Faces or the Patch method')
+    except OSError as ex:
+        raise RuntimeError(f'{KINDS.get(kind, kind)}: could not start the second Blender ({ex})')
+    line = next((ln for ln in res.stdout.splitlines() if ln.startswith('MCH_RESULT ')), None)
+    if line is None or not os.path.exists(out):
+        raise RuntimeError(f'{KINDS.get(kind, kind)} failed in the second Blender: '
+                           + (res.stdout.strip().splitlines() or ['no output'])[-1][:120])
+    info = json.loads(line[len('MCH_RESULT '):])
+    with bpy.data.libraries.load(out, link=False) as (s_, dst):
+        dst.meshes = [info['name']] if info['name'] in s_.meshes else list(s_.meshes)[:1]
+    new = dst.meshes[0] if dst.meshes else None
+    if new is None:
+        raise RuntimeError(f'{KINDS.get(kind, kind)}: the result could not be read')
+    new.use_fake_user = False
+    for m in me.materials:
+        new.materials.append(m)
+    new['mch_guard_seconds'] = round(time.perf_counter() - t0, 1)
+    return new
 
 
 def cancel(name):

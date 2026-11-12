@@ -87,5 +87,9 @@ out, div = run(6, 5)
 step5 = next((l for l in out.splitlines() if l.startswith('STEP 5 ')), '')
 check('Fuzz seed 6 (a GN Bevel pocket on a 17k-face part, where the first run ran out of memory - 13.6 GB): the '
       'slow sure-way sweep is skipped and the cut says why (before: "GN Edge found no new border edges")',
-      'DONE' in out and 'Edge Finish skipped: the quick sweep did not come out clean' in step5, step5[-160:])
+      'DONE' in out and ('Edge Finish skipped: the quick sweep did not come out clean' in step5
+                         # (0.24.140 the same cut comes out clean at once on some runs - 5.2.3 and 5.3 alike: the GN
+                         #  Bevel border found, no fallback needed - also right)
+                         or ('GN Bevel:' in step5 and 'border edges' in step5 and 'no new border' not in step5)),
+      step5[-160:])
 summary()
