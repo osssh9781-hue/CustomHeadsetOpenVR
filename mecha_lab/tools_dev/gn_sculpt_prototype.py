@@ -126,9 +126,26 @@ def node_group():
     std_off = vmath('SCALE', n_attr.outputs['Attribute'], scale=math_('MULTIPLY', math_('MULTIPLY', bell, strength), r))
     clay_off = vmath('SCALE', n_attr.outputs['Attribute'], scale=math_('MULTIPLY', math_('MULTIPLY', clay.outputs['Result'], strength), math_('MULTIPLY', r, 0.45)))
     mv_off = vmath('SCALE', mvec, scale=bell)
-    pick = node('GeometryNodeIndexSwitch', data_type='VECTOR'); pick.index_switch_items.new()
+    # Clay Buildup: the plane = the stroke's mean point + its mean normal x (strength x radius x 0.5); points below it
+    # inside a hard footprint (full to 0.8 r, gone at r, its edge roughened by noise) are filled up to it
+    ppos = node('GeometryNodeInputPosition')
+    pstat = node('GeometryNodeAttributeStatistic', data_type='FLOAT_VECTOR', domain='POINT')
+    L.new(st, pstat.inputs['Geometry']); L.new(ppos.outputs[0], pstat.inputs['Attribute'])
+    pn = vmath('NORMALIZE', stat('normal', 'FLOAT_VECTOR'))
+    lift = vmath('SCALE', pn.outputs['Vector'], scale=math_('MULTIPLY', math_('MULTIPLY', strength, r), 0.5))
+    target = vmath('ADD', pstat.outputs['Mean'], lift.outputs['Vector'])
+    below = vmath('DOT_PRODUCT', vmath('SUBTRACT', target.outputs['Vector'], node('GeometryNodeInputPosition').outputs[0]).outputs['Vector'],
+                  pn.outputs['Vector'])
+    noise = node('ShaderNodeTexNoise'); noise.inputs['Scale'].default_value = 9.0; noise.inputs['Detail'].default_value = 4.0
+    rough_t = math_('ADD', t, math_('MULTIPLY', math_('SUBTRACT', noise.outputs['Fac'], 0.5), 0.35))
+    foot = node('ShaderNodeMapRange', interpolation_type='SMOOTHSTEP', clamp=True)
+    L.new(rough_t, foot.inputs['Value']); foot.inputs['From Min'].default_value = 1.0; foot.inputs['From Max'].default_value = 0.8
+    fill = math_('MULTIPLY', math_('MAXIMUM', below.outputs['Value'], 0.0), foot.outputs['Result'])
+    bld_off = vmath('SCALE', pn.outputs['Vector'], scale=fill)
+    pick = node('GeometryNodeIndexSwitch', data_type='VECTOR'); pick.index_switch_items.new(); pick.index_switch_items.new()
     L.new(math_('ROUND', k), pick.inputs['Index'])
     L.new(std_off.outputs['Vector'], pick.inputs[1]); L.new(clay_off.outputs['Vector'], pick.inputs[2]); L.new(mv_off.outputs['Vector'], pick.inputs[3])
+    L.new(bld_off.outputs['Vector'], pick.inputs[4])
     setp = node('GeometryNodeSetPosition')
     L.new(rin.outputs['Geometry'], setp.inputs['Geometry']); L.new(pick.outputs['Output'], setp.inputs['Offset'])
     L.new(setp.outputs['Geometry'], rout.inputs['Geometry'])
@@ -159,20 +176,26 @@ import bmesh as _b
 _bm = _b.new(); _bm.from_mesh(me); print('open edges', sum(1 for e in _bm.edges if not e.is_manifold)); _bm.free()
 print('base faces', len(me.polygons))
 # strokes: Standard across the front, Clay zigzag on top, Move pulling a top corner outwards
-pts, edges, sid, rad, strg, kind, mv = [], [], [], [], [], [], []
-def stroke(points, i, r, s, k, m=(0, 0, 0)):
+pts, edges, sid, rad, strg, kind, mv, nrm = [], [], [], [], [], [], [], []
+def stroke(points, i, r, s, k, m=(0, 0, 0), n=(0, 0, 1)):
     base = len(pts)
     for j, p in enumerate(points):
-        pts.append(p); sid.append(i); rad.append(r); strg.append(s); kind.append(k); mv.append(m)
+        pts.append(p); sid.append(i); rad.append(r); strg.append(s); kind.append(k); mv.append(m); nrm.append(n)
         if j: edges.append((base + j - 1, base + j))
-stroke([(x, -1.0, 0.2 * math.sin(x * 3)) for x in np.linspace(-0.7, 0.7, 15)], 0, 0.18, 0.35, 0)        # Standard
-stroke([(-0.75 + 0.06 * j, -0.35 + 0.18 * math.sin(j * 0.9), 1.0) for j in range(18)], 1, 0.14, 1.0, 1)
-stroke([(-0.7 + 0.06 * j, -0.30 + 0.18 * math.sin(j * 0.9), 1.0) for j in range(18)], 4, 0.12, 1.0, 1)   # Clay
-stroke([(0.55, 0.55, 1.0)], 2, 0.45, 1.0, 2, (0.0, 0.0, 0.45))                                          # Move
-stroke([(x, 0.0, -1.0 + 0.0) for x in np.linspace(-0.5, 0.5, 9)], 3, 0.15, -0.3, 0)                     # Standard, Ctrl (in)
+stroke([(x, -1.0, 0.2 * math.sin(x * 3)) for x in np.linspace(-0.7, 0.7, 15)], 0, 0.18, 0.35, 0, n=(0, -1, 0))  # Standard
+# the top, left: Clay (two passes)
+stroke([(-0.85 + 0.035 * j, -0.45 + 0.35 * j / 17, 1.0) for j in range(18)], 1, 0.13, 1.0, 1)
+stroke([(-0.80 + 0.035 * j, -0.38 + 0.35 * j / 17, 1.0) for j in range(18)], 2, 0.12, 1.0, 1)
+# the top, right: a Standard bump, then Clay Buildup (three passes) over and round it - filled up to its plane
+stroke([(0.45, -0.2, 1.0)], 3, 0.16, 0.9, 0)
+stroke([(0.15 + 0.04 * j, -0.45 + 0.03 * j, 1.0) for j in range(16)], 4, 0.16, 1.0, 3)
+stroke([(0.15 + 0.04 * j, -0.30 + 0.03 * j, 1.0) for j in range(16)], 5, 0.16, 1.0, 3)
+stroke([(0.15 + 0.04 * j, -0.15 + 0.03 * j, 1.0) for j in range(16)], 6, 0.16, 1.6, 3)
+stroke([(0.55, 0.62, 1.0)], 7, 0.3, 1.0, 2, (0.0, 0.0, 0.3))                                            # Move
 sme = bpy.data.meshes.new('Strokes'); sme.from_pydata(pts, edges, [])
 for name, typ, vals, key in (('stroke', 'INT', sid, 'value'), ('radius', 'FLOAT', rad, 'value'), ('strength', 'FLOAT', strg, 'value'),
-                             ('kind', 'INT', kind, 'value'), ('move', 'FLOAT_VECTOR', mv, 'vector')):
+                             ('kind', 'INT', kind, 'value'), ('move', 'FLOAT_VECTOR', mv, 'vector'),
+                             ('normal', 'FLOAT_VECTOR', nrm, 'vector')):
     a = sme.attributes.new(name, typ, 'POINT')
     a.data.foreach_set(key, np.array(vals, dtype=np.float32 if typ != 'INT' else np.int32).ravel())
 sob = bpy.data.objects.new('Part (sculpt strokes)', sme)
@@ -192,7 +215,7 @@ wmat = bpy.data.materials.new('WireM'); wmat.use_nodes = True
 wmat.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = (0.02, 0.02, 0.03, 1)
 wme.materials.clear(); wme.materials.append(wmat)
 cam_d = bpy.data.cameras.new('C'); cam = bpy.data.objects.new('C', cam_d); S.collection.objects.link(cam); S.camera = cam
-cam.location = (2.4, -3.6, 3.8)
+cam.location = (1.2, -3.0, 4.6)
 cam.rotation_euler = (Vector((0, 0, 0.1)) - cam.location).to_track_quat('-Z', 'Y').to_euler()
 for loc, e in (((3, -3, 5), 800), ((-4, -2, 2), 300)):
     ld = bpy.data.lights.new('L', 'AREA'); ld.energy = e; ld.size = 3
