@@ -66,11 +66,19 @@ def groups(context, tool):
         out.append(('Draw', draw))
     line_tool = tool in lasso_line.MODES or tool in lasso_line.ALWAYS
     if line_tool and (brush.line_mode or tool in lasso_line.ALWAYS):
-        line = [_cell('mini', 'Width', action=('number',), data=brush, prop='line_width', width=140),
-                _cell('drop', '', action=('menu_enum',), data=brush, prop='line_caps', width=96),
-                _seg('Taper', brush, 'line_taper_on')]
-        if brush.line_taper_on:
-            line.append(_cell('mini', 'Taper', action=('number',), data=brush, prop='line_taper', width=120))
+        sd = getattr(scene, 'mch_sdraw', None) if tool == 'SDRAW' else None
+        if sd is not None:                     # 0.24.143 Surface Draw: its own Ends (live: every band rebuilds)
+            line = [_cell('mini', 'Width', action=('number',), data=brush, prop='line_width', width=140),
+                    _cell('drop', '', action=('menu_enum',), data=sd, prop='ends', width=110)]
+            if sd.ends == 'POINT':
+                line.append(_cell('mini', 'Taper', action=('number',), data=sd, prop='taper', width=120))
+        else:
+            line = [_cell('mini', 'Width', action=('number',), data=brush, prop='line_width', width=140),
+                    _cell('drop', '', action=('menu_enum',), data=brush, prop='line_caps', width=110)]
+            if brush.line_caps != 'POINT':
+                line.append(_seg('Taper', brush, 'line_taper_on'))
+            if brush.line_caps == 'POINT' or brush.line_taper_on:
+                line.append(_cell('mini', 'Taper', action=('number',), data=brush, prop='line_taper', width=120))
         line.append(_seg('Pressure', brush, 'line_pressure'))
         line.append(_seg('Area', brush, 'line_area'))          # 0.24.108 the enclosed region as the shape
         if tool in {'BASE', 'CBASE'}:

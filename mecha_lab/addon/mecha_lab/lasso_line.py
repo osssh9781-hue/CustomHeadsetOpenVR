@@ -156,6 +156,8 @@ def band(path, width_px, cap='ROUND', cap_segments=8, taper=0.0, pressure=None):
     to points at both ends, ``pressure`` = [(t along the line 0..1, factor)] (pen pressure) scales the width.
     A stroke that crosses itself or closes on itself gives an outline that crosses itself: ``line_loops`` /
     ``band_union`` turn that into clean loops."""
+    if cap == 'POINT':                               # (Pointed: round tips, thinned - see ends_of)
+        cap, taper = 'ROUND', max(taper, 0.5)
     path, hw, widths, normals = _prepared(path, width_px, taper, pressure)
     if len(path) < 2:
         return []
@@ -265,6 +267,16 @@ def crosses(loop):
     return len(loop) >= 4 and bool(cg.find_intersections([loop]))
 
 
+def ends_of(brush):
+    """(cap, taper) for a band from the brush: Line Ends Round / Flat, or Pointed = round tips + Taper Amount (the
+    older Taper button still works with Round / Flat)."""
+    cap = getattr(brush, 'line_caps', 'ROUND')
+    amount = float(getattr(brush, 'line_taper', 0.5))
+    if cap == 'POINT':
+        return 'ROUND', max(amount, 0.05)
+    return cap, (amount if getattr(brush, 'line_taper_on', False) else 0.0)
+
+
 def line_loops(context, projector, path, brush, pressure=None, width_px=None):
     """0.24.108 The band(s) handed to a tool for an open path in Line mode.  A stroke that does not meet itself:
     the one band outline.  One that crosses or closes on itself: the exact union - with its holes as holes (a closed
@@ -278,14 +290,14 @@ def line_loops(context, projector, path, brush, pressure=None, width_px=None):
     else:
         ppu = pixels_per_unit(context, projector, path[0])
         width = max(1.0, brush.line_width * ppu)
-    taper = getattr(brush, 'line_taper', 0.0) if getattr(brush, 'line_taper_on', False) else 0.0
+    cap, taper = ends_of(brush)
     prof = pressure if getattr(brush, 'line_pressure', False) else None
-    loop = band(path, width, brush.line_caps, cap_segments=ts.res_n(8, 2), taper=taper, pressure=prof)
+    loop = band(path, width, cap, cap_segments=ts.res_n(8, 2), taper=taper, pressure=prof)
     if len(loop) < 3:
         return []
     if not crosses(loop):
         return [loop]
-    loops = band_union(path, width, brush.line_caps, taper, prof, fill=bool(getattr(brush, 'line_area', False)))
+    loops = band_union(path, width, cap, taper, prof, fill=bool(getattr(brush, 'line_area', False)))
     return loops or [loop]
 
 

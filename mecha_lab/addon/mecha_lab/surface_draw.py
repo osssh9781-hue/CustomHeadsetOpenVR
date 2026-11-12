@@ -34,7 +34,11 @@ PROFILE_ITEMS = [
     ('ROUND', 'Round', 'Half round'),
     ('RIDGE', 'Ridge', 'A sharp ridge along the middle'),
 ]
-LIVE_KEYS = ('profile', 'width', 'height', 'edge', 'fill_res', 'sink', 'smooth', 'density', 'across', 'end_round')
+LIVE_KEYS = ('profile', 'width', 'height', 'edge', 'fill_res', 'sink', 'smooth', 'density', 'across', 'end_round',
+             'ends', 'taper')
+ENDS_ITEMS = [('SQUARE', 'Square Ends', 'The band keeps its width to its ends'),
+              ('ROUND', 'Round Ends', 'Each end a half circle (seen from above)'),
+              ('POINT', 'Pointed Ends', 'The band thins to a point at both ends (how far in: Taper)')]
 
 
 # -----------------------------------------------------------------------------
@@ -166,6 +170,10 @@ class MCH_PG_SurfaceDraw(bpy.types.PropertyGroup):
     across: _p(IntProperty, name='Across', default=9, min=3, max=33, description='Points across the band')
     end_round: _p(FloatProperty, name='Round Ends', default=0.5, min=0.0, max=3.0,
                   description='How far (x the width) the ends slope down to the surface')
+    # 0.24.143 the band's outline at its ends (seen from above): Square / Round / Pointed (+ Taper)
+    ends: _p(EnumProperty, name='Ends', items=ENDS_ITEMS, default='SQUARE')
+    taper: _p(FloatProperty, name='Taper', default=0.5, min=0.02, max=1.0, subtype='FACTOR',
+              description='Pointed Ends: how much of the band thins toward its ends (1 = over the whole length)')
     keep_size: BoolProperty(name='Keep First Size', default=True,
                             description='Every stroke gets the Width and Height of the first one')
     fill: BoolProperty(name='Fill Area', default=False,
@@ -221,18 +229,57 @@ def _nearest(bvh, q):
     return loc, n.normalized()
 
 
+def outline_factors(lengths, width, ends, taper):
+    """The band's half-width factor per point (seen from above): Square 1; Round: a half circle over the last half
+    width; Pointed: thinning to a point (Line mode's Taper) - never quite 0 (the end ring stays a face).  Pure."""
+    total = lengths[-1] if lengths else 0.0
+    out = []
+    for s in lengths:
+        d = min(s, total - s)
+        if ends == 'ROUND':
+            r = width / 2.0
+            u = 1.0 if r <= 1e-12 else min(1.0, d / r)
+            f = math.sqrt(max(0.0, 1.0 - (1.0 - u) ** 2))
+        elif ends == 'POINT':
+            from .lasso_line import taper_factor
+            f = taper_factor(0.0 if total <= 1e-12 else s / total, taper)
+        else:
+            f = 1.0
+        out.append(max(0.03, f))
+    return out
+
+
+def _dense_ends(pts, reach, n=8):
+    """More points in the first / last ``reach`` of a line (a round or pointed end needs them)."""
+    lens = arc_lengths(pts)
+    total = lens[-1]
+    if total < 1e-9 or reach <= 0:
+        return pts
+    out = [Vector(pts[0])]
+    for a, b, la, lb in zip(pts, pts[1:], lens, lens[1:]):
+        near = min(la, total - lb) < reach
+        k = n if near else 1
+        for i in range(1, k + 1):
+            out.append(Vector(a).lerp(Vector(b), i / k))
+    return out
+
+
 def stroke_mesh(bvh, stroke, p, width, height, size, sign=1.0):
     """(verts, faces) of one stroke's band (world)."""
     step = width / max(0.5, p.density)
     pts = _resample(_smooth(stroke, p.smooth), step)
     if len(pts) < 2:
         return [], []
+    ends_kind = getattr(p, 'ends', 'SQUARE')
+    if ends_kind == 'ROUND':
+        pts = _dense_ends(pts, width / 2.0 + step)
     base = [_nearest(bvh, q) for q in pts]
     pts = [b[0] for b in base]
     nrms = [b[1] for b in base]
     fr = frames(pts, nrms)
     lens = arc_lengths(pts)
     ends = end_factors(lens, width * p.end_round) if p.profile != 'SQUARE' else [1.0] * len(lens)
+    wf = outline_factors(lens, width, ends_kind, getattr(p, 'taper', 0.5))
     m = max(3, p.across | 1)
     prof = cross_heights(p.profile, m, p.edge)
     sink = p.sink if p.sink > 0 else width * 0.08
@@ -241,7 +288,7 @@ def stroke_mesh(bvh, stroke, p, width, height, size, sign=1.0):
         rt, rb = [], []
         for j in range(m):
             x = -1.0 + 2.0 * j / (m - 1)
-            b, nb = _nearest(bvh, c + s * (x * width / 2.0))
+            b, nb = _nearest(bvh, c + s * (x * width / 2.0 * wf[i]))
             rt.append(len(verts))
             verts.append(b + nb * (prof[j] * height * ends[i] * sign))
             rb.append(len(verts))
@@ -932,6 +979,10 @@ def draw(layout, context, kind='BAND'):
     col.prop(p, 'sink')
     col = box.column(align=True)
     col.prop(p, 'end_round', slider=True)
+    r = col.row(align=True)                                  # 0.24.143 the outline's ends
+    r.prop(p, 'ends', text='')
+    if p.ends == 'POINT':
+        r.prop(p, 'taper', slider=True)
     col.prop(p, 'smooth')
     r = col.row(align=True)
     r.prop(p, 'density')

@@ -397,8 +397,12 @@ class MCH_PG_Brush(bpy.types.PropertyGroup):
                                         'around the path instead of the enclosed area')
     line_width: FloatProperty(name='Line Width', default=0.02, min=0.0005, soft_max=2.0, max=20.0, unit='LENGTH',
                               precision=4, description='Width of the band drawn in Line mode')   # 0.24.59 soft 0.5 -> 2
+    # 0.24.143 (user: "아머 플레이트, 서페이스 드로우, 플레이트 디테일 시리즈, 크리쳐 플레이트에 모두 끝부분 뾰족해지고 끝부분이
+    # 둥글어지는 테이퍼 그 옵션 넣어 줘") a third kind of end: Pointed (the band thins to a point - Taper Amount)
     line_caps: EnumProperty(name='Line Ends', items=[('ROUND', 'Round', 'Round line ends'),
-                                                     ('FLAT', 'Flat', 'Square line ends')], default='ROUND')
+                                                     ('FLAT', 'Flat', 'Square line ends'),
+                                                     ('POINT', 'Pointed', 'The line thins to a point at both ends '
+                                                                         '(how far in: Taper Amount)')], default='ROUND')
     # 0.24.108 (user: "선이 둘러싼 전체 영역을 하나의 도형으로") the region the line encloses becomes the shape
     line_area: BoolProperty(name='Area', default=False,
                             description='Line mode: when the line closes on itself or crosses itself, the whole '
