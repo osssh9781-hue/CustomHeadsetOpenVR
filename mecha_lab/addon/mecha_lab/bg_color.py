@@ -350,6 +350,11 @@ def _picture_sync(scene, nt, bg):
     img = pic.image
     ia = (img.size[0] / img.size[1]) if img.size[0] and img.size[1] else backdrops.aspect(path)
     sx, sy = backdrops.fit_scale(backdrops.frame_aspect(scene), ia, st.fit)
+    # 0.24.141 (user: "뎁스 오브 필드 넣으면 왜 배경 부분이 하얘져?" - a render with a light frame round the picture):
+    # depth of field (and the pixel filter) sends some camera rays just past the frame's edge, where a clipped picture
+    # has nothing and the Colour showed through.  Fill: the picture's edge carried on outwards; Fit: clipped (the
+    # Colour round the whole picture is the point)
+    pic.extension = 'EXTEND' if st.fit == 'FILL' else 'CLIP'
     mp = nt.nodes.get(N_MAP)
     mp.inputs['Scale'].default_value = (sx, sy, 1.0)
     mp.inputs['Location'].default_value = (0.5 - 0.5 * sx, 0.5 - 0.5 * sy, 0.0)

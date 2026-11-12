@@ -2143,6 +2143,7 @@ def _backdrop_sync(scene, nt):
         img = btex.image
         ia = (img.size[0] / img.size[1]) if img.size[0] and img.size[1] else backdrops.aspect(path)
         sx, sy = backdrops.fit_scale(backdrops.frame_aspect(scene), ia, scene.mch_mech_hdri_bg_fit)
+        btex.extension = 'EXTEND' if scene.mch_mech_hdri_bg_fit == 'FILL' else 'CLIP'   # 0.24.141 depth of field edge
         bmap.inputs['Scale'].default_value = (sx, sy, 1.0)
         bmap.inputs['Location'].default_value = (0.5 - 0.5 * sx, 0.5 - 0.5 * sy, 0.0)
         bon.outputs[0].default_value = 1.0

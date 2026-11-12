@@ -116,6 +116,34 @@ ident = tiles[3].action[2]['ident']
 bpy.ops.mch.bg_picture(ident=ident)
 check('a tile\'s action puts its picture behind the model', st.image == ident
       and nt.nodes.get(bgc.N_PIC).image.filepath.endswith(ident[2:]), ident)
+# 0.24.141 (user: "뎁스 오브 필드 넣으면 왜 배경 부분이 하얘져?" + a render with a light frame round the picture):
+# depth of field sent camera rays past the frame's edge, where the clipped picture let the Colour through
+bpy.ops.mch.bg_picture(ident='B:mid_grey_spot_land.jpg')
+st.fit = 'FILL'
+st.color = (1.0, 1.0, 1.0)
+cam = S.camera
+cam_loc, cam_rot = tuple(cam.location), tuple(cam.rotation_euler)
+cam.location, cam.rotation_euler = (0, -12, 0), (1.5708, 0, 0)        # (the sphere small: the edges are background)
+cam.data.dof.use_dof, cam.data.dof.focus_distance, cam.data.dof.aperture_fstop = True, 12.0, 0.1
+S.cycles.samples = 32
+pic_node = nt.nodes.get(bgc.N_PIC)
+pic_node.extension = 'CLIP'                                             # (the way it was: measured once)
+px = render(160, 90, 'dof_clip.png').mean(2)
+edge0, inner0 = float(px[20:70, 0].mean()), float(px[20:70, 10].mean())
+bgc.set_color(S)                                                        # (the sync puts Fill's own setting back)
+px = render(160, 90, 'dof.png').mean(2)
+edge, inner = float(px[20:70, 0].mean()), float(px[20:70, 10].mean())
+check('Fill with strong depth of field (f/0.1) and a white Colour: the light band at the frame\'s edge (the picture '
+      'clipped, as before) is gone - the picture\'s edge carried on',
+      edge0 > inner0 + 0.1 and pic_node.extension == 'EXTEND' and abs(edge - inner) < 0.05,
+      ('before', round(edge0, 3), round(inner0, 3), 'now', round(edge, 3), round(inner, 3)))
+st.fit = 'FIT'
+check('... Fit keeps the picture clipped (the Colour round it is the point)', nt.nodes.get(bgc.N_PIC).extension == 'CLIP')
+st.fit = 'FILL'
+cam.data.dof.use_dof = False
+cam.location, cam.rotation_euler = cam_loc, cam_rot
+S.cycles.samples = 8
+st.color = (0.0, 1.0, 0.0)
 # 0.24.140 (user: "왜 hdri 배경 이미지에 컬러램프 조정하는 거 뺐어?") the Colour Ramp back
 bpy.ops.mch.bg_picture(ident='B:white_sweep_land.jpg')
 st.fit = 'FILL'
