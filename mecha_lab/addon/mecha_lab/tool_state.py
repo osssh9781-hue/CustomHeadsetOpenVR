@@ -40,8 +40,8 @@ TOOLS = (
      'Speed, Invert; Push off / Normal / Free).  Enter / Space / RMB keep, Esc puts it back', 'smart_move',
      'OBJECT_ORIGIN', 'mecha.smart_move', 'OK'),
     ('GSCULPT', 'Geo Sculpt', 'Sculpt brushes on a plain part, no DynaMesh (Geometry Nodes): Standard, Clay, Clay '
-     'Buildup, Flat, Move, Smooth, Edge Line (the line you draw becomes a crisp edge, only as far as you drew), '
-     'Chamfer / Round (a hard edge, as wide as the brush).  S: Draw Size, U: Intensity, Alt: invert, Shift: Smooth; '
+     'Buildup, Flat, Move, Smooth, Edge Line (the line you draw becomes a crisp edge, only as far as you drew), Panel '
+     'Line (a panel groove along it), Chamfer / Round (a hard edge, as wide as the brush).  S: Draw Size, U: Intensity, Alt: invert, Shift: Smooth; '
      'the mesh changes on Apply', 'geo_sculpt', 'SCULPTMODE_HLT', 'mecha.geo_sculpt', 'OK'),
     ('PERF', 'Perforate', 'Sci-fi perforated plate: honeycomb / circle / square / diamond holes through the selected '
      'meshes; live (size, gap, margin, rotation, offset), Apply to keep',

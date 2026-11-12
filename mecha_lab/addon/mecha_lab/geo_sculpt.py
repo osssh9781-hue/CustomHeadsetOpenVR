@@ -15,8 +15,9 @@ How it works (nothing is written into the part until Apply):
     from Detail, a face budget caps it), then adds the strokes in order (a repeat zone): Standard = a bell along the
     normal, Clay = a flat-topped band, Clay Buildup = filled up to a plane (Alt: dug down), Flat = pressed to the
     stroke's plane (Alt: a raised flat pad), Move = the grab point dragged, Smooth = blurred, Edge Line = in the band
-    along the drawn line the surface on each side becomes the straight chord to the band's edge (a crisp edge, only as
-    far as the line goes - its ends fade), Alt: a V groove (a panel line)
+    along the drawn line each side becomes flat (the straight chord to the band's edge) and the points slide onto the
+    line, so the edge is exactly where it was drawn - only as far as it goes, its ends fade (Alt: an inward edge),
+    Panel Line = a groove along the line, flat floor and straight walls, crisp the same way (Alt: a raised rib)
   * Chamfer / Round mark the part's own hard edges along the stroke with the brush radius as width (Bevel modifiers by
     edge weight, before the sculpt layer); Alt takes it off
   * S = Draw Size at the cursor (move the mouse left / right, click / S = keep, right click / Esc = back), U = Intensity,
@@ -40,7 +41,7 @@ from mathutils.bvhtree import BVHTree
 
 MOD = 'MCH Geo Sculpt'
 GROUP = 'MCH Geo Sculpt'
-GROUP_VERSION = 11
+GROUP_VERSION = 12
 PART_KEY = 'mch_geo_part'           # on the stroke object: the part it belongs to
 CHAMFER_MOD, ROUND_MOD = 'MCH Geo Chamfer', 'MCH Geo Round'
 BEVEL_MODS = {'CHAMFER': CHAMFER_MOD, 'ROUND': ROUND_MOD}
@@ -48,7 +49,9 @@ BEVEL_ATTR = {'CHAMFER': 'mch_geo_chamfer', 'ROUND': 'mch_geo_round'}   # (+ '_w
 ROUND_SEGMENTS = 5
 HARD_ANGLE = math.radians(30.0)
 FACE_BUDGET = 400000                # the subdivided region never gets more faces than this
-KIND = {'STANDARD': 0, 'CLAY': 1, 'MOVE': 2, 'BUILDUP': 3, 'SMOOTH': 4, 'FLAT': 5, 'EDGE': 6}
+KIND = {'STANDARD': 0, 'CLAY': 1, 'MOVE': 2, 'BUILDUP': 3, 'SMOOTH': 4, 'FLAT': 5, 'EDGE': 6, 'PANEL': 7}
+LINE_KINDS = ('EDGE', 'PANEL')
+PANEL_FLOOR = 0.35                  # a Panel Line's flat floor: this share of the band's half width
 BRUSHES = (
     ('STANDARD', 'Standard', 'A soft bump along the surface (Alt: a dent)'),
     ('CLAY', 'Clay', 'A flat-topped band of clay (Alt: carved in)'),
@@ -56,15 +59,17 @@ BRUSHES = (
     ('FLAT', 'Flat', 'Presses the surface to the plane of the stroke (Alt: a flat pad pops out)'),
     ('MOVE', 'Move', 'Grab the surface and drag it'),
     ('SMOOTH', 'Smooth', 'Smooths the surface (Shift with any brush)'),
-    ('EDGE', 'Edge Line', 'Draw a line: in a band as wide as the brush, each side of the line becomes flat towards '
-                          'the band\'s edge - the line becomes a crisp edge, only as far as you drew it (Alt: a V groove)'),
+    ('EDGE', 'Edge Line', 'Draw a line: it becomes a crisp edge exactly where you drew it, only as far as you drew it '
+                          '- in a band as wide as the brush both sides go flat (Alt: an inward edge)'),
+    ('PANEL', 'Panel Line', 'Draw a line: a panel line along it - a groove with a flat floor and straight walls, as wide '
+                            'as the brush, only as far as you drew it (Alt: a raised rib)'),
     ('CHAMFER', 'Chamfer', 'Stroke along a hard edge of the part: it is chamfered, as wide as the brush (Alt: taken off)'),
     ('ROUND', 'Round', 'Stroke along a hard edge of the part: it is rounded, as wide as the brush (Alt: taken off)'),
 )
-BRUSH_ROWS = (('STANDARD', 'CLAY', 'BUILDUP'), ('FLAT', 'MOVE', 'SMOOTH'), ('EDGE', 'CHAMFER', 'ROUND'))
+BRUSH_ROWS = (('STANDARD', 'CLAY', 'BUILDUP'), ('FLAT', 'MOVE', 'SMOOTH'), ('EDGE', 'PANEL'), ('CHAMFER', 'ROUND'))
 BRUSH_COLOUR = {'STANDARD': (1.0, 0.62, 0.15, 0.95), 'CLAY': (1.0, 0.62, 0.15, 0.95), 'BUILDUP': (1.0, 0.62, 0.15, 0.95),
                 'FLAT': (0.35, 0.8, 1.0, 0.95), 'MOVE': (0.6, 1.0, 0.45, 0.95), 'SMOOTH': (0.85, 0.85, 0.9, 0.9),
-                'EDGE': (1.0, 0.35, 0.35, 0.95), 'CHAMFER': (0.95, 0.4, 1.0, 0.95), 'ROUND': (0.95, 0.4, 1.0, 0.95)}
+                'EDGE': (1.0, 0.35, 0.35, 0.95), 'PANEL': (1.0, 0.35, 0.35, 0.95), 'CHAMFER': (0.95, 0.4, 1.0, 0.95), 'ROUND': (0.95, 0.4, 1.0, 0.95)}
 POINT_ATTRS = (('stroke', 'INT'), ('radius', 'FLOAT'), ('strength', 'FLOAT'), ('kind', 'INT'),
                ('move', 'FLOAT_VECTOR'), ('normal', 'FLOAT_VECTOR'), ('fade', 'FLOAT'))
 _CURSOR = [None]
@@ -381,9 +386,9 @@ def _build():
     flat_off = vmath('SCALE', pn, scale=math_('MULTIPLY', math_('MULTIPLY', flat_d, flat_foot.outputs['Result']), flat_k))
     # Edge Line: L = the nearest point of the line, nL its normal there, fade (0 at the line's ends); h = height over
     # L's tangent plane, s = the distance from the line along it; B = the surface a band's width out on this side.
-    # Inside the band the point goes onto the straight chord L -> B (both sides flat: the line becomes the edge).
-    # The line is resampled finely when it is stored (resample_line), so nL / fade change smoothly along it.
-    # Alt: a V groove.
+    # Inside the band each side goes flat (the straight chord L -> B), the line's profile is added (Edge Line: a ridge,
+    # Panel Line: a groove) and the points slide sideways onto the crease lines.  The line is resampled finely when it
+    # is stored (resample_line) and read between its points, so nL / fade change smoothly along it.
     near_i = node('GeometryNodeSampleNearest', domain='POINT')
     link(st, near_i.inputs['Geometry'])
     # (nL and fade interpolated along the segment the nearest point lies on - read at the nearest stored point alone
@@ -415,7 +420,8 @@ def _build():
     h = vmath('DOT_PRODUCT', d, nl)
     svec = vmath('SUBTRACT', d, vmath('SCALE', nl, scale=h))
     s_len = vmath('LENGTH', svec)
-    bpos = vmath('ADD', near, vmath('SCALE', vmath('NORMALIZE', svec), scale=r))
+    sdir = vmath('NORMALIZE', svec)
+    bpos = vmath('ADD', near, vmath('SCALE', sdir, scale=r))
     surf = node('GeometryNodeSampleNearestSurface', data_type='FLOAT_VECTOR')
     link(cur, surf.inputs['Mesh'])
     link(pos(), surf.inputs['Value'])
@@ -423,26 +429,49 @@ def _build():
     db = vmath('SUBTRACT', surf.outputs['Value'], near)
     hb = vmath('DOT_PRODUCT', db, nl)
     sb = math_('MAXIMUM', vmath('LENGTH', vmath('SUBTRACT', db, vmath('SCALE', nl, scale=hb))), 1e-7)
-    hp = math_('DIVIDE', math_('MULTIPLY', hb, s_len), sb)
+    slope = math_('DIVIDE', hb, sb)                          # the chord L -> B: height per unit out from the line
     inband = math_('LESS_THAN', t, 1.0)
-    # (Intensity 0.5 and up: both sides flat to the chord; and the line lifted as a ridge, |k| x r x 0.3 - so the edge
-    # stands out on flat or faceted surfaces too)
-    k_chord = math_('MINIMUM', math_('MULTIPLY', math_('ABSOLUTE', strength), 2.0), 1.0)
-    ridge = math_('MULTIPLY', math_('MULTIPLY', math_('ABSOLUTE', strength), math_('MULTIPLY', r, 0.3)),
-                  math_('MAXIMUM', math_('SUBTRACT', 1.0, t), 0.0))
-    crease = vmath('SCALE', nl, scale=math_('MULTIPLY', math_('ADD', math_('MULTIPLY', math_('SUBTRACT', hp, h), k_chord), ridge),
-                                            math_('MULTIPLY', inband, fade)))
-    groove = vmath('SCALE', nl, scale=math_('MULTIPLY', math_('MULTIPLY', math_('MULTIPLY', strength, r), 0.3),
-                                            math_('MULTIPLY', math_('MAXIMUM', math_('SUBTRACT', 1.0, t), 0.0), fade)))
-    edge_off = switch('VECTOR', math_('LESS_THAN', strength, 0.0), crease, groove)
+    u = math_('MINIMUM', t, 1.0)
+    sgn = math_('SIGN', strength)
+    k_abs2 = math_('ABSOLUTE', strength)
+    is_panel = math_('COMPARE', k, float(KIND['PANEL']), 0.1)
+    # the points slide sideways so they crowd on the crease lines (zero slope there: ZBrush's pinch) - the edge runs
+    # along the drawn line itself, not between grid points.  Edge Line: creases at the line and the band's edge;
+    # Panel Line: at the groove's floor edge (PANEL_FLOOR x r) and the band's edge.
+    sm = node('ShaderNodeMapRange', interpolation_type='SMOOTHSTEP', clamp=True)
+    link(u, sm.inputs['Value'])
+    edge_s = math_('MULTIPLY', sm.outputs['Result'], r)
+    a_ = PANEL_FLOOR
+    v_ = math_('MINIMUM', math_('DIVIDE', u, a_), 1.0)
+    inner = math_('MULTIPLY', math_('MULTIPLY', r, a_), math_('SUBTRACT', math_('MULTIPLY', v_, 2.0), math_('MULTIPLY', v_, v_)))
+    sm2 = node('ShaderNodeMapRange', interpolation_type='SMOOTHSTEP', clamp=True)
+    link(u, sm2.inputs['Value'])
+    sm2.inputs['From Min'].default_value = a_
+    sm2.inputs['From Max'].default_value = 1.0
+    outer = math_('MULTIPLY', r, math_('ADD', a_, math_('MULTIPLY', 1.0 - a_, sm2.outputs['Result'])))
+    panel_s = switch('FLOAT', math_('LESS_THAN', u, a_), outer, inner)
+    s_new0 = switch('FLOAT', is_panel, edge_s, panel_s)
+    s_new = math_('ADD', s_len, math_('MULTIPLY', math_('SUBTRACT', s_new0, s_len), fade))
+    un = math_('DIVIDE', s_new, r)
+    # the heights: both sides flat (the chord) + Edge Line: the line lifted (Alt: pressed in) |k| x r x 0.3, falling
+    # straight to the band's edge;  Panel Line: a groove |k| x r x 0.5 deep, flat floor, straight walls (Alt: a rib)
+    ridge = math_('MULTIPLY', math_('MULTIPLY', math_('MULTIPLY', sgn, k_abs2), math_('MULTIPLY', r, 0.3)),
+                  math_('MAXIMUM', math_('SUBTRACT', 1.0, un), 0.0))
+    wall = math_('MINIMUM', math_('DIVIDE', math_('MAXIMUM', math_('SUBTRACT', 1.0, un), 0.0), 1.0 - a_), 1.0)
+    groove = math_('MULTIPLY', math_('MULTIPLY', math_('MULTIPLY', sgn, k_abs2), math_('MULTIPLY', r, -0.5)), wall)
+    prof = switch('FLOAT', is_panel, ridge, groove)
+    h_new = math_('ADD', math_('MULTIPLY', slope, s_new), prof)
+    h_fin = math_('ADD', h, math_('MULTIPLY', math_('SUBTRACT', h_new, h), fade))
+    target = vmath('ADD', vmath('ADD', near, vmath('SCALE', nl, scale=h_fin)), vmath('SCALE', sdir, scale=s_new))
+    edge_off = vmath('SCALE', vmath('SUBTRACT', target, pos()), scale=inband)
     pick = node('GeometryNodeIndexSwitch', data_type='VECTOR')
-    while len(pick.index_switch_items) < 7:
+    while len(pick.index_switch_items) < 8:
         pick.index_switch_items.new()
     link(math_('ROUND', k), pick.inputs['Index'])
-    for i, off in ((0, std_off), (1, clay_off), (2, mv_off), (3, bld_off), (5, flat_off), (6, edge_off)):
+    for i, off in ((0, std_off), (1, clay_off), (2, mv_off), (3, bld_off), (5, flat_off), (6, edge_off), (7, edge_off)):
         link(off, pick.inputs[i + 1])
     # an Edge Line's band is flat on each side (chord + ridge / V): its faces are shaded flat, so the edge reads crisp
-    is_line = bool_('AND', math_('COMPARE', k, float(KIND['EDGE']), 0.1),
+    is_line = bool_('AND', math_('GREATER_THAN', k, float(KIND['EDGE']) - 0.5),
                     bool_('AND', math_('LESS_THAN', t, 0.97), math_('GREATER_THAN', fade, 0.9)))
     flag = node('GeometryNodeStoreNamedAttribute', data_type='FLOAT', domain='POINT')
     flag.inputs['Name'].default_value = '.mch_geo_flat'
@@ -691,7 +720,7 @@ def smooth_normals(normals, half):
 
 def append_stroke(data, kind, pts, normals, radius, strength, move=(0.0, 0.0, 0.0)):
     """Adds one stroke to ``data`` (read_strokes' dict); returns its index."""
-    if kind == 'EDGE':
+    if kind in LINE_KINDS:
         pts, normals = resample_line(pts, normals, radius * 0.03)
         normals = smooth_normals(normals, 16)
     pts = np.asarray(pts, np.float32).reshape(-1, 3)
@@ -704,7 +733,7 @@ def append_stroke(data, kind, pts, normals, radius, strength, move=(0.0, 0.0, 0.
         e = np.c_[np.arange(base, base + n - 1), np.arange(base + 1, base + n)].astype(np.int32)
         data['edges'] = np.vstack([data['edges'], e])
     k = KIND[kind]
-    fade = fade_along(pts, radius) if kind == 'EDGE' else np.ones(n, np.float32)
+    fade = fade_along(pts, radius) if kind in LINE_KINDS else np.ones(n, np.float32)
     for name, vals in (('stroke', np.full(n, sid)), ('radius', np.full(n, radius)), ('strength', np.full(n, strength)),
                        ('kind', np.full(n, k)), ('move', np.tile(np.asarray(move, np.float32), (n, 1))),
                        ('normal', normals), ('fade', fade)):
@@ -1069,8 +1098,9 @@ class SurfaceCaster:
         return (loc, nrm.normalized()) if loc is not None else None
 
 
-def smooth_line(pts, caster, passes=4):
-    """A drawn Edge Line evened out (its hand wobble), its ends kept, back onto the surface."""
+def smooth_line(pts, caster, passes=2):
+    """A drawn line's hand jitter evened out lightly (it should follow the line as drawn), its ends kept, back onto
+    the surface."""
     p = np.asarray(pts, float)
     if len(p) < 3:
         return p, None
@@ -1144,7 +1174,7 @@ def _draw_stroke(op, context):
         x, y = op.mouse
         col = BRUSH_COLOUR.get(op.brush, (1, 1, 1, 0.9))
         _circle(x, y, op.r_px, col, 2.0, dashed=op.invert)
-        if op.brush in ('EDGE', 'CHAMFER', 'ROUND') and len(op.screen) > 1:
+        if op.brush in ('EDGE', 'PANEL', 'CHAMFER', 'ROUND') and len(op.screen) > 1:
             from . import ui_gpu as ug
             ug.polyline(op.screen, col, 2.0)
         del st
@@ -1210,7 +1240,7 @@ class MCH_OT_geo_stroke(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
     def _spacing(self):
-        return self.radius * (0.12 if self.brush == 'EDGE' else 0.2)
+        return self.radius * (0.08 if self.brush in LINE_KINDS else 0.2)
 
     def _live(self):
         """The stroke so far shown by the layer (Chamfer / Round: on release)."""
@@ -1269,7 +1299,7 @@ class MCH_OT_geo_stroke(bpy.types.Operator):
                 self.report({'INFO'}, 'No hard edge along that stroke (stroke along an edge of the part)')
                 return {'CANCELLED'}
             return {'FINISHED'}
-        if self.brush == 'EDGE' and len(self.pts) >= 3:
+        if self.brush in LINE_KINDS and len(self.pts) >= 3:
             p, n = smooth_line(self.pts, self.caster)
             self.pts, self.nrm = [tuple(x) for x in p], [tuple(x) for x in n]
         self._live()
@@ -1440,7 +1470,8 @@ class MCH_TOOL_geo_sculpt(bpy.types.WorkSpaceTool):
     bl_idname = 'mecha.geo_sculpt'
     bl_label = 'Mecha Geo Sculpt'
     bl_description = ('Sculpt brushes on a plain part (no DynaMesh): Standard, Clay, Clay Buildup, Flat, Move, Smooth, '
-                      'Edge Line, Chamfer, Round.\nS: Draw Size, U: Intensity at the cursor.  Alt: invert, Shift: Smooth')
+                      'Edge Line, Panel Line, Chamfer, Round.\nS: Draw Size, U: Intensity at the cursor.  Alt: invert, '
+                      'Shift: Smooth')
     bl_icon = 'ops.sculpt.draw'
     bl_widget = None
     bl_keymap = (
@@ -1449,6 +1480,8 @@ class MCH_TOOL_geo_sculpt(bpy.types.WorkSpaceTool):
         ('mch.geo_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'shift': True}, None),
         ('mch.geo_size', {'type': 'S', 'value': 'PRESS'}, {'properties': [('target', 'SIZE')]}),
         ('mch.geo_size', {'type': 'U', 'value': 'PRESS'}, {'properties': [('target', 'INTENSITY')]}),
+        ('mch.geo_size', {'type': 'F', 'value': 'PRESS'}, {'properties': [('target', 'SIZE')]}),   # (Blender's key too)
+        ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),
     )
 
     def draw_settings(context, layout, tool):
@@ -1462,7 +1495,7 @@ class MCH_TOOL_geo_sculpt(bpy.types.WorkSpaceTool):
 # -----------------------------------------------------------------------------
 
 HELP = ('Drag on a part.  S: Draw Size, U: Intensity (at the cursor)',
-        'Alt: invert (Flat: a raised pad, Edge Line: a groove)  Shift: Smooth',
+        'Alt: invert (Flat: a raised pad, Panel Line: a rib)  Shift: Smooth',
         'Ctrl+Z: the last stroke back.  The mesh changes only on Apply')
 
 
