@@ -68,8 +68,12 @@ def node_group():
     ev_face = node('GeometryNodeFieldOnDomain', domain='FACE', data_type='FLOAT')
     L.new(near_pt, ev_face.inputs[0])
     sel_face = math_('GREATER_THAN', ev_face.outputs[0], 0.0)
+    ang0 = node('GeometryNodeInputMeshEdgeAngle')
+    mark = node('GeometryNodeStoreNamedAttribute', data_type='BOOLEAN', domain='EDGE'); mark.inputs['Name'].default_value = 'mch_hard'
+    L.new(gi.outputs['Geometry'], mark.inputs['Geometry'])
+    L.new(math_('GREATER_THAN', ang0.outputs['Unsigned Angle'], math.radians(30)), mark.inputs['Value'])
     sep = node('GeometryNodeSeparateGeometry', domain='FACE')
-    L.new(gi.outputs['Geometry'], sep.inputs['Geometry']); L.new(sel_face, sep.inputs['Selection'])
+    L.new(mark.outputs['Geometry'], sep.inputs['Geometry']); L.new(sel_face, sep.inputs['Selection'])
     region, rest = sep.outputs['Selection'], sep.outputs['Inverted']
     # --- subdivide the region: the level from its longest edge and Detail --------------------------------------------
     ev = node('GeometryNodeInputMeshEdgeVertices')
@@ -137,9 +141,9 @@ def node_group():
     below = vmath('DOT_PRODUCT', vmath('SUBTRACT', target.outputs['Vector'], node('GeometryNodeInputPosition').outputs[0]).outputs['Vector'],
                   pn.outputs['Vector'])
     noise = node('ShaderNodeTexNoise'); noise.inputs['Scale'].default_value = 9.0; noise.inputs['Detail'].default_value = 4.0
-    rough_t = math_('ADD', t, math_('MULTIPLY', math_('SUBTRACT', noise.outputs['Fac'], 0.5), 0.35))
+    rough_t = math_('ADD', t, math_('MULTIPLY', math_('SUBTRACT', noise.outputs['Fac'], 0.5), 0.08))   # (a hint of clay)
     foot = node('ShaderNodeMapRange', interpolation_type='SMOOTHSTEP', clamp=True)
-    L.new(rough_t, foot.inputs['Value']); foot.inputs['From Min'].default_value = 1.0; foot.inputs['From Max'].default_value = 0.8
+    L.new(rough_t, foot.inputs['Value']); foot.inputs['From Min'].default_value = 1.0; foot.inputs['From Max'].default_value = 0.6
     fill = math_('MULTIPLY', math_('MAXIMUM', below.outputs['Value'], 0.0), foot.outputs['Result'])
     bld_off = vmath('SCALE', pn.outputs['Vector'], scale=fill)
     pick = node('GeometryNodeIndexSwitch', data_type='VECTOR'); pick.index_switch_items.new(); pick.index_switch_items.new()
@@ -148,7 +152,19 @@ def node_group():
     L.new(bld_off.outputs['Vector'], pick.inputs[4])
     setp = node('GeometryNodeSetPosition')
     L.new(rin.outputs['Geometry'], setp.inputs['Geometry']); L.new(pick.outputs['Output'], setp.inputs['Offset'])
-    L.new(setp.outputs['Geometry'], rout.inputs['Geometry'])
+    blur = node('GeometryNodeBlurAttribute', data_type='FLOAT_VECTOR')
+    L.new(node('GeometryNodeInputPosition').outputs[0], blur.inputs['Value'])
+    ratio = math_('DIVIDE', r, gi.outputs['Detail'])
+    iters = math_('MINIMUM', math_('MAXIMUM', math_('ROUND', math_('MULTIPLY', math_('MULTIPLY', ratio, ratio), 0.5)), 4.0), 80.0)
+    L.new(iters, blur.inputs['Iterations'])
+    toward = vmath('SUBTRACT', blur.outputs['Value'], node('GeometryNodeInputPosition').outputs[0])
+    sm_off = vmath('SCALE', toward.outputs['Vector'], scale=math_('MULTIPLY', bell, math_('MINIMUM', math_('ABSOLUTE', strength), 1.0)))
+    setp_s = node('GeometryNodeSetPosition')
+    L.new(rin.outputs['Geometry'], setp_s.inputs['Geometry']); L.new(sm_off.outputs['Vector'], setp_s.inputs['Offset'])
+    is_smooth = math_('COMPARE', k, 4.0, 0.1)
+    gsw = node('GeometryNodeSwitch', input_type='GEOMETRY')
+    L.new(is_smooth, gsw.inputs['Switch']); L.new(setp.outputs['Geometry'], gsw.inputs['False']); L.new(setp_s.outputs['Geometry'], gsw.inputs['True'])
+    L.new(gsw.outputs['Output'], rout.inputs['Geometry'])
     L.new(math_('ADD', rin.outputs['Index'], 1.0), rout.inputs['Index'])
     geo = rout.outputs['Geometry']
     join = node('GeometryNodeJoinGeometry')
@@ -156,10 +172,9 @@ def node_group():
     merge = node('GeometryNodeMergeByDistance'); merge.inputs['Distance'].default_value = 1e-5
     L.new(join.outputs['Geometry'], merge.inputs['Geometry'])
     smooth = node('GeometryNodeSetShadeSmooth', domain='FACE'); L.new(merge.outputs['Geometry'], smooth.inputs['Geometry'])
-    ang = node('GeometryNodeInputMeshEdgeAngle')
-    flat_e = math_('GREATER_THAN', ang.outputs['Unsigned Angle'], math.radians(30))
+    hard = node('GeometryNodeInputNamedAttribute', data_type='BOOLEAN'); hard.inputs['Name'].default_value = 'mch_hard'
     sharp = node('GeometryNodeSetShadeSmooth', domain='EDGE'); L.new(smooth.outputs['Geometry'], sharp.inputs['Geometry'])
-    nt = node('FunctionNodeBooleanMath', operation='NOT'); L.new(flat_e, nt.inputs[0])
+    nt = node('FunctionNodeBooleanMath', operation='NOT'); L.new(hard.outputs['Attribute'], nt.inputs[0])
     L.new(nt.outputs[0], sharp.inputs['Shade Smooth'])
     L.new(sharp.outputs['Geometry'], go.inputs['Geometry'])
     return ng
@@ -192,6 +207,8 @@ stroke([(0.15 + 0.04 * j, -0.45 + 0.03 * j, 1.0) for j in range(16)], 4, 0.16, 1
 stroke([(0.15 + 0.04 * j, -0.30 + 0.03 * j, 1.0) for j in range(16)], 5, 0.16, 1.0, 3)
 stroke([(0.15 + 0.04 * j, -0.15 + 0.03 * j, 1.0) for j in range(16)], 6, 0.16, 1.6, 3)
 stroke([(0.55, 0.62, 1.0)], 7, 0.3, 1.0, 2, (0.0, 0.0, 0.3))                                            # Move
+stroke([(x, -1.0, 0.2 * math.sin(x * 3)) for x in np.linspace(-0.75, -0.3, 8)], 8, 0.2, 1.0, 4, n=(0, -1, 0))   # Smooth
+stroke([(0.62 + 0.03 * j, -0.05 + 0.05 * j, 1.0) for j in range(6)], 9, 0.2, 1.0, 4)                          # Smooth
 sme = bpy.data.meshes.new('Strokes'); sme.from_pydata(pts, edges, [])
 for name, typ, vals, key in (('stroke', 'INT', sid, 'value'), ('radius', 'FLOAT', rad, 'value'), ('strength', 'FLOAT', strg, 'value'),
                              ('kind', 'INT', kind, 'value'), ('move', 'FLOAT_VECTOR', mv, 'vector'),
