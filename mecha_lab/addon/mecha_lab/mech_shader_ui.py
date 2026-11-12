@@ -998,25 +998,64 @@ def viewport_section(b, context, x, width):
     section(b, 'viewport', 'Viewport', x, width, fill, summary=' + '.join(on))
 
 
+def bg_pictures(b, sc, sx, sw):
+    """0.24.138 The studio backdrops and the user's pictures, 6 on a page; a click = that picture behind the model
+    (on whatever world the scene has)."""
+    from . import backdrops as bd, bg_color as bgc, mech_shader as ms_
+    ents = bd.entries()
+    if not ents:
+        return
+    st = bgc.settings(sc)
+    cur = bgc.picture_ident(sc)
+    showing = bgc.on(sc) and st.mode == 'IMAGE'
+    page, pages = bd.page_of(cur, [e[0] for e in ents])
+    if pages > 1:
+        stepper(b, sx, sw, button('◀', 'mch.mech_bg_page', step=-1),
+                _cell('tbtn', f'Page {page + 1} / {pages}', ('op', 'mch.mech_bg_page', {'step': 0})),
+                button('▶', 'mch.mech_bg_page', step=1))
+    tiles = []
+    for ident, label in ents[page * bd.PAGE:(page + 1) * bd.PAGE]:
+        p = bd.path(ident)
+        ic = ('file:' + p) if ident.startswith(bd.BUILTIN) else (ms_.picture_icon(p) if p else '')
+        tiles.append((label, ic, showing and cur == ident, ('op', 'mch.bg_picture', {'ident': ident}), bd.aspect(p)))
+    bgrid(b, sx, sw, tiles)
+    d = bd.folder()
+    n = len(bd.user_files()) if d else 0
+    b.note(('note', (f'My pictures: {os.path.basename(os.path.normpath(d))} ({n})' if d else
+                     'My pictures: none - the studio backdrops'), False, None, None, None, True), sx, sw)
+    row(b, sx, sw, [button('Choose Folder…', 'mch.mech_bg_folder')])
+
+
 def background_section(b, context, x, width):
-    """0.24.137 (user: "HDRI 는 다른 애드온 쓸 거라 배경만 내가 원하는 색으로 바꿀 수 있게 해 주라") Background Colour on
-    whatever world the scene has."""
+    """0.24.137 (user: "HDRI 는 다른 애드온 쓸 거라 배경만 내가 원하는 색으로 바꿀 수 있게 해 주라") the background on
+    whatever world the scene has: a colour, or (0.24.138, user: "뒤에 넣는 스튜디오 이미지들 다 어디 갔어?") a picture."""
     from . import bg_color as bgc, mech_shader as ms
     sc = context.scene
     st = bgc.settings(sc)
     if st is None:
         return
     on = bgc.on(sc)
+    pic = st.mode == 'IMAGE'
 
     def fill(sx, sw):
         row(b, sx, sw, [_cell('seg', 'Background Colour', ('op', 'mch.bg_color', {}), on=on),
                         swatch(st, 'color', 'Colour')])
+        row(b, sx, sw, [_cell('tbtn', 'Colour', ('op', 'mch.bg_picture', {'mode': 'COLOR'}), on=not pic),
+                        _cell('tbtn', 'Picture', ('op', 'mch.bg_picture', {'mode': 'IMAGE'}), on=pic)])
+        if pic:
+            row(b, sx, sw, [_cell('tbtn', 'Fill', ('op', 'mch.bg_fit', {'fit': 'FILL'}), on=st.fit == 'FILL'),
+                            _cell('tbtn', 'Fit', ('op', 'mch.bg_fit', {'fit': 'FIT'}), on=st.fit == 'FIT')])
+            row(b, sx, sw, [number(st, 'bright', 'Brightness')])
+            row(b, sx, sw, [number(st, 'contrast', 'Contrast')])
+            bg_pictures(b, sc, sx, sw)
+        row(b, sx, sw, [prop_cell(st, 'material_too', 'Material Preview Too')])
         row(b, sx, sw, [prop_cell(st, 'solid_too', 'Solid View Too')])
-        b.note(('note', 'The camera sees the colour; your HDRI still lights the parts', False, None, None, None,
-                True), sx, sw)
+        b.note(('note', 'The camera sees it; your HDRI still lights the parts' + (
+            ' (Solid: the colour only)' if pic else ''), False, None, None, None, True), sx, sw)
         if ms.hdri_world(sc) is not None:            # (a scene still on the old Mecha HDRI world: back to its own)
             row(b, sx, sw, [button('Mecha HDRI Off (back to your world)', 'mch.mech_hdri', action='OFF')])
-    section(b, 'background_colour', 'Background', x, width, fill, summary='on' if on else '')
+    section(b, 'background_colour', 'Background', x, width, fill,
+            summary=('picture' if pic else 'colour') if on else '')
 
 
 def hdri_content(context, x, width, k):

@@ -2353,6 +2353,13 @@ def draw_background(layout, context):
     r.operator('mch.bg_color', text='Background Colour', icon='CHECKBOX_HLT' if on else 'CHECKBOX_DEHLT', depress=on)
     if st is not None:
         r.prop(st, 'color', text='')
+        box.row(align=True).prop(st, 'mode', expand=True)       # 0.24.138 a picture behind the model
+        if st.mode == 'IMAGE':
+            box.row(align=True).prop(st, 'fit', expand=True)
+            box.prop(st, 'bright')
+            box.prop(st, 'contrast')
+            box.label(text='Pictures: the Render tab of the Mecha Lab panel')
+        box.prop(st, 'material_too')
         box.prop(st, 'solid_too')
     if hdri_world(sc) is not None:
         box.operator('mch.mech_hdri', text='Mecha HDRI Off (back to your world)', icon='X').action = 'OFF'

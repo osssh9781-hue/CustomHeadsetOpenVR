@@ -266,7 +266,8 @@ class MCH_OT_mech_bg_page(bpy.types.Operator):
     def execute(self, context):
         pages = max(1, _PAGE['pages'])
         if self.step == 0:
-            cur, ids = context.scene.mch_mech_hdri_bg_image, _PAGE['ids']
+            from . import bg_color                  # (0.24.138 the Render tab's Background picture)
+            cur, ids = bg_color.picture_ident(context.scene), _PAGE['ids']
             _PAGE['page'] = ids.index(cur) // PAGE if cur in ids else 0
         else:
             _PAGE['page'] = (_PAGE['page'] + self.step) % pages

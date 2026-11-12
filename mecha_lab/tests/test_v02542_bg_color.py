@@ -99,7 +99,7 @@ check('the tab is now Render: Quick Render, Viewport and Background sections; no
       sp.PAGES['HDRI'][0] == 'Render' and any(lb.startswith('QUICK RENDER') for lb in labels)
       and any(lb.startswith('VIEWPORT') for lb in labels) and any(lb.startswith('BACKGROUND') for lb in labels)
       and {'Background Colour', 'Colour', 'Solid View Too'} <= set(labels)
-      and not {'Set HDRI', 'Choose Folder', 'Picture'} & set(labels), [lb for lb in labels if lb][:40])
+      and not {'Set HDRI', 'My HDRIs', 'Remove All'} & set(labels), [lb for lb in labels if lb][:40])   # (0.24.138 Picture: the backdrops back)
 
 
 # the N sidebar's Mech Shader panel: the same Background box, no HDRI list (a recording stand-in for the layout)
