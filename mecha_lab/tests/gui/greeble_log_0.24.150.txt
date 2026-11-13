@@ -1,0 +1,15 @@
+tool GREEBLE
+Pick Part cell True
+shot 0_window.png True
+parts list ['PartA', 'PartB']
+lines 1 parts 6 active Greeble Line
+part origins from the centre [0.997, 0.996, 0.997, 0.998, 0.998, 0.999]
+shot 1_line_wire.png True
+the window shows the line's settings (Gap, Use Picked Parts) True True
+shot 2_rendered_wire.png True
+PASS 1 the tool on; REAL clicks: Pick Part, then the two meshes in the 3D view - both in the parts list
+PASS 2 a REAL drag on the sphere: a Greeble Line on it, the parts along it, the line selected
+PASS 2 ... the parts on the sphere (their origins about 1 from its centre)
+PASS 3 the window shows the selected line's settings
+PASS 3 a REAL click on a part's row: not used / used again
+5/5 passed

@@ -43,6 +43,10 @@ TOOLS = (
      'Buildup, Flat, Move, Smooth, Edge Line (the line you draw becomes a crisp edge, only as far as you drew), Panel '
      'Line (a panel groove along it), Chamfer / Round (a hard edge, as wide as the brush).  S: Draw Size, U: Intensity, Alt: invert, Shift: Smooth; '
      'the mesh changes on Apply', 'geo_sculpt', 'SCULPTMODE_HLT', 'mecha.geo_sculpt', 'OK'),
+    ('GREEBLE', 'Greeble Line', 'Drag on a part: the meshes you picked (the window: Pick Part - click them, Add '
+     'Selected, Starter Parts) laid one after another along the line, standing on the surface - machine parts packed '
+     'along the stroke.  Order, Part Size, Gap, Rows, Sink, Flip / Turn Random; select a line to change it, Apply to '
+     'keep', 'greeble', 'MOD_ARRAY', 'mecha.greeble_line', 'OK'),
     ('PERF', 'Perforate', 'Sci-fi perforated plate: honeycomb / circle / square / diamond holes through the selected '
      'meshes; live (size, gap, margin, rotation, offset), Apply to keep',
      'perforate', 'MOD_BOOLEAN', None, 'OK'),
@@ -191,7 +195,7 @@ DRAW_TOOLS = SHAPE_TOOLS | {'PRESS'}      # 0.24.95 + Press Cut (Shift + draw it
 TOOL_GROUPS = (
     ('Block-out', ('BASE', 'CBASE', 'SUBD', 'PRIMITIVE')),
     ('Cut', ('CUT', 'SPLIT', 'PRESS', 'HIDE', 'BOOLEAN', 'FUSE', 'PERF')),
-    ('Surface detail', ('GSCULPT', 'PLATE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'SDRAW', 'SCREW', 'EXTRACT', 'MOLDING', 'BELT')),
+    ('Surface detail', ('GSCULPT', 'GREEBLE', 'PLATE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'SDRAW', 'SCREW', 'EXTRACT', 'MOLDING', 'BELT')),
     ('Move', ('CMOVE', 'CPATH', 'SMOVE', 'SMART', 'POSE', 'REMESH')),
     ('Symmetry & repeat', ('MIRROR', 'RSYM', 'RADIAL', 'ARRAY')),
     ('Curves', ('TUBE', 'TUBE_SAME', 'SCURVE', 'CABLE', 'ALONG', 'LOFT')),
@@ -222,7 +226,7 @@ _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRA
                  'REMESH': 12, 'SPLIT': 13, 'POSE': 14, 'BASE': 15, 'LOFT': 16, 'ZBRUSH': 17, 'SUBD': 18, 'PRIMITIVE': 19,
                  'EXTRACT': 20, 'MOLDING': 21, 'HOLLOW': 22, 'ALONG': 23, 'CABLE': 24, 'PLATE': 25, 'WRINKLE': 26, 'TUBE': 27,
                  'HIDE': 28, 'DETAIL': 29, 'DETAIL2': 30, 'SCREW': 31, 'DETAIL3': 32, 'TUBE_SAME': 33,
-                 'CBASE': 34, 'CPLATE': 35, 'BELT': 36, 'SPIKE': 37, 'SCALES': 38, 'FLOWER': 39, 'SCURVE': 40, 'SBRUSH': 41, 'BRIDGE': 42, 'CAPE': 43, 'HAIR': 44, 'GARMENT': 45, 'HOOD': 46, 'SCARF': 47, 'CMOVE': 48, 'CPATH': 50, 'PERF': 51, 'SDRAW': 52, 'SCAPE': 53, 'RSYM': 55, 'SMOVE': 56, 'WLINES': 57, 'CDRAPE': 58, 'ZONE': 59, 'PRESS': 60, 'SMART': 61, 'GSCULPT': 62}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
+                 'CBASE': 34, 'CPLATE': 35, 'BELT': 36, 'SPIKE': 37, 'SCALES': 38, 'FLOWER': 39, 'SCURVE': 40, 'SBRUSH': 41, 'BRIDGE': 42, 'CAPE': 43, 'HAIR': 44, 'GARMENT': 45, 'HOOD': 46, 'SCARF': 47, 'CMOVE': 48, 'CPATH': 50, 'PERF': 51, 'SDRAW': 52, 'SCAPE': 53, 'RSYM': 55, 'SMOVE': 56, 'WLINES': 57, 'CDRAPE': 58, 'ZONE': 59, 'PRESS': 60, 'SMART': 61, 'GSCULPT': 62, 'GREEBLE': 63}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
 TOOL_ENUM_ITEMS = [(t[0], t[1], t[2], t[4], _ENUM_NUMBERS[t[0]]) for t in TOOLS]
 
 SHAPES = (

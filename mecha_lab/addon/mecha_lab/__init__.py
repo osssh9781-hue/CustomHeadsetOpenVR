@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 24, 149),
+    "version": (0, 24, 150),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
     "description": "Cut, Split, Base Mesh, Boolean, Face Extract, Armor Sculpt, Molding, Cable, Hollow, curve arrays, Mirror",
@@ -17,7 +17,7 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                cloth_wrinkle, last_used, last_op, live_stack, keymap_check, robot_base, detail_stamp, surface_lasso,
                curve_tube, creature_shell, cloth_sim, box_hide, plate_detail, screw_stamp, wrinkle_lines, cloth_drape, lowpoly, fold_patch,
                creature_plate, belt_maker, creature_spike, creature_scales, flower_plate,
-               surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, smart_move, geo_sculpt, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, bg_jobs, quad_remesh, mesh_fix, tool_recent, actions_menu, key_legend, quick_hud, mecha_menu, symmetry, groups, ui_bars, safety_save, lasso_memory, armor_shell, paint_lab, bake_maps, res_parts, final_export, mech_shader,
+               surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, smart_move, geo_sculpt, greeble_line, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, bg_jobs, quad_remesh, mesh_fix, tool_recent, actions_menu, key_legend, quick_hud, mecha_menu, symmetry, groups, ui_bars, safety_save, lasso_memory, armor_shell, paint_lab, bake_maps, res_parts, final_export, mech_shader,
                creature_shader, my_presets, decals, zones, my_materials, bake_material, color_pick,
                random_shapes, material_overlay, tire_gen, work_scene, press_cut, name_fix, quick_render, fast_view,
                light_copies, bg_color, creature_light)
@@ -2086,6 +2086,7 @@ def _register():
     concept_move.register()
     smart_move.register()               # 0.24.123 Smart Move (after the Move family's tools)
     geo_sculpt.register()               # 0.24.142 Geo Sculpt (GN sculpt brushes in one tool)
+    greeble_line.register()             # 0.24.150 Greeble Line (picked meshes laid along a drawn line)
     perforate.register()
     surface_draw.register()
     radial_sym.register()
@@ -2289,6 +2290,7 @@ def _unregister_steps():
         ('radial_sym', radial_sym.unregister),
         ('surface_draw', surface_draw.unregister),
         ('perforate', perforate.unregister),
+        ('greeble_line', greeble_line.unregister),
         ('geo_sculpt', geo_sculpt.unregister),
         ('smart_move', smart_move.unregister),
         ('concept_move', concept_move.unregister),

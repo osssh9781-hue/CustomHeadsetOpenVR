@@ -1104,6 +1104,11 @@ def draw_geo_sculpt(layout, context):
     geo_sculpt.draw(layout, context)
 
 
+def draw_greeble(layout, context):
+    from . import greeble_line
+    greeble_line.draw(layout, context)
+
+
 def draw_radial_sym(layout, context):
     from . import radial_sym
     radial_sym.draw(layout, context)
@@ -1111,6 +1116,7 @@ def draw_radial_sym(layout, context):
 
 DRAWERS = {
     'GSCULPT': draw_geo_sculpt,
+    'GREEBLE': draw_greeble,
     'RSYM': draw_radial_sym,
     'SDRAW': draw_surface_draw,
     'PERF': draw_perforate,
