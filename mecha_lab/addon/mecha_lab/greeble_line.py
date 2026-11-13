@@ -92,8 +92,8 @@ def _props(update):
                                       description='Each part a bit bigger or smaller (0.3 = up to 30 %)'),
         'gap': FloatProperty(name='Gap', default=0.0, min=-0.9, max=4.0, soft_max=1.0, update=update,
                              description='Between neighbours along the line, x a part\'s length (below 0: overlap)'),
-        'rows': IntProperty(name='Rows', default=1, min=1, max=8, update=update,
-                            description='Rows side by side along the line'),
+        'rows': IntProperty(name='Rows', default=1, min=1, max=15, update=update,     # 0.24.155 (user: "옆으로 늘어나는
+                            description='Rows side by side along the line'),             #  거 8 개 이상, 15 개까지")
         'row_gap': FloatProperty(name='Row Gap', default=0.0, min=-0.9, max=4.0, soft_max=1.0, update=update,
                                  description='Between the rows, x a part\'s width'),
         'sink': FloatProperty(name='Sink', default=0.0, min=-1.0, max=1.0, update=update,

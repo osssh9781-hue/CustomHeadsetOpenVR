@@ -1,0 +1,6 @@
+line Greeble Line rows 1 parts 37
+Rows cell True
+after a REAL drag on Rows: rows 15 parts 555
+shot rows15_wire.png True
+PASS a REAL drag on the window's Rows slider goes past 8 to 15; the line is redone with 15 rows
+1/1 passed
