@@ -2,6 +2,10 @@
 
 ## 0.24.150 — Greeble Line: 그은 선을 따라 고른 메쉬가 다다닥 이어 붙음 (2026-11-13)
 
+- **zip 구조 변경**(사용자: "이거 왜 안 깔리냥" — 환경설정에서 "System: Blender Extensions" 가 꺼져 있으면 Install from Disk 가 예전
+  애드온 설치기로 돌아가 "ZIP packaged incorrectly; __init__.py should be in a directory, not at top-level"): 이제 zip 안이 `mecha_lab/` 폴더
+  하나 — 확장(Extensions) 설치기와 예전 애드온 설치기 **둘 다**에서 설치됨. 확인: Blender 5.2.3 에서 두 설치기로 각각 실제 설치 → 켜짐 →
+  Greeble Line 등록까지(빈 사용자 폴더에서), zip 점검 8/8.
 - (사용자: 표면에 기계 파츠가 촘촘히 붙은 크리쳐 이미지와 함께 "내가 표면에 그으면 저렇게 메쉬들이 다다다닥 이어지게 만들어 줘, 내가 그은
   선 따라서, 메쉬는 내가 픽킹할 수 있게 픽킹 옵션을 오른쪽 패널에") 새 도구 **Greeble Line**(도구 목록 Surface detail, Geo Sculpt 옆).
   - 부품 위에서 **드래그**: 고른 메쉬들이 선을 따라 **끝과 끝이 맞닿게 한 줄로** 놓임. 각 파츠는 표면 위에 섬 — 바닥이 표면에, 위(Z)가

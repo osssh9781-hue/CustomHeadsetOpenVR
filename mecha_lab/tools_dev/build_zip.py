@@ -1,4 +1,9 @@
-"""Build the installable Blender extension ZIP: python tools_dev/build_zip.py"""
+"""Build the installable ZIP: python tools_dev/build_zip.py
+
+0.24.150 (user: "이거 왜 안 깔리냥" - Blender's add-on installer: "ZIP packaged incorrectly; __init__.py should be in a
+directory, not at top-level", with "System: Blender Extensions" switched off in their Preferences) everything goes in
+one folder, mecha_lab/: the Extensions installer takes a ZIP whose manifest is in one folder, and the add-on installer
+(Install from Disk with the Extensions system off) needs exactly that - one ZIP for both."""
 import os
 import sys
 import tomllib
@@ -15,13 +20,13 @@ stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M')
 out = os.path.join(ROOT, 'dist', f'mecha_lab-{version}_{stamp}.zip')
 os.makedirs(os.path.dirname(out), exist_ok=True)
 with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
-    z.writestr('build_stamp.txt', f'{version} build {stamp}\n')
+    z.writestr('mecha_lab/build_stamp.txt', f'{version} build {stamp}\n')
     for base, dirs, files in os.walk(SRC):
         dirs[:] = sorted(d for d in dirs if d != '__pycache__' and not d.startswith('.'))
         for fn in sorted(files):
             if fn.endswith('.pyc') or fn.startswith('.'):
                 continue
             full = os.path.join(base, fn)
-            z.write(full, os.path.relpath(full, SRC))
+            z.write(full, 'mecha_lab/' + os.path.relpath(full, SRC).replace(os.sep, '/'))
 print(out, os.path.getsize(out), 'bytes')
 sys.exit(0)
