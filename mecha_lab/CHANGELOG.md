@@ -1,5 +1,38 @@
 # CHANGELOG
 
+## 0.24.147 — 크리쳐 라이트(크리쳐용 HDRI 30종) · 바닥(쉐도우 캐처 / 페이드 바닥) (2026-11-13)
+
+- (사용자: "크리쳐용 hdri ... 크리쳐의 기본 텍스쳐가 잘 보이고 라이팅이 어느 정도 부드럽고 스펙큘러도 과하지 않게 ... 익스포저랑 빛 부분
+  에미션도 조절 ... 휴랑 세추레이션도 ... 30종 ... 가볍게") 렌더 탭에 **Creature Light** 섹션.
+  - **30종**: Soft Studio · Neutral Turntable · Overcast · Window Light · Top Softbox · Three Point Soft · Warm Key Cool Fill · Museum ·
+    Forest Shade · Desert Sun · Arctic · Twilight · Moonlight · Cave Torch · Deep Sea · Volcanic · Golden Hour · Morning Mist · Jungle
+    Canopy · Swamp · Clean White · Low Key Drama · Clam Shell · Butterfly · Split Side · Toxic Lab · Alien Dusk · Bioluminescent · Snow
+    Field · Stage Spot. 미리보기 타일 3×3, 한 페이지 9개(◀ ▶).
+  - **가볍게**: 그림 파일이 아니라 월드 노드로 만듦(하늘 그라데이션 + 큰 부드러운 빛 최대 4개) — 불러올 파일 없음, zip 에는 96×72 미리보기만
+    (30장 합쳐 약 300 KB).
+  - **부드럽게**: 빛은 모두 폭 15° 이상의 큰 둥근 빛(가장자리 부드럽게) → 그림자가 부드럽고 하이라이트가 넓고 조용하게. 하늘이 그림자를
+    채워 기본 텍스쳐가 보이게. 30종 모두 같은 밝기로 맞춤(흰 부분의 가장 밝은 면) — 바꿔도 노출이 그대로.
+  - **조절**(HDRI 메이커처럼): Exposure(스톱), Light Emission(빛 부분만), Sky Fill(하늘만 — 올리면 그림자가 옅어져 텍스쳐가 더 잘 보임),
+    Hue, Saturation, Softness(빛을 키워 더 부드럽게 — 나오는 빛의 양은 그대로), Rotation(빛을 모델 둘레로 돌림), Reset.
+  - **Lights Seen by Camera**(기본 꺼짐): 카메라에는 부드러운 하늘 그라데이션만 보이고 빛은 모델을 비추고 반사에만 보임.
+  - 월드: 'MCH Creature Light'. 원래 월드는 그대로 두고 기억 → 다시 누르면(끄기) 원래 월드로. 렌더 탭의 Background(배경색 / 배경 그림)가
+    켜져 있었으면 새 월드에도 그대로 다시 걸림.
+- **바닥**(사용자: "바닥은 쉐도우 캐처도 좋은데 그거랑 같이 그냥 플레인에 그라데이션 맵으로 가운데 부분만 불투명하고 외곽은 투명하게 원처럼
+  만들어서 DLSS 디노이즈 켜도 노이즈 안 나오게"): No Floor | Shadow Catcher | Fade Floor.
+  - **Fade Floor**: 원판 — 가운데는 바닥, 바깥으로 부드럽게(smootherstep) 투명해지는 원. 단차 없음. Floor Colour · Edge Fade(얼마나
+    바깥부터 사라질지) · Floor Opacity · Floor Size.
+  - **Shadow Catcher**: 같은 원판을 Cycles 쉐도우 캐처로 — 배경 위에 그림자만.
+  - 원판은 보이는 부품들 중 가장 낮은 곳 아래, 부품들 가운데에, 부품 폭 × Floor Size 크기로 놓임. 옮긴 뒤엔 Fit Floor to Model. 클릭으로
+    잡히지 않게(선택 불가), 그림자를 드리우지 않게(아래에서 오는 빛도 부품에 닿게). Quick Render 의 Selected Only 에서도 바닥은 남음.
+- 확인: 새 test_v02552 32/32 — 실제 Cycles 렌더를 숫자로 읽어서: 노출 +1 = 빛 두 배(2.00 배), Light Emission 0 · Sky Fill 0 각각 따로 줄어듦,
+  Saturation 0 = 회색 빛, Hue 돌리면 다른 색, 카메라에서 빛 숨김(0.42 vs 보이면 4.2), Rotation 180° 면 그 자리 빛이 사라짐, Softness 0.6 ↔ 2.0
+  에서 구의 밝기 차이 1 %, 4종의 가장 밝은 면 0.64 ~ 0.76(같은 수준), 페이드 바닥 알파: 가운데 1.0 → 바깥 0.05 로 부드럽게 줄고(픽셀당 최대
+  0.06), 16 샘플 · 디노이즈 없이도 같은 반지름 원 위 알파 편차 0.03 이하, 쉐도우 캐처: 먼 곳은 바닥 없을 때와 같고(1.00) 그림자 자리만
+  어두워짐(0.58), 끄면 원래 월드 + 배경색 그대로. 실제 창(Blender 5.2.3) `tests/gui/creature_light_real_window.py` 6/6 — 실제 클릭으로 켜기 ·
+  Museum 타일 · 다음 페이지 · Fade Floor · Shadow Catcher · 끄기, Rendered 뷰 + 와이어프레임 스크린샷.
+  렌더 탭 관련 기존 테스트 10 파일 통과(test_v02543 은 렌더 탭의 타일을 모두 세던 것을 배경 그림 타일만 세도록 고침).
+  **DLSS 디노이즈는 이 환경에 NVIDIA GPU 가 없어 직접 확인 못 함** — 확인한 것은 디노이즈 없이 낮은 샘플에서의 바닥 알파 편차.
+
 ## 0.24.146 — 판 HUD 글씨가 다른 도구에서 떠 있던 것 고침 (2026-11-12)
 
 - (사용자: "이거 글씨 안 뜨게 해 줘" + 스크린샷 — Cut 도구에서 아머 플레이트를 선택하면 Apply · Remove · Rims · Height … Face Size 글씨만

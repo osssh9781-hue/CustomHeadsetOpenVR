@@ -104,7 +104,7 @@ check('Colour again: the picture nodes out, the picture this loaded let go (noth
 # the page: Colour | Picture, the backdrops 6 on a page, Fill / Fit, Choose Folder
 st.mode = 'IMAGE'
 items, _h = msu.hdri_content(C, 0, 300, 1.0)
-tiles = [i for i in items if i.kind == 'btile']
+tiles = [i for i in items if i.kind == 'btile' and i.action[1] != 'mch.creature_light']   # (0.24.147 not Creature Light's)
 labels = {getattr(i, 'label', '') for i in items}
 n_pages = -(-len(bd.entries()) // bd.PAGE)
 check(f'the Render tab, Background: Colour | Picture, Fill | Fit, Brightness, Contrast, 6 backdrops on a page '

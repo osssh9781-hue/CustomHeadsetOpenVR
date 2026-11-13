@@ -1,0 +1,13 @@
+Creature Light cell True
+shot 0_render_page.png True
+page arrow True ('tbtn', ('op', 'mch.creature_light', {'action': 'PAGE', 'step': 1}))
+page 1 tile True
+shot 1_rendered_fade_floor_wire.png True
+shot 2_rendered_catcher_wire.png True
+PASS 1 a REAL click on Creature Light: our world on, your world remembered
+PASS 2 a REAL click on the Museum tile: that set-up
+PASS 2 the page arrow: the next 9 tiles
+PASS 3 a REAL click on Fade Floor: the disc under the creature
+PASS 3 a REAL click on Shadow Catcher: the same disc a catcher
+PASS 4 a REAL click on Creature Light again: your world back
+6/6 passed

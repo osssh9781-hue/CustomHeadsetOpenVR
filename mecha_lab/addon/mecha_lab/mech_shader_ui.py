@@ -972,6 +972,54 @@ def quick_render_section(b, context, x, width):
     section(b, 'quick_render', 'Quick Render (Cycles)', x, width, fill, summary=q['label'])
 
 
+def creature_light_section(b, context, x, width):
+    """0.24.147 (user: "크리쳐용 hdri ... 30종 ... 가볍게") Creature Light: 30 soft set-ups made in the world (no files),
+    Exposure / Light Emission / Sky Fill / Hue / Saturation / Softness / Rotation, and the floor (Shadow Catcher, Fade)."""
+    from . import creature_light as cl
+    sc = context.scene
+    st = cl.settings(sc)
+    if st is None:
+        return
+    lit = cl.on(sc)
+
+    def fill(sx, sw):
+        row(b, sx, sw, [_cell('seg', 'Creature Light', ('op', 'mch.creature_light', {'action': 'TOGGLE'}), on=lit),
+                        prop_cell(st, 'preset', '')])
+        pages = (len(cl.ORDER) + cl.PAGE - 1) // cl.PAGE
+        page = min(st.page, pages - 1)
+        stepper(b, sx, sw, button('◀', 'mch.creature_light', action='PAGE', step=-1),
+                _cell('tbtn', f'Page {page + 1} / {pages}', ('op', 'mch.creature_light', {'action': 'PAGE', 'step': 1})),
+                button('▶', 'mch.creature_light', action='PAGE', step=1))
+        tiles = []
+        for ident in cl.ORDER[page * cl.PAGE:(page + 1) * cl.PAGE]:
+            p = cl.thumb_path(ident)
+            tiles.append((cl.BY_ID[ident][1], ('file:' + p) if os.path.isfile(p) else '', lit and st.preset == ident,
+                          ('op', 'mch.creature_light', {'action': 'SET', 'ident': ident}), 96 / 72))
+        bgrid(b, sx, sw, tiles)
+        row(b, sx, sw, [number(st, 'exposure', 'Exposure')])
+        row(b, sx, sw, [number(st, 'emission', 'Light Emission')])
+        row(b, sx, sw, [number(st, 'fill', 'Sky Fill')])
+        row(b, sx, sw, [number(st, 'hue', 'Hue')])
+        row(b, sx, sw, [number(st, 'saturation', 'Saturation')])
+        row(b, sx, sw, [number(st, 'softness', 'Softness')])
+        row(b, sx, sw, [number(st, 'rotation', 'Rotation')])
+        row(b, sx, sw, [prop_cell(st, 'show_lights', 'Lights Seen by Camera'),
+                        button('Reset', 'mch.creature_light', action='RESET')])
+        row(b, sx, sw, [_cell('seg', label, ('op', 'mch.creature_floor', {'kind': key}), on=st.floor == key)
+                        for key, label in (('OFF', 'No Floor'), ('CATCHER', 'Shadow Catcher'), ('FADE', 'Fade Floor'))])
+        if st.floor != 'OFF':
+            if st.floor == 'FADE':
+                row(b, sx, sw, [swatch(st, 'floor_color', 'Floor Colour')])
+                row(b, sx, sw, [number(st, 'floor_edge', 'Edge Fade')])
+                row(b, sx, sw, [number(st, 'floor_opacity', 'Floor Opacity')])
+            row(b, sx, sw, [number(st, 'floor_size', 'Floor Size')])
+            row(b, sx, sw, [button('Fit Floor to Model', 'mch.creature_floor', kind='FIT')])
+        if lit:
+            b.note(('note', cl.BY_ID[st.preset][7], False, None, None, None, True), sx, sw)
+    section(b, 'creature_light', 'Creature Light', x, width, fill,
+            summary=cl.BY_ID[st.preset][1] if lit else '')
+
+
 def viewport_section(b, context, x, width):
     """0.24.135 / 0.24.136 (user: "뷰포트에서도 빨라야 돼", "사본 쓰면 더 빨라?" -> "그럼 일단 그렇게 해 보고") the viewport:
     Fast Viewport, Blender's viewport anti-aliasing, Light Copies."""
@@ -1075,6 +1123,7 @@ def hdri_content(context, x, width, k):
     add-on lights the scene): Quick Render, the viewport, the background colour."""
     b = sp.Builder('HDRI', x, width, k)
     quick_render_section(b, context, x, width)
+    creature_light_section(b, context, x, width)
     viewport_section(b, context, x, width)
     background_section(b, context, x, width)
     return b.out, -b.y

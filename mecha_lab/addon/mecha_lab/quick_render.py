@@ -520,7 +520,8 @@ def prepare(context, st):
         try:
             if st.hidden_stay_hidden and not ob.visible_get():
                 hide = True
-            if st.selected_only and ob.type in GEOMETRY | {'EMPTY'} and not ob.select_get():
+            if st.selected_only and ob.type in GEOMETRY | {'EMPTY'} and not ob.select_get() \
+                    and not ob.get('mch_creature_floor'):        # (0.24.147 the Creature Light floor stays)
                 hide = True
         except (ReferenceError, RuntimeError):
             continue
