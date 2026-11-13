@@ -106,6 +106,15 @@ TOOLS = (
     ('FUR', 'Fur', 'Draw an area on a body: fur grows there - live hair (Geometry Nodes): Density, Length, Lie Down / '
      'Flow, Gravity, Curl, Frizz, Clump, Root / Tip Thickness, colour from the polypaint; draw again: more area, Alt: '
      'take it away', 'fur', 'CURVES', 'mecha.creature_fur', 'OK'),
+    ('WDIRT', 'Dirt', 'Click a mesh (a Base Mesh, a plate, a Surface Draw band ...): it becomes dirt - lumpy, clods and '
+     'crumbs over it, brown; live (its values in the window), Alt + click: back to the shape', 'wdirt', 'MOD_DISPLACE',
+     'mecha.weather_dirt', 'OK'),
+    ('WDUST', 'Dust', 'Click a mesh: it becomes a soft dust layer (smoothed, puffed a little, fine grain); live, Alt + '
+     'click: back to the shape', 'wdust', 'MOD_SMOOTH', 'mecha.weather_dust', 'OK'),
+    ('WLEAF', 'Leaves', 'Click a mesh: leaves piled over it, green to autumn colours, the shape under them as soil; '
+     'live, Alt + click: back to the shape', 'wleaf', 'OUTLINER_OB_POINTCLOUD', 'mecha.weather_leaves', 'OK'),
+    ('WSNOW', 'Snow', 'Click a mesh: it becomes snow - smoothed, puffed (more on top), soft lumps, white with blue '
+     'shade; live, Alt + click: back to the shape', 'wsnow', 'FREEZE', 'mecha.weather_snow', 'OK'),
     ('GARMENT', 'Clothing', 'Front view: draw the outline of a top or pants over a body - the body surface inside it '
      '(front and back) becomes a live garment: Type (T-Shirt / Hoodie / Pants / Cargo), Fit, Smooth, Hem Flare, '
      'Wrinkles, Thickness',
@@ -209,6 +218,7 @@ TOOL_GROUPS = (
     ('Symmetry & repeat', ('MIRROR', 'RSYM', 'RADIAL', 'ARRAY')),
     ('Curves', ('TUBE', 'TUBE_SAME', 'SCURVE', 'CABLE', 'ALONG', 'LOFT')),
     ('Creature', ('CPLATE', 'CGREEBLE', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'HAIR', 'FUR')),
+    ('Weathering', ('WDIRT', 'WDUST', 'WLEAF', 'WSNOW')),                  # 0.24.158 click a shape: dirt / dust / ...
     ('Cloth', ('WRINKLE', 'CDRAPE', 'WLINES', 'CAPE', 'SCAPE', 'GARMENT', 'HOOD', 'SCARF')),
     ('Utility', ('HOLLOW', 'ZBRUSH', 'SURFACE', 'LIBRARY', 'EDIT')),
 )
@@ -235,7 +245,8 @@ _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRA
                  'REMESH': 12, 'SPLIT': 13, 'POSE': 14, 'BASE': 15, 'LOFT': 16, 'ZBRUSH': 17, 'SUBD': 18, 'PRIMITIVE': 19,
                  'EXTRACT': 20, 'MOLDING': 21, 'HOLLOW': 22, 'ALONG': 23, 'CABLE': 24, 'PLATE': 25, 'WRINKLE': 26, 'TUBE': 27,
                  'HIDE': 28, 'DETAIL': 29, 'DETAIL2': 30, 'SCREW': 31, 'DETAIL3': 32, 'TUBE_SAME': 33,
-                 'CBASE': 34, 'CPLATE': 35, 'BELT': 36, 'SPIKE': 37, 'SCALES': 38, 'FLOWER': 39, 'SCURVE': 40, 'SBRUSH': 41, 'BRIDGE': 42, 'CAPE': 43, 'HAIR': 44, 'GARMENT': 45, 'HOOD': 46, 'SCARF': 47, 'CMOVE': 48, 'CPATH': 50, 'PERF': 51, 'SDRAW': 52, 'SCAPE': 53, 'RSYM': 55, 'SMOVE': 56, 'WLINES': 57, 'CDRAPE': 58, 'ZONE': 59, 'PRESS': 60, 'SMART': 61, 'GSCULPT': 62, 'GREEBLE': 63, 'CGREEBLE': 64, 'FUR': 65}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
+                 'CBASE': 34, 'CPLATE': 35, 'BELT': 36, 'SPIKE': 37, 'SCALES': 38, 'FLOWER': 39, 'SCURVE': 40, 'SBRUSH': 41, 'BRIDGE': 42, 'CAPE': 43, 'HAIR': 44, 'GARMENT': 45, 'HOOD': 46, 'SCARF': 47, 'CMOVE': 48, 'CPATH': 50, 'PERF': 51, 'SDRAW': 52, 'SCAPE': 53, 'RSYM': 55, 'SMOVE': 56, 'WLINES': 57, 'CDRAPE': 58, 'ZONE': 59, 'PRESS': 60, 'SMART': 61, 'GSCULPT': 62, 'GREEBLE': 63, 'CGREEBLE': 64, 'FUR': 65, 'WDIRT': 66,
+                 'WDUST': 67, 'WLEAF': 68, 'WSNOW': 69}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
 TOOL_ENUM_ITEMS = [(t[0], t[1], t[2], t[4], _ENUM_NUMBERS[t[0]]) for t in TOOLS]
 
 SHAPES = (

@@ -1,0 +1,11 @@
+1 chest: furs 1 strands 906 roots inside the drawn outline 906 / 906 - root colours: dark 310 orange 432
+2 Alt: strands 906 -> 496 - roots well inside the erased outline 0
+3 belly: furs 1 strands 496 -> 959
+4 Length cell True length 0.035 -> 0.13 longest strand 0.1305
+5 comb: strands near the drag 20 dir.x 0.92 - away: dir.z -0.99
+PASS 1 a REAL Free Draw outline on the chest: a fur on the body, every root inside what was drawn (6 %), the root colours the stripes (dark and orange)
+PASS 2 a REAL Alt + drag over its left part: the strands there gone
+PASS 3 a REAL drag on the belly: the same fur (one), more strands
+PASS 4 a REAL drag on the window's Length: the fur longer (the strands redone)
+PASS 5 a REAL Shift + drag across the chest fur (comb): the fur there lies across (+x), away from it down the body
+5/5 passed

@@ -1863,6 +1863,12 @@ class StrokeLogic:
                     return {'PASS_THROUGH'}
             except (AttributeError, KeyError, TypeError):
                 pass
+        if self.mode == 'FUR' and event.shift:   # 0.24.158 Shift + drag in Fur = comb (the tool keymap's own Shift
+            try:                                  # item can come after this stroke's any-modifier item)
+                bpy.ops.mch.fur_comb('INVOKE_DEFAULT')
+            except RuntimeError:
+                pass
+            return {'CANCELLED'}
         region = context.region
         if region is None or region.type != 'WINDOW':
             region = next((r for r in context.area.regions if r.type == 'WINDOW'), None)

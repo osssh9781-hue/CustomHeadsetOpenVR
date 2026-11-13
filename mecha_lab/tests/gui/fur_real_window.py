@@ -328,6 +328,39 @@ def flow():
         round(float(lens.max()), 4))
     res['4 a REAL drag on the window\'s Length: the fur longer (the strands redone)'] = (
         fur.mch_fur.length > l0 * 1.2 and lens.max() > l0 * 1.15)
+    # 5: comb - a REAL Shift + drag across the chest fur, to the screen's right: the fur there lies that way
+    fur.mch_fur.lie = math.radians(80)
+    fur.mch_fur.gravity = 0.0
+    yield 1.0
+    w, a, r = view3d()
+    rv = a.spaces.active.region_3d
+    y_mid = Vector((0.0, -0.13, 1.25))
+    p0 = screen_of(y_mid + Vector((-0.12, 0.0, 0.0)))
+    p1 = screen_of(y_mid + Vector((0.12, 0.0, 0.0)))
+    C.window_manager.mch_fur_comb_size = 45
+    xdo('mousemove', int(p0[0]), int(p0[1]))
+    yield 0.4
+    xdo('keydown', 'shift')
+    yield 0.2
+    xdo('mousedown', 1)
+    yield 0.3
+    for i in range(1, 21):
+        xdo('mousemove', int(p0[0] + (p1[0] - p0[0]) * i / 20), int(p0[1] + (p1[1] - p0[1]) * i / 20))
+        yield 0.05
+    yield 0.3
+    xdo('mouseup', 1)
+    yield 0.3
+    xdo('keyup', 'shift')
+    yield 1.5
+    P5 = roots_of(fur)
+    dirs = P5[:, 1] - P5[:, 0]
+    dirs = dirs / np.linalg.norm(dirs, axis=1)[:, None]
+    near = np.abs(P5[:, 0, 2] - y_mid.z) < 0.02
+    far = np.abs(P5[:, 0, 2] - y_mid.z) > 0.08
+    log('5 comb: strands near the drag', int(near.sum()), 'dir.x', round(float(dirs[near, 0].mean()), 2) if near.any() else None,
+        '- away: dir.z', round(float(dirs[far, 2].mean()), 2) if far.any() else None)
+    res['5 a REAL Shift + drag across the chest fur (comb): the fur there lies across (+x), away from it down the body'] = (
+        near.sum() > 10 and dirs[near, 0].mean() > 0.6 and far.sum() > 10 and dirs[far, 2].mean() < -0.5)
     yield 1.0
     shot('2_fur_wire.png')
     S.render.engine = 'CYCLES'

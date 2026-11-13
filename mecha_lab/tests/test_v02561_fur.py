@@ -120,14 +120,14 @@ tipdir = (P[:, -1] - P[:, 0]) / np.linalg.norm(P[:, -1] - P[:, 0], axis=1)[:, No
 tipang = np.degrees(np.arccos(np.clip(np.einsum('ij,ij->i', tipdir, nrm), -1, 1)))
 check(f'Lie Down 0, Gravity 0: every strand straight out of the skin (worst {max(straight.max(), tipang.max()):.1f} deg '
       f'from the normal, root and tip)', max(straight.max(), tipang.max()) < 2.0)
-pg.lie = 1.0
+pg.lie = math.pi / 2                                               # (Lie Down: an angle from the normal - 90 flat)
 settle(fur)
 P, _cv = strands(fur)
 dd = direction(P)
 nrm = P[:, 0] / np.linalg.norm(P[:, 0], axis=1)[:, None]
 eq = np.abs(P[:, 0, 2]) < 0.1
 flat = np.abs(np.einsum('ij,ij->i', dd, nrm)).max()
-check(f'Lie Down 1 (Flow 0): flat on the skin (|dir . normal| at most {flat:.3f}), pointing down the body round the '
+check(f'Lie Down 90 deg (Flow 0): flat on the skin (|dir . normal| at most {flat:.3f}), pointing down the body round the '
       f'equator (dir.z {dd[eq, 2].mean():.2f})', flat < 0.03 and dd[eq, 2].mean() < -0.95)
 pg.flow = math.radians(90)
 settle(fur)
@@ -137,7 +137,51 @@ eq = np.abs(P[:, 0, 2]) < 0.1
 side = np.abs(dd[eq, 0]).mean()
 check(f'Flow Angle 90: the fur lies sideways instead (|dir.x| {side:.2f}, dir.z {dd[eq, 2].mean():.2f})',
       side > 0.9 and abs(dd[eq, 2].mean()) < 0.1)
-pg.flow, pg.lie = 0.0, 0.0
+pg.flow = 0.0
+# combing (Shift + drag): a drag to the right across the middle - the fur under the brush lies to the right, the rest
+# down the body as before
+comb = cf.Comb(C, fur, FRONT, radius=40.0, strength=1.0)
+k = sum(comb.step((440 + 20 * i, 500), (460 + 20 * i, 500)) for i in range(6))
+settle(fur)
+P, _cv = strands(fur)
+dd = direction(P)
+r0 = P[:, 0]
+sx_, sy_ = 500 + r0[:, 0] * 200, 500 + r0[:, 2] * 200
+under = (np.abs(sy_ - 500) < 15) & (sx_ > 450) & (sx_ < 550)
+away = np.abs(sy_ - 500) > 70
+check(f'Comb: a drag to the right across the middle ({k} points of the body combed) - the fur under the brush lies to '
+      f'the right (dir.x {dd[under, 0].mean():.2f}), flat on the skin still; away from it down the body (dir.z '
+      f'{dd[away, 2].mean():.2f})', under.sum() > 20 and dd[under, 0].mean() > 0.9
+      and np.abs(np.einsum('ij,ij->i', dd[under], r0[under] / np.linalg.norm(r0[under], axis=1)[:, None])).max() < 0.05
+      and dd[away, 2].mean() < -0.9)
+pg.lie = math.radians(45)
+settle(fur)
+P, _cv = strands(fur)
+dd = direction(P)
+r0 = P[:, 0]
+sx_, sy_ = 500 + r0[:, 0] * 200, 500 + r0[:, 2] * 200
+under = (np.abs(sy_ - 500) < 15) & (sx_ > 450) & (sx_ < 550)
+nn = r0 / np.linalg.norm(r0, axis=1)[:, None]
+ang = np.degrees(np.arccos(np.clip(np.einsum('ij,ij->i', dd, nn), -1, 1)))
+check(f'... Lie Down 45 deg: the combed fur 45 deg off the normal (measured {ang[under].mean():.1f}), leaning to the '
+      f'right (dir.x {dd[under, 0].mean():.2f})', abs(ang[under].mean() - 45) < 3 and dd[under, 0].mean() > 0.6)
+pg.lie = math.pi / 2
+settle(fur)
+P, _cv = strands(fur)                                               # (before the drag that Esc takes back)
+comb2 = cf.Comb(C, fur, FRONT, radius=40.0, strength=1.0)
+comb2.step((500, 600), (500, 640))                                  # (an upward drag lower down ...)
+comb2.undo()                                                        # (... Esc: taken back)
+settle(fur)
+P2, _cv = strands(fur)
+check('... Esc during a drag: the combing as it was before that drag (every strand the same)', P2.shape == P.shape
+      and np.allclose(P2, P, atol=1e-5))
+cf.clear_comb(fur)
+settle(fur)
+P, _cv = strands(fur)
+dd = direction(P)
+eq = np.abs(P[:, 0, 2]) < 0.1
+check(f'Clear Comb: down the body again (dir.z {dd[eq, 2].mean():.2f})', dd[eq, 2].mean() < -0.95)
+pg.lie = 0.0
 pg.gravity = 2.0
 settle(fur)
 P, _cv = strands(fur)

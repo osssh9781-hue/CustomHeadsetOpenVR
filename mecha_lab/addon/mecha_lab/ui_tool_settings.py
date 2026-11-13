@@ -1119,6 +1119,13 @@ def draw_fur(layout, context):
     creature_fur.draw(layout, context)
 
 
+def _weather_drawer(kind):
+    def draw_it(layout, context):
+        from . import weathering
+        weathering.draw(layout, context, kind)
+    return draw_it
+
+
 def draw_radial_sym(layout, context):
     from . import radial_sym
     radial_sym.draw(layout, context)
@@ -1129,6 +1136,8 @@ DRAWERS = {
     'GREEBLE': draw_greeble,
     'CGREEBLE': draw_scale_line,
     'FUR': draw_fur,
+    'WDIRT': _weather_drawer('DIRT'), 'WDUST': _weather_drawer('DUST'), 'WLEAF': _weather_drawer('LEAVES'),
+    'WSNOW': _weather_drawer('SNOW'),
     'RSYM': draw_radial_sym,
     'SDRAW': draw_surface_draw,
     'PERF': draw_perforate,

@@ -79,19 +79,30 @@ def fur(area, **values):
 
 furs = []
 furs.append(fur(poly([(-0.17, 1.42), (0.17, 1.42), (0.15, 1.0), (-0.15, 1.0)]),     # chest and belly: short, striped
-                density=90000.0, length=0.028, length_random=0.4, lie=0.75, flow=0.0, gravity=0.3, curl=0.0,
-                frizz=0.25, clump=0.15, clump_size=10, root_thick=0.0007, tip_thick=0.00008, segments=6,
+                density=110000.0, length=0.05, length_random=0.4, lie=math.radians(58), flow=0.0, gravity=0.3, curl=0.0,
+                frizz=0.3, clump=0.25, clump_size=10, root_thick=0.0007, tip_thick=0.00008, segments=6,
                 edge_soft=3, use_polypaint=True, tip_blend=0.15, tip_color=(0.95, 0.85, 0.65, 1.0)))
 furs.append(fur(poly([(-0.22, 1.62), (0.22, 1.62), (0.23, 1.47), (0.1, 1.44), (-0.1, 1.44), (-0.23, 1.47)]),
-                density=40000.0, length=0.16, length_random=0.35, lie=0.55, gravity=1.6, curl=0.0, frizz=0.35,
+                density=40000.0, length=0.16, length_random=0.35, lie=math.radians(50), gravity=1.6, curl=0.0, frizz=0.35,
                 clump=0.55, clump_size=25, root_thick=0.0011, tip_thick=0.0001, segments=12, edge_soft=4,
                 use_polypaint=False, root_color=(0.05, 0.035, 0.025, 1.0), tip_color=(0.55, 0.32, 0.12, 1.0),
                 tip_blend=0.7))                                                   # the mane: long, clumped
 for side in (1, -1):                                                              # upper arms: curly fleece
-    furs.append(fur(ellipse(side * 0.27, 1.3, 0.07, 0.1), density=60000.0, length=0.05, length_random=0.3, lie=0.35,
+    furs.append(fur(ellipse(side * 0.27, 1.3, 0.07, 0.1), density=60000.0, length=0.05, length_random=0.3, lie=math.radians(32),
                     gravity=0.2, curl=0.9, curl_turns=3.0, frizz=0.15, clump=0.3, clump_size=8, root_thick=0.0009,
                     tip_thick=0.0003, segments=20, edge_soft=2, use_polypaint=False,
                     root_color=(0.82, 0.78, 0.7, 1.0), tip_color=(0.95, 0.93, 0.88, 1.0), tip_blend=0.5))
+# comb the chest fur down and out from the middle (Shift + drag in the tool): two strokes, one each side
+chest = furs[0]
+for o in C.selected_objects:
+    o.select_set(False)
+chest.select_set(True)
+C.view_layer.objects.active = chest
+for side in (1, -1):
+    comb = cf.Comb(C, chest, FRONT, radius=70.0, strength=1.0)
+    for i in range(8):
+        a, b = (side * 0.02 + side * 0.017 * i, 1.4 - 0.045 * i), (side * 0.02 + side * 0.017 * (i + 1), 1.4 - 0.045 * (i + 1))
+        comb.step(px(*a), px(*b))
 total = sum(cf.strands(o) for o in furs)
 print('furs', len(furs), 'strands', total)
 
@@ -102,9 +113,9 @@ cs.floor = 'FADE'
 cam = bpy.data.objects.new('Cam', bpy.data.cameras.new('Cam'))
 S.collection.objects.link(cam)
 S.camera = cam
-cam.data.lens = 55
-look = Vector((0.0, 0.0, 1.32))
-cam.location = (0.9, -2.1, 1.55)
+cam.data.lens = 60
+look = Vector((0.0, -0.05, 1.3))
+cam.location = (0.75, -1.6, 1.5)
 cam.rotation_euler = (look - cam.location).to_track_quat('-Z', 'Y').to_euler()
 S.render.engine = 'CYCLES'
 S.cycles.samples = 64

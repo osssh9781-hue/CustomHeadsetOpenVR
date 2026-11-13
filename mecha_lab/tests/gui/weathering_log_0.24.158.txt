@@ -1,0 +1,13 @@
+WDIRT MCH_Base -> DIRT modifier True active MCH_Base
+WDUST MCH_Base.001 -> DUST modifier True active MCH_Base.001
+WLEAF Plane -> LEAVES modifier True active Plane
+WSNOW Sphere -> SNOW modifier True active Sphere
+Puff cell True puff 0.4 -> 0.994
+Alt + click on MCH_Base.001 -> None modifier False
+PASS a REAL click with Dirt on MCH_Base: it becomes dirt (live), selected
+PASS a REAL click with Dust on MCH_Base.001: it becomes dust (live), selected
+PASS a REAL click with Leaves on Plane: it becomes leaves (live), selected
+PASS a REAL click with Snow on Sphere: it becomes snow (live), selected
+PASS a REAL drag on the window's Puff: the snow puffs more (the selected ball's value)
+PASS a REAL Alt + click on the dusted lump: back to its shape
+6/6 passed
