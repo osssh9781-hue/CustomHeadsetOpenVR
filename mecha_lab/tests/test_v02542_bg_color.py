@@ -13,6 +13,7 @@ from mecha_lab import bg_color as bgc, mech_shader_ui as msu, side_panel as sp  
 
 fresh()
 mecha_lab.register()
+bpy.context.scene.mch_bg.method = 'WORLD'      # (0.24.148: Compositor is the default now; this file is the World way)
 C = bpy.context
 S = C.scene
 st = S.mch_bg

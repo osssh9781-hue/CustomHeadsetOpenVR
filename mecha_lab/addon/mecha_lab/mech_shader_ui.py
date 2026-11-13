@@ -1093,6 +1093,9 @@ def background_section(b, context, x, width):
     def fill(sx, sw):
         row(b, sx, sw, [_cell('seg', 'Background Colour', ('op', 'mch.bg_color', {}), on=on),
                         swatch(st, 'color', 'Colour')])
+        # 0.24.148 (user: "컴포지터 방식으로 ㄱㄱ, 그 버튼 누르면 뷰포트나 이런 건 다 너가 알아서 세팅") how it goes behind
+        row(b, sx, sw, [_cell('tbtn', 'Compositor', ('op', 'mch.bg_method', {'method': 'COMP'}), on=st.method == 'COMP'),
+                        _cell('tbtn', 'World', ('op', 'mch.bg_method', {'method': 'WORLD'}), on=st.method == 'WORLD')])
         row(b, sx, sw, [_cell('tbtn', 'Colour', ('op', 'mch.bg_picture', {'mode': 'COLOR'}), on=not pic),
                         _cell('tbtn', 'Picture', ('op', 'mch.bg_picture', {'mode': 'IMAGE'}), on=pic)])
         if pic:
@@ -1112,6 +1115,9 @@ def background_section(b, context, x, width):
         row(b, sx, sw, [prop_cell(st, 'solid_too', 'Solid View Too')])
         b.note(('note', 'The camera sees it; your HDRI still lights the parts' + (
             ' (Solid: the colour only)' if pic else ''), False, None, None, None, True), sx, sw)
+        if st.method == 'COMP':
+            b.note(('note', 'Compositor: Film Transparent + viewport compositor set for you (Material Preview / '
+                            'Rendered); Off puts them back', False, None, None, None, True), sx, sw)
         if ms.hdri_world(sc) is not None:            # (a scene still on the old Mecha HDRI world: back to its own)
             row(b, sx, sw, [button('Mecha HDRI Off (back to your world)', 'mch.mech_hdri', action='OFF')])
     section(b, 'background_colour', 'Background', x, width, fill,

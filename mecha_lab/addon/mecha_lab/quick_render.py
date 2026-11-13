@@ -506,7 +506,13 @@ def prepare(context, st):
     _set(cy, 'caustics_reflective', False)
     _set(cy, 'caustics_refractive', False)
     _set(cy, 'blur_glossy', 1.0)
-    _set(r, 'film_transparent', bool(st.transparent))
+    # 0.24.148 the background in the compositor needs the film transparent (it goes behind the render there); a
+    # Transparent render with it: the compositor skipped (the parts on nothing, as asked)
+    from . import bg_color
+    comp_bg = bg_color.comp_on(scene)
+    _set(r, 'film_transparent', bool(st.transparent) or comp_bg)
+    if comp_bg and st.transparent:
+        _set(r, 'use_compositing', False)
     view_cam = False
     if st.camera == 'VIEW' or scene.camera is None:
         view_cam = _camera_from_view(context, scene)

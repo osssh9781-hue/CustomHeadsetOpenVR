@@ -1,0 +1,14 @@
+before: viewport compositor DISABLED film transparent False compositor None
+after: viewport compositor ALWAYS film True compositor MCH Background (Scene)
+shot 1_material_preview_colour.png True
+shot 2_rendered_colour_wire.png True
+the 3D view red (the background colour): Material Preview 0.45 Rendered 0.45
+shot 3_rendered_picture_wire.png True
+picture: mode IMAGE red share 0.01
+off: viewport compositor DISABLED film False compositor None
+PASS 1 one REAL click: Film Transparent, our compositor, the viewport compositor Always (set for you)
+PASS 2 Material Preview: the colour behind the model in the viewport (most of the view red)
+PASS 2 Rendered (Cycles): the colour behind the model in the viewport (most of the view red)
+PASS 3 a REAL click on Picture: a picture behind (no red background left)
+PASS 4 a REAL click again: off - Film Transparent, the compositor, the viewport compositor as before
+5/5 passed

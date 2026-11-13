@@ -14,6 +14,13 @@ touched.  Another add-on rebuilding its world drops the nodes: Background Colour
 (the add-on's 68) or one of the user's pictures behind the model instead of the colour - the frame's window
 coordinates, Fill / Fit (the colour round a fitted picture), Brightness / Contrast; on any world, like the colour.
 Material Preview Too: Material Preview shows the scene's world (Blender's own studio light otherwise hides it).
+
+0.24.148 (user: "컴포지터 방식으로 ㄱㄱ, 그 버튼 누르면 뷰포트나 이런 건 다 너가 알아서 세팅") Compositor: the colour /
+picture put behind the render in the compositor instead of in the world - the world is not touched at all.  Pressed:
+Film Transparent on, a few nodes just before the compositor's output (a small compositor of ours when the scene has
+none; with your own, what went to its output goes on top of the background), every 3D view's viewport compositor Always (Material Preview and Rendered
+show it).  Everything changed is remembered and put back by Off / World.  The picture is never blurred by depth of
+field or touched by the denoiser.
 """
 from __future__ import annotations
 
@@ -34,6 +41,12 @@ VIEW_KEY = 'mch_bg_view'
 MAT_KEY = 'mch_bg_matview'
 OWN = 'mch_bg_own'                 # on a picture this loaded (let go when another is picked and nothing uses it)
 DEFAULT_PICTURE = 'B:white_sweep_land.jpg'
+COMP_TAG = 'mch_bg_comp'            # on our compositor group (the scene's name)
+COMP_KEY = 'mch_bg_comp_keep'      # on the scene: what Compositor changed (put back by Off)
+VIEWCOMP_KEY = 'mch_bg_viewcomp'   # on a screen: its 3D views' viewport compositor before
+C_RL, C_USER, C_FULL, C_SCALE = 'MCH BG Render', 'MCH BG Your Compositor', 'MCH BG Full Colour', 'MCH BG Fit'
+C_SEP, C_CLAMP, C_SETA, C_AO1, C_AO2 = 'MCH BG Picture Alpha', 'MCH BG Clamp', 'MCH BG Set Alpha', 'MCH BG Picture Over', \
+    'MCH BG Model Over'
 
 
 def _upd_color(self, context):
@@ -130,6 +143,11 @@ class MCH_PG_Background(bpy.types.PropertyGroup):
                        'Ramp… for more stops)')
     image_pick: EnumProperty(name='Picture', items=_pick_items, get=_pick_get, set=_pick_set,
                              description='The picture behind the model: the studio backdrops, then your folder')
+    method: EnumProperty(name='Method', default='COMP', items=[
+        ('COMP', 'Compositor', 'The colour / picture put behind the render in the compositor (Film Transparent, the '
+                               'viewport compositor on - all set for you); the world untouched'),
+        ('WORLD', 'World', 'The colour / picture in the world for the camera rays (nothing else changed)')],
+        description='How the background is put behind the model')
     material_too: BoolProperty(name='Material Preview Too', default=True, update=_upd_mat,
                                description='Material Preview shows the scene\'s world (your HDRI and the background) '
                                'instead of Blender\'s own studio light')
@@ -161,6 +179,11 @@ def _output(nt):
 
 
 def on(scene):
+    """Is the background on (in the world, or 0.24.148 in the compositor)?"""
+    return world_on(scene) or comp_on(scene)
+
+
+def world_on(scene):
     """Is the colour in the scene's world (our Mix linked to the world's output)?"""
     w = getattr(scene, 'world', None)
     nt = getattr(w, 'node_tree', None)
@@ -186,8 +209,19 @@ def _world(scene):
 
 
 def apply(scene):
-    """The colour into the scene's world (an existing world kept as it is - its shader goes through our Mix)."""
+    """The background on, the settings' way (0.24.148: Compositor, or World)."""
+    st = settings(scene)
     if on(scene):
+        set_color(scene)
+        return 'Background Colour is on'
+    if st is not None and st.method == 'COMP':
+        return comp_apply(scene)
+    return world_apply(scene)
+
+
+def world_apply(scene):
+    """The colour into the scene's world (an existing world kept as it is - its shader goes through our Mix)."""
+    if world_on(scene):
         set_color(scene)
         return 'Background Colour is on'
     migrate(scene)
@@ -227,6 +261,18 @@ def apply(scene):
 
 
 def remove(scene):
+    """The background off, whichever way it is on."""
+    msg = 'Background off'
+    if comp_on(scene) or COMP_KEY in scene.keys():
+        msg = comp_remove(scene)
+    if world_on(scene):
+        msg = world_remove(scene)
+    update_views(scene, force_off=True)
+    update_material_views(scene, force_off=True)
+    return msg
+
+
+def world_remove(scene):
     """The three nodes out, the world's own shader back on its output."""
     w = getattr(scene, 'world', None)
     nt = getattr(w, 'node_tree', None)
@@ -250,6 +296,8 @@ def remove(scene):
 
 
 def set_color(scene):
+    if comp_on(scene):
+        comp_sync(scene)
     st = settings(scene)
     w = getattr(scene, 'world', None)
     nt = getattr(w, 'node_tree', None)
@@ -369,7 +417,11 @@ def migrate(scene):
 
 
 def ramp_node(scene):
-    """The background picture's Colour Ramp node in the scene's world, or None."""
+    """The background picture's Colour Ramp node (the compositor's, else the scene's world's), or None."""
+    if comp_on(scene):
+        st = settings(scene)
+        ng = scene.compositing_node_group
+        return ng.nodes.get(N_RAMP) if st is not None and st.mode == 'IMAGE' and picture_path(scene) else None
     w = getattr(scene, 'world', None)
     nt = getattr(w, 'node_tree', None)
     return nt.nodes.get(N_RAMP) if nt is not None else None
@@ -423,6 +475,272 @@ def _picture_sync(scene, nt, bg):
     bc.inputs['Contrast'].default_value = float(st.contrast)
     _mix_in(nt.nodes.get(N_RMIX), 'Factor_Float').default_value = 1.0 if st.ramp else 0.0
     _mix_in(nt.nodes.get(N_ALPHA), 'A_Color').default_value = (*st.color, 1.0)
+
+
+# ---- 0.24.148 the compositor way --------------------------------------------------------------------------------
+
+C_NODES = (C_RL, C_FULL, N_PIC, C_SCALE, C_SEP, N_BC, C_CLAMP, N_BW, N_RAMP, N_RMIX, C_SETA, C_AO1, C_AO2)
+
+
+def _out_node(nt):
+    outs = [n for n in nt.nodes if n.bl_idname == 'NodeGroupOutput']
+    return next((n for n in outs if getattr(n, 'is_active_output', False)), outs[0] if outs else None)
+
+
+def _comp_group(scene):
+    """The scene's compositor when our nodes feed its output, else None."""
+    nt = getattr(scene, 'compositing_node_group', None)
+    if nt is None:
+        return None
+    ao2, out = nt.nodes.get(C_AO2), _out_node(nt)
+    if ao2 is None or out is None or not out.inputs:
+        return None
+    return nt if any(lk.from_node == ao2 for lk in out.inputs[0].links) else None
+
+
+def comp_on(scene):
+    """Is the background in the scene's compositor (our nodes before its output)?"""
+    return _comp_group(scene) is not None
+
+
+def _keep(scene):
+    try:
+        return json.loads(scene[COMP_KEY]) if COMP_KEY in scene.keys() else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _mix_sock(node, kind, io='in', which=0):
+    socks = node.inputs if io == 'in' else node.outputs
+    return [x for x in socks if x.type == kind][which]
+
+
+def _comp_insert(scene, nt):
+    """Our nodes into compositor ``nt``, just before its output: (what went to the output | the render) over (the
+    picture over the colour).  Your own compositor nodes stay as they are (a nested group's Render Layers gives
+    nothing in Blender 5.2, so ours go into your tree, like the world way's three nodes into your world)."""
+    N, L = nt.nodes, nt.links
+    for name in C_NODES:                              # (leftovers of an earlier time)
+        n = N.get(name)
+        if n is not None:
+            N.remove(n)
+    if not any(it.item_type == 'SOCKET' and it.in_out == 'OUTPUT' for it in nt.interface.items_tree):
+        nt.interface.new_socket('Image', in_out='OUTPUT', socket_type='NodeSocketColor')
+    out = _out_node(nt)
+    if out is None:
+        out = N.new('NodeGroupOutput')
+        out.location = (800, 0)
+    src = out.inputs[0].links[0].from_socket if out.inputs and out.inputs[0].links else None
+    ox, oy = out.location
+
+    def node(kind, name, dx, dy):
+        n = N.new(kind)
+        n.name = n.label = name
+        n.location = (ox + dx, oy + dy)
+        return n
+    if src is None:
+        rl = node('CompositorNodeRLayers', C_RL, -1700, 300)
+        rl.scene = scene
+        src = rl.outputs['Image']
+    full = node('ShaderNodeMix', C_FULL, -560, 300)           # (a colour as big as the render: the picture's
+    full.data_type = 'RGBA'                                   #  Fit leaves room round it)
+    _mix_sock(full, 'VALUE').default_value = 1.0
+    L.new(src, _mix_sock(full, 'RGBA'))
+    img = node('CompositorNodeImage', N_PIC, -1700, -100)
+    scl = node('CompositorNodeScale', C_SCALE, -1500, -100)
+    scl.inputs['Type'].default_value = 'Render Size'
+    L.new(img.outputs['Image'], scl.inputs['Image'])
+    sep = node('CompositorNodeSeparateColor', C_SEP, -1300, -380)
+    L.new(scl.outputs['Image'], sep.inputs['Image'])
+    bc = node('ShaderNodeVectorMath', N_BC, -1300, -100)      # brightness / contrast: a x colour + b
+    bc.operation = 'MULTIPLY_ADD'
+    L.new(scl.outputs['Image'], bc.inputs[0])
+    cl = node('ShaderNodeVectorMath', C_CLAMP, -1120, -100)
+    cl.operation = 'MAXIMUM'
+    cl.inputs[1].default_value = (0.0, 0.0, 0.0)
+    L.new(bc.outputs['Vector'], cl.inputs[0])
+    bw = node('CompositorNodeRGBToBW', N_BW, -940, -320)
+    L.new(cl.outputs['Vector'], bw.inputs['Image'])
+    ramp = node('ShaderNodeValToRGB', N_RAMP, -780, -320)
+    els = ramp.color_ramp.elements
+    els[0].position, els[0].color = 0.0, DARK
+    els[1].position, els[1].color = 1.0, LIGHT
+    L.new(bw.outputs['Val'], ramp.inputs[0])
+    rmix = node('ShaderNodeMix', N_RMIX, -520, -150)
+    rmix.data_type = 'RGBA'
+    L.new(cl.outputs['Vector'], _mix_sock(rmix, 'RGBA'))
+    L.new(ramp.outputs['Color'], _mix_sock(rmix, 'RGBA', which=1))
+    seta = node('CompositorNodeSetAlpha', C_SETA, -340, -150)
+    seta.inputs['Type'].default_value = 'Apply Mask'
+    L.new(_mix_sock(rmix, 'RGBA', 'out'), seta.inputs['Image'])
+    L.new(sep.outputs['Alpha'], seta.inputs['Alpha'])
+    ao1 = node('CompositorNodeAlphaOver', C_AO1, -360, 150)
+    L.new(_mix_sock(full, 'RGBA', 'out'), ao1.inputs['Background'])
+    L.new(seta.outputs['Image'], ao1.inputs['Foreground'])
+    ao2 = node('CompositorNodeAlphaOver', C_AO2, -180, 250)
+    L.new(ao1.outputs['Image'], ao2.inputs['Background'])
+    L.new(src, ao2.inputs['Foreground'])
+    L.new(ao2.outputs['Image'], out.inputs[0])
+    return nt
+
+
+def _comp_take_out(nt):
+    """Our nodes out of ``nt``, what went to its output linked to it again.  Returns the picture it showed."""
+    N = nt.nodes
+    ao2, out = N.get(C_AO2), _out_node(nt)
+    src = None
+    if ao2 is not None and ao2.inputs['Foreground'].links:
+        lk = ao2.inputs['Foreground'].links[0]
+        if lk.from_node.name != C_RL:
+            src = lk.from_socket
+    linked = ao2 is not None and out is not None and out.inputs and any(
+        lk.from_node == ao2 for lk in out.inputs[0].links)
+    pic = N.get(N_PIC)
+    img = pic.image if pic is not None else None
+    for name in C_NODES:
+        n = N.get(name)
+        if n is not None:
+            N.remove(n)
+    if src is not None and linked and not out.inputs[0].links:
+        nt.links.new(src, out.inputs[0])
+    return img
+
+
+def comp_sync(scene):
+    """The colour / picture / Fill-Fit / Brightness / Contrast / Colour Ramp into our compositor group."""
+    st = settings(scene)
+    ng = _comp_group(scene)
+    if st is None or ng is None:
+        return
+    N = ng.nodes
+    _mix_sock(N[C_FULL], 'RGBA', which=1).default_value = (*st.color, 1.0)
+    pic = N.get(N_PIC)
+    path = picture_path(scene) if st.mode == 'IMAGE' else ''
+    old = pic.image
+    if not path:
+        pic.image = None
+        _let_go(old)
+        return
+    if old is None or os.path.normcase(bpy.path.abspath(old.filepath)) != os.path.normcase(path):
+        known = {i.name for i in bpy.data.images}
+        img = bpy.data.images.load(path, check_existing=True)
+        if img.name not in known:
+            img[OWN] = True
+        pic.image = img
+        _let_go(old)
+    scl = N[C_SCALE]
+    scl.inputs['Frame Type'].default_value = 'Crop' if st.fit == 'FILL' else 'Fit'
+    for ax in ('Extension X', 'Extension Y'):
+        scl.inputs[ax].default_value = 'Extend' if st.fit == 'FILL' else 'Clip'
+    a = 1.0 + float(st.contrast)                     # (as the world's Bright / Contrast node)
+    b = float(st.bright) - float(st.contrast) * 0.5
+    N[N_BC].inputs[1].default_value = (a, a, a)
+    N[N_BC].inputs[2].default_value = (b, b, b)
+    _mix_sock(N[N_RMIX], 'VALUE').default_value = 1.0 if st.ramp else 0.0
+
+
+def update_view_compositor(scene, force_off=False):
+    """Compositor on: every 3D view's viewport compositor Always (Material Preview / Rendered show the background);
+    its own setting kept on the screen and put back."""
+    want = comp_on(scene) and not force_off
+    for scr, idx, sp in _views():
+        sh = sp.shading
+        try:
+            keep = json.loads(scr[VIEWCOMP_KEY]) if VIEWCOMP_KEY in scr.keys() else {}
+        except (TypeError, ValueError):
+            keep = {}
+        if want:
+            if idx not in keep:
+                keep[idx] = sh.use_compositor
+            sh.use_compositor = 'ALWAYS'
+            scr[VIEWCOMP_KEY] = json.dumps(keep)
+        elif idx in keep:
+            try:
+                sh.use_compositor = keep.pop(idx)
+            except (TypeError, ValueError):
+                keep.pop(idx, None)
+            if keep:
+                scr[VIEWCOMP_KEY] = json.dumps(keep)
+            elif VIEWCOMP_KEY in scr.keys():
+                del scr[VIEWCOMP_KEY]
+
+
+def comp_apply(scene):
+    """The background in the compositor: Film Transparent, our nodes before the compositor's output (a compositor of
+    ours when the scene has none), the viewport compositor on.  What was there is remembered (Off puts it back)."""
+    if comp_on(scene):
+        comp_sync(scene)
+        return 'Background (Compositor) is on'
+    if world_on(scene):
+        world_remove(scene)
+    migrate(scene)
+    r = scene.render
+    nt = getattr(scene, 'compositing_node_group', None)
+    if _keep(scene) is None:
+        scene[COMP_KEY] = json.dumps({'film_transparent': bool(r.film_transparent),
+                                      'use_compositing': bool(r.use_compositing), 'made': nt is None})
+    if nt is None:
+        for ng in [g for g in bpy.data.node_groups if g.get(COMP_TAG) == scene.name and g.users == 0]:
+            bpy.data.node_groups.remove(ng)                   # (a leftover of ours)
+        nt = bpy.data.node_groups.new(f'MCH Background ({scene.name})', 'CompositorNodeTree')
+        nt[COMP_TAG] = scene.name
+        scene.compositing_node_group = nt
+    _comp_insert(scene, nt)
+    r.film_transparent = True
+    r.use_compositing = True
+    _load_stops(scene, nt.nodes.get(N_RAMP))
+    comp_sync(scene)
+    update_view_compositor(scene)
+    update_views(scene)
+    update_material_views(scene)
+    st = settings(scene)
+    what = 'Picture' if st is not None and st.mode == 'IMAGE' else 'Colour'
+    return (f'Background {what} on (Compositor): Film Transparent and the viewport compositor set - Material '
+            f'Preview / Rendered show it, the world still lights the parts')
+
+
+def comp_remove(scene):
+    """Our nodes out (a compositor of ours removed); Film Transparent, the views' viewport compositor as they were."""
+    nt = getattr(scene, 'compositing_node_group', None)
+    keep = _keep(scene) or {}
+    r = scene.render
+    img = None
+    if nt is not None and nt.nodes.get(C_AO2) is not None:
+        _save_stops(scene, nt)
+        img = _comp_take_out(nt)
+        if nt.get(COMP_TAG):
+            scene.compositing_node_group = None
+            if nt.users == 0:
+                bpy.data.node_groups.remove(nt)
+    if keep:
+        try:
+            r.film_transparent = bool(keep.get('film_transparent', False))
+            r.use_compositing = bool(keep.get('use_compositing', True))
+        except (AttributeError, TypeError):
+            pass
+    if COMP_KEY in scene.keys():
+        del scene[COMP_KEY]
+    _let_go(img)
+    update_view_compositor(scene, force_off=True)
+    return 'Background off (Compositor): Film Transparent and the compositor as they were'
+
+
+def switch_method(scene, method):
+    """World <-> Compositor (on stays on, the other way's changes put back)."""
+    st = settings(scene)
+    if st is None or method not in {'COMP', 'WORLD'}:
+        return ''
+    was = on(scene)
+    st.method = method
+    if not was:
+        return f'Background: {"Compositor" if method == "COMP" else "World"} (press Background Colour to show it)'
+    if method == 'COMP':
+        if world_on(scene):
+            world_remove(scene)
+        return comp_apply(scene)
+    if comp_on(scene):
+        comp_remove(scene)
+    return world_apply(scene)
 
 
 # ---- Solid view too: the 3D views' own background -----------------------------------------------------------------
@@ -590,6 +908,9 @@ def draw_panel(layout, context):
     r.operator('mch.bg_color', text='Background Colour', icon='CHECKBOX_HLT' if is_on else 'CHECKBOX_DEHLT',
                depress=is_on)
     r.prop(st, 'color', text='')
+    r = col.row(align=True)                          # 0.24.148 Compositor | World
+    r.operator('mch.bg_method', text='Compositor', depress=st.method == 'COMP').method = 'COMP'
+    r.operator('mch.bg_method', text='World', depress=st.method == 'WORLD').method = 'WORLD'
     col.row(align=True).prop(st, 'mode', expand=True)
     if st.mode == 'IMAGE':
         icon = preview_icon(picture_path(sc))
@@ -666,7 +987,28 @@ class MCH_OT_bg_color(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_PG_Background, MCH_OT_bg_color, MCH_OT_bg_picture, MCH_OT_bg_fit, MCH_OT_bg_ramp,
+class MCH_OT_bg_method(bpy.types.Operator):
+    """How the background goes behind the model: Compositor (Film Transparent and the viewport compositor set for you,
+    the world untouched) or World (in the world for the camera rays)"""
+    bl_idname = 'mch.bg_method'
+    bl_label = 'Background Method'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    method: StringProperty(default='COMP', options={'SKIP_SAVE'})
+
+    def execute(self, context):
+        msg = switch_method(context.scene, self.method)
+        if not msg:
+            return {'CANCELLED'}
+        self.report({'INFO'}, msg)
+        try:
+            from . import side_panel
+            side_panel.dirty()
+        except (ImportError, AttributeError):
+            pass
+        return {'FINISHED'}
+
+
+CLASSES = (MCH_PG_Background, MCH_OT_bg_method, MCH_OT_bg_color, MCH_OT_bg_picture, MCH_OT_bg_fit, MCH_OT_bg_ramp,
            MCH_OT_bg_picture_step, MCH_PT_background)
 
 
