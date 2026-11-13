@@ -1763,7 +1763,8 @@ class StrokeLogic:
 
     def _needs_target(self):
         return self.mode not in {'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'ZONE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE',
-                                 'FLOWER', 'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW', 'PRESS'}
+                                 'FLOWER', 'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW', 'PRESS',
+                                 'GREEBLE', 'CGREEBLE'}
 
     def _tangents(self, pts=None):
         pts = self.pts if pts is None else pts
@@ -1873,7 +1874,7 @@ class StrokeLogic:
         scene = context.scene
         self.brush = scene.mch_brush
         self.shape = self.brush_shape = self.brush.shape
-        if self.mode == 'PRESS' and self.shape == 'CUSTOM':
+        if self.mode in STAMP_MODES and self.shape == 'CUSTOM':
             self.shape = 'STROKE'     # 0.24.95 Press Cut draws its stamp: a PNG stamp is no drawing - Free Draw
         if self.shape in {'LASSO', 'CURVE_LASSO'} and self._line_mode():
             self.shape = 'STROKE'     # 0.24.20 a line: draw while holding LMB, releasing applies (every tool)
@@ -1928,7 +1929,8 @@ class StrokeLogic:
         self.rounds = []            # Curve Lasso corner rounding per point (0 = straight)
         self.alt_latch = bool(event.alt)
         self.alt_held = bool(event.alt)
-        self.shift_held = bool(event.shift) and self.mode != 'PRESS'   # (Press Cut: Shift only starts the drawing)
+        self.shift_held = bool(event.shift) and self.mode not in STAMP_MODES   # (Press Cut, 0.24.154 Greeble / Scale
+        #                                                       Line: Shift only starts the drawing)
         self.ctrl_held = bool(event.ctrl)
         self.line_open = bool(self.brush.line_open)
         self.mouse = xy
@@ -2168,6 +2170,12 @@ class StrokeLogic:
     def _execute_closed(self, context):
         from . import lasso_sketch
         sketching = lasso_sketch.enabled(context, self.mode)
+        if self.mode in {'GREEBLE', 'CGREEBLE'}:  # 0.24.154 Greeble / Scale Line: the drawing becomes a part (a stamp)
+            from . import greeble_line
+            loops = self._current_loops(self.ctrl_held, self.shift_held)
+            _ob, msg = greeble_line.make_stamp(context, loops, self.projector,
+                                               'CREATURE' if self.mode == 'CGREEBLE' else 'MECH')
+            return msg
         if self.mode == 'PRESS':                 # 0.24.95 Press Cut: the drawing is the stamp (or goes into a sketch)
             from . import press_cut
             loops = self._current_loops(self.ctrl_held, self.shift_held)
@@ -2788,6 +2796,9 @@ class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
         ('CUT', 'Cut', 'Remove the inside (Alt: keep inside)'),
         ('SPLIT', 'Split', 'Split into two parts'),
         ('PRESS', 'Press Cut', 'Draw the Press Cut stamp with the shared shapes (Shift + draw in Press Cut)'),
+        ('GREEBLE', 'Greeble Stamp', 'Draw a Greeble Line part: a Base Mesh of the outline (Shift + draw in Greeble Line)'),
+        ('CGREEBLE', 'Scale Stamp', 'Draw a Scale Line part: a Creature Base Mesh of the outline (Shift + draw in Scale '
+                                    'Line)'),
         ('MASK', 'Mask', 'Add face mask (Alt: erase)'),
         ('BASE', 'Base Mesh', 'Create a new solid from the drawn outline'),
         ('PLATE', 'Armor Plate', 'New armour plate on the mesh under the outline'),
@@ -2838,6 +2849,9 @@ def event_timer_matches(op, event):
     # Event timers are not exposed on the event; any TIMER event while our timer
     # exists is good enough because we only compare elapsed wall-clock time.
     return op.timer is not None
+
+
+STAMP_MODES = {'PRESS', 'GREEBLE', 'CGREEBLE'}   # 0.24.154 Shift + draw = a stamp (no Shift option inside)
 
 
 class GateLogic:

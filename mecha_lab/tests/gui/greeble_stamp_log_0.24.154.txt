@@ -1,0 +1,19 @@
+tool GREEBLE top bar groups ['Shift+Draw', 'Lasso', '']
+window stamp profile clicks: Dome -> DOME , Chamfer -> CHAMFER
+shot 0_window.png True
+new objects ['Greeble Stamp'] stamp Greeble Stamp width 0.649 drawn 0.658 profile CHAMFER picked ['Greeble Stamp'] loc (2.36, 0.0, -1.0)
+lines ['Greeble Line'] parts 2 of ['Greeble Stamp']
+shot 1_greeble_stamp_wire.png True
+Scale Line: top bar ['Shift+Draw', 'Lasso', ''] - new ['Scale Stamp'] profile PUFF picked ['Scale Stamp'] faces 2444
+Ctrl+Z: stamp gone True - Ctrl+Shift+Z: back True - in the list ['Scale Stamp']
+scale lines ['Scale Line'] parts 3 of ['Scale Stamp']
+shot 2_scale_stamp_wire.png True
+shot 3_rendered_wire.png True
+PASS 1 Greeble Line on; the top bar has the Shift+Draw shapes
+PASS 1 REAL clicks on the window's stamp profiles: Dome, then Chamfer
+PASS 2 a REAL Shift + drag round an octagon: a Chamfer Base Mesh stamp as wide as drawn (within 12 %), beside the sphere, ticked alone, no line made
+PASS 3 a REAL drag: a Greeble Line of the stamp
+PASS 4 Scale Line: a REAL Shift + drag round a pointed scale: a Puff stamp in Scale Line's list (ticked alone), Greeble Line's list untouched
+PASS 4 REAL Ctrl+Z takes the stamp away, Ctrl+Shift+Z brings it back (in the list again)
+PASS 4 a REAL drag: a Scale Line of the scale stamp
+7/7 passed

@@ -50,6 +50,11 @@ def groups(context, tool):
                                     width=ICON) for sid, label, _d, stem, _f in ts.SHAPES]))
     if tool in ts.SHAPE_TOOLS:
         out += lasso_groups(brush, tool)
+    if tool in {'GREEBLE', 'CGREEBLE'}:   # 0.24.154 Greeble / Scale Line: Shift + draw a part with the shared shapes
+        out.append(('Shift+Draw', [_cell('ibtn', label, brush.shape == sid or (sid == 'STROKE' and brush.shape == 'CUSTOM'),
+                                         ('shape', sid), icon='png:' + stem, width=ICON)
+                                   for sid, label, _d, stem, _f in ts.SHAPES if sid != 'CUSTOM']))
+        out += lasso_groups(brush, tool) if brush.shape != 'CUSTOM' else []
     if tool == 'ZONE' and hasattr(scene, 'mch_zone_kind'):        # 0.24.95 Lasso Zone: what it makes
         out.append(('Zone', _enum_segs(scene, 'mch_zone_kind', (('PAINT', 'Paint'), ('SPLIT', 'Split')))))
     if tool in RES_TOOLS and hasattr(scene, 'mch_settings'):       # 0.24.95 one Resolution for all made / cut shapes

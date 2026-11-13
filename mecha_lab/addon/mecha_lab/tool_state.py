@@ -194,6 +194,7 @@ SHAPE_TOOLS = {'CUT', 'SPLIT', 'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRIN
                'DETAIL3', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW'}
 
 DRAW_TOOLS = SHAPE_TOOLS | {'PRESS'}      # 0.24.95 + Press Cut (Shift + draw its stamp): the lasso settings it keeps
+DRAW_TOOLS |= {'GREEBLE', 'CGREEBLE'}   # 0.24.154 + Greeble / Scale Line (Shift + draw a part)
 
 # 0.24.55 the tool list by job (about 10 groups instead of one long list); a tool not listed goes to Other
 TOOL_GROUPS = (

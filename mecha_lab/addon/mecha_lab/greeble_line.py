@@ -23,6 +23,12 @@ your own.  Stagger: every second row half a part along (scales / bricks).
 
 A line is a live object on the part (it moves with it): select it and change anything - it is redone.  The values go on
 to the next line.  Apply: real geometry (one mesh, the parts' materials).  Light: the parts are instances until Apply.
+
+0.24.154 (user: "쉬프트 누르고 라쏘로 그리면 그 스탬프 베이스로 만들어 줘, 그리블이랑 크리쳐 둘 다") Stamp: Shift + draw
+(the shared lasso shapes - Lasso, Curve Lasso, Rectangle, Circle, Ellipse, Free Draw) makes a part from the outline: a
+live Base Mesh (Greeble Line: Flat / Chamfer / Bevel / Dome) or Creature Base Mesh (Scale Line: Puff / Ridge / Pillow)
+as big as drawn on the surface, Stamp Height x its short side tall, standing beside the model, in the list and ticked.
+Select a stamp: its Height / Border / Puff ... in the window - every line using it follows.
 """
 from __future__ import annotations
 
@@ -151,12 +157,35 @@ class MCH_PG_GreebleLine(bpy.types.PropertyGroup):
                        'kind': StringProperty(default='MECH')}
 
 
+STAMP_PROFILE_ITEMS = [   # 0.24.154 the stamp's profile: Base Mesh's (Greeble Line) / Creature Base Mesh's (Scale Line)
+    ('FLAT', 'Flat', 'Flat top, straight sides'),
+    ('CHAMFER', 'Chamfer', 'Flat top, its border cut at an angle'),
+    ('BEVEL', 'Bevel', 'Flat top, its border rounded'),
+    ('DOME', 'Dome', 'The whole top bulges from the border in'),
+    ('PUFF', 'Puff', 'A round lump (a sculpting base)'),
+    ('RIDGE', 'Ridge', 'Rising to a sharp ridge along the middle'),
+    ('PILLOW', 'Pillow', 'Flat in the middle, the edge rounded')]
+
+
 class MCH_PG_Greeble(bpy.types.PropertyGroup):
     __annotations__ = {**_props(_upd_scene),
                        'parts': CollectionProperty(type=MCH_PG_GreeblePart),
                        'hide_parts': BoolProperty(name='Hide Parts', default=False, update=_upd_hide,
                                                   description='The picked parts hidden in the viewport and the render '
-                                                              '(the lines still show them)')}
+                                                              '(the lines still show them)'),
+                       # 0.24.154 Shift + draw: a part from the outline (a stamp)
+                       'stamp_profile': EnumProperty(name='Stamp Profile', items=STAMP_PROFILE_ITEMS, default='CHAMFER',
+                                                     description='The next stamp (Shift + draw): Greeble Line - Flat / '
+                                                                 'Chamfer / Bevel / Dome (Base Mesh), Scale Line - Puff / '
+                                                                 'Ridge / Pillow (Creature Base Mesh)'),
+                       'stamp_height': FloatProperty(name='Stamp Height', default=0.3, min=0.02, soft_max=2.0,
+                                                     description='The next stamp\'s height, x its outline\'s short side '
+                                                                 '(Puff / Ridge / Pillow: each side of the middle)'),
+                       'stamp_edge': FloatProperty(name='Stamp Border', default=0.35, min=0.0, soft_max=1.0,
+                                                   description='Chamfer / Bevel: the border, x the stamp\'s height'),
+                       'stamp_alone': BoolProperty(name='Use Only the New Stamp', default=True,
+                                                   description='A new stamp is ticked alone (the other parts unticked - '
+                                                               'tick them again to mix)')}
 
 
 def settings(context_or_scene, kind='MECH'):
@@ -807,6 +836,166 @@ def make_starters(context, near=None, which='MECH'):
     return made
 
 
+# ---- 0.24.154 stamps: a part from an outline drawn with Shift -------------------------------------------------------
+
+STAMP_TAG = 'mch_greeble_stamp'           # on a stamp part: its kind (MECH / CREATURE)
+STAMP_COLLS = {'MECH': 'Greeble Stamps', 'CREATURE': 'Scale Stamps'}
+STAMP_NAMES = {'MECH': 'Greeble Stamp', 'CREATURE': 'Scale Stamp'}
+STAMP_PROFILES = {'MECH': ('FLAT', 'CHAMFER', 'BEVEL', 'DOME'), 'CREATURE': ('PUFF', 'RIDGE', 'PILLOW')}
+STAMP_START = {'MECH': 'CHAMFER', 'CREATURE': 'PUFF'}
+STAMP_RES = 12
+
+
+def stamp_profile(st, kind):
+    """The stamp profile for ``kind`` (one of its tool's own: a Creature profile never on Greeble Line, ...)."""
+    p = getattr(st, 'stamp_profile', '')
+    return p if p in STAMP_PROFILES[kind] else STAMP_START[kind]
+
+
+def is_stamp(ob):
+    return ob is not None and bool(ob.get(STAMP_TAG))
+
+
+class _StampSettings:
+    """Base Mesh (Greeble Line) / Creature Base Mesh (Scale Line) settings for a stamp: the stamp's profile, its height
+    and border; the rest (segments, roundness, puff, resolution ...) the scene's Base Mesh / Creature Base Mesh ones."""
+
+    def __init__(self, base, profile, height, edge):
+        from . import base_mesh
+        self._base = base
+        self.profile = profile
+        self.profile_sweep = 'OFF'
+        self.embed = 0.0
+        self.offset = 0.0
+        # (a part laid many times: Dome / Puff / Ridge / Pillow at most STAMP_RES points across - the selected stamp's
+        #  Resolution raises it)
+        self.resolution = max(4, min(int(base.resolution), STAMP_RES))
+        if profile in base_mesh.CREATURE_PROFILES:
+            self.peak = height
+        else:
+            self.wall = base.wall * height / max(base.height, 1e-9)       # (Dome: its edge, in the same proportion)
+            self.height = height if profile != 'DOME' else max(height - self.wall, height * 0.2)   # (Dome: on its edge)
+            self.bevel_width = self.bevel_width_bottom = edge
+            self.bevel_sides = 'TOP'
+
+    def __getattr__(self, name):
+        return getattr(self._base, name)
+
+
+def _stamp_spot(context, near, ob, w, h):
+    """Where a new stamp ``ob`` (w x h across) stands: beside the model (right of the built-in parts), above any stamp
+    already there - Greeble Line's and Scale Line's stamps share the spot, one above the other, never inside each
+    other (a Puff / Ridge / Pillow stamp reaches below its middle too)."""
+    if near is not None:
+        bb = [near.matrix_world @ Vector(c) for c in near.bound_box]
+        lo = Vector((min(v.x for v in bb), min(v.y for v in bb), min(v.z for v in bb)))
+        hi = Vector((max(v.x for v in bb), max(v.y for v in bb), max(v.z for v in bb)))
+        x, y, z = hi.x + (hi - lo).length * 0.3, (lo.y + hi.y) * 0.5, lo.z
+    else:
+        c = context.scene.cursor.location
+        x, y, z = c.x + max(w, h) * 4.0, c.y, c.z
+    own_lo = min((v.co.z for v in ob.data.vertices), default=0.0)       # (<= 0: below its own middle)
+    z -= min(own_lo, 0.0)
+    gap = max(w, h) * 0.3
+    for o in context.scene.objects:
+        if o == ob or not is_stamp(o):
+            continue
+        bb = [o.matrix_world @ Vector(c) for c in o.bound_box]
+        if max(v.x for v in bb) < x or min(v.x for v in bb) > x + w or max(v.y for v in bb) < y - h * 0.5 \
+                or min(v.y for v in bb) > y + h * 0.5:
+            continue                                                    # (not in the way)
+        z = max(z, max(v.z for v in bb) + gap - own_lo)
+    return Vector((x + w * 0.5, y, z))
+
+
+def make_stamp(context, loops, projector, kind='MECH'):
+    """0.24.154 (user: "방금 만든 그 툴에다가 내가 쉬프트 누르고 라쏘로 그리면 그 스탬프 베이스로 만들어 줄 수 있어? 그리블이랑
+    크리쳐 둘 다") An outline drawn with Shift (any of the shared lasso shapes; region px) becomes a part: a live Base
+    Mesh (Greeble Line: Flat / Chamfer / Bevel / Dome) or Creature Base Mesh (Scale Line: Puff / Ridge / Pillow) of that
+    outline, as big as it was drawn on the surface under it, Stamp Height x its short side tall - standing beside the
+    model (outline in its X / Y, up +Z), added to the tool's parts and ticked.  Returns (object, message)."""
+    from . import base_mesh, core_geometry as cg
+    st = settings(context, kind)
+    screen_groups = cg.prepare_loops(loops)
+    outer = screen_groups[0][0] if screen_groups else []
+    if len(outer) < 3 or 0.5 * abs(sum(outer[i][0] * outer[(i + 1) % len(outer)][1] - outer[(i + 1) % len(outer)][0]
+                                       * outer[i][1] for i in range(len(outer)))) < 40.0:    # (px, as Press Cut)
+        raise cg.CutError('Draw a bigger outline (Shift + drag round it)')
+    origin, x, y, n = base_mesh.plane_frame(context, projector, screen_groups)
+
+    def to_local(q):
+        v = base_mesh._plane_point(projector, q, origin, n) - origin
+        return (v.dot(x), v.dot(y))
+    groups = [([to_local(q) for q in outer], [[to_local(q) for q in hl] for hl in holes])
+              for outer, holes in screen_groups]
+    xs = [q[0] for outer, _h in groups for q in outer]
+    ys = [q[1] for outer, _h in groups for q in outer]
+    w, h = max(xs) - min(xs), max(ys) - min(ys)
+    if min(w, h) <= 1e-6:
+        raise cg.CutError('Draw a bigger outline (Shift + drag round it)')
+    cx, cy = (max(xs) + min(xs)) * 0.5, (max(ys) + min(ys)) * 0.5      # (the part's origin: its middle)
+    groups = cg.organize_loops([[(q[0] - cx, q[1] - cy) for q in lp] for outer, holes in groups
+                                for lp in [outer] + holes])
+    profile = stamp_profile(st, kind)
+    height = st.stamp_height * min(w, h)
+    sc = context.scene
+    base = getattr(sc, 'mch_cbase', None) if kind == 'CREATURE' else getattr(sc, 'mch_base', None)
+    if base is None:
+        raise cg.CutError('Base Mesh settings missing')
+    p = _StampSettings(base, profile, height, st.stamp_edge * height)
+    near = None
+    try:
+        _q, found = base_mesh.anchor_hit(context, projector, screen_groups[0][0])
+        near = found[2] if found is not None else None
+    except (AttributeError, RuntimeError, TypeError, IndexError):
+        near = None
+    if near is not None and (is_line(near) or is_stamp(near) or any(it.ob == near for it in st.parts)):
+        near = near.parent if is_line(near) else None
+    if near is None:
+        ln = active_line(context)
+        near = ln.parent if ln is not None else None
+    sel = [o for o in context.selected_objects]
+    act = context.view_layer.objects.active
+    before = set(bpy.data.objects)
+    base_mesh._create_live_base(context, groups, Matrix.Identity(4), p, 0.0)
+    made = [o for o in bpy.data.objects if o not in before]
+    if not made:
+        raise cg.CutError('The stamp could not be made from this outline')
+    ob = made[0]
+    sess = [nm for nm in sc.get(base_mesh.SESSION_KEY, []) if nm != ob.name]      # (never frozen with a Base Mesh
+    if sess:                                                                    #  session: it stays live)
+        sc[base_mesh.SESSION_KEY] = sess
+    elif base_mesh.SESSION_KEY in sc:
+        del sc[base_mesh.SESSION_KEY]
+    ob.name = ob.data.name = STAMP_NAMES[kind]
+    ob[STAMP_TAG] = kind
+    coll = bpy.data.collections.get(STAMP_COLLS[kind])
+    if coll is None:
+        coll = bpy.data.collections.new(STAMP_COLLS[kind])
+    if coll.name not in sc.collection.children:
+        sc.collection.children.link(coll)
+    for c in list(ob.users_collection):
+        c.objects.unlink(ob)
+    coll.objects.link(ob)
+    ob.matrix_world = Matrix.Translation(_stamp_spot(context, near if near is not None and near.type == 'MESH' else None,
+                                                     ob, w, h))       # (matrix_world now: the next stamp stacks on it)
+    if st.stamp_alone:
+        for it in st.parts:
+            it.use = False
+    add_part(st, ob)
+    for o in context.selected_objects:
+        o.select_set(False)
+    for o in sel:
+        try:
+            o.select_set(True)
+        except (RuntimeError, ReferenceError):
+            pass
+    context.view_layer.objects.active = act if act is not None and act.name in bpy.data.objects else None
+    name = dict((i[0], i[1]) for i in STAMP_PROFILE_ITEMS)[profile]
+    return ob, (f'{ob.name}: a {name} part from your outline ({w:.3f} x {h:.3f}, {height:.3f} high) beside the model - '
+                f'in the list' + (', ticked alone' if st.stamp_alone else ', ticked') + '; drag on a part to lay it')
+
+
 # ---- operators -----------------------------------------------------------------------------------------------------
 
 def _draw_stroke(op, context):
@@ -1162,6 +1351,29 @@ class MCH_OT_greeble_parts(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_greeble_stamp_profile(bpy.types.Operator):
+    """The next stamp's profile (Shift + draw a part): Greeble Line - Flat / Chamfer / Bevel / Dome, Scale Line - Puff /
+    Ridge / Pillow"""
+    bl_idname = 'mch.greeble_stamp_profile'
+    bl_label = 'Stamp Profile'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    kind: EnumProperty(items=[('MECH', 'Greeble Line', ''), ('CREATURE', 'Scale Line', '')], default='MECH',
+                       options={'SKIP_SAVE'})
+    profile: EnumProperty(items=STAMP_PROFILE_ITEMS, default='CHAMFER', options={'SKIP_SAVE'})
+
+    def execute(self, context):
+        st = settings(context, self.kind)
+        if st is None or self.profile not in STAMP_PROFILES[self.kind]:
+            return {'CANCELLED'}
+        st.stamp_profile = self.profile
+        try:
+            from . import side_panel
+            side_panel.dirty()
+        except (ImportError, AttributeError):
+            pass
+        return {'FINISHED'}
+
+
 class MCH_OT_greeble_apply(bpy.types.Operator):
     """Apply the selected Greeble Line(s): real geometry - one mesh with the parts (their materials), no longer live"""
     bl_idname = 'mch.greeble_apply'
@@ -1192,6 +1404,8 @@ class MCH_TOOL_greeble(bpy.types.WorkSpaceTool):
     bl_widget = None
     bl_keymap = (
         ('mch.greeble_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, None),
+        # 0.24.154 Shift + draw (the shared lasso shapes): a part from the outline - a Base Mesh stamp
+        ('mch.cut_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'shift': True}, {'properties': [('mode', 'GREEBLE')]}),
         ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),
     )
 
@@ -1214,6 +1428,9 @@ class MCH_TOOL_scale_line(bpy.types.WorkSpaceTool):
     bl_widget = None
     bl_keymap = (
         ('mch.greeble_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, {'properties': [('kind', 'CREATURE')]}),
+        # 0.24.154 Shift + draw: a part from the outline - a Creature Base Mesh stamp
+        ('mch.cut_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'shift': True},
+         {'properties': [('mode', 'CGREEBLE')]}),
         ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),
     )
 
@@ -1225,6 +1442,7 @@ class MCH_TOOL_scale_line(bpy.types.WorkSpaceTool):
 
 
 HELP = ('Pick the meshes (Pick Part: click them), then drag on a part',
+        'Shift + draw: your own part from the outline (a stamp)',
         'Up: which side faces out of the wall; Along, Turn, Tilt',
         'Select a line to change it; Apply = real geometry')
 
@@ -1261,6 +1479,35 @@ def draw(layout, context, kind='MECH'):
     if st.parts:
         op(row, 'mch.greeble_parts', 'Clear List', action='CLEAR')
     col.prop(st, 'hide_parts')
+    # 0.24.154 Shift + draw: a part from the outline (the Base Mesh / Creature Base Mesh of it)
+    col = layout.column(align=True)
+    col.label(text='Stamp: Shift + draw (Base Mesh)' if kind == 'MECH' else 'Stamp: Shift + draw (Creature Base Mesh)')
+    row = col.row(align=True)
+    cur = stamp_profile(st, kind)
+    for ident in STAMP_PROFILES[kind]:
+        o = row.operator('mch.greeble_stamp_profile', text=dict((i[0], i[1]) for i in STAMP_PROFILE_ITEMS)[ident],
+                         depress=ident == cur)
+        o.kind, o.profile = kind, ident
+    col.prop(st, 'stamp_height')
+    if cur in {'CHAMFER', 'BEVEL'}:
+        col.prop(st, 'stamp_edge')
+    col.prop(st, 'stamp_alone')
+    stamp = context.view_layer.objects.active
+    if is_stamp(stamp) and stamp.get(STAMP_TAG) == kind and getattr(stamp, 'mch_base', None) is not None:
+        lb = stamp.mch_base                          # (the selected stamp itself: live, every line using it follows)
+        col = layout.column(align=True)
+        col.label(text=f'{stamp.name} (live: the lines follow)')
+        col.prop(lb, 'profile', text='')
+        if lb.profile in {'PUFF', 'RIDGE', 'PILLOW'}:
+            for k_ in ('peak', 'puff', 'resolution'):
+                col.prop(lb, k_)
+        else:
+            col.prop(lb, 'height')
+            if lb.profile == 'DOME':
+                col.prop(lb, 'resolution')
+            if lb.profile in {'CHAMFER', 'BEVEL'}:
+                col.prop(lb, 'bevel_width')
+                col.prop(lb, 'bevel_segments')
     ln = active_line(context)
     if ln is not None and ln.mch_greeble_line.kind != kind:
         ln = None                                     # (a line of the other tool: not this window's)
@@ -1288,12 +1535,13 @@ def draw(layout, context, kind='MECH'):
 
 
 HELP_CREATURE = ('Scale Parts / Detail Parts (or Pick Part), then drag on the creature',
+                 'Shift + draw: your own scale / detail from the outline (a stamp)',
                  'Scales: overlapping, staggered rows; Details: scattered',
                  'Select a line to change it; Apply = real geometry')
 
 
 CLASSES = (MCH_PG_GreeblePart, MCH_PG_GreebleLine, MCH_PG_Greeble, MCH_OT_greeble_stroke, MCH_OT_greeble_pick,
-           MCH_OT_greeble_parts, MCH_OT_greeble_apply)
+           MCH_OT_greeble_parts, MCH_OT_greeble_stamp_profile, MCH_OT_greeble_apply)
 
 
 def register():

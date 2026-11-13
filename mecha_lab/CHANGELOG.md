@@ -1,5 +1,28 @@
 # CHANGELOG
 
+## 0.24.154 — Greeble Line · Scale Line: Shift + 그리기 = 내 부품(스탬프) (2026-11-13)
+
+- (사용자: "방금 만든 그 툴에다가 내가 쉬프트 누르고 라쏘로 그리면 그 스탬프 베이스로 만들어 줄 수 있어? 그리블이랑 크리쳐 둘 다")
+  **Greeble Line / Scale Line 에서 Shift + 그리기 = 그린 모양으로 부품을 만듦** — Press Cut 의 "Shift + 그리기 = 내 도장"과 같은 방식.
+  - 공용 라쏘 모양 그대로(위 막대 **Shift+Draw** 줄: Lasso · Curve Lasso · Rectangle · Circle · Ellipse · Free Draw, 모양 옵션도), 도구마다 마지막 모양 기억.
+  - **Greeble Line → Base Mesh**(Flat · Chamfer · Bevel · Dome), **Scale Line → Creature Base Mesh**(Puff · Ridge · Pillow). 나머지 값(단 수 ·
+    둥글기 · Puff 등)은 장면의 Base Mesh / Creature Base Mesh 설정을 따름.
+  - 크기 = **그린 크기 그대로**(그 아래 표면 깊이에서 잰 크기), 높이 = **Stamp Height × 짧은 변**(기본 0.3; Puff · Ridge · Pillow 는 가운데에서 위아래
+    각각), Chamfer · Bevel 테두리 = **Stamp Border × 높이**. 반복해서 깔리는 부품이라 Dome / Puff 계열은 해상도 최대 12(선택해서 올릴 수 있음).
+  - 만든 부품은 **모델 옆에 세워 둠**(컬렉션 "Greeble Stamps" / "Scale Stamps", 이미 있는 스탬프 위로 쌓임 — 두 도구 것끼리도 안 겹침), 그 도구의
+    목록에 들어가고 **혼자 체크**(**Use Only the New Stamp** 를 끄면 다른 부품과 같이 섞임). 선택 상태는 그리기 전 그대로.
+  - **살아 있는 부품**: 스탬프를 선택하면 창에 그 스탬프의 Profile · Height · Border · Segments(크리쳐: Height · Puff · Resolution)가 나오고, 바꾸면
+    **그 스탬프를 쓰는 라인이 전부 따라 바뀜**. Apply 하면 그 모양 그대로 실제 메시.
+  - 창(오른쪽 패널): "Stamp: Shift + draw" — 프로필 버튼, Stamp Height, Stamp Border, Use Only the New Stamp. 키 안내 · 도움말에도 추가.
+- 확인: 새 테스트 test_v02559 12/12(키 · 모드, 그린 L 모양 0.4 × 0.3 → 부품 0.400 × 0.300 · 높이 0.090, 7개 프로필 모두 닫힌 메시, 다른 도구 프로필 →
+  자기 것으로, 스탬프끼리 안 겹침, 섞기, 라인에 깔기 + 스탬프 높이 0.09 → 0.18 바꾸면 라인의 모든 부품이 따라감, Apply, 너무 작은 모양은 안내만).
+  실제 창(진짜 마우스 xdotool) `tests/gui/greeble_stamp_real_window.py` 7/7: 위 막대 Shift+Draw 줄, 창의 프로필 버튼 클릭, **Shift + 드래그로 팔각형 → Chamfer
+  스탬프(그린 폭 0.658 → 0.649)**, 그 스탬프로 드래그 → Greeble Line, Scale Line 에서 **Shift + 드래그로 뾰족한 비늘 → Puff 스탬프**(Greeble 목록은 그대로),
+  **Ctrl+Z 로 사라지고 Ctrl+Shift+Z 로 돌아옴**, 그 스탬프로 Scale Line. 관련 테스트(위 막대 · 라쏘 기억 · 공용 라쏘 · Press Cut · Base Mesh · Greeble 를 쓰는 70 파일) 2,178 항목 통과, 실패 4 파일 8 항목(Key legend 그리기 · 아래 Actions 막대 배치 3 · zip 빌드 도장 · 키맵 중복 3)은 **0.24.153 코드에서도 똑같이 실패** — 이번 변경과 무관.
+  압축 파일에서 꺼낸 애드온 확인 9/9. 렌더 `dist/greeble_stamps_0.24.154.jpg`(Cycles, 와이어 포함: 스탬프 3개로 깐 가슴 기계 줄 + 스탬프 2개로 깐 배 비늘 줄, 오른쪽은 스탬프 5개).
+  **확인 못 한 것**: Lasso(점 찍기) · Curve Lasso · Rectangle 등 Free Draw 말고 다른 모양으로 실제 창에서 Shift + 그리기(같은 공용 라쏘 경로라 같아야
+  하지만 직접 눌러 보지는 않음), 실제 GPU 기기의 화면.
+
 ## 0.24.153 — 3D 마우스가 계속 신호를 보내도 가운데 클릭 · 드래그가 됨 (2026-11-13)
 
 - (사용자: "왜 갑자기 중간 클릭으로 화면이 안 돌아가?" → "3D 마우스 연결이 이상했나 봐") 화면이 저절로 지지직 움직인 건 3D 마우스 연결 문제였음.
