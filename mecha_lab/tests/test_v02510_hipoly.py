@@ -115,7 +115,7 @@ check('a cutter through a thin dense plate (front and back in one region): close
 for o in (cutter, far, near, through, small, plate):              # (the helper boxes would be Auto targets)
     bpy.data.objects.remove(o)
 select(ob)
-check('the High Poly setting is on the Cut settings (Advanced), experimental: off by default', S.mch_cut.hipoly is False
+check('the High Poly setting is on the Cut settings (Advanced), on by default (0.24.152)', S.mch_cut.hipoly is True
       and "'hipoly'" in open(__import__('mecha_lab.ui_tool_settings', fromlist=['x']).__file__).read())
 S.mch_cut.hipoly = True
 MODE[0], NATIVE[0] = 'CUT', ts.TOOL_BY_ID['CUT'][5]
@@ -124,14 +124,17 @@ S.mch_cut.shared_mesh = 'SINGLE'
 t = time.perf_counter()
 r, msg = lasso([(470, 470), (530, 470), (530, 530), (470, 530)])
 dt = time.perf_counter() - t
-check('Cut on the 327k-face body with High Poly on: done through the region path ("Region" in the report), closed',
-      r == {'FINISHED'} and 'Region' in msg and non_manifold(ob) == 0, (r, msg[:80], round(dt, 2)))
+check('Cut on the 327k-face body with High Poly on: done through the region path, closed (0.24.152: under 1.5 s the '
+      'report no longer names the solver - the region log says it)',
+      r == {'FINISHED'} and cg.LAST_BOOLEAN.get('region') and non_manifold(ob) == 0,
+      (r, msg[:80], round(dt, 2), cg.LAST_BOOLEAN.get('region')))
 MODE[0], NATIVE[0] = 'SPLIT', ts.TOOL_BY_ID['SPLIT'][5]
 S.mch_settings.mch_active_tool = 'SPLIT'
 before = {o.name for o in bpy.data.objects}
 r, msg = lasso([(400, 400), (460, 400), (460, 460), (400, 460)])
 piece = [o for o in bpy.data.objects if o.name not in before and o.type == 'MESH']
-check('Split on it: both pieces closed, the piece through the region path', r == {'FINISHED'} and 'Region' in msg
+check('Split on it: both pieces closed, the piece through the region path', r == {'FINISHED'}
+      and ('Region' in msg or cg.LAST_BOOLEAN.get('region'))
       and non_manifold(ob) == 0 and len(piece) == 1 and non_manifold(piece[0]) == 0, (r, msg[:80], [o.name for o in piece]))
 S.mch_cut.hipoly = False
 MODE[0], NATIVE[0] = 'CUT', ts.TOOL_BY_ID['CUT'][5]

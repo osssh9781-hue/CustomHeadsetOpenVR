@@ -127,10 +127,18 @@ for hip in (False, True):
     t = time.perf_counter()
     r, msg = lasso([(470, 470), (530, 470), (530, 530), (470, 530)] if not hip else [(400, 400), (460, 400), (460, 460), (400, 460)])
     dt = time.perf_counter() - t
-    check(f'Cut on the 327k-face body (High Poly {"on" if hip else "off"}): the tidy ran on the changed faces only '
-          f'(a small part of the result), fast, the result closed',
-          r == {'FINISHED'} and calls and all(c[0] < 0.2 * c[1] for c in calls) and all(c[2] < 2.0 for c in calls)
-          and all(c[3] is not None for c in calls) and non_manifold(ob) == 0, (r, [(c[0], c[1], round(c[2], 2)) for c in calls], round(dt, 2)))
+    if not hip:
+        check(f'Cut on the 327k-face body (High Poly off): the tidy ran on the changed faces only '
+              f'(a small part of the result), fast, the result closed',
+              r == {'FINISHED'} and calls and all(c[0] < 0.2 * c[1] for c in calls) and all(c[2] < 2.0 for c in calls)
+              and all(c[3] is not None for c in calls) and non_manifold(ob) == 0, (r, [(c[0], c[1], round(c[2], 2)) for c in calls], round(dt, 2)))
+    else:
+        # 0.24.152 High Poly (now on by default): the result's tidy is the one run on the small region inside the
+        # stitch - nothing taken out of the whole part again
+        check(f'Cut on the 327k-face body (High Poly on): the region tidied inside the stitch and reused (no second '
+              f'tidy over the part), fast, the result closed',
+              r == {'FINISHED'} and not calls and rc.LAST_TIMES.get('tidy') is not None and dt < 3.0
+              and non_manifold(ob) == 0, (r, len(calls), rc.LAST_TIMES.get('tidy'), round(dt, 2)))
 rc.tidy_sub = real_sub
 mi = np.empty(len(ob.data.polygons), np.int32)
 ob.data.polygons.foreach_get('material_index', mi)

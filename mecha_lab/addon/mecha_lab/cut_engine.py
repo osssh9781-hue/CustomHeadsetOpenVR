@@ -528,11 +528,11 @@ def _commit_result(target, me, policy):
     Only for a single-user mesh without shape keys; the swap is one undo step like the copy was."""
     import os
     cg.mirror_seam_clear(target, me, target.data)  # 0.24.95 no cut point a hair off a live Mirror's plane
-    if os.environ.get('MECH_REGION_FAST'):
+    if not os.environ.get('MECH_REGION_SLOW'):        # 0.24.152 on by default (MECH_REGION_SLOW: the old copy)
         from . import region_cut as rc
         old = target.data
-        if (rc.LAST_REGION.get('name') == me.name and rc.LAST_REGION.get('faces') == len(me.polygons)
-                and old.users == 1 and old.shape_keys is None and not target.get('mch_linked') and me.users == 0):
+        if (rc.untouched(me) and old.users == 1 and old.shape_keys is None and not target.get('mch_linked')
+                and me.users == 0):
             from . import fast_decimate as fd
             cg.remove_cutter_attribute(me)
             fd.swap_mesh(target, me)
@@ -1089,7 +1089,9 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
         junk = 0
         crossing = []
         for t, me in pieces:
-            cg.tidy_result(me, cg.mesh_size(t.data), before=t.data, warped=True)          # 0.24.83 no slivers / folds / specks left behind
+            # 0.24.83 no slivers / folds / specks left behind; 0.24.152 a small piece is looked at whole (comparing it
+            # with the 5 M-face part to find what changed took 2.2 s of a Split)
+            cg.tidy_result(me, cg.mesh_size(t.data), before=t.data if len(me.polygons) >= 50_000 else None, warped=True)
         capped = mode != 'SPLIT' or cut.split_cap
         from . import mesh_io as mio                     # 0.24.95 each split part's points + edges before the cut: the
         olds = {t.name: (mio.read_co(t.data), mio.read_edge_verts(t.data))     # new piece's marks find its rim and

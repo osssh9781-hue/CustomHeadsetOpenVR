@@ -498,10 +498,13 @@ class MCH_PG_Cut(bpy.types.PropertyGroup):
         ('FAST', 'Float', 'Legacy fast solver (least robust)')], default='AUTO')
     hole_tolerant: BoolProperty(name='Hole Tolerant', default=False,
                                 description='Exact solver option for meshes with holes/non-manifold parts (slower)')
-    hipoly: BoolProperty(name='High Poly (experimental)', default=False,   # 0.24.86 (off until the equivalence tests pass)
+    # 0.24.152 (user: "컷 스플릿 같은 것도 6~7 mil 하이폴에서도 렉 안 걸리게") on by default: a 5.2 M-face part's Cut
+    # 41.6 s -> a few seconds; checked against the whole-part boolean (falls back to it when the seam does not close)
+    hipoly: BoolProperty(name='High Poly', default=True,
                          description='A dense part (100k faces and more): the boolean runs only on the faces round the '
-                                     'shape and is stitched back - 2 to 7 times faster, the rest of the part untouched. '
-                                     'Off: the whole part goes through the solver')
+                                     'shape and is stitched back - many times faster on millions of faces, the rest '
+                                     'of the part untouched (it falls back to the whole part when the seam does not '
+                                     'close). Off: the whole part goes through the solver')
     edge_finish: EnumProperty(name='Edge Finish', items=[
         ('NONE', 'Off', 'Keep the new cut edges sharp'),
         ('BEVEL', 'Bevel', 'Round only the NEW cut edges'),

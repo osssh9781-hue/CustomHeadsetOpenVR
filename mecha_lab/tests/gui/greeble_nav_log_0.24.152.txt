@@ -1,0 +1,6 @@
+A: middle drag after a left press released over the panel: view turned 53.9 deg
+B: middle drag while drawing: view turned 0.0 deg
+C: a plain middle drag at the end: view turned 53.9 deg
+PASS A middle drag turns the view after a left press on empty space released over the panel
+PASS C a plain middle drag turns the view
+2/2 passed

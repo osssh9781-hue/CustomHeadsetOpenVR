@@ -43,6 +43,18 @@ _TYPES = {'FLOAT': ('value', 1, np.float32), 'INT': ('value', 1, np.int32), 'INT
           'INT32_2D': ('value', 2, np.int32), 'QUATERNION': ('value', 4, np.float32)}
 
 
+def untouched(me):
+    """0.24.152 How many leading faces of ``me`` are the part's own faces, untouched, after the last region cut (the
+    stitch writes them first, in order); 0 when ``me`` is not that result.  Lets the steps after a cut look only at
+    the faces round it (user: "컷 스플릿 같은 것도 6~7 mil 하이폴에서도 렉 안 걸리게")."""
+    try:
+        if me is not None and LAST_REGION.get('name') == me.name and LAST_REGION.get('faces') == len(me.polygons):
+            return int(LAST_REGION.get('untouched', 0))
+    except ReferenceError:
+        pass
+    return 0
+
+
 def arrays(me):
     """(points (n, 3) float64, face sizes, face starts, corner point indices int64) - from the mesh's built-in
     attributes (0.24.86: 0.36 s -> 0.06 s on 1.3M faces)."""
@@ -685,7 +697,10 @@ def _seam_tees(bm, tol):
 def _stitch(me, co, tot, vi, fmask, lm, kept, walls, target, cutter, rim, operation):
     """The untouched faces of ``me`` + the cleaned region (patch result + walls), the rim welded: a new mesh."""
     size = float(np.linalg.norm(co.max(0) - co.min(0))) if len(co) else 1.0
+    t_sub = time.perf_counter()
     sub = _region_sub(kept, walls, size)
+    if os.environ.get('MECH_STITCH_TIMES'):
+        print('[stitch] region sub %.2f s (%d faces)' % (time.perf_counter() - t_sub, len(sub.polygons)), flush=True)
     try:
         # the cut's result tidy, on the region while it is still a small mesh (the cut's own tidy then finds nothing
         # and need not take the region out and put it back a second time: 1.4 s on 1.3M faces)
@@ -695,13 +710,36 @@ def _stitch(me, co, tot, vi, fmask, lm, kept, walls, target, cutter, rim, operat
             _PRE_TIDY['counts'] = cg.tidy_result(sub, size, before=None, flip=False)
         except (RuntimeError, ValueError, AttributeError, IndexError, MemoryError):
             _PRE_TIDY['counts'] = None
+        if os.environ.get('MECH_STITCH_TIMES'):
+            print('[stitch] pre-tidy %.2f s' % (time.perf_counter() - t), flush=True)
+        warped_done = False
+        t_w = time.perf_counter()
+        try:                    # 0.24.152 the cut's bent faces split here too, on the small region (the whole part
+            cg.split_warped(sub, float(np.ptp(co, axis=0).max()) if len(co) else size, first=0, own_size=False)   # was read twice for it after the stitch: 5 s on 5.2 M faces)
+            warped_done = True
+        except (RuntimeError, ValueError, AttributeError, IndexError, MemoryError):
+            pass
         _PRE_TIDY['s'] = time.perf_counter() - t
-        out = build(np.zeros((0, 3)), np.zeros(0, np.int64), np.zeros(0, np.int32), me.name + '_cut', like=me)
-        if not replace_faces(me, fmask, sub, size, into=out):
-            bpy.data.meshes.remove(out)
-            raise RuntimeError('region: a rim point of the part is missing from the cut region')
+        if os.environ.get('MECH_STITCH_TIMES'):
+            print('[stitch] warped %.2f s' % (time.perf_counter() - t_w), flush=True)
+        out = None
+        t_r = time.perf_counter()
+        if not os.environ.get('MECH_STITCH_PY'):
+            try:
+                out = replace_faces_gn(bpy.context, me, fmask, sub, size, me.name + '_cut')
+            except (RuntimeError, ValueError, AttributeError, TypeError, MemoryError) as ex:
+                print('Mecha: region stitch (nodes):', ex)
+                out = None
+        if out is None:
+            out = build(np.zeros((0, 3)), np.zeros(0, np.int64), np.zeros(0, np.int32), me.name + '_cut', like=me)
+            if not replace_faces(me, fmask, sub, size, into=out):
+                bpy.data.meshes.remove(out)
+                raise RuntimeError('region: a rim point of the part is missing from the cut region')
+        if os.environ.get('MECH_STITCH_TIMES'):
+            print('[stitch] replace %.2f s' % (time.perf_counter() - t_r), flush=True)
         LAST_REGION.clear()
-        LAST_REGION.update(name=out.name, faces=len(out.polygons), untouched=int((~fmask).sum()))
+        LAST_REGION.update(name=out.name, faces=len(out.polygons), untouched=int((~fmask).sum()),
+                           warped_done=warped_done)
         if os.environ.get('MECH_REGION_DEBUG'):
             print(f'[region] {operation}: faces part {int((~fmask).sum())} region {len(sub.polygons)} -> out {len(out.polygons)}', flush=True)
             debug_open_edges(out, None)
@@ -1000,6 +1038,179 @@ def replace_faces(me, fmask, sub, size, into=None):
             out_vals[hit] = v2[pos[hit]]
         _write_attr(me, aname, 'EDGE', dtype, out_vals)
     return True
+
+
+STITCH_TREE = 'MCH Region Stitch'
+STITCH_VERSION = 1
+_DEL, _RIM = 'mch_stitch_del', 'mch_stitch_rim'
+
+
+def _stitch_tree():
+    """0.24.152 The stitch in Geometry Nodes (C++, all cores): the region's faces deleted, the cut region joined after
+    the part's own faces, the rim points welded - every attribute carried by Blender itself."""
+    ng = bpy.data.node_groups.get(STITCH_TREE)
+    if ng is not None and ng.get('mch_v') == STITCH_VERSION:
+        return ng
+    if ng is not None:
+        ng.name = STITCH_TREE + ' (old)'
+    ng = bpy.data.node_groups.new(STITCH_TREE, 'GeometryNodeTree')
+    ng.interface.new_socket('Geometry', in_out='INPUT', socket_type='NodeSocketGeometry')
+    ng.interface.new_socket('Region', in_out='INPUT', socket_type='NodeSocketObject')
+    ng.interface.new_socket('Distance', in_out='INPUT', socket_type='NodeSocketFloat')
+    ng.interface.new_socket('Geometry', in_out='OUTPUT', socket_type='NodeSocketGeometry')
+    N, L = ng.nodes, ng.links
+    gi, go = N.new('NodeGroupInput'), N.new('NodeGroupOutput')
+
+    def named(name):
+        n = N.new('GeometryNodeInputNamedAttribute')
+        n.data_type = 'BOOLEAN'
+        n.inputs['Name'].default_value = name
+        return n.outputs['Attribute']
+    dl = N.new('GeometryNodeDeleteGeometry')
+    dl.domain = 'FACE'
+    dl.mode = 'ALL'
+    L.new(gi.outputs['Geometry'], dl.inputs['Geometry'])
+    L.new(named(_DEL), dl.inputs['Selection'])
+    oi = N.new('GeometryNodeObjectInfo')
+    oi.transform_space = 'ORIGINAL'
+    L.new(gi.outputs['Region'], oi.inputs['Object'])
+    jn = N.new('GeometryNodeJoinGeometry')
+    L.new(dl.outputs['Geometry'], jn.inputs[0])          # (the part's own faces first, in their order)
+    L.new(oi.outputs['Geometry'], jn.inputs[0])
+    mg = N.new('GeometryNodeMergeByDistance')
+    if 'Mode' in mg.inputs:                               # (Blender 5: a menu socket; 4.x: a property)
+        mg.inputs['Mode'].default_value = 'All'
+    else:
+        mg.mode = 'ALL'
+    L.new(jn.outputs[0], mg.inputs['Geometry'])
+    L.new(named(_RIM), mg.inputs['Selection'])
+    L.new(gi.outputs['Distance'], mg.inputs['Distance'])
+    last = mg.outputs['Geometry']
+    for name in (_DEL, _RIM):
+        rm = N.new('GeometryNodeRemoveAttribute')
+        L.new(last, rm.inputs['Geometry'])
+        rm.inputs['Name'].default_value = name
+        last = rm.outputs['Geometry']
+    L.new(last, go.inputs[0])
+    ng['mch_v'] = STITCH_VERSION                         # (only a finished tree counts)
+    return ng
+
+
+_MESH_SETTINGS = ('remesh_voxel_size', 'remesh_voxel_adaptivity', 'remesh_mode', 'use_remesh_fix_poles',
+                  'use_remesh_preserve_volume', 'use_remesh_preserve_attributes', 'use_mirror_x', 'use_mirror_y',
+                  'use_mirror_z', 'use_mirror_vertex_groups', 'use_mirror_topology', 'use_auto_texspace',
+                  'use_paint_mask', 'use_paint_mask_vertex', 'use_paint_bone_selection')
+
+
+def _copy_mesh_settings(src, dst):
+    """The mesh's own settings (remesh, symmetry, masks, texture space) and custom properties onto ``dst`` (a fixed
+    list: every writable setting took 0.44 s on a 5.2 M-face mesh)."""
+    for k in _MESH_SETTINGS:
+        try:
+            if hasattr(src, k):
+                setattr(dst, k, getattr(src, k))
+        except (AttributeError, TypeError, ValueError, RuntimeError):
+            pass
+    try:
+        if not src.use_auto_texspace:
+            dst.texspace_location = src.texspace_location
+            dst.texspace_size = src.texspace_size
+    except (AttributeError, TypeError, ValueError):
+        pass
+    for k in src.keys():
+        try:
+            dst[k] = src[k]
+        except (TypeError, ValueError, KeyError):
+            pass
+    try:
+        if src.uv_layers.active is not None and src.uv_layers.active.name in dst.uv_layers:
+            dst.uv_layers.active = dst.uv_layers[src.uv_layers.active.name]
+    except (AttributeError, KeyError):
+        pass
+
+
+def replace_faces_gn(context, me, fmask, sub, size, name):
+    """``replace_faces`` in Geometry Nodes (0.24.152, user: "컷 스플릿 같은 것도 6~7 mil 하이폴에서도 렉 안 걸리게"): the
+    same result - the part's untouched faces first, in order, then the cut region, the rim welded onto the part's
+    points - built by Blender (5.8 s -> about 1 s on 5.2 M faces).  None when a rim point of the part has no match in
+    ``sub`` (the caller falls back)."""
+    from mathutils.kdtree import KDTree
+    T = [time.perf_counter()]
+    co, tot, start, vi = arrays(me)
+    lm = np.repeat(fmask, tot)
+    rim_part = _shared_points(vi, lm, len(co))
+    sc = mio.read_co(sub)
+    if not len(sc):
+        return None
+    T.append(time.perf_counter())
+    eps = 1e-6 * max(1e-9, size)
+    kd = KDTree(len(sc))
+    for j in range(len(sc)):
+        kd.insert(sc[j], j)
+    kd.balance()
+    sub_rim = np.zeros(len(sc), bool)
+    for i in rim_part.tolist():
+        hit = kd.find(co[i])
+        if hit[0] is None or hit[2] > eps:
+            return None                               # (a rim point moved or vanished)
+        sub_rim[hit[1]] = True
+    part_rim = np.zeros(len(co), bool)
+    part_rim[rim_part] = True
+    T.append(time.perf_counter())
+    made = []
+    tmp = reg = None
+    try:
+        for m_, nm, dom, vals in ((me, _DEL, 'FACE', fmask), (me, _RIM, 'POINT', part_rim), (sub, _RIM, 'POINT', sub_rim)):
+            a = m_.attributes.get(nm)
+            if a is not None:
+                m_.attributes.remove(a)
+            a = m_.attributes.new(nm, 'BOOLEAN', dom)
+            a.data.foreach_set('value', np.ascontiguousarray(vals, bool))
+            made.append((m_, nm))
+        T.append(time.perf_counter())
+        tmp = bpy.data.objects.new('MCH Stitch', me)
+        reg = bpy.data.objects.new('MCH Stitch Region', sub)
+        context.scene.collection.objects.link(tmp)
+        mod = tmp.modifiers.new('MCH Stitch', 'NODES')
+        mod.node_group = _stitch_tree()
+        from . import geo_sculpt as gs
+        gs.set_input(mod, 'Region', reg)
+        gs.set_input(mod, 'Distance', eps * 2.0)
+        dg = context.evaluated_depsgraph_get()
+        dg.update()
+        T.append(time.perf_counter())
+        out = bpy.data.meshes.new_from_object(tmp.evaluated_get(dg), preserve_all_data_layers=True, depsgraph=dg)
+        T.append(time.perf_counter())
+    finally:
+        if tmp is not None:
+            bpy.data.objects.remove(tmp)
+        if reg is not None:
+            bpy.data.objects.remove(reg)
+        for m_, nm in made:
+            a = m_.attributes.get(nm)
+            if a is not None:
+                m_.attributes.remove(a)
+    keep = int((~fmask).sum())
+    if len(out.polygons) != keep + len(sub.polygons):
+        bpy.data.meshes.remove(out)
+        return None
+    T.append(time.perf_counter())
+    _copy_mesh_settings(me, out)
+    out.name = name
+    for mat in me.materials:                          # (the part's material slots, in their order)
+        if mat is not None and mat.name not in out.materials:
+            out.materials.append(mat)
+    if len(out.materials) > len(me.materials):        # (an empty slot the join brought along and no face uses)
+        mi = np.zeros(len(out.polygons), np.int32)
+        out.polygons.foreach_get('material_index', mi)
+        need = max(len(me.materials), int(mi.max()) + 1 if len(mi) else 0)
+        while len(out.materials) > need and out.materials[len(out.materials) - 1] is None:
+            out.materials.pop(index=len(out.materials) - 1)
+    T.append(time.perf_counter())
+    if os.environ.get('MECH_STITCH_TIMES'):
+        print('[stitch gn] arrays %.2f  kd %.2f  attrs %.2f  eval %.2f  new_from_object %.2f  cleanup %.2f  settings %.2f'
+              % tuple(T[i + 1] - T[i] for i in range(len(T) - 1)), flush=True)
+    return out
 
 
 def tidy_sub(me, fmask, size, shards, slivers):

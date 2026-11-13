@@ -123,6 +123,25 @@ ln.rows = 3
 bt3 = bottoms(line, [A, B])
 check('Rows 3: three rows side by side, all on the surface', len(bt3) == 24 and max(abs(b[0].length - 1.0)
                                                                                   for b in bt3) < 0.01, len(bt3))
+# 0.24.152 (user: "그리블들은 가생이에 있는 로우들이 점점 작아지는 옵션도 만들어 줘") Edge Rows Smaller
+ln.rows = 5
+ln.edge_shrink = 0.5
+_l5, _q5, sc5, _p5 = placed(line)
+by_size = {}
+for v in sc5:
+    by_size.setdefault(round(v.z / 0.05 if True else 0, 2), 0)
+z_of = lambda b: abs(Vector(b[0]).z)
+rows5 = {}
+for b, sc_ in zip(bottoms(line, [A, B]), sc5):
+    rows5.setdefault(round(b[0].z, 2), []).append(sc_.length)
+keys5 = sorted(rows5)
+mid5 = rows5[keys5[len(keys5) // 2]]
+out5 = rows5[keys5[0]] + rows5[keys5[-1]]
+check('Edge Rows Smaller 0.5 (5 rows): the outermost rows half size, packed with their own size (about twice as many '
+      'each), all on the surface', len(keys5) == 5 and abs(np.mean(out5) / np.mean(mid5) - 0.5) < 0.03
+      and len(rows5[keys5[0]]) >= 1.8 * len(mid5) and max(abs(b[0].length - 1.0) for b in bottoms(line, [A, B])) < 0.01,
+      ([len(rows5[k]) for k in keys5], round(float(np.mean(out5) / np.mean(mid5)), 3)))
+ln.edge_shrink = 0.0
 ln.rows = 1
 ln.sink = 0.5
 bts = bottoms(line, [A, B])

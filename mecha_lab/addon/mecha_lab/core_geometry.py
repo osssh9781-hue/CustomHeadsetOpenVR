@@ -704,6 +704,9 @@ def non_manifold_edge_count(mesh):
     ne = len(mesh.edges)
     if not ne:
         return 0
+    from . import region_cut as rc               # 0.24.152 a closed region-cut result, untouched since the stitch
+    if rc.untouched(mesh) and rc.LAST_REGION.get('closed') and rc.LAST_REGION.get('edges') == ne:
+        return 0                                 # counted it (0.1 s a count on 5 M faces, 8 counts a Cut)
     from . import mesh_io as mio
     return int((mio.edge_face_counts(mesh) != 2).sum())
 
@@ -1038,6 +1041,8 @@ def _boolean_region(context, target, cutter, operation, solver, hipoly):
         LAST_BOOLEAN['region_dropped'] = log[-1] if log else 'open seam'
         return None
     LAST_BOOLEAN['region'] = log[-1] if log else ''
+    if nm1 == 0:
+        region_cut.LAST_REGION.update(closed=True, edges=len(me.edges))
     return me, 'REGION'
 
 
@@ -1175,7 +1180,7 @@ def untangle(me, limit, faces=None, rounds=4):
 WARP_TOL = 0.005          # a face bent more than this share of the part off its own plane is cut into triangles
 
 
-def split_warped(me, size=None, tol=WARP_TOL):
+def split_warped(me, size=None, tol=WARP_TOL, first=None, own_size=True):
     """0.24.95 (combo fuzz: 18 of 100 random parts) the Boolean's n-gons that are not flat - the Manifold solver
     joins its triangles back into faces, and a face round a pocket came out with one corner lifted a fifth of the
     part off the floor (a 13-gon: what it covers was a guess, and Divide bulged 3 % of the part there).  Such a face
@@ -1184,22 +1189,32 @@ def split_warped(me, size=None, tol=WARP_TOL):
     nf = len(me.polygons)
     if nf == 0:
         return 0
+    if first is None:                       # 0.24.152 a region cut's result: its first faces are the part's own,
+        from . import region_cut as rc      # untouched - only the faces after them are looked at
+        first = rc.untouched(me)
+        if first and rc.LAST_REGION.get('warped_done'):
+            return 0                        # (the region's faces were split in the stitch, on the small region)
+    first = min(max(int(first), 0), nf)
     start, tot = mio.read_face_starts(me)
-    if not (tot > 3).any():
+    if not (tot[first:] > 3).any():
         return 0
     co = mio.read_co(me)
     cv = mio.read_corner_verts(me)
     own = float(np.ptp(co, axis=0).max()) if len(co) else 0.0   # (a small Split piece: bent for ITS size)
-    size = min(size, own) if size else own
+    size = (min(size, own) if own_size else size) if size else own   # (0.24.152 a region of a part: the part's)
     if size <= 0.0:
         return 0
     nrm = np.empty(nf * 3)
     me.polygons.foreach_get('normal', nrm)
-    nrm = nrm.reshape(-1, 3)
-    fid = np.repeat(np.arange(nf), tot)
-    cen = np.add.reduceat(co[cv], start) / tot[:, None]
-    dev = np.maximum.reduceat(np.abs(np.einsum('ij,ij->i', co[cv] - cen[fid], nrm[fid])), start)
-    bent = np.flatnonzero((tot > 3) & (dev > tol * size))
+    nrm = nrm.reshape(-1, 3)[first:]
+    st_, tt_ = start[first:], tot[first:]
+    c0 = int(st_[0]) if len(st_) else 0
+    cvs = cv[c0:int(st_[-1] + tt_[-1])] if len(st_) else cv[:0]
+    rel = st_ - c0
+    fid = np.repeat(np.arange(len(tt_)), tt_)
+    cen = np.add.reduceat(co[cvs], rel) / tt_[:, None]
+    dev = np.maximum.reduceat(np.abs(np.einsum('ij,ij->i', co[cvs] - cen[fid], nrm[fid])), rel)
+    bent = np.flatnonzero((tt_ > 3) & (dev > tol * size)) + first
     if not len(bent):
         return 0
     bm = bmesh.new()
@@ -1213,9 +1228,11 @@ def split_warped(me, size=None, tol=WARP_TOL):
         # for every face, so the diagonals of the faces filled before count too
         from mathutils.geometry import tessellate_polygon
         todo = [bm.faces[i] for i in bent.tolist()]
-        def bad(b):                                  # (open / 3-face edges, and faces wound against each other)
-            n = 0
-            for e in b.edges:
+        near = {v for f in todo for v in f.verts}   # 0.24.152 the edges round the bent faces only (every edge of a
+
+        def bad(_b):                                 # 5 M-face part, in Python, twice: seconds)
+            n = 0                                    # (open / 3-face edges, and faces wound against each other)
+            for e in {e for v in near if v.is_valid for e in v.link_edges}:
                 if len(e.link_faces) != 2:
                     n += 1
                 elif e.link_loops[0].vert == e.link_loops[1].vert:
@@ -2102,6 +2119,7 @@ def tidy_result(me, ref_size=None, shards=True, slivers=True, before=None, flip=
     ``warped`` (0.24.95, a cut's result): faces bent off their plane cut into triangles (``split_warped``) - not for a
     remesh / decimate, whose quads on a curved part are bent by design."""
     from . import edge_memory
+    from . import region_cut as _rc
 
     def run():
         out = _tidy_result(me, ref_size, shards, slivers, before, flip)
@@ -2114,6 +2132,8 @@ def tidy_result(me, ref_size=None, shards=True, slivers=True, before=None, flip=
             if isinstance(out, dict) and n:
                 out['warped'] = n
         return out
+    if before is not None and _rc.untouched(me) and _rc.LAST_TIMES.get('tidy') is not None:
+        return run()                # 0.24.152 a region result: tidied (marks kept) on the region inside the stitch
     return edge_memory.keep_marks(me, run)
 
 
@@ -2137,9 +2157,9 @@ def _tidy_result(me, ref_size=None, shards=True, slivers=True, before=None, flip
         # 0.24.86 a dense part: the faces round the cut taken out, tidied on their own and put back (the stages
         # below copied the whole part per stage: 4.5 s of a 10 s cut on 1.3M faces)
         from . import region_cut as rc
-        if (os.environ.get('MECH_REGION_FAST') and rc.LAST_REGION.get('name') == me.name
-                and rc.LAST_REGION.get('faces') == len(me.polygons) and rc.LAST_TIMES.get('tidy') is not None):
-            return dict(rc.LAST_TIMES['tidy'])     # 0.24.87 prototype: the region was tidied inside the stitch
+        if (not os.environ.get('MECH_REGION_SLOW') and rc.untouched(me)
+                and rc.LAST_TIMES.get('tidy') is not None):
+            return dict(rc.LAST_TIMES['tidy'])     # 0.24.87 / 0.24.152: the region was tidied inside the stitch
         try:
             fm = rc.region_faces_of(me, before, size)
             if fm is not None and 0 < fm.sum() < 0.3 * len(fm):
@@ -2340,7 +2360,10 @@ def is_junk(me, ref_size=None, open_ok=False):
     ``open_ok`` (a Split with Cap off: open shells are what was asked) skips the open-scrap and the volume rules."""
     if me is None or not len(me.polygons):
         return True
-    area = sum(p.area for p in me.polygons)
+    import numpy as np
+    ar = np.empty(len(me.polygons), np.float32)       # 0.24.152 (a Python sum over 5 M faces: 3 s of a Split)
+    me.polygons.foreach_get('area', ar)
+    area = float(ar.sum(dtype=np.float64))
     size = mesh_size(me)
     if area <= 1e-12 * max(1.0, size * size) or size <= 0.0:
         return True
@@ -2353,6 +2376,8 @@ def is_junk(me, ref_size=None, open_ok=False):
             return True
         if len(me.polygons) < 32 and non_manifold_edge_count(me) > 0:   # a small open scrap (a boolean that broke)
             return True
+        if len(me.polygons) >= 50_000 and size > 0.05 * ref_size:     # 0.24.152 (a big piece is no gap shard:
+            return False                                              #  no bmesh volume of millions of faces)
         bm = bmesh.new()
         try:
             bm.from_mesh(me)

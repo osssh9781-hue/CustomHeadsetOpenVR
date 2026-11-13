@@ -39,13 +39,15 @@ from bpy.props import BoolProperty, CollectionProperty, EnumProperty, FloatPrope
 from mathutils import Matrix, Vector
 
 TOOL = 'GREEBLE'
+NAV_EVENTS = {'MIDDLEMOUSE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'WHEELINMOUSE', 'WHEELOUTMOUSE', 'TRACKPADPAN',
+              'TRACKPADZOOM', 'MOUSEROTATE', 'MOUSESMARTZOOM'}
 LINE_KEY = 'mch_greeble_line'          # on a line object (1)
 STROKE_KEY = 'mch_greeble_stroke'      # on a line object: the drawn line, x y z nx ny nz per point (the part's space)
 STARTER_TAG = 'mch_greeble_starter'
 STARTER_COLL = 'Greeble Parts'
 SIG_KEY = 'mch_greeble_sig'            # on a line's node group: the parts it was built for
 LIVE_KEYS = ('order', 'axis', 'up', 'turn', 'tilt', 'scale', 'scale_random', 'gap', 'rows', 'row_gap', 'sink',
-             'flip_random', 'turn_random', 'seed', 'stagger')
+             'flip_random', 'turn_random', 'seed', 'stagger', 'edge_shrink')
 KINDS = ('MECH', 'CREATURE')
 UP_AXES = {'POS_X': (0, 1.0), 'NEG_X': (0, -1.0), 'POS_Y': (1, 1.0), 'NEG_Y': (1, -1.0), 'POS_Z': (2, 1.0),
            'NEG_Z': (2, -1.0)}
@@ -97,6 +99,10 @@ def _props(update):
         'seed': IntProperty(name='Seed', default=0, min=0, update=update, description='Another random mix'),
         'stagger': BoolProperty(name='Stagger', default=False, update=update,
                                 description='Every second row half a part along (scales, bricks)'),
+        # 0.24.152 (user: "그리블들은 가생이에 있는 로우들이 점점 작아지는 옵션도 만들어 줘")
+        'edge_shrink': FloatProperty(name='Edge Rows Smaller', default=0.0, min=0.0, max=0.9, update=update,
+                                     description='The rows away from the middle get smaller, step by step (0.5: the '
+                                                 'outermost row half size) - each row packed with its own size'),
     }
 
 
@@ -257,47 +263,72 @@ class _Line:
         return d.normalized() if d.length > 1e-12 else Vector((1.0, 0.0, 0.0))
 
 
+def row_layout(rows, shrink, width, row_gap):
+    """(size factor, across offset) per row: the middle row(s) full size, the rows outwards smaller by ``shrink`` at
+    the outermost, each row ``row_gap`` x their widths beside the one inside it (``width`` = a full-size width)."""
+    rows = max(1, int(rows))
+    half = (rows - 1) * 0.5
+    lift = 0.0 if rows % 2 else 0.5                    # (an even count: the two middle rows are the middle)
+    kmax = half - lift
+    fac = [1.0 - shrink * ((abs(r - half) - lift) / kmax) if kmax > 0 else 1.0 for r in range(rows)]
+    W = [width * f for f in fac]
+    off = [0.0] * rows
+    c = rows // 2
+    step = 1.0 + row_gap
+    if rows % 2 == 0:                                   # (two middle rows either side of the line)
+        off[c], off[c - 1] = W[c] * 0.5 * step, -W[c - 1] * 0.5 * step
+        inner_hi, inner_lo = c, c - 1
+    else:
+        inner_hi = inner_lo = c
+    for r in range(inner_hi + 1, rows):
+        off[r] = off[r - 1] + (W[r - 1] + W[r]) * 0.5 * step
+    for r in range(inner_lo - 1, -1, -1):
+        off[r] = off[r + 1] - (W[r + 1] + W[r]) * 0.5 * step
+    return list(zip(fac, off))
+
+
 def placements(line, infos, cfg, unit, nearest=None):
     """Where the parts go along ``line`` (the part's space): (locations N x 3, quaternions N x 4 (w x y z),
     scales N x 3, picks N).  ``infos`` = part_info per part, ``unit`` = world size -> the part's space,
-    ``nearest(p)`` -> (point, normal) on the surface (rows beside the line go back onto it)."""
+    ``nearest(p)`` -> (point, normal) on the surface (rows beside the line go back onto it).  0.24.152 each row laid
+    on its own (Edge Rows Smaller: the outer rows smaller and packed with their own size)."""
     rng = random.Random(int(cfg['seed']))
     locs, quats, scls, picks = [], [], [], []
     if not infos or line.length <= 1e-9:
         return np.zeros((0, 3)), np.zeros((0, 4)), np.zeros((0, 3)), np.zeros(0, int)
-    s = 0.0
-    k = 0
-    rows = max(1, int(cfg['rows']))
-    while k < 20000:
-        j = k % len(infos) if cfg['order'] == 'SEQ' else rng.randrange(len(infos))
-        ln, wd, ht, bottom, sv, axes = infos[j]
-        f = cfg['scale'] * unit * (1.0 + rng.uniform(-1.0, 1.0) * cfg['scale_random'])
-        L0, W0, H = ln * f, wd * f, ht * f
-        # (turned / leaning: what it takes up along and across the line - end to end still)
-        ct, st_ = abs(math.cos(cfg['turn'])), abs(math.sin(cfg['turn']))
-        L, W = ct * L0 + st_ * W0, st_ * L0 + ct * W0
-        L = abs(math.cos(cfg['tilt'])) * L + abs(math.sin(cfg['tilt'])) * H
-        if s + 0.5 * L > line.length + 1e-9:
-            break
-        mid0 = s + 0.5 * L
-        flip = cfg['flip_random'] and rng.random() < 0.5
-        turn = rng.uniform(-1.0, 1.0) * cfg['turn_random']
-        for r in range(rows):
-            mid = mid0 + (0.5 * L * (1.0 + cfg['gap']) if cfg.get('stagger') and r % 2 else 0.0)
-            if mid > line.length + 1e-9:
-                continue
+    ct, st_ = abs(math.cos(cfg['turn'])), abs(math.sin(cfg['turn']))
+    w_mean = float(np.mean([st_ * inf[0] + ct * inf[1] for inf in infos])) * cfg['scale'] * unit
+    layout = row_layout(cfg['rows'], cfg.get('edge_shrink', 0.0), w_mean, cfg['row_gap'])
+    for r, (rf, off) in enumerate(layout):
+        s = 0.0
+        k = 0
+        first = True
+        while k < 20000:
+            j = k % len(infos) if cfg['order'] == 'SEQ' else rng.randrange(len(infos))
+            ln, wd, ht, bottom, sv, axes = infos[j]
+            f = cfg['scale'] * unit * rf * (1.0 + rng.uniform(-1.0, 1.0) * cfg['scale_random'])
+            L0, W0, H = ln * f, wd * f, ht * f
+            # (turned / leaning: what it takes up along and across the line - end to end still)
+            L, W = ct * L0 + st_ * W0, st_ * L0 + ct * W0
+            L = abs(math.cos(cfg['tilt'])) * L + abs(math.sin(cfg['tilt'])) * H
+            if first and cfg.get('stagger') and r % 2:
+                s = 0.5 * L * (1.0 + cfg['gap'])          # (every second row half a part along)
+            first = False
+            if s + 0.5 * L > line.length + 1e-9:
+                break
+            mid = s + 0.5 * L
+            flip = cfg['flip_random'] and rng.random() < 0.5
+            turn = rng.uniform(-1.0, 1.0) * cfg['turn_random']
             p0, n0 = line.at(mid)
             t0 = line.tangent(mid, max(0.5 * L, line.length * 0.01))
             b0 = n0.cross(t0)
             b0 = b0.normalized() if b0.length > 1e-12 else n0.orthogonal().normalized()
-            off = (r - (rows - 1) * 0.5) * W * (1.0 + cfg['row_gap'])
             q = p0 + b0 * off
             p, n = q, n0
             hit = nearest(q) if nearest is not None else None
             if hit is not None:
-                # 0.24.151 (a high-poly human: a line crossing from the chest onto the shoulder, a band near the
-                # armpit) every part back on the surface, its up = the surface under its whole footprint (five
-                # points: the middle and the ends / sides), not the line's averaged normal
+                # 0.24.151 (a high-poly human) every part back on the surface, its up = the surface under its whole
+                # footprint (five points: the middle and the ends / sides), not the line's averaged normal
                 p = Vector(hit[0])
                 acc = Vector(hit[1]).normalized()
                 for d in (t0 * (0.35 * L), t0 * (-0.35 * L), b0 * (0.35 * W), b0 * (-0.35 * W)):
@@ -318,15 +349,14 @@ def placements(line, infos, cfg, unit, nearest=None):
             if abs(yaw) > 1e-12:                            # (a turn on the surface, about its normal)
                 m = Matrix.Rotation(yaw, 3, n) @ m
             sc = Vector(tuple(sv)) * f
-            # the part's bottom middle on the surface, sunk by Sink x height
-            local = Vector(tuple(bottom)) * f
+            local = Vector(tuple(bottom)) * f               # (its bottom middle on the surface, sunk by Sink)
             loc = p - m @ local - n * (cfg['sink'] * H)
             locs.append(tuple(loc))
             quats.append(tuple(m.to_quaternion()))
             scls.append(tuple(sc))
             picks.append(j)
-        s += L * (1.0 + cfg['gap'])
-        k += 1
+            s += L * (1.0 + cfg['gap'])
+            k += 1
     return np.asarray(locs, float), np.asarray(quats, float), np.asarray(scls, float), np.asarray(picks, int)
 
 
@@ -945,14 +975,26 @@ class MCH_OT_greeble_stroke(bpy.types.Operator):
 
     def modal(self, context, event):
         if getattr(self, 'empty', None) is not None:          # (pressed on empty space)
-            if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
-                if abs(event.mouse_x - self.empty[0]) + abs(event.mouse_y - self.empty[1]) < 5:
-                    for o in context.selected_objects:
-                        o.select_set(False)
-                return {'FINISHED'}
-            if event.type in {'ESC', 'RIGHTMOUSE'}:
-                return {'CANCELLED'}
-            return {'RUNNING_MODAL'}
+            # 0.24.152 (user: "왜 갑자기 중간 클릭으로 화면이 안 돌아가?") only the left button is held here: the
+            # middle / right buttons, the wheel, keys go on as always (and end this), a lost release ends it too
+            if event.type == 'LEFTMOUSE':
+                if event.value == 'RELEASE':
+                    if abs(event.mouse_x - self.empty[0]) + abs(event.mouse_y - self.empty[1]) < 5:
+                        for o in context.selected_objects:
+                            o.select_set(False)
+                    return {'FINISHED'}
+                if event.value == 'PRESS':                # (the release went elsewhere)
+                    return {'FINISHED', 'PASS_THROUGH'}
+                return {'RUNNING_MODAL'}                  # (a left drag: never Blender's move / box)
+            if event.type in {'MIDDLEMOUSE', 'RIGHTMOUSE', 'ESC', 'WINDOW_DEACTIVATE'} or event.type.startswith('NDOF'):
+                return {'FINISHED', 'PASS_THROUGH'}
+            return {'PASS_THROUGH'}
+        if event.type in NAV_EVENTS or event.type.startswith('NDOF'):
+            return {'PASS_THROUGH'}                       # 0.24.152 the view turns / zooms while drawing
+        if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+            event_release = True                          # (the release went elsewhere: this press ends it)
+        else:
+            event_release = False
         if event.type in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE'}:
             xy = (event.mouse_region_x, event.mouse_region_y)
             hit = self.caster.cast(context, xy)
@@ -966,7 +1008,8 @@ class MCH_OT_greeble_stroke(bpy.types.Operator):
                     self.t_live = now
             context.area.tag_redraw()
             return {'RUNNING_MODAL'}
-        if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+        if (event.type == 'LEFTMOUSE' and event.value == 'RELEASE') or event_release \
+                or event.type == 'WINDOW_DEACTIVATE':
             n = self._live(final=True) if len(self.pts) > 1 else 0
             self._end(context)
             if n == 0:
@@ -1231,7 +1274,7 @@ def draw(layout, context, kind='MECH'):
     col.row(align=True).prop(pg, 'axis', expand=True)
     col.prop(pg, 'turn')
     col.prop(pg, 'tilt')
-    for k in ('scale', 'scale_random', 'gap', 'rows', 'row_gap', 'sink', 'turn_random', 'seed'):
+    for k in ('scale', 'scale_random', 'gap', 'rows', 'row_gap', 'edge_shrink', 'sink', 'turn_random', 'seed'):
         col.prop(pg, k)
     col.prop(pg, 'stagger')
     col.prop(pg, 'flip_random')

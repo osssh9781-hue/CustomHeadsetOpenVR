@@ -1,0 +1,31 @@
+0.24.152 Cut / Split timing (tools_dev/bench/bench_cut_big.py, a 20 px lasso, this machine's CPU)
+
+before  BODY ico10: 5,242,880 faces, 2,621,442 points, volume 4.200213
+before  CUT hipoly=False: 41.55s total  nm 0  Cut: Icosphere | 41.1 s (Manifold)
+before     boolean 21.16 | commit 9.16 | post: finish 0.10 | post: holes 0.09 | post: open-edge counts 0.83 | post: tidy 10.28 | other (lasso, planes, cutter, bookkeeping) -0.06
+before  CUT hipoly=True: 24.45s total  nm 0  Cut: Icosphere | 24.0 s (Region)
+before     boolean 11.02 | commit 7.65 | post: finish 0.09 | post: holes 0.09 | post: open-edge counts 0.76 | post: tidy 5.36 | other (lasso, planes, cutter, bookkeeping) -0.52
+before     boolean stages: region 0.73 | extract 0.21 | boolean 0.91 | knife 0.43 | sort 0.17 | stitch 5.30 | region faces 81,996 walls 4
+before  SPLIT hipoly=False: 60.90s total  nm 0  Split: Icosphere | 60.6 s (Manifold)
+before     boolean 30.37 | commit 8.22 | post: holes 0.09 | post: junk check 5.33 | post: open-edge counts 0.85 | post: tidy 14.14 | other (lasso, planes, cutter, bookkeeping) 1.90
+before  SPLIT hipoly=True: 33.91s total  nm 0  Split: Icosphere | 33.7 s (Region)
+before     boolean 14.04 | commit 7.24 | post: holes 0.08 | post: junk check 3.41 | post: open-edge counts 0.75 | post: tidy 7.29 | other (lasso, planes, cutter, bookkeeping) 1.09
+before     boolean stages: region 0.62 | extract 0.18 | boolean 0.95 | knife 0.41 | sort 0.11 | stitch 4.69 | region faces 81,996 walls 4
+
+after   BODY ico10: 5,242,880 faces, 2,621,442 points, volume 4.200213
+after   CUT hipoly=False: 48.38s total  nm 0  Cut: Icosphere | 48.0 s (Manifold)
+after      boolean 23.62 | commit 10.20 | post: finish 0.10 | post: holes 0.13 | post: open-edge counts 0.84 | post: tidy 13.60 | other (lasso, planes, cutter, bookkeeping) -0.10
+after   CUT hipoly=True: 6.43s total  nm 0  Cut: Icosphere | 6.1 s (Region)
+after      boolean 5.87 | post: finish 0.00 | post: holes 0.00 | post: open-edge counts 0.35 | post: tidy 0.23 | other (lasso, planes, cutter, bookkeeping) -0.02
+after      boolean stages: region 0.61 | extract 0.15 | boolean 0.73 | knife 0.31 | sort 0.14 | stitch 3.55 | region faces 81,996 walls 4
+after   SPLIT hipoly=False: 60.80s total  nm 0  Split: Icosphere | 60.4 s (Manifold)
+after      boolean 30.94 | commit 11.66 | post: holes 0.09 | post: junk check 0.36 | post: open-edge counts 0.88 | post: tidy 14.59 | other (lasso, planes, cutter, bookkeeping) 2.29
+after   SPLIT hipoly=True: 12.36s total  nm 0  Split: Icosphere | 12.1 s (Region)
+after      boolean 9.14 | post: holes 0.00 | post: junk check 0.37 | post: open-edge counts 0.56 | post: tidy 0.95 | other (lasso, planes, cutter, bookkeeping) 1.34
+after      boolean stages: region 0.61 | extract 0.15 | boolean 0.76 | knife 0.32 | sort 0.09 | stitch 2.99 | region faces 81,996 walls 4
+
+after   BODY ico9: 1,310,720 faces, 655,362 points, volume 4.200177
+after   CUT hipoly=False: 7.77s total  nm 0  Cut: Icosphere | 7.7 s (Manifold)
+after   CUT hipoly=True: 1.75s total  nm 0  Cut: Icosphere | 1.6 s (Region)
+after   SPLIT hipoly=False: 9.63s total  nm 0  Split: Icosphere | 9.6 s (Manifold)
+after   SPLIT hipoly=True: 3.23s total  nm 0  Split: Icosphere | 3.2 s (Region)
