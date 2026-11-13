@@ -1114,6 +1114,11 @@ def draw_scale_line(layout, context):
     greeble_line.draw(layout, context, 'CREATURE')
 
 
+def draw_fur(layout, context):
+    from . import creature_fur
+    creature_fur.draw(layout, context)
+
+
 def draw_radial_sym(layout, context):
     from . import radial_sym
     radial_sym.draw(layout, context)
@@ -1123,6 +1128,7 @@ DRAWERS = {
     'GSCULPT': draw_geo_sculpt,
     'GREEBLE': draw_greeble,
     'CGREEBLE': draw_scale_line,
+    'FUR': draw_fur,
     'RSYM': draw_radial_sym,
     'SDRAW': draw_surface_draw,
     'PERF': draw_perforate,

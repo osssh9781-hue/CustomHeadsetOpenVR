@@ -28,6 +28,13 @@ def _scene(name):
     return lambda context: getattr(context.scene, name, None)
 
 
+def _fur(context):
+    """0.24.157 the selected fur's values (live), else the next fur's"""
+    from . import creature_fur
+    ob = creature_fur.active_fur(context)
+    return ob.mch_fur if ob is not None else getattr(context.scene, 'mch_fur', None)
+
+
 def _base(context):
     from . import base_mesh
     ob = base_mesh.active_live_base(context)
@@ -82,6 +89,7 @@ SPEC = {
     'SMOVE': [(_scene('mch_concept'), 'radius_px'), (_scene('mch_concept'), 'path_hardness'),
               (_scene('mch_concept'), 'path_taper')],
     'CGREEBLE': [(_scene('mch_cgreeble'), 'scale'), (_scene('mch_cgreeble'), 'gap'), (_scene('mch_cgreeble'), 'rows')],
+    'FUR': [(_fur, 'length'), (_fur, 'density'), (_fur, 'curl'), (_fur, 'clump')],
     'GREEBLE': [(_scene('mch_greeble'), 'scale'), (_scene('mch_greeble'), 'gap'), (_scene('mch_greeble'), 'rows')],
     'GSCULPT': [(_scene('mch_geo'), 'brush'), (_scene('mch_geo'), 'size_px'), (_scene('mch_geo'), 'intensity')],
     'SMART': [(_scene('mch_smart'), 'ndof_do'), (_scene('mch_smart'), 'axes'), (_scene('mch_smart'), 'speed'),
