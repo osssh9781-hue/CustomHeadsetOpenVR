@@ -21,6 +21,12 @@ Film Transparent on, a few nodes just before the compositor's output (a small co
 none; with your own, what went to its output goes on top of the background), every 3D view's viewport compositor Always (Material Preview and Rendered
 show it).  Everything changed is remembered and put back by Off / World.  The picture is never blurred by depth of
 field or touched by the denoiser.
+
+0.24.149 (user: "백그라운드 이미지를 포토샵처럼 내가 그릴 수 없어?") Paint Background: a canvas the frame's shape (it
+starts as what is behind the model now - the picture, or the colour) becomes the background picture, and a window opens
+with Blender's Image Editor in Paint mode on it - brushes, colours, soften / smear / clone / fill, gradients.  The
+background follows the painting (the compositor reads the canvas).  The canvas is kept in the .blend (packed each time
+the file is saved); New Canvas starts again from the colour / picture.
 """
 from __future__ import annotations
 
@@ -41,6 +47,9 @@ VIEW_KEY = 'mch_bg_view'
 MAT_KEY = 'mch_bg_matview'
 OWN = 'mch_bg_own'                 # on a picture this loaded (let go when another is picked and nothing uses it)
 DEFAULT_PICTURE = 'B:white_sweep_land.jpg'
+CANVAS_TAG = 'mch_bg_canvas'       # on the painted background (the scene's name): never let go, packed on save
+CANVAS_PREFIX = 'P:'               # the setting's picture = 'P:' + the canvas image's name
+CANVAS_NAME = 'MCH Background Paint'
 COMP_TAG = 'mch_bg_comp'            # on our compositor group (the scene's name)
 COMP_KEY = 'mch_bg_comp_keep'      # on the scene: what Compositor changed (put back by Off)
 VIEWCOMP_KEY = 'mch_bg_viewcomp'   # on a screen: its 3D views' viewport compositor before
@@ -169,8 +178,59 @@ def picture_ident(scene):
 
 def picture_path(scene):
     from . import backdrops
-    p = backdrops.path(picture_ident(scene))
+    ident = picture_ident(scene)
+    if ident.startswith(CANVAS_PREFIX):              # (0.24.149 the painted canvas: no file)
+        return ''
+    p = backdrops.path(ident)
     return p if p and os.path.isfile(p) else ''
+
+
+def canvas_image(scene):
+    """0.24.149 the painted background the setting points at (an image in the file), or None."""
+    ident = picture_ident(scene)
+    if not ident.startswith(CANVAS_PREFIX):
+        return None
+    img = bpy.data.images.get(ident[len(CANVAS_PREFIX):])
+    return img if img is not None and img.get(CANVAS_TAG) else None
+
+
+def _wanted(scene):
+    """(image, path) to show in Picture mode: the painted canvas, else a picture file; (None, '') = the colour."""
+    st = settings(scene)
+    if st is None or st.mode != 'IMAGE':
+        return None, ''
+    cv = canvas_image(scene)
+    if cv is not None:
+        return cv, ''
+    return None, picture_path(scene)
+
+
+def has_picture(scene):
+    return _wanted(scene) != (None, '')
+
+
+def _put_picture(node, scene):
+    """The picture to show into image node ``node`` (a file loaded once, the one before let go); it, or None."""
+    cv, path = _wanted(scene)
+    old = node.image
+    if cv is not None:
+        if old is not cv:
+            node.image = cv
+            _let_go(old)
+        return cv
+    if not path:
+        node.image = None
+        _let_go(old)
+        return None
+    if old is None or old.get(CANVAS_TAG) or \
+            os.path.normcase(bpy.path.abspath(old.filepath)) != os.path.normcase(path):
+        known = {i.name for i in bpy.data.images}
+        img = bpy.data.images.load(path, check_existing=True)
+        if img.name not in known:
+            img[OWN] = True
+        node.image = img
+        _let_go(old)
+    return node.image
 
 
 def _output(nt):
@@ -421,7 +481,7 @@ def ramp_node(scene):
     if comp_on(scene):
         st = settings(scene)
         ng = scene.compositing_node_group
-        return ng.nodes.get(N_RAMP) if st is not None and st.mode == 'IMAGE' and picture_path(scene) else None
+        return ng.nodes.get(N_RAMP) if has_picture(scene) else None
     w = getattr(scene, 'world', None)
     nt = getattr(w, 'node_tree', None)
     return nt.nodes.get(N_RAMP) if nt is not None else None
@@ -432,9 +492,9 @@ def _picture_sync(scene, nt, bg):
     else the chain out (the colour)."""
     from . import backdrops
     st = settings(scene)
-    path = picture_path(scene) if st is not None and st.mode == 'IMAGE' else ''
+    cv, path = _wanted(scene)
     pic = nt.nodes.get(N_PIC)
-    if not path:
+    if cv is None and not path:
         img = pic.image if pic is not None else None
         _save_stops(scene, nt)
         for name in PIC_NODES:
@@ -451,15 +511,7 @@ def _picture_sync(scene, nt, bg):
         _picture_nodes(nt, bg)
         _load_stops(scene, nt.nodes.get(N_RAMP))
         pic = nt.nodes.get(N_PIC)
-    old = pic.image
-    if old is None or os.path.normcase(bpy.path.abspath(old.filepath)) != os.path.normcase(path):
-        known = {i.name for i in bpy.data.images}
-        img = bpy.data.images.load(path, check_existing=True)
-        if img.name not in known:
-            img[OWN] = True
-        pic.image = img
-        _let_go(old)
-    img = pic.image
+    img = _put_picture(pic, scene)
     ia = (img.size[0] / img.size[1]) if img.size[0] and img.size[1] else backdrops.aspect(path)
     sx, sy = backdrops.fit_scale(backdrops.frame_aspect(scene), ia, st.fit)
     # 0.24.141 (user: "뎁스 오브 필드 넣으면 왜 배경 부분이 하얘져?" - a render with a light frame round the picture):
@@ -614,20 +666,8 @@ def comp_sync(scene):
         return
     N = ng.nodes
     _mix_sock(N[C_FULL], 'RGBA', which=1).default_value = (*st.color, 1.0)
-    pic = N.get(N_PIC)
-    path = picture_path(scene) if st.mode == 'IMAGE' else ''
-    old = pic.image
-    if not path:
-        pic.image = None
-        _let_go(old)
+    if _put_picture(N.get(N_PIC), scene) is None:
         return
-    if old is None or os.path.normcase(bpy.path.abspath(old.filepath)) != os.path.normcase(path):
-        known = {i.name for i in bpy.data.images}
-        img = bpy.data.images.load(path, check_existing=True)
-        if img.name not in known:
-            img[OWN] = True
-        pic.image = img
-        _let_go(old)
     scl = N[C_SCALE]
     scl.inputs['Frame Type'].default_value = 'Crop' if st.fit == 'FILL' else 'Fit'
     for ax in ('Extension X', 'Extension Y'):
@@ -741,6 +781,190 @@ def switch_method(scene, method):
     if comp_on(scene):
         comp_remove(scene)
     return world_apply(scene)
+
+
+# ---- 0.24.149 Paint Background: a canvas behind the model, painted in Blender's Image Editor ------------------------
+
+def _to_srgb(v):
+    import numpy as np
+    v = np.clip(v, 0.0, None)
+    return np.where(v <= 0.0031308, v * 12.92, 1.055 * np.power(v, 1 / 2.4) - 0.055)
+
+
+def canvas_size(scene):
+    """The canvas: the frame's shape, about the render's pixels (1024 .. 4096 on its long side)."""
+    r = scene.render
+    w = max(1.0, r.resolution_x * r.pixel_aspect_x * r.resolution_percentage / 100.0)
+    h = max(1.0, r.resolution_y * r.pixel_aspect_y * r.resolution_percentage / 100.0)
+    k = min(4096.0, max(1024.0, max(w, h))) / max(w, h)
+    return max(16, int(round(w * k))), max(16, int(round(h * k)))
+
+
+def _start_pixels(scene, W, H, ident):
+    """The canvas's first pixels (sRGB, H x W x 4): picture ``ident`` fitted as shown (Fill / Fit, the colour round
+    it), or ('') the colour."""
+    import numpy as np
+    from . import backdrops
+    st = settings(scene)
+    px = np.empty((H, W, 4), np.float32)
+    px[..., :3] = _to_srgb(np.array(st.color, np.float32))
+    px[..., 3] = 1.0
+    path = backdrops.path(ident) if ident else ''
+    if not path or not os.path.isfile(path):
+        return px
+    known = {i.name for i in bpy.data.images}
+    src = bpy.data.images.load(path, check_existing=True)
+    loaded = src if src.name not in known else None   # (in use already: not ours to remove)
+    try:
+        iw, ih = src.size
+        if not iw or not ih:
+            return px
+        k = max(W / iw, H / ih) if st.fit == 'FILL' else min(W / iw, H / ih)
+        nw, nh = max(1, int(round(iw * k))), max(1, int(round(ih * k)))
+        tmp = src.copy()
+        try:
+            tmp.scale(nw, nh)
+            a = np.empty(nw * nh * 4, np.float32)
+            tmp.pixels.foreach_get(a)
+            a = a.reshape(nh, nw, 4)
+            if tmp.is_float:
+                a[..., :3] = _to_srgb(a[..., :3])
+        finally:
+            bpy.data.images.remove(tmp)
+    finally:
+        if loaded is not None and loaded.users == 0:
+            bpy.data.images.remove(loaded)
+    ox, oy = (W - nw) // 2, (H - nh) // 2               # (centred: cut off, or the colour round it)
+    x0, y0 = max(0, ox), max(0, oy)
+    x1, y1 = min(W, ox + nw), min(H, oy + nh)
+    sub = a[y0 - oy:y1 - oy, x0 - ox:x1 - ox]
+    al = sub[..., 3:4]
+    px[y0:y1, x0:x1, :3] = sub[..., :3] * al + px[y0:y1, x0:x1, :3] * (1.0 - al)
+    return px
+
+
+def make_canvas(scene, fresh=False):
+    """The painted background: the one there is (``fresh``: started again), else a new one - starting as what is
+    behind the model now (the picture, or the colour); it becomes the background picture (Fill: the frame's shape)."""
+    st = settings(scene)
+    img = next((i for i in bpy.data.images if i.get(CANVAS_TAG) == scene.name), None)
+    cur = picture_ident(scene) if st.mode == 'IMAGE' else ''
+    if cur.startswith(CANVAS_PREFIX):
+        cur = img.get('mch_from', '') if img is not None else ''     # (the canvas itself: what it started from)
+    if img is None or fresh:
+        W, H = canvas_size(scene)
+        px = _start_pixels(scene, W, H, cur)
+        if img is None:
+            img = bpy.data.images.new(CANVAS_NAME, W, H, alpha=False)
+            img[CANVAS_TAG] = scene.name
+        elif tuple(img.size) != (W, H):
+            img.scale(W, H)
+        img['mch_from'] = cur
+        img.pixels.foreach_set(px.ravel())
+        img.update()
+        try:
+            img.pack()                                # (kept in the .blend from the start)
+        except RuntimeError:
+            pass
+    st.image = CANVAS_PREFIX + img.name
+    st.fit = 'FILL'
+    st.mode = 'IMAGE'
+    return img
+
+
+def _fit_view(area_ptr):
+    try:
+        for w in bpy.context.window_manager.windows:
+            for a in w.screen.areas:
+                if a.as_pointer() == area_ptr and a.type == 'IMAGE_EDITOR':
+                    reg = next(r for r in a.regions if r.type == 'WINDOW')
+                    with bpy.context.temp_override(window=w, area=a, region=reg):
+                        bpy.ops.image.view_all(fit_view=True)
+    except (RuntimeError, StopIteration, ReferenceError):
+        pass
+    return None
+
+
+def paint_window(context, img):
+    """A window with the Image Editor in Paint mode on ``img`` (one already showing it: that one).  The window, or
+    None (then the 3D view's area is not changed either)."""
+    wm = context.window_manager
+    for w in wm.windows:
+        for a in w.screen.areas:
+            if a.type == 'IMAGE_EDITOR' and a.spaces.active.image == img:
+                a.spaces.active.ui_mode = 'PAINT'
+                return w
+    win = context.window
+    area = context.area if context.area is not None and context.area.type == 'VIEW_3D' else next(
+        (a for a in win.screen.areas if a.type == 'VIEW_3D'), None) if win is not None else None
+    if win is None or area is None:
+        return None
+    before = {w.as_pointer() for w in wm.windows}
+    try:
+        with context.temp_override(window=win, area=area):
+            bpy.ops.screen.area_dupli('INVOKE_DEFAULT')
+    except RuntimeError:
+        return None
+    made = [w for w in wm.windows if w.as_pointer() not in before]
+    if not made:
+        return None
+    nw = made[-1]
+    a = nw.screen.areas[0]
+    a.ui_type = 'IMAGE_EDITOR'
+    sp = a.spaces.active
+    sp.image = img
+    sp.ui_mode = 'PAINT'
+    for flag in ('show_region_toolbar', 'show_region_ui', 'show_region_tool_header'):
+        try:
+            setattr(sp, flag, True)
+        except AttributeError:
+            pass
+    for flag in ('show_uv', 'show_texpaint'):         # (not the active part's UVs over the painting; 5.x / 4.x)
+        try:
+            setattr(sp.uv_editor, flag, False)
+        except AttributeError:
+            pass
+    ptr = a.as_pointer()
+    bpy.app.timers.register(lambda: _fit_view(ptr), first_interval=0.3)
+    return nw
+
+
+@bpy.app.handlers.persistent
+def _pack_canvases(*_args):
+    """Saving the file: a painted background changed since it was packed is packed again (kept in the .blend)."""
+    for img in bpy.data.images:
+        if img.get(CANVAS_TAG) and img.is_dirty:
+            try:
+                img.pack()
+            except RuntimeError as ex:
+                print('[MECHA LAB] Paint Background: could not keep the painting in the file:', ex)
+
+
+class MCH_OT_bg_paint(bpy.types.Operator):
+    """Paint the background yourself: a canvas the frame's shape (starting as the picture / colour behind the model
+    now) put behind the model, and a window with Blender's Image Editor in Paint mode on it.  Kept in the .blend"""
+    bl_idname = 'mch.bg_paint'
+    bl_label = 'Paint Background'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    fresh: BoolProperty(default=False, options={'SKIP_SAVE'})
+
+    def execute(self, context):
+        sc = context.scene
+        st = settings(sc)
+        if st is None:
+            return {'CANCELLED'}
+        img = make_canvas(sc, fresh=self.fresh)
+        msg = apply(sc) if not on(sc) else (set_color(sc) or '')
+        win = None if bpy.app.background else paint_window(context, img)
+        try:
+            from . import side_panel
+            side_panel.dirty()
+        except (ImportError, AttributeError):
+            pass
+        self.report({'INFO'}, ('New canvas: ' if self.fresh else 'Paint Background: ') + (
+            'paint in the new window (Image Editor, Paint) - the background follows' if win is not None else
+            f'"{img.name}" behind the model - paint it in an Image Editor (Paint mode)') + (f'. {msg}' if msg else ''))
+        return {'FINISHED'}
 
 
 # ---- Solid view too: the 3D views' own background -----------------------------------------------------------------
@@ -912,6 +1136,10 @@ def draw_panel(layout, context):
     r.operator('mch.bg_method', text='Compositor', depress=st.method == 'COMP').method = 'COMP'
     r.operator('mch.bg_method', text='World', depress=st.method == 'WORLD').method = 'WORLD'
     col.row(align=True).prop(st, 'mode', expand=True)
+    r = col.row(align=True)                          # 0.24.149 paint it yourself
+    r.operator('mch.bg_paint', text='Paint Background…', icon='BRUSH_DATA')
+    if canvas_image(sc) is not None:
+        r.operator('mch.bg_paint', text='New Canvas').fresh = True
     if st.mode == 'IMAGE':
         icon = preview_icon(picture_path(sc))
         if icon:
@@ -1008,7 +1236,7 @@ class MCH_OT_bg_method(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_PG_Background, MCH_OT_bg_method, MCH_OT_bg_color, MCH_OT_bg_picture, MCH_OT_bg_fit, MCH_OT_bg_ramp,
+CLASSES = (MCH_PG_Background, MCH_OT_bg_method, MCH_OT_bg_paint, MCH_OT_bg_color, MCH_OT_bg_picture, MCH_OT_bg_fit, MCH_OT_bg_ramp,
            MCH_OT_bg_picture_step, MCH_PT_background)
 
 
@@ -1016,9 +1244,13 @@ def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Scene.mch_bg = bpy.props.PointerProperty(type=MCH_PG_Background)
+    if _pack_canvases not in bpy.app.handlers.save_pre:
+        bpy.app.handlers.save_pre.append(_pack_canvases)
 
 
 def unregister():
+    if _pack_canvases in bpy.app.handlers.save_pre:
+        bpy.app.handlers.save_pre.remove(_pack_canvases)
     if _PREV['coll'] is not None:
         try:
             from bpy.utils import previews as _previews     # (not "import bpy...": that made bpy local here)

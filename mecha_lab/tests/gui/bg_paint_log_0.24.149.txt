@@ -1,0 +1,13 @@
+shot 0_main_before.png True
+windows 1 -> 2 canvas ('MCH Background Paint', (1920, 1080)) image editor ('PAINT', 'MCH Background Paint')
+shot 1_paint_window.png True
+paint window X geometry (254, 0, 1848, 1433) blender (254, 140, 1848, 1433) region (0, 0, 1848, 1406)
+stroke on screen (534, 758) -> (1912, 758)
+canvas changed share 0.0276 blue pixels on the middle row 1470 of 1920
+shot 2_painted_window.png True
+shot 3_main_view_follows.png True
+main 3D view (Material Preview): blue share before 0.0347 after 0.0533 canvas still the background True
+PASS 1 a REAL click on Paint Background…: a canvas behind the model, a new window: Image Editor, Paint, on it
+PASS 2 a REAL brush stroke in the paint window: the canvas painted blue along it
+PASS 3 the main 3D view: the painted blue in the background (it follows the paint)
+3/3 passed

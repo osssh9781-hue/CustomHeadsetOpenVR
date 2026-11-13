@@ -1098,6 +1098,9 @@ def background_section(b, context, x, width):
                         _cell('tbtn', 'World', ('op', 'mch.bg_method', {'method': 'WORLD'}), on=st.method == 'WORLD')])
         row(b, sx, sw, [_cell('tbtn', 'Colour', ('op', 'mch.bg_picture', {'mode': 'COLOR'}), on=not pic),
                         _cell('tbtn', 'Picture', ('op', 'mch.bg_picture', {'mode': 'IMAGE'}), on=pic)])
+        # 0.24.149 (user: "백그라운드 이미지를 포토샵처럼 내가 그릴 수 없어?") paint it yourself
+        row(b, sx, sw, [button('Paint Background…', 'mch.bg_paint')]
+            + ([button('New Canvas', 'mch.bg_paint', fresh=True)] if bgc.canvas_image(sc) is not None else []))
         if pic:
             row(b, sx, sw, [_cell('tbtn', 'Fill', ('op', 'mch.bg_fit', {'fit': 'FILL'}), on=st.fit == 'FILL'),
                             _cell('tbtn', 'Fit', ('op', 'mch.bg_fit', {'fit': 'FIT'}), on=st.fit == 'FIT')])
