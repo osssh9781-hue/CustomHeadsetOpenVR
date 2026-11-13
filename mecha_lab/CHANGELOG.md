@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 0.24.156 — Creature Base Mesh 스케치가 그리는 동안 안 보이던 문제 (2026-11-13)
+
+- (사용자: "근데 왜 크리쳐 베이스 메쉬는 스케치 모드가 안 먹혀?") 원인: 스케치(주황색 모양)를 화면에 그리는 코드가 **Base Mesh 도구일 때만**
+  그렸음. Creature Base Mesh 에서도 스케치는 실제로 쌓이고 있었고 Enter 를 누르면 메시가 만들어졌지만, 그리는 동안 아무것도 안 보여서 스케치가
+  안 되는 것처럼 보였음. 이제 스케치 키(Enter · Alt+Enter · Esc · Backspace)가 먹는 곳 — Base Mesh · **Creature Base Mesh** · Press Cut 의 Lasso
+  모드 — 모두에서 주황색 스케치가 보임.
+- 확인: 실제 창(진짜 마우스 · 키, xdotool) `tests/gui/cbase_sketch_real_window.py`: 두 도구에서 Sketch 켜고 Free Draw 로 모양 두 개 → 메시 없이
+  스케치 2 개, Enter → 메시 하나(Base Mesh Flat / Creature Base Mesh Puff), **그린 자리의 주황색 픽셀 수**로 보이는지 확인 —
+  0.24.155: Base Mesh 1,444 · **Creature Base Mesh 147(배경뿐, 안 보임) → 1/2**, 0.24.156: 1,444 · **1,187 → 2/2**(로그
+  `tests/gui/cbase_sketch_log_0.24.156.txt`, 전후 비교 `dist/cbase_sketch_before_after_0.24.156.png`). 스케치를 쓰는 테스트 35 파일 965 항목 통과, 압축 파일에서 꺼낸 애드온 확인 11/11.
+  **확인 못 한 것**: Press Cut Lasso 모드의 스케치가 보이는 것(같은 조건으로 바뀌었지만 실제 창에서 눌러 보지는 않음).
+
 ## 0.24.155 — Greeble Line · Scale Line: Rows 15 까지 (2026-11-13)
 
 - (사용자: "옆으로 늘어나는 거를 8 개 이상으로 한 15 개까지 해 줘") **Rows(옆으로 늘어나는 줄 수) 최대 8 → 15**. Greeble Line · Scale Line

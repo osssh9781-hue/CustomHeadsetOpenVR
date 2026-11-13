@@ -3745,8 +3745,10 @@ def _draw_sketch():
         scene = context.scene
         if scene is None or not scene.get(SKETCH_KEY):
             return
-        from . import tool_state as ts
-        if ts.effective_tool(context) != 'BASE':
+        # 0.24.156 (user: "근데 왜 크리쳐 베이스 메쉬는 스케치 모드가 안 먹혀?") drawn wherever the sketch keys work -
+        # Base Mesh, Creature Base Mesh, Press Cut's Lasso: it was Base Mesh only, so a Creature Base Mesh sketch was
+        # there (Enter made it) but never seen while drawing
+        if not sketch_tool_ok(context):
             return
         d = _sketch_draw_data(scene)
         if not d:

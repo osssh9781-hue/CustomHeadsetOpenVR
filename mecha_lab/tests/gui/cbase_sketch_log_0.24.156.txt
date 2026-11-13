@@ -1,0 +1,25 @@
+== 0.24.155 (before the fix)
+BASE tool now BASE - sketch on True - top bar modes [('line', 'Line', False), ('sketch', 'Sketch', True)] - mch_cbase.sketch True mch_base.sketch True
+BASE after outline 1: sketch items 1 new objects [] | after 2: 2 []
+BASE orange sketch pixels where it was drawn: 1444
+BASE after Enter: new objects ['MCH_Base'] profiles ['FLAT'] sketch left False
+CBASE tool now CBASE - sketch on True - top bar modes [('line', 'Line', False), ('sketch', 'Sketch', True)] - mch_cbase.sketch True mch_base.sketch True
+CBASE after outline 1: sketch items 1 new objects [] | after 2: 2 []
+CBASE orange sketch pixels where it was drawn: 147
+CBASE after Enter: new objects ['MCH_Base.001'] profiles ['PUFF'] sketch left False
+PASS BASE: Sketch on, two REAL outlines stay an orange sketch (no mesh), REAL Enter makes one solid (FLAT); the sketch SEEN while drawing (orange in the screenshot)
+FAIL CBASE: Sketch on, two REAL outlines stay an orange sketch (no mesh), REAL Enter makes one solid (PUFF); the sketch SEEN while drawing (orange in the screenshot)
+1/2 passed
+
+== 0.24.156
+BASE tool now BASE - sketch on True - top bar modes [('line', 'Line', False), ('sketch', 'Sketch', True)] - mch_cbase.sketch True mch_base.sketch True
+BASE after outline 1: sketch items 1 new objects [] | after 2: 2 []
+BASE orange sketch pixels where it was drawn: 1444
+BASE after Enter: new objects ['MCH_Base'] profiles ['FLAT'] sketch left False
+CBASE tool now CBASE - sketch on True - top bar modes [('line', 'Line', False), ('sketch', 'Sketch', True)] - mch_cbase.sketch True mch_base.sketch True
+CBASE after outline 1: sketch items 1 new objects [] | after 2: 2 []
+CBASE orange sketch pixels where it was drawn: 1187
+CBASE after Enter: new objects ['MCH_Base.001'] profiles ['PUFF'] sketch left False
+PASS BASE: Sketch on, two REAL outlines stay an orange sketch (no mesh), REAL Enter makes one solid (FLAT); the sketch SEEN while drawing (orange in the screenshot)
+PASS CBASE: Sketch on, two REAL outlines stay an orange sketch (no mesh), REAL Enter makes one solid (PUFF); the sketch SEEN while drawing (orange in the screenshot)
+2/2 passed
