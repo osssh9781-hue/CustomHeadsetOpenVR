@@ -1,0 +1,33 @@
+body faces 940032
+starter parts ['Greeble Plate', 'Greeble Ribs', 'Greeble Pipe', 'Greeble Wedge', 'Greeble Vent'] size 0.1
+stroke 1 start (1053, 788) pick ('Human', (-0.111, -0.065, 1.26)) active Human tool GREEBLE
+stroke 1: parts 14, first parts shown after 0.99 s
+stroke 2 start (1051, 748) pick ('Human', (-0.11, -0.072, 1.301)) active Greeble Line tool GREEBLE
+stroke 2: parts 14, first parts shown after 0.87 s
+stroke 3 start (1049, 708) pick ('Human', (-0.11, -0.076, 1.34)) active Greeble Line.001 tool GREEBLE
+stroke 3: parts 14, first parts shown after 0.93 s
+stroke 4 start (1047, 667) pick ('Human', (-0.111, -0.077, 1.38)) active Greeble Line.002 tool GREEBLE
+stroke 4: parts 14, first parts shown after 0.88 s
+stroke 5 start (1153, 838) pick ('Human', (-0.0, -0.095, 1.221)) active Greeble Line.003 tool GREEBLE
+stroke 5: parts 10, first parts shown after 0.85 s
+drag on laid parts: start (1159, 931) pick Human first (0.007, -0.1, 1.132) start 3d (0.007, -0.101, 1.132) path points 6
+a drag starting on laid parts: line Human 6
+line Greeble Line parent Human x -0.097 0.105 z 1.248 1.271
+line Greeble Line.001 parent Human x -0.096 0.107 z 1.288 1.311
+line Greeble Line.002 parent Human x -0.096 0.109 z 1.328 1.351
+line Greeble Line.003 parent Human x -0.096 0.11 z 1.368 1.391
+line Greeble Line.004 parent Human x -0.011 0.01 z 1.062 1.202
+line Greeble Line.005 parent Human x 0.017 0.088 z 1.123 1.147
+part origins: worst distance from the body 1.8 mm
+shot 1_solid_wire.png True
+Up +X on Greeble Line.005 up POS_X n 12 : +X . normal [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0] quats [(0.72, 0.13, -0.09, -0.68), (0.72, 0.13, -0.09, -0.68), (0.6, -0.47, 0.42, -0.49)]
+shot 1b_up_x_wire.png True
+shot 2_rendered_wire.png True
+PASS 1 a REAL click on Starter Parts: five parts sized to the body in the list
+PASS 2 a REAL drag in empty space beside the body (a line selected): nothing moved
+PASS 2 five REAL drags on the 0.94 M-face body: five Greeble Lines on it, parts along each
+PASS 2 a REAL drag starting ON parts already laid: a new line on the body (through the parts)
+PASS 2 ... the parts on the body (their origins within 2 cm - the bottom of a part, its origin in the middle)
+PASS 2 ... the parts follow the drag: the first ones shown within 1 s of the press (each stroke)
+PASS 3 a REAL click on Up +X: the selected line's parts on their side, +X out of the body
+7/7 passed

@@ -16,6 +16,11 @@ the surface (its bottom on it, its up = the surface's normal, its long side alon
     Flip Random     some turned round (180),  Turn Random  a random turn about the normal
     Hide Parts      the picked parts hidden in the viewport and the render (the line still shows them)
 
+0.24.151 (user: "그리블 라인을 크리쳐 탭도 만들어 줘, 비늘 전용이나 디테일 전용으로") Scale Line (the Creature
+tools): the same lines with their own parts list and settings - Scale Parts (five scale shapes laid overlapping in
+staggered rows, leaning a little like shingles) or Detail Parts (spikes, bumps, nubs, fins, warts, scattered), or
+your own.  Stagger: every second row half a part along (scales / bricks).
+
 A line is a live object on the part (it moves with it): select it and change anything - it is redone.  The values go on
 to the next line.  Apply: real geometry (one mesh, the parts' materials).  Light: the parts are instances until Apply.
 """
@@ -39,9 +44,11 @@ STROKE_KEY = 'mch_greeble_stroke'      # on a line object: the drawn line, x y z
 STARTER_TAG = 'mch_greeble_starter'
 STARTER_COLL = 'Greeble Parts'
 SIG_KEY = 'mch_greeble_sig'            # on a line's node group: the parts it was built for
-LIVE_KEYS = ('order', 'axis', 'scale', 'scale_random', 'gap', 'rows', 'row_gap', 'sink', 'flip_random', 'turn_random',
-             'seed')
-_CASTERS = {}                          # target pointer -> (time, caster, vertex count)
+LIVE_KEYS = ('order', 'axis', 'up', 'turn', 'tilt', 'scale', 'scale_random', 'gap', 'rows', 'row_gap', 'sink',
+             'flip_random', 'turn_random', 'seed', 'stagger')
+KINDS = ('MECH', 'CREATURE')
+UP_AXES = {'POS_X': (0, 1.0), 'NEG_X': (0, -1.0), 'POS_Y': (1, 1.0), 'NEG_Y': (1, -1.0), 'POS_Z': (2, 1.0),
+           'NEG_Z': (2, -1.0)}
 _BUSY = [False]
 
 
@@ -52,9 +59,25 @@ def _props(update):
         'order': EnumProperty(name='Order', default='SEQ', update=update, items=[
             ('SEQ', 'In Turn', 'The parts one after another (1 2 3 1 2 3 ...)'),
             ('RANDOM', 'Random', 'A random part each time')]),
-        'axis': EnumProperty(name='Axis', default='AUTO', update=update, items=[
-            ('AUTO', 'Auto', 'The part\'s longer side (X or Y) along the line'),
-            ('X', 'X', 'The part\'s X along the line'), ('Y', 'Y', 'The part\'s Y along the line')]),
+        'axis': EnumProperty(name='Along', default='AUTO', update=update, items=[
+            ('AUTO', 'Auto', 'The part\'s longer side (of the two that are not Up) along the line'),
+            ('X', 'X', 'The part\'s X along the line'), ('Y', 'Y', 'The part\'s Y along the line'),
+            ('Z', 'Z', 'The part\'s Z along the line (when Up is X or Y)')]),
+        # 0.24.151 (user: "벽에 붙는 방향을 내가 맘대로 조절하게 해 줘") which side of the part faces out of the wall,
+        # a turn on the wall, a lean along the line
+        'up': EnumProperty(name='Up', default='POS_Z', update=update, items=[
+            ('POS_Z', '+Z', 'The part\'s +Z away from the surface (it stands on its bottom)'),
+            ('NEG_Z', '-Z', 'The part\'s -Z away from the surface (upside down: its top on the surface)'),
+            ('POS_X', '+X', 'The part\'s +X away from the surface (on its side)'),
+            ('NEG_X', '-X', 'The part\'s -X away from the surface'),
+            ('POS_Y', '+Y', 'The part\'s +Y away from the surface (on its front / back)'),
+            ('NEG_Y', '-Y', 'The part\'s -Y away from the surface')]),
+        'turn': FloatProperty(name='Turn', default=0.0, min=-math.pi, max=math.pi, subtype='ANGLE', update=update,
+                              description='Every part turned on the surface (about the surface normal): 90 = '
+                                          'across the line'),
+        'tilt': FloatProperty(name='Tilt', default=0.0, min=-math.radians(85), max=math.radians(85), subtype='ANGLE',
+                              update=update, description='Every part leaning forward / back along the line (about '
+                                                         'its bottom edge across the line)'),
         'scale': FloatProperty(name='Part Size', default=1.0, min=0.01, max=100.0, soft_max=4.0, update=update,
                                description='The parts\' size, x the size you made them'),
         'scale_random': FloatProperty(name='Size Random', default=0.0, min=0.0, max=0.9, update=update,
@@ -72,6 +95,8 @@ def _props(update):
         'turn_random': FloatProperty(name='Turn Random', default=0.0, min=0.0, max=math.pi, subtype='ANGLE',
                                      update=update, description='A random turn about the surface normal'),
         'seed': IntProperty(name='Seed', default=0, min=0, update=update, description='Another random mix'),
+        'stagger': BoolProperty(name='Stagger', default=False, update=update,
+                                description='Every second row half a part along (scales, bricks)'),
     }
 
 
@@ -80,7 +105,7 @@ def _upd_line(self, context):
     if _BUSY[0] or not is_line(ob):
         return
     rebuild(ob, context)
-    st = settings(context)                            # (the values go on to the next line)
+    st = settings(context, self.kind)                 # (the values go on to the next line of that tool)
     if st is not None:
         _BUSY[0] = True
         try:
@@ -116,7 +141,8 @@ class MCH_PG_GreeblePart(bpy.types.PropertyGroup):
 
 
 class MCH_PG_GreebleLine(bpy.types.PropertyGroup):
-    __annotations__ = {**_props(_upd_line), 'parts_json': StringProperty(default='[]')}
+    __annotations__ = {**_props(_upd_line), 'parts_json': StringProperty(default='[]'),
+                       'kind': StringProperty(default='MECH')}
 
 
 class MCH_PG_Greeble(bpy.types.PropertyGroup):
@@ -127,9 +153,10 @@ class MCH_PG_Greeble(bpy.types.PropertyGroup):
                                                               '(the lines still show them)')}
 
 
-def settings(context_or_scene):
+def settings(context_or_scene, kind='MECH'):
+    """The settings and parts list of Greeble Line (MECH) or Scale Line (CREATURE, 0.24.151)."""
     sc = getattr(context_or_scene, 'scene', context_or_scene)
-    return getattr(sc, 'mch_greeble', None)
+    return getattr(sc, 'mch_cgreeble' if kind == 'CREATURE' else 'mch_greeble', None)
 
 
 def is_line(ob):
@@ -164,9 +191,10 @@ def add_part(st, ob):
 
 # ---- the parts -----------------------------------------------------------------------------------------------------
 
-def part_info(ob, axis='AUTO'):
-    """A part in its own space x its own scale: (length axis 0 / 1, length, width, height, centre x, centre y,
-    bottom z, scale vector) - or None for an empty one."""
+def part_info(ob, axis='AUTO', up='POS_Z'):
+    """A part in its own space x its own scale, for ``up`` (its side away from the surface) and ``axis`` (its side
+    along the line): (length, width, height, the bottom middle (3), scale vector, the part's axes as columns: along,
+    up, across) - or None for an empty one."""
     bb = np.array([tuple(c) for c in ob.bound_box], float)
     if not len(bb):
         return None
@@ -175,9 +203,18 @@ def part_info(ob, axis='AUTO'):
     ext = mx - mn
     if ext.max() <= 1e-9:
         return None
-    ax = 0 if axis == 'X' else 1 if axis == 'Y' else (0 if ext[0] >= ext[1] else 1)
-    c = (mn + mx) * 0.5
-    return ax, max(ext[ax], 1e-6), max(ext[1 - ax], 1e-6), max(ext[2], 1e-6), c[0], c[1], mn[2], s
+    u, su = UP_AXES.get(up, (2, 1.0))
+    rest = [i for i in range(3) if i != u]
+    want = {'X': 0, 'Y': 1, 'Z': 2}.get(axis)
+    a = want if want in rest else (rest[0] if ext[rest[0]] >= ext[rest[1]] else rest[1])
+    c = rest[1] if a == rest[0] else rest[0]
+    mid = (mn + mx) * 0.5
+    bottom = mid.copy()
+    bottom[u] = mn[u] if su > 0 else mx[u]              # (the side on the surface)
+    A = Vector([1.0 if i == a else 0.0 for i in range(3)])
+    U = Vector([su if i == u else 0.0 for i in range(3)])
+    axes = Matrix((A, U, A.cross(U))).transposed()      # (columns: along, up, along x up)
+    return (max(ext[a], 1e-6), max(ext[c], 1e-6), max(ext[u], 1e-6), bottom, s, axes)
 
 
 # ---- the drawn line ------------------------------------------------------------------------------------------------
@@ -233,40 +270,56 @@ def placements(line, infos, cfg, unit, nearest=None):
     rows = max(1, int(cfg['rows']))
     while k < 20000:
         j = k % len(infos) if cfg['order'] == 'SEQ' else rng.randrange(len(infos))
-        ax, ln, wd, ht, cx, cy, bz, sv = infos[j]
+        ln, wd, ht, bottom, sv, axes = infos[j]
         f = cfg['scale'] * unit * (1.0 + rng.uniform(-1.0, 1.0) * cfg['scale_random'])
-        L, W, H = ln * f, wd * f, ht * f
+        L0, W0, H = ln * f, wd * f, ht * f
+        # (turned / leaning: what it takes up along and across the line - end to end still)
+        ct, st_ = abs(math.cos(cfg['turn'])), abs(math.sin(cfg['turn']))
+        L, W = ct * L0 + st_ * W0, st_ * L0 + ct * W0
+        L = abs(math.cos(cfg['tilt'])) * L + abs(math.sin(cfg['tilt'])) * H
         if s + 0.5 * L > line.length + 1e-9:
             break
-        mid = s + 0.5 * L
-        p0, n0 = line.at(mid)
-        t0 = line.tangent(mid, max(0.5 * L, line.length * 0.01))
+        mid0 = s + 0.5 * L
         flip = cfg['flip_random'] and rng.random() < 0.5
         turn = rng.uniform(-1.0, 1.0) * cfg['turn_random']
         for r in range(rows):
+            mid = mid0 + (0.5 * L * (1.0 + cfg['gap']) if cfg.get('stagger') and r % 2 else 0.0)
+            if mid > line.length + 1e-9:
+                continue
+            p0, n0 = line.at(mid)
+            t0 = line.tangent(mid, max(0.5 * L, line.length * 0.01))
+            b0 = n0.cross(t0)
+            b0 = b0.normalized() if b0.length > 1e-12 else n0.orthogonal().normalized()
             off = (r - (rows - 1) * 0.5) * W * (1.0 + cfg['row_gap'])
-            p, n = p0, n0
-            if abs(off) > 1e-12:
-                b0 = n0.cross(t0).normalized()
-                q = p0 + b0 * off
-                hit = nearest(q) if nearest is not None else None
-                if hit is not None:
-                    p = Vector(hit[0])
-                    n = (Vector(hit[1]).normalized() + n0).normalized()
-                else:
-                    p = q
+            q = p0 + b0 * off
+            p, n = q, n0
+            hit = nearest(q) if nearest is not None else None
+            if hit is not None:
+                # 0.24.151 (a high-poly human: a line crossing from the chest onto the shoulder, a band near the
+                # armpit) every part back on the surface, its up = the surface under its whole footprint (five
+                # points: the middle and the ends / sides), not the line's averaged normal
+                p = Vector(hit[0])
+                acc = Vector(hit[1]).normalized()
+                for d in (t0 * (0.35 * L), t0 * (-0.35 * L), b0 * (0.35 * W), b0 * (-0.35 * W)):
+                    h2 = nearest(p + d)
+                    if h2 is not None:
+                        acc += Vector(h2[1]).normalized()
+                n = acc.normalized() if acc.length > 1e-9 else n0
+                if n.dot(n0) < 0.0:                         # (a thin wall's far side: keep the drawn side)
+                    n = n0
             t = (t0 - n * t0.dot(n))
             t = t.normalized() if t.length > 1e-9 else n.orthogonal().normalized()
             b = n.cross(t)
-            m = Matrix((t, b, n)).transposed()              # (columns: along, across, up)
-            if ax == 1:                                     # (the part's Y along the line: its X = -across)
-                m = Matrix((-b, t, n)).transposed()
-            yaw = turn + (math.pi if flip else 0.0)
-            if abs(yaw) > 1e-12:
-                m = m @ Matrix.Rotation(yaw, 3, 'Z')
+            # the part's along / up axes onto the line / the surface normal (any of its six sides out: Up)
+            m = Matrix((t, n, t.cross(n))).transposed() @ axes.transposed()
+            if abs(cfg['tilt']) > 1e-12:                    # (a lean along the line, about the across axis)
+                m = Matrix.Rotation(cfg['tilt'], 3, b) @ m
+            yaw = cfg['turn'] + turn + (math.pi if flip else 0.0)
+            if abs(yaw) > 1e-12:                            # (a turn on the surface, about its normal)
+                m = Matrix.Rotation(yaw, 3, n) @ m
             sc = Vector(tuple(sv)) * f
-            # the part's own middle (along / across) on the line, its bottom on the surface, sunk by Sink x height
-            local = Vector((cx * f, cy * f, bz * f))
+            # the part's bottom middle on the surface, sunk by Sink x height
+            local = Vector(tuple(bottom)) * f
             loc = p - m @ local - n * (cfg['sink'] * H)
             locs.append(tuple(loc))
             quats.append(tuple(m.to_quaternion()))
@@ -283,16 +336,47 @@ def cfg_of(pg):
 
 # ---- the line object -------------------------------------------------------------------------------------------------
 
+class FastCaster:
+    """The part's surface in its own space for a stroke: like geo_sculpt.SurfaceCaster (cast at the mouse, nearest),
+    on Blender's own search tree of the part (Object.ray_cast / closest_point_on_mesh) - 0.24.151 (user: "인간 바디 +
+    하이폴리곤으로 테스트") nothing built twice: the click that starts the stroke has Blender build it (1.8 s once for
+    3.8 M faces), after that every look-up is free and it is never out of date."""
+
+    def __init__(self, context, ob):
+        from . import light_copies
+        self.ob = getattr(ob, 'original', ob)
+        self.mw = ob.matrix_world.copy()
+        self.mi = self.mw.inverted_safe()
+        self.dg = context.evaluated_depsgraph_get()
+        light_copies.full(self.ob, self.dg)            # (the part itself, not its light copy)
+
+    def _ray(self, o, d):
+        try:
+            ok, loc, nrm, _i = self.ob.ray_cast(o, d, depsgraph=self.dg)
+        except (RuntimeError, ReferenceError):
+            return None
+        return (loc, nrm.normalized()) if ok else None
+
+    def cast(self, context, xy):
+        from bpy_extras import view3d_utils
+        region, rv3d = context.region, context.region_data
+        o = self.mi @ view3d_utils.region_2d_to_origin_3d(region, rv3d, xy)
+        d = (self.mi.to_3x3() @ view3d_utils.region_2d_to_vector_3d(region, rv3d, xy)).normalized()
+        return self._ray(o, d)
+
+    def ray_cast(self, o, d):
+        return self._ray(Vector(o), Vector(d))
+
+    def nearest(self, p):
+        try:
+            ok, loc, nrm, _i = self.ob.closest_point_on_mesh(Vector(p), depsgraph=self.dg)
+        except (RuntimeError, ReferenceError):
+            return None
+        return (loc, nrm.normalized()) if ok else None
+
+
 def _caster(context, target):
-    from . import geo_sculpt as gs
-    key = target.as_pointer()
-    n = len(target.data.vertices) if target.type == 'MESH' else 0
-    hit = _CASTERS.get(key)
-    if hit is not None and hit[2] == n and time.time() - hit[0] < 30.0:
-        return hit[1]
-    c = gs.SurfaceCaster(context, target)
-    _CASTERS[key] = (time.time(), c, n)
-    return c
+    return FastCaster(context, target)
 
 
 def read_stroke(ob):
@@ -387,7 +471,7 @@ def rebuild(ob, context=None, caster=None):
     parts = line_parts(ob)
     pts, nrm = read_stroke(ob)
     st = ob.mch_greeble_line
-    infos = [part_info(p, st.axis) for p in parts]
+    infos = [part_info(p, st.axis, st.up) for p in parts]
     keep = [i for i, inf in enumerate(infos) if inf is not None]
     parts, infos = [parts[i] for i in keep], [infos[i] for i in keep]
     if target is not None and caster is None:
@@ -424,10 +508,12 @@ def rebuild(ob, context=None, caster=None):
     return n
 
 
-def new_line(context, target, pts, nrm, parts, pg):
-    """A Greeble Line on ``target`` (its child, its space): ``parts`` along the drawn line, settings from ``pg``."""
-    me = bpy.data.meshes.new('Greeble Line')
-    ob = bpy.data.objects.new('Greeble Line', me)
+def new_line(context, target, pts, nrm, parts, pg, kind='MECH'):
+    """A Greeble Line (kind CREATURE: a Scale Line) on ``target`` (its child, its space): ``parts`` along the drawn
+    line, settings from ``pg``."""
+    name = 'Scale Line' if kind == 'CREATURE' else 'Greeble Line'
+    me = bpy.data.meshes.new(name)
+    ob = bpy.data.objects.new(name, me)
     colls = target.users_collection or (context.scene.collection,)
     colls[0].objects.link(ob)
     ob.parent = target
@@ -441,6 +527,7 @@ def new_line(context, target, pts, nrm, parts, pg):
         for k in LIVE_KEYS:
             setattr(ln, k, getattr(pg, k))
         ln.parts_json = json.dumps([p.name for p in parts])
+        ln.kind = kind
     finally:
         _BUSY[0] = False
     return ob
@@ -538,13 +625,124 @@ def _starter_meshes():
     return out
 
 
-def make_starters(context, near=None):
-    """The five starter parts in a collection beside the model (``near``), sized to it; added to the parts list."""
+def _mesh(name, bm, smooth=True):
+    me = bpy.data.meshes.new(name)
+    bm.normal_update()
+    bm.to_mesh(me)
+    bm.free()
+    for p in me.polygons:
+        p.use_smooth = smooth
+    return name, me
+
+
+def _dome(bm, rx, ry, h, seg=20, rings=6, shape=None):
+    """A flat-bottomed dome (Z up, bottom at z = 0) of radii rx, ry and height h; ``shape(x, y) -> (x, y)`` bends its
+    outline (a teardrop, a point)."""
+    import bmesh as _bm
+    verts = []
+    for j in range(rings + 1):
+        a = (math.pi / 2) * j / rings                     # 0 = the rim, pi/2 = the top
+        ring = []
+        for i in range(seg if j < rings else 1):
+            t = 2 * math.pi * i / seg
+            x, y = math.cos(t) * math.cos(a), math.sin(t) * math.cos(a)
+            if shape is not None:
+                x, y = shape(x, y)
+            ring.append(bm.verts.new((x * rx, y * ry, math.sin(a) * h)))
+        verts.append(ring)
+    for j in range(rings - 1):
+        for i in range(seg):
+            bm.faces.new((verts[j][i], verts[j][(i + 1) % seg], verts[j + 1][(i + 1) % seg], verts[j + 1][i]))
+    top = verts[rings][0]
+    for i in range(seg):
+        bm.faces.new((verts[rings - 1][i], verts[rings - 1][(i + 1) % seg], top))
+    bm.faces.new(list(reversed(verts[0])))
+    _bm.ops.recalc_face_normals(bm, faces=list(bm.faces))
+
+
+def _scale_meshes():
+    """Five scale shapes, Z up, long side along X (the line), about 1 long: they overlap in rows."""
+    import bmesh as _bm
+    out = []
+    bm = _bm.new()                                       # round, a little narrower at the back
+    _dome(bm, 0.5, 0.42, 0.12, shape=lambda x, y: (x, y * (0.8 + 0.2 * x)))
+    out.append(_mesh('Scale Round', bm))
+    bm = _bm.new()                                       # pointed at the front
+    _dome(bm, 0.5, 0.36, 0.12, shape=lambda x, y: (x, y * (1.0 - 0.75 * max(0.0, x)) * (0.85 + 0.15 * (1 - abs(x)))))
+    out.append(_mesh('Scale Pointed', bm))
+    bm = _bm.new()                                       # a keel down the middle
+    _dome(bm, 0.5, 0.4, 0.1)
+    for v in bm.verts:
+        v.co.z += 0.09 * max(0.0, 1.0 - abs(v.co.y) / 0.12) * (v.co.z > 1e-6)
+    out.append(_mesh('Scale Keeled', bm))
+    bm = _bm.new()                                       # a hexagon plate (a lizard's belly)
+    _dome(bm, 0.5, 0.45, 0.09, seg=6, rings=3)
+    out.append(_mesh('Scale Hex', bm, smooth=False))
+    bm = _bm.new()                                       # a big domed scute
+    _dome(bm, 0.5, 0.5, 0.2, seg=24, rings=8, shape=lambda x, y: (math.copysign(abs(x) ** 0.7, x),
+                                                                  math.copysign(abs(y) ** 0.7, y)))
+    out.append(_mesh('Scale Scute', bm))
+    return out
+
+
+def _detail_meshes():
+    """Five creature details, Z up: a spike, a bump, a curved nub, a fin, a cluster of warts."""
+    import bmesh as _bm
+    out = []
+    bm = _bm.new()
+    _bm.ops.create_cone(bm, cap_ends=True, segments=16, radius1=0.3, radius2=0.0, depth=1.0,
+                        matrix=Matrix.Translation((0, 0, 0.5)))
+    out.append(_mesh('Detail Spike', bm))
+    bm = _bm.new()
+    _dome(bm, 0.45, 0.45, 0.3, seg=20, rings=8)
+    out.append(_mesh('Detail Bump', bm))
+    bm = _bm.new()
+    _bm.ops.create_cone(bm, cap_ends=True, segments=16, radius1=0.25, radius2=0.03, depth=0.8,
+                        matrix=Matrix.Translation((0, 0, 0.4)))
+    for v in bm.verts:                                   # bent forward
+        v.co.x += 0.5 * (v.co.z / 0.8) ** 2
+    out.append(_mesh('Detail Nub', bm))
+    bm = _bm.new()                                       # a fin: thin, high at the back, low at the front
+    r = _bm.ops.create_cube(bm, size=1.0)
+    for v in r['verts']:
+        v.co.x *= 1.0
+        v.co.y *= 0.12
+        v.co.z = (v.co.z + 0.5) * (0.45 if v.co.x < 0 else 0.12)
+    out.append(_mesh('Detail Fin', bm, smooth=False))
+    bm = _bm.new()
+    for (x, y, rr) in ((0.0, 0.0, 0.22), (0.3, 0.12, 0.14), (-0.25, 0.15, 0.12), (0.12, -0.25, 0.1)):
+        before = set(bm.verts)
+        _dome(bm, rr, rr, rr * 0.7, seg=12, rings=4)
+        for v in set(bm.verts) - before:
+            v.co.x += x
+            v.co.y += y
+    out.append(_mesh('Detail Warts', bm))
+    return out
+
+
+# the settings each built-in set starts with (Scale Parts: overlapping staggered rows, a slight lean like shingles)
+PRESETS = {
+    'MECH': {},
+    'SCALES': dict(order='RANDOM', axis='AUTO', up='POS_Z', turn=0.0, tilt=math.radians(10), scale=1.0,
+                   scale_random=0.12, gap=-0.3, rows=3, row_gap=-0.2, sink=0.25, flip_random=False,
+                   turn_random=math.radians(4), stagger=True),
+    'DETAILS': dict(order='RANDOM', axis='AUTO', up='POS_Z', turn=0.0, tilt=0.0, scale=1.0, scale_random=0.4,
+                    gap=0.5, rows=1, row_gap=0.5, sink=0.1, flip_random=False, turn_random=math.pi, stagger=False),
+}
+SETS = {'MECH': ('Greeble Parts', 'Starter Parts'), 'SCALES': ('Scale Parts', 'Scale Parts'),
+        'DETAILS': ('Creature Detail Parts', 'Detail Parts')}
+
+
+def make_starters(context, near=None, which='MECH'):
+    """A built-in set of parts in a collection beside the model (``near``), sized to it; added to the parts list
+    (``which``: MECH - five machine parts for Greeble Line; SCALES / DETAILS for Scale Line, with their settings)."""
     sc = context.scene
-    st = settings(sc)
-    coll = bpy.data.collections.get(STARTER_COLL)
+    kind = 'MECH' if which == 'MECH' else 'CREATURE'
+    st = settings(sc, kind)
+    coll_name = SETS[which][0]
+    coll = bpy.data.collections.get(coll_name)
     if coll is None:
-        coll = bpy.data.collections.new(STARTER_COLL)
+        coll = bpy.data.collections.new(coll_name)
     if coll.name not in sc.collection.children:
         sc.collection.children.link(coll)
     size, at = 0.1, Vector((0.0, 0.0, 0.0))
@@ -552,16 +750,29 @@ def make_starters(context, near=None):
         bb = [near.matrix_world @ Vector(c) for c in near.bound_box]
         lo = Vector((min(v.x for v in bb), min(v.y for v in bb), min(v.z for v in bb)))
         hi = Vector((max(v.x for v in bb), max(v.y for v in bb), max(v.z for v in bb)))
-        size = max((hi - lo).length * 0.05, 1e-3)
-        at = Vector((hi.x + size * 2.0, (lo.y + hi.y) * 0.5, lo.z))
+        size = max((hi - lo).length * (0.05 if which == 'MECH' else 0.025), 1e-3)
+        at = Vector((hi.x + size * (2.0 if which == 'MECH' else 4.0), (lo.y + hi.y) * 0.5, lo.z))
+        if which == 'DETAILS':
+            at.x += size * 3.0
+    meshes = _starter_meshes() if which == 'MECH' else _scale_meshes() if which == 'SCALES' else _detail_meshes()
     made = []
-    for i, (name, me) in enumerate(_starter_meshes()):
+    for i, (name, me) in enumerate(meshes):
         ob = bpy.data.objects.new(name, me)
         ob[STARTER_TAG] = 1
         ob.scale = (size, size, size)
-        ob.location = at + Vector((0.0, 0.0, i * size * 0.6))
+        ob.location = at + Vector((0.0, 0.0, i * size * 1.2))
         coll.objects.link(ob)
         made.append(ob)
+    if which != 'MECH':                                  # (a set of its own: the other one unticked)
+        for it in st.parts:
+            it.use = False
+        _BUSY[0] = True
+        try:
+            for k, v in PRESETS[which].items():
+                setattr(st, k, v)
+        finally:
+            _BUSY[0] = False
+    for ob in made:
         add_part(st, ob)
     return made
 
@@ -578,12 +789,80 @@ def _draw_stroke(op, context):
         pass
 
 
+def _greeble_sources(context):
+    """Every mesh a Greeble Line lays (picked, starters, in any line): a click on one of their instances is a click
+    on the surface under it."""
+    out = set()
+    for kind in KINDS:
+        st = settings(context, kind)
+        if st is not None:
+            out.update(it.ob for it in st.parts if it.ob is not None)
+    for ob in context.scene.objects:
+        if is_line(ob):
+            out.update(line_parts(ob))
+        elif ob.get(STARTER_TAG):
+            out.add(ob)
+    return out
+
+
+def pick_surface(context, xy):
+    """((part, world hit, world normal) or None, what was hit first) under the mouse - through Greeble parts and lines
+    (0.24.151: a stroke started on parts already laid went to a part's source mesh, then to nothing).  ``what was hit
+    first`` = the world point of the first thing the ray met (a laid part, the part itself), or None (empty space)."""
+    from bpy_extras import view3d_utils
+    region, rv3d = context.region, context.region_data
+    if region is None or rv3d is None:
+        return None, None
+    o = view3d_utils.region_2d_to_origin_3d(region, rv3d, xy)
+    d = view3d_utils.region_2d_to_vector_3d(region, rv3d, xy).normalized()
+    dg = context.evaluated_depsgraph_get()
+    skip, first, last, step = None, None, None, 1e-4
+    for _i in range(200):
+        try:
+            hit, loc, nrm, _f, ob, _m = context.scene.ray_cast(dg, o, d)
+        except (RuntimeError, TypeError):
+            return None, first
+        if not hit or ob is None:
+            return None, first
+        if first is None:
+            first = loc.copy()
+        ob = getattr(ob, 'original', ob)
+        if skip is None:
+            skip = _greeble_sources(context)
+        if ob.type == 'MESH' and not is_line(ob) and ob not in skip and not ob.get('mch_geo_part'):
+            return (ob, loc, nrm), first
+        # on through it: a bigger step whenever the ray met the same point again (a face hit twice)
+        step = step * 4.0 if last is not None and (loc - last).length < step else 1e-4
+        last = loc.copy()
+        o = loc + d * step * max(1.0, loc.length)
+    return None, first
+
+
+def line_at(context, p, reach):
+    """The Greeble Line with a part placed within ``reach`` of world point ``p`` (the nearest), or None."""
+    best, bd = None, reach
+    for ob in context.scene.objects:
+        if not is_line(ob) or not len(ob.data.vertices):
+            continue
+        mi = ob.matrix_world.inverted_safe()
+        q = mi @ p
+        co = np.empty(len(ob.data.vertices) * 3, np.float32)
+        ob.data.vertices.foreach_get('co', co)
+        dist = float(np.min(np.linalg.norm(co.reshape(-1, 3) - np.array(tuple(q)), axis=1)))
+        dist *= ob.matrix_world.to_scale().length / math.sqrt(3.0)
+        if dist < bd:
+            best, bd = ob, dist
+    return best
+
+
 class MCH_OT_greeble_stroke(bpy.types.Operator):
     """Greeble Line: drag on a part - the picked meshes laid one after another along the line, standing on the
     surface (Esc while drawing: none)"""
     bl_idname = 'mch.greeble_stroke'
     bl_label = 'Greeble Line'
     bl_options = {'REGISTER', 'UNDO'}
+    kind: EnumProperty(items=[('MECH', 'Greeble Line', ''), ('CREATURE', 'Scale Line', '')], default='MECH',
+                       options={'SKIP_SAVE'})
 
     @classmethod
     def poll(cls, context):
@@ -591,18 +870,28 @@ class MCH_OT_greeble_stroke(bpy.types.Operator):
 
     def invoke(self, context, event):
         from . import geo_sculpt as gs
-        st = settings(context)
+        st = settings(context, self.kind)
         xy = (event.mouse_region_x, event.mouse_region_y)
-        hit = gs.pick_part(context, xy)
-        if st is None or hit is None:
+        hit, first = pick_surface(context, xy)
+        if st is None:
             return {'PASS_THROUGH'}
+        if hit is None:
+            # (0.24.151: a drag started just off the body went on to Blender, which dragged the selected line away)
+            # empty space: a click = nothing selected, a drag = nothing at all; never moves what is selected
+            self.empty = (event.mouse_x, event.mouse_y)
+            context.window_manager.modal_handler_add(self)
+            return {'RUNNING_MODAL'}
+        self.empty = None
+        self.clicked = line_at(context, first, 0.05 * max(1.0, first.length)) if first is not None and \
+            (first - hit[1]).length > 1e-6 else None
         target = hit[0]
         if is_line(target) and target.parent is not None:
             target = target.parent                     # (drawn over a line: on the part under it)
         self.parts = picked(st)
         if not self.parts:
-            self.report({'WARNING'}, 'Greeble Line: pick parts first (the window: Pick Part / Add Selected / '
-                                     'Starter Parts)')
+            self.report({'WARNING'}, ('Scale Line: pick parts first (the window: Scale Parts / Detail Parts / Pick '
+                                      'Part)') if self.kind == 'CREATURE' else
+                        'Greeble Line: pick parts first (the window: Pick Part / Add Selected / Starter Parts)')
             return {'CANCELLED'}
         try:
             self.caster = _caster(context, target)
@@ -619,7 +908,7 @@ class MCH_OT_greeble_stroke(bpy.types.Operator):
         ppw = gs.px_per_world(context.region, context.region_data, hit[1])
         ms = target.matrix_world.to_scale()
         self.step = (4.0 / max(ppw, 1e-9)) / max((abs(ms.x) + abs(ms.y) + abs(ms.z)) / 3.0, 1e-9)
-        self.line = new_line(context, target, self.pts, self.nrm, self.parts, st)
+        self.line = new_line(context, target, self.pts, self.nrm, self.parts, st, self.kind)
         self.t_live = 0.0
         self._handle = bpy.types.SpaceView3D.draw_handler_add(_draw_stroke, (self, context), 'WINDOW', 'POST_PIXEL')
         context.window_manager.modal_handler_add(self)
@@ -655,6 +944,15 @@ class MCH_OT_greeble_stroke(bpy.types.Operator):
             bpy.data.node_groups.remove(ng)
 
     def modal(self, context, event):
+        if getattr(self, 'empty', None) is not None:          # (pressed on empty space)
+            if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+                if abs(event.mouse_x - self.empty[0]) + abs(event.mouse_y - self.empty[1]) < 5:
+                    for o in context.selected_objects:
+                        o.select_set(False)
+                return {'FINISHED'}
+            if event.type in {'ESC', 'RIGHTMOUSE'}:
+                return {'CANCELLED'}
+            return {'RUNNING_MODAL'}
         if event.type in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE'}:
             xy = (event.mouse_region_x, event.mouse_region_y)
             hit = self.caster.cast(context, xy)
@@ -673,6 +971,13 @@ class MCH_OT_greeble_stroke(bpy.types.Operator):
             self._end(context)
             if n == 0:
                 self._drop()
+                if self.clicked is not None and len(self.screen) <= 2:      # (a click on laid parts: that line)
+                    for o in context.selected_objects:
+                        o.select_set(False)
+                    self.clicked.select_set(True)
+                    context.view_layer.objects.active = self.clicked
+                    self.report({'INFO'}, f'{self.clicked.name} selected - change it in the window')
+                    return {'FINISHED'}
                 self.report({'INFO'}, 'Greeble Line: too short for one part (draw longer, or a smaller Part Size)')
                 return {'CANCELLED'}
             for o in context.selected_objects:
@@ -693,6 +998,8 @@ class MCH_OT_greeble_pick(bpy.types.Operator):
     bl_idname = 'mch.greeble_pick'
     bl_label = 'Pick Greeble Part'
     bl_options = {'REGISTER', 'UNDO'}
+    kind: EnumProperty(items=[('MECH', 'Greeble Line', ''), ('CREATURE', 'Scale Line', '')], default='MECH',
+                       options={'SKIP_SAVE'})
 
     def invoke(self, context, event):
         if context.area is None or context.area.type != 'VIEW_3D':
@@ -717,13 +1024,13 @@ class MCH_OT_greeble_pick(bpy.types.Operator):
     def modal(self, context, event):
         if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
             ob = pick_object(context, (event.mouse_region_x, event.mouse_region_y))
-            if ob is not None and add_part(settings(context), ob):
+            if ob is not None and add_part(settings(context, self.kind), ob):
                 self.added += 1
                 self.report({'INFO'}, f'Greeble part: {ob.name} added')
             return {'RUNNING_MODAL'}
         if event.type in {'ESC', 'RIGHTMOUSE', 'RET', 'NUMPAD_ENTER'} and event.value == 'PRESS':
             self._done(context)
-            self.report({'INFO'}, f'Greeble parts: {len(settings(context).parts)} ({self.added} picked now)')
+            self.report({'INFO'}, f'Parts: {len(settings(context, self.kind).parts)} ({self.added} picked now)')
             return {'FINISHED'}
         return {'PASS_THROUGH'}
 
@@ -755,9 +1062,13 @@ class MCH_OT_greeble_parts(bpy.types.Operator):
                                 ('STARTER', 'Starter Parts', ''), ('USE_PICKED', 'Use Picked Parts', '')],
                          default='ADD_SELECTED', options={'SKIP_SAVE'})
     index: IntProperty(default=-1, options={'SKIP_SAVE'})
+    kind: EnumProperty(items=[('MECH', 'Greeble Line', ''), ('CREATURE', 'Scale Line', '')], default='MECH',
+                       options={'SKIP_SAVE'})
+    which: EnumProperty(items=[('MECH', 'Starter Parts', ''), ('SCALES', 'Scale Parts', ''),
+                               ('DETAILS', 'Detail Parts', '')], default='MECH', options={'SKIP_SAVE'})
 
     def execute(self, context):
-        st = settings(context)
+        st = settings(context, self.kind)
         if st is None:
             return {'CANCELLED'}
         if self.action == 'ADD_SELECTED':
@@ -787,9 +1098,10 @@ class MCH_OT_greeble_parts(bpy.types.Operator):
         elif self.action == 'STARTER':
             near = active_line(context)
             near = near.parent if near is not None else context.active_object
-            made = make_starters(context, near if near is not None and near.type == 'MESH' else None)
-            msg = f'Greeble: {len(made)} starter parts made beside the model (collection "{STARTER_COLL}") - yours ' \
-                  f'to change'
+            which = self.which if self.kind == 'CREATURE' else 'MECH'
+            made = make_starters(context, near if near is not None and near.type == 'MESH' else None, which)
+            msg = f'{len(made)} {SETS[which][1].lower()} made beside the model (collection "{SETS[which][0]}") - ' \
+                  f'yours to change' + ('; the settings set for them' if which != 'MECH' else '')
         else:
             ob = active_line(context)
             parts = picked(st)
@@ -847,49 +1159,94 @@ class MCH_TOOL_greeble(bpy.types.WorkSpaceTool):
         draw(layout, context)
 
 
+class MCH_TOOL_scale_line(bpy.types.WorkSpaceTool):
+    bl_space_type = 'VIEW_3D'
+    bl_context_mode = 'OBJECT'
+    bl_idname = 'mecha.scale_line'
+    bl_label = 'Mecha Scale Line'
+    bl_description = ('Drag on a creature: scales (overlapping, staggered rows) or details (spikes, bumps, nubs ...) '
+                      'laid along the line, standing on the surface.\nScale Parts / Detail Parts / your own (Pick '
+                      'Part) in the window')
+    bl_icon = 'ops.generic.select_paint'
+    bl_widget = None
+    bl_keymap = (
+        ('mch.greeble_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, {'properties': [('kind', 'CREATURE')]}),
+        ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),
+    )
+
+    def draw_settings(context, layout, tool):
+        region = getattr(context, 'region', None)
+        if region is not None and region.type == 'TOOL_HEADER':
+            return
+        draw(layout, context, 'CREATURE')
+
+
 HELP = ('Pick the meshes (Pick Part: click them), then drag on a part',
-        'A part: Z up, its long side along the line (Axis)',
+        'Up: which side faces out of the wall; Along, Turn, Tilt',
         'Select a line to change it; Apply = real geometry')
 
 
-def draw(layout, context):
-    """The window (the right panel): the parts to pick, the settings (of the selected line, else of the next one)."""
-    st = settings(context)
+def draw(layout, context, kind='MECH'):
+    """The window (the right panel): the parts to pick, the settings (of the selected line, else of the next one).
+    ``kind``: MECH (Greeble Line) or CREATURE (Scale Line)."""
+    st = settings(context, kind)
     if st is None:
         return
+    def op(row, idname, text, icon='NONE', **props):
+        o = row.operator(idname, text=text, icon=icon)
+        o.kind = kind
+        for k_, v_ in props.items():
+            setattr(o, k_, v_)
+        return o
     col = layout.column(align=True)
     col.label(text=f'Parts ({len(picked(st))} ticked)')
     for i, it in enumerate(st.parts):                # (one row a part: its name - click = ticked or not - and x)
         row = col.row(align=True)
-        op = row.operator('mch.greeble_parts', text=(it.ob.name if it.ob is not None else '(gone)'),
-                          depress=bool(it.use))
-        op.action, op.index = 'TOGGLE', i
-        op = row.operator('mch.greeble_parts', text='Remove')
-        op.action, op.index = 'REMOVE', i
+        o = row.operator('mch.greeble_parts', text=(it.ob.name if it.ob is not None else '(gone)'), depress=bool(it.use))
+        o.action, o.index, o.kind = 'TOGGLE', i, kind
+        op(row, 'mch.greeble_parts', 'Remove', action='REMOVE', index=i)
     row = col.row(align=True)
-    row.operator('mch.greeble_pick', text='Pick Part', icon='EYEDROPPER')
-    row.operator('mch.greeble_parts', text='Add Selected').action = 'ADD_SELECTED'
+    op(row, 'mch.greeble_pick', 'Pick Part', icon='EYEDROPPER')
+    op(row, 'mch.greeble_parts', 'Add Selected', action='ADD_SELECTED')
     row = col.row(align=True)
-    row.operator('mch.greeble_parts', text='Starter Parts').action = 'STARTER'
+    if kind == 'CREATURE':                           # (0.24.151 the built-in sets, each with its settings)
+        op(row, 'mch.greeble_parts', 'Scale Parts', action='STARTER', which='SCALES')
+        op(row, 'mch.greeble_parts', 'Detail Parts', action='STARTER', which='DETAILS')
+        row = col.row(align=True)
+    else:
+        op(row, 'mch.greeble_parts', 'Starter Parts', action='STARTER')
     if st.parts:
-        row.operator('mch.greeble_parts', text='Clear List').action = 'CLEAR'
+        op(row, 'mch.greeble_parts', 'Clear List', action='CLEAR')
     col.prop(st, 'hide_parts')
     ln = active_line(context)
+    if ln is not None and ln.mch_greeble_line.kind != kind:
+        ln = None                                     # (a line of the other tool: not this window's)
     pg = ln.mch_greeble_line if ln is not None else st
     col = layout.column(align=True)
     col.label(text=f'{ln.name}: {len(ln.data.vertices)} parts (live)' if ln is not None else 'The next line')
     col.row(align=True).prop(pg, 'order', expand=True)
+    col.label(text='Up: the side away from the wall')
+    col.row(align=True).prop(pg, 'up', expand=True)
+    col.label(text='Along: the side along the line')
     col.row(align=True).prop(pg, 'axis', expand=True)
+    col.prop(pg, 'turn')
+    col.prop(pg, 'tilt')
     for k in ('scale', 'scale_random', 'gap', 'rows', 'row_gap', 'sink', 'turn_random', 'seed'):
         col.prop(pg, k)
+    col.prop(pg, 'stagger')
     col.prop(pg, 'flip_random')
     if ln is not None:
         row = col.row(align=True)
-        row.operator('mch.greeble_parts', text='Use Picked Parts').action = 'USE_PICKED'
+        op(row, 'mch.greeble_parts', 'Use Picked Parts', action='USE_PICKED')
         row.operator('mch.greeble_apply', text='Apply')
     col = layout.column(align=True)
-    for line in HELP:
+    for line in (HELP_CREATURE if kind == 'CREATURE' else HELP):
         col.label(text=line)
+
+
+HELP_CREATURE = ('Scale Parts / Detail Parts (or Pick Part), then drag on the creature',
+                 'Scales: overlapping, staggered rows; Details: scattered',
+                 'Select a line to change it; Apply = real geometry')
 
 
 CLASSES = (MCH_PG_GreeblePart, MCH_PG_GreebleLine, MCH_PG_Greeble, MCH_OT_greeble_stroke, MCH_OT_greeble_pick,
@@ -900,6 +1257,7 @@ def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Scene.mch_greeble = PointerProperty(type=MCH_PG_Greeble)
+    bpy.types.Scene.mch_cgreeble = PointerProperty(type=MCH_PG_Greeble)      # (0.24.151 Scale Line's own)
     bpy.types.Object.mch_greeble_line = PointerProperty(type=MCH_PG_GreebleLine)
     try:
         bpy.utils.register_tool(MCH_TOOL_greeble, after={'mecha.geo_sculpt'}, group=False)
@@ -908,14 +1266,23 @@ def register():
             bpy.utils.register_tool(MCH_TOOL_greeble, separator=True, group=False)
         except (ValueError, RuntimeError):
             pass
+    try:
+        bpy.utils.register_tool(MCH_TOOL_scale_line, after={'mecha.greeble_line'}, group=False)
+    except (ValueError, RuntimeError, KeyError):
+        try:
+            bpy.utils.register_tool(MCH_TOOL_scale_line, separator=True, group=False)
+        except (ValueError, RuntimeError):
+            pass
 
 
 def unregister():
-    try:
-        bpy.utils.unregister_tool(MCH_TOOL_greeble)
-    except (ValueError, RuntimeError, KeyError):
-        pass
-    for attr, owner in (('mch_greeble', bpy.types.Scene), ('mch_greeble_line', bpy.types.Object)):
+    for tool in (MCH_TOOL_scale_line, MCH_TOOL_greeble):
+        try:
+            bpy.utils.unregister_tool(tool)
+        except (ValueError, RuntimeError, KeyError):
+            pass
+    for attr, owner in (('mch_greeble', bpy.types.Scene), ('mch_cgreeble', bpy.types.Scene),
+                        ('mch_greeble_line', bpy.types.Object)):
         if hasattr(owner, attr):
             delattr(owner, attr)
     for c in reversed(CLASSES):
@@ -923,4 +1290,3 @@ def unregister():
             bpy.utils.unregister_class(c)
         except RuntimeError:
             pass
-    _CASTERS.clear()

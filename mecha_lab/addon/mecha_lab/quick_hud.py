@@ -81,6 +81,7 @@ SPEC = {
               (_scene('mch_concept'), 'path_hardness'), (_scene('mch_concept'), 'path_taper')],
     'SMOVE': [(_scene('mch_concept'), 'radius_px'), (_scene('mch_concept'), 'path_hardness'),
               (_scene('mch_concept'), 'path_taper')],
+    'CGREEBLE': [(_scene('mch_cgreeble'), 'scale'), (_scene('mch_cgreeble'), 'gap'), (_scene('mch_cgreeble'), 'rows')],
     'GREEBLE': [(_scene('mch_greeble'), 'scale'), (_scene('mch_greeble'), 'gap'), (_scene('mch_greeble'), 'rows')],
     'GSCULPT': [(_scene('mch_geo'), 'brush'), (_scene('mch_geo'), 'size_px'), (_scene('mch_geo'), 'intensity')],
     'SMART': [(_scene('mch_smart'), 'ndof_do'), (_scene('mch_smart'), 'axes'), (_scene('mch_smart'), 'speed'),

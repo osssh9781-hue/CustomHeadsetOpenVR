@@ -150,6 +150,71 @@ check(f'a dense line (Part Size 0.05: 157 parts) redone in {dt:.2f} s', len(line
       len(line.data.vertices))
 ln.scale = 1.0
 
+# 0.24.151 (user: "벽에 붙는 방향을 내가 맘대로 조절하게 해 줘") Up / Along / Turn / Tilt
+
+
+def frames(line):
+    """(bottom-side middle on the surface, the part's matrix, its radial direction) per part (A / B boxes)."""
+    loc, q, sc, pk = placed(line)
+    out = []
+    for i in range(len(loc)):
+        out.append((Vector(loc[i]), q[i].to_matrix(), sc[i], pk[i]))
+    return out
+
+
+def side_point(p, axis_up, sign):
+    """The middle of the part's side facing -``sign`` x ``axis_up`` (its own space, unscaled)."""
+    bb = [Vector(c) for c in p.bound_box]
+    lo = Vector((min(v.x for v in bb), min(v.y for v in bb), min(v.z for v in bb)))
+    hi = Vector((max(v.x for v in bb), max(v.y for v in bb), max(v.z for v in bb)))
+    mid = (lo + hi) * 0.5
+    mid[axis_up] = lo[axis_up] if sign > 0 else hi[axis_up]
+    return mid
+
+
+def check_up(label, axis_up, sign):
+    worst_on, worst_out = 0.0, 1.0
+    for loc, m, sc, pk in frames(line):
+        part = (A, B)[pk]
+        sp_ = side_point(part, axis_up, sign)
+        w = loc + m @ Vector((sp_.x * sc.x, sp_.y * sc.y, sp_.z * sc.z))
+        out = m @ Vector([sign if i == axis_up else 0.0 for i in range(3)])
+        worst_on = max(worst_on, abs(w.length - 1.0))
+        worst_out = min(worst_out, out.dot(w.normalized()))
+    check(label, worst_on < 0.005 and worst_out > 0.99, (round(worst_on, 4), round(worst_out, 4)))
+
+
+ln.up = 'NEG_Z'
+check_up('Up -Z: every part upside down - its top on the surface, its -Z out of it', 2, -1.0)
+ln.up = 'POS_X'
+check_up('Up +X: every part on its side - its -X side on the surface, its +X out of it', 0, 1.0)
+loc_, q_, sc_, pk_ = placed(line)
+along_ok = min(abs((q_[i].to_matrix() @ Vector((0, 1, 0) if pk_[i] == 0 else (0, 1, 0))).dot(
+    Vector((-loc_[i][1], loc_[i][0], 0)).normalized())) for i in range(len(loc_)))
+check('... Along Auto: then the longer of its other two sides (Y) along the line', along_ok > 0.98, round(along_ok, 4))
+ln.up = 'POS_Z'
+ln.turn = math.radians(90)
+fr = frames(line)
+across = max(abs((m @ Vector((1, 0, 0) if pk == 0 else (0, 1, 0))).dot(Vector((-loc.y, loc.x, 0)).normalized()))
+             for loc, m, sc, pk in fr)
+mids = [((A, B)[pk], loc + m @ Vector(((side_point((A, B)[pk], 2, 1).x) * sc.x, side_point((A, B)[pk], 2, 1).y * sc.y,
+                                         side_point((A, B)[pk], 2, 1).z * sc.z))) for loc, m, sc, pk in fr]
+gaps90 = [(mids[i + 1][1] - mids[i][1]).length for i in range(len(mids) - 1)]
+check('Turn 90: every part across the line, still end to end (0.1 apart: their widths), 16 of them',
+      across < 0.02 and len(fr) == 16 and max(abs(g - 0.1) for g in gaps90) < 0.005,
+      (round(across, 4), len(fr), [round(g, 4) for g in gaps90[:4]]))
+ln.turn = 0.0
+ln.tilt = math.radians(30)
+fr = frames(line)
+lean = [(m @ Vector((0, 0, 1))).dot(Vector(loc).normalized()) for loc, m, sc, pk in fr]
+on = max(abs((loc + m @ Vector((side_point((A, B)[pk], 2, 1).x * sc.x, side_point((A, B)[pk], 2, 1).y * sc.y,
+                                  side_point((A, B)[pk], 2, 1).z * sc.z))).length - 1.0) for loc, m, sc, pk in fr)
+check('Tilt 30: every part leaning 30 deg along the line, its bottom middle still on the surface',
+      max(abs(math.degrees(math.acos(min(1.0, c))) - 30.0) for c in lean) < 3.0 and on < 0.005,
+      ([round(math.degrees(math.acos(min(1.0, c))), 1) for c in lean[:3]], round(on, 4)))
+ln.tilt = 0.0
+check('... and back: Up +Z, no turn, no tilt - 8 parts again', len(line.data.vertices) == 8 and st.up == 'POS_Z')
+
 # it moves with the part
 body.location = (0.0, 0.0, 2.0)
 C.view_layer.update()

@@ -1,0 +1,10 @@
+tool CGREEBLE scale parts ['Scale Round', 'Scale Pointed', 'Scale Keeled', 'Scale Hex', 'Scale Scute'] gap -0.3 rows 3 stagger True
+scale line Scale Line kind CREATURE scales 17
+shot 1_scales_wire.png True
+detail parts ['Detail Spike', 'Detail Bump', 'Detail Nub', 'Detail Fin', 'Detail Warts'] detail line Scale Line.001 2 worst 5.6 mm
+shot 2_details_wire.png True
+shot 3_rendered_wire.png True
+PASS 1 Scale Line on; a REAL click on Scale Parts: five scales in its list, the scale settings
+PASS 2 a REAL drag across the chest: a Scale Line of overlapping scales on the body
+PASS 3 a REAL click on Detail Parts, a REAL drag down the belly: details on the body
+3/3 passed

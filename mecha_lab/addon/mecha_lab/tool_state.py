@@ -47,6 +47,10 @@ TOOLS = (
      'Selected, Starter Parts) laid one after another along the line, standing on the surface - machine parts packed '
      'along the stroke.  Order, Part Size, Gap, Rows, Sink, Flip / Turn Random; select a line to change it, Apply to '
      'keep', 'greeble', 'MOD_ARRAY', 'mecha.greeble_line', 'OK'),
+    ('CGREEBLE', 'Scale Line', 'Drag on a creature: scales laid overlapping in staggered rows along the line (Scale '
+     'Parts), or details scattered along it - spikes, bumps, nubs, fins, warts (Detail Parts), or your own meshes '
+     '(Pick Part); each standing on the surface.  Up / Turn / Tilt, Gap, Rows, Stagger, Sink; select a line to change '
+     'it, Apply to keep', 'cgreeble', 'OUTLINER_OB_POINTCLOUD', 'mecha.scale_line', 'OK'),
     ('PERF', 'Perforate', 'Sci-fi perforated plate: honeycomb / circle / square / diamond holes through the selected '
      'meshes; live (size, gap, margin, rotation, offset), Apply to keep',
      'perforate', 'MOD_BOOLEAN', None, 'OK'),
@@ -199,7 +203,7 @@ TOOL_GROUPS = (
     ('Move', ('CMOVE', 'CPATH', 'SMOVE', 'SMART', 'POSE', 'REMESH')),
     ('Symmetry & repeat', ('MIRROR', 'RSYM', 'RADIAL', 'ARRAY')),
     ('Curves', ('TUBE', 'TUBE_SAME', 'SCURVE', 'CABLE', 'ALONG', 'LOFT')),
-    ('Creature', ('CPLATE', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'HAIR')),
+    ('Creature', ('CPLATE', 'CGREEBLE', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'HAIR')),
     ('Cloth', ('WRINKLE', 'CDRAPE', 'WLINES', 'CAPE', 'SCAPE', 'GARMENT', 'HOOD', 'SCARF')),
     ('Utility', ('HOLLOW', 'ZBRUSH', 'SURFACE', 'LIBRARY', 'EDIT')),
 )
@@ -226,7 +230,7 @@ _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRA
                  'REMESH': 12, 'SPLIT': 13, 'POSE': 14, 'BASE': 15, 'LOFT': 16, 'ZBRUSH': 17, 'SUBD': 18, 'PRIMITIVE': 19,
                  'EXTRACT': 20, 'MOLDING': 21, 'HOLLOW': 22, 'ALONG': 23, 'CABLE': 24, 'PLATE': 25, 'WRINKLE': 26, 'TUBE': 27,
                  'HIDE': 28, 'DETAIL': 29, 'DETAIL2': 30, 'SCREW': 31, 'DETAIL3': 32, 'TUBE_SAME': 33,
-                 'CBASE': 34, 'CPLATE': 35, 'BELT': 36, 'SPIKE': 37, 'SCALES': 38, 'FLOWER': 39, 'SCURVE': 40, 'SBRUSH': 41, 'BRIDGE': 42, 'CAPE': 43, 'HAIR': 44, 'GARMENT': 45, 'HOOD': 46, 'SCARF': 47, 'CMOVE': 48, 'CPATH': 50, 'PERF': 51, 'SDRAW': 52, 'SCAPE': 53, 'RSYM': 55, 'SMOVE': 56, 'WLINES': 57, 'CDRAPE': 58, 'ZONE': 59, 'PRESS': 60, 'SMART': 61, 'GSCULPT': 62, 'GREEBLE': 63}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
+                 'CBASE': 34, 'CPLATE': 35, 'BELT': 36, 'SPIKE': 37, 'SCALES': 38, 'FLOWER': 39, 'SCURVE': 40, 'SBRUSH': 41, 'BRIDGE': 42, 'CAPE': 43, 'HAIR': 44, 'GARMENT': 45, 'HOOD': 46, 'SCARF': 47, 'CMOVE': 48, 'CPATH': 50, 'PERF': 51, 'SDRAW': 52, 'SCAPE': 53, 'RSYM': 55, 'SMOVE': 56, 'WLINES': 57, 'CDRAPE': 58, 'ZONE': 59, 'PRESS': 60, 'SMART': 61, 'GSCULPT': 62, 'GREEBLE': 63, 'CGREEBLE': 64}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
 TOOL_ENUM_ITEMS = [(t[0], t[1], t[2], t[4], _ENUM_NUMBERS[t[0]]) for t in TOOLS]
 
 SHAPES = (
