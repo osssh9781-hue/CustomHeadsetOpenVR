@@ -102,8 +102,9 @@ check('Quick HUD / Mecha Menu settings: Brush / Whole next to the method; the ke
 gate = mm.MCH_OT_mecha_mmb_gate.modal
 fake = lambda t, v='NOTHING': type('E', (), {'type': t, 'value': v, 'mouse_x': 0, 'mouse_y': 0})()
 op = type('Op', (), {'x0': 0, 'y0': 0, 'limit': 5})()
-check('Middle-click gate: a 3D mouse (NDOF) or trackpad event ends it and goes on; other events pass through',
-      gate(op, C, fake('NDOF_MOTION')) == {'FINISHED', 'PASS_THROUGH'}
-      and gate(op, C, fake('TRACKPADPAN')) == {'FINISHED', 'PASS_THROUGH'}
+check('Middle-click gate: a 3D mouse (NDOF) or trackpad event goes on (0.24.153: without ending the wait - '
+      'test_v02558); other events pass through',
+      gate(op, C, fake('NDOF_MOTION')) == {'PASS_THROUGH'}
+      and gate(op, C, fake('TRACKPADPAN')) == {'PASS_THROUGH'}
       and gate(op, C, fake('A', 'PRESS')) == {'PASS_THROUGH'})
 summary()

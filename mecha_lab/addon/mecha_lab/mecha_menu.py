@@ -1130,8 +1130,11 @@ class MCH_OT_mecha_mmb_gate(bpy.types.Operator):
             return {'FINISHED'}
         if event.type == 'ESC':
             return {'CANCELLED'}
-        if event.type.startswith('NDOF') or event.type.startswith('TRACKPAD'):
-            return {'FINISHED', 'PASS_THROUGH'}       # 0.24.54 a 3D mouse / trackpad: never held up here
+        # 0.24.153 (user: "중간 클릭으로 화면이 안 돌아가" - a 3D mouse with a bad connection sending motion all the
+        # time): a 3D mouse / trackpad event goes on to Blender (0.24.54: never held up here) but no longer ENDS the
+        # wait - it ended it before the hand moved the drag distance, so a middle drag never turned the view
+        if event.type == 'WINDOW_DEACTIVATE' or (event.type == 'MIDDLEMOUSE' and event.value == 'PRESS'):
+            return {'FINISHED', 'PASS_THROUGH'}       # the release was lost (another window / a new press)
         return {'PASS_THROUGH'}                       # 0.24.54 everything else goes on as usual
 
 

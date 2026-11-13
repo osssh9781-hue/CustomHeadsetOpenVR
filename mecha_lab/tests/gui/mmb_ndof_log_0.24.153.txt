@@ -1,0 +1,29 @@
+== 0.24.152 (before the fix)
+3D view 1848 x 1433 - gestures at 716 1028 (window pixels)
+A click, no 3D mouse: menu open True - view turned 0.0 deg
+B click, 3D mouse sending: menu open False - view turned 0.0 deg - 50 3D-mouse events passed on to the keys
+C drag, 3D mouse sending: view turned 0.0 deg - menu open False - gate left waiting [] - 50 3D-mouse events passed on
+D drag, no 3D mouse: view turned 76.0 deg - menu open False
+modal operators at the end: []
+19 Blender 3D-mouse settings; changed: {}
+PASS A a middle click opens the Mecha Menu
+FAIL B a middle click with the 3D mouse sending still opens the menu; the 3D-mouse events go on (the view not turned by them)
+FAIL C a middle drag with the 3D mouse sending turns the view (no menu, nothing left waiting)
+PASS D a middle drag turns the view
+PASS E Blender's 19 3D-mouse settings the same as before the add-on was turned on
+3/5 passed
+
+== 0.24.153
+3D view 1848 x 1433 - gestures at 716 1028 (window pixels)
+A click, no 3D mouse: menu open True - view turned 0.0 deg
+B click, 3D mouse sending: menu open True - view turned 0.0 deg - 50 3D-mouse events passed on to the keys
+C drag, 3D mouse sending: view turned 76.0 deg - menu open False - gate left waiting [] - 5 3D-mouse events passed on
+D drag, no 3D mouse: view turned 76.0 deg - menu open False
+modal operators at the end: []
+19 Blender 3D-mouse settings; changed: {}
+PASS A a middle click opens the Mecha Menu
+PASS B a middle click with the 3D mouse sending still opens the menu; the 3D-mouse events go on (the view not turned by them)
+PASS C a middle drag with the 3D mouse sending turns the view (no menu, nothing left waiting)
+PASS D a middle drag turns the view
+PASS E Blender's 19 3D-mouse settings the same as before the add-on was turned on
+5/5 passed
