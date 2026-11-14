@@ -183,8 +183,8 @@ def _draw_overlay():
             label(((sa[0] + sc_[0]) / 2, (sa[1] + sc_[1]) / 2 - 16 * k), f'H {fmt(context, H)}', (0.55, 0.88, 1.0, 1.0))
             label(((sc_[0] + sb[0]) / 2 + 40 * k, (sc_[1] + sb[1]) / 2), f'V {fmt(context, V)}', (0.6, 1.0, 0.6, 1.0))
     if _LIVE['line'] is not None:
-        p0, p1 = _LIVE['line']
-        ug.lines([(p0, p1)], (1.0, 0.3, 0.25, 1.0), 2.5 * k)
+        pts = _LIVE['line']
+        ug.lines(list(zip(pts, pts[1:])), (1.0, 0.3, 0.25, 1.0), 2.5 * k)
 
 
 class MCH_OT_print_measure(bpy.types.Operator):
@@ -555,8 +555,9 @@ def _boolean(context, ob, cutter_me, op):
             ob.modifiers.remove(mod)
         old = ob.data
         ob.data = me
-        for m in old.materials:
-            me.materials.append(m)
+        if not len(me.materials):                    # (the evaluated copy keeps them already)
+            for m in old.materials:
+                me.materials.append(m)
         if old.users == 0:
             bpy.data.meshes.remove(old)
     finally:
@@ -583,14 +584,20 @@ def pin_size(context, pieces):
     """(radius - a Key: half its width -, length out of the cut) for the pins: set in the window, or Auto from the cut
     (the deepest point's depth from the cut's border: round pins x 0.25, 1.5 - 8 mm across, twice as long; a key
     x 0.3, 2 - 15 mm wide, 1.2 x as long)."""
-    pg = context.scene.mch_print
-    if not pg.pin_auto:
-        return blender_units(context, pg.pin_diameter / 2000.0), blender_units(context, pg.pin_length / 1000.0)
     deep = 0.0
     for outer, holes in pieces:
         _p, d = depth_field(outer, holes, 32)
         if len(d):
             deep = max(deep, float(d.max()))
+    return size_from_deep(context, deep)
+
+
+def size_from_deep(context, deep):
+    """(radius / a key's half width, length out of the cut) from the cut's depth (its deepest point's distance from
+    its border) - or the window's values (Auto Size off)."""
+    pg = context.scene.mch_print
+    if not pg.pin_auto:
+        return blender_units(context, pg.pin_diameter / 2000.0), blender_units(context, pg.pin_length / 1000.0)
     if pg.pin_style == 'KEY':
         r = max(min(deep * 0.3, blender_units(context, 0.0075)), blender_units(context, 0.001))
         return r, r * 2.4
@@ -608,6 +615,48 @@ def piece_axis(outer):
     vals, vecs = np.linalg.eigh(q.T @ q)
     a = vecs[:, int(np.argmax(vals))]
     return (float(a[0]), float(a[1]))
+
+
+def _connect(context, a, b, world, normals, axes, r, length, tol, style, name, coll):
+    """The connectors at ``world`` (normals from ``a`` into ``b``): Key - a square key on ``a`` (its big end on a's
+    mesh, narrowing into b, the tip chamfered) and a square socket a Clearance (the fit gap) wider all round and
+    deeper in ``b``; Peg - a peg on a, a hole in b; Dowel - holes in both, separate pins (returned)."""
+    pins = []
+    if not world:
+        return pins
+    ch = min(r * 0.3, length * 0.2)
+    if style == 'KEY':
+        # 0.24.165 (user, with photos of a Dovetail Key add-on: "레퍼런스로 준 거 참고해서"); 0.24.166 ("핀 몸통이 큰 쪽이
+        # 메쉬에 붙는 거야 ... 갭이 무조건 있어야"): the big end on a's mesh, the socket a gap wider all round
+        tip = r * (1.0 - KEY_TAPER)
+        ch = min(r * 0.25, length * 0.2)
+        embed = min(r * 1.5, length)
+        at = r + (tip - r) * (length - ch) / length
+        keys = _mesh('MCH_Keys', [_solid(c, n, [(-embed, r), (0.0, r), (length - ch, at), (length, at - ch * 0.7)], 4, x)
+                                  for c, n, x in zip(world, normals, axes)])
+        sockets = _mesh('MCH_Sockets', [_solid(c, n, [(-r * 0.05, r + tol), (0.0, r + tol), (length + tol, tip + tol)], 4, x)
+                                        for c, n, x in zip(world, normals, axes)])
+        _boolean(context, a, keys, 'UNION')
+        _boolean(context, b, sockets, 'DIFFERENCE')
+    elif style == 'PEG':
+        embed = min(r * 1.5, length)
+        pegs = _mesh('MCH_Pegs', [_cylinder(c, n, r, -embed, length, 0.0, ch) for c, n in zip(world, normals)])
+        holes = _mesh('MCH_Holes', [_cylinder(c, n, r + tol, -r * 0.05, length + tol) for c, n in zip(world, normals)])
+        _boolean(context, a, pegs, 'UNION')
+        _boolean(context, b, holes, 'DIFFERENCE')
+    else:
+        half = length * 0.5
+        _boolean(context, a, _mesh('MCH_Holes', [_cylinder(c, n, r + tol, -(half + tol), r * 0.05)
+                                                 for c, n in zip(world, normals)]), 'DIFFERENCE')
+        _boolean(context, b, _mesh('MCH_Holes', [_cylinder(c, n, r + tol, -r * 0.05, half + tol)
+                                                 for c, n in zip(world, normals)]), 'DIFFERENCE')
+        for k, (c, n) in enumerate(zip(world, normals)):
+            pm = _mesh(f'{name}.Pin{k + 1}', [_cylinder(c, n, r, -half + tol * 0.5, half - tol * 0.5, ch, ch)])
+            pin = bpy.data.objects.new(pm.name, pm)
+            coll.objects.link(pin)
+            pin[PIN_KEY] = name
+            pins.append(pin)
+    return pins
 
 
 def cut_with_pins(context, ob, co, n, pg=None):
@@ -651,40 +700,7 @@ def cut_with_pins(context, ob, co, n, pg=None):
     neg, pos = parts
     world = [(co + u * x + w * y) for x, y in centres]
     world_axes = [(u * ax + w * ay) for ax, ay in axes]
-    pins = []
-    ch = min(r * 0.3, length * 0.2)
-    if centres and key:
-        # 0.24.165 (user, with photos of a Dovetail Key add-on: "레퍼런스로 준 거 참고해서"): a square key on the part
-        # below - along its piece of the cut, narrowing to its tip, the tip chamfered - and a square socket a
-        # Clearance wider all round (and deeper) in the part above, narrowing the same way
-        tip = r * (1.0 - KEY_TAPER)
-        ch = min(r * 0.25, length * 0.2)
-        embed = min(r * 1.5, length)
-        at = r + (tip - r) * (length - ch) / length
-        keys = _mesh('MCH_Keys', [_solid(c, n, [(-embed, r), (0.0, r), (length - ch, at), (length, at - ch * 0.7)], 4, a)
-                                  for c, a in zip(world, world_axes)])
-        sockets = _mesh('MCH_Sockets', [_solid(c, n, [(-r * 0.05, r + tol), (0.0, r + tol), (length + tol, tip + tol)], 4, a)
-                                        for c, a in zip(world, world_axes)])
-        _boolean(context, neg, keys, 'UNION')
-        _boolean(context, pos, sockets, 'DIFFERENCE')
-    elif centres and pg.pin_style == 'PEG':
-        embed = min(r * 1.5, length)
-        pegs = _mesh('MCH_Pegs', [_cylinder(c, n, r, -embed, length, 0.0, ch) for c in world])
-        holes = _mesh('MCH_Holes', [_cylinder(c, n, r + tol, -r * 0.05, length + tol) for c in world])
-        _boolean(context, neg, pegs, 'UNION')
-        _boolean(context, pos, holes, 'DIFFERENCE')
-    elif centres:
-        half = length * 0.5
-        _boolean(context, neg, _mesh('MCH_Holes', [_cylinder(c, n, r + tol, -(half + tol), r * 0.05) for c in world]),
-                 'DIFFERENCE')
-        _boolean(context, pos, _mesh('MCH_Holes', [_cylinder(c, n, r + tol, -r * 0.05, half + tol) for c in world]),
-                 'DIFFERENCE')
-        for k, c in enumerate(world):
-            pm = _mesh(f'{ob.name}.Pin{k + 1}', [_cylinder(c, n, r, -half + tol * 0.5, half - tol * 0.5, ch, ch)])
-            pin = bpy.data.objects.new(pm.name, pm)
-            coll.objects.link(pin)
-            pin[PIN_KEY] = ob.name
-            pins.append(pin)
+    pins = _connect(context, neg, pos, world, [n] * len(world), world_axes, r, length, tol, pg.pin_style, ob.name, coll)
     info = json.dumps({'pins': [list(c) for c in world], 'normal': list(n), 'radius': r, 'length': length,
                        'clearance': tol, 'style': pg.pin_style, 'axes': [list(a) for a in world_axes]})
     for o in parts:
@@ -711,6 +727,290 @@ def cut_with_pins(context, ob, co, n, pg=None):
     return neg, pos, pins, msg
 
 
+def shared_faces(context, a, b):
+    """0.24.166 The faces of ``a`` lying on ``b``'s surface, facing it (the cut both share after any Split - a straight
+    one, a drawn line, a lasso): (a's world mesh (bmesh), [face lists of each connected piece]).  The caller frees the
+    bmesh."""
+    from mathutils.bvhtree import BVHTree
+    ma, mb = _world_mesh(context, a), _world_mesh(context, b)
+    try:
+        bma, bmb = bmesh.new(), bmesh.new()
+        bma.from_mesh(ma)
+        bmb.from_mesh(mb)
+    finally:
+        bpy.data.meshes.remove(ma)
+        bpy.data.meshes.remove(mb)
+    bmesh.ops.triangulate(bmb, faces=bmb.faces[:])
+    tree = BVHTree.FromBMesh(bmb)
+    co = np.array([v.co for v in bma.verts]) if bma.verts else np.zeros((0, 3))
+    size = float(np.linalg.norm(co.max(0) - co.min(0))) if len(co) else 1.0
+    tol = max(size * 2e-5, 1e-7)
+    on = set()
+    for f in bma.faces:
+        if f.calc_area() < 1e-14:
+            continue
+        hit = tree.find_nearest(f.calc_center_median(), tol * 4)
+        if hit[0] is None or hit[3] > tol:
+            continue
+        if hit[1].dot(f.normal) > -0.9:
+            continue
+        if all(tree.find_nearest(v.co, tol * 4)[0] is not None for v in f.verts):
+            on.add(f.index)
+    bmb.free()
+    bma.faces.ensure_lookup_table()
+    pieces, seen = [], set()
+    for fi in sorted(on):
+        if fi in seen:
+            continue
+        stack, piece = [fi], []
+        seen.add(fi)
+        while stack:
+            f = bma.faces[stack.pop()]
+            piece.append(f)
+            for e in f.edges:
+                for g in e.link_faces:
+                    if g.index in on and g.index not in seen:
+                        seen.add(g.index)
+                        stack.append(g.index)
+        pieces.append(piece)
+    return bma, pieces
+
+
+def _piece_spots(piece, n_samples=1600, seed=1):
+    """Points over a piece of the shared cut (by area), each with its depth (distance to the piece's border) and its
+    face normal; the border points; the piece's mean normal."""
+    import random as _rnd
+    from mathutils.kdtree import KDTree
+    ids = {f.index for f in piece}
+    area = sum(f.calc_area() for f in piece)
+    border = []
+    step = max(math.sqrt(max(area, 1e-18)) / 80.0, 1e-9)
+    for f in piece:
+        for e in f.edges:
+            on = [g for g in e.link_faces if g.index in ids]
+            crease = len(on) == 2 and on[0].normal.dot(on[1].normal) < math.cos(math.radians(15.0))
+            if len(on) == 1 or crease:               # (the border - and a sharp bend of the cut: a key not over it)
+                a_, b_ = e.verts[0].co, e.verts[1].co
+                k = max(1, int((b_ - a_).length / step))
+                border.extend(a_.lerp(b_, t / k) for t in range(k))
+    if not border:
+        return None
+    kd = KDTree(len(border))
+    for i, p_ in enumerate(border):
+        kd.insert(p_, i)
+    kd.balance()
+    rng = _rnd.Random(seed)
+    pts, nrm, dep = [], [], []
+    for f in piece:
+        want = max(1, int(round(n_samples * f.calc_area() / max(area, 1e-18))))
+        vs = [v.co for v in f.verts]
+        for _k in range(want):
+            t = rng.randrange(len(vs) - 2) + 1 if len(vs) > 3 else 1          # (a fan triangle of the face)
+            u_, v_ = rng.random(), rng.random()
+            if u_ + v_ > 1.0:
+                u_, v_ = 1.0 - u_, 1.0 - v_
+            p_ = vs[0] + (vs[t] - vs[0]) * u_ + (vs[t + 1] - vs[0]) * v_
+            pts.append(p_)
+            nrm.append(f.normal.copy())
+            dep.append(kd.find(p_)[2])
+    mean = sum((f.normal * f.calc_area() for f in piece), Vector())
+    return (np.array([tuple(p_) for p_ in pts]), np.array([tuple(n_) for n_ in nrm]), np.array(dep),
+            np.array([tuple(p_) for p_ in border]), mean.normalized() if mean.length > 1e-12 else Vector((0, 0, 1)))
+
+
+def keys_between(context, a, b, pg=None, report_name=None):
+    """0.24.166 (user: "우리 저번에 만들었던 메쉬 따라서 할 수 있는 스플릿으로 ... 같이 해서"): connectors across the cut
+    two parts share - whatever made it (Split's lasso, a drawn line, a straight cut): on each piece of the shared cut,
+    as deep in it as can be, along its face there; Key / Peg on ``a`` (its big end on a's mesh) into ``b`` with the fit
+    gap (Clearance) all round, Dowel - holes in both + separate pins.  Returns (pins, report).  Raises PrintError."""
+    pg = pg or context.scene.mch_print
+    bma, pieces = shared_faces(context, a, b)
+    try:
+        if not pieces:
+            raise PrintError(f'"{a.name}" and "{b.name}" do not touch along a cut (split them with a thin cut, '
+                             'not Gap)')
+        data = [d for d in (_piece_spots(pc) for pc in pieces) if d is not None]
+        tot = sum(f.calc_area() for pc in pieces for f in pc)
+        flow = sum((f.normal * f.calc_area() for pc in pieces for f in pc), Vector())
+    finally:
+        bma.free()
+    # the way the two parts come apart: every key along it (a key along its own spot's face on a bent cut would
+    # lock the parts); the cut's faces mostly facing one way - else (a plug in its hole) each along its face
+    pull = flow / max(tot, 1e-18)
+    one_way = pull.length >= 0.6
+    pull = pull.normalized() if pull.length > 1e-12 else Vector((0.0, 0.0, 1.0))
+    across = math.cos(math.radians(60.0))       # (a face up to 60 degrees off the pull still takes a key)
+    if not data:
+        raise PrintError('No cut faces found between the two parts')
+    deep = max(float(d[2].max()) for d in data)
+    r, length = size_from_deep(context, deep)
+    tol = blender_units(context, pg.clearance / 1000.0)
+    key = pg.pin_style == 'KEY'
+    need = (r + tol) * (math.sqrt(2.0) if key else 1.0) * 1.9
+    want_n = (1 if key else 2) if pg.pin_count == 'AUTO' else int(pg.pin_count)
+    world, normals, axes, missed = [], [], [], 0
+    for pts, nrm, dep, border, mean in data:
+        ok = dep >= need
+        if one_way:                                   # (on a face across the pull, not on a side wall)
+            ok &= (nrm @ np.asarray(pull)) >= across
+        if not ok.any():
+            missed += 1
+            continue
+        cand, cd, cn = pts[ok], dep[ok], nrm[ok]
+        if want_n == 1:
+            near = cd >= cd.max() * 0.97
+            mid = pts.mean(0)
+            pick = [np.flatnonzero(near)[int(np.argmin(np.linalg.norm(cand[near] - mid, axis=1)))]]
+        else:
+            pick = [int(np.argmax(cd))]
+        while len(pick) < want_n:
+            sep = np.min(np.linalg.norm(cand[:, None, :] - cand[pick][None], axis=2), 1)
+            good = sep >= (r + tol) * 3.5
+            if not good.any():
+                break
+            pick.append(int(np.argmax(np.where(good, sep + 0.6 * cd, -1.0))))
+        for i in pick:
+            c = Vector(cand[i])
+            close = np.linalg.norm(pts - cand[i], axis=1) < max(r * 2.0, 1e-9)
+            nv = Vector(nrm[close].sum(0)) if close.any() else Vector(cn[i])     # (the cut's face round it)
+            nv = nv.normalized() if nv.length > 1e-12 else mean
+            if one_way:
+                nv = pull.copy()
+            q = border - np.asarray(c)
+            q = q - np.outer(q @ np.asarray(nv), np.asarray(nv))
+            vals, vecs = np.linalg.eigh(q.T @ q)
+            world.append(c)
+            normals.append(nv)
+            axes.append(Vector(vecs[:, int(np.argmax(vals))]))
+    coll = a.users_collection[0] if a.users_collection else context.scene.collection
+    pins = _connect(context, a, b, world, normals, axes, r, length, tol, pg.pin_style, report_name or a.name, coll)
+    info = json.dumps({'pins': [list(c) for c in world], 'normal': list(normals[0]) if normals else [0, 0, 1],
+                       'normals': [list(n_) for n_ in normals], 'radius': r, 'length': length, 'clearance': tol,
+                       'style': pg.pin_style, 'axes': [list(x) for x in axes], 'on': a.name, 'pull': list(pull),
+                       'one_way': one_way})
+    for o in (a, b):
+        o['mch_print_pins'] = info
+    style = {'PEG': 'peg + hole', 'DOWEL': 'dowel pins to print', 'KEY': 'square key + socket'}[pg.pin_style]
+    what = 'key' if key else 'pin'
+    msg = (f'{len(world)} {what}{"s" if len(world) != 1 else ""} between "{a.name}" and "{b.name}" ({style}, '
+           f'{fmt(context, r * 2)} wide, {fmt(context, length)} long, {fmt(context, tol)} gap all round)')
+    if missed:
+        msg += f'; {missed} piece{"s" if missed > 1 else ""} of the cut too thin for a {what}'
+    if not one_way:
+        msg += ('; the cut wraps round (a plug in its hole): each key along its face there - check the parts can '
+                'go together')
+    return pins, msg
+
+
+def _volume(ob):
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    v = abs(bm.calc_volume())
+    bm.free()
+    s_ = ob.matrix_world.to_scale()
+    return v * abs(s_.x * s_.y * s_.z)
+
+
+def key_carrier(a, b):
+    """(the part the keys stand on, the part with the sockets): the smaller part carries them (like the reference's
+    arm - its keys go into the body)."""
+    return (a, b) if _volume(a) <= _volume(b) else (b, a)
+
+
+SPLIT_FORCE = dict(split_mode='NORMAL', depth_mode='THROUGH', side_a_finish='NONE', side_b_finish='NONE',
+                   split_cap=True, line_cap=True, gn_finish='NONE')   # (a thin, filled, plain cut: the parts touch)
+
+
+def split_along_line(context, ob, path, projector):
+    """0.24.166 (user: "메쉬 따라서 할 수 있는 스플릿으로"): ``ob`` split along a line drawn across it on the screen -
+    the Split tool's line (the cut follows the drawn line through the part along the view), into two closed parts
+    that touch along the cut.  The original is kept, hidden.  Returns (part A, part B)."""
+    from . import core_geometry as cg, cut_engine as ce
+    cut = context.scene.mch_cut
+    st = getattr(context.scene, 'mch_settings', None)
+    saved = {k: getattr(cut, k) for k in SPLIT_FORCE if hasattr(cut, k)}
+    saved_apply = getattr(st, 'auto_apply', True) if st is not None else True
+    dup = ob.copy()
+    dup.data = ob.data.copy()
+    for coll in ob.users_collection or (context.scene.collection,):
+        coll.objects.link(dup)
+    dup.name = ob.name + '.A'
+    before = set(bpy.data.objects)
+    try:
+        for k, v in SPLIT_FORCE.items():
+            if k in saved:
+                setattr(cut, k, v)
+        if st is not None:
+            st.auto_apply = True
+        try:
+            ce.perform_line(context, 'SPLIT', [dup], [tuple(p_) for p_ in path], projector, tuple(path[0]))
+        except cg.CutError as ex:
+            raise PrintError(str(ex))
+    except PrintError:
+        bpy.data.objects.remove(dup)
+        raise
+    finally:
+        for k, v in saved.items():
+            setattr(cut, k, v)
+        if st is not None:
+            st.auto_apply = saved_apply
+    made = [o for o in bpy.data.objects if o not in before and o.type == 'MESH' and o.name in bpy.data.objects]
+    piece = next((o for o in made if o.name.startswith(dup.name)), made[0] if made else None)
+    if piece is None:
+        bpy.data.objects.remove(dup)
+        raise PrintError(f'The line does not split "{ob.name}" in two')
+    piece.name = ob.name + '.B'
+    for o in (dup, piece):
+        o[FROM_KEY] = ob.name
+    ob.hide_set(True)
+    ob.hide_render = True
+    return dup, piece
+
+
+def cut_along_line(context, ob, path, projector, pg=None):
+    """The Print Cut drag: split along the drawn line, then keys / pins across the cut (on the smaller part, into
+    the bigger).  Returns (part A, part B, separate pins, report)."""
+    pg = pg or context.scene.mch_print
+    a, b = split_along_line(context, ob, path, projector)
+    carrier, other = key_carrier(a, b)
+    try:
+        pins, msg = keys_between(context, carrier, other, pg, ob.name)
+    except PrintError as ex:
+        pins, msg = [], f'Split "{ob.name}" in two - no keys: {ex}'
+    if pg.gap > 0:
+        info = json.loads(other.get('mch_print_pins', '{}') or '{}')
+        n_ = Vector(info.get('normal', (0, 0, 1)))
+        other.location += n_ * blender_units(context, pg.gap / 1000.0)
+    for o in context.selected_objects:
+        o.select_set(False)
+    for o in (a, b, *pins):
+        o.select_set(True)
+    context.view_layer.objects.active = b
+    return a, b, pins, f'Split "{ob.name}" along the line: ' + msg
+
+
+class MCH_OT_print_keys(bpy.types.Operator):
+    """Keys (or pins) across the cut two selected parts share - parts from any Split (a lasso, a line), touching
+    along the cut: the smaller part gets the keys, the bigger the sockets (a fit gap all round)"""
+    bl_idname = 'mch.print_keys'
+    bl_label = 'Keys Between 2 Parts'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and len(_selected_meshes(context)) == 2
+
+    def execute(self, context):
+        a, b = key_carrier(*_selected_meshes(context))
+        try:
+            _pins, msg = keys_between(context, a, b)
+        except PrintError as ex:
+            self.report({'WARNING'}, str(ex))
+            return {'CANCELLED'}
+        self.report({'INFO'}, msg)
+        return {'FINISHED'}
+
+
 def plane_from_line(context, p0, p1, depth_point):
     """The plane through the screen line p0 - p1 and the view (world): (point, normal)."""
     from bpy_extras import view3d_utils
@@ -725,15 +1025,48 @@ def plane_from_line(context, p0, p1, depth_point):
     return (a + b) / 2, nrm.normalized()
 
 
-def _part_under_line(context, p0, p1):
-    """The mesh the line crosses most (the active one if it is crossed)."""
+def _bends(path, px=6.0):
+    """A drawn path that is not a straight line (some point more than ``px`` off the line from its start to its end)."""
+    if len(path) < 3:
+        return False
+    a, b = np.asarray(path[0], float), np.asarray(path[-1], float)
+    d = b - a
+    ln = float(np.hypot(*d))
+    if ln < 1e-9:
+        return False
+    q = np.asarray(path, float) - a
+    return float(np.abs(q[:, 0] * d[1] - q[:, 1] * d[0]).max() / ln) > px
+
+
+def _simplify(path, px=2.5):
+    """The drawn path with its points closer than a few pixels to the line through their neighbours dropped."""
+    from . import core_geometry as cg
+    try:
+        out = cg.simplify_open([tuple(p_) for p_ in path], px)
+        if out and len(out) >= 2:
+            return out
+    except (AttributeError, TypeError, ValueError):
+        pass
+    keep = [path[0]]
+    for p_ in path[1:-1]:
+        if math.dist(p_, keep[-1]) >= 6.0:
+            keep.append(p_)
+    return keep + [path[-1]]
+
+
+def _part_under_line(context, p0, p1, path=None):
+    """The mesh the line (or the drawn ``path``) crosses most (the active one if it is crossed)."""
     from bpy_extras import view3d_utils
     from . import target_rules
     region, rv3d = context.region, context.region_data
     dg = context.evaluated_depsgraph_get()
     counts = {}
-    for t in np.linspace(0.0, 1.0, 25):
-        xy = (p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t)
+    if path and len(path) > 2:
+        idx = np.linspace(0, len(path) - 1, 25)
+        spots = [tuple(np.asarray(path[int(i)], float)) for i in idx]
+    else:
+        spots = [(p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t) for t in np.linspace(0.0, 1.0, 25)]
+    for xy in spots:
         o = view3d_utils.region_2d_to_origin_3d(region, rv3d, xy)
         d = view3d_utils.region_2d_to_vector_3d(region, rv3d, xy)
         try:
@@ -759,8 +1092,8 @@ def _snap_line(p0, p1):
 
 
 class MCH_OT_print_cut(bpy.types.Operator):
-    """Drag a line across a part: it is cut there into two closed parts with connection pins across the cut.
-    Shift: the line horizontal / vertical / 45 degrees"""
+    """Drag a line across a part: it is split along the line you draw (like Split's line, following it through the
+    part) into two closed parts, keys / pins across the cut.  Shift: a straight line (horizontal / vertical / 45)"""
     bl_idname = 'mch.print_cut'
     bl_label = 'Print Cut'
     bl_options = {'REGISTER', 'UNDO'}
@@ -771,26 +1104,45 @@ class MCH_OT_print_cut(bpy.types.Operator):
 
     def invoke(self, context, event):
         self.p0 = (event.mouse_region_x, event.mouse_region_y)
-        _LIVE['line'] = (self.p0, self.p0)
+        self.path = [self.p0]
+        self.straight = bool(event.shift)
+        _LIVE['line'] = [self.p0, self.p0]
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
     def modal(self, context, event):
         xy = (event.mouse_region_x, event.mouse_region_y)
         if event.type in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE', 'LEFT_SHIFT', 'RIGHT_SHIFT'}:
-            _LIVE['line'] = (self.p0, _snap_line(self.p0, xy) if event.shift else xy)
+            self.straight = self.straight or event.shift
+            if self.straight:                     # (Shift: a straight line, snapped)
+                _LIVE['line'] = [self.p0, _snap_line(self.p0, xy) if event.shift else xy]
+            else:                                 # (0.24.166 the line as drawn: Split's line)
+                if math.dist(self.path[-1], xy) >= 4.0:
+                    self.path.append(xy)
+                _LIVE['line'] = self.path + [xy]
             context.area.tag_redraw()
             return {'RUNNING_MODAL'}
         if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
-            p0, p1 = _LIVE['line']
+            path = list(_LIVE['line'] or [])
             _LIVE['line'] = None
             context.area.tag_redraw()
-            if math.dist(p0, p1) < 8:
+            if len(path) < 2 or math.dist(path[0], path[-1]) < 8:
                 return {'CANCELLED'}
-            ob = _part_under_line(context, p0, p1)
+            p0, p1 = path[0], path[-1]
+            ob = _part_under_line(context, p0, p1, path)
             if ob is None:
                 self.report({'WARNING'}, 'Draw the line across a part')
                 return {'CANCELLED'}
+            if not self.straight and _bends(path):
+                from . import cut_engine as ce
+                try:
+                    *_r, msg = cut_along_line(context, ob, _simplify(path), ce.make_projector(context.region,
+                                                                                             context.region_data))
+                except PrintError as ex:
+                    self.report({'WARNING'}, str(ex))
+                    return {'CANCELLED'}
+                self.report({'INFO'}, msg)
+                return {'FINISHED'}
             bb = world_bounds(context, [ob])
             plane = plane_from_line(context, p0, p1, (bb[0] + bb[1]) / 2 if bb else ob.matrix_world.translation)
             if plane is None:
@@ -870,9 +1222,10 @@ class MCH_PG_Print(bpy.types.PropertyGroup):
     pin_diameter: FloatProperty(name='Diameter (mm)', default=5.0, min=0.1, soft_max=30.0, precision=2)
     pin_length: FloatProperty(name='Length (mm)', default=8.0, min=0.1, soft_max=60.0, precision=2,
                               description='Peg: how far it goes into the other part; Dowel: the whole pin')
-    clearance: FloatProperty(name='Clearance (mm)', default=0.2, min=0.0, soft_max=1.0, precision=2,
-                             description='The gap all round between a pin and its hole (the hole is twice this wider; '
-                                         '0.2 mm: a snug fit on most printers)')
+    clearance: FloatProperty(name='Fit Gap (mm)', default=0.2, min=0.0, soft_max=1.0, precision=2,
+                             description='The gap all round between a key / pin and its socket - a print needs it to '
+                                         'fit (the socket is twice this wider and this deeper; 0.2 mm: snug on most '
+                                         'FDM printers, 0.1 - 0.15 on resin)')
     gap: FloatProperty(name='Move Apart (mm)', default=0.0, min=0.0, soft_max=100.0, precision=1,
                        description='Move the upper part off this much after the cut (to see the pins)')
 
@@ -938,9 +1291,12 @@ def draw_cut(layout, context):
     row = col.row(align=True)
     for ax, label in (('Z', 'Horizontal'), ('X', 'Vertical X'), ('Y', 'Vertical Y')):
         row.operator('mch.print_cut_axis', text=label).axis = ax
+    col = layout.column(align=True)                       # 0.24.166 parts from any Split: keys between them
+    col.operator('mch.print_keys', icon='MOD_BOOLEAN')
+    col.label(text='(select the 2 halves of any Split)')
     col = layout.column(align=True)
-    for line in ('Drag a line across a part: cut there, pins across the cut', 'Shift: the line horizontal / vertical / 45',
-                 'The original is kept, hidden'):
+    for line in ('Drag across a part: split along the line you draw', 'Shift: a straight line (horizontal / vertical / 45)',
+                 'Keys on the smaller part, sockets in the bigger', 'The original is kept, hidden'):
         col.label(text=line)
 
 
@@ -975,7 +1331,7 @@ TOOLS = (
            ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None)), draw_cut),
 )
 CLASSES = (MCH_PG_Print, MCH_OT_print_measure, MCH_OT_print_clear_measures, MCH_OT_print_scale_height, MCH_OT_print_cut,
-           MCH_OT_print_cut_axis)
+           MCH_OT_print_cut_axis, MCH_OT_print_keys)
 _HANDLE = [None]
 
 

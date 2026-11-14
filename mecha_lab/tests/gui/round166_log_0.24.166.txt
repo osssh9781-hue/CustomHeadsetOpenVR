@@ -1,0 +1,9 @@
+1 Key cell True - style KEY - parts ['Arm.A', 'Arm.B'] closed [True, True] volumes [399.1, 369.0] cm3 - keys 1 on Arm.B - width 12.05 mm, gap 0.2 mm - original hidden True
+shot 1_bent_cut_key.png True
+2 Split lasso: halves ['Leg', 'Leg_Split']
+2b Keys Between cell True - keys 1 on Leg_Split - closed [True, True]
+2c the key along [-1.0, 0.003, 0.0] - one way True
+shot 2_split_keys.png True
+PASS 1 a REAL bent drag with Print Cut (Key): split along the line as drawn, one key on the smaller part, closed, the original hidden
+PASS 2 a REAL lasso with Split, then a REAL click on "Keys Between 2 Parts": a key on the end, along the way it comes off
+2/2 passed
