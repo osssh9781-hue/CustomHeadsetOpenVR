@@ -1,10 +1,10 @@
-"""Real window (0.24.171, user: "클로스 드레이프에서 진공팩마냥 내가 선택한 거 감싸 주는 것도 만들어 주라" / on Wrap This Mesh:
-"결과가 별로라네"): Vacuum Pack by REAL clicks and drags (xdotool) in the Cloth Drape window:
+"""Real window (0.24.171, user: "클로스 드레이프에서 진공팩마냥 내가 선택한 거 감싸 주는 것도 만들어 주라"; "왜 시뮬을 안 하고
+이렇게 해?"): Vacuum Pack by REAL clicks and keys (xdotool) in the Cloth Drape window - Blender's cloth simulation:
 
-  1. three parts selected, a REAL click on "Vacuum Pack Selected" - one live film round them
-  2. a REAL drag on the Hug slider (to the left: looser) - the film spans more (the torus's hole closes over)
-  3. a REAL click on "Black Latex" - the film's material
-  4. a REAL click on "Apply (a plain mesh)" - a plain mesh
+  1. two parts selected, a REAL click on "Vacuum Pack Selected" - one bag round them, copies of them collide
+  2. a REAL drag on the Suction slider - the bag's pressure follows
+  3. a REAL Space - the air sucked out frame by frame (until the last frame)
+  4. a REAL Enter - kept as a plain mesh, the colliders gone, the frame back, the parts untouched
 """
 import math
 import os
@@ -197,7 +197,7 @@ def drag_world(a, b, mods=()):
 
 def flow():
     import numpy as np
-    from mecha_lab import vacuum_pack as vp
+    from mecha_lab import cloth_drape as cd, vacuum_pack as vp
     w, a, r = view3d()
     focus()
     xdo('mousemove', 30, 540)
@@ -219,11 +219,10 @@ def flow():
         for o in list(S.objects):
             bpy.data.objects.remove(o)
         parts = []
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.45, segments=48, ring_count=24, location=(-0.6, 0, 0.45))
+        bpy.ops.mesh.primitive_monkey_add(size=0.5, location=(0, 0, 1.0))
         parts.append(C.active_object)
-        bpy.ops.mesh.primitive_torus_add(major_radius=0.35, minor_radius=0.12, location=(0.35, 0.1, 0.13))
-        parts.append(C.active_object)
-        bpy.ops.mesh.primitive_cube_add(size=0.4, location=(-0.1, 0.5, 0.2))
+        parts[0].modifiers.new('S', 'SUBSURF').levels = 1
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.09, depth=0.4, location=(0, 0.04, 0.66))
         parts.append(C.active_object)
         for o in C.selected_objects:
             o.select_set(False)
@@ -232,71 +231,62 @@ def flow():
         C.view_layer.objects.active = parts[0]
         rv = sp3.region_3d
         rv.view_perspective = 'PERSP'
-        rv.view_rotation = Euler((math.radians(55), 0.0, math.radians(25))).to_quaternion()
-        rv.view_location = (0.0, 0.1, 0.2)
-        rv.view_distance = 3.6
+        rv.view_rotation = Euler((math.radians(80), 0.0, math.radians(15))).to_quaternion()
+        rv.view_location = (0.0, 0.0, 0.9)
+        rv.view_distance = 2.2
         sp3.show_region_ui = False
         sp3.overlay.show_wireframes = True
         sp3.shading.type = 'SOLID'
-        sp3.shading.color_type = 'MATERIAL'
-        S.mch_vacuum.hug, S.mch_vacuum.film = 0.6, 'CLEAR'
+        st = S.mch_vacuum
+        st.points, st.frames, st.pressure, st.gather = 3000, 40, 80.0, 'NONE'
         bpy.ops.mch.bar_tool(tool='CDRAPE')
         bpy.ops.mch.side_page(page='TOOL')
     yield 2.0
+    mods0 = [[m.name for m in o.modifiers] for o in parts]
+    frame0 = S.frame_current
     handle = bpy.types.SpaceView3D.draw_handler_add(_count_draw, (), 'WINDOW', 'POST_PIXEL')
     yield 1.0
-
-    def film_state(film):
-        dg = C.evaluated_depsgraph_get()
-        me = film.evaluated_get(dg).data
-        P = np.empty(len(me.vertices) * 3)
-        me.vertices.foreach_get('co', P)
-        P = P.reshape(-1, 3)
-        hole = not (np.linalg.norm(P - np.array([0.35, 0.1, 0.13]), axis=1) < 0.12).any()
-        return len(P), hole, {m.name for m in me.materials if m}
     # 1
     it = yield from scrolled_item('Vacuum Pack Selected')
     if it is not None:
         yield from press(it)
-    yield 3.0
-    film = next((o for o in S.objects if vp.is_film(o)), None)
-    st1 = film_state(film) if film else None
-    log('1 the button', it is not None, '- film', film and film.name, '- parts', film and len(vp.film_parts(film)),
-        '- points, hole open, materials', st1)
-    res['1 three parts selected, a REAL click on "Vacuum Pack Selected": one live film round them'] = (
-        it is not None and film is not None and len(vp.film_parts(film)) == 3 and st1[0] > 3000 and st1[1])
-    shot('1_packed.png')
-    # 2: Hug slider dragged left
-    h0 = film.mch_vacuum.hug if film else None
-    it = yield from scrolled_item('Hug')
-    if it is not None:
-        yield from slider_drag(it, 0.6, -int(it.w * 0.045), steps=10)
-    yield 3.0
-    h1 = film.mch_vacuum.hug if film else None
-    st2 = film_state(film) if film else None
-    log('2 Hug slider', it is not None, '- hug', h0, '->', h1, '- points, hole open', st2)
-    res['2 a REAL drag on Hug (looser): the film spans the torus\'s hole now'] = (
-        it is not None and film is not None and h1 < h0 - 0.2 and not st2[1])
-    shot('2_looser.png')
-    # 3: Black Latex
-    it = yield from scrolled_item('Black Latex')
-    if it is not None:
-        yield from press(it)
     yield 2.0
-    st3 = film_state(film) if film else None
-    log('3 Black Latex', it is not None, '- materials', st3 and st3[2])
-    res['3 a REAL click on "Black Latex": the film\'s material'] = (
-        it is not None and st3 is not None and st3[2] == {'MCH Vacuum Film - Black Latex'})
-    shot('3_black.png')
-    # 4: Apply
-    it = yield from scrolled_item('Apply (a plain mesh)')
+    film = bpy.data.objects.get(cd.SIM.get('ob', '')) if cd.sim_active() else None
+    cols = [bpy.data.objects.get(n) for n in cd.SIM.get('colliders', ())]
+    log('1 the button', it is not None, '- film', film and film.name, '- mode', cd.SIM.get('mode'), '- colliders', len(cols))
+    res['1 two parts selected, a REAL click on "Vacuum Pack Selected": one bag (Blender\'s cloth), copies collide'] = (
+        it is not None and film is not None and film.modifiers.get(vp.CLOTH_MOD) is not None and len(cols) == 2)
+    shot('1_bag.png')
+    # 2: Suction slider
+    p0 = film.modifiers[vp.CLOTH_MOD].settings.uniform_pressure_force if film else 0
+    it = yield from scrolled_item('Suction')
     if it is not None:
-        yield from press(it)
+        yield from slider_drag(it, 0.4, int(it.w * 0.03), steps=8)
+    yield 1.0
+    p1 = film.modifiers[vp.CLOTH_MOD].settings.uniform_pressure_force if film else 0
+    log('2 Suction', it is not None, '- slider', round(st.pressure, 1), '- the bag\'s pressure', round(p0, 2), '->', round(p1, 2))
+    res['2 a REAL drag on Suction: the bag\'s pressure follows'] = it is not None and p1 < p0 - 0.5
+    # 3: Space
+    w, a, r = view3d()
+    xdo('mousemove', int(r.x + r.width * 0.45), int(w.height - (r.y + r.height * 0.5)))
+    yield 0.5
+    xdo('key', 'space')
+    t0 = time.time()
+    while time.time() - t0 < 240 and not cd.SIM.get('done'):
+        yield 1.0
+    log('3 Space: done', cd.SIM.get('done'), '- frame', cd.SIM.get('sess', {}).get('frame'), f'- {time.time() - t0:.0f} s')
+    res['3 a REAL Space: sucked in to the last frame'] = bool(cd.SIM.get('done')) and cd.SIM['sess']['frame'] == st.frames
+    shot('2_sucked.png')
+    # 4: Enter
+    xdo('key', 'Return')
     yield 2.0
-    log('4 Apply', it is not None, '- still live', film and vp.is_film(film), '- modifiers', film and len(film.modifiers),
-        '- faces', film and len(film.data.polygons))
-    res['4 a REAL click on "Apply (a plain mesh)": a plain mesh'] = (
-        it is not None and film is not None and not vp.is_film(film) and not film.modifiers and len(film.data.polygons) > 3000)
+    left = [o.name for o in bpy.data.objects if 'vacuum collider' in o.name]
+    log('4 Enter: active', cd.sim_active(), '- film mods', film and [m.name for m in film.modifiers], '- colliders left', left,
+        '- frame', S.frame_current, '- parts', [[m.name for m in o.modifiers] for o in parts])
+    res['4 a REAL Enter: kept as a plain mesh, the colliders gone, the frame back, the parts untouched'] = (
+        not cd.sim_active() and film is not None and not film.modifiers and not left and S.frame_current == frame0
+        and [[m.name for m in o.modifiers] for o in parts] == mods0)
+    shot('3_kept.png')
     bpy.types.SpaceView3D.draw_handler_remove(handle, 'WINDOW')
     for k_, v in res.items():
         log(('PASS ' if v else 'FAIL ') + k_)

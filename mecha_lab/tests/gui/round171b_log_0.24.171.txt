@@ -1,12 +1,12 @@
-1 the button True - film Vacuum Pack - parts 3 - points, hole open, materials (32226, True, {'MCH Vacuum Film - Clear Plastic'})
-shot 1_packed.png True
-2 Hug slider True - hug 0.6000000238418579 -> 0.16653606295585632 - points, hole open (32292, False, {'MCH Vacuum Film - Clear Plastic'})
-shot 2_looser.png True
-3 Black Latex True - materials {'MCH Vacuum Film - Black Latex'}
-shot 3_black.png True
-4 Apply True - still live False - modifiers 0 - faces 32290
-PASS 1 three parts selected, a REAL click on "Vacuum Pack Selected": one live film round them
-PASS 2 a REAL drag on Hug (looser): the film spans the torus's hole now
-PASS 3 a REAL click on "Black Latex": the film's material
-PASS 4 a REAL click on "Apply (a plain mesh)": a plain mesh
+1 the button True - film Vacuum Pack - mode VACUUM - colliders 2
+shot 1_bag.png True
+2 Suction True - slider 123.8 - the bag's pressure -16.0 -> -24.75
+3 Space: done True - frame 40 - 26 s
+shot 2_sucked.png True
+4 Enter: active False - film mods [] - colliders left [] - frame 1 - parts [['S'], []]
+shot 3_kept.png True
+PASS 1 two parts selected, a REAL click on "Vacuum Pack Selected": one bag (Blender's cloth), copies collide
+PASS 2 a REAL drag on Suction: the bag's pressure follows
+PASS 3 a REAL Space: sucked in to the last frame
+PASS 4 a REAL Enter: kept as a plain mesh, the colliders gone, the frame back, the parts untouched
 4/4 passed

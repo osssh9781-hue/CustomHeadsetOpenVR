@@ -32,7 +32,8 @@ TREE_V = 3
 DIR_ATTR, W_ATTR, K_ATTR = 'mch_vac_dir', 'mch_vac_w', 'mch_vac_k'   # (the fine creases' direction, strength, scale)
 FILMS = (('CLEAR', 'Clear Plastic', 'A clear glossy vacuum bag'),
          ('MILKY', 'Milky Plastic', 'A frosted, half see-through film'),
-         ('BLACK', 'Black Latex', 'Opaque glossy black latex'))
+         ('BLACK', 'Black Latex', 'Opaque glossy black latex'),
+         ('CLOTH', 'Cloth', 'A matte fabric (a cloth pulled over it)'))
 
 
 # ---- the parts -------------------------------------------------------------------------------------------------------
@@ -293,7 +294,7 @@ def push_out(b, geo, fine, grad, gap, passes=2):
 
 # ---- the film material ---------------------------------------------------------------------------------------------
 
-FILM_V = 7
+FILM_V = 8
 
 
 def film_material(kind):
@@ -418,8 +419,7 @@ class MCH_PG_Vacuum(bpy.types.PropertyGroup):
                                description='How much of the cloth round the gather point is pinned and drawn in')
     collider_faces: IntProperty(name='Collider Faces', default=120000, min=5000, max=2000000,
                                 description='A heavy part collides as a lighter copy of about this many faces')
-    film: EnumProperty(name='Film', items=FILMS + (('CLOTH', 'Cloth', 'A matte fabric (a cloth pulled over it)'),),
-                       default='CLOTH')
+    film: EnumProperty(name='Film', items=FILMS, default='CLOTH')
 
 
 # ---- operators ------------------------------------------------------------------------------------------------------
@@ -482,7 +482,8 @@ def cloth_settings(film, vp, size):
         cs.vertex_group_mass = 'MCH Gather'
         cs.pin_stiffness = 1.0
     cc = cm.collision_settings
-    cc.distance_min = max(size * 0.002, 1e-4)
+    cc.collision_quality = 3                          # (a sharp tip / a thin ear never slips between the points)
+    cc.distance_min = max(size * 0.004, 1e-4)
     cc.use_self_collision = vp.self_collide
     cc.self_distance_min = max(size * 0.0015, 1e-4)
 
@@ -541,7 +542,7 @@ def perform(context):
     me.materials.append(film_material(vp.film))
     frame0 = context.scene.frame_current
     gathered = _gather(film, me, vp, frame0) if vp.gather != 'NONE' else 0
-    cols = _colliders(context, parts, vp.collider_faces, max(size * 0.002, 1e-4))
+    cols = _colliders(context, parts, vp.collider_faces, max(size * 0.004, 1e-4))
     cm = film.modifiers.new(CLOTH_MOD, 'CLOTH')
     cm.point_cache.frame_start = frame0
     cm.point_cache.frame_end = frame0 + vp.frames
