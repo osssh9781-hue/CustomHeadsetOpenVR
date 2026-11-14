@@ -322,18 +322,51 @@ def organize_loops(loops):
     return list(groups.values())
 
 
+def _cross_point(a, b, c, d):
+    denom = (b[0] - a[0]) * (d[1] - c[1]) - (b[1] - a[1]) * (d[0] - c[0])
+    if abs(denom) < 1e-12:
+        return ((b[0] + c[0]) * 0.5, (b[1] + c[1]) * 0.5)
+    t = ((c[0] - a[0]) * (d[1] - c[1]) - (c[1] - a[1]) * (d[0] - c[0])) / denom
+    return (a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]))
+
+
+def untangle_loop(loop, max_frac=0.04, max_px2=900.0, tries=64):
+    """0.24.163 (user: "타블렛으로 하면 이런 경고 - 마우스로 하면 되는데"): a pen stroke tends to run past its start, hook
+    as the pen lifts or knot on a wobble - small loops where the outline crosses itself.  Cut each such small loop off
+    at its crossing (keep the big part); a crossing whose smaller part is big (a real figure 8: more than ``max_frac``
+    of the area and ``max_px2`` px²) is left for the caller to refuse."""
+    lp = list(loop)
+    for _k in range(tries):
+        if len(lp) < 4:
+            break
+        hit = find_intersections([lp], limit=1)
+        if not hit:
+            break
+        n = len(lp)
+        i, j = sorted(hit[0])                        # segments i (lp[i] - lp[i+1]) and j cross
+        x = _cross_point(lp[i], lp[(i + 1) % n], lp[j], lp[(j + 1) % n])
+        inner = [x] + lp[i + 1:j + 1]                # the loop between the two segments
+        outer = lp[:i + 1] + [x] + lp[j + 1:]         # the rest
+        ai, ao = abs(signed_area(inner)), abs(signed_area(outer))
+        small, big = (inner, outer) if ai <= ao else (outer, inner)
+        if min(ai, ao) > max(max_px2, max_frac * (ai + ao)):
+            break                                     # (a real figure 8: refused below)
+        lp = big
+    return lp
+
+
 def prepare_loops(loops, min_area=4.0):
     """Clean, validate and group screen loops. Raises CutError when unusable."""
     clean = []
     for lp in loops:
         lp = dedupe_loop(lp)
+        lp = untangle_loop(trim_closing_overlap(lp))  # (0.24.163 a pen's overshoot / hook / knot: cut off)
         if len(lp) >= 3 and abs(signed_area(lp)) >= min_area:
             clean.append(lp)
     if not clean:
         raise CutError('The drawn shape is too small or has zero area.')
     if find_intersections(clean):
-        raise CutError('The outline crosses itself. Draw a simpler outline '
-                       '(or use Brush Stroke, which trims the closing overlap).')
+        raise CutError('The outline crosses itself in two big loops (a figure 8). Draw it as one loop.')
     return organize_loops(clean)
 
 
