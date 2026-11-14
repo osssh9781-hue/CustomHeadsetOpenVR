@@ -57,6 +57,7 @@ def settle(ob):
 
 st = S.mch_fur
 st.density, st.length, st.clump, st.frizz, st.edge_soft = 8000.0, 0.08, 0.0, 0.0, 0
+st.volume, st.spread = 0.0, 0.0                                     # (0.24.160 off for the exact angles; tried below)
 t0 = time.time()
 msg = cf.perform(C, ellipse(500, 500, 120, 90), FRONT)                  # (0.6 x 0.45 on the sphere's front)
 t_draw = time.time() - t0
@@ -89,8 +90,8 @@ check(f'Length 0.08, Length Random 0.35: every strand 0.052 .. 0.08 long (here {
 rad = np.empty(len(cv.points), np.float32)
 cv.attributes['radius'].data.foreach_get('value', rad)
 rad = rad.reshape(len(P), -1)
-check('Root / Tip Thickness 0.8 mm / 0.12 mm: the radius half of it at the root and the tip',
-      abs(rad[:, 0].mean() - 0.0004) < 1e-6 and abs(rad[:, -1].mean() - 0.00006) < 1e-6)
+check(f'Root / Tip Thickness {st.root_thick * 1000:.2f} mm / {st.tip_thick * 1000:.2f} mm: the radius half of it at the '
+      f'root and the tip', abs(rad[:, 0].mean() - st.root_thick / 2) < 1e-6 and abs(rad[:, -1].mean() - st.tip_thick / 2) < 1e-6)
 col = np.empty(len(cv.points) * 4, np.float32)
 cv.attributes['mch_fur_col'].data.foreach_get('color', col)
 col = col.reshape(len(P), -1, 4)
@@ -212,11 +213,21 @@ def curliness(P):
 pg.segments = 32
 settle(fur)
 c0 = curliness(strands(fur)[0])
-pg.curl, pg.curl_turns = 1.0, 3.0
+
+
+def allp(**kw):
+    """(0.24.160 Curl / Clump / Tip Gather are each area's: every area set)"""
+    for part_ in pg.parts:
+        for k_, v_ in kw.items():
+            setattr(part_, k_, v_)
+
+
+allp(curl=1.0)
+pg.curl_turns = 3.0
 settle(fur)
 c1 = curliness(strands(fur)[0])
 check(f'Curl 1, 3 turns (32 segments): the strands curl (path / straight distance {c0:.2f} -> {c1:.2f})', c0 < 1.01 and c1 > 1.25)
-pg.curl = 0.0
+allp(curl=0.0)
 pg.frizz = 1.0
 settle(fur)
 cf_ = curliness(strands(fur)[0])
@@ -234,11 +245,12 @@ def tip_spread(P):
     return float(np.mean([kd.find_n(Vector(p), 2)[1][2] for p in P[:, -1]]))
 
 
-pg.clump, pg.clump_size = 0.0, 15
+allp(clump=0.0)
+pg.clump_size = 15
 settle(fur)
 P0, _cv = strands(fur)
 s0 = tip_spread(P0)
-pg.clump = 1.0
+allp(clump=1.0)
 settle(fur)
 P1, _cv = strands(fur)
 s1 = tip_spread(P1)
@@ -246,11 +258,75 @@ tips_unique = len({tuple(np.round(p, 5)) for p in P1[:, -1]})
 check(f'Clump 1, Clump Size 15: the tips meet in tufts ({tips_unique} tip spots for {len(P1)} strands, about 1 in 15; the '
       f'nearest other tip {s0 * 1000:.1f} -> {s1 * 1000:.2f} mm), the roots where they were',
       s1 < s0 * 0.05 and len(P1) / 30 < tips_unique < len(P1) / 7 and np.allclose(P0[:, 0], P1[:, 0], atol=1e-6))
-pg.clump = 0.4
+allp(clump=0.4)
 settle(fur)
 P2, _cv = strands(fur)
 check('Clump 0.4: halfway - the tips closer together, not met', s1 < tip_spread(P2) < s0)
-pg.clump = 0.0
+allp(clump=0.0)
+# 0.24.160 per area: Curl / Clump on one area only; Tip Gather - the area's tips to one point (the end of its tilt)
+settle(fur)
+ids = cf.part_ids(fur)
+P0, _cv = strands(fur)
+pg.parts[1].curl = 1.2
+pg.curl_turns = 3.0
+settle(fur)
+P1, _cv = strands(fur)
+r0 = P1[:, 0]
+low = (r0[:, 2] < -0.6) & (r0[:, 2] > -0.8)
+mid = np.abs(r0[:, 2]) < 0.1
+check(f'Curl on Area 2 only: its strands curl (path / straight {curliness(P1[low]):.2f}), Area 1\'s stay straight '
+      f'({curliness(P1[mid]):.2f})', curliness(P1[low]) > 1.2 and curliness(P1[mid]) < 1.01)
+pg.parts[1].curl = 0.0
+for i_, part_ in enumerate(pg.parts):
+    part_.lie = math.radians(60)
+pg.parts[1].gather = 1.0
+settle(fur)
+P2, _cv = strands(fur)
+r0 = P2[:, 0]
+low = (r0[:, 2] < -0.6) & (r0[:, 2] > -0.8)
+mid = np.abs(r0[:, 2]) < 0.1
+tip_sd_low = float(np.linalg.norm(P2[low, -1].std(axis=0)))
+root_sd_low = float(np.linalg.norm(P2[low, 0].std(axis=0)))
+tip_sd_mid = float(np.linalg.norm(P2[mid, -1].std(axis=0)))
+check(f'Tip Gather 1 on Area 2: its tips meet in one point (their spread {tip_sd_low * 1000:.2f} mm, the roots '
+      f'{root_sd_low * 1000:.0f} mm), its roots where they were; Area 1\'s tips as spread as before ({tip_sd_mid * 1000:.0f} mm)',
+      low.sum() > 20 and tip_sd_low < 0.002 and root_sd_low > 0.05 and tip_sd_mid > 0.05)
+pg.parts[1].gather = 0.5
+settle(fur)
+P3, _cv = strands(fur)
+r0 = P3[:, 0]
+low = (r0[:, 2] < -0.6) & (r0[:, 2] > -0.8)
+half = float(np.linalg.norm(P3[low, -1].std(axis=0)))
+check(f'... Tip Gather 0.5: halfway ({half * 1000:.1f} mm)', tip_sd_low < half < root_sd_low)
+pg.parts[1].gather = 0.0
+# Volume: the strands rise off the skin at the root and bend over into their tilt; Spread: each a little different
+allp(lie=math.radians(80))
+pg.volume = 1.0
+settle(fur)
+P4, _cv = strands(fur)
+nn = P4[:, 0] / np.linalg.norm(P4[:, 0], axis=1)[:, None]
+first = P4[:, 1] - P4[:, 0]
+last = P4[:, -1] - P4[:, -2]
+a_first = np.degrees(np.arccos(np.clip(np.einsum('ij,ij->i', first / np.linalg.norm(first, axis=1)[:, None], nn), -1, 1)))
+a_last = np.degrees(np.arccos(np.clip(np.einsum('ij,ij->i', last / np.linalg.norm(last, axis=1)[:, None], nn), -1, 1)))
+check(f'Volume 1 (Lie Down 80): each strand rises off the skin ({a_first.mean():.0f} deg off the normal at the root) and bends '
+      f'over to its tilt at the tip ({a_last.mean():.0f} deg) - fuller', a_first.mean() < 25 and a_last.mean() > 70)
+pg.volume = 0.0
+pg.spread = 1.0
+settle(fur)
+P5, _cv = strands(fur)
+nn = P5[:, 0] / np.linalg.norm(P5[:, 0], axis=1)[:, None]
+d5 = (P5[:, 1] - P5[:, 0])
+d5 /= np.linalg.norm(d5, axis=1)[:, None]
+a5 = np.degrees(np.arccos(np.clip(np.einsum('ij,ij->i', d5, nn), -1, 1)))
+check(f'Spread 1: each strand\'s tilt a little different (their tilts {a5.std():.1f} deg apart round {a5.mean():.0f})',
+      a5.std() > 8)
+pg.spread = 0.0
+allp(lie=0.0)
+check('new furs start fuller: Density 40000 a square metre, Root Thickness 1 mm, Volume 0.5, Spread 0.3',
+      abs(cf.MCH_PG_Fur.bl_rna.properties['density'].default - 40000) < 1e-3
+      and abs(cf.MCH_PG_Fur.bl_rna.properties['root_thick'].default - 0.001) < 1e-9
+      and abs(cf.MCH_PG_Fur.bl_rna.properties['volume'].default - 0.5) < 1e-6)
 
 # more area: draw again with the fur selected - the same fur, more strands; Alt: taken away
 n_before = len(strands(fur)[0])

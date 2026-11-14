@@ -35,6 +35,14 @@ def _fur(context):
     return ob.mch_fur if ob is not None else getattr(context.scene, 'mch_fur', None)
 
 
+def _fur_area(context):
+    """0.24.160 the selected fur's picked area (its tilt, curl, clump, tip gather), else the fur's / the next fur's"""
+    from . import creature_fur
+    ob = creature_fur.active_fur(context)
+    part = creature_fur.current_part(ob) if ob is not None else None
+    return part if part is not None else _fur(context)
+
+
 def _base(context):
     from . import base_mesh
     ob = base_mesh.active_live_base(context)
@@ -89,7 +97,7 @@ SPEC = {
     'SMOVE': [(_scene('mch_concept'), 'radius_px'), (_scene('mch_concept'), 'path_hardness'),
               (_scene('mch_concept'), 'path_taper')],
     'CGREEBLE': [(_scene('mch_cgreeble'), 'scale'), (_scene('mch_cgreeble'), 'gap'), (_scene('mch_cgreeble'), 'rows')],
-    'FUR': [(_fur, 'length'), (_fur, 'density'), (_fur, 'curl'), (_fur, 'clump')],
+    'FUR': [(_fur, 'length'), (_fur, 'density'), (_fur_area, 'lie'), (_fur_area, 'curl'), (_fur_area, 'gather')],
     'GREEBLE': [(_scene('mch_greeble'), 'scale'), (_scene('mch_greeble'), 'gap'), (_scene('mch_greeble'), 'rows')],
     'GSCULPT': [(_scene('mch_geo'), 'brush'), (_scene('mch_geo'), 'size_px'), (_scene('mch_geo'), 'intensity')],
     'SMART': [(_scene('mch_smart'), 'ndof_do'), (_scene('mch_smart'), 'axes'), (_scene('mch_smart'), 'speed'),

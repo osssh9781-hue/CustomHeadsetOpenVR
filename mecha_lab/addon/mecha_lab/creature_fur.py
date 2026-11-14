@@ -35,7 +35,7 @@ from mathutils import Matrix, Vector
 from . import core_geometry as cg
 
 TREE = 'MCH Fur'
-TREE_VERSION = 10
+TREE_VERSION = 11
 MOD = 'MCH Fur'
 MAT = 'MCH Fur'
 AREA_KEY = 'mch_fur_area'          # on a fur object: the body attribute that holds its area
@@ -45,22 +45,26 @@ COLLECTION = 'Creature Fur'
 PART_KEY = 'mch_fur_parts'         # on a fur object: the body attribute naming each point's area (1, 2 ...; 0 none)
 LIE_KEY = 'mch_fur_lies'           # ... its tilt from the normal there (radians)
 FLOW_KEY = 'mch_fur_flows'         # ... which way it tilts there ((cos, sin, 0) of the Flow Angle)
+LOOK_KEY = 'mch_fur_looks'         # 0.24.160 ... its Curl, Clump, Tip Gather there (a vector)
 
 # (prop, socket name, socket type, default, min, max) - the values each fur keeps (its modifier's inputs)
 LIVE = (
-    ('density', 'Density', 'FLOAT', 20000.0, 1.0, 2000000.0),
+    ('density', 'Density', 'FLOAT', 40000.0, 1.0, 2000000.0),
     ('length', 'Length', 'FLOAT', 0.05, 0.0005, 5.0),
     ('length_random', 'Length Random', 'FLOAT', 0.35, 0.0, 0.95),
     ('lie', 'Lie Down', 'FLOAT', math.radians(50), 0.0, math.pi / 2),
     ('flow', 'Flow Angle', 'FLOAT', 0.0, -2 * math.pi, 2 * math.pi),
+    ('volume', 'Volume', 'FLOAT', 0.5, 0.0, 1.0),
+    ('spread', 'Spread', 'FLOAT', 0.3, 0.0, 1.0),
     ('gravity', 'Gravity', 'FLOAT', 0.4, 0.0, 5.0),
     ('curl', 'Curl', 'FLOAT', 0.0, 0.0, 3.0),
     ('curl_turns', 'Curl Turns', 'FLOAT', 2.0, 0.0, 20.0),
     ('frizz', 'Frizz', 'FLOAT', 0.15, 0.0, 2.0),
     ('clump', 'Clump', 'FLOAT', 0.25, 0.0, 1.0),
     ('clump_size', 'Clump Size', 'INT', 12, 1, 500),
-    ('root_thick', 'Root Thickness', 'FLOAT', 0.0008, 0.00001, 0.05),
-    ('tip_thick', 'Tip Thickness', 'FLOAT', 0.00012, 0.0, 0.05),
+    ('gather', 'Tip Gather', 'FLOAT', 0.0, 0.0, 1.0),
+    ('root_thick', 'Root Thickness', 'FLOAT', 0.001, 0.00001, 0.05),
+    ('tip_thick', 'Tip Thickness', 'FLOAT', 0.00015, 0.0, 0.05),
     ('segments', 'Segments', 'INT', 8, 2, 64),
     ('edge_soft', 'Edge Soft', 'INT', 3, 0, 60),
     ('part_soft', 'Part Soft', 'INT', 3, 0, 60),
@@ -79,11 +83,14 @@ DESCS = {
     'lie': 'The tilt from the skin\'s normal: 0 standing straight out of the skin, 90 flat on it (the selected area\'s)',
     'flow': 'Which way it tilts, turned round the normal: 0 down the body (the selected area\'s)',
     'part_soft': 'Between areas tilted differently: blended over this many rings of points (0: a sharp border)',
+    'volume': 'Fuller fur: the strands rise off the skin at the root and bend over into their tilt toward the tip',
+    'spread': 'Fuller fur: each strand\'s tilt and direction a little different, at random',
+    'gather': 'The area\'s tips gathered to one point - the end of its tilt (a tuft / a point); the selected area\'s',
     'gravity': 'Bends the strands down toward their tips',
-    'curl': 'Curls round each strand (how wide)',
+    'curl': 'Curls round each strand (how wide) - the selected area\'s',
     'curl_turns': 'How many turns along a strand',
     'frizz': 'A small random wobble along each strand',
-    'clump': 'Tips gathered into tufts (1: the tips meet)',
+    'clump': 'Tips gathered into tufts (1: the tips meet) - the selected area\'s',
     'clump_size': 'About how many strands in a tuft',
     'root_thick': 'A strand\'s thickness at the skin',
     'tip_thick': 'A strand\'s thickness at its tip',
@@ -214,6 +221,8 @@ def fur_tree():
     _socket(ng, 'Area', 'STRING')
     _socket(ng, 'Lie Attr', 'STRING')
     _socket(ng, 'Flow Attr', 'STRING')
+    _socket(ng, 'Look Attr', 'STRING')
+    _socket(ng, 'Part Attr', 'STRING')
     _socket(ng, 'Color Attribute', 'STRING')
     _socket(ng, 'Material', 'MATERIAL')
     for _p, name, kind, default, lo, hi in LIVE:
@@ -268,8 +277,14 @@ def fur_tree():
     fblur = b.node('GeometryNodeBlurAttribute', data_type='FLOAT_VECTOR')
     b.feed(fblur.inputs['Value'], fraw.outputs['Attribute'])
     b.feed(fblur.inputs['Iterations'], I['Part Soft'])
+    kraw = b.attr(I['Look Attr'], 'FLOAT_VECTOR')                          # (0.24.160 Curl, Clump, Tip Gather)
+    kblur = b.node('GeometryNodeBlurAttribute', data_type='FLOAT_VECTOR')
+    b.feed(kblur.inputs['Value'], kraw.outputs['Attribute'])
+    b.feed(kblur.inputs['Iterations'], I['Part Soft'])
     amesh = b.store(cut.outputs['Selection'], 'mch_tl', lblur.outputs['Value'])
     amesh = b.store(amesh, 'mch_tf', fblur.outputs['Value'], 'FLOAT_VECTOR')
+    amesh = b.store(amesh, 'mch_tk', kblur.outputs['Value'], 'FLOAT_VECTOR')
+    amesh = b.store(amesh, 'mch_tp', b.attr(I['Part Attr'], 'INT').outputs['Attribute'], 'INT')
     nearest = b.node('GeometryNodeSampleNearest', domain='POINT')
     b.feed(nearest.inputs['Geometry'], amesh)
     b.feed(nearest.inputs['Sample Position'], b.node('GeometryNodeInputPosition').outputs['Position'])
@@ -294,6 +309,24 @@ def fur_tree():
     b.feed(fsw.inputs['True'], sf.outputs['Value'])
     pts = b.store(pts, 'mch_fur_lie', lsw.outputs['Output'])
     pts = b.store(pts, 'mch_fur_fl', fsw.outputs['Output'], 'FLOAT_VECTOR')
+    sk = b.node('GeometryNodeSampleIndex', data_type='FLOAT_VECTOR', domain='POINT')
+    b.feed(sk.inputs['Geometry'], amesh)
+    b.feed(sk.inputs['Value'], b.attr('mch_tk', 'FLOAT_VECTOR').outputs['Attribute'])
+    b.feed(sk.inputs['Index'], nearest.outputs['Index'])
+    glook = b.node('ShaderNodeCombineXYZ')
+    b.feed(glook.inputs[0], I['Curl'])
+    b.feed(glook.inputs[1], I['Clump'])
+    b.feed(glook.inputs[2], I['Tip Gather'])
+    ksw = b.node('GeometryNodeSwitch', input_type='VECTOR')
+    b.feed(ksw.inputs['Switch'], kraw.outputs['Exists'])
+    b.feed(ksw.inputs['False'], glook.outputs['Vector'])
+    b.feed(ksw.inputs['True'], sk.outputs['Value'])
+    pts = b.store(pts, 'mch_fur_look', ksw.outputs['Output'], 'FLOAT_VECTOR')
+    spart = b.node('GeometryNodeSampleIndex', data_type='INT', domain='POINT')
+    b.feed(spart.inputs['Geometry'], amesh)
+    b.feed(spart.inputs['Value'], b.attr('mch_tp', 'INT').outputs['Attribute'])
+    b.feed(spart.inputs['Index'], nearest.outputs['Index'])
+    pts = b.store(pts, 'mch_fur_part', spart.outputs['Value'], 'INT')
     pp = b.attr(I['Color Attribute'], 'FLOAT_COLOR')
     use_pp = b.node('FunctionNodeBooleanMath', operation='AND')
     b.feed(use_pp.inputs[0], I['Use Polypaint'])
@@ -349,7 +382,19 @@ def fur_tree():
                                                     (1e-6, 0.0, 0.0))))
     f = b.vec('ADD', b.vec('SCALE', f, scale=cs.outputs['X']),
               b.vec('SCALE', b.vec('CROSS_PRODUCT', n_, f), scale=cs.outputs['Y']))
-    lie = b.attr('mch_fur_lie').outputs['Attribute']                          # (an angle from the normal)
+    # 0.24.160 Spread: each strand's direction turned a little round the normal and its tilt a little more / less
+    sid = b.attr('mch_i', 'INT').outputs['Attribute']
+    turn = b.math('MULTIPLY', b.random(sid, b.math('ADD', I['Seed'], 41.0), -1.0, 1.0), b.math('MULTIPLY', I['Spread'], 0.9))
+    f = b.vec('ADD', b.vec('SCALE', f, scale=b.math('COSINE', turn)),
+              b.vec('SCALE', b.vec('CROSS_PRODUCT', n_, f), scale=b.math('SINE', turn)))
+    lie_s = b.math('ADD', b.attr('mch_fur_lie').outputs['Attribute'], b.math(
+        'MULTIPLY', b.random(sid, b.math('ADD', I['Seed'], 43.0), -1.0, 1.0), b.math('MULTIPLY', I['Spread'], 0.5)))
+    lie_s = b.math('MINIMUM', b.math('MAXIMUM', lie_s, 0.0), math.pi / 2)       # (an angle from the normal)
+    # 0.24.160 Volume: the strand rises off the skin at its root and bends over into its tilt toward the tip
+    lie_root = b.math('MULTIPLY', lie_s, b.math('SUBTRACT', 1.0, b.math('MULTIPLY', I['Volume'], 0.85)))
+    lie = b.math('ADD', lie_root, b.math('MULTIPLY', b.math('SUBTRACT', lie_s, lie_root), b.math('POWER', t, 0.6)))
+    look = b.node('ShaderNodeSeparateXYZ')
+    b.feed(look.inputs[0], b.attr('mch_fur_look', 'FLOAT_VECTOR').outputs['Attribute'])
     d0 = b.vec('NORMALIZE', b.vec('ADD', b.vec('SCALE', n_, scale=b.math('COSINE', lie)),
                                   b.vec('SCALE', f, scale=b.math('SINE', lie))))
     d = b.vec('ADD', d0, b.vec('SCALE', down, scale=b.math('MULTIPLY', I['Gravity'], t)))
@@ -358,7 +403,7 @@ def fur_tree():
     ph = b.math('ADD', b.math('MULTIPLY', b.math('MULTIPLY', I['Curl Turns'], t), 2 * math.pi),
                 b.math('MULTIPLY', b.attr('mch_ph').outputs['Attribute'], 2 * math.pi))
     curl = b.vec('SCALE', b.vec('ADD', b.vec('SCALE', wv, scale=b.math('COSINE', ph)),
-                                b.vec('SCALE', vv, scale=b.math('SINE', ph))), scale=I['Curl'])
+                                b.vec('SCALE', vv, scale=b.math('SINE', ph))), scale=look.outputs['X'])
     noise = b.node('ShaderNodeTexNoise', noise_dimensions='4D')
     p0 = b.attr('mch_p0', 'FLOAT_VECTOR').outputs['Attribute']
     b.feed(noise.inputs['Vector'], b.vec('SCALE', p0, scale=40.0))
@@ -394,12 +439,42 @@ def fur_tree():
     b.feed(gpos.inputs['Geometry'], shaped)
     b.feed(gpos.inputs['Value'], b.node('GeometryNodeInputPosition').outputs['Position'])
     b.feed(gpos.inputs['Index'], gpt)
-    k = b.math('MULTIPLY', I['Clump'], b.math('POWER', t, 1.3))
+    k = b.math('MULTIPLY', look.outputs['Y'], b.math('POWER', t, 1.3))            # (the area's Clump)
     sp2 = b.node('GeometryNodeSetPosition')
     b.feed(sp2.inputs['Geometry'], shaped)
     b.feed(sp2.inputs['Position'], b.mix_vec(k, b.node('GeometryNodeInputPosition').outputs['Position'],
                                              gpos.outputs['Value']))
     geo = sp2.outputs['Geometry']
+
+    # 0.24.160 Tip Gather: each area's tips to one point - the mean of that area's tips (the end of its tilt); the
+    # strand moved more toward its tip (its root stays), as much as the area's Tip Gather
+    segs1 = b.imath('ADD', I['Segments'], 1)
+    cindex = b.node('GeometryNodeInputIndex').outputs['Index']                # (on the curve domain: the curve)
+    tip_c = b.node('GeometryNodeSampleIndex', data_type='FLOAT_VECTOR', domain='POINT')
+    b.feed(tip_c.inputs['Geometry'], geo)
+    b.feed(tip_c.inputs['Value'], b.node('GeometryNodeInputPosition').outputs['Position'])
+    b.feed(tip_c.inputs['Index'], b.imath('ADD', b.imath('MULTIPLY', cindex, segs1), I['Segments']))
+    part_c = b.attr('mch_fur_part', 'INT').outputs['Attribute']
+    acc_t = b.node('GeometryNodeAccumulateField', data_type='FLOAT_VECTOR', domain='CURVE')
+    b.feed(acc_t.inputs['Value'], tip_c.outputs['Value'])
+    b.feed(acc_t.inputs['Group ID'], part_c)
+    acc_n = b.node('GeometryNodeAccumulateField', data_type='FLOAT', domain='CURVE')
+    acc_n.inputs[0].default_value = 1.0
+    for inp in acc_n.inputs:
+        if inp.name == 'Value' and inp.enabled:
+            inp.default_value = 1.0
+    b.feed(acc_n.inputs['Group ID'], part_c)
+    mean_tip = b.vec('SCALE', acc_t.outputs['Total'], scale=b.math('DIVIDE', 1.0, b.math('MAXIMUM', acc_n.outputs['Total'], 1.0)))
+    own_tip = b.node('GeometryNodeSampleIndex', data_type='FLOAT_VECTOR', domain='POINT')
+    b.feed(own_tip.inputs['Geometry'], geo)
+    b.feed(own_tip.inputs['Value'], b.node('GeometryNodeInputPosition').outputs['Position'])
+    b.feed(own_tip.inputs['Index'], b.imath('ADD', b.imath('MULTIPLY', cidx, segs1), I['Segments']))
+    ease = b.math('MULTIPLY', b.math('MULTIPLY', t, t), b.math('SUBTRACT', 3.0, b.math('MULTIPLY', t, 2.0)))
+    sp3 = b.node('GeometryNodeSetPosition')
+    b.feed(sp3.inputs['Geometry'], geo)
+    b.feed(sp3.inputs['Offset'], b.vec('SCALE', b.vec('SUBTRACT', mean_tip, own_tip.outputs['Value']),
+                                       scale=b.math('MULTIPLY', look.outputs['Z'], ease)))
+    geo = sp3.outputs['Geometry']
 
     # thickness, colour, viewport share, material
     rad = b.node('GeometryNodeSetCurveRadius')
@@ -630,6 +705,14 @@ def push(ob):
     body = ob.parent
     if body is not None:
         gs.set_input(mod, 'Color Attribute', color_attr_name(body))
+    if ob.get(PART_KEY) and not ob.get(LOOK_KEY):     # (a fur from 0.24.159: its areas' look name now)
+        ob[LOOK_KEY] = ob[AREA_KEY].replace('mch_fur_', 'mch_flook_')
+    for key, sock in ((LIE_KEY, 'Lie Attr'), (FLOW_KEY, 'Flow Attr'), (LOOK_KEY, 'Look Attr'), (PART_KEY, 'Part Attr')):
+        if ob.get(key):
+            try:
+                gs.set_input(mod, sock, ob[key])
+            except (KeyError, AttributeError, TypeError):
+                pass
 
 
 def new_fur(context, body, pg_from):
@@ -655,6 +738,7 @@ def new_fur(context, body, pg_from):
     ob[PART_KEY] = ob[AREA_KEY].replace('mch_fur_', 'mch_fpart_')
     ob[LIE_KEY] = ob[AREA_KEY].replace('mch_fur_', 'mch_flie_')
     ob[FLOW_KEY] = ob[AREA_KEY].replace('mch_fur_', 'mch_fflow_')
+    ob[LOOK_KEY] = ob[AREA_KEY].replace('mch_fur_', 'mch_flook_')
     mat = fur_material()
     data.materials.append(mat)
     mod = ob.modifiers.new(MOD, 'NODES')
@@ -713,9 +797,12 @@ def perform(context, loops, projector, erase=False):
         cur = new_fur(context, body, context.scene.mch_fur)
     inside = paint_area(body, cur[AREA_KEY], idx, 0.0 if erase else 1.0)
     if not erase:
-        part = current_part(cur)
-        lie, flow = (part.lie, part.flow) if part is not None else (cur.mch_fur.lie, cur.mch_fur.flow)
-        add_part(cur, idx, lie, flow)                 # (0.24.159 this area keeps the tilt it was drawn with)
+        part = current_part(cur)                      # (0.24.159 this area keeps the tilt it was drawn with -
+        g = cur.mch_fur                               #  0.24.160 and its Curl, Clump, Tip Gather)
+        if part is not None:
+            add_part(cur, idx, part.lie, part.flow, part.curl, part.clump, part.gather)
+        else:
+            add_part(cur, idx, g.lie, g.flow, g.curl, g.clump, g.gather)
     push(cur)                                         # (the body's polypaint name, if it changed)
     try:
         setattr(wm, NEW_KEY, False)
@@ -799,12 +886,23 @@ def write_part(fur, k):
     fv = fv.reshape(-1, 3)
     fv[sel] = (math.cos(part.flow), math.sin(part.flow), 0.0)
     fa.data.foreach_set('vector', fv.ravel())
+    if not fur.get(LOOK_KEY):
+        fur[LOOK_KEY] = fur[AREA_KEY].replace('mch_fur_', 'mch_flook_')
+    g = fur.mch_fur                                    # (0.24.160 Curl, Clump, Tip Gather; first time: the fur's own)
+    ka = _point_attr(me, fur[LOOK_KEY], 'FLOAT_VECTOR', (g.curl, g.clump, 0.0))
+    kv = np.empty(len(me.vertices) * 3, np.float32)
+    ka.data.foreach_get('vector', kv)
+    kv = kv.reshape(-1, 3)
+    kv[sel] = (part.curl, part.clump, part.gather)
+    ka.data.foreach_set('vector', kv.ravel())
     me.update()
+    push(fur)
     fur.update_tag()
 
 
-def add_part(fur, idx, lie, flow):
-    """A new area of the fur at the body's points ``idx`` with this tilt (the last drawn wins where they overlap)."""
+def add_part(fur, idx, lie, flow, curl=None, clump=None, gather=0.0):
+    """A new area of the fur at the body's points ``idx`` with this tilt (and Curl, Clump, Tip Gather - 0.24.160; the
+    last drawn wins where they overlap)."""
     if not fur.get(PART_KEY):                         # (a fur from before 0.24.159: its names now)
         fur[PART_KEY] = fur[AREA_KEY].replace('mch_fur_', 'mch_fpart_')
         fur[LIE_KEY] = fur[AREA_KEY].replace('mch_fur_', 'mch_flie_')
@@ -825,6 +923,9 @@ def add_part(fur, idx, lie, flow):
     _BUSY[0] = True
     try:
         part.lie, part.flow = lie, flow
+        part.curl = pg.curl if curl is None else curl
+        part.clump = pg.clump if clump is None else clump
+        part.gather = gather
         pg.part_index = k - 1
     finally:
         _BUSY[0] = False
@@ -854,10 +955,11 @@ def _upd_part(self, context):
     write_part(fur, k)
     _BUSY[0] = True
     try:
-        pg.lie, pg.flow = self.lie, self.flow
         sc = getattr(context, 'scene', None)
-        if sc is not None and hasattr(sc, 'mch_fur'):
-            sc.mch_fur.lie, sc.mch_fur.flow = self.lie, self.flow
+        for holder in (pg, getattr(sc, 'mch_fur', None)):
+            if holder is not None:
+                holder.lie, holder.flow = self.lie, self.flow
+                holder.curl, holder.clump, holder.gather = self.curl, self.clump, self.gather
     finally:
         _BUSY[0] = False
 
@@ -867,6 +969,11 @@ class MCH_PG_FurPart(bpy.types.PropertyGroup):
                        update=_upd_part, description=DESCS['lie'])
     flow: FloatProperty(name='Flow Angle', default=0.0, min=-2 * math.pi, max=2 * math.pi, subtype='ANGLE',
                         update=_upd_part, description=DESCS['flow'])
+    curl: FloatProperty(name='Curl', default=0.0, min=0.0, max=3.0, soft_max=2.0, update=_upd_part,
+                        description=DESCS['curl'])
+    clump: FloatProperty(name='Clump', default=0.25, min=0.0, max=1.0, update=_upd_part, description=DESCS['clump'])
+    gather: FloatProperty(name='Tip Gather', default=0.0, min=0.0, max=1.0, update=_upd_part,
+                          description=DESCS['gather'])
 
 
 class MCH_OT_fur_part(bpy.types.Operator):
@@ -1001,7 +1108,7 @@ def draw(layout, context):
     part = current_part(ob) if ob is not None else None
     if ob is not None and len(pg.parts):
         sizes = part_sizes(ob)
-        col.label(text='Tilt (each area its own - pick one)')
+        col.label(text='Areas (each its own tilt, curl, clump, tip gather - pick one)')
         for i, p_ in enumerate(pg.parts):
             if sizes.get(i + 1, 0) == 0:
                 continue                                  # (an area taken away all over)
@@ -1009,13 +1116,13 @@ def draw(layout, context):
                                                    f'{math.degrees(p_.flow):.0f}\u00b0', depress=(i == pg.part_index))
             o.index = i
     else:
-        col.label(text='Tilt (the next area)')
+        col.label(text='The next area')
     tilt = part if part is not None else pg
-    col.prop(tilt, 'lie')
-    col.prop(tilt, 'flow')
+    for k_ in ('lie', 'flow', 'curl', 'clump', 'gather'):          # (0.24.160 Curl, Clump, Tip Gather the area's too)
+        col.prop(tilt, k_)
     col.prop(pg, 'part_soft')
     for group, props in (('Strands', ('density', 'length', 'length_random', 'segments', 'display')),
-                         ('Shape', ('gravity', 'curl', 'curl_turns', 'frizz', 'clump', 'clump_size')),
+                         ('Shape', ('volume', 'spread', 'gravity', 'curl_turns', 'frizz', 'clump_size')),
                          ('Thickness', ('root_thick', 'tip_thick')),
                          ('Area', ('edge_soft', 'seed'))):
         col = layout.column(align=True)

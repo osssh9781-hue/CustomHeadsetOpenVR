@@ -7,7 +7,8 @@ tool by REAL drags (xdotool) on the test human (striped polypaint):
   3. a REAL drag on the belly: the same fur, more area
   4. a REAL drag on the window's Length slider: the strands longer
   5. (0.24.159) a REAL click on the window's "Area 1", a REAL drag on its Lie Down: only that area's tilt changes
-  6. shots: solid with the wireframe, Cycles
+  6. (0.24.160) a REAL click on "Area 2", a REAL drag on its Tip Gather: only the belly's tips come together
+  7. shots: solid with the wireframe, Cycles
 """
 import os
 import subprocess
@@ -388,6 +389,48 @@ def flow():
     res['5 a REAL click on "Area 1" in the window, a REAL drag on its Lie Down: only the chest stands up more, the belly '
         '(Area 2) as it was'] = (row is not None and picked == 0 and lie_after[0] < lie_before[0] - 10
                                  and lie_after[1:] == lie_before[1:] and c1 < c0 - 8 and abs(b1 - b0) < 2)
+    # 6: (0.24.160) a REAL click on "Area 2" (the belly), a REAL drag on its Tip Gather: the belly's tips come together,
+    #    the chest's as they were
+    def tip_spread():
+        P = roots_of(fur)
+        lo, hi = P[:, 0, 2] < 1.2, P[:, 0, 2] > 1.25
+        return float(np.linalg.norm(P[lo, -1].std(axis=0))), float(np.linalg.norm(P[hi, -1].std(axis=0)))
+    b0, c0_ = tip_spread()
+    row2 = None
+    C.window_manager.mch_side_scroll = 0.0
+    yield from wait_draws(2)
+    for _i in range(30):
+        row2 = area_row('Area 2')
+        if row2 is not None:
+            break
+        w, a, r = view3d()
+        with C.temp_override(window=w, area=a, region=r):
+            sp.scroll_by(C, r.width, r.height, ui_factor(C, r), 100)
+        yield from wait_draws(1)
+    if row2 is not None:
+        yield from press(row2)
+    picked2 = pg.part_index
+    it = yield from scrolled_item('Tip Gather')
+    if it is not None:
+        w, a, r = view3d()
+        x, y = int(r.x + it.x + it.w * 0.1), int(w.height - (r.y + it.y + it.h / 2))
+        xdo('mousemove', x, y)
+        yield 0.5
+        xdo('mousedown', 1)
+        yield 0.3
+        for i in range(1, 16):
+            xdo('mousemove', x + i * 25, y)
+            yield 0.06
+        yield 0.3
+        xdo('mouseup', 1)
+        yield 2.0
+    b1, c1_ = tip_spread()
+    g = [round(p_.gather, 2) for p_ in pg.parts]
+    log('6 tip gather: row', row2 is not None, '- picked', picked2, '- Tip Gather per area', g, '- belly tips spread',
+        round(b0 * 1000), '->', round(b1 * 1000), 'mm, chest', round(c0_ * 1000), '->', round(c1_ * 1000), 'mm')
+    res['6 a REAL click on "Area 2", a REAL drag on its Tip Gather: the belly\'s tips come together, the chest\'s as they '
+        'were'] = (row2 is not None and picked2 == 1 and g[1] > 0.5 and g[0] == 0.0 and b1 < b0 * 0.5
+                   and abs(c1_ - c0_) < 0.002)
     yield 1.0
     shot('2_fur_wire.png')
     S.render.engine = 'CYCLES'

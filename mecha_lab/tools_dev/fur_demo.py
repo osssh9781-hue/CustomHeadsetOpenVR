@@ -1,7 +1,7 @@
 """Fur demo (0.24.157): the test human with tiger-stripe polypaint and three furs drawn on it (the areas given as
 outlines in pixels through a front view, as the Fur tool's lasso gives them): short striped fur over the chest and
 belly (colour from the polypaint; three areas of one fur, each its own tilt - the middle straight down, the sides down
-and out), a long clumped mane round the neck and shoulders, curly fleece on the upper arms.
+and out), pointed tufts on the forearms (Tip Gather - 0.24.160), fuller fur (Volume, Spread), a long clumped mane round the neck and shoulders, curly fleece on the upper arms.
 Cycles, shaded and with the body's wireframe.
 
     <blender python> fur_demo.py <out dir>
@@ -105,6 +105,15 @@ for side in (-1, 1):
     part = cf.current_part(chest)
     part.lie = math.radians(55)
     part.flow = math.radians(side * 55)
+# (0.24.160) pointed tufts on the forearms: a small area each, its Tip Gather - the tips to one point at the end of
+# its tilt
+for side in (1, -1):
+    t_ = fur(ellipse(side * 0.37, 1.07, 0.05, 0.06), density=60000.0, length=0.13, length_random=0.25,
+             lie=math.radians(65), flow=0.0, gravity=0.2, curl=0.0, frizz=0.1, clump=0.0, root_thick=0.0012,
+             tip_thick=0.0001, segments=10, edge_soft=2, use_polypaint=True, tip_blend=0.6,
+             tip_color=(0.05, 0.04, 0.03, 1.0))
+    cf.current_part(t_).gather = 0.85
+    furs.append(t_)
 print('chest areas', [(p_.name, round(math.degrees(p_.lie)), round(math.degrees(p_.flow))) for p_ in chest.mch_fur.parts])
 total = sum(cf.strands(o) for o in furs)
 print('furs', len(furs), 'strands', total)
