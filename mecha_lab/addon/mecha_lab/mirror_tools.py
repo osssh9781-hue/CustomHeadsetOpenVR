@@ -59,9 +59,146 @@ class MCH_PG_Mirror(bpy.types.PropertyGroup):
 def _remove_unused_pivot(pivot):
     if pivot is None or pivot.name not in bpy.data.objects or not pivot.get('_mch_world_pivot'):
         return
-    if not any(m.type == 'MIRROR' and m.mirror_object == pivot
+    if not any((m.type == 'MIRROR' and m.mirror_object == pivot) or curves_pivot(m) == pivot
                for ob in bpy.data.objects for m in ob.modifiers):
         bpy.data.objects.remove(pivot, do_unlink=True)
+
+
+# 0.24.171 (user, Alt+X on a fur: "Mirror: select a mesh ... (selected: Curves)" - "내가 만들고 어플라이 한 걸 Alt+X 로
+# 미러하고 싶다고"): hair curves (a Fur, live or applied) mirror with the same lean gesture - Blender's Mirror modifier
+# is for meshes only, so a small Geometry Nodes mirror does it (a mirrored copy of every strand joined on; live; Enter
+# / Apply bakes it)
+
+CURVES_TREE = 'MCH Curves Mirror'
+CURVES_TREE_V = 1
+
+
+def curves_mirror_tree():
+    """The node group: the geometry joined with its copy reflected across the Mirror Object's X / Y / Z planes (each
+    one switched on adds its copy; an empty Mirror Object = the object's own origin and axes)."""
+    ng = bpy.data.node_groups.get(CURVES_TREE)
+    if ng is not None and ng.get('mch_v') == CURVES_TREE_V:
+        return ng
+    if ng is None:
+        ng = bpy.data.node_groups.new(CURVES_TREE, 'GeometryNodeTree')
+    ng.nodes.clear()
+    ng.interface.clear()
+    ng.interface.new_socket('Geometry', in_out='INPUT', socket_type='NodeSocketGeometry')
+    ng.interface.new_socket('Mirror Object', in_out='INPUT', socket_type='NodeSocketObject')
+    for a in 'XYZ':
+        ng.interface.new_socket(a, in_out='INPUT', socket_type='NodeSocketBool')
+    ng.interface.new_socket('Geometry', in_out='OUTPUT', socket_type='NodeSocketGeometry')
+    N, L = ng.nodes, ng.links
+    gi = N.new('NodeGroupInput')
+    go = N.new('NodeGroupOutput')
+    oi = N.new('GeometryNodeObjectInfo')
+    oi.transform_space = 'RELATIVE'
+    L.new(gi.outputs['Mirror Object'], oi.inputs['Object'])
+    has = N.new('GeometryNodeSwitch')                  # (no Mirror Object: the object's own space)
+    has.input_type = 'MATRIX'
+    L.new(oi.outputs['Transform'], has.inputs['True'])
+    chk = N.new('FunctionNodeCompare')
+    chk.data_type = 'FLOAT'
+    chk.operation = 'NOT_EQUAL'
+    det = N.new('FunctionNodeMatrixDeterminant')
+    L.new(oi.outputs['Transform'], det.inputs[0])
+    L.new(det.outputs[0], chk.inputs[0])
+    chk.inputs[1].default_value = 0.0
+    L.new(chk.outputs[0], has.inputs['Switch'])
+    inv = N.new('FunctionNodeInvertMatrix')
+    L.new(has.outputs[0], inv.inputs[0])
+    geo = gi.outputs['Geometry']
+    for i, a in enumerate('XYZ'):
+        sc = N.new('FunctionNodeCombineTransform')
+        sv = [1.0, 1.0, 1.0]
+        sv[i] = -1.0
+        sc.inputs['Scale'].default_value = sv
+        m1 = N.new('FunctionNodeMatrixMultiply')
+        L.new(has.outputs[0], m1.inputs[0])
+        L.new(sc.outputs[0], m1.inputs[1])
+        m2 = N.new('FunctionNodeMatrixMultiply')
+        L.new(m1.outputs[0], m2.inputs[0])
+        L.new(inv.outputs[0], m2.inputs[1])
+        pos = N.new('GeometryNodeInputPosition')
+        tp = N.new('FunctionNodeTransformPoint')
+        L.new(pos.outputs[0], tp.inputs['Vector'])
+        L.new(m2.outputs[0], tp.inputs['Transform'])
+        sp = N.new('GeometryNodeSetPosition')
+        L.new(geo, sp.inputs['Geometry'])
+        L.new(tp.outputs[0], sp.inputs['Position'])
+        jn = N.new('GeometryNodeJoinGeometry')
+        L.new(sp.outputs[0], jn.inputs[0])
+        L.new(geo, jn.inputs[0])
+        sw = N.new('GeometryNodeSwitch')
+        sw.input_type = 'GEOMETRY'
+        L.new(gi.outputs[a], sw.inputs['Switch'])
+        L.new(geo, sw.inputs['False'])
+        L.new(jn.outputs[0], sw.inputs['True'])
+        geo = sw.outputs[0]
+    L.new(geo, go.inputs[0])
+    ng['mch_v'] = CURVES_TREE_V
+    return ng
+
+
+def curves_mod(obj):
+    """The curves mirror of ``obj`` (a Geometry Nodes modifier MCH_Mirror with that group), or None."""
+    m = obj.modifiers.get(MOD_NAME) if obj is not None else None
+    return m if m is not None and m.type == 'NODES' and m.node_group is not None and \
+        m.node_group.name.startswith(CURVES_TREE) else None
+
+
+def _gn_get(mod, name):
+    from . import geo_sculpt as gs
+    return gs.get_input(mod, name)
+
+
+def _gn_set(mod, name, value):
+    from . import geo_sculpt as gs
+    gs.set_input(mod, name, value)
+
+
+def curves_pivot(m):
+    if m is None or m.type != 'NODES' or m.node_group is None or not m.node_group.name.startswith(CURVES_TREE):
+        return None
+    try:
+        return _gn_get(m, 'Mirror Object')
+    except (KeyError, AttributeError, TypeError):
+        return None
+
+
+def setup_curves_mirror(obj, p, scene, axes=None, center=None):
+    """The curves mirror of ``obj`` made / updated (planes, centre as the Mirror panel's - as ``setup_mirror`` does
+    for a mesh).  Returns the modifier, or None when the name belongs to another modifier."""
+    mod = obj.modifiers.get(MOD_NAME)
+    if mod is not None and curves_mod(obj) is None:
+        return None
+    old_pivot = curves_pivot(mod) if mod else None
+    if mod is None:
+        mod = obj.modifiers.new(MOD_NAME, 'NODES')
+        mod.node_group = curves_mirror_tree()
+    elif mod.node_group.get('mch_v') != CURVES_TREE_V:
+        mod.node_group = curves_mirror_tree()
+    if p.space == 'WORLD' or center is not None:
+        pivot = old_pivot if old_pivot and old_pivot.get('_mch_world_pivot') else None
+        if pivot is None:
+            pivot = bpy.data.objects.new(f'MCH World Pivot - {obj.name}', None)
+            scene.collection.objects.link(pivot)
+            pivot['_mch_world_pivot'] = True
+            pivot.empty_display_type = 'ARROWS'
+            pivot.empty_display_size = 0.16
+            pivot.hide_render = True
+        if center is None:
+            center = Vector(scene.cursor.location) if p.center == 'CURSOR' else Vector((0, 0, 0))
+        pivot.matrix_world = Matrix.Translation(center)
+        _gn_set(mod, 'Mirror Object', pivot)
+    else:
+        _gn_set(mod, 'Mirror Object', None)
+        _remove_unused_pivot(old_pivot)
+    axes = (p.x, p.y, p.z) if axes is None else tuple(bool(a) for a in axes)
+    for i, a in enumerate('XYZ'):
+        _gn_set(mod, a, bool(axes[i]))
+    obj.update_tag()
+    return mod
 
 
 def _activate(context, ob):
@@ -209,6 +346,9 @@ def lean_pick(projector, origin, axes, mouse, length=1.0, dead=DEAD_PX, center=N
 
 def _snapshot(obj):
     mod = obj.modifiers.get(MOD_NAME)
+    if curves_mod(obj) is not None:                    # 0.24.171 a curves mirror
+        return {'curves': True, 'axes': tuple(bool(_gn_get(mod, a)) for a in 'XYZ'),
+                'mirror_object': curves_pivot(mod)}
     if mod is None or mod.type != 'MIRROR':
         return None
     d = {a: tuple(getattr(mod, a)) for a in _MIRROR_ATTRS}
@@ -219,6 +359,23 @@ def _snapshot(obj):
 
 def _restore(obj, snap):
     mod = obj.modifiers.get(MOD_NAME)
+    if obj.type == 'CURVES':                           # 0.24.171 a curves mirror
+        cm = curves_mod(obj)
+        if snap is None:
+            if cm is not None:
+                pivot = curves_pivot(cm)
+                obj.modifiers.remove(cm)
+                _remove_unused_pivot(pivot)
+            return
+        if cm is not None:
+            cur = curves_pivot(cm)
+            _gn_set(cm, 'Mirror Object', snap['mirror_object'])
+            for a, v in zip('XYZ', snap['axes']):
+                _gn_set(cm, a, v)
+            if cur is not None and cur != snap['mirror_object']:
+                _remove_unused_pivot(cur)
+            obj.update_tag()
+        return
     if snap is None:
         if mod is not None and mod.type == 'MIRROR':
             pivot = mod.mirror_object
@@ -288,7 +445,8 @@ class MirrorLeanLogic:
         # 0.23.2: the lean gesture lives at the bottom centre of the view (visible wherever the origin is)
         self.center = (region.width / 2.0, region.height * 0.18)
         self.projector = projector
-        self.target_names = [o.name for o in context.selected_objects if o.type == 'MESH' and o.library is None]
+        self.target_names = [o.name for o in context.selected_objects if o.type in {'MESH', 'CURVES'}
+                             and o.library is None]              # (0.24.171 hair curves too)
         if not self.target_names:
             return False
         self.snaps = {n: _snapshot(bpy.data.objects[n]) for n in self.target_names}
@@ -316,6 +474,9 @@ class MirrorLeanLogic:
 
     def _apply_live(self, scene):
         for ob in self._targets():
+            if ob.type == 'CURVES':
+                setup_curves_mirror(ob, self.p, scene, self.axes, getattr(self, 'pivot_center', None))
+                continue
             setup_mirror(ob, self.p, scene, self.axes, self.flips, getattr(self, 'pivot_center', None))
 
     def point_at(self, scene, xy):
@@ -393,6 +554,22 @@ class MirrorLeanLogic:
         policy = getattr(getattr(context.scene, 'mch_cut', None), 'shared_mesh', 'SINGLE')
         done, failed = [], []
         for ob in self._targets():
+            if ob.type == 'CURVES':                    # 0.24.171 hair curves: the mirror baked when it can be
+                cm = curves_mod(ob)
+                if cm is None:
+                    continue
+                pivot = curves_pivot(cm)
+                if ob.modifiers[0] != cm:              # (a live Fur: its strands are made by the modifier above)
+                    failed.append(f'{ob.name} (a live Fur - the mirror stays live; Apply the fur, then the mirror)')
+                    continue
+                try:
+                    with context.temp_override(object=ob, active_object=ob, selected_objects=[ob]):
+                        bpy.ops.object.modifier_apply(modifier=cm.name)
+                    done.append(ob.name)
+                except RuntimeError as ex:
+                    failed.append(f'{ob.name} ({ex})')
+                _remove_unused_pivot(pivot)
+                continue
             mod = ob.modifiers.get(MOD_NAME)
             pivot = mod.mirror_object if mod else None
             from . import station_primitive
@@ -565,7 +742,7 @@ class MCH_OT_mirror_lean(MirrorLeanLogic, LeanModal, bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == 'OBJECT' and any(o.type == 'MESH' for o in context.selected_objects)
+        return context.mode == 'OBJECT' and any(o.type in {'MESH', 'CURVES'} for o in context.selected_objects)
 
 
 # -----------------------------------------------------------------------------
@@ -848,7 +1025,7 @@ def mirror_targets_kind(context):
     from . import groups
     handles = [o for o in sel if groups.is_group(o)]
     inside = {m for g in handles for m in groups.members(g)}
-    loose = [o for o in sel if o.type == 'MESH' and o.library is None and o not in inside]
+    loose = [o for o in sel if o.type in {'MESH', 'CURVES'} and o.library is None and o not in inside]   # (0.24.171 hair)
     if handles and not loose:
         return 'GROUP'
     if loose:                 # 0.24.107 meshes picked with a group: the mesh mirror (the group mirror ignored them)
@@ -864,16 +1041,6 @@ def start_mirror(context, keep_live, report):
     'mirror_lean.poll() failed, context is incorrect' when e.g. only a curve was selected)."""
     kind = mirror_targets_kind(context)
     if kind is None:
-        from . import creature_fur as cf
-        furs = [o for o in context.selected_objects if cf.is_fur(o)]
-        if furs:                                     # 0.24.171 a fur (hair curves): its area onto the other side
-            done = [(f.name, cf.mirror_area(context, f)) for f in furs]
-            if all(k < 0 for _n, k in done):
-                report({'INFO'}, 'Mirror: the body\'s own live Mirror already copies this fur to the other side')
-            else:
-                report({'INFO'}, 'Mirror: fur area copied to the other side - ' +
-                       ', '.join(f'{nm} +{k:,} points' for nm, k in done if k >= 0))
-            return {'FINISHED'}
         others = sorted({o.type.title() for o in context.selected_objects})
         report({'WARNING'}, 'Mirror: select a mesh or a collection instance' +
                (f' (selected: {", ".join(others)} - convert it to a mesh first)' if others else ''))

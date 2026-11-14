@@ -1,7 +1,6 @@
 """0.24.171 (user: "왜 아직 머리카락 미러가 안 돼"): on a head with a live Mirror (its Bisect keeps +X), hair / fur drawn
 on the OTHER side (-X: the side the Mirror makes) was cut away whole (Creature Hair: nothing left; Fur: 0 strands, or
-"no surface" on a half head).  Now both tools mirror from either side; a fur's Mirror button copies its area to the
-other side.  And (user: "머리카락을 내가 보는 뷰포트 방향에서 꺾을 수 있게 밴드 옵션") Creature Hair's Bend.
+"no surface" on a half head).  Now both tools mirror from either side (the Alt+X mirror of a fur: test_v02575).  And (user: "머리카락을 내가 보는 뷰포트 방향에서 꺾을 수 있게 밴드 옵션") Creature Hair's Bend.
 Measured on the evaluated objects."""
 import math
 
@@ -144,18 +143,12 @@ cf.perform(C, blob(-0.45, 0.55, 0.3), FRONT, erase=True)
 R = roots(fr)
 check(f'...Alt + draw on -X takes it away on both sides ({len(R)} strands left)', len(R) < 50, len(R))
 
-# ---- a head with no Mirror: no copy (as before); the fur's Mirror button copies its area across World X ---------
+# ---- a head with no Mirror: no copy (as before) - the fur's own Alt+X mirror: test_v02575 -------------------------
 h = head(mirror=False)
 fr = fur(h, blob(-0.45, 0.55))
 R = roots(fr)
 n0l, n0r = int((R[:, 0] < -0.1).sum()), int((R[:, 0] > 0.1).sum())
 check(f'no Mirror on the head: the fur only where drawn ({n0l:,} -X, {n0r} +X)', n0l > 1000 and n0r == 0)
-select(fr)
-r = bpy.ops.mch.object_tidy(action='MIRROR')
-R = roots(fr)
-nl, nr = int((R[:, 0] < -0.1).sum()), int((R[:, 0] > 0.1).sum())
-check(f'the fur selected, the Mirror button (it used to say "select a mesh"): its area copied to +X ({nl:,} -X, '
-      f'{nr:,} +X)', r == {'FINISHED'} and nr > 0.75 * nl and nl >= n0l * 0.95, (r, nl, nr))
 
 # ---- Bend --------------------------------------------------------------------------------------------------------
 h = head(mirror=False)

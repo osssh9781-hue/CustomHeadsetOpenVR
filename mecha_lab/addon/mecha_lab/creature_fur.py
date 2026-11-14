@@ -35,7 +35,7 @@ from mathutils import Matrix, Vector
 from . import core_geometry as cg
 
 TREE = 'MCH Fur'
-TREE_VERSION = 11
+TREE_VERSION = 12                  # 0.24.171 Bend
 MOD = 'MCH Fur'
 MAT = 'MCH Fur'
 AREA_KEY = 'mch_fur_area'          # on a fur object: the body attribute that holds its area
@@ -74,6 +74,10 @@ LIVE = (
     ('tip_blend', 'Tip Blend', 'FLOAT', 0.25, 0.0, 1.0),
     ('display', 'Viewport %', 'FLOAT', 1.0, 0.0, 1.0),
     ('seed', 'Seed', 'INT', 0, 0, 100000),
+    # 0.24.171 (user: "머리카락을 내가 보는 뷰포트 방향에서 꺾을 수 있게 밴드 옵션") toward a side of the view
+    ('bend', 'Bend', 'FLOAT', 0.0, 0.0, math.pi),
+    ('bend_at', 'Bend At', 'FLOAT', 0.3, 0.0, 0.95),
+    ('bend_soft', 'Bend Soft', 'FLOAT', 0.35, 0.0, 1.0),
 )
 LIVE_NAMES = {p: s for p, s, *_r in LIVE}
 DESCS = {
@@ -102,6 +106,9 @@ DESCS = {
     'tip_blend': 'How far the tips go to the Tip Color (0: the root colour all along)',
     'display': 'The share of strands drawn in the viewport (all of them render)',
     'seed': 'Another random mix',
+    'bend': 'How far the strands turn toward the bend direction (a side of the view, set by the buttons; 0 = none)',
+    'bend_at': 'Where along the strands they bend (0 = at the root, 0.9 = near the tip)',
+    'bend_soft': '0 = a sharp kink, 1 = a long smooth curve',
 }
 
 
@@ -198,7 +205,7 @@ class _B:
 def _socket(ng, name, kind, default=None, lo=None, hi=None):
     st = {'INT': 'NodeSocketInt', 'FLOAT': 'NodeSocketFloat', 'BOOL': 'NodeSocketBool', 'COLOR': 'NodeSocketColor',
           'OBJECT': 'NodeSocketObject', 'STRING': 'NodeSocketString', 'MATERIAL': 'NodeSocketMaterial',
-          'GEOMETRY': 'NodeSocketGeometry'}[kind]
+          'GEOMETRY': 'NodeSocketGeometry', 'VECTOR': 'NodeSocketVector'}[kind]
     s = ng.interface.new_socket(name, in_out='INPUT', socket_type=st)
     if default is not None:
         s.default_value = default
@@ -227,6 +234,7 @@ def fur_tree():
     _socket(ng, 'Material', 'MATERIAL')
     for _p, name, kind, default, lo, hi in LIVE:
         _socket(ng, name, kind, default, lo, hi)
+    _socket(ng, 'Bend Dir', 'VECTOR', (1.0, 0.0, 0.0))             # (0.24.171 in the body's space)
     ng.interface.new_socket('Geometry', in_out='OUTPUT', socket_type='NodeSocketGeometry')
     b = _B(ng)
     gi = b.node('NodeGroupInput')
@@ -412,6 +420,19 @@ def fur_tree():
     fr = b.vec('SCALE', b.vec('SUBTRACT', noise.outputs['Color'], (0.5, 0.5, 0.5)),
                scale=b.math('MULTIPLY', b.math('MULTIPLY', I['Frizz'], 5.0), b.math('ADD', b.math('MULTIPLY', t, 0.7), 0.3)))
     dirn = b.vec('NORMALIZE', b.vec('ADD', b.vec('ADD', d, curl), fr))
+    # 0.24.171 Bend: from Bend At on, each piece turned toward Bend Dir by up to Bend (never past it), eased in over
+    # Bend Soft of the strand
+    bx = b.math('MINIMUM', b.math('MAXIMUM', b.math('DIVIDE', b.math('SUBTRACT', t, I['Bend At']),
+                                                     b.math('MAXIMUM', I['Bend Soft'], 0.001)), 0.0), 1.0)
+    bw = b.math('MULTIPLY', b.math('MULTIPLY', bx, bx), b.math('SUBTRACT', 3.0, b.math('MULTIPLY', bx, 2.0)))
+    bdir = b.vec('NORMALIZE', I['Bend Dir'])
+    bcos = b.math('MINIMUM', b.math('MAXIMUM', b.vec('DOT_PRODUCT', dirn, bdir), -1.0), 1.0)
+    bang = b.math('MINIMUM', b.math('MULTIPLY', I['Bend'], bw), b.math('ARCCOSINE', bcos))
+    brot = b.node('ShaderNodeVectorRotate', rotation_type='AXIS_ANGLE')
+    b.feed(brot.inputs['Vector'], dirn)
+    b.feed(brot.inputs['Axis'], b.vec('NORMALIZE', b.vec('CROSS_PRODUCT', dirn, bdir)))
+    b.feed(brot.inputs['Angle'], bang)
+    dirn = brot.outputs['Vector']
     ln = b.math('MULTIPLY', I['Length'], b.math('SUBTRACT', 1.0, b.math(
         'MULTIPLY', I['Length Random'], b.attr('mch_lr').outputs['Attribute'])))
     seg = b.vec('SCALE', dirn, scale=b.math('DIVIDE', ln, b.math('MAXIMUM', I['Segments'], 1.0)))
@@ -693,105 +714,6 @@ def area_points(context, body, loops, projector, mirrors=None):
     return np.array(sorted(out), int)
 
 
-def mirror_area(context, fur):
-    """0.24.171 the Mirror button on a fur: its area copied to the other side of the body (the points whose mirror
-    image has fur get it, the same area) - across the Mirror panel's plane(s) (World X through the origin unless
-    changed), or the body's own live Mirror when it has one and that cuts.  Returns how many points were added
-    (-1: the body's own Mirror already copies it)."""
-    from mathutils.kdtree import KDTree
-    from . import mirror_tools
-    body = fur.parent
-    if body is None or body.type != 'MESH' or not fur.get(AREA_KEY):
-        return 0
-    mirrors = body_mirrors(body)
-    if mirrors and not all(c for _R, c in mirrors):
-        return -1
-    if not mirrors:
-        p = context.scene.mch_mirror
-        origin, axes = mirror_tools.mirror_frame(body, p, context.scene)
-        on = [i for i, a in enumerate((p.x, p.y, p.z)) if a] or [0]
-        F = np.eye(4)
-        for i in range(3):
-            F[:3, i] = np.array(axes[i], float)
-        F[:3, 3] = np.array(origin, float)
-        Fi = np.linalg.inv(F)
-        for k in range(1, 1 << len(on)):
-            S = np.eye(4)
-            for j, a in enumerate(on):
-                if k >> j & 1:
-                    S[a, a] = -1.0
-            mirrors.append((F @ S @ Fi, True))
-    me = body.data
-    n = len(me.vertices)
-    a = me.attributes.get(fur[AREA_KEY])
-    if a is None or n == 0:
-        return 0
-    w = np.zeros(n, np.float32)
-    a.data.foreach_get('value', w)
-    src = np.nonzero(w > 0.5)[0]
-    if not len(src):
-        return 0
-    co = np.empty(n * 3, np.float32)
-    me.vertices.foreach_get('co', co)
-    co = co.reshape(-1, 3).astype(float)
-    ev = np.empty(len(me.edges) * 2, np.int32)
-    me.edges.foreach_get('vertices', ev)
-    ev = ev.reshape(-1, 2)
-    el = np.linalg.norm(co[ev[:, 0]] - co[ev[:, 1]], axis=1) if len(ev) else np.array([1e-3])
-    near = float(np.median(el)) * 0.75
-    kd = KDTree(n)
-    for i, c in enumerate(co):
-        kd.insert(c, i)
-    kd.balance()
-    M = np.array(body.matrix_world, float)
-    Mi = np.linalg.inv(M)
-    ids = part_ids(fur)
-    names = [fur.get(k) for k in (LIE_KEY, FLOW_KEY, LOOK_KEY)]
-    vals = []
-    for nm in names:
-        at = me.attributes.get(nm) if nm else None
-        if at is None:
-            vals.append(None)
-            continue
-        if at.data_type == 'FLOAT':
-            v = np.empty(n, np.float32)
-            at.data.foreach_get('value', v)
-        else:
-            v = np.empty(n * 3, np.float32)
-            at.data.foreach_get('vector', v)
-            v = v.reshape(-1, 3)
-        vals.append((at, v))
-    added = 0
-    for R, _cut in mirrors:
-        L = Mi @ R @ M                                  # (the reflection in the body's own space)
-        img = co[src] @ L[:3, :3].T + L[:3, 3]
-        for s_i, q in zip(src, img):
-            _c, j, dist = kd.find(q)
-            if j is None or dist > near or w[j] > 0.5:
-                continue
-            w[j] = 1.0
-            ids[j] = ids[s_i]
-            for item in vals:
-                if item is not None:
-                    item[1][j] = item[1][s_i]
-            added += 1
-    a.data.foreach_set('value', w)
-    pa = me.attributes.get(fur.get(PART_KEY, ''))
-    if pa is not None and pa.data_type == 'INT':
-        pa.data.foreach_set('value', ids)
-    for item in vals:
-        if item is not None:
-            at, v = item
-            if at.data_type == 'FLOAT':
-                at.data.foreach_set('value', v)
-            else:
-                at.data.foreach_set('vector', v.ravel())
-    me.update()
-    push(fur)
-    fur.update_tag()
-    return added
-
-
 def paint_area(body, name, idx, value):
     """The body's area weight ``name`` set to ``value`` at the points ``idx``.  Returns how many are in the area."""
     me = body.data
@@ -847,12 +769,27 @@ def push(ob):
     pg = getattr(ob, 'mch_fur', None)
     if mod is None or pg is None:
         return
+    if mod.node_group is not None and mod.node_group.name.startswith(TREE) and \
+            mod.node_group.get('mch_v') != TREE_VERSION:
+        mod.node_group = fur_tree()                   # (0.24.171 an older fur: the new graph - Bend)
     for prop, name, kind, *_r in LIVE:
         v = getattr(pg, prop)
-        gs.set_input(mod, name, tuple(v) if kind == 'COLOR' else v)
+        try:
+            gs.set_input(mod, name, tuple(v) if kind == 'COLOR' else v)
+        except (KeyError, AttributeError, TypeError):
+            pass
     body = ob.parent
     if body is not None:
         gs.set_input(mod, 'Color Attribute', color_attr_name(body))
+        try:                                          # (kept after the graph is rebuilt: its inputs start over)
+            gs.set_input(mod, 'Body', body)
+            if ob.get(AREA_KEY):
+                gs.set_input(mod, 'Area', ob[AREA_KEY])
+            gs.set_input(mod, 'Material', fur_material())
+            d = body.matrix_world.to_3x3().inverted_safe() @ Vector(pg.bend_dir)
+            gs.set_input(mod, 'Bend Dir', tuple(d.normalized()) if d.length > 1e-9 else (1.0, 0.0, 0.0))
+        except (KeyError, AttributeError, TypeError):
+            pass
     if ob.get(PART_KEY) and not ob.get(LOOK_KEY):     # (a fur from 0.24.159: its areas' look name now)
         ob[LOOK_KEY] = ob[AREA_KEY].replace('mch_fur_', 'mch_flook_')
     for key, sock in ((LIE_KEY, 'Lie Attr'), (FLOW_KEY, 'Flow Attr'), (LOOK_KEY, 'Look Attr'), (PART_KEY, 'Part Attr')):
@@ -1194,7 +1131,7 @@ def _props(update):
                 kw['soft_max'] = SOFT[prop]
             if prop in {'length', 'root_thick', 'tip_thick'}:
                 kw.update(unit='LENGTH', precision=5 if 'thick' in prop else 4)
-            if prop in {'flow', 'lie'}:
+            if prop in {'flow', 'lie', 'bend'}:
                 kw.update(subtype='ANGLE')
             if prop in {'display'}:
                 kw.update(subtype='FACTOR')
@@ -1205,7 +1142,11 @@ def _props(update):
 class MCH_PG_Fur(bpy.types.PropertyGroup):
     __annotations__ = {**_props(_upd_obj),
                        'parts': bpy.props.CollectionProperty(type=MCH_PG_FurPart),
-                       'part_index': IntProperty(default=0, min=0)}
+                       'part_index': IntProperty(default=0, min=0),
+                       # 0.24.171 the bend direction (world; set from the view by the side buttons)
+                       'bend_dir': FloatVectorProperty(name='Bend Direction', size=3, default=(1.0, 0.0, 0.0),
+                                                       options={'HIDDEN'}, update=_upd_obj),
+                       'bend_side': bpy.props.StringProperty(default='', options={'HIDDEN'})}
 
 
 class MCH_OT_fur_new(bpy.types.Operator):
@@ -1217,6 +1158,41 @@ class MCH_OT_fur_new(bpy.types.Operator):
     def execute(self, context):
         setattr(context.window_manager, NEW_KEY, True)
         self.report({'INFO'}, 'Fur: the next area you draw is a new fur')
+        return {'FINISHED'}
+
+
+class MCH_OT_fur_bend(bpy.types.Operator):
+    """Bend the fur toward this side of the view you are looking through (the selected fur and the next)"""
+    bl_idname = 'mch.fur_bend'
+    bl_label = 'Fur Bend Toward'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    side: bpy.props.StringProperty(default='RIGHT')
+
+    def execute(self, context):
+        from . import creature_hair as ch
+        ob = active_fur(context)
+        d = None if self.side == 'OFF' else ch.view_direction(context, self.side)
+        if self.side != 'OFF' and d is None:
+            self.report({'WARNING'}, 'Bend: no 3D view to take the direction from')
+            return {'CANCELLED'}
+        for pg in [context.scene.mch_fur] + ([ob.mch_fur] if ob is not None else []):
+            _BUSY[0] = True
+            try:
+                if self.side == 'OFF':
+                    pg.bend = 0.0
+                    pg.bend_side = ''
+                else:
+                    pg.bend_dir = tuple(d)
+                    pg.bend_side = self.side
+                    if pg.bend < 1e-6:
+                        pg.bend = math.radians(60.0)      # (a first click: a bend you can see)
+            finally:
+                _BUSY[0] = False
+        if ob is not None:
+            push(ob)
+            ob.update_tag()
+        lab = dict(ch.BEND_SIDES).get(self.side, 'No Bend')
+        self.report({'INFO'}, f'Fur bend: {lab}' + (f' - {ob.name}' if ob is not None else ' (the next fur)'))
         return {'FINISHED'}
 
 
@@ -1271,10 +1247,23 @@ def draw(layout, context):
     col.prop(pg, 'part_soft')
     for group, props in (('Strands', ('density', 'length', 'length_random', 'segments', 'display')),
                          ('Shape', ('volume', 'spread', 'gravity', 'curl_turns', 'frizz', 'clump_size')),
+                         ('Bend', ()),
                          ('Thickness', ('root_thick', 'tip_thick')),
                          ('Area', ('edge_soft', 'seed'))):
         col = layout.column(align=True)
         col.label(text=group)
+        if group == 'Bend':                            # 0.24.171 toward a side of the view you look through
+            from . import creature_hair as ch
+            col.label(text='(toward a side of the view you look through)')
+            for keys in (ch.BEND_SIDES[:4], ch.BEND_SIDES[4:] + (('OFF', 'No Bend'),)):
+                r = col.row(align=True)
+                for key, label in keys:
+                    on = (pg.bend > 0 and pg.bend_side == key) if key != 'OFF' else pg.bend <= 0
+                    r.operator('mch.fur_bend', text=label, depress=on).side = key
+            col.prop(pg, 'bend')
+            if pg.bend > 0:
+                col.prop(pg, 'bend_at')
+                col.prop(pg, 'bend_soft')
         for p in props:
             col.prop(pg, p)
     col = layout.column(align=True)
@@ -1301,7 +1290,7 @@ HELP = ('Draw an area on a body: fur grows there',
         'Draw again: another area of the selected fur (its own tilt)',
         'Alt + draw: take area away;  New Fur: a second fur')
 
-CLASSES = (MCH_PG_FurPart, MCH_PG_Fur, MCH_OT_fur_new, MCH_OT_fur_apply, MCH_OT_fur_part)
+CLASSES = (MCH_PG_FurPart, MCH_PG_Fur, MCH_OT_fur_new, MCH_OT_fur_bend, MCH_OT_fur_apply, MCH_OT_fur_part)
 
 
 def register():
