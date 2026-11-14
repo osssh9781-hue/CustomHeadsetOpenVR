@@ -97,7 +97,8 @@ def box(o):
 hits = [(a_.name, b_.name) for i, a_ in enumerate(allst) for b_ in allst[i + 1:]
         if all(box(a_)[0][k] < box(b_)[1][k] and box(b_)[0][k] < box(a_)[1][k] for k in range(3))]
 check(f'Greeble Line\'s and Scale Line\'s stamps ({len(allst)}) share the spot beside the model, one above the other, '
-      f'none inside another (a Puff reaches below its middle too)', len(allst) == 8 and not hits, hits)
+      f'none inside another (a Puff reaches below its middle too; 0.24.172 Feather Line\'s too)',
+      len(allst) == 1 + sum(len(v) for v in gl.STAMP_PROFILES.values()) and not hits, hits)
 
 # mixing: Use Only the New Stamp off
 mech.stamp_profile = 'BEVEL'

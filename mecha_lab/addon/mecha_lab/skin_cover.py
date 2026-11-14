@@ -21,6 +21,7 @@ from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, Po
 from mathutils import Matrix, Vector
 
 COVER_KEY = 'mch_cover'            # on a cover object (1)
+DONE_KEY = 'mch_cover_done'        # on an applied one (1): still never the body an area is drawn on
 AREA_KEY = 'mch_cover_area'        # ... the body attribute holding its area
 SHAPE_COLLS = {'FEATHERS': 'MCH Cover Feathers', 'SCALES': 'MCH Cover Scales'}
 GROWS = (('FUR', 'Fur', 'Strands (the fur)'), ('FEATHERS', 'Feathers', 'Feathers lying down the body, overlapping'),
@@ -82,9 +83,47 @@ def area_weights(body, name):
     return w
 
 
+def shape_extent(ob):
+    """(length, width) of a shape as it is laid at size 1 (its mesh x its object scale) - from its mesh's points (a
+    hidden shape just made has no bounding box yet: all zero)."""
+    me = ob.data
+    co = np.empty(len(me.vertices) * 3, np.float32)
+    me.vertices.foreach_get('co', co)
+    co = co.reshape(-1, 3)
+    if not len(co):
+        return 1.0, 0.5
+    ext = np.ptp(co, axis=0)
+    return float(ext[0]) * abs(ob.scale.x), float(ext[1]) * abs(ob.scale.y)
+
+
+def spacings(p, size, shapes):
+    """(along, across): how far apart they sit along the way they lie (Spacing x their length - overlapping like
+    shingles) and side by side (Side Spacing x their width), in the units of ``size``."""
+    ext = [shape_extent(o) for o in shapes.values()] or [(1.0, 0.5)]
+    L = float(np.mean([e[0] for e in ext])) * size * p.length
+    W = float(np.mean([e[1] for e in ext])) * size * p.width
+    return max(L * p.spacing, 1e-6), max(W * p.side_spacing, 1e-6)
+
+
+def _frames(body, P, Nn, flow):
+    """The way each one lies (unit, along the skin): the world's down along the skin, turned by ``flow``."""
+    R = np.array(body.matrix_world.to_3x3().normalized().inverted_safe(), float)
+    down = R @ np.array([0.0, 0.0, -1.0])
+    T = down[None, :] - Nn * (Nn @ down)[:, None]
+    weak = np.linalg.norm(T, axis=1) < 1e-3
+    if np.any(weak):
+        alt = R @ np.array([0.0, -1.0, 0.0])
+        T[weak] = alt[None, :] - Nn[weak] * (Nn[weak] @ alt)[:, None]
+    T /= np.maximum(np.linalg.norm(T, axis=1), 1e-12)[:, None]
+    if abs(flow) > 1e-12:                             # (turned round the normal: t cos + (n x t) sin)
+        T = T * math.cos(flow) + np.cross(Nn, T) * math.sin(flow)
+    return T
+
+
 def placements(body, w, p, size_world, shapes, seed=0):
-    """Where the shapes sit on the area (body space): (locations, quaternions, scales, picks).  Evenly spread (none
-    closer than Spacing x the size), lying down the body (turned by Flow Angle), the free end lifted by Lift."""
+    """Where the shapes sit on the area (body space): (locations, quaternions, scales, picks).  Spread like a coat
+    (0.24.172 2nd look): none closer than Spacing x their length along the way they lie (overlapping like shingles)
+    or Side Spacing x their width side by side; lying down the body (turned by Flow Angle), the free end lifted."""
     me = body.data
     me.calc_loop_triangles()
     n_t = len(me.loop_triangles)
@@ -104,11 +143,11 @@ def placements(body, w, p, size_world, shapes, seed=0):
     ms = body.matrix_world.to_scale()
     unit = 1.0 / max((abs(ms.x) + abs(ms.y) + abs(ms.z)) / 3.0, 1e-9)
     size = size_world * unit                          # (in the body's space)
-    spacing = max(size * p.spacing, 1e-6)
+    along, across = spacings(p, size, shapes)
     a, b, c = co[tri[:, 0]], co[tri[:, 1]], co[tri[:, 2]]
     area = 0.5 * np.linalg.norm(np.cross(b - a, c - a), axis=1)
     rng = np.random.default_rng(int(p.seed) + seed * 7919)
-    want = area / (spacing * spacing) * 4.0           # (candidates: 4 a spacing square, then thinned)
+    want = area / (along * across) * 4.0              # (candidates: 4 a spacing square, then thinned)
     cnt = np.floor(want + rng.random(len(want))).astype(int)
     if cnt.sum() > 400000:
         cnt = np.floor(cnt * 400000 / cnt.sum()).astype(int)
@@ -122,14 +161,18 @@ def placements(body, w, p, size_world, shapes, seed=0):
     Wt = w[tri[ti, 0]] * (1 - r1 - r2) + w[tri[ti, 1]] * r1 + w[tri[ti, 2]] * r2
     keep = Wt >= 0.5                                  # (the area's edge between its points and the ones outside)
     P, Nn = P[keep], Nn[keep]
-    # thinned: none closer than the spacing (a grid of cells the spacing wide)
+    T = _frames(body, P, Nn, p.flow)
+    B = np.cross(Nn, T)
+    # thinned: none inside another's ellipse (along x across; a grid of cells the larger one wide)
     order = rng.permutation(len(P))
     cell = {}
     acc = []
-    inv = 1.0 / spacing
-    sp2 = spacing * spacing
+    big = max(along, across)
+    inv = 1.0 / big
+    ia2, ic2 = 1.0 / (along * along), 1.0 / (across * across)
     for k in order:
         q = P[k]
+        tq, bq, nq = T[k], B[k], Nn[k]
         key = (int(math.floor(q[0] * inv)), int(math.floor(q[1] * inv)), int(math.floor(q[2] * inv)))
         ok = True
         for dx in (-1, 0, 1):
@@ -137,7 +180,8 @@ def placements(body, w, p, size_world, shapes, seed=0):
                 for dz in (-1, 0, 1):
                     for j in cell.get((key[0] + dx, key[1] + dy, key[2] + dz), ()):
                         d = P[j] - q
-                        if d @ d < sp2:
+                        da, db, dn = d @ tq, d @ bq, d @ nq
+                        if da * da * ia2 + (db * db + dn * dn) * ic2 < 1.0:
                             ok = False
                             break
                     if not ok:
@@ -152,24 +196,15 @@ def placements(body, w, p, size_world, shapes, seed=0):
             if len(acc) >= 60000:
                 break
     acc = np.array(acc, int)
-    P, Nn = P[acc], Nn[acc]
-    # down the body: the world's down along the skin, turned by Flow Angle (and a little at random)
-    R = np.array(body.matrix_world.to_3x3().normalized().inverted_safe(), float)
-    down = R @ np.array([0.0, 0.0, -1.0])
-    T = down[None, :] - Nn * (Nn @ down)[:, None]
-    weak = np.linalg.norm(T, axis=1) < 1e-3
-    if np.any(weak):
-        alt = R @ np.array([0.0, -1.0, 0.0])
-        T[weak] = alt[None, :] - Nn[weak] * (Nn[weak] @ alt)[:, None]
-    T /= np.maximum(np.linalg.norm(T, axis=1), 1e-12)[:, None]
+    P, Nn, T = P[acc], Nn[acc], T[acc]
     prng = random.Random(int(p.seed) * 31 + 7)
     ids = list(shapes)
     locs, quats, scls, picks = [], [], [], []
     for i in range(len(P)):
         n = Vector(Nn[i])
         t = Vector(T[i])
-        ang = p.flow + prng.uniform(-1.0, 1.0) * p.turn_random
-        t = Matrix.Rotation(ang, 3, n) @ t
+        if p.turn_random > 0:                         # (a little turned at random)
+            t = Matrix.Rotation(prng.uniform(-1.0, 1.0) * p.turn_random, 3, n) @ t
         lift = p.lift
         x = (t * math.cos(lift) + n * math.sin(lift)).normalized()
         z = (n * math.cos(lift) - t * math.sin(lift)).normalized()
@@ -266,11 +301,13 @@ def _upd_grow(self, context):
             _BUSY[0] = False
 
 
-DEFAULTS = {'FEATHERS': dict(size=4.0, spacing=0.35, lift=math.radians(14), length=1.0, width=1.0, sink=0.0,
+DEFAULTS = {'FEATHERS': dict(size=4.0, spacing=0.25, side_spacing=0.6, lift=math.radians(6), length=1.0, width=1.0,
+                             sink=0.0,
                              size_random=0.15, shapes_json='["CONTOUR"]'),
-            'SCALES': dict(size=2.2, spacing=0.55, lift=math.radians(10), length=1.0, width=1.0, sink=0.12,
+            'SCALES': dict(size=2.2, spacing=0.45, side_spacing=0.6, lift=math.radians(8), length=1.0, width=1.0,
+                           sink=0.12,
                            size_random=0.12, shapes_json='["KEELED"]')}
-LIVE = ('size', 'size_random', 'spacing', 'lift', 'flow', 'turn_random', 'length', 'width', 'sink', 'seed',
+LIVE = ('size', 'size_random', 'spacing', 'side_spacing', 'lift', 'flow', 'turn_random', 'length', 'width', 'sink', 'seed',
         'shapes_json')
 
 
@@ -281,9 +318,12 @@ class MCH_PG_Cover(bpy.types.PropertyGroup):
                         description='A feather / scale this long (% of the body\'s size; each feather its own length x '
                                     'this)')
     size_random: FloatProperty(name='Size Random', default=0.15, min=0.0, max=0.9, update=_upd)
-    spacing: FloatProperty(name='Spacing', default=0.35, min=0.05, max=3.0, update=_upd,
-                           description='How close they sit (x the size): small = dense, overlapping')
-    lift: FloatProperty(name='Lift', default=math.radians(14), min=0.0, max=math.radians(80), subtype='ANGLE',
+    spacing: FloatProperty(name='Spacing', default=0.25, min=0.05, max=3.0, update=_upd,
+                           description='How far apart along the way they lie, x their length: small = each one '
+                                       'mostly under the one before (overlapping like shingles)')
+    side_spacing: FloatProperty(name='Side Spacing', default=0.6, min=0.1, max=3.0, update=_upd,
+                                description='How far apart side by side, x their width: under 1 = overlapping')
+    lift: FloatProperty(name='Lift', default=math.radians(6), min=0.0, max=math.radians(80), subtype='ANGLE',
                         update=_upd, description='The free end lifted off the skin (they overlap like shingles)')
     flow: FloatProperty(name='Flow Angle', default=0.0, min=-math.pi, max=math.pi, subtype='ANGLE', update=_upd,
                         description='Which way they lie, turned round the skin\'s normal: 0 down the body')
@@ -302,9 +342,10 @@ class MCH_PG_Cover(bpy.types.PropertyGroup):
 # ---- drawing an area ------------------------------------------------------------------------------------------------
 
 def _not_body(ob):
-    """Feathers / scales (a cover, or one of the shapes it shows) - never the body an area is drawn on."""
+    """Feathers / scales (a cover, an applied one, or one of the shapes it shows) - never the body an area is drawn
+    on (drawn over them: the body under them)."""
     try:
-        return is_cover(ob) or any(c.name in SHAPE_COLLS.values() for c in ob.users_collection)
+        return is_cover(ob) or bool(ob.get(DONE_KEY)) or any(c.name in SHAPE_COLLS.values() for c in ob.users_collection)
     except (AttributeError, ReferenceError):
         return False
 
@@ -402,6 +443,7 @@ def apply_cover(context, ob):
     for k in (COVER_KEY, AREA_KEY):
         if k in ob:
             del ob[k]
+    ob[DONE_KEY] = 1
     if body is not None and area:
         a = body.data.attributes.get(area)
         if a is not None:
@@ -479,7 +521,7 @@ def draw(layout, context):
         g.operator('mch.cover_shape', text=label, depress=sid in chosen).shape = sid
     layout.prop(st, 'mix')
     col = layout.column(align=True)
-    for k in ('size', 'size_random', 'spacing', 'lift', 'flow', 'turn_random', 'length', 'width', 'sink', 'seed'):
+    for k in ('size', 'size_random', 'spacing', 'side_spacing', 'lift', 'flow', 'turn_random', 'length', 'width', 'sink', 'seed'):
         col.prop(pg, k)
     if ob is not None:
         layout.operator('mch.cover_apply', text='Apply (Enter)', icon='CHECKMARK')

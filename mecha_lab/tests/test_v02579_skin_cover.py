@@ -65,15 +65,26 @@ dt = time.time() - t0
 cov = C.active_object
 P, Q, SC, K = points(cov)
 check(f'a drawn area: feathers there ({len(P)} of them, {dt:.2f} s), a cover object on the body (its child), live '
-      f'(instances: {instances(cov)})', sc.is_cover(cov) and cov.parent == body and 20 < len(P) < 400
+      f'(instances: {instances(cov)})', sc.is_cover(cov) and cov.parent == body and 100 < len(P) < 3000
       and cov.modifiers.get('MCH Greeble') is not None and instances(cov) == len(P) and not cf.is_fur(cov), msg)
 size = sc.body_size(body) * st.size / 100.0
+_k, shp = sc.cover_shapes(C, cov)
+along, across = sc.spacings(cov.mch_cover, size, shp)
 d = np.linalg.norm(P[:, None, :] - P[None, :, :], axis=2) + np.eye(len(P)) * 9
 sx, sy = 500 + P[:, 0] * 200, 500 + P[:, 2] * 200
 inside = ((sx - 500) / 130) ** 2 + ((sy - 520) / 100) ** 2
-check(f'evenly spread: none closer than Spacing x Size ({d.min():.4f} >= {st.spacing * size:.4f}), all on the front '
-      f'inside the outline (worst {inside.max():.2f})', d.min() >= st.spacing * size * 0.99 and inside.max() < 1.12
-      and np.all(P[:, 1] < 0))
+xs0 = np.array([axes(q)[0] for q in Q])
+nn = d.argmin(1)
+dd = P[nn] - P
+da = np.abs((dd * xs0).sum(1))
+fresh_shapes = {k: o for k, o in shp.items()}
+ext = [sc.shape_extent(o) for o in fresh_shapes.values()]
+check(f'its shapes measured from their points (a hidden shape just made has no bounding box yet): {ext}',
+      all(e[0] > 0.01 and e[1] > 0.005 for e in ext))
+check(f'spread like a coat: none closer than Spacing x their length along the way they lie ({along:.4f}) or Side '
+      f'Spacing x their width side by side ({across:.4f}): nearest {d.min():.4f}; the nearest one mostly along '
+      f'({np.median(da / d.min(1)):.2f}), all on the front inside the outline (worst {inside.max():.2f})',
+      d.min() >= min(along, across) * 0.97 and along < across * 1.5 and inside.max() < 1.12 and np.all(P[:, 1] < 0))
 xs = np.array([axes(q)[0] for q in Q])
 zs = np.array([axes(q)[1] for q in Q])
 nrm = P / np.linalg.norm(P, axis=1)[:, None]
@@ -97,9 +108,9 @@ xs3 = np.array([axes(q)[0] for q in Q3])
 cov.mch_cover.length = 2.0
 _P, _q, SC4, _k = points(cov)
 check(f'live sliders: Lift 35 -> {lift2:.1f} deg, Flow Angle 90 -> sideways (down {(-xs3[:, 2]).mean():.2f}), '
-      f'Length x2 -> {np.median(SC4[:, 0] / SC[:, 0]):.2f} x, the next one starts like it (scene Lift '
+      f'Length x2 -> {np.median(SC4[:, 0]) / np.median(SC[:, 0]):.2f} x (fewer: {len(SC)} -> {len(SC4)}), the next one starts like it (scene Lift '
       f'{math.degrees(st.lift):.0f})', abs(lift2 - 35) < 1.0 and abs((-xs3[:, 2]).mean()) < 0.25
-      and abs(np.median(SC4[:, 0] / SC[:, 0]) - 2.0) < 0.05 and abs(math.degrees(st.lift) - 35) < 0.1)
+      and abs(np.median(SC4[:, 0]) / np.median(SC[:, 0]) - 2.0) < 0.1 and len(SC4) < len(SC) * 0.7 and abs(math.degrees(st.lift) - 35) < 0.1)
 cov.mch_cover.flow = 0.0
 cov.mch_cover.length = 1.0
 
@@ -156,12 +167,23 @@ check(f'applied: one real mesh ({len(sca.data.polygons):,} faces), not live, its
       not sc.is_cover(sca) and len(sca.data.polygons) > 50 * len(Ps) and not sca.modifiers
       and body.data.attributes.get(area) is None and sca.name.startswith('Scales'))
 
+st.grow = 'FEATHERS'
+setattr(C.window_manager, cf.NEW_KEY, True)
+cf.perform(C, ellipse(500, 420, 60, 40), FRONT)                  # (drawn over the applied scales)
+over = C.active_object
+check(f'drawn over applied scales: on the body under them ({over.parent and over.parent.name}), not on the scales',
+      sc.is_cover(over) and over.parent == body)
 st.grow = 'FUR'
 S.mch_fur.density, S.mch_fur.length = 3000.0, 0.05
 for o in C.selected_objects:
     o.select_set(False)
 cf.perform(C, ellipse(500, 600, 80, 60), FRONT)
-check('the Fur tab: fur as before', cf.is_fur(C.active_object))
+fur = C.active_object
+check('the Fur tab: fur as before', cf.is_fur(fur))
+tg = wu.enter_apply_target(C)
+r = getattr(bpy.ops.mch, tg[0])() if tg else None              # (what Enter runs - its poll wants the 3D view)
+check(f'Enter on a live fur: Apply ({tg}) - real hair curves', tg is not None and tg[0] == 'fur_apply'
+      and r == {'FINISHED'} and not cf.is_fur(fur) and len(fur.data.curves) > 50, r)
 for o in C.selected_objects:
     o.select_set(False)
 cov.select_set(True)

@@ -1,0 +1,19 @@
+1 Primary cell True picked ['Feather Primary'] - lines 1 feathers 68 kind FEATHER
+shot 1_feather_line.png True
+2 Longer to End cell True - grow_end 0.81 - first/last length (0.16, 0.285)
+shot 2_longer_to_end.png True
+3 after Enter: still a line False - name Feathers - faces 11856
+4 Feathers cell True grow FEATHERS - cover Feathers.001 245 feathers
+shot 3_fur_feathers.png True
+5 after Enter: cover False - faces 50960
+6 Scales cell True grow SCALES - cover Scales 145 - Dragon cell True shapes ['Scale Dragon']
+shot 4_fur_scales.png True
+6 after Enter: cover False - faces 62785
+shot 5_all_applied.png True
+PASS 1 the Feather Line tool: a REAL click on "Primary", a REAL drag along the body - feathers along it
+PASS 2 a REAL drag on "Longer to End": the feathers longer toward the line's end
+PASS 3 a REAL Enter: the feather line applied (real feathers)
+PASS 4 the Fur tool: a REAL click on "Feathers", a REAL lasso - feathers lying down the body there
+PASS 5 a REAL Enter: the feathers applied
+PASS 6 a REAL click on "Scales", a REAL lasso, a REAL click on "Dragon": dragon scales there; a REAL Enter applies
+6/6 passed

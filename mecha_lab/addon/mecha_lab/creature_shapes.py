@@ -22,6 +22,7 @@ import bpy
 from mathutils import Matrix, Vector
 
 T_ATTR = 'mch_feather_t'
+Y_ATTR = 'mch_feather_y'            # (across, in the feather's lengths: the barbs' lines - instanced too)
 
 # (id, label, spec) - L: length (x the Part Size), W: the widest half-width x L, calamus: the bare quill (share of L),
 # widest: where along the vane it is widest, tip: ROUND / POINT / SQUARE, asym: the right vane wider (left narrower),
@@ -99,6 +100,7 @@ def feather_mesh(spec, name='Feather', seed=1):
     shaft_h = W * spec.get('shaft', 0.25)
     bm = bmesh.new()
     lt = bm.verts.layers.float.new(T_ATTR)
+    ly = bm.verts.layers.float.new(Y_ATTR)
     rows = []
     for i in range(ns + 1):
         x = i / ns
@@ -126,6 +128,7 @@ def feather_mesh(spec, name='Feather', seed=1):
             y += spec.get('sweep', 0.0) * x * x
             v = bm.verts.new((x * L, y, z))
             v[lt] = x
+            v[ly] = y / L
             row.append(v)
         rows.append(row)
     gap_rows = set()
@@ -287,24 +290,30 @@ def scale_mesh(spec, name='Scale', seg=36, rings=11, seed=1):
 def feather_material():
     """``MCH Feather``: darker at the base, lighter to the tip (``mch_feather_t``), a little sheen."""
     m = bpy.data.materials.get('MCH Feather')
-    if m is not None:
+    if m is not None and m.get('mch_v') == 3:
         return m
-    m = bpy.data.materials.new('MCH Feather')
+    if m is None:
+        m = bpy.data.materials.new('MCH Feather')
+    m['mch_v'] = 3                                   # (2: the barbs from the feather's own attributes, 3: colours)
     m.use_nodes = True
     nt = m.node_tree
-    pb = nt.nodes.get('Principled BSDF')
+    nt.nodes.clear()
+    pb = nt.nodes.new('ShaderNodeBsdfPrincipled')
+    out = nt.nodes.new('ShaderNodeOutputMaterial')
+    nt.links.new(pb.outputs[0], out.inputs['Surface'])
     at = nt.nodes.new('ShaderNodeAttribute')
     at.attribute_name, at.attribute_type = T_ATTR, 'GEOMETRY'
     ramp = nt.nodes.new('ShaderNodeValToRGB')
-    ramp.color_ramp.elements[0].color = (0.12, 0.08, 0.05, 1.0)
-    ramp.color_ramp.elements[1].color = (0.62, 0.52, 0.4, 1.0)
+    ramp.color_ramp.elements[0].color = (0.03, 0.022, 0.015, 1.0)       # (colours in linear: a natural brown,
+    ramp.color_ramp.elements[1].color = (0.3, 0.22, 0.14, 1.0)          #  dark at the base, lighter to the tip)
+    mid = ramp.color_ramp.elements.new(0.45)
+    mid.color = (0.11, 0.07, 0.04, 1.0)
     nt.links.new(at.outputs['Fac'], ramp.inputs['Fac'])
     nt.links.new(ramp.outputs['Color'], pb.inputs['Base Color'])
     pb.inputs['Roughness'].default_value = 0.55
     # the barbs: fine lines from the shaft out toward the tip either side (a V along it) - a bump, no extra mesh
-    tc = nt.nodes.new('ShaderNodeTexCoord')
-    sep = nt.nodes.new('ShaderNodeSeparateXYZ')
-    nt.links.new(tc.outputs['Object'], sep.inputs[0])
+    ay = nt.nodes.new('ShaderNodeAttribute')
+    ay.attribute_name, ay.attribute_type = Y_ATTR, 'GEOMETRY'
 
     def math_(op, a, b=None):
         n = nt.nodes.new('ShaderNodeMath')
@@ -317,35 +326,38 @@ def feather_material():
             else:
                 n.inputs[i].default_value = v
         return n.outputs[0]
-    v = math_('SUBTRACT', sep.outputs['X'], math_('MULTIPLY', math_('ABSOLUTE', sep.outputs['Y']), 1.6))
-    lines = math_('POWER', math_('ABSOLUTE', math_('SINE', math_('MULTIPLY', v, 260.0))), 0.6)
+    v = math_('SUBTRACT', at.outputs['Fac'], math_('MULTIPLY', math_('ABSOLUTE', ay.outputs['Fac']), 1.6))
+    lines = math_('POWER', math_('ABSOLUTE', math_('SINE', math_('MULTIPLY', v, 380.0))), 0.6)
     bump = nt.nodes.new('ShaderNodeBump')
     bump.inputs['Strength'].default_value = 0.35
     bump.inputs['Distance'].default_value = 0.002
     nt.links.new(lines, bump.inputs['Height'])
     nt.links.new(bump.outputs['Normal'], pb.inputs['Normal'])
-    for sock, v in (('Sheen Weight', 0.5), ('Subsurface Weight', 0.0)):
+    for sock, v in (('Sheen Weight', 0.15), ('Subsurface Weight', 0.0)):
         try:
             pb.inputs[sock].default_value = v
         except KeyError:
             pass
-    m.diffuse_color = (0.4, 0.33, 0.25, 1.0)
+    m.diffuse_color = (0.3, 0.22, 0.15, 1.0)
     return m
 
 
 def scale_material():
     m = bpy.data.materials.get('MCH Scale')
-    if m is not None:
+    if m is not None and m.get('mch_v') == 2:
         return m
-    m = bpy.data.materials.new('MCH Scale')
-    pb = m.node_tree.nodes.get('Principled BSDF')
-    pb.inputs['Base Color'].default_value = (0.2, 0.26, 0.14, 1.0)
-    pb.inputs['Roughness'].default_value = 0.4
+    if m is None:
+        m = bpy.data.materials.new('MCH Scale')
+    m['mch_v'] = 2                                   # (2: darker, in linear colour)
+    m.use_nodes = True
+    pb = next(n for n in m.node_tree.nodes if n.bl_idname == 'ShaderNodeBsdfPrincipled')
+    pb.inputs['Base Color'].default_value = (0.055, 0.075, 0.03, 1.0)
+    pb.inputs['Roughness'].default_value = 0.38
     try:
         pb.inputs['Coat Weight'].default_value = 0.3
     except KeyError:
         pass
-    m.diffuse_color = (0.2, 0.26, 0.14, 1.0)
+    m.diffuse_color = (0.18, 0.24, 0.12, 1.0)
     return m
 
 
