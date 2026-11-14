@@ -610,8 +610,8 @@ def apply_line(context, ob):
         bpy.data.node_groups.remove(ng)
     old = ob.data
     ob.data = me
-    me.name = 'Greeble Parts'
-    ob.name = 'Greeble Parts'
+    kind = getattr(getattr(ob, 'mch_greeble_line', None), 'kind', 'MECH')
+    me.name = ob.name = 'Scales' if kind == 'CREATURE' else 'Greeble Parts'    # (0.24.169 a Scale Line's: Scales)
     if old.users == 0:
         bpy.data.meshes.remove(old)
     for k in (LINE_KEY, STROKE_KEY):
@@ -1468,15 +1468,27 @@ class MCH_OT_greeble_stamp_profile(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def apply_targets(context):
+    """0.24.169 (user: "스케일 어제 만든 것도 다 선택해서 엔터 누르면 어플라이 되게, 그리블도"): every selected Scale Line /
+    Greeble Line (else the active one)."""
+    lines = [o for o in getattr(context, 'selected_objects', []) or [] if is_line(o)]
+    act = getattr(context, 'active_object', None)
+    return lines or ([act] if is_line(act) else [])
+
+
 class MCH_OT_greeble_apply(bpy.types.Operator):
-    """Apply the selected Greeble Line(s): real geometry - one mesh with the parts (their materials), no longer live"""
+    """Apply the selected Greeble Line(s) / Scale Line(s): real geometry - one mesh with the parts (their materials), no
+    longer live (Enter)"""
     bl_idname = 'mch.greeble_apply'
     bl_label = 'Apply Greeble Line'
     bl_options = {'REGISTER', 'UNDO'}
 
+    @classmethod
+    def poll(cls, context):
+        return bool(apply_targets(context))
+
     def execute(self, context):
-        lines = [o for o in context.selected_objects if is_line(o)] or (
-            [context.active_object] if is_line(context.active_object) else [])
+        lines = apply_targets(context)
         n = sum(apply_line(context, ob) for ob in lines)
         if not n:
             self.report({'WARNING'}, 'Greeble: select a Greeble Line')

@@ -51,9 +51,9 @@ STYLES = {
     'PERM': dict(count=170, length=0.32, length_random=0.25, radius=0.0045, radius_random=0.25, taper=0.55, lift=0.6,
                  gravity=0.7, wave=0.12, straight=0.3, rope=0.0, rope_twist=0.0, rings=0, ring_size=1.3,
                  curl=0.55, curl_turns=7.0, sides=5, segments=64),
-    'BEARD': dict(count=220, length=0.14, length_random=0.35, radius=0.003, radius_random=0.3, taper=0.75, lift=0.45,
-                  gravity=1.3, wave=0.3, straight=0.5, rope=0.0, rope_twist=0.0, rings=0, ring_size=1.3,
-                  curl=0.18, curl_turns=3.0, sides=4, segments=16),
+    'BEARD': dict(count=260, length=0.12, length_random=0.4, radius=0.0028, radius_random=0.3, taper=0.8, lift=0.75,
+                  gravity=0.9, wave=0.45, straight=0.15, rope=0.0, rope_twist=0.0, rings=0, ring_size=1.3,
+                  curl=0.22, curl_turns=2.5, sides=4, segments=18),     # (out from the face first, then down, frizzy)
     'FUR': dict(count=600, length=0.05, length_random=0.4, radius=0.0022, radius_random=0.3, taper=0.9, lift=0.18,
                 gravity=0.35, wave=0.2, straight=0.0, rope=0.0, rope_twist=0.0, rings=0, ring_size=1.3,
                 curl=0.0, curl_turns=3.0, sides=4, segments=6),

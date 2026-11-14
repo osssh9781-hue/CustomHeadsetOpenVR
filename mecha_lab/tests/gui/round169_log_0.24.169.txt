@@ -5,8 +5,13 @@ shot 1_perm_mirrored.png True
 shot 2_blonde.png True
 3 after Enter: live False - outline kept False
 4 second hair Head_Hair.001 - the head active, after Enter: live False
+5 the tile: in Cut (Fur remembered) 'Cut ON' - clicked 'Cut OFF' - clicked again 'Cut ON'
+shot 3_tile.png True
+6 lines 3 selected, after Enter still live: [] - now ['Scales', 'Scales.001', 'Greeble Parts']
 PASS 1 a REAL click on "Perm" + a REAL lasso on the +X side: permed hair, mirrored to -X like the head
 PASS 2 a REAL click on "Blonde": the hair's own material blonde, the strands not rebuilt
 PASS 3 a REAL Enter: the hair applied (no longer live)
 PASS 4 a second hair, the head clicked active, a REAL Enter in the Hair tool: the hair just made applied
-4/4 passed
+PASS 5 the tool tile shows the tool in use (Cut ON, not Fur), a REAL click: Cut OFF, again: Cut ON
+PASS 6 two Scale Lines and a Greeble Line selected, a REAL Enter: all three applied (real meshes)
+6/6 passed

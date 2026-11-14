@@ -6,6 +6,10 @@ live Mirror:
   2. a REAL click on the colour preset "Blonde" - the hair's own material blonde (the strands not rebuilt)
   3. a REAL Enter - the hair applied
   4. another hair, then the head made active (as when clicked in the layers): a REAL Enter still applies the hair
+  5. the actions' tool tile (user: "이거 왜 컷인데 퍼로 떠?"): with Fur remembered and the viewport on Cut it says
+     Cut ON; REAL clicks on it: Cut OFF, Cut ON
+  6. two Scale Lines and a Greeble Line selected (user: "스케일 ... 다 선택해서 엔터 누르면 어플라이, 그리블도"): a REAL
+     Enter applies all three
 """
 import math
 import os
@@ -305,6 +309,70 @@ def flow():
     log('4 second hair', hair2 and hair2.name, '- the head active, after Enter: live', hair2.mch_hair.live if hair2 else None)
     res['4 a second hair, the head clicked active, a REAL Enter in the Hair tool: the hair just made applied'] = (
         hair2 is not None and not hair2.mch_hair.live)
+    # 5: the tool tile (user: "이거 왜 컷인데 퍼로 떠?"): Fur remembered, the viewport switched to Cut as opening a file
+    # does - the tile says Cut; a REAL click on it: off (Select) and it offers Cut; a REAL click again: Cut on
+    from mecha_lab import ui_bars
+
+    def tile():
+        w_, a_, r_ = view3d()
+        with C.temp_override(window=w_, area=a_, region=r_):
+            its = ui_bars.dock_items(C, r_.width, r_.height, ui_factor(C, r_))
+        return next((i for i in its if getattr(i, 'label', '').endswith((' ON', ' OFF'))), None)
+    S.mch_settings.mch_active_tool = 'FUR'
+    with C.temp_override(window=w, area=a, region=r):
+        bpy.ops.wm.tool_set_by_id(name='mecha.cut', space_type='VIEW_3D')
+    yield from wait_draws(2)
+    t1 = tile()
+    l1 = t1.label if t1 else None
+    if t1 is not None:
+        yield from press(t1)
+    yield from wait_draws(2)
+    t2 = tile()
+    l2 = t2.label if t2 else None
+    if t2 is not None:
+        yield from press(t2)
+    yield from wait_draws(2)
+    t3 = tile()
+    l3 = t3.label if t3 else None
+    log('5 the tile: in Cut (Fur remembered)', repr(l1), '- clicked', repr(l2), '- clicked again', repr(l3))
+    res['5 the tool tile shows the tool in use (Cut ON, not Fur), a REAL click: Cut OFF, again: Cut ON'] = (
+        l1 == 'Cut ON' and l2 == 'Cut OFF' and l3 == 'Cut ON')
+    shot('3_tile.png')
+    # 6: two Scale Lines and a Greeble Line (user: "스케일 어제 만든 것도 다 선택해서 엔터 누르면 어플라이 되게, 그리블도"):
+    # all selected, a REAL Enter - all three applied
+    from mecha_lab import greeble_line as gl
+    with C.temp_override(window=w, area=a, region=r):
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, segments=48, ring_count=24, location=(0.0, 6.0, 0.0))
+        ball = C.active_object
+        lines = []
+        for which, kind, yy in (('SCALES', 'CREATURE', -0.6), ('SCALES', 'CREATURE', -0.2), ('MECH', 'MECH', 0.3)):
+            gl.make_starters(C, ball, which)
+            stg = gl.settings(S, kind)
+            pts, nrm = [], []
+            for tt in np.linspace(-0.9, 0.9, 40):
+                v = Vector((math.sin(tt), yy, math.cos(tt))).normalized()
+                pts.append(tuple(v))
+                nrm.append(tuple(v))
+            ln = gl.new_line(C, ball, pts, nrm, gl.picked(stg), stg, kind)
+            gl.rebuild(ln, C)
+            lines.append(ln)
+        for o in C.selected_objects:
+            o.select_set(False)
+        for ln in lines:
+            ln.select_set(True)
+        C.view_layer.objects.active = lines[0]
+        bpy.ops.mch.bar_tool(tool='CGREEBLE')
+    yield 2.0
+    w, a, r = view3d()
+    xdo('mousemove', int(r.x + r.width * 0.4), int(w.height - (r.y + r.height * 0.5)))
+    yield 0.5
+    xdo('key', 'Return')
+    yield 2.5
+    left = [o.name for o in S.objects if gl.is_line(o)]
+    names = [o.name for o in lines if o.name in bpy.data.objects]
+    log('6 lines', len(lines), 'selected, after Enter still live:', left, '- now', names)
+    res['6 two Scale Lines and a Greeble Line selected, a REAL Enter: all three applied (real meshes)'] = (
+        len(lines) == 3 and not left)
     bpy.types.SpaceView3D.draw_handler_remove(handle, 'WINDOW')
     for k_, v in res.items():
         log(('PASS ' if v else 'FAIL ') + k_)

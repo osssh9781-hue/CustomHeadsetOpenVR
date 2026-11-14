@@ -320,6 +320,13 @@ class MCH_GGT_bottom_toolbar(bpy.types.GizmoGroup):
 
 
 def chosen_tool(context):
+    """The tool the actions' tool tile shows: 0.24.169 (user, a screenshot of the Cut tool with the tile reading "Fur
+    OFF": "이거 왜 컷인데 퍼로 떠? 헷갈리잖아") the Mecha drawing tool in use when there is one - the remembered
+    choice can lag behind it (opening a file switches the viewport to Cut, Blender's own tool list, ...) - else the
+    remembered one (off: a click switches it back on)."""
+    native = ts.NATIVE_TO_TOOL.get(ts.native_tool_id(context))
+    if native and ts.TOOL_BY_ID.get(native, (None,) * 6)[5]:
+        return native, ts.TOOL_BY_ID[native]
     st = getattr(context.scene, 'mch_settings', None)
     tid = getattr(st, 'mch_active_tool', '') if st else ''
     t = ts.TOOL_BY_ID.get(tid)
@@ -372,6 +379,9 @@ class MCH_OT_tool_active(bpy.types.Operator):
         if not t:
             return {'CANCELLED'}
         if tool_live(context):
+            st = getattr(context.scene, 'mch_settings', None)
+            if st is not None and st.mch_active_tool != tid:
+                st.mch_active_tool = tid                 # (0.24.169 off: the tile then offers the tool just used)
             bpy.ops.mch.select_move()
         else:
             from .workspace_ui import activate_mecha_tool

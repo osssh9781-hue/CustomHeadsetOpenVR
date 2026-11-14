@@ -2618,6 +2618,7 @@ ENTER_APPLY = (
     ('cape_apply', 'Cape'),
     ('sdraw_apply', 'Surface Draw'),
     ('hair_apply', 'Creature Hair'),
+    ('greeble_apply', 'Scale / Greeble Line'),          # 0.24.169 every selected line
     ('clothing_apply', 'Clothing'),
     ('hood_apply', 'Hood'),
     ('scarf_apply', 'Scarf'),
