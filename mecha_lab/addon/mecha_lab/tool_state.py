@@ -115,6 +115,12 @@ TOOLS = (
      'live, Alt + click: back to the shape', 'wleaf', 'OUTLINER_OB_POINTCLOUD', 'mecha.weather_leaves', 'OK'),
     ('WSNOW', 'Snow', 'Click a mesh: it becomes snow - smoothed, puffed (more on top), soft lumps, white with blue '
      'shade; live, Alt + click: back to the shape', 'wsnow', 'FREEZE', 'mecha.weather_snow', 'OK'),
+    ('PMEASURE', 'Print Measure', 'Drag on the model: the length and how much of it is horizontal / vertical (Shift: '
+     'straight); kept until cleared. The window: the part\'s size, if it fits the printer, Scale to Height',
+     'pmeasure', 'DRIVER_DISTANCE', 'mecha.print_measure', 'OK'),
+    ('PCUT', 'Print Cut', 'Drag a line across a part: cut into two closed parts with connection pins across the cut '
+     '(a peg and a hole, or holes and separate dowel pins; clearance); or cut it through the middle',
+     'pcut', 'MOD_BOOLEAN', 'mecha.print_cut', 'OK'),
     ('GARMENT', 'Clothing', 'Front view: draw the outline of a top or pants over a body - the body surface inside it '
      '(front and back) becomes a live garment: Type (T-Shirt / Hoodie / Pants / Cargo), Fit, Smooth, Hem Flare, '
      'Wrinkles, Thickness',
@@ -222,6 +228,7 @@ TOOL_GROUPS = (
     ('Curves', ('TUBE', 'TUBE_SAME', 'SCURVE', 'CABLE', 'ALONG', 'LOFT')),
     ('Creature', ('CPLATE', 'CGREEBLE', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'HAIR', 'FUR')),
     ('Weathering', ('WDIRT', 'WDUST', 'WLEAF', 'WSNOW')),                  # 0.24.158 click a shape: dirt / dust / ...
+    ('3D Print', ('PMEASURE', 'PCUT')),                                    # 0.24.164 measure; cut with connection pins
     ('Cloth', ('WRINKLE', 'CDRAPE', 'WLINES', 'CAPE', 'SCAPE', 'GARMENT', 'HOOD', 'SCARF')),
     ('Utility', ('HOLLOW', 'ZBRUSH', 'SURFACE', 'LIBRARY', 'EDIT')),
 )
@@ -249,7 +256,7 @@ _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRA
                  'EXTRACT': 20, 'MOLDING': 21, 'HOLLOW': 22, 'ALONG': 23, 'CABLE': 24, 'PLATE': 25, 'WRINKLE': 26, 'TUBE': 27,
                  'HIDE': 28, 'DETAIL': 29, 'DETAIL2': 30, 'SCREW': 31, 'DETAIL3': 32, 'TUBE_SAME': 33,
                  'CBASE': 34, 'CPLATE': 35, 'BELT': 36, 'SPIKE': 37, 'SCALES': 38, 'FLOWER': 39, 'SCURVE': 40, 'SBRUSH': 41, 'BRIDGE': 42, 'CAPE': 43, 'HAIR': 44, 'GARMENT': 45, 'HOOD': 46, 'SCARF': 47, 'CMOVE': 48, 'CPATH': 50, 'PERF': 51, 'SDRAW': 52, 'SCAPE': 53, 'RSYM': 55, 'SMOVE': 56, 'WLINES': 57, 'CDRAPE': 58, 'ZONE': 59, 'PRESS': 60, 'SMART': 61, 'GSCULPT': 62, 'GREEBLE': 63, 'CGREEBLE': 64, 'FUR': 65, 'WDIRT': 66,
-                 'WDUST': 67, 'WLEAF': 68, 'WSNOW': 69, 'DETAIL4': 70}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
+                 'WDUST': 67, 'WLEAF': 68, 'WSNOW': 69, 'DETAIL4': 70, 'PMEASURE': 71, 'PCUT': 72}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
 TOOL_ENUM_ITEMS = [(t[0], t[1], t[2], t[4], _ENUM_NUMBERS[t[0]]) for t in TOOLS]
 
 SHAPES = (

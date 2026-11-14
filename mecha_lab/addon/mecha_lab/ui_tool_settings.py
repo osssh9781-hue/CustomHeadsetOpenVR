@@ -1124,6 +1124,13 @@ def draw_fur(layout, context):
     creature_fur.draw(layout, context)
 
 
+def _print_drawer(name):
+    def draw_it(layout, context):
+        from . import print3d
+        getattr(print3d, name)(layout, context)
+    return draw_it
+
+
 def _weather_drawer(kind):
     def draw_it(layout, context):
         from . import weathering
@@ -1143,6 +1150,7 @@ DRAWERS = {
     'FUR': draw_fur,
     'WDIRT': _weather_drawer('DIRT'), 'WDUST': _weather_drawer('DUST'), 'WLEAF': _weather_drawer('LEAVES'),
     'WSNOW': _weather_drawer('SNOW'),
+    'PMEASURE': _print_drawer('draw_measure'), 'PCUT': _print_drawer('draw_cut'),        # 0.24.164 3D Print
     'RSYM': draw_radial_sym,
     'SDRAW': draw_surface_draw,
     'PERF': draw_perforate,

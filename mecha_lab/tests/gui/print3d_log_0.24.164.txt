@@ -1,0 +1,13 @@
+1 measures 1 - L 65.1 H 0.0 V 65.1 mm
+2 measures 2 - L 78.1 H 60.0 V 50.0 mm
+shot 1_measures.png True
+3 after Alt + click: measures 1
+4 Scale to Height cell True - size [150.0, 150.0, 150.0]
+5 parts ['Cube100.A', 'Cube100.B'] closed [True, True] - pins 2 - original hidden True
+shot 2_cut.png True
+PASS 1 a REAL Shift + drag down the cube: a straight vertical measure (horizontal 0), about 65 mm
+PASS 2 a REAL free drag: its length with the horizontal and vertical parts (L2 = H2 + V2)
+PASS 3 a REAL Alt + click on the first measure: it is gone, the second kept
+PASS 4 a REAL click on "Scale to Height": the cube 150 mm tall (in proportion)
+PASS 5 a REAL Shift + drag across the cube with Print Cut: two closed parts, pins across the cut, the original hidden
+5/5 passed
