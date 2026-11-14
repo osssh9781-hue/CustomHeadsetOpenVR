@@ -596,7 +596,10 @@ def _rough_changed(self, _context):
     ob = self.id_data
     if isinstance(ob, bpy.types.Object) and is_detail(ob) and self.kind == 'ROUGH':
         remember(ob)
-        _pr.push(ob)
+        if self.r_style == 'COLUMNS':        # (0.24.163 Columnar Basalt: real columns, rebuilt once the slider stops)
+            _queue(ob)
+        else:
+            _pr.push(ob)
 
 
 def _rough_props():
@@ -618,6 +621,25 @@ def _rough_props():
                                     description='How finely the plate is divided: about this many faces across one '
                                                 'feature (kept under a face limit on a big plate)')
     ann['r_preset'] = EnumProperty(name='Preset', items=[(p[0], p[1], p[2]) for p in _pr.PRESETS], default='CONCRETE')
+    # 0.24.163 Columnar Basalt
+    ann['r_style'] = EnumProperty(name='Style', items=(('ROUGH', 'Rough Rim', 'A plate with a rough rim (a texture)'),
+                                                       ('COLUMNS', 'Columns', 'Basalt columns')), default='ROUGH')
+    ann['r_slope'] = FloatProperty(name='Slope', default=0.85, min=0.0, max=1.0, update=_rough_changed,
+                                   description='How much the columns rise along the way you drew (0 = all as tall as '
+                                               'Height, 1 = from nothing where you started to Height at the far end)')
+    ann['r_hrand'] = FloatProperty(name='Height Random', default=0.3, min=0.0, max=1.0, update=_rough_changed,
+                                   description='Each column a little taller or shorter at random')
+    ann['r_gap'] = FloatProperty(name='Joint Gap', default=0.005, min=0.0, soft_max=0.05, unit='LENGTH', precision=4,
+                                 update=_rough_changed, description='The gap between the columns')
+    ann['r_round'] = FloatProperty(name='Edge Round', default=0.004, min=0.0, soft_max=0.05, unit='LENGTH', precision=4,
+                                   update=_rough_changed, description='A chamfer round each column\'s top')
+    ann['r_tilt'] = FloatProperty(name='Top Tilt', default=math.radians(5.0), min=0.0, max=math.radians(45.0),
+                                  subtype='ANGLE', update=_rough_changed, description='Column tops tilted a little at random')
+    ann['r_turn'] = FloatProperty(name='Turn', default=0.0, min=-math.pi, max=math.pi, subtype='ANGLE',
+                                  update=_rough_changed, description='Turn the way the columns rise (0 = the way you drew)')
+    ann['r_flip'] = BoolProperty(name='Flip', default=False, update=_rough_changed,
+                                 description='High where you started drawing instead')
+    ann['r_dir'] = bpy.props.FloatVectorProperty(size=3, default=(0.0, 0.0, 0.0), options={'HIDDEN'})   # (the way it was drawn)
     ann['r_cell'] = FloatProperty(default=0.0, options={'HIDDEN'})          # (mean face edge of the base patch)
     return ann
 
@@ -735,6 +757,9 @@ def set_preset(ob, layers):
 def build_mesh(p, name):
     """The detail mesh for settings ``p`` (a live detail's mch_pdetail, or a plain namespace)."""
     embed = p.size * 0.002
+    if p.kind == 'ROUGH' and getattr(p, 'r_style', 'ROUGH') == 'COLUMNS':
+        # 0.24.163 Columnar Basalt: the columns themselves (no modifier)
+        return _pr.build_columns(p, p.region, name, embed, lift=p.size * 0.0004 + p.lift)
     if p.kind == 'ROUGH':
         # 0.24.161 Plate Detail 4: the base shell only; its shape and texture are the Rough Rim modifier
         me, edge = _pr.build_base(p.region, embed, p.size * 0.0004, name=name)
@@ -769,7 +794,11 @@ def rebuild(ob):
     me.name = ob.name
     from . import live_subtract
     live_subtract.apply(bpy.context, ob)      # 0.24.21 the Alt outlines cut out again
-    if p.kind == 'ROUGH':
+    if p.kind == 'ROUGH' and p.r_style == 'COLUMNS':
+        mod = ob.modifiers.get(_pr.MOD)       # 0.24.163 columns: no Rough Rim modifier
+        if mod is not None:
+            ob.modifiers.remove(mod)
+    elif p.kind == 'ROUGH':
         _pr.push(ob)                          # 0.24.161 the Rough Rim modifier with this plate's values
     return me
 
@@ -825,6 +854,8 @@ def perform(context, loops, projector, tool='DETAIL'):
         p.region = region
         p.size = local_size
         p.kind = kind
+        if kind == 'ROUGH':                  # 0.24.163 the way the outline was drawn (Columnar Basalt rises along it)
+            p.r_dir = _pr.stroke_dir(region, loops, projector, target) or (0.0, 0.0, 0.0)
         p.layers, p.direction, p.screws, p.profile = st.layers, st.direction, st.screws, st.profile
         for k in LENGTHS:
             setattr(p, k, f[k] * local_size)
@@ -844,7 +875,8 @@ def perform(context, loops, projector, tool='DETAIL'):
     ob.select_set(True)
     context.view_layer.objects.active = ob
     what = {'TRIM': f'{p.layers}-layer trim', 'RISE': 'smooth rise', 'FLAT': 'flat panel',
-            'ROUGH': f'rough rim - {_preset_label(p.r_preset)}'}[kind]
+            'ROUGH': ('basalt columns, rising the way you drew' if p.r_style == 'COLUMNS'
+                      else f'rough rim - {_preset_label(p.r_preset)}')}[kind]
     return f'Plate Detail "{ob.name}" on {target.name} ({what}, {len(ob.data.polygons)} faces)'
 
 
@@ -875,9 +907,10 @@ def engrave(context, loops, projector, tool='DETAIL'):
                               wall_angle=f.get('wall_angle', 90.0), **{k: f[k] * local_size for k in LENGTHS},
                               **{k: f.get(k, _pr.DEFAULT[k]) for k in _pr.PLAIN})
     p.lift = 0.0
+    p.r_dir = _pr.stroke_dir(region, loops, projector, target) or (0.0, 0.0, 0.0)
     try:
         me = build_mesh(p, 'MCH_DetailEngrave')
-        if p.kind == 'ROUGH':                # 0.24.161 the finished rough plate (its modifier on a temporary object)
+        if p.kind == 'ROUGH' and p.r_style != 'COLUMNS':   # 0.24.161 the finished rough plate (its modifier, temporary)
             base = me
             try:
                 me = _pr.evaluated(context, p, base)
@@ -1079,9 +1112,33 @@ def _draw_rough_presets(col, current):
         grid.operator('mch.pdetail_rough_preset', text=label, depress=(pid == current)).preset = pid
 
 
+def _draw_columns(box, p):
+    """0.24.163 Columnar Basalt's values."""
+    col = box.column(align=True)
+    col.prop(p, 'r_height')
+    col.prop(p, 'r_feature', text='Column Size')
+    col = box.column(align=True)
+    col.label(text='Rise (along the way you drew)')
+    col.prop(p, 'r_slope')
+    row = col.row(align=True)
+    row.prop(p, 'r_turn')
+    row.prop(p, 'r_flip', toggle=True)
+    col.prop(p, 'r_hrand')
+    col = box.column(align=True)
+    col.prop(p, 'r_gap')
+    col.prop(p, 'r_round')
+    col.prop(p, 'r_tilt')
+    row = box.row(align=True)
+    row.prop(p, 'r_seed')
+    box.prop(p, 'lift')
+
+
 def _draw_rough(box, p):
     col = box.column(align=True)
     _draw_rough_presets(col, p.r_preset)
+    if p.r_style == 'COLUMNS':
+        _draw_columns(box, p)
+        return
     col = box.column(align=True)
     col.prop(p, 'r_height')
     col.prop(p, 'r_ramp')
@@ -1128,7 +1185,7 @@ class MCH_OT_pdetail_rough_preset(bpy.types.Operator):
             finally:
                 _SYNC[0] = False
             remember(ob)
-            _pr.push(ob)
+            rebuild(ob)                       # (0.24.163 the style may change: columns <-> the rough plate's shell)
         else:
             st = context.scene.mch_pdetail
             f = _fractions(context.scene)

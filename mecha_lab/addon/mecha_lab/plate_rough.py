@@ -103,15 +103,24 @@ PRESETS = (
      dict(r_height=0.035, r_ramp=0.06, r_profile='ROUND', r_rim=0.25, r_center=0.15, r_strength=0.016,
           r_feature=0.06, r_bumps=0.7, r_cells=0.0, r_cracks=0.0, r_wrinkles=0.4, r_pits=0.5, r_grain=0.1,
           r_chips=0.5)),
+    # 0.24.163 (user: "주상절리 같은 절벽 스타일도 - 긋는 방향 따라 높은 곳이 대각선으로 달라지게"): real columns, not a texture
+    ('BASALT', 'Columnar Basalt', 'Basalt columns (주상절리): a cliff of 5 - 7 sided columns, rising along the way the '
+     'outline was drawn - low where it started, high at the far end',
+     dict(r_style='COLUMNS', r_height=0.18, r_feature=0.05, r_slope=0.85, r_hrand=0.3, r_gap=0.003, r_round=0.0025,
+          r_tilt=math.radians(5.0), r_turn=0.0, r_flip=False)),
 )
 PRESET_IDS = tuple(p[0] for p in PRESETS)
-LENGTHS = tuple(p[0] for p in LENGTH_PROPS)
-PLAIN = ('r_profile', 'r_center', 'r_chips', 'r_seed', 'r_detail', 'r_preset') + tuple(p[0] for p in MIX_PROPS)
-DEFAULT = dict(PRESETS[0][3], r_seed=0, r_detail=6.0, r_preset='CONCRETE')
+COLUMN_LENGTHS = ('r_gap', 'r_round')       # (0.24.163 Columnar Basalt's lengths - not modifier inputs)
+LENGTHS = tuple(p[0] for p in LENGTH_PROPS) + COLUMN_LENGTHS
+PLAIN = ('r_profile', 'r_center', 'r_chips', 'r_seed', 'r_detail', 'r_preset', 'r_style', 'r_slope', 'r_hrand', 'r_tilt',
+         'r_turn', 'r_flip') + tuple(p[0] for p in MIX_PROPS)
+COLUMN_DEFAULT = dict(next(p[3] for p in PRESETS if p[0] == 'BASALT'))
+DEFAULT = dict(COLUMN_DEFAULT, **PRESETS[0][3], r_style='ROUGH', r_seed=0, r_detail=6.0, r_preset='CONCRETE')
 
 
 def preset_values(pid):
-    return dict(next((p[3] for p in PRESETS if p[0] == pid), PRESETS[0][3]), r_preset=pid)
+    """Every value a preset sets (a rough one: style Rough; Columnar Basalt: style Columns)."""
+    return dict({'r_style': 'ROUGH'}, **next((p[3] for p in PRESETS if p[0] == pid), PRESETS[0][3]), r_preset=pid)
 
 
 # -----------------------------------------------------------------------------
@@ -168,6 +177,221 @@ def build_base(region_me, embed, lift, name='MCH_PlateRough'):
     me.shade_smooth()
     me.update()
     return me, edge
+
+
+# -----------------------------------------------------------------------------
+# 0.24.163 Columnar Basalt (주상절리): real columns, not a texture
+# -----------------------------------------------------------------------------
+
+MAX_COLUMNS = 4000                 # (a smaller Column Size than this allows on a big plate is made bigger)
+
+
+def _cells(seeds, inside):
+    """Voronoi cells of the seeds marked ``inside`` (2D, from a Delaunay triangulation: each cell = the circumcentres
+    of its triangles round its seed).  Returns {seed index: [(x, y), ...] counter-clockwise}."""
+    from mathutils import Vector, geometry
+    out = geometry.delaunay_2d_cdt([Vector(q) for q in seeds], [], [], 0, 1e-9, True)
+    verts, tris, orig = out[0], out[2], out[3]
+    to_in = {}
+    for k, ids in enumerate(orig):
+        for i in ids:
+            to_in.setdefault(k, i)
+    V = np.array([tuple(v) for v in verts])
+    around = {}
+    for t in tris:
+        a, b, c = V[t[0]], V[t[1]], V[t[2]]
+        d = 2.0 * (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1]))
+        if abs(d) < 1e-14:
+            continue
+        a2, b2, c2 = a @ a, b @ b, c @ c
+        cc = ((a2 * (b[1] - c[1]) + b2 * (c[1] - a[1]) + c2 * (a[1] - b[1])) / d,
+              (a2 * (c[0] - b[0]) + b2 * (a[0] - c[0]) + c2 * (b[0] - a[0])) / d)
+        for k in t:
+            i = to_in.get(k)
+            if i is not None and inside[i]:
+                around.setdefault(i, []).append(cc)
+    cells = {}
+    for i, cs in around.items():
+        if len(cs) < 3:
+            continue
+        sx, sy = seeds[i]
+        cs.sort(key=lambda q: math.atan2(q[1] - sy, q[0] - sx))
+        cells[i] = cs
+    return cells
+
+
+def _inside_poly(px, py, poly):
+    """Point-in-polygon for many points (numpy, even-odd)."""
+    inside = np.zeros(len(px), bool)
+    n = len(poly)
+    for i in range(n):
+        x1, y1 = poly[i]
+        x2, y2 = poly[(i + 1) % n]
+        cross = (y1 > py) != (y2 > py)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            xi = x1 + (py - y1) * (x2 - x1) / (y2 - y1)
+        inside ^= cross & (px < xi)
+    return inside
+
+
+def stroke_dir(region_me, loops, projector, target):
+    """0.24.163 "긋는 방향따라": the way the outline was drawn, on the surface (target space) - from where it started
+    toward the outline point farthest from there.  None if it cannot be found."""
+    from mathutils import Vector
+    from mathutils.bvhtree import BVHTree
+    try:
+        lp = list(loops[0])
+        s0 = lp[0]
+        s1 = max(lp, key=lambda q: (q[0] - s0[0]) ** 2 + (q[1] - s0[1]) ** 2)
+    except (IndexError, TypeError):
+        return None
+    bvh = BVHTree.FromPolygons([v.co for v in region_me.vertices], [tuple(f.vertices) for f in region_me.polygons])
+    inv = target.matrix_world.inverted()
+    hits = []
+    for xy in (s0, s1):
+        o, d = projector.ray(xy)
+        o = inv @ Vector(o)
+        d = (inv.to_3x3() @ Vector(d)).normalized()
+        loc, _n, _i, _dist = bvh.ray_cast(o, d)
+        if loc is None:                                  # (the outline's own point is on the patch's border)
+            loc, _n, _i, _dist = bvh.find_nearest(o + d * ((Vector(region_me.vertices[0].co) - o).dot(d)))
+        if loc is None:
+            return None
+        hits.append(loc)
+    v = hits[1] - hits[0]
+    return tuple(v) if v.length > 1e-9 else None
+
+
+def build_columns(p, region_me, name, embed, lift=0.0):
+    """0.24.163 Columnar Basalt: the patch under the outline as basalt columns - Voronoi cells (mostly 5 - 7 sided, the
+    seeds a jittered hexagon grid of Column Size), each a straight prism along the surface's mean normal, its foot
+    following the surface (sunk ``embed`` into it), its top flat (Top Tilt: a little tilted at random, Edge Round: a
+    chamfer), Joint Gap between them.  Its height rises along the way the outline was drawn (``p.r_dir``; Turn / Flip):
+    Slope 0 all as tall as Height, Slope 1 from nothing where the drawing started to Height at the far end; Height
+    Random varies each."""
+    from mathutils import Vector
+    from mathutils.bvhtree import BVHTree
+    from .plate_detail import _boundary_loop
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(region_me)
+        bmesh.ops.triangulate(bm, faces=bm.faces[:])
+        loops = _boundary_loop(bm)
+        if not loops or not bm.faces:
+            raise ValueError('empty region')
+        nrm = Vector()
+        cen = Vector()
+        area = 0.0
+        for f in bm.faces:
+            a = f.calc_area()
+            nrm += f.normal * a
+            cen += f.calc_center_median() * a
+            area += a
+        cen /= max(area, 1e-12)
+        if nrm.length < 1e-9:
+            raise ValueError('flat region has no direction')
+        nrm.normalize()
+        outline = max(loops, key=len)
+        out3 = [v.co.copy() for v in outline]
+    finally:
+        bm.free()
+    u = nrm.orthogonal().normalized()
+    dvec = Vector(getattr(p, 'r_dir', (0.0, 0.0, 0.0)))
+    dvec = dvec - nrm * dvec.dot(nrm)
+    if dvec.length > 1e-9:
+        u = dvec.normalized()
+    w = nrm.cross(u).normalized()
+    turn = float(getattr(p, 'r_turn', 0.0)) + (math.pi if getattr(p, 'r_flip', False) else 0.0)
+    ramp = (u * math.cos(turn) + w * math.sin(turn)).normalized()      # (the way the columns rise)
+    poly = [((q - cen).dot(u), (q - cen).dot(w)) for q in out3]
+    P = np.array(poly)
+    lo, hi = P.min(0), P.max(0)
+    col = max(float(p.r_feature), 1e-6)
+    area2 = float((hi - lo).prod())
+    col = max(col, math.sqrt(area2 / MAX_COLUMNS))                       # (never more than MAX_COLUMNS columns)
+    rng = np.random.default_rng(int(p.r_seed) * 7919 + 17)
+    dy = col * math.sqrt(3.0) / 2.0
+    xs = np.arange(lo[0] - 2 * col, hi[0] + 2 * col, col)
+    ys = np.arange(lo[1] - 2 * dy, hi[1] + 2 * dy, dy)
+    gx, gy = np.meshgrid(xs, ys)
+    gx = gx + (np.arange(len(ys))[:, None] % 2) * col * 0.5
+    seeds = np.stack([gx.ravel(), gy.ravel()], 1)
+    seeds = seeds + rng.uniform(-0.3, 0.3, seeds.shape) * col             # (not a perfect honeycomb: 5 - 7 sided)
+    inside = _inside_poly(seeds[:, 0], seeds[:, 1], poly)
+    cells = _cells(seeds, inside)
+    if not cells:
+        raise ValueError('outline too small for one column')
+    bvh = BVHTree.FromPolygons([v.co for v in region_me.vertices], [tuple(f.vertices) for f in region_me.polygons])
+    far = float(np.abs(P).max()) * 4.0 + 1.0
+
+    def ground(x, y):
+        o = cen + u * x + w * y + nrm * far
+        loc, _n, _i, _d = bvh.ray_cast(o, -nrm)
+        if loc is None:
+            loc, _n, _i, _d = bvh.find_nearest(cen + u * x + w * y)
+        return (loc - cen).dot(nrm)
+    cxy = np.array([seeds[i] for i in cells])
+    rx = cxy[:, 0] * ramp.dot(u) + cxy[:, 1] * ramp.dot(w)
+    t = (rx - rx.min()) / max(rx.max() - rx.min(), 1e-9)                 # (0 where the drawing started, 1 at the far end)
+    H = float(p.r_height)
+    slope = float(p.r_slope)
+    hr = float(p.r_hrand)
+    gap = float(p.r_gap)
+    rnd = float(p.r_round)
+    tilt = float(p.r_tilt)
+    verts, faces, colr = [], [], []
+    for k, (i, cell) in enumerate(cells.items()):
+        c = np.array(cell)
+        sx, sy = c.mean(0)
+        rr = rng.random(3)
+        h = H * (1.0 - slope + slope * t[k]) * (1.0 + hr * (rr[0] - 0.5) * 2.0)
+        if h <= H * 0.01:
+            continue
+        # the joint: the cell shrunk toward its middle by half the gap
+        d = c - (sx, sy)
+        rad = np.linalg.norm(d, axis=1)
+        inr = max(min(rad) * 0.85, 1e-9)
+        sh = max(0.0, 1.0 - gap * 0.5 / inr)
+        c = (sx, sy) + d * sh
+        foot = min(ground(x, y) for x, y in list(c) + [(sx, sy)]) - embed
+        base_h = ground(sx, sy)
+        ang = rr[1] * 2 * math.pi
+        tt = math.tan(tilt * rr[2])
+        top = [base_h + h + ((x - sx) * math.cos(ang) + (y - sy) * math.sin(ang)) * tt for x, y in c]
+        r_in = min(rnd, inr * sh * 0.45, h * 0.45)
+        n = len(c)
+        b0 = len(verts)
+        for x, y in c:                                                     # foot (on the surface)
+            verts.append(cen + u * x + w * y + nrm * min(foot, ground(x, y) - embed))
+        for (x, y), z in zip(c, top):                                      # the top edge (under the chamfer)
+            verts.append(cen + u * x + w * y + nrm * (z - r_in))
+        faces.append([b0 + j for j in reversed(range(n))])
+        for j in range(n):
+            j2 = (j + 1) % n
+            faces.append([b0 + j, b0 + j2, b0 + n + j2, b0 + n + j])
+        if r_in > 1e-7:
+            f_in = max(0.0, 1.0 - r_in / (inr * sh))
+            t0 = len(verts)
+            for (x, y), z in zip(c, top):
+                verts.append(cen + u * (sx + (x - sx) * f_in) + w * (sy + (y - sy) * f_in) + nrm * z)
+            for j in range(n):
+                j2 = (j + 1) % n
+                faces.append([b0 + n + j, b0 + n + j2, t0 + j2, t0 + j])
+            faces.append([t0 + j for j in range(n)])
+            colr += [rr[0]] * (3 * n)
+        else:
+            faces.append([b0 + n + j for j in range(n)])
+            colr += [rr[0]] * (2 * n)
+    if not faces:
+        raise ValueError('no column tall enough')
+    me = bpy.data.meshes.new(name)
+    me.from_pydata([tuple(v + nrm * lift) for v in verts], [], faces)
+    me.validate()
+    at = me.attributes.new('mch_column', 'FLOAT', 'POINT')               # (each column its own random 0 - 1: a material can
+    at.data.foreach_set('value', np.asarray(colr, np.float32))           #  vary the stone with it)
+    me.shade_flat()
+    me.update()
+    return me
 
 
 # -----------------------------------------------------------------------------
