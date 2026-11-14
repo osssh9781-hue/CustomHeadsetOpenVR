@@ -557,7 +557,7 @@ def _set_origin(ob):
 
 def pin_size(context, pieces):
     """(radius, length out of the cut) for the pins: set in the window, or Auto from the cut (the deepest
-    point's depth from the cut's border x 0.09 - a 10 cm cube gets 9 mm pins - at least 1.5 mm across)."""
+    point's depth from the cut's border x 0.25, 1.5 - 8 mm across)."""
     pg = context.scene.mch_print
     if not pg.pin_auto:
         return blender_units(context, pg.pin_diameter / 2000.0), blender_units(context, pg.pin_length / 1000.0)
@@ -566,7 +566,8 @@ def pin_size(context, pieces):
         _p, d = depth_field(outer, holes, 32)
         if len(d):
             deep = max(deep, float(d.max()))
-    r = max(deep * 0.09, blender_units(context, 0.00075))
+    r = min(deep * 0.25, blender_units(context, 0.004))               # (8 mm across at most)
+    r = max(r, blender_units(context, 0.00075))                       # (1.5 mm at least)
     return r, r * 4.0
 
 

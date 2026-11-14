@@ -2,7 +2,7 @@
 되는데"): a pen stroke runs past its start, hooks as the pen lifts, knots on a wobble - small loops where the outline
 crosses itself.  Every outline is now untangled first (the closing overshoot trimmed, small loops cut off at their
 crossing); only a real figure 8 (two big loops) is still refused.  Then a real Cut and a Plate Detail 4 from such an
-outline.  The real drag: tests/gui/pen_overshoot_real_window.py."""
+outline.  (Synthetic pen-like outlines - not run with a real tablet.)"""
 import math
 
 from _harness import bpy, check, fresh, summary

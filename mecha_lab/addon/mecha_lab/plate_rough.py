@@ -106,11 +106,11 @@ PRESETS = (
           r_feature=0.06, r_bumps=0.7, r_cells=0.0, r_cracks=0.0, r_wrinkles=0.4, r_pits=0.5, r_grain=0.1,
           r_chips=0.5)),
     # 0.24.163 (user: "주상절리 같은 절벽 스타일도 - 긋는 방향 따라 높은 곳이 대각선으로 달라지게"): real columns, not a texture
-    ('BASALT', 'Columnar Basalt', 'Basalt columns (주상절리): a cliff of 5 - 7 sided columns, rising along the way the '
-     'outline was drawn - low where it started, high at the far end',
+    ('BASALT', 'Columnar Basalt', 'Basalt columns (주상절리): a cliff of 5 - 7 sided columns, rising toward the compass '
+     'direction (N / E / S / W in the window)',
      dict(r_style='COLUMNS', r_height=0.18, r_feature=0.05, r_slope=0.85, r_hrand=0.3, r_gap=0.003, r_round=0.0025,
           r_tilt=math.radians(5.0))),
-    # 0.24.163 (user, with a photo of a sea cliff: "절벽 옆면 기준으로 해 줘"): the cliff's side - slanted strata, joints
+    # 0.24.163 (user, with a photo of a sea cliff and a sketch: "바위 옆 단면이 판이 겹겹"): rock plates stacked on the top
     ('CLIFF', 'Layered Cliff', 'A sea cliff of stacked rock plates: from the outline inward each plate a step higher '
      '(Plate Thickness), set back from the one under it, their outlines wavy, tilted a little; the whole rising toward '
      'the compass direction',
