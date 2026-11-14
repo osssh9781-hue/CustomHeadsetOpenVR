@@ -453,13 +453,16 @@ def _group(ob, parts):
     sig = '|'.join(p.name for p in parts)
     mod = ob.modifiers.get('MCH Greeble')
     ng = mod.node_group if mod is not None else None
-    if ng is not None and ng.get(SIG_KEY) == sig and ng.users <= 1:
+    if ng is not None and ng.get(SIG_KEY) == sig and ng.users <= 1 and ng.get('mch_gv') == GROUP_V:
         return mod
-    if ng is None or ng.users > 1:
+    if ng is None or ng.users > 1 or ng.get('mch_gv') != GROUP_V:
         ng = bpy.data.node_groups.new(f'MCH Greeble ({ob.name})', 'GeometryNodeTree')
         ng.interface.new_socket('Geometry', in_out='INPUT', socket_type='NodeSocketGeometry')
         ng.interface.new_socket('Realize', in_out='INPUT', socket_type='NodeSocketBool')
+        ng.interface.new_socket('Use Material', in_out='INPUT', socket_type='NodeSocketBool')   # 0.24.170
+        ng.interface.new_socket('Material', in_out='INPUT', socket_type='NodeSocketMaterial')
         ng.interface.new_socket('Geometry', in_out='OUTPUT', socket_type='NodeSocketGeometry')
+        ng['mch_gv'] = GROUP_V
     ng.nodes.clear()
     ng[SIG_KEY] = sig
     N, L = ng.nodes, ng.links
@@ -508,11 +511,67 @@ def _group(ob, parts):
     L.new(gi.outputs['Realize'], sw.inputs['Switch'])
     L.new(join.outputs[0], sw.inputs['False'])
     L.new(real.outputs[0], sw.inputs['True'])
-    L.new(sw.outputs[0], go.inputs[0])
+    # 0.24.170 (user: "그리블 할 때 어플라이 안 해도 재질 바꿀 수 있게, 크리쳐도"): the line's material on every part
+    # while it is live (the parts made real for it - instances keep their own materials)
+    sm = N.new('GeometryNodeSetMaterial')
+    sm.location = (550, -250)
+    L.new(real.outputs[0], sm.inputs['Geometry'])
+    L.new(gi.outputs['Material'], sm.inputs['Material'])
+    sw2 = N.new('GeometryNodeSwitch')
+    sw2.input_type = 'GEOMETRY'
+    sw2.location = (650, 0)
+    L.new(gi.outputs['Use Material'], sw2.inputs['Switch'])
+    L.new(sw.outputs[0], sw2.inputs['False'])
+    L.new(sm.outputs[0], sw2.inputs['True'])
+    L.new(sw2.outputs[0], go.inputs[0])
     if mod is None:
         mod = ob.modifiers.new('MCH Greeble', 'NODES')
     mod.node_group = ng
+    sync_material(ob)
     return mod
+
+
+GROUP_V = 2                    # 0.24.170 the line's node group with Use Material / Material
+
+
+def line_material(ob):
+    """0.24.170 The material a line gives its parts: its own first material slot (set by the Mech / Creature pages,
+    Blender's material slots, or the window's Body's Material) - None: the parts keep their own."""
+    try:
+        return next((s.material for s in ob.material_slots if s.material is not None), None)
+    except (AttributeError, ReferenceError):
+        return None
+
+
+def sync_material(ob):
+    """The line's material into its node group (only when it changed).  Returns True when it changed."""
+    from . import geo_sculpt as gs
+    mod = ob.modifiers.get('MCH Greeble') if ob is not None else None
+    if mod is None or mod.node_group is None or mod.node_group.get('mch_gv') != GROUP_V:
+        return False
+    mat = line_material(ob)
+    try:
+        cur_use = bool(gs.get_input(mod, 'Use Material'))
+        cur = gs.get_input(mod, 'Material')
+    except (AttributeError, KeyError, TypeError):
+        cur_use, cur = None, None
+    if cur_use == (mat is not None) and (cur == mat or mat is None):
+        return False
+    gs.set_input(mod, 'Material', mat)
+    gs.set_input(mod, 'Use Material', mat is not None)
+    ob.update_tag()
+    return True
+
+
+@bpy.app.handlers.persistent
+def _material_watch(_scene, depsgraph=None):
+    """Any way a line got a material (a Mech / Creature page preset, Blender's slots, drag and drop): its parts follow."""
+    try:
+        for ob in bpy.context.scene.objects:
+            if ob.type == 'MESH' and LINE_KEY in ob.keys():
+                sync_material(ob)
+    except (AttributeError, ReferenceError, RuntimeError):
+        pass
 
 
 def line_parts(ob):
@@ -592,6 +651,25 @@ def new_line(context, target, pts, nrm, parts, pg, kind='MECH'):
     return ob
 
 
+def _only_used_slots(me):
+    """The mesh's material slots no face uses taken out (the faces' indices kept pointing at theirs)."""
+    if not len(me.materials) or not len(me.polygons):
+        return
+    idx = np.zeros(len(me.polygons), np.int32)
+    me.polygons.foreach_get('material_index', idx)
+    used = sorted(set(int(i) for i in np.unique(idx) if i < len(me.materials)))
+    if len(used) == len(me.materials):
+        return
+    remap = np.zeros(max(len(me.materials), int(idx.max()) + 1), np.int32)
+    for new_i, old_i in enumerate(used):
+        remap[old_i] = new_i
+    for i in reversed(range(len(me.materials))):
+        if i not in used:
+            me.materials.pop(index=i)
+    me.polygons.foreach_set('material_index', remap[idx])
+    me.update()
+
+
 def apply_line(context, ob):
     """The line made real: one mesh with the parts (their materials); the live setup gone."""
     from . import geo_sculpt as gs
@@ -608,8 +686,14 @@ def apply_line(context, ob):
     ob.modifiers.remove(mod)
     if ng is not None and ng.users == 0:
         bpy.data.node_groups.remove(ng)
+    lm = line_material(ob)
     old = ob.data
     ob.data = me
+    if lm is not None:                               # 0.24.170 the line's material: only it (the parts' slots unused)
+        _only_used_slots(me)
+        from . import creature_shader as cs, mech_shader as ms
+        if ms.is_mech(lm) or cs.is_creature(lm):     # (its edges / crevices measured, as the page's Apply does)
+            ms.store_curvature(me)
     kind = getattr(getattr(ob, 'mch_greeble_line', None), 'kind', 'MECH')
     me.name = ob.name = 'Scales' if kind == 'CREATURE' else 'Greeble Parts'    # (0.24.169 a Scale Line's: Scales)
     if old.users == 0:
@@ -1632,6 +1716,15 @@ def draw(layout, context, kind='MECH'):
     col.prop(pg, 'stagger')
     col.prop(pg, 'flip_random')
     if ln is not None:
+        lm = line_material(ln)                       # 0.24.170 its material while live
+        mc = layout.column(align=True)
+        mc.label(text='Material: ' + (lm.name if lm is not None else "the parts' own"))
+        row = mc.row(align=True)
+        o = row.operator('mch.greeble_material', text="Body's Material")
+        o.action = 'BODY'
+        o = row.operator('mch.greeble_material', text="Parts' Own")
+        o.action = 'PARTS'
+        mc.label(text='(or a Mech / Creature page preset on the selected line)')
         row = col.row(align=True)
         op(row, 'mch.greeble_parts', 'Use Picked Parts', action='USE_PICKED')
         row.operator('mch.greeble_apply', text='Apply')
@@ -1646,8 +1739,43 @@ HELP_CREATURE = ('Scale Parts / Detail Parts (or Pick Part), then drag on the cr
                  'Select a line to change it; Apply = real geometry')
 
 
+class MCH_OT_greeble_material(bpy.types.Operator):
+    """The selected live line(s)' material: the body's (the part it lies on) or the parts' own"""
+    bl_idname = 'mch.greeble_material'
+    bl_label = 'Line Material'
+    bl_options = {'REGISTER', 'UNDO'}
+    action: EnumProperty(items=(('BODY', 'Body', ''), ('PARTS', 'Parts', '')), default='BODY')
+
+    @classmethod
+    def poll(cls, context):
+        return bool(apply_targets(context))
+
+    def execute(self, context):
+        n = 0
+        for ln in apply_targets(context):
+            me = ln.data
+            if self.action == 'PARTS':
+                me.materials.clear()
+            else:
+                body = ln.parent
+                mat = next((m for m in body.data.materials if m is not None), None) if (
+                    body is not None and body.type == 'MESH') else None
+                if mat is None:
+                    continue
+                if me.materials:
+                    me.materials[0] = mat
+                else:
+                    me.materials.append(mat)
+            sync_material(ln)
+            n += 1
+        if not n:
+            self.report({'WARNING'}, 'The body has no material')
+            return {'CANCELLED'}
+        return {'FINISHED'}
+
+
 CLASSES = (MCH_PG_GreeblePart, MCH_PG_GreebleLine, MCH_PG_Greeble, MCH_OT_greeble_stroke, MCH_OT_greeble_pick,
-           MCH_OT_greeble_parts, MCH_OT_greeble_stamp_profile, MCH_OT_greeble_apply)
+           MCH_OT_greeble_parts, MCH_OT_greeble_stamp_profile, MCH_OT_greeble_apply, MCH_OT_greeble_material)
 
 
 def register():
@@ -1656,6 +1784,8 @@ def register():
     bpy.types.Scene.mch_greeble = PointerProperty(type=MCH_PG_Greeble)
     bpy.types.Scene.mch_cgreeble = PointerProperty(type=MCH_PG_Greeble)      # (0.24.151 Scale Line's own)
     bpy.types.Object.mch_greeble_line = PointerProperty(type=MCH_PG_GreebleLine)
+    if _material_watch not in bpy.app.handlers.depsgraph_update_post:      # 0.24.170
+        bpy.app.handlers.depsgraph_update_post.append(_material_watch)
     try:
         bpy.utils.register_tool(MCH_TOOL_greeble, after={'mecha.geo_sculpt'}, group=False)
     except (ValueError, RuntimeError, KeyError):
@@ -1673,6 +1803,8 @@ def register():
 
 
 def unregister():
+    while _material_watch in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.remove(_material_watch)
     for tool in (MCH_TOOL_scale_line, MCH_TOOL_greeble):
         try:
             bpy.utils.unregister_tool(tool)
