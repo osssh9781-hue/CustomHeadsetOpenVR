@@ -697,35 +697,86 @@ def _mesh(name, bm, smooth=True):
 LINE_AT, LINE_W = 0.88, 0.025   # 0.24.165 a scale's outline line: a raised bead this far out (of the radius), this wide
 
 
-def _dome(bm, rx, ry, h, seg=20, rings=6, shape=None, line=0.0, edge=0.0):
+def _dome(bm, rx, ry, h, seg=20, rings=6, shape=None, line=0.0, edge=0.0, organic=None):
     """A flat-bottomed dome (Z up, bottom at z = 0) of radii rx, ry and height h; ``shape(x, y) -> (x, y)`` bends its
     outline (a teardrop, a point).  0.24.165 (user: "스케일도 외곽 부분에 살짝 라인 잡아 주면"): ``line`` > 0 - a thin
     raised line running round just inside the outline (a bead ``line`` x h high, a shallow groove inside it).
     0.24.166 (user: "스케일 엣지가 너무 날카로워"): ``edge`` > 0 - the outline that thick (a short wall, its top rounded
-    over into the dome), not a knife edge."""
+    over into the dome), not a knife edge.  0.24.167 (user: "이건 너무 인공물 같잖아"): ``organic`` (a seed) - not a
+    machined disc: the outline a little uneven, the edge thick at the root and thin toward the tip, the line round it
+    uneven (thicker, thinner, fading out in places, wandering in and out), the top higher toward the root, a faint
+    grain on it."""
     import bmesh as _bm
+    import random as _rnd
+    if organic is not None:
+        rng = _rnd.Random(organic)
+        wob = [(k, rng.uniform(0.5, 1.0) * a, rng.uniform(0, 2 * math.pi))
+               for k, a in ((2, 0.03), (3, 0.03), (5, 0.016), (7, 0.01))]
+        lam = [(k, rng.uniform(0.6, 1.0) * a, rng.uniform(0, 2 * math.pi)) for k, a in ((1, 0.45), (2, 0.4), (3, 0.3))]
+        lpos = [(k, a, rng.uniform(0, 2 * math.pi)) for k, a in ((2, 0.012), (3, 0.01))]
+        gr = [(rng.uniform(9, 15), rng.uniform(9, 15), rng.uniform(0, 6.3), rng.uniform(0, 6.3)) for _k in range(3)]
+
+    def bumps(t, j, sj, x, y):
+        """(outline radius x, edge thickness x, line strength, line position shift, extra height) at angle t."""
+        if organic is None:
+            return 1.0, 1.0, 1.0, 0.0, 0.0
+        r_ = 1.0 + sum(a * math.sin(k * t + ph) for k, a, ph in wob)
+        root = (1.0 - math.cos(t)) * 0.5                   # (1 at the root - the back, -x - 0 at the tip)
+        e_ = 0.45 + 0.55 * root
+        l_ = min(1.25, max(0.0, 0.6 + sum(a * math.sin(k * t + ph) for k, a, ph in lam)))
+        d_ = sum(a * math.sin(k * t + ph) for k, a, ph in lpos)
+        up = 0.16 * (root - 0.5) * sj * (1.0 - sj) * 4.0    # (the top a little higher toward the root)
+        g_ = sum(math.sin(fx * x + px) * math.sin(fy * y + py) for fx, fy, px, py in gr) / 3.0
+        return r_, e_, l_, d_, up + (0.02 * g_ * (1.0 - sj) if j >= 3 else 0.0)
     ss = [math.cos((math.pi / 2) * j / rings) for j in range(rings)] + [0.0]   # (1 = the rim .. 0 = the top)
     if line > 0:                                          # (more rings where the line runs)
         lo = LINE_AT - 4 * LINE_W
         ss = sorted(set([1.0, 0.95] + [LINE_AT + LINE_W * k * 0.5 for k in range(-6, 3)]
                         + [x for x in ss if 1e-6 < x < lo - 0.02]) | {0.0}, reverse=True)
-    if edge > 0:                                          # (the wall's top ring, then the rounding rings)
+    if organic is not None:                               # (a pebble's round edge: rings close at the rim)
+        at0 = LINE_AT - 0.04
+        ss = sorted(set([1.0, 0.997, 0.99, 0.978, 0.96, 0.935] + [at0 + LINE_W * k * 0.5 for k in range(-5, 5)]
+                        + [x for x in ss if 1e-6 < x < at0 - 3 * LINE_W]) | {0.0}, reverse=True)
+    elif edge > 0:                                        # (the wall's top ring, then the rounding rings)
         ss = [1.0, 1.0, 0.996, 0.988] + [x for x in ss if x < 0.975]
     verts = []
     for j, sj in enumerate(ss):
-        z = math.sqrt(max(0.0, 1.0 - sj * sj)) * (h - edge)
-        if edge > 0:
-            z = 0.0 if j == 0 else z + edge * (0.6 + 0.4 * min(1.0, max(0.0, (1.0 - sj) / 0.025)) ** 0.5)
-        if line > 0:
-            z += h * line * (math.exp(-((sj - LINE_AT) / LINE_W) ** 2)
-                             - 0.45 * math.exp(-((sj - (LINE_AT - 2.2 * LINE_W)) / LINE_W) ** 2))
         ring = []
         for i in range(seg if j < len(ss) - 1 else 1):
             t = 2 * math.pi * i / seg
             x, y = math.cos(t) * sj, math.sin(t) * sj
+            r_, e_, l_, d_, up = bumps(t, j, sj, x, y)
+            ed = edge * e_
+            z = math.sqrt(max(0.0, 1.0 - sj * sj)) * (h - ed)
+            if organic is not None:
+                # a pebble's section (round, full, its edge rounding down steeply - no wall, no flat top), thicker
+                # toward the root; the line round it a soft crease (uneven, fading), a slight swell outside it
+                hh = h * (1.0 - 0.25 * math.cos(t) * sj)          # (one height at the middle: no dent)
+                z = hh * max(0.0, 1.0 - sj ** 4) ** 0.5
+                if line > 0:
+                    at = LINE_AT - 0.04 + d_
+                    dep = h * line * 0.9 * l_
+                    z += (-dep * math.exp(-((sj - at) / (LINE_W * 1.2)) ** 2)
+                          + 0.4 * dep * math.exp(-((sj - (at + 1.8 * LINE_W)) / LINE_W) ** 2)) * min(1.0, (1.0 - sj) / 0.04)
+                if j > 0:
+                    z += h * up
+                x, y = x * r_, y * r_
+                if shape is not None:
+                    x, y = shape(x, y)
+                ring.append(bm.verts.new((x * rx, y * ry, max(z, 0.0) if j > 0 else 0.0)))
+                continue
+            if edge > 0:
+                z = 0.0 if j == 0 else z + ed * (0.6 + 0.4 * min(1.0, max(0.0, (1.0 - sj) / 0.025)) ** 0.5)
+            if line > 0:
+                at = LINE_AT + d_
+                z += h * line * l_ * (math.exp(-((sj - at) / LINE_W) ** 2)
+                                      - 0.45 * math.exp(-((sj - (at - 2.2 * LINE_W)) / LINE_W) ** 2))
+            if j > 0:
+                z += h * up
+            x, y = x * r_, y * r_
             if shape is not None:
                 x, y = shape(x, y)
-            ring.append(bm.verts.new((x * rx, y * ry, z)))
+            ring.append(bm.verts.new((x * rx, y * ry, max(z, 0.0) if j > 0 else 0.0)))
         verts.append(ring)
     rings = len(ss) - 1
     for j in range(rings - 1):
@@ -736,6 +787,17 @@ def _dome(bm, rx, ry, h, seg=20, rings=6, shape=None, line=0.0, edge=0.0):
         bm.faces.new((verts[rings - 1][i], verts[rings - 1][(i + 1) % seg], top))
     bm.faces.new(list(reversed(verts[0])))
     _bm.ops.recalc_face_normals(bm, faces=list(bm.faces))
+
+
+def _round_hex(x, y):
+    """0.24.167 A circle bent toward a hexagon with round corners (a lizard's belly plate)."""
+    r = math.hypot(x, y)
+    if r < 1e-9:
+        return x, y
+    t = math.atan2(y, x)
+    hexr = math.cos(math.pi / 6) / math.cos(((t + math.pi / 6) % (math.pi / 3)) - math.pi / 6)
+    f = 1.0 + 0.65 * (hexr - 1.0)
+    return x * f, y * f
 
 
 SCALE_LINE = 0.14             # 0.24.165 the built-in scales' outline line (x their height)
@@ -749,26 +811,27 @@ def _scale_meshes():
     ln = SCALE_LINE                                      # (0.24.165 each with a thin line round its outline)
     eg = SCALE_EDGE                                      # (0.24.166 and a rounded outline, not a knife edge)
     bm = _bm.new()                                       # round, a little narrower at the back
-    _dome(bm, 0.5, 0.42, 0.12, seg=28, shape=lambda x, y: (x, y * (0.8 + 0.2 * x)), line=ln, edge=0.12 * eg)
+    _dome(bm, 0.5, 0.42, 0.12, seg=40, shape=lambda x, y: (x, y * (0.8 + 0.2 * x)), line=ln, edge=0.12 * eg,
+          organic=11)
     out.append(_mesh('Scale Round', bm))
     bm = _bm.new()                                       # pointed at the front
-    _dome(bm, 0.5, 0.36, 0.12, seg=28, shape=lambda x, y: (x, y * (1.0 - 0.75 * max(0.0, x)) * (0.85 + 0.15 * (1 - abs(x)))),
-          line=ln, edge=0.12 * eg)
+    _dome(bm, 0.5, 0.36, 0.12, seg=40, shape=lambda x, y: (x, y * (1.0 - 0.75 * max(0.0, x)) * (0.85 + 0.15 * (1 - abs(x)))),
+          line=ln, edge=0.12 * eg, organic=23)
     out.append(_mesh('Scale Pointed', bm))
     bm = _bm.new()                                       # a keel down the middle
-    _dome(bm, 0.5, 0.4, 0.1, seg=28, line=ln, edge=0.1 * eg)
+    _dome(bm, 0.5, 0.4, 0.1, seg=40, line=ln, edge=0.1 * eg, organic=37)
     for v in bm.verts:                                   # (the keel inside the outline line: not over it)
         rad = math.hypot(v.co.x / 0.5, v.co.y / 0.4)
         inside = min(1.0, max(0.0, (LINE_AT - 3 * LINE_W - rad) / 0.2))
         v.co.z += 0.09 * max(0.0, 1.0 - abs(v.co.y) / 0.12) * (v.co.z > 1e-6) * inside
     out.append(_mesh('Scale Keeled', bm))
     bm = _bm.new()                                       # a hexagon plate (a lizard's belly)
-    _dome(bm, 0.5, 0.45, 0.09, seg=6, rings=3, line=ln * 1.3, edge=0.09 * eg)
-    out.append(_mesh('Scale Hex', bm, smooth=False))
+    _dome(bm, 0.5, 0.45, 0.09, seg=36, rings=5, line=ln * 1.3, edge=0.09 * eg, organic=41, shape=_round_hex)
+    out.append(_mesh('Scale Hex', bm))                  # (0.24.167 a soft six-sided plate, not a cut hexagon)
     bm = _bm.new()                                       # a big domed scute
     _dome(bm, 0.5, 0.5, 0.2, seg=32, rings=8, shape=lambda x, y: (math.copysign(abs(x) ** 0.7, x),
                                                                   math.copysign(abs(y) ** 0.7, y)), line=ln * 0.8,
-          edge=0.2 * eg * 0.7)
+          edge=0.2 * eg * 0.7, organic=53)
     out.append(_mesh('Scale Scute', bm))
     return out
 
