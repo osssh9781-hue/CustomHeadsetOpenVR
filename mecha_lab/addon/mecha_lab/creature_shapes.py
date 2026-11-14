@@ -154,16 +154,17 @@ def feather_mesh(spec, name='Feather', seed=1):
 # (id, label, spec) - L / W: length (root to free edge) / width, H: thickness at the root, tip: ROUND / POINT / KITE /
 # RECT, keel: a ridge along the middle (x H), rings: growth rings (count), teeth: a toothed free edge (count),
 # grooves: grooves along it at the free edge (count), pits: dimples (strength), cup: the middle lower than the sides,
-# cone: a cone (a tubercle)
+# cone: a cone (a tubercle), root_flat: the root edge (under the one before) straight, with ``lobes`` scallops;
+# tip LEAF: wider toward the free edge, a small point there; HEX: a six-sided bead
 SCALES = (
     ('KEELED', 'Keeled', dict(L=1.0, W=0.55, H=0.16, tip='POINT', keel=0.6)),
-    ('CYCLOID', 'Cycloid (fish)', dict(L=1.0, W=0.95, H=0.08, tip='ROUND', rings=9)),
-    ('CTENOID', 'Ctenoid (fish)', dict(L=1.0, W=0.9, H=0.09, tip='ROUND', rings=7, teeth=11)),
+    ('CYCLOID', 'Cycloid (fish)', dict(L=1.0, W=0.95, H=0.08, tip='ROUND', rings=9, root_flat=0.32, lobes=4)),
+    ('CTENOID', 'Ctenoid (fish)', dict(L=1.0, W=0.9, H=0.09, tip='ROUND', rings=7, teeth=11, root_flat=0.3, lobes=5)),
     ('VENTRAL', 'Belly Scute', dict(L=0.42, W=1.0, H=0.07, tip='RECT', bevel=0.25)),
     ('DRAGON', 'Dragon', dict(L=1.0, W=0.75, H=0.24, tip='KITE', keel=0.9, teeth=5)),
-    ('PANGOLIN', 'Pangolin', dict(L=1.0, W=0.95, H=0.12, tip='ROUND', grooves=9, cup=0.35)),
+    ('PANGOLIN', 'Pangolin', dict(L=1.0, W=0.95, H=0.12, tip='LEAF', grooves=9, cup=0.35, root_flat=0.38)),
     ('OSTEODERM', 'Osteoderm', dict(L=0.8, W=0.62, H=0.22, tip='RECT', keel=0.7, pits=0.25, bevel=0.35)),
-    ('TUBERCLE', 'Tubercle', dict(L=0.6, W=0.6, H=0.4, tip='ROUND', cone=True, pits=0.15)),
+    ('TUBERCLE', 'Tubercle', dict(L=0.6, W=0.6, H=0.4, tip='HEX', cone=True, pits=0.15)),
 )
 SCALE_IDS = tuple(s[0] for s in SCALES)
 
@@ -176,9 +177,22 @@ def _outline(t, spec):
     if tip == 'RECT':                                 # (a rounded rectangle)
         p = 6.0
         r = 1.0 / ((abs(c) ** p + abs(s) ** p) ** (1.0 / p))
+    elif tip == 'HEX':                                # (a six-sided bead, its corners a little round)
+        a = (t % (math.pi / 3.0)) - math.pi / 6.0
+        r = 1.0 + (math.cos(math.pi / 6.0) / math.cos(a) - 1.0) * 0.8
     else:
         r = 1.0
     x, y = rx * r * c, ry * r * s
+    rf = spec.get('root_flat', 0.0)
+    if rf and c < 0:                                  # (the root edge, under the scale before: straight, scalloped)
+        x = max(x, -rx * (1.0 - rf))
+        if x <= -rx * (1.0 - rf) + 1e-9:
+            x -= rx * 0.07 * abs(math.sin((y / ry) * spec.get('lobes', 4) * math.pi * 0.5))
+            y *= 1.0 + 0.08 * rf
+    if tip == 'LEAF':                                 # (wider toward the free edge, a small point there)
+        y *= 1.0 + 0.16 * c
+        if c > 0:
+            x *= 1.0 + 0.14 * c ** 10
     if tip == 'POINT' and c > 0:                      # (drawn to a point at the free edge)
         y *= 1.0 - 0.75 * c ** 2.5
     elif tip == 'KITE':                               # (a shield: broad at the root, a point at the free edge)
@@ -192,7 +206,7 @@ def _outline(t, spec):
     return x, y
 
 
-def scale_mesh(spec, name='Scale', seg=48, rings=14, seed=1):
+def scale_mesh(spec, name='Scale', seg=36, rings=11, seed=1):
     """One scale (see the module) as a new closed mesh: a top surface over the outline, a flat bottom."""
     rng = random.Random(seed)
     H = spec['H']
@@ -257,7 +271,8 @@ def scale_mesh(spec, name='Scale', seg=48, rings=14, seed=1):
         bm.faces.new((bottom[k], bottom[(k + 1) % seg], grid[0][(k + 1) % seg], grid[0][k]))   # (the rim)
     bm.faces.new(bottom[::-1])
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
-    bmesh.ops.translate(bm, verts=bm.verts[:], vec=Vector((L * 0.5, 0.0, 0.0)))   # (the root edge at the origin)
+    x0 = min(ox for ox, _oy in outline)
+    bmesh.ops.translate(bm, verts=bm.verts[:], vec=Vector((-x0, 0.0, 0.0)))        # (the root edge at the origin)
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me)
     bm.free()

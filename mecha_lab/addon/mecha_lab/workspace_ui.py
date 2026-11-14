@@ -2618,7 +2618,9 @@ ENTER_APPLY = (
     ('cape_apply', 'Cape'),
     ('sdraw_apply', 'Surface Draw'),
     ('hair_apply', 'Creature Hair'),
-    ('greeble_apply', 'Scale / Greeble Line'),          # 0.24.169 every selected line
+    ('greeble_apply', 'Scale / Greeble / Feather Line'),  # 0.24.169 every selected line
+    ('cover_apply', 'Feathers / Scales'),                 # 0.24.172 the Fur tool's other tabs
+    ('fur_apply', 'Fur'),
     ('clothing_apply', 'Clothing'),
     ('hood_apply', 'Hood'),
     ('scarf_apply', 'Scarf'),

@@ -119,6 +119,9 @@ def placements(body, w, p, size_world, shapes, seed=0):
     P = a[ti] + (b[ti] - a[ti]) * r1[:, None] + (c[ti] - a[ti]) * r2[:, None]
     Nn = vn[tri[ti, 0]] * (1 - r1 - r2)[:, None] + vn[tri[ti, 1]] * r1[:, None] + vn[tri[ti, 2]] * r2[:, None]
     Nn /= np.maximum(np.linalg.norm(Nn, axis=1), 1e-12)[:, None]
+    Wt = w[tri[ti, 0]] * (1 - r1 - r2) + w[tri[ti, 1]] * r1 + w[tri[ti, 2]] * r2
+    keep = Wt >= 0.5                                  # (the area's edge between its points and the ones outside)
+    P, Nn = P[keep], Nn[keep]
     # thinned: none closer than the spacing (a grid of cells the spacing wide)
     order = rng.permutation(len(P))
     cell = {}
@@ -226,6 +229,7 @@ def rebuild(context, ob):
             at.data.foreach_set(field, np.asarray(data).astype(np.int32 if kind == 'INT' else np.float32).ravel())
     me.update()
     gl._group(ob, list(shapes.values()))
+    gl.sync_material(ob)                              # (a material given to it: on every shape, live)
     ob.update_tag()
     return n
 
@@ -297,6 +301,37 @@ class MCH_PG_Cover(bpy.types.PropertyGroup):
 
 # ---- drawing an area ------------------------------------------------------------------------------------------------
 
+def _not_body(ob):
+    """Feathers / scales (a cover, or one of the shapes it shows) - never the body an area is drawn on."""
+    try:
+        return is_cover(ob) or any(c.name in SHAPE_COLLS.values() for c in ob.users_collection)
+    except (AttributeError, ReferenceError):
+        return False
+
+
+def body_under(context, projector, outer, hit):
+    """The body under the outline: ``hit`` (anchor_hit's object), or - when that is feathers / scales lying on it -
+    the nearest other mesh along the rays through the outline."""
+    if hit is None or not _not_body(hit):
+        return hit
+    dg = context.evaluated_depsgraph_get()
+    c = (sum(q[0] for q in outer) / len(outer), sum(q[1] for q in outer) / len(outer))
+    obs = [o for o in context.view_layer.objects if o.type == 'MESH' and o.visible_get() and not _not_body(o)]
+    for q in [c] + list(outer[::max(1, len(outer) // 24)]):
+        o, d = projector.ray(q)
+        best = None
+        for ob in obs:
+            Mi = ob.matrix_world.inverted()
+            ok, loc, _n, _i = ob.evaluated_get(dg).ray_cast(Mi @ Vector(o), (Mi.to_3x3() @ Vector(d)).normalized())
+            if ok:
+                dist = (ob.matrix_world @ loc - Vector(o)).length
+                if best is None or dist < best[0]:
+                    best = (dist, ob)
+        if best is not None:
+            return best[1]
+    return None
+
+
 def perform(context, loops, projector, erase=False):
     """The Fur tool's outline with Feathers / Scales on: the area added to (Alt: taken from) the selected cover of
     that body, else a new cover."""
@@ -312,7 +347,7 @@ def perform(context, loops, projector, erase=False):
     if getattr(wm, cf.NEW_KEY, False) or (cur is not None and cur.mch_cover.grow != st.grow):
         cur = None
     _q, found = base_mesh.anchor_hit(context, projector, groups[0][0])
-    body = found[2] if found is not None else None
+    body = body_under(context, projector, groups[0][0], found[2] if found is not None else None)
     if body is None and cur is not None:
         body = cur.parent
     if body is None or body.type != 'MESH':
@@ -438,7 +473,7 @@ def draw(layout, context):
     else:
         col.label(text=f'The next {"feathers" if st.grow == "FEATHERS" else "scales"}: draw an area on the body')
     chosen = json.loads(pg.shapes_json or '[]')
-    items = cs.FEATHERS if st.grow == 'FEATHERS' else cs.SCALES
+    items = cs.FEATHERS if (pg.grow if ob is not None else st.grow) == 'FEATHERS' else cs.SCALES
     g = layout.grid_flow(row_major=True, columns=3, even_columns=True, align=True)
     for sid, label, _spec in items:
         g.operator('mch.cover_shape', text=label, depress=sid in chosen).shape = sid

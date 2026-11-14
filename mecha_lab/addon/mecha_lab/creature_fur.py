@@ -949,6 +949,10 @@ def strands(ob, context=None):
 def perform(context, loops, projector, erase=False):
     """The shared lasso's outline -> the fur area (see the module)."""
     from . import base_mesh
+    st = getattr(context.scene, 'mch_cover', None)
+    if st is not None and st.grow != 'FUR':           # 0.24.172 the Feathers / Scales tab: they grow there instead
+        from . import skin_cover
+        return skin_cover.perform(context, loops, projector, erase)
     screen_groups = cg.prepare_loops(loops)
     if not screen_groups:
         raise cg.CutError('Draw a bigger area')
@@ -958,6 +962,8 @@ def perform(context, loops, projector, erase=False):
         cur = None
     _q, found = base_mesh.anchor_hit(context, projector, screen_groups[0][0])
     body = found[2] if found is not None else None
+    from . import skin_cover                          # (0.24.172 drawn over feathers / scales: the body under them)
+    body = skin_cover.body_under(context, projector, screen_groups[0][0], body)
     if body is None and cur is not None:
         body = cur.parent
     if body is None or body.type != 'MESH':
@@ -1311,7 +1317,14 @@ class MCH_OT_fur_apply(bpy.types.Operator):
 
 
 def draw(layout, context):
-    """The window: the selected fur's values (live), else the next fur's."""
+    """The window: the selected fur's values (live), else the next fur's.  0.24.172 tabs: Fur / Feathers / Scales."""
+    from . import skin_cover
+    st = getattr(context.scene, 'mch_cover', None)
+    if st is not None:
+        layout.row(align=True).prop(st, 'grow', expand=True)
+        if st.grow != 'FUR':
+            skin_cover.draw(layout, context)
+            return
     ob = active_fur(context)
     pg = ob.mch_fur if ob is not None else context.scene.mch_fur
     col = layout.column(align=True)

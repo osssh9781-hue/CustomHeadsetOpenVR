@@ -605,7 +605,7 @@ def _material_watch(_scene, depsgraph=None):
     """Any way a line got a material (a Mech / Creature page preset, Blender's slots, drag and drop): its parts follow."""
     try:
         for ob in bpy.context.scene.objects:
-            if ob.type == 'MESH' and LINE_KEY in ob.keys():
+            if ob.type == 'MESH' and (LINE_KEY in ob.keys() or 'mch_cover' in ob.keys()):   # (0.24.172 covers)
                 sync_material(ob)
     except (AttributeError, ReferenceError, RuntimeError):
         pass
