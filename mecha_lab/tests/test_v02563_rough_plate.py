@@ -124,6 +124,10 @@ P0 = coords(ev(plate))
 full0 = float(np.mean(P0[near, 2] > 0.6 * p.r_height))
 check(f'Chips: pieces broken off the edge (near the outline at full height: Chips 0.45 {full:.0%}, Chips 0 {full0:.0%})',
       full0 - full > 0.08, (full, full0))
+sunk = float(np.mean(P[near, 2] < 0.0))
+check(f'...where a piece is broken off, the plate goes just under the surface (the surface shows, no thin film of the '
+      f'plate on it): {sunk:.0%} of the rim under it, the lowest {P[top, 2].min() * 1000:.2f} mm',
+      sunk > 0.05 and -p.size * 0.0016 < P[top, 2].min() < 0.0, (sunk, P[top, 2].min()))
 
 # live: a value straight into the modifier (no rebuild), Strength 0 = smooth
 s0 = p.r_strength

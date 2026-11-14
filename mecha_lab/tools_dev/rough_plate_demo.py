@@ -145,10 +145,12 @@ def render(name, wire):
     print('saved', S.render.filepath, f'{time.time() - t0:.0f} s')
 
 
-aim((0.0, -8.6, 7.4), (0.0, -0.35, 0.0), 38)
+if not os.environ.get('ROUGH_DEMO_CLOSE_ONLY'):
+    aim((0.0, -9.4, 7.6), (0.0, -0.45, 0.0), 31)
+    S.render.resolution_x, S.render.resolution_y = 1800, 1000
+    render('rough_grid_shaded', False)
+    render('rough_grid_wire', True)
+aim((-3.45, -5.3, 3.7), (-3.45, -0.1, 0.0), 36)        # Concrete, Broken Concrete behind; Creature Skin, Scaly Hide in front
 S.render.resolution_x, S.render.resolution_y = 1800, 1000
-render('rough_grid_shaded', False)
-render('rough_grid_wire', True)
-aim((-3.4, -3.15, 1.9), (-3.4, 0.2, 0.0), 40)               # Concrete, Broken Concrete behind; Creature Skin, Scaly Hide in front
 render('rough_close_shaded', False)
 render('rough_close_wire', True)

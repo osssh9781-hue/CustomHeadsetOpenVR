@@ -28,12 +28,14 @@ from .creature_fur import _B, _socket
 
 MOD = 'MCH Rough Rim'
 TREE = 'MCH Rough Rim'
-TREE_VERSION = 4
+TREE_VERSION = 5
 D_ATTR = 'mch_rd'              # distance to the outline (object units)
 TOP_ATTR = 'mch_rtop'          # 1 on the top layer, 0 on the bottom layer
 UP_ATTR = 'mch_rup'            # the surface normal under the point
 OUT_ATTR = 'mch_rough'         # the rim texture there (+ raised, - sunk) - for a material
-MAX_FACES = 900_000            # the subdivided plate stays below this (the Detail is lowered for a big one)
+MAX_FACES = 900_000
+SINK_FRAC = 0.001              # where the plate comes down to nothing it goes this x its size under its top's start
+                               # (the base top is 0.0004 x size above the surface, the bottom 0.0016 x size under it)            # the subdivided plate stays below this (the Detail is lowered for a big one)
 
 PROFILES = (('ROUND', 'Round', 'The edge rises in a soft S (flat at the foot and at the top)'),
             ('DOME', 'Dome', 'Steep at the foot, rounding over into the top (stone, lumps)'),
@@ -184,6 +186,7 @@ def _inputs(ng):
         _socket(ng, sock, 'FLOAT', 0.0, lo, hi)
     _socket(ng, 'Seed', 'INT', 0, 0, 100000)
     _socket(ng, 'Lift', 'FLOAT', 0.0, -100.0, 100.0)
+    _socket(ng, 'Sink', 'FLOAT', 0.0, 0.0, 100.0)
     ng.interface.new_socket('Geometry', in_out='OUTPUT', socket_type='NodeSocketGeometry')
 
 
@@ -332,8 +335,12 @@ def _build(b, I):
     geo = _store_sel(b, geo, OUT_ATTR, b.math('MULTIPLY', b.math('MULTIPLY', tex, amount), foot), is_top)
     rough = b.attr(OUT_ATTR).outputs['Attribute']
 
-    # 3) raised: the profile from the eaten outline + the texture (never under the surface)
+    # 3) raised: the profile from the eaten outline + the texture (never under the surface); where it comes down to
+    #    nothing (a chip, the foot) it goes on down just under the surface - the surface shows there, not a thin film
+    #    of the plate on it
     h = b.math('MAXIMUM', b.math('ADD', _profile(b, I, d2), b.math('MULTIPLY', rough, I['Strength'])), 0.0)
+    low = b.math('MAXIMUM', b.math('MULTIPLY', I['Height'], 0.03), 1e-7)
+    h = b.math('ADD', h, b.math('MULTIPLY', I['Sink'], b.math('SUBTRACT', _clamp01(b, b.math('DIVIDE', h, low)), 1.0)))
     sp = b.node('GeometryNodeSetPosition')
     b.feed(sp.inputs['Geometry'], geo)
     b.feed(sp.inputs['Selection'], is_top)
@@ -382,7 +389,8 @@ def level_for(p, faces):
 def values(p, faces):
     """Modifier input values for settings ``p``."""
     v = {'Level': level_for(p, faces), 'Profile': PROFILE_INDEX.get(p.r_profile, 0), 'Center': float(p.r_center),
-         'Chips': float(p.r_chips), 'Seed': int(p.r_seed), 'Lift': float(p.lift)}
+         'Chips': float(p.r_chips), 'Seed': int(p.r_seed), 'Lift': float(p.lift),
+         'Sink': float(p.size) * SINK_FRAC}
     for prop, sock, *_r in LENGTH_PROPS:
         v[sock] = float(getattr(p, prop))
     for prop, sock, *_r in MIX_PROPS:
