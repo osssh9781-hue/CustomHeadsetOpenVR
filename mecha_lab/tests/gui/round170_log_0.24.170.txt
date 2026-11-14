@@ -1,0 +1,16 @@
+0 the live Scale Line Scale Line - its scales show {'Part Paint'}
+1 Body's Material cell True - scales now {'Skin'} - live True
+shot 1_body_material.png True
+2 Parts' Own cell True - scales now {'Part Paint'}
+3 Creature tab True - Reptile Dry cell True - scales now {'Creature Reptile Dry'} - live True
+shot 2_creature_reptile.png True
+4 Mech tab True - Steel cell True - greebles now {'Mech Steel'} - live True - the scales still {'Creature Reptile Dry'}
+shot 3_mech_steel.png True
+5 after Enter: live False False - names Scales Greeble Parts - materials {'Creature Reptile Dry'} {'Mech Steel'} - faces 64939 1072 - edges measured True
+shot 4_applied.png True
+PASS 1 a REAL click on "Body's Material": every live scale the creature's skin
+PASS 2 a REAL click on "Parts' Own": the scales' own material back
+PASS 3 the Creature page, a REAL click on "Reptile Dry": a Creature material on every live scale
+PASS 4 a live Greeble Line, the Mech page, a REAL click on "Steel": a Mech material on every live part (the scales keep theirs)
+PASS 5 both selected, a REAL Enter: real meshes, each with the material it had live (the Mech one's edges measured)
+5/5 passed
