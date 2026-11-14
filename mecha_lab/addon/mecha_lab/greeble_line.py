@@ -754,10 +754,12 @@ def _dome(bm, rx, ry, h, seg=20, rings=6, shape=None, line=0.0, edge=0.0, organi
                 hh = h * (1.0 - 0.25 * math.cos(t) * sj)          # (one height at the middle: no dent)
                 z = hh * max(0.0, 1.0 - sj ** 4) ** 0.5
                 if line > 0:
+                    # 0.24.168 (user, circling the lines: "저렇게 단차가 안 심했으면 좋겠어"): the line a soft, wide,
+                    # shallow dip - no swell beside it, no edge: the surface only eases down and up again (it read
+                    # as a step / a terrace)
                     at = LINE_AT - 0.04 + d_
-                    dep = h * line * 0.9 * l_
-                    z += (-dep * math.exp(-((sj - at) / (LINE_W * 1.2)) ** 2)
-                          + 0.4 * dep * math.exp(-((sj - (at + 1.8 * LINE_W)) / LINE_W) ** 2)) * min(1.0, (1.0 - sj) / 0.04)
+                    dep = h * line * 0.4 * l_
+                    z -= dep * math.exp(-((sj - at) / (LINE_W * 2.4)) ** 2) * min(1.0, (1.0 - sj) / 0.06)
                 if j > 0:
                     z += h * up
                 x, y = x * r_, y * r_

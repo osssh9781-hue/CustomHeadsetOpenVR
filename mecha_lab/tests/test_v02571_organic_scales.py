@@ -1,6 +1,8 @@
 """0.24.167 (user, on the 0.24.166 scales with their rounded wall: "이건 너무 인공물 같잖아"): Scale Line's built-in
 scales organic - a pebble's round section (no wall, no flat top) thicker toward the root, an uneven outline, the line
-round it a soft crease of uneven depth that fades out in places, no dent in the middle.  Measured on the meshes."""
+round it a soft crease of uneven depth that fades out in places, no dent in the middle.  0.24.168 (user, circling the
+lines on the scales: "저렇게 단차가 안 심했으면 좋겠어 - 두께 말고 이 라인"): the line a soft wide dip - no step, no
+terrace, no swell beside it.  Measured on the meshes."""
 import math
 
 import numpy as np
@@ -54,7 +56,8 @@ wall = abs(xt[1] - xt[0]) < 1e-9 and zt[1] > 0
 check(f'a round edge, no wall: the ring above the outline already {abs(xt[0] - xt[1]) * 1000:.1f} thousandths in',
       not wall and zt[1] > 0, (xt[:3], zt[:3]))
 dips = [int(((z[1:-1] < z[:-2]) & (z[1:-1] < z[2:])).sum()) for _s, _x, z in prof]
-check(f'the line round it a soft crease (a dip in the section: tip {dips[0]}, root {dips[1]})', sum(dips) >= 1, dips)
+check(f'0.24.168 the line no step: the section rises smoothly to the top - no pit, no terrace (pits: tip {dips[0]}, root '
+      f'{dips[1]})', dips == [0, 0], dips)
 top = co[-1, 2]
 near = co[(nr - 1) * seg:nr * seg]
 hi = near[int(np.argmax(near[:, 2]))]
@@ -69,9 +72,15 @@ co0 = np.array([v.co for v in bm2.verts])
 bm2.free()
 d = (co[:, 2] - co0[:, 2])[:nr * seg].reshape(nr, seg)
 dip = -d.min(0)
-check(f'the crease uneven round the outline: {dip.min() * 1000:.1f} - {dip.max() * 1000:.1f} thousandths deep '
+check(f'the line there, uneven round the outline: {dip.min() * 1000:.1f} - {dip.max() * 1000:.1f} thousandths deep '
       f'(it fades out in places)', len(co) == len(co0) and dip.max() > 0.004 and dip.min() < 0.35 * dip.max(),
       (dip.min(), dip.max()))
+rise = float((co[:, 2] - co0[:, 2]).max())
+wide = int((d.min(0) < -0.25 * dip.max()).sum())
+span = [int((d[:, i] < -0.25 * dip[i]).sum()) for i in range(seg) if dip[i] > 0.003]
+check(f'...a soft dip only: nothing raised beside it (the most it lifts the surface: {rise * 1000:.2f} thousandths), '
+      f'spread over {min(span) if span else 0} - {max(span) if span else 0} rings (not a sharp groove)',
+      rise < 1e-6 and span and min(span) >= 5, (rise, span[:5] if span else span))
 
 mecha_lab.unregister()
 summary()
