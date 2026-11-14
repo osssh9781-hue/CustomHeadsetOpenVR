@@ -1,0 +1,16 @@
+1 chest: furs 1 strands 906 roots inside the drawn outline 906 / 906 - root colours: dark 310 orange 432
+shot 1_chest_wire.png True
+2 Alt: strands 906 -> 496 - roots well inside the erased outline 0
+3 belly: furs 1 strands 496 -> 959
+4 Length cell True length 0.035 -> 0.13 longest strand 0.1299
+5 areas: row True - picked 0 - Lie Down per area [50.0, 50.0] -> [11.1, 50.0] - measured chest 28.9 -> 6.7 belly 28.5 -> 28.5
+6 tip gather: row True - picked 1 - Tip Gather per area [0.0, 0.9] - belly tips spread 77 -> 8 mm, chest 73 -> 73 mm
+shot 2_fur_wire.png True
+shot 3_fur_cycles.png True
+PASS 1 a REAL Free Draw outline on the chest: a fur on the body, every root inside what was drawn (6 %), the root colours the stripes (dark and orange)
+PASS 2 a REAL Alt + drag over its left part: the strands there gone
+PASS 3 a REAL drag on the belly: the same fur (one), more strands
+PASS 4 a REAL drag on the window's Length: the fur longer (the strands redone)
+PASS 5 a REAL click on "Area 1" in the window, a REAL drag on its Lie Down: only the chest stands up more, the belly (Area 2) as it was
+PASS 6 a REAL click on "Area 2", a REAL drag on its Tip Gather: the belly's tips come together, the chest's as they were
+6/6 passed
