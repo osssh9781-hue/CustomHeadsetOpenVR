@@ -18,7 +18,7 @@ import random
 
 import bmesh
 import bpy
-from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, FloatVectorProperty, IntProperty, StringProperty
 from mathutils import Matrix, Vector
 
 from . import core_geometry as cg
@@ -30,6 +30,11 @@ STYLE_ITEMS = [
     ('TENTACLE', 'Tentacles', 'Thick smooth tentacles, tapering and curling'),
     ('QUILLS', 'Quills', 'Stiff spikes standing out'),
     ('STRANDS', 'Strands', 'Many thin hairs'),
+    # 0.24.169 (user: "생머리, 파마머리, 수염, 동물털 이런 거 프리셋 좀 만들어 줘")
+    ('STRAIGHT', 'Straight Hair', 'Long thin hair hanging straight down'),
+    ('PERM', 'Perm', 'Curly permed hair: every strand a corkscrew'),
+    ('BEARD', 'Beard', 'A beard: dense, shorter, a little wavy, hanging from the chin and cheeks'),
+    ('FUR', 'Animal Fur', 'Short dense fur lying close along the body'),
 ]
 STYLES = {
     'DREADS': dict(count=34, length=0.55, length_random=0.3, radius=0.022, radius_random=0.2, taper=0.35, lift=0.55,
@@ -40,10 +45,36 @@ STYLES = {
                    gravity=0.08, wave=0.05, straight=0.0, rope=0.0, rope_twist=0.0, rings=0, ring_size=1.3),
     'STRANDS': dict(count=120, length=0.5, length_random=0.25, radius=0.006, radius_random=0.3, taper=0.6, lift=0.4,
                     gravity=1.2, wave=0.25, straight=0.7, rope=0.0, rope_twist=0.0, rings=0, ring_size=1.3),
+    'STRAIGHT': dict(count=260, length=0.5, length_random=0.12, radius=0.0035, radius_random=0.25, taper=0.7,
+                     lift=0.25, gravity=1.6, wave=0.04, straight=1.0, rope=0.0, rope_twist=0.0, rings=0, ring_size=1.3,
+                     curl=0.0, curl_turns=6.0, sides=5, segments=32),
+    'PERM': dict(count=170, length=0.32, length_random=0.25, radius=0.0045, radius_random=0.25, taper=0.55, lift=0.6,
+                 gravity=0.7, wave=0.12, straight=0.3, rope=0.0, rope_twist=0.0, rings=0, ring_size=1.3,
+                 curl=0.55, curl_turns=7.0, sides=5, segments=64),
+    'BEARD': dict(count=220, length=0.14, length_random=0.35, radius=0.003, radius_random=0.3, taper=0.75, lift=0.45,
+                  gravity=1.3, wave=0.3, straight=0.5, rope=0.0, rope_twist=0.0, rings=0, ring_size=1.3,
+                  curl=0.18, curl_turns=3.0, sides=4, segments=16),
+    'FUR': dict(count=600, length=0.05, length_random=0.4, radius=0.0022, radius_random=0.3, taper=0.9, lift=0.18,
+                gravity=0.35, wave=0.2, straight=0.0, rope=0.0, rope_twist=0.0, rings=0, ring_size=1.3,
+                curl=0.0, curl_turns=3.0, sides=4, segments=6),
 }
+for _st in ('DREADS', 'TENTACLE', 'QUILLS', 'STRANDS'):          # (0.24.169 the first four: no curl, as they were)
+    STYLES[_st].update(curl=0.0, curl_turns=6.0, sides=8, segments=28)
 LIVE_KEYS = ('count', 'length', 'length_random', 'radius', 'radius_random', 'taper', 'lift', 'gravity', 'wave',
              'straight', 'rope',
-             'rope_twist', 'rings', 'ring_size', 'seed', 'gap', 'sides', 'segments')
+             'rope_twist', 'rings', 'ring_size', 'seed', 'gap', 'sides', 'segments', 'curl', 'curl_turns')
+COLOUR_KEYS = ('colour_mode', 'root_colour', 'tip_colour', 'tip_start', 'colour_random', 'shine', 'ring_colour')
+# 0.24.169 (user: "머리카락 색 바뀌게 해 줘") (preset, label, root colour, tip colour) - scene-linear
+COLOUR_PRESETS = (
+    ('BLACK', 'Black', (0.010, 0.009, 0.008), (0.026, 0.023, 0.020)),
+    ('DARK_BROWN', 'Dark Brown', (0.030, 0.018, 0.010), (0.075, 0.047, 0.028)),
+    ('BROWN', 'Brown', (0.080, 0.045, 0.022), (0.190, 0.115, 0.058)),
+    ('AUBURN', 'Auburn', (0.140, 0.035, 0.012), (0.330, 0.095, 0.032)),
+    ('BLONDE', 'Blonde', (0.300, 0.210, 0.100), (0.660, 0.530, 0.300)),
+    ('GREY', 'Grey', (0.180, 0.180, 0.180), (0.500, 0.500, 0.510)),
+    ('WHITE', 'White', (0.700, 0.680, 0.650), (0.880, 0.870, 0.850)),
+    ('FOX', 'Fox', (0.300, 0.070, 0.015), (0.860, 0.810, 0.730)),
+)
 
 
 # -----------------------------------------------------------------------------
@@ -142,6 +173,22 @@ def strand_path(root, normal, length, segments, lift, gravity, wave, rng, push=N
     return pts
 
 
+def curl_path(pts, amount, turns, phase, length):
+    """0.24.169 Perm: the strand wound into a corkscrew round its own path - ``amount`` x 8 % of its length wide,
+    ``turns`` turns along it; straight at the root, the full curl from a sixth of the way on."""
+    if amount <= 0 or len(pts) < 3:
+        return pts
+    fr = _frames(pts)
+    m = len(pts)
+    rad = amount * length * 0.08
+    out = []
+    for i, (q, (_t, nv, bv)) in enumerate(zip(pts, fr)):
+        tt = i / (m - 1)
+        ph = phase + 2.0 * math.pi * turns * tt
+        out.append(q + (nv * math.cos(ph) + bv * math.sin(ph)) * (rad * min(1.0, tt / 0.16)))
+    return out
+
+
 # -----------------------------------------------------------------------------
 # Mesh
 # -----------------------------------------------------------------------------
@@ -170,18 +217,30 @@ def _frames(pts):
     return out
 
 
-def add_tube(bm, pts, r0, p, length, sides, mat=0, radius_fn=None):
-    """Closed tube along pts (flat root cap, pointed tip)."""
+T_ATTR = 'mch_hair_t'           # 0.24.169 on every point: 0 at the root .. 1 at the tip (the colour's gradient)
+R_ATTR = 'mch_hair_r'           # 0.24.169 a random 0 - 1 per strand (each strand a little different)
+
+
+def add_tube(bm, pts, r0, p, length, sides, mat=0, radius_fn=None, tag=None):
+    """Closed tube along pts (flat root cap, pointed tip).  ``tag`` (0.24.169): (t layer, r layer, the strand's random,
+    t0, t1) - the points get t from t0 at the start to t1 at the end and the strand's random."""
     fr = _frames(pts)
     rings = []
     m = len(pts)
+
+    def mark(v, tt):
+        if tag is not None:
+            lt, lr, rnd, t0, t1 = tag
+            v[lt] = t0 + (t1 - t0) * tt
+            v[lr] = rnd
+        return v
     for i, (q, (t, nv, bv)) in enumerate(zip(pts, fr)):
         tt = i / max(1, m - 1)
         ring = []
         for s in range(sides):
             th = 2 * math.pi * s / sides
             r = radius_fn(tt, th) if radius_fn else tube_radius(tt, th, r0, p.taper, p.rope, p.rope_twist, length)
-            ring.append(bm.verts.new(q + (nv * math.cos(th) + bv * math.sin(th)) * r))
+            ring.append(mark(bm.verts.new(q + (nv * math.cos(th) + bv * math.sin(th)) * r), tt))
         rings.append(ring)
     faces = []
     for i in range(m - 1):
@@ -190,7 +249,7 @@ def add_tube(bm, pts, r0, p, length, sides, mat=0, radius_fn=None):
             s2 = (s + 1) % sides
             faces.append(bm.faces.new((a[s], a[s2], b[s2], b[s])))
     faces.append(bm.faces.new(rings[0][::-1]))
-    tip = bm.verts.new(pts[-1] + fr[-1][0] * (r0 * 0.3))
+    tip = mark(bm.verts.new(pts[-1] + fr[-1][0] * (r0 * 0.3)), 1.0)
     for s in range(sides):
         faces.append(bm.faces.new((rings[-1][s], rings[-1][(s + 1) % sides], tip)))
     for f in faces:
@@ -199,7 +258,7 @@ def add_tube(bm, pts, r0, p, length, sides, mat=0, radius_fn=None):
     return faces
 
 
-def add_ring(bm, pts, at, r, width, sides):
+def add_ring(bm, pts, at, r, width, sides, tag=None):
     """A metal band round the strand at fraction ``at`` of its length (its own closed short tube)."""
     m = len(pts)
     i = min(m - 2, max(0, int(at * (m - 1))))
@@ -210,7 +269,8 @@ def add_ring(bm, pts, at, r, width, sides):
     d.normalize()
     seg = [centre - d * width * 0.5, centre, centre + d * width * 0.5]
     add_tube(bm, seg, r, None, 1.0, sides, mat=1,
-             radius_fn=lambda tt, th: r * (0.92 if tt in (0.0, 1.0) else 1.0))
+             radius_fn=lambda tt, th: r * (0.92 if tt in (0.0, 1.0) else 1.0),
+             tag=None if tag is None else (tag[0], tag[1], tag[2], at, at))
 
 
 # -----------------------------------------------------------------------------
@@ -248,6 +308,9 @@ def build(context, src, p, target):
     good = [c for i, c in enumerate(cos) if i not in miss]
     mid = sum(good, Vector()) / max(1, len(good))
     bm = bmesh.new()
+    lt = bm.verts.layers.float.new(T_ATTR)          # (made before any point: a new layer drops the points' handles)
+    lr = bm.verts.layers.float.new(R_ATTR)
+    crng = random.Random(p.seed * 131 + 7)          # (its own stream: the strands' shapes stay as they were)
     sides = max(3, p.sides)
     segs = max(3, p.segments)
     for i, (c, n) in enumerate(zip(cos, nrms)):
@@ -265,11 +328,15 @@ def build(context, src, p, target):
         if out.length < 0.2:                 # on top of the head: fall away from the middle of the area
             out = Vector((c.x - mid.x, c.y - mid.y, 0.0))
         pts = strand_path(c + n * (r0 * 0.3), n, L, segs, p.lift, p.gravity, p.wave, rng, push, out, p.straight)
-        add_tube(bm, pts, r0, p, L, sides)
+        if p.curl > 0:                       # 0.24.169 Perm: corkscrews (kept out of the body)
+            pts = curl_path(pts, p.curl, p.curl_turns * crng.uniform(0.85, 1.15), crng.uniform(0, 2 * math.pi), L)
+            pts = [pts[0]] + [push(q) for q in pts[1:]]
+        tag = (lt, lr, crng.random(), 0.0, 1.0)
+        add_tube(bm, pts, r0, p, L, sides, tag=tag)
         for _k in range(p.rings):
             at = rng.uniform(0.12, 0.8)
             add_ring(bm, pts, at, r0 * p.ring_size * max(0.1, 1.0 - p.taper * at ** 1.3), r0 * rng.uniform(1.2, 2.4),
-                     sides + 2)
+                     sides + 2, tag=tag)
     if not bm.faces:
         bm.free()
         raise cg.CutError('No hair could grow there (draw on the head).')
@@ -320,6 +387,150 @@ def _update(self, context):
             _BUSY[0] = False
 
 
+MAT_KEY = 'mch_hair_mat'               # 0.24.169 on a hair: the names of its own materials (hair, rings)
+
+
+def _hair_tree(m):
+    """The hair material's nodes: root -> tip colour along the strand (``mch_hair_t``, from Tip From), each strand a
+    little lighter / darker / warmer (``mch_hair_r`` x Strand Variation), Shine as the roughness."""
+    m.use_nodes = True
+    nt = m.node_tree
+    nt.nodes.clear()
+    out = nt.nodes.new('ShaderNodeOutputMaterial')
+    bsdf = nt.nodes.new('ShaderNodeBsdfPrincipled')
+    bsdf.name = 'BSDF'
+    at = nt.nodes.new('ShaderNodeAttribute')
+    at.attribute_name = T_ATTR
+    at.attribute_type = 'GEOMETRY'
+    ar = nt.nodes.new('ShaderNodeAttribute')
+    ar.attribute_name = R_ATTR
+    ar.attribute_type = 'GEOMETRY'
+    mr = nt.nodes.new('ShaderNodeMapRange')
+    mr.name = 'Fade'
+    mr.interpolation_type = 'SMOOTHSTEP'
+    nt.links.new(at.outputs['Fac'], mr.inputs['Value'])
+    mix = nt.nodes.new('ShaderNodeMix')
+    mix.name = 'Colour'
+    mix.data_type = 'RGBA'
+    nt.links.new(mr.outputs['Result'], mix.inputs['Factor'])
+    hsv = nt.nodes.new('ShaderNodeHueSaturation')
+    hsv.name = 'Vary'
+    col_out = next(o for o in mix.outputs if o.type == 'RGBA')
+    nt.links.new(col_out, hsv.inputs['Color'])
+    for name, sock in (('Hue', 'Hue'), ('Value', 'Value')):
+        mm = nt.nodes.new('ShaderNodeMath')
+        mm.operation = 'MULTIPLY_ADD'
+        mm.name = 'Vary ' + name
+        nt.links.new(ar.outputs['Fac'], mm.inputs[0])
+        nt.links.new(mm.outputs[0], hsv.inputs[sock])
+    nt.links.new(hsv.outputs['Color'], bsdf.inputs['Base Color'])
+    nt.links.new(bsdf.outputs[0], out.inputs['Surface'])
+    m['mch_hair_v'] = 1
+
+
+def _materials(ob):
+    """The hair's own materials (hair, rings), made the first time."""
+    names = (ob.get(MAT_KEY) or '').split('|')
+    hair = bpy.data.materials.get(names[0]) if names[0] else None
+    rings = bpy.data.materials.get(names[1]) if len(names) > 1 and names[1] else None
+    if hair is None:
+        hair = bpy.data.materials.new('MCH Hair - ' + ob.name)
+        _hair_tree(hair)
+    if rings is None:
+        rings = bpy.data.materials.new('MCH Hair Rings - ' + ob.name)
+        rings.use_nodes = True
+    ob[MAT_KEY] = hair.name + '|' + rings.name
+    return hair, rings
+
+
+def apply_colours(ob, body_mat=None):
+    """0.24.169 The hair's colour settings into its materials (no rebuild): its own hair material (or the body's),
+    the rings' colour.  Material slot 1 = the hair, 2 = the rings."""
+    p = ob.mch_hair
+    me = ob.data
+    if T_ATTR not in me.attributes and source(ob) is not None and p.live:     # (a hair made before 0.24.169)
+        try:
+            rebuild(bpy.context, ob)
+        except (cg.CutError, ValueError, RuntimeError):
+            pass
+    hair, rings = _materials(ob)
+    if hair.get('mch_hair_v') != 1:
+        _hair_tree(hair)
+    nt = hair.node_tree
+    mix = nt.nodes['Colour']
+    a, b = [i for i in mix.inputs if i.type == 'RGBA'][:2]
+    a.default_value = (*p.root_colour, 1.0)
+    b.default_value = (*p.tip_colour, 1.0)
+    fade = nt.nodes['Fade']
+    fade.inputs['From Min'].default_value = p.tip_start
+    fade.inputs['From Max'].default_value = 1.0
+    k = p.colour_random
+    vh, vv = nt.nodes['Vary Hue'], nt.nodes['Vary Value']
+    vh.inputs[1].default_value, vh.inputs[2].default_value = 0.08 * k, 0.5 - 0.04 * k          # (hue 0.5 +- 0.04 k)
+    vv.inputs[1].default_value, vv.inputs[2].default_value = 1.2 * k, 1.0 - 0.6 * k            # (value 1 +- 0.6 k)
+    bsdf = nt.nodes['BSDF']
+    bsdf.inputs['Roughness'].default_value = 1.0 - 0.75 * p.shine
+    hair.roughness = 1.0 - 0.75 * p.shine
+    hair.diffuse_color = (*[(x + y) * 0.5 for x, y in zip(p.root_colour, p.tip_colour)], 1.0)   # (the solid view)
+    rb = rings.node_tree.nodes.get('Principled BSDF') if rings.node_tree else None
+    if rb is not None:
+        rb.inputs['Base Color'].default_value = (*p.ring_colour, 1.0)
+        rb.inputs['Metallic'].default_value = 1.0
+        rb.inputs['Roughness'].default_value = 0.3
+    rings.diffuse_color = (*p.ring_colour, 1.0)
+    rings.metallic = 1.0
+    if p.colour_mode == 'BODY':
+        src = source(ob) or {}
+        body = bpy.data.objects.get(src.get('target', '')) if src else None
+        body_mat = body_mat or (next((m for m in body.data.materials if m is not None), None)
+                                if body is not None and body.type == 'MESH' else None)
+    first = body_mat if p.colour_mode == 'BODY' and body_mat is not None else hair
+    while len(me.materials) < 2:
+        me.materials.append(None)
+    me.materials[0] = first
+    me.materials[1] = rings
+
+
+def _colour_update(self, context):
+    if _BUSY[0]:
+        return
+    ob = self.id_data
+    if isinstance(ob, bpy.types.Object) and self.live:
+        apply_colours(ob)
+    st = getattr(getattr(context, 'scene', None), 'mch_hair', None)
+    if st is not None and st != self and isinstance(ob, bpy.types.Object):   # the next hair starts like this one
+        _BUSY[0] = True
+        try:
+            for k in COLOUR_KEYS:
+                v = getattr(self, k)
+                setattr(st, k, tuple(v) if not isinstance(v, (str, float, int)) else v)
+        finally:
+            _BUSY[0] = False
+
+
+class MCH_OT_hair_colour(bpy.types.Operator):
+    """A hair colour: the live hair's (or the next hair's) root and tip colours"""
+    bl_idname = 'mch.hair_colour'
+    bl_label = 'Hair Colour'
+    bl_options = {'REGISTER', 'UNDO'}
+    preset: EnumProperty(items=[(c[0], c[1], '') for c in COLOUR_PRESETS])
+
+    def execute(self, context):
+        ob = live_hair(context)
+        p = ob.mch_hair if ob is not None else context.scene.mch_hair
+        _key, _label, root, tip = next(c for c in COLOUR_PRESETS if c[0] == self.preset)
+        _BUSY[0] = True
+        try:
+            p.colour_mode = 'OWN'
+            p.root_colour = root
+        finally:
+            _BUSY[0] = False
+        p.tip_colour = tip                         # (its update applies the colours and passes them on)
+        if ob is None:
+            pass
+        return {'FINISHED'}
+
+
 def _style_update(self, context):
     if _BUSY[0]:
         return
@@ -339,7 +550,8 @@ class MCH_PG_Hair(bpy.types.PropertyGroup):
     """Scene.mch_hair = settings for the next hair; Object.mch_hair = live hair."""
     style: EnumProperty(name='Style', items=STYLE_ITEMS, default='DREADS', update=_style_update,
                         description='Fills in the sliders')
-    count: IntProperty(name='Count', default=34, min=1, max=600, update=_update, description='How many strands')
+    count: IntProperty(name='Count', default=34, min=1, soft_max=600, max=4000, update=_update,
+                       description='How many strands')
     length: FloatProperty(name='Length', default=0.55, min=0.01, max=2.0, update=_update,
                           description='Strand length (part of the body size)')
     length_random: FloatProperty(name='Length Random', default=0.3, min=0.0, max=0.95, update=_update)
@@ -366,6 +578,31 @@ class MCH_PG_Hair(bpy.types.PropertyGroup):
                        description='Distance kept from the body (0 = Auto)')
     sides: IntProperty(name='Sides', default=8, min=3, max=24, update=_update)
     segments: IntProperty(name='Segments', default=28, min=4, max=120, update=_update)
+    curl: FloatProperty(name='Curl', default=0.0, min=0.0, max=1.5, update=_update,
+                        description='0.24.169 Perm: every strand wound into a corkscrew (how wide)')
+    curl_turns: FloatProperty(name='Curl Turns', default=6.0, min=0.5, max=30.0, update=_update,
+                              description='How many turns along a strand (raise Segments for many)')
+    # 0.24.169 (user: "머리카락 색 바뀌게 해 줘") colour: its own material, changed without rebuilding the strands
+    colour_mode: EnumProperty(name='Colour', items=(('OWN', 'Hair Colour', 'The hair\'s own colour (below)'),
+                                                    ('BODY', 'Body\'s Material', 'The same material as the head / '
+                                                                                   'body it grows on')),
+                              default='OWN', update=_colour_update)
+    root_colour: FloatVectorProperty(name='Root', subtype='COLOR', size=3, min=0.0, max=1.0,
+                                     default=(0.030, 0.018, 0.010), update=_colour_update,
+                                     description='The colour at the roots')
+    tip_colour: FloatVectorProperty(name='Tip', subtype='COLOR', size=3, min=0.0, max=1.0,
+                                    default=(0.075, 0.047, 0.028), update=_colour_update,
+                                    description='The colour at the tips')
+    tip_start: FloatProperty(name='Tip From', default=0.35, min=0.0, max=0.99, update=_colour_update,
+                             description='Where along the strand the colour starts turning to the tip colour '
+                                         '(0 = from the root, a long fade; 0.9 = only the very tips)')
+    colour_random: FloatProperty(name='Strand Variation', default=0.3, min=0.0, max=1.0, update=_colour_update,
+                                 description='Each strand a little lighter / darker / warmer than the next')
+    shine: FloatProperty(name='Shine', default=0.4, min=0.0, max=1.0, update=_colour_update,
+                         description='Glossy (1) or matt (0)')
+    ring_colour: FloatVectorProperty(name='Ring Colour', subtype='COLOR', size=3, min=0.0, max=1.0,
+                                     default=(0.8, 0.62, 0.28), update=_colour_update,
+                                     description='The rings / beads (material slot 2)')
     live: BoolProperty(default=False, options={'HIDDEN'})
     last_error: StringProperty(default='', options={'HIDDEN', 'SKIP_SAVE'})
 
@@ -409,16 +646,15 @@ def perform(context, loops, projector):
     me = bpy.data.meshes.new(target.name + '_Hair')
     ob = bpy.data.objects.new(me.name, me)
     fx._parts_collection(context, COLLECTION).objects.link(ob)
-    first = next((m for m in target.data.materials if m is not None), None)
-    me.materials.append(first or _material('MCH Hair', (0.05, 0.045, 0.04), 0.0, 0.7))
-    me.materials.append(_material('MCH Hair Rings', (0.8, 0.62, 0.28), 1.0, 0.3))   # slot 2: bands / beads
+    body_mat = next((m for m in target.data.materials if m is not None), None)
     ob[SRC_KEY] = json.dumps({'loops': [[[float(x), float(y)] for x, y in lp] for lp in loops], 'proj': frozen,
                               'target': target.name})
     p = ob.mch_hair
     _BUSY[0] = True
     try:
-        for k in LIVE_KEYS + ('style',):
-            setattr(p, k, getattr(st, k))
+        for k in LIVE_KEYS + ('style',) + COLOUR_KEYS:
+            v = getattr(st, k)
+            setattr(p, k, tuple(v) if not isinstance(v, (str, float, int)) else v)
     finally:
         _BUSY[0] = False
     try:
@@ -431,12 +667,46 @@ def perform(context, loops, projector):
     me.transform(Matrix.Translation(-cen))
     ob.matrix_world = Matrix.Translation(cen)
     p.live = True
+    _LAST[0] = ob.name
+    apply_colours(ob, body_mat)                   # 0.24.169 its own colour (slot 1), the rings' (slot 2)
+    mirrored = ''
+    try:                                          # 0.24.169 (user: "머리카락은 왜 미러가 안 돼?") like the plates: a
+        from . import symmetry                    # head with a live Mirror mirrors the hair grown on it
+        mirrored = symmetry.follow(context, ob, target)
+    except (ImportError, AttributeError, RuntimeError, ReferenceError):
+        pass
     for o in context.selected_objects:
         o.select_set(False)
     ob.select_set(True)
     context.view_layer.objects.active = ob
     name = dict((s[0], s[1]) for s in STYLE_ITEMS)[p.style]
-    return f'Creature hair "{ob.name}" on {target.name} ({name}, {len(me.polygons)} faces)'
+    return f'Creature hair "{ob.name}" on {target.name} ({name}, {len(me.polygons)} faces)' + mirrored
+
+
+_LAST = [None]          # 0.24.169 the name of the hair made last (Enter applies it in the Hair tool)
+
+
+def _is_live(ob):
+    return (ob is not None and ob.type == 'MESH' and getattr(ob, 'mch_hair', None) is not None and ob.mch_hair.live
+            and source(ob) is not None)
+
+
+def apply_targets(context):
+    """0.24.169 (user: "머리카락도 엔터 치면 어플라이 되게"): the live hair(s) Enter / Apply takes - the active one, else
+    the selected live hairs, else (in the Hair tool) the one made last, even when the head was clicked since."""
+    ob = live_hair(context)
+    if ob is not None:
+        return [ob]
+    sel = [o for o in getattr(context, 'selected_objects', []) or [] if _is_live(o)]
+    if sel:
+        return sel
+    try:
+        from . import tool_state as ts
+        in_tool = ts.effective_tool(context) == 'HAIR'
+    except (AttributeError, ImportError, ReferenceError):
+        in_tool = False
+    last = bpy.data.objects.get(_LAST[0] or '')
+    return [last] if in_tool and _is_live(last) else []
 
 
 def live_hair(context):
@@ -460,10 +730,13 @@ class MCH_OT_hair_apply(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return live_hair(context) is not None
+        return bool(apply_targets(context))
 
     def execute(self, context):
-        apply(live_hair(context))
+        obs = apply_targets(context)
+        for ob in obs:
+            apply(ob)
+        self.report({'INFO'}, 'Hair applied: ' + ', '.join(o.name for o in obs))
         return {'FINISHED'}
 
 
@@ -477,7 +750,24 @@ def draw(layout, context):
             box.label(text=p.last_error, icon='ERROR')
     else:
         box.label(text='Creature Hair: settings for the next one', icon='CURVES')
-    box.row(align=True).prop(p, 'style', expand=True)
+    grid = box.grid_flow(row_major=True, columns=4, even_columns=True, align=True)
+    for key, label, _d in STYLE_ITEMS:                  # (0.24.169 eight styles: two rows)
+        grid.prop_enum(p, 'style', key, text=label)
+    col = box.column(align=True)                         # 0.24.169 the colour
+    col.label(text='Colour')
+    col.row(align=True).prop(p, 'colour_mode', expand=True)
+    if p.colour_mode == 'OWN':
+        g = col.grid_flow(row_major=True, columns=4, even_columns=True, align=True)
+        for key, label, _r, _t in COLOUR_PRESETS:
+            g.operator('mch.hair_colour', text=label).preset = key
+        r = col.row(align=True)
+        r.prop(p, 'root_colour')
+        r.prop(p, 'tip_colour')
+        col.prop(p, 'tip_start', slider=True)
+        col.prop(p, 'colour_random', slider=True)
+        col.prop(p, 'shine', slider=True)
+    if p.rings:
+        col.prop(p, 'ring_colour')
     col = box.column(align=True)
     col.prop(p, 'count')
     col.prop(p, 'length', slider=True)
@@ -490,6 +780,9 @@ def draw(layout, context):
     col.prop(p, 'gravity', slider=True)
     col.prop(p, 'wave', slider=True)
     col.prop(p, 'straight', slider=True)
+    col.prop(p, 'curl', slider=True)                     # 0.24.169 perm
+    if p.curl > 0:
+        col.prop(p, 'curl_turns', slider=True)
     col = box.column(align=True)
     col.prop(p, 'rope', slider=True)
     if p.rope > 0:
@@ -508,12 +801,12 @@ def draw(layout, context):
         box.operator('mch.hair_apply', icon='CHECKMARK')
     col = layout.column(align=True)
     col.scale_y = 0.8
-    for line in ('Draw the scalp area on a head', 'Strands grow there and fall over the body',
-                 'Rings = material slot 2', 'Apply: plain mesh'):
+    for line in ('Draw the scalp area on a head (the chin for a beard)', 'Strands grow there and fall over the body',
+                 'Colour: its own material - changes at once', 'Rings = material slot 2', 'Apply: plain mesh'):
         col.label(text=line)
 
 
-CLASSES = (MCH_PG_Hair, MCH_OT_hair_apply)
+CLASSES = (MCH_PG_Hair, MCH_OT_hair_apply, MCH_OT_hair_colour)
 
 
 def register():

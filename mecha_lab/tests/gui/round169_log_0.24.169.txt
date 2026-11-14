@@ -1,0 +1,12 @@
+1 Perm cell True - next hair style PERM curl 0.55
+1b hair Head_Hair style PERM curl 0.55 - mirror True - x -1.09 .. 1.09
+shot 1_perm_mirrored.png True
+2 Blonde cell True - root [0.3, 0.21, 0.1] - material MCH Hair - Head_Hair - faces 56724 -> 56724
+shot 2_blonde.png True
+3 after Enter: live False - outline kept False
+4 second hair Head_Hair.001 - the head active, after Enter: live False
+PASS 1 a REAL click on "Perm" + a REAL lasso on the +X side: permed hair, mirrored to -X like the head
+PASS 2 a REAL click on "Blonde": the hair's own material blonde, the strands not rebuilt
+PASS 3 a REAL Enter: the hair applied (no longer live)
+PASS 4 a second hair, the head clicked active, a REAL Enter in the Hair tool: the hair just made applied
+4/4 passed
