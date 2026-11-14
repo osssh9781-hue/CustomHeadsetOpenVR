@@ -714,6 +714,98 @@ def area_points(context, body, loops, projector, mirrors=None):
     return np.array(sorted(out), int)
 
 
+def flip_area(fur, axis=0):
+    """0.24.171 Flip of a live fur (user: "머리는 월드 기준 x축으로 뒤집는 것도 되게"): its area moved across the world's
+    plane through the origin - every point of the body with fur gives it (its area, tilt, curl ...) to the body's point
+    nearest its mirror image, the side it was on cleared; the Flow Angle turned the other way, the Bend direction
+    mirrored.  Returns True when it moved."""
+    from mathutils.kdtree import KDTree
+    body = fur.parent
+    if body is None or body.type != 'MESH' or not fur.get(AREA_KEY):
+        return False
+    me = body.data
+    n = len(me.vertices)
+    a = me.attributes.get(fur[AREA_KEY])
+    if a is None or n == 0:
+        return False
+    w = np.zeros(n, np.float32)
+    a.data.foreach_get('value', w)
+    src = np.nonzero(w > 0.0)[0]
+    if not len(src):
+        return False
+    co = np.empty(n * 3, np.float32)
+    me.vertices.foreach_get('co', co)
+    co = co.reshape(-1, 3).astype(float)
+    M = np.array(body.matrix_world, float)
+    R = np.eye(4)
+    R[axis, axis] = -1.0
+    L = np.linalg.inv(M) @ R @ M                      # (the world's mirror in the body's own space)
+    img = co[src] @ L[:3, :3].T + L[:3, 3]
+    kd = KDTree(n)
+    for i, c in enumerate(co):
+        kd.insert(c, i)
+    kd.balance()
+    ev = np.empty(len(me.edges) * 2, np.int32)
+    me.edges.foreach_get('vertices', ev)
+    ev = ev.reshape(-1, 2)
+    near = float(np.median(np.linalg.norm(co[ev[:, 0]] - co[ev[:, 1]], axis=1))) * 1.5 if len(ev) else 1e-3
+    dst = np.full(len(src), -1, np.int64)
+    for k, q in enumerate(img):
+        _c, j, dist = kd.find(q)
+        if j is not None and dist <= near:
+            dst[k] = j
+    ok = dst >= 0
+    if not ok.any():
+        return False
+    s_, d_ = src[ok], dst[ok]
+    w2 = np.zeros(n, np.float32)
+    w2[d_] = w[s_]
+    a.data.foreach_set('value', w2)
+    pa = me.attributes.get(fur.get(PART_KEY, ''))
+    if pa is not None and pa.data_type == 'INT':
+        ids = np.zeros(n, np.int32)
+        pa.data.foreach_get('value', ids)
+        ids2 = np.zeros(n, np.int32)
+        ids2[d_] = ids[s_]
+        pa.data.foreach_set('value', ids2)
+    for key in (LIE_KEY, FLOW_KEY, LOOK_KEY):
+        at = me.attributes.get(fur.get(key, '')) if fur.get(key) else None
+        if at is None:
+            continue
+        if at.data_type == 'FLOAT':
+            v = np.empty(n, np.float32)
+            at.data.foreach_get('value', v)
+            v[d_] = v[s_].copy()
+            at.data.foreach_set('value', v)
+        else:
+            v = np.empty(n * 3, np.float32)
+            at.data.foreach_get('vector', v)
+            v = v.reshape(-1, 3)
+            moved = v[s_].copy()
+            if key == FLOW_KEY:
+                moved[:, 1] *= -1.0                   # (the tilt turned the other way round the normal: mirrored)
+            v[d_] = moved
+            at.data.foreach_set('vector', v.ravel())
+    pg = fur.mch_fur
+    for part in pg.parts:                             # (each area's own Flow Angle: the mirrored way)
+        _BUSY[0] = True
+        try:
+            part.flow = -part.flow
+        finally:
+            _BUSY[0] = False
+    bd = list(pg.bend_dir)
+    bd[axis] = -bd[axis]
+    _BUSY[0] = True
+    try:
+        pg.bend_dir = bd
+    finally:
+        _BUSY[0] = False
+    me.update()
+    push(fur)
+    fur.update_tag()
+    return True
+
+
 def paint_area(body, name, idx, value):
     """The body's area weight ``name`` set to ``value`` at the points ``idx``.  Returns how many are in the area."""
     me = body.data

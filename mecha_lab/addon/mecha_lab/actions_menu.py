@@ -333,19 +333,53 @@ class MCH_OT_actions_menu(bpy.types.Operator):
 
 
 def flip_objects(context, obs, axis=0):
-    """0.24.95 Flip (user: "좌우 오브젝트 뒤집는 거"): the objects mirrored left-right (``axis`` 0 = world X) through
-    their middle - one object in place (its origin), several as a group (round the middle of their origins, so an
-    assembly stays together).  The reflection goes into the mesh itself (points, shape keys, face winding turned so
-    the outside stays outside) - no negative scale left on the object.  Returns the number flipped."""
-    from mathutils import Matrix, Vector
-    obs = [o for o in obs if o.type == 'MESH']
-    if not obs:
-        return 0
-    piv = sum((o.matrix_world.translation for o in obs), Vector()) / len(obs)
+    """0.24.95 Flip (user: "좌우 오브젝트 뒤집는 거"): the objects mirrored left-right - not a copy, the object itself.
+    0.24.171 (user: "머리는 월드 기준 x축으로 뒤집는 것도 되게 해 주고, 다른 것들도 뒤집을 땐 월드 기준으로" - "미러랑 뒤집기는
+    다르지"): across the WORLD's plane through the origin (``axis`` 0 = world X: what is on the right goes to the left),
+    not round the object's own origin any more; hair too:
+
+        a mesh            the reflection goes into the mesh itself (points, shape keys, face winding turned so the
+                          outside stays outside), the object moved across - no negative scale left on it
+        a live Creature   applied first (its strands are rebuilt from the outline drawn on one side), then as a mesh
+          Hair
+        hair curves       (an applied Fur) every point reflected
+        a live Fur        its area on the body moved to the mirror points of the body (each drawn area with its tilt,
+                          the Flow Angle turned the other way) - still live
+
+    Returns the number flipped."""
+    import numpy as np
+    from mathutils import Matrix
     S = Matrix.Identity(3)
     S[axis][axis] = -1.0
+    S4 = S.to_4x4()
     done = set()
+    n = 0
     for ob in obs:
+        if ob.type == 'CURVES':
+            from . import creature_fur as cf
+            if cf.is_fur(ob):
+                if cf.flip_area(ob, axis):
+                    n += 1
+                continue
+            cv = ob.data
+            if cv.name in done:
+                continue
+            M = ob.matrix_world.inverted_safe() @ S4 @ ob.matrix_world
+            P = np.empty(len(cv.points) * 3, np.float32)
+            cv.attributes['position'].data.foreach_get('vector', P)
+            P = P.reshape(-1, 3) @ np.array(M.to_3x3(), np.float32).T + np.array(M.translation, np.float32)
+            cv.attributes['position'].data.foreach_set('vector', P.ravel())
+            cv.update_tag()
+            ob.update_tag()
+            done.add(cv.name)
+            n += 1
+            continue
+        if ob.type != 'MESH':
+            continue
+        hp = getattr(ob, 'mch_hair', None)
+        if hp is not None and hp.live:               # (a live Creature Hair: its strands would be rebuilt unflipped)
+            from . import creature_hair as ch
+            ch.apply(ob)
         W = ob.matrix_world.copy()
         L = W.to_3x3()
         try:
@@ -359,15 +393,16 @@ def flip_objects(context, obs, axis=0):
             me.update()
             done.add(me.name)
         t = W.translation.copy()
-        t[axis] = 2.0 * piv[axis] - t[axis]
+        t[axis] = -t[axis]                           # (across the world's plane: the origin moves to the other side)
         W.translation = t
         ob.matrix_world = W
-    return len(obs)
+        n += 1
+    return n
 
 
 class MCH_OT_flip_object(bpy.types.Operator):
-    """Flip: mirror the selected objects left-right (one in place, several round their middle as a group) - the mesh
-    itself is flipped, no negative scale"""
+    """Flip: the selected objects turned over to the other side of the world (left-right across the world's X plane) -
+    the object itself, not a copy, no negative scale; hair too (an applied Fur, a live Fur's area, a Creature Hair)"""
     bl_idname = 'mch.flip_object'
     bl_label = 'Flip'
     bl_options = {'REGISTER', 'UNDO'}
@@ -376,7 +411,7 @@ class MCH_OT_flip_object(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.mode in {'OBJECT', 'SCULPT'} and any(o.type == 'MESH' for o in context.selected_objects)
+        return context.mode in {'OBJECT', 'SCULPT'} and any(o.type in {'MESH', 'CURVES'} for o in context.selected_objects)
 
     def execute(self, context):
         sculpt = context.mode == 'SCULPT'
