@@ -542,6 +542,21 @@ def apply_all_modifiers(context, ob):
     """0.24.21 apply every enabled modifier of ``ob`` in stack order (top to bottom).  Returns (applied names,
     error or '').  Stops at the first one that fails (the ones before it stay applied)."""
     from . import safe_apply
+    if ob is not None and ob.type == 'CURVES':     # 0.24.171 hair curves (a Fur with its Alt+X mirror): Blender's own
+        done = []                                 # apply, top to bottom
+        for mod in list(ob.modifiers):
+            if not mod.show_viewport:
+                continue
+            name = mod.name
+            try:
+                with context.temp_override(object=ob, active_object=ob, selected_objects=[ob]):
+                    bpy.ops.object.modifier_apply(modifier=name)
+            except RuntimeError as ex:
+                return done, f'{name}: {str(ex).splitlines()[0][:90]}'
+            done.append(name)
+        if done and ob.get('mch_fur'):
+            ob['mch_fur'] = 0                     # (its fur modifier applied: real hair curves now)
+        return done, ''
     if ob is None or ob.type != 'MESH':
         return [], 'click a mesh'
     if not ob.modifiers:
@@ -586,7 +601,7 @@ class MCH_OT_apply_modifiers_pick(bpy.types.Operator):
 
     def execute(self, context):
         # no click (e.g. from a script): the selected meshes
-        obs = [o for o in context.selected_editable_objects if o.type == 'MESH']
+        obs = [o for o in context.selected_editable_objects if o.type in {'MESH', 'CURVES'}]   # (0.24.171 hair)
         if not obs:
             self.report({'WARNING'}, 'Select a mesh (or use the button and click one)')
             return {'CANCELLED'}
@@ -598,7 +613,7 @@ class MCH_OT_apply_modifiers_pick(bpy.types.Operator):
     def invoke(self, context, event):
         if context.area is None or context.area.type != 'VIEW_3D':
             return self.execute(context)
-        if any(o.type == 'MESH' for o in context.selected_editable_objects):
+        if any(o.type in {'MESH', 'CURVES'} for o in context.selected_editable_objects):
             return self.execute(context)         # 0.24.59 already picked: apply now, no second pick
         context.window_manager.modal_handler_add(self)
         context.workspace.status_text_set('Apply Modifiers: click a mesh (its modifiers are applied top to bottom) '

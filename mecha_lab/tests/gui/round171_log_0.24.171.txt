@@ -1,0 +1,18 @@
+1 fur Fur 1119 strands, roots x 0.33 .. 0.81
+shot 1_fur.png True
+2 Left cell True - bend 60 dir (-1.0, 0.0, 0.0) - tips moved x -0.336
+shot 2_bend_left.png True
+3 Apply cell True - still a live fur False - curves in the data 1119
+shot 3_leaning.png True
+4 after Alt+X + lean left + Enter: mirror True axes (True, False, False) - strands 2238 - roots x -0.81 .. 0.81 z -0.04 .. 0.69
+shot 4_mirrored.png True
+5 Apply Modifiers tile True - modifiers left [] - curves in the data 2238
+6 hair Head_Hair - Right cell True - bend 60 dir (1.0, 0.0, 0.0)
+shot 5_hair_bend.png True
+PASS 1 the Fur tool, a REAL lasso on the head's right side: fur there only
+PASS 2 a REAL click on Bend "Left": the strands bend toward the screen's left (world -X in this view)
+PASS 3 a REAL click on "Apply": real hair curves (not live)
+PASS 4 a REAL Alt+X, leaned left, a REAL Enter: a mirrored copy of every strand on the other side of the face
+PASS 5 a REAL click on "Apply Modifiers": the mirror baked (twice the curves, no modifier)
+PASS 6 Creature Hair: a REAL click on Bend "Right": bent toward the view's right (world +X here)
+6/6 passed

@@ -489,6 +489,8 @@ class MirrorLeanLogic:
                 from . import live_ref
                 skip |= {c.name for c in live_ref.deep_objects(o.instance_collection)}
         hit = pointed_object(bpy.context, self.projector, xy, skip)
+        if obs and all(o.type == 'CURVES' for o in obs):
+            hit = None              # 0.24.171 hair on a body: the mouse is always on the body - the plain lean
         if hit is None:
             if getattr(self, 'pivot_name', None) is not None:
                 self.pivot_name, self.pivot_center = None, None
