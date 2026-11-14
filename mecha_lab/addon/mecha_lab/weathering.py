@@ -12,6 +12,12 @@ change any time.  Alt + click: back to the shape (the modifier removed).  Apply 
              as dark soil (Show Base) or hidden
     Snow     the shape smoothed, puffed (more on its top), soft lumps, snow white with blue shadows
 
+0.24.162 (user: "웨더링은 재질이 아니라 형태를 변환해 달라는 거였어 - 내가 만든 메쉬의 형태에서 바깥은 자잘하게 끊어지고
+중앙에는 좀 남아 있게"): every kind first breaks the shape itself up - seen along its thinnest side, its middle stays as it
+is and toward its outline more and more of it is gone in small pieces with gaps between them (Break Width: how far in,
+Break Up: how much is gone at the outline, Piece Size).  A closed shape is worked as a distance field (Mesh to SDF Grid ->
+the pieces / gaps -> Grid to Mesh: closed pieces); an open one loses the faces of the gone pieces.
+
 Sizes are shares of the shape's own size (its bounding box diagonal) - the same values suit a pebble or a hill;
 Leaves are in real sizes (Leaf Size, Density per square metre).  The colours are point / instance attributes
 (``mch_w_col``, ``mch_leaf_col``) read by the shared materials ``MCH Dirt`` / ``MCH Dust`` / ``MCH Snow`` /
@@ -30,7 +36,8 @@ from .creature_fur import _B, _socket
 
 MOD = 'MCH Weather'
 KEY = 'mch_weather'                 # on a weathered object: its kind
-TREE_VERSION = 4
+TREE_VERSION = 12
+VOXELS = 1.2e6                     # 0.24.162 the break-up's voxel budget
 LEAF_COLL = 'MCH Leaf Shapes'
 KINDS = ('DIRT', 'DUST', 'LEAVES', 'SNOW')
 TOOL_OF = {'DIRT': 'WDIRT', 'DUST': 'WDUST', 'LEAVES': 'WLEAF', 'SNOW': 'WSNOW'}
@@ -40,6 +47,9 @@ LABEL = {'DIRT': 'Dirt', 'DUST': 'Dust', 'LEAVES': 'Leaves', 'SNOW': 'Snow'}
 # (prop, socket, kind, default, min, max, soft_max, description) per weathering
 SPEC = {
     'DIRT': (
+        ('break_width', 'Break Width', 'FLOAT', 0.6, 0.0, 1.0, None, 'How far in from its outline it breaks up (a share of the way to the middle; the middle stays whole)'),
+        ('break_up', 'Break Up', 'FLOAT', 0.75, 0.0, 1.0, None, 'How much of it is gone in pieces at the outline (0 = only cracked)'),
+        ('piece_size', 'Piece Size', 'FLOAT', 0.12, 0.02, 1.0, 0.5, 'A broken piece\'s size (a share of the way to the middle; smaller toward the outline)'),
         ('detail', 'Detail', 'INT', 1, 0, 5, None, 'Subdivisions of the shape (rebuilt evenly first) before it is made lumpy'),
         ('lumps', 'Lumps', 'FLOAT', 0.35, 0.0, 3.0, 1.0, 'How lumpy (a share of the shape\'s size)'),
         ('lump_scale', 'Lump Scale', 'FLOAT', 5.0, 0.1, 100.0, 20.0, 'How many lumps across the shape'),
@@ -50,8 +60,11 @@ SPEC = {
         ('seed', 'Seed', 'INT', 0, 0, 100000, None, 'Another random mix'),
     ),
     'DUST': (
-        ('detail', 'Detail', 'INT', 1, 0, 5, None, 'Subdivisions (smoothed)'),
-        ('thickness', 'Thickness', 'FLOAT', 0.3, 0.0, 3.0, 1.0, 'How far the layer puffs out (a share of the shape\'s size)'),
+        ('break_width', 'Break Width', 'FLOAT', 0.55, 0.0, 1.0, None, 'How far in from its outline it breaks up (a share of the way to the middle; the middle stays whole)'),
+        ('break_up', 'Break Up', 'FLOAT', 0.7, 0.0, 1.0, None, 'How much of it is gone in pieces at the outline (0 = only cracked)'),
+        ('piece_size', 'Piece Size', 'FLOAT', 0.16, 0.02, 1.0, 0.5, 'A broken piece\'s size (a share of the way to the middle; smaller toward the outline)'),
+        ('detail', 'Detail', 'INT', 0, 0, 5, None, 'Subdivisions (finer faces)'),
+        ('thickness', 'Thickness', 'FLOAT', 0.1, 0.0, 3.0, 1.0, 'How far the layer puffs out (a share of the shape\'s size)'),
         ('softness', 'Softness', 'INT', 4, 0, 60, 20, 'The shape smoothed out (more: softer)'),
         ('grain', 'Grain', 'FLOAT', 0.3, 0.0, 3.0, 1.0, 'A fine grain over it'),
         ('color_a', 'Color A', 'COLOR', (0.36, 0.33, 0.28, 1.0), None, None, None, 'The darker dust'),
@@ -59,6 +72,9 @@ SPEC = {
         ('seed', 'Seed', 'INT', 0, 0, 100000, None, 'Another random mix'),
     ),
     'LEAVES': (
+        ('break_width', 'Break Width', 'FLOAT', 0.6, 0.0, 1.0, None, 'How far in from its outline it breaks up (a share of the way to the middle; the middle stays whole)'),
+        ('break_up', 'Break Up', 'FLOAT', 0.7, 0.0, 1.0, None, 'How much of it is gone in pieces at the outline (0 = only cracked)'),
+        ('piece_size', 'Piece Size', 'FLOAT', 0.15, 0.02, 1.0, 0.5, 'A broken piece\'s size (a share of the way to the middle; smaller toward the outline)'),
         ('density', 'Density', 'FLOAT', 400.0, 1.0, 50000.0, 3000.0, 'Leaves per square metre of the shape'),
         ('leaf_size', 'Leaf Size', 'FLOAT', 0.06, 0.001, 3.0, 0.3, 'A leaf\'s length'),
         ('size_random', 'Size Random', 'FLOAT', 0.4, 0.0, 0.95, None, 'Some leaves smaller'),
@@ -70,7 +86,10 @@ SPEC = {
         ('seed', 'Seed', 'INT', 0, 0, 100000, None, 'Another random mix'),
     ),
     'SNOW': (
-        ('detail', 'Detail', 'INT', 1, 0, 5, None, 'Subdivisions (smoothed; the shape rebuilt evenly first)'),
+        ('break_width', 'Break Width', 'FLOAT', 0.55, 0.0, 1.0, None, 'How far in from its outline it breaks up (a share of the way to the middle; the middle stays whole)'),
+        ('break_up', 'Break Up', 'FLOAT', 0.75, 0.0, 1.0, None, 'How much of it is gone in pieces at the outline (0 = only cracked)'),
+        ('piece_size', 'Piece Size', 'FLOAT', 0.14, 0.02, 1.0, 0.5, 'A broken piece\'s size (a share of the way to the middle; smaller toward the outline)'),
+        ('detail', 'Detail', 'INT', 0, 0, 5, None, 'Subdivisions (finer faces)'),
         ('puff', 'Puff', 'FLOAT', 0.4, 0.0, 3.0, 1.5, 'How far the snow puffs out - more on its top (a share of the size)'),
         ('smooth', 'Smooth', 'INT', 6, 0, 80, 30, 'The shape rounded off (more: softer, like settled snow)'),
         ('lumps', 'Lumps', 'FLOAT', 0.25, 0.0, 3.0, 1.0, 'Soft lumps (a share of the shape\'s size)'),
@@ -137,6 +156,184 @@ def _even(b, geo, size):
     return sw.outputs['Output']
 
 
+def _up(b, geo):
+    """The shape's "up": its thinnest side (object space) - a patch of dirt, a dust layer, a snow cap lie flat on it."""
+    bb = b.node('GeometryNodeBoundBox')
+    b.feed(bb.inputs['Geometry'], geo)
+    ext = b.node('ShaderNodeSeparateXYZ')
+    b.feed(ext.inputs[0], b.vec('SUBTRACT', bb.outputs['Max'], bb.outputs['Min']))
+    ex, ey, ez = ext.outputs['X'], ext.outputs['Y'], ext.outputs['Z']
+    is_z = b.math('MULTIPLY', b.math('SUBTRACT', 1.0, b.math('GREATER_THAN', ez, ex)),
+                  b.math('SUBTRACT', 1.0, b.math('GREATER_THAN', ez, ey)))
+    is_y = b.math('MULTIPLY', b.math('SUBTRACT', 1.0, is_z), b.math('SUBTRACT', 1.0, b.math('GREATER_THAN', ey, ex)))
+    c = b.node('ShaderNodeCombineXYZ')
+    b.feed(c.inputs[0], b.math('SUBTRACT', b.math('SUBTRACT', 1.0, is_z), is_y))
+    b.feed(c.inputs[1], is_y)
+    b.feed(c.inputs[2], is_z)
+    return c.outputs['Vector'], ext
+
+
+def _flat(b, v, up):
+    """``v`` laid flat on the plane across ``up``."""
+    return b.vec('SUBTRACT', v, b.vec('SCALE', up, scale=b.vec('DOT_PRODUCT', v, up)))
+
+
+def _footprint(b, geo, up):
+    """0.24.162 The shape's outline seen along ``up`` (the border of its upward faces, laid flat) and how deep its
+    middle is from it.  Returns (outline edges, depth of the middle)."""
+    face_up = b.vec('DOT_PRODUCT', b.node('GeometryNodeInputNormal').outputs['Normal'], up)
+    sep = b.node('GeometryNodeSeparateGeometry', domain='FACE')
+    b.feed(sep.inputs['Geometry'], geo)
+    b.feed(sep.inputs['Selection'], b.math('GREATER_THAN', face_up, 0.05))
+    tops = sep.outputs['Selection']
+    nb = b.node('GeometryNodeInputMeshEdgeNeighbors')
+    rim = b.node('GeometryNodeDeleteGeometry', domain='EDGE', mode='ALL')
+    b.feed(rim.inputs['Geometry'], tops)
+    b.feed(rim.inputs['Selection'], b.math('GREATER_THAN', nb.outputs['Face Count'], 1.5))   # (keep the border only)
+    flat = b.node('GeometryNodeSetPosition')
+    b.feed(flat.inputs['Geometry'], rim.outputs['Geometry'])
+    b.feed(flat.inputs['Position'], _flat(b, b.node('GeometryNodeInputPosition').outputs['Position'], up))
+    edges = flat.outputs['Geometry']
+    # the middle's depth: points spread over the upward faces, the farthest from the outline
+    area = b.node('GeometryNodeAttributeStatistic', data_type='FLOAT', domain='FACE')
+    b.feed(area.inputs['Geometry'], tops)
+    b.feed(area.inputs['Attribute'], b.node('GeometryNodeInputMeshFaceArea').outputs['Area'])
+    dist = b.node('GeometryNodeDistributePointsOnFaces', distribute_method='RANDOM')
+    b.feed(dist.inputs['Mesh'], tops)
+    b.feed(dist.inputs['Density'], b.math('DIVIDE', 3000.0, b.math('MAXIMUM', area.outputs['Sum'], 1e-9)))
+    stat = b.node('GeometryNodeAttributeStatistic', data_type='FLOAT', domain='POINT')
+    b.feed(stat.inputs['Geometry'], dist.outputs['Points'])
+    b.feed(stat.inputs['Attribute'], _rim_dist(b, edges, up))
+    return edges, b.math('MAXIMUM', stat.outputs['Max'], 1e-6)
+
+
+def _rim_dist(b, edges, up, pos=None):
+    """Distance from (a point laid flat) to the outline."""
+    pos = pos if pos is not None else b.node('GeometryNodeInputPosition').outputs['Position']
+    gp = b.node('GeometryNodeProximity', target_element='EDGES')
+    b.feed(gp.inputs['Geometry'], edges)
+    b.feed(gp.inputs['Sample Position'], _flat(b, pos, up))
+    return gp.outputs['Distance']
+
+
+def _edge_share(b, I, edges, up, depth, pos=None):
+    """1 at the outline, 0 from Break Width (a share of the way to the middle) inward."""
+    w = b.math('MAXIMUM', b.math('MULTIPLY', I['Break Width'], depth), 1e-6)
+    m = b.node('ShaderNodeMapRange', data_type='FLOAT', interpolation_type='SMOOTHSTEP')
+    b.feed(m.inputs[0], _rim_dist(b, edges, up, pos))
+    m.inputs[1].default_value = 0.0
+    b.feed(m.inputs[2], w)
+    m.inputs[3].default_value = 1.0
+    m.inputs[4].default_value = 0.0
+    m.clamp = True
+    return m.outputs['Result']
+
+
+def _cells(b, I, pos, piece, k):
+    seed = b.node('ShaderNodeCombineXYZ')
+    for i, f in enumerate((17.13, 9.71, 5.37)):
+        b.feed(seed.inputs[i], b.math('ADD', b.math('MULTIPLY', I['Seed'], f), 41.3 * k + 7.1 * i))
+    q = b.vec('ADD', b.vec('SCALE', pos, scale=b.math('DIVIDE', 1.0, piece)), seed.outputs['Vector'])
+    v_edge = b.node('ShaderNodeTexVoronoi', voronoi_dimensions='3D', feature='DISTANCE_TO_EDGE')
+    b.feed(v_edge.inputs['Vector'], q)
+    v_cell = b.node('ShaderNodeTexVoronoi', voronoi_dimensions='3D', feature='F1')
+    b.feed(v_cell.inputs['Vector'], q)
+    rnd = b.node('FunctionNodeSeparateColor')
+    b.feed(rnd.inputs[0], v_cell.outputs['Color'])
+    return b.math('MULTIPLY', v_edge.outputs['Distance'], piece), rnd.outputs['Red']
+
+
+def _pieces(b, I, e, depth, pos=None, vox=None):
+    """The broken pieces near the outline: (distance to a piece's border in metres, piece gone?, piece size) -
+    Voronoi cells of Piece Size, half that size near the outline (two fixed sizes: scaling the position by a size that
+    changes with it stretched the cells into long strips far from the origin), more of them gone the nearer it."""
+    pos = pos if pos is not None else b.node('GeometryNodeInputPosition').outputs['Position']
+    big = b.math('MAXIMUM', b.math('MULTIPLY', I['Piece Size'], depth), 1e-6)
+    if vox is not None:                  # (never smaller than the voxels can show: a smaller one lost its pieces)
+        big = b.math('MAXIMUM', big, b.math('MULTIPLY', vox, 8.0))
+    small = b.math('MULTIPLY', big, 0.5)
+    tb_big, r_big = _cells(b, I, pos, big, 0)
+    tb_small, r_small = _cells(b, I, pos, small, 1)
+    near = b.math('GREATER_THAN', e, 0.55)
+    pick = lambda x, y: b.math('ADD', x, b.math('MULTIPLY', near, b.math('SUBTRACT', y, x)))
+    gone = b.math('LESS_THAN', pick(r_big, r_small), b.math('MULTIPLY', b.math('MULTIPLY', e, e), I['Break Up']))
+    return pick(tb_big, tb_small), gone, pick(big, small)
+
+
+def _broken(b, I, geo, size, smooth=1, grow=0.0):
+    """0.24.162 (user: "웨더링은 재질이 아니라 형태를 변환해 달라는 거였어 - 내가 만든 메쉬의 형태에서 바깥은 자잘하게 끊어지고
+    중앙에는 좀 남아 있게"): the shape itself broken up - its middle kept as it is, toward its outline (seen along its
+    thinnest side) more and more of it gone in small pieces, gaps between the pieces left.  A closed shape is worked
+    as a distance field (closed pieces, rounded ``smooth`` times, ``grow`` metres out); an open one (a band, a sheet)
+    loses the faces of the gone pieces.  Also rebuilds the shape evenly (what _even did)."""
+    up, ext = _up(b, geo)
+    edges, depth = _footprint(b, geo, up)
+    thin = b.math('MINIMUM', b.math('MINIMUM', ext.outputs['X'], ext.outputs['Y']), ext.outputs['Z'])
+    smallest = b.math('MULTIPLY', b.math('MULTIPLY', I['Piece Size'], depth), 0.5)        # (a piece at the outline)
+    fine = b.math('MINIMUM', b.math('MINIMUM', b.math('DIVIDE', size, 90.0), b.math('DIVIDE', thin, 3.5)),
+                  b.math('DIVIDE', smallest, 4.0))
+    vox = b.math('MAXIMUM', b.math('DIVIDE', size, 400.0), fine)   # (as fine as the smallest piece needs, within limits)
+    # ... but never more than about VOXELS voxels (the band fills a thick shape's inside: a 1.2 m ball at 1 cm was
+    # millions of them, 7 GB in the window)
+    padded = b.math('MULTIPLY', b.math('MULTIPLY', b.math('ADD', ext.outputs['X'], thin), b.math('ADD', ext.outputs['Y'], thin)),
+                    b.math('ADD', ext.outputs['Z'], thin))
+    vox = b.math('MAXIMUM', vox, b.math('POWER', b.math('DIVIDE', padded, VOXELS), 1.0 / 3.0))
+    # a very thin shape (a 1 cm leaf bed) made at least ~3 voxels thick, else nothing is left of it
+    grow = b.math('ADD', grow, b.math('MAXIMUM', b.math('SUBTRACT', b.math('MULTIPLY', vox, 1.6), b.math('MULTIPLY', thin, 0.5)),
+                                       0.0))
+    band = b.math('MINIMUM', b.math('ADD', b.math('CEIL', b.math('DIVIDE', b.math(
+        'MAXIMUM', b.math('MULTIPLY', thin, 0.5), grow), vox)), 3.0), 48.0)
+    sdf = b.node('GeometryNodeMeshToSDFGrid')
+    b.feed(sdf.inputs['Mesh'], geo)
+    b.feed(sdf.inputs['Voxel Size'], vox)
+    b.feed(sdf.inputs['Band Width'], band)
+    e = _edge_share(b, I, edges, up, depth)
+    to_border, gone, piece = _pieces(b, I, e, depth, vox=vox)
+    soft = b.node('GeometryNodeSDFGridMean')          # (the shape itself softened first - smoothing after the break-up
+    b.feed(soft.inputs['Grid'], sdf.outputs['SDF Grid'])   #  filled its gaps again and melted the pieces together)
+    soft.inputs['Width'].default_value = 1
+    b.feed(soft.inputs['Iterations'], b.math('MINIMUM', smooth, b.math('MAXIMUM', 1.0, b.math(   # (no more than a thin
+        'FLOOR', b.math('MULTIPLY', b.math('DIVIDE', thin, vox), 0.4)))))                     #  layer can take: it wore away)
+    sg = b.node('GeometryNodeSampleGrid', data_type='FLOAT')
+    b.feed(sg.inputs['Grid'], soft.outputs['Grid'])
+    v = b.math('SUBTRACT', sg.outputs['Value'], grow)               # (grown first: the gaps / gone pieces stay open)
+    gap = b.math('MULTIPLY', b.math('MULTIPLY', e, 0.15), piece)                   # (the gaps between the pieces)
+    crack = b.math('SUBTRACT', gap, to_border)                      # (> 0: inside a gap - only there, else the
+    v = b.math('ADD', v, b.math('MULTIPLY', b.math('GREATER_THAN', crack, 0.0),     # piece borders would cut the whole
+                                 b.math('SUBTRACT', b.math('MAXIMUM', v, crack), v)))   # inside into hollow cells)
+    v = b.math('ADD', v, b.math('MULTIPLY', gone, b.math('ADD', b.math('ABSOLUTE', v), b.math('MULTIPLY', vox, 3.0))))
+    ftg = b.node('GeometryNodeFieldToGrid', data_type='FLOAT')
+    ftg.grid_items.new('FLOAT', 'SDF')
+    b.feed(ftg.inputs['Topology'], sdf.outputs['SDF Grid'])
+    b.feed(ftg.inputs[1], v)
+    bg = b.node('GeometryNodeSetGridBackground', data_type='FLOAT')   # (outside the band: outside the shape, not 0 =
+    b.feed(bg.inputs['Grid'], ftg.outputs[0])                          #  a surface everywhere)
+    b.feed(bg.inputs['Background'], b.math('MULTIPLY', band, vox))
+    bg.inputs['Update Inactive'].default_value = True
+    mean = b.node('GeometryNodeGridMean', data_type='FLOAT')     # (SDF Grid Mean gives nothing for a Field to Grid grid)
+    b.feed(mean.inputs['Grid'], bg.outputs['Grid'])                # (one light pass: the pieces' edges rounded)
+    mean.inputs['Width'].default_value = 1
+    mean.inputs['Iterations'].default_value = 1
+    g2m = b.node('GeometryNodeGridToMesh')
+    b.feed(g2m.inputs['Grid'], mean.outputs['Grid'])
+    g2m.inputs['Threshold'].default_value = 0.0
+    # an open shape: the faces of the gone pieces / the gaps deleted (the same fields, worked out on its faces)
+    cut = b.node('GeometryNodeDeleteGeometry', domain='FACE', mode='ALL')
+    b.feed(cut.inputs['Geometry'], geo)
+    b.feed(cut.inputs['Selection'], b.math('MAXIMUM', gone, b.math('LESS_THAN', to_border, gap)))
+    st = b.node('GeometryNodeAttributeStatistic', data_type='FLOAT', domain='EDGE')
+    b.feed(st.inputs['Geometry'], geo)
+    b.feed(st.inputs['Attribute'], b.node('GeometryNodeInputMeshEdgeNeighbors').outputs['Face Count'])
+    closed = b.node('FunctionNodeBooleanMath', operation='AND')
+    b.feed(closed.inputs[0], b.math('GREATER_THAN', st.outputs['Min'], 1.5))
+    b.feed(closed.inputs[1], b.math('LESS_THAN', st.outputs['Max'], 2.5))
+    sw = b.node('GeometryNodeSwitch', input_type='GEOMETRY')
+    b.feed(sw.inputs['Switch'], closed.outputs[0])
+    b.feed(sw.inputs['False'], cut.outputs['Geometry'])
+    b.feed(sw.inputs['True'], g2m.outputs['Mesh'])
+    return sw.outputs['Output'], e
+
+
 def _noise(b, scale_by, scale, seed, detail=4.0, rough=0.55):
     """A noise Factor field over the object, ``scale`` across ``scale_by`` (the shape's size), offset by the seed."""
     n = b.node('ShaderNodeTexNoise', noise_dimensions='4D')
@@ -168,7 +365,7 @@ def _dirt(b, I):
     geo = I['Geometry']
     size = _diag(b, geo)
     sub = b.node('GeometryNodeSubdivideMesh')
-    b.feed(sub.inputs['Mesh'], _even(b, geo, size))
+    b.feed(sub.inputs['Mesh'], _broken(b, I, geo, size, smooth=1)[0])
     b.feed(sub.inputs['Level'], I['Detail'])
     nrm = b.node('GeometryNodeInputNormal').outputs['Normal']
     big = _noise(b, size, I['Lump Scale'], I['Seed'], 5.0, 0.6)
@@ -219,20 +416,21 @@ def _dirt(b, I):
 def _dust(b, I):
     geo = I['Geometry']
     size = _diag(b, geo)
-    sub = b.node('GeometryNodeSubdivisionSurface')
-    b.feed(sub.inputs['Mesh'], _even(b, geo, size))
+    sub = b.node('GeometryNodeSubdivideMesh')       # (0.24.162 not Subdivision Surface: 3 s on the broken pieces' mesh)
+    layer = b.math('MULTIPLY', b.math('MULTIPLY', I['Thickness'], 0.03), size)
+    b.feed(sub.inputs['Mesh'], _broken(b, I, geo, size, smooth=b.math('ADD', b.math('DIVIDE', I['Softness'], 2.0), 1.0),
+                                       grow=b.math('MULTIPLY', layer, 0.8))[0])   # (the layer grown first, then broken)
     b.feed(sub.inputs['Level'], I['Detail'])
-    blur = b.node('GeometryNodeBlurAttribute', data_type='FLOAT_VECTOR')
-    b.feed(blur.inputs['Value'], b.node('GeometryNodeInputPosition').outputs['Position'])
-    b.feed(blur.inputs['Iterations'], I['Softness'])
+    blur = b.node('GeometryNodeBlurAttribute', data_type='FLOAT_VECTOR')      # (0.24.162 off: Softness smooths the
+    b.feed(blur.inputs['Value'], b.node('GeometryNodeInputPosition').outputs['Position'])  # field - a vertex blur melts
+    blur.inputs['Iterations'].default_value = 0                                            # the small pieces away)
     sp0 = b.node('GeometryNodeSetPosition')
     b.feed(sp0.inputs['Geometry'], sub.outputs['Mesh'])
     b.feed(sp0.inputs['Position'], blur.outputs['Value'])
     nrm = b.node('GeometryNodeInputNormal').outputs['Normal']
     soft = _noise(b, size, 4.0, I['Seed'], 3.0, 0.5)
     grain = _noise(b, size, 60.0, b.math('ADD', I['Seed'], 7.0), 2.0, 0.6)
-    off = b.math('ADD', b.math('MULTIPLY', b.math('MULTIPLY', b.math('MULTIPLY', I['Thickness'], 0.03), size),
-                               b.math('ADD', 0.6, b.math('MULTIPLY', soft, 0.8))),
+    off = b.math('ADD', b.math('MULTIPLY', layer, b.math('MULTIPLY', b.math('SUBTRACT', soft, 0.5), 0.6)),
                  b.math('MULTIPLY', b.math('MULTIPLY', b.math('SUBTRACT', grain, 0.5), b.math('MULTIPLY', I['Grain'], 0.004)), size))
     sp = b.node('GeometryNodeSetPosition')
     b.feed(sp.inputs['Geometry'], sp0.outputs['Geometry'])
@@ -245,19 +443,21 @@ def _dust(b, I):
 def _snow(b, I):
     geo = I['Geometry']
     size = _diag(b, geo)
-    sub = b.node('GeometryNodeSubdivisionSurface')
-    b.feed(sub.inputs['Mesh'], _even(b, geo, size))
+    sub = b.node('GeometryNodeSubdivideMesh')       # (0.24.162 not Subdivision Surface: 3 s on the broken pieces' mesh)
+    puff = b.math('MULTIPLY', b.math('MULTIPLY', I['Puff'], 0.05), size)
+    b.feed(sub.inputs['Mesh'], _broken(b, I, geo, size, smooth=b.math('ADD', b.math('DIVIDE', I['Smooth'], 3.0), 1.0),
+                                       grow=b.math('MULTIPLY', puff, 0.5))[0])     # (half the puff all round, first)
     b.feed(sub.inputs['Level'], I['Detail'])
-    blur = b.node('GeometryNodeBlurAttribute', data_type='FLOAT_VECTOR')
+    blur = b.node('GeometryNodeBlurAttribute', data_type='FLOAT_VECTOR')      # (0.24.162 off: Smooth smooths the field)
     b.feed(blur.inputs['Value'], b.node('GeometryNodeInputPosition').outputs['Position'])
-    b.feed(blur.inputs['Iterations'], I['Smooth'])
+    blur.inputs['Iterations'].default_value = 0
     sp0 = b.node('GeometryNodeSetPosition')
     b.feed(sp0.inputs['Geometry'], sub.outputs['Mesh'])
     b.feed(sp0.inputs['Position'], blur.outputs['Value'])
     nrm = b.node('GeometryNodeInputNormal').outputs['Normal']
     up = b.node('ShaderNodeSeparateXYZ')
     b.feed(up.inputs[0], nrm)
-    top = b.math('ADD', 0.35, b.math('MULTIPLY', b.math('MAXIMUM', up.outputs['Z'], 0.0), 0.65))   # (more on its top)
+    top = b.math('MULTIPLY', b.math('MAXIMUM', up.outputs['Z'], 0.0), 0.5)    # (the other half on its top only)
     lump = _noise(b, size, I['Lump Scale'], I['Seed'], 3.0, 0.45)
     off = b.math('ADD', b.math('MULTIPLY', b.math('MULTIPLY', b.math('MULTIPLY', I['Puff'], 0.05), size), top),
                  b.math('MULTIPLY', b.math('MULTIPLY', b.math('SUBTRACT', lump, 0.5), b.math('MULTIPLY', I['Lumps'], 0.08)), size))
@@ -270,10 +470,12 @@ def _snow(b, I):
 
 
 def _leaves(b, I):
-    geo = I['Geometry']
+    src = I['Geometry']
+    geo, e = _broken(b, I, src, _diag(b, src), smooth=1)
     dist = b.node('GeometryNodeDistributePointsOnFaces', distribute_method='RANDOM')
     b.feed(dist.inputs['Mesh'], geo)
-    b.feed(dist.inputs['Density'], I['Density'])
+    b.feed(dist.inputs['Density'], b.math('MULTIPLY', I['Density'], b.math(       # (fewer toward the outline: scattered)
+        'SUBTRACT', 1.0, b.math('MULTIPLY', b.math('MULTIPLY', e, 0.8), I['Break Up']))))
     b.feed(dist.inputs['Seed'], I['Seed'])
     pts = b.store(dist.outputs['Points'], 'mch_n', dist.outputs['Normal'], 'FLOAT_VECTOR')
     idx = b.node('GeometryNodeInputIndex').outputs['Index']

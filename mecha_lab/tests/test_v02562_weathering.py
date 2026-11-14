@@ -122,13 +122,14 @@ C.view_layer.update()
 h = np.ptp(coords(ev_mesh(base))[:, 2])
 check(f'... the Base Mesh still live under it: Height 0.4 -> 0.8, the dirt follows (its height {h:.2f})', h > 0.7)
 
-# Dust on the lump
+# Dust on the lump (0.24.162: Break Up 0 here - its size; the break-up is measured below)
 r = weather(lump, 'DUST')
+lump.mch_wdust.break_up = 0.0
 me, o = ev_mesh(lump), orig['lump']
 sz = size_of(o)
 grow_ = size_of(me) / sz
-check(f'Dust on the Creature Base Mesh: smoothed, a thin layer puffed out ({grow_:.3f} x its size), the dust material',
-      'FINISHED' in r and mat_of(me) == 'MCH Dust' and 1.0 < grow_ < 1.1)
+check(f'Dust on the Creature Base Mesh: smoothed, a thin layer (Break Up 0: {grow_:.3f} x its size), the dust material',
+      'FINISHED' in r and mat_of(me) == 'MCH Dust' and 0.95 < grow_ < 1.1)
 
 # Snow on the sheet: more on top than at its edges; Leaves on a copy
 r = weather(sheet, 'SNOW')
@@ -152,9 +153,10 @@ def leaf_list(ob):
     return out
 
 
-leaves = leaf_list(ground)
 pg = ground.mch_wleaves
-check(f'Leaves on a 1 x 1 sheet: {len(leaves)} leaves (Density {pg.density:.0f} a square metre, within 20 %), four leaf '
+pg.break_up = 0.0                                                  # (0.24.162 the density itself; the break-up below)
+leaves = leaf_list(ground)
+check(f'Leaves on a 1 x 1 sheet (Break Up 0): {len(leaves)} leaves (Density {pg.density:.0f} a square metre, within 20 %), four leaf '
       f'shapes, the sheet under them as soil', 'FINISHED' in r and abs(len(leaves) - pg.density) < 0.2 * pg.density
       and len({n for n, _z in leaves}) == 4 and mat_of(ev_mesh(ground)) == 'MCH Soil')
 lz = np.array([z for _n, z in leaves])
@@ -165,6 +167,114 @@ check('... Show Base off: only the leaves (the sheet hidden)', len(ev_mesh(groun
 pg.density = 50.0
 n = len(leaf_list(ground))
 check(f'... live: Density 400 -> 50: {n} leaves', abs(n - 50) < 15)
+
+# 0.24.162 (user: "웨더링은 재질이 아니라 형태를 변환해 달라는 거였어 - 내가 만든 메쉬의 형태에서 바깥은 자잘하게
+# 끊어지고 중앙에는 좀 남아 있게"): the shape breaks up toward its outline (seen from above), its middle kept.
+# Measured from above: rays down onto the result at points of the drawn outline's inside - near the outline / in the middle
+from mathutils.bvhtree import BVHTree  # noqa: E402
+from mathutils import Vector as V3  # noqa: E402
+S.mch_base.profile = 'DOME'
+S.mch_base.height = 0.3
+OUT = blob(0, -8, 1.0)
+for o in C.selected_objects:
+    o.select_set(False)
+mound = made(lambda: base_mesh.perform_base(C, OUT, TOP))
+poly = np.array([((x - 500) / 100.0, (y - 500) / 100.0) for x, y in OUT[0]])
+
+
+def inside(pt):
+    x, y = pt
+    c = False
+    for (x1, y1), (x2, y2) in zip(poly, np.roll(poly, -1, axis=0)):
+        if (y1 > y) != (y2 > y) and x < x1 + (y - y1) * (x2 - x1) / (y2 - y1):
+            c = not c
+    return c
+
+
+def to_outline(pt):
+    a, b2 = poly, np.roll(poly, -1, axis=0)
+    ab = b2 - a
+    t = np.clip(((pt - a) * ab).sum(1) / (ab * ab).sum(1), 0, 1)
+    return float(np.min(np.linalg.norm(a + ab * t[:, None] - pt, axis=1)))
+
+
+gx, gy = np.meshgrid(np.linspace(-1.3, 1.3, 61), np.linspace(-9.3, -6.7, 61))
+pts = [np.array((x, y)) for x, y in zip(gx.ravel(), gy.ravel()) if inside((x, y))]
+dd = np.array([to_outline(q) for q in pts])
+deep = dd.max()
+
+
+def cover(ob):
+    """Share of the points hit from above: near the outline (outer 25 % of the way in), in the middle (inner 40 %);
+    and how many separate pieces."""
+    me = ev_mesh(ob)
+    mw = ob.matrix_world
+    co = [mw @ v.co for v in me.vertices]
+    bvh = BVHTree.FromPolygons(co, [tuple(q.vertices) for q in me.polygons])
+    hit = np.array([bvh.ray_cast(V3((q[0], q[1], 5.0)), V3((0, 0, -1)))[0] is not None for q in pts])
+    rim = dd < 0.25 * deep
+    mid = dd > 0.6 * deep
+    import bmesh as _bm
+    bm = _bm.new()
+    bm.from_mesh(me)
+    seen, k = set(), 0
+    for v in bm.verts:
+        if v in seen:
+            continue
+        k += 1
+        st = [v]
+        seen.add(v)
+        while st:
+            x = st.pop()
+            for ed in x.link_edges:
+                w = ed.other_vert(x)
+                if w not in seen:
+                    seen.add(w)
+                    st.append(w)
+    bm.free()
+    return float(hit[rim].mean()), float(hit[mid].mean()), k
+
+
+weather(mound, 'DIRT')
+pgd = mound.mch_wdirt
+pgd.crumbs = 0.0                                                    # (the pieces only, no crumbs)
+pgd.break_up = 0.0
+pgd.break_width = 0.0
+r0, m0, k0 = cover(mound)
+pgd.break_width = 0.6
+pgd.break_up = 0.75
+r1, m1, k1 = cover(mound)
+check(f'Dirt on a mound, Break Up 0: whole (seen from above: near the outline {r0:.0%} covered, the middle {m0:.0%}, '
+      f'{k0} piece)', r0 > 0.85 and m0 > 0.97 and k0 <= 2, (r0, m0, k0))
+check(f'... the default Break Up 0.75: the middle kept ({m1:.0%}), the outline broken into many pieces ({r1:.0%} covered, '
+      f'{k1} pieces)', m1 > 0.95 and r1 < 0.75 and k1 > 20, (r1, m1, k1))
+pgd.break_up = 1.0
+r2, m2, k2 = cover(mound)
+check(f'... Break Up 1: more gone near the outline ({r1:.0%} -> {r2:.0%}), the middle still kept ({m2:.0%})',
+      r2 < r1 and m2 > 0.95, (r2, m2))
+pgd.break_up = 0.75
+pgd.piece_size = 0.25
+r3, m3, k3 = cover(mound)
+check(f'... Piece Size 0.12 -> 0.25: bigger pieces, fewer of them ({k1} -> {k3})', k3 < k1 * 0.8, (k1, k3))
+pgd.piece_size = 0.03
+r5, m5, k5 = cover(mound)
+check(f'... Piece Size 0.03 (smaller than the voxels can show on a shape this size): the pieces kept as small as they can '
+      f'be, none lost ({k1} -> {k5})', k5 >= k1 * 0.9, (k1, k5))
+pgd.piece_size = 0.12
+pgd.break_width = 0.25
+r4, m4, k4 = cover(mound)
+check(f'... Break Width 0.6 -> 0.25: only the very edge broken (near the outline {r1:.0%} -> {r4:.0%})', r4 > r1, (r1, r4))
+for kind, attr in (('DUST', 'mch_wdust'), ('SNOW', 'mch_wsnow'), ('LEAVES', 'mch_wleaves')):
+    weather(mound, kind)
+    pgk = wx.pg_of(mound, kind)
+    if kind == 'LEAVES':
+        pgk.show_base = True                                        # (turned off above - the next one starts from it)
+    for prop, _n, _t, default, *_r in wx.SPEC[kind]:                # (the defaults: values set above go on to the next)
+        if prop in ('break_width', 'break_up', 'piece_size'):
+            setattr(pgk, prop, default)
+    rr, mm, kk = cover(mound)
+    check(f'{kind.title()} on the mound: the middle kept ({mm:.0%}), broken toward the outline ({rr:.0%} covered, {kk} pieces)',
+          mm > 0.9 and rr < 0.85 and kk > 5, (rr, mm, kk))
 
 # the same shape 10 x bigger: the same look (sizes are shares of the shape)
 bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, location=(0, -4, 0))

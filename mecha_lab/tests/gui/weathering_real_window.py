@@ -1,6 +1,8 @@
 """Real window (0.24.158, user: "웨더링 메뉴 - 흙, 먼지, 나뭇잎, 눈 ... 내가 만든 메쉬를 클릭하면 그런 형태로 바꿔 줘"): the
 Weathering tools by REAL clicks (xdotool) on four shapes - a live Base Mesh, a Creature Base Mesh lump, a sheet, a
 sphere: Dirt, Dust, Leaves, Snow; a REAL Alt + click takes one back to its shape; a REAL drag on a window slider.
+0.24.162: the shapes break up toward their outline (the middle kept) - a REAL drag on the window's Break Up: less of it
+broken off.
 """
 import os
 import subprocess
@@ -258,6 +260,53 @@ def flow():
     log('Puff cell', it is not None, 'puff', round(p0, 3), '->', round(ball.mch_wsnow.puff, 3))
     res['a REAL drag on the window\'s Puff: the snow puffs more (the selected ball\'s value)'] = (
         it is not None and ball.mch_wsnow.puff > p0 + 0.1)
+    # 0.24.162 a REAL drag on the window's Break Up (the snow ball selected): to the left - less of it broken off
+    def pieces(ob):
+        import bmesh
+        dg = C.evaluated_depsgraph_get()
+        me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), depsgraph=dg)
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        seen, k = set(), 0
+        for v in bm.verts:
+            if v in seen:
+                continue
+            k += 1
+            st = [v]
+            seen.add(v)
+            while st:
+                x = st.pop()
+                for ed in x.link_edges:
+                    o = ed.other_vert(x)
+                    if o not in seen:
+                        seen.add(o)
+                        st.append(o)
+        vol = bm.calc_volume()
+        bm.free()
+        bpy.data.meshes.remove(me)
+        return k, vol
+    b0 = ball.mch_wsnow.break_up
+    k0, v0 = pieces(ball)
+    it = yield from scrolled_item('Break Up')
+    if it is not None:
+        w, a, r = view3d()
+        x, y = int(r.x + it.x + it.w * 0.7), int(w.height - (r.y + it.y + it.h / 2))
+        xdo('mousemove', x, y)
+        yield 0.5
+        xdo('mousedown', 1)
+        yield 0.3
+        for i in range(1, 16):
+            xdo('mousemove', x - i * 16, y)
+            yield 0.06
+        yield 0.3
+        xdo('mouseup', 1)
+        yield 3.0
+    k1, v1 = pieces(ball)
+    log('Break Up cell', it is not None, 'break up', round(b0, 2), '->', round(ball.mch_wsnow.break_up, 2), '- pieces', k0, '->', k1,
+        '- volume', round(v0, 4), '->', round(v1, 4))
+    res['a REAL drag on the window\'s Break Up (to the left): less of the snow broken off - more snow kept (the pieces '
+        'that were gone stay, so more separate ones)'] = (it is not None and ball.mch_wsnow.break_up < b0 - 0.2 and v1 > v0 * 1.1)
+    shot('1b_breakup.png')
     # a REAL Alt + click on the dusted lump with the Dust tool: back to its shape
     w, a, r = view3d()
     with C.temp_override(window=w, area=a, region=r):

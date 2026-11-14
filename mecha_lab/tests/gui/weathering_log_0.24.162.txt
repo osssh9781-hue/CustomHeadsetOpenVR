@@ -1,0 +1,18 @@
+WDIRT MCH_Base -> DIRT modifier True active MCH_Base
+WDUST MCH_Base.001 -> DUST modifier True active MCH_Base.001
+WLEAF Plane -> LEAVES modifier True active Plane
+WSNOW Sphere -> SNOW modifier True active Sphere
+shot 1_weathered.png True
+Puff cell True puff 0.4 -> 0.994
+Break Up cell True break up 0.75 -> 0.17 - pieces 9 -> 31 - volume 0.727 -> 0.9059
+shot 1b_breakup.png True
+Alt + click on MCH_Base.001 -> None modifier False
+shot 2_after.png True
+PASS a REAL click with Dirt on MCH_Base: it becomes dirt (live), selected
+PASS a REAL click with Dust on MCH_Base.001: it becomes dust (live), selected
+PASS a REAL click with Leaves on Plane: it becomes leaves (live), selected
+PASS a REAL click with Snow on Sphere: it becomes snow (live), selected
+PASS a REAL drag on the window's Puff: the snow puffs more (the selected ball's value)
+PASS a REAL drag on the window's Break Up (to the left): less of the snow broken off - more snow kept (the pieces that were gone stay, so more separate ones)
+PASS a REAL Alt + click on the dusted lump: back to its shape
+7/7 passed

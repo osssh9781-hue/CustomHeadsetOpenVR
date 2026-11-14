@@ -1,4 +1,4 @@
-"""Weathering demo (0.24.158): shapes made with the add-on's own Base Mesh / Creature Base Mesh (outlines given through
+"""Weathering demo (0.24.158; 0.24.162 the shapes broken up toward their outline, also seen from above): shapes made with the add-on's own Base Mesh / Creature Base Mesh (outlines given through
 a top view, as the lasso gives them), each clicked with a Weathering tool: a block with snow on its top, a dust layer on
 another, a dirt mound at their feet, leaves piled on the ground.  Cycles, shaded and with the wireframe.
 
@@ -125,6 +125,18 @@ for src in (block, block2, snow, dust, dirt, leaves):
     me.materials.append(wmat)
     wires.append(wo)
 for name, wire in (('weathering_shaded', False), ('weathering_wire', True)):
+    for wo in wires:
+        wo.hide_render = not wire
+    S.render.filepath = os.path.join(OUT, name + '.png')
+    t0 = time.time()
+    bpy.ops.render.render(write_still=True)
+    print('saved', S.render.filepath, f'{time.time() - t0:.0f} s')
+# 0.24.162 seen from above: each shape's middle kept, its outline broken up
+cam.data.type = 'ORTHO'
+cam.data.ortho_scale = 6.4
+cam.location = (0.3, -0.45, 9.0)
+cam.rotation_euler = (0.0, 0.0, 0.0)
+for name, wire in (('weathering_top_shaded', False), ('weathering_top_wire', True)):
     for wo in wires:
         wo.hide_render = not wire
     S.render.filepath = os.path.join(OUT, name + '.png')
