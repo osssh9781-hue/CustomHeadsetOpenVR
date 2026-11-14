@@ -62,7 +62,8 @@ for _st in ('DREADS', 'TENTACLE', 'QUILLS', 'STRANDS'):          # (0.24.169 the
     STYLES[_st].update(curl=0.0, curl_turns=6.0, sides=8, segments=28)
 LIVE_KEYS = ('count', 'length', 'length_random', 'radius', 'radius_random', 'taper', 'lift', 'gravity', 'wave',
              'straight', 'rope',
-             'rope_twist', 'rings', 'ring_size', 'seed', 'gap', 'sides', 'segments', 'curl', 'curl_turns')
+             'rope_twist', 'rings', 'ring_size', 'seed', 'gap', 'sides', 'segments', 'curl', 'curl_turns',
+             'bend', 'bend_at', 'bend_soft', 'bend_screen', 'bend_dir', 'bend_side')
 COLOUR_KEYS = ('colour_mode', 'root_colour', 'tip_colour', 'tip_start', 'colour_random', 'shine', 'ring_colour')
 # 0.24.169 (user: "머리카락 색 바뀌게 해 줘") (preset, label, root colour, tip colour) - scene-linear
 COLOUR_PRESETS = (
@@ -186,6 +187,44 @@ def curl_path(pts, amount, turns, phase, length):
         tt = i / (m - 1)
         ph = phase + 2.0 * math.pi * turns * tt
         out.append(q + (nv * math.cos(ph) + bv * math.sin(ph)) * (rad * min(1.0, tt / 0.16)))
+    return out
+
+
+def bend_path(pts, direction, angle, at, soft, push=None):
+    """0.24.171 Bend (user: "머리카락을 내가 보는 뷰포트 방향에서 꺾을 수 있게"): from ``at`` (0 root .. 1 tip) on, each
+    piece of the strand turned toward ``direction`` (world) by up to ``angle`` - never past it - over ``soft`` of the
+    length (0: a sharp kink, 1: a long curve); ``push`` keeps it out of the body."""
+    d = Vector(direction)
+    if angle <= 0 or len(pts) < 3 or d.length < 1e-9:
+        return pts
+    d.normalize()
+    m = len(pts)
+    p = pts[0].copy()
+    out = [p.copy()]
+    for i in range(m - 1):
+        seg = pts[i + 1] - pts[i]
+        L = seg.length
+        if L < 1e-12:
+            out.append(p.copy())
+            continue
+        v = seg / L
+        t = (i + 0.5) / (m - 1)
+        if soft <= 1e-3:
+            w = 1.0 if t >= at else 0.0
+        else:
+            x = min(1.0, max(0.0, (t - at) / soft))
+            w = x * x * (3.0 - 2.0 * x)
+        a = angle * w
+        if a > 0:
+            ax = v.cross(d)
+            if ax.length > 1e-6:
+                v = Matrix.Rotation(min(a, v.angle(d, 0.0)), 3, ax.normalized()) @ v
+            elif v.dot(d) < 0:                       # (pointing straight away: turn over any side)
+                v = Matrix.Rotation(min(a, math.pi), 3, v.orthogonal().normalized()) @ v
+        p = p + v * L
+        if push is not None:
+            p = push(p)
+        out.append(p.copy())
     return out
 
 
@@ -328,6 +367,8 @@ def build(context, src, p, target):
         if out.length < 0.2:                 # on top of the head: fall away from the middle of the area
             out = Vector((c.x - mid.x, c.y - mid.y, 0.0))
         pts = strand_path(c + n * (r0 * 0.3), n, L, segs, p.lift, p.gravity, p.wave, rng, push, out, p.straight)
+        if p.bend > 0:                       # 0.24.171 bent toward a side of the view
+            pts = bend_path(pts, Vector(p.bend_dir), p.bend, p.bend_at, p.bend_soft, push)
         if p.curl > 0:                       # 0.24.169 Perm: corkscrews (kept out of the body)
             pts = curl_path(pts, p.curl, p.curl_turns * crng.uniform(0.85, 1.15), crng.uniform(0, 2 * math.pi), L)
             pts = [pts[0]] + [push(q) for q in pts[1:]]
@@ -358,6 +399,52 @@ def rebuild(context, ob):
     finally:
         bm.free()
     ob.data.update()
+    fit_mirror(ob)
+
+
+MIRROR_FIT = 'mch_hair_mirror_fit'      # 0.24.171 on a hair whose Mirror came from its head
+
+
+def fit_mirror(ob):
+    """0.24.171 (user: "왜 아직 머리카락 미러가 안 돼"): the Mirror a hair takes from its head kept its head's Bisect -
+    the side the head keeps; hair drawn on the other side (the side the head's Mirror makes) was cut away whole.  Now
+    the hair's own roots decide: all on one side of a plane - no cut there (whole strands, mirrored); across it - cut,
+    keeping the side most roots are on.  Returns True when it changed something."""
+    from . import symmetry
+    m = symmetry.mirror_mod(ob)
+    if m is None or not ob.get(MIRROR_FIT):
+        return False
+    me = ob.data
+    at = me.attributes.get(T_ATTR)
+    n = len(me.vertices)
+    if at is None or n == 0:
+        return False
+    import numpy as np
+    t = np.empty(n, np.float32)
+    at.data.foreach_get('value', t)
+    co = np.empty(n * 3, np.float32)
+    me.vertices.foreach_get('co', co)
+    roots = co.reshape(-1, 3)[t < 1e-6]
+    if not len(roots):
+        return False
+    M = np.array(ob.matrix_world, float)
+    W = roots @ M[:3, :3].T + M[:3, 3]
+    F = np.array((m.mirror_object or ob).matrix_world, float)
+    loc = (W - F[:3, 3]) @ np.linalg.inv(F[:3, :3]).T
+    size = float(np.linalg.norm(np.ptp(co.reshape(-1, 3) @ M[:3, :3].T, axis=0))) or 1.0
+    tol = size * 1e-3
+    changed = False
+    for i in range(3):
+        if not m.use_axis[i]:
+            continue
+        c = loc[:, i]
+        one_side = bool((c >= -tol).all() or (c <= tol).all())
+        flip = bool(np.median(c) < 0)
+        if bool(m.use_bisect_axis[i]) != (not one_side) or bool(m.use_bisect_flip_axis[i]) != flip:
+            m.use_bisect_axis[i] = not one_side
+            m.use_bisect_flip_axis[i] = flip
+            changed = True
+    return changed
 
 
 _BUSY = [False]
@@ -379,8 +466,11 @@ def _update(self, context):
         _BUSY[0] = True
         try:
             for k in LIVE_KEYS + ('style',):
-                if getattr(st, k) != getattr(self, k):
-                    setattr(st, k, getattr(self, k))
+                v = getattr(self, k)
+                v = v if isinstance(v, (str, float, int, bool)) else tuple(v)
+                cur = getattr(st, k)
+                if (cur if isinstance(cur, (str, float, int, bool)) else tuple(cur)) != v:
+                    setattr(st, k, v)
         except (AttributeError, TypeError):
             pass
         finally:
@@ -531,6 +621,96 @@ class MCH_OT_hair_colour(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def view_rotation(context):
+    """The rotation of the 3D view the user looks through (this region's, else the biggest 3D view's), or None."""
+    rv = getattr(context, 'region_data', None)
+    if isinstance(rv, bpy.types.RegionView3D):
+        return rv.view_rotation.copy()
+    win = getattr(context, 'window', None)
+    scr = getattr(context, 'screen', None) or (win.screen if win is not None else None)
+    best = None
+    for a in (scr.areas if scr is not None else ()):
+        if a.type == 'VIEW_3D' and (best is None or a.width * a.height > best.width * best.height):
+            best = a
+    if best is None:
+        return None
+    return best.spaces.active.region_3d.view_rotation.copy()
+
+
+BEND_SIDES = (('LEFT', 'Left'), ('UP', 'Up'), ('RIGHT', 'Right'), ('DOWN', 'Down'), ('TOWARD', 'Toward Me'),
+              ('AWAY', 'Away'))
+_SIDE_DEG = {'RIGHT': 0.0, 'UP': 90.0, 'LEFT': 180.0, 'DOWN': 270.0}
+
+
+def view_direction(context, side=None, screen_angle=None):
+    """A world direction from the view: ``side`` (BEND_SIDES) or ``screen_angle`` (radians: 0 right, pi/2 up) on the
+    screen; None without a 3D view."""
+    q = view_rotation(context)
+    if q is None:
+        return None
+    if side == 'TOWARD':
+        v = q @ Vector((0.0, 0.0, 1.0))
+    elif side == 'AWAY':
+        v = q @ Vector((0.0, 0.0, -1.0))
+    else:
+        a = math.radians(_SIDE_DEG[side]) if side in _SIDE_DEG else (screen_angle or 0.0)
+        v = q @ Vector((math.cos(a), math.sin(a), 0.0))
+    return v.normalized()
+
+
+def _bend_screen_update(self, context):
+    if _BUSY[0]:
+        return
+    d = view_direction(context, screen_angle=self.bend_screen)
+    if d is not None:
+        _BUSY[0] = True
+        try:
+            self.bend_dir = tuple(d)
+            self.bend_side = ''
+        finally:
+            _BUSY[0] = False
+    _update(self, context)
+
+
+class MCH_OT_hair_bend(bpy.types.Operator):
+    """Bend the hair toward this side of the view you are looking through (the selected live hair and the next)"""
+    bl_idname = 'mch.hair_bend'
+    bl_label = 'Hair Bend Toward'
+    bl_options = {'REGISTER', 'UNDO'}
+    side: EnumProperty(items=[(k, l, '') for k, l in BEND_SIDES] + [('OFF', 'No Bend', '')], default='RIGHT')
+
+    def execute(self, context):
+        hairs = apply_targets(context)
+        d = None if self.side == 'OFF' else view_direction(context, self.side)
+        if self.side != 'OFF' and d is None:
+            self.report({'WARNING'}, 'Bend: no 3D view to take the direction from')
+            return {'CANCELLED'}
+        for pg in [context.scene.mch_hair] + [o.mch_hair for o in hairs]:
+            _BUSY[0] = True
+            try:
+                if self.side == 'OFF':
+                    pg.bend = 0.0
+                    pg.bend_side = ''
+                else:
+                    pg.bend_dir = tuple(d)
+                    pg.bend_side = self.side
+                    if self.side in _SIDE_DEG:
+                        pg.bend_screen = math.radians(_SIDE_DEG[self.side])
+                    if pg.bend < 1e-6:
+                        pg.bend = math.radians(60.0)     # (a first click: a bend you can see)
+            finally:
+                _BUSY[0] = False
+        for o in hairs:
+            try:
+                rebuild(context, o)
+                o.mch_hair.last_error = ''
+            except (cg.CutError, ValueError, RuntimeError) as ex:
+                o.mch_hair.last_error = str(ex)
+        lab = dict(BEND_SIDES).get(self.side, 'No Bend')
+        self.report({'INFO'}, f'Hair bend: {lab}' + (f' - {len(hairs)} hair(s)' if hairs else ' (the next hair)'))
+        return {'FINISHED'}
+
+
 def _style_update(self, context):
     if _BUSY[0]:
         return
@@ -582,6 +762,20 @@ class MCH_PG_Hair(bpy.types.PropertyGroup):
                         description='0.24.169 Perm: every strand wound into a corkscrew (how wide)')
     curl_turns: FloatProperty(name='Curl Turns', default=6.0, min=0.5, max=30.0, update=_update,
                               description='How many turns along a strand (raise Segments for many)')
+    # 0.24.171 (user: "머리카락을 내가 보는 뷰포트 방향에서 꺾을 수 있게 밴드 옵션") Bend toward a side of the view
+    bend: FloatProperty(name='Bend', default=0.0, min=0.0, max=math.pi, subtype='ANGLE', update=_update,
+                        description='How far the strands turn toward the bend direction (0 = no bend)')
+    bend_at: FloatProperty(name='Bend At', default=0.3, min=0.0, max=0.95, update=_update,
+                           description='Where along the strand it bends (0 = at the root, 0.9 = near the tip)')
+    bend_soft: FloatProperty(name='Bend Soft', default=0.35, min=0.0, max=1.0, update=_update,
+                             description='0 = a sharp kink, 1 = a long smooth curve')
+    bend_screen: FloatProperty(name='Bend Toward (screen)', default=0.0, min=0.0, max=2 * math.pi, subtype='ANGLE',
+                               update=_bend_screen_update,
+                               description='The direction on the screen it bends toward, seen from the view you are '
+                                           'looking through when you change it: 0 right, 90 up, 180 left, 270 down')
+    bend_dir: FloatVectorProperty(name='Bend Direction', size=3, default=(1.0, 0.0, 0.0), options={'HIDDEN'},
+                                  description='The bend direction in the world (set from the view)')
+    bend_side: StringProperty(default='', options={'HIDDEN'})
     # 0.24.169 (user: "머리카락 색 바뀌게 해 줘") colour: its own material, changed without rebuilding the strands
     colour_mode: EnumProperty(name='Colour', items=(('OWN', 'Hair Colour', 'The hair\'s own colour (below)'),
                                                     ('BODY', 'Body\'s Material', 'The same material as the head / '
@@ -673,6 +867,9 @@ def perform(context, loops, projector):
     try:                                          # 0.24.169 (user: "머리카락은 왜 미러가 안 돼?") like the plates: a
         from . import symmetry                    # head with a live Mirror mirrors the hair grown on it
         mirrored = symmetry.follow(context, ob, target)
+        if mirrored:                              # 0.24.171 cut (or not) by where its roots are, not the head's cut
+            ob[MIRROR_FIT] = 1
+            fit_mirror(ob)
     except (ImportError, AttributeError, RuntimeError, ReferenceError):
         pass
     for o in context.selected_objects:
@@ -783,6 +980,18 @@ def draw(layout, context):
     col.prop(p, 'curl', slider=True)                     # 0.24.169 perm
     if p.curl > 0:
         col.prop(p, 'curl_turns', slider=True)
+    col = box.column(align=True)                         # 0.24.171 Bend toward a side of the view
+    col.label(text='Bend (toward a side of the view you look through)')
+    for row_keys in (BEND_SIDES[:4], BEND_SIDES[4:] + (('OFF', 'No Bend'),)):
+        r = col.row(align=True)
+        for key, label in row_keys:
+            on = (p.bend > 0 and p.bend_side == key) if key != 'OFF' else p.bend <= 0
+            r.operator('mch.hair_bend', text=label, depress=on).side = key
+    col.prop(p, 'bend', slider=True)
+    if p.bend > 0:
+        col.prop(p, 'bend_screen', slider=True)
+        col.prop(p, 'bend_at', slider=True)
+        col.prop(p, 'bend_soft', slider=True)
     col = box.column(align=True)
     col.prop(p, 'rope', slider=True)
     if p.rope > 0:
@@ -806,7 +1015,7 @@ def draw(layout, context):
         col.label(text=line)
 
 
-CLASSES = (MCH_PG_Hair, MCH_OT_hair_apply, MCH_OT_hair_colour)
+CLASSES = (MCH_PG_Hair, MCH_OT_hair_apply, MCH_OT_hair_colour, MCH_OT_hair_bend)
 
 
 def register():

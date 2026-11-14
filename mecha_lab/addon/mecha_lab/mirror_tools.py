@@ -864,6 +864,16 @@ def start_mirror(context, keep_live, report):
     'mirror_lean.poll() failed, context is incorrect' when e.g. only a curve was selected)."""
     kind = mirror_targets_kind(context)
     if kind is None:
+        from . import creature_fur as cf
+        furs = [o for o in context.selected_objects if cf.is_fur(o)]
+        if furs:                                     # 0.24.171 a fur (hair curves): its area onto the other side
+            done = [(f.name, cf.mirror_area(context, f)) for f in furs]
+            if all(k < 0 for _n, k in done):
+                report({'INFO'}, 'Mirror: the body\'s own live Mirror already copies this fur to the other side')
+            else:
+                report({'INFO'}, 'Mirror: fur area copied to the other side - ' +
+                       ', '.join(f'{nm} +{k:,} points' for nm, k in done if k >= 0))
+            return {'FINISHED'}
         others = sorted({o.type.title() for o in context.selected_objects})
         report({'WARNING'}, 'Mirror: select a mesh or a collection instance' +
                (f' (selected: {", ".join(others)} - convert it to a mesh first)' if others else ''))

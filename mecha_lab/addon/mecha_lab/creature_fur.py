@@ -572,9 +572,37 @@ def _depth(projector, P):
     return (P - eye) @ np.array(projector.view_dir, float)
 
 
-def area_points(context, body, loops, projector):
+def body_mirrors(body):
+    """0.24.171 the body's live Mirror(s) as world reflections: [(4x4 matrix, cut)] - one for every combination of its
+    planes; ``cut`` when every plane of it bisects (only the kept side of the body's own mesh shows)."""
+    out = []
+    if body is None or body.type != 'MESH':
+        return out
+    for m in body.modifiers:
+        if m.type != 'MIRROR' or not m.show_viewport:
+            continue
+        axes = [i for i in range(3) if m.use_axis[i]]
+        if not axes:
+            continue
+        Mo = np.array((m.mirror_object or body).matrix_world, float)
+        try:
+            Mi = np.linalg.inv(Mo)
+        except np.linalg.LinAlgError:
+            continue
+        for k in range(1, 1 << len(axes)):
+            sub = [a for j, a in enumerate(axes) if k >> j & 1]
+            S = np.eye(4)
+            for a in sub:
+                S[a, a] = -1.0
+            out.append((Mo @ S @ Mi, all(m.use_bisect_axis[a] for a in sub)))
+    return out
+
+
+def area_points(context, body, loops, projector, mirrors=None):
     """Indices of the body's points inside the drawn outline(s) that the view sees: facing it and not behind another
-    part of the body (a depth grid of rays through the outline)."""
+    part of the body (a depth grid of rays through the outline).  0.24.171 ``mirrors`` (``body_mirrors``): the points
+    whose mirror image is inside too - an outline drawn on the side the body's live Mirror makes (no points of the
+    body's own there, or cut away by its Bisect) paints the side it is made from (user: "왜 아직 머리카락 미러가 안 돼")."""
     from . import zones
     groups = cg.prepare_loops(loops)
     me = body.data
@@ -586,10 +614,9 @@ def area_points(context, body, loops, projector):
     no = np.empty(n * 3, np.float32)
     me.vertex_normals.foreach_get('vector', no)
     M = np.array(body.matrix_world, float)
-    P = co.reshape(-1, 3) @ M[:3, :3].T + M[:3, 3]
-    Nn = no.reshape(-1, 3) @ np.linalg.inv(M[:3, :3])
-    Nn /= np.maximum(np.linalg.norm(Nn, axis=1), 1e-12)[:, None]
-    xy, front = _screen(projector, P)
+    P0 = co.reshape(-1, 3) @ M[:3, :3].T + M[:3, 3]
+    N0 = no.reshape(-1, 3) @ np.linalg.inv(M[:3, :3])
+    N0 /= np.maximum(np.linalg.norm(N0, axis=1), 1e-12)[:, None]
     allpts = [q for outer, holes in groups for lp in [outer] + list(holes) for q in lp]
     x0, y0 = math.floor(min(q[0] for q in allpts)) - 1, math.floor(min(q[1] for q in allpts)) - 1
     x1, y1 = math.ceil(max(q[0] for q in allpts)) + 1, math.ceil(max(q[1] for q in allpts)) + 1
@@ -598,19 +625,7 @@ def area_points(context, body, loops, projector):
     for outer, holes in groups:
         loops_ = [[(q[0] - x0, q[1] - y0) for q in lp] for lp in [outer] + list(holes)]
         mask = np.maximum(mask, zones.fill_polygon(loops_, W, H, ss=1))
-    ix, iy = np.floor(xy[:, 0] - x0).astype(int), np.floor(xy[:, 1] - y0).astype(int)
-    inb = front & (ix >= 0) & (iy >= 0) & (ix < W) & (iy < H)
-    inside = np.zeros(n, bool)
-    inside[inb] = mask[iy[inb], ix[inb]] > 0.5
     eye = np.array(projector.eye, float)
-    if getattr(projector, 'is_perspective', False):
-        tow = eye - P
-    else:
-        tow = np.broadcast_to(-np.array(projector.view_dir, float), P.shape)
-    facing = np.einsum('ij,ij->i', Nn, tow) > 0.0
-    cand = np.nonzero(inside & facing)[0]
-    if not len(cand):
-        return cand
     # the depth grid: rays through the outline every ``step`` px (about 6000 at most)
     step = max(2.0, math.sqrt(W * H / 6000.0))
     gw, gh = int(W / step) + 1, int(H / step) + 1
@@ -626,22 +641,155 @@ def area_points(context, body, loops, projector):
             ok, loc, _nrm, _i = ev.ray_cast(Mi @ Vector(o), (M3 @ Vector(d)).normalized())
             if ok:
                 grid[gy, gx] = _depth(projector, np.array([tuple(body.matrix_world @ loc)]))[0]
-    cx = np.clip(((xy[cand, 0] - x0) / step).astype(int), 0, gw - 1)
-    cy = np.clip(((xy[cand, 1] - y0) / step).astype(int), 0, gh - 1)
-    bb = np.ptp(P, axis=0)
+    bb = np.ptp(P0, axis=0)
     tol = max(float(np.linalg.norm(bb)) * 0.02, 1e-6)
-    vd = _depth(projector, P[cand])
-    gd = grid[cy, cx]
-    seen = vd <= gd + tol
-    # the grid says hidden, or its ray missed the body (a cell on the silhouette): a ray at the point itself decides
-    # (a cell over a steep / grazing surface spans a lot of depth - only the point's own ray is sure)
-    for j in np.nonzero(~seen | np.isinf(gd))[0]:
-        seen[j] = False
-        o, d = projector.ray((float(xy[cand[j], 0]), float(xy[cand[j], 1])))
-        ok, loc, _nrm, _i = ev.ray_cast(Mi @ Vector(o), (M3 @ Vector(d)).normalized())
-        if not ok or _depth(projector, np.array([tuple(body.matrix_world @ loc)]))[0] >= vd[j] - tol:
-            seen[j] = True
-    return cand[seen]
+
+    def pick(P, Nn):
+        xy, front = _screen(projector, P)
+        ix, iy = np.floor(xy[:, 0] - x0).astype(int), np.floor(xy[:, 1] - y0).astype(int)
+        inb = front & (ix >= 0) & (iy >= 0) & (ix < W) & (iy < H)
+        inside = np.zeros(n, bool)
+        inside[inb] = mask[iy[inb], ix[inb]] > 0.5
+        if getattr(projector, 'is_perspective', False):
+            tow = eye - P
+        else:
+            tow = np.broadcast_to(-np.array(projector.view_dir, float), P.shape)
+        facing = np.einsum('ij,ij->i', Nn, tow) > 0.0
+        cand = np.nonzero(inside & facing)[0]
+        if not len(cand):
+            return cand
+        cx = np.clip(((xy[cand, 0] - x0) / step).astype(int), 0, gw - 1)
+        cy = np.clip(((xy[cand, 1] - y0) / step).astype(int), 0, gh - 1)
+        vd = _depth(projector, P[cand])
+        gd = grid[cy, cx]
+        seen = vd <= gd + tol
+        # the grid says hidden, or its ray missed the body (a cell on the silhouette): a ray at the point itself
+        # decides (a cell over a steep / grazing surface spans a lot of depth - only the point's own ray is sure)
+        for j in np.nonzero(~seen | np.isinf(gd))[0]:
+            seen[j] = False
+            o, d = projector.ray((float(xy[cand[j], 0]), float(xy[cand[j], 1])))
+            ok, loc, _nrm, _i = ev.ray_cast(Mi @ Vector(o), (M3 @ Vector(d)).normalized())
+            if not ok or _depth(projector, np.array([tuple(body.matrix_world @ loc)]))[0] >= vd[j] - tol:
+                seen[j] = True
+        return cand[seen]
+
+    direct = pick(P0, N0)
+    if not mirrors:
+        return direct
+    out = set(int(i) for i in direct)
+    loose = []
+    for R, cut in mirrors:
+        Pr = P0 @ R[:3, :3].T + R[:3, 3]
+        Nr = N0 @ np.linalg.inv(R[:3, :3])
+        Nr /= np.maximum(np.linalg.norm(Nr, axis=1), 1e-12)[:, None]
+        mi = pick(Pr, Nr)
+        if cut:                      # (the body's own points on the far side are cut away: its kept side paints)
+            out |= set(int(i) for i in mi)
+        else:                        # (not cut: both sides show - only when none of its own points were drawn on)
+            loose.append(mi)
+    if not len(direct):
+        for mi in loose:
+            out |= set(int(i) for i in mi)
+    return np.array(sorted(out), int)
+
+
+def mirror_area(context, fur):
+    """0.24.171 the Mirror button on a fur: its area copied to the other side of the body (the points whose mirror
+    image has fur get it, the same area) - across the Mirror panel's plane(s) (World X through the origin unless
+    changed), or the body's own live Mirror when it has one and that cuts.  Returns how many points were added
+    (-1: the body's own Mirror already copies it)."""
+    from mathutils.kdtree import KDTree
+    from . import mirror_tools
+    body = fur.parent
+    if body is None or body.type != 'MESH' or not fur.get(AREA_KEY):
+        return 0
+    mirrors = body_mirrors(body)
+    if mirrors and not all(c for _R, c in mirrors):
+        return -1
+    if not mirrors:
+        p = context.scene.mch_mirror
+        origin, axes = mirror_tools.mirror_frame(body, p, context.scene)
+        on = [i for i, a in enumerate((p.x, p.y, p.z)) if a] or [0]
+        F = np.eye(4)
+        for i in range(3):
+            F[:3, i] = np.array(axes[i], float)
+        F[:3, 3] = np.array(origin, float)
+        Fi = np.linalg.inv(F)
+        for k in range(1, 1 << len(on)):
+            S = np.eye(4)
+            for j, a in enumerate(on):
+                if k >> j & 1:
+                    S[a, a] = -1.0
+            mirrors.append((F @ S @ Fi, True))
+    me = body.data
+    n = len(me.vertices)
+    a = me.attributes.get(fur[AREA_KEY])
+    if a is None or n == 0:
+        return 0
+    w = np.zeros(n, np.float32)
+    a.data.foreach_get('value', w)
+    src = np.nonzero(w > 0.5)[0]
+    if not len(src):
+        return 0
+    co = np.empty(n * 3, np.float32)
+    me.vertices.foreach_get('co', co)
+    co = co.reshape(-1, 3).astype(float)
+    ev = np.empty(len(me.edges) * 2, np.int32)
+    me.edges.foreach_get('vertices', ev)
+    ev = ev.reshape(-1, 2)
+    el = np.linalg.norm(co[ev[:, 0]] - co[ev[:, 1]], axis=1) if len(ev) else np.array([1e-3])
+    near = float(np.median(el)) * 0.75
+    kd = KDTree(n)
+    for i, c in enumerate(co):
+        kd.insert(c, i)
+    kd.balance()
+    M = np.array(body.matrix_world, float)
+    Mi = np.linalg.inv(M)
+    ids = part_ids(fur)
+    names = [fur.get(k) for k in (LIE_KEY, FLOW_KEY, LOOK_KEY)]
+    vals = []
+    for nm in names:
+        at = me.attributes.get(nm) if nm else None
+        if at is None:
+            vals.append(None)
+            continue
+        if at.data_type == 'FLOAT':
+            v = np.empty(n, np.float32)
+            at.data.foreach_get('value', v)
+        else:
+            v = np.empty(n * 3, np.float32)
+            at.data.foreach_get('vector', v)
+            v = v.reshape(-1, 3)
+        vals.append((at, v))
+    added = 0
+    for R, _cut in mirrors:
+        L = Mi @ R @ M                                  # (the reflection in the body's own space)
+        img = co[src] @ L[:3, :3].T + L[:3, 3]
+        for s_i, q in zip(src, img):
+            _c, j, dist = kd.find(q)
+            if j is None or dist > near or w[j] > 0.5:
+                continue
+            w[j] = 1.0
+            ids[j] = ids[s_i]
+            for item in vals:
+                if item is not None:
+                    item[1][j] = item[1][s_i]
+            added += 1
+    a.data.foreach_set('value', w)
+    pa = me.attributes.get(fur.get(PART_KEY, ''))
+    if pa is not None and pa.data_type == 'INT':
+        pa.data.foreach_set('value', ids)
+    for item in vals:
+        if item is not None:
+            at, v = item
+            if at.data_type == 'FLOAT':
+                at.data.foreach_set('value', v)
+            else:
+                at.data.foreach_set('vector', v.ravel())
+    me.update()
+    push(fur)
+    fur.update_tag()
+    return added
 
 
 def paint_area(body, name, idx, value):
@@ -789,7 +937,7 @@ def perform(context, loops, projector, erase=False):
         cur = None                                    # (another body: a new fur there)
     if erase and cur is None:
         raise cg.CutError('Alt + draw takes area away from the selected fur - select a fur first')
-    idx = area_points(context, body, loops, projector)
+    idx = area_points(context, body, loops, projector, body_mirrors(body))    # (0.24.171 its live Mirror's side too)
     if not len(idx) and not erase:
         raise cg.CutError('No surface of the body facing the view inside the outline')
     made = cur is None
