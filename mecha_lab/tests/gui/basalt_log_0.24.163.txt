@@ -1,15 +1,18 @@
 1 preset cell True - next plate BASALT COLUMNS
-2 left-start plate Slab_Rough style COLUMNS columns 179 - height vs x 0.89
-shot 1_left_start.png True
-3 right-start plate Slab_Rough.001 columns 180 - height vs x -0.89
-shot 2_both.png True
-4 Slope cell True slope 0.85 -> 0.24 - tallest - shortest 369 -> 243 mm
-5 Flip cell True flip True - height vs x -0.27 -> 0.49
-shot 3_after.png True
-shot 4_cycles.png True
+2 plate Slab_Rough style COLUMNS columns 182 - rise toward 90 - height vs x 0.9
+shot 1_basalt_east.png True
+3 N cell True - rise toward 0 - height vs y 0.89 vs x -0.0
+shot 2_basalt_north.png True
+4 Slope cell True slope 0.85 -> 0.24 - tallest - shortest 528 -> 344 mm
+5 cliff cell True - style CLIFF modifier True - steps along the plate 68 biggest 136 mm
+shot 3_cliff.png True
+6 carapace cell True - profile CARAPACE - lip 59 groove 34 middle 198 mm
+shot 4_carapace.png True
+shot 5_cycles.png True
 PASS 1 a REAL click on "Columnar Basalt" in the window: the next plate will be basalt columns
-PASS 2 a REAL outline started at its left end: basalt columns rising to the right
-PASS 3 a REAL outline started at its right end: rising to the left
-PASS 4 a REAL drag on the window's Slope to the left: the cliff flatter (rebuilt once the drag stopped)
-PASS 5 a REAL click on Flip: high where it was started (the right end) instead
-5/5 passed
+PASS 2 a REAL outline: basalt columns rising east (the compass default)
+PASS 3 a REAL click on "N": the columns rise north instead
+PASS 4 a REAL drag on the window's Slope to the left: flatter (rebuilt once the drag stopped)
+PASS 5 a REAL click on "Layered Cliff": a cliff - strata slabs stepping across its top
+PASS 6 a REAL click on "Creature Carapace": a raised lip along the outline, a groove, the middle up again
+6/6 passed

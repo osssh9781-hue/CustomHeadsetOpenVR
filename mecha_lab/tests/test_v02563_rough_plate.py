@@ -30,8 +30,8 @@ check('the tool: Plate Detail 4 in Surface detail (after Detail 3), its icon, wi
       and 'DETAIL4' in ll.MODES and 'DETAIL4' in lsk.MODES and 'DETAIL4' in tr.PICKING and 'DETAIL4' in ts.SHAPE_TOOLS
       and 'DETAIL4' in bpy.ops.mch.cut_stroke.get_rna_type().properties['mode'].enum_items.keys()
       and pd.KINDS['DETAIL4'] == 'ROUGH')
-check('ten rough presets, each its own mix (+ Columnar Basalt, 0.24.163)', len(pr.PRESETS) == 11 and len(
-      {tuple(sorted((k, str(v)) for k, v in p[3].items())) for p in pr.PRESETS}) == 11,
+check('ten rough presets, each its own mix (+ Columnar Basalt, Layered Cliff, Creature Carapace - 0.24.163)',
+      len(pr.PRESETS) == 13 and len({tuple(sorted((k, str(v)) for k, v in p[3].items())) for p in pr.PRESETS}) == 13,
       [p[1] for p in pr.PRESETS])
 
 
@@ -181,7 +181,7 @@ for pid in pr.PRESET_IDS:
     z = coords(mm)[:, 2]
     sig[pid] = (round(float(z.max()), 5), round(float(np.std(arr(mm, pr.OUT_ATTR))), 4) if pr.OUT_ATTR in mm.attributes
                 else -1.0)                                      # (Columnar Basalt: columns, no texture attribute)
-check('all eleven presets make a plate, each a different one', len(set(sig.values())) == 11 and all(v[0] > 0 for v in sig.values()),
+check('all thirteen presets make a plate, each a different one', len(set(sig.values())) == 13 and all(v[0] > 0 for v in sig.values()),
       sig)
 # remembered: the next plate starts from the last edited one (lengths as fractions of the size)
 bpy.ops.mch.pdetail_rough_preset(preset='BARK')

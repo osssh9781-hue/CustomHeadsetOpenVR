@@ -623,7 +623,8 @@ def _rough_props():
     ann['r_preset'] = EnumProperty(name='Preset', items=[(p[0], p[1], p[2]) for p in _pr.PRESETS], default='CONCRETE')
     # 0.24.163 Columnar Basalt
     ann['r_style'] = EnumProperty(name='Style', items=(('ROUGH', 'Rough Rim', 'A plate with a rough rim (a texture)'),
-                                                       ('COLUMNS', 'Columns', 'Basalt columns')), default='ROUGH')
+                                                       ('COLUMNS', 'Columns', 'Basalt columns'),
+                                                       ('CLIFF', 'Cliff', 'A layered cliff')), default='ROUGH')
     ann['r_slope'] = FloatProperty(name='Slope', default=0.85, min=0.0, max=1.0, update=_rough_changed,
                                    description='How much the columns rise along the way you drew (0 = all as tall as '
                                                'Height, 1 = from nothing where you started to Height at the far end)')
@@ -635,11 +636,26 @@ def _rough_props():
                                    update=_rough_changed, description='A chamfer round each column\'s top')
     ann['r_tilt'] = FloatProperty(name='Top Tilt', default=math.radians(5.0), min=0.0, max=math.radians(45.0),
                                   subtype='ANGLE', update=_rough_changed, description='Column tops tilted a little at random')
-    ann['r_turn'] = FloatProperty(name='Turn', default=0.0, min=-math.pi, max=math.pi, subtype='ANGLE',
-                                  update=_rough_changed, description='Turn the way the columns rise (0 = the way you drew)')
-    ann['r_flip'] = BoolProperty(name='Flip', default=False, update=_rough_changed,
-                                 description='High where you started drawing instead')
-    ann['r_dir'] = bpy.props.FloatVectorProperty(size=3, default=(0.0, 0.0, 0.0), options={'HIDDEN'})   # (the way it was drawn)
+    ann['r_compass'] = FloatProperty(name='Rise Toward', default=math.radians(90.0), min=0.0, max=2 * math.pi,
+                                     subtype='ANGLE', update=_rough_changed,
+                                     description='Compass direction the columns / the cliff rise toward: 0 north (+Y), '
+                                                 '90 east (+X), 180 south, 270 west')
+    # 0.24.163 Rim + Dome (Creature Carapace)
+    ann['r_lip'] = FloatProperty(name='Lip', default=0.45, min=0.0, max=1.0, update=_rough_changed,
+                                 description='How deep the groove inside the raised outline goes (a share of Height)')
+    ann['r_dome'] = FloatProperty(name='Dome', default=1.2, min=0.0, soft_max=4.0, update=_rough_changed,
+                                  description='How high the middle bulges above the groove (x Height)')
+    ann['r_ridge'] = FloatProperty(name='Ridge', default=0.0, min=0.0, max=1.0, update=_rough_changed,
+                                   description='Rim + Dome: the middle a crest along the outline\'s middle line '
+                                               '(0 a round dome)')
+    # 0.24.163 Layered Cliff: a sea cliff's face on the top
+    ann['r_layer'] = FloatProperty(name='Layer', default=0.035, min=0.0001, soft_max=0.3, unit='LENGTH', precision=4,
+                                   update=_rough_changed, description='How wide each slab of the strata is')
+    ann['r_dip'] = FloatProperty(name='Strata Angle', default=math.radians(40.0), min=-math.pi / 2, max=math.pi / 2,
+                                 subtype='ANGLE', update=_rough_changed,
+                                 description='The strata lines turned off the rise direction (0 = across it)')
+    ann['r_depth'] = FloatProperty(name='Depth', default=0.022, min=0.0, soft_max=0.2, unit='LENGTH', precision=4,
+                                   update=_rough_changed, description='How much the slabs differ in depth')
     ann['r_cell'] = FloatProperty(default=0.0, options={'HIDDEN'})          # (mean face edge of the base patch)
     return ann
 
@@ -854,8 +870,6 @@ def perform(context, loops, projector, tool='DETAIL'):
         p.region = region
         p.size = local_size
         p.kind = kind
-        if kind == 'ROUGH':                  # 0.24.163 the way the outline was drawn (Columnar Basalt rises along it)
-            p.r_dir = _pr.stroke_dir(region, loops, projector, target) or (0.0, 0.0, 0.0)
         p.layers, p.direction, p.screws, p.profile = st.layers, st.direction, st.screws, st.profile
         for k in LENGTHS:
             setattr(p, k, f[k] * local_size)
@@ -875,8 +889,8 @@ def perform(context, loops, projector, tool='DETAIL'):
     ob.select_set(True)
     context.view_layer.objects.active = ob
     what = {'TRIM': f'{p.layers}-layer trim', 'RISE': 'smooth rise', 'FLAT': 'flat panel',
-            'ROUGH': ('basalt columns, rising the way you drew' if p.r_style == 'COLUMNS'
-                      else f'rough rim - {_preset_label(p.r_preset)}')}[kind]
+            'ROUGH': {'COLUMNS': 'basalt columns', 'CLIFF': 'layered cliff'}.get(
+                p.r_style, f'rough rim - {_preset_label(p.r_preset)}')}[kind]
     return f'Plate Detail "{ob.name}" on {target.name} ({what}, {len(ob.data.polygons)} faces)'
 
 
@@ -907,7 +921,7 @@ def engrave(context, loops, projector, tool='DETAIL'):
                               wall_angle=f.get('wall_angle', 90.0), **{k: f[k] * local_size for k in LENGTHS},
                               **{k: f.get(k, _pr.DEFAULT[k]) for k in _pr.PLAIN})
     p.lift = 0.0
-    p.r_dir = _pr.stroke_dir(region, loops, projector, target) or (0.0, 0.0, 0.0)
+    p.target_mw = target.matrix_world.copy()          # (0.24.163 the compass: the target's axes)
     try:
         me = build_mesh(p, 'MCH_DetailEngrave')
         if p.kind == 'ROUGH' and p.r_style != 'COLUMNS':   # 0.24.161 the finished rough plate (its modifier, temporary)
@@ -1112,17 +1126,49 @@ def _draw_rough_presets(col, current):
         grid.operator('mch.pdetail_rough_preset', text=label, depress=(pid == current)).preset = pid
 
 
+def _draw_compass(box, p):
+    """0.24.163 (user: "높이는 동서남북 기준으로 내가 돌릴 수 있게"): where it rises - N / E / S / W and the angle."""
+    col = box.column(align=True)
+    col.label(text='Rise Toward (compass)')
+    row = col.row(align=True)
+    for key, label, deg in _pr.COMPASS:
+        row.operator('mch.pdetail_compass', text=label,
+                     depress=abs(math.degrees(p.r_compass) % 360.0 - deg) < 0.5).direction = key
+    col.prop(p, 'r_compass')
+    col.prop(p, 'r_slope')
+
+
+def _draw_cliff(box, p):
+    """0.24.163 Layered Cliff's values."""
+    col = box.column(align=True)
+    col.prop(p, 'r_height')
+    _draw_compass(box, p)
+    col = box.column(align=True)
+    col.label(text='Strata')
+    col.prop(p, 'r_layer')
+    col.prop(p, 'r_dip')
+    col.prop(p, 'r_depth')
+    col = box.column(align=True)
+    col.label(text='Rock')
+    col.prop(p, 'r_feature', text='Joint Size')
+    col.prop(p, 'r_cracks', text='Joints')
+    col.prop(p, 'r_bumps')
+    col.prop(p, 'r_grain')
+    col.prop(p, 'r_chips')
+    col.prop(p, 'r_strength')
+    row = box.row(align=True)
+    row.prop(p, 'r_seed')
+    row.prop(p, 'r_detail')
+    box.prop(p, 'lift')
+
+
 def _draw_columns(box, p):
     """0.24.163 Columnar Basalt's values."""
     col = box.column(align=True)
     col.prop(p, 'r_height')
     col.prop(p, 'r_feature', text='Column Size')
+    _draw_compass(box, p)
     col = box.column(align=True)
-    col.label(text='Rise (along the way you drew)')
-    col.prop(p, 'r_slope')
-    row = col.row(align=True)
-    row.prop(p, 'r_turn')
-    row.prop(p, 'r_flip', toggle=True)
     col.prop(p, 'r_hrand')
     col = box.column(align=True)
     col.prop(p, 'r_gap')
@@ -1139,10 +1185,18 @@ def _draw_rough(box, p):
     if p.r_style == 'COLUMNS':
         _draw_columns(box, p)
         return
+    if p.r_style == 'CLIFF':
+        _draw_cliff(box, p)
+        return
     col = box.column(align=True)
     col.prop(p, 'r_height')
     col.prop(p, 'r_ramp')
     col.row(align=True).prop(p, 'r_profile', expand=True)
+    if p.r_profile == 'CARAPACE':                     # 0.24.163 Rim + Dome
+        row = col.row(align=True)
+        row.prop(p, 'r_lip')
+        row.prop(p, 'r_dome')
+        col.prop(p, 'r_ridge')
     col = box.column(align=True)
     col.label(text='Rim')
     col.prop(p, 'r_rim')
@@ -1159,6 +1213,29 @@ def _draw_rough(box, p):
     row.prop(p, 'r_seed')
     row.prop(p, 'r_detail')
     col.prop(p, 'lift')
+
+
+class MCH_OT_pdetail_compass(bpy.types.Operator):
+    """Rise toward this compass direction (the selected plate and the next ones)"""
+    bl_idname = 'mch.pdetail_compass'
+    bl_label = 'Rise Toward'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    direction: EnumProperty(items=[(k, k, f'Rise toward {k}') for k, _l, _d in _pr.COMPASS])
+
+    def execute(self, context):
+        import json
+        ang = math.radians(next(d for k, _l, d in _pr.COMPASS if k == self.direction))
+        ob = active_detail(context)
+        if ob is not None and ob.mch_pdetail.kind == 'ROUGH':
+            ob.mch_pdetail.r_compass = ang                  # (its update: rebuild / push, remembered)
+            if ob.mch_pdetail.r_style == 'COLUMNS':
+                rebuild(ob)                                  # (at once, not after the slider's pause)
+        else:
+            st = context.scene.mch_pdetail
+            f = _fractions(context.scene)
+            f['r_compass'] = ang
+            st.fractions = json.dumps(f)
+        return {'FINISHED'}
 
 
 class MCH_OT_pdetail_rough_preset(bpy.types.Operator):
@@ -1271,6 +1348,7 @@ class MCH_OT_pdetail_rise_preset(bpy.types.Operator):
 
 
 CLASSES = (MCH_PG_PlateDetail, MCH_PG_PlateDetailScene, MCH_OT_pdetail_rise_preset, MCH_OT_pdetail_rough_preset,
+           MCH_OT_pdetail_compass,
            MCH_OT_pdetail_layers, MCH_OT_pdetail_apply,
            MCH_OT_pdetail_remove, MCH_PT_plate_detail)
 

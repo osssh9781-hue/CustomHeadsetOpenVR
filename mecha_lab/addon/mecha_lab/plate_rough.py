@@ -28,7 +28,7 @@ from .creature_fur import _B, _socket
 
 MOD = 'MCH Rough Rim'
 TREE = 'MCH Rough Rim'
-TREE_VERSION = 5
+TREE_VERSION = 8
 D_ATTR = 'mch_rd'              # distance to the outline (object units)
 TOP_ATTR = 'mch_rtop'          # 1 on the top layer, 0 on the bottom layer
 UP_ATTR = 'mch_rup'            # the surface normal under the point
@@ -39,7 +39,9 @@ SINK_FRAC = 0.001              # where the plate comes down to nothing it goes t
 
 PROFILES = (('ROUND', 'Round', 'The edge rises in a soft S (flat at the foot and at the top)'),
             ('DOME', 'Dome', 'Steep at the foot, rounding over into the top (stone, lumps)'),
-            ('CHAMFER', 'Chamfer', 'A straight slope'))
+            ('CHAMFER', 'Chamfer', 'A straight slope'),
+            ('CARAPACE', 'Rim + Dome', 'Creature carapace: a raised lip along the outline, a groove inside it, then the '
+                                      'middle domed (Lip, Dome)'))
 PROFILE_INDEX = {p[0]: i for i, p in enumerate(PROFILES)}
 
 # (prop, socket, label, description) - lengths (object units, scale with the drawn size)
@@ -107,15 +109,33 @@ PRESETS = (
     ('BASALT', 'Columnar Basalt', 'Basalt columns (주상절리): a cliff of 5 - 7 sided columns, rising along the way the '
      'outline was drawn - low where it started, high at the far end',
      dict(r_style='COLUMNS', r_height=0.18, r_feature=0.05, r_slope=0.85, r_hrand=0.3, r_gap=0.003, r_round=0.0025,
-          r_tilt=math.radians(5.0), r_turn=0.0, r_flip=False)),
+          r_tilt=math.radians(5.0))),
+    # 0.24.163 (user, with a photo of a sea cliff: "절벽 옆면 기준으로 해 줘"): the cliff's side - slanted strata, joints
+    ('CLIFF', 'Layered Cliff', 'A sea cliff\'s face laid on the top: slanted strata slabs, each its own depth, split '
+     'by joints; the whole plate rising toward the compass direction',
+     dict(r_style='CLIFF', r_height=0.06, r_ramp=0.012, r_profile='ROUND', r_rim=0.2, r_center=1.0, r_strength=0.006,
+          r_feature=0.08, r_bumps=0.3, r_cells=0.0, r_cracks=0.6, r_wrinkles=0.0, r_pits=0.0, r_grain=0.3, r_chips=0.3,
+          r_slope=0.6, r_layer=0.04, r_dip=math.radians(40.0), r_depth=0.015)),
+    # 0.24.163 (user, with a photo of a rock creature: "테두리 부분이 외곽 라인 잡듯이 조금 튀어나오고 가운데는 다시 볼록하게")
+    ('CARAPACE', 'Creature Carapace', 'A carapace plate: a raised lip along the outline with lines along it, a groove '
+     'inside, the middle a smooth ridge',
+     dict(r_height=0.02, r_ramp=0.035, r_profile='CARAPACE', r_lip=0.45, r_dome=3.0, r_ridge=0.8, r_rim=0.07,
+          r_center=0.0, r_strength=0.004, r_feature=0.035, r_bumps=0.1, r_cells=0.0, r_cracks=0.0, r_wrinkles=0.6,
+          r_pits=0.0, r_grain=0.12, r_chips=0.0)),
 )
 PRESET_IDS = tuple(p[0] for p in PRESETS)
-COLUMN_LENGTHS = ('r_gap', 'r_round')       # (0.24.163 Columnar Basalt's lengths - not modifier inputs)
+COLUMN_LENGTHS = ('r_gap', 'r_round', 'r_layer', 'r_depth')   # (0.24.163 Basalt's / the Cliff's lengths)
 LENGTHS = tuple(p[0] for p in LENGTH_PROPS) + COLUMN_LENGTHS
 PLAIN = ('r_profile', 'r_center', 'r_chips', 'r_seed', 'r_detail', 'r_preset', 'r_style', 'r_slope', 'r_hrand', 'r_tilt',
-         'r_turn', 'r_flip') + tuple(p[0] for p in MIX_PROPS)
+         'r_compass', 'r_lip', 'r_dome', 'r_ridge', 'r_dip') + tuple(p[0] for p in MIX_PROPS)
 COLUMN_DEFAULT = dict(next(p[3] for p in PRESETS if p[0] == 'BASALT'))
-DEFAULT = dict(COLUMN_DEFAULT, **PRESETS[0][3], r_style='ROUGH', r_seed=0, r_detail=6.0, r_preset='CONCRETE')
+DEFAULT = {}
+for _d in (COLUMN_DEFAULT, next(p[3] for p in PRESETS if p[0] == 'CLIFF'), next(p[3] for p in PRESETS if p[0] == 'CARAPACE'),
+           PRESETS[0][3]):
+    DEFAULT.update(_d)
+DEFAULT.update(r_style='ROUGH', r_seed=0, r_detail=6.0, r_preset='CONCRETE', r_compass=math.radians(90.0), r_ridge=0.0,
+               r_lip=0.45, r_dome=1.2)
+COMPASS = (('N', 'N', 0.0), ('E', 'E', 90.0), ('S', 'S', 180.0), ('W', 'W', 270.0))
 
 
 def preset_values(pid):
@@ -234,39 +254,47 @@ def _inside_poly(px, py, poly):
     return inside
 
 
-def stroke_dir(region_me, loops, projector, target):
-    """0.24.163 "긋는 방향따라": the way the outline was drawn, on the surface (target space) - from where it started
-    toward the outline point farthest from there.  None if it cannot be found."""
+def mean_normal(region_me):
+    """The patch's area-weighted mean normal (target space)."""
     from mathutils import Vector
-    from mathutils.bvhtree import BVHTree
-    try:
-        lp = list(loops[0])
-        s0 = lp[0]
-        s1 = max(lp, key=lambda q: (q[0] - s0[0]) ** 2 + (q[1] - s0[1]) ** 2)
-    except (IndexError, TypeError):
-        return None
-    bvh = BVHTree.FromPolygons([v.co for v in region_me.vertices], [tuple(f.vertices) for f in region_me.polygons])
-    inv = target.matrix_world.inverted()
-    hits = []
-    for xy in (s0, s1):
-        o, d = projector.ray(xy)
-        o = inv @ Vector(o)
-        d = (inv.to_3x3() @ Vector(d)).normalized()
-        loc, _n, _i, _dist = bvh.ray_cast(o, d)
-        if loc is None:                                  # (the outline's own point is on the patch's border)
-            loc, _n, _i, _dist = bvh.find_nearest(o + d * ((Vector(region_me.vertices[0].co) - o).dot(d)))
-        if loc is None:
-            return None
-        hits.append(loc)
-    v = hits[1] - hits[0]
-    return tuple(v) if v.length > 1e-9 else None
+    n = Vector()
+    for f in region_me.polygons:
+        n += f.normal * f.area
+    return n.normalized() if n.length > 1e-12 else Vector((0.0, 0.0, 1.0))
+
+
+def target_matrix(p):
+    """The matrix of the mesh the plate sits on (its parent; a plain namespace carries ``target_mw``)."""
+    from mathutils import Matrix
+    mw = getattr(p, 'target_mw', None)
+    if mw is not None:
+        return mw
+    ob = getattr(p, 'id_data', None)
+    if ob is not None and getattr(ob, 'parent', None) is not None:
+        return ob.parent.matrix_world
+    return ob.matrix_world if ob is not None and hasattr(ob, 'matrix_world') else Matrix.Identity(4)
+
+
+def rise_dir(p, up):
+    """0.24.163 (user: "높이는 동서남북 기준으로 내가 돌릴 수 있게"): the way the plate rises - the compass direction
+    ``p.r_compass`` (0 = north, world +Y; 90 = east, +X), in the target's space, laid on the patch (across ``up``).
+    On a wall facing that way: world up instead."""
+    from mathutils import Vector
+    c = float(getattr(p, 'r_compass', math.radians(90.0)))
+    inv = target_matrix(p).inverted().to_3x3()
+    for world in (Vector((math.sin(c), math.cos(c), 0.0)), Vector((0.0, 0.0, 1.0))):
+        v = inv @ world
+        v = v - up * v.dot(up)
+        if v.length > 1e-4:
+            return v.normalized()
+    return up.orthogonal().normalized()
 
 
 def build_columns(p, region_me, name, embed, lift=0.0):
     """0.24.163 Columnar Basalt: the patch under the outline as basalt columns - Voronoi cells (mostly 5 - 7 sided, the
     seeds a jittered hexagon grid of Column Size), each a straight prism along the surface's mean normal, its foot
     following the surface (sunk ``embed`` into it), its top flat (Top Tilt: a little tilted at random, Edge Round: a
-    chamfer), Joint Gap between them.  Its height rises along the way the outline was drawn (``p.r_dir``; Turn / Flip):
+    chamfer), Joint Gap between them.  Its height rises toward the compass direction (``p.r_compass``):
     Slope 0 all as tall as Height, Slope 1 from nothing where the drawing started to Height at the far end; Height
     Random varies each."""
     from mathutils import Vector
@@ -295,14 +323,9 @@ def build_columns(p, region_me, name, embed, lift=0.0):
         out3 = [v.co.copy() for v in outline]
     finally:
         bm.free()
-    u = nrm.orthogonal().normalized()
-    dvec = Vector(getattr(p, 'r_dir', (0.0, 0.0, 0.0)))
-    dvec = dvec - nrm * dvec.dot(nrm)
-    if dvec.length > 1e-9:
-        u = dvec.normalized()
+    u = rise_dir(p, nrm)                                                 # (the way the columns rise)
     w = nrm.cross(u).normalized()
-    turn = float(getattr(p, 'r_turn', 0.0)) + (math.pi if getattr(p, 'r_flip', False) else 0.0)
-    ramp = (u * math.cos(turn) + w * math.sin(turn)).normalized()      # (the way the columns rise)
+    ramp = u
     poly = [((q - cen).dot(u), (q - cen).dot(w)) for q in out3]
     P = np.array(poly)
     lo, hi = P.min(0), P.max(0)
@@ -332,7 +355,7 @@ def build_columns(p, region_me, name, embed, lift=0.0):
         return (loc - cen).dot(nrm)
     cxy = np.array([seeds[i] for i in cells])
     rx = cxy[:, 0] * ramp.dot(u) + cxy[:, 1] * ramp.dot(w)
-    t = (rx - rx.min()) / max(rx.max() - rx.min(), 1e-9)                 # (0 where the drawing started, 1 at the far end)
+    t = (rx - rx.min()) / max(rx.max() - rx.min(), 1e-9)                 # (0 at the low end, 1 toward the compass)
     H = float(p.r_height)
     slope = float(p.r_slope)
     hr = float(p.r_hrand)
@@ -411,6 +434,17 @@ def _inputs(ng):
     _socket(ng, 'Seed', 'INT', 0, 0, 100000)
     _socket(ng, 'Lift', 'FLOAT', 0.0, -100.0, 100.0)
     _socket(ng, 'Sink', 'FLOAT', 0.0, 0.0, 100.0)
+    _socket(ng, 'Lip', 'FLOAT', 0.45, 0.0, 1.0)              # (0.24.163 Rim + Dome)
+    _socket(ng, 'Dome', 'FLOAT', 1.2, 0.0, 10.0)
+    _socket(ng, 'Ridge', 'FLOAT', 0.0, 0.0, 1.0)
+    for sock in ('Up', 'Rise'):                              # (0.24.163 Layered Cliff: the plate's frame, the compass)
+        s_ = ng.interface.new_socket(sock, in_out='INPUT', socket_type='NodeSocketVector')
+        s_.default_value = (0.0, 0.0, 1.0) if sock == 'Up' else (1.0, 0.0, 0.0)
+    _socket(ng, 'Strata', 'FLOAT', 0.0, 0.0, 1.0)
+    _socket(ng, 'Slope', 'FLOAT', 0.0, 0.0, 1.0)
+    _socket(ng, 'Layer', 'FLOAT', 0.03, 0.0, 100.0)
+    _socket(ng, 'Strata Angle', 'FLOAT', 0.7, -10.0, 10.0)
+    _socket(ng, 'Depth', 'FLOAT', 0.01, 0.0, 100.0)
     ng.interface.new_socket('Geometry', in_out='OUTPUT', socket_type='NodeSocketGeometry')
 
 
@@ -468,15 +502,25 @@ def _seed(b, seed, k):
     return c.outputs['Vector']
 
 
-def _profile(b, I, d2):
+def _profile(b, I, d2, depth):
     ramp = b.math('MAXIMUM', I['Edge Width'], 1e-6)
     t = _clamp01(b, b.math('DIVIDE', d2, ramp))
     p_round = _map(b, t, 0.0, 1.0, 0.0, 1.0, 'SMOOTHERSTEP')
     p_dome = b.math('SINE', b.math('MULTIPLY', t, math.pi / 2))
+    # 0.24.163 Rim + Dome (a carapace): up to the lip over Edge Width, down into a groove (Lip: how deep), then the
+    # middle domed (Dome x Height above the groove, highest at the deepest point)
+    w2 = b.math('MULTIPLY', ramp, 2.2)
+    lip = b.math('SUBTRACT', _map(b, d2, 0.0, ramp, 0.0, 1.0, 'SMOOTHSTEP'),
+                 b.math('MULTIPLY', I['Lip'], _map(b, d2, ramp, w2, 0.0, 1.0, 'SMOOTHSTEP')))
+    c = _clamp01(b, b.math('DIVIDE', b.math('SUBTRACT', d2, w2), b.math('MAXIMUM', b.math('SUBTRACT', depth, w2), 1e-6)))
+    dome = b.math('ADD', b.math('SINE', b.math('MULTIPLY', c, math.pi / 2)), b.math('MULTIPLY', I['Ridge'], b.math(
+        'SUBTRACT', c, b.math('SINE', b.math('MULTIPLY', c, math.pi / 2)))))     # (Ridge 1: straight up to a crest)
+    p_cara = b.math('ADD', lip, b.math('MULTIPLY', I['Dome'], dome))
     prof = b.math('ADD', b.math('ADD',
                                 b.math('MULTIPLY', p_round, b.math('COMPARE', I['Profile'], 0.0, 0.5)),
                                 b.math('MULTIPLY', p_dome, b.math('COMPARE', I['Profile'], 1.0, 0.5))),
-                  b.math('MULTIPLY', t, b.math('COMPARE', I['Profile'], 2.0, 0.5)))
+                  b.math('ADD', b.math('MULTIPLY', t, b.math('COMPARE', I['Profile'], 2.0, 0.5)),
+                         b.math('MULTIPLY', p_cara, b.math('COMPARE', I['Profile'], 3.0, 0.5))))
     return b.math('MULTIPLY', I['Height'], prof)
 
 
@@ -559,10 +603,39 @@ def _build(b, I):
     geo = _store_sel(b, geo, OUT_ATTR, b.math('MULTIPLY', b.math('MULTIPLY', tex, amount), foot), is_top)
     rough = b.attr(OUT_ATTR).outputs['Attribute']
 
+    # 0.24.163 Layered Cliff (user: "절벽의 옆면 같은 돌의 깊이 차이가 윗면에 있어야"): a sea cliff's face laid on the
+    # top - slanted strata (Layer wide, their lines Strata Angle off the compass direction), each layer a slab rising
+    # across itself and dropping at the next, each slab its own depth, broken where the joints (Voronoi cells, Feature
+    # Size) cut it; and the whole plate rising toward the compass (Slope)
+    side = b.vec('NORMALIZE', b.vec('CROSS_PRODUCT', I['Up'], I['Rise']))
+    n_s = b.vec('ADD', b.vec('SCALE', I['Rise'], scale=b.math('COSINE', I['Strata Angle'])),
+                b.vec('SCALE', side, scale=b.math('SINE', I['Strata Angle'])))
+    us = b.math('DIVIDE', b.vec('DOT_PRODUCT', pos, n_s), b.math('MAXIMUM', I['Layer'], 1e-6))
+    lid = b.math('FLOOR', us)
+    slab = b.math('SUBTRACT', b.math('POWER', b.math('SUBTRACT', us, lid), 0.6), 0.55)          # (up across, a drop)
+    jcell = _rgb(b, _voronoi(b, q, _seed(b, seed, 14), 1.0).outputs['Color'])[0]
+    lr = b.node('FunctionNodeRandomValue', data_type='FLOAT')
+    lins = {x.name: x for x in b._on(lr.inputs)}
+    b.feed(lins['ID'], b.math('ADD', lid, b.math('FLOOR', b.math('MULTIPLY', jcell, 997.0))))
+    b.feed(lins['Seed'], seed)
+    strata = b.math('ADD', b.math('MULTIPLY', slab, 0.8), b.math('MULTIPLY', b.math('SUBTRACT', b._on(lr.outputs)[0], 0.5), 0.9))
+    strata_h = _when(b, I['Strata'], b.math('MULTIPLY', b.math('MULTIPLY', strata, I['Depth']), I['Strata']))
+    along = b.vec('DOT_PRODUCT', pos, I['Rise'])
+    ast = b.node('GeometryNodeAttributeStatistic', data_type='FLOAT', domain='POINT')
+    b.feed(ast.inputs['Geometry'], geo)
+    b.feed(ast.inputs['Attribute'], along)
+    rise_t = _clamp01(b, b.math('DIVIDE', b.math('SUBTRACT', along, ast.outputs['Min']),
+                                b.math('MAXIMUM', b.math('SUBTRACT', ast.outputs['Max'], ast.outputs['Min']), 1e-9)))
+    rise = b.math('ADD', b.math('SUBTRACT', 1.0, I['Slope']), b.math('MULTIPLY', I['Slope'], rise_t))
+
     # 3) raised: the profile from the eaten outline + the texture (never under the surface); where it comes down to
     #    nothing (a chip, the foot) it goes on down just under the surface - the surface shows there, not a thin film
     #    of the plate on it
-    h = b.math('MAXIMUM', b.math('ADD', _profile(b, I, d2), b.math('MULTIPLY', rough, I['Strength'])), 0.0)
+    dstat = b.node('GeometryNodeAttributeStatistic', data_type='FLOAT', domain='POINT')    # (the middle's depth)
+    b.feed(dstat.inputs['Geometry'], geo)
+    b.feed(dstat.inputs['Attribute'], d)
+    h = b.math('MAXIMUM', b.math('ADD', b.math('MULTIPLY', _profile(b, I, d2, dstat.outputs['Max']), rise), b.math(
+        'ADD', b.math('MULTIPLY', rough, I['Strength']), b.math('MULTIPLY', strata_h, foot))), 0.0)
     low = b.math('MAXIMUM', b.math('MULTIPLY', I['Height'], 0.03), 1e-7)
     h = b.math('ADD', h, b.math('MULTIPLY', I['Sink'], b.math('SUBTRACT', _clamp01(b, b.math('DIVIDE', h, low)), 1.0)))
     sp = b.node('GeometryNodeSetPosition')
@@ -603,7 +676,10 @@ def tree():
 def level_for(p, faces):
     """Subdivision level: about ``r_detail`` faces across one feature, kept under MAX_FACES."""
     edge = max(getattr(p, 'r_cell', 0.0), 1e-9)
-    want = edge * max(p.r_detail, 0.5) / max(p.r_feature, 1e-9)
+    feat = p.r_feature
+    if getattr(p, 'r_style', 'ROUGH') == 'CLIFF':
+        feat = min(feat, max(p.r_layer, 1e-9) * 1.5)            # (0.24.163 a layer as fine as a feature)
+    want = edge * max(p.r_detail, 0.5) / max(feat, 1e-9)
     lv = max(0, int(math.ceil(math.log2(max(want, 1.0)))))
     while lv > 0 and faces * 4 ** lv > MAX_FACES:
         lv -= 1
@@ -612,9 +688,14 @@ def level_for(p, faces):
 
 def values(p, faces):
     """Modifier input values for settings ``p``."""
-    v = {'Level': level_for(p, faces), 'Profile': PROFILE_INDEX.get(p.r_profile, 0), 'Center': float(p.r_center),
+    cliff = getattr(p, 'r_style', 'ROUGH') == 'CLIFF'
+    up = mean_normal(p.region)
+    v = {'Up': tuple(up), 'Rise': tuple(rise_dir(p, up)), 'Ridge': float(p.r_ridge),
+         'Strata': 1.0 if cliff else 0.0, 'Slope': float(p.r_slope) if cliff else 0.0,   # (0.24.163 Layered Cliff only)
+         'Layer': float(p.r_layer), 'Strata Angle': float(p.r_dip), 'Depth': float(p.r_depth)}
+    v.update({'Level': level_for(p, faces), 'Profile': PROFILE_INDEX.get(p.r_profile, 0), 'Center': float(p.r_center),
          'Chips': float(p.r_chips), 'Seed': int(p.r_seed), 'Lift': float(p.lift),
-         'Sink': float(p.size) * SINK_FRAC}
+         'Sink': float(p.size) * SINK_FRAC, 'Lip': float(p.r_lip), 'Dome': float(p.r_dome)})
     for prop, sock, *_r in LENGTH_PROPS:
         v[sock] = float(getattr(p, prop))
     for prop, sock, *_r in MIX_PROPS:
@@ -622,7 +703,7 @@ def values(p, faces):
     return v
 
 
-def ensure(ob):
+def ensure(ob, style='ROUGH'):
     mod = ob.modifiers.get(MOD)
     if mod is None or mod.type != 'NODES':
         mod = ob.modifiers.new(MOD, 'NODES')
@@ -634,7 +715,7 @@ def ensure(ob):
 def push(ob, p=None):
     from . import geo_sculpt as gs
     p = p if p is not None else ob.mch_pdetail
-    mod = ensure(ob)
+    mod = ensure(ob, getattr(p, 'r_style', 'ROUGH'))
     for name, val in values(p, len(ob.data.polygons)).items():
         gs.set_input(mod, name, val)
     return mod
