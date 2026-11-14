@@ -2525,6 +2525,8 @@ def draw(layout, context):
     st = settings(context)
     if st is None:
         return
+    from . import vacuum_pack                            # 0.24.171 the selected meshes sealed in one film
+    vacuum_pack.draw(layout, context)
     box = layout.box()
     box.label(text='Cloth Drape', icon='MOD_CLOTH')
     live = sim_active()

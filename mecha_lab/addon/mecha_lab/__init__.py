@@ -15,7 +15,7 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                addon_safety, self_test, face_extract, edge_molding, hollow_shell, along_curve, cable, bottom_bar, station_primitive, station_gizmos,
                primitive_place, primitive_hud, line_hud, armor_plate, random_panels, mirror_hud, highpoly, mesh_tools, live_queue, lasso_sketch,
                cloth_wrinkle, last_used, last_op, live_stack, keymap_check, robot_base, detail_stamp, surface_lasso,
-               curve_tube, creature_shell, cloth_sim, box_hide, plate_detail, screw_stamp, wrinkle_lines, cloth_drape, lowpoly, fold_patch,
+               curve_tube, creature_shell, cloth_sim, box_hide, plate_detail, screw_stamp, wrinkle_lines, cloth_drape, vacuum_pack, lowpoly, fold_patch,
                creature_plate, belt_maker, creature_spike, creature_scales, flower_plate,
                surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, creature_fur, weathering, print3d, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, smart_move, geo_sculpt, greeble_line, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, bg_jobs, quad_remesh, mesh_fix, tool_recent, actions_menu, key_legend, quick_hud, mecha_menu, symmetry, groups, ui_bars, safety_save, lasso_memory, armor_shell, paint_lab, bake_maps, res_parts, final_export, mech_shader,
                creature_shader, my_presets, decals, zones, my_materials, bake_material, color_pick,
@@ -2140,6 +2140,7 @@ def _register():
     press_cut.register()
     wrinkle_lines.register()
     cloth_drape.register()
+    vacuum_pack.register()              # 0.24.171 Vacuum Pack (in the Cloth Drape window)
     lowpoly.register()
     quad_remesh.register()
     mesh_fix.register()
@@ -2237,6 +2238,7 @@ def _unregister_steps():
         ('mesh_fix', mesh_fix.unregister),
         ('quad_remesh', quad_remesh.unregister),
         ('lowpoly', lowpoly.unregister),
+        ('vacuum_pack', vacuum_pack.unregister),
         ('cloth_drape', cloth_drape.unregister),
         ('wrinkle_lines', wrinkle_lines.unregister),
         ('press_cut', press_cut.unregister),
