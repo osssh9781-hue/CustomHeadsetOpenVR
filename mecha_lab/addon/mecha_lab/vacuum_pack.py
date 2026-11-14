@@ -1,18 +1,19 @@
-"""0.24.171 Vacuum Pack (user: "클로스 드레이프에서 진공팩마냥 내가 선택한 거 감싸 주는 것도 만들어 주라" - and on what Wrap
-This Mesh made, a body covered in small crumples with a ragged rim: "결과가 별로라네"): the selected meshes sealed in
-ONE plastic film, live (Geometry Nodes on a new "Vacuum Pack" object).
+"""0.24.171 Vacuum Pack (user: "클로스 드레이프에서 진공팩마냥 내가 선택한 거 감싸 주는 것도 만들어 주라"; on Wrap This Mesh's
+result, small crumples all over and a ragged rim: "결과가 별로라네"; "주름이 하나도 안 생기잖아!!" with a photo of shrink film
+over a figure; "왜 시뮬을 안 하고 이렇게 해?" with a photo of a cloth pulled tight over a face): the selected meshes put
+in ONE bag and the air sucked out - a cloth simulation (Cloth Drape's), not a made-up surface.
 
-A vacuum-sealed film is pulled flat onto everything it can touch and stays taut over what it cannot: it spans narrow
-gaps and hollows, sags into wide ones with a round fillet, and gathers into a few thin, sharp creases where it spans.
-That is a morphological closing of the parts with a ball:
+    the bag      a loose closing round all the parts (a signed distance grid grown and shrunk: it spans the gaps), an
+                 even mesh of about Points points - the cloth
+    the sim      Blender's own cloth: the bag's air pressure below zero (it is sucked in from wherever it is and
+                 stops on the parts - copies of them as colliders, the parts themselves untouched), stiff to
+                 stretch and soft to squeeze (the extra cloth buckles into folds), Tightness shrinks it a little,
+                 Folds sets the bending (fine sharp folds .. broad soft ones), hardly any gravity
+    the gather   (optional) the cloth round the gather point (a click on the mesh, or the bag's lowest point)
+                 pinned and drawn gently toward a knot there: the folds lean toward it
 
-    the parts -> a signed distance grid (OpenVDB, coarse) -> grown by R, shrunk by R (gaps narrower than ~2 R bridged,
-    concave corners filled with radius R) -> the film surface at Gap -> subdivided to the Detail -> snapped onto the
-    parts where it nearly touches them and kept off them everywhere (a fine distance grid) -> creases on the spans:
-    thin ridges running from contact to contact (the tension lines), broken up at random.
-
-Hug sets R: 0 a loose bag (big spans), 1 pulled into nearly every hollow.  The parts stay as they are (the film is
-its own object; move a part and the film follows).  Apply: a plain mesh.
+Space runs / pauses it (Cloth Drape's own Space), Enter keeps the cloth as it is (a plain mesh; Cloth Drape's Thickness:
+its Solidify), Esc drops it.  Afterwards the colliders go and the scene's frame is put back.
 """
 from __future__ import annotations
 
@@ -21,7 +22,7 @@ import math
 import time
 
 import bpy
-from bpy.props import EnumProperty, FloatProperty, IntProperty, PointerProperty
+from bpy.props import EnumProperty, FloatProperty, FloatVectorProperty, IntProperty, PointerProperty
 from mathutils import Vector
 
 KEY = 'mch_vacuum'                 # on a film: the names of the parts it is sealed round (json)
@@ -48,35 +49,9 @@ def film_parts(ob):
     return [bpy.data.objects[n] for n in names if n in bpy.data.objects]
 
 
-def active_film(context):
-    ob = getattr(context.view_layer.objects, 'active', None)
-    return ob if is_film(ob) else None
-
-
 def pick_parts(context):
     """The selected meshes to seal (films never)."""
     return [o for o in context.selected_objects if o.type == 'MESH' and not is_film(o) and o.visible_get()]
-
-
-def parts_center(film, parts):
-    """The middle of the parts' bounds, in the film's own space (the creases run out from it)."""
-    pts = [o.matrix_world @ Vector(c) for o in parts for c in o.bound_box]
-    if not pts:
-        return (0.0, 0.0, 0.0)
-    lo = Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts)))
-    hi = Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts)))
-    return tuple(film.matrix_world.inverted_safe() @ ((lo + hi) / 2.0))
-
-
-def parts_axes(film, parts):
-    """Two directions across the parts' flattest side (their bounds' thinnest axis is the one the creases turn
-    round), in the film's own space."""
-    pts = [o.matrix_world @ Vector(c) for o in parts for c in o.bound_box]
-    ext = [max(p[i] for p in pts) - min(p[i] for p in pts) for i in range(3)] if pts else [1, 1, 1]
-    k = min(range(3), key=lambda i: ext[i])
-    e = [Vector([1.0 if j == i else 0.0 for j in range(3)]) for i in range(3) if i != k]
-    R = film.matrix_world.to_3x3().inverted_safe()
-    return tuple((R @ e[0]).normalized()), tuple((R @ e[1]).normalized())
 
 
 def bounds_size(context, objs):
@@ -318,65 +293,7 @@ def push_out(b, geo, fine, grad, gap, passes=2):
 
 # ---- the film material ---------------------------------------------------------------------------------------------
 
-FILM_V = 6
-
-
-def _crease_bump(nt, strength):
-    """The fine creases in the shader (a Bump): the film's own lines - along the direction stored on it (the
-    tension), its strength and scale from the attributes - sharp thin ridges, broken up; feeds the BSDF's normal."""
-    N, L = nt.nodes, nt.links
-    tc = N.new('ShaderNodeTexCoord')
-    adir = N.new('ShaderNodeAttribute')
-    adir.attribute_name, adir.attribute_type = DIR_ATTR, 'GEOMETRY'
-    aw = N.new('ShaderNodeAttribute')
-    aw.attribute_name, aw.attribute_type = W_ATTR, 'GEOMETRY'
-    ak = N.new('ShaderNodeAttribute')
-    ak.attribute_name, ak.attribute_type = K_ATTR, 'GEOMETRY'
-
-    def m(op, a, b=None):
-        n = N.new('ShaderNodeMath')
-        n.operation = op
-        for i, v in enumerate((a, b)):
-            if v is None:
-                continue
-            if isinstance(v, bpy.types.NodeSocket):
-                L.new(v, n.inputs[i])
-            else:
-                n.inputs[i].default_value = v
-        return n.outputs[0]
-    sep = N.new('ShaderNodeSeparateXYZ')
-    L.new(adir.outputs['Vector'], sep.inputs[0])
-    nz = N.new('ShaderNodeTexNoise')
-    L.new(tc.outputs['Object'], nz.inputs['Vector'])
-    nz.inputs['Scale'].default_value = 6.0
-    nz.inputs['Detail'].default_value = 2.0
-    warp = m('MULTIPLY', m('SUBTRACT', nz.outputs['Fac'], 0.5), 2.5)
-    theta = m('ARCTAN2', sep.outputs['Y'], sep.outputs['X'])               # (the way round the pack's middle)
-    s = m('ADD', m('MULTIPLY', m('DIVIDE', theta, 2 * math.pi), ak.outputs['Fac']), m('MULTIPLY', warp, 1.6))
-    ridge = m('POWER', m('SUBTRACT', 1.0, m('ABSOLUTE', m('SINE', m('MULTIPLY', s, math.pi)))), 8.0)
-    line = m('FLOOR', m('ADD', s, 0.5))
-    wn = N.new('ShaderNodeTexWhiteNoise')                                  # (each line its own strength)
-    wn.noise_dimensions = '1D'
-    L.new(line, wn.inputs['W'])
-    amp = m('ADD', 0.25, m('MULTIPLY', wn.outputs['Value'], 0.75))
-    nz2 = N.new('ShaderNodeTexNoise')                                      # (and its own stretches along)
-    nz2.noise_dimensions = '2D'
-    cx = N.new('ShaderNodeCombineXYZ')
-    L.new(sep.outputs['Z'], cx.inputs[0])
-    L.new(m('MULTIPLY', line, 1.37), cx.inputs[1])
-    L.new(cx.outputs[0], nz2.inputs['Vector'])
-    nz2.inputs['Scale'].default_value = 2.0
-    gate = N.new('ShaderNodeMapRange')
-    gate.clamp = True
-    L.new(nz2.outputs['Fac'], gate.inputs['Value'])
-    gate.inputs['From Min'].default_value, gate.inputs['From Max'].default_value = 0.32, 0.5
-    h = m('MULTIPLY', m('MULTIPLY', ridge, m('MULTIPLY', gate.outputs['Result'], amp)), aw.outputs['Fac'])
-    bump = N.new('ShaderNodeBump')
-    bump.name = 'Creases'
-    bump.inputs['Strength'].default_value = strength
-    bump.inputs['Distance'].default_value = 0.02
-    L.new(h, bump.inputs['Height'])
-    return bump, h
+FILM_V = 7
 
 
 def film_material(kind):
@@ -392,39 +309,21 @@ def film_material(kind):
     out = nt.nodes.new('ShaderNodeOutputMaterial')
     pb = nt.nodes.new('ShaderNodeBsdfPrincipled')
     nt.links.new(pb.outputs[0], out.inputs['Surface'])
-    vals = {'CLEAR': dict(col=(0.92, 0.94, 0.96), rough=0.05, trans=0.93, coat=0.4, view=(0.82, 0.88, 0.95, 0.35)),
-            'MILKY': dict(col=(0.86, 0.87, 0.89), rough=0.25, trans=0.6, coat=0.2, view=(0.85, 0.86, 0.88, 0.75)),
-            'BLACK': dict(col=(0.018, 0.018, 0.02), rough=0.14, trans=0.0, coat=0.7, view=(0.03, 0.03, 0.035, 1.0))}[kind]
+    vals = {'CLEAR': dict(col=(0.92, 0.94, 0.96), rough=0.05, trans=0.9, coat=0.4, view=(0.82, 0.88, 0.95, 0.4)),
+            'MILKY': dict(col=(0.86, 0.87, 0.89), rough=0.25, trans=0.55, coat=0.2, view=(0.85, 0.86, 0.88, 0.8)),
+            'BLACK': dict(col=(0.018, 0.018, 0.02), rough=0.14, trans=0.0, coat=0.7, view=(0.03, 0.03, 0.035, 1.0)),
+            'CLOTH': dict(col=(0.55, 0.5, 0.44), rough=0.85, trans=0.0, coat=0.0, view=(0.55, 0.5, 0.44, 1.0))}[kind]
     for sock, v in (('Base Color', (*vals['col'], 1.0)), ('Roughness', vals['rough']),
                     ('Transmission Weight', vals['trans']), ('Coat Weight', vals['coat']), ('IOR', 1.45)):
         try:
             pb.inputs[sock].default_value = v
         except (KeyError, TypeError):
             pass
-    bump, h = _crease_bump(nt, 1.0)
-    nt.links.new(bump.outputs['Normal'], pb.inputs['Normal'])
-    # the creases catch the light: whiter and less see-through along them (the photo's white streaks)
-    white = nt.nodes.new('ShaderNodeMix')
-    white.data_type = 'RGBA'
-    fac = nt.nodes.new('ShaderNodeMath')
-    fac.operation = 'MULTIPLY'
-    nt.links.new(h, fac.inputs[0])
-    fac.inputs[1].default_value = 0.9 if kind != 'BLACK' else 0.3
-    nt.links.new(fac.outputs[0], white.inputs['Factor'])
-    white.inputs['A'].default_value = (*vals['col'], 1.0)
-    white.inputs['B'].default_value = (1.0, 1.0, 1.0, 1.0) if kind != 'BLACK' else (0.12, 0.12, 0.13, 1.0)
-    nt.links.new(white.outputs['Result'], pb.inputs['Base Color'])
-    if vals['trans'] > 0:
-        tr = nt.nodes.new('ShaderNodeMapRange')
-        tr.clamp = True
-        nt.links.new(h, tr.inputs['Value'])
-        tr.inputs['To Min'].default_value = vals['trans']
-        tr.inputs['To Max'].default_value = vals['trans'] * 0.35
-        nt.links.new(tr.outputs['Result'], pb.inputs['Transmission Weight'])
-    try:
-        nt.links.new(bump.outputs['Normal'], pb.inputs['Coat Normal'])
-    except KeyError:
-        pass
+    if kind == 'CLOTH':
+        try:
+            pb.inputs['Sheen Weight'].default_value = 0.4
+        except KeyError:
+            pass
     m.diffuse_color = vals['view']
     m.roughness = vals['rough']
     try:
@@ -436,167 +335,338 @@ def film_material(kind):
     return m
 
 
-# ---- baking the film ------------------------------------------------------------------------------------------------
-# (user: "너무 무겁지 않아?" - live, the film was worked out again on every change of the parts, a sculpt stroke on one
-# of them included: now it is a plain mesh made once; a setting changed makes it again (once the slider rests), Re-pack
-# takes the parts as they are now)
+# ---- the bag --------------------------------------------------------------------------------------------------------
 
-def bake(context, film):
-    """The film worked out from its parts and settings (a Geometry Nodes pass) and kept as its mesh (attributes for the
-    fine creases with it).  Returns the number of points."""
-    parts = film_parts(film)
-    if not parts:
-        return len(film.data.vertices)
-    p = film.mch_vacuum
-    ng = build_tree(f'{TREE} - {film.name}', parts)
-    mod = film.modifiers.get(MOD) or film.modifiers.new(MOD, 'NODES')
+def bag_mesh(context, parts, loose, points):
+    """The bag round ``parts`` (world space): a closing of them all (Bag: 0 tight round each, 1 one loose bag round
+    the lot) lifted a little off them, of about ``points`` points.  A new mesh."""
+    size = bounds_size(context, parts)
+    tmp_me = bpy.data.meshes.new('MCH Vacuum Bag')
+    tmp = bpy.data.objects.new('MCH Vacuum Bag', tmp_me)
+    context.scene.collection.objects.link(tmp)
+    ng = build_tree(f'{TREE} - bag', parts)
+    mod = tmp.modifiers.new(MOD, 'NODES')
     mod.node_group = ng
     from . import geo_sculpt as gs
-    for sock, v in (('Size', float(film.get('mch_vacuum_size', 1.0))), ('Hug', p.hug), ('Gap', p.gap / 100.0),
-                    ('Detail', int(p.detail)), ('Creases', p.creases), ('Crease Size', p.crease_size / 100.0),
-                    ('Seed', int(p.seed)), ('Over Parts', p.over_parts), ('Center', parts_center(film, parts)),
-                    ('E1', parts_axes(film, parts)[0]), ('E2', parts_axes(film, parts)[1])):
-        gs.set_input(mod, sock, v)
-    old = film.data
-    mats = [m for m in old.materials if m is not None] or [film_material(p.film)]
-    try:                                               # (the parts taken into the film's own space: Relative)
-        dg = context.evaluated_depsgraph_get()
-        dg.update()
-        me = bpy.data.meshes.new_from_object(film.evaluated_get(dg), preserve_all_data_layers=True, depsgraph=dg)
+    try:
+        detail = 80
+        me = None
+        for _try in range(2):                           # (the detail that gives about Points points)
+            for sock, v in (('Size', size), ('Hug', 1.0 - 0.75 * loose), ('Gap', 0.035), ('Detail', int(detail)),
+                            ('Creases', 0.0), ('Crease Size', 0.04), ('Seed', 0), ('Over Parts', 0.0),
+                            ('Center', (0.0, 0.0, 0.0)), ('E1', (1.0, 0.0, 0.0)), ('E2', (0.0, 1.0, 0.0))):
+                gs.set_input(mod, sock, v)
+            dg = context.evaluated_depsgraph_get()
+            dg.update()
+            if me is not None:
+                bpy.data.meshes.remove(me)
+            me = bpy.data.meshes.new_from_object(tmp.evaluated_get(dg), depsgraph=dg)
+            n = len(me.vertices)
+            if n == 0 or abs(n - points) < points * 0.25:
+                break
+            detail = max(20, min(600, detail * math.sqrt(points / n)))
     finally:
-        film.modifiers.remove(mod)
+        bpy.data.objects.remove(tmp)
+        if tmp_me.users == 0:
+            bpy.data.meshes.remove(tmp_me)
         if ng.users == 0:
             bpy.data.node_groups.remove(ng)
-    me.name = old.name
+    for a in [a for a in me.attributes if a.name.startswith('mch_vac_')]:
+        me.attributes.remove(a)
     me.materials.clear()
-    for m in mats[:1]:
-        me.materials.append(m)
-    if len(me.polygons):
-        me.polygons.foreach_set('material_index', [0] * len(me.polygons))
-    film.data = me
-    if old.users == 0:
-        bpy.data.meshes.remove(old)
-    film.update_tag()
-    return len(me.vertices)
+    return me
 
 
-_BUSY = [False]
-LIVE = ('hug', 'gap', 'detail', 'creases', 'crease_size', 'seed', 'film', 'over_parts')
-_PENDING = {}                       # film name -> time of its last change
+# ---- settings -------------------------------------------------------------------------------------------------------
 
-
-def _flush():
-    """The timer: films whose settings have rested a moment made again."""
-    now = time.time()
-    due = [n for n, t in _PENDING.items() if now - t >= 0.35]
-    for n in due:
-        _PENDING.pop(n, None)
-        ob = bpy.data.objects.get(n)
-        if ob is not None and is_film(ob):
-            try:
-                bake(bpy.context, ob)
-            except (RuntimeError, ReferenceError, AttributeError) as ex:
-                print('Vacuum Pack:', ex)
-    return 0.1 if _PENDING else None
-
-
-def _schedule(ob):
-    if bpy.app.background:                          # (no timers there: at once)
-        bake(bpy.context, ob)
-        return
-    _PENDING[ob.name] = time.time()
-    if not bpy.app.timers.is_registered(_flush):
-        bpy.app.timers.register(_flush, first_interval=0.1)
-
-
-def _upd(self, context):
-    if _BUSY[0]:
-        return
-    ob = self.id_data
-    if isinstance(ob, bpy.types.Object) and is_film(ob):
-        if ob.get('mch_vacuum_mat') != self.film:     # (a Film preset picked: its material)
-            mats = ob.data.materials
-            if len(mats):
-                mats[0] = film_material(self.film)
-            else:
-                mats.append(film_material(self.film))
-            ob['mch_vacuum_mat'] = self.film
-        _schedule(ob)
-        sc = getattr(context, 'scene', None)
-        if sc is not None and hasattr(sc, 'mch_vacuum'):             # (the next pack starts like this one)
-            _BUSY[0] = True
-            try:
-                for k in LIVE:
-                    setattr(sc.mch_vacuum, k, getattr(self, k))
-            finally:
-                _BUSY[0] = False
+def _restart(self, context):
+    """A Vacuum Pack slider changed while its cloth is out: the cloth set up again with it (as Cloth Drape's do)."""
+    from . import cloth_drape as cd
+    if cd.sim_active() and cd.SIM.get('mode') == 'VACUUM':
+        try:
+            sim_restart(context)
+            cd.SIM['running'] = False
+        except Exception as ex:                       # (never break the slider)
+            print('Vacuum Pack:', ex)
 
 
 class MCH_PG_Vacuum(bpy.types.PropertyGroup):
-    hug: FloatProperty(name='Hug', default=0.55, min=0.0, max=1.0, update=_upd,
-                       description='How far the film is pulled into hollows and gaps: 0 a loose bag spanning everything, '
-                                   '1 sucked into nearly every hollow')
-    gap: FloatProperty(name='Gap %', default=0.3, min=0.0, max=5.0, update=_upd,
-                       description='How far the film stays off the parts (a share of their size, in %)')
-    detail: IntProperty(name='Detail', default=120, min=40, soft_max=300, max=600, update=_upd,
-                        description='How fine the film is (steps across the parts\' size; more = finer, heavier)')
-    creases: FloatProperty(name='Creases', default=0.8, min=0.0, max=1.0, update=_upd,
-                           description='Creases running out from the parts across the film (the tension lines): the big '
-                                       'ones in the mesh, the fine ones in the film\'s material')
-    crease_size: FloatProperty(name='Crease Spacing %', default=2.5, min=0.5, max=15.0, update=_upd,
-                               description='How far apart the big creases are (a share of the size, in %)')
-    seed: IntProperty(name='Seed', default=0, min=0, update=_upd, description='Another random set of creases')
-    over_parts: FloatProperty(name='Creases Over Parts', default=0.25, min=0.0, max=1.0, update=_upd,
-                              description='How much the creases run on over the parts themselves (0: only where the film '
-                                          'spans between them)')
-    film: EnumProperty(name='Film', items=FILMS, default='CLEAR', update=_upd)
+    bag: FloatProperty(name='Bag', default=0.5, min=0.0, max=1.0,
+                       description='The bag it starts as: 0 close round each part, 1 one loose bag round them all '
+                                   '(more cloth to suck in: more folds)')
+    pressure: FloatProperty(name='Suction', default=80.0, min=5.0, max=200.0, subtype='PERCENTAGE', update=_restart,
+                            description='How hard the air is sucked out (how deep into the hollows it is pulled)')
+    tight: FloatProperty(name='Tightness', default=6.0, min=0.0, max=30.0, subtype='PERCENTAGE', update=_restart,
+                         description='How much the cloth shrinks while it is sucked in (pulled taut over the high points)')
+    folds: FloatProperty(name='Folds', default=55.0, min=0.0, max=100.0, subtype='PERCENTAGE', update=_restart,
+                         description='0: broad soft folds (a stiff film); 100: many fine sharp folds (a thin cloth)')
+    gravity: FloatProperty(name='Gravity', default=5.0, min=0.0, max=200.0, subtype='PERCENTAGE', update=_restart,
+                           description='How much the cloth sags while it is sucked in')
+    points: IntProperty(name='Points', default=6000, min=1000, soft_max=40000, max=200000,
+                        description='About how many points the cloth has (more: finer folds, slower)')
+    frames: IntProperty(name='Frames', default=60, min=10, max=600, update=_restart,
+                        description='How many frames Space runs')
+    self_collide: bpy.props.BoolProperty(name='Self Collision', default=False, update=_restart,
+                                         description='The folds never pass through each other (slower)')
+    gather: EnumProperty(name='Gather', items=(('NONE', 'No Gather', 'Only sucked in'),
+                                               ('AUTO', 'Bottom', 'Drawn gently toward the bag\'s lowest point'),
+                                               ('PICKED', 'Picked Point', 'Drawn gently toward where you clicked on '
+                                                                          'the mesh (Pick Gather Point)')),
+                         default='NONE')
+    gather_point: FloatVectorProperty(name='Gather Point', size=3, subtype='XYZ', options={'HIDDEN'})
+    gather_size: FloatProperty(name='Gather Size', default=6.0, min=1.0, max=20.0, subtype='PERCENTAGE',
+                               description='How much of the cloth round the gather point is pinned and drawn in')
+    collider_faces: IntProperty(name='Collider Faces', default=120000, min=5000, max=2000000,
+                                description='A heavy part collides as a lighter copy of about this many faces')
+    film: EnumProperty(name='Film', items=FILMS + (('CLOTH', 'Cloth', 'A matte fabric (a cloth pulled over it)'),),
+                       default='CLOTH')
 
 
 # ---- operators ------------------------------------------------------------------------------------------------------
 
-def perform(context, parts=None):
-    """The selected meshes sealed in one film (a new object, its settings kept).  Returns (film, report)."""
-    parts = parts if parts is not None else pick_parts(context)
+# ---- the session (Blender's own cloth, run by Cloth Drape's Space / Enter / Esc) ----------------------------------
+
+CLOTH_MOD = 'MCH Vacuum Cloth'
+COLL = 'MCH Vacuum Colliders'
+
+
+def _sim():
+    from . import cloth_drape as cd
+    return cd.SIM
+
+
+def _colliders(context, parts, faces, gap):
+    """Collision copies of the parts (lighter when heavy) - the parts themselves are not touched."""
+    from . import collider_proxy as cpx
+    coll = bpy.data.collections.get(COLL)
+    if coll is None:
+        coll = bpy.data.collections.new(COLL)
+    if coll.name not in context.scene.collection.children:
+        context.scene.collection.children.link(coll)
+    out = []
+    for o in parts:
+        me, temp = cpx.proxy_mesh(context, o, faces)
+        if not temp:
+            me = me.copy()
+        c = bpy.data.objects.new(f'{o.name} - vacuum collider', me)
+        coll.objects.link(c)
+        c.matrix_world = o.matrix_world.copy()
+        c.modifiers.new('Collision', 'COLLISION')
+        c.collision.thickness_outer = gap
+        c.collision.cloth_friction = 5.0
+        c.display_type = 'WIRE'
+        c.hide_render = True
+        c.hide_select = True
+        out.append(c)
+    return out
+
+
+def cloth_settings(film, vp, size):
+    """The Vacuum Pack's sliders on the bag's Cloth modifier."""
+    cm = film.modifiers.get(CLOTH_MOD)
+    if cm is None:
+        return
+    cs = cm.settings
+    cs.quality = 5
+    cs.mass = 0.05
+    cs.air_damping = 2.0
+    cs.tension_stiffness = 40.0                       # (stiff to stretch, soft to squeeze: the extra cloth buckles)
+    cs.compression_stiffness = 2.0
+    cs.shear_stiffness = 5.0
+    cs.bending_stiffness = 1.0 * (0.03 ** (vp.folds / 100.0))
+    cs.use_pressure = True
+    cs.uniform_pressure_force = -20.0 * vp.pressure / 100.0
+    cs.shrink_min = vp.tight / 100.0
+    cs.effector_weights.gravity = vp.gravity / 100.0
+    if film.vertex_groups.get('MCH Gather') is not None:
+        cs.vertex_group_mass = 'MCH Gather'
+        cs.pin_stiffness = 1.0
+    cc = cm.collision_settings
+    cc.distance_min = max(size * 0.002, 1e-4)
+    cc.use_self_collision = vp.self_collide
+    cc.self_distance_min = max(size * 0.0015, 1e-4)
+
+
+def _gather(film, me, vp, frame0):
+    """The cloth round the gather point pinned and drawn gently toward a knot just outside it (a shape key keyed
+    over the first frames: the pinned points follow it)."""
+    import numpy as np
+    co = np.array([v.co for v in me.vertices])
+    size = float(np.linalg.norm(co.max(0) - co.min(0)))
+    if vp.gather == 'PICKED':
+        k = int(np.argmin(np.linalg.norm(co - np.array(vp.gather_point), axis=1)))
+        out = co[k] - co.mean(0)
+    else:
+        k = int(np.argmin(co[:, 2]))
+        out = np.array([0.0, 0.0, -1.0])
+    out = out / max(np.linalg.norm(out), 1e-12)
+    rg = size * vp.gather_size / 100.0
+    idx = np.nonzero(np.linalg.norm(co - co[k], axis=1) <= rg)[0]
+    knot = co[k] + out * rg * 0.3
+    vg = film.vertex_groups.new(name='MCH Gather')
+    vg.add([int(i) for i in idx], 1.0, 'REPLACE')
+    film.shape_key_add(name='Basis')
+    key = film.shape_key_add(name='MCH Gather')
+    for i in idx:
+        key.data[int(i)].co = tuple(knot + (co[i] - knot) * 0.55)
+    key.value = 0.0
+    key.keyframe_insert('value', frame=frame0)
+    key.value = 1.0
+    key.keyframe_insert('value', frame=frame0 + 25)
+    return len(idx)
+
+
+def perform(context):
+    """The selected meshes in one bag, ready to be sucked in (Space).  Returns a report."""
+    from . import cloth_drape as cd
+    from . import core_geometry as cg
+    if cd.sim_active():
+        raise cg.CutError('Cloth Drape: keep (Enter) or drop (Esc) the cloth you have first')
+    parts = pick_parts(context)
     if not parts:
-        raise ValueError('Vacuum Pack: select the meshes to seal in the film')
-    st = context.scene.mch_vacuum
+        raise cg.CutError('Vacuum Pack: select the meshes to seal in the bag')
+    vp = context.scene.mch_vacuum
     size = bounds_size(context, parts)
-    me = bpy.data.meshes.new('Vacuum Pack')
+    me = bag_mesh(context, parts, vp.bag, vp.points)
+    if not len(me.vertices):
+        bpy.data.meshes.remove(me)
+        raise cg.CutError('Vacuum Pack: the bag came out empty')
+    for p in me.polygons:
+        p.use_smooth = True
+    me.name = 'Vacuum Pack'
     film = bpy.data.objects.new('Vacuum Pack', me)
     coll = parts[0].users_collection[0] if parts[0].users_collection else context.scene.collection
     coll.objects.link(film)
     film[KEY] = json.dumps([o.name for o in parts])
-    film['mch_vacuum_size'] = size
-    _BUSY[0] = True
-    try:
-        for k in LIVE:
-            setattr(film.mch_vacuum, k, getattr(st, k))
-    finally:
-        _BUSY[0] = False
-    me.materials.append(film_material(st.film))
-    film['mch_vacuum_mat'] = st.film
-    t0 = time.time()
-    n = bake(context, film)
+    me.materials.append(film_material(vp.film))
+    frame0 = context.scene.frame_current
+    gathered = _gather(film, me, vp, frame0) if vp.gather != 'NONE' else 0
+    cols = _colliders(context, parts, vp.collider_faces, max(size * 0.002, 1e-4))
+    cm = film.modifiers.new(CLOTH_MOD, 'CLOTH')
+    cm.point_cache.frame_start = frame0
+    cm.point_cache.frame_end = frame0 + vp.frames
+    cloth_settings(film, vp, size)
     for o in context.selected_objects:
         o.select_set(False)
     film.select_set(True)
     context.view_layer.objects.active = film
-    msg = (f'Vacuum Pack round {len(parts)} part(s): {n:,} film points ({time.time() - t0:.1f} s) - Hug, Creases, Gap '
-           f'in the window remake it; Re-pack after moving a part; Enter / Apply: a plain mesh')
-    return film, msg
+    SIM = _sim()
+    SIM.clear()
+    SIM.update(mode='VACUUM', ob=film.name, target=parts[0].name, parts=[o.name for o in parts],
+               colliders=[c.name for c in cols], frame0=frame0, size=size, running=False, done=False, want=None,
+               sess=dict(frame=0, frames=vp.frames, points=len(me.vertices)))
+    g = f', gathered at {"the picked point" if vp.gather == "PICKED" else "the bottom"} ({gathered} points)' if gathered else ''
+    return (f'Vacuum Pack round {len(parts)} part(s): {len(me.vertices):,} cloth points{g} - Space: suck the air out '
+            f'· Enter keep · Esc drop')
 
 
-def apply_film(context, film):
-    """The film a plain mesh: its settings and its parts' names dropped (the sliders no longer remake it)."""
-    _PENDING.pop(film.name, None)
-    for k in (KEY, 'mch_vacuum_size', 'mch_vacuum_mat'):
-        if k in film:
-            del film[k]
+def sim_step(context):
+    SIM = _sim()
+    sess = SIM.get('sess')
+    if sess is None:
+        return False
+    if sess['frame'] >= sess['frames']:
+        SIM['running'] = False
+        SIM['done'] = True
+        return False
+    sess['frame'] += 1
+    context.scene.frame_set(SIM['frame0'] + sess['frame'])
+    return True
+
+
+def _cleanup(context):
+    SIM = _sim()
+    for n in SIM.get('colliders', ()):
+        c = bpy.data.objects.get(n)
+        if c is not None:
+            me = c.data
+            bpy.data.objects.remove(c)
+            if me is not None and me.users == 0:
+                bpy.data.meshes.remove(me)
+    coll = bpy.data.collections.get(COLL)
+    if coll is not None and not coll.objects:
+        bpy.data.collections.remove(coll)
+    if 'frame0' in SIM:
+        context.scene.frame_set(SIM['frame0'])
+
+
+def sim_keep(context):
+    """The cloth kept as it is now: a plain mesh (with Cloth Drape's Thickness its Solidify)."""
+    from . import cloth_drape as cd
+    SIM = _sim()
+    film = bpy.data.objects.get(SIM.get('ob', ''))
+    if film is None:
+        SIM.clear()
+        return 'nothing to keep'
+    dg = context.evaluated_depsgraph_get()
+    me = bpy.data.meshes.new_from_object(film.evaluated_get(dg), depsgraph=dg)
+    old = film.data
+    cm = film.modifiers.get(CLOTH_MOD)
+    if cm is not None:
+        film.modifiers.remove(cm)
+    if old.shape_keys is not None:
+        film.shape_key_clear()
+    me.name = old.name
+    film.data = me
+    if old.users == 0:
+        bpy.data.meshes.remove(old)
+    vg = film.vertex_groups.get('MCH Gather')
+    if vg is not None:
+        film.vertex_groups.remove(vg)
+    frame = SIM['sess']['frame']
+    size = SIM.get('size', 1.0)
+    _cleanup(context)
+    if KEY in film:
+        del film[KEY]
+    thick = cd.add_thickness(film, size, cd.settings(context))
+    SIM.clear()
+    return (f'Vacuum Pack: kept at frame {frame} ({len(me.vertices):,} points)' +
+            (' + Thickness (its Solidify)' if thick else ''))
+
+
+def sim_drop(context):
+    SIM = _sim()
+    film = bpy.data.objects.get(SIM.get('ob', ''))
+    _cleanup(context)
+    if film is not None:
+        me = film.data
+        bpy.data.objects.remove(film)
+        if me.users == 0:
+            bpy.data.meshes.remove(me)
+    SIM.clear()
+    return 'Vacuum Pack: dropped'
+
+
+def sim_restart(context):
+    """Back to the bag (frame one), the sliders taken again."""
+    SIM = _sim()
+    film = bpy.data.objects.get(SIM.get('ob', ''))
+    if film is None:
+        return False
+    vp = context.scene.mch_vacuum
+    context.scene.frame_set(SIM['frame0'])
+    cm = film.modifiers.get(CLOTH_MOD)
+    if cm is not None:
+        cm.point_cache.frame_end = SIM['frame0'] + vp.frames
+    cloth_settings(film, vp, SIM.get('size', 1.0))
+    SIM['sess'].update(frame=0, frames=vp.frames)
+    SIM.update(done=False, running=True)
+    return True
+
+
+def sim_status():
+    SIM = _sim()
+    sess = SIM.get('sess') or {}
+    f, n = sess.get('frame', 0), sess.get('frames', 0)
+    if SIM.get('done'):
+        return f'Vacuum Pack done: frame {f} / {n}  (Enter keep · Esc drop · Space again)'
+    return (f'Vacuum Pack {"sucking in" if SIM.get("running") else "ready"}: frame {f} / {n}  '
+            f'(Space {"pause" if SIM.get("running") else "suck in"} · Enter keep · Esc drop)')
 
 
 class MCH_OT_vacuum_pack(bpy.types.Operator):
-    """Seal the selected meshes in one plastic film (vacuum packing): pulled flat onto them, taut over the gaps,
-    creases running out across it"""
+    """Put the selected meshes in one bag and suck the air out (Blender's cloth simulation): Space runs it, Enter
+    keeps it, Esc drops it"""
     bl_idname = 'mch.vacuum_pack'
     bl_label = 'Vacuum Pack Selected'
     bl_options = {'REGISTER', 'UNDO'}
@@ -606,102 +676,101 @@ class MCH_OT_vacuum_pack(bpy.types.Operator):
         return context.mode == 'OBJECT' and bool(pick_parts(context))
 
     def execute(self, context):
+        from . import core_geometry as cg
         try:
-            _film, msg = perform(context)
-        except (ValueError, RuntimeError) as ex:
+            msg = perform(context)
+        except (cg.CutError, ValueError, RuntimeError) as ex:
             self.report({'WARNING'}, str(ex))
             return {'CANCELLED'}
         self.report({'INFO'}, msg)
         return {'FINISHED'}
 
 
-class MCH_OT_vacuum_repack(bpy.types.Operator):
-    """The selected Vacuum Pack made again round its parts as they are now (after moving or sculpting them)"""
-    bl_idname = 'mch.vacuum_repack'
-    bl_label = 'Re-pack'
+class MCH_OT_vacuum_gather_pick(bpy.types.Operator):
+    """Click on the mesh where the cloth is drawn together (the knot: the tension folds run toward it); Esc cancels"""
+    bl_idname = 'mch.vacuum_gather_pick'
+    bl_label = 'Pick Gather Point'
     bl_options = {'REGISTER', 'UNDO'}
 
-    @classmethod
-    def poll(cls, context):
-        return context.mode == 'OBJECT' and active_film(context) is not None
+    def invoke(self, context, event):
+        if context.area is None or context.area.type != 'VIEW_3D':
+            self.report({'WARNING'}, 'Pick Gather Point: in the 3D View')
+            return {'CANCELLED'}
+        context.window_manager.modal_handler_add(self)
+        context.window.cursor_modal_set('CROSSHAIR')
+        context.workspace.status_text_set('Vacuum Pack: click on the mesh where the cloth gathers  |  Esc: cancel')
+        return {'RUNNING_MODAL'}
 
-    def execute(self, context):
-        film = active_film(context)
-        t0 = time.time()
-        n = bake(context, film)
-        self.report({'INFO'}, f'{film.name}: packed again - {n:,} points ({time.time() - t0:.1f} s)')
-        return {'FINISHED'}
+    def _end(self, context):
+        try:
+            context.window.cursor_modal_restore()
+            context.workspace.status_text_set(None)
+        except (AttributeError, RuntimeError):
+            pass
 
-
-class MCH_OT_vacuum_apply(bpy.types.Operator):
-    """The selected Vacuum Pack(s) as a plain mesh (the sliders no longer remake it)"""
-    bl_idname = 'mch.vacuum_apply'
-    bl_label = 'Apply Vacuum Pack'
-    bl_options = {'REGISTER', 'UNDO'}
-
-    @classmethod
-    def poll(cls, context):
-        return context.mode == 'OBJECT' and bool(apply_targets(context))
-
-    def execute(self, context):
-        obs = apply_targets(context)
-        for film in obs:
-            apply_film(context, film)
-        self.report({'INFO'}, 'Vacuum Pack applied: ' + ', '.join(f'{o.name} ({len(o.data.polygons):,} faces)' for o in obs))
-        return {'FINISHED'}
-
-
-def apply_targets(context):
-    """The films Enter / Apply takes: the selected ones, else the active one."""
-    sel = [o for o in getattr(context, 'selected_objects', []) or [] if is_film(o)]
-    if sel:
-        return sel
-    ob = active_film(context)
-    return [ob] if ob is not None else []
+    def modal(self, context, event):
+        if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
+            self._end(context)
+            return {'CANCELLED'}
+        if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+            from bpy_extras import view3d_utils
+            region, rv = context.region, context.region_data
+            xy = (event.mouse_region_x, event.mouse_region_y)
+            o = view3d_utils.region_2d_to_origin_3d(region, rv, xy)
+            d = view3d_utils.region_2d_to_vector_3d(region, rv, xy)
+            hit, loc, _n, _i, _ob, _m = context.scene.ray_cast(context.evaluated_depsgraph_get(), o, d)
+            if not hit:
+                self.report({'INFO'}, 'Pick Gather Point: click on the mesh')
+                return {'RUNNING_MODAL'}
+            vp = context.scene.mch_vacuum
+            vp.gather_point = loc
+            vp.gather = 'PICKED'
+            self._end(context)
+            self.report({'INFO'}, f'Gather point set ({loc.x:.2f}, {loc.y:.2f}, {loc.z:.2f})')
+            return {'FINISHED'}
+        return {'PASS_THROUGH'}
 
 
 def draw(layout, context):
     """The Vacuum Pack box (in the Cloth Drape window)."""
-    film = active_film(context)
-    p = film.mch_vacuum if film is not None else context.scene.mch_vacuum
+    from . import cloth_drape as cd
+    vp = context.scene.mch_vacuum
     box = layout.box()
-    box.label(text='Vacuum Pack: the selected meshes sealed in one film', icon='MOD_SHRINKWRAP')
-    if film is not None:
-        box.label(text=f'{film.name}: round {len(film_parts(film))} part(s) - the sliders remake it', icon='MODIFIER')
-        r = box.row(align=True)
-        r.operator('mch.vacuum_repack', text='Re-pack (the parts as they are now)', icon='FILE_REFRESH')
+    box.label(text='Vacuum Pack: the selected meshes in one bag, the air sucked out', icon='MOD_SHRINKWRAP')
+    live = cd.sim_active() and cd.SIM.get('mode') == 'VACUUM'
+    if live:
+        box.label(text='Space: suck the air out  ·  Enter: keep  ·  Esc: drop', icon='PLAY')
     else:
         box.operator('mch.vacuum_pack', text='Vacuum Pack Selected', icon='MOD_SHRINKWRAP')
-    box.row(align=True).prop(p, 'film', expand=True)
+    r = box.row(align=True)
+    r.prop(vp, 'gather', expand=True)
+    box.operator('mch.vacuum_gather_pick', text='Pick Gather Point (click on the mesh)', icon='EYEDROPPER')
     col = box.column(align=True)
-    col.prop(p, 'hug', slider=True)
-    col.prop(p, 'creases', slider=True)
-    col.prop(p, 'crease_size', slider=True)
-    col.prop(p, 'over_parts', slider=True)
-    col.prop(p, 'gap', slider=True)
-    col.prop(p, 'detail')
-    col.prop(p, 'seed')
-    if film is not None:
-        box.operator('mch.vacuum_apply', text='Apply (a plain mesh)  Enter', icon='CHECKMARK')
+    for k in ('pressure', 'tight', 'folds', 'gravity'):
+        col.prop(vp, k, slider=True)
+    if vp.gather != 'NONE':
+        col.prop(vp, 'gather_size', slider=True)
+    col.prop(vp, 'self_collide')
+    col = box.column(align=True)
+    col.prop(vp, 'bag', slider=True)
+    col.prop(vp, 'points')
+    col.prop(vp, 'frames')
+    col.prop(vp, 'collider_faces')
+    box.row(align=True).prop(vp, 'film', expand=True)
 
 
-CLASSES = (MCH_PG_Vacuum, MCH_OT_vacuum_pack, MCH_OT_vacuum_repack, MCH_OT_vacuum_apply)
+CLASSES = (MCH_PG_Vacuum, MCH_OT_vacuum_pack, MCH_OT_vacuum_gather_pick)
 
 
 def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Scene.mch_vacuum = PointerProperty(type=MCH_PG_Vacuum)
-    bpy.types.Object.mch_vacuum = PointerProperty(type=MCH_PG_Vacuum)
 
 
 def unregister():
-    if bpy.app.timers.is_registered(_flush):
-        bpy.app.timers.unregister(_flush)
-    for attr in ('mch_vacuum',):
-        for T in (bpy.types.Scene, bpy.types.Object):
-            if hasattr(T, attr):
-                delattr(T, attr)
+    if hasattr(bpy.types.Scene, 'mch_vacuum'):
+        del bpy.types.Scene.mch_vacuum
     for c in reversed(CLASSES):
         try:
             bpy.utils.unregister_class(c)
